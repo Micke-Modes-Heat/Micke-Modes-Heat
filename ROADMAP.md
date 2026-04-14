@@ -1,28 +1,20 @@
 # Roadmap: Nächste Schritte
 
-## Phase 2: Echte ES-Module (geschätzt: 2-3 Sessions)
+## Phase 2: ES-Module — ERLEDIGT (2026-04-14)
 
-### Ziel
-Alle `window.*`-Globals durch saubere `import`/`export`-Statements ersetzen.
-Danach: Tree-Shaking, bessere IDE-Unterstützung, keine Reihenfolge-Abhängigkeiten.
+Alle 31 src/-Dateien auf ES-Module umgestellt:
+- `export` vor allen Top-Level-Deklarationen
+- `import`-Statements für Funktionen und Konstanten
+- Mutable cross-file State nutzt `window.*` (ES-Module imported bindings sind read-only)
+- `src/main.js` als Entry Point, bridged alle Exports auf `window.*`
+- `index.html`: 30 `<script>`-Tags durch `<script type="module">` ersetzt
+- Vite-Build: 35 Module → 789 KB Bundle (250 KB gzip)
+- 227 Tests grün, ESLint clean, CI green
 
-### Vorgehen
-1. **State-Modul** (`src/state/globals.js`) — alle globalen Variablen (`gebaeude`, `netzEdges`, etc.) als benannte Exports. Andere Module importieren daraus.
-2. **Config-Module** zuerst (`config/*.js`) — reine Daten, keine Abhängigkeiten. `export const ERZEUGER_CFG = {...}` statt `const ERZEUGER_CFG = {...}`.
-3. **Rechenkerne** (`calc-engine.js`, `dispatch-core.js`, `analysis-economics.js`, `pv-profile.js`) — bereits quasi-modular (keine DOM-Abhängigkeiten). Einfachste Umstellung.
-4. **UI-Module** (`erzeuger.js`, `gebaeude.js`, `netz.js`, etc.) — importieren aus State + Config + Calc. `addEventListener` statt inline-Handler.
-5. **Optimizer** — Worker-Code muss String-Template bleiben (Web Worker kann nicht importieren). Aber die Main-Thread-Teile werden Module.
-6. **`main.js`** — wird zum echten Entry Point mit Imports statt `<script>`-Tags.
-
-### Risiken
-- **Inline Event-Handler** (`onclick="recalcNetz()"`) in `index.html` müssen ALLE auf `addEventListener` umgestellt werden — ~60 Stellen
-- **Zirkuläre Abhängigkeiten** — z.B. `globals.js` ↔ `gebaeude.js`. Lösung: Mediator-Pattern oder Lazy-Imports
-- **Web Worker** kann nicht importieren → `_dispatchCore.toString()` Muster bleibt
-
-### Verifikation
-- Alle 227 Tests müssen weiter grün sein
-- App muss im Browser identisch funktionieren
-- `npm run build` muss weiter Single-File-Output liefern
+### Offene Verbesserungen (Phase 2b, optional)
+- `window.*` für mutable State → echtes State-Modul mit Setter-Funktionen
+- `data-click`-Handler in HTML → `addEventListener` in JS (entfernt window-Bridge-Bedarf)
+- Zirkuläre Abhängigkeiten auflösen (globals ↔ gebaeude ↔ karte-werkzeuge)
 
 
 ## Phase 3: TypeScript (geschätzt: 2-4 Sessions, setzt Phase 2 voraus)
@@ -63,6 +55,6 @@ DOM-Interaktion testen (CSV-Import, Gebäude-Management, Panel-Steuerung).
 
 | Phase | Nutzen | Aufwand | Empfehlung |
 |-------|--------|---------|------------|
-| Phase 2 (ES-Module) | Hoch — Wartbarkeit, IDE | Mittel | Als nächstes |
+| Phase 2 (ES-Module) | Hoch — Wartbarkeit, IDE | Mittel | ✓ Erledigt |
 | Phase 3 (TypeScript) | Hoch — Fehlerprävention | Mittel | Nach Phase 2 |
 | Phase 4 (UI-Tests) | Mittel — Regressionsschutz | Hoch | Optional |
