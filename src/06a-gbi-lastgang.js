@@ -8,23 +8,23 @@ window.elPvH         = null; // Float32Array[8760] — stündl. PV-Erzeugung (Up
 window._bhkwElHourly = null; // Float32Array[8760] — stündl. BHKW-Stromerzeugung
 
 // Globale Monatsgrenzen (stündlich, 365-Tage-Jahr ohne Schalttag)
-export const GL_MONTH_START = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016];
-export const GL_MONTH_HOURS = [744,672,744,720,744,720,744,744,720,744,720,744];
+const GL_MONTH_START = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016];
+const GL_MONTH_HOURS = [744,672,744,720,744,720,744,744,720,744,720,744];
 
 // ══════════════════════════════════════════════════════════════════════════
 // ── Gebäudeliste CSV-Import (Click-to-Assign) ───────────────────────────
 // ══════════════════════════════════════════════════════════════════════════
 
-export let gbiData = [];        // parsed CSV rows as objects
-export let gbiColumns = {};     // {name:colIdx, nutzung:colIdx, baujahr:colIdx, zustand:colIdx, flaeche:colIdx}
-export let gbiHeaders = [];     // raw CSV headers
-export let gbiRawRows = [];     // raw CSV rows (arrays)
-export let gbiMatches = [];     // [{csvIdx, gebId, score, status:'auto'|'manual'|'rejected'}]
-export let gbiManualSelectedCsv = null;   // currently selected CSV row index for manual assign
-export let gbiManualSelectedGeb = null;   // currently selected gebaeude ID for manual assign
-export let gbiManualMode = false;
+let gbiData = [];        // parsed CSV rows as objects
+let gbiColumns = {};     // {name:colIdx, nutzung:colIdx, baujahr:colIdx, zustand:colIdx, flaeche:colIdx}
+let gbiHeaders = [];     // raw CSV headers
+let gbiRawRows = [];     // raw CSV rows (arrays)
+let gbiMatches = [];     // [{csvIdx, gebId, score, status:'auto'|'manual'|'rejected'}]
+let gbiManualSelectedCsv = null;   // currently selected CSV row index for manual assign
+let gbiManualSelectedGeb = null;   // currently selected gebaeude ID for manual assign
+let gbiManualMode = false;
 
-export function openGebListImport() {
+function openGebListImport() {
   const p = document.getElementById('geb-import-panel');
   p.classList.add('visible');
   p.style.display = 'flex';
@@ -32,14 +32,14 @@ export function openGebListImport() {
   gbiReset();
 }
 
-export function gbiClose() {
+function gbiClose() {
   var p = document.getElementById('geb-import-panel');
   p.classList.remove('visible');
   p.style.display = '';
   gbiStopManualMode();
 }
 
-export function _gbiDownloadVorlage() {
+function _gbiDownloadVorlage() {
   const csv = 'Bezeichnung;Nutzung;Baujahr;Zustand;Fläche m²\n'
     + 'Rathaus;Büro;1968;B;2400\n'
     + 'Grundschule Am Park;Schule;1975;C;1800\n'
@@ -51,7 +51,7 @@ export function _gbiDownloadVorlage() {
   URL.revokeObjectURL(url);
 }
 
-export function gbiReset() {
+function gbiReset() {
   gbiData = []; gbiColumns = {}; gbiHeaders = []; gbiRawRows = []; gbiMatches = [];
   gbiManualSelectedCsv = null; gbiManualSelectedGeb = null;
   document.getElementById('gbi-step-upload').style.display = '';
@@ -63,7 +63,7 @@ export function gbiReset() {
 }
 
 // ── Step 1: File Parse ──────────────────────────────────────────────────
-export function gbiFileSelected(file) {
+function gbiFileSelected(file) {
   if (!file) return;
   document.getElementById('gbi-file-info').textContent = file.name;
   const reader = new FileReader();
@@ -80,7 +80,7 @@ export function gbiFileSelected(file) {
   reader.readAsText(file, 'UTF-8');
 }
 
-export function gbiAutoMapColumns() {
+function gbiAutoMapColumns() {
   gbiColumns = { name: -1, nutzung: -1, baujahr: -1, zustand: -1, flaeche: -1 };
   gbiHeaders.forEach(function(h, i) {
     var hl = h.toLowerCase();
@@ -93,7 +93,7 @@ export function gbiAutoMapColumns() {
 }
 
 // ── Step 2: Column Mapping UI ───────────────────────────────────────────
-export function gbiShowMapping() {
+function gbiShowMapping() {
   document.getElementById('gbi-step-upload').style.display = 'none';
   document.getElementById('gbi-step-mapping').style.display = '';
   // Preview table
@@ -125,13 +125,13 @@ export function gbiShowMapping() {
   document.getElementById('gbi-col-mapping').innerHTML = html;
 }
 
-export function gbiBackToUpload() {
+function gbiBackToUpload() {
   document.getElementById('gbi-step-mapping').style.display = 'none';
   document.getElementById('gbi-step-upload').style.display = '';
 }
 
 // ── Step 3: Auto-Matching ───────────────────────────────────────────────
-export function gbiStartMatching() {
+function gbiStartMatching() {
   // Build CSV data objects
   gbiData = gbiRawRows.map(function(row, idx) {
     return {
@@ -163,7 +163,7 @@ export function gbiStartMatching() {
   gbiShowResults();
 }
 
-export function gbiCalcScore(csvRow, g) {
+function gbiCalcScore(csvRow, g) {
   var score = 0, factors = 0;
   // Fläche (max 40 points)
   if (csvRow.flaeche > 0 && g.flaeche > 0) {
@@ -194,7 +194,7 @@ export function gbiCalcScore(csvRow, g) {
   return factors > 0 ? Math.round(score / factors * 100) : 0;
 }
 
-export function gbiStringSimilarity(a, b) {
+function gbiStringSimilarity(a, b) {
   if (a === b) return 1;
   var longer = a.length > b.length ? a : b;
   var shorter = a.length > b.length ? b : a;
@@ -209,7 +209,7 @@ export function gbiStringSimilarity(a, b) {
   return (2.0 * hits) / (bg1.length + bg2.length);
 }
 
-export function gbiMapNutzung(raw) {
+function gbiMapNutzung(raw) {
   var r = raw.toLowerCase().trim();
   if (/efh|einfam|einf\.|1.?fam/i.test(r)) return 'efh';
   if (/mfh|mehrfam|mehrf\.|wohn/i.test(r)) return 'mfh';
@@ -222,7 +222,7 @@ export function gbiMapNutzung(raw) {
 }
 
 // ── Step 3: Results UI ──────────────────────────────────────────────────
-export function gbiShowResults() {
+function gbiShowResults() {
   document.getElementById('gbi-step-mapping').style.display = 'none';
   document.getElementById('gbi-step-results').style.display = '';
   var autoCount = gbiMatches.filter(function(m) { return m.status === 'auto'; }).length;
@@ -236,7 +236,7 @@ export function gbiShowResults() {
   gbiRenderMatchTable();
 }
 
-export function gbiRenderMatchTable() {
+function gbiRenderMatchTable() {
   var html = '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
   html += '<tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:3px 5px;color:var(--muted);">CSV-Zeile</th><th style="text-align:left;padding:3px 5px;color:var(--muted);">→ Kartengebäude</th><th style="padding:3px 5px;color:var(--muted);">Score</th><th style="padding:3px 5px;color:var(--muted);">Aktion</th></tr>';
   gbiMatches.forEach(function(m, i) {
@@ -263,20 +263,20 @@ export function gbiRenderMatchTable() {
   document.getElementById('gbi-match-table').innerHTML = html;
 }
 
-export function gbiReject(idx) { gbiMatches[idx].status = 'rejected'; gbiRenderMatchTable(); }
-export function gbiUnreject(idx) {
+function gbiReject(idx) { gbiMatches[idx].status = 'rejected'; gbiRenderMatchTable(); }
+function gbiUnreject(idx) {
   var m = gbiMatches[idx];
   m.status = m.score >= 70 ? 'auto' : m.score >= 40 ? 'unsicher' : 'unmatched';
   gbiRenderMatchTable();
 }
 
-export function gbiBackToMapping() {
+function gbiBackToMapping() {
   document.getElementById('gbi-step-results').style.display = 'none';
   document.getElementById('gbi-step-mapping').style.display = '';
 }
 
 // ── Apply Matches ───────────────────────────────────────────────────────
-export function gbiApplyMatches() {
+function gbiApplyMatches() {
   var applied = 0;
   gbiMatches.forEach(function(m) {
     if (m.status !== 'auto' && m.status !== 'unsicher') return;
@@ -300,7 +300,7 @@ export function gbiApplyMatches() {
   }
 }
 
-export function gbiApplyToGeb(csvRow, geb) {
+function gbiApplyToGeb(csvRow, geb) {
   if (csvRow.name) geb.name = csvRow.name;
   if (csvRow.nutzung) {
     var mapped = gbiMapNutzung(csvRow.nutzung);
@@ -314,7 +314,7 @@ export function gbiApplyToGeb(csvRow, geb) {
 }
 
 // ── Step 4: Manual Click-to-Assign ──────────────────────────────────────
-export function gbiStartManualMode() {
+function gbiStartManualMode() {
   document.getElementById('gbi-step-results').style.display = 'none';
   document.getElementById('gbi-step-manual').style.display = '';
   gbiManualMode = true;
@@ -323,7 +323,7 @@ export function gbiStartManualMode() {
   gbiRenderManualList();
 }
 
-export function gbiStopManualMode() {
+function gbiStopManualMode() {
   gbiManualMode = false;
   gbiManualSelectedCsv = null;
   gbiManualSelectedGeb = null;
@@ -331,14 +331,14 @@ export function gbiStopManualMode() {
   if (info) info.textContent = '';
 }
 
-export function gbiBackToResults() {
+function gbiBackToResults() {
   gbiStopManualMode();
   document.getElementById('gbi-step-manual').style.display = 'none';
   document.getElementById('gbi-step-results').style.display = '';
   gbiShowResults();
 }
 
-export function gbiRenderManualList() {
+function gbiRenderManualList() {
   var remaining = gbiMatches.filter(function(m) { return m.status === 'unmatched' || m.status === 'rejected'; });
   if (remaining.length === 0) {
     document.getElementById('gbi-manual-list').innerHTML = '<div style="text-align:center;color:#66bb6a;padding:12px;">Alle Zeilen zugeordnet!</div>';
@@ -364,7 +364,7 @@ export function gbiRenderManualList() {
   document.getElementById('gbi-manual-list').innerHTML = html;
 }
 
-export function gbiManualSelectCsv(csvIdx) {
+function gbiManualSelectCsv(csvIdx) {
   if (gbiManualSelectedGeb != null) {
     // Gebaeude was selected first → now assign this CSV row to it
     var m = gbiMatches.find(function(m) { return m.csvIdx === csvIdx && (m.status === 'unmatched' || m.status === 'rejected'); });
@@ -391,7 +391,7 @@ export function gbiManualSelectCsv(csvIdx) {
   gbiRenderManualList();
 }
 
-export function gbiManualSelectGeb(gebId) {
+function gbiManualSelectGeb(gebId) {
   if (!gbiManualMode) return false;
   if (gbiManualSelectedCsv != null) {
     // CSV was selected first → assign to this gebaeude
@@ -423,12 +423,12 @@ export function gbiManualSelectGeb(gebId) {
 }
 
 // Hook: intercept gebaeude clicks when in manual mode (bidirectional)
-export var _origGebClick = null;
-export function gbiHookGebClicks() {
+var _origGebClick = null;
+function gbiHookGebClicks() {
   // The hook is checked inside the existing gebaeude click handler
 }
 
-export function gbiFinish() {
+function gbiFinish() {
   gbiStopManualMode();
   gbiClose();
   renderList();
@@ -436,13 +436,13 @@ export function gbiFinish() {
 }
 
 // ── Interne GL-Variablen ──────────────────────────────────────────────────
-export let glRawCsv = null;       // roher CSV-Text
-export let glRawData = null;      // Float32Array nach Parse, original (8760/8784h)
-export let glLastgangKw = null;   // Float32Array 8760h, aufbereitet (normiert)
-export let glColHeaders = [];     // Spaltenköpfe falls mehrspaltig
+let glRawCsv = null;       // roher CSV-Text
+let glRawData = null;      // Float32Array nach Parse, original (8760/8784h)
+let glLastgangKw = null;   // Float32Array 8760h, aufbereitet (normiert)
+let glColHeaders = [];     // Spaltenköpfe falls mehrspaltig
 
 // ── Init ──────────────────────────────────────────────────────────────────
-export function glInit() {
+function glInit() {
   // Stadtdropdown
   const sel = document.getElementById('gl-stadt');
   Object.keys(CalcEngine.STAEDTE).sort().forEach(s => {
@@ -485,7 +485,7 @@ export function glInit() {
   glOnStadtChange();
 }
 
-export function glOnStadtChange() {
+function glOnStadtChange() {
   const s = document.getElementById('gl-stadt').value;
   const d = CalcEngine.STAEDTE[s];
   if (d) document.getElementById('gl-norm-at').value = d.tNorm;
@@ -494,9 +494,9 @@ export function glOnStadtChange() {
 }
 
 // ── DWD-Klimadaten laden (dynamisch via <script>) ─────────────────────────
-export const _klimaLoaded = new Set(); // bereits geladene Städte
+const _klimaLoaded = new Set(); // bereits geladene Städte
 
-export function glJsFilename(stadtname) {
+function glJsFilename(stadtname) {
   return stadtname
     .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue')
     .replace(/Ä/g,'Ae').replace(/Ö/g,'Oe').replace(/Ü/g,'Ue')
@@ -516,7 +516,7 @@ async function glLadeKlimaDaten(stadtname) {
   });
 }
 
-export function glDecodeKlimaB64(b64) {
+function glDecodeKlimaB64(b64) {
   // base64 → gzip → Int16Array → Float32Array (÷10)
   const bin = atob(b64.replace(/\s/g, ''));
   const bytes = new Uint8Array(bin.length);
@@ -560,7 +560,7 @@ async function glGetTempH(stadtname, jahr) {
   return { tempH: result, fallback: false };
 }
 
-export function glUpdateKlimaStatus(isFallback) {
+function glUpdateKlimaStatus(isFallback) {
   const stadt = document.getElementById('gl-stadt').value;
   const jahr  = document.getElementById('gl-klimajahr').value;
   const el    = document.getElementById('gl-klima-status');
@@ -581,7 +581,7 @@ export function glUpdateKlimaStatus(isFallback) {
 }
 
 // ── Panel-Toggle ──────────────────────────────────────────────────────────
-export function toggleGrundlagenPanel() {
+function toggleGrundlagenPanel() {
   const p = document.getElementById('grundlagen-panel');
   const btn = document.getElementById('btn-grundlagen-toggle');
   const isOpen = p.classList.contains('visible');
@@ -589,7 +589,7 @@ export function toggleGrundlagenPanel() {
   if (!isOpen) { p.classList.add('visible'); btn.classList.add('active'); }
 }
 
-export function toggleAnalysePanel() {
+function toggleAnalysePanel() {
   const p = document.getElementById('analyse-panel');
   const btn = document.getElementById('btn-analyse-toggle');
   const isOpen = p.classList.contains('visible');
@@ -603,7 +603,7 @@ export function toggleAnalysePanel() {
   }
 }
 
-export function toggleWirtschaftPanel() {
+function toggleWirtschaftPanel() {
   const p = document.getElementById('wirtschaft-panel');
   const btn = document.getElementById('btn-wirtschaft-toggle');
   const isOpen = p.classList.contains('visible');
@@ -615,7 +615,7 @@ export function toggleWirtschaftPanel() {
   }
 }
 
-export function toggleStromPanel() {
+function toggleStromPanel() {
   const p = document.getElementById('strom-panel');
   const btn = document.getElementById('btn-strom-toggle');
   const isOpen = p.classList.contains('visible');
@@ -629,7 +629,7 @@ export function toggleStromPanel() {
 }
 
 // ── Monatswerte: Ctrl+V einfügen ─────────────────────────────────────────
-export function glPasteMonatswerte(e) {
+function glPasteMonatswerte(e) {
   e.preventDefault();
   const text = (e.clipboardData || window.clipboardData).getData('text');
   // Werte extrahieren: Trenner Tab, Semikolon, Komma oder Zeilenumbruch
@@ -645,35 +645,35 @@ export function glPasteMonatswerte(e) {
   glMonatChange();
 }
 
-export function glMonatChange() {
+function glMonatChange() {
   const sum = glGetMonatswerte().reduce((a, b) => a + (b || 0), 0);
   const el = document.getElementById('gl-monats-sum');
   el.textContent = sum > 0 ? Math.round(sum).toLocaleString('de-DE') + ' MWh' : '—';
   glUpdateStatus();
 }
 
-export function glGetMonatswerte() {
+function glGetMonatswerte() {
   return Array.from({length: 12}, (_, i) => {
     const v = parseFloat(document.getElementById('gl-m' + i).value);
     return isNaN(v) ? null : v;
   });
 }
 
-export function glGetGesamtMwh() {
+function glGetGesamtMwh() {
   return parseFloat(document.getElementById('gl-gesamt').value) || null;
 }
 
 // ── CSV Upload ────────────────────────────────────────────────────────────
-export function glDragOver(e) { e.preventDefault(); document.getElementById('gl-upload-zone').classList.add('drag-over'); }
-export function glDragLeave(e) { document.getElementById('gl-upload-zone').classList.remove('drag-over'); }
-export function glDrop(e) {
+function glDragOver(e) { e.preventDefault(); document.getElementById('gl-upload-zone').classList.add('drag-over'); }
+function glDragLeave(e) { document.getElementById('gl-upload-zone').classList.remove('drag-over'); }
+function glDrop(e) {
   e.preventDefault();
   document.getElementById('gl-upload-zone').classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
   if (f) glFileSelected(f);
 }
 
-export function glFileSelected(file) {
+function glFileSelected(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
@@ -683,7 +683,7 @@ export function glFileSelected(file) {
   reader.readAsText(file, 'utf-8');
 }
 
-export function glDetectColumns(csv, filename) {
+function glDetectColumns(csv, filename) {
   const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
   if (lines.length < 10) { glSetUploadError('Zu wenige Zeilen in der Datei.'); return; }
 
@@ -717,7 +717,7 @@ export function glDetectColumns(csv, filename) {
   }
 }
 
-export function glParseLastgang(csvOverride, sepOverride, colOverride) {
+function glParseLastgang(csvOverride, sepOverride, colOverride) {
   const csv = csvOverride || glRawCsv;
   if (!csv) return;
 
@@ -784,7 +784,7 @@ export function glParseLastgang(csvOverride, sepOverride, colOverride) {
 }
 
 // ── Energiesplit-Chart: Raumwärme / TWW / Netzverluste ────────────────────
-export function glRenderSplit(lastgangKw, verlustPct) {
+function glRenderSplit(lastgangKw, verlustPct) {
   const section = document.getElementById('gl-split-section');
   const canvas  = document.getElementById('gl-split-canvas');
   if (!section || !canvas || !lastgangKw || lastgangKw.length < 8760) return;
@@ -891,7 +891,7 @@ export function glRenderSplit(lastgangKw, verlustPct) {
 // ── Netzverlust-Autoberechnung aus sommerlicher Nacht-Grundlast ────────────
 // Logik: Jun–Aug, 2–5 Uhr = keine Raumwärme → verbleibende Last = Netzverluste
 // 10%-Quantil der Sommer-Nacht-Stunden = robuster Schätzer der Verlustniveau
-export function glAutoNetzverlust(arr) {
+function glAutoNetzverlust(arr) {
   const n = arr.length;
   const jahresKwh = arr.reduce((a, b) => a + b, 0);
   if (jahresKwh <= 0) return;
@@ -918,7 +918,7 @@ export function glAutoNetzverlust(arr) {
   if (hint) hint.textContent = `auto · ${Math.round(grundlastKw)} kW Grundlast`;
 }
 
-export function glSetUploadError(msg) {
+function glSetUploadError(msg) {
   document.getElementById('gl-upload-info').textContent = '⚠ ' + msg;
   document.getElementById('gl-upload-zone').classList.remove('loaded');
   document.getElementById('gl-preview-wrap').style.display = 'none';
@@ -927,7 +927,7 @@ export function glSetUploadError(msg) {
 }
 
 // ── Vorschau-SVG ──────────────────────────────────────────────────────────
-export function glClearLastgang() {
+function glClearLastgang() {
   glRawCsv = null;
   glRawData = null;
   glLastgangKw = null;
@@ -940,7 +940,7 @@ export function glClearLastgang() {
   glBerechnenAuto();
 }
 
-export function glRenderPreview(arr, pMax) {
+function glRenderPreview(arr, pMax) {
   const W = 400, H = 60, pad = 2;
   const iW = W - pad * 2, iH = H - pad * 2;
   const n = arr.length;
@@ -981,7 +981,7 @@ export function glRenderPreview(arr, pMax) {
 }
 
 // ── Status-Anzeige ────────────────────────────────────────────────────────
-export function glUpdateStatus() {
+function glUpdateStatus() {
   const hatLastgang = !!glLastgangKw;
   const monatswerte = glGetMonatswerte();
   const hatMonat = monatswerte.some(v => v !== null);

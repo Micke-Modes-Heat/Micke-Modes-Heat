@@ -1,5 +1,5 @@
 // ── 10d-optimizer-worker.js — Worker-Code-Template, _doRunOptimierung (Fallback), Ergebnis-Charts ──
-export function _buildOptWorkerCode() {
+function _buildOptWorkerCode() {
   return `
 'use strict';
 // ═══ Web Worker: Optimierungsberechnung (DOM-frei) ═══
@@ -705,7 +705,7 @@ self.onmessage = function(e) {
 `;
 }
 
-export function _doRunOptimierung(resDiv) {
+function _doRunOptimierung(resDiv) {
   // PV-Profil einmal cachen (ändert sich nicht während Optimierung)
   window._optCachedPvProfile = (typeof makePvProfile8760 === 'function') ? makePvProfile8760() : null;
   // 1. Lastgang holen — für gewähltes Betrachtungsjahr skaliert
@@ -1358,7 +1358,7 @@ export function _doRunOptimierung(resDiv) {
 }
 
 // ── Gestapeltes Balkendiagramm: Energie- und Leistungsanteile Top-Varianten ──
-export function _optRenderBarChart(results, container) {
+function _optRenderBarChart(results, container) {
   if (!results || results.length === 0) return;
 
   const wrap = document.createElement('div');
@@ -1520,7 +1520,7 @@ export function _optRenderBarChart(results, container) {
 }
 
 // ── Radar-/Spinnendiagramm: Kennzahlen-Vergleich Top-3 ───────────────────
-export function _optRenderRadar(results, container) {
+function _optRenderRadar(results, container) {
   if (!results || results.length === 0) return;
   const top3 = results.slice(0, 3);
 
@@ -1667,7 +1667,7 @@ export function _optRenderRadar(results, container) {
 }
 
 // ── Scatter-Plot: Alle Grob-Ergebnisse (WGK vs CO2) ─────────────────────
-export function _optRenderScatter(container) {
+function _optRenderScatter(container) {
   const allRes = window._optGrobResults;
   if (!allRes || allRes.length < 2) return;
 

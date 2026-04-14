@@ -1,18 +1,18 @@
 // ── 02a-netz-physik.js — Rohrphysik, Wärmeverlust, Farbschemata, Legende ──
 // ─────────────────────────────────────────────────────────────────────────────
 
-export let overlayLayer = null;
-export let overlayMarkerNW = null;
-export let overlayMarkerSE = null;
+let overlayLayer = null;
+let overlayMarkerNW = null;
+let overlayMarkerSE = null;
 
-export const standardDNs = [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800];
+const standardDNs = [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800];
 
 // KMR_KOSTEN → config/netz-kosten.js (wird vorher geladen)
 
-export let kostenSzenario = 'mittel'; // 'niedrig' | 'mittel' | 'hoch'
-export let netzColorMode = 'wld'; // 'wld' | 'temp' | 'dn' | 'auslastung' | 'abkuehlung'
+let kostenSzenario = 'mittel'; // 'niedrig' | 'mittel' | 'hoch'
+let netzColorMode = 'wld'; // 'wld' | 'temp' | 'dn' | 'auslastung' | 'abkuehlung'
 
-export function getKostenProM(dn, edgeKlasse) {
+function getKostenProM(dn, edgeKlasse) {
   const row = KMR_KOSTEN[dn];
   if (!row) return 0;
   const klass = edgeKlasse || kostenSzenario;
@@ -24,7 +24,7 @@ export function getKostenProM(dn, edgeKlasse) {
 
 // U-Wert abhängig von DN (Typische KMR-Werte, W/(m·K) für VL+RL gesamt)
 // Quelle: Nussbaumer/AGFW, preinsulated KMR pipes
-export function getUWertForDN(dn, baseU) {
+function getUWertForDN(dn, baseU) {
   // baseU ist der User-Eingabewert (Referenz für DN100)
   // Skalierung: kleinere Rohre → schlechterer U-Wert, größere → besserer
   const ref = baseU || 0.25;
@@ -40,7 +40,7 @@ export function getUWertForDN(dn, baseU) {
 
 // Empfohlene Fließgeschwindigkeit abhängig von DN (m/s)
 // Kleine Rohre: langsamer (Geräusch, Druckverlust), große: schneller
-export function getVFlowForDN(dn, baseV) {
+function getVFlowForDN(dn, baseV) {
   const ref = baseV || 1.0;
   if (dn <= 25)  return ref * 0.5;
   if (dn <= 40)  return ref * 0.6;
@@ -52,7 +52,7 @@ export function getVFlowForDN(dn, baseV) {
 }
 
 // Echte Polyline-Länge berechnen (mit Waypoints)
-export function calcEdgeLength(e) {
+function calcEdgeLength(e) {
   const pts = e.layer ? e.layer.getLatLngs() : null;
   if (!pts || pts.length < 2) return e._straightLength || 0;
   let len = 0;
@@ -62,7 +62,7 @@ export function calcEdgeLength(e) {
   return len;
 }
 
-export function getWLD(edge) {
+function getWLD(edge) {
   // Wärmeliniendichte in MWh/(m·a) = Jahreswärme der angeschlossenen Abnehmer / Trassenlänge
   // Heizlast → Jahreswärme mit Vollbenutzungsstunden (VBH): konservativ 1800h/a
   const VBH = 1800;
@@ -71,7 +71,7 @@ export function getWLD(edge) {
   return waerme_mwh / edge.length;
 }
 
-export function getWLDColor(wld) {
+function getWLDColor(wld) {
   // < 0.5: rot, 0.5-1.0: orange, 1.0-2.0: gelb, > 2.0: grün
   if (wld <= 0) return '#999';
   if (wld < 0.5) return '#e53935';
@@ -80,7 +80,7 @@ export function getWLDColor(wld) {
   return '#4caf50';
 }
 
-export function setNetzColorMode(mode) {
+function setNetzColorMode(mode) {
   netzColorMode = mode;
   document.querySelectorAll('#netz-color-toggle .viz-btn').forEach(b => b.classList.remove('active'));
   const btn = document.getElementById('ncbtn-' + mode);
@@ -95,7 +95,7 @@ export function setNetzColorMode(mode) {
   recalcNetz();
 }
 
-export function getEdgeColor(e, vlTemp, dt, vFlow) {
+function getEdgeColor(e, vlTemp, dt, vFlow) {
   if (!e.load || e.load <= 0) return '#555';
 
   const cp = 4.184;
@@ -185,18 +185,18 @@ export function getEdgeColor(e, vlTemp, dt, vFlow) {
   }
 }
 
-export function lerpColor(c1, c2, t) {
+function lerpColor(c1, c2, t) {
   const r1=parseInt(c1.slice(1,3),16), g1=parseInt(c1.slice(3,5),16), b1=parseInt(c1.slice(5,7),16);
   const r2=parseInt(c2.slice(1,3),16), g2=parseInt(c2.slice(3,5),16), b2=parseInt(c2.slice(5,7),16);
   const r=Math.round(r1+t*(r2-r1)), g=Math.round(g1+t*(g2-g1)), b=Math.round(b1+t*(b2-b1));
   return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
 }
 
-export function tempToColor(t, vlTemp) {
+function tempToColor(t, vlTemp) {
   return lerpColor('#4caf50', '#e53935', Math.max(0, Math.min(1, (vlTemp - t) / 15)));
 }
 
-export function interpolateAlongPts(pts, t) {
+function interpolateAlongPts(pts, t) {
   const dists = [];
   let total = 0;
   for (let i = 1; i < pts.length; i++) { const d = pts[i-1].distanceTo(pts[i]); dists.push(d); total += d; }
@@ -212,20 +212,20 @@ export function interpolateAlongPts(pts, t) {
   return pts[pts.length - 1];
 }
 
-export function getEdgeMidDisplayPt(e) {
+function getEdgeMidDisplayPt(e) {
   const pts = e.layer.getLatLngs();
   if (!pts || pts.length < 2) return e.uNode ? e.uNode.pt : L.latLng(0,0);
   return interpolateAlongPts(pts, 0.5);
 }
 
-export function clearEdgeGradient(e) {
+function clearEdgeGradient(e) {
   if (!e.segLayers) { e.segLayers = []; return; }
   e.segLayers.forEach(s => { if (map.hasLayer(s)) map.removeLayer(s); });
   e.segLayers = [];
   e.layer.setStyle({opacity: 0.8});
 }
 
-export function drawEdgeGradient(e, vlTemp, dt, vFlow) {
+function drawEdgeGradient(e, vlTemp, dt, vFlow) {
   clearEdgeGradient(e);
   const pts = e.layer.getLatLngs();
   if (!pts || pts.length < 2 || !e.load || e.load <= 0) return;
@@ -252,7 +252,7 @@ export function drawEdgeGradient(e, vlTemp, dt, vFlow) {
   e.layer.setStyle({opacity: 0});
 }
 
-export function addEdgeMidHandle(edgeObj) {
+function addEdgeMidHandle(edgeObj) {
   const icon = L.divIcon({className:'netz-mid-handle', html:'', iconSize:[8,8], iconAnchor:[4,4]});
   const midPt = getEdgeMidDisplayPt(edgeObj);
   edgeObj.midMarker = L.marker(midPt, {draggable: true, icon, zIndexOffset: 1500});
@@ -285,7 +285,7 @@ export function addEdgeMidHandle(edgeObj) {
   edgeObj.midMarker.on('dragend', function() { recalcNetz(); });
 }
 
-export function updateNetzColorLegend() {
+function updateNetzColorLegend() {
   const el = document.getElementById('netz-color-legend');
   if (!el) return;
 

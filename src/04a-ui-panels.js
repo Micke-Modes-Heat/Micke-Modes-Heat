@@ -1,7 +1,7 @@
 // ── 04a-ui-panels.js — Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold ──
 // NUTZUNG_DEFAULTS → src/config/erzeuger-cfg.js
 
-export function setNutzung(id, nutzung) {
+function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
   if (!g) return;
   g.nutzung = nutzung;
@@ -34,13 +34,13 @@ export function setNutzung(id, nutzung) {
 }
 
 // ── Gebäude-Auswahl & Massenbearbeitung ──────────────────────────────
-export function toggleSelect(id, checked) {
+function toggleSelect(id, checked) {
   const g = gebaeude.find(x => x.id === id);
   if (g) g.selected = checked;
   updateBulkBar();
 }
 
-export function updateBulkBar() {
+function updateBulkBar() {
   const sel = gebaeude.filter(g => g.selected);
   const bar = document.getElementById('bulk-bar');
   const lbl = document.getElementById('bulk-lbl');
@@ -52,7 +52,7 @@ export function updateBulkBar() {
   }
 }
 
-export function applyBulk() {
+function applyBulk() {
   const spez   = document.getElementById('bulk-spez').value;
   const waerme = document.getElementById('bulk-waerme').value;
   const hl     = document.getElementById('bulk-hl').value;
@@ -75,15 +75,15 @@ export function applyBulk() {
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }
 
-export function clearSelection() {
+function clearSelection() {
   gebaeude.forEach(g => g.selected = false);
   renderList();
   updateBulkBar();
 }
 
 // ── Gebäude-Filter ────────────────────────────────────────────────────
-export let filterText = '';
-export function filterList(val) {
+let filterText = '';
+function filterList(val) {
   filterText = val.toLowerCase().trim();
   const cards = document.querySelectorAll('#geb-list .geb-card');
   cards.forEach(card => {
@@ -98,10 +98,10 @@ export function filterList(val) {
 }
 
 // ── Adresssuche (Nominatim) ───────────────────────────────────────────
-export let addrDebounce = null;
-export let addrSelected = -1;
+let addrDebounce = null;
+let addrSelected = -1;
 
-export function addrSearch(val) {
+function addrSearch(val) {
   clearTimeout(addrDebounce);
   const res = document.getElementById('addr-results');
   if (!val || val.length < 3) { res.classList.remove('open'); return; }
@@ -129,7 +129,7 @@ export function addrSearch(val) {
   }, 350);
 }
 
-export function selectAddr(item) {
+function selectAddr(item) {
   map.flyTo([parseFloat(item.lat), parseFloat(item.lon)], 17, {duration: 1.2});
   // Show a brief pulse marker
   const m = L.circleMarker([parseFloat(item.lat), parseFloat(item.lon)], {
@@ -140,7 +140,7 @@ export function selectAddr(item) {
   document.getElementById('addr-results').classList.remove('open');
 }
 
-export function addrKeydown(e) {
+function addrKeydown(e) {
   const res = document.getElementById('addr-results');
   const items = res.querySelectorAll('.addr-result-item');
   if (!items.length) return;
@@ -167,7 +167,7 @@ document.addEventListener('click', e => {
 });
 
 // ── Autosave (LocalStorage) ───────────────────────────────────────────
-export function autosave() {
+function autosave() {
   try {
     localStorage.setItem('energiekarte_autosave', JSON.stringify(_buildProjectData()));
   } catch(e) {}
@@ -175,7 +175,7 @@ export function autosave() {
 setInterval(autosave, 30000);
 
 // Restore autosave on load if no manual project loaded
-export function tryRestoreAutosave() {
+function tryRestoreAutosave() {
   try {
     const raw = localStorage.getItem('energiekarte_autosave');
     if (!raw) return;
@@ -188,7 +188,7 @@ export function tryRestoreAutosave() {
   } catch(e) {}
 }
 
-export function loadAutosave() {
+function loadAutosave() {
   const raw = localStorage.getItem('energiekarte_autosave');
   if (!raw) return;
   try {
@@ -201,7 +201,7 @@ export function loadAutosave() {
 
 
 // ── OSM Straßentyp → Kostenklasse ────────────────────────────────────
-export const HIGHWAY_KOSTEN = {
+const HIGHWAY_KOSTEN = {
   motorway:'hoch', trunk:'hoch', primary:'hoch', secondary:'hoch',
   tertiary:'mittel', residential:'mittel', living_street:'mittel',
   service:'niedrig', track:'niedrig', path:'niedrig', footway:'niedrig',
@@ -239,9 +239,9 @@ async function autoAssignEdgeCosts() {
 }
 
 // ── Edge popup ────────────────────────────────────────────────────────
-export let activeEdgePopup = null;
+let activeEdgePopup = null;
 
-export function showEdgePopup(e, mouseEvt) {
+function showEdgePopup(e, mouseEvt) {
   const popup = document.getElementById('edge-popup');
   if (!popup) return;
   activeEdgePopup = e;
@@ -302,13 +302,13 @@ export function showEdgePopup(e, mouseEvt) {
   popup.style.top  = py + 'px';
 }
 
-export function closeEdgePopup() {
+function closeEdgePopup() {
   const p = document.getElementById('edge-popup');
   if (p) p.style.display = 'none';
   activeEdgePopup = null;
 }
 
-export function setEdgeDN(val) {
+function setEdgeDN(val) {
   if (!activeEdgePopup) return;
   const dn = parseInt(val);
   activeEdgePopup.dnOverride = dn > 0;
@@ -321,7 +321,7 @@ export function setEdgeDN(val) {
   });
 }
 
-export function setEdgeKost(klass) {
+function setEdgeKost(klass) {
   if (!activeEdgePopup) return;
   activeEdgePopup.kostKlasse = klass;
   activeEdgePopup.kostOverride = true;
@@ -338,7 +338,7 @@ export function setEdgeKost(klass) {
 }
 
 // ── Netz-Pruning ──────────────────────────────────────────────────────────
-export function togglePruningMode() {
+function togglePruningMode() {
   netzPruningMode = !netzPruningMode;
   const btn = document.getElementById('btn-pruning-mode');
   const info = document.getElementById('pruning-info');
@@ -358,7 +358,7 @@ export function togglePruningMode() {
   updatePruningSummary();
 }
 
-export function toggleEdgePruned(edge) {
+function toggleEdgePruned(edge) {
   const e = edge || activeEdgePopup;
   if (!e) return;
   e.pruned = !e.pruned;
@@ -381,7 +381,7 @@ export function toggleEdgePruned(edge) {
   }
 }
 
-export function applyEdgePrunedStyle(e) {
+function applyEdgePrunedStyle(e) {
   if (!e || !e.layer) return;
   if (e.pruned) {
     e.layer.setStyle({ dashArray: '8 6', opacity: 0.3, color: '#78909c' });
@@ -391,7 +391,7 @@ export function applyEdgePrunedStyle(e) {
   }
 }
 
-export function pruneSubtree(edge) {
+function pruneSubtree(edge) {
   // Find which direction is "downstream" from zentrale and prune all edges in subtree
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   if (!zId) return;
@@ -414,7 +414,7 @@ export function pruneSubtree(edge) {
   }
 }
 
-export function unpruneSubtree(edge) {
+function unpruneSubtree(edge) {
   // Unprune all edges downstream of this edge
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   if (!zId) return;
@@ -437,7 +437,7 @@ export function unpruneSubtree(edge) {
   }
 }
 
-export function getDownstreamNodeId(edge, zentraleId) {
+function getDownstreamNodeId(edge, zentraleId) {
   // BFS from zentrale to determine which side of the edge is downstream
   const visited = new Set([zentraleId]);
   const queue = [zentraleId];
@@ -459,7 +459,7 @@ export function getDownstreamNodeId(edge, zentraleId) {
   return edge.v === zentraleId ? edge.u : edge.v;
 }
 
-export function updatePruningSummary() {
+function updatePruningSummary() {
   const div = document.getElementById('pruning-summary');
   if (!div) return;
   const prunedEdges = netzEdges.filter(e => e.pruned);
@@ -485,7 +485,7 @@ export function updatePruningSummary() {
     <button data-click="clearAllPruning()" style="margin-top:5px;width:100%;padding:3px 6px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;font-size:9px;font-family:'DM Mono',monospace;">Pruning aufheben</button>`;
 }
 
-export function clearAllPruning() {
+function clearAllPruning() {
   netzEdges.forEach(e => { e.pruned = false; applyEdgePrunedStyle(e); });
   recalcNetz();
   updatePruningSummary();
@@ -498,14 +498,14 @@ document.addEventListener('click', ev => {
   }
 });
 
-export function getKostenProMKlasse(dn, klass) {
+function getKostenProMKlasse(dn, klass) {
   const row = KMR_KOSTEN[dn];
   if (!row) return 0;
   return row[{niedrig:0,mittel:1,hoch:2}[klass]??1];
 }
 
 // ── Print legend update ───────────────────────────────────────────────
-export function updatePrintLegend() {
+function updatePrintLegend() {
   const tw = document.getElementById('tot-waerme')?.textContent || '—';
   const thl = document.getElementById('tot-hl')?.textContent || '—';
   const n  = gebaeude.length;
@@ -520,7 +520,7 @@ export function updatePrintLegend() {
 
 
 // ── Draggable float panels ──────────────────────────────────────────
-export function startDrag(e, panelId) {
+function startDrag(e, panelId) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
 
@@ -558,7 +558,7 @@ export function startDrag(e, panelId) {
 renderList();
 tryRestoreAutosave();
 
-export function toggleSidebar() {
+function toggleSidebar() {
   const sb = document.getElementById('sidebar');
   const btn = document.getElementById('sidebar-toggle');
   const collapsed = sb.classList.toggle('collapsed');
@@ -569,7 +569,7 @@ export function toggleSidebar() {
   setTimeout(() => map.invalidateSize(), 210);
 }
 
-export function togglePanelMinimize(id) {
+function togglePanelMinimize(id) {
   const p = document.getElementById(id);
   if (!p) return;
   p.classList.toggle('minimized');
@@ -593,9 +593,9 @@ document.querySelectorAll('.float-panel').forEach(panel => {
 // 3-ZONEN GUI: View-Mode · Left-Panel · Center-Views
 // ══════════════════════════════════════════════════════════════════
 
-export let currentViewMode = 'karte';
+let currentViewMode = 'karte';
 
-export function setViewMode(mode) {
+function setViewMode(mode) {
   currentViewMode = mode;
   // Stop live play when leaving live view
   if (mode !== 'live' && typeof _liveStopPlay === 'function') _liveStopPlay();
@@ -634,9 +634,9 @@ export function setViewMode(mode) {
 }
 
 // --- Auto-Hide Floating-Panels beim Zeichnen/Platzieren ---
-export let _drawHiddenPanels = [];
+let _drawHiddenPanels = [];
 
-export function _hideForDraw() {
+function _hideForDraw() {
   _drawHiddenPanels = [];
   document.querySelectorAll('.float-panel.visible').forEach(p => {
     _drawHiddenPanels.push(p.id);
@@ -644,7 +644,7 @@ export function _hideForDraw() {
   });
 }
 
-export function _restoreAfterDraw() {
+function _restoreAfterDraw() {
   _drawHiddenPanels.forEach(id => {
     const p = document.getElementById(id);
     if (p) p.classList.add('visible');
@@ -653,8 +653,8 @@ export function _restoreAfterDraw() {
 }
 
 // Left Panel
-export let leftPanelCollapsed = false;
-export function toggleLeftPanel() {
+let leftPanelCollapsed = false;
+function toggleLeftPanel() {
   leftPanelCollapsed = !leftPanelCollapsed;
   const lp = document.getElementById('left-panel');
   const btn = document.getElementById('lp-toggle');
@@ -665,7 +665,7 @@ export function toggleLeftPanel() {
   setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 260);
 }
 
-export function setLeftTab(tabId) {
+function setLeftTab(tabId) {
   document.querySelectorAll('#lp-tabs .lp-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('#left-panel .lp-content').forEach(c => c.classList.toggle('active', c.id === 'lp-' + tabId));
   const titles = { gebiet: 'Gebiet', netz: 'Netz', erzeuger: 'Erzeuger', ergebnis: 'Ergebnis' };
@@ -692,7 +692,7 @@ export function setLeftTab(tabId) {
 // initLeftPanel: erzeuger buttons are now native in HTML, no cloning needed
 
 // Update left panel merit order summary
-export function updateLpMeritOrder() {
+function updateLpMeritOrder() {
   const container = document.getElementById('lp-merit-order');
   if (!container || typeof window.meritOrderKeys === 'undefined') return;
   const keys = window.meritOrderKeys || [];
@@ -727,7 +727,7 @@ export function updateLpMeritOrder() {
 }
 
 // Update left panel netz summary
-export function updateLpErgebnisKpis() {
+function updateLpErgebnisKpis() {
   var set = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
   if (!gebaeude || !gebaeude.length) {
     set('lp-kpi-waerme', '—'); set('lp-kpi-heizlast', '—'); set('lp-kpi-wgk', '—');
@@ -765,7 +765,7 @@ export function updateLpErgebnisKpis() {
   }
 }
 
-export function updateLpStepProgress() {
+function updateLpStepProgress() {
   // Step 1: Gebiet — done when gebaeude exist
   var s1 = document.querySelector('#lp-gebiet .lp-step-num');
   var done1 = gebaeude && gebaeude.length > 0;
@@ -807,7 +807,7 @@ export function updateLpStepProgress() {
   });
 }
 
-export function updateLpGebietStatus() {
+function updateLpGebietStatus() {
   var el = document.getElementById('lp-gebiet-status');
   if (!el) return;
   var parts = [];
@@ -820,7 +820,7 @@ export function updateLpGebietStatus() {
   el.innerHTML = parts.length ? parts.join(' · ') : '';
 }
 
-export function updateLpNetzSummary() {
+function updateLpNetzSummary() {
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   var hint = document.getElementById('lp-netz-hint');
   if (typeof netzEdges === 'undefined' || !netzEdges.length) {
@@ -864,24 +864,24 @@ export function updateLpNetzSummary() {
 }
 
 // ── Analyse Center View ──────────────────────────────────────────
-export let analyseCurrentSection = 'uebersicht';
-export let waermeCurrentTab = 'lastgang';
+let analyseCurrentSection = 'uebersicht';
+let waermeCurrentTab = 'lastgang';
 
-export function setAnalyseSection(section) {
+function setAnalyseSection(section) {
   analyseCurrentSection = section;
   document.querySelectorAll('#analyse-view-tabs .analyse-section-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.section === section));
   refreshAnalyseView();
 }
 
-export function setWaermeTab(tab) {
+function setWaermeTab(tab) {
   waermeCurrentTab = tab;
   document.querySelectorAll('#waerme-subtabs .analyse-sub-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab));
   _renderWaermeTab();
 }
 
-export function _renderWaermeTab() {
+function _renderWaermeTab() {
   const container = document.getElementById('analyse-waerme-content');
   if (!container) return;
   // Eingebettetes Panel zurücksetzen und neu einbetten
@@ -895,7 +895,7 @@ export function _renderWaermeTab() {
 }
 
 /* ── Inline-Panel-Helfer: Floating-Panels im Analyse-Modus einbetten ── */
-export function _embedPanelInline(panelId, container) {
+function _embedPanelInline(panelId, container) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
   // Ursprüngliche Position merken
@@ -910,7 +910,7 @@ export function _embedPanelInline(panelId, container) {
   const dragHandle = panel.querySelector('.panel-drag-handle');
   if (dragHandle) dragHandle.style.display = 'none';
 }
-export function _restoreInlinePanels() {
+function _restoreInlinePanels() {
   document.querySelectorAll('.float-panel.inline-mode').forEach(p => {
     p.classList.remove('inline-mode', 'visible');
     // Versteckte Elemente wiederherstellen
@@ -929,7 +929,7 @@ export function _restoreInlinePanels() {
   });
 }
 
-export function refreshAnalyseView() {
+function refreshAnalyseView() {
   // Populate KPIs from footer-status or system state
   const ss = window.systemState;
   const setKpi = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };

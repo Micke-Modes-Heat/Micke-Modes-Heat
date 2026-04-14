@@ -7,12 +7,12 @@
 // OPT_INVEST_DEFAULT, OPT_NUTZUNG, OPT_IH, OPT_EE_KEYS, OPT_MERIT_ORDER → src/config/optimizer-defaults.js
 
 // Mapping Optimizer-Key → CalcEngine INVEST_KURVEN Key
-export const _OPT_CE_KEY = {
+const _OPT_CE_KEY = {
   lwwp:'LuftWP', fg:'FlussWP', geo:'GeoWP', gaskessel:'Gaskessel',
   bhkw:'BHKW', stromkessel:'Stromkessel', pellets:'Pellets',
   hhs:'Hackschnitzel', heizoel:'Heizoel'
 };
-export function _optInvestProKw(key, kw) {
+function _optInvestProKw(key, kw) {
   const ceKey = _OPT_CE_KEY[key];
   if (ceKey && typeof CalcEngine !== 'undefined') {
     const v = CalcEngine.investEurProKw(ceKey, kw);
@@ -21,21 +21,21 @@ export function _optInvestProKw(key, kw) {
   return OPT_INVEST_DEFAULT[key] || 200;
 }
 
-export function _optAnnF(z, n) {
+function _optAnnF(z, n) {
   if (z <= 0 || n <= 0) return n > 0 ? 1 / n : 1;
   return z * Math.pow(1 + z, n) / (Math.pow(1 + z, n) - 1);
 }
 
 // ── Quelltemperatur für Optimierung (kopiert aus _quelleTemp) ──────────────
 // _defaultGuetegrad und _readGuetegrad — weiterhin lokal gebraucht für Optimizer-Konfiguration
-export function _defaultGuetegrad(key) {
+function _defaultGuetegrad(key) {
   if (key === 'lwwp') return 0.42;
   if (key === 'fg')   return 0.56;
   if (key === 'geo')  return 0.50;
   return 0.42;
 }
 
-export function _readGuetegrad(key) {
+function _readGuetegrad(key) {
   const id = ERZEUGER_CFG[key]?.guetegradId;
   const v = id ? parseFloat(document.getElementById(id)?.value) : NaN;
   return isNaN(v) || v <= 0 ? _defaultGuetegrad(key) : v;
@@ -44,7 +44,7 @@ export function _readGuetegrad(key) {
 // ── Optimizer-Dispatch: dünner Wrapper um _dispatchCore ──────────────────
 // Signatur bleibt identisch für alle 10 Aufrufstellen im Optimizer.
 // Intern wird der gemeinsame Kern (_dispatchCore aus 06-system-dispatch.js) genutzt.
-export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stExcessH) {
+function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stExcessH) {
   const bhkwSigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
   const skEta      = (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100;
   const lwwpMinCop = parseFloat(document.getElementById('lwwp-min-cop')?.value) || 0;
@@ -104,7 +104,7 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
 }
 
 // ── PV/Bat stündliche Simulation ──────────────────────────────────────────
-export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
+function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
   const hasBhkw = bhkwElH && bhkwElH.some(v => v > 0);
   if (pvKwp <= 0 && !hasBhkw) {
     let sumDem = 0;
@@ -188,7 +188,7 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
 // _calcBausteinKostenOpt ENTFERNT — nutzt jetzt _calcKostenShared
 
 // ── Kennwerte (WGK, CO2, EE-Anteil, Autarkie) — Wrapper um _calcKostenShared ──
-export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWaermeMwhOpt, stM2Opt, optSpeicherVol) {
+function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWaermeMwhOpt, stM2Opt, optSpeicherVol) {
   const { erzeugerList, gesamtMwh } = dispatchResult;
   const { pStrom, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
 
@@ -311,7 +311,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
 }
 
 // ── Score-Berechnung je Optimierungsziel ──────────────────────────────────
-export function _optScore(kw, ziel) {
+function _optScore(kw, ziel) {
   if (ziel === 'min-wgk')       return kw.wgk;
   if (ziel === 'min-co2')       return kw.co2ta;
   if (ziel === 'max-autarkie')  return -(kw.stromAutarkie + kw.waermeAutarkie);
@@ -320,7 +320,7 @@ export function _optScore(kw, ziel) {
 }
 
 // ── PV+Bat Dimensionierung per marginaler Amortisation (Main-Thread) ──
-export function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
+function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
                            params, stMwh, stM2, tsVol, ziel, maxAmortJ) {
   const pStrom = params.pStrom;
   function einspeiseCtKwh(pvKwp) {
@@ -377,7 +377,7 @@ export function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
 // _optAborted, _optRunning, _optWorker, _optWorkers — defined in 10b-optimizer-ui.js
 
 // ── Betrachtungsjahr-Auswahl für Optimierung ──────────────────────────────
-export function _optPopulateYearSelect() {
+function _optPopulateYearSelect() {
   const sel = document.getElementById('opt-year');
   if (!sel) return;
   const minY = parseInt(document.getElementById('year-slider')?.min) || 2026;
@@ -396,7 +396,7 @@ export function _optPopulateYearSelect() {
   sel.onchange = _optUpdateYearInfo;
 }
 
-export function _optUpdateYearInfo() {
+function _optUpdateYearInfo() {
   const info = document.getElementById('opt-year-info');
   if (!info) return;
   const selY = parseInt(document.getElementById('opt-year')?.value) || 0;
@@ -421,7 +421,7 @@ export function _optUpdateYearInfo() {
 }
 
 // ── Lastgang für Optimierung skalieren (temporär) ─────────────────────────
-export function _optGetScaledLastgang(targetYear) {
+function _optGetScaledLastgang(targetYear) {
   const ss = window.systemState;
   if (!ss?.lastgangKw) return null;
   if (!window._basisLastgangKw || !window._basisGebWaermeSumme || window._basisGebWaermeSumme < 0.1) {
@@ -443,7 +443,7 @@ export function _optGetScaledLastgang(targetYear) {
 }
 
 // ── Zeitschätzung für Optimierung ────────────────────────────────────────
-export function _optUpdateEstimate() {
+function _optUpdateEstimate() {
   const el = document.getElementById('opt-estimate');
   if (!el) return;
   const allKeys = ['lwwp','fg','geo','gaskessel','bhkw','stromkessel','pellets','hhs','fernwaerme','heizoel'];
@@ -499,7 +499,7 @@ export function _optUpdateEstimate() {
   _optUpdateEstimate();
 })();
 
-export function _calcNetzInvestForOpt() {
+function _calcNetzInvestForOpt() {
   if (typeof netzEdges === 'undefined' || !netzEdges.length) return 0;
   if (typeof networkLocked !== 'undefined' && networkLocked && !window._netzSanierung) return 0;
   let s = 0;
@@ -515,7 +515,7 @@ export function _calcNetzInvestForOpt() {
   return Math.round(s);
 }
 
-export function _collectOptDomParams() {
+function _collectOptDomParams() {
   const f = (id, def) => parseFloat(document.getElementById(id)?.value) || def;
   const s = (id, def) => document.getElementById(id)?.value || def;
   const b = (id) => !!document.getElementById(id)?.checked;
@@ -591,7 +591,7 @@ export function _collectOptDomParams() {
   };
 }
 
-export function _optVarianteUebernehmen(result, btnEl) {
+function _optVarianteUebernehmen(result, btnEl) {
   if (!result) { console.warn('OptVariante: kein result'); return; }
   try {
   const titel = result.keys.map(k => ERZEUGER_CFG[k]?.label || k).join('+');
@@ -801,7 +801,7 @@ export function _optVarianteUebernehmen(result, btnEl) {
 }
 
 // ── Footer-Statuszeile ───────────────────────────────────────────────────
-export function updateFooterStatus() {
+function updateFooterStatus() {
   function _fsDot(el, ok, warn) {
     const d = el?.querySelector('.fs-dot');
     if (d) d.style.background = ok ? (warn ? '#f9a825' : '#66bb6a') : '#455a64';
@@ -919,14 +919,14 @@ export function updateFooterStatus() {
 setInterval(updateFooterStatus, 2000);
 
 // ── Eingabestatus-Panel ──────────────────────────────────────────────────
-export function toggleStatusPanel() {
+function toggleStatusPanel() {
   const p = document.getElementById('status-panel');
   if (!p) return;
   const vis = p.classList.toggle('visible');
   if (vis) updateStatusPanel();
 }
 
-export function updateStatusPanel() {
+function updateStatusPanel() {
   const p = document.getElementById('status-panel');
   if (!p || !p.classList.contains('visible')) return;
   const body = document.getElementById('status-panel-body');
@@ -1056,7 +1056,7 @@ export function updateStatusPanel() {
 }
 
 // Auto-Update: nach Dispatch, Strom, Wirtschaftlichkeit
-export const _origOnSystemStateUpdated = typeof onSystemStateUpdated === 'function' ? onSystemStateUpdated : null;
+const _origOnSystemStateUpdated = typeof onSystemStateUpdated === 'function' ? onSystemStateUpdated : null;
 // Wir patchen nicht, sondern nutzen ein Interval das prüft ob Panel offen ist
 setInterval(() => {
   if (document.getElementById('status-panel')?.classList.contains('visible')) updateStatusPanel();

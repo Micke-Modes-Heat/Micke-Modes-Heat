@@ -2,10 +2,10 @@
 // Split from 07-analysis-views.js
 
 // ── Tab state ──────────────────────────────────────────────────────────────
-export let saCurrentTab = 'lastgang';
+let saCurrentTab = 'lastgang';
 
 // ── Farben aus ERZEUGER_CFG (nach dem Laden geladen) + Fallbacks ──────────
-export const DA_COLORS_FALLBACK = {
+const DA_COLORS_FALLBACK = {
   lwwp:'#66bb6a', fg:'#29b6f6', geo:'#a1887f',
   fernwaerme:'#e53935', pellets:'#ff7043', hhs:'#8d6e63',
   heizoel:'#455a64', gaskessel:'#78909c',
@@ -14,7 +14,7 @@ export const DA_COLORS_FALLBACK = {
   _autoGk:'#78909c',
   _residual:'#f9a825',
 };
-export const DA_LABELS = {
+const DA_LABELS = {
   lwwp:'Luft-WP', fg:'Flusswasser-WP', geo:'Geo-WP',
   fernwaerme:'Fernwärme', pellets:'Pelletkessel', hhs:'Hackschnitzel',
   heizoel:'Heizölkessel', gaskessel:'Gaskessel',
@@ -24,7 +24,7 @@ export const DA_LABELS = {
 };
 // Farbe immer aus ERZEUGER_CFG holen (Konsistenz mit Karte), Fallback falls noch nicht init
 // ── Logo-Balken an aktiven Energiemix anpassen ──────────────────────────
-export function _updateLogoBars() {
+function _updateLogoBars() {
   const wrap = document.querySelector('.logo-bars');
   if (!wrap) return;
   const keys = window._dispatchActiveKeys || [];
@@ -51,17 +51,17 @@ export function _updateLogoBars() {
   }).join('');
 }
 
-export function _daColor(k) {
+function _daColor(k) {
   return (typeof ERZEUGER_CFG !== 'undefined' && ERZEUGER_CFG[k]?.color)
     || DA_COLORS_FALLBACK[k] || '#aaa';
 }
 
 // ── Zoom-Zustand ──────────────────────────────────────────────────────────
-export let _daZoom = { startH: 0, endH: 8760 };
-export let _daRubber = null; // { x0, x1 } während Drag
+let _daZoom = { startH: 0, endH: 8760 };
+let _daRubber = null; // { x0, x1 } während Drag
 
 // ── Tab-Umschaltung ───────────────────────────────────────────────────────
-export function saSetTab(name) {
+function saSetTab(name) {
   saCurrentTab = name;
   ['lastgang','jdl','woche','tempvl','metriken','dim','split','optimierung','sensitivitaet'].forEach(n => {
     document.getElementById(`sa-tab-btn-${n}`)?.classList.toggle('active', n === name);
@@ -78,9 +78,9 @@ export function saSetTab(name) {
 }
 
 // ── Lastgang Sub-Views ──────────────────────────────────────────────────
-export let _lgCurrentView = '8760';
+let _lgCurrentView = '8760';
 
-export function _lgSetView(mode) {
+function _lgSetView(mode) {
   _lgCurrentView = mode;
   ['8760','kalender','monate'].forEach(v => {
     document.getElementById('lg-view-' + v)?.classList.toggle('active', v === mode);
@@ -95,14 +95,14 @@ export function _lgSetView(mode) {
   _lgRenderCurrentView();
 }
 
-export function _lgRenderCurrentView() {
+function _lgRenderCurrentView() {
   if (_lgCurrentView === '8760')     daRenderLastgang();
   else if (_lgCurrentView === 'kalender') _daRenderHeatmap();
   else if (_lgCurrentView === 'monate')   _daRenderMultiples();
 }
 
 // ── Calendar Heatmap ────────────────────────────────────────────────────
-export function _daRenderHeatmap() {
+function _daRenderHeatmap() {
   const canvas = document.getElementById('da-heatmap-canvas');
   if (!canvas) return;
   const W = canvas.parentElement?.clientWidth || canvas.offsetWidth || 700;
@@ -205,7 +205,7 @@ export function _daRenderHeatmap() {
 }
 
 // ── Small Multiples (12 Monate × 24h Tagesprofil) ──────────────────────
-export function _daRenderMultiples() {
+function _daRenderMultiples() {
   const canvas = document.getElementById('da-multiples-canvas');
   if (!canvas) return;
   const W = canvas.parentElement?.clientWidth || canvas.offsetWidth || 700;
@@ -323,7 +323,7 @@ export function _daRenderMultiples() {
 }
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────
-export function _daGetData() {
+function _daGetData() {
   const hourly = window._dispatchHourly || {};
   const keys   = window._dispatchActiveKeys || [];
   const ss     = window.systemState;
@@ -332,7 +332,7 @@ export function _daGetData() {
   return { hourly, keys, lg, tempH };
 }
 
-export function _daSetupCanvas(id) {
+function _daSetupCanvas(id) {
   const canvas = document.getElementById(id);
   if (!canvas) return null;
   const W = canvas.parentElement?.clientWidth || canvas.offsetWidth || 700;
@@ -343,7 +343,7 @@ export function _daSetupCanvas(id) {
   return { canvas, ctx, W, H: canvas.height };
 }
 
-export function _daLegend(elId, keys, showResidual) {
+function _daLegend(elId, keys, showResidual) {
   const el = document.getElementById(elId);
   if (!el) return;
   // Wenn gaskessel + _autoGk beide aktiv: nur einen Gaskessel-Eintrag zeigen
@@ -366,23 +366,23 @@ export function _daLegend(elId, keys, showResidual) {
   el.innerHTML = items.join('');
 }
 
-export function _daMaxArr(arr) {
+function _daMaxArr(arr) {
   let m = 0;
   for (let i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i];
   return m;
 }
 
-export function _daNoData(ctx, W, H) {
+function _daNoData(ctx, W, H) {
   ctx.fillStyle = '#888';
   ctx.font = '12px sans-serif';
   ctx.fillText('Noch keine Berechnung vorhanden', 20, H / 2);
 }
 
 // ── Monatslinien ─────────────────────────────────────────────────────────
-export const MONATSH = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016,8760];
-export const MONAT_LABELS = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+const MONATSH = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016,8760];
+const MONAT_LABELS = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 
-export function _daMonatLinien(ctx, W, H, n) {
+function _daMonatLinien(ctx, W, H, n) {
   ctx.strokeStyle = 'rgba(255,255,255,0.2)';
   ctx.lineWidth = 1;
   MONATSH.forEach((h,i) => {
@@ -398,7 +398,7 @@ export function _daMonatLinien(ctx, W, H, n) {
 }
 
 // ── Zoom-Hilfsfunktionen ──────────────────────────────────────────────────
-export function _daZoomLabel(startH, endH) {
+function _daZoomLabel(startH, endH) {
   const MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
   const MHOURS = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016,8760];
   function hToStr(h) {
@@ -412,21 +412,21 @@ export function _daZoomLabel(startH, endH) {
   return `${hToStr(startH)} – ${hToStr(endH)}  (${Math.round(span/24)} Tage)`;
 }
 
-export function _daUpdateZoomLabel() {
+function _daUpdateZoomLabel() {
   const el = document.getElementById('da-zoom-label');
   if (el) el.textContent = _daZoomLabel(_daZoom.startH, _daZoom.endH);
   const btnEl = document.getElementById('da-zoom-reset');
   if (btnEl) btnEl.style.display = (_daZoom.endH - _daZoom.startH < 8700) ? 'inline-block' : 'none';
 }
 
-export function daZoomReset() {
+function daZoomReset() {
   _daZoom = { startH: 0, endH: 8760 };
   _daUpdateZoomLabel();
   daRenderLastgang();
 }
 
 // ── Tab: Lastgang (gestapelter Canvas, mit Rubber-Band-Zoom) ─────────────
-export function daRenderLastgang() {
+function daRenderLastgang() {
   const r = _daSetupCanvas('da-canvas');
   if (!r) return;
   const { canvas, ctx, W, H } = r;
@@ -508,7 +508,7 @@ export function daRenderLastgang() {
 }
 
 // Zeitlinien: Monate bei >30 Tagen Sicht, sonst Tage, sonst Stunden
-export function _daZeitlinien(ctx, W, H, startH, endH, nVis) {
+function _daZeitlinien(ctx, W, H, startH, endH, nVis) {
   const MHOURS = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016,8760];
   const MLABELS = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
   ctx.lineWidth = 1;
@@ -554,7 +554,7 @@ export function _daZeitlinien(ctx, W, H, startH, endH, nVis) {
 }
 
 // ── Mouse-Events: Tooltip + Rubber-Band-Zoom ──────────────────────────────
-export function _daBindEvents(canvas, hourly, keys, lg, pMax, nTotal, W, H, startH, endH) {
+function _daBindEvents(canvas, hourly, keys, lg, pMax, nTotal, W, H, startH, endH) {
   const nVis = endH - startH;
   const tip  = document.getElementById('da-tooltip');
 
@@ -654,7 +654,7 @@ export function _daBindEvents(canvas, hourly, keys, lg, pMax, nTotal, W, H, star
 }
 
 // Nur Chart zeichnen (ohne Events, für Rubber-Band-Overlay)
-export function _daDrawChart(ctx, hourly, keys, lg, W, H, startH, endH, nVis, pMax) {
+function _daDrawChart(ctx, hourly, keys, lg, W, H, startH, endH, nVis, pMax) {
   for (let x = 0; x < W; x++) {
     const t0  = startH + Math.floor(x * nVis / W);
     const t1  = Math.min(endH, startH + Math.floor((x + 1) * nVis / W) || t0 + 1);
@@ -695,7 +695,7 @@ export function _daDrawChart(ctx, hourly, keys, lg, W, H, startH, endH, nVis, pM
 }
 
 // ── Tab: Jahresdauerlinie (nach Gesamtlast sortiert) ─────────────────────
-export function daRenderJdl() {
+function daRenderJdl() {
   const r = _daSetupCanvas('da-canvas-jdl');
   if (!r) return;
   const { canvas, ctx, W, H } = r;
@@ -788,7 +788,7 @@ export function daRenderJdl() {
 }
 
 // ── Tab: Kälteste Woche ───────────────────────────────────────────────────
-export function daRenderWoche() {
+function daRenderWoche() {
   const r = _daSetupCanvas('da-canvas-woche');
   if (!r) return;
   const { canvas, ctx, W, H } = r;
@@ -887,7 +887,7 @@ export function daRenderWoche() {
 }
 
 // ── Tab: VL / COP — Vorlauftemperatur, Außentemperatur, COP über 8760h ───
-export function daRenderTempVL() {
+function daRenderTempVL() {
   const canvas = document.getElementById('da-canvas-tempvl');
   if (!canvas) return;
   const ss = window.systemState;
@@ -1046,7 +1046,7 @@ export function daRenderTempVL() {
 }
 
 // ── Tab: Metriken ─────────────────────────────────────────────────────────
-export function daRenderMetriken() {
+function daRenderMetriken() {
   const wrap = document.getElementById('da-metriken-wrap');
   if (!wrap) return;
   const { hourly, keys, lg } = _daGetData();
@@ -1098,12 +1098,12 @@ export function daRenderMetriken() {
 // AUSLEGUNGS-TAB — Leistungs-Deckungs-Kurve mit Schieber
 // ══════════════════════════════════════════════════════════════════════════
 
-export let _dimJdlSorted  = null;  // Float32Array, absteigend sortiert
-export let _dimCumRight   = null;  // Kumulative Summe von rechts [h] = sum(jdl[h..n-1])
-export let _dimTotalEnergy = 0;    // Summe kWh
-export let _dimPMax       = 0;     // Spitzenlast kW
+let _dimJdlSorted  = null;  // Float32Array, absteigend sortiert
+let _dimCumRight   = null;  // Kumulative Summe von rechts [h] = sum(jdl[h..n-1])
+let _dimTotalEnergy = 0;    // Summe kWh
+let _dimPMax       = 0;     // Spitzenlast kW
 
-export function _dimInit() {
+function _dimInit() {
   if (_dimJdlSorted) return true; // Cache gültig
   // Echte Dispatch-Daten bevorzugen, sonst synthetischer Fallback
   const raw = window._dimLastgangKw || window.systemState?.lastgangKw;
@@ -1118,7 +1118,7 @@ export function _dimInit() {
 }
 
 // Stunde (0-based) ab der Last <= pInst: erstes h mit jdl[h] <= pInst
-export function _dimHcut(pInst) {
+function _dimHcut(pInst) {
   const jdl = _dimJdlSorted;
   let lo = 0, hi = jdl.length;
   while (lo < hi) { const m = (lo + hi) >> 1; if (jdl[m] > pInst) lo = m + 1; else hi = m; }
@@ -1126,13 +1126,13 @@ export function _dimHcut(pInst) {
 }
 
 // Gedeckte Energie [kWh] für installierte Leistung pInst
-export function _dimEnergy(pInst) {
+function _dimEnergy(pInst) {
   const hc = _dimHcut(pInst);
   return pInst * hc + _dimCumRight[hc];
 }
 
 // Binärsuche: finde P so dass Deckungsgrad = fraction (0–1)
-export function _dimFindP(fraction) {
+function _dimFindP(fraction) {
   const target = fraction * _dimTotalEnergy;
   let lo = 0, hi = _dimPMax;
   for (let i = 0; i < 60; i++) {
@@ -1142,12 +1142,12 @@ export function _dimFindP(fraction) {
   return (lo + hi) / 2;
 }
 
-export function dimOnSlider(val) {
+function dimOnSlider(val) {
   document.getElementById('dim-slider-val').textContent = Math.round(val).toLocaleString('de-DE') + ' kW';
   dimDraw(val);
 }
 
-export function dimRender() {
+function dimRender() {
   if (!_dimInit()) {
     const canvas = document.getElementById('dim-canvas');
     if (!canvas) return;
@@ -1169,7 +1169,7 @@ export function dimRender() {
   dimDraw(val);
 }
 
-export function dimDraw(pInst) {
+function dimDraw(pInst) {
   const canvas = document.getElementById('dim-canvas');
   if (!canvas || !_dimJdlSorted) return;
   canvas.width = canvas.offsetWidth || 600;
@@ -1329,11 +1329,11 @@ export function dimDraw(pInst) {
 // ENERGIESPLIT-TAB — Stundenscharf mit Zoom + KW-Schieber
 // ══════════════════════════════════════════════════════════════════════════
 
-export let _splitZoom   = { startH: 0, endH: 8760 };
-export let _splitRubber = null;
+let _splitZoom   = { startH: 0, endH: 8760 };
+let _splitRubber = null;
 
 // TWW-Grundlast aus Sommer-Nacht-10%-Quantil (netto nach Verlusten)
-export function _splitTwwFloor(lastgangKw, vf) {
+function _splitTwwFloor(lastgangKw, vf) {
   const vals = [];
   for (let h = 0; h < lastgangKw.length; h++) {
     const day = Math.floor(h / 24), hr = h % 24;
@@ -1345,7 +1345,7 @@ export function _splitTwwFloor(lastgangKw, vf) {
   return Math.max(0, vals[Math.floor(vals.length * 0.10)]);
 }
 
-export function _splitGetData() {
+function _splitGetData() {
   const lg = window.systemState?.lastgangKw;
   if (!lg || lg.length < 8760) return null;
   const vf  = (parseFloat(document.getElementById('gl-netzverlust')?.value) || 10) / 100;
@@ -1353,7 +1353,7 @@ export function _splitGetData() {
   return { lg, vf, tww };
 }
 
-export function splitZoomReset() {
+function splitZoomReset() {
   _splitZoom = { startH: 0, endH: 8760 };
   // KW-Schieber zurücksetzen
   const sl = document.getElementById('split-kw-slider');
@@ -1361,7 +1361,7 @@ export function splitZoomReset() {
   splitDraw();
 }
 
-export function splitOnKwSlider(kw) {
+function splitOnKwSlider(kw) {
   document.getElementById('split-kw-label').textContent = `KW ${kw}`;
   const startH = (kw - 1) * 168;
   _splitZoom = { startH, endH: Math.min(8760, startH + 168) };
@@ -1369,7 +1369,7 @@ export function splitOnKwSlider(kw) {
 }
 
 // ── Energiesplit View Toggle ──────────────────────────────────────────
-export function _splitSetView(mode) {
+function _splitSetView(mode) {
   ['balken','treemap'].forEach(v => {
     document.getElementById('split-view-' + v)?.classList.toggle('active', v === mode);
     const w = document.getElementById('split-wrap-' + v);
@@ -1381,7 +1381,7 @@ export function _splitSetView(mode) {
   else splitRender();
 }
 
-export function _splitRenderTreemap() {
+function _splitRenderTreemap() {
   const canvas = document.getElementById('split-treemap-canvas');
   if (!canvas) return;
   const W = canvas.parentElement?.clientWidth || canvas.offsetWidth || 700;
@@ -1479,7 +1479,7 @@ export function _splitRenderTreemap() {
   });
 }
 
-export function splitRender() {
+function splitRender() {
   const d = _splitGetData();
   if (!d) {
     const canvas = document.getElementById('split-canvas');
@@ -1495,7 +1495,7 @@ export function splitRender() {
   _splitBindEvents();
 }
 
-export function splitDraw() {
+function splitDraw() {
   const canvas = document.getElementById('split-canvas');
   if (!canvas) return;
   canvas.width = canvas.offsetWidth || 800;
@@ -1598,7 +1598,7 @@ export function splitDraw() {
   }
 }
 
-export function _splitBindEvents() {
+function _splitBindEvents() {
   const canvas = document.getElementById('split-canvas');
   const tip    = document.getElementById('split-tooltip');
   if (!canvas) return;
@@ -1661,7 +1661,7 @@ export function _splitBindEvents() {
 }
 
 // ── Auto-Update wenn Panel offen ──────────────────────────────────────────
-export function daUpdateIfOpen() {
+function daUpdateIfOpen() {
   if (!document.getElementById('analyse-panel')?.classList.contains('visible')) return;
   saSetTab(saCurrentTab || 'lastgang');
 }

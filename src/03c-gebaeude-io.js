@@ -1,5 +1,5 @@
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
-export function updateTotals(){
+function updateTotals(){
   let tw=0, th=0;
   gebaeude.forEach(g=>{
     if (isExcluded(g.id)) return;
@@ -58,12 +58,12 @@ export function updateTotals(){
   updatePrintLegend();
 }
 
-export function cardDotColor(g){
+function cardDotColor(g){
   const [cMin,cMax]=getColorRange();
   return getColor(getColorVal(g),cMin,cMax);
 }
 
-export function drawChart() {
+function drawChart() {
   const container = document.getElementById('svg-chart-container');
   if (!container) return;
 
@@ -172,7 +172,7 @@ window.addEventListener('resize', () => {
     if (typeof map !== 'undefined') setTimeout(() => map.invalidateSize(), 100);
 });
 
-export function _renderCompactRow(g, stats, isExpanded) {
+function _renderCompactRow(g, stats, isExpanded) {
   const dot = cardDotColor(g);
   const nutzungLabel = {efh:'EFH',mfh:'MFH',ghd:'GHD',schule:'Schule',buero:'Büro',industrie:'Ind.',oeffentlich:'Öff.'}[g.nutzung] || '—';
   const waermeStr = stats.waerme > 0 ? Math.round(stats.waerme).toLocaleString('de-DE') : '—';
@@ -199,24 +199,24 @@ export function _renderCompactRow(g, stats, isExpanded) {
   </div>`;
 }
 
-export function _pvWpM2Global() {
+function _pvWpM2Global() {
   const b  = parseFloat(document.getElementById('pv-modul-breite')?.value) || 1.1;
   const l  = parseFloat(document.getElementById('pv-modul-laenge')?.value) || 1.7;
   const wp = parseFloat(document.getElementById('pv-modul-wp')?.value)     || 450;
   return wp / (b * l);
 }
 
-export function calcGebKwp(g) {
+function calcGebKwp(g) {
   const fl = parseFloat(g.flaeche) || 0;
   return fl * (g.pvDachanteil || 30) / 100 * _pvWpM2Global() / 1000;
 }
 
-export function _gebLabelHtml(g) {
+function _gebLabelHtml(g) {
   const pvBadge = g.pvAktiv ? '<span style="color:#ffd54f;font-size:9px;margin-left:3px;vertical-align:middle;">☀</span>' : '';
   return escHtml(g.name) + pvBadge;
 }
 
-export function _updateGebLabelPv(id) {
+function _updateGebLabelPv(id) {
   const g = gebaeude.find(x => x.id === id);
   if (!g || !g.labelMarker) return;
   const el = g.labelMarker.getElement();
@@ -225,7 +225,7 @@ export function _updateGebLabelPv(id) {
   if (inner) inner.innerHTML = _gebLabelHtml(g);
 }
 
-export function updateGebPv(id, field, val) {
+function updateGebPv(id, field, val) {
   const g = gebaeude.find(x => x.id === id);
   if (!g) return;
   if (field === 'pvAktiv') g.pvAktiv = val;
@@ -236,7 +236,7 @@ export function updateGebPv(id, field, val) {
   renderGebPvPanel();
 }
 
-export function toggleGebPvPanel() {
+function toggleGebPvPanel() {
   const p   = document.getElementById('geb-pv-panel');
   const btn = document.getElementById('btn-geb-pv-toggle');
   if (p.classList.contains('visible')) { hidePanels(); return; }
@@ -246,14 +246,14 @@ export function toggleGebPvPanel() {
   renderGebPvPanel();
 }
 
-export function gebPvAllenZuweisen() {
+function gebPvAllenZuweisen() {
   const dach = parseFloat(document.getElementById('geb-pv-dachanteil')?.value) || 30;
   gebaeude.forEach(g => { g.pvDachanteil = dach; _rerenderCard(g.id); });
   renderGebPvPanel();
   calcStromPanel();
 }
 
-export function renderGebPvPanel() {
+function renderGebPvPanel() {
   const panel = document.getElementById('geb-pv-panel');
   if (!panel?.classList.contains('visible')) return;
   const list  = document.getElementById('geb-pv-list');
@@ -314,7 +314,7 @@ export function renderGebPvPanel() {
   }
 }
 
-export function _renderExpandedPanel(g, stats) {
+function _renderExpandedPanel(g, stats) {
   const ausgeschlossen = isExcluded(g.id);
   let planItems = [];
   if (g.baujahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Neubau ab ${g.baujahr}</span><span style="cursor:pointer;color:#e53935" data-click="clearPlan(${g.id}, 'neubau')">✕</span></div>`);
@@ -504,7 +504,7 @@ export function _renderExpandedPanel(g, stats) {
   </div>`;
 }
 
-export function _rerenderCard(id) {
+function _rerenderCard(id) {
   const card = document.getElementById('card-' + id);
   if (!card) return;
   const g = gebaeude.find(x => x.id === id);
@@ -521,7 +521,7 @@ export function _rerenderCard(id) {
                    (isExpanded ? _renderExpandedPanel(g, stats) : '');
 }
 
-export function toggleGebExpand(id) {
+function toggleGebExpand(id) {
   if (_expandedIds.has(id)) {
     _expandedIds.delete(id);
   } else {
@@ -531,7 +531,7 @@ export function toggleGebExpand(id) {
   _rerenderCard(id);
 }
 
-export function renderList(){
+function renderList(){
   populateZentraleSelect();
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
   const el=document.getElementById('geb-list');el.innerHTML='';
@@ -553,11 +553,11 @@ export function renderList(){
   updateTotals();
 }
 
-export function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-export function escVal(v){return v!=null&&v!==''?v:'';}
-export function flyTo(id){const g=gebaeude.find(x=>x.id===id);if(g?.polygonLayer)map.flyToBounds(g.polygonLayer.getBounds(),{padding:[40,40]});}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function escVal(v){return v!=null&&v!==''?v:'';}
+function flyTo(id){const g=gebaeude.find(x=>x.id===id);if(g?.polygonLayer)map.flyToBounds(g.polygonLayer.getBounds(),{padding:[40,40]});}
 
-export function _buildProjectData() {
+function _buildProjectData() {
   return {
     version: 1,
     gebaeude: gebaeude.map(g => ({
@@ -635,13 +635,13 @@ export function _buildProjectData() {
   };
 }
 
-export function exportJSON(){
+function exportJSON(){
   const project = _buildProjectData();
   const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='liegenschaft_projekt.json';a.click();
 }
 
-export function importJSON(event) {
+function importJSON(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -660,7 +660,7 @@ export function importJSON(event) {
   event.target.value = '';
 }
 
-export function _loadProject(project) {
+function _loadProject(project) {
       gebaeude.forEach(g => {
         if(g.polygonLayer) map.removeLayer(g.polygonLayer);
         if(g.circleMarker) map.removeLayer(g.circleMarker);
@@ -1024,7 +1024,7 @@ export function _loadProject(project) {
       glBerechnenDebounced(800);
 }
 
-export function loadGebaeudeFromParent(gebaeudeArray) {
+function loadGebaeudeFromParent(gebaeudeArray) {
   if (!Array.isArray(gebaeudeArray)) return;
   gebaeude.forEach(g => {
     if (g.polygonLayer) map.removeLayer(g.polygonLayer);
@@ -1056,7 +1056,7 @@ export function loadGebaeudeFromParent(gebaeudeArray) {
   setTimeout(hideHint, 2500);
 }
 
-export function sendToLiegenschaftsrechner() {
+function sendToLiegenschaftsrechner() {
   if (window.parent === window) return;
   const payload = gebaeude.map(g => ({
     id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
@@ -1079,16 +1079,16 @@ export function sendToLiegenschaftsrechner() {
   setTimeout(function() { window.parent.postMessage({ type: 'ENERGIEKARTE_READY' }, '*'); }, 800);
 })();
 
-export function showHint(msg){const h=document.getElementById('hint');h.textContent=msg;h.classList.remove('hidden');}
-export function hideHint(){document.getElementById('hint').classList.add('hidden');}
+function showHint(msg){const h=document.getElementById('hint');h.textContent=msg;h.classList.remove('hidden');}
+function hideHint(){document.getElementById('hint').classList.add('hidden');}
 
-export const sty=document.createElement('style');
+const sty=document.createElement('style');
 sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:6px 10px;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);font-weight:normal;}`;
 document.head.appendChild(sty);
 
-export let dashOffset = 0;
-export let _animPipesRunning = false;
-export function animatePipes() {
+let dashOffset = 0;
+let _animPipesRunning = false;
+function animatePipes() {
   if (!_animPipesRunning) return;
   dashOffset -= 0.5;
   netzEdges.forEach(e => {
@@ -1099,12 +1099,12 @@ export function animatePipes() {
   });
   requestAnimationFrame(animatePipes);
 }
-export function startAnimPipes() { if (!_animPipesRunning) { _animPipesRunning = true; animatePipes(); } }
-export function stopAnimPipes()  { _animPipesRunning = false; }
+function startAnimPipes() { if (!_animPipesRunning) { _animPipesRunning = true; animatePipes(); } }
+function stopAnimPipes()  { _animPipesRunning = false; }
 
-export let stromDashOffset = 0;
-export let _animStromRunning = false;
-export function animateStromPipes() {
+let stromDashOffset = 0;
+let _animStromRunning = false;
+function animateStromPipes() {
   if (!_animStromRunning) return;
   stromDashOffset -= 0.6;
   stromEdges.forEach(e => {
@@ -1114,7 +1114,7 @@ export function animateStromPipes() {
   });
   requestAnimationFrame(animateStromPipes);
 }
-export function startAnimStrom() { if (!_animStromRunning) { _animStromRunning = true; animateStromPipes(); } }
-export function stopAnimStrom()  { _animStromRunning = false; }
+function startAnimStrom() { if (!_animStromRunning) { _animStromRunning = true; animateStromPipes(); } }
+function stopAnimStrom()  { _animStromRunning = false; }
 
 

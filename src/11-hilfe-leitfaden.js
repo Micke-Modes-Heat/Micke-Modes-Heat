@@ -3,11 +3,11 @@
 // HILFE_TEXTE wurde nach config/hilfe-texte.js extrahiert (wird vorher geladen)
 
 
-export let _hilfeModus = false;
-export let _hilfeOverlay = null;
-export let _hilfeTooltip = null;
+let _hilfeModus = false;
+let _hilfeOverlay = null;
+let _hilfeTooltip = null;
 
-export function toggleHilfeModus() {
+function toggleHilfeModus() {
   _hilfeModus = !_hilfeModus;
   const btn = document.getElementById('btn-hilfe-toggle');
 
@@ -26,7 +26,7 @@ export function toggleHilfeModus() {
   }
 }
 
-export function _showHilfeOverlay() {
+function _showHilfeOverlay() {
   if (_hilfeOverlay) return;
 
   // Overlay fängt Klicks ab
@@ -99,15 +99,15 @@ export function _showHilfeOverlay() {
   });
 }
 
-export function _hideHilfeOverlay() {
+function _hideHilfeOverlay() {
   if (_hilfeOverlay) { _hilfeOverlay.remove(); _hilfeOverlay = null; }
   if (_hilfeTooltip) { _hilfeTooltip.remove(); _hilfeTooltip = null; }
 }
 
 // ── LEITFADEN-PANEL ──────────────────────────────────────────────────────────
-export let _leitfadenOpen = false;
+let _leitfadenOpen = false;
 
-export const LEITFADEN_STEPS = [
+const LEITFADEN_STEPS = [
   { id: 'lf-s1', title: '📍 Plangebiet & Gebäude',
     text: '<strong>1. Zum Quartier navigieren:</strong><br>' +
       'Gib oben rechts eine Adresse in die Suche ein, oder verschiebe die Karte manuell zum gewünschten Bereich.<br><br>' +
@@ -261,7 +261,7 @@ export const LEITFADEN_STEPS = [
     tab: 'ergebnis' },
 ];
 
-export function toggleLeitfaden() {
+function toggleLeitfaden() {
   _leitfadenOpen = !_leitfadenOpen;
   let panel = document.getElementById('leitfaden-panel');
   if (_leitfadenOpen) {
@@ -274,7 +274,7 @@ export function toggleLeitfaden() {
   }
 }
 
-export function _createLeitfadenPanel() {
+function _createLeitfadenPanel() {
   const panel = document.createElement('div');
   panel.id = 'leitfaden-panel';
   panel.style.cssText = 'position:fixed;top:90px;right:16px;width:320px;max-height:calc(100vh - 110px);z-index:1500;background:var(--surface,#23262f);border:1px solid var(--border,#333844);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden;display:flex;flex-direction:column;font-family:inherit;';
@@ -358,16 +358,16 @@ export function _createLeitfadenPanel() {
   });
 }
 window._leitfadenManualChecks = {};
-export let _leitfadenUserToggled = false;
+let _leitfadenUserToggled = false;
 
-export function _leitfadenGoTo(idx) {
+function _leitfadenGoTo(idx) {
   const step = LEITFADEN_STEPS[idx];
   if (step.tab && typeof setLeftTab === 'function') {
     setLeftTab(step.tab);
   }
 }
 
-export function _updateLeitfadenStatus() {
+function _updateLeitfadenStatus() {
   const panel = document.getElementById('leitfaden-panel');
   if (!panel) return;
 

@@ -1,4 +1,4 @@
-export const CalcEngine = (() => {
+const CalcEngine = (() => {
   'use strict';
 
   // ── Konstanten ────────────────────────────────────────────────────────────
@@ -809,7 +809,7 @@ export const CalcEngine = (() => {
 // ══════════════════════════════════════════════════════════════════════════
 
 // ── Sensitivitäts-Slider / Carrier-Inputs ─────────────────────────────────
-export function sensSliderChanged(val) {
+function sensSliderChanged(val) {
   document.getElementById('sens-global-label').textContent = '±' + val + '%';
   // Alle Carrier-Inputs auf Slider-Wert setzen
   ['sens-t-gas','sens-t-strom','sens-t-pk','sens-t-hhs','sens-t-hko','sens-t-fw'].forEach(id => {
@@ -817,11 +817,11 @@ export function sensSliderChanged(val) {
   });
   runSensitivitaet();
 }
-export function sensCarrierChanged() {
+function sensCarrierChanged() {
   runSensitivitaet();
 }
 
-export function runSensitivitaet() {
+function runSensitivitaet() {
   const keys = window._dispatchActiveKeys || [];
   const en   = window._dispatchEnergy || {};
   if (!keys.length) return;
@@ -937,7 +937,7 @@ export function runSensitivitaet() {
 }
 
 // ── Bidirektionaler Tornado ─────────────────────────────────────────────
-export function _renderSensTornado(bars, basisEnergie) {
+function _renderSensTornado(bars, basisEnergie) {
   const canvas = document.getElementById('sens-tornado-canvas');
   if (!canvas || !bars.length) return;
   const _doDraw = () => {
@@ -1014,7 +1014,7 @@ export function _renderSensTornado(bars, basisEnergie) {
 }
 
 // ── Preissensitivitäts-Fächer ───────────────────────────────────────────
-export function _renderSensFan(fanData, fanRange, basisEnergie, verbrauch) {
+function _renderSensFan(fanData, fanRange, basisEnergie, verbrauch) {
   const canvas = document.getElementById('sens-fan-canvas');
   if (!canvas) return;
   const _doDraw = () => {
@@ -1112,7 +1112,7 @@ export function _renderSensFan(fanData, fanRange, basisEnergie, verbrauch) {
 }
 
 // ── Bump Chart (Technologie-Ranking bei Preisänderung) ──────────────────
-export function _sensRenderBump() {
+function _sensRenderBump() {
   const canvas = document.getElementById('sens-bump-canvas');
   if (!canvas) return;
   const _doDraw = () => {

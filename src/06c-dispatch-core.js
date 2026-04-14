@@ -8,7 +8,7 @@ window._autoGkResult  = null; // { leistungKw, deckungPct, waermeMwh } — immer
 
 // ERZEUGER_CFG → src/config/erzeuger-cfg.js
 
-export function isErzeugerAktiv(key) {
+function isErzeugerAktiv(key) {
   switch (key) {
     case 'lwwp':       return !!lwWp;
     case 'fg':         return !!fliessgewaesser;
@@ -24,7 +24,7 @@ export function isErzeugerAktiv(key) {
   }
 }
 
-export function moBeiAktivierung(key) {
+function moBeiAktivierung(key) {
   if (!window.meritOrderKeys.includes(key)) {
     window.meritOrderKeys.push(key);
   }
@@ -32,7 +32,7 @@ export function moBeiAktivierung(key) {
   redrawErzeugerIcons();
 }
 
-export function moBeiDeaktivierung(key) {
+function moBeiDeaktivierung(key) {
   const idx = window.meritOrderKeys.indexOf(key);
   if (idx >= 0) window.meritOrderKeys.splice(idx, 1);
   updateAllDeckungen();
@@ -40,7 +40,7 @@ export function moBeiDeaktivierung(key) {
 }
 
 // ── Hook: wird nach glBerechnen() aufgerufen ─────────────────────────────
-export function onSystemStateUpdated() {
+function onSystemStateUpdated() {
   updateAllDeckungen();
   // Systemanalyse-Charts refreshen wenn Panel gerade offen ist
   if (document.getElementById('analyse-panel')?.classList.contains('visible')) {
@@ -59,7 +59,7 @@ export function onSystemStateUpdated() {
 // Exponent alpha wird so gewählt, dass gleichzeitig die Jahresenergie stimmt:
 //   jdl[0] = normLastKw  (Σ Normlast = tot-hl)
 //   Σ jdl[i] ≈ gesamtMwh × 1000 kWh
-export function _getFallbackJdl() {
+function _getFallbackJdl() {
   let gesamtMwh = 0, normLastKw = 0;
   gebaeude.forEach(g => {
     if (typeof isExcluded === 'function' && isExcluded(g.id)) return;
@@ -83,7 +83,7 @@ export function _getFallbackJdl() {
 }
 
 // ── Quelltemperatur je WP-Typ — identisch mit CalcEngine.quellenTemp() ────
-export function _quelleTemp(key, tAussen, t) {
+function _quelleTemp(key, tAussen, t) {
   if (key === 'lwwp') {
     // Luft: direkt Außentemperatur
     return tAussen;
@@ -103,7 +103,7 @@ export function _quelleTemp(key, tAussen, t) {
 }
 
 // ── Render-Hilfsfunktion für Deckung-Wrap ────────────────────────────────
-export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hinweis, vbh, allDeckungen, heizlastInfo) {
+function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hinweis, vbh, allDeckungen, heizlastInfo) {
   const w = document.getElementById(cfg.wrapId);
   if (!w) return;
   w.style.display = 'block';
@@ -195,7 +195,7 @@ export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hi
 // ── Deckungsanteil mit Merit-Order ────────────────────────────────────────
 // Wenn systemState vorhanden: stundenscharfer Dispatch mit COP(T,VL)
 // Sonst: LDC-Näherung aus synthetischem Fallback-Lastgang
-export function updateAllDeckungen() {
+function updateAllDeckungen() {
   const ss = window.systemState;
 
   if (ss && ss.lastgangKw && ss.tempH && ss.vlH) {
@@ -236,7 +236,7 @@ export function updateAllDeckungen() {
 //   backupMode,                   — true: letzter Erzeuger hat unbegrenzte Kapazität
 // }
 // ═══════════════════════════════════════════════════════════════════════════
-export function _dispatchCore(cfg) {
+function _dispatchCore(cfg) {
   const {
     lastgangKw, tempH, vlH,
     erzList, speicherParams,
@@ -539,7 +539,7 @@ export function _dispatchCore(cfg) {
 }
 
 // ── Stundenscharfer Dispatch (Hauptpfad) ─────────────────────────────────
-export function _deckungen8760(ss) {
+function _deckungen8760(ss) {
   const { lastgangKw, tempH, vlH } = ss;
   window._dimLastgangKw = lastgangKw;
   _dimJdlSorted = null;
@@ -753,7 +753,7 @@ export function _deckungen8760(ss) {
 }
 
 // ── WP-Panel-Rückkopplung aus stundenscharfem Dispatch ────────────────────
-export function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, thKwhM, elKwhM) {
+function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, thKwhM, elKwhM) {
   const thMwh = thKwhTotal / 1000;
   const elMwh = elKwhTotal / 1000;
   if (thMwh < 1) return;
@@ -805,18 +805,18 @@ export function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, 
 }
 
 // ── Wärmeabgabe aus Dispatch in Panel-Feld schreiben + Display neu rechnen ─
-export const _WAERME_IDS = {
+const _WAERME_IDS = {
   lwwp: 'lwwp-waerme', fg: 'fg-waerme', geo: 'geo-waerme',
   fernwaerme: 'fw-waerme', pellets: 'pk-waerme', hhs: 'hhs-waerme',
   heizoel: 'hko-waerme', gaskessel: 'gk-waerme', bhkw: 'bhkw-waerme',
 };
-export const _DISPLAY_FNS = () => ({
+const _DISPLAY_FNS = () => ({
   lwwp: updateLwWpData, fg: updateFliessgewaesserData, geo: calcGeoThermie,
   fernwaerme: updateFernwaermeDisplay, pellets: updatePelletsDisplay,
   hhs: updateHhsDisplay, heizoel: updateHeizoelDisplay, gaskessel: updateGasKesselDisplay,
   bhkw: updateBhkwDisplay,
 });
-export function _updateErzeugerWaerme(key, waermeMwh) {
+function _updateErzeugerWaerme(key, waermeMwh) {
   if (waermeMwh < 0.1) return;
   const el = document.getElementById(_WAERME_IDS[key]);
   if (el) el.value = Math.round(waermeMwh);
@@ -824,7 +824,7 @@ export function _updateErzeugerWaerme(key, waermeMwh) {
   if (fn) fn();
 }
 
-export function _renderWpCopChart(svgId, wrapId, monthlyCops, color) {
+function _renderWpCopChart(svgId, wrapId, monthlyCops, color) {
   const wrap  = document.getElementById(wrapId);
   const svgEl = document.getElementById(svgId);
   if (!wrap || !svgEl) return;
@@ -864,9 +864,9 @@ export function _renderWpCopChart(svgId, wrapId, monthlyCops, color) {
 // ── Umsortieren der Merit-Order per Mousedown/Up (kein HTML5 DnD) ─────────
 // HTML5 draggable kollidiert mit Leaflet's eigenem Drag-Handler auf dem
 // Karten-Container. Deshalb: eigenes Pointer-Tracking auf document-Ebene.
-export let _moDragKey = null;
+let _moDragKey = null;
 
-export function moMouseDown(e, key) {
+function moMouseDown(e, key) {
   e.preventDefault();
   e.stopPropagation(); // Leaflet nicht aktivieren
   _moDragKey = key;
@@ -879,7 +879,7 @@ export function moMouseDown(e, key) {
   document.addEventListener('mouseup', moMouseUp, { once: true });
 }
 
-export function moMouseUp(e) {
+function moMouseUp(e) {
   if (!_moDragKey) return;
   const fromKey = _moDragKey;
   // Icon unter dem Cursor finden
@@ -909,7 +909,7 @@ export function moMouseUp(e) {
 }
 
 // Swap merit order position by direction (-1 = up, +1 = down)
-export function moSwap(key, dir) {
+function moSwap(key, dir) {
   const idx = window.meritOrderKeys.indexOf(key);
   const newIdx = idx + dir;
   if (idx < 0 || newIdx < 0 || newIdx >= window.meritOrderKeys.length) return;

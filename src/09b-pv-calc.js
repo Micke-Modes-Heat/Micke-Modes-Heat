@@ -1,8 +1,8 @@
 // ── 09b-pv-calc.js — calcStromPanel, Batterie, PV-Wirtschaftlichkeit ──
 // ── Hauptberechnung Strom-Panel ───────────────────────────────────────────
-export let _calcStromTimer = null;
-export function calcStromPanelDebounced() { clearTimeout(_calcStromTimer); _calcStromTimer = setTimeout(calcStromPanel, 120); }
-export function calcStromPanel() {
+let _calcStromTimer = null;
+function calcStromPanelDebounced() { clearTimeout(_calcStromTimer); _calcStromTimer = setTimeout(calcStromPanel, 120); }
+function calcStromPanel() {
   if (calcStromPanel._updating) return;
 
   // PV-Invest auto-update bei Bedarf (Guard gegen Rekursion durch oninput)

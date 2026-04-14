@@ -1,6 +1,6 @@
 // ── 03b-netz.js — Netzplanung (Geothermie, Polygon-Zeichnen, Panel-Mgmt, OSM, Netzgraph, Strang-Report, Rohr-BOM) ──
 // ── Geothermie-Sondenfeld ────────────────────────────────────────────────────
-export function toggleGeoPanel() {
+function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
   const btn = document.getElementById('btn-geo-toggle');
   const isOpen = p.classList.contains('visible');
@@ -13,7 +13,7 @@ export function toggleGeoPanel() {
   }
 }
 
-export function geoUseNetworkValues() {
+function geoUseNetworkValues() {
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   const lastKw = calculatedLoad && calculatedLoad[zId] ? calculatedLoad[zId] : 0;
   const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
@@ -30,7 +30,7 @@ export function geoUseNetworkValues() {
 //   λ 1–2: Δq = 11.8/λ-Einheit  (Steigung 11.8)
 //   λ 2–3: Δq =  9.4/λ-Einheit  (Steigung  9.4)
 //   λ 3–4: Δq =  7.7/λ-Einheit  (Steigung  7.7)
-export function geoLambdaToQperm(lambda) {
+function geoLambdaToQperm(lambda) {
   const pts = [[1.0, 19.6], [2.0, 31.4], [3.0, 40.8], [4.0, 48.5]];
   if (lambda <= pts[0][0]) return pts[0][1];
   if (lambda >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
@@ -42,7 +42,7 @@ export function geoLambdaToQperm(lambda) {
   }
   return pts[pts.length - 1][1];
 }
-export function geoUpdateQperm() {
+function geoUpdateQperm() {
   const lambda = parseFloat(document.getElementById('geo-lambda')?.value) || 2.0;
   const q = geoLambdaToQperm(lambda);
   const el = document.getElementById('geo-q-perm');
@@ -50,7 +50,7 @@ export function geoUpdateQperm() {
 }
 
 // 30%-Standard-Leistung: setzt Eingabefeld auf 30% der Netz-Normlast
-export function _setDefault30Pct(inputId) {
+function _setDefault30Pct(inputId) {
   const el = document.getElementById(inputId);
   if (!el) return;
   // 1. Versuch: Summe aus Gebäude-Normlast
@@ -74,15 +74,15 @@ export function _setDefault30Pct(inputId) {
   if (normKw > 10) el.value = Math.round(normKw * 0.30);
 }
 
-export let _geoDispatchTimer = null;
-export function _geoTriggerDispatch() {
+let _geoDispatchTimer = null;
+function _geoTriggerDispatch() {
   clearTimeout(_geoDispatchTimer);
   _geoDispatchTimer = setTimeout(() => {
     if (typeof updateAllDeckungen === 'function') updateAllDeckungen();
   }, 400);
 }
 
-export function calcGeoThermie() {
+function calcGeoThermie() {
   const heizlastKw = parseFloat(document.getElementById('geo-heizlast').value) || 0;
   const waermeJahr = parseFloat(document.getElementById('geo-waerme').value) || 0;
   const tiefe  = Math.min(400, Math.max(30,  parseFloat(document.getElementById('geo-tiefe').value)  || 100));
@@ -212,7 +212,7 @@ export function calcGeoThermie() {
   }
 }
 
-export function togglePlaceGeo() {
+function togglePlaceGeo() {
   isPlacingGeo = !isPlacingGeo;
   const btn = document.getElementById('btn-place-geo');
   if (isPlacingGeo) {
@@ -231,7 +231,7 @@ export function togglePlaceGeo() {
   }
 }
 
-export function placeGeoAt(latlng) {
+function placeGeoAt(latlng) {
   if (!geoLayerGroup) geoLayerGroup = L.layerGroup().addTo(map);
   const jaz = parseFloat(document.getElementById('geo-jaz').value) || 4.5;
   const tiefe = parseFloat(document.getElementById('geo-tiefe').value) || 100;
@@ -245,7 +245,7 @@ export function placeGeoAt(latlng) {
   redrawErzeugerIcons();
 }
 
-export function redrawGeo() {
+function redrawGeo() {
   if (!geoLayerGroup) return;
   geoLayerGroup.clearLayers();
   if (!geoThermie || !geoThermie.n_sonden || geoThermie.lat == null || geoThermie.lng == null) return;
@@ -333,13 +333,13 @@ export function redrawGeo() {
   redrawVerbindungslinien();
 }
 
-export function setGeoVisible(visible) {
+function setGeoVisible(visible) {
   if (!geoLayerGroup) return;
   if (visible) { if (!map.hasLayer(geoLayerGroup)) geoLayerGroup.addTo(map); }
   else { if (map.hasLayer(geoLayerGroup)) map.removeLayer(geoLayerGroup); }
 }
 
-export function clearGeo() {
+function clearGeo() {
   geoThermie = null;
   moBeiDeaktivierung('geo');
   if (geoLayerGroup) geoLayerGroup.clearLayers();
@@ -350,7 +350,7 @@ export function clearGeo() {
   redrawErzeugerIcons();
 }
 
-export function startDraw(id){
+function startDraw(id){
   clearArea(); cancelDraw();
   drawingId=id; drawPoints=[];
   showHint('Eckpunkte anklicken · Am Ende Startpunkt (rot) anklicken · Rechtsklick = Zurück');
@@ -359,7 +359,7 @@ export function startDraw(id){
   selectedId=id; renderList();
 }
 
-export function cancelDraw(){
+function cancelDraw(){
   if(drawPolyline){map.removeLayer(drawPolyline);drawPolyline=null;}
   if(drawStartMarker){map.removeLayer(drawStartMarker);drawStartMarker=null;}
   drawingId=null;drawPoints=[];
@@ -367,7 +367,7 @@ export function cancelDraw(){
   _restoreAfterDraw();
 }
 
-export function finishDraw(){
+function finishDraw(){
   if(drawPoints.length < 3) return;
   const id=drawingId,pts=[...drawPoints];
   cancelDraw();
@@ -384,7 +384,7 @@ export function finishDraw(){
   renderList();updateViz();
 }
 
-export function hidePanels(){
+function hidePanels(){
   document.getElementById('osm-panel').classList.remove('visible');
   document.getElementById('netz-panel').classList.remove('visible');
   document.getElementById('kennwerte-panel').classList.remove('visible');
@@ -442,7 +442,7 @@ export function hidePanels(){
   _restoreAfterDraw();
 }
 
-export function toggleOverlayPanel() {
+function toggleOverlayPanel() {
   const p = document.getElementById('overlay-panel');
   const btn = document.getElementById('btn-overlay-toggle');
   if(p.classList.contains('visible')){
@@ -455,18 +455,18 @@ export function toggleOverlayPanel() {
   }
 }
 
-export function showOsmPanel(){
+function showOsmPanel(){
   if(areaPolygon) { showAreaEditPanel(); return; }
   hidePanels();
   document.getElementById('osm-panel').classList.add('visible');
 }
 
-export function showAreaEditPanel(){
+function showAreaEditPanel(){
   hidePanels();
   document.getElementById('area-edit-panel').classList.add('visible');
 }
 
-export function toggleChartPanel(){
+function toggleChartPanel(){
   const p = document.getElementById('chart-panel');
   const btn = document.getElementById('btn-chart-toggle');
   if(p.classList.contains('visible')){
@@ -480,7 +480,7 @@ export function toggleChartPanel(){
   }
 }
 
-export function toggleNetzPanel(){
+function toggleNetzPanel(){
   const p = document.getElementById('netz-panel');
   const btn = document.getElementById('btn-netz-toggle');
   if(p.classList.contains('visible')){
@@ -497,7 +497,7 @@ export function toggleNetzPanel(){
   }
 }
 
-export function loadOverlay(input) {
+function loadOverlay(input) {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
   const reader = new FileReader();
@@ -512,7 +512,7 @@ export function loadOverlay(input) {
   reader.readAsDataURL(file);
 }
 
-export function setupOverlayOnMap(url, w, h) {
+function setupOverlayOnMap(url, w, h) {
   clearOverlay();
   const center = map.getCenter();
   const offsetLat = 0.003;
@@ -539,18 +539,18 @@ export function setupOverlayOnMap(url, w, h) {
   showHint('Verschiebe die gelben Punkte, um den Plan auf der Karte auszurichten.');
 }
 
-export function updateOverlayBounds() {
+function updateOverlayBounds() {
   if (!overlayLayer || !overlayMarkerNW || !overlayMarkerSE) return;
   const nw = overlayMarkerNW.getLatLng();
   const se = overlayMarkerSE.getLatLng();
   overlayLayer.setBounds([nw, se]);
 }
 
-export function changeOverlayOpacity(val) {
+function changeOverlayOpacity(val) {
   if (overlayLayer) overlayLayer.setOpacity(val);
 }
 
-export function clearOverlay() {
+function clearOverlay() {
   if (overlayLayer) { map.removeLayer(overlayLayer); overlayLayer = null; }
   if (overlayMarkerNW) { map.removeLayer(overlayMarkerNW); overlayMarkerNW = null; }
   if (overlayMarkerSE) { map.removeLayer(overlayMarkerSE); overlayMarkerSE = null; }
@@ -558,7 +558,7 @@ export function clearOverlay() {
   if(fileInput) fileInput.value = '';
 }
 
-export function pointInPolygon(pt, poly) {
+function pointInPolygon(pt, poly) {
   let x = pt.lng, y = pt.lat;
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -571,12 +571,12 @@ export function pointInPolygon(pt, poly) {
 }
 
 // Overpass-API — alle Server parallel anfragen, schnellste Antwort gewinnt
-export var OVERPASS_ENDPOINTS = [
+var OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
 ];
-export function _overpassFetchWithRetry(query) {
+function _overpassFetchWithRetry(query) {
   // Gestaffelt-parallel: Hauptserver sofort, Backup nach 5s/10s.
   // Wer zuerst antwortet, gewinnt. Spart Rate-Limit vs. voll-parallel.
   showHint('⏳ OSM-Gebäude werden geladen…');
@@ -704,21 +704,21 @@ out body;>;out skel qt;`;
   setTimeout(function(){ const h=document.getElementById('hint'); if(h && !h.classList.contains('hidden') && (h.textContent.indexOf('geladen')>-1 || h.textContent.indexOf('Gebäude')>-1)) hideHint(); }, 3000);
 }
 
-export function parseOsmLevels(tags){
+function parseOsmLevels(tags){
   const raw = tags['building:levels'] || tags.levels || '';
   const n = parseInt(String(raw).replace(/[^0-9]/g, ''), 10);
   if(n > 0 && n < 100) return n;
   return null;
 }
 
-export function parseOsmHeight(tags){
+function parseOsmHeight(tags){
   const raw = tags.height || '';
   const m = String(raw).match(/^(\d+(?:[.,]\d+)?)\s*m/i) || String(raw).match(/^(\d+(?:[.,]\d+)?)$/);
   if(m) return parseFloat(m[1].replace(',', '.')) || null;
   return null;
 }
 
-export function parseOsmBaujahr(tags){
+function parseOsmBaujahr(tags){
   const raw = tags.start_date || tags['start_date:edtf'] || tags.construction_date || tags['construction:date'] || tags.year || '';
   const s = String(raw).trim();
   const y = s.length >= 4 ? parseInt(s.substring(0, 4), 10) : NaN;
@@ -727,7 +727,7 @@ export function parseOsmBaujahr(tags){
 }
 
 // Gibt Array von Gebäude-Optionsobjekten zurück — keine Seiteneffekte.
-export function parseOsmData(data, snapArea){
+function parseOsmData(data, snapArea){
   const nodes={};
   data.elements.forEach(el=>{ if(el.type==='node') nodes[el.id]={lat:el.lat,lng:el.lon}; });
   const existingOsm=new Set(gebaeude.filter(g=>g.osmId).map(g=>g.osmId));
@@ -808,7 +808,7 @@ export function parseOsmData(data, snapArea){
   return result;
 }
 
-export function populateZentraleSelect(){
+function populateZentraleSelect(){
   const sel = document.getElementById('netz-zentrale');
   if(!sel) return;
   const currentVal = sel.value;
@@ -826,7 +826,7 @@ export function populateZentraleSelect(){
   }
 }
 
-export function autoGenerateNetz(){
+function autoGenerateNetz(){
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   if(!zId || isNaN(zId)){
     showHint('⚠ Bitte zuerst eine Heizzentrale auswählen!', 5000);
@@ -937,7 +937,7 @@ export function autoGenerateNetz(){
   }
 }
 
-export function addNetzEdge(u, v){
+function addNetzEdge(u, v){
   const gU = gebaeude.find(g=>g.id===u);
   const gV = gebaeude.find(g=>g.id===v);
   if(!gU || !gV || !gU.polygon || !gV.polygon) return;
@@ -987,7 +987,7 @@ export function addNetzEdge(u, v){
   addEdgeMidHandle(edgeObj);
 }
 
-export function clearNetz(){
+function clearNetz(){
   netzEdges.forEach(e => {
     map.removeLayer(e.layer);
     if(e.hitLayer) map.removeLayer(e.hitLayer);
@@ -1003,7 +1003,7 @@ export function clearNetz(){
   gebaeude.forEach(g => delete g.tempIn);
 }
 
-export function applyWaypoints() {
+function applyWaypoints() {
   netzEdges.forEach(e => {
     const wp = edgeWaypoints[edgeKey(e.u, e.v)];
     if (!wp) return;
@@ -1015,7 +1015,7 @@ export function applyWaypoints() {
   });
 }
 
-export function abklemmenGebaeude(id) {
+function abklemmenGebaeude(id) {
   const toRemove = netzEdges.filter(e => e.u === id || e.v === id);
   toRemove.forEach(e => {
     if (map.hasLayer(e.layer)) map.removeLayer(e.layer);
@@ -1030,7 +1030,7 @@ export function abklemmenGebaeude(id) {
   renderList();
 }
 
-export function setNetzVisible(visible) {
+function setNetzVisible(visible) {
   netzVisible = visible;
   netzEdges.forEach(e => {
     const layers = [e.layer, e.hitLayer, e.midMarker, e.warnMarker, ...(e.segLayers||[])].filter(Boolean);
@@ -1046,7 +1046,7 @@ export function setNetzVisible(visible) {
   if (cb2) cb2.checked = visible;
 }
 
-export function syncVLTemps(source) {
+function syncVLTemps(source) {
   if (source === 'netz') {
     document.getElementById('gl-vl5').value = document.getElementById('netz-vl').value;
     document.getElementById('gl-vl15').value = document.getElementById('netz-rl').value;
@@ -1056,7 +1056,7 @@ export function syncVLTemps(source) {
   }
 }
 
-export function recalcNetz(){
+function recalcNetz(){
   const gebMap = new Map(gebaeude.map(g => [g.id, g]));
   // Auto-GK neu berechnen wenn Netz entsteht oder sich ändert
   if (typeof updateAllDeckungen === 'function') updateAllDeckungen();
@@ -1660,7 +1660,7 @@ export function recalcNetz(){
   if (netzEdges.some(e => e.load > 0)) startAnimPipes(); else stopAnimPipes();
 }
 
-export function updateStrandDropdown() {
+function updateStrandDropdown() {
   const sel = document.getElementById('netz-strang');
   if (!sel) return;
   const strands = [...new Set(netzEdges.map(e => e.strandId).filter(id => id != null))].sort((a,b)=>a-b);
@@ -1668,7 +1668,7 @@ export function updateStrandDropdown() {
   sel.innerHTML = '<option value="">Alle Stränge</option>' + strands.map(i => `<option value="${i}" ${current === i ? 'selected' : ''}>Strang ${i + 1}</option>`).join('');
 }
 
-export function updateStrangReport() {
+function updateStrangReport() {
   const el = document.getElementById('strang-report');
   if (!el) return;
   const zId = parseInt(document.getElementById('netz-zentrale').value);
@@ -1752,7 +1752,7 @@ export function updateStrangReport() {
   el.style.display = 'block';
 }
 
-export function updateNetzStrandVisibility() {
+function updateNetzStrandVisibility() {
   const vlTemp = parseFloat(document.getElementById('netz-vl')?.value) || 90;
   const rlTemp = parseFloat(document.getElementById('netz-rl')?.value) || 60;
   const dt = Math.max(1, vlTemp - rlTemp);
@@ -1773,7 +1773,7 @@ export function updateNetzStrandVisibility() {
   });
 }
 
-export function updateRohrListe() {
+function updateRohrListe() {
   const container = document.getElementById('bom-container');
   const content = document.getElementById('bom-content');
   
@@ -1845,7 +1845,7 @@ export function updateRohrListe() {
   content.innerHTML = html;
 }
 
-export function exportRohreCSV() {
+function exportRohreCSV() {
   const rohre = {};
   netzEdges.forEach(e => {
     if (e.load > 0 && e.dn > 0) {
@@ -1871,7 +1871,7 @@ export function exportRohreCSV() {
   document.body.removeChild(link);
 }
 
-export function toggleDrawEdge(){
+function toggleDrawEdge(){
   isDrawingEdge = !isDrawingEdge;
   const btn = document.getElementById('btn-draw-edge');
   if(isDrawingEdge){
@@ -1887,7 +1887,7 @@ export function toggleDrawEdge(){
   }
 }
 
-export function startNetzEdgeFrom(id) {
+function startNetzEdgeFrom(id) {
   if (!isDrawingEdge) toggleDrawEdge();
   edgeStartId = id;
   showHint('Zweites Gebäude auf der Karte anklicken.');

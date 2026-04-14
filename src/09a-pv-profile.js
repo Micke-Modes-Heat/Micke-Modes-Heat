@@ -1,10 +1,10 @@
 // ── 09a-pv-profile.js — PV-Profil, Datei-Upload, Preise, Invest ──
 // ── Synthetisches PV-Profil (normiert, Summe = 1.0 über 8760h) ───────────
 // Sonnenaufgang / Sonnenuntergang (ganze Stunde, lokale Zeit) je Monat
-export const _PV_SUN = [[8,16],[7,17],[6,18],[5,20],[5,21],[4,21],[4,21],[5,20],[6,19],[7,18],[8,16],[8,16]];
+const _PV_SUN = [[8,16],[7,17],[6,18],[5,20],[5,21],[4,21],[4,21],[5,20],[6,19],[7,18],[8,16],[8,16]];
 
 // Monatliche Ertragsanteile je Ausrichtung (Deutschland ~51°N)
-export const _PV_MONTH = {
+const _PV_MONTH = {
   // Süd 30° Neigung: Winterernte höher durch steilen Winkel
   sued:    [0.026,0.039,0.076,0.109,0.134,0.144,0.139,0.128,0.097,0.060,0.028,0.020],
   // Ost-West 10° flach: Sommer-Mittag schwächer, aber breiterer Tagesertrag
@@ -12,9 +12,9 @@ export const _PV_MONTH = {
 };
 
 // Empfohlene spezifische Erträge (kWh/kWp·a) je Ausrichtung
-export const _PV_SPEZ_DEFAULT = { sued: 1050, ostwest: 950 };
+const _PV_SPEZ_DEFAULT = { sued: 1050, ostwest: 950 };
 
-export function pvAusrichtungChanged() {
+function pvAusrichtungChanged() {
   const ausrichtung = document.getElementById('pv-ausrichtung')?.value || 'sued';
   const spezField = document.getElementById('pv-spez');
   if (spezField) spezField.value = _PV_SPEZ_DEFAULT[ausrichtung] || 1000;
@@ -23,7 +23,7 @@ export function pvAusrichtungChanged() {
   calcStromPanel();
 }
 
-export function makePvProfile8760(ausrichtung) {
+function makePvProfile8760(ausrichtung) {
   ausrichtung = ausrichtung || document.getElementById('pv-ausrichtung')?.value || 'sued';
   const monthFrac = _PV_MONTH[ausrichtung] || _PV_MONTH.sued;
   const result = new Float32Array(8760);
@@ -62,7 +62,7 @@ export function makePvProfile8760(ausrichtung) {
 }
 
 // ── PV-Upload ─────────────────────────────────────────────────────────────
-export function pvFileSelected(file) {
+function pvFileSelected(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
@@ -86,7 +86,7 @@ export function pvFileSelected(file) {
   reader.readAsText(file);
 }
 
-export function pvClear() {
+function pvClear() {
   window.elPvH = null;
   document.getElementById('pv-upload-info').textContent = '';
   document.getElementById('pv-clear-btn').style.display = 'none';
@@ -95,7 +95,7 @@ export function pvClear() {
 }
 
 // ── PV-Panel ─────────────────────────────────────────────────────────────
-export function togglePvPanel() {
+function togglePvPanel() {
   const p = document.getElementById('pv-panel');
   if (p.classList.contains('visible')) { hidePanels(); return; }
   hidePanels();
@@ -103,14 +103,14 @@ export function togglePvPanel() {
 }
 
 // ── Batteriespeicher ──────────────────────────────────────────────────────
-export function toggleBatteriePanel() {
+function toggleBatteriePanel() {
   const p = document.getElementById('batterie-panel');
   if (p.classList.contains('visible')) { hidePanels(); return; }
   hidePanels();
   p.classList.add('visible');
 }
 
-export function getBatParams() {
+function getBatParams() {
   // Gibt { kapKwh, leistKw, eta } zurück, oder null wenn deaktiviert (Kapazität = 0)
   const kapKwh  = parseFloat(document.getElementById('bat-kapazitaet')?.value) || 0;
   const leistKw = parseFloat(document.getElementById('bat-leistung')?.value)   || 0;
@@ -119,7 +119,7 @@ export function getBatParams() {
 }
 
 // ── CSV-Upload ────────────────────────────────────────────────────────────
-export function stromFileSelected(file) {
+function stromFileSelected(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
@@ -152,7 +152,7 @@ export function stromFileSelected(file) {
   reader.readAsText(file);
 }
 
-export function stromClear() {
+function stromClear() {
   window.elQuartierH = null;
   document.getElementById('strom-upload-info').textContent = '';
   document.getElementById('strom-clear-btn').style.display = 'none';
@@ -160,7 +160,7 @@ export function stromClear() {
   calcStromPanel();
 }
 
-export function _onGaspreisChange(srcId) {
+function _onGaspreisChange(srcId) {
   const val = document.getElementById(srcId)?.value;
   // wirt-p-gas is the single source of truth for gas price
   if (srcId !== 'wirt-p-gas') {
@@ -172,7 +172,7 @@ export function _onGaspreisChange(srcId) {
   updateBhkwDisplay();
 }
 
-export function _onStrompreisChange(srcId) {
+function _onStrompreisChange(srcId) {
   const val = document.getElementById(srcId)?.value;
   for (const id of ['wirt-p-strom', 'strom-preis-bezug']) {
     if (id === srcId) continue;
@@ -192,7 +192,7 @@ export function _onStrompreisChange(srcId) {
 }
 
 // ── PV-Vergütungsmodell Dropdown ─────────────────────────────────────────
-export function onPvVergModellChange() {
+function onPvVergModellChange() {
   const modell = document.getElementById('pv-verg-modell')?.value || 'teil';
   const einspEl = document.getElementById('strom-preis-einsp');
   const hintEl = document.getElementById('pv-verg-hint');
@@ -235,7 +235,7 @@ export function onPvVergModellChange() {
 }
 
 // ── PV-Invest Auto-Update ────────────────────────────────────────────────
-export function updatePvInvestAuto() {
+function updatePvInvestAuto() {
   const autoChk = document.getElementById('pv-invest-auto');
   const invEl = document.getElementById('opt-pv-invest');
   if (!autoChk?.checked || !invEl) return;

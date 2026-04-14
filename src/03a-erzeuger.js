@@ -1,6 +1,6 @@
 // ── 03a-erzeuger.js — Erzeuger-Panels (Freiflächen-PV, BHKW, Stromkessel, Gaskessel, Heizöl, Pellets, HHS, Fernwärme, Verbindungslinien) ──
 // ── Freiflächen-PV ───────────────────────────────────────────────────────────
-export function toggleFFPvPanel() {
+function toggleFFPvPanel() {
   const p   = document.getElementById('ff-pv-panel');
   const btn = document.getElementById('btn-ff-pv-toggle');
   if (p.classList.contains('visible')) {
@@ -12,13 +12,13 @@ export function toggleFFPvPanel() {
   }
 }
 
-export function calcFFKwp(ff) {
+function calcFFKwp(ff) {
   const fl  = parseFloat(ff.flaeche) || 0;
   const gcr = (ff.gcr !== undefined ? ff.gcr : (ff.ausrichtung === 'ostwest' ? 55 : 35)) / 100;
   return fl * gcr * _pvWpM2Global() / 1000;
 }
 
-export function attachFFLayer(ff) {
+function attachFFLayer(ff) {
   if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
   if (ff.moduleSvgLayer) { map.removeLayer(ff.moduleSvgLayer); ff.moduleSvgLayer = null; }
 
@@ -116,7 +116,7 @@ export function attachFFLayer(ff) {
   ff.moduleSvgLayer = L.svgOverlay(svgEl, bounds, { opacity: 1, interactive: false, zIndex: 201 }).addTo(map);
 }
 
-export function startDrawFF() {
+function startDrawFF() {
   cancelDrawFF();
   ffDrawId = ffCounter++;
   ffDrawPoints = [];
@@ -126,7 +126,7 @@ export function startDrawFF() {
   document.getElementById('btn-ff-cancel').style.display = '';
 }
 
-export function cancelDrawFF() {
+function cancelDrawFF() {
   if (ffDrawPolyline) { map.removeLayer(ffDrawPolyline); ffDrawPolyline = null; }
   if (ffDrawStartMarker) { map.removeLayer(ffDrawStartMarker); ffDrawStartMarker = null; }
   ffDrawId = null; ffDrawPoints = [];
@@ -136,7 +136,7 @@ export function cancelDrawFF() {
   document.getElementById('btn-ff-cancel').style.display = 'none';
 }
 
-export function finishDrawFF() {
+function finishDrawFF() {
   if (ffDrawPoints.length < 3) return;
   const id = ffDrawId;
   const pts = [...ffDrawPoints];
@@ -155,7 +155,7 @@ export function finishDrawFF() {
   redrawVerbindungslinien();
 }
 
-export function removeFreiflaeche(id) {
+function removeFreiflaeche(id) {
   const ff = freiflaechen.find(f => f.id === id);
   if (!ff) return;
   if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
@@ -166,7 +166,7 @@ export function removeFreiflaeche(id) {
   redrawVerbindungslinien();
 }
 
-export function updateFF(id, field, val) {
+function updateFF(id, field, val) {
   const ff = freiflaechen.find(f => f.id === id);
   if (!ff) return;
   if (field === 'gcr') { ff.gcr = parseFloat(val) || 35; ff._gcrManual = true; }
@@ -180,7 +180,7 @@ export function updateFF(id, field, val) {
   calcStromPanel();
 }
 
-export function renderFFPanel() {
+function renderFFPanel() {
   const listEl  = document.getElementById('ff-list');
   const totalEl = document.getElementById('ff-total');
   if (!listEl) return;
@@ -235,7 +235,7 @@ export function renderFFPanel() {
 }
 
 // ── BHKW / KWK ───────────────────────────────────────────────────────────────
-export function toggleBhkwPanel() {
+function toggleBhkwPanel() {
   const p   = document.getElementById('bhkw-panel');
   const btn = document.getElementById('btn-bhkw-toggle');
   if (p.classList.contains('visible')) {
@@ -254,7 +254,7 @@ export function toggleBhkwPanel() {
   }
 }
 
-export function activateBhkw() {
+function activateBhkw() {
   const leistTh = parseFloat(document.getElementById('bhkw-leistung-th').value) || 100;
   bhkw = { leistungThKw: leistTh };
   document.getElementById('bhkw-data-section').style.display = 'block';
@@ -264,7 +264,7 @@ export function activateBhkw() {
   updateBhkwDisplay();
 }
 
-export function updateBhkwDisplay() {
+function updateBhkwDisplay() {
   if (!bhkw) return;
   bhkw.leistungThKw = parseFloat(document.getElementById('bhkw-leistung-th').value) || 100;
   const sigma    = parseFloat(document.getElementById('bhkw-skz').value) || 0.45;
@@ -307,7 +307,7 @@ export function updateBhkwDisplay() {
   cacheVariantResults();
 }
 
-export function clearBhkw() {
+function clearBhkw() {
   bhkw = null;
   window._bhkwElHourly = null;
   moBeiDeaktivierung('bhkw');
@@ -319,7 +319,7 @@ export function clearBhkw() {
 }
 
 // ── Stromheizkessel ───────────────────────────────────────────────────────────
-export function toggleStromkesselPanel() {
+function toggleStromkesselPanel() {
   const p   = document.getElementById('stromkessel-panel');
   const btn = document.getElementById('btn-stromkessel-toggle');
   if (p.classList.contains('visible')) { hidePanels(); return; }
@@ -328,7 +328,7 @@ export function toggleStromkesselPanel() {
   btn.classList.add('active');
 }
 
-export function activateStromkessel() {
+function activateStromkessel() {
   const leistKw = parseFloat(document.getElementById('sk-leistung').value) || 200;
   stromkessel = { leistungKw: leistKw };
   document.getElementById('stromkessel-data-section').style.display = 'block';
@@ -338,7 +338,7 @@ export function activateStromkessel() {
   updateStromkesselDisplay();
 }
 
-export function updateStromkesselDisplay() {
+function updateStromkesselDisplay() {
   if (!stromkessel) return;
   stromkessel.leistungKw = parseFloat(document.getElementById('sk-leistung').value) || 200;
   const eta        = (parseFloat(document.getElementById('sk-eta').value) || 99) / 100;
@@ -355,7 +355,7 @@ export function updateStromkesselDisplay() {
   cacheVariantResults();
 }
 
-export function clearStromkessel() {
+function clearStromkessel() {
   stromkessel = null;
   window._skElHourly = null;
   moBeiDeaktivierung('stromkessel');
@@ -367,7 +367,7 @@ export function clearStromkessel() {
 }
 
 // ── Gaskessel ────────────────────────────────────────────────────────────────
-export function toggleGasKesselPanel() {
+function toggleGasKesselPanel() {
   const p = document.getElementById('gaskessel-panel');
   const btn = document.getElementById('btn-gaskessel-toggle');
   if (p.classList.contains('visible')) {
@@ -386,7 +386,7 @@ export function toggleGasKesselPanel() {
   }
 }
 
-export function activateGasKessel() {
+function activateGasKessel() {
   _setDefault30Pct('gk-leistung');
   const leistung = parseFloat(document.getElementById('gk-leistung').value) || 500;
   gasKessel = { leistungKw: leistung };
@@ -397,7 +397,7 @@ export function activateGasKessel() {
   updateGasKesselDisplay();
 }
 
-export function windSvg(col='white', w=16, h=13) {
+function windSvg(col='white', w=16, h=13) {
   return `<svg width="${w}" height="${h}" viewBox="0 0 16 13" xmlns="http://www.w3.org/2000/svg">
     <path d="M1 2 Q5 0.5 9 2 Q13 3.5 15 2" stroke="${col}" stroke-width="1.7" fill="none" stroke-linecap="round"/>
     <path d="M1 6.5 Q5 5 10 6.5 Q13 7.5 15 6.5" stroke="${col}" stroke-width="1.7" fill="none" stroke-linecap="round"/>
@@ -406,7 +406,7 @@ export function windSvg(col='white', w=16, h=13) {
 }
 
 // Erdbohrer-SVG (Erdwärme-Symbol), Farbe über Parameter
-export function drillSvg(col='white', w=14, h=20) {
+function drillSvg(col='white', w=14, h=20) {
   return `<svg width="${w}" height="${h}" viewBox="0 0 14 20" xmlns="http://www.w3.org/2000/svg">
     <rect x="1" y="0.5" width="12" height="2.5" rx="1.2" fill="${col}"/>
     <rect x="5.5" y="3" width="3" height="1.5" fill="${col}" opacity="0.9"/>
@@ -417,13 +417,13 @@ export function drillSvg(col='white', w=14, h=20) {
   </svg>`;
 }
 
-export function calcVerdraengungEmF() {
+function calcVerdraengungEmF() {
   // Überschreibbarer Wert aus Input, sonst automatisch aus stromEmF × Ratio
   const override = parseFloat(document.getElementById('verdraengung-emf-override')?.value);
   return override > 0 ? override : Math.round(stromEmF * GEG_VERDRAENGUNG_RATIO);
 }
 
-export function updateAllEmF() {
+function updateAllEmF() {
   updateLwWpDisplay();
   calcGeoThermie();
   updateFliessgewaesserData();
@@ -444,7 +444,7 @@ export function updateAllEmF() {
   }
 }
 
-export function _erzeugerIconData(key) {
+function _erzeugerIconData(key) {
   switch (key) {
     case 'lwwp':       return { icon: windSvg('white',15,12),   c:'#388e3c', label:'Luft-WP',     emoji:false };
     case 'fg':         return { icon: '〰',                      c:'#0277bd', label:'FG-WP',        emoji:true  };
@@ -460,7 +460,7 @@ export function _erzeugerIconData(key) {
   }
 }
 
-export function redrawErzeugerIcons() {
+function redrawErzeugerIcons() {
   const el = document.getElementById('erzeuger-status');
   if (!el) return;
 
@@ -517,15 +517,15 @@ export function redrawErzeugerIcons() {
   el.innerHTML = `<div style="display:flex;gap:5px;background:rgba(18,18,18,0.72);padding:6px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(4px);pointer-events:auto;" title="Wärmeerzeuger · Klicken &amp; ziehen zum Umsortieren (Priorität 1 = Grundlast)">${icons}${autoGkIcon}</div>`;
 }
 // ── Erzeuger-Klick-Popup ─────────────────────────────────────────────────────
-export let _epKey = null;
+let _epKey = null;
 
-export function closeErzeugerPopup() {
+function closeErzeugerPopup() {
   _epKey = null;
   const p = document.getElementById('erzeuger-popup');
   if (p) p.style.display = 'none';
 }
 
-export function showErzeugerPopup(key) {
+function showErzeugerPopup(key) {
   const hourly = window._dispatchHourly || {};
   const en     = window._dispatchEnergy || {};
   const ss     = window.systemState;
@@ -587,7 +587,7 @@ export function showErzeugerPopup(key) {
   });
 }
 
-export function _epDrawHourly(key, arr, color) {
+function _epDrawHourly(key, arr, color) {
   const cv  = document.getElementById('ep-hourly-canvas');
   if (!cv) return;
   const W   = cv.offsetWidth || 532;
@@ -625,7 +625,7 @@ export function _epDrawHourly(key, arr, color) {
   }
 }
 
-export function _epDrawMonthly(key, arr, color) {
+function _epDrawMonthly(key, arr, color) {
   const cv  = document.getElementById('ep-monthly-canvas');
   if (!cv) return;
   const W   = cv.offsetWidth || 532;
@@ -661,7 +661,7 @@ export function _epDrawMonthly(key, arr, color) {
   }
 }
 
-export function _epDrawCop(key, arr, color, tempH) {
+function _epDrawCop(key, arr, color, tempH) {
   const cv  = document.getElementById('ep-cop-canvas');
   if (!cv) return;
   const W   = cv.offsetWidth || 532;
@@ -720,9 +720,9 @@ export function _epDrawCop(key, arr, color, tempH) {
   ctx.textAlign = 'right'; ctx.fillText(`${tMax.toFixed(0)}°C`, W - 2, H - 2);
 }
 
-export function redrawGasKessel() { redrawErzeugerIcons(); }
+function redrawGasKessel() { redrawErzeugerIcons(); }
 
-export function updateGasKesselDisplay() {
+function updateGasKesselDisplay() {
   if (!gasKessel) return;
   const waerme  = parseFloat(document.getElementById('gk-waerme').value) || 0;
   const eta     = parseFloat(document.getElementById('gk-eta').value) || 92;
@@ -741,7 +741,7 @@ export function updateGasKesselDisplay() {
   }
 }
 
-export function gasKesselUseNetworkValues() {
+function gasKesselUseNetworkValues() {
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   const lastKw = calculatedLoad && calculatedLoad[zId] ? calculatedLoad[zId] : 0;
   const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
@@ -753,7 +753,7 @@ export function gasKesselUseNetworkValues() {
   updateGasKesselDisplay();
 }
 
-export function clearGasKessel() {
+function clearGasKessel() {
   gasKessel = null;
   moBeiDeaktivierung('gaskessel');
   redrawErzeugerIcons();
@@ -763,7 +763,7 @@ export function clearGasKessel() {
 }
 
 // ── Heizölkessel ─────────────────────────────────────────────────────────────
-export function toggleHeizoelPanel() {
+function toggleHeizoelPanel() {
   const p = document.getElementById('heizoel-panel');
   const btn = document.getElementById('btn-heizoel-toggle');
   if (p.classList.contains('visible')) {
@@ -782,7 +782,7 @@ export function toggleHeizoelPanel() {
   }
 }
 
-export function activateHeizoelKessel() {
+function activateHeizoelKessel() {
   _setDefault30Pct('hko-leistung');
   const leistung = parseFloat(document.getElementById('hko-leistung').value) || 500;
   heizoelKessel = { leistungKw: leistung };
@@ -793,7 +793,7 @@ export function activateHeizoelKessel() {
   updateHeizoelDisplay();
 }
 
-export function updateHeizoelDisplay() {
+function updateHeizoelDisplay() {
   const waerme = parseFloat(document.getElementById('hko-waerme').value) || 0;
   const eta = parseFloat(document.getElementById('hko-eta').value) || 91;
   const oelpreis = parseFloat(document.getElementById('wirt-p-hko')?.value) || 9.5;
@@ -813,7 +813,7 @@ export function updateHeizoelDisplay() {
   cacheVariantResults();
 }
 
-export function clearHeizoelKessel() {
+function clearHeizoelKessel() {
   heizoelKessel = null;
   document.getElementById('heizoel-data-section').style.display = 'none';
   document.getElementById('btn-activate-heizoel').style.display = '';
@@ -822,10 +822,10 @@ export function clearHeizoelKessel() {
   cacheVariantResults();
 }
 
-export function redrawHeizoelKessel() { redrawErzeugerIcons(); }
+function redrawHeizoelKessel() { redrawErzeugerIcons(); }
 
 // ── Pelletskessel ─────────────────────────────────────────────────────────────
-export function togglePelletsPanel() {
+function togglePelletsPanel() {
   const p = document.getElementById('pellets-panel');
   const btn = document.getElementById('btn-pellets-toggle');
   if (p.classList.contains('visible')) {
@@ -844,7 +844,7 @@ export function togglePelletsPanel() {
   }
 }
 
-export function activatePellets() {
+function activatePellets() {
   _setDefault30Pct('pk-leistung');
   pelletsKessel = { leistungKw: parseFloat(document.getElementById('pk-leistung').value)||300 };
   document.getElementById('pellets-data-section').style.display = 'block';
@@ -854,7 +854,7 @@ export function activatePellets() {
   updatePelletsDisplay();
 }
 
-export function updatePelletsDisplay() {
+function updatePelletsDisplay() {
   if (!pelletsKessel) return;
   pelletsKessel.leistungKw = parseFloat(document.getElementById('pk-leistung').value)||300;
   const waerme = parseFloat(document.getElementById('pk-waerme').value)||0;
@@ -877,7 +877,7 @@ export function updatePelletsDisplay() {
   cacheVariantResults();
 }
 
-export function clearPellets() {
+function clearPellets() {
   pelletsKessel = null;
   if (pelletsLayerGroup) pelletsLayerGroup.clearLayers();
   document.getElementById('pellets-data-section').style.display = 'none';
@@ -889,7 +889,7 @@ export function clearPellets() {
   cacheVariantResults();
 }
 
-export function redrawPellets() {
+function redrawPellets() {
   if (!pelletsLayerGroup) pelletsLayerGroup = L.layerGroup().addTo(map);
   pelletsLayerGroup.clearLayers();
   if (!pelletsKessel || pelletsKessel.lat == null) { redrawVerbindungslinien(); return; }
@@ -916,7 +916,7 @@ export function redrawPellets() {
   redrawVerbindungslinien();
 }
 
-export function togglePlacePellets() {
+function togglePlacePellets() {
   if (!pelletsKessel) return;
   if (pelletsKessel.lat != null) {
     delete pelletsKessel.lat; delete pelletsKessel.lng;
@@ -935,7 +935,7 @@ export function togglePlacePellets() {
 }
 
 // ── Holzhackschnitzel ─────────────────────────────────────────────────────────
-export function woodSvg(col='white', w=16, h=14) {
+function woodSvg(col='white', w=16, h=14) {
   return `<svg width="${w}" height="${h}" viewBox="0 0 16 14" xmlns="http://www.w3.org/2000/svg">
     <ellipse cx="8" cy="11" rx="7" ry="2.5" fill="${col}" opacity="0.4"/>
     <rect x="1" y="4" width="14" height="5" rx="2.5" fill="${col}" opacity="0.9"/>
@@ -945,14 +945,14 @@ export function woodSvg(col='white', w=16, h=14) {
   </svg>`;
 }
 
-export function oilSvg(col='white', w=14, h=18) {
+function oilSvg(col='white', w=14, h=18) {
   return `<svg width="${w}" height="${h}" viewBox="0 0 14 18" xmlns="http://www.w3.org/2000/svg">
     <path d="M7 1 Q11 6 11 11 A4 4 0 0 1 3 11 Q3 6 7 1Z" fill="${col}" opacity="0.95"/>
     <ellipse cx="7" cy="11.5" rx="2.5" ry="1.5" fill="white" opacity="0.25"/>
   </svg>`;
 }
 
-export function toggleHhsPanel() {
+function toggleHhsPanel() {
   const p = document.getElementById('hhs-panel');
   const btn = document.getElementById('btn-hhs-toggle');
   if (p.classList.contains('visible')) {
@@ -971,7 +971,7 @@ export function toggleHhsPanel() {
   }
 }
 
-export function activateHhs() {
+function activateHhs() {
   _setDefault30Pct('hhs-leistung');
   heizhackschnitzel = { leistungKw: parseFloat(document.getElementById('hhs-leistung').value)||400 };
   document.getElementById('hhs-data-section').style.display = 'block';
@@ -981,7 +981,7 @@ export function activateHhs() {
   updateHhsDisplay();
 }
 
-export function updateHhsDisplay() {
+function updateHhsDisplay() {
   if (!heizhackschnitzel) return;
   heizhackschnitzel.leistungKw = parseFloat(document.getElementById('hhs-leistung').value)||400;
   const waerme = parseFloat(document.getElementById('hhs-waerme').value)||0;
@@ -1004,7 +1004,7 @@ export function updateHhsDisplay() {
   cacheVariantResults();
 }
 
-export function clearHhs() {
+function clearHhs() {
   heizhackschnitzel = null;
   moBeiDeaktivierung('hhs');
   if (hhsLayerGroup) hhsLayerGroup.clearLayers();
@@ -1016,7 +1016,7 @@ export function clearHhs() {
   cacheVariantResults();
 }
 
-export function redrawHhs() {
+function redrawHhs() {
   if (!hhsLayerGroup) hhsLayerGroup = L.layerGroup().addTo(map);
   hhsLayerGroup.clearLayers();
   if (!heizhackschnitzel || heizhackschnitzel.lat == null) { redrawVerbindungslinien(); return; }
@@ -1043,7 +1043,7 @@ export function redrawHhs() {
   redrawVerbindungslinien();
 }
 
-export function togglePlaceHhs() {
+function togglePlaceHhs() {
   if (!heizhackschnitzel) return;
   if (heizhackschnitzel.lat != null) {
     delete heizhackschnitzel.lat; delete heizhackschnitzel.lng;
@@ -1062,7 +1062,7 @@ export function togglePlaceHhs() {
 }
 
 // ── Fernwärme ─────────────────────────────────────────────────────────────────
-export function toggleFernwaermePanel() {
+function toggleFernwaermePanel() {
   const p = document.getElementById('fernwaerme-panel');
   const btn = document.getElementById('btn-fernwaerme-toggle');
   if (p.classList.contains('visible')) {
@@ -1081,7 +1081,7 @@ export function toggleFernwaermePanel() {
   }
 }
 
-export function activateFernwaerme() {
+function activateFernwaerme() {
   fernwaerme = { leistungKw: parseFloat(document.getElementById('fw-leistung').value)||500 };
   document.getElementById('fernwaerme-data-section').style.display = 'block';
   document.getElementById('btn-activate-fernwaerme').style.display = 'none';
@@ -1090,7 +1090,7 @@ export function activateFernwaerme() {
   updateFernwaermeDisplay();
 }
 
-export function updateFernwaermeDisplay() {
+function updateFernwaermeDisplay() {
   if (!fernwaerme) return;
   fernwaerme.leistungKw = parseFloat(document.getElementById('fw-leistung').value)||500;
   const waerme = parseFloat(document.getElementById('fw-waerme').value)||0;
@@ -1113,7 +1113,7 @@ export function updateFernwaermeDisplay() {
   cacheVariantResults();
 }
 
-export function clearFernwaerme() {
+function clearFernwaerme() {
   fernwaerme = null;
   moBeiDeaktivierung('fernwaerme');
   if (fernwaermeLayerGroup) fernwaermeLayerGroup.clearLayers();
@@ -1125,7 +1125,7 @@ export function clearFernwaerme() {
   cacheVariantResults();
 }
 
-export function redrawFernwaerme() {
+function redrawFernwaerme() {
   if (!fernwaermeLayerGroup) fernwaermeLayerGroup = L.layerGroup().addTo(map);
   fernwaermeLayerGroup.clearLayers();
   if (!fernwaerme || fernwaerme.lat == null) { redrawVerbindungslinien(); return; }
@@ -1136,7 +1136,7 @@ export function redrawFernwaerme() {
   redrawVerbindungslinien();
 }
 
-export function togglePlaceFernwaerme() {
+function togglePlaceFernwaerme() {
   if (!fernwaerme) return;
   if (fernwaerme.lat != null) {
     delete fernwaerme.lat; delete fernwaerme.lng;
@@ -1155,7 +1155,7 @@ export function togglePlaceFernwaerme() {
 }
 
 // ── Verbindungslinien zur Heizzentrale ─────────────────────────────────────────
-export function redrawVerbindungslinien() {
+function redrawVerbindungslinien() {
   if (!verbindungsLayerGroup) verbindungsLayerGroup = L.layerGroup().addTo(map);
   verbindungsLayerGroup.clearLayers();
   const zId = parseInt(document.getElementById('netz-zentrale')?.value);

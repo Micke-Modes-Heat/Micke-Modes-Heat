@@ -7,7 +7,7 @@ export default [
     files: ['src/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: 'module',           // ES-Module mit import/export
+      sourceType: 'script',          // kein ES-Module — globaler Scope
       globals: {
         ...globals.browser,
         // Leaflet

@@ -1,139 +1,139 @@
-export let gebaeude = [];
-export const _expandedIds = new Set(); // tracks which building cards are expanded
-export let _vizTimer = null;
-export function updateVizDebounced() { clearTimeout(_vizTimer); _vizTimer = setTimeout(updateViz, 80); }
-export let currentMode = 'waerme';
-export let currentViz  = 'circle';
-export let drawingId   = null;
-export let drawPoints  = [];
-export let drawPolyline= null;
-export let drawStartMarker = null;
-export let selectedId  = null;
-export let idCounter   = 1;
+let gebaeude = [];
+const _expandedIds = new Set(); // tracks which building cards are expanded
+let _vizTimer = null;
+function updateVizDebounced() { clearTimeout(_vizTimer); _vizTimer = setTimeout(updateViz, 80); }
+let currentMode = 'waerme';
+let currentViz  = 'circle';
+let drawingId   = null;
+let drawPoints  = [];
+let drawPolyline= null;
+let drawStartMarker = null;
+let selectedId  = null;
+let idCounter   = 1;
 
-export const R_MIN = 4, R_MAX = 54;
+const R_MIN = 4, R_MAX = 54;
 
-export let globalYear  = 2026;
-export let networkLocked = true; 
+let globalYear  = 2026;
+let networkLocked = true; 
 
-export let areaDrawing  = false;
-export let areaPoints   = [];
-export let areaPolyline = null;
-export let areaPolygon  = null;
-export let areaLatLngs  = null;
-export let areaStartMarker = null;
-export let areaEditMarkers = [];
+let areaDrawing  = false;
+let areaPoints   = [];
+let areaPolyline = null;
+let areaPolygon  = null;
+let areaLatLngs  = null;
+let areaStartMarker = null;
+let areaEditMarkers = [];
 
-export let netzEdges = [];
-export let calculatedLoad = {};
-export let edgeWaypoints = {};
-export function edgeKey(u, v) { return `${Math.min(u,v)}_${Math.max(u,v)}`; }
-export let isDrawingEdge = false;
-export let edgeStartId = null;
-export let selectedStrandId = null;
-export let netzPruningMode = false;
+let netzEdges = [];
+let calculatedLoad = {};
+let edgeWaypoints = {};
+function edgeKey(u, v) { return `${Math.min(u,v)}_${Math.max(u,v)}`; }
+let isDrawingEdge = false;
+let edgeStartId = null;
+let selectedStrandId = null;
+let netzPruningMode = false;
 
 // ── Stromnetz state ──────────────────────────────────────────────────────
-export let stromEdges = [];
-export let stromNodes = [];
-export let stromNextId = 20000; // IDs: NAP=20000+, Trafo=21000+, NSHV=22000+, Gebäude nutzen gebId
-export let isPlacingStromNode = null; // null | 'nap' | 'trafo' | 'nshv'
-export let isDrawingStromEdge = false;
-export let stromEdgeStartId = null;
-export let stromNetzVisible = true;
-export let stromColorMode = 'auslastung'; // auslastung | spannungsfall | leistung | richtung
-export let stromNetzSubTab = 'waerme'; // 'waerme' | 'strom'
+let stromEdges = [];
+let stromNodes = [];
+let stromNextId = 20000; // IDs: NAP=20000+, Trafo=21000+, NSHV=22000+, Gebäude nutzen gebId
+let isPlacingStromNode = null; // null | 'nap' | 'trafo' | 'nshv'
+let isDrawingStromEdge = false;
+let stromEdgeStartId = null;
+let stromNetzVisible = true;
+let stromColorMode = 'auslastung'; // auslastung | spannungsfall | leistung | richtung
+let stromNetzSubTab = 'waerme'; // 'waerme' | 'strom'
 
 // Kabeltypen (VDE 0298-4, Verlegeart D — Erdverlegung, 4-adrig)
 // KABEL_TYPEN, TRAFO_GROESSEN → config/netz-kosten.js (wird vorher geladen)
 
-export let isDrawingTrasse = false;
-export let trassePoints = [];
-export let trassePolyline = null;
-export let trasseEditMarkers = [];
+let isDrawingTrasse = false;
+let trassePoints = [];
+let trassePolyline = null;
+let trasseEditMarkers = [];
 // Mehrstrang-Trasse: Array von Segmenten [{points: [idx1, idx2, ...]}]
 // Jedes Segment verbindet aufeinanderfolgende trassePoints-Indizes
-export let trasseSegments = []; // [{start, end}] — Bereiche in trassePoints
-export let trasseCurrentSegStart = 0; // Index in trassePoints wo aktuelles Segment beginnt
-export let trasseDetached = false; // true = Strang losgelöst, warte auf Wiedereinstieg
+let trasseSegments = []; // [{start, end}] — Bereiche in trassePoints
+let trasseCurrentSegStart = 0; // Index in trassePoints wo aktuelles Segment beginnt
+let trasseDetached = false; // true = Strang losgelöst, warte auf Wiedereinstieg
 
-export let fliessgewaesser = null;
-export let fliessgewaesserLayerGroup = null;
-export let fliessgewaesserVisible = true;
-export let isDrawingRiver = false;
-export let riverPoints = [];
-export let riverDrawPolyline = null;
-export let riverEditMarkers = [];
+let fliessgewaesser = null;
+let fliessgewaesserLayerGroup = null;
+let fliessgewaesserVisible = true;
+let isDrawingRiver = false;
+let riverPoints = [];
+let riverDrawPolyline = null;
+let riverEditMarkers = [];
 
-export let lwWp = null;
-export let lwWpLayerGroup = null;
-export let lwWpSchallLayerGroup = null;
-export let lwWpVisible = true;
-export let lwWpSchallVisible = true;
-export let isPlacingLwWp = false;
-export let netzVisible = true;
-export let gebVisible = true;
-export let labelsVisible = false;
-export let _batchImporting = false; // unterdrückt teure Recalcs während OSM-Massenimport
-export let geoThermie = null;
-export let geoLayerGroup = null;
-export let isPlacingGeo = false;
-export let stromEmF = 363;   // g CO₂eq/kWh Strom aktuell (UBA 2024)
-export let stromEmFLZ = 72;  // g CO₂eq/kWh Strom Ø 2030–2050 (iinas 2025, NECP-Szenario)
-export let bhkwCo2Gutschrift = true;   // Toggle: BHKW-Strom verdrängt Netzstrom
-export let pvCo2Gutschrift = true;     // Toggle: PV-Einspeisung verdrängt Netzstrom
-export const GEG_VERDRAENGUNG_RATIO = 860 / 560; // GEG Anlage 9: Verdrängungsstrommix/Netzbezug
-export let gasKessel    = null;
-export let stromkessel  = null;
-export let solarthermieAktiv = false;  // Solarthermie-Kollektoren
-export let thermSpeicherAktiv = false; // Thermischer Wärmespeicher
-export let freiflaechen = [];
-export let ffCounter    = 1;
-export let ffDrawId     = null;
-export let ffDrawPoints = [];
-export let ffDrawPolyline   = null;
-export let ffDrawStartMarker = null;
-export let bhkw      = null;
-export let erzeugerIconLayerGroup = null;
-export let gasEmF = 240; // g CO₂eq/kWh Erdgas (GEG Anlage 9, inkl. Vorkette)
-export let heizoelKessel = null;
-export let heizoelEmF = 310; // g CO₂eq/kWh Heizöl EL (GEG Anlage 9)
-export let pelletsKessel = null;
-export let pelletsLayerGroup = null;
-export let pelletsEmF = 20; // g CO₂eq/kWh Holzpellets (GEG Anlage 9, biogen)
-export let fernwaermeEmF = 180; // g CO₂eq/kWh Fernwärme (GEG Anlage 9, Gas-KWK ≥70%, Standardwert)
-export let isPlacingPellets = false;
-export let heizhackschnitzel = null;
-export let hhsLayerGroup = null;
-export let hhsEmF = 20; // g CO₂eq/kWh Holzhackschnitzel (GEG Anlage 9, biogen)
-export let isPlacingHhs = false;
+let lwWp = null;
+let lwWpLayerGroup = null;
+let lwWpSchallLayerGroup = null;
+let lwWpVisible = true;
+let lwWpSchallVisible = true;
+let isPlacingLwWp = false;
+let netzVisible = true;
+let gebVisible = true;
+let labelsVisible = false;
+let _batchImporting = false; // unterdrückt teure Recalcs während OSM-Massenimport
+let geoThermie = null;
+let geoLayerGroup = null;
+let isPlacingGeo = false;
+let stromEmF = 363;   // g CO₂eq/kWh Strom aktuell (UBA 2024)
+let stromEmFLZ = 72;  // g CO₂eq/kWh Strom Ø 2030–2050 (iinas 2025, NECP-Szenario)
+let bhkwCo2Gutschrift = true;   // Toggle: BHKW-Strom verdrängt Netzstrom
+let pvCo2Gutschrift = true;     // Toggle: PV-Einspeisung verdrängt Netzstrom
+const GEG_VERDRAENGUNG_RATIO = 860 / 560; // GEG Anlage 9: Verdrängungsstrommix/Netzbezug
+let gasKessel    = null;
+let stromkessel  = null;
+let solarthermieAktiv = false;  // Solarthermie-Kollektoren
+let thermSpeicherAktiv = false; // Thermischer Wärmespeicher
+let freiflaechen = [];
+let ffCounter    = 1;
+let ffDrawId     = null;
+let ffDrawPoints = [];
+let ffDrawPolyline   = null;
+let ffDrawStartMarker = null;
+let bhkw      = null;
+let erzeugerIconLayerGroup = null;
+let gasEmF = 240; // g CO₂eq/kWh Erdgas (GEG Anlage 9, inkl. Vorkette)
+let heizoelKessel = null;
+let heizoelEmF = 310; // g CO₂eq/kWh Heizöl EL (GEG Anlage 9)
+let pelletsKessel = null;
+let pelletsLayerGroup = null;
+let pelletsEmF = 20; // g CO₂eq/kWh Holzpellets (GEG Anlage 9, biogen)
+let fernwaermeEmF = 180; // g CO₂eq/kWh Fernwärme (GEG Anlage 9, Gas-KWK ≥70%, Standardwert)
+let isPlacingPellets = false;
+let heizhackschnitzel = null;
+let hhsLayerGroup = null;
+let hhsEmF = 20; // g CO₂eq/kWh Holzhackschnitzel (GEG Anlage 9, biogen)
+let isPlacingHhs = false;
 // Primärenergiefaktoren fp (nicht-erneuerbar) – GEG Anlage 4 (2024)
-export let pefStrom = 1.8;       // Strom Netz-Mix
-export let pefWP = 1.2;          // Strom für Wärmepumpen ≥ 500 kW el. (GEG Anlage 4)
-export let pefGas = 1.1;         // Erdgas
-export let pefHeizoel = 1.1;     // Heizöl EL
-export let pefPellets = 0.2;     // Holzpellets
-export let pefHhs = 0.2;         // Holzhackschnitzel
-export let pefFernwaerme = 0.3;  // Fernwärme (Mindestwert GEG)
-export const PEF_KAPPUNG = 0.3;  // Kappungsgrenze GEG Anlage 4 – fP = Math.max(berechnet, PEF_KAPPUNG)
-export let fernwaerme = null;
-export let fernwaermeLayerGroup = null;
-export let isPlacingFernwaerme = false;
-export let verbindungsLayerGroup = null;
+let pefStrom = 1.8;       // Strom Netz-Mix
+let pefWP = 1.2;          // Strom für Wärmepumpen ≥ 500 kW el. (GEG Anlage 4)
+let pefGas = 1.1;         // Erdgas
+let pefHeizoel = 1.1;     // Heizöl EL
+let pefPellets = 0.2;     // Holzpellets
+let pefHhs = 0.2;         // Holzhackschnitzel
+let pefFernwaerme = 0.3;  // Fernwärme (Mindestwert GEG)
+const PEF_KAPPUNG = 0.3;  // Kappungsgrenze GEG Anlage 4 – fP = Math.max(berechnet, PEF_KAPPUNG)
+let fernwaerme = null;
+let fernwaermeLayerGroup = null;
+let isPlacingFernwaerme = false;
+let verbindungsLayerGroup = null;
 
 // ── Vergleich ────────────────────────────────────────────────────────────────
-export let variantResults = {};
-export function toggleVergleich() {
+let variantResults = {};
+function toggleVergleich() {
   setViewMode(currentViewMode === 'vergleich' ? 'karte' : 'vergleich');
 }
 
-export let _cacheVariantTimer = null;
-export function cacheVariantResultsDebounced() {
+let _cacheVariantTimer = null;
+function cacheVariantResultsDebounced() {
   clearTimeout(_cacheVariantTimer);
   _cacheVariantTimer = setTimeout(cacheVariantResults, 80);
 }
 
-export function cacheVariantResults() {
+function cacheVariantResults() {
   const key = activeVariantId || 'base';
   const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
   const netzVerbrauch = gebaeude.filter(g => connectedIds.has(g.id) && !isExcluded(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
@@ -226,7 +226,7 @@ export function cacheVariantResults() {
   if (typeof currentViewMode !== 'undefined' && currentViewMode === 'vergleich') renderVergleich();
 }
 
-export function refreshVergleich() {
+function refreshVergleich() {
   const originalId = activeVariantId;
   // Basis-Snapshot vor dem Durchlaufen retten, damit er nicht korrumpiert wird
   const savedBase = baseNetzSnapshot ? JSON.parse(JSON.stringify(baseNetzSnapshot)) : null;
@@ -242,7 +242,7 @@ export function refreshVergleich() {
   renderVergleich();
 }
 
-export function renderVergleich() {
+function renderVergleich() {
   const wrap = document.getElementById('vergleich-table-wrap');
   if (!wrap) return;
   const cols = ['base', ...varianten.map(v => v.id)];
@@ -327,7 +327,7 @@ export function renderVergleich() {
   requestAnimationFrame(() => _renderParetoChart());
 }
 
-export function _renderParetoChart() {
+function _renderParetoChart() {
   const canvas = document.getElementById('vergleich-pareto-canvas');
   const legendEl = document.getElementById('vergleich-pareto-legend');
   if (!canvas) return;
@@ -512,7 +512,7 @@ export function _renderParetoChart() {
 }
 
 // ── Zentrale ETA-Tabelle (liest Pellets/HHS aus DOM) ─────────────────────────
-export function _getEtaMap() {
+function _getEtaMap() {
   return {
     gaskessel: (parseFloat(document.getElementById('gk-eta')?.value) || 92) / 100,
     heizoel: (parseFloat(document.getElementById('hko-eta')?.value) || 90) / 100,
@@ -523,12 +523,12 @@ export function _getEtaMap() {
 }
 
 // ── Varianten ────────────────────────────────────────────────────────────────
-export let varianten = [];
-export let activeVariantId = null;
-export let baseNetzSnapshot = null;
-export let baseErzeugerSnapshot = null;
+let varianten = [];
+let activeVariantId = null;
+let baseNetzSnapshot = null;
+let baseErzeugerSnapshot = null;
 
-export function captureNetzState() {
+function captureNetzState() {
   return {
     vl: document.getElementById('netz-vl').value,
     rl: document.getElementById('netz-rl').value,
@@ -541,7 +541,7 @@ export function captureNetzState() {
   };
 }
 
-export function applyNetzState(state) {
+function applyNetzState(state) {
   if (!state) return;
   document.getElementById('netz-vl').value = state.vl ?? 90;
   document.getElementById('netz-rl').value = state.rl ?? 60;
@@ -560,7 +560,7 @@ export function applyNetzState(state) {
   setTimeout(() => { if (typeof netzEdges !== 'undefined' && netzEdges.length > 0) recalcNetz(); }, 50);
 }
 
-export function captureErzeugerState() {
+function captureErzeugerState() {
   const lwEl = document.getElementById('lwwp-jaz');
   const lwWEl = document.getElementById('lwwp-waerme');
   return {
@@ -640,7 +640,7 @@ export function captureErzeugerState() {
   };
 }
 
-export function applyErzeugerState(state) {
+function applyErzeugerState(state) {
   clearLwWp();
   clearGeo();
   clearFliessgewaesser();
@@ -796,7 +796,7 @@ export function applyErzeugerState(state) {
   window._wirtBausteineOverrides = JSON.parse(JSON.stringify(state?.wirtBausteineOverrides || {}));
 }
 
-export function activateVariant(id) {
+function activateVariant(id) {
   // Aktuellen Zustand sichern
   if (activeVariantId === null) {
     baseNetzSnapshot = captureNetzState();
@@ -821,7 +821,7 @@ export function activateVariant(id) {
   updateAllDeckungen();
 }
 
-export function addVariante() {
+function addVariante() {
   const name = prompt('Name der neuen Variante:', `Variante ${varianten.length + 1}`);
   if (!name) return;
   if (activeVariantId === null) {
@@ -835,21 +835,21 @@ export function addVariante() {
   updateVariantBanner();
 }
 
-export function deleteVariante(id) {
+function deleteVariante(id) {
   if (!confirm('Variante löschen?')) return;
   if (activeVariantId === id) activateVariant(null);
   varianten = varianten.filter(v => v.id !== id);
   renderVariantenBar();
 }
 
-export function renameVariante(id) {
+function renameVariante(id) {
   const v = varianten.find(x => x.id === id);
   if (!v) return;
   const name = prompt('Neuer Name:', v.name);
   if (name) { v.name = name; renderVariantenBar(); }
 }
 
-export function renderVariantenBar() {
+function renderVariantenBar() {
   const pills = document.getElementById('var-pills');
   pills.innerHTML =
     `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)">Basisdaten</span>` +
@@ -859,7 +859,7 @@ export function renderVariantenBar() {
     ).join('');
 }
 
-export function updateVariantBanner() {
+function updateVariantBanner() {
   const banner = document.getElementById('variant-banner');
   if (!banner) return;
   if (activeVariantId === null) {
@@ -870,13 +870,13 @@ export function updateVariantBanner() {
     banner.style.display = 'block';
   }
 }
-export function isExcluded(id) {
+function isExcluded(id) {
   if (activeVariantId === null) return false;
   const v = varianten.find(x => x.id === activeVariantId);
   return v ? (v.gebaeudeAusschlüsse || []).includes(id) : false;
 }
 
-export function toggleAusschluss(id) {
+function toggleAusschluss(id) {
   if (activeVariantId === null) return;
   const v = varianten.find(x => x.id === activeVariantId);
   if (!v) return;

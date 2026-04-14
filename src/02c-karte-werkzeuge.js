@@ -1,12 +1,12 @@
 // ── 02c-karte-werkzeuge.js — Zeichenwerkzeuge, Trasse, Fließgewässer, LWWP, Wirtschaftlichkeit ──
-export function polygonCenter(coords){
+function polygonCenter(coords){
   let lat=0,lng=0,n=coords.length;
   coords.forEach(c=>{ lat+=c.lat; lng+=c.lng; });
   return L.latLng(lat/n,lng/n);
 }
 
 /** Polyline um offsetMeter senkrecht verschieben (negativ = links, positiv = rechts). Für Tripellinie. */
-export function offsetPolyline(pts, offsetMeters) {
+function offsetPolyline(pts, offsetMeters) {
   if (!pts || pts.length < 2) return pts;
   const R = 6371000;
   const toRad = Math.PI / 180;
@@ -36,7 +36,7 @@ export function offsetPolyline(pts, offsetMeters) {
 }
 
 /** Leichten Sinusverlauf in die Polyline legen (amplitudeM in Meter, numWaves = Anzahl Wellen über die Länge). */
-export function sinusWobblePolyline(pts, amplitudeM, numWaves) {
+function sinusWobblePolyline(pts, amplitudeM, numWaves) {
   if (!pts || pts.length < 2 || amplitudeM <= 0) return pts;
   const R = 6371000;
   const toRad = Math.PI / 180;
@@ -72,7 +72,7 @@ export function sinusWobblePolyline(pts, amplitudeM, numWaves) {
 }
 
 /** Nächster Punkt auf der Polyline (Fluss) zum Zielpunkt (z. B. Heizzentrale). Kürzeste Verbindung. */
-export function closestPointOnPolyline(pts, targetLngLat) {
+function closestPointOnPolyline(pts, targetLngLat) {
   if (!pts || pts.length === 0) return null;
   if (pts.length === 1) return pts[0];
   const target = L.latLng(targetLngLat);
@@ -98,7 +98,7 @@ export function closestPointOnPolyline(pts, targetLngLat) {
 }
 
 
-export function polygonAreaM2(coords){
+function polygonAreaM2(coords){
   if(!coords||coords.length<3) return null;
   const R=6371000;
   const latRef=coords[0].lat*Math.PI/180;
@@ -113,7 +113,7 @@ export function polygonAreaM2(coords){
   return Math.abs(area/2);
 }
 
-export function updateViz(){
+function updateViz(){
   const [sMin,sMax]=getSizeRange();
   const [cMin,cMax]=getColorRange();
   const effRMax   = getEffectiveRMax();
@@ -231,7 +231,7 @@ export function updateViz(){
   });
 }
 
-export function buildMapLabel(g,center, status){
+function buildMapLabel(g,center, status){
   const opacity = (status === 'geplant' || status === 'abgerissen') ? '0.3' : '1';
   const icon=L.divIcon({
     className:'geb-label',
@@ -246,7 +246,7 @@ export function buildMapLabel(g,center, status){
   g.labelMarker=L.marker(center,{icon,interactive:true,zIndexOffset:500}).addTo(map);
 }
 
-export function selectFromMap(id){
+function selectFromMap(id){
   // Gebäudeliste-Import: bidirektionale manuelle Zuordnung
   if(gbiManualMode && typeof gbiManualSelectGeb === 'function') {
     if(gbiManualSelectGeb(id)) return;
@@ -268,7 +268,7 @@ export function selectFromMap(id){
   if(el) el.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
-export function startMapRename(id){
+function startMapRename(id){
   const el=document.getElementById('lbl-'+id);
   if(!el) return;
   el.contentEditable='true'; el.focus();
@@ -278,7 +278,7 @@ export function startMapRename(id){
   el.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();el.blur();} if(e.key==='Escape'){el.contentEditable='false';} };
 }
 
-export function buildTooltip(g){
+function buildTooltip(g){
   const stats = getComputedStats(g, globalYear);
   const lines=[`<span style="font-weight:normal;color:var(--accent)">${escHtml(g.name)}</span>`];
 
@@ -336,18 +336,18 @@ export function buildTooltip(g){
   return lines.join('<br>');
 }
 
-export function setViz(v){
+function setViz(v){
   currentViz=v;
   ['circle','bar','none'].forEach(x=>document.getElementById('vbtn-'+x).classList.toggle('active',x===v));
   updateViz();
 }
 
-export function setGebVisible(visible) {
+function setGebVisible(visible) {
   gebVisible = visible;
   updateViz();
 }
 
-export function setLabelsVisible(visible) {
+function setLabelsVisible(visible) {
   labelsVisible = visible;
   // Labels sofort entfernen wenn ausgeschaltet (nicht auf updateViz() warten)
   if (!visible) {
@@ -358,7 +358,7 @@ export function setLabelsVisible(visible) {
   updateViz();
 }
 
-export function setMode(m){
+function setMode(m){
   currentMode=m;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('btn-'+m).classList.add('active');
@@ -372,7 +372,7 @@ export function setMode(m){
   }
 }
 
-export function cleanupDrawAreaEvents() {
+function cleanupDrawAreaEvents() {
   map.off('click', onDrawAreaClick);
   map.off('contextmenu', onDrawAreaCancel);
   map.dragging.enable();
@@ -382,7 +382,7 @@ export function cleanupDrawAreaEvents() {
   _restoreAfterDraw();
 }
 
-export function clearArea() {
+function clearArea() {
   if (areaPolygon) map.removeLayer(areaPolygon);
   if (areaPolyline) map.removeLayer(areaPolyline);
   if (areaStartMarker) map.removeLayer(areaStartMarker);
@@ -402,14 +402,14 @@ export function clearArea() {
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
 }
 
-export function lockArea() {
+function lockArea() {
   areaEditMarkers.forEach(m => map.removeLayer(m));
   areaEditMarkers = [];
   hidePanels();
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
 }
 
-export function toggleDrawArea() {
+function toggleDrawArea() {
   if (areaDrawing || areaPolygon) { clearArea(); return; }
 
   // Andere Zeichenmodi abbrechen
@@ -434,7 +434,7 @@ export function toggleDrawArea() {
   map.on('contextmenu', onDrawAreaCancel);
 }
 
-export function onDrawAreaClick(e) {
+function onDrawAreaClick(e) {
   if (!areaDrawing) return;
 
   // Klick auf Startmarker → Polygon abschließen (nicht als neuen Punkt werten)
@@ -458,7 +458,7 @@ export function onDrawAreaClick(e) {
   areaPolyline = L.polyline([...areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
 }
 
-export function onDrawAreaCancel(e) {
+function onDrawAreaCancel(e) {
   if (!areaDrawing) return;
 
   if (areaPoints.length > 0) {
@@ -473,7 +473,7 @@ export function onDrawAreaCancel(e) {
   }
 }
 
-export function finishAreaDraw() {
+function finishAreaDraw() {
   if (areaPoints.length < 3) return;
   areaLatLngs = [...areaPoints];
   areaDrawing = false;
@@ -678,7 +678,7 @@ document.addEventListener('keydown',e=>{
   // Pfeiltasten: handled by new keyboard handler in live view section
 });
 
-export function toggleDrawTrasse() {
+function toggleDrawTrasse() {
   isDrawingTrasse = !isDrawingTrasse;
   const btn = document.getElementById('btn-draw-trasse');
   if (isDrawingTrasse) {
@@ -729,7 +729,7 @@ export function toggleDrawTrasse() {
   }
 }
 
-export function showTrasseFinishBtn() {
+function showTrasseFinishBtn() {
   let btn = document.getElementById('trasse-finish-btn');
   if (!btn) {
     btn = document.createElement('button');
@@ -744,12 +744,12 @@ export function showTrasseFinishBtn() {
   btn.style.display = 'block';
 }
 
-export function hideTrasseFinishBtn() {
+function hideTrasseFinishBtn() {
   const btn = document.getElementById('trasse-finish-btn');
   if (btn) btn.style.display = 'none';
 }
 
-export function redrawTrasse() {
+function redrawTrasse() {
   // Multi-Segment Trasse: jedes Segment als eigene Polyline
   if (trassePolyline) {
     if (Array.isArray(trassePolyline)) trassePolyline.forEach(p => map.removeLayer(p));
@@ -795,7 +795,7 @@ export function redrawTrasse() {
   });
 }
 
-export function clearTrasse() {
+function clearTrasse() {
   trassePoints = [];
   trasseSegments = [];
   trasseCurrentSegStart = 0;
@@ -804,7 +804,7 @@ export function clearTrasse() {
   autoGenerateNetz();
 }
 
-export function toggleFliessgewaesserPanel() {
+function toggleFliessgewaesserPanel() {
   const p = document.getElementById('fliessgewaesser-panel');
   const btn = document.getElementById('btn-fliessgewaesser-toggle');
   if (p.classList.contains('visible')) {
@@ -828,7 +828,7 @@ export function toggleFliessgewaesserPanel() {
   }
 }
 
-export function toggleDrawRiver() {
+function toggleDrawRiver() {
   isDrawingRiver = !isDrawingRiver;
   const btn = document.getElementById('btn-draw-river');
   if (isDrawingRiver) {
@@ -856,7 +856,7 @@ export function toggleDrawRiver() {
   }
 }
 
-export function tryFinishOrToggleRiver() {
+function tryFinishOrToggleRiver() {
   if (isDrawingRiver && riverPoints.length >= 2) {
     finishDrawRiver();
     document.getElementById('btn-draw-river').onclick = function(){ toggleDrawRiver(); };
@@ -866,7 +866,7 @@ export function tryFinishOrToggleRiver() {
   }
 }
 
-export function redrawRiverDuringDraw() {
+function redrawRiverDuringDraw() {
   if (riverDrawPolyline) map.removeLayer(riverDrawPolyline);
   riverEditMarkers.forEach(m => map.removeLayer(m));
   riverEditMarkers = [];
@@ -888,7 +888,7 @@ export function redrawRiverDuringDraw() {
   }
 }
 
-export function finishDrawRiver() {
+function finishDrawRiver() {
   if (riverPoints.length < 2) return;
   const latlngs = riverPoints.map(p => ({ lat: p.lat, lng: p.lng }));
   const durchfluss = parseFloat(document.getElementById('fg-durchfluss').value) || 50;
@@ -916,7 +916,7 @@ export function finishDrawRiver() {
   redrawErzeugerIcons();
 }
 
-export function redrawFliessgewaesser() {
+function redrawFliessgewaesser() {
   if (!fliessgewaesserLayerGroup) return;
   fliessgewaesserLayerGroup.clearLayers();
   if (!fliessgewaesser || !fliessgewaesser.latlngs || fliessgewaesser.latlngs.length < 2) return;
@@ -986,7 +986,7 @@ export function redrawFliessgewaesser() {
   redrawVerbindungslinien();
 }
 
-export function updateFliessgewaesserVisibility() {
+function updateFliessgewaesserVisibility() {
   if (!fliessgewaesser) return;
   if (fliessgewaesserVisible) {
     if (!map.hasLayer(fliessgewaesserLayerGroup)) fliessgewaesserLayerGroup.addTo(map);
@@ -995,12 +995,12 @@ export function updateFliessgewaesserVisibility() {
   }
 }
 
-export function setFliessgewaesserVisible(visible) {
+function setFliessgewaesserVisible(visible) {
   fliessgewaesserVisible = visible;
   updateFliessgewaesserVisibility();
 }
 
-export function getFliessgewaesserAbkuehlung() {
+function getFliessgewaesserAbkuehlung() {
   const durchfluss = parseFloat(document.getElementById('fg-durchfluss')?.value) || fliessgewaesser?.durchflussLs || 50;
   const leistung = parseFloat(document.getElementById('fg-leistung')?.value) || fliessgewaesser?.leistungKw || 200;
   if (!durchfluss || durchfluss <= 0) return { deltaT: 0, colorHex: '#26a69a' };
@@ -1014,14 +1014,14 @@ export function getFliessgewaesserAbkuehlung() {
   return { deltaT, colorHex };
 }
 
-export function updateFliessgewaesserAbkuehlungDisplay() {
+function updateFliessgewaesserAbkuehlungDisplay() {
   const el = document.getElementById('fg-abkuehlung-k');
   if (!el) return;
   const { deltaT } = getFliessgewaesserAbkuehlung();
   el.textContent = (Math.round(deltaT * 100) / 100).toFixed(2) + ' K';
 }
 
-export function updateFliessgewaesserData() {
+function updateFliessgewaesserData() {
   if (!fliessgewaesser) return;
   fliessgewaesser.durchflussLs = parseFloat(document.getElementById('fg-durchfluss').value) || 50;
   fliessgewaesser.leistungKw = parseFloat(document.getElementById('fg-leistung').value) || 200;
@@ -1035,7 +1035,7 @@ export function updateFliessgewaesserData() {
   document.getElementById('fg-co2').textContent = fgCo2 ? `${fgCo2.toFixed(1)} t/a (2026) · ${fgCo2LZ.toFixed(1)} t/a (Ø 2030–50)` : '—';
 }
 
-export function clearFliessgewaesser() {
+function clearFliessgewaesser() {
   fliessgewaesser = null;
   moBeiDeaktivierung('fg');
   if (fliessgewaesserLayerGroup) {
@@ -1050,7 +1050,7 @@ export function clearFliessgewaesser() {
 }
 
 /* ── Wirtschaftlichkeit ──────────────────────────────────────────────────── */
-export function calcWirtschaftlichkeit(invest, nutzungJahre, zinsPct, betriebJahr, waermeMwh) {
+function calcWirtschaftlichkeit(invest, nutzungJahre, zinsPct, betriebJahr, waermeMwh) {
   if (!invest || invest <= 0) return null;
   const i = zinsPct / 100;
   const n = nutzungJahre || 20;
@@ -1065,14 +1065,14 @@ export function calcWirtschaftlichkeit(invest, nutzungJahre, zinsPct, betriebJah
 // brennstoffMwh: Primärenergie- oder Stromeinsatz [MWh/a]
 // emf: Emissionsfaktor [g CO₂/kWh]
 // isFossil: true = Gas/Öl (immer berücksichtigt); false = Strom/Biomasse/FW (nur wenn Switch "alle ET")
-export function _co2KostenET(brennstoffMwh, emf, isFossil) {
+function _co2KostenET(brennstoffMwh, emf, isFossil) {
   const pCo2   = parseFloat(document.getElementById('wirt-p-co2')?.value) || 0;
   const alleET = document.getElementById('wirt-co2-alle')?.checked !== false;
   if (pCo2 <= 0 || (!isFossil && !alleET)) return 0;
   return brennstoffMwh * emf * pCo2 / 1000; // MWh × g/kWh × €/t / 1000 = €/a
 }
 
-export function updateWirtDisplay(prefix, result) {
+function updateWirtDisplay(prefix, result) {
   const kapEl = document.getElementById(prefix + '-wirt-kapital');
   const jahEl = document.getElementById(prefix + '-wirt-jahres');
   const wgkEl = document.getElementById(prefix + '-wirt-wgk');
@@ -1084,15 +1084,15 @@ export function updateWirtDisplay(prefix, result) {
 }
 
 /* ── Luft-Wasser-Wärmepumpe: Platzbedarf + Schall Freifeld ───────────────── */
-export function lwWpPlatzbedarfM2(leistungKw) {
+function lwWpPlatzbedarfM2(leistungKw) {
   return Math.max(2, 2 + leistungKw * 0.35);
 }
 // Freifeld-Radius (ohne Gebäudedämpfung); Zusatzdämpfung wird punktbezogen bei der Tooltip-Berechnung berücksichtigt.
-export function lwWpSchallRadiusM(lwaDb, zielDb) {
+function lwWpSchallRadiusM(lwaDb, zielDb) {
   if (lwaDb <= zielDb) return 0;
   return Math.pow(10, (lwaDb - 11 - zielDb) / 20);
 }
-export function toggleLwWpPanel() {
+function toggleLwWpPanel() {
   const p = document.getElementById('lwwp-panel');
   const btn = document.getElementById('btn-lwwp-toggle');
   if (p.classList.contains('visible')) {
@@ -1117,7 +1117,7 @@ export function toggleLwWpPanel() {
   }
 }
 
-export function togglePlaceLwWp() {
+function togglePlaceLwWp() {
   isPlacingLwWp = !isPlacingLwWp;
   const btn = document.getElementById('btn-place-lwwp');
   if (isPlacingLwWp) {
@@ -1137,7 +1137,7 @@ export function togglePlaceLwWp() {
   }
 }
 
-export function placeLwWpAt(latlng) {
+function placeLwWpAt(latlng) {
   const leistung = parseFloat(document.getElementById('lwwp-leistung').value) || 12;
   const lwa = parseFloat(document.getElementById('lwwp-lwa').value) || 80;
   lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: lwWpVisible };
@@ -1160,7 +1160,7 @@ export function placeLwWpAt(latlng) {
   redrawErzeugerIcons();
 }
 
-export function redrawLwWp() {
+function redrawLwWp() {
   if (!lwWpLayerGroup) return;
   lwWpLayerGroup.clearLayers();
   if (!lwWp || lwWp.lat == null || lwWp.lng == null) return;
@@ -1264,7 +1264,7 @@ export function redrawLwWp() {
   redrawVerbindungslinien();
 }
 
-export function updateLwWpDisplay() {
+function updateLwWpDisplay() {
   if (!lwWp) return;
   const leistung = lwWp.leistungKw;
   const lwa = lwWp.lwaDb;
@@ -1313,7 +1313,7 @@ export function updateLwWpDisplay() {
   document.getElementById('lwwp-schall-tabelle').innerHTML = schallRows.join('<br>');
 }
 
-export function calcLwaAuto(kw) {
+function calcLwaAuto(kw) {
   // LWA-Schätzung aus Leistung: basierend auf Herstellerdaten (Vaillant, Stiebel Eltron,
   // Viessmann, Daikin u.a.) und EU-Verordnung 813/2013 Ecodesign-Grenzwerten.
   // Zwei-Segment-Logarithmus: kleine Anlagen (≤50 kW) skalieren moderater,
@@ -1325,7 +1325,7 @@ export function calcLwaAuto(kw) {
   return Math.round(Math.min(100, Math.max(45, raw)));
 }
 
-export function updateLwWpData() {
+function updateLwWpData() {
   if (!lwWp) return;
   lwWp.leistungKw = parseFloat(document.getElementById('lwwp-leistung').value) || 100;
   // LWA: nur auto-berechnen wenn noch auf Default (80) oder wenn Leistung geändert
@@ -1340,7 +1340,7 @@ export function updateLwWpData() {
   redrawLwWp();
 }
 
-export function lwwpUseNetworkValues() {
+function lwwpUseNetworkValues() {
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   const lastKw = calculatedLoad && calculatedLoad[zId] ? calculatedLoad[zId] : 0;
   const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
@@ -1352,12 +1352,12 @@ export function lwwpUseNetworkValues() {
   updateLwWpData();
 }
 
-export function setLwWpVisible(visible) {
+function setLwWpVisible(visible) {
   lwWpVisible = visible;
   updateLwWpVisibility();
 }
 
-export function updateLwWpVisibility() {
+function updateLwWpVisibility() {
   if (!lwWp) return;
   if (lwWpVisible) {
     if (!map.hasLayer(lwWpLayerGroup)) lwWpLayerGroup.addTo(map);
@@ -1372,12 +1372,12 @@ export function updateLwWpVisibility() {
   }
 }
 
-export function setSchallVisible(visible) {
+function setSchallVisible(visible) {
   lwWpSchallVisible = visible;
   updateLwWpVisibility();
 }
 
-export function clearLwWp() {
+function clearLwWp() {
   lwWp = null;
   moBeiDeaktivierung('lwwp');
   if (lwWpLayerGroup) {
@@ -1396,7 +1396,7 @@ export function clearLwWp() {
   redrawErzeugerIcons();
 }
 
-export function toggleKennwertePanel() {
+function toggleKennwertePanel() {
   const p = document.getElementById('kennwerte-panel');
   const btn = document.getElementById('btn-kennwerte-toggle');
   const isOpen = p.classList.contains('visible');

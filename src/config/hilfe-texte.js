@@ -1,6 +1,6 @@
 // ── Hilfe-Texte für alle UI-Elemente ─────────────────────────────────────
 // Reine Daten — wird vom Hilfe-Modus in 11-hilfe-leitfaden.js verwendet.
-export const HILFE_TEXTE = {
+const HILFE_TEXTE = {
   // Header
   'btn-theme': 'Wechselt das Farbschema der Anwendung (Dunkel / Hell / Kontrast).',
   'btn-tile': 'Schaltet zwischen Karten-Ansicht und Satellitenbildern um.',
