@@ -1,8 +1,19 @@
 // ── 09b-pv-calc.js — calcStromPanel, Batterie, PV-Wirtschaftlichkeit ──
 // ── Hauptberechnung Strom-Panel ───────────────────────────────────────────
-let _calcStromTimer = null;
-function calcStromPanelDebounced() { clearTimeout(_calcStromTimer); _calcStromTimer = setTimeout(calcStromPanel, 120); }
-function calcStromPanel() {
+import { currentMode, freiflaechen, gebaeude, pvCo2Gutschrift, stromEmF } from './01-globals-varianten.js';
+import { aggregateGebStrom } from './02b-gebaeude.js';
+import { updateViz } from './02c-karte-werkzeuge.js';
+import { calcFFKwp, calcVerdraengungEmF } from './03a-erzeuger.js';
+import { updateNetzStrandVisibility } from './03b-netz.js';
+import { calcGebKwp } from './03c-gebaeude-io.js';
+import { GL_MONTH_HOURS, GL_MONTH_START } from './06a-gbi-lastgang.js';
+import { CalcEngine } from './08-calc-engine.js';
+import { getBatParams, makePvProfile8760, onPvVergModellChange } from './09a-pv-profile.js';
+import { _stromCurrentTab, _stromRenderFlussChart, _stromRenderLastgang, _stromRenderMonatsChart, drawSankeyStrom } from './09c-pv-charts-opt.js';
+
+export let _calcStromTimer = null;
+export function calcStromPanelDebounced() { clearTimeout(_calcStromTimer); _calcStromTimer = setTimeout(calcStromPanel, 120); }
+export function calcStromPanel() {
   if (calcStromPanel._updating) return;
 
   // PV-Invest auto-update bei Bedarf (Guard gegen Rekursion durch oninput)

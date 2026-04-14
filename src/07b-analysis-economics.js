@@ -3,11 +3,22 @@
 // NOTE: _calcKostenShared is also stringified into the Web Worker via .toString(), so it must remain a named global function.
 
 // ── Wirtschaftlichkeit Hilfsfunktionen ────────────────────────────────────
+import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, gebaeude, networkLocked, netzEdges } from './01-globals-varianten.js';
+import { updateFliessgewaesserData, updateLwWpDisplay } from './02c-karte-werkzeuge.js';
+import { calcVerdraengungEmF, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
+import { calcGeoThermie } from './03b-netz.js';
+import { getKostenProMKlasse } from './04a-ui-panels.js';
+import { getThermSpeicherParams } from './06b-gl-berechnen.js';
+import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
+import { CalcEngine } from './08-calc-engine.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { OPT_IH, OPT_INVEST_DEFAULT, OPT_NUTZUNG } from './config/optimizer-defaults.js';
+
 window._wirtBausteineOverrides = window._wirtBausteineOverrides || {};
 window._wirtVdiOverrides       = window._wirtVdiOverrides       || {};
 window._wirtOpenGroups         = window._wirtOpenGroups         || {};
 
-function _parseGeoBohrMeter() {
+export function _parseGeoBohrMeter() {
   const el = document.getElementById('geo-r-length');
   if (!el) return 0;
   return parseFloat(el.textContent.replace(/[^\d.]/g, '')) || 0;
@@ -17,7 +28,7 @@ function _parseGeoBohrMeter() {
 // Gemeinsame Kostenberechnung — wird von Panel, Optimizer UND Worker genutzt
 // Pure function: kein DOM, keine Globals. Alle Eingaben über Parameter-Objekt.
 // ══════════════════════════════════════════════════════════════════════════════
-function _calcKostenShared(p) {
+export function _calcKostenShared(p) {
   var zinsFrac = (p.zinsPct || 3.5) / 100;
   var pKw = p.pKw || {};
   var aktiv = function(k) { return (pKw[k] || 0) > 0.1; };
@@ -259,7 +270,7 @@ function _calcKostenShared(p) {
   };
 }
 
-function _calcBausteinJK(investEur, vdi, zins, lohn) {
+export function _calcBausteinJK(investEur, vdi, zins, lohn) {
   if (vdi.n > 0) {
     const q   = 1 + zins / 100;
     const ann = (zins > 0) ? (q ** vdi.n * (q - 1)) / (q ** vdi.n - 1) : 1 / vdi.n;
@@ -267,7 +278,7 @@ function _calcBausteinJK(investEur, vdi, zins, lohn) {
   }
   return vdi.bedien * lohn;
 }
-function _calcBausteinJKDetail(investEur, vdi, zins, lohn) {
+export function _calcBausteinJKDetail(investEur, vdi, zins, lohn) {
   const annRate = vdi.n > 0 ? ((zins > 0) ? ((1+zins/100)**vdi.n * (zins/100)) / ((1+zins/100)**vdi.n - 1) : 1/vdi.n) : 0;
   return {
     annuitaet: investEur * annRate,
@@ -277,7 +288,7 @@ function _calcBausteinJKDetail(investEur, vdi, zins, lohn) {
   };
 }
 
-function wirtBausteinBlur(el, id) {
+export function wirtBausteinBlur(el, id) {
   const v = el.value.trim().replace(/\./g, '').replace(',', '.');
   if (v === '') {
     delete window._wirtBausteineOverrides[id];
@@ -288,7 +299,7 @@ function wirtBausteinBlur(el, id) {
   setTimeout(calcWirtschaftPanel, 0);
 }
 
-function wirtVdiBlur(el, id, field) {
+export function wirtVdiBlur(el, id, field) {
   const v = el.value.trim().replace(',', '.');
   if (v === '') {
     if (window._wirtVdiOverrides[id]) {
@@ -305,7 +316,7 @@ function wirtVdiBlur(el, id, field) {
   setTimeout(calcWirtschaftPanel, 0);
 }
 
-function _syncZins() {
+export function _syncZins() {
   const v = parseFloat(document.getElementById('wirt-zins')?.value) || 3.5;
   const hidden = document.getElementById('opt-zinssatz');
   const display = document.getElementById('opt-zinssatz-sync');
@@ -315,7 +326,7 @@ function _syncZins() {
   if (jsSync) jsSync.textContent = v.toFixed(1);
 }
 
-function calcWirtschaftPanel() {
+export function calcWirtschaftPanel() {
   _syncZins();
   const wrap = document.getElementById('wirt-table-wrap');
   if (!wrap) { console.warn('[WIRT-WGK] ABBRUCH: wirt-table-wrap nicht gefunden'); return; }
@@ -973,7 +984,7 @@ function calcWirtschaftPanel() {
 }
 
 // ── Waterfall toggle ────────────────────────────────────────────────
-function _wirtSetView(mode) {
+export function _wirtSetView(mode) {
   ['table','waterfall'].forEach(v => {
     document.getElementById('wirt-view-' + v)?.classList.toggle('active', v === mode);
     const w = document.getElementById('wirt-wrap-' + v);
@@ -982,7 +993,7 @@ function _wirtSetView(mode) {
   if (mode === 'waterfall') _wirtRenderWaterfall();
 }
 
-function _wirtRenderWaterfall() {
+export function _wirtRenderWaterfall() {
   const canvas = document.getElementById('wirt-waterfall-canvas');
   if (!canvas) return;
   const W = canvas.parentElement?.clientWidth || canvas.offsetWidth || 500;
@@ -1075,7 +1086,7 @@ function _wirtRenderWaterfall() {
   ctx.fillText('Gesamt', 0, 0); ctx.restore();
 }
 
-function _renderWirtCo2Chart(keys, en) {
+export function _renderWirtCo2Chart(keys, en) {
   const wrap   = document.getElementById('wirt-co2-chart-wrap');
   const canvas = document.getElementById('wirt-co2-canvas');
   if (!wrap || !canvas) return;
@@ -1265,7 +1276,7 @@ function _renderWirtCo2Chart(keys, en) {
 }
 
 // ── Jahresscheiben-Berechnung (NPV) ──────────────────────────────────────
-function calcJahresscheiben() {
+export function calcJahresscheiben() {
   const keys  = window._dispatchActiveKeys || [];
   const en    = window._dispatchEnergy    || {};
   const ov    = window._wirtBausteineOverrides || {};
@@ -1479,7 +1490,7 @@ function calcJahresscheiben() {
   renderJahresscheibenChart(years, laufzeit);
 }
 
-function renderJahresscheibenChart(years, laufzeit) {
+export function renderJahresscheibenChart(years, laufzeit) {
   const wrap = document.getElementById('js-chart-wrap');
   const canvas = document.getElementById('js-canvas');
   if (!wrap || !canvas) return;

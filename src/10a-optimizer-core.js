@@ -7,12 +7,28 @@
 // OPT_INVEST_DEFAULT, OPT_NUTZUNG, OPT_IH, OPT_EE_KEYS, OPT_MERIT_ORDER → src/config/optimizer-defaults.js
 
 // Mapping Optimizer-Key → CalcEngine INVEST_KURVEN Key
-const _OPT_CE_KEY = {
+import { captureErzeugerState, captureNetzState, fernwaermeEmF, gasEmF, gebaeude, globalYear, heizoelEmF, hhsEmF, networkLocked, netzEdges, pelletsEmF, renderVariantenBar, stromEmF, updateVariantBanner, varianten } from './01-globals-varianten.js';
+import { getComputedStats, getGebStromMwh, map } from './02b-gebaeude.js';
+import { clearFliessgewaesser, clearLwWp, polygonCenter, redrawFliessgewaesser, redrawLwWp } from './02c-karte-werkzeuge.js';
+import { clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons } from './03a-erzeuger.js';
+import { calcGeoThermie, clearGeo, redrawGeo } from './03b-netz.js';
+import { showHint } from './03c-gebaeude-io.js';
+import { getKostenProMKlasse, updateLpErgebnisKpis, updateLpStepProgress } from './04a-ui-panels.js';
+import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
+import { clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
+import { _dispatchCore, isErzeugerAktiv, onSystemStateUpdated, updateAllDeckungen } from './06c-dispatch-core.js';
+import { _calcKostenShared, _parseGeoBohrMeter } from './07b-analysis-economics.js';
+import { CalcEngine } from './08-calc-engine.js';
+import { makePvProfile8760 } from './09a-pv-profile.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
+
+export const _OPT_CE_KEY = {
   lwwp:'LuftWP', fg:'FlussWP', geo:'GeoWP', gaskessel:'Gaskessel',
   bhkw:'BHKW', stromkessel:'Stromkessel', pellets:'Pellets',
   hhs:'Hackschnitzel', heizoel:'Heizoel'
 };
-function _optInvestProKw(key, kw) {
+export function _optInvestProKw(key, kw) {
   const ceKey = _OPT_CE_KEY[key];
   if (ceKey && typeof CalcEngine !== 'undefined') {
     const v = CalcEngine.investEurProKw(ceKey, kw);
@@ -21,21 +37,21 @@ function _optInvestProKw(key, kw) {
   return OPT_INVEST_DEFAULT[key] || 200;
 }
 
-function _optAnnF(z, n) {
+export function _optAnnF(z, n) {
   if (z <= 0 || n <= 0) return n > 0 ? 1 / n : 1;
   return z * Math.pow(1 + z, n) / (Math.pow(1 + z, n) - 1);
 }
 
 // ── Quelltemperatur für Optimierung (kopiert aus _quelleTemp) ──────────────
 // _defaultGuetegrad und _readGuetegrad — weiterhin lokal gebraucht für Optimizer-Konfiguration
-function _defaultGuetegrad(key) {
+export function _defaultGuetegrad(key) {
   if (key === 'lwwp') return 0.42;
   if (key === 'fg')   return 0.56;
   if (key === 'geo')  return 0.50;
   return 0.42;
 }
 
-function _readGuetegrad(key) {
+export function _readGuetegrad(key) {
   const id = ERZEUGER_CFG[key]?.guetegradId;
   const v = id ? parseFloat(document.getElementById(id)?.value) : NaN;
   return isNaN(v) || v <= 0 ? _defaultGuetegrad(key) : v;
@@ -44,7 +60,7 @@ function _readGuetegrad(key) {
 // ── Optimizer-Dispatch: dünner Wrapper um _dispatchCore ──────────────────
 // Signatur bleibt identisch für alle 10 Aufrufstellen im Optimizer.
 // Intern wird der gemeinsame Kern (_dispatchCore aus 06-system-dispatch.js) genutzt.
-function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stExcessH) {
+export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stExcessH) {
   const bhkwSigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
   const skEta      = (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100;
   const lwwpMinCop = parseFloat(document.getElementById('lwwp-min-cop')?.value) || 0;
@@ -56,7 +72,7 @@ function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, 
     const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
     const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
     thSp = { vol: optSpeicherVol, dt, kapKwh: optSpeicherVol * 1.16 * dt, verlustRate: verlustPctH / 100, entladeKw };
-  } else if (thermSpeicherAktiv) {
+  } else if (window.thermSpeicherAktiv) {
     thSp = getThermSpeicherParams();
   }
 
@@ -104,7 +120,7 @@ function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, 
 }
 
 // ── PV/Bat stündliche Simulation ──────────────────────────────────────────
-function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
+export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
   const hasBhkw = bhkwElH && bhkwElH.some(v => v > 0);
   if (pvKwp <= 0 && !hasBhkw) {
     let sumDem = 0;
@@ -188,7 +204,7 @@ function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
 // _calcBausteinKostenOpt ENTFERNT — nutzt jetzt _calcKostenShared
 
 // ── Kennwerte (WGK, CO2, EE-Anteil, Autarkie) — Wrapper um _calcKostenShared ──
-function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWaermeMwhOpt, stM2Opt, optSpeicherVol) {
+export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWaermeMwhOpt, stM2Opt, optSpeicherVol) {
   const { erzeugerList, gesamtMwh } = dispatchResult;
   const { pStrom, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
 
@@ -311,7 +327,7 @@ function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWa
 }
 
 // ── Score-Berechnung je Optimierungsziel ──────────────────────────────────
-function _optScore(kw, ziel) {
+export function _optScore(kw, ziel) {
   if (ziel === 'min-wgk')       return kw.wgk;
   if (ziel === 'min-co2')       return kw.co2ta;
   if (ziel === 'max-autarkie')  return -(kw.stromAutarkie + kw.waermeAutarkie);
@@ -320,7 +336,7 @@ function _optScore(kw, ziel) {
 }
 
 // ── PV+Bat Dimensionierung per marginaler Amortisation (Main-Thread) ──
-function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
+export function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
                            params, stMwh, stM2, tsVol, ziel, maxAmortJ) {
   const pStrom = params.pStrom;
   function einspeiseCtKwh(pvKwp) {
@@ -377,7 +393,7 @@ function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
 // _optAborted, _optRunning, _optWorker, _optWorkers — defined in 10b-optimizer-ui.js
 
 // ── Betrachtungsjahr-Auswahl für Optimierung ──────────────────────────────
-function _optPopulateYearSelect() {
+export function _optPopulateYearSelect() {
   const sel = document.getElementById('opt-year');
   if (!sel) return;
   const minY = parseInt(document.getElementById('year-slider')?.min) || 2026;
@@ -396,7 +412,7 @@ function _optPopulateYearSelect() {
   sel.onchange = _optUpdateYearInfo;
 }
 
-function _optUpdateYearInfo() {
+export function _optUpdateYearInfo() {
   const info = document.getElementById('opt-year-info');
   if (!info) return;
   const selY = parseInt(document.getElementById('opt-year')?.value) || 0;
@@ -421,7 +437,7 @@ function _optUpdateYearInfo() {
 }
 
 // ── Lastgang für Optimierung skalieren (temporär) ─────────────────────────
-function _optGetScaledLastgang(targetYear) {
+export function _optGetScaledLastgang(targetYear) {
   const ss = window.systemState;
   if (!ss?.lastgangKw) return null;
   if (!window._basisLastgangKw || !window._basisGebWaermeSumme || window._basisGebWaermeSumme < 0.1) {
@@ -443,7 +459,7 @@ function _optGetScaledLastgang(targetYear) {
 }
 
 // ── Zeitschätzung für Optimierung ────────────────────────────────────────
-function _optUpdateEstimate() {
+export function _optUpdateEstimate() {
   const el = document.getElementById('opt-estimate');
   if (!el) return;
   const allKeys = ['lwwp','fg','geo','gaskessel','bhkw','stromkessel','pellets','hhs','fernwaerme','heizoel'];
@@ -499,7 +515,7 @@ function _optUpdateEstimate() {
   _optUpdateEstimate();
 })();
 
-function _calcNetzInvestForOpt() {
+export function _calcNetzInvestForOpt() {
   if (typeof netzEdges === 'undefined' || !netzEdges.length) return 0;
   if (typeof networkLocked !== 'undefined' && networkLocked && !window._netzSanierung) return 0;
   let s = 0;
@@ -515,7 +531,7 @@ function _calcNetzInvestForOpt() {
   return Math.round(s);
 }
 
-function _collectOptDomParams() {
+export function _collectOptDomParams() {
   const f = (id, def) => parseFloat(document.getElementById(id)?.value) || def;
   const s = (id, def) => document.getElementById(id)?.value || def;
   const b = (id) => !!document.getElementById(id)?.checked;
@@ -591,18 +607,18 @@ function _collectOptDomParams() {
   };
 }
 
-function _optVarianteUebernehmen(result, btnEl) {
+export function _optVarianteUebernehmen(result, btnEl) {
   if (!result) { console.warn('OptVariante: kein result'); return; }
   try {
   const titel = result.keys.map(k => ERZEUGER_CFG[k]?.label || k).join('+');
   const varName = 'Opt: ' + titel;
 
   // Variante anlegen (wie addVariante(), aber ohne prompt)
-  if (activeVariantId === null) {
-    baseNetzSnapshot = captureNetzState();
-    baseErzeugerSnapshot = captureErzeugerState();
+  if (window.activeVariantId === null) {
+    window.baseNetzSnapshot = captureNetzState();
+    window.baseErzeugerSnapshot = captureErzeugerState();
   } else {
-    const cur = varianten.find(v => v.id === activeVariantId);
+    const cur = varianten.find(v => v.id === window.activeVariantId);
     if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); }
   }
 
@@ -645,47 +661,47 @@ function _optVarianteUebernehmen(result, btnEl) {
     switch (erz.key) {
       case 'gaskessel':
         document.getElementById('gk-leistung').value = leist;
-        gasKessel = { leistungKw: leist };
+        window.gasKessel = { leistungKw: leist };
         setBtn('btn-activate-gaskessel'); showSec('gaskessel-data-section');
         break;
       case 'bhkw':
         document.getElementById('bhkw-leistung-th').value = leist;
-        bhkw = { leistungThKw: leist };
+        window.bhkw = { leistungThKw: leist };
         setBtn('btn-activate-bhkw'); showSec('bhkw-data-section');
         break;
       case 'stromkessel':
         document.getElementById('sk-leistung').value = leist;
-        stromkessel = { leistungKw: leist };
+        window.stromkessel = { leistungKw: leist };
         setBtn('btn-activate-stromkessel'); showSec('stromkessel-data-section');
         break;
       case 'heizoel':
         document.getElementById('hko-leistung').value = leist;
-        heizoelKessel = { leistungKw: leist };
+        window.heizoelKessel = { leistungKw: leist };
         setBtn('btn-activate-heizoel'); showSec('heizoel-data-section');
         break;
       case 'pellets':
         document.getElementById('pk-leistung').value = leist;
-        pelletsKessel = { leistungKw: leist };
+        window.pelletsKessel = { leistungKw: leist };
         setBtn('btn-activate-pellets'); showSec('pellets-data-section');
         break;
       case 'hhs':
         document.getElementById('hhs-leistung').value = leist;
-        heizhackschnitzel = { leistungKw: leist };
+        window.heizhackschnitzel = { leistungKw: leist };
         setBtn('btn-activate-hhs'); showSec('hhs-data-section');
         break;
       case 'fernwaerme':
         document.getElementById('fw-leistung').value = leist;
-        fernwaerme = { leistungKw: leist };
+        window.fernwaerme = { leistungKw: leist };
         setBtn('btn-activate-fernwaerme'); showSec('fernwaerme-data-section');
         break;
       case 'lwwp':
         document.getElementById('lwwp-leistung').value = leist;
         if (window.lwWp && window.lwWp.lat != null) {
-          lwWp = { ...window.lwWp, leistungKw: leist };
+          window.lwWp = { ...window.lwWp, leistungKw: leist };
         } else {
-          lwWp = { lat: defaultLat, lng: defaultLng, leistungKw: leist, lwaDb: 80, visible: true };
+          window.lwWp = { lat: defaultLat, lng: defaultLng, leistungKw: leist, lwaDb: 80, visible: true };
         }
-        lwWpVisible = true;
+        window.lwWpVisible = true;
         showSec('lwwp-data-section');
         if (typeof redrawLwWp === 'function') redrawLwWp();
         break;
@@ -697,14 +713,14 @@ function _optVarianteUebernehmen(result, btnEl) {
           const waermeMwh = simErz?.waermeMwh || 0;
           document.getElementById('geo-waerme').value = waermeMwh > 0 ? Math.round(waermeMwh) : Math.round(leist * 2000 / 1000); }
         if (window.geoThermie && window.geoThermie.lat != null) {
-          geoThermie = { ...window.geoThermie, leistungKwEff: leist };
+          window.geoThermie = { ...window.geoThermie, leistungKwEff: leist };
         } else {
           // Geo-Sondenfeld braucht Dimensionierung — Defaults setzen
           const nSonden = Math.max(1, Math.round(leist / 8)); // ~8 kW pro Sonde
           const abstand = 6;
           const cols = Math.ceil(Math.sqrt(nSonden));
           const rows = Math.ceil(nSonden / cols);
-          geoThermie = { lat: defaultLat, lng: defaultLng, leistungKwEff: leist,
+          window.geoThermie = { lat: defaultLat, lng: defaultLng, leistungKwEff: leist,
             n_sonden: nSonden, abstand: abstand, cols: cols, rows: rows,
             breite: cols * abstand, laenge: rows * abstand, tiefe: 100 };
         }
@@ -715,11 +731,11 @@ function _optVarianteUebernehmen(result, btnEl) {
       case 'fg':
         document.getElementById('fg-leistung').value = leist;
         if (window.fliessgewaesser && window.fliessgewaesser.latlngs && window.fliessgewaesser.latlngs.length >= 2) {
-          fliessgewaesser = { ...window.fliessgewaesser, leistungKw: leist };
+          window.fliessgewaesser = { ...window.fliessgewaesser, leistungKw: leist };
         } else {
           // FG-WP braucht Fließgewässer-Linie — Platzhalter an Heizzentrale, User muss anpassen
           const offset = 0.0003;
-          fliessgewaesser = { latlngs: [
+          window.fliessgewaesser = { latlngs: [
             {lat: defaultLat + offset, lng: defaultLng - offset},
             {lat: defaultLat, lng: defaultLng},
             {lat: defaultLat - offset, lng: defaultLng + offset}
@@ -740,7 +756,7 @@ function _optVarianteUebernehmen(result, btnEl) {
   if (result.stM2 > 0) {
     const stEl = document.getElementById('st-flaeche');
     if (stEl) stEl.value = result.stM2;
-    solarthermieAktiv = true;
+    window.solarthermieAktiv = true;
     if (typeof updateSolarthermieDisplay === 'function') updateSolarthermieDisplay();
   } else {
     if (typeof clearSolarthermie === 'function') clearSolarthermie();
@@ -750,7 +766,7 @@ function _optVarianteUebernehmen(result, btnEl) {
   if (result.tsVol > 0) {
     const tsVolEl = document.getElementById('ts-volumen');
     if (tsVolEl) tsVolEl.value = result.tsVol;
-    thermSpeicherAktiv = true;
+    window.thermSpeicherAktiv = true;
     if (typeof updateThermSpeicherDisplay === 'function') updateThermSpeicherDisplay();
   } else {
     if (typeof clearThermSpeicher === 'function') clearThermSpeicher();
@@ -772,7 +788,7 @@ function _optVarianteUebernehmen(result, btnEl) {
   // Variante mit diesem Zustand speichern
   const id = 'v_' + Date.now();
   varianten.push({ id, name: varName, netz: captureNetzState(), erzeuger: captureErzeugerState(), gebaeudeAusschlüsse: [] });
-  activeVariantId = id;
+  window.activeVariantId = id;
   renderVariantenBar();
   updateVariantBanner();
 
@@ -801,7 +817,7 @@ function _optVarianteUebernehmen(result, btnEl) {
 }
 
 // ── Footer-Statuszeile ───────────────────────────────────────────────────
-function updateFooterStatus() {
+export function updateFooterStatus() {
   function _fsDot(el, ok, warn) {
     const d = el?.querySelector('.fs-dot');
     if (d) d.style.background = ok ? (warn ? '#f9a825' : '#66bb6a') : '#455a64';
@@ -907,7 +923,7 @@ function updateFooterStatus() {
   // Variante + Jahr
   const fsV = document.getElementById('fs-variante');
   if (fsV) {
-    const vName = activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '?') : 'Basis';
+    const vName = window.activeVariantId ? (varianten.find(v => v.id === window.activeVariantId)?.name || '?') : 'Basis';
     fsV.textContent = vName + ' · ' + (typeof globalYear !== 'undefined' ? globalYear : '—');
   }
   // Update Ergebnis-Tab KPIs + Step Progress
@@ -919,14 +935,14 @@ function updateFooterStatus() {
 setInterval(updateFooterStatus, 2000);
 
 // ── Eingabestatus-Panel ──────────────────────────────────────────────────
-function toggleStatusPanel() {
+export function toggleStatusPanel() {
   const p = document.getElementById('status-panel');
   if (!p) return;
   const vis = p.classList.toggle('visible');
   if (vis) updateStatusPanel();
 }
 
-function updateStatusPanel() {
+export function updateStatusPanel() {
   const p = document.getElementById('status-panel');
   if (!p || !p.classList.contains('visible')) return;
   const body = document.getElementById('status-panel-body');
@@ -939,7 +955,7 @@ function updateStatusPanel() {
   let html = '';
 
   // ─── Abschnitt: Variante ────────────────────────────────────────────
-  const varName = activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '?') : 'Basisdaten';
+  const varName = window.activeVariantId ? (varianten.find(v => v.id === window.activeVariantId)?.name || '?') : 'Basisdaten';
   html += `<div style="margin-bottom:8px;padding:5px 8px;background:var(--surface2);border-radius:5px;border-left:3px solid ${activeVariantId ? 'var(--accent)' : '#4caf50'};">`;
   html += `<span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Aktive Variante</span><br>`;
   html += `<span style="color:var(--text);font-size:12px;">${varName}</span>`;
@@ -1056,7 +1072,7 @@ function updateStatusPanel() {
 }
 
 // Auto-Update: nach Dispatch, Strom, Wirtschaftlichkeit
-const _origOnSystemStateUpdated = typeof onSystemStateUpdated === 'function' ? onSystemStateUpdated : null;
+export const _origOnSystemStateUpdated = typeof onSystemStateUpdated === 'function' ? onSystemStateUpdated : null;
 // Wir patchen nicht, sondern nutzen ein Interval das prüft ob Panel offen ist
 setInterval(() => {
   if (document.getElementById('status-panel')?.classList.contains('visible')) updateStatusPanel();

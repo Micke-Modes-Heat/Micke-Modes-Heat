@@ -13,7 +13,10 @@ export function loadScript(...filePaths) {
     const fullPath = filePath.startsWith('/')
       ? filePath
       : resolve(srcDir, filePath);
-    const code = readFileSync(fullPath, 'utf8');
+    let code = readFileSync(fullPath, 'utf8');
+    // Strip ES module syntax so code runs in global scope (vm context)
+    code = code.replace(/^import\s+.*$/gm, '');
+    code = code.replace(/^export\s+/gm, '');
     runInThisContext(code, { filename: fullPath });
   }
 }

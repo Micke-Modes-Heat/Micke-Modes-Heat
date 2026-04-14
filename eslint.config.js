@@ -7,7 +7,7 @@ export default [
     files: ['src/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: 'script',          // kein ES-Module — globaler Scope
+      sourceType: 'module',           // ES-Module
       globals: {
         ...globals.browser,
         // Leaflet
@@ -26,9 +26,10 @@ export default [
       'no-constant-condition': 'warn',
       'eqeqeq': ['warn', 'smart'],   // === statt == (smart erlaubt == null)
 
-      // ── Bewusst deaktiviert (Script-Architektur: cross-file globals) ──
-      'no-undef': 'off',             // alle Dateien teilen globalen Scope via <script>
-      'no-unused-vars': 'off',       // Funktionen werden aus anderen Dateien aufgerufen
+      // ── Bewusst deaktiviert (Module-Migration: shared mutable state) ──
+      'no-undef': 'off',             // cross-file references via import
+      'no-unused-vars': 'off',       // exports used from other modules
+      'no-import-assign': 'off',     // mutable globals reassigned cross-file (legacy pattern)
 
       // ── Nicht zu streng ──
       'no-empty': 'off',

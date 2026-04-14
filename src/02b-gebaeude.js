@@ -1,8 +1,17 @@
 // ── 02b-gebaeude.js — Karte-Init, Gebäude-CRUD, Energie, OSM, Rendering ──
 
-const map = L.map('map',{zoomControl:true}).setView([52.0816,8.0034],15);
-const osmTile = L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:21});
-const esriTile = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:21});
+import { R_MIN, currentMode, isExcluded, updateVizDebounced } from './01-globals-varianten.js';
+import { lerpColor } from './02a-netz-physik.js';
+import { polygonAreaM2, polygonCenter, selectFromMap, updateViz } from './02c-karte-werkzeuge.js';
+import { hidePanels, populateZentraleSelect, recalcNetz, startDraw } from './03b-netz.js';
+import { _gebLabelHtml, cardDotColor, drawChart, renderList, updateTotals } from './03c-gebaeude-io.js';
+import { glBerechnenDebounced } from './06b-gl-berechnen.js';
+import { updateAllDeckungen } from './06c-dispatch-core.js';
+import { calcWirtschaftPanel } from './07b-analysis-economics.js';
+
+export const map = L.map('map',{zoomControl:true}).setView([52.0816,8.0034],15);
+export const osmTile = L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:21});
+export const esriTile = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:21});
 osmTile.addTo(map);
 // Custom Pane für Netzleitungen — über den Kreisen (overlayPane z=400, netzPane z=450)
 map.createPane('netzPane');
@@ -10,18 +19,18 @@ map.getPane('netzPane').style.zIndex = 450;
 // Invalidate map size after left panel renders (flex layout needs recalc)
 setTimeout(() => map.invalidateSize(), 300);
 setTimeout(() => map.invalidateSize(), 1000);
-fliessgewaesserLayerGroup = L.layerGroup();
-lwWpLayerGroup = L.layerGroup();
-lwWpSchallLayerGroup = L.layerGroup();
-erzeugerIconLayerGroup = L.layerGroup();
-let currentTile = 'osm';
-function toggleTile(){
+window.fliessgewaesserLayerGroup = L.layerGroup();
+window.lwWpLayerGroup = L.layerGroup();
+window.lwWpSchallLayerGroup = L.layerGroup();
+window.erzeugerIconLayerGroup = L.layerGroup();
+export let currentTile = 'osm';
+export function toggleTile(){
   if(currentTile==='osm'){ map.removeLayer(osmTile); esriTile.addTo(map); currentTile='esri'; document.getElementById('btn-tile').textContent='🗺 OSM'; }
   else { map.removeLayer(esriTile); osmTile.addTo(map); currentTile='osm'; document.getElementById('btn-tile').textContent='🛰 Satellit'; }
 }
 
 // ── Farbschemata ──────────────────────────────────────────────────────────
-const THEMES = [
+export const THEMES = [
   { name: 'Ocker & Salbei',   bg:'#12110e', surface:'#1c1a15', surface2:'#24221b', border:'#3a3528', text:'#ece8df', muted:'#9a9080', accent:'#d4a855' },
   { name: 'Ozean',            bg:'#0f1117', surface:'#181c27', surface2:'#1f2435', border:'#2a3050', text:'#e8eaf0', muted:'#7a8099', accent:'#4fc3f7' },
   { name: 'Wald',             bg:'#0e1210', surface:'#161e19', surface2:'#1c2820', border:'#2a3e2f', text:'#e4ebe6', muted:'#7a9480', accent:'#81c784' },
@@ -33,14 +42,14 @@ const THEMES = [
   { name: 'Nordlicht',        bg:'#0c1210', surface:'#141e1c', surface2:'#1a2826', border:'#283e38', text:'#e2ebe8', muted:'#70a090', accent:'#4dd0b8' },
   { name: 'Mitternacht',      bg:'#0a0c14', surface:'#121520', surface2:'#181c2c', border:'#252a42', text:'#e0e4f0', muted:'#6a7099', accent:'#7c8cf0' },
 ];
-let currentThemeIdx = 0;
+export let currentThemeIdx = 0;
 
-function cycleTheme() {
+export function cycleTheme() {
   currentThemeIdx = (currentThemeIdx + 1) % THEMES.length;
   applyTheme(THEMES[currentThemeIdx]);
 }
 
-function applyTheme(t) {
+export function applyTheme(t) {
   const r = document.documentElement.style;
   r.setProperty('--bg', t.bg);
   r.setProperty('--surface', t.surface);
@@ -54,11 +63,11 @@ function applyTheme(t) {
 
 document.getElementById('map').addEventListener('contextmenu', e => e.preventDefault());
 
-function setGlobalYear(val) {
-  globalYear = parseInt(val);
-  document.getElementById('year-display').textContent = globalYear;
+export function setGlobalYear(val) {
+  window.globalYear = parseInt(val);
+  document.getElementById('year-display').textContent = window.globalYear;
   // Lastgang für das Betrachtungsjahr skalieren (Abriss/Neubau/Sanierung)
-  if (window._basisLastgangKw) _rescaleLastgangForYear(globalYear);
+  if (window._basisLastgangKw) _rescaleLastgangForYear(window.globalYear);
   updateViz();
   updateTotals();
   recalcNetz();
@@ -68,17 +77,17 @@ function setGlobalYear(val) {
   }
 }
 
-function toggleNetworkLock() {
-  networkLocked = !networkLocked;
+export function toggleNetworkLock() {
+  window.networkLocked = !window.networkLocked;
   _syncNetworkLockUI();
   recalcNetz();
   if (typeof calcWirtschaftPanel === 'function') calcWirtschaftPanel();
 }
-function _syncNetworkLockUI() {
+export function _syncNetworkLockUI() {
   // Left-Panel Button
   const btn = document.getElementById('lp-btn-lock');
   if (btn) {
-    if (networkLocked) {
+    if (window.networkLocked) {
       btn.innerHTML = '🔒 Bestandsnetz';
       btn.style.borderColor = '#4caf50';
       btn.style.color = '#4caf50';
@@ -93,7 +102,7 @@ function _syncNetworkLockUI() {
   // Float-Panel Button
   const btn2 = document.getElementById('btn-lock-netz');
   if (btn2) {
-    if (networkLocked) {
+    if (window.networkLocked) {
       btn2.innerHTML = '🔒 Bestandsnetz';
       btn2.style.borderColor = '#4caf50';
       btn2.style.color = '#4caf50';
@@ -106,12 +115,12 @@ function _syncNetworkLockUI() {
     }
   }
   const opts = document.getElementById('netz-bestand-options');
-  if (opts) opts.style.display = networkLocked ? '' : 'none';
+  if (opts) opts.style.display = window.networkLocked ? '' : 'none';
 }
 
-function _invalidateStats() { /* no-op: cache removed */ }
+export function _invalidateStats() { /* no-op: cache removed */ }
 
-function getComputedStats(g, year) {
+export function getComputedStats(g, year) {
   let waerme = parseFloat(g.waerme) || 0;
   let spez = parseFloat(g.spez) || 0;
   let heizlast = parseFloat(g.heizlast) || 0;
@@ -155,7 +164,7 @@ function getComputedStats(g, year) {
 // Wenn sich das Betrachtungsjahr ändert, wird der Basis-Lastgang proportional
 // skaliert: Gebäude die abgerissen/geplant/saniert sind verändern den Wärmebedarf.
 // Netzverluste skalieren proportional mit (weniger Wärme → weniger Verluste).
-function _rescaleLastgangForYear(year) {
+export function _rescaleLastgangForYear(year) {
   const ss = window.systemState;
   if (!ss || !window._basisLastgangKw || !window._basisGebWaermeSumme) return;
   if (year === window._basisYear) {
@@ -175,7 +184,7 @@ function _rescaleLastgangForYear(year) {
 
   let zielSumme = 0;
   let nAbgerissen = 0, nNeu = 0, nSaniert = 0;
-  for (const g of gebaeude) {
+  for (const g of window.gebaeude) {
     const stBasis = getComputedStats(g, window._basisYear);
     const stZiel  = getComputedStats(g, year);
     zielSumme += (stZiel.waerme || 0);
@@ -202,7 +211,7 @@ function _rescaleLastgangForYear(year) {
   updateAllDeckungen();
 }
 
-function _updateLastgangScaleInfo(faktor, year, nAbgerissen, nNeu, nSaniert) {
+export function _updateLastgangScaleInfo(faktor, year, nAbgerissen, nNeu, nSaniert) {
   let el = document.getElementById('lastgang-scale-info');
   if (!el) {
     el = document.createElement('div');
@@ -230,11 +239,11 @@ function _updateLastgangScaleInfo(faktor, year, nAbgerissen, nNeu, nSaniert) {
     + ' <span style="color:var(--muted);">[Faktor ' + faktor.toFixed(3) + ']</span>';
 }
 
-function rgbToHex(r, g, b) {
+export function rgbToHex(r, g, b) {
   return '#' + [r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')).join('');
 }
 
-function getSpezColor(val) {
+export function getSpezColor(val) {
   const n = Number(val);
   if (val === null || val === undefined || isNaN(n)) return '#4a7a8a';
   if (n <= 20) return '#4caf50';
@@ -261,7 +270,7 @@ function getSpezColor(val) {
   return rgbToHex(r, g, b);
 }
 
-function getColor(val,min,max){
+export function getColor(val,min,max){
   if (currentMode === 'strom') {
     if (val === null || val === undefined || isNaN(Number(val)) || max === min) return '#3a2e00';
     const t = Math.max(0, Math.min(1, (Number(val) - min) / (max - min)));
@@ -287,8 +296,8 @@ function getColor(val,min,max){
   );
 }
 
-function getColorVal(g){
-  const stats = getComputedStats(g, globalYear);
+export function getColorVal(g){
+  const stats = getComputedStats(g, window.globalYear);
   if (stats.status === 'geplant' || stats.status === 'abgerissen') return null;
   if (currentMode === 'spez' || currentMode === 'waerme') {
     const v = stats.spez;
@@ -298,10 +307,10 @@ function getColorVal(g){
   if (currentMode === 'strom')   return getGebStromMwh(g) || g.elMwh || null;
   return getModeVal(g);
 }
-function getSizeVal(g){ return getModeVal(g); }
+export function getSizeVal(g){ return getModeVal(g); }
 
-function getModeVal(g){
-  const stats = getComputedStats(g, globalYear);
+export function getModeVal(g){
+  const stats = getComputedStats(g, window.globalYear);
   if (stats.status === 'geplant' || stats.status === 'abgerissen') return null;
   if(currentMode==='waerme')   return stats.waerme || null;
   if(currentMode==='spez')     return stats.spez || null;
@@ -310,18 +319,18 @@ function getModeVal(g){
   if(currentMode==='strom')    return getGebStromMwh(g) || g.elMwh || null;
   return null;
 }
-function getRange(arr){ if(!arr.length) return [0,1]; return [Math.min(...arr),Math.max(...arr)]; }
-function getSizeRange(){ return getRange(gebaeude.map(g=>getSizeVal(g)).filter(v=>v!==null)); }
-function getColorRange(){ return getRange(gebaeude.map(g=>getColorVal(g)).filter(v=>v!==null)); }
+export function getRange(arr){ if(!arr.length) return [0,1]; return [Math.min(...arr),Math.max(...arr)]; }
+export function getSizeRange(){ return getRange(window.gebaeude.map(g=>getSizeVal(g)).filter(v=>v!==null)); }
+export function getColorRange(){ return getRange(window.gebaeude.map(g=>getColorVal(g)).filter(v=>v!==null)); }
 
-function getRadius(val, max){
+export function getRadius(val, max){
   if(!val||!max||max<=0) return R_MIN;
   const t = Math.sqrt(Math.max(0, val) / max);
   return Math.max(R_MIN, t * R_MAX);
 }
 
 // Bei Rauszoom verkleinern wir die Kreise, damit sie sich weniger überschneiden (Zoom 12 = klein, 17+ = volle Größe).
-function getZoomScale() {
+export function getZoomScale() {
   const z = map.getZoom();
   if (z >= 17) return 1;
   if (z <= 12) return 0.3;
@@ -331,11 +340,11 @@ function getZoomScale() {
 // Berechnet den maximalen Radius für den aktuellen Render-Durchlauf.
 // Zoom skaliert R_MAX. Dichte-Cap (85 % des Median-NN-Abstands) verhindert
 // totales Zudecken, erlaubt aber moderate Überlappung.
-function getEffectiveRMax() {
+export function getEffectiveRMax() {
   const zs    = getZoomScale();
   let effRMax = Math.round(R_MAX * zs);
 
-  const viz = gebaeude.filter(g => g.polygon && !isExcluded(g.id));
+  const viz = window.gebaeude.filter(g => g.polygon && !isExcluded(g.id));
   if (viz.length >= 5) {
     const pts = viz.map(g => map.latLngToContainerPoint(polygonCenter(g.polygon)));
     const nnd = pts.map((p, i) => {
@@ -353,10 +362,10 @@ function getEffectiveRMax() {
   return effRMax;
 }
 
-function nextGebName(nutzung) {
+export function nextGebName(nutzung) {
   const LABELS = { efh:'EFH', mfh:'MFH', ghd:'Gewerbe', schule:'Schule', buero:'Büro', industrie:'Industrie', oeffentlich:'Öffentlich' };
   const prefix = LABELS[nutzung] || 'Gebäude';
-  const names = new Set(gebaeude.map(g => g.name));
+  const names = new Set(window.gebaeude.map(g => g.name));
   for (let i = 1; i < 10000; i++) {
     const candidate = prefix + ' ' + i;
     if (!names.has(candidate)) return candidate;
@@ -364,8 +373,8 @@ function nextGebName(nutzung) {
   return prefix + ' ' + Date.now();
 }
 
-function addGebaeude(opts={}){
-  const id=opts.id || idCounter++;
+export function addGebaeude(opts={}){
+  const id=opts.id || window.idCounter++;
   const g={id,name:opts.name || nextGebName(opts.nutzung),waerme:'',spez:'',heizlast:'',spezHeizlast:'',
            flaeche:null,stockwerke:opts.stockwerke!=null?opts.stockwerke:1,nutzung:opts.nutzung||'',
            polygon:null,polygonLayer:null,circleMarker:null,labelMarker:null,
@@ -373,7 +382,7 @@ function addGebaeude(opts={}){
            baujahr: opts.baujahr!=null?opts.baujahr:null, abrissjahr: null, sanierungen: [], selected: false,
            pvAktiv: false, pvDachanteil: 30,
            strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || ''};
-  gebaeude.push(g);
+  window.gebaeude.push(g);
   if(opts.coords){
     g.polygon=opts.coords;
     g.flaeche=polygonAreaM2(opts.coords);
@@ -390,7 +399,7 @@ function addGebaeude(opts={}){
   return g;
 }
 
-function attachPolygonLayer(g){
+export function attachPolygonLayer(g){
   if(g.polygonLayer) map.removeLayer(g.polygonLayer);
   g.polygonLayer=L.polygon(g.polygon,{
     color:g.fromOsm?'rgba(206,147,216,0.4)':'rgba(79,195,247,0.4)',
@@ -400,14 +409,14 @@ function attachPolygonLayer(g){
   if (!_batchImporting) updateViz();
 }
 
-function removeGebaeude(id){
-  const g=gebaeude.find(x=>x.id===id);
+export function removeGebaeude(id){
+  const g=window.gebaeude.find(x=>x.id===id);
   if(!g) return;
   if(g.polygonLayer) map.removeLayer(g.polygonLayer);
   if(g.circleMarker) map.removeLayer(g.circleMarker);
   if(g.labelMarker) map.removeLayer(g.labelMarker);
-  gebaeude=gebaeude.filter(x=>x.id!==id);
-  netzEdges = netzEdges.filter(e => {
+  window.gebaeude=window.gebaeude.filter(x=>x.id!==id);
+  window.netzEdges = window.netzEdges.filter(e => {
     if(e.u === id || e.v === id){
       map.removeLayer(e.layer);
       if(e.hitLayer) map.removeLayer(e.hitLayer);
@@ -419,9 +428,9 @@ function removeGebaeude(id){
     return true;
   });
   // Stromnetz-Kanten für dieses Gebäude entfernen
-  stromEdges = stromEdges.filter(e => {
-    const uN = stromNodes.find(n => n.id === e.u);
-    const vN = stromNodes.find(n => n.id === e.v);
+  window.stromEdges = window.stromEdges.filter(e => {
+    const uN = window.stromNodes.find(n => n.id === e.u);
+    const vN = window.stromNodes.find(n => n.id === e.v);
     if ((uN && uN.type === 'geb' && uN.gebId === id) || (vN && vN.type === 'geb' && vN.gebId === id)) {
       if(e.layer) map.removeLayer(e.layer);
       if(e.hitLayer) map.removeLayer(e.hitLayer);
@@ -430,13 +439,13 @@ function removeGebaeude(id){
     }
     return true;
   });
-  stromNodes = stromNodes.filter(n => !(n.type === 'geb' && n.gebId === id));
+  window.stromNodes = window.stromNodes.filter(n => !(n.type === 'geb' && n.gebId === id));
   renderList(); updateViz(); recalcNetz();
 }
 
-function clearOsmBuildings(){
+export function clearOsmBuildings(){
   hidePanels();
-  const osmGeb = gebaeude.filter(g=>g.fromOsm);
+  const osmGeb = window.gebaeude.filter(g=>g.fromOsm);
   osmGeb.forEach(g => {
     if(g.polygonLayer) map.removeLayer(g.polygonLayer);
     if(g.circleMarker) map.removeLayer(g.circleMarker);
@@ -444,7 +453,7 @@ function clearOsmBuildings(){
     if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
   });
   const osmIds = new Set(osmGeb.map(g=>g.id));
-  netzEdges = netzEdges.filter(e => {
+  window.netzEdges = window.netzEdges.filter(e => {
     if(osmIds.has(e.u) || osmIds.has(e.v)){
       if(e.layer) map.removeLayer(e.layer);
       if(e.hitLayer) map.removeLayer(e.hitLayer);
@@ -455,9 +464,9 @@ function clearOsmBuildings(){
     }
     return true;
   });
-  stromEdges = stromEdges.filter(e => {
-    const uN = stromNodes.find(n => n.id === e.u);
-    const vN = stromNodes.find(n => n.id === e.v);
+  window.stromEdges = window.stromEdges.filter(e => {
+    const uN = window.stromNodes.find(n => n.id === e.u);
+    const vN = window.stromNodes.find(n => n.id === e.v);
     if ((uN && uN.type === 'geb' && osmIds.has(uN.gebId)) || (vN && vN.type === 'geb' && osmIds.has(vN.gebId))) {
       if(e.layer) map.removeLayer(e.layer);
       if(e.hitLayer) map.removeLayer(e.hitLayer);
@@ -466,14 +475,14 @@ function clearOsmBuildings(){
     }
     return true;
   });
-  stromNodes = stromNodes.filter(n => !(n.type === 'geb' && osmIds.has(n.gebId)));
-  gebaeude = gebaeude.filter(g => !g.fromOsm);
+  window.stromNodes = window.stromNodes.filter(n => !(n.type === 'geb' && osmIds.has(n.gebId)));
+  window.gebaeude = window.gebaeude.filter(g => !g.fromOsm);
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }
 
 // Spez. Endenergie Wärme (kWh/m²a Wohnfläche) nach Baujahr – MFH-Referenz.
 // Quelle: IWU TABULA DE, Ist-Zustand ("Actual Building"), inkl. Warmwasser.
-function getSpezNachBaujahr(baujahr) {
+export function getSpezNachBaujahr(baujahr) {
   const y = parseInt(baujahr, 10);
   if (y < 1919) return 210;   // Gründerzeit / Altbau
   if (y <= 1948) return 190;   // Vorkrieg / Wiederaufbau
@@ -492,12 +501,12 @@ function getSpezNachBaujahr(baujahr) {
 // EFH ~30 % höher als MFH (TABULA-Ratio 1.25–1.30).
 // GHD/Büro/Schule: niedrigerer Flächenbezug, geringere interne Lasten.
 // Industrie: Raumwärme-Anteil deutlich niedriger (große Hallen, Prozesswärme separat).
-const NUTZUNG_FAKTOR = {
+export const NUTZUNG_FAKTOR = {
   efh: 1.30, mfh: 1.00, ghd: 0.75, buero: 0.65,
   schule: 0.60, industrie: 0.35, oeffentlich: 0.80
 };
 
-function calcAutoEnergy(g) {
+export function calcAutoEnergy(g) {
   if (!g.flaeche || !g.stockwerke || !g.baujahr) return false;
   if (g.waermeManual || g.heizlastManual) return false;
 
@@ -514,7 +523,7 @@ function calcAutoEnergy(g) {
 }
 
 // OSM building=* → nutzung (interne Kennung)
-function osmNutzung(buildingTag) {
+export function osmNutzung(buildingTag) {
   const t = (buildingTag || '').toLowerCase();
   if (['house','detached','semidetached_house','semi_detached','bungalow',
        'chalet','cottage','terrace','farmhouse','villa','manor'].includes(t)) return 'efh';
@@ -529,7 +538,7 @@ function osmNutzung(buildingTag) {
 }
 
 // OSM building-Tags die wir nicht als Wärmelast modellieren wollen
-const OSM_SKIP_TYPES = new Set([
+export const OSM_SKIP_TYPES = new Set([
   'garage','garages','carport','shed','hut','roof','bridge',
   'parking','container','service','greenhouse','storage_tank','tent','ruins'
 ]);
@@ -537,15 +546,15 @@ const OSM_SKIP_TYPES = new Set([
 
 // ── Gebäudescharfe Stromverbräuche ─────────────────────────────────────────
 // Typische spez. Stromverbräuche in kWh/m²a nach Nutzungstyp
-const STROM_SPEZ_DEFAULTS = {
+export const STROM_SPEZ_DEFAULTS = {
   efh: 25, mfh: 20, ghd: 45, schule: 18, buero: 35, industrie: 60, oeffentlich: 25, '': 25
 };
 // SLP-Profil-Zuordnung nach Nutzungstyp
-const STROM_PROFIL_MAP = {
+export const STROM_PROFIL_MAP = {
   efh: 'H0', mfh: 'H0', ghd: 'G0', schule: 'G1', buero: 'G0', industrie: 'G0', oeffentlich: 'G1', '': 'H0'
 };
 
-function getAutoStrom(g) {
+export function getAutoStrom(g) {
   // Auto-Strom: spezStrom * Nutzfläche, oder Defaultwert * Nutzfläche
   if (g.strom && parseFloat(g.strom) > 0) return '';
   const fl = (g.flaeche || 0) * (g.stockwerke || 1) * 0.8;
@@ -554,12 +563,12 @@ function getAutoStrom(g) {
   return (spez * fl / 1000).toFixed(1);
 }
 
-function getAutoSpezStrom(g) {
+export function getAutoSpezStrom(g) {
   if (g.spezStrom && parseFloat(g.spezStrom) > 0) return '';
   return STROM_SPEZ_DEFAULTS[g.nutzung || ''] || 25;
 }
 
-function getGebStromMwh(g) {
+export function getGebStromMwh(g) {
   // Resolve actual strom MWh/a for a building (Nutzfläche = Grundfläche × Stockwerke × 0.8)
   if (g.strom && parseFloat(g.strom) > 0) return parseFloat(g.strom);
   const fl = (g.flaeche || 0) * (g.stockwerke || 1) * 0.8;
@@ -568,14 +577,14 @@ function getGebStromMwh(g) {
   return spez * fl / 1000;
 }
 
-function getGebStromProfil(g) {
+export function getGebStromProfil(g) {
   if (g.stromProfil && g.stromProfil !== 'auto') return g.stromProfil;
   return STROM_PROFIL_MAP[g.nutzung || ''] || 'H0';
 }
 
 // Generate normalized SLP hour profile (8760 values summing to 1.0)
-const _slpCache = {};
-function getSlpProfile(profilTyp) {
+export const _slpCache = {};
+export function getSlpProfile(profilTyp) {
   if (_slpCache[profilTyp]) return _slpCache[profilTyp];
   const n = 8760;
   const profile = new Float32Array(n);
@@ -628,11 +637,11 @@ function getSlpProfile(profilTyp) {
 }
 
 // Aggregate gebäudescharfe Stromverbräuche to system-level array
-function aggregateGebStrom() {
+export function aggregateGebStrom() {
   const n = 8760;
   const total = new Float32Array(n);
   let totalMWh = 0;
-  gebaeude.forEach(g => {
+  window.gebaeude.forEach(g => {
     if (isExcluded(g.id)) return;
     const mwh = getGebStromMwh(g);
     if (mwh <= 0) return;
@@ -647,8 +656,8 @@ function aggregateGebStrom() {
   return { hourly: total, totalMWh };
 }
 
-function updateField(id, field, val) {
-  const g = gebaeude.find(x => x.id === id);
+export function updateField(id, field, val) {
+  const g = window.gebaeude.find(x => x.id === id);
   if (!g) return;
   _invalidateStats();
 
@@ -726,7 +735,7 @@ function updateField(id, field, val) {
   const _cvW = document.querySelector(`.geb-cv-waerme-${id}`);
   const _cvH = document.querySelector(`.geb-cv-hl-${id}`);
   if (_cvW || _cvH) {
-    const _cs = getComputedStats(g, globalYear);
+    const _cs = getComputedStats(g, window.globalYear);
     if (_cvW) _cvW.textContent = _cs.waerme > 0 ? Math.round(_cs.waerme).toLocaleString('de-DE') : '—';
     if (_cvH) _cvH.textContent = _cs.heizlast > 0 ? Math.round(_cs.heizlast).toLocaleString('de-DE') : '—';
   }
@@ -740,8 +749,8 @@ function updateField(id, field, val) {
   }
 }
 
-function renameGebaeude(id,name){
-  const g=gebaeude.find(x=>x.id===id);
+export function renameGebaeude(id,name){
+  const g=window.gebaeude.find(x=>x.id===id);
   if(!g) return;
   g.name=name;
   if(g.labelMarker){
@@ -751,26 +760,26 @@ function renameGebaeude(id,name){
   populateZentraleSelect();
 }
 
-function highlightCard(id) {
-  selectedId = id;
+export function highlightCard(id) {
+  window.selectedId = id;
   document.querySelectorAll('.geb-card').forEach(c => c.classList.remove('selected'));
   const card = document.getElementById('card-' + id);
   if (card) card.classList.add('selected');
 }
 
-function togglePlanPanel(id){
+export function togglePlanPanel(id){
   const p = document.getElementById('plan-'+id);
   if(p) p.classList.toggle('visible');
 }
 
-function changePlanMode(id, mode) {
+export function changePlanMode(id, mode) {
   document.getElementById(`plan-mode-neubau-${id}`).style.display = (mode === 'neubau') ? 'flex' : 'none';
   document.getElementById(`plan-mode-sanierung-${id}`).style.display = (mode === 'sanierung') ? 'flex' : 'none';
   document.getElementById(`plan-mode-abriss-${id}`).style.display = (mode === 'abriss') ? 'flex' : 'none';
 }
 
-function savePlan(id, mode) {
-  const g = gebaeude.find(x => x.id === id);
+export function savePlan(id, mode) {
+  const g = window.gebaeude.find(x => x.id === id);
   if(!g) return;
   
   if (mode === 'neubau') {
@@ -793,8 +802,8 @@ function savePlan(id, mode) {
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }
 
-function clearPlan(id, type, idx) {
-  const g = gebaeude.find(x => x.id === id);
+export function clearPlan(id, type, idx) {
+  const g = window.gebaeude.find(x => x.id === id);
   if(!g) return;
   if(type === 'neubau') g.baujahr = null;
   if(type === 'abriss') g.abrissjahr = null;

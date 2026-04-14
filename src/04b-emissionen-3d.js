@@ -2,11 +2,16 @@
 // ══════════════════════════════════════════════════════════════════════════
 // ── Emissionen-Tab: Sub-Tab-Steuerung + Rendering ────────────────────────
 // ══════════════════════════════════════════════════════════════════════════
-let _emCurrentTab = 'em-stunden';
-let _emZoom = { startH: 0, endH: 8760 };
-let _emRubber = null;
+import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, pefGas } from './01-globals-varianten.js';
+import { calcVerdraengungEmF } from './03a-erzeuger.js';
+import { glKannBerechnen } from './06b-gl-berechnen.js';
+import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
 
-function setEmissionenTab(tab) {
+export let _emCurrentTab = 'em-stunden';
+export let _emZoom = { startH: 0, endH: 8760 };
+export let _emRubber = null;
+
+export function setEmissionenTab(tab) {
   _emCurrentTab = tab;
   document.querySelectorAll('#emissionen-subtabs .analyse-sub-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab));
@@ -17,7 +22,7 @@ function setEmissionenTab(tab) {
 }
 
 /* ── Stündliche CO₂-Daten berechnen (kgCO₂/h pro Erzeuger) ────────────── */
-function _calcEmHourly() {
+export function _calcEmHourly() {
   const hourly = window._dispatchHourly || {};
   const keys   = window._dispatchActiveKeys || [];
   const en     = window._dispatchEnergy || {};
@@ -85,7 +90,7 @@ function _calcEmHourly() {
 }
 
 /* ── PEF-Daten pro Erzeuger berechnen ──────────────────────────────────── */
-function _calcPefData() {
+export function _calcPefData() {
   const en   = window._dispatchEnergy || {};
   const keys = window._dispatchActiveKeys || [];
   if (!keys.length) return null;
@@ -131,7 +136,7 @@ function _calcPefData() {
 }
 
 /* ── KPIs im Emissionen-Tab ─────────────────────────────────────────────── */
-function _updateEmKpis() {
+export function _updateEmKpis() {
   const setKpi = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   const emData = _calcEmHourly();
   const pefData = _calcPefData();
@@ -165,7 +170,7 @@ function _updateEmKpis() {
 }
 
 /* ── Haupt-Render-Dispatcher ────────────────────────────────────────────── */
-function _renderEmissionenTab() {
+export function _renderEmissionenTab() {
   _updateEmKpis();
   const tab = _emCurrentTab;
   if (tab === 'em-stunden')    requestAnimationFrame(_renderEmStunden);
@@ -175,7 +180,7 @@ function _renderEmissionenTab() {
 }
 
 /* ── Sub-Tab 1: Stundenprofil (gestapelt) ────────────────────────────────── */
-function _renderEmStunden() {
+export function _renderEmStunden() {
   const canvas = document.getElementById('em-stunden-canvas');
   if (!canvas) return;
   const emData = _calcEmHourly();
@@ -297,7 +302,7 @@ function _renderEmStunden() {
 }
 
 /* ── Hover + Zoom für Stundenprofil ─────────────────────────────────────── */
-function _emSetupHover(canvas, keys, hourly, startH, endH, PAD, iW, iH, maxV) {
+export function _emSetupHover(canvas, keys, hourly, startH, endH, PAD, iW, iH, maxV) {
   if (canvas._emHover) return; // nur einmal binden
   canvas._emHover = true;
   const tooltip = document.getElementById('em-stunden-tooltip');
@@ -320,7 +325,7 @@ function _emSetupHover(canvas, keys, hourly, startH, endH, PAD, iW, iH, maxV) {
   canvas.addEventListener('mouseleave', () => { if (tooltip) tooltip.style.display = 'none'; });
 }
 
-function _emSetupZoom(canvas, startH, endH, PAD, iW) {
+export function _emSetupZoom(canvas, startH, endH, PAD, iW) {
   if (canvas._emZoom) return;
   canvas._emZoom = true;
   canvas.addEventListener('mousedown', (e) => {
@@ -348,10 +353,10 @@ function _emSetupZoom(canvas, startH, endH, PAD, iW) {
   canvas.addEventListener('dblclick', () => { _emZoom = { startH: 0, endH: 8760 }; _renderEmStunden(); });
 }
 
-function _emZoomReset() { _emZoom = { startH: 0, endH: 8760 }; _renderEmStunden(); }
+export function _emZoomReset() { _emZoom = { startH: 0, endH: 8760 }; _renderEmStunden(); }
 
 /* ── Sub-Tab 2: Dauerlinie ────────────────────────────────────────────────── */
-function _renderEmDauerlinie() {
+export function _renderEmDauerlinie() {
   const canvas = document.getElementById('em-dauerlinie-canvas');
   if (!canvas) return;
   const emData = _calcEmHourly();
@@ -449,7 +454,7 @@ function _renderEmDauerlinie() {
 }
 
 /* ── Sub-Tab 3: Monatsübersicht ──────────────────────────────────────────── */
-function _renderEmMonat() {
+export function _renderEmMonat() {
   const canvas = document.getElementById('em-monat-canvas');
   if (!canvas) return;
   const emData = _calcEmHourly();
@@ -543,7 +548,7 @@ function _renderEmMonat() {
 }
 
 /* ── Sub-Tab 4: Primärenergie ──────────────────────────────────────────── */
-function _renderEmPef() {
+export function _renderEmPef() {
   const canvas = document.getElementById('em-pef-canvas');
   const tableEl = document.getElementById('em-pef-table');
   if (!canvas) return;
@@ -670,7 +675,7 @@ function _renderEmPef() {
   }
 }
 
-function renderAnalyseDispatch() {
+export function renderAnalyseDispatch() {
   // Render gestapelter Lastgang canvas in the analyse view
   const ss = window.systemState;
   let data = ss?.lastgangKw;
@@ -958,7 +963,7 @@ function renderAnalyseDispatch() {
 // ── 3D-Dispatch-Visualisierung (Teppich + Helix) ──────────────────────────
 if (!window._ekroneMode) window._ekroneMode = 'carpet';
 
-function _setEkroneMode(mode) {
+export function _setEkroneMode(mode) {
   window._ekroneMode = mode;
   document.querySelectorAll('.ekrone-mode-btn').forEach(b => {
     const active = b.getAttribute('data-mode') === mode;
@@ -972,7 +977,7 @@ function _setEkroneMode(mode) {
   _renderEnergiekrone();
 }
 
-function _renderEnergiekrone() {
+export function _renderEnergiekrone() {
   const canvas = document.getElementById('energiekrone-canvas');
   if (!canvas) return;
 
@@ -1042,7 +1047,7 @@ function _renderEnergiekrone() {
 }
 
 // ── 3D-Teppich (Carpet Plot) ──
-function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, zoom) {
+export function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, zoom) {
   const cosA = Math.cos(az), sinA = Math.sin(az);
   const cosE = Math.cos(el), sinE = Math.sin(el);
   const sW = W * 0.38 * zoom, sH = H * 0.44 * zoom;
@@ -1159,7 +1164,7 @@ function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el,
 }
 
 // ── 3D-Helix ──
-function _renderHelix3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, zoom) {
+export function _renderHelix3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, zoom) {
   const cosA = Math.cos(az), sinA = Math.sin(az);
   const cosE = Math.cos(el), sinE = Math.sin(el);
   const sW = W * 0.32 * zoom, sH = H * 0.36 * zoom;
@@ -1279,7 +1284,7 @@ function _renderHelix3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, az, el, 
   window._ekroneQuads = quads;
 }
 
-function _attachEkroneInteraction() {
+export function _attachEkroneInteraction() {
   const canvas = document.getElementById('energiekrone-canvas');
   if (!canvas || canvas._ekroneListeners) return;
   canvas._ekroneListeners = true;
@@ -1368,7 +1373,7 @@ function _attachEkroneInteraction() {
   canvas.style.cursor = 'grab';
 }
 
-function renderAnalyseErzeugerTable() {
+export function renderAnalyseErzeugerTable() {
   const el = document.getElementById('av-erzeuger-table');
   if (!el) return;
   const cfg = typeof ERZEUGER_CFG !== 'undefined' ? ERZEUGER_CFG : {};
@@ -1409,7 +1414,7 @@ function renderAnalyseErzeugerTable() {
 }
 
 // ── Vergleich Center View ────────────────────────────────────────
-function refreshVergleichView() {
+export function refreshVergleichView() {
   // Reuse the existing refreshVergleich logic but render to the new container
   if (typeof refreshVergleich === 'function') refreshVergleich();
   // Copy the rendered table to the new view
@@ -1429,7 +1434,7 @@ function refreshVergleichView() {
   }
 }
 
-function exportVergleichCSV() {
+export function exportVergleichCSV() {
   const table = document.querySelector('#vergleich-view-table-wrap .vergleich-table') || document.querySelector('#vergleich-table-wrap .vergleich-table');
   if (!table) { alert('Keine Vergleichsdaten vorhanden. Bitte zuerst Varianten anlegen.'); return; }
   let csv = '';

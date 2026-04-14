@@ -1,4 +1,9 @@
-const CalcEngine = (() => {
+import { _getEtaMap } from './01-globals-varianten.js';
+import { redrawErzeugerIcons } from './03a-erzeuger.js';
+import { glInit } from './06a-gbi-lastgang.js';
+import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
+
+export const CalcEngine = (() => {
   'use strict';
 
   // ── Konstanten ────────────────────────────────────────────────────────────

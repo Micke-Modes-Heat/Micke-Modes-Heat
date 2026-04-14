@@ -2959,38 +2959,6 @@ Turnhalle;Öffentlich;1982;A;850</div>
 <div id="edge-popup" class="edge-popup" style="display:none;"></div>
 
 
-<!-- Config (reine Daten, keine Abhängigkeiten) -->
-<script src="src/config/netz-kosten.js"></script>
-<script src="src/config/erzeuger-cfg.js"></script>
-<script src="src/config/optimizer-defaults.js"></script>
-<script src="src/config/hilfe-texte.js"></script>
-<!-- JS Module (Reihenfolge wichtig — globals zuerst, UI/Optimizer zuletzt) -->
-<script src="src/01-globals-varianten.js"></script>
-<script src="src/02a-netz-physik.js"></script>
-<script src="src/02b-gebaeude.js"></script>
-<script src="src/02c-karte-werkzeuge.js"></script>
-<script src="src/03a-erzeuger.js"></script>
-<script src="src/03b-netz.js"></script>
-<script src="src/03c-gebaeude-io.js"></script>
-<script src="src/04a-ui-panels.js"></script>
-<script src="src/04b-emissionen-3d.js"></script>
-<script src="src/05a-export.js"></script>
-<script src="src/05b-stromnetz.js"></script>
-<script src="src/05c-sankey.js"></script>
-<script src="src/06a-gbi-lastgang.js"></script>
-<script src="src/06b-gl-berechnen.js"></script>
-<script src="src/06c-dispatch-core.js"></script>
-<script src="src/07a-analysis-charts.js"></script>
-<script src="src/07b-analysis-economics.js"></script>
-<script src="src/08-calc-engine.js"></script>
-<script src="src/09a-pv-profile.js"></script>
-<script src="src/09b-pv-calc.js"></script>
-<script src="src/09c-pv-charts-opt.js"></script>
-<script src="src/10a-optimizer-core.js"></script>
-<script src="src/10b-hourly-live.js"></script>
-<script src="src/10c-optimizer-run.js"></script>
-<script src="src/10d-optimizer-worker.js"></script>
-<script src="src/11-hilfe-leitfaden.js"></script>
-<script src="src/12-inline-handlers.js"></script>
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>

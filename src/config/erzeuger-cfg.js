@@ -1,6 +1,6 @@
 // ── Erzeuger-Konfiguration ──────────────────────────────────────────────
 // Mapping Erzeuger-Key → UI-IDs, Farben, Typen, Gütegrade
-const ERZEUGER_CFG = {
+export const ERZEUGER_CFG = {
   lwwp:       { label: 'Luft-WP',     leistungId: 'lwwp-leistung', wrapId: 'lwwp-deckung-wrap', color: '#66bb6a', typ: 'wp',  guetegrad: 0.42, guetegradId: 'lwwp-guetegrad' },
   fg:         { label: 'FG-WP',       leistungId: 'fg-leistung',   wrapId: 'fg-deckung-wrap',   color: '#29b6f6', typ: 'wp',  guetegrad: 0.56, guetegradId: 'fg-guetegrad'   },
   geo:        { label: 'Geo-WP',      leistungId: 'geo-leistung-eff', wrapId: 'geo-deckung-wrap',  color: '#a1887f', typ: 'wp',  guetegrad: 0.50, guetegradId: 'geo-guetegrad'  },
@@ -14,7 +14,7 @@ const ERZEUGER_CFG = {
 };
 
 // Nutzungstyp-Kennwerte (spez. Wärmebedarf kWh/m²a, spez. Heizlast W/m²)
-const NUTZUNG_DEFAULTS = {
+export const NUTZUNG_DEFAULTS = {
   efh:        { spez: 180, spezHL: 55,  label: 'EFH' },
   mfh:        { spez: 120, spezHL: 40,  label: 'MFH' },
   ghd:        { spez: 100, spezHL: 50,  label: 'GHD' },

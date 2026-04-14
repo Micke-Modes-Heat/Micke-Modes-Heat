@@ -3,12 +3,25 @@
 // Reihenfolge bestimmt, welcher Erzeuger die Grundlast trägt.
 // Neuzugänge kommen an letzter Stelle (Spitzenlast).
 
+import { bhkw, cacheVariantResultsDebounced, fernwaerme, fliessgewaesser, gasKessel, gebaeude, geoThermie, globalYear, heizhackschnitzel, heizoelKessel, isExcluded, lwWp, pelletsKessel, solarthermieAktiv, stromEdges, stromEmF, stromEmFLZ, stromNodes, stromkessel, thermSpeicherAktiv } from './01-globals-varianten.js';
+import { getComputedStats } from './02b-gebaeude.js';
+import { _epKey, closeErzeugerPopup, redrawErzeugerIcons, showErzeugerPopup } from './03a-erzeuger.js';
+import { calcGeoThermie } from './03b-netz.js';
+import { updateLpMeritOrder } from './04a-ui-panels.js';
+import { recalcStromNetz } from './05b-stromnetz.js';
+import { getThermSpeicherParams, glBerechnenDebounced, glKannBerechnen, makeStProfile8760 } from './06b-gl-berechnen.js';
+import { _updateLogoBars, daUpdateIfOpen, saCurrentTab, saSetTab } from './07a-analysis-charts.js';
+import { calcWirtschaftPanel } from './07b-analysis-economics.js';
+import { calcStromPanel } from './09b-pv-calc.js';
+import { _checkShowHourlySlider, _hourlyModeActive, _updateHourlyOverlay } from './10b-hourly-live.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+
 window.meritOrderKeys = [];
 window._autoGkResult  = null; // { leistungKw, deckungPct, waermeMwh } — immer aktuell
 
 // ERZEUGER_CFG → src/config/erzeuger-cfg.js
 
-function isErzeugerAktiv(key) {
+export function isErzeugerAktiv(key) {
   switch (key) {
     case 'lwwp':       return !!lwWp;
     case 'fg':         return !!fliessgewaesser;
@@ -24,7 +37,7 @@ function isErzeugerAktiv(key) {
   }
 }
 
-function moBeiAktivierung(key) {
+export function moBeiAktivierung(key) {
   if (!window.meritOrderKeys.includes(key)) {
     window.meritOrderKeys.push(key);
   }
@@ -32,7 +45,7 @@ function moBeiAktivierung(key) {
   redrawErzeugerIcons();
 }
 
-function moBeiDeaktivierung(key) {
+export function moBeiDeaktivierung(key) {
   const idx = window.meritOrderKeys.indexOf(key);
   if (idx >= 0) window.meritOrderKeys.splice(idx, 1);
   updateAllDeckungen();
@@ -40,7 +53,7 @@ function moBeiDeaktivierung(key) {
 }
 
 // ── Hook: wird nach glBerechnen() aufgerufen ─────────────────────────────
-function onSystemStateUpdated() {
+export function onSystemStateUpdated() {
   updateAllDeckungen();
   // Systemanalyse-Charts refreshen wenn Panel gerade offen ist
   if (document.getElementById('analyse-panel')?.classList.contains('visible')) {
@@ -59,7 +72,7 @@ function onSystemStateUpdated() {
 // Exponent alpha wird so gewählt, dass gleichzeitig die Jahresenergie stimmt:
 //   jdl[0] = normLastKw  (Σ Normlast = tot-hl)
 //   Σ jdl[i] ≈ gesamtMwh × 1000 kWh
-function _getFallbackJdl() {
+export function _getFallbackJdl() {
   let gesamtMwh = 0, normLastKw = 0;
   gebaeude.forEach(g => {
     if (typeof isExcluded === 'function' && isExcluded(g.id)) return;
@@ -83,7 +96,7 @@ function _getFallbackJdl() {
 }
 
 // ── Quelltemperatur je WP-Typ — identisch mit CalcEngine.quellenTemp() ────
-function _quelleTemp(key, tAussen, t) {
+export function _quelleTemp(key, tAussen, t) {
   if (key === 'lwwp') {
     // Luft: direkt Außentemperatur
     return tAussen;
@@ -103,7 +116,7 @@ function _quelleTemp(key, tAussen, t) {
 }
 
 // ── Render-Hilfsfunktion für Deckung-Wrap ────────────────────────────────
-function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hinweis, vbh, allDeckungen, heizlastInfo) {
+export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hinweis, vbh, allDeckungen, heizlastInfo) {
   const w = document.getElementById(cfg.wrapId);
   if (!w) return;
   w.style.display = 'block';
@@ -195,7 +208,7 @@ function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hinweis, 
 // ── Deckungsanteil mit Merit-Order ────────────────────────────────────────
 // Wenn systemState vorhanden: stundenscharfer Dispatch mit COP(T,VL)
 // Sonst: LDC-Näherung aus synthetischem Fallback-Lastgang
-function updateAllDeckungen() {
+export function updateAllDeckungen() {
   const ss = window.systemState;
 
   if (ss && ss.lastgangKw && ss.tempH && ss.vlH) {
@@ -236,7 +249,7 @@ function updateAllDeckungen() {
 //   backupMode,                   — true: letzter Erzeuger hat unbegrenzte Kapazität
 // }
 // ═══════════════════════════════════════════════════════════════════════════
-function _dispatchCore(cfg) {
+export function _dispatchCore(cfg) {
   const {
     lastgangKw, tempH, vlH,
     erzList, speicherParams,
@@ -539,10 +552,10 @@ function _dispatchCore(cfg) {
 }
 
 // ── Stundenscharfer Dispatch (Hauptpfad) ─────────────────────────────────
-function _deckungen8760(ss) {
+export function _deckungen8760(ss) {
   const { lastgangKw, tempH, vlH } = ss;
   window._dimLastgangKw = lastgangKw;
-  _dimJdlSorted = null;
+  window._dimJdlSorted = null;
 
   const activeKeys = window.meritOrderKeys.filter(k => isErzeugerAktiv(k));
 
@@ -753,7 +766,7 @@ function _deckungen8760(ss) {
 }
 
 // ── WP-Panel-Rückkopplung aus stundenscharfem Dispatch ────────────────────
-function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, thKwhM, elKwhM) {
+export function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, thKwhM, elKwhM) {
   const thMwh = thKwhTotal / 1000;
   const elMwh = elKwhTotal / 1000;
   if (thMwh < 1) return;
@@ -805,18 +818,18 @@ function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, thKwhM,
 }
 
 // ── Wärmeabgabe aus Dispatch in Panel-Feld schreiben + Display neu rechnen ─
-const _WAERME_IDS = {
+export const _WAERME_IDS = {
   lwwp: 'lwwp-waerme', fg: 'fg-waerme', geo: 'geo-waerme',
   fernwaerme: 'fw-waerme', pellets: 'pk-waerme', hhs: 'hhs-waerme',
   heizoel: 'hko-waerme', gaskessel: 'gk-waerme', bhkw: 'bhkw-waerme',
 };
-const _DISPLAY_FNS = () => ({
+export const _DISPLAY_FNS = () => ({
   lwwp: updateLwWpData, fg: updateFliessgewaesserData, geo: calcGeoThermie,
   fernwaerme: updateFernwaermeDisplay, pellets: updatePelletsDisplay,
   hhs: updateHhsDisplay, heizoel: updateHeizoelDisplay, gaskessel: updateGasKesselDisplay,
   bhkw: updateBhkwDisplay,
 });
-function _updateErzeugerWaerme(key, waermeMwh) {
+export function _updateErzeugerWaerme(key, waermeMwh) {
   if (waermeMwh < 0.1) return;
   const el = document.getElementById(_WAERME_IDS[key]);
   if (el) el.value = Math.round(waermeMwh);
@@ -824,7 +837,7 @@ function _updateErzeugerWaerme(key, waermeMwh) {
   if (fn) fn();
 }
 
-function _renderWpCopChart(svgId, wrapId, monthlyCops, color) {
+export function _renderWpCopChart(svgId, wrapId, monthlyCops, color) {
   const wrap  = document.getElementById(wrapId);
   const svgEl = document.getElementById(svgId);
   if (!wrap || !svgEl) return;
@@ -864,9 +877,9 @@ function _renderWpCopChart(svgId, wrapId, monthlyCops, color) {
 // ── Umsortieren der Merit-Order per Mousedown/Up (kein HTML5 DnD) ─────────
 // HTML5 draggable kollidiert mit Leaflet's eigenem Drag-Handler auf dem
 // Karten-Container. Deshalb: eigenes Pointer-Tracking auf document-Ebene.
-let _moDragKey = null;
+export let _moDragKey = null;
 
-function moMouseDown(e, key) {
+export function moMouseDown(e, key) {
   e.preventDefault();
   e.stopPropagation(); // Leaflet nicht aktivieren
   _moDragKey = key;
@@ -879,7 +892,7 @@ function moMouseDown(e, key) {
   document.addEventListener('mouseup', moMouseUp, { once: true });
 }
 
-function moMouseUp(e) {
+export function moMouseUp(e) {
   if (!_moDragKey) return;
   const fromKey = _moDragKey;
   // Icon unter dem Cursor finden
@@ -909,7 +922,7 @@ function moMouseUp(e) {
 }
 
 // Swap merit order position by direction (-1 = up, +1 = down)
-function moSwap(key, dir) {
+export function moSwap(key, dir) {
   const idx = window.meritOrderKeys.indexOf(key);
   const newIdx = idx + dir;
   if (idx < 0 || newIdx < 0 || newIdx >= window.meritOrderKeys.length) return;

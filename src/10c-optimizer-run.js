@@ -1,9 +1,19 @@
 // ── 10c-optimizer-run.js — Optimierung starten/abbrechen, Worker-Orchestrierung, Ergebnis-Rendering ──
 
-function runOptimierung() {
-  if (_optRunning) { _optAbbrechen(); return; }
-  _optAborted = false;
-  _optRunning = true;
+import { globalYear } from './01-globals-varianten.js';
+import { aggregateGebStrom } from './02b-gebaeude.js';
+import { escHtml } from './03c-gebaeude-io.js';
+import { makeStProfile8760 } from './06b-gl-berechnen.js';
+import { makePvProfile8760 } from './09a-pv-profile.js';
+import { _collectOptDomParams, _optGetScaledLastgang, _optKennwerte2, _optScore } from './10a-optimizer-core.js';
+
+import { _buildOptWorkerCode, _doRunOptimierung, _optRenderBarChart, _optRenderRadar, _optRenderScatter } from './10d-optimizer-worker.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+
+export function runOptimierung() {
+  if (window._optRunning) { _optAbbrechen(); return; }
+  window._optAborted = false;
+  window._optRunning = true;
   const btn = document.getElementById('btn-opt-start');
   if (btn) {
     btn.setAttribute('data-running', '1');
@@ -21,20 +31,20 @@ function runOptimierung() {
   }
 }
 
-function _optAbbrechen() {
-  _optAborted = true;
-  if (_optWorker) { _optWorker.terminate(); _optWorker = null; }
-  for (const w of _optWorkers) { try { w.terminate(); } catch(e) {} }
-  _optWorkers = [];
+export function _optAbbrechen() {
+  window._optAborted = true;
+  if (window._optWorker) { window._optWorker.terminate(); window._optWorker = null; }
+  for (const w of window._optWorkers) { try { w.terminate(); } catch(e) {} }
+  window._optWorkers = [];
   _optFinished();
   const resDiv = document.getElementById('opt-result-list');
   if (resDiv) resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Abgebrochen.</div>';
 }
 
-function _optFinished() {
-  _optRunning = false;
-  _optWorker = null;
-  _optWorkers = [];
+export function _optFinished() {
+  window._optRunning = false;
+  window._optWorker = null;
+  window._optWorkers = [];
   const btn = document.getElementById('btn-opt-start');
   if (btn) {
     btn.removeAttribute('data-running');
@@ -43,7 +53,7 @@ function _optFinished() {
   }
 }
 
-function _runOptWorker(resDiv) {
+export function _runOptWorker(resDiv) {
   const ss = window.systemState;
   if (!ss?.lastgangKw || ss.lastgangKw.length < 8760 || !ss.tempH || !ss.vlH) {
     resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Kein stundenscharfer Lastgang verfügbar.</div>';
@@ -159,8 +169,8 @@ function _runOptWorker(resDiv) {
   // ── Single Worker (Fallback für 1 Kern) ──
   if (numWorkers <= 1) {
     const worker = createAndSendWorker('full', { workerIdx: 0, numWorkers: 1 });
-    _optWorker = worker;
-    _optWorkers = [worker];
+    window._optWorker = worker;
+    window._optWorkers = [worker];
     worker.onmessage = function(e) {
       const msg = e.data;
       if (msg.type === 'progress') {
@@ -173,7 +183,7 @@ function _runOptWorker(resDiv) {
     };
     worker.onerror = function(e) {
       console.error('OptWorker Error:', e);
-      _optWorker = null; _optWorkers = [];
+      window._optWorker = null; window._optWorkers = [];
       resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;">Worker-Fehler, Fallback&#x2026;</div>';
       setTimeout(() => _doRunOptimierung(resDiv), 30);
     };
@@ -186,14 +196,14 @@ function _runOptWorker(resDiv) {
   let allGrobResults = [];
   let grobWorkersFinished = 0;
   let hadError = false;
-  _optWorkers = [];
+  window._optWorkers = [];
 
   for (let i = 0; i < numWorkers; i++) {
     const w = createAndSendWorker('grob', { workerIdx: i, numWorkers });
-    _optWorkers.push(w);
+    window._optWorkers.push(w);
 
     w.onmessage = function(e) {
-      if (_optAborted) return;
+      if (window._optAborted) return;
       const msg = e.data;
       if (msg.type === 'progress') {
         workerProgress[msg.workerIdx || i] = msg.pct;
@@ -214,8 +224,8 @@ function _runOptWorker(resDiv) {
       console.error('OptWorker', i, 'Error:', e);
       if (!hadError) {
         hadError = true;
-        for (const wk of _optWorkers) { try { wk.terminate(); } catch(ex) {} }
-        _optWorker = null; _optWorkers = [];
+        for (const wk of window._optWorkers) { try { wk.terminate(); } catch(ex) {} }
+        window._optWorker = null; window._optWorkers = [];
         resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;">Worker-Fehler, Fallback&#x2026;</div>';
         setTimeout(() => _doRunOptimierung(resDiv), 30);
       }
@@ -225,7 +235,7 @@ function _runOptWorker(resDiv) {
 
   // ── Multi-Worker: Phase 2 — Feinsuche mit einem Worker ──
   function _startFeinPhase() {
-    if (_optAborted) return;
+    if (window._optAborted) return;
     // Grobresultate zusammenführen, deduplizieren, Top 5 auswählen
     allGrobResults.sort((a, b) => a.score - b.score);
     const seen = new Set();
@@ -268,12 +278,12 @@ function _runOptWorker(resDiv) {
       lastgangKw: fLastgang, tempH: fTempArr, vlH: fVlArr,
       pvProfile: fPvArr, stNormProfile: fStArr, quartierH: fQArr,
     }, fTransferList);
-    _optWorker = feinWorker;
-    _optWorkers = [feinWorker];
+    window._optWorker = feinWorker;
+    window._optWorkers = [feinWorker];
     URL.revokeObjectURL(url2);
 
     feinWorker.onmessage = function(e) {
-      if (_optAborted) return;
+      if (window._optAborted) return;
       const msg = e.data;
       if (msg.type === 'progress') {
         workerProgress[0] = msg.pct;
@@ -291,7 +301,7 @@ function _runOptWorker(resDiv) {
   }
 }
 
-function _renderWorkerResults(topFein, grobResults, resDiv, startTime, params) {
+export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, params) {
   if (!topFein || topFein.length === 0) {
     resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine Ergebnisse.</div>';
     _optFinished();

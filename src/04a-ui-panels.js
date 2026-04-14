@@ -1,7 +1,23 @@
 // ── 04a-ui-panels.js — Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold ──
 // NUTZUNG_DEFAULTS → src/config/erzeuger-cfg.js
 
-function setNutzung(id, nutzung) {
+import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, stromNetzSubTab, variantResults } from './01-globals-varianten.js';
+import { getWLD } from './02a-netz-physik.js';
+import { _invalidateStats, getComputedStats, map } from './02b-gebaeude.js';
+import { updateViz } from './02c-karte-werkzeuge.js';
+import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
+import { renderList, updateTotals } from './03c-gebaeude-io.js';
+import { _renderEmissionenTab, refreshVergleichView, renderAnalyseDispatch } from './04b-emissionen-3d.js';
+import { setStromNetzVisible } from './05b-stromnetz.js';
+import { saSetTab } from './07a-analysis-charts.js';
+import { calcWirtschaftPanel } from './07b-analysis-economics.js';
+import { calcStromPanel } from './09b-pv-calc.js';
+import { _optPopulateYearSelect, _optUpdateEstimate } from './10a-optimizer-core.js';
+import { _liveStopPlay, _onHourSlider } from './10b-hourly-live.js';
+import { ERZEUGER_CFG, NUTZUNG_DEFAULTS } from './config/erzeuger-cfg.js';
+import { KMR_KOSTEN } from './config/netz-kosten.js';
+
+export function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
   if (!g) return;
   g.nutzung = nutzung;
@@ -34,13 +50,13 @@ function setNutzung(id, nutzung) {
 }
 
 // ── Gebäude-Auswahl & Massenbearbeitung ──────────────────────────────
-function toggleSelect(id, checked) {
+export function toggleSelect(id, checked) {
   const g = gebaeude.find(x => x.id === id);
   if (g) g.selected = checked;
   updateBulkBar();
 }
 
-function updateBulkBar() {
+export function updateBulkBar() {
   const sel = gebaeude.filter(g => g.selected);
   const bar = document.getElementById('bulk-bar');
   const lbl = document.getElementById('bulk-lbl');
@@ -52,7 +68,7 @@ function updateBulkBar() {
   }
 }
 
-function applyBulk() {
+export function applyBulk() {
   const spez   = document.getElementById('bulk-spez').value;
   const waerme = document.getElementById('bulk-waerme').value;
   const hl     = document.getElementById('bulk-hl').value;
@@ -75,15 +91,15 @@ function applyBulk() {
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }
 
-function clearSelection() {
+export function clearSelection() {
   gebaeude.forEach(g => g.selected = false);
   renderList();
   updateBulkBar();
 }
 
 // ── Gebäude-Filter ────────────────────────────────────────────────────
-let filterText = '';
-function filterList(val) {
+export let filterText = '';
+export function filterList(val) {
   filterText = val.toLowerCase().trim();
   const cards = document.querySelectorAll('#geb-list .geb-card');
   cards.forEach(card => {
@@ -98,10 +114,10 @@ function filterList(val) {
 }
 
 // ── Adresssuche (Nominatim) ───────────────────────────────────────────
-let addrDebounce = null;
-let addrSelected = -1;
+export let addrDebounce = null;
+export let addrSelected = -1;
 
-function addrSearch(val) {
+export function addrSearch(val) {
   clearTimeout(addrDebounce);
   const res = document.getElementById('addr-results');
   if (!val || val.length < 3) { res.classList.remove('open'); return; }
@@ -129,7 +145,7 @@ function addrSearch(val) {
   }, 350);
 }
 
-function selectAddr(item) {
+export function selectAddr(item) {
   map.flyTo([parseFloat(item.lat), parseFloat(item.lon)], 17, {duration: 1.2});
   // Show a brief pulse marker
   const m = L.circleMarker([parseFloat(item.lat), parseFloat(item.lon)], {
@@ -140,7 +156,7 @@ function selectAddr(item) {
   document.getElementById('addr-results').classList.remove('open');
 }
 
-function addrKeydown(e) {
+export function addrKeydown(e) {
   const res = document.getElementById('addr-results');
   const items = res.querySelectorAll('.addr-result-item');
   if (!items.length) return;
@@ -167,7 +183,7 @@ document.addEventListener('click', e => {
 });
 
 // ── Autosave (LocalStorage) ───────────────────────────────────────────
-function autosave() {
+export function autosave() {
   try {
     localStorage.setItem('energiekarte_autosave', JSON.stringify(_buildProjectData()));
   } catch(e) {}
@@ -175,7 +191,7 @@ function autosave() {
 setInterval(autosave, 30000);
 
 // Restore autosave on load if no manual project loaded
-function tryRestoreAutosave() {
+export function tryRestoreAutosave() {
   try {
     const raw = localStorage.getItem('energiekarte_autosave');
     if (!raw) return;
@@ -188,7 +204,7 @@ function tryRestoreAutosave() {
   } catch(e) {}
 }
 
-function loadAutosave() {
+export function loadAutosave() {
   const raw = localStorage.getItem('energiekarte_autosave');
   if (!raw) return;
   try {
@@ -201,7 +217,7 @@ function loadAutosave() {
 
 
 // ── OSM Straßentyp → Kostenklasse ────────────────────────────────────
-const HIGHWAY_KOSTEN = {
+export const HIGHWAY_KOSTEN = {
   motorway:'hoch', trunk:'hoch', primary:'hoch', secondary:'hoch',
   tertiary:'mittel', residential:'mittel', living_street:'mittel',
   service:'niedrig', track:'niedrig', path:'niedrig', footway:'niedrig',
@@ -239,9 +255,9 @@ async function autoAssignEdgeCosts() {
 }
 
 // ── Edge popup ────────────────────────────────────────────────────────
-let activeEdgePopup = null;
+export let activeEdgePopup = null;
 
-function showEdgePopup(e, mouseEvt) {
+export function showEdgePopup(e, mouseEvt) {
   const popup = document.getElementById('edge-popup');
   if (!popup) return;
   activeEdgePopup = e;
@@ -302,18 +318,18 @@ function showEdgePopup(e, mouseEvt) {
   popup.style.top  = py + 'px';
 }
 
-function closeEdgePopup() {
+export function closeEdgePopup() {
   const p = document.getElementById('edge-popup');
   if (p) p.style.display = 'none';
   activeEdgePopup = null;
 }
 
-function setEdgeDN(val) {
+export function setEdgeDN(val) {
   if (!activeEdgePopup) return;
   const dn = parseInt(val);
   activeEdgePopup.dnOverride = dn > 0;
   activeEdgePopup.dn = dn > 0 ? dn : 0;
-  networkLocked = activeEdgePopup.dnOverride; // auto-lock when DN set manually
+  window.networkLocked = activeEdgePopup.dnOverride; // auto-lock when DN set manually
   recalcNetz();
   if (activeEdgePopup) showEdgePopup(activeEdgePopup, {
     clientX: parseInt(document.getElementById('edge-popup').style.left) + document.getElementById('map').getBoundingClientRect().left,
@@ -321,7 +337,7 @@ function setEdgeDN(val) {
   });
 }
 
-function setEdgeKost(klass) {
+export function setEdgeKost(klass) {
   if (!activeEdgePopup) return;
   activeEdgePopup.kostKlasse = klass;
   activeEdgePopup.kostOverride = true;
@@ -338,7 +354,7 @@ function setEdgeKost(klass) {
 }
 
 // ── Netz-Pruning ──────────────────────────────────────────────────────────
-function togglePruningMode() {
+export function togglePruningMode() {
   netzPruningMode = !netzPruningMode;
   const btn = document.getElementById('btn-pruning-mode');
   const info = document.getElementById('pruning-info');
@@ -358,7 +374,7 @@ function togglePruningMode() {
   updatePruningSummary();
 }
 
-function toggleEdgePruned(edge) {
+export function toggleEdgePruned(edge) {
   const e = edge || activeEdgePopup;
   if (!e) return;
   e.pruned = !e.pruned;
@@ -381,7 +397,7 @@ function toggleEdgePruned(edge) {
   }
 }
 
-function applyEdgePrunedStyle(e) {
+export function applyEdgePrunedStyle(e) {
   if (!e || !e.layer) return;
   if (e.pruned) {
     e.layer.setStyle({ dashArray: '8 6', opacity: 0.3, color: '#78909c' });
@@ -391,7 +407,7 @@ function applyEdgePrunedStyle(e) {
   }
 }
 
-function pruneSubtree(edge) {
+export function pruneSubtree(edge) {
   // Find which direction is "downstream" from zentrale and prune all edges in subtree
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   if (!zId) return;
@@ -414,7 +430,7 @@ function pruneSubtree(edge) {
   }
 }
 
-function unpruneSubtree(edge) {
+export function unpruneSubtree(edge) {
   // Unprune all edges downstream of this edge
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   if (!zId) return;
@@ -437,7 +453,7 @@ function unpruneSubtree(edge) {
   }
 }
 
-function getDownstreamNodeId(edge, zentraleId) {
+export function getDownstreamNodeId(edge, zentraleId) {
   // BFS from zentrale to determine which side of the edge is downstream
   const visited = new Set([zentraleId]);
   const queue = [zentraleId];
@@ -459,7 +475,7 @@ function getDownstreamNodeId(edge, zentraleId) {
   return edge.v === zentraleId ? edge.u : edge.v;
 }
 
-function updatePruningSummary() {
+export function updatePruningSummary() {
   const div = document.getElementById('pruning-summary');
   if (!div) return;
   const prunedEdges = netzEdges.filter(e => e.pruned);
@@ -485,7 +501,7 @@ function updatePruningSummary() {
     <button data-click="clearAllPruning()" style="margin-top:5px;width:100%;padding:3px 6px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;font-size:9px;font-family:'DM Mono',monospace;">Pruning aufheben</button>`;
 }
 
-function clearAllPruning() {
+export function clearAllPruning() {
   netzEdges.forEach(e => { e.pruned = false; applyEdgePrunedStyle(e); });
   recalcNetz();
   updatePruningSummary();
@@ -498,14 +514,14 @@ document.addEventListener('click', ev => {
   }
 });
 
-function getKostenProMKlasse(dn, klass) {
+export function getKostenProMKlasse(dn, klass) {
   const row = KMR_KOSTEN[dn];
   if (!row) return 0;
   return row[{niedrig:0,mittel:1,hoch:2}[klass]??1];
 }
 
 // ── Print legend update ───────────────────────────────────────────────
-function updatePrintLegend() {
+export function updatePrintLegend() {
   const tw = document.getElementById('tot-waerme')?.textContent || '—';
   const thl = document.getElementById('tot-hl')?.textContent || '—';
   const n  = gebaeude.length;
@@ -520,7 +536,7 @@ function updatePrintLegend() {
 
 
 // ── Draggable float panels ──────────────────────────────────────────
-function startDrag(e, panelId) {
+export function startDrag(e, panelId) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
 
@@ -558,7 +574,7 @@ function startDrag(e, panelId) {
 renderList();
 tryRestoreAutosave();
 
-function toggleSidebar() {
+export function toggleSidebar() {
   const sb = document.getElementById('sidebar');
   const btn = document.getElementById('sidebar-toggle');
   const collapsed = sb.classList.toggle('collapsed');
@@ -569,7 +585,7 @@ function toggleSidebar() {
   setTimeout(() => map.invalidateSize(), 210);
 }
 
-function togglePanelMinimize(id) {
+export function togglePanelMinimize(id) {
   const p = document.getElementById(id);
   if (!p) return;
   p.classList.toggle('minimized');
@@ -593,9 +609,9 @@ document.querySelectorAll('.float-panel').forEach(panel => {
 // 3-ZONEN GUI: View-Mode · Left-Panel · Center-Views
 // ══════════════════════════════════════════════════════════════════
 
-let currentViewMode = 'karte';
+export let currentViewMode = 'karte';
 
-function setViewMode(mode) {
+export function setViewMode(mode) {
   currentViewMode = mode;
   // Stop live play when leaving live view
   if (mode !== 'live' && typeof _liveStopPlay === 'function') _liveStopPlay();
@@ -626,17 +642,17 @@ function setViewMode(mode) {
   }
   if (mode === 'vergleich') refreshVergleichView();
   if (mode === 'live') {
-    _hourlyModeActive = true;
-    if (typeof _tlHistoDrawn !== 'undefined') _tlHistoDrawn = false; // Redraw histogram
+    window._hourlyModeActive = true;
+    if (typeof window._tlHistoDrawn !== 'undefined') window._tlHistoDrawn = false; // Redraw histogram
     const slider = document.getElementById('live-slider');
     _onHourSlider(slider?.value || 0);
   }
 }
 
 // --- Auto-Hide Floating-Panels beim Zeichnen/Platzieren ---
-let _drawHiddenPanels = [];
+export let _drawHiddenPanels = [];
 
-function _hideForDraw() {
+export function _hideForDraw() {
   _drawHiddenPanels = [];
   document.querySelectorAll('.float-panel.visible').forEach(p => {
     _drawHiddenPanels.push(p.id);
@@ -644,7 +660,7 @@ function _hideForDraw() {
   });
 }
 
-function _restoreAfterDraw() {
+export function _restoreAfterDraw() {
   _drawHiddenPanels.forEach(id => {
     const p = document.getElementById(id);
     if (p) p.classList.add('visible');
@@ -653,8 +669,8 @@ function _restoreAfterDraw() {
 }
 
 // Left Panel
-let leftPanelCollapsed = false;
-function toggleLeftPanel() {
+export let leftPanelCollapsed = false;
+export function toggleLeftPanel() {
   leftPanelCollapsed = !leftPanelCollapsed;
   const lp = document.getElementById('left-panel');
   const btn = document.getElementById('lp-toggle');
@@ -665,7 +681,7 @@ function toggleLeftPanel() {
   setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 260);
 }
 
-function setLeftTab(tabId) {
+export function setLeftTab(tabId) {
   document.querySelectorAll('#lp-tabs .lp-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('#left-panel .lp-content').forEach(c => c.classList.toggle('active', c.id === 'lp-' + tabId));
   const titles = { gebiet: 'Gebiet', netz: 'Netz', erzeuger: 'Erzeuger', ergebnis: 'Ergebnis' };
@@ -692,7 +708,7 @@ function setLeftTab(tabId) {
 // initLeftPanel: erzeuger buttons are now native in HTML, no cloning needed
 
 // Update left panel merit order summary
-function updateLpMeritOrder() {
+export function updateLpMeritOrder() {
   const container = document.getElementById('lp-merit-order');
   if (!container || typeof window.meritOrderKeys === 'undefined') return;
   const keys = window.meritOrderKeys || [];
@@ -727,7 +743,7 @@ function updateLpMeritOrder() {
 }
 
 // Update left panel netz summary
-function updateLpErgebnisKpis() {
+export function updateLpErgebnisKpis() {
   var set = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
   if (!gebaeude || !gebaeude.length) {
     set('lp-kpi-waerme', '—'); set('lp-kpi-heizlast', '—'); set('lp-kpi-wgk', '—');
@@ -765,7 +781,7 @@ function updateLpErgebnisKpis() {
   }
 }
 
-function updateLpStepProgress() {
+export function updateLpStepProgress() {
   // Step 1: Gebiet — done when gebaeude exist
   var s1 = document.querySelector('#lp-gebiet .lp-step-num');
   var done1 = gebaeude && gebaeude.length > 0;
@@ -807,7 +823,7 @@ function updateLpStepProgress() {
   });
 }
 
-function updateLpGebietStatus() {
+export function updateLpGebietStatus() {
   var el = document.getElementById('lp-gebiet-status');
   if (!el) return;
   var parts = [];
@@ -820,7 +836,7 @@ function updateLpGebietStatus() {
   el.innerHTML = parts.length ? parts.join(' · ') : '';
 }
 
-function updateLpNetzSummary() {
+export function updateLpNetzSummary() {
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   var hint = document.getElementById('lp-netz-hint');
   if (typeof netzEdges === 'undefined' || !netzEdges.length) {
@@ -847,7 +863,7 @@ function updateLpNetzSummary() {
   setVal('lp-netz-verlust-pct', pct);
   setVal('lp-netz-wld', wld + ' kWh/(m·a)');
   setVal('lp-netz-geb', connGeb.length + '');
-  setVal('lp-netz-locked', typeof networkLocked !== 'undefined' && networkLocked ? 'Bestandsnetz' : 'Neubaunetz');
+  setVal('lp-netz-locked', typeof window.networkLocked !== 'undefined' && window.networkLocked ? 'Bestandsnetz' : 'Neubaunetz');
 
   // Druckverluste + Pumpe
   const pump = window._netzPumpe;
@@ -864,24 +880,24 @@ function updateLpNetzSummary() {
 }
 
 // ── Analyse Center View ──────────────────────────────────────────
-let analyseCurrentSection = 'uebersicht';
-let waermeCurrentTab = 'lastgang';
+export let analyseCurrentSection = 'uebersicht';
+export let waermeCurrentTab = 'lastgang';
 
-function setAnalyseSection(section) {
+export function setAnalyseSection(section) {
   analyseCurrentSection = section;
   document.querySelectorAll('#analyse-view-tabs .analyse-section-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.section === section));
   refreshAnalyseView();
 }
 
-function setWaermeTab(tab) {
+export function setWaermeTab(tab) {
   waermeCurrentTab = tab;
   document.querySelectorAll('#waerme-subtabs .analyse-sub-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab));
   _renderWaermeTab();
 }
 
-function _renderWaermeTab() {
+export function _renderWaermeTab() {
   const container = document.getElementById('analyse-waerme-content');
   if (!container) return;
   // Eingebettetes Panel zurücksetzen und neu einbetten
@@ -895,7 +911,7 @@ function _renderWaermeTab() {
 }
 
 /* ── Inline-Panel-Helfer: Floating-Panels im Analyse-Modus einbetten ── */
-function _embedPanelInline(panelId, container) {
+export function _embedPanelInline(panelId, container) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
   // Ursprüngliche Position merken
@@ -910,7 +926,7 @@ function _embedPanelInline(panelId, container) {
   const dragHandle = panel.querySelector('.panel-drag-handle');
   if (dragHandle) dragHandle.style.display = 'none';
 }
-function _restoreInlinePanels() {
+export function _restoreInlinePanels() {
   document.querySelectorAll('.float-panel.inline-mode').forEach(p => {
     p.classList.remove('inline-mode', 'visible');
     // Versteckte Elemente wiederherstellen
@@ -929,7 +945,7 @@ function _restoreInlinePanels() {
   });
 }
 
-function refreshAnalyseView() {
+export function refreshAnalyseView() {
   // Populate KPIs from footer-status or system state
   const ss = window.systemState;
   const setKpi = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };

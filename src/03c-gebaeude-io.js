@@ -1,7 +1,14 @@
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
-function updateTotals(){
+import { _expandedIds, globalYear, isExcluded, selectedId, stromEdges } from './01-globals-varianten.js';
+import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh, highlightCard, map } from './02b-gebaeude.js';
+import { hidePanels, populateZentraleSelect } from './03b-netz.js';
+import { updateLpGebietStatus, updatePrintLegend } from './04a-ui-panels.js';
+import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
+import { calcStromPanel } from './09b-pv-calc.js';
+
+export function updateTotals(){
   let tw=0, th=0;
-  gebaeude.forEach(g=>{
+  window.gebaeude.forEach(g=>{
     if (isExcluded(g.id)) return;
     const stats = getComputedStats(g, globalYear);
     tw += stats.waerme;
@@ -18,12 +25,12 @@ function updateTotals(){
     for (let i=0;i<8760;i++) { ts += window.elQuartierH[i]; if (window.elQuartierH[i] > tsl) tsl = window.elQuartierH[i]; }
     ts /= 1000;
   } else {
-    gebaeude.forEach(g => { if (!isExcluded(g.id)) ts += getGebStromMwh(g); });
+    window.gebaeude.forEach(g => { if (!isExcluded(g.id)) ts += getGebStromMwh(g); });
     if (ts > 0) tsl = ts * 1000 / 2500; // Schätzung ~2500 VBH
   }
   document.getElementById('tot-strom').textContent=ts>0?ts.toLocaleString('de-DE',{maximumFractionDigits:1}):'—';
   document.getElementById('tot-stromlast').textContent=tsl>0?Math.round(tsl).toLocaleString('de-DE'):'—';
-  document.getElementById('geb-count').textContent=gebaeude.length;
+  document.getElementById('geb-count').textContent=window.gebaeude.length;
 
   // Quellenübersicht
   const srcEl = document.getElementById('tot-sources');
@@ -58,12 +65,12 @@ function updateTotals(){
   updatePrintLegend();
 }
 
-function cardDotColor(g){
+export function cardDotColor(g){
   const [cMin,cMax]=getColorRange();
   return getColor(getColorVal(g),cMin,cMax);
 }
 
-function drawChart() {
+export function drawChart() {
   const container = document.getElementById('svg-chart-container');
   if (!container) return;
 
@@ -72,12 +79,12 @@ function drawChart() {
 
   // Wärme MIT Sanierungen (aktuell)
   const waerme = years.map(y => {
-    let s = 0; gebaeude.forEach(g => { s += getComputedStats(g, y).waerme; }); return s;
+    let s = 0; window.gebaeude.forEach(g => { s += getComputedStats(g, y).waerme; }); return s;
   });
   // Wärme OHNE Sanierungen (Vergleich)
   const waermeOhne = years.map(y => {
     let s = 0;
-    gebaeude.forEach(g => {
+    window.gebaeude.forEach(g => {
       const saved = g.sanierungen; g.sanierungen = [];
       s += getComputedStats(g, y).waerme;
       g.sanierungen = saved;
@@ -86,7 +93,7 @@ function drawChart() {
   });
   // Heizlast MIT Sanierungen
   const hl = years.map(y => {
-    let s = 0; gebaeude.forEach(g => { s += getComputedStats(g, y).heizlast; }); return s;
+    let s = 0; window.gebaeude.forEach(g => { s += getComputedStats(g, y).heizlast; }); return s;
   });
 
   const maxW  = Math.max(...waerme, ...waermeOhne, 1);
@@ -172,7 +179,7 @@ window.addEventListener('resize', () => {
     if (typeof map !== 'undefined') setTimeout(() => map.invalidateSize(), 100);
 });
 
-function _renderCompactRow(g, stats, isExpanded) {
+export function _renderCompactRow(g, stats, isExpanded) {
   const dot = cardDotColor(g);
   const nutzungLabel = {efh:'EFH',mfh:'MFH',ghd:'GHD',schule:'Schule',buero:'Büro',industrie:'Ind.',oeffentlich:'Öff.'}[g.nutzung] || '—';
   const waermeStr = stats.waerme > 0 ? Math.round(stats.waerme).toLocaleString('de-DE') : '—';
@@ -199,25 +206,25 @@ function _renderCompactRow(g, stats, isExpanded) {
   </div>`;
 }
 
-function _pvWpM2Global() {
+export function _pvWpM2Global() {
   const b  = parseFloat(document.getElementById('pv-modul-breite')?.value) || 1.1;
   const l  = parseFloat(document.getElementById('pv-modul-laenge')?.value) || 1.7;
   const wp = parseFloat(document.getElementById('pv-modul-wp')?.value)     || 450;
   return wp / (b * l);
 }
 
-function calcGebKwp(g) {
+export function calcGebKwp(g) {
   const fl = parseFloat(g.flaeche) || 0;
   return fl * (g.pvDachanteil || 30) / 100 * _pvWpM2Global() / 1000;
 }
 
-function _gebLabelHtml(g) {
+export function _gebLabelHtml(g) {
   const pvBadge = g.pvAktiv ? '<span style="color:#ffd54f;font-size:9px;margin-left:3px;vertical-align:middle;">☀</span>' : '';
   return escHtml(g.name) + pvBadge;
 }
 
-function _updateGebLabelPv(id) {
-  const g = gebaeude.find(x => x.id === id);
+export function _updateGebLabelPv(id) {
+  const g = window.gebaeude.find(x => x.id === id);
   if (!g || !g.labelMarker) return;
   const el = g.labelMarker.getElement();
   if (!el) return;
@@ -225,8 +232,8 @@ function _updateGebLabelPv(id) {
   if (inner) inner.innerHTML = _gebLabelHtml(g);
 }
 
-function updateGebPv(id, field, val) {
-  const g = gebaeude.find(x => x.id === id);
+export function updateGebPv(id, field, val) {
+  const g = window.gebaeude.find(x => x.id === id);
   if (!g) return;
   if (field === 'pvAktiv') g.pvAktiv = val;
   else if (field === 'pvDachanteil') g.pvDachanteil = parseFloat(val) || 30;
@@ -236,7 +243,7 @@ function updateGebPv(id, field, val) {
   renderGebPvPanel();
 }
 
-function toggleGebPvPanel() {
+export function toggleGebPvPanel() {
   const p   = document.getElementById('geb-pv-panel');
   const btn = document.getElementById('btn-geb-pv-toggle');
   if (p.classList.contains('visible')) { hidePanels(); return; }
@@ -246,14 +253,14 @@ function toggleGebPvPanel() {
   renderGebPvPanel();
 }
 
-function gebPvAllenZuweisen() {
+export function gebPvAllenZuweisen() {
   const dach = parseFloat(document.getElementById('geb-pv-dachanteil')?.value) || 30;
-  gebaeude.forEach(g => { g.pvDachanteil = dach; _rerenderCard(g.id); });
+  window.gebaeude.forEach(g => { g.pvDachanteil = dach; _rerenderCard(g.id); });
   renderGebPvPanel();
   calcStromPanel();
 }
 
-function renderGebPvPanel() {
+export function renderGebPvPanel() {
   const panel = document.getElementById('geb-pv-panel');
   if (!panel?.classList.contains('visible')) return;
   const list  = document.getElementById('geb-pv-list');
@@ -269,7 +276,7 @@ function renderGebPvPanel() {
   const infoEl = document.getElementById('pv-modul-info');
   if (infoEl) infoEl.textContent = `${b.toFixed(2)} × ${l.toFixed(2)} m = ${mFlaeche.toFixed(2)} m²/Modul → ${wpM2.toFixed(0)} Wp/m²`;
 
-  const mitFlaeche = gebaeude.filter(g => parseFloat(g.flaeche) > 0);
+  const mitFlaeche = window.gebaeude.filter(g => parseFloat(g.flaeche) > 0);
 
   if (mitFlaeche.length === 0) {
     list.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:6px 0;">Noch keine Gebäude mit Fläche vorhanden.</div>';
@@ -314,7 +321,7 @@ function renderGebPvPanel() {
   }
 }
 
-function _renderExpandedPanel(g, stats) {
+export function _renderExpandedPanel(g, stats) {
   const ausgeschlossen = isExcluded(g.id);
   let planItems = [];
   if (g.baujahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Neubau ab ${g.baujahr}</span><span style="cursor:pointer;color:#e53935" data-click="clearPlan(${g.id}, 'neubau')">✕</span></div>`);
@@ -504,10 +511,10 @@ function _renderExpandedPanel(g, stats) {
   </div>`;
 }
 
-function _rerenderCard(id) {
+export function _rerenderCard(id) {
   const card = document.getElementById('card-' + id);
   if (!card) return;
-  const g = gebaeude.find(x => x.id === id);
+  const g = window.gebaeude.find(x => x.id === id);
   if (!g) return;
   const stats = getComputedStats(g, globalYear);
   const isExpanded = _expandedIds.has(id);
@@ -521,7 +528,7 @@ function _rerenderCard(id) {
                    (isExpanded ? _renderExpandedPanel(g, stats) : '');
 }
 
-function toggleGebExpand(id) {
+export function toggleGebExpand(id) {
   if (_expandedIds.has(id)) {
     _expandedIds.delete(id);
   } else {
@@ -531,11 +538,11 @@ function toggleGebExpand(id) {
   _rerenderCard(id);
 }
 
-function renderList(){
+export function renderList(){
   populateZentraleSelect();
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
   const el=document.getElementById('geb-list');el.innerHTML='';
-  gebaeude.forEach(g=>{
+  window.gebaeude.forEach(g=>{
     const stats = getComputedStats(g, globalYear);
     const card=document.createElement('div');
     const ausgeschlossen = isExcluded(g.id);
@@ -553,14 +560,14 @@ function renderList(){
   updateTotals();
 }
 
-function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function escVal(v){return v!=null&&v!==''?v:'';}
-function flyTo(id){const g=gebaeude.find(x=>x.id===id);if(g?.polygonLayer)map.flyToBounds(g.polygonLayer.getBounds(),{padding:[40,40]});}
+export function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+export function escVal(v){return v!=null&&v!==''?v:'';}
+export function flyTo(id){const g=window.gebaeude.find(x=>x.id===id);if(g?.polygonLayer)map.flyToBounds(g.polygonLayer.getBounds(),{padding:[40,40]});}
 
-function _buildProjectData() {
+export function _buildProjectData() {
   return {
     version: 1,
-    gebaeude: gebaeude.map(g => ({
+    gebaeude: window.gebaeude.map(g => ({
       id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
       flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
       baujahr: g.baujahr, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen,
@@ -635,13 +642,13 @@ function _buildProjectData() {
   };
 }
 
-function exportJSON(){
+export function exportJSON(){
   const project = _buildProjectData();
   const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='liegenschaft_projekt.json';a.click();
 }
 
-function importJSON(event) {
+export function importJSON(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -660,13 +667,13 @@ function importJSON(event) {
   event.target.value = '';
 }
 
-function _loadProject(project) {
-      gebaeude.forEach(g => {
+export function _loadProject(project) {
+      window.gebaeude.forEach(g => {
         if(g.polygonLayer) map.removeLayer(g.polygonLayer);
         if(g.circleMarker) map.removeLayer(g.circleMarker);
         if(g.labelMarker) map.removeLayer(g.labelMarker);
       });
-      gebaeude = [];
+      window.gebaeude = [];
       clearNetz();
       clearTrasse();
       clearFliessgewaesser();
@@ -978,8 +985,8 @@ function _loadProject(project) {
         }
         // Gebäude-Strom-Knoten VOR Kantenwiederherstellung registrieren,
         // damit infra→geb Kanten nicht fehlschlagen (geb-Knoten müssen existieren)
-        if (typeof gebaeude !== 'undefined') {
-          gebaeude.forEach(g => {
+        if (typeof window.gebaeude !== 'undefined') {
+          window.gebaeude.forEach(g => {
             if (stromNodes.find(n => n.id === g.id && n.type === 'geb')) return;
             const stromMwh = typeof getGebStromMwh === 'function' ? getGebStromMwh(g) : (parseFloat(g.strom) || 0);
             if (stromMwh <= 0) return;
@@ -1024,14 +1031,14 @@ function _loadProject(project) {
       glBerechnenDebounced(800);
 }
 
-function loadGebaeudeFromParent(gebaeudeArray) {
+export function loadGebaeudeFromParent(gebaeudeArray) {
   if (!Array.isArray(gebaeudeArray)) return;
-  gebaeude.forEach(g => {
+  window.gebaeude.forEach(g => {
     if (g.polygonLayer) map.removeLayer(g.polygonLayer);
     if (g.circleMarker) map.removeLayer(g.circleMarker);
     if (g.labelMarker) map.removeLayer(g.labelMarker);
   });
-  gebaeude = [];
+  window.gebaeude = [];
   clearNetz();
   clearTrasse();
   idCounter = 1;
@@ -1056,9 +1063,9 @@ function loadGebaeudeFromParent(gebaeudeArray) {
   setTimeout(hideHint, 2500);
 }
 
-function sendToLiegenschaftsrechner() {
+export function sendToLiegenschaftsrechner() {
   if (window.parent === window) return;
-  const payload = gebaeude.map(g => ({
+  const payload = window.gebaeude.map(g => ({
     id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
     flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
     baujahr: g.baujahr, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen || [], stockwerke: g.stockwerke != null ? g.stockwerke : 1
@@ -1079,16 +1086,16 @@ function sendToLiegenschaftsrechner() {
   setTimeout(function() { window.parent.postMessage({ type: 'ENERGIEKARTE_READY' }, '*'); }, 800);
 })();
 
-function showHint(msg){const h=document.getElementById('hint');h.textContent=msg;h.classList.remove('hidden');}
-function hideHint(){document.getElementById('hint').classList.add('hidden');}
+export function showHint(msg){const h=document.getElementById('hint');h.textContent=msg;h.classList.remove('hidden');}
+export function hideHint(){document.getElementById('hint').classList.add('hidden');}
 
-const sty=document.createElement('style');
+export const sty=document.createElement('style');
 sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:6px 10px;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);font-weight:normal;}`;
 document.head.appendChild(sty);
 
-let dashOffset = 0;
-let _animPipesRunning = false;
-function animatePipes() {
+export let dashOffset = 0;
+export let _animPipesRunning = false;
+export function animatePipes() {
   if (!_animPipesRunning) return;
   dashOffset -= 0.5;
   netzEdges.forEach(e => {
@@ -1099,12 +1106,12 @@ function animatePipes() {
   });
   requestAnimationFrame(animatePipes);
 }
-function startAnimPipes() { if (!_animPipesRunning) { _animPipesRunning = true; animatePipes(); } }
-function stopAnimPipes()  { _animPipesRunning = false; }
+export function startAnimPipes() { if (!_animPipesRunning) { _animPipesRunning = true; animatePipes(); } }
+export function stopAnimPipes()  { _animPipesRunning = false; }
 
-let stromDashOffset = 0;
-let _animStromRunning = false;
-function animateStromPipes() {
+export let stromDashOffset = 0;
+export let _animStromRunning = false;
+export function animateStromPipes() {
   if (!_animStromRunning) return;
   stromDashOffset -= 0.6;
   stromEdges.forEach(e => {
@@ -1114,7 +1121,7 @@ function animateStromPipes() {
   });
   requestAnimationFrame(animateStromPipes);
 }
-function startAnimStrom() { if (!_animStromRunning) { _animStromRunning = true; animateStromPipes(); } }
-function stopAnimStrom()  { _animStromRunning = false; }
+export function startAnimStrom() { if (!_animStromRunning) { _animStromRunning = true; animateStromPipes(); } }
+export function stopAnimStrom()  { _animStromRunning = false; }
 
 

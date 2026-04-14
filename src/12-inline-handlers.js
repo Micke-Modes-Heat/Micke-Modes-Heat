@@ -1,5 +1,8 @@
 // ── Event-Delegation für data-* Handler ──────────────────────────────────
 // Ersetzt inline onclick/oninput/onchange — Handler-Code steht in data-Attributen.
+import { CalcEngine } from './08-calc-engine.js';
+import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
+
 (function() {
   function exec(el, code) {
     try { new Function('event', code).call(el, event); }

@@ -1,12 +1,22 @@
 // ── 02c-karte-werkzeuge.js — Zeichenwerkzeuge, Trasse, Fließgewässer, LWWP, Wirtschaftlichkeit ──
-function polygonCenter(coords){
+import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, lwWpLayerGroup, lwWpSchallLayerGroup, netzEdges, pelletsKessel, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
+import { getColor, getColorRange, getColorVal, getComputedStats, getEffectiveRMax, getSizeRange, getSizeVal, highlightCard, map, renameGebaeude } from './02b-gebaeude.js';
+import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, redrawVerbindungslinien, windSvg } from './03a-erzeuger.js';
+import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
+import { _rerenderCard, hideHint, renderList, showHint, updateTotals } from './03c-gebaeude-io.js';
+import { _hideForDraw, _restoreAfterDraw, updateLpGebietStatus } from './04a-ui-panels.js';
+import { setNetzSubTab, stromNodeClick } from './05b-stromnetz.js';
+import { gbiManualMode, gbiManualSelectGeb } from './06a-gbi-lastgang.js';
+import { moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
+
+export function polygonCenter(coords){
   let lat=0,lng=0,n=coords.length;
   coords.forEach(c=>{ lat+=c.lat; lng+=c.lng; });
   return L.latLng(lat/n,lng/n);
 }
 
 /** Polyline um offsetMeter senkrecht verschieben (negativ = links, positiv = rechts). Für Tripellinie. */
-function offsetPolyline(pts, offsetMeters) {
+export function offsetPolyline(pts, offsetMeters) {
   if (!pts || pts.length < 2) return pts;
   const R = 6371000;
   const toRad = Math.PI / 180;
@@ -36,7 +46,7 @@ function offsetPolyline(pts, offsetMeters) {
 }
 
 /** Leichten Sinusverlauf in die Polyline legen (amplitudeM in Meter, numWaves = Anzahl Wellen über die Länge). */
-function sinusWobblePolyline(pts, amplitudeM, numWaves) {
+export function sinusWobblePolyline(pts, amplitudeM, numWaves) {
   if (!pts || pts.length < 2 || amplitudeM <= 0) return pts;
   const R = 6371000;
   const toRad = Math.PI / 180;
@@ -72,7 +82,7 @@ function sinusWobblePolyline(pts, amplitudeM, numWaves) {
 }
 
 /** Nächster Punkt auf der Polyline (Fluss) zum Zielpunkt (z. B. Heizzentrale). Kürzeste Verbindung. */
-function closestPointOnPolyline(pts, targetLngLat) {
+export function closestPointOnPolyline(pts, targetLngLat) {
   if (!pts || pts.length === 0) return null;
   if (pts.length === 1) return pts[0];
   const target = L.latLng(targetLngLat);
@@ -98,7 +108,7 @@ function closestPointOnPolyline(pts, targetLngLat) {
 }
 
 
-function polygonAreaM2(coords){
+export function polygonAreaM2(coords){
   if(!coords||coords.length<3) return null;
   const R=6371000;
   const latRef=coords[0].lat*Math.PI/180;
@@ -113,7 +123,7 @@ function polygonAreaM2(coords){
   return Math.abs(area/2);
 }
 
-function updateViz(){
+export function updateViz(){
   const [sMin,sMax]=getSizeRange();
   const [cMin,cMax]=getColorRange();
   const effRMax   = getEffectiveRMax();
@@ -122,17 +132,17 @@ function updateViz(){
   const labelZoom = nGeb > 200 ? 19 : nGeb > 80 ? 18 : nGeb > 30 ? 17 : 16;
   const legendBar = document.getElementById('legend-bar');
 
-  if (currentMode === 'waerme' || currentMode === 'spez') {
+  if (window.currentMode === 'waerme' || window.currentMode === 'spez') {
     document.getElementById('legend-color-title').textContent = 'Farbe = Spez. Verbrauch';
     document.getElementById('leg-min').textContent = '≤ 20';
     document.getElementById('leg-max').textContent = '≥ 250';
     legendBar.style.background = 'linear-gradient(90deg, #4caf50, #f9a825, #f44336, #640000)';
-  } else if (currentMode === 'verlust') {
+  } else if (window.currentMode === 'verlust') {
     document.getElementById('legend-color-title').textContent = 'Farbe = Zuger. Verlustanteil';
     document.getElementById('leg-min').textContent = '0 %';
     document.getElementById('leg-max').textContent = '≥ 20 %';
     legendBar.style.background = 'linear-gradient(90deg, #4caf50, #f9a825, #e53935)';
-  } else if (currentMode === 'strom') {
+  } else if (window.currentMode === 'strom') {
     document.getElementById('legend-color-title').textContent = 'Farbe = Strombedarf';
     document.getElementById('leg-min').textContent = 'niedrig';
     document.getElementById('leg-max').textContent = 'hoch';
@@ -144,11 +154,11 @@ function updateViz(){
     legendBar.style.background = 'linear-gradient(90deg, #2e7d32, #8bc34a, #f9a825, #e65100, #b71c1c)';
   }
 
-  const sizeModeName = {waerme:'Wärmeverbrauch',spez:'Spez. Verbrauch',heizlast:'Heizlast',verlust:'Zuger. Netzverlust',strom:'Strombedarf'}[currentMode];
+  const sizeModeName = {waerme:'Wärmeverbrauch',spez:'Spez. Verbrauch',heizlast:'Heizlast',verlust:'Zuger. Netzverlust',strom:'Strombedarf'}[window.currentMode];
   document.getElementById('legend-size-title').textContent=`Kreisgröße = ${sizeModeName}`;
 
   const legendCircles = document.getElementById('legend-circles');
-  if(currentViz==='bar'){
+  if(window.currentViz==='bar'){
     legendCircles.closest('.legend-row').querySelector('div:first-child').style.display='none';
     document.getElementById('legend-size-title').textContent=`Balkenhöhe = ${sizeModeName}`;
   } else {
@@ -192,12 +202,12 @@ function updateViz(){
     if(!g.polygon) return;
     const center=polygonCenter(g.polygon);
 
-    if (gebVisible && !excluded && stats.status !== 'geplant' && stats.status !== 'abgerissen') {
+    if (window.gebVisible && !excluded && stats.status !== 'geplant' && stats.status !== 'abgerissen') {
         const sv=getSizeVal(g);
         const cv2=getColorVal(g);
         const col=getColor(cv2,cMin,cMax);
 
-        if(currentViz==='circle' && sv){
+        if(window.currentViz==='circle' && sv){
           // r ∝ √sv → Fläche ∝ sv → doppelter Verbrauch = doppelte Kreisfläche
           const r = Math.max(R_MIN, Math.round(effRMax * Math.sqrt(sv / sMax)));
           g.circleMarker=L.circleMarker(center,{
@@ -210,7 +220,7 @@ function updateViz(){
           g.circleMarker.addTo(map);
         }
 
-        if(currentViz==='bar' && sv){
+        if(window.currentViz==='bar' && sv){
           const t=sMax>sMin?(sv-sMin)/(sMax-sMin):0;
           const barH=Math.max(8,Math.round(8+t*52));
           const barW=14;
@@ -227,11 +237,11 @@ function updateViz(){
         }
     }
 
-    if(labelsVisible && map.getZoom() >= labelZoom) buildMapLabel(g,center, stats.status);
+    if(window.labelsVisible && map.getZoom() >= labelZoom) buildMapLabel(g,center, stats.status);
   });
 }
 
-function buildMapLabel(g,center, status){
+export function buildMapLabel(g,center, status){
   const opacity = (status === 'geplant' || status === 'abgerissen') ? '0.3' : '1';
   const icon=L.divIcon({
     className:'geb-label',
@@ -246,7 +256,7 @@ function buildMapLabel(g,center, status){
   g.labelMarker=L.marker(center,{icon,interactive:true,zIndexOffset:500}).addTo(map);
 }
 
-function selectFromMap(id){
+export function selectFromMap(id){
   // Gebäudeliste-Import: bidirektionale manuelle Zuordnung
   if(gbiManualMode && typeof gbiManualSelectGeb === 'function') {
     if(gbiManualSelectGeb(id)) return;
@@ -256,11 +266,11 @@ function selectFromMap(id){
     if(stromNodeClick(id)) return;
   }
   if(isDrawingEdge){
-    if(edgeStartId === null){ edgeStartId = id; showHint('Zweites Gebäude anklicken.'); }
-    else { if(edgeStartId !== id){ addNetzEdge(edgeStartId, id); recalcNetz(); } edgeStartId = null; showHint('Nächstes Gebäude anklicken oder Tool beenden.'); }
+    if(window.edgeStartId === null){ window.edgeStartId = id; showHint('Zweites Gebäude anklicken.'); }
+    else { if(window.edgeStartId !== id){ addNetzEdge(window.edgeStartId, id); recalcNetz(); } window.edgeStartId = null; showHint('Nächstes Gebäude anklicken oder Tool beenden.'); }
     return;
   }
-  selectedId=id;
+  window.selectedId=id;
   _expandedIds.add(id);
   _rerenderCard(id);
   highlightCard(id);
@@ -268,7 +278,7 @@ function selectFromMap(id){
   if(el) el.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
-function startMapRename(id){
+export function startMapRename(id){
   const el=document.getElementById('lbl-'+id);
   if(!el) return;
   el.contentEditable='true'; el.focus();
@@ -278,7 +288,7 @@ function startMapRename(id){
   el.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();el.blur();} if(e.key==='Escape'){el.contentEditable='false';} };
 }
 
-function buildTooltip(g){
+export function buildTooltip(g){
   const stats = getComputedStats(g, globalYear);
   const lines=[`<span style="font-weight:normal;color:var(--accent)">${escHtml(g.name)}</span>`];
 
@@ -288,7 +298,7 @@ function buildTooltip(g){
   if(g.fromOsm) lines.push(`<span style="color:#ce93d8;font-size:10px">● OSM</span>`);
 
   if (stats.status !== 'geplant' && stats.status !== 'abgerissen') {
-    if (currentMode === 'strom') {
+    if (window.currentMode === 'strom') {
       // ── Strom-Modus: elektrische Kennwerte ───────────────────────────────
       const fl = parseFloat(g.flaeche) || 0;
       if (g.elMwh > 0) {
@@ -336,19 +346,19 @@ function buildTooltip(g){
   return lines.join('<br>');
 }
 
-function setViz(v){
-  currentViz=v;
+export function setViz(v){
+  window.currentViz=v;
   ['circle','bar','none'].forEach(x=>document.getElementById('vbtn-'+x).classList.toggle('active',x===v));
   updateViz();
 }
 
-function setGebVisible(visible) {
-  gebVisible = visible;
+export function setGebVisible(visible) {
+  window.gebVisible = visible;
   updateViz();
 }
 
-function setLabelsVisible(visible) {
-  labelsVisible = visible;
+export function setLabelsVisible(visible) {
+  window.labelsVisible = visible;
   // Labels sofort entfernen wenn ausgeschaltet (nicht auf updateViz() warten)
   if (!visible) {
     gebaeude.forEach(g => {
@@ -358,8 +368,8 @@ function setLabelsVisible(visible) {
   updateViz();
 }
 
-function setMode(m){
-  currentMode=m;
+export function setMode(m){
+  window.currentMode=m;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('btn-'+m).classList.add('active');
   updateNetzStrandVisibility();
@@ -372,7 +382,7 @@ function setMode(m){
   }
 }
 
-function cleanupDrawAreaEvents() {
+export function cleanupDrawAreaEvents() {
   map.off('click', onDrawAreaClick);
   map.off('contextmenu', onDrawAreaCancel);
   map.dragging.enable();
@@ -382,19 +392,19 @@ function cleanupDrawAreaEvents() {
   _restoreAfterDraw();
 }
 
-function clearArea() {
-  if (areaPolygon) map.removeLayer(areaPolygon);
-  if (areaPolyline) map.removeLayer(areaPolyline);
-  if (areaStartMarker) map.removeLayer(areaStartMarker);
-  areaEditMarkers.forEach(m => map.removeLayer(m));
+export function clearArea() {
+  if (window.areaPolygon) map.removeLayer(window.areaPolygon);
+  if (window.areaPolyline) map.removeLayer(window.areaPolyline);
+  if (window.areaStartMarker) map.removeLayer(window.areaStartMarker);
+  window.areaEditMarkers.forEach(m => map.removeLayer(m));
 
-  areaEditMarkers = [];
-  areaPoints = [];
-  areaLatLngs = null;
-  areaDrawing = false;
-  areaPolygon = null;
-  areaPolyline = null;
-  areaStartMarker = null;
+  window.areaEditMarkers = [];
+  window.areaPoints = [];
+  window.areaLatLngs = null;
+  window.areaDrawing = false;
+  window.areaPolygon = null;
+  window.areaPolyline = null;
+  window.areaStartMarker = null;
 
   hidePanels();
   document.getElementById('btn-draw-area').classList.remove('active');
@@ -402,24 +412,24 @@ function clearArea() {
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
 }
 
-function lockArea() {
-  areaEditMarkers.forEach(m => map.removeLayer(m));
-  areaEditMarkers = [];
+export function lockArea() {
+  window.areaEditMarkers.forEach(m => map.removeLayer(m));
+  window.areaEditMarkers = [];
   hidePanels();
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
 }
 
-function toggleDrawArea() {
-  if (areaDrawing || areaPolygon) { clearArea(); return; }
+export function toggleDrawArea() {
+  if (window.areaDrawing || window.areaPolygon) { clearArea(); return; }
 
   // Andere Zeichenmodi abbrechen
-  if (isDrawingTrasse) toggleDrawTrasse();
-  if (isDrawingRiver) toggleDrawRiver();
+  if (window.isDrawingTrasse) toggleDrawTrasse();
+  if (window.isDrawingRiver) toggleDrawRiver();
   if (drawingId !== null) cancelDraw();
   if (ffDrawId !== null) cancelDrawFF();
 
-  areaDrawing = true;
-  areaPoints = [];
+  window.areaDrawing = true;
+  window.areaPoints = [];
   document.getElementById('btn-draw-area').classList.add('active');
   showHint('Klicke für Eckpunkte auf die Karte. Den Startpunkt (rot) erneut anklicken zum Abschließen. Rechtsklick zum Widerrufen. ESC zum Abbrechen.');
 
@@ -434,63 +444,63 @@ function toggleDrawArea() {
   map.on('contextmenu', onDrawAreaCancel);
 }
 
-function onDrawAreaClick(e) {
-  if (!areaDrawing) return;
+export function onDrawAreaClick(e) {
+  if (!window.areaDrawing) return;
 
   // Klick auf Startmarker → Polygon abschließen (nicht als neuen Punkt werten)
-  if (areaStartMarker && areaPoints.length >= 3) {
-    const startLL = areaStartMarker.getLatLng();
+  if (window.areaStartMarker && window.areaPoints.length >= 3) {
+    const startLL = window.areaStartMarker.getLatLng();
     const d = map.latLngToContainerPoint(e.latlng).distanceTo(map.latLngToContainerPoint(startLL));
     if (d < 20) { finishAreaDraw(); return; }
   }
 
-  if (areaPoints.length === 0) {
+  if (window.areaPoints.length === 0) {
     const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
-    areaStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
-    areaStartMarker.on('click', (ev) => {
+    window.areaStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
+    window.areaStartMarker.on('click', (ev) => {
       L.DomEvent.stopPropagation(ev);
       finishAreaDraw();
     });
   }
 
-  areaPoints.push(e.latlng);
-  if (areaPolyline) map.removeLayer(areaPolyline);
-  areaPolyline = L.polyline([...areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
+  window.areaPoints.push(e.latlng);
+  if (window.areaPolyline) map.removeLayer(window.areaPolyline);
+  window.areaPolyline = L.polyline([...areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
 }
 
-function onDrawAreaCancel(e) {
-  if (!areaDrawing) return;
+export function onDrawAreaCancel(e) {
+  if (!window.areaDrawing) return;
 
-  if (areaPoints.length > 0) {
-    areaPoints.pop();
-    if (areaPolyline) map.removeLayer(areaPolyline);
+  if (window.areaPoints.length > 0) {
+    window.areaPoints.pop();
+    if (window.areaPolyline) map.removeLayer(window.areaPolyline);
 
-    if (areaPoints.length > 0) {
-      areaPolyline = L.polyline([...areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
+    if (window.areaPoints.length > 0) {
+      window.areaPolyline = L.polyline([...areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
     } else {
-      if (areaStartMarker) { map.removeLayer(areaStartMarker); areaStartMarker = null; }
+      if (window.areaStartMarker) { map.removeLayer(window.areaStartMarker); window.areaStartMarker = null; }
     }
   }
 }
 
-function finishAreaDraw() {
-  if (areaPoints.length < 3) return;
-  areaLatLngs = [...areaPoints];
-  areaDrawing = false;
+export function finishAreaDraw() {
+  if (window.areaPoints.length < 3) return;
+  window.areaLatLngs = [...areaPoints];
+  window.areaDrawing = false;
 
-  if (areaPolyline) map.removeLayer(areaPolyline);
-  if (areaStartMarker) { map.removeLayer(areaStartMarker); areaStartMarker = null; }
+  if (window.areaPolyline) map.removeLayer(window.areaPolyline);
+  if (window.areaStartMarker) { map.removeLayer(window.areaStartMarker); window.areaStartMarker = null; }
 
-  areaPolygon = L.polygon(areaLatLngs, {color: '#ab47bc', weight: 2, dashArray: '8 4', fillColor: '#ab47bc', fillOpacity: 0.08}).addTo(map);
+  window.areaPolygon = L.polygon(window.areaLatLngs, {color: '#ab47bc', weight: 2, dashArray: '8 4', fillColor: '#ab47bc', fillOpacity: 0.08}).addTo(map);
 
   const editIcon = L.divIcon({className: 'area-edit-handle', html: '', iconSize: [12, 12]});
-  areaLatLngs.forEach((latlng, index) => {
+  window.areaLatLngs.forEach((latlng, index) => {
     let marker = L.marker(latlng, {draggable: true, icon: editIcon, zIndexOffset: 2000}).addTo(map);
     marker.on('drag', function(e) {
-      areaLatLngs[index] = e.target.getLatLng();
-      areaPolygon.setLatLngs(areaLatLngs);
+      window.areaLatLngs[index] = e.target.getLatLng();
+      window.areaPolygon.setLatLngs(window.areaLatLngs);
     });
-    areaEditMarkers.push(marker);
+    window.areaEditMarkers.push(marker);
   });
 
   cleanupDrawAreaEvents();
@@ -498,10 +508,10 @@ function finishAreaDraw() {
 }
 
 map.on('click',e=>{
-  if (isPlacingLwWp) { placeLwWpAt(e.latlng); return; }
-  if (isPlacingGeo) {
+  if (window.isPlacingLwWp) { placeLwWpAt(e.latlng); return; }
+  if (window.isPlacingGeo) {
     placeGeoAt(e.latlng);
-    isPlacingGeo = false;
+    window.isPlacingGeo = false;
     const btn = document.getElementById('btn-place-geo');
     if (btn) { btn.textContent = 'Auf Karte platzieren'; btn.style.borderColor = ''; }
     map.getContainer().style.cursor = '';
@@ -513,9 +523,9 @@ map.on('click',e=>{
     if (geoBtn) geoBtn.classList.add('active');
     return;
   }
-  if (isPlacingPellets) {
+  if (window.isPlacingPellets) {
     if (pelletsKessel) { pelletsKessel.lat = e.latlng.lat; pelletsKessel.lng = e.latlng.lng; }
-    isPlacingPellets = false;
+    window.isPlacingPellets = false;
     map.getContainer().style.cursor = '';
     _restoreAfterDraw();
     const btn = document.getElementById('btn-place-pellets');
@@ -528,9 +538,9 @@ map.on('click',e=>{
     if (pBtn) pBtn.classList.add('active');
     return;
   }
-  if (isPlacingHhs) {
+  if (window.isPlacingHhs) {
     if (heizhackschnitzel) { heizhackschnitzel.lat = e.latlng.lat; heizhackschnitzel.lng = e.latlng.lng; }
-    isPlacingHhs = false;
+    window.isPlacingHhs = false;
     map.getContainer().style.cursor = '';
     _restoreAfterDraw();
     const btn = document.getElementById('btn-place-hhs');
@@ -543,9 +553,9 @@ map.on('click',e=>{
     if (hBtn) hBtn.classList.add('active');
     return;
   }
-  if (isPlacingFernwaerme) {
+  if (window.isPlacingFernwaerme) {
     if (fernwaerme) { fernwaerme.lat = e.latlng.lat; fernwaerme.lng = e.latlng.lng; }
-    isPlacingFernwaerme = false;
+    window.isPlacingFernwaerme = false;
     map.getContainer().style.cursor = '';
     _restoreAfterDraw();
     const btn = document.getElementById('btn-place-fw');
@@ -558,36 +568,36 @@ map.on('click',e=>{
     if (fwBtn) fwBtn.classList.add('active');
     return;
   }
-  if(isDrawingRiver) {
-    riverPoints.push(e.latlng);
+  if(window.isDrawingRiver) {
+    window.riverPoints.push(e.latlng);
     redrawRiverDuringDraw();
     return;
   }
-  if(isDrawingTrasse) {
-    if (trasseDetached) {
+  if(window.isDrawingTrasse) {
+    if (window.trasseDetached) {
       // Prüfen ob Klick nahe einem bestehenden Trasse-Punkt ist (Wiedereinstieg)
       let snapIdx = -1;
       let snapDist = Infinity;
       const clickPx = map.latLngToContainerPoint(e.latlng);
-      for (let i = 0; i < trassePoints.length; i++) {
-        const px = map.latLngToContainerPoint(trassePoints[i]);
+      for (let i = 0; i < window.trassePoints.length; i++) {
+        const px = map.latLngToContainerPoint(window.trassePoints[i]);
         const d = clickPx.distanceTo(px);
         if (d < 20 && d < snapDist) { snapDist = d; snapIdx = i; }
       }
       if (snapIdx >= 0) {
         // Neuen Strang ab bestehendem Punkt starten
-        trasseCurrentSegStart = trassePoints.length;
-        trassePoints.push(L.latLng(trassePoints[snapIdx].lat, trassePoints[snapIdx].lng));
+        window.trasseCurrentSegStart = window.trassePoints.length;
+        window.trassePoints.push(L.latLng(window.trassePoints[snapIdx].lat, window.trassePoints[snapIdx].lng));
         showHint('Neuer Strang ab Abzweigung. Klicke weiter oder "Abschließen".');
       } else {
         // Neuen isolierten Strang beginnen
-        trasseCurrentSegStart = trassePoints.length;
-        trassePoints.push(e.latlng);
+        window.trasseCurrentSegStart = window.trassePoints.length;
+        window.trassePoints.push(e.latlng);
         showHint('Neuer Strang gestartet. Klicke weiter oder Rechtsklick = loslösen.');
       }
-      trasseDetached = false;
+      window.trasseDetached = false;
     } else {
-      trassePoints.push(e.latlng);
+      window.trassePoints.push(e.latlng);
     }
     redrawTrasse();
     return;
@@ -595,61 +605,61 @@ map.on('click',e=>{
   if (ffDrawId !== null) {
     if (ffDrawPoints.length === 0) {
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
-      ffDrawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
-      ffDrawStartMarker.on('click', (ev) => { L.DomEvent.stopPropagation(ev); finishDrawFF(); });
+      window.ffDrawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
+      window.ffDrawStartMarker.on('click', (ev) => { L.DomEvent.stopPropagation(ev); finishDrawFF(); });
     }
     ffDrawPoints.push(e.latlng);
-    if (ffDrawPolyline) map.removeLayer(ffDrawPolyline);
-    ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
+    if (window.ffDrawPolyline) map.removeLayer(window.ffDrawPolyline);
+    window.ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
     return;
   }
   if(drawingId!==null){
     if(drawPoints.length === 0){
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
-      drawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
-      drawStartMarker.on('click', (ev) => {
+      window.drawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
+      window.drawStartMarker.on('click', (ev) => {
         L.DomEvent.stopPropagation(ev);
         finishDraw();
       });
     }
     drawPoints.push(e.latlng);
-    if(drawPolyline) map.removeLayer(drawPolyline);
-    drawPolyline=L.polyline([...drawPoints],{color:'#4fc3f7',weight:2,dashArray:'6 4'}).addTo(map);
+    if(window.drawPolyline) map.removeLayer(window.drawPolyline);
+    window.drawPolyline=L.polyline([...drawPoints],{color:'#4fc3f7',weight:2,dashArray:'6 4'}).addTo(map);
     return;
   }
 });
 
 map.on('contextmenu', e => {
-  if(isDrawingRiver && riverPoints.length > 0){
-    riverPoints.pop();
+  if(window.isDrawingRiver && window.riverPoints.length > 0){
+    window.riverPoints.pop();
     redrawRiverDuringDraw();
-  } else if(isDrawingTrasse && trassePoints.length > 0){
+  } else if(window.isDrawingTrasse && window.trassePoints.length > 0){
     // Rechtsklick: aktuellen Strang loslösen
-    if (trassePoints.length > trasseCurrentSegStart + 1) {
-      trasseSegments.push({ start: trasseCurrentSegStart, end: trassePoints.length - 1 });
-    } else if (trassePoints.length > trasseCurrentSegStart) {
+    if (window.trassePoints.length > window.trasseCurrentSegStart + 1) {
+      window.trasseSegments.push({ start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1 });
+    } else if (window.trassePoints.length > window.trasseCurrentSegStart) {
       // Einzelner Punkt ohne Segment: entfernen
-      trassePoints.pop();
+      window.trassePoints.pop();
     }
-    trasseDetached = true;
-    trasseCurrentSegStart = trassePoints.length;
+    window.trasseDetached = true;
+    window.trasseCurrentSegStart = window.trassePoints.length;
     showHint('Strang losgelöst. Klicke auf einen bestehenden Trasse-Punkt zum Abzweigen, oder auf die Karte für neuen Strang.');
     redrawTrasse();
   } else if(drawingId !== null && drawPoints.length > 0){
     drawPoints.pop();
-    if(drawPolyline) map.removeLayer(drawPolyline);
+    if(window.drawPolyline) map.removeLayer(window.drawPolyline);
     if(drawPoints.length > 0) {
-      drawPolyline = L.polyline([...drawPoints], {color: '#4fc3f7', weight: 2, dashArray: '6 4'}).addTo(map);
+      window.drawPolyline = L.polyline([...drawPoints], {color: '#4fc3f7', weight: 2, dashArray: '6 4'}).addTo(map);
     } else {
-      if(drawStartMarker) { map.removeLayer(drawStartMarker); drawStartMarker = null; }
+      if(window.drawStartMarker) { map.removeLayer(window.drawStartMarker); window.drawStartMarker = null; }
     }
   } else if (ffDrawId !== null && ffDrawPoints.length > 0) {
     ffDrawPoints.pop();
-    if (ffDrawPolyline) map.removeLayer(ffDrawPolyline);
+    if (window.ffDrawPolyline) map.removeLayer(window.ffDrawPolyline);
     if (ffDrawPoints.length > 0) {
-      ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
+      window.ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
     } else {
-      if (ffDrawStartMarker) { map.removeLayer(ffDrawStartMarker); ffDrawStartMarker = null; }
+      if (window.ffDrawStartMarker) { map.removeLayer(window.ffDrawStartMarker); window.ffDrawStartMarker = null; }
     }
   }
 });
@@ -657,41 +667,41 @@ map.on('contextmenu', e => {
 map.on('dblclick',e=>{
   L.DomEvent.stopPropagation(e);
   L.DomEvent.preventDefault(e);
-  if(isDrawingRiver && riverPoints.length >= 2) { finishDrawRiver(); return; }
-  if(isDrawingTrasse) { toggleDrawTrasse(); }
+  if(window.isDrawingRiver && window.riverPoints.length >= 2) { finishDrawRiver(); return; }
+  if(window.isDrawingTrasse) { toggleDrawTrasse(); }
 });
 
 map.on('zoomend', function() {
-  if (!isDrawingTrasse && (currentViz === 'circle' || currentViz === 'bar')) updateViz();
-  if (fliessgewaesser) redrawFliessgewaesser();
+  if (!window.isDrawingTrasse && (window.currentViz === 'circle' || window.currentViz === 'bar')) updateViz();
+  if (window.fliessgewaesser) redrawFliessgewaesser();
 });
 
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
-    if (areaDrawing) { clearArea(); return; }
-    if (isPlacingLwWp) togglePlaceLwWp();
-    if(isDrawingRiver) toggleDrawRiver();
-    if(isDrawingTrasse) toggleDrawTrasse();
+    if (window.areaDrawing) { clearArea(); return; }
+    if (window.isPlacingLwWp) togglePlaceLwWp();
+    if(window.isDrawingRiver) toggleDrawRiver();
+    if(window.isDrawingTrasse) toggleDrawTrasse();
     cancelDraw();
     if(isDrawingEdge) toggleDrawEdge();
   }
   // Pfeiltasten: handled by new keyboard handler in live view section
 });
 
-function toggleDrawTrasse() {
-  isDrawingTrasse = !isDrawingTrasse;
+export function toggleDrawTrasse() {
+  window.isDrawingTrasse = !window.isDrawingTrasse;
   const btn = document.getElementById('btn-draw-trasse');
-  if (isDrawingTrasse) {
+  if (window.isDrawingTrasse) {
     btn.classList.add('active');
-    trasseDetached = false;
+    window.trasseDetached = false;
     showHint('Klicke, um Trassenknoten zu setzen. Rechtsklick = Strang loslösen.');
     showTrasseFinishBtn();
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
     map.doubleClickZoom.disable();
-    if (trassePolyline) {
-      if (Array.isArray(trassePolyline)) trassePolyline.forEach(p => p.setStyle({opacity: 0.25}));
-      else trassePolyline.setStyle({opacity: 0.25});
+    if (window.trassePolyline) {
+      if (Array.isArray(window.trassePolyline)) window.trassePolyline.forEach(p => p.setStyle({opacity: 0.25}));
+      else window.trassePolyline.setStyle({opacity: 0.25});
     }
     // Netz-Panel minimieren, damit die Karte sichtbar ist
     const netzPanel = document.getElementById('netz-panel');
@@ -707,7 +717,7 @@ function toggleDrawTrasse() {
       if (g.labelMarker) { map.removeLayer(g.labelMarker); }
     });
     // Aktuelles Segment starten
-    trasseCurrentSegStart = trassePoints.length;
+    window.trasseCurrentSegStart = window.trassePoints.length;
   } else {
     btn.classList.remove('active');
     hideHint();
@@ -717,19 +727,19 @@ function toggleDrawTrasse() {
     updateViz();
     map.getContainer().style.cursor = '';
     map.doubleClickZoom.enable();
-    trasseDetached = false;
+    window.trasseDetached = false;
     // Aktuelles Segment abschließen
-    if (trassePoints.length > trasseCurrentSegStart + 1) {
-      trasseSegments.push({ start: trasseCurrentSegStart, end: trassePoints.length - 1 });
-    } else if (trassePoints.length > trasseCurrentSegStart) {
+    if (window.trassePoints.length > window.trasseCurrentSegStart + 1) {
+      window.trasseSegments.push({ start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1 });
+    } else if (window.trassePoints.length > window.trasseCurrentSegStart) {
       // Einzelner Punkt: entfernen
-      trassePoints.pop();
+      window.trassePoints.pop();
     }
-    if (trassePoints.length > 0) autoGenerateNetz();
+    if (window.trassePoints.length > 0) autoGenerateNetz();
   }
 }
 
-function showTrasseFinishBtn() {
+export function showTrasseFinishBtn() {
   let btn = document.getElementById('trasse-finish-btn');
   if (!btn) {
     btn = document.createElement('button');
@@ -738,84 +748,84 @@ function showTrasseFinishBtn() {
     btn.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:10000;padding:10px 20px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);';
     btn.onmouseenter = () => btn.style.filter = 'brightness(1.15)';
     btn.onmouseleave = () => btn.style.filter = '';
-    btn.onclick = () => { if (isDrawingTrasse) toggleDrawTrasse(); };
+    btn.onclick = () => { if (window.isDrawingTrasse) toggleDrawTrasse(); };
     document.body.appendChild(btn);
   }
   btn.style.display = 'block';
 }
 
-function hideTrasseFinishBtn() {
+export function hideTrasseFinishBtn() {
   const btn = document.getElementById('trasse-finish-btn');
   if (btn) btn.style.display = 'none';
 }
 
-function redrawTrasse() {
+export function redrawTrasse() {
   // Multi-Segment Trasse: jedes Segment als eigene Polyline
-  if (trassePolyline) {
-    if (Array.isArray(trassePolyline)) trassePolyline.forEach(p => map.removeLayer(p));
-    else map.removeLayer(trassePolyline);
+  if (window.trassePolyline) {
+    if (Array.isArray(window.trassePolyline)) window.trassePolyline.forEach(p => map.removeLayer(p));
+    else map.removeLayer(window.trassePolyline);
   }
-  trassePolyline = [];
-  trasseEditMarkers.forEach(m => map.removeLayer(m));
-  trasseEditMarkers = [];
+  window.trassePolyline = [];
+  window.trasseEditMarkers.forEach(m => map.removeLayer(m));
+  window.trasseEditMarkers = [];
 
-  if (trassePoints.length === 0) return;
+  if (window.trassePoints.length === 0) return;
 
   // Alle abgeschlossenen Segmente zeichnen
   const allSegs = [...trasseSegments];
   // Plus das aktuell laufende Segment (falls im Zeichenmodus)
-  if (trassePoints.length > trasseCurrentSegStart) {
-    allSegs.push({ start: trasseCurrentSegStart, end: trassePoints.length - 1 });
+  if (window.trassePoints.length > window.trasseCurrentSegStart) {
+    allSegs.push({ start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1 });
   }
 
   allSegs.forEach(seg => {
     if (seg.end <= seg.start) return;
     const pts = [];
-    for (let i = seg.start; i <= seg.end; i++) pts.push(trassePoints[i]);
+    for (let i = seg.start; i <= seg.end; i++) pts.push(window.trassePoints[i]);
     if (pts.length >= 2) {
       const pl = L.polyline(pts, { color: '#ff9800', weight: 14, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }).addTo(map);
-      trassePolyline.push(pl);
+      window.trassePolyline.push(pl);
     }
   });
 
   // Edit-Handles für alle Punkte — im detached-Modus größer als Snap-Ziele
-  const handleSize = trasseDetached ? 14 : 8;
-  const handleCls = trasseDetached ? 'trasse-snap-handle' : 'trasse-edit-handle';
+  const handleSize = window.trasseDetached ? 14 : 8;
+  const handleCls = window.trasseDetached ? 'trasse-snap-handle' : 'trasse-edit-handle';
   const icon = L.divIcon({ className: handleCls, html: '', iconSize: [handleSize, handleSize], iconAnchor: [handleSize/2, handleSize/2] });
-  trassePoints.forEach((pt, idx) => {
-    const m = L.marker(pt, { draggable: !trasseDetached, icon: icon, zIndexOffset: 2000 }).addTo(map);
-    if (!trasseDetached) {
+  window.trassePoints.forEach((pt, idx) => {
+    const m = L.marker(pt, { draggable: !window.trasseDetached, icon: icon, zIndexOffset: 2000 }).addTo(map);
+    if (!window.trasseDetached) {
       m.on('drag', e => {
-        trassePoints[idx] = e.target.getLatLng();
+        window.trassePoints[idx] = e.target.getLatLng();
         redrawTrasse();
       });
       m.on('dragend', () => autoGenerateNetz());
     }
-    trasseEditMarkers.push(m);
+    window.trasseEditMarkers.push(m);
   });
 }
 
-function clearTrasse() {
-  trassePoints = [];
-  trasseSegments = [];
-  trasseCurrentSegStart = 0;
-  trasseDetached = false;
+export function clearTrasse() {
+  window.trassePoints = [];
+  window.trasseSegments = [];
+  window.trasseCurrentSegStart = 0;
+  window.trasseDetached = false;
   redrawTrasse();
   autoGenerateNetz();
 }
 
-function toggleFliessgewaesserPanel() {
+export function toggleFliessgewaesserPanel() {
   const p = document.getElementById('fliessgewaesser-panel');
   const btn = document.getElementById('btn-fliessgewaesser-toggle');
   if (p.classList.contains('visible')) {
     p.classList.remove('visible');
     btn.classList.remove('active');
-    if (isDrawingRiver) toggleDrawRiver();
+    if (window.isDrawingRiver) toggleDrawRiver();
   } else {
     hidePanels();
     p.classList.add('visible');
     btn.classList.add('active');
-    if (fliessgewaesser) {
+    if (window.fliessgewaesser) {
       document.getElementById('fg-draw-section').style.display = 'none';
       document.getElementById('fg-data-section').style.display = 'block';
       const fgEl = document.getElementById('fg-leistung');
@@ -828,12 +838,12 @@ function toggleFliessgewaesserPanel() {
   }
 }
 
-function toggleDrawRiver() {
-  isDrawingRiver = !isDrawingRiver;
+export function toggleDrawRiver() {
+  window.isDrawingRiver = !window.isDrawingRiver;
   const btn = document.getElementById('btn-draw-river');
-  if (isDrawingRiver) {
-    if (fliessgewaesser) clearFliessgewaesser();
-    riverPoints = [];
+  if (window.isDrawingRiver) {
+    if (window.fliessgewaesser) clearFliessgewaesser();
+    window.riverPoints = [];
     redrawRiverDuringDraw();
     btn.classList.add('active');
     btn.textContent = 'Fertig (oder Doppelklick auf Karte)';
@@ -850,14 +860,14 @@ function toggleDrawRiver() {
     _restoreAfterDraw();
     map.getContainer().style.cursor = '';
     map.doubleClickZoom.enable();
-    if (riverDrawPolyline) { map.removeLayer(riverDrawPolyline); riverDrawPolyline = null; }
-    riverEditMarkers.forEach(m => map.removeLayer(m));
-    riverEditMarkers = [];
+    if (window.riverDrawPolyline) { map.removeLayer(window.riverDrawPolyline); window.riverDrawPolyline = null; }
+    window.riverEditMarkers.forEach(m => map.removeLayer(m));
+    window.riverEditMarkers = [];
   }
 }
 
-function tryFinishOrToggleRiver() {
-  if (isDrawingRiver && riverPoints.length >= 2) {
+export function tryFinishOrToggleRiver() {
+  if (window.isDrawingRiver && window.riverPoints.length >= 2) {
     finishDrawRiver();
     document.getElementById('btn-draw-river').onclick = function(){ toggleDrawRiver(); };
     map.doubleClickZoom.enable();
@@ -866,41 +876,41 @@ function tryFinishOrToggleRiver() {
   }
 }
 
-function redrawRiverDuringDraw() {
-  if (riverDrawPolyline) map.removeLayer(riverDrawPolyline);
-  riverEditMarkers.forEach(m => map.removeLayer(m));
-  riverEditMarkers = [];
-  if (riverPoints.length > 0) {
-    riverDrawPolyline = L.polyline(riverPoints, {
+export function redrawRiverDuringDraw() {
+  if (window.riverDrawPolyline) map.removeLayer(window.riverDrawPolyline);
+  window.riverEditMarkers.forEach(m => map.removeLayer(m));
+  window.riverEditMarkers = [];
+  if (window.riverPoints.length > 0) {
+    window.riverDrawPolyline = L.polyline(window.riverPoints, {
       color: '#26a69a', weight: 14, opacity: 0.25, lineCap: 'round', lineJoin: 'round'
     }).addTo(map);
     const icon = L.divIcon({ className: 'fg-edit-handle', html: '', iconSize: [6, 6], iconAnchor: [3, 3] });
-    riverPoints.forEach((pt, idx) => {
+    window.riverPoints.forEach((pt, idx) => {
       const m = L.marker(pt, { draggable: true, icon: icon, zIndexOffset: 2000 }).addTo(map);
       m.on('drag', e => {
-        riverPoints[idx] = e.target.getLatLng();
-        riverDrawPolyline.setLatLngs(riverPoints);
+        window.riverPoints[idx] = e.target.getLatLng();
+        window.riverDrawPolyline.setLatLngs(window.riverPoints);
       });
-      riverEditMarkers.push(m);
+      window.riverEditMarkers.push(m);
     });
   } else {
-    riverDrawPolyline = null;
+    window.riverDrawPolyline = null;
   }
 }
 
-function finishDrawRiver() {
-  if (riverPoints.length < 2) return;
-  const latlngs = riverPoints.map(p => ({ lat: p.lat, lng: p.lng }));
+export function finishDrawRiver() {
+  if (window.riverPoints.length < 2) return;
+  const latlngs = window.riverPoints.map(p => ({ lat: p.lat, lng: p.lng }));
   const durchfluss = parseFloat(document.getElementById('fg-durchfluss').value) || 50;
   const leistung = parseFloat(document.getElementById('fg-leistung').value) || 200;
   const jaz = parseFloat(document.getElementById('fg-jaz').value) || 4.5;
-  fliessgewaesser = { latlngs, durchflussLs: durchfluss, leistungKw: leistung, jaz, visible: fliessgewaesserVisible };
+  window.fliessgewaesser = { latlngs, durchflussLs: durchfluss, leistungKw: leistung, jaz, visible: window.fliessgewaesserVisible };
   moBeiAktivierung('fg');
-  isDrawingRiver = false;
-  riverPoints = [];
-  if (riverDrawPolyline) { map.removeLayer(riverDrawPolyline); riverDrawPolyline = null; }
-  riverEditMarkers.forEach(m => map.removeLayer(m));
-  riverEditMarkers = [];
+  window.isDrawingRiver = false;
+  window.riverPoints = [];
+  if (window.riverDrawPolyline) { map.removeLayer(window.riverDrawPolyline); window.riverDrawPolyline = null; }
+  window.riverEditMarkers.forEach(m => map.removeLayer(m));
+  window.riverEditMarkers = [];
   const drawBtn = document.getElementById('btn-draw-river');
   drawBtn.classList.remove('active');
   drawBtn.textContent = 'Fluss zeichnen';
@@ -916,11 +926,11 @@ function finishDrawRiver() {
   redrawErzeugerIcons();
 }
 
-function redrawFliessgewaesser() {
+export function redrawFliessgewaesser() {
   if (!fliessgewaesserLayerGroup) return;
   fliessgewaesserLayerGroup.clearLayers();
-  if (!fliessgewaesser || !fliessgewaesser.latlngs || fliessgewaesser.latlngs.length < 2) return;
-  const pts = fliessgewaesser.latlngs.map(p => L.latLng(p.lat, p.lng));
+  if (!window.fliessgewaesser || !window.fliessgewaesser.latlngs || window.fliessgewaesser.latlngs.length < 2) return;
+  const pts = window.fliessgewaesser.latlngs.map(p => L.latLng(p.lat, p.lng));
   const warmPart = pts.length >= 2 ? [pts[0], pts[1]] : pts;
   const cooledPart = pts.length > 2 ? pts.slice(1) : [];
   const oberlaufColor = '#26a69a';
@@ -975,34 +985,34 @@ function redrawFliessgewaesser() {
   pts.forEach((pt, idx) => {
     const m = L.marker(pt, { draggable: true, icon: icon, zIndexOffset: 2000 }).addTo(fliessgewaesserLayerGroup);
     m.on('drag', e => {
-      fliessgewaesser.latlngs[idx] = { lat: e.target.getLatLng().lat, lng: e.target.getLatLng().lng };
+      window.fliessgewaesser.latlngs[idx] = { lat: e.target.getLatLng().lat, lng: e.target.getLatLng().lng };
     });
     m.on('dragend', () => redrawFliessgewaesser());
   });
-  if (fliessgewaesserVisible) {
+  if (window.fliessgewaesserVisible) {
     if (!map.hasLayer(fliessgewaesserLayerGroup)) fliessgewaesserLayerGroup.addTo(map);
   }
   updateFliessgewaesserAbkuehlungDisplay();
   redrawVerbindungslinien();
 }
 
-function updateFliessgewaesserVisibility() {
-  if (!fliessgewaesser) return;
-  if (fliessgewaesserVisible) {
+export function updateFliessgewaesserVisibility() {
+  if (!window.fliessgewaesser) return;
+  if (window.fliessgewaesserVisible) {
     if (!map.hasLayer(fliessgewaesserLayerGroup)) fliessgewaesserLayerGroup.addTo(map);
   } else {
     if (map.hasLayer(fliessgewaesserLayerGroup)) map.removeLayer(fliessgewaesserLayerGroup);
   }
 }
 
-function setFliessgewaesserVisible(visible) {
-  fliessgewaesserVisible = visible;
+export function setFliessgewaesserVisible(visible) {
+  window.fliessgewaesserVisible = visible;
   updateFliessgewaesserVisibility();
 }
 
-function getFliessgewaesserAbkuehlung() {
-  const durchfluss = parseFloat(document.getElementById('fg-durchfluss')?.value) || fliessgewaesser?.durchflussLs || 50;
-  const leistung = parseFloat(document.getElementById('fg-leistung')?.value) || fliessgewaesser?.leistungKw || 200;
+export function getFliessgewaesserAbkuehlung() {
+  const durchfluss = parseFloat(document.getElementById('fg-durchfluss')?.value) || window.fliessgewaesser?.durchflussLs || 50;
+  const leistung = parseFloat(document.getElementById('fg-leistung')?.value) || window.fliessgewaesser?.leistungKw || 200;
   if (!durchfluss || durchfluss <= 0) return { deltaT: 0, colorHex: '#26a69a' };
   const cWater = 4.184;
   const deltaT = leistung / (durchfluss * cWater);
@@ -1014,18 +1024,18 @@ function getFliessgewaesserAbkuehlung() {
   return { deltaT, colorHex };
 }
 
-function updateFliessgewaesserAbkuehlungDisplay() {
+export function updateFliessgewaesserAbkuehlungDisplay() {
   const el = document.getElementById('fg-abkuehlung-k');
   if (!el) return;
   const { deltaT } = getFliessgewaesserAbkuehlung();
   el.textContent = (Math.round(deltaT * 100) / 100).toFixed(2) + ' K';
 }
 
-function updateFliessgewaesserData() {
-  if (!fliessgewaesser) return;
-  fliessgewaesser.durchflussLs = parseFloat(document.getElementById('fg-durchfluss').value) || 50;
-  fliessgewaesser.leistungKw = parseFloat(document.getElementById('fg-leistung').value) || 200;
-  fliessgewaesser.jaz = parseFloat(document.getElementById('fg-jaz').value) || 4.5;
+export function updateFliessgewaesserData() {
+  if (!window.fliessgewaesser) return;
+  window.fliessgewaesser.durchflussLs = parseFloat(document.getElementById('fg-durchfluss').value) || 50;
+  window.fliessgewaesser.leistungKw = parseFloat(document.getElementById('fg-leistung').value) || 200;
+  window.fliessgewaesser.jaz = parseFloat(document.getElementById('fg-jaz').value) || 4.5;
   updateFliessgewaesserAbkuehlungDisplay();
   redrawFliessgewaesser();
   const waerme  = parseFloat(document.getElementById('fg-waerme').value) || 0;
@@ -1035,8 +1045,8 @@ function updateFliessgewaesserData() {
   document.getElementById('fg-co2').textContent = fgCo2 ? `${fgCo2.toFixed(1)} t/a (2026) · ${fgCo2LZ.toFixed(1)} t/a (Ø 2030–50)` : '—';
 }
 
-function clearFliessgewaesser() {
-  fliessgewaesser = null;
+export function clearFliessgewaesser() {
+  window.fliessgewaesser = null;
   moBeiDeaktivierung('fg');
   if (fliessgewaesserLayerGroup) {
     fliessgewaesserLayerGroup.clearLayers();
@@ -1045,12 +1055,12 @@ function clearFliessgewaesser() {
   document.getElementById('fg-data-section').style.display = 'none';
   document.getElementById('fg-draw-section').style.display = 'block';
   document.getElementById('fg-visible').checked = true;
-  fliessgewaesserVisible = true;
+  window.fliessgewaesserVisible = true;
   redrawErzeugerIcons();
 }
 
 /* ── Wirtschaftlichkeit ──────────────────────────────────────────────────── */
-function calcWirtschaftlichkeit(invest, nutzungJahre, zinsPct, betriebJahr, waermeMwh) {
+export function calcWirtschaftlichkeit(invest, nutzungJahre, zinsPct, betriebJahr, waermeMwh) {
   if (!invest || invest <= 0) return null;
   const i = zinsPct / 100;
   const n = nutzungJahre || 20;
@@ -1065,14 +1075,14 @@ function calcWirtschaftlichkeit(invest, nutzungJahre, zinsPct, betriebJahr, waer
 // brennstoffMwh: Primärenergie- oder Stromeinsatz [MWh/a]
 // emf: Emissionsfaktor [g CO₂/kWh]
 // isFossil: true = Gas/Öl (immer berücksichtigt); false = Strom/Biomasse/FW (nur wenn Switch "alle ET")
-function _co2KostenET(brennstoffMwh, emf, isFossil) {
+export function _co2KostenET(brennstoffMwh, emf, isFossil) {
   const pCo2   = parseFloat(document.getElementById('wirt-p-co2')?.value) || 0;
   const alleET = document.getElementById('wirt-co2-alle')?.checked !== false;
   if (pCo2 <= 0 || (!isFossil && !alleET)) return 0;
   return brennstoffMwh * emf * pCo2 / 1000; // MWh × g/kWh × €/t / 1000 = €/a
 }
 
-function updateWirtDisplay(prefix, result) {
+export function updateWirtDisplay(prefix, result) {
   const kapEl = document.getElementById(prefix + '-wirt-kapital');
   const jahEl = document.getElementById(prefix + '-wirt-jahres');
   const wgkEl = document.getElementById(prefix + '-wirt-wgk');
@@ -1084,29 +1094,29 @@ function updateWirtDisplay(prefix, result) {
 }
 
 /* ── Luft-Wasser-Wärmepumpe: Platzbedarf + Schall Freifeld ───────────────── */
-function lwWpPlatzbedarfM2(leistungKw) {
+export function lwWpPlatzbedarfM2(leistungKw) {
   return Math.max(2, 2 + leistungKw * 0.35);
 }
 // Freifeld-Radius (ohne Gebäudedämpfung); Zusatzdämpfung wird punktbezogen bei der Tooltip-Berechnung berücksichtigt.
-function lwWpSchallRadiusM(lwaDb, zielDb) {
+export function lwWpSchallRadiusM(lwaDb, zielDb) {
   if (lwaDb <= zielDb) return 0;
   return Math.pow(10, (lwaDb - 11 - zielDb) / 20);
 }
-function toggleLwWpPanel() {
+export function toggleLwWpPanel() {
   const p = document.getElementById('lwwp-panel');
   const btn = document.getElementById('btn-lwwp-toggle');
   if (p.classList.contains('visible')) {
     p.classList.remove('visible');
     btn.classList.remove('active');
-    if (isPlacingLwWp) togglePlaceLwWp();
+    if (window.isPlacingLwWp) togglePlaceLwWp();
   } else {
     hidePanels();
     p.classList.add('visible');
     btn.classList.add('active');
-    if (lwWp) {
+    if (window.lwWp) {
       document.getElementById('lwwp-data-section').style.display = 'block';
       const plBtn = document.getElementById('btn-place-lwwp');
-      if (plBtn && lwWp.lat != null) plBtn.textContent = 'Position verschieben';
+      if (plBtn && window.lwWp.lat != null) plBtn.textContent = 'Position verschieben';
       // 30%-Standardleistung wenn noch auf dem alten Mindestwert
       const lwEl = document.getElementById('lwwp-leistung');
       if (lwEl && parseFloat(lwEl.value) <= 12) _setDefault30Pct('lwwp-leistung');
@@ -1117,10 +1127,10 @@ function toggleLwWpPanel() {
   }
 }
 
-function togglePlaceLwWp() {
-  isPlacingLwWp = !isPlacingLwWp;
+export function togglePlaceLwWp() {
+  window.isPlacingLwWp = !window.isPlacingLwWp;
   const btn = document.getElementById('btn-place-lwwp');
-  if (isPlacingLwWp) {
+  if (window.isPlacingLwWp) {
     btn.classList.add('active');
     btn.textContent = 'Klicken auf Karte zum Platzieren';
     showHint('Klicke auf die Karte, um die Luft-Wasser-Wärmepumpe zu platzieren.');
@@ -1130,20 +1140,20 @@ function togglePlaceLwWp() {
     document.getElementById('btn-lwwp-toggle')?.classList.remove('active');
   } else {
     btn.classList.remove('active');
-    btn.textContent = lwWp ? 'Position verschieben' : 'Auf Karte platzieren';
+    btn.textContent = window.lwWp ? 'Position verschieben' : 'Auf Karte platzieren';
     hideHint();
     _restoreAfterDraw();
     map.getContainer().style.cursor = '';
   }
 }
 
-function placeLwWpAt(latlng) {
+export function placeLwWpAt(latlng) {
   const leistung = parseFloat(document.getElementById('lwwp-leistung').value) || 12;
   const lwa = parseFloat(document.getElementById('lwwp-lwa').value) || 80;
-  lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: lwWpVisible };
+  window.lwWp = { lat: latlng.lat, lng: latlng.lng, leistungKw: leistung, lwaDb: lwa, visible: window.lwWpVisible };
   document.getElementById('lwwp-man-laenge').value = '';
   document.getElementById('lwwp-man-breite').value = '';
-  isPlacingLwWp = false;
+  window.isPlacingLwWp = false;
   document.getElementById('btn-place-lwwp').classList.remove('active');
   document.getElementById('btn-place-lwwp').textContent = 'Position verschieben';
   document.getElementById('lwwp-data-section').style.display = 'block';
@@ -1160,13 +1170,13 @@ function placeLwWpAt(latlng) {
   redrawErzeugerIcons();
 }
 
-function redrawLwWp() {
+export function redrawLwWp() {
   if (!lwWpLayerGroup) return;
   lwWpLayerGroup.clearLayers();
-  if (!lwWp || lwWp.lat == null || lwWp.lng == null) return;
-  const pt = L.latLng(lwWp.lat, lwWp.lng);
-  const leistung = lwWp.leistungKw;
-  const lwa = lwWp.lwaDb;
+  if (!window.lwWp || window.lwWp.lat == null || window.lwWp.lng == null) return;
+  const pt = L.latLng(window.lwWp.lat, window.lwWp.lng);
+  const leistung = window.lwWp.leistungKw;
+  const lwa = window.lwWp.lwaDb;
   const platzM2 = lwWpPlatzbedarfM2(leistung);
   const rwAuto = Math.sqrt(platzM2);   // Quadratisch als Startwert
   const rlAuto = rwAuto;
@@ -1219,8 +1229,8 @@ function redrawLwWp() {
   function upRect() { rect.setBounds([L.latLng(sw.lat, sw.lng), L.latLng(ne.lat, ne.lng)]); const f = fb(actF()); rect.setStyle({ fillColor: f.c, fillOpacity: f.o }); }
   function done() {
     const aL = (ne.lat - sw.lat) / latPerM, aB = (ne.lng - sw.lng) / lngPerM;
-    lwWp.lat = (sw.lat + ne.lat) / 2;
-    lwWp.lng = (sw.lng + ne.lng) / 2;
+    window.lwWp.lat = (sw.lat + ne.lat) / 2;
+    window.lwWp.lng = (sw.lng + ne.lng) / 2;
     document.getElementById('lwwp-man-laenge').value = aL.toFixed(1);
     document.getElementById('lwwp-man-breite').value = aB.toFixed(1);
     updateLwWpDisplay();
@@ -1256,18 +1266,18 @@ function redrawLwWp() {
   const wpIcon = L.divIcon({ className: '', html: '<div style="width:32px;height:32px;background:rgba(56,142,60,0.5);border:2px solid #66bb6a;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 0 8px rgba(102,187,106,0.5);">' + windSvg('#c8e6c9',17,14) + '</div>', iconSize: [32,32], iconAnchor: [16,16] });
   const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(lwWpLayerGroup);
   marker.on('dragend', function() {
-    lwWp.lat = marker.getLatLng().lat;
-    lwWp.lng = marker.getLatLng().lng;
+    window.lwWp.lat = marker.getLatLng().lat;
+    window.lwWp.lng = marker.getLatLng().lng;
     redrawLwWp();
   });
   updateLwWpVisibility();
   redrawVerbindungslinien();
 }
 
-function updateLwWpDisplay() {
-  if (!lwWp) return;
-  const leistung = lwWp.leistungKw;
-  const lwa = lwWp.lwaDb;
+export function updateLwWpDisplay() {
+  if (!window.lwWp) return;
+  const leistung = window.lwWp.leistungKw;
+  const lwa = window.lwWp.lwaDb;
   const jaz = parseFloat(document.getElementById('lwwp-jaz').value) || 3.0;
   const waermeJahr = parseFloat(document.getElementById('lwwp-waerme').value) || 0;
   const platzM2 = lwWpPlatzbedarfM2(leistung);
@@ -1313,7 +1323,7 @@ function updateLwWpDisplay() {
   document.getElementById('lwwp-schall-tabelle').innerHTML = schallRows.join('<br>');
 }
 
-function calcLwaAuto(kw) {
+export function calcLwaAuto(kw) {
   // LWA-Schätzung aus Leistung: basierend auf Herstellerdaten (Vaillant, Stiebel Eltron,
   // Viessmann, Daikin u.a.) und EU-Verordnung 813/2013 Ecodesign-Grenzwerten.
   // Zwei-Segment-Logarithmus: kleine Anlagen (≤50 kW) skalieren moderater,
@@ -1325,22 +1335,22 @@ function calcLwaAuto(kw) {
   return Math.round(Math.min(100, Math.max(45, raw)));
 }
 
-function updateLwWpData() {
-  if (!lwWp) return;
-  lwWp.leistungKw = parseFloat(document.getElementById('lwwp-leistung').value) || 100;
+export function updateLwWpData() {
+  if (!window.lwWp) return;
+  window.lwWp.leistungKw = parseFloat(document.getElementById('lwwp-leistung').value) || 100;
   // LWA: nur auto-berechnen wenn noch auf Default (80) oder wenn Leistung geändert
   const lwaEl = document.getElementById('lwwp-lwa');
   if (lwaEl && !lwaEl._userEdited) {
-    const autoLwa = calcLwaAuto(lwWp.leistungKw);
+    const autoLwa = calcLwaAuto(window.lwWp.leistungKw);
     lwaEl.value = autoLwa;
     lwaEl.title = `Auto: ${autoLwa} dB(A) bei ${lwWp.leistungKw} kW — überschreibbar`;
   }
-  lwWp.lwaDb = parseFloat(document.getElementById('lwwp-lwa').value) || calcLwaAuto(lwWp.leistungKw);
+  window.lwWp.lwaDb = parseFloat(document.getElementById('lwwp-lwa').value) || calcLwaAuto(window.lwWp.leistungKw);
   updateLwWpDisplay();
   redrawLwWp();
 }
 
-function lwwpUseNetworkValues() {
+export function lwwpUseNetworkValues() {
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   const lastKw = calculatedLoad && calculatedLoad[zId] ? calculatedLoad[zId] : 0;
   const connectedIds = new Set(netzEdges.flatMap(e => [e.u, e.v]));
@@ -1352,16 +1362,16 @@ function lwwpUseNetworkValues() {
   updateLwWpData();
 }
 
-function setLwWpVisible(visible) {
-  lwWpVisible = visible;
+export function setLwWpVisible(visible) {
+  window.lwWpVisible = visible;
   updateLwWpVisibility();
 }
 
-function updateLwWpVisibility() {
-  if (!lwWp) return;
-  if (lwWpVisible) {
+export function updateLwWpVisibility() {
+  if (!window.lwWp) return;
+  if (window.lwWpVisible) {
     if (!map.hasLayer(lwWpLayerGroup)) lwWpLayerGroup.addTo(map);
-    if (lwWpSchallVisible) {
+    if (window.lwWpSchallVisible) {
       if (!map.hasLayer(lwWpSchallLayerGroup)) lwWpSchallLayerGroup.addTo(map);
     } else {
       if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
@@ -1372,13 +1382,13 @@ function updateLwWpVisibility() {
   }
 }
 
-function setSchallVisible(visible) {
-  lwWpSchallVisible = visible;
+export function setSchallVisible(visible) {
+  window.lwWpSchallVisible = visible;
   updateLwWpVisibility();
 }
 
-function clearLwWp() {
-  lwWp = null;
+export function clearLwWp() {
+  window.lwWp = null;
   moBeiDeaktivierung('lwwp');
   if (lwWpLayerGroup) {
     lwWpLayerGroup.clearLayers();
@@ -1391,12 +1401,12 @@ function clearLwWp() {
   document.getElementById('lwwp-data-section').style.display = 'none';
   document.getElementById('lwwp-visible').checked = true;
   document.getElementById('lwwp-schall-visible').checked = true;
-  lwWpVisible = true;
-  lwWpSchallVisible = true;
+  window.lwWpVisible = true;
+  window.lwWpSchallVisible = true;
   redrawErzeugerIcons();
 }
 
-function toggleKennwertePanel() {
+export function toggleKennwertePanel() {
   const p = document.getElementById('kennwerte-panel');
   const btn = document.getElementById('btn-kennwerte-toggle');
   const isOpen = p.classList.contains('visible');

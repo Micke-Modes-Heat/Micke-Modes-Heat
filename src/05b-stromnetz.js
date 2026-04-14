@@ -5,7 +5,15 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ── Styled Modal-Dialoge ────────────────────────────────────────
-function epConfirm(title, message, opts) {
+import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, trassePoints, trasseSegments } from './01-globals-varianten.js';
+import { getGebStromMwh, map } from './02b-gebaeude.js';
+import { polygonAreaM2, polygonCenter } from './02c-karte-werkzeuge.js';
+import { setNetzVisible } from './03b-netz.js';
+import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
+import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
+import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
+
+export function epConfirm(title, message, opts) {
   opts = opts || {};
   return new Promise(function(resolve) {
     const overlay = document.createElement('div');
@@ -30,7 +38,7 @@ function epConfirm(title, message, opts) {
   });
 }
 
-function epPrompt(title, message, defaultVal, opts) {
+export function epPrompt(title, message, defaultVal, opts) {
   opts = opts || {};
   return new Promise(function(resolve) {
     const overlay = document.createElement('div');
@@ -58,8 +66,8 @@ function epPrompt(title, message, defaultVal, opts) {
   });
 }
 
-function setNetzSubTab(sub) {
-  stromNetzSubTab = sub;
+export function setNetzSubTab(sub) {
+  window.stromNetzSubTab = sub;
   // Haupt-Tab auf "Netz" setzen falls nicht aktiv
   const netzTab = document.querySelector('#lp-tabs .lp-tab[data-tab="netz"]');
   if (netzTab && !netzTab.classList.contains('active')) setLeftTab('netz');
@@ -83,7 +91,7 @@ function setNetzSubTab(sub) {
 }
 
 // ── Stromnetz-Knoten Icons ──────────────────────────────────────
-function stromNodeIcon(type) {
+export function stromNodeIcon(type) {
   const cfg = {
     nap:   { cls: 'strom-icon strom-icon-nap',   text: '⚡', size: [28,28] },
     trafo: { cls: 'strom-icon strom-icon-trafo',  text: '⏚',  size: [26,26] },
@@ -99,27 +107,27 @@ function stromNodeIcon(type) {
 }
 
 // ── Platzierung von Stromnetz-Komponenten ────────────────────────
-function startPlaceStromNode(type) {
+export function startPlaceStromNode(type) {
   // Cancel any other placement mode
-  if (isPlacingStromNode === type) { cancelPlaceStromNode(); return; }
+  if (window.isPlacingStromNode === type) { cancelPlaceStromNode(); return; }
   cancelPlaceStromNode();
-  isPlacingStromNode = type;
+  window.isPlacingStromNode = type;
   const btnId = { nap: 'btn-place-nap', trafo: 'btn-place-trafo', nshv: 'btn-place-nshv' }[type];
   const btn = document.getElementById(btnId);
   if (btn) { btn.style.background = 'rgba(79,195,247,0.2)'; btn.style.fontWeight = 'bold'; }
   _hideForDraw();
   map.getContainer().style.cursor = 'crosshair';
   map.once('click', function(ev) {
-    if (!isPlacingStromNode) return;
-    const nodeType = isPlacingStromNode;
+    if (!window.isPlacingStromNode) return;
+    const nodeType = window.isPlacingStromNode;
     cancelPlaceStromNode();
     addStromNode(nodeType, ev.latlng);
     recalcStromNetz();
   });
 }
 
-function cancelPlaceStromNode() {
-  isPlacingStromNode = null;
+export function cancelPlaceStromNode() {
+  window.isPlacingStromNode = null;
   map.getContainer().style.cursor = '';
   _restoreAfterDraw();
   ['btn-place-nap','btn-place-trafo','btn-place-nshv'].forEach(id => {
@@ -128,18 +136,18 @@ function cancelPlaceStromNode() {
   });
 }
 
-function addStromNode(type, latlng, props) {
+export function addStromNode(type, latlng, props) {
   props = props || {};
-  const id = props.id || stromNextId++;
-  if (id >= stromNextId) stromNextId = id + 1;
+  const id = props.id || window.stromNextId++;
+  if (id >= window.stromNextId) window.stromNextId = id + 1;
 
   const labels = { nap: 'NAP', trafo: 'Trafo', nshv: 'NSHV' };
-  const count = stromNodes.filter(n => n.type === type).length + 1;
+  const count = window.stromNodes.filter(n => n.type === type).length + 1;
   const label = props.label || (labels[type] || type) + ' ' + count;
 
   const marker = L.marker(latlng, { icon: stromNodeIcon(type), draggable: true, zIndexOffset: 3000 });
   marker.bindTooltip(function() {
-    const n = stromNodes.find(sn => sn.id === id);
+    const n = window.stromNodes.find(sn => sn.id === id);
     if (!n) return label;
     let tt = '<b>' + n.label + '</b> (' + type.toUpperCase() + ')';
     if (type === 'trafo') tt += '<br>Nennleistung: ' + (n.ratedKva || 630) + ' kVA';
@@ -148,10 +156,10 @@ function addStromNode(type, latlng, props) {
     return tt;
   }, { sticky: true, className: 'geb-tooltip' });
 
-  if (stromNetzVisible) marker.addTo(map);
+  if (window.stromNetzVisible) marker.addTo(map);
 
   marker.on('dragend', function() {
-    const n = stromNodes.find(sn => sn.id === id);
+    const n = window.stromNodes.find(sn => sn.id === id);
     if (n) { n.lat = marker.getLatLng().lat; n.lng = marker.getLatLng().lng; }
     updateStromEdgeGeometry();
     recalcStromNetz();
@@ -172,7 +180,7 @@ function addStromNode(type, latlng, props) {
     ukPct: props.ukPct || (type === 'trafo' ? 4 : undefined),
     peakLoadKw: 0, annualMwh: 0, isProducer: false
   };
-  stromNodes.push(node);
+  window.stromNodes.push(node);
 
   // Trafo: prompt for size
   if (type === 'trafo' && !props.ratedKva) {
@@ -185,64 +193,64 @@ function addStromNode(type, latlng, props) {
   return node;
 }
 
-function removeStromNode(id) {
+export function removeStromNode(id) {
   // Remove connected edges first
-  stromEdges.filter(e => e.u === id || e.v === id).forEach(e => removeStromEdge(e));
-  const idx = stromNodes.findIndex(n => n.id === id);
+  window.stromEdges.filter(e => e.u === id || e.v === id).forEach(e => removeStromEdge(e));
+  const idx = window.stromNodes.findIndex(n => n.id === id);
   if (idx >= 0) {
-    const n = stromNodes[idx];
+    const n = window.stromNodes[idx];
     if (n.marker && map.hasLayer(n.marker)) map.removeLayer(n.marker);
-    stromNodes.splice(idx, 1);
+    window.stromNodes.splice(idx, 1);
   }
   recalcStromNetz();
   updateLpStromSummary();
 }
 
 // ── Kabel (Strom-Kanten) ────────────────────────────────────────
-function startDrawStromEdge() {
-  if (isDrawingStromEdge) { cancelDrawStromEdge(); return; }
-  isDrawingStromEdge = true;
-  stromEdgeStartId = null;
+export function startDrawStromEdge() {
+  if (window.isDrawingStromEdge) { cancelDrawStromEdge(); return; }
+  window.isDrawingStromEdge = true;
+  window.stromEdgeStartId = null;
   const btn = document.getElementById('btn-draw-strom-edge');
   if (btn) { btn.style.background = 'rgba(79,195,247,0.2)'; btn.style.fontWeight = 'bold'; }
   map.getContainer().style.cursor = 'crosshair';
 }
 
-function cancelDrawStromEdge() {
-  isDrawingStromEdge = false;
-  stromEdgeStartId = null;
+export function cancelDrawStromEdge() {
+  window.isDrawingStromEdge = false;
+  window.stromEdgeStartId = null;
   map.getContainer().style.cursor = '';
   const btn = document.getElementById('btn-draw-strom-edge');
   if (btn) { btn.style.background = ''; btn.style.fontWeight = ''; }
 }
 
-function stromNodeClick(nodeId) {
-  if (!isDrawingStromEdge) return false;
-  if (stromEdgeStartId == null) {
-    stromEdgeStartId = nodeId;
+export function stromNodeClick(nodeId) {
+  if (!window.isDrawingStromEdge) return false;
+  if (window.stromEdgeStartId == null) {
+    window.stromEdgeStartId = nodeId;
     // Visual feedback: highlight start node
-    const n = stromNodes.find(sn => sn.id === nodeId);
+    const n = window.stromNodes.find(sn => sn.id === nodeId);
     if (n && n.marker) n.marker.setOpacity(0.5);
     return true;
   }
-  if (nodeId === stromEdgeStartId) { cancelDrawStromEdge(); return true; }
+  if (nodeId === window.stromEdgeStartId) { cancelDrawStromEdge(); return true; }
   // Check for duplicate
-  const exists = stromEdges.some(e =>
-    (e.u === stromEdgeStartId && e.v === nodeId) || (e.u === nodeId && e.v === stromEdgeStartId)
+  const exists = window.stromEdges.some(e =>
+    (e.u === window.stromEdgeStartId && e.v === nodeId) || (e.u === nodeId && e.v === window.stromEdgeStartId)
   );
   if (exists) { cancelDrawStromEdge(); return true; }
-  addStromEdge(stromEdgeStartId, nodeId);
+  addStromEdge(window.stromEdgeStartId, nodeId);
   recalcStromNetz();
   // Restore opacity
-  const sn = stromNodes.find(s => s.id === stromEdgeStartId);
+  const sn = window.stromNodes.find(s => s.id === window.stromEdgeStartId);
   if (sn && sn.marker) sn.marker.setOpacity(1);
   cancelDrawStromEdge();
   return true;
 }
 
-function addStromEdge(uId, vId) {
-  const uNode = stromNodes.find(n => n.id === uId);
-  const vNode = stromNodes.find(n => n.id === vId);
+export function addStromEdge(uId, vId) {
+  const uNode = window.stromNodes.find(n => n.id === uId);
+  const vNode = window.stromNodes.find(n => n.id === vId);
   if (!uNode || !vNode) return null;
 
   const pt1 = L.latLng(uNode.lat, uNode.lng);
@@ -258,7 +266,7 @@ function addStromEdge(uId, vId) {
     color: 'transparent', weight: 16, opacity: 0, interactive: true, pane: 'netzPane'
   });
 
-  if (stromNetzVisible) { layer.addTo(map); hitLayer.addTo(map); }
+  if (window.stromNetzVisible) { layer.addTo(map); hitLayer.addTo(map); }
 
   const edge = {
     u: uId, v: vId, uNode: uNode, vNode: vNode,
@@ -280,12 +288,12 @@ function addStromEdge(uId, vId) {
     });
   });
 
-  stromEdges.push(edge);
+  window.stromEdges.push(edge);
   startAnimStrom();
   return edge;
 }
 
-function buildStromEdgeTooltip(e) {
+export function buildStromEdgeTooltip(e) {
   const kt = KABEL_TYPEN[e.cableType] || {};
   let tt = '<b>' + e.cableType + ' ' + e.crossSection + ' mm²</b>';
   tt += '<br>Länge: ' + e.lengthM.toFixed(0) + ' m';
@@ -300,20 +308,20 @@ function buildStromEdgeTooltip(e) {
   return tt;
 }
 
-function removeStromEdge(edge) {
+export function removeStromEdge(edge) {
   if (edge.layer && map.hasLayer(edge.layer)) map.removeLayer(edge.layer);
   if (edge.hitLayer && map.hasLayer(edge.hitLayer)) map.removeLayer(edge.hitLayer);
   if (edge.arrowMarker && map.hasLayer(edge.arrowMarker)) map.removeLayer(edge.arrowMarker);
-  const idx = stromEdges.indexOf(edge);
-  if (idx >= 0) stromEdges.splice(idx, 1);
+  const idx = window.stromEdges.indexOf(edge);
+  if (idx >= 0) window.stromEdges.splice(idx, 1);
   recalcStromNetz();
   updateLpStromSummary();
 }
 
-function updateStromEdgeGeometry() {
-  stromEdges.forEach(e => {
-    const un = stromNodes.find(n => n.id === e.u);
-    const vn = stromNodes.find(n => n.id === e.v);
+export function updateStromEdgeGeometry() {
+  window.stromEdges.forEach(e => {
+    const un = window.stromNodes.find(n => n.id === e.u);
+    const vn = window.stromNodes.find(n => n.id === e.v);
     if (!un || !vn) return;
     const pts = [L.latLng(un.lat, un.lng), L.latLng(vn.lat, vn.lng)];
     e.layer.setLatLngs(pts);
@@ -323,14 +331,14 @@ function updateStromEdgeGeometry() {
 }
 
 // ── Stromnetz sichtbar/unsichtbar ───────────────────────────────
-function setStromNetzVisible(vis) {
-  stromNetzVisible = vis;
-  stromNodes.forEach(n => {
+export function setStromNetzVisible(vis) {
+  window.stromNetzVisible = vis;
+  window.stromNodes.forEach(n => {
     if (!n.marker) return;
     if (vis) { if (!map.hasLayer(n.marker)) n.marker.addTo(map); }
     else { if (map.hasLayer(n.marker)) map.removeLayer(n.marker); }
   });
-  stromEdges.forEach(e => {
+  window.stromEdges.forEach(e => {
     if (vis) {
       if (!map.hasLayer(e.layer)) e.layer.addTo(map);
       if (!map.hasLayer(e.hitLayer)) e.hitLayer.addTo(map);
@@ -343,13 +351,13 @@ function setStromNetzVisible(vis) {
   });
 }
 
-function setStromSzenario(sz) {
+export function setStromSzenario(sz) {
   stromSzenario = sz;
   recalcStromNetz();
 }
 
 // Szenario-basierte Stunde finden
-function _getStromSzenarioHour() {
+export function _getStromSzenarioHour() {
   const qH = window.elQuartierH;   // Gebäude-Grundlast (kWh)
   const wpH = window._wpElHourly;  // WP-Verbrauch (kWh)
   const skH = window._skElHourly;  // Stromkessel (kWh)
@@ -380,8 +388,8 @@ function _getStromSzenarioHour() {
   return bestH;
 }
 
-function setStromColorMode(mode) {
-  stromColorMode = mode;
+export function setStromColorMode(mode) {
+  window.stromColorMode = mode;
   document.querySelectorAll('#lp-strom-viz .lp-tool-btn').forEach(b => {
     const isActive = b.getAttribute('onclick')?.includes("'" + mode + "'");
     b.style.background = isActive ? 'rgba(253,216,53,0.15)' : '';
@@ -393,8 +401,8 @@ function setStromColorMode(mode) {
 
 // ── Marker-Klick für Kabelzeichnen abfangen ─────────────────────
 // Hook into stromNode marker clicks
-function hookStromNodeClicks() {
-  stromNodes.forEach(n => {
+export function hookStromNodeClicks() {
+  window.stromNodes.forEach(n => {
     if (!n.marker) return;
     n.marker.off('click.stromEdge');
     n.marker.on('click.stromEdge', function() { stromNodeClick(n.id); });
@@ -402,7 +410,7 @@ function hookStromNodeClicks() {
 }
 
 // ── Erzeuger/Verbraucher als Stromnetz-Knoten registrieren ──────
-function _autoRegisterErzeugerStromNodes() {
+export function _autoRegisterErzeugerStromNodes() {
   const erzTypes = [];
   // Luft-Wasser WP
   if (lwWp && lwWp.lat && lwWp.lng) {
@@ -429,7 +437,7 @@ function _autoRegisterErzeugerStromNodes() {
 
   erzTypes.forEach(erz => {
     const erzId = 'erz_' + erz.key;
-    const existing = stromNodes.find(n => n._erzKey === erz.key);
+    const existing = window.stromNodes.find(n => n._erzKey === erz.key);
     if (existing) {
       // Update position
       existing.lat = erz.lat; existing.lng = erz.lng;
@@ -444,18 +452,18 @@ function _autoRegisterErzeugerStromNodes() {
     });
     const marker = L.marker(L.latLng(erz.lat, erz.lng), { icon: erzIcon, interactive: true, zIndexOffset: 2100 });
     marker.bindTooltip(() => {
-      const n = stromNodes.find(sn => sn._erzKey === erz.key);
+      const n = window.stromNodes.find(sn => sn._erzKey === erz.key);
       let tt = '<b>' + erz.label + '</b>';
       if (n && n.peakLoadKw) tt += '<br>' + (n.isProducer ? 'Einspeisung' : 'Verbrauch') + ': ' + Math.abs(n.peakLoadKw).toFixed(1) + ' kW';
       if (n && n.annualMwh) tt += '<br>' + Math.abs(n.annualMwh).toFixed(1) + ' MWh/a';
       return tt;
     }, { sticky: true, className: 'geb-tooltip' });
     marker.on('click', function() { if (typeof stromNodeClick === 'function') stromNodeClick(marker._stromNodeId); });
-    if (stromNetzVisible) marker.addTo(map);
+    if (window.stromNetzVisible) marker.addTo(map);
 
-    const nodeId = stromNextId++;
+    const nodeId = window.stromNextId++;
     marker._stromNodeId = nodeId;
-    stromNodes.push({
+    window.stromNodes.push({
       id: nodeId, type: 'erzeuger', _erzKey: erz.key,
       lat: erz.lat, lng: erz.lng, marker: marker,
       label: erz.label, peakLoadKw: 0, annualMwh: 0, isProducer: erz.isProducer
@@ -464,22 +472,22 @@ function _autoRegisterErzeugerStromNodes() {
 }
 
 // ── Stromnetz Szenario-Auswahl ──────────────────────────────────
-let stromSzenario = 'spitzenlast'; // 'spitzenlast' | 'pvmax' | 'rueckspeisung' | 'jahresmittel'
+export let stromSzenario = 'spitzenlast'; // 'spitzenlast' | 'pvmax' | 'rueckspeisung' | 'jahresmittel'
 
 // ── Auto-Connect unverbundener Stromnetz-Knoten ─────────────────
-function _autoConnectStromNodes() {
-  const nap = stromNodes.find(n => n.type === 'nap');
+export function _autoConnectStromNodes() {
+  const nap = window.stromNodes.find(n => n.type === 'nap');
   if (!nap) return;
-  const connected = id => stromEdges.some(e => e.u === id || e.v === id);
+  const connected = id => window.stromEdges.some(e => e.u === id || e.v === id);
 
   // 1. Trafos ohne Verbindung → NAP
-  stromNodes.filter(n => n.type === 'trafo' && !connected(n.id)).forEach(t => {
+  window.stromNodes.filter(n => n.type === 'trafo' && !connected(n.id)).forEach(t => {
     addStromEdge(nap.id, t.id);
   });
 
   // 2. NSHVs ohne Verbindung → nächster Trafo (oder NAP)
-  stromNodes.filter(n => n.type === 'nshv' && !connected(n.id)).forEach(nshv => {
-    const trafos = stromNodes.filter(n => n.type === 'trafo');
+  window.stromNodes.filter(n => n.type === 'nshv' && !connected(n.id)).forEach(nshv => {
+    const trafos = window.stromNodes.filter(n => n.type === 'trafo');
     let nearest = nap, minD = L.latLng(nshv.lat, nshv.lng).distanceTo(L.latLng(nap.lat, nap.lng));
     trafos.forEach(t => {
       const d = L.latLng(nshv.lat, nshv.lng).distanceTo(L.latLng(t.lat, t.lng));
@@ -489,14 +497,14 @@ function _autoConnectStromNodes() {
   });
 
   // 3. Gebäude + Erzeuger ohne Verbindung → MST-Baum statt Stern
-  const infra = stromNodes.filter(n => n.type === 'trafo' || n.type === 'nshv' || n.type === 'nap');
+  const infra = window.stromNodes.filter(n => n.type === 'trafo' || n.type === 'nshv' || n.type === 'nap');
   if (!infra.length) return;
   const connPts = new Map();
   // Alle bereits verbundenen Knoten als Startmenge
-  stromNodes.filter(n => connected(n.id)).forEach(n => connPts.set(n.id, { lat: n.lat, lng: n.lng }));
+  window.stromNodes.filter(n => connected(n.id)).forEach(n => connPts.set(n.id, { lat: n.lat, lng: n.lng }));
   infra.forEach(n => connPts.set(n.id, { lat: n.lat, lng: n.lng }));
 
-  const unconnected = stromNodes
+  const unconnected = window.stromNodes
     .filter(n => (n.type === 'geb' || n.type === 'erzeuger') && !connected(n.id))
     .map(n => ({ id: n.id, lat: n.lat, lng: n.lng }));
 
@@ -517,7 +525,7 @@ function _autoConnectStromNodes() {
 }
 
 // ── Fortschrittsanzeige für Stromnetz-Berechnung ────────────────
-function _showStromProgress(msg) {
+export function _showStromProgress(msg) {
   let el = document.getElementById('strom-progress-overlay');
   if (!el) {
     el = document.createElement('div');
@@ -530,15 +538,15 @@ function _showStromProgress(msg) {
   if (txt) txt.textContent = msg || 'Berechne Stromnetz…';
   el.style.display = 'flex';
 }
-function _hideStromProgress() {
+export function _hideStromProgress() {
   const el = document.getElementById('strom-progress-overlay');
   if (el) el.style.display = 'none';
 }
 
-let _recalcStromBusy = false;
+export let _recalcStromBusy = false;
 // ── Berechnung: recalcStromNetz() ───────────────────────────────
-function recalcStromNetz() {
-  if (!stromEdges.length && !stromNodes.length) return;
+export function recalcStromNetz() {
+  if (!window.stromEdges.length && !window.stromNodes.length) return;
   if (_recalcStromBusy) return; // Rekursionsschutz
   _recalcStromBusy = true;
   try {
@@ -550,17 +558,17 @@ function recalcStromNetz() {
     _recalcStromBusy = false;
   }
 }
-function _recalcStromNetzInner() {
+export function _recalcStromNetzInner() {
 
   hookStromNodeClicks();
 
   // Auto-register gebaeude as strom nodes (type='geb') with small ⚡ markers
   if (typeof gebaeude !== 'undefined') {
     gebaeude.forEach(g => {
-      const existing = stromNodes.find(n => n.id === g.id && n.type === 'geb');
+      const existing = window.stromNodes.find(n => n.id === g.id && n.type === 'geb');
       if (!existing) {
         const stromMwh = typeof getGebStromMwh === 'function' ? getGebStromMwh(g) : (parseFloat(g.strom) || 0);
-        if (stromMwh > 0 || stromEdges.some(e => e.u === g.id || e.v === g.id)) {
+        if (stromMwh > 0 || window.stromEdges.some(e => e.u === g.id || e.v === g.id)) {
           const center = g.polygon ? polygonCenter(g.polygon) : null;
           if (center) {
             const gebIcon = L.divIcon({
@@ -570,7 +578,7 @@ function _recalcStromNetzInner() {
             });
             const gebMarker = L.marker(center, { icon: gebIcon, interactive: true, zIndexOffset: 2000 });
             gebMarker.bindTooltip(function() {
-              const n = stromNodes.find(sn => sn.id === g.id);
+              const n = window.stromNodes.find(sn => sn.id === g.id);
               let tt = '<b>' + g.name + '</b> (Strom)';
               if (n && n.peakLoadKw) tt += '<br>Last: ' + n.peakLoadKw.toFixed(1) + ' kW';
               if (n && n.annualMwh) tt += '<br>Verbrauch: ' + n.annualMwh.toFixed(1) + ' MWh/a';
@@ -579,8 +587,8 @@ function _recalcStromNetzInner() {
             }, { sticky: true, className: 'geb-tooltip' });
             // Click for edge drawing
             gebMarker.on('click', function() { stromNodeClick(g.id); });
-            if (stromNetzVisible) gebMarker.addTo(map);
-            stromNodes.push({
+            if (window.stromNetzVisible) gebMarker.addTo(map);
+            window.stromNodes.push({
               id: g.id, type: 'geb', lat: center.lat, lng: center.lng,
               marker: gebMarker, label: g.name, peakLoadKw: 0, annualMwh: 0, isProducer: false
             });
@@ -601,7 +609,7 @@ function _recalcStromNetzInner() {
   _autoConnectStromNodes();
 
   // Find NAP (root)
-  const nap = stromNodes.find(n => n.type === 'nap');
+  const nap = window.stromNodes.find(n => n.type === 'nap');
   if (!nap) {
     // No NAP — just update visuals without calculation
     updateStromEdgeVisuals();
@@ -611,7 +619,7 @@ function _recalcStromNetzInner() {
 
   // Build adjacency from stromEdges
   const nodeMap = {};
-  stromNodes.forEach(n => {
+  window.stromNodes.forEach(n => {
     nodeMap[n.id] = { id: n.id, node: n, adj: [], loadKw: 0 };
   });
 
@@ -650,7 +658,7 @@ function _recalcStromNetzInner() {
   function arrAvg(arr) { return arr ? arrSum(arr) / arr.length : 0; }
 
   // Compute electrical loads per node — szenario-abhängig
-  stromNodes.forEach(n => {
+  window.stromNodes.forEach(n => {
     const nm = nodeMap[n.id];
     if (!nm) return;
     if (n.type === 'geb') {
@@ -684,7 +692,7 @@ function _recalcStromNetzInner() {
     const de = window._dispatchEnergy;
     ['lwwp', 'geo', 'bhkw', 'stromkessel'].forEach(erzKey => {
       if (!de[erzKey] || !de[erzKey].elMwh) return;
-      const erzNode = stromNodes.find(n => n._erzKey === erzKey);
+      const erzNode = window.stromNodes.find(n => n._erzKey === erzKey);
       const nm = erzNode ? nodeMap[erzNode.id] : null;
       if (!nm) return;
       const mwh = de[erzKey].elMwh;
@@ -714,7 +722,7 @@ function _recalcStromNetzInner() {
     });
     // Freiflächen-PV
     freiflaechen.forEach(ff => {
-      const erzNode = stromNodes.find(n => n._erzKey === 'ff_' + ff.id);
+      const erzNode = window.stromNodes.find(n => n._erzKey === 'ff_' + ff.id);
       const nm = erzNode ? nodeMap[erzNode.id] : null;
       if (nm && ff.polygon && ff.polygon.length >= 3) {
         const flaeche = typeof polygonAreaM2 === 'function' ? polygonAreaM2(ff.polygon) : 0;
@@ -740,7 +748,7 @@ function _recalcStromNetzInner() {
       }
     });
     // Stromkessel (falls kein eigener Erzeuger-Knoten → auf Zentrale)
-    if (de.stromkessel && de.stromkessel.elMwh && !stromNodes.find(n => n._erzKey === 'stromkessel')) {
+    if (de.stromkessel && de.stromkessel.elMwh && !window.stromNodes.find(n => n._erzKey === 'stromkessel')) {
       const zId = parseInt(document.getElementById('netz-zentrale')?.value);
       const zNode = zId ? nodeMap[zId] : null;
       if (zNode) zNode.loadKw += (de.stromkessel.elMwh * 1000 / 1800);
@@ -768,7 +776,7 @@ function _recalcStromNetzInner() {
     });
   }
 
-  stromEdges.forEach(e => {
+  window.stromEdges.forEach(e => {
     if (nodeMap[e.u]) nodeMap[e.u].adj.push({ to: e.v, edge: e });
     if (nodeMap[e.v]) nodeMap[e.v].adj.push({ to: e.u, edge: e });
   });
@@ -805,7 +813,7 @@ function _recalcStromNetzInner() {
   }
 
   // Bottom-up: Anzahl Verbraucher und Summe Einzellasten pro Knoten zählen
-  stromEdges.forEach(e => { e.peakFlowKw = 0; e._nVerbraucher = 0; });
+  window.stromEdges.forEach(e => { e.peakFlowKw = 0; e._nVerbraucher = 0; });
   const accLoadSum = {};  // Summe der Einzellasten (ohne GZF)
   const accNVerb = {};    // Anzahl Verbraucher hinter diesem Knoten
   Object.keys(nodeMap).forEach(k => {
@@ -840,7 +848,7 @@ function _recalcStromNetzInner() {
   const cosPhi = 0.95;
   const defaultType = document.getElementById('strom-kabel-typ')?.value || 'NAYY';
 
-  stromEdges.forEach(e => {
+  window.stromEdges.forEach(e => {
     const absKw = Math.abs(e.peakFlowKw);
     const I = absKw * 1000 / (Math.sqrt(3) * U * cosPhi); // Ampere
     e.peakCurrentA = I;
@@ -881,7 +889,7 @@ function _recalcStromNetzInner() {
   }
 
   // Trafo utilization
-  stromNodes.filter(n => n.type === 'trafo').forEach(tn => {
+  window.stromNodes.filter(n => n.type === 'trafo').forEach(tn => {
     let loadBehind = 0;
     // Sum all nodes behind this trafo
     const behindTrafo = new Set();
@@ -931,7 +939,7 @@ function _recalcStromNetzInner() {
   updateLpStromSummary();
 }
 
-function _calcStromNetzKosten() {
+export function _calcStromNetzKosten() {
   const tiefbauEurM = parseFloat(document.getElementById('strom-k-tiefbau')?.value) || 100;
   const napPausch = parseFloat(document.getElementById('strom-k-nap')?.value) || 3000;
   const trafoEurKva = parseFloat(document.getElementById('strom-k-trafo')?.value) || 60;
@@ -940,7 +948,7 @@ function _calcStromNetzKosten() {
 
   // Kabelkosten + Tiefbau
   let kabelInvest = 0, trasseLaenge = 0;
-  stromEdges.forEach(e => {
+  window.stromEdges.forEach(e => {
     const kt = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
     const sec = kt.sections.find(s => s.mm2 === e.crossSection);
     const eurM = sec ? sec.eurM : 15;
@@ -950,13 +958,13 @@ function _calcStromNetzKosten() {
 
   // Trafo-Kosten
   let trafoInvest = 0, nTrafos = 0;
-  stromNodes.filter(n => n.type === 'trafo').forEach(tn => {
+  window.stromNodes.filter(n => n.type === 'trafo').forEach(tn => {
     trafoInvest += (tn.ratedKva || 400) * trafoEurKva;
     nTrafos++;
   });
 
   // NAP-Kosten
-  const nNap = stromNodes.filter(n => n.type === 'nap').length;
+  const nNap = window.stromNodes.filter(n => n.type === 'nap').length;
   const napInvest = nNap * napPausch;
 
   const investGesamt = kabelInvest + trafoInvest + napInvest;
@@ -980,8 +988,8 @@ function _calcStromNetzKosten() {
 }
 
 // ── Kanten-Visualisierung ───────────────────────────────────────
-function getStromEdgeColor(e) {
-  switch (stromColorMode) {
+export function getStromEdgeColor(e) {
+  switch (window.stromColorMode) {
     case 'auslastung':
       if (e.auslastungPct > 100) return '#e53935';
       if (e.auslastungPct > 80)  return '#f9a825';
@@ -1003,8 +1011,8 @@ function getStromEdgeColor(e) {
   }
 }
 
-function updateStromEdgeVisuals() {
-  stromEdges.forEach(e => {
+export function updateStromEdgeVisuals() {
+  window.stromEdges.forEach(e => {
     const absKw = Math.abs(e.peakFlowKw);
     const w = Math.max(2, Math.min(12, 2 + absKw / 20));
     const color = getStromEdgeColor(e);
@@ -1022,8 +1030,8 @@ function updateStromEdgeVisuals() {
     }
 
     // Arrow marker for direction
-    const un = stromNodes.find(n => n.id === e.u);
-    const vn = stromNodes.find(n => n.id === e.v);
+    const un = window.stromNodes.find(n => n.id === e.u);
+    const vn = window.stromNodes.find(n => n.id === e.v);
     if (un && vn && absKw > 0.1) {
       const pt1 = L.latLng(un.lat, un.lng);
       const pt2 = L.latLng(vn.lat, vn.lng);
@@ -1034,13 +1042,13 @@ function updateStromEdgeVisuals() {
       if (e.arrowMarker) {
         e.arrowMarker.setLatLng(mid);
         e.arrowMarker.setIcon(L.divIcon({ className: '', html: arrowHtml, iconSize: [16, 16], iconAnchor: [8, 8] }));
-        if (stromNetzVisible && !map.hasLayer(e.arrowMarker)) e.arrowMarker.addTo(map);
+        if (window.stromNetzVisible && !map.hasLayer(e.arrowMarker)) e.arrowMarker.addTo(map);
       } else {
         e.arrowMarker = L.marker(mid, {
           icon: L.divIcon({ className: '', html: arrowHtml, iconSize: [16, 16], iconAnchor: [8, 8] }),
           interactive: false, zIndexOffset: 2500
         });
-        if (stromNetzVisible) e.arrowMarker.addTo(map);
+        if (window.stromNetzVisible) e.arrowMarker.addTo(map);
       }
     } else if (e.arrowMarker) {
       if (map.hasLayer(e.arrowMarker)) map.removeLayer(e.arrowMarker);
@@ -1049,30 +1057,30 @@ function updateStromEdgeVisuals() {
 }
 
 // ── Auto-Netz: Alle Gebäude mit nächstem Trafo/NSHV verbinden ──
-function autoStromNetz() {
-  const infra = stromNodes.filter(n => n.type === 'trafo' || n.type === 'nshv');
+export function autoStromNetz() {
+  const infra = window.stromNodes.filter(n => n.type === 'trafo' || n.type === 'nshv');
   if (!infra.length) {
     epConfirm('Kein Trafo/NSHV', 'Bitte zuerst mindestens einen Trafo oder eine NSHV platzieren.', { okText: 'OK', cancelText: '' });
     return;
   }
-  const nap = stromNodes.find(n => n.type === 'nap');
+  const nap = window.stromNodes.find(n => n.type === 'nap');
   if (!nap) {
     epConfirm('Kein NAP', 'Bitte zuerst einen NAP (Netzanknüpfungspunkt) platzieren.', { okText: 'OK', cancelText: '' });
     return;
   }
 
   // Connect NAP to each Trafo (if not already)
-  stromNodes.filter(n => n.type === 'trafo').forEach(trafo => {
-    const exists = stromEdges.some(e =>
+  window.stromNodes.filter(n => n.type === 'trafo').forEach(trafo => {
+    const exists = window.stromEdges.some(e =>
       (e.u === nap.id && e.v === trafo.id) || (e.u === trafo.id && e.v === nap.id));
     if (!exists) addStromEdge(nap.id, trafo.id);
   });
 
   // Connect Trafos to NSHVs (nearest Trafo)
-  stromNodes.filter(n => n.type === 'nshv').forEach(nshv => {
-    if (stromEdges.some(e => e.u === nshv.id || e.v === nshv.id)) return; // already connected
+  window.stromNodes.filter(n => n.type === 'nshv').forEach(nshv => {
+    if (window.stromEdges.some(e => e.u === nshv.id || e.v === nshv.id)) return; // already connected
     let nearest = null, minDist = Infinity;
-    stromNodes.filter(n => n.type === 'trafo').forEach(t => {
+    window.stromNodes.filter(n => n.type === 'trafo').forEach(t => {
       const d = L.latLng(nshv.lat, nshv.lng).distanceTo(L.latLng(t.lat, t.lng));
       if (d < minDist) { minDist = d; nearest = t; }
     });
@@ -1083,7 +1091,7 @@ function autoStromNetz() {
   {
     // Alle infra-Knoten + bereits verbundene Knoten als Startmenge
     const connPts = new Map();
-    const allInfra = stromNodes.filter(n => n.type === 'trafo' || n.type === 'nshv' || n.type === 'nap');
+    const allInfra = window.stromNodes.filter(n => n.type === 'trafo' || n.type === 'nshv' || n.type === 'nap');
     allInfra.forEach(n => connPts.set(n.id, { lat: n.lat, lng: n.lng }));
 
     // Unverbundene Gebäude sammeln
@@ -1092,14 +1100,14 @@ function autoStromNetz() {
       gebaeude.forEach(g => {
         const stromMwh = typeof getGebStromMwh === 'function' ? getGebStromMwh(g) : 0;
         if (!stromMwh || stromMwh <= 0) return;
-        if (stromEdges.some(e => e.u === g.id || e.v === g.id)) return;
+        if (window.stromEdges.some(e => e.u === g.id || e.v === g.id)) return;
         const center = g.polygon ? polygonCenter(g.polygon) : null;
         if (!center) return;
         unconnected.push({ id: g.id, lat: center.lat, lng: center.lng });
       });
     }
     // Erzeuger-Knoten auch einbeziehen
-    stromNodes.filter(n => n.type === 'erzeuger' && !stromEdges.some(e => e.u === n.id || e.v === n.id))
+    window.stromNodes.filter(n => n.type === 'erzeuger' && !window.stromEdges.some(e => e.u === n.id || e.v === n.id))
       .forEach(n => unconnected.push({ id: n.id, lat: n.lat, lng: n.lng }));
 
     // Greedy MST: immer nächsten Nachbar verbinden
@@ -1125,14 +1133,14 @@ function autoStromNetz() {
 }
 
 // ── Schnellberechnung: NAP + Trafos + Kabel automatisch ────────
-function schnellberechnungStrom() {
+export function schnellberechnungStrom() {
   if (!gebaeude || !gebaeude.length) {
     epConfirm('Keine Gebäude', 'Keine Gebäude vorhanden. Bitte zuerst Gebäude laden.', { okText: 'OK', cancelText: '' });
     return;
   }
 
   // Bestehende Strom-Infrastruktur löschen
-  if (stromNodes.length > 0) {
+  if (window.stromNodes.length > 0) {
     epConfirm('Stromnetz ersetzen', 'Das bestehende Stromnetz wird komplett ersetzt. Fortfahren?', { danger: true, okText: 'Ersetzen' }).then(function(ok) {
       if (ok) { clearStromNetz(); _schnellberechnungStromInner(); }
     });
@@ -1141,7 +1149,7 @@ function schnellberechnungStrom() {
   _schnellberechnungStromInner();
 }
 
-function _schnellberechnungStromInner() {
+export function _schnellberechnungStromInner() {
   // 1. Gebäude mit Stromverbrauch sammeln + Peak-Last berechnen
   const consumers = [];
   gebaeude.forEach(g => {
@@ -1214,8 +1222,8 @@ function _schnellberechnungStromInner() {
           if (L.latLng(lastJunction.lat, lastJunction.lng).distanceTo(pt) < 25) continue;
         }
         var jId = jBaseId + jIdx;
-        if (jId >= stromNextId) stromNextId = jId + 1;
-        stromNodes.push({
+        if (jId >= window.stromNextId) window.stromNextId = jId + 1;
+        window.stromNodes.push({
           id: jId, type: 'junction', lat: pt.lat, lng: pt.lng,
           marker: null, label: 'J' + jIdx, peakLoadKw: 0, annualMwh: 0, isProducer: false
         });
@@ -1267,21 +1275,21 @@ function _schnellberechnungStromInner() {
 
   // Gebäude als Strom-Knoten vorab registrieren (damit addStromEdge sie findet)
   consumers.forEach(c => {
-    if (stromNodes.find(n => n.id === c.id)) return;
+    if (window.stromNodes.find(n => n.id === c.id)) return;
     const g = gebaeude.find(gb => gb.id === c.id);
     if (!g) return;
     const gebIcon = L.divIcon({ className: '', html: '<div class="strom-icon strom-icon-geb">⚡</div>', iconSize: [14, 14], iconAnchor: [7, 7] });
     const gebMarker = L.marker(L.latLng(c.lat, c.lng), { icon: gebIcon, interactive: true, zIndexOffset: 2000 });
     gebMarker.bindTooltip(function() {
-      const n = stromNodes.find(sn => sn.id === c.id);
+      const n = window.stromNodes.find(sn => sn.id === c.id);
       let tt = '<b>' + g.name + '</b> (Strom)';
       if (n && n.peakLoadKw) tt += '<br>Last: ' + n.peakLoadKw.toFixed(1) + ' kW';
       if (n && n.annualMwh) tt += '<br>Verbrauch: ' + n.annualMwh.toFixed(1) + ' MWh/a';
       return tt;
     }, { sticky: true, className: 'geb-tooltip' });
     gebMarker.on('click', function() { stromNodeClick(c.id); });
-    if (stromNetzVisible) gebMarker.addTo(map);
-    stromNodes.push({ id: c.id, type: 'geb', lat: c.lat, lng: c.lng, marker: gebMarker, label: g.name, peakLoadKw: 0, annualMwh: 0, isProducer: false });
+    if (window.stromNetzVisible) gebMarker.addTo(map);
+    window.stromNodes.push({ id: c.id, type: 'geb', lat: c.lat, lng: c.lng, marker: gebMarker, label: g.name, peakLoadKw: 0, annualMwh: 0, isProducer: false });
   });
 
   const trafoNodes = [];
@@ -1340,8 +1348,8 @@ function _schnellberechnungStromInner() {
   // Erzeuger-Knoten registrieren & ans nächste Infra anbinden
   _autoRegisterErzeugerStromNodes();
   const allInfra = [napNode, ...trafoNodes];
-  stromNodes.filter(n => n.type === 'erzeuger').forEach(erz => {
-    if (stromEdges.some(e => e.u === erz.id || e.v === erz.id)) return;
+  window.stromNodes.filter(n => n.type === 'erzeuger').forEach(erz => {
+    if (window.stromEdges.some(e => e.u === erz.id || e.v === erz.id)) return;
     let nearest = null, minDist = Infinity;
     allInfra.forEach(n => {
       const d = L.latLng(erz.lat, erz.lng).distanceTo(L.latLng(n.lat, n.lng));
@@ -1361,11 +1369,11 @@ function _schnellberechnungStromInner() {
 }
 
 // ── KPI-Anzeige im Strom Sub-Tab ───────────────────────────────
-function updateLpStromSummary() {
+export function updateLpStromSummary() {
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   const hint = document.getElementById('lp-strom-hint');
 
-  if (!stromNodes.length) {
+  if (!window.stromNodes.length) {
     if (hint) hint.style.display = '';
     setVal('lp-strom-sz-hour', '—');
     setVal('lp-strom-last', '—');
@@ -1396,7 +1404,7 @@ function updateLpStromSummary() {
 
   // Gesamtlast (consumers only)
   let totalLoad = 0, totalInj = 0;
-  stromNodes.forEach(n => {
+  window.stromNodes.forEach(n => {
     if (n.type === 'geb' || n.type === 'erzeuger') {
       if (n.peakLoadKw > 0) totalLoad += n.peakLoadKw;
       else totalInj += Math.abs(n.peakLoadKw);
@@ -1407,13 +1415,13 @@ function updateLpStromSummary() {
 
   // Max Trafo-Auslastung
   let maxTrafoAusl = 0;
-  stromNodes.filter(n => n.type === 'trafo').forEach(t => {
+  window.stromNodes.filter(n => n.type === 'trafo').forEach(t => {
     if (t._auslastungPct > maxTrafoAusl) maxTrafoAusl = t._auslastungPct;
   });
   const trafoColor = maxTrafoAusl < 80 ? '#4caf50' : maxTrafoAusl < 100 ? '#f9a825' : '#e53935';
   const trafoEl = document.getElementById('lp-strom-trafo-ausl');
   if (trafoEl) {
-    trafoEl.textContent = stromNodes.some(n => n.type === 'trafo') ? maxTrafoAusl.toFixed(0) + ' %' : '—';
+    trafoEl.textContent = window.stromNodes.some(n => n.type === 'trafo') ? maxTrafoAusl.toFixed(0) + ' %' : '—';
     trafoEl.style.color = trafoColor;
   }
 
@@ -1425,29 +1433,29 @@ function updateLpStromSummary() {
   if (duEl) { duEl.textContent = du > 0 ? du.toFixed(2) + ' %' : '—'; duEl.style.color = duColor; }
 
   // Kabellänge
-  const totalLen = stromEdges.reduce((s, e) => s + (e.lengthM || 0), 0);
+  const totalLen = window.stromEdges.reduce((s, e) => s + (e.lengthM || 0), 0);
   setVal('lp-strom-kabel-len', totalLen > 0 ? totalLen.toFixed(0) + ' m' : '—');
 
   // Komponenten
-  const nNap = stromNodes.filter(n => n.type === 'nap').length;
-  const nTrafo = stromNodes.filter(n => n.type === 'trafo').length;
-  const nNshv = stromNodes.filter(n => n.type === 'nshv').length;
+  const nNap = window.stromNodes.filter(n => n.type === 'nap').length;
+  const nTrafo = window.stromNodes.filter(n => n.type === 'trafo').length;
+  const nNshv = window.stromNodes.filter(n => n.type === 'nshv').length;
   setVal('lp-strom-komp', nNap + ' NAP · ' + nTrafo + ' Trafo · ' + nNshv + ' NSHV');
 }
 
 // ── Stromnetz komplett löschen ──────────────────────────────────
-function clearStromNetz() {
-  stromEdges.forEach(e => {
+export function clearStromNetz() {
+  window.stromEdges.forEach(e => {
     if (e.layer && map.hasLayer(e.layer)) map.removeLayer(e.layer);
     if (e.hitLayer && map.hasLayer(e.hitLayer)) map.removeLayer(e.hitLayer);
     if (e.arrowMarker && map.hasLayer(e.arrowMarker)) map.removeLayer(e.arrowMarker);
   });
-  stromNodes.forEach(n => {
+  window.stromNodes.forEach(n => {
     if (n.marker && map.hasLayer(n.marker)) map.removeLayer(n.marker);
   });
-  stromEdges = [];
-  stromNodes = [];
-  stromNextId = 20000;
+  window.stromEdges = [];
+  window.stromNodes = [];
+  window.stromNextId = 20000;
   window._stromNetzKpis = null;
   updateLpStromSummary();
 }

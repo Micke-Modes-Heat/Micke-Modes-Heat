@@ -1,6 +1,12 @@
 // ── 05a-export.js — CSV-Export, PDF-Report, Druckansicht ──
 // ── Export: Dispatch CSV ──────────────────────────────────────────────────
-function exportDispatchCSV() {
+import { gebaeude, globalYear, netzEdges } from './01-globals-varianten.js';
+import { getComputedStats } from './02b-gebaeude.js';
+import { updateLpMeritOrder, updateLpNetzSummary } from './04a-ui-panels.js';
+import { updateLpStromSummary } from './05b-stromnetz.js';
+import { DA_LABELS } from './07a-analysis-charts.js';
+
+export function exportDispatchCSV() {
   const keys = window._dispatchActiveKeys || [];
   const en   = window._dispatchEnergy || {};
   const hourly = window._dispatchHourly || {};
@@ -48,7 +54,7 @@ function exportDispatchCSV() {
 }
 
 // ── Export: Gebäude CSV ──────────────────────────────────────────────────
-function exportGebaeudeCSV() {
+export function exportGebaeudeCSV() {
   if (!gebaeude.length) { alert('Keine Gebäude vorhanden.'); return; }
   let csv = 'ID;Name;Nutzung;Fläche (m²);Baujahr;Zustand;Wärmebedarf (MWh/a);Heizlast (kW);Spez. Wärme (kWh/m²a);Spez. Heizlast (W/m²);Strom (MWh/a);PV aktiv;PV Dachanteil (%);Am Netz;Netzverluste (MWh/a)\n';
   const connectedIds = new Set(netzEdges.filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
@@ -709,7 +715,7 @@ async function exportPDFReport() {
 }
 
 // ── Hook into existing recalc to update left panel ───────────────
-const _origRecalcNetz = typeof recalcNetz !== 'undefined' ? recalcNetz : null;
+export const _origRecalcNetz = typeof recalcNetz !== 'undefined' ? recalcNetz : null;
 // We'll hook updateLpNetzSummary after recalcNetz calls via a periodic check instead
 setInterval(() => {
   updateLpNetzSummary();
