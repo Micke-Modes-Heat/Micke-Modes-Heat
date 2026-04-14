@@ -88,8 +88,8 @@ describe('CalcEngine.calcCOP', () => {
     const { cop } = CalcEngine.calcCOP(vlH, tqH, 0.42);
     expect(cop.length).toBe(8760);
     // Im Winter (kalt) niedriger, im Sommer höher
-    const winter = cop[0];    // tqH ≈ 5
-    const sommer = cop[4380]; // tqH ≈ 5 (sin peak bei ~2190)
+    const _winter = cop[0];    // tqH ≈ 5
+    const _sommer = cop[4380]; // tqH ≈ 5 (sin peak bei ~2190)
     expect(cop.every(v => v > 0 && v <= 8)).toBe(true);
   });
 });

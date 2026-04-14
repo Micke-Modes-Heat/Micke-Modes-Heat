@@ -384,7 +384,7 @@ function _optPopulateYearSelect() {
   const maxY = parseInt(document.getElementById('year-slider')?.max) || 2050;
   const curY = typeof globalYear !== 'undefined' ? globalYear : minY;
   // Nur neu befüllen wenn nötig
-  if (sel.options.length === (maxY - minY + 1) && sel.value == curY) return;
+  if (sel.options.length === (maxY - minY + 1) && sel.value === String(curY)) return;
   sel.innerHTML = '';
   for (let y = minY; y <= maxY; y++) {
     const opt = document.createElement('option');

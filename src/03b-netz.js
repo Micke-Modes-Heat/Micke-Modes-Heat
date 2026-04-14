@@ -821,7 +821,7 @@ function populateZentraleSelect(){
       sel.appendChild(opt);
     }
   });
-  if(currentVal && gebaeude.some(g => g.id == currentVal)) {
+  if(currentVal && gebaeude.some(g => g.id === currentVal)) {
     sel.value = currentVal;
   }
 }

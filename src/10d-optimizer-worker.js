@@ -62,169 +62,57 @@ function _pvInvestPerKwp(kwp) {
 // ── Gemeinsame Kostenberechnung (eingebettet aus Main-Thread) ──
 ` + _calcKostenShared.toString() + `
 
+// ── Dispatch-Kern (eingebettet aus Main-Thread) ──
+` + _dispatchCore.toString() + `
+
 function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stExcessH) {
-  const n = 8760;
-  const wpElH = new Float32Array(n);
-  const bhkwElH = new Float32Array(n);
-  const skElH = new Float32Array(n);
-  const wpResKwH = new Float32Array(n);
-  const wpResCopH = new Float32Array(n);
-  const bhkwSigma = D.bhkwSkz;
-  const skEta = D.skEta;
-  const lwwpMinCop = D.lwwpMinCop;
-  let gesamtKwh = 0;
-  const KESSEL_SET = new Set(D.KESSEL_KEYS);
-
-  const copRef = {};
-  for (const erz of erzeugerList) {
-    if (D.ERZEUGER_TYP[erz.key] === 'wp') {
-      copRef[erz.key] = ((273.15 + 35) / (35 - 2)) * (erz.guetegrad || _defaultGuetegrad(erz.key));
-    }
-  }
-
+  // Speicher-Parameter aus Worker-Config aufbauen
   let thSp = null;
   if (typeof optSpeicherVol === 'number' && optSpeicherVol > 0) {
-    thSp = { vol: optSpeicherVol, dt: D.tsDt, kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw };
-  }
-  const hatSpeicher = thSp !== null && thSp.kapKwh > 0;
-  const nonKesselErz = hatSpeicher ? erzeugerList.filter(e => !KESSEL_SET.has(e.key)) : erzeugerList;
-  const kesselErz = hatSpeicher ? erzeugerList.filter(e => KESSEL_SET.has(e.key)) : [];
-  let thermSOC = 0, thermEntladenGes = 0, thermGeladenGes = 0;
-
-  for (const erz of erzeugerList) { erz._thKwh = 0; erz._elKwh = 0; }
-  let residualKwh = 0, residualPeakKw = 0;
-  // Letzter Erzeuger = Spitzenlasterzeuger: deckt gesamte Restlast ab
-  const _backupErz = erzeugerList.length > 0 ? erzeugerList[erzeugerList.length - 1] : null;
-  let _backupPeakKw = 0, _backupHourKw = 0;
-
-  for (let t = 0; t < n; t++) {
-    let residual = lastgangKw[t];
-    gesamtKwh += residual;
-    _backupHourKw = 0;
-
-    if (hatSpeicher && thermSOC > 0) {
-      thermSOC = Math.max(0, thermSOC - thermSOC * thSp.verlustRate);
-    }
-
-    // ST-Überschuss → Speicher (wie im Haupt-Dispatch Phase 1)
-    if (hatSpeicher && stExcessH && stExcessH[t] > 0.001) {
-      const laden = Math.min(stExcessH[t], thSp.kapKwh - thermSOC);
-      if (laden > 0.001) { thermSOC += laden; thermGeladenGes += laden; }
-    }
-
-    const wpReserves = [];
-    for (const erz of nonKesselErz) {
-      if (residual <= 0.001) break;
-      if (erz.leistKw <= 0) continue;
-      let erreichbarKw = erz.leistKw;
-      let cop = 0;
-      const typ = D.ERZEUGER_TYP[erz.key];
-
-      if (typ === 'wp') {
-        const tQ = _quelleTemp(erz.key, tempH[t], t);
-        if (erz.key === 'fg' && tQ < 2) continue;
-        const tVLK = vlH[t] + 273.15;
-        const hub = Math.max(tVLK - (tQ + 273.15), 0.1);
-        cop = Math.min((tVLK / hub) * (erz.guetegrad || _defaultGuetegrad(erz.key)), 8);
-        if (erz.key === 'lwwp' && lwwpMinCop > 0 && cop < lwwpMinCop) continue;
-        erreichbarKw = erz.leistKw * (cop / copRef[erz.key]);
-      }
-
-      // Gaskessel/Heizöl: kein Kapazitätslimit (Backup-Funktion, ersetzt Auto-GK)
-      const _isBackup = (erz === _backupErz);
-      let pTh;
-      if (typ === 'kwk' && !_isBackup) {
-        // BHKW-Mindestteillast 50%
-        const minLastKw = erz.leistKw * 0.5;
-        if (residual >= minLastKw) {
-          pTh = Math.min(erreichbarKw, Math.max(0, residual));
-        } else if (hatSpeicher && (thSp.kapKwh - thermSOC) > 0.1) {
-          pTh = Math.min(erreichbarKw, minLastKw);
-          const ueberschuss = Math.max(0, pTh - residual);
-          if (ueberschuss > 0.001) {
-            const laden = Math.min(ueberschuss, thSp.kapKwh - thermSOC);
-            thermSOC += laden;
-            thermGeladenGes += laden;
-          }
-        } else {
-          pTh = 0;
-        }
-      } else {
-        pTh = _isBackup ? Math.max(0, residual) : Math.min(erreichbarKw, Math.max(0, residual));
-      }
-      if (pTh < 0.001) continue;
-      erz._thKwh += pTh;
-      if (_isBackup) _backupHourKw += pTh;
-
-      if (typ === 'wp' && cop > 0) {
-        const elH = pTh / cop;
-        erz._elKwh += elH;
-        wpElH[t] += elH;
-        const reserveKw = Math.max(0, erreichbarKw - pTh);
-        if (reserveKw > 0.1) wpReserves.push({ erz, reserveKw, cop });
-      }
-      if (typ === 'kwk') { const elH = pTh * bhkwSigma; erz._elKwh += elH; bhkwElH[t] += elH; }
-      if (erz.key === 'stromkessel') { const elH = pTh / skEta; erz._elKwh += elH; skElH[t] += elH; }
-      residual -= Math.min(pTh, residual);  // bei BHKW-Mindestlast nur Bedarfsanteil abziehen
-    }
-    wpReserves.sort((a, b) => b.cop - a.cop);
-    // WP-Reserven für PV→WP→Speicher speichern
-    let _wrTot = 0, _wrCW = 0;
-    for (const wp of wpReserves) { _wrTot += wp.reserveKw; _wrCW += wp.reserveKw * wp.cop; }
-    wpResKwH[t] = _wrTot;
-    wpResCopH[t] = _wrTot > 0 ? _wrCW / _wrTot : 0;
-
-    if (hatSpeicher && residual > 0.001 && thermSOC > 0.001) {
-      const entladen = Math.min(residual, thermSOC, thSp.entladeKw);
-      if (entladen > 0.001) { residual -= entladen; thermSOC -= entladen; thermEntladenGes += entladen; }
-    }
-
-    for (const erz of kesselErz) {
-      if (residual <= 0.001) break;
-      if (erz.leistKw <= 0) continue;
-      // Gaskessel/Heizöl: kein Kapazitätslimit (Backup-Funktion)
-      const _isBackup = (erz === _backupErz);
-      const pTh = _isBackup ? Math.max(0, residual) : Math.min(erz.leistKw, residual);
-      if (pTh < 0.001) continue;
-      erz._thKwh += pTh;
-      if (_isBackup) _backupHourKw += pTh;
-      residual -= pTh;
-    }
-
-    if (_backupHourKw > _backupPeakKw) _backupPeakKw = _backupHourKw;
-    const _rKw = Math.max(0, residual);
-    residualKwh += _rKw;
-    if (_rKw > residualPeakKw) residualPeakKw = _rKw;
-
-    if (hatSpeicher && thermSOC < thSp.kapKwh && wpReserves.length > 0) {
-      const h = t % 24;
-      if (h >= 8 && h < 18) {
-        let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.entladeKw);
-        for (const wp of wpReserves) {
-          if (restLade <= 0.1 || wp.reserveKw <= 0.1 || wp.cop <= 0) break;
-          const ladeKw = Math.min(wp.reserveKw, restLade);
-          thermSOC += ladeKw; thermGeladenGes += ladeKw; restLade -= ladeKw;
-          const extraEl = ladeKw / wp.cop;
-          wpElH[t] += extraEl; wp.erz._elKwh += extraEl;
-        }
-      }
-    }
+    thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw };
   }
 
+  // Typ + Gütegrad sicherstellen (makeErzObj setzt typ, aber Sicherheit)
   for (const erz of erzeugerList) {
-    erz.waermeMwh = erz._thKwh / 1000;
-    erz.elMwh = erz._elKwh / 1000;
-    delete erz._thKwh; delete erz._elKwh;
-  }
-  // Backup-Kessel: leistKw auf tatsächlichen Peak anheben (für korrekte Investitionsberechnung)
-  if (_backupErz && _backupPeakKw > _backupErz.leistKw) {
-    _backupErz.leistKw = Math.ceil(_backupPeakKw);
+    if (!erz.typ) erz.typ = D.ERZEUGER_TYP[erz.key] || 'fix';
+    if (!erz.guetegrad) erz.guetegrad = _defaultGuetegrad(erz.key);
   }
 
-  return { erzeugerList, autoGkMwh: residualKwh / 1000, autoGkPeakKw: residualPeakKw, gesamtMwh: gesamtKwh / 1000, wpElH, bhkwElH, skElH,
-    speicherEntladenMwh: thermEntladenGes / 1000, speicherGeladenMwh: thermGeladenGes / 1000,
-    wpResKwH, wpResCopH,
-    thSpParams: hatSpeicher ? { kapKwh: thSp.kapKwh, entladeKw: thSp.entladeKw } : null };
+  // Einheitlichen Dispatch-Kern aufrufen
+  const r = _dispatchCore({
+    lastgangKw, tempH, vlH,
+    erzList: erzeugerList,
+    speicherParams: thSp,
+    stProfile: null,
+    stExcessH: stExcessH,
+    bhkwSigma: D.bhkwSkz, skEta: D.skEta, lwwpMinCop: D.lwwpMinCop,
+    quelleTemp: _quelleTemp,
+    recordHourly: false,
+    backupMode: true,
+  });
+
+  // Ergebnisse in Erzeuger-Objekte übertragen
+  for (const erz of erzeugerList) {
+    erz.waermeMwh = (r.thKwh[erz.key] || 0) / 1000;
+    erz.elMwh = (r.elKwh[erz.key] || 0) / 1000;
+  }
+  // Backup-Kessel: leistKw auf tatsächlichen Peak anheben
+  const _backupErz = erzeugerList.length > 0 ? erzeugerList[erzeugerList.length - 1] : null;
+  if (_backupErz && r.backupPeakKw > _backupErz.leistKw) {
+    _backupErz.leistKw = Math.ceil(r.backupPeakKw);
+  }
+
+  return {
+    erzeugerList,
+    autoGkMwh: r.autoGkKwh / 1000,
+    autoGkPeakKw: r.autoGkPeakKw,
+    gesamtMwh: r.gesamtKwh / 1000,
+    wpElH: r.wpElH, bhkwElH: r.bhkwElH, skElH: r.skElH,
+    speicherEntladenMwh: r.thermEntladenGes / 1000,
+    speicherGeladenMwh: r.thermGeladenGes / 1000,
+    wpResKwH: r.wpResKwH, wpResCopH: r.wpResCopH,
+    thSpParams: r.hatSpeicher ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw } : null,
+  };
 }
 
 function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
