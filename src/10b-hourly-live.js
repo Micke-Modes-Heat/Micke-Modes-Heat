@@ -7,9 +7,9 @@
 // ==========================================================================
 
 // ── Stundenscharfer Zeitschieber (Hourly Live-Modus) ─────────────────────
-let _hourlyModeActive = false;
+export let _hourlyModeActive = false;
 
-function _toggleHourlyMode() {
+export function _toggleHourlyMode() {
   const hasData = window._dispatchHourly && window._dispatchActiveKeys?.length > 0;
   if (!hasData) return;
   if (currentViewMode === 'live') {
@@ -21,19 +21,19 @@ function _toggleHourlyMode() {
   }
 }
 
-function _showHourlySlider() {
+export function _showHourlySlider() {
   const liveTab = document.getElementById('view-tab-live');
   if (liveTab) liveTab.style.display = '';
 }
 
-function _hideHourlySlider() {
+export function _hideHourlySlider() {
   _hourlyModeActive = false;
   const liveTab = document.getElementById('view-tab-live');
   if (liveTab) liveTab.style.display = 'none';
   _removeHourlyOverlay();
 }
 
-function _hourToDateStr(h) {
+export function _hourToDateStr(h) {
   const day = Math.floor(h / 24);
   const hr = h % 24;
   const m = [31,28,31,30,31,30,31,31,30,31,30,31];
@@ -43,18 +43,18 @@ function _hourToDateStr(h) {
   return String(d + 1) + '. ' + mNames[mo] + ' \u00B7 ' + String(hr).padStart(2, '0') + ':00';
 }
 
-function _onHourSlider(val) {
+export function _onHourSlider(val) {
   const t = parseInt(val) || 0;
   if (_hourlyModeActive) _updateHourlyOverlay(t);
 }
 
-function _removeHourlyOverlay() {
+export function _removeHourlyOverlay() {
   _hourlyModeActive = false;
   if (currentViewMode === 'live') setViewMode('karte');
 }
 
 // ── Gestapeltes Erzeugerlastgang-Diagramm (Canvas) ──────────────────────
-function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
+export function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
   const parent = canvas.parentElement;
   const W = (parent?.offsetWidth || 600) - 12;
   const H = Math.max(180, Math.min(800, (parent?.offsetHeight || 340) - 24));
@@ -304,7 +304,7 @@ function _drawStackedDispatch(canvas, currentHour, keys, hourly, ss) {
 }
 
 // ── Strom-Bilanz-Chart (Erzeugung vs. Verbrauch) ────────────────────────
-function _drawStromBilanz(canvas, currentHour) {
+export function _drawStromBilanz(canvas, currentHour) {
   const parent = canvas.parentElement;
   const W = (parent?.offsetWidth || 400) - 12;
   const H = Math.max(180, Math.min(800, (parent?.offsetHeight || 340) - 24));
@@ -515,7 +515,7 @@ function _drawStromBilanz(canvas, currentHour) {
 }
 
 // ── Schematisches Netz-Fließbild (SVG) — Zwei-Bus-Layout ──────
-function _buildFlowSVG(container, data) {
+export function _buildFlowSVG(container, data) {
   if (!container) { console.warn('FlowSVG: no container'); return; }
   const { erzeuger, bedarf, speicher, strom, tempC, vlC, t } = data;
   const hasStrom = strom.pvKw > 0.1 || strom.bhkwKw > 0.1 || strom.wpKw > 0.1 || strom.skKw > 0.1 || strom.hhKw > 0.1 || strom.batKap > 0 || strom.netzbezugKw > 0.1;
@@ -759,7 +759,7 @@ function _buildFlowSVG(container, data) {
   }
 }
 
-function _initDragOverlay(el, handle) {
+export function _initDragOverlay(el, handle) {
   let ox = 0, oy = 0, sx = 0, sy = 0;
   handle.addEventListener('mousedown', function(e) {
     if (e.target.tagName === 'BUTTON') return;
@@ -789,7 +789,7 @@ function _initDragOverlay(el, handle) {
   });
 }
 
-function _updateHourlyOverlay(t) {
+export function _updateHourlyOverlay(t) {
   const hourly = window._dispatchHourly;
   const keys = window._dispatchActiveKeys || [];
   const ss = window.systemState;
@@ -976,7 +976,7 @@ function _updateHourlyOverlay(t) {
 }
 
 // Zeitschieber einblenden wenn Dispatch-Daten vorhanden
-function _checkShowHourlySlider() {
+export function _checkShowHourlySlider() {
   if (window._dispatchHourly && window._dispatchActiveKeys?.length > 0) {
     _showHourlySlider();
   } else {
@@ -985,7 +985,7 @@ function _checkShowHourlySlider() {
 }
 
 // ── Speicher-SOC-Chart (separate Canvas) ────────────────────────────────
-function _drawSpeicherSocChart(canvas, currentHour) {
+export function _drawSpeicherSocChart(canvas, currentHour) {
   const parent = canvas.parentElement;
   const W = (parent?.offsetWidth || 400) - 4;
   const H = Math.max(60, (parent?.offsetHeight || 100) - 4);
@@ -1091,9 +1091,9 @@ function _drawSpeicherSocChart(canvas, currentHour) {
 }
 
 // ── Live-Ansicht: Zeitzoom ──────────────────────────────────────────────
-let _liveZoomMode = 'jahr';
+export let _liveZoomMode = 'jahr';
 
-function _setLiveZoom(mode) {
+export function _setLiveZoom(mode) {
   _liveZoomMode = mode;
   document.querySelectorAll('.live-zoom-tab').forEach(b => b.classList.toggle('active', b.dataset.zoom === mode));
   // Re-render
@@ -1101,7 +1101,7 @@ function _setLiveZoom(mode) {
   if (sl) _onHourSlider(parseInt(sl.value) || 0);
 }
 
-function _getLiveZoomRange(currentHour) {
+export function _getLiveZoomRange(currentHour) {
   if (_liveZoomMode === 'tag') {
     const dayStart = Math.floor(currentHour / 24) * 24;
     return { start: dayStart, end: Math.min(dayStart + 24, 8760) };
@@ -1117,7 +1117,7 @@ function _getLiveZoomRange(currentHour) {
   return { start: 0, end: 8760 };
 }
 
-function _drawLiveXAxis(ctx, PAD, plotW, plotH, range) {
+export function _drawLiveXAxis(ctx, PAD, plotW, plotH, range) {
   ctx.font = '8px "DM Sans", sans-serif';
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(255,255,255,0.3)';
@@ -1157,7 +1157,7 @@ function _drawLiveXAxis(ctx, PAD, plotW, plotH, range) {
 }
 
 // ── Live-Ansicht: Timeline-Slider ───────────────────────────────────────
-function _updateLiveTimeline(t) {
+export function _updateLiveTimeline(t) {
   const pct = (t / 8759) * 100;
   const fill = document.getElementById('live-tl-fill');
   const thumb = document.getElementById('live-tl-thumb');
@@ -1167,8 +1167,8 @@ function _updateLiveTimeline(t) {
   _drawTimelineHisto();
 }
 
-let _tlHistoDrawn = false;
-function _drawTimelineHisto() {
+export let _tlHistoDrawn = false;
+export function _drawTimelineHisto() {
   if (_tlHistoDrawn) return;
   const canvas = document.getElementById('live-tl-histo');
   const ss = window.systemState;
@@ -1215,9 +1215,9 @@ function _drawTimelineHisto() {
   }
 }
 
-let _liveTlDragging = false;
+export let _liveTlDragging = false;
 
-function _liveTlDown(ev) {
+export function _liveTlDown(ev) {
   ev.preventDefault();
   _liveTlDragging = true;
   _liveTlMove(ev);
@@ -1229,7 +1229,7 @@ function _liveTlDown(ev) {
   document.addEventListener('touchend', onUp);
 }
 
-function _liveTlMove(ev) {
+export function _liveTlMove(ev) {
   const wrap = document.getElementById('live-tl-slider');
   if (!wrap) return;
   const rect = wrap.getBoundingClientRect();
@@ -1241,7 +1241,7 @@ function _liveTlMove(ev) {
   _onHourSlider(newH);
 }
 
-function _liveStep(delta) {
+export function _liveStep(delta) {
   const sl = document.getElementById('live-slider');
   if (!sl) return;
   const newVal = Math.max(0, Math.min(8759, parseInt(sl.value) + delta));
@@ -1250,11 +1250,11 @@ function _liveStep(delta) {
 }
 
 // ── Play-Modus ──────────────────────────────────────────────────────────
-let _livePlayTimer = null;
-let _livePlaySpeed = 1;
-const _liveSpeedSteps = [1, 10, 60, 360];
+export let _livePlayTimer = null;
+export let _livePlaySpeed = 1;
+export const _liveSpeedSteps = [1, 10, 60, 360];
 
-function _liveTogglePlay() {
+export function _liveTogglePlay() {
   if (_livePlayTimer) {
     _liveStopPlay();
   } else {
@@ -1262,7 +1262,7 @@ function _liveTogglePlay() {
   }
 }
 
-function _liveStartPlay() {
+export function _liveStartPlay() {
   if (_livePlayTimer) return;
   const btn = document.getElementById('live-play-btn');
   if (btn) { btn.innerHTML = '\u275A\u275A'; btn.classList.add('active'); }
@@ -1279,13 +1279,13 @@ function _liveStartPlay() {
   }, interval);
 }
 
-function _liveStopPlay() {
+export function _liveStopPlay() {
   if (_livePlayTimer) { clearInterval(_livePlayTimer); _livePlayTimer = null; }
   const btn = document.getElementById('live-play-btn');
   if (btn) { btn.innerHTML = '\u25B6'; btn.classList.remove('active'); }
 }
 
-function _liveCycleSpeed() {
+export function _liveCycleSpeed() {
   const idx = _liveSpeedSteps.indexOf(_livePlaySpeed);
   _livePlaySpeed = _liveSpeedSteps[(idx + 1) % _liveSpeedSteps.length];
   const speedBtn = document.getElementById('live-speed-btn');
@@ -1325,9 +1325,9 @@ document.addEventListener('keydown', function(ev) {
 // Play-Stop is handled in setViewMode directly
 
 
-let _optAborted = false;
-let _optRunning = false;
+export let _optAborted = false;
+export let _optRunning = false;
 
-let _optWorker = null;  // Single Worker oder Array von Workers
-let _optWorkers = [];   // Multi-Worker-Referenzen für Abbruch
+export let _optWorker = null;  // Single Worker oder Array von Workers
+export let _optWorkers = [];   // Multi-Worker-Referenzen für Abbruch
 

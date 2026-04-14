@@ -13,7 +13,9 @@ export function loadScript(...filePaths) {
     const fullPath = filePath.startsWith('/')
       ? filePath
       : resolve(srcDir, filePath);
-    const code = readFileSync(fullPath, 'utf8');
+    let code = readFileSync(fullPath, 'utf8');
+    // ES-Module export Keywords entfernen (Tests laufen im globalen Scope)
+    code = code.replace(/^export /gm, '');
     runInThisContext(code, { filename: fullPath });
   }
 }

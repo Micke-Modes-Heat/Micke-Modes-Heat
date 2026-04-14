@@ -1,6 +1,6 @@
 // ── 10c-optimizer-run.js — Optimierung starten/abbrechen, Worker-Orchestrierung, Ergebnis-Rendering ──
 
-function runOptimierung() {
+export function runOptimierung() {
   if (_optRunning) { _optAbbrechen(); return; }
   _optAborted = false;
   _optRunning = true;
@@ -21,7 +21,7 @@ function runOptimierung() {
   }
 }
 
-function _optAbbrechen() {
+export function _optAbbrechen() {
   _optAborted = true;
   if (_optWorker) { _optWorker.terminate(); _optWorker = null; }
   for (const w of _optWorkers) { try { w.terminate(); } catch(e) {} }
@@ -31,7 +31,7 @@ function _optAbbrechen() {
   if (resDiv) resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Abgebrochen.</div>';
 }
 
-function _optFinished() {
+export function _optFinished() {
   _optRunning = false;
   _optWorker = null;
   _optWorkers = [];
@@ -43,7 +43,7 @@ function _optFinished() {
   }
 }
 
-function _runOptWorker(resDiv) {
+export function _runOptWorker(resDiv) {
   const ss = window.systemState;
   if (!ss?.lastgangKw || ss.lastgangKw.length < 8760 || !ss.tempH || !ss.vlH) {
     resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Kein stundenscharfer Lastgang verfügbar.</div>';
@@ -291,7 +291,7 @@ function _runOptWorker(resDiv) {
   }
 }
 
-function _renderWorkerResults(topFein, grobResults, resDiv, startTime, params) {
+export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, params) {
   if (!topFein || topFein.length === 0) {
     resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Keine Ergebnisse.</div>';
     _optFinished();

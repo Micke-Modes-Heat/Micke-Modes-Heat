@@ -1,16 +1,16 @@
 // ── 06b-gl-berechnen.js — Hauptberechnung, Synthese, Skalierung, Solarthermie ──
 // ── Auto-Trigger ──────────────────────────────────────────────────────────
-let _glAutoTimer  = null;
-let _glIsRunning  = false;
+export let _glAutoTimer  = null;
+export let _glIsRunning  = false;
 
-function glKannBerechnen() {
+export function glKannBerechnen() {
   if (glLastgangKw) return true;
   if (glGetMonatswerte().some(v => v !== null)) return true;
   if (glGetGesamtMwh()) return true;
   return gebaeude.some(g => parseFloat(g.waerme) > 0 || parseFloat(g.heizlast) > 0);
 }
 
-function glBerechnenDebounced(delay = 1000) {
+export function glBerechnenDebounced(delay = 1000) {
   clearTimeout(_glAutoTimer);
   if (!glKannBerechnen()) return;
   const dot = document.getElementById('gl-status-dot');
@@ -20,7 +20,7 @@ function glBerechnenDebounced(delay = 1000) {
   }, delay);
 }
 
-function glBerechnenAuto() {
+export function glBerechnenAuto() {
   glUpdateStatus();
   glBerechnenDebounced();
 }
@@ -221,7 +221,7 @@ async function glBerechnen() {
 }
 
 // ── Fall 2: Gleitende Monatsskalierung ───────────────────────────────────
-function glSkaliereMitMonaten(arr, monatswerte) {
+export function glSkaliereMitMonaten(arr, monatswerte) {
   const MONAT_STUNDEN = [744,672,744,720,744,720,744,744,720,744,720,744]; // Jan–Dez
   const result = new Float32Array(8760);
 
@@ -268,7 +268,7 @@ function glSkaliereMitMonaten(arr, monatswerte) {
 }
 
 // ── Fall 4: Monatsfloor anwenden ─────────────────────────────────────────
-function glAnwendeMonatsfloor(arr, monatswerte, gesamtMwh) {
+export function glAnwendeMonatsfloor(arr, monatswerte, gesamtMwh) {
   const MONAT_STUNDEN = [744,672,744,720,744,720,744,744,720,744,720,744];
   const result = Float32Array.from(arr);
   let h = 0;
@@ -295,7 +295,7 @@ function glAnwendeMonatsfloor(arr, monatswerte, gesamtMwh) {
 }
 
 // ── Skalierungsfaktoren berechnen & Hinweis anzeigen (Gebäudedaten bleiben unverändert) ──
-function glSkalierGebaeude(nutzwaermeMwh, pMaxKw) {
+export function glSkalierGebaeude(nutzwaermeMwh, pMaxKw) {
   const el = document.getElementById('skalier-hint');
   if (typeof gebaeude === 'undefined' || !gebaeude.length) {
     if (el) el.style.display = 'none';
@@ -332,14 +332,14 @@ function glSkalierGebaeude(nutzwaermeMwh, pMaxKw) {
 }
 
 // ── Solarthermie ─────────────────────────────────────────────────────────
-function toggleSolarthermiePanel() {
+export function toggleSolarthermiePanel() {
   const p = document.getElementById('solarthermie-panel');
   if (!p) return;
   p.style.display = p.style.display === 'none' || !p.style.display ? 'block' : 'none';
   if (p.style.display === 'block') updateSolarthermieDisplay();
 }
 
-function updateSolarthermieDisplay() {
+export function updateSolarthermieDisplay() {
   const fl = parseFloat(document.getElementById('st-flaeche')?.value) || 0;
   const spez = parseFloat(document.getElementById('st-spez')?.value) || 400;
   solarthermieAktiv = fl > 0;
@@ -350,7 +350,7 @@ function updateSolarthermieDisplay() {
   el('st-peak', peakKw > 0 ? Math.round(peakKw) + ' kW' : '—');
 }
 
-function clearSolarthermie() {
+export function clearSolarthermie() {
   solarthermieAktiv = false;
   const el = document.getElementById('st-flaeche'); if (el) el.value = 0;
   // Karten-Layer entfernen
@@ -365,11 +365,11 @@ function clearSolarthermie() {
 }
 
 // ── Solarthermie Kartenzeichnung ──
-let _stDrawPoints = [];
-let _stDrawPolyline = null;
-let _stDrawStartMarker = null;
+export let _stDrawPoints = [];
+export let _stDrawPolyline = null;
+export let _stDrawStartMarker = null;
 
-function startDrawST() {
+export function startDrawST() {
   cancelDrawST();
   _stDrawPoints = [];
   showHint('Eckpunkte des Kollektorfelds anklicken · Startpunkt (rot) erneut anklicken zum Abschließen · Rechtsklick = Zurück');
@@ -380,7 +380,7 @@ function startDrawST() {
   map.on('contextmenu', _stMapUndo);
 }
 
-function cancelDrawST() {
+export function cancelDrawST() {
   if (_stDrawPolyline) { map.removeLayer(_stDrawPolyline); _stDrawPolyline = null; }
   if (_stDrawStartMarker) { map.removeLayer(_stDrawStartMarker); _stDrawStartMarker = null; }
   _stDrawPoints = [];
@@ -392,7 +392,7 @@ function cancelDrawST() {
   document.getElementById('btn-st-cancel').style.display = 'none';
 }
 
-function _stMapClick(e) {
+export function _stMapClick(e) {
   const latlng = e.latlng;
   // Schließen wenn auf Startpunkt geklickt
   if (_stDrawPoints.length >= 3 && _stDrawStartMarker) {
@@ -408,7 +408,7 @@ function _stMapClick(e) {
   _stDrawPolyline = L.polyline(_stDrawPoints.map(p => [p.lat, p.lng]), { color: '#ffab40', weight: 2, dashArray: '6,4' }).addTo(map);
 }
 
-function _stMapUndo(e) {
+export function _stMapUndo(e) {
   e.originalEvent.preventDefault();
   if (_stDrawPoints.length > 0) {
     _stDrawPoints.pop();
@@ -420,7 +420,7 @@ function _stMapUndo(e) {
   }
 }
 
-function _finishDrawST() {
+export function _finishDrawST() {
   if (_stDrawPoints.length < 3) return;
   const pts = [..._stDrawPoints];
   cancelDrawST();
@@ -435,7 +435,7 @@ function _finishDrawST() {
   if (typeof redrawVerbindungslinien === 'function') redrawVerbindungslinien();
 }
 
-function _attachSTLayer(pts) {
+export function _attachSTLayer(pts) {
   if (window._stPolygonLayer) map.removeLayer(window._stPolygonLayer);
   if (window._stSvgLayer) map.removeLayer(window._stSvgLayer);
   // Polygon-Rahmen
@@ -491,7 +491,7 @@ function _attachSTLayer(pts) {
   window._stSvgLayer = L.svgOverlay(svgEl, bounds, { opacity: 1, interactive: false, zIndex: 201 }).addTo(map);
 }
 
-function makeStProfile8760(flaecheOverride) {
+export function makeStProfile8760(flaecheOverride) {
   const fl = flaecheOverride != null ? flaecheOverride : (parseFloat(document.getElementById('st-flaeche')?.value) || 0);
   const spez = parseFloat(document.getElementById('st-spez')?.value) || 400;
   if (fl <= 0) return null;
@@ -564,14 +564,14 @@ function makeStProfile8760(flaecheOverride) {
 }
 
 // ── Wärmespeicher ────────────────────────────────────────────────────────
-function toggleThermSpeicherPanel() {
+export function toggleThermSpeicherPanel() {
   const p = document.getElementById('therm-speicher-panel');
   if (!p) return;
   p.style.display = p.style.display === 'none' || !p.style.display ? 'block' : 'none';
   if (p.style.display === 'block') updateThermSpeicherDisplay();
 }
 
-function tsTypChanged() {
+export function tsTypChanged() {
   const typ = document.getElementById('ts-typ')?.value;
   const presets = {
     puffer:   { dt: 40, verlust: 0.5,  entlade: 200 },
@@ -591,7 +591,7 @@ function tsTypChanged() {
 
 // ── Automatische Speichergrößen-Empfehlung ──
 // Puffer: 3h WP-Überbrückung, Groß: 12h, Saisonal: Fallback auf Preset
-function _autoSpeicherVolumen(typ, dt) {
+export function _autoSpeicherVolumen(typ, dt) {
   // Gesamte aktive WP-Leistung ermitteln
   const wpKeys = ['lwwp', 'fg', 'geo'];
   let wpKwGesamt = 0;
@@ -612,7 +612,7 @@ function _autoSpeicherVolumen(typ, dt) {
   return Math.max(step, Math.round(vol / step) * step);
 }
 
-function updateThermSpeicherDisplay() {
+export function updateThermSpeicherDisplay() {
   const p = getThermSpeicherParams();
   const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
   if (p) {
@@ -625,7 +625,7 @@ function updateThermSpeicherDisplay() {
   if (typeof redrawThermSpeicherMap === 'function') redrawThermSpeicherMap();
 }
 
-function getThermSpeicherParams() {
+export function getThermSpeicherParams() {
   const vol = parseFloat(document.getElementById('ts-volumen')?.value) || 0;
   if (vol <= 0) return null;
   const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
@@ -635,7 +635,7 @@ function getThermSpeicherParams() {
   return { vol, dt, kapKwh, verlustRate: verlustPctH / 100, entladeKw };
 }
 
-function clearThermSpeicher() {
+export function clearThermSpeicher() {
   thermSpeicherAktiv = false;
   document.getElementById('ts-volumen').value = 0;
   _removeThermSpeicherMapLayers();
@@ -644,13 +644,13 @@ function clearThermSpeicher() {
 }
 
 // ── Wärmespeicher Kartenvisualisierung ────────────────────────────────────
-function _removeThermSpeicherMapLayers() {
+export function _removeThermSpeicherMapLayers() {
   if (window._tsSvgLayer) { map.removeLayer(window._tsSvgLayer); window._tsSvgLayer = null; }
   if (window._tsPolygonLayer) { map.removeLayer(window._tsPolygonLayer); window._tsPolygonLayer = null; }
   if (window._tsIconMarker) { map.removeLayer(window._tsIconMarker); window._tsIconMarker = null; }
 }
 
-function redrawThermSpeicherMap() {
+export function redrawThermSpeicherMap() {
   _removeThermSpeicherMapLayers();
   if (!thermSpeicherAktiv) return;
   const typ = document.getElementById('ts-typ')?.value || 'puffer';
@@ -661,7 +661,7 @@ function redrawThermSpeicherMap() {
   }
 }
 
-function _drawSpeicherIcon() {
+export function _drawSpeicherIcon() {
   // Dezentes Icon an der Heizzentrale
   const zId = parseInt(document.getElementById('netz-zentrale')?.value);
   if (!zId || isNaN(zId)) return;
@@ -697,7 +697,7 @@ function _drawSpeicherIcon() {
     });
 }
 
-function _drawErdbeckenSpeicher() {
+export function _drawErdbeckenSpeicher() {
   // Erdbeckenspeicher: Haldenform (abgeflachter Hügel) an der Heizzentrale
   const zId = parseInt(document.getElementById('netz-zentrale')?.value);
   if (!zId || isNaN(zId)) return;

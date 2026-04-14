@@ -2,7 +2,7 @@
 // ══════════════════════════════════════════════════════════════════
 // ── Sankey-Diagramm ─────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════
-function showSankey(perBuilding, mode) {
+export function showSankey(perBuilding, mode) {
   let data;
   if (mode === 'co2') {
     data = _buildSankeyCO2Data();
@@ -16,7 +16,7 @@ function showSankey(perBuilding, mode) {
   _renderSankeyModal(data, perBuilding, mode || (perBuilding ? 'gebaeude' : 'liegenschaft'));
 }
 
-function _buildSankeyData(perBuilding) {
+export function _buildSankeyData(perBuilding) {
   const en = window._dispatchEnergy || {};
   const keys = window._dispatchActiveKeys || [];
   const flows = [];
@@ -225,7 +225,7 @@ function _buildSankeyData(perBuilding) {
   return { flows: flows.filter(f => f.value > 0.05), totalWaerme, totalStromBedarf, unit: 'MWh' };
 }
 
-function _buildSankeyCO2Data() {
+export function _buildSankeyCO2Data() {
   const en = window._dispatchEnergy || {};
   const keys = window._dispatchActiveKeys || [];
   const flows = [];
@@ -309,7 +309,7 @@ function _buildSankeyCO2Data() {
   return { flows: flows.filter(f => f.value > 0.005), totalCO2, unit: 't CO\u2082' };
 }
 
-function _renderSankeyModal(data, perBuilding, mode) {
+export function _renderSankeyModal(data, perBuilding, mode) {
   mode = mode || 'liegenschaft';
   let existing = document.getElementById('sankey-modal');
   if (existing) existing.remove();
@@ -356,7 +356,7 @@ function _renderSankeyModal(data, perBuilding, mode) {
   _drawSankey(canvas, data);
 }
 
-function _drawSankey(canvas, data) {
+export function _drawSankey(canvas, data) {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);

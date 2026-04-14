@@ -1,7 +1,7 @@
 // ── 09c-pv-charts-opt.js — Strom-Charts, Sankey, JDL, PV+Bat-Optimierung ──
 
 // ── Monatschart ───────────────────────────────────────────────────────────
-function _stromRenderMonatsChart(monthlyQuartier, monthlyWp, monthlyPv) {
+export function _stromRenderMonatsChart(monthlyQuartier, monthlyWp, monthlyPv) {
   const canvas = document.getElementById('strom-monats-canvas');
   if (!canvas) return;
   const W = canvas.offsetWidth || 500;
@@ -86,8 +86,8 @@ function _stromRenderMonatsChart(monthlyQuartier, monthlyWp, monthlyPv) {
 }
 
 // ── Strom-Tab-Steuerung ───────────────────────────────────────────────────
-let _stromCurrentTab = 'monat';
-function _stromSetTab(tab) {
+export let _stromCurrentTab = 'monat';
+export function _stromSetTab(tab) {
   _stromCurrentTab = tab;
   ['monat','jdl','fluss','sankey','lastgang'].forEach(t => {
     const content = document.getElementById('strom-content-' + t);
@@ -105,7 +105,7 @@ function _stromSetTab(tab) {
 }
 
 // ── Sankey-Diagramm: jährlicher Stromfluss ───────────────────────────────────
-function drawSankeyStrom() {
+export function drawSankeyStrom() {
   const svg = document.getElementById('strom-sankey-svg');
   if (!svg) return;
 
@@ -219,7 +219,7 @@ function drawSankeyStrom() {
 }
 
 // ── Jahreslastgang: gestapelte Verbraucher + Erzeuger ────────────────────────
-function _stromRenderLastgang() {
+export function _stromRenderLastgang() {
   const canvas = document.getElementById('strom-lastgang-canvas');
   if (!canvas) return;
   const d = window._sankeyData;
@@ -359,7 +359,7 @@ function _stromRenderLastgang() {
   });
 }
 
-function _stromRenderJdl() {
+export function _stromRenderJdl() {
   const canvas = document.getElementById('strom-jdl-canvas');
   const info   = document.getElementById('strom-jdl-info');
   if (!canvas) return;
@@ -467,9 +467,9 @@ function _stromRenderJdl() {
 }
 
 // ── Stündlicher Energiefluss-Chart ────────────────────────────────────────
-let _stromFlussWeek = 0;
+export let _stromFlussWeek = 0;
 
-function _stromFlussWeekChange(val) {
+export function _stromFlussWeekChange(val) {
   _stromFlussWeek = val;
   const kw = val + 1;
   const startH = val * 168;
@@ -481,7 +481,7 @@ function _stromFlussWeekChange(val) {
   _stromRenderFlussChart(val);
 }
 
-function _stromRenderFlussChart(weekIdx) {
+export function _stromRenderFlussChart(weekIdx) {
   const canvas = document.getElementById('strom-fluss-canvas');
   if (!canvas) return;
 
@@ -774,13 +774,13 @@ function _stromRenderFlussChart(weekIdx) {
 }
 
 // ── PV + Speicher Optimierung ─────────────────────────────────────────────
-function calcPvBatOptimierung() {
+export function calcPvBatOptimierung() {
   const div = document.getElementById('opt-result');
   if (div) div.innerHTML = '<div style="font-size:10px;color:var(--muted);text-align:center;padding:10px;">Berechne…</div>';
   setTimeout(() => _runPvBatOpt(div), 20);
 }
 
-function _runPvBatOpt(resultDiv) {
+export function _runPvBatOpt(resultDiv) {
   // ── Nachfrage aufbauen ───────────────────────────────────────────────────
   const en = window._dispatchEnergy || {};
   const WP_KEYS = ['lwwp', 'fg', 'geo'];
@@ -1036,7 +1036,7 @@ function _runPvBatOpt(resultDiv) {
 }
 
 // ── Heatmap-Renderer ──────────────────────────────────────────────────────
-function _renderOptHeatmap(grid, NX, NY, maxKwp, maxBat, bestPvOnly, bestJoint) {
+export function _renderOptHeatmap(grid, NX, NY, maxKwp, maxBat, bestPvOnly, bestJoint) {
   const canvas = document.getElementById('opt-heatmap');
   if (!canvas) return;
   const W   = canvas.clientWidth || canvas.parentElement?.clientWidth || 420;
@@ -1170,7 +1170,7 @@ function _renderOptHeatmap(grid, NX, NY, maxKwp, maxBat, bestPvOnly, bestJoint) 
 }
 
 // ── Hover-Tooltip für Optimierungslandschaft ─────────────────────────────
-function _attachOptHover() {
+export function _attachOptHover() {
   const canvas  = document.getElementById('opt-heatmap');
   const tooltip = document.getElementById('opt-tooltip');
   if (!canvas || !tooltip) return;
@@ -1271,7 +1271,7 @@ function _attachOptHover() {
 }
 
 // ── View-Toggle 2D / 3D ───────────────────────────────────────────────────
-function _setOptView(v) {
+export function _setOptView(v) {
   window._optView = v;
   ['2d','3d'].forEach(t => {
     const btn = document.getElementById('opt-view-' + t);
@@ -1290,7 +1290,7 @@ function _setOptView(v) {
 }
 
 // ── 3D-Oberfläche mit freier Rotation + Zoom ─────────────────────────────
-function _renderOpt3D() {
+export function _renderOpt3D() {
   const canvas = document.getElementById('opt-heatmap');
   const d = window._optData;
   if (!canvas || !d) return;
@@ -1451,7 +1451,7 @@ function _renderOpt3D() {
 }
 
 // ── 3D-Interaction: Drag = Rotation, Scroll = Zoom, Dblclick = Reset ─────
-function _attachOpt3DInteraction() {
+export function _attachOpt3DInteraction() {
   const canvas = document.getElementById('opt-heatmap');
   if (!canvas || canvas._opt3dListenersAttached) return;
   canvas._opt3dListenersAttached = true;

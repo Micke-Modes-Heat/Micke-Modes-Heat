@@ -1,7 +1,7 @@
 // ── Netz-Kostentabellen ──────────────────────────────────────────────────
 // KMR-Rohrkosten (€/m Trasse, inkl. Tiefbau) nach DN und Kostenszenario
 // Quelle: AGFW/FW 510, Preisniveau 2024
-const KMR_KOSTEN = {
+export const KMR_KOSTEN = {
   //  DN: [niedrig, mittel, hoch]
   15:  [1420, 1636, 2034],
   20:  [1479, 1704, 2118],
@@ -27,7 +27,7 @@ const KMR_KOSTEN = {
 };
 
 // Kabeltypen für Stromnetz-Dimensionierung
-const KABEL_TYPEN = {
+export const KABEL_TYPEN = {
   NYY: {
     label: 'NYY (Kupfer)', material: 'Cu', rhoOhmMm2pM: 0.0175,
     sections: [
@@ -59,4 +59,4 @@ const KABEL_TYPEN = {
 };
 
 // Standard-Trafogrößen (kVA)
-const TRAFO_GROESSEN = [250, 400, 630, 1000, 1600, 2500];
+export const TRAFO_GROESSEN = [250, 400, 630, 1000, 1600, 2500];
