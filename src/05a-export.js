@@ -1,0 +1,718 @@
+// ── 05a-export.js — CSV-Export, PDF-Report, Druckansicht ──
+// ── Export: Dispatch CSV ──────────────────────────────────────────────────
+function exportDispatchCSV() {
+  const keys = window._dispatchActiveKeys || [];
+  const en   = window._dispatchEnergy || {};
+  const hourly = window._dispatchHourly || {};
+  if (!keys.length) { alert('Erst Dispatch berechnen.'); return; }
+
+  const DA_L = typeof DA_LABELS !== 'undefined' ? DA_LABELS : {};
+  let csv = 'Stunde;Monat';
+  keys.forEach(k => csv += ';' + (DA_L[k] || k) + ' (kW)');
+  csv += ';Gesamt (kW)';
+  if (window.elQuartierH) csv += ';Quartier-Strom (kWh)';
+  if (window.elPvH) csv += ';PV-Erzeugung (kWh)';
+  csv += '\n';
+
+  const monthNames = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const mStarts = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016];
+  for (let t = 0; t < 8760; t++) {
+    let m = 0; for (let mi = 11; mi >= 0; mi--) { if (t >= mStarts[mi]) { m = mi; break; } }
+    let row = `${t+1};${monthNames[m]}`;
+    let sum = 0;
+    keys.forEach(k => {
+      const v = hourly[k] ? hourly[k][t] : 0;
+      sum += v;
+      row += ';' + v.toFixed(1).replace('.', ',');
+    });
+    row += ';' + sum.toFixed(1).replace('.', ',');
+    if (window.elQuartierH) row += ';' + (window.elQuartierH[t] || 0).toFixed(2).replace('.', ',');
+    if (window.elPvH) row += ';' + (window.elPvH[t] || 0).toFixed(2).replace('.', ',');
+    csv += row + '\n';
+  }
+
+  // Summary rows
+  csv += '\n;ZUSAMMENFASSUNG\n';
+  csv += 'Erzeuger;Wärme (MWh/a);Strom (MWh/a);Anteil (%)\n';
+  const totalMwh = keys.reduce((s, k) => s + ((en[k]||{}).waermeMwh || 0), 0);
+  keys.forEach(k => {
+    const e = en[k] || {};
+    csv += `${DA_L[k]||k};${(e.waermeMwh||0).toFixed(1).replace('.',',')};${(e.elMwh||0).toFixed(1).replace('.',',')};${totalMwh>0?((e.waermeMwh||0)/totalMwh*100).toFixed(1).replace('.',','):'0'}\n`;
+  });
+
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'dispatch_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+}
+
+// ── Export: Gebäude CSV ──────────────────────────────────────────────────
+function exportGebaeudeCSV() {
+  if (!gebaeude.length) { alert('Keine Gebäude vorhanden.'); return; }
+  let csv = 'ID;Name;Nutzung;Fläche (m²);Baujahr;Zustand;Wärmebedarf (MWh/a);Heizlast (kW);Spez. Wärme (kWh/m²a);Spez. Heizlast (W/m²);Strom (MWh/a);PV aktiv;PV Dachanteil (%);Am Netz;Netzverluste (MWh/a)\n';
+  const connectedIds = new Set(netzEdges.filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
+  gebaeude.forEach(g => {
+    const st = typeof getComputedStats === 'function' ? getComputedStats(g, globalYear) : {};
+    csv += [
+      g.id,
+      '"' + (g.name || '').replace(/"/g, '""') + '"',
+      g.nutzung || '',
+      (g.flaeche || ''),
+      (g.baujahr || ''),
+      (g.zustand || ''),
+      (st.waerme || g.waerme || '').toString().replace('.', ','),
+      (st.heizlast || g.heizlast || '').toString().replace('.', ','),
+      (st.spez || g.spez || '').toString().replace('.', ','),
+      (st.spezHeizlast || g.spezHeizlast || '').toString().replace('.', ','),
+      (typeof getGebStromMwh === 'function' ? getGebStromMwh(g).toFixed(2).replace('.', ',') : ''),
+      g.pvAktiv ? 'Ja' : 'Nein',
+      g.pvDachanteil || 30,
+      connectedIds.has(g.id) ? 'Ja' : 'Nein',
+      (g.netzVerlustJahrMWh || 0).toFixed(2).replace('.', ','),
+    ].join(';') + '\n';
+  });
+
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'gebaeude_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+}
+
+// ── Export: PDF Bericht (Transformationsplan-Stil) ──────────────────────
+async function exportPDFReport() {
+  const keys = window._dispatchActiveKeys || [];
+  const en   = window._dispatchEnergy || {};
+  const DA_L = typeof DA_LABELS !== 'undefined' ? DA_LABELS : {};
+  const fmt  = v => Number(Math.round(v)).toLocaleString('de-DE');
+  const fmtD = (v, d) => Number(v).toLocaleString('de-DE', {minimumFractionDigits:d, maximumFractionDigits:d});
+  let figNr = 0, tabNr = 0;
+  const fig = caption => '<div class="fig-caption">Abbildung ' + (++figNr) + ': ' + caption + '</div>';
+  const tab = caption => '<div class="tab-caption">Tabelle ' + (++tabNr) + ': ' + caption + '</div>';
+
+  // ── Daten sammeln ─────────────────────────────────────────────
+  const totalMwh = keys.reduce((s, k) => s + ((en[k]||{}).waermeMwh || 0), 0);
+  const connectedIds = new Set((Array.isArray(netzEdges) ? netzEdges : []).filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
+  const nGeb = gebaeude.length;
+  const nAngeschlossen = gebaeude.filter(g => connectedIds.has(g.id)).length;
+  const wgkVal = window._lastWgk ? window._lastWgk.toFixed(1) : '\u2014';
+  const activeNetz = (Array.isArray(netzEdges) ? netzEdges : []).filter(e => !e.pruned);
+  const trasseLaenge = Math.round(activeNetz.reduce((s, e) => s + (e.length || 0), 0));
+  const totalLossMwh = activeNetz.reduce((s, e) => s + (e.lossKW_annual || 0), 0) * 8.76;
+  const verlustPct = totalMwh > 0 ? (totalLossMwh / totalMwh * 100) : 0;
+  const gesamtFlaeche = gebaeude.reduce((s,g) => s + (parseFloat(g.flaeche)||0), 0);
+  const gesamtHeizlast = gebaeude.reduce((s,g) => s + (parseFloat(typeof getComputedStats === 'function' ? getComputedStats(g, globalYear).heizlast : g.heizlast)||0), 0);
+  const sd = window._sankeyData || {};
+  const eeAnteil = window._lastEeAnteil;
+  const co2Gesamt = document.getElementById('co2-bilanz-gesamt')?.textContent || '\u2014';
+  const vlTemp = parseFloat(document.getElementById('netz-vl')?.value) || 90;
+  const rlTemp = parseFloat(document.getElementById('netz-rl')?.value) || 60;
+  const datum = new Date().toLocaleDateString('de-DE', { day:'2-digit', month:'long', year:'numeric' });
+  const zeit = new Date().toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+  const varName = activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || 'Variante') : 'Basisdaten';
+
+  // ── Canvas-Bilder exportieren ─────────────────────────────────
+  let mapImg = '';
+  try {
+    if (typeof html2canvas !== 'undefined') {
+      const mapEl = document.getElementById('map');
+      if (mapEl) {
+        const canvas = await html2canvas(mapEl, { useCORS: true, allowTaint: true, scale: 2, logging: false, backgroundColor: '#1a1a2e' });
+        mapImg = canvas.toDataURL('image/png');
+      }
+    }
+  } catch(e) { console.warn('Kartenexport fehlgeschlagen:', e); }
+
+  const canvasIds = ['sankey-canvas','da-canvas','da-canvas-jdl','da-canvas-woche','strom-monats-canvas','strom-jdl-canvas',
+    'ep-hourly-canvas','ep-monthly-canvas','av-lastgang-canvas','av-jdl-canvas','gl-split-canvas','em-stunden-canvas','em-monat-canvas'];
+  const cImg = {};
+  canvasIds.forEach(id => {
+    try { const c = document.getElementById(id); if (c && c.width > 0) cImg[id] = c.toDataURL('image/png'); } catch(e) {}
+  });
+
+  // ── Wirtschaftlichkeit-Tabelle ────────────────────────────────
+  const wirtEl = document.getElementById('wirt-table-wrap');
+  const wirtHtml = wirtEl ? wirtEl.innerHTML : '';
+  const investGes = window._lastInvestGes || 0;
+  const jkGes = window._lastJkGes || 0;
+
+  // ── Stromnetz-Daten ───────────────────────────────────────────
+  const stromKpis = window._stromNetzKpis || {};
+  const stromTrasseLaenge = stromEdges ? Math.round(stromEdges.reduce((s, e) => s + (e.lengthM || 0), 0)) : 0;
+  const hatStromNetz = stromEdges && stromEdges.length > 0;
+  const hatStromBilanz = sd.pvMwh > 0 || sd.bhkwStromMwh > 0 || (sd.netzbezugMwh||0) > 0;
+
+  // ══════════════════════════════════════════════════════════════
+  // HTML aufbauen
+  // ══════════════════════════════════════════════════════════════
+  var h = '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">';
+  h += '<title>Transformationsplan \u2014 ' + varName + '</title>';
+  h += '<s' + 'tyle>';
+
+  // ── CSS: GERTEC-inspiriertes Styling ──────────────────────────
+  h += '@page{margin:20mm 18mm;size:A4}';
+  h += '@media print{.page-break{page-break-before:always}.no-print{display:none!important}.toc a{color:#1a1a2e!important}}';
+  h += ':root{--blue:#0055a0;--blue-light:#e8f0fa;--blue-dark:#003366;--red:#c0392b;--gray:#5a6a7a;--gray-light:#95a5b5;--border:#d5dde5}';
+  h += 'body{font-family:"Segoe UI",system-ui,"Helvetica Neue",Arial,sans-serif;font-size:10pt;color:#1a1a2e;line-height:1.6;max-width:720px;margin:0 auto;padding:12mm 0}';
+
+  // Headings
+  h += 'h1{font-size:24pt;color:var(--blue-dark);margin:0 0 6px;font-weight:700;letter-spacing:-0.01em}';
+  h += 'h2{font-size:14pt;color:var(--blue);margin:28px 0 10px;padding-bottom:5px;border-bottom:2.5px solid var(--blue);font-weight:700}';
+  h += 'h3{font-size:11pt;color:var(--blue-dark);margin:18px 0 6px;font-weight:600}';
+  h += 'h4{font-size:10pt;color:var(--gray);margin:12px 0 4px;font-weight:600}';
+
+  // Tables
+  h += 'table{width:100%;border-collapse:collapse;margin:8px 0 4px;font-size:9pt}';
+  h += 'th,td{border:1px solid var(--border);padding:4px 8px}';
+  h += 'th{background:var(--blue-light);font-weight:600;text-align:left;color:var(--blue-dark);font-size:8.5pt}';
+  h += 'td{color:#1a1a2e}';
+  h += 'tr:nth-child(even) td{background:#f8fafc}';
+  h += 'td.r,th.r{text-align:right}';
+  h += 'td.c,th.c{text-align:center}';
+
+  // KPI tiles
+  h += '.kpi-row{display:flex;gap:10px;margin:14px 0;flex-wrap:wrap}';
+  h += '.kpi{flex:1;min-width:120px;border:1.5px solid var(--border);border-radius:8px;padding:12px 10px;text-align:center;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.04)}';
+  h += '.kpi-val{font-size:20pt;font-weight:700;color:var(--blue);line-height:1.2}';
+  h += '.kpi-label{font-size:7.5pt;color:var(--gray-light);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}';
+  h += '.kpi-unit{font-size:9pt;color:var(--gray);font-weight:400}';
+  h += '.kpi.accent .kpi-val{color:var(--red)}';
+
+  // Figure / Table captions
+  h += '.fig-caption,.tab-caption{font-size:8.5pt;color:var(--gray);font-style:italic;margin:4px 0 12px;text-align:center}';
+  h += '.tab-caption{text-align:left;margin:2px 0 2px}';
+
+  // Chart images
+  h += '.chart-img{max-width:100%;height:auto;margin:6px 0;border:1px solid var(--border);border-radius:4px}';
+
+  // Deckblatt
+  h += '.deckblatt{text-align:center;padding:80px 0 40px;min-height:85vh;display:flex;flex-direction:column;justify-content:center;align-items:center}';
+  h += '.deck-logo{font-size:11pt;color:var(--blue);text-transform:uppercase;letter-spacing:.2em;margin-bottom:30px;font-weight:600}';
+  h += '.deck-title{font-size:28pt;color:var(--blue-dark);font-weight:700;margin-bottom:8px;letter-spacing:-0.01em}';
+  h += '.deck-sub{font-size:14pt;color:var(--gray);margin-bottom:40px;font-weight:400}';
+  h += '.deck-info{display:inline-block;border-top:2px solid var(--blue);padding-top:16px;font-size:10pt;color:var(--gray);line-height:1.8;text-align:left}';
+  h += '.deck-info strong{color:var(--blue-dark)}';
+
+  // TOC
+  h += '.toc{margin:20px 0}';
+  h += '.toc-item{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted var(--border);font-size:10pt;color:#1a1a2e}';
+  h += '.toc-item.sub{padding-left:20px;font-size:9.5pt;color:var(--gray)}';
+  h += '.toc a{text-decoration:none;color:var(--blue)}';
+
+  // Section intro text
+  h += '.intro{font-size:10pt;color:var(--gray);margin-bottom:12px;line-height:1.65}';
+
+  // Param grid (for generator details)
+  h += '.param-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 16px;font-size:9pt;margin:6px 0 12px}';
+  h += '.param-grid .lbl{color:var(--gray)}';
+  h += '.param-grid .val{font-weight:600;color:var(--blue-dark);text-align:right}';
+
+  // Footer
+  h += '.report-footer{margin-top:40px;font-size:7.5pt;color:var(--gray-light);border-top:1px solid var(--border);padding-top:8px;text-align:center;line-height:1.5}';
+
+  // Impressum
+  h += '.impressum{font-size:9pt;color:var(--gray);line-height:1.7;margin-top:30px}';
+  h += '.impressum strong{color:var(--blue-dark)}';
+
+  h += '</s' + 'tyle></head><body>';
+
+  // ════════════════════════════════════════════════════════════════
+  // DECKBLATT
+  // ════════════════════════════════════════════════════════════════
+  h += '<div class="deckblatt">';
+  h += '<div class="deck-logo">Energetisches Quartierskonzept</div>';
+  h += '<div class="deck-title">Transformationsplan</div>';
+  h += '<div class="deck-sub">W\u00e4rme- und Stromversorgungskonzept \u00b7 ' + varName + '</div>';
+  if (mapImg) {
+    h += '<img src="' + mapImg + '" style="max-width:85%;max-height:280px;border:2px solid var(--border);border-radius:8px;margin:20px 0;object-fit:cover;"/>';
+    h += fig('Lageplan des Quartiers');
+  }
+  h += '<div class="deck-info">';
+  h += '<strong>Betrachtungsjahr:</strong> ' + (globalYear || '\u2014') + '<br>';
+  h += '<strong>Erstellt:</strong> ' + datum + ', ' + zeit + '<br>';
+  h += '<strong>Variante:</strong> ' + varName + '<br>';
+  h += '<strong>Geb\u00e4ude:</strong> ' + nGeb + ' \u00b7 <strong>Gesamtfl\u00e4che:</strong> ' + fmt(gesamtFlaeche) + ' m\u00b2<br>';
+  h += '<strong>W\u00e4rmebedarf:</strong> ' + fmt(totalMwh) + ' MWh/a \u00b7 <strong>Heizlast:</strong> ' + fmt(gesamtHeizlast) + ' kW';
+  h += '</div></div>';
+
+  // ════════════════════════════════════════════════════════════════
+  // INHALTSVERZEICHNIS
+  // ════════════════════════════════════════════════════════════════
+  h += '<div class="page-break"></div>';
+  h += '<h2>Inhaltsverzeichnis</h2>';
+  h += '<div class="toc">';
+  const tocItems = [
+    ['1', 'Quartier\u00fcbersicht und Geb\u00e4udedaten'],
+    ['2', 'Erzeugerpark und Anlagenkonzept'],
+    ['3', 'Dispatch-Simulation und Lastgang'],
+    ['4', 'W\u00e4rmenetz'],
+  ];
+  if (hatStromNetz) tocItems.push(['5', 'Stromnetz']);
+  if (hatStromBilanz) tocItems.push(['6', 'Strombilanz und Eigenversorgung']);
+  tocItems.push(['7', 'Wirtschaftlichkeit']);
+  tocItems.push(['8', '\u00d6kologie und CO\u2082-Bilanz']);
+  if (cImg['sankey-canvas']) tocItems.push(['9', 'Energieflussdiagramm']);
+  if (Object.keys(variantResults).length > 1) tocItems.push(['10', 'Variantenvergleich']);
+  tocItems.forEach(t => { h += '<div class="toc-item"><span>' + t[0] + '. ' + t[1] + '</span></div>'; });
+  h += '</div>';
+
+  // ════════════════════════════════════════════════════════════════
+  // 1. QUARTIERSÜBERSICHT
+  // ════════════════════════════════════════════════════════════════
+  h += '<div class="page-break"></div>';
+  h += '<h2>1. Quartier\u00fcbersicht und Geb\u00e4udedaten</h2>';
+  h += '<div class="intro">Das Planungsgebiet umfasst ' + nGeb + ' Geb\u00e4ude mit einer Gesamtfl\u00e4che von ' +
+    fmt(gesamtFlaeche) + ' m\u00b2. Der j\u00e4hrliche W\u00e4rmebedarf betr\u00e4gt ' + fmt(totalMwh) + ' MWh, ' +
+    'davon sind ' + nAngeschlossen + ' Geb\u00e4ude an das W\u00e4rmenetz angeschlossen.</div>';
+
+  h += '<div class="kpi-row">';
+  h += '<div class="kpi"><div class="kpi-val">' + nGeb + '</div><div class="kpi-label">Geb\u00e4ude</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + fmt(gesamtFlaeche) + '<span class="kpi-unit"> m\u00b2</span></div><div class="kpi-label">Gesamtfl\u00e4che</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + fmt(totalMwh) + '<span class="kpi-unit"> MWh/a</span></div><div class="kpi-label">W\u00e4rmebedarf</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + fmt(gesamtHeizlast) + '<span class="kpi-unit"> kW</span></div><div class="kpi-label">Heizlast</div></div>';
+  h += '</div>';
+
+  // Gebäudeliste
+  h += '<h3>1.1 Geb\u00e4udeliste</h3>';
+  h += tab('Geb\u00e4ude im Planungsgebiet');
+  h += '<table><thead><tr><th>Nr.</th><th>Geb\u00e4ude</th><th>Nutzung</th><th>Baujahr</th><th class="r">Fl\u00e4che m\u00b2</th><th class="r">W\u00e4rme MWh/a</th><th class="r">kWh/m\u00b2a</th><th class="c">Netz</th></tr></thead><tbody>';
+  gebaeude.forEach((g, i) => {
+    const st = typeof getComputedStats === 'function' ? getComputedStats(g, globalYear) : {};
+    const w = st.waerme || g.waerme || 0;
+    const fl = g.flaeche || 0;
+    const spez = fl > 0 ? (w * 1000 / fl).toFixed(0) : '\u2014';
+    h += '<tr><td>' + (i+1) + '</td><td>' + (g.name || 'Geb. ' + g.id) + '</td><td>' + (g.nutzung || '\u2014') +
+      '</td><td class="c">' + (g.baujahr || '\u2014') +
+      '</td><td class="r">' + (fl > 0 ? fmt(fl) : '\u2014') +
+      '</td><td class="r">' + (w > 0 ? fmtD(w, 1) : '\u2014') +
+      '</td><td class="r">' + spez +
+      '</td><td class="c">' + (connectedIds.has(g.id) ? '\u2713' : '\u2014') + '</td></tr>';
+  });
+  h += '</tbody></table>';
+
+  // Nutzungsverteilung
+  const nutzungen = {};
+  gebaeude.forEach(g => {
+    const n = g.nutzung || 'Unbekannt';
+    if (!nutzungen[n]) nutzungen[n] = { count: 0, fl: 0, w: 0 };
+    nutzungen[n].count++;
+    nutzungen[n].fl += parseFloat(g.flaeche) || 0;
+    const st = typeof getComputedStats === 'function' ? getComputedStats(g, globalYear) : {};
+    nutzungen[n].w += st.waerme || parseFloat(g.waerme) || 0;
+  });
+  if (Object.keys(nutzungen).length > 1) {
+    h += '<h3>1.2 Nutzungsverteilung</h3>';
+    h += tab('Aggregation nach Nutzungstyp');
+    h += '<table><thead><tr><th>Nutzung</th><th class="r">Anzahl</th><th class="r">Fl\u00e4che m\u00b2</th><th class="r">W\u00e4rme MWh/a</th><th class="r">Anteil %</th></tr></thead><tbody>';
+    Object.keys(nutzungen).sort().forEach(n => {
+      const d = nutzungen[n];
+      h += '<tr><td>' + n + '</td><td class="r">' + d.count + '</td><td class="r">' + fmt(d.fl) +
+        '</td><td class="r">' + fmtD(d.w, 1) + '</td><td class="r">' + (totalMwh > 0 ? fmtD(d.w/totalMwh*100, 1) : '\u2014') + '</td></tr>';
+    });
+    h += '</tbody></table>';
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 2. ERZEUGERPARK
+  // ════════════════════════════════════════════════════════════════
+  h += '<div class="page-break"></div>';
+  h += '<h2>2. Erzeugerpark und Anlagenkonzept</h2>';
+  h += '<div class="intro">Das Versorgungskonzept setzt ' + keys.length + ' Erzeuger' + (keys.length !== 1 ? ' ' : '') +
+    'ein. Die Gesamtw\u00e4rmeerzeugung betr\u00e4gt ' + fmt(totalMwh) + ' MWh/a' +
+    (eeAnteil != null ? ' bei einem EE-Anteil von ' + fmtD(eeAnteil, 1) + ' %' : '') + '.</div>';
+
+  // Merit-Order / Rangfolge
+  h += '<h3>2.1 Erzeugermix und Rangfolge</h3>';
+  h += tab('Erzeuger\u00fcbersicht');
+  h += '<table><thead><tr><th>Rang</th><th>Erzeuger</th><th class="r">Leistung kW</th><th class="r">W\u00e4rme MWh/a</th><th class="r">Strom MWh/a</th><th class="r">Anteil %</th></tr></thead><tbody>';
+  keys.forEach((k, i) => {
+    const e = en[k] || {};
+    const w = e.waermeMwh || 0, el = e.elMwh || 0;
+    const cfg = typeof ERZEUGER_CFG !== 'undefined' ? ERZEUGER_CFG[k] : null;
+    const kw = cfg?.leistungId ? (parseFloat(document.getElementById(cfg.leistungId)?.value) || 0) : 0;
+    h += '<tr><td class="c">' + (i+1) + '</td><td>' + (DA_L[k]||k) + '</td><td class="r">' + (kw > 0 ? fmt(kw) : '\u2014') +
+      '</td><td class="r">' + fmtD(w, 1) + '</td><td class="r">' + (el > 0 ? fmtD(el, 1) : '\u2014') +
+      '</td><td class="r">' + (totalMwh > 0 ? fmtD(w/totalMwh*100, 1) : '\u2014') + '</td></tr>';
+  });
+  h += '</tbody></table>';
+
+  // Erzeuger-Detailblätter
+  h += '<h3>2.2 Anlagenparameter</h3>';
+  keys.forEach(k => {
+    const e = en[k] || {};
+    const cfg = typeof ERZEUGER_CFG !== 'undefined' ? ERZEUGER_CFG[k] : null;
+    if (!cfg) return;
+    const kw = cfg.leistungId ? (parseFloat(document.getElementById(cfg.leistungId)?.value) || 0) : 0;
+    if (kw <= 0) return;
+    h += '<h4>' + (DA_L[k] || k) + '</h4>';
+    h += '<div class="param-grid">';
+    h += '<span class="lbl">Nennleistung:</span><span class="val">' + fmtD(kw, 0) + ' kW</span>';
+    h += '<span class="lbl">W\u00e4rmeerzeugung:</span><span class="val">' + fmtD(e.waermeMwh||0, 1) + ' MWh/a</span>';
+    if (e.elMwh) { h += '<span class="lbl">Stromerzeugung:</span><span class="val">' + fmtD(e.elMwh, 1) + ' MWh/a</span>'; }
+    const vbs = kw > 0 ? ((e.waermeMwh||0) * 1000 / (kw * 8760) * 100) : 0;
+    h += '<span class="lbl">Vollbenutzungsstunden:</span><span class="val">' + (kw > 0 ? fmt((e.waermeMwh||0)*1000/kw) + ' h/a' : '\u2014') + '</span>';
+    h += '<span class="lbl">Auslastung:</span><span class="val">' + fmtD(vbs, 1) + ' %</span>';
+    h += '<span class="lbl">Deckungsanteil:</span><span class="val">' + (totalMwh > 0 ? fmtD((e.waermeMwh||0)/totalMwh*100, 1) + ' %' : '\u2014') + '</span>';
+    // Typ-spezifische Parameter
+    if (k === 'lwwp' || k === 'fg' || k === 'geo') {
+      const jazId = k === 'lwwp' ? 'lwwp-jaz' : k === 'fg' ? 'fg-jaz' : 'geo-jaz';
+      const jaz = parseFloat(document.getElementById(jazId)?.value) || 0;
+      if (jaz > 0) h += '<span class="lbl">JAZ:</span><span class="val">' + fmtD(jaz, 1) + '</span>';
+    }
+    if (k === 'gaskessel' || k === 'gk') {
+      const eta = document.getElementById('gk-eta')?.value;
+      if (eta) h += '<span class="lbl">Wirkungsgrad:</span><span class="val">' + eta + ' %</span>';
+    }
+    if (k === 'bhkw') {
+      const skz = document.getElementById('bhkw-skz')?.value;
+      const eta = document.getElementById('bhkw-eta')?.value;
+      if (skz) h += '<span class="lbl">Stromkennzahl:</span><span class="val">' + skz + '</span>';
+      if (eta) h += '<span class="lbl">Gesamtwirkungsgrad:</span><span class="val">' + eta + ' %</span>';
+    }
+    h += '</div>';
+  });
+
+  // Heizkurve
+  const vl5 = parseFloat(document.getElementById('gl-vl5')?.value);
+  const vl15 = parseFloat(document.getElementById('gl-vl15')?.value);
+  if (vl5 && vl15) {
+    h += '<h3>2.3 Heizkurve</h3>';
+    h += '<div class="param-grid">';
+    h += '<span class="lbl">Vorlauf bei -5 \u00b0C:</span><span class="val">' + fmtD(vl5, 0) + ' \u00b0C</span>';
+    h += '<span class="lbl">Vorlauf bei +15 \u00b0C:</span><span class="val">' + fmtD(vl15, 0) + ' \u00b0C</span>';
+    h += '<span class="lbl">Netzvorlauf:</span><span class="val">' + fmtD(vlTemp, 0) + ' \u00b0C</span>';
+    h += '<span class="lbl">Netzr\u00fccklauf:</span><span class="val">' + fmtD(rlTemp, 0) + ' \u00b0C</span>';
+    h += '</div>';
+    if (cImg['gl-split-canvas']) {
+      h += '<img class="chart-img" src="' + cImg['gl-split-canvas'] + '"/>';
+      h += fig('Heizkurve und Lastaufteilung');
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 3. DISPATCH-SIMULATION
+  // ════════════════════════════════════════════════════════════════
+  h += '<div class="page-break"></div>';
+  h += '<h2>3. Dispatch-Simulation und Lastgang</h2>';
+  h += '<div class="intro">Die st\u00fcndliche Einsatzsimulation (Dispatch) ordnet die Erzeuger nach der Merit-Order zu ' +
+    'und berechnet den 8.760-h-Betrieb. Die folgenden Diagramme zeigen den gestapelten W\u00e4rmelastgang, ' +
+    'die Jahresdauerlinie und die Auslegungswoche.</div>';
+
+  // KPI-Leiste
+  h += '<div class="kpi-row">';
+  h += '<div class="kpi"><div class="kpi-val">' + fmt(totalMwh) + '<span class="kpi-unit"> MWh/a</span></div><div class="kpi-label">Erzeugung</div></div>';
+  if (eeAnteil != null) h += '<div class="kpi' + (eeAnteil >= 65 ? '' : ' accent') + '"><div class="kpi-val">' + fmtD(eeAnteil, 1) + '<span class="kpi-unit"> %</span></div><div class="kpi-label">EE-Anteil</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + wgkVal + '<span class="kpi-unit"> ct/kWh</span></div><div class="kpi-label">WGK</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + co2Gesamt + '</div><div class="kpi-label">CO\u2082</div></div>';
+  h += '</div>';
+
+  // Dispatch Lastgang
+  if (cImg['da-canvas'] || cImg['av-lastgang-canvas']) {
+    h += '<h3>3.1 Gestapelter W\u00e4rmelastgang (8.760 h)</h3>';
+    const lgImg = cImg['da-canvas'] || cImg['av-lastgang-canvas'];
+    h += '<img class="chart-img" src="' + lgImg + '"/>';
+    h += fig('Gestapelter W\u00e4rmelastgang aller Erzeuger');
+  }
+
+  // Jahresdauerlinie
+  if (cImg['da-canvas-jdl'] || cImg['av-jdl-canvas']) {
+    h += '<h3>3.2 Jahresdauerlinie</h3>';
+    const jdlImg = cImg['da-canvas-jdl'] || cImg['av-jdl-canvas'];
+    h += '<img class="chart-img" src="' + jdlImg + '"/>';
+    h += fig('Geordnete Jahresdauerlinie der W\u00e4rmeerzeugung');
+  }
+
+  // Auslegungswoche
+  if (cImg['da-canvas-woche']) {
+    h += '<h3>3.3 Auslegungswoche (k\u00e4lteste Woche)</h3>';
+    h += '<img class="chart-img" src="' + cImg['da-canvas-woche'] + '"/>';
+    h += fig('Lastprofil der Auslegungswoche (168 h)');
+  }
+
+  // Monatsübersicht
+  if (cImg['ep-monthly-canvas']) {
+    h += '<h3>3.4 Monatliche Erzeugung</h3>';
+    h += '<img class="chart-img" src="' + cImg['ep-monthly-canvas'] + '"/>';
+    h += fig('Monatliche W\u00e4rmeerzeugung nach Erzeuger');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 4. WÄRMENETZ
+  // ════════════════════════════════════════════════════════════════
+  if (activeNetz.length > 0) {
+    h += '<div class="page-break"></div>';
+    h += '<h2>4. W\u00e4rmenetz</h2>';
+    h += '<div class="intro">Das W\u00e4rmenetz verbindet ' + nAngeschlossen + ' von ' + nGeb + ' Geb\u00e4uden \u00fcber eine ' +
+      'Trassenl\u00e4nge von ' + fmt(trasseLaenge) + ' m. Die Netztemperaturen betragen ' + fmtD(vlTemp,0) + '/' + fmtD(rlTemp,0) + ' \u00b0C (VL/RL).</div>';
+
+    h += '<div class="kpi-row">';
+    h += '<div class="kpi"><div class="kpi-val">' + fmt(trasseLaenge) + '<span class="kpi-unit"> m</span></div><div class="kpi-label">Trassenl\u00e4nge</div></div>';
+    h += '<div class="kpi"><div class="kpi-val">' + fmtD(totalLossMwh, 1) + '<span class="kpi-unit"> MWh/a</span></div><div class="kpi-label">Netzverluste</div></div>';
+    h += '<div class="kpi"><div class="kpi-val">' + fmtD(verlustPct, 1) + '<span class="kpi-unit"> %</span></div><div class="kpi-label">Verlustanteil</div></div>';
+    h += '<div class="kpi"><div class="kpi-val">' + nAngeschlossen + '/' + nGeb + '</div><div class="kpi-label">Anschlussgrad</div></div>';
+    h += '</div>';
+
+    h += '<div class="param-grid">';
+    h += '<span class="lbl">Vorlauftemperatur:</span><span class="val">' + fmtD(vlTemp, 0) + ' \u00b0C</span>';
+    h += '<span class="lbl">R\u00fccklauftemperatur:</span><span class="val">' + fmtD(rlTemp, 0) + ' \u00b0C</span>';
+    const vFlow = parseFloat(document.getElementById('netz-v')?.value) || 0;
+    if (vFlow > 0) h += '<span class="lbl">Flie\u00dfgeschwindigkeit:</span><span class="val">' + fmtD(vFlow, 1) + ' m/s</span>';
+    h += '</div>';
+
+    // Rohrleitungsquerschnitte
+    const dnCounts = {};
+    activeNetz.forEach(e => { const dn = e.dn || '?'; dnCounts[dn] = (dnCounts[dn]||0) + (e.length||0); });
+    h += '<h3>4.1 Rohrleitungsquerschnitte</h3>';
+    h += tab('Leitungsl\u00e4ngen nach Nennweite');
+    h += '<table><thead><tr><th>Nennweite</th><th class="r">L\u00e4nge m</th><th class="r">Anteil %</th></tr></thead><tbody>';
+    Object.keys(dnCounts).sort((a,b) => parseFloat(a)-parseFloat(b)).forEach(dn => {
+      h += '<tr><td>DN ' + dn + '</td><td class="r">' + fmt(dnCounts[dn]) + '</td><td class="r">' + fmtD(dnCounts[dn]/trasseLaenge*100, 1) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 5. STROMNETZ
+  // ════════════════════════════════════════════════════════════════
+  if (hatStromNetz) {
+    h += '<div class="page-break"></div>';
+    h += '<h2>5. Stromnetz</h2>';
+    const trafos = stromNodes.filter(n => n.type === 'trafo');
+    const nAnschluss = stromNodes.filter(n => n.type === 'geb').length;
+    h += '<div class="intro">Das elektrische Verteilnetz umfasst ' + fmt(stromTrasseLaenge) + ' m Kabell\u00e4nge mit ' +
+      trafos.length + ' Trafostation' + (trafos.length !== 1 ? 'en' : '') + ' und ' + nAnschluss + ' Geb\u00e4udeanschl\u00fcssen.</div>';
+
+    h += '<div class="kpi-row">';
+    h += '<div class="kpi"><div class="kpi-val">' + fmt(stromTrasseLaenge) + '<span class="kpi-unit"> m</span></div><div class="kpi-label">Kabell\u00e4nge</div></div>';
+    h += '<div class="kpi"><div class="kpi-val">' + trafos.length + '</div><div class="kpi-label">Trafostationen</div></div>';
+    h += '<div class="kpi"><div class="kpi-val">' + fmtD(stromKpis.maxDeltaU||0, 1) + '<span class="kpi-unit"> %</span></div><div class="kpi-label">Max. \u0394U</div></div>';
+    h += '<div class="kpi"><div class="kpi-val">' + nAnschluss + '</div><div class="kpi-label">Anschl\u00fcsse</div></div>';
+    h += '</div>';
+
+    // Kabelquerschnitte
+    if (stromEdges.length > 0) {
+      const mmCounts = {};
+      stromEdges.forEach(e => { const mm = (e.crossSection || '?') + ' mm\u00b2'; mmCounts[mm] = (mmCounts[mm]||0) + (e.lengthM||0); });
+      h += '<h3>5.1 Kabelquerschnitte</h3>';
+      h += tab('Kabell\u00e4ngen nach Querschnitt');
+      h += '<table><thead><tr><th>Querschnitt</th><th class="r">L\u00e4nge m</th><th class="r">Anteil %</th></tr></thead><tbody>';
+      Object.keys(mmCounts).sort().forEach(mm => {
+        h += '<tr><td>' + mm + '</td><td class="r">' + fmt(mmCounts[mm]) + '</td><td class="r">' + (stromTrasseLaenge > 0 ? fmtD(mmCounts[mm]/stromTrasseLaenge*100, 1) : '\u2014') + '</td></tr>';
+      });
+      h += '</tbody></table>';
+    }
+
+    // Trafostationen
+    if (trafos.length > 0) {
+      h += '<h3>5.2 Trafostationen</h3>';
+      h += tab('Trafostationen im Netzgebiet');
+      h += '<table><thead><tr><th>Trafo</th><th class="r">Nennleistung kVA</th><th class="r">Last kW</th><th class="r">Auslastung %</th></tr></thead><tbody>';
+      trafos.forEach(t => {
+        const ausl = t.ratedKva > 0 && t.peakLoadKw ? (t.peakLoadKw / t.ratedKva * 100) : 0;
+        h += '<tr><td>' + (t.label || 'Trafo ' + t.id) + '</td><td class="r">' + (t.ratedKva || '\u2014') +
+          '</td><td class="r">' + (t.peakLoadKw ? fmtD(t.peakLoadKw, 1) : '\u2014') +
+          '</td><td class="r">' + (ausl > 0 ? fmtD(ausl, 1) : '\u2014') + '</td></tr>';
+      });
+      h += '</tbody></table>';
+    }
+
+    // Stromnetz-Kosten
+    const snKosten = window._stromNetzKosten || {};
+    if (snKosten.investGes > 0) {
+      h += '<h3>5.3 Stromnetz-Kosten</h3>';
+      h += '<div class="param-grid">';
+      h += '<span class="lbl">Kabel-Invest:</span><span class="val">' + fmt(snKosten.kabelInvest||0) + ' \u20ac</span>';
+      h += '<span class="lbl">Tiefbau:</span><span class="val">' + fmt(snKosten.tiefbau||0) + ' \u20ac</span>';
+      h += '<span class="lbl">Trafo-Invest:</span><span class="val">' + fmt(snKosten.trafoInvest||0) + ' \u20ac</span>';
+      h += '<span class="lbl">NAP-Pauschale:</span><span class="val">' + fmt(snKosten.napInvest||0) + ' \u20ac</span>';
+      h += '<span class="lbl"><strong>Invest Gesamt:</strong></span><span class="val"><strong>' + fmt(snKosten.investGes) + ' \u20ac</strong></span>';
+      if (snKosten.annuitaet) h += '<span class="lbl">Annuit\u00e4t:</span><span class="val">' + fmt(snKosten.annuitaet) + ' \u20ac/a</span>';
+      h += '</div>';
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 6. STROMBILANZ
+  // ════════════════════════════════════════════════════════════════
+  if (hatStromBilanz) {
+    h += '<div class="page-break"></div>';
+    h += '<h2>6. Strombilanz und Eigenversorgung</h2>';
+
+    h += '<div class="kpi-row">';
+    if (sd.pvMwh > 0) h += '<div class="kpi"><div class="kpi-val">' + fmt(sd.pvMwh) + '<span class="kpi-unit"> MWh/a</span></div><div class="kpi-label">PV-Erzeugung</div></div>';
+    if (sd.bhkwStromMwh > 0) h += '<div class="kpi"><div class="kpi-val">' + fmt(sd.bhkwStromMwh) + '<span class="kpi-unit"> MWh/a</span></div><div class="kpi-label">BHKW-Strom</div></div>';
+    h += '<div class="kpi"><div class="kpi-val">' + fmt(sd.eigenverbrauchMwh||0) + '<span class="kpi-unit"> MWh/a</span></div><div class="kpi-label">Eigenverbrauch</div></div>';
+    h += '<div class="kpi"><div class="kpi-val">' + fmt(sd.netzbezugMwh||0) + '<span class="kpi-unit"> MWh/a</span></div><div class="kpi-label">Netzbezug</div></div>';
+    h += '</div>';
+
+    if (sd.pvEigenMwh || sd.bhkwEigenMwh) {
+      h += '<h3>Aufschl\u00fcsselung Eigenverbrauch / Einspeisung</h3>';
+      h += tab('Eigenverbrauch und Einspeisung');
+      h += '<table><thead><tr><th>Quelle</th><th class="r">Erzeugung MWh/a</th><th class="r">Eigenverbrauch MWh/a</th><th class="r">Einspeisung MWh/a</th><th class="r">Eigenverbrauchsquote %</th></tr></thead><tbody>';
+      if (sd.pvMwh > 0) {
+        const evq = sd.pvMwh > 0 ? ((sd.pvEigenMwh||0)/sd.pvMwh*100) : 0;
+        h += '<tr><td>Photovoltaik</td><td class="r">' + fmtD(sd.pvMwh, 1) + '</td><td class="r">' + fmtD(sd.pvEigenMwh||0, 1) + '</td><td class="r">' + fmtD(sd.pvEinspMwh||0, 1) + '</td><td class="r">' + fmtD(evq, 1) + '</td></tr>';
+      }
+      if (sd.bhkwStromMwh > 0) {
+        const evq = sd.bhkwStromMwh > 0 ? ((sd.bhkwEigenMwh||0)/sd.bhkwStromMwh*100) : 0;
+        h += '<tr><td>BHKW/KWK</td><td class="r">' + fmtD(sd.bhkwStromMwh, 1) + '</td><td class="r">' + fmtD(sd.bhkwEigenMwh||0, 1) + '</td><td class="r">' + fmtD(sd.bhkwEinspMwh||0, 1) + '</td><td class="r">' + fmtD(evq, 1) + '</td></tr>';
+      }
+      h += '</tbody></table>';
+    }
+
+    // Strom-Charts
+    if (cImg['strom-monats-canvas']) {
+      h += '<h3>Monatliche Strombilanz</h3>';
+      h += '<img class="chart-img" src="' + cImg['strom-monats-canvas'] + '"/>';
+      h += fig('Monatliche Stromerzeugung und -verbrauch');
+    }
+    if (cImg['strom-jdl-canvas']) {
+      h += '<img class="chart-img" src="' + cImg['strom-jdl-canvas'] + '"/>';
+      h += fig('Strom-Jahresdauerlinie');
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 7. WIRTSCHAFTLICHKEIT
+  // ════════════════════════════════════════════════════════════════
+  h += '<div class="page-break"></div>';
+  h += '<h2>7. Wirtschaftlichkeit</h2>';
+  h += '<div class="intro">Die Wirtschaftlichkeitsberechnung erfolgt nach VDI 2067 (Annuit\u00e4tenmethode). ' +
+    'Dargestellt sind die kapitalgebundenen, bedarfsgebundenen und betriebsgebundenen Kosten sowie die resultierenden W\u00e4rmegestehungskosten (WGK).</div>';
+
+  h += '<div class="kpi-row">';
+  h += '<div class="kpi accent"><div class="kpi-val">' + wgkVal + '<span class="kpi-unit"> ct/kWh</span></div><div class="kpi-label">W\u00e4rmegestehungskosten</div></div>';
+  if (investGes > 0) h += '<div class="kpi"><div class="kpi-val">' + fmt(investGes) + '<span class="kpi-unit"> \u20ac</span></div><div class="kpi-label">Investition gesamt</div></div>';
+  if (jkGes > 0) h += '<div class="kpi"><div class="kpi-val">' + fmt(jkGes) + '<span class="kpi-unit"> \u20ac/a</span></div><div class="kpi-label">Jahreskosten</div></div>';
+  h += '</div>';
+
+  if (wirtHtml) {
+    h += '<h3>7.1 Kostenaufstellung nach VDI 2067</h3>';
+    h += '<div style="font-size:9pt;">' + wirtHtml + '</div>';
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 8. ÖKOLOGIE / CO₂
+  // ════════════════════════════════════════════════════════════════
+  h += '<div class="page-break"></div>';
+  h += '<h2>8. \u00d6kologie und CO\u2082-Bilanz</h2>';
+  const co2BiEl = document.getElementById('co2-bilanz-wrap');
+  if (co2BiEl) {
+    h += '<div style="font-size:10pt;">' + co2BiEl.innerHTML + '</div>';
+  } else {
+    h += '<div class="intro">CO\u2082-Emissionen gesamt: ' + co2Gesamt + '</div>';
+  }
+
+  // Emissionsdiagramme
+  if (cImg['em-stunden-canvas']) {
+    h += '<h3>8.1 St\u00fcndliche Emissionen</h3>';
+    h += '<img class="chart-img" src="' + cImg['em-stunden-canvas'] + '"/>';
+    h += fig('St\u00fcndliche CO\u2082-Emissionen');
+  }
+  if (cImg['em-monat-canvas']) {
+    h += '<h3>8.2 Monatliche Emissionen</h3>';
+    h += '<img class="chart-img" src="' + cImg['em-monat-canvas'] + '"/>';
+    h += fig('Monatliche CO\u2082-Emissionen nach Erzeuger');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 9. SANKEY
+  // ════════════════════════════════════════════════════════════════
+  if (cImg['sankey-canvas']) {
+    h += '<div class="page-break"></div>';
+    h += '<h2>9. Energieflussdiagramm</h2>';
+    h += '<div class="intro">Das Sankey-Diagramm zeigt die Energiefl\u00fcsse von der Erzeugung \u00fcber die Verteilung bis zum Verbrauch.</div>';
+    h += '<img class="chart-img" src="' + cImg['sankey-canvas'] + '" style="max-height:400px;"/>';
+    h += fig('Sankey-Diagramm der Energiefl\u00fcsse');
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 10. VARIANTENVERGLEICH
+  // ════════════════════════════════════════════════════════════════
+  const vrKeys = Object.keys(variantResults);
+  if (vrKeys.length > 1) {
+    h += '<div class="page-break"></div>';
+    h += '<h2>10. Variantenvergleich</h2>';
+    h += '<div class="intro">Es wurden ' + vrKeys.length + ' Varianten untersucht. Die folgende Tabelle zeigt die wesentlichen Kennwerte im Vergleich.</div>';
+
+    h += tab('Variantenvergleich \u2014 Kennwerte');
+    h += '<table><thead><tr><th>Kennwert</th>';
+    vrKeys.forEach(k => { h += '<th class="r">' + (variantResults[k].label || k) + '</th>'; });
+    h += '</tr></thead><tbody>';
+
+    const rows = [
+      ['Geb\u00e4udebedarf MWh/a', k => fmtD(variantResults[k].geb\u00e4udebedarf||0, 0)],
+      ['Erzeugung MWh/a', k => fmtD(variantResults[k].erzeugung||0, 0)],
+      ['Netzverluste MWh/a', k => fmtD(variantResults[k].netzverluste||0, 1)],
+      ['Netzverluste %', k => fmtD(variantResults[k].netzverlustePct||0, 1)],
+      ['VL/RL \u00b0C', k => fmtD(variantResults[k].vlTemp||0, 0) + '/' + fmtD(variantResults[k].rlTemp||0, 0)],
+      ['EE-Anteil %', k => variantResults[k].eeAnteil != null ? fmtD(variantResults[k].eeAnteil, 1) : '\u2014'],
+      ['WGK', k => variantResults[k].wgkText || '\u2014'],
+      ['Investition \u20ac', k => variantResults[k].investGes ? fmt(variantResults[k].investGes) : '\u2014'],
+      ['Jahreskosten \u20ac/a', k => variantResults[k].jkGes ? fmt(variantResults[k].jkGes) : '\u2014'],
+      ['CO\u2082 t/a', k => variantResults[k].co2GesH > 0 ? fmtD(variantResults[k].co2GesH, 1) : '\u2014'],
+    ];
+    rows.forEach(r => {
+      h += '<tr><td>' + r[0] + '</td>';
+      vrKeys.forEach(k => { h += '<td class="r">' + r[1](k) + '</td>'; });
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+
+    // Erzeuger pro Variante
+    h += '<h3>Erzeugerpark je Variante</h3>';
+    vrKeys.forEach(k => {
+      const v = variantResults[k];
+      if (!v.erzeuger || v.erzeuger.length === 0) return;
+      h += '<h4>' + (v.label || k) + '</h4>';
+      h += '<table><thead><tr><th>Erzeuger</th><th class="r">Leistung kW</th><th class="r">CO\u2082</th></tr></thead><tbody>';
+      v.erzeuger.forEach(e => {
+        h += '<tr><td>' + e.typ + '</td><td class="r">' + (e.leistungKw ? fmt(e.leistungKw) : '\u2014') + '</td><td class="r">' + (e.co2 || '\u2014') + '</td></tr>';
+      });
+      h += '</tbody></table>';
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // IMPRESSUM & FOOTER
+  // ════════════════════════════════════════════════════════════════
+  h += '<div class="page-break"></div>';
+  h += '<div class="impressum">';
+  h += '<h2 style="border-bottom-color:var(--gray-light);">Impressum</h2>';
+  h += '<p>Dieser Bericht wurde automatisch generiert mit dem <strong>Energieplanungs-Tool</strong>.</p>';
+  h += '<p><strong>Betrachtungsjahr:</strong> ' + (globalYear || '\u2014') + '<br>';
+  h += '<strong>Variante:</strong> ' + varName + '<br>';
+  h += '<strong>Erstellt am:</strong> ' + datum + ', ' + zeit + '</p>';
+  h += '<p style="font-size:8pt;color:var(--gray-light);margin-top:20px;">';
+  h += 'Alle Angaben basieren auf den zum Zeitpunkt der Erstellung im Tool hinterlegten Eingabedaten. ';
+  h += 'Die Ergebnisse dienen der Orientierung und ersetzen keine detaillierte Fachplanung.</p>';
+  h += '</div>';
+
+  h += '<div class="report-footer">';
+  h += 'Energieplanungs-Tool \u00b7 Transformationsplan \u00b7 ' + varName + ' \u00b7 ' + datum;
+  h += '</div>';
+
+  // Abbildungs- und Tabellenverzeichnis als Metadaten
+  h += '<div class="report-footer" style="margin-top:8px;">';
+  h += figNr + ' Abbildung' + (figNr !== 1 ? 'en' : '') + ' \u00b7 ' + tabNr + ' Tabelle' + (tabNr !== 1 ? 'n' : '');
+  h += '</div>';
+
+  h += '</body></html>';
+
+  // ── Ausgabe ───────────────────────────────────────────────────
+  var printWin = window.open('', '_blank');
+  if (!printWin) { alert('Pop-up blockiert \u2014 bitte Pop-ups f\u00fcr diese Seite erlauben.'); return; }
+  printWin.document.write(h);
+  printWin.document.close();
+  setTimeout(function() { printWin.print(); }, 800);
+}
+
+// ── Hook into existing recalc to update left panel ───────────────
+const _origRecalcNetz = typeof recalcNetz !== 'undefined' ? recalcNetz : null;
+// We'll hook updateLpNetzSummary after recalcNetz calls via a periodic check instead
+setInterval(() => {
+  updateLpNetzSummary();
+  updateLpMeritOrder();
+  updateLpStromSummary();
+}, 2000);
