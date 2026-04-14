@@ -335,7 +335,7 @@ function _renderSankeyModal(data, perBuilding, mode) {
             <option value="gebaeude">Energiefluss (gebäudescharf)</option>
             <option value="co2">CO\u2082-Emissionen</option>
           </select>
-          <button onclick="this.closest('.ep-modal-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;">\u2715</button>
+          <button data-click="this.closest('.ep-modal-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;">\u2715</button>
         </div>
       </div>
       <canvas id="sankey-canvas" width="${W - 32}" height="${H}" style="width:100%;border-radius:8px;background:var(--bg);"></canvas>

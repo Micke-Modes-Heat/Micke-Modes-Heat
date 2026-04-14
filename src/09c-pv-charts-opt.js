@@ -1001,11 +1001,11 @@ function _runPvBatOpt(resultDiv) {
           Optimierungslandschaft — ${hmLabel}
         </span>
         <span style="display:flex;gap:0;border:1px solid var(--border);border-radius:4px;overflow:hidden;">
-          <button id="opt-view-2d" onclick="_setOptView('2d')"
+          <button id="opt-view-2d" data-click="_setOptView('2d')"
             style="padding:2px 8px;border:none;font-size:9px;font-family:inherit;cursor:pointer;
                    background:${window._optView==='3d'?'transparent':'var(--accent)'};
                    color:${window._optView==='3d'?'var(--muted)':'#000'};">2D</button>
-          <button id="opt-view-3d" onclick="_setOptView('3d')"
+          <button id="opt-view-3d" data-click="_setOptView('3d')"
             style="padding:2px 8px;border:none;font-size:9px;font-family:inherit;cursor:pointer;
                    background:${window._optView==='3d'?'var(--accent)':'transparent'};
                    color:${window._optView==='3d'?'#000':'var(--muted)'};">3D</button>

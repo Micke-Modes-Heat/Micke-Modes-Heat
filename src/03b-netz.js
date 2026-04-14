@@ -1720,7 +1720,7 @@ function updateStrangReport() {
     const col = ampelCol[s.ampel];
     const rowStyle = selectedStrandId === s.id ? 'background:rgba(255,255,255,0.05);' : '';
     h += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;${rowStyle}" `
-       + `onclick="selectedStrandId=${s.id};document.getElementById('netz-strang').value='${s.id}';updateNetzStrandVisibility();" `
+       + `data-click="selectedStrandId=${s.id};document.getElementById('netz-strang').value='${s.id}';updateNetzStrandVisibility();" `
        + `title="${ampelTxt[s.ampel]}: ${fmtD(s.zuschlag,0)} €/MWh Netzkosten, ${fmtD(s.verlustPct,1)}% Verluste">`;
     h += `<td style="padding:3px 4px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${col};"></span></td>`;
     h += `<td style="padding:3px 3px;color:var(--text);">${s.id + 1}</td>`;

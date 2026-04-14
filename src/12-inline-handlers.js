@@ -1,3 +1,33 @@
+// ── Event-Delegation für data-* Handler ──────────────────────────────────
+// Ersetzt inline onclick/oninput/onchange — Handler-Code steht in data-Attributen.
+(function() {
+  function exec(el, code) {
+    try { new Function('event', code).call(el, event); }
+    catch(e) { console.error('Handler-Fehler:', code, e); }
+  }
+
+  document.addEventListener('click', function(event) {
+    const el = event.target.closest('[data-click]');
+    if (el) exec(el, el.dataset.click);
+  });
+
+  document.addEventListener('input', function(event) {
+    const el = event.target.closest('[data-input]');
+    if (el) exec(el, el.dataset.input);
+  });
+
+  document.addEventListener('change', function(event) {
+    const el = event.target.closest('[data-change]');
+    if (el) exec(el, el.dataset.change);
+  });
+
+  document.addEventListener('keydown', function(event) {
+    const el = event.target.closest('[data-keydown]');
+    if (el) exec(el, el.dataset.keydown);
+  });
+})();
+
+// ── Spezielle addEventListener-Registrierungen ──────────────────────────
           document.getElementById('strom-gzf-methode').addEventListener('change', function() {
             document.getElementById('strom-gzf-manuell-wrap').style.display = this.value === 'manuell' ? '' : 'none';
           });

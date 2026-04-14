@@ -118,7 +118,7 @@ function gbiShowMapping() {
   var html = '';
   fields.forEach(function(f) {
     html += '<div class="inp-group"><label class="inp-label">' + f.label + '</label>'
-      + '<select class="inp-field" id="gbi-col-' + f.key + '" onchange="gbiColumns[\'' + f.key + '\']=parseInt(this.value)">'
+      + '<select class="inp-field" id="gbi-col-' + f.key + '" data-change="gbiColumns[\'' + f.key + '\']=parseInt(this.value)">'
       + opts.replace('value="' + gbiColumns[f.key] + '"', 'value="' + gbiColumns[f.key] + '" selected')
       + '</select></div>';
   });
@@ -253,9 +253,9 @@ function gbiRenderMatchTable() {
     html += '<td style="padding:3px 5px;text-align:center;color:' + color + ';">' + scoreStr + '</td>';
     html += '<td style="padding:3px 5px;text-align:center;">';
     if (m.status === 'rejected') {
-      html += '<button onclick="gbiUnreject(' + i + ')" style="font-size:9px;padding:1px 6px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;">↩</button>';
+      html += '<button data-click="gbiUnreject(' + i + ')" style="font-size:9px;padding:1px 6px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;">↩</button>';
     } else if (m.status === 'auto' || m.status === 'unsicher') {
-      html += '<button onclick="gbiReject(' + i + ')" style="font-size:9px;padding:1px 6px;border:1px solid #e53935;background:transparent;color:#e53935;border-radius:4px;cursor:pointer;">✕</button>';
+      html += '<button data-click="gbiReject(' + i + ')" style="font-size:9px;padding:1px 6px;border:1px solid #e53935;background:transparent;color:#e53935;border-radius:4px;cursor:pointer;">✕</button>';
     }
     html += '</td></tr>';
   });
@@ -351,7 +351,7 @@ function gbiRenderManualList() {
     var sel = gbiManualSelectedCsv === m.csvIdx;
     var bg = sel ? 'rgba(79,195,247,0.12)' : 'transparent';
     var border = sel ? 'var(--accent)' : 'var(--border)';
-    html += '<div onclick="gbiManualSelectCsv(' + m.csvIdx + ')" style="padding:6px 8px;border:1px solid ' + border + ';border-radius:5px;margin-bottom:4px;cursor:pointer;background:' + bg + ';transition:.15s;font-size:10px;">';
+    html += '<div data-click="gbiManualSelectCsv(' + m.csvIdx + ')" style="padding:6px 8px;border:1px solid ' + border + ';border-radius:5px;margin-bottom:4px;cursor:pointer;background:' + bg + ';transition:.15s;font-size:10px;">';
     html += '<strong>' + escHtml(csvRow.name || ('Zeile ' + (csvRow.idx + 2))) + '</strong>';
     var details = [];
     if (csvRow.nutzung) details.push(csvRow.nutzung);

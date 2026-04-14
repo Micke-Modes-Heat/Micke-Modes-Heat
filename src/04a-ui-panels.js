@@ -182,7 +182,7 @@ function tryRestoreAutosave() {
     const project = JSON.parse(raw);
     if (!project.gebaeude || !project.gebaeude.length) return;
     const hint = document.getElementById('hint');
-    hint.innerHTML = 'Autosave gefunden. <span style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="loadAutosave()">Wiederherstellen?</span> <span style="color:var(--muted);cursor:pointer;margin-left:8px;" onclick="document.getElementById(\'hint\').classList.add(\'hidden\');document.getElementById(\'hint\').style.pointerEvents=\'\';">✕</span>';
+    hint.innerHTML = 'Autosave gefunden. <span style="color:var(--accent);cursor:pointer;text-decoration:underline" data-click="loadAutosave()">Wiederherstellen?</span> <span style="color:var(--muted);cursor:pointer;margin-left:8px;" data-click="document.getElementById(\'hint\').classList.add(\'hidden\');document.getElementById(\'hint\').style.pointerEvents=\'\';">✕</span>';
     hint.classList.remove('hidden');
     hint.style.pointerEvents = 'auto';
   } catch(e) {}
@@ -256,23 +256,23 @@ function showEdgePopup(e, mouseEvt) {
   popup.innerHTML = `
     <div class="edge-popup-title">
       <span style="color:var(--accent)">⛕ Leitungsabschnitt</span>
-      <span class="edge-popup-close" onclick="closeEdgePopup()">✕</span>
+      <span class="edge-popup-close" data-click="closeEdgePopup()">✕</span>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
       <div>
         <div class="inp-label" style="margin-bottom:3px">Durchmesser</div>
-        <select onchange="setEdgeDN(this.value)">${dnOptions}</select>
+        <select data-change="setEdgeDN(this.value)">${dnOptions}</select>
         <div style="font-size:9px;color:var(--muted);margin-top:2px">${e.dn===0||!e.dn?'Auto: DN '+e.dn:'Manuell: DN '+e.dn}</div>
       </div>
       <div>
         <div class="inp-label" style="margin-bottom:3px">Kostenklasse</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px;">
           <span class="cost-badge niedrig ${kostKlasse==='niedrig'?'':''}${kostAuto&&kostKlasse==='niedrig'?' auto':''}" 
-            onclick="setEdgeKost('niedrig')" style="${kostKlasse==='niedrig'?'opacity:1':'opacity:.45'}">Niedrig</span>
+            data-click="setEdgeKost('niedrig')" style="${kostKlasse==='niedrig'?'opacity:1':'opacity:.45'}">Niedrig</span>
           <span class="cost-badge mittel"
-            onclick="setEdgeKost('mittel')" style="${kostKlasse==='mittel'?'opacity:1':'opacity:.45'}">Mittel</span>
+            data-click="setEdgeKost('mittel')" style="${kostKlasse==='mittel'?'opacity:1':'opacity:.45'}">Mittel</span>
           <span class="cost-badge hoch"
-            onclick="setEdgeKost('hoch')" style="${kostKlasse==='hoch'?'opacity:1':'opacity:.45'}">Hoch</span>
+            data-click="setEdgeKost('hoch')" style="${kostKlasse==='hoch'?'opacity:1':'opacity:.45'}">Hoch</span>
         </div>
         <div style="font-size:9px;color:var(--muted);margin-top:3px">${kostAuto?'🔄 Auto (OSM)':'✏️ Manuell'}</div>
       </div>
@@ -284,7 +284,7 @@ function showEdgePopup(e, mouseEvt) {
       <span>Kosten: <span style="color:#4fc3f7">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
     </div>
     <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;">
-      <button onclick="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">
+      <button data-click="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">
         ${e.pruned?'✓ Wieder anschließen':'✂ Abschnitt deaktivieren'}
       </button>
     </div>`;
@@ -482,7 +482,7 @@ function updatePruningSummary() {
       <span style="color:var(--muted)">Deaktiviert:</span><span>${prunedEdges.length} Abschnitte (${Math.round(prunedLen)} m)</span>
       <span style="color:var(--muted)">Abgeklemmt:</span><span>${disconnected.length} Gebäude (${disconnectedMWh.toFixed(0)} MWh/a)</span>
     </div>
-    <button onclick="clearAllPruning()" style="margin-top:5px;width:100%;padding:3px 6px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;font-size:9px;font-family:'DM Mono',monospace;">Pruning aufheben</button>`;
+    <button data-click="clearAllPruning()" style="margin-top:5px;width:100%;padding:3px 6px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;font-size:9px;font-family:'DM Mono',monospace;">Pruning aufheben</button>`;
 }
 
 function clearAllPruning() {
@@ -918,7 +918,7 @@ function _restoreInlinePanels() {
     if (tabRow) tabRow.style.display = '';
     const dragHandle = p.querySelector('.panel-drag-handle');
     if (dragHandle) dragHandle.style.display = '';
-    p.querySelectorAll('.float-panel-close, button[onclick="hidePanels()"]').forEach(b => b.style.display = '');
+    p.querySelectorAll('.float-panel-close, button[data-click="hidePanels()"]').forEach(b => b.style.display = '');
     if (p._origParent) {
       if (p._origNext && p._origNext.parentElement === p._origParent) {
         p._origParent.insertBefore(p, p._origNext);
@@ -1000,13 +1000,13 @@ function refreshAnalyseView() {
     _embedPanelInline('wirtschaft-panel', content);
     // Panel-eigene Tab-Leiste und Close-Button im Inline-Modus ausblenden
     const wp = document.getElementById('wirtschaft-panel');
-    if (wp) wp.querySelectorAll('.float-panel-close, button[onclick="hidePanels()"]').forEach(b => b.style.display = 'none');
+    if (wp) wp.querySelectorAll('.float-panel-close, button[data-click="hidePanels()"]').forEach(b => b.style.display = 'none');
     if (typeof calcWirtschaftPanel === 'function') calcWirtschaftPanel();
   } else if (analyseCurrentSection === 'strom') {
     content.style.display = '';
     _embedPanelInline('strom-panel', content);
     const sp = document.getElementById('strom-panel');
-    if (sp) sp.querySelectorAll('.float-panel-close, button[onclick="hidePanels()"]').forEach(b => b.style.display = 'none');
+    if (sp) sp.querySelectorAll('.float-panel-close, button[data-click="hidePanels()"]').forEach(b => b.style.display = 'none');
     if (typeof calcStromPanel === 'function') calcStromPanel();
   } else if (analyseCurrentSection === 'emissionen') {
     if (emWrap) { emWrap.style.display = 'block'; _renderEmissionenTab(); }

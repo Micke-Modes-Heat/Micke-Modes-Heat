@@ -180,9 +180,9 @@ function _renderCompactRow(g, stats, isExpanded) {
   const statusColor = stats.status==='abgerissen'?'#e53935':stats.status==='saniert'?'#4caf50':stats.status==='geplant'?'#f9a825':'transparent';
   const badgeClass = g.polygon ? (g.fromOsm ? 'osm' : 'ok') : '';
   const badgeText = g.polygon ? (g.fromOsm ? 'OSM' : '✓') : '–';
-  return `<div class="geb-compact-row" onclick="toggleGebExpand(${g.id})">
+  return `<div class="geb-compact-row" data-click="toggleGebExpand(${g.id})">
     <div style="display:flex;align-items:center;gap:5px;width:100%;">
-      <input type="checkbox" style="flex-shrink:0;accent-color:var(--accent);cursor:pointer;" ${g.selected?'checked':''} onchange="toggleSelect(${g.id},this.checked)" onclick="event.stopPropagation()" title="Auswählen"/>
+      <input type="checkbox" style="flex-shrink:0;accent-color:var(--accent);cursor:pointer;" ${g.selected?'checked':''} data-change="toggleSelect(${g.id},this.checked)" data-click="event.stopPropagation()" title="Auswählen"/>
       <div class="geb-color-dot" data-dot="${g.id}" style="background:${dot};flex-shrink:0;"></div>
       <span class="geb-compact-name">${escHtml(g.name)}</span>
       <span style="font-size:9px;color:var(--muted);flex-shrink:0;">${isExpanded?'▲':'▼'}</span>
@@ -291,11 +291,11 @@ function renderGebPvPanel() {
     if (g.pvAktiv) totalKwp += kwp;
     html += `<div style="display:grid;grid-template-columns:auto 1fr 64px 50px;gap:4px 8px;align-items:center;margin-bottom:3px;">
       <input type="checkbox" ${g.pvAktiv ? 'checked' : ''} style="cursor:pointer;"
-        onchange="updateGebPv(${g.id},'pvAktiv',this.checked)"/>
+        data-change="updateGebPv(${g.id},'pvAktiv',this.checked)"/>
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(g.name)}">${escHtml(g.name)}</span>
       <input class="inp-field" type="number" value="${g.pvDachanteil || 30}" min="5" max="100" step="5"
         style="padding:2px 4px;font-size:9px;text-align:right;"
-        oninput="updateGebPv(${g.id},'pvDachanteil',this.value)"/>
+        data-input="updateGebPv(${g.id},'pvDachanteil',this.value)"/>
       <span style="text-align:right;font-family:'DM Mono',monospace;color:${g.pvAktiv ? '#ffd54f' : 'var(--muted)'};">${kwp.toFixed(1)}</span>
     </div>`;
   });
@@ -317,13 +317,13 @@ function renderGebPvPanel() {
 function _renderExpandedPanel(g, stats) {
   const ausgeschlossen = isExcluded(g.id);
   let planItems = [];
-  if (g.baujahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Neubau ab ${g.baujahr}</span><span style="cursor:pointer;color:#e53935" onclick="clearPlan(${g.id}, 'neubau')">✕</span></div>`);
+  if (g.baujahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Neubau ab ${g.baujahr}</span><span style="cursor:pointer;color:#e53935" data-click="clearPlan(${g.id}, 'neubau')">✕</span></div>`);
   if (g.sanierungen && g.sanierungen.length > 0) {
     g.sanierungen.forEach((s, idx) => {
-      planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Sanierung ${s.jahr}: ${s.zielSpez} kWh/m²a</span><span style="cursor:pointer;color:#e53935" onclick="clearPlan(${g.id}, 'sanierung', ${idx})">✕</span></div>`);
+      planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Sanierung ${s.jahr}: ${s.zielSpez} kWh/m²a</span><span style="cursor:pointer;color:#e53935" data-click="clearPlan(${g.id}, 'sanierung', ${idx})">✕</span></div>`);
     });
   }
-  if (g.abrissjahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Abriss im Jahr ${g.abrissjahr}</span><span style="cursor:pointer;color:#e53935" onclick="clearPlan(${g.id}, 'abriss')">✕</span></div>`);
+  if (g.abrissjahr) planItems.push(`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:4px 0;"><span>Abriss im Jahr ${g.abrissjahr}</span><span style="cursor:pointer;color:#e53935" data-click="clearPlan(${g.id}, 'abriss')">✕</span></div>`);
 
   let infoLabel = '';
   if(stats.status === 'geplant') infoLabel = '<div style="color:#f9a825;font-size:10px;margin-bottom:5px;">Geplant</div>';
@@ -347,7 +347,7 @@ function _renderExpandedPanel(g, stats) {
   return `<div class="geb-expanded">
     ${infoLabel}
     <div style="margin-bottom:5px;">
-      <select class="nutzung-select" onchange="setNutzung(${g.id},this.value)" title="Nutzungstyp">
+      <select class="nutzung-select" data-change="setNutzung(${g.id},this.value)" title="Nutzungstyp">
         <option value="">Nutzungstyp…</option>
         <option value="efh"  ${g.nutzung==='efh'?'selected':''}>EFH</option>
         <option value="mfh"  ${g.nutzung==='mfh'?'selected':''}>MFH</option>
@@ -363,41 +363,41 @@ function _renderExpandedPanel(g, stats) {
         <div class="inp-label">Wärme MWh/a (Bestand)</div>
         <input class="inp-field" type="number" placeholder="—" value="${escVal(g.waerme)}"
           data-waerme="${g.id}"
-          oninput="updateField(${g.id},'waerme',this.value)"/>
+          data-input="updateField(${g.id},'waerme',this.value)"/>
       </div>
       <div class="inp-group">
         <div class="inp-label">Spez. kWh/m²a (Bestand)</div>
         <input class="inp-field" type="number" placeholder="—" value="${escVal(g.spez)}"
           data-spez="${g.id}"
           style="${g.flaeche && g.waerme ? 'color:#4caf50' : ''}"
-          oninput="updateField(${g.id},'spez',this.value)"/>
+          data-input="updateField(${g.id},'spez',this.value)"/>
       </div>
       <div class="inp-group">
         <div class="inp-label">Heizlast kW (Bestand)</div>
         <input class="inp-field" type="number" placeholder="—" value="${escVal(g.heizlast)}"
           data-heizlast="${g.id}"
-          oninput="updateField(${g.id},'heizlast',this.value)"/>
+          data-input="updateField(${g.id},'heizlast',this.value)"/>
       </div>
       <div class="inp-group">
         <div class="inp-label">Spez. HL W/m² (Bestand)</div>
         <input class="inp-field" type="number" placeholder="—" value="${escVal(g.spezHeizlast)}"
           data-spezhl="${g.id}"
           style="${g.flaeche && g.heizlast ? 'color:#4caf50' : ''}"
-          oninput="updateField(${g.id},'spezHeizlast',this.value)"/>
+          data-input="updateField(${g.id},'spezHeizlast',this.value)"/>
       </div>
       <div class="inp-group">
         <div class="inp-label">Baujahr</div>
         <input class="inp-field" type="number" placeholder="z.B. 1980" value="${escVal(g.baujahr)}"
-          oninput="updateField(${g.id},'baujahr',this.value)"/>
+          data-input="updateField(${g.id},'baujahr',this.value)"/>
       </div>
       <div class="inp-group">
         <div class="inp-label">Stockwerke</div>
         <input class="inp-field" type="number" placeholder="1" value="${g.stockwerke || 1}"
-          oninput="updateField(${g.id},'stockwerke',this.value)"/>
+          data-input="updateField(${g.id},'stockwerke',this.value)"/>
       </div>
       ${g.zustand ? `<div class="inp-group">
         <div class="inp-label">Zustand</div>
-        <select class="inp-field" onchange="updateField(${g.id},'zustand',this.value)">
+        <select class="inp-field" data-change="updateField(${g.id},'zustand',this.value)">
           <option value="">—</option>
           <option value="A" ${g.zustand==='A'?'selected':''}>A (gut)</option>
           <option value="B" ${g.zustand==='B'?'selected':''}>B (mittel)</option>
@@ -408,7 +408,7 @@ function _renderExpandedPanel(g, stats) {
         <div class="inp-label">Fläche m² ${g.flaeche ? "(OSM)" : ""}</div>
         <input class="inp-field" type="number" placeholder="—"
           value="${g.flaeche ? Math.round(g.flaeche) : ''}"
-          oninput="updateField(${g.id},'flaeche',this.value)"/>
+          data-input="updateField(${g.id},'flaeche',this.value)"/>
       </div>
     </div>
     <div style="margin-top:8px;padding:6px 8px;background:rgba(79,195,247,0.05);border-radius:5px;border:1px solid rgba(79,195,247,0.15);">
@@ -417,16 +417,16 @@ function _renderExpandedPanel(g, stats) {
         <div class="inp-group">
           <div class="inp-label">Strom MWh/a</div>
           <input class="inp-field" type="number" placeholder="${getAutoStrom(g) || '—'}" value="${escVal(g.strom)}"
-            oninput="updateField(${g.id},'strom',this.value)" title="Jahresstromverbrauch (ohne WP)"/>
+            data-input="updateField(${g.id},'strom',this.value)" title="Jahresstromverbrauch (ohne WP)"/>
         </div>
         <div class="inp-group">
           <div class="inp-label">Spez. kWh/m²a</div>
           <input class="inp-field" type="number" placeholder="${getAutoSpezStrom(g) || '—'}" value="${escVal(g.spezStrom)}"
-            oninput="updateField(${g.id},'spezStrom',this.value)" title="Spez. Stromverbrauch"/>
+            data-input="updateField(${g.id},'spezStrom',this.value)" title="Spez. Stromverbrauch"/>
         </div>
         <div class="inp-group" style="grid-column:1/-1;">
           <div class="inp-label">Profil</div>
-          <select class="nutzung-select" style="width:100%;" onchange="updateField(${g.id},'stromProfil',this.value)" title="Lastprofil-Typ (SLP)">
+          <select class="nutzung-select" style="width:100%;" data-change="updateField(${g.id},'stromProfil',this.value)" title="Lastprofil-Typ (SLP)">
             <option value="auto" ${g.stromProfil==='auto'?'selected':''}>Auto (nach Nutzung)</option>
             <option value="H0"   ${g.stromProfil==='H0'?'selected':''}>H0 — Haushalt</option>
             <option value="G0"   ${g.stromProfil==='G0'?'selected':''}>G0 — Gewerbe allg.</option>
@@ -440,7 +440,7 @@ function _renderExpandedPanel(g, stats) {
     <div style="margin-top:8px;padding:6px 8px;background:rgba(255,213,79,0.05);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:${g.pvAktiv ? '6px' : '0'};">
         <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer;">
-          <input type="checkbox" ${g.pvAktiv ? 'checked' : ''} onchange="updateGebPv(${g.id},'pvAktiv',this.checked)" style="cursor:pointer;"/>
+          <input type="checkbox" ${g.pvAktiv ? 'checked' : ''} data-change="updateGebPv(${g.id},'pvAktiv',this.checked)" style="cursor:pointer;"/>
           <span style="color:#ffd54f;">☀ Dach-PV</span>
         </label>
         ${g.pvAktiv && g.flaeche ? `<span style="font-size:10px;color:#ffd54f;font-family:'DM Mono',monospace;margin-left:auto;">${calcGebKwp(g).toFixed(1)} kWp</span>` : ''}
@@ -449,7 +449,7 @@ function _renderExpandedPanel(g, stats) {
         <div class="inp-group">
           <div class="inp-label">Dachanteil (%)</div>
           <input class="inp-field" type="number" value="${g.pvDachanteil || 30}" min="5" max="100" step="5"
-            oninput="updateGebPv(${g.id},'pvDachanteil',this.value)"/>
+            data-input="updateGebPv(${g.id},'pvDachanteil',this.value)"/>
         </div>
         <div class="inp-group" style="display:flex;flex-direction:column;justify-content:flex-end;">
           <div class="inp-label" style="color:var(--muted);">Modul global</div>
@@ -464,21 +464,21 @@ function _renderExpandedPanel(g, stats) {
       <span style="color:var(--muted)">Anteil Verbrauch</span><span style="color:${g.netzVerlustRatioPct < 5 ? '#4caf50' : g.netzVerlustRatioPct < 10 ? '#f9a825' : '#e53935'};font-weight:bold">${g.netzVerlustRatioPct.toFixed(1)} %</span>
     </div>` : ''}
     <div class="geb-actions">
-      ${!g.polygon ? `<button class="btn-xs blue" onclick="startDraw(${g.id})">&#9998; Zeichnen</button>` : ''}
-      ${g.polygon ? '<button class="btn-xs purple" onclick="flyTo(' + g.id + ')">&#8982;</button>' : ''}
-      <button class="btn-xs" onclick="togglePlanPanel(${g.id})" title="Planung & Sanierung">🔧 Planen</button>
-      <button class="btn-xs" onclick="startNetzEdgeFrom(${g.id})" title="Leitung von diesem Gebäude zeichnen" style="border-color:#e53935;color:#e53935;">⛕+</button>
-      ${netzEdges.some(e => e.u === g.id || e.v === g.id) ? `<button class="btn-xs red" onclick="abklemmenGebaeude(${g.id})" title="Alle Netzleitungen entfernen">⛕✕</button>` : ''}
-      <button class="btn-xs" onclick="removeGebaeude(${g.id})" title="Löschen" style="margin-left:auto">&#10005;</button>
+      ${!g.polygon ? `<button class="btn-xs blue" data-click="startDraw(${g.id})">&#9998; Zeichnen</button>` : ''}
+      ${g.polygon ? '<button class="btn-xs purple" data-click="flyTo(' + g.id + ')">&#8982;</button>' : ''}
+      <button class="btn-xs" data-click="togglePlanPanel(${g.id})" title="Planung & Sanierung">🔧 Planen</button>
+      <button class="btn-xs" data-click="startNetzEdgeFrom(${g.id})" title="Leitung von diesem Gebäude zeichnen" style="border-color:#e53935;color:#e53935;">⛕+</button>
+      ${netzEdges.some(e => e.u === g.id || e.v === g.id) ? `<button class="btn-xs red" data-click="abklemmenGebaeude(${g.id})" title="Alle Netzleitungen entfernen">⛕✕</button>` : ''}
+      <button class="btn-xs" data-click="removeGebaeude(${g.id})" title="Löschen" style="margin-left:auto">&#10005;</button>
     </div>
     ${activeVariantId !== null ? `<div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border);">
-      <button class="btn-xs ${ausgeschlossen ? 'green' : ''}" style="${ausgeschlossen ? '' : 'border-color:#f9a825;color:#f9a825;'}" onclick="toggleAusschluss(${g.id})">
+      <button class="btn-xs ${ausgeschlossen ? 'green' : ''}" style="${ausgeschlossen ? '' : 'border-color:#f9a825;color:#f9a825;'}" data-click="toggleAusschluss(${g.id})">
         ${ausgeschlossen ? '↩ Wieder anschließen' : '⊗ In Variante abkoppeln'}
       </button>
     </div>` : ''}
     <div class="plan-panel" id="plan-${g.id}">
       <div style="font-size:10px; color:var(--accent); margin-bottom:8px;">Lebenszyklus & Sanierung</div>
-      <select class="inp-field" style="margin-bottom:8px;" onchange="changePlanMode(${g.id}, this.value)">
+      <select class="inp-field" style="margin-bottom:8px;" data-change="changePlanMode(${g.id}, this.value)">
         <option value="">Aktion wählen...</option>
         <option value="neubau">Neubau planen</option>
         <option value="sanierung">Sanierung planen</option>
@@ -486,16 +486,16 @@ function _renderExpandedPanel(g, stats) {
       </select>
       <div id="plan-mode-neubau-${g.id}" style="display:none; gap:5px; margin-bottom:8px; align-items:center;">
         <input type="number" id="inp-neubau-${g.id}" placeholder="Baujahr (z.B. 2030)" class="inp-field" style="flex:1">
-        <button class="btn-xs green" onclick="savePlan(${g.id}, 'neubau')">Speichern</button>
+        <button class="btn-xs green" data-click="savePlan(${g.id}, 'neubau')">Speichern</button>
       </div>
       <div id="plan-mode-sanierung-${g.id}" style="display:none; gap:5px; margin-bottom:8px; align-items:center;">
         <input type="number" id="inp-san-jahr-${g.id}" placeholder="Jahr" class="inp-field" style="width:45px; flex:1">
         <input type="number" id="inp-san-spez-${g.id}" placeholder="Ziel kWh/m²a" class="inp-field" style="width:85px; flex:1">
-        <button class="btn-xs green" onclick="savePlan(${g.id}, 'sanierung')">Speichern</button>
+        <button class="btn-xs green" data-click="savePlan(${g.id}, 'sanierung')">Speichern</button>
       </div>
       <div id="plan-mode-abriss-${g.id}" style="display:none; gap:5px; margin-bottom:8px; align-items:center;">
         <input type="number" id="inp-abriss-${g.id}" placeholder="Abrissjahr" class="inp-field" style="flex:1">
-        <button class="btn-xs red" onclick="savePlan(${g.id}, 'abriss')">Speichern</button>
+        <button class="btn-xs red" data-click="savePlan(${g.id}, 'abriss')">Speichern</button>
       </div>
       <div id="san-list-${g.id}" style="margin-top:4px; font-size:11px; color:var(--text); display:flex; flex-direction:column; gap:2px;">
         ${planItems.join('')}

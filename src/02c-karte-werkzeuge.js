@@ -237,7 +237,7 @@ function buildMapLabel(g,center, status){
     className:'geb-label',
     html:`<div class="geb-label-inner" id="lbl-${g.id}"
       style="opacity:${opacity}"
-      onclick="selectFromMap(${g.id})"
+      data-click="selectFromMap(${g.id})"
       ondblclick="startMapRename(${g.id})"
       title="Doppelklick zum Umbenennen"
     >${_gebLabelHtml(g)}</div>`,

@@ -853,7 +853,7 @@ function calcWirtschaftPanel() {
     const isOpen = !!_openGrps[gi];
     const subLabel = grpRows.length === 1 ? grpRows[0].label : '(' + grpRows.length + ' Bausteine)';
     invHtml += '<tr class="wirt-grp-header" style="cursor:pointer;background:rgba(255,255,255,0.03);"' +
-      ' onclick="window._wirtOpenGroups[' + gi + ']=!window._wirtOpenGroups[' + gi + '];document.querySelectorAll(\'.wirt-grp-' + gi + '\').forEach(function(r){r.style.display=window._wirtOpenGroups[' + gi + ']?\'\':\'none\'});this.querySelector(\'.wirt-grp-arrow\').textContent=window._wirtOpenGroups[' + gi + ']?\'▾\':\'▸\'">' +
+      ' data-click="window._wirtOpenGroups[' + gi + ']=!window._wirtOpenGroups[' + gi + '];document.querySelectorAll(\'.wirt-grp-' + gi + '\').forEach(function(r){r.style.display=window._wirtOpenGroups[' + gi + ']?\'\':\'none\'});this.querySelector(\'.wirt-grp-arrow\').textContent=window._wirtOpenGroups[' + gi + ']?\'▾\':\'▸\'">' +
       '<td style="font-weight:600;font-size:11px;" colspan="2">' +
         '<span class="wirt-grp-arrow" style="display:inline-block;width:14px;color:var(--muted);font-size:10px;">' + (isOpen ? '▾' : '▸') + '</span>' +
         '<span style="color:' + grp.color + ';">' + grp.label + '</span> ' +
@@ -889,8 +889,8 @@ function calcWirtschaftPanel() {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
       <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Investitionsbausteine</div>
       <div style="display:flex;gap:2px;">
-        <button class="viz-btn active" id="wirt-view-table" onclick="_wirtSetView('table')" style="font-size:9px;padding:2px 8px;">Tabelle</button>
-        <button class="viz-btn" id="wirt-view-waterfall" onclick="_wirtSetView('waterfall')" style="font-size:9px;padding:2px 8px;">Aufbau</button>
+        <button class="viz-btn active" id="wirt-view-table" data-click="_wirtSetView('table')" style="font-size:9px;padding:2px 8px;">Tabelle</button>
+        <button class="viz-btn" id="wirt-view-waterfall" data-click="_wirtSetView('waterfall')" style="font-size:9px;padding:2px 8px;">Aufbau</button>
       </div>
     </div>
     <div id="wirt-wrap-table">

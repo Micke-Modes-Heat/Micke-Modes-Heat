@@ -283,7 +283,7 @@ function _createLeitfadenPanel() {
   let html = '<div id="lf-drag-handle" style="padding:12px 16px;border-bottom:1px solid var(--border,#333);display:flex;align-items:center;justify-content:space-between;cursor:grab;user-select:none;">';
   html += '<span style="font-size:13px;font-weight:600;color:var(--text,#e8eaf0);">📋 Leitfaden <span style="font-size:9px;color:var(--muted,#78909c);font-weight:400;">— verschiebbar</span></span>';
   html += '<div style="display:flex;gap:6px;align-items:center;"><span id="lf-progress" style="font-size:10px;color:var(--muted,#78909c);font-family:\'DM Mono\',monospace;"></span>';
-  html += '<button onclick="toggleLeitfaden()" style="background:none;border:none;color:var(--muted,#78909c);cursor:pointer;font-size:15px;padding:0;line-height:1;">✕</button></div></div>';
+  html += '<button data-click="toggleLeitfaden()" style="background:none;border:none;color:var(--muted,#78909c);cursor:pointer;font-size:15px;padding:0;line-height:1;">✕</button></div></div>';
 
   html += '<div id="lf-steps" style="overflow-y:auto;padding:8px 12px;flex:1;min-height:0;">';
   LEITFADEN_STEPS.forEach((step, i) => {

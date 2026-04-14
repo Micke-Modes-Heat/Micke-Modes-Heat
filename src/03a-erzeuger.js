@@ -201,18 +201,18 @@ function renderFFPanel() {
     return `<div style="padding:7px 8px;background:var(--bg);border-radius:5px;border:1px solid rgba(255,213,79,0.2);font-size:10px;">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
         <input class="inp-field" type="text" value="${escHtml(ff.name)}" style="flex:1;font-size:10px;"
-          oninput="updateFF(${ff.id},'name',this.value)"/>
-        <button class="btn-xs red" onclick="removeFreiflaeche(${ff.id})" title="Entfernen">✕</button>
+          data-input="updateFF(${ff.id},'name',this.value)"/>
+        <button class="btn-xs red" data-click="removeFreiflaeche(${ff.id})" title="Entfernen">✕</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px;">
         <div class="inp-group">
           <div class="inp-label" title="Ground Coverage Ratio: Anteil der Modulfläche an der Gesamtfläche">GCR (% Bodenbedeckung)</div>
           <input class="inp-field" type="number" value="${ff.gcr !== undefined ? ff.gcr : (ff.ausrichtung === 'ostwest' ? 55 : 35)}" min="5" max="90" step="5"
-            oninput="updateFF(${ff.id},'gcr',this.value)"/>
+            data-input="updateFF(${ff.id},'gcr',this.value)"/>
         </div>
         <div class="inp-group">
           <div class="inp-label">Ausrichtung</div>
-          <select class="inp-field" onchange="updateFF(${ff.id},'ausrichtung',this.value)">
+          <select class="inp-field" data-change="updateFF(${ff.id},'ausrichtung',this.value)">
             <option value="sued" ${ff.ausrichtung==='sued'?'selected':''}>Süd</option>
             <option value="ostwest" ${ff.ausrichtung==='ostwest'?'selected':''}>Ost-West</option>
           </select>
@@ -474,9 +474,9 @@ function redrawErzeugerIcons() {
 
   const arrows = (key, i, total) => {
     const up = i > 0
-      ? `<span class="mo-arrow mo-arrow-up" onclick="event.stopPropagation();moSwap('${key}',-1)" title="Priorität erhöhen">▲</span>` : '';
+      ? `<span class="mo-arrow mo-arrow-up" data-click="event.stopPropagation();moSwap('${key}',-1)" title="Priorität erhöhen">▲</span>` : '';
     const dn = i < total - 1
-      ? `<span class="mo-arrow mo-arrow-dn" onclick="event.stopPropagation();moSwap('${key}',1)" title="Priorität verringern">▼</span>` : '';
+      ? `<span class="mo-arrow mo-arrow-dn" data-click="event.stopPropagation();moSwap('${key}',1)" title="Priorität verringern">▼</span>` : '';
     return up + dn;
   };
 

@@ -293,7 +293,7 @@ function renderVergleich() {
   const isActive = id => (id === 'base' && activeVariantId === null) || id === activeVariantId;
   const thBg = id => isActive(id) ? (id === 'base' ? '#4caf50' : 'var(--accent)') : 'var(--surface2)';
   const thFg = id => isActive(id) ? '#000' : 'var(--muted)';
-  const onClick = id => id === 'base' ? `onclick="activateVariant(null);renderVergleich()"` : `onclick="activateVariant('${id}');renderVergleich()"`;
+  const onClick = id => id === 'base' ? `data-click="activateVariant(null);renderVergleich()"` : `data-click="activateVariant('${id}');renderVergleich()"`;
   let html = `<table class="vergleich-table"><thead><tr><th style="background:var(--surface2);">Kennwert</th>`;
   cols.forEach(id => {
     const r = variantResults[id];
@@ -852,10 +852,10 @@ function renameVariante(id) {
 function renderVariantenBar() {
   const pills = document.getElementById('var-pills');
   pills.innerHTML =
-    `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" onclick="activateVariant(null)">Basisdaten</span>` +
+    `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)">Basisdaten</span>` +
     varianten.map(v =>
-      `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" onclick="activateVariant('${v.id}')" ondblclick="renameVariante('${v.id}')" title="Doppelklick zum Umbenennen">${escHtml(v.name)}</span>` +
-      `<span class="var-del-btn" onclick="deleteVariante('${v.id}')" title="Variante löschen">✕</span>`
+      `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" data-click="activateVariant('${v.id}')" ondblclick="renameVariante('${v.id}')" title="Doppelklick zum Umbenennen">${escHtml(v.name)}</span>` +
+      `<span class="var-del-btn" data-click="deleteVariante('${v.id}')" title="Variante löschen">✕</span>`
     ).join('');
 }
 
