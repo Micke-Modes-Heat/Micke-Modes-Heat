@@ -63,6 +63,8 @@ export function togglePalette() {
 // Karten-Klick: Asset platzieren, wenn pendingType gesetzt
 function onMapClickForAsset(e) {
   if (!pendingType) return;
+  // Stromnetz-Modus (Trasse/Leitung) hat Vorrang
+  if (window.STROMNETZ && window.STROMNETZ.mode) return;
   // Nur reagieren wenn Palette sichtbar
   const panel = document.getElementById('asset-palette');
   if (!panel || !panel.classList.contains('visible')) return;

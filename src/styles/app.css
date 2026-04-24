@@ -317,6 +317,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
   border-radius:3px; color:#000; line-height:1;
 }
 
+/* Leitungs-Zeichnen: Start-Asset markieren */
+[data-asset-id].leitung-start {
+  outline: 2px solid #00e676;
+  outline-offset: 1px;
+  box-shadow: 0 0 8px rgba(0,230,118,.8);
+}
+
+/* Trassen-Snap: grüner pulsierender Ring */
+.stromnetz-snap-ring {
+  animation: stromnetz-snap-pulse 1.2s ease-in-out infinite;
+}
+@keyframes stromnetz-snap-pulse {
+  0%,100% { opacity: .6; }
+  50%     { opacity: 1;  }
+}
+
 /* Sammel-Marker (mittlerer Zoom): ein Icon + Zahl-Badge */
 .asset-group-collapsed {
   position:relative;

@@ -37,6 +37,11 @@ import * as assetsRender from './13b-assets-render.js';
 import * as assetsUi from './13c-assets-ui.js';
 import * as assetsAuto from './13d-assets-autocreate.js';
 import * as assetsInspector from './13e-assets-inspector.js';
+import * as stromnetzConfig from './14a-stromnetz-config.js';
+import * as stromnetzState from './14b-stromnetz-state.js';
+import * as stromnetzGraph from './14c-stromnetz-graph.js';
+import * as stromnetzRender from './15a-stromnetz-render.js';
+import * as stromnetzDraw from './15b-stromnetz-draw.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -50,6 +55,7 @@ const modules = [
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector,
+  stromnetzConfig, stromnetzState, stromnetzGraph, stromnetzRender, stromnetzDraw,
 ];
 
 for (const mod of modules) {
