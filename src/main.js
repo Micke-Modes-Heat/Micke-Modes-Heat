@@ -43,6 +43,7 @@ import * as stromnetzGraph from './14c-stromnetz-graph.js';
 import * as stromnetzRender from './15a-stromnetz-render.js';
 import * as stromnetzDraw from './15b-stromnetz-draw.js';
 import * as stromnetzCalc from './15c-stromnetz-calc.js';
+import * as stromnetzSld from './15d-stromnetz-sld.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -56,7 +57,7 @@ const modules = [
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector,
-  stromnetzConfig, stromnetzState, stromnetzGraph, stromnetzRender, stromnetzDraw, stromnetzCalc,
+  stromnetzConfig, stromnetzState, stromnetzGraph, stromnetzRender, stromnetzDraw, stromnetzCalc, stromnetzSld,
 ];
 
 for (const mod of modules) {
