@@ -932,7 +932,7 @@ export function updateFooterStatus() {
 }
 
 // Footer alle 2s aktualisieren + nach wichtigen Events
-setInterval(updateFooterStatus, 2000);
+setTimeout(() => setInterval(updateFooterStatus, 2000), 0);
 
 // ── Eingabestatus-Panel ──────────────────────────────────────────────────
 export function toggleStatusPanel() {

@@ -291,6 +291,118 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .leaflet-control-zoom{border:1px solid var(--border)!important;border-radius:6px!important;overflow:hidden;}
 .leaflet-control-zoom a{background:var(--surface)!important;color:var(--text)!important;border:none!important;font-weight:normal!important;}
 
+/* ── Unified Asset-System Marker ──────────────────────────── */
+.asset-marker {
+  border-radius:50%;
+  border-color:rgba(255,255,255,.5);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.5); transition:transform .15s;
+}
+.asset-marker:hover { transform:scale(1.15); }
+.asset-marker.asset-marker-planned    { border-style:dashed; }
+.asset-marker.asset-marker-demolished { filter:grayscale(1); }
+.asset-marker-icon { line-height:1; user-select:none; }
+
+/* Gruppen-Marker (ein Marker pro Gebäude mit Icon-Reihe) */
+.asset-group {
+  display:flex; align-items:center; gap:1px;
+  background:rgba(30,30,30,.85); border:1px solid rgba(255,255,255,.25);
+  border-radius:6px; padding:2px;
+  box-shadow:0 2px 6px rgba(0,0,0,.5);
+  cursor:pointer; transition:transform .15s;
+}
+.asset-group:hover { transform:scale(1.1); }
+.asset-group-icon {
+  display:flex; align-items:center; justify-content:center;
+  border-radius:3px; color:#000; line-height:1;
+}
+
+/* Sammel-Marker (mittlerer Zoom): ein Icon + Zahl-Badge */
+.asset-group-collapsed {
+  position:relative;
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; line-height:1; padding:0;
+}
+.asset-group-count {
+  position:absolute; bottom:-4px; right:-4px;
+  min-width:12px; height:12px; padding:0 3px;
+  background:var(--accent, #4fc3f7); color:#000;
+  font-size:9px; font-weight:700; line-height:12px;
+  border-radius:6px; text-align:center;
+  box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+
+/* Popup-Liste mit Assets eines Gebäudes */
+.asset-list-popup .leaflet-popup-content-wrapper { padding:0; }
+.asset-list-popup .leaflet-popup-content { margin:0; }
+.asset-list { display:flex; flex-direction:column; padding:4px; min-width:180px; }
+.asset-list-row {
+  display:flex; align-items:center; gap:8px;
+  padding:6px 8px; cursor:pointer; border-radius:4px;
+  font-size:12px;
+}
+.asset-list-row:hover { background:rgba(0,0,0,.08); }
+.asset-list-icon {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:22px; height:22px; border-radius:4px; color:#000; font-size:13px;
+}
+.asset-list-name { flex:1; color:#222; }
+.asset-list-status { font-size:10px; padding:1px 6px; border-radius:3px; text-transform:uppercase; }
+.asset-list-status-active     { background:#c8e6c9; color:#1b5e20; }
+.asset-list-status-planned    { background:#fff3c4; color:#5d4037; }
+.asset-list-status-demolished { background:#eeeeee; color:#777; text-decoration:line-through; }
+
+/* Asset-Palette Buttons */
+.asset-palette {
+  position:absolute; top:70px; right:12px; z-index:500;
+  background:var(--surface); border:1px solid var(--border); border-radius:8px;
+  padding:6px; display:none; flex-direction:column; gap:4px; max-height:70vh; overflow:auto;
+}
+.asset-palette.visible { display:flex; }
+.asset-palette-title { font-size:11px; color:var(--muted); padding:2px 6px 4px; border-bottom:1px solid var(--border); margin-bottom:2px; }
+.asset-palette-btn {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text);
+  border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer;
+  display:flex; align-items:center; gap:6px; text-align:left; width:100%;
+}
+.asset-palette-btn:hover { background:var(--border); }
+.asset-palette-btn.active { background:var(--accent); color:#000; }
+.asset-palette-btn-icon { font-size:14px; }
+
+/* Asset-Inspector Panel */
+.asset-inspector {
+  position:absolute; top:70px; right:200px; z-index:501;
+  width:280px; max-height:75vh; overflow:auto;
+  background:var(--surface); border:1px solid var(--border); border-radius:8px;
+  box-shadow:0 4px 18px rgba(0,0,0,.4);
+  display:none; flex-direction:column;
+}
+.asset-inspector.visible { display:flex; }
+.asset-ins-header {
+  display:flex; align-items:center; gap:8px;
+  padding:8px 10px; border-top-left-radius:8px; border-top-right-radius:8px;
+  color:#000; font-weight:600;
+}
+.asset-ins-icon { font-size:18px; }
+.asset-ins-title { flex:1; }
+.asset-ins-close {
+  background:rgba(0,0,0,.25); border:none; color:#fff;
+  width:24px; height:24px; border-radius:50%; cursor:pointer; font-size:14px; line-height:1;
+}
+.asset-ins-body { padding:10px; display:flex; flex-direction:column; gap:8px; font-size:11px; }
+.asset-ins-body label { display:flex; flex-direction:column; gap:2px; color:var(--muted); font-size:10px; }
+.asset-ins-body input {
+  background:var(--bg); border:1px solid var(--border); color:var(--text);
+  border-radius:4px; padding:4px 6px; font-size:11px; font-family:inherit; outline:none;
+}
+.asset-ins-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.asset-ins-section-title { font-size:10px; color:var(--accent); margin-top:4px; text-transform:uppercase; letter-spacing:.05em; }
+.asset-ins-delete {
+  margin-top:10px; background:#b71c1c; color:#fff; border:none;
+  padding:6px 10px; border-radius:4px; cursor:pointer; font-size:11px;
+}
+.asset-ins-delete:hover { background:#d32f2f; }
+
 .chart-container{width:100%;height:200px;margin-top:10px;position:relative;}
 
 

@@ -29,9 +29,8 @@ cat "$SRC/styles/app.css" >> "$OUT"
 
 echo '</style>' >> "$OUT"
 
-# 2. HTML Body (zwischen </head> und den Script-Tags)
-# Extrahiere den Body aus index.html (überspringe head und script-tags)
-sed -n '/<\/head>/,/<!-- Config/p' index.html | head -n -1 >> "$OUT"
+# 2. HTML Body (zwischen </head> und dem module-Script)
+sed -n '/<\/head>/,/<script type="module"/p' index.html | head -n -1 >> "$OUT"
 
 # 3. JS-Module als <script>-Blöcke einfügen
 JS_FILES=(
@@ -70,7 +69,8 @@ JS_FILES=(
 
 for js in "${JS_FILES[@]}"; do
   echo "<script>" >> "$OUT"
-  cat "$js" >> "$OUT"
+  # ES-Module → globaler Scope: import/export entfernen, window.xyz → xyz
+  sed -e '/^import /d' -e 's/^export //' -e 's/window\.\([a-zA-Z_][a-zA-Z0-9_]*\)/\1/g' "$js" >> "$OUT"
   echo "" >> "$OUT"
   echo "</script>" >> "$OUT"
 done

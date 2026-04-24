@@ -507,6 +507,7 @@ export function finishAreaDraw() {
   showAreaEditPanel();
 }
 
+setTimeout(() => {
 map.on('click',e=>{
   if (window.isPlacingLwWp) { placeLwWpAt(e.latlng); return; }
   if (window.isPlacingGeo) {
@@ -687,6 +688,7 @@ document.addEventListener('keydown',e=>{
   }
   // Pfeiltasten: handled by new keyboard handler in live view section
 });
+}, 0);
 
 export function toggleDrawTrasse() {
   window.isDrawingTrasse = !window.isDrawingTrasse;

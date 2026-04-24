@@ -393,7 +393,7 @@ export function _renderExpandedPanel(g, stats) {
           data-input="updateField(${g.id},'spezHeizlast',this.value)"/>
       </div>
       <div class="inp-group">
-        <div class="inp-label">Baujahr</div>
+        <div class="inp-label">Baujahr${g.baujährQuelle ? ' <span title="'+g.baujährQuelle+'" style="cursor:help;opacity:0.6;font-size:0.8em">ⓘ '+g.baujährQuelle.split('(')[0].trim()+'</span>' : ''}</div>
         <input class="inp-field" type="number" placeholder="z.B. 1980" value="${escVal(g.baujahr)}"
           data-input="updateField(${g.id},'baujahr',this.value)"/>
       </div>
@@ -570,7 +570,7 @@ export function _buildProjectData() {
     gebaeude: window.gebaeude.map(g => ({
       id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
       flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
-      baujahr: g.baujahr, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen,
+      baujahr: g.baujahr, baujährQuelle: g.baujährQuelle || null, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen,
       stockwerke: g.stockwerke || 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
       pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil || 30, zustand: g.zustand || '',
       strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',

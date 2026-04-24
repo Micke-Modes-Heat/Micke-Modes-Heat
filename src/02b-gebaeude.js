@@ -378,8 +378,9 @@ export function addGebaeude(opts={}){
   const g={id,name:opts.name || nextGebName(opts.nutzung),waerme:'',spez:'',heizlast:'',spezHeizlast:'',
            flaeche:null,stockwerke:opts.stockwerke!=null?opts.stockwerke:1,nutzung:opts.nutzung||'',
            polygon:null,polygonLayer:null,circleMarker:null,labelMarker:null,
-           fromOsm:opts.fromOsm||false,osmId:opts.osmId||null,
-           baujahr: opts.baujahr!=null?opts.baujahr:null, abrissjahr: null, sanierungen: [], selected: false,
+           fromOsm:opts.fromOsm||false,fromWfs:opts.fromWfs||false,osmId:opts.osmId||null,
+           baujahr: opts.baujahr!=null?opts.baujahr:null, baujährQuelle: opts.baujährQuelle||null,
+           abrissjahr: null, sanierungen: [], selected: false,
            pvAktiv: false, pvDachanteil: 30,
            strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || ''};
   window.gebaeude.push(g);
@@ -387,7 +388,7 @@ export function addGebaeude(opts={}){
     g.polygon=opts.coords;
     g.flaeche=polygonAreaM2(opts.coords);
     attachPolygonLayer(g);
-    if(g.fromOsm && g.flaeche && g.flaeche > 0){
+    if((g.fromOsm || g.fromWfs) && g.flaeche && g.flaeche > 0){
       if(!g.stockwerke) g.stockwerke = 1;
       if(!g.baujahr) g.baujahr = parseInt(document.getElementById('osm-default-baujahr')?.value) || 1970;
       if(calcAutoEnergy(g) && !_batchImporting){ updateViz(); updateTotals(); recalcNetz(); }
@@ -396,6 +397,10 @@ export function addGebaeude(opts={}){
   if(!_batchImporting) renderList();
   if(!opts.coords) startDraw(id);
   if(!_batchImporting) updateViz();
+  // Unified Asset-System: Auto-Create UV + Verbraucher + PV (opt-in, nur wenn Layer sichtbar)
+  if (opts.coords && typeof window.autoCreateBuildingAssets === 'function') {
+    try { window.autoCreateBuildingAssets(g); } catch(e) { console.warn('autoCreateBuildingAssets:', e); }
+  }
   return g;
 }
 
@@ -482,43 +487,175 @@ export function clearOsmBuildings(){
 
 // Spez. Endenergie Wärme (kWh/m²a Wohnfläche) nach Baujahr – MFH-Referenz.
 // Quelle: IWU TABULA DE, Ist-Zustand ("Actual Building"), inkl. Warmwasser.
-export function getSpezNachBaujahr(baujahr) {
-  const y = parseInt(baujahr, 10);
-  if (y < 1919) return 210;   // Gründerzeit / Altbau
-  if (y <= 1948) return 190;   // Vorkrieg / Wiederaufbau
-  if (y <= 1957) return 175;   // frühe Nachkriegszeit
-  if (y <= 1968) return 160;   // Wirtschaftswunder
-  if (y <= 1978) return 150;   // vor WärmeschutzV 77
-  if (y <= 1986) return 130;   // WärmeschutzV 1977
-  if (y <= 1995) return 110;   // WärmeschutzV 1984
-  if (y <= 2001) return 90;    // WärmeschutzV 1995
-  if (y <= 2009) return 70;    // EnEV 2002
-  if (y <= 2015) return 55;    // EnEV 2009
-  return 40;                    // EnEV 2016 / GEG
+// ── IWU/TABULA Gebäudetypologie — spez. Wärmebedarf [kWh/m²a] ──────────────
+// Quelle: IWU Deutsche Gebäudetypologie 2015, TABULA WebTool
+// Zeilen: Baujahresklassen, Spalten: Gebäudetyp (unsanierter Zustand)
+export const IWU_SPEZ_WAERME = {
+  // [Baujahr-bis]: { efh, mfh, ghd, buero, schule, industrie, oeffentlich }
+  1918: { efh: 260, mfh: 195, ghd: 145, buero: 130, schule: 155, industrie: 80, oeffentlich: 160 },
+  1948: { efh: 230, mfh: 180, ghd: 135, buero: 120, schule: 140, industrie: 70, oeffentlich: 145 },
+  1957: { efh: 215, mfh: 165, ghd: 125, buero: 110, schule: 130, industrie: 65, oeffentlich: 135 },
+  1968: { efh: 200, mfh: 150, ghd: 115, buero: 100, schule: 120, industrie: 55, oeffentlich: 125 },
+  1978: { efh: 180, mfh: 135, ghd: 105, buero: 90,  schule: 105, industrie: 50, oeffentlich: 110 },
+  1986: { efh: 155, mfh: 115, ghd: 90,  buero: 75,  schule: 85,  industrie: 40, oeffentlich: 95 },
+  1995: { efh: 130, mfh: 95,  ghd: 75,  buero: 60,  schule: 70,  industrie: 35, oeffentlich: 80 },
+  2001: { efh: 100, mfh: 75,  ghd: 60,  buero: 50,  schule: 55,  industrie: 28, oeffentlich: 65 },
+  2009: { efh: 75,  mfh: 55,  ghd: 48,  buero: 40,  schule: 42,  industrie: 22, oeffentlich: 50 },
+  2015: { efh: 55,  mfh: 40,  ghd: 38,  buero: 32,  schule: 35,  industrie: 18, oeffentlich: 40 },
+  9999: { efh: 35,  mfh: 28,  ghd: 30,  buero: 25,  schule: 28,  industrie: 15, oeffentlich: 32 },
+};
+var _iwuGrenzen = Object.keys(IWU_SPEZ_WAERME).map(Number).sort(function(a,b){return a-b;});
+
+export function getSpezNachBaujahr(baujahr, nutzung) {
+  var y = parseInt(baujahr, 10) || 1970;
+  var typ = nutzung || '';
+  // IWU-Tabelle durchgehen
+  for (var i = 0; i < _iwuGrenzen.length; i++) {
+    if (y <= _iwuGrenzen[i]) {
+      var row = IWU_SPEZ_WAERME[_iwuGrenzen[i]];
+      return row[typ] || row.mfh; // MFH als Fallback wenn Nutzung unbekannt
+    }
+  }
+  var last = IWU_SPEZ_WAERME[9999];
+  return last[typ] || last.mfh;
 }
 
-// Nutzungs-Multiplikator relativ zur MFH-Referenz (IWU TABULA / BMWK-Benchmarks).
-// EFH ~30 % höher als MFH (TABULA-Ratio 1.25–1.30).
-// GHD/Büro/Schule: niedrigerer Flächenbezug, geringere interne Lasten.
-// Industrie: Raumwärme-Anteil deutlich niedriger (große Hallen, Prozesswärme separat).
-export const NUTZUNG_FAKTOR = {
-  efh: 1.30, mfh: 1.00, ghd: 0.75, buero: 0.65,
-  schule: 0.60, industrie: 0.35, oeffentlich: 0.80
-};
+// ── Stockwerk-Schätzung aus Gebäudetyp + Grundfläche ────────────────────────
+// Wenn keine Stockwerkzahl aus Daten vorliegt, schätzen wir anhand von
+// Gebäudetyp (GFK/Nutzung) und Grundfläche.
+export function estimateStockwerke(nutzung, flaecheM2) {
+  var f = flaecheM2 || 100;
+  switch (nutzung) {
+    case 'efh':    return f > 180 ? 1 : 2;          // großes EFH = Bungalow, sonst 2
+    case 'mfh':    return f < 200 ? 3 : (f < 500 ? 4 : 5); // nach Grundfläche gestaffelt
+    case 'buero':  return f < 300 ? 3 : 4;
+    case 'schule': return 2;
+    case 'industrie': return 1;
+    case 'ghd':    return f < 200 ? 1 : 2;
+    case 'oeffentlich': return f < 300 ? 2 : 3;
+    default:       return f < 120 ? 2 : 1;           // unbekannt: kleines Gebäude = 2, groß = 1
+  }
+}
+
+// ── Umfang eines Polygons [m] ────────────────────────────────────────────────
+export function polygonPerimeterM(coords) {
+  if (!coords || coords.length < 2) return 0;
+  var perim = 0;
+  for (var i = 0; i < coords.length; i++) {
+    var a = coords[i], b = coords[(i + 1) % coords.length];
+    // Haversine-Approximation (für kurze Distanzen reicht Equirectangular)
+    var dlat = (b.lat - a.lat) * 111320;
+    var dlng = (b.lng - a.lng) * 111320 * Math.cos(a.lat * Math.PI / 180);
+    perim += Math.sqrt(dlat * dlat + dlng * dlng);
+  }
+  return perim;
+}
+
+// ── Gemeinsame Wandlänge mit Nachbargebäuden [m] ─────────────────────────────
+// Erkennt geteilte Kanten (Reihenhaus, Doppelhaus) → reduziert Transmissionsverlust
+export function sharedWallLength(g, allGebaeude) {
+  if (!g.polygon || g.polygon.length < 3) return 0;
+  var shared = 0;
+  var SNAP = 0.000005; // ~0.5m Toleranz
+  for (var gi = 0; gi < allGebaeude.length; gi++) {
+    var other = allGebaeude[gi];
+    if (other.id === g.id || !other.polygon || other.polygon.length < 3) continue;
+    // Schneller Distanzcheck: Schwerpunkte > 50m auseinander → überspringen
+    var cLat = g.polygon.reduce(function(s,p){return s+p.lat;},0)/g.polygon.length;
+    var cLng = g.polygon.reduce(function(s,p){return s+p.lng;},0)/g.polygon.length;
+    var oLat = other.polygon.reduce(function(s,p){return s+p.lat;},0)/other.polygon.length;
+    var oLng = other.polygon.reduce(function(s,p){return s+p.lng;},0)/other.polygon.length;
+    if (Math.abs(cLat-oLat) > 0.001 || Math.abs(cLng-oLng) > 0.001) continue;
+
+    // Kanten vergleichen
+    for (var i = 0; i < g.polygon.length; i++) {
+      var a1 = g.polygon[i], a2 = g.polygon[(i+1) % g.polygon.length];
+      for (var j = 0; j < other.polygon.length; j++) {
+        var b1 = other.polygon[j], b2 = other.polygon[(j+1) % other.polygon.length];
+        // Kante geteilt wenn Endpunkte übereinstimmen (in beliebiger Richtung)
+        if ((Math.abs(a1.lat-b1.lat)<SNAP && Math.abs(a1.lng-b1.lng)<SNAP &&
+             Math.abs(a2.lat-b2.lat)<SNAP && Math.abs(a2.lng-b2.lng)<SNAP) ||
+            (Math.abs(a1.lat-b2.lat)<SNAP && Math.abs(a1.lng-b2.lng)<SNAP &&
+             Math.abs(a2.lat-b1.lat)<SNAP && Math.abs(a2.lng-b1.lng)<SNAP)) {
+          var dl = (a2.lat-a1.lat)*111320, dn = (a2.lng-a1.lng)*111320*Math.cos(a1.lat*Math.PI/180);
+          shared += Math.sqrt(dl*dl + dn*dn);
+        }
+      }
+    }
+  }
+  return shared;
+}
+
+// ── Heizlast aus Hüllfläche (vereinfachtes DIN 12831) ───────────────────────
+// Nutzt Geometrie (A/V-Verhältnis, gemeinsame Wände) statt pauschaler Volllaststunden
+export function calcHeizlastFromGeometry(g, allGebaeude) {
+  if (!g.polygon || !g.flaeche || !g.stockwerke) return null;
+  var stockwerke = g.stockwerke;
+  var geschosshoehe = 2.8; // m
+  var nutzflaeche = g.flaeche * stockwerke * 0.8;
+
+  // Hüllfläche berechnen
+  var perimeter = polygonPerimeterM(g.polygon);
+  var sharedWall = sharedWallLength(g, allGebaeude);
+  var freeWall = Math.max(0, perimeter - sharedWall);
+
+  var wandFlaeche = freeWall * stockwerke * geschosshoehe; // Außenwand ohne geteilte Wände
+  var dachFlaeche = g.flaeche;                              // Dach ≈ Grundfläche
+  var bodenFlaeche = g.flaeche;                             // Bodenplatte
+  var sharedWandFlaeche = sharedWall * stockwerke * geschosshoehe;
+
+  // U-Werte nach Baujahr [W/m²K] (vereinfacht, unsaniert)
+  var bj = parseInt(g.baujahr) || 1970;
+  var uWand, uDach, uBoden;
+  if      (bj < 1958) { uWand = 1.5;  uDach = 1.0;  uBoden = 1.0; }
+  else if (bj < 1979) { uWand = 1.2;  uDach = 0.7;  uBoden = 0.8; }
+  else if (bj < 1995) { uWand = 0.7;  uDach = 0.4;  uBoden = 0.5; }
+  else if (bj < 2009) { uWand = 0.35; uDach = 0.25; uBoden = 0.35; }
+  else                 { uWand = 0.24; uDach = 0.20; uBoden = 0.30; }
+
+  // Transmissionswärmeverlust [W/K]
+  var HT = wandFlaeche * uWand
+         + dachFlaeche * uDach
+         + bodenFlaeche * uBoden * 0.5  // Erdreich: reduzierter Temperaturunterschied
+         + sharedWandFlaeche * 0.05;    // Geteilte Wand: minimaler Verlust (Nachbar beheizt)
+
+  // Lüftungswärmeverlust [W/K] (0.5 Luftwechsel/h)
+  var volumen = nutzflaeche * geschosshoehe / 0.8; // Bruttovolumen
+  var HV = 0.34 * 0.5 * volumen; // 0.34 Wh/(m³K) × Luftwechselrate × Volumen
+
+  // Normheizlast [kW] bei ΔT = 35K (Auslegung: -12°C außen, 20°C innen, abzgl. interne Gewinne)
+  var deltaT = 32; // etwas reduziert durch interne Gewinne
+  var heizlastW = (HT + HV) * deltaT;
+  return heizlastW / 1000; // kW
+}
 
 export function calcAutoEnergy(g) {
-  if (!g.flaeche || !g.stockwerke || !g.baujahr) return false;
+  if (!g.flaeche || !g.baujahr) return false;
   if (g.waermeManual || g.heizlastManual) return false;
 
-  const nutzflaeche = g.flaeche * g.stockwerke * 0.8;
-  const faktor = NUTZUNG_FAKTOR[g.nutzung] ?? 1.0;
-  const spezBedarf = Math.round(getSpezNachBaujahr(g.baujahr) * faktor);
+  // Stockwerke schätzen wenn nicht vorhanden oder = 1 (WFS-Default)
+  if (!g.stockwerke || (g.stockwerke === 1 && (g.fromWfs || g.fromOsm) && !g._stockwerkeFromData)) {
+    g.stockwerke = estimateStockwerke(g.nutzung, g.flaeche);
+  }
 
-  const waermeKWh = nutzflaeche * spezBedarf;
+  var nutzflaeche = g.flaeche * g.stockwerke * 0.8;
+
+  // IWU/TABULA: spez. Wärmebedarf differenziert nach Baujahr UND Gebäudetyp
+  var spezBedarf = Math.round(getSpezNachBaujahr(g.baujahr, g.nutzung));
+
+  var waermeKWh = nutzflaeche * spezBedarf;
   g.waerme = Math.round((waermeKWh / 1000) * 10) / 10;
   g.spez = spezBedarf;
-  g.heizlast = Math.round((waermeKWh / 2000) * 10) / 10;
-  g.spezHeizlast = Math.round((g.heizlast * 1000 / nutzflaeche) * 10) / 10;
+
+  // Heizlast: geometriebasiert (Hüllfläche, U-Werte, gemeinsame Wände)
+  var geomHeizlast = calcHeizlastFromGeometry(g, window.gebaeude || []);
+  if (geomHeizlast && geomHeizlast > 0) {
+    g.heizlast = Math.round(geomHeizlast * 10) / 10;
+  } else {
+    // Fallback: Volllaststunden-Methode
+    g.heizlast = Math.round((waermeKWh / 2000) * 10) / 10;
+  }
+  g.spezHeizlast = nutzflaeche > 0 ? Math.round((g.heizlast * 1000 / nutzflaeche) * 10) / 10 : 0;
   return true;
 }
 

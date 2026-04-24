@@ -390,7 +390,12 @@ export function finishDraw(){
     if(g.waerme) g.spez = Math.round(parseFloat(g.waerme)*1000/g.flaeche*10)/10;
     if(g.heizlast) g.spezHeizlast = Math.round(parseFloat(g.heizlast)*1000/g.flaeche*10)/10;
   }
-  
+
+  // Unified Asset-System: Auto-Create UV + Verbraucher + PV (opt-in)
+  if (typeof window.autoCreateBuildingAssets === 'function') {
+    try { window.autoCreateBuildingAssets(g); } catch(e) { console.warn('autoCreateBuildingAssets:', e); }
+  }
+
   renderList();updateViz();
 }
 
@@ -581,59 +586,528 @@ export function pointInPolygon(pt, poly) {
 }
 
 // Overpass-API — alle Server parallel anfragen, schnellste Antwort gewinnt
+// ── WFS Gebäude-Import (amtliche Katasterdaten) ─────────────────────────────
+// 13 von 16 Bundesländern haben kostenlose WFS-Dienste für Gebäudegrundrisse.
+// Nur Bayern ist gesperrt → dort Overpass-Fallback.
+var WFS_CONFIG = {
+  // {id: {url, layer, srsName (optional, default EPSG:4326)}}
+  nw: { url: 'https://www.wfs.nrw.de/geobasis/wfs_nw_alkis_vereinfacht', layer: 'ave:GebaeudeBauwerk' },
+  ni: { url: 'https://opendata.lgln.niedersachsen.de/doorman/noauth/alkis_wfs_einfach', layer: 'ave:GebaeudeBauwerk' },
+  he: { url: 'https://www.gds.hessen.de/wfs2/aaa-suite/cgi-bin/alkis/vereinf/wfs', layer: 'ave:GebaeudeBauwerk' },
+  bw: { url: 'https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_LGL-BW_ALKIS', layer: 'nora:v_al_gebaeude' },
+  be: { url: 'https://gdi.berlin.de/services/wfs/alkis_gebaeude', layer: 'alkis_gebaeude:gebaeude' },
+  bb: { url: 'https://isk.geobasis-bb.de/ows/alkis_vereinf_wfs', layer: 'ave:GebaeudeBauwerk' },
+  sh: { url: 'https://service.gdi-sh.de/WFS_SH_ALKIS_vereinf_OpenGBD', layer: 'ave:GebaeudeBauwerk' },
+  th: { url: 'https://www.geoproxy.geoportal-th.de/geoproxy/services/adv_alkis_wfs', layer: 'ave:GebaeudeBauwerk' },
+  sn: { url: 'https://geodienste.sachsen.de/aaa/public_alkis/vereinf/wfs', layer: 'ave:GebaeudeBauwerk' },
+  rp: { url: 'https://geo5.service24.rlp.de/wfs/alkis_rp.fcgi', layer: 'ave:GebaeudeBauwerk' },
+  mv: { url: 'https://www.geodaten-mv.de/dienste/alkis_wfs_einfach', layer: 'ave:GebaeudeBauwerk' },
+  hh: { url: 'https://geodienste.hamburg.de/HH_WFS_INSPIRE_Gebaeude_2D_ALKIS', layer: 'bu-core2d:Building' },
+  hb: { url: 'https://geodienste.bremen.de/wfs_alkis_hausumringe', layer: 'app:hausumringe' },
+  st: { url: 'https://www.geodatenportal.sachsen-anhalt.de/wss/service/ST_LVermGeo_ALKIS_WFS_OpenData/guest', layer: 'ave:GebaeudeBauwerk' },
+  sl: { url: 'https://geoportal.saarland.de/registry/wfs/414', layer: 'ALKIS_ALKIS_WFS_ohne_Eig:GebaeudeBauwerk' },
+  // Bayern: kein freier WFS → null = Overpass-Fallback
+  by: null
+};
+
+// Grobe Bounding-Boxes der Bundesländer [südlat, westlon, nordlat, ostlon]
+// Bei Überlappung wird das erste Match verwendet; Sortierung: kleinere Stadtstaaten zuerst
+var BUNDESLAND_BBOX = [
+  { id: 'hb', bbox: [53.01, 8.48, 53.60, 8.99] },
+  { id: 'hh', bbox: [53.39, 9.73, 53.74, 10.33] },
+  { id: 'be', bbox: [52.33, 13.08, 52.68, 13.77] },
+  { id: 'sl', bbox: [49.11, 6.35, 49.64, 7.41] },
+  { id: 'sh', bbox: [53.35, 7.87, 55.06, 11.35] },
+  { id: 'mv', bbox: [53.11, 10.59, 54.69, 14.41] },
+  { id: 'ni', bbox: [51.29, 6.65, 53.89, 11.60] },
+  { id: 'bb', bbox: [51.36, 11.26, 53.56, 14.77] },
+  { id: 'st', bbox: [50.94, 10.56, 53.04, 13.19] },
+  { id: 'nw', bbox: [50.32, 5.87, 52.53, 9.46] },
+  { id: 'he', bbox: [49.39, 7.77, 51.66, 10.24] },
+  { id: 'th', bbox: [50.20, 9.87, 51.65, 12.66] },
+  { id: 'sn', bbox: [50.17, 11.87, 51.69, 15.04] },
+  { id: 'rp', bbox: [48.97, 6.11, 50.94, 8.51] },
+  { id: 'bw', bbox: [47.53, 7.51, 49.79, 10.50] },
+  { id: 'by', bbox: [47.27, 8.98, 50.56, 13.84] },
+];
+
+export function _detectBundesland(lat, lon) {
+  for (var i = 0; i < BUNDESLAND_BBOX.length; i++) {
+    var b = BUNDESLAND_BBOX[i].bbox;
+    if (lat >= b[0] && lat <= b[2] && lon >= b[1] && lon <= b[3]) {
+      return BUNDESLAND_BBOX[i].id;
+    }
+  }
+  return null;
+}
+
+function _wfsBuildUrl(cfg, bbox4326) {
+  // bbox: [south, west, north, east] in EPSG:4326
+  var params = [
+    'service=WFS',
+    'version=2.0.0',
+    'request=GetFeature',
+    'typeNames=' + encodeURIComponent(cfg.layer),
+    'bbox=' + bbox4326.join(',') + ',EPSG:4326',
+    'srsName=EPSG:4326',
+    'count=10000'
+  ];
+  return cfg.url + '?' + params.join('&');
+}
+
+export function _wfsFetchBuildings(bbox4326) {
+  var center = [(bbox4326[0] + bbox4326[2]) / 2, (bbox4326[1] + bbox4326[3]) / 2];
+  var blId = _detectBundesland(center[0], center[1]);
+  if (!blId || !WFS_CONFIG[blId]) return Promise.resolve(null); // Bayern oder Ausland
+
+  var cfg = WFS_CONFIG[blId];
+  var blName = blId.toUpperCase();
+  showHint('⏳ Lade Gebäude vom Katasteramt (' + blName + ')…');
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 25000);
+  var startTime = Date.now();
+
+  // Sekundenzähler
+  var ticker = setInterval(function() {
+    var elapsed = Math.round((Date.now() - startTime) / 1000);
+    showHint('⏳ Lade Gebäude vom Katasteramt (' + blName + ', ' + elapsed + 's)…');
+  }, 1000);
+
+  var url = _wfsBuildUrl(cfg, bbox4326);
+  return fetch(url, { signal: ctrl.signal })
+    .then(function(resp) {
+      clearTimeout(timer); clearInterval(ticker);
+      if (!resp.ok) throw new Error('WFS HTTP ' + resp.status);
+      return resp.text();
+    })
+    .then(function(txt) {
+      clearTimeout(timer); clearInterval(ticker);
+      var geojson;
+      // Manche Server liefern GeoJSON, die meisten GML
+      if (txt.trim().startsWith('{')) {
+        geojson = JSON.parse(txt);
+      } else {
+        geojson = _parseWfsGml(txt);
+      }
+      if (!geojson || !geojson.features || geojson.features.length === 0) return null;
+      showHint('✓ ' + geojson.features.length + ' Gebäude vom Katasteramt (' + blName + ')');
+      return geojson;
+    })
+    .catch(function(err) {
+      clearTimeout(timer); clearInterval(ticker);
+      console.warn('WFS-Fehler (' + blName + '):', err.message);
+      return null; // Fallback auf Overpass
+    });
+}
+
+function _parseWfsGml(xml) {
+  // GML-Parser für ALKIS-vereinfacht WFS-Antworten
+  var features = [];
+  var parser = new DOMParser();
+  var doc = parser.parseFromString(xml, 'text/xml');
+  var members = doc.querySelectorAll('member, featureMember');
+  members.forEach(function(member) {
+    var posLists = member.querySelectorAll('posList');
+    if (posLists.length === 0) return;
+
+    // Alle Ringe des Gebäudes sammeln (MultiSurface)
+    var rings = [];
+    posLists.forEach(function(pl) {
+      var text = pl.textContent.trim();
+      var nums = text.split(/\s+/).map(Number);
+      var ring = [];
+      // EPSG:4326 axis order: lat lon lat lon ...
+      for (var i = 0; i + 1 < nums.length; i += 2) {
+        ring.push([nums[i + 1], nums[i]]); // [lon, lat] für GeoJSON
+      }
+      if (ring.length >= 3) rings.push(ring);
+    });
+    if (rings.length === 0) return;
+
+    // Properties auslesen
+    var props = {};
+    var _txt = function(tag) {
+      var el = member.querySelector(tag);
+      return el ? el.textContent.trim() : '';
+    };
+    props.funktion = _txt('funktion');
+    props.gebnutzbez = _txt('gebnutzbez');
+    props.lagebeztxt = _txt('lagebeztxt');
+    props.gfkzshh = _txt('gfkzshh');
+    props.aktualit = _txt('aktualit');
+
+    // GFK-Code aus gfkzshh extrahieren (Format: "31001_1000" → 1000)
+    var gfkMatch = (props.gfkzshh || '').match(/_(\d+)/);
+    if (gfkMatch) props.gebaeudefunktion = gfkMatch[1];
+
+    features.push({
+      type: 'Feature',
+      properties: props,
+      geometry: { type: 'Polygon', coordinates: [rings[0]] }
+    });
+    // Bei MultiSurface: weitere Ringe als separate Features
+    for (var r = 1; r < rings.length; r++) {
+      features.push({
+        type: 'Feature',
+        properties: props,
+        geometry: { type: 'Polygon', coordinates: [rings[r]] }
+      });
+    }
+  });
+  return { type: 'FeatureCollection', features: features };
+}
+
+export function parseWfsGeoJson(geojson, snapArea) {
+  // Konvertiert WFS-GeoJSON in das gleiche Format wie parseOsmData
+  var existingPolygons = new Set(gebaeude.filter(function(g) { return g.polygon; }).map(function(g) {
+    // Einfacher Fingerprint: Schwerpunkt gerundet
+    var c = g.polygon.reduce(function(s, p) { return { lat: s.lat + p.lat, lng: s.lng + p.lng }; }, { lat: 0, lng: 0 });
+    return Math.round(c.lat / g.polygon.length * 1e5) + '_' + Math.round(c.lng / g.polygon.length * 1e5);
+  }));
+
+  var defaultBj = parseInt(document.getElementById('osm-default-baujahr')?.value) || 1970;
+  var result = [];
+
+  geojson.features.forEach(function(feat) {
+    var geom = feat.geometry;
+    if (!geom) return;
+    // Polygon oder MultiPolygon
+    var rings = [];
+    if (geom.type === 'Polygon') {
+      rings = [geom.coordinates[0]]; // Äußerer Ring
+    } else if (geom.type === 'MultiPolygon') {
+      geom.coordinates.forEach(function(poly) { rings.push(poly[0]); });
+    } else return;
+
+    rings.forEach(function(ring) {
+      if (!ring || ring.length < 3) return;
+      // GeoJSON: [lon, lat] → Leaflet: {lat, lng}
+      var coords = ring.map(function(c) { return { lat: c[1], lng: c[0] }; });
+
+      // Fläche prüfen: zu kleine Polygone (<10 m²) überspringen (Garagen etc.)
+      var area = polygonAreaM2(coords);
+      if (area < 10) return;
+
+      // Deduplizierung
+      var sumLat = 0, sumLng = 0;
+      coords.forEach(function(c) { sumLat += c.lat; sumLng += c.lng; });
+      var fp = Math.round(sumLat / coords.length * 1e5) + '_' + Math.round(sumLng / coords.length * 1e5);
+      if (existingPolygons.has(fp)) return;
+      existingPolygons.add(fp);
+
+      // Gebiet-Filter
+      if (snapArea && snapArea.length >= 3) {
+        var center = { lat: sumLat / coords.length, lng: sumLng / coords.length };
+        if (!pointInPolygon(center, snapArea)) return;
+      }
+
+      // Gebäudefunktion aus WFS-Properties auslesen (ALKIS-Schlüssel)
+      var props = feat.properties || {};
+      var nutzung = _wfsNutzung(props);
+      var stockwerke = parseInt(props.anzahlDerOberirdischenGeschosse || props.geschosszahl || props.stockwerke) || 1;
+
+      result.push({
+        coords: coords,
+        name: props.name || props.lagebezeichnung || null,
+        fromOsm: false,
+        fromWfs: true,
+        osmId: null,
+        stockwerke: stockwerke,
+        baujahr: parseInt(props.baujahr) || defaultBj,
+        nutzung: nutzung
+      });
+    });
+  });
+
+  return result;
+}
+
+function _wfsNutzung(props) {
+  // ALKIS Gebäudefunktion → Nutzungstyp
+  // Schlüssel: GFK (Gebäudefunktion) vierstellig, z.B. 1000=Wohngebäude
+  var gfk = parseInt(props.gebaeudefunktion || props.GFK || props.gebaeudeFunktion || '') || 0;
+  var text = (props.funktion || props.gebaeudefunktionText || props.funktion_text || props.nutzung || '').toLowerCase();
+
+  // GFK-Hauptgruppen (AdV ALKIS-Katalog)
+  if (gfk >= 1000 && gfk < 1100) return 'efh'; // Wohngebäude (1000-1099)
+  if (gfk >= 1100 && gfk < 1200) return 'mfh'; // Wohngebäude mit Mehrfachnutzung
+  if (gfk >= 2000 && gfk < 2100) return 'buero'; // Bürogebäude
+  if (gfk >= 2100 && gfk < 2200) return 'ghd';   // Handelsgebäude
+  if (gfk >= 2200 && gfk < 2300) return 'ghd';   // Gebäude für Gewerbe/Industrie (klein)
+  if (gfk >= 2300 && gfk < 2400) return 'industrie'; // Industriegebäude
+  if (gfk >= 2400 && gfk < 2500) return 'ghd';   // Verkehrsgebäude
+  if (gfk >= 2500 && gfk < 2600) return 'ghd';   // Gebäude für Versorgung
+  if (gfk >= 3000 && gfk < 3100) return 'schule'; // Bildungsgebäude
+  if (gfk >= 3100 && gfk < 3200) return 'oeffentlich'; // Krankenhaus/Gesundheit
+  if (gfk >= 3200 && gfk < 3300) return 'oeffentlich'; // Kultur
+  if (gfk >= 3400 && gfk < 3500) return 'oeffentlich'; // Kirche/Religion
+  if (gfk >= 3500 && gfk < 3600) return 'oeffentlich'; // Sicherheit/Ordnung
+
+  // Text-Fallback
+  if (text.includes('wohn')) return text.includes('mehr') ? 'mfh' : 'efh';
+  if (text.includes('schule') || text.includes('kinder')) return 'schule';
+  if (text.includes('büro') || text.includes('verwalt')) return 'buero';
+  if (text.includes('industrie') || text.includes('fabrik')) return 'industrie';
+  if (text.includes('kirche') || text.includes('rathaus') || text.includes('kranken')) return 'oeffentlich';
+  if (text.includes('handel') || text.includes('laden') || text.includes('gewerbe')) return 'ghd';
+  return '';
+}
+
+// ── Baujahr-Anreicherung aus externen Quellen ───────────────────────────────
+// Hamburg: OGC API Features mit Baualtersklasse pro Zone (ALKIS + Zensus 2022)
+// NRW: Energieatlas WMS mit spez. Wärmebedarf pro Baublock → Baujahresklasse
+
+// Baualtersklassen-String → mittleres Baujahr
+function _parseHHBaualtersklasse(str) {
+  if (!str) return null;
+  // Format: "81.82% 1860-1918" → extrahiere Jahreszahlen
+  var m = str.match(/(\d{4})\s*-\s*(\d{4})/);
+  if (m) return Math.round((parseInt(m[1]) + parseInt(m[2])) / 2);
+  if (str.indexOf('vor 1860') >= 0) return 1850;
+  if (str.indexOf('nger als 2016') >= 0 || str.indexOf('nach 2015') >= 0) return 2018;
+  // Einzeljahr
+  var singleY = str.match(/(\d{4})/);
+  if (singleY) return parseInt(singleY[1]);
+  return null;
+}
+
+function _enrichBaujahrHamburg(bbox, buildings) {
+  // bbox: [south, west, north, east]
+  var url = 'https://api.hamburg.de/datasets/v1/gebaeudestruktur_kwp/collections/gebaeudestruktur/items'
+    + '?f=json&limit=200&bbox=' + bbox[1] + ',' + bbox[0] + ',' + bbox[3] + ',' + bbox[2];
+
+  return fetch(url, { signal: AbortSignal.timeout(15000) })
+    .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
+    .then(function(data) {
+      if (!data.features || data.features.length === 0) return 0;
+
+      // Polygone der Zonen vorbereiten (GeoJSON [lon,lat] → {lat,lng})
+      var zones = data.features.map(function(f) {
+        var props = f.properties || {};
+        var bj = _parseHHBaualtersklasse(props.erste_baualtersklasse);
+        if (!bj) return null;
+        var coords = [];
+        if (f.geometry && f.geometry.type === 'Polygon' && f.geometry.coordinates) {
+          coords = f.geometry.coordinates[0].map(function(c) { return { lat: c[1], lng: c[0] }; });
+        } else if (f.geometry && f.geometry.type === 'MultiPolygon') {
+          coords = f.geometry.coordinates[0][0].map(function(c) { return { lat: c[1], lng: c[0] }; });
+        }
+        if (coords.length < 3) return null;
+        return { baujahr: bj, polygon: coords, klasse: props.erste_baualtersklasse };
+      }).filter(Boolean);
+
+      if (zones.length === 0) return 0;
+
+      // Für jedes Gebäude ohne echtes Baujahr: in welcher Zone liegt der Schwerpunkt?
+      var enriched = 0;
+      buildings.forEach(function(b) {
+        if (b._hasOsmBj) return; // OSM-Baujahr hat Vorrang
+        var cLat = 0, cLng = 0;
+        b.coords.forEach(function(c) { cLat += c.lat; cLng += c.lng; });
+        cLat /= b.coords.length; cLng /= b.coords.length;
+        var pt = { lat: cLat, lng: cLng };
+
+        for (var i = 0; i < zones.length; i++) {
+          if (pointInPolygon(pt, zones[i].polygon)) {
+            b.baujahr = zones[i].baujahr;
+            b.baujährQuelle = 'HH-KWP (' + zones[i].klasse.replace(/^\d+(\.\d+)?%\s*/, '') + ')';
+            enriched++;
+            return;
+          }
+        }
+      });
+      return enriched;
+    })
+    .catch(function(err) {
+      console.warn('Hamburg KWP Baujahr-Abfrage fehlgeschlagen:', err.message);
+      return 0;
+    });
+}
+
+// NRW Energieatlas: spez. Wärmebedarf → Baujahresklasse (Rückschluss über IWU-Typologie)
+function _spezWaermeToBarujahr(spezKwh) {
+  // Ungefähre Zuordnung: höherer spez. Bedarf = älteres Gebäude
+  if (spezKwh > 200) return 1935;    // vor 1948 (unsanierter Altbau)
+  if (spezKwh > 160) return 1960;    // 1949-1968
+  if (spezKwh > 130) return 1975;    // 1969-1978
+  if (spezKwh > 100) return 1988;    // 1979-1994
+  if (spezKwh > 70)  return 2002;    // 1995-2009
+  if (spezKwh > 40)  return 2014;    // 2010-2020 (EnEV)
+  return 2020;                        // GEG/KfW
+}
+
+function _enrichBaujahrNRW(bbox, buildings) {
+  // Energieatlas WMS GetFeatureInfo für den Mittelpunkt der Bounding Box
+  // EPSG:25832 Transformation: vereinfacht über UTM Zone 32
+  var centerLat = (bbox[0] + bbox[2]) / 2;
+  var centerLng = (bbox[1] + bbox[3]) / 2;
+
+  // Grobe Transformation WGS84 → UTM32N (EPSG:25832)
+  var k0 = 0.9996, e = 0.00669438, a = 6378137;
+  var lonRad = centerLng * Math.PI / 180, latRad = centerLat * Math.PI / 180;
+  var N = a / Math.sqrt(1 - e * Math.sin(latRad) * Math.sin(latRad));
+  var T = Math.tan(latRad) * Math.tan(latRad);
+  var C = e * Math.cos(latRad) * Math.cos(latRad) / (1 - e);
+  var A = Math.cos(latRad) * (lonRad - 9 * Math.PI / 180);
+  var M = a * ((1 - e/4 - 3*e*e/64) * latRad - (3*e/8 + 3*e*e/32) * Math.sin(2*latRad) + (15*e*e/256) * Math.sin(4*latRad));
+  var easting = k0 * N * (A + (1-T+C)*A*A*A/6) + 500000;
+  var northing = k0 * (M + N * Math.tan(latRad) * (A*A/2 + (5-T+9*C+4*C*C)*A*A*A*A/24));
+
+  // BBox für WMS (400m × 400m Fenster um den Mittelpunkt)
+  var halfW = 200;
+  var wmsBbox = (easting - halfW) + ',' + (northing - halfW) + ',' + (easting + halfW) + ',' + (northing + halfW);
+
+  var url = 'https://www.wms.nrw.de/umwelt/energieatlas'
+    + '?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo'
+    + '&LAYERS=wk_raumwaermebedarf_baublock&QUERY_LAYERS=wk_raumwaermebedarf_baublock'
+    + '&STYLES=&CRS=EPSG:25832&BBOX=' + wmsBbox
+    + '&WIDTH=256&HEIGHT=256&I=128&J=128'
+    + '&INFO_FORMAT=text/xml';
+
+  return fetch(url, { signal: AbortSignal.timeout(10000) })
+    .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.text(); })
+    .then(function(txt) {
+      // XML parsen — suche nach spezifisch_raumwaermebedarf_kwh_m2
+      var match = txt.match(/raumwaermebedarf[^>]*>(\d+(?:\.\d+)?)</i);
+      if (!match) return 0;
+      var spezKwh = parseFloat(match[1]);
+      if (isNaN(spezKwh) || spezKwh <= 0) return 0;
+
+      var estimatedBj = _spezWaermeToBarujahr(spezKwh);
+      var enriched = 0;
+
+      buildings.forEach(function(b) {
+        if (b._hasOsmBj || b.baujährQuelle) return;
+        b.baujahr = estimatedBj;
+        b.baujährQuelle = 'NRW-Energieatlas (' + Math.round(spezKwh) + ' kWh/m²)';
+        enriched++;
+      });
+      return enriched;
+    })
+    .catch(function(err) {
+      console.warn('NRW Energieatlas Baujahr-Abfrage fehlgeschlagen:', err.message);
+      return 0;
+    });
+}
+
+// Dispatcher: wählt die richtige Quelle nach Bundesland
+function _enrichBaujahrFromSources(bbox, blId, buildings) {
+  if (blId === 'hh') {
+    showHint('🔍 Lade Baualtersklassen (Hamburg KWP)…');
+    return _enrichBaujahrHamburg(bbox, buildings);
+  }
+  if (blId === 'nw') {
+    showHint('🔍 Lade Wärmebedarf (NRW Energieatlas)…');
+    return _enrichBaujahrNRW(bbox, buildings);
+  }
+  // Andere Bundesländer: aktuell keine externe Baujahr-Quelle
+  return Promise.resolve(0);
+}
+
+// ── Overpass (Fallback für Bayern + Ausland) ─────────────────────────────────
 export var OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
 ];
-export function _overpassFetchWithRetry(query) {
-  // Gestaffelt-parallel: Hauptserver sofort, Backup nach 5s/10s.
-  // Wer zuerst antwortet, gewinnt. Spart Rate-Limit vs. voll-parallel.
-  showHint('⏳ OSM-Gebäude werden geladen…');
+var _overpassServerNames = ['overpass-api.de', 'kumi.systems', 'maps.mail.ru'];
+var _overpassCancelled = false;
+
+function _overpassSingleAttempt(query) {
   var done = false;
   var controllers = [];
   var failures = 0;
-  var STAGGER = [0, 5000, 10000]; // ms Verzögerung pro Server
+  var serverStatus = OVERPASS_ENDPOINTS.map(function() { return 'wartet…'; });
+  var total = OVERPASS_ENDPOINTS.length;
+
+  function updateStatus(elapsed) {
+    if (done) return;
+    var lines = serverStatus.map(function(s, i) { return _overpassServerNames[i] + ': ' + s; });
+    showHint('⏳ OSM-Laden (' + elapsed + 's)  —  ' + lines.join('  |  '));
+  }
+
   return new Promise(function(resolve) {
-    function tryEndpoint(idx) {
-      if (done || idx >= OVERPASS_ENDPOINTS.length) return;
-      var endpoint = OVERPASS_ENDPOINTS[idx];
+    var startTime = Date.now();
+    var ticker = setInterval(function() {
+      if (done || _overpassCancelled) { clearInterval(ticker); return; }
+      updateStatus(Math.round((Date.now() - startTime) / 1000));
+    }, 500);
+
+    OVERPASS_ENDPOINTS.forEach(function(endpoint, idx) {
       var ctrl = new AbortController();
       controllers.push(ctrl);
-      var timer = setTimeout(function() { ctrl.abort(); }, 30000);
+      serverStatus[idx] = '🔄';
+      var timer = setTimeout(function() { ctrl.abort(); }, 20000);
       fetch(endpoint, {
         method: 'POST',
         body: 'data=' + encodeURIComponent(query),
         signal: ctrl.signal
       }).then(function(resp) {
         clearTimeout(timer);
-        if (done) return;
-        if (!resp.ok || resp.status === 429 || resp.status === 504) throw new Error('HTTP ' + resp.status);
+        if (done || _overpassCancelled) return;
+        if (!resp.ok || resp.status === 429 || resp.status === 504) {
+          serverStatus[idx] = '⚠ HTTP ' + resp.status;
+          throw new Error('HTTP ' + resp.status);
+        }
+        serverStatus[idx] = '📥 Daten empfangen…';
+        updateStatus(Math.round((Date.now() - startTime) / 1000));
         return resp.json();
       }).then(function(data) {
-        if (done || !data) return;
+        if (done || _overpassCancelled || !data) return;
+        if (!data.elements || data.elements.length === 0) {
+          serverStatus[idx] = '⚠ leer';
+          throw new Error('Leere Antwort');
+        }
+        serverStatus[idx] = '✓ ' + data.elements.length + ' Elemente';
         done = true;
+        clearInterval(ticker);
         controllers.forEach(function(c) { try { c.abort(); } catch(e){} });
         resolve(data);
-      }).catch(function() {
+      }).catch(function(err) {
         clearTimeout(timer);
+        if (!serverStatus[idx].startsWith('⚠')) serverStatus[idx] = '✗ ' + (err.name === 'AbortError' ? 'Timeout' : 'Fehler');
         failures++;
-        if (failures >= OVERPASS_ENDPOINTS.length && !done) {
+        if (failures >= total && !done) {
           done = true;
-          showHint('⚠ OSM-Server nicht erreichbar — bitte später erneut versuchen');
-          setTimeout(hideHint, 5000);
+          clearInterval(ticker);
           resolve(null);
         }
       });
-    }
-    // Gestaffelt starten
-    OVERPASS_ENDPOINTS.forEach(function(_, idx) {
-      setTimeout(function() { tryEndpoint(idx); }, STAGGER[idx] || idx * 5000);
     });
   });
 }
 
-async function loadOsmBuildings(){
+export function _overpassFetchWithRetry(query) {
+  var MAX_RETRIES = 3;
+  _overpassCancelled = false;
+
+  return new Promise(function(resolve) {
+    function attempt(retryNum) {
+      if (_overpassCancelled) { resolve(null); return; }
+      if (retryNum > 0) {
+        showHint('🔁 Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ' — Server werden erneut angefragt…');
+      }
+      _overpassSingleAttempt(query).then(function(data) {
+        if (_overpassCancelled) { resolve(null); return; }
+        if (data) {
+          resolve(data);
+        } else if (retryNum < MAX_RETRIES) {
+          var wait = 2 + retryNum * 2; // 2s, 4s, 6s Pause
+          showHint('⚠ Alle Server fehlgeschlagen — neuer Versuch in ' + wait + 's… (Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ')');
+          setTimeout(function() { attempt(retryNum + 1); }, wait * 1000);
+        } else {
+          showHint('⚠ OSM-Server nicht erreichbar nach ' + (MAX_RETRIES + 1) + ' Versuchen — bitte Gebiet verkleinern oder später erneut versuchen');
+          setTimeout(hideHint, 8000);
+          resolve(null);
+        }
+      });
+    }
+    attempt(0);
+  });
+}
+
+export async function loadOsmBuildings(){
   // Snapshot the area polygon coords immediately before anything else runs,
   // so hidePanels() or async timing can't clear/mutate them underneath us.
   const snapArea = (areaLatLngs && areaLatLngs.length >= 3)
@@ -643,43 +1117,73 @@ async function loadOsmBuildings(){
   hidePanels();
   const btn=document.getElementById('osm-btn');
   btn.classList.add('loading');
-  showHint('OSM-Gebäude werden geladen…');
 
-  let polyFilter;
-  if(snapArea && snapArea.length >= 3){
-    // Overpass poly-Filter: schneller als bbox bei unregelmäßigen Gebieten
-    polyFilter = snapArea.map(p => p.lat.toFixed(6) + ' ' + p.lng.toFixed(6)).join(' ');
-  }
+  // BBox berechnen (für WFS und Overpass)
   let bbox;
-  if(!polyFilter){
+  if(snapArea && snapArea.length >= 3){
+    let minLat=90, maxLat=-90, minLng=180, maxLng=-180;
+    snapArea.forEach(p => {
+      if(p.lat < minLat) minLat = p.lat; if(p.lat > maxLat) maxLat = p.lat;
+      if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
+    });
+    bbox = [minLat, minLng, maxLat, maxLng];
+  } else {
     const b=map.getBounds();
-    // Sicherheitsgrenze: max ~5 km Kantenlänge, sonst zu viele Gebäude
-    const maxSpan = 0.05; // ~5 km
+    const maxSpan = 0.05;
     const cLat = b.getCenter().lat, cLng = b.getCenter().lng;
     const latSpan = Math.min((b.getNorth() - b.getSouth()) / 2, maxSpan);
     const lngSpan = Math.min((b.getEast() - b.getWest()) / 2, maxSpan);
     bbox=[cLat - latSpan, cLng - lngSpan, cLat + latSpan, cLng + lngSpan];
   }
 
-  const areaFilter = polyFilter
-    ? `(poly:"${polyFilter}")`
-    : `(${bbox.join(',')})`;
-  const query=`[out:json][timeout:30];
+  let toAdd = [];
+
+  try{
+    // ── 1. WFS versuchen (amtliches Kataster, schnell & zuverlässig) ──
+    const wfsData = await _wfsFetchBuildings(bbox);
+    if (wfsData && wfsData.features && wfsData.features.length > 0) {
+      toAdd = parseWfsGeoJson(wfsData, snapArea);
+    }
+
+    // ── 2. Overpass-Fallback (Bayern, Ausland, oder WFS leer) ──
+    if (toAdd.length === 0) {
+      const blId = _detectBundesland((bbox[0]+bbox[2])/2, (bbox[1]+bbox[3])/2);
+      if (wfsData !== null) {
+        showHint('⏳ WFS ohne Ergebnis — versuche OpenStreetMap…');
+      }
+      let polyFilter;
+      if(snapArea && snapArea.length >= 3){
+        polyFilter = snapArea.map(p => p.lat.toFixed(6) + ' ' + p.lng.toFixed(6)).join(' ');
+      }
+      const areaFilter = polyFilter
+        ? `(poly:"${polyFilter}")`
+        : `(${bbox.join(',')})`;
+      const query=`[out:json][timeout:30];
 (way["building"]${areaFilter};);
 out body;>;out skel qt;`;
 
-  try{
-    const data = await _overpassFetchWithRetry(query, btn);
-    if (!data) { btn.classList.remove('loading'); return; }
+      const data = await _overpassFetchWithRetry(query);
+      if (data) {
+        toAdd = parseOsmData(data, snapArea);
+      }
+    }
 
-    // Alle Gebäude parsen (reine Daten, noch kein DOM)
-    const toAdd = parseOsmData(data, snapArea);
     if(toAdd.length === 0){
       showHint('Keine neuen Gebäude gefunden');
       setTimeout(hideHint,3500);
       btn.classList.remove('loading');
       return;
     }
+
+    // ── 3. Baujahr-Anreicherung aus externen Quellen (Hamburg KWP, NRW Energieatlas) ──
+    const blIdForEnrich = _detectBundesland((bbox[0]+bbox[2])/2, (bbox[1]+bbox[3])/2);
+    try {
+      const enrichedCount = await _enrichBaujahrFromSources(bbox, blIdForEnrich, toAdd);
+      if (enrichedCount > 0) {
+        showHint('✓ Baujahr für ' + enrichedCount + ' Gebäude angereichert — lade auf Karte…');
+        await new Promise(r => setTimeout(r, 400));
+      }
+    } catch (e) { console.warn('Baujahr-Anreicherung übersprungen:', e.message); }
 
     // Gebäude in Häppchen einfügen — Polygone erscheinen batch-weise auf der Karte
     const CHUNK = 20;
@@ -764,9 +1268,10 @@ export function parseOsmData(data, snapArea){
     if(!name) name = null; // wird in addGebaeude via nextGebName(nutzung) gesetzt
 
     let stockwerke = parseOsmLevels(t);
+    let _stockwerkeFromData = stockwerke != null;
     if (stockwerke == null) {
       const heightM = parseOsmHeight(t);
-      if (heightM != null) stockwerke = Math.max(1, Math.round(heightM / 3));
+      if (heightM != null) { stockwerke = Math.max(1, Math.round(heightM / 3)); _stockwerkeFromData = true; }
     }
     if (stockwerke == null) stockwerke = 1;
 
@@ -779,7 +1284,7 @@ export function parseOsmData(data, snapArea){
     const cLat = sumLat / coords.length;
     const cLng = sumLng / coords.length;
 
-    result.push({coords, name, fromOsm:true, osmId:el.id, stockwerke,
+    result.push({coords, name, fromOsm:true, osmId:el.id, stockwerke, _stockwerkeFromData,
                  baujahr: osmBj, _hasOsmBj: osmBj !== null, _lat: cLat, _lng: cLng, nutzung});
   });
 

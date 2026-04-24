@@ -1247,6 +1247,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof redrawErzeugerIcons === 'function') redrawErzeugerIcons();
 });
 if (document.readyState !== 'loading') {
-  if (typeof glInit === 'function') glInit();
-  if (typeof redrawErzeugerIcons === 'function') redrawErzeugerIcons();
+  setTimeout(() => {
+    if (typeof glInit === 'function') glInit();
+    if (typeof redrawErzeugerIcons === 'function') redrawErzeugerIcons();
+  }, 0);
 }

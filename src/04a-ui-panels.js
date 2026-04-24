@@ -571,8 +571,10 @@ export function startDrag(e, panelId) {
   e.preventDefault();
 }
 
-renderList();
-tryRestoreAutosave();
+setTimeout(() => {
+  renderList();
+  tryRestoreAutosave();
+}, 0);
 
 export function toggleSidebar() {
   const sb = document.getElementById('sidebar');

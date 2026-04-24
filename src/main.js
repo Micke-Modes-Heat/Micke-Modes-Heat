@@ -32,6 +32,11 @@ import * as optimizerRun from './10c-optimizer-run.js';
 import * as optimizerWorker from './10d-optimizer-worker.js';
 import * as hilfeLeitfaden from './11-hilfe-leitfaden.js';
 import './12-inline-handlers.js';
+import * as assetsCore from './13a-assets-core.js';
+import * as assetsRender from './13b-assets-render.js';
+import * as assetsUi from './13c-assets-ui.js';
+import * as assetsAuto from './13d-assets-autocreate.js';
+import * as assetsInspector from './13e-assets-inspector.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -44,6 +49,7 @@ const modules = [
   pvProfile, pvCalc, pvChartsOpt,
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
   hilfeLeitfaden,
+  assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector,
 ];
 
 for (const mod of modules) {

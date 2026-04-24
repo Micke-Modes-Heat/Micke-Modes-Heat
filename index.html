@@ -26,6 +26,7 @@
   <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
   <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋</button>
   <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;" title="Berechnungslogik — Wie wird gerechnet?">📐</button>
+  <button class="tool-btn" id="btn-assets-toggle" data-click="togglePalette()" style="border-color:#4fc3f7;color:#4fc3f7;" title="Neuer Asset-Teil (Strom/Wärme unified) — experimentell">🧩</button>
   <div class="addr-search-wrap" style="flex-shrink:0;">
     <span class="addr-search-icon">🔍</span>
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
@@ -174,6 +175,9 @@
           </label>
           <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
             <input type="checkbox" id="overlay-visible-cb" data-change="toggleOverlayPanel()"/> Plan-Overlay
+          </label>
+          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="assets-visible" checked data-change="setAssetLayerVisible(this.checked)"/> Anlagen
           </label>
         </div>
       </div>
@@ -414,6 +418,11 @@
 
   <div id="map"></div>
   <div id="erzeuger-status" style="position:absolute;top:10px;right:350px;z-index:500;display:flex;gap:5px;align-items:flex-start;pointer-events:none;"></div>
+
+  <!-- Asset-Palette (Neuer Strom/Wärme unified) -->
+  <div id="asset-palette" class="asset-palette"></div>
+  <!-- Asset-Inspector (Editor-Panel bei Marker-Klick) -->
+  <div id="asset-inspector" class="asset-inspector"></div>
 
   <!-- Erzeuger-Klick-Popup -->
   <div id="erzeuger-popup" style="display:none;position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:700;width:560px;max-width:calc(100vw - 360px);background:var(--surface);border:1px solid rgba(255,255,255,0.12);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);overflow:hidden;pointer-events:auto;">
