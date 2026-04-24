@@ -7,7 +7,9 @@ import { globalYear } from './01-globals-varianten.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 
 let assetLayer = null;
-let layerVisible = true;
+// Default aus — Anlagen-Icons werden nur im Strom-Sub-Tab eingeblendet.
+// Auto-Steuerung: setLeftTab (04a-ui-panels.js) und setNetzSubTab (05b-stromnetz.js).
+let layerVisible = false;
 
 // Drei Zoom-Stufen:
 //   z < COLLAPSED        → komplett aus
@@ -257,7 +259,14 @@ export function redrawAllAssets() {
 export function setAssetLayerVisible(visible) {
   layerVisible = !!visible;
   ensureLayer();
+  // Beim Aktivieren: fehlende Assets für bestehende Gebäude nachziehen (nach Autosave-Restore)
+  if (layerVisible && typeof window.ensureAssetsForAllBuildings === 'function') {
+    window.ensureAssetsForAllBuildings();
+  }
   applyLayerVisibility();
+  // Checkbox in Gebäude-Tab synchron halten
+  const cb = document.getElementById('assets-visible');
+  if (cb) cb.checked = layerVisible;
 }
 
 export function isAssetLayerVisible() {

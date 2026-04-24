@@ -3,7 +3,7 @@
 // Alle sitzen am Polygon-Schwerpunkt und werden als Gruppen-Marker dargestellt
 // (siehe 13b-assets-render.js).
 
-import { ASSETS, createAsset } from './13a-assets-core.js';
+import { ASSETS, createAsset, getAssetsForBuilding } from './13a-assets-core.js';
 import { redrawAllAssets, isAssetLayerVisible } from './13b-assets-render.js';
 
 function polygonCentroid(polygon) {
@@ -23,6 +23,8 @@ export function autoCreateBuildingAssets(g, opts = {}) {
   if (!g || !g.polygon || g.polygon.length < 3) return [];
   // Opt-in: nur wenn User die Asset-Layer aktiviert hat
   if (!opts.force && !isAssetLayerVisible()) return [];
+  // Duplikat-Schutz: skip wenn dieses Gebäude bereits Assets hat
+  if (getAssetsForBuilding(g.id).length > 0) return [];
 
   const c = polygonCentroid(g.polygon);
   if (!c) return [];
@@ -48,3 +50,17 @@ export function autoCreateBuildingAssets(g, opts = {}) {
 // No-Op — Positionen kommen jetzt aus dem Polygon-Schwerpunkt,
 // das berechnet der Renderer beim Zeichnen selbst.
 export function reflowAutoAssets() {}
+
+// Bei Layer-Aktivierung: für ALLE bestehenden Gebäude (auch aus Autosave-Restore)
+// nachträglich Assets erzeugen, falls noch keine da sind.
+export function ensureAssetsForAllBuildings() {
+  const list = window.gebaeude || [];
+  let created = 0;
+  for (const g of list) {
+    const before = ASSETS.items.length;
+    autoCreateBuildingAssets(g, { force: true });
+    created += ASSETS.items.length - before;
+  }
+  if (created > 0) redrawAllAssets();
+  return created;
+}
