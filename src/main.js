@@ -47,6 +47,7 @@ import * as stromnetzSld from './15d-stromnetz-sld.js';
 import * as stromnetzSzenarien from './15e-stromnetz-szenarien.js';
 import * as stromnetzMesslastgang from './15f-stromnetz-messlastgang.js';
 import * as stromnetzMassnahmen from './15g-stromnetz-massnahmen.js';
+import * as stromnetzInvest from './15h-stromnetz-invest.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -60,7 +61,7 @@ const modules = [
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector,
-  stromnetzConfig, stromnetzState, stromnetzGraph, stromnetzRender, stromnetzDraw, stromnetzCalc, stromnetzSld, stromnetzSzenarien, stromnetzMesslastgang, stromnetzMassnahmen,
+  stromnetzConfig, stromnetzState, stromnetzGraph, stromnetzRender, stromnetzDraw, stromnetzCalc, stromnetzSld, stromnetzSzenarien, stromnetzMesslastgang, stromnetzMassnahmen, stromnetzInvest,
 ];
 
 for (const mod of modules) {
