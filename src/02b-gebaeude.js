@@ -417,34 +417,43 @@ export function attachPolygonLayer(g){
 export function removeGebaeude(id){
   const g=window.gebaeude.find(x=>x.id===id);
   if(!g) return;
-  if(g.polygonLayer) map.removeLayer(g.polygonLayer);
-  if(g.circleMarker) map.removeLayer(g.circleMarker);
-  if(g.labelMarker) map.removeLayer(g.labelMarker);
-  window.gebaeude=window.gebaeude.filter(x=>x.id!==id);
-  window.netzEdges = window.netzEdges.filter(e => {
-    if(e.u === id || e.v === id){
+  if(g.polygonLayer)  map.removeLayer(g.polygonLayer);
+  if(g.circleMarker)  map.removeLayer(g.circleMarker);
+  if(g.labelMarker)   map.removeLayer(g.labelMarker);
+  if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
+  // In-place splice statt Array-Replacement, damit ES-Modul-Imports von gebaeude
+  // (z.B. in 02c-karte-werkzeuge.js) konsistent bleiben — sonst regeneriert
+  // updateViz den Marker des gelöschten Gebäudes aus dem alten Array.
+  const _gIdx = window.gebaeude.findIndex(x => x.id === id);
+  if (_gIdx >= 0) window.gebaeude.splice(_gIdx, 1);
+  // In-place Mutation (siehe Kommentar oben) — auch für netzEdges, stromEdges, stromNodes
+  for (let i = window.netzEdges.length - 1; i >= 0; i--) {
+    const e = window.netzEdges[i];
+    if (e.u === id || e.v === id) {
       map.removeLayer(e.layer);
-      if(e.hitLayer) map.removeLayer(e.hitLayer);
-      if(e.midMarker) map.removeLayer(e.midMarker);
-      if(e.warnMarker) map.removeLayer(e.warnMarker);
-      if(e.segLayers) e.segLayers.forEach(s => map.removeLayer(s));
-      return false;
+      if (e.hitLayer)  map.removeLayer(e.hitLayer);
+      if (e.midMarker) map.removeLayer(e.midMarker);
+      if (e.warnMarker)map.removeLayer(e.warnMarker);
+      if (e.segLayers) e.segLayers.forEach(s => map.removeLayer(s));
+      window.netzEdges.splice(i, 1);
     }
-    return true;
-  });
+  }
   // Stromnetz-Kanten für dieses Gebäude entfernen
-  window.stromEdges = window.stromEdges.filter(e => {
+  for (let i = window.stromEdges.length - 1; i >= 0; i--) {
+    const e = window.stromEdges[i];
     const uN = window.stromNodes.find(n => n.id === e.u);
     const vN = window.stromNodes.find(n => n.id === e.v);
     if ((uN && uN.type === 'geb' && uN.gebId === id) || (vN && vN.type === 'geb' && vN.gebId === id)) {
-      if(e.layer) map.removeLayer(e.layer);
-      if(e.hitLayer) map.removeLayer(e.hitLayer);
-      if(e.arrowMarker) map.removeLayer(e.arrowMarker);
-      return false;
+      if (e.layer)       map.removeLayer(e.layer);
+      if (e.hitLayer)    map.removeLayer(e.hitLayer);
+      if (e.arrowMarker) map.removeLayer(e.arrowMarker);
+      window.stromEdges.splice(i, 1);
     }
-    return true;
-  });
-  window.stromNodes = window.stromNodes.filter(n => !(n.type === 'geb' && n.gebId === id));
+  }
+  for (let i = window.stromNodes.length - 1; i >= 0; i--) {
+    const n = window.stromNodes[i];
+    if (n.type === 'geb' && n.gebId === id) window.stromNodes.splice(i, 1);
+  }
   renderList(); updateViz(); recalcNetz();
 }
 
