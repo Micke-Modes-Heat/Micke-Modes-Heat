@@ -13,11 +13,13 @@ function buildPalette() {
   if (!panel) return;
   if (panel.dataset.built === '1') return;
 
-  // Titel
+  // Titel mit Drag-Handle
   const title = document.createElement('div');
-  title.className = 'asset-palette-title';
-  title.textContent = 'Asset platzieren';
+  title.className = 'asset-palette-title asset-palette-drag-handle';
+  title.innerHTML = '<span style="opacity:.7;margin-right:6px;">⠿</span>Asset platzieren';
+  title.title = 'Ziehen zum Verschieben';
   panel.appendChild(title);
+  attachPaletteDrag(panel, title);
 
   // Ein Button pro Asset-Typ (gruppiert nach Kategorie)
   const kategorien = ['infrastruktur', 'verbraucher', 'erzeuger', 'speicher', 'sonstiges'];
@@ -34,6 +36,40 @@ function buildPalette() {
   }
 
   panel.dataset.built = '1';
+}
+
+// Drag-Handle für die Palette: per Mausziehen am Titel verschiebbar.
+// Beim ersten Drag wechseln wir von right→left/top, damit die Position
+// stabil ist (sonst würde das Panel beim Resize-Wechsel "springen").
+function attachPaletteDrag(panel, handle) {
+  let dragging = false, startX, startY, startLeft, startTop;
+  handle.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    dragging = true;
+    const rect = panel.getBoundingClientRect();
+    // Position fixieren in left/top relativ zum Viewport
+    panel.style.left  = rect.left + 'px';
+    panel.style.top   = rect.top  + 'px';
+    panel.style.right = 'auto';
+    startX = e.clientX; startY = e.clientY;
+    startLeft = rect.left; startTop = rect.top;
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    // Innerhalb des Viewports halten (mit kleinem Padding)
+    const maxLeft = window.innerWidth  - panel.offsetWidth  - 4;
+    const maxTop  = window.innerHeight - panel.offsetHeight - 4;
+    panel.style.left = Math.max(4, Math.min(maxLeft, startLeft + dx)) + 'px';
+    panel.style.top  = Math.max(4, Math.min(maxTop,  startTop  + dy)) + 'px';
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.userSelect = '';
+  });
 }
 
 export function setPendingType(type) {
