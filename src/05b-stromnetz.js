@@ -82,11 +82,15 @@ export function setNetzSubTab(sub) {
     setStromColorMode('auslastung');
     const cb = document.getElementById('strom-netz-visible');
     if (cb) cb.checked = true;
+    // Anlagen-Icons im Strom-Tab einblenden
+    if (typeof window.setAssetLayerVisible === 'function') window.setAssetLayerVisible(true);
   } else {
     setStromNetzVisible(false);
     setNetzVisible(true);
     const cb = document.getElementById('netz-visible');
     if (cb) cb.checked = true;
+    // Anlagen-Icons außerhalb Strom-Tab ausblenden
+    if (typeof window.setAssetLayerVisible === 'function') window.setAssetLayerVisible(false);
   }
 }
 
@@ -1373,7 +1377,9 @@ export function updateLpStromSummary() {
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   const hint = document.getElementById('lp-strom-hint');
 
-  if (!window.stromNodes.length) {
+  // Defensive: window.stromNodes kann undefined sein wenn setInterval (05a:720)
+  // vor dem main.js-window-Setup feuert.
+  if (!window.stromNodes || !window.stromNodes.length) {
     if (hint) hint.style.display = '';
     setVal('lp-strom-sz-hour', '—');
     setVal('lp-strom-last', '—');
