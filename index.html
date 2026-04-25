@@ -177,7 +177,7 @@
             <input type="checkbox" id="overlay-visible-cb" data-change="toggleOverlayPanel()"/> Plan-Overlay
           </label>
           <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="assets-visible" checked data-change="setAssetLayerVisible(this.checked)"/> Anlagen
+            <input type="checkbox" id="assets-visible" data-change="setAssetLayerVisible(this.checked)"/> Anlagen
           </label>
         </div>
       </div>
@@ -329,6 +329,18 @@
         </div>
         <div class="lp-tool-grid" style="margin-top:6px;">
           <button class="lp-tool-btn" data-click="rerouteAllStromLeitungen()" style="border-color:#78909c;color:#90a4ae;grid-column:1/-1;">⟲ Alle Leitungen neu routen</button>
+        </div>
+        <div class="lp-section-title" style="margin-top:12px;">Berechnung &amp; Analyse (neu)</div>
+        <div class="lp-tool-grid">
+          <button class="lp-tool-btn" data-click="uiRecalcStromnetz()" style="border-color:#4fc3f7;color:#4fc3f7;">🔄 Recalc</button>
+          <button class="lp-tool-btn" data-click="uiShowSld()" style="border-color:#26a69a;color:#26a69a;">⚡ SLD</button>
+        </div>
+        <div class="lp-tool-grid" style="margin-top:6px;">
+          <button class="lp-tool-btn" data-click="uiShowMassnahmenplan()" style="border-color:#ce93d8;color:#ce93d8;">📋 Maßnahmen</button>
+          <button class="lp-tool-btn" data-click="uiShowInvest()" style="border-color:#26a69a;color:#80cbc4;">💰 Invest</button>
+        </div>
+        <div class="lp-tool-grid" style="margin-top:6px;">
+          <button class="lp-tool-btn" data-click="uiShowSzenarienPills()" style="border-color:#9c27b0;color:#ce93d8;grid-column:1/-1;">🎯 Szenarien</button>
         </div>
         </div><!-- /lp-netz-strom -->
       </div>
