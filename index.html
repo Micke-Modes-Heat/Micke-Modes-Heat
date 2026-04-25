@@ -26,7 +26,6 @@
   <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
   <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋</button>
   <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;" title="Berechnungslogik — Wie wird gerechnet?">📐</button>
-  <button class="tool-btn" id="btn-assets-toggle" data-click="togglePalette()" style="border-color:#4fc3f7;color:#4fc3f7;" title="Neuer Asset-Teil (Strom/Wärme unified) — experimentell">🧩</button>
   <div class="addr-search-wrap" style="flex-shrink:0;">
     <span class="addr-search-icon">🔍</span>
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
@@ -241,14 +240,19 @@
         <div id="lp-netz-strom" class="netz-subtab-content">
         <div style="background:rgba(79,195,247,0.08);border:1px solid rgba(79,195,247,0.25);border-radius:6px;padding:10px;margin-bottom:10px;font-size:10px;color:#4fc3f7;line-height:1.5;">
           ⚡ <strong>Stromnetz-Workflow:</strong><br>
-          1. Anlagen über die <strong>🧩 Asset-Palette</strong> oben rechts platzieren (NAP, Trafo, NSHV, Verbraucher, PV, …)<br>
+          1. <strong>🧩 Anlagen platzieren</strong> (NAP, Trafo, NSHV, Verbraucher, PV, …)<br>
           2. <strong>Trasse zeichnen</strong> (Pfade entlang der Straße)<br>
           3. <strong>Leitung ziehen</strong> zwischen Anlagen — folgt automatisch der Trasse<br>
           4. <strong>🔄 Recalc</strong> für Spannungsfall &amp; Auslastung<br>
           5. <strong>⚡ SLD</strong> / <strong>💰 Invest</strong> / <strong>🔁 Trafo-Opt</strong> für Detailanalysen
         </div>
 
-        <div class="lp-section-title">Trassen &amp; Leitungen</div>
+        <div class="lp-section-title">Anlagen</div>
+        <div class="lp-tool-grid">
+          <button class="lp-tool-btn" id="btn-assets-toggle" data-click="togglePalette()" style="border-color:#4fc3f7;color:#4fc3f7;grid-column:1/-1;">🧩 Asset platzieren (Palette ein/aus)</button>
+        </div>
+
+        <div class="lp-section-title" style="margin-top:12px;">Trassen &amp; Leitungen</div>
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" id="btn-stromnetz-trasse" data-click="toggleTrasseMode()" style="border-color:#00bcd4;color:#00bcd4;">╱ Trasse zeichnen</button>
           <button class="lp-tool-btn" id="btn-stromnetz-leitung" data-click="toggleLeitungMode()" style="border-color:#4fc3f7;color:#4fc3f7;">— Leitung ziehen</button>
