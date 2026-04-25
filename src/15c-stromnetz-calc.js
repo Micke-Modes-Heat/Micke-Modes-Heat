@@ -7,11 +7,12 @@
 // Ergebnis landet in STROMNETZ.calcResult und Polyline-Styling wird live aktualisiert.
 
 import { globalYear } from './01-globals-varianten.js';
-import { ASSETS, getAssetStatus, TYPE_RANK } from './13a-assets-core.js';
-import { STROMNETZ, listStromLeitungen,
+import { getAssetStatus, TYPE_RANK } from './13a-assets-core.js';
+import { STROMNETZ,
          getEffectiveAssetProps, getEffectiveLeitungQs } from './14b-stromnetz-state.js';
 import { KABEL_NS_R_OHM_KM, KABEL_NS_I_MAX_A,
          KABEL_MS_I_MAX_A, SICHERUNG_A, KOSTEN_CFG } from './14a-stromnetz-config.js';
+import { getMergedAssets, getMergedStromLeitungen } from './15e-stromnetz-szenarien.js';
 
 const U_N      = 400;   // Nennspannung NS [V]
 const COS_PHI  = 0.9;
@@ -78,8 +79,9 @@ function bfsDownstream(lt, loadFn, assetMap, adjList, yr) {
 export function recalcStromnetz() {
   const yr = globalYear || new Date().getFullYear();
   const warn = [];
-  const allAssets    = ASSETS.items;
-  const allLeitungen = listStromLeitungen();
+  // Merged: Bestand + aktives Szenario-Delta
+  const allAssets    = getMergedAssets();
+  const allLeitungen = getMergedStromLeitungen();
   const activeA = allAssets   .filter(a => getAssetStatus(a, yr) === 'active');
   const activeL = allLeitungen.filter(l => getAssetStatus(l, yr) === 'active');
 

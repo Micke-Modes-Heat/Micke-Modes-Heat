@@ -11,7 +11,8 @@
 
 import { globalYear } from './01-globals-varianten.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, TYPE_RANK } from './13a-assets-core.js';
-import { STROMNETZ, listStromLeitungen } from './14b-stromnetz-state.js';
+import { STROMNETZ } from './14b-stromnetz-state.js';
+import { getMergedAssets, getMergedStromLeitungen } from './15e-stromnetz-szenarien.js';
 
 // ── Layout-Konstanten ───────────────────────────────────────────────────────
 const SLD_LH = 120;   // Vertikalabstand zwischen Ebenen [px]
@@ -191,8 +192,9 @@ export function sldBuildSvg(nodes, edges, W, H, layoutExtra) {
 // ── Convenience: aus aktuellem State direkt SVG generieren ──────────────────
 export function buildSldSvg() {
   const yr = globalYear || new Date().getFullYear();
-  const activeA = ASSETS.items.filter(a => getAssetStatus(a, yr) === 'active');
-  const activeL = listStromLeitungen().filter(l => getAssetStatus(l, yr) === 'active');
+  // Merged: Bestand + aktives Szenario-Delta
+  const activeA = getMergedAssets().filter(a => getAssetStatus(a, yr) === 'active');
+  const activeL = getMergedStromLeitungen().filter(l => getAssetStatus(l, yr) === 'active');
   if (activeA.length === 0) {
     return `<div style="padding:40px;text-align:center;color:#546e7a;">⚡<br>Keine aktiven Elektroobjekte</div>`;
   }
