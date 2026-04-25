@@ -31,16 +31,23 @@ import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
 })();
 
 // ── Spezielle addEventListener-Registrierungen ──────────────────────────
-          document.getElementById('strom-gzf-methode').addEventListener('change', function() {
-            document.getElementById('strom-gzf-manuell-wrap').style.display = this.value === 'manuell' ? '' : 'none';
-          });
-    document.getElementById('opt-erklaerung-details').addEventListener('toggle', function() {
-      document.getElementById('opt-erklaerung-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
-    });
-    document.getElementById('opt-kosten-details').addEventListener('toggle', function() {
-      document.getElementById('opt-kosten-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
-      if (this.open) _renderOptKostenUebersicht();
-    });
+// Defensive: getElementById kann null sein wenn das Element in der HTML
+// fehlt (z.B. strom-gzf-methode nach Phase 3.8b-Cleanup). Ohne Optional-
+// Chain crasht der Modul-Init und main.js läuft die window-Setup-Schleife
+// nicht durch → ALLE Folge-Module brechen.
+document.getElementById('strom-gzf-methode')?.addEventListener('change', function() {
+  const wrap = document.getElementById('strom-gzf-manuell-wrap');
+  if (wrap) wrap.style.display = this.value === 'manuell' ? '' : 'none';
+});
+document.getElementById('opt-erklaerung-details')?.addEventListener('toggle', function() {
+  const arrow = document.getElementById('opt-erklaerung-arrow');
+  if (arrow) arrow.style.transform = this.open ? 'rotate(90deg)' : '';
+});
+document.getElementById('opt-kosten-details')?.addEventListener('toggle', function() {
+  const arrow = document.getElementById('opt-kosten-arrow');
+  if (arrow) arrow.style.transform = this.open ? 'rotate(90deg)' : '';
+  if (this.open) _renderOptKostenUebersicht();
+});
     function _renderOptKostenUebersicht() {
       const wrap = document.getElementById('opt-kosten-content');
       if (!wrap) return;
