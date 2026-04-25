@@ -11,6 +11,8 @@ import { buildSldSvg } from './15d-stromnetz-sld.js';
 import { buildMassnahmenplan } from './15g-stromnetz-massnahmen.js';
 import { buildInvestOverviewHtml } from './15h-stromnetz-invest.js';
 import { STROMNETZ } from './14b-stromnetz-state.js';
+import { heatmapToggle, isHeatmapActive, heatmapSetMode } from './15j-stromnetz-heatmap.js';
+import { runTrafoOptimierung, clearTrafoOptimierung } from './15l-stromnetz-trafoopt.js';
 
 // ── Generischer Overlay-Container ───────────────────────────────────────────
 function showOverlay(id, title, contentHtml, opts = {}) {
@@ -152,6 +154,75 @@ export function uiShowInvest() {
   showOverlay('stromnetz-invest-panel', '💰 Investitionsplan', html,
               { width: '500px', height: 'auto', accent: '#26a69a',
                 left: '20px', right: 'auto' });
+}
+
+// ── Heatmap toggle (Last/Erzeugung als Pixel-Relief) ───────────────────────
+export function uiToggleHeatmap() {
+  const willOn = !isHeatmapActive();
+  heatmapToggle(willOn);
+  // Button-Status visuell anpassen (falls Button mit ID 'btn-stromnetz-heatmap' existiert)
+  const btn = document.getElementById('btn-stromnetz-heatmap');
+  if (btn) btn.classList.toggle('active', willOn);
+}
+
+export function uiSetHeatmapMode(mode) {
+  heatmapSetMode(mode);
+}
+
+// ── Trafo-Optimierung ausführen + Ergebnis-Overlay ─────────────────────────
+export function uiRunTrafoOptimierung(opts) {
+  const r = runTrafoOptimierung(opts || {});
+  const id = 'stromnetz-trafoopt-panel';
+  closeOverlay(id);
+  if (!r.ok) {
+    showOverlay(id, '🔁 Trafo-Optimierung',
+      `<div style="color:#ef5350;padding:20px;text-align:center;">${r.error}</div>`,
+      { width: '420px', height: 'auto', accent: '#ef5350' });
+    return;
+  }
+  if (r.allServed) {
+    showOverlay(id, '🔁 Trafo-Optimierung',
+      `<div style="color:#66bb6a;padding:20px;text-align:center;">
+        ✓ Alle Lastpunkte werden von den ${r.existingCount} bestehenden Trafos versorgt.<br>
+        <span style="color:#9aa;font-size:11px;">Keine zusätzlichen Trafos nötig.</span>
+       </div>`,
+      { width: '420px', height: 'auto', accent: '#66bb6a' });
+    return;
+  }
+  const info = r.info || {};
+  const totalKw = r.clusters.reduce((s, c) => s + c.peakKW, 0);
+  const html = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;font-size:12px;line-height:1.6;margin-bottom:12px;">
+      <div><span style="color:#7a8099;">Bestand-Trafos:</span> <b>${r.existingCount}</b></div>
+      <div><span style="color:#7a8099;">Neue Trafo-Standorte:</span> <b>${r.clusters.length}</b></div>
+      <div><span style="color:#7a8099;">Modus:</span> <b>${info.mode || '–'}</b></div>
+      <div><span style="color:#7a8099;">Standard-kVA:</span> <b>${info.maxKVA ?? '–'}</b></div>
+      ${info.whaleCount ? `<div style="grid-column:1/-1;">
+        <span style="color:#ffa726;">⚡ Direktanschlüsse (Großverbraucher):</span> <b>${info.whaleCount}</b></div>` : ''}
+      ${info.capacityExceeded ? `<div style="grid-column:1/-1;color:#ef5350;">
+        ⚠ Kapazität trotz max. k überschritten.</div>` : ''}
+      <div style="grid-column:1/-1;border-top:1px solid #2a3050;padding-top:6px;margin-top:4px;">
+        <span style="color:#7a8099;">Gesamt-Peak (alle neuen):</span>
+        <b>${totalKw.toFixed(0)} kW</b></div>
+    </div>
+    <div style="font-size:10px;color:#9aa;margin-bottom:8px;">
+      Cluster auf der Karte sichtbar (T-Marker + Voronoi-Zonen).
+      Klick auf Marker für Details.
+    </div>
+    <button id="trafoopt-clear-btn" style="width:100%;padding:6px;background:transparent;
+      border:1px solid #ef5350;color:#ef5350;border-radius:4px;cursor:pointer;font-size:11px;">
+      Cluster-Layer von Karte entfernen
+    </button>`;
+  const el = showOverlay(id, '🔁 Trafo-Optimierung — Ergebnis', html,
+              { width: '460px', height: 'auto', accent: '#ffa726' });
+  el.querySelector('#trafoopt-clear-btn')?.addEventListener('click', () => {
+    clearTrafoOptimierung();
+    closeOverlay(id);
+  });
+}
+
+export function uiClearTrafoOptimierung() {
+  clearTrafoOptimierung();
 }
 
 // ── Szenario-Quick-Selector (Toast-Stil) ────────────────────────────────────

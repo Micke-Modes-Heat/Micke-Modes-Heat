@@ -49,6 +49,8 @@ import * as stromnetzMesslastgang from './15f-stromnetz-messlastgang.js';
 import * as stromnetzMassnahmen from './15g-stromnetz-massnahmen.js';
 import * as stromnetzInvest from './15h-stromnetz-invest.js';
 import * as stromnetzClustering from './15i-stromnetz-clustering.js';
+import * as stromnetzHeatmap from './15j-stromnetz-heatmap.js';
+import * as stromnetzTrafoopt from './15l-stromnetz-trafoopt.js';
 import * as stromnetzUi from './16-stromnetz-ui.js';
 import * as stromnetzSelftest from './16b-stromnetz-selftest.js';
 
@@ -64,7 +66,7 @@ const modules = [
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector,
-  stromnetzConfig, stromnetzState, stromnetzGraph, stromnetzRender, stromnetzDraw, stromnetzCalc, stromnetzSld, stromnetzSzenarien, stromnetzMesslastgang, stromnetzMassnahmen, stromnetzInvest, stromnetzClustering, stromnetzUi, stromnetzSelftest,
+  stromnetzConfig, stromnetzState, stromnetzGraph, stromnetzRender, stromnetzDraw, stromnetzCalc, stromnetzSld, stromnetzSzenarien, stromnetzMesslastgang, stromnetzMassnahmen, stromnetzInvest, stromnetzClustering, stromnetzHeatmap, stromnetzTrafoopt, stromnetzUi, stromnetzSelftest,
 ];
 
 for (const mod of modules) {
