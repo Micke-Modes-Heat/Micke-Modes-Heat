@@ -1,6 +1,7 @@
 // ── 13c-assets-ui.js — Asset-Palette (Buttons) + Karten-Platzierung ────────
 
 import { map } from './02b-gebaeude.js';
+import { pointInPolygon } from './03b-netz.js';
 import { ASSETS, ASSET_CFG, createAsset } from './13a-assets-core.js';
 import { drawAssetMarker, setAssetLayerVisible, isAssetLayerVisible } from './13b-assets-render.js';
 
@@ -121,19 +122,7 @@ function findBuildingAt(latlng) {
   return null;
 }
 
-function pointInPolygon(pt, poly) {
-  const x = pt.lng, y = pt.lat;
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const pi = poly[i], pj = poly[j];
-    const xi = pi.lng ?? pi[1], yi = pi.lat ?? pi[0];
-    const xj = pj.lng ?? pj[1], yj = pj.lat ?? pj[0];
-    const intersect = ((yi > y) !== (yj > y)) &&
-      (x < (xj - xi) * (y - yi) / (yj - yi + 1e-15) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
+// pointInPolygon ist jetzt zentral aus 03b-netz.js importiert (siehe Zeile 3).
 
 // Escape bricht die Platzierung ab
 function onKeydownForAsset(e) {

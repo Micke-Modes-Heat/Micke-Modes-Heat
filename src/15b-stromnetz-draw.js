@@ -3,6 +3,7 @@
 // Leitung-Asset-Klick, elRoute).
 
 import { map } from './02b-gebaeude.js';
+import { pointInPolygon } from './03b-netz.js';
 import { showHint, hideHint } from './03c-gebaeude-io.js';
 import { ASSETS } from './13a-assets-core.js';
 import { setPendingType } from './13c-assets-ui.js';
@@ -15,8 +16,8 @@ import { drawTrasse, drawLeitung, leitungInheritLifecycle,
          redrawAllTrassen } from './15a-stromnetz-render.js';
 
 // ── Modus-Management (eindeutige Ownership) ────────────────────────────────
-export function setMode(mode) {
-  exitMode();
+export function setStromnetzMode(mode) {
+  exitStromnetzMode();
   STROMNETZ.mode = mode;
   // Asset-Platzierung beenden (Mutual-Exclusion)
   setPendingType(null);
@@ -34,7 +35,7 @@ export function setMode(mode) {
   }
 }
 
-export function exitMode() {
+export function exitStromnetzMode() {
   if (STROMNETZ.mode === 'trasse') {
     if (STROMNETZ.trDraw.pts.length >= 2) finishTrasseSegment();
     else resetTrasseDraw();
@@ -51,13 +52,13 @@ export function exitMode() {
 }
 
 export function toggleTrasseMode() {
-  if (STROMNETZ.mode === 'trasse') exitMode();
-  else setMode('trasse');
+  if (STROMNETZ.mode === 'trasse') exitStromnetzMode();
+  else setStromnetzMode('trasse');
 }
 
 export function toggleLeitungMode() {
-  if (STROMNETZ.mode === 'leitung') exitMode();
-  else setMode('leitung');
+  if (STROMNETZ.mode === 'leitung') exitStromnetzMode();
+  else setStromnetzMode('leitung');
 }
 
 // ── Trasse zeichnen ────────────────────────────────────────────────────────
@@ -308,19 +309,7 @@ function findBuildingAt(lat, lng) {
   return null;
 }
 
-function pointInPolygon(pt, poly) {
-  const x = pt.lng, y = pt.lat;
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const pi = poly[i], pj = poly[j];
-    const xi = pi.lng ?? pi[1], yi = pi.lat ?? pi[0];
-    const xj = pj.lng ?? pj[1], yj = pj.lat ?? pj[0];
-    const intersect = ((yi > y) !== (yj > y)) &&
-      (x < (xj - xi) * (y - yi) / (yj - yi + 1e-15) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
+// pointInPolygon ist jetzt zentral aus 03b-netz.js importiert (siehe Zeile 6).
 
 // ── Leitung mit Auto-Routing anlegen + zeichnen ────────────────────────────
 export function createLeitungRouted(aId, bId, opts = {}) {
@@ -406,7 +395,7 @@ function onMapMousemove(e) {
 }
 
 function onKeydown(e) {
-  if (e.key === 'Escape' && STROMNETZ.mode) exitMode();
+  if (e.key === 'Escape' && STROMNETZ.mode) exitStromnetzMode();
 }
 
 // ── Init: Event-Handler einmalig registrieren ──────────────────────────────

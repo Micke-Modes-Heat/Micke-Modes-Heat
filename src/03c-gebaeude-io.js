@@ -5,6 +5,11 @@ import { hidePanels, populateZentraleSelect } from './03b-netz.js';
 import { updateLpGebietStatus, updatePrintLegend } from './04a-ui-panels.js';
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { calcStromPanel } from './09b-pv-calc.js';
+// Phase 3 — neues Asset/Stromnetz-System (Persistenz-Bug-Fix)
+import { ASSETS } from './13a-assets-core.js';
+import { redrawAllAssets } from './13b-assets-render.js';
+import { STROMNETZ } from './14b-stromnetz-state.js';
+import { redrawAllStromnetz } from './15a-stromnetz-render.js';
 
 export function updateTotals(){
   let tw=0, th=0;
@@ -639,6 +644,31 @@ export function _buildProjectData() {
       })),
       kabelTyp: document.getElementById('strom-kabel-typ')?.value || 'NAYY'
     },
+    // ── Phase-3-System (neu): Assets, Trassen, Strom-Leitungen, Szenarien ──
+    // Runtime-Felder (_marker, _poly, _result, _editMarkers) werden bewusst weggelassen
+    // — die werden beim Restore vom Renderer neu erzeugt.
+    assetsNew: {
+      items: ASSETS.items.map(a => ({
+        id: a.id, type: a.type, domain: a.domain, lat: a.lat, lng: a.lng,
+        name: a.name, buildingId: a.buildingId, props: a.props || {},
+        baujahr: a.baujahr, abrissjahr: a.abrissjahr,
+        massnahmen: a.massnahmen || [],
+      })),
+      edges: ASSETS.edges.map(e => ({
+        id: e.id, domain: e.domain, aId: e.aId, bId: e.bId,
+        route: e.route || [], qs: e.qs, parallelCount: e.parallelCount,
+        baujahr: e.baujahr, abrissjahr: e.abrissjahr,
+        massnahmen: e.massnahmen || [], sicherungA: e.sicherungA || null,
+      })),
+      selectedId: ASSETS.selectedId,
+    },
+    stromnetzNew: {
+      trassen: STROMNETZ.trassen.map(t => ({ id: t.id, pts: t.pts })),
+      szenarien: STROMNETZ.szenarien,
+      aktivSzenario: STROMNETZ.aktivSzenario,
+      napProfiles: STROMNETZ.napProfiles || {},
+      napSelectedId: STROMNETZ.napSelectedId || null,
+    },
   };
 }
 
@@ -1022,6 +1052,43 @@ export function _loadProject(project) {
         }
         recalcStromNetz();
       }
+
+      // ── Phase-3-System (neu) restaurieren ─────────────────────────────────
+      // ASSETS.items + ASSETS.edges + STROMNETZ.trassen/szenarien/napProfiles
+      ASSETS.items.length = 0;
+      ASSETS.edges.length = 0;
+      STROMNETZ.trassen.length = 0;
+      STROMNETZ.szenarien.length = 0;
+      ASSETS.selectedId = null;
+      STROMNETZ.aktivSzenario = null;
+      STROMNETZ.napProfiles = {};
+      STROMNETZ.napSelectedId = null;
+
+      if (project.assetsNew) {
+        if (Array.isArray(project.assetsNew.items)) ASSETS.items.push(...project.assetsNew.items);
+        if (Array.isArray(project.assetsNew.edges)) ASSETS.edges.push(...project.assetsNew.edges);
+        ASSETS.selectedId = project.assetsNew.selectedId || null;
+      }
+      if (project.stromnetzNew) {
+        if (Array.isArray(project.stromnetzNew.trassen)) {
+          // Trassen brauchen Runtime-Slots _poly/_editMarkers
+          STROMNETZ.trassen.push(...project.stromnetzNew.trassen.map(t => ({
+            id: t.id, pts: t.pts, _poly: null, _editMarkers: [],
+          })));
+        }
+        if (Array.isArray(project.stromnetzNew.szenarien)) {
+          STROMNETZ.szenarien.push(...project.stromnetzNew.szenarien);
+        }
+        STROMNETZ.aktivSzenario = project.stromnetzNew.aktivSzenario || null;
+        STROMNETZ.napProfiles   = project.stromnetzNew.napProfiles || {};
+        STROMNETZ.napSelectedId = project.stromnetzNew.napSelectedId || null;
+      }
+
+      // Re-Render aller Phase-3-Layer (deferred wegen TDZ in Dev-Modus)
+      setTimeout(() => {
+        try { redrawAllStromnetz(); } catch (e) { console.warn('redrawAllStromnetz:', e); }
+        try { redrawAllAssets();    } catch (e) { console.warn('redrawAllAssets:', e); }
+      }, 0);
 
       redrawErzeugerIcons();
       _invalidateStats();

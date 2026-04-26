@@ -573,13 +573,17 @@ export function clearOverlay() {
   if(fileInput) fileInput.value = '';
 }
 
+// Akzeptiert poly-Punkte als {lat,lng}-Objekt ODER als [lat,lng]-Array.
+// 1e-15 schützt vor Division-by-Zero bei horizontal kollinearen Kanten.
 export function pointInPolygon(pt, poly) {
-  let x = pt.lng, y = pt.lat;
+  const x = pt.lng, y = pt.lat;
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    let xi = poly[i].lng, yi = poly[i].lat;
-    let xj = poly[j].lng, yj = poly[j].lat;
-    let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    const pi = poly[i], pj = poly[j];
+    const xi = pi.lng ?? pi[1], yi = pi.lat ?? pi[0];
+    const xj = pj.lng ?? pj[1], yj = pj.lat ?? pj[0];
+    const intersect = ((yi > y) !== (yj > y)) &&
+      (x < (xj - xi) * (y - yi) / (yj - yi + 1e-15) + xi);
     if (intersect) inside = !inside;
   }
   return inside;
