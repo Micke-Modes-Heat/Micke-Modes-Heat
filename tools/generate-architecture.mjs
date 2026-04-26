@@ -85,6 +85,18 @@ function findDomain(relPath) {
 }
 
 // ── Mermaid-Diagramm bauen ──────────────────────────────────────────────────
+// Mermaid 10 ist pingelig:
+//   - subgraph-Titel ohne Emojis (sonst Parser-Fehler)
+//   - IDs müssen mit Buchstabe beginnen → Prefix 'm_'
+//   - Bindestriche in Label-Texten in Anführungsstriche
+function safeId(name) {
+  return 'm_' + name.replace(/[^a-zA-Z0-9_]/g, '_');
+}
+function stripEmoji(s) {
+  // Entfernt Unicode-Emojis (UC-Plane > BMP + Variation-Selectors)
+  return s.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim();
+}
+
 function buildMermaid(modules) {
   const byDomain = new Map();
   for (const m of modules) {
@@ -93,29 +105,24 @@ function buildMermaid(modules) {
     byDomain.get(d.id).modules.push(m);
   }
   let s = 'graph LR\n';
-  s += '%% Auto-generiert aus src/*.js\n\n';
-  // Subgraphen pro Domäne
   for (const { domain, modules: mods } of byDomain.values()) {
     if (mods.length === 0) continue;
-    s += `  subgraph ${domain.id}["${domain.name}"]\n`;
+    const title = stripEmoji(domain.name);
+    s += `  subgraph d_${domain.id}["${title}"]\n`;
     for (const m of mods) {
-      const safeId = m.shortName.replace(/[^a-zA-Z0-9_]/g, '_');
-      s += `    ${safeId}["${m.shortName}"]\n`;
+      s += `    ${safeId(m.shortName)}["${m.shortName}"]\n`;
     }
     s += '  end\n';
   }
-  s += '\n';
-  // Wichtige Kanten — nur solche die DOMAIN-übergreifend gehen, sonst zu chaotisch
+  // Domain-übergreifende Imports als Kanten
   for (const m of modules) {
     const dFrom = findDomain(m.name).id;
-    const fromId = m.shortName.replace(/[^a-zA-Z0-9_]/g, '_');
     for (const imp of m.imports) {
       const target = modules.find(mm => mm.shortName === imp.replace(/^.*\//, ''));
       if (!target) continue;
       const dTo = findDomain(target.name).id;
-      if (dFrom === dTo) continue;  // intra-Domain weglassen für Übersicht
-      const toId = target.shortName.replace(/[^a-zA-Z0-9_]/g, '_');
-      s += `  ${fromId} --> ${toId}\n`;
+      if (dFrom === dTo) continue;
+      s += `  ${safeId(m.shortName)} --> ${safeId(target.shortName)}\n`;
     }
   }
   return s;
@@ -180,24 +187,73 @@ const html = `<!DOCTYPE html><html lang="de"><head>
 <title>Architektur — Energieplanung</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
-  body { font-family: 'DM Sans', sans-serif; max-width: 1400px; margin: 24px auto; padding: 0 24px; color: #1a2535; background: #f6f8fb; }
-  h1 { color: #006064; margin-bottom: 4px; }
-  h2 { color: #006064; margin-top: 32px; border-bottom: 2px solid #e0e0e0; padding-bottom: 4px; }
-  h3 { color: #00838f; margin-top: 28px; font-size: 14px; }
-  .meta { color: #666; font-size: 12px; margin-bottom: 24px; }
-  .stats { display: flex; gap: 24px; margin: 16px 0; padding: 12px 16px; background: #fff; border-left: 4px solid #00838f; border-radius: 4px; }
-  .stats > div { font-size: 13px; }
-  .stats b { color: #006064; font-size: 16px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
-  th { padding: 6px 10px; text-align: left; background: #e0f7fa; color: #006064; font-size: 10px; text-transform: uppercase; border-bottom: 2px solid #00bcd4; }
-  td { padding: 5px 10px; border-bottom: 1px solid #e8ecf0; vertical-align: top; }
-  td.num { text-align: right; font-family: 'DM Mono', monospace; color: #607d8b; }
-  code { background: #eff4f8; padding: 1px 5px; border-radius: 3px; font-size: 11px; color: #006064; }
-  .muted { color: #999; font-size: 11px; }
-  .loc { color: #888; font-weight: normal; font-size: 11px; }
-  #mermaid-container { background: #fff; padding: 16px; border-radius: 6px; margin: 16px 0; overflow-x: auto; }
-  #mermaid-fallback { display: none; padding: 12px 16px; background: #fff3c4; border-left: 4px solid #f9a825; border-radius: 4px; font-size: 12px; color: #5d4037; margin: 16px 0; }
-  .legend { font-size: 11px; color: #666; margin: 8px 0 16px; }
+  :root {
+    --bg:        #0b0e18;
+    --surface:   #12182a;
+    --surface2:  #1a2535;
+    --text:      #cfd;
+    --muted:     #7a8099;
+    --border:    #2a3050;
+    --accent:    #4fc3f7;
+    --accent2:   #26a69a;
+    --warn:      #f9a825;
+  }
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    max-width: 1400px; margin: 0 auto; padding: 24px;
+    color: var(--text); background: var(--bg);
+  }
+  h1 { color: var(--accent); margin: 0 0 4px; font-weight: 600; font-size: 22px; }
+  h2 { color: var(--accent); margin-top: 32px; border-bottom: 1px solid var(--border);
+       padding-bottom: 6px; font-size: 15px; font-weight: 600; text-transform: uppercase;
+       letter-spacing: .05em; }
+  h3 { color: var(--accent2); margin-top: 24px; font-size: 13px; font-weight: 600; }
+  .meta { color: var(--muted); font-size: 11px; margin-bottom: 16px; }
+  .meta a { color: var(--accent); text-decoration: none; }
+  .meta a:hover { text-decoration: underline; }
+  .stats {
+    display: flex; gap: 18px; margin: 14px 0;
+    padding: 12px 16px; background: var(--surface);
+    border-left: 3px solid var(--accent); border-radius: 4px;
+  }
+  .stats > div { font-size: 12px; color: var(--muted); }
+  .stats b { color: var(--text); font-size: 18px; display: block; font-weight: 600; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 11px;
+    background: var(--surface); border-radius: 4px; overflow: hidden;
+    margin-top: 8px;
+  }
+  th {
+    padding: 6px 10px; text-align: left;
+    background: var(--surface2); color: var(--accent);
+    font-size: 9px; text-transform: uppercase; letter-spacing: .05em;
+    border-bottom: 1px solid var(--border); font-weight: 600;
+  }
+  td { padding: 5px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-family: 'DM Mono', monospace; color: var(--muted); font-size: 10px; }
+  code {
+    background: rgba(79,195,247,.08);
+    padding: 1px 6px; border-radius: 3px;
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    color: var(--accent);
+  }
+  .muted { color: var(--muted); font-size: 10px; }
+  .loc { color: var(--muted); font-weight: normal; font-size: 10px; }
+  #mermaid-container {
+    background: var(--surface); padding: 16px; border-radius: 4px;
+    margin: 12px 0; overflow-x: auto;
+    border: 1px solid var(--border);
+  }
+  /* Mermaid-Diagramm-Farben überschreiben für Dark-Theme */
+  #mermaid-container .mermaid { color: var(--text); }
+  #mermaid-container svg { background: transparent !important; max-width: 100%; }
+  #mermaid-fallback {
+    display: none; padding: 12px 16px;
+    background: rgba(249,168,37,.10); border-left: 3px solid var(--warn);
+    border-radius: 4px; font-size: 11px; color: var(--warn); margin: 12px 0;
+  }
+  .legend { font-size: 10px; color: var(--muted); margin: 6px 0 12px; line-height: 1.5; }
 </style>
 </head><body>
 
@@ -205,14 +261,14 @@ const html = `<!DOCTYPE html><html lang="de"><head>
 <div class="meta">Auto-generiert · ${esc(now)} · <a href="../index.html">← zum Tool</a></div>
 
 <div class="stats">
-  <div><b>${modules.length}</b> Module</div>
-  <div><b>${totalLoc.toLocaleString('de-DE')}</b> Zeilen</div>
-  <div><b>${DOMAINS.filter(d => modules.some(m => findDomain(m.name).id === d.id)).length}</b> Domänen</div>
+  <div><b>${modules.length}</b>Module</div>
+  <div><b>${totalLoc.toLocaleString('de-DE')}</b>Zeilen</div>
+  <div><b>${DOMAINS.filter(d => modules.some(m => findDomain(m.name).id === d.id)).length}</b>Domänen</div>
 </div>
 
 <h2>Modul-Übersicht (Diagramm)</h2>
-<div class="legend">Domain-Gruppen mit ihren Modulen. Pfeile zeigen domain-übergreifende Imports (intra-Domain weggelassen für Übersicht).</div>
-<div id="mermaid-fallback">⚠ Mermaid-Diagramm konnte nicht geladen werden (offline?). Siehe Tabelle unten.</div>
+<div class="legend">Subgraphen = Domänen. Pfeile = domain-übergreifende Imports (intra-Domain für Übersicht weggelassen).</div>
+<div id="mermaid-fallback">⚠ Mermaid-Diagramm konnte nicht geladen werden (offline / CDN nicht erreichbar). Siehe Tabellen unten.</div>
 <div id="mermaid-container">
 <pre class="mermaid">
 ${mermaid}
@@ -220,19 +276,39 @@ ${mermaid}
 </div>
 
 <h2>Modul-Tabellen nach Domäne</h2>
-<div class="legend">Sortiert nach Code-Reihenfolge. „Wird genutzt von" hilft beim Refactor — wenn niemand mich nutzt, bin ich tot.</div>
+<div class="legend">Spalte „Wird genutzt von" hilft beim Refactor: wenn niemand mich nutzt, kann ich vermutlich raus.</div>
 ${tables}
 
 <script>
-  // Fallback-Anzeige falls Mermaid-CDN nicht lädt
   setTimeout(() => {
     if (typeof mermaid === 'undefined') {
       document.getElementById('mermaid-fallback').style.display = 'block';
       document.getElementById('mermaid-container').style.display = 'none';
-    } else {
-      mermaid.initialize({ startOnLoad: true, theme: 'default', flowchart: { curve: 'basis' } });
+      return;
     }
-  }, 500);
+    try {
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: 'dark',
+        themeVariables: {
+          primaryColor:        '#1a2535',
+          primaryTextColor:    '#cfd',
+          primaryBorderColor:  '#4fc3f7',
+          lineColor:           '#4fc3f7',
+          secondaryColor:      '#12182a',
+          tertiaryColor:       '#0b0e18',
+          background:          'transparent',
+          mainBkg:             '#1a2535',
+          clusterBkg:          'rgba(79,195,247,0.04)',
+          clusterBorder:       '#2a3050',
+        },
+        flowchart: { curve: 'basis', padding: 16 },
+      });
+    } catch (e) {
+      console.error('Mermaid init:', e);
+      document.getElementById('mermaid-fallback').style.display = 'block';
+    }
+  }, 100);
 </script>
 
 </body></html>`;
