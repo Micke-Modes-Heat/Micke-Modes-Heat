@@ -771,6 +771,9 @@ export function parseWfsGeoJson(geojson, snapArea) {
   }));
 
   var defaultBj = parseInt(document.getElementById('osm-default-baujahr')?.value) || 1970;
+  // Mindestfläche aus UI (Default 30 m² — filtert Garagen/Schuppen)
+  var minFlaeche = parseFloat(document.getElementById('osm-min-flaeche')?.value);
+  if (!isFinite(minFlaeche) || minFlaeche < 0) minFlaeche = 30;
   var result = [];
 
   geojson.features.forEach(function(feat) {
@@ -789,9 +792,9 @@ export function parseWfsGeoJson(geojson, snapArea) {
       // GeoJSON: [lon, lat] → Leaflet: {lat, lng}
       var coords = ring.map(function(c) { return { lat: c[1], lng: c[0] }; });
 
-      // Fläche prüfen: zu kleine Polygone (<10 m²) überspringen (Garagen etc.)
+      // Fläche prüfen — User-konfigurierbarer Filter (Default 30 m²)
       var area = polygonAreaM2(coords);
-      if (area < 10) return;
+      if (area < minFlaeche) return;
 
       // Deduplizierung
       var sumLat = 0, sumLng = 0;
@@ -1250,16 +1253,22 @@ export function parseOsmData(data, snapArea){
   data.elements.forEach(el=>{ if(el.type==='node') nodes[el.id]={lat:el.lat,lng:el.lon}; });
   const existingOsm=new Set(gebaeude.filter(g=>g.osmId).map(g=>g.osmId));
   const result=[];
+  // Mindestfläche aus UI (Default 30 m² — filtert Garagen/Schuppen)
+  let minFlaeche = parseFloat(document.getElementById('osm-min-flaeche')?.value);
+  if (!isFinite(minFlaeche) || minFlaeche < 0) minFlaeche = 30;
 
   data.elements.forEach(el=>{
     if(el.type!=='way'||!el.tags?.building) return;
     if(existingOsm.has(el.id)) return;
 
-    // Garagen, Schuppen etc. überspringen
+    // Garagen, Schuppen etc. per Tag überspringen
     if(OSM_SKIP_TYPES.has((el.tags.building||'').toLowerCase())) return;
 
     const coords=el.nodes.map(nid=>nodes[nid]).filter(Boolean);
     if(coords.length<3) return;
+
+    // Mindestfläche prüfen
+    if (polygonAreaM2(coords) < minFlaeche) return;
 
     if(snapArea&&snapArea.length>=3){
       const center=polygonCenter(coords);

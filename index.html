@@ -1014,6 +1014,11 @@
     <label class="inp-label" title="Wird verwendet wenn OSM kein Baujahr enthält — typisch für Gründerzeit, Nachkrieg, 70er-Jahre-Neubaugebiet etc.">Standard-Baujahr (falls OSM kein Baujahr hat)</label>
     <input class="inp-field" type="number" id="osm-default-baujahr" value="1970" min="1850" max="2024" step="1" style="width:90px;">
   </div>
+  <div class="inp-group" style="margin:6px 0 4px;">
+    <label class="inp-label" title="Gebäude unter dieser Grundfläche werden ignoriert. 30 m² filtert Garagen/Schuppen heraus, lässt aber kleine Wohnhäuser durch.">Mindestfläche (m²)</label>
+    <input class="inp-field" type="number" id="osm-min-flaeche" value="30" min="0" max="500" step="5" style="width:90px;"
+      data-input="const a=document.getElementById('osm-min-flaeche-area');if(a)a.value=this.value;">
+  </div>
   <div class="panel-btns">
     <button class="btn-confirm" data-click="loadOsmBuildings()">Jetzt laden</button>
     <button class="btn-secondary" data-click="hidePanels()">Abbrechen</button>
@@ -1028,6 +1033,11 @@
     <label class="inp-label" title="Wird für Gebäude ohne Baujahr in OSM verwendet">Standard-Baujahr (Fallback)</label>
     <input class="inp-field" type="number" id="osm-default-baujahr-area" value="1970" min="1850" max="2024" step="1" style="width:90px;"
       data-input="const a=document.getElementById('osm-default-baujahr');if(a)a.value=this.value;">
+  </div>
+  <div class="inp-group" style="margin:6px 0 4px;">
+    <label class="inp-label" title="Gebäude unter dieser Grundfläche werden ignoriert. 30 m² filtert Garagen/Schuppen heraus, lässt aber kleine Wohnhäuser durch.">Mindestfläche (m²)</label>
+    <input class="inp-field" type="number" id="osm-min-flaeche-area" value="30" min="0" max="500" step="5" style="width:90px;"
+      data-input="const a=document.getElementById('osm-min-flaeche');if(a)a.value=this.value;">
   </div>
   <div class="panel-btns">
     <button class="btn-confirm amber" data-click="loadOsmBuildings()">Gebäude laden</button>
