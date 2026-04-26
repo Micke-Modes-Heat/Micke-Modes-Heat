@@ -10,6 +10,9 @@ import { ASSETS } from './13a-assets-core.js';
 import { redrawAllAssets } from './13b-assets-render.js';
 import { STROMNETZ } from './14b-stromnetz-state.js';
 import { redrawAllStromnetz } from './15a-stromnetz-render.js';
+// Phase 4 — Foto-Anhang
+import { exportPhotosForProject, importPhotosFromProject, clearAllPhotos } from './17a-fotos-storage.js';
+import { resetUngespeichertReminder, cleanupOrphanPhotos } from './17c-fotos-ui.js';
 
 export function updateTotals(){
   let tw=0, th=0;
@@ -481,6 +484,7 @@ export function _renderExpandedPanel(g, stats) {
       <button class="btn-xs" data-click="togglePlanPanel(${g.id})" title="Planung & Sanierung">🔧 Planen</button>
       <button class="btn-xs" data-click="startNetzEdgeFrom(${g.id})" title="Leitung von diesem Gebäude zeichnen" style="border-color:#e53935;color:#e53935;">⛕+</button>
       ${netzEdges.some(e => e.u === g.id || e.v === g.id) ? `<button class="btn-xs red" data-click="abklemmenGebaeude(${g.id})" title="Alle Netzleitungen entfernen">⛕✕</button>` : ''}
+      <button class="btn-xs" data-click="openFotoPanel('gebaeude', ${g.id})" title="Fotos verwalten" style="border-color:#4fc3f7;color:#4fc3f7;">📷${(g.photoIds && g.photoIds.length) ? ` ${g.photoIds.length}` : ''}</button>
       <button class="btn-xs" data-click="removeGebaeude(${g.id})" title="Löschen" style="margin-left:auto">&#10005;</button>
     </div>
     ${activeVariantId !== null ? `<div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border);">
@@ -579,6 +583,7 @@ export function _buildProjectData() {
       stockwerke: g.stockwerke || 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
       pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil || 30, zustand: g.zustand || '',
       strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',
+      photoIds: g.photoIds || [],
     })),
     netz: {
       zentrale: document.getElementById('netz-zentrale').value,
@@ -669,13 +674,36 @@ export function _buildProjectData() {
       napProfiles: STROMNETZ.napProfiles || {},
       napSelectedId: STROMNETZ.napSelectedId || null,
     },
+    // Fotos werden nicht hier eingebunden — _buildProjectDataWithPhotos
+    // ist async und sammelt sie aus dem Storage ein.
   };
 }
 
-export function exportJSON(){
-  const project = _buildProjectData();
-  const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='liegenschaft_projekt.json';a.click();
+// Async-Variante mit Fotos eingebettet — für JSON-Export.
+// Autosave (localStorage) nutzt _buildProjectData() OHNE Fotos, weil das JSON sonst
+// das localStorage-Limit sprengt (5–10 MB). Fotos sind separat im Storage-Layer
+// (IndexedDB/localStorage/RAM) auto-persistiert.
+export async function _buildProjectDataWithPhotos() {
+  const data = _buildProjectData();
+  try {
+    data.fotos = await exportPhotosForProject();
+  } catch (e) {
+    console.warn('Foto-Export fehlgeschlagen:', e);
+    data.fotos = [];
+  }
+  return data;
+}
+
+export async function exportJSON(){
+  // Async: Fotos aus Storage einbetten (1–3 Sek bei vielen Fotos)
+  const project = await _buildProjectDataWithPhotos();
+  const blob = new Blob([JSON.stringify(project, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'liegenschaft_projekt.json';
+  a.click();
+  // Reminder zurücksetzen: Fotos sind jetzt im Backup
+  resetUngespeichertReminder();
 }
 
 export function importJSON(event) {
@@ -1089,6 +1117,17 @@ export function _loadProject(project) {
         try { redrawAllStromnetz(); } catch (e) { console.warn('redrawAllStromnetz:', e); }
         try { redrawAllAssets();    } catch (e) { console.warn('redrawAllAssets:', e); }
       }, 0);
+
+      // Phase 4 — Fotos importieren (falls im Projekt-JSON enthalten)
+      if (Array.isArray(project.fotos) && project.fotos.length > 0) {
+        clearAllPhotos()
+          .then(() => importPhotosFromProject(project.fotos))
+          .then(n => console.log(`Fotos restauriert: ${n}/${project.fotos.length}`))
+          .catch(e => console.warn('Foto-Import fehlgeschlagen:', e));
+      } else {
+        // Auch wenn keine Fotos im Projekt sind: orphan-Cleanup nach Restore
+        setTimeout(() => cleanupOrphanPhotos().catch(()=>{}), 200);
+      }
 
       redrawErzeugerIcons();
       _invalidateStats();

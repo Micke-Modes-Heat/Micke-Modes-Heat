@@ -64,7 +64,14 @@ function renderInspector(asset) {
     }
   }
 
+  const photoCount = (asset.photoIds || []).length;
   html += `
+      <button class="asset-ins-delete" data-action="fotos"
+        style="background:#0f1b2d;border:1px solid #4fc3f7;color:#4fc3f7;
+               padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;
+               width:100%;margin-top:10px;">
+        📷 Fotos verwalten ${photoCount > 0 ? `(${photoCount})` : ''}
+      </button>
       <div style="font-size:10px;color:var(--muted);margin-top:8px;">
         ID: <code>${asset.id}</code>
         ${asset.buildingId ? `· Gebäude: ${asset.buildingId}` : ''}
@@ -91,6 +98,11 @@ function renderInspector(asset) {
     if (confirm(`Asset "${asset.name}" wirklich löschen?`)) {
       deleteAsset(asset.id);
       closeAssetInspector();
+    }
+  }));
+  panel.querySelectorAll('[data-action="fotos"]').forEach(b => b.addEventListener('click', () => {
+    if (typeof window.openFotoPanel === 'function') {
+      window.openFotoPanel('asset', asset.id, asset.name);
     }
   }));
 }

@@ -382,7 +382,8 @@ export function addGebaeude(opts={}){
            baujahr: opts.baujahr!=null?opts.baujahr:null, baujährQuelle: opts.baujährQuelle||null,
            abrissjahr: null, sanierungen: [], selected: false,
            pvAktiv: false, pvDachanteil: 30,
-           strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || ''};
+           strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || '',
+           photoIds: opts.photoIds || []};
   window.gebaeude.push(g);
   if(opts.coords){
     g.polygon=opts.coords;

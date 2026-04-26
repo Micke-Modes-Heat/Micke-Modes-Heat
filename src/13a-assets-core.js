@@ -115,6 +115,7 @@ export function createAsset(type, lat, lng, opts = {}) {
     baujahr,
     abrissjahr,
     massnahmen: opts.massnahmen || [],
+    photoIds:   opts.photoIds   || [],   // Foto-Anhang (Phase 4)
     _marker:    null,
   };
 

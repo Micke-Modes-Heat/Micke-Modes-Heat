@@ -53,6 +53,10 @@ import * as stromnetzHeatmap from './15j-stromnetz-heatmap.js';
 import * as stromnetzTrafoopt from './15l-stromnetz-trafoopt.js';
 import * as stromnetzUi from './16-stromnetz-ui.js';
 import * as stromnetzSelftest from './16b-stromnetz-selftest.js';
+// Phase 4 — Foto-Anhang
+import * as fotosStorage  from './17a-fotos-storage.js';
+import * as fotosCompress from './17b-fotos-compress.js';
+import * as fotosUi       from './17c-fotos-ui.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -67,6 +71,7 @@ const modules = [
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector,
   stromnetzConfig, stromnetzState, stromnetzGraph, stromnetzRender, stromnetzDraw, stromnetzCalc, stromnetzSld, stromnetzSzenarien, stromnetzMesslastgang, stromnetzMassnahmen, stromnetzInvest, stromnetzClustering, stromnetzHeatmap, stromnetzTrafoopt, stromnetzUi, stromnetzSelftest,
+  fotosStorage, fotosCompress, fotosUi,
 ];
 
 for (const mod of modules) {
