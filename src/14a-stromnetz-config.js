@@ -30,12 +30,15 @@ export const KOSTEN_CFG = {
     NSHV:         { basis: 8000,  perAbgang:  1500 },  // 8k + 1500 €/Abgang
     UV:           { basis: 3000,  perAbgang:  600  },  // 3k + 600 €/Abgang
     Verbraucher:  { basis: 1500 },
-    WP:           { basis: 3000,  perKW:      500  },  // 3k + 500 €/kW
     Lade:         { basis: 500,   perPunkt:   3000 },  // 500 + 3000 €/Ladepunkt
-    PV:           { basis: 0,     perKWp:     1300 },  // 1300 €/kWp
     Batterie:     { basis: 0,     perKWh:     900  },  // 900 €/kWh
     Nsa:          { basis: 5000,  perKW:      300  },  // 5k + 300 €/kW
     Reserve:      { basis: 0 },
+    // ── DEPRECATED: PV, WP, KWK kommen jetzt aus CalcEngine (KWW-Kostenkurven) ──
+    // Werte hier nur als Fallback wenn CalcEngine nicht verfügbar (z.B. Tests).
+    PV:           { basis: 0,     perKWp:     1300 },  // Fallback — CalcEngine nutzt PV_INVEST_TABELLE
+    WP:           { basis: 3000,  perKW:      500  },  // Fallback — CalcEngine nutzt LuftWP-Kurve
+    // KWK gibt es hier nicht; CalcEngine.investEurProKw('BHKW', kW_th) ist die Quelle.
   },
 };
 

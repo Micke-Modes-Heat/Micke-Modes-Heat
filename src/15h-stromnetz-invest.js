@@ -17,8 +17,43 @@ import { getMergedAssets, getMergedStromLeitungen } from './15e-stromnetz-szenar
 // ════════════════════════════════════════════════════════════════════════════
 // KOSTENRECHNUNG
 // ════════════════════════════════════════════════════════════════════════════
-// Asset-Investkosten: basis + skalierte per*-Anteile aus KOSTEN_CFG
+//
+// Single-Source-of-Truth-Strategie:
+//   - Wenn der Asset-Typ ein Pendant in CalcEngine (08-calc-engine.js) hat
+//     → CalcEngine als Quelle nutzen (KWW-Technikkatalog + leistungsabhängige Kurven)
+//   - Sonst → KOSTEN_CFG aus 14a (für reine Strom-Infrastruktur die in
+//     CalcEngine nicht vorkommt)
+// Verhindert die Doppelung mit unterschiedlichen Werten.
+//
+// Mapping ASSET_CFG-Typ → CalcEngine-Tech:
+//   PV       → getPvInvestPerKwp(kWp) · TABELLE
+//   WP       → 'LuftWP' (Default — Sub-Typ-Auswahl Geo/Fluss kommt später)
+//   KWK      → 'BHKW' (auf kW_th)
+//   sonstige → KOSTEN_CFG.assets[type] (basis + per*)
+
 export function calcAssetKosten(a) {
+  const ce = (typeof window !== 'undefined') ? window.CalcEngine : null;
+
+  // ── Überlappende Tech: CalcEngine ist Quelle ──────────────────────────────
+  if (ce) {
+    if (a.type === 'PV' && typeof ce.getPvInvestPerKwp === 'function') {
+      const kWp = parseFloat(a.props?.leistungKWp) || 10;
+      return ce.getPvInvestPerKwp(kWp) * kWp;
+    }
+    if (a.type === 'WP' && typeof ce.investEurProKw === 'function') {
+      const kW = parseFloat(a.props?.leistungKW) || 10;
+      return ce.investEurProKw('LuftWP', kW) * kW;  // Default LuftWP
+    }
+    if (a.type === 'KWK' && typeof ce.investEurProKw === 'function') {
+      // BHKW-Kostenkurve auf thermischer Leistung (kW_th); Fallback auf kW_el
+      const kWth = parseFloat(a.props?.leistungKW_th)
+                || parseFloat(a.props?.leistungKW_el)
+                || 100;
+      return ce.investEurProKw('BHKW', kWth) * kWth;
+    }
+  }
+
+  // ── Strom-Infrastruktur etc.: KOSTEN_CFG ─────────────────────────────────
   const cfg = KOSTEN_CFG.assets[a.type];
   if (!cfg) return 0;
   let k = cfg.basis || 0;
