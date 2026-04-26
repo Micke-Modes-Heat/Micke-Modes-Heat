@@ -961,9 +961,12 @@ export function clearPlan(id, type, idx) {
 
 // Bereits geladene Gebäude unter Mindestfläche entfernen.
 // Liest die Schwelle aus dem osm-min-flaeche-Input. Mit Bestätigungs-Dialog.
-export function removeKleineGebaeude() {
-  let minFlaeche = parseFloat(document.getElementById('osm-min-flaeche')?.value);
-  if (!isFinite(minFlaeche) || minFlaeche < 0) minFlaeche = 30;
+export function removeKleineGebaeude(minFlaecheArg) {
+  let minFlaeche = minFlaecheArg;
+  if (minFlaeche == null) {
+    minFlaeche = parseFloat(document.getElementById('osm-min-flaeche')?.value);
+    if (!isFinite(minFlaeche) || minFlaeche < 0) minFlaeche = 30;
+  }
 
   const list = (window.gebaeude || []).filter(g => {
     const f = parseFloat(g.flaeche);
@@ -977,12 +980,28 @@ export function removeKleineGebaeude() {
 
   if (!confirm(
     `${list.length} Gebäude haben weniger als ${minFlaeche} m² Grundfläche.\n\n` +
-    `Wirklich alle löschen?\n\n` +
-    `(Tipp: Mindestfläche im Feld oben ändern, dann nochmal klicken.)`
+    `Wirklich alle löschen?`
   )) return 0;
 
   // Reihenfolge umgekehrt → splice in removeGebaeude verträgt sich mit Iteration
   for (const g of [...list].reverse()) removeGebaeude(g.id);
   return list.length;
+}
+
+// Variante mit Eingabe-Dialog (für Sidebar-Button ohne Mindestfläche-Input)
+export function removeKleineGebaeudePrompt() {
+  const def = document.getElementById('osm-min-flaeche')?.value || '30';
+  const input = prompt(
+    'Alle Gebäude UNTER welcher Grundfläche (m²) sollen gelöscht werden?\n\n' +
+    'Typische Werte: 30 = filtert Garagen/Schuppen · 50 = nur echte Wohnhäuser · 100 = nur große Bauten',
+    String(def)
+  );
+  if (input == null) return 0;  // Abbruch
+  const v = parseFloat(input);
+  if (!isFinite(v) || v < 0) {
+    alert('Bitte eine gültige positive Zahl eingeben.');
+    return 0;
+  }
+  return removeKleineGebaeude(v);
 }
 

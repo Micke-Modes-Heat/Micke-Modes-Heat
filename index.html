@@ -157,6 +157,7 @@
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" id="btn-osm-import" data-click="showOsmPanel()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;">↓ OSM-Import (OpenStreetMap)</button>
           <button class="lp-tool-btn" data-click="openGebListImport()" style="border-color:#ff9800;color:#ffb74d;grid-column:1/-1;">📋 Gebäudeliste importieren (CSV)</button>
+          <button class="lp-tool-btn" data-click="removeKleineGebaeudePrompt()" style="border-color:#f9a825;color:#f9a825;grid-column:1/-1;" title="Bereits geladene Gebäude unter einer Mindestfläche löschen (Garagen/Schuppen)">🗑 Kleine Gebäude entfernen…</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Ansicht</div>
         <div style="display:flex;flex-direction:column;gap:4px;">
@@ -1045,7 +1046,13 @@
     <input class="inp-field" type="number" id="osm-min-flaeche-area" value="30" min="0" max="500" step="5" style="width:90px;"
       data-input="const a=document.getElementById('osm-min-flaeche');if(a)a.value=this.value;">
   </div>
+  <div style="font-size:10px;color:var(--muted);margin:4px 0 6px;">
+    Filter wirkt nur bei <b>neuem Import</b>. Für bereits geladene Gebäude:
+  </div>
   <div class="panel-btns">
+    <button class="btn-secondary" data-click="removeKleineGebaeude()" style="font-size:10px;border-color:#f9a825;color:#f9a825;">🗑 Kleine entfernen (&lt; Mindestfläche)</button>
+  </div>
+  <div class="panel-btns" style="margin-top:8px;">
     <button class="btn-confirm amber" data-click="loadOsmBuildings()">Gebäude laden</button>
     <button class="btn-secondary" data-click="clearArea()">Bereich löschen</button>
     <button class="btn-secondary" data-click="hidePanels()">Schließen</button>
