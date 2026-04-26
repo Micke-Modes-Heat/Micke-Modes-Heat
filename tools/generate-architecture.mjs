@@ -97,6 +97,8 @@ function stripEmoji(s) {
   return s.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim();
 }
 
+// Domain-Level Diagramm: 1 Box pro Domäne, Pfeile aggregiert mit Import-Anzahl.
+// Reduziert von ~100 Kanten auf ~30, lesbar.
 function buildMermaid(modules) {
   const byDomain = new Map();
   for (const m of modules) {
@@ -104,17 +106,9 @@ function buildMermaid(modules) {
     if (!byDomain.has(d.id)) byDomain.set(d.id, { domain: d, modules: [] });
     byDomain.get(d.id).modules.push(m);
   }
-  let s = 'graph LR\n';
-  for (const { domain, modules: mods } of byDomain.values()) {
-    if (mods.length === 0) continue;
-    const title = stripEmoji(domain.name);
-    s += `  subgraph d_${domain.id}["${title}"]\n`;
-    for (const m of mods) {
-      s += `    ${safeId(m.shortName)}["${m.shortName}"]\n`;
-    }
-    s += '  end\n';
-  }
-  // Domain-übergreifende Imports als Kanten
+
+  // Domain → Domain Imports zählen
+  const edgeCount = new Map();  // "from→to" → Anzahl
   for (const m of modules) {
     const dFrom = findDomain(m.name).id;
     for (const imp of m.imports) {
@@ -122,8 +116,23 @@ function buildMermaid(modules) {
       if (!target) continue;
       const dTo = findDomain(target.name).id;
       if (dFrom === dTo) continue;
-      s += `  ${safeId(m.shortName)} --> ${safeId(target.shortName)}\n`;
+      const key = dFrom + '→' + dTo;
+      edgeCount.set(key, (edgeCount.get(key) || 0) + 1);
     }
+  }
+
+  let s = 'graph LR\n';
+  for (const { domain, modules: mods } of byDomain.values()) {
+    if (mods.length === 0) continue;
+    const title = stripEmoji(domain.name);
+    const totalLoc = mods.reduce((sum, m) => sum + m.loc, 0);
+    const label = `${title}<br/><small>${mods.length} Module · ${totalLoc} LOC</small>`;
+    s += `  d_${domain.id}["${label}"]\n`;
+  }
+  for (const [key, n] of edgeCount.entries()) {
+    const [from, to] = key.split('→');
+    const label = n > 1 ? `|${n}|` : '';
+    s += `  d_${from} -->${label} d_${to}\n`;
   }
   return s;
 }
@@ -245,9 +254,24 @@ const html = `<!DOCTYPE html><html lang="de"><head>
     margin: 12px 0; overflow-x: auto;
     border: 1px solid var(--border);
   }
-  /* Mermaid-Diagramm-Farben überschreiben für Dark-Theme */
+  /* Mermaid-Diagramm-Farben hart auf Dark-Theme zwingen */
   #mermaid-container .mermaid { color: var(--text); }
-  #mermaid-container svg { background: transparent !important; max-width: 100%; }
+  #mermaid-container svg { background: transparent !important; max-width: 100%; height: auto; }
+  #mermaid-container svg rect.node, #mermaid-container svg .nodeLabel rect,
+  #mermaid-container svg foreignObject div {
+    fill: var(--surface2) !important; color: var(--text) !important;
+  }
+  #mermaid-container svg .node text, #mermaid-container svg .nodeLabel,
+  #mermaid-container svg foreignObject { color: var(--text) !important; fill: var(--text) !important; }
+  #mermaid-container svg .edgePath path { stroke: var(--accent) !important; stroke-width: 1.5 !important; }
+  #mermaid-container svg .arrowheadPath, #mermaid-container svg marker path {
+    fill: var(--accent) !important; stroke: var(--accent) !important;
+  }
+  #mermaid-container svg .edgeLabel, #mermaid-container svg .edgeLabel rect {
+    background-color: var(--surface) !important; fill: var(--surface) !important;
+    color: var(--accent) !important;
+  }
+  #mermaid-container svg .edgeLabel text { fill: var(--accent) !important; }
   #mermaid-fallback {
     display: none; padding: 12px 16px;
     background: rgba(249,168,37,.10); border-left: 3px solid var(--warn);
@@ -280,35 +304,27 @@ ${mermaid}
 ${tables}
 
 <script>
-  setTimeout(() => {
-    if (typeof mermaid === 'undefined') {
-      document.getElementById('mermaid-fallback').style.display = 'block';
-      document.getElementById('mermaid-container').style.display = 'none';
-      return;
-    }
-    try {
-      mermaid.initialize({
-        startOnLoad: true,
-        theme: 'dark',
-        themeVariables: {
-          primaryColor:        '#1a2535',
-          primaryTextColor:    '#cfd',
-          primaryBorderColor:  '#4fc3f7',
-          lineColor:           '#4fc3f7',
-          secondaryColor:      '#12182a',
-          tertiaryColor:       '#0b0e18',
-          background:          'transparent',
-          mainBkg:             '#1a2535',
-          clusterBkg:          'rgba(79,195,247,0.04)',
-          clusterBorder:       '#2a3050',
-        },
-        flowchart: { curve: 'basis', padding: 16 },
-      });
-    } catch (e) {
-      console.error('Mermaid init:', e);
-      document.getElementById('mermaid-fallback').style.display = 'block';
-    }
-  }, 100);
+  if (typeof mermaid === 'undefined') {
+    document.getElementById('mermaid-fallback').style.display = 'block';
+    document.getElementById('mermaid-container').style.display = 'none';
+  } else {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        background:          '#0b0e18',
+        primaryColor:        '#1a2535',
+        primaryTextColor:    '#dde6f0',
+        primaryBorderColor:  '#4fc3f7',
+        lineColor:           '#4fc3f7',
+        edgeLabelBackground: '#12182a',
+        fontFamily:          'DM Sans, sans-serif',
+        fontSize:            '13px',
+      },
+      flowchart: { curve: 'basis', padding: 20, nodeSpacing: 50, rankSpacing: 80 },
+      securityLevel: 'loose',
+    });
+  }
 </script>
 
 </body></html>`;

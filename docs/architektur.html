@@ -61,9 +61,24 @@
     margin: 12px 0; overflow-x: auto;
     border: 1px solid var(--border);
   }
-  /* Mermaid-Diagramm-Farben überschreiben für Dark-Theme */
+  /* Mermaid-Diagramm-Farben hart auf Dark-Theme zwingen */
   #mermaid-container .mermaid { color: var(--text); }
-  #mermaid-container svg { background: transparent !important; max-width: 100%; }
+  #mermaid-container svg { background: transparent !important; max-width: 100%; height: auto; }
+  #mermaid-container svg rect.node, #mermaid-container svg .nodeLabel rect,
+  #mermaid-container svg foreignObject div {
+    fill: var(--surface2) !important; color: var(--text) !important;
+  }
+  #mermaid-container svg .node text, #mermaid-container svg .nodeLabel,
+  #mermaid-container svg foreignObject { color: var(--text) !important; fill: var(--text) !important; }
+  #mermaid-container svg .edgePath path { stroke: var(--accent) !important; stroke-width: 1.5 !important; }
+  #mermaid-container svg .arrowheadPath, #mermaid-container svg marker path {
+    fill: var(--accent) !important; stroke: var(--accent) !important;
+  }
+  #mermaid-container svg .edgeLabel, #mermaid-container svg .edgeLabel rect {
+    background-color: var(--surface) !important; fill: var(--surface) !important;
+    color: var(--accent) !important;
+  }
+  #mermaid-container svg .edgeLabel text { fill: var(--accent) !important; }
   #mermaid-fallback {
     display: none; padding: 12px 16px;
     background: rgba(249,168,37,.10); border-left: 3px solid var(--warn);
@@ -74,7 +89,7 @@
 </head><body>
 
 <h1>🏗️ Architektur — Energieplanung</h1>
-<div class="meta">Auto-generiert · 26.04.2026, 23:01 · <a href="../index.html">← zum Tool</a></div>
+<div class="meta">Auto-generiert · 26.04.2026, 23:03 · <a href="../index.html">← zum Tool</a></div>
 
 <div class="stats">
   <div><b>56</b>Module</div>
@@ -88,386 +103,133 @@
 <div id="mermaid-container">
 <pre class="mermaid">
 graph LR
-  subgraph d_globals["Globals + Varianten"]
-    m_01_globals_varianten["01-globals-varianten"]
-  end
-  subgraph d_karte["Karte + Geometrie"]
-    m_02a_netz_physik["02a-netz-physik"]
-    m_02b_gebaeude["02b-gebaeude"]
-    m_02c_karte_werkzeuge["02c-karte-werkzeuge"]
-  end
-  subgraph d_netz["Wärmenetz + Erzeuger + IO"]
-    m_03a_erzeuger["03a-erzeuger"]
-    m_03b_netz["03b-netz"]
-    m_03c_gebaeude_io["03c-gebaeude-io"]
-  end
-  subgraph d_uipanels["UI-Panels + 3D"]
-    m_04a_ui_panels["04a-ui-panels"]
-    m_04b_emissionen_3d["04b-emissionen-3d"]
-  end
-  subgraph d_exportalt["Export + Altes Stromnetz"]
-    m_05a_export["05a-export"]
-    m_05b_stromnetz["05b-stromnetz"]
-    m_05c_sankey["05c-sankey"]
-  end
-  subgraph d_lastgang["Wärme-Lastgang + Dispatch"]
-    m_06a_gbi_lastgang["06a-gbi-lastgang"]
-    m_06b_gl_berechnen["06b-gl-berechnen"]
-    m_06c_dispatch_core["06c-dispatch-core"]
-  end
-  subgraph d_analyse["Analyse + Wirtschaftlichkeit"]
-    m_07a_analysis_charts["07a-analysis-charts"]
-    m_07b_analysis_economics["07b-analysis-economics"]
-  end
-  subgraph d_calc["CalcEngine"]
-    m_08_calc_engine["08-calc-engine"]
-  end
-  subgraph d_pv["PV"]
-    m_09a_pv_profile["09a-pv-profile"]
-    m_09b_pv_calc["09b-pv-calc"]
-    m_09c_pv_charts_opt["09c-pv-charts-opt"]
-  end
-  subgraph d_optimizer["Optimizer"]
-    m_10a_optimizer_core["10a-optimizer-core"]
-    m_10b_hourly_live["10b-hourly-live"]
-    m_10c_optimizer_run["10c-optimizer-run"]
-    m_10d_optimizer_worker["10d-optimizer-worker"]
-  end
-  subgraph d_hilfe["Hilfe + Leitfaden"]
-    m_11_hilfe_leitfaden["11-hilfe-leitfaden"]
-  end
-  subgraph d_handlers["Inline-Event-Handler"]
-    m_12_inline_handlers["12-inline-handlers"]
-  end
-  subgraph d_assets["Asset-System (Phase 1)"]
-    m_13a_assets_core["13a-assets-core"]
-    m_13b_assets_render["13b-assets-render"]
-    m_13c_assets_ui["13c-assets-ui"]
-    m_13d_assets_autocreate["13d-assets-autocreate"]
-    m_13e_assets_inspector["13e-assets-inspector"]
-  end
-  subgraph d_strom_fund["Stromnetz-Fundament (Phase 3.1)"]
-    m_14a_stromnetz_config["14a-stromnetz-config"]
-    m_14b_stromnetz_state["14b-stromnetz-state"]
-    m_14c_stromnetz_graph["14c-stromnetz-graph"]
-  end
-  subgraph d_strom_feat["Stromnetz-Features (Phase 3.2–3.6)"]
-    m_15a_stromnetz_render["15a-stromnetz-render"]
-    m_15b_stromnetz_draw["15b-stromnetz-draw"]
-    m_15c_stromnetz_calc["15c-stromnetz-calc"]
-    m_15d_stromnetz_sld["15d-stromnetz-sld"]
-    m_15e_stromnetz_szenarien["15e-stromnetz-szenarien"]
-    m_15f_stromnetz_messlastgang["15f-stromnetz-messlastgang"]
-    m_15g_stromnetz_massnahmen["15g-stromnetz-massnahmen"]
-    m_15h_stromnetz_invest["15h-stromnetz-invest"]
-    m_15i_stromnetz_clustering["15i-stromnetz-clustering"]
-    m_15j_stromnetz_heatmap["15j-stromnetz-heatmap"]
-    m_15l_stromnetz_trafoopt["15l-stromnetz-trafoopt"]
-  end
-  subgraph d_strom_ui["Stromnetz-UI + Self-Test (Phase 3)"]
-    m_16_stromnetz_ui["16-stromnetz-ui"]
-    m_16b_stromnetz_selftest["16b-stromnetz-selftest"]
-  end
-  subgraph d_fotos["Foto-Anhang (Phase 4)"]
-    m_17a_fotos_storage["17a-fotos-storage"]
-    m_17b_fotos_compress["17b-fotos-compress"]
-    m_17c_fotos_ui["17c-fotos-ui"]
-  end
-  subgraph d_config["Konfiguration"]
-    m_erzeuger_cfg["erzeuger-cfg"]
-    m_hilfe_texte["hilfe-texte"]
-    m_netz_kosten["netz-kosten"]
-    m_optimizer_defaults["optimizer-defaults"]
-  end
-  subgraph d_main["Main-Entry"]
-    m_main["main"]
-  end
-  m_01_globals_varianten --> m_02b_gebaeude
-  m_01_globals_varianten --> m_02c_karte_werkzeuge
-  m_01_globals_varianten --> m_03a_erzeuger
-  m_01_globals_varianten --> m_03b_netz
-  m_01_globals_varianten --> m_03c_gebaeude_io
-  m_01_globals_varianten --> m_04a_ui_panels
-  m_01_globals_varianten --> m_06b_gl_berechnen
-  m_01_globals_varianten --> m_06c_dispatch_core
-  m_01_globals_varianten --> m_erzeuger_cfg
-  m_02a_netz_physik --> m_01_globals_varianten
-  m_02a_netz_physik --> m_03b_netz
-  m_02a_netz_physik --> m_netz_kosten
-  m_02b_gebaeude --> m_01_globals_varianten
-  m_02b_gebaeude --> m_03b_netz
-  m_02b_gebaeude --> m_03c_gebaeude_io
-  m_02b_gebaeude --> m_06b_gl_berechnen
-  m_02b_gebaeude --> m_06c_dispatch_core
-  m_02b_gebaeude --> m_07b_analysis_economics
-  m_02c_karte_werkzeuge --> m_01_globals_varianten
-  m_02c_karte_werkzeuge --> m_03a_erzeuger
-  m_02c_karte_werkzeuge --> m_03b_netz
-  m_02c_karte_werkzeuge --> m_03c_gebaeude_io
-  m_02c_karte_werkzeuge --> m_04a_ui_panels
-  m_02c_karte_werkzeuge --> m_05b_stromnetz
-  m_02c_karte_werkzeuge --> m_06a_gbi_lastgang
-  m_02c_karte_werkzeuge --> m_06c_dispatch_core
-  m_03a_erzeuger --> m_02b_gebaeude
-  m_03b_netz --> m_01_globals_varianten
-  m_03b_netz --> m_02a_netz_physik
-  m_03b_netz --> m_02b_gebaeude
-  m_03b_netz --> m_02c_karte_werkzeuge
-  m_03b_netz --> m_04a_ui_panels
-  m_03b_netz --> m_06a_gbi_lastgang
-  m_03b_netz --> m_06c_dispatch_core
-  m_03c_gebaeude_io --> m_01_globals_varianten
-  m_03c_gebaeude_io --> m_02b_gebaeude
-  m_03c_gebaeude_io --> m_04a_ui_panels
-  m_03c_gebaeude_io --> m_06a_gbi_lastgang
-  m_03c_gebaeude_io --> m_09b_pv_calc
-  m_03c_gebaeude_io --> m_13a_assets_core
-  m_03c_gebaeude_io --> m_13b_assets_render
-  m_03c_gebaeude_io --> m_14b_stromnetz_state
-  m_03c_gebaeude_io --> m_15a_stromnetz_render
-  m_03c_gebaeude_io --> m_17a_fotos_storage
-  m_03c_gebaeude_io --> m_17c_fotos_ui
-  m_04a_ui_panels --> m_01_globals_varianten
-  m_04a_ui_panels --> m_02a_netz_physik
-  m_04a_ui_panels --> m_02b_gebaeude
-  m_04a_ui_panels --> m_02c_karte_werkzeuge
-  m_04a_ui_panels --> m_03b_netz
-  m_04a_ui_panels --> m_03c_gebaeude_io
-  m_04a_ui_panels --> m_05b_stromnetz
-  m_04a_ui_panels --> m_07a_analysis_charts
-  m_04a_ui_panels --> m_07b_analysis_economics
-  m_04a_ui_panels --> m_09b_pv_calc
-  m_04a_ui_panels --> m_10a_optimizer_core
-  m_04a_ui_panels --> m_10b_hourly_live
-  m_04a_ui_panels --> m_erzeuger_cfg
-  m_04a_ui_panels --> m_netz_kosten
-  m_04b_emissionen_3d --> m_01_globals_varianten
-  m_04b_emissionen_3d --> m_03a_erzeuger
-  m_04b_emissionen_3d --> m_06b_gl_berechnen
-  m_04b_emissionen_3d --> m_07a_analysis_charts
-  m_05a_export --> m_01_globals_varianten
-  m_05a_export --> m_02b_gebaeude
-  m_05a_export --> m_04a_ui_panels
-  m_05a_export --> m_07a_analysis_charts
-  m_05b_stromnetz --> m_01_globals_varianten
-  m_05b_stromnetz --> m_02b_gebaeude
-  m_05b_stromnetz --> m_02c_karte_werkzeuge
-  m_05b_stromnetz --> m_03b_netz
-  m_05b_stromnetz --> m_03c_gebaeude_io
-  m_05b_stromnetz --> m_04a_ui_panels
-  m_05b_stromnetz --> m_netz_kosten
-  m_05c_sankey --> m_01_globals_varianten
-  m_05c_sankey --> m_02b_gebaeude
-  m_05c_sankey --> m_03a_erzeuger
-  m_05c_sankey --> m_03c_gebaeude_io
-  m_05c_sankey --> m_07a_analysis_charts
-  m_05c_sankey --> m_erzeuger_cfg
-  m_06a_gbi_lastgang --> m_01_globals_varianten
-  m_06a_gbi_lastgang --> m_02b_gebaeude
-  m_06a_gbi_lastgang --> m_03b_netz
-  m_06a_gbi_lastgang --> m_03c_gebaeude_io
-  m_06a_gbi_lastgang --> m_07a_analysis_charts
-  m_06a_gbi_lastgang --> m_07b_analysis_economics
-  m_06a_gbi_lastgang --> m_08_calc_engine
-  m_06a_gbi_lastgang --> m_09b_pv_calc
-  m_06b_gl_berechnen --> m_01_globals_varianten
-  m_06b_gl_berechnen --> m_02b_gebaeude
-  m_06b_gl_berechnen --> m_02c_karte_werkzeuge
-  m_06b_gl_berechnen --> m_03a_erzeuger
-  m_06b_gl_berechnen --> m_03c_gebaeude_io
-  m_06b_gl_berechnen --> m_08_calc_engine
-  m_06c_dispatch_core --> m_01_globals_varianten
-  m_06c_dispatch_core --> m_02b_gebaeude
-  m_06c_dispatch_core --> m_03a_erzeuger
-  m_06c_dispatch_core --> m_03b_netz
-  m_06c_dispatch_core --> m_04a_ui_panels
-  m_06c_dispatch_core --> m_05b_stromnetz
-  m_06c_dispatch_core --> m_07a_analysis_charts
-  m_06c_dispatch_core --> m_07b_analysis_economics
-  m_06c_dispatch_core --> m_09b_pv_calc
-  m_06c_dispatch_core --> m_10b_hourly_live
-  m_06c_dispatch_core --> m_erzeuger_cfg
-  m_07a_analysis_charts --> m_08_calc_engine
-  m_07a_analysis_charts --> m_erzeuger_cfg
-  m_07b_analysis_economics --> m_01_globals_varianten
-  m_07b_analysis_economics --> m_02c_karte_werkzeuge
-  m_07b_analysis_economics --> m_03a_erzeuger
-  m_07b_analysis_economics --> m_03b_netz
-  m_07b_analysis_economics --> m_04a_ui_panels
-  m_07b_analysis_economics --> m_06b_gl_berechnen
-  m_07b_analysis_economics --> m_08_calc_engine
-  m_07b_analysis_economics --> m_erzeuger_cfg
-  m_07b_analysis_economics --> m_optimizer_defaults
-  m_08_calc_engine --> m_01_globals_varianten
-  m_08_calc_engine --> m_03a_erzeuger
-  m_08_calc_engine --> m_06a_gbi_lastgang
-  m_08_calc_engine --> m_07a_analysis_charts
-  m_09a_pv_profile --> m_01_globals_varianten
-  m_09a_pv_profile --> m_03a_erzeuger
-  m_09a_pv_profile --> m_03b_netz
-  m_09a_pv_profile --> m_03c_gebaeude_io
-  m_09a_pv_profile --> m_06a_gbi_lastgang
-  m_09a_pv_profile --> m_07b_analysis_economics
-  m_09a_pv_profile --> m_08_calc_engine
-  m_09b_pv_calc --> m_01_globals_varianten
-  m_09b_pv_calc --> m_02b_gebaeude
-  m_09b_pv_calc --> m_02c_karte_werkzeuge
-  m_09b_pv_calc --> m_03a_erzeuger
-  m_09b_pv_calc --> m_03b_netz
-  m_09b_pv_calc --> m_03c_gebaeude_io
-  m_09b_pv_calc --> m_06a_gbi_lastgang
-  m_09b_pv_calc --> m_08_calc_engine
-  m_09c_pv_charts_opt --> m_02a_netz_physik
-  m_10a_optimizer_core --> m_01_globals_varianten
-  m_10a_optimizer_core --> m_02b_gebaeude
-  m_10a_optimizer_core --> m_02c_karte_werkzeuge
-  m_10a_optimizer_core --> m_03a_erzeuger
-  m_10a_optimizer_core --> m_03b_netz
-  m_10a_optimizer_core --> m_03c_gebaeude_io
-  m_10a_optimizer_core --> m_04a_ui_panels
-  m_10a_optimizer_core --> m_06a_gbi_lastgang
-  m_10a_optimizer_core --> m_06b_gl_berechnen
-  m_10a_optimizer_core --> m_06c_dispatch_core
-  m_10a_optimizer_core --> m_07b_analysis_economics
-  m_10a_optimizer_core --> m_08_calc_engine
-  m_10a_optimizer_core --> m_09a_pv_profile
-  m_10a_optimizer_core --> m_erzeuger_cfg
-  m_10a_optimizer_core --> m_optimizer_defaults
-  m_10b_hourly_live --> m_04a_ui_panels
-  m_10b_hourly_live --> m_erzeuger_cfg
-  m_10c_optimizer_run --> m_01_globals_varianten
-  m_10c_optimizer_run --> m_02b_gebaeude
-  m_10c_optimizer_run --> m_03c_gebaeude_io
-  m_10c_optimizer_run --> m_06b_gl_berechnen
-  m_10c_optimizer_run --> m_09a_pv_profile
-  m_10c_optimizer_run --> m_erzeuger_cfg
-  m_10d_optimizer_worker --> m_01_globals_varianten
-  m_10d_optimizer_worker --> m_02b_gebaeude
-  m_10d_optimizer_worker --> m_03c_gebaeude_io
-  m_10d_optimizer_worker --> m_06b_gl_berechnen
-  m_10d_optimizer_worker --> m_09a_pv_profile
-  m_10d_optimizer_worker --> m_erzeuger_cfg
-  m_10d_optimizer_worker --> m_optimizer_defaults
-  m_11_hilfe_leitfaden --> m_01_globals_varianten
-  m_11_hilfe_leitfaden --> m_04a_ui_panels
-  m_11_hilfe_leitfaden --> m_hilfe_texte
-  m_12_inline_handlers --> m_08_calc_engine
-  m_12_inline_handlers --> m_optimizer_defaults
-  m_13a_assets_core --> m_01_globals_varianten
-  m_13b_assets_render --> m_02b_gebaeude
-  m_13b_assets_render --> m_01_globals_varianten
-  m_13c_assets_ui --> m_02b_gebaeude
-  m_13c_assets_ui --> m_03b_netz
-  m_14b_stromnetz_state --> m_13a_assets_core
-  m_15a_stromnetz_render --> m_02b_gebaeude
-  m_15a_stromnetz_render --> m_01_globals_varianten
-  m_15a_stromnetz_render --> m_13a_assets_core
-  m_15a_stromnetz_render --> m_14b_stromnetz_state
-  m_15a_stromnetz_render --> m_14c_stromnetz_graph
-  m_15b_stromnetz_draw --> m_02b_gebaeude
-  m_15b_stromnetz_draw --> m_03b_netz
-  m_15b_stromnetz_draw --> m_03c_gebaeude_io
-  m_15b_stromnetz_draw --> m_13a_assets_core
-  m_15b_stromnetz_draw --> m_13c_assets_ui
-  m_15b_stromnetz_draw --> m_14b_stromnetz_state
-  m_15b_stromnetz_draw --> m_14c_stromnetz_graph
-  m_15c_stromnetz_calc --> m_01_globals_varianten
-  m_15c_stromnetz_calc --> m_13a_assets_core
-  m_15c_stromnetz_calc --> m_14b_stromnetz_state
-  m_15c_stromnetz_calc --> m_14a_stromnetz_config
-  m_15d_stromnetz_sld --> m_01_globals_varianten
-  m_15d_stromnetz_sld --> m_13a_assets_core
-  m_15d_stromnetz_sld --> m_14b_stromnetz_state
-  m_15e_stromnetz_szenarien --> m_13a_assets_core
-  m_15e_stromnetz_szenarien --> m_14b_stromnetz_state
-  m_15f_stromnetz_messlastgang --> m_14b_stromnetz_state
-  m_15g_stromnetz_massnahmen --> m_13a_assets_core
-  m_15g_stromnetz_massnahmen --> m_14b_stromnetz_state
-  m_15g_stromnetz_massnahmen --> m_14a_stromnetz_config
-  m_15g_stromnetz_massnahmen --> m_13b_assets_render
-  m_15h_stromnetz_invest --> m_13a_assets_core
-  m_15h_stromnetz_invest --> m_14a_stromnetz_config
-  m_15h_stromnetz_invest --> m_optimizer_defaults
-  m_15i_stromnetz_clustering --> m_01_globals_varianten
-  m_15i_stromnetz_clustering --> m_13a_assets_core
-  m_15i_stromnetz_clustering --> m_14b_stromnetz_state
-  m_15j_stromnetz_heatmap --> m_02b_gebaeude
-  m_15j_stromnetz_heatmap --> m_14b_stromnetz_state
-  m_15l_stromnetz_trafoopt --> m_02b_gebaeude
-  m_15l_stromnetz_trafoopt --> m_14b_stromnetz_state
-  m_16_stromnetz_ui --> m_15c_stromnetz_calc
-  m_16_stromnetz_ui --> m_15d_stromnetz_sld
-  m_16_stromnetz_ui --> m_15g_stromnetz_massnahmen
-  m_16_stromnetz_ui --> m_15h_stromnetz_invest
-  m_16_stromnetz_ui --> m_14b_stromnetz_state
-  m_16_stromnetz_ui --> m_15j_stromnetz_heatmap
-  m_16_stromnetz_ui --> m_15l_stromnetz_trafoopt
-  m_16b_stromnetz_selftest --> m_13a_assets_core
-  m_16b_stromnetz_selftest --> m_14b_stromnetz_state
-  m_16b_stromnetz_selftest --> m_14b_stromnetz_state
-  m_16b_stromnetz_selftest --> m_15c_stromnetz_calc
-  m_16b_stromnetz_selftest --> m_15d_stromnetz_sld
-  m_16b_stromnetz_selftest --> m_15e_stromnetz_szenarien
-  m_16b_stromnetz_selftest --> m_15f_stromnetz_messlastgang
-  m_16b_stromnetz_selftest --> m_15g_stromnetz_massnahmen
-  m_16b_stromnetz_selftest --> m_15h_stromnetz_invest
-  m_16b_stromnetz_selftest --> m_15i_stromnetz_clustering
-  m_16b_stromnetz_selftest --> m_14c_stromnetz_graph
-  m_main --> m_netz_kosten
-  m_main --> m_erzeuger_cfg
-  m_main --> m_optimizer_defaults
-  m_main --> m_hilfe_texte
-  m_main --> m_01_globals_varianten
-  m_main --> m_02a_netz_physik
-  m_main --> m_02b_gebaeude
-  m_main --> m_02c_karte_werkzeuge
-  m_main --> m_03a_erzeuger
-  m_main --> m_03b_netz
-  m_main --> m_03c_gebaeude_io
-  m_main --> m_04a_ui_panels
-  m_main --> m_04b_emissionen_3d
-  m_main --> m_05a_export
-  m_main --> m_05b_stromnetz
-  m_main --> m_05c_sankey
-  m_main --> m_06a_gbi_lastgang
-  m_main --> m_06b_gl_berechnen
-  m_main --> m_06c_dispatch_core
-  m_main --> m_07a_analysis_charts
-  m_main --> m_07b_analysis_economics
-  m_main --> m_08_calc_engine
-  m_main --> m_09a_pv_profile
-  m_main --> m_09b_pv_calc
-  m_main --> m_09c_pv_charts_opt
-  m_main --> m_10a_optimizer_core
-  m_main --> m_10b_hourly_live
-  m_main --> m_10c_optimizer_run
-  m_main --> m_10d_optimizer_worker
-  m_main --> m_11_hilfe_leitfaden
-  m_main --> m_12_inline_handlers
-  m_main --> m_13a_assets_core
-  m_main --> m_13b_assets_render
-  m_main --> m_13c_assets_ui
-  m_main --> m_13d_assets_autocreate
-  m_main --> m_13e_assets_inspector
-  m_main --> m_14a_stromnetz_config
-  m_main --> m_14b_stromnetz_state
-  m_main --> m_14c_stromnetz_graph
-  m_main --> m_15a_stromnetz_render
-  m_main --> m_15b_stromnetz_draw
-  m_main --> m_15c_stromnetz_calc
-  m_main --> m_15d_stromnetz_sld
-  m_main --> m_15e_stromnetz_szenarien
-  m_main --> m_15f_stromnetz_messlastgang
-  m_main --> m_15g_stromnetz_massnahmen
-  m_main --> m_15h_stromnetz_invest
-  m_main --> m_15i_stromnetz_clustering
-  m_main --> m_15j_stromnetz_heatmap
-  m_main --> m_15l_stromnetz_trafoopt
-  m_main --> m_16_stromnetz_ui
-  m_main --> m_16b_stromnetz_selftest
-  m_main --> m_17a_fotos_storage
-  m_main --> m_17b_fotos_compress
-  m_main --> m_17c_fotos_ui
+  d_globals["Globals + Varianten<br/><small>1 Module · 899 LOC</small>"]
+  d_karte["Karte + Geometrie<br/><small>3 Module · 2789 LOC</small>"]
+  d_netz["Wärmenetz + Erzeuger + IO<br/><small>3 Module · 4904 LOC</small>"]
+  d_uipanels["UI-Panels + 3D<br/><small>2 Module · 2490 LOC</small>"]
+  d_exportalt["Export + Altes Stromnetz<br/><small>3 Module · 2845 LOC</small>"]
+  d_lastgang["Wärme-Lastgang + Dispatch<br/><small>3 Module · 2768 LOC</small>"]
+  d_analyse["Analyse + Wirtschaftlichkeit<br/><small>2 Module · 3253 LOC</small>"]
+  d_calc["CalcEngine<br/><small>1 Module · 1255 LOC</small>"]
+  d_pv["PV<br/><small>3 Module · 2247 LOC</small>"]
+  d_optimizer["Optimizer<br/><small>4 Module · 5009 LOC</small>"]
+  d_hilfe["Hilfe + Leitfaden<br/><small>1 Module · 466 LOC</small>"]
+  d_handlers["Inline-Event-Handler<br/><small>1 Module · 200 LOC</small>"]
+  d_assets["Asset-System (Phase 1)<br/><small>5 Module · 788 LOC</small>"]
+  d_strom_fund["Stromnetz-Fundament (Phase 3.1)<br/><small>3 Module · 416 LOC</small>"]
+  d_strom_feat["Stromnetz-Features (Phase 3.2–3.6)<br/><small>11 Module · 3426 LOC</small>"]
+  d_strom_ui["Stromnetz-UI + Self-Test (Phase 3)<br/><small>2 Module · 598 LOC</small>"]
+  d_fotos["Foto-Anhang (Phase 4)<br/><small>3 Module · 831 LOC</small>"]
+  d_config["Konfiguration<br/><small>4 Module · 365 LOC</small>"]
+  d_main["Main-Entry<br/><small>1 Module · 82 LOC</small>"]
+  d_globals -->|2| d_karte
+  d_globals -->|3| d_netz
+  d_globals --> d_uipanels
+  d_globals -->|2| d_lastgang
+  d_globals --> d_config
+  d_karte -->|3| d_globals
+  d_karte -->|6| d_netz
+  d_karte --> d_config
+  d_karte -->|4| d_lastgang
+  d_karte --> d_analyse
+  d_karte --> d_uipanels
+  d_karte --> d_exportalt
+  d_netz -->|5| d_karte
+  d_netz -->|2| d_globals
+  d_netz -->|2| d_uipanels
+  d_netz -->|3| d_lastgang
+  d_netz --> d_pv
+  d_netz -->|2| d_assets
+  d_netz --> d_strom_fund
+  d_netz --> d_strom_feat
+  d_netz -->|2| d_fotos
+  d_uipanels -->|2| d_globals
+  d_uipanels -->|3| d_karte
+  d_uipanels -->|3| d_netz
+  d_uipanels --> d_exportalt
+  d_uipanels -->|3| d_analyse
+  d_uipanels --> d_pv
+  d_uipanels -->|2| d_optimizer
+  d_uipanels -->|2| d_config
+  d_uipanels --> d_lastgang
+  d_exportalt -->|3| d_globals
+  d_exportalt -->|4| d_karte
+  d_exportalt -->|2| d_uipanels
+  d_exportalt -->|2| d_analyse
+  d_exportalt -->|4| d_netz
+  d_exportalt -->|2| d_config
+  d_lastgang -->|3| d_globals
+  d_lastgang -->|4| d_karte
+  d_lastgang -->|6| d_netz
+  d_lastgang -->|4| d_analyse
+  d_lastgang -->|2| d_calc
+  d_lastgang -->|2| d_pv
+  d_lastgang --> d_uipanels
+  d_lastgang --> d_exportalt
+  d_lastgang --> d_optimizer
+  d_lastgang --> d_config
+  d_analyse -->|2| d_calc
+  d_analyse -->|3| d_config
+  d_analyse --> d_globals
+  d_analyse --> d_karte
+  d_analyse -->|2| d_netz
+  d_analyse --> d_uipanels
+  d_analyse --> d_lastgang
+  d_calc --> d_globals
+  d_calc --> d_netz
+  d_calc --> d_lastgang
+  d_calc --> d_analyse
+  d_pv -->|2| d_globals
+  d_pv -->|6| d_netz
+  d_pv -->|2| d_lastgang
+  d_pv --> d_analyse
+  d_pv -->|2| d_calc
+  d_pv -->|3| d_karte
+  d_optimizer -->|3| d_globals
+  d_optimizer -->|4| d_karte
+  d_optimizer -->|5| d_netz
+  d_optimizer -->|2| d_uipanels
+  d_optimizer -->|5| d_lastgang
+  d_optimizer --> d_analyse
+  d_optimizer --> d_calc
+  d_optimizer -->|3| d_pv
+  d_optimizer -->|6| d_config
+  d_hilfe --> d_globals
+  d_hilfe --> d_uipanels
+  d_hilfe --> d_config
+  d_handlers --> d_calc
+  d_handlers --> d_config
+  d_assets -->|2| d_globals
+  d_assets -->|2| d_karte
+  d_assets --> d_netz
+  d_strom_fund --> d_assets
+  d_strom_feat -->|4| d_karte
+  d_strom_feat -->|4| d_globals
+  d_strom_feat -->|10| d_assets
+  d_strom_feat -->|15| d_strom_fund
+  d_strom_feat -->|2| d_netz
+  d_strom_feat --> d_config
+  d_strom_ui -->|13| d_strom_feat
+  d_strom_ui -->|4| d_strom_fund
+  d_strom_ui --> d_assets
+  d_main -->|4| d_config
+  d_main --> d_globals
+  d_main -->|3| d_karte
+  d_main -->|3| d_netz
+  d_main -->|2| d_uipanels
+  d_main -->|3| d_exportalt
+  d_main -->|3| d_lastgang
+  d_main -->|2| d_analyse
+  d_main --> d_calc
+  d_main -->|3| d_pv
+  d_main -->|4| d_optimizer
+  d_main --> d_hilfe
+  d_main --> d_handlers
+  d_main -->|5| d_assets
+  d_main -->|3| d_strom_fund
+  d_main -->|11| d_strom_feat
+  d_main -->|2| d_strom_ui
+  d_main -->|3| d_fotos
 
 </pre>
 </div>
@@ -628,35 +390,27 @@ graph LR
 
 
 <script>
-  setTimeout(() => {
-    if (typeof mermaid === 'undefined') {
-      document.getElementById('mermaid-fallback').style.display = 'block';
-      document.getElementById('mermaid-container').style.display = 'none';
-      return;
-    }
-    try {
-      mermaid.initialize({
-        startOnLoad: true,
-        theme: 'dark',
-        themeVariables: {
-          primaryColor:        '#1a2535',
-          primaryTextColor:    '#cfd',
-          primaryBorderColor:  '#4fc3f7',
-          lineColor:           '#4fc3f7',
-          secondaryColor:      '#12182a',
-          tertiaryColor:       '#0b0e18',
-          background:          'transparent',
-          mainBkg:             '#1a2535',
-          clusterBkg:          'rgba(79,195,247,0.04)',
-          clusterBorder:       '#2a3050',
-        },
-        flowchart: { curve: 'basis', padding: 16 },
-      });
-    } catch (e) {
-      console.error('Mermaid init:', e);
-      document.getElementById('mermaid-fallback').style.display = 'block';
-    }
-  }, 100);
+  if (typeof mermaid === 'undefined') {
+    document.getElementById('mermaid-fallback').style.display = 'block';
+    document.getElementById('mermaid-container').style.display = 'none';
+  } else {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        background:          '#0b0e18',
+        primaryColor:        '#1a2535',
+        primaryTextColor:    '#dde6f0',
+        primaryBorderColor:  '#4fc3f7',
+        lineColor:           '#4fc3f7',
+        edgeLabelBackground: '#12182a',
+        fontFamily:          'DM Sans, sans-serif',
+        fontSize:            '13px',
+      },
+      flowchart: { curve: 'basis', padding: 20, nodeSpacing: 50, rankSpacing: 80 },
+      securityLevel: 'loose',
+    });
+  }
 </script>
 
 </body></html>
