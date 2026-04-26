@@ -1019,7 +1019,13 @@
     <input class="inp-field" type="number" id="osm-min-flaeche" value="30" min="0" max="500" step="5" style="width:90px;"
       data-input="const a=document.getElementById('osm-min-flaeche-area');if(a)a.value=this.value;">
   </div>
+  <div style="font-size:10px;color:var(--muted);margin:4px 0 6px;">
+    Filter wirkt nur bei <b>neuem Import</b>. Für bereits geladene Gebäude:
+  </div>
   <div class="panel-btns">
+    <button class="btn-secondary" data-click="removeKleineGebaeude()" style="font-size:10px;border-color:#f9a825;color:#f9a825;">🗑 Kleine entfernen (&lt; Mindestfläche)</button>
+  </div>
+  <div class="panel-btns" style="margin-top:8px;">
     <button class="btn-confirm" data-click="loadOsmBuildings()">Jetzt laden</button>
     <button class="btn-secondary" data-click="hidePanels()">Abbrechen</button>
     <button class="btn-purple" data-click="clearOsmBuildings()">OSM löschen</button>

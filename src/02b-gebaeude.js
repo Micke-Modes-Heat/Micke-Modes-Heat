@@ -959,3 +959,30 @@ export function clearPlan(id, type, idx) {
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }
 
+// Bereits geladene Gebäude unter Mindestfläche entfernen.
+// Liest die Schwelle aus dem osm-min-flaeche-Input. Mit Bestätigungs-Dialog.
+export function removeKleineGebaeude() {
+  let minFlaeche = parseFloat(document.getElementById('osm-min-flaeche')?.value);
+  if (!isFinite(minFlaeche) || minFlaeche < 0) minFlaeche = 30;
+
+  const list = (window.gebaeude || []).filter(g => {
+    const f = parseFloat(g.flaeche);
+    return isFinite(f) && f < minFlaeche;
+  });
+
+  if (list.length === 0) {
+    alert(`Keine Gebäude unter ${minFlaeche} m² gefunden.`);
+    return 0;
+  }
+
+  if (!confirm(
+    `${list.length} Gebäude haben weniger als ${minFlaeche} m² Grundfläche.\n\n` +
+    `Wirklich alle löschen?\n\n` +
+    `(Tipp: Mindestfläche im Feld oben ändern, dann nochmal klicken.)`
+  )) return 0;
+
+  // Reihenfolge umgekehrt → splice in removeGebaeude verträgt sich mit Iteration
+  for (const g of [...list].reverse()) removeGebaeude(g.id);
+  return list.length;
+}
+
