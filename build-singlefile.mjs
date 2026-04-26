@@ -118,3 +118,15 @@ if (existsSync(parentDocs)) {
   }
   console.log(`Doku-Dateien synchronisiert: ${n} HTML aus ../docs/`);
 }
+
+// 7. Architektur-Doku regenerieren (analysiert src/*.js)
+//    + nach dist/docs/ kopieren
+import { execSync } from 'child_process';
+try {
+  execSync('node tools/generate-architecture.mjs', { stdio: 'inherit' });
+  if (existsSync(join(localDocs, 'architektur.html'))) {
+    copyFileSync(join(localDocs, 'architektur.html'), join(distDocs, 'architektur.html'));
+  }
+} catch (e) {
+  console.warn('Architektur-Generator fehlgeschlagen:', e.message);
+}

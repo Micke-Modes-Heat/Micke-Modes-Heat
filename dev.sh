@@ -9,4 +9,7 @@ if [ -f ../docs/berechnungslogik.html ]; then
   cp -u ../docs/berechnungslogik.html docs/berechnungslogik.html
 fi
 
+# Architektur-Doku regenerieren (analysiert src/*.js automatisch)
+node tools/generate-architecture.mjs
+
 npm run dev
