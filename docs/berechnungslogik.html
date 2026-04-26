@@ -1,0 +1,2047 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Berechnungslogik — Energieplanungs-Tool</title>
+<style>
+:root{--bg:#181a20;--surface:#23262f;--surface2:#2a2d36;--text:#e8eaf0;--muted:#78909c;--border:#333844;--accent:#ff9800;
+  --cWaerme:#ff9800;--cStrom:#42a5f5;--cWirt:#66bb6a;--cOpt:#ab47bc;--cInput:#78909c;--cData:#ef5350;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;overflow-x:hidden;}
+header{padding:20px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;}
+header h1{font-size:1.2rem;font-weight:500;color:var(--accent);}
+header .sub{font-size:.85rem;color:var(--muted);}
+.wrap{display:flex;height:calc(100vh - 65px);}
+
+/* Sidebar */
+.sidebar{width:260px;border-right:1px solid var(--border);padding:16px;overflow-y:auto;flex-shrink:0;background:var(--surface);}
+.sidebar h3{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:12px 0 6px;}
+.sidebar a{display:block;padding:5px 10px;font-size:12px;color:var(--text);text-decoration:none;border-radius:4px;margin-bottom:2px;cursor:pointer;transition:.15s;}
+.sidebar a:hover,.sidebar a.active{background:var(--surface2);color:var(--accent);}
+.sidebar a .tag{font-size:9px;color:var(--muted);margin-left:4px;}
+.sidebar .indent{padding-left:24px;font-size:11px;color:var(--muted);}
+.sidebar .indent:hover{color:var(--text);}
+
+/* Main */
+.main{flex:1;overflow-y:auto;padding:32px 40px;max-width:1100px;}
+canvas{display:block;margin:0 auto;}
+
+/* Section */
+.section{margin-bottom:48px;}
+.section > h2{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.section > .sec-sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6;}
+.section > h3{font-size:13px;font-weight:500;color:var(--muted);margin:20px 0 10px;padding-left:4px;border-left:2px solid var(--accent);}
+
+/* Node */
+.node{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:0;cursor:pointer;transition:.2s;}
+.node:hover{border-color:var(--accent);box-shadow:0 0 20px rgba(255,152,0,.1);}
+.node.active{border-color:var(--accent);background:rgba(255,152,0,.04);}
+.node .icon{font-size:18px;margin-right:8px;}
+.node .title{font-size:13px;font-weight:600;}
+.node .sub{font-size:10px;color:var(--muted);margin-top:3px;}
+.node .badge{position:absolute;top:-6px;right:12px;background:var(--accent);color:#000;font-size:9px;font-weight:600;padding:1px 8px;border-radius:8px;}
+.node .fn{font-family:'Consolas',monospace;font-size:10px;color:#80cbc4;margin-left:8px;}
+
+.arrow{text-align:center;padding:6px 0;color:var(--border);font-size:16px;line-height:1;}
+.arrow span{font-size:9px;color:var(--muted);display:block;margin-top:-2px;}
+
+/* Detail */
+.detail{display:none;margin:12px 0 20px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px 20px;font-size:12px;line-height:1.7;}
+.detail.visible{display:block;animation:fadeIn .2s;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
+.detail h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin:12px 0 6px;}
+.detail h4:first-child{margin-top:0;}
+.detail code{background:rgba(255,255,255,.06);padding:1px 6px;border-radius:3px;font-family:'Consolas','DM Mono',monospace;font-size:11px;color:#80cbc4;}
+.detail .formula{background:rgba(255,152,0,.06);border:1px solid rgba(255,152,0,.15);border-radius:6px;padding:10px 14px;margin:8px 0;font-family:'Consolas',monospace;font-size:11px;color:#ffcc80;line-height:1.8;white-space:pre-wrap;}
+.detail ul{padding-left:16px;margin:4px 0;}
+.detail li{margin-bottom:3px;}
+.detail .io{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0;}
+.detail .io div{background:var(--surface);border-radius:6px;padding:8px 12px;}
+.detail .io div h5{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;}
+.detail .io div span{font-size:11px;display:block;margin:2px 0;}
+.data-flow{display:flex;gap:4px;flex-wrap:wrap;margin:8px 0;}
+.data-flow .chip{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2px 10px;font-size:10px;color:var(--text);}
+
+/* Diagram */
+.diagram-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin:20px 0;}
+.diagram-wrap .cap{font-size:10px;color:var(--muted);text-align:center;margin-top:8px;}
+
+/* Legend */
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0;font-size:10px;}
+.legend span{display:flex;align-items:center;gap:4px;}
+.legend .dot{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+
+/* Table */
+.dtable{width:100%;font-size:11px;border-collapse:collapse;margin:8px 0;}
+.dtable th{text-align:left;padding:4px 6px;color:var(--muted);border-bottom:1px solid var(--border);font-size:9px;text-transform:uppercase;letter-spacing:.04em;}
+.dtable td{padding:3px 6px;border-bottom:1px solid rgba(51,56,68,.4);}
+.dtable td.c{text-align:center;}
+.dtable tr:hover td{background:rgba(255,152,0,.03);}
+
+/* Two column layout */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;}
+.two-col > div{background:var(--surface);border-radius:8px;padding:14px 16px;border:1px solid var(--border);}
+.two-col h5{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin-bottom:8px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Berechnungslogik</h1>
+  <span class="sub">Energieplanungs-Tool &mdash; Vollstandiger Datenfluss, Algorithmen und Formeln</span>
+</header>
+
+<div class="wrap">
+<nav class="sidebar">
+  <h3>Ubersicht</h3>
+  <a onclick="scrollTo_('sec-overview')">Gesamtfluss-Diagramm</a>
+  <a onclick="scrollTo_('sec-architecture')">Architektur</a>
+
+  <h3>CalcEngine Pipeline</h3>
+  <a onclick="scrollTo_('sec-siglinde')">1. SIGLINDE <span class="tag">Lastprofile</span></a>
+  <a onclick="scrollTo_('sec-lastgang')">2. calcLastgang <span class="tag">8760h</span></a>
+  <a onclick="scrollTo_('sec-tww')">3. calcTWW <span class="tag">Splitting</span></a>
+  <a onclick="scrollTo_('sec-analyse')">4. calcAnalyse <span class="tag">Dimensionierung</span></a>
+  <a onclick="scrollTo_('sec-profile')">5. calcErzeugerProfile <span class="tag">COP</span></a>
+  <a onclick="scrollTo_('sec-dispatch')">6. calcDispatch <span class="tag">Merit-Order</span></a>
+  <a onclick="scrollTo_('sec-metriken')">7. calcMetriken <span class="tag">KPI</span></a>
+
+  <h3>Wirtschaftlichkeit</h3>
+  <a onclick="scrollTo_('sec-vdi')">8. VDI 2067 <span class="tag">Annuitat</span></a>
+  <a onclick="scrollTo_('sec-invest')">9. Investkurven <span class="tag">KWW</span></a>
+  <a onclick="scrollTo_('sec-npv')">10. Jahresscheiben <span class="tag">NPV</span></a>
+  <a onclick="scrollTo_('sec-wgk')">11. WGK <span class="tag">ct/kWh</span></a>
+
+  <h3>Netze</h3>
+  <a onclick="scrollTo_('sec-waermenetz')">12. Warmenetz <span class="tag">Hydraulik</span></a>
+  <a onclick="scrollTo_('sec-stromnetz')">13. Stromnetz <span class="tag">Lastfluss</span></a>
+
+  <h3>Strom &amp; Emissionen</h3>
+  <a onclick="scrollTo_('sec-strom')">14. Strom-Bilanz <span class="tag">PV/Bat</span></a>
+  <a onclick="scrollTo_('sec-co2')">15. CO2-Emissionen</a>
+
+  <h3>Zeitliche Skalierung</h3>
+  <a onclick="scrollTo_('sec-year-scaling')">Jahresabh. Lastgang <span class="tag">NEU</span></a>
+
+  <h3>Optimierung</h3>
+  <a onclick="scrollTo_('sec-opt-dispatch')">16. Opt-Dispatch <span class="tag">6-Phasen</span></a>
+  <a onclick="scrollTo_('sec-opt-kennwerte')">17. Kennwerte <span class="tag">Score</span></a>
+  <a onclick="scrollTo_('sec-opt-raster')">18. Rastersuche <span class="tag">Multi-Worker</span></a>
+  <a onclick="scrollTo_('sec-sens')">19. Sensitivitat</a>
+
+  <h3>Datenstrukturen</h3>
+  <a onclick="scrollTo_('sec-erzeuger-cfg')">ERZEUGER_CFG</a>
+  <a onclick="scrollTo_('sec-global-state')">Globaler State</a>
+
+  <h3>Legende</h3>
+  <div class="legend" style="flex-direction:column;gap:6px;margin-top:8px;">
+    <span><span class="dot" style="background:var(--cWaerme);"></span> Warme-Berechnung</span>
+    <span><span class="dot" style="background:var(--cStrom);"></span> Strom-Berechnung</span>
+    <span><span class="dot" style="background:var(--cWirt);"></span> Wirtschaftlichkeit</span>
+    <span><span class="dot" style="background:var(--cOpt);"></span> Optimierung</span>
+    <span><span class="dot" style="background:var(--cInput);"></span> Eingabedaten</span>
+    <span><span class="dot" style="background:var(--cData);"></span> Datenbasis</span>
+  </div>
+</nav>
+
+<div class="main">
+
+<!-- ===================== OVERVIEW ===================== -->
+<div class="section" id="sec-overview">
+<h2>Gesamtfluss der Berechnung</h2>
+<p class="sec-sub">
+  Es gibt <strong>5 verschiedene Eingabewege</strong> fur den Warmebedarf: CSV-Upload und CSV+Monate gehen direkt in den Lastgang,
+  wahrend Monatswerte, Jahresverbrauch und Gebaudedaten zuerst die <strong>SIGLINDE-Synthese</strong> durchlaufen.
+  Der resultierende Stundenlastgang wird dann in einer <strong>6-Phasen-Kaskade</strong> auf die Erzeuger verteilt.
+  Darauf aufbauend laufen Wirtschaftlichkeit, Strom-Bilanz, Netzberechnung und Optimierung.
+  <br>Alle Berechnungen laufen im Browser &mdash; kein Server notig. Hover uber die Knoten fur Erklarungen, Klick springt zum Detail.
+</p>
+<div class="diagram-wrap">
+  <canvas id="cv-overview" height="880" style="width:100%;"></canvas>
+  <div class="cap">Hover = Erklarung &bull; Klick = zum Detail springen &bull; Gestrichelt = Feedback-Schleife</div>
+</div>
+</div>
+
+<!-- ===================== ARCHITECTURE ===================== -->
+<div class="section" id="sec-architecture">
+<h2>Architektur</h2>
+<p class="sec-sub">Das gesamte Tool ist eine Single-Page-Anwendung in einer HTML-Datei (<code>Index.html</code>, ~30.000 Zeilen).
+  Die Berechnungslogik ist in einem <strong>CalcEngine</strong>-IIFE (Immediately Invoked Function Expression, ab ~Zeile 21878) gekapselt.</p>
+
+<div class="two-col">
+  <div>
+    <h5>CalcEngine (IIFE)</h5>
+    <p style="font-size:11px;color:var(--muted);line-height:1.6;">
+      Enthalt alle Kern-Berechnungen als <code>CalcEngine.run(params)</code>-Pipeline:<br>
+      1. Temperatur laden &rarr; 2. Vorlauf berechnen &rarr; 3. calcLastgang &rarr; 4. calcTWW &rarr;
+      5. calcAnalyse &rarr; 6. calcErzeugerProfile &rarr; 7. calcDispatch &rarr; 8. calcMetriken &rarr;
+      9. Jahresdauerlinie + kalteste Woche<br><br>
+      Gibt <code>systemState</code> zuruck mit allen Ergebnissen.
+    </p>
+  </div>
+  <div>
+    <h5>UI-Berechnungen (global)</h5>
+    <p style="font-size:11px;color:var(--muted);line-height:1.6;">
+      Greifen auf <code>systemState</code> und globale Dispatch-Daten zu:<br>
+      &bull; <code>calcWirtschaftPanel()</code> &mdash; WGK, CO2, EE-Anteil<br>
+      &bull; <code>calcJahresscheiben()</code> &mdash; NPV/Barwert uber T Jahre<br>
+      &bull; <code>calcStromPanel()</code> &mdash; PV + BHKW + Batterie Bilanz<br>
+      &bull; <code>runSensitivitaet()</code> &mdash; Preissensitivitat<br>
+      &bull; <code>runOptimierung()</code> &mdash; Kombinatorische Rastersuche
+    </p>
+  </div>
+</div>
+</div>
+
+<!-- ===================== 1. SIGLINDE ===================== -->
+<div class="section" id="sec-siglinde">
+<h2>1. SIGLINDE &mdash; Lastprofil-Datenbank</h2>
+<p class="sec-sub">
+  <strong>SI</strong>gnatur-<strong>G</strong>radtag-<strong>L</strong>oad-<strong>I</strong>nterpolation-<strong>D</strong>atenbank-<strong>E</strong>ngine.
+  Enthalt fur jeden Gebaudetyp eine Tages-Signaturfunktion, die den taglichen Warmebedarf als Funktion der mittleren Tagestemperatur abbildet.
+</p>
+
+<div class="node" onclick="toggleDetail('d-siglinde')">
+  <span class="badge">Datenbasis</span>
+  <span class="icon">&#x1F3E0;</span><span class="title">SIGLINDE Lastprofile</span>
+  <div class="sub">365 Tages-Signaturfunktionen pro Gebaudetyp &mdash; Grundlage aller Lastgang-Synthesen</div>
+</div>
+<div class="detail" id="d-siglinde">
+  <h4>Gebaudetypen (28 Profile, BDEW-Varianten 33 + 34)</h4>
+  <table class="dtable">
+    <tr><th>Schlussel</th><th>Gebaudetyp</th><th>Beschreibung</th></tr>
+    <tr><td><code>HEF33/34</code></td><td>Wohngebaude (EFH)</td><td>Einfamilienhaus</td></tr>
+    <tr><td><code>HMF33/34</code></td><td>Wohngebaude (MFH)</td><td>Mehrfamilienhaus</td></tr>
+    <tr><td><code>GMK33/34</code></td><td>Gewerbe: Metall/Kfz</td><td>Metallverarbeitung, Kfz-Werkstatt</td></tr>
+    <tr><td><code>GHA33/34</code></td><td>Gewerbe: Handel</td><td>Einzelhandel, Kaufhaus</td></tr>
+    <tr><td><code>GKO33/34</code></td><td>Gewerbe: Buros</td><td>Kontorgebaude, Verwaltung</td></tr>
+    <tr><td><code>GBD33/34</code></td><td>Gebietskorperschaft</td><td>Offentl. Verwaltung, Rathaus</td></tr>
+    <tr><td><code>GGA33/34</code></td><td>Gewerbe: Gastronomie</td><td>Restaurant, Hotel-Gastronomie</td></tr>
+    <tr><td><code>GBH33/34</code></td><td>Unterkunft/Beherbergung</td><td>Hotel, Pension (Standard-Profil 1)</td></tr>
+    <tr><td><code>GWA33/34</code></td><td>Gewerbe: Wascherei</td><td>Wascherei, Reinigung</td></tr>
+    <tr><td><code>GGB33/34</code></td><td>Gartenbau</td><td>Gewachshaus, Gartenbaubetrieb</td></tr>
+    <tr><td><code>GBA33/34</code></td><td>Backerei</td><td>Backerei mit Ofen</td></tr>
+    <tr><td><code>GPD33/34</code></td><td>Papier/Druck</td><td>Druckerei, Papierverarbeitung</td></tr>
+    <tr><td><code>GMF33/34</code></td><td>Mehrfam. gewerblich</td><td>Mischnutzung Gewerbe+Wohnen</td></tr>
+    <tr><td><code>GHD33/34</code></td><td>Summen-Gewerbe</td><td>Summenprofil aller Gewerbetypen</td></tr>
+  </table>
+  <p style="font-size:11px;color:var(--muted);margin-top:6px;">Standard-Voreinstellung: Profil 1 = <code>GBH34</code> (Beherbergung), Profil 2 = <code>GBD34</code> (Gebietskorperschaft), je 50% gewichtet.</p>
+
+  <h4>Signaturfunktion sigH()</h4>
+  <div class="formula">H(T) = A / (1 + (B / (T - T0))^C)  +  D  +  max(mh&times;T + bh,  mw&times;T + bw)
+
+  Jedes Profil hat 8 Koeffizienten: {A, B, C, D, mh, bh, mw, bw}
+  &bull; Erster Term: Sigmoid-Funktion (temperaturabh. Heizgrenze)
+  &bull; Zweiter Term: D (Grundlast-Offset)
+  &bull; Dritter Term: Maximum aus zwei Geraden (Heiz- und Warmwasser-Grundlast)
+
+  Gewichtete Mischung (2 Profile moglich):
+  Bedarf(d) = gew1 &times; sigH(T_mittel(d), profil1)
+            + gew2 &times; sigH(T_mittel(d), profil2)</div>
+
+  <h4>24h-Schablone (SCHABLONE_24H)</h4>
+  <div class="formula">Stundliche Verteilung (24 Werte, normiert):
+[0.84, 0.93, 1.02, 1.11, 1.13, 1.16, 1.22, 1.23,   &larr; 0-7h  (Nacht &rarr; Morgen)
+ 1.22, 1.21, 1.17, 1.14, 1.12, 1.10, 1.06, 1.00,   &larr; 8-15h (Mittag, flach)
+ 0.93, 0.89, 0.82, 0.78, 0.73, 0.72, 0.71, 0.76]   &larr; 16-23h (Abend &rarr; Nacht)
+
+Peak bei ~7 Uhr (1.23), Minimum bei ~22 Uhr (0.71)</div>
+
+  <h4>Datenquelle</h4>
+  <p>Die Signaturen basieren auf BDEW-Standardlastprofilen (VDI 4655). Jeder Profilschlussel bildet ein charakteristisches Temperatur-Bedarf-Verhaltnis fur den jeweiligen Gebaudetyp ab.</p>
+</div>
+</div>
+
+<!-- ===================== 2. LASTGANG ===================== -->
+<div class="section" id="sec-lastgang">
+<h2>2. calcLastgang() &mdash; Lastgangberechnung</h2>
+<p class="sec-sub">Erzeugt 8760 Stundenwerte des Warmeleistungsbedarfs. Drei Eingabewege moglich.</p>
+
+<div class="node" onclick="toggleDetail('d-lastgang')">
+  <span class="badge">CalcEngine</span>
+  <span class="icon">&#x1F4C8;</span><span class="title">Lastgang-Synthese (8760h)</span>
+  <span class="fn">calcLastgang()</span>
+  <div class="sub">SIGLINDE-Profile + TRY-Temperatur &rarr; stundenfeines Warmeprofil</div>
+</div>
+<div class="detail" id="d-lastgang">
+  <h4>Funf Eingabewege (glBerechnen)</h4>
+  <table class="dtable">
+    <tr><th>#</th><th>Bedingung</th><th>Verhalten</th></tr>
+    <tr><td class="c">1</td><td>CSV-Upload vorhanden, <strong>keine</strong> Monatswerte</td><td>8760 Stundenwerte direkt ubernehmen</td></tr>
+    <tr><td class="c">2</td><td>CSV-Upload <strong>+</strong> Monatswerte</td><td>CSV-Lastgang monatsweise auf Monatsenergien skalieren</td></tr>
+    <tr><td class="c">3</td><td>Kein Upload, <strong>nur Monatswerte</strong></td><td>SIGLINDE-Synthese, monatsweise auf Energien skaliert</td></tr>
+    <tr><td class="c">4</td><td>Kein Upload, <strong>manueller Jahresverbrauch</strong></td><td>SIGLINDE-Synthese mit Gesamtenergie skaliert</td></tr>
+    <tr><td class="c">5</td><td>Kein Upload, nur <strong>Gebaudedaten</strong></td><td>Gebaudewarmen summieren, SIGLINDE-Synthese, Netzverluste aufschlagen</td></tr>
+  </table>
+
+  <h4>Netzverlust-Behandlung</h4>
+  <div class="formula">Fall 5 (nurGebaeude = true):
+  Netzverluste werden AUFADDIERT:
+  lastgang = lastgang &times; (1 / (1 - nvPct/100))
+  &rarr; Erzeuger mussen MEHR liefern als die Gebaude brauchen
+
+Falle 1-4 (nurGebaeude = false):
+  Verluste sind BEREITS im Upload/Wert enthalten:
+  nutzwaerme = gesamtMwh &times; (1 - nvPct/100)
+  &rarr; Nur fur Anzeige, Lastgang bleibt unverandert</div>
+
+  <h4>Synthese-Algorithmus (Falle 3-5)</h4>
+  <div class="formula">1. TRY-Stundenwerte tempH[8760] laden (Stadt oder DWD-Fallback)
+2. Tagesmitteltemperaturen T_m[365] berechnen
+3. SIGLINDE: sigH(T_m, profil) pro Tag &rarr; Tagesbedarfskoeffizienten
+4. Gewichtung: mix(d) = gew1&times;sigH(T_m(d), P1) + gew2&times;sigH(T_m(d), P2)
+5. 24h-Schablone: Jeder Tag auf 24h verteilen, normieren
+6. Skalierung auf Gesamtenergie (Fall 4/5) oder monatsweise (Fall 3)
+7. Ergebnis: lastgangMwhH [Float32Array, MWh/h]</div>
+
+  <h4>Ausgabe</h4>
+  <div class="data-flow">
+    <span class="chip">lastgangMwhH [Float32Array, 8760]</span>
+    <span class="chip">tempH [Float32Array, 8760]</span>
+    <span class="chip">vlH [Float32Array, 8760] (Vorlauftemperatur)</span>
+  </div>
+</div>
+</div>
+
+<!-- ===================== 3. TWW ===================== -->
+<div class="section" id="sec-tww">
+<h2>3. calcTWW() &mdash; Trinkwarmwasser-Splitting</h2>
+<p class="sec-sub">Zerlegt den Gesamtlastgang in Raumwarme, Trinkwarmwasser (TWW) und Netzverluste.</p>
+
+<div class="node" onclick="toggleDetail('d-tww')">
+  <span class="badge">CalcEngine</span>
+  <span class="icon">&#x1F6BF;</span><span class="title">TWW + Netz-Splitting</span>
+  <span class="fn">calcTWW()</span>
+  <div class="sub">Lastgang &rarr; Raumwarme + Trinkwarmwasser + Netzverluste</div>
+</div>
+<div class="detail" id="d-tww">
+  <h4>Erkennung uber Sommertage</h4>
+  <div class="formula">Sommertag := T_min(Tag) &ge; 12 &deg;C  (Juli/August)
+
+Falls &ge; 10 Sommertage vorhanden:
+  TWW-Grundlast = Mittelwert der Sommertags-Leistung
+  &rarr; Ganzjahrig konstant (temperaturunabhangig)
+  Raumwarme = Gesamt - TWW
+  Netzverluste = aus TWW-/Netzanteil-Parametern
+
+Falls &lt; 10 Sommertage (z.B. Hochgebirge):
+  Ruckfall auf manuelle Eingabe:
+  twwNetzAnteil, twwAnteilVonTwwNetz</div>
+
+  <h4>Ausgabe</h4>
+  <div class="data-flow">
+    <span class="chip">lastgangMwhH (aktualisiert, nur Raumwarme)</span>
+    <span class="chip">twwMwhH [Float32Array, 8760]</span>
+    <span class="chip">netzMwhH [Float32Array, 8760]</span>
+    <span class="chip">energieTwwMwh [MWh/a]</span>
+    <span class="chip">energieNetzMwh [MWh/a]</span>
+  </div>
+</div>
+</div>
+
+<!-- ===================== 4. ANALYSE ===================== -->
+<div class="section" id="sec-analyse">
+<h2>4. calcAnalyse() &mdash; Lastcharakteristik</h2>
+<p class="sec-sub">Bestimmt Spitzenlast und Abdeckungskennwerte fur die Erzeuger-Dimensionierung.</p>
+
+<div class="node" onclick="toggleDetail('d-analyse')">
+  <span class="badge">CalcEngine</span>
+  <span class="icon">&#x1F4CF;</span><span class="title">Lastcharakteristik &amp; Dimensionierung</span>
+  <span class="fn">calcAnalyse()</span>
+  <div class="sub">8760h-Lastgang &rarr; Spitzenlast, Abdeckungsgrade, Normlast</div>
+</div>
+<div class="detail" id="d-analyse">
+  <h4>Berechnete Kennwerte</h4>
+  <table class="dtable">
+    <tr><th>Kennwert</th><th>Beschreibung</th><th>Verwendung</th></tr>
+    <tr><td><code>gesamtMwh</code></td><td>Jahres-Gesamtenergie [MWh]</td><td>WGK-Nenner</td></tr>
+    <tr><td><code>pMaxKw</code></td><td>Maximale Stundenlast [kW]</td><td>100%-Abdeckung</td></tr>
+    <tr><td><code>p65Kw</code></td><td>Leistung fur 65% Energieabdeckung</td><td>Grundlast-Dimensionierung</td></tr>
+    <tr><td><code>p90Kw</code></td><td>Leistung fur 90% Energieabdeckung</td><td>Mittellast-Dimensionierung</td></tr>
+    <tr><td><code>pNormKw</code></td><td>Leistung bei Normaussentemp. (-12&deg;C)</td><td>Auslegung nach DIN</td></tr>
+    <tr><td><code>tMin</code></td><td>Kalteste Stundentemperatur im Jahr</td><td>Extremfall-Check</td></tr>
+  </table>
+
+  <h4>Abdeckungs-Algorithmus</h4>
+  <div class="formula">_lFuerAbdeckung(zielProzent):
+  Binarsuche auf der sortierten Jahresdauerlinie
+  Finde Leistungswert P, bei dem:
+    sum(min(lastgang[t], P)) / gesamtMwh &ge; zielProzent
+
+  Liefert die minimale Nennleistung, die X% der Jahresenergie abdeckt.</div>
+</div>
+</div>
+
+<!-- ===================== 5. ERZEUGERPROFILE ===================== -->
+<div class="section" id="sec-profile">
+<h2>5. calcErzeugerProfile() &mdash; Stundenprofile</h2>
+<p class="sec-sub">Berechnet fur jeden Erzeuger das stundengenaue Kapazitats- und Stromprofil (8760h).</p>
+
+<div class="node" onclick="toggleDetail('d-profile')">
+  <span class="badge">CalcEngine</span>
+  <span class="icon">&#x2699;</span><span class="title">Erzeuger-Stundenprofile</span>
+  <span class="fn">calcErzeugerProfile()</span>
+  <div class="sub">Nennleistung + Temperatur &rarr; stundengenaue Kapazitat &amp; Stromverbrauch</div>
+</div>
+<div class="detail" id="d-profile">
+  <h4>Warmepumpen (typ: 'wp')</h4>
+  <div class="formula">Fur jede Stunde t:
+  1. Quelltemperatur bestimmen:
+     Luft-WP:  T_q(t) = T_aussen(t)    (direkt Aussentemperatur)
+
+     Geo-WP:   T_q(t) = 10 + 2 &times; sin(2&pi; &times; (d-30)/365)
+               Stabile ~10&deg;C, saisonaler Swing &plusmn;2&deg;C
+               Hinweis: Im Dispatch (_deckungen8760) wird (d-75) verwendet &mdash;
+               Abweichung zum CalcEngine-Modell (d-30)!
+
+     Fluss-WP: T_q(t) = max(0.5, 10 + 8 &times; sin(2&pi; &times; (d-119)/365))
+               Grosse Schwankung 2-18&deg;C, Minimum 0.5&deg;C
+               Frostschutz-Abschaltung bei T_q &lt; 2&deg;C
+
+  2. COP berechnen (via calcCOP):
+     hub = max(T_VL(t) - T_q(t), 0.1)     (min. 0.1 K Temperaturhub)
+     COP(t) = (273.15 + T_VL(t)) / hub &times; Gutegrad
+
+     COP_ref = (273.15 + 35) / (35 - 2) &times; Gutegrad
+     (Referenz: A2/W35, d.h. 2&deg;C Quelle, 35&deg;C Vorlauf)
+
+     COP-Begrenzung: max. 8 im Dispatch, NICHT in CalcEngine
+
+  3. Leistungs-Derating:
+     P_waerme(t) = P_nenn &times; COP(t) / COP_ref
+     P_strom(t) = P_waerme(t) / COP(t)
+
+  Gutegrade (Standard):
+     Luft-WP:  0.42     Geo-WP: 0.50     Fluss-WP: 0.56
+
+  Ergebnis: e.profile = {
+    waerme: Float32Array(8760),  // verfugbare Warmeleistung [kW]
+    strom:  Float32Array(8760),  // elektr. Bedarf [kW]
+    cop:    Float32Array(8760),  // stundlicher COP
+    tq:     Float32Array(8760)   // Quelltemperatur
+  }</div>
+
+  <h4>Nicht-WP-Erzeuger (Kessel, BHKW, etc.)</h4>
+  <div class="formula">P_waerme(t) = P_nenn = konstant (keine Temperaturabhangigkeit)
+P_strom(t) = 0 (kein Strombedarf fur Kessel)
+
+BHKW: Stromproduktion = P_th &times; &sigma; (Stromkennzahl, Standard: 0.45)
+  &sigma; = P_el / P_th (Verhaltnis elektr. zu therm. Leistung)</div>
+</div>
+</div>
+
+<!-- ===================== 6. DISPATCH ===================== -->
+<div class="section" id="sec-dispatch">
+<h2>6. calcDispatch() &mdash; Merit-Order Dispatch</h2>
+<p class="sec-sub">Verteilt den Warmebedarf stundenweise auf die Erzeuger &mdash; billigster zuerst.</p>
+
+<div class="node" onclick="toggleDetail('d-dispatch')">
+  <span class="badge">CalcEngine</span>
+  <span class="icon">&#x26A1;</span><span class="title">Merit-Order Dispatch (8760h)</span>
+  <span class="fn">calcDispatch()</span>
+  <div class="sub">Lastgang + Erzeugerprofile &rarr; stundengenaue Zuordnung + Auto-Gaskessel</div>
+</div>
+<div class="detail" id="d-dispatch">
+  <h4>Zwei Dispatch-Versionen</h4>
+  <p>Es gibt <strong>zwei unabhangige Dispatch-Algorithmen</strong>:</p>
+  <table class="dtable">
+    <tr><th>Eigenschaft</th><th>CalcEngine.calcDispatch()</th><th>_deckungen8760() (Haupt-UI)</th></tr>
+    <tr><td>Phasen</td><td class="c">1 (einfacher Merit-Order)</td><td class="c">6 (mit Speicher + ST)</td></tr>
+    <tr><td>Solarthermie</td><td class="c">Nicht unterstutzt</td><td class="c">Phase 1 (vor Merit-Order)</td></tr>
+    <tr><td>Warmespeicher</td><td class="c">Nicht unterstutzt</td><td class="c">SOC-Tracking, Lade/Entlade</td></tr>
+    <tr><td>COP-Berechnung</td><td class="c">Aus vorberechneten Profilen</td><td class="c">Dynamisch pro Stunde</td></tr>
+    <tr><td>Verwendung</td><td>CalcEngine intern</td><td><strong>Hauptansicht + Analyse</strong></td></tr>
+  </table>
+
+  <h4>6-Phasen-Kaskade (_deckungen8760) — pro Stunde</h4>
+  <div class="formula">Fur jede Stunde t = 0..8759:
+  (Speicher-Verluste werden implizit vor der Merit-Order abgezogen)
+
+  Phase 1: Solarthermie (Grenzkosten = 0)
+    stDeck = min(stProfil[t], residual)
+    Uberschuss &rarr; Speicher laden (falls vorhanden)
+
+  Phase 2: Merit-Order — Nicht-Kessel
+    WP:          COP(t) berechnen, erreichbar = P_nenn &times; COP/COP_ref
+                 Luft-WP: min-COP-Schwelle prufbar
+                 Fluss-WP: Frostschutz bei T_q &lt; 2&deg;C
+                 WP-Reserve wird vorgehalten (fur Phase 6)
+    BHKW/KWK:    P_th + P_el = P_th &times; &sigma;
+    Stromkessel: P_th, P_el = P_th / &eta;
+    Fernwarme:   Feste Nennleistung
+
+  Phase 3: Speicher-Entladung
+    entladen = min(residual, thermSOC, P_entlade_max)
+
+  Phase 4: Merit-Order — Kessel (Gas, Ol, Pellets, HHS)
+    Gleiche Logik wie Phase 2, aber nur Kesseltypen
+
+  Phase 5: Auto-Gaskessel (virtuell)
+    Deckt jeden verbleibenden Restbedarf
+    Erfasst autoGkKwh und autoGkPeakKw
+
+  Phase 6: Speicher-Beladung (08:00–17:59, tagsuber)
+    WP-Reserve aus Phase 2 ladt Speicher
+    Sortiert nach COP (effizienteste WP zuerst)
+    Zusatzl. Stromverbrauch wird erfasst</div>
+
+  <h4>Merit-Order Reihenfolge</h4>
+  <div class="formula">Reihenfolge = Aktivierungsreihenfolge der Erzeuger (meritOrderKeys)
+Vom Nutzer per Drag&amp;Drop anderbar.
+
+Interne Klassifizierung:
+  Nicht-Kessel: lwwp, fg, geo, bhkw, fernwaerme, stromkessel  (Phase 2)
+  Kessel:       gaskessel, heizoel, pellets, hhs               (Phase 4)</div>
+
+  <h4>Ausgabe</h4>
+  <div class="data-flow">
+    <span class="chip">_dispatchHourly[key] [Float32, 8760] pro Erzeuger</span>
+    <span class="chip">_dispatchEnergy[key] {waermeMwh, elMwh}</span>
+    <span class="chip">_dispatchActiveKeys [Array, geordnet]</span>
+    <span class="chip">_autoGkResult {mwh, peakKw}</span>
+    <span class="chip">_thermSpeicherState {socH, entladeH, ladeH}</span>
+  </div>
+</div>
+</div>
+
+<!-- ===================== 7. METRIKEN ===================== -->
+<div class="section" id="sec-metriken">
+<h2>7. calcMetriken() &mdash; KPIs pro Erzeuger</h2>
+<p class="sec-sub">Berechnet fur jeden Erzeuger Energiemengen, Effizienz, Kosten und Emissionen.</p>
+
+<div class="node" onclick="toggleDetail('d-metriken')">
+  <span class="badge">CalcEngine</span>
+  <span class="icon">&#x1F4CA;</span><span class="title">Metriken &amp; Kosten</span>
+  <span class="fn">calcMetriken()</span>
+  <div class="sub">Dispatch-Ergebnisse &rarr; waermeMwh, JAZ, CO2, Invest, Jahreskosten</div>
+</div>
+<div class="detail" id="d-metriken">
+  <h4>Kennwerte pro Erzeuger</h4>
+  <table class="dtable">
+    <tr><th>Kennwert</th><th>Formel</th><th>Einheit</th></tr>
+    <tr><td>waermeKwh</td><td><code>sum(abnahme[t])</code></td><td>kWh/a</td></tr>
+    <tr><td>verbrauchKwh</td><td>Kessel: <code>waerme / eta</code>; WP: <code>sum(strom[t])</code></td><td>kWh/a</td></tr>
+    <tr><td>JAZ</td><td><code>waermeKwh / verbrauchKwh</code></td><td>&ndash;</td></tr>
+    <tr><td>vollbstd</td><td><code>waermeKwh / P_nenn</code></td><td>h/a</td></tr>
+    <tr><td>co2TJahr</td><td><code>verbrauchKwh &times; EmF / 1e6</code></td><td>t/a</td></tr>
+    <tr><td>energiekosten</td><td><code>verbrauchKwh &times; Preis</code></td><td>&euro;/a</td></tr>
+    <tr><td>investEur</td><td><code>investEurProKw(P_nenn) &times; P_nenn</code></td><td>&euro;</td></tr>
+    <tr><td>anteilPct</td><td><code>waermeKwh / gesamt &times; 100</code></td><td>%</td></tr>
+  </table>
+
+  <h4>Investitionskostenfunktion</h4>
+  <div class="formula">investEurProKw(P) = INVEST_KURVEN[tech].a &times; P^(b-1)
+  &rarr; Spezifische Kosten sinken mit Leistung (Skaleneffekt)</div>
+  <p>Details: <a onclick="scrollTo_('sec-invest')" style="color:var(--accent);cursor:pointer;">Abschnitt 9 &mdash; Investkurven (KWW)</a></p>
+</div>
+</div>
+
+<!-- ===================== 8. VDI 2067 ===================== -->
+<div class="section" id="sec-vdi">
+<h2>8. VDI 2067 Annuitatenmethode</h2>
+<p class="sec-sub">Jede Anlagenkomponente wird nach VDI 2067 als "Baustein" mit Kapitalkosten, Instandhaltung, Wartung und Bedienung bewertet.</p>
+
+<div class="node" onclick="toggleDetail('d-vdi')">
+  <span class="badge">Wirtschaft</span>
+  <span class="icon">&#x1F4B0;</span><span class="title">VDI 2067 Bausteine</span>
+  <div class="sub">Annuitat + Betriebskosten &mdash; Grundlage der Jahresscheiben</div>
+</div>
+<div class="detail" id="d-vdi">
+  <h4>Annuitatenformel</h4>
+  <div class="formula">q = 1 + Zinssatz/100
+
+Annuitatsfaktor a(r, n) = r &times; (1+r)^n / ((1+r)^n - 1)
+
+Jahreskosten JK = Invest &times; (a + Inst%/100 + Wart%/100) + Bedien_h &times; Stundenlohn</div>
+
+  <h4>VDI 2067 Parameter pro Technologie</h4>
+  <table class="dtable">
+    <tr><th>Technologie</th><th>n (Jahre)</th><th>Inst. %</th><th>Wart. %</th><th>Bedien h/a</th></tr>
+    <tr><td>Luft-WP</td><td class="c">20</td><td class="c">1.0</td><td class="c">1.5</td><td class="c">5</td></tr>
+    <tr><td>Geothermie-WP</td><td class="c">20</td><td class="c">1.0</td><td class="c">1.5</td><td class="c">5</td></tr>
+    <tr><td>Fliesswasser-WP</td><td class="c">20</td><td class="c">2.0</td><td class="c">1.0</td><td class="c">5</td></tr>
+    <tr><td>Gaskessel</td><td class="c">20</td><td class="c">1.0</td><td class="c">2.0</td><td class="c">20</td></tr>
+    <tr><td>Heizolkessel</td><td class="c">20</td><td class="c">1.0</td><td class="c">2.0</td><td class="c">20</td></tr>
+    <tr><td>Pelletkessel</td><td class="c">15</td><td class="c">3.0</td><td class="c">3.0</td><td class="c">408</td></tr>
+    <tr><td>Hackschnitzel</td><td class="c">15</td><td class="c">3.0</td><td class="c">3.0</td><td class="c">612</td></tr>
+    <tr><td>Fernwarme</td><td class="c">20</td><td class="c">2.0</td><td class="c">1.0</td><td class="c">0</td></tr>
+    <tr><td>Warmenetz (KMR)</td><td class="c">50</td><td class="c">1.5</td><td class="c">0.5</td><td class="c">40</td></tr>
+    <tr><td>Pufferspeicher</td><td class="c">20</td><td class="c">1.0</td><td class="c">1.0</td><td class="c">0</td></tr>
+    <tr><td>PV-Anlage</td><td class="c">25</td><td class="c">0.5</td><td class="c">1.0</td><td class="c">0</td></tr>
+    <tr><td>Batterie</td><td class="c">15</td><td class="c">0.5</td><td class="c">0.5</td><td class="c">0</td></tr>
+  </table>
+
+  <h4>Bausteine in calcJahresscheiben()</h4>
+  <p>Neben den Technologie-Bausteinen gibt es Zusatz-Bausteine fur:</p>
+  <ul>
+    <li><strong>Infrastruktur:</strong> Warmenetz, Pufferspeicher, Hausanschluss-Stationen</li>
+    <li><strong>Prozentuale Aufschlage:</strong> Planung (10%), Baunebenkosten (7%), Unvorhergesehenes (5%)</li>
+    <li><strong>Bestandsnetz-Logik:</strong> Bei <code>networkLocked = true</code> werden Netzkosten = 0 (oder Sanierungsanteil)</li>
+  </ul>
+
+  <h4>Reinvestition</h4>
+  <div class="formula">Wenn Nutzungsdauer n &lt; Betrachtungszeitraum T:
+  Reinvestition in Jahr n, 2n, 3n, ...
+  Restwert am Ende: anteilig linear abgeschrieben</div>
+</div>
+</div>
+
+<!-- ===================== 9. INVESTKURVEN ===================== -->
+<div class="section" id="sec-invest">
+<h2>9. Investitionskostenkurven (KWW)</h2>
+<p class="sec-sub">Leistungsabhangige Investitionskosten aus dem KWW-Technikkatalog. Skaleneffekte: groessere Anlagen sind pro kW gunstiger.</p>
+
+<div class="node" onclick="toggleDetail('d-invest')">
+  <span class="badge">Datenbasis</span>
+  <span class="icon">&#x1F4B6;</span><span class="title">INVEST_KURVEN + PV_INVEST_TABELLE</span>
+  <div class="sub">Power-Law-Kurven fur Warmeerzeuger &amp; Interpolationstabelle fur PV</div>
+</div>
+<div class="detail" id="d-invest">
+  <h4>Warmeerzeuger-Investkurven</h4>
+  <div class="formula">Spezifische Kosten [Euro/kW]:
+  investEurProKw(P) = a &times; P^(b-1)
+
+  Zwei Regime: dezentral (P &le; maxDez) und zentral (P > maxDez)
+  Dezentral: {aDez, bDez, maxDez}
+  Zentral:   {aZen, bZen, minZen, maxZen, cap}
+
+  Gesamtinvest = investEurProKw(P) &times; P</div>
+
+  <h4>Technologien mit Kurven</h4>
+  <table class="dtable">
+    <tr><th>Technologie</th><th>Typ</th><th>Kostenbereich</th></tr>
+    <tr><td>LuftWP</td><td>Dezentral + Zentral</td><td>~500-1.200 &euro;/kW</td></tr>
+    <tr><td>GeoWP</td><td>Dezentral + Zentral</td><td>~600-1.500 &euro;/kW</td></tr>
+    <tr><td>FlussWP</td><td>Dezentral + Zentral</td><td>~700-1.800 &euro;/kW</td></tr>
+    <tr><td>Gaskessel</td><td>Dezentral + Zentral</td><td>~80-300 &euro;/kW</td></tr>
+    <tr><td>Pellets</td><td>Dezentral + Zentral</td><td>~200-600 &euro;/kW</td></tr>
+    <tr><td>Hackschnitzel</td><td>Dezentral + Zentral</td><td>~250-700 &euro;/kW</td></tr>
+    <tr><td>BHKW</td><td>Zentral</td><td>~1.000-3.000 &euro;/kW<sub>el</sub></td></tr>
+  </table>
+
+  <h4>PV-Investitionskosten</h4>
+  <div class="formula">PV_INVEST_TABELLE (Stand 2024/25, netto):
+    5 kWp   &rarr; 1.400 &euro;/kWp
+   10 kWp   &rarr; 1.300 &euro;/kWp
+   30 kWp   &rarr; 1.150 &euro;/kWp
+   50 kWp   &rarr; 1.050 &euro;/kWp
+  100 kWp   &rarr;   950 &euro;/kWp
+  300 kWp   &rarr;   850 &euro;/kWp
+  750 kWp   &rarr;   780 &euro;/kWp
+ 1.000 kWp  &rarr;   750 &euro;/kWp
+ 5.000 kWp  &rarr;   650 &euro;/kWp
+10.000 kWp  &rarr;   600 &euro;/kWp
+
+  Lineare Interpolation zwischen Stutzstellen via getPvInvestPerKwp()</div>
+</div>
+</div>
+
+<!-- ===================== 10. NPV ===================== -->
+<div class="section" id="sec-npv">
+<h2>10. calcJahresscheiben() &mdash; NPV / Barwert</h2>
+<p class="sec-sub">Projektion aller Kosten uber die Laufzeit mit Energiepreiseskalation und Diskontierung.</p>
+
+<div class="node" onclick="toggleDetail('d-npv')">
+  <span class="badge">Wirtschaft</span>
+  <span class="icon">&#x1F4C8;</span><span class="title">Jahresscheiben / Cashflow</span>
+  <span class="fn">calcJahresscheiben()</span>
+  <div class="sub">Bausteine + Energiekosten &rarr; NPV-Barwert uber T Jahre</div>
+</div>
+<div class="detail" id="d-npv">
+  <h4>Datensammlung</h4>
+  <p>Sammelt alle aktiven Bausteine (Technologie + Infrastruktur + Aufschlage). Fur jede Komponente:</p>
+  <ul>
+    <li>Investitionskosten [&euro;]</li>
+    <li>Jahrliche Betriebskosten = Inst% + Wart% des Invest + Arbeit [&euro;/a]</li>
+    <li>Nutzungsdauer n &rarr; Reinvestitionszeitpunkte</li>
+  </ul>
+
+  <h4>Jahresscheibenberechnung</h4>
+  <div class="formula">Fur jedes Jahr y = 0..T (Betrachtungszeitraum):
+
+  Invest(y) = Anfangsinvest (y=0) + Reinvestitionen (y=n, 2n, ...)
+  Betrieb(y) = jahrliche Betriebskosten (konstant nominal)
+  Energie(y) = Energiekosten(0) &times; (1 + Eskalation)^y
+
+  Gesamt(y) = Invest(y) + Betrieb(y) + Energie(y)
+
+  Diskontfaktor(y) = 1 / (1 + r)^y
+  NPV(y) = Gesamt(y) &times; Diskontfaktor(y)
+
+  Barwert = &sum; NPV(y)  fur y = 0..T</div>
+
+  <h4>Synchronisation</h4>
+  <p><strong>Diskontsatz r = Kapitalzins</strong> (aus VDI 2067). Damit sind Annuitatenmethode und NPV-Methode konsistent &mdash; beide Methoden liefern identische Rankings.</p>
+
+  <h4>WGK aus NPV</h4>
+  <div class="formula">WGK_NPV = Barwert / (Nutzwarme_MWh &times; T) / 10  [ct/kWh]</div>
+</div>
+</div>
+
+<!-- ===================== 11. WGK ===================== -->
+<div class="section" id="sec-wgk">
+<h2>11. Warmegestehungskosten (WGK)</h2>
+<p class="sec-sub">Zentrale Kennzahl: Was kostet eine kWh Warme aus dem Gesamtsystem?</p>
+
+<div class="node" onclick="toggleDetail('d-wgk')">
+  <span class="badge">Wirtschaft</span>
+  <span class="icon">&#x1F4B2;</span><span class="title">WGK in ct/kWh</span>
+  <div class="sub">Kapital + Betrieb + Energie &minus; Gutschriften / Nutzwarme</div>
+</div>
+<div class="detail" id="d-wgk">
+  <h4>Formel</h4>
+  <div class="formula">WGK = (Kapital-JK + Betriebs-JK + Energiekosten - BHKW-Stromerlos) / Nutzwarme_MWh / 10
+
+  Einheit: ct/kWh  (Division /10 konvertiert Euro/MWh &rarr; ct/kWh)</div>
+
+  <h4>Bestandteile</h4>
+  <ul>
+    <li><strong>Kapital-JK:</strong> Summe aller Baustein-Annuitaten (VDI 2067)</li>
+    <li><strong>Betriebs-JK:</strong> Instandhaltung + Wartung + Bedienung</li>
+    <li><strong>Energiekosten:</strong> Brennstoff &times; Preis / Wirkungsgrad pro Erzeuger</li>
+    <li><strong>BHKW-Gutschrift:</strong> Stromerlos (Eigenverbrauch + Einspeisung) wird abgezogen</li>
+    <li><strong>Nutzwarme:</strong> Gesamte abgegebene Warme aller Erzeuger [MWh/a]</li>
+  </ul>
+
+  <h4>Zwei WGK-Varianten</h4>
+  <table class="dtable">
+    <tr><th>Variante</th><th>Methode</th><th>Verwendung</th></tr>
+    <tr><td>WGK (Annuitat)</td><td>Annualisierte Kosten / Warme</td><td>Analyse-Panel, schneller Vergleich</td></tr>
+    <tr><td>WGK (NPV)</td><td>Barwert / (Warme &times; T)</td><td>Jahresscheiben, langfristiger Vergleich</td></tr>
+  </table>
+</div>
+</div>
+
+<!-- ===================== 12. WÄRMENETZ ===================== -->
+<div class="section" id="sec-waermenetz">
+<h2>12. Warmenetz &mdash; Hydraulische Netzberechnung</h2>
+<p class="sec-sub">Berechnet Rohrdimensionierung, Druckverluste, Pumpenauslegung und Warmeverluste fur das gezeichnete Warmenetz.</p>
+
+<div class="node" onclick="toggleDetail('d-waermenetz')">
+  <span class="badge" style="background:var(--cWaerme);">Warme</span>
+  <span class="icon">&#x1F321;</span><span class="title">Netzhydraulik &amp; Warmeverluste</span>
+  <span class="fn">calcWaermenetz()</span>
+  <div class="sub">Topologie + Lastprofile &rarr; DN-Rohre, Druckverlust, Pumpenstrom, Netzverluste</div>
+</div>
+<div class="detail" id="d-waermenetz">
+  <h4>Lastakkumulation</h4>
+  <div class="formula">Fur jede Leitung im Netz:
+  Von den Endverbrauchern zur Zentrale werden die Warmelasten aufaddiert.
+  Massenstrom pro Leitung:
+    m_dot [kg/s] = Q_kW / (c_p &times; &Delta;T)
+  mit c_p = 4.18 kJ/(kg&middot;K), &Delta;T = Vorlauf - Rucklauf</div>
+
+  <h4>DN-Dimensionierung (Darcy-Weisbach)</h4>
+  <div class="formula">Fur jede Leitung wird der Rohrdurchmesser so gewahlt, dass
+  die Fliessgeschwindigkeit v &le; v_max (typisch 1.0-1.5 m/s):
+    v = m_dot / (&rho; &times; A)    mit A = &pi;/4 &times; d&sup2;
+
+  Druckverlust (Darcy-Weisbach):
+    &Delta;p = &lambda; &times; (L / d) &times; (&rho; / 2) &times; v&sup2;
+
+  Reynolds-Zahl:   Re = v &times; d / &nu;
+  Rohrreibung:     &lambda; nach Swamee-Jain (Naherung fur Colebrook-White)
+  Einzelwiderstande: Zuschlag (Zeta-Werte oder pauschaler Faktor)</div>
+
+  <h4>Kritischer Pfad &amp; Pumpe</h4>
+  <div class="formula">Der langste Druckverlust-Pfad (Zentrale &rarr; entferntester Abnehmer)
+  bestimmt die erforderliche Pumpen-Forderhohe:
+    H_pump [m] = &Delta;p_krit / (&rho; &times; g)
+
+  Pumpenstrom:
+    P_pump [kW] = m_dot &times; g &times; H_pump / (&eta;_pump &times; 1000)</div>
+
+  <h4>Warmeverluste</h4>
+  <div class="formula">Q_verlust [kW/m] = U &times; (T_VL - T_boden)
+  mit U = Warmedurchgangskoeffizient [W/(m&middot;K)]
+
+  Jahresverluste = &sum; Q_verlust(t) fur t = 1..8760
+  Verlustanteil = Q_verlust_a / Q_gesamt_a &times; 100%</div>
+
+  <h4>Bestandsnetz-Logik</h4>
+  <p>Bei <code>networkLocked = true</code>: DN-Werte werden nicht neu berechnet. Investitionskosten = 0 (oder anteiliger Sanierungsanteil). Rohrdaten kommen aus dem gezeichneten/importierten Netz.</p>
+</div>
+</div>
+
+<!-- ===================== 13. STROMNETZ ===================== -->
+<div class="section" id="sec-stromnetz">
+<h2>13. Stromnetz &mdash; Elektrische Netzberechnung</h2>
+<p class="sec-sub">Vollstandige Niederspannungs-Netzplanung: Lastfluss, Kabeldimensionierung, Spannungsfall, Trafo-Auslastung und Kostenrechnung. Arbeitet szenariobasiert (Spitzenlast, PV-Maximum, Ruckspeisung, Jahresmittel).</p>
+
+<h3>Datenstrukturen</h3>
+
+<div class="node" onclick="toggleDetail('d-strom-data')">
+  <span class="badge" style="background:var(--cStrom);">Strom</span>
+  <span class="icon">&#x26A1;</span><span class="title">Netz-Topologie: Knoten &amp; Kabel</span>
+  <div class="sub">stromNodes[] + stromEdges[] &mdash; Graph-Struktur des NS-Netzes</div>
+</div>
+<div class="detail" id="d-strom-data">
+  <h4>Knotentypen (stromNodes[])</h4>
+  <table class="dtable">
+    <tr><th>Typ</th><th>Symbol</th><th>Beschreibung</th><th>Eigenschaften</th></tr>
+    <tr><td><code>nap</code></td><td>&#x26A1;</td><td>Netzanschlusspunkt</td><td><code>maxKva</code> (Anschlussleistung)</td></tr>
+    <tr><td><code>trafo</code></td><td>&#x23DA;</td><td>Transformator MS/NS</td><td><code>ratedKva</code>, <code>ukPct</code> (Kurzschlussspannung)</td></tr>
+    <tr><td><code>nshv</code></td><td>&#x25A6;</td><td>Niederspannungshauptverteilung</td><td>Sammelschiene</td></tr>
+    <tr><td><code>geb</code></td><td>&#x1F3E0;</td><td>Gebaude (auto-registriert)</td><td><code>peakLoadKw</code>, <code>annualMwh</code></td></tr>
+    <tr><td><code>erzeuger</code></td><td>&#x2600;</td><td>Einspeiser (WP, BHKW, PV)</td><td><code>isProducer=true</code>, <code>_erzKey</code></td></tr>
+    <tr><td><code>junction</code></td><td>&bull;</td><td>Abzweigpunkt</td><td>nur Topologie, keine Last</td></tr>
+  </table>
+
+  <h4>Kabeltypen (KABEL_TYPEN)</h4>
+  <table class="dtable">
+    <tr><th>Typ</th><th>Material</th><th>&rho; [&Omega;&middot;mm&sup2;/m]</th><th>Querschnitte [mm&sup2;]</th></tr>
+    <tr><td>NYY</td><td>Kupfer</td><td class="c">0.0175</td><td>16, 25, 35, 50, 70, 95, 120, 150, 185, 240</td></tr>
+    <tr><td>NAYY</td><td>Aluminium</td><td class="c">0.0286</td><td>35, 50, 70, 95, 120, 150, 185, 240</td></tr>
+  </table>
+  <p style="margin-top:6px;font-size:11px;color:var(--muted);">Jeder Querschnitt hat eine zugehorige Strombelastbarkeit <code>Iz</code> [A] nach VDE 0298-4 (Verlegeart D, Erdkabel 4-adrig) und einen Meterpreis <code>eurM</code>.</p>
+
+  <h4>Trafo-Standardgrossen</h4>
+  <div class="formula">TRAFO_GROESSEN = [250, 400, 630, 1000, 1600, 2500] kVA</div>
+</div>
+
+<h3>Berechnung: _recalcStromNetzInner()</h3>
+
+<div class="node" onclick="toggleDetail('d-strom-step1')">
+  <span class="badge" style="background:var(--cStrom);">Schritt 1</span>
+  <span class="icon">&#x1F50C;</span><span class="title">Knoten-Registrierung &amp; Lastermittlung</span>
+  <span class="fn">_recalcStromNetzInner()</span>
+  <div class="sub">Gebaude + Erzeuger automatisch registrieren, elektrische Lasten zuweisen</div>
+</div>
+<div class="detail" id="d-strom-step1">
+  <h4>Auto-Registrierung</h4>
+  <p>Alle Gebaude aus <code>window.gebaeude[]</code> werden automatisch als Strom-Knoten registriert. Erzeuger mit Stromverbrauch/-erzeugung (WP, BHKW, PV-Freiflachen) werden uber <code>_autoRegisterErzeugerStromNodes()</code> erkannt und als Einspeiser-Knoten platziert.</p>
+
+  <h4>Last-Zuweisung je Szenario</h4>
+  <div class="formula">Jeder Knoten bekommt eine elektrische Last [kW] zugewiesen.
+Die Quelle hangt vom gewahlten Szenario ab:
+
+Gebaude-Grundlast:
+  Jahresmittel:   P = stromMwh &times; 1000 / VBH     (VBH = 1800 h)
+  Stundenbasiert: P = elQuartierH[szHour] (anteilig pro Gebaude)
+
+Warmepumpen (lwwp, geo):
+  Jahresmittel:   P = _dispatchEnergy.lwwp.elMwh &times; 1000 / 8760
+  Stundenbasiert: P = _wpElHourly[szHour]
+
+BHKW (Einspeiser, negatives Vorzeichen):
+  Jahresmittel:   P = -_dispatchEnergy.bhkw.elMwh &times; 1000 / 8760
+  Stundenbasiert: P = -_bhkwElHourly[szHour]
+
+PV (Einspeiser, negatives Vorzeichen):
+  Jahresmittel:   P = -pvJahresMwh &times; 1000 / 8760
+  Stundenbasiert: P = -elPvH[szHour] (anteilig pro Anlage)</div>
+
+  <h4>Szenario-Auswahl (_getStromSzenarioHour)</h4>
+  <table class="dtable">
+    <tr><th>Szenario</th><th>Stunde</th><th>Beschreibung</th></tr>
+    <tr><td>Spitzenlast</td><td>argmax(qH + wpH + skH)</td><td>Maximale Gesamtlast &mdash; Dimensionierungsfall</td></tr>
+    <tr><td>PV-Maximum</td><td>argmax(pvH)</td><td>Maximale PV-Erzeugung</td></tr>
+    <tr><td>Ruckspeisung</td><td>argmax(pvH - loadH)</td><td>Maximale Netto-Einspeisung &mdash; Spannungssteigerung</td></tr>
+    <tr><td>Jahresmittel</td><td>szHour = -2</td><td>Durchschnittliche Last uber 8760 h</td></tr>
+  </table>
+</div>
+
+<div class="arrow"><span>&#x25BC;</span></div>
+
+<div class="node" onclick="toggleDetail('d-strom-step2')">
+  <span class="badge" style="background:var(--cStrom);">Schritt 2</span>
+  <span class="icon">&#x1F310;</span><span class="title">Netz-Topologie &amp; BFS-Traversierung</span>
+  <div class="sub">Adjazenzliste aufbauen, Breadth-First-Search vom NAP aus</div>
+</div>
+<div class="detail" id="d-strom-step2">
+  <h4>Graph-Aufbau</h4>
+  <div class="formula">Aus stromEdges[] wird eine Adjazenzliste erstellt:
+  nodeMap[n.id].adj = [ { to: nachbarId, edge: kanteObjekt }, ... ]
+
+BFS-Traversierung vom NAP (Wurzelknoten):
+  1. Warteschlange mit NAP initialisieren
+  2. Fur jeden Knoten: alle Nachbarn besuchen (falls nicht besucht)
+  3. Eltern-Kante merken (fur Bottom-Up-Aggregation)
+  4. Reihenfolge speichern (fur spatere Ruckwarts-Traversierung)</div>
+  <p>Das Ergebnis ist ein Baum mit dem NAP als Wurzel. Jede Kante hat genau eine Richtung: vom NAP zum Verbraucher (oder umgekehrt bei Einspeisung).</p>
+</div>
+
+<div class="arrow"><span>&#x25BC;</span></div>
+
+<div class="node" onclick="toggleDetail('d-strom-step3')">
+  <span class="badge" style="background:var(--cStrom);">Schritt 3</span>
+  <span class="icon">&#x1F4CA;</span><span class="title">Gleichzeitigkeitsfaktor (GZF)</span>
+  <div class="sub">VDE-basierte Lastgleichzeitigkeit fur Leitungsdimensionierung</div>
+</div>
+<div class="detail" id="d-strom-step3">
+  <h4>Drei GZF-Methoden</h4>
+  <table class="dtable">
+    <tr><th>Methode</th><th>Formel</th><th>Anwendung</th></tr>
+    <tr><td>VDE (DIN 18015)</td><td><code>g(n) = 1 / n<sup>0.4</sup></code></td><td>Standard: Tabellenwerte fur Wohngebaude</td></tr>
+    <tr><td>Keine</td><td><code>g(n) = 1.0</code></td><td>Worst-Case / Industrie</td></tr>
+    <tr><td>Manuell</td><td><code>g = Nutzereingabe [0.1&ndash;1.0]</code></td><td>Projektspezifisch</td></tr>
+  </table>
+
+  <h4>Bottom-Up-Aggregation</h4>
+  <div class="formula">Ruckwarts-Traversierung (Blatter &rarr; NAP):
+
+Fur jede Kante:
+  nVerbraucher = Anzahl Verbraucher-Knoten hinter dieser Kante
+  peakFlowKw   = &sum;(Lasten hinter Kante) &times; GZF(nVerbraucher)
+
+Beispiel (VDE):
+  1 Verbraucher: GZF = 1.00  (volle Last)
+  5 Verbraucher: GZF = 0.53  (53% Gleichzeitigkeit)
+  20 Verbraucher: GZF = 0.30 (30% Gleichzeitigkeit)</div>
+</div>
+
+<div class="arrow"><span>&#x25BC;</span></div>
+
+<div class="node" onclick="toggleDetail('d-strom-step4')">
+  <span class="badge" style="background:var(--cStrom);">Schritt 4</span>
+  <span class="icon">&#x1F50B;</span><span class="title">Kabeldimensionierung &amp; Spannungsfall</span>
+  <div class="sub">Strombelastbarkeit, Querschnittswahl, &Delta;U-Berechnung nach VDE</div>
+</div>
+<div class="detail" id="d-strom-step4">
+  <h4>Strom &amp; Kabeldimensionierung</h4>
+  <div class="formula">Drehstrom-Netz: U = 400 V, cos&phi; = 0.95
+
+Betriebsstrom:
+  I [A] = P [kW] &times; 1000 / (&radic;3 &times; U &times; cos&phi;)
+        = P &times; 1000 / (&radic;3 &times; 400 &times; 0.95)
+        = P &times; 1.519
+
+Auto-Dimensionierung:
+  Wahle den kleinsten Querschnitt A [mm&sup2;] aus KABEL_TYPEN,
+  dessen Strombelastbarkeit Iz &ge; I
+  (VDE 0298-4, Verlegeart D: Erdkabel, 4-adrig)</div>
+
+  <h4>Spannungsfall-Berechnung</h4>
+  <div class="formula">Fur jede Kante:
+  R_per_m = &rho; / A         [&Omega;/m]  (&rho; = Materialwiderstand)
+  X_per_m = 0.00008          [&Omega;/m]  (induktiver Blindwiderstand, Erdkabel)
+  sin&phi; = &radic;(1 - cos&phi;&sup2;)
+
+  &Delta;U [V] = &radic;3 &times; I &times; L &times; (R &times; cos&phi; + X &times; sin&phi;)
+
+  &Delta;U [%] = &Delta;U / 400 &times; 100</div>
+
+  <h4>Grenzwerte</h4>
+  <table class="dtable">
+    <tr><th>Kennzahl</th><th style="background:#4caf5033;">Gut</th><th style="background:#ff980033;">Warnung</th><th style="background:#f4433633;">Kritisch</th></tr>
+    <tr><td>Auslastung</td><td class="c">&le; 80%</td><td class="c">80&ndash;100%</td><td class="c">&gt; 100%</td></tr>
+    <tr><td>Spannungsfall &Delta;U</td><td class="c">&le; 1%</td><td class="c">1&ndash;3%</td><td class="c">&gt; 3%</td></tr>
+  </table>
+  <p style="margin-top:6px;font-size:11px;color:var(--muted);">VDE/TAR Niederspannung: Gesamtspannungsfall vom NAP bis zum letzten Verbraucher max. 3% (Richtwert).</p>
+</div>
+
+<div class="arrow"><span>&#x25BC;</span></div>
+
+<div class="node" onclick="toggleDetail('d-strom-step5')">
+  <span class="badge" style="background:var(--cStrom);">Schritt 5</span>
+  <span class="icon">&#x1F3ED;</span><span class="title">NAP- &amp; Trafo-Auslastung</span>
+  <div class="sub">Netzanschluss und Trafo-Belastung prufen</div>
+</div>
+<div class="detail" id="d-strom-step5">
+  <h4>NAP-Auslastung</h4>
+  <div class="formula">Gesamtlast am NAP = &sum; aller Knotenlasten &times; GZF(n_gesamt)
+NAP-Auslastung [%] = Gesamtlast / maxKva &times; 100</div>
+
+  <h4>Trafo-Auslastung</h4>
+  <div class="formula">Fur jeden Trafo:
+  BFS vom Trafo aus &rarr; alle nachgelagerten Verbraucher sammeln
+  loadBehind = &sum;(Lasten) &times; GZF(n)
+  Auslastung [%] = loadBehind / ratedKva &times; 100</div>
+
+  <h4>Kritischer Spannungsfall-Pfad</h4>
+  <div class="formula">Suche den Pfad NAP &rarr; Blattknoten mit maximalem
+kumulierten Spannungsfall:
+  maxDeltaU = max(&sum; &Delta;U_kante fur alle Pfade NAP &rarr; Blatt)
+
+Ergebnis in window._stromNetzKpis.maxDeltaU</div>
+</div>
+
+<div class="arrow"><span>&#x25BC;</span></div>
+
+<div class="node" onclick="toggleDetail('d-strom-step6')">
+  <span class="badge" style="background:var(--cWirt);">Kosten</span>
+  <span class="icon">&#x1F4B6;</span><span class="title">Stromnetz-Kosten</span>
+  <span class="fn">_calcStromNetzKosten()</span>
+  <div class="sub">Invest + VDI 2067 Annuitat fur Kabel, Trafos, NAP</div>
+</div>
+<div class="detail" id="d-strom-step6">
+  <h4>Investitionskosten</h4>
+  <div class="formula">kabelInvest  = &sum;(e.lengthM &times; (kabelEurM + tiefbauEurM))
+trafoInvest  = &sum;(trafo.ratedKva &times; trafoEurKva)
+napInvest    = nNap &times; napPausch
+investGesamt = kabelInvest + trafoInvest + napInvest</div>
+
+  <h4>Annuitat (VDI 2067)</h4>
+  <div class="formula">Zinssatz:  r = 3% (Voreinstellung)
+Nutzungsdauer: T = 40 Jahre (Erdkabel)
+
+q = 1 + r
+Annuitatsfaktor = (q^T &times; r) / (q^T - 1)
+IH-Faktor = 1% (jahrliche Instandhaltung)
+
+Annuitat [&euro;/a] = investGesamt &times; (Annuitatsfaktor + IH-Faktor)</div>
+
+  <h4>Einstellbare Parameter</h4>
+  <table class="dtable">
+    <tr><th>Parameter</th><th>ID</th><th>Voreinstellung</th></tr>
+    <tr><td>Tiefbaukosten</td><td><code>strom-k-tiefbau</code></td><td class="c">100 &euro;/m</td></tr>
+    <tr><td>NAP-Pauschale</td><td><code>strom-k-nap</code></td><td class="c">3.000 &euro;</td></tr>
+    <tr><td>Trafo-Kosten</td><td><code>strom-k-trafo</code></td><td class="c">60 &euro;/kVA</td></tr>
+    <tr><td>Nutzungsdauer</td><td><code>strom-k-nd</code></td><td class="c">40 Jahre</td></tr>
+  </table>
+</div>
+
+<h3>Visualisierung &amp; Automatik</h3>
+
+<div class="node" onclick="toggleDetail('d-strom-viz')">
+  <span class="badge" style="background:var(--cStrom);">Darstellung</span>
+  <span class="icon">&#x1F3A8;</span><span class="title">4 Visualisierungsmodi</span>
+  <span class="fn">getStromEdgeColor() / updateStromEdgeVisuals()</span>
+  <div class="sub">Farbkodierung der Kabel nach Auslastung, Spannungsfall, Leistung oder Richtung</div>
+</div>
+<div class="detail" id="d-strom-viz">
+  <table class="dtable">
+    <tr><th>Modus</th><th>Farbskala</th><th>Aussage</th></tr>
+    <tr><td>Auslastung</td><td>Cyan &rarr; Grun &rarr; Gelb &rarr; Rot</td><td>Kabelbelastung I/Iz in % (Engpasse erkennen)</td></tr>
+    <tr><td>Spannungsfall</td><td>Grun &rarr; Gelb &rarr; Rot</td><td>&Delta;U kumuliert &mdash; kritische Pfade visualisieren</td></tr>
+    <tr><td>Leistung</td><td>Grun &rarr; Gelb &rarr; Rot (skaliert)</td><td>Absolute Leistung [kW] pro Kabel</td></tr>
+    <tr><td>Richtung</td><td>Orange = Bezug, Blau = Ruckspeisung</td><td>Lastfluss-Richtung &mdash; wo speist PV zuruck?</td></tr>
+  </table>
+  <p style="margin-top:8px;">Kabelbreite ist proportional zur ubertragenen Leistung. Animierte Strichlinien zeigen die Flussrichtung in Echtzeit.</p>
+</div>
+
+<div class="node" onclick="toggleDetail('d-strom-auto')" style="margin-top:12px;">
+  <span class="badge" style="background:var(--cStrom);">Auto</span>
+  <span class="icon">&#x1F916;</span><span class="title">Automatische Netz-Generierung</span>
+  <span class="fn">schnellberechnungStrom() / autoStromNetz()</span>
+  <div class="sub">MST-Algorithmus erzeugt optimale Kabeltrassen automatisch</div>
+</div>
+<div class="detail" id="d-strom-auto">
+  <h4>schnellberechnungStrom() &mdash; Komplett-Automatik</h4>
+  <div class="formula">1. Spitzenlast aller Gebaude berechnen
+2. NAP platzieren (Schwerpunkt oder Warmezentrale)
+3. Abzweigpunkte (Junctions) entlang der Warmetrasse
+4. MST (Minimum Spanning Tree, Greedy):
+   Alle Gebaude mit minimalem Gesamtkabel an Junctions anbinden
+5. Kabel automatisch dimensionieren
+6. recalcStromNetz() auslosen</div>
+
+  <h4>autoStromNetz() &mdash; Teilautomatik</h4>
+  <div class="formula">Setzt voraus: NAP + Trafos bereits platziert
+1. Trafos &rarr; NAP verbinden (kurzeste Distanz)
+2. NSHV &rarr; nachster Trafo verbinden
+3. Gebaude &rarr; nachste Infrastruktur (NSHV &gt; Trafo &gt; NAP)
+   per Greedy-MST (jeweils kurzeste noch offene Verbindung)</div>
+
+  <h4>Auto-Registrierung von Erzeugern</h4>
+  <p>Warmepumpen, BHKW und PV-Freiflachen werden automatisch als Einspeise-Knoten erkannt und mit negativer Last (Erzeugung) ins Netz integriert. Die Zuordnung erfolgt uber <code>_autoRegisterErzeugerStromNodes()</code> anhand der Positionen der Erzeuger auf der Karte.</p>
+</div>
+</div>
+
+<!-- ===================== 14. STROM-BILANZ ===================== -->
+<div class="section" id="sec-strom">
+<h2>14. calcStromPanel() &mdash; Strom-Bilanz</h2>
+<p class="sec-sub">Stundenfeiner Abgleich von Stromerzeugung (PV, BHKW) mit Strombedarf (WP, Quartier) und Batteriespeicher.</p>
+
+<div class="node" onclick="toggleDetail('d-strom')">
+  <span class="badge">Strom</span>
+  <span class="icon">&#x2600;</span><span class="title">Eigenverbrauch &amp; Autarkie (8760h)</span>
+  <span class="fn">calcStromPanel()</span>
+  <div class="sub">PV-Profil + BHKW-Strom + WP-Bedarf + Batterie &rarr; Bilanz</div>
+</div>
+<div class="detail" id="d-strom">
+  <h4>PV-Profil</h4>
+  <div class="formula">PV(t) = Globalstrahlung(t) &times; Ausrichtungsfaktor &times; Modulwirkungsgrad &times; kWp
+  &rarr; Stundliche Erzeugung [kW]
+
+  BHKW_el(t) = BHKW_th(t) &times; &sigma;  (Stromkennzahl)</div>
+
+  <h4>Stundliche Bilanz</h4>
+  <div class="formula">Fur jede Stunde t:
+  Erzeugung(t) = PV(t) + BHKW_el(t)
+  Bedarf(t)    = WP_el(t) + Stromkessel_el(t) + Quartier(t)
+
+  1. Direktverbrauch = min(Erzeugung, Bedarf)
+  2. Uberschuss = Erzeugung - Direktverbrauch
+
+  3. Batterie laden:
+     ladung = min(Uberschuss, P_bat_max, (Kapazitat - SOC) / eta_lade)
+     SOC += ladung &times; eta_lade
+
+  4. Restbedarf = Bedarf - Direktverbrauch
+     entladung = min(Restbedarf, P_bat_max, SOC &times; eta_entlade)
+     SOC -= entladung / eta_entlade
+
+  5. Einspeisung = Uberschuss - ladung
+  6. Netzbezug  = Restbedarf - entladung</div>
+
+  <h4>Kennzahlen</h4>
+  <div class="formula">Eigenverbrauchsquote = Eigenverbrauch / PV_ges &times; 100%
+Autarkiegrad = 1 - Netzbezug / Gesamtbedarf &times; 100%
+
+BHKW-Stromerlos:
+  Eigenverbrauch: spart Netzbezugspreis (~35 ct/kWh)
+  Einspeisung:    Einspeisevergutung (~8-16 ct/kWh) + KWK-Zuschlag</div>
+</div>
+</div>
+
+<!-- ===================== 13. CO2 ===================== -->
+<div class="section" id="sec-co2">
+<h2>15. CO2-Emissionen</h2>
+<p class="sec-sub">Berechnung der Treibhausgasemissionen pro Erzeuger mit Gutschrift fur KWK-Strom.</p>
+
+<div class="node" onclick="toggleDetail('d-co2')">
+  <span class="badge">Emissionen</span>
+  <span class="icon">&#x1F32B;</span><span class="title">Emissionsbilanz</span>
+  <div class="sub">Emissionsfaktoren &times; Energiemengen &minus; KWK-Verdrangung</div>
+</div>
+<div class="detail" id="d-co2">
+  <h4>Berechnung pro Erzeuger</h4>
+  <div class="formula">Verbrennung (Gas, Ol, Pellets, HHS):
+  CO2 = waermeKwh / eta &times; Emissionsfaktor / 1e6  [t/a]
+
+Strom-basiert (WP, Stromkessel):
+  CO2 = stromKwh &times; Strom-EmF / 1e6                 [t/a]
+
+BHKW (KWK-Gutschrift, optional zuschaltbar):
+  CO2_brutto = gasKwh &times; Gas-EmF / 1e6
+  CO2_gut    = stromKwh_BHKW &times; Verdrangungs-EmF / 1e6
+  CO2_netto  = CO2_brutto - CO2_gut</div>
+
+  <h4>Emissionsfaktoren (EMISSIONEN-Konstante)</h4>
+  <table class="dtable">
+    <tr><th>Energietrager</th><th>g CO2eq/kWh</th><th>Quelle / Anmerkung</th></tr>
+    <tr><td>Strom-Mix</td><td class="c">363</td><td>UBA 2024</td></tr>
+    <tr><td>Erdgas</td><td class="c">240</td><td>GEMIS</td></tr>
+    <tr><td>Heizol</td><td class="c">310</td><td>GEMIS</td></tr>
+    <tr><td>Pellets</td><td class="c">20</td><td>biogen, nur Vorkette</td></tr>
+    <tr><td>Hackschnitzel</td><td class="c">20</td><td>biogen, nur Vorkette</td></tr>
+    <tr><td>Fernwarme</td><td class="c">180</td><td>Durchschnitt D</td></tr>
+  </table>
+  <p style="margin-top:8px;color:var(--muted);font-size:11px;">Werte stammen aus dem EMISSIONEN-Objekt im Code (~Zeile 21102). Sie konnen uber die UI angepasst werden.</p>
+</div>
+</div>
+
+<!-- ===================== JAHRESABHÄNGIGE SKALIERUNG ===================== -->
+<div class="section" id="sec-year-scaling">
+<h2>Jahresabhangige Lastgang-Skalierung</h2>
+<p class="sec-sub">Berucksichtigt Gebaude-Veranderungen (Abriss, Neubau, Sanierung) im Betrachtungsjahr.
+  Der Stundenlastgang wird proportional skaliert &mdash; die zeitliche Verteilung bleibt erhalten, nur die Hohe andert sich.</p>
+
+<div class="node" onclick="toggleDetail('d-year-scaling')">
+  <span class="badge" style="background:#66bb6a;">NEU</span>
+  <span class="icon">&#x1F4C5;</span><span class="title">_rescaleLastgangForYear(year)</span>
+  <div class="sub">Basis-Lastgang &times; Skalierungsfaktor &rarr; jahresangepasster Lastgang</div>
+</div>
+<div class="detail" id="d-year-scaling">
+  <h4>Grundprinzip</h4>
+  <div class="formula">Beim ersten Berechnen (glBerechnen) werden gespeichert:
+  _basisLastgangKw    = Float32Array(8760)  &larr; Original-Stundenwerte
+  _basisYear          = globalYear           &larr; Berechnungsjahr (z.B. 2026)
+  _basisGebWaermeSumme = &sum; getComputedStats(g, basisYear).waerme
+
+Beim Verschieben des Jahresreglers:
+  zielSumme = &sum; getComputedStats(g, zielJahr).waerme
+  faktor    = zielSumme / basisSumme
+
+  Fur jede Stunde t:
+    lastgangKw[t] = basisLastgangKw[t] &times; faktor</div>
+
+  <h4>Gebaude-Status pro Jahr (getComputedStats)</h4>
+  <table class="dtable">
+    <tr><th>Status Basisjahr</th><th>Status Zieljahr</th><th>Auswirkung</th></tr>
+    <tr><td>bestand</td><td>abgerissen</td><td>Warmebedarf fallt weg (0 kWh)</td></tr>
+    <tr><td>geplant</td><td>bestand</td><td>Warmebedarf kommt hinzu</td></tr>
+    <tr><td>bestand</td><td>saniert</td><td>Warmebedarf sinkt (bessere Dammung)</td></tr>
+    <tr><td>bestand</td><td>bestand</td><td>Warmebedarf bleibt gleich</td></tr>
+  </table>
+
+  <h4>Proportionale Skalierung (Stufe 2)</h4>
+  <div class="formula">Der gesamte Lastgang wird mit einem einzigen Faktor skaliert.
+Das bedeutet: Netzverluste skalieren proportional mit.
+
+Beispiel:
+  Basisjahr 2026: 5 Gebaude, 2.000 MWh/a gesamt
+  Zieljahr 2030:  1 abgerissen (400 MWh), 1 saniert (600&rarr;400 MWh)
+                  &rarr; zielSumme = 1.400 MWh
+  Faktor = 1.400 / 2.000 = 0.70
+  &rarr; Lastgang auf 70% skaliert</div>
+
+  <h4>Info-Anzeige fur den Anwender</h4>
+  <p>Unter dem Lastgang erscheint eine farbige Info-Zeile:</p>
+  <div class="formula">Grun  (faktor &lt; 1): "Jahr 2030: Lastgang auf 70% skaliert (-1 abgerissen, +0 neu, 1 saniert)"
+Orange (faktor &gt; 1): "Jahr 2032: Lastgang auf 115% skaliert (+2 neu)"
+Keine Anzeige bei faktor = 1.0 (Basisjahr)</div>
+
+  <h4>Verwendung in der Optimierung</h4>
+  <p>Die Optimierung bietet ein eigenes <strong>Betrachtungsjahr-Dropdown</strong>. Der Lastgang wird vor der Berechnung
+  uber <code>_optGetScaledLastgang(targetYear)</code> temporar skaliert &mdash; ohne den aktuellen <code>systemState</code>
+  zu verandern. So kann fur ein Zukunftsjahr optimiert werden, wahrend die Hauptansicht das aktuelle Jahr zeigt.</p>
+</div>
+</div>
+
+<!-- ===================== 14. OPT-DISPATCH ===================== -->
+<div class="section" id="sec-opt-dispatch">
+<h2>16. _optDispatch8760() &mdash; 6-Phasen-Kaskade</h2>
+<p class="sec-sub">Erweiterter Dispatch fur die Optimierung &mdash; mit Warmespeicher und Auto-Gaskessel.</p>
+
+<div class="node" onclick="toggleDetail('d-opt-dispatch')">
+  <span class="badge">Optimierung</span>
+  <span class="icon">&#x1F504;</span><span class="title">6-Phasen Dispatch (8760h)</span>
+  <span class="fn">_optDispatch8760()</span>
+  <div class="sub">Lastgang + Erzeuger + Speicher &rarr; stundengenaue Zuordnung mit Speicher-Logik</div>
+</div>
+<div class="detail" id="d-opt-dispatch">
+  <h4>Phasen (identisch mit _deckungen8760)</h4>
+  <div class="formula">Die Phasenstruktur entspricht exakt _deckungen8760() (Abschnitt 6),
+mit einem Unterschied: Solarthermie wird VOR dem Aufruf abgezogen
+(via _stReducedLastgang), nicht als Phase 1 innerhalb der Schleife.
+
+Fur jede Stunde t:
+  Phase 1: Merit-Order — Nicht-Kessel (WP, BHKW, FK, SK)
+    WP: COP(t) dynamisch, Leistungs-Derating, Reserve vorhalten
+    BHKW: Strom = P_th &times; &sigma;
+
+  Phase 2: Speicher-Entladung
+    entladen = min(residual, SOC, P_max)
+
+  Phase 3: Kessel (Gas, Ol, Pellets, HHS) in Merit-Order
+
+  Phase 4: Auto-Gaskessel (Restbedarf)
+
+  Phase 5: Speicher-Beladung (08:00-17:59)
+    WP-Reserve ladt Speicher, sortiert nach COP</div>
+
+  <h4>Unterschied zur Haupt-UI (_deckungen8760)</h4>
+  <table class="dtable">
+    <tr><th>Eigenschaft</th><th>_deckungen8760 (Haupt-UI)</th><th>_optDispatch8760 (Optimierung)</th></tr>
+    <tr><td>Solarthermie</td><td>Phase 1 innerhalb der Schleife</td><td>Vorberechnet, vom Lastgang abgezogen</td></tr>
+    <tr><td>Speicherverluste</td><td>Implizit vor Merit-Order</td><td>Gleich</td></tr>
+    <tr><td>Phasen 1-6</td><td>Vollstandig (6 Phasen)</td><td>5 Phasen (ST extern)</td></tr>
+    <tr><td>Performance</td><td>Einmaliger Lauf</td><td>Optimiert fur tausende Laufe</td></tr>
+  </table>
+
+  <h4>Ausgabe</h4>
+  <div class="data-flow">
+    <span class="chip">erzeugerList[].waermeMwh</span>
+    <span class="chip">erzeugerList[].elMwh</span>
+    <span class="chip">autoGkMwh</span>
+    <span class="chip">wpElH [Float32, 8760]</span>
+    <span class="chip">bhkwElH [Float32, 8760]</span>
+    <span class="chip">speicherEntladeMwh / speicherGeladenMwh</span>
+  </div>
+</div>
+</div>
+
+<!-- ===================== 15. OPT-KENNWERTE ===================== -->
+<div class="section" id="sec-opt-kennwerte">
+<h2>17. _optKennwerte2() &mdash; KPI-Berechnung</h2>
+<p class="sec-sub">Bewertet ein Szenario anhand aller relevanten Kennzahlen.</p>
+
+<div class="node" onclick="toggleDetail('d-opt-kw')">
+  <span class="badge">Optimierung</span>
+  <span class="icon">&#x1F3AF;</span><span class="title">Szenario-Kennwerte</span>
+  <span class="fn">_optKennwerte2()</span>
+  <div class="sub">Dispatch + PV/Bat-Ergebnis + Preise &rarr; WGK, CO2, EE%, Autarkie, Invest</div>
+</div>
+<div class="detail" id="d-opt-kw">
+  <h4>Berechnete Kennzahlen</h4>
+  <table class="dtable">
+    <tr><th>Kennzahl</th><th>Berechnung</th><th>Einheit</th></tr>
+    <tr><td>WGK</td><td>Jahreskosten / Nutzwarme / 10</td><td>ct/kWh</td></tr>
+    <tr><td>CO2</td><td>&sum; Erzeuger-Emissionen (mit KWK/PV-Gutschrift)</td><td>t/a</td></tr>
+    <tr><td>EE-Anteil</td><td>(WP + Pellets + HHS + ST + Speicher) / Gesamtwarme &times; 100</td><td>%</td></tr>
+    <tr><td>Autarkie</td><td>Strom-Eigenverbrauch / Strombedarf &times; 100</td><td>%</td></tr>
+    <tr><td>investGesamt</td><td>&sum; Technologie-Invest + Netz + Speicher</td><td>&euro;</td></tr>
+    <tr><td>Jahreskosten</td><td>Kapital (Annuitat) + Betrieb + Energie</td><td>&euro;/a</td></tr>
+  </table>
+
+  <h4>Scoring via _optScore()</h4>
+  <div class="formula">Optimierungsziele:
+  "min-wgk":         return wgk            (minimale Warmekosten)
+  "min-co2":         return co2ta          (minimale Emissionen)
+  "max-autarkie":    return -autarkie      (maximale Unabhangigkeit, negiert)
+  "min-kosten-ee":   return wgk            wenn eeAnteil &ge; 65%
+                     return 1e9 + wgk      wenn eeAnteil &lt; 65% (harte Strafe)
+
+  EE-Schlussel: lwwp, fg, geo, pellets, hhs, solarthermie + Speicher-Entladung
+  Fernwarme und BHKW zahlen NICHT als erneuerbar.</div>
+</div>
+</div>
+
+<!-- ===================== 16. RASTERSUCHE ===================== -->
+<div class="section" id="sec-opt-raster">
+<h2>18. runOptimierung() &mdash; Rastersuche</h2>
+<p class="sec-sub">Systematische Suche nach der besten Erzeugerkombination und -dimensionierung. Nutzt Multi-Worker-Parallelisierung fur schnelle Berechnung.</p>
+
+<div class="node" onclick="toggleDetail('d-opt-raster')">
+  <span class="badge">Optimierung</span>
+  <span class="icon">&#x1F50D;</span><span class="title">Adaptive Rastersuche (Multi-Worker)</span>
+  <span class="fn">_runOptWorker() / _doRunOptimierung()</span>
+  <div class="sub">Betrachtungsjahr wahlen &rarr; Grobsuche &rarr; Top-Kandidaten &rarr; Feinsuche &rarr; Top 3</div>
+</div>
+<div class="detail" id="d-opt-raster">
+  <h4>Betrachtungsjahr</h4>
+  <div class="formula">Der Nutzer wahlt ein Betrachtungsjahr (2026-2050) im Optimierungs-Panel.
+Der Lastgang wird VOR der Optimierung auf dieses Jahr skaliert:
+
+  scaledLastgang = _optGetScaledLastgang(targetYear)
+  &rarr; Nutzt denselben Mechanismus wie _rescaleLastgangForYear()
+  &rarr; Der aktuelle systemState bleibt unverandert
+
+Ergebnis-Anzeige zeigt "Betrachtungsjahr: 20XX" uber den Varianten.</div>
+
+  <h4>Multi-Worker-Parallelisierung</h4>
+  <div class="formula">numWorkers = min(navigator.hardwareConcurrency - 1, 8)
+  &rarr; Nutzt alle verfugbaren CPU-Kerne (minus 1 fur UI)
+
+Arbeitsteilung:
+  &bull; Grobsuche: Kombinationen werden auf N Worker verteilt
+  &bull; Jeder Worker berechnet seinen Anteil unabhangig
+  &bull; Ergebnisse werden zusammengefuhrt, Top-Kandidaten extrahiert
+  &bull; Feinsuche: Ein Worker optimiert die Top-Kandidaten
+
+Fortschrittsanzeige: Prozent + verstrichene Zeit + Anzahl Kerne
+Fallback: Bei 1 Kern oder Worker-Fehler &rarr; Main-Thread (_doRunOptimierung)</div>
+
+  <h4>Zweistufiger Algorithmus</h4>
+  <ol style="padding-left:18px;line-height:2;">
+    <li><strong>Grobsuche:</strong>
+      <ul>
+        <li>Alle Einzel-, Paar- und Tripel-Kombinationen der aktiven Erzeuger</li>
+        <li>Gaskessel, Heizol und alle anderen werden als regulare Kandidaten berucksichtigt</li>
+        <li>Adaptive Rasterdichte: 9 Stufen (bis 4 Techs), 7 Stufen (bis 6), weniger bei mehr</li>
+        <li>Leistung pro Erzeuger: <code>stufen = [0..1] &times; P_max</code></li>
+        <li>PV und Batterie: unabhangiges Raster</li>
+        <li>Pro Kombination: voller <code>_optDispatch8760()</code> + <code>_optKennwerte2()</code></li>
+        <li>Top 5 pro Kombination behalten</li>
+      </ul>
+    </li>
+    <li><strong>Feinsuche:</strong>
+      <ul>
+        <li>Fur jede Top-Kombination: Leistung &plusmn;10% der Spitzenlast, 5-kW-Schritte</li>
+        <li>2 Runden iterative Verfeinerung</li>
+        <li>Solarthermie-Flache &plusmn;20% variieren</li>
+        <li>PV/Batterie finales Raster</li>
+        <li>Ergebnis: Top 3 mit vollstandigen Details</li>
+      </ul>
+    </li>
+  </ol>
+
+  <h4>PV + Batterie Optimierung</h4>
+  <div class="formula">_optPvBatSim8760(pvKwp, batKwh, demandProfile):
+  Stundenweise Simulation:
+  1. PV-Erzeugung = Profil &times; kWp
+  2. Direktverbrauch &rarr; Batterie laden &rarr; Einspeisung
+  3. Batterie entladen &rarr; Netzbezug
+
+  calcPvBatOptimierung():
+  Grid-Search uber pvKwp &times; batKwh Kombinationen
+  Bewertet nach: Kosten, Autarkie, EE-Anteil</div>
+
+  <h4>Rechenaufwand</h4>
+  <div class="formula">Evaluationen = C(k,1..3) &times; N^k &times; PV_stufen &times; Bat_stufen
+
+Beispiel: 4 Erzeuger, N=9, 4 PV, 4 Bat:
+  = (4+6+4) &times; 9^2 &times; 4 &times; 4 &asymp; 18.144 Dispatch-Laufe
+  + Feinsuche: ~500 zusatzliche Laufe pro Top-Kandidat
+
+Bei Multi-Worker mit 8 Kernen: Grobsuche ~8x schneller</div>
+</div>
+</div>
+
+<!-- ===================== 17. SENSITIVITAT ===================== -->
+<div class="section" id="sec-sens">
+<h2>19. runSensitivitaet() &mdash; Preissensitivitat</h2>
+<p class="sec-sub">Wie stark andern sich die Kosten, wenn Energiepreise schwanken?</p>
+
+<div class="node" onclick="toggleDetail('d-sens')">
+  <span class="badge">Analyse</span>
+  <span class="icon">&#x1F4C9;</span><span class="title">Tornado &amp; Preisfacher</span>
+  <span class="fn">runSensitivitaet()</span>
+  <div class="sub">&plusmn;X% je Energietrager &rarr; Kostenauswirkung</div>
+</div>
+<div class="detail" id="d-sens">
+  <h4>Tornado-Diagramm</h4>
+  <div class="formula">Fur jeden Energietrager (Strom, Gas, Ol, Pellets, HHS, FW):
+  Basis = Jahres-Energiekosten [Euro/a]
+  Verbrauch = Jahres-Energiemenge [MWh]
+
+  delta_plus  = Verbrauch &times; Preis &times; (+Variation%)
+  delta_minus = Verbrauch &times; Preis &times; (-Variation%)
+
+  BHKW-Sonderfall:
+    Beeinflusst nur uber Stromerlos
+    delta = Eigenverbrauchsanteil &times; Strompreis-Variation</div>
+
+  <h4>Preisfacher (Fan-Chart)</h4>
+  <p>Gesamtkosten als Kurve uber Preisspanne (-50% bis +100%) fur einen einzelnen Energietrager.
+     Zeigt Kostenentwicklung bei extremen Preisszenarien und identifiziert das Kostenrisiko pro Trager.</p>
+</div>
+</div>
+
+<!-- ===================== ERZEUGER_CFG ===================== -->
+<div class="section" id="sec-erzeuger-cfg">
+<h2>ERZEUGER_CFG &mdash; Generator-Konfiguration</h2>
+<p class="sec-sub">Zentrale Zuordnung von Erzeuger-Schlusseln zu Labels, UI-Elementen, Typen und Farben.</p>
+
+<div class="node" onclick="toggleDetail('d-cfg')">
+  <span class="badge">Daten</span>
+  <span class="icon">&#x2699;</span><span class="title">ERZEUGER_CFG Mapping</span>
+  <div class="sub">Schlussel &rarr; {label, typ, leistungId, guetegradId, color}</div>
+</div>
+<div class="detail" id="d-cfg">
+  <table class="dtable">
+    <tr><th>Schlussel</th><th>Label</th><th>Typ</th><th>Farbe</th><th>Beschreibung</th></tr>
+    <tr><td><code>lwwp</code></td><td>Luft-WP</td><td>wp</td><td><span style="color:#66bb6a;">&marker;</span> #66bb6a</td><td>Luft-Wasser-Warmepumpe</td></tr>
+    <tr><td><code>geo</code></td><td>Geothermie-WP</td><td>wp</td><td><span style="color:#a1887f;">&marker;</span> #a1887f</td><td>Erdwarme-Sonde/Kollektor</td></tr>
+    <tr><td><code>fg</code></td><td>Fliesswasser-WP</td><td>wp</td><td><span style="color:#29b6f6;">&marker;</span> #29b6f6</td><td>Fluss-/Seewasser als Quelle</td></tr>
+    <tr><td><code>bhkw</code></td><td>BHKW/KWK</td><td>kwk</td><td><span style="color:#ff69b4;">&marker;</span> #ff69b4</td><td>Kraft-Warme-Kopplung (Magenta)</td></tr>
+    <tr><td><code>gaskessel</code></td><td>Gaskessel</td><td>kessel</td><td><span style="color:#78909c;">&marker;</span> #78909c</td><td>Erdgas-Brennwertkessel</td></tr>
+    <tr><td><code>heizoel</code></td><td>Heizolkessel</td><td>kessel</td><td><span style="color:#455a64;">&marker;</span> #455a64</td><td>Ol-Brennwertkessel</td></tr>
+    <tr><td><code>pellets</code></td><td>Pelletkessel</td><td>kessel</td><td><span style="color:#ff7043;">&marker;</span> #ff7043</td><td>Biomasse Pellet</td></tr>
+    <tr><td><code>hhs</code></td><td>Hackschnitzel</td><td>kessel</td><td><span style="color:#8d6e63;">&marker;</span> #8d6e63</td><td>Biomasse Hackschnitzel</td></tr>
+    <tr><td><code>fernwaerme</code></td><td>Fernwarme</td><td>fern</td><td><span style="color:#e53935;">&marker;</span> #e53935</td><td>Externer Warmebezug</td></tr>
+    <tr><td><code>stromkessel</code></td><td>Stromkessel</td><td>fix</td><td><span style="color:#ff8f00;">&marker;</span> #ff8f00</td><td>Elektro-Heizstab (Orange)</td></tr>
+  </table>
+  <p style="margin-top:8px;font-size:11px;color:var(--muted);">Jeder Eintrag enthalt zusatzlich: <code>leistungId</code> (DOM-Input-ID fur Nennleistung), <code>guetegradId</code> (Wirkungsgrad/Gutegrad), <code>color</code> (Diagrammfarbe).</p>
+</div>
+</div>
+
+<!-- ===================== GLOBAL STATE ===================== -->
+<div class="section" id="sec-global-state">
+<h2>Globaler State &mdash; Datenfluss zwischen Modulen</h2>
+<p class="sec-sub">Die Kommunikation zwischen CalcEngine und UI-Berechnungen lauft uber globale Variablen auf <code>window</code>.</p>
+
+<div class="node" onclick="toggleDetail('d-state')">
+  <span class="badge">State</span>
+  <span class="icon">&#x1F4E6;</span><span class="title">window.* Variablen</span>
+  <div class="sub">systemState, _dispatchHourly, _dispatchEnergy, _dispatchActiveKeys</div>
+</div>
+<div class="detail" id="d-state">
+  <h4>CalcEngine &rarr; UI</h4>
+  <table class="dtable">
+    <tr><th>Variable</th><th>Typ</th><th>Inhalt</th></tr>
+    <tr><td><code>window.systemState</code></td><td>Object</td><td>Gesamtes CalcEngine-Ergebnis: tempH, vlH, lastgangMwhH, twwMwhH, netzMwhH, erzeuger[], gasKw, etc.</td></tr>
+    <tr><td><code>window._dispatchActiveKeys</code></td><td>Array</td><td>Aktive Erzeuger-Schlussel nach Dispatch, z.B. <code>['lwwp','bhkw','pellets']</code></td></tr>
+    <tr><td><code>window._dispatchEnergy</code></td><td>Object</td><td>Jahres-Energiemengen pro Schlussel: <code>{waermeMwh, elMwh}</code></td></tr>
+    <tr><td><code>window._dispatchHourly</code></td><td>Object</td><td>Stundenprofile: <code>{lwwp: Float32Array(8760), ...}</code></td></tr>
+  </table>
+
+  <h4>Weitere globale Variablen</h4>
+  <table class="dtable">
+    <tr><th>Variable</th><th>Beschreibung</th></tr>
+    <tr><td><code>networkLocked</code></td><td>Boolean &mdash; Bestandsnetz (true) vs. Neubaunetz (false)</td></tr>
+    <tr><td><code>window._netzSanierung</code></td><td>Boolean &mdash; Sanierungskosten berucksichtigen?</td></tr>
+    <tr><td><code>netzEdges[]</code></td><td>Netzwerk-Kanten mit Langen, DN, Kostenklasse</td></tr>
+    <tr><td><code>window._lastSensData</code></td><td>Gecachte Sensitivitatsdaten (Tornado/Fan-Inputs)</td></tr>
+    <tr><td><code>window._wirtWaterfallData</code></td><td>Waterfall-Chartdaten fur Investitionsaufgliederung</td></tr>
+    <tr><td><code>window._basisLastgangKw</code></td><td>Float32Array(8760) &mdash; Original-Lastgang des Berechnungsjahres</td></tr>
+    <tr><td><code>window._basisYear</code></td><td>Number &mdash; Jahr, in dem der Basis-Lastgang erstellt wurde</td></tr>
+    <tr><td><code>window._basisGebWaermeSumme</code></td><td>Number &mdash; Summe aller Gebaude-Warmebedarfe im Basisjahr [kWh]</td></tr>
+    <tr><td><code>globalYear</code></td><td>Number &mdash; Aktuell eingestelltes Betrachtungsjahr (Timeline-Slider)</td></tr>
+  </table>
+</div>
+</div>
+
+</div><!-- main -->
+</div><!-- wrap -->
+
+<div id="flow-tooltip" style="
+  display:none;position:fixed;z-index:999;
+  max-width:400px;padding:14px 18px;
+  background:#1e2028;border:1px solid var(--accent);border-radius:10px;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+  pointer-events:none;
+  font-size:12px;line-height:1.65;color:var(--text);
+">
+  <div id="ft-title" style="font-weight:600;font-size:13px;margin-bottom:6px;color:var(--accent);"></div>
+  <div id="ft-body"></div>
+</div>
+
+<script>
+function toggleDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const wasVisible = el.classList.contains('visible');
+  document.querySelectorAll('.detail').forEach(d => d.classList.remove('visible'));
+  document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+  if (!wasVisible) {
+    el.classList.add('visible');
+    el.previousElementSibling?.classList.add('active');
+  }
+}
+
+function scrollTo_(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TOOLTIP DESCRIPTIONS — user-friendly, matching node indices (25 nodes)
+   ══════════════════════════════════════════════════════════════════════ */
+const TOOLTIPS = [
+  // ── Row 0: 5 Eingabepfade ──
+  // 0 — CSV-Upload
+  { title: '\u2460 CSV-Upload — Fertiger Lastgang',
+    body: 'Sie laden eine CSV-Datei mit 8.760 Stundenwerten hoch. '
+        + 'Der Lastgang wird direkt ubernommen — keine Synthese nötig.\n\n'
+        + 'Das ist der schnellste Weg, wenn Sie bereits einen gemessenen '
+        + 'oder simulierten Jahres-Lastgang haben.\n\n'
+        + 'Die Werte werden als Stunden-Leistung [kW] oder Stunden-Energie [MWh/h] interpretiert.' },
+  // 1 — CSV + Monatswerte
+  { title: '\u2461 CSV + Monatswerte — Skalierter Lastgang',
+    body: 'Sie laden einen CSV-Lastgang UND geben 12 Monatsenergien vor.\n\n'
+        + 'Die Form des Lastgangs (wann ist viel/wenig Bedarf?) wird aus der CSV ubernommen. '
+        + 'Aber die Gesamtmenge pro Monat wird auf Ihre Monatswerte skaliert.\n\n'
+        + 'Sinnvoll, wenn die CSV z.B. aus einem anderen Jahr stammt und Sie '
+        + 'die Energiemengen an aktuelle Messwerte anpassen wollen.' },
+  // 2 — Nur Monatswerte
+  { title: '\u2462 Monatswerte — Synthetischer Lastgang',
+    body: 'Sie geben 12 Monatsenergien ein (z.B. aus der Gasrechnung).\n\n'
+        + 'Das Tool erzeugt daraus einen kompletten Stundenlastgang: '
+        + 'Die SIGLINDE-Signaturfunktion bestimmt den Tagesverlauf (abhangig von der Aussentemperatur), '
+        + 'die 24h-Schablone verteilt jeden Tag auf 24 Stunden.\n\n'
+        + 'Anschliessend wird jeder Monat so skaliert, dass er exakt Ihre vorgegebene Monatsenergie ergibt.' },
+  // 3 — Jahresverbrauch
+  { title: '\u2463 Jahresverbrauch — Ein Wert reicht',
+    body: 'Sie geben nur den Jahres-Gesamtverbrauch ein (MWh/a).\n\n'
+        + 'Aus diesem einen Wert erzeugt das Tool einen vollstandigen Stundenlastgang: '
+        + 'SIGLINDE-Profil + TRY-Wetterdaten bestimmen, wie sich der Bedarf uber '
+        + 'das Jahr verteilt.\n\n'
+        + 'Der einfachste Eingabeweg — ideal fur fruhe Planungsphasen, '
+        + 'wenn nur der Jahresenergiebedarf bekannt ist.' },
+  // 4 — Gebäude-Liste
+  { title: '\u2464 Gebaude-Liste — Bedarf aus Karte',
+    body: 'Alle auf der Karte eingezeichneten Gebaude liefern ihren Warmebedarf. '
+        + 'Die Einzelbedarfe werden summiert.\n\n'
+        + 'Zusatzlich werden die Netzverluste (%) automatisch aufaddiert: '
+        + 'Die Erzeuger mussen MEHR liefern, als die Gebaude brauchen.\n\n'
+        + 'Aus der Summe wird — wie bei Pfad \u2463 — ein SIGLINDE-Lastgang erzeugt. '
+        + 'Die Verteilung richtet sich nach dem gewahlten Gebaudetyp-Profil.' },
+
+  // ── Row 1: Datenquellen ──
+  // 5 — TRY
+  { title: 'TRY Klimadaten — Testreferenzjahr',
+    body: 'Stundengenaue Wetterdaten (Temperatur, Solarstrahlung) fur einen typischen Jahresverlauf an einem bestimmten '
+        + 'Standort in Deutschland. Uber 70 Stadte stehen zur Auswahl.\n\n'
+        + 'Die Temperaturen bestimmen, wann wie viel geheizt werden muss, wie effizient Warmepumpen arbeiten '
+        + 'und wie viel Solarertrag moglich ist. Ohne die TRY-Daten ist keine stundenaufgeloste Berechnung moglich.' },
+  // 6 — SIGLINDE
+  { title: 'SIGLINDE — Lastprofil-Datenbank',
+    body: 'Eine Sammlung typischer Heizprofile fur verschiedene Gebaudetypen (Wohnhaus, Buro, Handel, Mischnutzung). '
+        + 'Jedes Profil enthalt eine Signaturfunktion: Sie beschreibt, wie der tagliche Warmebedarf von der '
+        + 'Aussentemperatur abhangt (kalt = hoher Bedarf, warm = niedriger Bedarf).\n\n'
+        + 'Zusatzlich gibt es eine 24h-Schablone, die den Tageswert auf Stunden verteilt (Morgen-/Abendpeak). '
+        + 'Zwei Profile konnen gewichtet gemischt werden (z.B. 70% Wohnen + 30% Gewerbe).' },
+  // 7 — Netz & VL
+  { title: 'Netz & Vorlauftemperatur',
+    body: 'Grundeinstellungen fur das Warmenetz:\n\n'
+        + '\u2022 Vorlauftemperatur: Wird als Gerade zwischen zwei Stutzpunkten berechnet — '
+        + 'z.B. 80\u00b0C bei -5\u00b0C Aussentemperatur, 55\u00b0C bei +15\u00b0C. Dazwischen linear interpoliert, '
+        + 'nie tiefer als der untere und nie hoher als der obere Wert.\n'
+        + '\u2022 Netzverluste: Prozentualer Aufschlag auf den Nutzwarmebedarf. Bei Gebaudedaten werden die Verluste '
+        + 'aufaddiert; bei CSV-Upload sind sie bereits enthalten und werden herausgerechnet.' },
+
+  // ── Row 2: Synthese ──
+  // 8 — SIGLINDE-Synthese
+  { title: 'SIGLINDE-Synthese — Lastgang aus Profil erzeugen',
+    body: 'Dieser Schritt wandelt Ihre Energiekennwerte (Monatswerte, Jahresverbrauch oder Gebaude-Summe) '
+        + 'in einen stundengenauen Lastgang um:\n\n'
+        + '1. Tagesmitteltemperaturen aus den TRY-Wetterdaten berechnen\n'
+        + '2. SIGLINDE-Signaturfunktion ergibt den relativen Tagesbedarf\n'
+        + '3. Die 24h-Schablone verteilt jeden Tag auf 24 Stunden\n'
+        + '4. Skalierung auf die Gesamtenergie (Pfad \u2463) oder monatsweise (Pfad \u2462)\n\n'
+        + 'Ergebnis: 8.760 Stundenwerte [kW], die den typischen Heizrhythmus '
+        + 'des gewahlten Gebaudetyps abbilden.' },
+
+  // ── Row 3: Lastgang (Merge) ──
+  // 9 — Lastgang 8760h
+  { title: 'Stundenlastgang — 8.760 Werte',
+    body: 'Hier laufen alle Eingabepfade zusammen. Egal ob CSV-Upload oder SIGLINDE-Synthese — '
+        + 'ab diesem Punkt liegt ein vollstandiger Stunden-Lastgang vor.\n\n'
+        + 'Dieser Lastgang ist die Basis fur ALLE weiteren Berechnungsschritte: '
+        + 'Warmwasser-Aufteilung, Erzeuger-Dimensionierung, Dispatch und Wirtschaftlichkeit.\n\n'
+        + 'Das Ergebnis: lastgangMwhH — ein Array mit 8.760 Leistungswerten [kW] fur jede Stunde des Jahres.' },
+
+  // ── Row 4: TWW ──
+  // 10 — TWW
+  { title: 'Trinkwarmwasser & Netzverlust-Splitting',
+    body: 'Zerlegt den Gesamtlastgang in drei Teile:\n'
+        + '\u2022 Raumwarme (Heizung)\n\u2022 Trinkwarmwasser (Duschen, Spulen)\n\u2022 Netzverluste\n\n'
+        + 'Die Aufteilung funktioniert automatisch: Im Sommer (Juli/August) wird kaum geheizt — '
+        + 'der verbleibende Mindestbedarf an warmen Tagen (T>12\u00b0C) ist fast nur Warmwasser + Netzverlust. '
+        + 'Daraus wird der ganzjahrige Anteil abgeleitet.\n\n'
+        + 'Falls es zu wenige warme Sommertage gibt (<10), greift eine manuelle Aufteilung mit Standardwerten (15% TWW+Netz).' },
+
+  // ── Row 5: Analyse ──
+  // 11 — Lastanalyse
+  { title: 'Lastcharakteristik & Dimensionierung',
+    body: 'Ermittelt die Kennwerte, die fur die Auslegung der Erzeuger entscheidend sind:\n\n'
+        + '\u2022 Spitzenlast (pMax): Hochster Bedarf in der kaltesten Stunde\n'
+        + '\u2022 p65: Leistung, die 65% der Jahresenergie abdeckt — typische Grundlast-Grosse\n'
+        + '\u2022 p90: Leistung fur 90% Abdeckung — wirtschaftlich sinnvolle Obergrenze fur Warmepumpen\n'
+        + '\u2022 Normlast: Bedarf bei der Normaussentemperatur (-12\u00b0C)\n\n'
+        + 'Dazu wird die stundenweise Vorlauftemperatur berechnet (lineare Heizkurve).' },
+
+  // ── Row 6: Erzeuger ──
+  // 12 — Erzeuger-Profile
+  { title: 'Erzeuger-Stundenprofile & COP-Berechnung',
+    body: 'Fur jeden Warmeerzeuger wird berechnet, wie viel er in jeder der 8.760 Stunden leisten kann:\n\n'
+        + '\u2022 Kessel (Gas, Pellets, etc.): Konstante Nennleistung, unabhangig vom Wetter\n'
+        + '\u2022 Warmepumpen: Die Leistung hangt vom COP ab (Verhaltnis Warme/Strom). '
+        + 'Bei kalten Temperaturen sinkt der COP und damit die verfugbare Warmeleistung.\n\n'
+        + 'COP-Formel: COP = Gutegrad \u00d7 (T_Vorlauf + 273) / (T_Vorlauf - T_Quelle)\n\n'
+        + 'Quelltemperaturen: Luft-WP = Aussentemperatur, Geo-WP = ~10\u00b0C (stabil), '
+        + 'Fliesswasser-WP = Flusstemp. (2-18\u00b0C, bei <2\u00b0C Frostschutz-Abschaltung).' },
+  // 13 — Solarthermie
+  { title: 'Solarthermie-Profil',
+    body: 'Falls Solarthermie aktiv ist, wird ein stundenfeines Erzeugungsprofil berechnet:\n\n'
+        + 'Ertrag pro Stunde = Solarstrahlung (Sudausrichtung) \u00d7 Kollektorflache \u00d7 spez. Ertrag\n\n'
+        + 'Solarthermie wird SEPARAT vom Merit-Order behandelt: Sie wird immer zuerst eingesetzt '
+        + '(Grenzkosten = 0), noch bevor Warmepumpen oder Kessel zum Einsatz kommen. '
+        + 'Uberschussige Solarwarme wird — falls vorhanden — in den Warmespeicher geladen.\n\n'
+        + 'Das Profil basiert auf dem PV-Strahlungsmodell fur Sudausrichtung, '
+        + 'skaliert auf die eingestellte Kollektorflache und den spezifischen Jahresertrag (z.B. 400 kWh/m\u00b2).' },
+
+  // ── Row 7: 6-Phasen Dispatch ──
+  // 14 — Phase 1+2
+  { title: 'Dispatch Phase 1-2: Solar & Grundlast',
+    body: 'Die Warmeverteilung erfolgt in 6 Phasen pro Stunde:\n\n'
+        + 'Phase 1 — Solarthermie: Wird immer zuerst eingesetzt (kostenlos). '
+        + 'Uberschuss geht in den Warmespeicher.\n\n'
+        + 'Phase 2 — Nicht-Kessel in Merit-Order: Warmepumpen, BHKW, Fernwarme, Stromkessel — '
+        + 'in der vom Nutzer eingestellten Reihenfolge. Jeder Erzeuger liefert so viel er kann, '
+        + 'der Rest wird an den nachsten weitergegeben.\n\n'
+        + 'Warmepumpen halten dabei eine Reserve zuruck, die spater (Phase 6) zum Speicher-Laden genutzt wird.' },
+  // 15 — Phase 3+4+5
+  { title: 'Dispatch Phase 3-5: Speicher, Kessel & Reserve',
+    body: 'Phase 3 — Speicher-Entladung: Falls noch Restbedarf besteht und der Warmespeicher '
+        + 'geladen ist, wird er jetzt entladen (begrenzt durch Entladeleistung und Fuellstand).\n\n'
+        + 'Phase 4 — Kessel (Gas, Ol, Pellets, Hackschnitzel): Decken den verbleibenden Bedarf '
+        + 'in der Merit-Order-Reihenfolge. Kessel werden bewusst nach Speicher eingesetzt, '
+        + 'weil die Speicherwarme bereits "bezahlt" ist.\n\n'
+        + 'Phase 5 — Auto-Gaskessel: Ein virtueller Reservekessel fangt alles auf, was die '
+        + 'installierten Erzeuger nicht decken konnen. Zeigt Unterdeckung an.' },
+  // 16 — Phase 6
+  { title: 'Dispatch Phase 6: Speicher-Beladung',
+    body: 'Zwischen 8:00 und 18:00 Uhr nutzen Warmepumpen ihre Reservekapazitat (aus Phase 2), '
+        + 'um den Warmespeicher zu laden.\n\n'
+        + 'Warum tagsuber? Weil Luft-Warmepumpen tagsuber hohere Aussentemperaturen vorfinden '
+        + 'und damit einen besseren COP haben — die Speicherladung ist effizienter.\n\n'
+        + 'Die Warmepumpen werden dabei nach COP sortiert: Die effizienteste ladt zuerst. '
+        + 'Der zusatzliche Stromverbrauch fur die Speicher-Beladung wird korrekt erfasst.' },
+
+  // ── Row 8: Ergebnis ──
+  // 17 — Ergebnis
+  { title: 'Ergebnis: Warmeverteilung — Zentraler Datenspeicher',
+    body: 'Alle Ergebnisse der Warmeverteilung werden hier zusammengefasst:\n\n'
+        + '\u2022 Stundenprofile: Wie viel liefert jeder Erzeuger in jeder Stunde? [kW]\n'
+        + '\u2022 Jahresenergien: Gesamtlieferung pro Erzeuger [MWh/a]\n'
+        + '\u2022 Vollbenutzungsstunden, Deckungsanteile, Speicherverluste\n\n'
+        + 'Dieser Datensatz ist die Schnittstelle zwischen der Warmeverteilung und allen '
+        + 'nachfolgenden Berechnungen (Kosten, Strom, Optimierung).' },
+
+  // ── Row 9: Wärmenetz ──
+  // 18 — Wärmenetz
+  { title: 'Warmenetz-Berechnung',
+    body: 'Berechnet die Netzhydraulik basierend auf der gezeichneten Netz-Topologie:\n\n'
+        + '\u2022 Lastakkumulation: Von den Endverbrauchern zur Zentrale werden die Lasten aufaddiert\n'
+        + '\u2022 DN-Dimensionierung: Jede Leitung bekommt einen Rohrdurchmesser, '
+        + 'der zum Massenstrom passt (Darcy-Weisbach)\n'
+        + '\u2022 Druckverlust: Reibungsverluste entlang jeder Leitung\n'
+        + '\u2022 Kritischer Pfad: Der langste Druckverlust-Pfad bestimmt die Pumpenauslegung\n'
+        + '\u2022 Warmeverluste: Uber U-Wert, Rohrlange und Temperaturdifferenz berechnet\n\n'
+        + 'Bei Bestandsnetzen werden die DN-Werte nicht neu berechnet, '
+        + 'und Investitionskosten sind 0 (oder anteilig bei Sanierung).' },
+
+  // 19 — Stromnetz
+  { title: 'Stromnetz-Berechnung (Niederspannung)',
+    body: 'Vollstandige NS-Netzplanung mit Lastflussberechnung:\n\n'
+        + '\u2022 Topologie: NAP, Trafos, NSHV, Gebaude und Erzeuger als Graph-Knoten\n'
+        + '\u2022 Lastermittlung: Szenariobasiert (Spitzenlast, PV-Max, Ruckspeisung, Jahresmittel)\n'
+        + '\u2022 Gleichzeitigkeitsfaktor: VDE-Tabelle g(n) = 1/n^0.4 oder manuell\n'
+        + '\u2022 Kabeldimensionierung: Auto-Wahl des Querschnitts nach VDE 0298-4 (Iz >= I)\n'
+        + '\u2022 Spannungsfall: \u0394U = \u221a3 \u00d7 I \u00d7 L \u00d7 (R\u00d7cos\u03c6 + X\u00d7sin\u03c6)\n'
+        + '\u2022 Trafo-Auslastung: Last hinter jedem Trafo vs. Nennleistung\n'
+        + '\u2022 Kosten: Kabel + Tiefbau + Trafo + NAP, Annuitat nach VDI 2067\n\n'
+        + 'Vier Visualisierungsmodi auf der Karte: Auslastung, Spannungsfall, Leistung, Richtung.' },
+
+  // ── Row 10: Wirtschaftlichkeit ──
+  // 20 — VDI 2067 (war 19)
+  { title: 'VDI 2067 — Wirtschaftlichkeitsberechnung',
+    body: 'Standardverfahren aus der Ingenieurpraxis: Die Investitionskosten jeder Anlage werden '
+        + 'auf jahrliche Raten umgerechnet (Annuitat), ahnlich wie bei einem Kredit.\n\n'
+        + 'Dazu kommen Kosten fur Wartung, Instandhaltung und Bedienung. '
+        + 'So lassen sich Anlagen mit unterschiedlichen Lebensdauern fair vergleichen '
+        + '(z.B. Warmenetz mit 50 Jahren vs. BHKW mit 15 Jahren).\n\n'
+        + 'Investitionskosten stammen aus dem KWW-Technikkatalog — grossere Anlagen '
+        + 'sind pro kW gunstiger (Skaleneffekt, Power-Law-Kurven).' },
+  // 20 — Jahresscheiben
+  { title: 'Jahresscheiben — Kostenprojektion uber 30 Jahre',
+    body: 'Zeigt die Kostenentwicklung uber den gesamten Betrachtungszeitraum. '
+        + 'Pro Jahr werden drei Kostenarten dargestellt:\n\n'
+        + '\u2022 Investitionen: Anfangsinvest + Reinvestitionen (wenn Anlagen ihre Lebensdauer uberschreiten)\n'
+        + '\u2022 Betriebskosten: Wartung, Instandhaltung, Personal (jahrlich konstant)\n'
+        + '\u2022 Energiekosten: Steigen jahrlich mit einer einstellbaren Preissteigerungsrate\n\n'
+        + 'Alle zukunftigen Kosten werden auf den heutigen Wert abgezinst (NPV/Barwert). '
+        + 'Diskontsatz = Kapitalzins, damit Annuitat und NPV konsistente Ergebnisse liefern.' },
+  // 21 — WGK + CO2
+  { title: 'Warmepreis & CO\u2082 — Die Endergebnisse',
+    body: 'Die zwei wichtigsten Kennzahlen fur den Variantenvergleich:\n\n'
+        + '\u2022 WGK (Warmegestehungskosten, ct/kWh): Was kostet eine kWh Warme aus dem Gesamtsystem? '
+        + 'Beinhaltet alle Kapital-, Betriebs- und Energiekosten, abzuglich BHKW-Stromerlose.\n'
+        + '\u2022 CO2 (t/a): Jahrliche Treibhausgasemissionen aller Erzeuger. '
+        + 'Warmepumpen verursachen nur indirekte Emissionen uber den Strommix. '
+        + 'BHKW erhalten eine Gutschrift fur verdrangten Netzstrom.\n\n'
+        + 'Es gibt zwei WGK-Varianten: Annuitatsmethode (schnell) und NPV-basiert (prazise uber Laufzeit).' },
+  // 22 — Strom-Bilanz
+  { title: 'Strom-Bilanz — PV, BHKW & Batterie',
+    body: 'Fur jede Stunde wird berechnet, wie Stromerzeugung und -verbrauch zusammenspielen:\n\n'
+        + 'Erzeugung: PV-Anlage (nach Ausrichtung und Wetter) + BHKW (proportional zur Warme)\n'
+        + 'Verbrauch: Warmepumpen + Stromkessel + Quartierbedarf\n\n'
+        + '1. Direktverbrauch: PV/BHKW-Strom deckt sofortigen Bedarf\n'
+        + '2. Uberschuss ladt die Batterie\n'
+        + '3. Batterie entladt bei Unterdeckung\n'
+        + '4. Rest wird ins Netz eingespeist / aus dem Netz bezogen\n\n'
+        + 'Ergebnis: Eigenverbrauchsquote, Autarkiegrad und BHKW-Stromerlose (reduzieren die WGK).' },
+
+  // ── Row 11: Sensitivitat + Optimierung ──
+  // 23 — Sensitivitat
+  { title: 'Preissensitivitat — Preisrisiken erkennen',
+    body: 'Pruft, wie empfindlich die Kosten auf Energiepreisschwankungen reagieren:\n\n'
+        + 'Tornado-Diagramm: Jeder Energietrager wird einzeln um \u00b1X% variiert. '
+        + 'Der Balken zeigt die Auswirkung auf die Jahreskosten. So sieht man sofort: '
+        + 'Ist das Konzept hauptsachlich vom Gas- oder vom Strompreis abhangig?\n\n'
+        + 'Preisfacher: Eine einzelne Energieart wird von -50% bis +100% variiert. '
+        + 'Die resultierende Kostenkurve zeigt das Risiko bei extremen Preisentwicklungen.\n\n'
+        + 'BHKW-Sonderfall: Der Strompreis wirkt sich doppelt aus — sowohl auf den WP-Verbrauch als auch auf den BHKW-Erlos.' },
+  // 24 — Optimierung
+  { title: 'Automatische Optimierung — Rastersuche',
+    body: 'Systematische Suche nach der besten Erzeugerkombination:\n\n'
+        + '1. Grobsuche: Alle moglichen Einzel-, Paar- und Tripel-Kombinationen werden mit '
+        + 'variierenden Leistungsstufen durchgerechnet. Fur jede Variante lauft ein vollstandiger '
+        + '8.760h-Dispatch + Kostenbewertung.\n\n'
+        + '2. Feinsuche: Die besten Kandidaten werden mit feineren Schritten (\u00b110%, 5-kW-Stufen) '
+        + 'nachoptimiert, inkl. PV-Grosse und Batterie.\n\n'
+        + 'Optimierungsziele: Minimale WGK, minimale CO2-Emissionen, maximale Autarkie '
+        + 'oder kostenoptimiert mit Mindest-EE-Anteil (65%).\n\n'
+        + 'Ergebnis: Top 3 Konfigurationen mit allen Details zum Vergleich.' },
+];
+
+/* ══════════════════════════════════════════════════════════════════════
+   FLOW DIAGRAM — 26 nodes with 5 explicit input paths
+   ══════════════════════════════════════════════════════════════════════ */
+let _overviewNodes = [];
+
+function drawOverview() {
+  const cv = document.getElementById('cv-overview');
+  if (!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.parentElement.clientWidth - 40;
+  const H = 880;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const cW = '#ff9800', cS = '#42a5f5', cG = '#66bb6a', cO = '#ab47bc', cI = '#78909c', cD = '#ef5350';
+  const cN = '#26c6da';
+
+  const cx = W/2, lx = W*0.22, rx = W*0.78, mlx = W*0.38, mrx = W*0.62;
+  // 5-column positions for input row
+  const x1 = W*0.10, x2 = W*0.30, x3 = W*0.50, x4 = W*0.70, x5 = W*0.90;
+
+  // ── Node definitions (25 nodes) ─────────────────────────────────
+  const nodes = [
+    // Row 0: 5 Eingabepfade (y=28)
+    /*0*/  { x: x1, y: 28,  label: '\u2460 CSV-Upload',         sub: '8760 Stundenwerte direkt',     color: cI, w: 125 },
+    /*1*/  { x: x2, y: 28,  label: '\u2461 CSV + Monate',       sub: 'CSV monatsweise skaliert',     color: cI, w: 125 },
+    /*2*/  { x: x3, y: 28,  label: '\u2462 Monatswerte',        sub: '12 Monatsenergien',            color: cI, w: 125 },
+    /*3*/  { x: x4, y: 28,  label: '\u2463 Jahresverbrauch',    sub: 'Ein MWh/a-Wert',               color: cI, w: 130 },
+    /*4*/  { x: x5, y: 28,  label: '\u2464 Gebaude-Liste',      sub: 'Summe aus Karte',              color: cI, w: 125 },
+
+    // Row 1: Datenquellen (y=90)
+    /*5*/  { x: lx,  y: 90,  label: 'Wetterdaten (TRY)',       sub: '8760h Temperatur + Strahlung',  color: cI, w: 185 },
+    /*6*/  { x: cx,  y: 90,  label: 'Heizprofile (SIGLINDE)',  sub: '28 Gebaudetyp-Profile',         color: cD, w: 200 },
+    /*7*/  { x: rx,  y: 90,  label: 'Netz & Vorlauftemp.',     sub: 'VL-Kurve, Netzverluste %',      color: cI, w: 190 },
+
+    // Row 2: Synthese (y=155)
+    /*8*/  { x: cx,  y: 155, label: 'SIGLINDE-Synthese',       sub: 'Tagesprofil \u00d7 24h-Schablone \u2192 8760h', color: cW, w: 240 },
+
+    // Row 3: Lastgang merge (y=220)
+    /*9*/  { x: cx,  y: 220, label: 'Stundenlastgang (8760h)', sub: 'Alle Pfade laufen hier zusammen', color: cW, w: 230 },
+
+    // Row 4: TWW (y=278)
+    /*10*/ { x: cx,  y: 278, label: 'Warmwasser aufteilen',    sub: 'Heizung + TWW + Netzverluste',  color: cW, w: 200 },
+
+    // Row 5: Analyse (y=336)
+    /*11*/ { x: cx,  y: 336, label: 'Lastanalyse & VL-Temp.',  sub: 'Spitzenlast, Abdeckungsgrade',  color: cW, w: 210 },
+
+    // Row 6: Erzeuger (y=398)
+    /*12*/ { x: mlx, y: 398, label: 'Erzeuger-Leistungsprofile', sub: 'COP + verfugbare Leistung/h', color: cW, w: 210 },
+    /*13*/ { x: mrx, y: 398, label: 'Solarthermie-Ertrag',     sub: 'Solarertrag 8760h (falls aktiv)', color: cW, w: 195 },
+
+    // Row 7: 6-Phasen Dispatch (y=462)
+    /*14*/ { x: lx+10, y: 462, label: 'Solar + Grundlast',     sub: 'ST zuerst, dann WP/BHKW/FW',   color: cW, w: 195 },
+    /*15*/ { x: cx,    y: 462, label: 'Speicher + Kessel',      sub: 'Entladen, Kessel, Reserve-GK',  color: cW, w: 210 },
+    /*16*/ { x: rx-10, y: 462, label: 'Speicher laden',         sub: 'WP-Reserve \u2192 Speicher 8-18h', color: cW, w: 185 },
+
+    // Row 8: Ergebnis (y=528)
+    /*17*/ { x: cx,  y: 528, label: 'Ergebnis: Warmeverteilung', sub: 'Stundenprofile aller Erzeuger', color: cW, w: 230 },
+
+    // Row 9: Netze (y=590)
+    /*18*/ { x: mlx, y: 590, label: 'Warmenetz berechnen',     sub: 'Rohre, Druckverlust, Pumpe',    color: cW, w: 210 },
+    /*19*/ { x: mrx, y: 590, label: 'Stromnetz berechnen',     sub: 'Kabel, Lastfluss, \u0394U',     color: cS, w: 210 },
+
+    // Row 10: Wirtschaftlichkeit (y=655)
+    /*20*/ { x: lx,  y: 655, label: 'Investitions-Kosten',     sub: 'VDI 2067 Annuitat + KWW',       color: cG, w: 200 },
+    /*21*/ { x: cx,  y: 655, label: 'Kosten uber 30 Jahre',    sub: 'Jahresscheiben, Barwert (NPV)',  color: cG, w: 200 },
+    /*22*/ { x: rx,  y: 655, label: 'Warmepreis & CO\u2082',   sub: 'ct/kWh, t/a, EE-Anteil',       color: cG, w: 175 },
+
+    // Row 11: Strom (y=720)
+    /*23*/ { x: cx,  y: 720, label: 'Strom-Bilanz',            sub: 'PV + BHKW + Batterie',          color: cS, w: 210 },
+
+    // Row 12: Sensitivitat + Optimierung (y=790)
+    /*24*/ { x: mlx, y: 790, label: 'Preissensitivitat',       sub: 'Tornado + Preisfacher',         color: cO, w: 190 },
+    /*25*/ { x: mrx, y: 790, label: 'Automatische Optimierung', sub: 'Grob+Feinsuche \u2192 Top 3',  color: cO, w: 210 },
+  ];
+  _overviewNodes = nodes;
+
+  // ── Arrows ──────────────────────────────────────────────────────
+  const arrows = [
+    // CSV-Pfade → direkt zum Lastgang (umgehen SIGLINDE)
+    [0,9],[1,9],
+    // Synthese-Pfade → SIGLINDE-Synthese
+    [2,8],[3,8],[4,8],
+    // Datenquellen → SIGLINDE-Synthese
+    [5,8],[6,8],
+    // Netz-Einstellungen → Lastgang (Netzverluste)
+    [7,9],
+    // Synthese → Lastgang
+    [8,9],
+    // Lastgang → TWW → Analyse
+    [9,10],[10,11],
+    // Analyse → Profile
+    [11,12],[11,13],
+    // Profile → Dispatch
+    [12,14],[12,15],[13,14],
+    // Dispatch intern
+    [14,15],[15,16],
+    // Dispatch → Ergebnis
+    [14,17],[15,17],[16,17],
+    // Ergebnis → Wärmenetz
+    [17,18],
+    // Ergebnis → Stromnetz
+    [17,19],
+    // Ergebnis → Wirtschaft
+    [17,20],[17,21],[17,22],
+    [20,21],[21,22],
+    // Ergebnis → Strom-Bilanz
+    [17,23],
+    // Ergebnis → Sens + Opt
+    [17,24],[17,25],
+  ];
+
+  // ── Draw row separators (subtle) ──
+  const rowLabels = [
+    { y: 68,  label: 'EINGABEPFADE \u2014 WIE KOMMEN DIE DATEN INS TOOL?' },
+    { y: 128, label: 'LASTGANG-ERZEUGUNG' },
+    { y: 250, label: 'BEDARFSANALYSE' },
+    { y: 430, label: 'WARMEVERTEILUNG AUF ERZEUGER (6 PHASEN)' },
+    { y: 562, label: 'WARMENETZ & STROMNETZ' },
+    { y: 625, label: 'WIRTSCHAFTLICHKEIT & STROM-BILANZ' },
+    { y: 760, label: 'SENSITIVITAT & OPTIMIERUNG' },
+  ];
+  rowLabels.forEach(rl => {
+    ctx.strokeStyle = 'rgba(255,255,255,.04)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(10, rl.y);
+    ctx.lineTo(W - 10, rl.y);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    ctx.font = '8px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText(rl.label, 12, rl.y - 3);
+  });
+
+  // ── Draw arrows ──
+  arrows.forEach(([fi, ti]) => {
+    const a = nodes[fi], b = nodes[ti];
+    ctx.strokeStyle = 'rgba(255,255,255,.10)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y + 18);
+    if (Math.abs(a.x - b.x) < 20) {
+      ctx.lineTo(b.x, b.y - 18);
+    } else {
+      const midY = (a.y + 18 + b.y - 18) / 2;
+      ctx.bezierCurveTo(a.x, midY, b.x, midY, b.x, b.y - 18);
+    }
+    ctx.stroke();
+    // Arrowhead
+    const dx = b.x - a.x, dy = (b.y - 18) - (a.y + 18);
+    const angle = Math.atan2(dy, dx);
+    const ax2 = b.x, ay2 = b.y - 18;
+    ctx.fillStyle = 'rgba(255,255,255,.12)';
+    ctx.beginPath();
+    ctx.moveTo(ax2, ay2);
+    ctx.lineTo(ax2 - 5*Math.cos(angle-.4), ay2 - 5*Math.sin(angle-.4));
+    ctx.lineTo(ax2 - 5*Math.cos(angle+.4), ay2 - 5*Math.sin(angle+.4));
+    ctx.fill();
+  });
+
+  // ── Feedback arrow: Optimierung -> Dispatch ──
+  ctx.strokeStyle = 'rgba(171,71,188,.2)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  const optN = nodes[25], dispN = nodes[14];
+  ctx.moveTo(optN.x + optN.w/2 + 8, optN.y);
+  ctx.bezierCurveTo(W-10, optN.y, W-10, dispN.y, dispN.x + dispN.w/2 + 8, dispN.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(171,71,188,.4)';
+  ctx.font = '8px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Feedback', W-22, (dispN.y + optN.y) / 2);
+
+  // ── Path group labels ──
+  ctx.fillStyle = 'rgba(255,152,0,.3)';
+  ctx.font = 'italic 8px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('direkt \u2192 Lastgang', (x1+x2)/2, 55);
+  ctx.fillText('via SIGLINDE-Synthese', x3 + (x5-x3)/2, 55);
+
+  // ── Draw nodes ──
+  nodes.forEach((n, i) => {
+    const hw = n.w/2, nh = 34, r = 8;
+    const hovered = (i === _hoveredNode);
+    // Shadow
+    ctx.fillStyle = hovered ? 'rgba(0,0,0,.45)' : 'rgba(0,0,0,.2)';
+    ctx.beginPath();
+    ctx.roundRect(n.x - hw + 2, n.y - 14, n.w, nh, r);
+    ctx.fill();
+    // Background
+    ctx.fillStyle = hovered ? '#2c2f3a' : '#23262f';
+    ctx.strokeStyle = hovered ? n.color : (n.color + '66');
+    ctx.lineWidth = hovered ? 2 : 1;
+    ctx.beginPath();
+    ctx.roundRect(n.x - hw, n.y - 17, n.w, nh, r);
+    ctx.fill();
+    ctx.stroke();
+    // Glow on hover
+    if (hovered) {
+      ctx.shadowColor = n.color;
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = n.color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(n.x - hw, n.y - 17, n.w, nh, r);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    // Accent bar
+    ctx.fillStyle = n.color;
+    ctx.beginPath();
+    ctx.roundRect(n.x - hw, n.y - 17, n.w, hovered ? 4 : 3, [r,r,0,0]);
+    ctx.fill();
+    // Label
+    ctx.fillStyle = hovered ? '#fff' : '#e8eaf0';
+    ctx.font = (hovered ? 'bold 11px' : 'bold 10.5px') + ' system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(n.label, n.x, n.y - 1);
+    // Sub
+    ctx.fillStyle = hovered ? '#b0bec5' : '#78909c';
+    ctx.font = '9px system-ui';
+    ctx.fillText(n.sub, n.x, n.y + 11);
+  });
+}
+
+// ── Canvas hover + click ──────────────────────────────────────────────
+let _hoveredNode = -1;
+const _ttEl = () => document.getElementById('flow-tooltip');
+const _ttTitle = () => document.getElementById('ft-title');
+const _ttBody = () => document.getElementById('ft-body');
+
+function _hitTestNode(mx, my) {
+  for (let i = _overviewNodes.length - 1; i >= 0; i--) {
+    const n = _overviewNodes[i];
+    const hw = n.w/2, nh = 34;
+    if (mx >= n.x - hw && mx <= n.x + hw && my >= n.y - 17 && my <= n.y - 17 + nh) return i;
+  }
+  return -1;
+}
+
+document.getElementById('cv-overview')?.addEventListener('mousemove', function(e) {
+  const rect = this.getBoundingClientRect();
+  const scaleX = (this.width / (window.devicePixelRatio || 1)) / rect.width;
+  const scaleY = (this.height / (window.devicePixelRatio || 1)) / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  const hit = _hitTestNode(mx, my);
+
+  if (hit !== _hoveredNode) {
+    _hoveredNode = hit;
+    drawOverview();
+  }
+
+  const tt = _ttEl();
+  if (hit >= 0 && TOOLTIPS[hit]) {
+    _ttTitle().textContent = TOOLTIPS[hit].title;
+    _ttBody().innerText = TOOLTIPS[hit].body;
+    tt.style.display = 'block';
+    let tx = e.clientX + 16, ty = e.clientY - 10;
+    const tw = 400, th = tt.offsetHeight || 180;
+    if (tx + tw > window.innerWidth - 12) tx = e.clientX - tw - 12;
+    if (ty + th > window.innerHeight - 12) ty = window.innerHeight - th - 12;
+    if (ty < 8) ty = 8;
+    tt.style.left = tx + 'px';
+    tt.style.top = ty + 'px';
+    this.style.cursor = 'pointer';
+  } else {
+    tt.style.display = 'none';
+    this.style.cursor = 'default';
+  }
+});
+
+document.getElementById('cv-overview')?.addEventListener('mouseleave', function() {
+  _hoveredNode = -1;
+  drawOverview();
+  _ttEl().style.display = 'none';
+  this.style.cursor = 'default';
+});
+
+document.getElementById('cv-overview')?.addEventListener('click', function(e) {
+  const rect = this.getBoundingClientRect();
+  const scaleX = (this.width / (window.devicePixelRatio || 1)) / rect.width;
+  const scaleY = (this.height / (window.devicePixelRatio || 1)) / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  const hit = _hitTestNode(mx, my);
+  if (hit < 0) return;
+  const sectionIds = [
+    'sec-lastgang','sec-lastgang','sec-lastgang','sec-lastgang','sec-lastgang', // 0-4: 5 Eingabepfade
+    'sec-lastgang','sec-siglinde','sec-lastgang',  // 5-7: TRY, SIGLINDE, Netz
+    'sec-siglinde',   // 8: SIGLINDE-Synthese
+    'sec-lastgang',   // 9: Lastgang 8760h
+    'sec-tww',        // 10: TWW
+    'sec-analyse',    // 11: Lastanalyse
+    'sec-profile','sec-profile',  // 12-13: Erzeuger + ST
+    'sec-dispatch','sec-dispatch','sec-dispatch', // 14-16: Dispatch
+    'sec-global-state',  // 17: Ergebnis
+    'sec-waermenetz',    // 18: Warmenetz
+    'sec-stromnetz',     // 19: Stromnetz
+    'sec-vdi','sec-npv','sec-wgk',  // 20-22: Wirtschaft
+    'sec-strom',         // 23: Strom-Bilanz
+    'sec-sens','sec-opt-raster',  // 24-25: Sens + Opt
+  ];
+  if (sectionIds[hit]) scrollTo_(sectionIds[hit]);
+});
+
+drawOverview();
+window.addEventListener('resize', drawOverview);
+</script>
+</body>
+</html>
