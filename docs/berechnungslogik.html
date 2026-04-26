@@ -1152,12 +1152,12 @@ nodeVoltDrop[nextId] = nodeVoltDrop[cur] + ΔU_V
 ΔU_kumPct[lt] = nodeVoltDrop[snkId] / U_N · 100
 
 // Färbung der Leitung
-if ausl > 100:                  rot      ← bottleneck
-elif |ΔU_kumPct| > 5:           rot      ← VDE-Grenze
-elif |ΔU_kumPct| > 3:           gelb
-elif ausl > 80:                 gelb
+if ausl &gt; 100:                  rot      ← bottleneck
+elif |ΔU_kumPct| &gt; 5:           rot      ← VDE-Grenze
+elif |ΔU_kumPct| &gt; 3:           gelb
+elif ausl &gt; 80:                 gelb
 else:                           grün
-isReverse = (P_net < -0.5):     gestrichelt (Rückspeisung)</div>
+isReverse = (P_net &lt; -0.5):     gestrichelt (Rückspeisung)</div>
 
   <h4>Kurzschluss + Auto-Sicherung</h4>
   <div class="formula">// Trafo-Impedanz
