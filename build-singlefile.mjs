@@ -1,7 +1,8 @@
 // Build: Quell-Module + HTML + CSS → eine einzige HTML-Datei für Doppelklick
 // Kein Rollup/Vite nötig — alle JS-Dateien werden direkt in einen <script>-Block
 // zusammengefügt, genau wie im originalen Index.html.
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync,
+         existsSync, copyFileSync, readdirSync, statSync } from 'fs';
 import { resolve, join } from 'path';
 
 const SRC = resolve('src');
@@ -97,3 +98,23 @@ writeFileSync(join(dist, 'index.html'), html);
 
 const size = (Buffer.byteLength(html) / 1024).toFixed(0);
 console.log(`Einzeldatei: dist/index.html (${size} KB)`);
+
+// 6. Statische Doku-HTMLs (Berechnungslogik etc.) aus Parent-/docs/
+//    nach modular/docs/ und dist/docs/ kopieren — damit der 📐-Button
+//    auch im Build funktioniert.
+const parentDocs = resolve('..', 'docs');
+const localDocs  = resolve('docs');
+const distDocs   = resolve('dist', 'docs');
+if (existsSync(parentDocs)) {
+  mkdirSync(localDocs, { recursive: true });
+  mkdirSync(distDocs,  { recursive: true });
+  let n = 0;
+  for (const f of readdirSync(parentDocs)) {
+    const src = join(parentDocs, f);
+    if (!statSync(src).isFile() || !f.endsWith('.html')) continue;
+    copyFileSync(src, join(localDocs, f));
+    copyFileSync(src, join(distDocs,  f));
+    n++;
+  }
+  console.log(`Doku-Dateien synchronisiert: ${n} HTML aus ../docs/`);
+}
