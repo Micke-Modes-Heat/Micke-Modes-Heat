@@ -89,6 +89,37 @@
   .md-close { float: right; background: transparent; border: 1px solid var(--border); color: var(--muted);
               cursor: pointer; padding: 3px 10px; border-radius: 4px; font-size: 14px; }
 
+  /* ── Tab: Schichten ── */
+  .layers { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .layer { display: flex; gap: 12px; background: var(--surface); border-left: 4px solid #555;
+           border-radius: 4px; padding: 12px 14px; align-items: stretch; }
+  .layer-num { width: 32px; height: 32px; border-radius: 50%; color: #fff; font-weight: 700;
+               display: flex; align-items: center; justify-content: center; font-size: 14px;
+               flex-shrink: 0; }
+  .layer-body { flex: 1; }
+  .layer-header { display: flex; justify-content: space-between; align-items: baseline;
+                  margin-bottom: 4px; }
+  .layer-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .layer-stats { font-size: 10px; color: var(--accent); text-transform: uppercase;
+                 letter-spacing: .04em; }
+  .layer-desc { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .layer-mods { display: flex; flex-wrap: wrap; gap: 4px; }
+  .layer-mod { background: rgba(0,0,0,.2); padding: 2px 7px; border: 1px solid;
+               border-radius: 3px; font-family: 'DM Mono', monospace; font-size: 10px;
+               cursor: help; }
+  .smell-ok { margin-top: 16px; padding: 10px 14px; background: rgba(102,187,106,.1);
+              border-left: 3px solid #66bb6a; border-radius: 4px; color: #66bb6a; font-size: 12px; }
+  .smell-info { margin-top: 16px; padding: 10px 14px; background: var(--surface);
+                border-left: 3px solid var(--muted); border-radius: 4px; color: var(--muted);
+                font-size: 12px; }
+  .smell-info summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+  .smell-info summary:hover { color: var(--text); }
+  .smell-note { margin: 10px 0; padding: 8px 12px; background: var(--bg); border-radius: 4px;
+                font-size: 11px; color: var(--text); line-height: 1.5; }
+  .smell-info ul { margin: 8px 0 0 20px; max-height: 300px; overflow-y: auto;
+                   padding: 8px; background: var(--bg); border-radius: 4px; }
+  .smell-info li { margin: 3px 0; font-size: 10px; }
+
   /* ── Tab 4: Tabelle ── */
   table { width: 100%; border-collapse: collapse; font-size: 11px; background: var(--surface);
           border-radius: 4px; overflow: hidden; margin-top: 8px; }
@@ -106,7 +137,7 @@
 </head><body>
 
 <h1>🏗️ Architektur — Energieplanung</h1>
-<div class="meta">Auto-generiert · 26.04.2026, 23:11 · <a href="../index.html">← zum Tool</a></div>
+<div class="meta">Auto-generiert · 26.04.2026, 23:25 · <a href="../index.html">← zum Tool</a></div>
 
 <div class="stats-bar">
   <div><b>56</b>Module</div>
@@ -117,6 +148,7 @@
 
 <div class="tabs">
   <button class="tab-btn active" data-tab="bereiche">📦 Bereiche</button>
+  <button class="tab-btn" data-tab="schichten">📚 Schichten</button>
   <button class="tab-btn" data-tab="workflows">🔀 Workflows</button>
   <button class="tab-btn" data-tab="treemap">🧱 Modul-Treemap</button>
   <button class="tab-btn" data-tab="tabelle">📋 Detail-Tabelle</button>
@@ -186,6 +218,144 @@
         <div class="k-stats">13 Module · 7.347 LOC</div>
         <div class="k-mods"><span class="mod-chip" title="(kein Header-Kommentar)">01-globals-varianten</span> <span class="mod-chip" title="Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold">04a-ui-panels</span> <span class="mod-chip" title="Emissionen-Tab, Dispatch-Chart, 3D-Energiekrone, Vergleich">04b-emissionen-3d</span> <span class="mod-chip" title="CSV-Export, PDF-Report, Druckansicht">05a-export</span> <span class="mod-chip" title="Elektrisches Netz, Kabel, Trafo, Spannungsfall">05b-stromnetz</span> <span class="mod-chip" title="Sankey-Diagramm (Energie, CO2, je Gebäude)">05c-sankey</span> <span class="mod-chip" title="HILFE-MODUS + LEITFADEN">11-hilfe-leitfaden</span> <span class="mod-chip" title="Event-Delegation für data-* Handler">12-inline-handlers</span> <span class="mod-chip" title="Erzeuger-Konfiguration">erzeuger-cfg</span> <span class="mod-chip" title="Hilfe-Texte für alle UI-Elemente">hilfe-texte</span> <span class="mod-chip" title="Netz-Kostentabellen">netz-kosten</span> <span class="mod-chip" title="Optimizer-Defaults">optimizer-defaults</span> <span class="mod-chip" title="ES Module entry point">main</span></div>
       </div></div></div>
+<div class="tab-pane" id="tab-schichten">
+    <div class="legend">
+      Klassische Schichten-Architektur: oben = was du siehst, unten = wo Daten persistiert werden.
+      Pfeile gehen nur <b>nach unten</b> (UI ruft Logik, Logik liest Daten).
+      <b>Pfeile nach oben sind Architektur-Smells</b> — wenn welche auftauchen, anschauen.
+    </div>
+    <div class="layers">
+      <div class="layer" style="border-left-color:#7a8099;">
+        <div class="layer-num" style="background:#7a8099;">5</div>
+        <div class="layer-body">
+          <div class="layer-header">
+            <span class="layer-title">Entry-Point</span>
+            <span class="layer-stats">1 Module · 82 LOC</span>
+          </div>
+          <div class="layer-desc">Modul-Loader (importiert alle anderen Module beim Start)</div>
+          <div class="layer-mods"><span class="layer-mod" style="background:#7a809922;border-color:#7a809966;color:#7a8099;"
+             title="ES Module entry point · 82 LOC">main</span></div>
+        </div>
+      </div>
+      <div class="layer" style="border-left-color:#4fc3f7;">
+        <div class="layer-num" style="background:#4fc3f7;">4</div>
+        <div class="layer-body">
+          <div class="layer-header">
+            <span class="layer-title">UI / Event-Handler / Inspector</span>
+            <span class="layer-stats">10 Module · 5.673 LOC</span>
+          </div>
+          <div class="layer-desc">Was du siehst und anklickst — Sidebars, Header, Inspector, Asset-Palette, Overlays</div>
+          <div class="layer-mods"><span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation · 1234 LOC">03c-gebaeude-io</span> <span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold · 1037 LOC">04a-ui-panels</span> <span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="Emissionen-Tab, Dispatch-Chart, 3D-Energiekrone, Vergleich · 1453 LOC">04b-emissionen-3d</span> <span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="HILFE-MODUS + LEITFADEN · 466 LOC">11-hilfe-leitfaden</span> <span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="Event-Delegation für data-* Handler · 200 LOC">12-inline-handlers</span> <span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="Asset-Palette (Buttons) + Karten-Platzierung · 137 LOC">13c-assets-ui</span> <span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="Editor-Panel für selektiertes Asset · 133 LOC">13e-assets-inspector</span> <span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="Mini-UI-Bridge für die neuen Stromnetz-Module · 267 LOC">16-stromnetz-ui</span> <span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="Smoke-Tests für die Phase-3-Module · 331 LOC">16b-stromnetz-selftest</span> <span class="layer-mod" style="background:#4fc3f722;border-color:#4fc3f766;color:#4fc3f7;"
+             title="Foto-UI: File-Picker, Galerie, Lightbox, Toast · 415 LOC">17c-fotos-ui</span></div>
+        </div>
+      </div>
+      <div class="layer" style="border-left-color:#66bb6a;">
+        <div class="layer-num" style="background:#66bb6a;">3</div>
+        <div class="layer-body">
+          <div class="layer-header">
+            <span class="layer-title">Domain-Logik / Berechnungen</span>
+            <span class="layer-stats">31 Module · 24.622 LOC</span>
+          </div>
+          <div class="layer-desc">Wo gerechnet wird — Dispatch, Wirtschaftlichkeit, Routing, Recalc, Optimizer, Compression</div>
+          <div class="layer-mods"><span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Rohrphysik, Wärmeverlust, Farbschemata, Legende · 362 LOC">02a-netz-physik</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Karte-Init, Gebäude-CRUD, Energie, OSM, Rendering · 1008 LOC">02b-gebaeude</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Zeichenwerkzeuge, Trasse, Fließgewässer, LWWP, Wirtschaftlichkeit · 1419 LOC">02c-karte-werkzeuge</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Erzeuger-Panels (Freiflächen-PV, BHKW, Stromkessel, Gaskessel, Heizöl, Pellets, HHS, Fernwärme, Verbindungslinien) · 1200 LOC">03a-erzeuger</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Netzplanung (Geothermie, Polygon-Zeichnen, Panel-Mgmt, OSM, Netzgraph, Strang-Report, Rohr-BOM) · 2470 LOC">03b-netz</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="CSV-Import, Lastgang-UI, Klimadaten · 1033 LOC">06a-gbi-lastgang</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Hauptberechnung, Synthese, Skalierung, Solarthermie · 800 LOC">06b-gl-berechnen</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Merit-Order, ERZEUGER_CFG, _dispatchCore, WP-Panel · 935 LOC">06c-dispatch-core</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Tab state · 1672 LOC">07a-analysis-charts</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Wirtschaftlichkeit Hilfsfunktionen · 1581 LOC">07b-analysis-economics</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="(kein Header-Kommentar) · 1255 LOC">08-calc-engine</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="PV-Profil, Datei-Upload, Preise, Invest · 262 LOC">09a-pv-profile</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="calcStromPanel, Batterie, PV-Wirtschaftlichkeit · 477 LOC">09b-pv-calc</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Strom-Charts, Sankey, JDL, PV+Bat-Optimierung · 1508 LOC">09c-pv-charts-opt</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="= · 1082 LOC">10a-optimizer-core</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Stündliche Live-Ansicht: Dispatch-Canvas, Strom-Bilanz, Flow-SVG, SOC, Zoom, Timeline, Play · 1337 LOC">10b-hourly-live</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Optimierung starten/abbrechen, Worker-Orchestrierung, Ergebnis-Rendering · 478 LOC">10c-optimizer-run</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Worker-Code-Template, _doRunOptimierung (Fallback), Ergebnis-Charts · 2112 LOC">10d-optimizer-worker</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Leaflet-Marker für Assets · 284 LOC">13b-assets-render</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="─ · 67 LOC">13d-assets-autocreate</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Trassen-Graph für Routing · 189 LOC">14c-stromnetz-graph</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Leaflet-Darstellung für Trassen + Leitungen · 178 LOC">15a-stromnetz-render</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="─ · 409 LOC">15b-stromnetz-draw</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Strom-Netz-Berechnung (Recalc) · 399 LOC">15c-stromnetz-calc</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Single-Line-Diagram (Einlinienschema) · 545 LOC">15d-stromnetz-sld</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Maßnahmen + Lebenszyklus-Synchronisation · 239 LOC">15g-stromnetz-massnahmen</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Investitionsplanung (Kosten + Diagramm) · 293 LOC">15h-stromnetz-invest</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Lastpunkte + k-Means + Auto-k · 332 LOC">15i-stromnetz-clustering</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Heatmap-Visualisierung der Lastpunkte · 304 LOC">15j-stromnetz-heatmap</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Trafo-Optimierung mit Voronoi-Zonen · 319 LOC">15l-stromnetz-trafoopt</span> <span class="layer-mod" style="background:#66bb6a22;border-color:#66bb6a66;color:#66bb6a;"
+             title="Foto-Kompression vor Speicherung · 73 LOC">17b-fotos-compress</span></div>
+        </div>
+      </div>
+      <div class="layer" style="border-left-color:#ffa726;">
+        <div class="layer-num" style="background:#ffa726;">2</div>
+        <div class="layer-body">
+          <div class="layer-header">
+            <span class="layer-title">Datenmodell / State</span>
+            <span class="layer-stats">9 Module · 1.167 LOC</span>
+          </div>
+          <div class="layer-desc">Reine Datenstrukturen — ASSETS, STROMNETZ, Konfigurationen, Szenarien-State</div>
+          <div class="layer-mods"><span class="layer-mod" style="background:#ffa72622;border-color:#ffa72666;color:#ffa726;"
+             title="Unified Asset-System (Strom + später Wärme) · 167 LOC">13a-assets-core</span> <span class="layer-mod" style="background:#ffa72622;border-color:#ffa72666;color:#ffa726;"
+             title="Konfiguration: Kabel-Kataloge, Kosten · 76 LOC">14a-stromnetz-config</span> <span class="layer-mod" style="background:#ffa72622;border-color:#ffa72666;color:#ffa726;"
+             title="─ · 151 LOC">14b-stromnetz-state</span> <span class="layer-mod" style="background:#ffa72622;border-color:#ffa72666;color:#ffa726;"
+             title="Planungsszenarien als Delta auf Bestand · 157 LOC">15e-stromnetz-szenarien</span> <span class="layer-mod" style="background:#ffa72622;border-color:#ffa72666;color:#ffa726;"
+             title="Messlastgang-Profile (NAP, CSV) · 251 LOC">15f-stromnetz-messlastgang</span> <span class="layer-mod" style="background:#ffa72622;border-color:#ffa72666;color:#ffa726;"
+             title="Erzeuger-Konfiguration · 26 LOC">erzeuger-cfg</span> <span class="layer-mod" style="background:#ffa72622;border-color:#ffa72666;color:#ffa726;"
+             title="Hilfe-Texte für alle UI-Elemente · 248 LOC">hilfe-texte</span> <span class="layer-mod" style="background:#ffa72622;border-color:#ffa72666;color:#ffa726;"
+             title="Netz-Kostentabellen · 63 LOC">netz-kosten</span> <span class="layer-mod" style="background:#ffa72622;border-color:#ffa72666;color:#ffa726;"
+             title="Optimizer-Defaults · 28 LOC">optimizer-defaults</span></div>
+        </div>
+      </div>
+      <div class="layer" style="border-left-color:#ce93d8;">
+        <div class="layer-num" style="background:#ce93d8;">1</div>
+        <div class="layer-body">
+          <div class="layer-header">
+            <span class="layer-title">Persistenz / Externe APIs</span>
+            <span class="layer-stats">4 Module · 3.188 LOC</span>
+          </div>
+          <div class="layer-desc">Wo Daten rein- und rausgehen — CSV/PDF-Export, IndexedDB-Foto-Storage, Sankey</div>
+          <div class="layer-mods"><span class="layer-mod" style="background:#ce93d822;border-color:#ce93d866;color:#ce93d8;"
+             title="CSV-Export, PDF-Report, Druckansicht · 725 LOC">05a-export</span> <span class="layer-mod" style="background:#ce93d822;border-color:#ce93d866;color:#ce93d8;"
+             title="Elektrisches Netz, Kabel, Trafo, Spannungsfall · 1469 LOC">05b-stromnetz</span> <span class="layer-mod" style="background:#ce93d822;border-color:#ce93d866;color:#ce93d8;"
+             title="Sankey-Diagramm (Energie, CO2, je Gebäude) · 651 LOC">05c-sankey</span> <span class="layer-mod" style="background:#ce93d822;border-color:#ce93d866;color:#ce93d8;"
+             title="Foto-Speicher mit Auto-Detect · 343 LOC">17a-fotos-storage</span></div>
+        </div>
+      </div>
+      <div class="layer" style="border-left-color:#9e9e9e;">
+        <div class="layer-num" style="background:#9e9e9e;">0</div>
+        <div class="layer-body">
+          <div class="layer-header">
+            <span class="layer-title">Globale State / Cross-Cutting</span>
+            <span class="layer-stats">1 Module · 899 LOC</span>
+          </div>
+          <div class="layer-desc">Quer-Schnitt: globaler Zustand der von allen Schichten geteilt wird (Globals + Varianten)</div>
+          <div class="layer-mods"><span class="layer-mod" style="background:#9e9e9e22;border-color:#9e9e9e66;color:#9e9e9e;"
+             title="(kein Header-Kommentar) · 899 LOC">01-globals-varianten</span></div>
+        </div>
+      </div></div>
+      <details class="smell-info">
+        <summary>📐 33 Aufwärts-Imports (klick zum Aufklappen)</summary>
+        <div class="smell-note">
+          Logik-Module rufen direkt UI/Persistenz-Funktionen auf. Bei gewachsenem
+          JS-Code üblich (kein akutes Problem), aber Hinweis-Liste für späteres
+          Refactoring — wenn Logik nur über Callbacks/Events mit UI sprechen
+          würde, wäre das Tool besser testbar.
+        </div>
+        <ul><li><code>02b-gebaeude</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>02c-karte-werkzeuge</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>02c-karte-werkzeuge</code> <small>(Domain-Logik / Berechnungen)</small> → <code>04a-ui-panels</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>03a-erzeuger</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>03b-netz</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>03b-netz</code> <small>(Domain-Logik / Berechnungen)</small> → <code>04a-ui-panels</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>05a-export</code> <small>(Persistenz / Externe APIs)</small> → <code>02b-gebaeude</code> <small>(Domain-Logik / Berechnungen)</small></li><li><code>05a-export</code> <small>(Persistenz / Externe APIs)</small> → <code>04a-ui-panels</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>05a-export</code> <small>(Persistenz / Externe APIs)</small> → <code>07a-analysis-charts</code> <small>(Domain-Logik / Berechnungen)</small></li><li><code>05b-stromnetz</code> <small>(Persistenz / Externe APIs)</small> → <code>02b-gebaeude</code> <small>(Domain-Logik / Berechnungen)</small></li><li><code>05b-stromnetz</code> <small>(Persistenz / Externe APIs)</small> → <code>02c-karte-werkzeuge</code> <small>(Domain-Logik / Berechnungen)</small></li><li><code>05b-stromnetz</code> <small>(Persistenz / Externe APIs)</small> → <code>03b-netz</code> <small>(Domain-Logik / Berechnungen)</small></li><li><code>05b-stromnetz</code> <small>(Persistenz / Externe APIs)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>05b-stromnetz</code> <small>(Persistenz / Externe APIs)</small> → <code>04a-ui-panels</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>05b-stromnetz</code> <small>(Persistenz / Externe APIs)</small> → <code>netz-kosten</code> <small>(Datenmodell / State)</small></li><li><code>05c-sankey</code> <small>(Persistenz / Externe APIs)</small> → <code>02b-gebaeude</code> <small>(Domain-Logik / Berechnungen)</small></li><li><code>05c-sankey</code> <small>(Persistenz / Externe APIs)</small> → <code>03a-erzeuger</code> <small>(Domain-Logik / Berechnungen)</small></li><li><code>05c-sankey</code> <small>(Persistenz / Externe APIs)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>05c-sankey</code> <small>(Persistenz / Externe APIs)</small> → <code>07a-analysis-charts</code> <small>(Domain-Logik / Berechnungen)</small></li><li><code>05c-sankey</code> <small>(Persistenz / Externe APIs)</small> → <code>erzeuger-cfg</code> <small>(Datenmodell / State)</small></li><li><code>06a-gbi-lastgang</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>06b-gl-berechnen</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>06c-dispatch-core</code> <small>(Domain-Logik / Berechnungen)</small> → <code>04a-ui-panels</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>07b-analysis-economics</code> <small>(Domain-Logik / Berechnungen)</small> → <code>04a-ui-panels</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>09a-pv-profile</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>09b-pv-calc</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>10a-optimizer-core</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>10a-optimizer-core</code> <small>(Domain-Logik / Berechnungen)</small> → <code>04a-ui-panels</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>10b-hourly-live</code> <small>(Domain-Logik / Berechnungen)</small> → <code>04a-ui-panels</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>10c-optimizer-run</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>10d-optimizer-worker</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>15b-stromnetz-draw</code> <small>(Domain-Logik / Berechnungen)</small> → <code>03c-gebaeude-io</code> <small>(UI / Event-Handler / Inspector)</small></li><li><code>15b-stromnetz-draw</code> <small>(Domain-Logik / Berechnungen)</small> → <code>13c-assets-ui</code> <small>(UI / Event-Handler / Inspector)</small></li></ul></details></div>
 <div class="tab-pane" id="tab-workflows"><div class="workflows">
       <div class="workflow">
         <h3><span class="wf-icon">↓</span> OSM-Import: Gebäude aus Karte laden</h3>

@@ -30,6 +30,38 @@ const DOMAINS = [
     desc: 'Globals, UI-Panels, Export, Hilfe-System, Inline-Event-Handler' },
 ];
 
+// ── Schichten (Layered Architecture) ──────────────────────────────────────
+// Schicht 4 oben (UI) → Schicht 1 unten (Persistenz). Pfeile gehen nach unten:
+// UI ruft Logik, Logik liest Daten, Daten werden persistiert.
+// Wenn ein Pfeil nach oben ginge, wäre das ein Architektur-Smell.
+const LAYERS = [
+  { id: 'entry',  name: 'Entry-Point',                     num: 5, color: '#7a8099',
+    pattern: /^main\.js$/,
+    desc: 'Modul-Loader (importiert alle anderen Module beim Start)' },
+  { id: 'ui',     name: 'UI / Event-Handler / Inspector',  num: 4, color: '#4fc3f7',
+    // 03c-gebaeude-io macht mehr UI (renderList, Cards) als Persistenz → UI-Schicht
+    pattern: /^03c-|^04[ab]-|^11-|^12-|^13c-|^13e-|^16(-|b-)|^17c-/,
+    desc: 'Was du siehst und anklickst — Sidebars, Header, Inspector, Asset-Palette, Overlays' },
+  { id: 'logik',  name: 'Domain-Logik / Berechnungen',     num: 3, color: '#66bb6a',
+    // Inkl. 02b-gebaeude (Gebäude-CRUD ist Logik, nicht reine Daten)
+    pattern: /^02[abc]-|^03[ab]-|^06[abc]-|^07[ab]-|^08-|^09[abc]-|^10[abcd]-|^13b-|^13d-|^14c-|^15[abcdghijl]-|^17b-/,
+    desc: 'Wo gerechnet wird — Dispatch, Wirtschaftlichkeit, Routing, Recalc, Optimizer, Compression' },
+  { id: 'daten',  name: 'Datenmodell / State',             num: 2, color: '#ffa726',
+    pattern: /^13a-|^14[ab]-|^15[ef]-|^config\//,
+    desc: 'Reine Datenstrukturen — ASSETS, STROMNETZ, Konfigurationen, Szenarien-State' },
+  { id: 'persist',name: 'Persistenz / Externe APIs',       num: 1, color: '#ce93d8',
+    pattern: /^05[abc]-|^17a-/,
+    desc: 'Wo Daten rein- und rausgehen — CSV/PDF-Export, IndexedDB-Foto-Storage, Sankey' },
+  { id: 'glue',   name: 'Globale State / Cross-Cutting',   num: 0, color: '#9e9e9e',
+    pattern: /^01-/,
+    desc: 'Quer-Schnitt: globaler Zustand der von allen Schichten geteilt wird (Globals + Varianten)' },
+];
+
+function findLayer(relPath) {
+  for (const l of LAYERS) if (l.pattern.test(relPath)) return l;
+  return { id: 'misc', name: 'Sonstige', num: 0, color: '#999' };
+}
+
 // ── Workflows (handgepflegt — was passiert wenn der User XY tut) ───────────
 const WORKFLOWS = [
   {
@@ -266,6 +298,90 @@ function renderTreemap() {
   return html;
 }
 
+// ── Tab: Schichten (Layered Architecture) ────────────────────────────────
+function renderSchichten() {
+  // Module pro Layer einsortieren
+  const byLayer = new Map();
+  for (const m of modules) {
+    const l = findLayer(m.name);
+    if (!byLayer.has(l.id)) byLayer.set(l.id, { layer: l, modules: [] });
+    byLayer.get(l.id).modules.push(m);
+  }
+  // Pfeile zwischen Layern zählen + Architektur-Smells erkennen
+  const layerEdges = new Map(); // "fromNum→toNum" → count
+  const smells = []; // upward-arrows
+  for (const m of modules) {
+    const lFrom = findLayer(m.name);
+    for (const imp of m.imports) {
+      const target = modules.find(mm => mm.shortName === imp.replace(/^.*\//, ''));
+      if (!target) continue;
+      const lTo = findLayer(target.name);
+      if (lFrom.id === lTo.id) continue; // intra-layer ignorieren
+      const key = lFrom.num + '→' + lTo.num;
+      layerEdges.set(key, (layerEdges.get(key) || 0) + 1);
+      // Smell: Pfeil nach oben (von Daten zu UI etc.)
+      // Glue (01-globals) ist absichtlich Cross-Cutting → keine Smells für Glue
+      if (lFrom.num < lTo.num && lFrom.id !== 'entry' && lTo.id !== 'entry'
+          && lFrom.id !== 'glue' && lTo.id !== 'glue') {
+        smells.push({ from: m.shortName, fromLayer: lFrom.name, to: target.shortName, toLayer: lTo.name });
+      }
+    }
+  }
+  // Sortierung: oben = höchste Layer-Nummer (UI), unten = Persistenz
+  const sortedLayers = [...byLayer.values()].sort((a, b) => b.layer.num - a.layer.num);
+
+  let html = `
+    <div class="legend">
+      Klassische Schichten-Architektur: oben = was du siehst, unten = wo Daten persistiert werden.
+      Pfeile gehen nur <b>nach unten</b> (UI ruft Logik, Logik liest Daten).
+      <b>Pfeile nach oben sind Architektur-Smells</b> — wenn welche auftauchen, anschauen.
+    </div>
+    <div class="layers">`;
+  for (const { layer, modules: mods } of sortedLayers) {
+    if (mods.length === 0) continue;
+    const sortedMods = mods.sort((a, b) => a.name.localeCompare(b.name));
+    const totalLoc = mods.reduce((s, m) => s + m.loc, 0);
+    const modsHtml = sortedMods.map(m =>
+      `<span class="layer-mod" style="background:${layer.color}22;border-color:${layer.color}66;color:${layer.color};"
+             title="${esc(m.purpose)} · ${m.loc} LOC">${esc(m.shortName)}</span>`
+    ).join(' ');
+    html += `
+      <div class="layer" style="border-left-color:${layer.color};">
+        <div class="layer-num" style="background:${layer.color};">${layer.num}</div>
+        <div class="layer-body">
+          <div class="layer-header">
+            <span class="layer-title">${esc(layer.name)}</span>
+            <span class="layer-stats">${mods.length} Module · ${totalLoc.toLocaleString('de-DE')} LOC</span>
+          </div>
+          <div class="layer-desc">${esc(layer.desc)}</div>
+          <div class="layer-mods">${modsHtml}</div>
+        </div>
+      </div>`;
+  }
+  html += '</div>';
+
+  // Beobachtungen-Box (entspannter Tone, keine Alarmstufe)
+  if (smells.length === 0) {
+    html += `<div class="smell-ok">✓ Saubere Schichtung — alle Imports gehen von oben nach unten.</div>`;
+  } else {
+    html += `
+      <details class="smell-info">
+        <summary>📐 ${smells.length} Aufwärts-Imports (klick zum Aufklappen)</summary>
+        <div class="smell-note">
+          Logik-Module rufen direkt UI/Persistenz-Funktionen auf. Bei gewachsenem
+          JS-Code üblich (kein akutes Problem), aber Hinweis-Liste für späteres
+          Refactoring — wenn Logik nur über Callbacks/Events mit UI sprechen
+          würde, wäre das Tool besser testbar.
+        </div>
+        <ul>`;
+    for (const s of smells) {
+      html += `<li><code>${esc(s.from)}</code> <small>(${esc(s.fromLayer)})</small> → <code>${esc(s.to)}</code> <small>(${esc(s.toLayer)})</small></li>`;
+    }
+    html += `</ul></details>`;
+  }
+  return html;
+}
+
 // ── Tab 4: Detail-Tabelle ──────────────────────────────────────────────────
 function renderTabelle() {
   let html = '';
@@ -382,6 +498,37 @@ const html = `<!DOCTYPE html><html lang="de"><head>
   .md-close { float: right; background: transparent; border: 1px solid var(--border); color: var(--muted);
               cursor: pointer; padding: 3px 10px; border-radius: 4px; font-size: 14px; }
 
+  /* ── Tab: Schichten ── */
+  .layers { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .layer { display: flex; gap: 12px; background: var(--surface); border-left: 4px solid #555;
+           border-radius: 4px; padding: 12px 14px; align-items: stretch; }
+  .layer-num { width: 32px; height: 32px; border-radius: 50%; color: #fff; font-weight: 700;
+               display: flex; align-items: center; justify-content: center; font-size: 14px;
+               flex-shrink: 0; }
+  .layer-body { flex: 1; }
+  .layer-header { display: flex; justify-content: space-between; align-items: baseline;
+                  margin-bottom: 4px; }
+  .layer-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .layer-stats { font-size: 10px; color: var(--accent); text-transform: uppercase;
+                 letter-spacing: .04em; }
+  .layer-desc { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .layer-mods { display: flex; flex-wrap: wrap; gap: 4px; }
+  .layer-mod { background: rgba(0,0,0,.2); padding: 2px 7px; border: 1px solid;
+               border-radius: 3px; font-family: 'DM Mono', monospace; font-size: 10px;
+               cursor: help; }
+  .smell-ok { margin-top: 16px; padding: 10px 14px; background: rgba(102,187,106,.1);
+              border-left: 3px solid #66bb6a; border-radius: 4px; color: #66bb6a; font-size: 12px; }
+  .smell-info { margin-top: 16px; padding: 10px 14px; background: var(--surface);
+                border-left: 3px solid var(--muted); border-radius: 4px; color: var(--muted);
+                font-size: 12px; }
+  .smell-info summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+  .smell-info summary:hover { color: var(--text); }
+  .smell-note { margin: 10px 0; padding: 8px 12px; background: var(--bg); border-radius: 4px;
+                font-size: 11px; color: var(--text); line-height: 1.5; }
+  .smell-info ul { margin: 8px 0 0 20px; max-height: 300px; overflow-y: auto;
+                   padding: 8px; background: var(--bg); border-radius: 4px; }
+  .smell-info li { margin: 3px 0; font-size: 10px; }
+
   /* ── Tab 4: Tabelle ── */
   table { width: 100%; border-collapse: collapse; font-size: 11px; background: var(--surface);
           border-radius: 4px; overflow: hidden; margin-top: 8px; }
@@ -410,12 +557,14 @@ const html = `<!DOCTYPE html><html lang="de"><head>
 
 <div class="tabs">
   <button class="tab-btn active" data-tab="bereiche">📦 Bereiche</button>
+  <button class="tab-btn" data-tab="schichten">📚 Schichten</button>
   <button class="tab-btn" data-tab="workflows">🔀 Workflows</button>
   <button class="tab-btn" data-tab="treemap">🧱 Modul-Treemap</button>
   <button class="tab-btn" data-tab="tabelle">📋 Detail-Tabelle</button>
 </div>
 
 <div class="tab-pane active" id="tab-bereiche">${renderBereiche()}</div>
+<div class="tab-pane" id="tab-schichten">${renderSchichten()}</div>
 <div class="tab-pane" id="tab-workflows">${renderWorkflows()}</div>
 <div class="tab-pane" id="tab-treemap">${renderTreemap()}</div>
 <div class="tab-pane" id="tab-tabelle">${renderTabelle()}</div>
