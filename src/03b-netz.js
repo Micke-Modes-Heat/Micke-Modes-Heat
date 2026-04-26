@@ -762,13 +762,39 @@ function _parseWfsGml(xml) {
   return { type: 'FeatureCollection', features: features };
 }
 
+// Polygon-Fingerprint robust gegen geschlossene Ringe (erster == letzter Punkt).
+// Liefert ZWEI Hashes: Schwerpunkt + BBox. Match wenn EINER von beiden trifft.
+function polyFingerprints(poly) {
+  if (!poly || poly.length < 3) return { centroid: '', bbox: '' };
+  // Bei geschlossenem Ring den letzten Punkt überspringen
+  var last = poly.length - 1;
+  var first = poly[0], end = poly[last];
+  var n = (Math.abs(first.lat - end.lat) < 1e-9 && Math.abs(first.lng - end.lng) < 1e-9) ? last : poly.length;
+  var sumLat = 0, sumLng = 0;
+  var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (var i = 0; i < n; i++) {
+    var p = poly[i];
+    sumLat += p.lat; sumLng += p.lng;
+    if (p.lat < minLat) minLat = p.lat; if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lng < minLng) minLng = p.lng; if (p.lng > maxLng) maxLng = p.lng;
+  }
+  var R = 1e5;  // Genauigkeit ~1 m
+  return {
+    centroid: Math.round(sumLat / n * R) + '_' + Math.round(sumLng / n * R),
+    bbox:     Math.round(minLat * R) + '_' + Math.round(minLng * R) + '_' +
+              Math.round(maxLat * R) + '_' + Math.round(maxLng * R),
+  };
+}
+
 export function parseWfsGeoJson(geojson, snapArea) {
-  // Konvertiert WFS-GeoJSON in das gleiche Format wie parseOsmData
-  var existingPolygons = new Set(gebaeude.filter(function(g) { return g.polygon; }).map(function(g) {
-    // Einfacher Fingerprint: Schwerpunkt gerundet
-    var c = g.polygon.reduce(function(s, p) { return { lat: s.lat + p.lat, lng: s.lng + p.lng }; }, { lat: 0, lng: 0 });
-    return Math.round(c.lat / g.polygon.length * 1e5) + '_' + Math.round(c.lng / g.polygon.length * 1e5);
-  }));
+  // Bestehende Gebäude indexieren — beide Hashes (Schwerpunkt + BBox)
+  var existingCentroids = new Set();
+  var existingBboxes    = new Set();
+  gebaeude.filter(function(g) { return g.polygon; }).forEach(function(g) {
+    var fp = polyFingerprints(g.polygon);
+    if (fp.centroid) existingCentroids.add(fp.centroid);
+    if (fp.bbox)     existingBboxes   .add(fp.bbox);
+  });
 
   var defaultBj = parseInt(document.getElementById('osm-default-baujahr')?.value) || 1970;
   // Mindestfläche aus UI (Default 30 m² — filtert Garagen/Schuppen)
@@ -796,16 +822,22 @@ export function parseWfsGeoJson(geojson, snapArea) {
       var area = polygonAreaM2(coords);
       if (area < minFlaeche) return;
 
-      // Deduplizierung
+      // Deduplizierung — Match wenn ENTWEDER Schwerpunkt ODER BBox bekannt sind
+      var fps = polyFingerprints(coords);
+      if (existingCentroids.has(fps.centroid) || existingBboxes.has(fps.bbox)) return;
+      existingCentroids.add(fps.centroid);
+      existingBboxes.add(fps.bbox);
+
+      // Schwerpunkt für Gebiet-Filter (ohne Schließpunkt)
+      var fpN = (Math.abs(coords[0].lat - coords[coords.length-1].lat) < 1e-9 &&
+                 Math.abs(coords[0].lng - coords[coords.length-1].lng) < 1e-9)
+                ? coords.length - 1 : coords.length;
       var sumLat = 0, sumLng = 0;
-      coords.forEach(function(c) { sumLat += c.lat; sumLng += c.lng; });
-      var fp = Math.round(sumLat / coords.length * 1e5) + '_' + Math.round(sumLng / coords.length * 1e5);
-      if (existingPolygons.has(fp)) return;
-      existingPolygons.add(fp);
+      for (var i = 0; i < fpN; i++) { sumLat += coords[i].lat; sumLng += coords[i].lng; }
 
       // Gebiet-Filter
       if (snapArea && snapArea.length >= 3) {
-        var center = { lat: sumLat / coords.length, lng: sumLng / coords.length };
+        var center = { lat: sumLat / fpN, lng: sumLng / fpN };
         if (!pointInPolygon(center, snapArea)) return;
       }
 
@@ -1252,6 +1284,14 @@ export function parseOsmData(data, snapArea){
   const nodes={};
   data.elements.forEach(el=>{ if(el.type==='node') nodes[el.id]={lat:el.lat,lng:el.lon}; });
   const existingOsm=new Set(gebaeude.filter(g=>g.osmId).map(g=>g.osmId));
+  // Zusätzlich Polygon-Fingerprints (für OSM↔WFS-Mix oder ID-Wechsel)
+  const existingCentroids = new Set();
+  const existingBboxes    = new Set();
+  gebaeude.filter(g => g.polygon).forEach(g => {
+    const fp = polyFingerprints(g.polygon);
+    if (fp.centroid) existingCentroids.add(fp.centroid);
+    if (fp.bbox)     existingBboxes   .add(fp.bbox);
+  });
   const result=[];
   // Mindestfläche aus UI (Default 30 m² — filtert Garagen/Schuppen)
   let minFlaeche = parseFloat(document.getElementById('osm-min-flaeche')?.value);
@@ -1269,6 +1309,12 @@ export function parseOsmData(data, snapArea){
 
     // Mindestfläche prüfen
     if (polygonAreaM2(coords) < minFlaeche) return;
+
+    // Polygon-Dedup (für überlappende Bereiche / Mix-Import)
+    const fps = polyFingerprints(coords);
+    if (existingCentroids.has(fps.centroid) || existingBboxes.has(fps.bbox)) return;
+    existingCentroids.add(fps.centroid);
+    existingBboxes.add(fps.bbox);
 
     if(snapArea&&snapArea.length>=3){
       const center=polygonCenter(coords);
