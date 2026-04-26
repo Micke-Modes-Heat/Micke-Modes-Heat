@@ -13,6 +13,7 @@
 import { ASSET_CFG } from './13a-assets-core.js';
 import { KOSTEN_CFG, MASSNAHMEN_SIM_PROPS } from './14a-stromnetz-config.js';
 import { getMergedAssets, getMergedStromLeitungen } from './15e-stromnetz-szenarien.js';
+import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 // KOSTENRECHNUNG
@@ -25,11 +26,15 @@ import { getMergedAssets, getMergedStromLeitungen } from './15e-stromnetz-szenar
 //     CalcEngine nicht vorkommt)
 // Verhindert die Doppelung mit unterschiedlichen Werten.
 //
-// Mapping ASSET_CFG-Typ → CalcEngine-Tech:
-//   PV       → getPvInvestPerKwp(kWp) · TABELLE
-//   WP       → 'LuftWP' (Default — Sub-Typ-Auswahl Geo/Fluss kommt später)
-//   KWK      → 'BHKW' (auf kW_th)
-//   sonstige → KOSTEN_CFG.assets[type] (basis + per*)
+// Mapping ASSET_CFG-Typ → vorhandene Quelle:
+//   PV       → CalcEngine.getPvInvestPerKwp(kWp) · TABELLE (leistungsabhängig)
+//   WP       → CalcEngine.investEurProKw('LuftWP', kW) (Default; Sub-Typ später)
+//   KWK      → CalcEngine.investEurProKw('BHKW', kW_th)
+//   Batterie → DOM-Input opt-bat-invest oder OPT_INVEST_DEFAULT.bat (400 €/kWh)
+//              — gleiche Quelle wie 07b und Optimizer
+//   sonstige (NAP, Trafo, NSHV, UV, Schaltanlage, Verbraucher, Lade, Nsa,
+//             Reserve)
+//            → KOSTEN_CFG.assets[type] (kein Pendant in CalcEngine/Optimizer)
 
 export function calcAssetKosten(a) {
   const ce = (typeof window !== 'undefined') ? window.CalcEngine : null;
@@ -51,6 +56,16 @@ export function calcAssetKosten(a) {
                 || 100;
       return ce.investEurProKw('BHKW', kWth) * kWth;
     }
+  }
+
+  // ── Batterie: gleiche Quelle wie 07b/Optimizer (DOM-Input + OPT_INVEST_DEFAULT) ──
+  if (a.type === 'Batterie') {
+    const kWh = parseFloat(a.props?.kapazitaetKWh) || 50;
+    const eurKWh = (typeof document !== 'undefined'
+      ? parseFloat(document.getElementById('opt-bat-invest')?.value) : NaN)
+      || OPT_INVEST_DEFAULT.bat
+      || 400;
+    return kWh * eurKWh;
   }
 
   // ── Strom-Infrastruktur etc.: KOSTEN_CFG ─────────────────────────────────

@@ -31,13 +31,16 @@ export const KOSTEN_CFG = {
     UV:           { basis: 3000,  perAbgang:  600  },  // 3k + 600 €/Abgang
     Verbraucher:  { basis: 1500 },
     Lade:         { basis: 500,   perPunkt:   3000 },  // 500 + 3000 €/Ladepunkt
-    Batterie:     { basis: 0,     perKWh:     900  },  // 900 €/kWh
     Nsa:          { basis: 5000,  perKW:      300  },  // 5k + 300 €/kW
     Reserve:      { basis: 0 },
-    // ── DEPRECATED: PV, WP, KWK kommen jetzt aus CalcEngine (KWW-Kostenkurven) ──
-    // Werte hier nur als Fallback wenn CalcEngine nicht verfügbar (z.B. Tests).
-    PV:           { basis: 0,     perKWp:     1300 },  // Fallback — CalcEngine nutzt PV_INVEST_TABELLE
-    WP:           { basis: 3000,  perKW:      500  },  // Fallback — CalcEngine nutzt LuftWP-Kurve
+    // ── DEPRECATED: PV/WP/KWK/Batterie haben eigene Quellen — Werte hier nur Fallback ──
+    // PV       → CalcEngine.getPvInvestPerKwp (PV_INVEST_TABELLE)
+    // WP       → CalcEngine.investEurProKw('LuftWP', kW)
+    // KWK      → CalcEngine.investEurProKw('BHKW', kW_th)
+    // Batterie → opt-bat-invest DOM-Input oder OPT_INVEST_DEFAULT.bat (400 €/kWh)
+    PV:           { basis: 0,     perKWp:     1300 },  // Fallback nur wenn CalcEngine fehlt
+    WP:           { basis: 3000,  perKW:      500  },  // Fallback nur wenn CalcEngine fehlt
+    Batterie:     { basis: 0,     perKWh:     400  },  // Fallback (an OPT_INVEST_DEFAULT.bat angeglichen)
     // KWK gibt es hier nicht; CalcEngine.investEurProKw('BHKW', kW_th) ist die Quelle.
   },
 };
