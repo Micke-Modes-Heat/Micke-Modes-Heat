@@ -11,12 +11,13 @@
 //   updateStorageStatusBadge() — re-rendert das Badge
 
 import { savePhoto, getPhoto, deletePhoto, getStorageStatus,
-         photoUid, onStorageChange, listPhotos } from './17a-fotos-storage.js';
+         photoUid, onStorageChange, listPhotos, updatePhotoMeta } from './17a-fotos-storage.js';
 import { compressImage, fmtBytes } from './17b-fotos-compress.js';
 
-// ── Toast für Reminder ──────────────────────────────────────────────────────
+// ── Modul-State ─────────────────────────────────────────────────────────────
 let _ungespeichertCount = 0;          // seit letztem manuellen Speichern
 const REMINDER_EVERY = 5;              // alle 5 Fotos
+let _currentPanelParent = null;       // Parent des gerade offenen Foto-Panels
 
 function showToast(text, opts = {}) {
   const id = 'foto-toast';
@@ -125,6 +126,7 @@ export async function openFotoPanel(parentType, parentId, parentName) {
   const name = parentName || getParentName(parent, parentType);
 
   closeFotoPanel();
+  _currentPanelParent = parent;
   const status = await getStorageStatus();
 
   const el = document.createElement('div');
@@ -189,6 +191,7 @@ export async function openFotoPanel(parentType, parentId, parentName) {
 export function closeFotoPanel() {
   document.getElementById('foto-panel')?.remove();
   document.getElementById('foto-lightbox')?.remove();
+  _currentPanelParent = null;
 }
 
 async function renderFotoGrid(parent) {
@@ -217,12 +220,19 @@ async function renderFotoGrid(parent) {
         return;
       }
       const url = URL.createObjectURL(rec.blob);
-      const sizeText = fmtBytes(rec.blob.size);
+      const caption = (rec.meta?.caption || '').trim();
+      const hasNotiz = (rec.meta?.notiz || '').trim().length > 0;
+      const labelText = caption || rec.meta?.filename || '';
       tile.innerHTML = `
         <img src="${url}" style="width:100%;height:100%;object-fit:cover;display:block;"/>
-        <div style="position:absolute;bottom:0;left:0;right:0;padding:3px 6px;
-             background:rgba(0,0,0,.7);font-size:8px;color:#cfd;display:flex;justify-content:space-between;">
-          <span>${escHtml(rec.meta?.filename || '')}</span><span>${sizeText}</span>
+        ${hasNotiz ? `<div style="position:absolute;top:2px;left:2px;background:rgba(79,195,247,.9);
+             color:#000;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;"
+             title="Hat Notiz">📝</div>` : ''}
+        <div style="position:absolute;bottom:0;left:0;right:0;padding:4px 6px;
+             background:rgba(0,0,0,.75);font-size:9px;color:#cfd;
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+             title="${escHtml(labelText)}">
+          ${labelText ? escHtml(labelText) : '<span style="color:#7a8099;font-style:italic;">(unbeschriftet)</span>'}
         </div>
         <button class="foto-del" data-pid="${pid}" style="position:absolute;top:2px;right:2px;
           background:rgba(239,83,80,.85);border:none;color:#fff;border-radius:50%;
@@ -230,7 +240,7 @@ async function renderFotoGrid(parent) {
           display:none;" title="Löschen">✕</button>`;
       tile.addEventListener('mouseenter', () => tile.querySelector('.foto-del').style.display = '');
       tile.addEventListener('mouseleave', () => tile.querySelector('.foto-del').style.display = 'none');
-      tile.querySelector('img').addEventListener('click', () => openLightbox(parent.photoIds, pid, rec.meta?.filename));
+      tile.querySelector('img').addEventListener('click', () => openLightbox(parent.photoIds, pid));
       tile.querySelector('.foto-del').addEventListener('click', async (e) => {
         e.stopPropagation();
         if (!confirm('Foto wirklich löschen?')) return;
@@ -246,7 +256,7 @@ async function renderFotoGrid(parent) {
 // ════════════════════════════════════════════════════════════════════════════
 // LIGHTBOX (Vollbild-Ansicht)
 // ════════════════════════════════════════════════════════════════════════════
-async function openLightbox(photoIds, currentId, filename) {
+async function openLightbox(photoIds, currentId) {
   document.getElementById('foto-lightbox')?.remove();
   let idx = photoIds.indexOf(currentId);
   if (idx < 0) idx = 0;
@@ -254,52 +264,116 @@ async function openLightbox(photoIds, currentId, filename) {
   const overlay = document.createElement('div');
   overlay.id = 'foto-lightbox';
   overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:10000;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    font-family:'DM Sans',sans-serif;color:#cfd;`;
+    display:flex;flex-direction:column;font-family:'DM Sans',sans-serif;color:#cfd;`;
   overlay.innerHTML = `
-    <button id="foto-lb-close" style="position:absolute;top:16px;right:16px;
-      background:rgba(255,255,255,.1);border:1px solid #444;border-radius:6px;
-      color:#fff;font-size:20px;padding:4px 12px;cursor:pointer;">✕</button>
-    <button id="foto-lb-prev" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);
-      background:rgba(255,255,255,.1);border:1px solid #444;border-radius:6px;
-      color:#fff;font-size:24px;padding:8px 16px;cursor:pointer;">‹</button>
-    <button id="foto-lb-next" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);
-      background:rgba(255,255,255,.1);border:1px solid #444;border-radius:6px;
-      color:#fff;font-size:24px;padding:8px 16px;cursor:pointer;">›</button>
-    <img id="foto-lb-img" style="max-width:90vw;max-height:80vh;object-fit:contain;"/>
-    <div id="foto-lb-caption" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
-      background:rgba(0,0,0,.7);padding:6px 14px;border-radius:6px;font-size:11px;color:#cfd;">
-      ${escHtml(filename || '')} (${idx+1}/${photoIds.length})
+    <!-- Top-Bar mit Close + Counter -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:10px 16px;background:rgba(0,0,0,.6);border-bottom:1px solid #2a3050;">
+      <div id="foto-lb-counter" style="font-size:12px;color:#9aa;"></div>
+      <button id="foto-lb-close" style="background:rgba(255,255,255,.1);border:1px solid #444;
+        border-radius:6px;color:#fff;font-size:18px;padding:4px 12px;cursor:pointer;">✕</button>
+    </div>
+    <!-- Bild-Bereich mit Pfeilen -->
+    <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;
+                overflow:hidden;padding:10px;">
+      <button id="foto-lb-prev" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);
+        background:rgba(255,255,255,.1);border:1px solid #444;border-radius:6px;
+        color:#fff;font-size:24px;padding:8px 16px;cursor:pointer;z-index:1;">‹</button>
+      <button id="foto-lb-next" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);
+        background:rgba(255,255,255,.1);border:1px solid #444;border-radius:6px;
+        color:#fff;font-size:24px;padding:8px 16px;cursor:pointer;z-index:1;">›</button>
+      <img id="foto-lb-img" style="max-width:100%;max-height:100%;object-fit:contain;"/>
+    </div>
+    <!-- Bottom-Bar mit Caption + Notiz (editierbar) -->
+    <div style="background:rgba(0,0,0,.85);border-top:1px solid #2a3050;padding:10px 16px;
+                display:flex;flex-direction:column;gap:6px;max-height:35vh;overflow:auto;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label style="font-size:10px;color:#7a8099;text-transform:uppercase;
+                      letter-spacing:.04em;min-width:80px;">Beschriftung</label>
+        <input type="text" id="foto-lb-caption-input" placeholder="z.B. Zählerschrank Frontansicht"
+          style="flex:1;background:#0f1b2d;border:1px solid #2a3050;color:#cfd;
+                 padding:5px 8px;border-radius:4px;font-size:12px;font-family:inherit;"/>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:8px;">
+        <label style="font-size:10px;color:#7a8099;text-transform:uppercase;
+                      letter-spacing:.04em;min-width:80px;padding-top:5px;">Notiz</label>
+        <textarea id="foto-lb-notiz-input" rows="2" placeholder="Zusätzliche Beobachtungen, Maße, Auffälligkeiten…"
+          style="flex:1;background:#0f1b2d;border:1px solid #2a3050;color:#cfd;
+                 padding:5px 8px;border-radius:4px;font-size:12px;font-family:inherit;
+                 resize:vertical;min-height:38px;"></textarea>
+      </div>
+      <div id="foto-lb-savestatus" style="font-size:9px;color:#7a8099;text-align:right;min-height:12px;"></div>
     </div>`;
   document.body.appendChild(overlay);
 
   let currentUrl = null;
+  let currentRecMeta = null;
+
   async function showAt(i) {
     if (i < 0) i = photoIds.length - 1;
     if (i >= photoIds.length) i = 0;
     idx = i;
     const rec = await getPhoto(photoIds[idx]);
     if (currentUrl) URL.revokeObjectURL(currentUrl);
-    if (rec) {
-      currentUrl = URL.createObjectURL(rec.blob);
-      overlay.querySelector('#foto-lb-img').src = currentUrl;
-      overlay.querySelector('#foto-lb-caption').textContent =
-        (rec.meta?.filename || '') + ` (${idx+1}/${photoIds.length})`;
-    }
+    if (!rec) return;
+    currentRecMeta = rec.meta || {};
+    currentUrl = URL.createObjectURL(rec.blob);
+    overlay.querySelector('#foto-lb-img').src = currentUrl;
+    overlay.querySelector('#foto-lb-counter').textContent =
+      `${idx+1}/${photoIds.length} · ${rec.meta?.filename || ''}`;
+    overlay.querySelector('#foto-lb-caption-input').value = rec.meta?.caption || '';
+    overlay.querySelector('#foto-lb-notiz-input').value = rec.meta?.notiz || '';
+    overlay.querySelector('#foto-lb-savestatus').textContent = '';
   }
   await showAt(idx);
 
-  overlay.querySelector('#foto-lb-close').addEventListener('click', () => { if(currentUrl) URL.revokeObjectURL(currentUrl); overlay.remove(); });
+  // Auto-Save bei Blur (Caption + Notiz)
+  function attachAutoSave(elId, field) {
+    const inp = overlay.querySelector(elId);
+    inp.addEventListener('blur', async () => {
+      const newVal = inp.value;
+      const oldVal = currentRecMeta?.[field] || '';
+      if (newVal === oldVal) return;
+      const status = overlay.querySelector('#foto-lb-savestatus');
+      status.textContent = '⏳ wird gespeichert…';
+      const ok = await updatePhotoMeta(photoIds[idx], { [field]: newVal });
+      status.textContent = ok ? '✓ gespeichert' : '✗ Fehler';
+      if (ok) currentRecMeta[field] = newVal;
+      setTimeout(() => { status.textContent = ''; }, 2000);
+    });
+  }
+  attachAutoSave('#foto-lb-caption-input', 'caption');
+  attachAutoSave('#foto-lb-notiz-input',   'notiz');
+
+  overlay.querySelector('#foto-lb-close').addEventListener('click', () => closeLightbox());
   overlay.querySelector('#foto-lb-prev').addEventListener('click',  () => showAt(idx - 1));
   overlay.querySelector('#foto-lb-next').addEventListener('click',  () => showAt(idx + 1));
 
+  function closeLightbox() {
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+    // Galerie neu rendern, damit Caption-Änderungen sichtbar werden
+    const parent = getCurrentLightboxParent();
+    if (parent) renderFotoGrid(parent);
+  }
+
   function onKey(e) {
-    if (e.key === 'Escape')     { overlay.remove(); document.removeEventListener('keydown', onKey); }
+    // ESC nur wenn KEIN Input gerade fokussiert ist
+    const activeTag = document.activeElement?.tagName;
+    if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+      // Im Input nur Pfeile ignorieren — sonst kann man nicht tippen
+      return;
+    }
+    if (e.key === 'Escape')          closeLightbox();
     else if (e.key === 'ArrowLeft')  showAt(idx - 1);
     else if (e.key === 'ArrowRight') showAt(idx + 1);
   }
   document.addEventListener('keydown', onKey);
 }
+
+// Hilfe-Funktion: aktuellen Galerie-Parent für Re-Render bei Caption-Änderung
+function getCurrentLightboxParent() { return _currentPanelParent; }
 
 // ════════════════════════════════════════════════════════════════════════════
 // STATUS-BADGE (kleines Anzeige-Element für UI)

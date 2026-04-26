@@ -147,6 +147,15 @@ export async function deletePhoto(id) {
   return ok;
 }
 
+// ── Public: Meta aktualisieren (caption, notiz, ...) ───────────────────────
+export async function updatePhotoMeta(id, patch) {
+  const rec = await getPhoto(id);
+  if (!rec) return false;
+  const newMeta = { ...(rec.meta || {}), ...patch };
+  await savePhoto(id, rec.blob, newMeta);
+  return true;
+}
+
 // ── Public: Liste ───────────────────────────────────────────────────────────
 export async function listPhotos() {
   const backend = await detectBackend();
