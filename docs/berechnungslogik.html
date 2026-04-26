@@ -114,7 +114,18 @@ canvas{display:block;margin:0 auto;}
 
   <h3>Netze</h3>
   <a onclick="scrollTo_('sec-waermenetz')">12. Warmenetz <span class="tag">Hydraulik</span></a>
-  <a onclick="scrollTo_('sec-stromnetz')">13. Stromnetz <span class="tag">Lastfluss</span></a>
+  <a onclick="scrollTo_('sec-stromnetz')">13. Stromnetz <span class="tag">alt 05b</span></a>
+
+  <h3>Phase 3 + 4 (NEU April 2026)</h3>
+  <a onclick="scrollTo_('sec-asset-system')">13a. Asset-System <span class="tag">Datenmodell</span></a>
+  <a onclick="scrollTo_('sec-strom-recalc')">13b. Strom-Recalc <span class="tag">BFS</span></a>
+  <a onclick="scrollTo_('sec-trassen')">13c. Trassen-Routing <span class="tag">Dijkstra</span></a>
+  <a onclick="scrollTo_('sec-szenarien')">13d. Szenarien <span class="tag">Delta</span></a>
+  <a onclick="scrollTo_('sec-massnahmen')">13e. Maßnahmen <span class="tag">Effektiv</span></a>
+  <a onclick="scrollTo_('sec-trafoopt')">13f. Trafo-Opt <span class="tag">k-Means</span></a>
+  <a onclick="scrollTo_('sec-heatmap')">13g. Heatmap <span class="tag">Kernel</span></a>
+  <a onclick="scrollTo_('sec-fotos')">13h. Foto-System <span class="tag">IndexedDB</span></a>
+  <a onclick="scrollTo_('sec-invest-update')">9b. Invest-Konsolidierung <span class="tag">Bug-Fix</span></a>
 
   <h3>Strom &amp; Emissionen</h3>
   <a onclick="scrollTo_('sec-strom')">14. Strom-Bilanz <span class="tag">PV/Bat</span></a>
@@ -1035,6 +1046,416 @@ Annuitat [&euro;/a] = investGesamt &times; (Annuitatsfaktor + IH-Faktor)</div>
 
   <h4>Auto-Registrierung von Erzeugern</h4>
   <p>Warmepumpen, BHKW und PV-Freiflachen werden automatisch als Einspeise-Knoten erkannt und mit negativer Last (Erzeugung) ins Netz integriert. Die Zuordnung erfolgt uber <code>_autoRegisterErzeugerStromNodes()</code> anhand der Positionen der Erzeuger auf der Karte.</p>
+</div>
+
+<div class="formula" style="background:rgba(249,168,37,.1);border-left:3px solid #f9a825;color:#f9a825;margin-top:16px;">
+⚠ Sektion 13 beschreibt das <b>alte Stromnetz-System</b> (05b-stromnetz.js).
+Seit Phase 3 (April 2026) gibt es einen <b>neuen, vollständigeren Strom-Teil</b> auf Basis
+des Asset-Systems — siehe Sektionen 13a bis 13h unten.
+</div>
+</div>
+
+<!-- ===================== 13a. ASSET-SYSTEM ===================== -->
+<div class="section" id="sec-asset-system">
+<h2>13a. Asset-System (Phase 1, April 2026)</h2>
+<p class="sec-sub">Einheitliches Datenmodell für alle Anlagen (Strom + langfristig auch Wärme). Ersetzt die ~13 parallelen globalen Arrays (lwWp, gasKessel, pellets, …) durch eine zentrale Liste mit <code>domain</code>-Feld.</p>
+
+<h3>Datenstruktur</h3>
+<div class="node" onclick="toggleDetail('d-asset-data')">
+  <span class="badge" style="background:var(--cStrom);">Daten</span>
+  <span class="icon">&#x1F9E9;</span><span class="title">ASSETS — Single Source of Truth</span>
+  <span class="fn">13a-assets-core.js</span>
+</div>
+<div class="detail" id="d-asset-data">
+  <div class="formula">ASSETS = {
+  items:  [ {id, type, domain, lat, lng, name, buildingId, props, baujahr, abrissjahr,
+              massnahmen[], photoIds[], _marker} ],
+  edges:  [ {id, domain, aId, bId, route, qs, parallelCount, baujahr, abrissjahr,
+              massnahmen[], _poly} ],
+  selectedId: null
+}
+
+domain ∈ {'strom', 'waerme', 'hybrid'}
+type ∈ 14 Werte: NAP, Schaltanlage, Trafo, NSHV, UV, Verbraucher,
+                  PV, Wind, Nsa, Batterie, Lade, WP, KWK, Reserve</div>
+
+  <h4>Lebenszyklus</h4>
+  <div class="formula">getAssetStatus(item, year):
+  if baujahr  &amp;&amp; year &lt; baujahr   → 'planned'      (gestrichelt, opacity 0.4)
+  if abrissjahr &amp;&amp; year &gt;= abrissjahr → 'demolished' (graustufen)
+  sonst                                  → 'active'
+
+→ alle Berechnungen filtern auf status === 'active' im Planungsjahr</div>
+
+  <h4>Auto-Create beim Gebäude-Anlegen</h4>
+  <p>Pro neu angelegtem Gebäude erzeugt <code>13d-assets-autocreate</code> automatisch
+  3 Default-Assets: <b>UV</b>, <b>Verbraucher</b>, <b>PV</b> (am Polygon-Schwerpunkt).
+  Bestehende Gebäude (z.B. nach Autosave-Restore) werden über <code>ensureAssetsForAllBuildings()</code>
+  nachgezogen. Duplikat-Schutz vorhanden.</p>
+</div>
+</div>
+
+<!-- ===================== 13b. NEUER STROMNETZ-RECALC ===================== -->
+<div class="section" id="sec-strom-recalc">
+<h2>13b. Strom-Recalc — BFS-Lastfluss (Phase 3.2c)</h2>
+<p class="sec-sub">Neuer Recalc-Algorithmus aus dem Standalone-Elektroteil. Ersetzt die alte 05b-Stromnetz-Berechnung. Worst-Case-Auslegung mit kumulativem Spannungsfall.</p>
+
+<h3>Topologie &amp; BFS</h3>
+<div class="node" onclick="toggleDetail('d-strom-bfs')">
+  <span class="badge" style="background:var(--cStrom);">Algorithmus</span>
+  <span class="icon">&#x1F310;</span><span class="title">Downstream-Last per BFS</span>
+  <span class="fn">15c-stromnetz-calc.js · recalcStromnetz()</span>
+</div>
+<div class="detail" id="d-strom-bfs">
+  <p>Pro Leitung wird die <b>downstream-Last</b> ermittelt: alle Verbraucher/Erzeuger
+  „hinter" der Leitung (vom Trafo aus gesehen). BFS traversiert nur zu Knoten mit
+  <i>höherem oder gleichem TYPE_RANK</i> — verhindert den Rückweg durch parallele
+  Einspeisepunkte (z.B. zwei Trafos an einer NSHV).</p>
+
+  <div class="formula">TYPE_RANK = {
+  NAP:0, Schaltanlage:1, Trafo:2, NSHV:3, UV:4,
+  Verbraucher:5, WP:5, Lade:5, Nsa:5, KWK:5,
+  Wind:6, PV:6, Batterie:6, Reserve:7
+}
+
+bfsDownstream(leitung, loadFn):
+  src = niedrigerer Rang  (versorgungsseitig)
+  sink = höherer Rang
+  visited = {src}
+  queue = [sink]
+  while queue:
+    cur = queue.pop()
+    load += loadFn(cur)  (Verbrauch oder Erzeugung)
+    nb in adj[cur] mit RANK[nb] >= RANK[cur]: queue.push(nb)
+  return load</div>
+
+  <h4>Worst-Case-Strom (Kabelauslegung)</h4>
+  <div class="formula">P_load   = bfsDownstream(lt, assetVerbrauch)    // reine Last [kW]
+P_gen    = bfsDownstream(lt, assetErzeugung)    // reine Einspeisung [kW]
+P_net    = P_load - P_gen                        // Netto (Vorzeichen)
+P_worst  = max(P_load, P_gen)                    // Worst-Case für Querschnitt
+
+I_A      = P_worst·1000 / (√3 · U_ref · cos φ)   // Strom für Auslegung
+I_A_sign = P_net·1000   / (√3 · U_ref · cos φ)   // vorzeichenbehaftet für ΔU
+
+I_max    = I_max[qs] · parallelCount            (NS oder MS aus 14a-Tabelle)
+ausl%    = I_A / I_max · 100</div>
+
+  <h4>Spannungsfall (lokal + kumulativ)</h4>
+  <div class="formula">// Lokal pro Leitung
+R_seg   = R_kabel[qs] · laenge[m] / 1000 / pc   [Ω]
+ΔU_V    = √3 · R_seg · I_A_sign                  // vorzeichenbehaftet!
+ΔU_pct  = ΔU_V / U_ref · 100
+
+// Kumulativ vom Trafo aus (BFS)
+nodeVoltDrop[nextId] = nodeVoltDrop[cur] + ΔU_V
+ΔU_kumPct[lt] = nodeVoltDrop[snkId] / U_N · 100
+
+// Färbung der Leitung
+if ausl > 100:                  rot      ← bottleneck
+elif |ΔU_kumPct| > 5:           rot      ← VDE-Grenze
+elif |ΔU_kumPct| > 3:           gelb
+elif ausl > 80:                 gelb
+else:                           grün
+isReverse = (P_net < -0.5):     gestrichelt (Rückspeisung)</div>
+
+  <h4>Kurzschluss + Auto-Sicherung</h4>
+  <div class="formula">// Trafo-Impedanz
+Z_trafo = (uk%/100) · U_N² / S_N_kVA / 1000      [Ω]
+
+// Einphasiger Kurzschlussstrom am Leitungsende
+I_k = (U_N / √3) / (Z_trafo + R_kabel)
+
+// Auto-Sicherung: kleinste Sicherung wo
+//   (1) ausreichend für Betriebsstrom
+//   (2) thermisch nicht über Kabelbelastbarkeit
+//   (3) Selektivität: I_k >= 5·I_N
+auto = SICHERUNG_A.find(s => s>=I_A && s<=I_max && I_k>=5·s)</div>
+
+  <h4>Trafo-Auslastung Worst-Case</h4>
+  <p>Für jeden Trafo: gerichteter BFS nach unten (RANK steigend) liefert
+  <code>P_down_v</code>, <code>P_down_e</code>. Worst-Case ist
+  <code>max(Bezug, Einspeisung)</code>, nicht Netto — der Trafo muss BEIDE Extremfälle
+  beherrschen (Winternacht + Sommermittag).</p>
+  <div class="formula">P_max = kVA · cos φ
+ausl  = max(P_load, P_gen) / P_max · 100</div>
+</div>
+</div>
+
+<!-- ===================== 13c. TRASSEN-ROUTING ===================== -->
+<div class="section" id="sec-trassen">
+<h2>13c. Trassen-Routing — Dijkstra über Trassen-Graph</h2>
+<p class="sec-sub">Leitungen folgen nicht der Luftlinie sondern einem Pfad durch vorher gezeichnete Trassen (entlang der Straße). Routing per Dijkstra.</p>
+
+<div class="node" onclick="toggleDetail('d-graph')">
+  <span class="badge" style="background:var(--cStrom);">Algorithmus</span>
+  <span class="icon">&#x1F4CD;</span><span class="title">Trassen-Graph + Dijkstra + virtuelle Einstiegsknoten</span>
+  <span class="fn">14c-stromnetz-graph.js · 15b.route()</span>
+</div>
+<div class="detail" id="d-graph">
+  <h4>Graph-Aufbau (buildTrassenGraph)</h4>
+  <div class="formula">// Schritt 1: Basis-Graph aus allen Trassen-Segmenten
+für jede Trasse, jedes Segment (P_i, P_{i+1}):
+  addEdge(node_i, node_{i+1})
+
+// Schritt 2: Cross-Trassen-Snapping
+SNAP_M = 8 m
+für jeden Trassen-Endpunkt ep:
+  Suche nächste fremde Trasse, projiziere ep auf Segment
+  wenn dist &lt; SNAP_M: erzeuge virtuellen Snap-Knoten
+  Original-Kante A↔B durch Kette A→sn1→sn2→…→B ersetzen
+  (Sortierung nach t-Parameter, vermeidet Doppel-Split-Bug)</div>
+
+  <h4>Routing A → B (Dijkstra mit virtuellen Einstiegen)</h4>
+  <div class="formula">route(aId, bId):
+  if same buildingId: return [ptA, ptB]    (direkter Anschluss)
+  if no trassen:      return [ptA, ptB]    (Luftlinie)
+
+  graph = buildTrassenGraph()
+  projA = closestOnTrasse(asA.lat, asA.lng)  // Punkt auf nächster Trasse
+  projB = closestOnTrasse(asB.lat, asB.lng)
+
+  // Virtuelle Einstiegsknoten in Graph einfügen
+  // → verbinden nur mit ihren UNMITTELBAREN Nachbarn auf demselben Segment
+  //   (sonst würde Dijkstra über Eckpunkte und zurück routen — Umweg-Bug)
+  kA = insertVirtual(projA)
+  kB = insertVirtual(projB)
+
+  // Sonderfall: beide auf demselben Segment → direkte Kante
+  if projA.trasseId === projB.trasseId &amp;&amp; projA.segIdx === projB.segIdx:
+    addEdge(kA, kB, dist(projA.pt, projB.pt))
+
+  pfad = dijkstra(graph, kA, kB)
+  return [ptA, projA.pt, ...pfad, projB.pt, ptB]</div>
+</div>
+</div>
+
+<!-- ===================== 13d. SZENARIEN ===================== -->
+<div class="section" id="sec-szenarien">
+<h2>13d. Szenarien als Delta auf dem Bestand (Phase 3.3)</h2>
+<p class="sec-sub">Planungsvarianten ohne Datenduplikation: ein Szenario speichert nur die Unterschiede zum Bestand (neue Items + maskierte Bestand-Items).</p>
+
+<div class="node" onclick="toggleDetail('d-szen')">
+  <span class="badge" style="background:var(--cStrom);">Daten</span>
+  <span class="icon">&#x1F3AF;</span><span class="title">Bestand + Szenario-Delta = aktive Sicht</span>
+  <span class="fn">15e-stromnetz-szenarien.js</span>
+</div>
+<div class="detail" id="d-szen">
+  <div class="formula">Szenario = {
+  id, name, farbe,
+  assets: [...],          // NEU im Szenario
+  leitungen: [...],       // NEU im Szenario
+  removedAssets: [id],    // Bestand-Assets die im Szenario maskiert sind
+  removedLeitungen: [id]
+}
+
+getMergedAssets():
+  if !aktivSzenario: return ASSETS.items
+  return [
+    ...ASSETS.items.filter(a => !removed.has(a.id)),
+    ...sz.assets
+  ]
+
+→ Recalc, SLD, Investplan rufen ALLE getMergedAssets() statt
+  ASSETS.items direkt. Damit greift das aktive Szenario automatisch.</div>
+</div>
+</div>
+
+<!-- ===================== 13e. MAßNAHMEN ===================== -->
+<div class="section" id="sec-massnahmen">
+<h2>13e. Maßnahmen + Effektiv-Werte (Phase 3.4)</h2>
+<p class="sec-sub">Jedes Asset/jede Leitung kann eine Liste von zeitlich datierten Änderungen haben (z.B. „2030: Trafo-Austausch", „2035: Querschnitt erhöhen"). Im Recalc werden alle Maßnahmen ≤ globalYear angewendet.</p>
+
+<div class="node" onclick="toggleDetail('d-massn')">
+  <span class="badge" style="background:var(--cStrom);">Algorithmus</span>
+  <span class="icon">&#x1F527;</span><span class="title">Effektiv-Props nach allen Maßnahmen ≤ Jahr</span>
+  <span class="fn">14b-stromnetz-state.js · 15g-stromnetz-massnahmen.js</span>
+</div>
+<div class="detail" id="d-massn">
+  <div class="formula">Maßnahme = {
+  id, jahr, typ, eigenschaft, wertNeu, sim, kosten, notiz
+}
+  typ ∈ {'Austausch', 'Modifikation'}
+  sim = true ⇒ wirkt im Recalc; false = nur dokumentarisch
+
+getEffectiveAssetProps(asset, year):
+  props   = clone(asset.props)
+  baujahr = asset.baujahr
+  applied = asset.massnahmen
+              .filter(m => m.jahr &lt;= year)
+              .sort((a,b) => a.jahr - b.jahr)
+  for m in applied:
+    if m.typ === 'Austausch': baujahr = m.jahr
+    if m.eigenschaft &amp;&amp; m.wertNeu != null:
+      props[m.eigenschaft] = m.wertNeu
+  return { props, baujahr }</div>
+
+  <p>Recalc nutzt die effektiven Werte statt der Original-Props.
+  Damit kann man im Tool durch die Jahre scrollen und sieht den
+  Plan-Zustand der jeweiligen Phase.</p>
+</div>
+</div>
+
+<!-- ===================== 13f. TRAFO-OPTIMIERUNG ===================== -->
+<div class="section" id="sec-trafoopt">
+<h2>13f. Trafo-Optimierung — k-Means + Voronoi (Phase 3.6)</h2>
+<p class="sec-sub">Bestehende Trafos analysieren, überlastete Zonen identifizieren, neue Trafo-Standorte vorschlagen.</p>
+
+<div class="node" onclick="toggleDetail('d-kmeans')">
+  <span class="badge" style="background:var(--cStrom);">Algorithmus</span>
+  <span class="icon">&#x1F500;</span><span class="title">Auto-k mit Whale-Trennung</span>
+  <span class="fn">15i-stromnetz-clustering.js · findAutoK()</span>
+</div>
+<div class="detail" id="d-kmeans">
+  <div class="formula">findAutoK(allPts, maxKVA, cosPhi, gzf, minUtilPct):
+  maxKW = maxKVA · cosPhi
+
+  // ① Großverbraucher (whales) trennen → Direktanschluss
+  whales = allPts.filter(p => p.peakKW > maxKW)
+  normals = allPts.filter(p => p.peakKW &lt;= maxKW)
+
+  // ② Auto-k: kleinstes k wo alle Cluster ≤ maxKW
+  for k from 1 to min(20, normals.length):
+    clusters = kMeansCluster(normals, k, runs=5, gzf)
+    if all(cl.peakKW &lt;= maxKW for cl in clusters):
+      return mergeUnderloaded([whales..., clusters...], minUtilPct)
+
+  // ③ Fallback wenn auch maxK nicht reicht
+  return { capacityExceeded: true, ... }</div>
+
+  <h4>k-Means++ (gewichtet)</h4>
+  <div class="formula">// 1. Zentroide initialisieren (deterministisch oder probabilistisch)
+//    runs > 1 → mehrere probabilistische Läufe, bestes Ergebnis (min-max-Peak)
+
+// 2. Iteration (Lloyd's algorithm)
+für maxIter:
+  buckets = [k]
+  jedem Punkt p den nächsten Zentroid zuweisen
+  neue Zentroide = gewichteter Schwerpunkt
+                 = Σ(p.lat · p.weight) / Σ(p.weight)
+  if keine Änderung > 1e-10: break
+
+// Cluster-Statistik
+cl.peakKW = max(Σ p.loadKW, Σ p.genKW) · gzf</div>
+
+  <h4>Voronoi-Zonen (Halbebenen-Clipping)</h4>
+  <div class="formula">// Eigene Implementierung (kein external dep), O(n²)
+computeVoronoi(seeds, bbox):
+  für jeden seed_i:
+    poly = bbox-Polygon
+    für jeden seed_j ≠ i:
+      poly = clip(poly, halbebene_näher_zu_i_als_zu_j)
+    return { seed: seed_i, polygon: poly }
+
+// Clip-Funktion: Sutherland-Hodgman auf Mittellinie zwischen seed_i, seed_j</div>
+</div>
+</div>
+
+<!-- ===================== 13g. HEATMAP ===================== -->
+<div class="section" id="sec-heatmap">
+<h2>13g. Heatmap-Algorithmus (Phase 3.6)</h2>
+<p class="sec-sub">Last- und Erzeugungs-Hotspots als Pixel-Relief mit Höhenlinien (Marching Squares).</p>
+
+<div class="node" onclick="toggleDetail('d-heat')">
+  <span class="badge" style="background:var(--cStrom);">Algorithmus</span>
+  <span class="icon">&#x1F525;</span><span class="title">Gauß-Kernel-Density auf Pixel-Grid</span>
+  <span class="fn">15j-stromnetz-heatmap.js</span>
+</div>
+<div class="detail" id="d-heat">
+  <div class="formula">// Pixel-Grid (cellPx=10) auf aktuelle Map-View
+gw = ceil(viewport.width / cellPx)
+gh = ceil(viewport.height / cellPx)
+field = Float32Array(gw · gh)
+
+// Pro Lastpunkt: Gauß-Kernel auf alle Cells in Reichweite
+für jeden Lastpunkt p mit kw > 0:
+  σ_px    = max(14, kernelRadiusM_to_px(p.lat) · 0.6)
+  reach   = 3·σ
+  für jede Cell (gx, gy) im Reach:
+    d²    = (cell.center - p.position)²
+    field[gy·gw + gx] += kw · exp(-d² / (2σ²))
+
+// Färbung
+für jede Cell:
+  t = (field[i] / max(field))^0.72         (Gamma-Korrektur)
+  rgb = interpolateGradient(t, kind)       (rot=load, blau=gen)
+  alpha = clamp(t · maxAlpha, minAlpha, maxAlpha)</div>
+
+  <h4>Höhenlinien (Marching Squares)</h4>
+  <p>Optional: 5 Höhenlinien-Level (22, 40, 58, 74, 90 % vom Maximum). Klassischer Marching-Squares-Algorithmus mit Lookup-Tabelle für die 16 möglichen Cell-Konfigurationen.</p>
+</div>
+</div>
+
+<!-- ===================== 13h. FOTO-SYSTEM ===================== -->
+<div class="section" id="sec-fotos">
+<h2>13h. Foto-Anhang (Phase 4)</h2>
+<p class="sec-sub">Fotos zu Anlagen oder Gebäuden — automatisch komprimiert, browser-spezifisch persistiert.</p>
+
+<div class="node" onclick="toggleDetail('d-foto-store')">
+  <span class="badge" style="background:var(--cData);">Persistenz</span>
+  <span class="icon">&#x1F4F7;</span><span class="title">Auto-Detect-Storage mit Fallback-Kette</span>
+  <span class="fn">17a-fotos-storage.js</span>
+</div>
+<div class="detail" id="d-foto-store">
+  <div class="formula">Backend-Auswahl beim ersten Aufruf:
+  ① IndexedDB (Firefox file://, Chrome/Edge http(s)/localhost)
+     → praktisch unbegrenzt (mehrere GB), echtes Auto-Save
+  ② localStorage (Edge file://, IndexedDB blockiert)
+     → ~5–10 MB Limit, ~20 komprimierte Fotos
+  ③ RAM (letzter Fallback)
+     → lebt nur in der Tab-Session
+
+Persistenz pro Foto:
+  IndexedDB:    {id, blob, meta} als Object
+  localStorage: blob → Base64-dataURL → JSON-String
+  RAM:          Map(id → {blob, meta})</div>
+
+  <h4>Kompression</h4>
+  <div class="formula">compressImage(file):
+  bitmap = createImageBitmap(file)         // nativer Decoder
+  scale  = min(1, 1024 / max(width, height))
+  canvas: drawImage(bitmap, scaled)
+  blob   = canvas.toBlob('image/jpeg', 0.75)
+
+→ Handy-Foto 3 MB → ~150–250 KB
+→ 100 Fotos × 200 KB = 20 MB pro Projekt
+→ JSON-Export mit Base64 → ~27 MB</div>
+
+  <h4>Reminder + Backup</h4>
+  <p>Nach jeweils 5 neu hinzugefügten Fotos: Toast „💾 5 neue Fotos seit letztem Speichern" mit Direkt-Klick-Button. Beim manuellen JSON-Export werden alle Fotos als Base64 mit eingebettet (siehe 03c-gebaeude-io.<code>_buildProjectDataWithPhotos</code>). Restore klärt orphan-Fotos auf.</p>
+</div>
+</div>
+
+<!-- ===================== INVESTKOSTEN-KONSOLIDIERUNG ===================== -->
+<div class="section" id="sec-invest-update">
+<h2>9b. Investkosten — Single Source of Truth (Update April 2026)</h2>
+<p class="sec-sub">Bug-Fix der Doppelstruktur zwischen alter CalcEngine und neuem Asset-System.</p>
+
+<div class="node" onclick="toggleDetail('d-inv-fix')">
+  <span class="badge" style="background:var(--cWirt);">Wirtschaft</span>
+  <span class="icon">&#x1F4B0;</span><span class="title">Investkosten-Mapping ASSET_CFG → CalcEngine</span>
+  <span class="fn">15h-stromnetz-invest.js · calcAssetKosten()</span>
+</div>
+<div class="detail" id="d-inv-fix">
+  <p>Vorher: zwei parallele Listen (CalcEngine.INVEST_KURVEN vs.
+  KOSTEN_CFG.assets) lieferten unterschiedliche Werte für PV/WP/Batterie.
+  Beispiel WP 10 kW: 8.000 € vs. 37.000 €.</p>
+
+  <div class="formula">calcAssetKosten(asset):
+  // ① Tech mit CalcEngine-Pendant: KWW-Kurven sind Single Source of Truth
+  if asset.type === 'PV':       return CalcEngine.getPvInvestPerKwp(kWp)·kWp
+  if asset.type === 'WP':       return CalcEngine.investEurProKw('LuftWP', kW)·kW
+  if asset.type === 'KWK':      return CalcEngine.investEurProKw('BHKW',   kW_th)·kW_th
+
+  // ② Batterie: gleiche Quelle wie Optimizer/07b
+  if asset.type === 'Batterie':
+    return kWh · (DOM-Input opt-bat-invest || OPT_INVEST_DEFAULT.bat)
+
+  // ③ Strom-Infrastruktur (NAP, Trafo, NSHV, UV, Schaltanlage,
+  //                         Verbraucher, Lade, Nsa, Reserve)
+  //    → KOSTEN_CFG.assets (kein CalcEngine-Pendant)
+  cfg = KOSTEN_CFG.assets[type]
+  return cfg.basis + cfg.perKVA·kVA + cfg.perKW·kW + cfg.perAbgang·n + ...</div>
 </div>
 </div>
 
