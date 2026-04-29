@@ -19,10 +19,12 @@ map.getPane('netzPane').style.zIndex = 450;
 // Invalidate map size after left panel renders (flex layout needs recalc)
 setTimeout(() => map.invalidateSize(), 300);
 setTimeout(() => map.invalidateSize(), 1000);
-window.fliessgewaesserLayerGroup = L.layerGroup();
-window.lwWpLayerGroup = L.layerGroup();
-window.lwWpSchallLayerGroup = L.layerGroup();
-window.erzeugerIconLayerGroup = L.layerGroup();
+// Layer-Gruppen direkt an die Karte hängen — Sichtbarkeit über clearLayers/addLayer
+// statt addTo(map)/removeLayer(map). Vermeidet hasLayer-Edge-Cases im Dev-Modus.
+window.fliessgewaesserLayerGroup = L.layerGroup().addTo(map);
+window.lwWpLayerGroup = L.layerGroup().addTo(map);
+window.lwWpSchallLayerGroup = L.layerGroup().addTo(map);
+window.erzeugerIconLayerGroup = L.layerGroup().addTo(map);
 export let currentTile = 'osm';
 export function toggleTile(){
   if(currentTile==='osm'){ map.removeLayer(osmTile); esriTile.addTo(map); currentTile='esri'; document.getElementById('btn-tile').textContent='🗺 OSM'; }
