@@ -3,7 +3,11 @@
 // Reihenfolge bestimmt, welcher Erzeuger die Grundlast trägt.
 // Neuzugänge kommen an letzter Stelle (Spitzenlast).
 
-import { bhkw, cacheVariantResultsDebounced, fernwaerme, fliessgewaesser, gasKessel, gebaeude, geoThermie, globalYear, heizhackschnitzel, heizoelKessel, isExcluded, lwWp, pelletsKessel, solarthermieAktiv, stromEdges, stromEmF, stromEmFLZ, stromNodes, stromkessel, thermSpeicherAktiv } from './01-globals-varianten.js';
+// Erzeuger-Bindings (lwWp, gasKessel, …) nicht importieren — siehe isErzeugerAktiv:
+// Werte werden via bare-name-assignment auf globalThis geschrieben, Imports
+// blieben sonst null. Bare Reads in diesem Modul resolven via Strict-Mode-Lookup
+// automatisch auf window.X (sobald main.js die Properties exponiert).
+import { cacheVariantResultsDebounced, gebaeude, globalYear, isExcluded, stromEdges, stromEmF, stromEmFLZ, stromNodes } from './01-globals-varianten.js';
 import { getComputedStats } from './02b-gebaeude.js';
 import { _epKey, closeErzeugerPopup, redrawErzeugerIcons, showErzeugerPopup } from './03a-erzeuger.js';
 import { calcGeoThermie } from './03b-netz.js';
@@ -578,8 +582,8 @@ export function _deckungen8760(ss) {
   const skEta      = (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100;
   const lwwpMinCop = parseFloat(document.getElementById('lwwp-min-cop')?.value) || 0;
 
-  const thSp      = thermSpeicherAktiv ? getThermSpeicherParams() : null;
-  const stProfile = solarthermieAktiv ? makeStProfile8760() : null;
+  const thSp      = window.thermSpeicherAktiv ? getThermSpeicherParams() : null;
+  const stProfile = window.solarthermieAktiv ? makeStProfile8760() : null;
 
   // ── Kern-Dispatch aufrufen ──
   const r = _dispatchCore({

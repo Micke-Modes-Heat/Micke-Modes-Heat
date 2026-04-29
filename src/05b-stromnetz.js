@@ -5,7 +5,8 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ── Styled Modal-Dialoge ────────────────────────────────────────
-import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, trassePoints, trasseSegments } from './01-globals-varianten.js';
+// Erzeuger-Bindings (bhkw, geoThermie, lwWp) nicht importieren — siehe 06c.
+import { areaLatLngs, freiflaechen, gebaeude, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { getGebStromMwh, map } from './02b-gebaeude.js';
 import { polygonAreaM2, polygonCenter } from './02c-karte-werkzeuge.js';
 import { setNetzVisible } from './03b-netz.js';

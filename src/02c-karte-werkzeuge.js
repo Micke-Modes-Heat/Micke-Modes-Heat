@@ -1,5 +1,8 @@
 // ── 02c-karte-werkzeuge.js — Zeichenwerkzeuge, Trasse, Fließgewässer, LWWP, Wirtschaftlichkeit ──
-import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, pelletsKessel, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
+// Erzeuger-Bindings (pelletsKessel, heizhackschnitzel, fernwaerme) nicht
+// importieren — werden via bare-name-assignment auf globalThis geschrieben,
+// Imports blieben sonst null. Bare Reads resolven auf window.X.
+import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getEffectiveRMax, getSizeRange, getSizeVal, highlightCard, map, renameGebaeude } from './02b-gebaeude.js';
 import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, redrawVerbindungslinien, windSvg } from './03a-erzeuger.js';
 import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
