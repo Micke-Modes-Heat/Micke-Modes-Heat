@@ -76,6 +76,9 @@ const modules = [
 
 for (const mod of modules) {
   for (const [key, value] of Object.entries(mod)) {
-    window[key] = value;
+    // Nicht überschreiben wenn ein Modul-Side-Effect die Property schon
+    // belegt hat (z.B. 02b setzt window.lwWpLayerGroup = L.layerGroup()).
+    // Sonst würden 01-globals' null-Defaults frisch belegte Layer-Groups platt machen.
+    if (window[key] === undefined) window[key] = value;
   }
 }
