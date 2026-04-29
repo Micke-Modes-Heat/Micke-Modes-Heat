@@ -1371,16 +1371,21 @@ export function setLwWpVisible(visible) {
 
 export function updateLwWpVisibility() {
   if (!window.lwWp) return;
+  // Lazy-init falls 02b-gebaeude.js Side-Effect noch nicht lief (Modul-Lade-Race)
+  if (!window.lwWpLayerGroup) window.lwWpLayerGroup = L.layerGroup();
+  if (!window.lwWpSchallLayerGroup) window.lwWpSchallLayerGroup = L.layerGroup();
+  const lg = window.lwWpLayerGroup;
+  const sg = window.lwWpSchallLayerGroup;
   if (window.lwWpVisible) {
-    if (!map.hasLayer(window.lwWpLayerGroup)) window.lwWpLayerGroup.addTo(map);
+    if (!map.hasLayer(lg)) lg.addTo(map);
     if (window.lwWpSchallVisible) {
-      if (!map.hasLayer(window.lwWpSchallLayerGroup)) window.lwWpSchallLayerGroup.addTo(map);
+      if (!map.hasLayer(sg)) sg.addTo(map);
     } else {
-      if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
+      if (map.hasLayer(sg)) map.removeLayer(sg);
     }
   } else {
-    if (map.hasLayer(window.lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
-    if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
+    if (map.hasLayer(lg)) map.removeLayer(lg);
+    if (map.hasLayer(sg)) map.removeLayer(sg);
   }
 }
 
