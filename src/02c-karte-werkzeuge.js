@@ -1405,6 +1405,13 @@ export function clearLwWp() {
   document.getElementById('lwwp-schall-visible').checked = true;
   window.lwWpVisible = true;
   window.lwWpSchallVisible = true;
+  // Button zurücksetzen — sonst bleibt er auf 'Position verschieben'
+  const placeBtn = document.getElementById('btn-place-lwwp');
+  if (placeBtn) {
+    placeBtn.textContent = 'Auf Karte platzieren';
+    placeBtn.classList.remove('active');
+  }
+  window.isPlacingLwWp = false;
   redrawErzeugerIcons();
 }
 

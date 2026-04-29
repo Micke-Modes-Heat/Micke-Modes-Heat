@@ -688,20 +688,23 @@ export function setLeftTab(tabId) {
   document.querySelectorAll('#left-panel .lp-content').forEach(c => c.classList.toggle('active', c.id === 'lp-' + tabId));
   const titles = { gebiet: 'Gebiet', netz: 'Netz', erzeuger: 'Erzeuger', ergebnis: 'Ergebnis' };
   document.getElementById('lp-title').textContent = titles[tabId] || tabId;
-  // Beim Verlassen des Netz-Tabs: beide Netze normalisieren
+  // Beim Verlassen des Netz-Tabs: beide Netze normalisieren + Anlagen-Icons aus
   if (tabId !== 'netz') {
     if (stromNetzSubTab === 'strom') {
       setStromNetzVisible(false);
     }
     setNetzVisible(true);
+    if (typeof window.setAssetLayerVisible === 'function') window.setAssetLayerVisible(false);
   } else {
-    // Netz-Tab betreten: Sichtbarkeit an Sub-Tab anpassen
+    // Netz-Tab betreten: Sichtbarkeit an Sub-Tab anpassen, Anlagen-Icons nur im Strom-Sub-Tab
     if (stromNetzSubTab === 'strom') {
       setNetzVisible(false);
       setStromNetzVisible(true);
+      if (typeof window.setAssetLayerVisible === 'function') window.setAssetLayerVisible(true);
     } else {
       setStromNetzVisible(false);
       setNetzVisible(true);
+      if (typeof window.setAssetLayerVisible === 'function') window.setAssetLayerVisible(false);
     }
   }
   setTimeout(function() { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
