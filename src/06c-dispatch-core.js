@@ -22,17 +22,19 @@ window._autoGkResult  = null; // { leistungKw, deckungPct, waermeMwh } — immer
 // ERZEUGER_CFG → src/config/erzeuger-cfg.js
 
 export function isErzeugerAktiv(key) {
+  // window.X statt importierter Bindings, da 03a/01 Erzeuger via bare-name
+  // assignment auf globalThis schreiben — die ES-Module-Binding bleibt sonst null.
   switch (key) {
-    case 'lwwp':       return !!lwWp;
-    case 'fg':         return !!fliessgewaesser;
-    case 'geo':        return !!geoThermie;
-    case 'fernwaerme': return !!fernwaerme;
-    case 'pellets':    return !!pelletsKessel;
-    case 'hhs':        return !!heizhackschnitzel;
-    case 'heizoel':    return !!heizoelKessel;
-    case 'gaskessel':  return !!gasKessel;
-    case 'bhkw':        return !!bhkw;
-    case 'stromkessel': return !!stromkessel;
+    case 'lwwp':       return !!window.lwWp;
+    case 'fg':         return !!window.fliessgewaesser;
+    case 'geo':        return !!window.geoThermie;
+    case 'fernwaerme': return !!window.fernwaerme;
+    case 'pellets':    return !!window.pelletsKessel;
+    case 'hhs':        return !!window.heizhackschnitzel;
+    case 'heizoel':    return !!window.heizoelKessel;
+    case 'gaskessel':  return !!window.gasKessel;
+    case 'bhkw':        return !!window.bhkw;
+    case 'stromkessel': return !!window.stromkessel;
     default:            return false;
   }
 }
