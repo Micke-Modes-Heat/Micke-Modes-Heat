@@ -1169,8 +1169,8 @@ I_k = (U_N / √3) / (Z_trafo + R_kabel)
 // Auto-Sicherung: kleinste Sicherung wo
 //   (1) ausreichend für Betriebsstrom
 //   (2) thermisch nicht über Kabelbelastbarkeit
-//   (3) Selektivität: I_k >= 5·I_N
-auto = SICHERUNG_A.find(s => s>=I_A && s<=I_max && I_k>=5·s)</div>
+//   (3) Selektivität: I_k &gt;= 5·I_N
+auto = SICHERUNG_A.find(s =&gt; s&gt;=I_A &amp;&amp; s&lt;=I_max &amp;&amp; I_k&gt;=5·s)</div>
 
   <h4>Trafo-Auslastung Worst-Case</h4>
   <p>Für jeden Trafo: gerichteter BFS nach unten (RANK steigend) liefert
