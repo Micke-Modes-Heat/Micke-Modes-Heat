@@ -241,7 +241,7 @@ async function queryOsmRoadType(latA, lngA, latB, lngB) {
   return 'mittel';
 }
 
-async function autoAssignEdgeCosts() {
+export async function autoAssignEdgeCosts() {
   // Called after autoGenerateNetz — queries road type for each edge in background
   for (const e of netzEdges) {
     if (e.kostOverride) continue; // don't overwrite manual settings
