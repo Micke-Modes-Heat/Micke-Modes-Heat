@@ -1,5 +1,5 @@
 // ── 02c-karte-werkzeuge.js — Zeichenwerkzeuge, Trasse, Fließgewässer, LWWP, Wirtschaftlichkeit ──
-import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, lwWpLayerGroup, lwWpSchallLayerGroup, netzEdges, pelletsKessel, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
+import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, pelletsKessel, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getEffectiveRMax, getSizeRange, getSizeVal, highlightCard, map, renameGebaeude } from './02b-gebaeude.js';
 import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, redrawVerbindungslinien, windSvg } from './03a-erzeuger.js';
 import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
@@ -1173,8 +1173,8 @@ export function placeLwWpAt(latlng) {
 }
 
 export function redrawLwWp() {
-  if (!lwWpLayerGroup) return;
-  lwWpLayerGroup.clearLayers();
+  if (!window.lwWpLayerGroup) return;
+  window.lwWpLayerGroup.clearLayers();
   if (!window.lwWp || window.lwWp.lat == null || window.lwWp.lng == null) return;
   const pt = L.latLng(window.lwWp.lat, window.lwWp.lng);
   const leistung = window.lwWp.leistungKw;
@@ -1202,14 +1202,14 @@ export function redrawLwWp() {
   const f0 = fb(actF());
   const rect = L.rectangle([sw, ne], { color: '#388e3c', weight: 2, fillColor: f0.c, fillOpacity: f0.o })
     .bindTooltip(`Platzbedarf: ${platzM2.toFixed(1)} m² min. · ${rl.toFixed(1)}×${rw.toFixed(1)} m`, {sticky:true})
-    .addTo(lwWpLayerGroup);
-  lwWpSchallLayerGroup.clearLayers();
+    .addTo(window.lwWpLayerGroup);
+  window.lwWpSchallLayerGroup.clearLayers();
   const schallStufen = [55, 50, 45, 40, 35];
   const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
   for (let i = schallStufen.length - 1; i >= 0; i--) {
     const r = lwWpSchallRadiusM(lwa, schallStufen[i]);
     if (r > 0.5 && r < 500) {
-      const circle = L.circle(pt, { radius: r, color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12 }).addTo(lwWpSchallLayerGroup);
+      const circle = L.circle(pt, { radius: r, color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12 }).addTo(window.lwWpSchallLayerGroup);
       circle.bindTooltip('', {sticky: true, direction: 'top', opacity: 0.9});
       circle.on('mousemove', ev => {
         const d = pt.distanceTo(ev.latlng);
@@ -1239,34 +1239,34 @@ export function redrawLwWp() {
     redrawLwWp();
   }
   // Seitengriffe: N S E W
-  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   nH.on('drag', function() { const lat = this.getLatLng().lat; if (lat > sw.lat + 3 * latPerM) { ne.lat = lat; upRect(); } });
   nH.on('dragend', done);
-  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   sH.on('drag', function() { const lat = this.getLatLng().lat; if (lat < ne.lat - 3 * latPerM) { sw.lat = lat; upRect(); } });
   sH.on('dragend', done);
-  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   eH.on('drag', function() { const lng = this.getLatLng().lng; if (lng > sw.lng + 3 * lngPerM) { ne.lng = lng; upRect(); } });
   eH.on('dragend', done);
-  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   wH.on('drag', function() { const lng = this.getLatLng().lng; if (lng < ne.lng - 3 * lngPerM) { sw.lng = lng; upRect(); } });
   wH.on('dragend', done);
   // Eckengriffe: NE NW SE SW
-  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   neH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   neH.on('dragend', done);
-  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   nwH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   nwH.on('dragend', done);
-  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   seH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   seH.on('dragend', done);
-  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   swH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   swH.on('dragend', done);
   // Hauptmarker (Gerät verschieben) — groß genug um auch ohne Zoom greifbar zu sein
   const wpIcon = L.divIcon({ className: '', html: '<div style="width:32px;height:32px;background:rgba(56,142,60,0.5);border:2px solid #66bb6a;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 0 8px rgba(102,187,106,0.5);">' + windSvg('#c8e6c9',17,14) + '</div>', iconSize: [32,32], iconAnchor: [16,16] });
-  const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(lwWpLayerGroup);
+  const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(window.lwWpLayerGroup);
   marker.on('dragend', function() {
     window.lwWp.lat = marker.getLatLng().lat;
     window.lwWp.lng = marker.getLatLng().lng;
@@ -1372,15 +1372,15 @@ export function setLwWpVisible(visible) {
 export function updateLwWpVisibility() {
   if (!window.lwWp) return;
   if (window.lwWpVisible) {
-    if (!map.hasLayer(lwWpLayerGroup)) lwWpLayerGroup.addTo(map);
+    if (!map.hasLayer(window.lwWpLayerGroup)) window.lwWpLayerGroup.addTo(map);
     if (window.lwWpSchallVisible) {
-      if (!map.hasLayer(lwWpSchallLayerGroup)) lwWpSchallLayerGroup.addTo(map);
+      if (!map.hasLayer(window.lwWpSchallLayerGroup)) window.lwWpSchallLayerGroup.addTo(map);
     } else {
-      if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
+      if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
     }
   } else {
-    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(lwWpLayerGroup);
-    if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
+    if (map.hasLayer(window.lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
+    if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
   }
 }
 
@@ -1392,13 +1392,13 @@ export function setSchallVisible(visible) {
 export function clearLwWp() {
   window.lwWp = null;
   moBeiDeaktivierung('lwwp');
-  if (lwWpLayerGroup) {
-    lwWpLayerGroup.clearLayers();
-    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(lwWpLayerGroup);
+  if (window.lwWpLayerGroup) {
+    window.lwWpLayerGroup.clearLayers();
+    if (map.hasLayer(window.lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
   }
-  if (lwWpSchallLayerGroup) {
-    lwWpSchallLayerGroup.clearLayers();
-    if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
+  if (window.lwWpSchallLayerGroup) {
+    window.lwWpSchallLayerGroup.clearLayers();
+    if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
   }
   document.getElementById('lwwp-data-section').style.display = 'none';
   document.getElementById('lwwp-visible').checked = true;
