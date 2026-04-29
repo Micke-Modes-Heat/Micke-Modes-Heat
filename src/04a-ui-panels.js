@@ -1,7 +1,9 @@
 // ── 04a-ui-panels.js — Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold ──
 // NUTZUNG_DEFAULTS → src/config/erzeuger-cfg.js
 
-import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, stromNetzSubTab, variantResults } from './01-globals-varianten.js';
+// areaPolygon, activeVariantId, currentMode, stromNetzSubTab NICHT importieren —
+// werden via window.X reassigned, Imports blieben sonst stale.
+import { _getEtaMap, gasEmF, gebaeude, globalYear, netzEdges, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
 import { _invalidateStats, getComputedStats, map } from './02b-gebaeude.js';
 import { updateViz } from './02c-karte-werkzeuge.js';

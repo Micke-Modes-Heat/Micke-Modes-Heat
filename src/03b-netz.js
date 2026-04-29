@@ -1,6 +1,8 @@
 // ── 03b-netz.js — Netzplanung (Geothermie, Polygon-Zeichnen, Panel-Mgmt, OSM, Netzgraph, Strang-Report, Rohr-BOM) ──
 // ── Geothermie-Sondenfeld ────────────────────────────────────────────────────
-import { areaPolygon, gebaeude, globalYear, isDrawingTrasse, isExcluded, isPlacingLwWp, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
+// areaPolygon, isDrawingTrasse, isPlacingLwWp NICHT importieren — werden via
+// window.X = … reassigned, Imports blieben sonst stale null.
+import { gebaeude, globalYear, isExcluded, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 import { updateNetzColorLegend } from './02a-netz-physik.js';
 import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
 import { clearArea, polygonAreaM2, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
