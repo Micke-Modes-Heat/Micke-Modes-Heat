@@ -1,0 +1,110 @@
+═══════════════════════════════════════════════════════════════════
+ENERGIEPLANUNGS-TOOL — Übertragung auf einen anderen PC
+═══════════════════════════════════════════════════════════════════
+
+Drei Optionen, je nachdem was du brauchst. Empfehlung: Option B
+(USB-/Cloud-Datei) — funktioniert immer, auch wenn der Ziel-PC
+kein Internet hat.
+
+───────────────────────────────────────────────────────────────────
+ANTWORT auf "kann ich das einfach so kopieren?"
+───────────────────────────────────────────────────────────────────
+Ja — aber NICHT den `node_modules`-Ordner mitkopieren (~150 MB,
+unnötig, wird auf dem neuen PC mit `npm install` neu erzeugt).
+Alles andere (src/, package.json, index.html, dist/, …) ist
+einfach kopierbar.
+
+
+═══════════════════════════════════════════════════════════════════
+OPTION A — Über GitHub (am elegantesten, braucht Internet)
+═══════════════════════════════════════════════════════════════════
+
+VORSICHT: Es gibt aktuell uncommittete Änderungen auf diesem PC
+(Geothermie-Loop-Fix + Live-Modus-Fix von gestern Abend).
+Erst committen + pushen, sonst landen sie nicht beim anderen PC!
+
+Auf DIESEM PC im Terminal:
+
+   cd /home/konstantin/energieplanung/modular
+   git status                                  # Erstmal anschauen
+   git add -A
+   git commit -m "Fix: Geothermie-Loop + Live-Modus Dev-Bug"
+   git push origin phase3-stromteil-port
+
+Auf dem ANDEREN PC im Terminal (einmalig einrichten):
+
+   cd ~/                                       # oder wo du willst
+   git clone https://github.com/HansCodemann/energieplanung.git
+   cd energieplanung/modular
+   git checkout phase3-stromteil-port
+   npm install                                 # dauert 1-2 Min
+   npm run dev                                 # Tool startet auf
+                                                # http://localhost:5173
+
+Spätere Updates auf dem anderen PC dann nur noch:
+
+   cd ~/energieplanung/modular
+   git pull
+   npm run dev
+
+
+═══════════════════════════════════════════════════════════════════
+OPTION B — Als Archivdatei (USB-Stick / Cloud-Upload)
+═══════════════════════════════════════════════════════════════════
+
+Funktioniert auch ohne Internet/Git. Erstellt ein .tar.gz im
+Home-Ordner (~15 MB ohne node_modules).
+
+Auf DIESEM PC im Terminal:
+
+   cd /home/konstantin
+   tar --exclude='energieplanung/modular/node_modules' \
+       --exclude='energieplanung/modular/.git' \
+       -czf ~/energieplanung-transfer.tar.gz \
+       energieplanung/
+
+Die Datei ~/energieplanung-transfer.tar.gz auf USB-Stick kopieren
+(oder per Cloud-Sync hochladen) und auf den anderen PC ziehen.
+
+Auf dem ANDEREN PC im Terminal (Linux):
+
+   cd ~/                                       # Zielordner wählen
+   tar -xzf ~/Downloads/energieplanung-transfer.tar.gz
+   cd energieplanung/modular
+   npm install                                 # einmalig nötig
+   npm run dev
+
+
+═══════════════════════════════════════════════════════════════════
+OPTION C — Nur die fertige App (kein npm/node auf Ziel-PC nötig)
+═══════════════════════════════════════════════════════════════════
+
+Wenn der andere PC das Tool nur BENUTZEN soll (nicht weiterent-
+wickeln), reicht eine einzige HTML-Datei. Per Doppelklick startbar,
+keine Installation, kein Server.
+
+Auf DIESEM PC:
+
+   cd /home/konstantin/energieplanung/modular
+   node build-singlefile.mjs
+   # erzeugt → /home/konstantin/energieplanung/modular/dist/index.html
+
+Diese eine Datei (~1.6 MB) auf USB / Cloud kopieren. Auf dem
+anderen PC einfach Doppelklick → öffnet sich im Browser.
+
+Hinweis: localStorage Auto-Save funktioniert dann pro Browser
+auf dem Ziel-PC — Projekte werden NICHT zwischen den PCs synchroni-
+siert. Wenn du synchron arbeiten willst, nutze Option A oder B.
+
+
+═══════════════════════════════════════════════════════════════════
+WAS WIRD GEBRAUCHT auf dem Ziel-PC?
+═══════════════════════════════════════════════════════════════════
+
+Option A & B (volle Entwicklungsumgebung):
+  - Git (für Option A)
+  - Node.js + npm (Version 18+)  →  https://nodejs.org
+  - Ein moderner Browser (Chrome/Firefox/Edge)
+
+Option C (nur App):
+  - Nur ein moderner Browser. Sonst nichts.

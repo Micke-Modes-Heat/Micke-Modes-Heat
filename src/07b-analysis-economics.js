@@ -82,20 +82,26 @@ export function _calcKostenShared(p) {
   // Solarthermie
   if ((extra.stM2||0) > 0)  add('solarthermie', Math.round(extra.stM2*300), {n:25,inst:1.0,wart:1.0,bedien:0});
 
-  // Wärmespeicher
-  if ((extra.optSpeicherVol||0) > 0) {
+  // Wärmespeicher / Pauschal-Puffer (Winner-takes-all)
+  // Pauschal-Puffer-Mindestmaß: 1 kWh pro kW Erzeuger-Gesamtleistung (= 1h Volllast in Speicher)
+  // Wenn Optimizer-Speicher größer ist, ersetzt er den Pauschal komplett.
+  // Wenn er kleiner ist, bleibt der Pauschal stehen und der Optimizer-Speicher wird NICHT zusätzlich verrechnet.
+  var pauschalPufferKwh = sumKw * 1;
+  var optSpeicherKwh = (extra.optSpeicherVol||0) * 1.16 * (extra.tsDt||40);
+  if (optSpeicherKwh > pauschalPufferKwh) {
     var vol = extra.optSpeicherVol;
     var eurKwh;
     if (extra.tsTyp==='saisonal') eurKwh = 40;
     else if (extra.tsTyp==='gross') eurKwh = 80;
     else eurKwh = vol > 50 ? 60 : vol > 20 ? 70 : vol > 5 ? 80 : 100;
-    add('thermSpeicher', Math.round(vol * 1.16 * (extra.tsDt||40) * eurKwh), {n:20,inst:1.0,wart:0.5,bedien:0});
+    add('thermSpeicher', Math.round(optSpeicherKwh * eurKwh), {n:20,inst:1.0,wart:0.5,bedien:0});
+  } else if (sumKw > 0) {
+    add('puffer', Math.round(pauschalPufferKwh * 25), {n:20,inst:1.0,wart:1.0,bedien:0});
   }
 
   // Nebenkomponenten
   var combustKw = (pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw.bhkw||0);
   if (combustKw > 0.1)     add('schornstein', Math.round(combustKw*60), {n:40,inst:1.0,wart:2.0,bedien:0});
-  if (sumKw > 0)            add('puffer', Math.round(sumKw*25*7/1000)*1000, {n:20,inst:1.0,wart:1.0,bedien:0});
   var schallKw = (pKw.lwwp||0)+(pKw.bhkw||0);
   if (schallKw > 0.1)      add('schallschutz', Math.round(schallKw*75), {n:25,inst:0.5,wart:0.5,bedien:0});
   var bioKw = (pKw.pellets||0)+(pKw.hhs||0);
@@ -135,6 +141,12 @@ export function _calcKostenShared(p) {
   var pvEigenMwh = pv.eigenMwh || 0;
   var pvEinspMwh = pv.einspMwh || 0;
 
+  // PV-Eigenverbrauch im Heizsystem-Score: maximal so viel wie WP+SK an Strom brauchen.
+  // Restanteil "fließt ans Quartier" und ist bewusst NICHT als Heizsystem-Ersparnis gerechnet
+  // (echte Sektorkopplung wäre ein größerer Refactor). Dieser Cap entspricht Variante B des
+  // Optimizer-Refactors: PV-Vorteil ungeteilt dem Heizsystem zuschlagen, soweit es Bedarf hat.
+  var pvAbzugMaxMwh = Math.min(pvEigenMwh, wpSkStromMwh);
+
   var energieJk = 0;
   var energyRows = [];
   for (var _j=0; _j<erzList.length; _j++) {
@@ -144,13 +156,13 @@ export function _calcKostenShared(p) {
     if (wMwh < 0.1 && eMwh < 0.1) continue;
     var kosten = 0;
     if (erz.key === 'lwwp' || erz.key === 'fg' || erz.key === 'geo') {
-      var pvAbzug = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (eMwh / gesamtStromMwh) : 0;
+      var pvAbzug = wpSkStromMwh > 0 ? pvAbzugMaxMwh * (eMwh / wpSkStromMwh) : 0;
       kosten = Math.max(0, eMwh - pvAbzug) * (prices.strom||35) * 10;
     } else if (erz.key === 'fernwaerme') {
       kosten = wMwh * (prices.fw||17) * 10;
     } else if (erz.key === 'stromkessel') {
       var skEl = eMwh > 0.1 ? eMwh : wMwh;
-      var pvAbzugSk = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (skEl / gesamtStromMwh) : 0;
+      var pvAbzugSk = wpSkStromMwh > 0 ? pvAbzugMaxMwh * (skEl / wpSkStromMwh) : 0;
       kosten = Math.max(0, skEl - pvAbzugSk) * (prices.strom||35) * 10;
     } else if (erz.typ === 'kwk' || erz.key === 'bhkw') {
       var bhkwSigma = etas.bhkwSigma || 0.45;
@@ -188,7 +200,7 @@ export function _calcKostenShared(p) {
     var wM = erz2.waermeMwh||0, eM = erz2.elMwh||0;
     var tCo2 = 0;
     if (erz2.typ === 'wp' || erz2.key === 'stromkessel') {
-      var pvA = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (eM / gesamtStromMwh) : 0;
+      var pvA = wpSkStromMwh > 0 ? pvAbzugMaxMwh * (eM / wpSkStromMwh) : 0;
       tCo2 = Math.max(0, eM - pvA) * (emf.strom||420) / 1e3;
     } else if (erz2.key === 'gaskessel') {
       tCo2 = wM / (etas.gaskessel||0.92) * (emf.gas||240) / 1e3;

@@ -216,7 +216,7 @@ export function calcGeoThermie() {
       if (effEl) effEl.value = heizlastKw;
     }
     redrawGeo();
-    if (!window._wirtRefreshing) _geoTriggerDispatch();
+    if (!window._wirtRefreshing && !window._dispatchUpdating) _geoTriggerDispatch();
   } else {
     // geoThermie nicht gesetzt — trotzdem leistung-eff aktualisieren
     const effEl = document.getElementById('geo-leistung-eff');

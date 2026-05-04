@@ -103,6 +103,15 @@ export let ffDrawId     = null;
 export let ffDrawPoints = [];
 export let ffDrawPolyline   = null;
 export let ffDrawStartMarker = null;
+// Mirror auf window — andere Module (03a, 02c) lesen/schreiben Skalar-Reassigns über window.X,
+// weil ES-Module Reassign auf importierten let-Bindings nicht erlauben (Live-Binding-Bug im Dev-Modus).
+// Build-Modus (Concat) ist davon nicht betroffen, aber Vite-Dev-Server schon.
+window.ffCounter = ffCounter;
+window.ffDrawId = ffDrawId;
+window.ffDrawPoints = ffDrawPoints;
+window.ffDrawPolyline = ffDrawPolyline;
+window.ffDrawStartMarker = ffDrawStartMarker;
+window.freiflaechen = freiflaechen;
 export let bhkw      = null;
 export let erzeugerIconLayerGroup = null;
 export let gasEmF = 240; // g CO₂eq/kWh Erdgas (GEG Anlage 9, inkl. Vorkette)

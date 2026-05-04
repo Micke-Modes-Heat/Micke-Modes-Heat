@@ -45,8 +45,8 @@ async function glBerechnen() {
     const stadt       = document.getElementById('gl-stadt').value;
     const normAt      = parseFloat(document.getElementById('gl-norm-at').value) || -12;
     const netzverlust = parseFloat(document.getElementById('gl-netzverlust').value) || 10;
-    const vl5         = parseFloat(document.getElementById('gl-vl5').value) || 80;
-    const vl15        = parseFloat(document.getElementById('gl-vl15').value) || 55;
+    const vl5         = parseFloat(document.getElementById('gl-vl5').value) || 65;
+    const vl15        = parseFloat(document.getElementById('gl-vl15').value) || 40;
     const profil1     = document.getElementById('gl-profil1').value || 'HEF33';
     const profil2     = document.getElementById('gl-profil2').value || null;
     let gew1 = parseFloat(document.getElementById('gl-gew1').value) || 50;

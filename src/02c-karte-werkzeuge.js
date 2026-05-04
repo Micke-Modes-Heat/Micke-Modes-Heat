@@ -2,7 +2,10 @@
 // Erzeuger-Bindings (pelletsKessel, heizhackschnitzel, fernwaerme) nicht
 // importieren — werden via bare-name-assignment auf globalThis geschrieben,
 // Imports blieben sonst null. Bare Reads resolven auf window.X.
-import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
+// window.ffDrawId, window.ffDrawPoints werden in 03a-erzeuger.js per Reassign aktualisiert (window-Mirror).
+// Daher hier nicht aus 01-globals importieren — sonst sieht 02c den initialen Modulwert,
+// nicht den aktuellen window-Wert.
+import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fliessgewaesserLayerGroup, gebaeude, globalYear, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getEffectiveRMax, getSizeRange, getSizeVal, highlightCard, map, renameGebaeude } from './02b-gebaeude.js';
 import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, redrawVerbindungslinien, windSvg } from './03a-erzeuger.js';
 import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
@@ -349,7 +352,17 @@ export function buildTooltip(g){
   return lines.join('<br>');
 }
 
+// Wenn Karten-Modus-Buttons gedrückt werden, während ein anderer View (Analyse, Optimierung,
+// Vergleich, Live) aktiv ist: erst zurück zur Karte, sonst hat der Klick keinen sichtbaren Effekt.
+function _ensureKarteView() {
+  const activeTab = document.querySelector('.view-tab.active');
+  if (activeTab && activeTab.dataset.mode !== 'karte' && typeof window.setViewMode === 'function') {
+    window.setViewMode('karte');
+  }
+}
+
 export function setViz(v){
+  _ensureKarteView();
   window.currentViz=v;
   ['circle','bar','none'].forEach(x=>document.getElementById('vbtn-'+x).classList.toggle('active',x===v));
   updateViz();
@@ -372,6 +385,7 @@ export function setLabelsVisible(visible) {
 }
 
 export function setMode(m){
+  _ensureKarteView();
   window.currentMode=m;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('btn-'+m).classList.add('active');
@@ -429,7 +443,7 @@ export function toggleDrawArea() {
   if (window.isDrawingTrasse) toggleDrawTrasse();
   if (window.isDrawingRiver) toggleDrawRiver();
   if (drawingId !== null) cancelDraw();
-  if (ffDrawId !== null) cancelDrawFF();
+  if (window.ffDrawId !== null) cancelDrawFF();
 
   window.areaDrawing = true;
   window.areaPoints = [];
@@ -606,15 +620,15 @@ map.on('click',e=>{
     redrawTrasse();
     return;
   }
-  if (ffDrawId !== null) {
-    if (ffDrawPoints.length === 0) {
+  if (window.ffDrawId !== null) {
+    if (window.ffDrawPoints.length === 0) {
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
       window.ffDrawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
       window.ffDrawStartMarker.on('click', (ev) => { L.DomEvent.stopPropagation(ev); finishDrawFF(); });
     }
-    ffDrawPoints.push(e.latlng);
+    window.ffDrawPoints.push(e.latlng);
     if (window.ffDrawPolyline) map.removeLayer(window.ffDrawPolyline);
-    window.ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
+    window.ffDrawPolyline = L.polyline([...window.ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
     return;
   }
   if(drawingId!==null){
@@ -657,11 +671,11 @@ map.on('contextmenu', e => {
     } else {
       if(window.drawStartMarker) { map.removeLayer(window.drawStartMarker); window.drawStartMarker = null; }
     }
-  } else if (ffDrawId !== null && ffDrawPoints.length > 0) {
-    ffDrawPoints.pop();
+  } else if (window.ffDrawId !== null && window.ffDrawPoints.length > 0) {
+    window.ffDrawPoints.pop();
     if (window.ffDrawPolyline) map.removeLayer(window.ffDrawPolyline);
-    if (ffDrawPoints.length > 0) {
-      window.ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
+    if (window.ffDrawPoints.length > 0) {
+      window.ffDrawPolyline = L.polyline([...window.ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
     } else {
       if (window.ffDrawStartMarker) { map.removeLayer(window.ffDrawStartMarker); window.ffDrawStartMarker = null; }
     }

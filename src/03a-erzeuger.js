@@ -1,9 +1,12 @@
 // ── 03a-erzeuger.js — Erzeuger-Panels (Freiflächen-PV, BHKW, Stromkessel, Gaskessel, Heizöl, Pellets, HHS, Fernwärme, Verbindungslinien) ──
 // ── Freiflächen-PV ───────────────────────────────────────────────────────────
 
+import { freiflaechen } from './01-globals-varianten.js';
 import { map } from './02b-gebaeude.js';
+import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
 import { hidePanels } from './03b-netz.js';
-import { _pvWpM2Global } from './03c-gebaeude-io.js';
+import { _pvWpM2Global, hideHint, showHint } from './03c-gebaeude-io.js';
+import { calcStromPanel } from './09b-pv-calc.js';
 
 export function toggleFFPvPanel() {
   const p   = document.getElementById('ff-pv-panel');
@@ -123,8 +126,8 @@ export function attachFFLayer(ff) {
 
 export function startDrawFF() {
   cancelDrawFF();
-  ffDrawId = ffCounter++;
-  ffDrawPoints = [];
+  window.ffDrawId = window.ffCounter++;
+  window.ffDrawPoints = [];
   showHint('Eckpunkte anklicken · Startpunkt (rot) erneut anklicken zum Abschließen · Rechtsklick = Zurück');
   map.getContainer().style.cursor = 'crosshair';
   document.getElementById('btn-ff-draw').style.display = 'none';
@@ -132,9 +135,10 @@ export function startDrawFF() {
 }
 
 export function cancelDrawFF() {
-  if (ffDrawPolyline) { map.removeLayer(ffDrawPolyline); ffDrawPolyline = null; }
-  if (ffDrawStartMarker) { map.removeLayer(ffDrawStartMarker); ffDrawStartMarker = null; }
-  ffDrawId = null; ffDrawPoints = [];
+  if (window.ffDrawPolyline) { map.removeLayer(window.ffDrawPolyline); window.ffDrawPolyline = null; }
+  if (window.ffDrawStartMarker) { map.removeLayer(window.ffDrawStartMarker); window.ffDrawStartMarker = null; }
+  window.ffDrawId = null;
+  window.ffDrawPoints = [];
   map.getContainer().style.cursor = '';
   hideHint();
   document.getElementById('btn-ff-draw').style.display = '';
@@ -142,9 +146,9 @@ export function cancelDrawFF() {
 }
 
 export function finishDrawFF() {
-  if (ffDrawPoints.length < 3) return;
-  const id = ffDrawId;
-  const pts = [...ffDrawPoints];
+  if (!window.ffDrawPoints || window.ffDrawPoints.length < 3) return;
+  const id = window.ffDrawId;
+  const pts = [...window.ffDrawPoints];
   cancelDrawFF();
   const ff = {
     id, name: `Freifläche ${id}`,
@@ -165,7 +169,9 @@ export function removeFreiflaeche(id) {
   if (!ff) return;
   if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
   if (ff.moduleSvgLayer)  map.removeLayer(ff.moduleSvgLayer);
-  freiflaechen = freiflaechen.filter(f => f.id !== id);
+  // In-place löschen (Reassign verboten bei import-Bindings + bricht Live-Binding für andere Module)
+  const _ffIdx = freiflaechen.findIndex(f => f.id === id);
+  if (_ffIdx >= 0) freiflaechen.splice(_ffIdx, 1);
   renderFFPanel();
   calcStromPanel();
   redrawVerbindungslinien();

@@ -15,7 +15,7 @@ import { saSetTab } from './07a-analysis-charts.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { _optPopulateYearSelect, _optUpdateEstimate } from './10a-optimizer-core.js';
-import { _liveStopPlay, _onHourSlider } from './10b-hourly-live.js';
+import { _liveStopPlay, _onHourSlider, _setHourlyModeActive } from './10b-hourly-live.js';
 import { ERZEUGER_CFG, NUTZUNG_DEFAULTS } from './config/erzeuger-cfg.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
 
@@ -646,7 +646,7 @@ export function setViewMode(mode) {
   }
   if (mode === 'vergleich') refreshVergleichView();
   if (mode === 'live') {
-    window._hourlyModeActive = true;
+    _setHourlyModeActive(true);
     if (typeof window._tlHistoDrawn !== 'undefined') window._tlHistoDrawn = false; // Redraw histogram
     const slider = document.getElementById('live-slider');
     _onHourSlider(slider?.value || 0);

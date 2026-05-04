@@ -633,8 +633,8 @@ export function _deckungen8760(ss) {
 
   // ── Heizlastfall-Leistung berechnen ──
   const _normAt = parseFloat(document.getElementById('gl-norm-at')?.value) || -12;
-  const _vl5    = parseFloat(document.getElementById('gl-vl5')?.value) || 80;
-  const _vl15   = parseFloat(document.getElementById('gl-vl15')?.value) || 55;
+  const _vl5    = parseFloat(document.getElementById('gl-vl5')?.value) || 65;
+  const _vl15   = parseFloat(document.getElementById('gl-vl15')?.value) || 40;
   const _vlDesign = Math.max(_vl5, _vl15);
   let _spitzenlastKw = 0;
   for (let i = 0; i < lastgangKw.length; i++) { if (lastgangKw[i] > _spitzenlastKw) _spitzenlastKw = lastgangKw[i]; }
@@ -819,7 +819,9 @@ export function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, 
     const e  = document.getElementById('geo-r-erde');  if (e)  e.textContent = (thMwh - elMwh).toFixed(0) + ' MWh/a';
     const co = document.getElementById('geo-r-co2');   if (co) co.textContent = (elMwh * stromEmF / 1000).toFixed(1) + ' t/a · ' + (elMwh * stromEmFLZ / 1000).toFixed(1) + ' t/a (Ø 2030–50)';
     // Sondendimensionierung mit echter JAZ neu berechnen (überschreibt Carnot-Schätzung)
-    calcGeoThermie();
+    window._dispatchUpdating = true;
+    try { calcGeoThermie(); }
+    finally { window._dispatchUpdating = false; }
   }
 }
 
@@ -840,7 +842,11 @@ export function _updateErzeugerWaerme(key, waermeMwh) {
   const el = document.getElementById(_WAERME_IDS[key]);
   if (el) el.value = Math.round(waermeMwh);
   const fn = _DISPLAY_FNS()[key];
-  if (fn) fn();
+  if (fn) {
+    window._dispatchUpdating = true;
+    try { fn(); }
+    finally { window._dispatchUpdating = false; }
+  }
 }
 
 export function _renderWpCopChart(svgId, wrapId, monthlyCops, color) {
