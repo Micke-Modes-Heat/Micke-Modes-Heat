@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualisierungsideen - Energieplanung</title>
+<style>
+  :root {
+    --bg: #181a20;
+    --surface: #23262f;
+    --surface2: #2a2d36;
+    --text: #e8eaf0;
+    --muted: #78909c;
+    --border: #333844;
+    --accent: #ff9800;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+    padding: 32px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 1.7rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin-bottom: 36px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+  }
+  .card.full-width {
+    grid-column: 1 / -1;
+  }
+  .card h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  .card .desc {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+  .card canvas {
+    width: 100%;
+    border-radius: 8px;
+    background: var(--surface2);
+  }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    body { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Visualisierungsideen f&uuml;r das Energieplanungs-Tool</h1>
+<p class="subtitle">5 Diagrammtypen mit exemplarischen Daten &mdash; reines HTML/Canvas, keine externen Bibliotheken</p>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>1 &mdash; Waterfall-Diagramm</h2>
+    <p class="desc">Investitionskosten-Aufbau: Einzelposten und Gesamt</p>
+    <canvas id="waterfall" height="380"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>2 &mdash; Kalender-Heatmap</h2>
+    <p class="desc">T&auml;glicher W&auml;rmebedarf &uuml;ber ein Jahr (GitHub-Stil)</p>
+    <canvas id="heatmap" height="380"></canvas>
+  </div>
+
+  <div class="card full-width">
+    <h2>3 &mdash; Small Multiples</h2>
+    <p class="desc">Monatliche Tagesprofile: gestapelte Fl&auml;chen f&uuml;r WP, Gaskessel und BHKW (jeweils 24 h)</p>
+    <canvas id="multiples" height="400"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>4 &mdash; Bump-Chart</h2>
+    <p class="desc">Technologie-Ranking &uuml;ber Gaspreisszenarien (Rang 1 = g&uuml;nstigste)</p>
+    <canvas id="bump" height="380"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>5 &mdash; Treemap</h2>
+    <p class="desc">J&auml;hrliche Kostenstruktur nach Kategorien</p>
+    <canvas id="treemap" height="380"></canvas>
+  </div>
+
+</div>
+
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────
+const C = {
+  bg: '#181a20', surface: '#23262f', surface2: '#2a2d36',
+  text: '#e8eaf0', muted: '#78909c', border: '#333844', accent: '#ff9800',
+  green: '#4caf50', red: '#ef5350', gray: '#607d8b',
+};
+
+function initCanvas(id) {
+  const cv = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const rect = cv.getBoundingClientRect();
+  cv.width = rect.width * dpr;
+  cv.height = rect.height * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+function fmt(v) {
+  if (Math.abs(v) >= 1000) return (v / 1000).toFixed(0) + 'k';
+  return v.toFixed(0);
+}
+
+// ── 1. Waterfall ─────────────────────────────────────────────────────
+function drawWaterfall() {
+  const { ctx, w, h } = initCanvas('waterfall');
+  const items = [
+    { label: 'Luft-WP', value: 180000 },
+    { label: 'Gaskessel', value: 45000 },
+    { label: 'Wärmenetz', value: 320000 },
+    { label: 'Pufferspeicher', value: 35000 },
+    { label: 'Schallschutz', value: 15000 },
+    { label: 'Nebenkosten', value: 85000 },
+    { label: 'BHKW-Erlös', value: -42000 },
+  ];
+  const total = items.reduce((s, i) => s + i.value, 0);
+
+  const pad = { top: 30, right: 20, bottom: 60, left: 60 };
+  const n = items.length + 1; // +1 for total
+  const barW = Math.min(50, (w - pad.left - pad.right) / n * 0.65);
+  const gap = (w - pad.left - pad.right) / n;
+  const maxVal = total * 1.1;
+  const plotH = h - pad.top - pad.bottom;
+  const yScale = plotH / maxVal;
+
+  // Y-axis grid
+  ctx.strokeStyle = C.border;
+  ctx.lineWidth = 0.5;
+  ctx.fillStyle = C.muted;
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'right';
+  for (let v = 0; v <= maxVal; v += 100000) {
+    const y = pad.top + plotH - v * yScale;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    ctx.fillText(fmt(v) + ' €', pad.left - 6, y + 4);
+  }
+
+  let running = 0;
+  items.forEach((item, i) => {
+    const x = pad.left + gap * i + (gap - barW) / 2;
+    const base = running;
+    const top = running + item.value;
+    running = top;
+
+    const y1 = pad.top + plotH - Math.max(base, top) * yScale;
+    const barH = Math.abs(item.value) * yScale;
+
+    ctx.fillStyle = item.value >= 0 ? C.green : C.red;
+    ctx.beginPath();
+    const r = 3;
+    ctx.moveTo(x + r, y1);
+    ctx.lineTo(x + barW - r, y1);
+    ctx.quadraticCurveTo(x + barW, y1, x + barW, y1 + r);
+    ctx.lineTo(x + barW, y1 + barH);
+    ctx.lineTo(x, y1 + barH);
+    ctx.lineTo(x, y1 + r);
+    ctx.quadraticCurveTo(x, y1, x + r, y1);
+    ctx.fill();
+
+    // Value label above bar
+    ctx.fillStyle = C.text;
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    const sign = item.value >= 0 ? '+' : '';
+    ctx.fillText(sign + fmt(item.value) + ' €', x + barW / 2, y1 - 6);
+
+    // X label
+    ctx.fillStyle = C.muted;
+    ctx.font = '10px system-ui';
+    ctx.save();
+    ctx.translate(x + barW / 2, h - pad.bottom + 10);
+    ctx.rotate(-Math.PI / 6);
+    ctx.textAlign = 'right';
+    ctx.fillText(item.label, 0, 0);
+    ctx.restore();
+
+    // Connector line
+    if (i < items.length - 1) {
+      const nextX = pad.left + gap * (i + 1) + (gap - barW) / 2;
+      const connY = pad.top + plotH - running * yScale;
+      ctx.strokeStyle = C.border;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x + barW, connY); ctx.lineTo(nextX, connY); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  });
+
+  // Total bar
+  const ti = items.length;
+  const tx = pad.left + gap * ti + (gap - barW) / 2;
+  const ty = pad.top + plotH - total * yScale;
+  const tBarH = total * yScale;
+  ctx.fillStyle = C.gray;
+  ctx.beginPath();
+  const r = 3;
+  ctx.moveTo(tx + r, ty);
+  ctx.lineTo(tx + barW - r, ty);
+  ctx.quadraticCurveTo(tx + barW, ty, tx + barW, ty + r);
+  ctx.lineTo(tx + barW, ty + tBarH);
+  ctx.lineTo(tx, ty + tBarH);
+  ctx.lineTo(tx, ty + r);
+  ctx.quadraticCurveTo(tx, ty, tx + r, ty);
+  ctx.fill();
+  ctx.fillStyle = C.text;
+  ctx.font = 'bold 11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(fmt(total) + ' €', tx + barW / 2, ty - 6);
+  ctx.fillStyle = C.accent;
+  ctx.font = 'bold 10px system-ui';
+  ctx.save();
+  ctx.translate(tx + barW / 2, h - pad.bottom + 10);
+  ctx.rotate(-Math.PI / 6);
+  ctx.textAlign = 'right';
+  ctx.fillText('Gesamt', 0, 0);
+  ctx.restore();
+}
+
+// ── 2. Calendar Heatmap ──────────────────────────────────────────────
+function drawHeatmap() {
+  const { ctx, w, h } = initCanvas('heatmap');
+
+  // Generate 365 days of mock heat demand
+  const data = [];
+  for (let d = 0; d < 365; d++) {
+    const t = d / 365 * 2 * Math.PI;
+    // Peak in winter (day ~0 and ~365), low in summer (~182)
+    const seasonal = 0.5 + 0.5 * Math.cos(t - Math.PI * 0); // peak at d=0 (Jan)
+    const noise = (Math.random() - 0.5) * 0.25;
+    data.push(Math.max(0, Math.min(1, seasonal + noise)));
+  }
+
+  const pad = { top: 32, right: 30, bottom: 40, left: 40 };
+  const cols = 53;
+  const rows = 7;
+  const cellGap = 2;
+  const availW = w - pad.left - pad.right;
+  const availH = h - pad.top - pad.bottom;
+  const cellSize = Math.min((availW - (cols - 1) * cellGap) / cols,
+                            (availH - (rows - 1) * cellGap) / rows);
+
+  // Recompute offsets to center
+  const gridW = cols * cellSize + (cols - 1) * cellGap;
+  const gridH = rows * cellSize + (rows - 1) * cellGap;
+  const ox = pad.left + (availW - gridW) / 2;
+  const oy = pad.top + (availH - gridH) / 2;
+
+  // Color scale: dark green -> yellow -> red
+  function heatColor(v) {
+    if (v < 0.5) {
+      const t = v / 0.5;
+      const r = Math.round(30 + t * (230 - 30));
+      const g = Math.round(100 + t * (200 - 100));
+      const b = Math.round(60 - t * 40);
+      return `rgb(${r},${g},${b})`;
+    } else {
+      const t = (v - 0.5) / 0.5;
+      const r2 = Math.round(230 + t * (220 - 230));
+      const g2 = Math.round(200 - t * 130);
+      const b2 = Math.round(20 - t * 10);
+      return `rgb(${r2},${g2},${b2})`;
+    }
+  }
+
+  // Day labels
+  ctx.fillStyle = C.muted;
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'right';
+  const dayLabels = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  for (let r2 = 0; r2 < 7; r2++) {
+    if (r2 % 2 === 0) {
+      const y = oy + r2 * (cellSize + cellGap) + cellSize / 2 + 3;
+      ctx.fillText(dayLabels[r2], ox - 6, y);
+    }
+  }
+
+  // Month labels — Jan starts on a Thursday (day index 3) in our model
+  // First day of year = week 0, day-of-week 0 (Monday). Simplification.
+  const monthNames = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const monthStarts = [0,31,59,90,120,151,181,212,243,273,304,334];
+  ctx.textAlign = 'center';
+  ctx.fillStyle = C.muted;
+  ctx.font = '10px system-ui';
+  monthStarts.forEach((d, mi) => {
+    const wk = Math.floor(d / 7);
+    const x = ox + wk * (cellSize + cellGap) + cellSize / 2;
+    ctx.fillText(monthNames[mi], x, oy - 8);
+  });
+
+  // Draw cells
+  for (let d = 0; d < 365; d++) {
+    const wk = Math.floor(d / 7);
+    const dow = d % 7;
+    const x = ox + wk * (cellSize + cellGap);
+    const y = oy + dow * (cellSize + cellGap);
+    const cr = Math.min(3, cellSize * 0.25);
+    ctx.fillStyle = heatColor(data[d]);
+    ctx.beginPath();
+    ctx.moveTo(x + cr, y);
+    ctx.lineTo(x + cellSize - cr, y);
+    ctx.quadraticCurveTo(x + cellSize, y, x + cellSize, y + cr);
+    ctx.lineTo(x + cellSize, y + cellSize - cr);
+    ctx.quadraticCurveTo(x + cellSize, y + cellSize, x + cellSize - cr, y + cellSize);
+    ctx.lineTo(x + cr, y + cellSize);
+    ctx.quadraticCurveTo(x, y + cellSize, x, y + cellSize - cr);
+    ctx.lineTo(x, y + cr);
+    ctx.quadraticCurveTo(x, y, x + cr, y);
+    ctx.fill();
+  }
+
+  // Legend
+  const legW = 120, legH = 10;
+  const lx = ox + gridW - legW;
+  const ly = oy + gridH + 18;
+  ctx.fillStyle = C.muted;
+  ctx.font = '9px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText('niedrig', lx - 4, ly + 9);
+  for (let i = 0; i < legW; i++) {
+    ctx.fillStyle = heatColor(i / legW);
+    ctx.fillRect(lx + i, ly, 1, legH);
+  }
+  ctx.fillStyle = C.muted;
+  ctx.textAlign = 'left';
+  ctx.fillText('hoch', lx + legW + 4, ly + 9);
+  ctx.textAlign = 'center';
+  ctx.fillText('kWh/Tag', lx + legW / 2, ly + 22);
+}
+
+// ── 3. Small Multiples ───────────────────────────────────────────────
+function drawSmallMultiples() {
+  const { ctx, w, h } = initCanvas('multiples');
+
+  const months = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const cols = 6, rows = 2;
+  const pad = { top: 10, right: 16, bottom: 16, left: 16 };
+  const gap = 10;
+  const cellW = (w - pad.left - pad.right - (cols - 1) * gap) / cols;
+  const cellH = (h - pad.top - pad.bottom - (rows - 1) * gap) / rows;
+
+  // Generate mock data per month: 24-hour profiles for WP, Gaskessel, BHKW
+  const maxY = 350; // kW total
+  function genMonth(m) {
+    const winter = 0.5 + 0.5 * Math.cos((m / 12) * 2 * Math.PI); // 1 in Jan, 0 in Jul
+    const hours = [];
+    for (let hr = 0; hr < 24; hr++) {
+      // BHKW: flat baseload, slightly higher in winter
+      const bhkw = 40 + winter * 30;
+      // WP: follows an inverted outdoor temp pattern, higher at night in winter
+      const nightBoost = hr < 6 || hr > 20 ? 1.2 : 1.0;
+      const wp = (50 + winter * 120) * nightBoost * (0.9 + Math.random() * 0.2);
+      // Gaskessel: covers peak in winter mornings/evenings
+      const peakFactor = (hr >= 6 && hr <= 9) || (hr >= 17 && hr <= 20) ? 1.5 : 0.6;
+      const gas = Math.max(0, winter * 80 * peakFactor * (0.8 + Math.random() * 0.4));
+      hours.push({ bhkw, wp, gas });
+    }
+    return hours;
+  }
+
+  const colors = { bhkw: '#42a5f5', wp: '#ff9800', gas: '#ef5350' };
+
+  for (let m = 0; m < 12; m++) {
+    const col = m % cols;
+    const row = Math.floor(m / cols);
+    const ox = pad.left + col * (cellW + gap);
+    const oy = pad.top + row * (cellH + gap);
+
+    const data = genMonth(m);
+
+    // Background
+    ctx.fillStyle = C.surface;
+    ctx.beginPath();
+    const cr = 6;
+    ctx.moveTo(ox + cr, oy); ctx.lineTo(ox + cellW - cr, oy);
+    ctx.quadraticCurveTo(ox + cellW, oy, ox + cellW, oy + cr);
+    ctx.lineTo(ox + cellW, oy + cellH - cr);
+    ctx.quadraticCurveTo(ox + cellW, oy + cellH, ox + cellW - cr, oy + cellH);
+    ctx.lineTo(ox + cr, oy + cellH);
+    ctx.quadraticCurveTo(ox, oy + cellH, ox, oy + cellH - cr);
+    ctx.lineTo(ox, oy + cr);
+    ctx.quadraticCurveTo(ox, oy, ox + cr, oy);
+    ctx.fill();
+
+    // Title
+    ctx.fillStyle = C.text;
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText(months[m], ox + 8, oy + 16);
+
+    // Plot area inside cell
+    const pLeft = 8, pTop = 24, pRight = 6, pBottom = 6;
+    const pw = cellW - pLeft - pRight;
+    const ph = cellH - pTop - pBottom;
+
+    function xPos(hr) { return ox + pLeft + (hr / 23) * pw; }
+    function yPos(v) { return oy + pTop + ph - (v / maxY) * ph; }
+
+    // Draw stacked areas: bottom = BHKW, middle = WP, top = Gas
+    // Build paths
+    const layers = ['bhkw', 'wp', 'gas'];
+    const layerColors = [colors.bhkw, colors.wp, colors.gas];
+
+    // Accumulate
+    const stacked = data.map(d => ({
+      bhkw: d.bhkw,
+      wp: d.bhkw + d.wp,
+      gas: d.bhkw + d.wp + d.gas,
+    }));
+
+    // Draw from top to bottom so bottom layers paint over
+    for (let li = 2; li >= 0; li--) {
+      const key = layers[li];
+      const prevKey = li > 0 ? layers[li - 1] : null;
+      ctx.fillStyle = layerColors[li] + '99';
+      ctx.beginPath();
+      ctx.moveTo(xPos(0), yPos(stacked[0][key]));
+      for (let hr = 1; hr < 24; hr++) {
+        ctx.lineTo(xPos(hr), yPos(stacked[hr][key]));
+      }
+      // Close back along the bottom of this layer
+      if (prevKey) {
+        for (let hr = 23; hr >= 0; hr--) {
+          ctx.lineTo(xPos(hr), yPos(stacked[hr][prevKey]));
+        }
+      } else {
+        for (let hr = 23; hr >= 0; hr--) {
+          ctx.lineTo(xPos(hr), yPos(0));
+        }
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Baseline
+    ctx.strokeStyle = C.border;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(ox + pLeft, oy + pTop + ph);
+    ctx.lineTo(ox + pLeft + pw, oy + pTop + ph);
+    ctx.stroke();
+  }
+
+  // Legend at very bottom-right
+  const legX = w - pad.right - 260;
+  const legY = h - 12;
+  ctx.font = '10px system-ui';
+  const legItems = [
+    { label: 'BHKW', color: colors.bhkw },
+    { label: 'Wärmepumpe', color: colors.wp },
+    { label: 'Gaskessel', color: colors.gas },
+  ];
+  let lx = legX;
+  legItems.forEach(it => {
+    ctx.fillStyle = it.color;
+    ctx.fillRect(lx, legY - 8, 12, 10);
+    ctx.fillStyle = C.muted;
+    ctx.textAlign = 'left';
+    ctx.fillText(it.label, lx + 16, legY);
+    lx += ctx.measureText(it.label).width + 32;
+  });
+}
+
+// ── 4. Bump Chart ────────────────────────────────────────────────────
+function drawBump() {
+  const { ctx, w, h } = initCanvas('bump');
+
+  const gasPrices = [6, 8, 10, 12, 14, 16, 18];
+  // Rankings: 1=cheapest. As gas price rises, Gaskessel rank drops.
+  const techs = [
+    { name: 'Luft-WP',    ranks: [3, 2, 2, 1, 1, 1, 1], color: '#ff9800' },
+    { name: 'Gaskessel',   ranks: [1, 1, 3, 4, 5, 5, 5], color: '#ef5350' },
+    { name: 'Pellets',     ranks: [4, 4, 1, 2, 2, 2, 2], color: '#66bb6a' },
+    { name: 'Fernwärme',   ranks: [2, 3, 4, 3, 3, 3, 3], color: '#42a5f5' },
+    { name: 'BHKW',        ranks: [5, 5, 5, 5, 4, 4, 4], color: '#ab47bc' },
+  ];
+
+  const pad = { top: 30, right: 100, bottom: 40, left: 100 };
+  const pw = w - pad.left - pad.right;
+  const ph = h - pad.top - pad.bottom;
+
+  function xPos(i) { return pad.left + (i / (gasPrices.length - 1)) * pw; }
+  function yPos(rank) { return pad.top + ((rank - 1) / 4) * ph; }
+
+  // Grid lines for ranks
+  ctx.strokeStyle = C.border;
+  ctx.lineWidth = 0.5;
+  for (let r = 1; r <= 5; r++) {
+    const y = yPos(r);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    ctx.fillStyle = C.muted;
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'right';
+    ctx.fillText('Rang ' + r, pad.left - 10, y + 4);
+  }
+
+  // X-axis labels
+  ctx.textAlign = 'center';
+  gasPrices.forEach((p, i) => {
+    const x = xPos(i);
+    ctx.fillStyle = C.muted;
+    ctx.font = '11px system-ui';
+    ctx.fillText(p + ' ct', x, h - pad.bottom + 20);
+    // Tick
+    ctx.strokeStyle = C.border;
+    ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ph); ctx.stroke();
+  });
+  ctx.fillStyle = C.muted;
+  ctx.font = '10px system-ui';
+  ctx.fillText('Gaspreis (ct/kWh)', pad.left + pw / 2, h - 6);
+
+  // Draw lines with smooth curves
+  techs.forEach(tech => {
+    ctx.strokeStyle = tech.color;
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    tech.ranks.forEach((rank, i) => {
+      const x = xPos(i);
+      const y = yPos(rank);
+      if (i === 0) ctx.moveTo(x, y);
+      else {
+        // Smooth curve
+        const prevX = xPos(i - 1);
+        const prevY = yPos(tech.ranks[i - 1]);
+        const cpx = (prevX + x) / 2;
+        ctx.bezierCurveTo(cpx, prevY, cpx, y, x, y);
+      }
+    });
+    ctx.stroke();
+
+    // Dots
+    tech.ranks.forEach((rank, i) => {
+      const x = xPos(i);
+      const y = yPos(rank);
+      ctx.fillStyle = tech.color;
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = C.surface2;
+      ctx.beginPath();
+      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Labels at endpoints
+    ctx.fillStyle = tech.color;
+    ctx.font = 'bold 11px system-ui';
+    // Left label
+    ctx.textAlign = 'right';
+    ctx.fillText(tech.name, pad.left - 14, yPos(tech.ranks[0]) + 4);
+    // Right label (skip if overlapping - just offset slightly)
+  });
+
+  // Right labels positioned to avoid overlap
+  const rightLabels = techs.map(t => ({
+    name: t.name, rank: t.ranks[t.ranks.length - 1], color: t.color
+  })).sort((a, b) => a.rank - b.rank);
+
+  rightLabels.forEach(t => {
+    ctx.fillStyle = t.color;
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText(t.name, w - pad.right + 14, yPos(t.rank) + 4);
+  });
+}
+
+// ── 5. Treemap ───────────────────────────────────────────────────────
+function drawTreemap() {
+  const { ctx, w, h } = initCanvas('treemap');
+
+  const data = [
+    { label: 'Energiekosten\nGas', value: 120000, color: '#ef5350' },
+    { label: 'Kapitalkosten', value: 95000, color: '#42a5f5' },
+    { label: 'Energiekosten\nStrom', value: 85000, color: '#ff9800' },
+    { label: 'Netzkosten', value: 42000, color: '#ab47bc' },
+    { label: 'Wartung', value: 35000, color: '#66bb6a' },
+    { label: 'Instandhaltung', value: 28000, color: '#26c6da' },
+  ];
+
+  const pad = { top: 10, right: 10, bottom: 10, left: 10 };
+  const total = data.reduce((s, d) => s + d.value, 0);
+
+  // Squarified treemap layout
+  function squarify(items, x, y, ww, hh) {
+    const rects = [];
+    const remaining = items.slice().sort((a, b) => b.value - a.value);
+
+    function layoutRow(row, rowTotal, x0, y0, ww0, hh0) {
+      const isWide = ww0 >= hh0;
+      const rowSize = isWide ? (rowTotal / total * ww * hh) / hh0 : (rowTotal / total * ww * hh) / ww0;
+
+      let offset = 0;
+      row.forEach(item => {
+        const frac = item.value / rowTotal;
+        const len = isWide ? hh0 * frac : ww0 * frac;
+        if (isWide) {
+          rects.push({ ...item, x: x0, y: y0 + offset, w: rowSize, h: len });
+        } else {
+          rects.push({ ...item, x: x0 + offset, y: y0, w: len, h: rowSize });
+        }
+        offset += len;
+      });
+
+      // Return remaining rect
+      if (isWide) return { x: x0 + rowSize, y: y0, w: ww0 - rowSize, h: hh0 };
+      return { x: x0, y: y0 + rowSize, w: ww0, h: hh0 - rowSize };
+    }
+
+    function worst(row, rowTotal, sideLen) {
+      if (row.length === 0) return Infinity;
+      const s2 = (rowTotal / total * ww * hh);
+      const rowArea = s2;
+      let maxRatio = 0;
+      row.forEach(item => {
+        const itemArea = item.value / total * ww * hh;
+        const ratio1 = (sideLen * sideLen * itemArea) / (rowArea * rowArea);
+        const ratio2 = (rowArea * rowArea) / (sideLen * sideLen * itemArea);
+        maxRatio = Math.max(maxRatio, ratio1, ratio2);
+      });
+      return maxRatio;
+    }
+
+    let rect = { x, y, w: ww, h: hh };
+    let idx = 0;
+
+    while (idx < remaining.length) {
+      const isWide = rect.w >= rect.h;
+      const sideLen = isWide ? rect.h : rect.w;
+      let row = [];
+      let rowTotal = 0;
+
+      while (idx < remaining.length) {
+        const testRow = [...row, remaining[idx]];
+        const testTotal = rowTotal + remaining[idx].value;
+        const oldWorst = worst(row, rowTotal, sideLen);
+        const newWorst = worst(testRow, testTotal, sideLen);
+
+        if (row.length === 0 || newWorst <= oldWorst) {
+          row.push(remaining[idx]);
+          rowTotal = testTotal;
+          idx++;
+        } else {
+          break;
+        }
+      }
+      rect = layoutRow(row, rowTotal, rect.x, rect.y, rect.w, rect.h);
+    }
+
+    return rects;
+  }
+
+  const rects = squarify(data, pad.left, pad.top, w - pad.left - pad.right, h - pad.top - pad.bottom);
+
+  rects.forEach(r => {
+    const inset = 2;
+    const rx = r.x + inset;
+    const ry = r.y + inset;
+    const rw = r.w - inset * 2;
+    const rh = r.h - inset * 2;
+    if (rw <= 0 || rh <= 0) return;
+
+    const cr = 6;
+    ctx.fillStyle = r.color + 'cc';
+    ctx.beginPath();
+    ctx.moveTo(rx + cr, ry);
+    ctx.lineTo(rx + rw - cr, ry);
+    ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + cr);
+    ctx.lineTo(rx + rw, ry + rh - cr);
+    ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - cr, ry + rh);
+    ctx.lineTo(rx + cr, ry + rh);
+    ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - cr);
+    ctx.lineTo(rx, ry + cr);
+    ctx.quadraticCurveTo(rx, ry, rx + cr, ry);
+    ctx.fill();
+
+    // Subtle border
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Label
+    const lines = r.label.split('\n');
+    const fontSize = Math.min(14, rw / 6, rh / (lines.length + 2));
+    if (fontSize < 6) return;
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.round(fontSize)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const centerX = rx + rw / 2;
+    const centerY = ry + rh / 2;
+    const lineH = fontSize * 1.3;
+    const startY = centerY - ((lines.length - 1) * lineH) / 2 - lineH * 0.4;
+
+    lines.forEach((line, i) => {
+      ctx.fillText(line, centerX, startY + i * lineH);
+    });
+
+    // Value below label
+    ctx.font = `${Math.round(fontSize * 0.85)}px system-ui`;
+    ctx.fillStyle = '#ffffffbb';
+    ctx.fillText(fmt(r.value) + ' €', centerX, startY + lines.length * lineH);
+  });
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  drawWaterfall();
+  drawHeatmap();
+  drawSmallMultiples();
+  drawBump();
+  drawTreemap();
+});
+window.addEventListener('resize', () => {
+  drawWaterfall();
+  drawHeatmap();
+  drawSmallMultiples();
+  drawBump();
+  drawTreemap();
+});
+</script>
+</body>
+</html>

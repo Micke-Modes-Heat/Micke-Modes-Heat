@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Live-Hub-Sankey Mockup</title>
+<style>
+  :root {
+    --surface: #15171c;
+    --surface2: #1c1f27;
+    --border: #2a3040;
+    --text: #cfd8dc;
+    --muted: #7a8898;
+    --accent: #4dd0e1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 12px;
+  }
+  h1 {
+    font-size: 14px; font-weight: 500;
+    color: var(--muted); margin: 0 0 16px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .panel {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .head {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 8px;
+  }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+  }
+  .live-label { color: var(--accent); font-size: 11px; letter-spacing: 0.1em; }
+  .ts {
+    font-family: 'DM Mono', 'Menlo', monospace;
+    font-size: 16px; color: var(--text);
+  }
+  .ts-sub {
+    font-family: 'DM Mono', 'Menlo', monospace;
+    font-size: 10px; color: var(--muted); margin-left: 12px;
+  }
+  .badge {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 10px; color: var(--muted);
+  }
+  .kpis {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin: 12px 0 20px;
+  }
+  .kpi {
+    background: var(--surface);
+    border-radius: 6px; padding: 10px 14px;
+  }
+  .kpi-label {
+    font-size: 9px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 2px;
+  }
+  .kpi-bedarf .kpi-label { color: #ef5350; }
+  .kpi-erzeug .kpi-label { color: #66bb6a; }
+  .kpi-val {
+    font-family: 'DM Mono', 'Menlo', monospace;
+    font-size: 24px; font-weight: 600;
+  }
+  .kpi-bedarf .kpi-val { color: #ef5350; }
+  .kpi-erzeug .kpi-val { color: #66bb6a; }
+  .kpi-unit { font-size: 11px; color: var(--muted); margin-left: 4px; }
+
+  .sankey-wrap {
+    background: #11131a;
+    border-radius: 6px;
+    padding: 12px 16px 8px;
+    position: relative;
+  }
+  .sankey-title {
+    font-size: 9px; color: var(--muted);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 6px;
+    display: flex; justify-content: space-between;
+  }
+  canvas { display: block; width: 100%; height: 480px; }
+
+  .footer {
+    font-family: 'DM Mono', 'Menlo', monospace;
+    font-size: 10px; color: var(--muted);
+    margin-top: 6px; padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .controls {
+    display: flex; gap: 8px;
+    margin-top: 16px; align-items: center;
+  }
+  button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 14px; border-radius: 4px;
+    font-family: inherit; font-size: 11px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  .scenario-label { font-size: 10px; color: var(--muted); margin-right: 8px; }
+  .tooltip {
+    position: absolute; pointer-events: none;
+    background: #1a1d26; color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px; padding: 5px 9px;
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    display: none; white-space: nowrap;
+    z-index: 99;
+  }
+</style>
+</head>
+<body>
+
+<h1>Hub-Sankey Mockup — zwei Medien-Hubs</h1>
+
+<div class="panel">
+  <div class="head">
+    <span class="live-dot"></span>
+    <span class="live-label">LIVE</span>
+    <span class="ts" id="ts-main">8. Januar · 08:00</span>
+    <span class="ts-sub" id="ts-sub">Stunde 176 / 8760</span>
+    <span class="badge" id="ts-season">❄ Winter</span>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi kpi-bedarf">
+      <div class="kpi-label">Bedarf</div>
+      <div class="kpi-val" id="kpi-bedarf">621<span class="kpi-unit">kW</span></div>
+    </div>
+    <div class="kpi kpi-erzeug">
+      <div class="kpi-label">Erzeugung</div>
+      <div class="kpi-val" id="kpi-erzeug">621<span class="kpi-unit">kW</span></div>
+    </div>
+  </div>
+
+  <div class="sankey-wrap">
+    <div class="sankey-title">
+      <span>Energiefluss
+        <span style="margin-left:14px;letter-spacing:0;text-transform:none;">
+          <button class="vmode" data-mode="standard" data-active="1" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Standard</button>
+          <button class="vmode" data-mode="detail" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;margin-left:2px;">Detail</button>
+        </span>
+      </span>
+      <span id="hour-info">Stunde 176</span>
+    </div>
+    <canvas id="sankey"></canvas>
+    <div class="tooltip" id="tt"></div>
+    <div class="footer" id="footer">h176 · Σ 621 kW → 621 kW · 1.6 °C · VL 80 °C</div>
+  </div>
+
+  <div class="controls">
+    <span class="scenario-label">Szenario:</span>
+    <button data-scenario="winter">Winter (08:00)</button>
+    <button data-scenario="winterMittag">Winter Mittag (PV)</button>
+    <button data-scenario="sommerMittag">Sommer Mittag (PV+Bat)</button>
+    <button data-scenario="bhkw">BHKW im Mix</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// Beispiel-Szenarien
+// ═══════════════════════════════════════════════════════════════════════════
+const SCENARIOS = {
+  winter: {
+    label: '8. Januar · 08:00', sub: 'Stunde 176 / 8760', season: '❄ Winter',
+    tempC: 1.6, vlC: 80, t: 176, bedarf: 621, twwKw: 30,
+    erzeuger: [
+      { key: 'lwwp',       label: 'Luft-WP',     kw: 288, cop: 1.9 },
+      { key: 'fernwaerme', label: 'Fernwärme',   kw: 333 },
+    ],
+    strom: { netzbezugKw: 274, pvKw: 0, bhkwKw: 0, wpKw: 152, skKw: 0, hhKw: 122,
+             einspeisungKw: 0, batLadeKw: 0, batEntladeKw: 0, batKap: 0 },
+    speicher: { tsKap: 0, tsLade: 0, tsEntlade: 0 },
+  },
+  winterMittag: {
+    label: '8. Januar · 12:00', sub: 'Stunde 180 / 8760', season: '❄ Winter',
+    tempC: 4.5, vlC: 75, t: 180, bedarf: 540, twwKw: 30,
+    erzeuger: [
+      { key: 'lwwp',       label: 'Luft-WP',     kw: 380, cop: 2.6 },
+      { key: 'fernwaerme', label: 'Fernwärme',   kw: 160 },
+    ],
+    strom: { netzbezugKw: 90, pvKw: 175, bhkwKw: 0, wpKw: 146, skKw: 0, hhKw: 119,
+             einspeisungKw: 0, batLadeKw: 0, batEntladeKw: 0, batKap: 0 },
+    speicher: { tsKap: 0, tsLade: 0, tsEntlade: 0 },
+  },
+  sommerMittag: {
+    label: '15. Juli · 13:00', sub: 'Stunde 4669 / 8760', season: '☀ Sommer',
+    tempC: 24, vlC: 50, t: 4669, bedarf: 95, twwKw: 75,
+    erzeuger: [{ key: 'lwwp', label: 'Luft-WP', kw: 95, cop: 4.5 }],
+    strom: { netzbezugKw: 0, pvKw: 720, bhkwKw: 0, wpKw: 21, skKw: 0, hhKw: 105,
+             einspeisungKw: 414, batLadeKw: 180, batEntladeKw: 0, batKap: 500 },
+    speicher: { tsKap: 0, tsLade: 0, tsEntlade: 0 },
+  },
+  bhkw: {
+    label: '12. Februar · 18:00', sub: 'Stunde 1050 / 8760', season: '❄ Winter',
+    tempC: -2, vlC: 82, t: 1050, bedarf: 750, twwKw: 50,
+    erzeuger: [
+      { key: 'lwwp',     label: 'Luft-WP',  kw: 220, cop: 1.7 },
+      { key: 'bhkw',     label: 'BHKW',     kw: 280 },
+      { key: 'gaskessel',label: 'Gaskessel',kw: 250 },
+    ],
+    strom: { netzbezugKw: 65, pvKw: 0, bhkwKw: 126, wpKw: 129, skKw: 0, hhKw: 145,
+             einspeisungKw: 0, batLadeKw: 0, batEntladeKw: 17, batKap: 200 },
+    speicher: { tsKap: 0, tsLade: 0, tsEntlade: 0 },
+  },
+};
+
+// Wirkungsgrade für Detail-Modus
+const ETAS = { gaskessel: 0.92, heizoel: 0.90, pellets: 0.88, hhs: 0.85 };
+const BHKW_ETA_TOTAL = 0.88;
+const BRENNSTOFF_LABEL = { gaskessel: 'Erdgas', heizoel: 'Heizöl', pellets: 'Pellets', hhs: 'Hackschnitzel', bhkw: 'Erdgas' };
+const NETZVERLUST_FAKTOR = 0.10;
+
+// Farben — gedämpfte "industrial / blueprint"-Palette (übernommen aus altem Live-Layout)
+// Charakteristisch: niedrige Sättigung, gedeckte Töne, gut auf dunklem Hintergrund lesbar
+const C = {
+  // Box-Farben (Anlagen-Identität)
+  netz:     '#5a6878',  // Stromnetz
+  pv:       '#8a7a3d',  // PV (Olivgelb)
+  bhkw:     '#8a6b40',  // BHKW (Bronze)
+  hh:       '#5e6b70',  // Haushaltsstrom (gedämpftes Grau)
+  sk:       '#7a5b8a',  // Stromkessel (gedämpftes Lila)
+  bat:      '#6e6488',  // Batterie (gedämpftes Blau-Lila)
+  wp:       '#5e8a82',  // WP (Türkis)
+  fw:       '#9b5b5b',  // Fernwärme (Rot-Braun)
+  pellets:  '#7a6248',  // Pellets (Braun)
+  hhs:      '#5d4838',  // Hackschnitzel (dunkles Braun)
+  gk:       '#6b7b7c',  // Gaskessel (Grau-Blau)
+  speicher: '#4a7568',  // Wärmespeicher (Grün-Türkis)
+  bedarf:   '#9b5b5b',  // Wärmebedarf (Rot-Braun)
+  // Hub-Farben (zentrale Knoten)
+  hubStrom: '#8a7a3d',  // Strom-Hub = Olivgelb
+  hubWaerme:'#9b5b5b',  // Wärme-Hub = Rot-Braun
+  // Band-Farben nach Medium
+  bandStrom:    '#8a7a3d',  // Strom = Olivgelb (lokale Erzeugung, intern)
+  bandWaerme:   '#9b5b5b',  // Wärme = Rot-Braun
+  bandUmwelt:   '#5a8a6e',  // Umweltwärme = gedämpftes Grün
+  bandBrennstoff:'#5a6878', // Brennstoff = Grau-Blau
+  bandBezug:    '#8a7a3d',  // Netzbezug = Strom-Olivgelb (es ist ja Strom!)
+  bandEinsp:    '#4e7a52',  // Einspeisung = gedämpftes Grün
+  bandVerlust:  '#4a5060',  // Verluste (Wirkungsgrad, Speicher, Bat, Netz) = dunkles Grau-Schwarz
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Anlagen klassifizieren — gibt zurück, welche Bänder existieren
+// ═══════════════════════════════════════════════════════════════════════════
+function classifyAnlagen(data, detail) {
+  const { erzeuger, bedarf, speicher, strom } = data;
+  const stromOnly = []; // {label, value, color, dir: 'in'|'out'}
+  const waermeOnly = [];
+  const bridges = []; // {label, color, stromIn, stromOut, waermeOut, ...}
+  const sonder = []; // Umweltwärme, Brennstoff (visuell als Tropfen/Pfeil von außen)
+  const annotations = []; // {anchor: 'erzeuger'|'speicher'|'bat', erzKey?, text, value}
+
+  // Strom-Quellen
+  if (strom.netzbezugKw > 0.1) stromOnly.push({ label: 'Netzbezug', value: strom.netzbezugKw, color: C.netz, dir: 'in' });
+  if (strom.pvKw > 0.1)        stromOnly.push({ label: 'PV',        value: strom.pvKw,        color: C.pv,   dir: 'in' });
+  if (strom.batEntladeKw > 0.1)stromOnly.push({ label: 'Batterie ↑',value: strom.batEntladeKw,color: C.bat,  dir: 'in' });
+  // Strom-Senken (außer WP/SK/Bridges)
+  if (strom.hhKw > 0.1)        stromOnly.push({ label: 'Haushaltsstrom', value: strom.hhKw, color: C.hh,    dir: 'out' });
+  if (strom.einspeisungKw > 0.1) stromOnly.push({ label: 'Einspeisung', value: strom.einspeisungKw, color: C.einsp, dir: 'out' });
+  if (strom.batLadeKw > 0.1)   stromOnly.push({ label: 'Batterie ↓', value: strom.batLadeKw, color: C.bat,   dir: 'out' });
+
+  // WP — Brücke Strom → Wärme + zusätzlich Umweltwärme
+  const wpErz = erzeuger.find(e => ['lwwp','fg','geo'].includes(e.key));
+  if (wpErz) {
+    const wpUmw = Math.max(0, wpErz.kw - strom.wpKw);
+    bridges.push({
+      label: wpErz.label, color: C.wp, kind: 'wp',
+      stromIn: strom.wpKw, waermeOut: wpErz.kw, umwelt: wpUmw,
+      kw: wpErz.kw, cop: wpErz.cop,
+    });
+    if (wpUmw > 0.1) sonder.push({ label: 'Umweltwärme', value: wpUmw, color: C.umwelt, target: 'wp' });
+  }
+  // BHKW — Brücke: Brennstoff (Erdgas) → Strom + Wärme
+  const bhkwErz = erzeuger.find(e => e.key === 'bhkw');
+  if (bhkwErz) {
+    bridges.push({
+      label: bhkwErz.label, color: C.bhkw, kind: 'bhkw',
+      stromOut: strom.bhkwKw || 0, waermeOut: bhkwErz.kw,
+      brennstoff: (strom.bhkwKw || 0) + bhkwErz.kw + 50, // grobe Verlust-Schätzung
+      kw: bhkwErz.kw,
+    });
+    sonder.push({ label: 'Erdgas (BHKW)', value: bhkwErz.kw + (strom.bhkwKw || 0), color: C.gk, target: 'bhkw' });
+  }
+  // Stromkessel — Brücke Strom → Wärme
+  if (strom.skKw > 0.1) {
+    bridges.push({ label: 'Stromkessel', color: C.sk, kind: 'sk', stromIn: strom.skKw, waermeOut: strom.skKw, kw: strom.skKw });
+  }
+
+  // Wärme-Quellen (außer WP/BHKW/SK)
+  for (const e of erzeuger) {
+    if (['lwwp','fg','geo','bhkw'].includes(e.key)) continue;
+    if (e.kw < 0.1) continue;
+    let col = C.gk;
+    if (e.key === 'fernwaerme') col = C.fw;
+    else if (e.key === 'pellets') col = C.pellets;
+    else if (e.key === 'hhs')     col = C.hhs;
+    waermeOnly.push({ key: e.key, label: e.label, value: e.kw, color: col, dir: 'in' });
+  }
+  // Wärme-Senken
+  if (detail) {
+    // Detail-Modus: Wärmebedarf aufgeteilt in Netzverluste / TWW / Raumwärme
+    const netzverlust = bedarf * NETZVERLUST_FAKTOR;
+    const tww = Math.min(data.twwKw || 0, bedarf - netzverlust);
+    const raumwaerme = Math.max(0, bedarf - netzverlust - tww);
+    if (netzverlust > 0.1) waermeOnly.push({ label: 'Netzverluste', value: netzverlust, color: '#5a606a', dir: 'out', verlust: true });
+    if (tww > 0.1)         waermeOnly.push({ label: 'TWW',          value: tww,         color: '#ff8a65', dir: 'out' });
+    if (raumwaerme > 0.1)  waermeOnly.push({ label: 'Raumwärme',    value: raumwaerme,  color: C.bedarf, dir: 'out' });
+  } else {
+    waermeOnly.push({ label: 'Wärmebedarf', value: bedarf, color: C.bedarf, dir: 'out' });
+  }
+  if (speicher.tsLade > 0.1) waermeOnly.push({ label: 'Speicher ↓', value: speicher.tsLade, color: C.speicher, dir: 'out' });
+  if (speicher.tsEntlade > 0.1) waermeOnly.push({ label: 'Speicher ↑', value: speicher.tsEntlade, color: C.speicher, dir: 'in' });
+
+  // Verlust-Knoten (im Detail-Modus als echte abzweigende Bänder + kleine Boxen gerendert)
+  const verlustNodes = [];
+
+  if (detail) {
+    // Brennstoffe für alle Brennstoff-Erzeuger (Gaskessel, Pellets, HHS, Heizöl)
+    for (const e of erzeuger) {
+      if (ETAS[e.key] && e.kw > 0.1) {
+        const brennstoff = e.kw / ETAS[e.key];
+        const verlust = brennstoff - e.kw;
+        sonder.push({ label: BRENNSTOFF_LABEL[e.key], value: brennstoff, color: C.bandBrennstoff, target: e.key, dezent: true });
+        annotations.push({ anchor: 'erzeuger', erzKey: e.key, text: 'η ' + Math.round(ETAS[e.key]*100) + '%' });
+        if (verlust > 0.5) {
+          verlustNodes.push({ label: 'η-Verlust', value: verlust, source: e.key, sourceType: 'waermeIn' });
+        }
+      }
+    }
+    // BHKW: Brennstoff = (waerme + strom) / etaTotal
+    const bhkwErz = erzeuger.find(e => e.key === 'bhkw');
+    if (bhkwErz && bhkwErz.kw > 0.1) {
+      const bhkwSonder = sonder.find(s => s.target === 'bhkw');
+      if (bhkwSonder) {
+        const brennstoff = (bhkwErz.kw + (strom.bhkwKw || 0)) / BHKW_ETA_TOTAL;
+        bhkwSonder.value = brennstoff;
+        const verlust = brennstoff - bhkwErz.kw - (strom.bhkwKw || 0);
+        annotations.push({ anchor: 'erzeuger', erzKey: 'bhkw', text: 'η ' + Math.round(BHKW_ETA_TOTAL*100) + '%' });
+        if (verlust > 0.5) {
+          verlustNodes.push({ label: 'η-Verlust', value: verlust, source: 'bhkw', sourceType: 'bridge' });
+        }
+      }
+    }
+    // Speicherverlust
+    if (speicher.tsKap > 0) {
+      const verlust = speicher.tsKap * 0.005;
+      if (verlust > 0.1) {
+        verlustNodes.push({ label: 'Speicher-Verlust', value: verlust, source: 'speicher', sourceType: 'speicher' });
+      }
+    }
+    // Bat-Verlust — 5% pro Halbzyklus (Lade ODER Entlade), nicht 10% (das wäre Round-Trip)
+    const batKw = (strom.batLadeKw || 0) + (strom.batEntladeKw || 0);
+    if (batKw > 0.1) {
+      const verlust = batKw * 0.05;
+      verlustNodes.push({ label: 'Bat-Verlust', value: verlust, source: 'bat', sourceType: 'bat' });
+    }
+  }
+
+  return { stromOnly, waermeOnly, bridges, sonder, annotations, verlustNodes };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Hub-Sankey-Renderer
+// ═══════════════════════════════════════════════════════════════════════════
+function drawHubSankey(canvas, data, mode) {
+  const detail = (mode === 'detail');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+  canvas.width = cssW * dpr; canvas.height = cssH * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const cls = classifyAnlagen(data, detail);
+  const { stromOnly, waermeOnly, bridges, sonder, annotations, verlustNodes } = cls;
+
+  // Hub-Position + Skalierung
+  const hubR = 50;
+  const cy = cssH / 2;
+  const hubStrom = { cx: cssW * 0.30, cy, r: hubR, color: C.hubStrom, label: 'STROM', symbol: '⚡' };
+  const hubWaerme = { cx: cssW * 0.70, cy, r: hubR, color: C.hubWaerme, label: 'WÄRME', symbol: '🔥' };
+
+  // Anlagen-Layout: Strom-Quellen oben links, Strom-Senken unten links
+  // Wärme-Quellen oben rechts, Wärme-Senken unten rechts
+  // Brücken in der Mitte (zwischen den Hubs, vertikal verteilt)
+  const stromIn  = stromOnly.filter(s => s.dir === 'in');
+  const stromOut = stromOnly.filter(s => s.dir === 'out');
+  const waermeIn = waermeOnly.filter(s => s.dir === 'in');
+  const waermeOut= waermeOnly.filter(s => s.dir === 'out');
+
+  // Position der Anlagen-Boxen
+  const boxW = 90, boxH = 26, vGap = 12;
+  function placeColumn(items, x, startY, dir) {
+    const total = items.length * boxH + (items.length - 1) * vGap;
+    let y = startY ?? (cy - total / 2);
+    return items.map(it => {
+      const r = { ...it, x, y, w: boxW, h: boxH, anchor: dir === 'left' ? 'right' : 'left' };
+      y += boxH + vGap;
+      return r;
+    });
+  }
+
+  // Strom-Seite (links)
+  const xStromLeft = 14;
+  const stromInBoxes  = placeColumn(stromIn,  xStromLeft, 30, 'left');
+  const stromOutBoxes = placeColumn(stromOut, xStromLeft, cssH - 30 - (stromOut.length * boxH + (stromOut.length - 1) * vGap), 'left');
+  // Wärme-Seite (rechts)
+  const xWaermeRight = cssW - 14 - boxW;
+  const waermeInBoxes  = placeColumn(waermeIn,  xWaermeRight, 30, 'right');
+  const waermeOutBoxes = placeColumn(waermeOut, xWaermeRight, cssH - 30 - (waermeOut.length * boxH + (waermeOut.length - 1) * vGap), 'right');
+
+  // Brücken in der Mitte — vertikaler Abstand abhängig von Anzahl
+  const xBridgeMid = (hubStrom.cx + hubWaerme.cx) / 2;
+  const bridgeBoxW = 110, bridgeBoxH = 30;
+  // Mehr Luft zwischen Brücken — sonst kollidieren Sonder-Boxen mit Nachbar-Brücken
+  const bridgeGap = bridges.length >= 3 ? 56 : 78;
+  const totalBridgeH = bridges.length * bridgeBoxH + Math.max(0, bridges.length - 1) * bridgeGap;
+  let by = cy - totalBridgeH / 2;
+  const bridgeBoxes = bridges.map(b => {
+    const r = { ...b, x: xBridgeMid - bridgeBoxW/2, y: by, w: bridgeBoxW, h: bridgeBoxH };
+    by += bridgeBoxH + bridgeGap;
+    return r;
+  });
+
+  // Sonder-Knoten:
+  //  - Umweltwärme + BHKW-Erdgas: über der jeweiligen Brücke
+  //  - Brennstoff für Wärme-Erzeuger (Gaskessel, Pellets etc.): klein über der waermeIn-Box (dezent)
+  const sonderByTarget = {};
+  sonder.forEach(s => {
+    if (!sonderByTarget[s.target]) sonderByTarget[s.target] = [];
+    sonderByTarget[s.target].push(s);
+  });
+  const sonderBoxes = [];
+  for (const tgt in sonderByTarget) {
+    const items = sonderByTarget[tgt];
+    // Ziel ist entweder eine Brücke (kind === tgt) oder eine waermeIn-Box (key === tgt)
+    let targetBox = bridgeBoxes.find(b => b.kind === tgt);
+    if (!targetBox) targetBox = waermeInBoxes.find(w => w.key === tgt);
+    if (!targetBox) continue;
+
+    items.forEach((s, i) => {
+      const isDezent = !!s.dezent;
+      const sw = isDezent ? 60 : boxW;
+      const sh = isDezent ? 16 : boxH;
+      const yOff = isDezent ? 12 : 8;
+      // Bei waermeIn-Box: zur Linken positionieren (außerhalb), nicht oben (sonst Kollision mit Wärmequellen-Reihe oben)
+      let x, y;
+      if (bridgeBoxes.includes(targetBox)) {
+        // Über Brücke zentriert
+        x = targetBox.x + (targetBox.w - sw) / 2;
+        y = targetBox.y - sh - yOff;
+      } else {
+        // Links neben der Wärme-Anlage (Brennstoff fließt von links rein, Anlage rechts daneben)
+        x = targetBox.x - sw - 12;
+        y = targetBox.y + (targetBox.h - sh) / 2;
+      }
+      sonderBoxes.push({
+        ...s,
+        x, y, w: sw, h: sh,
+        anchor: bridgeBoxes.includes(targetBox) ? 'bottom' : 'left',
+        bridge: targetBox,
+        dezent: isDezent,
+      });
+    });
+  }
+
+  // Verlust-Boxen platzieren — lokal an ihrer Quelle (unterhalb)
+  const verlustBoxes = [];
+  for (const v of (verlustNodes || [])) {
+    let src = null;
+    if (v.sourceType === 'waermeIn') {
+      src = waermeInBoxes.find(w => w.key === v.source);
+    } else if (v.sourceType === 'bridge') {
+      src = bridgeBoxes.find(b => b.kind === v.source);
+    } else if (v.sourceType === 'speicher') {
+      src = [...waermeOutBoxes, ...waermeInBoxes].find(w => w.label && w.label.startsWith('Speicher'));
+    } else if (v.sourceType === 'bat') {
+      src = [...stromInBoxes, ...stromOutBoxes].find(b => b.label && b.label.startsWith('Batterie'));
+    }
+    if (!src) continue;
+    const vw = 70, vh = 16;
+    // Verlust-Box knapp unter der Quelle, leicht nach rechts versetzt
+    verlustBoxes.push({
+      label: v.label, value: v.value, color: C.bandVerlust,
+      x: src.x + (src.w - vw) / 2,
+      y: src.y + src.h + 14,
+      w: vw, h: vh,
+      source: src,
+      dezent: true,
+    });
+  }
+
+  // ── Skalierung: 1 kW = X Pixel Bandbreite ──
+  const allValues = [
+    ...stromInBoxes.map(b => b.value), ...stromOutBoxes.map(b => b.value),
+    ...waermeInBoxes.map(b => b.value), ...waermeOutBoxes.map(b => b.value),
+    ...bridgeBoxes.map(b => b.kw),
+    ...sonderBoxes.map(b => b.value),
+  ];
+  const maxVal = Math.max(...allValues, 1);
+  const bandScale = 30 / maxVal; // max 30 px Bandbreite
+
+  function bandWidth(v) { return Math.max(1.5, v * bandScale); }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Render-Funktionen
+  // ═══════════════════════════════════════════════════════════════════════
+  function drawHub(h) {
+    // Solider Kreis mit dezentem Rand — KEIN Glow
+    ctx.fillStyle = h.color; ctx.globalAlpha = 0.18;
+    ctx.beginPath(); ctx.arc(h.cx, h.cy, h.r, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    // Rand
+    ctx.strokeStyle = h.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(h.cx, h.cy, h.r, 0, Math.PI * 2); ctx.stroke();
+    // Label
+    ctx.fillStyle = h.color;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px "DM Sans", sans-serif';
+    ctx.fillText(h.label, h.cx, h.cy - 6);
+    // Total-Wert
+    let total = 0;
+    if (h === hubStrom) {
+      total = stromInBoxes.reduce((s,b)=>s+b.value,0)
+            + bridges.filter(b => b.kind === 'bhkw').reduce((s,b)=>s+b.stromOut,0);
+    } else {
+      total = waermeInBoxes.reduce((s,b)=>s+b.value,0)
+            + bridges.reduce((s,b)=>s+(b.waermeOut||0),0);
+    }
+    ctx.font = '10px "DM Mono", monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText(Math.round(total) + ' kW', h.cx, h.cy + 8);
+  }
+
+  function drawBox(b, color) {
+    const isDezent = !!b.dezent;
+    ctx.fillStyle = color || '#3a4252'; ctx.globalAlpha = isDezent ? 0.10 : 0.18;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = color || '#5e6b70'; ctx.lineWidth = isDezent ? 0.7 : 1;
+    ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+    ctx.fillStyle = color || '#cfd8dc';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (isDezent) {
+      // Kompakte einzeilige Darstellung
+      ctx.font = '8px "DM Mono", monospace';
+      ctx.fillText(b.label + ' ' + Math.round(b.value || b.kw) + ' kW', b.x + b.w/2, b.y + b.h/2);
+    } else {
+      ctx.font = '10px "DM Mono", monospace';
+      ctx.fillText(b.label, b.x + b.w/2, b.y + b.h/2 - 4);
+      ctx.font = '9px "DM Mono", monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillText(Math.round(b.value || b.kw) + ' kW' + (b.cop ? ' · COP ' + b.cop.toFixed(1) : ''), b.x + b.w/2, b.y + b.h/2 + 7);
+    }
+  }
+
+  function drawAnnotations() {
+    if (!detail || !annotations || annotations.length === 0) return;
+    ctx.font = '9px "DM Mono", monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const a of annotations) {
+      let target = null;
+      if (a.anchor === 'erzeuger' && a.erzKey) {
+        const wpKeys = ['lwwp','fg','geo'];
+        if (wpKeys.includes(a.erzKey)) target = bridgeBoxes.find(b => b.kind === 'wp');
+        else if (a.erzKey === 'bhkw') target = bridgeBoxes.find(b => b.kind === 'bhkw');
+        else target = waermeInBoxes.find(w => w.key === a.erzKey);
+      } else if (a.anchor === 'speicher') {
+        target = [...waermeOutBoxes, ...waermeInBoxes].find(w => w.label && w.label.startsWith('Speicher'));
+      } else if (a.anchor === 'bat') {
+        target = [...stromInBoxes, ...stromOutBoxes].find(b => b.label && b.label.startsWith('Batterie'));
+      }
+      if (!target) continue;
+      // Wenn Verlust-Box unter dieser Quelle, Annotation darunter — sonst direkt unter Quelle
+      const verlustBox = verlustBoxes.find(v => v.source === target);
+      const text = a.text;
+      const padX = 5, padY = 2;
+      const textW = ctx.measureText(text).width;
+      const px = target.x + target.w/2 - (textW + padX*2)/2;
+      const py = (verlustBox ? verlustBox.y + verlustBox.h : target.y + target.h) + 5;
+      ctx.fillStyle = 'rgba(15,17,22,0.85)';
+      ctx.fillRect(px, py, textW + padX*2, 12 + padY*2);
+      ctx.strokeStyle = '#3a4250';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(px + 0.5, py + 0.5, textW + padX*2 - 1, 12 + padY*2 - 1);
+      ctx.fillStyle = '#cfd8dc';
+      ctx.fillText(text, target.x + target.w/2, py + padY + 1);
+    }
+  }
+
+  // Bandanker auf Hub (am Rand des Kreises): Position auf dem Kreis, abhängig vom Winkel zur Quelle
+  function hubAnchor(hub, fromX, fromY) {
+    const dx = fromX - hub.cx;
+    const dy = fromY - hub.cy;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    return { x: hub.cx + dx / len * hub.r, y: hub.cy + dy / len * hub.r };
+  }
+
+  function drawBand(p0, p1, w, color, dash) {
+    // Bezier-Kurve mit Kontrollpunkten in der Mitte
+    const dx = p1.x - p0.x;
+    const cx0 = p0.x + dx * 0.55, cy0 = p0.y;
+    const cx1 = p1.x - dx * 0.55, cy1 = p1.y;
+    const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x) + Math.PI / 2;
+    const ox = Math.cos(angle) * w/2, oy = Math.sin(angle) * w/2;
+
+    if (dash) {
+      // Gestricheltes Band (Netzaustausch — Bezug oder Einspeisung):
+      // Sehr leichte Füllung + gestrichelte Konturen, wirkt visuell "anders" als interne Bänder.
+      ctx.beginPath();
+      ctx.moveTo(p0.x + ox, p0.y + oy);
+      ctx.bezierCurveTo(cx0 + ox, cy0 + oy, cx1 + ox, cy1 + oy, p1.x + ox, p1.y + oy);
+      ctx.lineTo(p1.x - ox, p1.y - oy);
+      ctx.bezierCurveTo(cx1 - ox, cy1 - oy, cx0 - ox, cy0 - oy, p0.x - ox, p0.y - oy);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.10;
+      ctx.fill();
+      // Gestrichelte Konturen oben + unten
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([7, 4]);
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.moveTo(p0.x + ox, p0.y + oy);
+      ctx.bezierCurveTo(cx0 + ox, cy0 + oy, cx1 + ox, cy1 + oy, p1.x + ox, p1.y + oy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(p0.x - ox, p0.y - oy);
+      ctx.bezierCurveTo(cx0 - ox, cy0 - oy, cx1 - ox, cy1 - oy, p1.x - ox, p1.y - oy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(p0.x + ox, p0.y + oy);
+      ctx.bezierCurveTo(cx0 + ox, cy0 + oy, cx1 + ox, cy1 + oy, p1.x + ox, p1.y + oy);
+      ctx.lineTo(p1.x - ox, p1.y - oy);
+      ctx.bezierCurveTo(cx1 - ox, cy1 - oy, cx0 - ox, cy0 - oy, p0.x - ox, p0.y - oy);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.42;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Pfeile entfernt — Animation zeigt die Flussrichtung
+    return { p0, p1, w, color, cx0, cy0, cx1, cy1, dash };
+  }
+
+  function drawArrowTip(p0, p1, color) {
+    const dx = p1.x - p0.x, dy = p1.y - p0.y;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    if (len < 14) return;
+    const ux = dx/len, uy = dy/len;
+    // Pfeil zeigt von p0 nach p1 — Spitze leicht IN den Endpunkt-Bereich, damit klar
+    // zugeordnet ist, dass der Fluss in p1 hinein geht.
+    const size = 10;
+    const back = -3; // negativ = Spitze ragt 3px in den Knoten hinein
+    const tipX = p1.x - ux * back;
+    const tipY = p1.y - uy * back;
+    const baseX = tipX - ux * size;
+    const baseY = tipY - uy * size;
+    const px = -uy, py = ux;
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(baseX + px*size*0.55, baseY + py*size*0.55);
+    ctx.lineTo(baseX - px*size*0.55, baseY - py*size*0.55);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.95;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // ─── Bänder erst zeichnen, dann Knoten drüber ───
+  const allBands = [];
+
+  // Hilfsfunktion: Band-Farbe für eine Strom-Box
+  function stromBandColor(b) {
+    if (b.label === 'Netzbezug')   return C.bandBezug;     // grau, gestrichelt
+    if (b.label === 'Einspeisung') return C.bandEinsp;     // grün, gestrichelt
+    return C.bandStrom;                                     // alles andere: Strom-Gelb
+  }
+
+  // Strom-Quellen → Strom-Hub
+  stromInBoxes.forEach(b => {
+    const from = { x: b.x + b.w, y: b.y + b.h/2 };
+    const to = hubAnchor(hubStrom, from.x, from.y);
+    const g = drawBand(from, to, bandWidth(b.value), stromBandColor(b), b.dash);
+    allBands.push({ ...g, label: b.label + ' → Strom', value: b.value });
+  });
+  // Strom-Hub → Strom-Senken
+  stromOutBoxes.forEach(b => {
+    const to = { x: b.x + b.w, y: b.y + b.h/2 };
+    const from = hubAnchor(hubStrom, to.x, to.y);
+    const g = drawBand(from, to, bandWidth(b.value), stromBandColor(b), b.dash);
+    allBands.push({ ...g, label: 'Strom → ' + b.label, value: b.value });
+  });
+  // Wärme-Quellen → Wärme-Hub
+  waermeInBoxes.forEach(b => {
+    const from = { x: b.x, y: b.y + b.h/2 };
+    const to = hubAnchor(hubWaerme, from.x, from.y);
+    const g = drawBand(from, to, bandWidth(b.value), C.bandWaerme, b.dash);
+    allBands.push({ ...g, label: b.label + ' → Wärme', value: b.value });
+  });
+  // Wärme-Hub → Wärme-Senken
+  waermeOutBoxes.forEach(b => {
+    const to = { x: b.x, y: b.y + b.h/2 };
+    const from = hubAnchor(hubWaerme, to.x, to.y);
+    const bandCol = b.verlust ? C.bandVerlust : C.bandWaerme;
+    const g = drawBand(from, to, bandWidth(b.value), bandCol, b.dash);
+    allBands.push({ ...g, label: 'Wärme → ' + b.label, value: b.value });
+  });
+
+  // Brücken-Bänder — Bänder in MEDIUM-Farben
+  bridgeBoxes.forEach(b => {
+    const by = b.y + b.h/2;
+    if (b.kind === 'wp') {
+      // Strom-Hub → WP (gelb)
+      const aFrom = hubAnchor(hubStrom, b.x, by);
+      const aTo = { x: b.x, y: by };
+      const g1 = drawBand(aFrom, aTo, bandWidth(b.stromIn || 0), C.bandStrom, false);
+      allBands.push({ ...g1, label: 'Strom → ' + b.label, value: b.stromIn });
+      // WP → Wärme-Hub (rot)
+      const cFrom = { x: b.x + b.w, y: by };
+      const cTo = hubAnchor(hubWaerme, b.x + b.w, by);
+      const g2 = drawBand(cFrom, cTo, bandWidth(b.waermeOut || 0), C.bandWaerme, false);
+      allBands.push({ ...g2, label: b.label + ' → Wärme', value: b.waermeOut });
+    } else if (b.kind === 'bhkw') {
+      // BHKW → Strom-Hub (gelb)
+      const aFrom = { x: b.x, y: by };
+      const aTo = hubAnchor(hubStrom, b.x, by);
+      const g1 = drawBand(aFrom, aTo, bandWidth(b.stromOut || 0), C.bandStrom, false);
+      allBands.push({ ...g1, label: b.label + ' → Strom', value: b.stromOut });
+      // BHKW → Wärme-Hub (rot)
+      const cFrom = { x: b.x + b.w, y: by };
+      const cTo = hubAnchor(hubWaerme, b.x + b.w, by);
+      const g2 = drawBand(cFrom, cTo, bandWidth(b.waermeOut || 0), C.bandWaerme, false);
+      allBands.push({ ...g2, label: b.label + ' → Wärme', value: b.waermeOut });
+    } else if (b.kind === 'sk') {
+      // Strom-Hub → SK (gelb) → Wärme-Hub (rot)
+      const aFrom = hubAnchor(hubStrom, b.x, by);
+      const aTo = { x: b.x, y: by };
+      drawBand(aFrom, aTo, bandWidth(b.stromIn || 0), C.bandStrom, false);
+      const cFrom = { x: b.x + b.w, y: by };
+      const cTo = hubAnchor(hubWaerme, b.x + b.w, by);
+      drawBand(cFrom, cTo, bandWidth(b.waermeOut || 0), C.bandWaerme, false);
+    }
+  });
+
+  // Sonder (Umweltwärme, Brennstoff) → entsprechende Brücke / Anlagen-Box
+  sonderBoxes.forEach(s => {
+    let from, to;
+    if (s.anchor === 'left') {
+      // Sonder LINKS neben der Anlagen-Box, Band geht nach rechts in die Box rein
+      from = { x: s.x + s.w, y: s.y + s.h/2 };
+      to = { x: s.bridge.x, y: s.bridge.y + s.bridge.h/2 };
+    } else {
+      from = { x: s.x + s.w/2, y: s.y + s.h };
+      to = { x: s.bridge.x + s.bridge.w/2, y: s.bridge.y };
+    }
+    const bandCol = s.target === 'wp' ? C.bandUmwelt : C.bandBrennstoff;
+    const g = drawBand(from, to, bandWidth(s.value), bandCol, false);
+    allBands.push({ ...g, label: s.label, value: s.value });
+  });
+
+  // Verlust-Bänder: aus Quelle nach unten in kleine Verlust-Box
+  verlustBoxes.forEach(v => {
+    const from = { x: v.source.x + v.source.w/2, y: v.source.y + v.source.h };
+    const to   = { x: v.x + v.w/2,                y: v.y };
+    const g = drawBand(from, to, Math.max(2, bandWidth(v.value) * 0.6), v.color, false);
+    allBands.push({ ...g, label: v.label, value: v.value });
+  });
+
+  // ─── Knoten drüber zeichnen ───
+  drawHub(hubStrom);
+  drawHub(hubWaerme);
+  stromInBoxes.forEach(b => drawBox(b, b.color));
+  stromOutBoxes.forEach(b => drawBox(b, b.color));
+  waermeInBoxes.forEach(b => drawBox(b, b.color));
+  waermeOutBoxes.forEach(b => drawBox(b, b.color));
+  bridgeBoxes.forEach(b => {
+    drawBox({ ...b, value: b.kw }, b.color);
+  });
+  sonderBoxes.forEach(s => drawBox(s, s.color));
+  verlustBoxes.forEach(v => drawBox(v, v.color));
+  drawAnnotations();
+
+  // ─── Animation: Punkte entlang der Bänder ───
+  if (window._animFrame) cancelAnimationFrame(window._animFrame);
+  let phase = 0;
+  function tick() {
+    phase = (phase + 0.006) % 1;
+    redrawAnim();
+    window._animFrame = requestAnimationFrame(tick);
+  }
+  function redrawAnim() {
+    ctx.clearRect(0, 0, cssW, cssH);
+    // Bänder neu zeichnen (mit dash-Logik)
+    allBands.forEach(g => {
+      drawBand(g.p0, g.p1, g.w, g.color, g.dash);
+    });
+    // Knoten
+    drawHub(hubStrom); drawHub(hubWaerme);
+    stromInBoxes.forEach(b => drawBox(b, b.color));
+    stromOutBoxes.forEach(b => drawBox(b, b.color));
+    waermeInBoxes.forEach(b => drawBox(b, b.color));
+    waermeOutBoxes.forEach(b => drawBox(b, b.color));
+    bridgeBoxes.forEach(b => drawBox({ ...b, value: b.kw }, b.color));
+    sonderBoxes.forEach(s => drawBox(s, s.color));
+    verlustBoxes.forEach(v => drawBox(v, v.color));
+    drawAnnotations();
+    // Animierte Punkte
+    allBands.forEach(g => {
+      const p0 = g.p0, p1 = g.p1;
+      const tt = (phase + (g.value % 0.7)) % 1;
+      const dx = p1.x - p0.x;
+      const cx0 = p0.x + dx * 0.55, cy0 = p0.y;
+      const cx1 = p1.x - dx * 0.55, cy1 = p1.y;
+      // Bezier-Punkt
+      const t = tt;
+      const it = 1 - t;
+      const x = it*it*it*p0.x + 3*it*it*t*cx0 + 3*it*t*t*cx1 + t*t*t*p1.x;
+      const y = it*it*it*p0.y + 3*it*it*t*cy0 + 3*it*t*t*cy1 + t*t*t*p1.y;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1.5, g.w / 4), 0, Math.PI * 2);
+      ctx.fillStyle = g.color;
+      ctx.globalAlpha = 0.9;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+  }
+  tick();
+
+  // Hub-Total = Quellen + Brücken-Output (genau wie in drawHub)
+  const stromHubTotal = stromInBoxes.reduce((s,b)=>s+b.value,0)
+                      + bridges.filter(b => b.kind === 'bhkw').reduce((s,b)=>s+(b.stromOut||0),0);
+  const waermeHubTotal = waermeInBoxes.reduce((s,b)=>s+b.value,0)
+                       + bridges.reduce((s,b)=>s+(b.waermeOut||0),0);
+
+  canvas._allBands = allBands;
+  canvas._allBoxes = [
+    { name: 'STROM-Hub', x: hubStrom.cx - hubR, y: hubStrom.cy - hubR, w: hubR*2, h: hubR*2, val: stromHubTotal },
+    { name: 'WÄRME-Hub', x: hubWaerme.cx - hubR, y: hubWaerme.cy - hubR, w: hubR*2, h: hubR*2, val: waermeHubTotal },
+    ...stromInBoxes.map(b => ({ name: b.label, x: b.x, y: b.y, w: b.w, h: b.h, val: b.value })),
+    ...stromOutBoxes.map(b => ({ name: b.label, x: b.x, y: b.y, w: b.w, h: b.h, val: b.value })),
+    ...waermeInBoxes.map(b => ({ name: b.label, x: b.x, y: b.y, w: b.w, h: b.h, val: b.value })),
+    ...waermeOutBoxes.map(b => ({ name: b.label, x: b.x, y: b.y, w: b.w, h: b.h, val: b.value })),
+    ...bridgeBoxes.map(b => ({ name: b.label, x: b.x, y: b.y, w: b.w, h: b.h, val: b.kw })),
+    ...sonderBoxes.map(s => ({ name: s.label, x: s.x, y: s.y, w: s.w, h: s.h, val: s.value })),
+    ...verlustBoxes.map(v => ({ name: v.label, x: v.x, y: v.y, w: v.w, h: v.h, val: v.value })),
+  ];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tooltip + Szenario-Switch
+// ═══════════════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('sankey');
+const tt = document.getElementById('tt');
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let hit = null;
+  // Knoten zuerst (haben Vorrang vor Bändern)
+  for (const b of canvas._allBoxes || []) {
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+      hit = `<b>${b.name}</b><br>${Math.round(b.val)} kW`; break;
+    }
+  }
+  // Dann Bänder (Bezier-Hit-Test entlang der Kurve)
+  if (!hit) {
+    for (const g of canvas._allBands || []) {
+      const steps = 24;
+      let onBand = false;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const it = 1 - t;
+        const bx = it*it*it*g.p0.x + 3*it*it*t*g.cx0 + 3*it*t*t*g.cx1 + t*t*t*g.p1.x;
+        const by_ = it*it*it*g.p0.y + 3*it*it*t*g.cy0 + 3*it*t*t*g.cy1 + t*t*t*g.p1.y;
+        const dx = mx - bx, dy = my - by_;
+        if (Math.sqrt(dx*dx + dy*dy) <= Math.max(4, g.w / 2 + 1)) { onBand = true; break; }
+      }
+      if (onBand) {
+        hit = `${g.label}<br><b>${Math.round(g.value)} kW</b>`;
+        break;
+      }
+    }
+  }
+  if (hit) {
+    tt.innerHTML = hit;
+    tt.style.display = 'block';
+    tt.style.left = (e.clientX - rect.left + 14) + 'px';
+    tt.style.top = (e.clientY - rect.top + 14) + 'px';
+  } else { tt.style.display = 'none'; }
+});
+canvas.addEventListener('mouseleave', () => tt.style.display = 'none');
+
+let viewMode = 'standard';
+let currentScenario = 'winter';
+
+function showScenario(key) {
+  currentScenario = key;
+  const data = SCENARIOS[key];
+  document.getElementById('ts-main').textContent = data.label;
+  document.getElementById('ts-sub').textContent = data.sub;
+  document.getElementById('ts-season').textContent = data.season;
+  document.getElementById('kpi-bedarf').innerHTML = data.bedarf + '<span class="kpi-unit">kW</span>';
+  const erzSum = data.erzeuger.reduce((s, e) => s + e.kw, 0);
+  document.getElementById('kpi-erzeug').innerHTML = Math.round(erzSum) + '<span class="kpi-unit">kW</span>';
+  document.getElementById('hour-info').textContent = 'Stunde ' + data.t;
+  document.getElementById('footer').textContent = `h${data.t} · Σ ${Math.round(erzSum)} kW → ${data.bedarf} kW · ${data.tempC} °C · VL ${data.vlC} °C`;
+  drawHubSankey(canvas, data, viewMode);
+}
+
+document.querySelectorAll('button[data-scenario]').forEach(btn => {
+  btn.addEventListener('click', () => showScenario(btn.dataset.scenario));
+});
+
+document.querySelectorAll('button.vmode').forEach(btn => {
+  btn.addEventListener('click', () => {
+    viewMode = btn.dataset.mode;
+    document.querySelectorAll('button.vmode').forEach(b => {
+      const isActive = b.dataset.mode === viewMode;
+      b.dataset.active = isActive ? '1' : '0';
+      b.style.borderColor = isActive ? 'var(--accent)' : 'var(--border)';
+      b.style.color = isActive ? 'var(--accent)' : 'var(--muted)';
+    });
+    showScenario(currentScenario);
+  });
+});
+
+showScenario('winter');
+
+new ResizeObserver(() => {
+  showScenario(document.querySelector('button[data-scenario]:hover')?.dataset.scenario || 'winter');
+}).observe(canvas);
+</script>
+
+</body>
+</html>

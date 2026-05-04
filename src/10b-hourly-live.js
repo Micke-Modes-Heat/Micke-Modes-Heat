@@ -11,6 +11,7 @@ import { currentViewMode, setViewMode } from './04a-ui-panels.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 
 export let _hourlyModeActive = false;
+export function _setHourlyModeActive(v) { _hourlyModeActive = v; }
 
 export function _toggleHourlyMode() {
   const hasData = window._dispatchHourly && window._dispatchActiveKeys?.length > 0;
@@ -762,6 +763,515 @@ export function _buildFlowSVG(container, data) {
   }
 }
 
+// ── Hub-Sankey (Canvas) — Energiefluss als zwei Hubs (Strom + Wärme) ──
+// Anlagen außenrum, Brücken (WP/BHKW/SK) in der Mitte, Detail-Modus mit
+// TWW/Raumwärme/Netzverluste + Verlust-Bändern.
+const _SANKEY_C = {
+  netz:'#5a6878', pv:'#8a7a3d', bhkw:'#8a6b40', hh:'#5e6b70', sk:'#7a5b8a',
+  bat:'#6e6488', wp:'#5e8a82', fw:'#9b5b5b', pellets:'#7a6248', hhs:'#5d4838',
+  gk:'#6b7b7c', speicher:'#4a7568', bedarf:'#9b5b5b',
+  hubStrom:'#8a7a3d', hubWaerme:'#9b5b5b',
+  bandStrom:'#8a7a3d', bandWaerme:'#9b5b5b',
+  bandUmwelt:'#5a8a6e', bandBrennstoff:'#5a6878',
+  bandBezug:'#8a7a3d', bandEinsp:'#4e7a52',
+  bandVerlust:'#4a5060',
+};
+const _SANKEY_ETAS = { gaskessel:0.92, heizoel:0.90, pellets:0.88, hhs:0.85 };
+const _SANKEY_BHKW_ETA = 0.88;
+const _SANKEY_BRENNSTOFF_LBL = { gaskessel:'Erdgas', heizoel:'Heizöl', pellets:'Pellets', hhs:'Hackschnitzel', bhkw:'Erdgas' };
+
+// Wirkungsgrade aus DOM lesen falls verfügbar
+function _sankeyEtas() {
+  const f = (id, d) => (parseFloat(document.getElementById(id)?.value) || (d * 100)) / 100;
+  return {
+    gaskessel: f('gk-eta', 0.92),
+    heizoel:   f('hko-eta', 0.90),
+    pellets:   f('pk-eta', 0.88),
+    hhs:       f('hhs-eta', 0.85),
+    bhkw:      f('bhkw-eta', 0.88),
+  };
+}
+
+// Stündliche TWW-Last (Floor des Sommer-Mitternachts-Lastgangs × (1−Netzverlust))
+// — analog zu _splitTwwFloor in 07a, lokal um Zirkularität zu vermeiden.
+function _sankeyTwwKw() {
+  const lg = window.systemState?.lastgangKw;
+  if (!lg || lg.length < 8760) return 0;
+  const vf = (parseFloat(document.getElementById('gl-netzverlust')?.value) || 10) / 100;
+  const vals = [];
+  for (let h = 0; h < lg.length; h++) {
+    const day = Math.floor(h / 24), hr = h % 24;
+    if (day >= 151 && day <= 242 && hr >= 2 && hr <= 5) vals.push(lg[h] * (1 - vf));
+  }
+  if (!vals.length) return 0;
+  vals.sort((a, b) => a - b);
+  return Math.max(0, vals[Math.floor(vals.length * 0.10)]);
+}
+
+function _sankeyClassify(data, detail) {
+  const C = _SANKEY_C;
+  const { erzeuger, bedarf, speicher, strom } = data;
+  const stromOnly = [], waermeOnly = [], bridges = [], sonder = [], annotations = [];
+
+  if (strom.netzbezugKw > 0.1)   stromOnly.push({ label:'Netzbezug', value:strom.netzbezugKw, color:C.netz, dir:'in' });
+  if (strom.pvKw > 0.1)          stromOnly.push({ label:'PV', value:strom.pvKw, color:C.pv, dir:'in' });
+  if (strom.batEntladeKw > 0.1)  stromOnly.push({ label:'Batterie ↑', value:strom.batEntladeKw, color:C.bat, dir:'in' });
+  if (strom.hhKw > 0.1)          stromOnly.push({ label:'Haushaltsstrom', value:strom.hhKw, color:C.hh, dir:'out' });
+  if (strom.einspeisungKw > 0.1) stromOnly.push({ label:'Einspeisung', value:strom.einspeisungKw, color:C.bandEinsp, dir:'out' });
+  if (strom.batLadeKw > 0.1)     stromOnly.push({ label:'Batterie ↓', value:strom.batLadeKw, color:C.bat, dir:'out' });
+
+  const wpErz = erzeuger.find(e => ['lwwp','fg','geo'].includes(e.key));
+  const wpKw = wpErz ? wpErz.kw : 0;
+  if (wpErz) {
+    const wpUmw = Math.max(0, wpKw - (strom.wpKw || 0));
+    bridges.push({ label:wpErz.label, color:C.wp, kind:'wp', stromIn:strom.wpKw||0, waermeOut:wpKw, umwelt:wpUmw, kw:wpKw, cop:strom.wpKw>0.1?wpKw/strom.wpKw:null });
+    if (wpUmw > 0.1) sonder.push({ label:'Umweltwärme', value:wpUmw, color:C.bandUmwelt, target:'wp' });
+  }
+  const bhkwErz = erzeuger.find(e => e.key === 'bhkw');
+  if (bhkwErz) {
+    bridges.push({ label:bhkwErz.label, color:C.bhkw, kind:'bhkw', stromOut:strom.bhkwKw||0, waermeOut:bhkwErz.kw, kw:bhkwErz.kw });
+    sonder.push({ label:'Erdgas (BHKW)', value:bhkwErz.kw + (strom.bhkwKw||0) + 50, color:C.bandBrennstoff, target:'bhkw' });
+  }
+  if (strom.skKw > 0.1) bridges.push({ label:'Stromkessel', color:C.sk, kind:'sk', stromIn:strom.skKw, waermeOut:strom.skKw, kw:strom.skKw });
+
+  for (const e of erzeuger) {
+    if (['lwwp','fg','geo','bhkw'].includes(e.key)) continue;
+    if (e.kw < 0.1) continue;
+    let col = C.gk;
+    if (e.key === 'fernwaerme') col = C.fw;
+    else if (e.key === 'pellets') col = C.pellets;
+    else if (e.key === 'hhs')     col = C.hhs;
+    waermeOnly.push({ key:e.key, label:e.label, value:e.kw, color:col, dir:'in' });
+  }
+
+  if (detail) {
+    const nv = bedarf * 0.10;
+    const tww = Math.min(_sankeyTwwKw(), bedarf - nv);
+    const rw = Math.max(0, bedarf - nv - tww);
+    if (nv > 0.1)  waermeOnly.push({ label:'Netzverluste', value:nv, color:C.bandVerlust, dir:'out', verlust:true });
+    if (tww > 0.1) waermeOnly.push({ label:'TWW', value:tww, color:'#ff8a65', dir:'out' });
+    if (rw > 0.1)  waermeOnly.push({ label:'Raumwärme', value:rw, color:C.bedarf, dir:'out' });
+  } else {
+    waermeOnly.push({ label:'Wärmebedarf', value:bedarf, color:C.bedarf, dir:'out' });
+  }
+  if (speicher.tsLade > 0.1)    waermeOnly.push({ label:'Speicher ↓', value:speicher.tsLade, color:C.speicher, dir:'out' });
+  if (speicher.tsEntlade > 0.1) waermeOnly.push({ label:'Speicher ↑', value:speicher.tsEntlade, color:C.speicher, dir:'in' });
+
+  const verlustNodes = [];
+  if (detail) {
+    const etas = _sankeyEtas();
+    for (const e of erzeuger) {
+      const eta = etas[e.key];
+      if (eta && e.kw > 0.1) {
+        const brennstoff = e.kw / eta;
+        const verlust = brennstoff - e.kw;
+        sonder.push({ label:_SANKEY_BRENNSTOFF_LBL[e.key], value:brennstoff, color:C.bandBrennstoff, target:e.key, dezent:true });
+        annotations.push({ anchor:'erzeuger', erzKey:e.key, text:'η ' + Math.round(eta*100) + '%' });
+        if (verlust > 0.5) verlustNodes.push({ label:'η-Verlust', value:verlust, source:e.key, sourceType:'waermeIn' });
+      }
+    }
+    if (bhkwErz && bhkwErz.kw > 0.1) {
+      const eta = etas.bhkw;
+      const brennstoff = (bhkwErz.kw + (strom.bhkwKw||0)) / eta;
+      const bhSonder = sonder.find(s => s.target === 'bhkw');
+      if (bhSonder) bhSonder.value = brennstoff;
+      const verlust = brennstoff - bhkwErz.kw - (strom.bhkwKw||0);
+      annotations.push({ anchor:'erzeuger', erzKey:'bhkw', text:'η ' + Math.round(eta*100) + '%' });
+      if (verlust > 0.5) verlustNodes.push({ label:'η-Verlust', value:verlust, source:'bhkw', sourceType:'bridge' });
+    }
+    if (speicher.tsKap > 0) {
+      const v = speicher.tsKap * 0.005;
+      if (v > 0.1) verlustNodes.push({ label:'Speicher-Verlust', value:v, source:'speicher', sourceType:'speicher' });
+    }
+    const batKw = (strom.batLadeKw||0) + (strom.batEntladeKw||0);
+    if (batKw > 0.1) verlustNodes.push({ label:'Bat-Verlust', value:batKw*0.05, source:'bat', sourceType:'bat' });
+  }
+
+  return { stromOnly, waermeOnly, bridges, sonder, annotations, verlustNodes };
+}
+
+export function _buildFlowSankey(container, data, mode) {
+  // Stop alte Animation
+  if (container._sankeyAnim) { cancelAnimationFrame(container._sankeyAnim); container._sankeyAnim = null; }
+
+  // Canvas anlegen oder wiederverwenden
+  let canvas = container.querySelector('canvas.live-sankey');
+  if (!canvas) {
+    container.innerHTML = '';
+    canvas = document.createElement('canvas');
+    canvas.className = 'live-sankey';
+    canvas.style.cssText = 'display:block;width:100%;height:100%;';
+    container.appendChild(canvas);
+  }
+  // Tooltip
+  let tt = container.querySelector('.live-sankey-tt');
+  if (!tt) {
+    tt = document.createElement('div');
+    tt.className = 'live-sankey-tt';
+    tt.style.cssText = 'position:absolute;pointer-events:none;background:#1a1d26;color:#cfd8dc;border:1px solid #2a3040;border-radius:4px;padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;display:none;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);';
+    container.style.position = 'relative';
+    container.appendChild(tt);
+  }
+
+  const detail = (mode === 'sankey-detail');
+  // Container-Höhe sicherstellen
+  if (container.clientHeight < 100) container.style.minHeight = '420px';
+
+  _drawSankeyOnCanvas(canvas, data, detail, tt);
+}
+
+function _drawSankeyOnCanvas(canvas, data, detail, tt) {
+  const C = _SANKEY_C;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 600, cssH = canvas.clientHeight || 420;
+  canvas.width = cssW * dpr; canvas.height = cssH * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const cls = _sankeyClassify(data, detail);
+  const { stromOnly, waermeOnly, bridges, sonder, annotations, verlustNodes } = cls;
+
+  const hubR = 50, cy = cssH / 2;
+  const hubStrom = { cx: cssW * 0.30, cy, r: hubR, color: C.hubStrom, label: 'STROM' };
+  const hubWaerme = { cx: cssW * 0.70, cy, r: hubR, color: C.hubWaerme, label: 'WÄRME' };
+
+  const stromIn = stromOnly.filter(s => s.dir === 'in');
+  const stromOut = stromOnly.filter(s => s.dir === 'out');
+  const waermeIn = waermeOnly.filter(s => s.dir === 'in');
+  const waermeOut = waermeOnly.filter(s => s.dir === 'out');
+
+  const boxW = 90, boxH = 26, vGap = 12;
+  function placeColumn(items, x, startY) {
+    const total = items.length * boxH + Math.max(0, items.length - 1) * vGap;
+    let y = startY ?? (cy - total / 2);
+    return items.map(it => {
+      const r = { ...it, x, y, w: boxW, h: boxH };
+      y += boxH + vGap;
+      return r;
+    });
+  }
+  const xStromLeft = 14;
+  const stromInBoxes  = placeColumn(stromIn,  xStromLeft, 30);
+  const stromOutBoxes = placeColumn(stromOut, xStromLeft, cssH - 30 - (stromOut.length*boxH + Math.max(0,stromOut.length-1)*vGap));
+  const xWaermeRight = cssW - 14 - boxW;
+  const waermeInBoxes  = placeColumn(waermeIn,  xWaermeRight, 30);
+  const waermeOutBoxes = placeColumn(waermeOut, xWaermeRight, cssH - 30 - (waermeOut.length*boxH + Math.max(0,waermeOut.length-1)*vGap));
+
+  const xBridgeMid = (hubStrom.cx + hubWaerme.cx) / 2;
+  const bridgeBoxW = 110, bridgeBoxH = 30;
+  const bridgeGap = bridges.length >= 3 ? 56 : 78;
+  const totalBridgeH = bridges.length * bridgeBoxH + Math.max(0, bridges.length - 1) * bridgeGap;
+  let by = cy - totalBridgeH / 2;
+  const bridgeBoxes = bridges.map(b => {
+    const r = { ...b, x: xBridgeMid - bridgeBoxW/2, y: by, w: bridgeBoxW, h: bridgeBoxH };
+    by += bridgeBoxH + bridgeGap;
+    return r;
+  });
+
+  // Sonder-Layout
+  const sonderByTarget = {};
+  sonder.forEach(s => { (sonderByTarget[s.target] = sonderByTarget[s.target] || []).push(s); });
+  const sonderBoxes = [];
+  for (const tgt in sonderByTarget) {
+    const items = sonderByTarget[tgt];
+    let target = bridgeBoxes.find(b => b.kind === tgt);
+    if (!target) target = waermeInBoxes.find(w => w.key === tgt);
+    if (!target) continue;
+    items.forEach(s => {
+      const isDezent = !!s.dezent;
+      const sw = isDezent ? 60 : boxW;
+      const sh = isDezent ? 16 : boxH;
+      const yOff = isDezent ? 12 : 8;
+      let x, y;
+      if (bridgeBoxes.includes(target)) {
+        x = target.x + (target.w - sw)/2;
+        y = target.y - sh - yOff;
+      } else {
+        x = target.x - sw - 12;
+        y = target.y + (target.h - sh)/2;
+      }
+      sonderBoxes.push({ ...s, x, y, w:sw, h:sh, anchor:bridgeBoxes.includes(target)?'bottom':'left', bridge:target, dezent:isDezent });
+    });
+  }
+
+  // Verlust-Boxen
+  const verlustBoxes = [];
+  for (const v of (verlustNodes || [])) {
+    let src = null;
+    if (v.sourceType === 'waermeIn') src = waermeInBoxes.find(w => w.key === v.source);
+    else if (v.sourceType === 'bridge') src = bridgeBoxes.find(b => b.kind === v.source);
+    else if (v.sourceType === 'speicher') src = [...waermeOutBoxes, ...waermeInBoxes].find(w => w.label && w.label.startsWith('Speicher'));
+    else if (v.sourceType === 'bat') src = [...stromInBoxes, ...stromOutBoxes].find(b => b.label && b.label.startsWith('Batterie'));
+    if (!src) continue;
+    const vw = 70, vh = 16;
+    verlustBoxes.push({ label:v.label, value:v.value, color:C.bandVerlust, x:src.x+(src.w-vw)/2, y:src.y+src.h+14, w:vw, h:vh, source:src, dezent:true });
+  }
+
+  const allValues = [
+    ...stromInBoxes.map(b=>b.value), ...stromOutBoxes.map(b=>b.value),
+    ...waermeInBoxes.map(b=>b.value), ...waermeOutBoxes.map(b=>b.value),
+    ...bridgeBoxes.map(b=>b.kw), ...sonderBoxes.map(b=>b.value),
+  ];
+  const maxVal = Math.max(...allValues, 1);
+  const bandScale = 30 / maxVal;
+  const bandWidth = v => Math.max(1.5, v * bandScale);
+  const allBands = [];
+
+  function hubAnchor(hub, fx, fy) {
+    const dx = fx - hub.cx, dy = fy - hub.cy;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    return { x: hub.cx + dx/len * hub.r, y: hub.cy + dy/len * hub.r };
+  }
+
+  function drawBand(p0, p1, w, color) {
+    const dx = p1.x - p0.x;
+    const cx0 = p0.x + dx*0.55, cy0 = p0.y;
+    const cx1 = p1.x - dx*0.55, cy1 = p1.y;
+    const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x) + Math.PI/2;
+    const ox = Math.cos(angle)*w/2, oy = Math.sin(angle)*w/2;
+    ctx.beginPath();
+    ctx.moveTo(p0.x+ox, p0.y+oy);
+    ctx.bezierCurveTo(cx0+ox, cy0+oy, cx1+ox, cy1+oy, p1.x+ox, p1.y+oy);
+    ctx.lineTo(p1.x-ox, p1.y-oy);
+    ctx.bezierCurveTo(cx1-ox, cy1-oy, cx0-ox, cy0-oy, p0.x-ox, p0.y-oy);
+    ctx.closePath();
+    ctx.fillStyle = color; ctx.globalAlpha = 0.42; ctx.fill(); ctx.globalAlpha = 1;
+    return { p0, p1, w, color, cx0, cy0, cx1, cy1 };
+  }
+
+  function drawHub(h) {
+    ctx.fillStyle = h.color; ctx.globalAlpha = 0.18;
+    ctx.beginPath(); ctx.arc(h.cx, h.cy, h.r, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = h.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(h.cx, h.cy, h.r, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = h.color; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font = 'bold 13px DM Sans, sans-serif';
+    ctx.fillText(h.label, h.cx, h.cy - 6);
+    let total = 0;
+    if (h === hubStrom) total = stromInBoxes.reduce((s,b)=>s+b.value,0) + bridges.filter(b=>b.kind==='bhkw').reduce((s,b)=>s+(b.stromOut||0),0);
+    else total = waermeInBoxes.reduce((s,b)=>s+b.value,0) + bridges.reduce((s,b)=>s+(b.waermeOut||0),0);
+    ctx.font = '10px DM Mono, monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText(Math.round(total) + ' kW', h.cx, h.cy + 8);
+  }
+
+  function drawBox(b, color) {
+    const isDezent = !!b.dezent;
+    ctx.fillStyle = color || '#3a4252'; ctx.globalAlpha = isDezent?0.10:0.18;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = color || '#5e6b70'; ctx.lineWidth = isDezent?0.7:1;
+    ctx.strokeRect(b.x+0.5, b.y+0.5, b.w-1, b.h-1);
+    ctx.fillStyle = color || '#cfd8dc'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    if (isDezent) {
+      ctx.font = '8px DM Mono, monospace';
+      ctx.fillText(b.label + ' ' + Math.round(b.value||b.kw) + ' kW', b.x+b.w/2, b.y+b.h/2);
+    } else {
+      ctx.font = '10px DM Mono, monospace';
+      ctx.fillText(b.label, b.x+b.w/2, b.y+b.h/2 - 4);
+      ctx.font = '9px DM Mono, monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillText(Math.round(b.value||b.kw) + ' kW' + (b.cop?' · COP '+b.cop.toFixed(1):''), b.x+b.w/2, b.y+b.h/2 + 7);
+    }
+  }
+
+  function drawAnnotations() {
+    if (!detail || !annotations || !annotations.length) return;
+    ctx.font = '9px DM Mono, monospace'; ctx.textAlign='center'; ctx.textBaseline='top';
+    for (const a of annotations) {
+      let target = null;
+      if (a.anchor==='erzeuger' && a.erzKey) {
+        const wpKeys = ['lwwp','fg','geo'];
+        if (wpKeys.includes(a.erzKey)) target = bridgeBoxes.find(b=>b.kind==='wp');
+        else if (a.erzKey==='bhkw') target = bridgeBoxes.find(b=>b.kind==='bhkw');
+        else target = waermeInBoxes.find(w=>w.key===a.erzKey);
+      }
+      if (!target) continue;
+      const verlustBox = verlustBoxes.find(v => v.source === target);
+      const text = a.text;
+      const padX = 5, padY = 2;
+      const textW = ctx.measureText(text).width;
+      const px = target.x + target.w/2 - (textW+padX*2)/2;
+      const py = (verlustBox ? verlustBox.y + verlustBox.h : target.y + target.h) + 5;
+      ctx.fillStyle = 'rgba(15,17,22,0.85)';
+      ctx.fillRect(px, py, textW+padX*2, 12+padY*2);
+      ctx.strokeStyle = '#3a4250'; ctx.lineWidth = 0.5;
+      ctx.strokeRect(px+0.5, py+0.5, textW+padX*2-1, 12+padY*2-1);
+      ctx.fillStyle = '#cfd8dc';
+      ctx.fillText(text, target.x+target.w/2, py+padY+1);
+    }
+  }
+
+  function renderAll() {
+    ctx.clearRect(0, 0, cssW, cssH);
+    allBands.forEach(g => drawBand(g.p0, g.p1, g.w, g.color));
+    drawHub(hubStrom); drawHub(hubWaerme);
+    stromInBoxes.forEach(b=>drawBox(b, b.color));
+    stromOutBoxes.forEach(b=>drawBox(b, b.color));
+    waermeInBoxes.forEach(b=>drawBox(b, b.color));
+    waermeOutBoxes.forEach(b=>drawBox(b, b.color));
+    bridgeBoxes.forEach(b => drawBox({ ...b, value:b.kw }, b.color));
+    sonderBoxes.forEach(s => drawBox(s, s.color));
+    verlustBoxes.forEach(v => drawBox(v, v.color));
+    drawAnnotations();
+  }
+
+  function stromBandColor(b) {
+    if (b.label === 'Netzbezug')   return C.bandBezug;
+    if (b.label === 'Einspeisung') return C.bandEinsp;
+    return C.bandStrom;
+  }
+
+  // Bänder zeichnen + sammeln
+  stromInBoxes.forEach(b => {
+    const from = { x: b.x + b.w, y: b.y + b.h/2 };
+    const to = hubAnchor(hubStrom, from.x, from.y);
+    const g = drawBand(from, to, bandWidth(b.value), stromBandColor(b));
+    allBands.push({ ...g, label: b.label + ' → Strom', value: b.value });
+  });
+  stromOutBoxes.forEach(b => {
+    const to = { x: b.x + b.w, y: b.y + b.h/2 };
+    const from = hubAnchor(hubStrom, to.x, to.y);
+    const g = drawBand(from, to, bandWidth(b.value), stromBandColor(b));
+    allBands.push({ ...g, label: 'Strom → ' + b.label, value: b.value });
+  });
+  waermeInBoxes.forEach(b => {
+    const from = { x: b.x, y: b.y + b.h/2 };
+    const to = hubAnchor(hubWaerme, from.x, from.y);
+    const g = drawBand(from, to, bandWidth(b.value), C.bandWaerme);
+    allBands.push({ ...g, label: b.label + ' → Wärme', value: b.value });
+  });
+  waermeOutBoxes.forEach(b => {
+    const to = { x: b.x, y: b.y + b.h/2 };
+    const from = hubAnchor(hubWaerme, to.x, to.y);
+    const bandCol = b.verlust ? C.bandVerlust : C.bandWaerme;
+    const g = drawBand(from, to, bandWidth(b.value), bandCol);
+    allBands.push({ ...g, label: 'Wärme → ' + b.label, value: b.value });
+  });
+  bridgeBoxes.forEach(b => {
+    const by_ = b.y + b.h/2;
+    if (b.kind === 'wp') {
+      const aFrom = hubAnchor(hubStrom, b.x, by_);
+      const aTo = { x:b.x, y:by_ };
+      const g1 = drawBand(aFrom, aTo, bandWidth(b.stromIn||0), C.bandStrom);
+      allBands.push({ ...g1, label:'Strom → '+b.label, value:b.stromIn });
+      const cFrom = { x:b.x+b.w, y:by_ };
+      const cTo = hubAnchor(hubWaerme, b.x+b.w, by_);
+      const g2 = drawBand(cFrom, cTo, bandWidth(b.waermeOut||0), C.bandWaerme);
+      allBands.push({ ...g2, label:b.label+' → Wärme', value:b.waermeOut });
+    } else if (b.kind === 'bhkw') {
+      const aFrom = { x:b.x, y:by_ };
+      const aTo = hubAnchor(hubStrom, b.x, by_);
+      const g1 = drawBand(aFrom, aTo, bandWidth(b.stromOut||0), C.bandStrom);
+      allBands.push({ ...g1, label:b.label+' → Strom', value:b.stromOut });
+      const cFrom = { x:b.x+b.w, y:by_ };
+      const cTo = hubAnchor(hubWaerme, b.x+b.w, by_);
+      const g2 = drawBand(cFrom, cTo, bandWidth(b.waermeOut||0), C.bandWaerme);
+      allBands.push({ ...g2, label:b.label+' → Wärme', value:b.waermeOut });
+    } else if (b.kind === 'sk') {
+      const aFrom = hubAnchor(hubStrom, b.x, by_);
+      const aTo = { x:b.x, y:by_ };
+      const g1 = drawBand(aFrom, aTo, bandWidth(b.stromIn||0), C.bandStrom);
+      allBands.push({ ...g1, label:'Strom → '+b.label, value:b.stromIn });
+      const cFrom = { x:b.x+b.w, y:by_ };
+      const cTo = hubAnchor(hubWaerme, b.x+b.w, by_);
+      const g2 = drawBand(cFrom, cTo, bandWidth(b.waermeOut||0), C.bandWaerme);
+      allBands.push({ ...g2, label:b.label+' → Wärme', value:b.waermeOut });
+    }
+  });
+  sonderBoxes.forEach(s => {
+    let from, to;
+    if (s.anchor === 'left') {
+      from = { x:s.x+s.w, y:s.y+s.h/2 };
+      to = { x:s.bridge.x, y:s.bridge.y+s.bridge.h/2 };
+    } else {
+      from = { x:s.x+s.w/2, y:s.y+s.h };
+      to = { x:s.bridge.x+s.bridge.w/2, y:s.bridge.y };
+    }
+    const bandCol = s.target === 'wp' ? C.bandUmwelt : C.bandBrennstoff;
+    const g = drawBand(from, to, bandWidth(s.value), bandCol);
+    allBands.push({ ...g, label:s.label, value:s.value });
+  });
+  verlustBoxes.forEach(v => {
+    const from = { x:v.source.x+v.source.w/2, y:v.source.y+v.source.h };
+    const to = { x:v.x+v.w/2, y:v.y };
+    const g = drawBand(from, to, Math.max(2, bandWidth(v.value)*0.6), v.color);
+    allBands.push({ ...g, label:v.label, value:v.value });
+  });
+
+  // Initial-Render (Bänder + Knoten)
+  renderAll();
+
+  // Hover-Geometrie
+  const allBoxes = [
+    { name:'STROM-Hub', x:hubStrom.cx-hubR, y:hubStrom.cy-hubR, w:hubR*2, h:hubR*2,
+      val:stromInBoxes.reduce((s,b)=>s+b.value,0)+bridges.filter(b=>b.kind==='bhkw').reduce((s,b)=>s+(b.stromOut||0),0) },
+    { name:'WÄRME-Hub', x:hubWaerme.cx-hubR, y:hubWaerme.cy-hubR, w:hubR*2, h:hubR*2,
+      val:waermeInBoxes.reduce((s,b)=>s+b.value,0)+bridges.reduce((s,b)=>s+(b.waermeOut||0),0) },
+    ...stromInBoxes.map(b=>({name:b.label,x:b.x,y:b.y,w:b.w,h:b.h,val:b.value})),
+    ...stromOutBoxes.map(b=>({name:b.label,x:b.x,y:b.y,w:b.w,h:b.h,val:b.value})),
+    ...waermeInBoxes.map(b=>({name:b.label,x:b.x,y:b.y,w:b.w,h:b.h,val:b.value})),
+    ...waermeOutBoxes.map(b=>({name:b.label,x:b.x,y:b.y,w:b.w,h:b.h,val:b.value})),
+    ...bridgeBoxes.map(b=>({name:b.label,x:b.x,y:b.y,w:b.w,h:b.h,val:b.kw})),
+    ...sonderBoxes.map(s=>({name:s.label,x:s.x,y:s.y,w:s.w,h:s.h,val:s.value})),
+    ...verlustBoxes.map(v=>({name:v.label,x:v.x,y:v.y,w:v.w,h:v.h,val:v.value})),
+  ];
+  canvas._sankeyBoxes = allBoxes;
+  canvas._sankeyBands = allBands;
+
+  if (!canvas._hoverInit) {
+    canvas._hoverInit = true;
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      let hit = null;
+      for (const b of canvas._sankeyBoxes || []) {
+        if (mx>=b.x && mx<=b.x+b.w && my>=b.y && my<=b.y+b.h) { hit = '<b>'+b.name+'</b><br>'+Math.round(b.val)+' kW'; break; }
+      }
+      if (!hit) {
+        for (const g of canvas._sankeyBands || []) {
+          const steps = 24;
+          let on = false;
+          for (let i = 0; i <= steps; i++) {
+            const t = i/steps, it = 1-t;
+            const bx = it*it*it*g.p0.x + 3*it*it*t*g.cx0 + 3*it*t*t*g.cx1 + t*t*t*g.p1.x;
+            const by_ = it*it*it*g.p0.y + 3*it*it*t*g.cy0 + 3*it*t*t*g.cy1 + t*t*t*g.p1.y;
+            if (Math.hypot(mx-bx, my-by_) <= Math.max(4, g.w/2 + 1)) { on = true; break; }
+          }
+          if (on) { hit = g.label + '<br><b>'+Math.round(g.value)+' kW</b>'; break; }
+        }
+      }
+      if (hit) {
+        tt.innerHTML = hit; tt.style.display = 'block';
+        tt.style.left = (e.clientX - rect.left + 14) + 'px';
+        tt.style.top = (e.clientY - rect.top + 14) + 'px';
+      } else { tt.style.display = 'none'; }
+    });
+    canvas.addEventListener('mouseleave', () => tt.style.display = 'none');
+  }
+
+  // Animation-Loop
+  let phase = 0;
+  function tick() {
+    phase = (phase + 0.005) % 1;
+    renderAll();
+    allBands.forEach(g => {
+      const tt2 = (phase + (g.value % 0.7)) % 1;
+      const t = tt2, it = 1-t;
+      const x = it*it*it*g.p0.x + 3*it*it*t*g.cx0 + 3*it*t*t*g.cx1 + t*t*t*g.p1.x;
+      const y = it*it*it*g.p0.y + 3*it*it*t*g.cy0 + 3*it*t*t*g.cy1 + t*t*t*g.p1.y;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1.5, g.w/4), 0, Math.PI*2);
+      ctx.fillStyle = g.color; ctx.globalAlpha = 0.9; ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+    canvas.parentElement._sankeyAnim = requestAnimationFrame(tick);
+  }
+  canvas.parentElement._sankeyAnim = requestAnimationFrame(tick);
+}
+
 export function _initDragOverlay(el, handle) {
   let ox = 0, oy = 0, sx = 0, sy = 0;
   handle.addEventListener('mousedown', function(e) {
@@ -961,10 +1471,18 @@ export function _updateHourlyOverlay(t) {
     if (socPanel) socPanel.style.display = 'none';
   }
 
-  // ── Flow-Schema (SVG) zeichnen ──
+  // ── Flow-Schema zeichnen ── Mode aus localStorage (Default: Hub-Sankey)
   const flowSvgDiv = document.getElementById('live-flow-svg');
   if (flowSvgDiv) {
-    _buildFlowSVG(flowSvgDiv, { erzeuger: erzFiltered, bedarf: lastKw, speicher, strom, tempC, vlC, t });
+    const flowMode = localStorage.getItem('live-flow-mode') || 'sankey';
+    const flowData = { erzeuger: erzFiltered, bedarf: lastKw, speicher, strom, tempC, vlC, t };
+    if (flowMode === 'sankey' || flowMode === 'sankey-detail') {
+      _buildFlowSankey(flowSvgDiv, flowData, flowMode);
+    } else {
+      // Mode-Wechsel zurück: Canvas + Tooltip aufräumen, Animation stoppen
+      if (flowSvgDiv._sankeyAnim) { cancelAnimationFrame(flowSvgDiv._sankeyAnim); flowSvgDiv._sankeyAnim = null; }
+      _buildFlowSVG(flowSvgDiv, flowData);
+    }
   }
 
   // ── Strom-Bilanz zeichnen ──
@@ -1326,6 +1844,42 @@ document.addEventListener('keydown', function(ev) {
 });
 
 // Play-Stop is handled in setViewMode directly
+
+// ── Live-Flow-Mode-Toggle (Klassisch / Sankey / Sankey-Detail) ──
+setTimeout(() => {
+  const btns = document.querySelectorAll('.live-flow-mode-btn');
+  if (!btns.length) return;
+  // Einmal-Migration: alten Default 'box' aus localStorage auf neuen Default 'sankey' umstellen.
+  // Wer bewusst 'sankey-detail' gewählt hatte, behält das. Wer nichts gewählt hatte, sieht jetzt Hub-Sankey.
+  if (!localStorage.getItem('live-flow-mode-v2')) {
+    const old = localStorage.getItem('live-flow-mode');
+    if (!old || old === 'box') localStorage.setItem('live-flow-mode', 'sankey');
+    localStorage.setItem('live-flow-mode-v2', '1');
+  }
+  // Initial-State aus localStorage übernehmen (Default: Hub-Sankey)
+  const initial = localStorage.getItem('live-flow-mode') || 'sankey';
+  btns.forEach(b => {
+    const isActive = b.dataset.mode === initial;
+    b.dataset.active = isActive ? '1' : '0';
+    b.style.borderColor = isActive ? 'var(--accent)' : 'var(--border)';
+    b.style.color = isActive ? 'var(--accent)' : 'var(--muted)';
+  });
+  btns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      localStorage.setItem('live-flow-mode', btn.dataset.mode);
+      btns.forEach(b => {
+        const isActive = b.dataset.mode === btn.dataset.mode;
+        b.dataset.active = isActive ? '1' : '0';
+        b.style.borderColor = isActive ? 'var(--accent)' : 'var(--border)';
+        b.style.color = isActive ? 'var(--accent)' : 'var(--muted)';
+      });
+      // Re-render mit aktueller Stunde
+      const sl = document.getElementById('live-slider');
+      const t = sl ? parseInt(sl.value) || 0 : 0;
+      if (typeof _updateHourlyOverlay === 'function') _updateHourlyOverlay(t);
+    });
+  });
+}, 0);
 
 
 export let _optAborted = false;

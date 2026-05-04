@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8">
+<style>
+  :root { --bg:#181c24; --card:rgba(255,255,255,0.04); --border:rgba(255,255,255,0.08); --muted:rgba(255,255,255,0.35); --text:#e8e8e8; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'DM Sans','Inter',system-ui,sans-serif; padding:0; }
+  h1 { font-size:22px; font-weight:700; margin:30px 30px 6px; }
+  h2 { font-size:16px; font-weight:600; margin:30px 30px 8px; color:#4dd0e1; }
+  h3 { font-size:13px; font-weight:600; margin:20px 30px 6px; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:1px; }
+  p, li { font-size:13px; line-height:1.7; color:rgba(255,255,255,0.7); margin:0 30px; }
+  ul { margin:4px 30px 10px 50px; }
+  .section { padding:20px 0; border-bottom:1px solid var(--border); }
+  .compare { display:flex; gap:30px; margin:16px 30px; }
+  .compare > div { flex:1; border-radius:12px; overflow:hidden; border:1px solid var(--border); }
+  .compare-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:8px 14px; background:rgba(255,255,255,0.03); color:var(--muted); font-weight:600; }
+  .mockup { background:var(--bg); border-radius:12px; border:1px solid var(--border); margin:16px 30px; overflow:hidden; }
+  .tag { display:inline-block; background:rgba(77,208,225,0.12); color:#4dd0e1; font-size:10px; padding:2px 8px; border-radius:4px; font-weight:600; margin:0 2px; }
+  .tag.orange { background:rgba(255,152,0,0.12); color:#ff9800; }
+  .tag.green { background:rgba(102,187,106,0.12); color:#66bb6a; }
+  .tag.red { background:rgba(229,57,53,0.12); color:#e53935; }
+  code { background:rgba(255,255,255,0.06); padding:1px 5px; border-radius:3px; font-size:11px; }
+
+  /* ═══ MOCKUP: Neue Live-Ansicht ═══ */
+  .mock-live { height:520px; position:relative; display:flex; flex-direction:column; }
+
+  /* Top Bar */
+  .mock-topbar { display:flex; align-items:center; justify-content:space-between; padding:10px 20px; background:rgba(255,255,255,0.02); border-bottom:1px solid rgba(255,255,255,0.06); }
+  .mock-topbar .left { display:flex; align-items:center; gap:14px; }
+  .mock-topbar .dot { width:7px; height:7px; border-radius:50%; background:#4dd0e1; box-shadow:0 0 8px rgba(77,208,225,0.5); }
+  .mock-topbar .mode-label { font-size:10px; font-weight:600; color:rgba(255,255,255,0.3); letter-spacing:1.5px; text-transform:uppercase; }
+  .mock-topbar .datetime { font-size:15px; font-weight:700; color:#fff; }
+
+  /* KPI Strip */
+  .mock-kpi-strip { display:flex; gap:1px; padding:0 20px; background:rgba(0,0,0,0.15); }
+  .mock-kpi { flex:1; display:flex; flex-direction:column; align-items:center; padding:10px 8px 9px; background:rgba(255,255,255,0.02); position:relative; }
+  .mock-kpi .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:rgba(255,255,255,0.3); margin-bottom:3px; }
+  .mock-kpi .kpi-value { font-size:18px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .mock-kpi .kpi-unit { font-size:10px; color:rgba(255,255,255,0.3); margin-left:2px; }
+  .mock-kpi .kpi-sub { font-size:9px; color:rgba(255,255,255,0.25); margin-top:1px; }
+  .mock-kpi .kpi-bar { position:absolute; bottom:0; left:20%; right:20%; height:2px; border-radius:1px; }
+
+  /* Main Content Area */
+  .mock-main { flex:1; display:flex; gap:0; overflow:hidden; }
+
+  /* Left: Flow Diagram */
+  .mock-flow { flex:1; display:flex; flex-direction:column; border-right:1px solid var(--border); }
+  .mock-flow-header { font-size:10px; color:var(--muted); padding:8px 14px; letter-spacing:0.5px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.04); }
+  .mock-flow-body { flex:1; position:relative; padding:12px; }
+
+  /* Sankey-style Flow Nodes */
+  .flow-node { position:absolute; display:flex; align-items:center; gap:8px; }
+  .flow-box { border-radius:8px; padding:7px 11px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); display:flex; align-items:center; gap:7px; min-width:110px; }
+  .flow-box .stripe { width:3px; height:24px; border-radius:2px; flex-shrink:0; }
+  .flow-box .info { display:flex; flex-direction:column; }
+  .flow-box .name { font-size:10px; color:rgba(255,255,255,0.5); }
+  .flow-box .val { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .flow-box.inactive { opacity:0.2; }
+
+  /* Thermal Bus */
+  .thermal-bus { position:absolute; left:50%; top:8%; bottom:30%; width:4px; background:linear-gradient(180deg, #e53935, #ef5350); border-radius:2px; transform:translateX(-50%); box-shadow:0 0 12px rgba(229,57,53,0.3); }
+
+  /* Electric Bus */
+  .electric-bus { position:absolute; left:50%; top:74%; bottom:5%; width:3px; background:linear-gradient(180deg, #fdd835, #ffee58); border-radius:2px; transform:translateX(-50%); box-shadow:0 0 10px rgba(253,216,53,0.2); }
+
+  /* Right: Charts */
+  .mock-charts { flex:1; display:flex; flex-direction:column; }
+  .mock-chart-panel { flex:1; border-bottom:1px solid var(--border); position:relative; overflow:hidden; }
+  .mock-chart-panel:last-child { border-bottom:none; }
+  .mock-chart-header { font-size:10px; color:var(--muted); padding:6px 12px; letter-spacing:0.5px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.04); }
+  .mock-chart-body { position:absolute; top:26px; left:0; right:0; bottom:0; }
+
+  /* Fake chart bars */
+  .fake-bars { display:flex; align-items:flex-end; gap:0; height:100%; padding:8px 8px 20px; }
+  .fake-bar { flex:1; border-radius:1px 1px 0 0; min-width:1px; position:relative; }
+
+  /* Timeline / Slider */
+  .mock-timeline { height:48px; background:rgba(0,0,0,0.2); border-top:1px solid var(--border); display:flex; align-items:center; padding:0 20px; gap:14px; }
+  .mock-timeline .tl-controls { display:flex; align-items:center; gap:6px; }
+  .mock-timeline .tl-btn { width:28px; height:28px; border-radius:6px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,0.5); display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; }
+  .mock-timeline .tl-btn.play { background:rgba(77,208,225,0.15); border-color:rgba(77,208,225,0.3); color:#4dd0e1; }
+  .mock-timeline .tl-slider-wrap { flex:1; position:relative; height:28px; }
+  .mock-timeline .tl-track { position:absolute; top:12px; left:0; right:0; height:4px; background:rgba(255,255,255,0.06); border-radius:2px; }
+  .mock-timeline .tl-fill { position:absolute; top:12px; left:0; width:35%; height:4px; background:linear-gradient(90deg, #4dd0e1, #26c6da); border-radius:2px; }
+  .mock-timeline .tl-thumb { position:absolute; top:6px; left:35%; width:14px; height:14px; margin-left:-7px; background:#4dd0e1; border-radius:50%; border:2px solid var(--bg); box-shadow:0 0 8px rgba(77,208,225,0.5); }
+  .mock-timeline .tl-months { display:flex; justify-content:space-between; position:absolute; top:20px; left:0; right:0; }
+  .mock-timeline .tl-month { font-size:8px; color:rgba(255,255,255,0.2); }
+  .mock-timeline .tl-speed { font-size:9px; color:rgba(255,255,255,0.3); margin-left:8px; }
+
+  /* Speicher Gauge */
+  .gauge { width:36px; height:50px; border:1.5px solid rgba(255,255,255,0.15); border-radius:5px; position:relative; overflow:hidden; }
+  .gauge-fill { position:absolute; bottom:0; left:0; right:0; border-radius:0 0 3px 3px; }
+  .gauge-label { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:9px; font-weight:700; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.5); }
+</style>
+</head><body>
+
+<h1>Konzept: Live-Daten-Ansicht verbessern</h1>
+<p style="color:rgba(255,255,255,0.4);margin-bottom:10px;">Stand: 29.03.2026 &mdash; Redesign-Vorschlag f&uuml;r die stundenscharfe Echtzeit-Darstellung</p>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section">
+<h2>1. Analyse: Aktueller Stand</h2>
+<p>Die Live-Ansicht zeigt bereits viele Informationen, aber die Darstellung hat Optimierungspotenzial:</p>
+<ul>
+  <li><b>KPI-Badges</b> sind klein und im Titlebar versteckt &mdash; Bedarf, Erzeugung, Temperatur verdienen mehr Platz</li>
+  <li><b>Flow-SVG</b> bekommt 1.6&times; Flex, Charts nur 0.7&times; &mdash; unausgewogen, Charts sind oft wichtiger</li>
+  <li><b>Slider</b> ist ein schmaler Range-Input oben rechts &mdash; kein Monats&uuml;berblick, kein Play-Modus</li>
+  <li><b>Keine Zeitzonen-Navigation</b> &mdash; keine M&ouml;glichkeit, schnell auf "kalt" oder "warm" zu springen</li>
+  <li><b>Strom-Chart</b> ist optional und oft leer &mdash; verschwendeter Platz wenn kein PV/BHKW aktiv</li>
+  <li><b>Speicher-Status</b> nur als Badge-Zahl &mdash; kein visueller F&uuml;llstand</li>
+</ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section">
+<h2>2. Neues Layout-Konzept</h2>
+
+<h3>2a. Grundstruktur (4 Zonen)</h3>
+
+<div class="mockup">
+<div class="mock-live">
+
+  <!-- TOP BAR -->
+  <div class="mock-topbar">
+    <div class="left">
+      <div class="dot"></div>
+      <span class="mode-label">Live</span>
+      <span class="datetime">15. Januar &middot; 08:00</span>
+      <span style="font-size:10px;color:rgba(255,255,255,0.2);margin-left:4px;">Stunde 344 / 8760</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:10px;color:rgba(255,255,255,0.25);">Tastatur: &larr; &rarr; Stunde &middot; Shift+&larr;&rarr; Tag &middot; Leertaste Play</span>
+    </div>
+  </div>
+
+  <!-- KPI STRIP (Neu: eigene Zeile, gr&ouml;&szlig;er) -->
+  <div class="mock-kpi-strip">
+    <div class="mock-kpi">
+      <span class="kpi-label">Bedarf</span>
+      <div><span class="kpi-value" style="color:#ef5350;">342</span><span class="kpi-unit">kW</span></div>
+      <div class="kpi-bar" style="background:#ef5350;"></div>
+    </div>
+    <div class="mock-kpi">
+      <span class="kpi-label">Erzeugung</span>
+      <div><span class="kpi-value" style="color:#66bb6a;">358</span><span class="kpi-unit">kW</span></div>
+      <div class="kpi-sub">+16 kW &Uuml;berschuss</div>
+      <div class="kpi-bar" style="background:#66bb6a;"></div>
+    </div>
+    <div class="mock-kpi">
+      <span class="kpi-label">Au&szlig;entemp.</span>
+      <div><span class="kpi-value" style="color:#90caf9;">&minus;2,4</span><span class="kpi-unit">&deg;C</span></div>
+      <div class="kpi-sub">VL 72 &deg;C</div>
+      <div class="kpi-bar" style="background:#64b5f6;"></div>
+    </div>
+    <div class="mock-kpi">
+      <span class="kpi-label">Speicher</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="gauge">
+          <div class="gauge-fill" style="height:68%;background:linear-gradient(0deg,#00897b,#26a69a);"></div>
+          <div class="gauge-label">68%</div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#26a69a;">4.800 kWh</div>
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);">Entlade 45 kW</div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-kpi">
+      <span class="kpi-label">PV / Strom</span>
+      <div><span class="kpi-value" style="color:#fdd835;">0</span><span class="kpi-unit">kW</span></div>
+      <div class="kpi-sub">Nacht &mdash; Netzbezug 86 kW</div>
+      <div class="kpi-bar" style="background:#fdd835;"></div>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT: Flow + Charts -->
+  <div class="mock-main">
+
+    <!-- LEFT: Flow-Diagramm (50/50 statt 60/40) -->
+    <div class="mock-flow">
+      <div class="mock-flow-header">
+        <span>Energiefluss &mdash; Stunde 344</span>
+        <span style="font-size:9px;color:rgba(255,255,255,0.2);">Pfeilst&auml;rke &#8733; Leistung</span>
+      </div>
+      <div class="mock-flow-body">
+        <!-- Thermal Bus -->
+        <div class="thermal-bus"></div>
+
+        <!-- Erzeuger (links) -->
+        <div class="flow-node" style="left:4%;top:10%;">
+          <div class="flow-box">
+            <div class="stripe" style="background:#66bb6a;"></div>
+            <div class="info"><span class="name">Luft-WP</span><span class="val" style="color:#66bb6a;">210 kW</span></div>
+          </div>
+        </div>
+        <div class="flow-node" style="left:4%;top:28%;">
+          <div class="flow-box">
+            <div class="stripe" style="background:#ff8f00;"></div>
+            <div class="info"><span class="name">BHKW</span><span class="val" style="color:#ff8f00;">103 kW</span></div>
+          </div>
+        </div>
+        <div class="flow-node" style="left:4%;top:46%;">
+          <div class="flow-box">
+            <div class="stripe" style="background:#26a69a;"></div>
+            <div class="info"><span class="name">Speicher</span><span class="val" style="color:#26a69a;">45 kW</span></div>
+          </div>
+        </div>
+        <div class="flow-node" style="left:4%;top:64%;">
+          <div class="flow-box inactive">
+            <div class="stripe" style="background:#78909c;"></div>
+            <div class="info"><span class="name">Gaskessel</span><span class="val">0 kW</span></div>
+          </div>
+        </div>
+
+        <!-- Senken (rechts) -->
+        <div class="flow-node" style="right:4%;top:18%;">
+          <div class="flow-box" style="border-color:rgba(229,57,53,0.3);">
+            <div class="stripe" style="background:#e53935;"></div>
+            <div class="info"><span class="name">W&auml;rmebedarf</span><span class="val" style="color:#ef5350;">342 kW</span></div>
+          </div>
+        </div>
+        <div class="flow-node" style="right:4%;top:40%;">
+          <div class="flow-box" style="border-color:rgba(255,152,0,0.15);">
+            <div class="stripe" style="background:#ff9800;"></div>
+            <div class="info"><span class="name">Speicher laden</span><span class="val" style="color:#ff9800;">0 kW</span></div>
+          </div>
+        </div>
+        <div class="flow-node" style="right:4%;top:58%;">
+          <div class="flow-box" style="opacity:0.5;">
+            <div class="stripe" style="background:#546e7a;"></div>
+            <div class="info"><span class="name">Verluste</span><span class="val" style="color:#78909c;">16 kW</span></div>
+          </div>
+        </div>
+
+        <!-- Electric Bus (unten) -->
+        <div class="electric-bus"></div>
+
+        <div class="flow-node" style="left:4%;top:76%;">
+          <div class="flow-box">
+            <div class="stripe" style="background:#fdd835;"></div>
+            <div class="info"><span class="name">PV</span><span class="val" style="color:#78909c;">0 kW</span></div>
+          </div>
+        </div>
+        <div class="flow-node" style="left:4%;top:90%;">
+          <div class="flow-box">
+            <div class="stripe" style="background:#ff8f00;"></div>
+            <div class="info"><span class="name">BHKW-el.</span><span class="val" style="color:#ff8f00;">47 kW</span></div>
+          </div>
+        </div>
+        <div class="flow-node" style="right:4%;top:76%;">
+          <div class="flow-box">
+            <div class="stripe" style="background:#42a5f5;"></div>
+            <div class="info"><span class="name">WP-Strom</span><span class="val" style="color:#42a5f5;">86 kW</span></div>
+          </div>
+        </div>
+        <div class="flow-node" style="right:4%;top:90%;">
+          <div class="flow-box">
+            <div class="stripe" style="background:#78909c;"></div>
+            <div class="info"><span class="name">Netzbezug</span><span class="val" style="color:#78909c;">39 kW</span></div>
+          </div>
+        </div>
+
+        <!-- Labels f&uuml;r Busse -->
+        <div style="position:absolute;left:50%;top:4%;transform:translateX(-50%);font-size:8px;letter-spacing:1px;color:rgba(229,57,53,0.5);text-transform:uppercase;font-weight:600;">W&auml;rme</div>
+        <div style="position:absolute;left:50%;top:71%;transform:translateX(-50%);font-size:8px;letter-spacing:1px;color:rgba(253,216,53,0.5);text-transform:uppercase;font-weight:600;">Strom</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Charts (gestapelt) -->
+    <div class="mock-charts">
+      <!-- W&auml;rme-Chart -->
+      <div class="mock-chart-panel" style="flex:1.2;">
+        <div class="mock-chart-header">
+          <span>W&auml;rme-Dispatch</span>
+          <div style="display:flex;align-items:center;gap:1px;">
+            <div style="font-size:9px;padding:3px 7px;border-radius:4px;cursor:pointer;color:rgba(255,255,255,0.25);background:rgba(255,255,255,0.03);">Tag</div>
+            <div style="font-size:9px;padding:3px 7px;border-radius:4px;cursor:pointer;color:rgba(255,255,255,0.25);background:rgba(255,255,255,0.03);">Woche</div>
+            <div style="font-size:9px;padding:3px 7px;border-radius:4px;cursor:pointer;color:rgba(255,255,255,0.25);background:rgba(255,255,255,0.03);">Monat</div>
+            <div style="font-size:9px;padding:3px 7px;border-radius:4px;cursor:pointer;color:#4dd0e1;background:rgba(77,208,225,0.12);font-weight:600;">Jahr</div>
+          </div>
+        </div>
+        <div class="mock-chart-body">
+          <div class="fake-bars">
+            <script>
+              // Generate fake stacked chart bars
+              const container = document.currentScript.parentElement;
+              for(let i=0;i<120;i++){
+                const h1 = 20 + 30*Math.sin(i/120*Math.PI) + Math.random()*15;
+                const h2 = 10 + 15*Math.sin(i/120*Math.PI) + Math.random()*8;
+                const h3 = Math.max(0, 15 - 12*Math.sin(i/120*Math.PI) + Math.random()*5);
+                const bar = document.createElement('div');
+                bar.style.cssText = `flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;`;
+                bar.innerHTML = `
+                  <div style="height:${h3}%;background:#78909c;border-radius:1px 1px 0 0;"></div>
+                  <div style="height:${h2}%;background:#ff8f00;"></div>
+                  <div style="height:${h1}%;background:#66bb6a;"></div>`;
+                container.appendChild(bar);
+              }
+              // Current hour marker
+              const marker = document.createElement('div');
+              marker.style.cssText = 'position:absolute;left:11%;top:0;bottom:20px;width:1.5px;background:#4dd0e1;box-shadow:0 0 6px rgba(77,208,225,0.5);';
+              container.parentElement.appendChild(marker);
+            </script>
+          </div>
+          <!-- Y-Axis -->
+          <div style="position:absolute;top:8px;left:6px;bottom:22px;display:flex;flex-direction:column;justify-content:space-between;">
+            <span style="font-size:8px;color:rgba(255,255,255,0.2);">500kW</span>
+            <span style="font-size:8px;color:rgba(255,255,255,0.2);">250</span>
+            <span style="font-size:8px;color:rgba(255,255,255,0.2);">0</span>
+          </div>
+          <!-- Legend -->
+          <div style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);display:flex;gap:10px;">
+            <span style="font-size:8px;color:rgba(255,255,255,0.3);"><span style="color:#66bb6a;">&FilledSmallSquare;</span> LuftWP</span>
+            <span style="font-size:8px;color:rgba(255,255,255,0.3);"><span style="color:#ff8f00;">&FilledSmallSquare;</span> BHKW</span>
+            <span style="font-size:8px;color:rgba(255,255,255,0.3);"><span style="color:#78909c;">&FilledSmallSquare;</span> GK</span>
+            <span style="font-size:8px;color:rgba(255,255,255,0.3);"><span style="color:#e53935;">&#9644;</span> Bedarf</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Speicher-Chart (NEU) -->
+      <div class="mock-chart-panel" style="flex:0.5;">
+        <div class="mock-chart-header">
+          <span>Speicher-SOC</span>
+          <span style="font-size:9px;color:rgba(255,255,255,0.15);">68% &middot; 4.800 kWh</span>
+        </div>
+        <div class="mock-chart-body" style="background:rgba(0,0,0,0.1);">
+          <svg width="100%" height="100%" viewBox="0 0 400 60" preserveAspectRatio="none" style="display:block;">
+            <defs>
+              <linearGradient id="socGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#26a69a" stop-opacity="0.4"/>
+                <stop offset="100%" stop-color="#26a69a" stop-opacity="0.05"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,30 Q20,15 40,20 T80,18 T120,25 T160,12 T200,8 T240,35 T280,42 T320,38 T360,28 T400,25 V60 H0 Z" fill="url(#socGrad)"/>
+            <path d="M0,30 Q20,15 40,20 T80,18 T120,25 T160,12 T200,8 T240,35 T280,42 T320,38 T360,28 T400,25" fill="none" stroke="#26a69a" stroke-width="1.5"/>
+            <!-- Marker -->
+            <line x1="44" y1="0" x2="44" y2="60" stroke="#4dd0e1" stroke-width="1" opacity="0.5"/>
+            <circle cx="44" cy="19" r="3" fill="#4dd0e1"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Strom-Chart (kompakter) -->
+      <div class="mock-chart-panel" style="flex:0.7;">
+        <div class="mock-chart-header">
+          <span>Strom-Bilanz &middot; Erzeugung &uarr; Verbrauch &darr;</span>
+        </div>
+        <div class="mock-chart-body" style="background:rgba(0,0,0,0.1);">
+          <svg width="100%" height="100%" viewBox="0 0 400 80" preserveAspectRatio="none" style="display:block;">
+            <!-- Zero line -->
+            <line x1="0" y1="40" x2="400" y2="40" stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/>
+            <!-- PV (oben, gelb) -->
+            <path d="M0,40 Q40,40 80,40 T120,38 T160,22 T200,15 T240,20 T280,35 T320,40 T400,40 V40 H0 Z" fill="rgba(253,216,53,0.25)" stroke="#fdd835" stroke-width="0.5"/>
+            <!-- BHKW-el (oben, orange) -->
+            <rect x="0" y="32" width="400" height="8" rx="0" fill="rgba(255,143,0,0.15)"/>
+            <!-- WP-Strom (unten, blau) -->
+            <path d="M0,40 Q20,48 40,50 T80,52 T120,48 T160,44 T200,42 T240,46 T280,50 T320,52 T400,48 V40 H0 Z" fill="rgba(66,165,245,0.25)" stroke="#42a5f5" stroke-width="0.5"/>
+            <!-- Marker -->
+            <line x1="44" y1="0" x2="44" y2="80" stroke="#4dd0e1" stroke-width="1" opacity="0.5"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM: Timeline / Slider (NEU) -->
+  <div class="mock-timeline">
+    <div class="tl-controls">
+      <div class="tl-btn" title="-24h">&laquo;</div>
+      <div class="tl-btn" title="-1h">&lsaquo;</div>
+      <div class="tl-btn play" title="Play">&#9654;</div>
+      <div class="tl-btn" title="+1h">&rsaquo;</div>
+      <div class="tl-btn" title="+24h">&raquo;</div>
+    </div>
+    <div class="tl-slider-wrap">
+      <div class="tl-track"></div>
+      <div class="tl-fill"></div>
+      <div class="tl-thumb"></div>
+      <div class="tl-months">
+        <span class="tl-month">Jan</span><span class="tl-month">Feb</span><span class="tl-month">M&auml;r</span>
+        <span class="tl-month">Apr</span><span class="tl-month">Mai</span><span class="tl-month">Jun</span>
+        <span class="tl-month">Jul</span><span class="tl-month">Aug</span><span class="tl-month">Sep</span>
+        <span class="tl-month">Okt</span><span class="tl-month">Nov</span><span class="tl-month">Dez</span>
+      </div>
+    </div>
+    <span class="tl-speed">1&times;</span>
+  </div>
+
+</div>
+</div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section">
+<h2>3. &Auml;nderungen im Detail</h2>
+
+<h3>3a. KPI-Leiste (eigene Zeile)</h3>
+<p><span class="tag red">Aktuell</span> Kleine Badges im Titlebar, schwer lesbar</p>
+<p><span class="tag green">Neu</span> Eigene Zeile mit gro&szlig;en Zahlen, Farbbalken und Subtext. 5 Kacheln:</p>
+<ul>
+  <li><b>Bedarf</b> &mdash; aktuelle W&auml;rmelast in kW</li>
+  <li><b>Erzeugung</b> &mdash; Summe aller Erzeuger + Delta (&Uuml;berschuss/Defizit)</li>
+  <li><b>Au&szlig;entemperatur</b> &mdash; &deg;C + Vorlauftemperatur als Subtext</li>
+  <li><b>Speicher</b> &mdash; visueller F&uuml;llstandsbalken (Gauge) + kWh + Lade/Entladeleistung</li>
+  <li><b>PV/Strom</b> &mdash; PV-Leistung + Netzbezug/Einspeisung als Subtext</li>
+</ul>
+
+<h3>3b. Timeline-Leiste (am Fu&szlig;)</h3>
+<p><span class="tag red">Aktuell</span> Schmaler Range-Input im Titlebar, Monatsmarkierungen fehlen</p>
+<p><span class="tag green">Neu</span> Eigene Leiste am unteren Rand:</p>
+<ul>
+  <li><b>Navigationsbuttons</b>: &laquo; -24h, &lsaquo; -1h, &#9654; Play, &rsaquo; +1h, &raquo; +24h</li>
+  <li><b>Slider</b> mit Monatsmarkierungen (Jan&ndash;Dez) und visueller F&uuml;llstandsanzeige</li>
+  <li><b>Play-Modus</b>: Automatisches Abspielen mit w&auml;hlbarer Geschwindigkeit (1&times;, 2&times;, 10&times;, 60&times;)</li>
+  <li><b>Keyboard</b>: Pfeiltasten &plusmn;1h, Shift+Pfeil &plusmn;24h, Leertaste Play/Pause</li>
+</ul>
+
+<h3>3c. Flow-Diagramm (50% statt 60%)</h3>
+<p><span class="tag red">Aktuell</span> flex:1.6 &mdash; zu breit, Charts sind gequetscht</p>
+<p><span class="tag green">Neu</span> flex:1 (50/50 mit Charts). Zus&auml;tzlich:</p>
+<ul>
+  <li><b>W&auml;rme-Bus</b> (rot, vertikal) + <b>Strom-Bus</b> (gelb, vertikal) klar getrennt</li>
+  <li><b>Erzeuger links</b>, <b>Senken rechts</b> &mdash; konsistente Links-nach-Rechts-Leserichtung</li>
+  <li>Inaktive Erzeuger: stark abgeblendet (opacity 0.2) statt 0.25</li>
+  <li>Linienst&auml;rke proportional zur Leistung (bereits vorhanden, beibehalten)</li>
+  <li><b>Speicher</b>: visueller F&uuml;llstand im Diagramm (nicht nur Zahl)</li>
+</ul>
+
+<h3>3d. Chart-Bereich (3 gestapelte Charts statt 2)</h3>
+<p><span class="tag red">Aktuell</span> 2 Charts nebeneinander (flex:0.7 je) &mdash; beide gequetscht, Strom-Chart oft leer</p>
+<p><span class="tag green">Neu</span> 3 Charts &uuml;bereinander in der rechten H&auml;lfte:</p>
+<ul>
+  <li><b>W&auml;rme-Dispatch</b> (flex:1.2) &mdash; Stacked-Area wie bisher, gr&ouml;&szlig;er</li>
+  <li><b>Speicher-SOC</b> (flex:0.5) &mdash; <span class="tag">NEU</span> F&uuml;llstandsverlauf als Fl&auml;chenchart</li>
+  <li><b>Strom-Bilanz</b> (flex:0.7) &mdash; Erzeugung oben, Verbrauch unten</li>
+</ul>
+<p>Der Speicher-SOC-Chart ist neu und zeigt den Jahresverlauf des Speicherf&uuml;llstands. Das ist besonders bei saisonalen Speichern und Solarthermie-Systemen wichtig, um das Lade-/Entladeverhalten zu verstehen.</p>
+<p>Alle 3 Charts haben eine synchronisierte <b>Stundenmarker-Linie</b> (cyan), die die aktuelle Stunde anzeigt. Klick auf einen Chart springt zu dieser Stunde.</p>
+
+<h3>3f. Zeitzoom f&uuml;r Charts (Tag / Woche / Monat / Jahr)</h3>
+<p><span class="tag">NEU</span> Alle Charts (W&auml;rme, Speicher-SOC, Strom) bekommen eine gemeinsame Zeitachsen-Umschaltung:</p>
+<ul>
+  <li><b>Tag</b> &mdash; 24 Stunden um die aktuelle Stunde. Jede Stunde einzeln als Balken sichtbar. Ideal f&uuml;r Detailanalyse (Taktung WP, Speicher-Zyklen).</li>
+  <li><b>Woche</b> &mdash; 168 Stunden (&plusmn;3,5 Tage). Zeigt Wochen-Rhythmus (Werktag/Wochenende), X-Achse: Mo&ndash;So.</li>
+  <li><b>Monat</b> &mdash; 28&ndash;31 Tage um den aktuellen Tag. Wetterperioden und Speicher-Zyklen erkennbar.</li>
+  <li><b>Jahr</b> &mdash; alle 8760 Stunden (wie bisher). &Uuml;berblick &uuml;ber saisonale Muster.</li>
+</ul>
+<p>Alle Zoom-Stufen bleiben synchron: Der Slider bestimmt die aktuelle Stunde, die Charts zeigen den Ausschnitt drumherum. Die Stundenmarker-Linie zeigt immer die gew&auml;hlte Stunde.</p>
+<p>Technisch: Statt alle 8760 Stunden zu zeichnen, wird nur der sichtbare Bereich gerendert. Bei Tag/Woche werden einzelne Stunden-Balken sichtbar, bei Monat/Jahr wird wie bisher downgesampelt.</p>
+
+<h3>3e. Dynamische Anpassung</h3>
+<ul>
+  <li>Strom-Chart <b>automatisch ausblenden</b> wenn kein PV, BHKW oder Stromkessel aktiv &rarr; mehr Platz f&uuml;r W&auml;rme</li>
+  <li>Speicher-Chart <b>automatisch ausblenden</b> wenn kein Speicher aktiv</li>
+  <li>Flow-Diagramm: Nur aktive Erzeuger/Senken zeigen &mdash; Layout passt sich dynamisch an</li>
+</ul>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section">
+<h2>4. Neue Features</h2>
+
+<h3>4a. Play-Modus</h3>
+<p>Automatisches Abspielen der Stunden mit <code>requestAnimationFrame</code>. Geschwindigkeitsstufen:</p>
+<ul>
+  <li><b>1&times;</b>: 1 Stunde/Sekunde (8760s = ~2,5h f&uuml;r ganzes Jahr)</li>
+  <li><b>10&times;</b>: 10 Stunden/Sekunde (~15 Minuten f&uuml;r ganzes Jahr)</li>
+  <li><b>60&times;</b>: 1 Tag/Sekunde (~6 Minuten f&uuml;r ganzes Jahr)</li>
+  <li><b>360&times;</b>: 1 Woche/Sekunde (~1 Minute f&uuml;r ganzes Jahr)</li>
+</ul>
+<p>Der Play-Button wechselt zu Pause. Die Animationen im Flow-SVG bleiben unabh&auml;ngig davon aktiv.</p>
+
+<h3>4b. Keyboard-Navigation</h3>
+<ul>
+  <li><code>&larr; / &rarr;</code> &plusmn;1 Stunde</li>
+  <li><code>Shift + &larr; / &rarr;</code> &plusmn;24 Stunden</li>
+  <li><code>Leertaste</code> Play/Pause</li>
+  <li><code>Pos1 / Ende</code> Sprung zu Stunde 0 / 8759</li>
+</ul>
+
+<h3>4c. Schnell-Sprung (optional, sp&auml;ter)</h3>
+<p>Buttons f&uuml;r typische Zeitpunkte: <span class="tag">K&auml;ltester Tag</span> <span class="tag">W&auml;rmster Tag</span> <span class="tag">Max Bedarf</span> <span class="tag">Max PV</span></p>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section">
+<h2>5. Umsetzungsreihenfolge</h2>
+<p>Vorschlag f&uuml;r schrittweise Umsetzung (jeweils einzeln testbar):</p>
+<ul>
+  <li><b>Schritt 1:</b> KPI-Leiste in eigene Zeile verschieben + gr&ouml;&szlig;ere Darstellung + Speicher-Gauge <span class="tag orange">~30 min</span></li>
+  <li><b>Schritt 2:</b> Timeline-Leiste nach unten + Monatsmarkierungen + Play-Button <span class="tag orange">~45 min</span></li>
+  <li><b>Schritt 3:</b> Layout von 3 Spalten auf 2 Spalten (Flow | Charts &uuml;bereinander) <span class="tag orange">~20 min</span></li>
+  <li><b>Schritt 4:</b> Speicher-SOC-Chart erg&auml;nzen <span class="tag orange">~30 min</span></li>
+  <li><b>Schritt 5:</b> Keyboard-Navigation + Play-Modus <span class="tag orange">~30 min</span></li>
+  <li><b>Schritt 6:</b> Zeitzoom (Tag/Woche/Monat/Jahr) f&uuml;r alle Charts <span class="tag orange">~45 min</span></li>
+  <li><b>Schritt 7:</b> Dynamisches Ein-/Ausblenden von Charts <span class="tag orange">~15 min</span></li>
+</ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section" style="border-bottom:none;">
+<h2>6. Was gleich bleibt</h2>
+<ul>
+  <li>Flow-SVG-Grundlogik (Knoten, Pfeile, Animationen) &mdash; nur Layout anpassen</li>
+  <li>Stacked-Dispatch-Chart &mdash; gleiche Daten, nur vertikal statt horizontal angeordnet</li>
+  <li>Strom-Bilanz-Chart &mdash; gleiche Darstellung, nur in eigenem Panel</li>
+  <li>Alle Datenquellen (<code>_dispatchHourly</code>, <code>_thermSpeicherState</code>, etc.) unver&auml;ndert</li>
+  <li>Cyan Akzentfarbe (#4dd0e1) f&uuml;r aktuelle Stunde / Slider</li>
+</ul>
+</div>
+
+</body></html>

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Design-Akzente Demo</title>
+<style>
+  :root {
+    --bg: #181a20;
+    --surface: #23262f;
+    --surface2: #2a2d36;
+    --text: #e8eaf0;
+    --muted: #78909c;
+    --border: #333844;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 32px;
+    line-height: 1.5;
+  }
+  h1 { text-align: center; font-size: 1.4rem; margin-bottom: 6px; }
+  .subtitle { text-align: center; color: var(--muted); font-size: 0.9rem; margin-bottom: 32px; }
+  h2 { font-size: 1.1rem; margin-bottom: 16px; color: var(--muted); font-weight: 500; }
+  .row { display: flex; gap: 16px; margin-bottom: 40px; flex-wrap: wrap; }
+
+  /* ── Variante A: Panel-spezifische Akzentlinien ────────────── */
+  .panel-a {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    flex: 1;
+    min-width: 200px;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel-a::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: 10px 10px 0 0;
+  }
+  .panel-a.wirt::before  { background: linear-gradient(90deg, #ff9800, #ffb74d); }
+  .panel-a.analyse::before { background: linear-gradient(90deg, #42a5f5, #66bb6a, #ff9800); }
+  .panel-a.strom::before { background: linear-gradient(90deg, #42a5f5, #1565c0); }
+  .panel-a.netz::before  { background: linear-gradient(90deg, #ab47bc, #7b1fa2); }
+  .panel-a.geo::before   { background: linear-gradient(90deg, #8d6e63, #a1887f); }
+  .panel-a.fluss::before { background: linear-gradient(90deg, #26a69a, #4db6ac); }
+
+  .panel-a .title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .panel-a .body {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .panel-a .kpi {
+    font-family: 'Consolas', 'DM Mono', monospace;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 8px 0 4px;
+  }
+
+  /* ── Variante B: Dynamischer Energiemix-Gradient ───────────── */
+  .panel-b {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    flex: 1;
+    min-width: 280px;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel-b .mix-strip {
+    height: 3px;
+    border-radius: 10px 10px 0 0;
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+  }
+  .panel-b .mix-strip .seg {
+    height: 100%;
+    transition: width 0.4s ease;
+  }
+  .panel-b .title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .panel-b .body {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── Variante C: Kombination – subtile Seitenleiste ─────────── */
+  .panel-c {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px 16px 22px;
+    flex: 1;
+    min-width: 200px;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel-c::before {
+    content: '';
+    position: absolute;
+    top: 8px; bottom: 8px; left: 0;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+  }
+  .panel-c.wirt::before  { background: #ff9800; }
+  .panel-c.analyse::before { background: #42a5f5; }
+  .panel-c.strom::before { background: #66bb6a; }
+  .panel-c.netz::before  { background: #ab47bc; }
+
+  .panel-c .title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .panel-c .body {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 8px 0 24px;
+  }
+
+  .note {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 8px;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<h1>Design-Akzente: 3 Varianten</h1>
+<p class="subtitle">Dezente farbliche Orientierung ohne Unruhe</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>Variante A — Panel-spezifischer Farbstreifen (oben)</h2>
+<p class="note" style="margin-bottom:12px;">Jedes Panel bekommt einen 3px-Gradient passend zum Thema. Gibt sofortige visuelle Orientierung.</p>
+<div class="row">
+  <div class="panel-a wirt">
+    <div class="title"><span style="color:#ff9800;">$</span> Wirtschaftlichkeit</div>
+    <div class="kpi" style="color:#ffb74d;">284 k&euro;/a</div>
+    <div class="body">Jahreskosten gesamt (VDI 2067)</div>
+  </div>
+  <div class="panel-a analyse">
+    <div class="title"><span style="color:#42a5f5;">&#x25B2;</span> Systemanalyse</div>
+    <div class="kpi" style="color:#81d4fa;">3.240 MWh</div>
+    <div class="body">Gesamtw&auml;rme inkl. Netzverluste</div>
+  </div>
+  <div class="panel-a strom">
+    <div class="title"><span style="color:#42a5f5;">&#x26A1;</span> Strom-Analyse</div>
+    <div class="kpi" style="color:#90caf9;">68%</div>
+    <div class="body">Autarkiegrad PV + Batterie</div>
+  </div>
+  <div class="panel-a netz">
+    <div class="title"><span style="color:#ab47bc;">&#x25C8;</span> W&auml;rmenetz</div>
+    <div class="kpi" style="color:#ce93d8;">1.420 m</div>
+    <div class="body">Trassenlänge KMR DN40-DN100</div>
+  </div>
+  <div class="panel-a geo">
+    <div class="title"><span style="color:#8d6e63;">&#x25CF;</span> Geothermie</div>
+    <div class="kpi" style="color:#bcaaa4;">12 &times; 120m</div>
+    <div class="body">Erdsonden Duplex, 1.440 Bohrmeter</div>
+  </div>
+  <div class="panel-a fluss">
+    <div class="title"><span style="color:#26a69a;">&#x223C;</span> Fliessgew&auml;sser</div>
+    <div class="kpi" style="color:#80cbc4;">320 kW</div>
+    <div class="body">Flusswasser-WP Entnahmestelle</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>Variante B — Dynamischer Energiemix-Streifen</h2>
+<p class="note" style="margin-bottom:12px;">Der obere Streifen zeigt die Anteile der aktiven Energietr&auml;ger. &Auml;ndert sich live wenn der Mix sich &auml;ndert.<br>
+Hier beispielhaft: 45% Luft-WP, 25% BHKW, 20% Gaskessel, 10% Pellets</p>
+<div class="row">
+  <div class="panel-b" style="min-width:500px;">
+    <div class="mix-strip">
+      <div class="seg" style="width:45%;background:#ff9800;border-radius:10px 0 0 0;"></div>
+      <div class="seg" style="width:25%;background:#ab47bc;"></div>
+      <div class="seg" style="width:20%;background:#78909c;"></div>
+      <div class="seg" style="width:10%;background:#ff7043;border-radius:0 10px 0 0;"></div>
+    </div>
+    <div class="title">Systemanalyse — Lastgang</div>
+    <div class="body" style="margin-bottom:8px;">Der Farbstreifen oben zeigt den Energiemix: proportional nach MWh-Anteil je Erzeuger.</div>
+    <canvas id="demo-lg" height="80" style="width:100%;display:block;border-radius:4px;"></canvas>
+    <div style="display:flex;gap:12px;margin-top:8px;font-size:10px;">
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#ff9800;"></span> Luft-WP 45%</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#ab47bc;"></span> BHKW 25%</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#78909c;"></span> Gaskessel 20%</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#ff7043;"></span> Pellets 10%</span>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="panel-b">
+    <div class="mix-strip">
+      <div class="seg" style="width:45%;background:#ff9800;border-radius:10px 0 0 0;"></div>
+      <div class="seg" style="width:25%;background:#ab47bc;"></div>
+      <div class="seg" style="width:20%;background:#78909c;"></div>
+      <div class="seg" style="width:10%;background:#ff7043;border-radius:0 10px 0 0;"></div>
+    </div>
+    <div class="title">Wirtschaftlichkeit</div>
+    <div class="body">Gleicher Energiemix-Streifen auf jedem Panel &mdash; gibt visuellen Zusammenhalt.</div>
+  </div>
+  <div class="panel-b">
+    <div class="mix-strip">
+      <div class="seg" style="width:45%;background:#ff9800;border-radius:10px 0 0 0;"></div>
+      <div class="seg" style="width:25%;background:#ab47bc;"></div>
+      <div class="seg" style="width:20%;background:#78909c;"></div>
+      <div class="seg" style="width:10%;background:#ff7043;border-radius:0 10px 0 0;"></div>
+    </div>
+    <div class="title">Strom-Analyse</div>
+    <div class="body">Konsistenz: &uuml;berall der gleiche Streifen, &auml;ndert sich dynamisch.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>Variante C — Seitenleiste (links, 3px)</h2>
+<p class="note" style="margin-bottom:12px;">Noch dezenter: ein dünner vertikaler Farbstrich am linken Rand. Wie ein farbiges Lesezeichen.</p>
+<div class="row">
+  <div class="panel-c wirt">
+    <div class="title">Wirtschaftlichkeit</div>
+    <div class="body">Orange = Kosten / Wirtschaftlichkeit</div>
+  </div>
+  <div class="panel-c analyse">
+    <div class="title">Systemanalyse</div>
+    <div class="body">Blau = Analyse / Technik</div>
+  </div>
+  <div class="panel-c strom">
+    <div class="title">Strom-Analyse</div>
+    <div class="body">Gr&uuml;n = Strom / Erneuerbar</div>
+  </div>
+  <div class="panel-c netz">
+    <div class="title">W&auml;rmenetz</div>
+    <div class="body">Lila = Netz / Infrastruktur</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>Mix — A + B kombiniert</h2>
+<p class="note" style="margin-bottom:12px;">Panelfarbe (A) oben als statischer Gradient + Energiemix-Indikator (B) als schmale Leiste direkt darunter.</p>
+<div class="row">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;flex:1;min-width:280px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#42a5f5,#66bb6a,#ff9800);border-radius:10px 10px 0 0;"></div>
+    <div style="position:absolute;top:3px;left:0;right:0;height:2px;display:flex;">
+      <div style="width:45%;background:#ff9800;"></div>
+      <div style="width:25%;background:#ab47bc;"></div>
+      <div style="width:20%;background:#78909c;"></div>
+      <div style="width:10%;background:#ff7043;"></div>
+    </div>
+    <div style="font-size:12px;font-weight:600;margin-bottom:4px;margin-top:2px;">Systemanalyse</div>
+    <div style="font-size:11px;color:var(--muted);">Obere Linie = Panel-Typ (statisch). Zweite Linie = aktueller Energiemix (dynamisch).</div>
+  </div>
+
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;flex:1;min-width:280px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#ff9800,#ffb74d);border-radius:10px 10px 0 0;"></div>
+    <div style="position:absolute;top:3px;left:0;right:0;height:2px;display:flex;">
+      <div style="width:45%;background:#ff9800;"></div>
+      <div style="width:25%;background:#ab47bc;"></div>
+      <div style="width:20%;background:#78909c;"></div>
+      <div style="width:10%;background:#ff7043;"></div>
+    </div>
+    <div style="font-size:12px;font-weight:600;margin-bottom:4px;margin-top:2px;">Wirtschaftlichkeit</div>
+    <div style="font-size:11px;color:var(--muted);">Gleiche Logik: Panel-Identit&auml;t + Energiemix auf einen Blick.</div>
+  </div>
+</div>
+
+<script>
+// Mini-Demo Lastgang
+const cv = document.getElementById('demo-lg');
+if (cv) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = cv.getBoundingClientRect();
+  cv.width = rect.width * dpr; cv.height = rect.height * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+
+  const colors = ['#ff9800','#ab47bc','#78909c','#ff7043'];
+  const shares = [0.45, 0.25, 0.20, 0.10];
+
+  for (let x = 0; x < W; x++) {
+    const t = x / W * Math.PI * 12;
+    const base = 0.3 + 0.5 * Math.max(0, Math.cos(x / W * Math.PI * 2 - Math.PI));
+    const total = (base + 0.15 * Math.sin(t) + 0.1 * Math.sin(t * 3.7)) * H;
+    let yBase = H;
+    shares.forEach((s, i) => {
+      const h = total * s;
+      ctx.fillStyle = colors[i];
+      ctx.fillRect(x, yBase - h, 1, Math.max(1, h));
+      yBase -= h;
+    });
+  }
+}
+</script>
+</body>
+</html>

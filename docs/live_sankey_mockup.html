@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Live-Sankey Mockup</title>
+<style>
+  :root {
+    --surface: #15171c;
+    --surface2: #1c1f27;
+    --border: #2a3040;
+    --text: #cfd8dc;
+    --muted: #7a8898;
+    --accent: #4dd0e1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 12px;
+  }
+  h1 {
+    font-size: 14px; font-weight: 500;
+    color: var(--muted); margin: 0 0 16px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .panel {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .head {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 8px;
+  }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+  }
+  .live-label { color: var(--accent); font-size: 11px; letter-spacing: 0.1em; }
+  .ts {
+    font-family: 'DM Mono', 'Menlo', monospace;
+    font-size: 16px; color: var(--text);
+  }
+  .ts-sub {
+    font-family: 'DM Mono', 'Menlo', monospace;
+    font-size: 10px; color: var(--muted); margin-left: 12px;
+  }
+  .badge {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 10px; color: var(--muted);
+  }
+
+  .kpis {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin: 12px 0 20px;
+  }
+  .kpi {
+    background: var(--surface);
+    border-radius: 6px; padding: 10px 14px;
+  }
+  .kpi-label {
+    font-size: 9px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 2px;
+  }
+  .kpi-bedarf .kpi-label { color: #ef5350; }
+  .kpi-erzeug .kpi-label { color: #66bb6a; }
+  .kpi-val {
+    font-family: 'DM Mono', 'Menlo', monospace;
+    font-size: 24px; font-weight: 600;
+  }
+  .kpi-bedarf .kpi-val { color: #ef5350; }
+  .kpi-erzeug .kpi-val { color: #66bb6a; }
+  .kpi-unit {
+    font-size: 11px; color: var(--muted);
+    margin-left: 4px;
+  }
+
+  .sankey-wrap {
+    background: #11131a;
+    border-radius: 6px;
+    padding: 12px 16px 8px;
+    position: relative;
+  }
+  .sankey-title {
+    font-size: 9px; color: var(--muted);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 6px;
+    display: flex; justify-content: space-between;
+  }
+  canvas { display: block; width: 100%; height: 380px; }
+
+  .footer {
+    font-family: 'DM Mono', 'Menlo', monospace;
+    font-size: 10px; color: var(--muted);
+    margin-top: 6px; padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  .controls {
+    display: flex; gap: 8px;
+    margin-top: 16px; align-items: center;
+  }
+  button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 14px; border-radius: 4px;
+    font-family: inherit; font-size: 11px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  .scenario-label {
+    font-size: 10px; color: var(--muted);
+    margin-right: 8px;
+  }
+
+  .tooltip {
+    position: absolute; pointer-events: none;
+    background: #1a1d26; color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px; padding: 5px 9px;
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    display: none; white-space: nowrap;
+    z-index: 99;
+  }
+</style>
+</head>
+<body>
+
+<h1>Live-Sankey Mockup — Energiefluss einer Stunde</h1>
+
+<div class="panel">
+  <div class="head">
+    <span class="live-dot"></span>
+    <span class="live-label">LIVE</span>
+    <span class="ts" id="ts-main">8. Januar · 08:00</span>
+    <span class="ts-sub" id="ts-sub">Stunde 176 / 8760</span>
+    <span class="badge" id="ts-season">❄ Winter</span>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi kpi-bedarf">
+      <div class="kpi-label">Bedarf</div>
+      <div class="kpi-val" id="kpi-bedarf">621<span class="kpi-unit">kW</span></div>
+    </div>
+    <div class="kpi kpi-erzeug">
+      <div class="kpi-label">Erzeugung</div>
+      <div class="kpi-val" id="kpi-erzeug">621<span class="kpi-unit">kW</span></div>
+    </div>
+  </div>
+
+  <div class="sankey-wrap">
+    <div class="sankey-title">
+      <span>Energiefluss</span>
+      <span id="hour-info">Stunde 176</span>
+    </div>
+    <canvas id="sankey"></canvas>
+    <div class="tooltip" id="tt"></div>
+    <div class="footer" id="footer">h176 · Σ 621 kW → 621 kW · 1.6 °C · VL 80 °C</div>
+  </div>
+
+  <div class="controls">
+    <span class="scenario-label">Szenario:</span>
+    <button data-scenario="winter">Winter (08:00)</button>
+    <button data-scenario="winterMittag">Winter Mittag (PV)</button>
+    <button data-scenario="sommerMittag">Sommer Mittag (PV+Bat)</button>
+    <button data-scenario="bhkw">BHKW im Mix</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// Beispiel-Szenarien (typische Live-Stunden)
+// ═══════════════════════════════════════════════════════════════════════════
+const SCENARIOS = {
+  winter: {
+    label: '8. Januar · 08:00', sub: 'Stunde 176 / 8760', season: '❄ Winter',
+    tempC: 1.6, vlC: 80, t: 176,
+    bedarf: 621,
+    erzeuger: [
+      { key: 'lwwp',       label: 'Luft-WP',     kw: 288, cop: 1.9 },
+      { key: 'fernwaerme', label: 'Fernwärme',   kw: 333 },
+    ],
+    strom: { netzbezugKw: 274, pvKw: 0, bhkwKw: 0, wpKw: 152, skKw: 0, hhKw: 122,
+             einspeisungKw: 0, batLadeKw: 0, batEntladeKw: 0, batKap: 0 },
+    speicher: { tsKap: 0, tsLade: 0, tsEntlade: 0 },
+  },
+  winterMittag: {
+    label: '8. Januar · 12:00', sub: 'Stunde 180 / 8760', season: '❄ Winter',
+    tempC: 4.5, vlC: 75, t: 180,
+    bedarf: 540,
+    erzeuger: [
+      { key: 'lwwp',       label: 'Luft-WP',     kw: 380, cop: 2.6 },
+      { key: 'fernwaerme', label: 'Fernwärme',   kw: 160 },
+    ],
+    strom: { netzbezugKw: 90, pvKw: 175, bhkwKw: 0, wpKw: 146, skKw: 0, hhKw: 119,
+             einspeisungKw: 0, batLadeKw: 0, batEntladeKw: 0, batKap: 0 },
+    speicher: { tsKap: 0, tsLade: 0, tsEntlade: 0 },
+  },
+  sommerMittag: {
+    label: '15. Juli · 13:00', sub: 'Stunde 4669 / 8760', season: '☀ Sommer',
+    tempC: 24, vlC: 50, t: 4669,
+    bedarf: 95,  // nur TWW
+    erzeuger: [
+      { key: 'lwwp', label: 'Luft-WP', kw: 95, cop: 4.5 },
+    ],
+    strom: { netzbezugKw: 0, pvKw: 720, bhkwKw: 0, wpKw: 21, skKw: 0, hhKw: 105,
+             einspeisungKw: 414, batLadeKw: 180, batEntladeKw: 0, batKap: 500 },
+    speicher: { tsKap: 0, tsLade: 0, tsEntlade: 0 },
+  },
+  bhkw: {
+    label: '12. Februar · 18:00', sub: 'Stunde 1050 / 8760', season: '❄ Winter',
+    tempC: -2, vlC: 82, t: 1050,
+    bedarf: 750,
+    erzeuger: [
+      { key: 'lwwp',     label: 'Luft-WP',  kw: 220, cop: 1.7 },
+      { key: 'bhkw',     label: 'BHKW',     kw: 280 },
+      { key: 'gaskessel',label: 'Gaskessel',kw: 250 },
+    ],
+    strom: { netzbezugKw: 65, pvKw: 0, bhkwKw: 126, wpKw: 129, skKw: 0, hhKw: 145,
+             einspeisungKw: 0, batLadeKw: 0, batEntladeKw: 17, batKap: 200 },
+    speicher: { tsKap: 0, tsLade: 0, tsEntlade: 0 },
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Datenstruktur für Sankey aufbauen
+// ═══════════════════════════════════════════════════════════════════════════
+function buildLiveSankey(data) {
+  const { erzeuger, bedarf, speicher, strom } = data;
+  const flows = [];
+
+  // Farben — intuitiv, konsistent mit Programm-Standardpalette (ERZEUGER_CFG / Sankey)
+  const C = {
+    netz:     '#90a4ae',  // Netzbezug = neutrales Grau-Blau
+    pv:       '#fdd835',  // PV = sattes Gelb (Strom-Quelle)
+    bhkwSt:   '#ff8f00',  // BHKW elektrisch = Orange
+    bhkwTh:   '#ff6f00',  // BHKW thermisch = dunkles Orange
+    hh:       '#b0bec5',  // Haushaltsstrom = helles Grau
+    sk:       '#e040fb',  // Stromkessel = Magenta
+    einsp:    '#66bb6a',  // Einspeisung = Grün
+    bat:      '#b39ddb',  // Batterie = Lila
+    umwelt:   '#8bc34a',  // Umweltwärme = warmes Grün (rötlich-grün)
+    wp:       '#26a69a',  // WP = Türkis (Strom→Wärme-Wandler)
+    fw:       '#c62828',  // Fernwärme = dunkles Rot
+    pellets:  '#8d6e63',  // Pellets = Braun
+    hhs:      '#6d4c41',  // Hackschnitzel = dunkles Braun
+    gk:       '#78909c',  // Gaskessel = Grau-Blau
+    speicher: '#26a69a',  // Wärmespeicher = Türkis
+    waerme:   '#e53935',  // Wärme generisch = Rot
+    strom:    '#fdd835',  // Strom generisch = Gelb
+    bedarf:   '#e53935',  // Wärmebedarf = Rot
+    bus_strom:'#fdd835',  // Strom-Schiene = Gelb (markant)
+    bus_waerme:'#e53935', // Wärme-Schiene = Rot (markant)
+  };
+  const erzColor = {
+    lwwp: C.wp, fg: C.wp, geo: C.wp,
+    bhkw: C.bhkwTh, gaskessel: C.gk, _autoGk: C.gk,
+    pellets: C.pellets, hhs: C.hhs, heizoel: C.gk,
+    fernwaerme: C.fw, stromkessel: C.sk,
+  };
+
+  // ── 1. Strom-Quellen → Strom-Schiene ──
+  if (strom.netzbezugKw > 0.1) flows.push({ from: 'Netzbezug',     to: 'Strom-Schiene', value: strom.netzbezugKw, color: C.netz, dash: true });
+  if (strom.pvKw > 0.1)        flows.push({ from: 'PV',            to: 'Strom-Schiene', value: strom.pvKw,        color: C.pv });
+  if (strom.bhkwKw > 0.1)      flows.push({ from: 'BHKW (el)',     to: 'Strom-Schiene', value: strom.bhkwKw,      color: C.bhkwSt });
+  if (strom.batEntladeKw > 0.1)flows.push({ from: 'Batterie ↑',    to: 'Strom-Schiene', value: strom.batEntladeKw,color: C.bat });
+
+  // ── 2. Strom-Schiene → Verbraucher (inkl. WP als "Wandler") ──
+  const wpErz = erzeuger.filter(e => ['lwwp','fg','geo'].includes(e.key));
+  const wpKw = wpErz.reduce((a,e) => a + e.kw, 0);
+  if (wpKw > 0.1 && strom.wpKw > 0.1) {
+    // WP ist gleichzeitig Strom-Verbraucher und Wärme-Erzeuger
+    flows.push({ from: 'Strom-Schiene', to: wpErz[0].label, value: strom.wpKw, color: C.wp });
+  }
+  if (strom.skKw > 0.1) flows.push({ from: 'Strom-Schiene', to: 'Stromkessel',    value: strom.skKw,         color: C.sk });
+  if (strom.hhKw > 0.1) flows.push({ from: 'Strom-Schiene', to: 'Haushaltsstrom', value: strom.hhKw,         color: C.hh });
+  if (strom.einspeisungKw > 0.1) flows.push({ from: 'Strom-Schiene', to: 'Einspeisung', value: strom.einspeisungKw, color: C.einsp, dash: true });
+  if (strom.batLadeKw > 0.1)     flows.push({ from: 'Strom-Schiene', to: 'Batterie ↓', value: strom.batLadeKw,    color: C.bat });
+
+  // ── 3. WP-Wandlung: Strom + Umweltwärme → Wärme-Schiene ──
+  if (wpKw > 0.1) {
+    const wpUmw = Math.max(0, wpKw - strom.wpKw);
+    if (wpUmw > 0.1) flows.push({ from: 'Umweltwärme', to: wpErz[0].label, value: wpUmw, color: C.umwelt });
+    flows.push({ from: wpErz[0].label, to: 'Wärme-Schiene', value: wpKw, color: C.wp });
+  }
+
+  // ── 4. Andere Wärme-Quellen → Wärme-Schiene ──
+  for (const e of erzeuger) {
+    if (['lwwp','fg','geo'].includes(e.key)) continue;
+    if (e.kw < 0.1) continue;
+    flows.push({ from: e.label, to: 'Wärme-Schiene', value: e.kw, color: erzColor[e.key] || C.gk });
+  }
+  if (strom.skKw > 0.1) flows.push({ from: 'Stromkessel', to: 'Wärme-Schiene', value: strom.skKw, color: C.sk });
+
+  // ── 5. Wärme-Schiene → Senken ──
+  flows.push({ from: 'Wärme-Schiene', to: 'Wärmebedarf', value: bedarf, color: C.bedarf });
+  if (speicher.tsLade > 0.1)    flows.push({ from: 'Wärme-Schiene', to: 'Speicher ↓', value: speicher.tsLade,    color: C.speicher });
+  if (speicher.tsEntlade > 0.1) flows.push({ from: 'Speicher ↑', to: 'Wärme-Schiene', value: speicher.tsEntlade, color: C.speicher });
+
+  return { flows, nodeColors: {
+    'Strom-Schiene':  C.bus_strom,
+    'Wärme-Schiene':  C.bus_waerme,
+    'Wärmebedarf':    C.bedarf,
+    'Haushaltsstrom': C.hh,
+    'Einspeisung':    C.einsp,
+    'Stromkessel':    C.sk,
+    'Speicher ↓':     C.speicher,
+    'Speicher ↑':     C.speicher,
+    'Batterie ↓':     C.bat,
+    'Batterie ↑':     C.bat,
+    'Umweltwärme':    C.umwelt,
+    'Netzbezug':      C.netz,
+    'PV':             C.pv,
+    'BHKW (el)':      C.bhkwSt,
+  }};
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sankey-Renderer (an _drawSankey angelehnt, mit 5-Spalten-Logik für Live)
+// ═══════════════════════════════════════════════════════════════════════════
+function drawLiveSankey(canvas, data) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+  canvas.width = cssW * dpr; canvas.height = cssH * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const flows = data.flows;
+  const nodeColors = data.nodeColors || {};
+  if (!flows.length) return;
+
+  // ── Knoten + Spalten zuweisen ──
+  const nodeSet = new Set();
+  flows.forEach(f => { nodeSet.add(f.from); nodeSet.add(f.to); });
+  const outMap = {}, inMap = {};
+  nodeSet.forEach(n => { outMap[n] = []; inMap[n] = []; });
+  flows.forEach(f => { outMap[f.from].push(f); inMap[f.to].push(f); });
+
+  // 5 Spalten:
+  // 0 = Strom-Quellen (Netzbezug, PV, BHKW-el, Bat-Entlade)
+  // 1 = Strom-Schiene
+  // 2 = Wandler / Wärme-Quellen / Strom-Senken (WP, BHKW-th, Pellets, HH, SK, Einsp, Bat-Lade, Umweltwärme)
+  // 3 = Wärme-Schiene
+  // 4 = Wärme-Senken (Wärmebedarf, Speicher)
+  const SPALTEN = {
+    'Netzbezug': 0, 'PV': 0, 'BHKW (el)': 0, 'Batterie ↑': 0,
+    'Strom-Schiene': 1,
+    'Wärme-Schiene': 3,
+    'Wärmebedarf': 4, 'Speicher ↓': 4,
+  };
+  const col = {};
+  nodeSet.forEach(n => {
+    if (SPALTEN[n] != null) col[n] = SPALTEN[n];
+    else col[n] = 2; // Default: Mittelspalte
+  });
+
+  const NUM_COLS = 5;
+  const PAD = 6, NODE_W = 14, NODE_W_BUS = 26, GAP = 14;
+  // Hilfsfunktion: Knoten-Breite (Schienen sind breiter / pillenförmig)
+  function nodeWidthOf(n) {
+    return (n === 'Strom-Schiene' || n === 'Wärme-Schiene') ? NODE_W_BUS : NODE_W;
+  }
+  const colSpacing = (cssW - 2 * PAD - NODE_W_BUS) / (NUM_COLS - 1);
+  const COL_X = Array.from({length: NUM_COLS}, (_, i) => PAD + i * colSpacing);
+  const colNodes = Array.from({length: NUM_COLS}, () => []);
+  nodeSet.forEach(n => colNodes[col[n]].push(n));
+
+  // Knotenwerte
+  const nodeVal = {};
+  nodeSet.forEach(n => {
+    const inV  = inMap[n].reduce((s,f) => s + f.value, 0);
+    const outV = outMap[n].reduce((s,f) => s + f.value, 0);
+    nodeVal[n] = Math.max(inV, outV);
+  });
+
+  // Skalierung
+  const colTotals = colNodes.map(arr => arr.reduce((s,n) => s + nodeVal[n], 0));
+  const maxColTotal = Math.max(...colTotals, 1);
+  const maxColGaps = Math.max(...colNodes.map(arr => Math.max(0, arr.length - 1) * GAP));
+  const globalScale = (cssH - 30 - maxColGaps) / maxColTotal;
+
+  const nodeY = {}, nodeH = {};
+  function layoutCol(arr) {
+    const totalH = arr.reduce((s,n) => s + nodeVal[n] * globalScale, 0) + Math.max(0, arr.length - 1) * GAP;
+    let y = 14 + (cssH - 28 - totalH) / 2;
+    arr.forEach(n => {
+      nodeH[n] = Math.max(6, nodeVal[n] * globalScale);
+      nodeY[n] = y;
+      y += nodeH[n] + GAP;
+    });
+  }
+
+  // Sortier-Hilfen
+  function targetCenter(n) {
+    let sumW = 0, sumWY = 0;
+    outMap[n].forEach(f => { const ty = nodeY[f.to] + nodeH[f.to]/2; sumW += f.value; sumWY += f.value * ty; });
+    return sumW > 0 ? sumWY / sumW : cssH/2;
+  }
+  function sourceCenter(n) {
+    let sumW = 0, sumWY = 0;
+    inMap[n].forEach(f => { const sy = nodeY[f.from] + nodeH[f.from]/2; sumW += f.value; sumWY += f.value * sy; });
+    return sumW > 0 ? sumWY / sumW : cssH/2;
+  }
+
+  // Initiales Layout: von außen nach innen
+  // Strom-Schiene (Spalte 1) zuerst
+  colNodes[1].sort((a,b) => nodeVal[b] - nodeVal[a]);
+  layoutCol(colNodes[1]);
+  // Spalte 0 nach Schwerpunkt der Ziele
+  colNodes[0].sort((a,b) => targetCenter(a) - targetCenter(b));
+  layoutCol(colNodes[0]);
+  // Spalte 2 nach Schwerpunkt der Quellen (Strom-Schiene)
+  colNodes[2].sort((a,b) => sourceCenter(a) - sourceCenter(b));
+  layoutCol(colNodes[2]);
+  // Spalte 3 (Wärme-Schiene) nach Schwerpunkt der Quellen aus 2
+  layoutCol(colNodes[3]);
+  // Spalte 4 nach Schwerpunkt der Quellen
+  colNodes[4].sort((a,b) => sourceCenter(a) - sourceCenter(b));
+  layoutCol(colNodes[4]);
+
+  // Iteratives Verfeinern
+  for (let iter = 0; iter < 8; iter++) {
+    for (let c = 0; c < NUM_COLS; c++) {
+      colNodes[c].sort((a,b) => {
+        const sIn = sourceCenter(a) - sourceCenter(b);
+        const sOut = targetCenter(a) - targetCenter(b);
+        if (c === 0 || outMap[colNodes[c][0]]?.length > 0) return sOut + sIn * 0.5;
+        return sIn;
+      });
+      layoutCol(colNodes[c]);
+    }
+  }
+
+  // ── Flow-Dicke ──
+  const nodeOutScale = {}, nodeInScale = {};
+  nodeSet.forEach(n => {
+    const outSum = outMap[n].reduce((s,f) => s + f.value, 0);
+    const inSum  = inMap[n].reduce((s,f) => s + f.value, 0);
+    nodeOutScale[n] = outSum > 0 ? nodeH[n] / outSum : 1;
+    nodeInScale[n]  = inSum  > 0 ? nodeH[n] / inSum  : 1;
+  });
+
+  // ── Flows: Quell- und Ziel-Y bestimmen, sortieren um Kreuzungen zu reduzieren ──
+  const flowGeo = flows.map(f => ({ ...f }));
+  // Pro Quelle: nach Ziel-Y sortieren, kumulieren
+  const outAcc = {}, inAcc = {};
+  nodeSet.forEach(n => { outAcc[n] = 0; inAcc[n] = 0; });
+
+  // Sortiere Flows zweimal — pro Quelle und pro Ziel
+  // Erst pro Quelle sortieren (für outY)
+  const flowsBySource = {};
+  nodeSet.forEach(n => flowsBySource[n] = []);
+  flowGeo.forEach(f => flowsBySource[f.from].push(f));
+  for (const src of Object.keys(flowsBySource)) {
+    flowsBySource[src].sort((a,b) => (nodeY[a.to] + nodeH[a.to]/2) - (nodeY[b.to] + nodeH[b.to]/2));
+    flowsBySource[src].forEach(f => {
+      f.srcY = nodeY[src] + outAcc[src] + (f.value * nodeOutScale[src])/2;
+      outAcc[src] += f.value * nodeOutScale[src];
+    });
+  }
+  // Dann pro Ziel sortieren (für inY)
+  const flowsByTarget = {};
+  nodeSet.forEach(n => flowsByTarget[n] = []);
+  flowGeo.forEach(f => flowsByTarget[f.to].push(f));
+  for (const tgt of Object.keys(flowsByTarget)) {
+    flowsByTarget[tgt].sort((a,b) => (nodeY[a.from] + nodeH[a.from]/2) - (nodeY[b.from] + nodeH[b.from]/2));
+    flowsByTarget[tgt].forEach(f => {
+      f.tgtY = nodeY[tgt] + inAcc[tgt] + (f.value * nodeInScale[tgt])/2;
+      inAcc[tgt] += f.value * nodeInScale[tgt];
+    });
+  }
+
+  // Hilfsfunktionen für Pillen-Knoten + Bänder ────────────────────────────
+  function drawNode(n) {
+    const x = COL_X[col[n]];
+    const y = nodeY[n];
+    const h = nodeH[n];
+    const c = nodeColors[n] || '#5e6b70';
+    const isBus = (n === 'Strom-Schiene' || n === 'Wärme-Schiene');
+    const w = nodeWidthOf(n);
+    if (isBus) {
+      // Pillenform — markant, mit Glow
+      const r = w / 2;
+      ctx.shadowColor = c;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = c;
+      ctx.globalAlpha = 0.95;
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+      // Innen dunklerer Kern für Lesbarkeit des Labels
+      ctx.fillStyle = 'rgba(20,22,28,0.55)';
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + h/2, w/2 - 3, h/2 - 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = c;
+      ctx.globalAlpha = 0.88;
+      ctx.fillRect(x, y, w, h);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = c;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    }
+  }
+
+  function drawNodeLabel(n) {
+    const x = COL_X[col[n]];
+    const y = nodeY[n];
+    const h = nodeH[n];
+    const w = nodeWidthOf(n);
+    const isLeft = col[n] < NUM_COLS / 2;
+    const isBus = (n === 'Strom-Schiene' || n === 'Wärme-Schiene');
+    const yMid = y + h/2;
+    const c = nodeColors[n] || '#a0a8b0';
+
+    if (isBus) {
+      // Label IN der Pille, vertikal, mit Symbol
+      const symbol = n.startsWith('Strom') ? '⚡' : '🔥';
+      ctx.save();
+      ctx.translate(x + w/2, yMid);
+      ctx.rotate(-Math.PI/2);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = c;
+      ctx.font = 'bold 11px "DM Sans", sans-serif';
+      const labelText = n.replace('-Schiene','').toUpperCase();
+      ctx.fillText(labelText, 0, 0);
+      // kW-Wert klein darunter
+      ctx.font = '8px "DM Mono", monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.fillText(Math.round(nodeVal[n]) + ' kW', 0, 11);
+      ctx.restore();
+      // Symbol oben/unten am Pillenrand
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = c;
+      ctx.fillText(symbol, x + w/2, y - 8);
+      ctx.fillText(symbol, x + w/2, y + h + 8);
+    } else {
+      const lblX = isLeft ? x - 6 : x + w + 6;
+      const ta = isLeft ? 'right' : 'left';
+      ctx.fillStyle = c;
+      ctx.textAlign = ta; ctx.textBaseline = 'middle';
+      ctx.font = '10.5px "DM Mono", monospace';
+      ctx.fillText(n, lblX, yMid - 5);
+      ctx.font = '9px "DM Mono", monospace';
+      ctx.fillStyle = '#7a8898';
+      ctx.fillText(Math.round(nodeVal[n]) + ' kW', lblX, yMid + 6);
+    }
+  }
+
+  function drawFlowBand(f) {
+    const x0 = COL_X[col[f.from]] + nodeWidthOf(f.from);
+    const x1 = COL_X[col[f.to]];
+    const w = Math.max(1, f.value * Math.min(nodeOutScale[f.from], nodeInScale[f.to]));
+    const y0 = f.srcY, y1 = f.tgtY;
+    const cx = (x0 + x1) / 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 - w/2);
+    ctx.bezierCurveTo(cx, y0 - w/2, cx, y1 - w/2, x1, y1 - w/2);
+    ctx.lineTo(x1, y1 + w/2);
+    ctx.bezierCurveTo(cx, y1 + w/2, cx, y0 + w/2, x0, y0 + w/2);
+    ctx.closePath();
+    ctx.fillStyle = f.color;
+    ctx.globalAlpha = f.dash ? 0.18 : 0.36;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    f._geo = { x0, x1, y0, y1, w };
+  }
+
+  // ── Initial-Zeichnung ──
+  flowGeo.forEach(drawFlowBand);
+  nodeSet.forEach(drawNode);
+  nodeSet.forEach(drawNodeLabel);
+
+  // ── Animation: bewegte Punkte entlang der Bänder ──
+  if (window._animFrame) cancelAnimationFrame(window._animFrame);
+  let phase = 0;
+  function tick() {
+    phase = (phase + 0.005) % 1;
+    // Über die Knoten/Flows neu zeichnen brauchen wir nicht — wir drüber-malen die animierten Punkte
+    // (Die Bänder sind statisch gezeichnet, Animation ist eine zweite Layer)
+    redrawAnimLayer();
+    window._animFrame = requestAnimationFrame(tick);
+  }
+  function redrawAnimLayer() {
+    // Lazy Re-Render des kompletten Bildes ist einfacher, wenn wir keinen Off-Screen-Cache wollen
+    // Für ein Mockup OK — in Produktion ggf. zwei Canvases übereinander
+    ctx.clearRect(0, 0, cssW, cssH);
+    drawLiveSankey._noAnim = true;
+    drawStaticPart();
+    drawLiveSankey._noAnim = false;
+    // Animierte Punkte
+    flowGeo.forEach(f => {
+      if (f.dash) return; // gestrichelte Flüsse ohne Animation
+      const g = f._geo;
+      const tt = (phase + (f.value % 0.7)) % 1;
+      const t1 = tt;
+      const easeT = t1;
+      const x = g.x0 + (g.x1 - g.x0) * easeT;
+      // Bezier y: vereinfacht linear interpoliert
+      const y = g.y0 + (g.y1 - g.y0) * (3*easeT*easeT - 2*easeT*easeT*easeT);
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1.2, Math.min(3, g.w / 6)), 0, Math.PI * 2);
+      ctx.fillStyle = f.color;
+      ctx.globalAlpha = 0.85;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+  }
+  function drawStaticPart() {
+    flowGeo.forEach(drawFlowBand);
+    nodeSet.forEach(drawNode);
+    nodeSet.forEach(drawNodeLabel);
+  }
+
+  // Hover-Tooltip
+  canvas._flowGeo = flowGeo;
+  canvas._nodeGeo = Array.from(nodeSet).map(n => ({
+    name: n, x: COL_X[col[n]], y: nodeY[n], w: nodeWidthOf(n), h: nodeH[n], val: nodeVal[n]
+  }));
+
+  tick();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tooltip + Szenario-Switch
+// ═══════════════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('sankey');
+const tt = document.getElementById('tt');
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let hit = null;
+  // Knoten zuerst
+  for (const ng of canvas._nodeGeo || []) {
+    if (mx >= ng.x && mx <= ng.x + ng.w && my >= ng.y && my <= ng.y + ng.h) {
+      hit = `<b>${ng.name}</b><br>${Math.round(ng.val)} kW`; break;
+    }
+  }
+  if (!hit) {
+    // Flow-Bänder grob: Linie zwischen srcY und tgtY auf x ≈ Mitte
+    for (const f of canvas._flowGeo || []) {
+      const g = f._geo;
+      if (mx >= g.x0 && mx <= g.x1) {
+        const easeT = (mx - g.x0) / (g.x1 - g.x0);
+        const y = g.y0 + (g.y1 - g.y0) * (3*easeT*easeT - 2*easeT*easeT*easeT);
+        if (Math.abs(my - y) <= g.w/2 + 2) {
+          hit = `${f.from} → ${f.to}<br>${Math.round(f.value)} kW`;
+          break;
+        }
+      }
+    }
+  }
+  if (hit) {
+    tt.innerHTML = hit;
+    tt.style.display = 'block';
+    tt.style.left = (e.clientX - rect.left + 14) + 'px';
+    tt.style.top = (e.clientY - rect.top + 14) + 'px';
+  } else {
+    tt.style.display = 'none';
+  }
+});
+canvas.addEventListener('mouseleave', () => tt.style.display = 'none');
+
+function showScenario(key) {
+  const data = SCENARIOS[key];
+  document.getElementById('ts-main').textContent = data.label;
+  document.getElementById('ts-sub').textContent = data.sub;
+  document.getElementById('ts-season').textContent = data.season;
+  document.getElementById('kpi-bedarf').innerHTML = data.bedarf + '<span class="kpi-unit">kW</span>';
+  const erzSum = data.erzeuger.reduce((s, e) => s + e.kw, 0);
+  document.getElementById('kpi-erzeug').innerHTML = Math.round(erzSum) + '<span class="kpi-unit">kW</span>';
+  document.getElementById('hour-info').textContent = 'Stunde ' + data.t;
+  document.getElementById('footer').textContent = `h${data.t} · Σ ${Math.round(erzSum)} kW → ${data.bedarf} kW · ${data.tempC} °C · VL ${data.vlC} °C`;
+
+  const sankeyData = buildLiveSankey(data);
+  drawLiveSankey(canvas, sankeyData);
+}
+
+document.querySelectorAll('button[data-scenario]').forEach(btn => {
+  btn.addEventListener('click', () => showScenario(btn.dataset.scenario));
+});
+
+// Initial
+showScenario('winter');
+
+// Resize-Handler
+new ResizeObserver(() => {
+  const cur = document.querySelector('button[data-scenario][data-active="1"]')?.dataset.scenario || 'winter';
+  showScenario(cur);
+}).observe(canvas);
+</script>
+
+</body>
+</html>
