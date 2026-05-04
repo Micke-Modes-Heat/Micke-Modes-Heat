@@ -138,7 +138,7 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
   const batLeistKw = batKwh > 0 ? batKwh / 2 : 0;
   let sv = 0, ins = 0, bez = 0, soc = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
-  let tsSoc = 0, pvWpSpGes = 0;
+  // Hinweis: PV→WP→Speicher-Sonderlogik entfernt (Doppelbuchung mit Phase 6 in _dispatchCore).
   for (let t = 0; t < 8760; t++) {
     const dem = demandH[t];
     const pvGen = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
@@ -150,41 +150,15 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
     if (batKwh > 0 && rGen > 0) { const c = Math.min(rGen, batLeistKw, batKwh - soc); soc += c; rGen -= c; }
     if (batKwh > 0 && rDem > 0) { const a = Math.min(soc * 0.90, rDem, batLeistKw); soc -= a / 0.90; rDem -= a; }
 
-    // PV-Überschuss → WP → thermischer Speicher
-    let pvWpSp = 0;
-    if (rGen > 0.1 && dispResult && dispResult.thSpParams && dispResult.wpResKwH) {
-      const tsCap = dispResult.thSpParams.kapKwh;
-      const tsEntlKw = dispResult.thSpParams.entladeKw;
-      const wpRKw = dispResult.wpResKwH[t] || 0;
-      const wpCop = dispResult.wpResCopH[t] || 0;
-      if (wpRKw > 0.1 && wpCop > 0 && tsCap > 0) {
-        const tsFree = Math.max(0, tsCap - tsSoc);
-        const ladeBudget = Math.min(tsFree, tsEntlKw);
-        if (ladeBudget > 0.1) {
-          const maxElKw = wpRKw / wpCop;
-          const elUsed = Math.min(rGen, maxElKw);
-          const thLade = Math.min(elUsed * wpCop, ladeBudget);
-          if (thLade > 0.1) {
-            const elActual = thLade / wpCop;
-            tsSoc = Math.min(tsCap, tsSoc + thLade);
-            rGen -= elActual;
-            pvWpSp = elActual / 1000;
-            pvWpSpGes += pvWpSp;
-          }
-        }
-      }
-    }
-
     const evThisH = (dsc + (dem - dsc - rDem)) / 1000;
     sv += dsc + (dem - dsc - rDem); ins += rGen; bez += rDem;
-    pvEig += evThisH * pvFrac + pvWpSp;
+    pvEig += evThisH * pvFrac;
     bhkwEig += evThisH * (1 - pvFrac);
     pvEinsp += (rGen / 1000) * pvFrac;
     bhkwEinsp += (rGen / 1000) * (1 - pvFrac);
   }
-  return { eigenMwh: sv / 1000 + pvWpSpGes, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
-           pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp,
-           pvWpSpeicherMwh: pvWpSpGes };
+  return { eigenMwh: sv / 1000, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
+           pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp };
 }
 
 // _calcBausteinKostenW ENTFERNT — nutzt jetzt _calcKostenShared
@@ -300,66 +274,33 @@ function score(kw, ziel) {
   return kw.wgk;
 }
 
-// ── PV+Bat Dimensionierung per marginaler Amortisation ──
-// Für jede Bat-Stufe: PV schrittweise vergrößern, bis Amortisation > Schwellwert.
-// Dann beste PV+Bat-Kombi per Score auswählen.
+// ── PV+Bat Dimensionierung — absoluter Score-Vergleich ──
+// Früher Marginal-Amortisation: zu streng, wies Bat-Stufen vorzeitig ab,
+// auch wenn sie bei größerer PV wirtschaftlich gewesen wären.
+// Jetzt: alle (pv × bat)-Stufen durchrechnen, Konfig mit niedrigstem Score gewinnt.
+// maxAmortJ-Parameter wird aus API-Kompatibilität beibehalten, aber ignoriert.
 function _findOptPvBat(pvSteps, batSteps, demandH, bhkwElH, pvProfile, disp,
                        params, stMwh, stM2, tsVol, ziel, maxAmortJ, simFn, kwFn) {
-  const pStrom = params.pStrom;
-  // Einspeisevergütung effektiv (abhängig von PV-Größe + Modell)
-  function einspeiseCtKwh(pvKwp) {
-    const mod = D.pvVergModell || 'teil';
-    if (mod === 'teil') return pvKwp <= 0 ? 8.1 : (Math.min(pvKwp,10)*8.1 + Math.max(0,Math.min(pvKwp,40)-10)*7.0 + Math.max(0,pvKwp-40)*5.7) / pvKwp;
-    if (mod === 'voll') return pvKwp <= 0 ? 12.9 : (Math.min(pvKwp,10)*12.9 + Math.max(0,pvKwp-10)*10.8) / pvKwp;
-    return params.pEinsp || 8;
-  }
-  function pvInvPerKwp(kwp) {
-    if (typeof _pvInvestPerKwp === 'function') return _pvInvestPerKwp(kwp);
-    return D.pvInvestManual || 1200;
-  }
-
   let bestPv = 0, bestBat = 0, bestScore = Infinity, bestKw = null;
+  const seen = new Set();
 
-  // Immer PV=0 testen (Variante ohne PV)
-  const pvBat0 = simFn(0, 0, demandH, bhkwElH, pvProfile, disp);
-  const kw0 = kwFn(disp, 0, 0, pvBat0, params, stMwh, stM2, tsVol);
-  const sc0 = score(kw0, ziel);
-  if (sc0 < bestScore) { bestScore = sc0; bestPv = 0; bestBat = 0; bestKw = kw0; }
+  function evalConfig(pvK, batK) {
+    const key = pvK + '|' + batK;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const pvBat = simFn(pvK, batK, demandH, bhkwElH, pvProfile, disp);
+    const kw = kwFn(disp, pvK, batK, pvBat, params, stMwh, stM2, tsVol);
+    const sc = score(kw, ziel);
+    if (sc < bestScore) { bestScore = sc; bestPv = pvK; bestBat = batK; bestKw = kw; }
+  }
 
+  // Referenz-Konfig (kein PV, keine Bat) immer testen
+  evalConfig(0, 0);
+
+  // Vollständiges Grid aus allen (pv × bat)-Kombinationen
   for (const batK of batSteps) {
-    // Cache: PV-Ergebnisse für diese Bat-Stufe, aufsteigend nach PV-Größe
-    let prevEigen = 0, prevEinsp = 0, prevPvK = 0;
-    const batInvest = batK * (D.batInvest || 400);
-
-    for (let pi = 0; pi < pvSteps.length; pi++) {
-      const pvK = pvSteps[pi];
-      if (pvK <= 0) continue;
-
-      const pvBat = simFn(pvK, batK, demandH, bhkwElH, pvProfile, disp);
-      const curEigen = pvBat.pvEigenMwh || 0;  // MWh
-      const curEinsp = pvBat.pvEinspMwh || 0;  // MWh
-
-      // Marginale Amortisation dieses PV-Inkrements
-      const deltaPvInvest = (pvK - prevPvK) * pvInvPerKwp(pvK);
-      // Beim ersten PV-Schritt: Batterie-Invest mit einrechnen
-      const deltaInvest = deltaPvInvest + (pi === 0 ? batInvest : 0);
-
-      const deltaEigen = curEigen - prevEigen;  // MWh zusätzlicher Eigenverbrauch
-      const deltaEinsp = curEinsp - prevEinsp;  // MWh zusätzliche Einspeisung
-      // Jährliche Ersparnis: Eigenverbrauch spart Netzbezug, Einspeisung bringt Vergütung
-      const deltaSavings = deltaEigen * pStrom * 10 + deltaEinsp * einspeiseCtKwh(pvK) * 10;
-
-      if (deltaSavings <= 0 || deltaInvest / deltaSavings > maxAmortJ) {
-        // Dieses Inkrement lohnt sich nicht mehr → Stopp für diese Bat-Stufe
-        break;
-      }
-
-      // Inkrement OK → kennwerte berechnen und als Kandidat merken
-      const kw = kwFn(disp, pvK, batK, pvBat, params, stMwh, stM2, tsVol);
-      const sc = score(kw, ziel);
-      if (sc < bestScore) { bestScore = sc; bestPv = pvK; bestBat = batK; bestKw = kw; }
-
-      prevEigen = curEigen; prevEinsp = curEinsp; prevPvK = pvK;
+    for (const pvK of pvSteps) {
+      evalConfig(pvK, batK);
     }
   }
   return { pvKwp: bestPv, batKwh: bestBat, kw: bestKw, score: bestScore };
@@ -388,12 +329,26 @@ self.onmessage = function(e) {
   // Gaskessel/Heizöl werden als reguläre Spitzenlastkessel in Kombinationen berücksichtigt
   const kombis = _allKombis;
 
-  const Q = { schnell: { n: 5, pv: 2, bat: 1 }, standard: { n: 7, pv: 3, bat: 2 }, gruendlich: { n: 11, pv: 5, bat: 3 } }[quality];
+  const Q = { schnell: { n: 5, pv: 2, bat: 2 }, standard: { n: 7, pv: 3, bat: 4 }, gruendlich: { n: 11, pv: 5, bat: 6 } }[quality];
   const nKand = aktiv.length;
   const GROB_N = Q.n;
   const grobPvN = nKand <= 4 ? Q.pv : nKand <= 6 ? Math.max(1, Q.pv - 1) : 1;
-  const grobBatN = nKand <= 4 ? Q.bat : nKand <= 6 ? Math.max(1, Q.bat - 1) : 1;
+  // Bat-Reduktion: bei vielen Kandidaten weicher reduzieren, mindestens 2 Stufen behalten
+  const grobBatN = nKand <= 4 ? Q.bat : nKand <= 6 ? Math.max(2, Q.bat - 1) : Math.max(2, Q.bat - 2);
   const GROB_STUFEN = Array.from({length: GROB_N}, (_, i) => Math.round(i / (GROB_N - 1) * 100) / 100);
+
+  // Geometrische Verteilung der Bat-Stufen — kleine Batterien dichter abgedeckt (typisch optimal)
+  // Beispiele: n=2 → [0, batMax], n=4 → [0, batMax/4, batMax/2, batMax],
+  //            n=6 → [0, batMax/16, batMax/8, batMax/4, batMax/2, batMax]
+  function _buildBatStepsGeom(maxKwh, nSteps) {
+    if (nSteps <= 1) return [0];
+    if (nSteps === 2) return [0, Math.round(maxKwh)];
+    const out = [0];
+    for (let i = nSteps - 2; i >= 0; i--) {
+      out.push(Math.round(maxKwh / Math.pow(2, i)));
+    }
+    return out;
+  }
 
   // PV/Bat Steps — dynamische Limits basierend auf Projektgröße
   const hatWP = aktiv.some(k => D.ERZEUGER_TYP[k] === 'wp');
@@ -418,7 +373,7 @@ self.onmessage = function(e) {
   } else {
     pvStepsGrob = pvAktiv ? Array.from({length: grobPvN}, (_, i) => Math.round(pvMaxSinnvoll * i / (grobPvN - 1))) : [0];
     if (pvMinConstr > 0 && pvAktiv) pvStepsGrob = pvStepsGrob.filter(v => v >= pvMinConstr);
-    batStepsGrob = batAktiv ? Array.from({length: grobBatN}, (_, i) => Math.round(batMax * i / Math.max(1, grobBatN - 1))) : [0];
+    batStepsGrob = batAktiv ? _buildBatStepsGeom(batMax, grobBatN) : [0];
   }
 
   // ST Steps
@@ -831,14 +786,26 @@ export function _doRunOptimierung(resDiv) {
   const nKand = aktiv.length;
   const optQuality = document.getElementById('opt-quality')?.value || 'standard';
   // Basis-Auflösungen pro Quality-Stufe
-  const Q = { schnell: { n: 5, pv: 2, bat: 1 }, standard: { n: 7, pv: 3, bat: 2 }, gruendlich: { n: 11, pv: 5, bat: 3 } }[optQuality];
+  const Q = { schnell: { n: 5, pv: 2, bat: 2 }, standard: { n: 7, pv: 3, bat: 4 }, gruendlich: { n: 11, pv: 5, bat: 6 } }[optQuality];
   // Bei vielen Kandidaten: PV/Bat reduzieren um kombinatorische Explosion zu begrenzen
   let GROB_N = Q.n;
   let grobPvN = nKand <= 4 ? Q.pv : nKand <= 6 ? Math.max(1, Q.pv - 1) : 1;
-  let grobBatN = nKand <= 4 ? Q.bat : nKand <= 6 ? Math.max(1, Q.bat - 1) : 1;
+  // Bat-Reduktion: bei vielen Kandidaten weicher, mindestens 2 Stufen behalten
+  let grobBatN = nKand <= 4 ? Q.bat : nKand <= 6 ? Math.max(2, Q.bat - 1) : Math.max(2, Q.bat - 2);
 
   // Leistungsstufen generieren (gleichmäßig verteilt inkl. 0 und 1)
   const GROB_STUFEN = Array.from({length: GROB_N}, (_, i) => Math.round(i / (GROB_N - 1) * 100) / 100);
+
+  // Geometrische Verteilung der Bat-Stufen — kleine Batterien dichter abgedeckt
+  function _buildBatStepsGeomMain(maxKwh, nSteps) {
+    if (nSteps <= 1) return [0];
+    if (nSteps === 2) return [0, Math.round(maxKwh)];
+    const out = [0];
+    for (let i = nSteps - 2; i >= 0; i--) {
+      out.push(Math.round(maxKwh / Math.pow(2, i)));
+    }
+    return out;
+  }
 
   // PV/Bat Stufen für Grobsuche
   let pvStepsGrob, batStepsGrob;
@@ -850,7 +817,7 @@ export function _doRunOptimierung(resDiv) {
   } else {
     pvStepsGrob = pvAktiv ? Array.from({length: grobPvN}, (_, i) => Math.round(pvMaxSinnvoll * i / (grobPvN - 1))) : [0];
     if (pvMinConstr > 0 && pvAktiv) pvStepsGrob = pvStepsGrob.filter(v => v >= pvMinConstr);
-    batStepsGrob = batAktiv ? Array.from({length: grobBatN}, (_, i) => Math.round(batMax * i / Math.max(1, grobBatN - 1))) : [0];
+    batStepsGrob = batAktiv ? _buildBatStepsGeomMain(batMax, grobBatN) : [0];
   }
 
   const grobResults = [];

@@ -136,9 +136,11 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
 
   let sv = 0, ins = 0, bez = 0, soc = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
-  let tsSoc = 0, pvWpSpeicherGes = 0; // Thermischer Speicher SOC + PV→WP→Speicher kumulativ
+  // Hinweis: Frühere PV→WP→Speicher-Sonderlogik entfernt (Doppelbuchung mit Phase 6
+  // im _dispatchCore: dort wird der Speicher 8-18 Uhr mit WP-Reserve geladen, der
+  // entsprechende Strom landet in wpElH[t] und damit in demandH[t] und wird hier
+  // bereits über pvFrac × dsc als PV-Eigenverbrauch gezählt).
   for (let t = 0; t < 8760; t++) {
-    let pvWpSpeicher = 0; // pro Stunde
     const dem = demandH[t];
     const pvGen = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
     const bhkwGen = bhkwElH ? bhkwElH[t] : 0;
@@ -162,43 +164,18 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
       rDem -= avail;
     }
 
-    // PV-Überschuss → WP → thermischer Speicher
-    if (rGen > 0.1 && dispResult && dispResult.thSpParams && dispResult.wpResKwH) {
-      const tsCap = dispResult.thSpParams.kapKwh;
-      const tsEntlKw = dispResult.thSpParams.entladeKw;
-      const wpResKw = dispResult.wpResKwH[t] || 0;
-      const wpCop = dispResult.wpResCopH[t] || 0;
-      if (wpResKw > 0.1 && wpCop > 0 && tsCap > 0) {
-        const tsFree = Math.max(0, tsCap - tsSoc);
-        const ladeBudget = Math.min(tsFree, tsEntlKw);
-        if (ladeBudget > 0.1) {
-          const maxElKw = wpResKw / wpCop;
-          const elUsed = Math.min(rGen, maxElKw);
-          const thLade = Math.min(elUsed * wpCop, ladeBudget);
-          if (thLade > 0.1) {
-            const elActual = thLade / wpCop;
-            tsSoc = Math.min(tsCap, tsSoc + thLade);
-            rGen -= elActual;
-            pvWpSpeicher += elActual / 1000;
-          }
-        }
-      }
-    }
-
-    pvWpSpeicherGes += pvWpSpeicher;
     const evThisH = (dsc + (dem - dsc - rDem)) / 1000;
     sv += dsc + (dem - dsc - rDem);
     ins += rGen;
     bez += rDem;
-    pvEig += evThisH * pvFrac + pvWpSpeicher;  // PV→WP→Speicher zählt als PV-Eigenverbrauch
+    pvEig += evThisH * pvFrac;
     bhkwEig += evThisH * (1 - pvFrac);
     pvEinsp += (rGen / 1000) * pvFrac;
     bhkwEinsp += (rGen / 1000) * (1 - pvFrac);
   }
 
-  return { eigenMwh: sv / 1000 + pvWpSpeicherGes, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
-           pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp,
-           pvWpSpeicherMwh: pvWpSpeicherGes };
+  return { eigenMwh: sv / 1000, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
+           pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp };
 }
 
 // _calcBausteinKostenOpt ENTFERNT — nutzt jetzt _calcKostenShared
@@ -335,56 +312,32 @@ export function _optScore(kw, ziel) {
   return kw.wgk;
 }
 
-// ── PV+Bat Dimensionierung per marginaler Amortisation (Main-Thread) ──
+// ── PV+Bat Dimensionierung — absoluter Score-Vergleich (Main-Thread) ──
+// Früher Marginal-Amortisation: zu streng, wies Bat-Stufen vorzeitig ab.
+// Jetzt: alle (pv × bat)-Stufen durchrechnen, Konfig mit niedrigstem Score gewinnt.
+// maxAmortJ-Parameter wird aus API-Kompatibilität beibehalten, aber ignoriert.
 export function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
                            params, stMwh, stM2, tsVol, ziel, maxAmortJ) {
-  const pStrom = params.pStrom;
-  function einspeiseCtKwh(pvKwp) {
-    const mod = document.getElementById('pv-verg-modell')?.value || 'teil';
-    if (mod === 'teil') return pvKwp <= 0 ? 8.1 : (Math.min(pvKwp,10)*8.1 + Math.max(0,Math.min(pvKwp,40)-10)*7.0 + Math.max(0,pvKwp-40)*5.7) / pvKwp;
-    if (mod === 'voll') return pvKwp <= 0 ? 12.9 : (Math.min(pvKwp,10)*12.9 + Math.max(0,pvKwp-10)*10.8) / pvKwp;
-    return params.pEinsp || 8;
-  }
-  function pvInvPerKwp(kwp) {
-    const chk = document.getElementById('pv-invest-auto');
-    if (chk?.checked && typeof CalcEngine !== 'undefined') return CalcEngine.getPvInvestPerKwp(kwp);
-    return parseFloat(document.getElementById('opt-pv-invest')?.value) || OPT_INVEST_DEFAULT.pv;
-  }
-  const batInvPerKwh = parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat;
-
   let bestPv = 0, bestBat = 0, bestScore = Infinity, bestKw = null;
+  const seen = new Set();
 
-  // PV=0 immer testen
-  const pvBat0 = _optPvBatSim8760(0, 0, demandH, bhkwElH, disp);
-  const kw0 = _optKennwerte2(disp, 0, 0, pvBat0, params, stMwh, stM2, tsVol);
-  const sc0 = _optScore(kw0, ziel);
-  if (sc0 < bestScore) { bestScore = sc0; bestPv = 0; bestBat = 0; bestKw = kw0; }
+  function evalConfig(pvK, batK) {
+    const key = pvK + '|' + batK;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const pvBat = _optPvBatSim8760(pvK, batK, demandH, bhkwElH, disp);
+    const kw = _optKennwerte2(disp, pvK, batK, pvBat, params, stMwh, stM2, tsVol);
+    const sc = _optScore(kw, ziel);
+    if (sc < bestScore) { bestScore = sc; bestPv = pvK; bestBat = batK; bestKw = kw; }
+  }
 
+  // Referenz-Konfig (kein PV, keine Bat) immer testen
+  evalConfig(0, 0);
+
+  // Vollständiges Grid aus allen (pv × bat)-Kombinationen
   for (const batK of batSteps) {
-    let prevEigen = 0, prevEinsp = 0, prevPvK = 0;
-    const batInvest = batK * batInvPerKwh;
-
-    for (let pi = 0; pi < pvSteps.length; pi++) {
-      const pvK = pvSteps[pi];
-      if (pvK <= 0) continue;
-
-      const pvBat = _optPvBatSim8760(pvK, batK, demandH, bhkwElH, disp);
-      const curEigen = pvBat.pvEigenMwh || 0;
-      const curEinsp = pvBat.pvEinspMwh || 0;
-
-      const deltaPvInvest = (pvK - prevPvK) * pvInvPerKwp(pvK);
-      const deltaInvest = deltaPvInvest + (pi === 0 ? batInvest : 0);
-      const deltaEigen = curEigen - prevEigen;
-      const deltaEinsp = curEinsp - prevEinsp;
-      const deltaSavings = deltaEigen * pStrom * 10 + deltaEinsp * einspeiseCtKwh(pvK) * 10;
-
-      if (deltaSavings <= 0 || deltaInvest / deltaSavings > maxAmortJ) break;
-
-      const kw = _optKennwerte2(disp, pvK, batK, pvBat, params, stMwh, stM2, tsVol);
-      const sc = _optScore(kw, ziel);
-      if (sc < bestScore) { bestScore = sc; bestPv = pvK; bestBat = batK; bestKw = kw; }
-
-      prevEigen = curEigen; prevEinsp = curEinsp; prevPvK = pvK;
+    for (const pvK of pvSteps) {
+      evalConfig(pvK, batK);
     }
   }
   return { pvKwp: bestPv, batKwh: bestBat, kw: bestKw, score: bestScore };
@@ -484,7 +437,7 @@ export function _optUpdateEstimate() {
   const tsSteps = tsAktiv ? (nKand <= 4 ? 5 : 3) : 1;
   // PV/Bat innere Schleife
   const pvN = { schnell: 2, standard: 3, gruendlich: 5 }[q];
-  const batN = { schnell: 1, standard: 2, gruendlich: 3 }[q];
+  const batN = { schnell: 2, standard: 4, gruendlich: 6 }[q];
   const pvBatSteps = (pvAktiv ? pvN : 1) * (batAktiv ? batN : 1);
 
   const totalDispatches = totalConfigs * stSteps * tsSteps;
