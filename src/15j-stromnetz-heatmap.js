@@ -183,7 +183,13 @@ export function refreshHeatmapRelief() {
   if (!map.hasLayer(STROMNETZ.grpHeatmapGen))  STROMNETZ.grpHeatmapGen .addTo(map);
 
   const pts = getLoadPoints();
-  if (!pts.length) return;
+  if (!pts.length) {
+    // User-Hinweis: Heatmap aktiviert, aber keine Lastpunkte vorhanden
+    if (typeof window.showHint === 'function') {
+      window.showHint('Heatmap aktiv, aber keine Lastpunkte gefunden. Platziere Verbraucher / PV / WP / Lade / Bat / Nsa als Anlagen, damit etwas angezeigt wird.', 6000);
+    }
+    return;
+  }
   const bounds = map.getBounds();
 
   const vis = STROMNETZ._heatmapLayerVisibility || { load: true, gen: true };
@@ -221,7 +227,12 @@ export function refreshHeatmapLegacy() {
 
   if (!map.hasLayer(STROMNETZ.grpHeatmapLegacy)) STROMNETZ.grpHeatmapLegacy.addTo(map);
   const pts = getLoadPoints();
-  if (pts.length === 0) return;
+  if (pts.length === 0) {
+    if (typeof window.showHint === 'function') {
+      window.showHint('Heatmap aktiv, aber keine Lastpunkte gefunden. Platziere Verbraucher / PV / WP / Lade / Bat / Nsa als Anlagen, damit etwas angezeigt wird.', 6000);
+    }
+    return;
+  }
   const maxPeak = Math.max(...pts.map(p => p.peakKW));
 
   for (const p of pts) {

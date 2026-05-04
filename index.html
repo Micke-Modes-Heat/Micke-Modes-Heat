@@ -220,6 +220,7 @@
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" id="lp-btn-pruning" data-click="togglePruningMode()" style="border-color:#f9a825;color:#f9a825;">✂ Pruning</button>
           <button class="lp-tool-btn" data-click="toggleNetworkLock()" id="lp-btn-lock" style="border-color:#4caf50;color:#4caf50;background:rgba(76,175,80,0.1);">🔒 Bestandsnetz</button>
+          <button class="lp-tool-btn" id="btn-waerme-heatmap" data-click="uiToggleWaermeHeatmap()" style="border-color:#ef5350;color:#ffab91;grid-column:1/-1;" title="Heatmap: Wärmebedarf (rot/orange) und Wärmeerzeugung (grün) als räumliches Relief mit Höhenlinien.">🔥 Wärme-Heatmap (Lasten + Erzeuger)</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Einfärbung</div>
         <div id="lp-netz-viz" class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
@@ -252,6 +253,9 @@
         <div class="lp-section-title">Anlagen</div>
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" id="btn-assets-toggle" data-click="togglePalette()" style="border-color:#4fc3f7;color:#4fc3f7;grid-column:1/-1;">🧩 Asset platzieren (Palette ein/aus)</button>
+          <button class="lp-tool-btn" data-click="magicKomplettStromnetz()" style="border-color:#ab47bc;color:#e1bee7;grid-column:1/-1;font-weight:600;" title="In einem Klick: Verbraucher+PV pro Gebäude erzeugen UND komplette Hierarchie (UV → NSHV → Trafo → NAP) inklusive Leitungen verkabeln.">⚡ Komplettes Stromnetz aufbauen (1-Klick)</button>
+          <button class="lp-tool-btn" data-click="magicCreateAssetsFromBuildings()" style="border-color:#ba68c8;color:#ce93d8;grid-column:1/-1;font-size:9px;" title="Nur Schritt 1: UV + Verbraucher (aus stromJahr) + PV (wenn pvAktiv) pro Gebäude.">↳ nur Verbraucher aus Gebäuden</button>
+          <button class="lp-tool-btn" data-click="magicAutoVerkabelung()" style="border-color:#7e57c2;color:#b39ddb;grid-column:1/-1;font-size:9px;" title="Nur Schritt 2: Vollhierarchie verkabeln. Setzt voraus, dass Verbraucher schon existieren.">↳ nur Auto-Netz verkabeln</button>
         </div>
 
         <div class="lp-section-title" style="margin-top:12px;">Trassen &amp; Leitungen</div>
@@ -607,7 +611,7 @@
           <input class="inp-field" type="number" id="opt-max-lwwp" min="0" placeholder="kW" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
           <input class="inp-field" type="number" id="opt-bis-lwwp" min="2024" max="2060" placeholder="Jahr" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
 
-          <input type="checkbox" id="opt-cand-fg" checked style="accent-color:#29b6f6;">
+          <input type="checkbox" id="opt-cand-fg" style="accent-color:#29b6f6;">
           <label for="opt-cand-fg" style="display:flex;align-items:center;gap:4px;cursor:pointer;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#29b6f6;flex-shrink:0;"></span>FG-WP</label>
           <input class="inp-field" type="number" id="opt-min-fg" min="0" placeholder="kW" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
           <input class="inp-field" type="number" id="opt-max-fg" min="0" placeholder="kW" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
@@ -673,13 +677,13 @@
           <input class="inp-field" type="number" id="opt-max-bat" min="0" placeholder="kWh" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
           <span></span>
 
-          <input type="checkbox" id="opt-cand-st" checked style="accent-color:#ef6c00;">
-          <label for="opt-cand-st" style="display:flex;align-items:center;gap:4px;cursor:pointer;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef6c00;flex-shrink:0;"></span>Solarthermie</label>
+          <input type="checkbox" id="opt-cand-st" style="accent-color:#ef6c00;">
+          <label for="opt-cand-st" style="display:flex;align-items:center;gap:4px;cursor:pointer;" title="Solarthermie ist gegenüber PV+WP meistens unwirtschaftlich. Bei Bedarf einschalten (z. B. Bestand, Sondernutzungen)."><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef6c00;flex-shrink:0;"></span>Solarthermie</label>
           <input class="inp-field" type="number" id="opt-min-st" min="0" placeholder="m²" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
           <input class="inp-field" type="number" id="opt-max-st" min="0" placeholder="m²" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
           <span></span>
 
-          <input type="checkbox" id="opt-cand-ts" checked style="accent-color:#26a69a;">
+          <input type="checkbox" id="opt-cand-ts" style="accent-color:#26a69a;">
           <label for="opt-cand-ts" style="display:flex;align-items:center;gap:4px;cursor:pointer;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#26a69a;flex-shrink:0;"></span>Wärmespeicher</label>
           <input class="inp-field" type="number" id="opt-min-ts" min="0" placeholder="m³" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
           <input class="inp-field" type="number" id="opt-max-ts" min="0" placeholder="m³" style="width:100%;text-align:right;font-size:10px;padding:2px 4px;">
@@ -697,15 +701,15 @@
         </div>
         <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:4px;">Optimierungsziel <span class="htip" data-tip="Wonach soll optimiert werden? Min. WGK = billigste Wärme. Min. CO₂ = geringste Emissionen. Max. Autarkie = möglichst wenig Netzbezug. Min. Kosten | ≥65% EE = günstigste Variante, die mindestens 65% erneuerbar ist.">?</span></div>
         <div style="display:flex;flex-direction:column;gap:4px;font-size:10px;margin-bottom:12px;">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;"><input type="radio" name="opt-ziel" value="min-wgk" checked style="accent-color:var(--accent);">Min. WGK</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;"><input type="radio" name="opt-ziel" value="min-wgk" style="accent-color:var(--accent);">Min. WGK</label>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;"><input type="radio" name="opt-ziel" value="min-co2" style="accent-color:var(--accent);">Min. CO&#x2082;</label>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;"><input type="radio" name="opt-ziel" value="max-autarkie" style="accent-color:var(--accent);">Max. Autarkie</label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;"><input type="radio" name="opt-ziel" value="min-kosten-ee" style="accent-color:var(--accent);">Min. Kosten | &#x2265;65% EE</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;"><input type="radio" name="opt-ziel" value="min-kosten-ee" checked style="accent-color:var(--accent);">Min. Kosten | &#x2265;65% EE</label>
         </div>
         <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:4px;">Genauigkeit</div>
         <select class="inp-field" id="opt-quality" style="font-size:10px;padding:2px 4px;width:100%;" data-change="_optUpdateEstimate()">
-          <option value="schnell">Schnell</option>
-          <option value="standard" selected>Standard</option>
+          <option value="schnell" selected>Schnell</option>
+          <option value="standard">Standard</option>
           <option value="gruendlich">Gr&#x00fc;ndlich</option>
         </select>
         <span id="opt-estimate" style="display:block;margin-top:4px;font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);"></span>
@@ -840,7 +844,13 @@
       <!-- Left: Flow Schema -->
       <div id="live-flow-wrap">
         <div style="font-size:10px;color:rgba(255,255,255,0.35);padding:8px 14px;letter-spacing:0.5px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.04);flex-shrink:0;">
-          <span>Energiefluss</span>
+          <span style="display:flex;align-items:center;gap:10px;">Energiefluss
+            <span style="display:inline-flex;gap:2px;text-transform:none;letter-spacing:0;">
+              <button class="live-flow-mode-btn" data-mode="box" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Klassisch</button>
+              <button class="live-flow-mode-btn" data-mode="sankey" data-active="1" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Hub-Sankey</button>
+              <button class="live-flow-mode-btn" data-mode="sankey-detail" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Hub-Sankey Detail</button>
+            </span>
+          </span>
           <span id="live-flow-hour" style="font-size:9px;color:rgba(255,255,255,0.2);"></span>
         </div>
         <div id="live-flow-svg" style="width:100%;padding:6px;"></div>
@@ -1338,11 +1348,11 @@
       </div>
       <div class="inp-group">
         <label class="inp-label">VL bei −5°C</label>
-        <input class="inp-field" type="number" id="gl-vl5" value="90" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
+        <input class="inp-field" type="number" id="gl-vl5" value="65" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
       </div>
       <div class="inp-group">
         <label class="inp-label">VL bei +15°C</label>
-        <input class="inp-field" type="number" id="gl-vl15" value="60" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
+        <input class="inp-field" type="number" id="gl-vl15" value="40" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
       </div>
     </div>
   </div>
@@ -2250,18 +2260,23 @@
     <div id="pruning-summary" style="display:none;font-size:10px;font-family:'DM Mono',monospace;margin-top:6px;padding:5px 8px;background:var(--bg);border-radius:4px;border:1px solid #f9a825;color:var(--text);"></div>
   </div>
 
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px">
+    <div class="inp-group">
+      <label class="inp-label" title="VL-Temperatur bei kalter Außentemperatur (−5°C). Bestimmt zusammen mit VL@+15°C die Heizkurve.">VL bei −5°C (°C)</label>
+      <input class="inp-field" type="number" id="netz-vl" value="65" data-change="syncVLTemps('netz');recalcNetz()"/>
+    </div>
+    <div class="inp-group">
+      <label class="inp-label" title="VL-Temperatur bei warmer Außentemperatur (+15°C). Bestimmt zusammen mit VL@−5°C die Heizkurve. Wird auch als Rücklauftemperatur (Auslegung) verwendet.">VL bei +15°C / RL (°C)</label>
+      <input class="inp-field" type="number" id="netz-rl" value="40" data-change="syncVLTemps('netz');recalcNetz()"/>
+    </div>
+  </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-    <div class="inp-group">
-      <label class="inp-label">Vorlauftemperatur (°C)</label>
-      <input class="inp-field" type="number" id="netz-vl" value="90" data-change="syncVLTemps('netz');recalcNetz()"/>
-    </div>
-    <div class="inp-group">
-      <label class="inp-label">Rücklauftemperatur (°C)</label>
-      <input class="inp-field" type="number" id="netz-rl" value="60" data-change="syncVLTemps('netz');recalcNetz()"/>
-    </div>
     <div class="inp-group">
       <label class="inp-label">Ziel-Fließgeschw. (m/s)</label>
       <input class="inp-field" type="number" id="netz-v" value="1.0" step="0.1" data-change="recalcNetz()"/>
+    </div>
+    <div style="font-size:9px;color:var(--muted);align-self:end;line-height:1.4;padding-bottom:4px;">
+      Heizkurve = lineare Interpolation zwischen den zwei VL-Punkten<br>(synchron mit Wärme-Grundlagen-Panel)
     </div>
   </div>
 

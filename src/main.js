@@ -20,6 +20,7 @@ import * as sankey from './05c-sankey.js';
 import * as gbiLastgang from './06a-gbi-lastgang.js';
 import * as glBerechnen from './06b-gl-berechnen.js';
 import * as dispatchCore from './06c-dispatch-core.js';
+import * as waermeHeatmap from './06d-waerme-heatmap.js';
 import * as analysisCharts from './07a-analysis-charts.js';
 import * as analysisEconomics from './07b-analysis-economics.js';
 import * as calcEngine from './08-calc-engine.js';
@@ -64,7 +65,7 @@ const modules = [
   globals, netzPhysik, gebaeude, karteWerkzeuge,
   erzeuger, netz, gebaeudeIo, uiPanels,
   emissionen3d, exportMod, stromnetz, sankey,
-  gbiLastgang, glBerechnen, dispatchCore,
+  gbiLastgang, glBerechnen, dispatchCore, waermeHeatmap,
   analysisCharts, analysisEconomics, calcEngine,
   pvProfile, pvCalc, pvChartsOpt,
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,

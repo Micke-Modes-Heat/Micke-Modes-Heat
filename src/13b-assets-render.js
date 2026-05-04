@@ -106,19 +106,30 @@ function drawBuildingGroup(buildingId) {
 
   m.on('click', e => {
     L.DomEvent.stopPropagation(e);
-    // Detail-Modus: getroffenes Icon direkt öffnen (data-asset-id)
+    const inLeitungMode = window.STROMNETZ?.mode === 'leitung';
+    // Detail-Modus: getroffenes Icon direkt verarbeiten (data-asset-id)
     if (!collapsed) {
       const el = e.originalEvent?.target?.closest?.('[data-asset-id]');
       const id = el?.dataset?.assetId;
       const a  = id ? ASSETS.items.find(x => x.id === id) : null;
       if (a) {
+        if (inLeitungMode) {
+          if (typeof window.leitungAssetClick === 'function') window.leitungAssetClick(a.id);
+          return;
+        }
         ASSETS.selectedId = a.id;
         if (typeof window.openAssetInspector === 'function') window.openAssetInspector(a);
         return;
       }
     }
-    // Collapsed-Modus ODER Klick auf Rand → Liste
-    openBuildingAssetList(buildingId, m);
+    // Collapsed-Modus ODER Klick auf Rand:
+    // Im Leitung-Modus mit Single-Asset: direkt verwenden
+    if (inLeitungMode && assets.length === 1) {
+      if (typeof window.leitungAssetClick === 'function') window.leitungAssetClick(assets[0].id);
+      return;
+    }
+    // Sonst: Liste öffnen
+    openBuildingAssetList(buildingId, m, inLeitungMode);
   });
 
   m.addTo(assetLayer);
@@ -130,11 +141,15 @@ function drawBuildingGroup(buildingId) {
   }
 }
 
-// Liste aller Assets des Gebäudes — Auswahl öffnet Inspector
-function openBuildingAssetList(buildingId, marker) {
+// Liste aller Assets des Gebäudes — Auswahl öffnet Inspector ODER (im Leitung-Modus) ruft leitungAssetClick
+function openBuildingAssetList(buildingId, marker, inLeitungMode) {
   const assets = getAssetsForBuilding(buildingId);
   if (assets.length === 0) return;
   if (assets.length === 1) {
+    if (inLeitungMode && typeof window.leitungAssetClick === 'function') {
+      window.leitungAssetClick(assets[0].id);
+      return;
+    }
     ASSETS.selectedId = assets[0].id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(assets[0]);
     return;
@@ -161,8 +176,12 @@ function openBuildingAssetList(buildingId, marker) {
         const id = row.dataset.assetId;
         const a = ASSETS.items.find(x => x.id === id);
         if (a) {
-          ASSETS.selectedId = a.id;
-          if (typeof window.openAssetInspector === 'function') window.openAssetInspector(a);
+          if (inLeitungMode && typeof window.leitungAssetClick === 'function') {
+            window.leitungAssetClick(a.id);
+          } else {
+            ASSETS.selectedId = a.id;
+            if (typeof window.openAssetInspector === 'function') window.openAssetInspector(a);
+          }
         }
         map.closePopup(popup);
       });
@@ -192,6 +211,7 @@ function drawSingleMarker(asset) {
   const icon = L.divIcon({
     className: '',
     html: `<div class="asset-marker asset-marker-${status}"
+              data-asset-id="${asset.id}"
               style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;"
               title="${asset.name}">
              ${showIcon ? `<span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>` : ''}
@@ -204,6 +224,11 @@ function drawSingleMarker(asset) {
 
   m.on('click', e => {
     L.DomEvent.stopPropagation(e);
+    // Im Leitung-Zeichnen-Modus: Asset als Start/Ziel auswählen, NICHT Inspector öffnen.
+    if (window.STROMNETZ?.mode === 'leitung') {
+      if (typeof window.leitungAssetClick === 'function') window.leitungAssetClick(asset.id);
+      return;
+    }
     ASSETS.selectedId = asset.id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
   });
