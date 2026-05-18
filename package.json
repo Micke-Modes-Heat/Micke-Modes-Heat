@@ -1,5 +1,5 @@
 {
-  "name": "energieplanung-v2",
+  "name": "micke-modes-heat",
   "private": true,
   "scripts": {
     "dev": "vite",
