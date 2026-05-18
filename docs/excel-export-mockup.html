@@ -1,0 +1,1737 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Mockup — Excel-Export Energieplanung</title>
+<style>
+  /* ── Excel-Look mit dezenter Forst-Grün-Designsprache ── */
+  :root {
+    --excel-green: #2d5a3d;          /* Titelbar — dunkles Forstgrün statt Standard-Excel-Grün */
+    --excel-green-dark: #1f4029;
+    --excel-grid: #d4d4d4;
+    --excel-header-bg: #f3f2f1;
+    --excel-active-tab: #ffffff;
+    --excel-tab-bg: #f3f2f1;
+    --excel-tab-border: #d4d4d4;
+    --excel-row-alt: #f7f9f7;        /* Hauch-Grün im Zebra-Streifen */
+    --excel-header-cell: #3d6b4a;    /* Spalten-Header in Forstgrün statt Blau */
+    --excel-header-cell-text: #ffffff;
+    --excel-accent: #5a8770;         /* mittleres Salbeigrün für Akzente */
+    --excel-link: #2d5a3d;
+    --excel-warn: #b04545;           /* etwas wärmer als reines Rot */
+    --excel-good: #4a7c59;
+    --excel-section-bg: #e3ede5;     /* Section-Row, dezenter Salbe-Hauch */
+    --excel-sum-bg: #f0ead2;         /* Sum-Row, gedämpftes Sand-Beige */
+    --excel-sum-border: #a89968;
+    --chart-1: #2d5a3d;              /* Forst-Grün */
+    --chart-2: #6b9080;              /* Salbei */
+    --chart-3: #b8956b;              /* Eichen-Braun */
+    --chart-4: #a4ac86;              /* Moos */
+    --chart-5: #d4a574;              /* Holz */
+    --chart-6: #7a8f7d;              /* Stein */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e8e8e8; color: #1a1a1a; font-family: 'Calibri','Segoe UI',sans-serif; font-size: 11pt; min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Titelleiste (wie Excel-Fenster) ── */
+  .titlebar { background: var(--excel-green); color: white; padding: 6px 14px; font-size: 12pt; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .titlebar .x-icon { width: 22px; height: 22px; background: var(--excel-green-dark); border-radius: 3px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13pt; }
+  .titlebar .filename { font-weight: 500; }
+  .titlebar .filename strong { font-weight: 700; }
+  .titlebar .saved { margin-left: auto; font-size: 9pt; opacity: 0.85; }
+
+  /* ── Ribbon-Andeutung ── */
+  .ribbon { background: #fff; border-bottom: 1px solid var(--excel-grid); padding: 4px 14px; font-size: 9pt; color: #666; display: flex; gap: 16px; }
+  .ribbon span.active { color: var(--excel-green); font-weight: 600; border-bottom: 2px solid var(--excel-green); padding-bottom: 2px; }
+
+  /* ── Name Box + Formula bar ── */
+  .formula-bar { background: #fff; border-bottom: 1px solid var(--excel-grid); padding: 3px 0; display: flex; align-items: center; font-size: 10pt; }
+  .name-box { border-right: 1px solid var(--excel-grid); padding: 2px 12px; min-width: 100px; font-family: 'Consolas',monospace; }
+  .fx-icon { padding: 0 10px; color: #888; font-style: italic; }
+  .formula-content { padding: 2px 6px; flex: 1; color: #333; font-family: 'Consolas',monospace; font-size: 10pt; }
+
+  /* ── Hauptbereich (Sheet) ── */
+  .sheet-area { flex: 1; background: white; overflow: auto; padding-bottom: 4px; }
+  .sheet { display: none; padding: 0; }
+  .sheet.active { display: block; }
+  .sheet h1 { display: none; }
+
+  /* ── Tabelle = Excel-Grid ── */
+  table.xl { border-collapse: collapse; font-size: 10pt; font-family: 'Calibri',sans-serif; width: max-content; min-width: 100%; }
+  table.xl th, table.xl td { border: 1px solid var(--excel-grid); padding: 3px 7px; white-space: nowrap; }
+  table.xl thead th { background: var(--excel-header-cell); color: var(--excel-header-cell-text); font-weight: 600; text-align: left; position: sticky; top: 0; z-index: 2; }
+  table.xl thead th.frozen-col { z-index: 3; }
+  table.xl tbody tr:nth-child(even) td { background: var(--excel-row-alt); }
+  table.xl tbody tr:hover td { background: #fff4cc; }
+  table.xl .r { text-align: right; font-variant-numeric: tabular-nums; }
+  table.xl .c { text-align: center; }
+  table.xl .bold { font-weight: 700; }
+  table.xl .accent { color: var(--excel-accent); font-weight: 600; }
+  table.xl .warn { color: var(--excel-warn); font-weight: 600; }
+  table.xl .good { color: var(--excel-good); font-weight: 600; }
+  table.xl .sum-row td { background: var(--excel-sum-bg) !important; font-weight: 700; border-top: 2px solid var(--excel-sum-border); }
+  table.xl .section-row td { background: var(--excel-section-bg) !important; font-weight: 700; color: var(--excel-header-cell); }
+
+  /* ── Excel-Spalten-Header (A, B, C...) ── */
+  .col-headers { display: flex; background: var(--excel-header-bg); border-bottom: 1px solid var(--excel-grid); position: sticky; top: 0; z-index: 5; }
+  .col-headers .corner { width: 36px; height: 22px; border-right: 1px solid var(--excel-grid); background: var(--excel-header-bg); }
+
+  /* ── Sheet-Tabs unten ── */
+  .tabs-bar { background: var(--excel-tab-bg); border-top: 1px solid var(--excel-tab-border); padding: 0 8px; display: flex; align-items: stretch; overflow-x: auto; min-height: 30px; flex-shrink: 0; }
+  .sheet-tab { padding: 6px 14px 5px; background: transparent; border: none; border-right: 1px solid transparent; border-left: 1px solid transparent; cursor: pointer; font-family: 'Calibri',sans-serif; font-size: 10.5pt; color: #333; position: relative; white-space: nowrap; transition: background 0.08s; }
+  .sheet-tab:hover { background: rgba(0,0,0,0.04); }
+  .sheet-tab.active { background: var(--excel-active-tab); color: var(--excel-green); font-weight: 600; border-left-color: var(--excel-tab-border); border-right-color: var(--excel-tab-border); border-top: 2px solid var(--excel-green); }
+  .sheet-tab .sheet-num { color: #888; font-weight: 400; margin-right: 4px; font-size: 9pt; }
+  .sheet-tab.active .sheet-num { color: var(--excel-green); }
+  .tabs-nav { display: flex; gap: 1px; padding-right: 8px; border-right: 1px solid var(--excel-tab-border); margin-right: 6px; align-items: center; }
+  .tabs-nav button { background: transparent; border: none; padding: 2px 6px; cursor: pointer; color: #555; font-size: 11pt; }
+
+  /* ── Statusbar ── */
+  .statusbar { background: var(--excel-green); color: white; padding: 3px 14px; font-size: 9pt; display: flex; gap: 20px; flex-shrink: 0; }
+  .statusbar .right { margin-left: auto; }
+
+  /* ── Übersicht-Sheet (1) braucht spezielles Layout ── */
+  .uebersicht { padding: 24px 32px; max-width: 900px; }
+  .uebersicht h2 { color: var(--excel-header-cell); font-size: 18pt; font-weight: 600; margin-bottom: 4px; }
+  .uebersicht .sub { color: #666; font-size: 11pt; margin-bottom: 24px; }
+  .uebersicht .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 28px; }
+  .uebersicht .kpi { border: 1px solid var(--excel-grid); border-radius: 4px; padding: 12px 14px; background: white; border-left: 3px solid var(--excel-accent); }
+  .uebersicht .kpi .label { font-size: 9pt; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+  .uebersicht .kpi .val { font-size: 18pt; color: var(--excel-header-cell); font-weight: 600; line-height: 1.2; margin-top: 2px; }
+  .uebersicht .kpi .val .unit { font-size: 10pt; color: #666; font-weight: 400; margin-left: 3px; }
+  .uebersicht .kpi.accent .val { color: var(--excel-warn); }
+  .uebersicht .kpi.good .val { color: var(--excel-good); }
+  .uebersicht h3 { color: var(--excel-header-cell); font-size: 13pt; margin: 22px 0 8px; border-bottom: 1.5px solid var(--excel-header-cell); padding-bottom: 3px; }
+  .uebersicht .meta-table { width: 100%; font-size: 10.5pt; }
+  .uebersicht .meta-table td { padding: 4px 10px; border-bottom: 1px solid #eee; }
+  .uebersicht .meta-table td:first-child { color: #666; width: 40%; }
+  .uebersicht .toc { background: #fafafa; border: 1px solid var(--excel-grid); border-radius: 4px; padding: 14px 18px; }
+  .uebersicht .toc-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #ddd; }
+  .uebersicht .toc-item:last-child { border-bottom: none; }
+  .uebersicht .toc-item a { color: var(--excel-link); text-decoration: none; cursor: pointer; }
+  .uebersicht .toc-item a:hover { text-decoration: underline; }
+  .uebersicht .toc-item .desc { color: #888; font-size: 9.5pt; }
+  .uebersicht .toc-num { display: inline-block; width: 22px; color: #888; font-family: monospace; }
+
+  /* ── Hilfsklassen ── */
+  .note { background: #fff3cd; border-left: 3px solid #ffc107; padding: 8px 12px; margin: 12px 0; font-size: 10pt; color: #533f03; }
+  .filter-bar { background: var(--excel-header-bg); padding: 4px 10px; border-bottom: 1px solid var(--excel-grid); font-size: 9.5pt; color: #555; display: flex; gap: 14px; align-items: center; }
+  .filter-bar .pill { background: white; border: 1px solid var(--excel-grid); border-radius: 3px; padding: 1px 8px; font-family: 'Consolas',monospace; }
+
+  /* ── Charts ── */
+  .bar-chart { display: inline-flex; align-items: flex-end; gap: 2px; height: 40px; }
+  .bar-chart .bar { width: 8px; background: var(--excel-header-cell); }
+  .heatcell { display: inline-block; width: 100%; padding: 3px 7px; }
+  /* Forstliche Heatmap-Stufen — von hell-sand zu dunkel-rost */
+  .heat-1 { background: #f5f1e3; }
+  .heat-2 { background: #e8dfb8; }
+  .heat-3 { background: #d4a574; }
+  .heat-4 { background: #b8763d; color: white; }
+  .heat-5 { background: #8b4513; color: white; }
+
+  /* ── Chart-Container (eingebettete Excel-Charts) ── */
+  .chart-frame { display: inline-block; background: white; border: 1px solid var(--excel-grid); margin: 10px 14px 14px 0; padding: 8px 12px 4px; vertical-align: top; }
+  .chart-title { font-size: 10.5pt; font-weight: 600; color: #333; margin-bottom: 2px; font-family: 'Calibri',sans-serif; }
+  .chart-subtitle { font-size: 9pt; color: #888; margin-bottom: 6px; }
+  .chart-legend { display: flex; gap: 12px; font-size: 9pt; color: #555; padding-top: 4px; margin-top: 2px; border-top: 1px solid #eee; flex-wrap: wrap; }
+  .chart-legend .item { display: flex; align-items: center; gap: 5px; }
+  .chart-legend .swatch { width: 12px; height: 10px; border-radius: 1px; }
+  .chart-row { display: flex; flex-wrap: wrap; padding: 0 8px; }
+  svg.chart text { font-family: 'Calibri',sans-serif; fill: #444; }
+  svg.chart .axis-line { stroke: #999; stroke-width: 1; }
+  svg.chart .grid-line { stroke: #e5e5e5; stroke-width: 1; }
+  svg.chart .axis-label { font-size: 9px; fill: #666; }
+  svg.chart .axis-title { font-size: 9.5px; fill: #555; font-weight: 600; }
+  svg.chart .value-label { font-size: 8.5px; fill: #333; }
+
+  /* Sheet 4: 8760h Hint mit Sample */
+  .sample-info { background: #e1efff; border: 1px solid #b8d4ec; border-radius: 4px; padding: 10px 14px; margin: 8px; font-size: 10pt; color: #2e5984; }
+  .sample-info strong { color: var(--excel-header-cell); }
+
+  /* Sheet-Intro */
+  .sheet-intro { padding: 12px 14px; background: #fafafa; border-bottom: 1px solid var(--excel-grid); font-size: 10pt; color: #444; }
+  .sheet-intro h2 { color: var(--excel-header-cell); font-size: 14pt; margin-bottom: 4px; font-weight: 600; }
+  .sheet-intro p { color: #666; }
+</style>
+</head>
+<body>
+
+<!-- ════════ TITELLEISTE ════════ -->
+<div class="titlebar">
+  <div class="x-icon">X</div>
+  <div class="filename"><strong>Energieplanung_Quartier_Glandorf_V3_2026-05-12.xlsx</strong> — Excel</div>
+  <div class="saved">Gespeichert</div>
+</div>
+
+<div class="ribbon">
+  <span class="active">Datei</span><span>Start</span><span>Einfügen</span><span>Seitenlayout</span><span>Formeln</span><span>Daten</span><span>Überprüfen</span><span>Ansicht</span><span>Hilfe</span>
+</div>
+
+<div class="formula-bar">
+  <div class="name-box">A1</div>
+  <div class="fx-icon">fx</div>
+  <div class="formula-content"></div>
+</div>
+
+<!-- ════════ SHEET AREA ════════ -->
+<div class="sheet-area">
+
+<!-- ════════ SHEET 1: ÜBERSICHT ════════ -->
+<div class="sheet active" id="s-uebersicht">
+  <div class="uebersicht">
+    <h2>Energetisches Quartierskonzept</h2>
+    <div class="sub">Glandorf — Variante 3: WP-Geothermie + Spitzenlast-Gas</div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">Gebäude</div><div class="val">147</div></div>
+      <div class="kpi"><div class="label">Gesamtfläche</div><div class="val">28.450<span class="unit">m²</span></div></div>
+      <div class="kpi"><div class="label">Wärmebedarf</div><div class="val">3.420<span class="unit">MWh/a</span></div></div>
+      <div class="kpi"><div class="label">Heizlast</div><div class="val">1.840<span class="unit">kW</span></div></div>
+      <div class="kpi good"><div class="label">EE-Anteil</div><div class="val">78,4<span class="unit">%</span></div></div>
+      <div class="kpi accent"><div class="label">WGK</div><div class="val">12,8<span class="unit">ct/kWh</span></div></div>
+      <div class="kpi"><div class="label">Investition</div><div class="val">4,2<span class="unit">Mio €</span></div></div>
+      <div class="kpi"><div class="label">CO₂-Reduktion</div><div class="val">−64<span class="unit">%</span></div></div>
+    </div>
+
+    <h3>Projekt-Metadaten</h3>
+    <table class="meta-table">
+      <tr><td>Projekt:</td><td><strong>Quartier Glandorf-Nordost</strong></td></tr>
+      <tr><td>Betrachtungsjahr:</td><td>2030</td></tr>
+      <tr><td>Variante (aktiv):</td><td>V3 — WP-Geothermie + Spitzenlast-Gas</td></tr>
+      <tr><td>Vergleichsvarianten:</td><td>V1 (Bestand), V2 (Pellets-Hauptlast), V4 (Anergienetz)</td></tr>
+      <tr><td>Bearbeiter:</td><td>K. Micke</td></tr>
+      <tr><td>Erstellt:</td><td>12.05.2026, 14:23 Uhr</td></tr>
+      <tr><td>Modell-Version:</td><td>Energieplanung-Tool v2 (Build 2026-05-12)</td></tr>
+      <tr><td>Klimadatensatz:</td><td>TRY 2015 Region 4 (Münster)</td></tr>
+    </table>
+
+    <h3>Energiebilanz auf einen Blick</h3>
+    <div class="chart-row" style="padding:0;">
+      <div class="chart-frame" style="margin-left:0;">
+        <div class="chart-title">Wärmedeckung nach Erzeuger</div>
+        <div class="chart-subtitle">Jahresanteile Variante V3 · MWh/a</div>
+        <svg class="chart" width="320" height="180" viewBox="0 0 320 180">
+          <!-- Donut: WP-Geo 68.4, BHKW 19.9, Solarth 8.3, Gas 3.4 -->
+          <!-- circumference = 2*PI*r = 2*3.14159*55 = 345.6 -->
+          <g transform="translate(95,90)">
+            <circle cx="0" cy="0" r="55" fill="none" stroke="#eaeaea" stroke-width="22"/>
+            <!-- Segments using stroke-dasharray, start at 12 o'clock -->
+            <circle cx="0" cy="0" r="55" fill="none" stroke="#2d5a3d" stroke-width="22" stroke-dasharray="236.4 345.6" transform="rotate(-90)"/>
+            <circle cx="0" cy="0" r="55" fill="none" stroke="#6b9080" stroke-width="22" stroke-dasharray="68.8 345.6" stroke-dashoffset="-236.4" transform="rotate(-90)"/>
+            <circle cx="0" cy="0" r="55" fill="none" stroke="#b8956b" stroke-width="22" stroke-dasharray="28.7 345.6" stroke-dashoffset="-305.2" transform="rotate(-90)"/>
+            <circle cx="0" cy="0" r="55" fill="none" stroke="#a4ac86" stroke-width="22" stroke-dasharray="11.8 345.6" stroke-dashoffset="-333.9" transform="rotate(-90)"/>
+            <text x="0" y="-2" text-anchor="middle" font-size="18" font-weight="600" fill="#333">3.420</text>
+            <text x="0" y="14" text-anchor="middle" font-size="9" fill="#888">MWh/a</text>
+          </g>
+          <g font-size="9.5" fill="#444">
+            <rect x="180" y="32" width="11" height="9" fill="#2d5a3d"/><text x="196" y="40">WP-Geo · 68,4 %</text>
+            <rect x="180" y="60" width="11" height="9" fill="#6b9080"/><text x="196" y="68">BHKW · 19,9 %</text>
+            <rect x="180" y="88" width="11" height="9" fill="#b8956b"/><text x="196" y="96">Solarth. · 8,3 %</text>
+            <rect x="180" y="116" width="11" height="9" fill="#a4ac86"/><text x="196" y="124">Gas Spitze · 3,4 %</text>
+          </g>
+        </svg>
+      </div>
+      <div class="chart-frame">
+        <div class="chart-title">CO₂-Bilanz vs. Bestand</div>
+        <div class="chart-subtitle">t/a · Plan V3 vs. heutige Versorgung</div>
+        <svg class="chart" width="320" height="180" viewBox="0 0 320 180">
+          <line class="axis-line" x1="50" y1="20" x2="50" y2="150"/>
+          <line class="axis-line" x1="50" y1="150" x2="300" y2="150"/>
+          <!-- Bars: Bestand 731.6, Plan 112.3, max-scale=800, axis 130px range -->
+          <rect x="90" y="30" width="60" height="120" fill="#b04545" opacity="0.85"/>
+          <text x="120" y="22" text-anchor="middle" font-size="11" font-weight="600" fill="#b04545">731,6</text>
+          <text x="120" y="166" text-anchor="middle" font-size="10" fill="#444">Bestand</text>
+          <rect x="200" y="132" width="60" height="18" fill="#2d5a3d"/>
+          <text x="230" y="124" text-anchor="middle" font-size="11" font-weight="600" fill="#2d5a3d">112,3</text>
+          <text x="230" y="166" text-anchor="middle" font-size="10" fill="#444">Plan V3</text>
+          <!-- Y axis ticks -->
+          <text x="44" y="34" text-anchor="end" font-size="8" fill="#888">800</text>
+          <text x="44" y="74" text-anchor="end" font-size="8" fill="#888">500</text>
+          <text x="44" y="124" text-anchor="end" font-size="8" fill="#888">200</text>
+          <text x="44" y="153" text-anchor="end" font-size="8" fill="#888">0</text>
+          <line class="grid-line" x1="50" y1="32" x2="300" y2="32" stroke-dasharray="2,3"/>
+          <line class="grid-line" x1="50" y1="72" x2="300" y2="72" stroke-dasharray="2,3"/>
+          <line class="grid-line" x1="50" y1="122" x2="300" y2="122" stroke-dasharray="2,3"/>
+          <!-- Reduction annotation -->
+          <text x="175" y="100" text-anchor="middle" font-size="10" font-weight="600" fill="#4a7c59">−85 %</text>
+        </svg>
+      </div>
+    </div>
+
+    <h3>Inhaltsverzeichnis</h3>
+    <div class="toc">
+      <div class="toc-item"><a onclick="show('s-gebaeude')"><span class="toc-num">2</span>Gebäude</a><span class="desc">147 Datensätze · Bedarf, Heizlast, Anschluss</span></div>
+      <div class="toc-item"><a onclick="show('s-erzeuger')"><span class="toc-num">3</span>Erzeugerpark</a><span class="desc">7 Erzeuger mit Auslegungsparametern</span></div>
+      <div class="toc-item"><a onclick="show('s-dispatch8760')"><span class="toc-num">4</span>Dispatch 8760h</a><span class="desc">Stündliche Erzeugerleistungen (große Tabelle)</span></div>
+      <div class="toc-item"><a onclick="show('s-dispatch-agg')"><span class="toc-num">5</span>Dispatch — Aggregat</a><span class="desc">Monatswerte, JDL, Auslegungswoche</span></div>
+      <div class="toc-item"><a onclick="show('s-waermenetz')"><span class="toc-num">6</span>Wärmenetz</a><span class="desc">Trassen, DN-Verteilung, Verluste</span></div>
+      <div class="toc-item"><a onclick="show('s-stromnetz')"><span class="toc-num">7</span>Stromnetz</a><span class="desc">Kabel, Trafos, NAP, Spannungsfall</span></div>
+      <div class="toc-item"><a onclick="show('s-strombilanz')"><span class="toc-num">8</span>Strombilanz</a><span class="desc">PV, BHKW, Bezug, Einspeisung</span></div>
+      <div class="toc-item"><a onclick="show('s-wirtschaft')"><span class="toc-num">9</span>Wirtschaftlichkeit</a><span class="desc">VDI 2067 — Bausteine, KGF/BGK/BetrGK</span></div>
+      <div class="toc-item"><a onclick="show('s-co2')"><span class="toc-num">10</span>CO₂-Bilanz</a><span class="desc">Emissionen monatlich + jährlich</span></div>
+      <div class="toc-item"><a onclick="show('s-variantenvergleich')"><span class="toc-num">11</span>Variantenvergleich</a><span class="desc">V1–V4 side-by-side</span></div>
+      <div class="toc-item"><a onclick="show('s-annahmen')"><span class="toc-num">12</span>Annahmen</a><span class="desc">Preise, Zinssatz, Emissionsfaktoren</span></div>
+    </div>
+
+    <div class="note">
+      <strong>Hinweis:</strong> Alle Werte sind aus dem Tool exportiert. Zahlen mit „—" sind nicht berechnet/nicht zutreffend. Stand: 12.05.2026 14:23 Uhr.
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SHEET 2: GEBÄUDE ════════ -->
+<div class="sheet" id="s-gebaeude">
+  <div class="sheet-intro"><h2>2. Gebäude</h2><p>Alle 147 Gebäude des Planungsgebiets mit berechneten Wärme- und Strombedarfen. AutoFilter aktiv, frozen pane bei Zeile 2.</p></div>
+
+  <div class="chart-row">
+    <div class="chart-frame">
+      <div class="chart-title">Baujahres-Verteilung</div>
+      <div class="chart-subtitle">Anzahl Gebäude je Baualtersklasse</div>
+      <svg class="chart" width="380" height="200" viewBox="0 0 380 200">
+        <line class="axis-line" x1="50" y1="20" x2="50" y2="150"/>
+        <line class="axis-line" x1="50" y1="150" x2="360" y2="150"/>
+        <!-- Grid 0/10/20/30/40, max=40 → 130px range. 1 = 3.25px -->
+        <line class="grid-line" x1="50" y1="20" x2="360" y2="20" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="52.5" x2="360" y2="52.5" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="85" x2="360" y2="85" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="117.5" x2="360" y2="117.5" stroke-dasharray="2,3"/>
+        <text x="44" y="23" text-anchor="end" font-size="9" fill="#888">40</text>
+        <text x="44" y="56" text-anchor="end" font-size="9" fill="#888">30</text>
+        <text x="44" y="88" text-anchor="end" font-size="9" fill="#888">20</text>
+        <text x="44" y="121" text-anchor="end" font-size="9" fill="#888">10</text>
+        <text x="44" y="154" text-anchor="end" font-size="9" fill="#888">0</text>
+        <!-- Bars: 6 bins, width 40, gap 8, start x=60 -->
+        <!-- <1948: 22 → h=71.5, y=78.5 -->
+        <rect x="60" y="78.5" width="40" height="71.5" fill="#8b4513"/>
+        <text x="80" y="74" text-anchor="middle" font-size="9" font-weight="600" fill="#444">22</text>
+        <text x="80" y="164" text-anchor="middle" font-size="8.5" fill="#666">&lt;1948</text>
+        <!-- 1948-68: 38 → h=123.5, y=26.5 -->
+        <rect x="108" y="26.5" width="40" height="123.5" fill="#b8763d"/>
+        <text x="128" y="22" text-anchor="middle" font-size="9" font-weight="600" fill="#444">38</text>
+        <text x="128" y="164" text-anchor="middle" font-size="8.5" fill="#666">'48–'68</text>
+        <!-- 1969-78: 31 → h=100.75, y=49.25 -->
+        <rect x="156" y="49.25" width="40" height="100.75" fill="#d4a574"/>
+        <text x="176" y="45" text-anchor="middle" font-size="9" font-weight="600" fill="#444">31</text>
+        <text x="176" y="164" text-anchor="middle" font-size="8.5" fill="#666">'69–'78</text>
+        <!-- 1979-94: 25 → h=81.25, y=68.75 -->
+        <rect x="204" y="68.75" width="40" height="81.25" fill="#a4ac86"/>
+        <text x="224" y="64" text-anchor="middle" font-size="9" font-weight="600" fill="#444">25</text>
+        <text x="224" y="164" text-anchor="middle" font-size="8.5" fill="#666">'79–'94</text>
+        <!-- 1995-2009: 18 → h=58.5, y=91.5 -->
+        <rect x="252" y="91.5" width="40" height="58.5" fill="#6b9080"/>
+        <text x="272" y="87" text-anchor="middle" font-size="9" font-weight="600" fill="#444">18</text>
+        <text x="272" y="164" text-anchor="middle" font-size="8.5" fill="#666">'95–'09</text>
+        <!-- 2010+: 13 → h=42.25, y=107.75 -->
+        <rect x="300" y="107.75" width="40" height="42.25" fill="#2d5a3d"/>
+        <text x="320" y="103" text-anchor="middle" font-size="9" font-weight="600" fill="#444">13</text>
+        <text x="320" y="164" text-anchor="middle" font-size="8.5" fill="#666">2010+</text>
+        <text x="200" y="184" text-anchor="middle" font-size="9" fill="#888" font-style="italic">Σ 147 Gebäude · Ø Baujahr 1976</text>
+      </svg>
+    </div>
+    <div class="chart-frame">
+      <div class="chart-title">Nutzungs-Verteilung</div>
+      <div class="chart-subtitle">Anteil an Wärmebedarf nach Nutzungstyp</div>
+      <svg class="chart" width="380" height="200" viewBox="0 0 380 200">
+        <!-- Stacked horizontal bar -->
+        <!-- Total 3420 MWh. EFH 1480 (43.3%), MFH 1110 (32.5%), GHD 320 (9.4%),
+             Schule 142.8 (4.2%), Sport 68.5 (2.0%), Kita 32.4 (0.9%), Sonst 266.3 (7.8%) -->
+        <!-- Bar y=40, x=50..360 (310px wide) -->
+        <rect x="50" y="40" width="134.2" height="36" fill="#2d5a3d"/>
+        <rect x="184.2" y="40" width="100.8" height="36" fill="#4a7c59"/>
+        <rect x="285" y="40" width="29.1" height="36" fill="#6b9080"/>
+        <rect x="314.1" y="40" width="13" height="36" fill="#b8956b"/>
+        <rect x="327.1" y="40" width="6.2" height="36" fill="#a4ac86"/>
+        <rect x="333.3" y="40" width="2.7" height="36" fill="#7ba087"/>
+        <rect x="336" y="40" width="24" height="36" fill="#a89968"/>
+        <!-- Labels inside major segments -->
+        <text x="117" y="62" text-anchor="middle" font-size="10" font-weight="600" fill="white">EFH 43%</text>
+        <text x="234" y="62" text-anchor="middle" font-size="10" font-weight="600" fill="white">MFH 33%</text>
+        <text x="300" y="62" text-anchor="middle" font-size="8.5" font-weight="600" fill="white">GHD</text>
+        <!-- Detail table below -->
+        <g font-size="9">
+          <rect x="50" y="90" width="11" height="9" fill="#2d5a3d"/><text x="66" y="98" fill="#444">EFH</text><text x="135" y="98" text-anchor="end" fill="#444">88 Geb. · 1.480 MWh</text>
+          <rect x="50" y="105" width="11" height="9" fill="#4a7c59"/><text x="66" y="113" fill="#444">MFH</text><text x="135" y="113" text-anchor="end" fill="#444">32 Geb. · 1.110 MWh</text>
+          <rect x="50" y="120" width="11" height="9" fill="#6b9080"/><text x="66" y="128" fill="#444">GHD</text><text x="135" y="128" text-anchor="end" fill="#444">12 Geb. · 320 MWh</text>
+          <rect x="50" y="135" width="11" height="9" fill="#b8956b"/><text x="66" y="143" fill="#444">Schule</text><text x="135" y="143" text-anchor="end" fill="#444">1 Geb. · 143 MWh</text>
+          <rect x="220" y="90" width="11" height="9" fill="#a4ac86"/><text x="236" y="98" fill="#444">Sport</text><text x="350" y="98" text-anchor="end" fill="#444">1 Geb. · 69 MWh</text>
+          <rect x="220" y="105" width="11" height="9" fill="#7ba087"/><text x="236" y="113" fill="#444">Kita</text><text x="350" y="113" text-anchor="end" fill="#444">1 Geb. · 32 MWh</text>
+          <rect x="220" y="120" width="11" height="9" fill="#a89968"/><text x="236" y="128" fill="#444">Sonst.</text><text x="350" y="128" text-anchor="end" fill="#444">12 Geb. · 266 MWh</text>
+        </g>
+        <text x="190" y="190" text-anchor="middle" font-size="9" fill="#888" font-style="italic">Σ 147 Gebäude · 3.420 MWh/a</text>
+      </svg>
+    </div>
+  </div>
+  <div class="filter-bar">
+    <span>🔽 AutoFilter aktiv</span>
+    <span>Anzeige: <span class="pill">147 von 147</span></span>
+    <span>Frozen: <span class="pill">A1:B2</span></span>
+  </div>
+  <table class="xl">
+    <thead>
+      <tr>
+        <th>ID</th><th>Bezeichnung</th><th>Nutzung</th><th>Baujahr</th><th>Zustand</th>
+        <th class="r">Fläche m²</th><th class="r">Stockwerke</th><th class="r">Wärme MWh/a</th>
+        <th class="r">Heizlast kW</th><th class="r">Spez. kWh/m²a</th><th class="r">Spez. W/m²</th>
+        <th class="r">Strom MWh/a</th><th class="c">PV?</th><th class="r">PV Dach %</th>
+        <th class="c">Am Netz?</th><th class="r">Netzverlust MWh/a</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>G001</td><td>Hauptstraße 12</td><td>EFH</td><td>1972</td><td>teilsaniert</td><td class="r">142</td><td class="r">2</td><td class="r">18,4</td><td class="r">10,2</td><td class="r">130</td><td class="r">72</td><td class="r">3,5</td><td class="c good">✓</td><td class="r">35</td><td class="c good">✓</td><td class="r">0,82</td></tr>
+      <tr><td>G002</td><td>Hauptstraße 14</td><td>EFH</td><td>1968</td><td>unsaniert</td><td class="r">128</td><td class="r">2</td><td class="r">22,8</td><td class="r">12,8</td><td class="r">178</td><td class="r">100</td><td class="r">3,2</td><td class="c">—</td><td class="r">—</td><td class="c good">✓</td><td class="r">0,74</td></tr>
+      <tr><td>G003</td><td>Hauptstraße 16</td><td>EFH</td><td>2014</td><td>Neubau</td><td class="r">165</td><td class="r">2</td><td class="r">9,8</td><td class="r">5,4</td><td class="r">59</td><td class="r">33</td><td class="r">4,1</td><td class="c good">✓</td><td class="r">45</td><td class="c good">✓</td><td class="r">0,68</td></tr>
+      <tr><td>G004</td><td>Hauptstraße 18</td><td>MFH</td><td>1985</td><td>teilsaniert</td><td class="r">412</td><td class="r">3</td><td class="r">48,2</td><td class="r">26,4</td><td class="r">117</td><td class="r">64</td><td class="r">9,8</td><td class="c">—</td><td class="r">—</td><td class="c good">✓</td><td class="r">1,42</td></tr>
+      <tr><td>G005</td><td>Hauptstraße 20</td><td>MFH</td><td>1978</td><td>teilsaniert</td><td class="r">386</td><td class="r">3</td><td class="r">52,4</td><td class="r">28,8</td><td class="r">136</td><td class="r">75</td><td class="r">9,2</td><td class="c">—</td><td class="r">—</td><td class="c good">✓</td><td class="r">1,38</td></tr>
+      <tr><td>G006</td><td>Schule (Grundschule)</td><td>Schule</td><td>1995</td><td>teilsaniert</td><td class="r">1.840</td><td class="r">2</td><td class="r">142,8</td><td class="r">82,4</td><td class="r">78</td><td class="r">45</td><td class="r">38,5</td><td class="c good">✓</td><td class="r">60</td><td class="c good">✓</td><td class="r">2,84</td></tr>
+      <tr><td>G007</td><td>Sporthalle</td><td>Sport</td><td>2008</td><td>Neubau</td><td class="r">980</td><td class="r">1</td><td class="r">68,5</td><td class="r">38,2</td><td class="r">70</td><td class="r">39</td><td class="r">14,2</td><td class="c good">✓</td><td class="r">70</td><td class="c good">✓</td><td class="r">1,82</td></tr>
+      <tr><td>G008</td><td>Bauhof</td><td>GHD</td><td>1990</td><td>unsaniert</td><td class="r">320</td><td class="r">1</td><td class="r">42,8</td><td class="r">24,2</td><td class="r">134</td><td class="r">76</td><td class="r">18,5</td><td class="c">—</td><td class="r">—</td><td class="c good">✓</td><td class="r">1,12</td></tr>
+      <tr><td>G009</td><td>Kindergarten St. Maria</td><td>Kita</td><td>2002</td><td>Neubau</td><td class="r">485</td><td class="r">1</td><td class="r">32,4</td><td class="r">18,5</td><td class="r">67</td><td class="r">38</td><td class="r">8,2</td><td class="c good">✓</td><td class="r">50</td><td class="c good">✓</td><td class="r">0,98</td></tr>
+      <tr><td>G010</td><td>Pfarrhaus</td><td>EFH</td><td>1962</td><td>unsaniert</td><td class="r">186</td><td class="r">2</td><td class="r">32,4</td><td class="r">17,8</td><td class="r">174</td><td class="r">96</td><td class="r">4,2</td><td class="c">—</td><td class="r">—</td><td class="c warn">✗</td><td class="r">—</td></tr>
+      <tr><td colspan="16" style="text-align:center; color:#888; font-style:italic;">… 137 weitere Zeilen …</td></tr>
+      <tr class="sum-row"><td colspan="5">Σ 147 Gebäude</td><td class="r">28.450</td><td class="r">—</td><td class="r">3.420,4</td><td class="r">1.840,2</td><td class="r">Ø 120</td><td class="r">Ø 65</td><td class="r">582,4</td><td class="c">68 (46%)</td><td class="r">Ø 48</td><td class="c">132 (90%)</td><td class="r">128,4</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════ SHEET 3: ERZEUGERPARK ════════ -->
+<div class="sheet" id="s-erzeuger">
+  <div class="sheet-intro"><h2>3. Erzeugerpark</h2><p>Alle Erzeuger des aktiven Varianten-Mix mit Auslegungsparametern, Jahresmengen und Vollbenutzungsstunden.</p></div>
+  <table class="xl">
+    <thead>
+      <tr>
+        <th>Rang</th><th>Erzeuger</th><th>Typ</th><th>Brennstoff/Quelle</th>
+        <th class="r">Leistung kW</th><th class="r">JAZ/η</th><th class="r">Wärme MWh/a</th>
+        <th class="r">Strom MWh/a</th><th class="r">VBh h/a</th><th class="r">Deckung %</th>
+        <th class="r">Spez. Invest €/kW</th><th class="r">Invest €</th><th class="r">JK €/a</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="c">1</td><td class="bold">WP-Geothermie</td><td>Wärmepumpe</td><td>Erdsonde</td><td class="r">820</td><td class="r">4,2</td><td class="r">2.340</td><td class="r">−557</td><td class="r">2.854</td><td class="r">68,4</td><td class="r">1.800</td><td class="r">1.476.000</td><td class="r">142.800</td></tr>
+      <tr><td class="c">2</td><td class="bold">BHKW (Erdgas)</td><td>KWK</td><td>Erdgas</td><td class="r">120</td><td class="r">88%</td><td class="r">680</td><td class="r">+412</td><td class="r">5.667</td><td class="r">19,9</td><td class="r">1.200</td><td class="r">144.000</td><td class="r">28.400</td></tr>
+      <tr><td class="c">3</td><td class="bold">Solarthermie</td><td>Erneuerbar</td><td>Sonne</td><td class="r">340</td><td class="r">—</td><td class="r">285</td><td class="r">—</td><td class="r">838</td><td class="r">8,3</td><td class="r">600</td><td class="r">204.000</td><td class="r">12.400</td></tr>
+      <tr><td class="c">4</td><td class="bold">Gaskessel (Spitze)</td><td>Kessel</td><td>Erdgas</td><td class="r">700</td><td class="r">94%</td><td class="r">115</td><td class="r">—</td><td class="r">164</td><td class="r">3,4</td><td class="r">120</td><td class="r">84.000</td><td class="r">18.200</td></tr>
+      <tr class="sum-row"><td colspan="4">Σ Erzeugerpark</td><td class="r">1.980</td><td class="r">—</td><td class="r">3.420</td><td class="r">−145</td><td class="r">Ø 1.728</td><td class="r">100,0</td><td class="r">—</td><td class="r">1.908.000</td><td class="r">201.800</td></tr>
+    </tbody>
+  </table>
+
+  <div class="chart-row">
+    <div class="chart-frame">
+      <div class="chart-title">Vollbenutzungsstunden je Erzeuger</div>
+      <div class="chart-subtitle">h/a · Auslastung der installierten Leistung</div>
+      <svg class="chart" width="440" height="180" viewBox="0 0 440 180">
+        <line class="axis-line" x1="120" y1="20" x2="120" y2="160"/>
+        <line class="axis-line" x1="120" y1="160" x2="420" y2="160"/>
+        <!-- Bars: max scale ~6000h. Width = (VBh / 6000) * 280 -->
+        <!-- BHKW 5667 -->
+        <rect x="120" y="30" width="264" height="22" fill="#6b9080"/>
+        <text x="116" y="46" text-anchor="end" font-size="10" fill="#444">BHKW</text>
+        <text x="388" y="46" font-size="9.5" font-weight="600" fill="#6b9080">5.667 h</text>
+        <!-- WP-Geo 2854 -->
+        <rect x="120" y="62" width="133" height="22" fill="#2d5a3d"/>
+        <text x="116" y="78" text-anchor="end" font-size="10" fill="#444">WP-Geo</text>
+        <text x="257" y="78" font-size="9.5" font-weight="600" fill="#2d5a3d">2.854 h</text>
+        <!-- Solarthermie 838 -->
+        <rect x="120" y="94" width="39" height="22" fill="#b8956b"/>
+        <text x="116" y="110" text-anchor="end" font-size="10" fill="#444">Solarth.</text>
+        <text x="163" y="110" font-size="9.5" font-weight="600" fill="#b8956b">838 h</text>
+        <!-- Gas Spitze 164 -->
+        <rect x="120" y="126" width="8" height="22" fill="#a4ac86"/>
+        <text x="116" y="142" text-anchor="end" font-size="10" fill="#444">Gas Spitze</text>
+        <text x="132" y="142" font-size="9.5" font-weight="600" fill="#a4ac86">164 h</text>
+        <!-- X axis -->
+        <text x="120" y="174" text-anchor="middle" font-size="8" fill="#888">0</text>
+        <text x="213" y="174" text-anchor="middle" font-size="8" fill="#888">2.000</text>
+        <text x="306" y="174" text-anchor="middle" font-size="8" fill="#888">4.000</text>
+        <text x="400" y="174" text-anchor="middle" font-size="8" fill="#888">6.000</text>
+        <line class="grid-line" x1="213" y1="20" x2="213" y2="160" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="306" y1="20" x2="306" y2="160" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="400" y1="20" x2="400" y2="160" stroke-dasharray="2,3"/>
+        <!-- Reference line at 8760 (würde rechts rauslaufen) -->
+        <text x="400" y="14" text-anchor="middle" font-size="8" fill="#aaa" font-style="italic">8760h</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2>3.1 Detaildaten je Erzeuger</h2><p>Anlagen-Datenblätter (in Excel: einzelne Tabellen untereinander).</p></div>
+  <table class="xl" style="margin-top:8px;">
+    <thead>
+      <tr><th>WP-Geothermie — Parameter</th><th class="r">Wert</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Nennleistung thermisch</td><td class="r">820 kW</td></tr>
+      <tr><td>Sondenfeld-Auslegung</td><td class="r">98 Sonden × 120 m</td></tr>
+      <tr><td>Entzugsleistung (Auslegung)</td><td class="r">42 W/m</td></tr>
+      <tr><td>JAZ (saisonal)</td><td class="r">4,20</td></tr>
+      <tr><td>Vorlauftemperatur max</td><td class="r">65 °C</td></tr>
+      <tr><td>Hilfsstrom Pumpen</td><td class="r">14,2 MWh/a</td></tr>
+      <tr><td>Stromverbrauch (gesamt)</td><td class="r">557 MWh/a</td></tr>
+      <tr><td>Vollbenutzungsstunden</td><td class="r">2.854 h/a</td></tr>
+      <tr><td>Deckungsanteil Wärme</td><td class="r">68,4 %</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════ SHEET 4: DISPATCH 8760h ════════ -->
+<div class="sheet" id="s-dispatch8760">
+  <div class="sheet-intro"><h2>4. Dispatch — 8760 h</h2><p>Stündliche Erzeugerleistungen für ein komplettes Jahr (8760 Zeilen). Frozen pane in A1, AutoFilter, bedingte Formatierung für Spitzen.</p></div>
+
+  <div class="chart-row">
+    <div class="chart-frame" style="display:block; width: 100%; max-width:780px;">
+      <div class="chart-title">Auslegungswoche — 168 Stunden gestapelt</div>
+      <div class="chart-subtitle">kW · Stundenwerte 07.–13. Januar · kälteste Woche des Jahres</div>
+      <div id="chart-week168"></div>
+      <div class="chart-legend">
+        <div class="item"><div class="swatch" style="background:#6b9080"></div>BHKW (Baseload)</div>
+        <div class="item"><div class="swatch" style="background:#2d5a3d"></div>WP-Geothermie</div>
+        <div class="item"><div class="swatch" style="background:#b8956b"></div>Solarthermie</div>
+        <div class="item"><div class="swatch" style="background:#a4ac86"></div>Gas Spitzenlast</div>
+        <div class="item"><div class="swatch" style="background:#b04545; border-radius:50%; width:8px; height:8px; margin-top:2px;"></div>Auslegungsstunde</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sample-info">
+    <strong>Vollständige Tabelle:</strong> 8760 Zeilen × 12 Spalten — hier nur Auszug erste/letzte Stunden + Auslegungstag.<br>
+    <strong>Frozen pane:</strong> A1:B2 (Zeit + Außentemperatur immer sichtbar). <strong>Bedingte Formatierung:</strong> Volllast-Stunden eines Erzeugers rot, Stillstand grau.
+  </div>
+  <table class="xl">
+    <thead>
+      <tr>
+        <th>Stunde</th><th>Datum</th><th class="r">T_Außen °C</th><th class="r">Last gesamt kW</th>
+        <th class="r">WP-Geo kW</th><th class="r">BHKW kW</th><th class="r">Solarth. kW</th><th class="r">Gas Spitze kW</th>
+        <th class="r">Quartier-Strom kWh</th><th class="r">PV-Erz. kWh</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>01.01. 00:00</td><td class="r">−2,4</td><td class="r">1.580</td><td class="r">820</td><td class="r">120</td><td class="r">0</td><td class="r">640</td><td class="r">68</td><td class="r">0</td></tr>
+      <tr><td>2</td><td>01.01. 01:00</td><td class="r">−2,8</td><td class="r">1.620</td><td class="r">820</td><td class="r">120</td><td class="r">0</td><td class="r">680</td><td class="r">62</td><td class="r">0</td></tr>
+      <tr><td>3</td><td>01.01. 02:00</td><td class="r">−3,1</td><td class="r">1.665</td><td class="r">820</td><td class="r">120</td><td class="r">0</td><td class="r">725</td><td class="r">58</td><td class="r">0</td></tr>
+      <tr><td>4</td><td>01.01. 03:00</td><td class="r">−3,4</td><td class="r">1.705</td><td class="r">820</td><td class="r">120</td><td class="r">0</td><td class="r">765</td><td class="r">55</td><td class="r">0</td></tr>
+      <tr><td>5</td><td>01.01. 04:00</td><td class="r">−3,8</td><td class="r">1.748</td><td class="r">820</td><td class="r">120</td><td class="r">0</td><td class="r">808</td><td class="r">53</td><td class="r">0</td></tr>
+      <tr><td colspan="10" class="c" style="font-style:italic; color:#888;">… 1235 Zeilen …</td></tr>
+      <tr style="background:#ffebcc;"><td class="bold">192</td><td class="bold">09.01. 06:00 ← Auslegungsstd.</td><td class="r warn">−12,8</td><td class="r warn bold">1.840</td><td class="r">820</td><td class="r">120</td><td class="r">0</td><td class="r warn bold">900</td><td class="r">125</td><td class="r">0</td></tr>
+      <tr><td>193</td><td>09.01. 07:00</td><td class="r">−12,4</td><td class="r">1.825</td><td class="r">820</td><td class="r">120</td><td class="r">0</td><td class="r">885</td><td class="r">142</td><td class="r">3</td></tr>
+      <tr><td colspan="10" class="c" style="font-style:italic; color:#888;">… 4123 Zeilen …</td></tr>
+      <tr><td>4380</td><td>02.07. 12:00</td><td class="r good">+26,4</td><td class="r">142</td><td class="r">0</td><td class="r">0</td><td class="r good">142</td><td class="r">0</td><td class="r">385</td><td class="r">410</td></tr>
+      <tr><td>4381</td><td>02.07. 13:00</td><td class="r good">+27,1</td><td class="r">138</td><td class="r">0</td><td class="r">0</td><td class="r good">138</td><td class="r">0</td><td class="r">398</td><td class="r">425</td></tr>
+      <tr><td colspan="10" class="c" style="font-style:italic; color:#888;">… 3370 Zeilen …</td></tr>
+      <tr><td>8759</td><td>31.12. 22:00</td><td class="r">−1,2</td><td class="r">1.520</td><td class="r">820</td><td class="r">120</td><td class="r">0</td><td class="r">580</td><td class="r">82</td><td class="r">0</td></tr>
+      <tr><td>8760</td><td>31.12. 23:00</td><td class="r">−1,5</td><td class="r">1.545</td><td class="r">820</td><td class="r">120</td><td class="r">0</td><td class="r">605</td><td class="r">75</td><td class="r">0</td></tr>
+      <tr class="sum-row"><td colspan="3">Σ Jahressumme MWh</td><td class="r">3.420,4</td><td class="r">2.340,1</td><td class="r">680,2</td><td class="r">285,4</td><td class="r">114,7</td><td class="r">582,4</td><td class="r">425,8</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════ SHEET 5: DISPATCH AGGREGAT ════════ -->
+<div class="sheet" id="s-dispatch-agg">
+  <div class="sheet-intro"><h2>5. Dispatch — Aggregat</h2><p>Monatswerte, Jahresdauerlinie (Top-Stunden), Auslegungswoche.</p></div>
+
+  <div class="sheet-intro"><h2 style="font-size:12pt;">5.1 Monatliche Erzeugung MWh</h2></div>
+  <table class="xl">
+    <thead>
+      <tr><th>Monat</th><th class="r">WP-Geo</th><th class="r">BHKW</th><th class="r">Solarth.</th><th class="r">Gas Spitze</th><th class="r bold">Σ Erzeugung</th><th class="r">PV-Erz.</th><th class="r">T_Außen °C</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Jan</td><td class="r"><span class="heatcell heat-5">412</span></td><td class="r"><span class="heatcell heat-4">82</span></td><td class="r">2</td><td class="r"><span class="heatcell heat-5">68</span></td><td class="r bold">564</td><td class="r">18</td><td class="r">+1,2</td></tr>
+      <tr><td>Feb</td><td class="r"><span class="heatcell heat-5">368</span></td><td class="r"><span class="heatcell heat-4">76</span></td><td class="r">6</td><td class="r"><span class="heatcell heat-4">42</span></td><td class="r bold">492</td><td class="r">24</td><td class="r">+2,1</td></tr>
+      <tr><td>Mär</td><td class="r"><span class="heatcell heat-4">298</span></td><td class="r"><span class="heatcell heat-3">68</span></td><td class="r">18</td><td class="r"><span class="heatcell heat-2">5</span></td><td class="r bold">389</td><td class="r">42</td><td class="r">+5,8</td></tr>
+      <tr><td>Apr</td><td class="r"><span class="heatcell heat-3">198</span></td><td class="r"><span class="heatcell heat-3">62</span></td><td class="r">32</td><td class="r"><span class="heatcell heat-1">0</span></td><td class="r bold">292</td><td class="r">55</td><td class="r">+9,4</td></tr>
+      <tr><td>Mai</td><td class="r"><span class="heatcell heat-2">132</span></td><td class="r"><span class="heatcell heat-3">58</span></td><td class="r">45</td><td class="r"><span class="heatcell heat-1">0</span></td><td class="r bold">235</td><td class="r">62</td><td class="r">+13,8</td></tr>
+      <tr><td>Jun</td><td class="r"><span class="heatcell heat-2">85</span></td><td class="r"><span class="heatcell heat-2">42</span></td><td class="r">48</td><td class="r"><span class="heatcell heat-1">0</span></td><td class="r bold">175</td><td class="r">68</td><td class="r">+17,2</td></tr>
+      <tr><td>Jul</td><td class="r"><span class="heatcell heat-1">62</span></td><td class="r"><span class="heatcell heat-2">38</span></td><td class="r">52</td><td class="r"><span class="heatcell heat-1">0</span></td><td class="r bold">152</td><td class="r">72</td><td class="r">+19,8</td></tr>
+      <tr><td>Aug</td><td class="r"><span class="heatcell heat-1">68</span></td><td class="r"><span class="heatcell heat-2">38</span></td><td class="r">48</td><td class="r"><span class="heatcell heat-1">0</span></td><td class="r bold">154</td><td class="r">68</td><td class="r">+19,4</td></tr>
+      <tr><td>Sep</td><td class="r"><span class="heatcell heat-2">125</span></td><td class="r"><span class="heatcell heat-2">52</span></td><td class="r">28</td><td class="r"><span class="heatcell heat-1">0</span></td><td class="r bold">205</td><td class="r">52</td><td class="r">+15,2</td></tr>
+      <tr><td>Okt</td><td class="r"><span class="heatcell heat-3">218</span></td><td class="r"><span class="heatcell heat-3">62</span></td><td class="r">5</td><td class="r"><span class="heatcell heat-1">0</span></td><td class="r bold">285</td><td class="r">35</td><td class="r">+10,4</td></tr>
+      <tr><td>Nov</td><td class="r"><span class="heatcell heat-4">285</span></td><td class="r"><span class="heatcell heat-4">75</span></td><td class="r">1</td><td class="r"><span class="heatcell heat-1">0</span></td><td class="r bold">361</td><td class="r">22</td><td class="r">+5,2</td></tr>
+      <tr><td>Dez</td><td class="r"><span class="heatcell heat-5">389</span></td><td class="r"><span class="heatcell heat-4">82</span></td><td class="r">0</td><td class="r"><span class="heatcell heat-3">25</span></td><td class="r bold">496</td><td class="r">12</td><td class="r">+2,4</td></tr>
+      <tr class="sum-row"><td>Σ Jahr</td><td class="r">2.340</td><td class="r">680</td><td class="r">285</td><td class="r">115</td><td class="r">3.420</td><td class="r">528</td><td class="r">Ø +10,2</td></tr>
+    </tbody>
+  </table>
+
+  <div class="chart-row">
+    <div class="chart-frame" style="display:block; width: 100%; max-width:780px;">
+      <div class="chart-title">Monatliche Wärmeerzeugung — gestapelt</div>
+      <div class="chart-subtitle">MWh/Monat · Anteil der vier Erzeuger pro Monat</div>
+      <svg class="chart" width="760" height="280" viewBox="0 0 760 280">
+        <!-- Y axis grid + labels -->
+        <g>
+          <line class="axis-line" x1="50" y1="30" x2="50" y2="220"/>
+          <line class="axis-line" x1="50" y1="220" x2="600" y2="220"/>
+          <line class="grid-line" x1="50" y1="30" x2="600" y2="30" stroke-dasharray="2,3"/>
+          <line class="grid-line" x1="50" y1="61.7" x2="600" y2="61.7" stroke-dasharray="2,3"/>
+          <line class="grid-line" x1="50" y1="93.3" x2="600" y2="93.3" stroke-dasharray="2,3"/>
+          <line class="grid-line" x1="50" y1="125" x2="600" y2="125" stroke-dasharray="2,3"/>
+          <line class="grid-line" x1="50" y1="156.7" x2="600" y2="156.7" stroke-dasharray="2,3"/>
+          <line class="grid-line" x1="50" y1="188.3" x2="600" y2="188.3" stroke-dasharray="2,3"/>
+          <text x="44" y="33" text-anchor="end" font-size="9" fill="#888">600</text>
+          <text x="44" y="65" text-anchor="end" font-size="9" fill="#888">500</text>
+          <text x="44" y="97" text-anchor="end" font-size="9" fill="#888">400</text>
+          <text x="44" y="129" text-anchor="end" font-size="9" fill="#888">300</text>
+          <text x="44" y="161" text-anchor="end" font-size="9" fill="#888">200</text>
+          <text x="44" y="192" text-anchor="end" font-size="9" fill="#888">100</text>
+          <text x="44" y="224" text-anchor="end" font-size="9" fill="#888">0</text>
+          <text x="20" y="125" font-size="9.5" font-weight="600" fill="#555" transform="rotate(-90 20 125)" text-anchor="middle">MWh / Monat</text>
+        </g>
+        <!-- Stacked columns: WP (forest), BHKW (sage), Solar (oak), Gas (moss) -->
+        <!-- Jan -->
+        <rect x="54" y="89.5" width="30" height="130.5" fill="#2d5a3d"/>
+        <rect x="54" y="63.5" width="30" height="26" fill="#6b9080"/>
+        <rect x="54" y="42" width="30" height="21.5" fill="#a4ac86"/>
+        <text x="69" y="232" text-anchor="middle" font-size="9" fill="#444">Jan</text>
+        <text x="69" y="38" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">564</text>
+        <!-- Feb -->
+        <rect x="98" y="103.5" width="30" height="116.5" fill="#2d5a3d"/>
+        <rect x="98" y="79.5" width="30" height="24" fill="#6b9080"/>
+        <rect x="98" y="77.5" width="30" height="2" fill="#b8956b"/>
+        <rect x="98" y="64" width="30" height="13.3" fill="#a4ac86"/>
+        <text x="113" y="232" text-anchor="middle" font-size="9" fill="#444">Feb</text>
+        <text x="113" y="60" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">492</text>
+        <!-- Mär -->
+        <rect x="142" y="125.6" width="30" height="94.4" fill="#2d5a3d"/>
+        <rect x="142" y="104" width="30" height="21.5" fill="#6b9080"/>
+        <rect x="142" y="98.5" width="30" height="5.7" fill="#b8956b"/>
+        <rect x="142" y="97" width="30" height="1.6" fill="#a4ac86"/>
+        <text x="157" y="232" text-anchor="middle" font-size="9" fill="#444">Mär</text>
+        <text x="157" y="93" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">389</text>
+        <!-- Apr -->
+        <rect x="186" y="157.3" width="30" height="62.7" fill="#2d5a3d"/>
+        <rect x="186" y="137.7" width="30" height="19.6" fill="#6b9080"/>
+        <rect x="186" y="127.6" width="30" height="10.1" fill="#b8956b"/>
+        <text x="201" y="232" text-anchor="middle" font-size="9" fill="#444">Apr</text>
+        <text x="201" y="123" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">292</text>
+        <!-- Mai -->
+        <rect x="230" y="178.2" width="30" height="41.8" fill="#2d5a3d"/>
+        <rect x="230" y="159.8" width="30" height="18.4" fill="#6b9080"/>
+        <rect x="230" y="145.5" width="30" height="14.3" fill="#b8956b"/>
+        <text x="245" y="232" text-anchor="middle" font-size="9" fill="#444">Mai</text>
+        <text x="245" y="141" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">235</text>
+        <!-- Jun -->
+        <rect x="274" y="193.1" width="30" height="26.9" fill="#2d5a3d"/>
+        <rect x="274" y="179.8" width="30" height="13.3" fill="#6b9080"/>
+        <rect x="274" y="164.6" width="30" height="15.2" fill="#b8956b"/>
+        <text x="289" y="232" text-anchor="middle" font-size="9" fill="#444">Jun</text>
+        <text x="289" y="160" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">175</text>
+        <!-- Jul -->
+        <rect x="318" y="200.4" width="30" height="19.6" fill="#2d5a3d"/>
+        <rect x="318" y="188.4" width="30" height="12" fill="#6b9080"/>
+        <rect x="318" y="171.9" width="30" height="16.5" fill="#b8956b"/>
+        <text x="333" y="232" text-anchor="middle" font-size="9" fill="#444">Jul</text>
+        <text x="333" y="167" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">152</text>
+        <!-- Aug -->
+        <rect x="362" y="198.5" width="30" height="21.5" fill="#2d5a3d"/>
+        <rect x="362" y="186.5" width="30" height="12" fill="#6b9080"/>
+        <rect x="362" y="171.3" width="30" height="15.2" fill="#b8956b"/>
+        <text x="377" y="232" text-anchor="middle" font-size="9" fill="#444">Aug</text>
+        <text x="377" y="167" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">154</text>
+        <!-- Sep -->
+        <rect x="406" y="180.4" width="30" height="39.6" fill="#2d5a3d"/>
+        <rect x="406" y="163.9" width="30" height="16.5" fill="#6b9080"/>
+        <rect x="406" y="155" width="30" height="8.9" fill="#b8956b"/>
+        <text x="421" y="232" text-anchor="middle" font-size="9" fill="#444">Sep</text>
+        <text x="421" y="151" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">205</text>
+        <!-- Okt -->
+        <rect x="450" y="151" width="30" height="69" fill="#2d5a3d"/>
+        <rect x="450" y="131.4" width="30" height="19.6" fill="#6b9080"/>
+        <rect x="450" y="129.8" width="30" height="1.6" fill="#b8956b"/>
+        <text x="465" y="232" text-anchor="middle" font-size="9" fill="#444">Okt</text>
+        <text x="465" y="125" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">285</text>
+        <!-- Nov -->
+        <rect x="494" y="129.7" width="30" height="90.3" fill="#2d5a3d"/>
+        <rect x="494" y="105.9" width="30" height="23.8" fill="#6b9080"/>
+        <text x="509" y="232" text-anchor="middle" font-size="9" fill="#444">Nov</text>
+        <text x="509" y="101" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">361</text>
+        <!-- Dez -->
+        <rect x="538" y="96.8" width="30" height="123.2" fill="#2d5a3d"/>
+        <rect x="538" y="70.8" width="30" height="26" fill="#6b9080"/>
+        <rect x="538" y="62.9" width="30" height="7.9" fill="#a4ac86"/>
+        <text x="553" y="232" text-anchor="middle" font-size="9" fill="#444">Dez</text>
+        <text x="553" y="58" text-anchor="middle" font-size="8.5" font-weight="600" fill="#333">496</text>
+        <!-- Legend right side -->
+        <g font-size="9.5">
+          <rect x="630" y="40" width="12" height="10" fill="#2d5a3d"/><text x="648" y="49" fill="#444">WP-Geothermie</text>
+          <rect x="630" y="60" width="12" height="10" fill="#6b9080"/><text x="648" y="69" fill="#444">BHKW</text>
+          <rect x="630" y="80" width="12" height="10" fill="#b8956b"/><text x="648" y="89" fill="#444">Solarthermie</text>
+          <rect x="630" y="100" width="12" height="10" fill="#a4ac86"/><text x="648" y="109" fill="#444">Gas Spitze</text>
+        </g>
+        <!-- Average temperature line overlay (sekundär-Achse) -->
+        <text x="630" y="140" font-size="9" fill="#888" font-style="italic">Werte über Säulen:</text>
+        <text x="630" y="152" font-size="9" fill="#888" font-style="italic">Summe MWh / Monat</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">5.2 Jahresdauerlinie — alle 8760 Stunden geordnet</h2></div>
+
+  <div class="chart-row">
+    <div class="chart-frame" style="display:block; width: 100%; max-width:780px;">
+      <div class="chart-title">Jahresdauerlinie — gestapelte Erzeugung</div>
+      <div class="chart-subtitle">kW · 8760 Stunden absteigend sortiert nach Last · zeigt Spitzen vs. Grundlast</div>
+      <div id="chart-jdl"></div>
+      <div class="chart-legend">
+        <div class="item"><div class="swatch" style="background:#6b9080"></div>BHKW</div>
+        <div class="item"><div class="swatch" style="background:#2d5a3d"></div>WP-Geothermie</div>
+        <div class="item"><div class="swatch" style="background:#b8956b"></div>Solarthermie</div>
+        <div class="item"><div class="swatch" style="background:#a4ac86"></div>Gas Spitzenlast</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">5.3 Jahresdauerlinie — Top-20 Stunden</h2></div>
+  <table class="xl">
+    <thead><tr><th>Rang</th><th>Stunde</th><th>Datum</th><th class="r">T_Außen °C</th><th class="r">Last kW</th><th class="r">Auslastung %</th></tr></thead>
+    <tbody>
+      <tr><td class="c">1</td><td>192</td><td>09.01. 06:00</td><td class="r warn">−12,8</td><td class="r warn bold">1.840</td><td class="r warn">100,0</td></tr>
+      <tr><td class="c">2</td><td>193</td><td>09.01. 07:00</td><td class="r warn">−12,4</td><td class="r">1.825</td><td class="r">99,2</td></tr>
+      <tr><td class="c">3</td><td>191</td><td>09.01. 05:00</td><td class="r warn">−12,1</td><td class="r">1.812</td><td class="r">98,5</td></tr>
+      <tr><td colspan="6" class="c" style="font-style:italic; color:#888;">… 17 weitere Zeilen …</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">5.4 Auslegungswoche — Stundenwerte (168h)</h2></div>
+  <div class="sample-info">Die kälteste Woche (07.–13.01.) mit allen Erzeugerleistungen Stunde für Stunde — Visualisierung siehe Sheet 4 oben, Eigene Tabelle hier mit 168 Zeilen.</div>
+</div>
+
+<!-- ════════ SHEET 6: WÄRMENETZ ════════ -->
+<div class="sheet" id="s-waermenetz">
+  <div class="sheet-intro"><h2>6. Wärmenetz</h2><p>Trassen-Übersicht, Rohrquerschnitt-Verteilung, Verlustbilanz, Einzelleitungen.</p></div>
+
+  <div class="sheet-intro"><h2 style="font-size:12pt;">6.1 Netz-Kennwerte</h2></div>
+  <table class="xl">
+    <tbody>
+      <tr><td>Trassenlänge gesamt</td><td class="r bold">4.280 m</td></tr>
+      <tr><td>Hauptleitung (DN > 80)</td><td class="r">1.840 m (43%)</td></tr>
+      <tr><td>Anschlussleitungen (DN ≤ 50)</td><td class="r">2.440 m (57%)</td></tr>
+      <tr><td>Vorlauftemperatur</td><td class="r">75 °C</td></tr>
+      <tr><td>Rücklauftemperatur</td><td class="r">55 °C</td></tr>
+      <tr><td>Spreizung</td><td class="r">20 K</td></tr>
+      <tr><td>Netzverluste Jahr</td><td class="r warn">128,4 MWh/a (3,8 %)</td></tr>
+      <tr><td>Anschlussgrad</td><td class="r good">132 / 147 Gebäude (89,8 %)</td></tr>
+      <tr><td>Wärmebelegungsdichte</td><td class="r">771 kWh/(m·a)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">6.2 DN-Verteilung</h2></div>
+  <table class="xl">
+    <thead><tr><th>Nennweite</th><th class="r">Länge m</th><th class="r">Anteil %</th><th class="r">Spez. Verlust W/m</th><th class="r">Verlust MWh/a</th><th class="r">Invest €/m</th><th class="r">Invest €</th></tr></thead>
+    <tbody>
+      <tr><td>DN 125</td><td class="r">680</td><td class="r">15,9</td><td class="r">14,2</td><td class="r">38,2</td><td class="r">580</td><td class="r">394.400</td></tr>
+      <tr><td>DN 100</td><td class="r">580</td><td class="r">13,5</td><td class="r">12,4</td><td class="r">28,4</td><td class="r">480</td><td class="r">278.400</td></tr>
+      <tr><td>DN 80</td><td class="r">580</td><td class="r">13,5</td><td class="r">10,8</td><td class="r">24,8</td><td class="r">410</td><td class="r">237.800</td></tr>
+      <tr><td>DN 65</td><td class="r">820</td><td class="r">19,1</td><td class="r">9,2</td><td class="r">22,4</td><td class="r">340</td><td class="r">278.800</td></tr>
+      <tr><td>DN 50</td><td class="r">1.020</td><td class="r">23,8</td><td class="r">7,8</td><td class="r">10,8</td><td class="r">280</td><td class="r">285.600</td></tr>
+      <tr><td>DN 32</td><td class="r">600</td><td class="r">14,0</td><td class="r">6,4</td><td class="r">3,8</td><td class="r">220</td><td class="r">132.000</td></tr>
+      <tr class="sum-row"><td>Σ</td><td class="r">4.280</td><td class="r">100,0</td><td class="r">—</td><td class="r">128,4</td><td class="r">—</td><td class="r">1.607.000</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">6.3 Einzelleitungen</h2></div>
+  <div class="sample-info">Hier folgt die komplette Edges-Tabelle aus <code>netzEdges[]</code>: von-/nach-Knoten, Länge, DN, Verlust, Spitzenlast, Spreizung. Beispiel:</div>
+  <table class="xl">
+    <thead><tr><th>ID</th><th>Von</th><th>Nach</th><th class="r">Länge m</th><th>DN</th><th class="r">Spitzenlast kW</th><th class="r">v m/s</th><th class="r">Verlust MWh/a</th><th class="c">Aktiv?</th></tr></thead>
+    <tbody>
+      <tr><td>E001</td><td>Heizwerk</td><td>K1</td><td class="r">85</td><td>DN 125</td><td class="r">1.840</td><td class="r">1,2</td><td class="r">4,8</td><td class="c good">✓</td></tr>
+      <tr><td>E002</td><td>K1</td><td>K2</td><td class="r">120</td><td>DN 125</td><td class="r">1.580</td><td class="r">1,0</td><td class="r">6,7</td><td class="c good">✓</td></tr>
+      <tr><td>E003</td><td>K2</td><td>K3</td><td class="r">75</td><td>DN 100</td><td class="r">1.245</td><td class="r">1,1</td><td class="r">3,6</td><td class="c good">✓</td></tr>
+      <tr><td colspan="9" class="c" style="font-style:italic; color:#888;">… 218 weitere Zeilen …</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════ SHEET 7: STROMNETZ ════════ -->
+<div class="sheet" id="s-stromnetz">
+  <div class="sheet-intro"><h2>7. Stromnetz</h2><p>NS-/MS-Kabel, Trafostationen, NAP, Spannungsfall-Bilanz.</p></div>
+
+  <div class="sheet-intro"><h2 style="font-size:12pt;">7.1 Netz-Kennwerte</h2></div>
+  <table class="xl">
+    <tbody>
+      <tr><td>Kabellänge NS gesamt</td><td class="r bold">3.840 m</td></tr>
+      <tr><td>Kabellänge MS gesamt</td><td class="r bold">1.250 m</td></tr>
+      <tr><td>Trafostationen</td><td class="r">3 (gesamt 1.260 kVA)</td></tr>
+      <tr><td>NAP-Anschlüsse</td><td class="r">132</td></tr>
+      <tr><td>Max. Spannungsfall</td><td class="r warn">3,2 % (Strang 4)</td></tr>
+      <tr><td>Höchster Kurzschlussstrom</td><td class="r">12,4 kA (Trafo 2 sek)</td></tr>
+      <tr><td>Maximale Trafo-Auslastung</td><td class="r warn">87% (T2)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">7.2 Trafostationen</h2></div>
+  <table class="xl">
+    <thead><tr><th>ID</th><th>Bezeichnung</th><th class="r">Nennleistung kVA</th><th class="r">Spitzenlast kW</th><th class="r">Auslastung %</th><th class="r">Anschlüsse</th><th>Lage</th></tr></thead>
+    <tbody>
+      <tr><td>T1</td><td>Trafo Hauptstraße</td><td class="r">630</td><td class="r">410</td><td class="r good">65%</td><td class="r">62</td><td>Hauptstraße 22a</td></tr>
+      <tr><td>T2</td><td>Trafo Schule</td><td class="r">400</td><td class="r warn">348</td><td class="r warn">87%</td><td class="r">48</td><td>Schulweg 3</td></tr>
+      <tr><td>T3</td><td>Trafo Bauhof</td><td class="r">250</td><td class="r">142</td><td class="r good">57%</td><td class="r">22</td><td>Industriestraße 12</td></tr>
+      <tr class="sum-row"><td colspan="2">Σ Trafos</td><td class="r">1.280</td><td class="r">900</td><td class="r">Ø 70%</td><td class="r">132</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">7.3 Kabel-Querschnittsverteilung</h2></div>
+  <table class="xl">
+    <thead><tr><th>Querschnitt</th><th>Spannungsebene</th><th class="r">Länge m</th><th class="r">Anteil %</th><th class="r">Invest €/m</th><th class="r">Invest €</th></tr></thead>
+    <tbody>
+      <tr><td>NAYY 4×150</td><td>NS</td><td class="r">680</td><td class="r">17,7</td><td class="r">42</td><td class="r">28.560</td></tr>
+      <tr><td>NAYY 4×95</td><td>NS</td><td class="r">1.240</td><td class="r">32,3</td><td class="r">32</td><td class="r">39.680</td></tr>
+      <tr><td>NAYY 4×50</td><td>NS</td><td class="r">1.920</td><td class="r">50,0</td><td class="r">22</td><td class="r">42.240</td></tr>
+      <tr><td>NA2XS2Y 3×150</td><td>MS</td><td class="r">1.250</td><td class="r">100,0</td><td class="r">85</td><td class="r">106.250</td></tr>
+      <tr class="sum-row"><td colspan="2">Σ Kabel</td><td class="r">5.090</td><td class="r">—</td><td class="r">—</td><td class="r">216.730</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════ SHEET 8: STROMBILANZ ════════ -->
+<div class="sheet" id="s-strombilanz">
+  <div class="sheet-intro"><h2>8. Strombilanz</h2><p>Erzeugung (PV, BHKW), Eigenverbrauch, Einspeisung, Netzbezug — monatlich und Jahr.</p></div>
+  <table class="xl">
+    <thead>
+      <tr>
+        <th>Monat</th>
+        <th class="r">PV-Erzeugung MWh</th><th class="r">BHKW-Strom MWh</th>
+        <th class="r">Verbrauch MWh</th>
+        <th class="r">Eigenverbrauch MWh</th><th class="r">Einspeisung MWh</th><th class="r">Netzbezug MWh</th>
+        <th class="r">EV-Quote %</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Jan</td><td class="r">18</td><td class="r">82</td><td class="r">62</td><td class="r">52</td><td class="r">48</td><td class="r">10</td><td class="r">52,0</td></tr>
+      <tr><td>Feb</td><td class="r">24</td><td class="r">76</td><td class="r">55</td><td class="r">48</td><td class="r">52</td><td class="r">7</td><td class="r">48,0</td></tr>
+      <tr><td>Mär</td><td class="r">42</td><td class="r">68</td><td class="r">52</td><td class="r">45</td><td class="r">65</td><td class="r">7</td><td class="r">40,9</td></tr>
+      <tr><td>Apr</td><td class="r">55</td><td class="r">62</td><td class="r">48</td><td class="r">42</td><td class="r">75</td><td class="r">6</td><td class="r">35,9</td></tr>
+      <tr><td>Mai</td><td class="r">62</td><td class="r">58</td><td class="r">45</td><td class="r">40</td><td class="r">80</td><td class="r">5</td><td class="r">33,3</td></tr>
+      <tr><td>Jun</td><td class="r">68</td><td class="r">42</td><td class="r">42</td><td class="r">38</td><td class="r">72</td><td class="r">4</td><td class="r">34,5</td></tr>
+      <tr><td>Jul</td><td class="r">72</td><td class="r">38</td><td class="r">40</td><td class="r">36</td><td class="r">74</td><td class="r">4</td><td class="r">32,7</td></tr>
+      <tr><td>Aug</td><td class="r">68</td><td class="r">38</td><td class="r">38</td><td class="r">35</td><td class="r">71</td><td class="r">3</td><td class="r">33,0</td></tr>
+      <tr><td>Sep</td><td class="r">52</td><td class="r">52</td><td class="r">45</td><td class="r">40</td><td class="r">64</td><td class="r">5</td><td class="r">38,5</td></tr>
+      <tr><td>Okt</td><td class="r">35</td><td class="r">62</td><td class="r">52</td><td class="r">45</td><td class="r">52</td><td class="r">7</td><td class="r">46,4</td></tr>
+      <tr><td>Nov</td><td class="r">22</td><td class="r">75</td><td class="r">58</td><td class="r">50</td><td class="r">47</td><td class="r">8</td><td class="r">51,5</td></tr>
+      <tr><td>Dez</td><td class="r">12</td><td class="r">82</td><td class="r">62</td><td class="r">54</td><td class="r">40</td><td class="r">8</td><td class="r">57,4</td></tr>
+      <tr class="sum-row"><td>Σ Jahr</td><td class="r">528</td><td class="r">735</td><td class="r">597</td><td class="r">525</td><td class="r">738</td><td class="r">74</td><td class="r">Ø 41,6</td></tr>
+    </tbody>
+  </table>
+
+  <div class="chart-row">
+    <div class="chart-frame" style="display:block; width: 100%; max-width:780px;">
+      <div class="chart-title">Strom — monatliche Bilanz</div>
+      <div class="chart-subtitle">MWh/Monat · Erzeugung gestapelt + Verbrauch und Einspeisung als Linie</div>
+      <svg class="chart" width="760" height="260" viewBox="0 0 760 260">
+        <!-- Y axis -->
+        <line class="axis-line" x1="50" y1="30" x2="50" y2="200"/>
+        <line class="axis-line" x1="50" y1="200" x2="600" y2="200"/>
+        <!-- Y grid + labels (0..120 in 30er-Schritten) -->
+        <line class="grid-line" x1="50" y1="30" x2="600" y2="30" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="72.5" x2="600" y2="72.5" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="115" x2="600" y2="115" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="157.5" x2="600" y2="157.5" stroke-dasharray="2,3"/>
+        <text x="44" y="33" text-anchor="end" font-size="9" fill="#888">120</text>
+        <text x="44" y="76" text-anchor="end" font-size="9" fill="#888">90</text>
+        <text x="44" y="118" text-anchor="end" font-size="9" fill="#888">60</text>
+        <text x="44" y="160" text-anchor="end" font-size="9" fill="#888">30</text>
+        <text x="44" y="204" text-anchor="end" font-size="9" fill="#888">0</text>
+        <text x="20" y="115" font-size="9.5" font-weight="600" fill="#555" transform="rotate(-90 20 115)" text-anchor="middle">MWh / Monat</text>
+
+        <!-- BHKW area (bottom layer) — polygon from baseline up to PV+BHKW height -->
+        <polygon fill="#6b9080" opacity="0.85"
+          points="72,200 116,200 160,200 204,200 248,200 292,200 336,200 380,200 424,200 468,200 512,200 556,200
+                  556,66.8 512,62.6 468,62.6 424,52.6 380,49.8 336,44.1 292,44.1 248,30 204,34.2 160,44.1 116,58.3 72,58.3"/>
+        <!-- PV area (overlapping bottom of BHKW area) — to visualize PV portion-->
+        <polygon fill="#2d5a3d" opacity="0.85"
+          points="72,200 116,200 160,200 204,200 248,200 292,200 336,200 380,200 424,200 468,200 512,200 556,200
+                  556,183 512,168.8 468,150.4 424,126.3 380,103.6 336,98 292,103.6 248,112.2 204,122 160,140.5 116,166 72,174.5"/>
+
+        <!-- Verbrauch line (sand/holz) -->
+        <polyline fill="none" stroke="#b8956b" stroke-width="2.2" stroke-dasharray="0"
+          points="72,112.2 116,122.1 160,126.3 204,132 248,136.2 292,140.5 336,143.3 380,146.2 424,136.2 468,126.3 512,117.8 556,112.2"/>
+        <!-- Einspeisung line (dashed forest-light) -->
+        <polyline fill="none" stroke="#4a7c59" stroke-width="2" stroke-dasharray="4,3"
+          points="72,132 116,126.3 160,107.9 204,93.7 248,86.6 292,98 336,95.1 380,99.4 424,109.3 468,126.3 512,133.4 556,143.3"/>
+
+        <!-- Data points on Verbrauch line -->
+        <g fill="#b8956b">
+          <circle cx="72" cy="112.2" r="2.5"/><circle cx="116" cy="122.1" r="2.5"/>
+          <circle cx="160" cy="126.3" r="2.5"/><circle cx="204" cy="132" r="2.5"/>
+          <circle cx="248" cy="136.2" r="2.5"/><circle cx="292" cy="140.5" r="2.5"/>
+          <circle cx="336" cy="143.3" r="2.5"/><circle cx="380" cy="146.2" r="2.5"/>
+          <circle cx="424" cy="136.2" r="2.5"/><circle cx="468" cy="126.3" r="2.5"/>
+          <circle cx="512" cy="117.8" r="2.5"/><circle cx="556" cy="112.2" r="2.5"/>
+        </g>
+
+        <!-- X axis: month labels -->
+        <g font-size="9" fill="#444">
+          <text x="72" y="214" text-anchor="middle">Jan</text>
+          <text x="116" y="214" text-anchor="middle">Feb</text>
+          <text x="160" y="214" text-anchor="middle">Mär</text>
+          <text x="204" y="214" text-anchor="middle">Apr</text>
+          <text x="248" y="214" text-anchor="middle">Mai</text>
+          <text x="292" y="214" text-anchor="middle">Jun</text>
+          <text x="336" y="214" text-anchor="middle">Jul</text>
+          <text x="380" y="214" text-anchor="middle">Aug</text>
+          <text x="424" y="214" text-anchor="middle">Sep</text>
+          <text x="468" y="214" text-anchor="middle">Okt</text>
+          <text x="512" y="214" text-anchor="middle">Nov</text>
+          <text x="556" y="214" text-anchor="middle">Dez</text>
+        </g>
+
+        <!-- Legend right -->
+        <g font-size="9.5">
+          <rect x="630" y="42" width="12" height="10" fill="#2d5a3d" opacity="0.85"/><text x="648" y="51" fill="#444">PV-Erzeugung</text>
+          <rect x="630" y="62" width="12" height="10" fill="#6b9080" opacity="0.85"/><text x="648" y="71" fill="#444">BHKW-Strom</text>
+          <line x1="630" y1="86" x2="642" y2="86" stroke="#b8956b" stroke-width="2.2"/><circle cx="636" cy="86" r="2.5" fill="#b8956b"/><text x="648" y="89" fill="#444">Eigenverbrauch</text>
+          <line x1="630" y1="106" x2="642" y2="106" stroke="#4a7c59" stroke-width="2" stroke-dasharray="3,2"/><text x="648" y="109" fill="#444">Einspeisung</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">8.2 Aufschlüsselung pro Quelle</h2></div>
+  <table class="xl">
+    <thead><tr><th>Quelle</th><th class="r">Erzeugung MWh</th><th class="r">Eigenverbrauch MWh</th><th class="r">Einspeisung MWh</th><th class="r">EV-Quote %</th><th class="r">Vergütung €/a</th></tr></thead>
+    <tbody>
+      <tr><td>Photovoltaik (Dach)</td><td class="r">528</td><td class="r">218</td><td class="r">310</td><td class="r">41,3</td><td class="r">24.800</td></tr>
+      <tr><td>BHKW (KWK-Anlage)</td><td class="r">735</td><td class="r">307</td><td class="r">428</td><td class="r">41,8</td><td class="r">42.380</td></tr>
+      <tr class="sum-row"><td>Σ Erzeugung</td><td class="r">1.263</td><td class="r">525</td><td class="r">738</td><td class="r">41,6</td><td class="r">67.180</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">8.3 Jahresdauerlinie Strom — Residuallast</h2></div>
+  <div class="chart-row">
+    <div class="chart-frame" style="display:block; width: 100%; max-width:780px;">
+      <div class="chart-title">Strom-Jahresdauerlinie — Verbrauch vs. Eigenerzeugung</div>
+      <div class="chart-subtitle">kW · 8760h sortiert nach Strom-Verbrauch (inkl. WP-Strom) · stack zeigt Deckung</div>
+      <div id="chart-strom-jdl"></div>
+      <div class="chart-legend">
+        <div class="item"><div class="swatch" style="background:#2d5a3d"></div>Eigenverbrauch BHKW</div>
+        <div class="item"><div class="swatch" style="background:#6b9080"></div>Eigenverbrauch PV</div>
+        <div class="item"><div class="swatch" style="background:#b04545; opacity:0.85"></div>Netzbezug</div>
+        <div class="item"><div class="swatch" style="background:#4a7c59; opacity:0.4"></div>Einspeisungs-Potenzial (unter Nulllinie)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SHEET 9: WIRTSCHAFTLICHKEIT ════════ -->
+<div class="sheet" id="s-wirtschaft">
+  <div class="sheet-intro"><h2>9. Wirtschaftlichkeit nach VDI 2067</h2><p>Annuitätenmethode, Bausteine kapitalgebunden / bedarfsgebunden / betriebsgebunden / sonstig.</p></div>
+  <table class="xl">
+    <thead>
+      <tr><th>Baustein</th><th>Kategorie</th><th class="r">Invest €</th><th class="r">Nutzungsdauer a</th><th class="r">Annuität-Faktor</th><th class="r">KGF €/a</th><th class="r">BGK €/a</th><th class="r">BetrGK €/a</th><th class="r">Sonst €/a</th><th class="r bold">Σ €/a</th></tr>
+    </thead>
+    <tbody>
+      <tr class="section-row"><td colspan="10">Erzeugerpark</td></tr>
+      <tr><td>WP-Geothermie 820 kW</td><td>KGF</td><td class="r">1.476.000</td><td class="r">20</td><td class="r">0,0944</td><td class="r">139.430</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r bold">139.430</td></tr>
+      <tr><td>WP-Geothermie — Strom</td><td>BGK</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">128.110</td><td class="r">—</td><td class="r">—</td><td class="r bold">128.110</td></tr>
+      <tr><td>WP-Geothermie — Wartung</td><td>BetrGK</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">22.140</td><td class="r">—</td><td class="r bold">22.140</td></tr>
+      <tr><td>BHKW 120 kW</td><td>KGF</td><td class="r">144.000</td><td class="r">15</td><td class="r">0,1102</td><td class="r">15.870</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r bold">15.870</td></tr>
+      <tr><td>BHKW — Gas</td><td>BGK</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">68.480</td><td class="r">—</td><td class="r">—</td><td class="r bold">68.480</td></tr>
+      <tr><td>BHKW — Wartung</td><td>BetrGK</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">8.520</td><td class="r">—</td><td class="r bold">8.520</td></tr>
+      <tr><td>BHKW — Stromerlös</td><td>Sonst</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r good">−42.380</td><td class="r bold">−42.380</td></tr>
+      <tr><td>Solarthermie 340 kW</td><td>KGF</td><td class="r">204.000</td><td class="r">25</td><td class="r">0,0827</td><td class="r">16.870</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r bold">16.870</td></tr>
+      <tr><td>Gaskessel Spitze 700 kW</td><td>KGF</td><td class="r">84.000</td><td class="r">20</td><td class="r">0,0944</td><td class="r">7.930</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r bold">7.930</td></tr>
+      <tr><td>Gaskessel — Gas</td><td>BGK</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">12.220</td><td class="r">—</td><td class="r">—</td><td class="r bold">12.220</td></tr>
+
+      <tr class="section-row"><td colspan="10">Netz</td></tr>
+      <tr><td>Wärmenetz Trassenbau</td><td>KGF</td><td class="r">1.607.000</td><td class="r">40</td><td class="r">0,0581</td><td class="r">93.370</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r bold">93.370</td></tr>
+      <tr><td>Wärmenetz — Pumpstrom</td><td>BGK</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">5.840</td><td class="r">—</td><td class="r">—</td><td class="r bold">5.840</td></tr>
+      <tr><td>Wärmenetz — Wartung</td><td>BetrGK</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">16.070</td><td class="r">—</td><td class="r bold">16.070</td></tr>
+      <tr><td>Stromnetz</td><td>KGF</td><td class="r">216.730</td><td class="r">40</td><td class="r">0,0581</td><td class="r">12.590</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r bold">12.590</td></tr>
+
+      <tr class="section-row"><td colspan="10">Sonstiges</td></tr>
+      <tr><td>Planung + Genehmigung</td><td>Sonst</td><td class="r">285.000</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">14.250</td><td class="r bold">14.250</td></tr>
+      <tr><td>Förderung BEW (40%)</td><td>Sonst</td><td class="r good">−1.680.000</td><td class="r">—</td><td class="r">—</td><td class="r good">−84.000</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r bold good">−84.000</td></tr>
+
+      <tr class="sum-row"><td colspan="2">Σ Jahreskosten</td><td class="r">4.216.730</td><td class="r">—</td><td class="r">—</td><td class="r">202.060</td><td class="r">214.650</td><td class="r">46.730</td><td class="r">−112.130</td><td class="r">351.310</td></tr>
+      <tr class="sum-row"><td colspan="9" class="bold">WGK = Σ Jahreskosten / Wärmebedarf (3.420 MWh)</td><td class="r accent bold">10,27 ct/kWh</td></tr>
+    </tbody>
+  </table>
+
+  <div class="chart-row">
+    <div class="chart-frame" style="display:block; width: 100%; max-width:780px;">
+      <div class="chart-title">WGK-Komposition — Waterfall</div>
+      <div class="chart-subtitle">ct/kWh · Aufbau der Wärmegestehungskosten nach VDI 2067</div>
+      <svg class="chart" width="760" height="320" viewBox="0 0 760 320">
+        <!-- Plot: x 60-720, y 30-240 (210px). Scale 0..18 ct/kWh -->
+        <!-- 1 ct = 11.67 px -->
+        <line class="axis-line" x1="60" y1="30" x2="60" y2="240"/>
+        <line class="axis-line" x1="60" y1="240" x2="720" y2="240"/>
+        <line class="grid-line" x1="60" y1="30" x2="720" y2="30" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="60" y1="64" x2="720" y2="64" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="60" y1="100" x2="720" y2="100" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="60" y1="135" x2="720" y2="135" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="60" y1="170" x2="720" y2="170" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="60" y1="205" x2="720" y2="205" stroke-dasharray="2,3"/>
+        <text x="54" y="33" text-anchor="end" font-size="9" fill="#888">18</text>
+        <text x="54" y="67" text-anchor="end" font-size="9" fill="#888">15</text>
+        <text x="54" y="104" text-anchor="end" font-size="9" fill="#888">12</text>
+        <text x="54" y="138" text-anchor="end" font-size="9" fill="#888">9</text>
+        <text x="54" y="174" text-anchor="end" font-size="9" fill="#888">6</text>
+        <text x="54" y="208" text-anchor="end" font-size="9" fill="#888">3</text>
+        <text x="54" y="244" text-anchor="end" font-size="9" fill="#888">0</text>
+        <text x="20" y="135" font-size="9.5" font-weight="600" fill="#555" transform="rotate(-90 20 135)" text-anchor="middle">ct / kWh</text>
+
+        <!-- Waterfall positions (bar width 80, x-start 110, gap 30): -->
+        <!-- Position: 110 (KGF), 220 (BGK), 330 (BetrGK), 440 (Sonst), 550 (Total) -->
+        <!-- KGF: 0 → 5.91, h=69.0, y=240-69=171 -->
+        <rect x="110" y="171" width="80" height="69" fill="#2d5a3d"/>
+        <text x="150" y="165" text-anchor="middle" font-size="10" font-weight="600" fill="#2d5a3d">+5,91</text>
+        <text x="150" y="258" text-anchor="middle" font-size="10" fill="#555">KGF</text>
+        <text x="150" y="272" text-anchor="middle" font-size="8.5" fill="#888">kapitalgeb.</text>
+
+        <!-- Connector KGF → BGK -->
+        <line x1="190" y1="171" x2="220" y2="171" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+
+        <!-- BGK: 5.91 → 12.19, h=73.3, y_top = 240 - 12.19*11.67 = 240-142.3 = 97.7 -->
+        <rect x="220" y="97.7" width="80" height="73.3" fill="#6b9080"/>
+        <text x="260" y="92" text-anchor="middle" font-size="10" font-weight="600" fill="#6b9080">+6,28</text>
+        <text x="260" y="258" text-anchor="middle" font-size="10" fill="#555">BGK</text>
+        <text x="260" y="272" text-anchor="middle" font-size="8.5" fill="#888">bedarfsgeb.</text>
+
+        <!-- Connector BGK → BetrGK -->
+        <line x1="300" y1="97.7" x2="330" y2="97.7" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+
+        <!-- BetrGK: 12.19 → 13.56, h=16.0, y_top = 240 - 13.56*11.67 = 240-158.3 = 81.7 -->
+        <rect x="330" y="81.7" width="80" height="16" fill="#b8956b"/>
+        <text x="370" y="76" text-anchor="middle" font-size="10" font-weight="600" fill="#b8956b">+1,37</text>
+        <text x="370" y="258" text-anchor="middle" font-size="10" fill="#555">BetrGK</text>
+        <text x="370" y="272" text-anchor="middle" font-size="8.5" fill="#888">betriebsgeb.</text>
+
+        <!-- Connector BetrGK → Sonst -->
+        <line x1="410" y1="81.7" x2="440" y2="81.7" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+
+        <!-- Sonst (negativ): 13.56 → 10.28, h=38.3 (Bar zeigt nach unten), y_top = 81.7, y_bottom = 81.7+38.3 = 120 -->
+        <rect x="440" y="81.7" width="80" height="38.3" fill="#7ba087" opacity="0.8" stroke="#2d5a3d" stroke-width="1.2" stroke-dasharray="0"/>
+        <text x="480" y="76" text-anchor="middle" font-size="10" font-weight="600" fill="#4a7c59">−3,28</text>
+        <text x="480" y="258" text-anchor="middle" font-size="10" fill="#555">Erlöse +</text>
+        <text x="480" y="272" text-anchor="middle" font-size="8.5" fill="#888">Förderung</text>
+
+        <!-- Connector Sonst → Total -->
+        <line x1="520" y1="120" x2="550" y2="120" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+
+        <!-- Total WGK: 0 → 10.28, h=120, y_top = 240-120=120 -->
+        <rect x="550" y="120" width="80" height="120" fill="#2d5a3d" stroke="#1f4029" stroke-width="2"/>
+        <text x="590" y="114" text-anchor="middle" font-size="12" font-weight="700" fill="#2d5a3d">10,27</text>
+        <text x="590" y="258" text-anchor="middle" font-size="10" font-weight="700" fill="#2d5a3d">WGK Σ</text>
+        <text x="590" y="272" text-anchor="middle" font-size="8.5" fill="#2d5a3d">ct/kWh</text>
+
+        <!-- Vergleichslinie: Bestand WGK 12.07 -->
+        <line x1="60" y1="99.2" x2="720" y2="99.2" stroke="#b04545" stroke-width="1" stroke-dasharray="6,3"/>
+        <text x="715" y="95" text-anchor="end" font-size="9" font-weight="600" fill="#b04545">Bestand-WGK 12,07 ct/kWh</text>
+
+        <!-- Annotation Einsparung -->
+        <text x="680" y="290" text-anchor="end" font-size="9.5" fill="#4a7c59" font-weight="600">Einsparung vs. Bestand: −1,80 ct/kWh (−15 %)</text>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SHEET 10: CO₂ ════════ -->
+<div class="sheet" id="s-co2">
+  <div class="sheet-intro"><h2>10. CO₂-Bilanz</h2><p>Emissionsfaktoren BEW/GEG, Mengen pro Erzeuger und Monat, Vergleich Bestand vs. Plan.</p></div>
+
+  <div class="sheet-intro"><h2 style="font-size:12pt;">10.1 Emissionen pro Erzeuger</h2></div>
+  <table class="xl">
+    <thead><tr><th>Erzeuger</th><th class="r">Endenergie MWh/a</th><th class="r">Emissionsfaktor g/kWh</th><th class="r bold">CO₂ t/a</th></tr></thead>
+    <tbody>
+      <tr><td>WP-Geothermie (Strom)</td><td class="r">557</td><td class="r">380</td><td class="r bold">211,7</td></tr>
+      <tr><td>BHKW (Erdgas) — Wärme</td><td class="r">773</td><td class="r">201</td><td class="r bold">155,4</td></tr>
+      <tr><td>BHKW (Erdgas) — Stromgutschrift</td><td class="r">735</td><td class="r">−380</td><td class="r good bold">−279,3</td></tr>
+      <tr><td>Solarthermie</td><td class="r">—</td><td class="r">0</td><td class="r good">0,0</td></tr>
+      <tr><td>Gaskessel Spitze</td><td class="r">122</td><td class="r">201</td><td class="r bold">24,5</td></tr>
+      <tr class="sum-row"><td>Σ Plan-Variante</td><td class="r">—</td><td class="r">—</td><td class="r bold">112,3 t/a</td></tr>
+      <tr style="background:#f4cccc;"><td><strong>Vergleich: Bestand (Gaskessel)</strong></td><td class="r">3.640</td><td class="r">201</td><td class="r warn bold">731,6 t/a</td></tr>
+      <tr class="sum-row" style="background:#d5e8d4;"><td>CO₂-Einsparung</td><td class="r">—</td><td class="r">—</td><td class="r good bold">−619,3 t/a (−84,7 %)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">10.2 Monatliche CO₂-Emissionen (Plan)</h2></div>
+  <table class="xl">
+    <thead><tr><th>Monat</th><th class="r">WP-Strom t</th><th class="r">BHKW (netto) t</th><th class="r">Gas Spitze t</th><th class="r bold">Σ Monat t</th></tr></thead>
+    <tbody>
+      <tr><td>Jan</td><td class="r">37,2</td><td class="r warn">−12,8</td><td class="r">13,6</td><td class="r bold">38,0</td></tr>
+      <tr><td>Feb</td><td class="r">33,2</td><td class="r warn">−10,4</td><td class="r">8,4</td><td class="r bold">31,2</td></tr>
+      <tr><td colspan="5" class="c" style="font-style:italic; color:#888;">… 9 Monate …</td></tr>
+      <tr><td>Dez</td><td class="r">35,1</td><td class="r warn">−12,2</td><td class="r">5,0</td><td class="r bold">27,9</td></tr>
+      <tr class="sum-row"><td>Σ Jahr</td><td class="r">211,7</td><td class="r warn">−123,9</td><td class="r">24,5</td><td class="r bold">112,3</td></tr>
+    </tbody>
+  </table>
+
+  <div class="chart-row">
+    <div class="chart-frame" style="display:block; width: 100%; max-width:780px;">
+      <div class="chart-title">CO₂-Emissionen monatlich — Plan vs. Bestand</div>
+      <div class="chart-subtitle">t CO₂ / Monat · Plan-Variante V3 vs. heutige Gas-Versorgung</div>
+      <svg class="chart" width="760" height="280" viewBox="0 0 760 280">
+        <line class="axis-line" x1="55" y1="30" x2="55" y2="220"/>
+        <line class="axis-line" x1="55" y1="200" x2="600" y2="200" stroke="#666" stroke-width="1.2"/>
+        <!-- Scale -10..120 t. 1t = 1.46px. Baseline y=200 (0 t), top y=24.8 (120t), bottom y=214.6 (-10t) -->
+        <line class="grid-line" x1="55" y1="32" x2="600" y2="32" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="55" y1="61" x2="600" y2="61" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="55" y1="90" x2="600" y2="90" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="55" y1="120" x2="600" y2="120" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="55" y1="150" x2="600" y2="150" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="55" y1="180" x2="600" y2="180" stroke-dasharray="2,3"/>
+        <text x="49" y="35" text-anchor="end" font-size="9" fill="#888">115</text>
+        <text x="49" y="64" text-anchor="end" font-size="9" fill="#888">95</text>
+        <text x="49" y="93" text-anchor="end" font-size="9" fill="#888">75</text>
+        <text x="49" y="123" text-anchor="end" font-size="9" fill="#888">55</text>
+        <text x="49" y="153" text-anchor="end" font-size="9" fill="#888">35</text>
+        <text x="49" y="183" text-anchor="end" font-size="9" fill="#888">15</text>
+        <text x="49" y="204" text-anchor="end" font-size="9" fill="#888" font-weight="600">0</text>
+        <text x="49" y="218" text-anchor="end" font-size="9" fill="#888">−10</text>
+        <text x="20" y="120" font-size="9.5" font-weight="600" fill="#555" transform="rotate(-90 20 120)" text-anchor="middle">t CO₂ / Monat</text>
+
+        <!-- Bestand bars (light) — Monate: 108, 96, 76, 57, 37, 27, 22, 25, 41, 65, 83, 96 -->
+        <!-- x positions per month: 70, 113, 156, 199, 242, 285, 328, 371, 414, 457, 500, 543 (width 30) -->
+        <rect x="70" y="42.3" width="30" height="157.7" fill="#b04545" opacity="0.55"/>
+        <rect x="113" y="59.8" width="30" height="140.2" fill="#b04545" opacity="0.55"/>
+        <rect x="156" y="89" width="30" height="111" fill="#b04545" opacity="0.55"/>
+        <rect x="199" y="116.8" width="30" height="83.2" fill="#b04545" opacity="0.55"/>
+        <rect x="242" y="146" width="30" height="54" fill="#b04545" opacity="0.55"/>
+        <rect x="285" y="160.6" width="30" height="39.4" fill="#b04545" opacity="0.55"/>
+        <rect x="328" y="167.9" width="30" height="32.1" fill="#b04545" opacity="0.55"/>
+        <rect x="371" y="163.5" width="30" height="36.5" fill="#b04545" opacity="0.55"/>
+        <rect x="414" y="140.2" width="30" height="59.8" fill="#b04545" opacity="0.55"/>
+        <rect x="457" y="105.1" width="30" height="94.9" fill="#b04545" opacity="0.55"/>
+        <rect x="500" y="78.8" width="30" height="121.2" fill="#b04545" opacity="0.55"/>
+        <rect x="543" y="59.8" width="30" height="140.2" fill="#b04545" opacity="0.55"/>
+
+        <!-- Plan line + points: 38, 31, 11, 3, -2, -4, -4.5, -3.5, -1, 4, 12, 28 (in t) -->
+        <!-- x = 85, 128, 171, 214, 257, 300, 343, 386, 429, 472, 515, 558 (center of bar +15) -->
+        <!-- y = 200 - val*1.46 -->
+        <polyline fill="none" stroke="#2d5a3d" stroke-width="2.5"
+          points="85,144.5 128,154.7 171,183.9 214,195.6 257,202.9 300,205.8 343,206.6 386,205.1 429,201.5 472,194.2 515,182.5 558,159.1"/>
+        <g fill="#2d5a3d">
+          <circle cx="85" cy="144.5" r="3.5"/><circle cx="128" cy="154.7" r="3.5"/>
+          <circle cx="171" cy="183.9" r="3.5"/><circle cx="214" cy="195.6" r="3.5"/>
+          <circle cx="257" cy="202.9" r="3.5"/><circle cx="300" cy="205.8" r="3.5"/>
+          <circle cx="343" cy="206.6" r="3.5"/><circle cx="386" cy="205.1" r="3.5"/>
+          <circle cx="429" cy="201.5" r="3.5"/><circle cx="472" cy="194.2" r="3.5"/>
+          <circle cx="515" cy="182.5" r="3.5"/><circle cx="558" cy="159.1" r="3.5"/>
+        </g>
+        <!-- Werte oberhalb der Punkte -->
+        <g font-size="9" font-weight="600" fill="#2d5a3d">
+          <text x="85" y="138" text-anchor="middle">38</text>
+          <text x="128" y="148" text-anchor="middle">31</text>
+          <text x="171" y="177" text-anchor="middle">11</text>
+          <text x="429" y="195" text-anchor="middle">−1</text>
+          <text x="515" y="176" text-anchor="middle">12</text>
+          <text x="558" y="153" text-anchor="middle">28</text>
+        </g>
+
+        <!-- Month labels -->
+        <g font-size="9" fill="#444">
+          <text x="85" y="234" text-anchor="middle">Jan</text>
+          <text x="128" y="234" text-anchor="middle">Feb</text>
+          <text x="171" y="234" text-anchor="middle">Mär</text>
+          <text x="214" y="234" text-anchor="middle">Apr</text>
+          <text x="257" y="234" text-anchor="middle">Mai</text>
+          <text x="300" y="234" text-anchor="middle">Jun</text>
+          <text x="343" y="234" text-anchor="middle">Jul</text>
+          <text x="386" y="234" text-anchor="middle">Aug</text>
+          <text x="429" y="234" text-anchor="middle">Sep</text>
+          <text x="472" y="234" text-anchor="middle">Okt</text>
+          <text x="515" y="234" text-anchor="middle">Nov</text>
+          <text x="558" y="234" text-anchor="middle">Dez</text>
+        </g>
+
+        <!-- Sum annotations bottom -->
+        <text x="328" y="258" text-anchor="middle" font-size="10" fill="#b04545" font-weight="600">Bestand Σ 732 t</text>
+        <text x="328" y="272" text-anchor="middle" font-size="10" fill="#2d5a3d" font-weight="700">Plan Σ 112 t · Einsparung −85 %</text>
+
+        <!-- Legend right -->
+        <g font-size="9.5">
+          <rect x="630" y="42" width="14" height="10" fill="#b04545" opacity="0.55"/><text x="650" y="51" fill="#444">Bestand (Gaskessel)</text>
+          <line x1="630" y1="68" x2="644" y2="68" stroke="#2d5a3d" stroke-width="2.5"/><circle cx="637" cy="68" r="3.5" fill="#2d5a3d"/><text x="650" y="71" fill="#444">Plan V3</text>
+          <text x="630" y="95" fill="#888" font-style="italic" font-size="9">Negative Plan-</text>
+          <text x="630" y="107" fill="#888" font-style="italic" font-size="9">Werte = BHKW-</text>
+          <text x="630" y="119" fill="#888" font-style="italic" font-size="9">Stromgutschrift</text>
+          <text x="630" y="131" fill="#888" font-style="italic" font-size="9">übersteigt eigene</text>
+          <text x="630" y="143" fill="#888" font-style="italic" font-size="9">Emissionen.</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SHEET 11: VARIANTENVERGLEICH ════════ -->
+<div class="sheet" id="s-variantenvergleich">
+  <div class="sheet-intro"><h2>11. Variantenvergleich</h2><p>Side-by-side für alle untersuchten Varianten. Bedingte Formatierung markiert Best/Worst pro Zeile.</p></div>
+  <table class="xl">
+    <thead>
+      <tr>
+        <th class="frozen-col">Kennwert</th>
+        <th class="r">V1 Bestand</th><th class="r">V2 Pellets</th><th class="r" style="background:var(--excel-green); color:white;">V3 WP-Geo (aktiv)</th><th class="r">V4 Anergienetz</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="section-row"><td colspan="5">Energiemengen</td></tr>
+      <tr><td>Wärmebedarf MWh/a</td><td class="r">3.420</td><td class="r">3.420</td><td class="r">3.420</td><td class="r">3.420</td></tr>
+      <tr><td>Erzeugung MWh/a</td><td class="r">3.640</td><td class="r">3.580</td><td class="r">3.420</td><td class="r">3.480</td></tr>
+      <tr><td>Netzverluste %</td><td class="r warn">6,4</td><td class="r">4,7</td><td class="r">3,8</td><td class="r good">1,8</td></tr>
+      <tr><td>VL/RL °C</td><td class="r">90/70</td><td class="r">85/60</td><td class="r">75/55</td><td class="r good">25/15</td></tr>
+
+      <tr class="section-row"><td colspan="5">Klima & Umwelt</td></tr>
+      <tr><td>EE-Anteil %</td><td class="r warn">2,4</td><td class="r">68,2</td><td class="r good">78,4</td><td class="r good">82,1</td></tr>
+      <tr><td>CO₂ t/a</td><td class="r warn">731,6</td><td class="r">182,4</td><td class="r good">112,3</td><td class="r good">98,4</td></tr>
+      <tr><td>CO₂-Reduktion vs. Bestand %</td><td class="r">—</td><td class="r">−75</td><td class="r good">−85</td><td class="r good">−87</td></tr>
+
+      <tr class="section-row"><td colspan="5">Wirtschaftlichkeit</td></tr>
+      <tr><td>Investition gesamt €</td><td class="r good">680.000</td><td class="r">3.420.000</td><td class="r">4.216.730</td><td class="r warn">5.180.000</td></tr>
+      <tr><td>Jahreskosten €/a</td><td class="r warn">412.800</td><td class="r">368.400</td><td class="r good">351.310</td><td class="r">372.800</td></tr>
+      <tr><td>WGK ct/kWh</td><td class="r warn">12,07</td><td class="r">10,77</td><td class="r good">10,27</td><td class="r">10,90</td></tr>
+
+      <tr class="section-row"><td colspan="5">Erzeugerpark (Hauptlast → Spitze)</td></tr>
+      <tr><td>1. Erzeuger</td><td>Gaskessel 1.840 kW</td><td>Pellets 1.200 kW</td><td>WP-Geo 820 kW</td><td>Quartiers-WP dezentral</td></tr>
+      <tr><td>2. Erzeuger</td><td>—</td><td>Pufferspeicher</td><td>BHKW 120 kW</td><td>Solarth.-Felder</td></tr>
+      <tr><td>3. Erzeuger</td><td>—</td><td>Gaskessel Spitze</td><td>Solarth. + Gas Spitze</td><td>Abwärme-Quelle</td></tr>
+    </tbody>
+  </table>
+
+  <div class="chart-row">
+    <div class="chart-frame" style="display:block; width: 100%; max-width:780px;">
+      <div class="chart-title">Jahreskosten nach VDI-2067-Kostenarten</div>
+      <div class="chart-subtitle">€/a · gestapelt · negative Werte = Erlöse / Förderung</div>
+      <svg class="chart" width="760" height="340" viewBox="0 0 760 340">
+        <!-- Plot area: x 60-520, y 30-260 (230px). Baseline (0) at y=190 (positive bis y=30 = 480k, negativ bis y=260 = -180k)-->
+        <line class="axis-line" x1="60" y1="30" x2="60" y2="260"/>
+        <line class="axis-line" x1="60" y1="190" x2="520" y2="190" stroke="#666" stroke-width="1.5"/>
+        <!-- Grid lines -->
+        <line class="grid-line" x1="60" y1="30" x2="520" y2="30" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="60" y1="70" x2="520" y2="70" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="60" y1="110" x2="520" y2="110" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="60" y1="150" x2="520" y2="150" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="60" y1="230" x2="520" y2="230" stroke-dasharray="2,3"/>
+        <!-- Y axis labels (1px = ~2.78€k) -->
+        <text x="54" y="33" text-anchor="end" font-size="9" fill="#888">450</text>
+        <text x="54" y="73" text-anchor="end" font-size="9" fill="#888">340</text>
+        <text x="54" y="113" text-anchor="end" font-size="9" fill="#888">230</text>
+        <text x="54" y="153" text-anchor="end" font-size="9" fill="#888">110</text>
+        <text x="54" y="193" text-anchor="end" font-size="9" fill="#888" font-weight="600">0</text>
+        <text x="54" y="233" text-anchor="end" font-size="9" fill="#888">−110</text>
+        <text x="20" y="145" font-size="9.5" font-weight="600" fill="#555" transform="rotate(-90 20 145)" text-anchor="middle">Tsd. € / a</text>
+
+        <!-- ═══ V1 Bestand ═══ Total 412.8 -->
+        <!-- 1px ≈ 2.78€k. KGF=28.5→10.3px, BGK=350→126px, BetrGK=24.3→8.7px, Sonst=+10→3.6px -->
+        <rect x="100" y="179.7" width="60" height="10.3" fill="#2d5a3d"/>           <!-- KGF -->
+        <rect x="100" y="53.7" width="60" height="126" fill="#6b9080"/>             <!-- BGK -->
+        <rect x="100" y="45" width="60" height="8.7" fill="#b8956b"/>               <!-- BetrGK -->
+        <rect x="100" y="41.4" width="60" height="3.6" fill="#a4ac86"/>             <!-- Sonst pos -->
+        <text x="130" y="37" text-anchor="middle" font-size="10" font-weight="700" fill="#444">413 T€</text>
+        <text x="130" y="280" text-anchor="middle" font-size="9.5" fill="#555">V1</text>
+        <text x="130" y="294" text-anchor="middle" font-size="8.5" fill="#888">Bestand</text>
+
+        <!-- ═══ V2 Pellets ═══ Total 368.4 -->
+        <!-- KGF=165→59.4, BGK=142→51.1, BetrGK=38.4→13.8, Sonst=+23→8.3 -->
+        <rect x="200" y="130.6" width="60" height="59.4" fill="#2d5a3d"/>
+        <rect x="200" y="79.5" width="60" height="51.1" fill="#6b9080"/>
+        <rect x="200" y="65.7" width="60" height="13.8" fill="#b8956b"/>
+        <rect x="200" y="57.4" width="60" height="8.3" fill="#a4ac86"/>
+        <text x="230" y="53" text-anchor="middle" font-size="10" font-weight="700" fill="#444">368 T€</text>
+        <text x="230" y="280" text-anchor="middle" font-size="9.5" fill="#555">V2</text>
+        <text x="230" y="294" text-anchor="middle" font-size="8.5" fill="#888">Pellets</text>
+
+        <!-- ═══ V3 WP-Geo (aktiv) ═══ Total 351.3 -->
+        <!-- KGF=202.06→72.7, BGK=214.65→77.3, BetrGK=46.73→16.8, Sonst=-112.13→40.4 unter Baseline -->
+        <rect x="300" y="117.3" width="60" height="72.7" fill="#2d5a3d" stroke="#1f4029" stroke-width="1.5"/>
+        <rect x="300" y="40" width="60" height="77.3" fill="#6b9080" stroke="#1f4029" stroke-width="1.5"/>
+        <rect x="300" y="23.2" width="60" height="16.8" fill="#b8956b" stroke="#1f4029" stroke-width="1.5"/>
+        <!-- Negative Sonst below baseline -->
+        <rect x="300" y="190" width="60" height="40.4" fill="#7ba087" stroke="#1f4029" stroke-width="1.5" opacity="0.7"/>
+        <text x="330" y="225" text-anchor="middle" font-size="9" fill="white" font-weight="600">−112</text>
+        <text x="330" y="19" text-anchor="middle" font-size="11" font-weight="700" fill="#2d5a3d">351 T€</text>
+        <text x="330" y="280" text-anchor="middle" font-size="10" fill="#2d5a3d" font-weight="700">V3 ✓</text>
+        <text x="330" y="294" text-anchor="middle" font-size="8.5" fill="#2d5a3d">WP-Geo</text>
+
+        <!-- ═══ V4 Anergie ═══ Total 372.8 -->
+        <!-- KGF=248→89.3, BGK=162→58.3, BetrGK=52.8→19, Sonst=-90→32.4 unter Baseline -->
+        <rect x="400" y="100.7" width="60" height="89.3" fill="#2d5a3d"/>
+        <rect x="400" y="42.4" width="60" height="58.3" fill="#6b9080"/>
+        <rect x="400" y="23.4" width="60" height="19" fill="#b8956b"/>
+        <rect x="400" y="190" width="60" height="32.4" fill="#7ba087" opacity="0.7"/>
+        <text x="430" y="19" text-anchor="middle" font-size="10" font-weight="700" fill="#444">373 T€</text>
+        <text x="430" y="280" text-anchor="middle" font-size="9.5" fill="#555">V4</text>
+        <text x="430" y="294" text-anchor="middle" font-size="8.5" fill="#888">Anergie</text>
+
+        <!-- Legend -->
+        <g font-size="9.5">
+          <rect x="555" y="42" width="14" height="10" fill="#2d5a3d"/><text x="575" y="51" fill="#444">Kapitalgebunden (KGF)</text>
+          <rect x="555" y="62" width="14" height="10" fill="#6b9080"/><text x="575" y="71" fill="#444">Bedarfsgebunden (BGK)</text>
+          <rect x="555" y="82" width="14" height="10" fill="#b8956b"/><text x="575" y="91" fill="#444">Betriebsgebunden (BetrGK)</text>
+          <rect x="555" y="102" width="14" height="10" fill="#a4ac86"/><text x="575" y="111" fill="#444">Sonstig (positiv)</text>
+          <rect x="555" y="122" width="14" height="10" fill="#7ba087" opacity="0.7"/><text x="575" y="131" fill="#444">Erlöse / Förderung</text>
+        </g>
+
+        <!-- Annotation: net total line -->
+        <text x="320" y="320" text-anchor="middle" font-size="9" fill="#888" font-style="italic">Werte über Säulen: Netto-Jahreskosten = ⓢ aller Stapel</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="chart-row">
+    <div class="chart-frame">
+      <div class="chart-title">Wärmegestehungskosten</div>
+      <div class="chart-subtitle">ct/kWh · niedriger ist besser</div>
+      <svg class="chart" width="360" height="220" viewBox="0 0 360 220">
+        <line class="axis-line" x1="50" y1="20" x2="50" y2="170"/>
+        <line class="axis-line" x1="50" y1="170" x2="340" y2="170"/>
+        <!-- Scale 0..14, 1ct = 10.7px, 0=170, 14=20 -->
+        <line class="grid-line" x1="50" y1="20" x2="340" y2="20" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="63.6" x2="340" y2="63.6" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="107.1" x2="340" y2="107.1" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="150.7" x2="340" y2="150.7" stroke-dasharray="2,3"/>
+        <text x="44" y="23" text-anchor="end" font-size="9" fill="#888">14</text>
+        <text x="44" y="67" text-anchor="end" font-size="9" fill="#888">10</text>
+        <text x="44" y="110" text-anchor="end" font-size="9" fill="#888">6</text>
+        <text x="44" y="154" text-anchor="end" font-size="9" fill="#888">2</text>
+        <text x="44" y="174" text-anchor="end" font-size="9" fill="#888">0</text>
+        <!-- Bars: V1=12.07, V2=10.77, V3=10.27 (active), V4=10.90; bar h = val*10.7 -->
+        <!-- V1 -->
+        <rect x="80" y="40.8" width="50" height="129.2" fill="#a4ac86" opacity="0.85"/>
+        <text x="105" y="35" text-anchor="middle" font-size="9.5" font-weight="600" fill="#444">12,07</text>
+        <text x="105" y="186" text-anchor="middle" font-size="9" fill="#666">V1</text>
+        <text x="105" y="198" text-anchor="middle" font-size="8" fill="#888">Bestand</text>
+        <!-- V2 -->
+        <rect x="145" y="54.8" width="50" height="115.2" fill="#b8956b" opacity="0.85"/>
+        <text x="170" y="49" text-anchor="middle" font-size="9.5" font-weight="600" fill="#444">10,77</text>
+        <text x="170" y="186" text-anchor="middle" font-size="9" fill="#666">V2</text>
+        <text x="170" y="198" text-anchor="middle" font-size="8" fill="#888">Pellets</text>
+        <!-- V3 (aktiv) -->
+        <rect x="210" y="60.1" width="50" height="109.9" fill="#2d5a3d"/>
+        <text x="235" y="55" text-anchor="middle" font-size="10" font-weight="700" fill="#2d5a3d">10,27</text>
+        <text x="235" y="186" text-anchor="middle" font-size="9" font-weight="700" fill="#2d5a3d">V3 ✓</text>
+        <text x="235" y="198" text-anchor="middle" font-size="8" fill="#2d5a3d">WP-Geo</text>
+        <!-- V4 -->
+        <rect x="275" y="53.3" width="50" height="116.7" fill="#6b9080" opacity="0.85"/>
+        <text x="300" y="49" text-anchor="middle" font-size="9.5" font-weight="600" fill="#444">10,90</text>
+        <text x="300" y="186" text-anchor="middle" font-size="9" fill="#666">V4</text>
+        <text x="300" y="198" text-anchor="middle" font-size="8" fill="#888">Anergie</text>
+      </svg>
+    </div>
+    <div class="chart-frame">
+      <div class="chart-title">CO₂-Emissionen pro Jahr</div>
+      <div class="chart-subtitle">t/a · niedriger ist besser</div>
+      <svg class="chart" width="360" height="220" viewBox="0 0 360 220">
+        <line class="axis-line" x1="50" y1="20" x2="50" y2="170"/>
+        <line class="axis-line" x1="50" y1="170" x2="340" y2="170"/>
+        <!-- Scale 0..800, 100t = 18.75px -->
+        <line class="grid-line" x1="50" y1="20" x2="340" y2="20" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="57.5" x2="340" y2="57.5" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="95" x2="340" y2="95" stroke-dasharray="2,3"/>
+        <line class="grid-line" x1="50" y1="132.5" x2="340" y2="132.5" stroke-dasharray="2,3"/>
+        <text x="44" y="23" text-anchor="end" font-size="9" fill="#888">800</text>
+        <text x="44" y="61" text-anchor="end" font-size="9" fill="#888">600</text>
+        <text x="44" y="98" text-anchor="end" font-size="9" fill="#888">400</text>
+        <text x="44" y="135" text-anchor="end" font-size="9" fill="#888">200</text>
+        <text x="44" y="174" text-anchor="end" font-size="9" fill="#888">0</text>
+        <!-- V1=731.6, V2=182.4, V3=112.3, V4=98.4 -->
+        <rect x="80" y="32.8" width="50" height="137.2" fill="#b04545" opacity="0.85"/>
+        <text x="105" y="27" text-anchor="middle" font-size="9.5" font-weight="600" fill="#b04545">732</text>
+        <text x="105" y="186" text-anchor="middle" font-size="9" fill="#666">V1</text>
+        <rect x="145" y="135.8" width="50" height="34.2" fill="#b8956b" opacity="0.85"/>
+        <text x="170" y="130" text-anchor="middle" font-size="9.5" font-weight="600" fill="#444">182</text>
+        <text x="170" y="186" text-anchor="middle" font-size="9" fill="#666">V2</text>
+        <rect x="210" y="148.9" width="50" height="21.1" fill="#2d5a3d"/>
+        <text x="235" y="143" text-anchor="middle" font-size="10" font-weight="700" fill="#2d5a3d">112</text>
+        <text x="235" y="186" text-anchor="middle" font-size="9" font-weight="700" fill="#2d5a3d">V3 ✓</text>
+        <rect x="275" y="151.6" width="50" height="18.4" fill="#6b9080" opacity="0.85"/>
+        <text x="300" y="146" text-anchor="middle" font-size="9.5" font-weight="600" fill="#444">98</text>
+        <text x="300" y="186" text-anchor="middle" font-size="9" fill="#666">V4</text>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SHEET 12: ANNAHMEN ════════ -->
+<div class="sheet" id="s-annahmen">
+  <div class="sheet-intro"><h2>12. Annahmen</h2><p>Alle Eingaben und Stammdaten, die in die Berechnung eingehen — für Nachvollziehbarkeit und Reproduzierbarkeit.</p></div>
+
+  <div class="sheet-intro"><h2 style="font-size:12pt;">12.1 Energiepreise</h2></div>
+  <table class="xl">
+    <thead><tr><th>Position</th><th class="r">Wert</th><th>Einheit</th><th>Quelle</th></tr></thead>
+    <tbody>
+      <tr><td>Strompreis (Bezug)</td><td class="r">23,0</td><td>ct/kWh</td><td>BDEW 2025, Quartier</td></tr>
+      <tr><td>Strompreis (Einspeisung PV)</td><td class="r">8,2</td><td>ct/kWh</td><td>EEG 2026 ab 100 kWp</td></tr>
+      <tr><td>Strompreis (Einspeisung KWK)</td><td class="r">8,4</td><td>ct/kWh</td><td>KWKG 2024 + Index</td></tr>
+      <tr><td>Erdgaspreis</td><td class="r">8,1</td><td>ct/kWh</td><td>Statistisches BA Q1/2026</td></tr>
+      <tr><td>Pellets</td><td class="r">7,2</td><td>ct/kWh</td><td>DEPI Index 04/2026</td></tr>
+      <tr><td>Holzhackschnitzel</td><td class="r">4,1</td><td>ct/kWh</td><td>C.A.R.M.E.N. 04/2026</td></tr>
+      <tr><td>Wasserpreis</td><td class="r">2,80</td><td>€/m³</td><td>Stadtwerke Glandorf</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">12.2 Wirtschaftlichkeit (VDI 2067)</h2></div>
+  <table class="xl">
+    <thead><tr><th>Position</th><th class="r">Wert</th><th>Einheit</th></tr></thead>
+    <tbody>
+      <tr><td>Zinssatz (real)</td><td class="r">3,0</td><td>%</td></tr>
+      <tr><td>Betrachtungszeitraum</td><td class="r">20</td><td>Jahre</td></tr>
+      <tr><td>Preissteigerung Energie</td><td class="r">2,5</td><td>%/a</td></tr>
+      <tr><td>Preissteigerung Wartung</td><td class="r">2,0</td><td>%/a</td></tr>
+      <tr><td>Preissteigerung Personal</td><td class="r">3,0</td><td>%/a</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">12.3 Emissionsfaktoren CO₂</h2></div>
+  <table class="xl">
+    <thead><tr><th>Energieträger</th><th class="r">g CO₂/kWh</th><th>Norm/Quelle</th></tr></thead>
+    <tbody>
+      <tr><td>Erdgas</td><td class="r">201</td><td>BEW 2026</td></tr>
+      <tr><td>Heizöl</td><td class="r">266</td><td>BEW 2026</td></tr>
+      <tr><td>Pellets</td><td class="r">23</td><td>BEW 2026</td></tr>
+      <tr><td>Strom (Mix DE)</td><td class="r">380</td><td>UBA 2025</td></tr>
+      <tr><td>Solarthermie</td><td class="r">0</td><td>BEW 2026</td></tr>
+      <tr><td>Geothermie (oberflächennah)</td><td class="r">0</td><td>BEW 2026</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">12.4 Klimadaten</h2></div>
+  <table class="xl">
+    <tbody>
+      <tr><td>Klimadatensatz</td><td>TRY 2015 Region 4 (Münster)</td></tr>
+      <tr><td>Normaußentemperatur</td><td>−10 °C</td></tr>
+      <tr><td>Heiztage / Jahr</td><td>222</td></tr>
+      <tr><td>Heizgradtage (HGT 15/20)</td><td>3.420 Kd</td></tr>
+      <tr><td>Globalstrahlung horizontal</td><td>1.050 kWh/m²a</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sheet-intro" style="margin-top:24px;"><h2 style="font-size:12pt;">12.5 Modell-Stammdaten</h2></div>
+  <table class="xl">
+    <tbody>
+      <tr><td>Tool-Version</td><td>Energieplanung-Tool v2, Build 2026-05-12</td></tr>
+      <tr><td>TABULA/IWU-Tabelle</td><td>Version 2017, deutsche Wohngebäude-Typologie</td></tr>
+      <tr><td>U-Wert-Quelle</td><td>EnEV-Anlage 4 / GEG 2024</td></tr>
+      <tr><td>Berechnungsmethode Heizlast</td><td>geometriebasiert (Hüllfläche × U-Wert)</td></tr>
+      <tr><td>Dispatch-Logik</td><td>Merit-Order, Sortierung nach variablen Kosten</td></tr>
+      <tr><td>WP-COP-Methode</td><td>Carnot × Gütegrad, vereinfacht (08-calc-engine.js)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+</div> <!-- /sheet-area -->
+
+<!-- ════════ SHEET TABS UNTEN ════════ -->
+<div class="tabs-bar">
+  <div class="tabs-nav">
+    <button title="Erstes Sheet">|◀</button>
+    <button title="Vorheriges">◀</button>
+    <button title="Nächstes">▶</button>
+    <button title="Letztes Sheet">▶|</button>
+  </div>
+  <button class="sheet-tab active" data-sheet="s-uebersicht"><span class="sheet-num">1</span>Übersicht</button>
+  <button class="sheet-tab" data-sheet="s-gebaeude"><span class="sheet-num">2</span>Gebäude</button>
+  <button class="sheet-tab" data-sheet="s-erzeuger"><span class="sheet-num">3</span>Erzeugerpark</button>
+  <button class="sheet-tab" data-sheet="s-dispatch8760"><span class="sheet-num">4</span>Dispatch_8760</button>
+  <button class="sheet-tab" data-sheet="s-dispatch-agg"><span class="sheet-num">5</span>Dispatch_Aggregat</button>
+  <button class="sheet-tab" data-sheet="s-waermenetz"><span class="sheet-num">6</span>Wärmenetz</button>
+  <button class="sheet-tab" data-sheet="s-stromnetz"><span class="sheet-num">7</span>Stromnetz</button>
+  <button class="sheet-tab" data-sheet="s-strombilanz"><span class="sheet-num">8</span>Strombilanz</button>
+  <button class="sheet-tab" data-sheet="s-wirtschaft"><span class="sheet-num">9</span>Wirtschaftlichkeit</button>
+  <button class="sheet-tab" data-sheet="s-co2"><span class="sheet-num">10</span>CO₂</button>
+  <button class="sheet-tab" data-sheet="s-variantenvergleich"><span class="sheet-num">11</span>Variantenvergleich</button>
+  <button class="sheet-tab" data-sheet="s-annahmen"><span class="sheet-num">12</span>Annahmen</button>
+</div>
+
+<div class="statusbar">
+  <span>Bereit</span>
+  <span>Datei: 412 KB</span>
+  <span class="right">100% — Standardansicht</span>
+</div>
+
+<script>
+  function show(id) {
+    document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelector('.sheet-tab[data-sheet="' + id + '"]').classList.add('active');
+    document.querySelector('.sheet-area').scrollTop = 0;
+  }
+  document.querySelectorAll('.sheet-tab').forEach(t => {
+    t.addEventListener('click', () => show(t.dataset.sheet));
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // STUNDEN-CHART-GENERATOR
+  // Erzeugt 8760h synthetisches Dispatch-Lastprofil und rendert
+  // (a) Auslegungswoche-Stack 168h und (b) Jahresdauerlinie-Stack
+  // ════════════════════════════════════════════════════════════════════
+  function generate8760() {
+    // Synthetisches Profil: jährliche T-Welle + täglicher Modulator + Rauschen
+    const data = [];
+    const wpMax = 820, bhkwBase = 120;
+    for (let h = 0; h < 8760; h++) {
+      const dayOfYear = Math.floor(h / 24);
+      const hourOfDay = h % 24;
+      // Jahres-T-Welle (kältester Tag ~ Tag 9)
+      const tSeason = 10 - 13 * Math.cos((dayOfYear - 9) / 365 * 2 * Math.PI);
+      // Tages-Schwingung
+      const tDaily = 3 * Math.sin((hourOfDay - 14) / 24 * 2 * Math.PI);
+      // Rauschen
+      const tNoise = (Math.sin(h * 0.7) + Math.sin(h * 0.13) * 0.5) * 1.5;
+      const tAussen = tSeason + tDaily + tNoise;
+      // Last: linear über Heizgrenze 15°C
+      let load = Math.max(80, (15 - tAussen) * 80 + 110);
+      // DHW-Peaks Morgen/Abend
+      if (hourOfDay >= 6 && hourOfDay <= 8) load *= 1.08;
+      if (hourOfDay >= 17 && hourOfDay <= 21) load *= 1.06;
+      // Sommer: Restlast für DHW
+      if (tAussen > 18) load = 80 + Math.random() * 70;
+
+      // Merit-Order (vereinfacht): Solar > BHKW > WP-Geo > Gas
+      const isSummerDay = tAussen > 17;
+      const solar = (hourOfDay >= 8 && hourOfDay <= 18 && dayOfYear > 60 && dayOfYear < 280)
+        ? Math.max(0, 60 * Math.sin((hourOfDay - 8) / 10 * Math.PI) - (isSummerDay ? 0 : 30))
+        : 0;
+      const bhkw = Math.min(bhkwBase, load - solar);
+      const wp = Math.max(0, Math.min(wpMax, load - solar - bhkw));
+      const gas = Math.max(0, load - solar - bhkw - wp);
+
+      // ── Elektrische Größen ──
+      // Gebäude-Strom-Grundlast: ~25 kW avg, mit Tagesmuster (Morgen/Abend Peak)
+      let elBase = 22;
+      if (hourOfDay >= 6 && hourOfDay <= 9) elBase = 38;
+      else if (hourOfDay >= 17 && hourOfDay <= 22) elBase = 42;
+      else if (hourOfDay >= 0 && hourOfDay <= 5) elBase = 14;
+      elBase += Math.sin(h * 0.31) * 3;
+      // WP-Strombedarf = WP-Wärme / COP (4.2 saisonal, 3.5 bei tiefen T)
+      const cop = 3.0 + 0.10 * Math.max(0, tAussen + 5);
+      const wpStrom = wp / Math.max(2.5, Math.min(5.0, cop));
+      // BHKW-Stromproduktion (proportional zur Wärme, Stromkennzahl ~0.6)
+      const bhkwEl = bhkw * 0.6;
+      // PV-Erzeugung (Globalstrahlung-Profil)
+      let pv = 0;
+      if (hourOfDay >= 6 && hourOfDay <= 19) {
+        const sunFactor = Math.max(0, Math.sin((hourOfDay - 6) / 13 * Math.PI));
+        const seasonFactor = 0.5 + 0.6 * Math.cos((dayOfYear - 172) / 365 * 2 * Math.PI);
+        pv = 280 * sunFactor * seasonFactor * (0.7 + Math.random() * 0.3);
+        pv = Math.max(0, pv);
+      }
+      // Gesamtverbrauch elektrisch
+      const elDemand = elBase + wpStrom;
+      // Eigenverbrauch (Stack-Logik: BHKW first, dann PV)
+      const evBhkw = Math.min(bhkwEl, elDemand);
+      const evPv = Math.min(pv, elDemand - evBhkw);
+      const netzbezug = Math.max(0, elDemand - evBhkw - evPv);
+      const einspeisung = Math.max(0, (bhkwEl + pv) - elDemand);
+
+      data.push({
+        h, load, solar, bhkw: Math.max(0, bhkw), wp, gas,
+        elDemand, evBhkw, evPv, netzbezug, einspeisung,
+      });
+    }
+    return data;
+  }
+
+  function makeStackedAreaSVG(opts) {
+    const { width, height, marginL, marginR, marginT, marginB, data, layers, yMax, xTicks, yTicks, peakHour } = opts;
+    const plotW = width - marginL - marginR;
+    const plotH = height - marginT - marginB;
+    const n = data.length;
+    const xAt = i => marginL + (i / (n - 1)) * plotW;
+    const yAt = v => marginT + plotH - (v / yMax) * plotH;
+
+    let svg = `<svg class="chart" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+
+    // Y-Grid
+    yTicks.forEach(t => {
+      const y = yAt(t.v);
+      svg += `<line class="grid-line" x1="${marginL}" y1="${y}" x2="${width - marginR}" y2="${y}" stroke-dasharray="2,3"/>`;
+      svg += `<text x="${marginL - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="#888">${t.label}</text>`;
+    });
+
+    // Achsen
+    svg += `<line class="axis-line" x1="${marginL}" y1="${marginT}" x2="${marginL}" y2="${marginT + plotH}"/>`;
+    svg += `<line class="axis-line" x1="${marginL}" y1="${marginT + plotH}" x2="${width - marginR}" y2="${marginT + plotH}"/>`;
+
+    // Stacked areas (kumulativ von unten nach oben)
+    const cumLow = new Array(n).fill(0);
+    layers.forEach(layer => {
+      const top = data.map((d, i) => cumLow[i] + d[layer.key]);
+      // Polygon: oben (n→0) + unten (0→n)
+      let points = '';
+      for (let i = 0; i < n; i++) points += `${xAt(i)},${yAt(top[i])} `;
+      for (let i = n - 1; i >= 0; i--) points += `${xAt(i)},${yAt(cumLow[i])} `;
+      svg += `<polygon points="${points.trim()}" fill="${layer.color}" opacity="${layer.opacity || 0.95}"/>`;
+      for (let i = 0; i < n; i++) cumLow[i] = top[i];
+    });
+
+    // X-Ticks
+    xTicks.forEach(t => {
+      const x = xAt(t.i);
+      svg += `<line class="grid-line" x1="${x}" y1="${marginT}" x2="${x}" y2="${marginT + plotH}" stroke-dasharray="2,3" opacity="0.5"/>`;
+      svg += `<text x="${x}" y="${marginT + plotH + 14}" text-anchor="middle" font-size="9" fill="#444">${t.label}</text>`;
+    });
+
+    // Auslegungsstunde-Marker
+    if (peakHour != null) {
+      const x = xAt(peakHour);
+      const yPeak = yAt(data[peakHour].load);
+      svg += `<line x1="${x}" y1="${yPeak - 6}" x2="${x}" y2="${marginT}" stroke="#b04545" stroke-width="1" stroke-dasharray="2,2"/>`;
+      svg += `<circle cx="${x}" cy="${yPeak}" r="4" fill="#b04545" stroke="white" stroke-width="1.5"/>`;
+      svg += `<text x="${x}" y="${marginT - 4}" text-anchor="middle" font-size="9" font-weight="600" fill="#b04545">${data[peakHour].load.toFixed(0)} kW</text>`;
+    }
+
+    // Achsentitel
+    svg += `<text x="20" y="${marginT + plotH/2}" font-size="9.5" font-weight="600" fill="#555" transform="rotate(-90 20 ${marginT + plotH/2})" text-anchor="middle">kW</text>`;
+
+    svg += `</svg>`;
+    return svg;
+  }
+
+  // ── Auslegungswoche 168h (Stunden 144..312, kälteste Woche um Stunde 192) ──
+  const fullYear = generate8760();
+  const weekStart = 144;        // 07. Jan, 00:00
+  const week = fullYear.slice(weekStart, weekStart + 168);
+  const peakInWeek = week.reduce((bestI, d, i, arr) => d.load > arr[bestI].load ? i : bestI, 0);
+  const dayLabels = ['07.01.','08.01.','09.01.','10.01.','11.01.','12.01.','13.01.'];
+  const weekChart = makeStackedAreaSVG({
+    width: 740, height: 280, marginL: 50, marginR: 20, marginT: 30, marginB: 38,
+    data: week, yMax: 2000, peakHour: peakInWeek,
+    layers: [
+      { key: 'bhkw',  color: '#6b9080' },
+      { key: 'wp',    color: '#2d5a3d' },
+      { key: 'solar', color: '#b8956b' },
+      { key: 'gas',   color: '#a4ac86' },
+    ],
+    xTicks: dayLabels.map((label, d) => ({ i: d * 24 + 12, label })),
+    yTicks: [
+      { v: 0,    label: '0' },
+      { v: 500,  label: '500' },
+      { v: 1000, label: '1.000' },
+      { v: 1500, label: '1.500' },
+      { v: 2000, label: '2.000' },
+    ],
+  });
+  document.getElementById('chart-week168').innerHTML = weekChart;
+
+  // ── JDL 8760h (sortiert absteigend nach Last) ──
+  // Bucketing auf 200 Punkte zur Renderbarkeit
+  const sortedByLoad = [...fullYear].sort((a, b) => b.load - a.load);
+  const buckets = 200;
+  const bucketSize = Math.floor(8760 / buckets);
+  const jdl = [];
+  for (let b = 0; b < buckets; b++) {
+    const slice = sortedByLoad.slice(b * bucketSize, (b + 1) * bucketSize);
+    const avg = (key) => slice.reduce((s, d) => s + d[key], 0) / slice.length;
+    jdl.push({
+      h: b * bucketSize, load: avg('load'),
+      bhkw: avg('bhkw'), wp: avg('wp'), solar: avg('solar'), gas: avg('gas'),
+    });
+  }
+  const jdlChart = makeStackedAreaSVG({
+    width: 740, height: 280, marginL: 50, marginR: 20, marginT: 30, marginB: 38,
+    data: jdl, yMax: 2000,
+    layers: [
+      { key: 'bhkw',  color: '#6b9080' },
+      { key: 'wp',    color: '#2d5a3d' },
+      { key: 'solar', color: '#b8956b' },
+      { key: 'gas',   color: '#a4ac86' },
+    ],
+    xTicks: [
+      { i: 0, label: '0 h' },
+      { i: 25, label: '1.000' },
+      { i: 50, label: '2.000' },
+      { i: 75, label: '3.000' },
+      { i: 100, label: '4.000' },
+      { i: 125, label: '5.000' },
+      { i: 150, label: '6.000' },
+      { i: 175, label: '7.000' },
+      { i: 199, label: '8.760' },
+    ],
+    yTicks: [
+      { v: 0,    label: '0' },
+      { v: 500,  label: '500' },
+      { v: 1000, label: '1.000' },
+      { v: 1500, label: '1.500' },
+      { v: 2000, label: '2.000' },
+    ],
+  });
+  document.getElementById('chart-jdl').innerHTML = jdlChart;
+
+  // ── Strom-JDL (sortiert nach elektrischem Gesamtverbrauch absteigend) ──
+  const sortedByEl = [...fullYear].sort((a, b) => b.elDemand - a.elDemand);
+  const elJdl = [];
+  for (let b = 0; b < buckets; b++) {
+    const slice = sortedByEl.slice(b * bucketSize, (b + 1) * bucketSize);
+    const avg = (key) => slice.reduce((s, d) => s + d[key], 0) / slice.length;
+    elJdl.push({
+      h: b * bucketSize, elDemand: avg('elDemand'),
+      evBhkw: avg('evBhkw'), evPv: avg('evPv'), netzbezug: avg('netzbezug'),
+      einspeisung: avg('einspeisung'),
+    });
+  }
+
+  // Manuelle SVG-Rendering für Strom-JDL (mit Nulllinie und Einspeisung unter Linie)
+  function makeStromJdl(data, w, h) {
+    const mL = 60, mR = 20, mT = 30, mB = 38;
+    const plotW = w - mL - mR, plotH = h - mT - mB;
+    const n = data.length;
+    const yMaxPos = 220;        // kW Bezug-Achse
+    const yMinNeg = -260;       // kW Einspeisung-Achse (separates Maximum)
+    const totalRange = yMaxPos - yMinNeg;  // 480
+    const zeroY = mT + plotH * (yMaxPos / totalRange);  // Position der Nulllinie
+    const xAt = i => mL + (i / (n - 1)) * plotW;
+    const yAt = v => mT + plotH * ((yMaxPos - v) / totalRange);
+
+    let svg = `<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
+    // Y-Grid (positiv + negativ)
+    [220, 150, 100, 50, 0, -50, -100, -150, -200, -260].forEach(t => {
+      const y = yAt(t);
+      svg += `<line class="grid-line" x1="${mL}" y1="${y}" x2="${w - mR}" y2="${y}" stroke-dasharray="2,3"/>`;
+      svg += `<text x="${mL - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="#888">${t === 0 ? '0' : (t > 0 ? t : t)}</text>`;
+    });
+    // Achsen
+    svg += `<line class="axis-line" x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT + plotH}"/>`;
+    svg += `<line x1="${mL}" y1="${zeroY}" x2="${w - mR}" y2="${zeroY}" stroke="#444" stroke-width="1.2"/>`;
+    // Achsentitel
+    svg += `<text x="20" y="${mT + plotH/2}" font-size="9.5" font-weight="600" fill="#555" transform="rotate(-90 20 ${mT + plotH/2})" text-anchor="middle">kW</text>`;
+    svg += `<text x="${mL + 8}" y="${zeroY - 4}" font-size="8.5" fill="#888" font-style="italic">↑ Bezug</text>`;
+    svg += `<text x="${mL + 8}" y="${zeroY + 12}" font-size="8.5" fill="#888" font-style="italic">↓ Einspeisung</text>`;
+
+    // Stacked area positiv (BHKW + PV + Netzbezug)
+    const cumLow = new Array(n).fill(0);
+    const layers = [
+      { key: 'evBhkw', color: '#2d5a3d', opacity: 0.92 },
+      { key: 'evPv', color: '#6b9080', opacity: 0.92 },
+      { key: 'netzbezug', color: '#b04545', opacity: 0.78 },
+    ];
+    layers.forEach(layer => {
+      const top = data.map((d, i) => cumLow[i] + d[layer.key]);
+      let pts = '';
+      for (let i = 0; i < n; i++) pts += `${xAt(i)},${yAt(top[i])} `;
+      for (let i = n - 1; i >= 0; i--) pts += `${xAt(i)},${yAt(cumLow[i])} `;
+      svg += `<polygon points="${pts.trim()}" fill="${layer.color}" opacity="${layer.opacity}"/>`;
+      for (let i = 0; i < n; i++) cumLow[i] = top[i];
+    });
+    // Einspeisung unter Nulllinie als Spiegelung
+    // Hier: sortierung war nach elDemand absteigend → Einspeisung-Verteilung wird unsortiert dargestellt
+    // Wir sortieren Einspeisung-Werte separat absteigend für eine eigene JDL-Sicht
+    const einspSorted = [...fullYear].map(d => d.einspeisung).sort((a, b) => b - a);
+    const einspBucketed = [];
+    for (let b = 0; b < buckets; b++) {
+      const slice = einspSorted.slice(b * bucketSize, (b + 1) * bucketSize);
+      einspBucketed.push(slice.reduce((s, v) => s + v, 0) / slice.length);
+    }
+    let einspPts = '';
+    for (let i = 0; i < n; i++) einspPts += `${xAt(i)},${yAt(-einspBucketed[i])} `;
+    for (let i = n - 1; i >= 0; i--) einspPts += `${xAt(i)},${zeroY} `;
+    svg += `<polygon points="${einspPts.trim()}" fill="#4a7c59" opacity="0.4"/>`;
+    svg += `<polyline points="${einspPts.split(' ').slice(0, n).join(' ')}" fill="none" stroke="#4a7c59" stroke-width="1.5" stroke-dasharray="3,2"/>`;
+
+    // X-Achse Stundenmarken
+    [0, 25, 50, 75, 100, 125, 150, 175, 199].forEach((i, idx) => {
+      const x = xAt(i);
+      const lbl = ['0', '1.000', '2.000', '3.000', '4.000', '5.000', '6.000', '7.000', '8.760'][idx];
+      svg += `<line class="grid-line" x1="${x}" y1="${mT}" x2="${x}" y2="${mT + plotH}" stroke-dasharray="2,3" opacity="0.4"/>`;
+      svg += `<text x="${x}" y="${mT + plotH + 14}" text-anchor="middle" font-size="9" fill="#444">${lbl}</text>`;
+    });
+
+    // Annotation: max Bezug + Σ Einspeisung
+    const maxBezug = data[0].elDemand;
+    svg += `<circle cx="${xAt(0)}" cy="${yAt(maxBezug)}" r="3.5" fill="#b04545" stroke="white" stroke-width="1.2"/>`;
+    svg += `<text x="${xAt(0) + 6}" y="${yAt(maxBezug) - 4}" font-size="9" font-weight="600" fill="#b04545">${maxBezug.toFixed(0)} kW peak</text>`;
+
+    svg += `</svg>`;
+    return svg;
+  }
+  document.getElementById('chart-strom-jdl').innerHTML = makeStromJdl(elJdl, 740, 300);
+</script>
+
+</body>
+</html>

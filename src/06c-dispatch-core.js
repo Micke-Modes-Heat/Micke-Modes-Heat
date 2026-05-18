@@ -284,6 +284,8 @@ export function _dispatchCore(cfg) {
   const wpElH   = new Float32Array(n);
   const bhkwElH = new Float32Array(n);
   const skElH   = new Float32Array(n);
+  // Stündlicher Strom pro WP-Typ (lwwp/fg/geo) – nur wenn recordHourly
+  const wpElHByKey = {};
 
   // Stündliche Profile (optional — nur Hauptpfad)
   let hourly = null;
@@ -440,6 +442,10 @@ export function _dispatchCore(cfg) {
         const elH = pTh / cop;
         elKwh[erz.key] += elH;
         wpElH[t] += elH;
+        if (recordHourly) {
+          if (!wpElHByKey[erz.key]) wpElHByKey[erz.key] = new Float32Array(n);
+          wpElHByKey[erz.key][t] += elH;
+        }
         if (recordHourly && elKwhM[erz.key]) {
           elKwhM[erz.key][curMonth] += elH;
           thKwhM[erz.key][curMonth] += pTh;
@@ -525,6 +531,10 @@ export function _dispatchCore(cfg) {
           const extraEl = ladeKw / wp.cop;
           wpElH[t] += extraEl;
           elKwh[wp.key] += extraEl;
+          if (recordHourly) {
+            if (!wpElHByKey[wp.key]) wpElHByKey[wp.key] = new Float32Array(n);
+            wpElHByKey[wp.key][t] += extraEl;
+          }
           if (recordHourly && elKwhM[wp.key]) {
             elKwhM[wp.key][curMonth] += extraEl;
             thKwhM[wp.key][curMonth] += ladeKw;
@@ -542,7 +552,7 @@ export function _dispatchCore(cfg) {
   return {
     thKwh, elKwh, gesamtKwh,
     autoGkKwh, autoGkPeakKw,
-    wpElH, bhkwElH, skElH,
+    wpElH, bhkwElH, skElH, wpElHByKey,
     // Stündlich (nur recordHourly)
     hourly, residualH,
     thermSocH, thermEntladeH, thermLadeH, thermVerlustH,
@@ -600,7 +610,7 @@ export function _deckungen8760(ss) {
 
   // Kurzreferenzen
   const { thKwh, elKwh, gesamtKwh, autoGkKwh, autoGkPeakKw,
-          wpElH, bhkwElH, skElH,
+          wpElH, bhkwElH, skElH, wpElHByKey,
           hourly, residualH, thKwhM, elKwhM,
           thermSocH, thermEntladeH, thermLadeH, thermVerlustH, wpReservesH,
           thermEntladenGes, thermGeladenGes, thermVerlustGes, thermSocMax,
@@ -729,9 +739,10 @@ export function _deckungen8760(ss) {
   // ── Stündliche Profile für Charts speichern ──
   window._jdlTotal     = null;
   window._jdlStack     = null;
-  window._wpElHourly   = wpElH;
-  window._skElHourly   = skElH;
-  window._bhkwElHourly = bhkwElH;
+  window._wpElHourly      = wpElH;
+  window._wpElHourlyByKey = wpElHByKey;
+  window._skElHourly      = skElH;
+  window._bhkwElHourly    = bhkwElH;
   window._dispatchHourly = hourly;
   window._dispatchLastgangKw = lastgangKw;
   const dispKeys = [];
@@ -830,12 +841,13 @@ export const _WAERME_IDS = {
   lwwp: 'lwwp-waerme', fg: 'fg-waerme', geo: 'geo-waerme',
   fernwaerme: 'fw-waerme', pellets: 'pk-waerme', hhs: 'hhs-waerme',
   heizoel: 'hko-waerme', gaskessel: 'gk-waerme', bhkw: 'bhkw-waerme',
+  stromkessel: 'sk-waerme',
 };
 export const _DISPLAY_FNS = () => ({
   lwwp: updateLwWpData, fg: updateFliessgewaesserData, geo: calcGeoThermie,
   fernwaerme: updateFernwaermeDisplay, pellets: updatePelletsDisplay,
   hhs: updateHhsDisplay, heizoel: updateHeizoelDisplay, gaskessel: updateGasKesselDisplay,
-  bhkw: updateBhkwDisplay,
+  bhkw: updateBhkwDisplay, stromkessel: updateStromkesselDisplay,
 });
 export function _updateErzeugerWaerme(key, waermeMwh) {
   if (waermeMwh < 0.1) return;

@@ -10,7 +10,7 @@ import { ASSETS, getAssetStatus } from './13a-assets-core.js';
 import { STROMNETZ, listStromLeitungen } from './14b-stromnetz-state.js';
 import { ptDist } from './14c-stromnetz-graph.js';
 
-let layerVisible = true;
+let _stromnetzLayerVisible = true;
 
 // ── Init: LayerGroups anlegen und (falls sichtbar) auf Karte legen ─────────
 function ensureLayers() {
@@ -21,7 +21,7 @@ function ensureLayers() {
 
 function applyLayerVisibility() {
   if (!STROMNETZ.grpTrasse || !STROMNETZ.grpLeitung) return;
-  if (layerVisible) {
+  if (_stromnetzLayerVisible) {
     STROMNETZ.grpTrasse.addTo(map);
     STROMNETZ.grpLeitung.addTo(map);
   } else {
@@ -164,13 +164,13 @@ export function redrawAllStromnetz() {
 
 // ── Sichtbarkeit ────────────────────────────────────────────────────────────
 export function setStromnetzVisible(visible) {
-  layerVisible = !!visible;
+  _stromnetzLayerVisible = !!visible;
   ensureLayers();
   applyLayerVisibility();
 }
 
 export function isStromnetzVisible() {
-  return layerVisible;
+  return _stromnetzLayerVisible;
 }
 
 // ── Initial-Setup (nach map-Init, einmalig) ─────────────────────────────────

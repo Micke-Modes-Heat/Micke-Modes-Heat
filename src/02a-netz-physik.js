@@ -137,10 +137,12 @@ export function getEdgeColor(e, vlTemp, dt, vFlow) {
       return '#4fc3f7'; // unterausgelastet
     }
     case 'abkuehlung': {
-      const drop = (e.tempIn ?? vlTemp) - (e.tempOut ?? vlTemp);
-      if (drop < 0.5) return '#4caf50';
-      if (drop < 2.0) return '#8bc34a';
-      if (drop < 5.0) return '#f9a825';
+      // Kumulative Abkühlung vom Heizwerk-Vorlauf bis zum Ende des Segments
+      const drop = vlTemp - (e.tempOut ?? vlTemp);
+      if (drop < 1.0)  return '#4caf50';
+      if (drop < 3.0)  return '#8bc34a';
+      if (drop < 6.0)  return '#f9a825';
+      if (drop < 10.0) return '#ef6c00';
       return '#e53935';
     }
     case 'verlust': {
@@ -247,8 +249,16 @@ export function drawEdgeGradient(e, vlTemp, dt, vFlow) {
     if (netzColorMode === 'temp') {
       col = tempToColor(tIn + tMid*(tOut-tIn), vlTemp);
     } else {
-      const drop = (tIn - tOut) * tMid;
-      col = drop < 0.5 ? '#4caf50' : drop < 2.0 ? '#8bc34a' : drop < 5.0 ? '#f9a825' : '#e53935';
+      // Kumulative Abkühlung Heizwerk → Position im Segment
+      // tempAtPos = tIn + tMid * (tOut - tIn)  (linear interpoliert im Segment)
+      // drop      = vlTemp - tempAtPos
+      const tempAtPos = tIn + tMid * (tOut - tIn);
+      const drop = vlTemp - tempAtPos;
+      col = drop < 1.0  ? '#4caf50'
+          : drop < 3.0  ? '#8bc34a'
+          : drop < 6.0  ? '#f9a825'
+          : drop < 10.0 ? '#ef6c00'
+          : '#e53935';
     }
     const seg = L.polyline([p0, p1], {color: col, weight: dim ? 2 : w, opacity: dim ? 0.2 : 0.85, interactive: false});
     if (netzVisible) seg.addTo(map);
@@ -323,10 +333,11 @@ export function updateNetzColorLegend() {
       ['#e53935', '> 100 %',   'überlastet'],
     ],
     abkuehlung: [
-      ['#4caf50', '< 0,5 K', 'vernachlässigbar'],
-      ['#8bc34a', '0,5 – 2 K','gering'],
-      ['#f9a825', '2 – 5 K',  'mittel'],
-      ['#e53935', '> 5 K',    'hoch'],
+      ['#4caf50', '< 1 K',     'kaum Abkühlung (vom Heizwerk aus)'],
+      ['#8bc34a', '1 – 3 K',   'gering'],
+      ['#f9a825', '3 – 6 K',   'mittel'],
+      ['#ef6c00', '6 – 10 K',  'hoch'],
+      ['#e53935', '> 10 K',    'kritisch'],
     ],
     verlust: [
       ['#4caf50', '< 2,5 %',   'sehr gering'],

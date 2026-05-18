@@ -4,7 +4,6 @@
   "scripts": {
     "dev": "vite",
     "build": "node build-singlefile.mjs",
-    "build:old": "bash build.sh",
     "preview": "vite preview",
     "lint": "eslint src/",
     "test": "vitest run",

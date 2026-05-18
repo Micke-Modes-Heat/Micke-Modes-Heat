@@ -257,6 +257,19 @@ export function placeGeoAt(latlng) {
   redrawErzeugerIcons();
 }
 
+// Einmalig: Map-Klick außerhalb von rect → Edit-Modi deaktivieren
+if (typeof window !== 'undefined' && !window._editModeMapListener) {
+  window._editModeMapListener = true;
+  setTimeout(() => {
+    if (typeof map !== 'undefined' && map && map.on) {
+      map.on('click', () => {
+        if (window._geoEditActive)  { window._geoEditActive = false;  if (typeof redrawGeo  === 'function') redrawGeo();  }
+        if (window._lwwpEditActive) { window._lwwpEditActive = false; if (typeof redrawLwWp === 'function') redrawLwWp(); }
+      });
+    }
+  }, 100);
+}
+
 export function redrawGeo() {
   if (!window.geoLayerGroup) return;
   window.geoLayerGroup.clearLayers();
@@ -280,6 +293,12 @@ export function redrawGeo() {
   const rect = L.rectangle([sw, ne], { color: '#795548', weight: 2, fillColor: f0.c, fillOpacity: f0.o, dashArray: '6,4' })
     .bindTooltip(`${n_sonden} Sonden · ${(laenge * breite).toFixed(0)} m² · ${geoThermie.tiefe} m tief`, { sticky: true })
     .addTo(window.geoLayerGroup);
+  // Edit-Modus: Griffe nur sichtbar wenn das Rect aktiv ausgewählt ist.
+  const _handles = [];
+  let _editActive = !!window._geoEditActive;
+  function showHandles() { _handles.forEach(h => { if (!map.hasLayer(h)) h.addTo(window.geoLayerGroup); }); _editActive = true; window._geoEditActive = true; }
+  function hideHandles() { _handles.forEach(h => { if (map.hasLayer(h)) map.removeLayer(h); }); _editActive = false; window._geoEditActive = false; }
+  rect.on('click', (ev) => { L.DomEvent.stopPropagation(ev); if (_editActive) hideHandles(); else showHandles(); });
   // Bohrlöcher – immer anzeigen, Canvas-Renderer für Performance bei großen Feldern
   {
     const oLat = center.lat - (rows - 1) * abstand / 2 * latPerM;
@@ -312,36 +331,46 @@ export function redrawGeo() {
     calcGeoThermie();
   }
   // Seitengriffe: N S E W
-  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.geoLayerGroup);
+  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 });
   nH.on('drag', function() { const lat = this.getLatLng().lat; if (lat > sw.lat + 3 * latPerM) { ne.lat = lat; upRect(); } });
   nH.on('dragend', done);
-  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.geoLayerGroup);
+  _handles.push(nH);
+  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 });
   sH.on('drag', function() { const lat = this.getLatLng().lat; if (lat < ne.lat - 3 * latPerM) { sw.lat = lat; upRect(); } });
   sH.on('dragend', done);
-  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.geoLayerGroup);
+  _handles.push(sH);
+  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 });
   eH.on('drag', function() { const lng = this.getLatLng().lng; if (lng > sw.lng + 3 * lngPerM) { ne.lng = lng; upRect(); } });
   eH.on('dragend', done);
-  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.geoLayerGroup);
+  _handles.push(eH);
+  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 });
   wH.on('drag', function() { const lng = this.getLatLng().lng; if (lng < ne.lng - 3 * lngPerM) { sw.lng = lng; upRect(); } });
   wH.on('dragend', done);
+  _handles.push(wH);
   // Eckengriffe: NE NW SE SW
-  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.geoLayerGroup);
+  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 });
   neH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   neH.on('dragend', done);
-  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.geoLayerGroup);
+  _handles.push(neH);
+  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 });
   nwH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   nwH.on('dragend', done);
-  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.geoLayerGroup);
+  _handles.push(nwH);
+  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 });
   seH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   seH.on('dragend', done);
-  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.geoLayerGroup);
+  _handles.push(seH);
+  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 });
   swH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   swH.on('dragend', done);
-  // Zentrum verschieben
+  _handles.push(swH);
+  // Zentrum verschieben (immer sichtbar — das ist das Anlagen-Symbol)
   const geoIcon = L.divIcon({ className: '', html: '<div style="width:26px;height:26px;background:rgba(121,85,72,0.35);border:2px solid #795548;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;">' + drillSvg('#a1887f',14,20) + '</div>', iconSize: [26,26], iconAnchor: [13,13] });
   L.marker(center, { draggable: true, icon: geoIcon, zIndexOffset: 1000 }).addTo(window.geoLayerGroup)
     .on('dragend', function() { window.geoThermie.lat = this.getLatLng().lat; window.geoThermie.lng = this.getLatLng().lng; redrawGeo(); });
   if (!map.hasLayer(window.geoLayerGroup)) window.geoLayerGroup.addTo(map);
+  // Edit-State respektieren (überlebt redrawGeo)
+  if (_editActive) showHandles();
   redrawVerbindungslinien();
 }
 
@@ -1050,9 +1079,10 @@ function _enrichBaujahrFromSources(bbox, blId, buildings) {
 export var OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
 ];
-var _overpassServerNames = ['overpass-api.de', 'kumi.systems', 'maps.mail.ru'];
+var _overpassServerNames = ['overpass-api.de', 'kumi.systems', 'lz4.overpass-api', 'osm.ch'];
 var _overpassCancelled = false;
 
 function _overpassSingleAttempt(query) {
@@ -1104,6 +1134,8 @@ function _overpassSingleAttempt(query) {
         done = true;
         clearInterval(ticker);
         controllers.forEach(function(c) { try { c.abort(); } catch(e){} });
+        // Erfolgs-Hint kurz zeigen, dann ausblenden
+        showHint('✓ OSM: ' + data.elements.length + ' Elemente von ' + _overpassServerNames[idx] + ' geladen', 4000);
         resolve(data);
       }).catch(function(err) {
         clearTimeout(timer);
@@ -1112,6 +1144,8 @@ function _overpassSingleAttempt(query) {
         if (failures >= total && !done) {
           done = true;
           clearInterval(ticker);
+          // Fehler-Hint kürzer zeigen
+          showHint('✗ OSM-Laden fehlgeschlagen — alle ' + total + ' Server unerreichbar', 8000);
           resolve(null);
         }
       });
@@ -1127,7 +1161,7 @@ export function _overpassFetchWithRetry(query) {
     function attempt(retryNum) {
       if (_overpassCancelled) { resolve(null); return; }
       if (retryNum > 0) {
-        showHint('🔁 Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ' — Server werden erneut angefragt…');
+        showHint('🔁 Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ' — Server werden erneut angefragt…', 0);
       }
       _overpassSingleAttempt(query).then(function(data) {
         if (_overpassCancelled) { resolve(null); return; }
@@ -1135,11 +1169,10 @@ export function _overpassFetchWithRetry(query) {
           resolve(data);
         } else if (retryNum < MAX_RETRIES) {
           var wait = 2 + retryNum * 2; // 2s, 4s, 6s Pause
-          showHint('⚠ Alle Server fehlgeschlagen — neuer Versuch in ' + wait + 's… (Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ')');
+          showHint('⚠ Alle Server fehlgeschlagen — neuer Versuch in ' + wait + 's… (Versuch ' + (retryNum + 1) + '/' + (MAX_RETRIES + 1) + ')', wait * 1000 + 500);
           setTimeout(function() { attempt(retryNum + 1); }, wait * 1000);
         } else {
-          showHint('⚠ OSM-Server nicht erreichbar nach ' + (MAX_RETRIES + 1) + ' Versuchen — bitte Gebiet verkleinern oder später erneut versuchen');
-          setTimeout(hideHint, 8000);
+          showHint('⚠ OSM-Server nicht erreichbar nach ' + (MAX_RETRIES + 1) + ' Versuchen — bitte Gebiet verkleinern oder später erneut versuchen', 8000);
           resolve(null);
         }
       });
@@ -1397,9 +1430,51 @@ export function populateZentraleSelect(){
       sel.appendChild(opt);
     }
   });
-  if(currentVal && gebaeude.some(g => g.id === currentVal)) {
+  // currentVal ist String (DOM-value), g.id ist Number → loose equality nutzen,
+  // sonst geht die Auswahl beim nächsten renderList-Aufruf verloren.
+  if(currentVal && gebaeude.some(g => g.id == currentVal)) {  // eslint-disable-line eqeqeq
     sel.value = currentVal;
   }
+}
+
+// ── Helper: prüft ob zwei Strecken (lat/lng) sich echt kreuzen ──
+// Nutzt 2D-Determinanten in lat/lng-Raum (lokal exakt genug).
+// 0.001/0.999-Margin: nur echte Mitte-Schnitte, nicht reines Endpunkt-Berühren.
+function _segIntersectLatLng(a1, a2, b1, b2) {
+  const ax = a1.lng, ay = a1.lat, bx = a2.lng, by = a2.lat;
+  const cx = b1.lng, cy = b1.lat, dx = b2.lng, dy = b2.lat;
+  const denom = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+  if (Math.abs(denom) < 1e-12) return false; // parallel
+  const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / denom;
+  const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / denom;
+  return t > 0.001 && t < 0.999 && u > 0.001 && u < 0.999;
+}
+// Lotfußpunkt: projiziert Punkt p auf Strecke a→b.
+// Gibt {pt, t} zurück, wobei t=0 bei a, t=1 bei b. Clamping auf [0..1].
+function _projectOntoSegment(a, b, p) {
+  const dx = b.lng - a.lng, dy = b.lat - a.lat;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-14) return { pt: a, t: 0 };
+  let t = ((p.lng - a.lng) * dx + (p.lat - a.lat) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return { pt: L.latLng(a.lat + t * dy, a.lng + t * dx), t };
+}
+
+// Prüft ob eine Edge (p1→p2) irgendein Trassen-Segment kreuzt.
+function _edgeCrossesTrasse(p1, p2) {
+  if (!window.trassePoints || window.trassePoints.length < 2) return false;
+  const tp = window.trassePoints;
+  const segs = (window.trasseSegments && window.trasseSegments.length > 0)
+    ? window.trasseSegments
+    : [{ start: 0, end: tp.length - 1 }];
+  for (const seg of segs) {
+    for (let i = seg.start; i < seg.end; i++) {
+      const ta = tp[i], tb = tp[i + 1];
+      if (!ta || !tb) continue;
+      if (_segIntersectLatLng(p1, p2, ta, tb)) return true;
+    }
+  }
+  return false;
 }
 
 export function autoGenerateNetz(){
@@ -1412,17 +1487,28 @@ export function autoGenerateNetz(){
     return;
   }
 
+  if (typeof window.pushUndoSnapshot === 'function') window.pushUndoSnapshot('Auto-Netz erzeugen');
   clearNetz();
 
-  const nodes = gebaeude.filter(g => g.polygon && getComputedStats(g, globalYear).heizlast > 0);
+  // Bestandsmodus: nur Gebäude mit aktueller Heizlast anbinden (was heute existiert).
+  // Neubaumodus: alle Gebäude anbinden, die irgendwann existieren werden — das Netz
+  // wird so von Anfang an für den Endausbau verlegt. Die endpointFuture-Logik in
+  // recalcNetz blendet Stich-Edges zu noch-nicht-gebauten Gebäuden bis zum Baujahr aus.
+  const nodes = gebaeude.filter(g => {
+    if (!g.polygon) return false;
+    if (window.networkLocked) return getComputedStats(g, globalYear).heizlast > 0;
+    return _getMaxHeizlast(g) > 0;
+  });
   if(nodes.length < 2) {
     showHint('Es müssen mindestens zwei Gebäude mit Verbrauch gezeichnet sein.');
     return;
   }
 
   const allPts = nodes.map(g => {
-    const stats = getComputedStats(g, globalYear);
-    return { id: g.id, type: 'geb', pt: polygonCenter(g.polygon), load: stats.heizlast||0 };
+    const load = window.networkLocked
+      ? (getComputedStats(g, globalYear).heizlast || 0)
+      : _getMaxHeizlast(g);
+    return { id: g.id, type: 'geb', pt: polygonCenter(g.polygon), load };
   });
 
   let tIdCounter = 10000;
@@ -1430,12 +1516,16 @@ export function autoGenerateNetz(){
   allPts.push(...tNodes);
 
   const possibleEdges = [];
+  let blockedByTrasse = 0;
   for(let i=0; i<allPts.length; i++){
     for(let j=i+1; j<allPts.length; j++){
-      if(allPts[i].type === 'trasse' && allPts[j].type === 'trasse') continue; 
+      if(allPts[i].type === 'trasse' && allPts[j].type === 'trasse') continue;
+      // NEU: automatische Edges dürfen die Hauptraße (Trasse) niemals kreuzen
+      if (_edgeCrossesTrasse(allPts[i].pt, allPts[j].pt)) { blockedByTrasse++; continue; }
       possibleEdges.push({ u: allPts[i].id, v: allPts[j].id, uNode: allPts[i], vNode: allPts[j], dist: allPts[i].pt.distanceTo(allPts[j].pt) });
     }
   }
+  if (blockedByTrasse > 0) console.log('[autoNetz] ' + blockedByTrasse + ' Edges wurden geblockt (würden die Trasse kreuzen)');
 
   possibleEdges.sort((a, b) => a.dist - b.dist);
 
@@ -1482,7 +1572,8 @@ export function autoGenerateNetz(){
     const edgeObj = {
         u: e.u, v: e.v, uNode: e.uNode, vNode: e.vNode,
         layer: layer, hitLayer: hitLayer, load: 0, dn: 0, length: e.uNode.pt.distanceTo(e.vNode.pt),
-        waypoint: null, segLayers: [], warnMarker: null, midMarker: null
+        waypoint: null, segLayers: [], warnMarker: null, midMarker: null,
+        isBestand: true  // Auto-Netz-Generierung legt das Bestandsnetz an
     };
     hitLayer.on('click', (ev) => {
       if (window.isDrawingEdge) return;
@@ -1490,6 +1581,7 @@ export function autoGenerateNetz(){
       L.DomEvent.stopPropagation(ev);
     });
     hitLayer.on('contextmenu', () => {
+      if (typeof window.pushUndoSnapshot === 'function') window.pushUndoSnapshot('Edge per Rechtsklick löschen');
       map.removeLayer(layer);
       map.removeLayer(hitLayer);
       if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
@@ -1539,7 +1631,10 @@ export function addNetzEdge(u, v){
     vNode: {id: v, type: 'geb', pt: c2, load: vStats.heizlast||0},
     layer: layer, hitLayer: hitLayer, load: 0, dn: 0,
     _straightLength: c1.distanceTo(c2), length: c1.distanceTo(c2),
-    waypoint: null, segLayers: [], warnMarker: null, midMarker: null
+    waypoint: null, segLayers: [], warnMarker: null, midMarker: null,
+    // Im Bestandsmodus: manuell ergänzte Verbindungen sind keine Bestandsleitungen,
+    // sondern Erweiterungen → bekommen Stich-Charakter (DN wird neu dimensioniert).
+    isBestand: !window.networkLocked
   };
 
   hitLayer.on('click', (ev) => {
@@ -1549,6 +1644,7 @@ export function addNetzEdge(u, v){
     L.DomEvent.stopPropagation(ev);
   });
   hitLayer.on('contextmenu', () => {
+    if (typeof window.pushUndoSnapshot === 'function') window.pushUndoSnapshot('Edge per Rechtsklick löschen');
     map.removeLayer(layer);
     map.removeLayer(hitLayer);
     if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
@@ -1561,6 +1657,207 @@ export function addNetzEdge(u, v){
 
   window.netzEdges.push(edgeObj);
   addEdgeMidHandle(edgeObj);
+}
+
+// Maximale Heizlast eines Gebäudes über sein gesamtes Lebenszeit-Fenster
+// [baujahr, abrissjahr) inklusive Sanierungen.
+// Sanierungen reduzieren die Heizlast → max liegt im baujahr (oder im Jahr
+// vor der ersten Sanierung). Wir prüfen baujahr und alle Jahre direkt vor
+// jeder Sanierung, um robust gegen Sonderfälle zu bleiben.
+function _getMaxHeizlast(g) {
+  if (!g) return 0;
+  const baujahr = parseInt(g.baujahr) || 1900;
+  const abrissjahr = parseInt(g.abrissjahr) || 9999;
+  if (baujahr >= abrissjahr) return 0;
+  const jahre = new Set([baujahr]);
+  if (Array.isArray(g.sanierungen)) {
+    g.sanierungen.forEach(s => {
+      const j = parseInt(s.jahr);
+      if (j > baujahr && j < abrissjahr) jahre.add(j - 1);
+    });
+  }
+  let maxHl = 0;
+  jahre.forEach(j => {
+    const hl = getComputedStats(g, j).heizlast || 0;
+    if (hl > maxHl) maxHl = hl;
+  });
+  return maxHl;
+}
+
+// ── Bestandsnetz-Erweiterung: Neubauten automatisch anschließen ──────────
+// Pro Gebäude mit Heizlast > 0, das (a) noch nicht im Netz ist und (b) nicht
+// per g.nichtAmNetz deaktiviert ist:
+//   1. Finde nächste Edge im Bestandsnetz (Lotfußpunkt)
+//   2. Splitte diese Edge an dem Lotfußpunkt (neuer „Anschluss"-Knoten)
+//   3. Lege Stich vom Gebäude zum Anschluss-Knoten an
+// Trasse-Kreuzungs-Filter wird respektiert. Bestand-Topologie sonst unverändert.
+let _anschlussIdCounter = 50000;
+function _newAnschlussId() { return ++_anschlussIdCounter; }
+
+// Erstellt eine Netz-Edge mit beliebigen Knoten (auch Anschluss-Punkten).
+// Vereinfachte Variante von addNetzEdge ohne gebaeude-Lookup.
+function _addNetzEdgeRaw(uId, vId, c1, c2, uType, vType, color) {
+  if (window.netzEdges.some(e => (e.u===uId && e.v===vId) || (e.u===vId && e.v===uId))) return null;
+  const layer = L.polyline([c1, c2], { color: color || '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane' });
+  const hitLayer = L.polyline([c1, c2], { color: 'transparent', weight: 20, pane: 'netzPane' });
+  if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
+  const edgeObj = {
+    u: uId, v: vId,
+    uNode: { id: uId, type: uType || 'geb', pt: c1, load: 0 },
+    vNode: { id: vId, type: vType || 'geb', pt: c2, load: 0 },
+    layer, hitLayer, load: 0, dn: 0,
+    _straightLength: c1.distanceTo(c2), length: c1.distanceTo(c2),
+    waypoint: null, segLayers: [], warnMarker: null, midMarker: null,
+    isBestand: false  // Default: Stich/Erweiterung — Caller überschreibt für Splithälften
+  };
+  hitLayer.on('click', (ev) => {
+    if (window.isDrawingEdge) return;
+    if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
+    showEdgePopup(edgeObj, ev.originalEvent);
+    L.DomEvent.stopPropagation(ev);
+  });
+  hitLayer.on('contextmenu', () => {
+    if (typeof window.pushUndoSnapshot === 'function') window.pushUndoSnapshot('Edge per Rechtsklick löschen');
+    map.removeLayer(layer); map.removeLayer(hitLayer);
+    if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
+    if (edgeObj.warnMarker) map.removeLayer(edgeObj.warnMarker);
+    if (edgeObj.segLayers) edgeObj.segLayers.forEach(s => map.removeLayer(s));
+    window.netzEdges = window.netzEdges.filter(e => e !== edgeObj);
+    closeEdgePopup(); recalcNetz();
+  });
+  // Defensiver Initial-Tooltip — wird in recalcNetz durch den finalen ersetzt,
+  // existiert aber sofort beim Anlegen (z.B. wenn der erste recalcNetz noch
+  // nicht durchgelaufen ist oder die Edge im inaktiven Zweig landet).
+  hitLayer.bindTooltip('Hausanschluss', { sticky: true, className: 'geb-tooltip' });
+  window.netzEdges.push(edgeObj);
+  addEdgeMidHandle(edgeObj);
+  return edgeObj;
+}
+
+// Entfernt eine Edge inkl. aller Layer-Aufräumung. (Pendant zu contextmenu-Handler.)
+function _removeNetzEdge(edgeObj) {
+  if (edgeObj.layer)    map.removeLayer(edgeObj.layer);
+  if (edgeObj.hitLayer) map.removeLayer(edgeObj.hitLayer);
+  if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
+  if (edgeObj.warnMarker) map.removeLayer(edgeObj.warnMarker);
+  if (edgeObj.segLayers) edgeObj.segLayers.forEach(s => map.removeLayer(s));
+  window.netzEdges = window.netzEdges.filter(e => e !== edgeObj);
+}
+
+// Findet die nächste Edge (= Bestand-Strecke) zum Punkt p, mit Lotfußpunkt.
+function _findClosestNetzAnchor(p) {
+  let best = null;
+  for (const e of window.netzEdges) {
+    if (!e.uNode || !e.vNode) continue;
+    if (e.uNode.pt == null || e.vNode.pt == null) continue;
+    const proj = _projectOntoSegment(e.uNode.pt, e.vNode.pt, p);
+    const d = p.distanceTo(proj.pt);
+    if (best === null || d < best.dist) {
+      // Trasse-Kreuzungs-Filter
+      if (_edgeCrossesTrasse(p, proj.pt)) continue;
+      best = { edge: e, anchorPt: proj.pt, t: proj.t, dist: d };
+    }
+  }
+  return best;
+}
+
+export function extendNetzForNewBuildings() {
+  if (!window.netzEdges || window.netzEdges.length === 0) {
+    showHint('⚠ Erst ein Bestandsnetz erzeugen (Auto-Netz)', 4000);
+    return 0;
+  }
+  // Ohne Heizzentrale läuft recalcNetz vorzeitig raus → die neu angelegten
+  // Stich-Edges blieben sonst tot (load=0, kein DN, kein Tooltip).
+  const _zCheck = parseInt(document.getElementById('netz-zentrale')?.value);
+  if (!_zCheck || isNaN(_zCheck)) {
+    showHint('⚠ Heizzentrale fehlt — Neubau-Anschluss übersprungen. Bitte unter "Wärmenetz konfigurieren" Zentrale wählen.', 6000);
+    return 0;
+  }
+  // Knoten-IDs, die bereits im Netz sind
+  const inNetz = new Set();
+  for (const e of window.netzEdges) { inNetz.add(e.u); inNetz.add(e.v); }
+  // Kandidaten: Heizlast > 0, nicht ausgeschlossen, nicht im Netz, nicht nichtAmNetz
+  const kandidaten = gebaeude.filter(g => {
+    if (g.nichtAmNetz) return false;
+    if (!g.polygon) return false;
+    if (isExcluded(g.id)) return false;
+    if (inNetz.has(g.id)) return false;
+    const stats = getComputedStats(g, globalYear);
+    return (stats.heizlast || 0) > 0;
+  });
+  if (kandidaten.length === 0) return 0;
+
+  if (typeof window.pushUndoSnapshot === 'function') {
+    window.pushUndoSnapshot(`Neubauten ans Bestandsnetz anschließen (${kandidaten.length})`);
+  }
+
+  let added = 0;
+  let _stichKostKlasse = null;  // Wird beim Edge-Splitting auf Mutter-Klasse gesetzt
+  for (const g of kandidaten) {
+    const center = polygonCenter(g.polygon);
+    const anchor = _findClosestNetzAnchor(center);
+    if (!anchor) continue; // alle möglichen Anschlüsse kreuzen die Trasse
+    let anchorId, anchorPt, anchorType;
+    const TINY = 0.05;
+    if (anchor.t < TINY) {
+      anchorId = anchor.edge.u;
+      anchorPt = anchor.edge.uNode.pt;
+      anchorType = anchor.edge.uNode.type || 'geb';
+    } else if (anchor.t > 1 - TINY) {
+      anchorId = anchor.edge.v;
+      anchorPt = anchor.edge.vNode.pt;
+      anchorType = anchor.edge.vNode.type || 'geb';
+    } else {
+      // Echtes Edge-Splitting: neuer Anschluss-Knoten
+      anchorId = _newAnschlussId();
+      anchorPt = anchor.anchorPt;
+      anchorType = 'anschluss';
+      const oldEdge = anchor.edge;
+      const u_alt = oldEdge.u, v_alt = oldEdge.v;
+      const uPt = oldEdge.uNode.pt, vPt = oldEdge.vNode.pt;
+      const uType = oldEdge.uNode.type, vType = oldEdge.vNode.type;
+      // Eigenschaften der Originalkante sichern, damit der Bestand nach dem
+      // Splitten baulich gleich bleibt (gleicher DN, gleiche Kostenklasse, ...).
+      const inherit = {
+        dn: oldEdge.dn,
+        kostKlasse: oldEdge.kostKlasse,
+        kostOverride: oldEdge.kostOverride,
+        dnOverride: oldEdge.dnOverride,
+        pruned: oldEdge.pruned,
+        isBestand: oldEdge.isBestand !== false  // Default true für Altdaten ohne Flag
+      };
+      const hadWaypoint = !!oldEdge.waypoint;
+      _removeNetzEdge(oldEdge);
+      const halfA = _addNetzEdgeRaw(u_alt, anchorId, uPt, anchorPt, uType, 'anschluss');
+      const halfB = _addNetzEdgeRaw(anchorId, v_alt, anchorPt, vPt, 'anschluss', vType);
+      // Beide Hälften erben Bestandseigenschaften: DN bleibt, Kosten bleiben,
+      // Bestandsmarker bleibt → recalcNetz dimensioniert nicht neu.
+      if (halfA) Object.assign(halfA, inherit);
+      if (halfB) Object.assign(halfB, inherit);
+      if (hadWaypoint) {
+        console.warn('[extendNetz] Waypoint der Bestandskante geht beim Splitten verloren — Trasse wird gerade.');
+      }
+      // Mutter-Kostenklasse für Stich vorhalten (geerbt = gleiche Straße)
+      _stichKostKlasse = inherit.kostKlasse;
+    }
+    // Stich: Gebäude → Anker
+    const stichEdge = _addNetzEdgeRaw(g.id, anchorId, center, anchorPt, 'geb', anchorType);
+    if (stichEdge) {
+      stichEdge.isBestand = false;  // Stich ist neu, wird dimensioniert
+      // Kostenklasse von der Mutter-Edge erben (Hausanschluss liegt auf gleicher
+      // Straße); ohne Splitting den Standardpfad behalten.
+      if (_stichKostKlasse) {
+        stichEdge.kostKlasse = _stichKostKlasse;
+        stichEdge.kostOverride = true;  // verhindert späteren OSM-Overwrite
+      }
+    }
+    _stichKostKlasse = null;
+    added++;
+  }
+  recalcNetz();
+  if (typeof autoAssignEdgeCosts === 'function') autoAssignEdgeCosts();
+  showHint(`✓ ${added} Neubau(ten) ans Bestandsnetz angeschlossen`, 4000);
+  return added;
 }
 
 export function clearNetz(){
@@ -1640,7 +1937,19 @@ export function recalcNetz(){
 
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   if(!zId || isNaN(zId)) {
+    // Ohne Zentrale: Edges in inaktiven Zustand bringen, damit nicht alte
+    // Werte (load, dn, strandId) den Eindruck erwecken, das Netz wäre aktiv.
+    window.netzEdges.forEach(e => {
+      e.load = 0; e.loadRaw = 0; e.loadDimension = 0;
+      e._nVerbraucher = 0; e._gzf = 1.0;
+      e.tempIn = undefined; e.tempOut = undefined;
+      e.lossKW = 0; e.lossKW_annual = 0;
+      if (e.layer) e.layer.setStyle({ weight: 1.5, color: '#888', dashArray: '4, 5', opacity: 0.4 });
+      if (e.hitLayer) e.hitLayer.setStyle({ opacity: 0 });
+    });
     gebaeude.forEach(g => { g.netzVerlustKW = null; g.netzVerlustRatioPct = null; g.netzVerlustJahrMWh = null; });
+    const lossDisp = document.getElementById('netz-loss-display');
+    if (lossDisp) lossDisp.textContent = '⚠ Keine Heizzentrale gewählt — Netz inaktiv';
     updateStrandDropdown();
     updateRohrListe();
     return;
@@ -1678,7 +1987,7 @@ export function recalcNetz(){
   }
 
   window.netzEdges.forEach(e => {
-    if (e.pruned) { e.load = 0; e.loadRaw = 0; e.dn = 0; e.lossKW = 0; e.lossKW_annual = 0; return; }
+    if (e.pruned) { e.load = 0; e.loadRaw = 0; e.loadDimension = 0; e.dn = 0; e.lossKW = 0; e.lossKW_annual = 0; return; }
     let uLoad = 0; if (e.uNode && e.uNode.type === 'geb') { const gu=gebMap.get(e.u); if(gu && !isExcluded(gu.id)) uLoad = getComputedStats(gu, globalYear).heizlast||0; }
     let vLoad = 0; if (e.vNode && e.vNode.type === 'geb') { const gv=gebMap.get(e.v); if(gv && !isExcluded(gv.id)) vLoad = getComputedStats(gv, globalYear).heizlast||0; }
 
@@ -1726,7 +2035,7 @@ export function recalcNetz(){
   });
   window.netzEdges.forEach(e => { if (e.strandId == null) e.strandId = 0; });
 
-  window.netzEdges.forEach(e => { e.load = 0; e.loadRaw = 0; e._nVerbraucher = 0; e._gzf = 1.0; });
+  window.netzEdges.forEach(e => { e.load = 0; e.loadRaw = 0; e._nVerbraucher = 0; e._gzf = 1.0; e.loadDimension = 0; });
 
   // Summierte Rohlasten und Verbraucheranzahl pro Knoten
   // calculatedLoad bleibt global zugänglich für lwwpUseNetworkValues etc.
@@ -1776,19 +2085,58 @@ export function recalcNetz(){
   }
 
   const cp = 4.184;
+
+  // ── Auslegungs-Last pro Edge ────────────────────────────────────────────
+  // Bestandsmodus: gegen aktuelle Slider-Last dimensionieren (Bestand bleibt
+  // ohnehin eingefroren, nur Stich-Kanten werden neu dimensioniert).
+  // Neubaumodus: gegen Endausbau-Last dimensionieren — über alle Jahre die
+  // maximal mögliche Heizlast pro Gebäude (vor Sanierung), damit das Netz
+  // im max. Ausbauzustand ausreicht. Stich-Sichtbarkeit pro Baujahr regelt
+  // die Render-Logik separat (endpointFuture, s.u.).
+  if (!networkLocked) {
+    const dimNodeLoad = {};
+    const dimNVerb = {};
+    Object.keys(nodeMap).forEach(k => {
+      const id = parseInt(k);
+      const g = gebMap.get(id);
+      const maxHl = (g && !isExcluded(id)) ? _getMaxHeizlast(g) : 0;
+      dimNodeLoad[k] = maxHl;
+      dimNVerb[k] = maxHl > 0 ? 1 : 0;
+    });
+    for (let i = order.length - 1; i > 0; i--) {
+      const curr = order[i];
+      const pInfo = parentEdge[curr];
+      if (pInfo) {
+        dimNodeLoad[pInfo.pNodeId] += dimNodeLoad[curr];
+        dimNVerb[pInfo.pNodeId] += dimNVerb[curr];
+        const raw = dimNodeLoad[curr];
+        const gzfVal = _wGzf(dimNVerb[curr]);
+        pInfo.e.loadDimension = raw * gzfVal;
+      }
+    }
+  } else {
+    window.netzEdges.forEach(e => { e.loadDimension = e.load; });
+  }
+
   // Rohr-Dimensionierung mit DN-abhängiger Fließgeschwindigkeit (2 Iterationen für Konvergenz)
   for (let iter = 0; iter < 2; iter++) {
     window.netzEdges.forEach(e => {
-      if(e.load > 0){
+      const dimLoad = e.loadDimension || e.load;
+      if (dimLoad > 0) {
         const vEff = e.dn > 0 ? getVFlowForDN(e.dn, vFlow) : vFlow;
-        const mDot = e.load / (cp * dt);
+        const mDot = dimLoad / (cp * dt);
         const reqArea = (mDot / 1000) / vEff;
         const reqDMm = Math.sqrt(4 * reqArea / Math.PI) * 1000;
 
-        if (!networkLocked || e.dn === 0) {
-            e.dn = standardDNs.find(dn => dn >= reqDMm) || standardDNs[standardDNs.length - 1];
+        // Im Bestandsmodus bleiben echte Bestandsleitungen (isBestand !== false)
+        // mit DN > 0 unverändert — nur Stich-/Erweiterungs-Kanten werden neu
+        // dimensioniert. Im Neubaumodus immer dimensionieren.
+        const istBestand = networkLocked && e.isBestand !== false && e.dn > 0;
+        if (!istBestand) {
+          e.dn = standardDNs.find(dn => dn >= reqDMm) || standardDNs[standardDNs.length - 1];
         }
-      } else {
+      } else if (e.load === 0) {
+        // Weder Endausbau-Last noch Slider-Last → Edge inaktiv
         e.dn = 0;
       }
     });
@@ -2102,6 +2450,8 @@ export function recalcNetz(){
 
       const dim = (selectedStrandId != null && e.strandId !== selectedStrandId);
       e.layer.setStyle({weight: dim ? 2 : w, color: pColor, opacity: dim ? 0.2 : 0.8});
+      // hitLayer braucht weight (für Hover) aber bleibt transparent
+      if (e.hitLayer) e.hitLayer.setStyle({ weight: 20, opacity: 1, color: 'transparent' });
 
       // Kosten berechnen (per-edge override oder globales Szenario)
       const kostenProM = getKostenProM(e.dn, e.kostKlasse);
@@ -2213,9 +2563,37 @@ export function recalcNetz(){
     } else {
       clearEdgeGradient(e);
       if (e.warnMarker) { map.removeLayer(e.warnMarker); e.warnMarker = null; }
-      const dim = (selectedStrandId != null && e.strandId !== selectedStrandId);
-      e.layer.setStyle({weight: 2, color: '#999', dashArray: '6, 4', opacity: dim ? 0.2 : 0.8});
-      targetLayer.bindTooltip(`<span style="font-weight:normal">0 kW (inaktiv/Ringleitung)</span>`, {sticky: true, className:'geb-tooltip'});
+      // Endpunkte prüfen: wenn ein Gebäude-Endpunkt im aktuellen Jahr "geplant"
+      // ist (baujahr > globalYear), die Edge komplett ausblenden — der Anschluss
+      // existiert ja noch nicht.
+      let endpointFuture = false, endpointDemolished = false;
+      [e.u, e.v].forEach((nodeId, idx) => {
+        const node = idx === 0 ? e.uNode : e.vNode;
+        if (node && node.type === 'geb') {
+          const gb = gebMap.get(nodeId);
+          if (gb) {
+            const yr = window.globalYear;
+            const bj = gb.baujahr ? parseInt(gb.baujahr) : 1900;
+            const aj = gb.abrissjahr ? parseInt(gb.abrissjahr) : 9999;
+            if (yr < bj) endpointFuture = true;
+            if (yr >= aj) endpointDemolished = true;
+          }
+        }
+      });
+      if (endpointFuture) {
+        // Edge zu einem noch nicht gebauten Gebäude → unsichtbar
+        e.layer.setStyle({ opacity: 0, weight: 0 });
+        if (e.hitLayer) e.hitLayer.setStyle({ opacity: 0 });
+      } else {
+        const dim = (selectedStrandId != null && e.strandId !== selectedStrandId);
+        // Inaktive Edges (Abriss/Ringleitung): sehr dezent, gestrichelt grau
+        e.layer.setStyle({weight: 1.5, color: '#666', dashArray: '4, 5', opacity: dim ? 0.1 : 0.18});
+        if (e.hitLayer) e.hitLayer.setStyle({ opacity: 0.0 });
+        const ttText = endpointDemolished
+          ? '<span style="font-weight:normal">0 kW (Gebäude abgerissen)</span>'
+          : '<span style="font-weight:normal">0 kW (inaktiv — Ringleitung)</span>';
+        targetLayer.bindTooltip(ttText, {sticky: true, className:'geb-tooltip'});
+      }
     }
 
     // midMarker position aktualisieren (wenn kein manueller Waypoint)
@@ -2469,3 +2847,12 @@ export function startNetzEdgeFrom(id) {
   showHint('Zweites Gebäude auf der Karte anklicken.');
 }
 
+
+// ── Sichere Window-Exposition (IIFE-Build-Robustheit) ────────────────────
+if (typeof window !== 'undefined') {
+  window.extendNetzForNewBuildings = extendNetzForNewBuildings;
+  window.autoGenerateNetz = autoGenerateNetz;
+  window.recalcNetz = recalcNetz;
+  window.addNetzEdge = addNetzEdge;
+  window.clearNetz = clearNetz;
+}

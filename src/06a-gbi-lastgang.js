@@ -818,15 +818,40 @@ export function glRenderSplit(lastgangKw, verlustPct) {
     for (let h = h0; h < h1; h++) mTotal[m] += lastgangKw[h];
   }
 
-  // TWW-Schätzung: Sommer-Monate (Jun=5,Jul=6,Aug=7) netto nach Verlusten
-  // = verbleibende Last ohne Raumwärme → Trinkwarmwasser
+  // ── Netzverluste pro Monat ────────────────────────────────────────────
+  // Verluste sind fast last-unabhängig: VL-Temperatur ist konstant, nur die
+  // Boden-Temperatur variiert leicht (Δ ≈ ±5 K übers Jahr). Sie sind also
+  // näherungsweise gleichmäßig auf das Jahr verteilt — NICHT proportional
+  // zum Monatsverbrauch (sonst wären Sommerverluste fälschlich ~0).
+  //
+  // Quelle: verlustPct ist der User-Eingabewert ("Netzverluste %") aus den
+  // Wärmegrundlagen — derselbe Wert, der den Lastgang in glBerechnen um den
+  // Verlust-Aufschlag erweitert hat. Wir bleiben konsistent dazu, sonst
+  // passen Chart-Summe und Lastgang-Summe nicht zusammen.
+  //
+  // Saisonale Modulation: Boden-T grob als Sinus (~10°C ± 5K, Min im März,
+  // Max im September → Verluste etwas höher im Winter).
   const vf = (verlustPct || 0) / 100;
-  const summerNetKwh = (mTotal[5] + mTotal[6] + mTotal[7]) / 3 * (1 - vf);
-  // Auf alle Monate gleich verteilt (TWW = konstante Jahreslast)
-  const mTww = MDAYS.map(d => Math.min(summerNetKwh, mTotal[0])); // cap: nie mehr als Januarverbrauch
+  const jahrTotal = mTotal.reduce((a, b) => a + b, 0);  // kWh inkl. Verluste
+  const lossJahrKwh = jahrTotal * vf;
+  const _seas = [];
+  for (let m = 0; m < 12; m++) {
+    const tBoden = 10 - 5 * Math.cos((m - 2) * Math.PI / 6);  // °C
+    _seas.push(80 - tBoden);  // ΔT(VL≈80 − Boden) in K
+  }
+  const _seasMean = _seas.reduce((a,b)=>a+b,0) / 12;
+  const MONAT_STUNDEN = MDAYS.map(d => d * 24);
+  const mVerlust = MONAT_STUNDEN.map((std, m) =>
+    (lossJahrKwh / 8760) * std * (_seas[m] / _seasMean)
+  );
 
-  // Netzverluste pro Monat
-  const mVerlust = mTotal.map(e => e * vf);
+  // ── TWW-Schätzung ─────────────────────────────────────────────────────
+  // Sommer-Monate enthalten nur TWW + Verluste (keine Raumwärme).
+  // → TWW-Monatswert ≈ mittlerer Sommerverbrauch − mittlerer Sommer-Verlust
+  const summerTotal = (mTotal[5] + mTotal[6] + mTotal[7]) / 3;
+  const summerVerl  = (mVerlust[5] + mVerlust[6] + mVerlust[7]) / 3;
+  const summerTwwKwh = Math.max(0, summerTotal - summerVerl);
+  const mTww = MDAYS.map(() => summerTwwKwh);  // TWW gleichmäßig übers Jahr
 
   // Raumwärme = Rest
   const mRW = mTotal.map((e, i) => Math.max(0, e - mVerlust[i] - mTww[i]));

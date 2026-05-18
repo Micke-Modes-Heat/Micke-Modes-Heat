@@ -17,12 +17,14 @@ import * as emissionen3d from './04b-emissionen-3d.js';
 import * as exportMod from './05a-export.js';
 import * as stromnetz from './05b-stromnetz.js';
 import * as sankey from './05c-sankey.js';
+import * as exportXlsx from './05d-export-xlsx.js';
 import * as gbiLastgang from './06a-gbi-lastgang.js';
 import * as glBerechnen from './06b-gl-berechnen.js';
 import * as dispatchCore from './06c-dispatch-core.js';
 import * as waermeHeatmap from './06d-waerme-heatmap.js';
 import * as analysisCharts from './07a-analysis-charts.js';
 import * as analysisEconomics from './07b-analysis-economics.js';
+import * as wirtschaftTab from './07c-wirtschaft-tab.js';
 import * as calcEngine from './08-calc-engine.js';
 import * as pvProfile from './09a-pv-profile.js';
 import * as pvCalc from './09b-pv-calc.js';
@@ -64,9 +66,9 @@ const modules = [
   netzKosten, erzeugerCfg, optimizerDefaults, hilfeTexte,
   globals, netzPhysik, gebaeude, karteWerkzeuge,
   erzeuger, netz, gebaeudeIo, uiPanels,
-  emissionen3d, exportMod, stromnetz, sankey,
+  emissionen3d, exportMod, stromnetz, sankey, exportXlsx,
   gbiLastgang, glBerechnen, dispatchCore, waermeHeatmap,
-  analysisCharts, analysisEconomics, calcEngine,
+  analysisCharts, analysisEconomics, wirtschaftTab, calcEngine,
   pvProfile, pvCalc, pvChartsOpt,
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
   hilfeLeitfaden,
@@ -83,3 +85,25 @@ for (const mod of modules) {
     if (window[key] === undefined) window[key] = value;
   }
 }
+
+// ── Initial-Sync: Slider, Display und globalYear konsistent halten ──
+// Browser cachen Slider-Werte zwischen Reloads. Ohne Sync zeigt der Slider
+// rechts (gecached) während globalYear/Display auf 2026 stehen.
+window.addEventListener('DOMContentLoaded', () => {
+  const slider = document.getElementById('year-slider');
+  if (slider && typeof window.setGlobalYear === 'function') {
+    window.setGlobalYear(slider.value);
+  }
+});
+
+// ── Globaler Strg+Z / Cmd+Z für Undo (Variante B: 5-Schritt-Stack) ──
+// Nicht in Inputfeldern abfangen, da würde der Browser-Default („Text-Undo") greifen.
+window.addEventListener('keydown', e => {
+  const isUndo = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z');
+  if (!isUndo) return;
+  const t = e.target;
+  // Im Input/Textarea/contentEditable: Browser-Default lassen
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  e.preventDefault();
+  if (typeof window.undoLastAction === 'function') window.undoLastAction();
+});

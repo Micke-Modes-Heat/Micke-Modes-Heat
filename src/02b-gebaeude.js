@@ -68,10 +68,21 @@ document.getElementById('map').addEventListener('contextmenu', e => e.preventDef
 export function setGlobalYear(val) {
   window.globalYear = parseInt(val);
   document.getElementById('year-display').textContent = window.globalYear;
+  // Slider-Position synchronisieren — sonst läuft die Anzeige beim Project-Load
+  // oder bei programmatischen Aufrufen aus dem Ruder.
+  const _slider = document.getElementById('year-slider');
+  if (_slider && parseInt(_slider.value) !== window.globalYear) {
+    _slider.value = window.globalYear;
+  }
   // Lastgang für das Betrachtungsjahr skalieren (Abriss/Neubau/Sanierung)
   if (window._basisLastgangKw) _rescaleLastgangForYear(window.globalYear);
   updateViz();
   updateTotals();
+  // Bei Bestandsnetz-Lock: neu hinzukommende Gebäude automatisch anschließen
+  if (window.networkLocked && window.netzEdges && window.netzEdges.length > 0
+      && typeof window.extendNetzForNewBuildings === 'function') {
+    window.extendNetzForNewBuildings();
+  }
   recalcNetz();
   renderList();
   if (document.getElementById('chart-panel').classList.contains('visible')) {

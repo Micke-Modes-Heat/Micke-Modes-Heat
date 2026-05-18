@@ -7,7 +7,7 @@
 // OPT_INVEST_DEFAULT, OPT_NUTZUNG, OPT_IH, OPT_EE_KEYS, OPT_MERIT_ORDER → src/config/optimizer-defaults.js
 
 // Mapping Optimizer-Key → CalcEngine INVEST_KURVEN Key
-import { captureErzeugerState, captureNetzState, fernwaermeEmF, gasEmF, gebaeude, globalYear, heizoelEmF, hhsEmF, networkLocked, netzEdges, pelletsEmF, renderVariantenBar, stromEmF, updateVariantBanner, varianten } from './01-globals-varianten.js';
+import { captureErzeugerState, captureNetzState, fernwaermeEmF, gasEmF, gebaeude, getFernwaermeEmF, getGasEmF, getHeizoelEmF, getHhsEmF, getPelletsEmF, getStromEmF, globalYear, heizoelEmF, hhsEmF, networkLocked, netzEdges, pelletsEmF, renderVariantenBar, stromEmF, updateVariantBanner, varianten } from './01-globals-varianten.js';
 import { getComputedStats, getGebStromMwh, map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, polygonCenter, redrawFliessgewaesser, redrawLwWp } from './02c-karte-werkzeuge.js';
 import { clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons } from './03a-erzeuger.js';
@@ -273,12 +273,12 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
       pCo2: parseFloat(document.getElementById('wirt-p-co2')?.value) || 0,
       alleET: document.getElementById('wirt-co2-alle')?.checked !== false,
       emf: {
-        gas: typeof gasEmF !== 'undefined' ? gasEmF : 240,
-        heizoel: typeof heizoelEmF !== 'undefined' ? heizoelEmF : 310,
-        pellets: typeof pelletsEmF !== 'undefined' ? pelletsEmF : 20,
-        hhs: typeof hhsEmF !== 'undefined' ? hhsEmF : 20,
-        fernwaerme: typeof fernwaermeEmF !== 'undefined' ? fernwaermeEmF : 200,
-        strom: typeof stromEmF !== 'undefined' ? stromEmF : 420
+        gas: getGasEmF(),
+        heizoel: getHeizoelEmF(),
+        pellets: getPelletsEmF(),
+        hhs: getHhsEmF(),
+        fernwaerme: getFernwaermeEmF(),
+        strom: getStromEmF(),
       }
     },
     gesamtMwh: gesamtMwh,
@@ -536,13 +536,13 @@ export function _collectOptDomParams() {
     pvInvestTabelle,
     batInvest: f('opt-bat-invest', OPT_INVEST_DEFAULT.bat),
     pvVergModell: s('pv-verg-modell', 'teil'),
-    // Emissionsfaktoren
-    stromEmF: typeof stromEmF !== 'undefined' ? stromEmF : 363,
-    gasEmF: typeof gasEmF !== 'undefined' ? gasEmF : 240,
-    heizoelEmF: typeof heizoelEmF !== 'undefined' ? heizoelEmF : 310,
-    pelletsEmF: typeof pelletsEmF !== 'undefined' ? pelletsEmF : 20,
-    hhsEmF: typeof hhsEmF !== 'undefined' ? hhsEmF : 20,
-    fernwaermeEmF: typeof fernwaermeEmF !== 'undefined' ? fernwaermeEmF : 180,
+    // Emissionsfaktoren — Live-Reader aus DOM (DOM > Module-let > hardcoded fallback)
+    stromEmF: getStromEmF(),
+    gasEmF: getGasEmF(),
+    heizoelEmF: getHeizoelEmF(),
+    pelletsEmF: getPelletsEmF(),
+    hhsEmF: getHhsEmF(),
+    fernwaermeEmF: getFernwaermeEmF(),
     // CO2-Preis (€/t) für WGK-Berechnung
     pCo2: f('wirt-p-co2', 0),
     // Konstanten

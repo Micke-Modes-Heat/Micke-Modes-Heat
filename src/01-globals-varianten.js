@@ -7,6 +7,7 @@ import { currentViewMode, setViewMode } from './04a-ui-panels.js';
 import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { isErzeugerAktiv, updateAllDeckungen } from './06c-dispatch-core.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { KOSTENKOMP_DEFAULTS } from './config/kostenkomponenten-cfg.js';
 
 export let gebaeude = [];
 export const _expandedIds = new Set(); // tracks which building cards are expanded
@@ -90,6 +91,40 @@ export let geoLayerGroup = null;
 export let isPlacingGeo = false;
 export let stromEmF = 363;   // g CO₂eq/kWh Strom aktuell (UBA 2024)
 export let stromEmFLZ = 72;  // g CO₂eq/kWh Strom Ø 2030–2050 (iinas 2025, NECP-Szenario)
+
+// Live-Reader für EmFs: liest immer den aktuellen DOM-Wert. Fallback: Module-Variable.
+// Wichtig, weil DOM-Änderungen (data-change in HTML) nur window-Globals mutieren,
+// aber nicht die Modul-let-Bindings — Importer würden sonst veralteten Wert sehen.
+export function getStromEmF() {
+  const el = document.getElementById('strom-emf');
+  const v = el ? parseFloat(el.value) : NaN;
+  return isFinite(v) && v >= 0 ? v : stromEmF;
+}
+export function getGasEmF() {
+  const el = document.getElementById('gas-emf');
+  const v = el ? parseFloat(el.value) : NaN;
+  return isFinite(v) && v >= 0 ? v : gasEmF;
+}
+export function getHeizoelEmF() {
+  const el = document.getElementById('heizoel-emf');
+  const v = el ? parseFloat(el.value) : NaN;
+  return isFinite(v) && v >= 0 ? v : heizoelEmF;
+}
+export function getPelletsEmF() {
+  const el = document.getElementById('pellets-emf');
+  const v = el ? parseFloat(el.value) : NaN;
+  return isFinite(v) && v >= 0 ? v : pelletsEmF;
+}
+export function getHhsEmF() {
+  const el = document.getElementById('hhs-emf');
+  const v = el ? parseFloat(el.value) : NaN;
+  return isFinite(v) && v >= 0 ? v : hhsEmF;
+}
+export function getFernwaermeEmF() {
+  const el = document.getElementById('fernwaerme-emf');
+  const v = el ? parseFloat(el.value) : NaN;
+  return isFinite(v) && v >= 0 ? v : fernwaermeEmF;
+}
 export let bhkwCo2Gutschrift = true;   // Toggle: BHKW-Strom verdrängt Netzstrom
 export let pvCo2Gutschrift = true;     // Toggle: PV-Einspeisung verdrängt Netzstrom
 export const GEG_VERDRAENGUNG_RATIO = 860 / 560; // GEG Anlage 9: Verdrängungsstrommix/Netzbezug
@@ -235,12 +270,19 @@ export function cacheVariantResults() {
       stromkostenWp = wpElMwh * strompreis * 10;
     }
   }
+  // Phase 6: Aufteilung Kapital/Energie/CO₂/PV für Stacked-Bar im Vergleich-Tab
+  const _ws = window._wirtschaftSummary?.totals || {};
   variantResults[key] = {
     label: activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '') : 'Basisdaten',
     gebäudebedarf: totalVerbrauch, netzverluste: totalLoss,
     netzverlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
     erzeugung: totalErzeugung, vlTemp, rlTemp, erzeuger: erzeugerList, ausschlüsse,
     investGes, jkGes, co2GesH, co2GesLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
+    kapitalJk: _ws.kapitalJk || 0,
+    betriebJk: _ws.betriebJk || 0,
+    energieJk: _ws.energieJk || 0,
+    co2Jk:     _ws.co2Jk     || 0,
+    pvJk:      _ws.pvJk      || 0,
   };
   if (typeof currentViewMode !== 'undefined' && currentViewMode === 'vergleich') renderVergleich();
 }
@@ -250,6 +292,10 @@ export function refreshVergleich() {
   // Basis-Snapshot vor dem Durchlaufen retten, damit er nicht korrumpiert wird
   const savedBase = baseNetzSnapshot ? JSON.parse(JSON.stringify(baseNetzSnapshot)) : null;
   const savedBaseErz = baseErzeugerSnapshot ? JSON.parse(JSON.stringify(baseErzeugerSnapshot)) : null;
+  const savedBaseKp = baseKostenSnapshot ? JSON.parse(JSON.stringify(baseKostenSnapshot)) : null;
+  const savedBaseHidden = baseHiddenAutoSnapshot ? [...baseHiddenAutoSnapshot] : null;
+  const savedBaseInvOv = baseInvOverridesSnapshot ? JSON.parse(JSON.stringify(baseInvOverridesSnapshot)) : null;
+  const savedBaseVdiOv = baseVdiOverridesSnapshot ? JSON.parse(JSON.stringify(baseVdiOverridesSnapshot)) : null;
   ['base', ...varianten.map(v => v.id)].forEach(id => {
     activateVariant(id === 'base' ? null : id);
     cacheVariantResults();
@@ -257,6 +303,10 @@ export function refreshVergleich() {
   // Basis-Snapshot wiederherstellen
   if (savedBase) baseNetzSnapshot = savedBase;
   if (savedBaseErz) baseErzeugerSnapshot = savedBaseErz;
+  if (savedBaseKp) baseKostenSnapshot = savedBaseKp;
+  if (savedBaseHidden) baseHiddenAutoSnapshot = savedBaseHidden;
+  if (savedBaseInvOv) baseInvOverridesSnapshot = savedBaseInvOv;
+  if (savedBaseVdiOv) baseVdiOverridesSnapshot = savedBaseVdiOv;
   activateVariant(originalId);
   renderVergleich();
 }
@@ -337,13 +387,106 @@ export function renderVergleich() {
     html += `</tr>`;
   });
   html += `</tbody></table>`;
-  wrap.innerHTML = html;
+
+  // ── Phase 6: Stacked-Bar „Jährliche Kostenzusammensetzung" pro Variante ──
+  const stackedBar = _renderVergleichStackedBar(cols);
+  const finalHtml = stackedBar + html;
+
+  wrap.innerHTML = finalHtml;
   // Also update the new vergleich-view container
   const newWrap = document.getElementById('vergleich-view-table-wrap');
-  if (newWrap) newWrap.innerHTML = html;
+  if (newWrap) newWrap.innerHTML = finalHtml;
 
   // Pareto-Diagramm rendern
   requestAnimationFrame(() => _renderParetoChart());
+}
+
+// Stacked-Bar wie in der Excel-Vorlage „Variantenvergleich":
+// pro Variante eine Säule, 4 Blöcke (Kapital/Energie/CO₂/PV), spez. WGK als Label.
+function _renderVergleichStackedBar(cols) {
+  const data = cols.map(id => ({ id, r: variantResults[id] })).filter(x => x.r);
+  if (!data.length) return '';
+  const hasAnyTotals = data.some(x => (x.r.kapitalJk + x.r.energieJk + x.r.co2Jk + (x.r.pvJk || 0)) > 0);
+  if (!hasAnyTotals) return '';
+
+  const maxTotal = Math.max(...data.map(x => x.r.jkGes || 0)) * 1.15 || 1;
+  const W = 70; // Säulenbreite (px)
+  const GAP = 22;
+  const PAD_L = 70, PAD_R = 12, PAD_T = 28, PAD_B = 64;
+  const plotH = 280;
+  const fullW = PAD_L + PAD_R + data.length * W + (data.length - 1) * GAP;
+
+  const fmtK = v => v >= 1e6 ? (v/1e6).toLocaleString('de-DE',{maximumFractionDigits:2}) + ' M€' : Math.round(v/1000).toLocaleString('de-DE') + ' k€';
+  const COL = { kapital: '#4dd0e1', betrieb: '#ab47bc', energie: '#f9a825', co2: '#e53935', pv: '#66bb6a' };
+
+  let bars = '';
+  data.forEach((x, i) => {
+    const r = x.r;
+    const x0 = PAD_L + i * (W + GAP);
+    const blocks = [
+      { key: 'Kapital',  val: r.kapitalJk || 0, color: COL.kapital },
+      { key: 'Betrieb',  val: r.betriebJk || 0, color: COL.betrieb },
+      { key: 'Energie',  val: r.energieJk || 0, color: COL.energie },
+      { key: 'CO₂',      val: r.co2Jk     || 0, color: COL.co2 },
+    ];
+    if (r.pvJk) blocks.push({ key: 'PV/Batt', val: r.pvJk, color: COL.pv });
+    let yTop = PAD_T + plotH;
+    let total = 0;
+    let segs = '';
+    for (const b of blocks) {
+      if (b.val <= 0) continue;
+      const h = (b.val / maxTotal) * plotH;
+      yTop -= h;
+      segs += `<rect x="${x0}" y="${yTop.toFixed(1)}" width="${W}" height="${h.toFixed(1)}" fill="${b.color}"><title>${b.key}: ${fmtK(b.val)}</title></rect>`;
+      total += b.val;
+    }
+    const wgkLbl = r.wgkText || (r.wgkNum != null ? r.wgkNum.toFixed(1) + ' ct/kWh' : '');
+    const totalLbl = fmtK(total) + '/a';
+    const x_mid = x0 + W/2;
+    const y_top = yTop - 6;
+    const isAct = (x.id === 'base' && activeVariantId === null) || x.id === activeVariantId;
+    bars += segs;
+    bars += `<text x="${x_mid}" y="${y_top}" text-anchor="middle" font-family="DM Mono, monospace" font-size="10" fill="${isAct ? 'var(--accent)' : 'var(--text)'}" font-weight="500">${wgkLbl}</text>`;
+    bars += `<text x="${x_mid}" y="${(y_top - 12).toFixed(1)}" text-anchor="middle" font-family="DM Mono, monospace" font-size="9" fill="var(--muted)">${totalLbl}</text>`;
+    // X-Label (Variantenname, isolated)
+    const lbl = (r.label || x.id).slice(0, 18);
+    bars += `<text x="${x_mid}" y="${PAD_T + plotH + 14}" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="10" fill="${isAct ? 'var(--accent)' : 'var(--text)'}" font-weight="${isAct?'500':'400'}">${escHtml(lbl)}</text>`;
+  });
+
+  // Y-Achse + Grid
+  let axis = `<line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T+plotH}" stroke="var(--border)" stroke-width="1"/>
+              <line x1="${PAD_L}" y1="${PAD_T+plotH}" x2="${fullW-PAD_R}" y2="${PAD_T+plotH}" stroke="var(--border)" stroke-width="1"/>`;
+  for (let g = 0; g <= 4; g++) {
+    const v = maxTotal * g / 4;
+    const y = PAD_T + plotH * (1 - g/4);
+    axis += `<line x1="${PAD_L}" y1="${y}" x2="${fullW-PAD_R}" y2="${y}" stroke="var(--border)" stroke-width="0.5" opacity="0.4"/>`;
+    axis += `<text x="${PAD_L-6}" y="${y+3}" text-anchor="end" font-family="DM Mono, monospace" font-size="9" fill="var(--muted)">${fmtK(v).replace('/a','')}</text>`;
+  }
+
+  // Legende
+  const legendItems = [
+    { key: 'Kapital',  color: COL.kapital },
+    { key: 'Betrieb',  color: COL.betrieb },
+    { key: 'Energie',  color: COL.energie },
+    { key: 'CO₂',      color: COL.co2 },
+    { key: 'PV/Batt.', color: COL.pv },
+  ];
+  const legendHtml = legendItems.map(it =>
+    `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);"><span style="width:10px;height:10px;background:${it.color};border-radius:2px;"></span>${it.key}</span>`
+  ).join('<span style="margin:0 6px;">·</span>');
+
+  return `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:14px;overflow-x:auto;">
+      <div style="font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">
+        Jährliche Kostenzusammensetzung pro Variante
+        <span style="float:right;color:var(--accent);text-transform:none;letter-spacing:0;font-style:italic;">Label oben: spez. WGK · darunter: Gesamtkosten/a</span>
+      </div>
+      <svg width="${fullW}" height="${PAD_T + plotH + PAD_B}" style="display:block;min-width:${fullW}px;">${axis}${bars}</svg>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding-left:${PAD_L}px;">
+        ${legendHtml}
+      </div>
+    </div>
+  `;
 }
 
 export function _renderParetoChart() {
@@ -546,6 +689,87 @@ export let varianten = [];
 export let activeVariantId = null;
 export let baseNetzSnapshot = null;
 export let baseErzeugerSnapshot = null;
+export let baseKostenSnapshot = null;
+export let baseHiddenAutoSnapshot = null;
+export let baseInvOverridesSnapshot = null;
+export let baseVdiOverridesSnapshot = null;
+
+// ── Kostenpunkte (Investitionspositionen pro Variante, VDI 2067) ──
+// Schema KostenPunkt = {
+//   id:        string,   // unique innerhalb der Variante
+//   typeKey:   string,   // ref auf KOSTENKOMP_DEFAULTS, z.B. 'wp_solewasser'
+//   name?:     string,   // Override für Anzeigename
+//   invest:    number,   // €
+//   ndOverride?:   number,  // a   (Nutzungsdauer)
+//   instOverride?: number,  // %   (Instandhaltung)
+//   wartOverride?: number,  // %   (Wartung)
+//   bedOverride?:  number,  // h/a (Bedienstunden)
+//   note?:     string,   // freie Notiz / Quelle
+// }
+export let kostenpunkte = [];
+export let hiddenAutoIds = [];   // ids von Auto-Bausteinen, die der User für die aktive Variante ausgeblendet hat
+let _kpIdCounter = 1;
+export function _newKpId() { return 'kp_' + Date.now().toString(36) + '_' + (_kpIdCounter++); }
+
+// Capture/Apply für User-Kostenpunkte
+export function captureKostenState() {
+  return JSON.parse(JSON.stringify(kostenpunkte || []));
+}
+export function applyKostenState(state) {
+  kostenpunkte = Array.isArray(state) ? JSON.parse(JSON.stringify(state)) : [];
+}
+// Capture/Apply für hidden Auto-IDs
+export function captureHiddenAutoState() {
+  return [...(hiddenAutoIds || [])];
+}
+export function applyHiddenAutoState(state) {
+  hiddenAutoIds = Array.isArray(state) ? [...state] : [];
+}
+// Capture/Apply für VDI-Overrides aus dem alten Float-Panel (jetzt pro Variante)
+export function captureOverridesState() {
+  return {
+    inv: { ...(window._wirtBausteineOverrides || {}) },
+    vdi: JSON.parse(JSON.stringify(window._wirtVdiOverrides || {})),
+  };
+}
+export function applyOverridesState(state) {
+  window._wirtBausteineOverrides = (state && state.inv) ? { ...state.inv } : {};
+  window._wirtVdiOverrides       = (state && state.vdi) ? JSON.parse(JSON.stringify(state.vdi)) : {};
+}
+// Factory für neuen Kostenpunkt aus typeKey + Invest. Override-Felder bleiben leer
+// → Defaults aus KOSTENKOMP_DEFAULTS gelten.
+export function createKostenPunkt({ typeKey, invest = 0, name, note }) {
+  const def = KOSTENKOMP_DEFAULTS[typeKey] || {};
+  return {
+    id:      _newKpId(),
+    typeKey,
+    name:    name ?? def.name ?? '',
+    invest:  Math.round(Number(invest) || 0),
+    note:    note ?? '',
+  };
+}
+
+// ── Public API für UI (07c) ──
+export function getActiveKostenpunkte() { return kostenpunkte; }
+export function getActiveHiddenAutoIds() { return hiddenAutoIds; }
+export function addKostenpunkt(kp) {
+  kostenpunkte.push(kp);
+}
+export function removeKostenpunkt(id) {
+  const idx = kostenpunkte.findIndex(k => k.id === id);
+  if (idx >= 0) kostenpunkte.splice(idx, 1);
+}
+export function updateKostenpunkt(id, patch) {
+  const kp = kostenpunkte.find(k => k.id === id);
+  if (kp) Object.assign(kp, patch);
+}
+export function hideAutoId(id) {
+  if (!hiddenAutoIds.includes(id)) hiddenAutoIds.push(id);
+}
+export function unhideAutoId(id) {
+  const idx = hiddenAutoIds.indexOf(id);
+  if (idx >= 0) hiddenAutoIds.splice(idx, 1);
+}
 
 export function captureNetzState() {
   return {
@@ -820,24 +1044,47 @@ export function activateVariant(id) {
   if (activeVariantId === null) {
     baseNetzSnapshot = captureNetzState();
     baseErzeugerSnapshot = captureErzeugerState();
+    baseKostenSnapshot = captureKostenState();
+    baseHiddenAutoSnapshot = captureHiddenAutoState();
+    const _ov = captureOverridesState();
+    baseInvOverridesSnapshot = _ov.inv;
+    baseVdiOverridesSnapshot = _ov.vdi;
   } else {
     const cur = varianten.find(v => v.id === activeVariantId);
-    if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); }
+    if (cur) {
+      cur.netz = captureNetzState();
+      cur.erzeuger = captureErzeugerState();
+      cur.kostenpunkte = captureKostenState();
+      cur.hiddenAutoIds = captureHiddenAutoState();
+      const _ov = captureOverridesState();
+      cur.invOverrides = _ov.inv;
+      cur.vdiOverrides = _ov.vdi;
+    }
   }
   // Neuen Zustand anwenden
   activeVariantId = id;
   if (id === null) {
     applyNetzState(baseNetzSnapshot);
     applyErzeugerState(baseErzeugerSnapshot);
+    applyKostenState(baseKostenSnapshot);
+    applyHiddenAutoState(baseHiddenAutoSnapshot);
+    applyOverridesState({ inv: baseInvOverridesSnapshot, vdi: baseVdiOverridesSnapshot });
   } else {
     const target = varianten.find(v => v.id === id);
     if (!target) return;
     applyNetzState(target.netz);
     applyErzeugerState(target.erzeuger);
+    applyKostenState(target.kostenpunkte || []);
+    applyHiddenAutoState(target.hiddenAutoIds || []);
+    applyOverridesState({ inv: target.invOverrides || {}, vdi: target.vdiOverrides || {} });
   }
   renderVariantenBar();
   updateVariantBanner();
   updateAllDeckungen();
+  // Wirtschaft-Tab live aktualisieren, falls geöffnet
+  if (currentViewMode === 'wirtschaft' && typeof window.refreshWirtschaftView === 'function') {
+    window.refreshWirtschaftView();
+  }
 }
 
 export function addVariante() {
@@ -846,9 +1093,24 @@ export function addVariante() {
   if (activeVariantId === null) {
     baseNetzSnapshot = captureNetzState();
     baseErzeugerSnapshot = captureErzeugerState();
+    baseKostenSnapshot = captureKostenState();
+    baseHiddenAutoSnapshot = captureHiddenAutoState();
+    const _ov = captureOverridesState();
+    baseInvOverridesSnapshot = _ov.inv;
+    baseVdiOverridesSnapshot = _ov.vdi;
   }
   const id = 'v_' + Date.now();
-  varianten.push({ id, name, netz: captureNetzState(), erzeuger: captureErzeugerState(), gebaeudeAusschlüsse: [] });
+  const _ov = captureOverridesState();
+  varianten.push({
+    id, name,
+    netz: captureNetzState(),
+    erzeuger: captureErzeugerState(),
+    kostenpunkte: captureKostenState(),
+    hiddenAutoIds: captureHiddenAutoState(),
+    invOverrides: _ov.inv,
+    vdiOverrides: _ov.vdi,
+    gebaeudeAusschlüsse: [],
+  });
   activeVariantId = id;
   renderVariantenBar();
   updateVariantBanner();

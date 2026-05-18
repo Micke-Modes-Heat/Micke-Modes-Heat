@@ -226,32 +226,57 @@ export const HIGHWAY_KOSTEN = {
   cycleway:'niedrig', pedestrian:'niedrig', unclassified:'mittel',
 };
 
+// Schlanker Background-Fetch ohne Retries, ohne Status-Hints, kurzer Timeout.
+// Bei Erfolg → Kostenklasse, bei Fehler → null (Caller bricht dann die Schleife ab).
 async function queryOsmRoadType(latA, lngA, latB, lngB) {
-  // Find the OSM way closest to the midpoint of the edge
   const midLat = (latA + latB) / 2;
   const midLng = (lngA + lngB) / 2;
   const delta = 0.0003;
   const bbox = `${midLat-delta},${midLng-delta},${midLat+delta},${midLng+delta}`;
   const q = `[out:json][timeout:5];way["highway"](${bbox});out tags 1;`;
   try {
-    const d = await _overpassFetchWithRetry(q, null, 2);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    const resp = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) return null;
+    const d = await resp.json();
     if (d && d.elements && d.elements.length > 0) {
       const hw = d.elements[0].tags?.highway || '';
       return HIGHWAY_KOSTEN[hw] || 'mittel';
     }
-  } catch(e) {}
-  return 'mittel';
+    return 'mittel';  // OSM antwortet sauber, hat aber keine Way → Default
+  } catch (e) {
+    return null;  // Netzwerkfehler / Timeout → Caller stoppt
+  }
 }
 
 export async function autoAssignEdgeCosts() {
-  // Called after autoGenerateNetz — queries road type for each edge in background
+  // Called after autoGenerateNetz — queries road type for each edge in background.
+  // Circuit-Breaker: bei 3 OSM-Fehlern in Folge wird abgebrochen, damit nicht
+  // bei 100 Edges 100× ein toter Server angefragt wird.
+  let consecutiveFails = 0;
+  let aborted = false;
   for (const e of netzEdges) {
     if (e.kostOverride) continue; // don't overwrite manual settings
+    if (aborted) { e.kostKlasse = e.kostKlasse || 'mittel'; continue; }
     const uPt = e.uNode?.pt;
     const vPt = e.vNode?.pt;
     if (!uPt || !vPt) continue;
     const klass = await queryOsmRoadType(uPt.lat, uPt.lng, vPt.lat, vPt.lng);
-    e.kostKlasse = klass;
+    if (klass === null) {
+      consecutiveFails++;
+      if (consecutiveFails >= 3) {
+        aborted = true;
+        console.warn('[autoAssignEdgeCosts] OSM nicht erreichbar — alle weiteren Edges bekommen Klasse "mittel"');
+      }
+      e.kostKlasse = 'mittel';
+    } else {
+      consecutiveFails = 0;
+      e.kostKlasse = klass;
+    }
   }
   updateRohrListe();
 }
@@ -379,6 +404,9 @@ export function togglePruningMode() {
 export function toggleEdgePruned(edge) {
   const e = edge || activeEdgePopup;
   if (!e) return;
+  if (typeof window.pushUndoSnapshot === 'function') {
+    window.pushUndoSnapshot(e.pruned ? 'Edge wieder einbinden' : 'Edge ausschließen (Pruning)');
+  }
   e.pruned = !e.pruned;
   applyEdgePrunedStyle(e);
   // Also prune downstream subtree if this edge is pruned
@@ -621,13 +649,21 @@ export function setViewMode(mode) {
   if (mode !== 'live' && typeof _liveStopPlay === 'function') _liveStopPlay();
   // Update header tabs
   document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  // Karten-spezifische Toolbar-Elemente nur in Karte-Modus zeigen
+  const isKarte = (mode === 'karte');
+  ['karte-sep-1', 'karte-modes', 'karte-sep-2', 'viz-toggle-group'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isKarte ? '' : 'none';
+  });
   // Show/hide center views
   const analyseView = document.getElementById('center-analyse-view');
+  const wirtschaftView = document.getElementById('center-wirtschaft-view');
   const optimierungView = document.getElementById('center-optimierung-view');
   const vergleichView = document.getElementById('center-vergleich-view');
   const liveView = document.getElementById('center-live-view');
   const vergleichOld = document.getElementById('vergleich-panel');
   if (analyseView) analyseView.style.display = mode === 'analyse' ? 'block' : 'none';
+  if (wirtschaftView) wirtschaftView.style.display = mode === 'wirtschaft' ? 'block' : 'none';
   if (optimierungView) optimierungView.style.display = mode === 'optimierung' ? 'block' : 'none';
   if (vergleichView) vergleichView.style.display = mode === 'vergleich' ? 'block' : 'none';
   if (liveView) liveView.style.display = mode === 'live' ? 'flex' : 'none';
@@ -640,6 +676,26 @@ export function setViewMode(mode) {
   if (mode === 'karte') setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
   // Populate views
   if (mode === 'analyse') refreshAnalyseView();
+  if (mode === 'wirtschaft') {
+    console.log('[setViewMode] Wirtschaft-Tab aktiv — refreshWirtschaftView verfügbar?',
+      typeof window.refreshWirtschaftView);
+    if (typeof window.refreshWirtschaftView === 'function') {
+      try { window.refreshWirtschaftView(); }
+      catch (e) { console.error('[setViewMode] refreshWirtschaftView wirft Fehler:', e); }
+    } else {
+      setTimeout(() => {
+        if (typeof window.refreshWirtschaftView === 'function') {
+          try { window.refreshWirtschaftView(); }
+          catch (e) { console.error('[setViewMode] refreshWirtschaftView wirft Fehler:', e); }
+        } else {
+          console.error('[setViewMode] window.refreshWirtschaftView ist NICHT verfügbar — Modul nicht geladen?');
+          const el = document.getElementById('wirtschaft-content');
+          if (el) el.innerHTML = '<div style="padding:40px;text-align:center;color:#ef9a9a;">' +
+            '⚠ refreshWirtschaftView nicht gefunden. Strg+Shift+R für Hard-Reload, oder F12 → Console für Details.</div>';
+        }
+      }, 100);
+    }
+  }
   if (mode === 'optimierung') {
     if (typeof _optPopulateYearSelect === 'function') _optPopulateYearSelect();
     if (typeof _optUpdateEstimate === 'function') _optUpdateEstimate();

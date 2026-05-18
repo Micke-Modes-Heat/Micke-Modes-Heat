@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Mockup — Wirtschaftlichkeit-Tab (V1: WP Geothermie)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  /* ── Echte Tool-Tokens (aus src/styles/app.css) ── */
+  :root {
+    --bg: #12110e;
+    --surface: #1c1a15;
+    --surface2: #24221b;
+    --border: #3a3528;
+    --text: #ece8df;
+    --muted: #9a9080;
+    --accent: #d4a855;
+    --accent-soft: rgba(212,168,85,0.12);
+    /* Komponenten-Farben (Tool-Konvention) */
+    --c-blue: #29b6f6;
+    --c-cyan: #4dd0e1;
+    --c-green: #66bb6a;
+    --c-amber: #f9a825;
+    --c-orange: #ff9800;
+    --c-red: #e53935;
+    --c-magenta: #ab47bc;
+    --c-purple: #ce93d8;
+    --c-teal: #26a69a;
+    --c-brown: #a1887f;
+    --c-bluegray: #78909c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: normal; min-height: 100vh; }
+  .mono { font-family: 'DM Mono', monospace; }
+
+  /* ── Top-Tab-Leiste (zur Veranschaulichung) ── */
+  .view-tabs { display: flex; gap: 4px; padding: 6px 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .view-tab { padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-family: inherit; font-size: 11px; cursor: pointer; transition: 0.15s; }
+  .view-tab:hover { color: var(--accent); border-color: var(--accent); }
+  .view-tab.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .view-tab.new { position: relative; }
+  .view-tab.new::after { content: 'NEU'; position: absolute; top: -8px; right: -2px; background: var(--c-amber); color: #000; font-size: 8px; padding: 1px 5px; border-radius: 3px; font-weight: 600; letter-spacing: 0.05em; font-family: 'DM Mono', monospace; }
+
+  /* ── Hauptcontainer ── */
+  .container { padding: 18px 22px; max-width: 1400px; margin: 0 auto; }
+  .tab-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .tab-header h1 { font-size: 13px; color: var(--accent); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+  .var-select { display: flex; align-items: center; gap: 8px; }
+  .var-select label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .var-select select { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 5px 10px; border-radius: 4px; font-size: 11px; font-family: inherit; cursor: pointer; }
+  .var-select select:hover { border-color: var(--accent); }
+
+  /* ── Hint-Banner ── */
+  .hint-banner { background: var(--accent-soft); border: 1px solid rgba(212,168,85,0.3); border-radius: 6px; padding: 8px 14px; font-size: 11px; color: var(--accent); margin-bottom: 16px; line-height: 1.6; }
+  .hint-banner b { color: var(--text); font-weight: 500; }
+
+  /* ── KPI-Bar ── */
+  .kpi-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 20px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 11px 13px; min-width: 0; }
+  .kpi-val { font-family: 'DM Mono', monospace; font-size: 18px; font-weight: 400; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi-lbl { font-size: 9px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .kpi.primary .kpi-val { color: var(--accent); }
+  .kpi.invest .kpi-val { color: var(--c-cyan); }
+  .kpi.spec .kpi-val { color: var(--c-amber); }
+  .kpi.energy .kpi-val { color: var(--c-amber); }
+  .kpi.co2 .kpi-val { color: #ef9a9a; }
+
+  /* ── Charts ── */
+  .charts-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+  .chart-title { font-size: 10px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+
+  /* Stacked Bar */
+  .stacked-bar { display: flex; flex-direction: column; gap: 4px; }
+  .stack-row { display: grid; grid-template-columns: 110px 1fr 105px; align-items: center; gap: 10px; padding: 4px 6px; cursor: help; transition: background 0.15s; border-radius: 3px; }
+  .stack-row:hover { background: var(--surface2); }
+  .stack-row.total { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 9px; font-weight: 500; }
+  .stack-lbl { font-size: 11px; color: var(--text); display: flex; align-items: center; }
+  .stack-lbl::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; background: var(--bg-color, #888); }
+  .stack-bar { height: 20px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .stack-fill { height: 100%; transition: width 0.3s; }
+  .stack-val { font-family: 'DM Mono', monospace; font-size: 11px; text-align: right; }
+
+  /* Donut */
+  .donut-wrap { display: flex; gap: 14px; align-items: center; }
+  .donut-svg { flex-shrink: 0; }
+  .donut-legend { flex: 1; display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; padding-right: 4px; }
+  .donut-legend::-webkit-scrollbar { width: 4px; }
+  .donut-legend::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .donut-row { display: grid; grid-template-columns: 10px 1fr 80px 36px; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 3px; cursor: pointer; font-size: 11px; }
+  .donut-row:hover { background: var(--surface2); }
+  .donut-color { width: 10px; height: 10px; border-radius: 2px; }
+  .donut-name { color: var(--muted); }
+  .donut-val { font-family: 'DM Mono', monospace; text-align: right; color: var(--text); }
+  .donut-pct { font-family: 'DM Mono', monospace; color: var(--muted); text-align: right; font-size: 10px; }
+
+  /* ── Energiekosten-Profil-Chart ── */
+  .profile-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; row-gap: 8px; }
+  .profile-toolbar > * { flex-shrink: 0; }
+  .profile-toolbar .toolbar-title { flex: 1 1 auto; min-width: 200px; }
+  .toggle-grp { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .toggle-btn { padding: 3px 10px; background: transparent; color: var(--muted); border: none; font-family: inherit; font-size: 10px; cursor: pointer; transition: 0.15s; }
+  .toggle-btn.active { background: var(--accent); color: #000; }
+  .toggle-btn:not(.active):hover { color: var(--accent); }
+  .toggle-grp + .toggle-grp { margin-left: 4px; }
+  .profile-svg { width: 100%; height: 220px; display: block; }
+  .profile-chart-wrap { position: relative; width: 100%; }
+  .table-scroll { overflow-x: auto; margin: 10px 0 0; }
+  .table-scroll::-webkit-scrollbar { height: 6px; }
+  .table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .profile-bar { transition: opacity 0.15s; cursor: pointer; }
+  .profile-bar:hover { opacity: 0.75; }
+  .profile-axis text { font-family: 'DM Mono', monospace; font-size: 9px; fill: var(--muted); }
+  .profile-axis line { stroke: var(--border); stroke-width: 1; }
+  .profile-line { fill: none; stroke: var(--c-amber); stroke-width: 2; }
+  .profile-tooltip { position: absolute; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 10px; pointer-events: none; font-family: 'DM Mono', monospace; box-shadow: 0 4px 16px rgba(0,0,0,0.5); display: none; z-index: 10; white-space: nowrap; }
+
+  /* ── Akkordeon ── */
+  .accordion { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+  .acc-header { display: flex; justify-content: space-between; align-items: center; padding: 11px 16px; cursor: pointer; user-select: none; transition: background 0.15s; }
+  .acc-header:hover { background: var(--surface2); }
+  .acc-title { font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 10px; color: var(--text); }
+  .acc-title .acc-arrow { font-size: 9px; color: var(--muted); transition: transform 0.15s; }
+  .acc-title .acc-dot { width: 8px; height: 8px; border-radius: 2px; }
+  .acc-sum { font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500; }
+  .acc-body { display: none; padding: 0 16px 14px; border-top: 1px solid var(--border); }
+  .accordion.open .acc-body { display: block; }
+  .accordion.open .acc-arrow { transform: rotate(90deg); }
+
+  /* ── Detail-Tabelle ── */
+  table.cost-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+  table.cost-table th { text-align: left; color: var(--muted); font-weight: 400; padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+  table.cost-table th.r { text-align: right; }
+  table.cost-table th.c { text-align: center; }
+  table.cost-table td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  table.cost-table td.r { text-align: right; font-family: 'DM Mono', monospace; }
+  table.cost-table td.c { text-align: center; font-family: 'DM Mono', monospace; }
+  table.cost-table td.muted { color: var(--muted); font-size: 10px; }
+  table.cost-table tbody tr { cursor: help; transition: background 0.1s; }
+  table.cost-table tbody tr:hover { background: var(--surface2); }
+  table.cost-table tfoot td { font-weight: 500; padding-top: 9px; border-top: 1px solid var(--border); border-bottom: none; }
+
+  /* Hover-Tooltip (über Tabellen-Zeilen) */
+  .has-tip { position: relative; }
+  .has-tip:hover::after {
+    content: attr(data-tip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%) translateY(-4px);
+    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px;
+    padding: 8px 12px; font-size: 10.5px; white-space: pre-line; z-index: 10; min-width: 220px; max-width: 360px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.65); pointer-events: none;
+    font-family: 'DM Mono', monospace; line-height: 1.55;
+  }
+
+  /* ── Eingabeparameter ── */
+  .params-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 22px; }
+  .param-row { display: flex; flex-direction: column; gap: 3px; }
+  .param-row label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .param-row .input-wrap { display: flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
+  .param-row .input-wrap:focus-within { border-color: var(--accent); }
+  .param-row input { flex: 1; background: transparent; border: none; color: var(--text); font-size: 13px; font-family: 'DM Mono', monospace; outline: none; text-align: right; min-width: 0; }
+  .param-row .unit { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .param-row .src { font-size: 9px; color: var(--muted); margin-top: 1px; font-style: italic; }
+
+  /* ── Inline-Edit (für Tabellen-Zellen) ── */
+  .cell-input {
+    background: transparent; border: 1px solid transparent; color: inherit;
+    font-family: inherit; font-size: inherit; font-weight: inherit;
+    padding: 3px 5px; border-radius: 3px; outline: none; transition: 0.12s;
+    width: 100%; min-width: 0;
+  }
+  .cell-input:hover { border-color: var(--border); background: var(--surface2); }
+  .cell-input:focus { border-color: var(--accent); background: var(--surface2); }
+  .cell-input.r { text-align: right; font-family: 'DM Mono', monospace; }
+  .cell-input.c { text-align: center; font-family: 'DM Mono', monospace; }
+  .cell-input.name { font-family: 'DM Sans', sans-serif; }
+  .cell-input.note { font-style: italic; color: var(--muted); font-size: 10px; }
+
+  /* Position-Spalte mit Mülleimer */
+  .pos-cell { display: flex; align-items: center; gap: 4px; }
+  .pos-cell .cell-input { flex: 1; }
+  .del-btn {
+    opacity: 0; flex-shrink: 0; padding: 2px 5px; background: transparent;
+    border: 1px solid transparent; color: var(--c-red); cursor: pointer;
+    font-size: 12px; border-radius: 3px; transition: 0.15s; line-height: 1;
+  }
+  tr:hover .del-btn { opacity: 0.55; }
+  .del-btn:hover { opacity: 1 !important; background: rgba(229,57,53,0.12); border-color: var(--c-red); }
+
+  /* "+ Kostenpunkt hinzufügen"-Zeile */
+  .add-row td { padding: 10px 8px; border-bottom: none !important; }
+  .add-btn {
+    background: transparent; border: 1px dashed var(--border); color: var(--muted);
+    font-family: inherit; font-size: 11px; padding: 6px 16px; border-radius: 4px;
+    cursor: pointer; transition: 0.15s; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .add-btn:hover { border-color: var(--accent); color: var(--accent); border-style: solid; background: var(--accent-soft); }
+
+  /* Auto-berechnete Zellen visuell abgrenzen (read-only Output) */
+  .cell-calc { color: var(--muted); font-family: 'DM Mono', monospace; }
+  .cell-calc.highlight { color: var(--text); }
+
+  /* Info-Icon in ND-Spalte für Berechnungserklärung */
+  .info-tip { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 50%; font-size: 9px; color: var(--muted); cursor: help; margin-left: 4px; transition: 0.15s; }
+  .info-tip:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Mockup-Footer-Notiz ── */
+  .mockup-note { margin-top: 32px; padding: 14px 16px; background: rgba(41,182,246,0.06); border: 1px dashed rgba(41,182,246,0.4); border-radius: 6px; font-size: 11px; color: #81d4fa; line-height: 1.6; }
+  .mockup-note b { color: var(--text); font-weight: 500; }
+  .mockup-note code { font-family: 'DM Mono', monospace; background: var(--surface); padding: 1px 6px; border-radius: 3px; font-size: 10.5px; }
+</style>
+</head>
+<body>
+
+<!-- ── Top-Tab-Leiste (zur Positionsdemo) ── -->
+<div class="view-tabs">
+  <button class="view-tab">Karte</button>
+  <button class="view-tab">Live</button>
+  <button class="view-tab">Analyse</button>
+  <button class="view-tab active new">Wirtschaftlichkeit</button>
+  <button class="view-tab">Optimierung</button>
+  <button class="view-tab">Vergleich</button>
+</div>
+
+<div class="container">
+
+  <!-- ── Header ── -->
+  <div class="tab-header">
+    <h1>€ Wirtschaftlichkeit — Detail der aktiven Variante</h1>
+    <div class="var-select">
+      <label>Variante</label>
+      <select>
+        <option>V1 — WP Geothermie (Monovalent Zentral, NT)</option>
+        <option>V2 — WP Luft</option>
+        <option>V3 — HHS</option>
+        <option>V4 — Pelletkessel</option>
+        <option>V5 — Dezentral Luft</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="hint-banner">
+    <b>Aktive Variante:</b> alle Werte beziehen sich auf die oben gewählte Variante. Hover über Zeilen zeigt Berechnungsformeln.
+    Eingabeparameter (Preise, Zins, Lohn) ganz unten — Änderungen wirken sofort auf alle Werte.
+  </div>
+
+  <!-- ── KPI-Leiste ── -->
+  <div class="kpi-bar">
+    <div class="kpi primary"><div class="kpi-val">1.140.000 €/a</div><div class="kpi-lbl">Gesamtkosten / Jahr</div></div>
+    <div class="kpi spec"><div class="kpi-val">16,76 ct/kWh</div><div class="kpi-lbl">Spez. Wärmegestehungskosten</div></div>
+    <div class="kpi invest"><div class="kpi-val">8,03 M€</div><div class="kpi-lbl">Gesamtinvestition</div></div>
+    <div class="kpi spec"><div class="kpi-val">3.363 €/kW</div><div class="kpi-lbl">Spez. Investkosten</div></div>
+    <div class="kpi co2"><div class="kpi-val">90 g/kWh</div><div class="kpi-lbl">CO₂-Faktor Wärme</div></div>
+  </div>
+
+  <!-- ── Charts: Stacked Bar + Donut ── -->
+  <div class="charts-row">
+
+    <div class="chart-card">
+      <div class="chart-title">Jährliche Kostenzusammensetzung</div>
+      <div class="stacked-bar">
+        <div class="stack-row has-tip" data-tip="Annuität auf 8.030.000 € Investition&#10;Mittlerer Annuitätsfaktor 5,5 %/a&#10;= 438.352 €/a">
+          <div class="stack-lbl" style="--bg-color:var(--c-cyan);"><span style="background:var(--c-cyan);width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:7px;"></span>Kapital</div>
+          <div class="stack-bar"><div class="stack-fill" style="width:38.5%;background:var(--c-cyan);"></div></div>
+          <div class="stack-val">438.352 €/a</div>
+        </div>
+        <div class="stack-row has-tip" data-tip="Wartung + Instandhaltung + Bedienung&#10;Summe pro Komponente nach VDI 2067&#10;= 188.868 €/a">
+          <div class="stack-lbl"><span style="background:var(--c-magenta);width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:7px;"></span>Betrieb (W+I+B)</div>
+          <div class="stack-bar"><div class="stack-fill" style="width:16.6%;background:var(--c-magenta);"></div></div>
+          <div class="stack-val">188.868 €/a</div>
+        </div>
+        <div class="stack-row has-tip" data-tip="WP-Strom: 1.428.779 kWh × 35 ct/kWh&#10;= 500.073 €/a">
+          <div class="stack-lbl"><span style="background:var(--c-amber);width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:7px;"></span>Energie</div>
+          <div class="stack-bar"><div class="stack-fill" style="width:43.9%;background:var(--c-amber);"></div></div>
+          <div class="stack-val">500.073 €/a</div>
+        </div>
+        <div class="stack-row has-tip" data-tip="WP-Strom-Emission 2030: 102,9 t × 120 €/t&#10;= 12.345 €/a">
+          <div class="stack-lbl"><span style="background:var(--c-red);width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:7px;"></span>CO₂ (EEFB)</div>
+          <div class="stack-bar"><div class="stack-fill" style="width:1.1%;background:var(--c-red);"></div></div>
+          <div class="stack-val">12.345 €/a</div>
+        </div>
+        <div class="stack-row total">
+          <div class="stack-lbl"><span style="width:8px;height:8px;display:inline-block;margin-right:7px;"></span>Gesamt</div>
+          <div class="stack-bar"><div class="stack-fill" style="width:100%;background:linear-gradient(90deg,var(--c-cyan) 0%,var(--c-cyan) 38.5%,var(--c-magenta) 38.5%,var(--c-magenta) 55.1%,var(--c-amber) 55.1%,var(--c-amber) 99%,var(--c-red) 99%,var(--c-red) 100%);"></div></div>
+          <div class="stack-val" style="color:var(--accent);">1.140.000 €/a</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Investitionsaufschlüsselung (8.030.000 €)</div>
+      <div class="donut-wrap">
+        <svg class="donut-svg" width="170" height="170" viewBox="0 0 170 170">
+          <circle cx="85" cy="85" r="56" fill="none" stroke="#5a8a6e" stroke-width="28" stroke-dasharray="132 352" stroke-dashoffset="0" transform="rotate(-90 85 85)"/>
+          <circle cx="85" cy="85" r="56" fill="none" stroke="var(--c-cyan)" stroke-width="28" stroke-dasharray="80 352" stroke-dashoffset="-132" transform="rotate(-90 85 85)"/>
+          <circle cx="85" cy="85" r="56" fill="none" stroke="var(--c-magenta)" stroke-width="28" stroke-dasharray="37 352" stroke-dashoffset="-212" transform="rotate(-90 85 85)"/>
+          <circle cx="85" cy="85" r="56" fill="none" stroke="var(--accent)" stroke-width="28" stroke-dasharray="19 352" stroke-dashoffset="-249" transform="rotate(-90 85 85)"/>
+          <circle cx="85" cy="85" r="56" fill="none" stroke="var(--c-amber)" stroke-width="28" stroke-dasharray="15 352" stroke-dashoffset="-268" transform="rotate(-90 85 85)"/>
+          <circle cx="85" cy="85" r="56" fill="none" stroke="var(--c-bluegray)" stroke-width="28" stroke-dasharray="69 352" stroke-dashoffset="-283" transform="rotate(-90 85 85)"/>
+          <text x="85" y="82" text-anchor="middle" font-family="DM Mono, monospace" font-size="13" fill="var(--text)" font-weight="500">8,03 M€</text>
+          <text x="85" y="98" text-anchor="middle" font-size="9" fill="var(--muted)">Gesamt</text>
+        </svg>
+        <div class="donut-legend">
+          <div class="donut-row"><div class="donut-color" style="background:#5a8a6e;"></div><div class="donut-name">Sondenbohrungen</div><div class="donut-val">3.005.758 €</div><div class="donut-pct">37,4%</div></div>
+          <div class="donut-row"><div class="donut-color" style="background:var(--c-cyan);"></div><div class="donut-name">Wärmepumpe (S/W)</div><div class="donut-val">1.811.627 €</div><div class="donut-pct">22,6%</div></div>
+          <div class="donut-row"><div class="donut-color" style="background:var(--c-magenta);"></div><div class="donut-name">Bauteil / Hülle</div><div class="donut-val">851.304 €</div><div class="donut-pct">10,6%</div></div>
+          <div class="donut-row"><div class="donut-color" style="background:var(--accent);"></div><div class="donut-name">Hausanschlussstationen</div><div class="donut-val">421.688 €</div><div class="donut-pct">5,3%</div></div>
+          <div class="donut-row"><div class="donut-color" style="background:var(--c-amber);"></div><div class="donut-name">Hydr. Anbindung</div><div class="donut-val">338.170 €</div><div class="donut-pct">4,2%</div></div>
+          <div class="donut-row"><div class="donut-color" style="background:var(--c-bluegray);"></div><div class="donut-name">Sonstiges (10 Pos.)</div><div class="donut-val">1.601.453 €</div><div class="donut-pct">19,9%</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── 1) INVESTITIONSKOSTEN ── -->
+  <div class="accordion open">
+    <div class="acc-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="acc-title">
+        <span class="acc-arrow">▶</span>
+        <span class="acc-dot" style="background:var(--c-cyan);"></span>
+        <span>Investitionskosten</span>
+      </div>
+      <div class="acc-sum" style="color:var(--c-cyan);">8.030.000 €</div>
+    </div>
+    <div class="acc-body">
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5;">
+        Alle Werte sind direkt editierbar — klick in eine Zelle und tippe.
+        Die grauen Spalten (Annuität, W+I €/a) werden automatisch aus deinen Eingaben berechnet.
+        Mülleimer-Icon erscheint rechts vom Position-Namen bei Hover über eine Zeile.
+      </div>
+      <div class="table-scroll">
+      <table class="cost-table" style="min-width:920px;">
+        <thead>
+          <tr>
+            <th style="min-width:200px;">Position</th>
+            <th class="r">Investition</th>
+            <th class="c">ND <span class="info-tip" title="Nutzungsdauer in Jahren — bestimmt zusammen mit dem Zins die Annuität">i</span></th>
+            <th class="r">Annuität</th>
+            <th class="c">Inst. %</th>
+            <th class="c">Wart. %</th>
+            <th class="r">W+I €/a</th>
+            <th class="c">Bed. h/a</th>
+            <th>Notiz / Quelle</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Sondenbohrungen"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="3.005.758"></td>
+            <td><input class="cell-input c" value="50"></td>
+            <td class="r cell-calc">126.242 €</td>
+            <td><input class="cell-input c" value="2,0"></td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td class="r cell-calc">90.173 €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="VDI 2067 · 1.260 €/kW"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Wärmepumpe (S/W)"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="1.811.627"></td>
+            <td><input class="cell-input c" value="20"></td>
+            <td class="r cell-calc">126.814 €</td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td><input class="cell-input c" value="1,5"></td>
+            <td class="r cell-calc">45.291 €</td>
+            <td><input class="cell-input c" value="5"></td>
+            <td><input class="cell-input note" value="VDI 2067 · 759 €/kW"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Bauteil / Hülle"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="851.304"></td>
+            <td><input class="cell-input c" value="50"></td>
+            <td class="r cell-calc">35.755 €</td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td class="r cell-calc">17.026 €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="10,6 % Pauschale"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Sonstiges (Planung etc.)"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="730.220"></td>
+            <td><input class="cell-input c" value="20"></td>
+            <td class="r cell-calc">51.115 €</td>
+            <td><input class="cell-input c" value="0,0"></td>
+            <td><input class="cell-input c" value="0,0"></td>
+            <td class="r cell-calc">— €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="9,1 % Pauschale"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Hausanschlussstationen"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="421.688"></td>
+            <td><input class="cell-input c" value="20"></td>
+            <td class="r cell-calc">29.518 €</td>
+            <td><input class="cell-input c" value="2,0"></td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td class="r cell-calc">12.651 €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="8.268 €/Anschluss × 51"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Hydraulische Anbindung"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="338.170"></td>
+            <td><input class="cell-input c" value="40"></td>
+            <td class="r cell-calc">15.556 €</td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td><input class="cell-input c" value="0,0"></td>
+            <td class="r cell-calc">3.382 €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="4,2 % Pauschale"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Elektrifizierung Warmwasser"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="262.500"></td>
+            <td><input class="cell-input c" value="20"></td>
+            <td class="r cell-calc">18.375 €</td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td class="r cell-calc">5.250 €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="5.000 €/WE"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Übergabestation"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="249.817"></td>
+            <td><input class="cell-input c" value="20"></td>
+            <td class="r cell-calc">17.487 €</td>
+            <td><input class="cell-input c" value="2,0"></td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td class="r cell-calc">7.495 €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="Pauschale"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="MSR-Technik"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="169.085"></td>
+            <td><input class="cell-input c" value="40"></td>
+            <td class="r cell-calc">7.778 €</td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td class="r cell-calc">3.382 €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="2,1 % Pauschale"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Elektr. Anbindung"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="96.620"></td>
+            <td><input class="cell-input c" value="40"></td>
+            <td class="r cell-calc">4.445 €</td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td class="r cell-calc">1.932 €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="1,2 % Pauschale"></td>
+          </tr>
+          <tr>
+            <td><div class="pos-cell"><input class="cell-input name" value="Pufferspeicher (64 m³)"><button class="del-btn" title="Position entfernen">🗑</button></div></td>
+            <td><input class="cell-input r" value="95.628"></td>
+            <td><input class="cell-input c" value="20"></td>
+            <td class="r cell-calc">6.694 €</td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td><input class="cell-input c" value="1,0"></td>
+            <td class="r cell-calc">1.913 €</td>
+            <td><input class="cell-input c" value="0"></td>
+            <td><input class="cell-input note" value="1.495 €/m³ · 64 m³"></td>
+          </tr>
+          <tr class="add-row">
+            <td colspan="9">
+              <button class="add-btn">+ Kostenpunkt hinzufügen</button>
+              <span style="margin-left:12px;font-size:10px;color:var(--muted);">aus Vorlage einfügen:</span>
+              <select style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:10px;font-family:inherit;margin-left:6px;">
+                <option>— Vorlage wählen —</option>
+                <option>BHKW</option>
+                <option>Heizölkessel</option>
+                <option>Pelletkessel + Lager</option>
+                <option>Hackschnitzelkessel + Lager</option>
+                <option>Solarthermie</option>
+                <option>Schornstein</option>
+                <option>Nahwärmenetz</option>
+                <option>Pumpstation</option>
+                <option>Flusswasser-Wärmetauscher</option>
+                <option>Eigene Position …</option>
+              </select>
+            </td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td><b>Gesamtinvestition</b></td>
+            <td class="r" style="color:var(--accent);">8.030.000 €</td>
+            <td class="c muted">Ø 28 a</td>
+            <td class="r" style="color:var(--accent);">438.352 €</td>
+            <td class="c muted">—</td>
+            <td class="c muted">—</td>
+            <td class="r" style="color:var(--accent);">188.493 €</td>
+            <td class="c">5 h</td>
+            <td class="muted"><i>Spez. 3.363 €/kW</i></td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 2) ENERGIEKOSTEN ── -->
+  <div class="accordion open">
+    <div class="acc-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="acc-title">
+        <span class="acc-arrow">▶</span>
+        <span class="acc-dot" style="background:var(--c-amber);"></span>
+        <span>Energiekosten</span>
+      </div>
+      <div class="acc-sum" style="color:var(--c-amber);">500.073 €/a</div>
+    </div>
+    <div class="acc-body">
+
+      <!-- Stundenscharfes Profil-Chart -->
+      <div style="margin-top:14px;margin-bottom:18px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;position:relative;">
+        <div class="profile-toolbar">
+          <div class="toolbar-title" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;">
+            Energiekosten-Profil <span style="color:var(--c-amber);text-transform:none;letter-spacing:0;font-style:italic;">stundengenau</span>
+          </div>
+
+          <!-- Zoom-Stufen -->
+          <div class="toggle-grp">
+            <button class="toggle-btn" data-zoom="jahr">Jahr</button>
+            <button class="toggle-btn active" data-zoom="monat">Monat</button>
+            <button class="toggle-btn" data-zoom="woche">Woche</button>
+            <button class="toggle-btn" data-zoom="tag">Tag</button>
+          </div>
+
+          <!-- Navigation: ‹ Datum › -->
+          <div class="toggle-grp">
+            <button class="toggle-btn" id="nav-prev" title="Vorheriger Zeitabschnitt">‹</button>
+            <span id="nav-label" style="min-width:160px;padding:3px 10px;font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);text-align:center;border-left:1px solid var(--border);border-right:1px solid var(--border);background:var(--bg);">— Datum —</span>
+            <button class="toggle-btn" id="nav-next" title="Nächster Zeitabschnitt">›</button>
+          </div>
+
+          <!-- € vs ct/kWh -->
+          <div class="toggle-grp">
+            <button class="toggle-btn active" data-unit="eur">€</button>
+            <button class="toggle-btn" data-unit="ct">ct/kWh</button>
+          </div>
+        </div>
+
+        <div class="profile-chart-wrap">
+          <svg class="profile-svg" id="profile-svg" preserveAspectRatio="none" style="cursor:crosshair;user-select:none;"></svg>
+          <div id="profile-tooltip" class="profile-tooltip"></div>
+        </div>
+
+        <div style="display:flex;gap:18px;font-size:10px;color:var(--muted);margin-top:6px;padding-left:50px;">
+          <span style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;background:var(--c-amber);border-radius:2px;"></span>Heizung (saisonal · Tagesgang)</span>
+          <span style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;background:var(--c-bluegray);opacity:0.6;border-radius:2px;"></span>Trinkwarmwasser (Sockel)</span>
+          <span style="margin-left:auto;font-family:'DM Mono',monospace;color:var(--accent);" id="profile-summary">Σ —</span>
+        </div>
+
+        <div style="font-size:9px;color:var(--muted);margin-top:8px;padding-left:50px;font-style:italic;">
+          💡 In Säule klicken = drillt eine Zoom-Stufe tiefer (Jahr→Monat→Tag→Stunde). Drag im Chart = Bereich auswählen für Zoom (im echten Tool).
+        </div>
+      </div>
+
+      <!-- ── JS für interaktives Profil ────────────────────────────────── -->
+      <script>
+      (function(){
+        // Sample-Daten generieren: 8760 Stunden für V1 (WP Geothermie)
+        // Σ-Ziel: ca. 500.073 €/a Stromkosten WP
+        const STROMPREIS = 0.35; // €/kWh_el
+        const HOURS = 8760;
+        const data = new Array(HOURS); // {ehHeiz, ehTww, kwhTh, ctTh}
+        let totalEur = 0, totalKwhTh = 0;
+        for (let h=0; h<HOURS; h++) {
+          const day = Math.floor(h/24), hr = h%24;
+          // Saisonal: Cosinus mit Maximum am 15. Januar (day 15)
+          const season = 0.5 + 0.5 * Math.cos((day-15) * 2*Math.PI/365);
+          // Tagesgang: leicht erhöhter Verbrauch morgens und abends
+          const daily = 0.85 + 0.20*Math.sin((hr-5)*Math.PI/12) + 0.10*Math.sin((hr-17)*Math.PI/4);
+          // TWW: konstanter Sockel mit kleinem Tagesgang
+          const twwTh = 78 + 35*Math.max(0, Math.sin((hr-7)*Math.PI/12));
+          // Heizung: saisonal × tagesgang × peak
+          const heizTh = Math.max(0, 1100 * season * daily);
+          const totalThH = twwTh + heizTh;
+          const jaz = 5.5 - 1.6*season;
+          const elH = totalThH / jaz;
+          const ehHeiz = (heizTh/jaz) * STROMPREIS;
+          const ehTww  = (twwTh/jaz)  * STROMPREIS;
+          const ehTotal = ehHeiz + ehTww;
+          const ctTh = totalThH > 0 ? (ehTotal*100)/totalThH : 0;
+          data[h] = { ehHeiz, ehTww, ehTotal, kwhTh: totalThH, ctTh };
+          totalEur += ehTotal; totalKwhTh += totalThH;
+        }
+        // Skalieren auf Ziel-Σ (500.073 €)
+        const factor = 500073 / totalEur;
+        for (let h=0; h<HOURS; h++) { data[h].ehHeiz *= factor; data[h].ehTww *= factor; data[h].ehTotal *= factor; }
+
+        // ── State ──
+        let zoom = 'monat'; // jahr | monat | woche | tag
+        let unit = 'eur';   // eur | ct
+        let offsetDay = 0;  // Tag-Offset: für Monat=Monatsanfang, für Woche=Wochenanfang, für Tag=Tagesnummer
+        // Default: Januar
+        offsetDay = 0;
+
+        const MONATE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+        const MON_DAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+        function dayToDate(d) {
+          let m=0, rem=d;
+          while (m<12 && rem >= MON_DAYS[m]) { rem -= MON_DAYS[m]; m++; }
+          return { m, d: rem+1 };
+        }
+        function dateLabel() {
+          const dt = dayToDate(offsetDay);
+          if (zoom==='jahr') return 'Gesamtjahr';
+          if (zoom==='monat') return MONATE[dt.m];
+          if (zoom==='woche') {
+            const end = (offsetDay+6) % 365;
+            const dtE = dayToDate(end);
+            return `${dt.d}. ${MONATE[dt.m].slice(0,3)} – ${dtE.d}. ${MONATE[dtE.m].slice(0,3)}`;
+          }
+          if (zoom==='tag') return `${dt.d}. ${MONATE[dt.m]}`;
+          return '';
+        }
+
+        // Aggregations-Helfer
+        function getSliceHours() {
+          if (zoom==='jahr')  return [0, HOURS];
+          if (zoom==='monat') {
+            let start=0; const dt=dayToDate(offsetDay);
+            for (let i=0;i<dt.m;i++) start += MON_DAYS[i]*24;
+            return [start, start + MON_DAYS[dt.m]*24];
+          }
+          if (zoom==='woche') return [offsetDay*24, offsetDay*24 + 168];
+          if (zoom==='tag')   return [offsetDay*24, offsetDay*24 + 24];
+        }
+        // Bin-Größe pro X-Step
+        function getBinHours() {
+          if (zoom==='jahr')  return 24;   // Tagessummen
+          if (zoom==='monat') return 24;   // Tagessummen
+          if (zoom==='woche') return 1;    // Stündlich
+          if (zoom==='tag')   return 1;    // Stündlich
+        }
+        function getXLabels(binCount) {
+          if (zoom==='jahr')  return ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+          if (zoom==='monat') {
+            const dt=dayToDate(offsetDay); const days=MON_DAYS[dt.m];
+            const out=[]; for (let i=1;i<=days;i++) out.push((i%5===0||i===1)?String(i):'');
+            return out;
+          }
+          if (zoom==='woche') {
+            const out=[]; for (let i=0;i<binCount;i++) {
+              const d=Math.floor(i/24);
+              const dt=dayToDate(offsetDay+d);
+              out.push(i%24===0 ? `${dt.d}.${(dt.m+1)}.` : '');
+            } return out;
+          }
+          if (zoom==='tag')   { const out=[]; for (let i=0;i<24;i++) out.push(i%3===0?`${i}h`:''); return out; }
+        }
+
+        const svg = document.getElementById('profile-svg');
+        const tooltip = document.getElementById('profile-tooltip');
+        const summary = document.getElementById('profile-summary');
+        const navLabel = document.getElementById('nav-label');
+
+        function fmtEur(v) { return v>=1000 ? (v/1000).toFixed(1)+'k €' : Math.round(v)+' €'; }
+        function fmtCt(v)  { return v.toFixed(1)+' ct'; }
+
+        function render() {
+          const [s,e] = getSliceHours();
+          const bin = getBinHours();
+          const binCount = Math.ceil((e-s)/bin);
+          // Aggregation
+          const bins = [];
+          for (let b=0; b<binCount; b++) {
+            let heiz=0, tww=0, kwh=0;
+            const bs=s+b*bin, be=Math.min(s+(b+1)*bin, e);
+            for (let h=bs; h<be; h++) { heiz+=data[h].ehHeiz; tww+=data[h].ehTww; kwh+=data[h].kwhTh; }
+            const total=heiz+tww;
+            const ct = kwh>0 ? (total*100)/kwh : 0;
+            bins.push({ heiz, tww, total, kwh, ct, hourStart:bs, hourEnd:be });
+          }
+          // Y-Skala
+          const yMax = Math.max(...bins.map(b => unit==='eur' ? b.total : b.ct)) * 1.05 || 1;
+          // SVG-Geometry: dynamisch an Container-Breite anpassen (verhindert Text-Stretching)
+          const containerW = svg.parentElement.clientWidth || 800;
+          const W = Math.max(400, Math.round(containerW)), H = 240;
+          svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+          const padL=58, padR=12, padT=14, padB=30;
+          const plotW=W-padL-padR, plotH=H-padT-padB;
+          const xStep = plotW/binCount;
+          const barW = Math.max(1.2, xStep*0.85);
+
+          // SVG Markup
+          let m = '';
+          // Y-Grid + Achsen-Labels
+          for (let i=0;i<=4;i++) {
+            const y = padT + plotH * (1 - i/4);
+            const v = yMax * i/4;
+            m += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--border)" stroke-width="0.5" opacity="0.5"/>`;
+            const lbl = unit==='eur' ? fmtEur(v) : fmtCt(v);
+            m += `<text x="${padL-5}" y="${y+3}" text-anchor="end" font-family="DM Mono, monospace" font-size="9" fill="var(--muted)">${lbl}</text>`;
+          }
+
+          if (unit==='eur') {
+            // Stacked Bars: TWW Sockel + Heizung
+            bins.forEach((b,i) => {
+              const x = padL + i*xStep + (xStep-barW)/2;
+              const hTww  = (b.tww/yMax)  * plotH;
+              const hHeiz = (b.heiz/yMax) * plotH;
+              const yTww  = padT + plotH - hTww;
+              const yHeiz = yTww - hHeiz;
+              m += `<rect class="profile-bar" data-i="${i}" x="${x}" y="${yTww}"  width="${barW}" height="${hTww}"  fill="var(--c-bluegray)" opacity="0.6" rx="1"/>`;
+              m += `<rect class="profile-bar" data-i="${i}" x="${x}" y="${yHeiz}" width="${barW}" height="${hHeiz}" fill="var(--c-amber)" rx="1"/>`;
+            });
+          } else {
+            // ct/kWh als Linie + Punkte
+            const pts = bins.map((b,i) => {
+              const x = padL + i*xStep + xStep/2;
+              const y = padT + plotH - (b.ct/yMax)*plotH;
+              return [x,y];
+            });
+            const path = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+            m += `<path d="${path}" fill="none" stroke="var(--c-amber)" stroke-width="1.6"/>`;
+            pts.forEach((p,i) => {
+              m += `<circle class="profile-bar" data-i="${i}" cx="${p[0]}" cy="${p[1]}" r="${binCount<200?2.5:1.5}" fill="var(--c-amber)"/>`;
+            });
+          }
+
+          // X-Labels
+          const xLabels = getXLabels(binCount);
+          xLabels.forEach((l,i) => {
+            if (!l) return;
+            const x = padL + i*xStep + xStep/2;
+            m += `<text x="${x}" y="${H-12}" text-anchor="middle" font-family="DM Mono, monospace" font-size="9" fill="var(--muted)">${l}</text>`;
+          });
+
+          svg.innerHTML = m;
+
+          // Hover/Click-Handler
+          svg.querySelectorAll('.profile-bar').forEach(el => {
+            el.addEventListener('mousemove', ev => {
+              const i = +el.dataset.i; const b = bins[i];
+              const dtStart = (zoom==='monat'||zoom==='jahr')
+                ? (() => { const dt=dayToDate(offsetDay+i); return `${dt.d}. ${MONATE[dt.m].slice(0,3)}`; })()
+                : (zoom==='woche')
+                  ? (() => { const d=Math.floor(i/24), hr=i%24; const dt=dayToDate(offsetDay+d); return `${dt.d}.${dt.m+1}. ${String(hr).padStart(2,'0')}:00`; })()
+                  : `${String(i).padStart(2,'0')}:00`;
+              tooltip.innerHTML = `<b style="color:var(--accent);">${dtStart}</b><br>
+                Gesamt: ${b.total.toFixed(2)} €<br>
+                Heizung: ${b.heiz.toFixed(2)} €<br>
+                TWW: ${b.tww.toFixed(2)} €<br>
+                Wärme: ${b.kwh.toFixed(1)} kWh<sub>th</sub><br>
+                <span style="color:var(--muted);">${b.ct.toFixed(2)} ct/kWh<sub>th</sub></span>`;
+              tooltip.style.display='block';
+              const wrap = svg.parentElement.getBoundingClientRect();
+              let lx = ev.clientX - wrap.left + 12;
+              let ly = ev.clientY - wrap.top + 12;
+              const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+              if (lx + tw > wrap.width - 4) lx = ev.clientX - wrap.left - tw - 12;
+              if (ly + th > wrap.height - 4) ly = ev.clientY - wrap.top - th - 12;
+              tooltip.style.left = Math.max(4, lx)+'px';
+              tooltip.style.top  = Math.max(4, ly)+'px';
+            });
+            el.addEventListener('mouseleave', () => { tooltip.style.display='none'; });
+            el.addEventListener('click', () => {
+              const i = +el.dataset.i;
+              if (zoom==='jahr')  { let acc=0; for (let mi=0;mi<12;mi++){ if(acc+MON_DAYS[mi]>i){ offsetDay=acc; break; } acc+=MON_DAYS[mi]; } setZoom('monat'); return; }
+              if (zoom==='monat') { offsetDay = offsetDay + i; setZoom('tag'); return; }
+              if (zoom==='woche') { offsetDay = offsetDay + Math.floor(i/24); setZoom('tag'); return; }
+            });
+          });
+
+          // Summary
+          const sumEur = bins.reduce((a,b)=>a+b.total,0);
+          const sumKwh = bins.reduce((a,b)=>a+b.kwh,0);
+          const avgCt = sumKwh>0 ? (sumEur*100)/sumKwh : 0;
+          summary.textContent = `Σ ${fmtEur(sumEur)} · Ø ${avgCt.toFixed(1)} ct/kWh<sub>th</sub> · ${(sumKwh/1000).toFixed(0)} MWh<sub>th</sub>`;
+          navLabel.textContent = dateLabel();
+        }
+
+        function setZoom(z) {
+          zoom = z;
+          document.querySelectorAll('[data-zoom]').forEach(b => b.classList.toggle('active', b.dataset.zoom===z));
+          // Bei Wechsel: Offset normalisieren
+          if (zoom==='jahr')  offsetDay = 0;
+          if (zoom==='monat') { const dt=dayToDate(offsetDay); let s=0; for (let i=0;i<dt.m;i++) s+=MON_DAYS[i]; offsetDay=s; }
+          if (zoom==='woche') offsetDay = Math.floor(offsetDay/7)*7;
+          render();
+        }
+        function setUnit(u) {
+          unit = u;
+          document.querySelectorAll('[data-unit]').forEach(b => b.classList.toggle('active', b.dataset.unit===u));
+          render();
+        }
+        function nav(dir) {
+          if (zoom==='jahr')  return;
+          if (zoom==='monat') { const dt=dayToDate(offsetDay); let m=dt.m+dir; if(m<0){m=11;} if(m>11){m=0;} let s=0; for (let i=0;i<m;i++) s+=MON_DAYS[i]; offsetDay=s; }
+          if (zoom==='woche') { offsetDay = (offsetDay + dir*7 + 365) % 365; }
+          if (zoom==='tag')   { offsetDay = (offsetDay + dir + 365) % 365; }
+          render();
+        }
+
+        document.querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => setZoom(b.dataset.zoom)));
+        document.querySelectorAll('[data-unit]').forEach(b => b.addEventListener('click', () => setUnit(b.dataset.unit)));
+        document.getElementById('nav-prev').addEventListener('click', () => nav(-1));
+        document.getElementById('nav-next').addEventListener('click', () => nav(+1));
+
+        // Bei Fenstergröße-Änderung: SVG neu rendern, damit Text nicht verzerrt wird
+        let resizeTimer;
+        window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 80); });
+
+        render();
+      })();
+      </script>
+
+      <!-- Energieträger-Tabelle -->
+      <table class="cost-table">
+        <thead>
+          <tr><th>Energieträger</th><th class="r">Verbrauch</th><th class="r">Preis</th><th class="r">Kosten/a</th><th>Berechnung</th></tr>
+        </thead>
+        <tbody>
+          <tr class="has-tip" data-tip="Stromeinsatz Wärmepumpe&#10;1.428.779 kWh × 35,0 ct/kWh&#10;= 500.073 €/a&#10;JAZ Ø: 4,76 (= 6.800.000 / 1.428.779)">
+            <td>WP-Strom</td><td class="r">1.428.779 kWh</td><td class="r">35,0 ct/kWh</td><td class="r">500.073 €</td><td class="muted"><i>JAZ Ø 4,76</i></td>
+          </tr>
+          <tr style="opacity:0.4;"><td>Erdgas</td><td class="r">0 kWh</td><td class="r">10,0 ct/kWh</td><td class="r">— €</td><td class="muted"><i>nicht aktiv</i></td></tr>
+          <tr style="opacity:0.4;"><td>Pellets</td><td class="r">0 kWh</td><td class="r">7,5 ct/kWh</td><td class="r">— €</td><td class="muted"><i>nicht aktiv</i></td></tr>
+          <tr style="opacity:0.4;"><td>Hackschnitzel</td><td class="r">0 kWh</td><td class="r">5,5 ct/kWh</td><td class="r">— €</td><td class="muted"><i>nicht aktiv</i></td></tr>
+          <tr style="opacity:0.4;"><td>Fernwärme</td><td class="r">0 kWh</td><td class="r">17,0 ct/kWh</td><td class="r">— €</td><td class="muted"><i>nicht aktiv</i></td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td>Summe Energie</td><td class="r">1.429 MWh</td><td class="r">Ø 35,0 ct</td><td class="r" style="color:var(--accent);">500.073 €/a</td><td class="muted"><i>spez. 7,4 ct/kWh<sub>th</sub></i></td></tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 3) BETRIEBSKOSTEN ── -->
+  <div class="accordion">
+    <div class="acc-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="acc-title">
+        <span class="acc-arrow">▶</span>
+        <span class="acc-dot" style="background:var(--c-magenta);"></span>
+        <span>Betriebskosten (W + I + B)</span>
+      </div>
+      <div class="acc-sum" style="color:var(--c-magenta);">188.868 €/a</div>
+    </div>
+    <div class="acc-body">
+      <table class="cost-table">
+        <thead><tr><th>Position</th><th class="r">€/a</th><th>Erläuterung</th></tr></thead>
+        <tbody>
+          <tr class="has-tip" data-tip="Wartung + Instandhaltung&#10;Summe aller Komponenten (siehe Investitions-Tabelle)&#10;Berechnet als (Inst.% + Wart.%) × Investitionssumme">
+            <td>Wartung & Instandhaltung</td><td class="r">188.493 €</td><td class="muted"><i>Summe pro Komponente · VDI 2067</i></td>
+          </tr>
+          <tr class="has-tip" data-tip="Bedienkosten der Heizzentrale&#10;5 h/a (Wärmepumpe) × 75 €/h Lohn = 375 €/a&#10;WP läuft im wesentlichen unbeaufsichtigt">
+            <td>Bedienkosten</td><td class="r">375 €</td><td class="muted"><i>5 h/a × 75 €/h</i></td>
+          </tr>
+          <tr style="opacity:0.4;"><td>BHKW-Vollwartungsvertrag</td><td class="r">— €</td><td class="muted"><i>3 ct/kWh<sub>el</sub> · nicht aktiv</i></td></tr>
+        </tbody>
+        <tfoot><tr><td>Summe Betrieb</td><td class="r" style="color:var(--accent);">188.868 €/a</td><td class="muted"><i>2,4 % von Investition</i></td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 4) CO2-KOSTEN ── -->
+  <div class="accordion">
+    <div class="acc-header" onclick="this.parentElement.classList.toggle('open')">
+      <div class="acc-title">
+        <span class="acc-arrow">▶</span>
+        <span class="acc-dot" style="background:var(--c-red);"></span>
+        <span>CO₂-Kosten (interner Ansatz EEFB)</span>
+      </div>
+      <div class="acc-sum" style="color:var(--c-red);">12.345 €/a</div>
+    </div>
+    <div class="acc-body">
+      <table class="cost-table">
+        <thead><tr><th>Energieträger</th><th class="r">Emission</th><th class="r">CO₂-Preis</th><th class="r">Kosten/a</th><th>Quelle</th></tr></thead>
+        <tbody>
+          <tr class="has-tip" data-tip="Strom Wärmepumpe (Mix 2030)&#10;1.428.779 kWh × 72 g/kWh = 102.872 kg/a&#10;102,9 t × 120 €/t = 12.345 €/a">
+            <td>WP-Strom (Mix 2030)</td><td class="r">102,9 t/a</td><td class="r">120 €/t</td><td class="r">12.345 €</td><td class="muted"><i>Iinas-Studie 2023 · 72 g/kWh</i></td>
+          </tr>
+        </tbody>
+        <tfoot><tr><td>Summe CO₂</td><td class="r">102,9 t/a</td><td class="r">—</td><td class="r" style="color:var(--accent);">12.345 €/a</td><td class="muted"><i>spez. 0,18 ct/kWh<sub>th</sub></i></td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 5) EINGABEPARAMETER ── -->
+  <div class="accordion open" style="margin-top:22px;border-color:rgba(212,168,85,0.4);">
+    <div class="acc-header" onclick="this.parentElement.classList.toggle('open')" style="background:var(--accent-soft);">
+      <div class="acc-title">
+        <span class="acc-arrow">▶</span>
+        <span class="acc-dot" style="background:var(--accent);"></span>
+        <span>Eingabeparameter (Preise · Zinssatz · Lohn)</span>
+      </div>
+      <div class="acc-sum" style="font-size:10px;color:var(--muted);font-family:inherit;font-weight:400;">Änderungen wirken sofort auf alle Werte</div>
+    </div>
+    <div class="acc-body">
+      <div class="params-grid">
+        <div class="param-row"><label>Strompreis WP</label><div class="input-wrap"><input value="35,0"><span class="unit">ct/kWh</span></div></div>
+        <div class="param-row"><label>Erdgaspreis</label><div class="input-wrap"><input value="10,0"><span class="unit">ct/kWh</span></div></div>
+        <div class="param-row"><label>Pelletpreis</label><div class="input-wrap"><input value="7,5"><span class="unit">ct/kWh</span></div></div>
+        <div class="param-row"><label>Hackschnitzelpreis</label><div class="input-wrap"><input value="5,5"><span class="unit">ct/kWh</span></div></div>
+        <div class="param-row"><label>Fernwärmepreis</label><div class="input-wrap"><input value="17,0"><span class="unit">ct/kWh</span></div></div>
+        <div class="param-row"><label>Heizölpreis</label><div class="input-wrap"><input value="10,0"><span class="unit">ct/kWh</span></div></div>
+        <div class="param-row"><label>CO₂-Preis (EEFB)</label><div class="input-wrap"><input value="120"><span class="unit">€/t</span></div><div class="src">Projektionsbericht BMWK 2030</div></div>
+        <div class="param-row"><label>Kalkulationszins</label><div class="input-wrap"><input value="3,4"><span class="unit">%/a</span></div></div>
+        <div class="param-row"><label>Lohnkosten</label><div class="input-wrap"><input value="75"><span class="unit">€/h</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Mockup-Hinweis ── -->
+  <div class="mockup-note">
+    <b>📝 Mockup-Notiz:</b> Statische Demo mit V1-Werten aus deiner Vorlage. Die <b>Energiekosten-Profil-Toggles</b>
+    (Jahr/Woche, €/ct-pro-kWh) sind im Mockup ohne Funktion — nur Layout. Im echten Tool werden die Daten aus dem
+    bestehenden <code>dispatch-Hourly</code> kommen, sodass das Profil exakt die simulierte Stundenrechnung widerspiegelt.
+    <br><br>
+    <b>Berechnungen, die ich im Code finden / verifizieren muss</b> bevor wir bauen:<br>
+    • Kommen Inst.% / Wart.% aus einer Konstanten-Tabelle (<code>VDI_2067</code>) oder pro Komponente konfigurierbar?<br>
+    • Wo werden Bedienstunden festgelegt (BHKW 100h, Heizöl 20h, Pellet 408h, …)?<br>
+    • Liegen die Monats-/Wochenwerte schon im <code>dispatchHourly</code> vor oder müssen sie aus dem 8760-Lastgang aggregiert werden?
+  </div>
+
+</div>
+
+</body>
+</html>

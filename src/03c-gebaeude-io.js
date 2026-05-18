@@ -516,8 +516,18 @@ export function _renderExpandedPanel(g, stats) {
       <div id="san-list-${g.id}" style="margin-top:4px; font-size:11px; color:var(--text); display:flex; flex-direction:column; gap:2px;">
         ${planItems.join('')}
       </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-top:8px;cursor:pointer;" title="Verhindert, dass dieses Gebäude beim Wechsel des Bezugsjahres automatisch ans Bestandsnetz angeschlossen wird">
+        <input type="checkbox" ${g.nichtAmNetz ? 'checked' : ''} data-change="toggleGebNichtAmNetz(${g.id})" style="accent-color:var(--accent);">
+        Nicht automatisch ans Netz anschließen
+      </label>
     </div>
   </div>`;
+}
+
+export function toggleGebNichtAmNetz(id) {
+  const g = window.gebaeude.find(x => x.id === id);
+  if (!g) return;
+  g.nichtAmNetz = !g.nichtAmNetz;
 }
 
 export function _rerenderCard(id) {
@@ -583,6 +593,7 @@ export function _buildProjectData() {
       stockwerke: g.stockwerke || 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
       pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil || 30, zustand: g.zustand || '',
       strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',
+      nichtAmNetz: g.nichtAmNetz || false,
       photoIds: g.photoIds || [],
     })),
     netz: {
@@ -630,10 +641,15 @@ export function _buildProjectData() {
     pefPellets: pefPellets, pefHhs: pefHhs, pefFernwaerme: pefFernwaerme,
     wirtBausteineOverrides: window._wirtBausteineOverrides || {},
     wirtVdiOverrides: window._wirtVdiOverrides || {},
+    wirtPctSettings: window._wirtPctSettings || {},
     varianten: varianten,
     activeVariantId: activeVariantId,
     baseNetzSnapshot: baseNetzSnapshot,
     baseErzeugerSnapshot: baseErzeugerSnapshot,
+    baseKostenSnapshot: baseKostenSnapshot,
+    baseHiddenAutoSnapshot: baseHiddenAutoSnapshot,
+    baseInvOverridesSnapshot: baseInvOverridesSnapshot,
+    baseVdiOverridesSnapshot: baseVdiOverridesSnapshot,
     stromNetz: {
       nodes: stromNodes.filter(n => n.type !== 'geb' && n.type !== 'erzeuger' && n.type !== 'junction').map(n => ({
         id: n.id, type: n.type, lat: n.lat, lng: n.lng, label: n.label,
@@ -652,28 +668,35 @@ export function _buildProjectData() {
     // ── Phase-3-System (neu): Assets, Trassen, Strom-Leitungen, Szenarien ──
     // Runtime-Felder (_marker, _poly, _result, _editMarkers) werden bewusst weggelassen
     // — die werden beim Restore vom Renderer neu erzeugt.
-    assetsNew: {
-      items: ASSETS.items.map(a => ({
-        id: a.id, type: a.type, domain: a.domain, lat: a.lat, lng: a.lng,
-        name: a.name, buildingId: a.buildingId, props: a.props || {},
-        baujahr: a.baujahr, abrissjahr: a.abrissjahr,
-        massnahmen: a.massnahmen || [],
-      })),
-      edges: ASSETS.edges.map(e => ({
-        id: e.id, domain: e.domain, aId: e.aId, bId: e.bId,
-        route: e.route || [], qs: e.qs, parallelCount: e.parallelCount,
-        baujahr: e.baujahr, abrissjahr: e.abrissjahr,
-        massnahmen: e.massnahmen || [], sicherungA: e.sicherungA || null,
-      })),
-      selectedId: ASSETS.selectedId,
-    },
-    stromnetzNew: {
-      trassen: STROMNETZ.trassen.map(t => ({ id: t.id, pts: t.pts })),
-      szenarien: STROMNETZ.szenarien,
-      aktivSzenario: STROMNETZ.aktivSzenario,
-      napProfiles: STROMNETZ.napProfiles || {},
-      napSelectedId: STROMNETZ.napSelectedId || null,
-    },
+    // IIFE-Build-Sicherung: ASSETS/STROMNETZ über window-Fallback (gleiches Pattern wie _loadProject).
+    ...(function(){
+      const _ASSETS = (typeof ASSETS !== 'undefined') ? ASSETS : window.ASSETS;
+      const _STROMNETZ = (typeof STROMNETZ !== 'undefined') ? STROMNETZ : window.STROMNETZ;
+      return {
+        assetsNew: _ASSETS ? {
+          items: _ASSETS.items.map(a => ({
+            id: a.id, type: a.type, domain: a.domain, lat: a.lat, lng: a.lng,
+            name: a.name, buildingId: a.buildingId, props: a.props || {},
+            baujahr: a.baujahr, abrissjahr: a.abrissjahr,
+            massnahmen: a.massnahmen || [],
+          })),
+          edges: _ASSETS.edges.map(e => ({
+            id: e.id, domain: e.domain, aId: e.aId, bId: e.bId,
+            route: e.route || [], qs: e.qs, parallelCount: e.parallelCount,
+            baujahr: e.baujahr, abrissjahr: e.abrissjahr,
+            massnahmen: e.massnahmen || [], sicherungA: e.sicherungA || null,
+          })),
+          selectedId: _ASSETS.selectedId,
+        } : { items: [], edges: [], selectedId: null },
+        stromnetzNew: _STROMNETZ ? {
+          trassen: _STROMNETZ.trassen.map(t => ({ id: t.id, pts: t.pts })),
+          szenarien: _STROMNETZ.szenarien,
+          aktivSzenario: _STROMNETZ.aktivSzenario,
+          napProfiles: _STROMNETZ.napProfiles || {},
+          napSelectedId: _STROMNETZ.napSelectedId || null,
+        } : { trassen: [], szenarien: [], aktivSzenario: null, napProfiles: {}, napSelectedId: null },
+      };
+    })(),
     // Fotos werden nicht hier eingebunden — _buildProjectDataWithPhotos
     // ist async und sammelt sie aus dem Storage ein.
   };
@@ -725,13 +748,20 @@ export function importJSON(event) {
   event.target.value = '';
 }
 
-export function _loadProject(project) {
+export function _loadProject(project, _opts) {
+      _loadProjectInner(project, _opts);
+}
+function _loadProjectInner(project, _opts) {
       window.gebaeude.forEach(g => {
         if(g.polygonLayer) map.removeLayer(g.polygonLayer);
         if(g.circleMarker) map.removeLayer(g.circleMarker);
         if(g.labelMarker) map.removeLayer(g.labelMarker);
       });
-      window.gebaeude = [];
+      // In-place clearen statt reassignen — sonst halten ES-Module-Imports
+      // (z.B. `gebaeude` in 02c-karte-werkzeuge.js) den alten Array-Reference
+      // und updateViz operiert auf einem leeren Array → keine Polygone/Marker.
+      // Gleiches Pattern wie removeGebaeude (siehe Memo zum Live-Binding).
+      window.gebaeude.length = 0;
       clearNetz();
       clearTrasse();
       clearFliessgewaesser();
@@ -768,6 +798,7 @@ export function _loadProject(project) {
             newG.pvAktiv = g.pvAktiv || false;
             newG.pvDachanteil = g.pvDachanteil || 30;
             newG.zustand = g.zustand || '';
+            newG.nichtAmNetz = g.nichtAmNetz || false;
             if (g.id >= idCounter) idCounter = g.id + 1;
          });
          } finally { _batchImporting = false; }
@@ -1019,10 +1050,16 @@ export function _loadProject(project) {
       // Wirtschaftlichkeits-Overrides wiederherstellen
       if (project.wirtBausteineOverrides) window._wirtBausteineOverrides = project.wirtBausteineOverrides;
       if (project.wirtVdiOverrides)       window._wirtVdiOverrides       = project.wirtVdiOverrides;
+      if (project.wirtPctSettings)        window._wirtPctSettings        = project.wirtPctSettings;
       // Varianten wiederherstellen
       varianten = project.varianten || [];
       baseNetzSnapshot = project.baseNetzSnapshot || null;
       baseErzeugerSnapshot = project.baseErzeugerSnapshot || null;
+      // Phase 4b/5: neue Snapshots — defensive Fallbacks für ältere Saves
+      baseKostenSnapshot       = project.baseKostenSnapshot       || [];
+      baseHiddenAutoSnapshot   = project.baseHiddenAutoSnapshot   || [];
+      baseInvOverridesSnapshot = project.baseInvOverridesSnapshot || project.wirtBausteineOverrides || {};
+      baseVdiOverridesSnapshot = project.baseVdiOverridesSnapshot || project.wirtVdiOverrides       || {};
       activeVariantId = null; // Immer mit Basisdaten starten beim Laden
       renderVariantenBar();
       updateVariantBanner();
@@ -1083,33 +1120,41 @@ export function _loadProject(project) {
 
       // ── Phase-3-System (neu) restaurieren ─────────────────────────────────
       // ASSETS.items + ASSETS.edges + STROMNETZ.trassen/szenarien/napProfiles
-      ASSETS.items.length = 0;
-      ASSETS.edges.length = 0;
-      STROMNETZ.trassen.length = 0;
-      STROMNETZ.szenarien.length = 0;
-      ASSETS.selectedId = null;
-      STROMNETZ.aktivSzenario = null;
-      STROMNETZ.napProfiles = {};
-      STROMNETZ.napSelectedId = null;
-
-      if (project.assetsNew) {
-        if (Array.isArray(project.assetsNew.items)) ASSETS.items.push(...project.assetsNew.items);
-        if (Array.isArray(project.assetsNew.edges)) ASSETS.edges.push(...project.assetsNew.edges);
-        ASSETS.selectedId = project.assetsNew.selectedId || null;
+      // Defensive Zugriff über window (im IIFE-Build sind ES-Imports nicht in
+      // jedem Closure-Scope verfügbar, aber main.js expose-t sie auf window).
+      const _ASSETS = (typeof ASSETS !== 'undefined') ? ASSETS : window.ASSETS;
+      const _STROMNETZ = (typeof STROMNETZ !== 'undefined') ? STROMNETZ : window.STROMNETZ;
+      if (_ASSETS) {
+        _ASSETS.items.length = 0;
+        _ASSETS.edges.length = 0;
+        _ASSETS.selectedId = null;
       }
-      if (project.stromnetzNew) {
+      if (_STROMNETZ) {
+        _STROMNETZ.trassen.length = 0;
+        _STROMNETZ.szenarien.length = 0;
+        _STROMNETZ.aktivSzenario = null;
+        _STROMNETZ.napProfiles = {};
+        _STROMNETZ.napSelectedId = null;
+      }
+
+      if (project.assetsNew && _ASSETS) {
+        if (Array.isArray(project.assetsNew.items)) _ASSETS.items.push(...project.assetsNew.items);
+        if (Array.isArray(project.assetsNew.edges)) _ASSETS.edges.push(...project.assetsNew.edges);
+        _ASSETS.selectedId = project.assetsNew.selectedId || null;
+      }
+      if (project.stromnetzNew && _STROMNETZ) {
         if (Array.isArray(project.stromnetzNew.trassen)) {
           // Trassen brauchen Runtime-Slots _poly/_editMarkers
-          STROMNETZ.trassen.push(...project.stromnetzNew.trassen.map(t => ({
+          _STROMNETZ.trassen.push(...project.stromnetzNew.trassen.map(t => ({
             id: t.id, pts: t.pts, _poly: null, _editMarkers: [],
           })));
         }
         if (Array.isArray(project.stromnetzNew.szenarien)) {
-          STROMNETZ.szenarien.push(...project.stromnetzNew.szenarien);
+          _STROMNETZ.szenarien.push(...project.stromnetzNew.szenarien);
         }
-        STROMNETZ.aktivSzenario = project.stromnetzNew.aktivSzenario || null;
-        STROMNETZ.napProfiles   = project.stromnetzNew.napProfiles || {};
-        STROMNETZ.napSelectedId = project.stromnetzNew.napSelectedId || null;
+        _STROMNETZ.aktivSzenario = project.stromnetzNew.aktivSzenario || null;
+        _STROMNETZ.napProfiles   = project.stromnetzNew.napProfiles || {};
+        _STROMNETZ.napSelectedId = project.stromnetzNew.napSelectedId || null;
       }
 
       // Re-Render aller Phase-3-Layer (deferred wegen TDZ in Dev-Modus)
@@ -1135,6 +1180,31 @@ export function _loadProject(project) {
       updateViz();
       updateTotals();
       glBerechnenDebounced(800);
+      // Karte auf das geladene Gebiet zoomen — außer beim Undo-Restore
+      // (da bleibt der View, wo der User gerade war).
+      if (!_opts || !_opts.keepUndoStack) {
+        try {
+          const allLatLngs = [];
+          for (const g of (window.gebaeude || [])) {
+            if (g.polygon && Array.isArray(g.polygon)) {
+              for (const p of g.polygon) {
+                const lat = (p.lat ?? p[0]);
+                const lng = (p.lng ?? p[1]);
+                if (lat != null && lng != null) allLatLngs.push([lat, lng]);
+              }
+            }
+          }
+          if (allLatLngs.length > 0 && typeof map !== 'undefined' && map.flyToBounds) {
+            map.flyToBounds(L.latLngBounds(allLatLngs), { padding: [40, 40], maxZoom: 18, duration: 1.6 });
+          }
+        } catch (e) { console.warn('[loadProject] fitBounds fehlgeschlagen:', e); }
+      }
+      // Frisch geladenes Projekt: Undo-Stack leeren — außer wenn vom Undo
+      // selbst getriggert (sonst hätten wir nach 1× Strg+Z keinen Stack mehr).
+      if (!_opts || !_opts.keepUndoStack) {
+        _undoStack.length = 0;
+        _renderUndoBadge();
+      }
 }
 
 export function loadGebaeudeFromParent(gebaeudeArray) {
@@ -1144,7 +1214,8 @@ export function loadGebaeudeFromParent(gebaeudeArray) {
     if (g.circleMarker) map.removeLayer(g.circleMarker);
     if (g.labelMarker) map.removeLayer(g.labelMarker);
   });
-  window.gebaeude = [];
+  // In-place clearen (siehe _loadProjectInner) — Reassignment bricht ES-Module-Imports
+  window.gebaeude.length = 0;
   clearNetz();
   clearTrasse();
   idCounter = 1;
@@ -1192,7 +1263,17 @@ export function sendToLiegenschaftsrechner() {
   setTimeout(function() { window.parent.postMessage({ type: 'ENERGIEKARTE_READY' }, '*'); }, 800);
 })();
 
-export function showHint(msg){const h=document.getElementById('hint');h.textContent=msg;h.classList.remove('hidden');}
+let _hintTimer = null;
+export function showHint(msg, autoHideMs){
+  const h=document.getElementById('hint');
+  h.textContent=msg;
+  h.classList.remove('hidden');
+  // Auto-Hide: vorherigen Timer abbrechen, neuen setzen wenn ms > 0
+  if (_hintTimer) { clearTimeout(_hintTimer); _hintTimer = null; }
+  if (autoHideMs && autoHideMs > 0) {
+    _hintTimer = setTimeout(() => { h.classList.add('hidden'); _hintTimer = null; }, autoHideMs);
+  }
+}
 export function hideHint(){document.getElementById('hint').classList.add('hidden');}
 
 export const sty=document.createElement('style');
@@ -1230,4 +1311,81 @@ export function animateStromPipes() {
 export function startAnimStrom() { if (!_animStromRunning) { _animStromRunning = true; animateStromPipes(); } }
 export function stopAnimStrom()  { _animStromRunning = false; }
 
+// ── Undo-Stack (Variante B: 5 Schritte FIFO) ─────────────────────────────
+// Snapshot-basiert: vor jeder größeren mutierenden Aktion wird der komplette
+// Projekt-State serialisiert auf einen Stack gepusht. Bei Strg+Z wird der
+// letzte Snapshot via _loadProject zurückgespielt.
+const _UNDO_MAX = 5;
+const _undoStack = [];
 
+export function pushUndoSnapshot(label) {
+  try {
+    const snapshot = _buildProjectData();
+    _undoStack.push({ label: label || 'Aktion', snapshot, ts: Date.now() });
+    while (_undoStack.length > _UNDO_MAX) _undoStack.shift();
+    _renderUndoBadge();
+  } catch (e) {
+    console.warn('[Undo] Snapshot fehlgeschlagen:', e);
+  }
+}
+
+export function undoLastAction() {
+  if (_undoStack.length === 0) {
+    showHint('↩ Nichts mehr rückgängig zu machen', 2500);
+    return;
+  }
+  const entry = _undoStack.pop();
+  try {
+    _loadProject(entry.snapshot, { keepUndoStack: true });
+    showHint('↩ Rückgängig: ' + entry.label, 3000);
+  } catch (e) {
+    console.error('[Undo] Restore fehlgeschlagen:', e);
+    showHint('⚠ Rückgängig fehlgeschlagen — siehe Konsole', 5000);
+  } finally {
+    _renderUndoBadge();
+  }
+}
+
+export function _undoStackSize() { return _undoStack.length; }
+
+// Optionales Status-Badge (zeigt Anzahl der rückgängig-machbaren Schritte)
+function _renderUndoBadge() {
+  const el = document.getElementById('undo-badge');
+  if (!el) return;
+  if (_undoStack.length === 0) {
+    el.style.display = 'none';
+  } else {
+    el.style.display = '';
+    const last = _undoStack[_undoStack.length - 1];
+    el.textContent = `↩ ${_undoStack.length}× Strg+Z`;
+    el.title = 'Letzte Aktion: ' + last.label + ' — Strg+Z (oder Cmd+Z) zum Rückgängig-Machen';
+  }
+}
+
+
+
+// ── Sichere Window-Exposition (IIFE-Build-Robustheit) ────────────────────
+if (typeof window !== 'undefined') {
+  window.pushUndoSnapshot = pushUndoSnapshot;
+  window.undoLastAction = undoLastAction;
+  window.toggleGebNichtAmNetz = toggleGebNichtAmNetz;
+  window.showHint = showHint;
+  window.hideHint = hideHint;
+  window._buildProjectData = _buildProjectData;
+  window._loadProject = _loadProject;
+}
+
+// ── Globaler Strg+Z / Cmd+Z für Undo (Variante B: 5-Schritt-Stack) ──
+// Listener hier registrieren (statt main.js), damit er auch im Single-File-Build
+// aktiv ist. main.js wird beim IIFE-Build nicht mit aufgenommen.
+if (typeof window !== 'undefined' && !window._undoKeyListenerRegistered) {
+  window._undoKeyListenerRegistered = true;
+  window.addEventListener('keydown', e => {
+    const isUndo = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z');
+    if (!isUndo) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    if (typeof window.undoLastAction === 'function') window.undoLastAction();
+  });
+}

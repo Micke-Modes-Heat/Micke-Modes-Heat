@@ -1220,6 +1220,12 @@ export function redrawLwWp() {
   const rect = L.rectangle([sw, ne], { color: '#388e3c', weight: 2, fillColor: f0.c, fillOpacity: f0.o })
     .bindTooltip(`Platzbedarf: ${platzM2.toFixed(1)} m² min. · ${rl.toFixed(1)}×${rw.toFixed(1)} m`, {sticky:true})
     .addTo(window.lwWpLayerGroup);
+  // Edit-Modus: Griffe nur sichtbar wenn das Rect aktiv ausgewählt ist
+  const _handles = [];
+  let _editActive = !!window._lwwpEditActive;
+  function showHandles() { _handles.forEach(h => { if (!map.hasLayer(h)) h.addTo(window.lwWpLayerGroup); }); _editActive = true; window._lwwpEditActive = true; }
+  function hideHandles() { _handles.forEach(h => { if (map.hasLayer(h)) map.removeLayer(h); }); _editActive = false; window._lwwpEditActive = false; }
+  rect.on('click', (ev) => { L.DomEvent.stopPropagation(ev); if (_editActive) hideHandles(); else showHandles(); });
   window.lwWpSchallLayerGroup.clearLayers();
   const schallStufen = [55, 50, 45, 40, 35];
   const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
@@ -1256,31 +1262,40 @@ export function redrawLwWp() {
     redrawLwWp();
   }
   // Seitengriffe: N S E W
-  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
+  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 });
   nH.on('drag', function() { const lat = this.getLatLng().lat; if (lat > sw.lat + 3 * latPerM) { ne.lat = lat; upRect(); } });
   nH.on('dragend', done);
-  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
+  _handles.push(nH);
+  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 });
   sH.on('drag', function() { const lat = this.getLatLng().lat; if (lat < ne.lat - 3 * latPerM) { sw.lat = lat; upRect(); } });
   sH.on('dragend', done);
-  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
+  _handles.push(sH);
+  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 });
   eH.on('drag', function() { const lng = this.getLatLng().lng; if (lng > sw.lng + 3 * lngPerM) { ne.lng = lng; upRect(); } });
   eH.on('dragend', done);
-  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
+  _handles.push(eH);
+  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 });
   wH.on('drag', function() { const lng = this.getLatLng().lng; if (lng < ne.lng - 3 * lngPerM) { sw.lng = lng; upRect(); } });
   wH.on('dragend', done);
+  _handles.push(wH);
   // Eckengriffe: NE NW SE SW
-  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
+  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 });
   neH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   neH.on('dragend', done);
-  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
+  _handles.push(neH);
+  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 });
   nwH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   nwH.on('dragend', done);
-  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
+  _handles.push(nwH);
+  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 });
   seH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   seH.on('dragend', done);
-  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
+  _handles.push(seH);
+  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 });
   swH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   swH.on('dragend', done);
+  _handles.push(swH);
+  if (_editActive) showHandles();
   // Hauptmarker (Gerät verschieben) — groß genug um auch ohne Zoom greifbar zu sein
   const wpIcon = L.divIcon({ className: '', html: '<div style="width:32px;height:32px;background:rgba(56,142,60,0.5);border:2px solid #66bb6a;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 0 8px rgba(102,187,106,0.5);">' + windSvg('#c8e6c9',17,14) + '</div>', iconSize: [32,32], iconAnchor: [16,16] });
   const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(window.lwWpLayerGroup);

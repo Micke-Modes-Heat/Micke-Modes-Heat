@@ -748,3 +748,221 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 @media(max-width:900px){
   .left-panel{width:200px;}
 }
+
+/* ── Wirtschaftlichkeit-Tab ──────────────────────────────────────────── */
+#center-wirtschaft-view .wt-hint-banner { background: rgba(212,168,85,0.10); border: 1px solid rgba(212,168,85,0.30); border-radius: 6px; padding: 8px 14px; font-size: 11px; color: var(--accent); margin-bottom: 14px; line-height: 1.5; }
+#center-wirtschaft-view .wt-hint-banner b { color: var(--text); font-weight: 500; }
+#center-wirtschaft-view .wt-empty { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.7; }
+#center-wirtschaft-view .wt-empty .acc-key { color: var(--accent); font-family: 'DM Mono',monospace; }
+
+#center-wirtschaft-view .wt-kpi-bar { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 8px; margin-bottom: 18px; }
+#center-wirtschaft-view .wt-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 11px 13px; min-width: 0; }
+#center-wirtschaft-view .wt-kpi-val { font-family: 'DM Mono',monospace; font-size: 18px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#center-wirtschaft-view .wt-kpi-lbl { font-size: 9px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+#center-wirtschaft-view .wt-kpi.primary .wt-kpi-val { color: var(--accent); }
+#center-wirtschaft-view .wt-kpi.invest .wt-kpi-val { color: #4dd0e1; }
+#center-wirtschaft-view .wt-kpi.spec .wt-kpi-val   { color: #f9a825; }
+#center-wirtschaft-view .wt-kpi.co2 .wt-kpi-val    { color: #ef9a9a; }
+
+#center-wirtschaft-view .wt-charts-row { display: grid; grid-template-columns: repeat(auto-fit,minmax(380px,1fr)); gap: 14px; margin-bottom: 16px; }
+#center-wirtschaft-view .wt-chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+#center-wirtschaft-view .wt-chart-title { font-size: 10px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+
+#center-wirtschaft-view .wt-stack-row { display: grid; grid-template-columns: 110px 1fr 110px; align-items: center; gap: 10px; padding: 4px 6px; cursor: help; transition: background 0.15s; border-radius: 3px; }
+#center-wirtschaft-view .wt-stack-row:hover { background: var(--surface2); }
+#center-wirtschaft-view .wt-stack-row.total { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 9px; font-weight: 500; }
+#center-wirtschaft-view .wt-stack-lbl { font-size: 11px; color: var(--text); display: flex; align-items: center; }
+#center-wirtschaft-view .wt-stack-lbl::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; background: var(--swatch, #888); }
+#center-wirtschaft-view .wt-stack-bar { height: 20px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+#center-wirtschaft-view .wt-stack-fill { height: 100%; transition: width 0.3s; }
+#center-wirtschaft-view .wt-stack-val { font-family: 'DM Mono',monospace; font-size: 11px; text-align: right; }
+
+#center-wirtschaft-view .wt-donut-wrap { display: flex; gap: 14px; align-items: center; }
+#center-wirtschaft-view .wt-donut-svg { flex-shrink: 0; }
+#center-wirtschaft-view .wt-donut-legend { flex: 1; display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; padding-right: 4px; min-width: 0; }
+#center-wirtschaft-view .wt-donut-legend::-webkit-scrollbar { width: 4px; }
+#center-wirtschaft-view .wt-donut-legend::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+#center-wirtschaft-view .wt-donut-row { display: grid; grid-template-columns: 10px 1fr 90px 36px; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 3px; font-size: 11px; min-width: 0; }
+#center-wirtschaft-view .wt-donut-color { width: 10px; height: 10px; border-radius: 2px; }
+#center-wirtschaft-view .wt-donut-name { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#center-wirtschaft-view .wt-donut-val { font-family: 'DM Mono',monospace; text-align: right; color: var(--text); }
+#center-wirtschaft-view .wt-donut-pct { font-family: 'DM Mono',monospace; color: var(--muted); text-align: right; font-size: 10px; }
+
+#center-wirtschaft-view .wt-acc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+#center-wirtschaft-view .wt-acc-header { display: flex; justify-content: space-between; align-items: center; padding: 11px 16px; cursor: pointer; user-select: none; transition: background 0.15s; }
+#center-wirtschaft-view .wt-acc-header:hover { background: var(--surface2); }
+#center-wirtschaft-view .wt-acc-title { font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 10px; color: var(--text); }
+#center-wirtschaft-view .wt-acc-arrow { font-size: 9px; color: var(--muted); transition: transform 0.15s; }
+#center-wirtschaft-view .wt-acc-dot { width: 8px; height: 8px; border-radius: 2px; }
+#center-wirtschaft-view .wt-acc-sum { font-family: 'DM Mono',monospace; font-size: 13px; font-weight: 500; }
+#center-wirtschaft-view .wt-acc-body { display: none; padding: 0 16px 14px; border-top: 1px solid var(--border); }
+#center-wirtschaft-view .wt-acc.open .wt-acc-body { display: block; }
+#center-wirtschaft-view .wt-acc.open .wt-acc-arrow { transform: rotate(90deg); }
+
+#center-wirtschaft-view .wt-table-scroll { overflow-x: auto; margin-top: 10px; }
+#center-wirtschaft-view .wt-table-scroll::-webkit-scrollbar { height: 6px; }
+#center-wirtschaft-view .wt-table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+#center-wirtschaft-view .wt-cost-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+#center-wirtschaft-view .wt-cost-table th { text-align: left; color: var(--muted); font-weight: 400; padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+#center-wirtschaft-view .wt-cost-table th.r { text-align: right; }
+#center-wirtschaft-view .wt-cost-table th.c { text-align: center; }
+#center-wirtschaft-view .wt-cost-table td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+#center-wirtschaft-view .wt-cost-table td.r { text-align: right; font-family: 'DM Mono',monospace; }
+#center-wirtschaft-view .wt-cost-table td.c { text-align: center; font-family: 'DM Mono',monospace; }
+#center-wirtschaft-view .wt-cost-table td.muted { color: var(--muted); font-size: 10px; }
+#center-wirtschaft-view .wt-cost-table td.muted i { font-style: italic; }
+#center-wirtschaft-view .wt-cost-table tbody tr:hover { background: var(--surface2); }
+#center-wirtschaft-view .wt-cost-table tfoot td { font-weight: 500; padding-top: 9px; border-top: 1px solid var(--border); border-bottom: none; }
+
+#center-wirtschaft-view .wt-profile { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; margin-top: 12px; position: relative; }
+#center-wirtschaft-view .wt-profile-toolbar { display: flex; flex-wrap: wrap; gap: 8px; row-gap: 8px; align-items: center; margin-bottom: 12px; }
+#center-wirtschaft-view .wt-profile-toolbar > * { flex-shrink: 0; }
+#center-wirtschaft-view .wt-profile-title { flex: 1 1 auto; min-width: 200px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+#center-wirtschaft-view .wt-profile-title em { color: var(--accent); text-transform: none; letter-spacing: 0; font-style: italic; }
+#center-wirtschaft-view .wt-tg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+#center-wirtschaft-view .wt-tg button { padding: 3px 10px; background: transparent; color: var(--muted); border: none; font-family: inherit; font-size: 10px; cursor: pointer; transition: 0.15s; }
+#center-wirtschaft-view .wt-tg button.active { background: var(--accent); color: #000; }
+#center-wirtschaft-view .wt-tg button:not(.active):hover { color: var(--accent); }
+#center-wirtschaft-view .wt-nav-label { min-width: 160px; padding: 3px 10px; font-family: 'DM Mono',monospace; font-size: 10px; color: var(--accent); text-align: center; border-left: 1px solid var(--border); border-right: 1px solid var(--border); background: var(--bg); }
+#center-wirtschaft-view .wt-profile-svg { width: 100%; height: 220px; display: block; cursor: crosshair; user-select: none; }
+#center-wirtschaft-view .wt-profile-wrap { position: relative; width: 100%; }
+#center-wirtschaft-view .wt-profile-tip { position: absolute; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 10px; pointer-events: none; font-family: 'DM Mono',monospace; box-shadow: 0 4px 16px rgba(0,0,0,0.5); display: none; z-index: 10; white-space: nowrap; line-height: 1.5; }
+#center-wirtschaft-view .wt-profile-bar:hover { opacity: 0.75; }
+#center-wirtschaft-view .wt-profile-summary { display: flex; gap: 18px; font-size: 10px; color: var(--muted); margin-top: 6px; padding-left: 50px; }
+#center-wirtschaft-view .wt-profile-summary .acc { font-family: 'DM Mono',monospace; color: var(--accent); margin-left: auto; }
+
+/* ── Wirtschaftlichkeit-Tab: editierbare Zellen ─────────────────────── */
+#center-wirtschaft-view .wt-cell-input-wrap { display: inline-flex; align-items: center; gap: 3px; position: relative; width: 100%; }
+#center-wirtschaft-view .wt-cell-input {
+  background: transparent; border: 1px solid transparent; color: inherit;
+  font-family: inherit; font-size: inherit; padding: 3px 5px;
+  border-radius: 3px; outline: none; transition: 0.12s; min-width: 0; flex: 1;
+}
+#center-wirtschaft-view .wt-cell-input:hover { border-color: var(--border); background: var(--surface2); }
+#center-wirtschaft-view .wt-cell-input:focus { border-color: var(--accent); background: var(--surface2); }
+#center-wirtschaft-view .wt-cell-input.r { text-align: right; font-family: 'DM Mono', monospace; }
+#center-wirtschaft-view .wt-cell-input.c { text-align: center; font-family: 'DM Mono', monospace; }
+#center-wirtschaft-view .wt-cell-input.override {
+  background: rgba(212,168,85,0.14); border-color: rgba(212,168,85,0.4); color: var(--accent);
+}
+#center-wirtschaft-view .wt-cell-input.override:focus { background: rgba(212,168,85,0.20); border-color: var(--accent); }
+#center-wirtschaft-view .wt-cell-reset {
+  opacity: 0; cursor: pointer; padding: 1px 4px; background: transparent;
+  border: 1px solid transparent; color: var(--accent); font-size: 11px;
+  border-radius: 3px; transition: 0.15s; line-height: 1; flex-shrink: 0;
+}
+#center-wirtschaft-view .wt-cell-input-wrap:has(.override) .wt-cell-reset { opacity: 0.7; }
+#center-wirtschaft-view .wt-cell-reset:hover { opacity: 1 !important; background: rgba(212,168,85,0.20); border-color: var(--accent); }
+#center-wirtschaft-view td.wt-edit-cell { padding: 3px 4px; }
+
+/* Eingabeparameter-Akkordeon */
+#center-wirtschaft-view .wt-params-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 22px; padding-top: 6px; }
+#center-wirtschaft-view .wt-param-row { display: flex; flex-direction: column; gap: 3px; }
+#center-wirtschaft-view .wt-param-row label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+#center-wirtschaft-view .wt-param-input-wrap { display: flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
+#center-wirtschaft-view .wt-param-input-wrap:focus-within { border-color: var(--accent); }
+#center-wirtschaft-view .wt-param-input { flex: 1; background: transparent; border: none; color: var(--text); font-size: 13px; font-family: 'DM Mono', monospace; outline: none; text-align: right; min-width: 0; }
+#center-wirtschaft-view .wt-param-unit { font-size: 10px; color: var(--muted); white-space: nowrap; }
+
+/* Investitions-Tabelle: Mülleimer-Spalte + Add-Row + Hidden-Banner */
+#center-wirtschaft-view .wt-row-actions { padding: 3px 4px; text-align: center; vertical-align: middle; width: 32px; }
+#center-wirtschaft-view .wt-row-del {
+  opacity: 0.25; cursor: pointer; padding: 2px 5px; background: transparent;
+  border: 1px solid transparent; color: var(--muted); font-size: 12px;
+  border-radius: 3px; transition: 0.15s; line-height: 1;
+}
+#center-wirtschaft-view .wt-cost-table tbody tr:hover .wt-row-del { opacity: 0.7; color: var(--c-red); }
+#center-wirtschaft-view .wt-row-del:hover { opacity: 1 !important; background: rgba(229,57,53,0.15); border-color: var(--c-red); color: var(--c-red); }
+#center-wirtschaft-view .wt-add-row td { background: rgba(212,168,85,0.04); }
+#center-wirtschaft-view .wt-add-row:hover td { background: rgba(212,168,85,0.10); }
+#center-wirtschaft-view .wt-vorlage-select:hover, #center-wirtschaft-view .wt-vorlage-select:focus { border-color: var(--accent); outline: none; }
+#center-wirtschaft-view .wt-add-custom:hover { border-color: var(--accent); color: var(--accent); border-style: solid; background: var(--accent-soft); }
+#center-wirtschaft-view .wt-unhide:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Wirtschaft-Tab: Confirm-Dialog ─────────────────────────────────────── */
+.wt-confirm-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999; backdrop-filter: blur(2px);
+  animation: wt-fade 0.12s ease-out;
+}
+.wt-confirm-box {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 22px 26px; min-width: 340px; max-width: 480px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  font-family: 'DM Sans', sans-serif;
+  animation: wt-pop 0.15s ease-out;
+}
+.wt-confirm-title { font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+.wt-confirm-msg { font-size: 12px; color: var(--text); line-height: 1.55; margin-bottom: 18px; }
+.wt-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.wt-confirm-actions button {
+  padding: 6px 16px; border-radius: 4px; font-family: inherit; font-size: 11px;
+  cursor: pointer; transition: 0.15s; border: 1px solid var(--border);
+  background: transparent; color: var(--muted);
+}
+.wt-confirm-cancel:hover { border-color: var(--accent); color: var(--accent); }
+.wt-confirm-ok { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 500; }
+.wt-confirm-ok:hover { background: #e6b964; border-color: #e6b964; }
+.wt-confirm-ok.danger { background: #e53935; color: #fff; border-color: #e53935; }
+.wt-confirm-ok.danger:hover { background: #ef5350; border-color: #ef5350; }
+@keyframes wt-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wt-pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+
+/* Wirtschaft-Tab: Save-as-Vorlage Button + Prompt-Input ───────────────── */
+#center-wirtschaft-view .wt-row-save {
+  opacity: 0.25; cursor: pointer; padding: 2px 5px; background: transparent;
+  border: 1px solid transparent; color: var(--accent); font-size: 12px;
+  border-radius: 3px; transition: 0.15s; line-height: 1; margin-right: 2px;
+}
+#center-wirtschaft-view .wt-cost-table tbody tr:hover .wt-row-save { opacity: 0.7; }
+#center-wirtschaft-view .wt-row-save:hover { opacity: 1 !important; background: rgba(212,168,85,0.15); border-color: var(--accent); }
+
+.wt-prompt-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 8px 10px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px;
+  margin-bottom: 16px; outline: none;
+}
+.wt-prompt-input:focus { border-color: var(--accent); }
+
+/* Wirtschaft-Tab: Loading-Overlay ────────────────────────────────────── */
+#center-wirtschaft-view .wt-loading {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(18,17,14,0.55); backdrop-filter: blur(1px);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100; gap: 8px; pointer-events: none;
+}
+#center-wirtschaft-view .wt-loading-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+  animation: wt-bounce 1.0s infinite ease-in-out;
+}
+#center-wirtschaft-view .wt-loading-dot:nth-child(2) { animation-delay: 0.15s; }
+#center-wirtschaft-view .wt-loading-dot:nth-child(3) { animation-delay: 0.30s; }
+@keyframes wt-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* KPI-Bar kompaktere Werte ──────────────────────────────────────────── */
+@media (max-width: 1300px) {
+  #center-wirtschaft-view .wt-kpi-val { font-size: 16px; }
+  #center-wirtschaft-view .wt-kpi-lbl { font-size: 8px; letter-spacing: 0.04em; }
+}
+@media (max-width: 1100px) {
+  #center-wirtschaft-view .wt-kpi-bar { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  #center-wirtschaft-view .wt-kpi-val { font-size: 14px; }
+}
+
+/* Wirtschaft-Tab: Donut-Klick + Row-Highlight ────────────────────────── */
+#center-wirtschaft-view .wt-donut-seg:hover { stroke-width: 32; }
+#center-wirtschaft-view .wt-donut-row:hover { background: var(--surface2); }
+#center-wirtschaft-view tr.wt-row-highlight {
+  animation: wt-highlight 1.8s ease-out;
+}
+@keyframes wt-highlight {
+  0%   { background: rgba(212,168,85,0.0); }
+  20%  { background: rgba(212,168,85,0.35); }
+  100% { background: rgba(212,168,85,0.0); }
+}

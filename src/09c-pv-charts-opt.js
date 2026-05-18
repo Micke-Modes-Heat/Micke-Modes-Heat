@@ -966,6 +966,9 @@ export function _runPvBatOpt(resultDiv) {
       ['Eigenverbrauch', fmt(r.eigenverbrauchMwh) + ' MWh/a'],
       ['Einspeisung',    fmt(r.einspeisungMwh) + ' MWh/a'],
     ].filter(Boolean);
+    // Übernahme-Button: schreibt PV-kWp (+ ggf. Batteriespeicher) in DOM-Inputs
+    // der aktiven Variante und triggert Re-Berechnung.
+    const applyPayload = JSON.stringify({ kwp: r.kwp || 0, batKwh: addBat ? (r.batKwh || 0) : 0 });
     return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;flex:1;min-width:170px;">
       <div style="font-size:9px;font-weight:700;color:${accent};margin-bottom:7px;letter-spacing:.04em;">${label}</div>
       ${rows.map(([l,v,c,bold]) => `
@@ -973,6 +976,13 @@ export function _runPvBatOpt(resultDiv) {
           <span style="font-size:9px;color:${bold?'var(--text)':'var(--muted)'};">${l}</span>
           <span style="font-family:'DM Mono',monospace;font-size:10px;${c?'color:'+c+';':''}${bold||c?'font-weight:600;':''}white-space:nowrap;">${v}</span>
         </div>`).join('')}
+      <button class="pv-opt-apply" data-payload='${applyPayload.replace(/'/g, "&#39;")}'
+        style="margin-top:8px;width:100%;padding:5px 8px;background:transparent;border:1px solid ${accent};color:${accent};font-family:inherit;font-size:9.5px;border-radius:3px;cursor:pointer;transition:0.15s;letter-spacing:0.03em;"
+        onmouseover="this.style.background='${accent}';this.style.color='#000';"
+        onmouseout="this.style.background='transparent';this.style.color='${accent}';"
+        title="Übernimmt PV-kWp ${addBat?'und Batterie-kWh ':''}in die aktive Variante">
+        ↩ In Variante übernehmen
+      </button>
     </div>`;
   };
 
@@ -1030,11 +1040,44 @@ export function _runPvBatOpt(resultDiv) {
   window._optData = { grid, results, NX: N_KWP, NY: N_BAT, maxKwp, maxBat, bestPvOnly, bestJoint };
   window._optView = window._optView || '2d';
 
-  // Heatmap rendern + Hover-Listener (nach DOM-Update)
+  // Heatmap rendern + Hover-Listener + Übernahme-Buttons (nach DOM-Update)
   requestAnimationFrame(() => {
     if (window._optView === '3d') _renderOpt3D();
     else _renderOptHeatmap(grid, N_KWP, N_BAT, maxKwp, maxBat, bestPvOnly, bestJoint);
     _attachOptHover();
+    _attachPvOptApplyButtons();
+  });
+}
+
+// Übernahme-Buttons: PV-kWp (+ ggf. Batteriespeicher) in die DOM-Inputs der
+// aktiven Variante schreiben und Re-Berechnung triggern.
+function _attachPvOptApplyButtons() {
+  document.querySelectorAll('.pv-opt-apply').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      let payload;
+      try { payload = JSON.parse(btn.dataset.payload); } catch { return; }
+      if (typeof window.pushUndoSnapshot === 'function') {
+        window.pushUndoSnapshot(payload.batKwh > 0 ? 'PV+Speicher-Auslegung übernehmen' : 'PV-Auslegung übernehmen');
+      }
+      const kwpInp = document.getElementById('pv-kwp');
+      const batInp = document.getElementById('bat-kapazitaet');
+      if (kwpInp) {
+        kwpInp.value = Math.round(payload.kwp || 0);
+        kwpInp.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (batInp) {
+        batInp.value = Math.round(payload.batKwh || 0);
+        batInp.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      // Bestätigung
+      if (typeof window.showHint === 'function') {
+        const txt = payload.batKwh > 0
+          ? `✓ Übernommen: ${Math.round(payload.kwp)} kWp PV + ${Math.round(payload.batKwh)} kWh Batteriespeicher`
+          : `✓ Übernommen: ${Math.round(payload.kwp)} kWp PV (ohne Speicher)`;
+        window.showHint(txt, 4000);
+      }
+    });
   });
 }
 

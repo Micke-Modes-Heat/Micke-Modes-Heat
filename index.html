@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <link rel="stylesheet" href="src/styles/app.css"/>
 </head>
 <body>
@@ -17,6 +18,7 @@
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
     <button class="view-tab" data-mode="analyse" data-click="setViewMode('analyse')">Analyse</button>
+    <button class="view-tab" data-mode="wirtschaft" data-click="setViewMode('wirtschaft')">Wirtschaftlichkeit</button>
     <button class="view-tab" data-mode="optimierung" data-click="setViewMode('optimierung')">Optimierung</button>
     <button class="view-tab" data-mode="vergleich" data-click="setViewMode('vergleich')">Vergleich</button>
   </div>
@@ -104,8 +106,8 @@
     </div>
     <button class="var-add-btn" data-click="addVariante()" style="font-size:10px;">+ Variante</button>
   </div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group">
+  <div class="ctx-sep" id="karte-sep-1"></div>
+  <div class="ctx-group" id="karte-modes">
     <span class="ctx-label">Karte</span>
     <button class="mode-btn active" data-click="setMode('waerme')"   id="btn-waerme">Wärme</button>
     <button class="mode-btn"        data-click="setMode('spez')"     id="btn-spez">Spez.</button>
@@ -113,8 +115,8 @@
     <button class="mode-btn"        data-click="setMode('verlust')"  id="btn-verlust">Verlust</button>
     <button class="mode-btn"        data-click="setMode('strom')"    id="btn-strom">⚡ Strom</button>
   </div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group">
+  <div class="ctx-sep" id="karte-sep-2"></div>
+  <div class="ctx-group" id="viz-toggle-group">
     <div class="viz-toggle">
       <button class="viz-btn active" id="vbtn-circle" data-click="setViz('circle')">⬤</button>
       <button class="viz-btn"        id="vbtn-bar"    data-click="setViz('bar')">▮</button>
@@ -224,14 +226,16 @@
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Einfärbung</div>
         <div id="lp-netz-viz" class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
-          <button class="lp-tool-btn" data-click="setNetzColorMode('wld')" style="justify-content:center;font-size:9px;">WLD</button>
-          <button class="lp-tool-btn" data-click="setNetzColorMode('dn')" style="justify-content:center;font-size:9px;">DN</button>
-          <button class="lp-tool-btn" data-click="setNetzColorMode('verlust')" style="justify-content:center;font-size:9px;">Verluste</button>
-          <button class="lp-tool-btn" data-click="setNetzColorMode('subtree')" style="justify-content:center;font-size:9px;">Strang</button>
-          <button class="lp-tool-btn" data-click="setNetzColorMode('netzkosten')" style="justify-content:center;font-size:9px;">Kosten</button>
-          <button class="lp-tool-btn" data-click="setNetzColorMode('auslastung')" style="justify-content:center;font-size:9px;">Auslast.</button>
-          <button class="lp-tool-btn" data-click="setNetzColorMode('druck')" style="justify-content:center;font-size:9px;">Δp</button>
-          <button class="lp-tool-btn" data-click="setNetzColorMode('geschw')" style="justify-content:center;font-size:9px;">v (m/s)</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('wld')" style="justify-content:center;font-size:9px;" title="Wärmeleistungsdichte (kW/m): wieviel Wärme pro Meter Trasse fließt — Indikator für die Wirtschaftlichkeit eines Trassenabschnitts">WLD</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('dn')" style="justify-content:center;font-size:9px;" title="Nennweite des Rohrs (DN 25 … 500). Ergibt sich automatisch aus der durchfließenden Wärmeleistung und der zulässigen Geschwindigkeit">DN</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('temp')" style="justify-content:center;font-size:9px;" title="Vorlauftemperatur am Ende jedes Trassenabschnitts (°C) — zeigt wie weit das Netz vom Heizwerk wegkühlt. Gradient von Heiß (rot) nach Kühl (blau)">Temp.</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('abkuehlung')" style="justify-content:center;font-size:9px;" title="Kumulative Abkühlung vom Heizzentrale-Vorlauf bis zum Ende dieses Punkts (ΔT in K) — innerhalb der Abschnitte sieht man den Verlauf farblich abgestuft">ΔT</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('verlust')" style="justify-content:center;font-size:9px;" title="Wärmeverluste in % der durchfließenden Energie — höhere Verluste bei langen, dünnen, schwach belasteten Strängen">Verlust %</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('subtree')" style="justify-content:center;font-size:9px;" title="Strang-WLD: Wärmeleistungsdichte des gesamten nachfolgenden Strangs ab diesem Segment — schlechte (rote) Stränge sind Kandidaten für Pruning">Strang-WLD</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('netzkosten')" style="justify-content:center;font-size:9px;" title="Netzkosten-Zuschlag pro MWh (€/MWh): Annuität des Rohrbaus + Wärmeverluste, umgerechnet auf die Wärmemenge die durch das Segment fließt">Kosten</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('auslastung')" style="justify-content:center;font-size:9px;" title="Auslastung des Rohrs (%): aktuelle Last vs. maximale Leistung der gewählten Nennweite. Über 100 % = Überlastung (Warndreieck)">Auslast.</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('druck')" style="justify-content:center;font-size:9px;" title="Druckverlust pro Meter Trasse (Pa/m) — bestimmt die nötige Pumpleistung. Hohe Werte = enge oder schnelle Strömung">Δp</button>
+          <button class="lp-tool-btn" data-click="setNetzColorMode('geschw')" style="justify-content:center;font-size:9px;" title="Fließgeschwindigkeit im Rohr (m/s). Üblich 0.5–3 m/s; höher = mehr Druckverlust und Geräusch">v (m/s)</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Ansicht</div>
         <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
@@ -384,6 +388,7 @@
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" data-click="exportDispatchCSV()" style="border-color:#ff9800;color:#ffb74d;">📋 Dispatch CSV</button>
           <button class="lp-tool-btn" data-click="exportGebaeudeCSV()" style="border-color:#81c784;color:#81c784;">📋 Gebäude CSV</button>
+          <button class="lp-tool-btn" data-click="exportXlsxWorkbook()" style="border-color:#4a7c59;color:#7ba087;grid-column:1/-1;">📊 Excel-Export (Workbook)</button>
           <button class="lp-tool-btn" data-click="exportPDFReport()" style="border-color:#ef5350;color:#ef9a9a;grid-column:1/-1;">📄 PDF-Bericht erstellen</button>
         </div>
       </div>
@@ -587,6 +592,15 @@
 
     <!-- ── Wirtschaftlichkeit / Strom / Optimierung ──────────── -->
     <div id="analyse-section-content" style="display:none;"></div>
+  </div>
+
+  <!-- ══ Center: Wirtschaftlichkeit-View ═════════════════════════════ -->
+  <div id="center-wirtschaft-view" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;z-index:600;background:var(--bg);overflow:auto;padding:18px 22px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <span style="font-size:13px;color:var(--accent);letter-spacing:.04em;text-transform:uppercase;">€ Wirtschaftlichkeit — Detail der aktiven Variante</span>
+      <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:11px;">← Zurück zur Karte</button>
+    </div>
+    <div id="wirtschaft-content"></div>
   </div>
 
   <!-- ══ Center: Optimierung-View ════════════════════════════════════ -->
@@ -2263,11 +2277,11 @@
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px">
     <div class="inp-group">
       <label class="inp-label" title="VL-Temperatur bei kalter Außentemperatur (−5°C). Bestimmt zusammen mit VL@+15°C die Heizkurve.">VL bei −5°C (°C)</label>
-      <input class="inp-field" type="number" id="netz-vl" value="65" data-change="syncVLTemps('netz');recalcNetz()"/>
+      <input class="inp-field" type="number" id="netz-vl" value="65" data-change="syncVLTemps('netz');glBerechnenAuto();recalcNetz()"/>
     </div>
     <div class="inp-group">
       <label class="inp-label" title="VL-Temperatur bei warmer Außentemperatur (+15°C). Bestimmt zusammen mit VL@−5°C die Heizkurve. Wird auch als Rücklauftemperatur (Auslegung) verwendet.">VL bei +15°C / RL (°C)</label>
-      <input class="inp-field" type="number" id="netz-rl" value="40" data-change="syncVLTemps('netz');recalcNetz()"/>
+      <input class="inp-field" type="number" id="netz-rl" value="40" data-change="syncVLTemps('netz');glBerechnenAuto();recalcNetz()"/>
     </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">

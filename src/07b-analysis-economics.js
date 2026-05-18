@@ -12,6 +12,9 @@ import { getThermSpeicherParams } from './06b-gl-berechnen.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { KOSTENKOMP_DEFAULTS } from './config/kostenkomponenten-cfg.js';
+// Hinweis: 01-globals-varianten NICHT direkt importieren (zirkulärer Import via 06c → 07b → 01).
+// Stattdessen über window.* zugreifen (main.js exposed alle Module-Exports auf window).
 import { OPT_IH, OPT_INVEST_DEFAULT, OPT_NUTZUNG } from './config/optimizer-defaults.js';
 
 window._wirtBausteineOverrides = window._wirtBausteineOverrides || {};
@@ -300,6 +303,187 @@ export function _calcBausteinJKDetail(investEur, vdi, zins, lohn) {
   };
 }
 
+// ── Side-effect-freier Daten-Sammler für den Wirtschaftlichkeit-Tab ──
+// Quelle der Wahrheit ist die alte calcWirtschaftPanel(): wir triggern sie,
+// lesen ihr exportiertes window._wirtschaftSummary und ergänzen das stündliche
+// Energiekosten-Profil hier. Damit sind alle Anzeigen (Float-Panel,
+// Analyse → Wirtschaftlichkeit, neuer Tab) deckungsgleich.
+//
+// Returns: { ready: false, reason } | { ready: true, summary, inputs, bausteine, energy, hourly, context }
+export function getWirtschaftSummary() {
+  const keys = window._dispatchActiveKeys || [];
+  if (!keys.length) {
+    return { ready: false, reason: 'Keine Dispatch-Daten — bitte zuerst „Grundlage berechnen" ausführen.' };
+  }
+
+  // calcWirtschaftPanel NICHT automatisch triggern (führt zu Side-Effects auf Netz/Geo).
+  // Stattdessen: nutze den Cache window._wirtschaftSummary, der von vorherigen
+  // Berechnungen (Float-Panel, Analyse → Wirtschaftlichkeit, Edits) gefüllt wird.
+  const ws = window._wirtschaftSummary;
+  if (!ws) {
+    return { ready: false, reason: 'Wirtschaftlichkeit noch nicht berechnet. Klicke einmal in der Karte auf „Grundlage berechnen" oder öffne kurz „Analyse → Wirtschaftlichkeit".' };
+  }
+
+  const { zins, lohn, pStrom, pGas, pHko, pFw, pPk, pHhs, pKw, bohrMeter } = ws.context;
+  const pCo2 = parseFloat(document.getElementById('wirt-p-co2')?.value) || 0;
+  const en = window._dispatchEnergy || {};
+  const stM2 = parseFloat(document.getElementById('st-flaeche')?.value) || 0;
+  const nGeb = parseInt(document.getElementById('netz-n-geb')?.value) || 0;
+
+  // ── Etas (für stündliche Profil-Berechnung) ──
+  const etas = {
+    gaskessel: (parseFloat(document.getElementById('gk-eta')?.value)   || 92) / 100,
+    heizoel:   (parseFloat(document.getElementById('hko-eta')?.value)  || 90) / 100,
+    pellets:   (parseFloat(document.getElementById('pk-eta')?.value)   || 88) / 100,
+    hhs:       (parseFloat(document.getElementById('hhs-eta')?.value)  || 85) / 100,
+    bhkw:      (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100,
+    bhkwSigma: parseFloat(document.getElementById('bhkw-skz')?.value)  || 0.45,
+  };
+
+  // ── Stundenscharfes Energiekosten-Profil (8760 Werte) ──
+  // Pro WP-Typ getrennt: stündliche JAZ = Wärme[k][h] / Strom[k][h] aus dem
+  // Dispatch (window._wpElHourlyByKey). PV-Eigenverbrauch zum LCOE bewertet
+  // (Selbstkostenpreis der Anlage), Reihenfolge: Quartier → WPs → Stromkessel.
+  // Brennstoffe = konstanter Preis.
+  const hourlyEur   = new Array(8760).fill(0);
+  const hourlyKwhTh = new Array(8760).fill(0);
+  const dispatchHourly = window._dispatchHourly || {};
+  const wpElByKey = window._wpElHourlyByKey || {};
+  const skElH = window._skElHourly;
+  const elQH  = window.elQuartierH || null;
+
+  // PV-Profil + LCOE (Levelized Cost of Energy) für Eigenverbrauch
+  const pvKwp = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+  let pvProf = null, pvLcoeEurKwh = 0;
+  if (pvKwp > 0 && typeof window.makePvProfile8760 === 'function') {
+    try { pvProf = window.makePvProfile8760(); } catch {}
+    if (pvProf) {
+      const z = zins / 100;
+      const annF = z > 0 ? z * Math.pow(1+z, 20) / (Math.pow(1+z, 20) - 1) : 1/20;
+      const invPerKwp = parseFloat(document.getElementById('opt-pv-invest')?.value) || 1200;
+      const pvAnnuitaet = pvKwp * invPerKwp * (annF + 0.01);  // €/a inkl. 1% Wartung
+      let pvErtragKwh = 0;
+      for (let h = 0; h < 8760; h++) pvErtragKwh += (pvProf[h] || 0) * pvKwp;
+      pvLcoeEurKwh = pvErtragKwh > 0 ? pvAnnuitaet / pvErtragKwh : 0;
+    }
+  }
+
+  // Brennstoff-Preise (konstant; einmal vorab berechnet) — €/kWh thermisch
+  const priceFuel = {};
+  if (etas.gaskessel > 0) priceFuel['gaskessel'] = (pGas / 100) / etas.gaskessel;
+  if (etas.gaskessel > 0) priceFuel['_autoGk']   = (pGas / 100) / etas.gaskessel;
+  if (etas.pellets   > 0) priceFuel['pellets']   = (pPk  / 100) / etas.pellets;
+  if (etas.hhs       > 0) priceFuel['hhs']       = (pHhs / 100) / etas.hhs;
+  if (etas.heizoel   > 0) priceFuel['heizoel']   = (pHko / 100) / etas.heizoel;
+  priceFuel['fernwaerme'] = pFw / 100;
+  const etaThBhkw = etas.bhkw / (1 + etas.bhkwSigma);
+  if (etaThBhkw > 0) priceFuel['bhkw'] = (pGas / 100) / etaThBhkw;
+
+  const wpKeys = ['lwwp', 'fg', 'geo'];
+  const stromPriceEurKwh = pStrom / 100;
+
+  for (let h = 0; h < 8760; h++) {
+    // PV verfügbar in dieser Stunde, nach Quartier-Grundlast
+    let pvAvail = pvProf ? (pvProf[h] * pvKwp) : 0;
+    if (elQH && pvAvail > 0) pvAvail = Math.max(0, pvAvail - (elQH[h] || 0));
+
+    // Pro WP-Typ getrennt — eigene COP[h] = Wärme[h] / Strom[h]
+    for (const k of wpKeys) {
+      if (!keys.includes(k)) continue;
+      const wArr = dispatchHourly[k]; const eArr = wpElByKey[k];
+      if (!wArr || !eArr) continue;
+      const wH = wArr[h] || 0;
+      const eH = eArr[h] || 0;
+      if (eH < 0.001 || wH < 0.001) continue;
+      const pvForK = Math.min(pvAvail, eH);
+      pvAvail -= pvForK;
+      const netzK = eH - pvForK;
+      const cost = netzK * stromPriceEurKwh + pvForK * pvLcoeEurKwh;
+      hourlyEur[h]   += cost;
+      hourlyKwhTh[h] += wH;
+    }
+
+    // Stromkessel
+    if (keys.includes('stromkessel')) {
+      const wSk  = dispatchHourly.stromkessel ? (dispatchHourly.stromkessel[h] || 0) : 0;
+      const elSk = skElH ? (skElH[h] || 0) : wSk;
+      if (elSk > 0.001 && wSk > 0.001) {
+        const pvForSk = Math.min(pvAvail, elSk);
+        pvAvail -= pvForSk;
+        const netzSk = elSk - pvForSk;
+        const cost = netzSk * stromPriceEurKwh + pvForSk * pvLcoeEurKwh;
+        hourlyEur[h]   += cost;
+        hourlyKwhTh[h] += wSk;
+      }
+    }
+
+    // Brennstoffe + Fernwärme + BHKW (Brennstoffkosten; Stromerlös bleibt jährlich)
+    for (const k of keys) {
+      if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') continue;
+      const arr = dispatchHourly[k]; if (!arr) continue;
+      const wKw = arr[h] || 0; if (wKw <= 0) continue;
+      const p = priceFuel[k] || 0; if (p <= 0) continue;
+      hourlyEur[h]   += wKw * p;
+      hourlyKwhTh[h] += wKw;
+    }
+  }
+
+  // ── Zusatz-Aggregate für KPI-Bar (eeAnteil, co2ta) ──
+  const EE_KEYS = ['lwwp','fg','geo','pellets','hhs'];
+  let eeW = 0, gesW = 0;
+  for (const k of Object.keys(en)) {
+    const w = en[k]?.waermeMwh || 0; gesW += w;
+    if (EE_KEYS.includes(k) || k === '_thermSpeicher') eeW += w;
+  }
+  const eeAnteil = gesW > 0 ? (eeW / gesW * 100) : 0;
+
+  const _emf = { gaskessel:240, heizoel:310, pellets:20, hhs:20, _autoGk:240, fernwaerme:200, lwwp:420, fg:420, geo:420, stromkessel:420, bhkw:240 };
+  let co2ta = 0;
+  for (const k of Object.keys(en)) {
+    const e2 = en[k]; if (!e2) continue;
+    const emf = _emf[k] || 0;
+    if (k === 'lwwp' || k === 'fg' || k === 'geo' || k === 'stromkessel') {
+      co2ta += (e2.elMwh || 0) * emf / 1e3;
+    } else if (k === 'bhkw') {
+      const etaTh = etas.bhkw / (1 + etas.bhkwSigma);
+      co2ta += (e2.waermeMwh || 0) / etaTh * emf / 1e3;
+    } else if (etas[k]) {
+      co2ta += (e2.waermeMwh || 0) / etas[k] * emf / 1e3;
+    }
+  }
+
+  // ── Summary fürs UI: 1:1 die Werte aus calcWirtschaftPanel + Aggregate ──
+  const summary = {
+    investGesamt: ws.totals.investGesamt,
+    kapitalJk:    ws.totals.kapitalJk,
+    betriebJk:    ws.totals.betriebJk || 0,
+    energieJk:    ws.totals.energieJk,
+    co2Jk:        ws.totals.co2Jk,
+    pvJk:         ws.totals.pvJk,
+    jahreskosten: ws.totals.jahreskosten,
+    wgk:          ws.totals.wgk,
+    totalWaerme:  ws.totals.gesamtMwh,
+    co2ta, eeAnteil,
+  };
+
+  return {
+    ready: true,
+    summary,
+    inputs: { zins, lohn, prices: { strom: pStrom, gas: pGas, hko: pHko, fw: pFw, pk: pPk, hhs: pHhs }, etas, pCo2 },
+    bausteine: ws.rows,
+    energy: ws.energyRows || [],
+    co2Rows: ws.co2Rows || [],
+    hourly: { eur: hourlyEur, kwhTh: hourlyKwhTh },
+    context: {
+      pKw, bohrMeter, stM2, nGeb,
+      overrides: {
+        inv: { ...(window._wirtBausteineOverrides || {}) },
+        vdi: { ...(window._wirtVdiOverrides || {}) },
+      },
+    },
+  };
+}
+
 export function wirtBausteinBlur(el, id) {
   const v = el.value.trim().replace(/\./g, '').replace(',', '.');
   if (v === '') {
@@ -578,16 +762,43 @@ export function calcWirtschaftPanel() {
     if (b.vdi.n > 0) basisInvest += effVal;
   }
 
-  // 2. Pass: prozentuale Bausteine
+  // ── Hidden-Filter VOR PCT-Pass: ausgeblendete Auto-Bausteine entfernen
+  // und basisInvest entsprechend reduzieren, damit die prozentualen Zuschläge
+  // (Bauteil/Hydr./Planung/Unvorhergesehenes) auf der korrekten Basis rechnen.
+  const _hiddenAutoIds = (typeof window.getActiveHiddenAutoIds === 'function')
+    ? (window.getActiveHiddenAutoIds() || []) : [];
+  if (_hiddenAutoIds.length) {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (_hiddenAutoIds.includes(rows[i].id)) {
+        const r = rows[i];
+        if (r.vdi && r.vdi.n > 0) basisInvest -= (r.effVal || 0);
+        rows.splice(i, 1);
+      }
+    }
+  }
+
+  // 2. Pass: prozentuale Bausteine — Sätze editierbar (default 5/12/10/7)
+  // Persistente Speicherung in window._wirtPctSettings, weil DOM-Inputs durch
+  // Re-Render im Wirtschaft-Tab sonst verloren gehen würden.
+  const _pctMap = window._wirtPctSettings || {};
+  const _pctVal = (key, fallback) => {
+    const v = _pctMap[key];
+    return isFinite(v) && v >= 0 ? v / 100 : fallback;
+  };
+  const _pctBauteil = _pctVal('bauteil', 0.05);
+  const _pctHydr    = _pctVal('hydr',    0.12);
+  const _pctPlanung = _pctVal('planung', 0.10);
+  const _pctUnvorg  = _pctVal('unvorg',  0.07);
+  const _pctLabel = (p) => (p * 100).toFixed(1).replace(/\.0$/, '') + '%';
   const PCT = [
-    { id:'bauteil',  label:'Bauteil (5%)',          vdi:{n:50,inst:1.0,wart:1.0,bedien:0}, pct:0.05,
-      tooltip:'Bauteilleistungen 5% der Basisinvestition' },
-    { id:'hydr_elt', label:'Hydr./Elek./MSR (12%)', vdi:{n:40,inst:1.0,wart:0,  bedien:0}, pct:0.12,
-      tooltip:'Hydraulik, Elektro und MSR-Technik 12% der Basisinvestition' },
-    { id:'planung',  label:'Planung (10%)',          vdi:{n:20,inst:0,  wart:0,   bedien:0}, pct:0.10,
-      tooltip:'Planung und Projektsteuerung 10% der Basisinvestition' },
-    { id:'unvorg',   label:'Unvorhergesehenes (7%)',  vdi:{n:20,inst:0,  wart:0,   bedien:0}, pct:0.07,
-      tooltip:'Risikozuschlag für Unvorhergesehenes 7% der Basisinvestition (HOAI/KfW-Empfehlung: 5–10%)' },
+    { id:'bauteil',  label:`Bauteil (${_pctLabel(_pctBauteil)})`,          vdi:{n:50,inst:1.0,wart:1.0,bedien:0}, pct:_pctBauteil,
+      tooltip:`Bauteilleistungen ${_pctLabel(_pctBauteil)} der Basisinvestition` },
+    { id:'hydr_elt', label:`Hydr./Elek./MSR (${_pctLabel(_pctHydr)})`, vdi:{n:40,inst:1.0,wart:0,  bedien:0}, pct:_pctHydr,
+      tooltip:`Hydraulik, Elektro und MSR-Technik ${_pctLabel(_pctHydr)} der Basisinvestition` },
+    { id:'planung',  label:`Planung (${_pctLabel(_pctPlanung)})`,          vdi:{n:20,inst:0,  wart:0,   bedien:0}, pct:_pctPlanung,
+      tooltip:`Planung und Projektsteuerung ${_pctLabel(_pctPlanung)} der Basisinvestition` },
+    { id:'unvorg',   label:`Unvorhergesehenes (${_pctLabel(_pctUnvorg)})`,  vdi:{n:20,inst:0,  wart:0,   bedien:0}, pct:_pctUnvorg,
+      tooltip:`Risikozuschlag für Unvorhergesehenes ${_pctLabel(_pctUnvorg)} der Basisinvestition (HOAI/KfW-Empfehlung: 5–10%)` },
   ];
   if (basisInvest > 0) {
     for (const b of PCT) {
@@ -598,6 +809,33 @@ export function calcWirtschaftPanel() {
       rows.push({ ...b, autoVal, effVal, effVdi, jk, isPct: true });
     }
   }
+
+  // ── Phase 4b-2: User-Kostenpunkte anhängen (Hidden ist oben schon gefiltert)
+  try {
+    const userAdds = (typeof window.getActiveKostenpunkte === 'function')
+      ? (window.getActiveKostenpunkte() || []) : [];
+    for (const ka of userAdds) {
+      const def = KOSTENKOMP_DEFAULTS[ka.typeKey] || {};
+      const effVdi = {
+        n:      ka.ndOverride   ?? def.n      ?? 20,
+        inst:   ka.instOverride ?? def.inst   ?? 0,
+        wart:   ka.wartOverride ?? def.wart   ?? 0,
+        bedien: ka.bedOverride  ?? def.bedien ?? 0,
+      };
+      const inv = Math.round(Number(ka.invest) || 0);
+      const jk = _calcBausteinJK(inv, effVdi, zins, lohn);
+      rows.push({
+        id: ka.id,
+        label: ka.name || def.name || 'Eigene Position',
+        vdi: { ...effVdi },
+        autoVal: inv, effVal: inv,
+        effVdi,
+        jk,
+        isUser: true,
+        tooltip: ka.note || (def.name ? `Vorlage: ${def.name}` : 'Benutzerdefinierte Position'),
+      });
+    }
+  } catch (e) { console.warn('[Wirtschaft] User-Kostenpunkte konnten nicht angewandt werden:', e); }
 
   const gesamtInvest = rows.reduce((s, r) => s + r.effVal, 0);
   const gesamtJk     = rows.reduce((s, r) => s + r.jk,     0);
@@ -673,30 +911,39 @@ export function calcWirtschaftPanel() {
       kosten = verb * P[k] * 10;
       detail = `${verb.toFixed(0)} MWh Brennstoff × ${P[k]} ct/kWh`;
     }
-    if (kosten > 0) energyRows.push({ label: DA_LABELS[k]||k, kosten, detail, color: _daColor(k) });
+    if (kosten > 0) energyRows.push({ key: k, label: DA_LABELS[k]||k, kosten, detail, color: _daColor(k) });
   });
   const gesamtEnergie = energyRows.reduce((s, r) => s + r.kosten, 0);
 
   // CO₂-Kosten (alle Energieträger, inkl. WP-Strom)
   const pCo2 = parseFloat(document.getElementById('wirt-p-co2')?.value) || 0; // €/t
+  // Emissionsfaktoren g CO₂eq/kWh — Live-Reader aus DOM (window.* statt importierte
+  // Variable, weil ES-Module-let-Bindings beim DOM-Edit nicht mutieren).
+  const _gEmF = (id, fallback) => {
+    const v = parseFloat(document.getElementById(id)?.value);
+    return isFinite(v) && v >= 0 ? v : fallback;
+  };
+  const _stromEmF      = _gEmF('strom-emf',      typeof stromEmF      !== 'undefined' ? stromEmF      : 363);
+  const _gasEmF        = _gEmF('gas-emf',        typeof gasEmF        !== 'undefined' ? gasEmF        : 240);
+  const _heizoelEmF    = _gEmF('heizoel-emf',    typeof heizoelEmF    !== 'undefined' ? heizoelEmF    : 310);
+  const _pelletsEmF    = _gEmF('pellets-emf',    typeof pelletsEmF    !== 'undefined' ? pelletsEmF    : 20);
+  const _hhsEmF        = _gEmF('hhs-emf',        typeof hhsEmF        !== 'undefined' ? hhsEmF        : 20);
+  const _fernwaermeEmF = _gEmF('fernwaerme-emf', typeof fernwaermeEmF !== 'undefined' ? fernwaermeEmF : 180);
+
+  const alleET = document.getElementById('wirt-co2-alle')?.checked !== false;
+  const emfMap = {
+    gaskessel:   { emf: _gasEmF,        eta: 0.92,  typ: 'verbrennung', fossil: true  },
+    _autoGk:     { emf: _gasEmF,        eta: 0.92,  typ: 'verbrennung', fossil: true  },
+    heizoel:     { emf: _heizoelEmF,    eta: 0.90,  typ: 'verbrennung', fossil: true  },
+    pellets:     { emf: _pelletsEmF,    eta: _getEtaMap().pellets, typ: 'verbrennung', fossil: false },
+    hhs:         { emf: _hhsEmF,        eta: _getEtaMap().hhs,     typ: 'verbrennung', fossil: false },
+    fernwaerme:  { emf: _fernwaermeEmF, eta: 1.0,   typ: 'nutzwaerme',  fossil: false },
+    lwwp:        { emf: _stromEmF,      eta: null,  typ: 'strom',       fossil: false },
+    fg:          { emf: _stromEmF,      eta: null,  typ: 'strom',       fossil: false },
+    geo:         { emf: _stromEmF,      eta: null,  typ: 'strom',       fossil: false },
+  };
   let co2Kosten = 0;
   if (pCo2 > 0) {
-    // Emissionsfaktoren g CO₂eq/kWh (globale Variablen aus Kennwerte-Panel)
-    // Verbrennungsanlagen: pro kWh Brennstoff → auf Wärme umrechnen über η
-    // Wärmepumpen: pro kWh Strom (elMwh aus Dispatch)
-    // Fernwärme: EmF bereits bezogen auf kWh Nutzwärme
-    const alleET = document.getElementById('wirt-co2-alle')?.checked !== false;
-    const emfMap = {
-      gaskessel:   { emf: gasEmF,        eta: 0.92,  typ: 'verbrennung', fossil: true  },
-      _autoGk:     { emf: gasEmF,        eta: 0.92,  typ: 'verbrennung', fossil: true  },
-      heizoel:     { emf: heizoelEmF,    eta: 0.90,  typ: 'verbrennung', fossil: true  },
-      pellets:     { emf: pelletsEmF,    eta: _getEtaMap().pellets, typ: 'verbrennung', fossil: false },
-      hhs:         { emf: hhsEmF,        eta: _getEtaMap().hhs,     typ: 'verbrennung', fossil: false },
-      fernwaerme:  { emf: fernwaermeEmF, eta: 1.0,   typ: 'nutzwaerme',  fossil: false },
-      lwwp:        { emf: stromEmF,      eta: null,  typ: 'strom',       fossil: false },
-      fg:          { emf: stromEmF,      eta: null,  typ: 'strom',       fossil: false },
-      geo:         { emf: stromEmF,      eta: null,  typ: 'strom',       fossil: false },
-    };
     keys.forEach(k => {
       const e   = en[k] || {};
       const cfg = emfMap[k];
@@ -722,7 +969,7 @@ export function calcWirtschaftPanel() {
       co2Kosten += tCo2 * pCo2;
     });
     if (co2Kosten > 1) {
-      energyRows.push({ label: `CO₂-Kosten (${pCo2} €/t)`, kosten: co2Kosten,
+      energyRows.push({ key: '_co2', label: `CO₂-Kosten (${pCo2} €/t)`, kosten: co2Kosten,
         detail: `${alleET ? 'alle Energieträger inkl. WP-Strom' : 'nur fossile Brennstoffe'} × ${pCo2} €/t`, color: '#f9a825' });
     }
   }
@@ -762,7 +1009,7 @@ export function calcWirtschaftPanel() {
       pvJk += batInvEuro * (_annF(_zinsFrac, OPT_NUTZUNG.bat) + OPT_IH.bat);
     }
     if (Math.abs(pvJk) > 1) {
-      energyRows.push({ label: 'PV/Batterie', kosten: pvJk,
+      energyRows.push({ key: '_pv', label: 'PV/Batterie', kosten: pvJk,
         detail: pvJk > 0
           ? `Annuität ${Math.round(pvInvestGes).toLocaleString('de-DE')} € Invest − Einsp. ${_pvEinspMwh.toFixed(0)} MWh`
           : `Einsp.-Vergütung übersteigt Annuität (Netto-Gutschrift)`,
@@ -790,6 +1037,72 @@ export function calcWirtschaftPanel() {
   window._lastWgk = wgk;
   window._lastInvestGes = gesamtInvest + pvInvestGes;
   window._lastJkGes = gesamtJk + gesamtEnergieMitCo2;
+
+  // ── Summary-Export für neuen Wirtschaftlichkeit-Tab (07c) ──
+  // Quelle der Wahrheit: dieselbe Berechnung wie die alte Anzeige unter Analyse → Wirtschaftlichkeit.
+  // Energy-Rows aus calcWirtschaftPanel enthalten Energie-Erzeuger + CO₂ + PV gemischt — hier aufteilen.
+  let _co2JkExp = 0, _pvJkExp = 0, _energieReinExp = 0;
+  for (const r of energyRows) {
+    if (r.label && r.label.startsWith('CO₂-Kosten')) _co2JkExp += r.kosten;
+    else if (r.label === 'PV/Batterie') _pvJkExp += r.kosten;
+    else _energieReinExp += r.kosten;
+  }
+  // CO₂-Aufschlüsselung pro Erzeuger (für CO₂-Akkordeon-Tabelle)
+  const co2Rows = [];
+  keys.forEach(k => {
+    const e = en[k] || {}; const cfg = emfMap[k];
+    if (!cfg) return;
+    let tCo2 = 0, mengenLabel = '';
+    if (cfg.typ === 'verbrennung') {
+      const wMwh = e.waermeMwh || 0; if (wMwh < 0.1) return;
+      const brennstoffMwh = wMwh / cfg.eta;
+      tCo2 = brennstoffMwh * (cfg.emf / 1e6) * 1e3;
+      mengenLabel = `${brennstoffMwh.toFixed(0)} MWh Brennstoff × ${Math.round(cfg.emf)} g/kWh`;
+    } else if (cfg.typ === 'nutzwaerme') {
+      const wMwh = e.waermeMwh || 0; if (wMwh < 0.1) return;
+      tCo2 = wMwh * (cfg.emf / 1e6) * 1e3;
+      mengenLabel = `${wMwh.toFixed(0)} MWh × ${Math.round(cfg.emf)} g/kWh`;
+    } else if (cfg.typ === 'strom') {
+      const eMwh = e.elMwh || 0; if (eMwh < 0.1) return;
+      const _pvA = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * (eMwh / _gesamtStromMwh) : 0;
+      const _netz = Math.max(0, eMwh - _pvA);
+      tCo2 = _netz * (cfg.emf / 1e6) * 1e3;
+      mengenLabel = _pvA > 0.1
+        ? `${eMwh.toFixed(0)} MWh − ${_pvA.toFixed(0)} MWh PV = ${_netz.toFixed(0)} MWh × ${Math.round(cfg.emf)} g/kWh`
+        : `${eMwh.toFixed(0)} MWh Strom × ${Math.round(cfg.emf)} g/kWh`;
+    }
+    if (tCo2 > 0.01) {
+      co2Rows.push({ key: k, label: DA_LABELS[k] || k, tCo2, kosten: tCo2 * pCo2, mengenLabel, fossil: cfg.fossil, gerechnet: pCo2 > 0 && (alleET || cfg.fossil) });
+    }
+  });
+  window._wirtschaftSummary = {
+    ts: Date.now(),
+    rows: rows.map(r => ({
+      id: r.id,
+      label: r.label,
+      inv: r.effVal,
+      vdi: { ...r.effVdi },
+      jk: r.jk,
+      detail: _calcBausteinJKDetail(r.effVal, r.effVdi, zins, lohn),
+      tooltip: r.tooltip || '',
+      isUser: !!r.isUser,
+    })),
+    energyRows: energyRows.map(e => ({ ...e })),
+    co2Rows,
+    totals: {
+      investGesamt: gesamtInvest + pvInvestGes,
+      kapitalJk: _sumAnn,                       // nur Annuität (echte Kapitalkosten)
+      betriebJk: _sumInst + _sumWart + _sumBed, // Wartung + Instandhaltung + Bedienung
+      energieJk: _energieReinExp,
+      co2Jk: _co2JkExp,
+      pvJk: _pvJkExp,
+      pvInvestGes: pvInvestGes,
+      jahreskosten: gesamtJk + gesamtEnergieMitCo2,
+      wgk,
+      gesamtMwh,
+    },
+    context: { pKw: { ...pKw }, bohrMeter: bohrm, zins, lohn, pStrom, pGas, pHko, pFw, pPk, pHhs },
+  };
 
   // Erzeuger-WGKs aktualisieren (CO₂-Preis/Switch kann sich geändert haben)
   // Guard verhindert Endlosschleife: calcGeoThermie → dispatch → calcWirtschaftPanel

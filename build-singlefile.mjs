@@ -15,6 +15,7 @@ const JS_FILES = [
   'config/erzeuger-cfg.js',
   'config/optimizer-defaults.js',
   'config/hilfe-texte.js',
+  'config/kostenkomponenten-cfg.js',
   '01-globals-varianten.js',
   '02a-netz-physik.js',
   '02b-gebaeude.js',
@@ -27,11 +28,14 @@ const JS_FILES = [
   '05a-export.js',
   '05b-stromnetz.js',
   '05c-sankey.js',
+  '05d-export-xlsx.js',
   '06a-gbi-lastgang.js',
   '06b-gl-berechnen.js',
   '06c-dispatch-core.js',
+  '06d-waerme-heatmap.js',
   '07a-analysis-charts.js',
   '07b-analysis-economics.js',
+  '07c-wirtschaft-tab.js',
   '08-calc-engine.js',
   '09a-pv-profile.js',
   '09b-pv-calc.js',
@@ -42,38 +46,98 @@ const JS_FILES = [
   '10d-optimizer-worker.js',
   '11-hilfe-leitfaden.js',
   '12-inline-handlers.js',
+  // Phase-3: Assets, Stromnetz, Fotos — vor 11.5.2026 nicht im Build, daher
+  // im Single-File bisher leer/fehlerhaft. Nachgetragen 2026-05-08.
+  '13a-assets-core.js',
+  '13b-assets-render.js',
+  '13c-assets-ui.js',
+  '13d-assets-autocreate.js',
+  '13e-assets-inspector.js',
+  '14a-stromnetz-config.js',
+  '14b-stromnetz-state.js',
+  '14c-stromnetz-graph.js',
+  '15a-stromnetz-render.js',
+  '15b-stromnetz-draw.js',
+  '15c-stromnetz-calc.js',
+  '15d-stromnetz-sld.js',
+  '15e-stromnetz-szenarien.js',
+  '15f-stromnetz-messlastgang.js',
+  '15g-stromnetz-massnahmen.js',
+  '15h-stromnetz-invest.js',
+  '15i-stromnetz-clustering.js',
+  '15j-stromnetz-heatmap.js',
+  '15l-stromnetz-trafoopt.js',
+  '16-stromnetz-ui.js',
+  '16b-stromnetz-selftest.js',
+  '17a-fotos-storage.js',
+  '17b-fotos-compress.js',
+  '17c-fotos-ui.js',
 ];
 
 // Jede Datei lesen, import/export entfernen
 // let/const → var, damit alle Variablen als window.* Properties verfügbar sind
 // (viele Module lesen Zustand über window.gebaeude, window.netzEdges, etc.)
 function stripModule(code) {
-  return code
-    .split('\n')
-    .map(line => {
-      const trimmed = line.trimStart();
-      // import-Zeilen komplett entfernen
-      if (trimmed.startsWith('import ')) return '';
-      // "export async function" → "async function"
-      if (trimmed.startsWith('export async function ')) return line.replace('export async function ', 'async function ');
-      // "export function" → "function"
-      if (trimmed.startsWith('export function ')) return line.replace('export function ', 'function ');
-      // "export const" → "var" (window-Property nötig)
-      if (trimmed.startsWith('export const ')) return line.replace('export const ', 'var ');
-      // "export let" → "var" (window-Property nötig)
-      if (trimmed.startsWith('export let ')) return line.replace('export let ', 'var ');
-      // "export var" → "var"
-      if (trimmed.startsWith('export var ')) return line.replace('export var ', 'var ');
-      // "export {" → entfernen
-      if (trimmed.startsWith('export {')) return '';
-      // "export default" → entfernen
-      if (trimmed.startsWith('export default ')) return '';
-      return line;
-    })
-    .join('\n');
+  const lines = code.split('\n');
+  const out = [];
+  let inMultiLineImport = false;
+  let inMultiLineExport = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trimStart();
+
+    // Mehrzeiliger Import: bis Zeile die from '...' oder } enthält + ;
+    if (inMultiLineImport) {
+      if (/['"]\s*;?\s*$/.test(line) || /\}\s*from\s*['"]/.test(line)) {
+        inMultiLineImport = false;
+      }
+      out.push('');
+      continue;
+    }
+    // Mehrzeiliger Export-Block: export { … }
+    if (inMultiLineExport) {
+      if (/\}/.test(line)) inMultiLineExport = false;
+      out.push('');
+      continue;
+    }
+
+    // Single-line oder Start eines mehrzeiligen Imports
+    if (trimmed.startsWith('import ')) {
+      // Wenn die Zeile mit ; endet (oder von '...';) → single-line, fertig.
+      // Sonst → mehrzeilig
+      if (!/;\s*$/.test(line) && !/from\s+['"][^'"]+['"]\s*;?\s*$/.test(line)) {
+        inMultiLineImport = true;
+      }
+      out.push('');
+      continue;
+    }
+
+    // export-Variationen
+    if (trimmed.startsWith('export async function ')) { out.push(line.replace('export async function ', 'async function ')); continue; }
+    if (trimmed.startsWith('export function '))       { out.push(line.replace('export function ', 'function ')); continue; }
+    if (trimmed.startsWith('export const '))          { out.push(line.replace('export const ', 'var ')); continue; }
+    if (trimmed.startsWith('export let '))            { out.push(line.replace('export let ', 'var ')); continue; }
+    if (trimmed.startsWith('export var '))            { out.push(line.replace('export var ', 'var ')); continue; }
+    if (trimmed.startsWith('export class '))          { out.push(line.replace('export class ', 'class ')); continue; }
+    if (trimmed.startsWith('export default '))        { out.push(line.replace('export default ', '')); continue; }
+    if (trimmed.startsWith('export {')) {
+      // single-line oder mehrzeilig?
+      if (!/\}/.test(trimmed) || !/;?\s*$/.test(line)) {
+        inMultiLineExport = true;
+      }
+      out.push('');
+      continue;
+    }
+
+    out.push(line);
+  }
+  return out.join('\n');
 }
 
 // 1. Alle JS-Module zusammenfügen
+// (Kein IIFE-Wrap pro Modul — Module greifen gegenseitig über globale
+// Names zu. Bei doppelter file-scope-let-Deklaration: die Variable in einem
+// der Module umbenennen — siehe layerVisible-Fix in 13b und 15a.)
 let jsAll = '';
 for (const file of JS_FILES) {
   const raw = readFileSync(join(SRC, file), 'utf8');
@@ -119,6 +183,32 @@ if (existsSync(parentDocs)) {
     n++;
   }
   console.log(`Doku-Dateien synchronisiert: ${n} HTML aus ../docs/`);
+}
+
+// 6b. Klimadaten (DWD-TRY pro Stadt + Jahr) ins dist/data/ kopieren —
+//     damit dist self-contained ist (Zip/Mail/Deploy ohne Symlinks).
+const parentData = resolve('..', 'data');
+const distData   = resolve('dist', 'data');
+if (existsSync(parentData)) {
+  function _copyDir(src, dst) {
+    mkdirSync(dst, { recursive: true });
+    let cnt = 0, bytes = 0;
+    for (const f of readdirSync(src)) {
+      const s = join(src, f);
+      const d = join(dst, f);
+      const st = statSync(s);
+      if (st.isDirectory()) {
+        const sub = _copyDir(s, d);
+        cnt += sub.cnt; bytes += sub.bytes;
+      } else if (st.isFile()) {
+        copyFileSync(s, d);
+        cnt++; bytes += st.size;
+      }
+    }
+    return { cnt, bytes };
+  }
+  const { cnt, bytes } = _copyDir(parentData, distData);
+  console.log(`Klimadaten kopiert: ${cnt} Dateien nach dist/data/ (${(bytes/1024/1024).toFixed(1)} MB)`);
 }
 
 // 7. Architektur-Doku regenerieren (analysiert src/*.js)
