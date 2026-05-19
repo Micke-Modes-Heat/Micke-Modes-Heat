@@ -1370,7 +1370,7 @@ export function setLwWpVisible(visible) {
 }
 
 export function updateLwWpVisibility() {
-  if (!window.lwWp) return;
+  if (!window.lwWp || !lwWpLayerGroup || !lwWpSchallLayerGroup) return;
   if (window.lwWpVisible) {
     if (!map.hasLayer(lwWpLayerGroup)) lwWpLayerGroup.addTo(map);
     if (window.lwWpSchallVisible) {
