@@ -271,80 +271,126 @@
       <div class="lp-content" id="lp-elektro">
         <div class="lp-step">
           <div class="lp-step-num" data-num="4">⚡</div>
-          <div class="lp-step-text">Stromnetz planen<span>Komponenten platzieren und Netz berechnen</span></div>
+          <div class="lp-step-text">Stromnetz planen<span>Schritt für Schritt zum fertigen Netz</span></div>
         </div>
-        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('lp-strom-info')">Strom-Kennwerte <span id="lp-strom-info-arrow">▼</span></div>
-        <div id="lp-strom-info" class="lp-netz-summary">
-          <div class="lp-netz-row" style="border-bottom:1px solid var(--border);padding-bottom:4px;margin-bottom:4px;"><span class="lbl">Szenario-Stunde</span><span class="val" id="lp-strom-sz-hour" style="color:var(--accent);">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Gesamtlast</span><span class="val" id="lp-strom-last">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Einspeisung</span><span class="val" id="lp-strom-einsp">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Trafo-Auslastung</span><span class="val" id="lp-strom-trafo-ausl">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Krit. Spannungsfall</span><span class="val" id="lp-strom-delta-u">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Kabellänge</span><span class="val" id="lp-strom-kabel-len">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Komponenten</span><span class="val" id="lp-strom-komp">—</span></div>
+
+        <!-- ── 1. Komponenten platzieren ── -->
+        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-komp')">
+          <span>1 · Komponenten platzieren</span><span id="el-sec-komp-arrow">▼</span>
         </div>
-        <div class="lp-section-title" style="margin-top:12px;">Komponenten</div>
-        <div id="asset-palette" class="asset-palette-inline"></div>
-        <div class="lp-tool-grid" style="margin-top:8px;">
-          <button class="lp-tool-btn" data-click="startDrawStromEdge()" id="btn-draw-strom-edge" style="grid-column:1/-1;">— Kabel zeichnen</button>
+        <div id="el-sec-komp">
+          <div id="asset-palette" class="asset-palette-inline"></div>
         </div>
-        <div class="lp-tool-grid" style="margin-top:6px;">
-          <button class="lp-tool-btn" data-click="autoStromNetz()" style="border-color:#66bb6a;color:#66bb6a;">🔌 Auto-Netz</button>
-          <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="border-color:#fdd835;color:#fdd835;">⚡ Schnellberechnung</button>
+
+        <!-- ── 2. Elektrotrassen zeichnen ── -->
+        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-trasse')">
+          <span>2 · Elektrotrassen zeichnen</span><span id="el-sec-trasse-arrow">▼</span>
         </div>
-        <div class="lp-section-title" style="margin-top:12px;">Szenario</div>
-        <select id="strom-szenario" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="setStromSzenario(this.value)">
-          <option value="spitzenlast">⚡ Spitzenlast (max. Verbrauch)</option>
-          <option value="pvmax">☀ PV-Maximum (max. Erzeugung)</option>
-          <option value="rueckspeisung">↩ Max. Rückspeisung</option>
-          <option value="jahresmittel">Ø Jahresmittel</option>
-        </select>
-        <div id="strom-szenario-info" style="font-size:9px;color:var(--muted);margin-top:4px;padding:3px 6px;background:var(--surface);border-radius:4px;display:none;"></div>
-        <div class="lp-section-title" style="margin-top:12px;">Kabeltyp</div>
-        <select id="strom-kabel-typ" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="recalcStromNetz()">
-          <option value="NAYY">NAYY (Aluminium) — Standard</option>
-          <option value="NYY">NYY (Kupfer)</option>
-        </select>
-        <div class="lp-section-title" style="margin-top:12px;">Gleichzeitigkeitsfaktor</div>
-        <select id="strom-gzf-methode" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="recalcStromNetz()">
-          <option value="vde">VDE-Richtwerte (automatisch)</option>
-          <option value="keine">Keine (1.0)</option>
-          <option value="manuell">Manuell</option>
-        </select>
-        <div id="strom-gzf-manuell-wrap" style="display:none;margin-top:4px;">
-          <input type="number" id="strom-gzf-manuell" value="0.6" min="0.1" max="1.0" step="0.05" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="recalcStromNetz()"/>
-        </div>
-        <div class="lp-section-title" style="margin-top:12px;">Einfärbung</div>
-        <div id="lp-strom-viz" class="lp-tool-grid" style="grid-template-columns:1fr 1fr;">
-          <button class="lp-tool-btn" data-click="setStromColorMode('auslastung')" style="justify-content:center;font-size:9px;">Auslastung</button>
-          <button class="lp-tool-btn" data-click="setStromColorMode('spannungsfall')" style="justify-content:center;font-size:9px;">ΔU%</button>
-          <button class="lp-tool-btn" data-click="setStromColorMode('leistung')" style="justify-content:center;font-size:9px;">Leistung</button>
-          <button class="lp-tool-btn" data-click="setStromColorMode('richtung')" style="justify-content:center;font-size:9px;">Richtung</button>
-        </div>
-        <div class="lp-section-title" style="margin-top:12px;">Stromnetz-Kosten</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;">
-          <label style="color:var(--muted);">Tiefbau €/m<input type="number" id="strom-k-tiefbau" value="100" min="0" step="10" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
-          <label style="color:var(--muted);">NAP-Pausch. €<input type="number" id="strom-k-nap" value="3000" min="0" step="500" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
-          <label style="color:var(--muted);">Trafo €/kVA<input type="number" id="strom-k-trafo" value="60" min="0" step="5" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
-          <label style="color:var(--muted);">Nutzungsd. a<input type="number" id="strom-k-nd" value="40" min="10" max="60" step="5" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
-        </div>
-        <div id="strom-kosten-kpi" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;text-align:center;">
-            <div style="font-size:13px;font-weight:700;color:var(--text);" id="strom-kpi-invest">—</div>
-            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Invest Netz</div>
-          </div>
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;text-align:center;">
-            <div style="font-size:13px;font-weight:700;color:var(--text);" id="strom-kpi-annuitaet">—</div>
-            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Annuität €/a <span class="htip" data-tip="Jährliche Kosten des Stromnetzes: Investition als Annuität (jährl. Rate) + Instandhaltung. Umfasst Kabel, Tiefbau, Trafos und Netzanschluss.">?</span></div>
+        <div id="el-sec-trasse">
+          <div class="lp-tool-grid">
+            <button class="lp-tool-btn" id="btn-draw-trasse" data-click="toggleDrawTrasse()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;">✏ Trasse zeichnen</button>
           </div>
         </div>
-        <div style="margin-top:4px;text-align:center;">
-          <span style="font-size:8px;color:var(--muted);" id="strom-kpi-detail"></span>
+
+        <!-- ── 3. Leitungen zeichnen ── -->
+        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-leit')">
+          <span>3 · Leitungen zeichnen</span><span id="el-sec-leit-arrow">▼</span>
         </div>
-        <div class="lp-section-title" style="margin-top:12px;">Ansicht</div>
-        <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/> Stromnetz sichtbar
-        </label>
+        <div id="el-sec-leit">
+          <div class="lp-tool-grid">
+            <button class="lp-tool-btn" data-click="startDrawStromEdge()" id="btn-draw-strom-edge" style="grid-column:1/-1;">— Kabel zeichnen</button>
+          </div>
+          <div class="lp-tool-grid" style="margin-top:6px;">
+            <button class="lp-tool-btn" data-click="autoStromNetz()" style="border-color:#66bb6a;color:#66bb6a;">🔌 Auto-Netz</button>
+          </div>
+        </div>
+
+        <!-- ── 4. Berechnen ── -->
+        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-calc')">
+          <span>4 · Berechnen</span><span id="el-sec-calc-arrow">▼</span>
+        </div>
+        <div id="el-sec-calc">
+          <div class="lp-tool-grid" style="margin-bottom:8px;">
+            <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#fdd835;color:#fdd835;">⚡ Schnellberechnung</button>
+          </div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em;">Szenario</div>
+          <select id="strom-szenario" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="setStromSzenario(this.value)">
+            <option value="spitzenlast">⚡ Spitzenlast (max. Verbrauch)</option>
+            <option value="pvmax">☀ PV-Maximum (max. Erzeugung)</option>
+            <option value="rueckspeisung">↩ Max. Rückspeisung</option>
+            <option value="jahresmittel">Ø Jahresmittel</option>
+          </select>
+          <div id="strom-szenario-info" style="font-size:9px;color:var(--muted);margin-top:4px;padding:3px 6px;background:var(--surface);border-radius:4px;display:none;"></div>
+          <div style="font-size:9px;color:var(--muted);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.04em;">Kabeltyp</div>
+          <select id="strom-kabel-typ" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="recalcStromNetz()">
+            <option value="NAYY">NAYY (Aluminium) — Standard</option>
+            <option value="NYY">NYY (Kupfer)</option>
+          </select>
+          <div style="font-size:9px;color:var(--muted);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.04em;">Gleichzeitigkeitsfaktor</div>
+          <select id="strom-gzf-methode" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="recalcStromNetz()">
+            <option value="vde">VDE-Richtwerte (automatisch)</option>
+            <option value="keine">Keine (1.0)</option>
+            <option value="manuell">Manuell</option>
+          </select>
+          <div id="strom-gzf-manuell-wrap" style="display:none;margin-top:4px;">
+            <input type="number" id="strom-gzf-manuell" value="0.6" min="0.1" max="1.0" step="0.05" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="recalcStromNetz()"/>
+          </div>
+
+          <!-- Kennwerte (standardmäßig eingeklappt) -->
+          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-info')">
+            Kennwerte <span id="lp-strom-info-arrow">▶</span>
+          </div>
+          <div id="lp-strom-info" class="lp-netz-summary" style="display:none;">
+            <div class="lp-netz-row" style="border-bottom:1px solid var(--border);padding-bottom:4px;margin-bottom:4px;"><span class="lbl">Szenario-Stunde</span><span class="val" id="lp-strom-sz-hour" style="color:var(--accent);">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Gesamtlast</span><span class="val" id="lp-strom-last">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Einspeisung</span><span class="val" id="lp-strom-einsp">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Trafo-Auslastung</span><span class="val" id="lp-strom-trafo-ausl">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Krit. Spannungsfall</span><span class="val" id="lp-strom-delta-u">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Kabellänge</span><span class="val" id="lp-strom-kabel-len">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Komponenten</span><span class="val" id="lp-strom-komp">—</span></div>
+          </div>
+
+          <!-- Einfärbung -->
+          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-viz')">
+            Einfärbung <span id="lp-strom-viz-arrow">▼</span>
+          </div>
+          <div id="lp-strom-viz" class="lp-tool-grid" style="grid-template-columns:1fr 1fr;">
+            <button class="lp-tool-btn" data-click="setStromColorMode('auslastung')" style="justify-content:center;font-size:9px;">Auslastung</button>
+            <button class="lp-tool-btn" data-click="setStromColorMode('spannungsfall')" style="justify-content:center;font-size:9px;">ΔU%</button>
+            <button class="lp-tool-btn" data-click="setStromColorMode('leistung')" style="justify-content:center;font-size:9px;">Leistung</button>
+            <button class="lp-tool-btn" data-click="setStromColorMode('richtung')" style="justify-content:center;font-size:9px;">Richtung</button>
+          </div>
+
+          <!-- Kosten -->
+          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('el-kosten-body')">
+            Kosten <span id="el-kosten-body-arrow">▼</span>
+          </div>
+          <div id="el-kosten-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;">
+              <label style="color:var(--muted);">Tiefbau €/m<input type="number" id="strom-k-tiefbau" value="100" min="0" step="10" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
+              <label style="color:var(--muted);">NAP-Pausch. €<input type="number" id="strom-k-nap" value="3000" min="0" step="500" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
+              <label style="color:var(--muted);">Trafo €/kVA<input type="number" id="strom-k-trafo" value="60" min="0" step="5" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
+              <label style="color:var(--muted);">Nutzungsd. a<input type="number" id="strom-k-nd" value="40" min="10" max="60" step="5" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
+            </div>
+            <div id="strom-kosten-kpi" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;text-align:center;">
+                <div style="font-size:13px;font-weight:700;color:var(--text);" id="strom-kpi-invest">—</div>
+                <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Invest Netz</div>
+              </div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;text-align:center;">
+                <div style="font-size:13px;font-weight:700;color:var(--text);" id="strom-kpi-annuitaet">—</div>
+                <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Annuität €/a <span class="htip" data-tip="Jährliche Kosten des Stromnetzes: Investition als Annuität (jährl. Rate) + Instandhaltung. Umfasst Kabel, Tiefbau, Trafos und Netzanschluss.">?</span></div>
+              </div>
+            </div>
+            <div style="margin-top:4px;text-align:center;">
+              <span style="font-size:8px;color:var(--muted);" id="strom-kpi-detail"></span>
+            </div>
+          </div>
+
+          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:10px;">
+            <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/> Stromnetz sichtbar
+          </label>
+        </div>
       </div>
 
       <!-- ══ Tab 5: Ergebnis ════════════════════════════════════ -->
