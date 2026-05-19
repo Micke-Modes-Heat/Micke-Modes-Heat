@@ -6,7 +6,8 @@ import { map } from './02b-gebaeude.js';
 import { globalYear } from './01-globals-varianten.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 
-let assetLayer = null;
+let assetLayer = null;       // Gebäude-gruppierte Assets (zoom-abhängig)
+let standaloneLayer = null; // Frei platzierte Assets (immer sichtbar)
 let layerVisible = true;
 
 // Drei Zoom-Stufen:
@@ -30,14 +31,25 @@ function ensureLayer() {
     assetLayer = L.layerGroup();
     applyLayerVisibility();
   }
+  if (!standaloneLayer) {
+    standaloneLayer = L.layerGroup();
+    applyLayerVisibility();
+  }
   return assetLayer;
 }
 
 function applyLayerVisibility() {
-  if (!assetLayer) return;
-  const effective = layerVisible && map.getZoom() >= ASSET_COLLAPSED_ZOOM;
-  if (effective) assetLayer.addTo(map);
-  else           assetLayer.remove();
+  // Gebäude-Assets: nur ab ASSET_COLLAPSED_ZOOM sichtbar
+  if (assetLayer) {
+    const effective = layerVisible && map.getZoom() >= ASSET_COLLAPSED_ZOOM;
+    if (effective) assetLayer.addTo(map);
+    else           assetLayer.remove();
+  }
+  // Standalone-Assets: immer sichtbar (kein Zoom-Threshold)
+  if (standaloneLayer) {
+    if (layerVisible) standaloneLayer.addTo(map);
+    else              standaloneLayer.remove();
+  }
 }
 
 // Polygon-Schwerpunkt (einfacher Mittelwert)
@@ -176,7 +188,7 @@ function drawSingleMarker(asset) {
   if (!cfg) return;
 
   if (asset._marker) {
-    assetLayer.removeLayer(asset._marker);
+    standaloneLayer.removeLayer(asset._marker);
     asset._marker = null;
   }
 
@@ -255,7 +267,7 @@ function drawSingleMarker(asset) {
     }
   });
 
-  m.addTo(assetLayer);
+  m.addTo(standaloneLayer);
   asset._marker = m;
 }
 
@@ -272,6 +284,7 @@ export function drawAssetMarker(asset) {
 export function redrawAllAssets() {
   ensureLayer();
   assetLayer.clearLayers();
+  standaloneLayer.clearLayers();
   for (const a of ASSETS.items) a._marker = null;
 
   const byBuilding = new Map();
