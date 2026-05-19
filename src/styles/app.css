@@ -574,6 +574,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .lp-content.active{display:block;}
 .lp-section-title{font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border);}
 .lp-section-title:first-child{margin-top:0;}
+.lp-section-collapsible{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;}
+.lp-section-collapsible:hover{color:var(--text);}
 .lp-toggle{position:absolute;top:50%;transform:translateY(-50%);z-index:10;background:var(--surface);border:1px solid var(--border);border-left:none;border-radius:0 6px 6px 0;padding:8px 4px;cursor:pointer;color:var(--muted);font-size:11px;line-height:1;transition:left .25s ease;}
 
 /* Erzeuger-Grid im Left Panel */

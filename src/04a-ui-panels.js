@@ -685,6 +685,15 @@ export function toggleLeftPanel() {
   setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 260);
 }
 
+export function toggleSection(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const hidden = el.style.display === 'none';
+  el.style.display = hidden ? '' : 'none';
+  const arrow = document.getElementById(id + '-arrow');
+  if (arrow) arrow.textContent = hidden ? '▼' : '▶';
+}
+
 export function setLeftTab(tabId) {
   document.querySelectorAll('#lp-tabs .lp-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('#left-panel .lp-content').forEach(c => c.classList.toggle('active', c.id === 'lp-' + tabId));

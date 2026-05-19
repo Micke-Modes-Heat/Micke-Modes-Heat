@@ -273,11 +273,7 @@
           <div class="lp-step-num" data-num="4">⚡</div>
           <div class="lp-step-text">Stromnetz planen<span>Komponenten platzieren und Netz berechnen</span></div>
         </div>
-        <div id="lp-strom-hint" style="background:rgba(255,235,59,0.08);border:1px solid rgba(255,235,59,0.25);border-radius:6px;padding:10px;margin-bottom:10px;font-size:10px;color:#fdd835;line-height:1.5;">
-          💡 <strong>Stromnetz aufbauen:</strong><br>
-          Platziere einen NAP (Netzanknüpfungspunkt), dann Trafos und NSHV. Verbinde die Komponenten mit Kabeln oder nutze „Auto-Netz".
-        </div>
-        <div class="lp-section-title">Strom-Kennwerte</div>
+        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('lp-strom-info')">Strom-Kennwerte <span id="lp-strom-info-arrow">▼</span></div>
         <div id="lp-strom-info" class="lp-netz-summary">
           <div class="lp-netz-row" style="border-bottom:1px solid var(--border);padding-bottom:4px;margin-bottom:4px;"><span class="lbl">Szenario-Stunde</span><span class="val" id="lp-strom-sz-hour" style="color:var(--accent);">—</span></div>
           <div class="lp-netz-row"><span class="lbl">Gesamtlast</span><span class="val" id="lp-strom-last">—</span></div>
