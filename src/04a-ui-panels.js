@@ -1,7 +1,7 @@
 // ── 04a-ui-panels.js — Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold ──
 // NUTZUNG_DEFAULTS → src/config/erzeuger-cfg.js
 
-import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, stromNetzSubTab, variantResults } from './01-globals-varianten.js';
+import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
 import { _invalidateStats, getComputedStats, map } from './02b-gebaeude.js';
 import { updateViz } from './02c-karte-werkzeuge.js';
@@ -686,23 +686,14 @@ export function toggleLeftPanel() {
 export function setLeftTab(tabId) {
   document.querySelectorAll('#lp-tabs .lp-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('#left-panel .lp-content').forEach(c => c.classList.toggle('active', c.id === 'lp-' + tabId));
-  const titles = { gebiet: 'Gebiet', netz: 'Netz', erzeuger: 'Erzeuger', ergebnis: 'Ergebnis' };
+  const titles = { gebiet: 'Gebiet', netz: 'Netz', erzeuger: 'Erzeuger', elektro: 'Elektro', ergebnis: 'Ergebnis' };
   document.getElementById('lp-title').textContent = titles[tabId] || tabId;
-  // Beim Verlassen des Netz-Tabs: beide Netze normalisieren
-  if (tabId !== 'netz') {
-    if (stromNetzSubTab === 'strom') {
-      setStromNetzVisible(false);
-    }
-    setNetzVisible(true);
+  if (tabId === 'elektro') {
+    setNetzVisible(false);
+    setStromNetzVisible(true);
   } else {
-    // Netz-Tab betreten: Sichtbarkeit an Sub-Tab anpassen
-    if (stromNetzSubTab === 'strom') {
-      setNetzVisible(false);
-      setStromNetzVisible(true);
-    } else {
-      setStromNetzVisible(false);
-      setNetzVisible(true);
-    }
+    setStromNetzVisible(false);
+    setNetzVisible(true);
   }
   setTimeout(function() { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
 }

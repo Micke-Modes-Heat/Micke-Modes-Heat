@@ -67,26 +67,11 @@ export function epPrompt(title, message, defaultVal, opts) {
 }
 
 export function setNetzSubTab(sub) {
-  window.stromNetzSubTab = sub;
-  // Haupt-Tab auf "Netz" setzen falls nicht aktiv
-  const netzTab = document.querySelector('#lp-tabs .lp-tab[data-tab="netz"]');
-  if (netzTab && !netzTab.classList.contains('active')) setLeftTab('netz');
-  document.querySelectorAll('#netz-subtabs .netz-subtab').forEach(b => b.classList.toggle('active', b.dataset.sub === sub));
-  document.querySelectorAll('#lp-netz .netz-subtab-content').forEach(c => {
-    c.classList.toggle('active', c.id === 'lp-netz-' + sub);
-  });
-  // Wärmenetz und Stromnetz synchron umschalten
+  // Leitet auf den eigenen Elektro-Tab um (Sub-Tabs wurden entfernt)
   if (sub === 'strom') {
-    setNetzVisible(false);
-    setStromNetzVisible(true);
-    setStromColorMode('auslastung');
-    const cb = document.getElementById('strom-netz-visible');
-    if (cb) cb.checked = true;
+    setLeftTab('elektro');
   } else {
-    setStromNetzVisible(false);
-    setNetzVisible(true);
-    const cb = document.getElementById('netz-visible');
-    if (cb) cb.checked = true;
+    setLeftTab('netz');
   }
 }
 
