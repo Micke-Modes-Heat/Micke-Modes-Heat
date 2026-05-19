@@ -213,23 +213,24 @@ export function stromNodeClick(nodeId) {
   if (!window.isDrawingStromEdge) return false;
   if (window.stromEdgeStartId == null) {
     window.stromEdgeStartId = nodeId;
-    // Visual feedback: highlight start node
     const n = window.stromNodes.find(sn => sn.id === nodeId);
     if (n && n.marker) n.marker.setOpacity(0.5);
     return true;
   }
-  if (nodeId === window.stromEdgeStartId) { cancelDrawStromEdge(); return true; }
-  // Check for duplicate
-  const exists = window.stromEdges.some(e =>
-    (e.u === window.stromEdgeStartId && e.v === nodeId) || (e.u === nodeId && e.v === window.stromEdgeStartId)
-  );
-  if (exists) { cancelDrawStromEdge(); return true; }
-  addStromEdge(window.stromEdgeStartId, nodeId);
-  recalcStromNetz();
-  // Restore opacity
+  // Gleiche Komponente nochmal angeklickt → Startpunkt zurücksetzen, Modus bleibt aktiv
   const sn = window.stromNodes.find(s => s.id === window.stromEdgeStartId);
   if (sn && sn.marker) sn.marker.setOpacity(1);
-  cancelDrawStromEdge();
+  const startId = window.stromEdgeStartId;
+  window.stromEdgeStartId = null;
+  if (nodeId === startId) return true;
+  // Doppelte Kante ignorieren
+  const exists = window.stromEdges.some(e =>
+    (e.u === startId && e.v === nodeId) || (e.u === nodeId && e.v === startId)
+  );
+  if (!exists) {
+    addStromEdge(startId, nodeId);
+    recalcStromNetz();
+  }
   return true;
 }
 

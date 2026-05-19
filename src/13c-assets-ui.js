@@ -37,14 +37,18 @@ export function buildPalette() {
 }
 
 export function setPendingType(type) {
+  // Erneuter Klick auf aktiven Typ → abwählen
+  if (pendingType === type) {
+    pendingType = null;
+    document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
+    map.getContainer().style.cursor = '';
+    return;
+  }
   pendingType = type;
-  // Alle Buttons auf inaktiv
   document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
-  // Aktiven markieren
   const btn = document.querySelector(`.asset-palette-btn[data-type="${type}"]`);
   if (btn) btn.classList.add('active');
-  // Cursor ändern
-  map.getContainer().style.cursor = type ? 'crosshair' : '';
+  map.getContainer().style.cursor = 'crosshair';
 }
 
 export function togglePalette() {
