@@ -1,7 +1,7 @@
 // ── 04a-ui-panels.js — Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold ──
 // NUTZUNG_DEFAULTS → src/config/erzeuger-cfg.js
 
-import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, stromNetzSubTab, variantResults } from './01-globals-varianten.js';
+import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
 import { _invalidateStats, getComputedStats, map } from './02b-gebaeude.js';
 import { updateViz } from './02c-karte-werkzeuge.js';
@@ -9,6 +9,8 @@ import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
 import { renderList, updateTotals } from './03c-gebaeude-io.js';
 import { _renderEmissionenTab, refreshVergleichView, renderAnalyseDispatch } from './04b-emissionen-3d.js';
 import { setStromNetzVisible } from './05b-stromnetz.js';
+import { buildPalette } from './13c-assets-ui.js';
+import { setAssetLayerVisible } from './13b-assets-render.js';
 import { saSetTab } from './07a-analysis-charts.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { calcStromPanel } from './09b-pv-calc.js';
@@ -683,29 +685,33 @@ export function toggleLeftPanel() {
   setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 260);
 }
 
+export function toggleSection(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const hidden = el.style.display === 'none';
+  el.style.display = hidden ? '' : 'none';
+  const arrow = document.getElementById(id + '-arrow');
+  if (arrow) arrow.textContent = hidden ? '▼' : '▶';
+}
+
 export function setLeftTab(tabId) {
   document.querySelectorAll('#lp-tabs .lp-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('#left-panel .lp-content').forEach(c => c.classList.toggle('active', c.id === 'lp-' + tabId));
-  const titles = { gebiet: 'Gebiet', netz: 'Netz', erzeuger: 'Erzeuger', ergebnis: 'Ergebnis' };
+  const titles = { gebiet: 'Gebiet', netz: 'Netz', erzeuger: 'Erzeuger', elektro: 'Elektro', ergebnis: 'Ergebnis' };
   document.getElementById('lp-title').textContent = titles[tabId] || tabId;
-  // Beim Verlassen des Netz-Tabs: beide Netze normalisieren
-  if (tabId !== 'netz') {
-    if (stromNetzSubTab === 'strom') {
-      setStromNetzVisible(false);
-    }
-    setNetzVisible(true);
+  if (tabId === 'elektro') {
+    setNetzVisible(false);
+    setStromNetzVisible(true);
+    buildPalette();
+    setAssetLayerVisible(true);
   } else {
-    // Netz-Tab betreten: Sichtbarkeit an Sub-Tab anpassen
-    if (stromNetzSubTab === 'strom') {
-      setNetzVisible(false);
-      setStromNetzVisible(true);
-    } else {
-      setStromNetzVisible(false);
-      setNetzVisible(true);
-    }
+    setStromNetzVisible(false);
+    setNetzVisible(true);
+    setAssetLayerVisible(false);
   }
   setTimeout(function() { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
 }
+window.setLeftTab = setLeftTab;
 
 // initLeftPanel: erzeuger buttons are now native in HTML, no cloning needed
 

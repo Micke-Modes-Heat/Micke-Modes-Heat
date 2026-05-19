@@ -26,7 +26,6 @@
   <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
   <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋</button>
   <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;" title="Berechnungslogik — Wie wird gerechnet?">📐</button>
-  <button class="tool-btn" id="btn-assets-toggle" data-click="togglePalette()" style="border-color:#4fc3f7;color:#4fc3f7;" title="Neuer Asset-Teil (Strom/Wärme unified) — experimentell">🧩</button>
   <div class="addr-search-wrap" style="flex-shrink:0;">
     <span class="addr-search-icon">🔍</span>
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
@@ -86,7 +85,6 @@
   <button id="btn-kennwerte-toggle" data-click="toggleKennwertePanel()"></button>
   <button id="btn-analyse-toggle" data-click="setViewMode('analyse')"></button>
   <button id="btn-wirtschaft-toggle" data-click="toggleWirtschaftPanel()"></button>
-  <button id="btn-strom-toggle" data-click="toggleStromPanel()"></button>
   <button id="btn-status-toggle" data-click="toggleStatusPanel()"></button>
 </div>
 
@@ -134,6 +132,7 @@
       <button class="lp-tab active" data-tab="gebiet" data-click="setLeftTab('gebiet')"><span style="display:block;font-size:13px;line-height:1;">📍</span>Gebiet</button>
       <button class="lp-tab" data-tab="netz" data-click="setLeftTab('netz')"><span style="display:block;font-size:13px;line-height:1;">🔗</span>Netz</button>
       <button class="lp-tab" data-tab="erzeuger" data-click="setLeftTab('erzeuger')"><span style="display:block;font-size:13px;line-height:1;">🔥</span>Erzeuger</button>
+      <button class="lp-tab" data-tab="elektro" data-click="setLeftTab('elektro')"><span style="display:block;font-size:13px;line-height:1;">⚡</span>Elektro</button>
       <button class="lp-tab" data-tab="ergebnis" data-click="setLeftTab('ergebnis')"><span style="display:block;font-size:13px;line-height:1;">📊</span>Ergebnis</button>
     </div>
     <div class="lp-body">
@@ -186,16 +185,9 @@
       <div class="lp-content" id="lp-netz">
         <div class="lp-step">
           <div class="lp-step-num" data-num="2">2</div>
-          <div class="lp-step-text">Netze planen<span>Wärme- und Stromnetz konfigurieren</span></div>
+          <div class="lp-step-text">Wärmenetz planen<span>Wärmenetz dimensionieren und konfigurieren</span></div>
         </div>
-        <!-- Sub-Tab Leiste: Wärme | Strom -->
-        <div class="netz-subtabs" id="netz-subtabs">
-          <button class="netz-subtab active" data-sub="waerme" data-click="setNetzSubTab('waerme')">♨ Wärme</button>
-          <button class="netz-subtab" data-sub="strom" data-click="setNetzSubTab('strom')">⚡ Strom</button>
-        </div>
-
-        <!-- ── Sub-Tab: Wärmenetz ──────────────────────────── -->
-        <div id="lp-netz-waerme" class="netz-subtab-content active">
+        <div id="lp-netz-waerme">
         <div class="lp-tool-grid" style="margin-bottom:8px;">
           <button class="lp-tool-btn" data-click="toggleNetzPanel()" style="border-color:#e53935;color:#e53935;grid-column:1/-1;justify-content:center;">🔗 Wärmenetz konfigurieren</button>
         </div>
@@ -236,90 +228,6 @@
           <input type="checkbox" id="netz-visible" checked data-change="setNetzVisible(this.checked)"/> Netz sichtbar
         </label>
         </div><!-- /lp-netz-waerme -->
-
-        <!-- ── Sub-Tab: Stromnetz ──────────────────────────── -->
-        <div id="lp-netz-strom" class="netz-subtab-content">
-        <div id="lp-strom-hint" style="background:rgba(255,235,59,0.08);border:1px solid rgba(255,235,59,0.25);border-radius:6px;padding:10px;margin-bottom:10px;font-size:10px;color:#fdd835;line-height:1.5;">
-          💡 <strong>Stromnetz aufbauen:</strong><br>
-          Platziere einen NAP (Netzanknüpfungspunkt), dann Trafos und NSHV. Verbinde die Komponenten mit Kabeln oder nutze „Auto-Netz".
-        </div>
-        <div class="lp-section-title">Strom-Kennwerte</div>
-        <div id="lp-strom-info" class="lp-netz-summary">
-          <div class="lp-netz-row" style="border-bottom:1px solid var(--border);padding-bottom:4px;margin-bottom:4px;"><span class="lbl">Szenario-Stunde</span><span class="val" id="lp-strom-sz-hour" style="color:var(--accent);">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Gesamtlast</span><span class="val" id="lp-strom-last">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Einspeisung</span><span class="val" id="lp-strom-einsp">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Trafo-Auslastung</span><span class="val" id="lp-strom-trafo-ausl">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Krit. Spannungsfall</span><span class="val" id="lp-strom-delta-u">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Kabellänge</span><span class="val" id="lp-strom-kabel-len">—</span></div>
-          <div class="lp-netz-row"><span class="lbl">Komponenten</span><span class="val" id="lp-strom-komp">—</span></div>
-        </div>
-        <div class="lp-section-title" style="margin-top:12px;">Komponenten</div>
-        <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="startPlaceStromNode('nap')" id="btn-place-nap" style="border-color:#fdd835;color:#fdd835;">⚡ NAP</button>
-          <button class="lp-tool-btn" data-click="startPlaceStromNode('trafo')" id="btn-place-trafo" style="border-color:#42a5f5;color:#42a5f5;">⏚ Trafo</button>
-          <button class="lp-tool-btn" data-click="startPlaceStromNode('nshv')" id="btn-place-nshv" style="border-color:#bdbdbd;color:#bdbdbd;">▦ NSHV</button>
-        </div>
-        <div class="lp-tool-grid" style="margin-top:6px;">
-          <button class="lp-tool-btn" data-click="startDrawStromEdge()" id="btn-draw-strom-edge" style="grid-column:1/-1;">— Kabel zeichnen</button>
-        </div>
-        <div class="lp-tool-grid" style="margin-top:6px;">
-          <button class="lp-tool-btn" data-click="autoStromNetz()" style="border-color:#66bb6a;color:#66bb6a;">🔌 Auto-Netz</button>
-          <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="border-color:#fdd835;color:#fdd835;">⚡ Schnellberechnung</button>
-        </div>
-        <div class="lp-section-title" style="margin-top:12px;">Szenario</div>
-        <select id="strom-szenario" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="setStromSzenario(this.value)">
-          <option value="spitzenlast">⚡ Spitzenlast (max. Verbrauch)</option>
-          <option value="pvmax">☀ PV-Maximum (max. Erzeugung)</option>
-          <option value="rueckspeisung">↩ Max. Rückspeisung</option>
-          <option value="jahresmittel">Ø Jahresmittel</option>
-        </select>
-        <div id="strom-szenario-info" style="font-size:9px;color:var(--muted);margin-top:4px;padding:3px 6px;background:var(--surface);border-radius:4px;display:none;"></div>
-        <div class="lp-section-title" style="margin-top:12px;">Kabeltyp</div>
-        <select id="strom-kabel-typ" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="recalcStromNetz()">
-          <option value="NAYY">NAYY (Aluminium) — Standard</option>
-          <option value="NYY">NYY (Kupfer)</option>
-        </select>
-        <div class="lp-section-title" style="margin-top:12px;">Gleichzeitigkeitsfaktor</div>
-        <select id="strom-gzf-methode" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="recalcStromNetz()">
-          <option value="vde">VDE-Richtwerte (automatisch)</option>
-          <option value="keine">Keine (1.0)</option>
-          <option value="manuell">Manuell</option>
-        </select>
-        <div id="strom-gzf-manuell-wrap" style="display:none;margin-top:4px;">
-          <input type="number" id="strom-gzf-manuell" value="0.6" min="0.1" max="1.0" step="0.05" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;" data-change="recalcStromNetz()"/>
-        </div>
-        <div class="lp-section-title" style="margin-top:12px;">Einfärbung</div>
-        <div id="lp-strom-viz" class="lp-tool-grid" style="grid-template-columns:1fr 1fr;">
-          <button class="lp-tool-btn" data-click="setStromColorMode('auslastung')" style="justify-content:center;font-size:9px;">Auslastung</button>
-          <button class="lp-tool-btn" data-click="setStromColorMode('spannungsfall')" style="justify-content:center;font-size:9px;">ΔU%</button>
-          <button class="lp-tool-btn" data-click="setStromColorMode('leistung')" style="justify-content:center;font-size:9px;">Leistung</button>
-          <button class="lp-tool-btn" data-click="setStromColorMode('richtung')" style="justify-content:center;font-size:9px;">Richtung</button>
-        </div>
-        <div class="lp-section-title" style="margin-top:12px;">Stromnetz-Kosten</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;">
-          <label style="color:var(--muted);">Tiefbau €/m<input type="number" id="strom-k-tiefbau" value="100" min="0" step="10" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
-          <label style="color:var(--muted);">NAP-Pausch. €<input type="number" id="strom-k-nap" value="3000" min="0" step="500" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
-          <label style="color:var(--muted);">Trafo €/kVA<input type="number" id="strom-k-trafo" value="60" min="0" step="5" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
-          <label style="color:var(--muted);">Nutzungsd. a<input type="number" id="strom-k-nd" value="40" min="10" max="60" step="5" style="width:100%;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;margin-top:2px;" data-change="recalcStromNetz()"/></label>
-        </div>
-        <div id="strom-kosten-kpi" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;text-align:center;">
-            <div style="font-size:13px;font-weight:700;color:var(--text);" id="strom-kpi-invest">—</div>
-            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Invest Netz</div>
-          </div>
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;text-align:center;">
-            <div style="font-size:13px;font-weight:700;color:var(--text);" id="strom-kpi-annuitaet">—</div>
-            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Annuität €/a <span class="htip" data-tip="Jährliche Kosten des Stromnetzes: Investition als Annuität (jährl. Rate) + Instandhaltung. Umfasst Kabel, Tiefbau, Trafos und Netzanschluss.">?</span></div>
-          </div>
-        </div>
-        <div style="margin-top:4px;text-align:center;">
-          <span style="font-size:8px;color:var(--muted);" id="strom-kpi-detail"></span>
-        </div>
-        <div class="lp-section-title" style="margin-top:12px;">Ansicht</div>
-        <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/> Stromnetz sichtbar
-        </label>
-        </div><!-- /lp-netz-strom -->
       </div>
 
       <!-- ══ Tab 3: Erzeuger ════════════════════════════════════ -->
@@ -359,7 +267,93 @@
         </div>
       </div>
 
-      <!-- ══ Tab 4: Ergebnis ════════════════════════════════════ -->
+      <!-- ══ Tab 4: Elektro ════════════════════════════════════ -->
+      <div class="lp-content" id="lp-elektro">
+        <div class="lp-step">
+          <div class="lp-step-num" data-num="4">⚡</div>
+          <div class="lp-step-text">Stromnetz planen<span>Schritt für Schritt zum fertigen Netz</span></div>
+        </div>
+
+        <!-- ── 1. Komponenten platzieren ── -->
+        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-komp')">
+          <span>1 · Komponenten platzieren</span><span id="el-sec-komp-arrow">▼</span>
+        </div>
+        <div id="el-sec-komp">
+          <div id="asset-palette" class="asset-palette-inline"></div>
+        </div>
+
+        <!-- ── 2. Elektrotrassen zeichnen ── -->
+        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-trasse')">
+          <span>2 · Elektrotrassen zeichnen</span><span id="el-sec-trasse-arrow">▼</span>
+        </div>
+        <div id="el-sec-trasse">
+          <div class="lp-tool-grid">
+            <button class="lp-tool-btn" id="btn-draw-trasse" data-click="toggleDrawTrasse()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;">✏ Trasse zeichnen</button>
+          </div>
+        </div>
+
+        <!-- ── 3. Leitungen zeichnen ── -->
+        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-leit')">
+          <span>3 · Leitungen zeichnen</span><span id="el-sec-leit-arrow">▼</span>
+        </div>
+        <div id="el-sec-leit">
+          <div class="lp-tool-grid">
+            <button class="lp-tool-btn" data-click="startDrawStromEdge()" id="btn-draw-strom-edge" style="grid-column:1/-1;">— Kabel zeichnen</button>
+          </div>
+          <div class="lp-tool-grid" style="margin-top:6px;">
+            <button class="lp-tool-btn" data-click="autoStromNetz()" style="border-color:#66bb6a;color:#66bb6a;">🔌 Auto-Netz</button>
+          </div>
+        </div>
+
+        <!-- ── 4. Berechnen ── -->
+        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-calc')">
+          <span>4 · Berechnen</span><span id="el-sec-calc-arrow">▼</span>
+        </div>
+        <div id="el-sec-calc">
+          <div class="lp-tool-grid" style="margin-bottom:8px;">
+            <button class="lp-tool-btn" data-click="elCalcAssets()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;">⚡ Elektroberechnung</button>
+            <button class="lp-tool-btn" id="btn-sld-toggle" data-click="sldToggle()" style="grid-column:1/-1;border-color:#80cbc4;color:#80cbc4;">🔌 Einlinienschema</button>
+            <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;">⚙ Auto-Netz aus Gebäudedaten</button>
+          </div>
+          <div id="lp-el-calc-result" style="display:none;margin-bottom:8px;font-size:9px;color:var(--text);background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);"></div>
+          <div style="font-size:9px;color:var(--muted);margin:4px 0 2px;text-transform:uppercase;letter-spacing:.04em;">Kabeltyp</div>
+          <select id="strom-kabel-typ" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;">
+            <option value="NAYY">NAYY (Aluminium) — Standard</option>
+            <option value="NYY">NYY (Kupfer)</option>
+          </select>
+
+          <!-- Kennwerte (standardmäßig eingeklappt) -->
+          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-info')">
+            Kennwerte <span id="lp-strom-info-arrow">▶</span>
+          </div>
+          <div id="lp-strom-info" class="lp-netz-summary" style="display:none;">
+            <div class="lp-netz-row" style="border-bottom:1px solid var(--border);padding-bottom:4px;margin-bottom:4px;"><span class="lbl">Szenario-Stunde</span><span class="val" id="lp-strom-sz-hour" style="color:var(--accent);">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Gesamtlast</span><span class="val" id="lp-strom-last">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Einspeisung</span><span class="val" id="lp-strom-einsp">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Trafo-Auslastung</span><span class="val" id="lp-strom-trafo-ausl">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Krit. Spannungsfall</span><span class="val" id="lp-strom-delta-u">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Kabellänge</span><span class="val" id="lp-strom-kabel-len">—</span></div>
+            <div class="lp-netz-row"><span class="lbl">Komponenten</span><span class="val" id="lp-strom-komp">—</span></div>
+          </div>
+
+          <!-- Einfärbung -->
+          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-viz')">
+            Einfärbung <span id="lp-strom-viz-arrow">▼</span>
+          </div>
+          <div id="lp-strom-viz" class="lp-tool-grid" style="grid-template-columns:1fr 1fr;">
+            <button class="lp-tool-btn" data-click="setStromColorMode('auslastung')" style="justify-content:center;font-size:9px;">Auslastung</button>
+            <button class="lp-tool-btn" data-click="setStromColorMode('spannungsfall')" style="justify-content:center;font-size:9px;">ΔU%</button>
+            <button class="lp-tool-btn" data-click="setStromColorMode('leistung')" style="justify-content:center;font-size:9px;">Leistung</button>
+            <button class="lp-tool-btn" data-click="setStromColorMode('richtung')" style="justify-content:center;font-size:9px;">Richtung</button>
+          </div>
+
+          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:10px;">
+            <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/> Stromnetz sichtbar
+          </label>
+        </div>
+      </div>
+
+      <!-- ══ Tab 5: Ergebnis ════════════════════════════════════ -->
       <div class="lp-content" id="lp-ergebnis">
         <div class="lp-step">
           <div class="lp-step-num" data-num="4">4</div>
@@ -417,10 +411,35 @@
   <button class="lp-toggle" id="lp-toggle" data-click="toggleLeftPanel()" title="Left Panel ein-/ausblenden" style="left:280px;">◀</button>
 
   <div id="map"></div>
+
+  <!-- ── Einlinienschema Panel ────────────────────────────────────────────── -->
+  <div id="sld-panel">
+    <div class="sld-resize-handle" id="sld-resize-handle"></div>
+    <div class="sld-head">
+      <span style="white-space:nowrap;">⚡ Einlinienschema &nbsp;<span id="sld-yr-label" style="font-size:9px;color:var(--muted);font-weight:normal;letter-spacing:0;text-transform:none;"></span></span>
+      <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+        <button class="sld-head-btn" data-click="sldZoom(-0.2)" title="Verkleinern">−</button>
+        <button class="sld-head-btn" data-click="sldZoom(0)" title="Zoom zurücksetzen" id="sld-zoom-label">100%</button>
+        <button class="sld-head-btn" data-click="sldZoom(0.2)" title="Vergrößern">+</button>
+        <div style="width:1px;height:14px;background:var(--border);margin:0 2px;"></div>
+        <button class="sld-head-btn" data-click="sldExportPDF()" title="Als PDF exportieren">📄 PDF</button>
+        <button class="sld-head-btn" id="btn-sld-fs" data-click="sldToggleFullscreen()" title="Vollbild">⛶</button>
+        <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 3px;line-height:1;" data-click="sldToggle()" title="Schließen">✕</button>
+      </div>
+    </div>
+    <div class="sld-canvas-wrap" id="sld-canvas-wrap">
+      <div id="sld-canvas" class="sld-empty">
+        <span style="font-size:20px;">⚡</span>
+        <span>Berechnung starten oder Asset platzieren</span>
+      </div>
+    </div>
+    <div id="sld-info-bar" style="display:none;">
+      <div id="sld-info-content"></div>
+    </div>
+  </div>
+
   <div id="erzeuger-status" style="position:absolute;top:10px;right:350px;z-index:500;display:flex;gap:5px;align-items:flex-start;pointer-events:none;"></div>
 
-  <!-- Asset-Palette (Neuer Strom/Wärme unified) -->
-  <div id="asset-palette" class="asset-palette"></div>
   <!-- Asset-Inspector (Editor-Panel bei Marker-Klick) -->
   <div id="asset-inspector" class="asset-inspector"></div>
 

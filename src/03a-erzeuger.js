@@ -4,6 +4,7 @@
 import { map } from './02b-gebaeude.js';
 import { hidePanels } from './03b-netz.js';
 import { _pvWpM2Global } from './03c-gebaeude-io.js';
+import { stromEmF } from './01-globals-varianten.js';
 
 export function toggleFFPvPanel() {
   const p   = document.getElementById('ff-pv-panel');

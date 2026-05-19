@@ -6,7 +6,8 @@ import { map } from './02b-gebaeude.js';
 import { globalYear } from './01-globals-varianten.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 
-let assetLayer = null;
+let assetLayer = null;       // Gebäude-gruppierte Assets (zoom-abhängig)
+let standaloneLayer = null; // Frei platzierte Assets (immer sichtbar)
 let layerVisible = true;
 
 // Drei Zoom-Stufen:
@@ -30,14 +31,25 @@ function ensureLayer() {
     assetLayer = L.layerGroup();
     applyLayerVisibility();
   }
+  if (!standaloneLayer) {
+    standaloneLayer = L.layerGroup();
+    applyLayerVisibility();
+  }
   return assetLayer;
 }
 
 function applyLayerVisibility() {
-  if (!assetLayer) return;
-  const effective = layerVisible && map.getZoom() >= ASSET_COLLAPSED_ZOOM;
-  if (effective) assetLayer.addTo(map);
-  else           assetLayer.remove();
+  // Gebäude-Assets: nur ab ASSET_COLLAPSED_ZOOM sichtbar
+  if (assetLayer) {
+    const effective = layerVisible && map.getZoom() >= ASSET_COLLAPSED_ZOOM;
+    if (effective) assetLayer.addTo(map);
+    else           assetLayer.remove();
+  }
+  // Standalone-Assets: immer sichtbar (kein Zoom-Threshold)
+  if (standaloneLayer) {
+    if (layerVisible) standaloneLayer.addTo(map);
+    else              standaloneLayer.remove();
+  }
 }
 
 // Polygon-Schwerpunkt (einfacher Mittelwert)
@@ -103,6 +115,7 @@ function drawBuildingGroup(buildingId) {
   const m = L.marker([c.lat, c.lng], { icon, zIndexOffset: 200 });
 
   m.on('click', e => {
+    if (window.isDrawingStromEdge) return;
     L.DomEvent.stopPropagation(e);
     // Detail-Modus: getroffenes Icon direkt öffnen (data-asset-id)
     if (!collapsed) {
@@ -175,7 +188,7 @@ function drawSingleMarker(asset) {
   if (!cfg) return;
 
   if (asset._marker) {
-    assetLayer.removeLayer(asset._marker);
+    standaloneLayer.removeLayer(asset._marker);
     asset._marker = null;
   }
 
@@ -200,7 +213,29 @@ function drawSingleMarker(asset) {
 
   const m = L.marker([asset.lat, asset.lng], { icon, draggable: true, zIndexOffset: 200 });
 
+  // Strom-Domain-Assets als Strom-Knoten registrieren, damit Kabel angeschlossen werden können
+  if (cfg.domain === 'strom') {
+    window.stromNodes = window.stromNodes || [];
+    const existing = window.stromNodes.find(n => n.id === asset.id);
+    if (!existing) {
+      window.stromNodes.push({
+        id: asset.id, type: asset.type.toLowerCase(),
+        lat: asset.lat, lng: asset.lng,
+        marker: m, label: cfg.label || asset.type,
+        peakLoadKw: 0, annualMwh: 0, isProducer: false
+      });
+    } else {
+      existing.marker = m;
+    }
+  }
+
   m.on('click', e => {
+    if (window.isDrawingStromEdge) {
+      if (cfg.domain === 'strom' && typeof window.stromNodeClick === 'function') {
+        window.stromNodeClick(asset.id);
+      }
+      return;
+    }
     L.DomEvent.stopPropagation(e);
     ASSETS.selectedId = asset.id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
@@ -210,17 +245,29 @@ function drawSingleMarker(asset) {
     const ll = m.getLatLng();
     asset.lat = ll.lat;
     asset.lng = ll.lng;
+    // Strom-Knoten-Position synchron halten
+    const sn = (window.stromNodes || []).find(n => n.id === asset.id);
+    if (sn) {
+      sn.lat = ll.lat; sn.lng = ll.lng;
+      if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+    }
   });
 
   m.on('contextmenu', e => {
     L.DomEvent.stopPropagation(e);
     if (confirm(`Asset "${asset.name}" löschen?`)) {
+      // Strom-Knoten und angeschlossene Kabel mitentfernen
+      if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
+      else if (window.stromNodes) {
+        const idx = window.stromNodes.findIndex(n => n.id === asset.id);
+        if (idx >= 0) window.stromNodes.splice(idx, 1);
+      }
       deleteAsset(asset.id);
       redrawAllAssets();
     }
   });
 
-  m.addTo(assetLayer);
+  m.addTo(standaloneLayer);
   asset._marker = m;
 }
 
@@ -237,6 +284,7 @@ export function drawAssetMarker(asset) {
 export function redrawAllAssets() {
   ensureLayer();
   assetLayer.clearLayers();
+  standaloneLayer.clearLayers();
   for (const a of ASSETS.items) a._marker = null;
 
   const byBuilding = new Map();

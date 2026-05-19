@@ -778,7 +778,7 @@ export function aggregateGebStrom() {
   const n = 8760;
   const total = new Float32Array(n);
   let totalMWh = 0;
-  window.gebaeude.forEach(g => {
+  (window.gebaeude || []).forEach(g => {
     if (isExcluded(g.id)) return;
     const mwh = getGebStromMwh(g);
     if (mwh <= 0) return;

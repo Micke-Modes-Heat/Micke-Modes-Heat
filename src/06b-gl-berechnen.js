@@ -5,7 +5,7 @@ import { getComputedStats, map } from './02b-gebaeude.js';
 import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
 import { redrawVerbindungslinien } from './03a-erzeuger.js';
 import { hideHint, showHint } from './03c-gebaeude-io.js';
-import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw, glRenderPreview, glRenderSplit, glUpdateKlimaStatus, glUpdateStatus } from './06a-gbi-lastgang.js';
+import { glGetGesamtMwh, glGetMonatswerte, glGetTempH, glLastgangKw, glRenderPreview, glRenderSplit, glUpdateKlimaStatus, glUpdateStatus } from './06a-gbi-lastgang.js';
 import { onSystemStateUpdated, updateAllDeckungen } from './06c-dispatch-core.js';
 import { CalcEngine } from './08-calc-engine.js';
 

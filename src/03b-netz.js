@@ -1,6 +1,8 @@
 // ── 03b-netz.js — Netzplanung (Geothermie, Polygon-Zeichnen, Panel-Mgmt, OSM, Netzgraph, Strang-Report, Rohr-BOM) ──
 // ── Geothermie-Sondenfeld ────────────────────────────────────────────────────
 import { areaPolygon, gebaeude, globalYear, isDrawingTrasse, isExcluded, isPlacingLwWp, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
+
+let netzVisible = true;
 import { updateNetzColorLegend } from './02a-netz-physik.js';
 import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
 import { clearArea, polygonAreaM2, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
@@ -432,8 +434,8 @@ export function hidePanels(){
   document.getElementById('btn-analyse-toggle').classList.remove('active');
   document.getElementById('wirtschaft-panel').classList.remove('visible');
   document.getElementById('btn-wirtschaft-toggle').classList.remove('active');
-  document.getElementById('strom-panel').classList.remove('visible');
-  document.getElementById('btn-strom-toggle').classList.remove('active');
+  document.getElementById('strom-panel')?.classList.remove('visible');
+  document.getElementById('btn-strom-toggle')?.classList.remove('active');
   const _tsP = document.getElementById('therm-speicher-panel');
   if (_tsP) _tsP.style.display = 'none';
   const _stP = document.getElementById('solarthermie-panel');

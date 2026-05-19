@@ -694,6 +694,9 @@ export function toggleDrawTrasse() {
   window.isDrawingTrasse = !window.isDrawingTrasse;
   const btn = document.getElementById('btn-draw-trasse');
   if (window.isDrawingTrasse) {
+    // Andere Modi beenden
+    if (window.isDrawingStromEdge && typeof cancelDrawStromEdge === 'function') cancelDrawStromEdge();
+    if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
     btn.classList.add('active');
     window.trasseDetached = false;
     showHint('Klicke, um Trassenknoten zu setzen. Rechtsklick = Strang loslösen.');
@@ -738,6 +741,8 @@ export function toggleDrawTrasse() {
       window.trassePoints.pop();
     }
     if (window.trassePoints.length > 0) autoGenerateNetz();
+    // Bestandskabel entlang neuer Trasse neu routen
+    if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
   }
 }
 
@@ -1370,7 +1375,7 @@ export function setLwWpVisible(visible) {
 }
 
 export function updateLwWpVisibility() {
-  if (!window.lwWp) return;
+  if (!window.lwWp || !lwWpLayerGroup || !lwWpSchallLayerGroup) return;
   if (window.lwWpVisible) {
     if (!map.hasLayer(lwWpLayerGroup)) lwWpLayerGroup.addTo(map);
     if (window.lwWpSchallVisible) {

@@ -353,12 +353,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .asset-list-status-demolished { background:#eeeeee; color:#777; text-decoration:line-through; }
 
 /* Asset-Palette Buttons */
-.asset-palette {
-  position:absolute; top:70px; right:12px; z-index:500;
-  background:var(--surface); border:1px solid var(--border); border-radius:8px;
-  padding:6px; display:none; flex-direction:column; gap:4px; max-height:70vh; overflow:auto;
+.asset-palette-inline {
+  display:flex; flex-direction:column; gap:3px;
 }
-.asset-palette.visible { display:flex; }
 .asset-palette-title { font-size:11px; color:var(--muted); padding:2px 6px 4px; border-bottom:1px solid var(--border); margin-bottom:2px; }
 .asset-palette-btn {
   background:var(--surface2); border:1px solid var(--border); color:var(--text);
@@ -372,7 +369,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 /* Asset-Inspector Panel */
 .asset-inspector {
   position:absolute; top:70px; right:200px; z-index:501;
-  width:280px; max-height:75vh; overflow:auto;
+  width:300px; max-height:82vh; overflow-y:auto;
   background:var(--surface); border:1px solid var(--border); border-radius:8px;
   box-shadow:0 4px 18px rgba(0,0,0,.4);
   display:none; flex-direction:column;
@@ -381,7 +378,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .asset-ins-header {
   display:flex; align-items:center; gap:8px;
   padding:8px 10px; border-top-left-radius:8px; border-top-right-radius:8px;
-  color:#000; font-weight:600;
+  color:#000; font-weight:600; position:sticky; top:0; z-index:1;
 }
 .asset-ins-icon { font-size:18px; }
 .asset-ins-title { flex:1; }
@@ -389,19 +386,50 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
   background:rgba(0,0,0,.25); border:none; color:#fff;
   width:24px; height:24px; border-radius:50%; cursor:pointer; font-size:14px; line-height:1;
 }
-.asset-ins-body { padding:10px; display:flex; flex-direction:column; gap:8px; font-size:11px; }
-.asset-ins-body label { display:flex; flex-direction:column; gap:2px; color:var(--muted); font-size:10px; }
-.asset-ins-body input {
-  background:var(--bg); border:1px solid var(--border); color:var(--text);
-  border-radius:4px; padding:4px 6px; font-size:11px; font-family:inherit; outline:none;
-}
-.asset-ins-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-.asset-ins-section-title { font-size:10px; color:var(--accent); margin-top:4px; text-transform:uppercase; letter-spacing:.05em; }
+.asset-ins-body { padding:10px; display:flex; flex-direction:column; gap:7px; font-size:11px; }
+.asset-ins-section-title { font-size:10px; color:var(--accent); margin-top:2px; text-transform:uppercase; letter-spacing:.05em; }
 .asset-ins-delete {
-  margin-top:10px; background:#b71c1c; color:#fff; border:none;
-  padding:6px 10px; border-radius:4px; cursor:pointer; font-size:11px;
+  margin-top:6px; background:#b71c1c; color:#fff; border:none;
+  padding:6px 10px; border-radius:4px; cursor:pointer; font-size:11px; width:100%;
 }
 .asset-ins-delete:hover { background:#d32f2f; }
+
+/* Inspector Formular-Elemente */
+.ins-field-group { display:flex; flex-direction:column; gap:2px; }
+.ins-field-label { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+.ins-field-input {
+  background:var(--bg); border:1px solid var(--border); color:var(--text);
+  border-radius:4px; padding:4px 6px; font-size:11px; font-family:inherit;
+  outline:none; width:100%; box-sizing:border-box;
+}
+.ins-field-input:focus { border-color:var(--accent); }
+.ins-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.ins-row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+.ins-check-row {
+  display:flex; align-items:center; gap:6px; font-size:10px;
+  color:var(--text); cursor:pointer; margin-top:2px;
+}
+.ins-toggle-row { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:3px; }
+.ins-toggle-btn {
+  padding:5px 4px; border-radius:4px; cursor:pointer; font-size:10px;
+  font-weight:600; border:1px solid var(--border);
+  background:transparent; color:var(--muted);
+}
+.ins-toggle-btn.active-gen { border-color:#a5d6a7; background:rgba(165,214,167,.15); color:#a5d6a7; }
+.ins-toggle-btn.active-load { border-color:#ef9a9a; background:rgba(239,154,154,.15); color:#ef9a9a; }
+.ins-result-block {
+  margin-top:2px; padding:6px 8px; background:var(--bg);
+  border-radius:4px; border-left:3px solid var(--accent);
+}
+.ins-result-label { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+.ins-result-value { font-size:15px; font-weight:700; margin-top:2px; }
+.ins-result-sub { font-size:9px; color:var(--muted); margin-top:1px; }
+.ins-building-badge {
+  display:flex; align-items:center; gap:6px; padding:5px 8px;
+  background:var(--bg); border-radius:4px; border-left:3px solid #64b5f6;
+}
+.ins-building-name { font-size:11px; color:#64b5f6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ins-meta { font-size:9px; color:var(--muted); margin-top:4px; }
 
 .chart-container{width:100%;height:200px;margin-top:10px;position:relative;}
 
@@ -460,6 +488,69 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .vergleich-table td:first-child{color:var(--muted);font-size:10px;min-width:160px;}
 .vergleich-table .val-col{font-family:'DM Mono',monospace;}
 .vergleich-table tr:hover td{background:var(--surface2);}
+
+/* ── Einlinienschema (SLD) Panel ───────────────────────────────────────────── */
+#sld-panel {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 420px;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  display: none;
+  flex-direction: column;
+  z-index: 600;
+  transition: width .15s;
+}
+#sld-panel.visible { display: flex; }
+#sld-panel.sld-fullscreen {
+  left: 0; top: 0; right: 0; bottom: 0;
+  width: 100% !important;
+  z-index: 900;
+}
+.sld-head {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 10px; color: var(--muted);
+  letter-spacing: .06em; text-transform: uppercase;
+  flex-shrink: 0; background: var(--surface);
+}
+.sld-head-btn {
+  background: none; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--muted); cursor: pointer; font-size: 11px;
+  padding: 2px 7px; font-family: inherit; transition: .12s; white-space: nowrap;
+}
+.sld-head-btn:hover  { border-color: var(--accent); color: var(--accent); }
+.sld-head-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+.sld-canvas-wrap {
+  flex: 1; overflow: auto; background: #0b0e18; cursor: grab; position: relative;
+}
+.sld-canvas-wrap:active { cursor: grabbing; }
+.sld-canvas-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+.sld-canvas-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.sld-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: var(--muted); font-size: 11px;
+  flex-direction: column; gap: 8px;
+}
+.sld-resize-handle {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 4px; cursor: ew-resize; z-index: 10;
+  background: transparent; transition: .1s;
+}
+.sld-resize-handle:hover,
+.sld-resize-handle:active { background: var(--accent); }
+#sld-panel.sld-fullscreen .sld-resize-handle { display: none; }
+#sld-info-bar {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  background: var(--surface);
+  max-height: 220px;
+  overflow-y: auto;
+  color: var(--text);
+  font-size: 11px;
+}
 
 /* Print */
 @media print{
@@ -577,6 +668,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .lp-content.active{display:block;}
 .lp-section-title{font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border);}
 .lp-section-title:first-child{margin-top:0;}
+.lp-section-collapsible{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;}
+.lp-section-collapsible:hover{color:var(--text);}
 .lp-toggle{position:absolute;top:50%;transform:translateY(-50%);z-index:10;background:var(--surface);border:1px solid var(--border);border-left:none;border-radius:0 6px 6px 0;padding:8px 4px;cursor:pointer;color:var(--muted);font-size:11px;line-height:1;transition:left .25s ease;}
 
 /* Erzeuger-Grid im Left Panel */

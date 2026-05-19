@@ -8,7 +8,7 @@ import { drawAssetMarker, setAssetLayerVisible, isAssetLayerVisible } from './13
 let pendingType = null;
 
 // Palette-Panel aufbauen (einmalig)
-function buildPalette() {
+export function buildPalette() {
   const panel = document.getElementById('asset-palette');
   if (!panel) return;
   if (panel.dataset.built === '1') return;
@@ -37,35 +37,33 @@ function buildPalette() {
 }
 
 export function setPendingType(type) {
+  // Erneuter Klick auf aktiven Typ → abwählen
+  if (pendingType === type) {
+    pendingType = null;
+    window._pendingAssetType = null;
+    document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
+    map.getContainer().style.cursor = '';
+    return;
+  }
+  // Andere Modi beenden
+  if (window.isDrawingTrasse && typeof window.toggleDrawTrasse === 'function') window.toggleDrawTrasse();
+  if (window.isDrawingStromEdge && typeof window.cancelDrawStromEdge === 'function') window.cancelDrawStromEdge();
   pendingType = type;
-  // Alle Buttons auf inaktiv
+  window._pendingAssetType = type;
   document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
-  // Aktiven markieren
   const btn = document.querySelector(`.asset-palette-btn[data-type="${type}"]`);
   if (btn) btn.classList.add('active');
-  // Cursor ändern
-  map.getContainer().style.cursor = type ? 'crosshair' : '';
+  map.getContainer().style.cursor = 'crosshair';
 }
 
 export function togglePalette() {
-  buildPalette();
-  const panel = document.getElementById('asset-palette');
-  if (!panel) return;
-  const nowVisible = !panel.classList.contains('visible');
-  panel.classList.toggle('visible', nowVisible);
-  setAssetLayerVisible(nowVisible);
-  // Toggle-Button-Status
-  const tgl = document.getElementById('btn-assets-toggle');
-  if (tgl) tgl.classList.toggle('active', nowVisible);
-  if (!nowVisible) setPendingType(null);
+  // Palette ist jetzt im Elektro-Tab eingebettet — zum Tab navigieren
+  if (typeof window.setLeftTab === 'function') window.setLeftTab('elektro');
 }
 
 // Karten-Klick: Asset platzieren, wenn pendingType gesetzt
 function onMapClickForAsset(e) {
   if (!pendingType) return;
-  // Nur reagieren wenn Palette sichtbar
-  const panel = document.getElementById('asset-palette');
-  if (!panel || !panel.classList.contains('visible')) return;
   // Gebäude-Zuordnung: welches Gebäude liegt an der Klick-Position?
   const buildingId = findBuildingAt(e.latlng);
   const asset = createAsset(pendingType, e.latlng.lat, e.latlng.lng, { buildingId });
