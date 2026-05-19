@@ -591,9 +591,6 @@ export function _recalcStromNetzInner() {
   // Auto-register Erzeuger/Verbraucher (WP, PV-Flächen, BHKW, Stromkessel) als Strom-Knoten
   _autoRegisterErzeugerStromNodes();
 
-  // Auto-Connect: unverbundene Knoten automatisch ans nächste Infra anbinden
-  _autoConnectStromNodes();
-
   // Find NAP (root)
   const nap = window.stromNodes.find(n => n.type === 'nap');
   if (!nap) {
