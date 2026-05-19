@@ -103,6 +103,7 @@ function drawBuildingGroup(buildingId) {
   const m = L.marker([c.lat, c.lng], { icon, zIndexOffset: 200 });
 
   m.on('click', e => {
+    if (window.isDrawingStromEdge) return;
     L.DomEvent.stopPropagation(e);
     // Detail-Modus: getroffenes Icon direkt öffnen (data-asset-id)
     if (!collapsed) {
@@ -201,6 +202,7 @@ function drawSingleMarker(asset) {
   const m = L.marker([asset.lat, asset.lng], { icon, draggable: true, zIndexOffset: 200 });
 
   m.on('click', e => {
+    if (window.isDrawingStromEdge) return;
     L.DomEvent.stopPropagation(e);
     ASSETS.selectedId = asset.id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
