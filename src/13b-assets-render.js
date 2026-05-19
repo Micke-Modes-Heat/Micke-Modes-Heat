@@ -201,8 +201,29 @@ function drawSingleMarker(asset) {
 
   const m = L.marker([asset.lat, asset.lng], { icon, draggable: true, zIndexOffset: 200 });
 
+  // Strom-Domain-Assets als Strom-Knoten registrieren, damit Kabel angeschlossen werden können
+  if (cfg.domain === 'strom') {
+    window.stromNodes = window.stromNodes || [];
+    const existing = window.stromNodes.find(n => n.id === asset.id);
+    if (!existing) {
+      window.stromNodes.push({
+        id: asset.id, type: asset.type.toLowerCase(),
+        lat: asset.lat, lng: asset.lng,
+        marker: m, label: cfg.label || asset.type,
+        peakLoadKw: 0, annualMwh: 0, isProducer: false
+      });
+    } else {
+      existing.marker = m;
+    }
+  }
+
   m.on('click', e => {
-    if (window.isDrawingStromEdge) return;
+    if (window.isDrawingStromEdge) {
+      if (cfg.domain === 'strom' && typeof window.stromNodeClick === 'function') {
+        window.stromNodeClick(asset.id);
+      }
+      return;
+    }
     L.DomEvent.stopPropagation(e);
     ASSETS.selectedId = asset.id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
@@ -212,11 +233,23 @@ function drawSingleMarker(asset) {
     const ll = m.getLatLng();
     asset.lat = ll.lat;
     asset.lng = ll.lng;
+    // Strom-Knoten-Position synchron halten
+    const sn = (window.stromNodes || []).find(n => n.id === asset.id);
+    if (sn) {
+      sn.lat = ll.lat; sn.lng = ll.lng;
+      if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+    }
   });
 
   m.on('contextmenu', e => {
     L.DomEvent.stopPropagation(e);
     if (confirm(`Asset "${asset.name}" löschen?`)) {
+      // Strom-Knoten und angeschlossene Kabel mitentfernen
+      if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
+      else if (window.stromNodes) {
+        const idx = window.stromNodes.findIndex(n => n.id === asset.id);
+        if (idx >= 0) window.stromNodes.splice(idx, 1);
+      }
       deleteAsset(asset.id);
       redrawAllAssets();
     }
