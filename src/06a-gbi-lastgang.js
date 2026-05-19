@@ -539,7 +539,7 @@ export function glDecodeKlimaB64(b64) {
 }
 
 // { tempH: Float32Array, fallback: bool }
-async function glGetTempH(stadtname, jahr) {
+export async function glGetTempH(stadtname, jahr) {
   const loaded = await glLadeKlimaDaten(stadtname);
   const data   = window.KLIMA_DATA?.[stadtname]?.[jahr];
   if (!data) {
