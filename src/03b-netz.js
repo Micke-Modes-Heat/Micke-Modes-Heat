@@ -432,8 +432,8 @@ export function hidePanels(){
   document.getElementById('btn-analyse-toggle').classList.remove('active');
   document.getElementById('wirtschaft-panel').classList.remove('visible');
   document.getElementById('btn-wirtschaft-toggle').classList.remove('active');
-  document.getElementById('strom-panel').classList.remove('visible');
-  document.getElementById('btn-strom-toggle').classList.remove('active');
+  document.getElementById('strom-panel')?.classList.remove('visible');
+  document.getElementById('btn-strom-toggle')?.classList.remove('active');
   const _tsP = document.getElementById('therm-speicher-panel');
   if (_tsP) _tsP.style.display = 'none';
   const _stP = document.getElementById('solarthermie-panel');
