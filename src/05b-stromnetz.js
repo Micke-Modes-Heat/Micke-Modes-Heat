@@ -12,6 +12,7 @@ import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
 import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
+import { ASSETS, TYPE_RANK, getAssetStatus } from './13a-assets-core.js';
 
 export function epConfirm(title, message, opts) {
   opts = opts || {};
@@ -194,6 +195,9 @@ export function removeStromNode(id) {
 // ── Kabel (Strom-Kanten) ────────────────────────────────────────
 export function startDrawStromEdge() {
   if (window.isDrawingStromEdge) { cancelDrawStromEdge(); return; }
+  // Andere Modi beenden
+  if (window.isDrawingTrasse && typeof window.toggleDrawTrasse === 'function') window.toggleDrawTrasse();
+  if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
   window.isDrawingStromEdge = true;
   window.stromEdgeStartId = null;
   const btn = document.getElementById('btn-draw-strom-edge');
@@ -234,6 +238,229 @@ export function stromNodeClick(nodeId) {
   return true;
 }
 
+// ── Trassen-Routing für Elektroleitungen (portiert aus Energiekarte1.1) ───────
+// Konvertiert window.trassePoints + window.trasseSegments in das EL.trassen-Format
+function _getTrassenForRouting() {
+  const pts = window.trassePoints;
+  const segs = window.trasseSegments;
+  if (!pts || pts.length < 2 || !segs || segs.length === 0) return [];
+  return segs
+    .map((seg, i) => ({
+      id: 'seg_' + i,
+      pts: pts.slice(seg.start, seg.end + 1).map(p => [p.lat, p.lng])
+    }))
+    .filter(t => t.pts.length >= 2);
+}
+
+function _elPtDist(a, b) {
+  return L.latLng(a[0], a[1]).distanceTo(L.latLng(b[0], b[1]));
+}
+
+function _elProjOnSeg(p, a, b) {
+  const ax = a[1], ay = a[0], bx = b[1], by = b[0], px = p[1], py = p[0];
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+  if (len2 < 1e-18) return { t: 0, pt: a };
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return { t, pt: [ay + t * dy, ax + t * dx] };
+}
+
+// Baut Graph aus Trassen-Segmenten mit Cross-Trassen-Verbindungen
+function _elBuildGraph(trassen) {
+  const SNAP_M = 20;
+  const nodeMap = new Map();
+  const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
+
+  function getNode(pt) {
+    const k = key(pt);
+    if (!nodeMap.has(k)) nodeMap.set(k, { id: k, lat: pt[0], lng: pt[1], adj: [] });
+    return nodeMap.get(k);
+  }
+  function addEdge(nA, nB) {
+    const d = _elPtDist([nA.lat, nA.lng], [nB.lat, nB.lng]);
+    if (!nA.adj.some(a => a.toKey === nB.id)) nA.adj.push({ toKey: nB.id, dist: d });
+    if (!nB.adj.some(a => a.toKey === nA.id)) nB.adj.push({ toKey: nA.id, dist: d });
+  }
+
+  for (const tr of trassen) {
+    for (let i = 0; i < tr.pts.length - 1; i++) {
+      addEdge(getNode(tr.pts[i]), getNode(tr.pts[i + 1]));
+    }
+  }
+
+  // Cross-Trassen-Snapping: Enden nahe anderer Trassen verbinden
+  const snapsBySegment = new Map();
+  for (const tr of trassen) {
+    const endpoints = [tr.pts[0], tr.pts[tr.pts.length - 1]];
+    for (const ep of endpoints) {
+      const kEp = key(ep);
+      const nEp = nodeMap.get(kEp); if (!nEp) continue;
+      let best = null;
+      for (const other of trassen) {
+        if (other.id === tr.id) continue;
+        for (let i = 0; i < other.pts.length - 1; i++) {
+          const { pt: proj, t } = _elProjOnSeg(ep, other.pts[i], other.pts[i + 1]);
+          const d = _elPtDist(ep, proj);
+          if (d < SNAP_M && (!best || d < best.d))
+            best = { d, proj, t, ptA: other.pts[i], ptB: other.pts[i + 1], otherId: other.id, segIdx: i };
+        }
+      }
+      if (!best) continue;
+      const segKey = `${best.otherId}:${best.segIdx}`;
+      if (!snapsBySegment.has(segKey))
+        snapsBySegment.set(segKey, { ptA: best.ptA, ptB: best.ptB, snaps: [] });
+      snapsBySegment.get(segKey).snaps.push({ t: best.t, proj: best.proj, kEp, nEp });
+    }
+  }
+  for (const { ptA, ptB, snaps } of snapsBySegment.values()) {
+    const kA = key(ptA), kB = key(ptB);
+    const nA = nodeMap.get(kA), nB = nodeMap.get(kB);
+    if (!nA || !nB) continue;
+    nA.adj = nA.adj.filter(a => a.toKey !== kB);
+    nB.adj = nB.adj.filter(a => a.toKey !== kA);
+    const interior = [];
+    for (const { t, proj, kEp, nEp } of snaps) {
+      if (t < 1e-5) {
+        if (kEp !== kA) addEdge(nEp, nA);
+      } else if (t > 1 - 1e-5) {
+        if (kEp !== kB) addEdge(nEp, nB);
+      } else {
+        const kP = key(proj);
+        if (!nodeMap.has(kP)) nodeMap.set(kP, { id: kP, lat: proj[0], lng: proj[1], adj: [] });
+        const nP = nodeMap.get(kP);
+        if (kEp !== kP) addEdge(nEp, nP);
+        if (!interior.some(s => s.k === kP)) interior.push({ k: kP, n: nP, t });
+      }
+    }
+    interior.sort((a, b) => a.t - b.t);
+    let prevKey = kA, prevNode = nA;
+    for (const { k, n } of interior) {
+      if (prevKey !== k) addEdge(prevNode, n);
+      prevKey = k; prevNode = n;
+    }
+    if (prevKey !== kB) addEdge(prevNode, nB);
+  }
+  return nodeMap;
+}
+
+function _elClosestOnTrasse(trassen, lat, lng) {
+  const p = [lat, lng]; let best = null;
+  for (const tr of trassen) {
+    for (let i = 0; i < tr.pts.length - 1; i++) {
+      const { pt } = _elProjOnSeg(p, tr.pts[i], tr.pts[i + 1]);
+      const d = _elPtDist(p, pt);
+      if (!best || d < best.dist) best = { trasseId: tr.id, segIdx: i, pt, dist: d };
+    }
+  }
+  return best;
+}
+
+function _elDijkstra(nodeMap, startKey, endKey) {
+  if (startKey === endKey) return [[nodeMap.get(startKey).lat, nodeMap.get(startKey).lng]];
+  const dist = new Map(), prev = new Map(), vis = new Set();
+  dist.set(startKey, 0);
+  const q = [[0, startKey]];
+  while (q.length) {
+    q.sort((a, b) => a[0] - b[0]);
+    const [d, u] = q.shift();
+    if (vis.has(u)) continue;
+    vis.add(u);
+    if (u === endKey) break;
+    const node = nodeMap.get(u); if (!node) continue;
+    for (const { toKey, dist: ed } of node.adj) {
+      const nd = d + ed;
+      if (!dist.has(toKey) || nd < dist.get(toKey)) {
+        dist.set(toKey, nd); prev.set(toKey, { from: u }); q.push([nd, toKey]);
+      }
+    }
+  }
+  if (!dist.has(endKey)) return null;
+  const path = []; let cur = endKey;
+  while (cur) { const node = nodeMap.get(cur); if (node) path.unshift([node.lat, node.lng]); cur = prev.get(cur)?.from; }
+  return path;
+}
+
+// Vollständiges Routing: von Punkt A nach B entlang Trassen (mit virtuellem Knoteneinstieg)
+function routeAlongTrasse(from, to) {
+  const trassen = _getTrassenForRouting();
+  if (trassen.length === 0) return null;
+
+  const ptA = [from.lat, from.lng];
+  const ptB = [to.lat,   to.lng];
+  const nodeMap = _elBuildGraph(trassen);
+  if (nodeMap.size === 0) return null;
+
+  const projA = _elClosestOnTrasse(trassen, from.lat, from.lng);
+  const projB = _elClosestOnTrasse(trassen, to.lat,   to.lng);
+  if (!projA || !projB) return null;
+
+  const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
+
+  function insertVirtual(proj) {
+    const tr = trassen.find(t => t.id === proj.trasseId); if (!tr) return null;
+    const ptPrev = tr.pts[proj.segIdx], ptNext = tr.pts[proj.segIdx + 1];
+    const kPrev = key(ptPrev), kNext = key(ptNext);
+    const kVirt = key(proj.pt);
+    if (nodeMap.has(kVirt)) return kVirt;
+    const { t: tVirt } = _elProjOnSeg(proj.pt, ptPrev, ptNext);
+    const segNodes = [{ k: kPrev, t: 0.0 }, { k: kNext, t: 1.0 }];
+    for (const [k, n] of nodeMap) {
+      if (k === kPrev || k === kNext) continue;
+      const { t, pt: onPt } = _elProjOnSeg([n.lat, n.lng], ptPrev, ptNext);
+      if (t > 1e-4 && t < 1 - 1e-4 && _elPtDist([n.lat, n.lng], onPt) < 2.0)
+        segNodes.push({ k, t });
+    }
+    segNodes.sort((a, b) => a.t - b.t);
+    const vn = { id: kVirt, lat: proj.pt[0], lng: proj.pt[1], adj: [] };
+    nodeMap.set(kVirt, vn);
+    const prevNb = [...segNodes].reverse().find(sn => sn.t <= tVirt + 1e-9);
+    const nextNb = segNodes.find(sn => sn.t >= tVirt - 1e-9);
+    [prevNb, nextNb].forEach(nb => {
+      if (!nb || nb.k === kVirt) return;
+      const nbNode = nodeMap.get(nb.k); if (!nbNode) return;
+      const d = _elPtDist(proj.pt, [nbNode.lat, nbNode.lng]);
+      if (!vn.adj.some(a => a.toKey === nb.k)) {
+        vn.adj.push({ toKey: nb.k, dist: d });
+        nbNode.adj.push({ toKey: kVirt, dist: d });
+      }
+    });
+    return kVirt;
+  }
+
+  const kA = insertVirtual(projA), kB = insertVirtual(projB);
+  if (!kA || !kB) return null;
+
+  // Gleicher Abschnitt → direkte Kante einfügen (verhindert Umweg-Bug)
+  if (kA !== kB && projA.trasseId === projB.trasseId && projA.segIdx === projB.segIdx) {
+    const dAB = _elPtDist(projA.pt, projB.pt);
+    nodeMap.get(kA)?.adj.push({ toKey: kB, dist: dAB });
+    nodeMap.get(kB)?.adj.push({ toKey: kA, dist: dAB });
+  }
+
+  const trassePth = _elDijkstra(nodeMap, kA, kB);
+  if (!trassePth || trassePth.length === 0) return null;
+
+  const route = [ptA];
+  if (_elPtDist(ptA, projA.pt) > 2) route.push(projA.pt);
+  for (const pt of trassePth) {
+    const last = route[route.length - 1];
+    if (!last || _elPtDist(last, pt) > 0.5) route.push(pt);
+  }
+  if (_elPtDist(ptB, projB.pt) > 2) {
+    const last = route[route.length - 1];
+    if (!last || _elPtDist(last, projB.pt) > 0.5) route.push(projB.pt);
+  }
+  route.push(ptB);
+
+  // Rückgabe als Leaflet LatLng-Array
+  return route.map(p => L.latLng(p[0], p[1]));
+}
+
+function polylineLength(pts) {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += pts[i - 1].distanceTo(pts[i]);
+  return len;
+}
+
 export function addStromEdge(uId, vId) {
   const uNode = window.stromNodes.find(n => n.id === uId);
   const vNode = window.stromNodes.find(n => n.id === vId);
@@ -241,20 +468,24 @@ export function addStromEdge(uId, vId) {
 
   const pt1 = L.latLng(uNode.lat, uNode.lng);
   const pt2 = L.latLng(vNode.lat, vNode.lng);
-  const lengthM = pt1.distanceTo(pt2);
+
+  const routed = routeAlongTrasse(pt1, pt2);
+  const linePts = routed || [pt1, pt2];
+  const lengthM = routed ? polylineLength(routed) : pt1.distanceTo(pt2);
 
   const defaultType = document.getElementById('strom-kabel-typ')?.value || 'NAYY';
 
-  const layer = L.polyline([pt1, pt2], {
+  const layer = L.polyline(linePts, {
     color: '#fdd835', weight: 3, opacity: 0.8, dashArray: '8,4', pane: 'netzPane'
   });
-  const hitLayer = L.polyline([pt1, pt2], {
+  const hitLayer = L.polyline(linePts, {
     color: 'transparent', weight: 16, opacity: 0, interactive: true, pane: 'netzPane'
   });
 
   if (window.stromNetzVisible) { layer.addTo(map); hitLayer.addTo(map); }
 
   const edge = {
+    id: 'se_' + Math.random().toString(36).slice(2, 9),
     u: uId, v: vId, uNode: uNode, vNode: vNode,
     layer: layer, hitLayer: hitLayer, arrowMarker: null,
     cableType: defaultType, crossSection: 0, autoSized: true,
@@ -309,10 +540,13 @@ export function updateStromEdgeGeometry() {
     const un = window.stromNodes.find(n => n.id === e.u);
     const vn = window.stromNodes.find(n => n.id === e.v);
     if (!un || !vn) return;
-    const pts = [L.latLng(un.lat, un.lng), L.latLng(vn.lat, vn.lng)];
+    const pt1 = L.latLng(un.lat, un.lng);
+    const pt2 = L.latLng(vn.lat, vn.lng);
+    const routed = routeAlongTrasse(pt1, pt2);
+    const pts = routed || [pt1, pt2];
     e.layer.setLatLngs(pts);
     e.hitLayer.setLatLngs(pts);
-    e.lengthM = pts[0].distanceTo(pts[1]);
+    e.lengthM = routed ? polylineLength(routed) : pt1.distanceTo(pt2);
   });
 }
 
@@ -1356,7 +1590,7 @@ export function updateLpStromSummary() {
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   const hint = document.getElementById('lp-strom-hint');
 
-  if (!window.stromNodes.length) {
+  if (!(window.stromNodes || []).length) {
     if (hint) hint.style.display = '';
     setVal('lp-strom-sz-hour', '—');
     setVal('lp-strom-last', '—');
@@ -1424,6 +1658,173 @@ export function updateLpStromSummary() {
   const nTrafo = window.stromNodes.filter(n => n.type === 'trafo').length;
   const nNshv = window.stromNodes.filter(n => n.type === 'nshv').length;
   setVal('lp-strom-komp', nNap + ' NAP · ' + nTrafo + ' Trafo · ' + nNshv + ' NSHV');
+}
+
+// ── Elektroberechnung auf Basis manuell platzierter Assets ──────
+// Portiert von elCalc() aus Energiekarte1.1. Arbeitet auf ASSETS.items +
+// window.stromEdges statt auf Gebäudedaten.
+export function elCalcAssets() {
+  const yr = globalYear ?? new Date().getFullYear();
+  const U_N = 400, COS_PHI = 0.9;
+
+  const activeA = ASSETS.items.filter(a =>
+    (a.domain === 'strom' || a.domain === 'hybrid') &&
+    getAssetStatus(a, yr) === 'active'
+  );
+  const activeIds = new Set(activeA.map(a => a.id));
+  const activeE = (window.stromEdges || []).filter(e =>
+    activeIds.has(e.u) && activeIds.has(e.v)
+  );
+
+  const warn = [];
+  if (!activeA.find(a => a.type === 'NAP'))   warn.push('⚠ Kein NAP vorhanden.');
+  if (!activeA.find(a => a.type === 'Trafo')) warn.push('⚠ Kein Trafo – Berechnung mit 400 V NS.');
+  if (activeA.length === 0) { warn.push('⚠ Keine aktiven Elektro-Assets.'); _showElCalcResult(warn, []); return; }
+  if (activeE.length === 0 && activeA.length > 0) warn.push('ℹ Keine Kabel vorhanden.');
+
+  function assetVerbrauch(a) {
+    const p = a.props || {};
+    switch (a.type) {
+      case 'Verbraucher': return parseFloat(p.leistungKW) || 0;
+      case 'Lade':        return (parseInt(p.anzahlPunkte) || 4) * (parseFloat(p.leistungProPunktKW) || 22);
+      case 'WP':          return parseFloat(p.leistungKW) || 0;
+      default:            return 0;
+    }
+  }
+  function assetErzeugung(a) {
+    const p = a.props || {};
+    switch (a.type) {
+      case 'PV':   return (parseFloat(p.leistungKWp) || 0) * 0.8;
+      case 'Wind': return parseFloat(p.leistungKW) || 0;
+      case 'KWK':  return parseFloat(p.leistungElKW) || 0;
+      default:     return 0;
+    }
+  }
+
+  const assetMap = new Map(activeA.map(a => [a.id, a]));
+  const adjList  = new Map(activeA.map(a => [a.id, []]));
+  for (const e of activeE) {
+    adjList.get(e.u)?.push({ neighborId: e.v });
+    adjList.get(e.v)?.push({ neighborId: e.u });
+  }
+
+  function bfsDownstream(edge, loadFn) {
+    const a = assetMap.get(edge.u), b = assetMap.get(edge.v);
+    if (!a || !b) return 0;
+    const rankA = TYPE_RANK[a.type] ?? 6, rankB = TYPE_RANK[b.type] ?? 6;
+    const sourceId = rankA <= rankB ? edge.u : edge.v;
+    const sinkId   = rankA <= rankB ? edge.v : edge.u;
+    const visited = new Set([sourceId]);
+    const queue   = [sinkId];
+    let load = 0;
+    while (queue.length) {
+      const cur = queue.shift();
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      const asset = assetMap.get(cur);
+      if (asset) load += loadFn(asset);
+      const curRank = TYPE_RANK[asset?.type] ?? 6;
+      for (const { neighborId } of (adjList.get(cur) || [])) {
+        if (visited.has(neighborId)) continue;
+        if ((TYPE_RANK[assetMap.get(neighborId)?.type] ?? 6) >= curRank) queue.push(neighborId);
+      }
+    }
+    return load;
+  }
+
+  // Kumulativer Spannungsfall: gerichtete Adjazenzliste
+  const dirAdj = new Map(activeA.map(a => [a.id, []]));
+
+  for (const e of activeE) {
+    const aAsset = assetMap.get(e.u), bAsset = assetMap.get(e.v);
+    if (!aAsset || !bAsset) continue;
+    const rankA = TYPE_RANK[aAsset.type] ?? 6, rankB = TYPE_RANK[bAsset.type] ?? 6;
+    const lengthM = e.lengthM || 0;
+
+    const P_v = bfsDownstream(e, assetVerbrauch);
+    const P_g = bfsDownstream(e, assetErzeugung);
+    const P_net   = P_v - P_g;
+    const P_worst = Math.max(P_v, P_g);
+    const I_A      = P_worst * 1000 / (Math.sqrt(3) * U_N * COS_PHI);
+    const I_A_sign = P_net   * 1000 / (Math.sqrt(3) * U_N * COS_PHI);
+
+    const kt = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
+    // Auto-Querschnitt bestimmen
+    if (!e.crossSection || e.autoSized) {
+      const minSec = kt.sections.find(s => s.Iz >= I_A);
+      e.crossSection = minSec ? minSec.mm2 : kt.sections[kt.sections.length - 1].mm2;
+    }
+    const sec   = kt.sections.find(s => s.mm2 === e.crossSection) || kt.sections[kt.sections.length - 1];
+    const R_km  = kt.rhoOhmMm2pM * 1000 / e.crossSection;
+    const R_seg = R_km * lengthM / 1000;
+    const dU_V  = Math.sqrt(3) * R_seg * I_A_sign;
+    const dU_pct = (dU_V / U_N) * 100;
+
+    e.peakFlowKw   = P_net;
+    e.peakCurrentA = I_A;
+    e.ratedCurrentA = sec.Iz;
+    e.auslastungPct = sec.Iz > 0 ? (I_A / sec.Iz) * 100 : 0;
+    e.deltaUPct    = Math.abs(dU_pct);
+    e.flowDirection = P_net >= 0 ? 1 : -1;
+
+    const srcId = rankA <= rankB ? e.u : e.v;
+    dirAdj.get(srcId)?.push({ nextId: rankA <= rankB ? e.v : e.u, dU_V });
+  }
+
+  // BFS kumulativer Spannungsfall ab Trafo
+  const nodeVoltDrop = new Map();
+  const srcNodes = activeA.filter(a => a.type === 'Trafo');
+  const fallbackRank = srcNodes.length === 0
+    ? Math.min(...activeA.map(a => TYPE_RANK[a.type] ?? 6))
+    : null;
+  (srcNodes.length > 0 ? srcNodes : activeA.filter(a => (TYPE_RANK[a.type] ?? 6) === fallbackRank))
+    .forEach(s => nodeVoltDrop.set(s.id, 0));
+  const bfsQ   = [...nodeVoltDrop.keys()];
+  const bfsVis = new Set(bfsQ);
+  while (bfsQ.length) {
+    const curId = bfsQ.shift();
+    const cumV = nodeVoltDrop.get(curId) ?? 0;
+    for (const { nextId, dU_V } of (dirAdj.get(curId) || [])) {
+      if (bfsVis.has(nextId)) continue;
+      bfsVis.add(nextId);
+      nodeVoltDrop.set(nextId, cumV + dU_V);
+      bfsQ.push(nextId);
+    }
+  }
+  nodeVoltDrop.forEach((v, id) => {
+    const sn = (window.stromNodes || []).find(n => n.id === id);
+    if (sn) sn._voltDropV = v;
+  });
+
+  updateStromEdgeVisuals();
+
+  // Ergebniszusammenfassung
+  const bottlenecks = activeE
+    .filter(e => e.auslastungPct > 100 || e.deltaUPct > 3)
+    .map(e => {
+      const a = assetMap.get(e.u), b = assetMap.get(e.v);
+      let msg = '';
+      if (e.auslastungPct > 100) msg += `Überlast ${e.auslastungPct.toFixed(0)} % `;
+      if (e.deltaUPct > 3)       msg += `ΔU ${e.deltaUPct.toFixed(1)} %`;
+      return `${a?.name || e.u} → ${b?.name || e.v}: ${msg.trim()}`;
+    });
+
+  const totalVerbrauch = activeA.reduce((s, a) => s + assetVerbrauch(a), 0);
+  const totalErzeugung = activeA.reduce((s, a) => s + assetErzeugung(a), 0);
+  const summary = [
+    `Verbraucher: ${totalVerbrauch.toFixed(1)} kW · Einspeisung: ${totalErzeugung.toFixed(1)} kW`,
+    `Kabel: ${activeE.length} · Assets: ${activeA.length}`,
+  ];
+  _showElCalcResult([...warn, ...summary], bottlenecks);
+  if (typeof window.sldRefresh === 'function') window.sldRefresh();
+}
+
+function _showElCalcResult(lines, bottlenecks) {
+  const el = document.getElementById('lp-el-calc-result');
+  if (!el) return;
+  const all = [...lines, ...(bottlenecks.length ? ['Engpässe:', ...bottlenecks] : [])];
+  el.innerHTML = all.map(l => `<div class="lp-el-calc-line${l.startsWith('⚠') ? ' warn' : l.startsWith('Engpässe') ? ' err' : ''}">${l}</div>`).join('');
+  el.style.display = '';
 }
 
 // ── Stromnetz komplett löschen ──────────────────────────────────

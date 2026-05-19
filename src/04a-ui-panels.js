@@ -711,6 +711,7 @@ export function setLeftTab(tabId) {
   }
   setTimeout(function() { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
 }
+window.setLeftTab = setLeftTab;
 
 // initLeftPanel: erzeuger buttons are now native in HTML, no cloning needed
 

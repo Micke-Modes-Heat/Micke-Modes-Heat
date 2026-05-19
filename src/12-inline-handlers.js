@@ -31,9 +31,6 @@ import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
 })();
 
 // ── Spezielle addEventListener-Registrierungen ──────────────────────────
-          document.getElementById('strom-gzf-methode').addEventListener('change', function() {
-            document.getElementById('strom-gzf-manuell-wrap').style.display = this.value === 'manuell' ? '' : 'none';
-          });
     document.getElementById('opt-erklaerung-details').addEventListener('toggle', function() {
       document.getElementById('opt-erklaerung-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
     });

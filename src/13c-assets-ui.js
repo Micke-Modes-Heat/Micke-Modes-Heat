@@ -40,11 +40,16 @@ export function setPendingType(type) {
   // Erneuter Klick auf aktiven Typ → abwählen
   if (pendingType === type) {
     pendingType = null;
+    window._pendingAssetType = null;
     document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
     map.getContainer().style.cursor = '';
     return;
   }
+  // Andere Modi beenden
+  if (window.isDrawingTrasse && typeof window.toggleDrawTrasse === 'function') window.toggleDrawTrasse();
+  if (window.isDrawingStromEdge && typeof window.cancelDrawStromEdge === 'function') window.cancelDrawStromEdge();
   pendingType = type;
+  window._pendingAssetType = type;
   document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
   const btn = document.querySelector(`.asset-palette-btn[data-type="${type}"]`);
   if (btn) btn.classList.add('active');
