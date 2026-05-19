@@ -55,9 +55,6 @@ export function togglePalette() {
 // Karten-Klick: Asset platzieren, wenn pendingType gesetzt
 function onMapClickForAsset(e) {
   if (!pendingType) return;
-  // Nur reagieren wenn Palette sichtbar
-  const panel = document.getElementById('asset-palette');
-  if (!panel || !panel.classList.contains('visible')) return;
   // Gebäude-Zuordnung: welches Gebäude liegt an der Klick-Position?
   const buildingId = findBuildingAt(e.latlng);
   const asset = createAsset(pendingType, e.latlng.lat, e.latlng.lng, { buildingId });
