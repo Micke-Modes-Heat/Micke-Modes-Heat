@@ -8,7 +8,7 @@ import { drawAssetMarker, setAssetLayerVisible, isAssetLayerVisible } from './13
 let pendingType = null;
 
 // Palette-Panel aufbauen (einmalig)
-function buildPalette() {
+export function buildPalette() {
   const panel = document.getElementById('asset-palette');
   if (!panel) return;
   if (panel.dataset.built === '1') return;
@@ -48,16 +48,8 @@ export function setPendingType(type) {
 }
 
 export function togglePalette() {
-  buildPalette();
-  const panel = document.getElementById('asset-palette');
-  if (!panel) return;
-  const nowVisible = !panel.classList.contains('visible');
-  panel.classList.toggle('visible', nowVisible);
-  setAssetLayerVisible(nowVisible);
-  // Toggle-Button-Status
-  const tgl = document.getElementById('btn-assets-toggle');
-  if (tgl) tgl.classList.toggle('active', nowVisible);
-  if (!nowVisible) setPendingType(null);
+  // Palette ist jetzt im Elektro-Tab eingebettet — zum Tab navigieren
+  if (typeof window.setLeftTab === 'function') window.setLeftTab('elektro');
 }
 
 // Karten-Klick: Asset platzieren, wenn pendingType gesetzt

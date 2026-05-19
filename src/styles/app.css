@@ -353,12 +353,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .asset-list-status-demolished { background:#eeeeee; color:#777; text-decoration:line-through; }
 
 /* Asset-Palette Buttons */
-.asset-palette {
-  position:absolute; top:70px; right:12px; z-index:500;
-  background:var(--surface); border:1px solid var(--border); border-radius:8px;
-  padding:6px; display:none; flex-direction:column; gap:4px; max-height:70vh; overflow:auto;
+.asset-palette-inline {
+  display:flex; flex-direction:column; gap:3px;
 }
-.asset-palette.visible { display:flex; }
 .asset-palette-title { font-size:11px; color:var(--muted); padding:2px 6px 4px; border-bottom:1px solid var(--border); margin-bottom:2px; }
 .asset-palette-btn {
   background:var(--surface2); border:1px solid var(--border); color:var(--text);

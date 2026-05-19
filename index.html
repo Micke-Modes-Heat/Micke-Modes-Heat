@@ -26,7 +26,6 @@
   <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
   <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋</button>
   <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;" title="Berechnungslogik — Wie wird gerechnet?">📐</button>
-  <button class="tool-btn" id="btn-assets-toggle" data-click="togglePalette()" style="border-color:#4fc3f7;color:#4fc3f7;" title="Neuer Asset-Teil (Strom/Wärme unified) — experimentell">🧩</button>
   <div class="addr-search-wrap" style="flex-shrink:0;">
     <span class="addr-search-icon">🔍</span>
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
@@ -289,12 +288,8 @@
           <div class="lp-netz-row"><span class="lbl">Komponenten</span><span class="val" id="lp-strom-komp">—</span></div>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Komponenten</div>
-        <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="startPlaceStromNode('nap')" id="btn-place-nap" style="border-color:#fdd835;color:#fdd835;">⚡ NAP</button>
-          <button class="lp-tool-btn" data-click="startPlaceStromNode('trafo')" id="btn-place-trafo" style="border-color:#42a5f5;color:#42a5f5;">⏚ Trafo</button>
-          <button class="lp-tool-btn" data-click="startPlaceStromNode('nshv')" id="btn-place-nshv" style="border-color:#bdbdbd;color:#bdbdbd;">▦ NSHV</button>
-        </div>
-        <div class="lp-tool-grid" style="margin-top:6px;">
+        <div id="asset-palette" class="asset-palette-inline"></div>
+        <div class="lp-tool-grid" style="margin-top:8px;">
           <button class="lp-tool-btn" data-click="startDrawStromEdge()" id="btn-draw-strom-edge" style="grid-column:1/-1;">— Kabel zeichnen</button>
         </div>
         <div class="lp-tool-grid" style="margin-top:6px;">
@@ -416,8 +411,6 @@
   <div id="map"></div>
   <div id="erzeuger-status" style="position:absolute;top:10px;right:350px;z-index:500;display:flex;gap:5px;align-items:flex-start;pointer-events:none;"></div>
 
-  <!-- Asset-Palette (Neuer Strom/Wärme unified) -->
-  <div id="asset-palette" class="asset-palette"></div>
   <!-- Asset-Inspector (Editor-Panel bei Marker-Klick) -->
   <div id="asset-inspector" class="asset-inspector"></div>
 

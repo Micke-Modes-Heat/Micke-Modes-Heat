@@ -9,6 +9,8 @@ import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
 import { renderList, updateTotals } from './03c-gebaeude-io.js';
 import { _renderEmissionenTab, refreshVergleichView, renderAnalyseDispatch } from './04b-emissionen-3d.js';
 import { setStromNetzVisible } from './05b-stromnetz.js';
+import { buildPalette } from './13c-assets-ui.js';
+import { setAssetLayerVisible } from './13b-assets-render.js';
 import { saSetTab } from './07a-analysis-charts.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { calcStromPanel } from './09b-pv-calc.js';
@@ -691,9 +693,12 @@ export function setLeftTab(tabId) {
   if (tabId === 'elektro') {
     setNetzVisible(false);
     setStromNetzVisible(true);
+    buildPalette();
+    setAssetLayerVisible(true);
   } else {
     setStromNetzVisible(false);
     setNetzVisible(true);
+    setAssetLayerVisible(false);
   }
   setTimeout(function() { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
 }
