@@ -8,7 +8,7 @@ import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, deleteAsset } 
 
 let assetLayer = null;       // Gebäude-gruppierte Assets (zoom-abhängig)
 let standaloneLayer = null; // Frei platzierte Assets (immer sichtbar)
-let layerVisible = true;
+let layerVisible = false; // erst sichtbar wenn Elektro-Tab geöffnet wird
 
 // Drei Zoom-Stufen:
 //   z < COLLAPSED        → komplett aus
@@ -70,11 +70,15 @@ function drawBuildingGroup(buildingId) {
   const buildings = window.gebaeude || [];
   const g = buildings.find(x => x.id === buildingId);
   if (!g || !g.polygon) return;
-  const c = polygonCentroid(g.polygon);
-  if (!c) return;
+  const polygonC = polygonCentroid(g.polygon);
+  if (!polygonC) return;
 
   const assets = getAssetsForBuilding(buildingId);
   if (assets.length === 0) return;
+
+  // Position: verschobene Position beibehalten, sonst Polygon-Schwerpunkt
+  const firstMoved = assets.find(a => a._movedByUser);
+  const c = firstMoved ? { lat: firstMoved.lat, lng: firstMoved.lng } : polygonC;
 
   const zoom = map.getZoom();
   const collapsed = zoom < ASSET_DETAIL_ZOOM;
@@ -112,7 +116,16 @@ function drawBuildingGroup(buildingId) {
     iconAnchor: [width / 2, height / 2],
   });
 
-  const m = L.marker([c.lat, c.lng], { icon, zIndexOffset: 200 });
+  const m = L.marker([c.lat, c.lng], { icon, draggable: true, zIndexOffset: 200 });
+
+  m.on('dragend', () => {
+    const ll = m.getLatLng();
+    for (const a of assets) {
+      a.lat = ll.lat;
+      a.lng = ll.lng;
+      a._movedByUser = true;
+    }
+  });
 
   m.on('click', e => {
     if (window.isDrawingStromEdge) return;
@@ -196,24 +209,36 @@ function drawSingleMarker(asset) {
   const opacity = status === 'active' ? 1 : 0.35;
   const border  = status === 'planned' ? 'dashed' : 'solid';
   const size    = sizeAtZoom(map.getZoom());
-  const showIcon = true;
   const fontSize = Math.max(8, Math.round(size * 0.6));
   const borderW  = 1;
+
+  // Pixel-Versatz für Gebäude-Gruppe: Geschwister horizontal nebeneinander anordnen
+  let anchorOffsetX = 0;
+  if (asset.buildingId) {
+    const siblings = ASSETS.items.filter(a => a.buildingId === asset.buildingId);
+    const idx   = siblings.findIndex(a => a.id === asset.id);
+    const count = siblings.length;
+    const spacing = size + 3; // Markerbreite + 3px Lücke
+    // iconAnchor verschiebt den Marker: positiver anchorOffsetX → Marker nach links
+    anchorOffsetX = Math.round(((count - 1) / 2 - idx) * spacing);
+  }
 
   const icon = L.divIcon({
     className: '',
     html: `<div class="asset-marker asset-marker-${status}"
               style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;"
               title="${asset.name}">
-             ${showIcon ? `<span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>` : ''}
+             <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
            </div>`,
     iconSize:   [size, size],
-    iconAnchor: [size / 2, size / 2],
+    iconAnchor: [size / 2 + anchorOffsetX, size / 2],
   });
 
-  const m = L.marker([asset.lat, asset.lng], { icon, draggable: true, zIndexOffset: 200 });
+  const m = L.marker([asset.lat, asset.lng], { icon, draggable: true, zIndexOffset: 3000 });
 
   // Strom-Domain-Assets als Strom-Knoten registrieren, damit Kabel angeschlossen werden können
+  // isAsset:true → setStromNetzVisible soll diese Marker NICHT direkt auf die Karte legen,
+  // da sie vom Asset-Layer-System (standaloneLayer) verwaltet werden.
   if (cfg.domain === 'strom') {
     window.stromNodes = window.stromNodes || [];
     const existing = window.stromNodes.find(n => n.id === asset.id);
@@ -222,10 +247,12 @@ function drawSingleMarker(asset) {
         id: asset.id, type: asset.type.toLowerCase(),
         lat: asset.lat, lng: asset.lng,
         marker: m, label: cfg.label || asset.type,
-        peakLoadKw: 0, annualMwh: 0, isProducer: false
+        peakLoadKw: 0, annualMwh: 0, isProducer: false,
+        isAsset: true,
       });
     } else {
       existing.marker = m;
+      existing.isAsset = true;
     }
   }
 
@@ -273,12 +300,7 @@ function drawSingleMarker(asset) {
 
 // ── Öffentliche API ─────────────────────────────────────────────────────────
 export function drawAssetMarker(asset) {
-  // Bei Gebäude-Zugehörigkeit: ganze Gruppe neu zeichnen (Icons/Status aktualisieren)
-  if (asset.buildingId) {
-    redrawAllAssets();
-  } else {
-    drawSingleMarker(asset);
-  }
+  drawSingleMarker(asset);
 }
 
 export function redrawAllAssets() {
@@ -287,26 +309,19 @@ export function redrawAllAssets() {
   standaloneLayer.clearLayers();
   for (const a of ASSETS.items) a._marker = null;
 
-  const byBuilding = new Map();
-  const standalone = [];
-  for (const a of ASSETS.items) {
-    if (a.buildingId) {
-      if (!byBuilding.has(a.buildingId)) byBuilding.set(a.buildingId, []);
-      byBuilding.get(a.buildingId).push(a);
-    } else {
-      standalone.push(a);
-    }
-  }
-
-  for (const bid of byBuilding.keys()) drawBuildingGroup(bid);
-  for (const a of standalone) drawSingleMarker(a);
+  for (const a of ASSETS.items) drawSingleMarker(a);
 }
 
 export function setAssetLayerVisible(visible) {
+  const wasHidden = !layerVisible;
   layerVisible = !!visible;
   ensureLayer();
+  // Beim Einblenden neu zeichnen, damit blind erstellte Assets erscheinen
+  if (visible && wasHidden) redrawAllAssets();
+  // applyLayerVisibility IMMER aufrufen — sonst wird standaloneLayer nie auf die Karte gelegt
   applyLayerVisibility();
 }
+
 
 export function isAssetLayerVisible() {
   return layerVisible;

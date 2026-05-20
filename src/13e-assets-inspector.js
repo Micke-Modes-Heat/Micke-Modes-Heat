@@ -161,6 +161,209 @@ function buildPropsForm(asset) {
   }
 }
 
+// ── Maßnahmen-Hilfsfunktionen ────────────────────────────────────────────────
+function massnahmeId() { return 'm_' + Math.random().toString(36).slice(2, 8); }
+
+const MASSN_STATUS = {
+  geplant:    { label: 'Geplant',    color: '#4fc3f7' },
+  umgesetzt:  { label: 'Umgesetzt', color: '#4caf50' },
+  abgelehnt:  { label: 'Abgelehnt', color: '#9e9e9e' },
+};
+
+function buildMassnahmenSection(asset) {
+  const list = (asset.massnahmen || []);
+  const rows = list.map(m => {
+    const s = MASSN_STATUS[m.status] || MASSN_STATUS.geplant;
+    const kosten = m.kosten ? m.kosten.toLocaleString('de-DE') + ' €' : '—';
+    return `<div class="ins-massn-row" data-m-id="${m.id}">
+      <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
+      <div class="ins-massn-info">
+        <div class="ins-massn-titel">${esc(m.titel || '—')}</div>
+        <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten}</div>
+      </div>
+      <button class="ins-massn-edit" data-m-id="${m.id}" title="Bearbeiten">✎</button>
+      <button class="ins-massn-del"  data-m-id="${m.id}" title="Löschen">×</button>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="asset-ins-section-title" style="margin-top:12px;">Maßnahmen</div>
+    <div class="ins-massn-list" id="ins-massn-list-${asset.id}">${rows || '<div class="ins-massn-empty">Keine Maßnahmen</div>'}</div>
+    <button class="ins-massn-add-btn" id="ins-massn-add-${asset.id}">+ Maßnahme hinzufügen</button>
+    <div class="ins-massn-form" id="ins-massn-form-${asset.id}" style="display:none;">
+      <input class="ins-field-input" type="text"   id="mf-titel-${asset.id}"  placeholder="Titel der Maßnahme">
+      <div class="ins-row-2" style="margin-top:4px;">
+        <input class="ins-field-input" type="number" id="mf-jahr-${asset.id}"   placeholder="Jahr">
+        <input class="ins-field-input" type="number" id="mf-kosten-${asset.id}" placeholder="Kosten €" min="0">
+      </div>
+      <select class="ins-field-input" id="mf-status-${asset.id}" style="margin-top:4px;">
+        ${Object.entries(MASSN_STATUS).map(([v,s]) => `<option value="${v}">${s.label}</option>`).join('')}
+      </select>
+      <div class="ins-massn-form-btns">
+        <button class="ins-massn-form-cancel" id="mf-cancel-${asset.id}">Abbrechen</button>
+        <button class="ins-massn-form-save"   id="mf-save-${asset.id}">Speichern</button>
+      </div>
+    </div>`;
+}
+
+function wireMassnahmen(panel, asset) {
+  const aid = asset.id;
+  let editingId = null;
+
+  function refreshList() {
+    const listEl = panel.querySelector(`#ins-massn-list-${aid}`);
+    if (!listEl) return;
+    const list = asset.massnahmen || [];
+    listEl.innerHTML = list.length ? list.map(m => {
+      const s = MASSN_STATUS[m.status] || MASSN_STATUS.geplant;
+      const kosten = m.kosten ? m.kosten.toLocaleString('de-DE') + ' €' : '—';
+      return `<div class="ins-massn-row" data-m-id="${m.id}">
+        <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
+        <div class="ins-massn-info">
+          <div class="ins-massn-titel">${esc(m.titel || '—')}</div>
+          <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten}</div>
+        </div>
+        <button class="ins-massn-edit" data-m-id="${m.id}" title="Bearbeiten">✎</button>
+        <button class="ins-massn-del"  data-m-id="${m.id}" title="Löschen">×</button>
+      </div>`;
+    }).join('') : '<div class="ins-massn-empty">Keine Maßnahmen</div>';
+    bindRowButtons();
+  }
+
+  function openForm(m) {
+    editingId = m ? m.id : null;
+    const form  = panel.querySelector(`#ins-massn-form-${aid}`);
+    form.querySelector(`#mf-titel-${aid}`).value  = m?.titel  || '';
+    form.querySelector(`#mf-jahr-${aid}`).value   = m?.jahr   || '';
+    form.querySelector(`#mf-kosten-${aid}`).value = m?.kosten || '';
+    form.querySelector(`#mf-status-${aid}`).value = m?.status || 'geplant';
+    form.style.display = '';
+    form.querySelector(`#mf-titel-${aid}`).focus();
+  }
+
+  function closeForm() {
+    editingId = null;
+    panel.querySelector(`#ins-massn-form-${aid}`).style.display = 'none';
+  }
+
+  function saveForm() {
+    const titel  = panel.querySelector(`#mf-titel-${aid}`).value.trim();
+    if (!titel) return;
+    const jahr   = parseInt(panel.querySelector(`#mf-jahr-${aid}`).value) || null;
+    const kosten = parseFloat(panel.querySelector(`#mf-kosten-${aid}`).value) || 0;
+    const status = panel.querySelector(`#mf-status-${aid}`).value;
+    if (!asset.massnahmen) asset.massnahmen = [];
+    if (editingId) {
+      const m = asset.massnahmen.find(x => x.id === editingId);
+      if (m) Object.assign(m, { titel, jahr, kosten, status });
+    } else {
+      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, status });
+    }
+    closeForm();
+    refreshList();
+  }
+
+  function bindRowButtons() {
+    panel.querySelectorAll('.ins-massn-edit').forEach(btn => {
+      btn.onclick = () => {
+        const m = (asset.massnahmen || []).find(x => x.id === btn.dataset.mId);
+        if (m) openForm(m);
+      };
+    });
+    panel.querySelectorAll('.ins-massn-del').forEach(btn => {
+      btn.onclick = () => {
+        asset.massnahmen = (asset.massnahmen || []).filter(x => x.id !== btn.dataset.mId);
+        refreshList();
+      };
+    });
+  }
+
+  panel.querySelector(`#ins-massn-add-${aid}`)?.addEventListener('click', () => openForm(null));
+  panel.querySelector(`#mf-cancel-${aid}`)?.addEventListener('click',  closeForm);
+  panel.querySelector(`#mf-save-${aid}`)?.addEventListener('click',    saveForm);
+  panel.querySelector(`#ins-massn-form-${aid}`)?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveForm();
+    if (e.key === 'Escape') closeForm();
+  });
+  bindRowButtons();
+}
+
+// ── Investitionsplan ─────────────────────────────────────────────────────────
+export function showInvestitionsplan() {
+  const allAssets = (typeof window !== 'undefined' && window.ASSETS?.items)
+    ? window.ASSETS.items
+    : (typeof ASSETS !== 'undefined' ? ASSETS.items : []);
+
+  const rows = [];
+  for (const a of allAssets) {
+    for (const m of (a.massnahmen || [])) {
+      rows.push({ asset: a, m });
+    }
+  }
+
+  if (rows.length === 0) {
+    const overlay = document.createElement('div');
+    overlay.className = 'ep-modal-overlay';
+    overlay.innerHTML = `<div class="ep-modal">
+      <div class="ep-modal-title">Investitionsplan</div>
+      <div class="ep-modal-body">Keine Maßnahmen vorhanden.<br>Öffne ein Asset und füge Maßnahmen hinzu.</div>
+      <div class="ep-modal-btns"><button class="ep-modal-btn primary" id="inv-close">Schließen</button></div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#inv-close').onclick = () => document.body.removeChild(overlay);
+    overlay.addEventListener('click', ev => { if (ev.target === overlay) document.body.removeChild(overlay); });
+    return;
+  }
+
+  rows.sort((a, b) => (a.m.jahr || 9999) - (b.m.jahr || 9999));
+
+  // Jahres-Gruppen
+  const byYear = new Map();
+  for (const r of rows) {
+    const y = r.m.jahr || '—';
+    if (!byYear.has(y)) byYear.set(y, []);
+    byYear.get(y).push(r);
+  }
+
+  let tableHtml = '';
+  let total = 0;
+  for (const [year, yearRows] of byYear) {
+    const yearTotal = yearRows.reduce((s, r) => s + (r.m.kosten || 0), 0);
+    total += yearTotal;
+    tableHtml += `<tr class="inv-year-header"><td colspan="4">${year}
+      <span class="inv-year-total">${yearTotal.toLocaleString('de-DE')} €</span></td></tr>`;
+    for (const r of yearRows) {
+      const s = MASSN_STATUS[r.m.status] || MASSN_STATUS.geplant;
+      tableHtml += `<tr>
+        <td><span class="ins-massn-dot" style="background:${s.color};display:inline-block;"></span> ${esc(r.asset.name)}</td>
+        <td>${esc(r.m.titel || '—')}</td>
+        <td class="inv-num">${r.m.kosten ? r.m.kosten.toLocaleString('de-DE') + ' €' : '—'}</td>
+        <td><span style="color:${s.color};font-size:9px;">${s.label}</span></td>
+      </tr>`;
+    }
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'ep-modal-overlay';
+  overlay.innerHTML = `<div class="ep-modal inv-modal">
+    <div class="ep-modal-title">📋 Investitionsplan
+      <span class="inv-total-badge">${total.toLocaleString('de-DE')} €</span>
+    </div>
+    <div class="inv-table-wrap">
+      <table class="inv-table">
+        <thead><tr><th>Asset</th><th>Maßnahme</th><th class="inv-num">Kosten</th><th>Status</th></tr></thead>
+        <tbody>${tableHtml}</tbody>
+      </table>
+    </div>
+    <div class="ep-modal-btns" style="margin-top:12px;">
+      <button class="ep-modal-btn primary" id="inv-close">Schließen</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#inv-close').onclick = () => document.body.removeChild(overlay);
+  overlay.addEventListener('click', ev => { if (ev.target === overlay) document.body.removeChild(overlay); });
+}
+
 // ── Berechnungsergebnis-Block ────────────────────────────────────────────────
 function buildResultBlock(asset) {
   const sn = (window.stromNodes || []).find(n => n.id === asset.id);
@@ -221,12 +424,14 @@ function renderInspector(asset) {
       <div class="asset-ins-section-title">Eigenschaften</div>
       ${buildPropsForm(asset)}
       ${buildResultBlock(asset)}
-      <div class="ins-meta">ID: ${asset.id} · ${asset.domain}</div>
+      ${buildMassnahmenSection(asset)}
+      <div class="ins-meta" style="margin-top:12px;">ID: ${asset.id} · ${asset.domain}</div>
       <button class="asset-ins-delete" data-action="delete">🗑 Löschen</button>
     </div>
   `;
 
   wireEvents(panel, asset);
+  wireMassnahmen(panel, asset);
 }
 
 function wireEvents(panel, asset) {
@@ -284,4 +489,7 @@ function wireEvents(panel, asset) {
 }
 
 // Window-Bridge
-setTimeout(() => { window.openAssetInspector = openAssetInspector; }, 0);
+setTimeout(() => {
+  window.openAssetInspector  = openAssetInspector;
+  window.showInvestitionsplan = showInvestitionsplan;
+}, 0);

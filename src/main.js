@@ -38,6 +38,8 @@ import * as assetsUi from './13c-assets-ui.js';
 import * as assetsAuto from './13d-assets-autocreate.js';
 import * as assetsInspector from './13e-assets-inspector.js';
 import * as sld from './13f-sld.js';
+import * as msRing from './13g-ms-ring.js';
+import * as netzanalyse from './13h-netzanalyse.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -50,7 +52,7 @@ const modules = [
   pvProfile, pvCalc, pvChartsOpt,
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
   hilfeLeitfaden,
-  assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld,
+  assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
 ];
 
 for (const mod of modules) {

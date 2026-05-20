@@ -6,7 +6,7 @@ import { updateLpGebietStatus, updatePrintLegend } from './04a-ui-panels.js';
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { ASSETS, createAsset, clearAssets } from './13a-assets-core.js';
-import { drawAssetMarker } from './13b-assets-render.js';
+import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
 
 export function updateTotals(){
   let tw=0, th=0;
@@ -639,7 +639,7 @@ export function _buildProjectData() {
           const un = stromNodes.find(n => n.id === e.u);
           const vn = stromNodes.find(n => n.id === e.v);
           return (!un || !skip.includes(un.type)) || (!vn || !skip.includes(vn.type));
-        }).map(e => ({ u: e.u, v: e.v, cableType: e.cableType, crossSection: e.crossSection, autoSized: e.autoSized }));
+        }).map(e => ({ u: e.u, v: e.v, cableType: e.cableType, crossSection: e.crossSection, autoSized: e.autoSized, fuseA: e.fuseA || 0, nParallel: e.nParallel || 1 }));
       })(),
       kabelTyp: document.getElementById('strom-kabel-typ')?.value || 'NAYY'
     },
@@ -649,7 +649,8 @@ export function _buildProjectData() {
         items: ASSETS.items.map(a => ({
           id: a.id, type: a.type, domain: a.domain,
           lat: a.lat, lng: a.lng, name: a.name,
-          buildingId: a.buildingId, props: { ...a.props },
+          buildingId: a.buildingId, _movedByUser: a._movedByUser || false,
+          props: { ...a.props },
           baujahr: a.baujahr, abrissjahr: a.abrissjahr,
           massnahmen: a.massnahmen || []
         })),
@@ -658,7 +659,7 @@ export function _buildProjectData() {
           .map(e => ({
             id: e.id, u: e.u, v: e.v,
             cableType: e.cableType, crossSection: e.crossSection,
-            autoSized: e.autoSized, lengthM: e.lengthM
+            autoSized: e.autoSized, lengthM: e.lengthM, fuseA: e.fuseA || 0, nParallel: e.nParallel || 1
           }))
       };
     })(),
@@ -715,7 +716,7 @@ export function _loadProject(project) {
       if (project.gebaeude) {
          _batchImporting = true;
          try { project.gebaeude.forEach(g => {
-            const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name, fromOsm: g.fromOsm, osmId: g.osmId });
+            const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name, fromOsm: g.fromOsm, osmId: g.osmId, skipAutoCreate: true });
             newG.waerme = g.waerme;
             newG.heizlast = g.heizlast;
             newG.spez = g.spez;
@@ -996,16 +997,24 @@ export function _loadProject(project) {
       // Stromnetz löschen, dann Elektro-Assets wiederherstellen
       // (drawAssetMarker registriert Assets als Strom-Knoten, addStromEdge braucht sie)
       clearStromNetz();
-      if (project.elektroAssets) {
+      if (project.elektroAssets && (project.elektroAssets.items || []).length > 0) {
+        // Gespeicherte Assets laden — nur Datenobjekte erstellen, kein Marker-Zeichnen hier
         (project.elektroAssets.items || []).forEach(data => {
-          const asset = createAsset(data.type, data.lat, data.lng, {
+          createAsset(data.type, data.lat, data.lng, {
             id: data.id, name: data.name, buildingId: data.buildingId,
+            _movedByUser: data._movedByUser || false,
             props: data.props || {}, baujahr: data.baujahr,
             abrissjahr: data.abrissjahr, massnahmen: data.massnahmen || []
           });
-          if (asset) drawAssetMarker(asset);
+        });
+      } else if (typeof window.autoCreateBuildingAssets === 'function' && Array.isArray(window.gebaeude)) {
+        // Altes Projekt ohne gespeicherte Assets → jetzt einmalig auto-erstellen
+        window.gebaeude.forEach(g => {
+          try { window.autoCreateBuildingAssets(g); } catch(e) {}
         });
       }
+      // Alle Asset-Marker sauber und einmalig neu zeichnen — bereinigt alle Layer-Duplikate
+      redrawAllAssets();
       if (project.stromNetz) {
         if (project.stromNetz.kabelTyp) {
           const ktSel = document.getElementById('strom-kabel-typ');
@@ -1052,6 +1061,8 @@ export function _loadProject(project) {
               edge.cableType = se.cableType || 'NAYY';
               edge.crossSection = se.crossSection || 0;
               edge.autoSized = se.autoSized !== false;
+              edge.fuseA = se.fuseA || 0;
+              edge.nParallel = se.nParallel || 1;
             }
           });
         }
@@ -1064,6 +1075,8 @@ export function _loadProject(project) {
               edge.cableType = eData.cableType || 'NAYY';
               edge.crossSection = eData.crossSection || 0;
               edge.autoSized = eData.autoSized !== false;
+              edge.fuseA = eData.fuseA || 0;
+              edge.nParallel = eData.nParallel || 1;
             }
           });
         }

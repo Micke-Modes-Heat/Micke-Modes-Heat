@@ -595,6 +595,15 @@ function _spec(a) {
 
 // ── Result badge ──────────────────────────────────────────────────────────────
 function _badge(n) {
+  // Trafo: Auslastungs-Badge (% der Nennleistung)
+  if (n.type === 'Trafo' && n._calcPeakLoadPct != null) {
+    const pct = n._calcPeakLoadPct;
+    if (pct >= 1) {
+      const col = pct >= 100 ? '#ef5350' : pct >= 80 ? '#f9a825' : '#4caf50';
+      return { txt: `${Math.round(pct)}%`, col };
+    }
+  }
+  // Alle anderen: kumulativer Spannungsfall
   const dU_V = _voltDrop(n.id);
   if (dU_V == null) return { txt: null, col: '#546e7a' };
   const pct = (dU_V / 400) * 100;
@@ -613,7 +622,11 @@ function _nodeTitle(n) {
   const p = n.props || {};
   const lines = [`${n.name}  [${ASSET_CFG[n.type]?.label || n.type}]`];
   switch (n.type) {
-    case 'Trafo':        lines.push(`Leistung: ${p.leistungKVA||630} kVA  ·  UK: ${p.ukProzent||4} %`); break;
+    case 'Trafo': {
+      lines.push(`Leistung: ${p.leistungKVA||630} kVA  ·  UK: ${p.ukProzent||4} %`);
+      if (n._calcPeakLoadKw != null) lines.push(`Last: ${n._calcPeakLoadKw.toFixed(1)} kW  ·  Auslastung: ${n._calcPeakLoadPct.toFixed(0)} %`);
+      break;
+    }
     case 'Schaltanlage': lines.push(`${p.felder||6} Felder  ·  ${p.nennstromA||630} A${p.trennstelle?'  ·  Trennstelle':''}`); break;
     case 'NSHV': case 'UV': lines.push(`${p.nennstromA||400} A  ·  ${p.abgaenge||4} Abgänge`); break;
     case 'Verbraucher': case 'WP': case 'Nsa': lines.push(`Leistung: ${p.leistungKW||10} kW`); break;

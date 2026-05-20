@@ -21,6 +21,7 @@
     <button class="view-tab" data-mode="vergleich" data-click="setViewMode('vergleich')">Vergleich</button>
   </div>
   <div class="header-spacer" style="flex:1;"></div>
+  <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Kartenebenen ein-/ausblenden">⊞ Ebenen</button>
   <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;" title="Farbschema wechseln">🎨</button>
   <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;">🛰</button>
   <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
@@ -33,6 +34,40 @@
     <div class="addr-results" id="addr-results"></div>
   </div>
 </header>
+
+<!-- ══ Ebenen-Panel ════════════════════════════════════════════════════════ -->
+<div id="ebenen-panel" class="ebenen-panel" style="display:none;" role="dialog" aria-label="Kartenebenen">
+  <div class="ebp-head">
+    <span class="ebp-title">Kartenebenen</span>
+    <button class="ebp-close" data-click="toggleEbenenPanel()">✕</button>
+  </div>
+
+  <div class="ebp-cat">
+    <div class="ebp-cat-label" style="--ebp-c:#ff9800;">🏗 Gebäude &amp; Gebiet</div>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-geb-visible"     checked data-change="setGebVisible(this.checked);_ebpSync('geb-visible',this.checked)">Gebäude</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-labels-visible"         data-change="setLabelsVisible(this.checked);_ebpSync('labels-visible',this.checked)">Beschriftung</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible"          data-change="_ebpChart(this.checked)">Zeitstrahl-Chart</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-overlay-visible"        data-change="_ebpOverlay(this.checked)">Plan-Overlay</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-viz-circles"    checked data-change="_ebpViz(this.checked)">Wärme-Visualisierung</label>
+  </div>
+
+  <div class="ebp-cat">
+    <div class="ebp-cat-label" style="--ebp-c:#ef5350;">🔥 Wärmenetz</div>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-visible"   checked data-change="setNetzVisible(this.checked);_ebpSync('netz-visible-ansicht',this.checked)">Leitungen</label>
+  </div>
+
+  <div class="ebp-cat">
+    <div class="ebp-cat-label" style="--ebp-c:#4fc3f7;">⚡ Elektro</div>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-assets-visible"         data-change="setAssetLayerVisible(this.checked);_ebpSync('assets-visible',this.checked)">Elektro-Assets</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-stromnetz-visible"      data-change="setStromNetzVisible(this.checked)">Stromnetz (Kabel)</label>
+  </div>
+
+  <div class="ebp-cat">
+    <div class="ebp-cat-label" style="--ebp-c:#78909c;">🗺 Hintergrund</div>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-satellit-visible"       data-change="_ebpSatellit(this.checked)">Satellit</label>
+  </div>
+</div>
+<div id="ebenen-backdrop" style="display:none;position:fixed;inset:0;z-index:1199;" data-click="toggleEbenenPanel()"></div>
 
 <!-- Erzeuger-Buttons (hidden, referenced by ID from JS) -->
 <div class="erzeuger-bar" style="display:none !important;">
@@ -313,6 +348,10 @@
           <div class="lp-tool-grid" style="margin-bottom:8px;">
             <button class="lp-tool-btn" data-click="elCalcAssets()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;">⚡ Elektroberechnung</button>
             <button class="lp-tool-btn" id="btn-sld-toggle" data-click="sldToggle()" style="grid-column:1/-1;border-color:#80cbc4;color:#80cbc4;">🔌 Einlinienschema</button>
+            <button class="lp-tool-btn" data-click="showInvestitionsplan()" style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;">📋 Investitionsplan</button>
+            <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()" style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;">🗺️ Netzanalyse</button>
+            <button class="lp-tool-btn" data-click="exportMassnahmenPDF()" style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;">📄 Maßnahmenbericht PDF</button>
+            <button class="lp-tool-btn" data-click="exportElektroXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;">📊 Export Excel</button>
             <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;">⚙ Auto-Netz aus Gebäudedaten</button>
           </div>
           <div id="lp-el-calc-result" style="display:none;margin-bottom:8px;font-size:9px;color:var(--text);background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);"></div>
@@ -351,6 +390,7 @@
             <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/> Stromnetz sichtbar
           </label>
         </div>
+
       </div>
 
       <!-- ══ Tab 5: Ergebnis ════════════════════════════════════ -->
@@ -411,6 +451,19 @@
   <button class="lp-toggle" id="lp-toggle" data-click="toggleLeftPanel()" title="Left Panel ein-/ausblenden" style="left:280px;">◀</button>
 
   <div id="map"></div>
+
+  <!-- ── Netzanalyse-Panel ────────────────────────────────────────────────── -->
+  <div id="netzanalyse-panel" class="float-panel purple-border"
+       style="display:none;top:80px;min-width:340px;max-width:420px;max-height:82vh;
+              padding:15px 18px 12px;overflow-y:auto;">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'netzanalyse-panel')">
+      <span style="color:#ce93d8;font-size:12px;font-weight:600;">🗺️ Netzanalyse</span>
+      <span class="drag-dots">⠿</span>
+      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
+            onclick="naTogglePanel()">✕</span>
+    </div>
+    <div id="netzanalyse-content"></div>
+  </div>
 
   <!-- ── Einlinienschema Panel ────────────────────────────────────────────── -->
   <div id="sld-panel">
