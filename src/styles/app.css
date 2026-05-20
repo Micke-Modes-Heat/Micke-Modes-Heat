@@ -725,6 +725,51 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .ep-modal-btn.danger{background:#e53935;color:#fff;border-color:#e53935;}
 .ep-modal-btn.danger:hover{background:#f44336;}
 
+/* Kabel-Inspector */
+.ci-info{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--surface);border-radius:6px;padding:8px 10px;margin-bottom:12px;}
+.ci-info-item{font-size:10px;color:var(--muted);}
+.ci-info-item span{display:block;font-family:'DM Mono',monospace;font-size:11px;color:var(--text);margin-top:1px;}
+.ci-field{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;}
+.ci-field label{font-size:11px;color:var(--muted);flex-shrink:0;}
+.ci-select{flex:1;padding:4px 8px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:11px;outline:none;}
+.ci-select:focus{border-color:var(--accent);}
+.ci-select:disabled{opacity:0.4;cursor:not-allowed;}
+
+/* Asset Status-Ringe (nach elCalcAssets) */
+.asset-marker.av-ok      { box-shadow: 0 0 0 3px #4caf50; }
+.asset-marker.av-warn    { box-shadow: 0 0 0 3px #f9a825; }
+.asset-marker.av-crit    { box-shadow: 0 0 0 3px #e53935; }
+.asset-marker.av-overload{ box-shadow: 0 0 0 3px #e53935, 0 0 8px 2px rgba(229,57,53,0.45); }
+
+/* Maßnahmen-Editor im Asset-Inspector */
+.ins-massn-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);}
+.ins-massn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.ins-massn-info{flex:1;min-width:0;}
+.ins-massn-titel{font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ins-massn-meta{font-size:9px;color:var(--muted);}
+.ins-massn-edit,.ins-massn-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px;flex-shrink:0;}
+.ins-massn-edit:hover{color:var(--accent);}
+.ins-massn-del:hover{color:#e53935;}
+.ins-massn-empty{font-size:10px;color:var(--muted);padding:4px 0;font-style:italic;}
+.ins-massn-add-btn{margin-top:6px;width:100%;padding:5px;background:transparent;border:1px dashed var(--border);border-radius:5px;color:var(--muted);font-size:10px;cursor:pointer;}
+.ins-massn-add-btn:hover{border-color:var(--accent);color:var(--accent);}
+.ins-massn-form{margin-top:6px;padding:8px;background:var(--surface);border-radius:6px;border:1px solid var(--border);}
+.ins-massn-form-btns{display:flex;gap:6px;justify-content:flex-end;margin-top:6px;}
+.ins-massn-form-cancel,.ins-massn-form-save{padding:4px 12px;border-radius:5px;border:1px solid var(--border);font-size:10px;cursor:pointer;background:transparent;color:var(--muted);}
+.ins-massn-form-save{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600;}
+
+/* Investitionsplan-Modal */
+.inv-modal{min-width:520px;max-width:700px;max-height:80vh;display:flex;flex-direction:column;}
+.inv-total-badge{float:right;background:rgba(206,147,216,.15);color:#ce93d8;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;}
+.inv-table-wrap{overflow-y:auto;flex:1;margin-top:8px;border-radius:6px;border:1px solid var(--border);}
+.inv-table{width:100%;border-collapse:collapse;font-size:11px;}
+.inv-table th{text-align:left;padding:6px 8px;background:var(--surface2);color:var(--muted);font-weight:600;font-size:10px;position:sticky;top:0;}
+.inv-table td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.inv-table tr:last-child td{border-bottom:none;}
+.inv-year-header td{background:var(--surface);color:var(--text);font-weight:600;padding:6px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;}
+.inv-year-total{float:right;color:var(--accent);}
+.inv-num{text-align:right;font-family:'DM Mono',monospace;}
+
 /* Werkzeuge-Grid */
 .lp-tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
 .lp-tool-btn{display:flex;align-items:center;gap:4px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;transition:.15s;white-space:nowrap;}
@@ -821,4 +866,44 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 }
 @media(max-width:900px){
   .left-panel{width:200px;}
+}
+
+/* ── Ebenen-Panel ──────────────────────────────────── */
+.ebenen-panel{
+  position:fixed;top:40px;right:8px;z-index:1200;
+  width:230px;
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  box-shadow:0 4px 20px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;gap:0;
+  font-size:12px;color:var(--text);
+  overflow:hidden;
+}
+.ebp-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 10px;background:var(--surface2);border-bottom:1px solid var(--border);
+}
+.ebp-title{font-size:11px;font-weight:500;letter-spacing:.05em;color:var(--accent);}
+.ebp-close{
+  background:none;border:none;color:var(--muted);cursor:pointer;
+  font-size:13px;line-height:1;padding:0 2px;
+  transition:.15s;
+}
+.ebp-close:hover{color:var(--text);}
+.ebp-cat{padding:6px 8px 8px;}
+.ebp-cat+.ebp-cat{border-top:1px solid var(--border);}
+.ebp-cat-label{
+  font-size:10px;font-weight:500;letter-spacing:.06em;
+  color:var(--ebp-c,var(--accent));
+  text-transform:uppercase;
+  margin-bottom:5px;padding-left:2px;
+}
+.ebp-row{
+  display:flex;align-items:center;gap:7px;
+  padding:3px 2px;cursor:pointer;border-radius:3px;
+  transition:.12s;
+}
+.ebp-row:hover{background:rgba(255,255,255,.04);}
+.ebp-cb{
+  accent-color:var(--accent);cursor:pointer;
+  width:13px;height:13px;flex-shrink:0;
 }

@@ -21,8 +21,9 @@ const DEFAULT_TYPES = ['UV', 'Verbraucher', 'PV'];
 
 export function autoCreateBuildingAssets(g, opts = {}) {
   if (!g || !g.polygon || g.polygon.length < 3) return [];
-  // Opt-in: nur wenn User die Asset-Layer aktiviert hat
-  if (!opts.force && !isAssetLayerVisible()) return [];
+
+  // Keine Duplikate: wenn für dieses Gebäude bereits Assets existieren, nichts tun
+  if (ASSETS.items.some(a => a.buildingId === g.id)) return [];
 
   const c = polygonCentroid(g.polygon);
   if (!c) return [];
@@ -41,7 +42,8 @@ export function autoCreateBuildingAssets(g, opts = {}) {
     });
     if (asset) created.push(asset);
   }
-  if (created.length > 0) redrawAllAssets();
+  // Marker nur zeichnen wenn Layer sichtbar — sonst erscheinen sie beim Tab-Wechsel
+  if (created.length > 0 && isAssetLayerVisible()) redrawAllAssets();
   return created;
 }
 

@@ -67,6 +67,106 @@ export function epPrompt(title, message, defaultVal, opts) {
   });
 }
 
+export function openCableInspector(edge) {
+  const overlay = document.createElement('div');
+  overlay.className = 'ep-modal-overlay';
+  const modal = document.createElement('div');
+  modal.className = 'ep-modal';
+
+  const kt0 = KABEL_TYPEN[edge.cableType] || KABEL_TYPEN.NAYY;
+  const FUSE_SIZES = [0, 16, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250];
+  const typeOpts = Object.entries(KABEL_TYPEN)
+    .map(([k, v]) => `<option value="${k}"${k === edge.cableType ? ' selected' : ''}>${v.label}</option>`)
+    .join('');
+  const fuseOpts = FUSE_SIZES
+    .map(a => `<option value="${a}"${a === (edge.fuseA || 0) ? ' selected' : ''}>${a === 0 ? '— kein —' : a + ' A'}</option>`)
+    .join('');
+
+  const auslColor = edge.auslastungPct < 80 ? '#4caf50' : edge.auslastungPct < 100 ? '#f9a825' : '#e53935';
+  const duColor   = edge.deltaUPct   < 1   ? '#4caf50' : edge.deltaUPct   < 3   ? '#f9a825' : '#e53935';
+
+  modal.innerHTML = `
+    <div class="ep-modal-title">Kabel bearbeiten</div>
+    <div class="ci-info">
+      <div class="ci-info-item">Länge<br><span>${Math.round(edge.lengthM || 0)} m</span></div>
+      <div class="ci-info-item">Leistung<br><span>${Math.abs(edge.peakFlowKw || 0).toFixed(1)} kW</span></div>
+      <div class="ci-info-item">Auslastung<br><span style="color:${auslColor}">${(edge.auslastungPct || 0).toFixed(1)} %</span></div>
+      <div class="ci-info-item">Spannungsfall<br><span style="color:${duColor}">${(edge.deltaUPct || 0).toFixed(2)} %</span></div>
+    </div>
+    <div class="ci-field">
+      <label>Kabeltyp</label>
+      <select class="ci-select" id="ci-type">${typeOpts}</select>
+    </div>
+    <div class="ci-field">
+      <label>Querschnitt</label>
+      <select class="ci-select" id="ci-qs"></select>
+    </div>
+    <div class="ci-field">
+      <label>Sicherung</label>
+      <select class="ci-select" id="ci-fuse">${fuseOpts}</select>
+    </div>
+    <div class="ci-field">
+      <label>Parallelkabel</label>
+      <input class="ci-select" id="ci-parallel" type="number" min="1" max="8" step="1"
+        value="${edge.nParallel || 1}" style="text-align:center;">
+    </div>
+    <div class="ci-field" style="margin-bottom:16px;">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="ci-auto"${edge.autoSized ? ' checked' : ''}>
+        Automatisch dimensionieren
+      </label>
+    </div>
+    <div class="ep-modal-btns">
+      <button class="ep-modal-btn danger" id="ci-del">Löschen</button>
+      <button class="ep-modal-btn" id="ci-cancel">Abbrechen</button>
+      <button class="ep-modal-btn primary" id="ci-ok">Übernehmen</button>
+    </div>`;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const typeEl     = modal.querySelector('#ci-type');
+  const qsEl       = modal.querySelector('#ci-qs');
+  const fuseEl     = modal.querySelector('#ci-fuse');
+  const parallelEl = modal.querySelector('#ci-parallel');
+  const autoEl     = modal.querySelector('#ci-auto');
+
+  function populateQs(typeName, selected) {
+    const kt = KABEL_TYPEN[typeName] || KABEL_TYPEN.NAYY;
+    qsEl.innerHTML = kt.sections
+      .map(s => `<option value="${s.mm2}"${s.mm2 === selected ? ' selected' : ''}>${s.mm2} mm² (Iz ${s.Iz} A)</option>`)
+      .join('');
+    qsEl.disabled = autoEl.checked;
+  }
+  populateQs(edge.cableType || 'NAYY', edge.crossSection);
+
+  typeEl.addEventListener('change', () => populateQs(typeEl.value, null));
+  autoEl.addEventListener('change', () => { qsEl.disabled = autoEl.checked; });
+
+  const close = () => document.body.removeChild(overlay);
+
+  modal.querySelector('#ci-del').onclick = () => {
+    close();
+    epConfirm('Kabel entfernen',
+      'Dieses Kabel (' + (edge.cableType || 'NAYY') + ' ' + (edge.crossSection || '?') + ' mm²) entfernen?',
+      { danger: true, okText: 'Entfernen' }
+    ).then(ok => { if (ok) removeStromEdge(edge); });
+  };
+  modal.querySelector('#ci-cancel').onclick = close;
+  overlay.addEventListener('click', ev => { if (ev.target === overlay) close(); });
+
+  modal.querySelector('#ci-ok').onclick = () => {
+    edge.cableType    = typeEl.value;
+    edge.autoSized    = autoEl.checked;
+    edge.crossSection = autoEl.checked ? 0 : parseInt(qsEl.value);
+    edge.fuseA        = parseInt(fuseEl.value) || 0;
+    edge.nParallel    = Math.max(1, parseInt(parallelEl.value) || 1);
+    close();
+    recalcStromNetz();
+    if (typeof window.sldRefresh === 'function') window.sldRefresh();
+  };
+}
+
 export function setNetzSubTab(sub) {
   // Leitet auf den eigenen Elektro-Tab um (Sub-Tabs wurden entfernt)
   if (sub === 'strom') {
@@ -476,7 +576,7 @@ export function addStromEdge(uId, vId) {
   const defaultType = document.getElementById('strom-kabel-typ')?.value || 'NAYY';
 
   const layer = L.polyline(linePts, {
-    color: '#fdd835', weight: 3, opacity: 0.8, dashArray: '8,4', pane: 'netzPane'
+    color: '#fdd835', weight: 3, opacity: 0.8, dashArray: '8,4', pane: 'netzPane', interactive: true
   });
   const hitLayer = L.polyline(linePts, {
     color: 'transparent', weight: 16, opacity: 0, interactive: true, pane: 'netzPane'
@@ -488,7 +588,7 @@ export function addStromEdge(uId, vId) {
     id: 'se_' + Math.random().toString(36).slice(2, 9),
     u: uId, v: vId, uNode: uNode, vNode: vNode,
     layer: layer, hitLayer: hitLayer, arrowMarker: null,
-    cableType: defaultType, crossSection: 0, autoSized: true,
+    cableType: defaultType, crossSection: 0, autoSized: true, fuseA: 0, nParallel: 1,
     lengthM: lengthM,
     peakCurrentA: 0, ratedCurrentA: 0, auslastungPct: 0,
     deltaUPct: 0, peakFlowKw: 0, flowDirection: 1
@@ -496,6 +596,15 @@ export function addStromEdge(uId, vId) {
 
   // Tooltip
   hitLayer.bindTooltip(function() { return buildStromEdgeTooltip(edge); }, { sticky: true, className: 'geb-tooltip' });
+
+  // Left-click to inspect / edit (both layers for reliable hit detection)
+  function onCableClick(ev) {
+    if (window.isDrawingStromEdge) return;
+    L.DomEvent.stop(ev);
+    openCableInspector(edge);
+  }
+  layer.on('click', onCableClick);
+  hitLayer.on('click', onCableClick);
 
   // Right-click to delete
   hitLayer.on('contextmenu', function(ev) {
@@ -512,7 +621,8 @@ export function addStromEdge(uId, vId) {
 
 export function buildStromEdgeTooltip(e) {
   const kt = KABEL_TYPEN[e.cableType] || {};
-  let tt = '<b>' + e.cableType + ' ' + e.crossSection + ' mm²</b>';
+  const np = (e.nParallel || 1) > 1 ? (e.nParallel + '× ') : '';
+  let tt = '<b>' + np + e.cableType + ' ' + e.crossSection + ' mm²</b>';
   tt += '<br>Länge: ' + e.lengthM.toFixed(0) + ' m';
   tt += '<br>Leistung: ' + Math.abs(e.peakFlowKw).toFixed(1) + ' kW';
   tt += ' (' + (e.flowDirection > 0 ? '→ Verbraucher' : '← Rückspeisung') + ')';
@@ -522,6 +632,10 @@ export function buildStromEdgeTooltip(e) {
   tt += '<br>Auslastung: <span style="color:' + auslColor + '">' + e.auslastungPct.toFixed(1) + ' %</span>';
   const duColor = e.deltaUPct < 1 ? '#4caf50' : e.deltaUPct < 2 ? '#8bc34a' : e.deltaUPct < 3 ? '#f9a825' : '#e53935';
   tt += '<br>Spannungsfall: <span style="color:' + duColor + '">' + e.deltaUPct.toFixed(2) + ' %</span>';
+  if (e.fuseA > 0) {
+    const fuseColor = e.peakCurrentA > e.fuseA ? '#e53935' : '#4caf50';
+    tt += '<br>Sicherung: <span style="color:' + fuseColor + '">' + e.fuseA + ' A</span>';
+  }
   return tt;
 }
 
@@ -554,7 +668,10 @@ export function updateStromEdgeGeometry() {
 export function setStromNetzVisible(vis) {
   window.stromNetzVisible = vis;
   window.stromNodes.forEach(n => {
-    if (!n.marker) return;
+    // Asset-Marker werden vom Asset-Layer-System (standaloneLayer) verwaltet —
+    // direktes addTo(map) würde Ghost-Duplikate erzeugen, da map.hasLayer()
+    // Layer-Gruppen-Marker als "nicht auf Karte" meldet.
+    if (!n.marker || n.isAsset) return;
     if (vis) { if (!map.hasLayer(n.marker)) n.marker.addTo(map); }
     else { if (map.hasLayer(n.marker)) map.removeLayer(n.marker); }
   });
@@ -1749,20 +1866,22 @@ export function elCalcAssets() {
     const I_A_sign = P_net   * 1000 / (Math.sqrt(3) * U_N * COS_PHI);
 
     const kt = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
-    // Auto-Querschnitt bestimmen
+    const np = Math.max(1, e.nParallel || 1);
+    // Auto-Querschnitt: Strom pro Ader = Gesamtstrom / Parallelkabel
+    const I_per_cable = I_A / np;
     if (!e.crossSection || e.autoSized) {
-      const minSec = kt.sections.find(s => s.Iz >= I_A);
+      const minSec = kt.sections.find(s => s.Iz >= I_per_cable);
       e.crossSection = minSec ? minSec.mm2 : kt.sections[kt.sections.length - 1].mm2;
     }
     const sec   = kt.sections.find(s => s.mm2 === e.crossSection) || kt.sections[kt.sections.length - 1];
     const R_km  = kt.rhoOhmMm2pM * 1000 / e.crossSection;
-    const R_seg = R_km * lengthM / 1000;
-    const dU_V  = Math.sqrt(3) * R_seg * I_A_sign;
+    const R_seg = (R_km * lengthM / 1000) / np;   // Parallelschaltung halbiert R
+    const dU_V  = Math.sqrt(3) * R_seg * (I_A_sign / np);
     const dU_pct = (dU_V / U_N) * 100;
 
     e.peakFlowKw   = P_net;
     e.peakCurrentA = I_A;
-    e.ratedCurrentA = sec.Iz;
+    e.ratedCurrentA = sec.Iz * np;
     e.auslastungPct = sec.Iz > 0 ? (I_A / sec.Iz) * 100 : 0;
     e.deltaUPct    = Math.abs(dU_pct);
     e.flowDirection = P_net >= 0 ? 1 : -1;
@@ -1796,18 +1915,51 @@ export function elCalcAssets() {
     if (sn) sn._voltDropV = v;
   });
 
+  // Trafo-Auslastung: Gesamtlast aller nachgelagerten Assets per BFS
+  for (const trafoAsset of activeA.filter(a => a.type === 'Trafo')) {
+    const ratedKVA = parseFloat(trafoAsset.props?.leistungKVA) || 630;
+    const trafoRank = TYPE_RANK[trafoAsset.type] ?? 6;
+    const visited = new Set([trafoAsset.id]);
+    const queue = [];
+    for (const { neighborId } of (adjList.get(trafoAsset.id) || [])) {
+      if ((TYPE_RANK[assetMap.get(neighborId)?.type] ?? 6) > trafoRank) queue.push(neighborId);
+    }
+    let P_v = 0, P_g = 0;
+    while (queue.length) {
+      const cur = queue.shift();
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      const curAsset = assetMap.get(cur);
+      if (!curAsset) continue;
+      P_v += assetVerbrauch(curAsset);
+      P_g += assetErzeugung(curAsset);
+      const curRank = TYPE_RANK[curAsset.type] ?? 6;
+      for (const { neighborId } of (adjList.get(cur) || [])) {
+        if (!visited.has(neighborId) && (TYPE_RANK[assetMap.get(neighborId)?.type] ?? 6) >= curRank) {
+          queue.push(neighborId);
+        }
+      }
+    }
+    const P_net = Math.max(P_v - P_g, 0);
+    trafoAsset._calcPeakLoadKw = P_net;
+    trafoAsset._calcPeakLoadPct = ratedKVA > 0 ? (P_net / (ratedKVA * COS_PHI)) * 100 : 0;
+  }
+
   updateStromEdgeVisuals();
 
   // Ergebniszusammenfassung
   const bottlenecks = activeE
-    .filter(e => e.auslastungPct > 100 || e.deltaUPct > 3)
+    .filter(e => e.auslastungPct > 100 || e.deltaUPct > 3 || (e.fuseA > 0 && e.peakCurrentA > e.fuseA))
     .map(e => {
       const a = assetMap.get(e.u), b = assetMap.get(e.v);
       let msg = '';
-      if (e.auslastungPct > 100) msg += `Überlast ${e.auslastungPct.toFixed(0)} % `;
-      if (e.deltaUPct > 3)       msg += `ΔU ${e.deltaUPct.toFixed(1)} %`;
+      if (e.auslastungPct > 100)                  msg += `Überlast ${e.auslastungPct.toFixed(0)} % `;
+      if (e.deltaUPct > 3)                        msg += `ΔU ${e.deltaUPct.toFixed(1)} % `;
+      if (e.fuseA > 0 && e.peakCurrentA > e.fuseA) msg += `Sicherung ${e.fuseA} A ausgelöst (${e.peakCurrentA.toFixed(0)} A)`;
       return `${a?.name || e.u} → ${b?.name || e.v}: ${msg.trim()}`;
     });
+
+  _updateAssetStatusRings(nodeVoltDrop, activeA, activeE, assetMap);
 
   const totalVerbrauch = activeA.reduce((s, a) => s + assetVerbrauch(a), 0);
   const totalErzeugung = activeA.reduce((s, a) => s + assetErzeugung(a), 0);
@@ -1817,6 +1969,51 @@ export function elCalcAssets() {
   ];
   _showElCalcResult([...warn, ...summary], bottlenecks);
   if (typeof window.sldRefresh === 'function') window.sldRefresh();
+}
+
+function _updateAssetStatusRings(nodeVoltDrop, activeA, activeE, assetMap) {
+  const U_N = 400;
+  // Welche Assets haben überlastete oder sicherungsauslösende Kabel?
+  const overloadedIds = new Set();
+  for (const e of activeE) {
+    if (e.auslastungPct > 100 || (e.fuseA > 0 && e.peakCurrentA > e.fuseA)) {
+      overloadedIds.add(e.u);
+      overloadedIds.add(e.v);
+    }
+  }
+  for (const a of activeA) {
+    const markerEl = a._marker?.getElement?.();
+    if (!markerEl) continue;
+    const inner = markerEl.querySelector('.asset-marker');
+    if (!inner) continue;
+    inner.classList.remove('av-ok', 'av-warn', 'av-crit', 'av-overload');
+    if (overloadedIds.has(a.id)) {
+      inner.classList.add('av-overload');
+    } else {
+      const dropV   = nodeVoltDrop.get(a.id) ?? 0;
+      const dropPct = Math.abs(dropV / U_N * 100);
+      if (dropPct >= 3)    inner.classList.add('av-crit');
+      else if (dropPct >= 2) inner.classList.add('av-warn');
+      else                   inner.classList.add('av-ok');
+    }
+  }
+  // Nicht-aktive Assets: Status-Ringe entfernen
+  for (const a of ASSETS.items) {
+    if (activeA.includes(a)) continue;
+    const markerEl = a._marker?.getElement?.();
+    if (!markerEl) continue;
+    const inner = markerEl.querySelector('.asset-marker');
+    if (inner) inner.classList.remove('av-ok', 'av-warn', 'av-crit', 'av-overload');
+  }
+}
+
+export function clearAssetStatusRings() {
+  for (const a of ASSETS.items) {
+    const markerEl = a._marker?.getElement?.();
+    if (!markerEl) continue;
+    const inner = markerEl.querySelector('.asset-marker');
+    if (inner) inner.classList.remove('av-ok', 'av-warn', 'av-crit', 'av-overload');
+  }
 }
 
 function _showElCalcResult(lines, bottlenecks) {

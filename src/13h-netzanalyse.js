@@ -1,0 +1,1306 @@
+// ── 13h-netzanalyse.js — Lastdichte-Heatmap + Trafo-Platzierungsoptimierung ──
+// Portiert aus Energiekarte1.1(6).html (Zeilen 13185–14900)
+//
+// Leistungsumfang:
+//   • Heatmap (Relief-Canvas + Höhenlinien, Legacy-Kreise)
+//   • MST-Kabeltrassen (Minimaler Spannbaum je Zone)
+//   • k-Means-Clustering + Voronoi-Zonen
+//   • Trafo-Platzierungsoptimierung (manuell k / Auto max. kVA)
+//   • Bestehende Trafos analysieren (Auslastung + Erschöpfungsjahr)
+
+import { map } from './02b-gebaeude.js';
+import { ASSETS, ASSET_CFG, getAssetStatus } from './13a-assets-core.js';
+import { globalYear } from './01-globals-varianten.js';
+
+// ── Farben ───────────────────────────────────────────────────────────────────
+const NA_CLUSTER_COLORS = [
+  '#ef5350','#42a5f5','#66bb6a','#ffa726','#ab47bc',
+  '#26c6da','#d4e157','#ec407a','#8d6e63','#78909c',
+];
+
+// ── Modulzustand ─────────────────────────────────────────────────────────────
+const NA = {
+  // Heatmap
+  heatmapActive:   false,
+  heatmapMode:     'relief',  // 'relief' | 'legacy'
+  heatmapLayers:   { load: true, gen: true },
+  heatmapContours: true,
+  heatmapCfg: { kernelRadiusM: 90, gridPx: 10, minAlpha: 0.04, maxAlpha: 0.78 },
+  heatmapPending:  false,
+
+  // Kabeltrassen
+  kabelActive:   false,
+  naKabelEdges:  [],
+  naKabelInfo:   null,
+  naKabelEurM:   200,
+
+  // Trafo-Optimierung
+  mode:          'manual',   // 'manual' | 'auto'
+  k:             3,
+  maxKVA:        630,
+  cosPhi:        0.9,
+  gzf:           0.7,
+  minUtilPct:    25,
+  proxRadius:    0,
+  useExisting:   false,
+  naResult:      null,
+  naMaxKW:       null,
+  naAutoInfo:    null,
+  naExistingResults: null,
+};
+
+// Leaflet-Layer-Gruppen (lazy init)
+let grpHeatmapLoad  = null;
+let grpHeatmapGen   = null;
+let grpHeatmapLegacy = null;
+let grpKabeltrassen = null;
+let grpKMeans       = null;
+let grpExistingTrafos = null;
+
+function _ensureGroups() {
+  if (!grpHeatmapLoad)   grpHeatmapLoad   = L.layerGroup();
+  if (!grpHeatmapGen)    grpHeatmapGen    = L.layerGroup();
+  if (!grpHeatmapLegacy) grpHeatmapLegacy = L.layerGroup();
+  if (!grpKabeltrassen)  grpKabeltrassen  = L.layerGroup();
+  if (!grpKMeans)        grpKMeans        = L.layerGroup();
+  if (!grpExistingTrafos) grpExistingTrafos = L.layerGroup();
+}
+
+// ── Adapter: Lastpunkte aus aktiven Assets ───────────────────────────────────
+export function naGetLoadPoints(year) {
+  const yr = year || globalYear || new Date().getFullYear();
+  const result = [];
+  for (const a of ASSETS.items) {
+    if (getAssetStatus(a, yr) !== 'active') continue;
+    if (a.lat == null || a.lng == null) continue;
+    const props = a.props || {};
+    let loadKW = 0, genKW = 0;
+    switch (a.type) {
+      case 'Verbraucher': loadKW = parseFloat(props.leistungKW)  || 0; break;
+      case 'Lade':        loadKW = (parseInt(props.anzahlPunkte)||1) * (parseFloat(props.leistungProPunktKW)||11); break;
+      case 'WP':          loadKW = parseFloat(props.leistungKW)  || 0; break;
+      case 'NSHV':        loadKW = parseFloat(props.leistungKW)  || 0; break;
+      case 'PV':          genKW  = (parseFloat(props.leistungKWp) || 0) * 0.8; break;
+      case 'Batterie':    genKW  = parseFloat(props.leistungKW)  || 0; break;
+    }
+    const peakKW = Math.max(loadKW, genKW);
+    if (peakKW > 0 && isFinite(a.lat) && isFinite(a.lng))
+      result.push({ lat: a.lat, lng: a.lng, loadKW, genKW, peakKW,
+                    netKW: loadKW - genKW, name: a.name, id: a.id, type: a.type });
+  }
+  return result;
+}
+
+// ── Heatmap-Helfer ───────────────────────────────────────────────────────────
+function _metersToPixels(meters, lat) {
+  const zoom = map.getZoom();
+  const mpp  = 156543.03392 * Math.cos((lat || map.getCenter().lat) * Math.PI / 180) / Math.pow(2, zoom);
+  return meters / Math.max(mpp, 0.001);
+}
+
+function _reliefColor(t, kind) {
+  const v = Math.max(0, Math.min(1, t));
+  const stops = kind === 'gen'
+    ? [[0,[20,30,55]],[0.4,[33,150,243]],[0.7,[100,181,246]],[1,[187,222,251]]]
+    : [[0,[35,25,25]],[0.35,[102,187,106]],[0.65,[255,167,38]],[1,[239,83,80]]];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [t0, c0] = stops[i]; const [t1, c1] = stops[i + 1];
+    if (v >= t0 && v <= t1) {
+      const f = (v - t0) / (t1 - t0);
+      return [
+        Math.round(c0[0] + f * (c1[0] - c0[0])),
+        Math.round(c0[1] + f * (c1[1] - c0[1])),
+        Math.round(c0[2] + f * (c1[2] - c0[2])),
+      ];
+    }
+  }
+  return kind === 'gen' ? [187, 222, 251] : [239, 83, 80];
+}
+
+function _buildReliefCanvas(points, kind) {
+  const size = map.getSize();
+  const w = Math.max(32, size.x);
+  const h = Math.max(32, size.y);
+  const cfg = NA.heatmapCfg;
+  const cellPx = Math.max(6, parseInt(cfg.gridPx || 10));
+  const gw = Math.max(2, Math.ceil(w / cellPx));
+  const gh = Math.max(2, Math.ceil(h / cellPx));
+  const field = new Float32Array(gw * gh);
+  let maxV = 0;
+
+  for (const p of points) {
+    const kw = kind === 'gen' ? p.genKW : p.loadKW;
+    if (!(kw > 0)) continue;
+    const cp = map.latLngToContainerPoint([p.lat, p.lng]);
+    if (!isFinite(cp.x) || !isFinite(cp.y)) continue;
+    const sigmaPx = Math.max(14, _metersToPixels(cfg.kernelRadiusM || 90, p.lat) * 0.6);
+    const reachPx = sigmaPx * 3;
+    const minX = Math.max(0, Math.floor((cp.x - reachPx) / cellPx));
+    const maxX = Math.min(gw - 1, Math.ceil((cp.x + reachPx) / cellPx));
+    const minY = Math.max(0, Math.floor((cp.y - reachPx) / cellPx));
+    const maxY = Math.min(gh - 1, Math.ceil((cp.y + reachPx) / cellPx));
+    const inv2s2 = 1 / (2 * sigmaPx * sigmaPx);
+    for (let gy = minY; gy <= maxY; gy++) {
+      const py = (gy + 0.5) * cellPx;
+      const dy = py - cp.y;
+      for (let gx = minX; gx <= maxX; gx++) {
+        const px = (gx + 0.5) * cellPx;
+        const dx = px - cp.x;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > reachPx * reachPx) continue;
+        const idx = gy * gw + gx;
+        const nv = field[idx] + kw * Math.exp(-d2 * inv2s2);
+        field[idx] = nv;
+        if (nv > maxV) maxV = nv;
+      }
+    }
+  }
+
+  const gridCanvas = document.createElement('canvas');
+  gridCanvas.width = gw; gridCanvas.height = gh;
+  const gctx = gridCanvas.getContext('2d');
+  const img = gctx.createImageData(gw, gh);
+  const minA = cfg.minAlpha ?? 0.04;
+  const maxA = cfg.maxAlpha ?? 0.78;
+
+  for (let i = 0; i < field.length; i++) {
+    const base = i * 4;
+    if (maxV <= 0 || field[i] <= 0) { img.data[base + 3] = 0; continue; }
+    const t   = Math.pow(field[i] / maxV, 0.72);
+    const rgb = _reliefColor(t, kind);
+    const a   = Math.max(minA, Math.min(maxA, t * maxA));
+    img.data[base] = rgb[0]; img.data[base+1] = rgb[1];
+    img.data[base+2] = rgb[2]; img.data[base+3] = Math.round(a * 255);
+  }
+  gctx.putImageData(img, 0, 0);
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const octx = out.getContext('2d');
+  octx.imageSmoothingEnabled = true;
+  octx.drawImage(gridCanvas, 0, 0, w, h);
+  return { canvas: out, maxValue: maxV, field, gw, gh, cellPx };
+}
+
+function _drawContoursOnCanvas(ctx, field, gw, gh, cellPx, maxV, color) {
+  if (!(maxV > 0)) return;
+  const levels = [0.22, 0.4, 0.58, 0.74, 0.9];
+  const edgePt = (edge, x, y) => {
+    const px = (x + 0.5) * cellPx, py = (y + 0.5) * cellPx;
+    if (edge === 0) return [px + cellPx * 0.5, py];
+    if (edge === 1) return [px + cellPx, py + cellPx * 0.5];
+    if (edge === 2) return [px + cellPx * 0.5, py + cellPx];
+    return [px, py + cellPx * 0.5];
+  };
+  const lookup = {
+    0:[], 1:[[3,0]], 2:[[0,1]], 3:[[3,1]], 4:[[1,2]], 5:[[3,2],[0,1]],
+    6:[[0,2]], 7:[[3,2]], 8:[[2,3]], 9:[[0,2]], 10:[[0,3],[1,2]],
+    11:[[1,2]], 12:[[1,3]], 13:[[0,1]], 14:[[3,0]], 15:[],
+  };
+  ctx.save(); ctx.strokeStyle = color; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  for (let li = 0; li < levels.length; li++) {
+    const thr = levels[li] * maxV;
+    ctx.globalAlpha = 0.17 + li * 0.07;
+    ctx.lineWidth   = 0.8  + li * 0.15;
+    ctx.beginPath();
+    for (let y = 0; y < gh - 1; y++) {
+      const row = y * gw, rowN = (y + 1) * gw;
+      for (let x = 0; x < gw - 1; x++) {
+        const c = (field[row+x]  >= thr ? 1 : 0) | (field[row+x+1] >= thr ? 2 : 0) |
+                  (field[rowN+x+1] >= thr ? 4 : 0) | (field[rowN+x] >= thr ? 8 : 0);
+        const segs = lookup[c] || [];
+        for (const seg of segs) {
+          const a = edgePt(seg[0], x, y); const b = edgePt(seg[1], x, y);
+          ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+        }
+      }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function _refreshRelief() {
+  _ensureGroups();
+  grpHeatmapLoad.clearLayers(); grpHeatmapGen.clearLayers(); grpHeatmapLegacy.clearLayers();
+  if (!NA.heatmapActive) return;
+  if (!map.hasLayer(grpHeatmapLoad))   grpHeatmapLoad.addTo(map);
+  if (!map.hasLayer(grpHeatmapGen))    grpHeatmapGen.addTo(map);
+  const pts    = naGetLoadPoints();
+  if (!pts.length) return;
+  const bounds = map.getBounds();
+
+  if (NA.heatmapLayers?.load !== false) {
+    const lr = _buildReliefCanvas(pts, 'load');
+    if (lr.maxValue > 0) {
+      if (NA.heatmapContours) {
+        const lctx = lr.canvas.getContext('2d');
+        _drawContoursOnCanvas(lctx, lr.field, lr.gw, lr.gh, lr.cellPx, lr.maxValue, '#ef5350');
+      }
+      L.imageOverlay(lr.canvas.toDataURL(), bounds, { opacity: 1, interactive: false })
+        .addTo(grpHeatmapLoad);
+    }
+  }
+  if (NA.heatmapLayers?.gen !== false) {
+    const gr = _buildReliefCanvas(pts, 'gen');
+    if (gr.maxValue > 0) {
+      if (NA.heatmapContours) {
+        const gctx = gr.canvas.getContext('2d');
+        _drawContoursOnCanvas(gctx, gr.field, gr.gw, gr.gh, gr.cellPx, gr.maxValue, '#42a5f5');
+      }
+      L.imageOverlay(gr.canvas.toDataURL(), bounds, { opacity: 1, interactive: false })
+        .addTo(grpHeatmapGen);
+    }
+  }
+}
+
+function _refreshLegacy() {
+  _ensureGroups();
+  grpHeatmapLoad.clearLayers(); grpHeatmapGen.clearLayers(); grpHeatmapLegacy.clearLayers();
+  if (!NA.heatmapActive) return;
+  if (!map.hasLayer(grpHeatmapLegacy)) grpHeatmapLegacy.addTo(map);
+  const pts = naGetLoadPoints();
+  const maxPeak = Math.max(...pts.map(p => p.peakKW), 1);
+  for (const p of pts) {
+    const r = Math.max(6, Math.round((p.peakKW / maxPeak) * 40));
+    const col = p.genKW > p.loadKW ? '#42a5f5' : '#ef5350';
+    L.circleMarker([p.lat, p.lng], {
+      radius: r, color: col, fillColor: col, fillOpacity: 0.35, weight: 1.5, interactive: false,
+    }).bindTooltip(`${p.name}: ${p.peakKW.toFixed(0)} kW`, { sticky: true })
+      .addTo(grpHeatmapLegacy);
+  }
+}
+
+function _refreshHeatmap() {
+  if (NA.heatmapMode === 'legacy') _refreshLegacy();
+  else _refreshRelief();
+}
+
+function _requestHeatmapRefresh() {
+  if (!NA.heatmapActive || NA.heatmapPending) return;
+  NA.heatmapPending = true;
+  requestAnimationFrame(() => { NA.heatmapPending = false; _refreshHeatmap(); });
+}
+
+// ── Öffentliche Heatmap-API ──────────────────────────────────────────────────
+export function naHeatmapToggle(show) {
+  _ensureGroups();
+  NA.heatmapActive = !!show;
+  if (!NA.heatmapActive) {
+    grpHeatmapLoad.clearLayers(); grpHeatmapGen.clearLayers(); grpHeatmapLegacy.clearLayers();
+  } else {
+    _requestHeatmapRefresh();
+  }
+  naRenderPanel();
+}
+
+export function naSetHeatmapMode(mode) {
+  NA.heatmapMode = mode === 'legacy' ? 'legacy' : 'relief';
+  if (NA.heatmapActive) _refreshHeatmap();
+  naRenderPanel();
+}
+
+export function naHeatmapSetLayerVisibility(kind, show) {
+  if (!NA.heatmapLayers) NA.heatmapLayers = { load: true, gen: true };
+  NA.heatmapLayers[kind] = !!show;
+  if (NA.heatmapActive) _requestHeatmapRefresh();
+  naRenderPanel();
+}
+
+// ── MST-Kabeltrassen ─────────────────────────────────────────────────────────
+function _distM(a, b) {
+  const dlat = (b.lat - a.lat) * 111320;
+  const dlng = (b.lng - a.lng) * 111320 * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180);
+  return Math.sqrt(dlat * dlat + dlng * dlng);
+}
+
+function _computeMST(root, points) {
+  if (!points || points.length === 0) return [];
+  const nodes  = [root, ...points];
+  const inTree = new Set([0]);
+  const edges  = [];
+  while (inTree.size < nodes.length) {
+    let bestDist = Infinity, bestFrom = -1, bestTo = -1;
+    for (const fi of inTree) {
+      for (let ti = 0; ti < nodes.length; ti++) {
+        if (inTree.has(ti)) continue;
+        const d = _distM(nodes[fi], nodes[ti]);
+        if (d < bestDist) { bestDist = d; bestFrom = fi; bestTo = ti; }
+      }
+    }
+    if (bestTo === -1) break;
+    inTree.add(bestTo);
+    edges.push({ from: nodes[bestFrom], to: nodes[bestTo], lengthM: bestDist });
+  }
+  return edges;
+}
+
+function _naKabelUpdateStyle(ke) {
+  const col  = ke.selected ? '#ffb300' : ke.col;
+  const w    = ke.selected ? 4 : 2.5;
+  ke.poly.setStyle({ color: col, weight: w, opacity: ke.selected ? 1 : 0.85 });
+  const len  = ke.edge.routedLengthM || ke.edge.lengthM;
+  ke.poly.setTooltipContent(
+    `${ke.zoneName} · ${len.toFixed(0)} m` +
+    (ke.routed   ? ' 🛣'   : '') +
+    (ke.selected ? ' ✓ ausgewählt' : '')
+  );
+}
+
+export function naDrawKabeltrassen() {
+  _ensureGroups();
+  grpKabeltrassen.clearLayers();
+  NA.naKabelInfo  = { totalM: 0, zones: [] };
+  NA.naKabelEdges = [];
+  if (!NA.kabelActive) return;
+
+  const exRes = NA.naExistingResults;
+  if (exRes?.trafos?.length > 0) {
+    for (const t of exRes.trafos) {
+      const z = exRes.assignMap.get(t.id);
+      if (!z || z.pts.length === 0) continue;
+      const edges = _computeMST(t, z.pts);
+      let zoneM = 0;
+      for (const e of edges) {
+        zoneM += e.lengthM;
+        const rootPt   = { lat: t.lat, lng: t.lng };
+        const fromIsRoot = _distM(e.from, rootPt) < 10;
+        const poly = L.polyline([[e.from.lat, e.from.lng], [e.to.lat, e.to.lng]], {
+          color: '#4fc3f7', weight: 2.5, opacity: 0.85,
+        }).bindTooltip(`${t.name} · ${e.lengthM.toFixed(0)} m`, { sticky: true })
+          .addTo(grpKabeltrassen);
+        NA.naKabelEdges.push({ edge: e, poly, zoneName: t.name, col: '#4fc3f7',
+          routed: false, selected: false, rootPt, isExistingTrafo: true,
+          trafoAssetId: t.id, fromIsRoot });
+      }
+      NA.naKabelInfo.totalM += zoneM;
+      NA.naKabelInfo.zones.push({ name: t.name, lengthM: zoneM, isExisting: true });
+    }
+  }
+
+  const clusters = NA.naResult;
+  if (clusters?.length > 0) {
+    clusters.forEach((cl, i) => {
+      if (!cl.points?.length) return;
+      const col   = NA_CLUSTER_COLORS[i % NA_CLUSTER_COLORS.length];
+      const edges = _computeMST(cl.centroid, cl.points);
+      let zoneM   = 0;
+      for (const e of edges) {
+        zoneM += e.lengthM;
+        const rootPt     = cl.centroid;
+        const fromIsRoot = _distM(e.from, rootPt) < 10;
+        const poly = L.polyline([[e.from.lat, e.from.lng], [e.to.lat, e.to.lng]], {
+          color: col, weight: 2.5, opacity: 0.85, dashArray: cl.isWhale ? '6 4' : null,
+        }).bindTooltip(`Zone ${i + 1} · ${e.lengthM.toFixed(0)} m`, { sticky: true })
+          .addTo(grpKabeltrassen);
+        NA.naKabelEdges.push({ edge: e, poly, zoneName: `Zone ${i + 1}`, col,
+          routed: false, selected: false, rootPt, isExistingTrafo: false,
+          trafoAssetId: null, fromIsRoot });
+      }
+      NA.naKabelInfo.totalM += zoneM;
+      NA.naKabelInfo.zones.push({ name: `Zone ${i + 1}`, lengthM: zoneM, isExisting: false });
+    });
+  }
+
+  for (const ke of NA.naKabelEdges) {
+    ke.poly.on('click', () => { ke.selected = !ke.selected; _naKabelUpdateStyle(ke); naRenderPanel(); });
+  }
+  if (NA.naKabelInfo.totalM > 0 && !map.hasLayer(grpKabeltrassen))
+    grpKabeltrassen.addTo(map);
+}
+
+export function naKabelToggle(on) {
+  NA.kabelActive = !!on;
+  if (!on && grpKabeltrassen) grpKabeltrassen.clearLayers();
+  naDrawKabeltrassen();
+  naRenderPanel();
+}
+
+export function naKabelSelectAll()  {
+  (NA.naKabelEdges || []).forEach(k => { k.selected = true;  _naKabelUpdateStyle(k); });
+  naRenderPanel();
+}
+export function naKabelSelectNone() {
+  (NA.naKabelEdges || []).forEach(k => { k.selected = false; _naKabelUpdateStyle(k); });
+  naRenderPanel();
+}
+
+export function naImportSelectedKabel() {
+  const selected = (NA.naKabelEdges || []).filter(ke => ke.selected);
+  if (!selected.length) { alert('Keine Kanten ausgewählt. Kanten auf der Karte anklicken.'); return; }
+
+  const { createAsset } = window; // aus 13a-assets-core via window
+  if (!createAsset) { alert('createAsset nicht verfügbar'); return; }
+
+  const zones = new Map();
+  for (const ke of selected) {
+    if (!zones.has(ke.zoneName))
+      zones.set(ke.zoneName, { rootPt: ke.rootPt, isExistingTrafo: ke.isExistingTrafo,
+        trafoAssetId: ke.trafoAssetId, edges: [] });
+    zones.get(ke.zoneName).edges.push(ke);
+  }
+
+  let importedEdges = 0, importedAssets = 0;
+
+  for (const [, zone] of zones) {
+    const { rootPt, isExistingTrafo, trafoAssetId } = zone;
+    let trafoId;
+    if (isExistingTrafo && trafoAssetId) {
+      trafoId = trafoAssetId;
+    } else {
+      const trafo = createAsset('Trafo', rootPt.lat, rootPt.lng, {});
+      if (!trafo) continue;
+      trafoId = trafo.id;
+      importedAssets++;
+    }
+
+    const OFFSET_M = 12;
+    let sumLat = 0, sumLng = 0, n = 0;
+    for (const ke of zone.edges) {
+      const pt = ke.fromIsRoot ? ke.edge.to : ke.edge.from;
+      sumLat += pt.lat; sumLng += pt.lng; n++;
+    }
+    let nshvLat, nshvLng;
+    if (n > 0) {
+      const dLat = sumLat / n - rootPt.lat, dLng = sumLng / n - rootPt.lng;
+      const lenDeg = Math.sqrt(dLat * dLat + dLng * dLng);
+      const offDeg = OFFSET_M / 111320;
+      nshvLat = rootPt.lat + (lenDeg > 0 ? dLat / lenDeg : 1) * offDeg;
+      nshvLng = rootPt.lng + (lenDeg > 0 ? dLng / lenDeg : 0) * offDeg;
+    } else {
+      nshvLat = rootPt.lat + OFFSET_M / 111320; nshvLng = rootPt.lng;
+    }
+
+    const nshv = createAsset('NSHV', nshvLat, nshvLng, {});
+    if (!nshv) continue;
+    importedAssets++;
+
+    // Kanten via addStromEdge (falls verfügbar)
+    const addEdge = window.addStromEdge;
+    if (!addEdge) continue;
+
+    // Trafo → NSHV
+    addEdge({ u: trafoId, v: nshv.id, crossSection: 50,
+      route: [[rootPt.lat, rootPt.lng], [nshvLat, nshvLng]] });
+    importedEdges++;
+
+    for (const ke of zone.edges) {
+      const coords = ke.edge.routedCoords ||
+        [[ke.edge.from.lat, ke.edge.from.lng], [ke.edge.to.lat, ke.edge.to.lng]];
+      const _nearest = (pt) => {
+        let best = null, bestD = Infinity;
+        for (const a of ASSETS.items) {
+          if (getAssetStatus(a, globalYear) !== 'active') continue;
+          const d = _distM(pt, a);
+          if (d < bestD) { bestD = d; best = a.id; }
+        }
+        return bestD < 200 ? best : null;
+      };
+      let aId, bId, route;
+      if (ke.fromIsRoot) {
+        aId   = nshv.id;
+        bId   = _nearest(ke.edge.to);
+        route = [[nshvLat, nshvLng], ...coords.slice(1)];
+      } else {
+        aId   = _nearest(ke.edge.from);
+        bId   = _nearest(ke.edge.to);
+        route = coords;
+      }
+      if (!aId || !bId || aId === bId) continue;
+      addEdge({ u: aId, v: bId, crossSection: 50, route });
+      importedEdges++;
+    }
+  }
+
+  alert(`Import: ${importedEdges} Kabel${importedEdges !== 1 ? ' Kanten' : ''}` +
+    (importedAssets > 0 ? ` + ${importedAssets} Assets (Trafo/NSHV)` : '') +
+    ' ins Modell übernommen.');
+  for (const ke of selected) { ke.selected = false; _naKabelUpdateStyle(ke); }
+  naRenderPanel();
+  if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+}
+
+// ── Voronoi ──────────────────────────────────────────────────────────────────
+function _voronoiBBox(pts, padFactor = 0.5, minPad = 0.005) {
+  if (!pts.length) return { minLat: -1, maxLat: 1, minLng: -1, maxLng: 1 };
+  let minLat = pts[0].lat, maxLat = pts[0].lat;
+  let minLng = pts[0].lng, maxLng = pts[0].lng;
+  for (const p of pts) {
+    if (p.lat < minLat) minLat = p.lat; if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lng < minLng) minLng = p.lng; if (p.lng > maxLng) maxLng = p.lng;
+  }
+  const pLat = Math.max((maxLat - minLat) * padFactor, minPad);
+  const pLng = Math.max((maxLng - minLng) * padFactor, minPad);
+  return { minLat: minLat - pLat, maxLat: maxLat + pLat,
+           minLng: minLng - pLng, maxLng: maxLng + pLng };
+}
+
+function _voronoiClip(poly, a, b) {
+  const mx = (a.lat + b.lat) / 2, my = (a.lng + b.lng) / 2;
+  const nx = b.lat - a.lat, ny = b.lng - a.lng;
+  const inside   = p => (p.lat - mx) * nx + (p.lng - my) * ny <= 0;
+  const intersect = (p1, p2) => {
+    const d1 = (p1.lat - mx) * nx + (p1.lng - my) * ny;
+    const d2 = (p2.lat - mx) * nx + (p2.lng - my) * ny;
+    const t  = d1 / (d1 - d2);
+    return { lat: p1.lat + t * (p2.lat - p1.lat), lng: p1.lng + t * (p2.lng - p1.lng) };
+  };
+  const out = [];
+  for (let k = 0; k < poly.length; k++) {
+    const curr = poly[k], next = poly[(k + 1) % poly.length];
+    const ci = inside(curr), ni = inside(next);
+    if (ci) out.push(curr);
+    if (ci !== ni) out.push(intersect(curr, next));
+  }
+  return out;
+}
+
+function _computeVoronoi(seeds, bbox) {
+  const bboxPoly = [
+    { lat: bbox.minLat, lng: bbox.minLng }, { lat: bbox.minLat, lng: bbox.maxLng },
+    { lat: bbox.maxLat, lng: bbox.maxLng }, { lat: bbox.maxLat, lng: bbox.minLng },
+  ];
+  return seeds.map((seed, i) => {
+    let poly = [...bboxPoly];
+    for (let j = 0; j < seeds.length; j++) {
+      if (i === j || poly.length < 3) continue;
+      poly = _voronoiClip(poly, seed, seeds[j]);
+    }
+    return { seed, polygon: poly };
+  });
+}
+
+// ── k-Means (k-Means++ Init, gewichtet) ─────────────────────────────────────
+function _kMeansCluster(points, k, maxIter = 150, runs = 1, gzf = 1.0) {
+  if (points.length === 0) return [];
+  k = Math.min(k, points.length);
+  function sqDist(a, b) {
+    const dlat = a.lat - b.lat, dlng = a.lng - b.lng;
+    return dlat * dlat + dlng * dlng;
+  }
+  function singleRun(useRandom) {
+    const centroids = [];
+    if (!useRandom) {
+      const totalW = points.reduce((s, p) => s + p.weight, 0) || 1;
+      centroids.push({
+        lat: points.reduce((s, p) => s + p.lat * p.weight, 0) / totalW,
+        lng: points.reduce((s, p) => s + p.lng * p.weight, 0) / totalW,
+      });
+      while (centroids.length < k) {
+        let best = null, bestD = -1;
+        for (const p of points) {
+          const minD = Math.min(...centroids.map(c => sqDist(p, c)));
+          if (minD > bestD) { bestD = minD; best = p; }
+        }
+        centroids.push({ lat: best.lat, lng: best.lng });
+      }
+    } else {
+      const first = points[Math.floor(Math.random() * points.length)];
+      centroids.push({ lat: first.lat, lng: first.lng });
+      while (centroids.length < k) {
+        const dists = points.map(p => Math.min(...centroids.map(c => sqDist(p, c))));
+        const total = dists.reduce((s, d) => s + d, 0) || 1;
+        let r = Math.random() * total, idx = 0;
+        for (; idx < dists.length - 1; idx++) { r -= dists[idx]; if (r <= 0) break; }
+        centroids.push({ lat: points[idx].lat, lng: points[idx].lng });
+      }
+    }
+    for (let iter = 0; iter < maxIter; iter++) {
+      const buckets = Array.from({ length: k }, () => []);
+      for (const p of points) {
+        let best = 0, bestD = Infinity;
+        for (let i = 0; i < k; i++) {
+          const d = sqDist(p, centroids[i]);
+          if (d < bestD) { bestD = d; best = i; }
+        }
+        buckets[best].push(p);
+      }
+      let changed = false;
+      for (let i = 0; i < k; i++) {
+        const pts = buckets[i];
+        if (pts.length === 0) continue;
+        const sw = pts.reduce((s, p) => s + p.weight, 0) || 1;
+        const newLat = pts.reduce((s, p) => s + p.lat * p.weight, 0) / sw;
+        const newLng = pts.reduce((s, p) => s + p.lng * p.weight, 0) / sw;
+        if (Math.abs(newLat - centroids[i].lat) > 1e-10 || Math.abs(newLng - centroids[i].lng) > 1e-10)
+          changed = true;
+        centroids[i] = { lat: newLat, lng: newLng };
+      }
+      if (!changed) break;
+    }
+    const clusters = Array.from({ length: k }, (_, i) => ({
+      centroid: centroids[i], points: [],
+      totalKW: 0, bezugKW: 0, einspeisungKW: 0, peakKW: 0, nettoKW: 0,
+    }));
+    for (const p of points) {
+      let best = 0, bestD = Infinity;
+      for (let i = 0; i < k; i++) {
+        const d = sqDist(p, centroids[i]);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      clusters[best].points.push(p);
+      clusters[best].bezugKW       += p.loadKW || 0;
+      clusters[best].einspeisungKW += p.genKW  || 0;
+    }
+    for (const cl of clusters) {
+      cl.totalKW    = cl.bezugKW;
+      cl.peakKW_raw = Math.max(cl.bezugKW, cl.einspeisungKW);
+      cl.peakKW     = cl.peakKW_raw * gzf;
+      cl.nettoKW    = cl.bezugKW - cl.einspeisungKW;
+    }
+    return clusters;
+  }
+  let best = null, bestMaxLoad = Infinity;
+  for (let r = 0; r < runs; r++) {
+    const cls = singleRun(r > 0);
+    const filled = cls.filter(cl => cl.points.length > 0);
+    const maxLoad = filled.length > 0 ? Math.max(...filled.map(cl => cl.peakKW)) : 0;
+    if (maxLoad < bestMaxLoad) { bestMaxLoad = maxLoad; best = cls; }
+  }
+  best.sort((a, b) => b.peakKW - a.peakKW);
+  return best;
+}
+
+function _kvaEmpfStr(peakKW, cosP) {
+  const s = peakKW / (cosP || NA.cosPhi || 0.9);
+  if (s <= 250)  return '250 kVA';
+  if (s <= 400)  return '400 kVA';
+  if (s <= 630)  return '630 kVA';
+  if (s <= 1000) return '1000 kVA';
+  return `${Math.ceil(s / 1000)}× 1000 kVA`;
+}
+
+function _mergeUnderloaded(clusters, maxKW, minUtilFrac, gzf) {
+  let result = clusters.filter(cl => cl.points.length > 0);
+  if (minUtilFrac <= 0) return result;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    result.sort((a, b) => a.peakKW - b.peakKW);
+    for (let i = 0; i < result.length; i++) {
+      if (result[i].peakKW / maxKW >= minUtilFrac) break;
+      let bestJ = -1, bestDist = Infinity;
+      for (let j = i + 1; j < result.length; j++) {
+        const mergedRaw = (result[i].peakKW_raw || result[i].peakKW) +
+                          (result[j].peakKW_raw || result[j].peakKW);
+        if (mergedRaw * gzf <= maxKW) {
+          const dlat = result[i].centroid.lat - result[j].centroid.lat;
+          const dlng = result[i].centroid.lng - result[j].centroid.lng;
+          if (dlat * dlat + dlng * dlng < bestDist) { bestDist = dlat * dlat + dlng * dlng; bestJ = j; }
+        }
+      }
+      if (bestJ < 0) continue;
+      const a = result[i], b = result[bestJ];
+      const mergedPts = [...a.points, ...b.points];
+      const totalW    = mergedPts.reduce((s, p) => s + (p.peakKW || 1), 0) || 1;
+      const merged = {
+        points:        mergedPts,
+        bezugKW:       a.bezugKW + b.bezugKW,
+        einspeisungKW: a.einspeisungKW + b.einspeisungKW,
+        peakKW_raw:    (a.peakKW_raw || a.peakKW) + (b.peakKW_raw || b.peakKW),
+        centroid: {
+          lat: mergedPts.reduce((s, p) => s + p.lat * (p.peakKW || 1), 0) / totalW,
+          lng: mergedPts.reduce((s, p) => s + p.lng * (p.peakKW || 1), 0) / totalW,
+        },
+      };
+      merged.peakKW  = merged.peakKW_raw * gzf;
+      merged.nettoKW = merged.bezugKW - merged.einspeisungKW;
+      merged.totalKW = merged.bezugKW;
+      result[bestJ] = merged;
+      result.splice(i, 1);
+      changed = true;
+      break;
+    }
+  }
+  return result;
+}
+
+function _findAutoK(allPts, maxKVA, cosPhi, gzf = 1.0, minUtilPct = 0) {
+  const maxKW   = maxKVA * cosPhi;
+  const whales  = allPts.filter(p => p.peakKW > maxKW);
+  const normals = allPts.filter(p => p.peakKW <= maxKW);
+  const whaleClusters = whales.map(p => ({
+    centroid: { lat: p.lat, lng: p.lng }, points: [p],
+    bezugKW: p.loadKW, einspeisungKW: p.genKW,
+    peakKW_raw: p.peakKW, peakKW: p.peakKW * gzf, nettoKW: p.netKW,
+    totalKW: p.loadKW, isWhale: true,
+  }));
+  if (normals.length === 0) {
+    const merged = _mergeUnderloaded(whaleClusters, maxKW, minUtilPct / 100, gzf);
+    return { clusters: merged, k: merged.length, maxKW, whaleCount: whales.length, normalK: 0 };
+  }
+  const RUNS = 5, maxK = Math.min(normals.length, 20);
+  for (let k = 1; k <= maxK; k++) {
+    const cls      = _kMeansCluster(normals, k, 150, RUNS, gzf);
+    const nonEmpty = cls.filter(cl => cl.points.length > 0);
+    if (nonEmpty.every(cl => cl.peakKW <= maxKW)) {
+      const merged = _mergeUnderloaded([...whaleClusters, ...nonEmpty], maxKW, minUtilPct / 100, gzf);
+      return { clusters: merged, k: merged.length, maxKW,
+               whaleCount: whales.length, normalK: merged.length - whaleClusters.length };
+    }
+  }
+  const cls      = _kMeansCluster(normals, maxK, 150, RUNS, gzf);
+  const nonEmpty = cls.filter(cl => cl.points.length > 0);
+  const merged   = _mergeUnderloaded([...whaleClusters, ...nonEmpty], maxKW, minUtilPct / 100, gzf);
+  return { clusters: merged, k: merged.length, maxKW,
+           whaleCount: whales.length, normalK: merged.length - whaleClusters.length,
+           capacityExceeded: true };
+}
+
+function _groupByProximity(points, radiusM) {
+  if (!radiusM || radiusM <= 0) return points;
+  function distM(a, b) {
+    const R = 6371000, dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180;
+    const sL = Math.sin(dLat / 2), sg = Math.sin(dLng / 2);
+    const x = sL * sL + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * sg * sg;
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  }
+  const used = new Array(points.length).fill(false);
+  const result = [];
+  for (let i = 0; i < points.length; i++) {
+    if (used[i]) continue;
+    const group = [points[i]];
+    for (let j = i + 1; j < points.length; j++) {
+      if (!used[j] && distM(points[i], points[j]) <= radiusM) { group.push(points[j]); used[j] = true; }
+    }
+    used[i] = true;
+    if (group.length === 1) { result.push(group[0]); continue; }
+    const totalW = group.reduce((s, p) => s + (p.peakKW || 1), 0) || 1;
+    const loadKW = group.reduce((s, p) => s + (p.loadKW || 0), 0);
+    const genKW  = group.reduce((s, p) => s + (p.genKW  || 0), 0);
+    result.push({
+      lat: group.reduce((s, p) => s + p.lat * (p.peakKW || 1), 0) / totalW,
+      lng: group.reduce((s, p) => s + p.lng * (p.peakKW || 1), 0) / totalW,
+      loadKW, genKW, peakKW: Math.max(loadKW, genKW),
+      netKW: loadKW - genKW, weight: Math.max(loadKW, genKW),
+      name: `NSHV-Gruppe (${group.length} Pkt.)`, id: group[0].id, type: group[0].type,
+    });
+  }
+  return result;
+}
+
+// ── Bestehende Trafos ────────────────────────────────────────────────────────
+function _naGetExistingTrafos(year) {
+  const yr  = year || globalYear || new Date().getFullYear();
+  const cos = NA.cosPhi || 0.9;
+  return ASSETS.items.filter(a =>
+    a.type === 'Trafo' && getAssetStatus(a, yr) === 'active' && a.lat != null
+  ).map(a => {
+    const kVA = parseFloat(a.props?.leistungKVA) || 630;
+    return { id: a.id, name: a.name, lat: a.lat, lng: a.lng, kVA, maxKW: kVA * cos };
+  });
+}
+
+function _naAssignPts(pts, trafos) {
+  function sqDist(a, b) { const dl = a.lat - b.lat, dg = a.lng - b.lng; return dl*dl + dg*dg; }
+  const zmap = new Map(trafos.map(t => [t.id, {
+    trafo: t, pts: [], bezugKW: 0, einspeisungKW: 0, peakKW: 0, nettoKW: 0, auslPct: 0, freeKW: 0,
+  }]));
+  for (const p of pts) {
+    let nearest = null, nearestD = Infinity;
+    for (const t of trafos) { const d = sqDist(p, t); if (d < nearestD) { nearestD = d; nearest = t; } }
+    if (nearest) {
+      const z = zmap.get(nearest.id);
+      z.pts.push(p); z.bezugKW += p.loadKW || 0; z.einspeisungKW += p.genKW || 0;
+    }
+  }
+  for (const [, z] of zmap) {
+    z.peakKW  = Math.max(z.bezugKW, z.einspeisungKW);
+    z.nettoKW = z.bezugKW - z.einspeisungKW;
+    z.auslPct = z.trafo.maxKW > 0 ? Math.round(z.peakKW / z.trafo.maxKW * 100) : 0;
+    z.freeKW  = Math.max(0, z.trafo.maxKW - z.peakKW);
+  }
+  return zmap;
+}
+
+function _naFindExhaustionYears(trafos) {
+  const startYear   = globalYear || new Date().getFullYear();
+  const basePts     = naGetLoadPoints(startYear);
+  const baseAssign  = _naAssignPts(basePts, trafos);
+  const trafoIdSets = new Map();
+  for (const [tid, z] of baseAssign) trafoIdSets.set(tid, new Set(z.pts.map(p => p.id)));
+  const results = new Map(trafos.map(t => [t.id, { exhaustionYear: null, maxAuslYear: startYear, maxAusl: 0 }]));
+  for (let yr = startYear; yr <= 2050; yr++) {
+    const pts = naGetLoadPoints(yr);
+    for (const [tid, idSet] of trafoIdSets) {
+      const trafo    = trafos.find(t => t.id === tid);
+      if (!trafo) continue;
+      const zonePts  = pts.filter(p => idSet.has(p.id));
+      const peak     = Math.max(zonePts.reduce((s, p) => s + (p.loadKW || 0), 0),
+                                zonePts.reduce((s, p) => s + (p.genKW  || 0), 0));
+      const ausl     = trafo.maxKW > 0 ? Math.round(peak / trafo.maxKW * 100) : 0;
+      const r        = results.get(tid);
+      if (ausl > r.maxAusl) { r.maxAusl = ausl; r.maxAuslYear = yr; }
+      if (r.exhaustionYear === null && peak > trafo.maxKW) r.exhaustionYear = yr;
+    }
+  }
+  return results;
+}
+
+function _naDrawExistingTrafos(trafos, assignMap, exhaustionMap) {
+  _ensureGroups();
+  grpExistingTrafos.clearLayers();
+  if (trafos.length === 0) return;
+  const allPts = naGetLoadPoints();
+  const bbox   = _voronoiBBox([...trafos, ...allPts]);
+  const cells  = _computeVoronoi(trafos, bbox);
+  for (let i = 0; i < trafos.length; i++) {
+    const t = trafos[i], z = assignMap.get(t.id), exh = exhaustionMap?.get(t.id), cell = cells[i];
+    if (!z || !cell || cell.polygon.length < 3) continue;
+    const auslCol  = z.auslPct > 100 ? '#ef5350' : z.auslPct > 80 ? '#ffa726' : '#66bb6a';
+    const exhLabel = exh?.exhaustionYear
+      ? `⚠ Erschöpft: ${exh.exhaustionYear}` : exh ? 'Reserve bis 2050' : '';
+    L.polygon(cell.polygon.map(p => [p.lat, p.lng]), {
+      color: auslCol, fillColor: auslCol, fillOpacity: 0.07, opacity: 0.75, weight: 2, dashArray: '5 6',
+    }).bindTooltip(`${t.name}: ${z.auslPct}% Auslastung`, { sticky: true })
+      .addTo(grpExistingTrafos);
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:#1a237e;border:2.5px solid ${auslCol};border-radius:4px;
+               width:28px;height:28px;display:flex;flex-direction:column;align-items:center;
+               justify-content:center;font-weight:700;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.6);">
+               <span style="font-size:10px;line-height:1.1;">T</span>
+               <span style="font-size:7px;line-height:1;color:${auslCol};">${z.auslPct}%</span></div>`,
+      iconSize: [28, 28], iconAnchor: [14, 14],
+    });
+    L.marker([t.lat, t.lng], { icon, zIndexOffset: 700 })
+      .bindPopup(`<b>🔁 ${t.name}</b> (Bestand)<br>` +
+        `Nennleistung: <b>${t.kVA} kVA</b> = max. ${t.maxKW.toFixed(0)} kW<br>` +
+        `Bezug: ${z.bezugKW.toFixed(0)} kW | Einsp.: ${z.einspeisungKW.toFixed(0)} kW<br>` +
+        `Auslastung: <b style="color:${auslCol}">${z.auslPct}%</b> Reserve: ${z.freeKW.toFixed(0)} kW<br>` +
+        `Versorgte Punkte: ${z.pts.length}` + (exhLabel ? `<br><span style="color:#ef5350">${exhLabel}</span>` : ''))
+      .addTo(grpExistingTrafos);
+  }
+  if (!map.hasLayer(grpExistingTrafos)) grpExistingTrafos.addTo(map);
+}
+
+// ── Öffentliche Trafo-Optimierung API ────────────────────────────────────────
+export function naSetMode(m) { NA.mode = m; naRenderPanel(); }
+export function naSetK(v)    { NA.k = Math.max(1, Math.min(20, parseInt(v) || 1)); }
+export function naSetMaxKVA(v)       { NA.maxKVA     = parseInt(v) || 630; }
+export function naSetCosPhi(v)       { NA.cosPhi     = parseFloat(v) || 0.9; }
+export function naSetGzf(v)          { NA.gzf        = parseFloat(v) ?? 0.7; naRenderPanel(); }
+export function naSetMinUtil(v)      { NA.minUtilPct = parseInt(v) || 0; }
+export function naSetProxRadius(v)   { NA.proxRadius = parseInt(v) || 0; naRenderPanel(); }
+export function naSetUseExisting(v)  { NA.useExisting = !!v; naRenderPanel(); }
+export function naSetKabelEurM(v)    { NA.naKabelEurM = parseFloat(v) || 200; naRenderPanel(); }
+
+export function naRunTrafoOptimierung() {
+  _ensureGroups();
+  const allPts = naGetLoadPoints();
+  if (allPts.length === 0) {
+    alert('Keine aktiven Lastpunkte gefunden.\nBitte zuerst Verbraucher, Ladepunkte, Wärmepumpen oder Erzeuger anlegen.');
+    return;
+  }
+  const yr         = globalYear || new Date().getFullYear();
+  const existingT  = NA.useExisting ? _naGetExistingTrafos() : [];
+  let assignMap = null, exhaustionMap = null;
+  if (existingT.length > 0) {
+    assignMap     = _naAssignPts(allPts, existingT);
+    exhaustionMap = _naFindExhaustionYears(existingT);
+    _naDrawExistingTrafos(existingT, assignMap, exhaustionMap);
+    NA.naExistingResults = { trafos: existingT, assignMap, exhaustionMap };
+  } else {
+    grpExistingTrafos.clearLayers();
+    NA.naExistingResults = null;
+  }
+  let ptsForKmeans = allPts;
+  if (existingT.length > 0 && assignMap) {
+    const overloadedPts = new Set();
+    for (const [, z] of assignMap) { if (z.auslPct > 100) z.pts.forEach(p => overloadedPts.add(p.id)); }
+    ptsForKmeans = allPts.filter(p => overloadedPts.has(p.id));
+  }
+  if (ptsForKmeans.length === 0) {
+    grpKMeans.clearLayers();
+    NA.naResult   = [];
+    NA.naMaxKW    = null;
+    NA.naAutoInfo = { allServed: true, existingCount: existingT.length };
+    naDrawKabeltrassen();
+    naRenderPanel();
+    return;
+  }
+
+  const weightedPts = ptsForKmeans.map(p => ({ ...p, weight: p.peakKW }));
+  const groupedPts  = _groupByProximity(weightedPts, NA.proxRadius).map(p => ({
+    ...p,
+    peakKW: Math.max(p.loadKW || 0, p.genKW || 0),
+    netKW:  (p.loadKW || 0) - (p.genKW || 0),
+    weight: Math.max(p.loadKW || 0, p.genKW || 0),
+  }));
+
+  let clusters, maxKW = null, autoInfo = null;
+  if (NA.mode === 'auto') {
+    const res = _findAutoK(groupedPts, NA.maxKVA, NA.cosPhi, NA.gzf, NA.minUtilPct);
+    clusters = res.clusters; maxKW = res.maxKW; NA.k = res.k;
+    autoInfo = { maxKVA: NA.maxKVA, cosPhi: NA.cosPhi, maxKW, gzf: NA.gzf,
+                 minUtilPct: NA.minUtilPct,
+                 whaleCount: res.whaleCount || 0, normalK: res.normalK || 0,
+                 capacityExceeded: res.capacityExceeded || false, onlyOverflow: existingT.length > 0 };
+  } else {
+    clusters = _kMeansCluster(groupedPts, NA.k || 3, 150, 5);
+  }
+
+  grpKMeans.clearLayers();
+  NA.naResult  = clusters;
+  NA.naMaxKW   = maxKW;
+  NA.naAutoInfo = autoInfo;
+
+  const centroids = clusters.map(cl => ({ lat: cl.centroid.lat, lng: cl.centroid.lng }));
+  const allPtsForBbox = [...groupedPts, ...centroids];
+  const vBbox  = _voronoiBBox(allPtsForBbox);
+  const vCells = _computeVoronoi(centroids, vBbox);
+  if (!map.hasLayer(grpKMeans)) grpKMeans.addTo(map);
+
+  clusters.forEach((cl, i) => {
+    const col      = NA_CLUSTER_COLORS[i % NA_CLUSTER_COLORS.length];
+    const auslPct  = maxKW ? Math.round(cl.peakKW / maxKW * 100) : null;
+    const kvaEmpf  = _kvaEmpfStr(cl.peakKW, NA.cosPhi);
+    const overload = maxKW && cl.peakKW > maxKW;
+    const vCell    = vCells[i];
+    if (vCell && vCell.polygon.length >= 3) {
+      const zoneCol = overload ? '#ef5350' : col;
+      L.polygon(vCell.polygon.map(p => [p.lat, p.lng]), {
+        color: zoneCol, fillColor: zoneCol, fillOpacity: 0.07, opacity: 0.55,
+        weight: overload ? 3 : 2, dashArray: '7 4',
+      }).bindTooltip(
+        `Zone ${i+1}: ${cl.bezugKW.toFixed(0)} kW Bezug / ${cl.einspeisungKW.toFixed(0)} kW Einsp. · ${cl.points.length} Punkte`,
+        { sticky: true }
+      ).addTo(grpKMeans);
+    }
+    const isWhale  = !!cl.isWhale;
+    const markerBg = isWhale ? '#ffa726' : (overload ? '#ef5350' : col);
+    L.marker([cl.centroid.lat, cl.centroid.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="background:${markerBg};border:2px solid #fff;border-radius:50%;
+                 width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+                 font-size:11px;font-weight:700;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.45);">
+                 ${isWhale ? 'D' : 'T'}</div>`,
+        iconSize: [24, 24], iconAnchor: [12, 12],
+      }),
+      zIndexOffset: 500,
+    }).bindPopup(
+      `<b>${isWhale ? '⚡ Direktanschluss' : `Trafo-Standort ${i+1}`}</b><br>` +
+      (isWhale ? '<span style="color:#ffa726">Einzellast überschreitet Kapazität</span><br>' : '') +
+      `Bezug: <b>${cl.bezugKW.toFixed(0)} kW</b><br>Einspeisung: <b>${cl.einspeisungKW.toFixed(0)} kW</b><br>` +
+      `Maßgebend: <b>${cl.peakKW.toFixed(0)} kW</b><br>` +
+      (auslPct != null ? `Auslastung: <b style="color:${auslPct>100?'#ef5350':auslPct>80?'#ffa726':'#66bb6a'}">${auslPct}%</b><br>` : '') +
+      `Empf. Trafo: <b>${kvaEmpf}</b><br>Punkte: ${cl.points.length}`
+    ).addTo(grpKMeans);
+  });
+
+  naDrawKabeltrassen();
+  naRenderPanel();
+}
+
+export function naClearTrafoOptimierung() {
+  _ensureGroups();
+  grpKMeans.clearLayers();
+  grpExistingTrafos.clearLayers();
+  grpKabeltrassen.clearLayers();
+  NA.naResult   = null;
+  NA.naAutoInfo = null;
+  NA.naMaxKW    = null;
+  NA.naExistingResults = null;
+  NA.naKabelInfo = null;
+  naRenderPanel();
+}
+
+// ── Panel-Rendering ──────────────────────────────────────────────────────────
+export function naRenderPanel() {
+  const panel = document.getElementById('netzanalyse-content');
+  if (!panel) return;
+  const yr           = globalYear || new Date().getFullYear();
+  const pts          = naGetLoadPoints();
+  const totalBezug   = pts.reduce((s, p) => s + p.loadKW, 0);
+  const totalEinsp   = pts.reduce((s, p) => s + p.genKW,  0);
+  const totalNetto   = totalBezug - totalEinsp;
+  const heatOn       = NA.heatmapActive;
+  const heatMode     = NA.heatmapMode;
+  const isAuto       = NA.mode === 'auto';
+  const kVal         = NA.k;
+  const maxKVA       = NA.maxKVA;
+  const cosPhi       = NA.cosPhi;
+  const gzf          = NA.gzf;
+  const minUtilPct   = NA.minUtilPct;
+  const proxRadius   = NA.proxRadius;
+  const useExisting  = NA.useExisting;
+  const hasResult    = NA.naResult !== null;
+  const existingT    = _naGetExistingTrafos(yr);
+  const kabelOn      = NA.kabelActive;
+  const kabelInfo    = NA.naKabelInfo;
+  const kabelEurM    = NA.naKabelEurM;
+  const nettoCol     = totalNetto >= 0 ? '#ef5350' : '#42a5f5';
+  const nettoSign    = totalNetto >= 0 ? '+' : '';
+
+  panel.innerHTML = `
+<!-- Übersicht -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Übersicht Lastpunkte</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;
+     display:grid;grid-template-columns:repeat(4,1fr);gap:4px;text-align:center;">
+  <div><div style="font-size:15px;font-weight:700;color:#ce93d8;">${pts.length}</div>
+       <div style="font-size:9px;color:var(--muted);">Punkte</div></div>
+  <div><div style="font-size:15px;font-weight:700;color:#ef5350;">${totalBezug.toFixed(0)}</div>
+       <div style="font-size:9px;color:var(--muted);">kW Bezug</div></div>
+  <div><div style="font-size:15px;font-weight:700;color:#42a5f5;">${totalEinsp.toFixed(0)}</div>
+       <div style="font-size:9px;color:var(--muted);">kW Einsp.</div></div>
+  <div><div style="font-size:15px;font-weight:700;color:${nettoCol};">${nettoSign}${totalNetto.toFixed(0)}</div>
+       <div style="font-size:9px;color:var(--muted);">kW Netto</div></div>
+</div>
+
+<!-- Heatmap -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Heatmap (alt/neu)</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+    Umschaltbar zwischen alter Kreisansicht und neuer Relief-Heatmap.
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+    <button onclick="naSetHeatmapMode('legacy')"
+      style="flex:1;padding:4px;border-radius:4px;border:1px solid ${heatMode==='legacy'?'#ffb74d':'#666'};
+             color:${heatMode==='legacy'?'#ffb74d':'#999'};background:${heatMode==='legacy'?'rgba(255,183,77,.12)':'transparent'};
+             cursor:pointer;font-family:inherit;font-size:10px;">Kreis (alt)</button>
+    <button onclick="naSetHeatmapMode('relief')"
+      style="flex:1;padding:4px;border-radius:4px;border:1px solid ${heatMode==='relief'?'#81c784':'#666'};
+             color:${heatMode==='relief'?'#81c784':'#999'};background:${heatMode==='relief'?'rgba(129,199,132,.12)':'transparent'};
+             cursor:pointer;font-family:inherit;font-size:10px;">Relief (neu)</button>
+  </div>
+  ${heatMode === 'relief' ? `
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+    <label style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
+      <input type="checkbox" ${NA.heatmapLayers?.load !== false ? 'checked' : ''}
+             onchange="naHeatmapSetLayerVisibility('load',this.checked)">
+      <span style="color:#ef5350">Verbrauch</span></label>
+    <label style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
+      <input type="checkbox" ${NA.heatmapLayers?.gen !== false ? 'checked' : ''}
+             onchange="naHeatmapSetLayerVisibility('gen',this.checked)">
+      <span style="color:#42a5f5">Erzeugung</span></label>
+    <label style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
+      <input type="checkbox" ${NA.heatmapContours ? 'checked' : ''}
+             onchange="window._naToggleContours(this.checked)">
+      <span style="color:#cfd8dc">Höhenlinien</span></label>
+  </div>
+  <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Farblegende (Relief-Intensität)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+    <div>
+      <div style="font-size:9px;color:#ef5350;margin-bottom:2px;">Verbrauch</div>
+      <div style="height:8px;border-radius:4px;background:linear-gradient(90deg,#234,#66bb6a,#ffa726,#ef5350);"></div>
+      <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--muted);"><span>niedrig</span><span>hoch</span></div>
+    </div>
+    <div>
+      <div style="font-size:9px;color:#42a5f5;margin-bottom:2px;">Erzeugung</div>
+      <div style="height:8px;border-radius:4px;background:linear-gradient(90deg,#142036,#2196f3,#64b5f6,#bbdefb);"></div>
+      <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--muted);"><span>niedrig</span><span>hoch</span></div>
+    </div>
+  </div>` : `
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+    Kreise zeigen lokale Lastspitzen; Radius und Farbe steigen mit der maßgebenden Last.</div>`}
+  <button onclick="naHeatmapToggle(${!heatOn})"
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+           border:1px solid #b39ddb;color:${heatOn?'#ce93d8':'var(--muted)'};
+           background:${heatOn?'rgba(179,157,219,.12)':'transparent'};">
+    ${heatOn ? '👁 Heatmap ausblenden' : '👁 Heatmap anzeigen'}
+  </button>
+</div>
+
+<!-- Kabeltrassen -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Kabeltrassen (MST)</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+    Minimaler Spannbaum – optimaler Kabelverlauf je Trafo/Zone
+  </div>
+  <button onclick="naKabelToggle(${!kabelOn})"
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+           border:1px solid #80cbc4;color:${kabelOn?'#80cbc4':'var(--muted)'};
+           background:${kabelOn?'rgba(128,203,196,.12)':'transparent'};">
+    ${kabelOn ? '🔌 Ausblenden' : '🔌 Anzeigen'}
+  </button>
+  ${kabelOn && kabelInfo?.totalM > 0 ? `
+  <div style="font-size:10px;color:var(--text);margin:5px 0;">
+    Gesamt: <b style="color:#80cbc4">${(kabelInfo.totalM/1000).toFixed(2)} km</b>
+    &nbsp;·&nbsp; ca. <b style="color:#ffa726">${Math.round(kabelInfo.totalM * kabelEurM / 1000)} k€</b>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-bottom:6px;">
+    Kostensatz: <input type="number" value="${kabelEurM}" min="50" max="2000" step="10"
+      style="width:60px;background:var(--surface);border:1px solid var(--border);border-radius:3px;
+             color:var(--text);padding:2px 4px;font-size:10px;"
+      oninput="naSetKabelEurM(this.value)"> €/m
+  </div>
+  <div style="background:var(--bg);border-radius:4px;padding:6px 7px;font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
+    💡 Kante auf der Karte <b style="color:#ffb300">anklicken</b> zum Auswählen (gelb).
+  </div>
+  <div style="display:flex;gap:6px;">
+    <button onclick="naKabelSelectAll()" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid #555;color:#888;background:transparent;">alle ☑</button>
+    <button onclick="naKabelSelectNone()" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid #555;color:#888;background:transparent;">keine</button>
+    <button onclick="naImportSelectedKabel()"
+      style="flex:2;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+             border:1px solid #66bb6a;color:#66bb6a;background:rgba(102,187,106,.1);font-weight:600;">
+      ⬆ Übernehmen (${(NA.naKabelEdges||[]).filter(k=>k.selected).length} ✓)
+    </button>
+  </div>` : ''}
+</div>
+
+<!-- Bestehende Trafos -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Bestehende Trafos</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
+  ${existingT.length === 0
+    ? `<div style="font-size:10px;color:var(--muted);">Keine aktiven Trafo-Assets im Jahr ${yr} gefunden.<br>
+       Trafos können im Elektro-Modus als Asset platziert werden.</div>`
+    : `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+         <span style="font-size:10px;color:var(--text);">${existingT.length} Trafo${existingT.length>1?'s':''} aktiv im Jahr ${yr}</span>
+         <label style="display:flex;align-items:center;gap:5px;font-size:10px;cursor:pointer;">
+           <input type="checkbox" ${useExisting?'checked':''} onchange="naSetUseExisting(this.checked)"
+             style="accent-color:#4fc3f7;width:13px;height:13px;"> Bei Optimierung einbeziehen
+         </label>
+       </div>
+       ${existingT.map(t => {
+         const z      = NA.naExistingResults?.assignMap?.get(t.id);
+         const exh    = NA.naExistingResults?.exhaustionMap?.get(t.id);
+         const auslPct = z?.auslPct ?? null;
+         const auslCol = auslPct == null ? 'var(--muted)' : auslPct > 100 ? '#ef5350' : auslPct > 80 ? '#ffa726' : '#66bb6a';
+         const barW    = auslPct != null ? Math.min(100, auslPct) : 0;
+         return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid var(--border);">
+           <span style="font-size:10px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${t.name}">${t.name}</span>
+           <span style="font-size:9px;color:var(--muted);white-space:nowrap;">${t.kVA} kVA</span>
+           ${auslPct != null
+             ? `<div style="width:50px;flex-shrink:0;">
+                  <div style="background:var(--border);border-radius:2px;height:4px;margin-bottom:1px;">
+                    <div style="background:${auslCol};width:${barW}%;height:4px;border-radius:2px;"></div>
+                  </div>
+                  <div style="font-size:8px;color:${auslCol};text-align:right;">${auslPct}%</div>
+                </div>`
+             : '<div style="width:50px;font-size:8px;color:var(--muted);text-align:right;">–</div>'}
+           ${exh?.exhaustionYear
+             ? `<span style="font-size:8px;color:#ef5350;white-space:nowrap;">⚠${exh.exhaustionYear}</span>`
+             : exh ? '<span style="font-size:8px;color:#66bb6a;white-space:nowrap;">ok</span>' : ''}
+         </div>`;
+       }).join('')}`
+  }
+</div>
+
+<!-- Trafo-Optimierung -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">
+  ${useExisting && existingT.length > 0 ? 'Neue Trafos für überlastete Zonen' : 'Trafo-Platzierungsvorschlag'}
+</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
+  <div style="display:flex;gap:4px;margin-bottom:10px;">
+    <button onclick="naSetMode('manual')"
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+             border:1px solid ${!isAuto?'var(--accent)':'var(--border)'};
+             background:${!isAuto?'rgba(79,195,247,.12)':'transparent'};
+             color:${!isAuto?'var(--accent)':'var(--muted)'};">Manuell (k)</button>
+    <button onclick="naSetMode('auto')"
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+             border:1px solid ${isAuto?'#66bb6a':'var(--border)'};
+             background:${isAuto?'rgba(102,187,106,.1)':'transparent'};
+             color:${isAuto?'#66bb6a':'var(--muted)'};">Auto (max. kVA)</button>
+  </div>
+  ${!isAuto ? `
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <label style="font-size:10px;color:var(--text);white-space:nowrap;">Anzahl Trafos (k):</label>
+    <input type="number" min="1" max="20" value="${kVal}"
+      style="width:55px;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
+             color:var(--text);border-radius:4px;font-size:11px;"
+      oninput="naSetK(this.value)">
+  </div>` : `
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px;">
+    <div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Max. kVA</div>
+      <select onchange="naSetMaxKVA(this.value)"
+        style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
+               color:var(--text);border-radius:4px;font-size:11px;font-family:inherit;">
+        ${[250,400,630,1000,1600,2000].map(v=>`<option value="${v}" ${maxKVA===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+    </div>
+    <div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">cos φ</div>
+      <input type="number" min="0.7" max="1" step="0.05" value="${cosPhi}"
+        style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
+               color:var(--text);border-radius:4px;font-size:11px;"
+        oninput="naSetCosPhi(this.value)">
+    </div>
+    <div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">GZF</div>
+      <select onchange="naSetGzf(this.value)"
+        style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
+               color:var(--text);border-radius:4px;font-size:11px;">
+        ${[0.5,0.6,0.7,0.8,0.9,1.0].map(v=>`<option value="${v}" ${gzf===v?'selected':''}>${v.toFixed(1)}</option>`).join('')}
+      </select>
+    </div>
+    <div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Mind.ausl. %</div>
+      <input type="number" min="0" max="80" step="5" value="${minUtilPct}"
+        style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
+               color:var(--text);border-radius:4px;font-size:11px;"
+        oninput="naSetMinUtil(this.value)">
+    </div>
+    <div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NSHV-R.</div>
+      <select onchange="naSetProxRadius(this.value)"
+        style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
+               color:var(--text);border-radius:4px;font-size:11px;">
+        ${[0,10,25,50,100,200].map(v=>`<option value="${v}" ${proxRadius===v?'selected':''}>${v===0?'aus':v+'m'}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div style="font-size:9px;color:var(--muted);margin-bottom:8px;">
+    Eff. Kapazität: <b style="color:var(--text)">${(maxKVA*cosPhi*gzf).toFixed(0)} kW</b>
+    (${(maxKVA*cosPhi).toFixed(0)} kW × GZF ${gzf.toFixed(1)}).
+    ${proxRadius > 0 ? `Punkte ≤ ${proxRadius} m werden zu NSHV-Knoten gebündelt.` : ''}
+  </div>`}
+  <button onclick="naRunTrafoOptimierung()"
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+           border:1px solid #b39ddb;color:#ce93d8;background:transparent;margin-bottom:5px;">
+    ⚡ Optimierung berechnen
+  </button>
+  ${hasResult ? `<button onclick="naClearTrafoOptimierung()"
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+           border:1px solid var(--muted);color:var(--muted);background:transparent;">
+    ✕ Ergebnis löschen</button>` : ''}
+</div>
+
+<!-- MS-Netz -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">MS-Netz (Mittelspannung)</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+    MS-Ring-Erkennung und (n-1)-Analyse
+  </div>
+  <button onclick="elRunMSAnalyse()"
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+           border:1px solid #f9a825;color:#f9a825;background:transparent;margin-bottom:5px;">
+    ⊞ MS-Topologie analysieren
+  </button>
+  <button onclick="clearMSRings()"
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+           border:1px solid var(--muted);color:var(--muted);background:transparent;">
+    ✕ MS-Overlay ausblenden
+  </button>
+  <div id="ms-ring-results" style="margin-top:8px;font-size:10px;"></div>
+</div>`;
+}
+
+// ── Panel-Toggle ─────────────────────────────────────────────────────────────
+let _panelOpen = false;
+export function naTogglePanel() {
+  _panelOpen = !_panelOpen;
+  const panel    = document.getElementById('netzanalyse-panel');
+  const btn      = document.getElementById('btn-netzanalyse-toggle');
+  if (!panel) return;
+  panel.style.display = _panelOpen ? 'flex' : 'none';
+  btn?.classList.toggle('active', _panelOpen);
+  if (_panelOpen) {
+    _ensureGroups();
+    naRenderPanel();
+  }
+}
+
+// ── Interne Helfer für inline-onchange ───────────────────────────────────────
+window._naToggleContours = function(v) {
+  NA.heatmapContours = !!v;
+  if (NA.heatmapActive) _requestHeatmapRefresh();
+  naRenderPanel();
+};
+
+// Zoom-Listener: Relief bei Kartenänderung neu zeichnen
+setTimeout(() => {
+  map.on('zoomend moveend', () => {
+    if (NA.heatmapActive && NA.heatmapMode === 'relief') _requestHeatmapRefresh();
+  });
+}, 0);

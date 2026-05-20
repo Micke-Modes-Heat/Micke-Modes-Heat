@@ -5,6 +5,7 @@ import { getComputedStats } from './02b-gebaeude.js';
 import { updateLpMeritOrder, updateLpNetzSummary } from './04a-ui-panels.js';
 import { updateLpStromSummary } from './05b-stromnetz.js';
 import { DA_LABELS } from './07a-analysis-charts.js';
+import { ASSETS, getAssetStatus } from './13a-assets-core.js';
 
 export function exportDispatchCSV() {
   const keys = window._dispatchActiveKeys || [];
@@ -712,6 +713,230 @@ async function exportPDFReport() {
   printWin.document.write(h);
   printWin.document.close();
   setTimeout(function() { printWin.print(); }, 800);
+}
+
+// ── Export: Maßnahmenbericht PDF ──────────────────────────────────────────
+export function exportMassnahmenPDF() {
+  const yr = globalYear ?? new Date().getFullYear();
+  const allAssets = ASSETS.items || [];
+  const datum = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+  const fmt2 = v => Number(v).toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+  const ASSET_LABELS = {
+    NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
+    NSHV: 'Niederspannungshauptverteilung', UV: 'Unterverteilung',
+    Verbraucher: 'Verbraucher', WP: 'Wärmepumpe', PV: 'PV-Anlage',
+    Batterie: 'Batteriespeicher', Lade: 'Ladeinfrastruktur', Nsa: 'Nsa',
+    KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
+  };
+
+  const MASSN_STATUS_LABEL = { geplant: 'Geplant', beauftragt: 'Beauftragt', umgesetzt: 'Umgesetzt' };
+
+  // Groupierung Maßnahmen nach Jahr
+  const byYear = {};
+  let grandTotal = 0;
+  allAssets.forEach(a => {
+    (a.massnahmen || []).forEach(m => {
+      const j = m.jahr || 'Ohne Jahr';
+      if (!byYear[j]) byYear[j] = [];
+      byYear[j].push({ asset: a, m });
+      grandTotal += parseFloat(m.kosten) || 0;
+    });
+  });
+
+  let h = '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">';
+  h += '<title>Maßnahmenbericht — ' + datum + '</title>';
+  h += '<style>';
+  h += '@page{margin:18mm 16mm;size:A4}';
+  h += '@media print{.no-print{display:none}}';
+  h += 'body{font-family:"Segoe UI",system-ui,Arial,sans-serif;font-size:10pt;color:#1a1a2e;line-height:1.5;max-width:720px;margin:0 auto;padding:10mm 0}';
+  h += 'h1{font-size:18pt;color:#0055a0;margin:0 0 4px}';
+  h += '.subtitle{font-size:10pt;color:#546e7a;margin:0 0 20px}';
+  h += 'h2{font-size:13pt;color:#0055a0;border-bottom:2px solid #0055a0;padding-bottom:3px;margin:24px 0 12px}';
+  h += 'h3{font-size:11pt;color:#263238;margin:16px 0 6px}';
+  h += 'table{width:100%;border-collapse:collapse;margin:8px 0 16px;font-size:9pt}';
+  h += 'th{background:#0055a0;color:#fff;padding:5px 8px;text-align:left;font-weight:600}';
+  h += 'td{padding:4px 8px;border-bottom:1px solid #e0e0e0;vertical-align:top}';
+  h += 'tr:nth-child(even) td{background:#f5f8fc}';
+  h += '.r{text-align:right}';
+  h += '.status-geplant{color:#1565c0;font-weight:500}';
+  h += '.status-beauftragt{color:#e65100;font-weight:500}';
+  h += '.status-umgesetzt{color:#2e7d32;font-weight:500}';
+  h += '.kpi-row{display:flex;gap:16px;margin:16px 0}';
+  h += '.kpi{background:#f5f8fc;border:1px solid #d5dde5;border-radius:6px;padding:10px 16px;flex:1;text-align:center}';
+  h += '.kpi-val{font-size:18pt;font-weight:700;color:#0055a0}';
+  h += '.kpi-label{font-size:8pt;color:#546e7a;margin-top:2px}';
+  h += '.year-header{background:#e8f0fa;font-weight:700;color:#0055a0;font-size:10pt}';
+  h += '.year-total{background:#fff3e0;font-weight:700}';
+  h += '.grand-total{background:#0055a0;color:#fff;font-weight:700}';
+  h += '.no-massn{color:#9e9e9e;font-style:italic;padding:6px 8px}';
+  h += '.asset-spec{font-size:8pt;color:#546e7a}';
+  h += '</style></head><body>';
+
+  h += '<h1>Maßnahmenbericht Elektro</h1>';
+  h += '<div class="subtitle">Stand: ' + datum + '  ·  Planungsjahr: ' + yr + '</div>';
+
+  // KPI-Zeile
+  const assetsWithMassn = allAssets.filter(a => (a.massnahmen || []).length > 0);
+  const allMassn = allAssets.flatMap(a => a.massnahmen || []);
+  h += '<div class="kpi-row">';
+  h += '<div class="kpi"><div class="kpi-val">' + allAssets.length + '</div><div class="kpi-label">Assets gesamt</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + assetsWithMassn.length + '</div><div class="kpi-label">Assets mit Maßnahmen</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + allMassn.length + '</div><div class="kpi-label">Maßnahmen gesamt</div></div>';
+  h += '<div class="kpi"><div class="kpi-val" style="font-size:13pt">' + fmt2(grandTotal) + ' €</div><div class="kpi-label">Gesamtkosten</div></div>';
+  h += '</div>';
+
+  // 1. Komponentenliste
+  h += '<h2>1. Komponentenliste</h2>';
+  h += '<table><thead><tr><th>Name</th><th>Typ</th><th>Baujahr</th><th>Status ' + yr + '</th><th class="r">Maßnahmen</th></tr></thead><tbody>';
+  for (const a of allAssets) {
+    const status = getAssetStatus(a, yr);
+    const statusTxt = status === 'active' ? 'Aktiv' : status === 'planned' ? 'Geplant' : 'Abgerissen';
+    const statusCol = status === 'active' ? '#2e7d32' : status === 'planned' ? '#1565c0' : '#9e9e9e';
+    const specParts = [];
+    const p = a.props || {};
+    if (a.type === 'Trafo') specParts.push((p.leistungKVA || 630) + ' kVA');
+    if (a.type === 'Verbraucher' || a.type === 'WP') specParts.push((p.leistungKW || 10) + ' kW');
+    if (a.type === 'PV') specParts.push((p.leistungKWp || 10) + ' kWp');
+    if (a.type === 'Lade') specParts.push((p.anzahlPunkte || 4) + '×' + (p.leistungProPunktKW || 22) + ' kW');
+    if (a.type === 'NSHV' || a.type === 'UV') specParts.push((p.nennstromA || 400) + ' A');
+    const specStr = specParts.length ? ' <span class="asset-spec">(' + specParts.join(', ') + ')</span>' : '';
+    h += '<tr><td>' + (a.name || a.id) + '</td><td>' + (ASSET_LABELS[a.type] || a.type) + specStr + '</td>';
+    h += '<td>' + (a.baujahr || '—') + '</td>';
+    h += '<td style="color:' + statusCol + '">' + statusTxt + '</td>';
+    h += '<td class="r">' + (a.massnahmen?.length || 0) + '</td></tr>';
+  }
+  h += '</tbody></table>';
+
+  // 2. Maßnahmen nach Asset
+  h += '<h2>2. Maßnahmen je Asset</h2>';
+  const assetsWithAny = allAssets.filter(a => (a.massnahmen || []).length > 0);
+  if (assetsWithAny.length === 0) {
+    h += '<p class="no-massn">Keine Maßnahmen erfasst.</p>';
+  } else {
+    for (const a of assetsWithAny) {
+      h += '<h3>' + (a.name || a.id) + ' <span style="font-size:9pt;color:#546e7a;font-weight:400">— ' + (ASSET_LABELS[a.type] || a.type) + '</span></h3>';
+      h += '<table><thead><tr><th>Titel</th><th>Beschreibung</th><th>Jahr</th><th>Status</th><th class="r">Kosten €</th></tr></thead><tbody>';
+      for (const m of a.massnahmen) {
+        const sc = 'status-' + (m.status || 'geplant');
+        h += '<tr><td>' + (m.titel || '—') + '</td><td>' + (m.beschreibung || '') + '</td>';
+        h += '<td>' + (m.jahr || '—') + '</td>';
+        h += '<td class="' + sc + '">' + (MASSN_STATUS_LABEL[m.status] || m.status || 'Geplant') + '</td>';
+        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : '—') + '</td></tr>';
+      }
+      h += '</tbody></table>';
+    }
+  }
+
+  // 3. Investitionsplan nach Jahr
+  h += '<h2>3. Investitionsplan</h2>';
+  const sortedYears = Object.keys(byYear).sort((a, b) => {
+    if (a === 'Ohne Jahr') return 1;
+    if (b === 'Ohne Jahr') return -1;
+    return parseInt(a) - parseInt(b);
+  });
+  if (sortedYears.length === 0) {
+    h += '<p class="no-massn">Keine Maßnahmen für den Investitionsplan vorhanden.</p>';
+  } else {
+    h += '<table><thead><tr><th>Jahr</th><th>Asset</th><th>Maßnahme</th><th>Status</th><th class="r">Kosten €</th></tr></thead><tbody>';
+    for (const yr2 of sortedYears) {
+      let yearSum = 0;
+      const rows = byYear[yr2];
+      h += '<tr class="year-header"><td colspan="5">' + yr2 + '</td></tr>';
+      for (const { asset, m } of rows) {
+        yearSum += parseFloat(m.kosten) || 0;
+        const sc = 'status-' + (m.status || 'geplant');
+        h += '<tr><td></td><td>' + (asset.name || asset.id) + '</td><td>' + (m.titel || '—') + '</td>';
+        h += '<td class="' + sc + '">' + (MASSN_STATUS_LABEL[m.status] || 'Geplant') + '</td>';
+        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : '—') + '</td></tr>';
+      }
+      h += '<tr class="year-total"><td></td><td colspan="3">Summe ' + yr2 + '</td><td class="r">' + fmt2(yearSum) + ' €</td></tr>';
+    }
+    h += '<tr class="grand-total"><td colspan="4">Gesamtinvestition</td><td class="r">' + fmt2(grandTotal) + ' €</td></tr>';
+    h += '</tbody></table>';
+  }
+
+  h += '</body></html>';
+
+  const printWin = window.open('', '_blank');
+  if (!printWin) { alert('Pop-up blockiert — bitte Pop-ups für diese Seite erlauben.'); return; }
+  printWin.document.write(h);
+  printWin.document.close();
+  setTimeout(() => printWin.print(), 800);
+}
+
+// ── Export: Elektro XLSX (Komponenten + Kabel) ──────────────────────────────
+export async function exportElektroXLSX() {
+  // SheetJS dynamisch laden falls noch nicht vorhanden
+  if (typeof window.XLSX === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('SheetJS konnte nicht geladen werden.'));
+      document.head.appendChild(s);
+    }).catch(e => { alert(e.message); throw e; });
+  }
+  const XLSXLib = window.XLSX;
+  const yr = globalYear ?? new Date().getFullYear();
+  const allAssets = ASSETS.items || [];
+  const allEdges = window.stromEdges || [];
+
+  const ASSET_LABELS = {
+    NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
+    NSHV: 'NSHV', UV: 'Unterverteilung', Verbraucher: 'Verbraucher',
+    WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
+    Lade: 'Ladeinfrastruktur', Nsa: 'Nsa', KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
+  };
+
+  // Sheet 1: Komponenten
+  const kompRows = [['Name', 'Typ', 'Baujahr', 'Abrissjahr', 'Status ' + yr, 'Leistung kW/kVA', 'Maßnahmen (Anzahl)', 'Investition (€)']];
+  for (const a of allAssets) {
+    const p = a.props || {};
+    const status = getAssetStatus(a, yr);
+    const statusTxt = status === 'active' ? 'Aktiv' : status === 'planned' ? 'Geplant' : 'Abgerissen';
+    let leistung = '';
+    if (a.type === 'Trafo') leistung = (p.leistungKVA || 630) + ' kVA';
+    else if (a.type === 'Verbraucher' || a.type === 'WP' || a.type === 'Nsa' || a.type === 'KWK' || a.type === 'Wind') leistung = (p.leistungKW || p.leistungElKW || 0) + ' kW';
+    else if (a.type === 'PV') leistung = (p.leistungKWp || 0) + ' kWp';
+    else if (a.type === 'Lade') leistung = ((p.anzahlPunkte || 4) * (p.leistungProPunktKW || 22)) + ' kW';
+    else if (a.type === 'NSHV' || a.type === 'UV') leistung = (p.nennstromA || 400) + ' A';
+    const totalKosten = (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
+    kompRows.push([a.name || a.id, ASSET_LABELS[a.type] || a.type, a.baujahr || '', a.abrissjahr || '', statusTxt, leistung, (a.massnahmen || []).length, totalKosten || '']);
+  }
+
+  // Sheet 2: Kabel
+  const kabelRows = [['Von', 'Nach', 'Typ', 'Querschnitt mm²', 'Länge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
+  const assetMap = new Map(allAssets.map(a => [a.id, a]));
+  for (const e of allEdges) {
+    const uName = assetMap.get(e.u)?.name || e.u;
+    const vName = assetMap.get(e.v)?.name || e.v;
+    kabelRows.push([
+      uName, vName, e.cableType || 'NAYY',
+      e.crossSection || '', Math.round(e.lengthM || 0),
+      e.nParallel || 1, e.fuseA || '',
+      e.peakCurrentA != null ? +e.peakCurrentA.toFixed(1) : '',
+      e.auslastungPct != null ? +e.auslastungPct.toFixed(1) : '',
+      e.deltaUPct != null ? +e.deltaUPct.toFixed(2) : '',
+      e.peakFlowKw != null ? +e.peakFlowKw.toFixed(1) : '',
+    ]);
+  }
+
+  // Sheet 3: Maßnahmen
+  const massnRows = [['Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten €']];
+  for (const a of allAssets) {
+    for (const m of (a.massnahmen || [])) {
+      massnRows.push([a.name || a.id, ASSET_LABELS[a.type] || a.type, m.titel || '', m.beschreibung || '', m.jahr || '', m.status || 'geplant', parseFloat(m.kosten) || 0]);
+    }
+  }
+
+  const wb = XLSXLib.utils.book_new();
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kompRows), 'Komponenten');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows), 'Kabel');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows), 'Maßnahmen');
+
+  const fname = 'Elektroplanung_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  XLSXLib.writeFile(wb, fname);
 }
 
 // ── Hook into existing recalc to update left panel ───────────────

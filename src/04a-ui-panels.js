@@ -243,7 +243,7 @@ async function queryOsmRoadType(latA, lngA, latB, lngB) {
   return 'mittel';
 }
 
-async function autoAssignEdgeCosts() {
+export async function autoAssignEdgeCosts() {
   // Called after autoGenerateNetz — queries road type for each edge in background
   for (const e of netzEdges) {
     if (e.kostOverride) continue; // don't overwrite manual settings
@@ -703,8 +703,22 @@ export function setLeftTab(tabId) {
     setNetzVisible(false);
     setStromNetzVisible(true);
     buildPalette();
+    // Assets für alle Gebäude nacherstellen, die noch keines haben (Migration alter Projekte)
+    if (typeof window.autoCreateBuildingAssets === 'function' && Array.isArray(window.gebaeude)) {
+      window.gebaeude.forEach(g => {
+        try { window.autoCreateBuildingAssets(g); } catch(e) {}
+      });
+    }
+    // Alte Gebäude-Strom-Icons ausblenden — durch ASSET-Marker ersetzt
+    (window.stromNodes || []).forEach(n => {
+      if (n.type === 'geb' && n.marker) n.marker.setOpacity(0);
+    });
     setAssetLayerVisible(true);
   } else {
+    // Alte Gebäude-Strom-Icons wieder einblenden wenn Strom-Ansicht aktiv
+    (window.stromNodes || []).forEach(n => {
+      if (n.type === 'geb' && n.marker) n.marker.setOpacity(1);
+    });
     setStromNetzVisible(false);
     setNetzVisible(true);
     setAssetLayerVisible(false);
@@ -1036,4 +1050,72 @@ export function refreshAnalyseView() {
     if (emWrap) { emWrap.style.display = 'block'; _renderEmissionenTab(); }
   }
 }
+
+// ── Ebenen-Panel ─────────────────────────────────────────────────────────────
+let _ebpOpen = false;
+
+export function toggleEbenenPanel() {
+  _ebpOpen = !_ebpOpen;
+  const panel   = document.getElementById('ebenen-panel');
+  const backdrop = document.getElementById('ebenen-backdrop');
+  if (!panel) return;
+  panel.style.display    = _ebpOpen ? '' : 'none';
+  if (backdrop) backdrop.style.display = _ebpOpen ? '' : 'none';
+  if (_ebpOpen) _ebpSyncAll();
+}
+
+// Liest den aktuellen Zustand der bestehenden Gebiet-Tab-Checkboxen und synchronisiert den Panel
+function _ebpSyncAll() {
+  _ebpReadCb('el-geb-visible',      'cb-geb-visible');
+  _ebpReadCb('el-labels-visible',   'cb-labels-visible');
+  _ebpReadCb('el-netz-visible',     'cb-netz-visible');
+  _ebpReadCb('el-satellit-visible', 'cb-satellit-visible');
+  _ebpReadCb('el-assets-visible',   'cb-assets-visible');
+  _ebpReadCb('el-stromnetz-visible','cb-stromnetz-visible');
+  // Chart/Overlay/Viz haben keinen eigenen Quell-Checkbox — State separat halten
+}
+
+function _ebpReadCb(panelId, _srcId) {
+  // Panel-Checkbox lesen — wird über data-change direkt synchron gehalten
+  // Kein Quell-Checkbox nötig; Wert ist schon im Panel gespeichert
+  void panelId;
+}
+
+// Synchronisiert einen bestehenden Gebiet-Tab-Checkbox (id = dessen id-Attribut)
+window._ebpSync = function(srcId, checked) {
+  // Quell-Checkbox (Gebiet-Tab) synchronisieren
+  const src = document.getElementById(srcId);
+  if (src && src.type === 'checkbox') src.checked = checked;
+};
+
+// Chart-Toggle
+window._ebpChart = function(checked) {
+  const btn = document.querySelector('[data-click="toggleChart()"]');
+  const chart = document.getElementById('chart-container');
+  if (chart) chart.style.display = checked ? '' : 'none';
+  if (btn) btn.classList.toggle('active', checked);
+};
+
+// Overlay-Toggle
+window._ebpOverlay = function(checked) {
+  if (typeof window.setOverlayVisible === 'function') window.setOverlayVisible(checked);
+};
+
+// Wärme-Visualisierungs-Toggle
+window._ebpViz = function(checked) {
+  const cbViz = document.getElementById('cb-viz-circles');
+  if (cbViz) { cbViz.checked = checked; cbViz.dispatchEvent(new Event('change')); }
+  if (typeof window.updateViz === 'function') window.updateViz();
+};
+
+// Satellit-Toggle
+window._ebpSatellit = function(checked) {
+  const cbSat = document.getElementById('cb-satellit');
+  if (cbSat && cbSat.checked !== checked) {
+    cbSat.checked = checked;
+    cbSat.dispatchEvent(new Event('change'));
+    return;
+  }
+  if (typeof window.toggleTile === 'function') window.toggleTile(checked);
+};
 

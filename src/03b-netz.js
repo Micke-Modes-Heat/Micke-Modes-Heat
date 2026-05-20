@@ -8,7 +8,7 @@ import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
 import { clearArea, polygonAreaM2, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
 import { drillSvg, redrawErzeugerIcons, redrawVerbindungslinien } from './03a-erzeuger.js';
 import { drawChart, hideHint, renderList, showHint } from './03c-gebaeude-io.js';
-import { _hideForDraw, _restoreAfterDraw } from './04a-ui-panels.js';
+import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 
