@@ -455,6 +455,7 @@ export let glColHeaders = [];     // Spaltenköpfe falls mehrspaltig
 export function glInit() {
   // Stadtdropdown
   const sel = document.getElementById('gl-stadt');
+  if (!sel) return; // kein DOM (z.B. Test-Umgebung)
   Object.keys(CalcEngine.STAEDTE).sort().forEach(s => {
     const o = document.createElement('option');
     o.value = s; o.textContent = s;
