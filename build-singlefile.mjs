@@ -75,6 +75,9 @@ function stripModule(code) {
       if (trimmed.startsWith('export {')) return '';
       // "export default" → entfernen
       if (trimmed.startsWith('export default ')) return '';
+      // Top-level (keine Einrückung) let/const → var, damit Mehrfachdeklarationen kein SyntaxError
+      if (line.startsWith('let ')) return 'var ' + line.slice(4);
+      if (line.startsWith('const ')) return 'var ' + line.slice(6);
       return line;
     })
     .join('\n');
