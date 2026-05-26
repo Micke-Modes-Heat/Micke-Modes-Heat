@@ -69,6 +69,7 @@ function edgeQs(edge) {
 // stichNodes   : [entry, n1, n2, ..., ende]
 // stichEdgeObjs: Kanten-Objekte in gleicher Reihenfolge (edge[i] verbindet nodes[i]→nodes[i+1])
 function _msCalcStich(stichNodes, stichEdgeObjs, nodeLoadMap, U_N, cosPhi) {
+  const sinPhi = Math.sqrt(1 - cosPhi ** 2);
   return stichEdgeObjs.map((edge, i) => {
     // Strom an Kante i = Summe aller Lasten hinter Kante i (Knoten i+1 bis Ende)
     const downLoad = stichNodes.slice(i + 1).reduce((s, nid) => s + (nodeLoadMap.get(nid) || 0), 0);
@@ -77,7 +78,8 @@ function _msCalcStich(stichNodes, stichEdgeObjs, nodeLoadMap, U_N, cosPhi) {
     const lenM     = edgeLengthM(edge);
     const r        = (MS_R_OHM_PER_KM[qs] || 0.193) * lenM / 1000;
     const x        = (MS_X_OHM_PER_KM[qs] || 0.09)  * lenM / 1000;
-    const dU_pct   = I_A * Math.sqrt(r ** 2 + x ** 2) / U_N * 100;
+    // ΔU% = √3 · I · (R·cosφ + X·sinφ) / U_N × 100  (DIN VDE 0276)
+    const dU_pct   = (Math.sqrt(3) * I_A * (r * cosPhi + x * sinPhi) / U_N) * 100;
     const I_max    = MS_I_MAX_A[qs] || 260;
     const ausl_pct = I_max > 0 ? (I_A / I_max) * 100 : 0;
     return {
@@ -227,7 +229,7 @@ export function elCalcMSRing(ring) {
   const napAsset = activeA.find(a => a.id === napId);
   const U_kV     = parseFloat(napAsset?.props?.spannungKV) || 20;
   const U_N      = U_kV * 1000;
-  const cosPhi   = 0.9;
+  const cosPhi   = parseFloat(document.getElementById('strom-ms-cosphi')?.value) || 0.9;
 
   // Geordneten Ring-Pfad ab entryId aufbauen
   const adj = new Map();
@@ -314,9 +316,10 @@ export function elCalcMSRing(ring) {
     const lenM = edgeLengthM(fe);
     const r   = (MS_R_OHM_PER_KM[qs] || 0.193) * lenM / 1000;
     const x   = (MS_X_OHM_PER_KM[qs] || 0.09)  * lenM / 1000;
+    const sinPhiFeed = Math.sqrt(1 - cosPhi ** 2);
     feedEdgeResult = {
       from: napId, to: entryId, edgeId: fe.id, I_A,
-      dU_pct: I_A * Math.sqrt(r ** 2 + x ** 2) / U_N * 100,
+      dU_pct: (Math.sqrt(3) * I_A * (r * cosPhi + x * sinPhiFeed) / U_N) * 100,
       ausl_pct: (I_A / (MS_I_MAX_A[qs] || 260)) * 100,
       I_max: MS_I_MAX_A[qs] || 260, lenM, qs, isFeedEdge: true,
     };
@@ -338,7 +341,8 @@ export function elCalcN1(ring) {
   const nr = elCalcMSRing(ring);
   if (!nr) return null;
   const { orderedNodes, orderedEdges, nodeLoads, U_kV } = nr;
-  const U_N = U_kV * 1000, cosPhi = 0.9;
+  const U_N = U_kV * 1000;
+  const cosPhi = parseFloat(document.getElementById('strom-ms-cosphi')?.value) || 0.9;
   const yr  = globalYear || new Date().getFullYear();
   const activeA = getActiveAssets(yr);
 
@@ -378,7 +382,7 @@ export function elCalcN1(ring) {
 // ── Hover-Overrides (MS-Kabel-Tooltip) ──────────────────────────────────────
 export function elBuildMSHoverOverrides(rings) {
   const byId   = {};
-  const cosPhi = 0.9;
+  const cosPhi = parseFloat(document.getElementById('strom-ms-cosphi')?.value) || 0.9;
   if (!Array.isArray(rings) || rings.length === 0) return byId;
 
   const merge = (edgeResults, uKV, tag) => {
