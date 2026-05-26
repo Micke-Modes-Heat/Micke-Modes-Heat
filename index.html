@@ -402,6 +402,32 @@
                   style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
                   data-change="recalcStromNetz()"/>
               </div>
+              <!-- Iz-Korrekturfaktoren -->
+              <div style="grid-column:1/-1;border-top:1px solid var(--border);margin:4px 0 2px;"></div>
+              <div style="grid-column:1/-1;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Iz-Korrekturfaktoren (IEC 60364-5-52)</div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Bodentemp. (°C)</div>
+                <input id="strom-iz-tboden" type="number" value="20" min="-5" max="50" step="5"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()" title="Bodentemperatur für Iz-Temperaturkorrektur (kT). Referenz: 20 °C"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Häufung (Kabel)</div>
+                <input id="strom-iz-nkabel" type="number" value="1" min="1" max="20" step="1"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()" title="Anzahl parallel verlegter Kabel (Häufungsfaktor kG, IEC 60364-5-52 Tabelle B.52.17)"/>
+              </div>
+              <div style="grid-column:1/-1;">
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Verlegeart</div>
+                <select id="strom-iz-verlegeart"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()">
+                  <option value="erde">Erdverlegung direkt (D1) — Standard</option>
+                  <option value="luft">Freiluft, freie Luft (E/F) ×1.20</option>
+                  <option value="kanal">Kabelkanal in Erde (D2) ×0.87</option>
+                  <option value="rohr">Rohr in Wand/Beton (B1) ×0.77</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -415,6 +441,8 @@
             <div class="lp-netz-row"><span class="lbl">Einspeisung</span><span class="val" id="lp-strom-einsp">—</span></div>
             <div class="lp-netz-row"><span class="lbl">Trafo-Auslastung</span><span class="val" id="lp-strom-trafo-ausl">—</span></div>
             <div class="lp-netz-row"><span class="lbl">Krit. Spannungsfall</span><span class="val" id="lp-strom-delta-u">—</span></div>
+            <div class="lp-netz-row"><span class="lbl" title="Minimaler Anfangs-Kurzschlusswechselstrom im Netz (IEC 60909, c=0.95). Maßgeblich für Schutzselektivität.">Min. Ik''</span><span class="val" id="lp-strom-ik-min">—</span></div>
+            <div class="lp-netz-row"><span class="lbl" title="Kombinierter Iz-Korrekturfaktor aus Temperatur, Häufung und Verlegeart (IEC 60364-5-52).">Iz-Korrekturfaktor</span><span class="val" id="lp-strom-kiz">—</span></div>
             <div class="lp-netz-row"><span class="lbl">Kabellänge</span><span class="val" id="lp-strom-kabel-len">—</span></div>
             <div class="lp-netz-row"><span class="lbl">Komponenten</span><span class="val" id="lp-strom-komp">—</span></div>
           </div>

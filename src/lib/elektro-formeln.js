@@ -74,3 +74,65 @@ export function gzfVDE(n) {
   if (n <= 1) return 1.0;
   return Math.max(0.2, 1.0 / Math.pow(n, 0.4));
 }
+
+// ── Iz-Korrekturfaktoren (IEC 60364-5-52) ───────────────────────────────────
+
+/**
+ * Temperaturgangkorrekturfaktor für Kabel-Iz.
+ * Gilt für PVC-isolierte Kabel (tMax = 70 °C), Referenz 20 °C Bodentemperatur.
+ * kT = √((tMax − tBoden) / (tMax − tRef))
+ */
+export function calcKizTemp(tBoden, tMax = 70, tRef = 20) {
+  return Math.sqrt(Math.max(0, (tMax - tBoden) / (tMax - tRef)));
+}
+
+/** Häufungsfaktor für gebündelt verlegte Kabel (IEC 60364-5-52 Tabelle B.52.17). */
+const _KG_TAB = [
+  [1,1.00],[2,0.80],[3,0.70],[4,0.65],[5,0.60],
+  [6,0.57],[7,0.54],[8,0.52],[9,0.50],[12,0.45],[16,0.41],[20,0.38],
+];
+export function calcKizGruppe(nKabel) {
+  if (nKabel <= 1) return 1.0;
+  for (let i = 0; i < _KG_TAB.length - 1; i++) {
+    if (nKabel <= _KG_TAB[i + 1][0]) {
+      const t = (nKabel - _KG_TAB[i][0]) / (_KG_TAB[i + 1][0] - _KG_TAB[i][0]);
+      return _KG_TAB[i][1] + t * (_KG_TAB[i + 1][1] - _KG_TAB[i][1]);
+    }
+  }
+  return _KG_TAB[_KG_TAB.length - 1][1];
+}
+
+/** Verlegeartfaktor relativ zur Referenz Erdverlegung direkt (D1). */
+export const KIZ_VERLEGEART = { erde: 1.00, kanal: 0.87, luft: 1.20, rohr: 0.77 };
+
+// ── Kurzschluss-Strom (IEC 60909) ───────────────────────────────────────────
+
+/**
+ * Anfangs-Kurzschlusswechselstrom Ik'' nach IEC 60909.
+ * Ik'' = c · U / (√3 · |Zk|)
+ * @param {number} U_V      Nennspannung [V]
+ * @param {number} R_Ohm    Gesamtwiderstand NAP→Fehlerstelle [Ω]
+ * @param {number} X_Ohm    Gesamtreaktanz [Ω]
+ * @param {number} cFactor  Spannungsfaktor (1.05 = max, 0.95 = min, IEC 60909)
+ * @returns {number}        Ik'' [A]
+ */
+export function calcIk(U_V, R_Ohm, X_Ohm, cFactor = 1.05) {
+  const Zk = Math.sqrt(R_Ohm ** 2 + X_Ohm ** 2);
+  if (Zk < 1e-9) return Infinity;
+  return (cFactor * U_V) / (Math.sqrt(3) * Zk);
+}
+
+/**
+ * Transformator-Kurzschlussimpedanz (NS-seitig) aus Leerlaufversuch-Daten.
+ * uk_R ≈ 20 % von uk für Verteiltrafos (typisch uk_R = 0.8–1.2 %).
+ * @param {number} ukPct   Kurzschlussspannung [%]
+ * @param {number} Sn_kVA  Nennleistung [kVA]
+ * @param {number} Un_V    Nennspannung NS-seitig [V]
+ * @returns {{ R: number, X: number }}  Widerstands- und Reaktanzanteil [Ω]
+ */
+export function calcTrafoImpedanz(ukPct, Sn_kVA, Un_V) {
+  const Zt  = (ukPct / 100) * (Un_V * Un_V) / (Sn_kVA * 1000);
+  const Zt_R = Zt * 0.2;
+  const Zt_X = Math.sqrt(Math.max(0, Zt * Zt - Zt_R * Zt_R));
+  return { R: Zt_R, X: Zt_X };
+}
