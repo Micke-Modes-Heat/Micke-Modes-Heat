@@ -10019,23 +10019,28 @@ function pointInPolygon(pt, poly) {
 
 // Overpass-API — alle Server parallel anfragen, schnellste Antwort gewinnt
 // ── WFS Gebäude-Import (amtliche Katasterdaten) ─────────────────────────────
-// Für file://-Kontext: erst direkt versuchen (Firmennetz-Proxy ergänzt oft CORS-Header),
-// bei Netzwerk-Fehler über öffentliche CORS-Proxies als Fallback.
+// Für file://-Kontext: erst direkt versuchen, bei Fehler CORS-Proxies nacheinander.
+// Jeder Schritt behandelt sowohl Netzwerk-Fehler als auch HTTP 4xx/5xx als Fehler.
 var _CORS_PROXIES = [
   'https://corsproxy.io/?',
   'https://api.allorigins.win/raw?url=',
+  'https://thingproxy.freeboard.io/fetch/',
 ];
 function _fetchCors(url, options) {
+  function tryProxy(i) {
+    if (i >= _CORS_PROXIES.length) return Promise.reject(new Error('Alle Proxies fehlgeschlagen'));
+    return fetch(_CORS_PROXIES[i] + encodeURIComponent(url), options)
+      .then(function(r) {
+        if (!r.ok) return tryProxy(i + 1); // 403/500 usw. → nächster Proxy
+        return r;
+      })
+      .catch(function() { return tryProxy(i + 1); });
+  }
   return fetch(url, options).catch(function() {
     if (typeof location === 'undefined' || location.protocol !== 'file:') {
       return Promise.reject(new Error('fetch failed'));
     }
-    // Proxies nacheinander probieren
-    return _CORS_PROXIES.reduce(function(chain, proxy) {
-      return chain.catch(function() {
-        return fetch(proxy + encodeURIComponent(url), options);
-      });
-    }, Promise.reject(new Error('start')));
+    return tryProxy(0);
   });
 }
 // 13 von 16 Bundesländern haben kostenlose WFS-Dienste für Gebäudegrundrisse.
