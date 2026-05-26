@@ -27,33 +27,36 @@ export const KMR_KOSTEN = {
 };
 
 // Kabeltypen für Stromnetz-Dimensionierung
+// rhoOhmMm2pM: spezifischer Widerstand bei 20°C (Ω·mm²/m), IEC 60228
+// alphaK:      Temperaturkoeffizient des Widerstands (1/K), IEC 60228
+// xMuOhmPerM:  Reaktanzbelag (μΩ/m) je Querschnitt für Erdkabel 0,6/1 kV, DIN VDE 0276-620
 export const KABEL_TYPEN = {
   NYY: {
-    label: 'NYY (Kupfer)', material: 'Cu', rhoOhmMm2pM: 0.0175,
+    label: 'NYY (Kupfer)', material: 'Cu', rhoOhmMm2pM: 0.0175, alphaK: 0.00393,
     sections: [
-      { mm2: 16,  Iz: 91,  eurM: 12 },
-      { mm2: 25,  Iz: 119, eurM: 16 },
-      { mm2: 35,  Iz: 140, eurM: 20 },
-      { mm2: 50,  Iz: 167, eurM: 28 },
-      { mm2: 70,  Iz: 207, eurM: 35 },
-      { mm2: 95,  Iz: 242, eurM: 45 },
-      { mm2: 120, Iz: 275, eurM: 55 },
-      { mm2: 150, Iz: 310, eurM: 65 },
-      { mm2: 185, Iz: 353, eurM: 80 },
-      { mm2: 240, Iz: 405, eurM: 100 },
+      { mm2: 16,  Iz: 91,  eurM: 12,  xMuOhmPerM: 95 },
+      { mm2: 25,  Iz: 119, eurM: 16,  xMuOhmPerM: 90 },
+      { mm2: 35,  Iz: 140, eurM: 20,  xMuOhmPerM: 88 },
+      { mm2: 50,  Iz: 167, eurM: 28,  xMuOhmPerM: 86 },
+      { mm2: 70,  Iz: 207, eurM: 35,  xMuOhmPerM: 84 },
+      { mm2: 95,  Iz: 242, eurM: 45,  xMuOhmPerM: 82 },
+      { mm2: 120, Iz: 275, eurM: 55,  xMuOhmPerM: 80 },
+      { mm2: 150, Iz: 310, eurM: 65,  xMuOhmPerM: 79 },
+      { mm2: 185, Iz: 353, eurM: 80,  xMuOhmPerM: 77 },
+      { mm2: 240, Iz: 405, eurM: 100, xMuOhmPerM: 75 },
     ]
   },
   NAYY: {
-    label: 'NAYY (Aluminium)', material: 'Al', rhoOhmMm2pM: 0.0286,
+    label: 'NAYY (Aluminium)', material: 'Al', rhoOhmMm2pM: 0.0286, alphaK: 0.00403,
     sections: [
-      { mm2: 35,  Iz: 110, eurM: 10 },
-      { mm2: 50,  Iz: 128, eurM: 14 },
-      { mm2: 70,  Iz: 158, eurM: 18 },
-      { mm2: 95,  Iz: 186, eurM: 24 },
-      { mm2: 120, Iz: 212, eurM: 30 },
-      { mm2: 150, Iz: 240, eurM: 38 },
-      { mm2: 185, Iz: 274, eurM: 48 },
-      { mm2: 240, Iz: 314, eurM: 60 },
+      { mm2: 35,  Iz: 110, eurM: 10, xMuOhmPerM: 88 },
+      { mm2: 50,  Iz: 128, eurM: 14, xMuOhmPerM: 86 },
+      { mm2: 70,  Iz: 158, eurM: 18, xMuOhmPerM: 84 },
+      { mm2: 95,  Iz: 186, eurM: 24, xMuOhmPerM: 82 },
+      { mm2: 120, Iz: 212, eurM: 30, xMuOhmPerM: 80 },
+      { mm2: 150, Iz: 240, eurM: 38, xMuOhmPerM: 79 },
+      { mm2: 185, Iz: 274, eurM: 48, xMuOhmPerM: 77 },
+      { mm2: 240, Iz: 314, eurM: 60, xMuOhmPerM: 75 },
     ]
   }
 };
