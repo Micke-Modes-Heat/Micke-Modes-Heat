@@ -12,6 +12,7 @@ import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
 import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
+import { calcRhoKorr, calcSpannungsfall, calcStrom, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { ASSETS, TYPE_RANK, getAssetStatus } from './13a-assets-core.js';
 
 export function epConfirm(title, message, opts) {
@@ -1138,31 +1139,11 @@ export function _recalcStromNetzInner() {
   const gzfMethode = document.getElementById('strom-gzf-methode')?.value || 'din18015';
   const gzfManuell = parseFloat(document.getElementById('strom-gzf-manuell')?.value) || 0.6;
 
-  // DIN 18015-1 Tabellenwerte (lineare Interpolation zwischen Stützstellen)
-  const _GZF_DIN = [
-    [1,1.00],[2,0.80],[3,0.73],[4,0.69],[5,0.66],
-    [6,0.64],[7,0.62],[8,0.61],[9,0.60],[10,0.58],
-    [15,0.52],[20,0.47],[30,0.43],[50,0.40],[100,0.37],[200,0.35],
-  ];
-  function _gzfDIN(n) {
-    if (n <= 1) return 1.0;
-    for (let i = 0; i < _GZF_DIN.length - 1; i++) {
-      if (n <= _GZF_DIN[i + 1][0]) {
-        const t = (n - _GZF_DIN[i][0]) / (_GZF_DIN[i + 1][0] - _GZF_DIN[i][0]);
-        return _GZF_DIN[i][1] + t * (_GZF_DIN[i + 1][1] - _GZF_DIN[i][1]);
-      }
-    }
-    return _GZF_DIN[_GZF_DIN.length - 1][1];
-  }
-
   function _gzf(nVerbraucher) {
     if (gzfMethode === 'keine') return 1.0;
     if (gzfMethode === 'manuell') return Math.max(0.1, Math.min(1.0, gzfManuell));
-    if (gzfMethode === 'vde') {
-      if (nVerbraucher <= 1) return 1.0;
-      return Math.max(0.2, 1.0 / Math.pow(nVerbraucher, 0.4));
-    }
-    return _gzfDIN(nVerbraucher); // din18015 (default)
+    if (gzfMethode === 'vde') return gzfVDE(nVerbraucher);
+    return gzfDIN18015(nVerbraucher); // din18015 (default)
   }
 
   // Bottom-up: Anzahl Verbraucher und Summe Einzellasten pro Knoten zählen
@@ -1199,14 +1180,13 @@ export function _recalcStromNetzInner() {
   // Cable sizing + voltage drop
   const U = 400; // V (NS Drehstrom)
   const cosPhi = parseFloat(document.getElementById('strom-ns-cosphi')?.value) || 0.95;
-  const sinPhi = Math.sqrt(1 - cosPhi * cosPhi);
   // Leitertemperatur für Widerstandskorrektur (IEC 60228): ρ(T) = ρ(20°C) × (1 + α·ΔT)
   const tLeiter = parseFloat(document.getElementById('strom-leiter-temp')?.value) || 70;
   const defaultType = document.getElementById('strom-kabel-typ')?.value || 'NAYY';
 
   window.stromEdges.forEach(e => {
     const absKw = Math.abs(e.peakFlowKw);
-    const I = absKw * 1000 / (Math.sqrt(3) * U * cosPhi); // Ampere
+    const I = calcStrom(absKw, U, cosPhi);
     e.peakCurrentA = I;
     e.flowDirection = e.peakFlowKw >= 0 ? 1 : -1;
 
@@ -1231,14 +1211,11 @@ export function _recalcStromNetzInner() {
 
     e.auslastungPct = e.ratedCurrentA > 0 ? (I / e.ratedCurrentA * 100) : 0;
 
-    // Voltage drop: ΔU = √3 × I × L × (R × cosφ + X × sinφ) / U  (DIN VDE 0276)
-    const alphaK = kt.alphaK || 0.004;
-    const rhoCorr = kt.rhoOhmMm2pM * (1 + alphaK * (tLeiter - 20));
-    const R_per_m = rhoCorr / e.crossSection; // Ω/m bei Betriebstemperatur
+    // Spannungsfall nach DIN VDE 0276 mit temperaturkorrigiertem Widerstand
+    const R_per_m = calcRhoKorr(kt.rhoOhmMm2pM, kt.alphaK || 0.004, tLeiter) / e.crossSection;
     const sec = kt.sections.find(s => s.mm2 === e.crossSection);
-    const X_per_m = sec?.xMuOhmPerM ? sec.xMuOhmPerM / 1e6 : 0.00008; // Ω/m
-    const deltaU_V = Math.sqrt(3) * I * e.lengthM * (R_per_m * cosPhi + X_per_m * sinPhi);
-    e.deltaUPct = (deltaU_V / U) * 100;
+    const X_per_m = sec?.xMuOhmPerM ? sec.xMuOhmPerM / 1e6 : 0.00008;
+    e.deltaUPct = calcSpannungsfall(I, e.lengthM, R_per_m, X_per_m, U, cosPhi);
   });
 
   // NAP: akkumulierte Gesamtlast zuweisen
@@ -1246,33 +1223,10 @@ export function _recalcStromNetzInner() {
     nap.peakLoadKw = accLoad[napId];
   }
 
-  // Trafo utilization
+  // Trafo-Auslastung: Lasten bereits im Bottom-up-BFS akkumuliert
   window.stromNodes.filter(n => n.type === 'trafo').forEach(tn => {
-    let loadBehind = 0;
-    // Sum all nodes behind this trafo
-    const behindTrafo = new Set();
-    const tQueue = [tn.id];
-    const tVisited = new Set([tn.id]);
-    while (tQueue.length) {
-      const c = tQueue.shift();
-      behindTrafo.add(c);
-      if (nodeMap[c]) {
-        nodeMap[c].adj.forEach(a => {
-          if (!tVisited.has(a.to) && parentEdge[a.to] && parentEdge[a.to].pNodeId === c) {
-            tVisited.add(a.to);
-            tQueue.push(a.to);
-          }
-        });
-      }
-    }
-    let nVerb = 0;
-    behindTrafo.forEach(nId => {
-      if (nId !== tn.id && nodeMap[nId]) {
-        loadBehind += Math.abs(nodeMap[nId].loadKw);
-        if (nodeMap[nId].loadKw > 0 && nodeMap[nId].node.type === 'geb') nVerb++;
-      }
-    });
-    tn.peakLoadKw = loadBehind * _gzf(nVerb);
+    if (!nodeMap[tn.id]) return;
+    tn.peakLoadKw = accLoadSum[tn.id] * _gzf(accNVerb[tn.id]);
     tn._auslastungPct = tn.ratedKva > 0 ? (tn.peakLoadKw / tn.ratedKva * 100) : 0;
   });
 

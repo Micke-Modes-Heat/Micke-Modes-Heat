@@ -14,6 +14,7 @@
 import { map } from './02b-gebaeude.js';
 import { ASSETS, ASSET_CFG, getAssetStatus } from './13a-assets-core.js';
 import { globalYear } from './01-globals-varianten.js';
+import { calcSpannungsfall, calcStrom } from './lib/elektro-formeln.js';
 
 // ── MS-Kabelparameter ────────────────────────────────────────────────────────
 const MS_R_OHM_PER_KM = { 35:0.524, 50:0.387, 70:0.268, 95:0.193, 120:0.153, 150:0.124, 185:0.099, 240:0.0754 };
@@ -69,17 +70,14 @@ function edgeQs(edge) {
 // stichNodes   : [entry, n1, n2, ..., ende]
 // stichEdgeObjs: Kanten-Objekte in gleicher Reihenfolge (edge[i] verbindet nodes[i]→nodes[i+1])
 function _msCalcStich(stichNodes, stichEdgeObjs, nodeLoadMap, U_N, cosPhi) {
-  const sinPhi = Math.sqrt(1 - cosPhi ** 2);
   return stichEdgeObjs.map((edge, i) => {
-    // Strom an Kante i = Summe aller Lasten hinter Kante i (Knoten i+1 bis Ende)
     const downLoad = stichNodes.slice(i + 1).reduce((s, nid) => s + (nodeLoadMap.get(nid) || 0), 0);
-    const I_A      = downLoad * 1000 / (Math.sqrt(3) * U_N * cosPhi);
+    const I_A      = calcStrom(downLoad, U_N, cosPhi);
     const qs       = edgeQs(edge);
     const lenM     = edgeLengthM(edge);
-    const r        = (MS_R_OHM_PER_KM[qs] || 0.193) * lenM / 1000;
-    const x        = (MS_X_OHM_PER_KM[qs] || 0.09)  * lenM / 1000;
-    // ΔU% = √3 · I · (R·cosφ + X·sinφ) / U_N × 100  (DIN VDE 0276)
-    const dU_pct   = (Math.sqrt(3) * I_A * (r * cosPhi + x * sinPhi) / U_N) * 100;
+    const r_per_m  = (MS_R_OHM_PER_KM[qs] || 0.193) / 1000; // Ω/m
+    const x_per_m  = (MS_X_OHM_PER_KM[qs] || 0.09)  / 1000; // Ω/m
+    const dU_pct   = calcSpannungsfall(I_A, lenM, r_per_m, x_per_m, U_N, cosPhi);
     const I_max    = MS_I_MAX_A[qs] || 260;
     const ausl_pct = I_max > 0 ? (I_A / I_max) * 100 : 0;
     return {
@@ -111,27 +109,48 @@ export function elDetectMSRings() {
     }
   });
 
-  // Zyklen via DFS
+  // Zyklen via iterativem DFS (vermeidet Stack-Overflow bei großen Netzen)
   const visited = new Set();
   const rings   = [];
 
-  function dfs(node, par, path, pathEdges) {
-    visited.add(node);
-    for (const nb of (adj.get(node) || [])) {
-      if (nb.to === par) continue;
+  for (const a of msAssets) {
+    if (visited.has(a.id)) continue;
+    visited.add(a.id);
+
+    // Gemeinsamer Pfad-Puffer: wird bei Push erweitert, bei Backtrack getrimmt
+    const path      = [a.id];
+    const pathEdges = [];
+    // Stack-Einträge: { node, par, neighbors, idx }
+    const stack = [{ node: a.id, par: null, neighbors: adj.get(a.id) || [], idx: 0 }];
+
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+
+      if (frame.idx >= frame.neighbors.length) {
+        // Alle Nachbarn verarbeitet → Backtrack
+        stack.pop();
+        path.pop();
+        if (pathEdges.length > 0) pathEdges.pop();
+        continue;
+      }
+
+      const nb = frame.neighbors[frame.idx++];
+      if (nb.to === frame.par) continue;
+
       if (visited.has(nb.to)) {
-        const idx = path.indexOf(nb.to);
-        if (idx >= 0) {
-          rings.push({ nodes: path.slice(idx), edges: pathEdges.slice(idx).concat([nb.edge]) });
+        // Rückwärtskante → Zyklus gefunden, falls Knoten im aktuellen Pfad liegt
+        const cidx = path.indexOf(nb.to);
+        if (cidx >= 0) {
+          rings.push({ nodes: path.slice(cidx), edges: pathEdges.slice(cidx).concat([nb.edge]) });
         }
         continue;
       }
-      dfs(nb.to, node, [...path, nb.to], [...pathEdges, nb.edge]);
-    }
-  }
 
-  for (const a of msAssets) {
-    if (!visited.has(a.id)) dfs(a.id, null, [a.id], []);
+      visited.add(nb.to);
+      path.push(nb.to);
+      pathEdges.push(nb.edge);
+      stack.push({ node: nb.to, par: frame.node, neighbors: adj.get(nb.to) || [], idx: 0 });
+    }
   }
 
   // Deduplizierung (gleiche Kantenmenge = gleicher Ring)
@@ -311,15 +330,14 @@ export function elCalcMSRing(ring) {
   let feedEdgeResult = null;
   if (ring.napFeedEdge) {
     const fe  = ring.napFeedEdge;
-    const I_A = totalLoadKW * 1000 / (Math.sqrt(3) * U_N * cosPhi);
-    const qs  = edgeQs(fe);
-    const lenM = edgeLengthM(fe);
-    const r   = (MS_R_OHM_PER_KM[qs] || 0.193) * lenM / 1000;
-    const x   = (MS_X_OHM_PER_KM[qs] || 0.09)  * lenM / 1000;
-    const sinPhiFeed = Math.sqrt(1 - cosPhi ** 2);
+    const I_A     = calcStrom(totalLoadKW, U_N, cosPhi);
+    const qs      = edgeQs(fe);
+    const lenM    = edgeLengthM(fe);
+    const r_per_m = (MS_R_OHM_PER_KM[qs] || 0.193) / 1000;
+    const x_per_m = (MS_X_OHM_PER_KM[qs] || 0.09)  / 1000;
     feedEdgeResult = {
       from: napId, to: entryId, edgeId: fe.id, I_A,
-      dU_pct: (Math.sqrt(3) * I_A * (r * cosPhi + x * sinPhiFeed) / U_N) * 100,
+      dU_pct: calcSpannungsfall(I_A, lenM, r_per_m, x_per_m, U_N, cosPhi),
       ausl_pct: (I_A / (MS_I_MAX_A[qs] || 260)) * 100,
       I_max: MS_I_MAX_A[qs] || 260, lenM, qs, isFeedEdge: true,
     };
