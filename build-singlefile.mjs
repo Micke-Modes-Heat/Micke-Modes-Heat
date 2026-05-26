@@ -14,6 +14,7 @@ const JS_FILES = [
   'config/erzeuger-cfg.js',
   'config/optimizer-defaults.js',
   'config/hilfe-texte.js',
+  'lib/elektro-formeln.js',      // ← Shared lib: muss vor 05b und 13g stehen
   '01-globals-varianten.js',
   '02a-netz-physik.js',
   '02b-gebaeude.js',
@@ -41,6 +42,15 @@ const JS_FILES = [
   '10d-optimizer-worker.js',
   '11-hilfe-leitfaden.js',
   '12-inline-handlers.js',
+  '13a-assets-core.js',
+  '13b-assets-render.js',
+  '13c-assets-ui.js',
+  '13d-assets-autocreate.js',
+  '13e-assets-inspector.js',
+  '13f-sld.js',
+  '13g-ms-ring.js',
+  '13h-netzanalyse.js',
+  'main.js',                     // ← window.*-Exposition zuletzt
 ];
 
 // Jede Datei lesen, import/export entfernen
