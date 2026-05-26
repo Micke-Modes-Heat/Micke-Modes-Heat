@@ -53,6 +53,29 @@ const JS_FILES = [
   'main.js',                     // ← window.*-Exposition zuletzt
 ];
 
+// Vorab alle Export-Namen je Datei sammeln (für import * as X → var X = {...})
+function getExportNames(code) {
+  const names = [];
+  for (const line of code.split('\n')) {
+    const t = line.trimStart();
+    let m;
+    if ((m = t.match(/^export\s+(?:async\s+)?function\s+(\w+)/))) names.push(m[1]);
+    if ((m = t.match(/^export\s+(?:const|let|var)\s+(\w+)/))) names.push(m[1]);
+  }
+  return names;
+}
+
+// Map: relativer Pfad (wie im import-Statement) → Liste der Export-Namen
+const exportMap = {};
+for (const file of JS_FILES) {
+  const raw = readFileSync(join(SRC, file), 'utf8');
+  // Schlüssel so normalisieren, wie er in import-Statements auftaucht (./ + Pfad)
+  exportMap['./' + file] = getExportNames(raw);
+  // Kurzform ohne führendes Verzeichnis für Dateien im selben Ordner
+  const baseName = file.split('/').pop();
+  exportMap['./' + baseName] = exportMap['./' + file];
+}
+
 // Jede Datei lesen, import/export entfernen
 // let/const → var, damit alle Variablen als window.* Properties verfügbar sind
 // (viele Module lesen Zustand über window.gebaeude, window.netzEdges, etc.)
@@ -61,23 +84,29 @@ function stripModule(code) {
     .split('\n')
     .map(line => {
       const trimmed = line.trimStart();
+      // "import * as X from './Y.js'" → synthetisches Namespace-Objekt var X = { a, b, ... }
+      let m;
+      if ((m = trimmed.match(/^import\s+\*\s+as\s+(\w+)\s+from\s+['"]([^'"]+)['"]/))) {
+        const alias = m[1];
+        const fromPath = m[2];
+        const names = exportMap[fromPath] || exportMap['./' + fromPath.split('/').pop()] || [];
+        if (names.length) return `var ${alias} = { ${names.join(', ')} };`;
+        return '';
+      }
       // import-Zeilen komplett entfernen
       if (trimmed.startsWith('import ')) return '';
       // "export function" / "export async function" → "function" / "async function"
       if (trimmed.startsWith('export async function ')) return line.replace('export async function ', 'async function ');
       if (trimmed.startsWith('export function ')) return line.replace('export function ', 'function ');
-      // "export const" → "var" (window-Property nötig)
+      // "export const/let/var" → "var" (window-Property nötig)
       if (trimmed.startsWith('export const ')) return line.replace('export const ', 'var ');
-      // "export let" → "var" (window-Property nötig)
-      if (trimmed.startsWith('export let ')) return line.replace('export let ', 'var ');
-      // "export var" → "var"
-      if (trimmed.startsWith('export var ')) return line.replace('export var ', 'var ');
-      // "export {" → entfernen
-      if (trimmed.startsWith('export {')) return '';
-      // "export default" → entfernen
+      if (trimmed.startsWith('export let '))   return line.replace('export let ',   'var ');
+      if (trimmed.startsWith('export var '))   return line.replace('export var ',   'var ');
+      // "export {" / "export default" → entfernen
+      if (trimmed.startsWith('export {'))       return '';
       if (trimmed.startsWith('export default ')) return '';
       // Top-level (keine Einrückung) let/const → var, damit Mehrfachdeklarationen kein SyntaxError
-      if (line.startsWith('let ')) return 'var ' + line.slice(4);
+      if (line.startsWith('let '))   return 'var ' + line.slice(4);
       if (line.startsWith('const ')) return 'var ' + line.slice(6);
       return line;
     })
