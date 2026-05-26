@@ -63,7 +63,8 @@ function stripModule(code) {
       const trimmed = line.trimStart();
       // import-Zeilen komplett entfernen
       if (trimmed.startsWith('import ')) return '';
-      // "export function" → "function"
+      // "export function" / "export async function" → "function" / "async function"
+      if (trimmed.startsWith('export async function ')) return line.replace('export async function ', 'async function ');
       if (trimmed.startsWith('export function ')) return line.replace('export function ', 'function ');
       // "export const" → "var" (window-Property nötig)
       if (trimmed.startsWith('export const ')) return line.replace('export const ', 'var ');
