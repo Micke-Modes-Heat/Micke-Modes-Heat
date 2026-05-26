@@ -589,6 +589,15 @@ export function pointInPolygon(pt, poly) {
 
 // Overpass-API — alle Server parallel anfragen, schnellste Antwort gewinnt
 // ── WFS Gebäude-Import (amtliche Katasterdaten) ─────────────────────────────
+// Wenn die App direkt als file:// geöffnet wird, sendet der Browser Origin: null.
+// Die externen APIs (Overpass, WFS) antworten dann ohne CORS-Header → fetch schlägt fehl.
+// _corsUrl() leitet in diesem Fall über corsproxy.io weiter (transparenter HTTPS-Proxy).
+function _corsUrl(url) {
+  if (typeof location !== 'undefined' && location.protocol === 'file:') {
+    return 'https://corsproxy.io/?' + encodeURIComponent(url);
+  }
+  return url;
+}
 // 13 von 16 Bundesländern haben kostenlose WFS-Dienste für Gebäudegrundrisse.
 // Nur Bayern ist gesperrt → dort Overpass-Fallback.
 var WFS_CONFIG = {
@@ -677,7 +686,7 @@ export function _wfsFetchBuildings(bbox4326) {
   }, 1000);
 
   var url = _wfsBuildUrl(cfg, bbox4326);
-  return fetch(url, { signal: ctrl.signal })
+  return fetch(_corsUrl(url), { signal: ctrl.signal })
     .then(function(resp) {
       clearTimeout(timer); clearInterval(ticker);
       if (!resp.ok) throw new Error('WFS HTTP ' + resp.status);
@@ -879,7 +888,7 @@ function _enrichBaujahrHamburg(bbox, buildings) {
   var url = 'https://api.hamburg.de/datasets/v1/gebaeudestruktur_kwp/collections/gebaeudestruktur/items'
     + '?f=json&limit=200&bbox=' + bbox[1] + ',' + bbox[0] + ',' + bbox[3] + ',' + bbox[2];
 
-  return fetch(url, { signal: AbortSignal.timeout(15000) })
+  return fetch(_corsUrl(url), { signal: AbortSignal.timeout(15000) })
     .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
     .then(function(data) {
       if (!data.features || data.features.length === 0) return 0;
@@ -967,7 +976,7 @@ function _enrichBaujahrNRW(bbox, buildings) {
     + '&WIDTH=256&HEIGHT=256&I=128&J=128'
     + '&INFO_FORMAT=text/xml';
 
-  return fetch(url, { signal: AbortSignal.timeout(10000) })
+  return fetch(_corsUrl(url), { signal: AbortSignal.timeout(10000) })
     .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.text(); })
     .then(function(txt) {
       // XML parsen — suche nach spezifisch_raumwaermebedarf_kwh_m2
@@ -1041,7 +1050,7 @@ function _overpassSingleAttempt(query) {
       controllers.push(ctrl);
       serverStatus[idx] = '🔄';
       var timer = setTimeout(function() { ctrl.abort(); }, 20000);
-      fetch(endpoint, {
+      fetch(_corsUrl(endpoint), {
         method: 'POST',
         body: 'data=' + encodeURIComponent(query),
         signal: ctrl.signal
