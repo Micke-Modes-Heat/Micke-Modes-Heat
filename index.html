@@ -1083,49 +1083,62 @@
 
   <button class="sidebar-toggle" id="sidebar-toggle" data-click="toggleSidebar()" title="Sidebar ein-/ausblenden">◀</button>
   <div class="sidebar" id="sidebar">
-    <div class="sidebar-head">Gebäude <span class="geb-count" id="geb-count">0</span></div>
-    <div class="geb-filter">
-      <input class="geb-filter-input" id="geb-filter" type="text" placeholder="🔍 Filter…" data-input="filterList(this.value)"/>
+    <div class="sidebar-tabs">
+      <button class="sidebar-tab active" id="sbt-geb" data-click="setSidebarTab('geb')">Gebäude <span class="geb-count" id="geb-count">0</span></button>
+      <button class="sidebar-tab" id="sbt-assets" data-click="setSidebarTab('assets')">Assets <span class="asb-tab-cnt" id="asset-count">0</span></button>
     </div>
-    <div class="bulk-bar" id="bulk-bar">
-      <span class="bulk-lbl" id="bulk-lbl">0 ausgewählt</span>
-      <input class="inp-field" type="number" placeholder="Spez. kWh/m²a" id="bulk-spez" style="width:90px;font-size:10px;padding:2px 5px;" title="Spezifischer Wärmeverbrauch — wird mit Gebäudefläche multipliziert">
-      <input class="inp-field" type="number" placeholder="Wärme MWh/a" id="bulk-waerme" style="width:90px;font-size:10px;padding:2px 5px;" title="Absoluter Jahreswärmebedarf">
-      <input class="inp-field" type="number" placeholder="Heizlast kW" id="bulk-hl" style="width:80px;font-size:10px;padding:2px 5px;">
-      <button class="btn-xs blue" data-click="applyBulk()">Anwenden</button>
-      <button class="btn-xs" data-click="clearSelection()" style="margin-left:auto">✕</button>
-    </div>
-    <div class="sidebar-scroll">
-      <div class="gebaeude-list" id="geb-list"></div>
-      <div class="add-section">
-        <button class="btn-add" data-click="addGebaeude()">+ Manuell hinzufügen</button>
+    <!-- Gebäude-Inhalt -->
+    <div id="sb-geb-content" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+      <div class="geb-filter">
+        <input class="geb-filter-input" id="geb-filter" type="text" placeholder="🔍 Filter…" data-input="filterList(this.value)"/>
       </div>
-      <div class="legend">
-        <div class="legend-row">
-          <div>
-            <div class="legend-title" id="legend-size-title">Kreisgröße = Wärmeverbrauch</div>
-            <div class="legend-circles" id="legend-circles">
-              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                <div class="legend-circle" style="width:10px;height:10px"></div>
-                <span style="font-size:9px;color:var(--muted);">klein</span>
-              </div>
-              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                <div class="legend-circle" style="width:20px;height:20px"></div>
-                <span style="font-size:9px;color:var(--muted);">mittel</span>
-              </div>
-              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                <div class="legend-circle" style="width:34px;height:34px"></div>
-                <span style="font-size:9px;color:var(--muted);">groß</span>
+      <div class="bulk-bar" id="bulk-bar">
+        <span class="bulk-lbl" id="bulk-lbl">0 ausgewählt</span>
+        <input class="inp-field" type="number" placeholder="Spez. kWh/m²a" id="bulk-spez" style="width:90px;font-size:10px;padding:2px 5px;" title="Spezifischer Wärmeverbrauch — wird mit Gebäudefläche multipliziert">
+        <input class="inp-field" type="number" placeholder="Wärme MWh/a" id="bulk-waerme" style="width:90px;font-size:10px;padding:2px 5px;" title="Absoluter Jahreswärmebedarf">
+        <input class="inp-field" type="number" placeholder="Heizlast kW" id="bulk-hl" style="width:80px;font-size:10px;padding:2px 5px;">
+        <button class="btn-xs blue" data-click="applyBulk()">Anwenden</button>
+        <button class="btn-xs" data-click="clearSelection()" style="margin-left:auto">✕</button>
+      </div>
+      <div class="sidebar-scroll">
+        <div class="gebaeude-list" id="geb-list"></div>
+        <div class="add-section">
+          <button class="btn-add" data-click="addGebaeude()">+ Manuell hinzufügen</button>
+        </div>
+        <div class="legend">
+          <div class="legend-row">
+            <div>
+              <div class="legend-title" id="legend-size-title">Kreisgröße = Wärmeverbrauch</div>
+              <div class="legend-circles" id="legend-circles">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div class="legend-circle" style="width:10px;height:10px"></div>
+                  <span style="font-size:9px;color:var(--muted);">klein</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div class="legend-circle" style="width:20px;height:20px"></div>
+                  <span style="font-size:9px;color:var(--muted);">mittel</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div class="legend-circle" style="width:34px;height:34px"></div>
+                  <span style="font-size:9px;color:var(--muted);">groß</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="legend-bar-wrap">
-            <div class="legend-title" id="legend-color-title">Farbe = Spez. Verbrauch</div>
-            <div class="legend-bar" id="legend-bar"></div>
-            <div class="legend-labels"><span id="leg-min">niedrig</span><span id="leg-max">hoch</span></div>
+            <div class="legend-bar-wrap">
+              <div class="legend-title" id="legend-color-title">Farbe = Spez. Verbrauch</div>
+              <div class="legend-bar" id="legend-bar"></div>
+              <div class="legend-labels"><span id="leg-min">niedrig</span><span id="leg-max">hoch</span></div>
+            </div>
           </div>
         </div>
       </div>
+    </div>
+    <!-- Asset-Inhalt (standardmäßig ausgeblendet) -->
+    <div id="sb-asset-content" style="display:none;flex-direction:column;flex:1;min-height:0;">
+      <div class="asb-filter-wrap">
+        <input class="asb-filter-inp" id="asset-filter" type="text" placeholder="🔍 Filter…" data-input="filterAssetSidebar(this.value)"/>
+      </div>
+      <div id="asset-sidebar-list" style="flex:1;overflow-y:auto;min-height:0;"></div>
     </div>
     <div class="totals">
       <div class="total-card" id="tc-waerme" title="Summe Wärmebedarf aller Gebäude (ohne Netzverluste)"><div class="total-val" id="tot-waerme">—</div><div class="total-lbl">Wärme (MWh/a)</div></div>
