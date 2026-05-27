@@ -19791,16 +19791,32 @@ async function loadOsmStrassen() {
 
   const query = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
 
+  // Mehrere Overpass-Endpunkte — der erste erreichbare wird verwendet.
+  // corsproxy.io als Fallback ermöglicht Anfragen von file:// (Origin: null).
+  async function _fetchOverpass(q) {
+    const endpoints = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass.openstreetmap.ru/api/interpreter',
+      'https://corsproxy.io/?' + encodeURIComponent('https://overpass-api.de/api/interpreter'),
+    ];
+    const body = 'data=' + encodeURIComponent(q);
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    let lastErr;
+    for (const url of endpoints) {
+      try {
+        const r = await fetch(url, { method: 'POST', headers, body });
+        if (r.ok) return r.json();
+        lastErr = new Error(url + ' → HTTP ' + r.status);
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error('Alle Overpass-Endpunkte nicht erreichbar');
+  }
+
   try {
-    // POST als application/x-www-form-urlencoded — nötig damit Overpass
-    // 200 OK + CORS-Header zurückschickt (ohne Content-Type → 406 ohne CORS-Header)
-    const resp = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'data=' + encodeURIComponent(query),
-    });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
+    const data = await _fetchOverpass(query);
 
     clearOsmStrassen();
     _osmStrassenLayer = L.layerGroup();
