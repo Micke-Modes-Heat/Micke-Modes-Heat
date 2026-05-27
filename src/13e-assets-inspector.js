@@ -238,18 +238,33 @@ function buildPropsForm(asset) {
       const kvaOpts = [50,100,160,200,250,315,400,500,630,800,1000,1250,1600,2000]
         .map(v => ({ value: v, label: `${v} kVA` }));
       const curKva = parseFloat(p.leistungKVA) || 630;
+      const netzartOpts = [
+        { value: 'verbrauch',  label: 'Verbrauchsnetz (Standard)' },
+        { value: 'erzeugung',  label: 'Erzeugungsnetz (Einspeisung)' },
+      ];
       return row2(
         selectField(id, 'leistungKVA', 'Leistung (kVA)', kvaOpts, curKva),
         numField(id, 'ukProzent', 'UK (%)', 4, {props:p, step:0.1})
+      ) + row2(
+        selectField(id, 'netzart', 'Netzart', netzartOpts, p.netzart || 'verbrauch'),
+        ''
       );
     }
 
     case 'NSHV':
-    case 'UV':
+    case 'UV': {
+      const netzartOpts = [
+        { value: 'verbrauch',  label: 'Verbrauchsnetz (Standard)' },
+        { value: 'erzeugung',  label: 'Erzeugungsnetz (Einspeisung)' },
+      ];
       return row2(
         numField(id, 'nennstromA', 'Nennstrom (A)', 400, {props:p, step:1}),
         numField(id, 'abgaenge',   'Abgänge',         4, {props:p, step:1, min:1})
+      ) + row2(
+        selectField(id, 'netzart', 'Netzart', netzartOpts, p.netzart || 'verbrauch'),
+        ''
       );
+    }
 
     case 'Verbraucher': {
       const slpOpts = ['G0','G1','G2','G3','G4','G5','G6','H0','L0','L1','L2'];

@@ -79,7 +79,10 @@ export function showAutoNetzDialog() {
         <input type="checkbox" id="an-erzeugung">
         <span>
           <b>Erzeugungsnetz</b> separat verdrahten
-          <div style="font-size:11px;color:#aaa;margin-top:1px;">PV / KWK / Wind bekommen eigene NSHV-Abgänge</div>
+          <div style="font-size:11px;color:#aaa;margin-top:1px;">
+            PV / KWK / Wind → Einspeise-Trafos (Netzart = <i>Erzeugung</i>)<br>
+            Verbraucher → Verbrauchs-Trafos. Ohne Einspeise-Trafos: nächste NSHV.
+          </div>
         </span>
       </label>
     </div>
@@ -176,13 +179,26 @@ export function autoNetzAssets(opts = {}) {
   );
 
   const byType = t => active.filter(a => a.type === t);
+  const isErzeugung = a => a.props?.netzart === 'erzeugung';
+
   const naps        = byType('NAP');
   const sas         = byType('Schaltanlage');
-  const trafos      = byType('Trafo');
-  const nshvs       = byType('NSHV');
+  const allTrafos   = byType('Trafo');
+  const allNshvs    = byType('NSHV');
   const uvs         = byType('UV');
   const verbraucher = active.filter(a => ['Verbraucher', 'Lade', 'WP', 'Batterie'].includes(a.type));
   const erzeuger    = active.filter(a => ['PV', 'Wind', 'KWK', 'Nsa'].includes(a.type));
+
+  // Trafos und NSHVs nach netzart aufteilen
+  const erzTrafos      = allTrafos.filter(isErzeugung);
+  const verbrTrafos    = allTrafos.filter(a => !isErzeugung(a));
+  const trafos         = allTrafos; // für MS-Ring (alle Trafos am MS-Netz)
+  const erzNshvs       = allNshvs.filter(isErzeugung);
+  const verbrNshvs     = allNshvs.filter(a => !isErzeugung(a));
+  const nshvs          = allNshvs; // für Fallback
+
+  // Wenn Erzeugungstrafos vorhanden: auto. Erzeugungsnetz-Modus aktiv
+  const hasErzTrafos = erzTrafos.length > 0;
 
   // Validierung
   const errors = [];
@@ -223,28 +239,31 @@ export function autoNetzAssets(opts = {}) {
     trafos.forEach(t => _addAutoEdge(sa, t, { ms: true }));
   }
 
-  // ── 3. Trafo → NSHV (Voronoi per Trassendistanz) ─────────────────────
-  nshvs.forEach(nshv => {
-    const nearest = _nearest(nshv, trafos);
+  // ── 3. Trafo → NSHV (netzart-getrennt) ──────────────────────────────────
+  // Erzeugungsnetz-NSHVs gehen zum nächsten Erzeugungstrafo,
+  // Verbrauchsnetz-NSHVs gehen zum nächsten Verbrauchstrafo.
+  // Fallback: kein passender Trafo → nächster Trafo beliebiger Art.
+  allNshvs.forEach(nshv => {
+    const pool    = isErzeugung(nshv) ? (erzTrafos.length ? erzTrafos : allTrafos)
+                                       : (verbrTrafos.length ? verbrTrafos : allTrafos);
+    const nearest = _nearest(nshv, pool);
     if (nearest) _addAutoEdge(nearest, nshv);
   });
 
-  // ── 4. NSHV → UV (Greedy-MST je NSHV-Zone) ───────────────────────────
-  // UVs ihrer nächsten NSHV zuordnen
-  const uvZone = new Map(); // uv.id → nshv
+  // ── 4. NSHV → UV (Greedy-MST je NSHV-Zone, nur Verbrauchsnetz) ────────
+  const uvZone = new Map();
   uvs.forEach(uv => {
-    const nearest = _nearest(uv, nshvs);
+    // UVs gehören immer zum Verbrauchsnetz → nur Verbrauchs-NSHVs als Anker
+    const pool    = verbrNshvs.length ? verbrNshvs : allNshvs;
+    const nearest = _nearest(uv, pool);
     if (nearest) uvZone.set(uv.id, nearest);
   });
 
-  nshvs.forEach(nshv => {
+  (verbrNshvs.length ? verbrNshvs : allNshvs).forEach(nshv => {
     const zoneUvs = uvs.filter(uv => uvZone.get(uv.id)?.id === nshv.id);
     if (!zoneUvs.length) return;
-
-    // Greedy Prim: immer nächsten UV ans bereits verbundene Netz hängen
     const connected = new Map([[nshv.id, nshv]]);
     const remaining = [...zoneUvs];
-
     while (remaining.length) {
       let bestDist = Infinity, bestUv = null, bestAnchor = null;
       for (const uv of remaining) {
@@ -260,26 +279,27 @@ export function autoNetzAssets(opts = {}) {
     }
   });
 
-  // ── 5. UV / NSHV → Verbraucher ────────────────────────────────────────
-  const nsAnker = [...uvs, ...nshvs]; // bevorzugt UV, sonst NSHV
+  // ── 5. UV / Verbrauchsnetz-NSHV → Verbraucher ────────────────────────
+  // Verbraucher werden NUR an Verbrauchsnetz-Anker gehängt, niemals an Erzeugungsnetz-NSHVs.
+  const verbrAnker = [...uvs, ...(verbrNshvs.length ? verbrNshvs : allNshvs)];
 
   verbraucher.forEach(v => {
-    const anchor = nsAnker.length ? _nearest(v, nsAnker) : _nearest(v, nshvs);
+    const anchor = _nearest(v, verbrAnker);
     if (anchor) _addAutoEdge(anchor, v);
   });
 
-  // ── 6. Erzeuger ─────────────────────────────────────────────────────────
-  if (erzeugungsnetz) {
-    // Separate Abgänge: Erzeuger → eigene NSHV (kein UV-Zwischenknoten)
-    // Falls mehrere NSHVs: Nearest-NSHV je Erzeuger
+  // ── 6. Erzeuger ──────────────────────────────────────────────────────────
+  if (hasErzTrafos || erzeugungsnetz) {
+    // Erzeuger → Erzeugungsnetz-NSHVs (falls vorhanden) sonst alle NSHVs
+    const pool = erzNshvs.length ? erzNshvs : allNshvs;
     erzeuger.forEach(e => {
-      const anchor = nshvs.length ? _nearest(e, nshvs) : null;
+      const anchor = _nearest(e, pool);
       if (anchor) _addAutoEdge(anchor, e);
     });
   } else {
-    // Standard: Erzeuger wie Verbraucher — nächste UV oder NSHV
+    // Standard (kein Erzeugungsnetz): Erzeuger wie Verbraucher — nächste UV oder NSHV
     erzeuger.forEach(e => {
-      const anchor = nsAnker.length ? _nearest(e, nsAnker) : _nearest(e, nshvs);
+      const anchor = _nearest(e, verbrAnker);
       if (anchor) _addAutoEdge(anchor, e);
     });
   }
