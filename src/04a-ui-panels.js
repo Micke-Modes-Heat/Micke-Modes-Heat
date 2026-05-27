@@ -578,19 +578,6 @@ setTimeout(() => {
   tryRestoreAutosave();
 }, 0);
 
-export function setSidebarTab(tab) {
-  const gebContent   = document.getElementById('sb-geb-content');
-  const assetContent = document.getElementById('sb-asset-content');
-  const btnGeb    = document.getElementById('sbt-geb');
-  const btnAssets = document.getElementById('sbt-assets');
-  const isAssets  = tab === 'assets';
-  if (gebContent)   { gebContent.style.display   = isAssets ? 'none' : 'flex'; }
-  if (assetContent) { assetContent.style.display  = isAssets ? 'flex' : 'none'; }
-  btnGeb?.classList.toggle('active',    !isAssets);
-  btnAssets?.classList.toggle('active',  isAssets);
-  if (isAssets && typeof window.renderAssetSidebar === 'function') window.renderAssetSidebar();
-}
-
 export function toggleSidebar() {
   const sb = document.getElementById('sidebar');
   const btn = document.getElementById('sidebar-toggle');
