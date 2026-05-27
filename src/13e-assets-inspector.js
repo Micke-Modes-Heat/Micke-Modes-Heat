@@ -612,7 +612,34 @@ function buildBuildingSelect(asset) {
   </div>`;
 }
 
-// ── Haupt-Render ─────────────────────────────────────────────────────────────
+// ── Gemeinsamer Rumpf (floating panel + sidebar card) ────────────────────────
+function buildBodyHtml(asset) {
+  return `
+    <div class="ins-field-group">
+      <label class="ins-field-label">Name</label>
+      <input class="ins-field-input" type="text" data-field="name" value="${esc(asset.name)}">
+    </div>
+    ${buildBuildingBadge(asset)}
+    <div class="ins-row-2">
+      <div class="ins-field-group">
+        <label class="ins-field-label">Baujahr</label>
+        <input class="ins-field-input" type="number" data-field="baujahr"
+          value="${asset.baujahr ?? ''}" placeholder="—">
+      </div>
+      <div class="ins-field-group">
+        <label class="ins-field-label">Abrissjahr</label>
+        <input class="ins-field-input" type="number" data-field="abrissjahr"
+          value="${asset.abrissjahr ?? ''}" placeholder="—">
+      </div>
+    </div>
+    <div class="asset-ins-section-title">Eigenschaften</div>
+    ${buildPropsForm(asset)}
+    ${buildResultBlock(asset)}
+    ${buildMassnahmenSection(asset)}
+    <div class="ins-meta" style="margin-top:12px;">ID: ${asset.id} · ${asset.domain}</div>`;
+}
+
+// ── Haupt-Render (floating panel, für Rückwärtskompatibilität) ───────────────
 function renderInspector(asset) {
   const panel = getPanel();
   if (!panel) return;
@@ -668,6 +695,106 @@ function renderInspector(asset) {
   wireMassnahmen(panel, asset);
 }
 
+// ── Asset-Sidebar ─────────────────────────────────────────────────────────────
+const TYPE_ORDER = ['NAP','Schaltanlage','Trafo','NSHV','UV','Verbraucher','Lade','PV','Wind','Batterie','WP','KWK','Nsa'];
+
+export function renderAssetSidebar(filterText) {
+  const container = document.getElementById('asset-sidebar-list');
+  if (!container) return;
+
+  // Zähler im Tab aktualisieren
+  const cntEl = document.getElementById('asset-count');
+  if (cntEl) cntEl.textContent = (ASSETS.items || []).length;
+
+  const ft = (filterText ?? document.getElementById('asset-filter')?.value ?? '').toLowerCase();
+  const items = (ASSETS.items || []).filter(a => !ft || (a.name || '').toLowerCase().includes(ft));
+
+  // Nach Typ gruppieren
+  const groups = {};
+  for (const a of items) {
+    if (!groups[a.type]) groups[a.type] = [];
+    groups[a.type].push(a);
+  }
+
+  let html = '';
+  for (const type of TYPE_ORDER) {
+    if (!groups[type]) continue;
+    const cfg = ASSET_CFG[type];
+    const sorted = groups[type].slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    html += `<div class="asb-group">
+      <div class="asb-group-hdr" style="border-left:3px solid ${cfg.color};">
+        <span>${cfg.icon}</span>
+        <span class="asb-group-lbl">${cfg.label}</span>
+        <span class="asb-group-cnt">${sorted.length}</span>
+      </div>`;
+    for (const a of sorted) {
+      const isOpen = ASSETS.selectedId === a.id;
+      html += `<div class="asb-card${isOpen ? ' asb-open' : ''}" id="asb-card-${a.id}">
+        <div class="asb-card-hdr" data-asid="${a.id}">
+          <span class="asb-card-ico">${cfg.icon}</span>
+          <span class="asb-card-name">${esc(a.name)}</span>
+          <span class="asb-card-chev">${isOpen ? '▲' : '▼'}</span>
+        </div>
+        ${isOpen ? `<div class="asb-card-body">
+          ${buildBodyHtml(a)}
+          <button class="asb-card-del" data-asid="${a.id}">🗑 Löschen</button>
+        </div>` : ''}
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  container.innerHTML = html || '<div class="asb-empty">Keine Assets vorhanden.</div>';
+
+  // Events für geöffnete Karte verdrahten
+  if (ASSETS.selectedId) {
+    const selAsset = (ASSETS.items || []).find(a => a.id === ASSETS.selectedId);
+    const card = document.getElementById(`asb-card-${ASSETS.selectedId}`);
+    if (selAsset && card) {
+      wireEvents(card, selAsset);
+      wireMassnahmen(card, selAsset);
+      // Toggle-Buttons in Sidebar auch neu rendern
+      card.querySelectorAll('.ins-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selAsset.props[btn.dataset.prop] = btn.dataset.val;
+          renderAssetSidebar();
+        });
+      });
+    }
+  }
+
+  // Karten-Header-Klick: auf-/zuklappen
+  container.querySelectorAll('.asb-card-hdr').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const id = hdr.dataset.asid;
+      ASSETS.selectedId = ASSETS.selectedId === id ? null : id;
+      renderAssetSidebar();
+      if (ASSETS.selectedId) {
+        const card = document.getElementById(`asb-card-${ASSETS.selectedId}`);
+        card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+  });
+
+  // Löschen-Buttons
+  container.querySelectorAll('.asb-card-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const asset = (ASSETS.items || []).find(a => a.id === btn.dataset.asid);
+      if (!asset) return;
+      if (!confirm(`Asset "${asset.name}" wirklich löschen?`)) return;
+      if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
+      deleteAsset(asset.id);
+      redrawAllAssets();
+      ASSETS.selectedId = null;
+      renderAssetSidebar();
+    });
+  });
+}
+
+export function filterAssetSidebar(text) {
+  renderAssetSidebar(text);
+}
+
 function wireEvents(panel, asset) {
   // Textfelder, Zahlenfelder, Gebäude-Zuweisung
   panel.querySelectorAll('[data-field]').forEach(inp => {
@@ -703,11 +830,11 @@ function wireEvents(panel, asset) {
     el.addEventListener('change', handler);
   });
 
-  // Toggle-Buttons (Batterie Betriebsmodus)
+  // Toggle-Buttons (Batterie Betriebsmodus) — im floating panel: Panel neu rendern
   panel.querySelectorAll('.ins-toggle-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       asset.props[btn.dataset.prop] = btn.dataset.val;
-      renderInspector(asset); // neu rendern für Button-Highlight
+      if (panel.id === 'asset-inspector') renderInspector(asset);
     });
   });
 
@@ -734,8 +861,10 @@ function wireEvents(panel, asset) {
 
 // Window-Bridge
 setTimeout(() => {
-  window.openAssetInspector    = openAssetInspector;
-  window.closeAssetInspector   = closeAssetInspector;
-  window.showInvestitionsplan  = showInvestitionsplan;
+  window.openAssetInspector     = openAssetInspector;
+  window.closeAssetInspector    = closeAssetInspector;
+  window.showInvestitionsplan   = showInvestitionsplan;
   window.renderSidebarAssetList = renderSidebarAssetList;
+  window.renderAssetSidebar     = renderAssetSidebar;
+  window.filterAssetSidebar     = filterAssetSidebar;
 }, 0);

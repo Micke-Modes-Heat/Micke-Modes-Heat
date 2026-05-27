@@ -12,6 +12,7 @@ import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
 import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
+import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSpannungsfall, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { ASSETS, TYPE_RANK, getAssetStatus } from './13a-assets-core.js';
 
 export function epConfirm(title, message, opts) {
@@ -237,8 +238,17 @@ export function addStromNode(type, latlng, props) {
     if (!n) return label;
     let tt = '<b>' + n.label + '</b> (' + type.toUpperCase() + ')';
     if (type === 'trafo') tt += '<br>Nennleistung: ' + (n.ratedKva || 630) + ' kVA';
+    if (type === 'trafo' && n._auslastungPct != null) {
+      const auslColor = n._auslastungPct < 80 ? '#4caf50' : n._auslastungPct < 100 ? '#f9a825' : '#e53935';
+      tt += ' — <span style="color:' + auslColor + '">' + n._auslastungPct.toFixed(0) + ' %</span>';
+    }
     if (type === 'nap') tt += '<br>Anschlussleistung: ' + (n.maxKva || '∞') + ' kVA';
     if (n.peakLoadKw != null) tt += '<br>Last: ' + n.peakLoadKw.toFixed(1) + ' kW';
+    if (n.ikMinA > 0 && isFinite(n.ikMinA)) {
+      const ikColor = n.ikMinA < 1000 ? '#f9a825' : '#4caf50';
+      tt += '<br>Ik\'\': <span style="color:' + ikColor + '">'
+          + (n.ikMaxA / 1000).toFixed(2) + ' / ' + (n.ikMinA / 1000).toFixed(2) + ' kA</span>';
+    }
     return tt;
   }, { sticky: true, className: 'geb-tooltip' });
 
@@ -645,7 +655,9 @@ export function buildStromEdgeTooltip(e) {
   tt += '<br>Leistung: ' + Math.abs(e.peakFlowKw).toFixed(1) + ' kW';
   tt += ' (' + (e.flowDirection > 0 ? '→ Verbraucher' : '← Rückspeisung') + ')';
   if (e._nVerbraucher > 0) tt += '<br>Verbraucher: ' + e._nVerbraucher + ' (GZF ' + (e._gzf != null ? e._gzf.toFixed(2) : '1.00') + ')';
-  tt += '<br>Strom: ' + e.peakCurrentA.toFixed(1) + ' / ' + e.ratedCurrentA.toFixed(0) + ' A';
+  const izEff = e._izEff ?? e.ratedCurrentA;
+  const kIzStr = (e._kIz != null && Math.abs(e._kIz - 1) > 0.005) ? ' (kIz ' + e._kIz.toFixed(2) + ')' : '';
+  tt += '<br>Strom: ' + e.peakCurrentA.toFixed(1) + ' / ' + izEff.toFixed(0) + ' A' + kIzStr;
   const auslColor = e.auslastungPct < 80 ? '#4caf50' : e.auslastungPct < 100 ? '#f9a825' : '#e53935';
   tt += '<br>Auslastung: <span style="color:' + auslColor + '">' + e.auslastungPct.toFixed(1) + ' %</span>';
   const duColor = e.deltaUPct < 1 ? '#4caf50' : e.deltaUPct < 2 ? '#8bc34a' : e.deltaUPct < 3 ? '#f9a825' : '#e53935';
@@ -653,6 +665,12 @@ export function buildStromEdgeTooltip(e) {
   if (e.fuseA > 0) {
     const fuseColor = e.peakCurrentA > e.fuseA ? '#e53935' : '#4caf50';
     tt += '<br>Sicherung: <span style="color:' + fuseColor + '">' + e.fuseA + ' A</span>';
+  }
+  // Ik'' am Endknoten (weiter von NAP entfernt)
+  const endNode = window.stromNodes.find(n => n.id === e.v) || window.stromNodes.find(n => n.id === e.u);
+  if (endNode?.ikMinA > 0 && isFinite(endNode.ikMinA)) {
+    const ikColor = endNode.ikMinA < 1000 ? '#f9a825' : '#4caf50';
+    tt += '<br>Ik\'\' (Ende): <span style="color:' + ikColor + '">' + (endNode.ikMinA / 1000).toFixed(2) + ' kA</span>';
   }
   return tt;
 }
@@ -1091,7 +1109,7 @@ export function _recalcStromNetzInner() {
             pvKw = (pvH[szHour]||0) * anteil;
           }
         } else {
-          pvKw = kwp * 0.85;
+          pvKw = kwp * 1.0; // 100% STC = Worst-Case für Rückspeiseberechnung
         }
         nm.loadKw -= pvKw;
         erzNode.peakLoadKw = -pvKw;
@@ -1121,7 +1139,7 @@ export function _recalcStromNetzInner() {
             ? (arrSum(pvH) / 8760) * anteil
             : (pvH[szHour]||0) * anteil;
         } else {
-          pvKw = kwp * 0.85;
+          pvKw = kwp * 1.0; // 100% STC = Worst-Case für Rückspeiseberechnung
         }
         nodeMap[g.id].loadKw -= pvKw;
       }
@@ -1153,15 +1171,14 @@ export function _recalcStromNetzInner() {
   }
 
   // Gleichzeitigkeitsfaktor (GZF)
-  const gzfMethode = document.getElementById('strom-gzf-methode')?.value || 'vde';
+  const gzfMethode = document.getElementById('strom-gzf-methode')?.value || 'din18015';
   const gzfManuell = parseFloat(document.getElementById('strom-gzf-manuell')?.value) || 0.6;
-  // VDE-Richtwerte: g(n) = 1/n^0.4 (Annäherung an DIN 18015 Tabelle)
+
   function _gzf(nVerbraucher) {
     if (gzfMethode === 'keine') return 1.0;
     if (gzfMethode === 'manuell') return Math.max(0.1, Math.min(1.0, gzfManuell));
-    // VDE: 1→1.0, 2→0.76, 5→0.53, 10→0.40, 20→0.30
-    if (nVerbraucher <= 1) return 1.0;
-    return Math.max(0.2, 1.0 / Math.pow(nVerbraucher, 0.4));
+    if (gzfMethode === 'vde') return gzfVDE(nVerbraucher);
+    return gzfDIN18015(nVerbraucher); // din18015 (default)
   }
 
   // Bottom-up: Anzahl Verbraucher und Summe Einzellasten pro Knoten zählen
@@ -1197,25 +1214,31 @@ export function _recalcStromNetzInner() {
 
   // Cable sizing + voltage drop
   const U = 400; // V (NS Drehstrom)
-  const cosPhi = 0.95;
+  const cosPhi = parseFloat(document.getElementById('strom-ns-cosphi')?.value) || 0.95;
+  // Leitertemperatur für Widerstandskorrektur (IEC 60228): ρ(T) = ρ(20°C) × (1 + α·ΔT)
+  const tLeiter = parseFloat(document.getElementById('strom-leiter-temp')?.value) || 70;
+  // Iz-Korrekturfaktoren (IEC 60364-5-52): Temperatur, Häufung, Verlegeart
+  const tBoden    = parseFloat(document.getElementById('strom-iz-tboden')?.value) ?? 20;
+  const nKabel    = Math.max(1, parseInt(document.getElementById('strom-iz-nkabel')?.value) || 1);
+  const verlegeart = document.getElementById('strom-iz-verlegeart')?.value || 'erde';
+  const kIz = calcKizTemp(tBoden) * calcKizGruppe(nKabel) * (KIZ_VERLEGEART[verlegeart] ?? 1.0);
   const defaultType = document.getElementById('strom-kabel-typ')?.value || 'NAYY';
 
   window.stromEdges.forEach(e => {
     const absKw = Math.abs(e.peakFlowKw);
-    const I = absKw * 1000 / (Math.sqrt(3) * U * cosPhi); // Ampere
+    const I = calcStrom(absKw, U, cosPhi);
     e.peakCurrentA = I;
     e.flowDirection = e.peakFlowKw >= 0 ? 1 : -1;
 
-    // Auto cable sizing
+    // Auto cable sizing — Iz_eff = Iz_table × kIz
     const kt = KABEL_TYPEN[e.cableType || defaultType] || KABEL_TYPEN.NAYY;
     if (e.autoSized || e.crossSection === 0) {
       e.cableType = defaultType;
-      const section = kt.sections.find(s => s.Iz >= I);
+      const section = kt.sections.find(s => s.Iz * kIz >= I);
       if (section) {
         e.crossSection = section.mm2;
         e.ratedCurrentA = section.Iz;
       } else {
-        // Oversized: use largest
         const last = kt.sections[kt.sections.length - 1];
         e.crossSection = last.mm2;
         e.ratedCurrentA = last.Iz;
@@ -1225,14 +1248,19 @@ export function _recalcStromNetzInner() {
       e.ratedCurrentA = sec ? sec.Iz : 0;
     }
 
-    e.auslastungPct = e.ratedCurrentA > 0 ? (I / e.ratedCurrentA * 100) : 0;
+    e._kIz = kIz;
+    e._izEff = e.ratedCurrentA * kIz; // effektiver Dauerstrom unter Betriebsbedingungen
+    e.auslastungPct = e._izEff > 0 ? (I / e._izEff * 100) : 0;
 
-    // Voltage drop: ΔU = √3 × I × L × (R × cosφ + X × sinφ) / U
-    const R_per_m = kt.rhoOhmMm2pM / e.crossSection; // Ohm/m
-    const X_per_m = 0.00008; // ~0.08 mΩ/m for underground cable
-    const sinPhi = Math.sqrt(1 - cosPhi * cosPhi);
-    const deltaU_V = Math.sqrt(3) * I * e.lengthM * (R_per_m * cosPhi + X_per_m * sinPhi);
-    e.deltaUPct = (deltaU_V / U) * 100;
+    // Spannungsfall nach DIN VDE 0276 mit temperaturkorrigiertem Widerstand
+    const R_per_m = calcRhoKorr(kt.rhoOhmMm2pM, kt.alphaK || 0.004, tLeiter) / e.crossSection;
+    const sec = kt.sections.find(s => s.mm2 === e.crossSection);
+    const X_per_m = sec?.xMuOhmPerM ? sec.xMuOhmPerM / 1e6 : 0.00008;
+    e.deltaUPct = calcSpannungsfall(I, e.lengthM, R_per_m, X_per_m, U, cosPhi);
+
+    // Impedanz für Ik''-Berechnung speichern
+    e._R_total = R_per_m * e.lengthM;
+    e._X_total = X_per_m * e.lengthM;
   });
 
   // NAP: akkumulierte Gesamtlast zuweisen
@@ -1240,34 +1268,11 @@ export function _recalcStromNetzInner() {
     nap.peakLoadKw = accLoad[napId];
   }
 
-  // Trafo utilization
+  // Trafo-Auslastung: Lasten bereits im Bottom-up-BFS akkumuliert
   window.stromNodes.filter(n => n.type === 'trafo').forEach(tn => {
-    let loadBehind = 0;
-    // Sum all nodes behind this trafo
-    const behindTrafo = new Set();
-    const tQueue = [tn.id];
-    const tVisited = new Set([tn.id]);
-    while (tQueue.length) {
-      const c = tQueue.shift();
-      behindTrafo.add(c);
-      if (nodeMap[c]) {
-        nodeMap[c].adj.forEach(a => {
-          if (!tVisited.has(a.to) && parentEdge[a.to] && parentEdge[a.to].pNodeId === c) {
-            tVisited.add(a.to);
-            tQueue.push(a.to);
-          }
-        });
-      }
-    }
-    let nVerb = 0;
-    behindTrafo.forEach(nId => {
-      if (nId !== tn.id && nodeMap[nId]) {
-        loadBehind += Math.abs(nodeMap[nId].loadKw);
-        if (nodeMap[nId].loadKw > 0 && nodeMap[nId].node.type === 'geb') nVerb++;
-      }
-    });
-    tn.peakLoadKw = loadBehind * _gzf(nVerb);
-    tn._auslastungPct = tn.ratedKva > 0 ? (loadBehind / tn.ratedKva * 100) : 0;
+    if (!nodeMap[tn.id]) return;
+    tn.peakLoadKw = accLoadSum[tn.id] * _gzf(accNVerb[tn.id]);
+    tn._auslastungPct = tn.ratedKva > 0 ? (tn.peakLoadKw / tn.ratedKva * 100) : 0;
   });
 
   // Critical voltage drop (path NAP → leaf)
@@ -1282,7 +1287,36 @@ export function _recalcStromNetzInner() {
     }
     if (pathDu > maxDeltaU) maxDeltaU = pathDu;
   });
-  window._stromNetzKpis = { maxDeltaU: maxDeltaU };
+
+  // Ik''-Berechnung: Impedanz-Akkumulation NAP → Knoten (IEC 60909)
+  // Trafo-Quellimpedanz: erster Trafo im BFS-Baum (Unendlich-Netz auf MS-Seite)
+  let Zt_R = 0, Zt_X = 0;
+  const srcTrafo = window.stromNodes.find(n => n.type === 'trafo' && nodeMap[n.id]);
+  if (srcTrafo) {
+    const zi = calcTrafoImpedanz(srcTrafo.ukPct || 4, srcTrafo.ratedKva || 630, U);
+    Zt_R = zi.R; Zt_X = zi.X;
+  }
+  const pathR = {}, pathX = {};
+  pathR[napId] = 0; pathX[napId] = 0;
+  for (let i = 1; i < order.length; i++) {
+    const curr = order[i];
+    const pInfo = parentEdge[curr];
+    if (!pInfo) { pathR[curr] = 0; pathX[curr] = 0; continue; }
+    pathR[curr] = (pathR[pInfo.pNodeId] || 0) + (pInfo.e._R_total || 0);
+    pathX[curr] = (pathX[pInfo.pNodeId] || 0) + (pInfo.e._X_total || 0);
+  }
+  let minIkA = Infinity;
+  order.forEach(nodeId => {
+    const n = window.stromNodes.find(sn => sn.id === nodeId);
+    if (!n) return;
+    const R = (pathR[nodeId] || 0) + Zt_R;
+    const X = (pathX[nodeId] || 0) + Zt_X;
+    n.ikMaxA = calcIk(U, R, X, 1.05);
+    n.ikMinA = calcIk(U, R, X, 0.95);
+    if (isFinite(n.ikMinA) && n.ikMinA < minIkA) minIkA = n.ikMinA;
+  });
+
+  window._stromNetzKpis = { maxDeltaU, minIkA: isFinite(minIkA) ? minIkA : 0, kIz };
 
   // ── Stromnetz-Kosten berechnen ──
   _calcStromNetzKosten();
@@ -1783,6 +1817,20 @@ export function updateLpStromSummary() {
   const duColor = du < 1 ? '#4caf50' : du < 2 ? '#8bc34a' : du < 3 ? '#f9a825' : '#e53935';
   const duEl = document.getElementById('lp-strom-delta-u');
   if (duEl) { duEl.textContent = du > 0 ? du.toFixed(2) + ' %' : '—'; duEl.style.color = duColor; }
+
+  // Min. Ik''
+  const minIkKa = (kpis.minIkA || 0) / 1000;
+  const ikColor = minIkKa > 0 ? (minIkKa < 1 ? '#f9a825' : '#4caf50') : '';
+  const ikEl = document.getElementById('lp-strom-ik-min');
+  if (ikEl) { ikEl.textContent = minIkKa > 0 ? minIkKa.toFixed(2) + ' kA' : '—'; ikEl.style.color = ikColor; }
+
+  // Iz-Korrekturfaktor
+  const kizEl = document.getElementById('lp-strom-kiz');
+  if (kizEl) {
+    const k = kpis.kIz ?? 1;
+    kizEl.textContent = k.toFixed(2);
+    kizEl.style.color = k < 0.8 ? '#f9a825' : 'var(--text)';
+  }
 
   // Kabellänge
   const totalLen = window.stromEdges.reduce((s, e) => s + (e.lengthM || 0), 0);
