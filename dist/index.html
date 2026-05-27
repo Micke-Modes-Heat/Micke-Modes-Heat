@@ -19792,9 +19792,12 @@ async function loadOsmStrassen() {
   const query = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
 
   try {
+    // POST als application/x-www-form-urlencoded — nötig damit Overpass
+    // 200 OK + CORS-Header zurückschickt (ohne Content-Type → 406 ohne CORS-Header)
     const resp = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
-      body: query,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(query),
     });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
@@ -41750,83 +41753,15 @@ function autoNetzAssets(opts = {}) {
 }
 
 
-// ── main.js ──
-// ── main.js — ES Module entry point ────────────────────────────────────────
-// Imports all modules and exposes their exports on window for data-* handlers.
 
-var netzKosten = { KMR_KOSTEN, KABEL_TYPEN, TRAFO_GROESSEN };
-var erzeugerCfg = { ERZEUGER_CFG, NUTZUNG_DEFAULTS };
-var optimizerDefaults = { OPT_INVEST_DEFAULT, OPT_NUTZUNG, OPT_IH, OPT_EE_KEYS, OPT_MERIT_ORDER };
-var hilfeTexte = { HILFE_TEXTE };
-var globals = { gebaeude, _expandedIds, _vizTimer, updateVizDebounced, currentMode, currentViz, drawingId, drawPoints, drawPolyline, drawStartMarker, selectedId, idCounter, R_MIN, globalYear, networkLocked, areaDrawing, areaPoints, areaPolyline, areaPolygon, areaLatLngs, areaStartMarker, areaEditMarkers, netzEdges, calculatedLoad, edgeWaypoints, edgeKey, isDrawingEdge, edgeStartId, selectedStrandId, netzPruningMode, stromEdges, stromNodes, stromNextId, isPlacingStromNode, isDrawingStromEdge, stromEdgeStartId, stromNetzVisible, stromColorMode, stromNetzSubTab, isDrawingTrasse, trassePoints, trassePolyline, trasseEditMarkers, trasseSegments, trasseCurrentSegStart, trasseDetached, fliessgewaesser, fliessgewaesserLayerGroup, fliessgewaesserVisible, isDrawingRiver, riverPoints, riverDrawPolyline, riverEditMarkers, lwWp, lwWpLayerGroup, lwWpSchallLayerGroup, lwWpVisible, lwWpSchallVisible, isPlacingLwWp, netzVisible, gebVisible, labelsVisible, _batchImporting, geoThermie, geoLayerGroup, isPlacingGeo, stromEmF, stromEmFLZ, bhkwCo2Gutschrift, pvCo2Gutschrift, GEG_VERDRAENGUNG_RATIO, gasKessel, stromkessel, solarthermieAktiv, thermSpeicherAktiv, freiflaechen, ffCounter, ffDrawId, ffDrawPoints, ffDrawPolyline, ffDrawStartMarker, bhkw, erzeugerIconLayerGroup, gasEmF, heizoelKessel, heizoelEmF, pelletsKessel, pelletsLayerGroup, pelletsEmF, fernwaermeEmF, isPlacingPellets, heizhackschnitzel, hhsLayerGroup, hhsEmF, isPlacingHhs, pefStrom, pefWP, pefGas, pefHeizoel, pefPellets, pefHhs, pefFernwaerme, PEF_KAPPUNG, fernwaerme, fernwaermeLayerGroup, isPlacingFernwaerme, verbindungsLayerGroup, variantResults, toggleVergleich, _cacheVariantTimer, cacheVariantResultsDebounced, cacheVariantResults, refreshVergleich, renderVergleich, _renderParetoChart, _getEtaMap, varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, captureNetzState, applyNetzState, captureErzeugerState, applyErzeugerState, activateVariant, addVariante, deleteVariante, renameVariante, renderVariantenBar, updateVariantBanner, isExcluded, toggleAusschluss };
-var netzPhysik = { overlayLayer, overlayMarkerNW, overlayMarkerSE, standardDNs, kostenSzenario, netzColorMode, getKostenProM, getUWertForDN, getVFlowForDN, calcEdgeLength, getWLD, getWLDColor, setNetzColorMode, getEdgeColor, lerpColor, tempToColor, interpolateAlongPts, getEdgeMidDisplayPt, clearEdgeGradient, drawEdgeGradient, addEdgeMidHandle, updateNetzColorLegend };
-var gebaeude = { map, osmTile, esriTile, currentTile, toggleTile, THEMES, currentThemeIdx, cycleTheme, applyTheme, setGlobalYear, toggleNetworkLock, _syncNetworkLockUI, _invalidateStats, getComputedStats, _rescaleLastgangForYear, _updateLastgangScaleInfo, rgbToHex, getSpezColor, getColor, getColorVal, getSizeVal, getModeVal, getRange, getSizeRange, getColorRange, getRadius, getZoomScale, getEffectiveRMax, nextGebName, addGebaeude, attachPolygonLayer, removeGebaeude, clearOsmBuildings, IWU_SPEZ_WAERME, getSpezNachBaujahr, estimateStockwerke, polygonPerimeterM, sharedWallLength, calcHeizlastFromGeometry, calcAutoEnergy, osmNutzung, OSM_SKIP_TYPES, NUTZUNGSTYPEN_CUSTOM, getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, STROM_SPEZ_DEFAULTS, STROM_PROFIL_MAP, getAutoStrom, getAutoSpezStrom, getGebStromMwh, getGebStromProfil, getGebVbh, _slpCache, getSlpProfile, aggregateGebStrom, updateField, renameGebaeude, highlightCard, togglePlanPanel, changePlanMode, savePlan, clearPlan };
-var karteWerkzeuge = { polygonCenter, offsetPolyline, sinusWobblePolyline, closestPointOnPolyline, polygonAreaM2, updateViz, buildMapLabel, selectFromMap, startMapRename, buildTooltip, setViz, setGebVisible, setLabelsVisible, setMode, cleanupDrawAreaEvents, clearArea, lockArea, toggleDrawArea, onDrawAreaClick, onDrawAreaCancel, finishAreaDraw, toggleDrawTrasse, showTrasseFinishBtn, hideTrasseFinishBtn, redrawTrasse, deleteTrasse, clearTrasse, toggleFliessgewaesserPanel, toggleDrawRiver, tryFinishOrToggleRiver, redrawRiverDuringDraw, finishDrawRiver, redrawFliessgewaesser, updateFliessgewaesserVisibility, setFliessgewaesserVisible, getFliessgewaesserAbkuehlung, updateFliessgewaesserAbkuehlungDisplay, updateFliessgewaesserData, clearFliessgewaesser, calcWirtschaftlichkeit, _co2KostenET, updateWirtDisplay, lwWpPlatzbedarfM2, lwWpSchallRadiusM, toggleLwWpPanel, togglePlaceLwWp, placeLwWpAt, redrawLwWp, updateLwWpDisplay, calcLwaAuto, updateLwWpData, lwwpUseNetworkValues, setLwWpVisible, updateLwWpVisibility, setSchallVisible, clearLwWp, toggleKennwertePanel };
-var erzeuger = { toggleFFPvPanel, calcFFKwp, attachFFLayer, startDrawFF, cancelDrawFF, finishDrawFF, removeFreiflaeche, updateFF, renderFFPanel, toggleBhkwPanel, activateBhkw, updateBhkwDisplay, clearBhkw, toggleStromkesselPanel, activateStromkessel, updateStromkesselDisplay, clearStromkessel, toggleGasKesselPanel, activateGasKessel, windSvg, drillSvg, calcVerdraengungEmF, updateAllEmF, _erzeugerIconData, redrawErzeugerIcons, _epKey, closeErzeugerPopup, showErzeugerPopup, _epDrawHourly, _epDrawMonthly, _epDrawCop, redrawGasKessel, updateGasKesselDisplay, gasKesselUseNetworkValues, clearGasKessel, toggleHeizoelPanel, activateHeizoelKessel, updateHeizoelDisplay, clearHeizoelKessel, redrawHeizoelKessel, togglePelletsPanel, activatePellets, updatePelletsDisplay, clearPellets, redrawPellets, togglePlacePellets, woodSvg, oilSvg, toggleHhsPanel, activateHhs, updateHhsDisplay, clearHhs, redrawHhs, togglePlaceHhs, toggleFernwaermePanel, activateFernwaerme, updateFernwaermeDisplay, clearFernwaerme, redrawFernwaerme, togglePlaceFernwaerme, redrawVerbindungslinien };
-var netz = { toggleGeoPanel, geoUseNetworkValues, geoLambdaToQperm, geoUpdateQperm, _setDefault30Pct, _geoDispatchTimer, _geoTriggerDispatch, calcGeoThermie, togglePlaceGeo, placeGeoAt, redrawGeo, setGeoVisible, clearGeo, startDraw, cancelDraw, finishDraw, hidePanels, toggleOverlayPanel, showOsmPanel, showAreaEditPanel, toggleChartPanel, toggleNetzPanel, loadOverlay, setupOverlayOnMap, updateOverlayBounds, changeOverlayOpacity, clearOverlay, pointInPolygon, _detectBundesland, _wfsFetchBuildings, parseWfsGeoJson, OVERPASS_ENDPOINTS, _overpassFetchWithRetry, loadOsmBuildings, parseOsmLevels, parseOsmHeight, parseOsmBaujahr, parseOsmData, populateZentraleSelect, autoGenerateNetz, addNetzEdge, clearNetz, applyWaypoints, abklemmenGebaeude, setNetzVisible, syncVLTemps, recalcNetz, updateStrandDropdown, updateStrangReport, updateNetzStrandVisibility, updateRohrListe, exportRohreCSV, toggleDrawEdge, startNetzEdgeFrom };
-var gebaeudeIo = { updateTotals, cardDotColor, drawChart, _renderCompactRow, _pvWpM2Global, calcGebKwp, getDachDefaultNeigung, getPvKorrFaktor, calcGebKwpKorr, detectRoofAzimutFromPolygon, _gebLabelHtml, _updateGebLabelPv, updateGebPv, toggleGebPvPanel, gebPvAllenZuweisen, renderGebPvPanel, _renderExpandedPanel, _rerenderCard, toggleGebExpand, renderList, escHtml, escVal, flyTo, _buildProjectData, exportJSON, importJSON, _loadProject, loadGebaeudeFromParent, sendToLiegenschaftsrechner, showHint, hideHint, sty, dashOffset, _animPipesRunning, animatePipes, startAnimPipes, stopAnimPipes, stromDashOffset, _animStromRunning, animateStromPipes, startAnimStrom, stopAnimStrom };
-var uiPanels = { setNutzung, toggleSelect, updateBulkBar, applyBulk, clearSelection, filterText, filterList, addrDebounce, addrSelected, addrSearch, selectAddr, addrKeydown, autosave, tryRestoreAutosave, loadAutosave, HIGHWAY_KOSTEN, autoAssignEdgeCosts, activeEdgePopup, showEdgePopup, closeEdgePopup, setEdgeDN, setEdgeKost, togglePruningMode, toggleEdgePruned, applyEdgePrunedStyle, pruneSubtree, unpruneSubtree, getDownstreamNodeId, updatePruningSummary, clearAllPruning, getKostenProMKlasse, updatePrintLegend, startDrag, toggleSidebar, togglePanelMinimize, currentViewMode, setViewMode, _drawHiddenPanels, _hideForDraw, _restoreAfterDraw, leftPanelCollapsed, toggleLeftPanel, toggleSection, setLeftTab, setSidebarTab, updateLpMeritOrder, updateLpErgebnisKpis, updateLpStepProgress, updateLpGebietStatus, updateLpNetzSummary, analyseCurrentSection, waermeCurrentTab, setAnalyseSection, setWaermeTab, _renderWaermeTab, _embedPanelInline, _restoreInlinePanels, refreshAnalyseView, toggleEbenenPanel };
-var emissionen3d = { _emCurrentTab, _emZoom, _emRubber, setEmissionenTab, _calcEmHourly, _calcPefData, _updateEmKpis, _renderEmissionenTab, _renderEmStunden, _emSetupHover, _emSetupZoom, _emZoomReset, _renderEmDauerlinie, _renderEmMonat, _renderEmPef, renderAnalyseDispatch, _setEkroneMode, _renderEnergiekrone, _renderCarpet3D, _renderHelix3D, _attachEkroneInteraction, renderAnalyseErzeugerTable, refreshVergleichView, exportVergleichCSV };
-var exportMod = { exportDispatchCSV, exportGebaeudeCSV, exportMassnahmenPDF, exportElektroXLSX, _origRecalcNetz };
-var stromnetz = { epConfirm, epPrompt, openCableInspector, setNetzSubTab, stromNodeIcon, startPlaceStromNode, cancelPlaceStromNode, addStromNode, removeStromNode, startDrawStromEdge, cancelDrawStromEdge, stromNodeClick, routeAlongTrasse, buildTrasseGraph, routeAlongTrasseWithGraph, polylineLength, addStromEdge, buildStromEdgeTooltip, removeStromEdge, updateStromEdgeGeometry, setStromNetzVisible, setStromSzenario, _getStromSzenarioHour, setStromColorMode, hookStromNodeClicks, _autoRegisterErzeugerStromNodes, stromSzenario, _autoConnectStromNodes, _showStromProgress, _hideStromProgress, _recalcStromBusy, recalcStromNetz, _recalcStromNetzInner, _calcStromNetzKosten, getStromEdgeColor, updateStromEdgeVisuals, autoStromNetz, schnellberechnungStrom, _schnellberechnungStromInner, updateLpStromSummary, elCalcAssets, clearAssetStatusRings, loadOsmStrassen, adoptAllOsmStrassen, toggleOsmStrassenVisible, clearOsmStrassen, clearStromNetz };
-var sankey = { showSankey, _buildSankeyData, _buildSankeyCO2Data, _renderSankeyModal, _drawSankey };
-var gbiLastgang = { GL_MONTH_START, GL_MONTH_HOURS, gbiData, gbiColumns, gbiHeaders, gbiRawRows, gbiMatches, gbiManualSelectedCsv, gbiManualSelectedGeb, gbiManualMode, openGebListImport, gbiClose, _gbiDownloadVorlage, gbiReset, gbiFileSelected, gbiAutoMapColumns, gbiShowMapping, gbiBackToUpload, gbiStartMatching, gbiCalcScore, gbiStringSimilarity, gbiMapNutzung, gbiShowResults, gbiRenderMatchTable, gbiReject, gbiUnreject, gbiBackToMapping, gbiApplyMatches, gbiApplyToGeb, gbiStartManualMode, gbiStopManualMode, gbiBackToResults, gbiRenderManualList, gbiManualSelectCsv, gbiManualSelectGeb, _origGebClick, gbiHookGebClicks, gbiFinish, glRawCsv, glRawData, glLastgangKw, glColHeaders, glInit, glOnStadtChange, _klimaLoaded, glJsFilename, glDecodeKlimaB64, glGetTempH, glUpdateKlimaStatus, toggleGrundlagenPanel, toggleAnalysePanel, toggleWirtschaftPanel, toggleStromPanel, glPasteMonatswerte, glMonatChange, glGetMonatswerte, glGetGesamtMwh, glDragOver, glDragLeave, glDrop, glFileSelected, glDetectColumns, glParseLastgang, glRenderSplit, glAutoNetzverlust, glSetUploadError, glClearLastgang, glRenderPreview, glUpdateStatus };
-var glBerechnen = { _glAutoTimer, _glIsRunning, glKannBerechnen, glBerechnenDebounced, glBerechnenAuto, glSkaliereMitMonaten, glAnwendeMonatsfloor, glSkalierGebaeude, toggleSolarthermiePanel, updateSolarthermieDisplay, clearSolarthermie, _stDrawPoints, _stDrawPolyline, _stDrawStartMarker, startDrawST, cancelDrawST, _stMapClick, _stMapUndo, _finishDrawST, _attachSTLayer, makeStProfile8760, toggleThermSpeicherPanel, tsTypChanged, _autoSpeicherVolumen, updateThermSpeicherDisplay, getThermSpeicherParams, clearThermSpeicher, _removeThermSpeicherMapLayers, redrawThermSpeicherMap, _drawSpeicherIcon, _drawErdbeckenSpeicher };
-var dispatchCore = { isErzeugerAktiv, moBeiAktivierung, moBeiDeaktivierung, onSystemStateUpdated, _getFallbackJdl, _quelleTemp, _renderDeckungWrap, updateAllDeckungen, _dispatchCore, _deckungen8760, _updateWpPanelDispatch, _WAERME_IDS, _DISPLAY_FNS, _updateErzeugerWaerme, _renderWpCopChart, _moDragKey, moMouseDown, moMouseUp, moSwap };
-var analysisCharts = { saCurrentTab, DA_COLORS_FALLBACK, DA_LABELS, _updateLogoBars, _daColor, _daZoom, _daRubber, saSetTab, _lgCurrentView, _lgSetView, _lgRenderCurrentView, _daRenderHeatmap, _daRenderMultiples, _daGetData, _daSetupCanvas, _daLegend, _daMaxArr, _daNoData, MONATSH, MONAT_LABELS, _daMonatLinien, _daZoomLabel, _daUpdateZoomLabel, daZoomReset, daRenderLastgang, _daZeitlinien, _daBindEvents, _daDrawChart, daRenderJdl, daRenderWoche, daRenderTempVL, daRenderMetriken, _dimJdlSorted, _dimCumRight, _dimTotalEnergy, _dimPMax, _dimInit, _dimHcut, _dimEnergy, _dimFindP, dimOnSlider, dimRender, dimDraw, _splitZoom, _splitRubber, _splitTwwFloor, _splitGetData, splitZoomReset, splitOnKwSlider, _splitSetView, _splitRenderTreemap, splitRender, splitDraw, _splitBindEvents, daUpdateIfOpen };
-var analysisEconomics = { _parseGeoBohrMeter, _calcKostenShared, _calcBausteinJK, _calcBausteinJKDetail, wirtBausteinBlur, wirtVdiBlur, _syncZins, calcWirtschaftPanel, _wirtSetView, _wirtRenderWaterfall, _renderWirtCo2Chart, calcJahresscheiben, renderJahresscheibenChart };
-var calcEngine = { CalcEngine };
-var pvProfile = { _PV_SUN, _PV_MONTH, _PV_SPEZ_DEFAULT, pvAusrichtungChanged, makePvProfile8760, pvFileSelected, pvClear, togglePvPanel, toggleBatteriePanel, getBatParams, stromFileSelected, stromClear, _onGaspreisChange, _onStrompreisChange, onPvVergModellChange, updatePvInvestAuto };
-var pvCalc = { _calcStromTimer, calcStromPanelDebounced, calcStromPanel };
-var pvChartsOpt = { _stromRenderMonatsChart, _stromCurrentTab, _stromSetTab, drawSankeyStrom, _stromRenderLastgang, _stromRenderJdl, _stromFlussWeek, _stromFlussWeekChange, _stromRenderFlussChart, calcPvBatOptimierung, _runPvBatOpt, _renderOptHeatmap, _attachOptHover, _setOptView, _renderOpt3D, _attachOpt3DInteraction };
-var optimizerCore = { _OPT_CE_KEY, _optInvestProKw, _optAnnF, _defaultGuetegrad, _readGuetegrad, _optDispatch8760, _optPvBatSim8760, _optKennwerte2, _optScore, _findOptPvBatMain, _optPopulateYearSelect, _optUpdateYearInfo, _optGetScaledLastgang, _optUpdateEstimate, _calcNetzInvestForOpt, _collectOptDomParams, _optVarianteUebernehmen, updateFooterStatus, toggleStatusPanel, updateStatusPanel, _origOnSystemStateUpdated };
-var hourlyLive = { _hourlyModeActive, _toggleHourlyMode, _showHourlySlider, _hideHourlySlider, _hourToDateStr, _onHourSlider, _removeHourlyOverlay, _drawStackedDispatch, _drawStromBilanz, _buildFlowSVG, _initDragOverlay, _updateHourlyOverlay, _checkShowHourlySlider, _drawSpeicherSocChart, _liveZoomMode, _setLiveZoom, _getLiveZoomRange, _drawLiveXAxis, _updateLiveTimeline, _tlHistoDrawn, _drawTimelineHisto, _liveTlDragging, _liveTlDown, _liveTlMove, _liveStep, _livePlayTimer, _livePlaySpeed, _liveSpeedSteps, _liveTogglePlay, _liveStartPlay, _liveStopPlay, _liveCycleSpeed, _optAborted, _optRunning, _optWorker, _optWorkers };
-var optimizerRun = { runOptimierung, _optAbbrechen, _optFinished, _runOptWorker, _renderWorkerResults };
-var optimizerWorker = { _buildOptWorkerCode, _doRunOptimierung, _optRenderBarChart, _optRenderRadar, _optRenderScatter };
-var hilfeLeitfaden = { _hilfeModus, _hilfeOverlay, _hilfeTooltip, toggleHilfeModus, _showHilfeOverlay, _hideHilfeOverlay, _leitfadenOpen, LEITFADEN_STEPS, toggleLeitfaden, _createLeitfadenPanel, _leitfadenUserToggled, _leitfadenGoTo, _updateLeitfadenStatus };
-
-var assetsCore = { ASSET_CFG, TYPE_RANK, ASSET_PROPS_SCHEMA, ASSETS, assetUid, getAssetStatus, getAssetPropsForYear, createAsset, deleteAsset, getAsset, listAssets, getAssetsForBuilding, clearAssets };
-var assetsRender = { drawAssetMarker, redrawAllAssets, setAssetLayerVisible, isAssetLayerVisible };
-var assetsUi = { buildPalette, setPendingType, togglePalette };
-var assetsAuto = { autoCreateBuildingAssets, reflowAutoAssets };
-var assetsInspector = { openAssetInspector, closeAssetInspector, renderSidebarAssetList, showInvestitionsplan, renderAssetSidebar, filterAssetSidebar };
-var sld = { sldToggle, sldToggleFullscreen, sldZoom, sldExportPDF, sldRender, sldRefresh, sldClick, sldInfoClose };
-var msRing = { elDetectMSRings, elDrawMSRings, elClearMSRings, elCalcMSRing, elCalcN1, elBuildMSHoverOverrides, elRunMSAnalyse, runMSAnalyse, clearMSRings, getMSHoverOverride };
-var netzanalyse = { naGetLoadPoints, naHeatmapToggle, naSetHeatmapMode, naHeatmapSetLayerVisibility, naDrawKabeltrassen, naKabelToggle, naKabelSelectAll, naKabelSelectNone, naImportSelectedKabel, naSetMode, naSetK, naSetMaxKVA, naSetCosPhi, naSetGzf, naSetMinUtil, naSetProxRadius, naSetUseExisting, naSetKabelEurM, naRunTrafoOptimierung, naClearTrafoOptimierung, naRenderPanel, naTogglePanel };
-var slpEditor = { SLP_INFO, buildSlpProfile8760, initBdewProfiles, openSlpEditor, closeSlpEditor };
-var autofillWizard = { showAutofillWizard };
-var elslpRegistry = { ELSLP_WPM2, ELSLP_CUSTOM, getElSlpProfiles, getElSlpById, isBuiltinElSlp, getElSlpWpm2, getElSlpGruppen, showElSlpModal };
-var autonetz = { showAutoNetzDialog, autoNetzAssets };
-
-// Expose all exports on window for data-* event handlers in HTML
-var modules = [
-  netzKosten, erzeugerCfg, optimizerDefaults, hilfeTexte,
-  globals, netzPhysik, gebaeude, karteWerkzeuge,
-  erzeuger, netz, gebaeudeIo, uiPanels,
-  emissionen3d, exportMod, stromnetz, sankey,
-  gbiLastgang, glBerechnen, dispatchCore,
-  analysisCharts, analysisEconomics, calcEngine,
-  pvProfile, pvCalc, pvChartsOpt,
-  optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
-  hilfeLeitfaden,
-  assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
-  slpEditor, autofillWizard, elslpRegistry, autonetz,
-];
-
-for (const mod of modules) {
-  for (const [key, value] of Object.entries(mod)) {
-    window[key] = value;
+// ── Initialisierung (aus main.js) ──
+if (typeof initBdewProfiles === 'function') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { initBdewProfiles(); });
+  } else {
+    initBdewProfiles();
   }
 }
-
-// BDEW-SLP-Tabellen in den Cache laden (ersetzt die vereinfachte Approximation)
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => slpEditor.initBdewProfiles());
-} else {
-  slpEditor.initBdewProfiles();
-}
-
-
 </script>
 </body>
 </html>

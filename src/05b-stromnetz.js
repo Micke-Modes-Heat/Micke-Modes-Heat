@@ -2129,9 +2129,12 @@ export async function loadOsmStrassen() {
   const query = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
 
   try {
+    // POST als application/x-www-form-urlencoded — nötig damit Overpass
+    // 200 OK + CORS-Header zurückschickt (ohne Content-Type → 406 ohne CORS-Header)
     const resp = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
-      body: query,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(query),
     });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
