@@ -325,6 +325,16 @@
           <div class="lp-tool-grid">
             <button class="lp-tool-btn" id="btn-draw-trasse" data-click="toggleDrawTrasse()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;">✏ Trasse zeichnen</button>
           </div>
+          <div class="lp-tool-grid" style="margin-top:6px;">
+            <button class="lp-tool-btn" id="btn-osm-strassen" data-click="loadOsmStrassen()" style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;">↓ Straßen aus OSM laden</button>
+          </div>
+          <div class="lp-tool-grid" style="margin-top:4px;">
+            <button class="lp-tool-btn" data-click="adoptAllOsmStrassen()" style="grid-column:1/-1;font-size:11px;border-color:#ff9800;color:#ff9800;">✓ Alle übernehmen</button>
+          </div>
+          <div class="lp-tool-grid" style="margin-top:4px;">
+            <button class="lp-tool-btn" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()" style="font-size:11px;">👁 Ausblenden</button>
+            <button class="lp-tool-btn" data-click="clearOsmStrassen()" style="font-size:11px;border-color:#e57373;color:#e57373;">✕ Löschen</button>
+          </div>
         </div>
 
         <!-- ── 3. Leitungen zeichnen ── -->
@@ -336,7 +346,7 @@
             <button class="lp-tool-btn" data-click="startDrawStromEdge()" id="btn-draw-strom-edge" style="grid-column:1/-1;">— Kabel zeichnen</button>
           </div>
           <div class="lp-tool-grid" style="margin-top:6px;">
-            <button class="lp-tool-btn" data-click="autoStromNetz()" style="border-color:#66bb6a;color:#66bb6a;">🔌 Auto-Netz</button>
+            <button class="lp-tool-btn" data-click="showAutoNetzDialog()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;">🔌 Auto-Netz</button>
           </div>
         </div>
 
@@ -353,6 +363,7 @@
             <button class="lp-tool-btn" data-click="exportMassnahmenPDF()" style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;">📄 Maßnahmenbericht PDF</button>
             <button class="lp-tool-btn" data-click="exportElektroXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;">📊 Export Excel</button>
             <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;">⚙ Auto-Netz aus Gebäudedaten</button>
+            <button class="lp-tool-btn" data-click="showAutofillWizard()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Verbrauchs- und PV-Werte automatisch ermitteln">✦ Auto-Befüllen (Verbrauch & PV)</button>
           </div>
           <div id="lp-el-calc-result" style="display:none;margin-bottom:8px;font-size:9px;color:var(--text);background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);"></div>
           <div style="font-size:9px;color:var(--muted);margin:4px 0 2px;text-transform:uppercase;letter-spacing:.04em;">Kabeltyp</div>
@@ -1011,64 +1022,86 @@
 
   <button class="sidebar-toggle" id="sidebar-toggle" data-click="toggleSidebar()" title="Sidebar ein-/ausblenden">◀</button>
   <div class="sidebar" id="sidebar">
-    <div class="sidebar-head">Gebäude <span class="geb-count" id="geb-count">0</span></div>
-    <div class="geb-filter">
-      <input class="geb-filter-input" id="geb-filter" type="text" placeholder="🔍 Filter…" data-input="filterList(this.value)"/>
+
+    <!-- ── Tab-Leiste ──────────────────────────────────────────────────────── -->
+    <div class="sb-tabs">
+      <button class="sb-tab active" id="sb-tab-btn-gebaeude" onclick="setSidebarTab('gebaeude')">
+        Gebäude <span class="geb-count" id="geb-count">0</span>
+      </button>
+      <button class="sb-tab" id="sb-tab-btn-elektro" onclick="setSidebarTab('elektro')">
+        ⚡ Elektro <span id="sb-asset-count" class="geb-count">0</span>
+      </button>
     </div>
-    <div class="bulk-bar" id="bulk-bar">
-      <span class="bulk-lbl" id="bulk-lbl">0 ausgewählt</span>
-      <input class="inp-field" type="number" placeholder="Spez. kWh/m²a" id="bulk-spez" style="width:90px;font-size:10px;padding:2px 5px;" title="Spezifischer Wärmeverbrauch — wird mit Gebäudefläche multipliziert">
-      <input class="inp-field" type="number" placeholder="Wärme MWh/a" id="bulk-waerme" style="width:90px;font-size:10px;padding:2px 5px;" title="Absoluter Jahreswärmebedarf">
-      <input class="inp-field" type="number" placeholder="Heizlast kW" id="bulk-hl" style="width:80px;font-size:10px;padding:2px 5px;">
-      <button class="btn-xs blue" data-click="applyBulk()">Anwenden</button>
-      <button class="btn-xs" data-click="clearSelection()" style="margin-left:auto">✕</button>
-    </div>
-    <div class="sidebar-scroll">
-      <div class="gebaeude-list" id="geb-list"></div>
-      <div class="add-section">
-        <button class="btn-add" data-click="addGebaeude()">+ Manuell hinzufügen</button>
+
+    <!-- ── Tab: Gebäude ────────────────────────────────────────────────────── -->
+    <div class="sb-tab-body active" id="sb-tab-gebaeude">
+      <div class="geb-filter">
+        <input class="geb-filter-input" id="geb-filter" type="text" placeholder="🔍 Filter…" data-input="filterList(this.value)"/>
       </div>
-      <div class="legend">
-        <div class="legend-row">
-          <div>
-            <div class="legend-title" id="legend-size-title">Kreisgröße = Wärmeverbrauch</div>
-            <div class="legend-circles" id="legend-circles">
-              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                <div class="legend-circle" style="width:10px;height:10px"></div>
-                <span style="font-size:9px;color:var(--muted);">klein</span>
-              </div>
-              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                <div class="legend-circle" style="width:20px;height:20px"></div>
-                <span style="font-size:9px;color:var(--muted);">mittel</span>
-              </div>
-              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                <div class="legend-circle" style="width:34px;height:34px"></div>
-                <span style="font-size:9px;color:var(--muted);">groß</span>
+      <div class="bulk-bar" id="bulk-bar">
+        <span class="bulk-lbl" id="bulk-lbl">0 ausgewählt</span>
+        <input class="inp-field" type="number" placeholder="Spez. kWh/m²a" id="bulk-spez" style="width:90px;font-size:10px;padding:2px 5px;" title="Spezifischer Wärmeverbrauch — wird mit Gebäudefläche multipliziert">
+        <input class="inp-field" type="number" placeholder="Wärme MWh/a" id="bulk-waerme" style="width:90px;font-size:10px;padding:2px 5px;" title="Absoluter Jahreswärmebedarf">
+        <input class="inp-field" type="number" placeholder="Heizlast kW" id="bulk-hl" style="width:80px;font-size:10px;padding:2px 5px;">
+        <button class="btn-xs blue" data-click="applyBulk()">Anwenden</button>
+        <button class="btn-xs" data-click="clearSelection()" style="margin-left:auto">✕</button>
+      </div>
+      <div class="sidebar-scroll">
+        <div class="gebaeude-list" id="geb-list"></div>
+        <div class="add-section">
+          <button class="btn-add" data-click="addGebaeude()">+ Manuell hinzufügen</button>
+        </div>
+        <div class="legend">
+          <div class="legend-row">
+            <div>
+              <div class="legend-title" id="legend-size-title">Kreisgröße = Wärmeverbrauch</div>
+              <div class="legend-circles" id="legend-circles">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div class="legend-circle" style="width:10px;height:10px"></div>
+                  <span style="font-size:9px;color:var(--muted);">klein</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div class="legend-circle" style="width:20px;height:20px"></div>
+                  <span style="font-size:9px;color:var(--muted);">mittel</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div class="legend-circle" style="width:34px;height:34px"></div>
+                  <span style="font-size:9px;color:var(--muted);">groß</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="legend-bar-wrap">
-            <div class="legend-title" id="legend-color-title">Farbe = Spez. Verbrauch</div>
-            <div class="legend-bar" id="legend-bar"></div>
-            <div class="legend-labels"><span id="leg-min">niedrig</span><span id="leg-max">hoch</span></div>
+            <div class="legend-bar-wrap">
+              <div class="legend-title" id="legend-color-title">Farbe = Spez. Verbrauch</div>
+              <div class="legend-bar" id="legend-bar"></div>
+              <div class="legend-labels"><span id="leg-min">niedrig</span><span id="leg-max">hoch</span></div>
+            </div>
           </div>
         </div>
       </div>
+      <div class="totals">
+        <div class="total-card" id="tc-waerme" title="Summe Wärmebedarf aller Gebäude (ohne Netzverluste)"><div class="total-val" id="tot-waerme">—</div><div class="total-lbl">Wärme (MWh/a)</div></div>
+        <div class="total-card" id="tc-hl" title="Summe der Gebäude-Normheizlasten (DIN 12831)"><div class="total-val" id="tot-hl">—</div><div class="total-lbl" id="tot-hl-lbl">Heizlast (kW)</div></div>
+        <div class="total-card" id="tc-strom" title="Summe Jahresstromverbrauch aller Gebäude"><div class="total-val tot-strom" id="tot-strom">—</div><div class="total-lbl">Strom (MWh/a)</div></div>
+        <div class="total-card" id="tc-stromlast" title="Summe der elektrischen Spitzenlasten"><div class="total-val tot-strom" id="tot-stromlast">—</div><div class="total-lbl">Stromlast (kW)</div></div>
+        <div class="total-sources" id="tot-sources"></div>
+      </div>
+      <div class="export-bar">
+        <input type="file" id="import-file" style="display:none" accept=".json" data-change="importJSON(event)">
+        <button class="btn-export primary" data-click="document.getElementById('import-file').click()">📂 Öffnen</button>
+        <button class="btn-export primary" data-click="exportJSON()">💾 Speichern</button>
+        <button class="btn-export" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;" title="Gebäudedaten an Liegenschaftsrechner übernehmen">📤 An Liegenschaftsrechner senden</button>
+        <button class="btn-export" data-click="window.print()">🖨 PDF</button>
+      </div>
     </div>
-    <div class="totals">
-      <div class="total-card" id="tc-waerme" title="Summe Wärmebedarf aller Gebäude (ohne Netzverluste)"><div class="total-val" id="tot-waerme">—</div><div class="total-lbl">Wärme (MWh/a)</div></div>
-      <div class="total-card" id="tc-hl" title="Summe der Gebäude-Normheizlasten (DIN 12831)"><div class="total-val" id="tot-hl">—</div><div class="total-lbl" id="tot-hl-lbl">Heizlast (kW)</div></div>
-      <div class="total-card" id="tc-strom" title="Summe Jahresstromverbrauch aller Gebäude"><div class="total-val tot-strom" id="tot-strom">—</div><div class="total-lbl">Strom (MWh/a)</div></div>
-      <div class="total-card" id="tc-stromlast" title="Summe der elektrischen Spitzenlasten"><div class="total-val tot-strom" id="tot-stromlast">—</div><div class="total-lbl">Stromlast (kW)</div></div>
-      <div class="total-sources" id="tot-sources"></div>
+
+    <!-- ── Tab: Elektro ────────────────────────────────────────────────────── -->
+    <div class="sb-tab-body" id="sb-tab-elektro">
+      <!-- Inspector-Slot: wird befüllt wenn ein Asset gewählt wird -->
+      <div id="sb-asset-inspector-slot"></div>
+      <!-- Asset-Liste: alle Assets nach Typ gruppiert -->
+      <div id="sb-asset-list" class="sidebar-scroll"></div>
     </div>
-    <div class="export-bar">
-      <input type="file" id="import-file" style="display:none" accept=".json" data-change="importJSON(event)">
-      <button class="btn-export primary" data-click="document.getElementById('import-file').click()">📂 Öffnen</button>
-      <button class="btn-export primary" data-click="exportJSON()">💾 Speichern</button>
-      <button class="btn-export" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;" title="Gebäudedaten an Liegenschaftsrechner übernehmen">📤 An Liegenschaftsrechner senden</button>
-      <button class="btn-export" data-click="window.print()">🖨 PDF</button>
-    </div>
+
   </div>
 </div>
 

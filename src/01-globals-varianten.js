@@ -846,7 +846,6 @@ export function addVariante() {
 }
 
 export function deleteVariante(id) {
-  if (!confirm('Variante löschen?')) return;
   if (activeVariantId === id) activateVariant(null);
   varianten = varianten.filter(v => v.id !== id);
   renderVariantenBar();

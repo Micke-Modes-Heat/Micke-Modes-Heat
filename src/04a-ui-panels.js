@@ -727,6 +727,21 @@ export function setLeftTab(tabId) {
 }
 window.setLeftTab = setLeftTab;
 
+// Rechte Sidebar: Tab-Umschalter (Gebäude ↔ Elektro)
+export function setSidebarTab(tabId) {
+  document.querySelectorAll('.sb-tab').forEach(t =>
+    t.classList.toggle('active', t.id === `sb-tab-btn-${tabId}`)
+  );
+  document.querySelectorAll('.sb-tab-body').forEach(b =>
+    b.classList.toggle('active', b.id === `sb-tab-${tabId}`)
+  );
+  // Bei Wechsel zu Elektro: Asset-Liste aktualisieren
+  if (tabId === 'elektro' && typeof window.renderSidebarAssetList === 'function') {
+    window.renderSidebarAssetList();
+  }
+}
+window.setSidebarTab = setSidebarTab;
+
 // initLeftPanel: erzeuger buttons are now native in HTML, no cloning needed
 
 // Update left panel merit order summary

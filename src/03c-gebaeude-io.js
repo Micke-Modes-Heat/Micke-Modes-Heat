@@ -1,12 +1,14 @@
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
 import { _expandedIds, globalYear, isExcluded, selectedId, stromEdges } from './01-globals-varianten.js';
-import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh, highlightCard, map } from './02b-gebaeude.js';
+import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh, highlightCard, map,
+         getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
 import { updateLpGebietStatus, updatePrintLegend } from './04a-ui-panels.js';
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { calcStromPanel } from './09b-pv-calc.js';
-import { ASSETS, createAsset, clearAssets } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, clearAssets } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
+import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById } from './13k-elslp-registry.js';
 
 export function updateTotals(){
   let tw=0, th=0;
@@ -220,6 +222,562 @@ export function calcGebKwp(g) {
   return fl * (g.pvDachanteil || 30) / 100 * _pvWpM2Global() / 1000;
 }
 
+// ── Dach-Hilfsfunktionen ─────────────────────────────────────────────────────
+export function getDachDefaultNeigung(dachform) {
+  return { flach: 5, sattel: 35, walm: 30, pult: 15 }[dachform] || 35;
+}
+
+// Korrekturfaktor für PV-Ertrag basierend auf Azimut + Neigung
+// Azimut: 0=Nord, 90=Ost, 180=Süd, 270=West
+// Referenzwerte nach PVGIS/DIN EN 15316 für Mitteleuropa
+export function getPvKorrFaktor(g) {
+  const dachform = g.dachform || 'sattel';
+
+  // Flachdach: Aufständerung auf 30° Süd → immer optimal
+  if (dachform === 'flach') return 1.0;
+
+  const azimut  = g.dachAzimut  ?? 180;
+  const neigung = g.dachNeigung ?? getDachDefaultNeigung(dachform);
+
+  // Azimut-Faktor: Abweichung von Süd (180°)
+  const dev = Math.min(Math.abs(azimut - 180), 360 - Math.abs(azimut - 180));
+  // Stützwerte: 0°→1.00, 45°→0.96, 90°→0.84, 135°→0.70, 180°→0.60
+  const azSteps = [[0,1.0],[45,0.96],[90,0.84],[135,0.70],[180,0.60]];
+  let azFak = 0.60;
+  for (let i = 0; i < azSteps.length - 1; i++) {
+    if (dev >= azSteps[i][0] && dev <= azSteps[i+1][0]) {
+      const t = (dev - azSteps[i][0]) / (azSteps[i+1][0] - azSteps[i][0]);
+      azFak = azSteps[i][1] + t * (azSteps[i+1][1] - azSteps[i][1]);
+      break;
+    }
+  }
+
+  // Neigungsfaktor: optimal ~30°
+  // Stützwerte: 0°→0.87, 15°→0.97, 30°→1.00, 45°→0.97, 60°→0.88, 75°→0.75
+  const tSteps = [[0,0.87],[15,0.97],[30,1.00],[45,0.97],[60,0.88],[75,0.75]];
+  let tFak = 0.87;
+  const clampN = Math.max(0, Math.min(75, neigung));
+  for (let i = 0; i < tSteps.length - 1; i++) {
+    if (clampN >= tSteps[i][0] && clampN <= tSteps[i+1][0]) {
+      const t = (clampN - tSteps[i][0]) / (tSteps[i+1][0] - tSteps[i][0]);
+      tFak = tSteps[i][1] + t * (tSteps[i+1][1] - tSteps[i][1]);
+      break;
+    }
+  }
+
+  return Math.round(azFak * tFak * 100) / 100;
+}
+
+// kWp mit Ertragskorrekturfaktor
+export function calcGebKwpKorr(g) {
+  return calcGebKwp(g) * getPvKorrFaktor(g);
+}
+
+// Azimut der wahrscheinlichen Südseite aus dem längsten Polygon-Segment ermitteln
+export function detectRoofAzimutFromPolygon(polygon) {
+  if (!polygon || polygon.length < 2) return null;
+  let maxLen = -1, ridgeAngleDeg = 0;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i],           b = polygon[(i + 1) % polygon.length];
+    const lat1 = a.lat ?? a[0],    lng1 = a.lng ?? a[1];
+    const lat2 = b.lat ?? b[0],    lng2 = b.lng ?? b[1];
+    const dLat = (lat2 - lat1) * 111320;
+    const dLng = (lng2 - lng1) * 111320 * Math.cos(((lat1 + lat2) / 2) * Math.PI / 180);
+    const len  = Math.sqrt(dLat * dLat + dLng * dLng);
+    if (len > maxLen) {
+      maxLen = len;
+      // Winkel von Nord im Uhrzeigersinn (0–180°, da Firstrichtung symmetrisch)
+      ridgeAngleDeg = ((Math.atan2(dLng, dLat) * 180 / Math.PI) % 180 + 180) % 180;
+    }
+  }
+  // First läuft entlang ridgeAngleDeg → Südhang ist senkrecht dazu
+  const faceA = (ridgeAngleDeg + 90) % 360;
+  const faceB = (ridgeAngleDeg - 90 + 360) % 360;
+  const devA  = Math.min(Math.abs(faceA - 180), 360 - Math.abs(faceA - 180));
+  const devB  = Math.min(Math.abs(faceB - 180), 360 - Math.abs(faceB - 180));
+  return Math.round(devA <= devB ? faceA : faceB);
+}
+
+// ── Elektro-Assets eines Gebäudes (einklappbare Sektion) ────────────────────
+if (!window._gebElektroCollapsed) window._gebElektroCollapsed = {};
+
+// ── Inline-Hilfsfunktion: SLP-Dropdown-Options für Verbraucher ──────────────
+function _buildVerbrSlpOptions(currentSlp) {
+  const profs   = getElSlpProfiles();
+  const gruppen = getElSlpGruppen();
+  return gruppen.map(grp => {
+    const opts = profs.filter(p => p.gruppe === grp).map(p =>
+      `<option value="${p.id}"${p.id === currentSlp ? ' selected' : ''}>${p.id} — ${p.label}</option>`
+    ).join('');
+    return `<optgroup label="${grp}">${opts}</optgroup>`;
+  }).join('');
+}
+
+function buildGebElektroSection(g) {
+  const assets = getAssetsForBuilding(g.id);
+  const count  = assets.length;
+  // Standard: eingeklappt — isOpen nur wenn explizit auf true gesetzt
+  const isOpen = window._gebElektroCollapsed[g.id] === true;
+
+  let rows = '';
+  if (count === 0) {
+    rows = `<div class="geb-elektro-empty">Keine Elektro-Assets zugeordnet</div>`;
+  } else {
+    rows = assets.map(a => {
+      const cfg    = ASSET_CFG[a.type] || { icon: '⚡', color: '#aaa', label: a.type };
+      const status = getAssetStatus(a, window.globalYear ?? new Date().getFullYear());
+
+      // Kennzahl ersetzt den Status-Punkt wenn vorhanden
+      let rightIndicator;
+      if (a.type === 'Verbraucher' && a.props?.leistungKW != null) {
+        rightIndicator = `<span class="geb-elektro-metric" style="color:#4fc3f7;">${(+a.props.leistungKW).toLocaleString('de-DE',{maximumFractionDigits:1})} kW</span>`;
+      } else if (a.type === 'PV' && a.props?.leistungKWp != null) {
+        rightIndicator = `<span class="geb-elektro-metric" style="color:#ffd54f;">${(+a.props.leistungKWp).toLocaleString('de-DE',{maximumFractionDigits:1})} kWp</span>`;
+      } else if (a.props?.leistungKVA != null) {
+        rightIndicator = `<span class="geb-elektro-metric">${(+a.props.leistungKVA).toLocaleString('de-DE',{maximumFractionDigits:0})} kVA</span>`;
+      } else {
+        rightIndicator = `<span class="geb-elektro-status geb-elektro-status-${status}"></span>`;
+      }
+
+      return `<div class="geb-elektro-row" data-click="openAssetFromGeb('${a.id}')" title="${cfg.label}">
+        <span class="geb-elektro-icon" style="background:${cfg.color};">${cfg.icon}</span>
+        <span class="geb-elektro-name">${escHtml(a.name)}</span>
+        ${rightIndicator}
+      </div>`;
+    }).join('');
+  }
+
+  return `
+    <div class="geb-elektro-section">
+      <div class="geb-elektro-hdr" data-click="toggleGebElektro(${g.id})">
+        <span class="geb-elektro-hdr-icon">⚡</span>
+        <span class="geb-elektro-hdr-label">Elektro-Assets</span>
+        <span class="geb-elektro-hdr-count">${count}</span>
+        <span class="geb-elektro-chevron${isOpen ? '' : ' rotated'}">▾</span>
+      </div>
+      <div class="geb-elektro-rows" id="geb-elektro-rows-${g.id}"${isOpen ? '' : ' style="display:none;"'}>
+        ${rows}
+        <div class="geb-elektro-dach-sub">
+          ${buildDachSection(g, { showPvBtn: true })}
+        </div>
+        <div class="geb-elektro-dach-sub">
+          ${buildGebVerbraucherSection(g)}
+        </div>
+      </div>
+    </div>`;
+}
+
+window.toggleGebElektro = function(gId) {
+  // true = open, false/undefined = closed (default)
+  const wasOpen = window._gebElektroCollapsed[gId] === true;
+  window._gebElektroCollapsed[gId] = !wasOpen;
+  const rows    = document.getElementById(`geb-elektro-rows-${gId}`);
+  const chevron = rows?.previousElementSibling?.querySelector('.geb-elektro-chevron');
+  if (!rows) return;
+  rows.style.display = !wasOpen ? '' : 'none';
+  chevron?.classList.toggle('rotated', wasOpen); // rotated = closed
+};
+
+window.openAssetFromGeb = function(assetId) {
+  if (typeof window.openAssetInspector === 'function') {
+    const a = (window.ASSETS?.items || []).find(x => x.id === assetId);
+    if (a) window.openAssetInspector(a);
+  }
+};
+
+// Programmatischer Asset-Props-Update (für externe Aufrufer)
+window.updateVerbrAssetProp = function(assetId, field, value, gId) {
+  const asset = (window.ASSETS?.items || []).find(a => a.id === assetId);
+  if (!asset) return;
+  if (!asset.props) asset.props = {};
+  if (field === 'leistungKW') {
+    const v = parseFloat(value);
+    asset.props.leistungKW = isNaN(v) ? null : v;
+  } else {
+    asset.props[field] = value;
+  }
+  if (gId != null) _rerenderCard(gId);
+};
+
+// ── Leistungsschätzung-Sektion (eigener Reiter, default eingeklappt) ────────
+if (!window._gebVerbrOpen) window._gebVerbrOpen = {};
+
+function buildGebVerbraucherSection(g) {
+  const assets  = getAssetsForBuilding(g.id);
+  const verbr   = assets.find(a => a.type === 'Verbraucher');
+  const isOpen  = window._gebVerbrOpen[g.id] !== false; // default: ausgeklappt
+
+  const slpTyp  = verbr?.props?.slpTyp || 'G0';
+  const existKw = verbr?.props?.leistungKW;
+  const fl      = parseFloat(g.flaeche) || 0;
+  const slpPr   = getElSlpById(slpTyp);
+  const wpm2    = slpPr?.wpm2 ?? 20;
+  const autoKw  = fl > 0 ? Math.round(fl * wpm2 / 1000 * 10) / 10 : null;
+  const dispKw  = existKw != null ? existKw : (autoKw ?? '');
+  const badge   = existKw != null
+    ? existKw + ' kW'
+    : autoKw != null ? '~' + autoKw + ' kW' : '—';
+
+  return `
+    <div class="geb-dach-section" style="border-top-color:#4fc3f7;">
+      <div class="geb-dach-hdr" data-click="toggleGebVerbr(${g.id})">
+        <span class="geb-dach-hdr-icon" style="color:#4fc3f7;">⚡</span>
+        <span class="geb-dach-hdr-label">Leistungsschätzung</span>
+        <span class="geb-dach-kwp-badge" style="color:#4fc3f7;">${badge}</span>
+        <span class="geb-dach-chevron${isOpen ? '' : ' rotated'}">▾</span>
+      </div>
+      <div class="geb-dach-rows" id="geb-verbr-rows-${g.id}"${isOpen ? '' : ' style="display:none;"'}>
+        <div style="display:grid;grid-template-columns:1fr 84px;gap:5px;margin-top:4px;">
+          <div class="inp-group">
+            <div class="inp-label">BDEW-Lastprofil</div>
+            <select class="inp-field" id="geb-verbr-slp-${g.id}"
+              data-change="updateGebVerbrSlp(${g.id},this.value)">
+              ${_buildVerbrSlpOptions(slpTyp)}
+            </select>
+          </div>
+          <div class="inp-group">
+            <div class="inp-label">Leistung (kW)</div>
+            <input class="inp-field" type="number" step="0.1"
+              id="geb-verbr-kw-${g.id}"
+              value="${escVal(dispKw)}" placeholder="—"/>
+          </div>
+        </div>
+        ${fl > 0
+          ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;">
+               ↳ ${Math.round(fl)} m² × ${wpm2} W/m² ÷ 1000 = ${autoKw} kW (${slpTyp})
+             </div>`
+          : `<div style="font-size:9px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe</div>`}
+        ${verbr
+          ? `<button class="btn-xs" data-click="overwriteVerbrAsset(${g.id})"
+               style="width:100%;margin-top:6px;display:flex;justify-content:center;gap:4px;border-color:#4fc3f7;color:#4fc3f7;">
+               ⚡ SLP + kW → Verbraucher-Asset überschreiben
+             </button>`
+          : `<div style="font-size:9px;color:rgba(249,168,37,.7);margin-top:5px;">⚠ Kein Verbraucher-Asset vorhanden</div>`}
+      </div>
+    </div>`;
+}
+
+window.toggleGebVerbr = function(gId) {
+  if (!window._gebVerbrOpen) window._gebVerbrOpen = {};
+  const wasOpen = window._gebVerbrOpen[gId] !== false; // default open
+  window._gebVerbrOpen[gId] = !wasOpen;
+  const rows    = document.getElementById(`geb-verbr-rows-${gId}`);
+  const chevron = rows?.previousElementSibling?.querySelector('.geb-dach-chevron');
+  if (!rows) return;
+  rows.style.display = wasOpen ? 'none' : '';
+  chevron?.classList.toggle('rotated', wasOpen); // rotated = closed
+};
+
+// Wenn SLP im Leistungsschätzung-Reiter ändert: kW-Schätzung live aktualisieren
+window.updateGebVerbrSlp = function(gId, slpId) {
+  const g   = window.gebaeude?.find(x => x.id === gId);
+  if (!g) return;
+  const fl   = parseFloat(g.flaeche) || 0;
+  const wpm2 = getElSlpById(slpId)?.wpm2 ?? 20;
+  const autoKw = fl > 0 ? Math.round(fl * wpm2 / 1000 * 10) / 10 : null;
+  const kwInp = document.getElementById(`geb-verbr-kw-${gId}`);
+  if (kwInp && autoKw != null) kwInp.value = autoKw;
+};
+
+// Werte aus Leistungsschätzung in Verbraucher-Asset schreiben
+window.overwriteVerbrAsset = function(gId) {
+  const verbr = getAssetsForBuilding(gId).find(a => a.type === 'Verbraucher');
+  if (!verbr) { alert('Kein Verbraucher-Asset für dieses Gebäude gefunden.'); return; }
+  const slpSel = document.getElementById(`geb-verbr-slp-${gId}`);
+  const kwInp  = document.getElementById(`geb-verbr-kw-${gId}`);
+  const slp    = slpSel?.value || 'G0';
+  const kw     = parseFloat(kwInp?.value);
+  if (!verbr.props) verbr.props = {};
+  verbr.props.slpTyp    = slp;
+  verbr.props.leistungKW = isNaN(kw) ? null : kw;
+  _rerenderCard(gId);
+};
+
+// Berechnetes kWp (Dach & PV) in PV-Asset schreiben
+window.overwritePvAsset = function(gId) {
+  const g  = window.gebaeude?.find(x => x.id === gId);
+  const pv = getAssetsForBuilding(gId).find(a => a.type === 'PV');
+  if (!pv || !g) { alert('Kein PV-Asset für dieses Gebäude gefunden.'); return; }
+  const kwp = calcGebKwpKorr(g);
+  if (!pv.props) pv.props = {};
+  pv.props.leistungKWp = Math.round(kwp * 10) / 10;
+  _rerenderCard(gId);
+};
+
+// ── Nutzungstypen-Dropdown & Modal ──────────────────────────────────────────
+function _buildNutzungOptions(current) {
+  const typen = getNutzungstypen();
+  // Nach Gruppe sortiert
+  const gruppen = [...new Set(typen.map(t => t.gruppe))];
+  return gruppen.map(g => {
+    const items = typen.filter(t => t.gruppe === g);
+    return `<optgroup label="${g}">
+      ${items.map(t =>
+        `<option value="${t.id}"${current === t.id ? ' selected' : ''}>${t.label}</option>`
+      ).join('')}
+    </optgroup>`;
+  }).join('');
+}
+
+const SLP_OPTS = ['H0','G0','G1','G2','G3','G4','G5','G6','L0','L1','L2'];
+
+window.showNutzungstypenModal = function() {
+  document.getElementById('nutzungstypen-modal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'nutzungstypen-modal';
+  modal.className = 'ep-modal-overlay';
+  modal.innerHTML = _renderNutzungstypenModal();
+  document.body.appendChild(modal);
+
+  _wireNutzungstypenModal(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+};
+
+function _renderNutzungstypenModal(editId = null, formData = null) {
+  const typen   = getNutzungstypen();
+  const builtin = typen.filter(t => isBuiltinNutzungstyp(t.id));
+  const custom  = typen.filter(t => !isBuiltinNutzungstyp(t.id));
+
+  const rowHtml = (t, editable) => `
+    <tr data-nt-id="${t.id}">
+      <td style="color:var(--muted);font-family:'DM Mono',monospace;">${t.id}</td>
+      <td>${escHtml(t.label)}</td>
+      <td>${escHtml(t.gruppe)}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;">${t.spezStrom}</td>
+      <td style="text-align:center;">${t.slp}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;">${t.vbh}</td>
+      <td style="white-space:nowrap;">
+        ${editable
+          ? `<button class="btn-xs nt-edit-btn" data-nt-id="${t.id}" title="Bearbeiten">✎</button>
+             <button class="btn-xs red nt-del-btn" data-nt-id="${t.id}" title="Löschen">🗑</button>`
+          : `<span style="font-size:9px;color:var(--muted);">Standard</span>`}
+      </td>
+    </tr>`;
+
+  const formHtml = (data = {}) => `
+    <tr id="nt-form-row">
+      <td><input class="inp-field" id="nt-f-id"    value="${escHtml(data.id||'')}"    placeholder="bw_kaserne" style="width:100%;font-size:10px;" ${data.id && isBuiltinNutzungstyp(data.id) ? 'readonly' : ''}></td>
+      <td><input class="inp-field" id="nt-f-label" value="${escHtml(data.label||'')}" placeholder="Kaserne (BW)" style="width:100%;font-size:10px;"></td>
+      <td><input class="inp-field" id="nt-f-gruppe" value="${escHtml(data.gruppe||'')}" placeholder="Bundeswehr" style="width:100%;font-size:10px;"></td>
+      <td><input class="inp-field" id="nt-f-spez"  value="${data.spezStrom??''}"      placeholder="55" type="number" style="width:60px;font-size:10px;"></td>
+      <td><select class="inp-field" id="nt-f-slp" style="font-size:10px;padding:2px 4px;">
+        ${SLP_OPTS.map(s => `<option${(data.slp||'G0')===s?' selected':''}>${s}</option>`).join('')}
+      </select></td>
+      <td><input class="inp-field" id="nt-f-vbh"   value="${data.vbh??''}"           placeholder="2500" type="number" style="width:60px;font-size:10px;"></td>
+      <td style="white-space:nowrap;">
+        <button class="btn-xs green" id="nt-save-btn">✓</button>
+        <button class="btn-xs" id="nt-cancel-btn">✕</button>
+      </td>
+    </tr>`;
+
+  return `<div class="ep-modal" style="min-width:560px;max-width:700px;">
+    <div class="ep-modal-title">⚙ Nutzungstypen verwalten</div>
+    <div style="overflow-y:auto;max-height:420px;">
+      <table class="nt-table" id="nt-table">
+        <thead><tr>
+          <th>Kennung</th><th>Bezeichnung</th><th>Gruppe</th>
+          <th class="r">kWh/m²a</th><th style="text-align:center;">SLP</th>
+          <th class="r">Vh/a</th><th></th>
+        </tr></thead>
+        <tbody id="nt-tbody">
+          <tr class="nt-section-hdr"><td colspan="7">Standard-Typen</td></tr>
+          ${builtin.map(t => rowHtml(t, false)).join('')}
+          <tr class="nt-section-hdr"><td colspan="7">Eigene Typen</td></tr>
+          ${custom.map(t => rowHtml(t, true)).join('')}
+          ${custom.length === 0 ? `<tr><td colspan="7" class="nt-empty">Keine eigenen Typen angelegt.</td></tr>` : ''}
+          ${editId ? formHtml(formData) : ''}
+        </tbody>
+      </table>
+    </div>
+    <div class="ep-modal-btns" style="margin-top:10px;justify-content:space-between;">
+      <button class="ep-modal-btn" id="nt-add-btn">+ Neuen Typ</button>
+      <button class="ep-modal-btn primary" id="nt-close-btn">Schließen</button>
+    </div>
+  </div>`;
+}
+
+function _wireNutzungstypenModal(modal) {
+  const refresh = (editId, formData) => {
+    modal.innerHTML = _renderNutzungstypenModal(editId, formData);
+    _wireNutzungstypenModal(modal);
+  };
+
+  modal.querySelector('#nt-close-btn')?.addEventListener('click', () => modal.remove());
+
+  modal.querySelector('#nt-add-btn')?.addEventListener('click', () =>
+    refresh('__new__', { id:'', label:'', gruppe:'', spezStrom:'', slp:'G0', vbh:'' }));
+
+  modal.querySelectorAll('.nt-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = getNutzungstypById(btn.dataset.ntId);
+      if (t) refresh(t.id, { ...t });
+    });
+  });
+
+  modal.querySelectorAll('.nt-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = NUTZUNGSTYPEN_CUSTOM.findIndex(t => t.id === btn.dataset.ntId);
+      if (idx >= 0) NUTZUNGSTYPEN_CUSTOM.splice(idx, 1);
+      refresh();
+      renderList(); // Dropdowns in Karten aktualisieren
+    });
+  });
+
+  modal.querySelector('#nt-save-btn')?.addEventListener('click', () => {
+    const id     = modal.querySelector('#nt-f-id')?.value.trim().replace(/\s+/g,'_');
+    const label  = modal.querySelector('#nt-f-label')?.value.trim();
+    const gruppe = modal.querySelector('#nt-f-gruppe')?.value.trim() || 'Eigene';
+    const spez   = parseFloat(modal.querySelector('#nt-f-spez')?.value);
+    const slp    = modal.querySelector('#nt-f-slp')?.value;
+    const vbh    = parseInt(modal.querySelector('#nt-f-vbh')?.value);
+
+    if (!id || !label || isNaN(spez) || isNaN(vbh)) {
+      alert('Bitte alle Felder ausfüllen (Kennung, Bezeichnung, kWh/m²a, Vh/a).'); return;
+    }
+    if (isBuiltinNutzungstyp(id)) { alert('Diese Kennung ist ein Standard-Typ und kann nicht überschrieben werden.'); return; }
+
+    const existing = NUTZUNGSTYPEN_CUSTOM.findIndex(t => t.id === id);
+    const entry = { id, label, gruppe, spezStrom: spez, slp, vbh };
+    if (existing >= 0) NUTZUNGSTYPEN_CUSTOM[existing] = entry;
+    else NUTZUNGSTYPEN_CUSTOM.push(entry);
+
+    refresh();
+    renderList();
+  });
+
+  modal.querySelector('#nt-cancel-btn')?.addEventListener('click', () => refresh());
+}
+
+// ── Dach & PV Sektion im Gebäude-Panel (eingeklappt) ────────────────────────
+if (!window._gebDachCollapsed) window._gebDachCollapsed = {};
+
+const DACHFORM_LABELS = { flach: 'Flachdach', sattel: 'Satteldach', walm: 'Walmdach', pult: 'Pultdach' };
+const AZIMUT_HINT = '0°=Nord · 90°=Ost · 180°=Süd · 270°=West';
+
+function buildDachSection(g, opts = {}) {
+  const isOpen    = !window._gebDachCollapsed[g.id];
+  const dachform  = g.dachform  || 'sattel';
+  const azimut    = g.dachAzimut  ?? '';
+  const neigung   = g.dachNeigung ?? '';
+  const defNei    = getDachDefaultNeigung(dachform);
+  const korrFak   = getPvKorrFaktor(g);
+  const kwpBase   = calcGebKwp(g);
+  const kwpKorr   = calcGebKwpKorr(g);
+  const hasPoly   = !!(g.polygon && g.polygon.length >= 3);
+
+  // Korrekturfaktor-Farbe
+  const fakCol = korrFak >= 0.9 ? '#4caf50' : korrFak >= 0.75 ? '#f9a825' : '#e53935';
+
+  const azimutField = `
+    <div class="inp-group">
+      <div class="inp-label" title="${AZIMUT_HINT}">Ausrichtung (°) <span style="opacity:.5;cursor:help;">ℹ</span></div>
+      <div style="display:flex;gap:4px;">
+        <input class="inp-field" type="number" min="0" max="359"
+          value="${escVal(azimut)}" placeholder="${g.dachAutoAzimut ? 'auto' : '180'}"
+          data-input="updateGebDach(${g.id},'dachAzimut',this.value)"
+          style="flex:1;"/>
+        ${hasPoly
+          ? `<button class="btn-xs" title="Aus Polygon-Längsachse ermitteln"
+               data-click="ermittleAzimut(${g.id})">🔄</button>`
+          : ''}
+      </div>
+      ${g.dachAutoAzimut
+        ? `<div style="font-size:8px;color:var(--muted);margin-top:2px;">↳ auto (Polygon)</div>`
+        : ''}
+    </div>`;
+
+  const pvAsset = opts.showPvBtn
+    ? getAssetsForBuilding(g.id).find(a => a.type === 'PV')
+    : null;
+  const pvOverwriteBtn = (pvAsset && g.flaeche && kwpKorr > 0) ? `
+    <button class="btn-xs" style="width:100%;margin-top:5px;display:flex;justify-content:center;gap:4px;border-color:#ffd54f;color:#ffd54f;"
+      data-click="overwritePvAsset(${g.id})">
+      ☀ ${kwpKorr.toFixed(1)} kWp → PV-Asset überschreiben
+    </button>` : '';
+
+  const pvPreview = g.flaeche ? `
+    <div class="geb-dach-kwp-row">
+      <span>☀ Basis</span><span>${kwpBase.toFixed(1)} kWp</span>
+      <span>Faktor</span>
+      <span style="color:${fakCol};font-weight:600;">${(korrFak * 100).toFixed(0)} %</span>
+      <span style="font-weight:600;">= Korr.</span>
+      <span style="color:${fakCol};font-weight:600;">${kwpKorr.toFixed(1)} kWp</span>
+    </div>
+    ${pvOverwriteBtn}` : '';
+
+  return `
+    <div class="geb-dach-section">
+      <div class="geb-dach-hdr" data-click="toggleGebDach(${g.id})">
+        <span class="geb-dach-hdr-icon">☀</span>
+        <span class="geb-dach-hdr-label">Dach &amp; PV</span>
+        <span class="geb-dach-kwp-badge">${kwpKorr > 0 ? kwpKorr.toFixed(1) + ' kWp' : '—'}</span>
+        <span class="geb-dach-chevron${isOpen ? '' : ' rotated'}">▾</span>
+      </div>
+      <div class="geb-dach-rows" id="geb-dach-rows-${g.id}"${isOpen ? '' : ' style="display:none;"'}>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px;">
+          <div class="inp-group">
+            <div class="inp-label">Dachform</div>
+            <select class="inp-field" data-change="updateGebDach(${g.id},'dachform',this.value)">
+              ${Object.entries(DACHFORM_LABELS).map(([v,l]) =>
+                `<option value="${v}"${dachform===v?' selected':''}>${l}</option>`).join('')}
+            </select>
+          </div>
+          ${azimutField}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px;">
+          <div class="inp-group">
+            <div class="inp-label">Neigung (°)</div>
+            <input class="inp-field" type="number" min="0" max="75"
+              value="${escVal(neigung)}" placeholder="${defNei}"
+              data-input="updateGebDach(${g.id},'dachNeigung',this.value)"/>
+          </div>
+          <div class="inp-group">
+            <div class="inp-label">Dachanteil PV (%)</div>
+            <input class="inp-field" type="number" min="5" max="100" step="5"
+              value="${g.pvDachanteil || 30}"
+              data-input="updateGebPv(${g.id},'pvDachanteil',this.value)"/>
+          </div>
+        </div>
+        ${pvPreview}
+      </div>
+    </div>`;
+}
+
+window.toggleGebDach = function(gId) {
+  window._gebDachCollapsed[gId] = !window._gebDachCollapsed[gId];
+  const rows    = document.getElementById(`geb-dach-rows-${gId}`);
+  const chevron = rows?.previousElementSibling?.querySelector('.geb-dach-chevron');
+  if (!rows) return;
+  rows.style.display = window._gebDachCollapsed[gId] ? 'none' : '';
+  chevron?.classList.toggle('rotated', !!window._gebDachCollapsed[gId]);
+};
+
+window.updateGebDach = function(gId, field, value) {
+  const g = window.gebaeude?.find(x => x.id === gId);
+  if (!g) return;
+  if (field === 'dachform') {
+    g.dachform = value;
+    g.dachAutoAzimut = false; // Manuelle Änderung löscht Auto-Flag
+  } else if (field === 'dachAzimut') {
+    g.dachAzimut = value === '' ? null : parseFloat(value);
+    g.dachAutoAzimut = false;
+  } else if (field === 'dachNeigung') {
+    g.dachNeigung = value === '' ? null : parseFloat(value);
+  }
+  _rerenderCard(gId);
+};
+
+window.ermittleAzimut = function(gId) {
+  const g = window.gebaeude?.find(x => x.id === gId);
+  if (!g?.polygon) return;
+  const az = detectRoofAzimutFromPolygon(g.polygon);
+  if (az === null) return;
+  g.dachAzimut     = az;
+  g.dachAutoAzimut = true;
+  _rerenderCard(gId);
+};
+
 export function _gebLabelHtml(g) {
   const pvBadge = g.pvAktiv ? '<span style="color:#ffd54f;font-size:9px;margin-left:3px;vertical-align:middle;">☀</span>' : '';
   return escHtml(g.name) + pvBadge;
@@ -355,17 +913,12 @@ export function _renderExpandedPanel(g, stats) {
 
   return `<div class="geb-expanded">
     ${infoLabel}
-    <div style="margin-bottom:5px;">
-      <select class="nutzung-select" data-change="setNutzung(${g.id},this.value)" title="Nutzungstyp">
+    <div style="margin-bottom:5px;display:flex;gap:4px;">
+      <select class="nutzung-select" style="flex:1;" data-change="setNutzung(${g.id},this.value)" title="Nutzungstyp">
         <option value="">Nutzungstyp…</option>
-        <option value="efh"  ${g.nutzung==='efh'?'selected':''}>EFH</option>
-        <option value="mfh"  ${g.nutzung==='mfh'?'selected':''}>MFH</option>
-        <option value="ghd"  ${g.nutzung==='ghd'?'selected':''}>GHD</option>
-        <option value="schule" ${g.nutzung==='schule'?'selected':''}>Schule</option>
-        <option value="buero" ${g.nutzung==='buero'?'selected':''}>Büro</option>
-        <option value="industrie" ${g.nutzung==='industrie'?'selected':''}>Industrie</option>
-        <option value="oeffentlich" ${g.nutzung==='oeffentlich'?'selected':''}>Öffentlich</option>
+        ${_buildNutzungOptions(g.nutzung)}
       </select>
+      <button class="btn-xs" title="Nutzungstypen verwalten" data-click="showNutzungstypenModal()" style="flex-shrink:0;padding:0 6px;">⚙</button>
     </div>
     <div class="geb-inputs" style="grid-template-columns: 1fr 1fr; row-gap: 6px; opacity: ${stats.status==='abgerissen'||stats.status==='geplant'?0.4:1}">
       <div class="inp-group">
@@ -420,52 +973,7 @@ export function _renderExpandedPanel(g, stats) {
           data-input="updateField(${g.id},'flaeche',this.value)"/>
       </div>
     </div>
-    <div style="margin-top:8px;padding:6px 8px;background:rgba(79,195,247,0.05);border-radius:5px;border:1px solid rgba(79,195,247,0.15);">
-      <div style="font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px;">⚡ Stromverbrauch</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-        <div class="inp-group">
-          <div class="inp-label">Strom MWh/a</div>
-          <input class="inp-field" type="number" placeholder="${getAutoStrom(g) || '—'}" value="${escVal(g.strom)}"
-            data-input="updateField(${g.id},'strom',this.value)" title="Jahresstromverbrauch (ohne WP)"/>
-        </div>
-        <div class="inp-group">
-          <div class="inp-label">Spez. kWh/m²a</div>
-          <input class="inp-field" type="number" placeholder="${getAutoSpezStrom(g) || '—'}" value="${escVal(g.spezStrom)}"
-            data-input="updateField(${g.id},'spezStrom',this.value)" title="Spez. Stromverbrauch"/>
-        </div>
-        <div class="inp-group" style="grid-column:1/-1;">
-          <div class="inp-label">Profil</div>
-          <select class="nutzung-select" style="width:100%;" data-change="updateField(${g.id},'stromProfil',this.value)" title="Lastprofil-Typ (SLP)">
-            <option value="auto" ${g.stromProfil==='auto'?'selected':''}>Auto (nach Nutzung)</option>
-            <option value="H0"   ${g.stromProfil==='H0'?'selected':''}>H0 — Haushalt</option>
-            <option value="G0"   ${g.stromProfil==='G0'?'selected':''}>G0 — Gewerbe allg.</option>
-            <option value="G1"   ${g.stromProfil==='G1'?'selected':''}>G1 — Gewerbe Werktag</option>
-            <option value="G4"   ${g.stromProfil==='G4'?'selected':''}>G4 — Laden/Friseur</option>
-            <option value="L0"   ${g.stromProfil==='L0'?'selected':''}>L0 — Landwirtschaft</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    <div style="margin-top:8px;padding:6px 8px;background:rgba(255,213,79,0.05);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:${g.pvAktiv ? '6px' : '0'};">
-        <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer;">
-          <input type="checkbox" ${g.pvAktiv ? 'checked' : ''} data-change="updateGebPv(${g.id},'pvAktiv',this.checked)" style="cursor:pointer;"/>
-          <span style="color:#ffd54f;">☀ Dach-PV</span>
-        </label>
-        ${g.pvAktiv && g.flaeche ? `<span style="font-size:10px;color:#ffd54f;font-family:'DM Mono',monospace;margin-left:auto;">${calcGebKwp(g).toFixed(1)} kWp</span>` : ''}
-      </div>
-      ${g.pvAktiv ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px;">
-        <div class="inp-group">
-          <div class="inp-label">Dachanteil (%)</div>
-          <input class="inp-field" type="number" value="${g.pvDachanteil || 30}" min="5" max="100" step="5"
-            data-input="updateGebPv(${g.id},'pvDachanteil',this.value)"/>
-        </div>
-        <div class="inp-group" style="display:flex;flex-direction:column;justify-content:flex-end;">
-          <div class="inp-label" style="color:var(--muted);">Modul global</div>
-          <div style="font-size:10px;font-family:'DM Mono',monospace;color:#ffd54f;padding:5px 6px;">${calcGebKwp(g).toFixed(1)} kWp</div>
-        </div>
-      </div>` : ''}
-    </div>
+    ${buildGebElektroSection(g)}
     ${netzwertHtml}
     ${g.netzVerlustKW != null ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);font-size:10px;font-family:'DM Mono',monospace;display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;">
       <span style="color:var(--muted)">Zuger. Verlust</span><span style="color:var(--text)">${g.netzVerlustKW.toFixed(1)} kW</span>
@@ -576,6 +1084,8 @@ export function _buildProjectData() {
       stockwerke: g.stockwerke || 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
       pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil || 30, zustand: g.zustand || '',
       strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',
+      dachform: g.dachform || 'sattel', dachAzimut: g.dachAzimut ?? null,
+      dachNeigung: g.dachNeigung ?? null, dachAutoAzimut: g.dachAutoAzimut || false,
     })),
     netz: {
       zentrale: document.getElementById('netz-zentrale').value,
@@ -659,10 +1169,14 @@ export function _buildProjectData() {
           .map(e => ({
             id: e.id, u: e.u, v: e.v,
             cableType: e.cableType, crossSection: e.crossSection,
-            autoSized: e.autoSized, lengthM: e.lengthM, fuseA: e.fuseA || 0, nParallel: e.nParallel || 1
+            autoSized: e.autoSized, lengthM: e.lengthM, fuseA: e.fuseA || 0, nParallel: e.nParallel || 1,
+            autoGenerated: e.autoGenerated || false, msLevel: e.msLevel || false, trennstelle: e.trennstelle || false
           }))
       };
     })(),
+    customNutzungstypen: NUTZUNGSTYPEN_CUSTOM.map(t => ({ ...t })),
+    customElSlpProfiles: ELSLP_CUSTOM.map(p => ({ ...p })),
+    elSlpWpm2Overrides:  { ...ELSLP_WPM2 },
   };
 }
 
@@ -735,6 +1249,10 @@ export function _loadProject(project) {
             newG.pvAktiv = g.pvAktiv || false;
             newG.pvDachanteil = g.pvDachanteil || 30;
             newG.zustand = g.zustand || '';
+            newG.dachform      = g.dachform      || 'sattel';
+            newG.dachAzimut    = g.dachAzimut    ?? null;
+            newG.dachNeigung   = g.dachNeigung   ?? null;
+            newG.dachAutoAzimut = g.dachAutoAzimut || false;
             if (g.id >= idCounter) idCounter = g.id + 1;
          });
          } finally { _batchImporting = false; }
@@ -1077,10 +1595,35 @@ export function _loadProject(project) {
               edge.autoSized = eData.autoSized !== false;
               edge.fuseA = eData.fuseA || 0;
               edge.nParallel = eData.nParallel || 1;
+              edge.autoGenerated = eData.autoGenerated || false;
+              edge.msLevel = eData.msLevel || false;
+              edge.trennstelle = eData.trennstelle || false;
+              if (edge.msLevel) {
+                edge.layer?.setStyle({ color: '#ff9800', weight: 4, dashArray: null });
+              }
+              if (edge.trennstelle) {
+                edge.layer?.setStyle({ dashArray: '10,8', opacity: 0.5 });
+              }
             }
           });
         }
         recalcStromNetz();
+      }
+
+      // Custom Nutzungstypen wiederherstellen
+      if (Array.isArray(project.customNutzungstypen)) {
+        NUTZUNGSTYPEN_CUSTOM.length = 0;
+        project.customNutzungstypen.forEach(t => NUTZUNGSTYPEN_CUSTOM.push({ ...t }));
+      }
+
+      // Elektrische SLP-Profile wiederherstellen
+      if (Array.isArray(project.customElSlpProfiles)) {
+        ELSLP_CUSTOM.length = 0;
+        project.customElSlpProfiles.forEach(p => ELSLP_CUSTOM.push({ ...p }));
+      }
+      if (project.elSlpWpm2Overrides && typeof project.elSlpWpm2Overrides === 'object') {
+        Object.keys(ELSLP_WPM2).forEach(k => delete ELSLP_WPM2[k]);
+        Object.assign(ELSLP_WPM2, project.elSlpWpm2Overrides);
       }
 
       redrawErzeugerIcons();

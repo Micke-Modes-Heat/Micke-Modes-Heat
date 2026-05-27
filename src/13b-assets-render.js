@@ -20,6 +20,11 @@ const ASSET_DETAIL_ZOOM    = 18;
 // Sammel-Icon bei mittlerem Zoom
 const COLLAPSED_ICON = '⚙';
 
+// Prüft ob ein Asset geplante (noch offene) Maßnahmen hat → Badge anzeigen
+function hasPendingMassnahmen(asset) {
+  return (asset.massnahmen || []).some(m => m.status === 'geplant');
+}
+
 // Zoom-abhängige Marker-Größe (14–20 px)
 function sizeAtZoom(z) {
   const size = Math.round(14 + (z - ASSET_DETAIL_ZOOM) * 3);
@@ -89,10 +94,14 @@ function drawBuildingGroup(buildingId) {
   if (collapsed) {
     // Sammel-Marker: ein generisches Icon + Zahl-Badge
     const fontSize = Math.round(size * 0.65);
-    const badge = assets.length > 1
+    const countBadge = assets.length > 1
       ? `<span class="asset-group-count">${assets.length}</span>`
       : '';
-    html = `<div class="asset-group asset-group-collapsed" style="width:${size}px;height:${size}px;font-size:${fontSize}px;">${COLLAPSED_ICON}${badge}</div>`;
+    const hasAnyPending = assets.some(hasPendingMassnahmen);
+    const pendingBadge = hasAnyPending
+      ? `<span class="asset-massn-badge"></span>`
+      : '';
+    html = `<div class="asset-group asset-group-collapsed" style="width:${size}px;height:${size}px;font-size:${fontSize}px;">${COLLAPSED_ICON}${countBadge}${pendingBadge}</div>`;
     width  = size + 8;
     height = size + 8;
   } else {
@@ -102,7 +111,10 @@ function drawBuildingGroup(buildingId) {
       const cfg    = ASSET_CFG[a.type];
       const status = getAssetStatus(a, globalYear);
       const opacity = status === 'active' ? 1 : 0.4;
-      return `<span class="asset-group-icon" data-asset-id="${a.id}" style="background:${cfg.color};opacity:${opacity};width:${size}px;height:${size}px;font-size:${fontSize}px;" title="${a.name}">${cfg.icon}</span>`;
+      const pendingBadge = hasPendingMassnahmen(a)
+        ? `<span class="asset-massn-badge asset-massn-badge-sm"></span>`
+        : '';
+      return `<span class="asset-group-icon" data-asset-id="${a.id}" style="background:${cfg.color};opacity:${opacity};width:${size}px;height:${size}px;font-size:${fontSize}px;" title="${a.name}">${cfg.icon}${pendingBadge}</span>`;
     }).join('');
     html = `<div class="asset-group">${iconsHtml}</div>`;
     width  = size * Math.min(assets.length, 6) + 4;
@@ -223,12 +235,16 @@ function drawSingleMarker(asset) {
     anchorOffsetX = Math.round(((count - 1) / 2 - idx) * spacing);
   }
 
+  const pendingBadge = hasPendingMassnahmen(asset)
+    ? `<span class="asset-massn-badge"></span>`
+    : '';
   const icon = L.divIcon({
     className: '',
     html: `<div class="asset-marker asset-marker-${status}"
               style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;"
               title="${asset.name}">
              <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
+             ${pendingBadge}
            </div>`,
     iconSize:   [size, size],
     iconAnchor: [size / 2 + anchorOffsetX, size / 2],
@@ -282,16 +298,14 @@ function drawSingleMarker(asset) {
 
   m.on('contextmenu', e => {
     L.DomEvent.stopPropagation(e);
-    if (confirm(`Asset "${asset.name}" löschen?`)) {
-      // Strom-Knoten und angeschlossene Kabel mitentfernen
-      if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-      else if (window.stromNodes) {
-        const idx = window.stromNodes.findIndex(n => n.id === asset.id);
-        if (idx >= 0) window.stromNodes.splice(idx, 1);
-      }
-      deleteAsset(asset.id);
-      redrawAllAssets();
+    // Strom-Knoten und angeschlossene Kabel mitentfernen
+    if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
+    else if (window.stromNodes) {
+      const idx = window.stromNodes.findIndex(n => n.id === asset.id);
+      if (idx >= 0) window.stromNodes.splice(idx, 1);
     }
+    deleteAsset(asset.id);
+    redrawAllAssets();
   });
 
   m.addTo(standaloneLayer);
@@ -310,6 +324,11 @@ export function redrawAllAssets() {
   for (const a of ASSETS.items) a._marker = null;
 
   for (const a of ASSETS.items) drawSingleMarker(a);
+
+  // Sidebar-Liste synchron halten (window-Bridge, kein zirkulärer Import)
+  if (typeof window.renderSidebarAssetList === 'function') {
+    window.renderSidebarAssetList();
+  }
 }
 
 export function setAssetLayerVisible(visible) {

@@ -381,8 +381,12 @@ export function addGebaeude(opts={}){
            fromOsm:opts.fromOsm||false,fromWfs:opts.fromWfs||false,osmId:opts.osmId||null,
            baujahr: opts.baujahr!=null?opts.baujahr:null, baujährQuelle: opts.baujährQuelle||null,
            abrissjahr: null, sanierungen: [], selected: false,
-           pvAktiv: false, pvDachanteil: 30,
-           strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || ''};
+           pvAktiv: false, pvDachanteil: opts.pvDachanteil ?? 30,
+           strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || '',
+           dachform:      opts.dachform      || 'sattel',
+           dachAzimut:    opts.dachAzimut    ?? null,
+           dachNeigung:   opts.dachNeigung   ?? null,
+           dachAutoAzimut: opts.dachAutoAzimut || false};
   window.gebaeude.push(g);
   if(opts.coords){
     g.polygon=opts.coords;
@@ -682,15 +686,46 @@ export const OSM_SKIP_TYPES = new Set([
 ]);
 
 
-// ── Gebäudescharfe Stromverbräuche ─────────────────────────────────────────
-// Typische spez. Stromverbräuche in kWh/m²a nach Nutzungstyp
-export const STROM_SPEZ_DEFAULTS = {
-  efh: 25, mfh: 20, ghd: 45, schule: 18, buero: 35, industrie: 60, oeffentlich: 25, '': 25
-};
-// SLP-Profil-Zuordnung nach Nutzungstyp
-export const STROM_PROFIL_MAP = {
-  efh: 'H0', mfh: 'H0', ghd: 'G0', schule: 'G1', buero: 'G0', industrie: 'G0', oeffentlich: 'G1', '': 'H0'
-};
+// ── Nutzungstypen-Register ───────────────────────────────────────────────────
+// Eingebaute Typen (schreibgeschützt, immer vorhanden)
+// vbh = Vollbenutzungsstunden/a → Spitzenlast kW = MWh*1000/vbh
+const _NUTZUNGSTYPEN_BUILTIN = [
+  { id:'efh',        label:'EFH',         gruppe:'Wohnen',      spezStrom:25, slp:'H0', vbh:2200 },
+  { id:'mfh',        label:'MFH',         gruppe:'Wohnen',      spezStrom:20, slp:'H0', vbh:2200 },
+  { id:'ghd',        label:'GHD',         gruppe:'Gewerbe',     spezStrom:45, slp:'G0', vbh:2500 },
+  { id:'schule',     label:'Schule',      gruppe:'Öffentlich',  spezStrom:18, slp:'G1', vbh:1800 },
+  { id:'buero',      label:'Büro',        gruppe:'Gewerbe',     spezStrom:35, slp:'G1', vbh:1800 },
+  { id:'industrie',  label:'Industrie',   gruppe:'Industrie',   spezStrom:60, slp:'G0', vbh:2500 },
+  { id:'oeffentlich',label:'Öffentlich',  gruppe:'Öffentlich',  spezStrom:25, slp:'G1', vbh:1800 },
+];
+
+// Custom-Typen — projekt-scoped, wird mit Projekt gespeichert/geladen
+export let NUTZUNGSTYPEN_CUSTOM = [];
+
+// Vollständiges Register: eingebaut + custom
+export function getNutzungstypen() {
+  return [..._NUTZUNGSTYPEN_BUILTIN, ...NUTZUNGSTYPEN_CUSTOM];
+}
+export function getNutzungstypById(id) {
+  return getNutzungstypen().find(t => t.id === id) || null;
+}
+export function isBuiltinNutzungstyp(id) {
+  return _NUTZUNGSTYPEN_BUILTIN.some(t => t.id === id);
+}
+
+// Rückwärtskompatible Lookup-Helfer
+export const STROM_SPEZ_DEFAULTS = new Proxy({}, {
+  get(_, id) {
+    const t = getNutzungstypById(id);
+    return t ? t.spezStrom : 25;
+  }
+});
+export const STROM_PROFIL_MAP = new Proxy({}, {
+  get(_, id) {
+    const t = getNutzungstypById(id);
+    return t ? t.slp : 'H0';
+  }
+});
 
 export function getAutoStrom(g) {
   // Auto-Strom: spezStrom * Nutzfläche, oder Defaultwert * Nutzfläche
@@ -718,6 +753,12 @@ export function getGebStromMwh(g) {
 export function getGebStromProfil(g) {
   if (g.stromProfil && g.stromProfil !== 'auto') return g.stromProfil;
   return STROM_PROFIL_MAP[g.nutzung || ''] || 'H0';
+}
+
+// Vollbenutzungsstunden aus Register → für Spitzenlast-Berechnung im Wizard
+export function getGebVbh(g) {
+  const t = getNutzungstypById(g.nutzung || '');
+  return t ? t.vbh : 2200; // Fallback: Haushalt
 }
 
 // Generate normalized SLP hour profile (8760 values summing to 1.0)

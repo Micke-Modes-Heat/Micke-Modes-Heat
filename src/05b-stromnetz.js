@@ -7,7 +7,7 @@
 // ── Styled Modal-Dialoge ────────────────────────────────────────
 import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { getGebStromMwh, map } from './02b-gebaeude.js';
-import { polygonAreaM2, polygonCenter } from './02c-karte-werkzeuge.js';
+import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
@@ -479,57 +479,52 @@ function _elDijkstra(nodeMap, startKey, endKey) {
   return path;
 }
 
-// Vollständiges Routing: von Punkt A nach B entlang Trassen (mit virtuellem Knoteneinstieg)
-function routeAlongTrasse(from, to) {
-  const trassen = _getTrassenForRouting();
-  if (trassen.length === 0) return null;
+// Fügt einen virtuellen Knoten für `proj` in nodeMap ein (idempotent per key)
+function _insertVirtualNode(nodeMap, trassen, proj) {
+  const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
+  const tr = trassen.find(t => t.id === proj.trasseId); if (!tr) return null;
+  const ptPrev = tr.pts[proj.segIdx], ptNext = tr.pts[proj.segIdx + 1];
+  const kPrev = key(ptPrev), kNext = key(ptNext);
+  const kVirt = key(proj.pt);
+  if (nodeMap.has(kVirt)) return kVirt;
+  const { t: tVirt } = _elProjOnSeg(proj.pt, ptPrev, ptNext);
+  const segNodes = [{ k: kPrev, t: 0.0 }, { k: kNext, t: 1.0 }];
+  for (const [k, n] of nodeMap) {
+    if (k === kPrev || k === kNext) continue;
+    const { t, pt: onPt } = _elProjOnSeg([n.lat, n.lng], ptPrev, ptNext);
+    if (t > 1e-4 && t < 1 - 1e-4 && _elPtDist([n.lat, n.lng], onPt) < 2.0)
+      segNodes.push({ k, t });
+  }
+  segNodes.sort((a, b) => a.t - b.t);
+  const vn = { id: kVirt, lat: proj.pt[0], lng: proj.pt[1], adj: [] };
+  nodeMap.set(kVirt, vn);
+  const prevNb = [...segNodes].reverse().find(sn => sn.t <= tVirt + 1e-9);
+  const nextNb = segNodes.find(sn => sn.t >= tVirt - 1e-9);
+  [prevNb, nextNb].forEach(nb => {
+    if (!nb || nb.k === kVirt) return;
+    const nbNode = nodeMap.get(nb.k); if (!nbNode) return;
+    const d = _elPtDist(proj.pt, [nbNode.lat, nbNode.lng]);
+    if (!vn.adj.some(a => a.toKey === nb.k)) {
+      vn.adj.push({ toKey: nb.k, dist: d });
+      nbNode.adj.push({ toKey: kVirt, dist: d });
+    }
+  });
+  return kVirt;
+}
 
+// Routing-Kern: verwendet bereits gebauten nodeMap (mutiert ihn für virtuelle Knoten)
+function _routeWithGraph(trassen, nodeMap, from, to) {
   const ptA = [from.lat, from.lng];
   const ptB = [to.lat,   to.lng];
-  const nodeMap = _elBuildGraph(trassen);
-  if (nodeMap.size === 0) return null;
-
   const projA = _elClosestOnTrasse(trassen, from.lat, from.lng);
   const projB = _elClosestOnTrasse(trassen, to.lat,   to.lng);
   if (!projA || !projB) return null;
 
   const key = pt => pt[0].toFixed(7) + ',' + pt[1].toFixed(7);
-
-  function insertVirtual(proj) {
-    const tr = trassen.find(t => t.id === proj.trasseId); if (!tr) return null;
-    const ptPrev = tr.pts[proj.segIdx], ptNext = tr.pts[proj.segIdx + 1];
-    const kPrev = key(ptPrev), kNext = key(ptNext);
-    const kVirt = key(proj.pt);
-    if (nodeMap.has(kVirt)) return kVirt;
-    const { t: tVirt } = _elProjOnSeg(proj.pt, ptPrev, ptNext);
-    const segNodes = [{ k: kPrev, t: 0.0 }, { k: kNext, t: 1.0 }];
-    for (const [k, n] of nodeMap) {
-      if (k === kPrev || k === kNext) continue;
-      const { t, pt: onPt } = _elProjOnSeg([n.lat, n.lng], ptPrev, ptNext);
-      if (t > 1e-4 && t < 1 - 1e-4 && _elPtDist([n.lat, n.lng], onPt) < 2.0)
-        segNodes.push({ k, t });
-    }
-    segNodes.sort((a, b) => a.t - b.t);
-    const vn = { id: kVirt, lat: proj.pt[0], lng: proj.pt[1], adj: [] };
-    nodeMap.set(kVirt, vn);
-    const prevNb = [...segNodes].reverse().find(sn => sn.t <= tVirt + 1e-9);
-    const nextNb = segNodes.find(sn => sn.t >= tVirt - 1e-9);
-    [prevNb, nextNb].forEach(nb => {
-      if (!nb || nb.k === kVirt) return;
-      const nbNode = nodeMap.get(nb.k); if (!nbNode) return;
-      const d = _elPtDist(proj.pt, [nbNode.lat, nbNode.lng]);
-      if (!vn.adj.some(a => a.toKey === nb.k)) {
-        vn.adj.push({ toKey: nb.k, dist: d });
-        nbNode.adj.push({ toKey: kVirt, dist: d });
-      }
-    });
-    return kVirt;
-  }
-
-  const kA = insertVirtual(projA), kB = insertVirtual(projB);
+  const kA = _insertVirtualNode(nodeMap, trassen, projA);
+  const kB = _insertVirtualNode(nodeMap, trassen, projB);
   if (!kA || !kB) return null;
 
-  // Gleicher Abschnitt → direkte Kante einfügen (verhindert Umweg-Bug)
   if (kA !== kB && projA.trasseId === projB.trasseId && projA.segIdx === projB.segIdx) {
     const dAB = _elPtDist(projA.pt, projB.pt);
     nodeMap.get(kA)?.adj.push({ toKey: kB, dist: dAB });
@@ -551,19 +546,42 @@ function routeAlongTrasse(from, to) {
   }
   route.push(ptB);
 
-  // Rückgabe als Leaflet LatLng-Array
   return route.map(p => L.latLng(p[0], p[1]));
 }
 
-function polylineLength(pts) {
+// Vollständiges Routing: von Punkt A nach B entlang Trassen (mit virtuellem Knoteneinstieg)
+export function routeAlongTrasse(from, to) {
+  const trassen = _getTrassenForRouting();
+  if (trassen.length === 0) return null;
+  const nodeMap = _elBuildGraph(trassen);
+  if (nodeMap.size === 0) return null;
+  return _routeWithGraph(trassen, nodeMap, from, to);
+}
+
+// Einmalig den Trassen-Graph bauen — für Batch-Routing in autoNetzAssets
+export function buildTrasseGraph() {
+  const trassen = _getTrassenForRouting();
+  if (!trassen.length) return null;
+  const nodeMap = _elBuildGraph(trassen);
+  if (nodeMap.size === 0) return null;
+  return { trassen, nodeMap };
+}
+
+// Routing mit vorgebautem Graph (nodeMap wird wiederverwendet, virtuelle Knoten akkumulieren)
+export function routeAlongTrasseWithGraph(ctx, from, to) {
+  if (!ctx) return null;
+  return _routeWithGraph(ctx.trassen, ctx.nodeMap, from, to);
+}
+
+export function polylineLength(pts) {
   let len = 0;
   for (let i = 1; i < pts.length; i++) len += pts[i - 1].distanceTo(pts[i]);
   return len;
 }
 
 export function addStromEdge(uId, vId) {
-  const uNode = window.stromNodes.find(n => n.id === uId);
-  const vNode = window.stromNodes.find(n => n.id === vId);
+  const uNode = window.stromNodes.find(n => n.id === uId) || ASSETS.items.find(a => a.id === uId);
+  const vNode = window.stromNodes.find(n => n.id === vId) || ASSETS.items.find(a => a.id === vId);
   if (!uNode || !vNode) return null;
 
   const pt1 = L.latLng(uNode.lat, uNode.lng);
@@ -579,7 +597,7 @@ export function addStromEdge(uId, vId) {
     color: '#fdd835', weight: 3, opacity: 0.8, dashArray: '8,4', pane: 'netzPane', interactive: true
   });
   const hitLayer = L.polyline(linePts, {
-    color: 'transparent', weight: 16, opacity: 0, interactive: true, pane: 'netzPane'
+    color: 'transparent', weight: 16, opacity: 0.001, interactive: true, pane: 'netzPane'
   });
 
   if (window.stromNetzVisible) { layer.addTo(map); hitLayer.addTo(map); }
@@ -1853,6 +1871,8 @@ export function elCalcAssets() {
   const dirAdj = new Map(activeA.map(a => [a.id, []]));
 
   for (const e of activeE) {
+    if (e.msLevel) continue; // MS-Kabel werden durch MS-Ring-Analyse dimensioniert
+
     const aAsset = assetMap.get(e.u), bAsset = assetMap.get(e.v);
     if (!aAsset || !bAsset) continue;
     const rankA = TYPE_RANK[aAsset.type] ?? 6, rankB = TYPE_RANK[bAsset.type] ?? 6;
@@ -1866,23 +1886,35 @@ export function elCalcAssets() {
     const I_A_sign = P_net   * 1000 / (Math.sqrt(3) * U_N * COS_PHI);
 
     const kt = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
-    const np = Math.max(1, e.nParallel || 1);
-    // Auto-Querschnitt: Strom pro Ader = Gesamtstrom / Parallelkabel
+    const maxSec = kt.sections[kt.sections.length - 1];
+    let np = Math.max(1, e.nParallel || 1);
+    // Auto-Parallelkabel: Maximalquerschnitt reicht nicht → mehr Stränge
+    if (e.autoSized && I_A > maxSec.Iz * np) {
+      np = Math.ceil(I_A / maxSec.Iz);
+      e.nParallel = np;
+    }
     const I_per_cable = I_A / np;
     if (!e.crossSection || e.autoSized) {
       const minSec = kt.sections.find(s => s.Iz >= I_per_cable);
-      e.crossSection = minSec ? minSec.mm2 : kt.sections[kt.sections.length - 1].mm2;
+      e.crossSection = minSec ? minSec.mm2 : maxSec.mm2;
     }
-    const sec   = kt.sections.find(s => s.mm2 === e.crossSection) || kt.sections[kt.sections.length - 1];
+    // Auto-Sicherung: größte Normgröße ≤ Iz des Kabels (Kabelschutz nach VDE 0298)
+    if (e.autoSized && (!e.fuseA || e.fuseA === 0)) {
+      const sec0 = kt.sections.find(s => s.mm2 === e.crossSection) || maxSec;
+      const FUSE_NORM = [16, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250];
+      const maxFuse = [...FUSE_NORM].reverse().find(f => f <= sec0.Iz * np);
+      e.fuseA = maxFuse || 0;
+    }
+    const sec   = kt.sections.find(s => s.mm2 === e.crossSection) || maxSec;
     const R_km  = kt.rhoOhmMm2pM * 1000 / e.crossSection;
-    const R_seg = (R_km * lengthM / 1000) / np;   // Parallelschaltung halbiert R
+    const R_seg = (R_km * lengthM / 1000) / np;
     const dU_V  = Math.sqrt(3) * R_seg * (I_A_sign / np);
     const dU_pct = (dU_V / U_N) * 100;
 
     e.peakFlowKw   = P_net;
     e.peakCurrentA = I_A;
     e.ratedCurrentA = sec.Iz * np;
-    e.auslastungPct = sec.Iz > 0 ? (I_A / sec.Iz) * 100 : 0;
+    e.auslastungPct = sec.Iz > 0 ? (I_A / (sec.Iz * np)) * 100 : 0;
     e.deltaUPct    = Math.abs(dU_pct);
     e.flowDirection = P_net >= 0 ? 1 : -1;
 
@@ -2022,6 +2054,124 @@ function _showElCalcResult(lines, bottlenecks) {
   const all = [...lines, ...(bottlenecks.length ? ['Engpässe:', ...bottlenecks] : [])];
   el.innerHTML = all.map(l => `<div class="lp-el-calc-line${l.startsWith('⚠') ? ' warn' : l.startsWith('Engpässe') ? ' err' : ''}">${l}</div>`).join('');
   el.style.display = '';
+}
+
+// ── OSM-Straßen als Trassenbasis ────────────────────────────────────────────
+
+let _osmStrassenLayer = null;
+let _osmStrassenVisible = true;
+const _osmStrassenAdopted = new Set(); // OSM Way-IDs die bereits als Trasse übernommen wurden
+
+export async function loadOsmStrassen() {
+  let bbox;
+  const area = window.areaLatLngs;
+  if (area && area.length >= 3) {
+    const lats = area.map(p => p.lat);
+    const lngs = area.map(p => p.lng);
+    bbox = `${Math.min(...lats)},${Math.min(...lngs)},${Math.max(...lats)},${Math.max(...lngs)}`;
+  } else {
+    const b = map.getBounds();
+    bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
+    showHint('⚠ Kein Planungsgebiet definiert — aktueller Kartenausschnitt wird verwendet.');
+  }
+
+  const btn = document.getElementById('btn-osm-strassen');
+  if (btn) { btn.textContent = '⏳ Lade...'; btn.disabled = true; }
+
+  const query = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
+
+  try {
+    const resp = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body: query,
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    clearOsmStrassen();
+    _osmStrassenLayer = L.layerGroup();
+
+    for (const el of data.elements) {
+      if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
+      const pts = el.geometry.map(p => L.latLng(p.lat, p.lon));
+      const wayId = el.id;
+
+      const pl = L.polyline(pts, {
+        color: '#90a4ae',
+        weight: 3,
+        opacity: 0.6,
+        dashArray: '6,5',
+      });
+      pl._osmWayId = wayId;
+      pl._osmPts = pts;
+
+      if (el.tags?.name) pl.bindTooltip(el.tags.name, { sticky: true, className: 'geb-tooltip' });
+
+      pl.on('click', () => _adoptOsmStrasse(pl));
+      pl.on('mouseover', () => {
+        if (!_osmStrassenAdopted.has(wayId)) pl.setStyle({ color: '#4fc3f7', opacity: 0.9 });
+      });
+      pl.on('mouseout', () => {
+        if (!_osmStrassenAdopted.has(wayId)) pl.setStyle({ color: '#90a4ae', opacity: 0.6 });
+      });
+
+      _osmStrassenLayer.addLayer(pl);
+    }
+
+    const count = _osmStrassenLayer.getLayers().length;
+    if (_osmStrassenVisible) _osmStrassenLayer.addTo(map);
+
+    if (btn) {
+      btn.textContent = count > 0 ? `↓ Straßen (${count} geladen)` : '↓ Straßen aus OSM laden';
+      btn.disabled = false;
+    }
+    if (count === 0) showHint('⚠ Keine Straßen im Planungsgebiet gefunden.');
+  } catch (e) {
+    if (btn) { btn.textContent = '↓ Straßen aus OSM laden'; btn.disabled = false; }
+    showHint('⚠ OSM-Laden fehlgeschlagen: ' + e.message);
+  }
+}
+
+function _adoptOsmStrasse(pl, skipRedraw) {
+  const wayId = pl._osmWayId;
+  if (_osmStrassenAdopted.has(wayId)) return;
+  _osmStrassenAdopted.add(wayId);
+  pl.setStyle({ color: '#ff9800', weight: 4, opacity: 0.9, dashArray: null });
+  pl.off('mouseover');
+  pl.off('mouseout');
+
+  const startIdx = window.trassePoints.length;
+  for (const pt of pl._osmPts) window.trassePoints.push(pt);
+  window.trasseSegments.push({ start: startIdx, end: window.trassePoints.length - 1 });
+  window.trasseCurrentSegStart = window.trassePoints.length;
+
+  if (!skipRedraw) {
+    redrawTrasse();
+    if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+  }
+}
+
+export function adoptAllOsmStrassen() {
+  if (!_osmStrassenLayer) return;
+  _osmStrassenLayer.getLayers().forEach(pl => _adoptOsmStrasse(pl, true));
+  redrawTrasse();
+  if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+}
+
+export function toggleOsmStrassenVisible() {
+  _osmStrassenVisible = !_osmStrassenVisible;
+  if (!_osmStrassenLayer) return;
+  if (_osmStrassenVisible) _osmStrassenLayer.addTo(map);
+  else map.removeLayer(_osmStrassenLayer);
+  const btn = document.getElementById('btn-osm-strassen-toggle');
+  if (btn) btn.textContent = _osmStrassenVisible ? '👁 Ausblenden' : '👁 Einblenden';
+}
+
+export function clearOsmStrassen() {
+  if (_osmStrassenLayer) { map.removeLayer(_osmStrassenLayer); _osmStrassenLayer = null; }
+  _osmStrassenAdopted.clear();
+  const btn = document.getElementById('btn-osm-strassen');
+  if (btn) { btn.textContent = '↓ Straßen aus OSM laden'; btn.disabled = false; }
 }
 
 // ── Stromnetz komplett löschen ──────────────────────────────────

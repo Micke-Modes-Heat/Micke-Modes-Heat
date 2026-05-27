@@ -7,7 +7,7 @@ import { updateNetzColorLegend } from './02a-netz-physik.js';
 import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
 import { clearArea, polygonAreaM2, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
 import { drillSvg, redrawErzeugerIcons, redrawVerbindungslinien } from './03a-erzeuger.js';
-import { drawChart, hideHint, renderList, showHint } from './03c-gebaeude-io.js';
+import { drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
@@ -1191,7 +1191,14 @@ out body;>;out skel qt;`;
     const CHUNK = 20;
     _batchImporting = true;
     for(let i = 0; i < toAdd.length; i += CHUNK){
-      toAdd.slice(i, i + CHUNK).forEach(opts => addGebaeude(opts));
+      toAdd.slice(i, i + CHUNK).forEach(opts => {
+        const g = addGebaeude(opts);
+        // Azimut der Südseite automatisch aus Polygon-Längsachse ableiten
+        if (g && g.polygon && g.polygon.length >= 3) {
+          const az = detectRoofAzimutFromPolygon(g.polygon);
+          if (az !== null) { g.dachAzimut = az; g.dachAutoAzimut = true; }
+        }
+      });
       showHint(`OSM: ${Math.min(i + CHUNK, toAdd.length)} / ${toAdd.length} Gebäude…`);
       await new Promise(r => setTimeout(r, 0));
     }

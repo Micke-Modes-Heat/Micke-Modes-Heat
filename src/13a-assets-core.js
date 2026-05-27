@@ -92,6 +92,21 @@ export function getAssetStatus(item, year) {
   return 'active';
 }
 
+// Effektive Props für ein Jahr: Basis-Props + alle umgesetzten Maßnahmen mit newProps
+// (chronologisch akkumuliert bis zum angegebenen Jahr)
+export function getAssetPropsForYear(asset, year) {
+  const y = year ?? globalYear ?? new Date().getFullYear();
+  const props = { ...(asset.props || {}) };
+  const measures = (asset.massnahmen || [])
+    .filter(m => m.status === 'umgesetzt' && m.newProps && Object.keys(m.newProps).length > 0)
+    .filter(m => !m.jahr || parseInt(m.jahr) <= y)
+    .sort((a, b) => (a.jahr || 0) - (b.jahr || 0));
+  for (const m of measures) {
+    Object.assign(props, m.newProps);
+  }
+  return props;
+}
+
 // ── CRUD ───────────────────────────────────────────────────────────────────
 export function createAsset(type, lat, lng, opts = {}) {
   const cfg = ASSET_CFG[type];
