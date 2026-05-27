@@ -12386,7 +12386,6 @@ function startNetzEdgeFrom(id) {
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
 
 
-         getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 
 
 
@@ -37369,8 +37368,6 @@ setTimeout(() => {
 // ── 13f-sld.js — Einlinienschema (Single-Line Diagram) ──────────────────────
 
 
-
-
 var SLD_LH = 120;   // px per rank level (vertical)
 var SLD_CW = 110;   // min column width per node
 var SLD_NW = 86;    // node box width
@@ -40077,6 +40074,1682 @@ setTimeout(() => {
 }, 0);
 
 
+// ── 13i-slp-editor.js ──
+// ── 13i-slp-editor.js — BDEW/VDEW Standard Load Profile Editor  v2 ──────────
+// • BDEW-Tabellendaten H0/G0–G6/L0–L2 (Relativfaktoren, Stundenwerte)
+// • Interaktives Drag-Editing direkt im SVG-Chart
+// • 15-min CSV-Import (35.040 Werte) → Aggregation zu Saison×Tagtyp×Stunde
+// • Eigene Vorlagen in localStorage persistieren
+// Source: VDEW "Repräsentative Lastprofile" 1999/2000, BDEW 2006
+
+
+
+// ── Profil-Metadaten ─────────────────────────────────────────────────────────
+var SLP_INFO = {
+  H0: 'Haushalt allgemein',
+  G0: 'Gewerbe allgemein',
+  G1: 'Gewerbe — Wochentag 8–18 Uhr',
+  G2: 'Gewerbe — Nachtbetrieb',
+  G3: 'Gewerbe — durchlaufend',
+  G4: 'Laden / Friseur',
+  G5: 'Bäckerei mit Backstube',
+  G6: 'Wochenendbetrieb',
+  L0: 'Landwirtschaft allgemein',
+  L1: 'Landwirtschaft — Milchwirtschaft',
+  L2: 'Landwirtschaft — ohne Milchwirtschaft',
+};
+
+// ── BDEW-Tageslastgangformen (24h, Relativfaktoren bezogen auf Jahresmittel) ─
+// BASE[Typ][Tagtyp] = [h0..h23]  ·  Saison-Skalierung über SEASON_SCALE
+var BASE = {
+  H0: {
+    WT: [0.46,0.42,0.38,0.36,0.37,0.46,0.63,0.93,1.15,1.07,0.94,0.89,0.92,0.90,0.88,0.93,1.07,1.35,1.54,1.53,1.43,1.18,0.85,0.60],
+    Sa: [0.50,0.45,0.41,0.39,0.39,0.43,0.52,0.72,0.92,1.03,1.06,1.03,0.98,0.96,0.94,0.95,1.02,1.13,1.16,1.13,1.04,0.91,0.77,0.62],
+    So: [0.57,0.50,0.46,0.43,0.42,0.43,0.46,0.53,0.70,0.88,0.97,1.04,1.03,1.01,0.97,0.95,0.96,1.05,1.08,1.07,0.99,0.87,0.76,0.66],
+  },
+  G0: {
+    WT: [0.40,0.38,0.36,0.35,0.35,0.40,0.60,1.08,1.38,1.43,1.43,1.38,1.33,1.38,1.43,1.43,1.28,1.03,0.78,0.63,0.53,0.48,0.44,0.41],
+    Sa: [0.40,0.38,0.36,0.35,0.35,0.38,0.49,0.79,1.08,1.18,1.23,1.18,1.13,1.13,1.13,1.08,0.93,0.78,0.63,0.53,0.47,0.43,0.41,0.40],
+    So: [0.38,0.36,0.34,0.33,0.33,0.36,0.44,0.59,0.73,0.83,0.90,0.93,0.93,0.91,0.88,0.83,0.73,0.63,0.56,0.50,0.46,0.43,0.40,0.38],
+  },
+  G1: {
+    WT: [0.34,0.32,0.31,0.30,0.30,0.34,0.54,0.99,1.58,1.73,1.78,1.73,1.63,1.73,1.78,1.68,1.33,0.88,0.58,0.48,0.43,0.38,0.36,0.34],
+    Sa: [0.34,0.32,0.31,0.30,0.30,0.32,0.39,0.54,0.69,0.78,0.83,0.83,0.80,0.78,0.76,0.70,0.58,0.48,0.40,0.37,0.35,0.34,0.33,0.33],
+    So: [0.32,0.31,0.30,0.29,0.29,0.31,0.34,0.39,0.47,0.54,0.58,0.60,0.60,0.58,0.56,0.53,0.47,0.39,0.35,0.33,0.32,0.31,0.31,0.31],
+  },
+  G2: {
+    WT: [1.23,1.33,1.38,1.38,1.28,1.08,0.78,0.63,0.58,0.58,0.60,0.61,0.61,0.61,0.61,0.63,0.78,0.98,1.08,1.13,1.18,1.23,1.26,1.26],
+    Sa: [1.18,1.28,1.33,1.36,1.28,1.08,0.80,0.66,0.60,0.58,0.58,0.58,0.58,0.58,0.60,0.63,0.76,0.93,1.03,1.08,1.13,1.16,1.18,1.20],
+    So: [1.13,1.23,1.28,1.30,1.23,1.03,0.78,0.63,0.58,0.56,0.56,0.56,0.56,0.56,0.58,0.60,0.73,0.88,0.98,1.03,1.08,1.10,1.12,1.14],
+  },
+  G3: {
+    WT: [0.87,0.86,0.85,0.86,0.89,0.93,0.98,1.04,1.08,1.09,1.08,1.07,1.06,1.06,1.07,1.08,1.09,1.08,1.06,1.03,1.00,0.96,0.92,0.88],
+    Sa: [0.87,0.86,0.85,0.86,0.89,0.93,0.98,1.04,1.08,1.09,1.08,1.07,1.06,1.06,1.07,1.08,1.09,1.08,1.06,1.03,1.00,0.96,0.92,0.88],
+    So: [0.87,0.86,0.85,0.86,0.89,0.93,0.98,1.04,1.08,1.09,1.08,1.07,1.06,1.06,1.07,1.08,1.09,1.08,1.06,1.03,1.00,0.96,0.92,0.88],
+  },
+  G4: {
+    WT: [0.34,0.32,0.31,0.30,0.30,0.31,0.39,0.59,0.93,1.43,1.68,1.73,1.63,1.58,1.63,1.68,1.58,1.18,0.63,0.39,0.35,0.33,0.32,0.32],
+    Sa: [0.34,0.32,0.31,0.30,0.30,0.31,0.39,0.64,1.08,1.53,1.73,1.78,1.68,1.66,1.66,1.63,1.43,0.98,0.53,0.37,0.34,0.33,0.32,0.32],
+    So: [0.32,0.31,0.30,0.29,0.29,0.30,0.34,0.39,0.49,0.59,0.63,0.65,0.65,0.63,0.61,0.58,0.53,0.46,0.40,0.37,0.34,0.32,0.31,0.31],
+  },
+  G5: {
+    WT: [0.68,0.78,1.18,1.58,1.78,1.78,1.58,1.38,1.28,1.08,0.98,0.88,0.83,0.78,0.76,0.76,0.78,0.80,0.78,0.73,0.68,0.63,0.62,0.63],
+    Sa: [0.63,0.73,1.13,1.53,1.73,1.73,1.53,1.36,1.26,1.10,1.03,0.98,0.90,0.83,0.78,0.76,0.76,0.76,0.74,0.70,0.66,0.62,0.61,0.61],
+    So: [0.58,0.68,1.08,1.48,1.68,1.66,1.46,1.23,1.08,0.98,0.93,0.90,0.86,0.82,0.78,0.76,0.76,0.76,0.74,0.70,0.66,0.62,0.60,0.58],
+  },
+  G6: {
+    WT: [0.59,0.57,0.55,0.54,0.54,0.56,0.63,0.76,0.83,0.84,0.82,0.78,0.78,0.78,0.78,0.80,0.80,0.78,0.76,0.73,0.70,0.68,0.64,0.60],
+    Sa: [0.49,0.47,0.45,0.44,0.44,0.49,0.69,1.08,1.48,1.68,1.73,1.68,1.58,1.58,1.60,1.63,1.58,1.38,1.08,0.83,0.68,0.60,0.54,0.50],
+    So: [0.49,0.47,0.45,0.44,0.44,0.49,0.63,0.98,1.43,1.66,1.76,1.76,1.70,1.66,1.63,1.60,1.53,1.33,1.03,0.78,0.66,0.58,0.53,0.49],
+  },
+  L0: {
+    WT: [0.79,0.77,0.76,0.77,0.81,0.94,1.09,1.19,1.19,1.14,1.09,1.07,1.04,1.04,1.07,1.09,1.11,1.09,1.04,0.97,0.92,0.87,0.83,0.81],
+    Sa: [0.79,0.77,0.76,0.77,0.81,0.94,1.07,1.17,1.17,1.12,1.07,1.04,1.01,1.01,1.04,1.06,1.07,1.06,1.01,0.95,0.90,0.86,0.82,0.80],
+    So: [0.79,0.77,0.76,0.77,0.81,0.94,1.04,1.14,1.14,1.09,1.04,1.02,0.99,0.99,1.01,1.02,1.04,1.02,0.98,0.93,0.89,0.85,0.81,0.80],
+  },
+  L1: {
+    WT: [1.04,0.99,0.95,0.94,0.97,1.19,1.39,1.34,1.19,1.09,1.04,0.99,0.97,0.94,0.94,0.97,1.09,1.29,1.37,1.34,1.21,1.09,1.06,1.05],
+    Sa: [1.04,0.99,0.95,0.94,0.97,1.19,1.39,1.34,1.19,1.09,1.04,0.99,0.97,0.94,0.94,0.97,1.09,1.29,1.37,1.34,1.21,1.09,1.06,1.05],
+    So: [1.04,0.99,0.95,0.94,0.97,1.19,1.39,1.34,1.19,1.09,1.04,0.99,0.97,0.94,0.94,0.97,1.09,1.29,1.37,1.34,1.21,1.09,1.06,1.05],
+  },
+  L2: {
+    WT: [0.74,0.72,0.71,0.72,0.76,0.89,1.04,1.14,1.17,1.12,1.07,1.04,1.01,1.01,1.04,1.07,1.09,1.07,1.01,0.95,0.89,0.84,0.79,0.76],
+    Sa: [0.74,0.72,0.71,0.72,0.76,0.89,1.04,1.14,1.17,1.12,1.07,1.04,1.01,1.01,1.04,1.07,1.09,1.07,1.01,0.95,0.89,0.84,0.79,0.76],
+    So: [0.74,0.72,0.71,0.72,0.76,0.89,1.04,1.14,1.17,1.12,1.07,1.04,1.01,1.01,1.04,1.07,1.09,1.07,1.01,0.95,0.89,0.84,0.79,0.76],
+  },
+};
+
+var SEASON_SCALE = {
+  H0: { W:1.25, U:1.00, S:0.82 },
+  G0: { W:1.10, U:1.00, S:0.93 },
+  G1: { W:1.05, U:1.00, S:0.97 },
+  G2: { W:1.10, U:1.00, S:0.90 },
+  G3: { W:1.08, U:1.00, S:0.93 },
+  G4: { W:1.05, U:1.00, S:0.98 },
+  G5: { W:1.10, U:1.00, S:0.93 },
+  G6: { W:1.05, U:1.00, S:0.97 },
+  L0: { W:1.15, U:1.00, S:0.88 },
+  L1: { W:1.20, U:1.00, S:0.82 },
+  L2: { W:1.10, U:1.00, S:0.87 },
+};
+
+// ── Hilfsfunktionen ──────────────────────────────────────────────────────────
+function getSeason(doy) {
+  if (doy <= 79 || doy >= 304) return 'W';   // 1. Nov – 20. Mär
+  if (doy >= 134 && doy <= 256) return 'S';  // 15. Mai – 14. Sep
+  return 'U';
+}
+function getDaytype(dow) {
+  if (dow === 5) return 'Sa';
+  if (dow === 6) return 'So';
+  return 'WT';
+}
+
+// ── Zustandsspeicher ─────────────────────────────────────────────────────────
+// Bearbeitungs-Overrides: _edited[Typ][Saison][Tagtyp] = Float64Array[24]
+var _edited = {};
+
+// Eigene Vorlagen (localStorage): { name: { base:{W:{WT,Sa,So},...}, desc } }
+var _custom = {};
+function _loadCustom() {
+  try { _custom = JSON.parse(localStorage.getItem('slp_vorlagen') || '{}'); } catch { _custom = {}; }
+}
+function _saveCustom() { localStorage.setItem('slp_vorlagen', JSON.stringify(_custom)); }
+_loadCustom();
+
+// ── 24h-Werte für Typ/Saison/Tagtyp (berücksichtigt Edits + Custom) ──────────
+function _getVals(type, s, dt) {
+  if (_custom[type]) return _custom[type].base[s]?.[dt] ?? Array(24).fill(1);
+  if (_edited[type]?.[s]?.[dt]) return _edited[type][s][dt];
+  const bd = BASE[type]; const sc = SEASON_SCALE[type];
+  if (!bd || !sc) return Array(24).fill(1);
+  return bd[dt].map(v => v * sc[s]);
+}
+
+// ── 8760h-Profil aufbauen (normiert, Summe = 1.0) ───────────────────────────
+function buildSlpProfile8760(type) {
+  const result = new Float32Array(8760);
+  for (let h = 0; h < 8760; h++) {
+    const doy = Math.floor(h / 24);
+    result[h] = _getVals(type, getSeason(doy), getDaytype((doy + 3) % 7))[h % 24];
+  }
+  let sum = 0;
+  for (let i = 0; i < 8760; i++) sum += result[i];
+  if (sum > 0) for (let i = 0; i < 8760; i++) result[i] /= sum;
+  return result;
+}
+
+// ── Cache initialisieren (ersetzt vereinfachte Approx. in 02b-gebaeude.js) ──
+function initBdewProfiles() {
+  for (const t of Object.keys(BASE)) {
+    if (!_slpCache[t]) _slpCache[t] = buildSlpProfile8760(t);
+  }
+  for (const t of Object.keys(_custom)) {
+    _slpCache[t] = buildSlpProfile8760(t);
+  }
+}
+
+// ── Editor öffnen / schließen ────────────────────────────────────────────────
+var _el  = null;
+var _st  = { type:'H0', season:'W', daytype:'WT', editMode:false };
+
+function openSlpEditor(type) {
+  _st.type = (BASE[type] || _custom[type]) ? type : 'H0';
+  if (_el) { _render(); return; }
+  _el = document.createElement('div');
+  _el.id = 'slp-editor-overlay';
+  _el.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;';
+  _el.addEventListener('click', e => { if (e.target === _el) closeSlpEditor(); });
+  document.body.appendChild(_el);
+  _render();
+}
+
+function closeSlpEditor() {
+  if (_el) { document.body.removeChild(_el); _el = null; }
+}
+
+// ── Panel komplett rendern ────────────────────────────────────────────────────
+function _render() {
+  const { type, season, daytype, editMode } = _st;
+  const isCustom = !!_custom[type];
+  const isEdited = !isCustom && !!_edited[type]?.[season]?.[daytype];
+
+  const stdOpts = Object.keys(SLP_INFO).map(t =>
+    `<option value="${t}"${t===type?' selected':''}>${t} — ${SLP_INFO[t]}</option>`).join('');
+  const custKeys = Object.keys(_custom);
+  const custOpts = custKeys.length
+    ? '<option disabled>──── Eigene Vorlagen ────</option>'
+      + custKeys.map(k => `<option value="${k}"${k===type?' selected':''}>★ ${k}</option>`).join('')
+    : '';
+
+  const sb = (s,l) => `<button class="slpe-tab${season===s?' slpe-tab-active':''}" data-slpe-s="${s}">${l}</button>`;
+  const db = (d,l) => `<button class="slpe-tab${daytype===d?' slpe-tab-active':''}" data-slpe-d="${d}">${l}</button>`;
+
+  const infoLine = isCustom ? 'Eigene Vorlage'
+    : `Saison-Skalierung: W ×${SEASON_SCALE[type]?.W.toFixed(2)} · S ×${SEASON_SCALE[type]?.S.toFixed(2)}`;
+
+  _el.innerHTML = `
+  <div style="background:var(--surface,#1e2328);border:1px solid rgba(100,181,246,.4);border-radius:12px;
+              padding:18px 20px;width:510px;max-width:96vw;box-shadow:0 12px 40px rgba(0,0,0,.85);
+              font-size:11px;color:var(--text,#e0e0e0);">
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:600;flex:1;">BDEW Standardlastprofil</div>
+      <button id="slpe-x" style="background:none;border:none;color:var(--muted,#78909c);cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">✕</button>
+    </div>
+
+    <!-- Profil-Selector -->
+    <div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:10px;">
+      <div style="flex:1;">
+        <label style="font-size:9px;color:var(--muted,#78909c);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px;">Profil</label>
+        <select id="slpe-type" style="width:100%;background:var(--surface2,#252b31);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:5px 8px;font-size:11px;color:inherit;">
+          ${stdOpts}${custOpts}
+        </select>
+      </div>
+      ${isCustom ? `<button id="slpe-del" title="Vorlage löschen" style="background:rgba(244,67,54,.1);border:1px solid rgba(244,67,54,.3);border-radius:5px;padding:5px 8px;color:#ef9a9a;font-size:10px;cursor:pointer;">✕</button>` : ''}
+    </div>
+
+    <!-- Saison + Tagtyp-Tabs -->
+    <div style="display:flex;gap:4px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+      ${sb('W','Winter')}${sb('U','Übergang')}${sb('S','Sommer')}
+      <span style="flex:1;min-width:8px;"></span>
+      ${db('WT','Werktag')}${db('Sa','Samstag')}${db('So','Sonntag')}
+    </div>
+
+    <!-- Chart -->
+    <div id="slpe-chart-wrap" style="background:rgba(0,0,0,.25);border-radius:6px;padding:8px 4px;${editMode?'outline:1px solid rgba(100,181,246,.35);':''}">
+      ${_chartHtml(type, season, daytype, editMode)}
+    </div>
+
+    <!-- Info-Zeile + Bearbeitung-Controls -->
+    <div style="margin-top:7px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <span style="flex:1;font-size:9px;color:var(--muted,#78909c);">${infoLine}${isEdited?' · <span style=\'color:#ffb74d;\'>✎ bearbeitet</span>':''}</span>
+      ${!isCustom?`<button id="slpe-edit-tog" style="background:${editMode?'rgba(100,181,246,.18)':'rgba(255,255,255,.06)'};border:1px solid ${editMode?'rgba(100,181,246,.4)':'rgba(255,255,255,.15)'};border-radius:4px;padding:3px 10px;cursor:pointer;color:${editMode?'#64b5f6':'inherit'};font-size:10px;">${editMode?'✓ Bearbeitung aktiv':'✎ Bearbeiten'}</button>`:''}
+      ${isEdited?`<button id="slpe-reset" style="background:transparent;border:1px solid rgba(255,152,0,.3);border-radius:4px;padding:3px 8px;color:#ffb74d;font-size:10px;cursor:pointer;">↺ Reset</button>`:''}
+      ${(editMode||isEdited||isCustom)?`<button id="slpe-save-tpl" style="background:rgba(102,187,106,.12);border:1px solid rgba(102,187,106,.35);border-radius:4px;padding:3px 10px;cursor:pointer;color:#a5d6a7;font-size:10px;">💾 Speichern</button>`:''}
+    </div>
+
+    <!-- Vorlage benennen (inline) -->
+    <div id="slpe-name-form" style="display:none;margin-top:8px;background:rgba(0,0,0,.2);border-radius:6px;padding:8px 10px;">
+      <label style="font-size:9px;color:var(--muted,#78909c);display:block;margin-bottom:3px;">Name der Vorlage</label>
+      <div style="display:flex;gap:6px;">
+        <input id="slpe-tpl-name" type="text" placeholder="z.B. Schule Musterstadt"
+          style="flex:1;background:var(--surface2,#252b31);border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:4px 8px;font-size:11px;color:inherit;" />
+        <button id="slpe-tpl-ok" style="background:rgba(102,187,106,.18);border:1px solid rgba(102,187,106,.4);border-radius:4px;padding:4px 10px;cursor:pointer;color:#a5d6a7;font-size:10px;">OK</button>
+        <button id="slpe-tpl-no" style="background:transparent;border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:4px 8px;cursor:pointer;color:var(--muted,#78909c);font-size:10px;">✕</button>
+      </div>
+    </div>
+
+    <!-- Footer: Import / Export / Schließen -->
+    <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:9px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <label style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:3px 10px;cursor:pointer;color:inherit;font-size:10px;white-space:nowrap;" title="35.040 Werte (365 Tage × 96 QH) — automatische Aggregation zu Saison×Tagtyp×Stunde">
+        ⬆ 15-min CSV
+        <input type="file" id="slpe-file" accept=".csv,.txt" style="display:none;">
+      </label>
+      <button id="slpe-export" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:3px 10px;cursor:pointer;color:inherit;font-size:10px;">⬇ CSV</button>
+      <span style="flex:1;"></span>
+      <button id="slpe-close2" style="background:rgba(100,181,246,.1);border:1px solid rgba(100,181,246,.25);border-radius:4px;padding:3px 12px;cursor:pointer;color:#64b5f6;font-size:10px;">Schließen</button>
+    </div>
+  </div>
+  <style>
+    .slpe-tab{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+              border-radius:4px;padding:3px 9px;cursor:pointer;
+              color:var(--muted,#78909c);font-size:10px;}
+    .slpe-tab-active{background:rgba(100,181,246,.18);
+                     border-color:rgba(100,181,246,.5);color:#64b5f6;}
+  </style>`;
+
+  _wireEvents();
+  if (editMode) _wireChartDrag();
+}
+
+// ── Events binden ─────────────────────────────────────────────────────────────
+function _wireEvents() {
+  const q = id => _el.querySelector(id);
+
+  q('#slpe-x').onclick    = closeSlpEditor;
+  q('#slpe-close2').onclick = closeSlpEditor;
+
+  q('#slpe-type').onchange = e => { _st.type = e.target.value; _st.editMode = false; _render(); };
+
+  _el.querySelectorAll('[data-slpe-s]').forEach(b =>
+    b.onclick = () => { _st.season  = b.dataset.slpeS; _render(); });
+  _el.querySelectorAll('[data-slpe-d]').forEach(b =>
+    b.onclick = () => { _st.daytype = b.dataset.slpeD; _render(); });
+
+  q('#slpe-edit-tog')?.addEventListener('click', () => { _st.editMode = !_st.editMode; _render(); });
+
+  q('#slpe-reset')?.addEventListener('click', () => {
+    const { type, season, daytype } = _st;
+    if (_edited[type]?.[season]) delete _edited[type][season][daytype];
+    _slpCache[type] = buildSlpProfile8760(type);
+    _render();
+  });
+
+  q('#slpe-del')?.addEventListener('click', () => {
+    delete _custom[_st.type]; _saveCustom();
+    _st.type = 'H0'; _render();
+  });
+
+  q('#slpe-save-tpl')?.addEventListener('click', () => {
+    const form = q('#slpe-name-form');
+    q('#slpe-tpl-name').value = _custom[_st.type]?.name ?? _st.type;
+    form.style.display = '';
+    q('#slpe-tpl-name').focus();
+  });
+  q('#slpe-tpl-no')?.addEventListener('click', () => { q('#slpe-name-form').style.display = 'none'; });
+  q('#slpe-tpl-ok')?.addEventListener('click', _doSaveTpl);
+  q('#slpe-tpl-name')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') _doSaveTpl();
+    if (e.key === 'Escape') { _el.querySelector('#slpe-name-form').style.display = 'none'; }
+  });
+
+  q('#slpe-export').onclick = () => _exportCsv(_st.type);
+  q('#slpe-file').addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    const reader = new FileReader();
+    reader.onload = ev => _handleCsvImport(ev.target.result, f.name);
+    reader.readAsText(f, 'utf-8');
+    e.target.value = '';
+  });
+}
+
+// ── Vorlage speichern ─────────────────────────────────────────────────────────
+function _doSaveTpl() {
+  const name = (_el?.querySelector('#slpe-tpl-name')?.value || '').trim();
+  if (!name) return;
+  const base = {};
+  for (const s of ['W','U','S']) {
+    base[s] = {};
+    for (const dt of ['WT','Sa','So']) base[s][dt] = _getVals(_st.type, s, dt).slice();
+  }
+  _custom[name] = { base, desc: `Erstellt aus: ${_st.type}` };
+  _saveCustom();
+  _slpCache[name] = buildSlpProfile8760(name);   // cache sofort befüllen
+  _st.type = name; _st.editMode = false;
+  _render();
+}
+
+// ── 15-min CSV Import ─────────────────────────────────────────────────────────
+function _handleCsvImport(text, filename) {
+  // Alle numerischen Werte extrahieren (Trennzeichen: , ; \t \n)
+  const values = [];
+  for (const tok of text.split(/[,;\t\r\n]+/)) {
+    const n = parseFloat(tok.replace(',', '.'));
+    if (!isNaN(n)) { values.push(n); if (values.length >= 35040) break; }
+  }
+  if (values.length < 96) {
+    alert(`Zu wenige Werte (${values.length}). Erwartet: 35.040 × 15-min.`); return;
+  }
+
+  // Aggregation: Summen + Zähler pro (Saison, Tagtyp, Stunde)
+  const sums = {}, cnts = {};
+  for (const s of ['W','U','S']) {
+    sums[s] = {}; cnts[s] = {};
+    for (const dt of ['WT','Sa','So']) {
+      sums[s][dt] = new Array(24).fill(0);
+      cnts[s][dt] = new Array(24).fill(0);
+    }
+  }
+  const n = Math.min(values.length, 35040);
+  for (let q = 0; q < n; q++) {
+    const doy = Math.floor(q / 96);
+    const hod = Math.floor((q % 96) / 4);
+    const s   = getSeason(doy);
+    const dt  = getDaytype((doy + 3) % 7);
+    sums[s][dt][hod] += values[q];
+    cnts[s][dt][hod]++;
+  }
+
+  // Mittelwerte + Normierung auf Relativfaktor (Jahresmittel = 1.0)
+  let grandSum = 0, grandCount = 0;
+  const avgs = {};
+  for (const s of ['W','U','S']) {
+    avgs[s] = {};
+    for (const dt of ['WT','Sa','So']) {
+      avgs[s][dt] = sums[s][dt].map((v, h) => cnts[s][dt][h] > 0 ? v / cnts[s][dt][h] : 0);
+      grandSum   += avgs[s][dt].reduce((a, b) => a + b, 0);
+      grandCount += 24;
+    }
+  }
+  const mean = grandCount > 0 ? grandSum / grandCount : 1;
+  if (mean > 0) {
+    for (const s of ['W','U','S'])
+      for (const dt of ['WT','Sa','So'])
+        avgs[s][dt] = avgs[s][dt].map(v => v / mean);
+  }
+
+  const name = filename.replace(/\.(csv|txt)$/i, '').slice(0, 40);
+  _custom[name] = { base: avgs, desc: `Importiert: ${filename} (${values.length} Werte)` };
+  _saveCustom();
+  _slpCache[name] = buildSlpProfile8760(name);
+  _st.type = name; _st.editMode = false;
+  _render();
+}
+
+// ── SVG-Chart ─────────────────────────────────────────────────────────────────
+var CW = 460, CH = 145, PL = 30, PR = 4, PT = 10, PB = 22;
+
+function _chartHtml(type, season, daytype, editMode) {
+  return `<svg id="slpe-chart-svg" width="100%" height="${CH}"
+    viewBox="0 0 ${CW} ${CH}" style="display:block;overflow:visible;
+    cursor:${editMode ? 'crosshair' : 'default'};"
+  >${_chartContent(type, season, daytype, editMode)}</svg>`;
+}
+
+function _chartContent(type, season, daytype, editMode) {
+  const vals = _getVals(type, season, daytype);
+  const cW = CW - PL - PR, cH = CH - PT - PB;
+  const MAX_Y = 2.5; // Fester Maßstab: 0–2.5 Relativfaktor
+  const toX = h  => PL + h * (cW / 23);
+  const toY = v  => PT + cH - Math.max(0, Math.min(1, v / MAX_Y)) * cH;
+
+  // Y-Gridlines
+  let grid = '';
+  for (const gv of [0.5, 1.0, 1.5, 2.0, 2.5]) {
+    const gy = toY(gv);
+    const dash = gv === 1.0 ? '' : ' stroke-dasharray="3,3"';
+    grid += `<line x1="${PL}" y1="${gy.toFixed(1)}" x2="${CW-PR}" y2="${gy.toFixed(1)}"
+      stroke="rgba(255,255,255,.1)"${dash} stroke-width="1"/>
+      <text x="${PL-3}" y="${(gy+3.5).toFixed(1)}" text-anchor="end"
+        fill="rgba(255,255,255,.35)" font-size="8">${gv.toFixed(1)}</text>`;
+  }
+
+  // Fläche + Linie
+  const pts = vals.map((v, i) => `${toX(i).toFixed(1)},${toY(v).toFixed(1)}`);
+  const baseY = PT + cH;
+  const areaD = `M ${toX(0).toFixed(1)},${baseY} ${pts.map(p => 'L '+p).join(' ')} L ${toX(23).toFixed(1)},${baseY} Z`;
+  const poly  = `<polyline points="${pts.join(' ')}" fill="none" stroke="#64b5f6"
+    stroke-width="${editMode ? '1.2' : '1.6'}" stroke-linejoin="round" stroke-linecap="round"/>`;
+
+  // X-Labels
+  let xlabels = '';
+  for (const h of [0,3,6,9,12,15,18,21,23]) {
+    xlabels += `<text x="${toX(h).toFixed(1)}" y="${CH-5}" text-anchor="middle"
+      fill="rgba(255,255,255,.4)" font-size="8">${h}:00</text>`;
+  }
+
+  // Drag-Handles im Bearbeitungsmodus
+  const handles = editMode
+    ? vals.map((v, i) =>
+        `<circle cx="${toX(i).toFixed(1)}" cy="${toY(v).toFixed(1)}" r="5.5"
+          fill="#64b5f6" opacity="0.75" stroke="rgba(255,255,255,.5)" stroke-width="1"
+          data-slpe-h="${i}" style="cursor:ns-resize;"/>`
+      ).join('')
+    : '';
+
+  return `${grid}
+    <path d="${areaD}" fill="rgba(100,181,246,.10)"/>
+    ${poly}
+    ${handles}
+    ${xlabels}
+    <line x1="${PL}" y1="${PT}"     x2="${PL}"     y2="${PT+cH}" stroke="rgba(255,255,255,.2)" stroke-width="1"/>
+    <line x1="${PL}" y1="${PT+cH}" x2="${CW-PR}"  y2="${PT+cH}" stroke="rgba(255,255,255,.2)" stroke-width="1"/>`;
+}
+
+// ── Drag-Editing (Pointer-Capture) ────────────────────────────────────────────
+function _wireChartDrag() {
+  const svg = _el?.querySelector('#slpe-chart-svg');
+  if (!svg) return;
+
+  const cW = CW - PL - PR, cH = CH - PT - PB;
+  const MAX_Y = 2.5;
+  let dragging = null;
+
+  function toSvgCoords(clientX, clientY) {
+    const r = svg.getBoundingClientRect();
+    return {
+      x: (clientX - r.left) / r.width  * CW,
+      y: (clientY - r.top)  / r.height * CH,
+    };
+  }
+  function svgXtoHour(svgX) {
+    return Math.max(0, Math.min(23, Math.round((svgX - PL) / (cW / 23))));
+  }
+  function svgYtoVal(svgY) {
+    return Math.max(0.01, Math.min(MAX_Y, (PT + cH - svgY) / cH * MAX_Y));
+  }
+
+  svg.addEventListener('pointerdown', e => {
+    const { x, y } = toSvgCoords(e.clientX, e.clientY);
+    dragging = svgXtoHour(x);
+    _applyEdit(dragging, svgYtoVal(y));
+    svg.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  svg.addEventListener('pointermove', e => {
+    if (dragging === null) return;
+    const { x, y } = toSvgCoords(e.clientX, e.clientY);
+    dragging = svgXtoHour(x);
+    _applyEdit(dragging, svgYtoVal(y));
+  });
+
+  svg.addEventListener('pointerup', () => { dragging = null; });
+}
+
+// Einzelne Stunde bearbeiten und Chart-Inhalt (nicht ganzes Panel) neu zeichnen
+function _applyEdit(hour, value) {
+  const { type, season, daytype } = _st;
+  if (!_edited[type])         _edited[type]         = {};
+  if (!_edited[type][season]) _edited[type][season] = {};
+  if (!_edited[type][season][daytype]) {
+    _edited[type][season][daytype] = _getVals(type, season, daytype).slice();
+  }
+  _edited[type][season][daytype][hour] = value;
+  _slpCache[type] = buildSlpProfile8760(type);
+
+  // Nur SVG-Inhalt aktualisieren (SVG-Element bleibt, Pointer-Capture bleibt aktiv)
+  const svg = _el?.querySelector('#slpe-chart-svg');
+  if (svg) svg.innerHTML = _chartContent(type, season, daytype, true);
+}
+
+// ── CSV-Export (8760h-Jahresprofil) ──────────────────────────────────────────
+function _exportCsv(type) {
+  const profile = buildSlpProfile8760(type);
+  const months  = [31,28,31,30,31,30,31,31,30,31,30,31];
+  const mNames  = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  let csv = `Stunde;Monat;Tag;Stunde_im_Tag;${type}_normiert\n`;
+  let m = 0, mDay = 0;
+  for (let h = 0; h < 8760; h++) {
+    const doy = Math.floor(h / 24);
+    const hod = h % 24;
+    if (doy >= mDay + months[m]) { mDay += months[m]; m++; }
+    csv += `${h};${mNames[m]};${doy-mDay+1};${hod};${profile[h].toFixed(8)}\n`;
+  }
+  const blob = new Blob(['﻿' + csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `SLP_${type}_8760h.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+
+// ── 13j-autofill-wizard.js ──
+// ── 13j-autofill-wizard.js — Auto-Befüllen Wizard (Verbrauch + PV) ──────────
+//
+// Verbrauch: kW = Fläche [m²] × W/m² (aus SLP-Profil-Registry) / 1000
+//            SLP-Profil per Gebäude wählbar — unabhängig von Wärme-Nutzungstypen
+// PV:        kWp = Fläche × Dachanteil% × Wp/m² × Korrekturfaktor
+
+
+// ── Hilfsfunktionen ──────────────────────────────────────────────────────────
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmt1(v) { return typeof v === 'number' ? v.toFixed(1) : '—'; }
+function isManual(asset, key) { return asset?.props?.[key] !== undefined && asset?.props?.[key] !== null; }
+
+var DACHFORM_LABELS = { flach:'Flachdach', sattel:'Satteldach', walm:'Walmdach', pult:'Pultdach' };
+var DACHFORM_DEF_NEI = { flach:5, sattel:35, walm:30, pult:15 };
+
+// ── Gebäudewerte berechnen ───────────────────────────────────────────────────
+// cfg.slpAssignments[gId]   = slpId  (Profil-Zuordnung je Gebäude)
+// cfg.slpWpm2Overrides[id]  = wpm2   (Session-Overrides für W/m²)
+// cfg.pvDachanteil           = %
+// cfg.pvWpM2                 = Wp/m²
+function calcBuilding(g, cfg = {}) {
+  const assets  = getAssetsForBuilding(g.id);
+  const verbr   = assets.find(a => a.type === 'Verbraucher');
+  const pv      = assets.find(a => a.type === 'PV');
+  const hasArea = (g.flaeche || 0) > 0;
+
+  // SLP-Profil: Wizard-Zuweisung → vorhandenes Asset-Profil → Default G0
+  const slpId = cfg.slpAssignments?.[g.id]
+    ?? verbr?.props?.slpTyp
+    ?? 'G0';
+
+  // Verbrauch: W/m² aus Registry (mit Session-Override)
+  let kw = null;
+  if (hasArea) {
+    const fl   = parseFloat(g.flaeche) || 0;
+    const wpm2 = cfg.slpWpm2Overrides?.[slpId]
+              ?? ELSLP_WPM2[slpId]
+              ?? getElSlpById(slpId)?.wpm2
+              ?? 15;
+    kw = Math.round(fl * wpm2 / 1000 * 10) / 10;
+  }
+
+  // PV: geometrische Schätzung
+  let kwp = null, korrFak = null;
+  if (hasArea) {
+    const fl     = parseFloat(g.flaeche) || 0;
+    const anteil = g.pvDachanteil ?? cfg.pvDachanteil ?? 30;
+    const wpM2   = cfg.pvWpM2 ?? _pvWpM2Global();
+    korrFak = getPvKorrFaktor(g);
+    kwp = Math.round(fl * anteil / 100 * wpM2 / 1000 * korrFak * 10) / 10;
+  }
+
+  return {
+    g, verbr, pv, hasArea, kw, slp: slpId, kwp, korrFak,
+    verbrManual: verbr ? isManual(verbr, 'leistungKW')  : false,
+    pvManual:    pv    ? isManual(pv,    'leistungKWp') : false,
+  };
+}
+
+// ── kW für ein Gebäude live neu berechnen (nach Profil-/W/m²-Änderung) ──────
+function recalcKw(g, slpId, cfg) {
+  const fl  = parseFloat(g.flaeche) || 0;
+  if (!fl) return null;
+  const wpm2 = cfg.slpWpm2Overrides?.[slpId]
+            ?? ELSLP_WPM2[slpId]
+            ?? getElSlpById(slpId)?.wpm2
+            ?? 15;
+  return Math.round(fl * wpm2 / 1000 * 10) / 10;
+}
+
+// ── Schritt 1 — Auswahl ──────────────────────────────────────────────────────
+function renderStep1(state) {
+  const gebCount = (window.gebaeude || []).filter(g => g.polygon).length;
+  return `
+    <div class="aw-step-header">
+      <span class="aw-step-label">Schritt 1 von 3</span>
+      <span class="aw-step-title">✦ Elektro-Assets befüllen</span>
+    </div>
+    <div class="aw-body">
+      <div class="aw-section-title">Was befüllen?</div>
+      <label class="aw-check-row">
+        <input type="checkbox" id="aw-calc-verbr" ${state.calcVerbrauch ? 'checked' : ''}>
+        <div>
+          <div>⚡ Verbraucher <span class="aw-hint">(leistungKW + BDEW-SLP-Profil)</span></div>
+          <div class="aw-hint" style="margin-top:2px;">kW = Fläche [m²] × W/m² (je SLP-Profil konfigurierbar)</div>
+        </div>
+      </label>
+      <label class="aw-check-row">
+        <input type="checkbox" id="aw-calc-pv" ${state.calcPV ? 'checked' : ''}>
+        <div>
+          <div>☀ PV-Anlagen <span class="aw-hint">(leistungKWp)</span></div>
+          <div class="aw-hint" style="margin-top:2px;">kWp = Fläche × Dachanteil% × Wp/m² × Korrekturfaktor</div>
+        </div>
+      </label>
+
+      <div class="aw-section-title" style="margin-top:14px;">Welche Gebäude?</div>
+      <label class="aw-radio-row">
+        <input type="radio" name="aw-modus" value="empty" ${state.modus==='empty'?'checked':''}>
+        <div>
+          <div>Nur Assets ohne Wert <span class="aw-badge">Empfohlen</span></div>
+          <div class="aw-hint">Bereits eingetragene Werte bleiben unverändert</div>
+        </div>
+      </label>
+      <label class="aw-radio-row">
+        <input type="radio" name="aw-modus" value="all" ${state.modus==='all'?'checked':''}>
+        <div>
+          <div>Alle Gebäude</div>
+          <div class="aw-hint">Überschreibt auch bereits eingetragene Werte</div>
+        </div>
+      </label>
+
+      <div class="aw-info-row">
+        <span>Gebäude mit Polygon:</span><strong>${gebCount}</strong>
+      </div>
+    </div>
+    <div class="aw-footer">
+      <button class="ep-modal-btn" id="aw-cancel">Abbrechen</button>
+      <button class="ep-modal-btn primary" id="aw-next1">Weiter →</button>
+    </div>`;
+}
+
+// ── Info-Panel: SLP-Profile W/m² + PV-Parameter ──────────────────────────────
+function renderInfoPanel(state) {
+  const cfg   = state.cfg;
+  const wpM2  = cfg.pvWpM2 ?? Math.round(_pvWpM2Global());
+  const profs = getElSlpProfiles();
+
+  const profRows = profs.map(p => {
+    const sessOver = cfg.slpWpm2Overrides?.[p.id];
+    const projOver = ELSLP_WPM2[p.id];
+    const wpm2     = sessOver ?? projOver ?? p.wpm2;
+    const changed  = wpm2 !== p.wpm2;
+    return `<tr>
+      <td><span class="aw-slp-tag">${esc(p.id)}</span></td>
+      <td class="aw-nt-name">${esc(p.label)}</td>
+      <td style="text-align:right;">
+        <input class="aw-cfg-input aw-slp-wpm2-inp" type="number"
+          data-slpid="${esc(p.id)}" value="${wpm2}" min="0.1" max="9999" step="0.5"
+          style="width:60px;${changed?'border-color:#f9a825;':''}"
+          title="${changed?'Geändert (Projektstandard: '+(projOver??p.wpm2)+' W/m²)':''}">
+      </td>
+      <td style="font-size:9px;color:var(--muted);padding-left:4px;">W/m²</td>
+    </tr>`;
+  }).join('');
+
+  const verbrSection = state.calcVerbrauch ? `
+    <div class="aw-info-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div class="aw-info-section-title">⚡ Verbrauch — SLP-Profile</div>
+        <button class="aw-cfg-apply-btn" id="aw-manage-slp" style="font-size:9px;padding:2px 8px;">⚙ Profile verwalten</button>
+      </div>
+      <div class="aw-formula">kW = Fläche [m²] × W/m² ÷ 1000</div>
+      <table class="aw-nt-table">
+        <thead><tr>
+          <th>SLP</th><th>Bezeichnung</th>
+          <th style="text-align:right;">W/m²</th><th></th>
+        </tr></thead>
+        <tbody>${profRows}</tbody>
+      </table>
+      <div class="aw-info-footnote">Dauerhafte Änderungen über "Profile verwalten". Hier nur für diese Sitzung.</div>
+    </div>` : '';
+
+  const pvSection = state.calcPV ? `
+    <div class="aw-info-section">
+      <div class="aw-info-section-title">☀ PV-Leistung</div>
+      <div class="aw-formula">kWp = Fläche × Dachanteil% × Wp/m² ÷ 1000 × <strong>Faktor</strong></div>
+      <div class="aw-faktor-erklaerung">
+        <div class="aw-faktor-title">Was ist der Faktor?</div>
+        <div class="aw-faktor-body">
+          Der <strong>Ertragskorrekturfaktor</strong> gibt an, wie viel % des theoretischen Maximals
+          (Süd-Ausrichtung, 30° Neigung = 100%) ein Dach tatsächlich liefert.
+          Er setzt sich zusammen aus:
+        </div>
+        <div class="aw-faktor-grid">
+          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:#4caf50;">100%</span><span>Flachdach (aufgeständert Süd 30°) oder Süddach 30°</span></div>
+          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:#4caf50;">~97%</span><span>Süddach 35° · Satteldach Süd (typisch)</span></div>
+          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:#f9a825;">~84%</span><span>Ost- oder Westdach 35°</span></div>
+          <div class="aw-faktor-row"><span class="aw-faktor-val" style="color:#e53935;">~58%</span><span>Norddach 35° (unwirtschaftlich)</span></div>
+        </div>
+        <div class="aw-faktor-hint">Dachform, Neigung &amp; Ausrichtung pro Gebäude über ▾ anpassen.</div>
+      </div>
+      <div class="aw-cfg-grid" style="margin-top:8px;">
+        <label class="aw-cfg-label">PV-Dachanteil Standard</label>
+        <div class="aw-cfg-val">
+          <input class="aw-cfg-input" type="number" id="aw-cfg-dachanteil"
+            value="${cfg.pvDachanteil ?? 30}" min="1" max="100" step="1">
+          <span class="aw-cfg-unit">%</span>
+          <span class="aw-cfg-hint">(pro Gebäude via ▾ anpassbar)</span>
+        </div>
+        <label class="aw-cfg-label">Modulleistung</label>
+        <div class="aw-cfg-val">
+          <input class="aw-cfg-input" type="number" id="aw-cfg-wpm2"
+            value="${wpM2}" min="50" max="500" step="5">
+          <span class="aw-cfg-unit">Wp/m²</span>
+          <span class="aw-cfg-hint">(Standard ~240 Wp/m²)</span>
+        </div>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="aw-info-panel" id="aw-info-panel">
+      <div class="aw-info-hdr" id="aw-info-toggle">
+        <span class="aw-info-chevron${state.infoOpen ? ' open' : ''}" id="aw-info-chevron">▶</span>
+        <span>Berechnungsparameter</span>
+        <span class="aw-info-hdr-hint">— konfigurierbar</span>
+      </div>
+      <div class="aw-info-body" id="aw-info-body"${state.infoOpen ? '' : ' style="display:none;"'}>
+        ${verbrSection}
+        ${pvSection}
+        <div style="padding-top:6px;">
+          <button class="aw-cfg-apply-btn" id="aw-cfg-apply">↻ Tabellenwerte neu berechnen</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Tabellenzeilen ────────────────────────────────────────────────────────────
+function renderTableRows(state) {
+  const buildings = (window.gebaeude || []).filter(g => g.polygon);
+  const profs     = getElSlpProfiles();
+  const gruppen   = getElSlpGruppen();
+  const showV = state.calcVerbrauch, showP = state.calcPV;
+  // totalCols: Gebäude + V(2) + P(3) + Status = varies
+  const colCount = 1 + (showV ? 2 : 0) + (showP ? 3 : 0) + 1;
+
+  const statusBadge = (st, label) => {
+    if (st === 'no_asset') return `<span class="aw-badge-warn">⚠ Kein Asset</span>`;
+    if (st === 'no_area')  return `<span class="aw-badge-warn">⚠ Keine Fläche</span>`;
+    if (st === 'manual')   return `<span class="aw-badge-muted">🔒 Gesetzt</span>`;
+    return `<span class="aw-badge-ok">${label}</span>`;
+  };
+
+  return buildings.map(g => {
+    const c = calcBuilding(g, state.cfg);
+
+    let statusV = 'apply';
+    if (showV && !c.verbr)                         statusV = 'no_asset';
+    else if (state.modus === 'empty' && c.verbrManual) statusV = 'manual';
+
+    let statusP = 'apply';
+    if (showP && !c.pv)                            statusP = 'no_asset';
+    else if (!c.hasArea)                           statusP = 'no_area';
+    else if (state.modus === 'empty' && c.pvManual) statusP = 'manual';
+
+    const skipV = statusV !== 'apply';
+    const skipP = statusP !== 'apply';
+
+    const ov     = state.overrides[g.id] || {};
+    const kwVal  = ov.kw  !== undefined ? ov.kw  : c.kw;
+    const kwpVal = ov.kwp !== undefined ? ov.kwp : c.kwp;
+    const slpVal = c.slp;
+
+    const fakPct = c.korrFak != null ? Math.round(c.korrFak * 100) : null;
+    const fakCol = fakPct == null ? '' : fakPct >= 90 ? '#4caf50' : fakPct >= 75 ? '#f9a825' : '#e53935';
+
+    const isExpanded = state.expandedRows?.has(g.id);
+
+    // SLP dropdown
+    const slpCell = skipV
+      ? `<span class="aw-skip-val">${esc(slpVal)}</span>`
+      : `<select class="aw-slp-select" data-gid="${g.id}" data-field="slp" style="max-width:130px;">
+           ${gruppen.map(gr => {
+             const opts = profs.filter(p => p.gruppe === gr).map(p =>
+               `<option value="${esc(p.id)}"${p.id === slpVal ? ' selected' : ''}>${esc(p.id)} — ${esc(p.label)}</option>`
+             ).join('');
+             return `<optgroup label="${esc(gr)}">${opts}</optgroup>`;
+           }).join('')}
+         </select>`;
+
+    // Status cell
+    let statusCell;
+    if (showV && showP && statusV !== statusP) {
+      statusCell = statusBadge(statusV, '⚡') + ' ' + statusBadge(statusP, '☀');
+    } else {
+      statusCell = statusBadge(showV ? statusV : statusP, '→ Befüllen');
+    }
+
+    // ── PV-Dach expand sub-row ──
+    const dachform = g.dachform || 'sattel';
+    const defNei   = DACHFORM_DEF_NEI[dachform] ?? 35;
+    const expandRow = (isExpanded && showP) ? `
+      <tr class="aw-dach-subrow">
+        <td colspan="${colCount}" style="padding:0;">
+          <div class="aw-dach-subrow-inner">
+            <div class="aw-dach-subrow-label">☀ Dach-Parameter: <strong>${esc(g.name)}</strong></div>
+            <div class="aw-dach-subrow-grid">
+              <label>Dachform</label>
+              <select class="aw-cfg-input aw-dach-inp" data-gid="${g.id}" data-dachfield="dachform">
+                ${Object.entries(DACHFORM_LABELS).map(([v,l]) =>
+                  `<option value="${v}"${dachform===v?' selected':''}>${l}</option>`
+                ).join('')}
+              </select>
+              <label>Neigung (°)</label>
+              <input class="aw-cfg-input aw-dach-inp" type="number" min="0" max="75"
+                data-gid="${g.id}" data-dachfield="dachNeigung"
+                value="${g.dachNeigung ?? ''}" placeholder="${defNei}">
+              <label title="0°=Nord · 90°=Ost · 180°=Süd · 270°=West">Ausrichtung (°) ℹ</label>
+              <input class="aw-cfg-input aw-dach-inp" type="number" min="0" max="359"
+                data-gid="${g.id}" data-dachfield="dachAzimut"
+                value="${g.dachAzimut ?? ''}" placeholder="180 (Süd)">
+              <label>Dachanteil (%)</label>
+              <input class="aw-cfg-input aw-dach-inp" type="number" min="1" max="100"
+                data-gid="${g.id}" data-dachfield="pvDachanteil"
+                value="${g.pvDachanteil ?? 30}">
+            </div>
+            ${c.korrFak != null ? `
+              <div class="aw-dach-subrow-result">
+                Faktor: <strong style="color:${fakCol}">${fakPct}%</strong>
+                &nbsp;→&nbsp; <strong style="color:${fakCol}">${fmt1(c.kwp)} kWp</strong>
+              </div>` : ''}
+          </div>
+        </td>
+      </tr>` : '';
+
+    return `<tr data-gid="${g.id}" class="${isExpanded ? 'aw-row-expanded' : ''}">
+      <td class="aw-col-name" title="${esc(g.name)}">${esc(g.name)}</td>
+      ${showV ? `
+        <td class="aw-col-verbr">${slpCell}</td>
+        <td class="aw-col-verbr" style="text-align:right;">${skipV
+          ? `<span class="aw-skip-val">${fmt1(c.kw)}</span>`
+          : `<input class="aw-inline-input" type="number" step="0.1"
+               value="${kwVal ?? ''}" placeholder="—"
+               data-gid="${g.id}" data-field="kw">`}
+        </td>
+      ` : ''}
+      ${showP ? `
+        <td class="aw-col-pv" style="text-align:right;">${skipP
+          ? `<span class="aw-skip-val">${fmt1(c.kwp)}</span>`
+          : `<input class="aw-inline-input" type="number" step="0.1"
+               value="${kwpVal ?? ''}" placeholder="—"
+               data-gid="${g.id}" data-field="kwp">`}
+        </td>
+        <td class="aw-col-pv" style="text-align:center;">
+          ${fakPct != null && !skipP
+            ? `<span style="color:${fakCol};font-size:10px;font-weight:600;">${fakPct}%</span>`
+            : '<span style="color:var(--muted)">—</span>'}
+        </td>
+        <td class="aw-col-pv" style="text-align:center;padding:0 2px;">
+          <button class="aw-expand-btn${isExpanded ? ' open' : ''}"
+            data-expand-gid="${g.id}"
+            title="${isExpanded ? 'Dach-Parameter ausblenden' : 'Dach-Parameter bearbeiten'}">
+            ${isExpanded ? '▲' : '▾'}
+          </button>
+        </td>
+      ` : ''}
+      <td class="aw-status-cell">${statusCell}</td>
+    </tr>${expandRow}`;
+  }).join('');
+}
+
+// ── Schritt 2 — Vorschau-Tabelle ─────────────────────────────────────────────
+function renderStep2(state) {
+  const buildings = (window.gebaeude || []).filter(g => g.polygon);
+
+  const applyCount = buildings.filter(g => {
+    const c = calcBuilding(g, state.cfg);
+    const vOk = !state.calcVerbrauch || (c.verbr && (state.modus === 'all' || !c.verbrManual));
+    const pOk = !state.calcPV        || (c.pv && c.hasArea && (state.modus === 'all' || !c.pvManual));
+    return vOk || pOk;
+  }).length;
+
+  const lockedCount = buildings.filter(g => {
+    const c = calcBuilding(g, state.cfg);
+    return state.modus === 'empty' && (c.verbrManual || c.pvManual);
+  }).length;
+
+  const lockedHint = lockedCount > 0 && state.modus === 'empty'
+    ? ` · <span class="aw-locked-hint">🔒 ${lockedCount} gesperrt — <button class="aw-link-btn" id="aw-switch-all">Alle bearbeiten</button></span>`
+    : '';
+
+  const showV = state.calcVerbrauch, showP = state.calcPV;
+
+  // Two-row group header when both sections active, single row otherwise
+  const faktorTitle = 'Ertragskorrekturfaktor = Azimutfaktor × Neigungsfaktor. 100% = Süd 30° (optimal). Klick auf ▾ zum Bearbeiten der Dachparameter.';
+  const theadHtml = (showV && showP) ? `
+    <tr class="aw-thead-group">
+      <th rowspan="2" class="aw-th-gebaeude">Gebäude</th>
+      <th colspan="2" class="aw-th-grp aw-th-grp-verbr">⚡ Verbraucher</th>
+      <th colspan="3" class="aw-th-grp aw-th-grp-pv">☀ PV</th>
+      <th rowspan="2" class="aw-th-status">Status</th>
+    </tr>
+    <tr>
+      <th class="aw-col-verbr">SLP-Profil</th>
+      <th class="aw-col-verbr" style="text-align:right;">kW</th>
+      <th class="aw-col-pv" style="text-align:right;">kWp</th>
+      <th class="aw-col-pv" style="text-align:center;" title="${faktorTitle}">Faktor <span style="opacity:.5;cursor:help;">ℹ</span></th>
+      <th class="aw-col-pv" style="width:22px;"></th>
+    </tr>` : `
+    <tr>
+      <th>Gebäude</th>
+      ${showV ? '<th class="aw-col-verbr">SLP-Profil</th><th class="aw-col-verbr" style="text-align:right;">kW</th>' : ''}
+      ${showP ? `<th class="aw-col-pv" style="text-align:right;">kWp</th><th class="aw-col-pv" style="text-align:center;" title="${faktorTitle}">Faktor <span style="opacity:.5;cursor:help;">ℹ</span></th><th class="aw-col-pv" style="width:22px;"></th>` : ''}
+      <th>Status</th>
+    </tr>`;
+
+  return `
+    <div class="aw-step-header">
+      <span class="aw-step-label">Schritt 2 von 3</span>
+      <span class="aw-step-title">✦ Vorschau &amp; Anpassen</span>
+    </div>
+    ${renderInfoPanel(state)}
+    <div class="aw-body aw-body-table">
+      <table class="aw-table">
+        <colgroup>
+          <col style="min-width:90px;">
+          ${showV ? '<col style="width:145px;"><col style="width:72px;">' : ''}
+          ${showP ? '<col style="width:72px;"><col style="width:54px;"><col style="width:22px;">' : ''}
+          <col style="width:86px;">
+        </colgroup>
+        <thead>${theadHtml}</thead>
+        <tbody id="aw-table-body">${renderTableRows(state)}</tbody>
+      </table>
+    </div>
+    <div class="aw-footer">
+      <button class="ep-modal-btn" id="aw-back2">← Zurück</button>
+      <span class="aw-count-hint">${applyCount} Assets werden befüllt${lockedHint}</span>
+      <button class="ep-modal-btn primary" id="aw-apply">Anwenden ✓</button>
+    </div>`;
+}
+
+// ── Schritt 3 — Ergebnis ─────────────────────────────────────────────────────
+function applyAndRenderStep3(state) {
+  const buildings = (window.gebaeude || []).filter(g => g.polygon);
+  let cntV = 0, cntP = 0, cntSkip = 0, cntNoAsset = 0;
+
+  buildings.forEach(g => {
+    const c  = calcBuilding(g, state.cfg);
+    const ov = state.overrides[g.id] || {};
+
+    if (state.calcVerbrauch) {
+      if (!c.verbr) { cntNoAsset++; }
+      else if (state.modus === 'empty' && c.verbrManual) { cntSkip++; }
+      else {
+        const kw  = ov.kw  !== undefined ? parseFloat(ov.kw) : c.kw;
+        const slp = ov.slp !== undefined ? ov.slp : c.slp;
+        if (kw  != null && !isNaN(kw)) c.verbr.props.leistungKW = kw;
+        if (slp)                       c.verbr.props.slpTyp     = slp;
+        cntV++;
+      }
+    }
+
+    if (state.calcPV) {
+      if (!c.pv || !c.hasArea) { cntNoAsset++; }
+      else if (state.modus === 'empty' && c.pvManual) { cntSkip++; }
+      else {
+        const kwp = ov.kwp !== undefined ? parseFloat(ov.kwp) : c.kwp;
+        if (kwp != null && !isNaN(kwp)) c.pv.props.leistungKWp = kwp;
+        cntP++;
+      }
+    }
+  });
+
+  redrawAllAssets();
+  renderSidebarAssetList();
+
+  const row = (icon, col, text) =>
+    `<div class="aw-result-row"><span style="color:${col};font-size:14px;">${icon}</span><span>${text}</span></div>`;
+
+  return `
+    <div class="aw-step-header">
+      <span class="aw-step-label">Schritt 3 von 3</span>
+      <span class="aw-step-title">✦ Fertig</span>
+    </div>
+    <div class="aw-body">
+      ${state.calcVerbrauch ? row('✓','#4caf50', `${cntV} Verbraucher-Assets aktualisiert`) : ''}
+      ${state.calcPV        ? row('✓','#4caf50', `${cntP} PV-Assets aktualisiert`) : ''}
+      ${cntSkip    > 0 ? row('—','var(--muted)', `${cntSkip} übersprungen (bereits gesetzt)`) : ''}
+      ${cntNoAsset > 0 ? row('⚠','#f9a825', `${cntNoAsset} ohne passendes Asset`) : ''}
+    </div>
+    <div class="aw-footer">
+      <button class="ep-modal-btn primary" id="aw-done">Fertig</button>
+    </div>`;
+}
+
+// ── Haupt-Einstiegspunkt ─────────────────────────────────────────────────────
+function showAutofillWizard() {
+  document.getElementById('autofill-wizard-modal')?.remove();
+
+  const state = {
+    calcVerbrauch: true,
+    calcPV: true,
+    modus: 'empty',
+    overrides: {},
+    expandedRows: new Set(),
+    cfg: {
+      pvDachanteil: 30,
+      pvWpM2: null,
+      slpAssignments: {},   // gId → slpId (Wizard-Session)
+      slpWpm2Overrides: {}, // slpId → wpm2 (Wizard-Session, temporär)
+    },
+    infoOpen: true,
+  };
+
+  const overlay = document.createElement('div');
+  overlay.id        = 'autofill-wizard-modal';
+  overlay.className = 'ep-modal-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'ep-modal aw-modal';
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  function goStep1() {
+    modal.innerHTML = renderStep1(state);
+    modal.querySelector('#aw-cancel').onclick = () => overlay.remove();
+    modal.querySelector('#aw-next1').onclick  = () => {
+      state.calcVerbrauch = modal.querySelector('#aw-calc-verbr').checked;
+      state.calcPV        = modal.querySelector('#aw-calc-pv').checked;
+      state.modus         = modal.querySelector('input[name="aw-modus"]:checked')?.value || 'empty';
+      if (!state.calcVerbrauch && !state.calcPV) { alert('Bitte mindestens eine Option auswählen.'); return; }
+      goStep2();
+    };
+  }
+
+  function goStep2() {
+    modal.innerHTML = renderStep2(state);
+    modal.querySelector('#aw-back2').onclick = goStep1;
+
+    modal.querySelector('#aw-switch-all')?.addEventListener('click', () => {
+      state.modus = 'all'; goStep2();
+    });
+
+    // Info-Panel Toggle
+    modal.querySelector('#aw-info-toggle')?.addEventListener('click', () => {
+      state.infoOpen = !state.infoOpen;
+      const body    = modal.querySelector('#aw-info-body');
+      const chevron = modal.querySelector('#aw-info-chevron');
+      if (body)    body.style.display = state.infoOpen ? 'block' : 'none';
+      if (chevron) { chevron.textContent = state.infoOpen ? '▼' : '▶'; chevron.classList.toggle('open', state.infoOpen); }
+    });
+
+    // "Profile verwalten" → Modal öffnen, danach Schritt 2 neu rendern
+    modal.querySelector('#aw-manage-slp')?.addEventListener('click', () => {
+      showElSlpModal(() => goStep2());
+    });
+
+    // Neuberechnung: W/m²-Overrides + PV-Params einlesen
+    modal.querySelector('#aw-cfg-apply')?.addEventListener('click', () => {
+      modal.querySelectorAll('.aw-slp-wpm2-inp').forEach(inp => {
+        const val = parseFloat(inp.value);
+        if (!isNaN(val)) state.cfg.slpWpm2Overrides[inp.dataset.slpid] = val;
+      });
+      const da   = parseFloat(modal.querySelector('#aw-cfg-dachanteil')?.value);
+      const wpm2 = parseFloat(modal.querySelector('#aw-cfg-wpm2')?.value);
+      if (!isNaN(da))   state.cfg.pvDachanteil = da;
+      if (!isNaN(wpm2)) state.cfg.pvWpM2       = wpm2;
+
+      const tbody = modal.querySelector('#aw-table-body');
+      if (tbody) { tbody.innerHTML = renderTableRows(state); wireTableInputs(); }
+    });
+
+    wireTableInputs();
+
+    modal.querySelector('#aw-apply').onclick = () => {
+      modal.querySelectorAll('.aw-inline-input').forEach(inp => {
+        const gid = parseInt(inp.dataset.gid), field = inp.dataset.field;
+        if (!state.overrides[gid]) state.overrides[gid] = {};
+        state.overrides[gid][field] = inp.value === '' ? undefined : parseFloat(inp.value);
+      });
+      modal.querySelectorAll('.aw-slp-select').forEach(sel => {
+        const gid = parseInt(sel.dataset.gid);
+        if (!state.overrides[gid]) state.overrides[gid] = {};
+        state.overrides[gid].slp = sel.value || undefined;
+        state.cfg.slpAssignments[gid] = sel.value;
+      });
+      modal.innerHTML = applyAndRenderStep3(state);
+      modal.querySelector('#aw-done').onclick = () => overlay.remove();
+    };
+  }
+
+  function wireTableInputs() {
+    // kW / kWp — manuelle Inputs
+    modal.querySelectorAll('.aw-inline-input').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const gid = parseInt(inp.dataset.gid), field = inp.dataset.field;
+        if (!state.overrides[gid]) state.overrides[gid] = {};
+        state.overrides[gid][field] = inp.value === '' ? undefined : parseFloat(inp.value);
+      });
+    });
+
+    // SLP-Dropdown → kW live aktualisieren
+    modal.querySelectorAll('.aw-slp-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const gid   = parseInt(sel.dataset.gid);
+        const slpId = sel.value;
+        state.cfg.slpAssignments[gid] = slpId;
+        if (!state.overrides[gid]) state.overrides[gid] = {};
+        state.overrides[gid].slp = slpId;
+        const g = (window.gebaeude || []).find(g => g.id === gid);
+        if (g) {
+          const kw = recalcKw(g, slpId, state.cfg);
+          const kwInp = sel.closest('tr')?.querySelector('.aw-inline-input[data-field="kw"]');
+          if (kwInp && kw != null) {
+            kwInp.value = kw;
+            state.overrides[gid].kw = kw;
+          }
+        }
+      });
+    });
+
+    // Expand-Buttons — Dach-Parameter ein-/ausblenden
+    modal.querySelectorAll('.aw-expand-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const gid = parseInt(btn.dataset.expandGid);
+        if (state.expandedRows.has(gid)) state.expandedRows.delete(gid);
+        else                             state.expandedRows.add(gid);
+        const tbody = modal.querySelector('#aw-table-body');
+        if (tbody) { tbody.innerHTML = renderTableRows(state); wireTableInputs(); }
+      });
+    });
+
+    // Dach-Parameter-Inputs in Expand-Zeilen → Gebäude direkt aktualisieren
+    modal.querySelectorAll('.aw-dach-inp').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const gid   = parseInt(inp.dataset.gid);
+        const field = inp.dataset.dachfield;
+        const g = (window.gebaeude || []).find(g => g.id === gid);
+        if (!g) return;
+        if (inp.tagName === 'SELECT') {
+          g[field] = inp.value;
+        } else {
+          g[field] = inp.value === '' ? null : parseFloat(inp.value);
+          if (field === 'pvDachanteil' && g[field] == null) g[field] = 30;
+        }
+        // kWp für diese Zeile neu berechnen
+        const tbody = modal.querySelector('#aw-table-body');
+        if (tbody) { tbody.innerHTML = renderTableRows(state); wireTableInputs(); }
+      });
+    });
+  }
+
+  goStep1();
+}
+
+// Window-Bridge
+setTimeout(() => { window.showAutofillWizard = showAutofillWizard; }, 0);
+
+
+// ── 13k-elslp-registry.js ──
+// ── 13k-elslp-registry.js — Elektrisches SLP-Profil-Register ────────────────
+//
+// Enthält die BDEW-Standardlastprofile mit spezifischer Leistung [W/m²]
+// für die automatische kW-Ermittlung aus Gebäudeflächen.
+// Unabhängig von den Wärme-Nutzungstypen (02b-gebaeude.js).
+
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Built-in BDEW-Profile ────────────────────────────────────────────────────
+var _ELSLP_BUILTIN = [
+  { id:'H0',  label:'Haushalt',                      gruppe:'Wohnen',         wpm2: 12 },
+  { id:'G0',  label:'Gewerbe allgemein',              gruppe:'Gewerbe',        wpm2: 20 },
+  { id:'G1',  label:'Gewerbe werktags 8–18 Uhr',     gruppe:'Gewerbe',        wpm2: 22 },
+  { id:'G2',  label:'Gewerbe mit Abendverbrauch',    gruppe:'Gewerbe',        wpm2: 15 },
+  { id:'G3',  label:'Gewerbe durchlaufend',           gruppe:'Gewerbe',        wpm2: 30 },
+  { id:'G4',  label:'Laden / Friseur',                gruppe:'Handel',         wpm2: 35 },
+  { id:'G5',  label:'Bäckerei',                       gruppe:'Handel',         wpm2: 55 },
+  { id:'G6',  label:'Wochenendbetrieb',               gruppe:'Gewerbe',        wpm2: 14 },
+  { id:'L0',  label:'Landwirtschaft allgemein',       gruppe:'Landwirtschaft', wpm2:  6 },
+  { id:'L1',  label:'Landwirtschaft Milchwirtschaft', gruppe:'Landwirtschaft', wpm2:  9 },
+  { id:'L2',  label:'Landwirtschaft Eigenerzeugung',  gruppe:'Landwirtschaft', wpm2:  5 },
+];
+
+// W/m²-Overrides für Built-in-Profile (projekt-persistent, editierbar im Modal)
+var ELSLP_WPM2 = {};   // { slpId: wpm2 } — überschreibt _ELSLP_BUILTIN[].wpm2
+
+// Custom-Profile (projekt-persistent, voll editierbar)
+var ELSLP_CUSTOM = [];  // [{ id, label, gruppe, wpm2 }]
+
+// ── Zugriffshelfer ───────────────────────────────────────────────────────────
+function getElSlpProfiles() { return [..._ELSLP_BUILTIN, ...ELSLP_CUSTOM]; }
+function getElSlpById(id)   { return getElSlpProfiles().find(p => p.id === id) || null; }
+function isBuiltinElSlp(id) { return _ELSLP_BUILTIN.some(p => p.id === id); }
+function getElSlpWpm2(id)   {
+  if (ELSLP_WPM2[id] != null) return ELSLP_WPM2[id];
+  return getElSlpById(id)?.wpm2 ?? 15;
+}
+
+// Gruppen für Dropdown-Optgroup
+function getElSlpGruppen() {
+  const seen = new Set();
+  return getElSlpProfiles().map(p => p.gruppe).filter(g => { if (seen.has(g)) return false; seen.add(g); return true; });
+}
+
+// ── Profil-Verwaltungs-Modal ─────────────────────────────────────────────────
+function showElSlpModal(onClose) {
+  document.getElementById('elslp-modal')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id        = 'elslp-modal';
+  overlay.className = 'ep-modal-overlay';
+  overlay.style.zIndex = '25000';
+
+  const modal = document.createElement('div');
+  modal.className = 'ep-modal';
+  modal.style.cssText = 'width:580px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;padding:0;overflow:hidden;';
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) _close(); });
+
+  function _close() { overlay.remove(); onClose?.(); }
+
+  function _render() {
+    const builtinRows = _ELSLP_BUILTIN.map(p => {
+      const wpm2 = ELSLP_WPM2[p.id] ?? p.wpm2;
+      const changed = ELSLP_WPM2[p.id] != null && ELSLP_WPM2[p.id] !== p.wpm2;
+      return `<tr data-slpid="${esc(p.id)}" class="elslp-row">
+        <td><span class="aw-slp-tag">${esc(p.id)}</span></td>
+        <td class="elslp-label">${esc(p.label)}</td>
+        <td class="elslp-gruppe">${esc(p.gruppe)}</td>
+        <td style="text-align:right;">
+          <input class="aw-cfg-input elslp-wpm2" type="number"
+            data-slpid="${esc(p.id)}" value="${wpm2}" min="0.1" max="9999" step="0.5"
+            style="width:60px;${changed?'border-color:#f9a825;':''}"
+            title="${changed ? 'Geändert (Standard: '+p.wpm2+' W/m²)' : ''}">
+        </td>
+        <td style="text-align:center;">
+          ${changed ? `<button class="nt-del-btn" data-reset="${esc(p.id)}" title="Auf Standard zurücksetzen">↺</button>` : '<span style="color:var(--muted);font-size:9px;">—</span>'}
+        </td>
+      </tr>`;
+    }).join('');
+
+    const customRows = ELSLP_CUSTOM.length === 0
+      ? `<tr><td colspan="5" class="nt-empty" style="padding:8px;">Keine eigenen Profile vorhanden</td></tr>`
+      : ELSLP_CUSTOM.map((p, i) => `<tr data-idx="${i}" class="elslp-row">
+          <td>
+            <input class="aw-cfg-input elslp-id-inp" type="text"
+              data-idx="${i}" data-field="id" value="${esc(p.id)}"
+              style="width:52px;font-family:'DM Mono',monospace;text-transform:uppercase;">
+          </td>
+          <td>
+            <input class="aw-cfg-input elslp-label-inp" type="text"
+              data-idx="${i}" data-field="label" value="${esc(p.label)}" style="width:160px;">
+          </td>
+          <td>
+            <input class="aw-cfg-input elslp-gruppe-inp" type="text"
+              data-idx="${i}" data-field="gruppe" value="${esc(p.gruppe)}" style="width:110px;">
+          </td>
+          <td style="text-align:right;">
+            <input class="aw-cfg-input elslp-wpm2-custom" type="number"
+              data-idx="${i}" value="${p.wpm2}" min="0.1" max="9999" step="0.5" style="width:60px;">
+          </td>
+          <td style="text-align:center;">
+            <button class="nt-del-btn" data-del="${i}" title="Löschen">✕</button>
+          </td>
+        </tr>`).join('');
+
+    modal.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;">
+        <span style="font-size:12px;color:var(--accent);font-weight:600;">⚡ SLP-Profile verwalten</span>
+        <button class="ebp-close" id="elslp-close">✕</button>
+      </div>
+      <div style="overflow-y:auto;flex:1;padding:12px 16px;">
+
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">
+          BDEW-Standard (W/m² anpassbar)
+        </div>
+        <table class="aw-nt-table" style="margin-bottom:14px;">
+          <thead><tr>
+            <th>ID</th><th>Bezeichnung</th><th>Gruppe</th>
+            <th style="text-align:right;">W/m²</th>
+            <th style="text-align:center;">Reset</th>
+          </tr></thead>
+          <tbody>${builtinRows}</tbody>
+        </table>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">
+            Eigene Profile
+          </div>
+          <button class="aw-cfg-apply-btn" id="elslp-add" style="font-size:9px;padding:2px 8px;">+ Hinzufügen</button>
+        </div>
+        <table class="aw-nt-table" id="elslp-custom-table">
+          <thead><tr>
+            <th>ID</th><th>Bezeichnung</th><th>Gruppe</th>
+            <th style="text-align:right;">W/m²</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${customRows}</tbody>
+        </table>
+
+        <div style="margin-top:10px;font-size:9px;color:var(--muted);font-style:italic;">
+          W/m² = spezifische Spitzenlast. Formel: kW = Fläche [m²] × W/m² ÷ 1000
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding:8px 16px;background:var(--surface2);border-top:1px solid var(--border);flex-shrink:0;">
+        <button class="ep-modal-btn" id="elslp-cancel">Abbrechen</button>
+        <button class="ep-modal-btn primary" id="elslp-save">Speichern ✓</button>
+      </div>`;
+
+    // Events
+    modal.querySelector('#elslp-close').onclick  = _close;
+    modal.querySelector('#elslp-cancel').onclick = _close;
+
+    // Reset Built-in W/m²
+    modal.querySelectorAll('[data-reset]').forEach(btn => {
+      btn.onclick = () => { delete ELSLP_WPM2[btn.dataset.reset]; _render(); };
+    });
+
+    // Eigenes Profil löschen
+    modal.querySelectorAll('[data-del]').forEach(btn => {
+      btn.onclick = () => { ELSLP_CUSTOM.splice(parseInt(btn.dataset.del), 1); _render(); };
+    });
+
+    // Neues Profil hinzufügen
+    modal.querySelector('#elslp-add').onclick = () => {
+      ELSLP_CUSTOM.push({ id:'NEU', label:'Neues Profil', gruppe:'Eigene', wpm2:15 });
+      _render();
+      // Fokus auf letztes ID-Feld
+      const inputs = modal.querySelectorAll('.elslp-id-inp');
+      inputs[inputs.length - 1]?.focus();
+      inputs[inputs.length - 1]?.select();
+    };
+
+    // Speichern
+    modal.querySelector('#elslp-save').onclick = () => {
+      // Built-in W/m² Overrides
+      modal.querySelectorAll('.elslp-wpm2').forEach(inp => {
+        const id  = inp.dataset.slpid;
+        const val = parseFloat(inp.value);
+        const def = _ELSLP_BUILTIN.find(p => p.id === id)?.wpm2 ?? 15;
+        if (!isNaN(val) && val !== def) ELSLP_WPM2[id] = val;
+        else delete ELSLP_WPM2[id];
+      });
+      // Custom Profile updaten
+      modal.querySelectorAll('#elslp-custom-table tbody tr[data-idx]').forEach(row => {
+        const i = parseInt(row.dataset.idx);
+        if (!ELSLP_CUSTOM[i]) return;
+        const idInp    = row.querySelector('.elslp-id-inp');
+        const labelInp = row.querySelector('.elslp-label-inp');
+        const gruppeInp= row.querySelector('.elslp-gruppe-inp');
+        const wpm2Inp  = row.querySelector('.elslp-wpm2-custom');
+        if (idInp)    ELSLP_CUSTOM[i].id     = idInp.value.trim().toUpperCase() || ELSLP_CUSTOM[i].id;
+        if (labelInp) ELSLP_CUSTOM[i].label  = labelInp.value.trim() || ELSLP_CUSTOM[i].label;
+        if (gruppeInp)ELSLP_CUSTOM[i].gruppe = gruppeInp.value.trim() || 'Eigene';
+        if (wpm2Inp)  ELSLP_CUSTOM[i].wpm2   = parseFloat(wpm2Inp.value) || ELSLP_CUSTOM[i].wpm2;
+      });
+      _close();
+    };
+  }
+
+  _render();
+}
+
+// Window-Bridge
+setTimeout(() => { window.showElSlpModal = showElSlpModal; }, 0);
+
+
+// ── 13l-autonetz.js ──
+// ── 13l-autonetz.js — Automatische Netz-Generierung auf Asset-System-Basis ──
+
+
+// ── Hilfsfunktionen ──────────────────────────────────────────────────────────
+
+// Einmalig pro autoNetzAssets-Lauf gesetzt; Cache leert sich mit jedem Lauf
+var _trasseCtx = null;
+var _distCache = new Map();
+
+function _trasseDist(a, b) {
+  const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
+  if (_distCache.has(key)) return _distCache.get(key);
+  const ptA = L.latLng(a.lat, a.lng);
+  const ptB = L.latLng(b.lat, b.lng);
+  let d;
+  if (_trasseCtx) {
+    const route = routeAlongTrasseWithGraph(_trasseCtx, ptA, ptB);
+    d = (route && route.length >= 2) ? polylineLength(route) : ptA.distanceTo(ptB);
+  } else {
+    d = ptA.distanceTo(ptB);
+  }
+  _distCache.set(key, d);
+  return d;
+}
+
+function _nearest(from, candidates) {
+  let best = null, bestDist = Infinity;
+  for (const c of candidates) {
+    const d = _trasseDist(from, c);
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return best;
+}
+
+function _addAutoEdge(a, b, opts = {}) {
+  const edge = addStromEdge(a.id, b.id);
+  if (!edge) return null;
+  edge.autoGenerated = true;
+  if (opts.ms) {
+    edge.msLevel = true;
+    edge.layer?.setStyle({ color: '#ff9800', weight: 4, dashArray: null });
+    edge.hitLayer?.setStyle({ weight: 18 });
+  }
+  if (opts.trennstelle) {
+    edge.trennstelle = true;
+    edge.layer?.setStyle({ dashArray: '12,8', opacity: 0.55 });
+  }
+  return edge;
+}
+
+// ── Dialog ───────────────────────────────────────────────────────────────────
+
+function showAutoNetzDialog() {
+  const overlay = document.createElement('div');
+  overlay.className = 'ep-modal-overlay';
+  const modal = document.createElement('div');
+  modal.className = 'ep-modal';
+  modal.innerHTML = `
+    <div class="ep-modal-title">Auto-Netz generieren</div>
+    <div class="ep-modal-body" style="line-height:1.7;">
+      <p style="margin:0 0 14px;font-size:11px;color:#aaa;">
+        Bestehende Auto-Kabel werden ersetzt. Manuell gezeichnete Kabel bleiben erhalten.
+      </p>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
+        <input type="checkbox" id="an-ring">
+        <span>
+          <b>MS-Ring</b> zwischen Trafos
+          <div style="font-size:11px;color:#aaa;margin-top:1px;">SA → T1 → T2 → … → Tn (Trennstelle am letzten Abschnitt)</div>
+        </span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="an-erzeugung">
+        <span>
+          <b>Erzeugungsnetz</b> separat verdrahten
+          <div style="font-size:11px;color:#aaa;margin-top:1px;">PV / KWK / Wind bekommen eigene NSHV-Abgänge</div>
+        </span>
+      </label>
+    </div>
+    <div class="ep-modal-btns">
+      <button class="ep-modal-btn" id="an-cancel">Abbrechen</button>
+      <button class="ep-modal-btn primary" id="an-ok">Generieren</button>
+    </div>`;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const close = () => document.body.removeChild(overlay);
+  modal.querySelector('#an-cancel').onclick = close;
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  modal.querySelector('#an-ok').onclick = () => {
+    const ring        = modal.querySelector('#an-ring').checked;
+    const erzeugungsnetz = modal.querySelector('#an-erzeugung').checked;
+    close();
+    autoNetzAssets({ ring, erzeugungsnetz });
+  };
+}
+
+// ── MS-Kabel-Dimensionierung ─────────────────────────────────────────────────
+
+var MS_I_MAX_A   = { 35: 140, 50: 175, 70: 220, 95: 260, 120: 300, 150: 340, 185: 385, 240: 445 };
+var MS_SECTIONS  = [35, 50, 70, 95, 120, 150, 185, 240];
+
+function _sizeMsEdges(autoEdges, nap) {
+  const U_kV    = parseFloat(nap?.props?.spannungKV) || 20;
+  const COS_PHI = 0.9;
+
+  const msEdges = autoEdges.filter(e => e.msLevel);
+  if (!msEdges.length) return;
+
+  // Adjazenz nur über MS-Kanten (für BFS downstream)
+  const msAdj = new Map();
+  for (const e of msEdges) {
+    if (!msAdj.has(e.u)) msAdj.set(e.u, []);
+    if (!msAdj.has(e.v)) msAdj.set(e.v, []);
+    msAdj.get(e.u).push(e.v);
+    msAdj.get(e.v).push(e.u);
+  }
+
+  for (const e of msEdges) {
+    const aAsset = ASSETS.items.find(a => a.id === e.u);
+    const bAsset = ASSETS.items.find(a => a.id === e.v);
+    if (!aAsset || !bAsset) continue;
+
+    const rankA = TYPE_RANK[aAsset.type] ?? 0;
+    const rankB = TYPE_RANK[bAsset.type] ?? 0;
+    const upId   = rankA <= rankB ? e.u : e.v;
+    const downId = rankA <= rankB ? e.v : e.u;
+
+    // BFS downstream (Trennstelle-Kanten werden nicht für die Last-Seite genutzt)
+    const visited = new Set([upId]);
+    const queue   = [downId];
+    let totalKva  = 0;
+    while (queue.length) {
+      const cur = queue.shift();
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      const a = ASSETS.items.find(x => x.id === cur);
+      if (a?.type === 'Trafo') totalKva += parseFloat(a.props?.leistungKVA) || 630;
+      for (const nb of (msAdj.get(cur) || [])) {
+        if (!visited.has(nb)) queue.push(nb);
+      }
+    }
+
+    if (totalKva <= 0) totalKva = 630; // Fallback
+    const I_MS = (totalKva * 1000) / (Math.sqrt(3) * U_kV * 1000 * COS_PHI);
+    const qs   = MS_SECTIONS.find(s => MS_I_MAX_A[s] >= I_MS) || 240;
+    e.crossSection = qs;
+    e.autoSized    = true;
+  }
+}
+
+// ── Hauptfunktion ─────────────────────────────────────────────────────────────
+
+function autoNetzAssets(opts = {}) {
+  const { ring = false, erzeugungsnetz = false } = opts;
+  const yr = window.globalYear ?? new Date().getFullYear();
+
+  // Graph einmalig bauen, Distanz-Cache leeren
+  _trasseCtx = buildTrasseGraph();
+  _distCache.clear();
+
+  // 0. Auto-Kanten löschen
+  const toRemove = (window.stromEdges || []).filter(e => e.autoGenerated);
+  toRemove.forEach(e => removeStromEdge(e));
+
+  // Assets nach Typ einsammeln
+  const active = ASSETS.items.filter(a =>
+    (a.domain === 'strom' || a.domain === 'hybrid') &&
+    getAssetStatus(a, yr) === 'active'
+  );
+
+  const byType = t => active.filter(a => a.type === t);
+  const naps        = byType('NAP');
+  const sas         = byType('Schaltanlage');
+  const trafos      = byType('Trafo');
+  const nshvs       = byType('NSHV');
+  const uvs         = byType('UV');
+  const verbraucher = active.filter(a => ['Verbraucher', 'Lade', 'WP', 'Batterie'].includes(a.type));
+  const erzeuger    = active.filter(a => ['PV', 'Wind', 'KWK', 'Nsa'].includes(a.type));
+
+  // Validierung
+  const errors = [];
+  if (!naps.length)   errors.push('Kein NAP vorhanden.');
+  if (!sas.length)    errors.push('Keine Schaltanlage vorhanden.');
+  if (!trafos.length) errors.push('Kein Trafo vorhanden.');
+  if (errors.length) {
+    showHint('⚠ Auto-Netz: ' + errors.join(' '));
+    return;
+  }
+
+  const nap = naps[0];
+  const sa  = sas[0];
+
+  // ── 1. NAP → Schaltanlage(n) ────────────────────────────────────────────
+  sas.forEach(s => _addAutoEdge(nap, s, { ms: true }));
+
+  // ── 2. Schaltanlage → Trafos ────────────────────────────────────────────
+  if (ring && trafos.length >= 2) {
+    // Nearest-Neighbor-Tour: SA → T1 → T2 → ... → Tn → SA(Trennstelle)
+    const remaining = [...trafos];
+    const tour = [];
+    let current = sa;
+    while (remaining.length) {
+      const next = _nearest(current, remaining);
+      tour.push(next);
+      remaining.splice(remaining.indexOf(next), 1);
+      current = next;
+    }
+    _addAutoEdge(sa, tour[0], { ms: true });
+    for (let i = 0; i < tour.length - 1; i++) {
+      _addAutoEdge(tour[i], tour[i + 1], { ms: true });
+    }
+    // Ringschluss mit Trennstelle
+    _addAutoEdge(tour[tour.length - 1], sa, { ms: true, trennstelle: true });
+  } else {
+    // Stern: SA → jeden Trafo
+    trafos.forEach(t => _addAutoEdge(sa, t, { ms: true }));
+  }
+
+  // ── 3. Trafo → NSHV (Voronoi per Trassendistanz) ─────────────────────
+  nshvs.forEach(nshv => {
+    const nearest = _nearest(nshv, trafos);
+    if (nearest) _addAutoEdge(nearest, nshv);
+  });
+
+  // ── 4. NSHV → UV (Greedy-MST je NSHV-Zone) ───────────────────────────
+  // UVs ihrer nächsten NSHV zuordnen
+  const uvZone = new Map(); // uv.id → nshv
+  uvs.forEach(uv => {
+    const nearest = _nearest(uv, nshvs);
+    if (nearest) uvZone.set(uv.id, nearest);
+  });
+
+  nshvs.forEach(nshv => {
+    const zoneUvs = uvs.filter(uv => uvZone.get(uv.id)?.id === nshv.id);
+    if (!zoneUvs.length) return;
+
+    // Greedy Prim: immer nächsten UV ans bereits verbundene Netz hängen
+    const connected = new Map([[nshv.id, nshv]]);
+    const remaining = [...zoneUvs];
+
+    while (remaining.length) {
+      let bestDist = Infinity, bestUv = null, bestAnchor = null;
+      for (const uv of remaining) {
+        for (const anchor of connected.values()) {
+          const d = _trasseDist(uv, anchor);
+          if (d < bestDist) { bestDist = d; bestUv = uv; bestAnchor = anchor; }
+        }
+      }
+      if (!bestUv) break;
+      _addAutoEdge(bestAnchor, bestUv);
+      connected.set(bestUv.id, bestUv);
+      remaining.splice(remaining.indexOf(bestUv), 1);
+    }
+  });
+
+  // ── 5. UV / NSHV → Verbraucher ────────────────────────────────────────
+  const nsAnker = [...uvs, ...nshvs]; // bevorzugt UV, sonst NSHV
+
+  verbraucher.forEach(v => {
+    const anchor = nsAnker.length ? _nearest(v, nsAnker) : _nearest(v, nshvs);
+    if (anchor) _addAutoEdge(anchor, v);
+  });
+
+  // ── 6. Erzeuger ─────────────────────────────────────────────────────────
+  if (erzeugungsnetz) {
+    // Separate Abgänge: Erzeuger → eigene NSHV (kein UV-Zwischenknoten)
+    // Falls mehrere NSHVs: Nearest-NSHV je Erzeuger
+    erzeuger.forEach(e => {
+      const anchor = nshvs.length ? _nearest(e, nshvs) : null;
+      if (anchor) _addAutoEdge(anchor, e);
+    });
+  } else {
+    // Standard: Erzeuger wie Verbraucher — nächste UV oder NSHV
+    erzeuger.forEach(e => {
+      const anchor = nsAnker.length ? _nearest(e, nsAnker) : _nearest(e, nshvs);
+      if (anchor) _addAutoEdge(anchor, e);
+    });
+  }
+
+  // MS-Kabel dimensionieren (vor NS-Berechnung)
+  const autoEdges = (window.stromEdges || []).filter(e => e.autoGenerated);
+  _sizeMsEdges(autoEdges, nap);
+
+  // Berechnung anstoßen
+  recalcStromNetz();
+  if (typeof window.elCalcAssets === 'function') window.elCalcAssets();
+
+  const nEdges = (window.stromEdges || []).filter(e => e.autoGenerated).length;
+  showHint(`✓ Auto-Netz: ${nEdges} Kabel generiert.`);
+  setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 4000);
+}
+
+
 // ── main.js ──
 // ── main.js — ES Module entry point ────────────────────────────────────────
 // Imports all modules and exposes their exports on window for data-* handlers.
@@ -40120,10 +41793,10 @@ var assetsInspector = { openAssetInspector, closeAssetInspector, renderSidebarAs
 var sld = { sldToggle, sldToggleFullscreen, sldZoom, sldExportPDF, sldRender, sldRefresh, sldClick, sldInfoClose };
 var msRing = { elDetectMSRings, elDrawMSRings, elClearMSRings, elCalcMSRing, elCalcN1, elBuildMSHoverOverrides, elRunMSAnalyse, runMSAnalyse, clearMSRings, getMSHoverOverride };
 var netzanalyse = { naGetLoadPoints, naHeatmapToggle, naSetHeatmapMode, naHeatmapSetLayerVisibility, naDrawKabeltrassen, naKabelToggle, naKabelSelectAll, naKabelSelectNone, naImportSelectedKabel, naSetMode, naSetK, naSetMaxKVA, naSetCosPhi, naSetGzf, naSetMinUtil, naSetProxRadius, naSetUseExisting, naSetKabelEurM, naRunTrafoOptimierung, naClearTrafoOptimierung, naRenderPanel, naTogglePanel };
-
-
-
-
+var slpEditor = { SLP_INFO, buildSlpProfile8760, initBdewProfiles, openSlpEditor, closeSlpEditor };
+var autofillWizard = { showAutofillWizard };
+var elslpRegistry = { ELSLP_WPM2, ELSLP_CUSTOM, getElSlpProfiles, getElSlpById, isBuiltinElSlp, getElSlpWpm2, getElSlpGruppen, showElSlpModal };
+var autonetz = { showAutoNetzDialog, autoNetzAssets };
 
 // Expose all exports on window for data-* event handlers in HTML
 var modules = [
