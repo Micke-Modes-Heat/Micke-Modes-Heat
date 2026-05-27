@@ -54,7 +54,9 @@ const JS_FILES = [
   '13j-autofill-wizard.js',
   '13k-elslp-registry.js',
   '13l-autonetz.js',
-  'main.js',                     // ← window.*-Exposition zuletzt
+  // main.js wird NICHT eingebunden — es macht nur import/window-Exposition,
+  // die im Monolith überflüssig ist (alles bereits global). Der Namespace-
+  // Alias "glBerechnen" würde die private Funktion gleichen Namens überschreiben.
 ];
 
 // Vorab alle Export-Namen je Datei sammeln (für import * as X → var X = {...})
@@ -124,6 +126,18 @@ for (const file of JS_FILES) {
   const raw = readFileSync(join(SRC, file), 'utf8');
   jsAll += `// ── ${file} ──\n` + stripModule(raw) + '\n\n';
 }
+
+// BDEW-Initialisierung (ersetzt den main.js-Aufruf)
+jsAll += `
+// ── Initialisierung (aus main.js) ──
+if (typeof initBdewProfiles === 'function') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { initBdewProfiles(); });
+  } else {
+    initBdewProfiles();
+  }
+}
+`;
 
 // 2. CSS lesen
 const cssCode = readFileSync(join(SRC, 'styles', 'app.css'), 'utf8');

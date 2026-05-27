@@ -2128,13 +2128,48 @@ export async function loadOsmStrassen() {
 
   const query = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
 
+  // Mehrere Overpass-Endpunkte — der erste erreichbare wird verwendet.
+  // Proxy-Fallback via GET ermöglicht Anfragen von file:// (Origin: null).
+  async function _fetchOverpass(q) {
+    const enc = encodeURIComponent(q);
+    const body = 'data=' + enc;
+    const postHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
+
+    // 1) Direkte POST-Endpunkte (klappen von echten Web-Servern)
+    const directUrls = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass.openstreetmap.ru/api/interpreter',
+    ];
+    for (const url of directUrls) {
+      try {
+        const r = await fetch(url, { method: 'POST', headers: postHeaders, body });
+        if (r.ok) return r.json();
+      } catch (_) { /* nächsten Endpunkt versuchen */ }
+    }
+
+    // 2) GET via CORS-Proxy — funktioniert auch von file:// (Origin: null)
+    //    corsproxy.io erwartet die Ziel-URL NICHT nochmal URL-kodiert
+    const getTarget = 'https://overpass-api.de/api/interpreter?data=' + enc;
+    const proxyUrls = [
+      'https://corsproxy.io/?' + getTarget,
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent(getTarget),
+    ];
+    let lastErr;
+    for (const url of proxyUrls) {
+      try {
+        const r = await fetch(url);
+        if (r.ok) return r.json();
+        lastErr = new Error(url.slice(0, 50) + '… HTTP ' + r.status);
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error('Alle Overpass-Endpunkte nicht erreichbar');
+  }
+
   try {
-    const resp = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      body: query,
-    });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
+    const data = await _fetchOverpass(query);
 
     clearOsmStrassen();
     _osmStrassenLayer = L.layerGroup();
