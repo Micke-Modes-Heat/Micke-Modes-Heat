@@ -18,6 +18,12 @@ const NA_CLUSTER_COLORS = [
   '#26c6da','#d4e157','#ec407a','#8d6e63','#78909c',
 ];
 
+// Farben für Erzeugungsnetz (Teal/Cyan-Palette, klar von Verbrauch unterscheidbar)
+const NA_ERZEUG_COLORS = [
+  '#00acc1','#0097a7','#26c6da','#00bcd4','#4dd0e1',
+  '#006064','#80deea','#00838f','#b2ebf2','#4fc3f7',
+];
+
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 const NA = {
   // Heatmap
@@ -47,23 +53,30 @@ const NA = {
   naMaxKW:       null,
   naAutoInfo:    null,
   naExistingResults: null,
+
+  // Erzeugungsnetz
+  erzeugungsnetz:     false,
+  naErzeugResult:     null,
+  naErzeugMaxKW:      null,
 };
 
 // Leaflet-Layer-Gruppen (lazy init)
-let grpHeatmapLoad  = null;
-let grpHeatmapGen   = null;
-let grpHeatmapLegacy = null;
-let grpKabeltrassen = null;
-let grpKMeans       = null;
+let grpHeatmapLoad    = null;
+let grpHeatmapGen     = null;
+let grpHeatmapLegacy  = null;
+let grpKabeltrassen   = null;
+let grpKMeans         = null;
 let grpExistingTrafos = null;
+let grpErzeugungKMeans = null;
 
 function _ensureGroups() {
-  if (!grpHeatmapLoad)   grpHeatmapLoad   = L.layerGroup();
-  if (!grpHeatmapGen)    grpHeatmapGen    = L.layerGroup();
-  if (!grpHeatmapLegacy) grpHeatmapLegacy = L.layerGroup();
-  if (!grpKabeltrassen)  grpKabeltrassen  = L.layerGroup();
-  if (!grpKMeans)        grpKMeans        = L.layerGroup();
+  if (!grpHeatmapLoad)    grpHeatmapLoad    = L.layerGroup();
+  if (!grpHeatmapGen)     grpHeatmapGen     = L.layerGroup();
+  if (!grpHeatmapLegacy)  grpHeatmapLegacy  = L.layerGroup();
+  if (!grpKabeltrassen)   grpKabeltrassen   = L.layerGroup();
+  if (!grpKMeans)         grpKMeans         = L.layerGroup();
   if (!grpExistingTrafos) grpExistingTrafos = L.layerGroup();
+  if (!grpErzeugungKMeans) grpErzeugungKMeans = L.layerGroup();
 }
 
 // ── Adapter: Lastpunkte aus aktiven Assets ───────────────────────────────────
@@ -397,6 +410,31 @@ export function naDrawKabeltrassen() {
       }
       NA.naKabelInfo.totalM += zoneM;
       NA.naKabelInfo.zones.push({ name: `Zone ${i + 1}`, lengthM: zoneM, isExisting: false });
+    });
+  }
+
+  // Erzeugungsnetz-Kabeltrassen
+  const erzClusters = NA.naErzeugResult;
+  if (erzClusters?.length > 0) {
+    erzClusters.forEach((cl, i) => {
+      if (!cl.points?.length) return;
+      const col   = NA_ERZEUG_COLORS[i % NA_ERZEUG_COLORS.length];
+      const edges = _computeMST(cl.centroid, cl.points);
+      let zoneM   = 0;
+      for (const e of edges) {
+        zoneM += e.lengthM;
+        const rootPt     = cl.centroid;
+        const fromIsRoot = _distM(e.from, rootPt) < 10;
+        const poly = L.polyline([[e.from.lat, e.from.lng], [e.to.lat, e.to.lng]], {
+          color: col, weight: 2.5, opacity: 0.85, dashArray: '4 3',
+        }).bindTooltip(`EZ ${i + 1} · ${e.lengthM.toFixed(0)} m`, { sticky: true })
+          .addTo(grpKabeltrassen);
+        NA.naKabelEdges.push({ edge: e, poly, zoneName: `EZ ${i + 1}`, col,
+          routed: false, selected: false, rootPt, isExistingTrafo: false,
+          trafoAssetId: null, fromIsRoot, isErzeugung: true });
+      }
+      NA.naKabelInfo.totalM += zoneM;
+      NA.naKabelInfo.zones.push({ name: `EZ ${i + 1}`, lengthM: zoneM, isErzeugung: true });
     });
   }
 
@@ -882,6 +920,59 @@ export function naSetMinUtil(v)      { NA.minUtilPct = parseInt(v) || 0; }
 export function naSetProxRadius(v)   { NA.proxRadius = parseInt(v) || 0; naRenderPanel(); }
 export function naSetUseExisting(v)  { NA.useExisting = !!v; naRenderPanel(); }
 export function naSetKabelEurM(v)    { NA.naKabelEurM = parseFloat(v) || 200; naRenderPanel(); }
+export function naSetErzeugungsnetz(v) { NA.erzeugungsnetz = !!v; naRenderPanel(); }
+
+// ── Erzeugungscluster zeichnen ───────────────────────────────────────────────
+function _drawErzeugungClusters(clusters, maxKW) {
+  _ensureGroups();
+  grpErzeugungKMeans.clearLayers();
+  if (!clusters || clusters.length === 0) return;
+  const centroids = clusters.map(cl => ({ lat: cl.centroid.lat, lng: cl.centroid.lng }));
+  const allPtsForBbox = [...clusters.flatMap(cl => cl.points), ...centroids];
+  const vBbox  = _voronoiBBox(allPtsForBbox.length > 0 ? allPtsForBbox : centroids);
+  const vCells = _computeVoronoi(centroids, vBbox);
+  if (!map.hasLayer(grpErzeugungKMeans)) grpErzeugungKMeans.addTo(map);
+  clusters.forEach((cl, i) => {
+    const col     = NA_ERZEUG_COLORS[i % NA_ERZEUG_COLORS.length];
+    const kvaEmpf = _kvaEmpfStr(cl.einspeisungKW, NA.cosPhi);
+    const vCell   = vCells[i];
+    if (vCell && vCell.polygon.length >= 3) {
+      L.polygon(vCell.polygon.map(p => [p.lat, p.lng]), {
+        color: col, fillColor: col, fillOpacity: 0.08, opacity: 0.6,
+        weight: 2, dashArray: '3 5',
+      }).bindTooltip(`EZ ${i+1}: ${cl.einspeisungKW.toFixed(0)} kW Einsp. · ${cl.points.length} Pkt.`, { sticky: true })
+        .addTo(grpErzeugungKMeans);
+    }
+    L.marker([cl.centroid.lat, cl.centroid.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="background:${col};border:2px solid #fff;border-radius:50%;
+                 width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+                 font-size:11px;font-weight:700;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.45);">
+                 E</div>`,
+        iconSize: [24, 24], iconAnchor: [12, 12],
+      }),
+      zIndexOffset: 510,
+    }).bindPopup(
+      `<b>☀ Einspeise-Trafo ${i+1}</b><br>` +
+      `Einspeisung: <b>${cl.einspeisungKW.toFixed(0)} kW</b><br>` +
+      `Bezug: <b>${cl.bezugKW.toFixed(0)} kW</b><br>` +
+      `Netto: <b>${(cl.einspeisungKW - cl.bezugKW).toFixed(0)} kW</b><br>` +
+      `Empf. Trafo: <b>${kvaEmpf}</b><br>Punkte: ${cl.points.length}`
+    ).addTo(grpErzeugungKMeans);
+  });
+}
+
+// ── Empfohlene kVA für einen Cluster ─────────────────────────────────────────
+function _empfKVA(peakKW, cosPhi) {
+  const s = peakKW / (cosPhi || 0.9);
+  if (s <= 250)  return 250;
+  if (s <= 400)  return 400;
+  if (s <= 630)  return 630;
+  if (s <= 1000) return 1000;
+  if (s <= 1600) return 1600;
+  return 2500;
+}
 
 export function naRunTrafoOptimierung() {
   _ensureGroups();
@@ -987,6 +1078,33 @@ export function naRunTrafoOptimierung() {
     ).addTo(grpKMeans);
   });
 
+  // ── Erzeugungsnetz separat optimieren ────────────────────────────────────
+  if (NA.erzeugungsnetz) {
+    const erzPts = allPts.filter(p => p.genKW > 0);
+    if (erzPts.length > 0) {
+      const weightedErz = erzPts.map(p => ({ ...p, weight: p.genKW }));
+      let erzClusters, erzMaxKW = null;
+      if (NA.mode === 'auto') {
+        const res = _findAutoK(weightedErz, NA.maxKVA, NA.cosPhi, NA.gzf, NA.minUtilPct);
+        erzClusters = res.clusters;
+        erzMaxKW = res.maxKW;
+      } else {
+        erzClusters = _kMeansCluster(weightedErz, NA.k || 3, 150, 5);
+      }
+      NA.naErzeugResult = erzClusters.filter(cl => cl.points.length > 0);
+      NA.naErzeugMaxKW  = erzMaxKW;
+      _drawErzeugungClusters(NA.naErzeugResult, erzMaxKW);
+    } else {
+      NA.naErzeugResult = [];
+      NA.naErzeugMaxKW  = null;
+      grpErzeugungKMeans.clearLayers();
+    }
+  } else {
+    NA.naErzeugResult = null;
+    NA.naErzeugMaxKW  = null;
+    if (grpErzeugungKMeans) grpErzeugungKMeans.clearLayers();
+  }
+
   naDrawKabeltrassen();
   naRenderPanel();
 }
@@ -996,12 +1114,89 @@ export function naClearTrafoOptimierung() {
   grpKMeans.clearLayers();
   grpExistingTrafos.clearLayers();
   grpKabeltrassen.clearLayers();
-  NA.naResult   = null;
-  NA.naAutoInfo = null;
-  NA.naMaxKW    = null;
+  grpErzeugungKMeans.clearLayers();
+  NA.naResult          = null;
+  NA.naAutoInfo        = null;
+  NA.naMaxKW           = null;
   NA.naExistingResults = null;
-  NA.naKabelInfo = null;
+  NA.naKabelInfo       = null;
+  NA.naErzeugResult    = null;
+  NA.naErzeugMaxKW     = null;
   naRenderPanel();
+}
+
+// ── Kompaktstation übernehmen ────────────────────────────────────────────────
+export function naUebernehmenAlsKompaktstation() {
+  const createAsset = window.createAsset;
+  const addEdge     = window.addStromEdge;
+  if (!createAsset || !addEdge) { alert('createAsset / addStromEdge nicht verfügbar'); return; }
+
+  const verbrauchsClusters = (NA.naResult || []).map(cl => ({ ...cl, kind: 'verbrauch' }));
+  const erzClusters        = (NA.naErzeugResult || []).map(cl => ({ ...cl, kind: 'erzeugung' }));
+  const allClusters        = [...verbrauchsClusters, ...erzClusters];
+
+  if (allClusters.length === 0) {
+    alert('Keine Optimierungsergebnisse vorhanden.\nBitte zuerst die Optimierung berechnen.');
+    return;
+  }
+
+  const vText  = verbrauchsClusters.length > 0 ? `${verbrauchsClusters.length} Verbrauchstrafo${verbrauchsClusters.length !== 1 ? 's' : ''}` : '';
+  const eText  = erzClusters.length > 0        ? `${erzClusters.length} Einspeise-Trafo${erzClusters.length !== 1 ? 's' : ''}` : '';
+  const sumTxt = [vText, eText].filter(Boolean).join(' + ');
+  const ok = confirm(
+    `${allClusters.length} Kompaktstation${allClusters.length !== 1 ? 'en' : ''} erstellen (${sumTxt})?\n\n` +
+    'Jede Kompaktstation besteht aus:\n' +
+    '  • Schaltanlage (MS-Seite)\n' +
+    '  • Trafo\n' +
+    '  • NSHV (NS-Verteiler)\n\n' +
+    'Die drei Komponenten werden leicht versetzt platziert und intern verbunden.'
+  );
+  if (!ok) return;
+
+  const DEG_PER_M = 1 / 111320;
+  let created = 0, failed = 0;
+
+  for (const cl of allClusters) {
+    const cx = cl.centroid.lat, cy = cl.centroid.lng;
+    const peakKW = cl.kind === 'erzeugung' ? cl.einspeisungKW : cl.peakKW;
+    const kva    = _empfKVA(peakKW, NA.cosPhi);
+
+    const isErz = cl.kind === 'erzeugung';
+
+    // Schaltanlage (am Trafo-Standort, MS-seitig)
+    const sa = createAsset('Schaltanlage', cx, cy, {
+      felder: '4',
+      nennstromA: '630',
+    });
+    if (!sa) { failed++; continue; }
+
+    // Trafo (~10 m nördlich der Schaltanlage) — netzart kennzeichnet Einspeise-Trafo
+    const trafo = createAsset('Trafo', cx + 9 * DEG_PER_M, cy, {
+      leistungKVA: String(kva),
+      ukProzent:   '6',
+      netzart:     isErz ? 'erzeugung' : 'verbrauch',
+    });
+    if (!trafo) { failed++; continue; }
+
+    // NSHV (~10 m nördlich des Trafos) — gleiche netzart wie Trafo
+    const nshv = createAsset('NSHV', cx + 18 * DEG_PER_M, cy, {
+      nennstromA: String(Math.round(kva * 1000 / (400 * Math.sqrt(3) * 0.9))),
+      abgaenge:   '6',
+      netzart:    isErz ? 'erzeugung' : 'verbrauch',
+    });
+    if (!nshv) { failed++; continue; }
+
+    // SA → Trafo (MS-Kabel), Trafo → NSHV (NS-Kabel)
+    addEdge(sa.id, trafo.id);
+    addEdge(trafo.id, nshv.id);
+    created++;
+  }
+
+  if (failed > 0) alert(`${created} erstellt, ${failed} fehlgeschlagen.`);
+  else alert(`${created} Kompaktstation${created !== 1 ? 'en' : ''} erfolgreich erstellt.\n\nPositionen können per Drag & Drop angepasst werden.`);
+
+  if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+  if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
 }
 
 // ── Panel-Rendering ──────────────────────────────────────────────────────────
@@ -1022,14 +1217,17 @@ export function naRenderPanel() {
   const gzf          = NA.gzf;
   const minUtilPct   = NA.minUtilPct;
   const proxRadius   = NA.proxRadius;
-  const useExisting  = NA.useExisting;
-  const hasResult    = NA.naResult !== null;
-  const existingT    = _naGetExistingTrafos(yr);
-  const kabelOn      = NA.kabelActive;
-  const kabelInfo    = NA.naKabelInfo;
-  const kabelEurM    = NA.naKabelEurM;
-  const nettoCol     = totalNetto >= 0 ? '#ef5350' : '#42a5f5';
-  const nettoSign    = totalNetto >= 0 ? '+' : '';
+  const useExisting    = NA.useExisting;
+  const hasResult      = NA.naResult !== null;
+  const existingT      = _naGetExistingTrafos(yr);
+  const kabelOn        = NA.kabelActive;
+  const kabelInfo      = NA.naKabelInfo;
+  const kabelEurM      = NA.naKabelEurM;
+  const erzeugungsnetz = NA.erzeugungsnetz;
+  const erzResult      = NA.naErzeugResult;
+  const hasAnyResult   = hasResult || (erzResult && erzResult.length > 0);
+  const nettoCol       = totalNetto >= 0 ? '#ef5350' : '#42a5f5';
+  const nettoSign      = totalNetto >= 0 ? '+' : '';
 
   panel.innerHTML = `
 <!-- Übersicht -->
@@ -1180,7 +1378,7 @@ export function naRenderPanel() {
   ${useExisting && existingT.length > 0 ? 'Neue Trafos für überlastete Zonen' : 'Trafo-Platzierungsvorschlag'}
 </div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="display:flex;gap:4px;margin-bottom:10px;">
+  <div style="display:flex;gap:4px;margin-bottom:8px;">
     <button onclick="naSetMode('manual')"
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
              border:1px solid ${!isAuto?'var(--accent)':'var(--border)'};
@@ -1192,6 +1390,16 @@ export function naRenderPanel() {
              background:${isAuto?'rgba(102,187,106,.1)':'transparent'};
              color:${isAuto?'#66bb6a':'var(--muted)'};">Auto (max. kVA)</button>
   </div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:10px;cursor:pointer;margin-bottom:8px;
+                padding:5px 6px;border-radius:4px;background:${erzeugungsnetz?'rgba(38,198,218,.08)':'transparent'};
+                border:1px solid ${erzeugungsnetz?'#26c6da':'var(--border)'};">
+    <input type="checkbox" ${erzeugungsnetz?'checked':''} onchange="naSetErzeugungsnetz(this.checked)"
+      style="accent-color:#26c6da;width:13px;height:13px;flex-shrink:0;">
+    <span style="color:${erzeugungsnetz?'#26c6da':'var(--muted)'};">
+      Erzeugungstrafos separat berechnen
+      <span style="display:block;font-size:9px;opacity:.75;line-height:1.3;">PV / Wind / KWK → eigenes Erzeugungsnetz</span>
+    </span>
+  </label>
   ${!isAuto ? `
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
     <label style="font-size:10px;color:var(--text);white-space:nowrap;">Anzahl Trafos (k):</label>
@@ -1250,11 +1458,38 @@ export function naRenderPanel() {
            border:1px solid #b39ddb;color:#ce93d8;background:transparent;margin-bottom:5px;">
     ⚡ Optimierung berechnen
   </button>
-  ${hasResult ? `<button onclick="naClearTrafoOptimierung()"
+  ${hasAnyResult ? `
+  <button onclick="naUebernehmenAlsKompaktstation()"
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+           border:1px solid #4fc3f7;color:#4fc3f7;background:rgba(79,195,247,.08);margin-bottom:5px;font-weight:600;">
+    🏗 Als Kompaktstationen übernehmen
+  </button>
+  <button onclick="naClearTrafoOptimierung()"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid var(--muted);color:var(--muted);background:transparent;">
     ✕ Ergebnis löschen</button>` : ''}
 </div>
+
+${erzeugungsnetz && erzResult && erzResult.length > 0 ? `
+<!-- Erzeugungsnetz-Ergebnisse -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#26c6da;margin-bottom:4px;">Erzeugungsnetz</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;border-left:3px solid #26c6da;">
+  <div style="font-size:10px;color:var(--text);margin-bottom:6px;">
+    <b style="color:#26c6da;">${erzResult.length} Einspeise-Trafo${erzResult.length !== 1 ? 's'  : ''}</b> für Erzeugungsnetz
+  </div>
+  ${erzResult.map((cl, i) => {
+    const col = NA_ERZEUG_COLORS[i % NA_ERZEUG_COLORS.length];
+    const kva = _empfKVA(cl.einspeisungKW, NA.cosPhi);
+    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid var(--border);">
+      <div style="width:16px;height:16px;background:${col};border-radius:50%;flex-shrink:0;display:flex;
+                  align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;">E</div>
+      <span style="font-size:10px;color:var(--text);flex:1;">EZ ${i+1}</span>
+      <span style="font-size:9px;color:#26c6da;white-space:nowrap;">${cl.einspeisungKW.toFixed(0)} kW</span>
+      <span style="font-size:9px;color:var(--muted);white-space:nowrap;">${kva} kVA</span>
+      <span style="font-size:9px;color:var(--muted);white-space:nowrap;">${cl.points.length} Pkt.</span>
+    </div>`;
+  }).join('')}
+</div>` : ''}
 
 <!-- MS-Netz -->
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">MS-Netz (Mittelspannung)</div>
