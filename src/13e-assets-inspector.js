@@ -1,33 +1,181 @@
 // ── 13e-assets-inspector.js — Editor-Panel für selektiertes Asset ──────────
 
-import { ASSETS, ASSET_CFG, getAsset, deleteAsset } from './13a-assets-core.js';
-import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
+// Persistiert den Einklapp-Zustand der Sektionen innerhalb einer Session
+const _sectionCollapsed = {};
+// Persistiert den Einklapp-Zustand der Asset-Gruppen in der Hauptliste
+const _groupCollapsed = {};
 
-function getPanel() { return document.getElementById('asset-inspector'); }
+function wireSectionToggles(panel) {
+  panel.querySelectorAll('.ins-section-header[data-target]').forEach(hdr => {
+    const targetId = hdr.dataset.target;
+    const content  = panel.querySelector('#' + targetId);
+    if (!content) return;
+    // Gespeicherten Zustand wiederherstellen
+    if (_sectionCollapsed[targetId]) {
+      hdr.classList.add('is-collapsed');
+      content.classList.add('is-collapsed');
+    }
+    hdr.addEventListener('click', () => {
+      const nowCollapsed = hdr.classList.toggle('is-collapsed');
+      content.classList.toggle('is-collapsed', nowCollapsed);
+      _sectionCollapsed[targetId] = nowCollapsed;
+    });
+  });
+}
+
+import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset } from './13a-assets-core.js';
+import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
+import { openSlpEditor } from './13i-slp-editor.js';
+import { globalYear } from './01-globals-varianten.js';
+
+// Inspector-Slot sitzt im Elektro-Tab der rechten Sidebar
+function getPanel() { return document.getElementById('sb-asset-inspector-slot'); }
 
 export function openAssetInspector(asset) {
   if (!asset) return;
   ASSETS.selectedId = asset.id;
-  // Sidebar öffnen falls zugeklappt
-  const sb = document.getElementById('sidebar');
-  if (sb?.classList.contains('collapsed') && typeof window.toggleSidebar === 'function') {
-    window.toggleSidebar();
-  }
-  // Zum Assets-Tab wechseln
-  if (typeof window.setSidebarTab === 'function') window.setSidebarTab('assets');
-  else renderAssetSidebar();
-  // Nach kurzem Timeout scrollen, damit DOM gerendert ist
-  setTimeout(() => {
-    const card = document.getElementById(`asb-card-${asset.id}`);
-    card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, 60);
+  const panel = getPanel();
+  if (!panel) return;
+  // Rechte Sidebar: zum Elektro-Tab wechseln
+  if (typeof window.setSidebarTab === 'function') window.setSidebarTab('elektro');
+  // Inspector anzeigen, Liste ausblenden
+  const listEl = document.getElementById('sb-asset-list');
+  if (listEl) listEl.style.display = 'none';
+  panel.style.display = 'flex';
+  renderInspector(asset);
 }
 
 export function closeAssetInspector() {
   const panel = getPanel();
-  if (panel) panel.classList.remove('visible');
+  if (panel) panel.style.display = 'none';
   ASSETS.selectedId = null;
-  renderAssetSidebar();
+  // Asset-Liste wieder einblenden und aktualisieren
+  const listEl = document.getElementById('sb-asset-list');
+  if (listEl) listEl.style.display = '';
+  renderSidebarAssetList();
+}
+
+// ── Asset-Liste (alle Assets nach Typ gruppiert) ────────────────────────────
+export function renderSidebarAssetList() {
+  const container = document.getElementById('sb-asset-list');
+  if (!container) return;
+
+  const items = ASSETS.items;
+  const edges = window.stromEdges || [];
+
+  // Zähler-Badge
+  const countEl = document.getElementById('sb-asset-count');
+  if (countEl) countEl.textContent = items.length;
+
+  if (items.length === 0 && edges.length === 0) {
+    container.innerHTML = `<div class="sb-asset-empty">
+      <div style="font-size:20px;margin-bottom:6px;">⚡</div>
+      <div>Noch keine Komponenten platziert.</div>
+      <div style="margin-top:4px;font-size:9px;opacity:.6;">⚡-Tab links → Komponenten platzieren</div>
+    </div>`;
+    return;
+  }
+
+  // Nach Typ gruppieren, Typen nach TYPE_RANK sortieren
+  const byType = new Map();
+  for (const a of items) {
+    if (!byType.has(a.type)) byType.set(a.type, []);
+    byType.get(a.type).push(a);
+  }
+  const sortedTypes = [...byType.keys()].sort((a, b) =>
+    (TYPE_RANK[a] ?? 99) - (TYPE_RANK[b] ?? 99)
+  );
+
+  let html = '';
+  for (const type of sortedTypes) {
+    const cfg = ASSET_CFG[type];
+    const typeItems = byType.get(type);
+    const rows = typeItems.map(a => {
+      const status  = getAssetStatus(a, globalYear);
+      const opacity = status === 'active' ? 1 : 0.45;
+      const hasPending = (a.massnahmen || []).some(m => m.status === 'geplant');
+      const pendingDot = hasPending
+        ? `<span class="sb-asset-pending-dot" title="Offene Maßnahmen"></span>`
+        : '';
+      const sel = ASSETS.selectedId === a.id ? ' selected' : '';
+      return `<div class="sb-asset-row${sel}" data-asset-id="${a.id}">
+        <span class="sb-asset-row-icon" style="background:${cfg.color};opacity:${opacity};">${cfg.icon}</span>
+        <span class="sb-asset-row-name">${esc(a.name)}</span>
+        ${pendingDot}
+        <span class="sb-asset-row-status sb-asset-row-status-${status}"></span>
+      </div>`;
+    }).join('');
+    const collapsed = !!_groupCollapsed[type];
+    html += `<div class="sb-asset-group">
+      <div class="sb-asset-group-hdr${collapsed ? ' is-collapsed' : ''}" data-group-type="${type}">
+        <span class="sb-asset-group-icon" style="color:${cfg.color};">${cfg.icon}</span>
+        <span class="sb-asset-group-label">${cfg.label}</span>
+        <span class="sb-asset-group-count">${typeItems.length}</span>
+        <span class="sb-asset-group-chevron">▾</span>
+      </div>
+      <div class="sb-asset-group-rows${collapsed ? ' is-collapsed' : ''}">
+        ${rows}
+      </div>
+    </div>`;
+  }
+
+  // Kabel-Sektion
+  if (edges.length > 0) {
+    const cableRows = edges.map((e, idx) => {
+      const np    = e.nParallel > 1 ? `${e.nParallel}× ` : '';
+      const label = `${np}${e.cableType || 'NAYY'} ${e.crossSection || '?'} mm²`;
+      const lenStr = e.lengthM ? ` · ${Math.round(e.lengthM)} m` : '';
+      const ausl  = e.auslastungPct || 0;
+      const dot   = ausl < 80 ? '#4caf50' : ausl < 100 ? '#f9a825' : '#e53935';
+      return `<div class="sb-asset-row" data-edge-idx="${idx}">
+        <span class="sb-asset-row-icon" style="background:#3a3a3a;color:#fdd835;font-size:11px;">━</span>
+        <span class="sb-asset-row-name">${esc(label)}${esc(lenStr)}</span>
+        <span style="width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0;"></span>
+      </div>`;
+    }).join('');
+    const collapsed = !!_groupCollapsed['_cables'];
+    html += `<div class="sb-asset-group">
+      <div class="sb-asset-group-hdr${collapsed ? ' is-collapsed' : ''}" data-group-type="_cables">
+        <span class="sb-asset-group-icon" style="color:#fdd835;">━</span>
+        <span class="sb-asset-group-label">Kabel</span>
+        <span class="sb-asset-group-count">${edges.length}</span>
+        <span class="sb-asset-group-chevron">▾</span>
+      </div>
+      <div class="sb-asset-group-rows${collapsed ? ' is-collapsed' : ''}">
+        ${cableRows}
+      </div>
+    </div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Gruppen einklappen/ausklappen
+  container.querySelectorAll('.sb-asset-group-hdr').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const type = hdr.dataset.groupType;
+      const rows = hdr.nextElementSibling;
+      const nowCollapsed = hdr.classList.toggle('is-collapsed');
+      rows.classList.toggle('is-collapsed', nowCollapsed);
+      _groupCollapsed[type] = nowCollapsed;
+    });
+  });
+
+  // Klick-Handler: Assets
+  container.querySelectorAll('.sb-asset-row[data-asset-id]').forEach(row => {
+    row.addEventListener('click', () => {
+      const a = ASSETS.items.find(x => x.id === row.dataset.assetId);
+      if (a) openAssetInspector(a);
+    });
+  });
+
+  // Klick-Handler: Kabel → öffnet Kabel-Inspector-Modal
+  container.querySelectorAll('.sb-asset-row[data-edge-idx]').forEach(row => {
+    row.addEventListener('click', () => {
+      const idx  = parseInt(row.dataset.edgeIdx);
+      const edge = (window.stromEdges || [])[idx];
+      if (edge && typeof window.openCableInspector === 'function') window.openCableInspector(edge);
+    });
+  });
 }
 
 // ── Hilfsfunktionen für Formular-Felder ─────────────────────────────────────
@@ -103,8 +251,13 @@ function buildPropsForm(asset) {
         numField(id, 'abgaenge',   'Abgänge',         4, {props:p, step:1, min:1})
       );
 
-    case 'Verbraucher':
-      return numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p});
+    case 'Verbraucher': {
+      const slpOpts = ['G0','G1','G2','G3','G4','G5','G6','H0','L0','L1','L2'];
+      const curSlp = p.slpTyp || 'G0';
+      return numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p})
+        + selectField(id, 'slpTyp', 'Lastprofil (SLP)', slpOpts.map(t => ({value:t, label:t})), curSlp)
+        + `<button class="ins-link-btn" data-slp-open="${curSlp}">Profil ansehen →</button>`;
+    }
 
     case 'WP':
       return numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p});
@@ -175,40 +328,54 @@ function buildPropsForm(asset) {
 function massnahmeId() { return 'm_' + Math.random().toString(36).slice(2, 8); }
 
 const MASSN_STATUS = {
-  geplant:    { label: 'Geplant',    color: '#4fc3f7' },
+  geplant:    { label: 'Geplant',   color: '#4fc3f7' },
   umgesetzt:  { label: 'Umgesetzt', color: '#4caf50' },
   abgelehnt:  { label: 'Abgelehnt', color: '#9e9e9e' },
 };
 
+const MASSN_TYP = {
+  Sanierung: { label: 'Sanierung', icon: '🔧', hasNewProps: true  },
+  Abriss:    { label: 'Abriss',    icon: '🏚', hasNewProps: false },
+};
+
+function _massnRowHtml(m) {
+  const s = MASSN_STATUS[m.status] || MASSN_STATUS.geplant;
+  const t = MASSN_TYP[m.typ]       || MASSN_TYP.Sonstiges;
+  const kosten = m.kosten ? m.kosten.toLocaleString('de-DE') + ' €' : '—';
+  return `<div class="ins-massn-row" data-m-id="${m.id}">
+    <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
+    <div class="ins-massn-info">
+      <div class="ins-massn-titel">${t.icon} ${esc(m.titel || '—')}</div>
+      <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten} · <span class="ins-massn-typ-tag">${t.label}</span></div>
+    </div>
+    <button class="ins-massn-edit" data-m-id="${m.id}" title="Bearbeiten">✎</button>
+    <button class="ins-massn-del"  data-m-id="${m.id}" title="Löschen">×</button>
+  </div>`;
+}
+
 function buildMassnahmenSection(asset) {
   const list = (asset.massnahmen || []);
-  const rows = list.map(m => {
-    const s = MASSN_STATUS[m.status] || MASSN_STATUS.geplant;
-    const kosten = m.kosten ? m.kosten.toLocaleString('de-DE') + ' €' : '—';
-    return `<div class="ins-massn-row" data-m-id="${m.id}">
-      <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
-      <div class="ins-massn-info">
-        <div class="ins-massn-titel">${esc(m.titel || '—')}</div>
-        <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten}</div>
-      </div>
-      <button class="ins-massn-edit" data-m-id="${m.id}" title="Bearbeiten">✎</button>
-      <button class="ins-massn-del"  data-m-id="${m.id}" title="Löschen">×</button>
-    </div>`;
-  }).join('');
+  const rows = list.map(_massnRowHtml).join('');
+
+  const typOpts    = Object.entries(MASSN_TYP)
+    .map(([v, t]) => `<option value="${v}">${t.icon} ${t.label}</option>`).join('');
+  const statusOpts = Object.entries(MASSN_STATUS)
+    .map(([v, s]) => `<option value="${v}">${s.label}</option>`).join('');
 
   return `
-    <div class="asset-ins-section-title" style="margin-top:12px;">Maßnahmen</div>
     <div class="ins-massn-list" id="ins-massn-list-${asset.id}">${rows || '<div class="ins-massn-empty">Keine Maßnahmen</div>'}</div>
     <button class="ins-massn-add-btn" id="ins-massn-add-${asset.id}">+ Maßnahme hinzufügen</button>
     <div class="ins-massn-form" id="ins-massn-form-${asset.id}" style="display:none;">
-      <input class="ins-field-input" type="text"   id="mf-titel-${asset.id}"  placeholder="Titel der Maßnahme">
+      <input class="ins-field-input" type="text" id="mf-titel-${asset.id}" placeholder="Titel der Maßnahme">
       <div class="ins-row-2" style="margin-top:4px;">
         <input class="ins-field-input" type="number" id="mf-jahr-${asset.id}"   placeholder="Jahr">
         <input class="ins-field-input" type="number" id="mf-kosten-${asset.id}" placeholder="Kosten €" min="0">
       </div>
-      <select class="ins-field-input" id="mf-status-${asset.id}" style="margin-top:4px;">
-        ${Object.entries(MASSN_STATUS).map(([v,s]) => `<option value="${v}">${s.label}</option>`).join('')}
-      </select>
+      <div class="ins-row-2" style="margin-top:4px;">
+        <select class="ins-field-input" id="mf-typ-${asset.id}">${typOpts}</select>
+        <select class="ins-field-input" id="mf-status-${asset.id}">${statusOpts}</select>
+      </div>
+      <div id="mf-newprops-${asset.id}" style="display:none;"></div>
       <div class="ins-massn-form-btns">
         <button class="ins-massn-form-cancel" id="mf-cancel-${asset.id}">Abbrechen</button>
         <button class="ins-massn-form-save"   id="mf-save-${asset.id}">Speichern</button>
@@ -224,29 +391,52 @@ function wireMassnahmen(panel, asset) {
     const listEl = panel.querySelector(`#ins-massn-list-${aid}`);
     if (!listEl) return;
     const list = asset.massnahmen || [];
-    listEl.innerHTML = list.length ? list.map(m => {
-      const s = MASSN_STATUS[m.status] || MASSN_STATUS.geplant;
-      const kosten = m.kosten ? m.kosten.toLocaleString('de-DE') + ' €' : '—';
-      return `<div class="ins-massn-row" data-m-id="${m.id}">
-        <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
-        <div class="ins-massn-info">
-          <div class="ins-massn-titel">${esc(m.titel || '—')}</div>
-          <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten}</div>
-        </div>
-        <button class="ins-massn-edit" data-m-id="${m.id}" title="Bearbeiten">✎</button>
-        <button class="ins-massn-del"  data-m-id="${m.id}" title="Löschen">×</button>
-      </div>`;
-    }).join('') : '<div class="ins-massn-empty">Keine Maßnahmen</div>';
+    listEl.innerHTML = list.length
+      ? list.map(_massnRowHtml).join('')
+      : '<div class="ins-massn-empty">Keine Maßnahmen</div>';
     bindRowButtons();
+  }
+
+  function updateNewPropsForm(typ) {
+    const container = panel.querySelector(`#mf-newprops-${aid}`);
+    if (!container) return;
+    const typDef = MASSN_TYP[typ];
+    if (!typDef?.hasNewProps) {
+      container.innerHTML = '';
+      container.style.display = 'none';
+      return;
+    }
+    const schema = ASSET_PROPS_SCHEMA[asset.type] || [];
+    if (schema.length === 0) {
+      container.innerHTML = `<div class="ins-newprops-label">Keine editierbaren Parameter für diesen Typ.</div>`;
+      container.style.display = '';
+      return;
+    }
+    container.innerHTML = `<div class="ins-newprops-label">Ziel-Parameter (optional):</div>` +
+      schema.map(s => `<div class="ins-field-group">
+        <label class="ins-field-label">${s.label}</label>
+        <input class="ins-field-input mf-newprop" type="text" data-prop="${s.key}" placeholder="${s.label}">
+      </div>`).join('');
+    container.style.display = '';
   }
 
   function openForm(m) {
     editingId = m ? m.id : null;
-    const form  = panel.querySelector(`#ins-massn-form-${aid}`);
+    const form = panel.querySelector(`#ins-massn-form-${aid}`);
     form.querySelector(`#mf-titel-${aid}`).value  = m?.titel  || '';
     form.querySelector(`#mf-jahr-${aid}`).value   = m?.jahr   || '';
     form.querySelector(`#mf-kosten-${aid}`).value = m?.kosten || '';
+    form.querySelector(`#mf-typ-${aid}`).value    = m?.typ    || 'Sanierung';
     form.querySelector(`#mf-status-${aid}`).value = m?.status || 'geplant';
+    updateNewPropsForm(m?.typ || 'Sanierung');
+    // Gespeicherte Ziel-Props befüllen
+    if (m?.newProps) {
+      const container = panel.querySelector(`#mf-newprops-${aid}`);
+      container?.querySelectorAll('.mf-newprop').forEach(inp => {
+        const key = inp.dataset.prop;
+        if (m.newProps[key] !== undefined) inp.value = m.newProps[key];
+      });
+    }
     form.style.display = '';
     form.querySelector(`#mf-titel-${aid}`).focus();
   }
@@ -259,18 +449,34 @@ function wireMassnahmen(panel, asset) {
   function saveForm() {
     const titel  = panel.querySelector(`#mf-titel-${aid}`).value.trim();
     if (!titel) return;
-    const jahr   = parseInt(panel.querySelector(`#mf-jahr-${aid}`).value) || null;
+    const jahr   = parseInt(panel.querySelector(`#mf-jahr-${aid}`).value)    || null;
     const kosten = parseFloat(panel.querySelector(`#mf-kosten-${aid}`).value) || 0;
+    const typ    = panel.querySelector(`#mf-typ-${aid}`).value;
     const status = panel.querySelector(`#mf-status-${aid}`).value;
+
+    // Ziel-Parameter einsammeln
+    const newProps = {};
+    if (MASSN_TYP[typ]?.hasNewProps) {
+      panel.querySelector(`#mf-newprops-${aid}`)?.querySelectorAll('.mf-newprop').forEach(inp => {
+        const key = inp.dataset.prop;
+        const v = inp.value.trim();
+        if (v !== '') {
+          const n = parseFloat(v);
+          newProps[key] = isNaN(n) ? v : n;
+        }
+      });
+    }
+
     if (!asset.massnahmen) asset.massnahmen = [];
     if (editingId) {
       const m = asset.massnahmen.find(x => x.id === editingId);
-      if (m) Object.assign(m, { titel, jahr, kosten, status });
+      if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps });
     } else {
-      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, status });
+      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps });
     }
     closeForm();
     refreshList();
+    drawAssetMarker(asset); // Marker-Badge aktualisieren
   }
 
   function bindRowButtons() {
@@ -284,6 +490,7 @@ function wireMassnahmen(panel, asset) {
       btn.onclick = () => {
         asset.massnahmen = (asset.massnahmen || []).filter(x => x.id !== btn.dataset.mId);
         refreshList();
+        drawAssetMarker(asset); // Marker-Badge aktualisieren
       };
     });
   }
@@ -291,6 +498,7 @@ function wireMassnahmen(panel, asset) {
   panel.querySelector(`#ins-massn-add-${aid}`)?.addEventListener('click', () => openForm(null));
   panel.querySelector(`#mf-cancel-${aid}`)?.addEventListener('click',  closeForm);
   panel.querySelector(`#mf-save-${aid}`)?.addEventListener('click',    saveForm);
+  panel.querySelector(`#mf-typ-${aid}`)?.addEventListener('change', e => updateNewPropsForm(e.target.value));
   panel.querySelector(`#ins-massn-form-${aid}`)?.addEventListener('keydown', e => {
     if (e.key === 'Enter') saveForm();
     if (e.key === 'Escape') closeForm();
@@ -340,13 +548,15 @@ export function showInvestitionsplan() {
   for (const [year, yearRows] of byYear) {
     const yearTotal = yearRows.reduce((s, r) => s + (r.m.kosten || 0), 0);
     total += yearTotal;
-    tableHtml += `<tr class="inv-year-header"><td colspan="4">${year}
+    tableHtml += `<tr class="inv-year-header"><td colspan="5">${year}
       <span class="inv-year-total">${yearTotal.toLocaleString('de-DE')} €</span></td></tr>`;
     for (const r of yearRows) {
       const s = MASSN_STATUS[r.m.status] || MASSN_STATUS.geplant;
+      const t = MASSN_TYP[r.m.typ]       || MASSN_TYP.Sonstiges;
       tableHtml += `<tr>
         <td><span class="ins-massn-dot" style="background:${s.color};display:inline-block;"></span> ${esc(r.asset.name)}</td>
         <td>${esc(r.m.titel || '—')}</td>
+        <td style="font-size:9px;white-space:nowrap;">${t.icon} ${t.label}</td>
         <td class="inv-num">${r.m.kosten ? r.m.kosten.toLocaleString('de-DE') + ' €' : '—'}</td>
         <td><span style="color:${s.color};font-size:9px;">${s.label}</span></td>
       </tr>`;
@@ -361,7 +571,7 @@ export function showInvestitionsplan() {
     </div>
     <div class="inv-table-wrap">
       <table class="inv-table">
-        <thead><tr><th>Asset</th><th>Maßnahme</th><th class="inv-num">Kosten</th><th>Status</th></tr></thead>
+        <thead><tr><th>Asset</th><th>Maßnahme</th><th>Typ</th><th class="inv-num">Kosten</th><th>Status</th></tr></thead>
         <tbody>${tableHtml}</tbody>
       </table>
     </div>
@@ -387,17 +597,18 @@ function buildResultBlock(asset) {
   </div>`;
 }
 
-// ── Gebäude-Badge ────────────────────────────────────────────────────────────
-function buildBuildingBadge(asset) {
-  if (!asset.buildingId) return '';
-  const geb = (window.gebaeude || []).find(g => g.id === asset.buildingId);
-  if (!geb) return '';
-  return `<div class="ins-building-badge">
-    <span>🏢</span>
-    <div>
-      <div class="ins-result-label">Gebäude</div>
-      <div class="ins-building-name">${esc(geb.name)}</div>
-    </div>
+// ── Gebäude-Zuordnung (editierbares Dropdown) ────────────────────────────────
+function buildBuildingSelect(asset) {
+  const buildings = (window.gebaeude || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const opts = buildings.map(g =>
+    `<option value="${g.id}"${asset.buildingId === g.id ? ' selected' : ''}>${esc(g.name)}</option>`
+  ).join('');
+  return `<div class="ins-field-group">
+    <label class="ins-field-label">🏢 Gebäude</label>
+    <select class="ins-field-input" data-field="buildingId">
+      <option value=""${!asset.buildingId ? ' selected' : ''}>— Frei (kein Gebäude)</option>
+      ${opts}
+    </select>
   </div>`;
 }
 
@@ -435,17 +646,51 @@ function renderInspector(asset) {
   const cfg = ASSET_CFG[asset.type];
 
   panel.innerHTML = `
+    <button class="sb-asset-back-btn" id="sb-asset-back">← Alle Assets</button>
     <div class="asset-ins-header" style="background:${cfg.color};">
       <span class="asset-ins-icon">${cfg.icon}</span>
       <span class="asset-ins-title">${cfg.label}</span>
-      <button class="asset-ins-close" data-action="close">×</button>
     </div>
     <div class="asset-ins-body">
-      ${buildBodyHtml(asset)}
+      <div class="ins-field-group">
+        <label class="ins-field-label">Name</label>
+        <input class="ins-field-input" type="text" data-field="name" value="${esc(asset.name)}">
+      </div>
+      ${buildBuildingSelect(asset)}
+      <div class="ins-row-2">
+        <div class="ins-field-group">
+          <label class="ins-field-label">Baujahr</label>
+          <input class="ins-field-input" type="number" data-field="baujahr"
+            value="${asset.baujahr ?? ''}" placeholder="—">
+        </div>
+        <div class="ins-field-group">
+          <label class="ins-field-label">Abrissjahr</label>
+          <input class="ins-field-input" type="number" data-field="abrissjahr"
+            value="${asset.abrissjahr ?? ''}" placeholder="—">
+        </div>
+      </div>
+      <div class="ins-section-header" data-target="ins-sec-eigenschaften">
+        <span class="asset-ins-section-title">Eigenschaften</span>
+        <span class="ins-section-chevron">▾</span>
+      </div>
+      <div class="ins-section-content" id="ins-sec-eigenschaften">
+        ${buildPropsForm(asset)}
+        ${buildResultBlock(asset)}
+      </div>
+      <div class="ins-section-header" data-target="ins-sec-massnahmen">
+        <span class="asset-ins-section-title">Maßnahmen</span>
+        <span class="ins-section-chevron">▾</span>
+      </div>
+      <div class="ins-section-content" id="ins-sec-massnahmen">
+        ${buildMassnahmenSection(asset)}
+      </div>
+      <div class="ins-meta" style="margin-top:12px;">ID: ${asset.id} · ${asset.domain}</div>
       <button class="asset-ins-delete" data-action="delete">🗑 Löschen</button>
     </div>
   `;
 
+  panel.querySelector('#sb-asset-back')?.addEventListener('click', closeAssetInspector);
+  wireSectionToggles(panel);
   wireEvents(panel, asset);
   wireMassnahmen(panel, asset);
 }
@@ -551,7 +796,7 @@ export function filterAssetSidebar(text) {
 }
 
 function wireEvents(panel, asset) {
-  // Textfelder & Zahlenfelder (name, baujahr, abrissjahr)
+  // Textfelder, Zahlenfelder, Gebäude-Zuweisung
   panel.querySelectorAll('[data-field]').forEach(inp => {
     inp.addEventListener('change', () => {
       const f = inp.dataset.field;
@@ -560,6 +805,9 @@ function wireEvents(panel, asset) {
       } else if (f === 'baujahr' || f === 'abrissjahr') {
         asset[f] = inp.value === '' ? null : parseInt(inp.value);
         drawAssetMarker(asset);
+      } else if (f === 'buildingId') {
+        asset.buildingId = inp.value || null;
+        redrawAllAssets();
       }
     });
   });
@@ -590,24 +838,33 @@ function wireEvents(panel, asset) {
     });
   });
 
+  // SLP-Profil-Viewer öffnen (liest slpTyp aus aktuellem Select-Wert)
+  panel.querySelectorAll('[data-slp-open]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sel = panel.querySelector('[data-prop="slpTyp"]');
+      const typ = sel ? sel.value : (btn.dataset.slpOpen || 'G0');
+      openSlpEditor(typ);
+    });
+  });
+
   panel.querySelectorAll('[data-action="close"]').forEach(b =>
     b.addEventListener('click', closeAssetInspector));
 
   panel.querySelectorAll('[data-action="delete"]').forEach(b =>
     b.addEventListener('click', () => {
-      if (confirm(`Asset "${asset.name}" wirklich löschen?`)) {
-        if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
-        deleteAsset(asset.id);
-        redrawAllAssets();
-        closeAssetInspector();
-      }
+      if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
+      deleteAsset(asset.id);
+      redrawAllAssets();
+      closeAssetInspector();
     }));
 }
 
 // Window-Bridge
 setTimeout(() => {
-  window.openAssetInspector   = openAssetInspector;
-  window.showInvestitionsplan  = showInvestitionsplan;
-  window.renderAssetSidebar   = renderAssetSidebar;
-  window.filterAssetSidebar   = filterAssetSidebar;
+  window.openAssetInspector     = openAssetInspector;
+  window.closeAssetInspector    = closeAssetInspector;
+  window.showInvestitionsplan   = showInvestitionsplan;
+  window.renderSidebarAssetList = renderSidebarAssetList;
+  window.renderAssetSidebar     = renderAssetSidebar;
+  window.filterAssetSidebar     = filterAssetSidebar;
 }, 0);

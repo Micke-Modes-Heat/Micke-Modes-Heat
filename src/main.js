@@ -40,6 +40,10 @@ import * as assetsInspector from './13e-assets-inspector.js';
 import * as sld from './13f-sld.js';
 import * as msRing from './13g-ms-ring.js';
 import * as netzanalyse from './13h-netzanalyse.js';
+import * as slpEditor from './13i-slp-editor.js';
+import * as autofillWizard from './13j-autofill-wizard.js';
+import * as elslpRegistry from './13k-elslp-registry.js';
+import * as autonetz from './13l-autonetz.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -53,10 +57,18 @@ const modules = [
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
+  slpEditor, autofillWizard, elslpRegistry, autonetz,
 ];
 
 for (const mod of modules) {
   for (const [key, value] of Object.entries(mod)) {
     window[key] = value;
   }
+}
+
+// BDEW-SLP-Tabellen in den Cache laden (ersetzt die vereinfachte Approximation)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => slpEditor.initBdewProfiles());
+} else {
+  slpEditor.initBdewProfiles();
 }

@@ -1283,7 +1283,7 @@ export function naTogglePanel() {
   const panel    = document.getElementById('netzanalyse-panel');
   const btn      = document.getElementById('btn-netzanalyse-toggle');
   if (!panel) return;
-  panel.style.display = _panelOpen ? 'flex' : 'none';
+  panel.style.display = _panelOpen ? 'block' : 'none';
   btn?.classList.toggle('active', _panelOpen);
   if (_panelOpen) {
     _ensureGroups();

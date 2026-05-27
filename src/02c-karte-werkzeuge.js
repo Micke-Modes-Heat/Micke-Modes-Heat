@@ -785,12 +785,19 @@ export function redrawTrasse() {
     allSegs.push({ start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1 });
   }
 
-  allSegs.forEach(seg => {
+  allSegs.forEach((seg, allSegIdx) => {
     if (seg.end <= seg.start) return;
     const pts = [];
     for (let i = seg.start; i <= seg.end; i++) pts.push(window.trassePoints[i]);
     if (pts.length >= 2) {
       const pl = L.polyline(pts, { color: '#ff9800', weight: 14, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+      if (allSegIdx < window.trasseSegments.length) {
+        pl.on('contextmenu', (e) => {
+          L.DomEvent.stop(e);
+          if (window.isDrawingTrasse) return;
+          deleteTrasse(allSegIdx);
+        });
+      }
       window.trassePolyline.push(pl);
     }
   });
@@ -810,6 +817,24 @@ export function redrawTrasse() {
     }
     window.trasseEditMarkers.push(m);
   });
+}
+
+export function deleteTrasse(segIdx) {
+  const seg = window.trasseSegments[segIdx];
+  if (!seg) return;
+  const count = seg.end - seg.start + 1;
+  window.trassePoints.splice(seg.start, count);
+  window.trasseSegments.splice(segIdx, 1);
+  for (let i = segIdx; i < window.trasseSegments.length; i++) {
+    window.trasseSegments[i].start -= count;
+    window.trasseSegments[i].end   -= count;
+  }
+  if (window.trasseCurrentSegStart > seg.start) {
+    window.trasseCurrentSegStart = Math.max(0, window.trasseCurrentSegStart - count);
+  }
+  redrawTrasse();
+  autoGenerateNetz();
+  if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
 }
 
 export function clearTrasse() {

@@ -578,19 +578,6 @@ setTimeout(() => {
   tryRestoreAutosave();
 }, 0);
 
-export function setSidebarTab(tab) {
-  const gebContent   = document.getElementById('sb-geb-content');
-  const assetContent = document.getElementById('sb-asset-content');
-  const btnGeb    = document.getElementById('sbt-geb');
-  const btnAssets = document.getElementById('sbt-assets');
-  const isAssets  = tab === 'assets';
-  if (gebContent)   { gebContent.style.display   = isAssets ? 'none' : 'flex'; }
-  if (assetContent) { assetContent.style.display  = isAssets ? 'flex' : 'none'; }
-  btnGeb?.classList.toggle('active',    !isAssets);
-  btnAssets?.classList.toggle('active',  isAssets);
-  if (isAssets && typeof window.renderAssetSidebar === 'function') window.renderAssetSidebar();
-}
-
 export function toggleSidebar() {
   const sb = document.getElementById('sidebar');
   const btn = document.getElementById('sidebar-toggle');
@@ -739,6 +726,21 @@ export function setLeftTab(tabId) {
   setTimeout(function() { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
 }
 window.setLeftTab = setLeftTab;
+
+// Rechte Sidebar: Tab-Umschalter (Gebäude ↔ Elektro)
+export function setSidebarTab(tabId) {
+  document.querySelectorAll('.sb-tab').forEach(t =>
+    t.classList.toggle('active', t.id === `sb-tab-btn-${tabId}`)
+  );
+  document.querySelectorAll('.sb-tab-body').forEach(b =>
+    b.classList.toggle('active', b.id === `sb-tab-${tabId}`)
+  );
+  // Bei Wechsel zu Elektro: Asset-Liste aktualisieren
+  if (tabId === 'elektro' && typeof window.renderSidebarAssetList === 'function') {
+    window.renderSidebarAssetList();
+  }
+}
+window.setSidebarTab = setSidebarTab;
 
 // initLeftPanel: erzeuger buttons are now native in HTML, no cloning needed
 
