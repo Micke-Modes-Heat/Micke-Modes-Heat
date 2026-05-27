@@ -19792,22 +19792,38 @@ async function loadOsmStrassen() {
   const query = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
 
   // Mehrere Overpass-Endpunkte — der erste erreichbare wird verwendet.
-  // corsproxy.io als Fallback ermöglicht Anfragen von file:// (Origin: null).
+  // Proxy-Fallback via GET ermöglicht Anfragen von file:// (Origin: null).
   async function _fetchOverpass(q) {
-    const endpoints = [
+    const enc = encodeURIComponent(q);
+    const body = 'data=' + enc;
+    const postHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
+
+    // 1) Direkte POST-Endpunkte (klappen von echten Web-Servern)
+    const directUrls = [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
       'https://overpass.openstreetmap.ru/api/interpreter',
-      'https://corsproxy.io/?' + encodeURIComponent('https://overpass-api.de/api/interpreter'),
     ];
-    const body = 'data=' + encodeURIComponent(q);
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
-    let lastErr;
-    for (const url of endpoints) {
+    for (const url of directUrls) {
       try {
-        const r = await fetch(url, { method: 'POST', headers, body });
+        const r = await fetch(url, { method: 'POST', headers: postHeaders, body });
         if (r.ok) return r.json();
-        lastErr = new Error(url + ' → HTTP ' + r.status);
+      } catch (_) { /* nächsten Endpunkt versuchen */ }
+    }
+
+    // 2) GET via CORS-Proxy — funktioniert auch von file:// (Origin: null)
+    //    corsproxy.io erwartet die Ziel-URL NICHT nochmal URL-kodiert
+    const getTarget = 'https://overpass-api.de/api/interpreter?data=' + enc;
+    const proxyUrls = [
+      'https://corsproxy.io/?' + getTarget,
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent(getTarget),
+    ];
+    let lastErr;
+    for (const url of proxyUrls) {
+      try {
+        const r = await fetch(url);
+        if (r.ok) return r.json();
+        lastErr = new Error(url.slice(0, 50) + '… HTTP ' + r.status);
       } catch (err) {
         lastErr = err;
       }
