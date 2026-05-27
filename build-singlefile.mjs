@@ -50,6 +50,10 @@ const JS_FILES = [
   '13f-sld.js',
   '13g-ms-ring.js',
   '13h-netzanalyse.js',
+  '13i-slp-editor.js',
+  '13j-autofill-wizard.js',
+  '13k-elslp-registry.js',
+  '13l-autonetz.js',
   'main.js',                     // ← window.*-Exposition zuletzt
 ];
 
@@ -80,32 +84,33 @@ for (const file of JS_FILES) {
 // let/const → var, damit alle Variablen als window.* Properties verfügbar sind
 // (viele Module lesen Zustand über window.gebaeude, window.netzEdges, etc.)
 function stripModule(code) {
+  // ── Schritt 1: "import * as X from './Y'" → synthetisches Namespace-Objekt ──
+  code = code.replace(
+    /^import\s+\*\s+as\s+(\w+)\s+from\s+['"]([^'"]+)['"]\s*;?/gm,
+    (_, alias, fromPath) => {
+      const names = exportMap[fromPath] || exportMap['./' + fromPath.split('/').pop()] || [];
+      return names.length ? `var ${alias} = { ${names.join(', ')} };` : '';
+    }
+  );
+
+  // ── Schritt 2: alle import-Anweisungen entfernen (auch mehrzeilig) ──
+  // Mehrzeilig: "import {\n  a, b\n} from './x'"
+  code = code.replace(/^import\s[\s\S]*?from\s*['"][^'"]*['"]\s*;?\n?/gm, '');
+  // Bare side-effect imports: import './x.js'
+  code = code.replace(/^import\s+['"][^'"]+['"]\s*;?\n?/gm, '');
+
+  // ── Schritt 3: export-Transformationen + let/const → var (zeilenweise) ──
   return code
     .split('\n')
     .map(line => {
       const trimmed = line.trimStart();
-      // "import * as X from './Y.js'" → synthetisches Namespace-Objekt var X = { a, b, ... }
-      let m;
-      if ((m = trimmed.match(/^import\s+\*\s+as\s+(\w+)\s+from\s+['"]([^'"]+)['"]/))) {
-        const alias = m[1];
-        const fromPath = m[2];
-        const names = exportMap[fromPath] || exportMap['./' + fromPath.split('/').pop()] || [];
-        if (names.length) return `var ${alias} = { ${names.join(', ')} };`;
-        return '';
-      }
-      // import-Zeilen komplett entfernen
-      if (trimmed.startsWith('import ')) return '';
-      // "export function" / "export async function" → "function" / "async function"
       if (trimmed.startsWith('export async function ')) return line.replace('export async function ', 'async function ');
-      if (trimmed.startsWith('export function ')) return line.replace('export function ', 'function ');
-      // "export const/let/var" → "var" (window-Property nötig)
-      if (trimmed.startsWith('export const ')) return line.replace('export const ', 'var ');
-      if (trimmed.startsWith('export let '))   return line.replace('export let ',   'var ');
-      if (trimmed.startsWith('export var '))   return line.replace('export var ',   'var ');
-      // "export {" / "export default" → entfernen
-      if (trimmed.startsWith('export {'))       return '';
-      if (trimmed.startsWith('export default ')) return '';
-      // Top-level (keine Einrückung) let/const → var, damit Mehrfachdeklarationen kein SyntaxError
+      if (trimmed.startsWith('export function '))       return line.replace('export function ', 'function ');
+      if (trimmed.startsWith('export const '))          return line.replace('export const ', 'var ');
+      if (trimmed.startsWith('export let '))            return line.replace('export let ',   'var ');
+      if (trimmed.startsWith('export var '))            return line.replace('export var ',   'var ');
+      if (trimmed.startsWith('export {'))               return '';
+      if (trimmed.startsWith('export default '))        return '';
       if (line.startsWith('let '))   return 'var ' + line.slice(4);
       if (line.startsWith('const ')) return 'var ' + line.slice(6);
       return line;
