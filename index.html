@@ -315,6 +315,9 @@
         </div>
         <div id="el-sec-komp">
           <div id="asset-palette" class="asset-palette-inline"></div>
+          <div class="lp-tool-grid" style="margin-top:6px;">
+            <button class="lp-tool-btn" data-click="showKompaktstationDialog()" style="border-color:#cf6679;color:#cf6679;grid-column:1/-1;">🏗 Kompaktstation platzieren</button>
+          </div>
         </div>
 
         <!-- ── 2. Elektrotrassen zeichnen ── -->
@@ -361,7 +364,8 @@
             <button class="lp-tool-btn" data-click="showInvestitionsplan()" style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;">📋 Investitionsplan</button>
             <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()" style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;">🗺️ Netzanalyse</button>
             <button class="lp-tool-btn" data-click="exportMassnahmenPDF()" style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;">📄 Maßnahmenbericht PDF</button>
-            <button class="lp-tool-btn" data-click="exportElektroXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;">📊 Export Excel</button>
+            <button class="lp-tool-btn" data-click="exportVollstaendigXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;">📊 Export Excel (vollständig)</button>
+            <button class="lp-tool-btn" data-click="importVollstaendigXLSX()" style="grid-column:1/-1;border-color:#81d4fa;color:#81d4fa;">📥 Import Excel</button>
             <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;">⚙ Auto-Netz aus Gebäudedaten</button>
             <button class="lp-tool-btn" data-click="showAutofillWizard()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Verbrauchs- und PV-Werte automatisch ermitteln">✦ Auto-Befüllen (Verbrauch & PV)</button>
           </div>
@@ -456,6 +460,112 @@
             <div class="lp-netz-row"><span class="lbl" title="Kombinierter Iz-Korrekturfaktor aus Temperatur, Häufung und Verlegeart (IEC 60364-5-52).">Iz-Korrekturfaktor</span><span class="val" id="lp-strom-kiz">—</span></div>
             <div class="lp-netz-row"><span class="lbl">Kabellänge</span><span class="val" id="lp-strom-kabel-len">—</span></div>
             <div class="lp-netz-row"><span class="lbl">Komponenten</span><span class="val" id="lp-strom-komp">—</span></div>
+          </div>
+
+          <!-- Kosten-Parameter -->
+          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-kosten')">
+            Kosten <span id="lp-strom-kosten-arrow">▼</span>
+          </div>
+          <div id="lp-strom-kosten">
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Netzinfrastruktur</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-tiefbau">Tiefbau (€/m)</div>
+                <input id="strom-k-tiefbau" type="number" value="100" min="0" step="10"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-nap">NAP-Pauschale (€)</div>
+                <input id="strom-k-nap" type="number" value="3000" min="0" step="500"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-trafo">Trafo (€/kVA)</div>
+                <input id="strom-k-trafo" type="number" value="60" min="0" step="10"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-nd">Nutzungsdauer (a)</div>
+                <input id="strom-k-nd" type="number" value="40" min="1" max="60" step="5"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()"/>
+              </div>
+            </div>
+            <div style="border-top:1px solid var(--border);margin:4px 0 6px;"></div>
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Asset-Kostenfaktoren (Richtwerte)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">PV (€/kWp)</div>
+                <input id="ak-pv-kwp" type="number" value="1200" min="0" step="100"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Trafo Asset (€/kVA)</div>
+                <input id="ak-trafo-kva" type="number" value="80" min="0" step="10"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Batterie (€/kWh)</div>
+                <input id="ak-bat-kwh" type="number" value="600" min="0" step="50"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">WP (€/kW)</div>
+                <input id="ak-wp-kw" type="number" value="700" min="0" step="50"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Ladestation (€/Pkt.)</div>
+                <input id="ak-lade-pkt" type="number" value="1500" min="0" step="100"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">KWK (€/kWel)</div>
+                <input id="ak-kwk-kwel" type="number" value="3500" min="0" step="100"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Wind (€/kW)</div>
+                <input id="ak-wind-kw" type="number" value="1500" min="0" step="100"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NAP (€ pauschal)</div>
+                <input id="ak-nap" type="number" value="8000" min="0" step="500"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NSHV (€/Abgang)</div>
+                <input id="ak-nshv-abg" type="number" value="500" min="0" step="50"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">UV (€/Abgang)</div>
+                <input id="ak-uv-abg" type="number" value="200" min="0" step="50"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">KVS (€/Abgang)</div>
+                <input id="ak-kvs-abg" type="number" value="150" min="0" step="25"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+            </div>
+            <!-- KPI-Anzeige Gesamtkosten -->
+            <div style="border-top:1px solid var(--border);margin:4px 0 6px;"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+              <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
+                <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-invest">—</div>
+                <div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Investition</div>
+              </div>
+              <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
+                <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-annuitaet">—</div>
+                <div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Annuität/a</div>
+              </div>
+              <div style="grid-column:1/-1;font-size:9px;color:var(--muted);padding:2px 0;" id="strom-kpi-detail"></div>
+            </div>
           </div>
 
           <!-- Einfärbung -->
@@ -1162,6 +1272,8 @@
         <button class="btn-export primary" data-click="document.getElementById('import-file').click()">📂 Öffnen</button>
         <button class="btn-export primary" data-click="exportJSON()">💾 Speichern</button>
         <button class="btn-export" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;" title="Gebäudedaten an Liegenschaftsrechner übernehmen">📤 An Liegenschaftsrechner senden</button>
+        <button class="btn-export" data-click="exportVollstaendigXLSX()" title="Vollständigen Excel-Export erzeugen (Gebäude, Assets, Kabel, Maßnahmen, Beziehungen)">📊 Excel</button>
+        <button class="btn-export" data-click="importVollstaendigXLSX()" title="Excel-Datei importieren und Werte überschreiben">📥 Excel Import</button>
         <button class="btn-export" data-click="window.print()">🖨 PDF</button>
       </div>
     </div>

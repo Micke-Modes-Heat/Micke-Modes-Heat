@@ -425,17 +425,26 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 
 /* Asset-Palette Buttons */
 .asset-palette-inline {
-  display:flex; flex-direction:column; gap:3px;
+  display:grid; grid-template-columns:1fr 1fr; gap:3px;
 }
-.asset-palette-title { font-size:11px; color:var(--muted); padding:2px 6px 4px; border-bottom:1px solid var(--border); margin-bottom:2px; }
+.asset-palette-group-header {
+  grid-column:1/-1; font-size:8px; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.07em;
+  padding:7px 0 3px; margin-top:2px;
+  border-bottom:1px solid var(--border);
+}
+.asset-palette-group-header:first-child { padding-top:2px; margin-top:0; }
 .asset-palette-btn {
   background:var(--surface2); border:1px solid var(--border); color:var(--text);
-  border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer;
-  display:flex; align-items:center; gap:6px; text-align:left; width:100%;
+  border-radius:5px; padding:5px 6px; font-size:10px; cursor:pointer;
+  display:flex; align-items:center; gap:5px; text-align:left;
+  white-space:nowrap; overflow:hidden; min-width:0;
 }
+.asset-palette-btn span:last-child { overflow:hidden; text-overflow:ellipsis; }
 .asset-palette-btn:hover { background:var(--border); }
-.asset-palette-btn.active { background:var(--accent); color:#000; }
-.asset-palette-btn-icon { font-size:14px; }
+.asset-palette-btn.active { background:var(--accent); color:#000; border-color:var(--accent); }
+.asset-palette-btn.full-width { grid-column:1/-1; }
+.asset-palette-btn-icon { font-size:13px; flex-shrink:0; }
 
 /* Asset-Inspector Panel */
 .asset-inspector {
@@ -1697,6 +1706,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
         </div>
         <div id="el-sec-komp">
           <div id="asset-palette" class="asset-palette-inline"></div>
+          <div class="lp-tool-grid" style="margin-top:6px;">
+            <button class="lp-tool-btn" data-click="showKompaktstationDialog()" style="border-color:#cf6679;color:#cf6679;grid-column:1/-1;">🏗 Kompaktstation platzieren</button>
+          </div>
         </div>
 
         <!-- ── 2. Elektrotrassen zeichnen ── -->
@@ -1743,7 +1755,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
             <button class="lp-tool-btn" data-click="showInvestitionsplan()" style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;">📋 Investitionsplan</button>
             <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()" style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;">🗺️ Netzanalyse</button>
             <button class="lp-tool-btn" data-click="exportMassnahmenPDF()" style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;">📄 Maßnahmenbericht PDF</button>
-            <button class="lp-tool-btn" data-click="exportElektroXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;">📊 Export Excel</button>
+            <button class="lp-tool-btn" data-click="exportVollstaendigXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;">📊 Export Excel (vollständig)</button>
+            <button class="lp-tool-btn" data-click="importVollstaendigXLSX()" style="grid-column:1/-1;border-color:#81d4fa;color:#81d4fa;">📥 Import Excel</button>
             <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;">⚙ Auto-Netz aus Gebäudedaten</button>
             <button class="lp-tool-btn" data-click="showAutofillWizard()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Verbrauchs- und PV-Werte automatisch ermitteln">✦ Auto-Befüllen (Verbrauch & PV)</button>
           </div>
@@ -1838,6 +1851,112 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
             <div class="lp-netz-row"><span class="lbl" title="Kombinierter Iz-Korrekturfaktor aus Temperatur, Häufung und Verlegeart (IEC 60364-5-52).">Iz-Korrekturfaktor</span><span class="val" id="lp-strom-kiz">—</span></div>
             <div class="lp-netz-row"><span class="lbl">Kabellänge</span><span class="val" id="lp-strom-kabel-len">—</span></div>
             <div class="lp-netz-row"><span class="lbl">Komponenten</span><span class="val" id="lp-strom-komp">—</span></div>
+          </div>
+
+          <!-- Kosten-Parameter -->
+          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-kosten')">
+            Kosten <span id="lp-strom-kosten-arrow">▼</span>
+          </div>
+          <div id="lp-strom-kosten">
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Netzinfrastruktur</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-tiefbau">Tiefbau (€/m)</div>
+                <input id="strom-k-tiefbau" type="number" value="100" min="0" step="10"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-nap">NAP-Pauschale (€)</div>
+                <input id="strom-k-nap" type="number" value="3000" min="0" step="500"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-trafo">Trafo (€/kVA)</div>
+                <input id="strom-k-trafo" type="number" value="60" min="0" step="10"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-nd">Nutzungsdauer (a)</div>
+                <input id="strom-k-nd" type="number" value="40" min="1" max="60" step="5"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
+                  data-change="recalcStromNetz()"/>
+              </div>
+            </div>
+            <div style="border-top:1px solid var(--border);margin:4px 0 6px;"></div>
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Asset-Kostenfaktoren (Richtwerte)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">PV (€/kWp)</div>
+                <input id="ak-pv-kwp" type="number" value="1200" min="0" step="100"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Trafo Asset (€/kVA)</div>
+                <input id="ak-trafo-kva" type="number" value="80" min="0" step="10"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Batterie (€/kWh)</div>
+                <input id="ak-bat-kwh" type="number" value="600" min="0" step="50"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">WP (€/kW)</div>
+                <input id="ak-wp-kw" type="number" value="700" min="0" step="50"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Ladestation (€/Pkt.)</div>
+                <input id="ak-lade-pkt" type="number" value="1500" min="0" step="100"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">KWK (€/kWel)</div>
+                <input id="ak-kwk-kwel" type="number" value="3500" min="0" step="100"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Wind (€/kW)</div>
+                <input id="ak-wind-kw" type="number" value="1500" min="0" step="100"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NAP (€ pauschal)</div>
+                <input id="ak-nap" type="number" value="8000" min="0" step="500"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NSHV (€/Abgang)</div>
+                <input id="ak-nshv-abg" type="number" value="500" min="0" step="50"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">UV (€/Abgang)</div>
+                <input id="ak-uv-abg" type="number" value="200" min="0" step="50"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">KVS (€/Abgang)</div>
+                <input id="ak-kvs-abg" type="number" value="150" min="0" step="25"
+                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
+              </div>
+            </div>
+            <!-- KPI-Anzeige Gesamtkosten -->
+            <div style="border-top:1px solid var(--border);margin:4px 0 6px;"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+              <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
+                <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-invest">—</div>
+                <div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Investition</div>
+              </div>
+              <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
+                <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-annuitaet">—</div>
+                <div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Annuität/a</div>
+              </div>
+              <div style="grid-column:1/-1;font-size:9px;color:var(--muted);padding:2px 0;" id="strom-kpi-detail"></div>
+            </div>
           </div>
 
           <!-- Einfärbung -->
@@ -2544,6 +2663,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
         <button class="btn-export primary" data-click="document.getElementById('import-file').click()">📂 Öffnen</button>
         <button class="btn-export primary" data-click="exportJSON()">💾 Speichern</button>
         <button class="btn-export" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;" title="Gebäudedaten an Liegenschaftsrechner übernehmen">📤 An Liegenschaftsrechner senden</button>
+        <button class="btn-export" data-click="exportVollstaendigXLSX()" title="Vollständigen Excel-Export erzeugen (Gebäude, Assets, Kabel, Maßnahmen, Beziehungen)">📊 Excel</button>
+        <button class="btn-export" data-click="importVollstaendigXLSX()" title="Excel-Datei importieren und Werte überschreiben">📥 Excel Import</button>
         <button class="btn-export" data-click="window.print()">🖨 PDF</button>
       </div>
     </div>
@@ -6322,13 +6443,28 @@ function updateNetzColorLegend() {
 
 
 
-var map = L.map('map',{zoomControl:true}).setView([52.0816,8.0034],15);
-var osmTile = L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:21});
-var esriTile = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:21});
-osmTile.addTo(map);
+// Guard against HMR re-init: reuse cached instance if container is already initialized
+var map = window._appLeafletMap || (() => {
+  const m = L.map('map',{zoomControl:true}).setView([52.0816,8.0034],15);
+  window._appLeafletMap = m;
+  return m;
+})();
+var osmTile = window._appOsmTile || (() => {
+  const t = L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:21});
+  window._appOsmTile = t;
+  return t;
+})();
+var esriTile = window._appEsriTile || (() => {
+  const t = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:21});
+  window._appEsriTile = t;
+  return t;
+})();
+if (!map.hasLayer(osmTile)) osmTile.addTo(map);
 // Custom Pane für Netzleitungen — über den Kreisen (overlayPane z=400, netzPane z=450)
-map.createPane('netzPane');
-map.getPane('netzPane').style.zIndex = 450;
+if (!map.getPane('netzPane')) {
+  map.createPane('netzPane');
+  map.getPane('netzPane').style.zIndex = 450;
+}
 // Invalidate map size after left panel renders (flex layout needs recalc)
 setTimeout(() => map.invalidateSize(), 300);
 setTimeout(() => map.invalidateSize(), 1000);
@@ -7245,6 +7381,10 @@ function renameGebaeude(id,name){
   const g=window.gebaeude.find(x=>x.id===id);
   if(!g) return;
   g.name=name;
+  // Karten-Header sofort aktualisieren
+  const nameSpan = document.querySelector(`#card-${id} .geb-compact-name`);
+  if (nameSpan) nameSpan.textContent = name;
+  // Karten-Label auf der Karte aktualisieren
   if(g.labelMarker){
     const el=g.labelMarker.getElement();
     if(el){ const inner=el.querySelector('.geb-label-inner'); if(inner) inner.innerHTML=_gebLabelHtml(g); }
@@ -8099,7 +8239,7 @@ function redrawTrasse() {
     const pts = [];
     for (let i = seg.start; i <= seg.end; i++) pts.push(window.trassePoints[i]);
     if (pts.length >= 2) {
-      const pl = L.polyline(pts, { color: '#ff9800', weight: 14, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+      const pl = L.polyline(pts, { color: '#ff9800', weight: 10, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }).addTo(map);
       if (allSegIdx < window.trasseSegments.length) {
         pl.on('contextmenu', (e) => {
           L.DomEvent.stop(e);
@@ -8512,8 +8652,8 @@ function placeLwWpAt(latlng) {
 }
 
 function redrawLwWp() {
-  if (!lwWpLayerGroup) return;
-  lwWpLayerGroup.clearLayers();
+  if (!window.lwWpLayerGroup) return;
+  window.lwWpLayerGroup.clearLayers();
   if (!window.lwWp || window.lwWp.lat == null || window.lwWp.lng == null) return;
   const pt = L.latLng(window.lwWp.lat, window.lwWp.lng);
   const leistung = window.lwWp.leistungKw;
@@ -8541,14 +8681,14 @@ function redrawLwWp() {
   const f0 = fb(actF());
   const rect = L.rectangle([sw, ne], { color: '#388e3c', weight: 2, fillColor: f0.c, fillOpacity: f0.o })
     .bindTooltip(`Platzbedarf: ${platzM2.toFixed(1)} m² min. · ${rl.toFixed(1)}×${rw.toFixed(1)} m`, {sticky:true})
-    .addTo(lwWpLayerGroup);
-  lwWpSchallLayerGroup.clearLayers();
+    .addTo(window.lwWpLayerGroup);
+  window.lwWpSchallLayerGroup.clearLayers();
   const schallStufen = [55, 50, 45, 40, 35];
   const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
   for (let i = schallStufen.length - 1; i >= 0; i--) {
     const r = lwWpSchallRadiusM(lwa, schallStufen[i]);
     if (r > 0.5 && r < 500) {
-      const circle = L.circle(pt, { radius: r, color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12 }).addTo(lwWpSchallLayerGroup);
+      const circle = L.circle(pt, { radius: r, color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12 }).addTo(window.lwWpSchallLayerGroup);
       circle.bindTooltip('', {sticky: true, direction: 'top', opacity: 0.9});
       circle.on('mousemove', ev => {
         const d = pt.distanceTo(ev.latlng);
@@ -8578,34 +8718,34 @@ function redrawLwWp() {
     redrawLwWp();
   }
   // Seitengriffe: N S E W
-  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   nH.on('drag', function() { const lat = this.getLatLng().lat; if (lat > sw.lat + 3 * latPerM) { ne.lat = lat; upRect(); } });
   nH.on('dragend', done);
-  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   sH.on('drag', function() { const lat = this.getLatLng().lat; if (lat < ne.lat - 3 * latPerM) { sw.lat = lat; upRect(); } });
   sH.on('dragend', done);
-  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   eH.on('drag', function() { const lng = this.getLatLng().lng; if (lng > sw.lng + 3 * lngPerM) { ne.lng = lng; upRect(); } });
   eH.on('dragend', done);
-  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   wH.on('drag', function() { const lng = this.getLatLng().lng; if (lng < ne.lng - 3 * lngPerM) { sw.lng = lng; upRect(); } });
   wH.on('dragend', done);
   // Eckengriffe: NE NW SE SW
-  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   neH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   neH.on('dragend', done);
-  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   nwH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   nwH.on('dragend', done);
-  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   seH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   seH.on('dragend', done);
-  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   swH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   swH.on('dragend', done);
   // Hauptmarker (Gerät verschieben) — groß genug um auch ohne Zoom greifbar zu sein
   const wpIcon = L.divIcon({ className: '', html: '<div style="width:32px;height:32px;background:rgba(56,142,60,0.5);border:2px solid #66bb6a;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 0 8px rgba(102,187,106,0.5);">' + windSvg('#c8e6c9',17,14) + '</div>', iconSize: [32,32], iconAnchor: [16,16] });
-  const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(lwWpLayerGroup);
+  const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(window.lwWpLayerGroup);
   marker.on('dragend', function() {
     window.lwWp.lat = marker.getLatLng().lat;
     window.lwWp.lng = marker.getLatLng().lng;
@@ -8709,17 +8849,17 @@ function setLwWpVisible(visible) {
 }
 
 function updateLwWpVisibility() {
-  if (!window.lwWp || !lwWpLayerGroup || !lwWpSchallLayerGroup) return;
+  if (!window.lwWp || !window.lwWpLayerGroup || !window.lwWpSchallLayerGroup) return;
   if (window.lwWpVisible) {
-    if (!map.hasLayer(lwWpLayerGroup)) lwWpLayerGroup.addTo(map);
+    if (!map.hasLayer(window.lwWpLayerGroup)) window.lwWpLayerGroup.addTo(map);
     if (window.lwWpSchallVisible) {
-      if (!map.hasLayer(lwWpSchallLayerGroup)) lwWpSchallLayerGroup.addTo(map);
+      if (!map.hasLayer(window.lwWpSchallLayerGroup)) window.lwWpSchallLayerGroup.addTo(map);
     } else {
-      if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
+      if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
     }
   } else {
-    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(lwWpLayerGroup);
-    if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
+    if (map.hasLayer(window.lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
+    if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
   }
 }
 
@@ -8731,13 +8871,13 @@ function setSchallVisible(visible) {
 function clearLwWp() {
   window.lwWp = null;
   moBeiDeaktivierung('lwwp');
-  if (lwWpLayerGroup) {
-    lwWpLayerGroup.clearLayers();
-    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(lwWpLayerGroup);
+  if (window.lwWpLayerGroup) {
+    window.lwWpLayerGroup.clearLayers();
+    if (map.hasLayer(window.lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
   }
-  if (lwWpSchallLayerGroup) {
-    lwWpSchallLayerGroup.clearLayers();
-    if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
+  if (window.lwWpSchallLayerGroup) {
+    window.lwWpSchallLayerGroup.clearLayers();
+    if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
   }
   document.getElementById('lwwp-data-section').style.display = 'none';
   document.getElementById('lwwp-visible').checked = true;
@@ -13297,6 +13437,11 @@ function _renderExpandedPanel(g, stats) {
 
   return `<div class="geb-expanded">
     ${infoLabel}
+    <div style="margin-bottom:5px;">
+      <input class="inp-field" type="text" placeholder="Bezeichnung…" value="${escHtml(g.name || '')}"
+        style="width:100%;box-sizing:border-box;"
+        data-input="renameGebaeude(${g.id},this.value)"/>
+    </div>
     <div style="margin-bottom:5px;display:flex;gap:4px;">
       <select class="nutzung-select" style="flex:1;" data-change="setNutzung(${g.id},this.value)" title="Nutzungstyp">
         <option value="">Nutzungstyp…</option>
@@ -14077,7 +14222,7 @@ function showHint(msg){const h=document.getElementById('hint');h.textContent=msg
 function hideHint(){document.getElementById('hint').classList.add('hidden');}
 
 var sty=document.createElement('style');
-sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:6px 10px;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);font-weight:normal;}`;
+sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}`;
 document.head.appendChild(sty);
 
 var dashOffset = 0;
@@ -14117,6 +14262,8 @@ function stopAnimStrom()  { _animStromRunning = false; }
 // ── 04a-ui-panels.js ──
 // ── 04a-ui-panels.js — Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold ──
 // NUTZUNG_DEFAULTS → src/config/erzeuger-cfg.js
+
+
 
 
 
@@ -14819,6 +14966,7 @@ function setLeftTab(tabId) {
   if (tabId === 'elektro') {
     setNetzVisible(false);
     setStromNetzVisible(true);
+    buildElektroPanel();
     buildPalette();
     // Assets für alle Gebäude nacherstellen, die noch keines haben (Migration alter Projekte)
     if (typeof window.autoCreateBuildingAssets === 'function' && Array.isArray(window.gebaeude)) {
@@ -15150,6 +15298,9 @@ function refreshAnalyseView() {
   const content = document.getElementById('analyse-section-content');
   if (!grid || !content || !waerme) return;
 
+  // NAP-Tab-Button + Wrapper einmalig injizieren (idempotent)
+  napBuildAnalyseSection();
+
   // Alle inline-eingebetteten Panels zurücksetzen
   _restoreInlinePanels();
 
@@ -15158,6 +15309,8 @@ function refreshAnalyseView() {
   waerme.style.display  = 'none';
   if (emWrap) emWrap.style.display = 'none';
   content.style.display = 'none';
+  const napWrap = document.getElementById('analyse-nap-wrap');
+  if (napWrap) napWrap.style.display = 'none';
 
   if (analyseCurrentSection === 'uebersicht') {
     grid.style.display = 'grid';
@@ -15180,6 +15333,8 @@ function refreshAnalyseView() {
     if (typeof calcStromPanel === 'function') calcStromPanel();
   } else if (analyseCurrentSection === 'emissionen') {
     if (emWrap) { emWrap.style.display = 'block'; _renderEmissionenTab(); }
+  } else if (analyseCurrentSection === 'nap') {
+    napShowSection(true);
   }
 }
 
@@ -16718,6 +16873,14 @@ function exportVergleichCSV() {
 
 
 
+var ASSET_LABELS = {
+  NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
+  NSHV: 'NSHV', UV: 'Unterverteilung', KVS: 'KVS', Verbraucher: 'Verbraucher',
+  WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
+  Lade: 'Ladeinfrastruktur', Nsa: 'Notstromaggregat', KWK: 'KWK-Anlage',
+  Wind: 'Windkraftanlage', Reserve: 'Reserve',
+};
+
 function exportDispatchCSV() {
   const keys = window._dispatchActiveKeys || [];
   const en   = window._dispatchEnergy || {};
@@ -17650,6 +17813,441 @@ async function exportElektroXLSX() {
   XLSXLib.writeFile(wb, fname);
 }
 
+// ── Export: Vollständiger XLSX (Gebäude + Assets + Kabel + Maßnahmen + Beziehungen) ──
+async function exportVollstaendigXLSX() {
+  if (typeof window.XLSX === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('SheetJS konnte nicht geladen werden.'));
+      document.head.appendChild(s);
+    }).catch(e => { alert(e.message); throw e; });
+  }
+  const XLSXLib = window.XLSX;
+  const yr = globalYear ?? new Date().getFullYear();
+  const allGebaeude = window.gebaeude || [];
+  const allAssets = ASSETS.items || [];
+  const allEdges = window.stromEdges || [];
+
+  const gebMap = new Map(allGebaeude.map(g => [g.id, g]));
+
+  // Sheet 1: Gebäude
+  const gebRows = [['ID', 'Name', 'Nutzung', 'Fläche (m²)', 'Baujahr', 'Abrissjahr', 'Zustand',
+    'Wärmebedarf (MWh/a)', 'Heizlast (kW)', 'Spez. Wärme (kWh/m²a)',
+    'Strom (MWh/a)', 'PV aktiv', 'PV Dachanteil (%)']];
+  for (const g of allGebaeude) {
+    gebRows.push([
+      g.id, g.name || '', g.nutzung || '',
+      g.flaeche != null ? +parseFloat(g.flaeche).toFixed(0) : '',
+      g.baujahr || '', g.abrissjahr || '', g.zustand || '',
+      g.waerme != null ? +parseFloat(g.waerme).toFixed(2) : '',
+      g.heizlast != null ? +parseFloat(g.heizlast).toFixed(1) : '',
+      g.spez != null ? +parseFloat(g.spez).toFixed(0) : '',
+      g.strom != null && g.strom !== '' ? +parseFloat(g.strom).toFixed(2) : '',
+      g.pvAktiv ? 'ja' : 'nein',
+      g.pvDachanteil || 30,
+    ]);
+  }
+
+  // Sheet 2: Assets
+  const assetsRows = [['ID', 'Name', 'Typ', 'Gebäude', 'Baujahr', 'Abrissjahr',
+    'Status ' + yr, 'Leistung kW/kVA', 'Maßnahmen (Anzahl)', 'Investition (€)']];
+  const assetMap = new Map(allAssets.map(a => [a.id, a]));
+  for (const a of allAssets) {
+    const p = a.props || {};
+    const status = getAssetStatus(a, yr);
+    const statusTxt = status === 'active' ? 'Aktiv' : status === 'planned' ? 'Geplant' : 'Abgerissen';
+    let leistung = '';
+    if (a.type === 'Trafo') leistung = (p.leistungKVA || 630) + ' kVA';
+    else if (['Verbraucher', 'WP', 'Nsa', 'KWK', 'Wind'].includes(a.type)) leistung = (p.leistungKW || p.leistungElKW || 0) + ' kW';
+    else if (a.type === 'PV') leistung = (p.leistungKWp || 0) + ' kWp';
+    else if (a.type === 'Lade') leistung = ((p.anzahlPunkte || 4) * (p.leistungProPunktKW || 22)) + ' kW';
+    else if (['NSHV', 'UV', 'KVS', 'Schaltanlage'].includes(a.type)) leistung = (p.nennstromA || 400) + ' A';
+    const totalKosten = (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
+    const gebName = a.buildingId != null ? (gebMap.get(a.buildingId)?.name || a.buildingId) : '';
+    assetsRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type, gebName,
+      a.baujahr || '', a.abrissjahr || '', statusTxt, leistung,
+      (a.massnahmen || []).length, totalKosten || '']);
+  }
+
+  // Sheet 3: Kabel
+  const kabelRows = [['Von-ID', 'Nach-ID', 'Von', 'Nach', 'Typ', 'Querschnitt mm²',
+    'Länge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
+  for (const e of allEdges) {
+    const uName = assetMap.get(e.u)?.name || e.u;
+    const vName = assetMap.get(e.v)?.name || e.v;
+    kabelRows.push([
+      e.u, e.v, uName, vName, e.cableType || 'NAYY',
+      e.crossSection || '', Math.round(e.lengthM || 0),
+      e.nParallel || 1, e.fuseA || '',
+      e.peakCurrentA != null ? +e.peakCurrentA.toFixed(1) : '',
+      e.auslastungPct != null ? +e.auslastungPct.toFixed(1) : '',
+      e.deltaUPct != null ? +e.deltaUPct.toFixed(2) : '',
+      e.peakFlowKw != null ? +e.peakFlowKw.toFixed(1) : '',
+    ]);
+  }
+
+  // Sheet 4: Maßnahmen
+  const massnRows = [['Asset-ID', 'Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten €']];
+  for (const a of allAssets) {
+    for (const m of (a.massnahmen || [])) {
+      massnRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type,
+        m.titel || '', m.beschreibung || '', m.jahr || '', m.status || 'geplant', parseFloat(m.kosten) || 0]);
+    }
+  }
+
+  // Sheet 5: Beziehungen (Übersicht, nur Referenz)
+  const bezRows = [['Asset-ID', 'Asset-Name', 'Typ', 'Gebäude-ID', 'Gebäude-Name', 'Verbunden mit (IDs)']];
+  for (const a of allAssets) {
+    const connectedIds = allEdges
+      .filter(e => e.u === a.id || e.v === a.id)
+      .map(e => e.u === a.id ? e.v : e.u)
+      .join(', ');
+    const gebName = a.buildingId != null ? (gebMap.get(a.buildingId)?.name || '') : '';
+    bezRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type,
+      a.buildingId || '', gebName, connectedIds]);
+  }
+
+  // ── Übersichtsblatt: Kennzahlen ──────────────────────────────────────────
+  const totalFlaeche  = allGebaeude.reduce((s, g) => s + (parseFloat(g.flaeche)  || 0), 0);
+  const totalWaerme   = allGebaeude.reduce((s, g) => s + (parseFloat(g.waerme)   || 0), 0);
+  const totalHeizlast = allGebaeude.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0);
+  const totalStrom    = allGebaeude.reduce((s, g) => s + (parseFloat(g.strom)    || 0), 0);
+  const totalKabelLaenge = allEdges.reduce((s, e) => s + (e.lengthM || 0), 0);
+
+  // Assets: je Typ Anzahl + Investition
+  const typStats = {};
+  for (const a of allAssets) {
+    if (!typStats[a.type]) typStats[a.type] = { count: 0, invest: 0 };
+    typStats[a.type].count++;
+    typStats[a.type].invest += (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
+  }
+
+  // Maßnahmen: je Status Anzahl + Kosten
+  const massnStats = { geplant: { n: 0, k: 0 }, beauftragt: { n: 0, k: 0 }, umgesetzt: { n: 0, k: 0 } };
+  for (const a of allAssets) {
+    for (const m of (a.massnahmen || [])) {
+      const s = massnStats[m.status] || massnStats.geplant;
+      s.n++;
+      s.k += parseFloat(m.kosten) || 0;
+    }
+  }
+  const massnGesamt = { n: 0, k: 0 };
+  for (const s of Object.values(massnStats)) { massnGesamt.n += s.n; massnGesamt.k += s.k; }
+
+  const fmt1 = v => +v.toFixed(1);
+  const fmt0 = v => Math.round(v);
+
+  const ueRows = [
+    ['Energieplanung – Übersicht'],
+    [],
+    ['Exportiert am', new Date().toLocaleDateString('de-DE')],
+    ['Planungsjahr',  yr],
+    [],
+    ['GEBÄUDE', '', ''],
+    ['Kenngröße', 'Wert', 'Einheit'],
+    ['Anzahl Gebäude',           allGebaeude.length,       ''],
+    ['Gesamtfläche',             fmt0(totalFlaeche),        'm²'],
+    ['Wärmebedarf gesamt',       fmt1(totalWaerme),         'MWh/a'],
+    ['Heizlast gesamt',          fmt1(totalHeizlast),       'kW'],
+    ['Strombedarf gesamt',       fmt1(totalStrom),          'MWh/a'],
+    [],
+    ['ELEKTRISCHE ANLAGEN', '', ''],
+    ['Typ', 'Anzahl', 'Investition (€)'],
+    ...Object.entries(typStats).map(([t, s]) => [ASSET_LABELS[t] || t, s.count, fmt0(s.invest)]),
+    ['Gesamt', allAssets.length, fmt0(Object.values(typStats).reduce((s, x) => s + x.invest, 0))],
+    [],
+    ['KABEL / LEITUNGEN', '', ''],
+    ['Kenngröße', 'Wert', 'Einheit'],
+    ['Anzahl Kabel',   allEdges.length,         ''],
+    ['Gesamtlänge',    fmt0(totalKabelLaenge),   'm'],
+    [],
+    ['MASSNAHMEN', '', ''],
+    ['Status', 'Anzahl', 'Kosten (€)'],
+    ['Geplant',     massnStats.geplant.n,     fmt0(massnStats.geplant.k)],
+    ['Beauftragt',  massnStats.beauftragt.n,  fmt0(massnStats.beauftragt.k)],
+    ['Umgesetzt',   massnStats.umgesetzt.n,   fmt0(massnStats.umgesetzt.k)],
+    ['Gesamt',      massnGesamt.n,            fmt0(massnGesamt.k)],
+  ];
+
+  const wb = XLSXLib.utils.book_new();
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(ueRows),     'Übersicht');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(gebRows),    'Gebäude');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(assetsRows), 'Assets');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows),  'Kabel');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows),  'Maßnahmen');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(bezRows),    'Beziehungen');
+
+  // ── Typ-spezifische Reiter (nur wenn Assets dieses Typs vorhanden) ──────────
+  for (const [type, schemaDefs] of Object.entries(ASSET_PROPS_SCHEMA)) {
+    const typeAssets = allAssets.filter(a => a.type === type);
+    if (!typeAssets.length || !schemaDefs.length) continue;
+    const propKeys   = schemaDefs.map(d => d.key);
+    const propLabels = schemaDefs.map(d => d.label);
+    const header = ['ID', 'Name', 'Gebäude', 'Baujahr', 'Abrissjahr', 'Status ' + yr, ...propLabels];
+    const rows = [header];
+    for (const a of typeAssets) {
+      const p = a.props || {};
+      const status = getAssetStatus(a, yr);
+      const statusTxt = status === 'active' ? 'Aktiv' : status === 'planned' ? 'Geplant' : 'Abgerissen';
+      const gebName = a.buildingId != null ? (gebMap.get(a.buildingId)?.name || a.buildingId) : '';
+      rows.push([
+        a.id, a.name || a.id, gebName,
+        a.baujahr || '', a.abrissjahr || '', statusTxt,
+        ...propKeys.map(k => p[k] != null ? p[k] : ''),
+      ]);
+    }
+    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(rows),
+      (ASSET_LABELS[type] || type).slice(0, 31));
+  }
+
+  const fname = 'Vollexport_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  XLSXLib.writeFile(wb, fname);
+}
+
+// ── Import: Vollständiger XLSX ──────────────────────────────────────────────
+function importVollstaendigXLSX() {
+  let inp = document.getElementById('_xlsxImportInput');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = '_xlsxImportInput';
+    inp.accept = '.xlsx';
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', _handleXlsxImport);
+  }
+  inp.value = '';
+  inp.click();
+}
+
+async function _handleXlsxImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (typeof window.XLSX === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('SheetJS konnte nicht geladen werden.'));
+      document.head.appendChild(s);
+    }).catch(e => { alert(e.message); return; });
+  }
+  const XLSXLib = window.XLSX;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSXLib.read(e.target.result, { type: 'array' });
+      let updGeb = 0, updAssets = 0, updKabel = 0, updMassn = 0;
+
+      // ── Sheet "Gebäude": Namen + Felder überschreiben ──────────────
+      const gebSheet = wb.Sheets['Gebäude'];
+      if (gebSheet) {
+        const rows = XLSXLib.utils.sheet_to_json(gebSheet, { header: 1 });
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const id = Number(row[0]);
+          const g = (window.gebaeude || []).find(x => x.id === id);
+          if (!g) continue;
+          let changed = false;
+          // Name
+          const newName = row[1] != null ? String(row[1]).trim() : null;
+          if (newName && newName !== g.name) {
+            if (typeof window.renameGebaeude === 'function') window.renameGebaeude(id, newName);
+            else g.name = newName;
+            changed = true;
+          }
+          // Nutzung
+          if (row[2] != null && String(row[2]).trim() && String(row[2]).trim() !== g.nutzung) {
+            g.nutzung = String(row[2]).trim(); changed = true;
+          }
+          // Fläche
+          if (row[3] != null && !isNaN(parseFloat(row[3])) && parseFloat(row[3]) > 0) {
+            g.flaeche = parseFloat(row[3]); changed = true;
+          }
+          // Baujahr
+          if (row[4] != null && !isNaN(parseInt(row[4])) && parseInt(row[4]) > 0) {
+            g.baujahr = parseInt(row[4]); changed = true;
+          }
+          // Abrissjahr
+          if (row[5] != null && String(row[5]).trim() !== '' && !isNaN(parseInt(row[5])) && parseInt(row[5]) > 0) {
+            g.abrissjahr = parseInt(row[5]); changed = true;
+          }
+          // Zustand
+          if (row[6] != null && String(row[6]).trim()) {
+            g.zustand = String(row[6]).trim(); changed = true;
+          }
+          // Wärmebedarf
+          if (row[7] != null && !isNaN(parseFloat(row[7]))) {
+            g.waerme = parseFloat(row[7]); g.waermeManual = true; changed = true;
+          }
+          // Heizlast
+          if (row[8] != null && !isNaN(parseFloat(row[8]))) {
+            g.heizlast = parseFloat(row[8]); g.heizlastManual = true; changed = true;
+          }
+          // Strom
+          if (row[10] != null && String(row[10]).trim() !== '' && !isNaN(parseFloat(row[10]))) {
+            g.strom = String(parseFloat(row[10])); changed = true;
+          }
+          // PV aktiv
+          if (row[11] != null) {
+            const v = String(row[11]).toLowerCase().trim();
+            if (v === 'ja' || v === 'true' || v === '1') { g.pvAktiv = true; changed = true; }
+            else if (v === 'nein' || v === 'false' || v === '0') { g.pvAktiv = false; changed = true; }
+          }
+          // PV Dachanteil
+          if (row[12] != null && !isNaN(parseFloat(row[12]))) {
+            g.pvDachanteil = parseFloat(row[12]); changed = true;
+          }
+          if (changed) updGeb++;
+        }
+        if (typeof window.renderList === 'function') window.renderList();
+      }
+
+      // ── Sheet "Assets": Name, Baujahr, Abrissjahr überschreiben ────
+      const assetsSheet = wb.Sheets['Assets'];
+      if (assetsSheet) {
+        const rows = XLSXLib.utils.sheet_to_json(assetsSheet, { header: 1 });
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const id = String(row[0]);
+          const a = (ASSETS.items || []).find(x => x.id === id);
+          if (!a) continue;
+          let changed = false;
+          if (row[1] != null && String(row[1]).trim() && String(row[1]).trim() !== a.name) {
+            a.name = String(row[1]).trim(); changed = true;
+          }
+          if (row[4] != null && !isNaN(parseInt(row[4])) && parseInt(row[4]) > 0) {
+            a.baujahr = parseInt(row[4]); changed = true;
+          }
+          if (row[5] != null && String(row[5]).trim() !== '' && !isNaN(parseInt(row[5])) && parseInt(row[5]) > 0) {
+            a.abrissjahr = parseInt(row[5]); changed = true;
+          }
+          if (changed) updAssets++;
+        }
+        if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+      }
+
+      // ── Sheet "Kabel": Kabeltyp, Querschnitt, Parallel, Sicherung ──
+      const kabelSheet = wb.Sheets['Kabel'];
+      if (kabelSheet) {
+        const rows = XLSXLib.utils.sheet_to_json(kabelSheet, { header: 1 });
+        const edgeArr = window.stromEdges || [];
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const uId = String(row[0]);
+          const vId = String(row[1]);
+          const edge = edgeArr.find(e => String(e.u) === uId && String(e.v) === vId)
+                    || edgeArr.find(e => String(e.u) === vId && String(e.v) === uId);
+          if (!edge) continue;
+          let changed = false;
+          if (row[4] != null && String(row[4]).trim()) { edge.cableType = String(row[4]).trim(); changed = true; }
+          if (row[5] != null && !isNaN(parseFloat(row[5]))) { edge.crossSection = parseFloat(row[5]); edge.autoSized = false; changed = true; }
+          if (row[7] != null && !isNaN(parseInt(row[7]))) { edge.nParallel = Math.max(1, parseInt(row[7])); changed = true; }
+          if (row[8] != null && !isNaN(parseFloat(row[8]))) { edge.fuseA = parseFloat(row[8]); changed = true; }
+          if (changed) updKabel++;
+        }
+      }
+
+      // ── Sheet "Maßnahmen": Status, Kosten überschreiben ────────────
+      const massnSheet = wb.Sheets['Maßnahmen'];
+      if (massnSheet) {
+        const rows = XLSXLib.utils.sheet_to_json(massnSheet, { header: 1 });
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const assetId = String(row[0]);
+          const titel = String(row[3] || '').trim();
+          const jahr = row[5] != null ? String(row[5]).trim() : '';
+          const a = (ASSETS.items || []).find(x => x.id === assetId);
+          if (!a) continue;
+          const m = (a.massnahmen || []).find(x =>
+            (x.titel || '').trim() === titel && String(x.jahr || '').trim() === jahr);
+          if (!m) continue;
+          let changed = false;
+          if (row[6] != null && String(row[6]).trim()) { m.status = String(row[6]).trim(); changed = true; }
+          if (row[7] != null && !isNaN(parseFloat(row[7]))) { m.kosten = parseFloat(row[7]); changed = true; }
+          if (changed) updMassn++;
+        }
+      }
+
+      // ── Typ-spezifische Reiter: Props überschreiben ─────────────────
+      const updAssetIds = new Set();
+      for (const [type, schemaDefs] of Object.entries(ASSET_PROPS_SCHEMA)) {
+        if (!schemaDefs.length) continue;
+        const sheetName = (ASSET_LABELS[type] || type).slice(0, 31);
+        const typeSheet = wb.Sheets[sheetName];
+        if (!typeSheet) continue;
+        const rows = XLSXLib.utils.sheet_to_json(typeSheet, { header: 1 });
+        if (rows.length < 2) continue;
+        // Spalten 6+ → prop keys aus Schema (per Label-Abgleich mit Header)
+        const header = rows[0] || [];
+        const labelToKey = Object.fromEntries(schemaDefs.map(d => [d.label, d.key]));
+        const colToProp = {};
+        for (let c = 6; c < header.length; c++) {
+          const k = labelToKey[header[c]];
+          if (k) colToProp[c] = k;
+        }
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const id = String(row[0]);
+          const a = (ASSETS.items || []).find(x => x.id === id && x.type === type);
+          if (!a) continue;
+          if (!a.props) a.props = {};
+          let changed = false;
+          // Name
+          if (row[1] != null && String(row[1]).trim() && String(row[1]).trim() !== a.name) {
+            a.name = String(row[1]).trim(); changed = true;
+          }
+          // Baujahr
+          if (row[3] != null && !isNaN(parseInt(row[3])) && parseInt(row[3]) > 0) {
+            a.baujahr = parseInt(row[3]); changed = true;
+          }
+          // Abrissjahr
+          if (row[4] != null && String(row[4]).trim() !== '' && !isNaN(parseInt(row[4])) && parseInt(row[4]) > 0) {
+            a.abrissjahr = parseInt(row[4]); changed = true;
+          }
+          // Typ-spezifische Props
+          for (const [col, propKey] of Object.entries(colToProp)) {
+            const val = row[parseInt(col)];
+            if (val != null && val !== '') {
+              const num = parseFloat(val);
+              a.props[propKey] = isNaN(num) ? String(val) : num;
+              changed = true;
+            }
+          }
+          if (changed) updAssetIds.add(id);
+        }
+      }
+      updAssets += updAssetIds.size;
+      if (updAssetIds.size && typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+
+      const lines = [];
+      if (updGeb) lines.push(`${updGeb} Gebäude`);
+      if (updAssets) lines.push(`${updAssets} Assets`);
+      if (updKabel) lines.push(`${updKabel} Kabel`);
+      if (updMassn) lines.push(`${updMassn} Maßnahmen`);
+      const msg = lines.length
+        ? 'Import abgeschlossen: ' + lines.join(', ') + ' aktualisiert.'
+        : 'Import abgeschlossen – keine Änderungen erkannt.';
+      alert(msg);
+
+      if (typeof window.glBerechnen === 'function') window.glBerechnen();
+
+    } catch (err) {
+      alert('Fehler beim Import: ' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  event.target.value = '';
+}
+
 // ── Hook into existing recalc to update left panel ───────────────
 var _origRecalcNetz = typeof recalcNetz !== 'undefined' ? recalcNetz : null;
 // We'll hook updateLpNetzSummary after recalcNetz calls via a periodic check instead
@@ -17899,20 +18497,7 @@ function addStromNode(type, latlng, props) {
   marker.bindTooltip(function() {
     const n = window.stromNodes.find(sn => sn.id === id);
     if (!n) return label;
-    let tt = '<b>' + n.label + '</b> (' + type.toUpperCase() + ')';
-    if (type === 'trafo') tt += '<br>Nennleistung: ' + (n.ratedKva || 630) + ' kVA';
-    if (type === 'trafo' && n._auslastungPct != null) {
-      const auslColor = n._auslastungPct < 80 ? '#4caf50' : n._auslastungPct < 100 ? '#f9a825' : '#e53935';
-      tt += ' — <span style="color:' + auslColor + '">' + n._auslastungPct.toFixed(0) + ' %</span>';
-    }
-    if (type === 'nap') tt += '<br>Anschlussleistung: ' + (n.maxKva || '∞') + ' kVA';
-    if (n.peakLoadKw != null) tt += '<br>Last: ' + n.peakLoadKw.toFixed(1) + ' kW';
-    if (n.ikMinA > 0 && isFinite(n.ikMinA)) {
-      const ikColor = n.ikMinA < 1000 ? '#f9a825' : '#4caf50';
-      tt += '<br>Ik\'\': <span style="color:' + ikColor + '">'
-          + (n.ikMaxA / 1000).toFixed(2) + ' / ' + (n.ikMinA / 1000).toFixed(2) + ' kA</span>';
-    }
-    return tt;
+    return _buildStromNodeTooltip(n, type);
   }, { sticky: true, className: 'geb-tooltip' });
 
   if (window.stromNetzVisible) marker.addTo(map);
@@ -18260,25 +18845,31 @@ function addStromEdge(uId, vId) {
   const pt1 = L.latLng(uNode.lat, uNode.lng);
   const pt2 = L.latLng(vNode.lat, vNode.lng);
 
-  const routed = routeAlongTrasse(pt1, pt2);
+  // Assets im gleichen Gebäude können direkt verbunden werden — kein Trassen-Routing nötig
+  const sameBuildingDirect = uNode.buildingId && vNode.buildingId && uNode.buildingId === vNode.buildingId;
+  const routed = sameBuildingDirect ? null : routeAlongTrasse(pt1, pt2);
   const linePts = routed || [pt1, pt2];
   const lengthM = routed ? polylineLength(routed) : pt1.distanceTo(pt2);
 
   const defaultType = document.getElementById('strom-kabel-typ')?.value || 'NAYY';
 
+  const outlineLayer = L.polyline(linePts, {
+    color: '#0a0e1a', weight: 7, opacity: 0.45, dashArray: '8,4',
+    pane: 'netzPane', interactive: false, lineCap: 'round'
+  });
   const layer = L.polyline(linePts, {
-    color: '#fdd835', weight: 3, opacity: 0.8, dashArray: '8,4', pane: 'netzPane', interactive: true
+    color: '#fdd835', weight: 3, opacity: 0.9, dashArray: '8,4', pane: 'netzPane', interactive: true, lineCap: 'round'
   });
   const hitLayer = L.polyline(linePts, {
-    color: 'transparent', weight: 16, opacity: 0.001, interactive: true, pane: 'netzPane'
+    color: 'transparent', weight: 16, opacity: 0, interactive: true, pane: 'netzPane'
   });
 
-  if (window.stromNetzVisible) { layer.addTo(map); hitLayer.addTo(map); }
+  if (window.stromNetzVisible) { outlineLayer.addTo(map); layer.addTo(map); hitLayer.addTo(map); }
 
   const edge = {
     id: 'se_' + Math.random().toString(36).slice(2, 9),
     u: uId, v: vId, uNode: uNode, vNode: vNode,
-    layer: layer, hitLayer: hitLayer, arrowMarker: null,
+    layer: layer, outlineLayer: outlineLayer, hitLayer: hitLayer, arrowMarker: null,
     cableType: defaultType, crossSection: 0, autoSized: true, fuseA: 0, nParallel: 1,
     lengthM: lengthM,
     peakCurrentA: 0, ratedCurrentA: 0, auslastungPct: 0,
@@ -18288,11 +18879,17 @@ function addStromEdge(uId, vId) {
   // Tooltip
   hitLayer.bindTooltip(function() { return buildStromEdgeTooltip(edge); }, { sticky: true, className: 'geb-tooltip' });
 
-  // Left-click to inspect / edit (both layers for reliable hit detection)
+  // Left-click: bei Überlappung Auswahl-Popup, sonst direkt öffnen
   function onCableClick(ev) {
     if (window.isDrawingStromEdge) return;
     L.DomEvent.stop(ev);
-    openCableInspector(edge);
+    const nearby = _findEdgesNearClick(ev.latlng, 10);
+    if (nearby.length > 1) {
+      _showEdgeSelectPopup(nearby, ev.latlng);
+    } else {
+      selectStromEdge(edge);
+      openCableInspector(edge);
+    }
   }
   layer.on('click', onCableClick);
   hitLayer.on('click', onCableClick);
@@ -18310,35 +18907,261 @@ function addStromEdge(uId, vId) {
   return edge;
 }
 
+// ── Kabel-Auswahl & Hervorhebung ────────────────────────────────
+var _selectedEdge = null;
+
+function _restoreEdgeStyle(e) {
+  if (!e) return;
+  const absKw = Math.abs(e.peakFlowKw || 0);
+  const w = Math.max(2, Math.min(6, 2 + absKw / 30));
+  const color = getStromEdgeColor(e);
+  if (absKw > 0.1) {
+    e.layer.setStyle({ color, weight: w, opacity: 0.95, dashArray: '10,5' });
+    if (e.outlineLayer) e.outlineLayer.setStyle({ weight: w + 3, opacity: 0.4, dashArray: '10,5' });
+  } else {
+    e.layer.setStyle({ color: '#fdd835', weight: 2, opacity: 0.7, dashArray: '' });
+    if (e.outlineLayer) e.outlineLayer.setStyle({ weight: 5, opacity: 0.3, dashArray: '' });
+  }
+  if (e.msLevel) {
+    e.layer.setStyle({ color: '#7c4dff', weight: 4, dashArray: null });
+    if (e.outlineLayer) e.outlineLayer.setStyle({ weight: 7, opacity: 0.4, dashArray: null });
+  }
+  if (e.trennstelle) e.layer.setStyle({ dashArray: '12,8', opacity: 0.55 });
+}
+
+function selectStromEdge(edge) {
+  if (_selectedEdge && _selectedEdge !== edge) {
+    _selectedEdge._isSelected = false;
+    _restoreEdgeStyle(_selectedEdge);
+  }
+  _selectedEdge = edge;
+  if (edge) {
+    edge._isSelected = true;
+    edge.layer.setStyle({ color: '#ffffff', weight: 6, opacity: 1, dashArray: '' });
+    edge.layer.bringToFront();
+  }
+}
+
+function deselectStromEdge() {
+  if (!_selectedEdge) return;
+  _selectedEdge._isSelected = false;
+  _restoreEdgeStyle(_selectedEdge);
+  _selectedEdge = null;
+}
+
+// ── Überlappende Kabel: Näherungssuche per Klickposition ─────────
+function _ptToSegDistPx(clickLL, a, b) {
+  try {
+    const cp = map.latLngToContainerPoint(clickLL);
+    const ap = map.latLngToContainerPoint(a);
+    const bp = map.latLngToContainerPoint(b);
+    const dx = bp.x - ap.x, dy = bp.y - ap.y;
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq > 0 ? Math.max(0, Math.min(1, ((cp.x - ap.x) * dx + (cp.y - ap.y) * dy) / lenSq)) : 0;
+    const qx = ap.x + t * dx - cp.x;
+    const qy = ap.y + t * dy - cp.y;
+    return Math.sqrt(qx * qx + qy * qy);
+  } catch { return Infinity; }
+}
+
+function _findEdgesNearClick(latlng, threshPx) {
+  const results = [];
+  for (const e of (window.stromEdges || [])) {
+    const pts = e.layer.getLatLngs();
+    const arr = Array.isArray(pts[0]) ? pts[0] : pts;
+    for (let i = 0; i < arr.length - 1; i++) {
+      if (_ptToSegDistPx(latlng, arr[i], arr[i + 1]) <= threshPx) {
+        results.push(e);
+        break;
+      }
+    }
+  }
+  return results;
+}
+
+function _showEdgeSelectPopup(edges, latlng) {
+  const rows = edges.map(e => {
+    const uName = ASSETS.items.find(a => a.id === e.u)?.name || e.uNode?.label || '?';
+    const vName = ASSETS.items.find(a => a.id === e.v)?.name || e.vNode?.label || '?';
+    const col = e.msLevel ? '#ff9800' : '#fdd835';
+    const badge = e.msLevel ? 'MS' : 'NS';
+    return `<div class="edge-select-row" data-edge-id="${e.id}"
+      style="display:flex;align-items:center;gap:7px;padding:5px 10px;cursor:pointer;border-radius:4px;">
+      <span style="background:${col};color:#000;font-size:9px;padding:1px 5px;border-radius:3px;flex-shrink:0;">${badge}</span>
+      <span style="font-size:11px;">${uName} → ${vName}</span>
+    </div>`;
+  }).join('');
+
+  const popup = L.popup({ className: 'asset-list-popup', offset: [0, 0], maxWidth: 320 })
+    .setLatLng(latlng)
+    .setContent(`<div style="padding:2px 0;">${rows}</div>`)
+    .openOn(map);
+
+  setTimeout(() => {
+    document.querySelectorAll('.edge-select-row').forEach(row => {
+      row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.08)'; });
+      row.addEventListener('mouseleave', () => { row.style.background = ''; });
+      row.addEventListener('click', () => {
+        const id = row.dataset.edgeId;
+        const e = (window.stromEdges || []).find(x => x.id === id);
+        if (e) { map.closePopup(popup); selectStromEdge(e); openCableInspector(e); }
+      });
+    });
+  }, 0);
+}
+
+// ── Tooltip-Hilfsfunktionen (Stromnetz) ─────────────────────────────────────
+function _ttKv(label, value, col) {
+  const val = col ? `<span style="color:${col};font-weight:500;">${value}</span>` : value;
+  return `<div style="display:flex;justify-content:space-between;gap:14px;padding:1px 0;">` +
+    `<span style="color:#78909c;font-size:11px;white-space:nowrap;">${label}</span>` +
+    `<span style="font-size:11px;">${val}</span></div>`;
+}
+var _ttHr = '<div style="border-top:1px solid #1e2540;margin:4px 0;"></div>';
+function _ttHead(icon, badge, sub, bg, fg) {
+  fg = fg || '#fff';
+  const subHtml = sub
+    ? `<span style="color:#546e7a;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:155px;" title="${sub}">${sub}</span>`
+    : '';
+  return `<div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid #2a3050;">` +
+    `<span style="background:${bg};color:${fg};border-radius:3px;padding:1px 6px 2px;font-size:10px;font-weight:700;white-space:nowrap;">${icon} ${badge}</span>` +
+    subHtml + '</div>';
+}
+
+function _buildStromNodeTooltip(n, type) {
+  const CFG = {
+    nap:   { bg: '#fdd835', fg: '#000', icon: '⚡', badge: 'NAP'   },
+    trafo: { bg: '#42a5f5', fg: '#fff', icon: '⏚',  badge: 'Trafo' },
+    nshv:  { bg: '#78909c', fg: '#fff', icon: '▦',  badge: 'NSHV'  },
+  };
+  const c = CFG[type] || { bg: '#546e7a', fg: '#fff', icon: '⚡', badge: type.toUpperCase() };
+  const _auslCol = p => p < 80 ? '#4caf50' : p < 100 ? '#f9a825' : '#e53935';
+  const _duCol   = p => p < 1  ? '#4caf50' : p < 2   ? '#8bc34a' : p < 3 ? '#f9a825' : '#e53935';
+
+  let h = `<div style="min-width:190px;">`;
+  h += _ttHead(c.icon, c.badge, n.label, c.bg, c.fg);
+
+  if (type === 'trafo') {
+    h += _ttKv('Nennleistung', (n.ratedKva || 630) + ' kVA');
+    const kw = n.peakLoadKw ?? 0;
+    h += _ttKv('↑ Bezug (WC)',  Math.max(0,  kw).toFixed(1) + ' kW', '#90caf9');
+    h += _ttKv('↓ Einsp. (WC)', Math.max(0, -kw).toFixed(1) + ' kW', '#ef9a9a');
+    h += _ttKv('Worst-Case',    Math.abs(kw).toFixed(1) + ' kW');
+    if (n._auslastungPct != null)
+      h += _ttKv('Auslastung', n._auslastungPct.toFixed(0) + ' %', _auslCol(n._auslastungPct));
+    h += _ttHr;
+    const dP = n._deltaUKumPct ?? 0;
+    h += _ttKv('Spannung', `400.0 V <span style="color:${_duCol(dP)}">(ΔU ${dP.toFixed(2)} %)</span>`);
+  } else if (type === 'nap') {
+    h += _ttKv('Anschluss', (n.maxKva || '∞') + ' kVA');
+    if (n.peakLoadKw != null) h += _ttKv('Last (WC)', n.peakLoadKw.toFixed(1) + ' kW');
+  } else {
+    // nshv oder generisch
+    if (n.peakLoadKw != null && n.peakLoadKw !== 0)
+      h += _ttKv('Last (WC)', n.peakLoadKw.toFixed(1) + ' kW');
+    if (n._deltaUKumPct != null) {
+      const dP = n._deltaUKumPct;
+      const vV = Math.max(0, 400 * (1 - dP / 100));
+      h += _ttKv('Spannung', `${vV.toFixed(1)} V <span style="color:${_duCol(dP)}">(ΔU ${dP.toFixed(2)} %)</span>`);
+    }
+  }
+
+  if (n.ikMinA > 0 && isFinite(n.ikMinA)) {
+    h += _ttHr;
+    const ikC = n.ikMinA < 1000 ? '#f9a825' : '#4caf50';
+    h += _ttKv("Ik''", `<span style="color:${ikC}">${(n.ikMaxA/1000).toFixed(2)} / ${(n.ikMinA/1000).toFixed(2)} kA</span>`);
+  }
+
+  h += '</div>';
+  return h;
+}
+
 function buildStromEdgeTooltip(e) {
   const kt = KABEL_TYPEN[e.cableType] || {};
-  const np = (e.nParallel || 1) > 1 ? (e.nParallel + '× ') : '';
-  let tt = '<b>' + np + e.cableType + ' ' + e.crossSection + ' mm²</b>';
-  tt += '<br>Länge: ' + e.lengthM.toFixed(0) + ' m';
-  tt += '<br>Leistung: ' + Math.abs(e.peakFlowKw).toFixed(1) + ' kW';
-  tt += ' (' + (e.flowDirection > 0 ? '→ Verbraucher' : '← Rückspeisung') + ')';
-  if (e._nVerbraucher > 0) tt += '<br>Verbraucher: ' + e._nVerbraucher + ' (GZF ' + (e._gzf != null ? e._gzf.toFixed(2) : '1.00') + ')';
-  const izEff = e._izEff ?? e.ratedCurrentA;
-  const kIzStr = (e._kIz != null && Math.abs(e._kIz - 1) > 0.005) ? ' (kIz ' + e._kIz.toFixed(2) + ')' : '';
-  tt += '<br>Strom: ' + e.peakCurrentA.toFixed(1) + ' / ' + izEff.toFixed(0) + ' A' + kIzStr;
-  const auslColor = e.auslastungPct < 80 ? '#4caf50' : e.auslastungPct < 100 ? '#f9a825' : '#e53935';
-  tt += '<br>Auslastung: <span style="color:' + auslColor + '">' + e.auslastungPct.toFixed(1) + ' %</span>';
-  const duColor = e.deltaUPct < 1 ? '#4caf50' : e.deltaUPct < 2 ? '#8bc34a' : e.deltaUPct < 3 ? '#f9a825' : '#e53935';
-  tt += '<br>Spannungsfall: <span style="color:' + duColor + '">' + e.deltaUPct.toFixed(2) + ' %</span>';
+  const np = (e.nParallel || 1) > 1 ? e.nParallel + '× ' : '';
+  const uAsset = ASSETS.items.find(a => a.id === e.u);
+  const vAsset = ASSETS.items.find(a => a.id === e.v);
+  const uLabel = uAsset?.name || e.uNode?.label || e.uNode?.name || '?';
+  const vLabel = vAsset?.name || e.vNode?.label || e.vNode?.name || '?';
+  const isMs = e.msLevel === true;
+  const [typLabel, typBg, typFg] = isMs
+    ? ['MS-Leitung', '#ff9800', '#fff']
+    : ['NS-Leitung', '#fdd835', '#000'];
+
+  const bezugKw = e.peakFlowKw_V ?? Math.max(0,  e.peakFlowKw || 0);
+  const einspKw = e.peakFlowKw_G ?? Math.max(0, -(e.peakFlowKw || 0));
+  const wcKw    = e.peakFlowKw || 0;
+
+  const _auslCol = p => p < 80 ? '#4caf50' : p < 100 ? '#f9a825' : '#e53935';
+  const _duCol   = p => p < 1  ? '#4caf50' : p < 2   ? '#8bc34a' : p < 3 ? '#f9a825' : '#e53935';
+  const izEff    = e._izEff ?? e.ratedCurrentA;
+  const kIzStr   = (e._kIz != null && Math.abs(e._kIz - 1) > 0.005) ? ` · kIz ${e._kIz.toFixed(2)}` : '';
+
+  const endNode = (window.stromNodes || []).find(n => n.id === e.v);
+  const dUKum   = endNode?._deltaUKumPct ?? null;
+
+  const tiefbauEurM = parseFloat(document.getElementById?.('strom-k-tiefbau')?.value) || 100;
+  const sec = kt.sections?.find(s => s.mm2 === e.crossSection);
+  const kostenEur = e.lengthM * ((sec?.eurM ?? 15) + tiefbauEurM);
+
+  let h = `<div style="min-width:215px;">`;
+  h += _ttHead('⚡', typLabel, uLabel + ' → ' + vLabel, typBg, typFg);
+
+  h += _ttKv('Kabel', np + e.cableType + ' ' + e.crossSection + ' mm²');
+  h += _ttKv('Länge', e.lengthM.toFixed(0) + ' m');
+  if (e._nVerbraucher > 0)
+    h += _ttKv('Verbraucher', e._nVerbraucher + ' (GZF ' + (e._gzf?.toFixed(2) ?? '1.00') + ')');
+
+  h += _ttHr;
+
+  h += `<div style="display:flex;gap:0;margin:3px 0;">` +
+    `<div style="flex:1;text-align:center;padding:0 4px;">` +
+      `<div style="color:#90caf9;font-size:10px;margin-bottom:2px;">↑ Bezug (WC)</div>` +
+      `<div style="font-size:11px;font-weight:600;">${bezugKw.toFixed(1)} kW</div>` +
+    `</div>` +
+    `<div style="flex:1;text-align:center;padding:0 4px;border-left:1px solid #1e2540;border-right:1px solid #1e2540;">` +
+      `<div style="color:#ef9a9a;font-size:10px;margin-bottom:2px;">↓ Einsp. (WC)</div>` +
+      `<div style="font-size:11px;font-weight:600;">${einspKw.toFixed(1)} kW</div>` +
+    `</div>` +
+    `<div style="flex:1;text-align:center;padding:0 4px;">` +
+      `<div style="color:#ffcc02;font-size:10px;margin-bottom:2px;">⚡ Max (WC)</div>` +
+      `<div style="font-size:11px;font-weight:600;">${wcKw.toFixed(1)} kW</div>` +
+    `</div>` +
+  `</div>`;
+
+  h += _ttHr;
+
+  h += _ttKv('Strom (WC)', e.peakCurrentA.toFixed(1) + ' / ' + izEff.toFixed(0) + ' A' + kIzStr);
+  h += _ttKv('Auslastung', e.auslastungPct.toFixed(0) + ' %', _auslCol(e.auslastungPct));
+
+  if (dUKum != null) {
+    h += _ttKv('Spannungsfall',
+      `<span style="color:${_duCol(dUKum)}">ΔU ${dUKum.toFixed(2)} %</span>` +
+      `<span style="color:#546e7a;font-size:10px;"> (kum.)</span>`);
+  } else {
+    h += _ttKv('Spannungsfall', `<span style="color:${_duCol(e.deltaUPct)}">ΔU ${e.deltaUPct.toFixed(2)} %</span>`);
+  }
+
   if (e.fuseA > 0) {
-    const fuseColor = e.peakCurrentA > e.fuseA ? '#e53935' : '#4caf50';
-    tt += '<br>Sicherung: <span style="color:' + fuseColor + '">' + e.fuseA + ' A</span>';
+    const fuseCol = e.peakCurrentA > e.fuseA ? '#e53935' : '#4caf50';
+    h += _ttKv('Sicherung', `<span style="color:${fuseCol}">${e.fuseA} A</span>`);
   }
-  // Ik'' am Endknoten (weiter von NAP entfernt)
-  const endNode = window.stromNodes.find(n => n.id === e.v) || window.stromNodes.find(n => n.id === e.u);
+
+  h += _ttHr;
+  h += _ttKv('Kosten', kostenEur.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €');
+
   if (endNode?.ikMinA > 0 && isFinite(endNode.ikMinA)) {
-    const ikColor = endNode.ikMinA < 1000 ? '#f9a825' : '#4caf50';
-    tt += '<br>Ik\'\' (Ende): <span style="color:' + ikColor + '">' + (endNode.ikMinA / 1000).toFixed(2) + ' kA</span>';
+    const ikC = endNode.ikMinA < 1000 ? '#f9a825' : '#4caf50';
+    h += _ttKv("Ik'' (Ende)", `<span style="color:${ikC}">${(endNode.ikMinA / 1000).toFixed(2)} kA</span>`);
   }
-  return tt;
+
+  h += '</div>';
+  return h;
 }
 
 function removeStromEdge(edge) {
+  if (edge === _selectedEdge) { _selectedEdge = null; }
+  if (edge.outlineLayer && map.hasLayer(edge.outlineLayer)) map.removeLayer(edge.outlineLayer);
   if (edge.layer && map.hasLayer(edge.layer)) map.removeLayer(edge.layer);
   if (edge.hitLayer && map.hasLayer(edge.hitLayer)) map.removeLayer(edge.hitLayer);
   if (edge.arrowMarker && map.hasLayer(edge.arrowMarker)) map.removeLayer(edge.arrowMarker);
@@ -18355,8 +19178,10 @@ function updateStromEdgeGeometry() {
     if (!un || !vn) return;
     const pt1 = L.latLng(un.lat, un.lng);
     const pt2 = L.latLng(vn.lat, vn.lng);
-    const routed = routeAlongTrasse(pt1, pt2);
+    const sameBldg = un.buildingId && vn.buildingId && un.buildingId === vn.buildingId;
+    const routed = sameBldg ? null : routeAlongTrasse(pt1, pt2);
     const pts = routed || [pt1, pt2];
+    if (e.outlineLayer) e.outlineLayer.setLatLngs(pts);
     e.layer.setLatLngs(pts);
     e.hitLayer.setLatLngs(pts);
     e.lengthM = routed ? polylineLength(routed) : pt1.distanceTo(pt2);
@@ -18376,10 +19201,12 @@ function setStromNetzVisible(vis) {
   });
   window.stromEdges.forEach(e => {
     if (vis) {
+      if (e.outlineLayer && !map.hasLayer(e.outlineLayer)) e.outlineLayer.addTo(map);
       if (!map.hasLayer(e.layer)) e.layer.addTo(map);
       if (!map.hasLayer(e.hitLayer)) e.hitLayer.addTo(map);
       if (e.arrowMarker && !map.hasLayer(e.arrowMarker)) e.arrowMarker.addTo(map);
     } else {
+      if (e.outlineLayer && map.hasLayer(e.outlineLayer)) map.removeLayer(e.outlineLayer);
       if (map.hasLayer(e.layer)) map.removeLayer(e.layer);
       if (map.hasLayer(e.hitLayer)) map.removeLayer(e.hitLayer);
       if (e.arrowMarker && map.hasLayer(e.arrowMarker)) map.removeLayer(e.arrowMarker);
@@ -18427,7 +19254,7 @@ function _getStromSzenarioHour() {
 function setStromColorMode(mode) {
   window.stromColorMode = mode;
   document.querySelectorAll('#lp-strom-viz .lp-tool-btn').forEach(b => {
-    const isActive = b.getAttribute('onclick')?.includes("'" + mode + "'");
+    const isActive = b.getAttribute('data-click')?.includes("'" + mode + "'");
     b.style.background = isActive ? 'rgba(253,216,53,0.15)' : '';
     b.style.borderColor = isActive ? '#fdd835' : '';
     b.style.color = isActive ? '#fdd835' : '';
@@ -18489,10 +19316,15 @@ function _autoRegisterErzeugerStromNodes() {
     const marker = L.marker(L.latLng(erz.lat, erz.lng), { icon: erzIcon, interactive: true, zIndexOffset: 2100 });
     marker.bindTooltip(() => {
       const n = window.stromNodes.find(sn => sn._erzKey === erz.key);
-      let tt = '<b>' + erz.label + '</b>';
-      if (n && n.peakLoadKw) tt += '<br>' + (n.isProducer ? 'Einspeisung' : 'Verbrauch') + ': ' + Math.abs(n.peakLoadKw).toFixed(1) + ' kW';
-      if (n && n.annualMwh) tt += '<br>' + Math.abs(n.annualMwh).toFixed(1) + ' MWh/a';
-      return tt;
+      let h = `<div style="min-width:160px;">`;
+      h += _ttHead(erz.icon, erz.label, '', erz.color || '#546e7a');
+      if (n && n.peakLoadKw)
+        h += _ttKv(n.isProducer ? '↓ Einspeisung' : '↑ Verbrauch',
+          Math.abs(n.peakLoadKw).toFixed(1) + ' kW', n.isProducer ? '#ef9a9a' : '#90caf9');
+      if (n && n.annualMwh)
+        h += _ttKv('Jahresenergie', Math.abs(n.annualMwh).toFixed(1) + ' MWh/a');
+      h += '</div>';
+      return h;
     }, { sticky: true, className: 'geb-tooltip' });
     marker.on('click', function() { if (typeof stromNodeClick === 'function') stromNodeClick(marker._stromNodeId); });
     if (window.stromNetzVisible) marker.addTo(map);
@@ -18607,26 +19439,9 @@ function _recalcStromNetzInner() {
         if (stromMwh > 0 || window.stromEdges.some(e => e.u === g.id || e.v === g.id)) {
           const center = g.polygon ? polygonCenter(g.polygon) : null;
           if (center) {
-            const gebIcon = L.divIcon({
-              className: '',
-              html: '<div class="strom-icon strom-icon-geb">⚡</div>',
-              iconSize: [14, 14], iconAnchor: [7, 7]
-            });
-            const gebMarker = L.marker(center, { icon: gebIcon, interactive: true, zIndexOffset: 2000 });
-            gebMarker.bindTooltip(function() {
-              const n = window.stromNodes.find(sn => sn.id === g.id);
-              let tt = '<b>' + g.name + '</b> (Strom)';
-              if (n && n.peakLoadKw) tt += '<br>Last: ' + n.peakLoadKw.toFixed(1) + ' kW';
-              if (n && n.annualMwh) tt += '<br>Verbrauch: ' + n.annualMwh.toFixed(1) + ' MWh/a';
-              if (n && n.isProducer) tt += '<br><span style="color:#66bb6a">Einspeiser (PV)</span>';
-              return tt;
-            }, { sticky: true, className: 'geb-tooltip' });
-            // Click for edge drawing
-            gebMarker.on('click', function() { stromNodeClick(g.id); });
-            if (window.stromNetzVisible) gebMarker.addTo(map);
             window.stromNodes.push({
               id: g.id, type: 'geb', lat: center.lat, lng: center.lng,
-              marker: gebMarker, label: g.name, peakLoadKw: 0, annualMwh: 0, isProducer: false
+              marker: null, label: g.name, peakLoadKw: 0, annualMwh: 0, isProducer: false
             });
           }
         }
@@ -18844,13 +19659,16 @@ function _recalcStromNetzInner() {
     return gzfDIN18015(nVerbraucher); // din18015 (default)
   }
 
-  // Bottom-up: Anzahl Verbraucher und Summe Einzellasten pro Knoten zählen
-  window.stromEdges.forEach(e => { e.peakFlowKw = 0; e._nVerbraucher = 0; });
-  const accLoadSum = {};  // Summe der Einzellasten (ohne GZF)
-  const accNVerb = {};    // Anzahl Verbraucher hinter diesem Knoten
+  // Bottom-up: Worst-Case — Bezug und Einspeisung getrennt akkumulieren (keine Bilanzierung)
+  window.stromEdges.forEach(e => { e.peakFlowKw = 0; e.peakFlowKw_V = 0; e.peakFlowKw_G = 0; e._nVerbraucher = 0; });
+  const accV = {};     // Worst-Case Bezug: Summe der Einzelverbräuche (loadKw > 0)
+  const accG = {};     // Worst-Case Einspeisung: Summe der Einzelerzeugungen (loadKw < 0)
+  const accNVerb = {}; // Anzahl Verbraucher hinter diesem Knoten (für GZF)
   Object.keys(nodeMap).forEach(k => {
-    const isVerb = nodeMap[k].loadKw > 0 && nodeMap[k].node.type === 'geb';
-    accLoadSum[k] = Math.abs(nodeMap[k].loadKw);
+    const lkw = nodeMap[k].loadKw;
+    const isVerb = lkw > 0 && nodeMap[k].node.type === 'geb';
+    accV[k] = lkw > 0 ? lkw : 0;
+    accG[k] = lkw < 0 ? -lkw : 0;
     accNVerb[k] = isVerb ? 1 : 0;
   });
 
@@ -18858,21 +19676,24 @@ function _recalcStromNetzInner() {
     const curr = order[i];
     const pInfo = parentEdge[curr];
     if (!pInfo) continue;
-    accLoadSum[pInfo.pNodeId] += accLoadSum[curr];
+    accV[pInfo.pNodeId] += accV[curr];
+    accG[pInfo.pNodeId] += accG[curr];
     accNVerb[pInfo.pNodeId] += accNVerb[curr];
-    // Kantenfluss = Summe Einzellasten × GZF für Anzahl Verbraucher dahinter
     const nV = accNVerb[curr];
-    const rawLoad = accLoadSum[curr];
     const gzfVal = _gzf(nV);
-    pInfo.e.peakFlowKw += rawLoad * gzfVal;
+    const flowV = accV[curr] * gzfVal; // Bezug mit GZF
+    const flowG = accG[curr];          // Einspeisung: WC = alle gleichzeitig, kein GZF
+    pInfo.e.peakFlowKw_V = flowV;
+    pInfo.e.peakFlowKw_G = flowG;
+    pInfo.e.peakFlowKw = Math.max(flowV, flowG); // Worst-Case für Kabelauslegung
     pInfo.e._nVerbraucher = nV;
     pInfo.e._gzf = gzfVal;
   }
 
-  // accLoad für NAP/Trafo: mit GZF
+  // accLoad für NAP/Trafo: Worst-Case (max von Bezug mit GZF und Einspeisung)
   const accLoad = {};
   Object.keys(nodeMap).forEach(k => {
-    accLoad[k] = accLoadSum[k] * _gzf(accNVerb[k]);
+    accLoad[k] = Math.max(accV[k] * _gzf(accNVerb[k]), accG[k]);
   });
 
   // Cable sizing + voltage drop
@@ -18891,7 +19712,7 @@ function _recalcStromNetzInner() {
     const absKw = Math.abs(e.peakFlowKw);
     const I = calcStrom(absKw, U, cosPhi);
     e.peakCurrentA = I;
-    e.flowDirection = e.peakFlowKw >= 0 ? 1 : -1;
+    e.flowDirection = (e.peakFlowKw_V ?? 1) >= (e.peakFlowKw_G ?? 0) ? 1 : -1; // Nettostromrichtung
 
     // Auto cable sizing — Iz_eff = Iz_table × kIz
     const kt = KABEL_TYPEN[e.cableType || defaultType] || KABEL_TYPEN.NAYY;
@@ -18934,11 +19755,16 @@ function _recalcStromNetzInner() {
   // Trafo-Auslastung: Lasten bereits im Bottom-up-BFS akkumuliert
   window.stromNodes.filter(n => n.type === 'trafo').forEach(tn => {
     if (!nodeMap[tn.id]) return;
-    tn.peakLoadKw = accLoadSum[tn.id] * _gzf(accNVerb[tn.id]);
+    // Sync ratedKva from asset props when Trafo was placed as an asset
+    if (tn.isAsset) {
+      const a = ASSETS.items.find(x => x.id === tn.id);
+      if (a) tn.ratedKva = parseFloat(a.props?.leistungKVA) || tn.ratedKva || 630;
+    }
+    tn.peakLoadKw = Math.max(accV[tn.id] * _gzf(accNVerb[tn.id]), accG[tn.id]);
     tn._auslastungPct = tn.ratedKva > 0 ? (tn.peakLoadKw / tn.ratedKva * 100) : 0;
   });
 
-  // Critical voltage drop (path NAP → leaf)
+  // Critical voltage drop (path NAP → leaf); kumulativen Wert pro Knoten speichern
   let maxDeltaU = 0;
   order.forEach(nodeId => {
     if (nodeId === napId || !parentEdge[nodeId]) return;
@@ -18949,6 +19775,8 @@ function _recalcStromNetzInner() {
       curr = parentEdge[curr].pNodeId;
     }
     if (pathDu > maxDeltaU) maxDeltaU = pathDu;
+    const sn = window.stromNodes.find(n => n.id === nodeId);
+    if (sn) sn._deltaUKumPct = pathDu;
   });
 
   // Ik''-Berechnung: Impedanz-Akkumulation NAP → Knoten (IEC 60909)
@@ -19055,28 +19883,38 @@ function getStromEdgeColor(e) {
       return t < 0.5 ? '#4caf50' : t < 0.8 ? '#f9a825' : '#e53935';
     }
     case 'richtung':
-      return e.flowDirection >= 0 ? '#ff9800' : '#42a5f5'; // orange=demand, blue=backfeed
+      return e.flowDirection >= 0 ? '#29b6f6' : '#ef9a9a'; // blau=Bezug, rot=Einspeisung
     default: return '#fdd835';
   }
 }
 
 function updateStromEdgeVisuals() {
   window.stromEdges.forEach(e => {
+    if (e._isSelected) return; // Hervorhebung der ausgewählten Leitung beibehalten
     const absKw = Math.abs(e.peakFlowKw);
-    const w = Math.max(2, Math.min(12, 2 + absKw / 20));
+    const w = Math.max(2, Math.min(6, 2 + absKw / 30));
     const color = getStromEdgeColor(e);
-    // Strichlinien für Flussrichtung (Animation läuft über animateStromPipes)
+    // Strichlinien für Flussrichtung
     if (absKw > 0.1) {
-      e.layer.setStyle({ color: color, weight: w, opacity: 0.85, dashArray: '12,6' });
+      e.layer.setStyle({ color: color, weight: w, opacity: 0.95, dashArray: '10,5' });
+      if (e.outlineLayer) e.outlineLayer.setStyle({ weight: w + 3, opacity: 0.4, dashArray: '10,5' });
       e._flowActive = true;
       e._flowDir = e.flowDirection >= 0 ? 1 : -1;
       if (e.layer._path) e.layer._path.style.animation = '';
     } else {
       // Kein Lastfluss — Kabel trotzdem sichtbar als durchgezogene Linie
-      e.layer.setStyle({ color: '#fdd835', weight: 3, opacity: 0.6, dashArray: '' });
+      e.layer.setStyle({ color: '#fdd835', weight: 2, opacity: 0.7, dashArray: '' });
+      if (e.outlineLayer) e.outlineLayer.setStyle({ weight: 5, opacity: 0.3, dashArray: '' });
       e._flowActive = false;
       if (e.layer._path) e.layer._path.style.animation = '';
     }
+
+    // MS-Kabel und Trennstellen überschreiben NS-Stil
+    if (e.msLevel) {
+      e.layer.setStyle({ color: '#7c4dff', weight: 4, opacity: 0.95, dashArray: null });
+      if (e.outlineLayer) e.outlineLayer.setStyle({ weight: 7, opacity: 0.4, dashArray: null });
+    }
+    if (e.trennstelle) e.layer.setStyle({ dashArray: '12,8', opacity: 0.55 });
 
     // Arrow marker for direction
     const un = window.stromNodes.find(n => n.id === e.u);
@@ -19327,18 +20165,7 @@ function _schnellberechnungStromInner() {
     if (window.stromNodes.find(n => n.id === c.id)) return;
     const g = gebaeude.find(gb => gb.id === c.id);
     if (!g) return;
-    const gebIcon = L.divIcon({ className: '', html: '<div class="strom-icon strom-icon-geb">⚡</div>', iconSize: [14, 14], iconAnchor: [7, 7] });
-    const gebMarker = L.marker(L.latLng(c.lat, c.lng), { icon: gebIcon, interactive: true, zIndexOffset: 2000 });
-    gebMarker.bindTooltip(function() {
-      const n = window.stromNodes.find(sn => sn.id === c.id);
-      let tt = '<b>' + g.name + '</b> (Strom)';
-      if (n && n.peakLoadKw) tt += '<br>Last: ' + n.peakLoadKw.toFixed(1) + ' kW';
-      if (n && n.annualMwh) tt += '<br>Verbrauch: ' + n.annualMwh.toFixed(1) + ' MWh/a';
-      return tt;
-    }, { sticky: true, className: 'geb-tooltip' });
-    gebMarker.on('click', function() { stromNodeClick(c.id); });
-    if (window.stromNetzVisible) gebMarker.addTo(map);
-    window.stromNodes.push({ id: c.id, type: 'geb', lat: c.lat, lng: c.lng, marker: gebMarker, label: g.name, peakLoadKw: 0, annualMwh: 0, isProducer: false });
+    window.stromNodes.push({ id: c.id, type: 'geb', lat: c.lat, lng: c.lng, marker: null, label: g.name, peakLoadKw: 0, annualMwh: 0, isProducer: false });
   });
 
   const trafoNodes = [];
@@ -19622,7 +20449,9 @@ function elCalcAssets() {
     const dU_V  = Math.sqrt(3) * R_seg * (I_A_sign / np);
     const dU_pct = (dU_V / U_N) * 100;
 
-    e.peakFlowKw   = P_net;
+    e.peakFlowKw_V = P_v;
+    e.peakFlowKw_G = P_g;
+    e.peakFlowKw   = P_worst; // Worst-Case für Kabelauslegung, Breite, Auslastung
     e.peakCurrentA = I_A;
     e.ratedCurrentA = sec.Iz * np;
     e.auslastungPct = sec.Iz > 0 ? (I_A / (sec.Iz * np)) * 100 : 0;
@@ -19655,7 +20484,10 @@ function elCalcAssets() {
   }
   nodeVoltDrop.forEach((v, id) => {
     const sn = (window.stromNodes || []).find(n => n.id === id);
-    if (sn) sn._voltDropV = v;
+    if (sn) {
+      sn._voltDropV = v;
+      sn._deltaUKumPct = v / 400 * 100;
+    }
   });
 
   // Trafo-Auslastung: Gesamtlast aller nachgelagerten Assets per BFS
@@ -19686,6 +20518,11 @@ function elCalcAssets() {
     const P_net = Math.max(P_v - P_g, 0);
     trafoAsset._calcPeakLoadKw = P_net;
     trafoAsset._calcPeakLoadPct = ratedKVA > 0 ? (P_net / (ratedKVA * COS_PHI)) * 100 : 0;
+    const trafoSn = (window.stromNodes || []).find(n => n.id === trafoAsset.id);
+    if (trafoSn) {
+      trafoSn._auslastungPct = trafoAsset._calcPeakLoadPct;
+      trafoSn.peakLoadKw = P_net;
+    }
   }
 
   updateStromEdgeVisuals();
@@ -19934,9 +20771,14 @@ function clearStromNetz() {
   window.stromNodes = [];
   window.stromNextId = 20000;
   window._stromNetzKpis = null;
+  _selectedEdge = null;
   updateLpStromSummary();
 }
 
+// Auswahl aufheben bei Klick auf leere Karte
+setTimeout(() => {
+  map.on('click', () => { deselectStromEdge(); });
+}, 0);
 
 
 // ── 05c-sankey.js ──
@@ -35828,6 +36670,7 @@ var ASSET_CFG = {
   Trafo:        { label:'Trafo',             icon:'🔁', color:'#f9a825', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
   NSHV:         { label:'NSHV',              icon:'🗄', color:'#4fc3f7', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
   UV:           { label:'UV',                icon:'📦', color:'#64b5f6', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
+  KVS:          { label:'KVS',              icon:'▣',  color:'#607d8b', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
   // ── Strom-Verbraucher ──
   Verbraucher:  { label:'Verbraucher',       icon:'🏠', color:'#81c784', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[] },
   Lade:         { label:'Ladeinfrastruktur', icon:'🔌', color:'#4dd0e1', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[] },
@@ -35846,7 +36689,7 @@ var ASSET_CFG = {
 
 // Typrangfolge für Sortierung/Topologie: niedriger = versorgungsseitig
 var TYPE_RANK = {
-  NAP:0, Schaltanlage:1, Trafo:2, NSHV:3, UV:4,
+  NAP:0, Schaltanlage:1, Trafo:2, NSHV:3, UV:4, KVS:4,
   Verbraucher:5, WP:5, Lade:5, Nsa:5, KWK:5,
   Wind:6, PV:6, Batterie:6, Reserve:7,
 };
@@ -35862,6 +36705,8 @@ var ASSET_PROPS_SCHEMA = {
   NSHV:         [{ key:'nennstromA',          label:'Nennstrom (A)' },
                  { key:'abgaenge',            label:'Abgänge' }],
   UV:           [{ key:'nennstromA',          label:'Nennstrom (A)' },
+                 { key:'abgaenge',            label:'Abgänge' }],
+  KVS:          [{ key:'nennstromA',          label:'Nennstrom (A)' },
                  { key:'abgaenge',            label:'Abgänge' }],
   Verbraucher:  [{ key:'leistungKW',          label:'Leistung (kW)' }],
   PV:           [{ key:'leistungKWp',         label:'Leistung (kWp)' }],
@@ -36015,6 +36860,118 @@ var assetLayer = null;       // Gebäude-gruppierte Assets (zoom-abhängig)
 var standaloneLayer = null; // Frei platzierte Assets (immer sichtbar)
 var layerVisible = false; // erst sichtbar wenn Elektro-Tab geöffnet wird
 
+// ── Asset-Tooltip-Hilfsfunktionen ────────────────────────────────────────────
+function _contrast(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) || 0;
+  const g = parseInt(hex.slice(3, 5), 16) || 0;
+  const b = parseInt(hex.slice(5, 7), 16) || 0;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55 ? '#000' : '#fff';
+}
+function _attKv(label, value, col) {
+  const val = col ? `<span style="color:${col};font-weight:500;">${value}</span>` : value;
+  return `<div style="display:flex;justify-content:space-between;gap:14px;padding:1px 0;">` +
+    `<span style="color:#78909c;font-size:11px;white-space:nowrap;">${label}</span>` +
+    `<span style="font-size:11px;">${val}</span></div>`;
+}
+var _attHr = '<div style="border-top:1px solid #1e2540;margin:4px 0;"></div>';
+function _attHead(icon, badge, sub, bg) {
+  const fg = _contrast(bg);
+  const subHtml = sub
+    ? `<span style="color:#546e7a;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;" title="${sub}">${sub}</span>`
+    : '';
+  return `<div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid #2a3050;">` +
+    `<span style="background:${bg};color:${fg};border-radius:3px;padding:1px 6px 2px;font-size:10px;font-weight:700;white-space:nowrap;">${icon} ${badge}</span>` +
+    subHtml + '</div>';
+}
+function _attUnit(label) {
+  const m = label.match(/\(([^)]+)\)$/);
+  return m ? ' ' + m[1] : '';
+}
+function _assetKosten(asset) {
+  const p = asset.props || {};
+  const g = (id, def) => parseFloat(document.getElementById(id)?.value) || def;
+  switch (asset.type) {
+    case 'NAP':          return g('ak-nap', 8000);
+    case 'Schaltanlage': return (parseFloat(p.felder) || 4) * 1500 + 3000;
+    case 'Trafo':        return (parseFloat(p.leistungKVA) || 630) * g('ak-trafo-kva', 80);
+    case 'NSHV':         return (parseFloat(p.abgaenge) || 6) * g('ak-nshv-abg', 500) + 3000;
+    case 'UV':           return (parseFloat(p.abgaenge) || 4) * g('ak-uv-abg', 200) + 800;
+    case 'KVS':          return (parseFloat(p.abgaenge) || 4) * g('ak-kvs-abg', 150) + 500;
+    case 'Verbraucher':  return 2000;
+    case 'PV':           return (parseFloat(p.leistungKWp) || 10) * g('ak-pv-kwp', 1200);
+    case 'Batterie':     return (parseFloat(p.kapazitaetKWh) || 10) * g('ak-bat-kwh', 600);
+    case 'Lade':         return (parseFloat(p.anzahlPunkte) || 1) * g('ak-lade-pkt', 1500) + (parseFloat(p.leistungProPunktKW) || 22) * 200;
+    case 'WP':           return (parseFloat(p.leistungKW) || 10) * g('ak-wp-kw', 700);
+    case 'Nsa':          return (parseFloat(p.leistungKW) || 20) * 300;
+    case 'Wind':         return (parseFloat(p.leistungKW) || 100) * g('ak-wind-kw', 1500);
+    case 'KWK':          return (parseFloat(p.leistungElKW) || 20) * g('ak-kwk-kwel', 3500);
+    default:             return null;
+  }
+}
+function _buildAssetTooltip(asset) {
+  const cfg    = ASSET_CFG[asset.type];
+  if (!cfg) return asset.name;
+  const status = getAssetStatus(asset, globalYear);
+  const props  = asset.props || {};
+  const schema = ASSET_PROPS_SCHEMA[asset.type] || [];
+  const statusCol = { active: '#4caf50', planned: '#f9a825', demolished: '#ef5350' };
+  const statusLbl = { active: 'aktiv', planned: 'geplant', demolished: 'abgerissen' };
+  const _duCol   = p => p < 1 ? '#4caf50' : p < 2 ? '#8bc34a' : p < 3 ? '#f9a825' : '#e53935';
+  const _auslCol = p => p < 80 ? '#4caf50' : p < 100 ? '#f9a825' : '#e53935';
+
+  let h = `<div style="min-width:195px;">`;
+  h += _attHead(cfg.icon, cfg.label, asset.name, cfg.color);
+  h += _attKv('Status', statusLbl[status] || status, statusCol[status]);
+
+  for (const p of schema.slice(0, 3)) {
+    if (props[p.key] != null && props[p.key] !== '') {
+      const lbl = p.label.replace(/\s*\([^)]+\)$/, '');
+      h += _attKv(lbl, String(props[p.key]) + _attUnit(p.label));
+    }
+  }
+  if (asset.baujahr) h += _attKv('Baujahr', asset.baujahr);
+
+  const sn = (window.stromNodes || []).find(n => n.id === asset.id);
+  if (sn) {
+    h += _attHr;
+    if (sn.isProducer && sn.peakLoadKw)
+      h += _attKv('↓ Einspeisung (WC)', Math.abs(sn.peakLoadKw).toFixed(1) + ' kW', '#ef9a9a');
+    else if (sn.peakLoadKw)
+      h += _attKv('↑ Bezug (WC)', sn.peakLoadKw.toFixed(1) + ' kW', '#90caf9');
+    if (sn.annualMwh)
+      h += _attKv('Jahresenergie', Math.abs(sn.annualMwh).toFixed(1) + ' MWh/a');
+    if (sn._auslastungPct != null)
+      h += _attKv('Auslastung', sn._auslastungPct.toFixed(0) + ' %', _auslCol(sn._auslastungPct));
+    if (sn._deltaUKumPct != null) {
+      const dP = sn._deltaUKumPct;
+      h += _attKv('Spannungsfall', `ΔU ${dP.toFixed(2)} %`, _duCol(dP));
+    }
+  }
+
+  const kosten = _assetKosten(asset);
+  if (kosten != null) {
+    h += _attHr;
+    h += _attKv('Kostenschätzung', '~ ' + kosten.toLocaleString('de-DE') + ' €');
+  }
+
+  h += '</div>';
+  return h;
+}
+function _buildGroupTooltip(assets) {
+  const rows = assets.slice(0, 6).map(a => {
+    const cfg = ASSET_CFG[a.type];
+    const fg  = _contrast(cfg.color);
+    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">` +
+      `<span style="background:${cfg.color};color:${fg};border-radius:3px;padding:0 5px;font-size:11px;">${cfg.icon}</span>` +
+      `<span style="font-size:11px;">${a.name}</span>` +
+    `</div>`;
+  }).join('');
+  const more = assets.length > 6
+    ? `<div style="color:#78909c;font-size:10px;margin-top:2px;">+ ${assets.length - 6} weitere</div>`
+    : '';
+  return `<div style="min-width:145px;">${rows}${more}</div>`;
+}
+
 // Drei Zoom-Stufen:
 //   z < COLLAPSED        → komplett aus
 //   COLLAPSED ≤ z < DETAIL → 1 Sammel-Icon pro Gebäude
@@ -36030,11 +36987,8 @@ function hasPendingMassnahmen(asset) {
   return (asset.massnahmen || []).some(m => m.status === 'geplant');
 }
 
-// Zoom-abhängige Marker-Größe (14–20 px)
-function sizeAtZoom(z) {
-  const size = Math.round(14 + (z - ASSET_DETAIL_ZOOM) * 3);
-  return Math.max(14, Math.min(20, size));
-}
+var ASSET_MARKER_SIZE = 20;
+function sizeAtZoom(_z) { return ASSET_MARKER_SIZE; }
 
 function ensureLayer() {
   if (!assetLayer) {
@@ -36119,7 +37073,7 @@ function drawBuildingGroup(buildingId) {
       const pendingBadge = hasPendingMassnahmen(a)
         ? `<span class="asset-massn-badge asset-massn-badge-sm"></span>`
         : '';
-      return `<span class="asset-group-icon" data-asset-id="${a.id}" style="background:${cfg.color};opacity:${opacity};width:${size}px;height:${size}px;font-size:${fontSize}px;" title="${a.name}">${cfg.icon}${pendingBadge}</span>`;
+      return `<span class="asset-group-icon" data-asset-id="${a.id}" style="background:${cfg.color};opacity:${opacity};width:${size}px;height:${size}px;font-size:${fontSize}px;">${cfg.icon}${pendingBadge}</span>`;
     }).join('');
     html = `<div class="asset-group">${iconsHtml}</div>`;
     width  = size * Math.min(assets.length, 6) + 4;
@@ -36134,6 +37088,17 @@ function drawBuildingGroup(buildingId) {
   });
 
   const m = L.marker([c.lat, c.lng], { icon, draggable: true, zIndexOffset: 200 });
+
+  // Tooltip: im Detail-Modus asset-spezifisch per Hover-Delegation, sonst Gruppen-Liste
+  m.bindTooltip(_buildGroupTooltip(assets), { sticky: true, className: 'geb-tooltip', offset: [8, 0] });
+  if (!collapsed) {
+    m.on('mouseover', function(ev) {
+      const el = ev.originalEvent?.target?.closest?.('[data-asset-id]');
+      const id = el?.dataset?.assetId;
+      const a  = id ? ASSETS.items.find(x => x.id === id) : null;
+      m.setTooltipContent(a ? _buildAssetTooltip(a) : _buildGroupTooltip(assets));
+    });
+  }
 
   m.on('dragend', () => {
     const ll = m.getLatLng();
@@ -36229,16 +37194,7 @@ function drawSingleMarker(asset) {
   const fontSize = Math.max(8, Math.round(size * 0.6));
   const borderW  = 1;
 
-  // Pixel-Versatz für Gebäude-Gruppe: Geschwister horizontal nebeneinander anordnen
-  let anchorOffsetX = 0;
-  if (asset.buildingId) {
-    const siblings = ASSETS.items.filter(a => a.buildingId === asset.buildingId);
-    const idx   = siblings.findIndex(a => a.id === asset.id);
-    const count = siblings.length;
-    const spacing = size + 3; // Markerbreite + 3px Lücke
-    // iconAnchor verschiebt den Marker: positiver anchorOffsetX → Marker nach links
-    anchorOffsetX = Math.round(((count - 1) / 2 - idx) * spacing);
-  }
+  const markerLat = asset.lat, markerLng = asset.lng;
 
   const pendingBadge = hasPendingMassnahmen(asset)
     ? `<span class="asset-massn-badge"></span>`
@@ -36246,16 +37202,16 @@ function drawSingleMarker(asset) {
   const icon = L.divIcon({
     className: '',
     html: `<div class="asset-marker asset-marker-${status}"
-              style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;"
-              title="${asset.name}">
+              style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;">
              <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
              ${pendingBadge}
            </div>`,
     iconSize:   [size, size],
-    iconAnchor: [size / 2 + anchorOffsetX, size / 2],
+    iconAnchor: [size / 2, size / 2],
   });
 
-  const m = L.marker([asset.lat, asset.lng], { icon, draggable: true, zIndexOffset: 3000 });
+  const m = L.marker([markerLat, markerLng], { icon, draggable: true, zIndexOffset: 3000 });
+  m.bindTooltip(() => _buildAssetTooltip(asset), { sticky: true, className: 'geb-tooltip', offset: [8, 0] });
 
   // Strom-Domain-Assets als Strom-Knoten registrieren, damit Kabel angeschlossen werden können
   // isAsset:true → setStromNetzVisible soll diese Marker NICHT direkt auf die Karte legen,
@@ -36266,14 +37222,18 @@ function drawSingleMarker(asset) {
     if (!existing) {
       window.stromNodes.push({
         id: asset.id, type: asset.type.toLowerCase(),
-        lat: asset.lat, lng: asset.lng,
+        lat: markerLat, lng: markerLng,
         marker: m, label: cfg.label || asset.type,
+        buildingId: asset.buildingId || null,
         peakLoadKw: 0, annualMwh: 0, isProducer: false,
         isAsset: true,
       });
     } else {
       existing.marker = m;
       existing.isAsset = true;
+      existing.buildingId = asset.buildingId || null;
+      existing.lat = markerLat;
+      existing.lng = markerLng;
     }
   }
 
@@ -36351,12 +37311,10 @@ function isAssetLayerVisible() {
   return layerVisible;
 }
 
-// Zoom-Listener: Sichtbarkeit + Größe neu
+// Zoom-Listener: nur Sichtbarkeit (Icons haben feste Größe/Position)
 setTimeout(() => {
   map.on('zoomend', () => {
     applyLayerVisibility();
-    if (map.getZoom() < ASSET_COLLAPSED_ZOOM) return;
-    redrawAllAssets();
   });
 }, 0);
 
@@ -36377,19 +37335,25 @@ function buildPalette() {
   if (!panel) return;
   if (panel.dataset.built === '1') return;
 
-  // Titel
-  const title = document.createElement('div');
-  title.className = 'asset-palette-title';
-  title.textContent = 'Asset platzieren';
-  panel.appendChild(title);
+  const GROUPS = [
+    { label: 'Netzinfrastruktur', types: ['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS'] },
+    { label: 'Verbraucher',       types: ['Verbraucher', 'Lade'] },
+    { label: 'Erzeugung',         types: ['PV', 'Wind', 'WP', 'KWK'] },
+    { label: 'Speicher & Backup', types: ['Batterie', 'Nsa'] },
+    { label: 'Sonstiges',         types: ['Reserve'], fullWidth: true },
+  ];
 
-  // Ein Button pro Asset-Typ (gruppiert nach Kategorie)
-  const kategorien = ['infrastruktur', 'verbraucher', 'erzeuger', 'speicher', 'sonstiges'];
-  for (const kat of kategorien) {
-    for (const [type, cfg] of Object.entries(ASSET_CFG)) {
-      if (cfg.kategorie !== kat) continue;
+  for (const group of GROUPS) {
+    const header = document.createElement('div');
+    header.className = 'asset-palette-group-header';
+    header.textContent = group.label;
+    panel.appendChild(header);
+
+    for (const type of group.types) {
+      const cfg = ASSET_CFG[type];
+      if (!cfg) continue;
       const btn = document.createElement('button');
-      btn.className = 'asset-palette-btn';
+      btn.className = 'asset-palette-btn' + (group.fullWidth ? ' full-width' : '');
       btn.dataset.type = type;
       btn.innerHTML = `<span class="asset-palette-btn-icon" style="color:${cfg.color}">${cfg.icon}</span><span>${cfg.label}</span>`;
       btn.addEventListener('click', () => setPendingType(type));
@@ -36491,6 +37455,34 @@ function polygonCentroid(polygon) {
   return n > 0 ? { lat: lat / n, lng: lng / n } : null;
 }
 
+// Gleichmäßig verteilte Positionen innerhalb des Gebäudepolygons
+// Ausrichtung entlang der längeren Achse, 65 % der Ausdehnung genutzt.
+function _positionsInBuilding(polygon, count) {
+  const c = polygonCentroid(polygon);
+  if (!c || count <= 1) return Array(count).fill(c || { lat: 0, lng: 0 });
+
+  const lats = polygon.map(p => p.lat ?? p[0]);
+  const lngs = polygon.map(p => p.lng ?? p[1]);
+  const heightM = (Math.max(...lats) - Math.min(...lats)) * 111320;
+  const cosLat  = Math.cos(c.lat * Math.PI / 180);
+  const widthM  = (Math.max(...lngs) - Math.min(...lngs)) * 111320 * cosLat;
+
+  const useNS   = heightM >= widthM;
+  const span    = Math.max(heightM, widthM) * 0.65;
+  const spacing = span / (count - 1);
+
+  const dLatPerM = 1 / 111320;
+  const dLngPerM = 1 / (111320 * cosLat);
+
+  return Array.from({ length: count }, (_, i) => {
+    const offsetM = (i - (count - 1) / 2) * spacing;
+    return {
+      lat: c.lat + (useNS ? offsetM * dLatPerM : 0),
+      lng: c.lng + (useNS ? 0 : offsetM * dLngPerM),
+    };
+  });
+}
+
 var DEFAULT_TYPES = ['UV', 'Verbraucher', 'PV'];
 
 function autoCreateBuildingAssets(g, opts = {}) {
@@ -36499,9 +37491,7 @@ function autoCreateBuildingAssets(g, opts = {}) {
   // Keine Duplikate: wenn für dieses Gebäude bereits Assets existieren, nichts tun
   if (ASSETS.items.some(a => a.buildingId === g.id)) return [];
 
-  const c = polygonCentroid(g.polygon);
-  if (!c) return [];
-
+  const positions = _positionsInBuilding(g.polygon, DEFAULT_TYPES.length);
   const base = {
     buildingId: g.id,
     baujahr:    g.baujahr    || null,
@@ -36509,8 +37499,10 @@ function autoCreateBuildingAssets(g, opts = {}) {
   };
 
   const created = [];
-  for (const type of DEFAULT_TYPES) {
-    const asset = createAsset(type, c.lat, c.lng, {
+  for (let i = 0; i < DEFAULT_TYPES.length; i++) {
+    const type = DEFAULT_TYPES[i];
+    const pos  = positions[i];
+    const asset = createAsset(type, pos.lat, pos.lng, {
       ...base,
       name: `${type} ${g.name || g.id}`,
     });
@@ -36767,18 +37759,33 @@ function buildPropsForm(asset) {
       const kvaOpts = [50,100,160,200,250,315,400,500,630,800,1000,1250,1600,2000]
         .map(v => ({ value: v, label: `${v} kVA` }));
       const curKva = parseFloat(p.leistungKVA) || 630;
+      const netzartOpts = [
+        { value: 'verbrauch',  label: 'Verbrauchsnetz (Standard)' },
+        { value: 'erzeugung',  label: 'Erzeugungsnetz (Einspeisung)' },
+      ];
       return row2(
         selectField(id, 'leistungKVA', 'Leistung (kVA)', kvaOpts, curKva),
         numField(id, 'ukProzent', 'UK (%)', 4, {props:p, step:0.1})
+      ) + row2(
+        selectField(id, 'netzart', 'Netzart', netzartOpts, p.netzart || 'verbrauch'),
+        ''
       );
     }
 
     case 'NSHV':
-    case 'UV':
+    case 'UV': {
+      const netzartOpts = [
+        { value: 'verbrauch',  label: 'Verbrauchsnetz (Standard)' },
+        { value: 'erzeugung',  label: 'Erzeugungsnetz (Einspeisung)' },
+      ];
       return row2(
         numField(id, 'nennstromA', 'Nennstrom (A)', 400, {props:p, step:1}),
         numField(id, 'abgaenge',   'Abgänge',         4, {props:p, step:1, min:1})
+      ) + row2(
+        selectField(id, 'netzart', 'Netzart', netzartOpts, p.netzart || 'verbrauch'),
+        ''
       );
+    }
 
     case 'Verbraucher': {
       const slpOpts = ['G0','G1','G2','G3','G4','G5','G6','H0','L0','L1','L2'];
@@ -38821,6 +39828,12 @@ var NA_CLUSTER_COLORS = [
   '#26c6da','#d4e157','#ec407a','#8d6e63','#78909c',
 ];
 
+// Farben für Erzeugungsnetz (Teal/Cyan-Palette, klar von Verbrauch unterscheidbar)
+var NA_ERZEUG_COLORS = [
+  '#00acc1','#0097a7','#26c6da','#00bcd4','#4dd0e1',
+  '#006064','#80deea','#00838f','#b2ebf2','#4fc3f7',
+];
+
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 var NA = {
   // Heatmap
@@ -38850,23 +39863,30 @@ var NA = {
   naMaxKW:       null,
   naAutoInfo:    null,
   naExistingResults: null,
+
+  // Erzeugungsnetz
+  erzeugungsnetz:     false,
+  naErzeugResult:     null,
+  naErzeugMaxKW:      null,
 };
 
 // Leaflet-Layer-Gruppen (lazy init)
-var grpHeatmapLoad  = null;
-var grpHeatmapGen   = null;
-var grpHeatmapLegacy = null;
-var grpKabeltrassen = null;
-var grpKMeans       = null;
+var grpHeatmapLoad    = null;
+var grpHeatmapGen     = null;
+var grpHeatmapLegacy  = null;
+var grpKabeltrassen   = null;
+var grpKMeans         = null;
 var grpExistingTrafos = null;
+var grpErzeugungKMeans = null;
 
 function _ensureGroups() {
-  if (!grpHeatmapLoad)   grpHeatmapLoad   = L.layerGroup();
-  if (!grpHeatmapGen)    grpHeatmapGen    = L.layerGroup();
-  if (!grpHeatmapLegacy) grpHeatmapLegacy = L.layerGroup();
-  if (!grpKabeltrassen)  grpKabeltrassen  = L.layerGroup();
-  if (!grpKMeans)        grpKMeans        = L.layerGroup();
+  if (!grpHeatmapLoad)    grpHeatmapLoad    = L.layerGroup();
+  if (!grpHeatmapGen)     grpHeatmapGen     = L.layerGroup();
+  if (!grpHeatmapLegacy)  grpHeatmapLegacy  = L.layerGroup();
+  if (!grpKabeltrassen)   grpKabeltrassen   = L.layerGroup();
+  if (!grpKMeans)         grpKMeans         = L.layerGroup();
   if (!grpExistingTrafos) grpExistingTrafos = L.layerGroup();
+  if (!grpErzeugungKMeans) grpErzeugungKMeans = L.layerGroup();
 }
 
 // ── Adapter: Lastpunkte aus aktiven Assets ───────────────────────────────────
@@ -39200,6 +40220,31 @@ function naDrawKabeltrassen() {
       }
       NA.naKabelInfo.totalM += zoneM;
       NA.naKabelInfo.zones.push({ name: `Zone ${i + 1}`, lengthM: zoneM, isExisting: false });
+    });
+  }
+
+  // Erzeugungsnetz-Kabeltrassen
+  const erzClusters = NA.naErzeugResult;
+  if (erzClusters?.length > 0) {
+    erzClusters.forEach((cl, i) => {
+      if (!cl.points?.length) return;
+      const col   = NA_ERZEUG_COLORS[i % NA_ERZEUG_COLORS.length];
+      const edges = _computeMST(cl.centroid, cl.points);
+      let zoneM   = 0;
+      for (const e of edges) {
+        zoneM += e.lengthM;
+        const rootPt     = cl.centroid;
+        const fromIsRoot = _distM(e.from, rootPt) < 10;
+        const poly = L.polyline([[e.from.lat, e.from.lng], [e.to.lat, e.to.lng]], {
+          color: col, weight: 2.5, opacity: 0.85, dashArray: '4 3',
+        }).bindTooltip(`EZ ${i + 1} · ${e.lengthM.toFixed(0)} m`, { sticky: true })
+          .addTo(grpKabeltrassen);
+        NA.naKabelEdges.push({ edge: e, poly, zoneName: `EZ ${i + 1}`, col,
+          routed: false, selected: false, rootPt, isExistingTrafo: false,
+          trafoAssetId: null, fromIsRoot, isErzeugung: true });
+      }
+      NA.naKabelInfo.totalM += zoneM;
+      NA.naKabelInfo.zones.push({ name: `EZ ${i + 1}`, lengthM: zoneM, isErzeugung: true });
     });
   }
 
@@ -39685,6 +40730,59 @@ function naSetMinUtil(v)      { NA.minUtilPct = parseInt(v) || 0; }
 function naSetProxRadius(v)   { NA.proxRadius = parseInt(v) || 0; naRenderPanel(); }
 function naSetUseExisting(v)  { NA.useExisting = !!v; naRenderPanel(); }
 function naSetKabelEurM(v)    { NA.naKabelEurM = parseFloat(v) || 200; naRenderPanel(); }
+function naSetErzeugungsnetz(v) { NA.erzeugungsnetz = !!v; naRenderPanel(); }
+
+// ── Erzeugungscluster zeichnen ───────────────────────────────────────────────
+function _drawErzeugungClusters(clusters, maxKW) {
+  _ensureGroups();
+  grpErzeugungKMeans.clearLayers();
+  if (!clusters || clusters.length === 0) return;
+  const centroids = clusters.map(cl => ({ lat: cl.centroid.lat, lng: cl.centroid.lng }));
+  const allPtsForBbox = [...clusters.flatMap(cl => cl.points), ...centroids];
+  const vBbox  = _voronoiBBox(allPtsForBbox.length > 0 ? allPtsForBbox : centroids);
+  const vCells = _computeVoronoi(centroids, vBbox);
+  if (!map.hasLayer(grpErzeugungKMeans)) grpErzeugungKMeans.addTo(map);
+  clusters.forEach((cl, i) => {
+    const col     = NA_ERZEUG_COLORS[i % NA_ERZEUG_COLORS.length];
+    const kvaEmpf = _kvaEmpfStr(cl.einspeisungKW, NA.cosPhi);
+    const vCell   = vCells[i];
+    if (vCell && vCell.polygon.length >= 3) {
+      L.polygon(vCell.polygon.map(p => [p.lat, p.lng]), {
+        color: col, fillColor: col, fillOpacity: 0.08, opacity: 0.6,
+        weight: 2, dashArray: '3 5',
+      }).bindTooltip(`EZ ${i+1}: ${cl.einspeisungKW.toFixed(0)} kW Einsp. · ${cl.points.length} Pkt.`, { sticky: true })
+        .addTo(grpErzeugungKMeans);
+    }
+    L.marker([cl.centroid.lat, cl.centroid.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="background:${col};border:2px solid #fff;border-radius:50%;
+                 width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+                 font-size:11px;font-weight:700;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.45);">
+                 E</div>`,
+        iconSize: [24, 24], iconAnchor: [12, 12],
+      }),
+      zIndexOffset: 510,
+    }).bindPopup(
+      `<b>☀ Einspeise-Trafo ${i+1}</b><br>` +
+      `Einspeisung: <b>${cl.einspeisungKW.toFixed(0)} kW</b><br>` +
+      `Bezug: <b>${cl.bezugKW.toFixed(0)} kW</b><br>` +
+      `Netto: <b>${(cl.einspeisungKW - cl.bezugKW).toFixed(0)} kW</b><br>` +
+      `Empf. Trafo: <b>${kvaEmpf}</b><br>Punkte: ${cl.points.length}`
+    ).addTo(grpErzeugungKMeans);
+  });
+}
+
+// ── Empfohlene kVA für einen Cluster ─────────────────────────────────────────
+function _empfKVA(peakKW, cosPhi) {
+  const s = peakKW / (cosPhi || 0.9);
+  if (s <= 250)  return 250;
+  if (s <= 400)  return 400;
+  if (s <= 630)  return 630;
+  if (s <= 1000) return 1000;
+  if (s <= 1600) return 1600;
+  return 2500;
+}
 
 function naRunTrafoOptimierung() {
   _ensureGroups();
@@ -39790,6 +40888,33 @@ function naRunTrafoOptimierung() {
     ).addTo(grpKMeans);
   });
 
+  // ── Erzeugungsnetz separat optimieren ────────────────────────────────────
+  if (NA.erzeugungsnetz) {
+    const erzPts = allPts.filter(p => p.genKW > 0);
+    if (erzPts.length > 0) {
+      const weightedErz = erzPts.map(p => ({ ...p, weight: p.genKW }));
+      let erzClusters, erzMaxKW = null;
+      if (NA.mode === 'auto') {
+        const res = _findAutoK(weightedErz, NA.maxKVA, NA.cosPhi, NA.gzf, NA.minUtilPct);
+        erzClusters = res.clusters;
+        erzMaxKW = res.maxKW;
+      } else {
+        erzClusters = _kMeansCluster(weightedErz, NA.k || 3, 150, 5);
+      }
+      NA.naErzeugResult = erzClusters.filter(cl => cl.points.length > 0);
+      NA.naErzeugMaxKW  = erzMaxKW;
+      _drawErzeugungClusters(NA.naErzeugResult, erzMaxKW);
+    } else {
+      NA.naErzeugResult = [];
+      NA.naErzeugMaxKW  = null;
+      grpErzeugungKMeans.clearLayers();
+    }
+  } else {
+    NA.naErzeugResult = null;
+    NA.naErzeugMaxKW  = null;
+    if (grpErzeugungKMeans) grpErzeugungKMeans.clearLayers();
+  }
+
   naDrawKabeltrassen();
   naRenderPanel();
 }
@@ -39799,12 +40924,89 @@ function naClearTrafoOptimierung() {
   grpKMeans.clearLayers();
   grpExistingTrafos.clearLayers();
   grpKabeltrassen.clearLayers();
-  NA.naResult   = null;
-  NA.naAutoInfo = null;
-  NA.naMaxKW    = null;
+  grpErzeugungKMeans.clearLayers();
+  NA.naResult          = null;
+  NA.naAutoInfo        = null;
+  NA.naMaxKW           = null;
   NA.naExistingResults = null;
-  NA.naKabelInfo = null;
+  NA.naKabelInfo       = null;
+  NA.naErzeugResult    = null;
+  NA.naErzeugMaxKW     = null;
   naRenderPanel();
+}
+
+// ── Kompaktstation übernehmen ────────────────────────────────────────────────
+function naUebernehmenAlsKompaktstation() {
+  const createAsset = window.createAsset;
+  const addEdge     = window.addStromEdge;
+  if (!createAsset || !addEdge) { alert('createAsset / addStromEdge nicht verfügbar'); return; }
+
+  const verbrauchsClusters = (NA.naResult || []).map(cl => ({ ...cl, kind: 'verbrauch' }));
+  const erzClusters        = (NA.naErzeugResult || []).map(cl => ({ ...cl, kind: 'erzeugung' }));
+  const allClusters        = [...verbrauchsClusters, ...erzClusters];
+
+  if (allClusters.length === 0) {
+    alert('Keine Optimierungsergebnisse vorhanden.\nBitte zuerst die Optimierung berechnen.');
+    return;
+  }
+
+  const vText  = verbrauchsClusters.length > 0 ? `${verbrauchsClusters.length} Verbrauchstrafo${verbrauchsClusters.length !== 1 ? 's' : ''}` : '';
+  const eText  = erzClusters.length > 0        ? `${erzClusters.length} Einspeise-Trafo${erzClusters.length !== 1 ? 's' : ''}` : '';
+  const sumTxt = [vText, eText].filter(Boolean).join(' + ');
+  const ok = confirm(
+    `${allClusters.length} Kompaktstation${allClusters.length !== 1 ? 'en' : ''} erstellen (${sumTxt})?\n\n` +
+    'Jede Kompaktstation besteht aus:\n' +
+    '  • Schaltanlage (MS-Seite)\n' +
+    '  • Trafo\n' +
+    '  • NSHV (NS-Verteiler)\n\n' +
+    'Die drei Komponenten werden leicht versetzt platziert und intern verbunden.'
+  );
+  if (!ok) return;
+
+  const DEG_PER_M = 1 / 111320;
+  let created = 0, failed = 0;
+
+  for (const cl of allClusters) {
+    const cx = cl.centroid.lat, cy = cl.centroid.lng;
+    const peakKW = cl.kind === 'erzeugung' ? cl.einspeisungKW : cl.peakKW;
+    const kva    = _empfKVA(peakKW, NA.cosPhi);
+
+    const isErz = cl.kind === 'erzeugung';
+
+    // Schaltanlage (am Trafo-Standort, MS-seitig)
+    const sa = createAsset('Schaltanlage', cx, cy, {
+      felder: '4',
+      nennstromA: '630',
+    });
+    if (!sa) { failed++; continue; }
+
+    // Trafo (~10 m nördlich der Schaltanlage) — netzart kennzeichnet Einspeise-Trafo
+    const trafo = createAsset('Trafo', cx + 9 * DEG_PER_M, cy, {
+      leistungKVA: String(kva),
+      ukProzent:   '6',
+      netzart:     isErz ? 'erzeugung' : 'verbrauch',
+    });
+    if (!trafo) { failed++; continue; }
+
+    // NSHV (~10 m nördlich des Trafos) — gleiche netzart wie Trafo
+    const nshv = createAsset('NSHV', cx + 18 * DEG_PER_M, cy, {
+      nennstromA: String(Math.round(kva * 1000 / (400 * Math.sqrt(3) * 0.9))),
+      abgaenge:   '6',
+      netzart:    isErz ? 'erzeugung' : 'verbrauch',
+    });
+    if (!nshv) { failed++; continue; }
+
+    // SA → Trafo (MS-Kabel), Trafo → NSHV (NS-Kabel)
+    addEdge(sa.id, trafo.id);
+    addEdge(trafo.id, nshv.id);
+    created++;
+  }
+
+  if (failed > 0) alert(`${created} erstellt, ${failed} fehlgeschlagen.`);
+  else alert(`${created} Kompaktstation${created !== 1 ? 'en' : ''} erfolgreich erstellt.\n\nPositionen können per Drag & Drop angepasst werden.`);
+
+  if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+  if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
 }
 
 // ── Panel-Rendering ──────────────────────────────────────────────────────────
@@ -39825,14 +41027,17 @@ function naRenderPanel() {
   const gzf          = NA.gzf;
   const minUtilPct   = NA.minUtilPct;
   const proxRadius   = NA.proxRadius;
-  const useExisting  = NA.useExisting;
-  const hasResult    = NA.naResult !== null;
-  const existingT    = _naGetExistingTrafos(yr);
-  const kabelOn      = NA.kabelActive;
-  const kabelInfo    = NA.naKabelInfo;
-  const kabelEurM    = NA.naKabelEurM;
-  const nettoCol     = totalNetto >= 0 ? '#ef5350' : '#42a5f5';
-  const nettoSign    = totalNetto >= 0 ? '+' : '';
+  const useExisting    = NA.useExisting;
+  const hasResult      = NA.naResult !== null;
+  const existingT      = _naGetExistingTrafos(yr);
+  const kabelOn        = NA.kabelActive;
+  const kabelInfo      = NA.naKabelInfo;
+  const kabelEurM      = NA.naKabelEurM;
+  const erzeugungsnetz = NA.erzeugungsnetz;
+  const erzResult      = NA.naErzeugResult;
+  const hasAnyResult   = hasResult || (erzResult && erzResult.length > 0);
+  const nettoCol       = totalNetto >= 0 ? '#ef5350' : '#42a5f5';
+  const nettoSign      = totalNetto >= 0 ? '+' : '';
 
   panel.innerHTML = `
 <!-- Übersicht -->
@@ -39983,7 +41188,7 @@ function naRenderPanel() {
   ${useExisting && existingT.length > 0 ? 'Neue Trafos für überlastete Zonen' : 'Trafo-Platzierungsvorschlag'}
 </div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="display:flex;gap:4px;margin-bottom:10px;">
+  <div style="display:flex;gap:4px;margin-bottom:8px;">
     <button onclick="naSetMode('manual')"
       style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
              border:1px solid ${!isAuto?'var(--accent)':'var(--border)'};
@@ -39995,6 +41200,16 @@ function naRenderPanel() {
              background:${isAuto?'rgba(102,187,106,.1)':'transparent'};
              color:${isAuto?'#66bb6a':'var(--muted)'};">Auto (max. kVA)</button>
   </div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:10px;cursor:pointer;margin-bottom:8px;
+                padding:5px 6px;border-radius:4px;background:${erzeugungsnetz?'rgba(38,198,218,.08)':'transparent'};
+                border:1px solid ${erzeugungsnetz?'#26c6da':'var(--border)'};">
+    <input type="checkbox" ${erzeugungsnetz?'checked':''} onchange="naSetErzeugungsnetz(this.checked)"
+      style="accent-color:#26c6da;width:13px;height:13px;flex-shrink:0;">
+    <span style="color:${erzeugungsnetz?'#26c6da':'var(--muted)'};">
+      Erzeugungstrafos separat berechnen
+      <span style="display:block;font-size:9px;opacity:.75;line-height:1.3;">PV / Wind / KWK → eigenes Erzeugungsnetz</span>
+    </span>
+  </label>
   ${!isAuto ? `
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
     <label style="font-size:10px;color:var(--text);white-space:nowrap;">Anzahl Trafos (k):</label>
@@ -40053,11 +41268,38 @@ function naRenderPanel() {
            border:1px solid #b39ddb;color:#ce93d8;background:transparent;margin-bottom:5px;">
     ⚡ Optimierung berechnen
   </button>
-  ${hasResult ? `<button onclick="naClearTrafoOptimierung()"
+  ${hasAnyResult ? `
+  <button onclick="naUebernehmenAlsKompaktstation()"
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+           border:1px solid #4fc3f7;color:#4fc3f7;background:rgba(79,195,247,.08);margin-bottom:5px;font-weight:600;">
+    🏗 Als Kompaktstationen übernehmen
+  </button>
+  <button onclick="naClearTrafoOptimierung()"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid var(--muted);color:var(--muted);background:transparent;">
     ✕ Ergebnis löschen</button>` : ''}
 </div>
+
+${erzeugungsnetz && erzResult && erzResult.length > 0 ? `
+<!-- Erzeugungsnetz-Ergebnisse -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#26c6da;margin-bottom:4px;">Erzeugungsnetz</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;border-left:3px solid #26c6da;">
+  <div style="font-size:10px;color:var(--text);margin-bottom:6px;">
+    <b style="color:#26c6da;">${erzResult.length} Einspeise-Trafo${erzResult.length !== 1 ? 's'  : ''}</b> für Erzeugungsnetz
+  </div>
+  ${erzResult.map((cl, i) => {
+    const col = NA_ERZEUG_COLORS[i % NA_ERZEUG_COLORS.length];
+    const kva = _empfKVA(cl.einspeisungKW, NA.cosPhi);
+    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid var(--border);">
+      <div style="width:16px;height:16px;background:${col};border-radius:50%;flex-shrink:0;display:flex;
+                  align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;">E</div>
+      <span style="font-size:10px;color:var(--text);flex:1;">EZ ${i+1}</span>
+      <span style="font-size:9px;color:#26c6da;white-space:nowrap;">${cl.einspeisungKW.toFixed(0)} kW</span>
+      <span style="font-size:9px;color:var(--muted);white-space:nowrap;">${kva} kVA</span>
+      <span style="font-size:9px;color:var(--muted);white-space:nowrap;">${cl.points.length} Pkt.</span>
+    </div>`;
+  }).join('')}
+</div>` : ''}
 
 <!-- MS-Netz -->
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">MS-Netz (Mittelspannung)</div>
@@ -41507,7 +42749,10 @@ function _trasseDist(a, b) {
   const ptA = L.latLng(a.lat, a.lng);
   const ptB = L.latLng(b.lat, b.lng);
   let d;
-  if (_trasseCtx) {
+  // Gleiche Gebäude-Assets: Direktabstand, kein Trassen-Routing
+  if (a.buildingId && b.buildingId && a.buildingId === b.buildingId) {
+    d = ptA.distanceTo(ptB);
+  } else if (_trasseCtx) {
     const route = routeAlongTrasseWithGraph(_trasseCtx, ptA, ptB);
     d = (route && route.length >= 2) ? polylineLength(route) : ptA.distanceTo(ptB);
   } else {
@@ -41524,6 +42769,43 @@ function _nearest(from, candidates) {
     if (d < bestDist) { bestDist = d; best = c; }
   }
   return best;
+}
+
+function _geoMidpoint(assets) {
+  const lat = assets.reduce((s, a) => s + a.lat, 0) / assets.length;
+  const lng = assets.reduce((s, a) => s + a.lng, 0) / assets.length;
+  return { lat, lng };
+}
+
+// Verbindet Verbraucher mit einem Anker.
+// KVS wird eingefügt wenn: (a) Anzahl > kvsMaxConn, oder (b) Kabeldistanz > kvsMaxDistM.
+function _kvsConnectZone(anchor, consumers, kvsMaxConn, kvsMaxDistM, autoKvsList) {
+  // Verbraucher nach Distanz zum Anker sortieren (nächste zuerst)
+  const sorted = [...consumers].sort((a, b) => _trasseDist(a, anchor) - _trasseDist(b, anchor));
+
+  // Zu-weit-Verbraucher: Distanz > kvsMaxDistM
+  const tooFar = sorted.filter(v => _trasseDist(v, anchor) > kvsMaxDistM);
+  const inRange = sorted.filter(v => _trasseDist(v, anchor) <= kvsMaxDistM);
+
+  // Überschuss durch Abgangslimit (aus den nah gelegenen)
+  const directMax = Math.max(0, kvsMaxConn - (tooFar.length > 0 ? 1 : 0)); // 1 Abgang für KVS reservieren
+  const direct   = inRange.slice(0, directMax);
+  const overflow = [...inRange.slice(directMax), ...tooFar];
+
+  direct.forEach(v => _addAutoEdge(anchor, v));
+
+  if (overflow.length === 0) return;
+
+  // KVS am Schwerpunkt der überschüssigen Verbraucher platzieren
+  const mid = _geoMidpoint(overflow);
+  const kvs = createAsset('KVS', mid.lat, mid.lng);
+  if (!kvs) { overflow.forEach(v => _addAutoEdge(anchor, v)); return; }
+  kvs.autoGenerated = true;
+  drawAssetMarker(kvs);
+  autoKvsList.push(kvs.id);
+
+  overflow.forEach(v => _addAutoEdge(kvs, v));
+  _addAutoEdge(anchor, kvs);
 }
 
 function _addAutoEdge(a, b, opts = {}) {
@@ -41562,11 +42844,31 @@ function showAutoNetzDialog() {
           <div style="font-size:11px;color:#aaa;margin-top:1px;">SA → T1 → T2 → … → Tn (Trennstelle am letzten Abschnitt)</div>
         </span>
       </label>
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
         <input type="checkbox" id="an-erzeugung">
         <span>
           <b>Erzeugungsnetz</b> separat verdrahten
-          <div style="font-size:11px;color:#aaa;margin-top:1px;">PV / KWK / Wind bekommen eigene NSHV-Abgänge</div>
+          <div style="font-size:11px;color:#aaa;margin-top:1px;">
+            PV / KWK / Wind → Einspeise-Trafos (Netzart = <i>Erzeugung</i>)<br>
+            Verbraucher → Verbrauchs-Trafos. Ohne Einspeise-Trafos: nächste NSHV.
+          </div>
+        </span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="an-kvs" checked>
+        <span>
+          <b>KVS automatisch einfügen</b>
+          <div style="font-size:11px;color:#aaa;margin-top:1px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            Max.
+            <input type="number" id="an-kvs-max" value="4" min="2" max="12"
+              style="width:38px;padding:1px 4px;background:#1a2035;color:#cfd8dc;border:1px solid #37475a;border-radius:3px;font-size:11px;"
+              onclick="event.stopPropagation()">
+            Abgänge · max.
+            <input type="number" id="an-kvs-dist" value="80" min="20" max="500" step="10"
+              style="width:48px;padding:1px 4px;background:#1a2035;color:#cfd8dc;border:1px solid #37475a;border-radius:3px;font-size:11px;"
+              onclick="event.stopPropagation()">
+            m Kabellänge
+          </div>
         </span>
       </label>
     </div>
@@ -41581,10 +42883,13 @@ function showAutoNetzDialog() {
   modal.querySelector('#an-cancel').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   modal.querySelector('#an-ok').onclick = () => {
-    const ring        = modal.querySelector('#an-ring').checked;
+    const ring           = modal.querySelector('#an-ring').checked;
     const erzeugungsnetz = modal.querySelector('#an-erzeugung').checked;
+    const autoKvs        = modal.querySelector('#an-kvs').checked;
+    const kvsMaxConn     = Math.max(2, parseInt(modal.querySelector('#an-kvs-max').value) || 4);
+    const kvsMaxDistM    = Math.max(20, parseFloat(modal.querySelector('#an-kvs-dist').value) || 80);
     close();
-    autoNetzAssets({ ring, erzeugungsnetz });
+    autoNetzAssets({ ring, erzeugungsnetz, autoKvs, kvsMaxConn, kvsMaxDistM });
   };
 }
 
@@ -41645,16 +42950,23 @@ function _sizeMsEdges(autoEdges, nap) {
 // ── Hauptfunktion ─────────────────────────────────────────────────────────────
 
 function autoNetzAssets(opts = {}) {
-  const { ring = false, erzeugungsnetz = false } = opts;
+  const { ring = false, erzeugungsnetz = false, autoKvs = true, kvsMaxConn = 4, kvsMaxDistM = 80 } = opts;
   const yr = window.globalYear ?? new Date().getFullYear();
 
   // Graph einmalig bauen, Distanz-Cache leeren
   _trasseCtx = buildTrasseGraph();
   _distCache.clear();
 
-  // 0. Auto-Kanten löschen
+  // 0. Auto-Kanten und auto-generierte KVS-Assets löschen
   const toRemove = (window.stromEdges || []).filter(e => e.autoGenerated);
   toRemove.forEach(e => removeStromEdge(e));
+  ASSETS.items.filter(a => a.autoGenerated && a.type === 'KVS').forEach(a => {
+    if (window.stromNodes) {
+      const idx = window.stromNodes.findIndex(n => n.id === a.id);
+      if (idx >= 0) window.stromNodes.splice(idx, 1);
+    }
+    deleteAsset(a.id);
+  });
 
   // Assets nach Typ einsammeln
   const active = ASSETS.items.filter(a =>
@@ -41663,13 +42975,26 @@ function autoNetzAssets(opts = {}) {
   );
 
   const byType = t => active.filter(a => a.type === t);
+  const isErzeugung = a => a.props?.netzart === 'erzeugung';
+
   const naps        = byType('NAP');
   const sas         = byType('Schaltanlage');
-  const trafos      = byType('Trafo');
-  const nshvs       = byType('NSHV');
+  const allTrafos   = byType('Trafo');
+  const allNshvs    = byType('NSHV');
   const uvs         = byType('UV');
   const verbraucher = active.filter(a => ['Verbraucher', 'Lade', 'WP', 'Batterie'].includes(a.type));
   const erzeuger    = active.filter(a => ['PV', 'Wind', 'KWK', 'Nsa'].includes(a.type));
+
+  // Trafos und NSHVs nach netzart aufteilen
+  const erzTrafos      = allTrafos.filter(isErzeugung);
+  const verbrTrafos    = allTrafos.filter(a => !isErzeugung(a));
+  const trafos         = allTrafos; // für MS-Ring (alle Trafos am MS-Netz)
+  const erzNshvs       = allNshvs.filter(isErzeugung);
+  const verbrNshvs     = allNshvs.filter(a => !isErzeugung(a));
+  const nshvs          = allNshvs; // für Fallback
+
+  // Wenn Erzeugungstrafos vorhanden: auto. Erzeugungsnetz-Modus aktiv
+  const hasErzTrafos = erzTrafos.length > 0;
 
   // Validierung
   const errors = [];
@@ -41710,28 +43035,31 @@ function autoNetzAssets(opts = {}) {
     trafos.forEach(t => _addAutoEdge(sa, t, { ms: true }));
   }
 
-  // ── 3. Trafo → NSHV (Voronoi per Trassendistanz) ─────────────────────
-  nshvs.forEach(nshv => {
-    const nearest = _nearest(nshv, trafos);
+  // ── 3. Trafo → NSHV (netzart-getrennt) ──────────────────────────────────
+  // Erzeugungsnetz-NSHVs gehen zum nächsten Erzeugungstrafo,
+  // Verbrauchsnetz-NSHVs gehen zum nächsten Verbrauchstrafo.
+  // Fallback: kein passender Trafo → nächster Trafo beliebiger Art.
+  allNshvs.forEach(nshv => {
+    const pool    = isErzeugung(nshv) ? (erzTrafos.length ? erzTrafos : allTrafos)
+                                       : (verbrTrafos.length ? verbrTrafos : allTrafos);
+    const nearest = _nearest(nshv, pool);
     if (nearest) _addAutoEdge(nearest, nshv);
   });
 
-  // ── 4. NSHV → UV (Greedy-MST je NSHV-Zone) ───────────────────────────
-  // UVs ihrer nächsten NSHV zuordnen
-  const uvZone = new Map(); // uv.id → nshv
+  // ── 4. NSHV → UV (Greedy-MST je NSHV-Zone, nur Verbrauchsnetz) ────────
+  const uvZone = new Map();
   uvs.forEach(uv => {
-    const nearest = _nearest(uv, nshvs);
+    // UVs gehören immer zum Verbrauchsnetz → nur Verbrauchs-NSHVs als Anker
+    const pool    = verbrNshvs.length ? verbrNshvs : allNshvs;
+    const nearest = _nearest(uv, pool);
     if (nearest) uvZone.set(uv.id, nearest);
   });
 
-  nshvs.forEach(nshv => {
+  (verbrNshvs.length ? verbrNshvs : allNshvs).forEach(nshv => {
     const zoneUvs = uvs.filter(uv => uvZone.get(uv.id)?.id === nshv.id);
     if (!zoneUvs.length) return;
-
-    // Greedy Prim: immer nächsten UV ans bereits verbundene Netz hängen
     const connected = new Map([[nshv.id, nshv]]);
     const remaining = [...zoneUvs];
-
     while (remaining.length) {
       let bestDist = Infinity, bestUv = null, bestAnchor = null;
       for (const uv of remaining) {
@@ -41747,26 +43075,45 @@ function autoNetzAssets(opts = {}) {
     }
   });
 
-  // ── 5. UV / NSHV → Verbraucher ────────────────────────────────────────
-  const nsAnker = [...uvs, ...nshvs]; // bevorzugt UV, sonst NSHV
+  // ── 5. UV / Verbrauchsnetz-NSHV → Verbraucher (mit optionalem KVS) ──────
+  // Verbraucher werden NUR an Verbrauchsnetz-Anker gehängt, niemals an Erzeugungsnetz-NSHVs.
+  const verbrAnker = [...uvs, ...(verbrNshvs.length ? verbrNshvs : allNshvs)];
+  const autoKvsList = []; // IDs der automatisch platzierten KVS
 
-  verbraucher.forEach(v => {
-    const anchor = nsAnker.length ? _nearest(v, nsAnker) : _nearest(v, nshvs);
-    if (anchor) _addAutoEdge(anchor, v);
-  });
+  if (autoKvs) {
+    // Zonen aufbauen: welcher Verbraucher gehört zu welchem Anker?
+    const anchorZones = new Map();
+    verbraucher.forEach(v => {
+      const anchor = _nearest(v, verbrAnker);
+      if (!anchor) return;
+      if (!anchorZones.has(anchor.id)) anchorZones.set(anchor.id, { anchor, consumers: [] });
+      anchorZones.get(anchor.id).consumers.push(v);
+    });
+    for (const { anchor, consumers } of anchorZones.values()) {
+      _kvsConnectZone(anchor, consumers, kvsMaxConn, kvsMaxDistM, autoKvsList);
+    }
+    // Verbraucher ohne Anker (kein UV/NSHV vorhanden)
+    verbraucher.filter(v => !Array.from(anchorZones.values()).some(z => z.consumers.includes(v)))
+      .forEach(v => { const a = _nearest(v, verbrAnker); if (a) _addAutoEdge(a, v); });
+  } else {
+    verbraucher.forEach(v => {
+      const anchor = _nearest(v, verbrAnker);
+      if (anchor) _addAutoEdge(anchor, v);
+    });
+  }
 
-  // ── 6. Erzeuger ─────────────────────────────────────────────────────────
-  if (erzeugungsnetz) {
-    // Separate Abgänge: Erzeuger → eigene NSHV (kein UV-Zwischenknoten)
-    // Falls mehrere NSHVs: Nearest-NSHV je Erzeuger
+  // ── 6. Erzeuger ──────────────────────────────────────────────────────────
+  if (hasErzTrafos || erzeugungsnetz) {
+    // Erzeuger → Erzeugungsnetz-NSHVs (falls vorhanden) sonst alle NSHVs
+    const pool = erzNshvs.length ? erzNshvs : allNshvs;
     erzeuger.forEach(e => {
-      const anchor = nshvs.length ? _nearest(e, nshvs) : null;
+      const anchor = _nearest(e, pool);
       if (anchor) _addAutoEdge(anchor, e);
     });
   } else {
-    // Standard: Erzeuger wie Verbraucher — nächste UV oder NSHV
+    // Standard (kein Erzeugungsnetz): Erzeuger wie Verbraucher — nächste UV oder NSHV
     erzeuger.forEach(e => {
-      const anchor = nsAnker.length ? _nearest(e, nsAnker) : _nearest(e, nshvs);
+      const anchor = _nearest(e, verbrAnker);
       if (anchor) _addAutoEdge(anchor, e);
     });
   }
@@ -41780,7 +43127,8 @@ function autoNetzAssets(opts = {}) {
   if (typeof window.elCalcAssets === 'function') window.elCalcAssets();
 
   const nEdges = (window.stromEdges || []).filter(e => e.autoGenerated).length;
-  showHint(`✓ Auto-Netz: ${nEdges} Kabel generiert.`);
+  const kvsMsg = autoKvsList.length ? `, ${autoKvsList.length} KVS eingefügt` : '';
+  showHint(`✓ Auto-Netz: ${nEdges} Kabel generiert${kvsMsg}.`);
   setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 4000);
 }
 

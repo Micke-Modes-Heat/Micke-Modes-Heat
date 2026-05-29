@@ -5,7 +5,15 @@ import { getComputedStats } from './02b-gebaeude.js';
 import { updateLpMeritOrder, updateLpNetzSummary } from './04a-ui-panels.js';
 import { updateLpStromSummary } from './05b-stromnetz.js';
 import { DA_LABELS } from './07a-analysis-charts.js';
-import { ASSETS, getAssetStatus } from './13a-assets-core.js';
+import { ASSETS, getAssetStatus, ASSET_PROPS_SCHEMA } from './13a-assets-core.js';
+
+const ASSET_LABELS = {
+  NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
+  NSHV: 'NSHV', UV: 'Unterverteilung', KVS: 'KVS', Verbraucher: 'Verbraucher',
+  WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
+  Lade: 'Ladeinfrastruktur', Nsa: 'Notstromaggregat', KWK: 'KWK-Anlage',
+  Wind: 'Windkraftanlage', Reserve: 'Reserve',
+};
 
 export function exportDispatchCSV() {
   const keys = window._dispatchActiveKeys || [];
@@ -937,6 +945,441 @@ export async function exportElektroXLSX() {
 
   const fname = 'Elektroplanung_' + new Date().toISOString().slice(0, 10) + '.xlsx';
   XLSXLib.writeFile(wb, fname);
+}
+
+// ── Export: Vollständiger XLSX (Gebäude + Assets + Kabel + Maßnahmen + Beziehungen) ──
+export async function exportVollstaendigXLSX() {
+  if (typeof window.XLSX === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('SheetJS konnte nicht geladen werden.'));
+      document.head.appendChild(s);
+    }).catch(e => { alert(e.message); throw e; });
+  }
+  const XLSXLib = window.XLSX;
+  const yr = globalYear ?? new Date().getFullYear();
+  const allGebaeude = window.gebaeude || [];
+  const allAssets = ASSETS.items || [];
+  const allEdges = window.stromEdges || [];
+
+  const gebMap = new Map(allGebaeude.map(g => [g.id, g]));
+
+  // Sheet 1: Gebäude
+  const gebRows = [['ID', 'Name', 'Nutzung', 'Fläche (m²)', 'Baujahr', 'Abrissjahr', 'Zustand',
+    'Wärmebedarf (MWh/a)', 'Heizlast (kW)', 'Spez. Wärme (kWh/m²a)',
+    'Strom (MWh/a)', 'PV aktiv', 'PV Dachanteil (%)']];
+  for (const g of allGebaeude) {
+    gebRows.push([
+      g.id, g.name || '', g.nutzung || '',
+      g.flaeche != null ? +parseFloat(g.flaeche).toFixed(0) : '',
+      g.baujahr || '', g.abrissjahr || '', g.zustand || '',
+      g.waerme != null ? +parseFloat(g.waerme).toFixed(2) : '',
+      g.heizlast != null ? +parseFloat(g.heizlast).toFixed(1) : '',
+      g.spez != null ? +parseFloat(g.spez).toFixed(0) : '',
+      g.strom != null && g.strom !== '' ? +parseFloat(g.strom).toFixed(2) : '',
+      g.pvAktiv ? 'ja' : 'nein',
+      g.pvDachanteil || 30,
+    ]);
+  }
+
+  // Sheet 2: Assets
+  const assetsRows = [['ID', 'Name', 'Typ', 'Gebäude', 'Baujahr', 'Abrissjahr',
+    'Status ' + yr, 'Leistung kW/kVA', 'Maßnahmen (Anzahl)', 'Investition (€)']];
+  const assetMap = new Map(allAssets.map(a => [a.id, a]));
+  for (const a of allAssets) {
+    const p = a.props || {};
+    const status = getAssetStatus(a, yr);
+    const statusTxt = status === 'active' ? 'Aktiv' : status === 'planned' ? 'Geplant' : 'Abgerissen';
+    let leistung = '';
+    if (a.type === 'Trafo') leistung = (p.leistungKVA || 630) + ' kVA';
+    else if (['Verbraucher', 'WP', 'Nsa', 'KWK', 'Wind'].includes(a.type)) leistung = (p.leistungKW || p.leistungElKW || 0) + ' kW';
+    else if (a.type === 'PV') leistung = (p.leistungKWp || 0) + ' kWp';
+    else if (a.type === 'Lade') leistung = ((p.anzahlPunkte || 4) * (p.leistungProPunktKW || 22)) + ' kW';
+    else if (['NSHV', 'UV', 'KVS', 'Schaltanlage'].includes(a.type)) leistung = (p.nennstromA || 400) + ' A';
+    const totalKosten = (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
+    const gebName = a.buildingId != null ? (gebMap.get(a.buildingId)?.name || a.buildingId) : '';
+    assetsRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type, gebName,
+      a.baujahr || '', a.abrissjahr || '', statusTxt, leistung,
+      (a.massnahmen || []).length, totalKosten || '']);
+  }
+
+  // Sheet 3: Kabel
+  const kabelRows = [['Von-ID', 'Nach-ID', 'Von', 'Nach', 'Typ', 'Querschnitt mm²',
+    'Länge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
+  for (const e of allEdges) {
+    const uName = assetMap.get(e.u)?.name || e.u;
+    const vName = assetMap.get(e.v)?.name || e.v;
+    kabelRows.push([
+      e.u, e.v, uName, vName, e.cableType || 'NAYY',
+      e.crossSection || '', Math.round(e.lengthM || 0),
+      e.nParallel || 1, e.fuseA || '',
+      e.peakCurrentA != null ? +e.peakCurrentA.toFixed(1) : '',
+      e.auslastungPct != null ? +e.auslastungPct.toFixed(1) : '',
+      e.deltaUPct != null ? +e.deltaUPct.toFixed(2) : '',
+      e.peakFlowKw != null ? +e.peakFlowKw.toFixed(1) : '',
+    ]);
+  }
+
+  // Sheet 4: Maßnahmen
+  const massnRows = [['Asset-ID', 'Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten €']];
+  for (const a of allAssets) {
+    for (const m of (a.massnahmen || [])) {
+      massnRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type,
+        m.titel || '', m.beschreibung || '', m.jahr || '', m.status || 'geplant', parseFloat(m.kosten) || 0]);
+    }
+  }
+
+  // Sheet 5: Beziehungen (Übersicht, nur Referenz)
+  const bezRows = [['Asset-ID', 'Asset-Name', 'Typ', 'Gebäude-ID', 'Gebäude-Name', 'Verbunden mit (IDs)']];
+  for (const a of allAssets) {
+    const connectedIds = allEdges
+      .filter(e => e.u === a.id || e.v === a.id)
+      .map(e => e.u === a.id ? e.v : e.u)
+      .join(', ');
+    const gebName = a.buildingId != null ? (gebMap.get(a.buildingId)?.name || '') : '';
+    bezRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type,
+      a.buildingId || '', gebName, connectedIds]);
+  }
+
+  // ── Übersichtsblatt: Kennzahlen ──────────────────────────────────────────
+  const totalFlaeche  = allGebaeude.reduce((s, g) => s + (parseFloat(g.flaeche)  || 0), 0);
+  const totalWaerme   = allGebaeude.reduce((s, g) => s + (parseFloat(g.waerme)   || 0), 0);
+  const totalHeizlast = allGebaeude.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0);
+  const totalStrom    = allGebaeude.reduce((s, g) => s + (parseFloat(g.strom)    || 0), 0);
+  const totalKabelLaenge = allEdges.reduce((s, e) => s + (e.lengthM || 0), 0);
+
+  // Assets: je Typ Anzahl + Investition
+  const typStats = {};
+  for (const a of allAssets) {
+    if (!typStats[a.type]) typStats[a.type] = { count: 0, invest: 0 };
+    typStats[a.type].count++;
+    typStats[a.type].invest += (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
+  }
+
+  // Maßnahmen: je Status Anzahl + Kosten
+  const massnStats = { geplant: { n: 0, k: 0 }, beauftragt: { n: 0, k: 0 }, umgesetzt: { n: 0, k: 0 } };
+  for (const a of allAssets) {
+    for (const m of (a.massnahmen || [])) {
+      const s = massnStats[m.status] || massnStats.geplant;
+      s.n++;
+      s.k += parseFloat(m.kosten) || 0;
+    }
+  }
+  const massnGesamt = { n: 0, k: 0 };
+  for (const s of Object.values(massnStats)) { massnGesamt.n += s.n; massnGesamt.k += s.k; }
+
+  const fmt1 = v => +v.toFixed(1);
+  const fmt0 = v => Math.round(v);
+
+  const ueRows = [
+    ['Energieplanung – Übersicht'],
+    [],
+    ['Exportiert am', new Date().toLocaleDateString('de-DE')],
+    ['Planungsjahr',  yr],
+    [],
+    ['GEBÄUDE', '', ''],
+    ['Kenngröße', 'Wert', 'Einheit'],
+    ['Anzahl Gebäude',           allGebaeude.length,       ''],
+    ['Gesamtfläche',             fmt0(totalFlaeche),        'm²'],
+    ['Wärmebedarf gesamt',       fmt1(totalWaerme),         'MWh/a'],
+    ['Heizlast gesamt',          fmt1(totalHeizlast),       'kW'],
+    ['Strombedarf gesamt',       fmt1(totalStrom),          'MWh/a'],
+    [],
+    ['ELEKTRISCHE ANLAGEN', '', ''],
+    ['Typ', 'Anzahl', 'Investition (€)'],
+    ...Object.entries(typStats).map(([t, s]) => [ASSET_LABELS[t] || t, s.count, fmt0(s.invest)]),
+    ['Gesamt', allAssets.length, fmt0(Object.values(typStats).reduce((s, x) => s + x.invest, 0))],
+    [],
+    ['KABEL / LEITUNGEN', '', ''],
+    ['Kenngröße', 'Wert', 'Einheit'],
+    ['Anzahl Kabel',   allEdges.length,         ''],
+    ['Gesamtlänge',    fmt0(totalKabelLaenge),   'm'],
+    [],
+    ['MASSNAHMEN', '', ''],
+    ['Status', 'Anzahl', 'Kosten (€)'],
+    ['Geplant',     massnStats.geplant.n,     fmt0(massnStats.geplant.k)],
+    ['Beauftragt',  massnStats.beauftragt.n,  fmt0(massnStats.beauftragt.k)],
+    ['Umgesetzt',   massnStats.umgesetzt.n,   fmt0(massnStats.umgesetzt.k)],
+    ['Gesamt',      massnGesamt.n,            fmt0(massnGesamt.k)],
+  ];
+
+  const wb = XLSXLib.utils.book_new();
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(ueRows),     'Übersicht');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(gebRows),    'Gebäude');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(assetsRows), 'Assets');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows),  'Kabel');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows),  'Maßnahmen');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(bezRows),    'Beziehungen');
+
+  // ── Typ-spezifische Reiter (nur wenn Assets dieses Typs vorhanden) ──────────
+  for (const [type, schemaDefs] of Object.entries(ASSET_PROPS_SCHEMA)) {
+    const typeAssets = allAssets.filter(a => a.type === type);
+    if (!typeAssets.length || !schemaDefs.length) continue;
+    const propKeys   = schemaDefs.map(d => d.key);
+    const propLabels = schemaDefs.map(d => d.label);
+    const header = ['ID', 'Name', 'Gebäude', 'Baujahr', 'Abrissjahr', 'Status ' + yr, ...propLabels];
+    const rows = [header];
+    for (const a of typeAssets) {
+      const p = a.props || {};
+      const status = getAssetStatus(a, yr);
+      const statusTxt = status === 'active' ? 'Aktiv' : status === 'planned' ? 'Geplant' : 'Abgerissen';
+      const gebName = a.buildingId != null ? (gebMap.get(a.buildingId)?.name || a.buildingId) : '';
+      rows.push([
+        a.id, a.name || a.id, gebName,
+        a.baujahr || '', a.abrissjahr || '', statusTxt,
+        ...propKeys.map(k => p[k] != null ? p[k] : ''),
+      ]);
+    }
+    XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(rows),
+      (ASSET_LABELS[type] || type).slice(0, 31));
+  }
+
+  const fname = 'Vollexport_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  XLSXLib.writeFile(wb, fname);
+}
+
+// ── Import: Vollständiger XLSX ──────────────────────────────────────────────
+export function importVollstaendigXLSX() {
+  let inp = document.getElementById('_xlsxImportInput');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = '_xlsxImportInput';
+    inp.accept = '.xlsx';
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', _handleXlsxImport);
+  }
+  inp.value = '';
+  inp.click();
+}
+
+async function _handleXlsxImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (typeof window.XLSX === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('SheetJS konnte nicht geladen werden.'));
+      document.head.appendChild(s);
+    }).catch(e => { alert(e.message); return; });
+  }
+  const XLSXLib = window.XLSX;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSXLib.read(e.target.result, { type: 'array' });
+      let updGeb = 0, updAssets = 0, updKabel = 0, updMassn = 0;
+
+      // ── Sheet "Gebäude": Namen + Felder überschreiben ──────────────
+      const gebSheet = wb.Sheets['Gebäude'];
+      if (gebSheet) {
+        const rows = XLSXLib.utils.sheet_to_json(gebSheet, { header: 1 });
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const id = Number(row[0]);
+          const g = (window.gebaeude || []).find(x => x.id === id);
+          if (!g) continue;
+          let changed = false;
+          // Name
+          const newName = row[1] != null ? String(row[1]).trim() : null;
+          if (newName && newName !== g.name) {
+            if (typeof window.renameGebaeude === 'function') window.renameGebaeude(id, newName);
+            else g.name = newName;
+            changed = true;
+          }
+          // Nutzung
+          if (row[2] != null && String(row[2]).trim() && String(row[2]).trim() !== g.nutzung) {
+            g.nutzung = String(row[2]).trim(); changed = true;
+          }
+          // Fläche
+          if (row[3] != null && !isNaN(parseFloat(row[3])) && parseFloat(row[3]) > 0) {
+            g.flaeche = parseFloat(row[3]); changed = true;
+          }
+          // Baujahr
+          if (row[4] != null && !isNaN(parseInt(row[4])) && parseInt(row[4]) > 0) {
+            g.baujahr = parseInt(row[4]); changed = true;
+          }
+          // Abrissjahr
+          if (row[5] != null && String(row[5]).trim() !== '' && !isNaN(parseInt(row[5])) && parseInt(row[5]) > 0) {
+            g.abrissjahr = parseInt(row[5]); changed = true;
+          }
+          // Zustand
+          if (row[6] != null && String(row[6]).trim()) {
+            g.zustand = String(row[6]).trim(); changed = true;
+          }
+          // Wärmebedarf
+          if (row[7] != null && !isNaN(parseFloat(row[7]))) {
+            g.waerme = parseFloat(row[7]); g.waermeManual = true; changed = true;
+          }
+          // Heizlast
+          if (row[8] != null && !isNaN(parseFloat(row[8]))) {
+            g.heizlast = parseFloat(row[8]); g.heizlastManual = true; changed = true;
+          }
+          // Strom
+          if (row[10] != null && String(row[10]).trim() !== '' && !isNaN(parseFloat(row[10]))) {
+            g.strom = String(parseFloat(row[10])); changed = true;
+          }
+          // PV aktiv
+          if (row[11] != null) {
+            const v = String(row[11]).toLowerCase().trim();
+            if (v === 'ja' || v === 'true' || v === '1') { g.pvAktiv = true; changed = true; }
+            else if (v === 'nein' || v === 'false' || v === '0') { g.pvAktiv = false; changed = true; }
+          }
+          // PV Dachanteil
+          if (row[12] != null && !isNaN(parseFloat(row[12]))) {
+            g.pvDachanteil = parseFloat(row[12]); changed = true;
+          }
+          if (changed) updGeb++;
+        }
+        if (typeof window.renderList === 'function') window.renderList();
+      }
+
+      // ── Sheet "Assets": Name, Baujahr, Abrissjahr überschreiben ────
+      const assetsSheet = wb.Sheets['Assets'];
+      if (assetsSheet) {
+        const rows = XLSXLib.utils.sheet_to_json(assetsSheet, { header: 1 });
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const id = String(row[0]);
+          const a = (ASSETS.items || []).find(x => x.id === id);
+          if (!a) continue;
+          let changed = false;
+          if (row[1] != null && String(row[1]).trim() && String(row[1]).trim() !== a.name) {
+            a.name = String(row[1]).trim(); changed = true;
+          }
+          if (row[4] != null && !isNaN(parseInt(row[4])) && parseInt(row[4]) > 0) {
+            a.baujahr = parseInt(row[4]); changed = true;
+          }
+          if (row[5] != null && String(row[5]).trim() !== '' && !isNaN(parseInt(row[5])) && parseInt(row[5]) > 0) {
+            a.abrissjahr = parseInt(row[5]); changed = true;
+          }
+          if (changed) updAssets++;
+        }
+        if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+      }
+
+      // ── Sheet "Kabel": Kabeltyp, Querschnitt, Parallel, Sicherung ──
+      const kabelSheet = wb.Sheets['Kabel'];
+      if (kabelSheet) {
+        const rows = XLSXLib.utils.sheet_to_json(kabelSheet, { header: 1 });
+        const edgeArr = window.stromEdges || [];
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const uId = String(row[0]);
+          const vId = String(row[1]);
+          const edge = edgeArr.find(e => String(e.u) === uId && String(e.v) === vId)
+                    || edgeArr.find(e => String(e.u) === vId && String(e.v) === uId);
+          if (!edge) continue;
+          let changed = false;
+          if (row[4] != null && String(row[4]).trim()) { edge.cableType = String(row[4]).trim(); changed = true; }
+          if (row[5] != null && !isNaN(parseFloat(row[5]))) { edge.crossSection = parseFloat(row[5]); edge.autoSized = false; changed = true; }
+          if (row[7] != null && !isNaN(parseInt(row[7]))) { edge.nParallel = Math.max(1, parseInt(row[7])); changed = true; }
+          if (row[8] != null && !isNaN(parseFloat(row[8]))) { edge.fuseA = parseFloat(row[8]); changed = true; }
+          if (changed) updKabel++;
+        }
+      }
+
+      // ── Sheet "Maßnahmen": Status, Kosten überschreiben ────────────
+      const massnSheet = wb.Sheets['Maßnahmen'];
+      if (massnSheet) {
+        const rows = XLSXLib.utils.sheet_to_json(massnSheet, { header: 1 });
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const assetId = String(row[0]);
+          const titel = String(row[3] || '').trim();
+          const jahr = row[5] != null ? String(row[5]).trim() : '';
+          const a = (ASSETS.items || []).find(x => x.id === assetId);
+          if (!a) continue;
+          const m = (a.massnahmen || []).find(x =>
+            (x.titel || '').trim() === titel && String(x.jahr || '').trim() === jahr);
+          if (!m) continue;
+          let changed = false;
+          if (row[6] != null && String(row[6]).trim()) { m.status = String(row[6]).trim(); changed = true; }
+          if (row[7] != null && !isNaN(parseFloat(row[7]))) { m.kosten = parseFloat(row[7]); changed = true; }
+          if (changed) updMassn++;
+        }
+      }
+
+      // ── Typ-spezifische Reiter: Props überschreiben ─────────────────
+      const updAssetIds = new Set();
+      for (const [type, schemaDefs] of Object.entries(ASSET_PROPS_SCHEMA)) {
+        if (!schemaDefs.length) continue;
+        const sheetName = (ASSET_LABELS[type] || type).slice(0, 31);
+        const typeSheet = wb.Sheets[sheetName];
+        if (!typeSheet) continue;
+        const rows = XLSXLib.utils.sheet_to_json(typeSheet, { header: 1 });
+        if (rows.length < 2) continue;
+        // Spalten 6+ → prop keys aus Schema (per Label-Abgleich mit Header)
+        const header = rows[0] || [];
+        const labelToKey = Object.fromEntries(schemaDefs.map(d => [d.label, d.key]));
+        const colToProp = {};
+        for (let c = 6; c < header.length; c++) {
+          const k = labelToKey[header[c]];
+          if (k) colToProp[c] = k;
+        }
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row[0] == null) continue;
+          const id = String(row[0]);
+          const a = (ASSETS.items || []).find(x => x.id === id && x.type === type);
+          if (!a) continue;
+          if (!a.props) a.props = {};
+          let changed = false;
+          // Name
+          if (row[1] != null && String(row[1]).trim() && String(row[1]).trim() !== a.name) {
+            a.name = String(row[1]).trim(); changed = true;
+          }
+          // Baujahr
+          if (row[3] != null && !isNaN(parseInt(row[3])) && parseInt(row[3]) > 0) {
+            a.baujahr = parseInt(row[3]); changed = true;
+          }
+          // Abrissjahr
+          if (row[4] != null && String(row[4]).trim() !== '' && !isNaN(parseInt(row[4])) && parseInt(row[4]) > 0) {
+            a.abrissjahr = parseInt(row[4]); changed = true;
+          }
+          // Typ-spezifische Props
+          for (const [col, propKey] of Object.entries(colToProp)) {
+            const val = row[parseInt(col)];
+            if (val != null && val !== '') {
+              const num = parseFloat(val);
+              a.props[propKey] = isNaN(num) ? String(val) : num;
+              changed = true;
+            }
+          }
+          if (changed) updAssetIds.add(id);
+        }
+      }
+      updAssets += updAssetIds.size;
+      if (updAssetIds.size && typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+
+      const lines = [];
+      if (updGeb) lines.push(`${updGeb} Gebäude`);
+      if (updAssets) lines.push(`${updAssets} Assets`);
+      if (updKabel) lines.push(`${updKabel} Kabel`);
+      if (updMassn) lines.push(`${updMassn} Maßnahmen`);
+      const msg = lines.length
+        ? 'Import abgeschlossen: ' + lines.join(', ') + ' aktualisiert.'
+        : 'Import abgeschlossen – keine Änderungen erkannt.';
+      alert(msg);
+
+      if (typeof window.glBerechnen === 'function') window.glBerechnen();
+
+    } catch (err) {
+      alert('Fehler beim Import: ' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  event.target.value = '';
 }
 
 // ── Hook into existing recalc to update left panel ───────────────
