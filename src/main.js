@@ -15,6 +15,7 @@ import * as gebaeudeIo from './03c-gebaeude-io.js';
 import * as uiPanels from './04a-ui-panels.js';
 import * as emissionen3d from './04b-emissionen-3d.js';
 import * as exportMod from './05a-export.js';
+import * as bericht from './05c-bericht.js';
 import * as stromnetz from './05b-stromnetz.js';
 import * as sankey from './05c-sankey.js';
 import * as gbiLastgang from './06a-gbi-lastgang.js';
@@ -44,6 +45,9 @@ import * as slpEditor from './13i-slp-editor.js';
 import * as autofillWizard from './13j-autofill-wizard.js';
 import * as elslpRegistry from './13k-elslp-registry.js';
 import * as autonetz from './13l-autonetz.js';
+import * as kompaktstation from './13m-kompaktstation.js';
+import * as elektroPanel from './13n-elektro-panel.js';
+import * as napAnalyse from './13o-nap-analyse.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -57,7 +61,8 @@ const modules = [
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
-  slpEditor, autofillWizard, elslpRegistry, autonetz,
+  slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel,
+  napAnalyse,
 ];
 
 for (const mod of modules) {

@@ -6,6 +6,7 @@
 <title>Liegenschaft – Energiekarte</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <link rel="stylesheet" href="src/styles/app.css"/>
 </head>
@@ -22,6 +23,9 @@
   </div>
   <div class="header-spacer" style="flex:1;"></div>
   <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Kartenebenen ein-/ausblenden">⊞ Ebenen</button>
+  <button class="tool-btn" id="btn-felddaten-filter" data-click="toggleFelddatenFilter()" style="border-color:#f59e0b;color:#f59e0b;font-size:11px;padding:0 10px;gap:5px;" title="Nur Objekte mit Felddaten anzeigen">&#128241; Felddaten</button>
+  <button class="tool-btn" id="btn-galerie" data-click="openFotoGalerie()" style="border-color:#8b5cf6;color:#8b5cf6;font-size:11px;padding:0 10px;gap:5px;" title="Fotogalerie aus Feldbegehung">&#128247; Galerie</button>
+  <button class="tool-btn" id="btn-bericht" data-click="exportBegehungsbericht()" style="border-color:#0891b2;color:#0891b2;font-size:11px;padding:0 10px;gap:5px;" title="Begehungsbericht als druckbares HTML erzeugen">&#128203; Bericht</button>
   <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;" title="Farbschema wechseln">🎨</button>
   <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;">🛰</button>
   <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
@@ -1269,12 +1273,19 @@
       </div>
       <div class="export-bar">
         <input type="file" id="import-file" style="display:none" accept=".json" data-change="importJSON(event)">
-        <button class="btn-export primary" data-click="document.getElementById('import-file').click()">📂 Öffnen</button>
-        <button class="btn-export primary" data-click="exportJSON()">💾 Speichern</button>
-        <button class="btn-export" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;" title="Gebäudedaten an Liegenschaftsrechner übernehmen">📤 An Liegenschaftsrechner senden</button>
-        <button class="btn-export" data-click="exportVollstaendigXLSX()" title="Vollständigen Excel-Export erzeugen (Gebäude, Assets, Kabel, Maßnahmen, Beziehungen)">📊 Excel</button>
-        <button class="btn-export" data-click="importVollstaendigXLSX()" title="Excel-Datei importieren und Werte überschreiben">📥 Excel Import</button>
-        <button class="btn-export" data-click="window.print()">🖨 PDF</button>
+        <div class="export-row">
+          <button class="btn-export primary" data-click="document.getElementById('import-file').click()">📂 Öffnen</button>
+          <button class="btn-export primary" data-click="exportJSON()">💾 Speichern</button>
+        </div>
+        <div class="export-row">
+          <button class="btn-export" data-click="exportVollstaendigXLSX()" title="Excel-Export erzeugen">📊 Excel</button>
+          <button class="btn-export" data-click="importVollstaendigXLSX()" title="Excel-Datei importieren">📥 Excel</button>
+        </div>
+        <div class="export-row">
+          <button class="btn-export" data-click="exportFeldapp()" title="Für Feldapp exportieren" style="border-color:#1565C0;color:#1565C0;">📱 Feldapp</button>
+          <button class="btn-export" data-click="importFelddaten()" title="Felddaten importieren" style="border-color:#16a34a;color:#16a34a;">📥 Felddaten</button>
+        </div>
+        <button class="btn-export" id="btn-send-to-lr" data-click="sendToLiegenschaftsrechner()" style="display:none;" title="An Liegenschaftsrechner">📤 LR</button>
       </div>
     </div>
 
@@ -3258,5 +3269,31 @@ Turnhalle;Öffentlich;1982;A;850</div>
 
 
 <script type="module" src="/src/main.js"></script>
+
+<!-- ══ FOTO-GALERIE PANEL ══════════════════════════════════════════════════ -->
+<div id="galerie-panel" style="display:none;position:fixed;inset:0;z-index:8000;background:var(--bg);flex-direction:column;">
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
+    <span style="font-size:15px;font-weight:700;color:var(--text);">📷 Fotogalerie — Feldbegehung</span>
+    <div style="display:flex;gap:6px;margin-left:auto;align-items:center;">
+      <select id="galerie-filter" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);">
+        <option value="all">Alle Objekte</option>
+        <option value="gebaeude">Nur Gebäude</option>
+        <option value="assets">Nur Assets</option>
+      </select>
+      <input id="galerie-search" type="search" placeholder="Suchen…" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);width:140px;">
+      <button onclick="closeFotoGalerie()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text);font-size:12px;">✕ Schließen</button>
+    </div>
+  </div>
+  <div id="galerie-summary" style="padding:6px 16px;font-size:11px;color:var(--muted);background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;"></div>
+  <div id="galerie-grid" style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;align-content:start;"></div>
+</div>
+
+<!-- Lightbox für Galerie -->
+<div id="galerie-lightbox" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.92);align-items:center;justify-content:center;flex-direction:column;">
+  <button onclick="closeGalerieLightbox()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.15);border:none;color:white;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;">✕</button>
+  <img id="galerie-lightbox-img" src="" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:6px;">
+  <div id="galerie-lightbox-meta" style="color:white;margin-top:12px;text-align:center;font-size:13px;max-width:600px;padding:0 20px;"></div>
+</div>
+
 </body>
 </html>

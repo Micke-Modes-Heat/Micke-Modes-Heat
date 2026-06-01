@@ -91,6 +91,31 @@ function _html() { return `
     </div>
   </div>
 
+  <!-- ── Freiflächen-PV ─────────────────────────────────────────────────── -->
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+       data-click="toggleSection('el-sec-ff-pv')">
+    <span>☀ Freiflächen-PV</span><span id="el-sec-ff-pv-arrow">▶</span>
+  </div>
+  <div id="el-sec-ff-pv" style="display:none;">
+    ${_sub('Fläche zeichnen')}
+    <div class="lp-tool-grid" style="margin-bottom:6px;">
+      <button class="lp-tool-btn" id="el-btn-ff-draw" data-click="startDrawFF()"
+        style="border-color:#ffd54f;color:#ffd54f;">✏ Fläche zeichnen</button>
+      <button class="lp-tool-btn" id="el-btn-ff-cancel" data-click="cancelDrawFF()"
+        style="display:none;border-color:#ef9a9a;color:#ef9a9a;">✕ Abbrechen</button>
+    </div>
+    <div id="el-ff-list" style="display:flex;flex-direction:column;gap:5px;"></div>
+    <div id="el-ff-total" style="display:none;margin-top:6px;padding:6px 8px;
+      background:var(--surface);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:10px;font-family:'DM Mono',monospace;">
+        <span style="color:var(--muted);">Gesamt</span>
+        <span id="el-ff-total-kwp" style="color:#ffd54f;font-weight:600;text-align:right;">—</span>
+        <span style="color:var(--muted);">Ertrag</span>
+        <span id="el-ff-total-mwh" style="color:#a5d6a7;font-weight:600;text-align:right;">—</span>
+      </div>
+    </div>
+  </div>
+
   <!-- ── 2 · Berechnen ────────────────────────────────────────────────────── -->
   <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
        data-click="toggleSection('el-sec-calc')">
@@ -280,4 +305,6 @@ export function buildElektroPanel() {
   // Palette-Guard zurücksetzen, damit buildPalette() das neue #asset-palette befüllt
   const palette = document.getElementById('asset-palette');
   if (palette) delete palette.dataset.built;
+  // Freiflächen-Liste sofort befüllen, falls bereits Flächen existieren
+  window.renderFFPanel?.();
 }

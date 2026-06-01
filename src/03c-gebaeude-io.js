@@ -199,6 +199,7 @@ export function _renderCompactRow(g, stats, isExpanded) {
       <span style="font-size:9px;color:var(--muted);flex-shrink:0;">${isExpanded?'▲':'▼'}</span>
     </div>
     <div style="display:flex;align-items:center;gap:4px;padding-left:28px;margin-top:1px;">
+      <button data-click="event.stopPropagation();toggleVormerkenGeb(${g.id})" title="${g.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;font-size:${g.feldVorgemerkt ? '13' : '11'}px;color:${g.feldVorgemerkt ? '#f59e0b' : '#666'};padding:0 2px;margin-right:2px;line-height:1;flex-shrink:0;">★</button>
       <span style="font-size:9px;color:var(--muted);min-width:28px;flex-shrink:0;">${nutzungLabel}</span>
       <span class="geb-compact-val geb-cv-waerme-${g.id}" style="color:var(--accent)">${waermeStr}</span>
       <span class="geb-compact-unit">MWh</span>
@@ -206,6 +207,7 @@ export function _renderCompactRow(g, stats, isExpanded) {
       <span class="geb-compact-unit">kW</span>
       <div class="geb-badge ${badgeClass}" style="font-size:8px;padding:1px 3px;margin-left:auto;">${badgeText}</div>
       ${statusColor!=='transparent'?`<span style="width:5px;height:5px;border-radius:50%;background:${statusColor};flex-shrink:0;"></span>`:''}
+      ${g.feldStatus==='erledigt'?`<span style="font-size:9px;flex-shrink:0;" title="Feldbefund: Erledigt">✅</span>`:g.feldStatus==='besucht'?`<span style="font-size:9px;flex-shrink:0;" title="Feldbefund: Besucht">👁</span>`:''}
     </div>
   </div>`;
 }
@@ -913,6 +915,11 @@ export function _renderExpandedPanel(g, stats) {
 
   return `<div class="geb-expanded">
     ${infoLabel}
+    <div style="margin-bottom:5px;">
+      <input class="inp-field" type="text" placeholder="Bezeichnung…" value="${escHtml(g.name || '')}"
+        style="width:100%;box-sizing:border-box;"
+        data-input="renameGebaeude(${g.id},this.value)"/>
+    </div>
     <div style="margin-bottom:5px;display:flex;gap:4px;">
       <select class="nutzung-select" style="flex:1;" data-change="setNutzung(${g.id},this.value)" title="Nutzungstyp">
         <option value="">Nutzungstyp…</option>
@@ -1018,6 +1025,28 @@ export function _renderExpandedPanel(g, stats) {
         ${planItems.join('')}
       </div>
     </div>
+  </div>
+  ${_renderFelddatenBlock(g)}`;
+}
+
+function _renderFelddatenBlock(g) {
+  if (!g.feldNotizen && !g.feldStatus && !g.feldFotos?.length) return '';
+
+  const statusLabel = { offen:'📋 Offen', besucht:'👁 Besucht', erledigt:'✅ Erledigt' }[g.feldStatus] || '';
+  const notizHtml = g.feldNotizen
+    ? `<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
+    : '';
+  const fotoHtml = (g.feldFotos || []).map(foto =>
+    `<img src="${foto.dataUrl}" title="${escHtml(foto.name)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="window.open(this.src)">`
+  ).join('');
+
+  return `
+  <div style="margin:6px 0 2px;padding:6px 8px;background:var(--surface2,#1e2433);border-radius:8px;border:1px solid #2a3352;">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:10px;font-weight:700;color:var(--muted);">
+      📱 FELDDATEN ${statusLabel ? '· ' + statusLabel : ''}
+    </div>
+    ${notizHtml}
+    ${fotoHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${fotoHtml}</div>` : ''}
   </div>`;
 }
 
@@ -1346,8 +1375,8 @@ export function _loadProject(project) {
       }
 
     if (project.lwWp && project.lwWp.lat != null && project.lwWp.lng != null) {
-        lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw || 12, lwaDb: project.lwWp.lwaDb || 80, visible: project.lwWp.visible !== false };
-        lwWpVisible = lwWp.visible;
+        window.lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw || 12, lwaDb: project.lwWp.lwaDb || 80, visible: project.lwWp.visible !== false };
+        window.lwWpVisible = window.lwWp.visible !== false;
         document.getElementById('lwwp-visible').checked = lwWpVisible;
         document.getElementById('lwwp-leistung').value = lwWp.leistungKw;
         document.getElementById('lwwp-lwa').value = lwWp.lwaDb;
@@ -1355,7 +1384,7 @@ export function _loadProject(project) {
         if (project.lwWp.waerme) document.getElementById('lwwp-waerme').value = project.lwWp.waerme;
         if (project.lwWp.minCop) document.getElementById('lwwp-min-cop').value = project.lwWp.minCop;
         document.getElementById('lwwp-data-section').style.display = 'block';
-        redrawLwWp(); updateLwWpDisplay(); updateLwWpVisibility();
+        window.lwWpVisible = true; window.lwWpVisible = true; window.lwWpVisible = true; if (!window.lwWpLayerGroup) window.lwWpLayerGroup = L.layerGroup().addTo(map); redrawLwWp(); updateLwWpDisplay(); updateLwWpVisibility();
       }
       if (project.geoThermie && project.geoThermie.lat != null) {
         if (!geoLayerGroup) geoLayerGroup = L.layerGroup().addTo(map);
@@ -1693,7 +1722,7 @@ export function showHint(msg){const h=document.getElementById('hint');h.textCont
 export function hideHint(){document.getElementById('hint').classList.add('hidden');}
 
 export const sty=document.createElement('style');
-sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:6px 10px;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);font-weight:normal;}`;
+sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}`;
 document.head.appendChild(sty);
 
 export let dashOffset = 0;
@@ -1727,4 +1756,11 @@ export function animateStromPipes() {
 export function startAnimStrom() { if (!_animStromRunning) { _animStromRunning = true; animateStromPipes(); } }
 export function stopAnimStrom()  { _animStromRunning = false; }
 
-
+// ── Vormerken (Feldbegehung) ──────────────────────────────────────────────────
+export function toggleVormerkenGeb(id) {
+  const g = window.gebaeude.find(x => x.id === id);
+  if (!g) return;
+  g.feldVorgemerkt = !g.feldVorgemerkt;
+  _rerenderCard(id);
+}
+window.toggleVormerkenGeb = toggleVormerkenGeb;

@@ -1,0 +1,52 @@
+# Baut die Feldapp als Einzeldatei und veröffentlicht sie auf GitHub Pages.
+# Erreichbar unter: https://<ihr-name>.github.io/<repo-name>/feldapp.html
+#
+# Aktivierung: Repository → Settings → Pages → Source: "GitHub Actions"
+
+name: Deploy Feldapp
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'field-app/**'
+      - 'build-feldapp.mjs'
+  workflow_dispatch:   # manuell auslösbar
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Feldapp bauen
+        run: node build-feldapp.mjs
+
+      - name: GitHub Pages vorbereiten
+        uses: actions/configure-pages@v4
+
+      - name: Artefakt hochladen
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Auf GitHub Pages veröffentlichen
+        id: deployment
+        uses: actions/deploy-pages@v4

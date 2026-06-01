@@ -1,5 +1,5 @@
-// ── 05a-export.js — CSV-Export, PDF-Report, Druckansicht ──
-// ── Export: Dispatch CSV ──────────────────────────────────────────────────
+// â”€â”€ 05a-export.js â€” CSV-Export, PDF-Report, Druckansicht â”€â”€
+// â”€â”€ Export: Dispatch CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import { gebaeude, globalYear, netzEdges } from './01-globals-varianten.js';
 import { getComputedStats } from './02b-gebaeude.js';
 import { updateLpMeritOrder, updateLpNetzSummary } from './04a-ui-panels.js';
@@ -10,7 +10,7 @@ import { ASSETS, getAssetStatus, ASSET_PROPS_SCHEMA } from './13a-assets-core.js
 const ASSET_LABELS = {
   NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
   NSHV: 'NSHV', UV: 'Unterverteilung', KVS: 'KVS', Verbraucher: 'Verbraucher',
-  WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
+  WP: 'WÃ¤rmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
   Lade: 'Ladeinfrastruktur', Nsa: 'Notstromaggregat', KWK: 'KWK-Anlage',
   Wind: 'Windkraftanlage', Reserve: 'Reserve',
 };
@@ -29,7 +29,7 @@ export function exportDispatchCSV() {
   if (window.elPvH) csv += ';PV-Erzeugung (kWh)';
   csv += '\n';
 
-  const monthNames = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const monthNames = ['Jan','Feb','MÃ¤r','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
   const mStarts = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016];
   for (let t = 0; t < 8760; t++) {
     let m = 0; for (let mi = 11; mi >= 0; mi--) { if (t >= mStarts[mi]) { m = mi; break; } }
@@ -48,7 +48,7 @@ export function exportDispatchCSV() {
 
   // Summary rows
   csv += '\n;ZUSAMMENFASSUNG\n';
-  csv += 'Erzeuger;Wärme (MWh/a);Strom (MWh/a);Anteil (%)\n';
+  csv += 'Erzeuger;WÃ¤rme (MWh/a);Strom (MWh/a);Anteil (%)\n';
   const totalMwh = keys.reduce((s, k) => s + ((en[k]||{}).waermeMwh || 0), 0);
   keys.forEach(k => {
     const e = en[k] || {};
@@ -62,10 +62,10 @@ export function exportDispatchCSV() {
   a.click();
 }
 
-// ── Export: Gebäude CSV ──────────────────────────────────────────────────
+// â”€â”€ Export: GebÃ¤ude CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export function exportGebaeudeCSV() {
-  if (!gebaeude.length) { alert('Keine Gebäude vorhanden.'); return; }
-  let csv = 'ID;Name;Nutzung;Fläche (m²);Baujahr;Zustand;Wärmebedarf (MWh/a);Heizlast (kW);Spez. Wärme (kWh/m²a);Spez. Heizlast (W/m²);Strom (MWh/a);PV aktiv;PV Dachanteil (%);Am Netz;Netzverluste (MWh/a)\n';
+  if (!gebaeude.length) { alert('Keine GebÃ¤ude vorhanden.'); return; }
+  let csv = 'ID;Name;Nutzung;FlÃ¤che (mÂ²);Baujahr;Zustand;WÃ¤rmebedarf (MWh/a);Heizlast (kW);Spez. WÃ¤rme (kWh/mÂ²a);Spez. Heizlast (W/mÂ²);Strom (MWh/a);PV aktiv;PV Dachanteil (%);Am Netz;Netzverluste (MWh/a)\n';
   const connectedIds = new Set(netzEdges.filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
   gebaeude.forEach(g => {
     const st = typeof getComputedStats === 'function' ? getComputedStats(g, globalYear) : {};
@@ -95,7 +95,7 @@ export function exportGebaeudeCSV() {
   a.click();
 }
 
-// ── Export: PDF Bericht (Transformationsplan-Stil) ──────────────────────
+// â”€â”€ Export: PDF Bericht (Transformationsplan-Stil) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function exportPDFReport() {
   const keys = window._dispatchActiveKeys || [];
   const en   = window._dispatchEnergy || {};
@@ -106,7 +106,7 @@ async function exportPDFReport() {
   const fig = caption => '<div class="fig-caption">Abbildung ' + (++figNr) + ': ' + caption + '</div>';
   const tab = caption => '<div class="tab-caption">Tabelle ' + (++tabNr) + ': ' + caption + '</div>';
 
-  // ── Daten sammeln ─────────────────────────────────────────────
+  // â”€â”€ Daten sammeln â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const totalMwh = keys.reduce((s, k) => s + ((en[k]||{}).waermeMwh || 0), 0);
   const connectedIds = new Set((Array.isArray(netzEdges) ? netzEdges : []).filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
   const nGeb = gebaeude.length;
@@ -127,7 +127,7 @@ async function exportPDFReport() {
   const zeit = new Date().toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
   const varName = activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || 'Variante') : 'Basisdaten';
 
-  // ── Canvas-Bilder exportieren ─────────────────────────────────
+  // â”€â”€ Canvas-Bilder exportieren â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let mapImg = '';
   try {
     if (typeof html2canvas !== 'undefined') {
@@ -146,26 +146,26 @@ async function exportPDFReport() {
     try { const c = document.getElementById(id); if (c && c.width > 0) cImg[id] = c.toDataURL('image/png'); } catch(e) {}
   });
 
-  // ── Wirtschaftlichkeit-Tabelle ────────────────────────────────
+  // â”€â”€ Wirtschaftlichkeit-Tabelle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const wirtEl = document.getElementById('wirt-table-wrap');
   const wirtHtml = wirtEl ? wirtEl.innerHTML : '';
   const investGes = window._lastInvestGes || 0;
   const jkGes = window._lastJkGes || 0;
 
-  // ── Stromnetz-Daten ───────────────────────────────────────────
+  // â”€â”€ Stromnetz-Daten â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const stromKpis = window._stromNetzKpis || {};
   const stromTrasseLaenge = stromEdges ? Math.round(stromEdges.reduce((s, e) => s + (e.lengthM || 0), 0)) : 0;
   const hatStromNetz = stromEdges && stromEdges.length > 0;
   const hatStromBilanz = sd.pvMwh > 0 || sd.bhkwStromMwh > 0 || (sd.netzbezugMwh||0) > 0;
 
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // HTML aufbauen
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   var h = '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">';
   h += '<title>Transformationsplan \u2014 ' + varName + '</title>';
   h += '<s' + 'tyle>';
 
-  // ── CSS: GERTEC-inspiriertes Styling ──────────────────────────
+  // â”€â”€ CSS: GERTEC-inspiriertes Styling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   h += '@page{margin:20mm 18mm;size:A4}';
   h += '@media print{.page-break{page-break-before:always}.no-print{display:none!important}.toc a{color:#1a1a2e!important}}';
   h += ':root{--blue:#0055a0;--blue-light:#e8f0fa;--blue-dark:#003366;--red:#c0392b;--gray:#5a6a7a;--gray-light:#95a5b5;--border:#d5dde5}';
@@ -232,9 +232,9 @@ async function exportPDFReport() {
 
   h += '</s' + 'tyle></head><body>';
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // DECKBLATT
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   h += '<div class="deckblatt">';
   h += '<div class="deck-logo">Energetisches Quartierskonzept</div>';
   h += '<div class="deck-title">Transformationsplan</div>';
@@ -251,9 +251,9 @@ async function exportPDFReport() {
   h += '<strong>W\u00e4rmebedarf:</strong> ' + fmt(totalMwh) + ' MWh/a \u00b7 <strong>Heizlast:</strong> ' + fmt(gesamtHeizlast) + ' kW';
   h += '</div></div>';
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // INHALTSVERZEICHNIS
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   h += '<div class="page-break"></div>';
   h += '<h2>Inhaltsverzeichnis</h2>';
   h += '<div class="toc">';
@@ -272,9 +272,9 @@ async function exportPDFReport() {
   tocItems.forEach(t => { h += '<div class="toc-item"><span>' + t[0] + '. ' + t[1] + '</span></div>'; });
   h += '</div>';
 
-  // ════════════════════════════════════════════════════════════════
-  // 1. QUARTIERSÜBERSICHT
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // 1. QUARTIERSÃœBERSICHT
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   h += '<div class="page-break"></div>';
   h += '<h2>1. Quartier\u00fcbersicht und Geb\u00e4udedaten</h2>';
   h += '<div class="intro">Das Planungsgebiet umfasst ' + nGeb + ' Geb\u00e4ude mit einer Gesamtfl\u00e4che von ' +
@@ -288,7 +288,7 @@ async function exportPDFReport() {
   h += '<div class="kpi"><div class="kpi-val">' + fmt(gesamtHeizlast) + '<span class="kpi-unit"> kW</span></div><div class="kpi-label">Heizlast</div></div>';
   h += '</div>';
 
-  // Gebäudeliste
+  // GebÃ¤udeliste
   h += '<h3>1.1 Geb\u00e4udeliste</h3>';
   h += tab('Geb\u00e4ude im Planungsgebiet');
   h += '<table><thead><tr><th>Nr.</th><th>Geb\u00e4ude</th><th>Nutzung</th><th>Baujahr</th><th class="r">Fl\u00e4che m\u00b2</th><th class="r">W\u00e4rme MWh/a</th><th class="r">kWh/m\u00b2a</th><th class="c">Netz</th></tr></thead><tbody>';
@@ -328,9 +328,9 @@ async function exportPDFReport() {
     h += '</tbody></table>';
   }
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // 2. ERZEUGERPARK
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   h += '<div class="page-break"></div>';
   h += '<h2>2. Erzeugerpark und Anlagenkonzept</h2>';
   h += '<div class="intro">Das Versorgungskonzept setzt ' + keys.length + ' Erzeuger' + (keys.length !== 1 ? ' ' : '') +
@@ -352,7 +352,7 @@ async function exportPDFReport() {
   });
   h += '</tbody></table>';
 
-  // Erzeuger-Detailblätter
+  // Erzeuger-DetailblÃ¤tter
   h += '<h3>2.2 Anlagenparameter</h3>';
   keys.forEach(k => {
     const e = en[k] || {};
@@ -405,9 +405,9 @@ async function exportPDFReport() {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // 3. DISPATCH-SIMULATION
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   h += '<div class="page-break"></div>';
   h += '<h2>3. Dispatch-Simulation und Lastgang</h2>';
   h += '<div class="intro">Die st\u00fcndliche Einsatzsimulation (Dispatch) ordnet die Erzeuger nach der Merit-Order zu ' +
@@ -445,16 +445,16 @@ async function exportPDFReport() {
     h += fig('Lastprofil der Auslegungswoche (168 h)');
   }
 
-  // Monatsübersicht
+  // MonatsÃ¼bersicht
   if (cImg['ep-monthly-canvas']) {
     h += '<h3>3.4 Monatliche Erzeugung</h3>';
     h += '<img class="chart-img" src="' + cImg['ep-monthly-canvas'] + '"/>';
     h += fig('Monatliche W\u00e4rmeerzeugung nach Erzeuger');
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // 4. WÄRMENETZ
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // 4. WÃ„RMENETZ
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   if (activeNetz.length > 0) {
     h += '<div class="page-break"></div>';
     h += '<h2>4. W\u00e4rmenetz</h2>';
@@ -487,9 +487,9 @@ async function exportPDFReport() {
     h += '</tbody></table>';
   }
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // 5. STROMNETZ
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   if (hatStromNetz) {
     h += '<div class="page-break"></div>';
     h += '<h2>5. Stromnetz</h2>';
@@ -547,9 +547,9 @@ async function exportPDFReport() {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // 6. STROMBILANZ
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   if (hatStromBilanz) {
     h += '<div class="page-break"></div>';
     h += '<h2>6. Strombilanz und Eigenversorgung</h2>';
@@ -588,9 +588,9 @@ async function exportPDFReport() {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // 7. WIRTSCHAFTLICHKEIT
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   h += '<div class="page-break"></div>';
   h += '<h2>7. Wirtschaftlichkeit</h2>';
   h += '<div class="intro">Die Wirtschaftlichkeitsberechnung erfolgt nach VDI 2067 (Annuit\u00e4tenmethode). ' +
@@ -607,9 +607,9 @@ async function exportPDFReport() {
     h += '<div style="font-size:9pt;">' + wirtHtml + '</div>';
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // 8. ÖKOLOGIE / CO₂
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // 8. Ã–KOLOGIE / COâ‚‚
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   h += '<div class="page-break"></div>';
   h += '<h2>8. \u00d6kologie und CO\u2082-Bilanz</h2>';
   const co2BiEl = document.getElementById('co2-bilanz-wrap');
@@ -631,9 +631,9 @@ async function exportPDFReport() {
     h += fig('Monatliche CO\u2082-Emissionen nach Erzeuger');
   }
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // 9. SANKEY
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   if (cImg['sankey-canvas']) {
     h += '<div class="page-break"></div>';
     h += '<h2>9. Energieflussdiagramm</h2>';
@@ -642,9 +642,9 @@ async function exportPDFReport() {
     h += fig('Sankey-Diagramm der Energiefl\u00fcsse');
   }
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // 10. VARIANTENVERGLEICH
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   const vrKeys = Object.keys(variantResults);
   if (vrKeys.length > 1) {
     h += '<div class="page-break"></div>';
@@ -689,9 +689,9 @@ async function exportPDFReport() {
     });
   }
 
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // IMPRESSUM & FOOTER
-  // ════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   h += '<div class="page-break"></div>';
   h += '<div class="impressum">';
   h += '<h2 style="border-bottom-color:var(--gray-light);">Impressum</h2>';
@@ -715,7 +715,7 @@ async function exportPDFReport() {
 
   h += '</body></html>';
 
-  // ── Ausgabe ───────────────────────────────────────────────────
+  // â”€â”€ Ausgabe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   var printWin = window.open('', '_blank');
   if (!printWin) { alert('Pop-up blockiert \u2014 bitte Pop-ups f\u00fcr diese Seite erlauben.'); return; }
   printWin.document.write(h);
@@ -723,7 +723,7 @@ async function exportPDFReport() {
   setTimeout(function() { printWin.print(); }, 800);
 }
 
-// ── Export: Maßnahmenbericht PDF ──────────────────────────────────────────
+// â”€â”€ Export: MaÃŸnahmenbericht PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export function exportMassnahmenPDF() {
   const yr = globalYear ?? new Date().getFullYear();
   const allAssets = ASSETS.items || [];
@@ -733,14 +733,14 @@ export function exportMassnahmenPDF() {
   const ASSET_LABELS = {
     NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
     NSHV: 'Niederspannungshauptverteilung', UV: 'Unterverteilung',
-    Verbraucher: 'Verbraucher', WP: 'Wärmepumpe', PV: 'PV-Anlage',
+    Verbraucher: 'Verbraucher', WP: 'WÃ¤rmepumpe', PV: 'PV-Anlage',
     Batterie: 'Batteriespeicher', Lade: 'Ladeinfrastruktur', Nsa: 'Nsa',
     KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
   };
 
   const MASSN_STATUS_LABEL = { geplant: 'Geplant', beauftragt: 'Beauftragt', umgesetzt: 'Umgesetzt' };
 
-  // Groupierung Maßnahmen nach Jahr
+  // Groupierung MaÃŸnahmen nach Jahr
   const byYear = {};
   let grandTotal = 0;
   allAssets.forEach(a => {
@@ -753,7 +753,7 @@ export function exportMassnahmenPDF() {
   });
 
   let h = '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">';
-  h += '<title>Maßnahmenbericht — ' + datum + '</title>';
+  h += '<title>MaÃŸnahmenbericht â€” ' + datum + '</title>';
   h += '<style>';
   h += '@page{margin:18mm 16mm;size:A4}';
   h += '@media print{.no-print{display:none}}';
@@ -781,22 +781,22 @@ export function exportMassnahmenPDF() {
   h += '.asset-spec{font-size:8pt;color:#546e7a}';
   h += '</style></head><body>';
 
-  h += '<h1>Maßnahmenbericht Elektro</h1>';
-  h += '<div class="subtitle">Stand: ' + datum + '  ·  Planungsjahr: ' + yr + '</div>';
+  h += '<h1>MaÃŸnahmenbericht Elektro</h1>';
+  h += '<div class="subtitle">Stand: ' + datum + '  Â·  Planungsjahr: ' + yr + '</div>';
 
   // KPI-Zeile
   const assetsWithMassn = allAssets.filter(a => (a.massnahmen || []).length > 0);
   const allMassn = allAssets.flatMap(a => a.massnahmen || []);
   h += '<div class="kpi-row">';
   h += '<div class="kpi"><div class="kpi-val">' + allAssets.length + '</div><div class="kpi-label">Assets gesamt</div></div>';
-  h += '<div class="kpi"><div class="kpi-val">' + assetsWithMassn.length + '</div><div class="kpi-label">Assets mit Maßnahmen</div></div>';
-  h += '<div class="kpi"><div class="kpi-val">' + allMassn.length + '</div><div class="kpi-label">Maßnahmen gesamt</div></div>';
-  h += '<div class="kpi"><div class="kpi-val" style="font-size:13pt">' + fmt2(grandTotal) + ' €</div><div class="kpi-label">Gesamtkosten</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + assetsWithMassn.length + '</div><div class="kpi-label">Assets mit MaÃŸnahmen</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + allMassn.length + '</div><div class="kpi-label">MaÃŸnahmen gesamt</div></div>';
+  h += '<div class="kpi"><div class="kpi-val" style="font-size:13pt">' + fmt2(grandTotal) + ' â‚¬</div><div class="kpi-label">Gesamtkosten</div></div>';
   h += '</div>';
 
   // 1. Komponentenliste
   h += '<h2>1. Komponentenliste</h2>';
-  h += '<table><thead><tr><th>Name</th><th>Typ</th><th>Baujahr</th><th>Status ' + yr + '</th><th class="r">Maßnahmen</th></tr></thead><tbody>';
+  h += '<table><thead><tr><th>Name</th><th>Typ</th><th>Baujahr</th><th>Status ' + yr + '</th><th class="r">MaÃŸnahmen</th></tr></thead><tbody>';
   for (const a of allAssets) {
     const status = getAssetStatus(a, yr);
     const statusTxt = status === 'active' ? 'Aktiv' : status === 'planned' ? 'Geplant' : 'Abgerissen';
@@ -806,31 +806,31 @@ export function exportMassnahmenPDF() {
     if (a.type === 'Trafo') specParts.push((p.leistungKVA || 630) + ' kVA');
     if (a.type === 'Verbraucher' || a.type === 'WP') specParts.push((p.leistungKW || 10) + ' kW');
     if (a.type === 'PV') specParts.push((p.leistungKWp || 10) + ' kWp');
-    if (a.type === 'Lade') specParts.push((p.anzahlPunkte || 4) + '×' + (p.leistungProPunktKW || 22) + ' kW');
+    if (a.type === 'Lade') specParts.push((p.anzahlPunkte || 4) + 'Ã—' + (p.leistungProPunktKW || 22) + ' kW');
     if (a.type === 'NSHV' || a.type === 'UV') specParts.push((p.nennstromA || 400) + ' A');
     const specStr = specParts.length ? ' <span class="asset-spec">(' + specParts.join(', ') + ')</span>' : '';
     h += '<tr><td>' + (a.name || a.id) + '</td><td>' + (ASSET_LABELS[a.type] || a.type) + specStr + '</td>';
-    h += '<td>' + (a.baujahr || '—') + '</td>';
+    h += '<td>' + (a.baujahr || 'â€”') + '</td>';
     h += '<td style="color:' + statusCol + '">' + statusTxt + '</td>';
     h += '<td class="r">' + (a.massnahmen?.length || 0) + '</td></tr>';
   }
   h += '</tbody></table>';
 
-  // 2. Maßnahmen nach Asset
-  h += '<h2>2. Maßnahmen je Asset</h2>';
+  // 2. MaÃŸnahmen nach Asset
+  h += '<h2>2. MaÃŸnahmen je Asset</h2>';
   const assetsWithAny = allAssets.filter(a => (a.massnahmen || []).length > 0);
   if (assetsWithAny.length === 0) {
-    h += '<p class="no-massn">Keine Maßnahmen erfasst.</p>';
+    h += '<p class="no-massn">Keine MaÃŸnahmen erfasst.</p>';
   } else {
     for (const a of assetsWithAny) {
-      h += '<h3>' + (a.name || a.id) + ' <span style="font-size:9pt;color:#546e7a;font-weight:400">— ' + (ASSET_LABELS[a.type] || a.type) + '</span></h3>';
-      h += '<table><thead><tr><th>Titel</th><th>Beschreibung</th><th>Jahr</th><th>Status</th><th class="r">Kosten €</th></tr></thead><tbody>';
+      h += '<h3>' + (a.name || a.id) + ' <span style="font-size:9pt;color:#546e7a;font-weight:400">â€” ' + (ASSET_LABELS[a.type] || a.type) + '</span></h3>';
+      h += '<table><thead><tr><th>Titel</th><th>Beschreibung</th><th>Jahr</th><th>Status</th><th class="r">Kosten â‚¬</th></tr></thead><tbody>';
       for (const m of a.massnahmen) {
         const sc = 'status-' + (m.status || 'geplant');
-        h += '<tr><td>' + (m.titel || '—') + '</td><td>' + (m.beschreibung || '') + '</td>';
-        h += '<td>' + (m.jahr || '—') + '</td>';
+        h += '<tr><td>' + (m.titel || 'â€”') + '</td><td>' + (m.beschreibung || '') + '</td>';
+        h += '<td>' + (m.jahr || 'â€”') + '</td>';
         h += '<td class="' + sc + '">' + (MASSN_STATUS_LABEL[m.status] || m.status || 'Geplant') + '</td>';
-        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : '—') + '</td></tr>';
+        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : 'â€”') + '</td></tr>';
       }
       h += '</tbody></table>';
     }
@@ -844,9 +844,9 @@ export function exportMassnahmenPDF() {
     return parseInt(a) - parseInt(b);
   });
   if (sortedYears.length === 0) {
-    h += '<p class="no-massn">Keine Maßnahmen für den Investitionsplan vorhanden.</p>';
+    h += '<p class="no-massn">Keine MaÃŸnahmen fÃ¼r den Investitionsplan vorhanden.</p>';
   } else {
-    h += '<table><thead><tr><th>Jahr</th><th>Asset</th><th>Maßnahme</th><th>Status</th><th class="r">Kosten €</th></tr></thead><tbody>';
+    h += '<table><thead><tr><th>Jahr</th><th>Asset</th><th>MaÃŸnahme</th><th>Status</th><th class="r">Kosten â‚¬</th></tr></thead><tbody>';
     for (const yr2 of sortedYears) {
       let yearSum = 0;
       const rows = byYear[yr2];
@@ -854,26 +854,26 @@ export function exportMassnahmenPDF() {
       for (const { asset, m } of rows) {
         yearSum += parseFloat(m.kosten) || 0;
         const sc = 'status-' + (m.status || 'geplant');
-        h += '<tr><td></td><td>' + (asset.name || asset.id) + '</td><td>' + (m.titel || '—') + '</td>';
+        h += '<tr><td></td><td>' + (asset.name || asset.id) + '</td><td>' + (m.titel || 'â€”') + '</td>';
         h += '<td class="' + sc + '">' + (MASSN_STATUS_LABEL[m.status] || 'Geplant') + '</td>';
-        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : '—') + '</td></tr>';
+        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : 'â€”') + '</td></tr>';
       }
-      h += '<tr class="year-total"><td></td><td colspan="3">Summe ' + yr2 + '</td><td class="r">' + fmt2(yearSum) + ' €</td></tr>';
+      h += '<tr class="year-total"><td></td><td colspan="3">Summe ' + yr2 + '</td><td class="r">' + fmt2(yearSum) + ' â‚¬</td></tr>';
     }
-    h += '<tr class="grand-total"><td colspan="4">Gesamtinvestition</td><td class="r">' + fmt2(grandTotal) + ' €</td></tr>';
+    h += '<tr class="grand-total"><td colspan="4">Gesamtinvestition</td><td class="r">' + fmt2(grandTotal) + ' â‚¬</td></tr>';
     h += '</tbody></table>';
   }
 
   h += '</body></html>';
 
   const printWin = window.open('', '_blank');
-  if (!printWin) { alert('Pop-up blockiert — bitte Pop-ups für diese Seite erlauben.'); return; }
+  if (!printWin) { alert('Pop-up blockiert â€” bitte Pop-ups fÃ¼r diese Seite erlauben.'); return; }
   printWin.document.write(h);
   printWin.document.close();
   setTimeout(() => printWin.print(), 800);
 }
 
-// ── Export: Elektro XLSX (Komponenten + Kabel) ──────────────────────────────
+// â”€â”€ Export: Elektro XLSX (Komponenten + Kabel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function exportElektroXLSX() {
   // SheetJS dynamisch laden falls noch nicht vorhanden
   if (typeof window.XLSX === 'undefined') {
@@ -893,12 +893,12 @@ export async function exportElektroXLSX() {
   const ASSET_LABELS = {
     NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
     NSHV: 'NSHV', UV: 'Unterverteilung', Verbraucher: 'Verbraucher',
-    WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
+    WP: 'WÃ¤rmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
     Lade: 'Ladeinfrastruktur', Nsa: 'Nsa', KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
   };
 
   // Sheet 1: Komponenten
-  const kompRows = [['Name', 'Typ', 'Baujahr', 'Abrissjahr', 'Status ' + yr, 'Leistung kW/kVA', 'Maßnahmen (Anzahl)', 'Investition (€)']];
+  const kompRows = [['Name', 'Typ', 'Baujahr', 'Abrissjahr', 'Status ' + yr, 'Leistung kW/kVA', 'MaÃŸnahmen (Anzahl)', 'Investition (â‚¬)']];
   for (const a of allAssets) {
     const p = a.props || {};
     const status = getAssetStatus(a, yr);
@@ -914,7 +914,7 @@ export async function exportElektroXLSX() {
   }
 
   // Sheet 2: Kabel
-  const kabelRows = [['Von', 'Nach', 'Typ', 'Querschnitt mm²', 'Länge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
+  const kabelRows = [['Von', 'Nach', 'Typ', 'Querschnitt mmÂ²', 'LÃ¤nge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
   const assetMap = new Map(allAssets.map(a => [a.id, a]));
   for (const e of allEdges) {
     const uName = assetMap.get(e.u)?.name || e.u;
@@ -930,8 +930,8 @@ export async function exportElektroXLSX() {
     ]);
   }
 
-  // Sheet 3: Maßnahmen
-  const massnRows = [['Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten €']];
+  // Sheet 3: MaÃŸnahmen
+  const massnRows = [['Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten â‚¬']];
   for (const a of allAssets) {
     for (const m of (a.massnahmen || [])) {
       massnRows.push([a.name || a.id, ASSET_LABELS[a.type] || a.type, m.titel || '', m.beschreibung || '', m.jahr || '', m.status || 'geplant', parseFloat(m.kosten) || 0]);
@@ -941,13 +941,13 @@ export async function exportElektroXLSX() {
   const wb = XLSXLib.utils.book_new();
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kompRows), 'Komponenten');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows), 'Kabel');
-  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows), 'Maßnahmen');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows), 'MaÃŸnahmen');
 
   const fname = 'Elektroplanung_' + new Date().toISOString().slice(0, 10) + '.xlsx';
   XLSXLib.writeFile(wb, fname);
 }
 
-// ── Export: Vollständiger XLSX (Gebäude + Assets + Kabel + Maßnahmen + Beziehungen) ──
+// â”€â”€ Export: VollstÃ¤ndiger XLSX (GebÃ¤ude + Assets + Kabel + MaÃŸnahmen + Beziehungen) â”€â”€
 export async function exportVollstaendigXLSX() {
   if (typeof window.XLSX === 'undefined') {
     await new Promise((resolve, reject) => {
@@ -966,9 +966,9 @@ export async function exportVollstaendigXLSX() {
 
   const gebMap = new Map(allGebaeude.map(g => [g.id, g]));
 
-  // Sheet 1: Gebäude
-  const gebRows = [['ID', 'Name', 'Nutzung', 'Fläche (m²)', 'Baujahr', 'Abrissjahr', 'Zustand',
-    'Wärmebedarf (MWh/a)', 'Heizlast (kW)', 'Spez. Wärme (kWh/m²a)',
+  // Sheet 1: GebÃ¤ude
+  const gebRows = [['ID', 'Name', 'Nutzung', 'FlÃ¤che (mÂ²)', 'Baujahr', 'Abrissjahr', 'Zustand',
+    'WÃ¤rmebedarf (MWh/a)', 'Heizlast (kW)', 'Spez. WÃ¤rme (kWh/mÂ²a)',
     'Strom (MWh/a)', 'PV aktiv', 'PV Dachanteil (%)']];
   for (const g of allGebaeude) {
     gebRows.push([
@@ -985,8 +985,8 @@ export async function exportVollstaendigXLSX() {
   }
 
   // Sheet 2: Assets
-  const assetsRows = [['ID', 'Name', 'Typ', 'Gebäude', 'Baujahr', 'Abrissjahr',
-    'Status ' + yr, 'Leistung kW/kVA', 'Maßnahmen (Anzahl)', 'Investition (€)']];
+  const assetsRows = [['ID', 'Name', 'Typ', 'GebÃ¤ude', 'Baujahr', 'Abrissjahr',
+    'Status ' + yr, 'Leistung kW/kVA', 'MaÃŸnahmen (Anzahl)', 'Investition (â‚¬)']];
   const assetMap = new Map(allAssets.map(a => [a.id, a]));
   for (const a of allAssets) {
     const p = a.props || {};
@@ -1006,8 +1006,8 @@ export async function exportVollstaendigXLSX() {
   }
 
   // Sheet 3: Kabel
-  const kabelRows = [['Von-ID', 'Nach-ID', 'Von', 'Nach', 'Typ', 'Querschnitt mm²',
-    'Länge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
+  const kabelRows = [['Von-ID', 'Nach-ID', 'Von', 'Nach', 'Typ', 'Querschnitt mmÂ²',
+    'LÃ¤nge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
   for (const e of allEdges) {
     const uName = assetMap.get(e.u)?.name || e.u;
     const vName = assetMap.get(e.v)?.name || e.v;
@@ -1022,8 +1022,8 @@ export async function exportVollstaendigXLSX() {
     ]);
   }
 
-  // Sheet 4: Maßnahmen
-  const massnRows = [['Asset-ID', 'Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten €']];
+  // Sheet 4: MaÃŸnahmen
+  const massnRows = [['Asset-ID', 'Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten â‚¬']];
   for (const a of allAssets) {
     for (const m of (a.massnahmen || [])) {
       massnRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type,
@@ -1031,8 +1031,8 @@ export async function exportVollstaendigXLSX() {
     }
   }
 
-  // Sheet 5: Beziehungen (Übersicht, nur Referenz)
-  const bezRows = [['Asset-ID', 'Asset-Name', 'Typ', 'Gebäude-ID', 'Gebäude-Name', 'Verbunden mit (IDs)']];
+  // Sheet 5: Beziehungen (Ãœbersicht, nur Referenz)
+  const bezRows = [['Asset-ID', 'Asset-Name', 'Typ', 'GebÃ¤ude-ID', 'GebÃ¤ude-Name', 'Verbunden mit (IDs)']];
   for (const a of allAssets) {
     const connectedIds = allEdges
       .filter(e => e.u === a.id || e.v === a.id)
@@ -1043,7 +1043,7 @@ export async function exportVollstaendigXLSX() {
       a.buildingId || '', gebName, connectedIds]);
   }
 
-  // ── Übersichtsblatt: Kennzahlen ──────────────────────────────────────────
+  // â”€â”€ Ãœbersichtsblatt: Kennzahlen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const totalFlaeche  = allGebaeude.reduce((s, g) => s + (parseFloat(g.flaeche)  || 0), 0);
   const totalWaerme   = allGebaeude.reduce((s, g) => s + (parseFloat(g.waerme)   || 0), 0);
   const totalHeizlast = allGebaeude.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0);
@@ -1058,7 +1058,7 @@ export async function exportVollstaendigXLSX() {
     typStats[a.type].invest += (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
   }
 
-  // Maßnahmen: je Status Anzahl + Kosten
+  // MaÃŸnahmen: je Status Anzahl + Kosten
   const massnStats = { geplant: { n: 0, k: 0 }, beauftragt: { n: 0, k: 0 }, umgesetzt: { n: 0, k: 0 } };
   for (const a of allAssets) {
     for (const m of (a.massnahmen || [])) {
@@ -1074,31 +1074,31 @@ export async function exportVollstaendigXLSX() {
   const fmt0 = v => Math.round(v);
 
   const ueRows = [
-    ['Energieplanung – Übersicht'],
+    ['Energieplanung â€“ Ãœbersicht'],
     [],
     ['Exportiert am', new Date().toLocaleDateString('de-DE')],
     ['Planungsjahr',  yr],
     [],
-    ['GEBÄUDE', '', ''],
-    ['Kenngröße', 'Wert', 'Einheit'],
-    ['Anzahl Gebäude',           allGebaeude.length,       ''],
-    ['Gesamtfläche',             fmt0(totalFlaeche),        'm²'],
-    ['Wärmebedarf gesamt',       fmt1(totalWaerme),         'MWh/a'],
+    ['GEBÃ„UDE', '', ''],
+    ['KenngrÃ¶ÃŸe', 'Wert', 'Einheit'],
+    ['Anzahl GebÃ¤ude',           allGebaeude.length,       ''],
+    ['GesamtflÃ¤che',             fmt0(totalFlaeche),        'mÂ²'],
+    ['WÃ¤rmebedarf gesamt',       fmt1(totalWaerme),         'MWh/a'],
     ['Heizlast gesamt',          fmt1(totalHeizlast),       'kW'],
     ['Strombedarf gesamt',       fmt1(totalStrom),          'MWh/a'],
     [],
     ['ELEKTRISCHE ANLAGEN', '', ''],
-    ['Typ', 'Anzahl', 'Investition (€)'],
+    ['Typ', 'Anzahl', 'Investition (â‚¬)'],
     ...Object.entries(typStats).map(([t, s]) => [ASSET_LABELS[t] || t, s.count, fmt0(s.invest)]),
     ['Gesamt', allAssets.length, fmt0(Object.values(typStats).reduce((s, x) => s + x.invest, 0))],
     [],
     ['KABEL / LEITUNGEN', '', ''],
-    ['Kenngröße', 'Wert', 'Einheit'],
+    ['KenngrÃ¶ÃŸe', 'Wert', 'Einheit'],
     ['Anzahl Kabel',   allEdges.length,         ''],
-    ['Gesamtlänge',    fmt0(totalKabelLaenge),   'm'],
+    ['GesamtlÃ¤nge',    fmt0(totalKabelLaenge),   'm'],
     [],
     ['MASSNAHMEN', '', ''],
-    ['Status', 'Anzahl', 'Kosten (€)'],
+    ['Status', 'Anzahl', 'Kosten (â‚¬)'],
     ['Geplant',     massnStats.geplant.n,     fmt0(massnStats.geplant.k)],
     ['Beauftragt',  massnStats.beauftragt.n,  fmt0(massnStats.beauftragt.k)],
     ['Umgesetzt',   massnStats.umgesetzt.n,   fmt0(massnStats.umgesetzt.k)],
@@ -1106,20 +1106,20 @@ export async function exportVollstaendigXLSX() {
   ];
 
   const wb = XLSXLib.utils.book_new();
-  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(ueRows),     'Übersicht');
-  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(gebRows),    'Gebäude');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(ueRows),     'Ãœbersicht');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(gebRows),    'GebÃ¤ude');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(assetsRows), 'Assets');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows),  'Kabel');
-  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows),  'Maßnahmen');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows),  'MaÃŸnahmen');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(bezRows),    'Beziehungen');
 
-  // ── Typ-spezifische Reiter (nur wenn Assets dieses Typs vorhanden) ──────────
+  // â”€â”€ Typ-spezifische Reiter (nur wenn Assets dieses Typs vorhanden) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   for (const [type, schemaDefs] of Object.entries(ASSET_PROPS_SCHEMA)) {
     const typeAssets = allAssets.filter(a => a.type === type);
     if (!typeAssets.length || !schemaDefs.length) continue;
     const propKeys   = schemaDefs.map(d => d.key);
     const propLabels = schemaDefs.map(d => d.label);
-    const header = ['ID', 'Name', 'Gebäude', 'Baujahr', 'Abrissjahr', 'Status ' + yr, ...propLabels];
+    const header = ['ID', 'Name', 'GebÃ¤ude', 'Baujahr', 'Abrissjahr', 'Status ' + yr, ...propLabels];
     const rows = [header];
     for (const a of typeAssets) {
       const p = a.props || {};
@@ -1140,7 +1140,7 @@ export async function exportVollstaendigXLSX() {
   XLSXLib.writeFile(wb, fname);
 }
 
-// ── Import: Vollständiger XLSX ──────────────────────────────────────────────
+// â”€â”€ Import: VollstÃ¤ndiger XLSX â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export function importVollstaendigXLSX() {
   let inp = document.getElementById('_xlsxImportInput');
   if (!inp) {
@@ -1175,8 +1175,8 @@ async function _handleXlsxImport(event) {
       const wb = XLSXLib.read(e.target.result, { type: 'array' });
       let updGeb = 0, updAssets = 0, updKabel = 0, updMassn = 0;
 
-      // ── Sheet "Gebäude": Namen + Felder überschreiben ──────────────
-      const gebSheet = wb.Sheets['Gebäude'];
+      // â”€â”€ Sheet "GebÃ¤ude": Namen + Felder Ã¼berschreiben â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      const gebSheet = wb.Sheets['GebÃ¤ude'];
       if (gebSheet) {
         const rows = XLSXLib.utils.sheet_to_json(gebSheet, { header: 1 });
         for (let r = 1; r < rows.length; r++) {
@@ -1197,7 +1197,7 @@ async function _handleXlsxImport(event) {
           if (row[2] != null && String(row[2]).trim() && String(row[2]).trim() !== g.nutzung) {
             g.nutzung = String(row[2]).trim(); changed = true;
           }
-          // Fläche
+          // FlÃ¤che
           if (row[3] != null && !isNaN(parseFloat(row[3])) && parseFloat(row[3]) > 0) {
             g.flaeche = parseFloat(row[3]); changed = true;
           }
@@ -1213,7 +1213,7 @@ async function _handleXlsxImport(event) {
           if (row[6] != null && String(row[6]).trim()) {
             g.zustand = String(row[6]).trim(); changed = true;
           }
-          // Wärmebedarf
+          // WÃ¤rmebedarf
           if (row[7] != null && !isNaN(parseFloat(row[7]))) {
             g.waerme = parseFloat(row[7]); g.waermeManual = true; changed = true;
           }
@@ -1240,7 +1240,7 @@ async function _handleXlsxImport(event) {
         if (typeof window.renderList === 'function') window.renderList();
       }
 
-      // ── Sheet "Assets": Name, Baujahr, Abrissjahr überschreiben ────
+      // â”€â”€ Sheet "Assets": Name, Baujahr, Abrissjahr Ã¼berschreiben â”€â”€â”€â”€
       const assetsSheet = wb.Sheets['Assets'];
       if (assetsSheet) {
         const rows = XLSXLib.utils.sheet_to_json(assetsSheet, { header: 1 });
@@ -1265,7 +1265,7 @@ async function _handleXlsxImport(event) {
         if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
       }
 
-      // ── Sheet "Kabel": Kabeltyp, Querschnitt, Parallel, Sicherung ──
+      // â”€â”€ Sheet "Kabel": Kabeltyp, Querschnitt, Parallel, Sicherung â”€â”€
       const kabelSheet = wb.Sheets['Kabel'];
       if (kabelSheet) {
         const rows = XLSXLib.utils.sheet_to_json(kabelSheet, { header: 1 });
@@ -1287,8 +1287,8 @@ async function _handleXlsxImport(event) {
         }
       }
 
-      // ── Sheet "Maßnahmen": Status, Kosten überschreiben ────────────
-      const massnSheet = wb.Sheets['Maßnahmen'];
+      // â”€â”€ Sheet "MaÃŸnahmen": Status, Kosten Ã¼berschreiben â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      const massnSheet = wb.Sheets['MaÃŸnahmen'];
       if (massnSheet) {
         const rows = XLSXLib.utils.sheet_to_json(massnSheet, { header: 1 });
         for (let r = 1; r < rows.length; r++) {
@@ -1309,7 +1309,7 @@ async function _handleXlsxImport(event) {
         }
       }
 
-      // ── Typ-spezifische Reiter: Props überschreiben ─────────────────
+      // â”€â”€ Typ-spezifische Reiter: Props Ã¼berschreiben â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const updAssetIds = new Set();
       for (const [type, schemaDefs] of Object.entries(ASSET_PROPS_SCHEMA)) {
         if (!schemaDefs.length) continue;
@@ -1318,7 +1318,7 @@ async function _handleXlsxImport(event) {
         if (!typeSheet) continue;
         const rows = XLSXLib.utils.sheet_to_json(typeSheet, { header: 1 });
         if (rows.length < 2) continue;
-        // Spalten 6+ → prop keys aus Schema (per Label-Abgleich mit Header)
+        // Spalten 6+ â†’ prop keys aus Schema (per Label-Abgleich mit Header)
         const header = rows[0] || [];
         const labelToKey = Object.fromEntries(schemaDefs.map(d => [d.label, d.key]));
         const colToProp = {};
@@ -1362,13 +1362,13 @@ async function _handleXlsxImport(event) {
       if (updAssetIds.size && typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
 
       const lines = [];
-      if (updGeb) lines.push(`${updGeb} Gebäude`);
+      if (updGeb) lines.push(`${updGeb} GebÃ¤ude`);
       if (updAssets) lines.push(`${updAssets} Assets`);
       if (updKabel) lines.push(`${updKabel} Kabel`);
-      if (updMassn) lines.push(`${updMassn} Maßnahmen`);
+      if (updMassn) lines.push(`${updMassn} MaÃŸnahmen`);
       const msg = lines.length
         ? 'Import abgeschlossen: ' + lines.join(', ') + ' aktualisiert.'
-        : 'Import abgeschlossen – keine Änderungen erkannt.';
+        : 'Import abgeschlossen â€“ keine Ã„nderungen erkannt.';
       alert(msg);
 
       if (typeof window.glBerechnen === 'function') window.glBerechnen();
@@ -1382,7 +1382,7 @@ async function _handleXlsxImport(event) {
   event.target.value = '';
 }
 
-// ── Hook into existing recalc to update left panel ───────────────
+// â”€â”€ Hook into existing recalc to update left panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const _origRecalcNetz = typeof recalcNetz !== 'undefined' ? recalcNetz : null;
 // We'll hook updateLpNetzSummary after recalcNetz calls via a periodic check instead
 setInterval(() => {
@@ -1390,3 +1390,513 @@ setInterval(() => {
   updateLpMeritOrder();
   updateLpStromSummary();
 }, 2000);
+
+// ── Export: Feldapp JSON ──────────────────────────────────────────────────────
+export function exportFeldapp() {
+  // JSON-Replacer: überspringt Leaflet-Objekte, DOM-Elemente und zirkuläre Refs
+  const SKIP = new Set(['_marker','_line','_circle','_polygon','_polyline',
+    'polygonLayer','markerLayer','circleLayer','_leaflet_id','_events',
+    '_eventParents','_map','_latlng','_layers','_renderer','pane']);
+  const seen = new WeakSet();
+  function replacer(key, val) {
+    if (SKIP.has(key)) return undefined;
+    if (typeof val === 'function') return undefined;
+    if (val instanceof Element) return undefined;
+    if (val !== null && typeof val === 'object') {
+      if (seen.has(val)) return undefined;
+      seen.add(val);
+    }
+    return val;
+  }
+
+  const erzeugerKeys = ['lwWp','geoThermie','pelletsKessel','heizhackschnitzel','fernwaerme'];
+  const erzeuger = {};
+  erzeugerKeys.forEach(k => {
+    if (window[k]?.lat != null) erzeuger[k] = window[k];
+  });
+
+  const payload = {
+    _feldappVersion: 1,
+    exportedAt: new Date().toISOString(),
+    projektName: document.getElementById('projektName')?.value || 'Energieplanung',
+    gebaeude: (gebaeude || []).map(g => ({
+      ...g,
+      polygon: (g.polygon || []).map(p =>
+        Array.isArray(p) ? { lat: p[0], lng: p[1] } : { lat: p.lat, lng: p.lng }
+      ),
+    })),
+    ...erzeuger,
+    trasse: (window.trasse || []).map(p =>
+      p?.lat != null ? { lat: p.lat, lng: p.lng } : p
+    ),
+    trasseSegments: window.trasseSegments || [],
+    elektroAssets: {
+      items: (ASSETS.items || []),
+      edges: (ASSETS.edges || []),
+    },
+  };
+
+  try {
+    const json = JSON.stringify(payload, replacer, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `feldapp_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) {
+    alert('Export-Fehler: ' + err.message);
+    console.error(err);
+  }
+}
+
+// ── Import: Felddaten aus Feldapp-ZIP ─────────────────────────────────────────
+export function importFelddaten() {
+  let inp = document.getElementById('_felddatenInput');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = '_felddatenInput';
+    inp.accept = '.zip,.json';
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', _handleFelddatenImport);
+  }
+  inp.value = '';
+  inp.click();
+}
+
+async function _handleFelddatenImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+
+  try {
+    let projektDaten;
+    const photoMap = {}; // assetId → [{name, dataUrl}]
+
+    if (file.name.endsWith('.zip')) {
+      // ZIP einlesen mit JSZip
+      if (typeof JSZip === 'undefined') {
+        alert('JSZip nicht geladen – bitte Seite neu laden.');
+        return;
+      }
+      const zip = await JSZip.loadAsync(await file.arrayBuffer());
+
+      // JSON lesen
+      const jsonFile = zip.file('projekt_felddaten.json');
+      if (!jsonFile) throw new Error('projekt_felddaten.json nicht im ZIP gefunden.');
+      projektDaten = JSON.parse(await jsonFile.async('string'));
+
+      // Fotos lesen — alle Bild-Dateien aus dem ZIP extrahieren
+      const photoFiles = Object.keys(zip.files).filter(n =>
+        /\.(jpg|jpeg|png)$/i.test(n) && !zip.files[n].dir
+      );
+      for (const path of photoFiles) {
+        const blob = await zip.files[path].async('blob');
+        const dataUrl = await new Promise(res => {
+          const reader = new FileReader();
+          reader.onload = () => res(reader.result);
+          reader.readAsDataURL(blob);
+        });
+        // Pfad normalisieren (Windows-Backslashes → Forward-Slashes)
+        const normPath = path.replace(/\\/g, '/');
+        const parts    = normPath.split('/').filter(Boolean);
+        const fileName = parts[parts.length - 1];
+        const folder   = parts.slice(0, -1).join('/');
+        photoMap[normPath] = { dataUrl, fileName, folder };
+      }
+    } else {
+      // Direkt JSON
+      projektDaten = JSON.parse(await file.text());
+    }
+
+    // Felddaten in bestehende Gebäude übernehmen
+    let updGeb = 0, updAssets = 0;
+
+    for (const feldGeb of (projektDaten.gebaeude || [])) {
+      const g = gebaeude.find(x => x.id === feldGeb.id);
+      if (!g) continue;
+      if (feldGeb.feldNotizen !== undefined) g.feldNotizen = feldGeb.feldNotizen;
+      if (feldGeb.feldStatus  !== undefined) g.feldStatus  = feldGeb.feldStatus;
+      if (feldGeb.feldVorgemerkt !== undefined) g.feldVorgemerkt = feldGeb.feldVorgemerkt;
+
+      // Fotos zuordnen — normalisiert und mit Fallback
+      if (Object.keys(photoMap).length) {
+        const fotoOrdner = (feldGeb.feldFotoOrdner || '').split('\\').join('/').replace(/\/+$/, '');
+        const fotos = Object.values(photoMap).filter(p => {
+          const pFolder = p.folder.split('\\').join('/').replace(/\/+$/, '');
+          // Exakter Match ODER Ordner endet auf den gleichen Namen
+          return pFolder === fotoOrdner ||
+                 pFolder.endsWith('/' + fotoOrdner.split('/').pop());
+        });
+        if (fotos.length > 0) {
+          g.feldFotos = fotos.map(p => ({ name: p.fileName, dataUrl: p.dataUrl }));
+        }
+      }
+      updGeb++;
+    }
+
+    // Felddaten in Elektro-Assets übernehmen
+    for (const feldAsset of (projektDaten.elektroAssets?.items || [])) {
+      const a = ASSETS.items.find(x => x.id === feldAsset.id);
+      if (!a) continue;
+      if (feldAsset.feldNotizen    !== undefined) a.feldNotizen    = feldAsset.feldNotizen;
+      if (feldAsset.feldStatus     !== undefined) a.feldStatus     = feldAsset.feldStatus;
+      if (feldAsset.feldVorgemerkt !== undefined) a.feldVorgemerkt = feldAsset.feldVorgemerkt;
+      // Fotos zuordnen
+      if (Object.keys(photoMap).length) {
+        const fotoOrdner = (feldAsset.feldFotoOrdner || '').split('\\').join('/').split('/').filter(Boolean).join('/');
+        const fotos = Object.values(photoMap).filter(p => {
+          const pFolder = p.folder.split('\\').join('/').split('/').filter(Boolean).join('/');
+          return pFolder === fotoOrdner ||
+                 pFolder.endsWith('/' + fotoOrdner.split('/').pop());
+        });
+        if (fotos.length > 0) {
+          a.feldFotos = fotos.map(p => ({ name: p.fileName, dataUrl: p.dataUrl }));
+        }
+      }
+      updAssets++;
+    }
+
+    // Erzeuger
+    const erzKeys = ['lwWp','geoThermie','pelletsKessel','heizhackschnitzel','fernwaerme'];
+    for (const key of erzKeys) {
+      if (projektDaten[key] && window[key]) {
+        if (projektDaten[key].feldNotizen !== undefined) window[key].feldNotizen = projektDaten[key].feldNotizen;
+        if (projektDaten[key].feldStatus  !== undefined) window[key].feldStatus  = projektDaten[key].feldStatus;
+        if (projektDaten[key].feldVorgemerkt !== undefined) window[key].feldVorgemerkt = projektDaten[key].feldVorgemerkt;
+      }
+    }
+
+    // UI aktualisieren
+    if (typeof renderList === 'function') renderList();
+    if (typeof renderSidebarAssetList === 'function') renderSidebarAssetList();
+
+    const fotoCount = Object.values(photoMap).length;
+    const gebMitFotos = (window.gebaeude || []).filter(g => g.feldFotos?.length > 0).length;
+    console.log('Foto-Import Debug:', { fotoCount, gebMitFotos, photoMapKeys: Object.keys(photoMap).slice(0,3) });
+    alert(`✓ Felddaten importiert:\n${updGeb} Gebäude aktualisiert\n${updAssets} Assets aktualisiert\n${fotoCount} Fotos geladen (${gebMitFotos} Gebäude mit Fotos)`);
+
+  } catch (err) {
+    alert('Fehler beim Import: ' + err.message);
+    console.error(err);
+  }
+}
+
+// ── Felddaten-Filter (Karte + Liste) ─────────────────────────────────────────
+let _felddatenFilterActive = false;
+
+export function toggleFelddatenFilter() {
+  _felddatenFilterActive = !_felddatenFilterActive;
+  const btn = document.getElementById('btn-felddaten-filter');
+  if (btn) {
+    btn.style.background = _felddatenFilterActive ? '#f59e0b' : '';
+    btn.style.color      = _felddatenFilterActive ? 'white'   : '#f59e0b';
+    btn.title = _felddatenFilterActive
+      ? 'Filter aktiv: nur Objekte mit Felddaten — klicken zum Deaktivieren'
+      : 'Nur Objekte mit Felddaten anzeigen';
+  }
+
+  // Gebäude-Liste filtern
+  document.querySelectorAll('.geb-card').forEach(card => {
+    const id = card.id?.replace('card-', '');
+    const g = (window.gebaeude || []).find(x => String(x.id) === id);
+    if (!g) return;
+    const hatFeld = g.feldNotizen || g.feldStatus || g.feldFotos?.length;
+    card.style.display = _felddatenFilterActive && !hatFeld ? 'none' : '';
+  });
+
+  // Asset-Sidebar filtern
+  document.querySelectorAll('.sb-asset-row').forEach(row => {
+    const id = row.dataset.assetId;
+    const a = (window.ASSETS?.items || []).find(x => x.id === id);
+    if (!a) return;
+    const hatFeld = a.feldNotizen || a.feldStatus;
+    row.style.display = _felddatenFilterActive && !hatFeld ? 'none' : '';
+  });
+
+  // Zähler im Button aktualisieren
+  if (_felddatenFilterActive) {
+    const gebCount = (window.gebaeude || []).filter(g => g.feldNotizen || g.feldStatus || g.feldFotos?.length).length;
+    const assetCount = (window.ASSETS?.items || []).filter(a => a.feldNotizen || a.feldStatus).length;
+    if (btn) btn.textContent = `\u{1F4F1} ${gebCount + assetCount} Felddaten`;
+  } else {
+    if (btn) btn.innerHTML = '&#128241; Felddaten';
+  }
+}
+
+// ── Fotogalerie ───────────────────────────────────────────────────────────────
+export function openFotoGalerie() {
+  const panel = document.getElementById('galerie-panel');
+  if (!panel) return;
+  panel.style.display = 'flex';
+  _renderGalerie();
+
+  document.getElementById('galerie-filter').onchange = _renderGalerie;
+  document.getElementById('galerie-search').oninput  = _renderGalerie;
+}
+
+export function closeFotoGalerie() {
+  const panel = document.getElementById('galerie-panel');
+  if (panel) panel.style.display = 'none';
+}
+window.closeFotoGalerie = closeFotoGalerie;
+
+function _renderGalerie() {
+  const filter = document.getElementById('galerie-filter')?.value || 'all';
+  const query  = (document.getElementById('galerie-search')?.value || '').toLowerCase();
+  const grid   = document.getElementById('galerie-grid');
+  const summary = document.getElementById('galerie-summary');
+  if (!grid) return;
+
+  // Alle Fotos aus Gebäuden und Assets sammeln
+  const items = [];
+
+  if (filter !== 'assets') {
+    (window.gebaeude || []).forEach(g => {
+      (g.feldFotos || []).forEach(foto => {
+        items.push({
+          dataUrl: foto.dataUrl,
+          name: foto.name,
+          objekt: g.name || 'Gebäude ' + g.id,
+          typ: 'Gebäude',
+          nutzung: g.nutzung || '',
+          notiz: g.feldNotizen || '',
+          status: g.feldStatus || '',
+        });
+      });
+    });
+  }
+
+  if (filter !== 'gebaeude') {
+    (window.ASSETS?.items || []).forEach(a => {
+      (a.feldFotos || []).forEach(foto => {
+        const cfg = window.ASSET_CFG?.[a.type] || {};
+        items.push({
+          dataUrl: foto.dataUrl,
+          name: foto.name,
+          objekt: a.name || cfg.label || a.type,
+          typ: cfg.label || a.type,
+          notiz: a.feldNotizen || '',
+          status: a.feldStatus || '',
+        });
+      });
+    });
+  }
+
+  // Filter anwenden
+  const filtered = query
+    ? items.filter(i => i.objekt.toLowerCase().includes(query) || i.notiz.toLowerCase().includes(query) || i.name.toLowerCase().includes(query))
+    : items;
+
+  // Summary
+  const statusCount = { erledigt: 0, besucht: 0, offen: 0 };
+  filtered.forEach(i => { if (statusCount[i.status] !== undefined) statusCount[i.status]++; });
+  summary.textContent = `${filtered.length} Fotos · ${statusCount.erledigt} ✅ erledigt · ${statusCount.besucht} 👁 besucht · ${statusCount.offen} 📋 offen`;
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--muted);">
+      <div style="font-size:40px;margin-bottom:12px;">📷</div>
+      <div style="font-size:14px;">Keine Fotos gefunden.<br>Importiere zuerst einen Feldapp-Export.</div>
+    </div>`;
+    return;
+  }
+
+  const statusIcon  = { erledigt: '✅', besucht: '👁', offen: '📋' };
+  const statusColor = { erledigt: '#16a34a', besucht: '#2563eb', offen: '#9ca3af' };
+
+  grid.innerHTML = filtered.map((item, i) => `
+    <div onclick="openGalerieLightbox(${i})" style="cursor:pointer;border-radius:10px;overflow:hidden;background:var(--surface);border:1px solid var(--border);transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform=''">
+      <div style="position:relative;aspect-ratio:4/3;overflow:hidden;background:#111;">
+        <img src="${item.dataUrl}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover;">
+        ${item.status ? `<span style="position:absolute;top:6px;right:6px;font-size:16px;">${statusIcon[item.status] || ''}</span>` : ''}
+      </div>
+      <div style="padding:8px 10px;">
+        <div style="font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.objekt}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">${item.typ} · ${item.name}</div>
+        ${item.notiz ? `<div style="font-size:10px;color:var(--muted);margin-top:4px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${item.notiz}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  // Lightbox-Daten speichern
+  window._galerieItems = filtered;
+}
+
+export function openGalerieLightbox(idx) {
+  const items = window._galerieItems || [];
+  const item  = items[idx];
+  if (!item) return;
+  const lb = document.getElementById('galerie-lightbox');
+  const img = document.getElementById('galerie-lightbox-img');
+  const meta = document.getElementById('galerie-lightbox-meta');
+  if (!lb || !img) return;
+  img.src = item.dataUrl;
+  const statusLabel = { erledigt: '✅ Erledigt', besucht: '👁 Besucht', offen: '📋 Offen' }[item.status] || '';
+  meta.innerHTML = `<strong>${item.objekt}</strong> · ${item.typ}<br>${item.name}${statusLabel ? ' · ' + statusLabel : ''}${item.notiz ? '<br><em>' + item.notiz.substring(0,120) + (item.notiz.length > 120 ? '…' : '') + '</em>' : ''}`;
+  lb.style.display = 'flex';
+}
+window.openGalerieLightbox = openGalerieLightbox;
+
+export function closeGalerieLightbox() {
+  const lb = document.getElementById('galerie-lightbox');
+  if (lb) lb.style.display = 'none';
+}
+window.closeGalerieLightbox = closeGalerieLightbox;
+
+// ── 05c-bericht.js — Begehungsbericht
+
+
+// ── Begehungsbericht ──────────────────────────────────────────────────────────
+export function exportBegehungsbericht() {
+  const projektName = document.querySelector('.header-projekt-name')?.textContent
+    || document.title
+    || 'Energieplanung';
+  const datum = new Date().toLocaleDateString('de-DE', { day:'2-digit', month:'long', year:'numeric' });
+
+  // Objekte mit Felddaten sammeln
+  const gebMitFeld = (window.gebaeude || []).filter(g =>
+    g.feldNotizen || g.feldStatus || g.feldFotos?.length
+  );
+  const assetsMitFeld = (window.ASSETS?.items || []).filter(a =>
+    a.feldNotizen || a.feldStatus
+  );
+
+  const totalFotos = gebMitFeld.reduce((s, g) => s + (g.feldFotos?.length || 0), 0);
+  const erledigt   = [...gebMitFeld, ...assetsMitFeld].filter(x => x.feldStatus === 'erledigt').length;
+  const besucht    = [...gebMitFeld, ...assetsMitFeld].filter(x => x.feldStatus === 'besucht').length;
+
+  const NUTZUNG_LABEL = {
+    efh:'Einfamilienhaus', mfh:'Mehrfamilienhaus', ghd:'Gewerbe/Handel',
+    schule:'Schule', buero:'Büro', industrie:'Industrie', oeffentlich:'Öffentlich'
+  };
+  const statusLabel = { erledigt:'✅ Erledigt', besucht:'👁 Besucht', offen:'📋 Offen' };
+  const statusColor = { erledigt:'#dcfce7', besucht:'#dbeafe', offen:'#f3f4f6' };
+  const statusBorder= { erledigt:'#16a34a', besucht:'#2563eb', offen:'#9ca3af' };
+
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function fmtKw(v) { const n=parseFloat(v); return isNaN(n)||n<=0?'–':n>=1000?`${(n/1000).toFixed(1)} MW`:`${Math.round(n)} kW`; }
+
+  // ── Gebäude-Abschnitte ────────────────────────────────────────────────────
+  const gebSections = gebMitFeld.map(g => {
+    const st = statusLabel[g.feldStatus] || '–';
+    const stC = statusColor[g.feldStatus]  || '#f9fafb';
+    const stB = statusBorder[g.feldStatus] || '#e5e7eb';
+    const fotos = (g.feldFotos || []).map(f =>
+      `<div style="break-inside:avoid;"><img src="${f.dataUrl}" alt="${esc(f.name)}" style="width:100%;max-width:300px;height:200px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;display:block;"></div>`
+    ).join('');
+
+    return `
+    <div style="break-inside:avoid;margin-bottom:24px;border:1.5px solid ${stB};border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+      <div style="background:${stC};padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid ${stB};">
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:700;">${esc(g.name)}</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px;">${NUTZUNG_LABEL[g.nutzung]||g.nutzung||'–'} · Baujahr ${g.baujahr||'–'} · ${g.flaeche?Math.round(g.flaeche)+' m²':'–'}</div>
+        </div>
+        <div style="font-size:13px;white-space:nowrap;">${st}</div>
+      </div>
+      <div style="padding:12px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;border-bottom:1px solid #f0f0f0;">
+        <div><div style="font-size:10px;color:#9ca3af;">Wärmebedarf</div><div style="font-weight:700;color:#f59e0b;">${fmtKw(g.waerme)}</div></div>
+        <div><div style="font-size:10px;color:#9ca3af;">Heizlast</div><div style="font-weight:700;">${fmtKw(g.heizlast)}</div></div>
+        <div><div style="font-size:10px;color:#9ca3af;">Zustand</div><div style="font-weight:700;">${esc(g.zustand)||'–'}</div></div>
+      </div>
+      ${g.feldNotizen ? `<div style="padding:10px 16px;border-bottom:${(g.feldFotos?.length)?'1px solid #f0f0f0':'none'};background:#fffbeb;">
+        <div style="font-size:10px;font-weight:700;color:#92400e;margin-bottom:4px;">NOTIZEN</div>
+        <div style="font-size:12px;white-space:pre-wrap;color:#1f2937;">${esc(g.feldNotizen)}</div>
+      </div>` : ''}
+      ${fotos ? `<div style="padding:12px 16px;">
+        <div style="font-size:10px;font-weight:700;color:#6b7280;margin-bottom:8px;">FOTOS (${g.feldFotos.length})</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">${fotos}</div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  // ── Asset-Abschnitte ──────────────────────────────────────────────────────
+  const assetSections = assetsMitFeld.map(a => {
+    const cfg = window.ASSET_CFG?.[a.type] || {};
+    const st = statusLabel[a.feldStatus] || '–';
+    const stC = statusColor[a.feldStatus]  || '#f9fafb';
+    const stB = statusBorder[a.feldStatus] || '#e5e7eb';
+    return `
+    <div style="break-inside:avoid;margin-bottom:16px;border:1.5px solid ${stB};border-radius:10px;overflow:hidden;">
+      <div style="background:${stC};padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid ${stB};">
+        <span style="font-size:18px;">${cfg.icon||'◻'}</span>
+        <div style="flex:1;"><div style="font-size:13px;font-weight:700;">${esc(a.name||cfg.label)}</div>
+        <div style="font-size:10px;color:#6b7280;">${cfg.label||a.type} · ID: ${a.id}</div></div>
+        <div style="font-size:13px;">${st}</div>
+      </div>
+      ${a.feldNotizen ? `<div style="padding:10px 16px;background:#fffbeb;">
+        <div style="font-size:10px;font-weight:700;color:#92400e;margin-bottom:4px;">NOTIZEN</div>
+        <div style="font-size:12px;white-space:pre-wrap;">${esc(a.feldNotizen)}</div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  // ── Vollständiges HTML ────────────────────────────────────────────────────
+  const html = `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Begehungsbericht – ${esc(projektName)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; background: white; }
+  @media print {
+    body { font-size: 11pt; }
+    .no-print { display: none !important; }
+    .page-break { break-before: page; }
+  }
+  .cover { background: linear-gradient(135deg, #1e40af, #0891b2); color: white; padding: 60px 48px; min-height: 260px; }
+  .cover h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
+  .cover .sub { font-size: 14px; opacity: .8; margin-bottom: 4px; }
+  .kpi-bar { display: flex; gap: 0; border-bottom: 2px solid #e5e7eb; }
+  .kpi { flex: 1; padding: 20px 24px; border-right: 1px solid #e5e7eb; }
+  .kpi:last-child { border-right: none; }
+  .kpi-val { font-size: 28px; font-weight: 800; color: #1e40af; }
+  .kpi-lbl { font-size: 11px; color: #6b7280; margin-top: 2px; }
+  .section-title { font-size: 16px; font-weight: 700; color: #1e40af; padding: 20px 32px 12px; border-bottom: 2px solid #e5e7eb; }
+  .content { padding: 20px 32px; }
+  .print-btn { position: fixed; bottom: 24px; right: 24px; background: #1e40af; color: white; border: none; padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(30,64,175,.4); z-index: 100; }
+  .print-btn:hover { background: #1d4ed8; }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">🖨 Drucken / Als PDF speichern</button>
+
+<div class="cover">
+  <h1>Begehungsbericht</h1>
+  <div class="sub">Projekt: ${esc(projektName)}</div>
+  <div class="sub">Erstellt am: ${datum}</div>
+</div>
+
+<div class="kpi-bar">
+  <div class="kpi"><div class="kpi-val">${gebMitFeld.length + assetsMitFeld.length}</div><div class="kpi-lbl">Objekte mit Felddaten</div></div>
+  <div class="kpi"><div class="kpi-val">${erledigt}</div><div class="kpi-lbl">✅ Erledigt</div></div>
+  <div class="kpi"><div class="kpi-val">${besucht}</div><div class="kpi-lbl">👁 Besucht</div></div>
+  <div class="kpi"><div class="kpi-val">${totalFotos}</div><div class="kpi-lbl">📷 Fotos</div></div>
+  <div class="kpi"><div class="kpi-val">${(window.gebaeude||[]).length}</div><div class="kpi-lbl">Gebäude gesamt</div></div>
+</div>
+
+${gebMitFeld.length ? `
+<div class="section-title">🏠 Gebäude (${gebMitFeld.length})</div>
+<div class="content">${gebSections}</div>` : ''}
+
+${assetsMitFeld.length ? `
+<div class="section-title page-break">⚡ Elektro-Assets (${assetsMitFeld.length})</div>
+<div class="content">${assetSections}</div>` : ''}
+
+${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
+<div style="text-align:center;padding:80px;color:#9ca3af;">
+  <div style="font-size:48px;margin-bottom:16px;">📋</div>
+  <div style="font-size:16px;">Keine Felddaten vorhanden.<br>Importiere zuerst einen Feldapp-Export.</div>
+</div>` : ''}
+
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('Popup wurde blockiert – bitte Popups für diese Seite erlauben.'); return; }
+  win.document.write(html);
+  win.document.close();
+}

@@ -17,6 +17,34 @@ function polygonCentroid(polygon) {
   return n > 0 ? { lat: lat / n, lng: lng / n } : null;
 }
 
+// Gleichmäßig verteilte Positionen innerhalb des Gebäudepolygons
+// Ausrichtung entlang der längeren Achse, 65 % der Ausdehnung genutzt.
+function _positionsInBuilding(polygon, count) {
+  const c = polygonCentroid(polygon);
+  if (!c || count <= 1) return Array(count).fill(c || { lat: 0, lng: 0 });
+
+  const lats = polygon.map(p => p.lat ?? p[0]);
+  const lngs = polygon.map(p => p.lng ?? p[1]);
+  const heightM = (Math.max(...lats) - Math.min(...lats)) * 111320;
+  const cosLat  = Math.cos(c.lat * Math.PI / 180);
+  const widthM  = (Math.max(...lngs) - Math.min(...lngs)) * 111320 * cosLat;
+
+  const useNS   = heightM >= widthM;
+  const span    = Math.max(heightM, widthM) * 0.65;
+  const spacing = span / (count - 1);
+
+  const dLatPerM = 1 / 111320;
+  const dLngPerM = 1 / (111320 * cosLat);
+
+  return Array.from({ length: count }, (_, i) => {
+    const offsetM = (i - (count - 1) / 2) * spacing;
+    return {
+      lat: c.lat + (useNS ? offsetM * dLatPerM : 0),
+      lng: c.lng + (useNS ? 0 : offsetM * dLngPerM),
+    };
+  });
+}
+
 const DEFAULT_TYPES = ['UV', 'Verbraucher', 'PV'];
 
 export function autoCreateBuildingAssets(g, opts = {}) {
@@ -25,9 +53,7 @@ export function autoCreateBuildingAssets(g, opts = {}) {
   // Keine Duplikate: wenn für dieses Gebäude bereits Assets existieren, nichts tun
   if (ASSETS.items.some(a => a.buildingId === g.id)) return [];
 
-  const c = polygonCentroid(g.polygon);
-  if (!c) return [];
-
+  const positions = _positionsInBuilding(g.polygon, DEFAULT_TYPES.length);
   const base = {
     buildingId: g.id,
     baujahr:    g.baujahr    || null,
@@ -35,8 +61,10 @@ export function autoCreateBuildingAssets(g, opts = {}) {
   };
 
   const created = [];
-  for (const type of DEFAULT_TYPES) {
-    const asset = createAsset(type, c.lat, c.lng, {
+  for (let i = 0; i < DEFAULT_TYPES.length; i++) {
+    const type = DEFAULT_TYPES[i];
+    const pos  = positions[i];
+    const asset = createAsset(type, pos.lat, pos.lng, {
       ...base,
       name: `${type} ${g.name || g.id}`,
     });

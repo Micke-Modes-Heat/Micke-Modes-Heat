@@ -14,6 +14,7 @@ export const ASSET_CFG = {
   Trafo:        { label:'Trafo',             icon:'🔁', color:'#f9a825', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
   NSHV:         { label:'NSHV',              icon:'🗄', color:'#4fc3f7', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
   UV:           { label:'UV',                icon:'📦', color:'#64b5f6', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
+  KVS:          { label:'KVS',              icon:'▣',  color:'#607d8b', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
   // ── Strom-Verbraucher ──
   Verbraucher:  { label:'Verbraucher',       icon:'🏠', color:'#81c784', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[] },
   Lade:         { label:'Ladeinfrastruktur', icon:'🔌', color:'#4dd0e1', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[] },
@@ -32,7 +33,7 @@ export const ASSET_CFG = {
 
 // Typrangfolge für Sortierung/Topologie: niedriger = versorgungsseitig
 export const TYPE_RANK = {
-  NAP:0, Schaltanlage:1, Trafo:2, NSHV:3, UV:4,
+  NAP:0, Schaltanlage:1, Trafo:2, NSHV:3, UV:4, KVS:4,
   Verbraucher:5, WP:5, Lade:5, Nsa:5, KWK:5,
   Wind:6, PV:6, Batterie:6, Reserve:7,
 };
@@ -48,6 +49,8 @@ export const ASSET_PROPS_SCHEMA = {
   NSHV:         [{ key:'nennstromA',          label:'Nennstrom (A)' },
                  { key:'abgaenge',            label:'Abgänge' }],
   UV:           [{ key:'nennstromA',          label:'Nennstrom (A)' },
+                 { key:'abgaenge',            label:'Abgänge' }],
+  KVS:          [{ key:'nennstromA',          label:'Nennstrom (A)' },
                  { key:'abgaenge',            label:'Abgänge' }],
   Verbraucher:  [{ key:'leistungKW',          label:'Leistung (kW)' }],
   PV:           [{ key:'leistungKWp',         label:'Leistung (kWp)' }],
