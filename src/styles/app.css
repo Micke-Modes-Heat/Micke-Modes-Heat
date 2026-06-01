@@ -236,7 +236,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .total-sources .src-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
 .total-lbl{font-size:8px;color:var(--muted);margin-top:0px;}
 
-.export-bar{padding:7px 14px;border-top:1px solid var(--border);display:flex;gap:6px;}
+.export-bar{padding:6px 8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px;}
+.export-row{display:flex;gap:4px;}
+.export-row .btn-export{flex:1;}
 .btn-export{flex:1;padding:7px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;transition:.15s;font-weight:normal;}
 .btn-export:hover{border-color:var(--accent);color:var(--accent);}
 .btn-export.primary{background:var(--accent);color:#000;border-color:var(--accent);}
@@ -416,17 +418,26 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 
 /* Asset-Palette Buttons */
 .asset-palette-inline {
-  display:flex; flex-direction:column; gap:3px;
+  display:grid; grid-template-columns:1fr 1fr; gap:3px;
 }
-.asset-palette-title { font-size:11px; color:var(--muted); padding:2px 6px 4px; border-bottom:1px solid var(--border); margin-bottom:2px; }
+.asset-palette-group-header {
+  grid-column:1/-1; font-size:8px; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.07em;
+  padding:7px 0 3px; margin-top:2px;
+  border-bottom:1px solid var(--border);
+}
+.asset-palette-group-header:first-child { padding-top:2px; margin-top:0; }
 .asset-palette-btn {
   background:var(--surface2); border:1px solid var(--border); color:var(--text);
-  border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer;
-  display:flex; align-items:center; gap:6px; text-align:left; width:100%;
+  border-radius:5px; padding:5px 6px; font-size:10px; cursor:pointer;
+  display:flex; align-items:center; gap:5px; text-align:left;
+  white-space:nowrap; overflow:hidden; min-width:0;
 }
+.asset-palette-btn span:last-child { overflow:hidden; text-overflow:ellipsis; }
 .asset-palette-btn:hover { background:var(--border); }
-.asset-palette-btn.active { background:var(--accent); color:#000; }
-.asset-palette-btn-icon { font-size:14px; }
+.asset-palette-btn.active { background:var(--accent); color:#000; border-color:var(--accent); }
+.asset-palette-btn.full-width { grid-column:1/-1; }
+.asset-palette-btn-icon { font-size:13px; flex-shrink:0; }
 
 /* Asset-Inspector Panel */
 .asset-inspector {
@@ -1380,3 +1391,18 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .geb-elektro-dach-sub .geb-dach-section{
   margin-top:0;
 }
+/* ── Vormerken-Button (Feldbegehung) ─────────────────────────────────────── */
+.vormerken-btn {
+  background: none !important;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  font-size: 11px !important;
+  padding: 0 2px;
+  flex-shrink: 0;
+  line-height: 1;
+  color: #bbb;
+  transition: color 0.15s;
+}
+.vormerken-btn:hover { color: #f59e0b; }
+.vormerken-btn.vorgemerkt { color: #f59e0b; font-size: 13px !important; }

@@ -13,19 +13,25 @@ export function buildPalette() {
   if (!panel) return;
   if (panel.dataset.built === '1') return;
 
-  // Titel
-  const title = document.createElement('div');
-  title.className = 'asset-palette-title';
-  title.textContent = 'Asset platzieren';
-  panel.appendChild(title);
+  const GROUPS = [
+    { label: 'Netzinfrastruktur', types: ['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS'] },
+    { label: 'Verbraucher',       types: ['Verbraucher', 'Lade'] },
+    { label: 'Erzeugung',         types: ['PV', 'Wind', 'WP', 'KWK'] },
+    { label: 'Speicher & Backup', types: ['Batterie', 'Nsa'] },
+    { label: 'Sonstiges',         types: ['Reserve'], fullWidth: true },
+  ];
 
-  // Ein Button pro Asset-Typ (gruppiert nach Kategorie)
-  const kategorien = ['infrastruktur', 'verbraucher', 'erzeuger', 'speicher', 'sonstiges'];
-  for (const kat of kategorien) {
-    for (const [type, cfg] of Object.entries(ASSET_CFG)) {
-      if (cfg.kategorie !== kat) continue;
+  for (const group of GROUPS) {
+    const header = document.createElement('div');
+    header.className = 'asset-palette-group-header';
+    header.textContent = group.label;
+    panel.appendChild(header);
+
+    for (const type of group.types) {
+      const cfg = ASSET_CFG[type];
+      if (!cfg) continue;
       const btn = document.createElement('button');
-      btn.className = 'asset-palette-btn';
+      btn.className = 'asset-palette-btn' + (group.fullWidth ? ' full-width' : '');
       btn.dataset.type = type;
       btn.innerHTML = `<span class="asset-palette-btn-icon" style="color:${cfg.color}">${cfg.icon}</span><span>${cfg.label}</span>`;
       btn.addEventListener('click', () => setPendingType(type));

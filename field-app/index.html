@@ -1,0 +1,1879 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Feldapp – Energieplanung</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1565C0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Feldapp">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --primary: #1565C0;
+      --primary-dark: #0D47A1;
+      --accent: #FF6F00;
+      --bg: #F0F4F8;
+      --card: #FFFFFF;
+      --text: #1A1A2E;
+      --text-muted: #6B7280;
+      --border: #E5E7EB;
+      --danger: #DC2626;
+      --success: #16A34A;
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      width: 100%; height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    /* ─── SCREENS ─────────────────────────────────────── */
+    .screen { position: fixed; inset: 0; display: none; flex-direction: column; }
+    .screen.active { display: flex; }
+
+    /* ─── IMPORT SCREEN ───────────────────────────────── */
+    #screen-import {
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(145deg, #1565C0 0%, #0D47A1 60%, #01579B 100%);
+    }
+
+    .import-card {
+      background: var(--card);
+      border-radius: 24px;
+      padding: 36px 28px;
+      width: 92%;
+      max-width: 380px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    }
+
+    .import-logo { font-size: 52px; margin-bottom: 8px; }
+    .import-card h1 { font-size: 26px; font-weight: 800; color: var(--primary); margin-bottom: 4px; }
+    .import-card .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 28px; line-height: 1.4; }
+
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 14px 16px;
+      border-radius: var(--radius); border: none;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+      margin-bottom: 10px;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(21,101,192,0.35); }
+    .btn-secondary { background: var(--bg); color: var(--primary); }
+    .btn-ghost { background: transparent; color: var(--danger); font-size: 13px; padding: 10px; }
+    .btn-ghost:active { background: #FEF2F2; border-radius: var(--radius); }
+
+    .import-status { margin-top: 14px; font-size: 13px; color: var(--text-muted); min-height: 18px; }
+
+    /* ─── MAP SCREEN ──────────────────────────────────── */
+    /* position: fixed kommt von .screen — kein override hier */
+
+    #map { flex: 1; width: 100%; }
+
+    .topbar {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+      display: flex; align-items: center; gap: 4px;
+      padding: 6px 8px;
+      background: white;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      min-height: 52px;
+    }
+
+    .topbar-title { flex: 1; min-width: 0; overflow: hidden; }
+    .topbar-title .name { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .topbar-title .stats { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .icon-btn {
+      background: none; border: none; cursor: pointer;
+      padding: 5px; border-radius: 8px;
+      color: var(--primary); font-size: 18px;
+      min-width: 34px; min-height: 34px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .icon-btn:active { background: var(--bg); }
+
+    /* Badge showing unsaved data count */
+    .export-badge {
+      position: absolute; top: -4px; right: -4px;
+      background: var(--danger); color: white;
+      border-radius: 10px; min-width: 18px; height: 18px;
+      padding: 0 4px;
+      font-size: 10px; font-weight: 700;
+      display: none; align-items: center; justify-content: center;
+      pointer-events: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+    .export-btn-wrap { position: relative; }
+
+    /* ─── BOTTOM SHEET ────────────────────────────────── */
+    #backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 1500;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    #backdrop.on { opacity: 1; pointer-events: all; }
+
+    #sheet {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      z-index: 1600;
+      background: var(--card);
+      border-radius: 22px 22px 0 0;
+      transform: translateY(100%);
+      transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+      max-height: 88vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 -6px 30px rgba(0,0,0,0.18);
+      will-change: transform;
+    }
+    #sheet.open { transform: translateY(0); }
+
+    .sheet-handle-zone {
+      padding: 10px 0 0;
+      display: flex; justify-content: center;
+      cursor: grab; flex-shrink: 0;
+      touch-action: none;
+    }
+    .sheet-handle { width: 38px; height: 4px; background: var(--border); border-radius: 2px; }
+
+    .sheet-head {
+      padding: 12px 16px;
+      display: flex; align-items: flex-start; gap: 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sheet-icon-wrap {
+      width: 46px; height: 46px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; flex-shrink: 0;
+    }
+    .sheet-title-wrap { flex: 1; min-width: 0; }
+    .sheet-title-wrap h2 { font-size: 17px; font-weight: 700; line-height: 1.25; }
+    .tag {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      padding: 2px 9px; border-radius: 20px; margin-top: 5px;
+    }
+    .close-btn {
+      background: var(--bg); border: none; border-radius: 50%;
+      width: 30px; height: 30px; font-size: 16px;
+      cursor: pointer; color: var(--text-muted);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .sheet-scroll {
+      overflow-y: auto; flex: 1;
+      padding: 16px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Info cells */
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+    .info-cell { background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+    .info-label { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+    .info-value { font-size: 15px; font-weight: 700; }
+    .info-value.hi { color: var(--accent); }
+
+    /* Section */
+    .sec { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; margin: 18px 0 8px; }
+
+    /* Notes */
+    textarea.notes {
+      width: 100%; min-height: 90px;
+      border: 1.5px solid var(--border); border-radius: 12px;
+      padding: 11px; font-size: 15px; font-family: inherit;
+      resize: vertical; color: var(--text); background: var(--card);
+      transition: border-color 0.2s;
+    }
+    textarea.notes:focus { outline: none; border-color: var(--primary); }
+    .save-hint { font-size: 12px; color: var(--success); margin-top: 4px; height: 16px; opacity: 0; transition: opacity 0.3s; }
+    .save-hint.on { opacity: 1; }
+
+    /* Photo grid */
+    .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .photo-cell { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--bg); cursor: pointer; }
+    .photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photo-del {
+      position: absolute; top: 4px; right: 4px;
+      background: rgba(0,0,0,0.55); color: white;
+      border: none; border-radius: 50%;
+      width: 22px; height: 22px; font-size: 13px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+
+    .add-photo-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 13px;
+      background: var(--bg); border: 2px dashed var(--border);
+      border-radius: 12px; font-size: 15px; color: var(--primary);
+      cursor: pointer; font-weight: 600; margin-top: 8px; margin-bottom: 24px;
+    }
+    .add-photo-btn:active { background: #EFF6FF; border-color: var(--primary); }
+
+    /* Lightbox */
+    #lightbox {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 9000;
+      display: none; align-items: center; justify-content: center;
+    }
+    #lightbox.on { display: flex; }
+    #lightbox img { max-width: 95vw; max-height: 90vh; object-fit: contain; border-radius: 6px; }
+    #lightbox-close {
+      position: absolute; top: 16px; right: 16px;
+      background: rgba(255,255,255,0.15); border: none; color: white;
+      width: 36px; height: 36px; border-radius: 50%;
+      font-size: 20px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1F2937; color: white;
+      padding: 11px 20px; border-radius: 10px;
+      font-size: 14px; z-index: 9500;
+      transition: transform 0.3s; white-space: nowrap;
+      pointer-events: none;
+    }
+    #toast.on { transform: translateX(-50%) translateY(0); }
+
+    /* Progress */
+    #progress {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 9000; display: none;
+      align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+    }
+    #progress.on { display: flex; }
+    #progress .msg { color: white; font-size: 15px; font-weight: 600; }
+    .spinner {
+      width: 42px; height: 42px;
+      border: 4px solid rgba(255,255,255,0.25); border-top-color: white;
+      border-radius: 50%; animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Leaflet topbar offset */
+    .leaflet-control-zoom { margin-top: 60px !important; }
+
+    /* ── Vormerken / Filter ─────────────────────────────────────────────── */
+    .topbar-filter {
+      display: flex; align-items: center; gap: 4px;
+    }
+    .filter-btn {
+      background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 8px; padding: 5px 8px;
+      font-size: 14px; color: var(--text-muted);
+      cursor: pointer; flex-shrink: 0;
+      transition: background 0.15s, color 0.15s;
+      min-width: 34px; text-align: center;
+    }
+    .filter-btn.active {
+      background: var(--primary); color: white; border-color: var(--primary);
+    }
+
+    /* ── GPS-Button ─────────────────────────────────────────────────────── */
+    #btn-gps { position: relative; }
+    #btn-gps.locating { animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Feldstatus im Sheet ────────────────────────────────────────────── */
+    .feldstatus-row {
+      display: flex; gap: 8px; margin-bottom: 12px;
+    }
+    .feldstatus-btn {
+      flex: 1; padding: 10px 6px; border-radius: 10px;
+      border: 2px solid var(--border); background: var(--bg);
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      text-align: center; transition: all 0.15s;
+      color: var(--text-muted);
+    }
+    .feldstatus-btn.active {
+      border-color: var(--primary); background: #EFF6FF; color: var(--primary);
+    }
+    .feldstatus-btn.active.done {
+      border-color: var(--success); background: #F0FDF4; color: var(--success);
+    }
+
+    /* Fortschrittsleiste ist jetzt als Strip unter der Topbar */
+
+
+    /* ── Suche ───────────────────────────────────────────────────────── */
+    #search-overlay {
+      position: fixed; inset: 0; z-index: 1400;
+      background: rgba(0,0,0,0.45);
+      display: none; flex-direction: column;
+      padding: 12px;
+    }
+    #search-overlay.on { display: flex; }
+
+    .search-box {
+      display: flex; align-items: center; gap: 8px;
+      background: white; border-radius: 14px;
+      padding: 10px 14px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    }
+    .search-box input {
+      flex: 1; border: none; outline: none;
+      font-size: 16px; color: var(--text);
+      background: transparent;
+    }
+    .search-close {
+      background: none; border: none; cursor: pointer;
+      font-size: 20px; color: var(--text-muted); padding: 0 4px;
+    }
+
+    .search-results {
+      background: white; border-radius: 14px;
+      margin-top: 10px; overflow-y: auto;
+      max-height: calc(100vh - 120px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+    .search-result-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .search-result-item:last-child { border-bottom: none; }
+    .search-result-item:active { background: var(--bg); }
+    .search-result-icon {
+      width: 34px; height: 34px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    .search-result-name { font-weight: 700; font-size: 14px; }
+    .search-result-sub  { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+    .search-no-results  { padding: 24px; text-align: center; color: var(--text-muted); font-size: 14px; }
+
+    /* ── Mikrofon-Button ─────────────────────────────────────────────── */
+    .mic-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 20px; padding: 4px 6px;
+      border-radius: 8px; flex-shrink: 0;
+      transition: background 0.15s;
+      color: var(--text-muted);
+    }
+    .mic-btn:active { background: var(--bg); }
+    .mic-btn.recording {
+      color: var(--danger);
+      animation: mic-pulse 0.8s infinite;
+    }
+    @keyframes mic-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .notes-row {
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .notes-row textarea { flex: 1; }
+
+
+    /* ── Filter-Panel ────────────────────────────────────────────────── */
+    .filter-section { margin-bottom: 14px; }
+    .filter-section-title {
+      font-size: 10px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .6px;
+      margin-bottom: 8px;
+    }
+    .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .filter-chip {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 10px; border-radius: 20px;
+      border: 1.5px solid var(--border);
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: all 0.15s; background: var(--bg); color: var(--text-muted);
+      user-select: none;
+    }
+    .filter-chip.on {
+      border-color: currentColor; background: currentColor;
+      color: white;
+    }
+    .filter-chip.on span.chip-label { color: white; }
+    .filter-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  </style>
+</head>
+<body>
+
+<!-- ═══ IMPORT SCREEN ═══════════════════════════════════ -->
+<div id="screen-import" class="screen active">
+  <div class="import-card">
+    <div class="import-logo">🗺️</div>
+    <h1>Feldapp</h1>
+    <p class="subtitle">Energieplanung Außendienst<br>Fotos & Notizen vor Ort erfassen</p>
+
+    <button class="btn btn-primary" id="btn-load">📂 Projekt-JSON laden</button>
+    <input type="file" id="json-input" accept=".json,application/json,text/plain,*/*" hidden>
+
+    <button class="btn btn-secondary" id="btn-continue" style="display:none">
+      Bestehendes Projekt öffnen →
+    </button>
+    <button class="btn btn-ghost" id="btn-clear" style="display:none">
+      Projekt löschen
+    </button>
+
+    <div class="import-status" id="import-status"></div>
+  </div>
+</div>
+
+<!-- ═══ SUCH-OVERLAY ══════════════════════════════════════════════ -->
+<div id="search-overlay">
+  <div class="search-box">
+    <span style="font-size:18px;color:var(--text-muted);">🔍</span>
+    <input id="search-input" type="search" placeholder="Gebäude oder Asset suchen…" autocomplete="off">
+    <button class="search-close" id="btn-search-close">✕</button>
+  </div>
+  <div class="search-results" id="search-results"></div>
+</div>
+
+<!-- ═══ FILTER-PANEL ════════════════════════════════════════════════ -->
+<div id="filter-panel" style="display:none;position:fixed;inset:0;z-index:1400;background:rgba(0,0,0,0.45);">
+  <div style="position:absolute;bottom:0;left:0;right:0;background:white;border-radius:22px 22px 0 0;padding:16px;max-height:80vh;overflow-y:auto;box-shadow:0 -4px 20px rgba(0,0,0,.2);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <span style="font-size:15px;font-weight:700;">⚙ Typen filtern</span>
+      <div style="display:flex;gap:8px;">
+        <button onclick="setAllFilters(true)" style="font-size:12px;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);cursor:pointer;">Alle</button>
+        <button onclick="setAllFilters(false)" style="font-size:12px;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);cursor:pointer;">Keine</button>
+        <button onclick="closeFilterPanel()" style="font-size:12px;padding:5px 12px;border-radius:8px;border:1px solid var(--primary);color:var(--primary);background:white;cursor:pointer;font-weight:700;">✓ Fertig</button>
+      </div>
+    </div>
+    <div id="filter-panel-content"></div>
+  </div>
+</div>
+
+<!-- ═══ MAP SCREEN ═══════════════════════════════════════ -->
+<div id="screen-map" class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="btn-back" title="Zurück">←</button>
+    <button class="icon-btn" id="btn-search" title="Suchen">🔍</button>
+    <div class="topbar-title">
+      <div class="name" id="proj-name">Energieplanung</div>
+      <div class="stats" id="proj-stats"></div>
+    </div>
+    <button class="filter-btn" id="btn-filter-vorgemerkt" title="Nur vorgemerkte Objekte anzeigen">★</button>
+    <button class="icon-btn" id="btn-gps" title="Meinen Standort anzeigen">📍</button>
+    <button class="icon-btn" id="btn-cache-tiles" title="Karte für Offline cachen">🗺</button>
+    <button class="icon-btn" id="btn-layer-filter" title="Typen ein-/ausblenden">⚙</button>
+    <div class="export-btn-wrap">
+      <button class="icon-btn" id="btn-export" title="Als ZIP exportieren">⬇️</button>
+      <div class="export-badge" id="export-badge"></div>
+    </div>
+  </div>
+  <div id="progress-strip" style="display:none;position:absolute;top:52px;left:0;right:0;z-index:999;height:4px;background:var(--border);">
+    <div id="progress-bar" style="height:100%;background:#16a34a;transition:width 0.4s;width:0%;"></div>
+  </div>
+  <div id="progress-label-strip" style="display:none;position:absolute;top:52px;right:8px;z-index:999;font-size:10px;font-weight:700;color:#16a34a;background:white;padding:1px 5px;border-radius:0 0 6px 6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);" id="progress-label"></div>
+  <div id="map"></div>
+
+<div id="backdrop"></div>
+<div id="sheet">
+  <div class="sheet-handle-zone" id="sheet-handle">
+    <div class="sheet-handle"></div>
+  </div>
+  <div class="sheet-head" id="sheet-head"></div>
+  <div class="sheet-scroll" id="sheet-body"></div>
+</div>
+
+<!-- Inputs (hidden) -->
+<input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <button id="lightbox-close">✕</button>
+  <img id="lightbox-img" src="" alt="Foto">
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Progress -->
+<div id="progress">
+  <div class="spinner"></div>
+  <div class="msg" id="progress-msg">Bitte warten...</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────
+//  DATABASE  (IndexedDB wrapper)
+// ─────────────────────────────────────────────────────────
+const DB = (() => {
+  const NAME = 'feldapp-db', VER = 1;
+  let db = null;
+
+  function open() {
+    if (db) return Promise.resolve(db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open(NAME, VER);
+      r.onupgradeneeded = e => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains('project'))
+          d.createObjectStore('project', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('notes'))
+          d.createObjectStore('notes', { keyPath: 'assetId' });
+        if (!d.objectStoreNames.contains('photos')) {
+          const ps = d.createObjectStore('photos', { keyPath: 'id' });
+          ps.createIndex('by_asset', 'assetId');
+        }
+      };
+      r.onsuccess = e => { db = e.target.result; res(db); };
+      r.onerror = () => rej(r.error);
+    });
+  }
+
+  const p = (req) => new Promise((res, rej) => {
+    req.onsuccess = () => res(req.result);
+    req.onerror  = () => rej(req.error);
+  });
+
+  const store = (name, mode = 'readonly') => db.transaction(name, mode).objectStore(name);
+
+  return {
+    async init()                  { await open(); },
+    async saveProject(data)       { await open(); return p(store('project','readwrite').put({ id: 'current', data })); },
+    async getProject()            { await open(); const r = await p(store('project').get('current')); return r?.data ?? null; },
+    async clearAll()              { await open(); await p(store('project','readwrite').clear()); await p(store('notes','readwrite').clear()); await p(store('photos','readwrite').clear()); },
+    async saveNote(aid, text)     { await open(); return p(store('notes','readwrite').put({ assetId: String(aid), text, ts: Date.now() })); },
+    async getNote(aid)            { await open(); const r = await p(store('notes').get(String(aid))); return r?.text ?? ''; },
+    async getAllNotes()            { await open(); return p(store('notes').getAll()); },
+    async addPhoto(aid, blob, fn) {
+      await open();
+      const id = `${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+      return p(store('photos','readwrite').put({ id, assetId: String(aid), blob, filename: fn, ts: Date.now() }));
+    },
+    async getPhotos(aid)          { await open(); return p(store('photos').index('by_asset').getAll(String(aid))); },
+    async deletePhoto(id)         { await open(); return p(store('photos','readwrite').delete(id)); },
+    async getAllPhotos()           { await open(); return p(store('photos').getAll()); },
+    async hasAnyFieldData() {
+      await open();
+      const notes = await p(store('notes').getAll());
+      const photos = await p(store('photos').getAll());
+      return notes.some(n => n.text) || photos.length > 0;
+    },
+  };
+})();
+
+// ─────────────────────────────────────────────────────────
+//  IMAGE COMPRESSION
+// ─────────────────────────────────────────────────────────
+function compressImage(file, maxPx = 1200, quality = 0.75) {
+  return new Promise(res => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      c.toBlob(res, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); res(file); };
+    img.src = url;
+  });
+}
+
+// ─────────────────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────────────────
+function centroid(polygon) {
+  if (!polygon || polygon.length === 0) return null;
+  // Polygon entries can be [lat,lng] arrays OR {lat,lng} objects (Leaflet serialization)
+  const pts = polygon.map(p => Array.isArray(p) ? [p[0], p[1]] : [p.lat, p.lng]);
+  const lat = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const lng = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  return [lat, lng];
+}
+
+function normalizePolygon(polygon) {
+  if (!polygon || polygon.length === 0) return polygon;
+  // Ensure entries are [lat, lng] arrays for Leaflet
+  return polygon.map(p => Array.isArray(p) ? p : [p.lat, p.lng]);
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtKw(v) {
+  const n = parseFloat(v);
+  if (isNaN(n) || n <= 0) return '—';
+  return n >= 1000 ? `${(n/1000).toFixed(1)} MW` : `${n} kW`;
+}
+function fmtM2(v) {
+  const n = parseFloat(v);
+  return (isNaN(n) || n <= 0) ? '—' : `${Math.round(n)} m²`;
+}
+
+const NUTZUNG = {
+  EFH:   { label: 'Einfamilienhaus', color: '#43A047' },
+  RH:    { label: 'Reihenhaus',       color: '#66BB6A' },
+  MFH:   { label: 'Mehrfamilienhaus', color: '#26A69A' },
+  GHD:   { label: 'Gewerbe / Handel', color: '#1E88E5' },
+  NWGB:  { label: 'Nichtwohngebäude', color: '#039BE5' },
+  IND:   { label: 'Industrie',         color: '#FB8C00' },
+  KMU:   { label: 'Kleinbetrieb',      color: '#F4511E' },
+  OEB:   { label: 'Öffentlich',         color: '#8E24AA' },
+  SCHULE:{ label: 'Schule',             color: '#AB47BC' },
+  KIRCHE:{ label: 'Kirche',             color: '#7B1FA2' },
+};
+function nutzung(key) {
+  return NUTZUNG[key] || { label: key || 'Gebäude', color: '#607D8B' };
+}
+
+const ERZEUGER = {
+  lwWp:              { short: 'WP',  label: 'Luft-Wasser-Wärmepumpe', color: '#00ACC1', icon: '♨️' },
+  geoThermie:        { short: 'GEO', label: 'Geothermie',              color: '#EF6C00', icon: '🌍' },
+  pelletsKessel:     { short: 'PK',  label: 'Pelletskessel',           color: '#6D4C41', icon: '🔥' },
+  heizhackschnitzel: { short: 'HHS', label: 'Hackschnitzel',           color: '#8D6E63', icon: '🌲' },
+  fernwaerme:        { short: 'FW',  label: 'Fernwärme',               color: '#E53935', icon: '🏭' },
+};
+
+const ASSET_CFG = {
+  NAP:          { label: 'NAP',               icon: '⚡', color: '#E53935', domain: 'strom',  kat: 'Infrastruktur' },
+  Schaltanlage: { label: 'Schaltanlage',       icon: '⊞', color: '#FF9800', domain: 'strom',  kat: 'Infrastruktur' },
+  Trafo:        { label: 'Trafo',              icon: '🔁', color: '#F9A825', domain: 'strom',  kat: 'Infrastruktur' },
+  NSHV:         { label: 'NSHV',               icon: '🗄', color: '#4FC3F7', domain: 'strom',  kat: 'Infrastruktur' },
+  UV:           { label: 'UV',                 icon: '📦', color: '#64B5F6', domain: 'strom',  kat: 'Infrastruktur' },
+  Verbraucher:  { label: 'Verbraucher',        icon: '🏠', color: '#81C784', domain: 'strom',  kat: 'Verbraucher'   },
+  Lade:         { label: 'Ladeinfrastruktur',  icon: '🔌', color: '#4DD0E1', domain: 'strom',  kat: 'Verbraucher'   },
+  PV:           { label: 'PV-Anlage',          icon: '☀',  color: '#FDD835', domain: 'strom',  kat: 'Erzeuger'      },
+  Wind:         { label: 'Windkraftanlage',    icon: '🌀', color: '#80DEEA', domain: 'strom',  kat: 'Erzeuger'      },
+  Nsa:          { label: 'Notstromaggregat',   icon: '⚙',  color: '#FF7043', domain: 'strom',  kat: 'Erzeuger'      },
+  Batterie:     { label: 'Batterie',           icon: '🔋', color: '#AED581', domain: 'strom',  kat: 'Speicher'      },
+  WP:           { label: 'Wärmepumpe',         icon: '💨', color: '#CE93D8', domain: 'hybrid', kat: 'Hybrid'        },
+  KWK:          { label: 'KWK-Anlage',         icon: '🔥', color: '#F48FB1', domain: 'hybrid', kat: 'Hybrid'        },
+  Reserve:      { label: 'Reserve',            icon: '◻',  color: '#90A4AE', domain: 'strom',  kat: 'Sonstiges'     },
+};
+function assetCfg(type) {
+  return ASSET_CFG[type] || { label: type || 'Asset', icon: '●', color: '#90A4AE', domain: 'strom', kat: 'Sonstiges' };
+}
+
+// ─────────────────────────────────────────────────────────
+//  UI UTILITIES
+// ─────────────────────────────────────────────────────────
+let _toastTimer = null;
+function toast(msg, ms = 2600) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('on'), ms);
+}
+
+function showProgress(msg) {
+  document.getElementById('progress-msg').textContent = msg;
+  document.getElementById('progress').classList.add('on');
+}
+function hideProgress() { document.getElementById('progress').classList.remove('on'); }
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ─────────────────────────────────────────────────────────
+//  MAIN APP
+// ─────────────────────────────────────────────────────────
+let _map = null;
+let _project = null;
+let _currentAsset = null;
+let _blobUrls = new Map();       // photo id → blob URL (cleaned up on sheet close)
+let _notesTimer = null;
+
+
+// ── DB: FeldStatus ────────────────────────────────────────────────────────────
+// Erweitert das bestehende DB-Objekt um getFeldStatus / saveFeldStatus.
+// Status wird im 'notes'-Store als Zusatzfeld gespeichert (kein neuer Store nötig).
+// FeldStatus wird im notes-Store als Zusatzfeld gespeichert
+DB.getFeldStatus = async function(aid) {
+  await this.init();
+  const r = await this.getNote(String(aid) + '__meta__').catch(() => '');
+  try { return JSON.parse(r)?.feldStatus || 'offen'; } catch { return 'offen'; }
+};
+DB.saveFeldStatus = async function(aid, status) {
+  const key = String(aid) + '__meta__';
+  let meta = {};
+  try { meta = JSON.parse(await this.getNote(key)) || {}; } catch {}
+  meta.feldStatus = status;
+  await this.saveNote(key, JSON.stringify(meta));
+};
+
+// ── Feldstatus setzen ────────────────────────────────────────────────────────
+async function setFeldStatus(status) {
+  if (!_currentAsset) return;
+  await DB.saveFeldStatus(assetId(_currentAsset), status);
+  // Buttons aktualisieren ohne ganzes Sheet neu zu rendern
+  document.querySelectorAll('.feldstatus-btn').forEach(btn => {
+    btn.classList.remove('active', 'done');
+  });
+  const map = { 'offen': 0, 'besucht': 1, 'erledigt': 2 };
+  const btns = document.querySelectorAll('.feldstatus-btn');
+  if (btns[map[status]]) {
+    btns[map[status]].classList.add('active');
+    if (status === 'erledigt') btns[map[status]].classList.add('done');
+  }
+  // Karte aktualisieren (Marker-Opacity)
+  renderMap();
+  updateExportBadge();
+  updateProgress();
+}
+window.setFeldStatus = setFeldStatus;
+
+// ── GPS ────────────────────────────────────────────────────────────────────
+let _gpsMarker = null;
+let _gpsCircle = null;
+let _gpsWatchId = null;
+
+function toggleGps() {
+  const btn = document.getElementById('btn-gps');
+  if (_gpsWatchId !== null) {
+    navigator.geolocation.clearWatch(_gpsWatchId);
+    _gpsWatchId = null;
+    if (_gpsMarker) { _map.removeLayer(_gpsMarker); _gpsMarker = null; }
+    if (_gpsCircle) { _map.removeLayer(_gpsCircle); _gpsCircle = null; }
+    btn.classList.remove('locating');
+    btn.title = 'Meinen Standort anzeigen';
+    return;
+  }
+  if (!navigator.geolocation) { toast('GPS nicht verfügbar'); return; }
+  btn.classList.add('locating');
+  toast('GPS wird ermittelt…');
+  _gpsWatchId = navigator.geolocation.watchPosition(
+    pos => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+      btn.classList.remove('locating');
+      btn.title = 'GPS aktiv – tippen zum Deaktivieren';
+      if (!_gpsMarker) {
+        _gpsMarker = L.circleMarker([lat, lng], {
+          radius: 8, fillColor: '#1565C0', color: 'white',
+          weight: 2.5, fillOpacity: 1, zIndexOffset: 1000,
+        }).addTo(_map);
+        _gpsCircle = L.circle([lat, lng], {
+          radius: accuracy, color: '#1565C0', fillColor: '#1565C0',
+          fillOpacity: 0.08, weight: 1,
+        }).addTo(_map);
+        _map.setView([lat, lng], Math.max(_map.getZoom(), 16));
+      } else {
+        _gpsMarker.setLatLng([lat, lng]);
+        _gpsCircle.setLatLng([lat, lng]).setRadius(accuracy);
+      }
+    },
+    err => {
+      btn.classList.remove('locating');
+      toast('GPS-Fehler: ' + err.message);
+      _gpsWatchId = null;
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+  );
+}
+
+// ── Filter: Nur vorgemerkte ───────────────────────────────────────────────────
+let _filterVorgemerkt = false;
+
+function toggleFilterVorgemerkt() {
+  _filterVorgemerkt = !_filterVorgemerkt;
+  const btn = document.getElementById('btn-filter-vorgemerkt');
+  btn.classList.toggle('active', _filterVorgemerkt);
+  renderMap();
+}
+
+// ── Fortschrittsanzeige ──────────────────────────────────────────────────────
+async function updateProgress() {
+  if (!_project) return;
+  const alle = [
+    ...(_project.gebaeude || []).filter(g => g.feldVorgemerkt),
+    ...Object.keys(ERZEUGER).filter(k => _project[k]?.feldVorgemerkt).map(k => ({ _aid: k })),
+    ...(_project.elektroAssets?.items || []).filter(a => a.feldVorgemerkt).map(a => ({ _aid: 'el_' + a.id })),
+  ];
+  if (alle.length === 0) {
+    document.getElementById('progress-strip').style.display = 'none';
+  document.getElementById('progress-label-strip').style.display = 'none';
+    return;
+  }
+  let erledigt = 0;
+  for (const obj of alle) {
+    const aid = obj._aid || String(obj.id);
+    const status = await DB.getFeldStatus(aid);
+    if (status === 'erledigt') erledigt++;
+  }
+  const pct = Math.round(erledigt / alle.length * 100);
+  document.getElementById('progress-strip').style.display = '';
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-label-strip').style.display = '';
+  document.getElementById('progress-label').textContent = erledigt + ' / ' + alle.length + ' ✅';
+}
+
+// ── Offline-Karten-Caching ───────────────────────────────────────────────────
+async function cacheTiles() {
+  if (!_map) { toast('Erst Karte laden'); return; }
+  if (!('caches' in window)) { toast('Cache-API nicht verfügbar'); return; }
+
+  const btn = document.getElementById('btn-cache-tiles');
+  btn.textContent = '⏳';
+  btn.disabled = true;
+
+  const bounds = _map.getBounds();
+  const minZoom = Math.max(_map.getZoom() - 1, 13);
+  const maxZoom = Math.min(_map.getZoom() + 3, 18);
+
+  // Alle Tile-URLs für den Bereich berechnen
+  function latLngToTile(lat, lng, z) {
+    const n = Math.pow(2, z);
+    const x = Math.floor((lng + 180) / 360 * n);
+    const latRad = lat * Math.PI / 180;
+    const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+    return { x, y, z };
+  }
+
+  const urls = [];
+  for (let z = minZoom; z <= maxZoom; z++) {
+    const nw = latLngToTile(bounds.getNorth(), bounds.getWest(), z);
+    const se = latLngToTile(bounds.getSouth(), bounds.getEast(), z);
+    for (let x = nw.x; x <= se.x; x++) {
+      for (let y = nw.y; y <= se.y; y++) {
+        const sub = ['a','b','c'][Math.abs(x + y) % 3];
+        urls.push(`https://${sub}.tile.openstreetmap.org/${z}/${x}/${y}.png`);
+      }
+    }
+  }
+
+  if (urls.length > 500) {
+    toast(`Zu viele Kacheln (${urls.length}). Bitte weiter reinzoomen.`);
+    btn.textContent = '🗺';
+    btn.disabled = false;
+    return;
+  }
+
+  showProgress(`Lade ${urls.length} Kacheln…`);
+  const cache = await caches.open('feldapp-tiles-v1');
+  let done = 0;
+  for (const url of urls) {
+    try {
+      const cached = await cache.match(url);
+      if (!cached) {
+        const res = await fetch(url);
+        if (res.ok) await cache.put(url, res);
+      }
+    } catch {}
+    done++;
+    if (done % 20 === 0) {
+      document.getElementById('progress-msg').textContent =
+        `Kacheln cachen… ${done}/${urls.length}`;
+    }
+  }
+  hideProgress();
+  toast(`✓ ${urls.length} Kacheln offline gespeichert (Zoom ${minZoom}–${maxZoom})`, 4000);
+  btn.textContent = '🗺';
+  btn.disabled = false;
+}
+
+
+// ── Gebäude-Suche ─────────────────────────────────────────────────────────────
+function openSearch() {
+  document.getElementById('search-overlay').classList.add('on');
+  const input = document.getElementById('search-input');
+  input.value = '';
+  input.focus();
+  renderSearchResults('');
+}
+function closeSearch() {
+  document.getElementById('search-overlay').classList.remove('on');
+}
+function renderSearchResults(query) {
+  const container = document.getElementById('search-results');
+  if (!_project) { container.innerHTML = ''; return; }
+
+  const q = query.trim().toLowerCase();
+  const results = [];
+
+  // Gebäude
+  for (const g of (_project.gebaeude || [])) {
+    if (!q || g.name?.toLowerCase().includes(q) || String(g.id).includes(q)) {
+      const ctr = centroid(g.polygon);
+      results.push({
+        icon: '🏠', color: nutzung(g.nutzung).color,
+        name: g.name || 'Gebäude ' + g.id,
+        sub: nutzung(g.nutzung).label,
+        vorgemerkt: g.feldVorgemerkt,
+        action: () => { closeSearch(); if (ctr && _map) _map.setView(ctr, 18); openSheet({ type: 'gebaeude', data: g }); }
+      });
+    }
+  }
+
+  // Erzeuger
+  for (const [key, info] of Object.entries(ERZEUGER)) {
+    const erz = _project[key];
+    if (!erz?.lat) continue;
+    if (!q || info.label.toLowerCase().includes(q)) {
+      results.push({
+        icon: info.icon, color: info.color,
+        name: info.label, sub: 'Wärmeerzeuger',
+        vorgemerkt: erz.feldVorgemerkt,
+        action: () => { closeSearch(); _map.setView([erz.lat, erz.lng], 18); openSheet({ type: 'erzeuger', key, info, data: erz }); }
+      });
+    }
+  }
+
+  // Elektro-Assets
+  for (const a of (_project.elektroAssets?.items || [])) {
+    if (a.lat == null) continue;
+    if (!q || a.name?.toLowerCase().includes(q) || a.type?.toLowerCase().includes(q)) {
+      const cfg = assetCfg(a.type);
+      results.push({
+        icon: cfg.icon, color: cfg.color,
+        name: a.name || cfg.label, sub: cfg.label,
+        vorgemerkt: a.feldVorgemerkt,
+        action: () => { closeSearch(); _map.setView([a.lat, a.lng], 18); openSheet({ type: 'elektro', data: a }); }
+      });
+    }
+  }
+
+  if (results.length === 0) {
+    container.innerHTML = `<div class="search-no-results">Keine Ergebnisse für „${esc(query)}"</div>`;
+    return;
+  }
+
+  container.innerHTML = results.map((r, i) => `
+    <div class="search-result-item" data-idx="${i}">
+      <div class="search-result-icon" style="background:${r.color}22;">${r.icon}</div>
+      <div>
+        <div class="search-result-name">${esc(r.name)} ${r.vorgemerkt ? '★' : ''}</div>
+        <div class="search-result-sub">${esc(r.sub)}</div>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.search-result-item').forEach((el, i) => {
+    el.addEventListener('click', () => results[i].action());
+  });
+}
+
+// ── Spracheingabe ─────────────────────────────────────────────────────────────
+let _recognition = null;
+let _isRecording = false;
+
+function toggleMic() {
+  const btn = document.getElementById('btn-mic');
+  if (!btn) return;
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    toast('Spracheingabe wird von diesem Browser nicht unterstützt');
+    return;
+  }
+
+  if (_isRecording) {
+    _recognition?.stop();
+    return;
+  }
+
+  _recognition = new SR();
+  _recognition.lang = 'de-DE';
+  _recognition.continuous = false;
+  _recognition.interimResults = true;
+
+  let finalText = '';
+  let _interimSpan = null;
+
+  _recognition.onstart = () => {
+    _isRecording = true;
+    btn.classList.add('recording');
+    btn.title = 'Aufnahme läuft – tippen zum Stoppen';
+    // Platzhalter-Span für Zwischenergebnis
+    const ta = document.getElementById('notes-ta');
+    if (ta) {
+      _interimSpan = document.createElement('span');
+      _interimSpan.style.cssText = 'color:#aaa;font-style:italic;';
+    }
+    toast('🎤 Spricht…', 60000);
+  };
+
+  _recognition.onresult = e => {
+    finalText = '';
+    let interim = '';
+    for (const res of e.results) {
+      if (res.isFinal) finalText += res[0].transcript;
+      else interim += res[0].transcript;
+    }
+    // Zwischenergebnis in Textarea anzeigen
+    const ta = document.getElementById('notes-ta');
+    if (ta && interim) ta.placeholder = interim;
+  };
+
+  _recognition.onend = async () => {
+    _isRecording = false;
+    btn.classList.remove('recording');
+    btn.title = 'Spracheingabe';
+    const ta = document.getElementById('notes-ta');
+    if (ta) {
+      ta.placeholder = 'Vor-Ort-Beobachtungen, Mängel, Besonderheiten…';
+      if (finalText.trim()) {
+        // Text anhängen (mit Leerzeichen wenn schon Inhalt)
+        const sep = ta.value && !ta.value.endsWith('\n') ? '\n' : '';
+        ta.value += sep + finalText.trim();
+        // Autosave
+        clearTimeout(_notesTimer);
+        await flushNotes();
+        const hint = document.getElementById('save-hint');
+        if (hint) { hint.classList.add('on'); setTimeout(() => hint.classList.remove('on'), 2000); }
+        toast('✓ Notiz gespeichert');
+      }
+    }
+  };
+
+  _recognition.onerror = e => {
+    _isRecording = false;
+    btn.classList.remove('recording');
+    if (e.error === 'not-allowed') toast('Mikrofon-Zugriff verweigert — Einstellungen prüfen');
+    else if (e.error === 'network') toast('Spracheingabe benötigt Internet');
+    else toast('Sprach-Fehler: ' + e.error);
+  };
+
+  _recognition.start();
+}
+window.toggleMic = toggleMic;
+
+
+// ── Typ-Filter ────────────────────────────────────────────────────────────────
+// Welche Typen ausgeblendet sind (key → true = ausgeblendet)
+const _hiddenTypes = {};
+
+function openFilterPanel() {
+  const panel = document.getElementById('filter-panel');
+  const content = document.getElementById('filter-panel-content');
+  if (!panel || !content) return;
+
+  const allNutzungen = Object.entries(NUTZUNG);
+  const allErzeuger  = Object.entries(ERZEUGER);
+  const allAssets    = Object.entries(ASSET_CFG).filter(([k]) =>
+    !['Verbraucher'].includes(k)
+  );
+
+  function chip(key, label, color, emoji) {
+    const off = _hiddenTypes[key];
+    return `<div class="filter-chip${off ? '' : ' on'}" data-key="${key}" style="--chip:${color};color:${color};" onclick="toggleFilterChip('${key}')">
+      <div class="filter-chip-dot" style="background:${color};"></div>
+      <span class="chip-label" style="color:${off ? 'var(--text-muted)' : color}">${emoji ? emoji + ' ' : ''}${label}</span>
+    </div>`;
+  }
+
+  content.innerHTML = `
+    <div class="filter-section">
+      <div class="filter-section-title">🏠 Gebäudetypen</div>
+      <div class="filter-chips">
+        ${allNutzungen.map(([k,v]) => chip(k, v.label, v.color, '')).join('')}
+      </div>
+    </div>
+    <div class="filter-section">
+      <div class="filter-section-title">🔥 Wärmeerzeuger</div>
+      <div class="filter-chips">
+        ${allErzeuger.map(([k,v]) => chip(k, v.label, v.color, v.icon)).join('')}
+      </div>
+    </div>
+    <div class="filter-section">
+      <div class="filter-section-title">⚡ Elektro-Assets</div>
+      <div class="filter-chips">
+        ${allAssets.map(([k,v]) => chip(k, v.label, v.color, v.icon)).join('')}
+      </div>
+    </div>
+  `;
+
+  panel.style.display = 'block';
+  // Backdrop schließt Panel
+  panel.addEventListener('click', e => { if (e.target === panel) closeFilterPanel(); }, { once: true });
+}
+
+function closeFilterPanel() {
+  const panel = document.getElementById('filter-panel');
+  if (panel) panel.style.display = 'none';
+  renderMap();
+}
+window.closeFilterPanel = closeFilterPanel;
+
+function toggleFilterChip(key) {
+  _hiddenTypes[key] = !_hiddenTypes[key];
+  const chip = document.querySelector(`.filter-chip[data-key="${key}"]`);
+  if (chip) {
+    chip.classList.toggle('on', !_hiddenTypes[key]);
+    const label = chip.querySelector('.chip-label');
+    const color = chip.style.getPropertyValue('--chip') || chip.style.color;
+    if (label) label.style.color = _hiddenTypes[key] ? 'var(--text-muted)' : color;
+  }
+  // Button-Badge aktualisieren
+  const hiddenCount = Object.values(_hiddenTypes).filter(Boolean).length;
+  const btn = document.getElementById('btn-layer-filter');
+  if (btn) btn.textContent = hiddenCount > 0 ? `⚙${hiddenCount}` : '⚙';
+}
+window.toggleFilterChip = toggleFilterChip;
+
+function setAllFilters(visible) {
+  const keys = [
+    ...Object.keys(NUTZUNG),
+    ...Object.keys(ERZEUGER),
+    ...Object.keys(ASSET_CFG),
+  ];
+  keys.forEach(k => _hiddenTypes[k] = !visible);
+  // Chips aktualisieren
+  document.querySelectorAll('.filter-chip').forEach(chip => {
+    const key = chip.dataset.key;
+    chip.classList.toggle('on', visible);
+    const label = chip.querySelector('.chip-label');
+    if (label) label.style.color = visible ? '' : 'var(--text-muted)';
+  });
+  const btn = document.getElementById('btn-layer-filter');
+  if (btn) btn.textContent = visible ? '⚙' : '⚙' + Object.keys(_hiddenTypes).length;
+}
+window.setAllFilters = setAllFilters;
+
+
+// Fotos nachladen wenn App nach Kamera-Nutzung wieder sichtbar wird
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && _currentAsset) {
+    await refreshPhotos();
+  }
+});
+
+// ── Startup ───────────────────────────────────────────────
+async function init() {
+  await DB.init();
+  _project = await DB.getProject();
+
+  if (_project) {
+    const cnt = (_project.gebaeude || []).length;
+    setStatus(`Projekt mit ${cnt} Gebäuden vorhanden`);
+  }
+
+  refreshImportButtons();
+
+  // Wire listeners
+  document.getElementById('btn-load').addEventListener('click', () => document.getElementById('json-input').click());
+  document.getElementById('json-input').addEventListener('change', onJsonFile);
+  document.getElementById('btn-continue').addEventListener('click', openMap);
+  document.getElementById('btn-clear').addEventListener('click', clearProject);
+  document.getElementById('btn-back').addEventListener('click', () => showScreen('screen-import'));
+  document.getElementById('btn-gps').addEventListener('click', toggleGps);
+  document.getElementById('btn-filter-vorgemerkt').addEventListener('click', toggleFilterVorgemerkt);
+  document.getElementById('btn-cache-tiles').addEventListener('click', cacheTiles);
+  document.getElementById('btn-layer-filter').addEventListener('click', openFilterPanel);
+  document.getElementById('btn-search').addEventListener('click', openSearch);
+  document.getElementById('btn-search-close').addEventListener('click', closeSearch);
+  document.getElementById('search-input').addEventListener('input', e => renderSearchResults(e.target.value));
+  document.getElementById('search-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeSearch(); });
+  document.getElementById('btn-export').addEventListener('click', exportZip);
+  document.getElementById('backdrop').addEventListener('click', closeSheet);
+  document.getElementById('photo-input').addEventListener('change', onPhotoFile);
+  document.getElementById('lightbox').addEventListener('click', e => { if (e.target === e.currentTarget || e.target.id === 'lightbox-close') closeLightbox(); });
+
+  setupSheetDrag();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+
+  // Warnung beim Schließen wenn unexportierte Daten vorhanden
+  window.addEventListener('beforeunload', e => {
+    const badge = document.getElementById('export-badge');
+    if (badge && badge.style.display !== 'none') {
+      e.preventDefault();
+      e.returnValue = 'Es gibt noch nicht exportierte Fotos/Notizen. Trotzdem schließen?';
+    }
+  });
+}
+
+function setStatus(msg) { document.getElementById('import-status').textContent = msg; }
+
+function refreshImportButtons() {
+  const has = !!_project;
+  document.getElementById('btn-continue').style.display = has ? '' : 'none';
+  document.getElementById('btn-clear').style.display    = has ? '' : 'none';
+}
+
+// ── JSON Import ───────────────────────────────────────────
+async function onJsonFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  setStatus('Lade…');
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.gebaeude && !data.lwWp && !data.fernwaerme && !data.pelletsKessel) {
+      throw new Error('Keine erkennbaren Projektdaten gefunden.');
+    }
+    await DB.saveProject(data);
+    _project = data;
+    const cnt = (data.gebaeude || []).length;
+    setStatus(`✓ ${cnt} Gebäude geladen`);
+    refreshImportButtons();
+    toast(`Projekt geladen`);
+    setTimeout(openMap, 500);
+  } catch (err) {
+    setStatus('⚠ ' + err.message);
+  }
+  e.target.value = '';
+}
+
+async function clearProject() {
+  if (!confirm('Alle gespeicherten Daten, Notizen und Fotos löschen?')) return;
+  await DB.clearAll();
+  _project = null;
+  refreshImportButtons();
+  setStatus('Projekt gelöscht.');
+}
+
+// ── Map ───────────────────────────────────────────────────
+function openMap() {
+  showScreen('screen-map');
+  if (!_map) {
+    _map = L.map('map', { zoomControl: true }).setView([48.5, 11.0], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(_map);
+  }
+  // Leaflet braucht einen kurzen Moment nachdem der Container sichtbar wird
+  setTimeout(() => {
+    _map.invalidateSize();
+    renderMap();
+    updateProgress();
+  }, 50);
+}
+
+function renderMap() {
+  if (!_project || !_map) return;
+
+  // Clear non-tile layers
+  _map.eachLayer(l => { if (!(l instanceof L.TileLayer)) _map.removeLayer(l); });
+
+  const bounds = [];
+  const gebaeude = _project.gebaeude || [];
+
+  // Wärmenetz Trasse
+  const trasse = _project.trasse || [];
+  if (trasse.length >= 2) {
+    L.polyline(trasse.map(p => [p.lat, p.lng]), {
+      color: '#E53935', weight: 3, opacity: 0.65, dashArray: '8 4',
+    }).addTo(_map);
+  }
+
+  // Trasse segments (Rohrabschnitte mit Typ)
+  const segments = _project.trasseSegments || [];
+  segments.forEach(seg => {
+    if (!seg.latlngs || seg.latlngs.length < 2) return;
+    L.polyline(seg.latlngs.map(p => [p.lat, p.lng]), {
+      color: '#E53935', weight: 2.5, opacity: 0.5,
+    }).addTo(_map);
+  });
+
+  // Gebäude
+  const _anyVorgemerkt = _filterVorgemerkt || (
+    gebaeude.some(g => g.feldVorgemerkt) ||
+    Object.keys(ERZEUGER).some(k => _project[k]?.feldVorgemerkt) ||
+    (_project.elektroAssets?.items || []).some(a => a.feldVorgemerkt)
+  );
+
+  gebaeude.forEach(g => {
+    const ctr = centroid(g.polygon);
+    if (!ctr) return;
+
+    const isV = !!g.feldVorgemerkt;
+    if (_filterVorgemerkt && !isV) return;
+    if (_hiddenTypes[g.nutzung]) return;
+
+    const op = _anyVorgemerkt && !isV ? 0.25 : 1;
+    bounds.push(ctr);
+    const ni = nutzung(g.nutzung);
+
+    if (g.polygon && g.polygon.length >= 3) {
+      L.polygon(normalizePolygon(g.polygon), {
+        color: ni.color, fillColor: ni.color,
+        fillOpacity: 0.15 * op, weight: 1.5, opacity: 0.5 * op,
+      }).addTo(_map);
+    }
+
+    const marker = L.circleMarker(ctr, {
+      radius: isV ? 11 : 9, fillColor: ni.color,
+      color: isV ? 'gold' : 'white', weight: isV ? 3 : 2.5, fillOpacity: 0.92 * op,
+    }).addTo(_map);
+
+    marker.on('click', () => openSheet({ type: 'gebaeude', data: g }));
+  });
+
+  // Erzeuger
+  Object.entries(ERZEUGER).forEach(([key, info]) => {
+    const erz = _project[key];
+    if (!erz || erz.lat == null) return;
+    const pos = [erz.lat, erz.lng];
+    bounds.push(pos);
+
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:${info.color};color:#fff;border-radius:7px;padding:3px 7px;font-size:11px;font-weight:700;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.28);white-space:nowrap;">${info.short}</div>`,
+      iconAnchor: [0, 0],
+    });
+    const erzV = !!erz.feldVorgemerkt;
+    if (_filterVorgemerkt && !erzV) return;
+    if (_hiddenTypes[key]) return;
+    const erzOp = _anyVorgemerkt && !erzV ? 0.25 : 1;
+    const m = L.marker(pos, { icon, opacity: erzOp }).addTo(_map);
+    if (erzV) m.getElement()?.style.setProperty('filter', 'drop-shadow(0 0 4px gold)');
+    m.on('click', () => openSheet({ type: 'erzeuger', key, info, data: erz }));
+  });
+
+  // Elektro-Assets
+  const elItems = _project.elektroAssets?.items || [];
+  const elEdges = _project.elektroAssets?.edges || [];
+
+  // Build lat/lng lookup for edge drawing
+  const elPosById = {};
+  elItems.forEach(a => { if (a.lat != null) elPosById[a.id] = [a.lat, a.lng]; });
+
+  // Draw elektro edges as thin lines
+  elEdges.forEach(e => {
+    const a = elPosById[e.u], b = elPosById[e.v];
+    if (a && b) {
+      L.polyline([a, b], { color: '#F9A825', weight: 1.5, opacity: 0.55 }).addTo(_map);
+    }
+  });
+
+  // Draw elektro asset markers (skip Verbraucher – already shown via Gebäude)
+  elItems.forEach(a => {
+    if (a.lat == null || a.type === 'Verbraucher') return;
+    const pos = [a.lat, a.lng];
+    bounds.push(pos);
+    const cfg = assetCfg(a.type);
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:${cfg.color};color:#000;border-radius:50%;width:22px;height:22px;font-size:13px;display:flex;align-items:center;justify-content:center;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);" title="${esc(cfg.label)}">${cfg.icon}</div>`,
+      iconSize: [22, 22], iconAnchor: [11, 11],
+    });
+    const elV = !!a.feldVorgemerkt;
+    if (_filterVorgemerkt && !elV) return;
+    if (_hiddenTypes[a.type]) return;
+    const elOp = _anyVorgemerkt && !elV ? 0.25 : 1;
+    const m = L.marker(pos, { icon, opacity: elOp }).addTo(_map);
+    m.on('click', () => openSheet({ type: 'elektro', data: a }));
+  });
+
+  if (bounds.length) _map.fitBounds(L.latLngBounds(bounds), { padding: [60, 60] });
+
+  const erzCount = Object.keys(ERZEUGER).filter(k => _project[k]?.lat != null).length;
+  document.getElementById('proj-name').textContent = 'Energieplanung';
+  document.getElementById('proj-stats').textContent = `${gebaeude.length} Geb. · ${elItems.length} Assets`;
+
+  updateExportBadge();
+}
+
+async function updateExportBadge() {
+  const [notes, photos] = await Promise.all([DB.getAllNotes(), DB.getAllPhotos()]);
+  const notesCount = notes.filter(n => n.text && !n.assetId.endsWith('__meta__')).length;
+  const badge = document.getElementById('export-badge');
+  const total = photos.length + notesCount;
+  if (total > 0) {
+    badge.style.display = 'flex';
+    badge.textContent = photos.length > 0 ? photos.length : '!';
+    badge.title = photos.length + ' Fotos, ' + notesCount + ' Notizen – noch nicht exportiert';
+  } else {
+    badge.style.display = 'none';
+    badge.textContent = '';
+  }
+}
+
+// ── Bottom Sheet ──────────────────────────────────────────
+async function openSheet(asset) {
+  // Save previous notes if switching assets
+  if (_currentAsset) await flushNotes();
+  cleanBlobUrls();
+
+  _currentAsset = asset;
+
+  await renderSheet(asset);
+
+  document.getElementById('sheet').classList.add('open');
+  document.getElementById('backdrop').classList.add('on');
+}
+
+async function closeSheet() {
+  await flushNotes();
+  cleanBlobUrls();
+  _currentAsset = null;
+  document.getElementById('sheet').classList.remove('open');
+  document.getElementById('backdrop').classList.remove('on');
+  updateExportBadge();
+}
+
+async function renderSheet(asset) {
+  const aid = assetId(asset);
+  const [notes, photos] = await Promise.all([DB.getNote(aid), DB.getPhotos(aid)]);
+
+  // Header
+  let headHtml;
+  if (asset.type === 'gebaeude') {
+    const g = asset.data;
+    const ni = nutzung(g.nutzung);
+    headHtml = `
+      <div class="sheet-icon-wrap" style="background:${ni.color}22">🏠</div>
+      <div class="sheet-title-wrap">
+        <h2>${esc(g.name)}</h2>
+        <span class="tag" style="background:${ni.color}18;color:${ni.color}">${ni.label}</span>
+      </div>
+      <button class="close-btn" onclick="closeSheet()">✕</button>
+    `;
+  } else if (asset.type === 'elektro') {
+    const cfg = assetCfg(asset.data.type);
+    headHtml = `
+      <div class="sheet-icon-wrap" style="background:${cfg.color}22">${cfg.icon}</div>
+      <div class="sheet-title-wrap">
+        <h2>${esc(asset.data.name || cfg.label)}</h2>
+        <span class="tag" style="background:${cfg.color}22;color:${cfg.color}">${cfg.label} · ${cfg.kat}</span>
+      </div>
+      <button class="close-btn" onclick="closeSheet()">✕</button>
+    `;
+  } else {
+    const { info } = asset;
+    headHtml = `
+      <div class="sheet-icon-wrap" style="background:${info.color}22">${info.icon}</div>
+      <div class="sheet-title-wrap">
+        <h2>${info.label}</h2>
+        <span class="tag" style="background:${info.color}18;color:${info.color}">Wärmeerzeuger</span>
+      </div>
+      <button class="close-btn" onclick="closeSheet()">✕</button>
+    `;
+  }
+  document.getElementById('sheet-head').innerHTML = headHtml;
+
+  // Info cells
+  let infoHtml;
+  if (asset.type === 'gebaeude') {
+    const g = asset.data;
+    infoHtml = `
+      <div class="info-grid">
+        <div class="info-cell"><div class="info-label">Wärmebedarf</div><div class="info-value hi">${fmtKw(g.waerme)}</div></div>
+        <div class="info-cell"><div class="info-label">Fläche</div><div class="info-value">${fmtM2(g.flaeche)}</div></div>
+        <div class="info-cell"><div class="info-label">Baujahr</div><div class="info-value">${g.baujahr || '—'}</div></div>
+        <div class="info-cell"><div class="info-label">Zustand</div><div class="info-value">${esc(g.zustand) || '—'}</div></div>
+        <div class="info-cell"><div class="info-label">Stockwerke</div><div class="info-value">${g.stockwerke || '—'}</div></div>
+        <div class="info-cell"><div class="info-label">Heizlast</div><div class="info-value">${fmtKw(g.heizlast)}</div></div>
+      </div>
+    `;
+  } else if (asset.type === 'elektro') {
+    const a = asset.data;
+    const props = a.props || {};
+    const propRows = Object.entries(props)
+      .filter(([, v]) => v !== '' && v != null)
+      .map(([k, v]) => `<div class="info-cell"><div class="info-label">${esc(k)}</div><div class="info-value">${esc(v)}</div></div>`)
+      .join('');
+    infoHtml = `
+      <div class="info-grid">
+        <div class="info-cell"><div class="info-label">Typ</div><div class="info-value">${esc(assetCfg(a.type).label)}</div></div>
+        <div class="info-cell"><div class="info-label">Domäne</div><div class="info-value">${esc(a.domain || '—')}</div></div>
+        ${a.baujahr ? `<div class="info-cell"><div class="info-label">Baujahr</div><div class="info-value">${a.baujahr}</div></div>` : ''}
+        ${a.abrissjahr ? `<div class="info-cell"><div class="info-label">Abrissjahr</div><div class="info-value">${a.abrissjahr}</div></div>` : ''}
+        ${propRows}
+      </div>
+    `;
+  } else {
+    const d = asset.data;
+    infoHtml = `
+      <div class="info-grid">
+        <div class="info-cell"><div class="info-label">Leistung</div><div class="info-value hi">${fmtKw(d.leistungKw)}</div></div>
+        <div class="info-cell"><div class="info-label">Position</div><div class="info-value" style="font-size:12px">${d.lat?.toFixed(4)}, ${d.lng?.toFixed(4)}</div></div>
+        ${d.jaz ? `<div class="info-cell"><div class="info-label">JAZ</div><div class="info-value">${d.jaz}</div></div>` : ''}
+        ${d.eta ? `<div class="info-cell"><div class="info-label">Wirkungsgrad</div><div class="info-value">${d.eta}</div></div>` : ''}
+      </div>
+    `;
+  }
+
+  // Photo grid
+  const photoHtml = photos.map(ph => {
+    const url = URL.createObjectURL(ph.blob);
+    _blobUrls.set(ph.id, url);
+    return `
+      <div class="photo-cell" onclick="openLightbox('${ph.id}')">
+        <img src="${url}" alt="">
+        <button class="photo-del" onclick="event.stopPropagation();delPhoto('${ph.id}')">✕</button>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('sheet-body').innerHTML = `
+    ${infoHtml}
+
+    <div class="sec" style="display:flex;align-items:center;justify-content:space-between;">
+      Notizen
+      <button class="mic-btn" id="btn-mic" title="Spracheingabe">🎤</button>
+    </div>
+    <textarea class="notes" id="notes-ta" placeholder="Vor-Ort-Beobachtungen, Mängel, Besonderheiten…">${esc(notes)}</textarea>
+    <div class="save-hint" id="save-hint">✓ Automatisch gespeichert</div>
+
+    <div class="sec">Fotos (${photos.length})</div>
+    <div class="photo-grid" id="photo-grid">${photoHtml}</div>
+    <button class="add-photo-btn" onclick="document.getElementById('photo-input').click()">
+      📷 Foto aufnehmen / aus Galerie
+    </button>
+  `;
+
+  document.getElementById('notes-ta').addEventListener('input', () => {
+    clearTimeout(_notesTimer);
+    _notesTimer = setTimeout(flushNotes, 1400);
+  });
+  const micBtn = document.getElementById('btn-mic');
+  if (micBtn) micBtn.addEventListener('click', toggleMic);
+}
+
+async function flushNotes() {
+  clearTimeout(_notesTimer);
+  if (!_currentAsset) return;
+  const ta = document.getElementById('notes-ta');
+  if (!ta) return;
+  await DB.saveNote(assetId(_currentAsset), ta.value);
+  const hint = document.getElementById('save-hint');
+  if (hint) { hint.classList.add('on'); setTimeout(() => hint.classList.remove('on'), 2000); }
+}
+
+function assetId(asset) {
+  if (asset.type === 'gebaeude') return String(asset.data.id);
+  if (asset.type === 'elektro')  return `el_${asset.data.id}`;
+  return asset.key;
+}
+
+function cleanBlobUrls() {
+  _blobUrls.forEach(url => URL.revokeObjectURL(url));
+  _blobUrls.clear();
+}
+
+// ── Photos ────────────────────────────────────────────────
+async function onPhotoFile(e) {
+  const file = e.target.files[0];
+  if (!file || !_currentAsset) return;
+  e.target.value = '';
+  toast('Foto wird komprimiert…');
+  try {
+    const blob = await compressImage(file);
+    const fn   = `${assetId(_currentAsset)}_${Date.now()}.jpg`;
+    await DB.addPhoto(assetId(_currentAsset), blob, fn);
+    await refreshPhotos();
+    const photoCount = (await DB.getAllPhotos()).length;
+    toast(`Foto gespeichert (${(blob.size/1024).toFixed(0)} KB)`);
+    if (photoCount > 0 && photoCount % 5 === 0) {
+      setTimeout(() => toast(`💾 ${photoCount} Fotos gespeichert – denk ans Exportieren!`, 4000), 3000);
+    }
+  } catch (err) {
+    toast('Fehler: ' + err.message);
+  }
+}
+
+async function refreshPhotos() {
+  if (!_currentAsset) return;
+  const photos = await DB.getPhotos(assetId(_currentAsset));
+
+  // Revoke old blob URLs for photos and recreate
+  cleanBlobUrls();
+
+  const grid = document.getElementById('photo-grid');
+  if (!grid) {
+    // Sheet wurde geschlossen (z.B. nach Kamera-Wechsel) — Sheet neu öffnen
+    if (_currentAsset) await renderSheet(_currentAsset);
+    return;
+  }
+  grid.innerHTML = photos.map(ph => {
+    const url = URL.createObjectURL(ph.blob);
+    _blobUrls.set(ph.id, url);
+    return `
+      <div class="photo-cell" onclick="openLightbox('${ph.id}')">
+        <img src="${url}" alt="">
+        <button class="photo-del" onclick="event.stopPropagation();delPhoto('${ph.id}')">✕</button>
+      </div>
+    `;
+  }).join('');
+
+  // Update count header
+  document.querySelectorAll('.sec').forEach(h => {
+    if (h.textContent.startsWith('Fotos')) h.textContent = `Fotos (${photos.length})`;
+  });
+
+  updateExportBadge();
+}
+
+async function delPhoto(id) {
+  await DB.deletePhoto(id);
+  await refreshPhotos();
+}
+
+// ── Lightbox ──────────────────────────────────────────────
+function openLightbox(photoId) {
+  const url = _blobUrls.get(photoId);
+  if (!url) return;
+  document.getElementById('lightbox-img').src = url;
+  document.getElementById('lightbox').classList.add('on');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('on');
+  document.getElementById('lightbox-img').src = '';
+}
+
+// ── Sheet drag-to-close ───────────────────────────────────
+function setupSheetDrag() {
+  const handle = document.getElementById('sheet-handle');
+  const sheet  = document.getElementById('sheet');
+  let startY = 0, startH = 0, dragging = false;
+
+  handle.addEventListener('pointerdown', e => {
+    dragging = true;
+    startY = e.clientY;
+    startH = sheet.getBoundingClientRect().height;
+    handle.setPointerCapture(e.pointerId);
+    sheet.style.transition = 'none';
+  });
+
+  handle.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dy = e.clientY - startY;
+    if (dy > 0) sheet.style.transform = `translateY(${dy}px)`;
+  });
+
+  handle.addEventListener('pointerup', e => {
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = '';
+    const dy = e.clientY - startY;
+    if (dy > 80) {
+      closeSheet();
+    } else {
+      sheet.style.transform = '';
+    }
+  });
+}
+
+// ── ZIP Export ────────────────────────────────────────────
+async function exportZip() {
+  if (!_project) { toast('Kein Projekt geladen'); return; }
+  await flushNotes();
+  showProgress('Exportiere Daten…');
+
+  try {
+    const zip = new JSZip();
+    const datum = new Date().toISOString().slice(0, 10);
+
+    const [allNotes, allPhotos] = await Promise.all([DB.getAllNotes(), DB.getAllPhotos()]);
+
+    const noteMap  = Object.fromEntries(allNotes.map(n => [n.assetId, n.text]));
+    const photosByAsset = {};
+    for (const ph of allPhotos) {
+      if (!photosByAsset[ph.assetId]) photosByAsset[ph.assetId] = [];
+      photosByAsset[ph.assetId].push(ph);
+    }
+
+    // Ordnernamen sicher machen (keine Sonderzeichen)
+    function safeName(s) {
+      return String(s || 'unbekannt').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
+    }
+
+    // ── Gebäude: je ein Unterordner mit Fotos ──────────────────────
+    const gebaeudeMitFeld = [];
+    for (const g of (_project.gebaeude || [])) {
+      const aid = String(g.id);
+      const notiz = noteMap[aid] || '';
+      const fotos = photosByAsset[aid] || [];
+      const ordner = `gebaeude/${safeName(g.name || aid)}`;
+      const fotoNamen = [];
+
+      for (const ph of fotos) {
+        // Dateinamen: laufende Nummer + original Extension
+        const ext = ph.filename.split('.').pop() || 'jpg';
+        const fn = `foto_${String(fotoNamen.length + 1).padStart(2, '0')}.${ext}`;
+        zip.folder(ordner).file(fn, ph.blob);
+        fotoNamen.push(fn);
+      }
+
+      gebaeudeMitFeld.push({ ...g, feldNotizen: notiz, feldFotos: fotoNamen, feldFotoOrdner: ordner });
+    }
+
+    // ── Erzeuger ───────────────────────────────────────────────────
+    const erzeugerFeld = {};
+    for (const key of Object.keys(ERZEUGER)) {
+      if (!_project[key]) continue;
+      const fotos = photosByAsset[key] || [];
+      const ordner = `erzeuger/${key}`;
+      const fotoNamen = [];
+      for (const ph of fotos) {
+        const ext = ph.filename.split('.').pop() || 'jpg';
+        const fn = `foto_${String(fotoNamen.length + 1).padStart(2, '0')}.${ext}`;
+        zip.folder(ordner).file(fn, ph.blob);
+        fotoNamen.push(fn);
+      }
+      erzeugerFeld[key] = { ..._project[key], feldNotizen: noteMap[key] || '', feldFotos: fotoNamen };
+    }
+
+    // ── Elektro-Assets ─────────────────────────────────────────────
+    const elItems = (_project.elektroAssets?.items || []).map(a => {
+      const aid = `el_${a.id}`;
+      const fotos = photosByAsset[aid] || [];
+      const ordner = `elektro/${safeName(a.name || a.type || a.id)}`;
+      const fotoNamen = [];
+      for (const ph of fotos) {
+        const ext = ph.filename.split('.').pop() || 'jpg';
+        const fn = `foto_${String(fotoNamen.length + 1).padStart(2, '0')}.${ext}`;
+        zip.folder(ordner).file(fn, ph.blob);
+        fotoNamen.push(fn);
+      }
+      return { ...a, feldNotizen: noteMap[aid] || '', feldFotos: fotoNamen, feldFotoOrdner: ordner };
+    });
+
+    // ── JSON für Rückimport ins Hauptprogramm ─────────────────────
+    const exportData = {
+      ..._project,
+      gebaeude: gebaeudeMitFeld,
+      ...erzeugerFeld,
+      elektroAssets: _project.elektroAssets
+        ? { ..._project.elektroAssets, items: elItems }
+        : undefined,
+      feldExport: { exportiertAm: new Date().toISOString(), gesamtFotos: allPhotos.length },
+    };
+    zip.file('projekt_felddaten.json', JSON.stringify(exportData, null, 2));
+
+    // ── HTML-Bericht ───────────────────────────────────────────────
+    const blobUrls = new Map();
+    for (const ph of allPhotos) {
+      blobUrls.set(ph.id, URL.createObjectURL(ph.blob));
+    }
+
+    let berichtHtml = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<title>Feldbericht ${datum}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; color: #1a1a2e; }
+  h1 { color: #1565C0; border-bottom: 3px solid #1565C0; padding-bottom: 8px; }
+  h2 { color: #1565C0; margin-top: 32px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+  h3 { color: #374151; margin: 20px 0 8px; }
+  .meta { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+  .props { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .prop { background: #f0f4f8; border-radius: 8px; padding: 8px 12px; }
+  .prop-label { font-size: 11px; color: #6b7280; }
+  .prop-value { font-weight: 700; }
+  .notiz { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 8px 0 12px; white-space: pre-wrap; }
+  .fotos { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 20px; }
+  .fotos img { width: 200px; height: 150px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
+  .no-data { color: #9ca3af; font-style: italic; }
+  @media print { .fotos img { width: 160px; height: 120px; } }
+</style></head><body>
+<h1>📋 Feldbericht Energieplanung</h1>
+<div class="meta">Erstellt: ${new Date().toLocaleString('de-DE')} &nbsp;·&nbsp; ${allPhotos.length} Fotos &nbsp;·&nbsp; ${gebaeudeMitFeld.length} Gebäude</div>`;
+
+    // Gebäude-Abschnitte
+    const gebMitDaten = gebaeudeMitFeld.filter(g => g.feldNotizen || (g.feldFotos && g.feldFotos.length));
+    if (gebMitDaten.length) {
+      berichtHtml += `<h2>🏠 Gebäude</h2>`;
+      for (const g of gebMitDaten) {
+        berichtHtml += `<h3>${esc(g.name || String(g.id))}</h3>
+<div class="props">
+  <div class="prop"><div class="prop-label">Nutzung</div><div class="prop-value">${esc(g.nutzung || '–')}</div></div>
+  <div class="prop"><div class="prop-label">Wärmebedarf</div><div class="prop-value">${fmtKw(g.waerme)}</div></div>
+  <div class="prop"><div class="prop-label">Fläche</div><div class="prop-value">${fmtM2(g.flaeche)}</div></div>
+</div>`;
+        if (g.feldNotizen) berichtHtml += `<div class="notiz">${esc(g.feldNotizen)}</div>`;
+        // Fotos inline als Base64 für Druckbarkeit
+        const fotos = photosByAsset[String(g.id)] || [];
+        if (fotos.length) {
+          berichtHtml += `<div class="fotos">`;
+          for (const ph of fotos) {
+            const url = blobUrls.get(ph.id);
+            if (url) berichtHtml += `<img src="${url}" alt="Foto">`;
+          }
+          berichtHtml += `</div>`;
+        }
+      }
+    }
+
+    berichtHtml += `</body></html>`;
+    zip.file('bericht.html', berichtHtml);
+
+    showProgress(`ZIP wird erstellt (${allPhotos.length} Fotos)…`);
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+
+    blobUrls.forEach(u => URL.revokeObjectURL(u));
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `feldapp_${datum}.zip`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+
+    const sizeMb = (blob.size / 1024 / 1024).toFixed(1);
+    toast(`Export fertig · ${allPhotos.length} Fotos · ${sizeMb} MB`);
+  } catch (err) {
+    toast('Export fehlgeschlagen: ' + err.message);
+    console.error(err);
+  } finally {
+    hideProgress();
+  }
+}
+
+// ── DB: FeldStatus ────────────────────────────────────────────────────────────
+// Erweitert das bestehende DB-Objekt um getFeldStatus / saveFeldStatus.
+// Status wird im 'notes'-Store als Zusatzfeld gespeichert (kein neuer Store nötig).
+DB.getFeldStatus = async function(aid) {
+  await DB.init();
+  const r = await new Promise((res, rej) => {
+    const req = this._db().transaction('notes').objectStore('notes').get(String(aid));
+    req.onsuccess = () => res(req.result);
+    req.onerror  = () => rej(req.error);
+  }).catch(() => null);
+  return r?.feldStatus || 'offen';
+};
+DB._db = function() { return this._dbHandle || (this._dbHandle = null); };
+// Wir nutzen den internen open()-Mechanismus des DB-Objekts:
+DB.saveFeldStatus = async function(aid, status) {
+  await this.init();
+  const existing = await new Promise((res) => {
+    const req = indexedDB.open('feldapp-db', 1);
+    req.onsuccess = e => {
+      const db = e.target.result;
+      const r = db.transaction('notes').objectStore('notes').get(String(aid));
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => res(null);
+    };
+    req.onerror = () => res(null);
+  });
+  const record = existing || { assetId: String(aid), text: '', ts: Date.now() };
+  record.feldStatus = status;
+  record.ts = Date.now();
+  return new Promise((res) => {
+    const req = indexedDB.open('feldapp-db', 1);
+    req.onsuccess = e => {
+      const db = e.target.result;
+      const r = db.transaction('notes', 'readwrite').objectStore('notes').put(record);
+      r.onsuccess = () => res();
+      r.onerror = () => res();
+    };
+    req.onerror = () => res();
+  });
+};
+
+// ── Feldstatus setzen ────────────────────────────────────────────────────────
+window.setFeldStatus = setFeldStatus;
+
+
+
+// ── Filter: Nur vorgemerkte ───────────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

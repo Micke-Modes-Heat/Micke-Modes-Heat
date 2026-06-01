@@ -10,6 +10,7 @@ import { renderList, updateTotals } from './03c-gebaeude-io.js';
 import { _renderEmissionenTab, refreshVergleichView, renderAnalyseDispatch } from './04b-emissionen-3d.js';
 import { setStromNetzVisible } from './05b-stromnetz.js';
 import { buildPalette } from './13c-assets-ui.js';
+import { buildElektroPanel } from './13n-elektro-panel.js';
 import { setAssetLayerVisible } from './13b-assets-render.js';
 import { saSetTab } from './07a-analysis-charts.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
@@ -18,6 +19,7 @@ import { _optPopulateYearSelect, _optUpdateEstimate } from './10a-optimizer-core
 import { _liveStopPlay, _onHourSlider } from './10b-hourly-live.js';
 import { ERZEUGER_CFG, NUTZUNG_DEFAULTS } from './config/erzeuger-cfg.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
+import { napBuildAnalyseSection, napShowSection } from './13o-nap-analyse.js';
 
 export function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
@@ -702,6 +704,7 @@ export function setLeftTab(tabId) {
   if (tabId === 'elektro') {
     setNetzVisible(false);
     setStromNetzVisible(true);
+    buildElektroPanel();
     buildPalette();
     // Assets für alle Gebäude nacherstellen, die noch keines haben (Migration alter Projekte)
     if (typeof window.autoCreateBuildingAssets === 'function' && Array.isArray(window.gebaeude)) {
@@ -1033,6 +1036,9 @@ export function refreshAnalyseView() {
   const content = document.getElementById('analyse-section-content');
   if (!grid || !content || !waerme) return;
 
+  // NAP-Tab-Button + Wrapper einmalig injizieren (idempotent)
+  napBuildAnalyseSection();
+
   // Alle inline-eingebetteten Panels zurücksetzen
   _restoreInlinePanels();
 
@@ -1041,6 +1047,8 @@ export function refreshAnalyseView() {
   waerme.style.display  = 'none';
   if (emWrap) emWrap.style.display = 'none';
   content.style.display = 'none';
+  const napWrap = document.getElementById('analyse-nap-wrap');
+  if (napWrap) napWrap.style.display = 'none';
 
   if (analyseCurrentSection === 'uebersicht') {
     grid.style.display = 'grid';
@@ -1063,6 +1071,8 @@ export function refreshAnalyseView() {
     if (typeof calcStromPanel === 'function') calcStromPanel();
   } else if (analyseCurrentSection === 'emissionen') {
     if (emWrap) { emWrap.style.display = 'block'; _renderEmissionenTab(); }
+  } else if (analyseCurrentSection === 'nap') {
+    napShowSection(true);
   }
 }
 

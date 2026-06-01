@@ -102,6 +102,7 @@ export function renderSidebarAssetList() {
         <span class="sb-asset-row-icon" style="background:${cfg.color};opacity:${opacity};">${cfg.icon}</span>
         <span class="sb-asset-row-name">${esc(a.name)}</span>
         ${pendingDot}
+        <button onclick="event.stopPropagation();toggleVormerkenAsset('${a.id}')" title="${a.feldVorgemerkt ? 'Vorgemerkt' : 'Vormerken'}" style="background:none;border:none;cursor:pointer;font-size:${a.feldVorgemerkt ? 13 : 11}px;color:${a.feldVorgemerkt ? '#f59e0b' : '#666'};padding:0 2px;margin-left:auto;line-height:1;flex-shrink:0;">★</button>
         <span class="sb-asset-row-status sb-asset-row-status-${status}"></span>
       </div>`;
     }).join('');
@@ -268,7 +269,10 @@ function buildPropsForm(asset) {
 
     case 'Verbraucher': {
       const slpOpts = ['G0','G1','G2','G3','G4','G5','G6','H0','L0','L1','L2'];
-      const curSlp = p.slpTyp || 'G0';
+      // Direkt in props schreiben, nicht nur visuell defaulten —
+      // sonst bleibt slpTyp undefined und NAP-Analyse nutzt statischen Fallback
+      if (!p.slpTyp) p.slpTyp = 'G0';
+      const curSlp = p.slpTyp;
       return numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p})
         + selectField(id, 'slpTyp', 'Lastprofil (SLP)', slpOpts.map(t => ({value:t, label:t})), curSlp)
         + `<button class="ins-link-btn" data-slp-open="${curSlp}">Profil ansehen →</button>`;
@@ -651,7 +655,8 @@ function buildBodyHtml(asset) {
     ${buildPropsForm(asset)}
     ${buildResultBlock(asset)}
     ${buildMassnahmenSection(asset)}
-    <div class="ins-meta" style="margin-top:12px;">ID: ${asset.id} · ${asset.domain}</div>`;
+    <div class="ins-meta" style="margin-top:12px;">ID: ${asset.id} · ${asset.domain}</div>
+    ${_renderAssetFelddaten(asset)}`;
 }
 
 // ── Haupt-Render (floating panel, für Rückwärtskompatibilität) ───────────────
@@ -665,6 +670,7 @@ function renderInspector(asset) {
     <div class="asset-ins-header" style="background:${cfg.color};">
       <span class="asset-ins-icon">${cfg.icon}</span>
       <span class="asset-ins-title">${cfg.label}</span>
+      <button onclick="toggleVormerkenAsset('${asset.id}')" title="${asset.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;margin-left:auto;font-size:${asset.feldVorgemerkt ? 16 : 13}px;color:${asset.feldVorgemerkt ? '#f59e0b' : '#888'};padding:0 6px;line-height:1;">★</button>
     </div>
     <div class="asset-ins-body">
       <div class="ins-field-group">
@@ -700,6 +706,7 @@ function renderInspector(asset) {
         ${buildMassnahmenSection(asset)}
       </div>
       <div class="ins-meta" style="margin-top:12px;">ID: ${asset.id} · ${asset.domain}</div>
+      ${_renderAssetFelddaten(asset)}
       <button class="asset-ins-delete" data-action="delete">🗑 Löschen</button>
     </div>
   `;
@@ -883,3 +890,35 @@ setTimeout(() => {
   window.renderAssetSidebar     = renderAssetSidebar;
   window.filterAssetSidebar     = filterAssetSidebar;
 }, 0);
+
+// ── Vormerken Asset ───────────────────────────────────────────────────────────
+export function toggleVormerkenAsset(id) {
+  const a = ASSETS.items.find(x => x.id === id);
+  if (!a) return;
+  a.feldVorgemerkt = !a.feldVorgemerkt;
+  renderSidebarAssetList();
+  // Inspector neu rendern falls gerade offen
+  const panel = document.getElementById('sb-asset-inspector-slot')?.querySelector('[data-asset-id="' + id + '"]');
+  if (ASSETS.selectedId === id && typeof renderInspector === 'function') {
+    renderInspector(a);
+  }
+}
+window.toggleVormerkenAsset = toggleVormerkenAsset;
+
+// ── Felddaten-Block im Asset-Inspector ───────────────────────────────────────
+function _renderAssetFelddaten(a) {
+  if (!a.feldNotizen && !a.feldStatus && !a.feldFotos?.length) return '';
+  const labels = { offen: '📋 Offen', besucht: '👁 Besucht', erledigt: '✅ Erledigt' };
+  const statusLabel = labels[a.feldStatus] || '';
+  const notizHtml = a.feldNotizen
+    ? '<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#1a1a2e;white-space:pre-wrap;margin-bottom:6px;">' + esc(a.feldNotizen) + '</div>'
+    : '';
+  const fotoHtml = (a.feldFotos || []).map(foto =>
+    '<img src="' + foto.dataUrl + '" title="' + esc(foto.name) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #2a3352;" onclick="window.open(this.src)">'
+  ).join('');
+  return '<div style="margin:8px 0;padding:8px 10px;background:var(--surface2,#1e2433);border-radius:8px;border:1px solid #2a3352;">'
+    + '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px;">📱 FELDDATEN' + (statusLabel ? ' · ' + statusLabel : '') + '</div>'
+    + notizHtml
+    + (fotoHtml ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' + fotoHtml + '</div>' : '')
+    + '</div>';
+}

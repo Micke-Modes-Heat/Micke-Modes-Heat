@@ -7,14 +7,16 @@ import { _pvWpM2Global } from './03c-gebaeude-io.js';
 import { stromEmF } from './01-globals-varianten.js';
 
 export function toggleFFPvPanel() {
-  const p   = document.getElementById('ff-pv-panel');
-  const btn = document.getElementById('btn-ff-pv-toggle');
-  if (p.classList.contains('visible')) {
-    p.classList.remove('visible'); btn.classList.remove('active');
-  } else {
-    hidePanels();
-    p.classList.add('visible'); btn.classList.add('active');
-    renderFFPanel();
+  // Freiflächen-PV ist im Elektro-Tab integriert → dorthin navigieren
+  if (typeof window.setLeftTab === 'function') {
+    window.setLeftTab('elektro');
+    setTimeout(() => {
+      const sec = document.getElementById('el-sec-ff-pv');
+      if (sec && sec.style.display === 'none') {
+        if (typeof window.toggleSection === 'function') window.toggleSection('el-sec-ff-pv');
+      }
+      renderFFPanel();
+    }, 120);
   }
 }
 
@@ -34,8 +36,7 @@ export function attachFFLayer(ff) {
     fillColor: 'rgba(255,213,79,0.18)', fillOpacity: 1
   }).addTo(map);
   ff.polygonLayer.on('click', () => {
-    const p = document.getElementById('ff-pv-panel');
-    if (!p.classList.contains('visible')) toggleFFPvPanel();
+    toggleFFPvPanel();
   });
 
   if (ff.polygon.length < 3) return;
@@ -124,22 +125,30 @@ export function attachFFLayer(ff) {
 
 export function startDrawFF() {
   cancelDrawFF();
-  ffDrawId = ffCounter++;
-  ffDrawPoints = [];
+  window.ffDrawId = (typeof ffCounter !== 'undefined' ? ffCounter++ : (window.ffCounter = (window.ffCounter||0)+1));
+  window.ffDrawPoints = [];
   showHint('Eckpunkte anklicken · Startpunkt (rot) erneut anklicken zum Abschließen · Rechtsklick = Zurück');
   map.getContainer().style.cursor = 'crosshair';
-  document.getElementById('btn-ff-draw').style.display = 'none';
-  document.getElementById('btn-ff-cancel').style.display = '';
+  // Floating panel buttons (legacy ff-pv-panel)
+  const d1 = document.getElementById('btn-ff-draw');   if (d1) d1.style.display = 'none';
+  const c1 = document.getElementById('btn-ff-cancel'); if (c1) c1.style.display = '';
+  // Elektro-Tab inline buttons
+  const d2 = document.getElementById('el-btn-ff-draw');   if (d2) d2.style.display = 'none';
+  const c2 = document.getElementById('el-btn-ff-cancel'); if (c2) c2.style.display = '';
 }
 
 export function cancelDrawFF() {
-  if (ffDrawPolyline) { map.removeLayer(ffDrawPolyline); ffDrawPolyline = null; }
-  if (ffDrawStartMarker) { map.removeLayer(ffDrawStartMarker); ffDrawStartMarker = null; }
-  ffDrawId = null; ffDrawPoints = [];
+  const _fpl = window.ffDrawPolyline; if (_fpl) { map.removeLayer(_fpl); window.ffDrawPolyline = null; }
+  const _fsm = window.ffDrawStartMarker; if (_fsm) { map.removeLayer(_fsm); window.ffDrawStartMarker = null; }
+  window.ffDrawId = null; window.ffDrawPoints = [];
   map.getContainer().style.cursor = '';
   hideHint();
-  document.getElementById('btn-ff-draw').style.display = '';
-  document.getElementById('btn-ff-cancel').style.display = 'none';
+  // Floating panel buttons (legacy ff-pv-panel)
+  const d1 = document.getElementById('btn-ff-draw');   if (d1) d1.style.display = '';
+  const c1 = document.getElementById('btn-ff-cancel'); if (c1) c1.style.display = 'none';
+  // Elektro-Tab inline buttons
+  const d2 = document.getElementById('el-btn-ff-draw');   if (d2) d2.style.display = '';
+  const c2 = document.getElementById('el-btn-ff-cancel'); if (c2) c2.style.display = 'none';
 }
 
 export function finishDrawFF() {
@@ -187,20 +196,25 @@ export function updateFF(id, field, val) {
 }
 
 export function renderFFPanel() {
-  const listEl  = document.getElementById('ff-list');
-  const totalEl = document.getElementById('ff-total');
-  if (!listEl) return;
+  const listEl   = document.getElementById('ff-list');
+  const totalEl  = document.getElementById('ff-total');
+  const eListEl  = document.getElementById('el-ff-list');
+  const eTotalEl = document.getElementById('el-ff-total');
+  if (!listEl && !eListEl) return;
 
   if (freiflaechen.length === 0) {
-    listEl.innerHTML = '<div style="font-size:10px;color:var(--muted);text-align:center;padding:8px 0;">Noch keine Freifläche gezeichnet.</div>';
-    if (totalEl) totalEl.style.display = 'none';
+    const emptyHtml = '<div style="font-size:10px;color:var(--muted);text-align:center;padding:8px 0;">Noch keine Freifläche gezeichnet.</div>';
+    if (listEl)  listEl.innerHTML  = emptyHtml;
+    if (eListEl) eListEl.innerHTML = emptyHtml;
+    if (totalEl)  totalEl.style.display  = 'none';
+    if (eTotalEl) eTotalEl.style.display = 'none';
     return;
   }
 
   const pvSpez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
   let totalKwp = 0;
 
-  listEl.innerHTML = freiflaechen.map(ff => {
+  const itemsHtml = freiflaechen.map(ff => {
     const kwp = calcFFKwp(ff);
     totalKwp += kwp;
     const fl = ff.flaeche ? (ff.flaeche / 10000).toFixed(2) + ' ha' : '—';
@@ -232,11 +246,23 @@ export function renderFFPanel() {
     </div>`;
   }).join('');
 
+  if (listEl)  listEl.innerHTML  = itemsHtml;
+  if (eListEl) eListEl.innerHTML = itemsHtml;
+
+  const showTotal = freiflaechen.length > 1;
+  const totMwh = totalKwp * pvSpez / 1000;
+  const kwpTxt = totalKwp.toFixed(1) + ' kWp';
+  const mwhTxt = totMwh.toFixed(0) + ' MWh/a';
+
   if (totalEl) {
-    totalEl.style.display = freiflaechen.length > 1 ? 'grid' : 'none';
-    const totMwh = totalKwp * pvSpez / 1000;
-    document.getElementById('ff-total-kwp').textContent = totalKwp.toFixed(1) + ' kWp';
-    document.getElementById('ff-total-mwh').textContent = totMwh.toFixed(0) + ' MWh/a';
+    totalEl.style.display = showTotal ? 'grid' : 'none';
+    const k = document.getElementById('ff-total-kwp'); if (k) k.textContent = kwpTxt;
+    const m = document.getElementById('ff-total-mwh'); if (m) m.textContent = mwhTxt;
+  }
+  if (eTotalEl) {
+    eTotalEl.style.display = showTotal ? 'grid' : 'none';
+    const k = document.getElementById('el-ff-total-kwp'); if (k) k.textContent = kwpTxt;
+    const m = document.getElementById('el-ff-total-mwh'); if (m) m.textContent = mwhTxt;
   }
 }
 

@@ -603,15 +603,16 @@ map.on('click',e=>{
     redrawTrasse();
     return;
   }
-  if (ffDrawId !== null) {
-    if (ffDrawPoints.length === 0) {
+  if ((window.ffDrawId ?? ffDrawId) !== null) {
+    const _ffPts = window.ffDrawPoints || ffDrawPoints;
+    if (_ffPts.length === 0) {
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
       window.ffDrawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
       window.ffDrawStartMarker.on('click', (ev) => { L.DomEvent.stopPropagation(ev); finishDrawFF(); });
     }
-    ffDrawPoints.push(e.latlng);
+    _ffPts.push(e.latlng);
     if (window.ffDrawPolyline) map.removeLayer(window.ffDrawPolyline);
-    window.ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
+    window.ffDrawPolyline = L.polyline([..._ffPts], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
     return;
   }
   if(drawingId!==null){
@@ -959,8 +960,8 @@ export function finishDrawRiver() {
 }
 
 export function redrawFliessgewaesser() {
-  if (!fliessgewaesserLayerGroup) return;
-  fliessgewaesserLayerGroup.clearLayers();
+  if (!window.fliessgewaesserLayerGroup) window.fliessgewaesserLayerGroup = L.layerGroup().addTo(map);
+  window.fliessgewaesserLayerGroup.clearLayers();
   if (!window.fliessgewaesser || !window.fliessgewaesser.latlngs || window.fliessgewaesser.latlngs.length < 2) return;
   const pts = window.fliessgewaesser.latlngs.map(p => L.latLng(p.lat, p.lng));
   const warmPart = pts.length >= 2 ? [pts[0], pts[1]] : pts;
@@ -981,7 +982,7 @@ export function redrawFliessgewaesser() {
     const centerWobble = sinusWobblePolyline(part, SINUS_AMPLITUDE_M, SINUS_WAVES);
     const rows = [left, centerWobble, right];
     rows.forEach((latLngs, phase) => {
-      const layer = L.polyline(latLngs, { color: color, weight: 2.5, opacity: opacity }).addTo(fliessgewaesserLayerGroup);
+      const layer = L.polyline(latLngs, { color: color, weight: 2.5, opacity: opacity }).addTo(window.fliessgewaesserLayerGroup);
       const phaseClass = phase === 0 ? '' : ' phase-' + phase;
       function apply() {
         const el = layer.getElement && layer.getElement();
@@ -1006,34 +1007,34 @@ export function redrawFliessgewaesser() {
       const center = polygonCenter(g.polygon);
       connectionPoint = closestPointOnPolyline(pts, center);
       if (connectionPoint) {
-        L.polyline([connectionPoint, center], { color: '#e53935', weight: 4, opacity: 0.9 }).addTo(fliessgewaesserLayerGroup);
+        L.polyline([connectionPoint, center], { color: '#e53935', weight: 4, opacity: 0.9 }).addTo(window.fliessgewaesserLayerGroup);
       }
     }
   }
   const wpIcon = L.divIcon({ className: 'fg-wp-marker', html: '⚡', iconSize: [22, 22], iconAnchor: [11, 11] });
-  L.marker(connectionPoint, { icon: wpIcon, title: 'Wärmepumpe Anschluss Heizzentrale' }).addTo(fliessgewaesserLayerGroup);
+  L.marker(connectionPoint, { icon: wpIcon, title: 'Wärmepumpe Anschluss Heizzentrale' }).addTo(window.fliessgewaesserLayerGroup);
   /* Nach dem Zeichnen: verschiebbare Punkte – blau und klein (nur Fließgewässer) */
   const icon = L.divIcon({ className: 'fg-edit-handle', html: '', iconSize: [6, 6], iconAnchor: [3, 3] });
   pts.forEach((pt, idx) => {
-    const m = L.marker(pt, { draggable: true, icon: icon, zIndexOffset: 2000 }).addTo(fliessgewaesserLayerGroup);
+    const m = L.marker(pt, { draggable: true, icon: icon, zIndexOffset: 2000 }).addTo(window.fliessgewaesserLayerGroup);
     m.on('drag', e => {
       window.fliessgewaesser.latlngs[idx] = { lat: e.target.getLatLng().lat, lng: e.target.getLatLng().lng };
     });
     m.on('dragend', () => redrawFliessgewaesser());
   });
   if (window.fliessgewaesserVisible) {
-    if (!map.hasLayer(fliessgewaesserLayerGroup)) fliessgewaesserLayerGroup.addTo(map);
+    if (!map.hasLayer(window.fliessgewaesserLayerGroup)) window.fliessgewaesserLayerGroup.addTo(map);
   }
   updateFliessgewaesserAbkuehlungDisplay();
   redrawVerbindungslinien();
 }
 
 export function updateFliessgewaesserVisibility() {
-  if (!window.fliessgewaesser) return;
+  if (!window.fliessgewaesser || !fliessgewaesserLayerGroup) return;
   if (window.fliessgewaesserVisible) {
-    if (!map.hasLayer(fliessgewaesserLayerGroup)) fliessgewaesserLayerGroup.addTo(map);
+    if (!map.hasLayer(window.fliessgewaesserLayerGroup)) window.fliessgewaesserLayerGroup.addTo(map);
   } else {
-    if (map.hasLayer(fliessgewaesserLayerGroup)) map.removeLayer(fliessgewaesserLayerGroup);
+    if (map.hasLayer(window.fliessgewaesserLayerGroup)) map.removeLayer(window.fliessgewaesserLayerGroup);
   }
 }
 
@@ -1080,9 +1081,9 @@ export function updateFliessgewaesserData() {
 export function clearFliessgewaesser() {
   window.fliessgewaesser = null;
   moBeiDeaktivierung('fg');
-  if (fliessgewaesserLayerGroup) {
-    fliessgewaesserLayerGroup.clearLayers();
-    if (map.hasLayer(fliessgewaesserLayerGroup)) map.removeLayer(fliessgewaesserLayerGroup);
+  if (window.fliessgewaesserLayerGroup) {
+    window.fliessgewaesserLayerGroup.clearLayers();
+    if (map.hasLayer(window.fliessgewaesserLayerGroup)) map.removeLayer(window.fliessgewaesserLayerGroup);
   }
   document.getElementById('fg-data-section').style.display = 'none';
   document.getElementById('fg-draw-section').style.display = 'block';
@@ -1196,6 +1197,11 @@ export function placeLwWpAt(latlng) {
   document.getElementById('lwwp-panel').classList.add('visible');
   document.getElementById('btn-lwwp-toggle')?.classList.add('active');
   moBeiAktivierung('lwwp');
+  window.lwWpVisible = true;
+  window.lwWpSchallVisible = true;
+  // Lazy-Init: falls LayerGroup nicht gesetzt, jetzt erstellen
+  if (!window.lwWpLayerGroup)       window.lwWpLayerGroup = L.layerGroup().addTo(map);
+  if (!window.lwWpSchallLayerGroup) window.lwWpSchallLayerGroup = L.layerGroup();
   redrawLwWp();
   updateLwWpDisplay();
   updateLwWpVisibility();
@@ -1203,8 +1209,10 @@ export function placeLwWpAt(latlng) {
 }
 
 export function redrawLwWp() {
-  if (!lwWpLayerGroup) return;
-  lwWpLayerGroup.clearLayers();
+  // Lazy-Init falls nötig
+  if (!window.lwWpLayerGroup)       window.lwWpLayerGroup = L.layerGroup().addTo(map);
+  if (!window.lwWpSchallLayerGroup) window.lwWpSchallLayerGroup = L.layerGroup();
+  window.lwWpLayerGroup.clearLayers();
   if (!window.lwWp || window.lwWp.lat == null || window.lwWp.lng == null) return;
   const pt = L.latLng(window.lwWp.lat, window.lwWp.lng);
   const leistung = window.lwWp.leistungKw;
@@ -1232,14 +1240,14 @@ export function redrawLwWp() {
   const f0 = fb(actF());
   const rect = L.rectangle([sw, ne], { color: '#388e3c', weight: 2, fillColor: f0.c, fillOpacity: f0.o })
     .bindTooltip(`Platzbedarf: ${platzM2.toFixed(1)} m² min. · ${rl.toFixed(1)}×${rw.toFixed(1)} m`, {sticky:true})
-    .addTo(lwWpLayerGroup);
-  lwWpSchallLayerGroup.clearLayers();
+    .addTo(window.lwWpLayerGroup);
+  window.lwWpSchallLayerGroup.clearLayers();
   const schallStufen = [55, 50, 45, 40, 35];
   const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
   for (let i = schallStufen.length - 1; i >= 0; i--) {
     const r = lwWpSchallRadiusM(lwa, schallStufen[i]);
     if (r > 0.5 && r < 500) {
-      const circle = L.circle(pt, { radius: r, color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12 }).addTo(lwWpSchallLayerGroup);
+      const circle = L.circle(pt, { radius: r, color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.12 }).addTo(window.lwWpSchallLayerGroup);
       circle.bindTooltip('', {sticky: true, direction: 'top', opacity: 0.9});
       circle.on('mousemove', ev => {
         const d = pt.distanceTo(ev.latlng);
@@ -1269,34 +1277,34 @@ export function redrawLwWp() {
     redrawLwWp();
   }
   // Seitengriffe: N S E W
-  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   nH.on('drag', function() { const lat = this.getLatLng().lat; if (lat > sw.lat + 3 * latPerM) { ne.lat = lat; upRect(); } });
   nH.on('dragend', done);
-  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   sH.on('drag', function() { const lat = this.getLatLng().lat; if (lat < ne.lat - 3 * latPerM) { sw.lat = lat; upRect(); } });
   sH.on('dragend', done);
-  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   eH.on('drag', function() { const lng = this.getLatLng().lng; if (lng > sw.lng + 3 * lngPerM) { ne.lng = lng; upRect(); } });
   eH.on('dragend', done);
-  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(lwWpLayerGroup);
+  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
   wH.on('drag', function() { const lng = this.getLatLng().lng; if (lng < ne.lng - 3 * lngPerM) { sw.lng = lng; upRect(); } });
   wH.on('dragend', done);
   // Eckengriffe: NE NW SE SW
-  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   neH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   neH.on('dragend', done);
-  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   nwH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   nwH.on('dragend', done);
-  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   seH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
   seH.on('dragend', done);
-  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(lwWpLayerGroup);
+  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
   swH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
   swH.on('dragend', done);
   // Hauptmarker (Gerät verschieben) — groß genug um auch ohne Zoom greifbar zu sein
   const wpIcon = L.divIcon({ className: '', html: '<div style="width:32px;height:32px;background:rgba(56,142,60,0.5);border:2px solid #66bb6a;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 0 8px rgba(102,187,106,0.5);">' + windSvg('#c8e6c9',17,14) + '</div>', iconSize: [32,32], iconAnchor: [16,16] });
-  const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(lwWpLayerGroup);
+  const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(window.lwWpLayerGroup);
   marker.on('dragend', function() {
     window.lwWp.lat = marker.getLatLng().lat;
     window.lwWp.lng = marker.getLatLng().lng;
@@ -1400,17 +1408,18 @@ export function setLwWpVisible(visible) {
 }
 
 export function updateLwWpVisibility() {
-  if (!window.lwWp || !lwWpLayerGroup || !lwWpSchallLayerGroup) return;
+  if (!window.lwWp || !window.lwWpLayerGroup) return;
+  if (!window.lwWpSchallLayerGroup) window.lwWpSchallLayerGroup = L.layerGroup();
   if (window.lwWpVisible) {
-    if (!map.hasLayer(lwWpLayerGroup)) lwWpLayerGroup.addTo(map);
+    if (!map.hasLayer(window.lwWpLayerGroup)) window.lwWpLayerGroup.addTo(map);
     if (window.lwWpSchallVisible) {
-      if (!map.hasLayer(lwWpSchallLayerGroup)) lwWpSchallLayerGroup.addTo(map);
+      if (!map.hasLayer(window.lwWpSchallLayerGroup)) window.lwWpSchallLayerGroup.addTo(map);
     } else {
-      if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
+      if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
     }
   } else {
-    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(lwWpLayerGroup);
-    if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
+    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
+    if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
   }
 }
 
@@ -1422,13 +1431,13 @@ export function setSchallVisible(visible) {
 export function clearLwWp() {
   window.lwWp = null;
   moBeiDeaktivierung('lwwp');
-  if (lwWpLayerGroup) {
-    lwWpLayerGroup.clearLayers();
-    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(lwWpLayerGroup);
+  if (window.lwWpLayerGroup) {
+    window.lwWpLayerGroup.clearLayers();
+    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
   }
-  if (lwWpSchallLayerGroup) {
-    lwWpSchallLayerGroup.clearLayers();
-    if (map.hasLayer(lwWpSchallLayerGroup)) map.removeLayer(lwWpSchallLayerGroup);
+  if (window.lwWpSchallLayerGroup) {
+    window.lwWpSchallLayerGroup.clearLayers();
+    if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
   }
   document.getElementById('lwwp-data-section').style.display = 'none';
   document.getElementById('lwwp-visible').checked = true;

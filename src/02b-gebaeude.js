@@ -9,13 +9,28 @@ import { glBerechnenDebounced } from './06b-gl-berechnen.js';
 import { updateAllDeckungen } from './06c-dispatch-core.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 
-export const map = L.map('map',{zoomControl:true}).setView([52.0816,8.0034],15);
-export const osmTile = L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:21});
-export const esriTile = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:21});
-osmTile.addTo(map);
+// Guard against HMR re-init: reuse cached instance if container is already initialized
+export const map = window._appLeafletMap || (() => {
+  const m = L.map('map',{zoomControl:true}).setView([52.0816,8.0034],15);
+  window._appLeafletMap = m;
+  return m;
+})();
+export const osmTile = window._appOsmTile || (() => {
+  const t = L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:21});
+  window._appOsmTile = t;
+  return t;
+})();
+export const esriTile = window._appEsriTile || (() => {
+  const t = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:21});
+  window._appEsriTile = t;
+  return t;
+})();
+if (!map.hasLayer(osmTile)) osmTile.addTo(map);
 // Custom Pane für Netzleitungen — über den Kreisen (overlayPane z=400, netzPane z=450)
-map.createPane('netzPane');
-map.getPane('netzPane').style.zIndex = 450;
+if (!map.getPane('netzPane')) {
+  map.createPane('netzPane');
+  map.getPane('netzPane').style.zIndex = 450;
+}
 // Invalidate map size after left panel renders (flex layout needs recalc)
 setTimeout(() => map.invalidateSize(), 300);
 setTimeout(() => map.invalidateSize(), 1000);
@@ -932,6 +947,10 @@ export function renameGebaeude(id,name){
   const g=window.gebaeude.find(x=>x.id===id);
   if(!g) return;
   g.name=name;
+  // Karten-Header sofort aktualisieren
+  const nameSpan = document.querySelector(`#card-${id} .geb-compact-name`);
+  if (nameSpan) nameSpan.textContent = name;
+  // Karten-Label auf der Karte aktualisieren
   if(g.labelMarker){
     const el=g.labelMarker.getElement();
     if(el){ const inner=el.querySelector('.geb-label-inner'); if(inner) inner.innerHTML=_gebLabelHtml(g); }
