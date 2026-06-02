@@ -26,6 +26,7 @@ const JS_FILES = [
   '04b-emissionen-3d.js',
   '05a-export.js',
   '05b-stromnetz.js',
+  '05c-bericht.js',
   '05c-sankey.js',
   '06a-gbi-lastgang.js',
   '06b-gl-berechnen.js',
@@ -54,6 +55,9 @@ const JS_FILES = [
   '13j-autofill-wizard.js',
   '13k-elslp-registry.js',
   '13l-autonetz.js',
+  '13m-kompaktstation.js',
+  '13n-elektro-panel.js',
+  '13o-nap-analyse.js',
   // main.js wird NICHT eingebunden — es macht nur import/window-Exposition,
   // die im Monolith überflüssig ist (alles bereits global). Der Namespace-
   // Alias "glBerechnen" würde die private Funktion gleichen Namens überschreiben.
@@ -142,11 +146,35 @@ if (typeof initBdewProfiles === 'function') {
 // 2. CSS lesen
 const cssCode = readFileSync(join(SRC, 'styles', 'app.css'), 'utf8');
 
+// Inline-Favicon (verhindert ERR_FILE_NOT_FOUND bei file://-Aufruf)
+const FAVICON = '<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'.9em\' font-size=\'90\'>🔥</text></svg>">';
+
+// Leaflet-Icon-Fix: verhindert "Unsafe attempt"-Fehler durch relative Marker-Bild-URLs
+const LEAFLET_ICON_FIX = `
+<script>
+// Leaflet-Marker-Icons aus CDN explizit setzen, damit keine relative file://-URL entsteht
+if (typeof L !== 'undefined') {
+  delete L.Icon.Default.prototype._getIconUrl;
+  L.Icon.Default.mergeOptions({
+    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  });
+}
+</script>`;
+
 // 3. Quell-HTML lesen und aufbereiten
 const srcHtml = readFileSync(resolve('index.html'), 'utf8');
 let html = srcHtml
   .replace(/<link[^>]*app\.css[^>]*\/?>/, () => `<style>${cssCode}</style>`)
-  .replace(/<script type="module"[^>]*>.*?<\/script>/, '');
+  .replace(/<script type="module"[^>]*>.*?<\/script>/, '')
+  .replace('</title>', `</title>\n${FAVICON}`);
+
+// Leaflet-Icon-Fix direkt nach dem Leaflet-Script-Tag einfügen
+html = html.replace(
+  /(<script src="https:\/\/unpkg\.com\/leaflet[^>]*><\/script>)/,
+  `$1${LEAFLET_ICON_FIX}`
+);
 
 // 4. JS-Code vor </body> einfügen (ein einziger <script>-Block, kein type="module")
 const bodyIdx = html.lastIndexOf('</body>');
