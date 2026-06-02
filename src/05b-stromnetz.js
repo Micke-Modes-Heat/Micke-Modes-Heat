@@ -615,6 +615,17 @@ export function addStromEdge(uId, vId) {
     deltaUPct: 0, peakFlowKw: 0, flowDirection: 1
   };
 
+  // Auto-Erkennung MS-Kabel: NAP und Schaltanlage (TYPE_RANK ≤ 1) sind MS-seitig
+  // uNode/vNode.type kann aus stromNodes (lowercase) oder ASSETS.items (PascalCase) stammen
+  const MS_TYPES = new Set(['nap', 'schaltanlage']);
+  const uType = (uNode.type || '').toLowerCase();
+  const vType = (vNode.type || '').toLowerCase();
+  if (MS_TYPES.has(uType) && MS_TYPES.has(vType)) {
+    edge.msLevel = true;
+    edge.layer.setStyle({ color: '#ff9800', weight: 4, opacity: 0.95, dashArray: null });
+    edge.outlineLayer?.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.4, dashArray: null });
+  }
+
   // Tooltip
   hitLayer.bindTooltip(function() { return buildStromEdgeTooltip(edge); }, { sticky: true, className: 'geb-tooltip' });
 
@@ -2084,9 +2095,20 @@ export function elCalcAssets() {
     getAssetStatus(a, yr) === 'active'
   );
   const activeIds = new Set(activeA.map(a => a.id));
+  // Alle Leitungen die mindestens einen Asset-Endpunkt haben (inkl. Asset→Gebäude)
   const activeE = (window.stromEdges || []).filter(e =>
-    activeIds.has(e.u) && activeIds.has(e.v)
+    activeIds.has(e.u) || activeIds.has(e.v)
   );
+
+  // Gebäude-Lasten für Asset→Gebäude-Leitungen (Gebäude sind keine Assets)
+  function gebVerbrauch(nodeId) {
+    const g = (typeof gebaeude !== 'undefined' ? gebaeude : (window.gebaeude || []))
+      .find(gb => gb.id === nodeId);
+    if (!g) return 0;
+    return typeof getGebStromMwh === 'function'
+      ? getGebStromMwh(g) * 1000 / 1800  // MWh/a → kW (Spitze via ~1800 Volllaststunden)
+      : (parseFloat(g.strom) || 0) * 1000 / 1800;
+  }
 
   const warn = [];
   if (!activeA.find(a => a.type === 'NAP'))   warn.push('⚠ Kein NAP vorhanden.');
@@ -2114,16 +2136,20 @@ export function elCalcAssets() {
   }
 
   const assetMap = new Map(activeA.map(a => [a.id, a]));
+  // adjList enthält alle Knoten die über activeE erreichbar sind (auch Gebäude)
   const adjList  = new Map(activeA.map(a => [a.id, []]));
   for (const e of activeE) {
-    adjList.get(e.u)?.push({ neighborId: e.v });
-    adjList.get(e.v)?.push({ neighborId: e.u });
+    if (!adjList.has(e.u)) adjList.set(e.u, []);
+    if (!adjList.has(e.v)) adjList.set(e.v, []);
+    adjList.get(e.u).push({ neighborId: e.v });
+    adjList.get(e.v).push({ neighborId: e.u });
   }
 
-  function bfsDownstream(edge, loadFn) {
+  function bfsDownstream(edge, loadFn, gebLoadFn) {
     const a = assetMap.get(edge.u), b = assetMap.get(edge.v);
-    if (!a || !b) return 0;
-    const rankA = TYPE_RANK[a.type] ?? 6, rankB = TYPE_RANK[b.type] ?? 6;
+    // Mindestens ein Asset-Endpunkt muss existieren
+    if (!a && !b) return 0;
+    const rankA = TYPE_RANK[a?.type] ?? 6, rankB = TYPE_RANK[b?.type] ?? 6;
     const sourceId = rankA <= rankB ? edge.u : edge.v;
     const sinkId   = rankA <= rankB ? edge.v : edge.u;
     const visited = new Set([sourceId]);
@@ -2134,11 +2160,20 @@ export function elCalcAssets() {
       if (visited.has(cur)) continue;
       visited.add(cur);
       const asset = assetMap.get(cur);
-      if (asset) load += loadFn(asset);
+      if (asset) {
+        load += loadFn(asset);
+      } else {
+        // Gebäude oder sonstiger Nicht-Asset-Knoten → Gebäude-Last addieren
+        load += (gebLoadFn ? gebLoadFn(cur) : gebVerbrauch(cur));
+      }
       const curRank = TYPE_RANK[asset?.type] ?? 6;
       for (const { neighborId } of (adjList.get(cur) || [])) {
         if (visited.has(neighborId)) continue;
-        if ((TYPE_RANK[assetMap.get(neighborId)?.type] ?? 6) >= curRank) queue.push(neighborId);
+        // Gebäude immer traversieren; Assets nur wenn Rang >= aktueller Rang
+        const neighborAsset = assetMap.get(neighborId);
+        if (!neighborAsset || (TYPE_RANK[neighborAsset.type] ?? 6) >= curRank) {
+          queue.push(neighborId);
+        }
       }
     }
     return load;
@@ -2155,8 +2190,8 @@ export function elCalcAssets() {
     const rankA = TYPE_RANK[aAsset.type] ?? 6, rankB = TYPE_RANK[bAsset.type] ?? 6;
     const lengthM = e.lengthM || 0;
 
-    const P_v = bfsDownstream(e, assetVerbrauch);
-    const P_g = bfsDownstream(e, assetErzeugung);
+    const P_v = bfsDownstream(e, assetVerbrauch, gebVerbrauch);
+    const P_g = bfsDownstream(e, assetErzeugung, () => 0); // Gebäude erzeugen nicht
     const P_net   = P_v - P_g;
     const P_worst = Math.max(P_v, P_g);
     const I_A      = P_worst * 1000 / (Math.sqrt(3) * U_N * COS_PHI);
