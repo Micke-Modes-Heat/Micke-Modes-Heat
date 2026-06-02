@@ -146,8 +146,9 @@ if (typeof initBdewProfiles === 'function') {
 // 2. CSS lesen
 const cssCode = readFileSync(join(SRC, 'styles', 'app.css'), 'utf8');
 
-// Inline-Favicon (verhindert ERR_FILE_NOT_FOUND bei file://-Aufruf)
-const FAVICON = '<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'.9em\' font-size=\'90\'>🔥</text></svg>">';
+// Inline-Favicon: SVG muss URL-encodiert sein, da < und > in HTML-Attributen den Parser brechen
+// (unencoded <svg> im href → leerer href → Browser lädt aktuelle Seite → Unsafe attempt + ERR_FILE_NOT_FOUND)
+const FAVICON = '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Ctext y=\'.9em\' font-size=\'90\'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">';
 
 // Leaflet-Icon-Fix: verhindert "Unsafe attempt"-Fehler durch relative Marker-Bild-URLs
 const LEAFLET_ICON_FIX = `
