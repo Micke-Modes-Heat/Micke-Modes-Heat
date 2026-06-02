@@ -615,6 +615,17 @@ export function addStromEdge(uId, vId) {
     deltaUPct: 0, peakFlowKw: 0, flowDirection: 1
   };
 
+  // Auto-Erkennung MS-Kabel: NAP und Schaltanlage (TYPE_RANK ≤ 1) sind MS-seitig
+  // uNode/vNode.type kann aus stromNodes (lowercase) oder ASSETS.items (PascalCase) stammen
+  const MS_TYPES = new Set(['nap', 'schaltanlage']);
+  const uType = (uNode.type || '').toLowerCase();
+  const vType = (vNode.type || '').toLowerCase();
+  if (MS_TYPES.has(uType) && MS_TYPES.has(vType)) {
+    edge.msLevel = true;
+    edge.layer.setStyle({ color: '#ff9800', weight: 4, opacity: 0.95, dashArray: null });
+    edge.outlineLayer?.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.4, dashArray: null });
+  }
+
   // Tooltip
   hitLayer.bindTooltip(function() { return buildStromEdgeTooltip(edge); }, { sticky: true, className: 'geb-tooltip' });
 
