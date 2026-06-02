@@ -20092,6 +20092,23 @@ function _recalcStromNetzInner() {
         n.peakLoadKw = nm.loadKw;
         n.isProducer = false;
       }
+    } else if (n.isAsset) {
+      // Strom-Asset-Knoten (Verbraucher, Lade, WP, PV etc.) — Lasten aus Asset-Props
+      const asset = (window.assets || (typeof ASSETS !== 'undefined' ? ASSETS.items : []) || []).find(a => a.id === n.id);
+      if (asset) {
+        const p = asset.props || {};
+        switch (asset.type) {
+          case 'Verbraucher': nm.loadKw = parseFloat(p.leistungKW) || 0; break;
+          case 'Lade':        nm.loadKw = (parseInt(p.anzahlPunkte) || 4) * (parseFloat(p.leistungProPunktKW) || 22); break;
+          case 'WP':          nm.loadKw = parseFloat(p.leistungKW) || 0; break;
+          case 'PV':          nm.loadKw = -((parseFloat(p.leistungKWp) || 0) * 0.8); break;
+          case 'Wind':        nm.loadKw = -(parseFloat(p.leistungKW) || 0); break;
+          case 'KWK':         nm.loadKw = -(parseFloat(p.leistungElKW) || 0); break;
+          default:            nm.loadKw = 0; break;
+        }
+        n.peakLoadKw = Math.abs(nm.loadKw);
+        n.isProducer = nm.loadKw < 0;
+      }
     }
   });
 
@@ -20230,7 +20247,7 @@ function _recalcStromNetzInner() {
   const accNVerb = {}; // Anzahl Verbraucher hinter diesem Knoten (für GZF)
   Object.keys(nodeMap).forEach(k => {
     const lkw = nodeMap[k].loadKw;
-    const isVerb = lkw > 0 && nodeMap[k].node.type === 'geb';
+    const isVerb = lkw > 0 && (nodeMap[k].node.type === 'geb' || nodeMap[k].node.isAsset);
     accV[k] = lkw > 0 ? lkw : 0;
     accG[k] = lkw < 0 ? -lkw : 0;
     accNVerb[k] = isVerb ? 1 : 0;
@@ -20996,9 +21013,11 @@ function elCalcAssets() {
   // Kumulativer Spannungsfall: gerichtete Adjazenzliste
   const dirAdj = new Map(activeA.map(a => [a.id, []]));
 
-  for (const e of activeE) {
-    if (e.msLevel) continue; // MS-Kabel werden durch MS-Ring-Analyse dimensioniert
+  // MS-Nennspannung aus NAP-Asset (default 20 kV)
+  const napAsset = activeA.find(a => a.type === 'NAP');
+  const U_MS = (parseFloat(napAsset?.props?.spannungKV) || 20) * 1000;
 
+  for (const e of activeE) {
     const aAsset = assetMap.get(e.u), bAsset = assetMap.get(e.v);
     if (!aAsset || !bAsset) continue;
     const rankA = TYPE_RANK[aAsset.type] ?? 6, rankB = TYPE_RANK[bAsset.type] ?? 6;
@@ -21008,8 +21027,24 @@ function elCalcAssets() {
     const P_g = bfsDownstream(e, assetErzeugung, () => 0); // Gebäude erzeugen nicht
     const P_net   = P_v - P_g;
     const P_worst = Math.max(P_v, P_g);
-    const I_A      = P_worst * 1000 / (Math.sqrt(3) * U_N * COS_PHI);
-    const I_A_sign = P_net   * 1000 / (Math.sqrt(3) * U_N * COS_PHI);
+    // MS-Kabel: Strom mit MS-Spannung berechnen, keine NS-Kabelauslegung
+    const U_eff    = e.msLevel ? U_MS : U_N;
+    const I_A      = P_worst * 1000 / (Math.sqrt(3) * U_eff * COS_PHI);
+    const I_A_sign = P_net   * 1000 / (Math.sqrt(3) * U_eff * COS_PHI);
+
+    e.peakFlowKw_V = P_v;
+    e.peakFlowKw_G = P_g;
+    e.peakFlowKw   = P_worst;
+    e.peakCurrentA = I_A;
+    e.flowDirection = P_net >= 0 ? 1 : -1;
+
+    // MS-Kabel: keine NS-Kabelauslegung (andere Kabeltypen/Spannung)
+    if (e.msLevel) {
+      e.deltaUPct = 0;
+      const srcId = rankA <= rankB ? e.u : e.v;
+      dirAdj.get(srcId)?.push({ nextId: rankA <= rankB ? e.v : e.u, dU_V: 0 });
+      continue;
+    }
 
     const kt = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
     const maxSec = kt.sections[kt.sections.length - 1];
@@ -21037,14 +21072,9 @@ function elCalcAssets() {
     const dU_V  = Math.sqrt(3) * R_seg * (I_A_sign / np);
     const dU_pct = (dU_V / U_N) * 100;
 
-    e.peakFlowKw_V = P_v;
-    e.peakFlowKw_G = P_g;
-    e.peakFlowKw   = P_worst; // Worst-Case für Kabelauslegung, Breite, Auslastung
-    e.peakCurrentA = I_A;
     e.ratedCurrentA = sec.Iz * np;
     e.auslastungPct = sec.Iz > 0 ? (I_A / (sec.Iz * np)) * 100 : 0;
     e.deltaUPct    = Math.abs(dU_pct);
-    e.flowDirection = P_net >= 0 ? 1 : -1;
 
     const srcId = rankA <= rankB ? e.u : e.v;
     dirAdj.get(srcId)?.push({ nextId: rankA <= rankB ? e.v : e.u, dU_V });
