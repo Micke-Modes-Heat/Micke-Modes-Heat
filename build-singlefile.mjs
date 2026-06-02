@@ -134,6 +134,7 @@ for (const file of JS_FILES) {
 // BDEW-Initialisierung (ersetzt den main.js-Aufruf)
 jsAll += `
 // ── Initialisierung (aus main.js) ──
+window._isSingleFileBuild = true; // verhindert data/klima/-Dateiladen (kein Verzeichnis im Build)
 if (typeof initBdewProfiles === 'function') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() { initBdewProfiles(); });

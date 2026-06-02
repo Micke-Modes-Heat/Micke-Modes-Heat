@@ -14141,6 +14141,9 @@ function _loadProject(project) {
         }
         if (project.stromNetz.nodes) {
           project.stromNetz.nodes.forEach(n => {
+            // Assets wurden bereits via redrawAllAssets() als stromNodes registriert (isAsset:true)
+            // → nicht nochmal als plain addStromNode() erstellen (würde graue Duplikat-Marker erzeugen)
+            if ((window.stromNodes || []).find(sn => sn.id === n.id && sn.isAsset)) return;
             addStromNode(n.type, L.latLng(n.lat, n.lng), {
               id: n.id, label: n.label, maxKva: n.maxKva, ratedKva: n.ratedKva, ukPct: n.ukPct
             });
@@ -22647,6 +22650,9 @@ function glJsFilename(stadtname) {
 async function glLadeKlimaDaten(stadtname) {
   if (_klimaLoaded.has(stadtname)) return;
   if (window.KLIMA_DATA && window.KLIMA_DATA[stadtname]) { _klimaLoaded.add(stadtname); return; }
+  // Im Single-File-Build existiert kein data/klima/-Verzeichnis → direkt false zurückgeben
+  // (Aufrufer fällt auf TRY-Kassel-Fallback zurück; verhindert ERR_FILE_NOT_FOUND im Log)
+  if (window._isSingleFileBuild) return false;
   const fname = `data/klima/${glJsFilename(stadtname)}.js`;
   return new Promise((resolve) => {
     const s = document.createElement('script');
@@ -46214,6 +46220,7 @@ window.napKalUpdateFactor           = napKalUpdateFactor;
 
 
 // ── Initialisierung (aus main.js) ──
+window._isSingleFileBuild = true; // verhindert data/klima/-Dateiladen (kein Verzeichnis im Build)
 if (typeof initBdewProfiles === 'function') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() { initBdewProfiles(); });
