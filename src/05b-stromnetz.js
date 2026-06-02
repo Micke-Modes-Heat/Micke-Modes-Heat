@@ -1477,6 +1477,20 @@ export function _recalcStromNetzInner() {
 
   window.stromEdges.forEach(e => {
     const absKw = Math.abs(e.peakFlowKw);
+
+    // MS-Kabel: Strom und Auslastung mit MS-Spannung — keine NS-Kabelauslegung
+    if (e.msLevel) {
+      const napNode = window.stromNodes.find(n => n.type === 'nap');
+      const uMs = (parseFloat(
+        (typeof ASSETS !== 'undefined' ? ASSETS.items : []).find(a => a.type === 'NAP')?.props?.spannungKV
+      ) || 20) * 1000;
+      e.peakCurrentA = calcStrom(absKw, uMs, cosPhi);
+      e.flowDirection = (e.peakFlowKw_V ?? 1) >= (e.peakFlowKw_G ?? 0) ? 1 : -1;
+      e.ratedCurrentA = 0; e.auslastungPct = 0; e.deltaUPct = 0;
+      e._R_total = 0; e._X_total = 0;
+      return;
+    }
+
     const I = calcStrom(absKw, U, cosPhi);
     e.peakCurrentA = I;
     e.flowDirection = (e.peakFlowKw_V ?? 1) >= (e.peakFlowKw_G ?? 0) ? 1 : -1; // Nettostromrichtung
@@ -1676,10 +1690,16 @@ export function updateStromEdgeVisuals() {
       if (e.layer._path) e.layer._path.style.animation = '';
     }
 
-    // MS-Kabel und Trennstellen überschreiben NS-Stil
+    // MS-Kabel: violette Farbe, aber Strichlinie + Animation wie NS wenn Fluss vorhanden
     if (e.msLevel) {
-      e.layer.setStyle({ color: '#7c4dff', weight: 4, opacity: 0.95, dashArray: null });
-      if (e.outlineLayer) e.outlineLayer.setStyle({ weight: 7, opacity: 0.4, dashArray: null });
+      const msColor = '#7c4dff';
+      if (absKw > 0.1) {
+        e.layer.setStyle({ color: msColor, weight: 4, opacity: 0.95, dashArray: '10,5' });
+        if (e.outlineLayer) e.outlineLayer.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.4, dashArray: '10,5' });
+      } else {
+        e.layer.setStyle({ color: msColor, weight: 4, opacity: 0.7, dashArray: '' });
+        if (e.outlineLayer) e.outlineLayer.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.3, dashArray: '' });
+      }
     }
     if (e.trennstelle) e.layer.setStyle({ dashArray: '12,8', opacity: 0.55 });
 
