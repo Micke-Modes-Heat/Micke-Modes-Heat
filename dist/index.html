@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Liegenschaft – Energiekarte</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -21202,6 +21202,7 @@ async function loadOsmStrassen() {
     //    corsproxy.io erwartet die Ziel-URL NICHT nochmal URL-kodiert
     const getTarget = 'https://overpass-api.de/api/interpreter?data=' + enc;
     const proxyUrls = [
+      'https://overpass.private.coffee/api/interpreter?data=' + enc,
       'https://corsproxy.io/?' + getTarget,
       'https://api.allorigins.win/raw?url=' + encodeURIComponent(getTarget),
     ];

@@ -2391,6 +2391,7 @@ export async function loadOsmStrassen() {
     //    corsproxy.io erwartet die Ziel-URL NICHT nochmal URL-kodiert
     const getTarget = 'https://overpass-api.de/api/interpreter?data=' + enc;
     const proxyUrls = [
+      'https://overpass.private.coffee/api/interpreter?data=' + enc,
       'https://corsproxy.io/?' + getTarget,
       'https://api.allorigins.win/raw?url=' + encodeURIComponent(getTarget),
     ];
