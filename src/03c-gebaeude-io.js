@@ -1569,6 +1569,9 @@ export function _loadProject(project) {
         }
         if (project.stromNetz.nodes) {
           project.stromNetz.nodes.forEach(n => {
+            // Assets wurden bereits via redrawAllAssets() als stromNodes registriert (isAsset:true)
+            // → nicht nochmal als plain addStromNode() erstellen (würde graue Duplikat-Marker erzeugen)
+            if ((window.stromNodes || []).find(sn => sn.id === n.id && sn.isAsset)) return;
             addStromNode(n.type, L.latLng(n.lat, n.lng), {
               id: n.id, label: n.label, maxKva: n.maxKva, ratedKva: n.ratedKva, ukPct: n.ukPct
             });

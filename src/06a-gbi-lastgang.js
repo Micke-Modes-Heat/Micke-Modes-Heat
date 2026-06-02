@@ -517,6 +517,9 @@ export function glJsFilename(stadtname) {
 async function glLadeKlimaDaten(stadtname) {
   if (_klimaLoaded.has(stadtname)) return;
   if (window.KLIMA_DATA && window.KLIMA_DATA[stadtname]) { _klimaLoaded.add(stadtname); return; }
+  // Im Single-File-Build existiert kein data/klima/-Verzeichnis → direkt false zurückgeben
+  // (Aufrufer fällt auf TRY-Kassel-Fallback zurück; verhindert ERR_FILE_NOT_FOUND im Log)
+  if (window._isSingleFileBuild) return false;
   const fname = `data/klima/${glJsFilename(stadtname)}.js`;
   return new Promise((resolve) => {
     const s = document.createElement('script');

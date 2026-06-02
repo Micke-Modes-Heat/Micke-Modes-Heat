@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Liegenschaft – Energiekarte</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -14141,6 +14141,9 @@ function _loadProject(project) {
         }
         if (project.stromNetz.nodes) {
           project.stromNetz.nodes.forEach(n => {
+            // Assets wurden bereits via redrawAllAssets() als stromNodes registriert (isAsset:true)
+            // → nicht nochmal als plain addStromNode() erstellen (würde graue Duplikat-Marker erzeugen)
+            if ((window.stromNodes || []).find(sn => sn.id === n.id && sn.isAsset)) return;
             addStromNode(n.type, L.latLng(n.lat, n.lng), {
               id: n.id, label: n.label, maxKva: n.maxKva, ratedKva: n.ratedKva, ukPct: n.ukPct
             });
@@ -19426,6 +19429,17 @@ function addStromEdge(uId, vId) {
     deltaUPct: 0, peakFlowKw: 0, flowDirection: 1
   };
 
+  // Auto-Erkennung MS-Kabel: NAP und Schaltanlage (TYPE_RANK ≤ 1) sind MS-seitig
+  // uNode/vNode.type kann aus stromNodes (lowercase) oder ASSETS.items (PascalCase) stammen
+  const MS_TYPES = new Set(['nap', 'schaltanlage']);
+  const uType = (uNode.type || '').toLowerCase();
+  const vType = (vNode.type || '').toLowerCase();
+  if (MS_TYPES.has(uType) && MS_TYPES.has(vType)) {
+    edge.msLevel = true;
+    edge.layer.setStyle({ color: '#ff9800', weight: 4, opacity: 0.95, dashArray: null });
+    edge.outlineLayer?.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.4, dashArray: null });
+  }
+
   // Tooltip
   hitLayer.bindTooltip(function() { return buildStromEdgeTooltip(edge); }, { sticky: true, className: 'geb-tooltip' });
 
@@ -20078,6 +20092,23 @@ function _recalcStromNetzInner() {
         n.peakLoadKw = nm.loadKw;
         n.isProducer = false;
       }
+    } else if (n.isAsset) {
+      // Strom-Asset-Knoten (Verbraucher, Lade, WP, PV etc.) — Lasten aus Asset-Props
+      const asset = (window.assets || (typeof ASSETS !== 'undefined' ? ASSETS.items : []) || []).find(a => a.id === n.id);
+      if (asset) {
+        const p = asset.props || {};
+        switch (asset.type) {
+          case 'Verbraucher': nm.loadKw = parseFloat(p.leistungKW) || 0; break;
+          case 'Lade':        nm.loadKw = (parseInt(p.anzahlPunkte) || 4) * (parseFloat(p.leistungProPunktKW) || 22); break;
+          case 'WP':          nm.loadKw = parseFloat(p.leistungKW) || 0; break;
+          case 'PV':          nm.loadKw = -((parseFloat(p.leistungKWp) || 0) * 0.8); break;
+          case 'Wind':        nm.loadKw = -(parseFloat(p.leistungKW) || 0); break;
+          case 'KWK':         nm.loadKw = -(parseFloat(p.leistungElKW) || 0); break;
+          default:            nm.loadKw = 0; break;
+        }
+        n.peakLoadKw = Math.abs(nm.loadKw);
+        n.isProducer = nm.loadKw < 0;
+      }
     }
   });
 
@@ -20216,7 +20247,7 @@ function _recalcStromNetzInner() {
   const accNVerb = {}; // Anzahl Verbraucher hinter diesem Knoten (für GZF)
   Object.keys(nodeMap).forEach(k => {
     const lkw = nodeMap[k].loadKw;
-    const isVerb = lkw > 0 && nodeMap[k].node.type === 'geb';
+    const isVerb = lkw > 0 && (nodeMap[k].node.type === 'geb' || nodeMap[k].node.isAsset);
     accV[k] = lkw > 0 ? lkw : 0;
     accG[k] = lkw < 0 ? -lkw : 0;
     accNVerb[k] = isVerb ? 1 : 0;
@@ -20895,9 +20926,20 @@ function elCalcAssets() {
     getAssetStatus(a, yr) === 'active'
   );
   const activeIds = new Set(activeA.map(a => a.id));
+  // Alle Leitungen die mindestens einen Asset-Endpunkt haben (inkl. Asset→Gebäude)
   const activeE = (window.stromEdges || []).filter(e =>
-    activeIds.has(e.u) && activeIds.has(e.v)
+    activeIds.has(e.u) || activeIds.has(e.v)
   );
+
+  // Gebäude-Lasten für Asset→Gebäude-Leitungen (Gebäude sind keine Assets)
+  function gebVerbrauch(nodeId) {
+    const g = (typeof gebaeude !== 'undefined' ? gebaeude : (window.gebaeude || []))
+      .find(gb => gb.id === nodeId);
+    if (!g) return 0;
+    return typeof getGebStromMwh === 'function'
+      ? getGebStromMwh(g) * 1000 / 1800  // MWh/a → kW (Spitze via ~1800 Volllaststunden)
+      : (parseFloat(g.strom) || 0) * 1000 / 1800;
+  }
 
   const warn = [];
   if (!activeA.find(a => a.type === 'NAP'))   warn.push('⚠ Kein NAP vorhanden.');
@@ -20925,16 +20967,20 @@ function elCalcAssets() {
   }
 
   const assetMap = new Map(activeA.map(a => [a.id, a]));
+  // adjList enthält alle Knoten die über activeE erreichbar sind (auch Gebäude)
   const adjList  = new Map(activeA.map(a => [a.id, []]));
   for (const e of activeE) {
-    adjList.get(e.u)?.push({ neighborId: e.v });
-    adjList.get(e.v)?.push({ neighborId: e.u });
+    if (!adjList.has(e.u)) adjList.set(e.u, []);
+    if (!adjList.has(e.v)) adjList.set(e.v, []);
+    adjList.get(e.u).push({ neighborId: e.v });
+    adjList.get(e.v).push({ neighborId: e.u });
   }
 
-  function bfsDownstream(edge, loadFn) {
+  function bfsDownstream(edge, loadFn, gebLoadFn) {
     const a = assetMap.get(edge.u), b = assetMap.get(edge.v);
-    if (!a || !b) return 0;
-    const rankA = TYPE_RANK[a.type] ?? 6, rankB = TYPE_RANK[b.type] ?? 6;
+    // Mindestens ein Asset-Endpunkt muss existieren
+    if (!a && !b) return 0;
+    const rankA = TYPE_RANK[a?.type] ?? 6, rankB = TYPE_RANK[b?.type] ?? 6;
     const sourceId = rankA <= rankB ? edge.u : edge.v;
     const sinkId   = rankA <= rankB ? edge.v : edge.u;
     const visited = new Set([sourceId]);
@@ -20945,11 +20991,20 @@ function elCalcAssets() {
       if (visited.has(cur)) continue;
       visited.add(cur);
       const asset = assetMap.get(cur);
-      if (asset) load += loadFn(asset);
+      if (asset) {
+        load += loadFn(asset);
+      } else {
+        // Gebäude oder sonstiger Nicht-Asset-Knoten → Gebäude-Last addieren
+        load += (gebLoadFn ? gebLoadFn(cur) : gebVerbrauch(cur));
+      }
       const curRank = TYPE_RANK[asset?.type] ?? 6;
       for (const { neighborId } of (adjList.get(cur) || [])) {
         if (visited.has(neighborId)) continue;
-        if ((TYPE_RANK[assetMap.get(neighborId)?.type] ?? 6) >= curRank) queue.push(neighborId);
+        // Gebäude immer traversieren; Assets nur wenn Rang >= aktueller Rang
+        const neighborAsset = assetMap.get(neighborId);
+        if (!neighborAsset || (TYPE_RANK[neighborAsset.type] ?? 6) >= curRank) {
+          queue.push(neighborId);
+        }
       }
     }
     return load;
@@ -20958,20 +21013,38 @@ function elCalcAssets() {
   // Kumulativer Spannungsfall: gerichtete Adjazenzliste
   const dirAdj = new Map(activeA.map(a => [a.id, []]));
 
-  for (const e of activeE) {
-    if (e.msLevel) continue; // MS-Kabel werden durch MS-Ring-Analyse dimensioniert
+  // MS-Nennspannung aus NAP-Asset (default 20 kV)
+  const napAsset = activeA.find(a => a.type === 'NAP');
+  const U_MS = (parseFloat(napAsset?.props?.spannungKV) || 20) * 1000;
 
+  for (const e of activeE) {
     const aAsset = assetMap.get(e.u), bAsset = assetMap.get(e.v);
     if (!aAsset || !bAsset) continue;
     const rankA = TYPE_RANK[aAsset.type] ?? 6, rankB = TYPE_RANK[bAsset.type] ?? 6;
     const lengthM = e.lengthM || 0;
 
-    const P_v = bfsDownstream(e, assetVerbrauch);
-    const P_g = bfsDownstream(e, assetErzeugung);
+    const P_v = bfsDownstream(e, assetVerbrauch, gebVerbrauch);
+    const P_g = bfsDownstream(e, assetErzeugung, () => 0); // Gebäude erzeugen nicht
     const P_net   = P_v - P_g;
     const P_worst = Math.max(P_v, P_g);
-    const I_A      = P_worst * 1000 / (Math.sqrt(3) * U_N * COS_PHI);
-    const I_A_sign = P_net   * 1000 / (Math.sqrt(3) * U_N * COS_PHI);
+    // MS-Kabel: Strom mit MS-Spannung berechnen, keine NS-Kabelauslegung
+    const U_eff    = e.msLevel ? U_MS : U_N;
+    const I_A      = P_worst * 1000 / (Math.sqrt(3) * U_eff * COS_PHI);
+    const I_A_sign = P_net   * 1000 / (Math.sqrt(3) * U_eff * COS_PHI);
+
+    e.peakFlowKw_V = P_v;
+    e.peakFlowKw_G = P_g;
+    e.peakFlowKw   = P_worst;
+    e.peakCurrentA = I_A;
+    e.flowDirection = P_net >= 0 ? 1 : -1;
+
+    // MS-Kabel: keine NS-Kabelauslegung (andere Kabeltypen/Spannung)
+    if (e.msLevel) {
+      e.deltaUPct = 0;
+      const srcId = rankA <= rankB ? e.u : e.v;
+      dirAdj.get(srcId)?.push({ nextId: rankA <= rankB ? e.v : e.u, dU_V: 0 });
+      continue;
+    }
 
     const kt = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
     const maxSec = kt.sections[kt.sections.length - 1];
@@ -20999,14 +21072,9 @@ function elCalcAssets() {
     const dU_V  = Math.sqrt(3) * R_seg * (I_A_sign / np);
     const dU_pct = (dU_V / U_N) * 100;
 
-    e.peakFlowKw_V = P_v;
-    e.peakFlowKw_G = P_g;
-    e.peakFlowKw   = P_worst; // Worst-Case für Kabelauslegung, Breite, Auslastung
-    e.peakCurrentA = I_A;
     e.ratedCurrentA = sec.Iz * np;
     e.auslastungPct = sec.Iz > 0 ? (I_A / (sec.Iz * np)) * 100 : 0;
     e.deltaUPct    = Math.abs(dU_pct);
-    e.flowDirection = P_net >= 0 ? 1 : -1;
 
     const srcId = rankA <= rankB ? e.u : e.v;
     dirAdj.get(srcId)?.push({ nextId: rankA <= rankB ? e.v : e.u, dU_V });
@@ -21202,6 +21270,7 @@ async function loadOsmStrassen() {
     //    corsproxy.io erwartet die Ziel-URL NICHT nochmal URL-kodiert
     const getTarget = 'https://overpass-api.de/api/interpreter?data=' + enc;
     const proxyUrls = [
+      'https://overpass.private.coffee/api/interpreter?data=' + enc,
       'https://corsproxy.io/?' + getTarget,
       'https://api.allorigins.win/raw?url=' + encodeURIComponent(getTarget),
     ];
@@ -22646,6 +22715,9 @@ function glJsFilename(stadtname) {
 async function glLadeKlimaDaten(stadtname) {
   if (_klimaLoaded.has(stadtname)) return;
   if (window.KLIMA_DATA && window.KLIMA_DATA[stadtname]) { _klimaLoaded.add(stadtname); return; }
+  // Im Single-File-Build existiert kein data/klima/-Verzeichnis → direkt false zurückgeben
+  // (Aufrufer fällt auf TRY-Kassel-Fallback zurück; verhindert ERR_FILE_NOT_FOUND im Log)
+  if (window._isSingleFileBuild) return false;
   const fname = `data/klima/${glJsFilename(stadtname)}.js`;
   return new Promise((resolve) => {
     const s = document.createElement('script');
@@ -46213,6 +46285,7 @@ window.napKalUpdateFactor           = napKalUpdateFactor;
 
 
 // ── Initialisierung (aus main.js) ──
+window._isSingleFileBuild = true; // verhindert data/klima/-Dateiladen (kein Verzeichnis im Build)
 if (typeof initBdewProfiles === 'function') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() { initBdewProfiles(); });
