@@ -26,6 +26,7 @@ const JS_FILES = [
   '04b-emissionen-3d.js',
   '05a-export.js',
   '05b-stromnetz.js',
+  '05c-bericht.js',
   '05c-sankey.js',
   '06a-gbi-lastgang.js',
   '06b-gl-berechnen.js',
@@ -54,6 +55,9 @@ const JS_FILES = [
   '13j-autofill-wizard.js',
   '13k-elslp-registry.js',
   '13l-autonetz.js',
+  '13m-kompaktstation.js',
+  '13n-elektro-panel.js',
+  '13o-nap-analyse.js',
   // main.js wird NICHT eingebunden — es macht nur import/window-Exposition,
   // die im Monolith überflüssig ist (alles bereits global). Der Namespace-
   // Alias "glBerechnen" würde die private Funktion gleichen Namens überschreiben.

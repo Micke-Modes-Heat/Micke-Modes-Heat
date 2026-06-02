@@ -1,6 +1,7 @@
 node_modules/
 dist/*
 !dist/index.html
+!dist/feldapp.html
 dist-vite/
 .DS_Store
 *.log
