@@ -1,3 +1,4 @@
+// @ts-check
 // ── Netz-Kostentabellen ──────────────────────────────────────────────────
 // KMR-Rohrkosten (€/m Trasse, inkl. Tiefbau) nach DN und Kostenszenario
 // Quelle: AGFW/FW 510, Preisniveau 2024

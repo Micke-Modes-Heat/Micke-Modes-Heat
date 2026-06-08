@@ -27,6 +27,8 @@ import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAs
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
 import { openSlpEditor } from './13i-slp-editor.js';
 import { globalYear } from './01-globals-varianten.js';
+import { makePvProfile8760, _PV_SPEZ_DEFAULT } from './09a-pv-profile.js';
+import { getElSlpProfiles, getElSlpGruppen } from './13k-elslp-registry.js';
 
 // Inspector-Slot sitzt im Elektro-Tab der rechten Sidebar
 function getPanel() { return document.getElementById('sb-asset-inspector-slot'); }
@@ -268,21 +270,45 @@ function buildPropsForm(asset) {
     }
 
     case 'Verbraucher': {
-      const slpOpts = ['G0','G1','G2','G3','G4','G5','G6','H0','L0','L1','L2'];
       // Direkt in props schreiben, nicht nur visuell defaulten —
       // sonst bleibt slpTyp undefined und NAP-Analyse nutzt statischen Fallback
       if (!p.slpTyp) p.slpTyp = 'G0';
       const curSlp = p.slpTyp;
+      // Dynamisch gruppiertes Select aus Registry — erfasst automatisch zukünftige Profile
+      const slpSelectHtml = (() => {
+        const profiles = getElSlpProfiles();
+        const gruppen  = getElSlpGruppen();
+        const optsHtml = gruppen.map(g => {
+          const items = profiles.filter(pr => pr.gruppe === g).map(pr =>
+            `<option value="${pr.id}"${pr.id === curSlp ? ' selected' : ''}>${pr.id} — ${pr.label}</option>`
+          ).join('');
+          return `<optgroup label="${g}">${items}</optgroup>`;
+        }).join('');
+        return `<div class="ins-field-group">
+          <label class="ins-field-label">Lastprofil (SLP)</label>
+          <select class="ins-field-input" data-prop="slpTyp" data-id="${id}">${optsHtml}</select>
+        </div>`;
+      })();
       return numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p})
-        + selectField(id, 'slpTyp', 'Lastprofil (SLP)', slpOpts.map(t => ({value:t, label:t})), curSlp)
+        + slpSelectHtml
         + `<button class="ins-link-btn" data-slp-open="${curSlp}">Profil ansehen →</button>`;
     }
 
     case 'WP':
-      return numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p});
+      return row2(
+        numField(id, 'leistungThKW', 'Th. Leistung (kW)', 100, {props:p}),
+        numField(id, 'leistungElKW', 'El. Bedarf (kW)',    40, {props:p})
+      ) + numField(id, 'jaz', 'JAZ', 2.5, {props:p, step:0.1});
 
-    case 'PV':
-      return numField(id, 'leistungKWp', 'Leistung (kWp)', 10, {props:p});
+    case 'PV': {
+      const spezDefault = _PV_SPEZ_DEFAULT[p.ausrichtung || 'sued'] || 1050;
+      return row2(
+        numField(id, 'leistungKWp', 'Leistung (kWp)', 10,          {props:p}),
+        numField(id, 'pvSpez',      'Ertrag (kWh/kWp·a)', spezDefault, {props:p})
+      ) + selectField(id, 'ausrichtung', 'Ausrichtung',
+        [{value:'sued', label:'Süd'}, {value:'ostwest', label:'Ost-West'}],
+        p.ausrichtung || 'sued');
+    }
 
     case 'Batterie': {
       const modus = p.betriebsmodus || 'einspeisung';
@@ -631,6 +657,105 @@ function buildBuildingSelect(asset) {
   </div>`;
 }
 
+// ── PV-Erzeugungsprofil ──────────────────────────────────────────────────────
+function _buildPvProfileSection(assetId) {
+  return `
+    <div class="ins-section-header" data-target="ins-sec-pvprofil">
+      <span class="asset-ins-section-title">☀ Erzeugungsprofil</span>
+      <span class="ins-section-chevron">▾</span>
+    </div>
+    <div class="ins-section-content" id="ins-sec-pvprofil">
+      <canvas id="pv-profile-canvas-${assetId}"
+        style="width:100%;height:64px;border-radius:4px;display:block;
+               background:rgba(255,255,255,0.04);margin-bottom:6px;"></canvas>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:10px;">
+        <div><div style="color:var(--muted);font-size:9px;">Jahresertrag</div>
+             <div id="pv-prof-annual-${assetId}"
+               style="font-family:'DM Mono',monospace;color:#ffd54f;">—</div></div>
+        <div><div style="color:var(--muted);font-size:9px;">Spez. Ertrag</div>
+             <div id="pv-prof-spez-${assetId}"
+               style="font-family:'DM Mono',monospace;color:#ffd54f;">—</div></div>
+        <div><div style="color:var(--muted);font-size:9px;">Ausrichtung</div>
+             <div id="pv-prof-aus-${assetId}"
+               style="font-family:'DM Mono',monospace;color:var(--text);">—</div></div>
+      </div>
+    </div>`;
+}
+
+function _drawPvInspectorChart(panel, asset) {
+  const p      = asset.props || {};
+  const kwp    = parseFloat(p.leistungKWp) || 10;
+  const aus    = p.ausrichtung || 'sued';
+  const spez   = parseFloat(p.pvSpez) || (_PV_SPEZ_DEFAULT[aus] || 1050);
+  const aid    = asset.id;
+
+  // KPI-Labels setzen
+  const annMwh = kwp * spez / 1000;
+  const annEl  = panel.querySelector(`#pv-prof-annual-${aid}`);
+  const spezEl = panel.querySelector(`#pv-prof-spez-${aid}`);
+  const ausEl  = panel.querySelector(`#pv-prof-aus-${aid}`);
+  if (annEl)  annEl.textContent  = annMwh.toFixed(1) + ' MWh/a';
+  if (spezEl) spezEl.textContent = spez.toFixed(0) + ' kWh/kWp·a';
+  if (ausEl)  ausEl.textContent  = aus === 'ostwest' ? 'Ost-West' : 'Süd';
+
+  // Monatsprofil berechnen
+  const profile = asset._pvProfile?.[aus] ?? (function() {
+    const pr = makePvProfile8760(aus);
+    if (!asset._pvProfile) asset._pvProfile = {};
+    asset._pvProfile[aus] = pr;
+    return pr;
+  })();
+
+  const MDAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+  const MLBL  = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+  const mKwh  = new Array(12).fill(0);
+  let ptr = 0;
+  for (let m = 0; m < 12; m++) {
+    const hrs = MDAYS[m] * 24;
+    for (let i = 0; i < hrs && ptr < profile.length; i++, ptr++) {
+      mKwh[m] += profile[ptr] * kwp * spez;
+    }
+  }
+
+  // Canvas zeichnen
+  const cv = panel.querySelector(`#pv-profile-canvas-${aid}`);
+  if (!cv) return;
+  const W  = cv.offsetWidth || 260;
+  const H  = 64;
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fillRect(0, 0, W, H);
+
+  const mMax = Math.max(...mKwh);
+  if (mMax <= 0) return;
+
+  const barW = Math.floor((W - 24) / 12);
+  const gap  = Math.max(1, Math.floor((W - 24 - barW * 12) / 11));
+
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  for (let m = 0; m < 12; m++) {
+    const x  = 12 + m * (barW + gap);
+    const bH = Math.max(1, (mKwh[m] / mMax) * (H - 16));
+    ctx.fillStyle = '#ffd54f';
+    ctx.fillRect(x, H - 14 - bH, barW, bH);
+    // Monatswert über dem Balken (nur wenn Platz)
+    if (bH > 12) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText(Math.round(mKwh[m] / 1000), x + barW / 2, H - 16 - bH + 10);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillText(MLBL[m], x + barW / 2, H - 2);
+  }
+
+  // Jahressumme rechts oben
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,213,79,0.7)';
+  ctx.font = '9px sans-serif';
+  ctx.fillText((mKwh.reduce((a,b) => a+b,0) / 1000).toFixed(0) + ' MWh', W - 4, 11);
+}
+
 // ── Gemeinsamer Rumpf (floating panel + sidebar card) ────────────────────────
 function buildBodyHtml(asset) {
   return `
@@ -671,6 +796,9 @@ function renderInspector(asset) {
       <span class="asset-ins-icon">${cfg.icon}</span>
       <span class="asset-ins-title">${cfg.label}</span>
       <button onclick="toggleVormerkenAsset('${asset.id}')" title="${asset.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;margin-left:auto;font-size:${asset.feldVorgemerkt ? 16 : 13}px;color:${asset.feldVorgemerkt ? '#f59e0b' : '#888'};padding:0 6px;line-height:1;">★</button>
+      <button onclick="openKnotenanalyseFor('${asset.id}')" title="Knotenpunkt-Analyse öffnen"
+        style="background:rgba(0,0,0,0.25);border:1px solid rgba(79,195,247,0.45);border-radius:4px;
+        cursor:pointer;color:#4fc3f7;padding:2px 7px;line-height:1;font-size:13px;margin-right:4px;">📈</button>
     </div>
     <div class="asset-ins-body">
       <div class="ins-field-group">
@@ -698,6 +826,7 @@ function renderInspector(asset) {
         ${buildPropsForm(asset)}
         ${buildResultBlock(asset)}
       </div>
+      ${asset.type === 'PV' ? _buildPvProfileSection(asset.id) : ''}
       <div class="ins-section-header" data-target="ins-sec-massnahmen">
         <span class="asset-ins-section-title">Maßnahmen</span>
         <span class="ins-section-chevron">▾</span>
@@ -715,6 +844,8 @@ function renderInspector(asset) {
   wireSectionToggles(panel);
   wireEvents(panel, asset);
   wireMassnahmen(panel, asset);
+  // PV-Erzeugungsprofil nach erstem Paint zeichnen
+  if (asset.type === 'PV') requestAnimationFrame(() => _drawPvInspectorChart(panel, asset));
 }
 
 // ── Asset-Sidebar ─────────────────────────────────────────────────────────────
@@ -847,6 +978,11 @@ function wireEvents(panel, asset) {
       } else {
         const v = el.value === '' ? null : parseFloat(el.value);
         asset.props[key] = v;
+      }
+      // PV-Profil bei Props-Änderung neu zeichnen
+      if (asset.type === 'PV' && ['leistungKWp','ausrichtung','pvSpez'].includes(key)) {
+        asset._pvProfile = null; // Cache invalidieren
+        _drawPvInspectorChart(panel, asset);
       }
     };
     el.addEventListener('change', handler);

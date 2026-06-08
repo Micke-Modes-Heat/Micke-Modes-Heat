@@ -636,7 +636,7 @@ export function toggleStromPanel() {
   hidePanels();
   if (!isOpen) {
     p.classList.add('visible');
-    btn.classList.add('active');
+    btn?.classList.add('active');
     calcStromPanel();
     if (!window.systemState && glKannBerechnen()) glBerechnenDebounced(100);
   }

@@ -873,6 +873,39 @@ export function exportMassnahmenPDF() {
   setTimeout(() => printWin.print(), 800);
 }
 
+// ── Hilfsfunktion: Verbindungen-Sheet + verstecktes AssetListe-Sheet ─────────
+function _buildVerbindungenSheets(XLSXLib, allAssets, allEdges, assetMap) {
+  const assetNames  = allAssets.map(a => a.name || String(a.id));
+  const KABEL_TYPES = ['NAYY', 'NYY'];
+  const MAX_ROWS    = 200;
+
+  const verbRows = [['Von', 'Nach', 'Kabeltyp', 'Querschnitt mm²', 'Länge m (auto)']];
+  for (const e of allEdges) {
+    const uName = assetMap.get(e.u)?.name || String(e.u);
+    const vName = assetMap.get(e.v)?.name || String(e.v);
+    verbRows.push([uName, vName, e.cableType || 'NAYY', e.crossSection || '', '']);
+  }
+  while (verbRows.length <= MAX_ROWS) verbRows.push(['', '', 'NAYY', '', '']);
+
+  const wsVerb = XLSXLib.utils.aoa_to_sheet(verbRows);
+  wsVerb['E1'] = { v: 'Länge m (auto)', t: 's',
+    c: [{ a: 'Tool', t: 'Leer lassen → wird beim Import aus Trassen-Routing berechnet.' }] };
+  wsVerb['!cols'] = [{ wch: 22 }, { wch: 22 }, { wch: 12 }, { wch: 18 }, { wch: 22 }];
+  wsVerb['!dataValidations'] = [
+    { type: 'list', sqref: `A2:A${MAX_ROWS + 1}`,
+      formula1: `AssetListe!$A$1:$A$${assetNames.length || 1}`, showDropDown: false },
+    { type: 'list', sqref: `B2:B${MAX_ROWS + 1}`,
+      formula1: `AssetListe!$A$1:$A$${assetNames.length || 1}`, showDropDown: false },
+    { type: 'list', sqref: `C2:C${MAX_ROWS + 1}`,
+      formula1: `”${KABEL_TYPES.join(',')}”`, showDropDown: false },
+  ];
+
+  const wsAssetList = XLSXLib.utils.aoa_to_sheet(assetNames.length ? assetNames.map(n => [n]) : [['']]);
+  wsAssetList['!cols'] = [{ wch: 25 }];
+
+  return { wsVerb, wsAssetList };
+}
+
 // â”€â”€ Export: Elektro XLSX (Komponenten + Kabel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function exportElektroXLSX() {
   // SheetJS dynamisch laden falls noch nicht vorhanden
@@ -938,10 +971,17 @@ export async function exportElektroXLSX() {
     }
   }
 
+  const { wsVerb, wsAssetList } = _buildVerbindungenSheets(XLSXLib, allAssets, allEdges, assetMap);
+
   const wb = XLSXLib.utils.book_new();
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kompRows), 'Komponenten');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows), 'Kabel');
-  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows), 'MaÃŸnahmen');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows), 'Maßnahmen');
+  XLSXLib.utils.book_append_sheet(wb, wsVerb, 'Verbindungen');
+  XLSXLib.utils.book_append_sheet(wb, wsAssetList, 'AssetListe');
+  wb.Workbook = wb.Workbook || { Sheets: [] };
+  while (wb.Workbook.Sheets.length < wb.SheetNames.length) wb.Workbook.Sheets.push({});
+  wb.Workbook.Sheets[wb.SheetNames.indexOf('AssetListe')].Hidden = 1;
 
   const fname = 'Elektroplanung_' + new Date().toISOString().slice(0, 10) + '.xlsx';
   XLSXLib.writeFile(wb, fname);
@@ -1112,6 +1152,15 @@ export async function exportVollstaendigXLSX() {
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows),  'Kabel');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows),  'MaÃŸnahmen');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(bezRows),    'Beziehungen');
+
+  // ── Verbindungen-Sheet (Dropdown-Auswahl für Import) ──────────────────────
+  { const { wsVerb, wsAssetList } = _buildVerbindungenSheets(XLSXLib, allAssets, allEdges, assetMap);
+    XLSXLib.utils.book_append_sheet(wb, wsVerb, 'Verbindungen');
+    XLSXLib.utils.book_append_sheet(wb, wsAssetList, 'AssetListe');
+    wb.Workbook = wb.Workbook || { Sheets: [] };
+    while (wb.Workbook.Sheets.length < wb.SheetNames.length) wb.Workbook.Sheets.push({});
+    wb.Workbook.Sheets[wb.SheetNames.indexOf('AssetListe')].Hidden = 1;
+  }
 
   // â”€â”€ Typ-spezifische Reiter (nur wenn Assets dieses Typs vorhanden) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   for (const [type, schemaDefs] of Object.entries(ASSET_PROPS_SCHEMA)) {
@@ -1372,6 +1421,108 @@ async function _handleXlsxImport(event) {
       alert(msg);
 
       if (typeof window.glBerechnen === 'function') window.glBerechnen();
+
+    } catch (err) {
+      alert('Fehler beim Import: ' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  event.target.value = '';
+}
+
+// ── Import: Verbindungen aus Excel (Verbindungen-Sheet) ──────────────────────
+export async function importVerbindungenXLSX(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (typeof window.XLSX === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('SheetJS konnte nicht geladen werden.'));
+      document.head.appendChild(s);
+    }).catch(e => { alert(e.message); throw e; });
+  }
+  const XLSXLib = window.XLSX;
+
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const wb = XLSXLib.read(ev.target.result, { type: 'array' });
+      const ws = wb.Sheets['Verbindungen'];
+      if (!ws) { alert('Sheet “Verbindungen” nicht gefunden.'); return; }
+
+      const rows = XLSXLib.utils.sheet_to_json(ws, { header: 1 });
+      const header = rows[0] || [];
+      const iVon  = header.findIndex(h => String(h).toLowerCase().includes('von'));
+      const iNach = header.findIndex(h => String(h).toLowerCase().includes('nach'));
+      const iTyp  = header.findIndex(h => String(h).toLowerCase().includes('typ'));
+      const iQs   = header.findIndex(h => String(h).toLowerCase().includes('querschnitt'));
+      if (iVon < 0 || iNach < 0) { alert('Spalten “Von” und “Nach” nicht gefunden.'); return; }
+
+      // Asset-Name → ID Map (Assets + StromNodes)
+      const allAssets = window.ASSETS?.items || [];
+      const assetByName = new Map(allAssets.map(a => [
+        (a.name || String(a.id)).toLowerCase().trim(), a.id
+      ]));
+      const nodeByName = new Map((window.stromNodes || []).map(n => [
+        (n.label || n.name || String(n.id)).toLowerCase().trim(), n.id
+      ]));
+      const resolveId = name => {
+        const key = String(name || '').toLowerCase().trim();
+        return assetByName.get(key) ?? nodeByName.get(key) ?? null;
+      };
+
+      let added = 0, dupSkipped = 0, notFound = [];
+
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        const vonName  = row[iVon]  != null ? String(row[iVon]).trim()  : '';
+        const nachName = row[iNach] != null ? String(row[iNach]).trim() : '';
+        if (!vonName || !nachName) continue;
+
+        const uId = resolveId(vonName);
+        const vId = resolveId(nachName);
+        if (!uId || !vId) {
+          notFound.push(`”${vonName}” → “${nachName}”`);
+          continue;
+        }
+
+        // Bereits vorhandene Verbindung überspringen
+        const exists = (window.stromEdges || []).some(
+          ex => (ex.u === uId && ex.v === vId) || (ex.u === vId && ex.v === uId)
+        );
+        if (exists) { dupSkipped++; continue; }
+
+        // addStromEdge: Trassen-Routing + Längenberechnung bereits eingebaut
+        const edge = window.addStromEdge?.(uId, vId);
+        if (!edge) { notFound.push(`”${vonName}” → “${nachName}” (Fehler)`); continue; }
+
+        // Kabeltyp
+        const typVal = iTyp >= 0 && row[iTyp] ? String(row[iTyp]).trim().toUpperCase() : '';
+        if (['NAYY', 'NYY'].includes(typVal)) edge.cableType = typVal;
+
+        // Querschnitt: angegeben → fix; leer → Auto-Auslegung
+        const qsVal = iQs >= 0 ? parseFloat(row[iQs]) : NaN;
+        if (!isNaN(qsVal) && qsVal > 0) {
+          edge.crossSection = qsVal;
+          edge.autoSized = false;
+        } else {
+          edge.crossSection = 0;
+          edge.autoSized = true;
+        }
+        added++;
+      }
+
+      if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+      if (typeof window.elCalcAssets    === 'function') window.elCalcAssets();
+
+      let msg = `${added} Verbindung(en) erstellt.`;
+      if (dupSkipped) msg += ` ${dupSkipped} bereits vorhanden.`;
+      if (notFound.length) msg += `\nNicht gefunden:\n${notFound.slice(0, 5).join('\n')}${notFound.length > 5 ? `\n(+${notFound.length - 5} weitere)` : ''}`;
+      alert(msg);
 
     } catch (err) {
       alert('Fehler beim Import: ' + err.message);

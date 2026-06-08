@@ -7,6 +7,9 @@ export const CalcEngine = (() => {
   'use strict';
 
   // ── Konstanten ────────────────────────────────────────────────────────────
+  // Lokale Kopien — CalcEngine muss selbst-contained bleiben (loadScript-Testumgebung)
+  const DAYS_PER_YEAR  = 365;
+  const HOURS_PER_YEAR = 8760;
   const THETA_0 = 40.0;
 
   const SCHABLONE_24H = [
@@ -383,12 +386,12 @@ export const CalcEngine = (() => {
     return temps;
   }
 
-  // Synthetisches Temperaturprofil: T(h) = tMean - amp × cos(2π×(d−phase)/365)
+  // Synthetisches Temperaturprofil: T(h) = tMean - amp × cos(2π×(d−phase)/DAYS_PER_YEAR)
   function synthetischTemp(tMean, amp, phase) {
-    const t = new Float32Array(8760);
-    for (let h = 0; h < 8760; h++) {
+    const t = new Float32Array(HOURS_PER_YEAR);
+    for (let h = 0; h < HOURS_PER_YEAR; h++) {
       const d = h / 24;
-      t[h] = tMean - amp * Math.cos(2 * Math.PI * (d - phase) / 365);
+      t[h] = tMean - amp * Math.cos(2 * Math.PI * (d - phase) / DAYS_PER_YEAR);
     }
     return t;
   }
@@ -419,12 +422,12 @@ export const CalcEngine = (() => {
     } else if (wpTyp === 'Geothermie') {
       // Erdsonden ~100m: nahezu konstant ~10°C, saisonaler Swing ±2°C
       for (let d = 0; d < nd; d++) {
-        const T = 10 + 2 * Math.sin(2 * Math.PI * (d - 75) / 365);
+        const T = 10 + 2 * Math.sin(2 * Math.PI * (d - 75) / DAYS_PER_YEAR);
         for (let h = 0; h < 24 && d * 24 + h < n; h++) tq[d * 24 + h] = T;
       }
     } else { // Fließgewässer
       for (let d = 0; d < nd; d++) {
-        const T = Math.max(0.5, 10 + 8 * Math.sin(2 * Math.PI * (d - 119) / 365));
+        const T = Math.max(0.5, 10 + 8 * Math.sin(2 * Math.PI * (d - 119) / DAYS_PER_YEAR));
         for (let h = 0; h < 24 && d * 24 + h < n; h++) tq[d * 24 + h] = T;
       }
     }

@@ -4,10 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Liegenschaft – Energiekarte</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+        integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"
+        integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="src/styles/app.css"/>
 </head>
 <body>
@@ -293,12 +297,6 @@
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" data-click="toggleThermSpeicherPanel()" style="border-color:#26a69a;color:#80cbc4;">🔋 Wärmespeicher</button>
           <button class="lp-tool-btn" data-click="toggleBatteriePanel()" style="border-color:#b39ddb;color:#ce93d8;">🔋 Batteriespeicher</button>
-        </div>
-        <div class="lp-section-title" style="margin-top:12px;">PV-Erzeugung</div>
-        <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="togglePvPanel()" style="border-color:#ffd54f;color:#ffd54f;">☀ PV-Anlage</button>
-          <button class="lp-tool-btn" data-click="toggleGebPvPanel()" style="border-color:#ffd54f;color:#ffd54f;">☀ Dach-PV</button>
-          <button class="lp-tool-btn" data-click="toggleFFPvPanel()" style="border-color:#ffd54f;color:#ffd54f;">☀ Freifläche</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Merit-Order <span class="htip" data-tip="Einsatzreihenfolge der Erzeuger: Der billigste wird zuerst eingesetzt, dann der nächste, bis der Wärmebedarf gedeckt ist. Per Drag&amp;Drop änderbar.">?</span></div>
         <div id="lp-merit-order">
@@ -1531,7 +1529,7 @@
       </div>
       <div class="inp-group">
         <label class="inp-label">Normaussentemp. (°C)</label>
-        <input class="inp-field" type="number" id="gl-norm-at" value="-12" step="1" style="text-align:right;" data-input="const _na=document.getElementById('netz-t-aussen'); if(_na&&_na.value!==this.value){_na.value=this.value; recalcNetz();} glBerechnenAuto()"/>
+        <input class="inp-field" type="number" id="gl-norm-at" value="-12" min="-30" max="0" step="1" style="text-align:right;" data-input="const _na=document.getElementById('netz-t-aussen'); if(_na&&_na.value!==this.value){_na.value=this.value; recalcNetz();} glBerechnenAuto()"/>
       </div>
       <div class="inp-group" style="display:flex;align-items:flex-end;">
         <div id="gl-klima-status" style="font-size:9px;color:var(--muted);padding-bottom:2px;">—</div>
@@ -1643,11 +1641,11 @@
       </div>
       <div class="inp-group">
         <label class="inp-label">VL bei −5°C</label>
-        <input class="inp-field" type="number" id="gl-vl5" value="90" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
+        <input class="inp-field" type="number" id="gl-vl5" value="90" min="30" max="130" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
       </div>
       <div class="inp-group">
         <label class="inp-label">VL bei +15°C</label>
-        <input class="inp-field" type="number" id="gl-vl15" value="60" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
+        <input class="inp-field" type="number" id="gl-vl15" value="60" min="20" max="100" step="1" style="text-align:right;" data-input="syncVLTemps('gl');glBerechnenAuto()"/>
       </div>
     </div>
   </div>
@@ -2800,27 +2798,6 @@
   </div>
 </div>
 
-<!-- ══ Freiflächen-PV-Panel ════════════════════════════════════════════ -->
-<div class="float-panel" id="ff-pv-panel" style="border-color:#ffd54f;--panel-accent:#ffd54f;min-width:300px;">
-  <div class="panel-drag-handle" onmousedown="startDrag(event,'ff-pv-panel')">
-    <span style="color:#ffd54f;font-size:12px">☀ Freiflächen-PV</span>
-    <span class="panel-minimize-btn" data-click="togglePanelMinimize('ff-pv-panel')">▲</span>
-    <span class="drag-dots">⠿</span>
-  </div>
-  <div class="panel-info">Freiflächen-Photovoltaik — Polygon auf der Karte zeichnen. kWp = Fläche × Wp/m² Gesamtfläche (inkl. Reihenabstand).</div>
-  <div style="margin-bottom:10px;">
-    <button class="btn-secondary" id="btn-ff-draw" data-click="startDrawFF()" style="width:100%;border-color:#ffd54f;color:#ffd54f;">☀ Neue Fläche zeichnen</button>
-    <button class="btn-secondary" id="btn-ff-cancel" data-click="cancelDrawFF()" style="width:100%;display:none;border-color:#e53935;color:#e53935;margin-top:5px;">✕ Zeichnen abbrechen</button>
-  </div>
-  <div id="ff-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-  <div id="ff-total" style="display:none;margin-top:10px;padding:6px 8px;background:var(--bg);border-radius:5px;border:1px solid rgba(255,213,79,0.3);font-size:10px;font-family:'DM Mono',monospace;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;">
-    <span style="color:var(--muted)">Gesamt kWp</span><span id="ff-total-kwp" style="color:#ffd54f;">—</span>
-    <span style="color:var(--muted)">Erwarteter Ertrag</span><span id="ff-total-mwh" style="color:#66bb6a;">—</span>
-  </div>
-  <div class="panel-btns" style="margin-top:12px;">
-    <button class="btn-secondary" data-click="hidePanels()">Schließen</button>
-  </div>
-</div>
 
 <!-- ══ PV-Panel (eigenständig) ═══════════════════════════════════════════ -->
 <div class="float-panel" id="pv-panel" style="min-width:380px;max-width:520px;--panel-accent:#ffd54f;">
@@ -2984,7 +2961,7 @@
       onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
       <span style="font-size:15px;">📂</span>
       <div style="flex:1;">
-        <div style="font-size:10px;color:var(--muted);">CSV hochladen — 8760 Stundenwerte (kWh/h), eine Zahl pro Zeile</div>
+        <div style="font-size:10px;color:var(--muted);">CSV hochladen — 15-min (35.040 Werte) oder Stunden (8.760 Werte) · kW · eine Zahl pro Zeile</div>
         <div id="strom-upload-info" style="font-size:10px;color:var(--accent);margin-top:2px;"></div>
       </div>
       <button id="strom-clear-btn" data-click="event.stopPropagation();stromClear()" style="display:none;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;">✕ Löschen</button>
@@ -2999,6 +2976,26 @@
       <span style="font-size:10px;color:var(--muted);">MWh/a</span>
     </div>
     <div id="strom-quartier-synth-info" style="font-size:9px;color:var(--muted);margin-bottom:8px;margin-top:-6px;padding-left:2px;font-style:italic;"></div>
+
+    <!-- Spot-Preise Upload (für PV-Analyse) -->
+    <div class="sa-section-title" style="margin-top:4px;">
+      Spot-Preise EPEX DE
+      <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">für PV-Analyse · Vorjahr empfohlen</span>
+      <a href="https://www.smard.de/home/downloadcenter/download-marktdaten/" target="_blank"
+        style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--accent);font-size:9px;margin-left:6px;text-decoration:none;">→ SMARD.de</a>
+    </div>
+    <div id="spot-upload-area" data-click="document.getElementById('spot-file-input').click()"
+      style="border:1px dashed var(--border);border-radius:6px;padding:9px 12px;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:8px;transition:.15s;"
+      onmouseenter="this.style.borderColor='#ab47bc'" onmouseleave="this.style.borderColor='var(--border)'">
+      <span style="font-size:15px;">💹</span>
+      <div style="flex:1;">
+        <div style="font-size:10px;color:var(--muted);">CSV — 15-min oder Stunden · EUR/MWh oder ct/kWh (SMARD, ENTSO-E …)</div>
+        <div id="spot-upload-info" style="font-size:10px;color:#ab47bc;margin-top:2px;"></div>
+      </div>
+      <button id="spot-clear-btn" data-click="event.stopPropagation();spotPreisClear()"
+        style="display:none;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;">✕</button>
+    </div>
+    <input type="file" id="spot-file-input" accept=".csv,.txt" style="display:none;" data-change="spotPreisFileSelected(this.files[0])"/>
 
     <!-- Strompreise -->
     <div class="sa-section-title" style="margin-top:4px;">Strompreise</div>

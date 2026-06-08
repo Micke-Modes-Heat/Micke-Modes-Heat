@@ -13,6 +13,7 @@ import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-i
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
 import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSpannungsfall, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
+import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { ASSETS, TYPE_RANK, getAssetStatus } from './13a-assets-core.js';
 
 export function epConfirm(title, message, opts) {
@@ -881,10 +882,17 @@ export function buildStromEdgeTooltip(e) {
 
   h += _ttHr;
 
-  h += _ttKv('Strom (WC)', e.peakCurrentA.toFixed(1) + ' / ' + izEff.toFixed(0) + ' A' + kIzStr);
-  h += _ttKv('Auslastung', e.auslastungPct.toFixed(0) + ' %', _auslCol(e.auslastungPct));
+  if (isMs) {
+    h += _ttKv('Strom (WC)', e.peakCurrentA.toFixed(1) + ' / ' + izEff.toFixed(0) + ' A @ ' + (e._uMsKv ?? 20) + ' kV');
+    h += _ttKv('Auslastung', e.auslastungPct.toFixed(0) + ' %', _auslCol(e.auslastungPct));
+  } else {
+    h += _ttKv('Strom (WC)', e.peakCurrentA.toFixed(1) + ' / ' + izEff.toFixed(0) + ' A' + kIzStr);
+    h += _ttKv('Auslastung', e.auslastungPct.toFixed(0) + ' %', _auslCol(e.auslastungPct));
+  }
 
-  if (dUKum != null) {
+  if (isMs) {
+    h += _ttKv('Spannungsfall', '<span style="color:#546e7a">— (MS-Ebene)</span>');
+  } else if (dUKum != null) {
     h += _ttKv('Spannungsfall',
       `<span style="color:${_duCol(dUKum)}">ΔU ${dUKum.toFixed(2)} %</span>` +
       `<span style="color:#546e7a;font-size:10px;"> (kum.)</span>`);
@@ -1268,7 +1276,7 @@ export function _recalcStromNetzInner() {
         if (hasHourly && qH && stromMwh > 0) {
           const anteil = stromMwh / Math.max(0.001, arrSum(qH)/1000); // Anteil am Quartier
           if (isJahresmittel) {
-            nm.loadKw = (arrSum(qH) / 8760) * anteil;
+            nm.loadKw = (arrSum(qH) / HOURS_PER_YEAR) * anteil;
           } else {
             nm.loadKw = (qH[szHour] || 0) * anteil;
           }
@@ -1316,7 +1324,7 @@ export function _recalcStromNetzInner() {
       let kw;
       if (hasHourly && hourlyArr) {
         if (isJahresmittel) {
-          kw = arrSum(hourlyArr) / 8760;
+          kw = arrSum(hourlyArr) / HOURS_PER_YEAR;
         } else {
           kw = hourlyArr[szHour] || 0;
         }
@@ -1349,7 +1357,7 @@ export function _recalcStromNetzInner() {
           const totalPvMwh = arrSum(pvH)/1000;
           const anteil = totalPvMwh > 0 ? pvMwh / totalPvMwh : 0;
           if (isJahresmittel) {
-            pvKw = (arrSum(pvH) / 8760) * anteil;
+            pvKw = (arrSum(pvH) / HOURS_PER_YEAR) * anteil;
           } else {
             pvKw = (pvH[szHour]||0) * anteil;
           }
@@ -1381,7 +1389,7 @@ export function _recalcStromNetzInner() {
           const totalPvMwh = arrSum(pvH)/1000;
           const anteil = totalPvMwh > 0 ? gebPvMwh / totalPvMwh : 0;
           pvKw = isJahresmittel
-            ? (arrSum(pvH) / 8760) * anteil
+            ? (arrSum(pvH) / HOURS_PER_YEAR) * anteil
             : (pvH[szHour]||0) * anteil;
         } else {
           pvKw = kwp * 1.0; // 100% STC = Worst-Case für Rückspeiseberechnung
@@ -1447,7 +1455,8 @@ export function _recalcStromNetzInner() {
     accG[pInfo.pNodeId] += accG[curr];
     accNVerb[pInfo.pNodeId] += accNVerb[curr];
     const nV = accNVerb[curr];
-    const gzfVal = _gzf(nV);
+    // MS-Kabel: kein GZF (DIN 18015 gilt nur für NS-Hausanschlüsse, nicht MS-Ebene)
+    const gzfVal = pInfo.e.msLevel ? 1.0 : _gzf(nV);
     const flowV = accV[curr] * gzfVal; // Bezug mit GZF
     const flowG = accG[curr];          // Einspeisung: WC = alle gleichzeitig, kein GZF
     pInfo.e.peakFlowKw_V = flowV;
@@ -1477,6 +1486,32 @@ export function _recalcStromNetzInner() {
 
   window.stromEdges.forEach(e => {
     const absKw = Math.abs(e.peakFlowKw);
+
+    // MS-Kabel: Strom mit MS-Spannung — keine NS-Kabelauslegung
+    if (e.msLevel) {
+      const uMsKv = parseFloat(
+        (typeof ASSETS !== 'undefined' ? ASSETS.items : []).find(a => a.type === 'NAP')?.props?.spannungKV
+      ) || 20;
+      const uMs = uMsKv * 1000;
+      e._uMsKv = uMsKv;
+      e.peakCurrentA = calcStrom(absKw, uMs, cosPhi);
+      e.flowDirection = (e.peakFlowKw_V ?? 1) >= (e.peakFlowKw_G ?? 0) ? 1 : -1;
+      e.deltaUPct = 0;
+      // MS-Kabelimpedanz (für Ik''): physikalisch korrekt, aber nach 400V-Referenz
+      // vernachlässigbar klein (Z_NS = Z_MS × (400/20000)² → < 1/2500 der NS-Impedanz)
+      const ktMs = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
+      const Rms = calcRhoKorr(ktMs.rhoOhmMm2pM, ktMs.alphaK || 0.004, tLeiter) / (e.crossSection || 240);
+      const secMs = ktMs.sections?.find(s => s.mm2 === (e.crossSection || 240));
+      // Auslastung: thermischer Nennstrom Iz gilt unabhängig von Spannung (Erwärmung = f(I))
+      e.ratedCurrentA = (secMs?.Iz ?? 0) * kIz;
+      e.auslastungPct = e.ratedCurrentA > 0 ? (e.peakCurrentA / e.ratedCurrentA) * 100 : 0;
+      const Xms = secMs?.xMuOhmPerM ? secMs.xMuOhmPerM / 1e6 : 0.00008;
+      const ratio2 = (400 / uMs) ** 2; // Transformationsquadrat auf 400V-Seite
+      e._R_total = Rms * e.lengthM * ratio2;
+      e._X_total = Xms * e.lengthM * ratio2;
+      return;
+    }
+
     const I = calcStrom(absKw, U, cosPhi);
     e.peakCurrentA = I;
     e.flowDirection = (e.peakFlowKw_V ?? 1) >= (e.peakFlowKw_G ?? 0) ? 1 : -1; // Nettostromrichtung
@@ -1676,10 +1711,16 @@ export function updateStromEdgeVisuals() {
       if (e.layer._path) e.layer._path.style.animation = '';
     }
 
-    // MS-Kabel und Trennstellen überschreiben NS-Stil
+    // MS-Kabel: violette Farbe, aber Strichlinie + Animation wie NS wenn Fluss vorhanden
     if (e.msLevel) {
-      e.layer.setStyle({ color: '#7c4dff', weight: 4, opacity: 0.95, dashArray: null });
-      if (e.outlineLayer) e.outlineLayer.setStyle({ weight: 7, opacity: 0.4, dashArray: null });
+      const msColor = '#7c4dff';
+      if (absKw > 0.1) {
+        e.layer.setStyle({ color: msColor, weight: 4, opacity: 0.95, dashArray: '10,5' });
+        if (e.outlineLayer) e.outlineLayer.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.4, dashArray: '10,5' });
+      } else {
+        e.layer.setStyle({ color: msColor, weight: 4, opacity: 0.7, dashArray: '' });
+        if (e.outlineLayer) e.outlineLayer.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.3, dashArray: '' });
+      }
     }
     if (e.trennstelle) e.layer.setStyle({ dashArray: '12,8', opacity: 0.55 });
 
@@ -2255,7 +2296,10 @@ export function elCalcAssets() {
     const sec   = kt.sections.find(s => s.mm2 === e.crossSection) || maxSec;
     const R_km  = kt.rhoOhmMm2pM * 1000 / e.crossSection;
     const R_seg = (R_km * lengthM / 1000) / np;
-    const dU_V  = Math.sqrt(3) * R_seg * (I_A_sign / np);
+    const X_seg = ((sec?.xMuOhmPerM ?? 80) / 1e6 * lengthM) / np; // µΩ/m → Ω, ÷np
+    const SIN_PHI = Math.sqrt(1 - COS_PHI ** 2);
+    // DIN VDE 0276: ΔU = √3 · I · (R·cosφ + X·sinφ) — korrekte R+X-Formel, I nicht nochmal ÷np
+    const dU_V  = Math.sqrt(3) * (R_seg * COS_PHI + X_seg * SIN_PHI) * I_A_sign;
     const dU_pct = (dU_V / U_N) * 100;
 
     e.ratedCurrentA = sec.Iz * np;
@@ -2564,6 +2608,7 @@ export function clearOsmStrassen() {
 
 // ── Stromnetz komplett löschen ──────────────────────────────────
 export function clearStromNetz() {
+  if (typeof window.stopAnimStrom === 'function') window.stopAnimStrom();
   window.stromEdges.forEach(e => {
     if (e.layer && map.hasLayer(e.layer)) map.removeLayer(e.layer);
     if (e.hitLayer && map.hasLayer(e.hitLayer)) map.removeLayer(e.hitLayer);

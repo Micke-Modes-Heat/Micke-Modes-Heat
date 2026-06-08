@@ -8,6 +8,7 @@ import { _hideForDraw, _restoreAfterDraw, updateLpGebietStatus } from './04a-ui-
 import { setNetzSubTab, stromNodeClick } from './05b-stromnetz.js';
 import { gbiManualMode, gbiManualSelectGeb } from './06a-gbi-lastgang.js';
 import { moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
+import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 
 export function polygonCenter(coords){
   let lat=0,lng=0,n=coords.length;
@@ -128,7 +129,7 @@ export function updateViz(){
   const [cMin,cMax]=getColorRange();
   const effRMax   = getEffectiveRMax();
   const fillOp    = effRMax <= 10 ? 0.55 : 0.65;
-  const nGeb      = gebaeude.filter(g => g.polygon).length;
+  const nGeb      = (window.gebaeude || gebaeude).filter(g => g.polygon).length;
   const labelZoom = nGeb > 200 ? 19 : nGeb > 80 ? 18 : nGeb > 30 ? 17 : 16;
   const legendBar = document.getElementById('legend-bar');
 
@@ -165,8 +166,8 @@ export function updateViz(){
     legendCircles.closest('.legend-row').querySelector('div:first-child').style.display='';
   }
 
-  gebaeude.forEach(g=>{
-    const stats = getComputedStats(g, globalYear);
+  (window.gebaeude || gebaeude).forEach(g=>{
+    const stats = getComputedStats(g, window.globalYear || globalYear);
     
     const excluded = isExcluded(g.id);
     if(g.polygonLayer){
@@ -425,8 +426,8 @@ export function toggleDrawArea() {
   // Andere Zeichenmodi abbrechen
   if (window.isDrawingTrasse) toggleDrawTrasse();
   if (window.isDrawingRiver) toggleDrawRiver();
-  if (drawingId !== null) cancelDraw();
-  if (ffDrawId !== null) cancelDrawFF();
+  if ((window.drawingId ?? drawingId) !== null) cancelDraw();
+  if ((window.ffDrawId ?? ffDrawId) !== null) cancelDrawFF();
 
   window.areaDrawing = true;
   window.areaPoints = [];
@@ -615,8 +616,9 @@ map.on('click',e=>{
     window.ffDrawPolyline = L.polyline([..._ffPts], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
     return;
   }
-  if(drawingId!==null){
-    if(drawPoints.length === 0){
+  if((window.drawingId ?? drawingId) !== null){
+    const _drawPts = window.drawPoints || drawPoints;
+    if(_drawPts.length === 0){
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
       window.drawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
       window.drawStartMarker.on('click', (ev) => {
@@ -624,9 +626,9 @@ map.on('click',e=>{
         finishDraw();
       });
     }
-    drawPoints.push(e.latlng);
+    _drawPts.push(e.latlng);
     if(window.drawPolyline) map.removeLayer(window.drawPolyline);
-    window.drawPolyline=L.polyline([...drawPoints],{color:'#4fc3f7',weight:2,dashArray:'6 4'}).addTo(map);
+    window.drawPolyline=L.polyline([..._drawPts],{color:'#4fc3f7',weight:2,dashArray:'6 4'}).addTo(map);
     return;
   }
 });
@@ -647,11 +649,12 @@ map.on('contextmenu', e => {
     window.trasseCurrentSegStart = window.trassePoints.length;
     showHint('Strang losgelöst. Klicke auf einen bestehenden Trasse-Punkt zum Abzweigen, oder auf die Karte für neuen Strang.');
     redrawTrasse();
-  } else if(drawingId !== null && drawPoints.length > 0){
-    drawPoints.pop();
+  } else if((window.drawingId ?? drawingId) !== null && (window.drawPoints || drawPoints).length > 0){
+    const _drawPts = window.drawPoints || drawPoints;
+    _drawPts.pop();
     if(window.drawPolyline) map.removeLayer(window.drawPolyline);
-    if(drawPoints.length > 0) {
-      window.drawPolyline = L.polyline([...drawPoints], {color: '#4fc3f7', weight: 2, dashArray: '6 4'}).addTo(map);
+    if(_drawPts.length > 0) {
+      window.drawPolyline = L.polyline([..._drawPts], {color: '#4fc3f7', weight: 2, dashArray: '6 4'}).addTo(map);
     } else {
       if(window.drawStartMarker) { map.removeLayer(window.drawStartMarker); window.drawStartMarker = null; }
     }
@@ -939,6 +942,7 @@ export function finishDrawRiver() {
   const jaz = parseFloat(document.getElementById('fg-jaz').value) || 4.5;
   window.fliessgewaesser = { latlngs, durchflussLs: durchfluss, leistungKw: leistung, jaz, visible: window.fliessgewaesserVisible };
   moBeiAktivierung('fg');
+  syncErzeugerElektroAsset('fg');
   window.isDrawingRiver = false;
   window.riverPoints = [];
   if (window.riverDrawPolyline) { map.removeLayer(window.riverDrawPolyline); window.riverDrawPolyline = null; }
@@ -1076,11 +1080,13 @@ export function updateFliessgewaesserData() {
   const fgCo2   = waerme > 0 ? waerme / fgJaz * stromEmF   / 1000 : null;
   const fgCo2LZ = waerme > 0 ? waerme / fgJaz * stromEmFLZ / 1000 : null;
   document.getElementById('fg-co2').textContent = fgCo2 ? `${fgCo2.toFixed(1)} t/a (2026) · ${fgCo2LZ.toFixed(1)} t/a (Ø 2030–50)` : '—';
+  updateErzeugerAssetProps('fg');
 }
 
 export function clearFliessgewaesser() {
   window.fliessgewaesser = null;
   moBeiDeaktivierung('fg');
+  removeErzeugerElektroAsset('fg');
   if (window.fliessgewaesserLayerGroup) {
     window.fliessgewaesserLayerGroup.clearLayers();
     if (map.hasLayer(window.fliessgewaesserLayerGroup)) map.removeLayer(window.fliessgewaesserLayerGroup);
@@ -1197,6 +1203,7 @@ export function placeLwWpAt(latlng) {
   document.getElementById('lwwp-panel').classList.add('visible');
   document.getElementById('btn-lwwp-toggle')?.classList.add('active');
   moBeiAktivierung('lwwp');
+  syncErzeugerElektroAsset('lwwp');
   window.lwWpVisible = true;
   window.lwWpSchallVisible = true;
   // Lazy-Init: falls LayerGroup nicht gesetzt, jetzt erstellen
@@ -1309,6 +1316,7 @@ export function redrawLwWp() {
     window.lwWp.lat = marker.getLatLng().lat;
     window.lwWp.lng = marker.getLatLng().lng;
     redrawLwWp();
+    moveErzeugerElektroAsset('lwwp');
   });
   updateLwWpVisibility();
   redrawVerbindungslinien();
@@ -1361,6 +1369,7 @@ export function updateLwWpDisplay() {
     return '&lt; ' + lp + ' dB: ' + (r >= 500 ? '&gt;500' : r.toFixed(1)) + ' m';
   });
   document.getElementById('lwwp-schall-tabelle').innerHTML = schallRows.join('<br>');
+  updateErzeugerAssetProps('lwwp');
 }
 
 export function calcLwaAuto(kw) {
@@ -1431,6 +1440,7 @@ export function setSchallVisible(visible) {
 export function clearLwWp() {
   window.lwWp = null;
   moBeiDeaktivierung('lwwp');
+  removeErzeugerElektroAsset('lwwp');
   if (window.lwWpLayerGroup) {
     window.lwWpLayerGroup.clearLayers();
     if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);

@@ -51,7 +51,7 @@ function _assetKosten(asset) {
     case 'PV':           return (parseFloat(p.leistungKWp) || 10) * g('ak-pv-kwp', 1200);
     case 'Batterie':     return (parseFloat(p.kapazitaetKWh) || 10) * g('ak-bat-kwh', 600);
     case 'Lade':         return (parseFloat(p.anzahlPunkte) || 1) * g('ak-lade-pkt', 1500) + (parseFloat(p.leistungProPunktKW) || 22) * 200;
-    case 'WP':           return (parseFloat(p.leistungKW) || 10) * g('ak-wp-kw', 700);
+    case 'WP':           return (parseFloat(p.leistungThKW) || parseFloat(p.leistungKW) || 10) * g('ak-wp-kw', 700);
     case 'Nsa':          return (parseFloat(p.leistungKW) || 20) * 300;
     case 'Wind':         return (parseFloat(p.leistungKW) || 100) * g('ak-wind-kw', 1500);
     case 'KWK':          return (parseFloat(p.leistungElKW) || 20) * g('ak-kwk-kwel', 3500);
@@ -78,6 +78,13 @@ function _buildAssetTooltip(asset) {
       const lbl = p.label.replace(/\s*\([^)]+\)$/, '');
       h += _attKv(lbl, String(props[p.key]) + _attUnit(p.label));
     }
+  }
+  // PV: berechneten Jahresertrag direkt anzeigen
+  if (asset.type === 'PV' && parseFloat(props.leistungKWp) > 0) {
+    const kwp  = parseFloat(props.leistungKWp);
+    const spez = parseFloat(props.pvSpez) || (props.ausrichtung === 'ostwest' ? 950 : 1050);
+    const lbl  = props.ausrichtung === 'ostwest' ? 'Ost-West' : 'Süd';
+    h += _attKv('Jahresertrag', (kwp * spez / 1000).toFixed(1) + ' MWh/a · ' + lbl, '#ffd54f');
   }
   if (asset.baujahr) h += _attKv('Baujahr', asset.baujahr);
 

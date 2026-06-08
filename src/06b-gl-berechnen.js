@@ -8,6 +8,7 @@ import { hideHint, showHint } from './03c-gebaeude-io.js';
 import { glGetGesamtMwh, glGetMonatswerte, glGetTempH, glLastgangKw, glRenderPreview, glRenderSplit, glUpdateKlimaStatus, glUpdateStatus } from './06a-gbi-lastgang.js';
 import { onSystemStateUpdated, updateAllDeckungen } from './06c-dispatch-core.js';
 import { CalcEngine } from './08-calc-engine.js';
+import { readNum } from './lib/util.js';
 
 export let _glAutoTimer  = null;
 export let _glIsRunning  = false;
@@ -43,10 +44,10 @@ async function glBerechnen() {
 
   try {
     const stadt       = document.getElementById('gl-stadt').value;
-    const normAt      = parseFloat(document.getElementById('gl-norm-at').value) || -12;
-    const netzverlust = parseFloat(document.getElementById('gl-netzverlust').value) || 10;
-    const vl5         = parseFloat(document.getElementById('gl-vl5').value) || 80;
-    const vl15        = parseFloat(document.getElementById('gl-vl15').value) || 55;
+    const normAt      = readNum('gl-norm-at', -12, -30, 0);
+    const netzverlust = readNum('gl-netzverlust', 10, 0, 50);
+    const vl5         = readNum('gl-vl5', 90, 30, 130);
+    const vl15        = readNum('gl-vl15', 60, 20, 100);
     const profil1     = document.getElementById('gl-profil1').value || 'HEF33';
     const profil2     = document.getElementById('gl-profil2').value || null;
     let gew1 = parseFloat(document.getElementById('gl-gew1').value) || 50;
@@ -220,8 +221,11 @@ async function glBerechnen() {
 
   } catch(err) {
     console.error('Grundlagen-Fehler:', err);
-    // Stille Fehler bei Auto-Trigger (kein alert), nur bei manuellem Klick anzeigen
-    if (btn.dataset.manual === '1') alert('Fehler: ' + err.message);
+    const errDot = document.getElementById('gl-status-dot');
+    if (errDot) errDot.className = 'gl-status-dot error';
+    const errText = document.getElementById('gl-status-text');
+    if (errText) errText.textContent = '⚠ ' + (err.message || 'Unbekannter Fehler');
+    showHint('⚠ Berechnungsfehler: ' + (err.message || 'Unbekannter Fehler'));
   } finally {
     _glIsRunning = false;
     btn.dataset.manual = '0';

@@ -15,9 +15,12 @@ import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { _checkShowHourlySlider, _hourlyModeActive, _updateHourlyOverlay } from './10b-hourly-live.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { DAYS_PER_YEAR } from './lib/physik-konstanten.js';
 
-window.meritOrderKeys = [];
-window._autoGkResult  = null; // { leistungKw, deckungPct, waermeMwh } — immer aktuell
+export let meritOrderKeys = [];
+export let autoGkResult = null; // { leistungKw, deckungPct, waermeMwh } | false | null
+export function setMeritOrderKeys(keys) { meritOrderKeys = keys; }
+export function setAutoGkResult(val) { autoGkResult = val; }
 
 // ERZEUGER_CFG → src/config/erzeuger-cfg.js
 
@@ -38,16 +41,16 @@ export function isErzeugerAktiv(key) {
 }
 
 export function moBeiAktivierung(key) {
-  if (!window.meritOrderKeys.includes(key)) {
-    window.meritOrderKeys.push(key);
+  if (!meritOrderKeys.includes(key)) {
+    meritOrderKeys.push(key);
   }
   updateAllDeckungen();
   redrawErzeugerIcons();
 }
 
 export function moBeiDeaktivierung(key) {
-  const idx = window.meritOrderKeys.indexOf(key);
-  if (idx >= 0) window.meritOrderKeys.splice(idx, 1);
+  const idx = meritOrderKeys.indexOf(key);
+  if (idx >= 0) meritOrderKeys.splice(idx, 1);
   updateAllDeckungen();
   redrawErzeugerIcons();
 }
@@ -105,14 +108,14 @@ export function _quelleTemp(key, tAussen, t) {
     // Fließgewässer: tagesbasiert, Sinusmodell mitteleurop. Flüsse
     // Peak ~Tag 210 (Ende Juli), Minimum ~Tag 30 (Ende Januar)
     const d = Math.floor(t / 24);
-    return Math.max(0.5, 10 + 8 * Math.sin(2 * Math.PI * (d - 119) / 365));
+    return Math.max(0.5, 10 + 8 * Math.sin(2 * Math.PI * (d - 119) / DAYS_PER_YEAR));
   }
   // Geothermie: Erdreichtemperatur — gedämpfte Sinusschwingung
   // Tiefe Sonden (~100m): nahezu konstant 10°C ±2°C
   // Abzug ΔT für Entzugsauskühlung (aus Fachplanung/EED, Default 0)
   const d = Math.floor(t / 24);
   const dtAbsenkung = parseFloat(document.getElementById('geo-dt-absenkung')?.value) || 0;
-  return 10 + 2 * Math.sin(2 * Math.PI * (d - 75) / 365) - dtAbsenkung;
+  return 10 + 2 * Math.sin(2 * Math.PI * (d - 75) / DAYS_PER_YEAR) - dtAbsenkung;
 }
 
 // ── Render-Hilfsfunktion für Deckung-Wrap ────────────────────────────────
@@ -212,14 +215,18 @@ export function updateAllDeckungen() {
   const ss = window.systemState;
 
   if (ss && ss.lastgangKw && ss.tempH && ss.vlH) {
-    _deckungen8760(ss);
+    try {
+      _deckungen8760(ss);
+    } catch (err) {
+      console.error('Dispatch-Fehler:', err);
+    }
   } else {
     // Kein systemState → echte Berechnung anstoßen statt JDL-Näherung
     if (glKannBerechnen() && !_glIsRunning) {
       glBerechnenDebounced(200);
     }
     // Erzeuger-Wraps ausblenden bis echte Berechnung fertig
-    window._autoGkResult = null;
+    setAutoGkResult(null);
     Object.values(ERZEUGER_CFG).forEach(c => {
       const w = document.getElementById(c.wrapId);
       if (w) w.style.display = 'none';
@@ -557,7 +564,7 @@ export function _deckungen8760(ss) {
   window._dimLastgangKw = lastgangKw;
   window._dimJdlSorted = null;
 
-  const activeKeys = window.meritOrderKeys.filter(k => isErzeugerAktiv(k));
+  const activeKeys = meritOrderKeys.filter(k => isErzeugerAktiv(k));
 
   // ── DOM-Werte lesen und erzList bauen ──
   function _guetegrad(k) {
@@ -715,9 +722,9 @@ export function _deckungen8760(ss) {
 
   // ── Auto-GK ──
   if (autoGkKwh > 0.1) {
-    window._autoGkResult = { leistungKw: Math.round(autoGkPeakKw), deckungPct: gesamtKwh > 0 ? autoGkKwh / gesamtKwh * 100 : 0, waermeMwh: autoGkKwh / 1000 };
+    setAutoGkResult({ leistungKw: Math.round(autoGkPeakKw), deckungPct: gesamtKwh > 0 ? autoGkKwh / gesamtKwh * 100 : 0, waermeMwh: autoGkKwh / 1000 });
   } else {
-    window._autoGkResult = false;
+    setAutoGkResult(false);
   }
 
   // ── Stündliche Profile für Charts speichern ──
@@ -905,11 +912,11 @@ export function moMouseUp(e) {
   });
   if (targetKey && targetKey !== fromKey) {
     // Echter Drag → Reihenfolge ändern
-    const fromIdx = window.meritOrderKeys.indexOf(fromKey);
-    const toIdx   = window.meritOrderKeys.indexOf(targetKey);
+    const fromIdx = meritOrderKeys.indexOf(fromKey);
+    const toIdx   = meritOrderKeys.indexOf(targetKey);
     if (fromIdx >= 0 && toIdx >= 0) {
-      window.meritOrderKeys.splice(fromIdx, 1);
-      window.meritOrderKeys.splice(toIdx, 0, fromKey);
+      meritOrderKeys.splice(fromIdx, 1);
+      meritOrderKeys.splice(toIdx, 0, fromKey);
       redrawErzeugerIcons();
       updateAllDeckungen();
     }
@@ -923,11 +930,11 @@ export function moMouseUp(e) {
 
 // Swap merit order position by direction (-1 = up, +1 = down)
 export function moSwap(key, dir) {
-  const idx = window.meritOrderKeys.indexOf(key);
+  const idx = meritOrderKeys.indexOf(key);
   const newIdx = idx + dir;
-  if (idx < 0 || newIdx < 0 || newIdx >= window.meritOrderKeys.length) return;
-  window.meritOrderKeys.splice(idx, 1);
-  window.meritOrderKeys.splice(newIdx, 0, key);
+  if (idx < 0 || newIdx < 0 || newIdx >= meritOrderKeys.length) return;
+  meritOrderKeys.splice(idx, 1);
+  meritOrderKeys.splice(newIdx, 0, key);
   redrawErzeugerIcons();
   updateLpMeritOrder();
   updateAllDeckungen();

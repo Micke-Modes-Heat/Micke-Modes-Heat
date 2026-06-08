@@ -5,7 +5,7 @@ import { calcGeoThermie, clearGeo, recalcNetz, redrawGeo, syncVLTemps } from './
 import { escHtml, renderList, updateTotals } from './03c-gebaeude-io.js';
 import { currentViewMode, setViewMode } from './04a-ui-panels.js';
 import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
-import { isErzeugerAktiv, updateAllDeckungen } from './06c-dispatch-core.js';
+import { autoGkResult, isErzeugerAktiv, meritOrderKeys, setAutoGkResult, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 
 export let gebaeude = [];
@@ -166,9 +166,9 @@ export function cacheVariantResults() {
   if (gasKessel) { const w = parseFloat(document.getElementById('gk-waerme')?.value)||0; const eta = parseFloat(document.getElementById('gk-eta')?.value)||92;
     const gkCo2 = w > 0 ? (w / (eta/100) * gasEmF / 1000).toFixed(1) + ' t/a (fossil)' : '—';
     erzeugerList.push({ typ: 'Gaskessel', leistungKw: gasKessel.leistungKw, wgk: '—', invest: 0, co2: gkCo2, co2lz: gkCo2 }); }
-  else if (window._autoGkResult && window._autoGkResult.leistungKw > 0) {
+  else if (autoGkResult && autoGkResult.leistungKw > 0) {
     // Auto-GK (Spitzenlastkessel aus Dispatch-Residual) als Gaskessel eintragen
-    const agk = window._autoGkResult;
+    const agk = autoGkResult;
     const eta = parseFloat(document.getElementById('gk-eta')?.value) || 92;
     const agkCo2 = agk.waermeMwh > 0 ? (agk.waermeMwh / (eta/100) * gasEmF / 1000).toFixed(1) + ' t/a (fossil)' : '—';
     erzeugerList.push({ typ: 'Gaskessel (Auto)', leistungKw: agk.leistungKw, waermeMwh: agk.waermeMwh, wgk: '—', invest: 0, co2: agkCo2, co2lz: agkCo2 });
@@ -644,7 +644,7 @@ export function captureErzeugerState() {
     solarthermie: solarthermieAktiv ? { flaeche: parseFloat(document.getElementById('st-flaeche')?.value)||0, spez: parseFloat(document.getElementById('st-spez')?.value)||400, polygon: window._stPolygon || null } : null,
     waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
     // Merit-Order und Wirtschaftlichkeits-Overrides mit sichern
-    meritOrderKeys: [...window.meritOrderKeys],
+    meritOrderKeys: [...meritOrderKeys],
     wirtVdiOverrides: JSON.parse(JSON.stringify(window._wirtVdiOverrides || {})),
     wirtBausteineOverrides: JSON.parse(JSON.stringify(window._wirtBausteineOverrides || {})),
   };
@@ -795,10 +795,10 @@ export function applyErzeugerState(state) {
   }
   // Merit-Order wiederherstellen (clearXxx() hat sie via moBeiDeaktivierung() geleert)
   if (state && state.meritOrderKeys) {
-    window.meritOrderKeys = state.meritOrderKeys.filter(k => isErzeugerAktiv(k));
+    setMeritOrderKeys(state.meritOrderKeys.filter(k => isErzeugerAktiv(k)));
   } else {
     // Fallback: aktive Erzeuger in Standard-Reihenfolge
-    window.meritOrderKeys = Object.keys(ERZEUGER_CFG).filter(k => isErzeugerAktiv(k));
+    setMeritOrderKeys(Object.keys(ERZEUGER_CFG).filter(k => isErzeugerAktiv(k)));
   }
   redrawErzeugerIcons(); // NACH Merit-Order-Wiederherstellung, damit Icons in gespeicherter Reihenfolge
   // Wirtschaftlichkeits-Overrides wiederherstellen

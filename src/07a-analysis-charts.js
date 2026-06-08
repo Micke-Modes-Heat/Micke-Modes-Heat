@@ -4,6 +4,7 @@
 // ── Tab state ──────────────────────────────────────────────────────────────
 import { CalcEngine } from './08-calc-engine.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { autoGkResult } from './06c-dispatch-core.js';
 
 export let saCurrentTab = 'lastgang';
 
@@ -1078,7 +1079,7 @@ export function daRenderMetriken() {
       kwh  = ((dispEn[k] || {}).waermeMwh || 0) * 1000;
       const cfg = ERZEUGER_CFG[k];
       pMax = cfg?.leistungId ? (parseFloat(document.getElementById(cfg.leistungId)?.value) || 0) : 0;
-      if (k === '_autoGk' && window._autoGkResult) pMax = window._autoGkResult.leistungKw || 0;
+      if (k === '_autoGk' && autoGkResult) pMax = autoGkResult.leistungKw || 0;
     }
     const deckP = totalKwh > 0 ? (kwh / totalKwh * 100) : 0;
     const vbh   = pMax > 0 ? Math.round(kwh / pMax) : 0;

@@ -10,6 +10,7 @@ import { ASSETS, getAssetStatus } from './13a-assets-core.js';
 import { globalYear } from './01-globals-varianten.js';
 import { getSlpProfile } from './02b-gebaeude.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
+import { getElSlpProfiles } from './13k-elslp-registry.js';
 
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 const _N = {
@@ -198,8 +199,65 @@ export function napShowSection(visible) {
   const wrap = document.getElementById('analyse-nap-wrap');
   if (!wrap) return;
   wrap.style.display = visible ? '' : 'none';
-  if (visible) napRenderPanel();
+  if (visible) {
+    // Auto-Feed aus Strom-Grundlagen wenn kein eigener Upload vorhanden
+    if (!_N.data && !_N.manuallyRemoved && window.elQuartierH15) {
+      napLoadFromStromGrundlagen();
+      return; // napRenderPanel wird intern aufgerufen
+    }
+    napRenderPanel();
+  }
 }
+
+/**
+ * Konvertiert window.elQuartierH15 (Float32Array aus Strom-Grundlagen) in das
+ * NAP-Datenformat {raw: [{ts: Date, kw: number}]} und lädt es in die Analyse.
+ */
+export function napLoadFromStromGrundlagen() {
+  const arr = window.elQuartierH15 || window.elQuartierH;
+  if (!arr || arr.length < 100) return false;
+
+  const filename  = window.elQuartierFilename  || 'Strom-Grundlagen';
+  const startDate = window.elQuartierStartDate || new Date(new Date().getFullYear(), 0, 1);
+  const dtMin     = arr.length > 10000 ? 15 : 60; // Intervall in Minuten
+  const startMs   = startDate.getTime();
+
+  const raw = [];
+  for (let i = 0; i < arr.length; i++) {
+    raw.push({ ts: new Date(startMs + i * dtMin * 60000), kw: arr[i] });
+  }
+
+  const result = { raw, filename, year: startDate.getFullYear(), fromStromGrundlagen: true };
+  result.stats = napCalcStats(result.raw);
+
+  _N.data             = result;
+  _N.baseMeasuredData = result;
+  _N.manuallyRemoved  = false;
+  _N.topSeriesMode    = 'gemessen';
+  _N.chartMode        = 'zeitreihe';
+  _N.zeitMonth        = null;
+  napBuildMassnahmen();
+  napRenderPanel();
+  return true;
+}
+
+// Wird von stromFileSelected / stromClear aufgerufen (kein direkter Import nötig)
+window.napOnStromGrundlagenChanged = function() {
+  if (!_N.manuallyRemoved || window.elQuartierH15) {
+    // Bei neuem Upload immer aktualisieren; bei Löschen nur wenn Daten aus SG kamen
+    if (_N.data?.fromStromGrundlagen || !_N.data) {
+      if (window.elQuartierH15) {
+        napLoadFromStromGrundlagen();
+      } else if (_N.data?.fromStromGrundlagen) {
+        // Strom-Grundlagen gelöscht → NAP-Daten zurücksetzen
+        _N.data = null; _N.baseMeasuredData = null; _N.massnahmen = null;
+        _N.topSeriesMode = 'gemessen';
+        const wrap = document.getElementById('analyse-nap-wrap');
+        if (wrap?.style.display !== 'none') napRenderPanel();
+      }
+    }
+  }
+};
 
 // ── Daten-Helfer ─────────────────────────────────────────────────────────────
 function _allAssets() { return ASSETS.items || []; }
@@ -394,6 +452,8 @@ export function napSetCapacity(v) {
   _napRedrawBottom();
 }
 export function napRemoveMeasuredData() {
+  // Wenn Daten aus Strom-Grundlagen kamen: Auto-Reload verhindern bis neuer Upload
+  if (_N.data?.fromStromGrundlagen) _N.manuallyRemoved = true;
   _N.data = null; _N.baseMeasuredData = null; _N.massnahmen = null;
   if (_N.synthData?.isOverlay) _N.synthData = null;
   _N.topSeriesMode = _N.synthData ? 'synthetisch' : 'gemessen';
@@ -872,18 +932,32 @@ function _napRenderSidebar() {
   <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:5px;">Gemessene Daten (CSV)</div>
   ${csvData?`
   <div style="background:#1e1e30;border-radius:5px;padding:7px 8px;font-size:10px;color:#aaa;">
-    📄 ${csvData.filename}<br><span style="color:#666;">${csvData.year} · ${csvData.raw.length.toLocaleString('de')} Werte</span>
+    ${csvData.fromStromGrundlagen
+      ? `<span style="color:#ffd54f;font-size:9px;font-weight:600;">⚡ Aus Strom-Grundlagen</span><br>`
+      : `📄 `}${csvData.filename}<br>
+    <span style="color:#666;">${csvData.year} · ${csvData.raw.length.toLocaleString('de')} Werte</span>
   </div>
   <button onclick="napRemoveMeasuredData()"
-    style="margin-top:5px;width:100%;padding:4px;border:1px solid #ef535055;border-radius:4px;background:transparent;color:#ef5350;cursor:pointer;font-size:10px;">✕ Datei entfernen</button>
+    style="margin-top:5px;width:100%;padding:4px;border:1px solid #ef535055;border-radius:4px;background:transparent;color:#ef5350;cursor:pointer;font-size:10px;">
+    ${csvData.fromStromGrundlagen ? '↩ Strom-Grundlagen-Daten ausblenden' : '✕ Datei entfernen'}
+  </button>
   `:`
-  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:12px 8px;
+  ${window.elQuartierH15 ? `
+  <div style="background:#1e2030;border:1px solid #26a69a44;border-radius:5px;padding:7px 8px;font-size:10px;color:#aaa;margin-bottom:6px;">
+    <span style="color:#ffd54f;font-size:9px;font-weight:600;">⚡ Strom-Grundlagen verfügbar</span><br>
+    <span style="color:#666;">${window.elQuartierFilename || ''} · ${window.elQuartierH15.length.toLocaleString('de')} Werte</span>
+  </div>
+  <button onclick="napLoadFromStromGrundlagen()"
+    style="width:100%;padding:6px;border:1px solid #26a69a55;border-radius:4px;background:#26a69a11;color:#26a69a;cursor:pointer;font-size:10px;margin-bottom:6px;">
+    ↓ Jetzt laden
+  </button>` : ''}
+  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 8px;
     border:1.5px dashed #2a3a3a;border-radius:6px;background:#141420;"
     ondragover="event.preventDefault();this.style.borderColor='#26a69a'"
     ondragleave="this.style.borderColor=''"
     ondrop="event.preventDefault();napDropFile(event)">
-    <span style="font-size:22px;">📂</span>
-    <span><div style="font-size:11px;color:#ccc;font-weight:600;">CSV laden</div>
+    <span style="font-size:18px;">📂</span>
+    <span><div style="font-size:10px;color:#ccc;font-weight:600;">Eigene CSV laden</div>
     <div style="font-size:9px;color:#666;">Semikolon · Datum/Zeit + kW</div></span>
     <input type="file" accept=".csv,.txt" style="display:none" onchange="napLoadFile(this)">
   </label>`}
@@ -1561,30 +1635,39 @@ ${massTbl}
 // Faktoren geben die relative spezifische Leistung (W/m²) je SLP-Typ an —
 // bezogen auf H0 als Basis 1,0. Editierbar im Kalibrierungs-Dialog.
 const _KAL_DEFAULT_FACTORS = {
-  H0: 1.0,   // Haushalt
-  G0: 1.8,   // Gewerbe allgemein
-  G1: 1.8,   // Gewerbe werktags 8–18 h
-  G2: 1.5,   // Gewerbe mit starkem Abendverbrauch
-  G3: 2.2,   // Gewerbe durchlaufend
-  G4: 2.5,   // Laden / Friseur
-  G5: 2.0,   // Bäckerei mit Backstube
-  G6: 1.5,   // Wochenendbetrieb
-  L0: 1.0,   // Landwirtschaft allgemein
-  L1: 1.2,   // Landwirtschaft mit Milchwirtschaft
-  L2: 0.8,   // Sonstige Landwirtschaft
+  H0:  1.0,   // Haushalt
+  G0:  1.8,   // Gewerbe allgemein
+  G1:  1.8,   // Gewerbe werktags 8–18 h
+  G2:  1.5,   // Gewerbe mit starkem Abendverbrauch
+  G3:  2.2,   // Gewerbe durchlaufend
+  G4:  2.5,   // Laden / Friseur
+  G5:  2.0,   // Bäckerei mit Backstube
+  G6:  1.5,   // Wochenendbetrieb
+  L0:  1.0,   // Landwirtschaft allgemein
+  L1:  1.2,   // Landwirtschaft mit Milchwirtschaft
+  L2:  0.8,   // Sonstige Landwirtschaft
+  BW0: 1.8,   // Bundeswehr allgemein
+  BW1: 1.3,   // Unterkunft / Kaserne
+  BW2: 2.0,   // Werkstatt / Instandhaltung
+  BW3: 2.2,   // Kantine / Truppenverpflegung
 };
+// Kurzbezeichnungen für die Faktor-Anzeige im Dialog
 const _KAL_SLP_LABELS = {
-  H0:'H0 – Haushalt',
-  G0:'G0 – Gewerbe allg.',
-  G1:'G1 – Gewerbe 8–18 h',
-  G2:'G2 – Gewerbe abends',
-  G3:'G3 – Dauerbetrieb',
-  G4:'G4 – Laden/Friseur',
-  G5:'G5 – Bäckerei',
-  G6:'G6 – Wochenende',
-  L0:'L0 – Landw. allg.',
-  L1:'L1 – Landw. Milch',
-  L2:'L2 – Sonstige Landw.',
+  H0: 'H0 – Haushalt',
+  G0: 'G0 – Gewerbe allg.',
+  G1: 'G1 – Gewerbe 8–18 h',
+  G2: 'G2 – Gewerbe abends',
+  G3: 'G3 – Dauerbetrieb',
+  G4: 'G4 – Laden/Friseur',
+  G5: 'G5 – Bäckerei',
+  G6: 'G6 – Wochenende',
+  L0: 'L0 – Landw. allg.',
+  L1: 'L1 – Landw. Milch',
+  L2: 'L2 – Sonstige Landw.',
+  BW0:'BW0 – BW allg.',
+  BW1:'BW1 – Kaserne',
+  BW2:'BW2 – Werkstatt',
+  BW3:'BW3 – Kantine',
 };
 
 function _kalGetFactors() { return _N.kalibrierFactors || _KAL_DEFAULT_FACTORS; }
@@ -1682,14 +1765,20 @@ function _napRenderKalDialog(kal) {
   const factors     = _kalGetFactors();
   const hasRows     = entries.length + fixedEntries.length > 0;
 
-  const factorInputs = Object.keys(_KAL_DEFAULT_FACTORS).map(k => `
+  // Dynamisch: alle registrierten Profile + Fallback-Faktor 1,5 für zukünftige Profile
+  const factorInputs = getElSlpProfiles().map(p => {
+    const k     = p.id;
+    const val   = (factors[k] ?? _KAL_DEFAULT_FACTORS[k] ?? 1.5).toFixed(1);
+    const label = (_KAL_SLP_LABELS[k] || `${k} – ${p.label}`).replace(/^[A-Z0-9]+ – /,'');
+    return `
 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
   <span style="font-size:10px;color:#80cbc4;font-weight:600;width:26px;flex-shrink:0;">${k}</span>
-  <input type="number" value="${(factors[k]??1).toFixed(1)}" min="0.1" max="10" step="0.1"
+  <input type="number" value="${val}" min="0.1" max="10" step="0.1"
     style="width:46px;background:#0f0f1a;border:1px solid #2a3a3a;border-radius:3px;color:#ccc;padding:2px 5px;font-size:10px;"
     oninput="napKalUpdateFactor('${k}',this.value)">
-  <span style="font-size:9px;color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(_KAL_SLP_LABELS[k]||k).replace(/^[A-Z0-9]+ – /,'')}</span>
-</div>`).join('');
+  <span style="font-size:9px;color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>
+</div>`;
+  }).join('');
 
   const overlay = document.createElement('div');
   overlay.id = 'nap-kal-overlay';
@@ -1899,8 +1988,9 @@ window.napSetCapacity           = napSetCapacity;
 window.napRemoveMeasuredData    = napRemoveMeasuredData;
 window.napToggleMassnahme       = napToggleMassnahme;
 window.napToggleAllMassnahmen   = napToggleAllMassnahmen;
-window.napDropFile              = napDropFile;
-window.napLoadFile              = napLoadFile;
+window.napDropFile                  = napDropFile;
+window.napLoadFile                  = napLoadFile;
+window.napLoadFromStromGrundlagen   = napLoadFromStromGrundlagen;
 window.napComputeSyntheticAndShow = napComputeSyntheticAndShow;
 window.napExportPDF             = napExportPDF;
 window.napRenderPanel           = napRenderPanel;

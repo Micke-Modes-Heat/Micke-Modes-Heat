@@ -6,6 +6,8 @@ import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, pefGas } from './01-globals-vari
 import { calcVerdraengungEmF } from './03a-erzeuger.js';
 import { glKannBerechnen } from './06b-gl-berechnen.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
+import { autoGkResult, meritOrderKeys } from './06c-dispatch-core.js';
+import { DAYS_PER_YEAR } from './lib/physik-konstanten.js';
 
 export let _emCurrentTab = 'em-stunden';
 export let _emZoom = { startH: 0, endH: 8760 };
@@ -1006,7 +1008,7 @@ export function _renderEnergiekrone() {
   ctx.clearRect(0, 0, W, H);
 
   // Pre-compute data
-  const NDAY = 365, NHOUR = 24;
+  const NHOUR = 24;
   let maxKw = 0;
   const totals = new Float32Array(8760);
   const domKeys = new Array(8760);
@@ -1059,12 +1061,12 @@ export function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, 
   }
 
   const dayStep = 3, hourStep = 1;
-  const nDaySlots = Math.ceil(365 / dayStep);
+  const nDaySlots = Math.ceil(DAYS_PER_YEAR / dayStep);
   const quads = [];
 
   for (let di = 0; di < nDaySlots; di++) {
-    const d0 = di * dayStep, d1 = Math.min(d0 + dayStep, 365);
-    const x0 = (d0 / 365 - 0.5) * 2, x1 = (d1 / 365 - 0.5) * 2; // -1 to 1
+    const d0 = di * dayStep, d1 = Math.min(d0 + dayStep, DAYS_PER_YEAR);
+    const x0 = (d0 / DAYS_PER_YEAR - 0.5) * 2, x1 = (d1 / DAYS_PER_YEAR - 0.5) * 2; // -1 to 1
 
     for (let h = 0; h < 24; h += hourStep) {
       const h1 = Math.min(h + hourStep, 24);
@@ -1072,7 +1074,7 @@ export function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, 
 
       let tSum = 0, cnt = 0;
       const contribs = {};
-      for (let dd = d0; dd < d1 && dd < 365; dd++) {
+      for (let dd = d0; dd < d1 && dd < DAYS_PER_YEAR; dd++) {
         for (let hh = h; hh < h1; hh++) {
           const idx = dd * 24 + hh;
           if (idx >= 8760) continue;
@@ -1136,7 +1138,7 @@ export function _renderCarpet3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, 
     const months = ['Jan','Feb','M\u00e4r','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
     const mDays = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
     for (let m = 0; m < 12; m++) {
-      const x = ((mDays[m] + 15) / 365 - 0.5) * 2;
+      const x = ((mDays[m] + 15) / DAYS_PER_YEAR - 0.5) * 2;
       const p = proj(x, 0, 0.68);
       ctx.fillText(months[m], p.sx, p.sy + 10);
     }
@@ -1175,7 +1177,7 @@ export function _renderHelix3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, a
   }
 
   const dayStep = 2;
-  const nSlots = Math.ceil(365 / dayStep);
+  const nSlots = Math.ceil(DAYS_PER_YEAR / dayStep);
   const REVOLUTIONS = 12; // 12 Windungen = 1 pro Monat
   const baseR = 0.25;     // Innenradius der Helix
   const maxBarH = 0.55;   // Max Balkenhöhe nach außen
@@ -1184,8 +1186,8 @@ export function _renderHelix3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, a
   const quads = [];
 
   for (let si = 0; si < nSlots; si++) {
-    const d0 = si * dayStep, d1 = Math.min(d0 + dayStep, 365);
-    const frac0 = d0 / 365, frac1 = d1 / 365;
+    const d0 = si * dayStep, d1 = Math.min(d0 + dayStep, DAYS_PER_YEAR);
+    const frac0 = d0 / DAYS_PER_YEAR, frac1 = d1 / DAYS_PER_YEAR;
     const angle0 = frac0 * REVOLUTIONS * 2 * Math.PI;
     const angle1 = frac1 * REVOLUTIONS * 2 * Math.PI;
     const y0 = (frac0 - 0.5) * helixH;
@@ -1197,7 +1199,7 @@ export function _renderHelix3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, a
 
       let tSum = 0, cnt = 0;
       const contribs = {};
-      for (let dd = d0; dd < d1 && dd < 365; dd++) {
+      for (let dd = d0; dd < d1 && dd < DAYS_PER_YEAR; dd++) {
         const idx = dd * 24 + h;
         if (idx >= 8760) continue;
         tSum += totals[idx]; cnt++;
@@ -1270,7 +1272,7 @@ export function _renderHelix3D(ctx, W, H, keys, hData, totals, domKeys, maxKw, a
     const months = ['Jan','Feb','M\u00e4r','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
     const mDays = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
     for (let m = 0; m < 12; m++) {
-      const f = (mDays[m] + 15) / 365;
+      const f = (mDays[m] + 15) / DAYS_PER_YEAR;
       const a = f * REVOLUTIONS * 2 * Math.PI;
       const y = (f - 0.5) * helixH;
       const p = proj((baseR + maxBarH + 0.08) * Math.cos(a), y, (baseR + maxBarH + 0.08) * Math.sin(a));
@@ -1377,7 +1379,7 @@ export function renderAnalyseErzeugerTable() {
   const el = document.getElementById('av-erzeuger-table');
   if (!el) return;
   const cfg = typeof ERZEUGER_CFG !== 'undefined' ? ERZEUGER_CFG : {};
-  const keys = (window._dispatchActiveKeys || window.meritOrderKeys || []).filter(k => k !== '_autoGk');
+  const keys = (window._dispatchActiveKeys || meritOrderKeys).filter(k => k !== '_autoGk');
   if (keys.length === 0) {
     el.innerHTML = '<div style="color:var(--muted);font-size:11px;">Keine Erzeuger aktiv.</div>';
     return;
@@ -1401,8 +1403,8 @@ export function renderAnalyseErzeugerTable() {
     html += '</tr>';
   });
   // Auto-GK wenn vorhanden
-  if (window._autoGkResult && window._autoGkResult.waermeMwh > 0) {
-    const agk = window._autoGkResult;
+  if (autoGkResult && autoGkResult.waermeMwh > 0) {
+    const agk = autoGkResult;
     const deckung = totalMwh > 0 ? (agk.waermeMwh / totalMwh * 100) : 0;
     html += '<tr><td style="color:#78909c;">Spitzenlast-GK</td>';
     html += '<td style="text-align:right;">' + (agk.leistungKw || 0).toFixed(0) + '</td>';

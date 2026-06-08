@@ -3,6 +3,7 @@
 // ── Sankey-Diagramm ─────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════
 import { _getEtaMap, fernwaermeEmF, freiflaechen, gasEmF, gebaeude, heizoelEmF, hhsEmF, netzEdges, pelletsEmF, stromEmF } from './01-globals-varianten.js';
+import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { getGebStromMwh } from './02b-gebaeude.js';
 import { calcFFKwp } from './03a-erzeuger.js';
 import { calcGebKwp } from './03c-gebaeude-io.js';
@@ -71,7 +72,7 @@ export function _buildSankeyData(perBuilding) {
   if (ss && ss.lastgangKw && ss.lastgangKw.length >= 8760) {
     const vf = (parseFloat(document.getElementById('gl-netzverlust')?.value) || 10) / 100;
     const twwKw = _splitTwwFloor(ss.lastgangKw, vf);
-    twwMwh = twwKw * 8760 / 1000;  // Konstante TWW-Last übers Jahr
+    twwMwh = twwKw * HOURS_PER_YEAR / 1000;  // Konstante TWW-Last übers Jahr
     const nutzMwh = (ss.nutzwaermeMwh || ss.gesamtMwhMitNV || totalWaerme);
     rwMwh = Math.max(0, nutzMwh - twwMwh);
   } else {

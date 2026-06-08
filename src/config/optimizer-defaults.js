@@ -1,3 +1,4 @@
+// @ts-check
 // ── Optimizer-Defaults ──────────────────────────────────────────────────
 // Investkosten-Fallback (€/kW bzw. €/kWh), falls CalcEngine-Kurven nicht verfügbar
 export const OPT_INVEST_DEFAULT = {
