@@ -154,14 +154,23 @@ export function showAutoNetzDialog() {
   const close = () => document.body.removeChild(overlay);
   modal.querySelector('#an-cancel').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  modal.querySelector('#an-ok').onclick = () => {
+  const okBtn = modal.querySelector('#an-ok');
+  okBtn.onclick = () => {
     const ring           = modal.querySelector('#an-ring').checked;
     const erzeugungsnetz = modal.querySelector('#an-erzeugung').checked;
     const autoKvs        = modal.querySelector('#an-kvs').checked;
     const kvsMaxConn     = Math.max(2, parseInt(modal.querySelector('#an-kvs-max').value) || 4);
     const kvsMaxDistM    = Math.max(20, parseFloat(modal.querySelector('#an-kvs-dist').value) || 80);
-    close();
-    autoNetzAssets({ ring, erzeugungsnetz, autoKvs, kvsMaxConn, kvsMaxDistM });
+
+    // Button + Hint zeigen "läuft…", bevor die (blockierende) Berechnung startet —
+    // setTimeout gibt dem Browser Zeit, das noch zu rendern.
+    okBtn.disabled = true;
+    okBtn.textContent = '⏳ Generiere …';
+    showHint('⏳ Auto-Netz wird generiert — das kann einen Moment dauern …');
+    setTimeout(() => {
+      close();
+      autoNetzAssets({ ring, erzeugungsnetz, autoKvs, kvsMaxConn, kvsMaxDistM });
+    }, 50);
   };
 }
 

@@ -44,9 +44,25 @@ function _html() { return `
       title="Verbrauchs- und PV-Werte automatisch ermitteln">
       ✦ Auto-Befüllen (Verbrauch &amp; PV)
     </button>
-    <button class="lp-tool-btn" data-click="schnellberechnungStrom()"
-      style="grid-column:1/-1;border-color:#546e7a;color:#78909c;font-size:10px;">
-      ⚙ Schnell-Netz aus Gebäudedaten
+    <button class="lp-tool-btn" id="btn-schnellstart-osm" data-click="loadAndAdoptOsmStrassen()"
+      style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;"
+      title="Straßen aus OpenStreetMap laden und direkt als Trassen übernehmen">
+      ↓ OSM-Straßen laden &amp; übernehmen
+    </button>
+    <button class="lp-tool-btn" data-click="naTogglePanel()"
+      style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;"
+      title="Netzanalyse öffnen — Auto-Trafoplatzierung berechnen und als Kompaktstationen übernehmen">
+      🗺️ Netzanalyse — Trafoplatzierung &amp; Kompaktstationen
+    </button>
+    <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
+      style="grid-column:1/-1;border-color:#66bb6a;color:#66bb6a;"
+      title="Stromnetz automatisch generieren: verbindet platzierte Komponenten anhand von Trassen/Distanzen zu einem vollständigen Netz">
+      🔌 Auto-Netz
+    </button>
+    <button class="lp-tool-btn" data-click="elCalcAssets()"
+      style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;font-weight:600;"
+      title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets durchführen (Auslastung, Spannungsfall, Kurzschlussstrom)">
+      ⚡ Elektroberechnung starten
     </button>
   </div>
 
@@ -61,7 +77,8 @@ function _html() { return `
     <div id="asset-palette" class="asset-palette-inline"></div>
     <div class="lp-tool-grid" style="margin-top:5px;">
       <button class="lp-tool-btn" data-click="showKompaktstationDialog()"
-        style="grid-column:1/-1;border-color:#cf6679;color:#cf6679;">
+        style="grid-column:1/-1;border-color:#cf6679;color:#cf6679;"
+        title="Kompaktstation (Schaltanlage + Trafo + NSHV als Einheit) per Klick auf der Karte platzieren">
         🏗 Kompaktstation
       </button>
     </div>
@@ -70,9 +87,9 @@ function _html() { return `
     ${_sub('Freiflächen-PV')}
     <div class="lp-tool-grid" style="margin-bottom:5px;">
       <button class="lp-tool-btn" id="el-btn-ff-draw" data-click="startDrawFF()"
-        style="border-color:#ffd54f;color:#ffd54f;">☀ Fläche zeichnen</button>
+        style="border-color:#ffd54f;color:#ffd54f;" title="PV-Freifläche auf der Karte einzeichnen (Klick auf Eckpunkte, Doppelklick zum Abschluss)">☀ Fläche zeichnen</button>
       <button class="lp-tool-btn" id="el-btn-ff-cancel" data-click="cancelDrawFF()"
-        style="display:none;border-color:#ef9a9a;color:#ef9a9a;">✕ Abbrechen</button>
+        style="display:none;border-color:#ef9a9a;color:#ef9a9a;" title="Freiflächen-Zeichnung abbrechen">✕ Abbrechen</button>
     </div>
     <div id="el-ff-list" style="display:flex;flex-direction:column;gap:5px;"></div>
     <div id="el-ff-total" style="display:none;margin-top:6px;padding:6px 8px;
@@ -93,9 +110,9 @@ function _html() { return `
       <button class="lp-tool-btn" id="btn-osm-strassen" data-click="loadOsmStrassen()"
         style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;">↓ Straßen aus OSM laden</button>
       <button class="lp-tool-btn" data-click="adoptAllOsmStrassen()"
-        style="border-color:#ff9800;color:#ff9800;font-size:10px;">✓ Alle übernehmen</button>
+        style="border-color:#ff9800;color:#ff9800;font-size:10px;" title="Alle geladenen OSM-Straßen auf einmal als Elektrotrassen übernehmen">✓ Alle übernehmen</button>
       <button class="lp-tool-btn" data-click="clearOsmStrassen()"
-        style="border-color:#e57373;color:#e57373;font-size:10px;">✕ OSM löschen</button>
+        style="border-color:#e57373;color:#e57373;font-size:10px;" title="Alle geladenen OSM-Straßen wieder von der Karte entfernen">✕ OSM löschen</button>
       <button class="lp-tool-btn" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()"
         style="grid-column:1/-1;font-size:10px;">👁 OSM ein-/ausblenden</button>
     </div>
@@ -106,7 +123,7 @@ function _html() { return `
       <button class="lp-tool-btn" id="btn-draw-strom-edge" data-click="startDrawStromEdge()"
         style="border-color:#fdd835;color:#fdd835;">— Kabel zeichnen</button>
       <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
-        style="border-color:#66bb6a;color:#66bb6a;">🔌 Auto-Netz</button>
+        style="border-color:#66bb6a;color:#66bb6a;" title="Stromnetz automatisch generieren: verbindet platzierte Komponenten anhand von Trassen/Distanzen zu einem vollständigen Netz">🔌 Auto-Netz</button>
     </div>
   </div>
 
@@ -119,15 +136,16 @@ function _html() { return `
     <div style="font-size:9px;color:var(--muted);margin-bottom:2px;margin-top:4px;">Kabeltyp</div>
     <select id="strom-kabel-typ"
       style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:10px;">
-      <option value="NAYY">NAYY (Aluminium) — Standard</option>
-      <option value="NYY">NYY (Kupfer)</option>
+      <option value="NAYY">NAYY (Aluminium)</option>
+      <option value="NYY" selected>NYY (Kupfer) — Standard</option>
     </select>
 
     <!-- Primär-CTA -->
     <button class="lp-tool-btn" data-click="elCalcAssets()"
       style="width:100%;justify-content:center;padding:9px 8px;font-size:12px;font-weight:600;
              background:rgba(79,195,247,0.10);border:1.5px solid #4fc3f7;color:#4fc3f7;
-             border-radius:5px;margin-bottom:8px;letter-spacing:.02em;">
+             border-radius:5px;margin-bottom:8px;letter-spacing:.02em;"
+      title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets durchführen (Auslastung, Spannungsfall, Kurzschlussstrom)">
       ⚡ Elektroberechnung starten
     </button>
     <div id="lp-el-calc-result"
@@ -217,22 +235,14 @@ function _html() { return `
       <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()"
         style="border-color:#b39ddb;color:#ce93d8;">🗺️ Netzanalyse</button>
       <button class="lp-tool-btn" data-click="openKnotenanalyse()"
-        style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;font-weight:600;">
+        style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;font-weight:600;"
+        title="Detailanalyse einzelner Netzknoten: Auslastung, Spannungsfall und Kurzschlussstrom je Asset über die Zeit">
         📈 Knotenpunkt-Analyse
       </button>
       <button class="lp-tool-btn" data-click="showInvestitionsplan()"
-        style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;">📋 Investitionsplan</button>
+        style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;" title="Investitionsplan für das Stromnetz anzeigen: Kosten der geplanten Komponenten und Maßnahmen über die Jahre">📋 Investitionsplan</button>
       <button class="lp-tool-btn" data-click="exportMassnahmenPDF()"
-        style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;">📄 Maßnahmenbericht PDF</button>
-      <button class="lp-tool-btn" data-click="exportVollstaendigXLSX()"
-        style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;">📊 Export Excel (vollständig)</button>
-      <button class="lp-tool-btn" data-click="importVollstaendigXLSX()"
-        style="grid-column:1/-1;border-color:#81d4fa;color:#81d4fa;">📥 Import Excel</button>
-      <label class="lp-tool-btn" style="grid-column:1/-1;border-color:#ffcc80;color:#ffcc80;cursor:pointer;text-align:center;">
-        🔗 Verbindungen importieren
-        <input type="file" accept=".xlsx" style="display:none"
-          onchange="importVerbindungenXLSX(event)">
-      </label>
+        style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;" title="Maßnahmenbericht für das Stromnetz als PDF exportieren">📄 Maßnahmenbericht PDF</button>
     </div>
   </div>
 
@@ -244,10 +254,10 @@ function _html() { return `
   <div id="lp-strom-viz">
     <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">Kabel einfärben nach</div>
     <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr;">
-      <button class="lp-tool-btn" data-click="setStromColorMode('auslastung')"  style="justify-content:center;font-size:9px;">Auslastung</button>
-      <button class="lp-tool-btn" data-click="setStromColorMode('spannungsfall')" style="justify-content:center;font-size:9px;">ΔU%</button>
-      <button class="lp-tool-btn" data-click="setStromColorMode('leistung')"    style="justify-content:center;font-size:9px;">Leistung</button>
-      <button class="lp-tool-btn" data-click="setStromColorMode('richtung')"    style="justify-content:center;font-size:9px;">Richtung</button>
+      <button class="lp-tool-btn" data-click="setStromColorMode('auslastung')"  style="justify-content:center;font-size:9px;" title="Kabel nach Auslastung in % einfärben (grün = gering, rot = überlastet)">Auslastung</button>
+      <button class="lp-tool-btn" data-click="setStromColorMode('spannungsfall')" style="justify-content:center;font-size:9px;" title="Kabel nach Spannungsfall ΔU in % einfärben">ΔU%</button>
+      <button class="lp-tool-btn" data-click="setStromColorMode('leistung')"    style="justify-content:center;font-size:9px;" title="Kabel nach übertragener Leistung (kW) einfärben">Leistung</button>
+      <button class="lp-tool-btn" data-click="setStromColorMode('richtung')"    style="justify-content:center;font-size:9px;" title="Kabel nach Leistungsflussrichtung einfärben (Bezug vs. Einspeisung)">Richtung</button>
     </div>
     <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
       <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/>

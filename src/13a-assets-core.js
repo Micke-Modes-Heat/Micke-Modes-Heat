@@ -9,26 +9,41 @@ import { globalYear } from './01-globals-varianten.js';
 // energy_in/out: welche Energieflüsse hat der Typ?
 export const ASSET_CFG = {
   // ── Strom-Infrastruktur ──
-  NAP:          { label:'NAP',               icon:'⚡', color:'#e53935', domain:'strom', kategorie:'infrastruktur', energy_in:['netz'], energy_out:['strom'] },
-  Schaltanlage: { label:'Schaltanlage',      icon:'⊞', color:'#ff9800', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
-  Trafo:        { label:'Trafo',             icon:'🔁', color:'#f9a825', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
-  NSHV:         { label:'NSHV',              icon:'🗄', color:'#4fc3f7', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
-  UV:           { label:'UV',                icon:'📦', color:'#64b5f6', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
-  KVS:          { label:'KVS',              icon:'▣',  color:'#607d8b', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'] },
+  NAP:          { label:'NAP',               icon:'⚡', color:'#e53935', domain:'strom', kategorie:'infrastruktur', energy_in:['netz'], energy_out:['strom'],
+                  beschreibung:'NAP = Netzanknüpfungspunkt. Übergabe-/Einspeisepunkt vom vorgelagerten Mittelspannungsnetz — i. d. R. der erste Knoten im Stromnetz.' },
+  Schaltanlage: { label:'Schaltanlage',      icon:'⊞', color:'#ff9800', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'],
+                  beschreibung:'Mittelspannungs-Schaltanlage: schaltet und sichert die MS-Abgänge zwischen NAP und Trafo (Anzahl Felder, Nennstrom).' },
+  Trafo:        { label:'Trafo',             icon:'🔁', color:'#f9a825', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'],
+                  beschreibung:'Transformator: wandelt Mittelspannung in Niederspannung (oder umgekehrt bei Einspeisung). Leistung in kVA, uk in % bestimmen Auslastung und Spannungsfall.' },
+  NSHV:         { label:'NSHV',              icon:'🗄', color:'#4fc3f7', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'],
+                  beschreibung:'Niederspannungs-Hauptverteilung: verteilt den Strom vom Trafo auf die einzelnen Abgänge zu Gebäuden/Verbrauchern.' },
+  UV:           { label:'UV',                icon:'📦', color:'#64b5f6', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'],
+                  beschreibung:'Unterverteilung: zweigt von einer NSHV oder Hauptleitung ab, um weiter entfernte Verbraucher zu erschließen.' },
+  KVS:          { label:'KVS',              icon:'▣',  color:'#607d8b', domain:'strom', kategorie:'infrastruktur', energy_in:['strom'], energy_out:['strom'],
+                  beschreibung:'Kabelverteilerschrank: Verzweigungspunkt im Niederspannungsnetz zur Aufteilung auf mehrere Hausanschlüsse.' },
   // ── Strom-Verbraucher ──
-  Verbraucher:  { label:'Verbraucher',       icon:'🏠', color:'#81c784', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[] },
-  Lade:         { label:'Ladeinfrastruktur', icon:'🔌', color:'#4dd0e1', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[] },
+  Verbraucher:  { label:'Verbraucher',       icon:'🏠', color:'#81c784', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[],
+                  beschreibung:'Allgemeiner Stromverbraucher (z. B. Gebäude/Anschlussnehmer ohne eigenes Asset). Anschlussleistung in kW bestimmt die Last.' },
+  Lade:         { label:'Ladeinfrastruktur', icon:'🔌', color:'#4dd0e1', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[],
+                  beschreibung:'Ladeinfrastruktur (z. B. Wallboxen, Ladesäulen): Last ergibt sich aus Anzahl Ladepunkte × Leistung je Punkt.' },
   // ── Strom-Erzeuger ──
-  PV:           { label:'PV',                icon:'☀', color:'#ffee58', domain:'strom', kategorie:'erzeuger', energy_in:['solar'], energy_out:['strom'] },
-  Wind:         { label:'Windkraftanlage',   icon:'🌀', color:'#80deea', domain:'strom', kategorie:'erzeuger', energy_in:['wind'], energy_out:['strom'] },
-  Nsa:          { label:'Notstromaggregat',  icon:'⚙', color:'#ff7043', domain:'strom', kategorie:'erzeuger', energy_in:['diesel'], energy_out:['strom'] },
+  PV:           { label:'PV',                icon:'☀', color:'#ffee58', domain:'strom', kategorie:'erzeuger', energy_in:['solar'], energy_out:['strom'],
+                  beschreibung:'Photovoltaik-Anlage: erzeugt Strom aus Solarstrahlung. Speist je nach Eigenverbrauch/Überschuss ins Netz ein.' },
+  Wind:         { label:'Windkraftanlage',   icon:'🌀', color:'#80deea', domain:'strom', kategorie:'erzeuger', energy_in:['wind'], energy_out:['strom'],
+                  beschreibung:'Windkraftanlage: erzeugt Strom aus Windenergie — typischerweise mit hoher Einspeiseleistung ins Mittelspannungsnetz.' },
+  Nsa:          { label:'Notstromaggregat',  icon:'⚙', color:'#ff7043', domain:'strom', kategorie:'erzeuger', energy_in:['diesel'], energy_out:['strom'],
+                  beschreibung:'Notstromaggregat: Backup-Erzeuger (z. B. Diesel) zur Versorgungssicherheit bei Netzausfall.' },
   // ── Strom-Speicher ──
-  Batterie:     { label:'Batterie',          icon:'🔋', color:'#aed581', domain:'strom', kategorie:'speicher', energy_in:['strom'], energy_out:['strom'] },
+  Batterie:     { label:'Batterie',          icon:'🔋', color:'#aed581', domain:'strom', kategorie:'speicher', energy_in:['strom'], energy_out:['strom'],
+                  beschreibung:'Batteriespeicher: speichert überschüssigen Strom (z. B. PV-Erzeugung) zwischen und entlastet damit Netzanschluss und Trafo bei Lastspitzen.' },
   // ── Hybrid (Strom + Wärme) ──
-  WP:           { label:'Wärmepumpe',        icon:'💨', color:'#ce93d8', domain:'hybrid', kategorie:'erzeuger', energy_in:['strom'], energy_out:['waerme'] },
-  KWK:          { label:'KWK-Anlage',        icon:'🔥', color:'#f48fb1', domain:'hybrid', kategorie:'erzeuger', energy_in:['gas'], energy_out:['strom','waerme'] },
+  WP:           { label:'Wärmepumpe',        icon:'💨', color:'#ce93d8', domain:'hybrid', kategorie:'erzeuger', energy_in:['strom'], energy_out:['waerme'],
+                  beschreibung:'Wärmepumpe: wandelt Strom in Wärme um (Umweltwärme als Quelle) — zählt im Stromnetz als Verbraucher, im Wärmenetz als Erzeuger.' },
+  KWK:          { label:'KWK-Anlage',        icon:'🔥', color:'#f48fb1', domain:'hybrid', kategorie:'erzeuger', energy_in:['gas'], energy_out:['strom','waerme'],
+                  beschreibung:'Blockheizkraftwerk (Kraft-Wärme-Kopplung): erzeugt gleichzeitig Strom und Wärme aus Brennstoff (i. d. R. Gas).' },
   // ── Reserve ──
-  Reserve:      { label:'Reserve',           icon:'◻', color:'#90a4ae', domain:'strom', kategorie:'sonstiges', energy_in:[], energy_out:[] },
+  Reserve:      { label:'Reserve',           icon:'◻', color:'#90a4ae', domain:'strom', kategorie:'sonstiges', energy_in:[], energy_out:[],
+                  beschreibung:'Reserve-Asset: Platzhalter für zukünftige Erweiterungen oder noch nicht klassifizierte Komponenten.' },
 };
 
 // Typrangfolge für Sortierung/Topologie: niedriger = versorgungsseitig

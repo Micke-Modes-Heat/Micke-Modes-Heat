@@ -14,7 +14,8 @@ import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js'
 import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSpannungsfall, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
-import { ASSETS, TYPE_RANK, getAssetStatus } from './13a-assets-core.js';
+import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus } from './13a-assets-core.js';
+import { redrawAllAssets } from './13b-assets-render.js';
 
 export function epConfirm(title, message, opts) {
   opts = opts || {};
@@ -2135,6 +2136,13 @@ export function updateLpStromSummary() {
 export function elCalcAssets() {
   const yr = globalYear ?? new Date().getFullYear();
   const U_N = 400, COS_PHI = 0.9;
+  // Zulässiger Spannungsfall – Gesamtbudget vom Trafo (bzw. Einspeisepunkt) bis
+  // zum Ende eines Stichs (DIN 18015-1 / VDE-AR-N 4105 Richtwert: max. 3 %).
+  // Die Auto-Dimensionierung verteilt dieses Budget entlang des Pfades: je mehr
+  // ΔU bereits auf vorgelagerten Abschnitten "verbraucht" wurde, desto enger ist
+  // das Restbudget für nachgelagerte Kabel (→ diese werden bei Bedarf großzügiger
+  // dimensioniert, damit die KUMULIERTE Spannung am Stich-Ende eingehalten wird).
+  const MAX_DELTA_U_PCT = 3;
 
   const activeA = ASSETS.items.filter(a =>
     (a.domain === 'strom' || a.domain === 'hybrid') &&
@@ -2159,7 +2167,7 @@ export function elCalcAssets() {
   const warn = [];
   if (!activeA.find(a => a.type === 'NAP'))   warn.push('⚠ Kein NAP vorhanden.');
   if (!activeA.find(a => a.type === 'Trafo')) warn.push('⚠ Kein Trafo – Berechnung mit 400 V NS.');
-  if (activeA.length === 0) { warn.push('⚠ Keine aktiven Elektro-Assets.'); _showElCalcResult(warn, []); return; }
+  if (activeA.length === 0) { warn.push('⚠ Keine aktiven Elektro-Assets.'); _showElCalcResult(warn); return; }
   if (activeE.length === 0 && activeA.length > 0) warn.push('ℹ Keine Kabel vorhanden.');
 
   function assetVerbrauch(a) {
@@ -2225,13 +2233,25 @@ export function elCalcAssets() {
     return load;
   }
 
-  // Kumulativer Spannungsfall: gerichtete Adjazenzliste
+  // Gerichtete Adjazenzliste (Trafo → ... → Verbraucher) für die kumulative
+  // Spannungsfall-Betrachtung. Wird in zwei Schritten befüllt:
+  //  1) Lastfluss & Richtung je Kante ermitteln (unabhängig von der Kabelwahl)
+  //  2) Kabel in Pfad-Reihenfolge (BFS ab Trafo) dimensionieren — dabei ist das
+  //     ΔU-Restbudget einer Kante = Gesamtlimit minus dem kumulierten ΔU, das
+  //     auf dem Pfad bis zu ihrem Startknoten bereits "verbraucht" wurde. So
+  //     bleibt am Ende eines mehrgliedrigen Stichs das Gesamt-ΔU im Limit,
+  //     auch wenn jedes vorgelagerte Segment für sich genommen mehr Budget
+  //     hätte ausschöpfen können.
   const dirAdj = new Map(activeA.map(a => [a.id, []]));
 
   // MS-Nennspannung aus NAP-Asset (default 20 kV)
   const napAsset = activeA.find(a => a.type === 'NAP');
   const U_MS = (parseFloat(napAsset?.props?.spannungKV) || 20) * 1000;
+  const SIN_PHI = Math.sqrt(1 - COS_PHI ** 2);
 
+  // Schritt 1: Lastfluss, Richtung & Kabeltyp-Eckdaten je Kante (Reihenfolge-
+  // unabhängig — bestimmt nur, WAS dimensioniert werden muss, nicht WIE).
+  const edgeCalc = new Map();
   for (const e of activeE) {
     const aAsset = assetMap.get(e.u), bAsset = assetMap.get(e.v);
     if (!aAsset || !bAsset) continue;
@@ -2253,26 +2273,63 @@ export function elCalcAssets() {
     e.peakCurrentA = I_A;
     e.flowDirection = P_net >= 0 ? 1 : -1;
 
-    // MS-Kabel: keine NS-Kabelauslegung (andere Kabeltypen/Spannung)
+    const srcId = rankA <= rankB ? e.u : e.v;
+    const dstId = rankA <= rankB ? e.v : e.u;
+    const calc = { lengthM, I_A, I_A_sign, msLevel: !!e.msLevel };
     if (e.msLevel) {
+      // MS-Kabel: keine NS-Kabelauslegung (andere Kabeltypen/Spannung)
       e.deltaUPct = 0;
-      const srcId = rankA <= rankB ? e.u : e.v;
-      dirAdj.get(srcId)?.push({ nextId: rankA <= rankB ? e.v : e.u, dU_V: 0 });
-      continue;
+    } else {
+      calc.kt = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
+      calc.maxSec = calc.kt.sections[calc.kt.sections.length - 1];
     }
+    edgeCalc.set(e, calc);
+    dirAdj.get(srcId)?.push({ edge: e, nextId: dstId });
+  }
 
-    const kt = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
-    const maxSec = kt.sections[kt.sections.length - 1];
+  // Wählt Querschnitt + Parallelzahl, die sowohl die Stromtragfähigkeit als
+  // auch ein vorgegebenes ΔU-Budget (in % für genau diesen Abschnitt) einhalten,
+  // und schreibt alle abgeleiteten Felder (Querschnitt, Sicherung, Auslastung,
+  // ΔU%) auf die Kante. Gibt den (vorzeichenbehafteten) Spannungsfall in Volt
+  // zurück, damit der Aufrufer ihn kumulativ weiterreichen kann.
+  function _sizeNsCable(e, calc, duBudgetPct) {
+    const { kt, maxSec, lengthM, I_A, I_A_sign } = calc;
     let np = Math.max(1, e.nParallel || 1);
-    // Auto-Parallelkabel: Maximalquerschnitt reicht nicht → mehr Stränge
+    // Auto-Parallelkabel: Maximalquerschnitt reicht strommäßig nicht → mehr Stränge
     if (e.autoSized && I_A > maxSec.Iz * np) {
       np = Math.ceil(I_A / maxSec.Iz);
       e.nParallel = np;
     }
-    const I_per_cable = I_A / np;
+
+    // ΔU%-Schätzung für einen Kandidaten-Querschnitt bei gegebener Parallelzahl
+    // (für die Auto-Dimensionierung — nutzt denselben Ansatz wie die finale Berechnung unten)
+    const _estDuPct = (sec, nPar) => {
+      const R_km  = kt.rhoOhmMm2pM * 1000 / sec.mm2;
+      const R_seg = (R_km * lengthM / 1000) / nPar;
+      const X_seg = ((sec.xMuOhmPerM ?? 80) / 1e6 * lengthM) / nPar;
+      const dU_V  = Math.sqrt(3) * (R_seg * COS_PHI + X_seg * SIN_PHI) * I_A_sign;
+      return Math.abs(dU_V / U_N * 100);
+    };
+
     if (!e.crossSection || e.autoSized) {
-      const minSec = kt.sections.find(s => s.Iz >= I_per_cable);
-      e.crossSection = minSec ? minSec.mm2 : maxSec.mm2;
+      const I_per_cable = I_A / np;
+      // 1) Querschnitte, die strommäßig ausreichen (Iz ≥ I je Strang)
+      const okCurrent = kt.sections.filter(s => s.Iz >= I_per_cable);
+      const pool = okCurrent.length ? okCurrent : [maxSec];
+      // 2) kleinster Querschnitt aus dem Pool, der zusätzlich das für DIESEN
+      //    Abschnitt verbleibende ΔU-Budget einhält (= Gesamtlimit abzüglich
+      //    des auf dem Pfad bis hierher bereits kumulierten Spannungsfalls)
+      let chosen = pool.find(s => _estDuPct(s, np) <= duBudgetPct);
+      if (!chosen) {
+        // Auch der größte Querschnitt hält das Budget nicht ein → zusätzliche
+        // Parallelstränge (verringert R/X je Strang und damit ΔU ≈ um Faktor 1/n)
+        let tryNp = np;
+        while (tryNp < 8 && _estDuPct(maxSec, tryNp) > duBudgetPct) tryNp++;
+        np = tryNp;
+        e.nParallel = np;
+        chosen = maxSec;
+      }
+      e.crossSection = chosen.mm2;
     }
     // Auto-Sicherung: größte Normgröße ≤ Iz des Kabels (Kabelschutz nach VDE 0298)
     if (e.autoSized && (!e.fuseA || e.fuseA === 0)) {
@@ -2285,20 +2342,39 @@ export function elCalcAssets() {
     const R_km  = kt.rhoOhmMm2pM * 1000 / e.crossSection;
     const R_seg = (R_km * lengthM / 1000) / np;
     const X_seg = ((sec?.xMuOhmPerM ?? 80) / 1e6 * lengthM) / np; // µΩ/m → Ω, ÷np
-    const SIN_PHI = Math.sqrt(1 - COS_PHI ** 2);
     // DIN VDE 0276: ΔU = √3 · I · (R·cosφ + X·sinφ) — korrekte R+X-Formel, I nicht nochmal ÷np
-    const dU_V  = Math.sqrt(3) * (R_seg * COS_PHI + X_seg * SIN_PHI) * I_A_sign;
-    const dU_pct = (dU_V / U_N) * 100;
+    const dU_V = Math.sqrt(3) * (R_seg * COS_PHI + X_seg * SIN_PHI) * I_A_sign;
 
     e.ratedCurrentA = sec.Iz * np;
     e.auslastungPct = sec.Iz > 0 ? (I_A / (sec.Iz * np)) * 100 : 0;
-    e.deltaUPct    = Math.abs(dU_pct);
-
-    const srcId = rankA <= rankB ? e.u : e.v;
-    dirAdj.get(srcId)?.push({ nextId: rankA <= rankB ? e.v : e.u, dU_V });
+    e.deltaUPct    = Math.abs((dU_V / U_N) * 100);
+    return dU_V;
   }
 
-  // BFS kumulativer Spannungsfall ab Trafo
+  // Längste verbleibende NS-Strecke ab einem Knoten bis zu einem Stich-Ende
+  // (MS-Abschnitte zählen nicht mit, da sie keinen NS-Spannungsfall verursachen).
+  // Wird genutzt, um das ΔU-Restbudget FAIR über die Restlänge des Pfades zu
+  // verteilen — ein einzelnes (z. B. langes) Anfangssegment soll nicht gierig
+  // den Großteil des Budgets aufbrauchen und nachgelagerte Segmente "aushungern".
+  const _maxDownLenCache = new Map();
+  function _maxDownstreamLengthM(nodeId) {
+    if (_maxDownLenCache.has(nodeId)) return _maxDownLenCache.get(nodeId);
+    _maxDownLenCache.set(nodeId, 0); // Zyklenschutz (z. B. MS-Ring)
+    let maxLen = 0;
+    for (const { edge, nextId } of (dirAdj.get(nodeId) || [])) {
+      const c = edgeCalc.get(edge);
+      if (!c) continue;
+      const len = (c.msLevel ? 0 : (c.lengthM || 0)) + _maxDownstreamLengthM(nextId);
+      if (len > maxLen) maxLen = len;
+    }
+    _maxDownLenCache.set(nodeId, maxLen);
+    return maxLen;
+  }
+
+  // Schritt 2: Kabel in Pfad-Reihenfolge dimensionieren — BFS ab Trafo (bzw.
+  // ab dem ranghöchsten Asset, falls kein Trafo vorhanden ist). Sobald ein
+  // Knoten erreicht wird, steht sein kumulierter Spannungsfall endgültig fest,
+  // wodurch das ΔU-Restbudget für seine abgehenden Kanten exakt bekannt ist.
   const nodeVoltDrop = new Map();
   const srcNodes = activeA.filter(a => a.type === 'Trafo');
   const fallbackRank = srcNodes.length === 0
@@ -2306,18 +2382,49 @@ export function elCalcAssets() {
     : null;
   (srcNodes.length > 0 ? srcNodes : activeA.filter(a => (TYPE_RANK[a.type] ?? 6) === fallbackRank))
     .forEach(s => nodeVoltDrop.set(s.id, 0));
+
   const bfsQ   = [...nodeVoltDrop.keys()];
   const bfsVis = new Set(bfsQ);
+  const sizedEdges = new Set();
   while (bfsQ.length) {
-    const curId = bfsQ.shift();
-    const cumV = nodeVoltDrop.get(curId) ?? 0;
-    for (const { nextId, dU_V } of (dirAdj.get(curId) || [])) {
+    const curId  = bfsQ.shift();
+    const cumV   = nodeVoltDrop.get(curId) ?? 0;
+    const cumPct = Math.abs(cumV / U_N * 100);
+    for (const { edge: e, nextId } of (dirAdj.get(curId) || [])) {
       if (bfsVis.has(nextId)) continue;
       bfsVis.add(nextId);
+      const calc = edgeCalc.get(e);
+      let dU_V = 0;
+      if (!calc.msLevel) {
+        // Verbleibendes Gesamtbudget (mit kleinem Sockelwert, damit bei bereits
+        // ausgeschöpftem Budget noch eine — dann großzügigere — Dimensionierung
+        // stattfindet, statt stets den kleinsten Querschnitt zu wählen).
+        const remainingBudgetPct = Math.max(MAX_DELTA_U_PCT - cumPct, 0.15);
+        // Faires Anteilsbudget für GENAU dieses Segment: proportional zu seinem
+        // Längenanteil an der noch verbleibenden Strecke bis zum Stich-Ende.
+        // Verhindert, dass ein einzelnes (z. B. langes) Anfangssegment den
+        // Großteil des Budgets verbraucht und nachgelagerte Segmente "aushungert"
+        // — stattdessen wird das Budget gleichmäßig über den ganzen Pfad verteilt,
+        // sodass die KUMULIERTE Spannung am Ende in etwa beim Gesamtlimit landet.
+        const restLenM   = _maxDownstreamLengthM(nextId);
+        const totalLenM  = (calc.lengthM || 0) + restLenM;
+        const fairShare  = totalLenM > 0 ? remainingBudgetPct * (calc.lengthM || 0) / totalLenM : remainingBudgetPct;
+        const duBudgetPct = Math.max(Math.min(fairShare, remainingBudgetPct), 0.15);
+        dU_V = _sizeNsCable(e, calc, duBudgetPct);
+      }
+      sizedEdges.add(e);
       nodeVoltDrop.set(nextId, cumV + dU_V);
       bfsQ.push(nextId);
     }
   }
+
+  // Von der Pfad-BFS nicht erreichte NS-Kanten (z. B. Ringverbindungen oder
+  // Teilnetze ohne Trafo-Anbindung) mit dem vollen Budget je Abschnitt dimensionieren.
+  for (const [e, calc] of edgeCalc) {
+    if (calc.msLevel || sizedEdges.has(e)) continue;
+    _sizeNsCable(e, calc, MAX_DELTA_U_PCT);
+  }
+
   nodeVoltDrop.forEach((v, id) => {
     const sn = (window.stromNodes || []).find(n => n.id === id);
     if (sn) {
@@ -2363,27 +2470,16 @@ export function elCalcAssets() {
 
   updateStromEdgeVisuals();
 
-  // Ergebniszusammenfassung
-  const bottlenecks = activeE
-    .filter(e => e.auslastungPct > 100 || e.deltaUPct > 3 || (e.fuseA > 0 && e.peakCurrentA > e.fuseA))
-    .map(e => {
-      const a = assetMap.get(e.u), b = assetMap.get(e.v);
-      let msg = '';
-      if (e.auslastungPct > 100)                  msg += `Überlast ${e.auslastungPct.toFixed(0)} % `;
-      if (e.deltaUPct > 3)                        msg += `ΔU ${e.deltaUPct.toFixed(1)} % `;
-      if (e.fuseA > 0 && e.peakCurrentA > e.fuseA) msg += `Sicherung ${e.fuseA} A ausgelöst (${e.peakCurrentA.toFixed(0)} A)`;
-      return `${a?.name || e.u} → ${b?.name || e.v}: ${msg.trim()}`;
-    });
-
   _updateAssetStatusRings(nodeVoltDrop, activeA, activeE, assetMap);
 
+  // Ergebniszusammenfassung
   const totalVerbrauch = activeA.reduce((s, a) => s + assetVerbrauch(a), 0);
   const totalErzeugung = activeA.reduce((s, a) => s + assetErzeugung(a), 0);
   const summary = [
     `Verbraucher: ${totalVerbrauch.toFixed(1)} kW · Einspeisung: ${totalErzeugung.toFixed(1)} kW`,
     `Kabel: ${activeE.length} · Assets: ${activeA.length}`,
   ];
-  _showElCalcResult([...warn, ...summary], bottlenecks);
+  _showElCalcResult([...warn, ...summary]);
   if (typeof window.sldRefresh === 'function') window.sldRefresh();
 }
 
@@ -2432,11 +2528,10 @@ export function clearAssetStatusRings() {
   }
 }
 
-function _showElCalcResult(lines, bottlenecks) {
+function _showElCalcResult(lines) {
   const el = document.getElementById('lp-el-calc-result');
   if (!el) return;
-  const all = [...lines, ...(bottlenecks.length ? ['Engpässe:', ...bottlenecks] : [])];
-  el.innerHTML = all.map(l => `<div class="lp-el-calc-line${l.startsWith('⚠') ? ' warn' : l.startsWith('Engpässe') ? ' err' : ''}">${l}</div>`).join('');
+  el.innerHTML = lines.map(l => `<div class="lp-el-calc-line${l.startsWith('⚠') ? ' warn' : ''}">${l}</div>`).join('');
   el.style.display = '';
 }
 
@@ -2578,6 +2673,18 @@ export function adoptAllOsmStrassen() {
   if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
 }
 
+export async function loadAndAdoptOsmStrassen() {
+  const btn  = document.getElementById('btn-schnellstart-osm');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.innerHTML = '⏳ Lade Straßen…'; btn.disabled = true; }
+  try {
+    await loadOsmStrassen();
+    adoptAllOsmStrassen();
+  } finally {
+    if (btn) { btn.innerHTML = orig; btn.disabled = false; }
+  }
+}
+
 export function toggleOsmStrassenVisible() {
   _osmStrassenVisible = !_osmStrassenVisible;
   if (!_osmStrassenLayer) return;
@@ -2610,6 +2717,102 @@ export function clearStromNetz() {
   window.stromNextId = 20000;
   window._stromNetzKpis = null;
   _selectedEdge = null;
+  updateLpStromSummary();
+}
+
+// ── Varianten: Stromnetz-Snapshot erfassen / wiederherstellen ──────────────
+// Analog zu captureNetzState/captureErzeugerState (01-globals-varianten.js):
+// erfasst den kompletten elektrischen Netzzustand (Elektroassets, Infrastruktur-
+// Knoten wie NAP/Trafo/NSHV, Kabel/Kanten, Kabeltyp-Vorgabe) als klonbares
+// Datenobjekt, damit jede Variante ihr eigenes Stromnetz ("Ast") besitzen kann.
+export function captureStromNetzState() {
+  const elAssets = ASSETS.items.filter(a => a.domain === 'strom' || a.domain === 'hybrid');
+  // Reine Infrastruktur-Knoten (NAP/Trafo/NSHV …) — keine Assets, keine Gebäude/Erzeuger
+  // (Gebäude- und Erzeuger-Knoten werden von recalcStromNetz() automatisch neu registriert)
+  const infraNodes = (window.stromNodes || []).filter(n => !n.isAsset && n.type !== 'geb' && n.type !== 'erzeuger');
+  return {
+    items: elAssets.map(a => ({
+      id: a.id, type: a.type, domain: a.domain, lat: a.lat, lng: a.lng, name: a.name,
+      buildingId: a.buildingId, _movedByUser: a._movedByUser || false,
+      linkedErzeuger: a.linkedErzeuger || null, linkedFF: a.linkedFF || null,
+      props: a.props ? { ...a.props } : {}, baujahr: a.baujahr, abrissjahr: a.abrissjahr,
+      massnahmen: (a.massnahmen || []).map(m => ({ ...m }))
+    })),
+    nodes: infraNodes.map(n => ({
+      id: n.id, type: n.type, lat: n.lat, lng: n.lng, label: n.label,
+      maxKva: n.maxKva, ratedKva: n.ratedKva, ukPct: n.ukPct
+    })),
+    edges: (window.stromEdges || []).map(e => ({
+      id: e.id, u: e.u, v: e.v, cableType: e.cableType, crossSection: e.crossSection,
+      autoSized: e.autoSized, lengthM: e.lengthM, fuseA: e.fuseA || 0, nParallel: e.nParallel || 1,
+      autoGenerated: e.autoGenerated || false, msLevel: e.msLevel || false, trennstelle: e.trennstelle || false
+    })),
+    kabelTyp: document.getElementById('strom-kabel-typ')?.value || null
+  };
+}
+
+export function applyStromNetzState(state) {
+  // 1) Bestehendes Stromnetz + Elektro-Assets vollständig entfernen
+  //    (clearStromNetz entfernt nur Knoten/Kanten-Layer; die Elektroassets selbst
+  //     liegen in ASSETS.items und müssen separat über deleteAsset entfernt werden)
+  clearStromNetz();
+  ASSETS.items.filter(a => a.domain === 'strom' || a.domain === 'hybrid')
+    .map(a => a.id)
+    .forEach(id => deleteAsset(id));
+
+  if (!state) { redrawAllAssets(); recalcStromNetz(); return; }
+
+  if (state.kabelTyp) {
+    const ktSel = document.getElementById('strom-kabel-typ');
+    if (ktSel) ktSel.value = state.kabelTyp;
+  }
+
+  // 2) Elektro-Assets neu anlegen (Datenobjekte; Marker zeichnet redrawAllAssets)
+  (state.items || []).forEach(data => {
+    const loaded = createAsset(data.type, data.lat, data.lng, {
+      id: data.id, name: data.name, buildingId: data.buildingId,
+      _movedByUser: data._movedByUser || false,
+      props: data.props || {}, baujahr: data.baujahr,
+      abrissjahr: data.abrissjahr, massnahmen: data.massnahmen || []
+    });
+    if (loaded && data.linkedErzeuger) loaded.linkedErzeuger = data.linkedErzeuger;
+    if (loaded && data.linkedFF)       loaded.linkedFF       = data.linkedFF;
+  });
+  redrawAllAssets();
+
+  // 3) Reine Infrastruktur-Knoten (NAP/Trafo/NSHV …) wiederherstellen
+  (state.nodes || []).forEach(n => {
+    if ((window.stromNodes || []).find(sn => sn.id === n.id)) return;
+    addStromNode(n.type, L.latLng(n.lat, n.lng), {
+      id: n.id, label: n.label, maxKva: n.maxKva, ratedKva: n.ratedKva, ukPct: n.ukPct
+    });
+  });
+
+  // 4) Gebäude-/Erzeuger-Knoten vor der Kantenwiederherstellung registrieren
+  //    (sonst schlägt addStromEdge für Kanten zu diesen Knoten fehl, da sie noch fehlen)
+  recalcStromNetz();
+
+  // 5) Kabel/Kanten wiederherstellen
+  (state.edges || []).forEach(eData => {
+    const edge = addStromEdge(eData.u, eData.v);
+    if (edge) {
+      if (eData.id) edge.id = eData.id;
+      edge.cableType = eData.cableType || 'NAYY';
+      edge.crossSection = eData.crossSection || 0;
+      edge.autoSized = eData.autoSized !== false;
+      edge.lengthM = eData.lengthM || edge.lengthM;
+      edge.fuseA = eData.fuseA || 0;
+      edge.nParallel = eData.nParallel || 1;
+      edge.autoGenerated = eData.autoGenerated || false;
+      edge.msLevel = eData.msLevel || edge.msLevel || false;
+      edge.trennstelle = eData.trennstelle || false;
+      if (edge.msLevel) edge.layer?.setStyle({ color: '#7c4dff', weight: 4, dashArray: null });
+      if (edge.trennstelle) edge.layer?.setStyle({ dashArray: '10,8', opacity: 0.5 });
+    }
+  });
+
+  recalcStromNetz();
+  if (typeof window.elCalcAssets === 'function') window.elCalcAssets();
   updateLpStromSummary();
 }
 

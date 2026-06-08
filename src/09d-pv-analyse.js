@@ -584,6 +584,7 @@ export function pvaBuildAnalyseSection() {
     btn.className    = 'analyse-section-tab';
     btn.dataset.section = 'pva';
     btn.textContent  = '☀ PV-Analyse';
+    btn.title = 'PV-Analyse: Varianten- und Wirtschaftlichkeitsvergleich für PV-Anlagen — Eigenverbrauch, Einspeisung, Batterieoptimierung und Netzanschluss-Infrastruktur.';
     btn.addEventListener('click', () => {
       if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('pva');
     });

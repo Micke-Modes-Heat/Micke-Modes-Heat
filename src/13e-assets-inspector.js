@@ -1050,7 +1050,7 @@ function _renderAssetFelddaten(a) {
     ? '<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#1a1a2e;white-space:pre-wrap;margin-bottom:6px;">' + esc(a.feldNotizen) + '</div>'
     : '';
   const fotoHtml = (a.feldFotos || []).map(foto =>
-    '<img src="' + foto.dataUrl + '" title="' + esc(foto.name) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #2a3352;" onclick="window.open(this.src)">'
+    '<img src="' + foto.dataUrl + '" title="' + esc(foto.name) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #2a3352;" onclick="openImageLightbox(this.src,this.title)">'
   ).join('');
   return '<div style="margin:8px 0;padding:8px 10px;background:var(--surface2,#1e2433);border-radius:8px;border:1px solid #2a3352;">'
     + '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px;">📱 FELDDATEN' + (statusLabel ? ' · ' + statusLabel : '') + '</div>'

@@ -1,6 +1,6 @@
 // â”€â”€ 05a-export.js â€” CSV-Export, PDF-Report, Druckansicht â”€â”€
 // â”€â”€ Export: Dispatch CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-import { gebaeude, globalYear, netzEdges } from './01-globals-varianten.js';
+import { activeVariantId, baseStromNetzSnapshot, gebaeude, globalYear, netzEdges, varianten } from './01-globals-varianten.js';
 import { getComputedStats } from './02b-gebaeude.js';
 import { updateLpMeritOrder, updateLpNetzSummary } from './04a-ui-panels.js';
 import { updateLpStromSummary } from './05b-stromnetz.js';
@@ -906,7 +906,48 @@ function _buildVerbindungenSheets(XLSXLib, allAssets, allEdges, assetMap) {
   return { wsVerb, wsAssetList };
 }
 
-// â”€â”€ Export: Elektro XLSX (Komponenten + Kabel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Varianten-Mitgliedschaft pro Elektroasset/-kabel ermitteln ──────────────
+// Liefert eine Map id → ['Basisdaten', 'Variante 1', ...] — für jede Variante
+// (inkl. "Basisdaten") wird geprüft, ob das Asset/Kabel in deren Stromnetz-"Ast"
+// vorkommt. Die aktuell aktive Variante liegt live in ASSETS/stromEdges vor,
+// alle anderen in ihrem gespeicherten stromnetz-Snapshot (bzw. baseStromNetzSnapshot
+// für "Basisdaten", wenn diese gerade nicht aktiv ist).
+function _buildVariantMembershipMap() {
+  const BASE_NAME = 'Basisdaten';
+  const membership = new Map(); // id -> Set<variantName>
+  const add = (id, name) => {
+    if (id == null) return;
+    if (!membership.has(id)) membership.set(id, new Set());
+    membership.get(id).add(name);
+  };
+  const addLiveState = (name) => {
+    ASSETS.items.filter(a => a.domain === 'strom' || a.domain === 'hybrid').forEach(a => add(a.id, name));
+    (window.stromEdges || []).forEach(e => add(e.id, name));
+  };
+  const addSnapshot = (state, name) => {
+    if (!state) return;
+    (state.items || []).forEach(it => add(it.id, name));
+    (state.edges || []).forEach(e => add(e.id, name));
+  };
+
+  if (activeVariantId === null) addLiveState(BASE_NAME);
+  else addSnapshot(baseStromNetzSnapshot, BASE_NAME);
+
+  (varianten || []).forEach(v => {
+    if (v.id === activeVariantId) addLiveState(v.name);
+    else addSnapshot(v.stromnetz, v.name);
+  });
+
+  return membership;
+}
+
+function _variantMembershipLabel(membership, id) {
+  const set = membership.get(id);
+  if (!set || set.size === 0) return '';
+  return [...set].join(', ');
+}
+
+// ── Export: Elektro XLSX (Komponenten + Kabel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function exportElektroXLSX() {
   // SheetJS dynamisch laden falls noch nicht vorhanden
   if (typeof window.XLSX === 'undefined') {
@@ -930,8 +971,11 @@ export async function exportElektroXLSX() {
     Lade: 'Ladeinfrastruktur', Nsa: 'Nsa', KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
   };
 
+  // Varianten-Mitgliedschaft je Asset/Kabel ermitteln (für zusätzliche Spalte)
+  const variantMembership = _buildVariantMembershipMap();
+
   // Sheet 1: Komponenten
-  const kompRows = [['Name', 'Typ', 'Baujahr', 'Abrissjahr', 'Status ' + yr, 'Leistung kW/kVA', 'MaÃŸnahmen (Anzahl)', 'Investition (â‚¬)']];
+  const kompRows = [['Name', 'Typ', 'Baujahr', 'Abrissjahr', 'Status ' + yr, 'Leistung kW/kVA', 'MaÃŸnahmen (Anzahl)', 'Investition (â‚¬)', 'Varianten']];
   for (const a of allAssets) {
     const p = a.props || {};
     const status = getAssetStatus(a, yr);
@@ -943,11 +987,11 @@ export async function exportElektroXLSX() {
     else if (a.type === 'Lade') leistung = ((p.anzahlPunkte || 4) * (p.leistungProPunktKW || 22)) + ' kW';
     else if (a.type === 'NSHV' || a.type === 'UV') leistung = (p.nennstromA || 400) + ' A';
     const totalKosten = (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
-    kompRows.push([a.name || a.id, ASSET_LABELS[a.type] || a.type, a.baujahr || '', a.abrissjahr || '', statusTxt, leistung, (a.massnahmen || []).length, totalKosten || '']);
+    kompRows.push([a.name || a.id, ASSET_LABELS[a.type] || a.type, a.baujahr || '', a.abrissjahr || '', statusTxt, leistung, (a.massnahmen || []).length, totalKosten || '', _variantMembershipLabel(variantMembership, a.id)]);
   }
 
   // Sheet 2: Kabel
-  const kabelRows = [['Von', 'Nach', 'Typ', 'Querschnitt mmÂ²', 'LÃ¤nge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
+  const kabelRows = [['Von', 'Nach', 'Typ', 'Querschnitt mmÂ²', 'LÃ¤nge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW', 'Varianten']];
   const assetMap = new Map(allAssets.map(a => [a.id, a]));
   for (const e of allEdges) {
     const uName = assetMap.get(e.u)?.name || e.u;
@@ -960,6 +1004,7 @@ export async function exportElektroXLSX() {
       e.auslastungPct != null ? +e.auslastungPct.toFixed(1) : '',
       e.deltaUPct != null ? +e.deltaUPct.toFixed(2) : '',
       e.peakFlowKw != null ? +e.peakFlowKw.toFixed(1) : '',
+      _variantMembershipLabel(variantMembership, e.id),
     ]);
   }
 
@@ -1735,6 +1780,18 @@ async function _handleFelddatenImport(e) {
   }
 }
 
+// ── Feldapp-Panel (bündelt Felddaten-Filter, Galerie, Bericht) ───────────────
+let _feldappPanelOpen = false;
+
+export function toggleFeldappPanel() {
+  _feldappPanelOpen = !_feldappPanelOpen;
+  const panel = document.getElementById('feldapp-panel');
+  const btn   = document.getElementById('btn-feldapp-toggle');
+  if (!panel) return;
+  panel.style.display = _feldappPanelOpen ? 'block' : 'none';
+  btn?.classList.toggle('active', _feldappPanelOpen);
+}
+
 // ── Felddaten-Filter (Karte + Liste) ─────────────────────────────────────────
 let _felddatenFilterActive = false;
 
@@ -1895,6 +1952,19 @@ export function closeGalerieLightbox() {
   if (lb) lb.style.display = 'none';
 }
 window.closeGalerieLightbox = closeGalerieLightbox;
+
+// Vergrößerte Einzelbild-Ansicht (z. B. Felddaten-Fotos im Inspektor) — nutzt
+// dieselbe Lightbox wie die Fotogalerie, aber ohne Galerie-Kontext/Navigation.
+export function openImageLightbox(src, title) {
+  const lb   = document.getElementById('galerie-lightbox');
+  const img  = document.getElementById('galerie-lightbox-img');
+  const meta = document.getElementById('galerie-lightbox-meta');
+  if (!lb || !img) return;
+  img.src = src;
+  if (meta) meta.textContent = title || '';
+  lb.style.display = 'flex';
+}
+window.openImageLightbox = openImageLightbox;
 
 // ── 05c-bericht.js — Begehungsbericht
 

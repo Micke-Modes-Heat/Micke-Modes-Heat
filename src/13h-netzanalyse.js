@@ -8,7 +8,7 @@
 //   • Trafo-Platzierungsoptimierung (manuell k / Auto max. kVA)
 //   • Bestehende Trafos analysieren (Auslastung + Erschöpfungsjahr)
 
-import { map } from './02b-gebaeude.js';
+import { map, addGebaeude } from './02b-gebaeude.js';
 import { ASSETS, ASSET_CFG, getAssetStatus } from './13a-assets-core.js';
 import { globalYear } from './01-globals-varianten.js';
 
@@ -26,6 +26,9 @@ const NA_ERZEUG_COLORS = [
 
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 const NA = {
+  // Panel-Tabs
+  activeTab:     'last',     // 'last' | 'trafo' | 'ms'
+
   // Heatmap
   heatmapActive:   false,
   heatmapMode:     'relief',  // 'relief' | 'legacy'
@@ -53,6 +56,7 @@ const NA = {
   naMaxKW:       null,
   naAutoInfo:    null,
   naExistingResults: null,
+  naKCompare:    null,      // Alternativen-Vergleich (Stationen vs. Kabellänge) im Auto-Modus
 
   // Erzeugungsnetz
   erzeugungsnetz:     false,
@@ -606,6 +610,54 @@ function _computeVoronoi(seeds, bbox) {
   });
 }
 
+// ── Geometrischer Median (Weiszfeld) ─────────────────────────────────────────
+// k-Means-Schwerpunkte minimieren die Summe der QUADRIERTEN Abstände — das
+// entspricht nicht der tatsächlichen Zielgröße (kurze Kabeltrassen ≈ Summe der
+// Abstände). Der geometrische Median minimiert die Summe der gewichteten
+// Abstände direkt und liefert damit i. d. R. einen kabelgünstigeren Standort
+// als der arithmetische Schwerpunkt — bei gleicher Cluster-Zuordnung.
+function _geometricMedian(points, initial, maxIter = 60, tol = 1e-9) {
+  if (!points || points.length === 0) return initial;
+  if (points.length === 1) return { lat: points[0].lat, lng: points[0].lng };
+  let x = { lat: initial.lat, lng: initial.lng };
+  for (let iter = 0; iter < maxIter; iter++) {
+    let sumW = 0, sumLat = 0, sumLng = 0, hit = null;
+    for (const p of points) {
+      const dlat = x.lat - p.lat, dlng = x.lng - p.lng;
+      const d = Math.sqrt(dlat * dlat + dlng * dlng);
+      if (d < 1e-12) { hit = p; break; }
+      const w = (p.weight || 1) / d;
+      sumW += w; sumLat += p.lat * w; sumLng += p.lng * w;
+    }
+    if (hit) return { lat: hit.lat, lng: hit.lng };
+    if (sumW === 0) break;
+    const next = { lat: sumLat / sumW, lng: sumLng / sumW };
+    const shift = Math.hypot(next.lat - x.lat, next.lng - x.lng);
+    x = next;
+    if (shift < tol) break;
+  }
+  return x;
+}
+
+// Verschiebt die Cluster-Standorte vom Schwerpunkt zum geometrischen Median —
+// reine Nachbearbeitung der Position, ändert NICHT die Punktzuordnung/Lasten.
+function _refineCentroids(clusters) {
+  for (const cl of clusters) {
+    if (cl.points && cl.points.length > 1) cl.centroid = _geometricMedian(cl.points, cl.centroid);
+  }
+  return clusters;
+}
+
+// Gesamtlänge des minimalen Spannbaums über alle Cluster (für Kosten-Vergleich)
+function _totalMstM(clusters) {
+  let total = 0;
+  for (const cl of clusters) {
+    if (!cl.points?.length) continue;
+    for (const e of _computeMST(cl.centroid, cl.points)) total += e.lengthM;
+  }
+  return total;
+}
+
 // ── k-Means (k-Means++ Init, gewichtet) ─────────────────────────────────────
 function _kMeansCluster(points, k, maxIter = 150, runs = 1, gzf = 1.0) {
   if (points.length === 0) return [];
@@ -919,6 +971,8 @@ export function naSetGzf(v)          { NA.gzf        = parseFloat(v) ?? 0.7; naR
 export function naSetMinUtil(v)      { NA.minUtilPct = parseInt(v) || 0; }
 export function naSetProxRadius(v)   { NA.proxRadius = parseInt(v) || 0; naRenderPanel(); }
 export function naSetUseExisting(v)  { NA.useExisting = !!v; naRenderPanel(); }
+export function naSetTab(tab)        { NA.activeTab = (tab === 'trafo' || tab === 'ms') ? tab : 'last'; naRenderPanel(); }
+export function naApplyKCompare(k)   { NA.mode = 'manual'; NA.k = k; naRunTrafoOptimierung(); }
 export function naSetKabelEurM(v)    { NA.naKabelEurM = parseFloat(v) || 200; naRenderPanel(); }
 export function naSetErzeugungsnetz(v) { NA.erzeugungsnetz = !!v; naRenderPanel(); }
 
@@ -1018,15 +1072,32 @@ export function naRunTrafoOptimierung() {
   }));
 
   let clusters, maxKW = null, autoInfo = null;
+  NA.naKCompare = null;
   if (NA.mode === 'auto') {
     const res = _findAutoK(groupedPts, NA.maxKVA, NA.cosPhi, NA.gzf, NA.minUtilPct);
-    clusters = res.clusters; maxKW = res.maxKW; NA.k = res.k;
+    clusters = _refineCentroids(res.clusters); maxKW = res.maxKW; NA.k = res.k;
     autoInfo = { maxKVA: NA.maxKVA, cosPhi: NA.cosPhi, maxKW, gzf: NA.gzf,
                  minUtilPct: NA.minUtilPct,
                  whaleCount: res.whaleCount || 0, normalK: res.normalK || 0,
                  capacityExceeded: res.capacityExceeded || false, onlyOverflow: existingT.length > 0 };
+
+    // Alternativen-Vergleich: benachbarte Stationszahlen gegenüberstellen
+    // (Stationsanzahl minimiert ≠ Gesamtkosten minimiert — siehe _totalMstM).
+    const maxKAllowed = Math.min(groupedPts.length, 20);
+    const candK = [...new Set([res.k - 1, res.k, res.k + 1])].filter(k => k >= 1 && k <= maxKAllowed);
+    if (candK.length > 1) {
+      NA.naKCompare = candK.sort((a, b) => a - b).map(k => {
+        const cls    = k === res.k ? clusters : _refineCentroids(_kMeansCluster(groupedPts, k, 150, 5));
+        const filled = cls.filter(cl => cl.points.length > 0);
+        const maxAusl = maxKW && filled.length ? Math.max(...filled.map(cl => cl.peakKW / maxKW * 100)) : null;
+        const cableM  = _totalMstM(filled);
+        return { k: filled.length, maxAuslPct: maxAusl != null ? Math.round(maxAusl) : null,
+                 cableM, cableCost: Math.round(cableM * NA.naKabelEurM / 1000),
+                 isChosen: k === res.k };
+      });
+    }
   } else {
-    clusters = _kMeansCluster(groupedPts, NA.k || 3, 150, 5);
+    clusters = _refineCentroids(_kMeansCluster(groupedPts, NA.k || 3, 150, 5));
   }
 
   grpKMeans.clearLayers();
@@ -1091,7 +1162,7 @@ export function naRunTrafoOptimierung() {
       } else {
         erzClusters = _kMeansCluster(weightedErz, NA.k || 3, 150, 5);
       }
-      NA.naErzeugResult = erzClusters.filter(cl => cl.points.length > 0);
+      NA.naErzeugResult = _refineCentroids(erzClusters.filter(cl => cl.points.length > 0));
       NA.naErzeugMaxKW  = erzMaxKW;
       _drawErzeugungClusters(NA.naErzeugResult, erzMaxKW);
     } else {
@@ -1146,45 +1217,96 @@ export function naUebernehmenAlsKompaktstation() {
   const ok = confirm(
     `${allClusters.length} Kompaktstation${allClusters.length !== 1 ? 'en' : ''} erstellen (${sumTxt})?\n\n` +
     'Jede Kompaktstation besteht aus:\n' +
+    '  • Gebäude (Stationsgebäude)\n' +
     '  • Schaltanlage (MS-Seite)\n' +
     '  • Trafo\n' +
     '  • NSHV (NS-Verteiler)\n\n' +
-    'Die drei Komponenten werden leicht versetzt platziert und intern verbunden.'
+    'Die Komponenten werden leicht versetzt im Stationsgebäude platziert und intern verbunden.'
   );
   if (!ok) return;
 
   const DEG_PER_M = 1 / 111320;
+  const WIDTH_M = 3.5, HEIGHT_M = 9.0;
   let created = 0, failed = 0;
+  let gebIdx = (window.gebaeude || []).filter(g => g.fromKompakt).length;
+
+  // Rechteck-Grundriss + intern verteilte Positionen (analog Kompaktstations-Dialog)
+  function _rect(lat, lng) {
+    const dLat = (HEIGHT_M / 2) * DEG_PER_M;
+    const dLng = (WIDTH_M  / 2) * DEG_PER_M / Math.cos(lat * Math.PI / 180);
+    return [
+      L.latLng(lat + dLat, lng - dLng),
+      L.latLng(lat + dLat, lng + dLng),
+      L.latLng(lat - dLat, lng + dLng),
+      L.latLng(lat - dLat, lng - dLng),
+    ];
+  }
+  function _positions(lat, lng, count) {
+    const span = HEIGHT_M * 0.65;
+    const spacingM = count > 1 ? span / (count - 1) : 0;
+    return Array.from({ length: count }, (_, i) => ({
+      lat: lat + (i - (count - 1) / 2) * spacingM * DEG_PER_M,
+      lng,
+    }));
+  }
 
   for (const cl of allClusters) {
     const cx = cl.centroid.lat, cy = cl.centroid.lng;
     const peakKW = cl.kind === 'erzeugung' ? cl.einspeisungKW : cl.peakKW;
     const kva    = _empfKVA(peakKW, NA.cosPhi);
+    const isErz  = cl.kind === 'erzeugung';
 
-    const isErz = cl.kind === 'erzeugung';
+    // Stationsgebäude erzeugen, in dem die Assets verortet werden
+    gebIdx++;
+    const g = addGebaeude({
+      name: `Kompaktstation ${gebIdx}`,
+      nutzung: '',
+      coords: _rect(cx, cy),
+      strom: '0', waerme: '0',
+      skipAutoCreate: true,
+    });
+    g.fromKompakt = true;
+    if (g.polygonLayer) {
+      g.polygonLayer.setStyle({
+        color: '#cf6679', fillColor: '#cf6679',
+        weight: 2, opacity: 0.85, fillOpacity: 0.12,
+      });
+    }
+    const bid = g.id;
+
+    const [pSa, pTrafo, pNshv] = _positions(cx, cy, 3);
 
     // Schaltanlage (am Trafo-Standort, MS-seitig)
-    const sa = createAsset('Schaltanlage', cx, cy, {
-      felder: '4',
-      nennstromA: '630',
+    const sa = createAsset('Schaltanlage', pSa.lat, pSa.lng, {
+      buildingId: bid,
+      props: { felder: '4', nennstromA: '630' },
     });
     if (!sa) { failed++; continue; }
+    if (isErz) sa.name = `${sa.name} (Einsp.)`;
 
-    // Trafo (~10 m nördlich der Schaltanlage) — netzart kennzeichnet Einspeise-Trafo
-    const trafo = createAsset('Trafo', cx + 9 * DEG_PER_M, cy, {
-      leistungKVA: String(kva),
-      ukProzent:   '6',
-      netzart:     isErz ? 'erzeugung' : 'verbrauch',
+    // Trafo — netzart kennzeichnet Einspeise-Trafo
+    const trafo = createAsset('Trafo', pTrafo.lat, pTrafo.lng, {
+      buildingId: bid,
+      props: {
+        leistungKVA: String(kva),
+        ukProzent:   '6',
+        netzart:     isErz ? 'erzeugung' : 'verbrauch',
+      },
     });
     if (!trafo) { failed++; continue; }
+    if (isErz) trafo.name = `${trafo.name} (Einsp.)`;
 
-    // NSHV (~10 m nördlich des Trafos) — gleiche netzart wie Trafo
-    const nshv = createAsset('NSHV', cx + 18 * DEG_PER_M, cy, {
-      nennstromA: String(Math.round(kva * 1000 / (400 * Math.sqrt(3) * 0.9))),
-      abgaenge:   '6',
-      netzart:    isErz ? 'erzeugung' : 'verbrauch',
+    // NSHV — gleiche netzart wie Trafo
+    const nshv = createAsset('NSHV', pNshv.lat, pNshv.lng, {
+      buildingId: bid,
+      props: {
+        nennstromA: String(Math.round(kva * 1000 / (400 * Math.sqrt(3) * 0.9))),
+        abgaenge:   '6',
+        netzart:    isErz ? 'erzeugung' : 'verbrauch',
+      },
     });
     if (!nshv) { failed++; continue; }
+    if (isErz) nshv.name = `${nshv.name} (Einsp.)`;
 
     // SA → Trafo (MS-Kabel), Trafo → NSHV (NS-Kabel)
     addEdge(sa.id, trafo.id);
@@ -1193,10 +1315,17 @@ export function naUebernehmenAlsKompaktstation() {
   }
 
   if (failed > 0) alert(`${created} erstellt, ${failed} fehlgeschlagen.`);
-  else alert(`${created} Kompaktstation${created !== 1 ? 'en' : ''} erfolgreich erstellt.\n\nPositionen können per Drag & Drop angepasst werden.`);
+  else alert(`${created} Kompaktstation${created !== 1 ? 'en' : ''} (inkl. Stationsgebäude) erfolgreich erstellt.\n\nPositionen können per Drag & Drop angepasst werden.`);
 
   if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
   if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+
+  // Trafobereiche (Optimierungs-Vorschau) wieder ausblenden — Kompaktstationen
+  // stehen nun als reale Objekte auf der Karte.
+  _ensureGroups();
+  if (map.hasLayer(grpKMeans))          map.removeLayer(grpKMeans);
+  if (map.hasLayer(grpExistingTrafos))  map.removeLayer(grpExistingTrafos);
+  if (map.hasLayer(grpErzeugungKMeans)) map.removeLayer(grpErzeugungKMeans);
 }
 
 // ── Panel-Rendering ──────────────────────────────────────────────────────────
@@ -1228,37 +1357,37 @@ export function naRenderPanel() {
   const hasAnyResult   = hasResult || (erzResult && erzResult.length > 0);
   const nettoCol       = totalNetto >= 0 ? '#ef5350' : '#42a5f5';
   const nettoSign      = totalNetto >= 0 ? '+' : '';
+  const activeTab      = NA.activeTab || 'last';
 
-  panel.innerHTML = `
-<!-- Übersicht -->
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Übersicht Lastpunkte</div>
-<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;
-     display:grid;grid-template-columns:repeat(4,1fr);gap:4px;text-align:center;">
-  <div><div style="font-size:15px;font-weight:700;color:#ce93d8;">${pts.length}</div>
-       <div style="font-size:9px;color:var(--muted);">Punkte</div></div>
-  <div><div style="font-size:15px;font-weight:700;color:#ef5350;">${totalBezug.toFixed(0)}</div>
-       <div style="font-size:9px;color:var(--muted);">kW Bezug</div></div>
-  <div><div style="font-size:15px;font-weight:700;color:#42a5f5;">${totalEinsp.toFixed(0)}</div>
-       <div style="font-size:9px;color:var(--muted);">kW Einsp.</div></div>
-  <div><div style="font-size:15px;font-weight:700;color:${nettoCol};">${nettoSign}${totalNetto.toFixed(0)}</div>
-       <div style="font-size:9px;color:var(--muted);">kW Netto</div></div>
-</div>
+  const _tabBtn = (id, label, color, tip) => `<button onclick="naSetTab('${id}')" title="${tip}"
+    style="flex:1;padding:7px 4px;cursor:pointer;font-family:inherit;font-size:10px;
+           font-weight:${activeTab===id?'700':'400'};border:none;
+           border-bottom:2px solid ${activeTab===id?color:'transparent'};
+           background:transparent;color:${activeTab===id?color:'var(--muted)'};">${label}</button>`;
 
-<!-- Heatmap -->
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Heatmap (alt/neu)</div>
+  const tabBarHtml = `
+<div style="display:flex;gap:2px;margin-bottom:10px;border-bottom:1px solid var(--border);">
+  ${_tabBtn('last',  '🌡 Lastübersicht',     '#ce93d8', 'Heatmap der räumlichen Verteilung von Verbrauch und Erzeugung auf der Karte anzeigen')}
+  ${_tabBtn('trafo', '⚡ Trafo-Platzierung', '#4fc3f7', 'Optimale Trafo-Standorte automatisch berechnen (Clustering nach Last/Erzeugung) und als Kompaktstationen übernehmen')}
+  ${_tabBtn('ms',    '🔗 MS-Netz',           '#f9a825', 'Mittelspannungsnetz zwischen NAP und Trafos analysieren und automatisch verlegen')}
+</div>`;
+
+  // ── Tab 1: Lastübersicht (Heatmap) ─────────────────────────────────────────
+  const tabLastHtml = `
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Heatmap: Last &amp; Erzeugung</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
   <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
-    Umschaltbar zwischen alter Kreisansicht und neuer Relief-Heatmap.
+    Visualisiert die räumliche Verteilung von Verbrauch und Erzeugung auf der Karte.
   </div>
   <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-    <button onclick="naSetHeatmapMode('legacy')"
+    <button onclick="naSetHeatmapMode('legacy')" title="Heatmap als Kreise darstellen: Größe und Farbe der Kreise zeigen lokale Lastspitzen"
       style="flex:1;padding:4px;border-radius:4px;border:1px solid ${heatMode==='legacy'?'#ffb74d':'#666'};
              color:${heatMode==='legacy'?'#ffb74d':'#999'};background:${heatMode==='legacy'?'rgba(255,183,77,.12)':'transparent'};
-             cursor:pointer;font-family:inherit;font-size:10px;">Kreis (alt)</button>
-    <button onclick="naSetHeatmapMode('relief')"
+             cursor:pointer;font-family:inherit;font-size:10px;">Kreise</button>
+    <button onclick="naSetHeatmapMode('relief')" title="Heatmap als Relief darstellen: flächige Farbverläufe für Verbrauch und Erzeugung mit optionalen Höhenlinien"
       style="flex:1;padding:4px;border-radius:4px;border:1px solid ${heatMode==='relief'?'#81c784':'#666'};
              color:${heatMode==='relief'?'#81c784':'#999'};background:${heatMode==='relief'?'rgba(129,199,132,.12)':'transparent'};
-             cursor:pointer;font-family:inherit;font-size:10px;">Relief (neu)</button>
+             cursor:pointer;font-family:inherit;font-size:10px;">Relief</button>
   </div>
   ${heatMode === 'relief' ? `
   <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
@@ -1290,52 +1419,108 @@ export function naRenderPanel() {
   </div>` : `
   <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     Kreise zeigen lokale Lastspitzen; Radius und Farbe steigen mit der maßgebenden Last.</div>`}
-  <button onclick="naHeatmapToggle(${!heatOn})"
+  <button onclick="naHeatmapToggle(${!heatOn})" title="Heatmap-Überlagerung auf der Karte ein-/ausblenden"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid #b39ddb;color:${heatOn?'#ce93d8':'var(--muted)'};
            background:${heatOn?'rgba(179,157,219,.12)':'transparent'};">
     ${heatOn ? '👁 Heatmap ausblenden' : '👁 Heatmap anzeigen'}
   </button>
-</div>
+</div>`;
 
-<!-- Kabeltrassen -->
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Kabeltrassen (MST)</div>
-<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
-    Minimaler Spannbaum – optimaler Kabelverlauf je Trafo/Zone
-  </div>
-  <button onclick="naKabelToggle(${!kabelOn})"
-    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
-           border:1px solid #80cbc4;color:${kabelOn?'#80cbc4':'var(--muted)'};
-           background:${kabelOn?'rgba(128,203,196,.12)':'transparent'};">
-    ${kabelOn ? '🔌 Ausblenden' : '🔌 Anzeigen'}
-  </button>
-  ${kabelOn && kabelInfo?.totalM > 0 ? `
-  <div style="font-size:10px;color:var(--text);margin:5px 0;">
-    Gesamt: <b style="color:#80cbc4">${(kabelInfo.totalM/1000).toFixed(2)} km</b>
-    &nbsp;·&nbsp; ca. <b style="color:#ffa726">${Math.round(kabelInfo.totalM * kabelEurM / 1000)} k€</b>
-  </div>
-  <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-bottom:6px;">
-    Kostensatz: <input type="number" value="${kabelEurM}" min="50" max="2000" step="10"
-      style="width:60px;background:var(--surface);border:1px solid var(--border);border-radius:3px;
-             color:var(--text);padding:2px 4px;font-size:10px;"
-      oninput="naSetKabelEurM(this.value)"> €/m
-  </div>
-  <div style="background:var(--bg);border-radius:4px;padding:6px 7px;font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
-    💡 Kante auf der Karte <b style="color:#ffb300">anklicken</b> zum Auswählen (gelb).
-  </div>
-  <div style="display:flex;gap:6px;">
-    <button onclick="naKabelSelectAll()" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid #555;color:#888;background:transparent;">alle ☑</button>
-    <button onclick="naKabelSelectNone()" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid #555;color:#888;background:transparent;">keine</button>
-    <button onclick="naImportSelectedKabel()"
-      style="flex:2;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
-             border:1px solid #66bb6a;color:#66bb6a;background:rgba(102,187,106,.1);font-weight:600;">
-      ⬆ Übernehmen (${(NA.naKabelEdges||[]).filter(k=>k.selected).length} ✓)
-    </button>
-  </div>` : ''}
-</div>
+  // ── Ergebnistabelle: alle vorgeschlagenen Trafo-Standorte (Verbrauch + Erzeugung) ──
+  const trafoRows = [];
+  (NA.naResult || []).forEach((cl, i) => {
+    const auslPct = NA.naMaxKW ? Math.round(cl.peakKW / NA.naMaxKW * 100) : null;
+    trafoRows.push({
+      label: cl.isWhale ? `⚡ Direktanschluss ${i + 1}` : `Trafo ${i + 1}`,
+      col: cl.isWhale ? '#ffa726' : NA_CLUSTER_COLORS[i % NA_CLUSTER_COLORS.length],
+      bezugKW: cl.bezugKW, einspeisungKW: cl.einspeisungKW, peakKW: cl.peakKW,
+      auslPct, kva: _kvaEmpfStr(cl.peakKW, NA.cosPhi), points: cl.points.length,
+    });
+  });
+  if (erzeugungsnetz) {
+    (erzResult || []).forEach((cl, i) => {
+      trafoRows.push({
+        label: `☀ Einspeise-Trafo ${i + 1}`,
+        col: NA_ERZEUG_COLORS[i % NA_ERZEUG_COLORS.length],
+        bezugKW: cl.bezugKW, einspeisungKW: cl.einspeisungKW, peakKW: cl.einspeisungKW,
+        auslPct: null, kva: _kvaEmpfStr(cl.einspeisungKW, NA.cosPhi), points: cl.points.length,
+      });
+    });
+  }
+  const trafoResultTableHtml = trafoRows.length === 0 ? '' : `
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Ergebnis: Trafo-Standorte</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:9px;color:var(--text);white-space:nowrap;">
+    <thead>
+      <tr style="color:var(--muted);">
+        <th style="text-align:left;font-weight:400;padding:2px 5px 4px;">Standort</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;">Bezug</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;">Einsp.</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;">Maßgeb.</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;">Ausl.</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;">Empf. Leistung</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;">Pkt.</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${trafoRows.map(r => {
+        const auslCol = r.auslPct == null ? 'var(--muted)' : r.auslPct > 100 ? '#ef5350' : r.auslPct > 80 ? '#ffa726' : '#66bb6a';
+        return `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:3px 5px;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.col};margin-right:5px;"></span>${r.label}
+          </td>
+          <td style="text-align:right;padding:3px 5px;color:#ef5350;">${r.bezugKW.toFixed(0)} kW</td>
+          <td style="text-align:right;padding:3px 5px;color:#42a5f5;">${r.einspeisungKW.toFixed(0)} kW</td>
+          <td style="text-align:right;padding:3px 5px;font-weight:600;">${r.peakKW.toFixed(0)} kW</td>
+          <td style="text-align:right;padding:3px 5px;color:${auslCol};">${r.auslPct != null ? r.auslPct + '%' : '–'}</td>
+          <td style="text-align:right;padding:3px 5px;">${r.kva}</td>
+          <td style="text-align:right;padding:3px 5px;color:var(--muted);">${r.points}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+</div>`;
 
-<!-- Bestehende Trafos -->
+  // ── Alternativen-Vergleich: benachbarte Stationszahlen (Auto-Modus) ──────────
+  const kCompareHtml = (!NA.naKCompare || NA.naKCompare.length < 2) ? '' : `
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Alternativen: Stationszahl vs. Kabellänge</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:9px;color:var(--text);white-space:nowrap;">
+    <thead>
+      <tr style="color:var(--muted);">
+        <th style="text-align:left;font-weight:400;padding:2px 5px 4px;">Stationen</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;">Max. Ausl.</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;">Kabellänge (MST, gesch.)</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;">Kabelkosten (gesch.)</th>
+        <th style="text-align:right;font-weight:400;padding:2px 5px 4px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      ${NA.naKCompare.map(c => {
+        const auslCol = c.maxAuslPct == null ? 'var(--muted)' : c.maxAuslPct > 100 ? '#ef5350' : c.maxAuslPct > 80 ? '#ffa726' : '#66bb6a';
+        return `<tr style="border-top:1px solid var(--border);${c.isChosen ? 'background:rgba(79,195,247,.08);' : ''}">
+          <td style="padding:3px 5px;${c.isChosen ? 'font-weight:700;color:#4fc3f7;' : ''}">${c.k}${c.isChosen ? ' (gewählt)' : ''}</td>
+          <td style="text-align:right;padding:3px 5px;color:${auslCol};">${c.maxAuslPct != null ? c.maxAuslPct + '%' : '–'}</td>
+          <td style="text-align:right;padding:3px 5px;">${(c.cableM/1000).toLocaleString('de-DE',{maximumFractionDigits:1})} km</td>
+          <td style="text-align:right;padding:3px 5px;">${c.cableCost.toLocaleString('de-DE')} T€</td>
+          <td style="text-align:right;padding:3px 5px;">
+            ${c.isChosen ? '' : `<button onclick="naApplyKCompare(${c.k})"
+              style="padding:2px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:9px;
+                     border:1px solid #4fc3f7;color:#4fc3f7;background:transparent;">verwenden</button>`}
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+  <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.4;">
+    Schätzung anhand minimaler Spannbäume; Stations-/Trafokosten sind nicht enthalten (kein Kostenmodell hinterlegt).
+    Weniger Stationen senken i. d. R. die Stationskosten, erhöhen aber die Kabellänge – und umgekehrt.
+  </div>
+</div>`;
+
+  // ── Tab 2: Trafo-Platzierung (Bestand, Optimierung, Ergebnis, Kabeltrassen) ──
+  const tabTrafoHtml = `
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Bestehende Trafos</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
   ${existingT.length === 0
@@ -1373,7 +1558,6 @@ export function naRenderPanel() {
   }
 </div>
 
-<!-- Trafo-Optimierung -->
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">
   ${useExisting && existingT.length > 0 ? 'Neue Trafos für überlastete Zonen' : 'Trafo-Platzierungsvorschlag'}
 </div>
@@ -1408,7 +1592,7 @@ export function naRenderPanel() {
              color:var(--text);border-radius:4px;font-size:11px;"
       oninput="naSetK(this.value)">
   </div>` : `
-  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px;">
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:8px;">
     <div>
       <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Max. kVA</div>
       <select onchange="naSetMaxKVA(this.value)"
@@ -1439,12 +1623,12 @@ export function naRenderPanel() {
                color:var(--text);border-radius:4px;font-size:11px;"
         oninput="naSetMinUtil(this.value)">
     </div>
-    <div>
-      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NSHV-R.</div>
+    <div style="grid-column:span 2;">
+      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NSHV-Bündelungsradius</div>
       <select onchange="naSetProxRadius(this.value)"
         style="width:100%;padding:3px 5px;background:var(--bg);border:1px solid var(--border);
                color:var(--text);border-radius:4px;font-size:11px;">
-        ${[0,10,25,50,100,200].map(v=>`<option value="${v}" ${proxRadius===v?'selected':''}>${v===0?'aus':v+'m'}</option>`).join('')}
+        ${[0,10,25,50,100,200].map(v=>`<option value="${v}" ${proxRadius===v?'selected':''}>${v===0?'aus':v+' m'}</option>`).join('')}
       </select>
     </div>
   </div>
@@ -1453,62 +1637,107 @@ export function naRenderPanel() {
     (${(maxKVA*cosPhi).toFixed(0)} kW × GZF ${gzf.toFixed(1)}).
     ${proxRadius > 0 ? `Punkte ≤ ${proxRadius} m werden zu NSHV-Knoten gebündelt.` : ''}
   </div>`}
-  <button onclick="naRunTrafoOptimierung()"
+  <button onclick="naRunTrafoOptimierung()" title="Optimale Trafo-Standorte per Clustering aus den Lastpunkten berechnen (Anzahl k automatisch oder manuell)"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid #b39ddb;color:#ce93d8;background:transparent;margin-bottom:5px;">
     ⚡ Optimierung berechnen
   </button>
-  ${hasAnyResult ? `
-  <button onclick="naUebernehmenAlsKompaktstation()"
+</div>
+
+${kCompareHtml}
+${trafoResultTableHtml}
+
+${hasAnyResult ? `
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#4fc3f7;margin-bottom:4px;">Ergebnis übernehmen</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;border-left:3px solid #4fc3f7;">
+  <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.4;">
+    Erzeugt reale Gebäude + Elektro-Assets (Schaltanlage, Trafo, NSHV) auf der Karte.
+  </div>
+  <button onclick="naUebernehmenAlsKompaktstation()" title="Berechnete Trafo-Standorte als reale Kompaktstationen (Schaltanlage + Trafo + NSHV) inkl. Gebäude auf der Karte anlegen"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid #4fc3f7;color:#4fc3f7;background:rgba(79,195,247,.08);margin-bottom:5px;font-weight:600;">
     🏗 Als Kompaktstationen übernehmen
   </button>
-  <button onclick="naClearTrafoOptimierung()"
+  <button onclick="naClearTrafoOptimierung()" title="Berechnete Optimierungs-Vorschau (Vorschläge für Trafo-Standorte) wieder verwerfen"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid var(--muted);color:var(--muted);background:transparent;">
-    ✕ Ergebnis löschen</button>` : ''}
-</div>
-
-${erzeugungsnetz && erzResult && erzResult.length > 0 ? `
-<!-- Erzeugungsnetz-Ergebnisse -->
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#26c6da;margin-bottom:4px;">Erzeugungsnetz</div>
-<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;border-left:3px solid #26c6da;">
-  <div style="font-size:10px;color:var(--text);margin-bottom:6px;">
-    <b style="color:#26c6da;">${erzResult.length} Einspeise-Trafo${erzResult.length !== 1 ? 's'  : ''}</b> für Erzeugungsnetz
-  </div>
-  ${erzResult.map((cl, i) => {
-    const col = NA_ERZEUG_COLORS[i % NA_ERZEUG_COLORS.length];
-    const kva = _empfKVA(cl.einspeisungKW, NA.cosPhi);
-    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid var(--border);">
-      <div style="width:16px;height:16px;background:${col};border-radius:50%;flex-shrink:0;display:flex;
-                  align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;">E</div>
-      <span style="font-size:10px;color:var(--text);flex:1;">EZ ${i+1}</span>
-      <span style="font-size:9px;color:#26c6da;white-space:nowrap;">${cl.einspeisungKW.toFixed(0)} kW</span>
-      <span style="font-size:9px;color:var(--muted);white-space:nowrap;">${kva} kVA</span>
-      <span style="font-size:9px;color:var(--muted);white-space:nowrap;">${cl.points.length} Pkt.</span>
-    </div>`;
-  }).join('')}
+    ✕ Optimierungs-Vorschau löschen</button>
 </div>` : ''}
 
-<!-- MS-Netz -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Kabeltrassen (MST)</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+    Minimaler Spannbaum – optimaler Kabelverlauf je Trafo/Zone
+  </div>
+  <button onclick="naKabelToggle(${!kabelOn})" title="Vorgeschlagene Kabeltrassen (minimaler Spannbaum je Trafo/Zone) auf der Karte ein-/ausblenden"
+    style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+           border:1px solid #80cbc4;color:${kabelOn?'#80cbc4':'var(--muted)'};
+           background:${kabelOn?'rgba(128,203,196,.12)':'transparent'};">
+    ${kabelOn ? '🔌 Ausblenden' : '🔌 Anzeigen'}
+  </button>
+  ${kabelOn && kabelInfo?.totalM > 0 ? `
+  <div style="font-size:10px;color:var(--text);margin:5px 0;">
+    Gesamt: <b style="color:#80cbc4">${(kabelInfo.totalM/1000).toFixed(2)} km</b>
+    &nbsp;·&nbsp; ca. <b style="color:#ffa726">${Math.round(kabelInfo.totalM * kabelEurM / 1000)} k€</b>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-bottom:6px;">
+    Kostensatz: <input type="number" value="${kabelEurM}" min="50" max="2000" step="10"
+      style="width:60px;background:var(--surface);border:1px solid var(--border);border-radius:3px;
+             color:var(--text);padding:2px 4px;font-size:10px;"
+      oninput="naSetKabelEurM(this.value)"> €/m
+  </div>
+  <div style="background:var(--bg);border-radius:4px;padding:6px 7px;font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
+    💡 Kante auf der Karte <b style="color:#ffb300">anklicken</b> zum Auswählen (gelb).
+  </div>
+  <div style="display:flex;gap:6px;">
+    <button onclick="naKabelSelectAll()" title="Alle vorgeschlagenen Kabeltrassen auswählen" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid #555;color:#888;background:transparent;">alle ☑</button>
+    <button onclick="naKabelSelectNone()" title="Auswahl der Kabeltrassen aufheben" style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid #555;color:#888;background:transparent;">keine</button>
+    <button onclick="naImportSelectedKabel()" title="Ausgewählte Kabeltrassen als reale Leitungen ins Stromnetz übernehmen"
+      style="flex:2;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+             border:1px solid #66bb6a;color:#66bb6a;background:rgba(102,187,106,.1);font-weight:600;">
+      ⬆ Übernehmen (${(NA.naKabelEdges||[]).filter(k=>k.selected).length} ✓)
+    </button>
+  </div>` : ''}
+</div>`;
+
+  // ── Tab 3: MS-Netz ──────────────────────────────────────────────────────────
+  const tabMsHtml = `
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">MS-Netz (Mittelspannung)</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
   <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
     MS-Ring-Erkennung und (n-1)-Analyse
   </div>
-  <button onclick="elRunMSAnalyse()"
+  <button onclick="elRunMSAnalyse()" title="Mittelspannungsnetz auf Ringstrukturen untersuchen und (n-1)-Ausfallsicherheit prüfen"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid #f9a825;color:#f9a825;background:transparent;margin-bottom:5px;">
     ⊞ MS-Topologie analysieren
   </button>
-  <button onclick="clearMSRings()"
+  <button onclick="clearMSRings()" title="MS-Ring-Überlagerung wieder von der Karte entfernen"
     style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
            border:1px solid var(--muted);color:var(--muted);background:transparent;">
     ✕ MS-Overlay ausblenden
   </button>
   <div id="ms-ring-results" style="margin-top:8px;font-size:10px;"></div>
 </div>`;
+
+  panel.innerHTML = `
+<!-- Übersicht -->
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Übersicht Lastpunkte</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;
+     display:grid;grid-template-columns:repeat(4,1fr);gap:4px;text-align:center;">
+  <div><div style="font-size:15px;font-weight:700;color:#ce93d8;">${pts.length}</div>
+       <div style="font-size:9px;color:var(--muted);">Punkte</div></div>
+  <div><div style="font-size:15px;font-weight:700;color:#ef5350;">${totalBezug.toFixed(0)}</div>
+       <div style="font-size:9px;color:var(--muted);">kW Bezug</div></div>
+  <div><div style="font-size:15px;font-weight:700;color:#42a5f5;">${totalEinsp.toFixed(0)}</div>
+       <div style="font-size:9px;color:var(--muted);">kW Einsp.</div></div>
+  <div><div style="font-size:15px;font-weight:700;color:${nettoCol};">${nettoSign}${totalNetto.toFixed(0)}</div>
+       <div style="font-size:9px;color:var(--muted);">kW Netto</div></div>
+</div>
+
+${tabBarHtml}
+
+${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'ms' ? tabMsHtml : tabLastHtml}`;
 }
 
 // ── Panel-Toggle ─────────────────────────────────────────────────────────────
