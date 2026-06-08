@@ -1,5 +1,5 @@
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
-import { _expandedIds, globalYear, isExcluded, selectedId, stromEdges } from './01-globals-varianten.js';
+import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustand, globalYear, isExcluded, selectedId, stromEdges } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh, highlightCard, map,
          getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
@@ -1043,7 +1043,7 @@ function _renderFelddatenBlock(g) {
     ? `<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
     : '';
   const fotoHtml = (g.feldFotos || []).map(foto =>
-    `<img src="${foto.dataUrl}" title="${escHtml(foto.name)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="window.open(this.src)">`
+    `<img src="${foto.dataUrl}" title="${escHtml(foto.name)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="openImageLightbox(this.src,this.title)">`
   ).join('');
 
   return `
@@ -1167,10 +1167,7 @@ export function _buildProjectData() {
     pefPellets: pefPellets, pefHhs: pefHhs, pefFernwaerme: pefFernwaerme,
     wirtBausteineOverrides: window._wirtBausteineOverrides || {},
     wirtVdiOverrides: window._wirtVdiOverrides || {},
-    varianten: varianten,
-    activeVariantId: activeVariantId,
-    baseNetzSnapshot: baseNetzSnapshot,
-    baseErzeugerSnapshot: baseErzeugerSnapshot,
+    ..._captureVariantenKernzustand(),
     stromNetz: {
       nodes: stromNodes.filter(n => n.type !== 'geb' && n.type !== 'erzeuger' && n.type !== 'junction').map(n => ({
         id: n.id, type: n.type, lat: n.lat, lng: n.lng, label: n.label,
@@ -1541,11 +1538,14 @@ export function _loadProject(project) {
       // Wirtschaftlichkeits-Overrides wiederherstellen
       if (project.wirtBausteineOverrides) window._wirtBausteineOverrides = project.wirtBausteineOverrides;
       if (project.wirtVdiOverrides)       window._wirtVdiOverrides       = project.wirtVdiOverrides;
-      // Varianten wiederherstellen
-      varianten = project.varianten || [];
-      baseNetzSnapshot = project.baseNetzSnapshot || null;
-      baseErzeugerSnapshot = project.baseErzeugerSnapshot || null;
-      activeVariantId = null; // Immer mit Basisdaten starten beim Laden
+      // Varianten wiederherstellen (immer mit Basisdaten starten beim Laden)
+      _restoreVariantenKernzustand({
+        varianten: project.varianten || [],
+        activeVariantId: null,
+        baseNetzSnapshot: project.baseNetzSnapshot || null,
+        baseErzeugerSnapshot: project.baseErzeugerSnapshot || null,
+        baseStromNetzSnapshot: project.baseStromNetzSnapshot || null,
+      });
       renderVariantenBar();
       updateVariantBanner();
 

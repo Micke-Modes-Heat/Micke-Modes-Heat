@@ -496,7 +496,7 @@ export function showAutofillWizard() {
       slpAssignments: {},   // gId → slpId (Wizard-Session)
       slpWpm2Overrides: {}, // slpId → wpm2 (Wizard-Session, temporär)
     },
-    infoOpen: true,
+    infoOpen: false,
   };
 
   const overlay = document.createElement('div');

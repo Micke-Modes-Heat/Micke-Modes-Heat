@@ -33,6 +33,7 @@ export function buildPalette() {
       const btn = document.createElement('button');
       btn.className = 'asset-palette-btn' + (group.fullWidth ? ' full-width' : '');
       btn.dataset.type = type;
+      if (cfg.beschreibung) btn.title = cfg.beschreibung;
       btn.innerHTML = `<span class="asset-palette-btn-icon" style="color:${cfg.color}">${cfg.icon}</span><span>${cfg.label}</span>`;
       btn.addEventListener('click', () => setPendingType(type));
       panel.appendChild(btn);

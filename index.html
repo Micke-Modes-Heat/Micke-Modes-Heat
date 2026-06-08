@@ -27,9 +27,7 @@
   </div>
   <div class="header-spacer" style="flex:1;"></div>
   <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Kartenebenen ein-/ausblenden">⊞ Ebenen</button>
-  <button class="tool-btn" id="btn-felddaten-filter" data-click="toggleFelddatenFilter()" style="border-color:#f59e0b;color:#f59e0b;font-size:11px;padding:0 10px;gap:5px;" title="Nur Objekte mit Felddaten anzeigen">&#128241; Felddaten</button>
-  <button class="tool-btn" id="btn-galerie" data-click="openFotoGalerie()" style="border-color:#8b5cf6;color:#8b5cf6;font-size:11px;padding:0 10px;gap:5px;" title="Fotogalerie aus Feldbegehung">&#128247; Galerie</button>
-  <button class="tool-btn" id="btn-bericht" data-click="exportBegehungsbericht()" style="border-color:#0891b2;color:#0891b2;font-size:11px;padding:0 10px;gap:5px;" title="Begehungsbericht als druckbares HTML erzeugen">&#128203; Bericht</button>
+  <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱</button>
   <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;" title="Farbschema wechseln">🎨</button>
   <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;">🛰</button>
   <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
@@ -318,7 +316,7 @@
         <div id="el-sec-komp">
           <div id="asset-palette" class="asset-palette-inline"></div>
           <div class="lp-tool-grid" style="margin-top:6px;">
-            <button class="lp-tool-btn" data-click="showKompaktstationDialog()" style="border-color:#cf6679;color:#cf6679;grid-column:1/-1;">🏗 Kompaktstation platzieren</button>
+            <button class="lp-tool-btn" data-click="showKompaktstationDialog()" style="border-color:#cf6679;color:#cf6679;grid-column:1/-1;" title="Kompaktstation (Schaltanlage + Trafo + NSHV als Einheit) per Klick auf der Karte platzieren">🏗 Kompaktstation platzieren</button>
           </div>
         </div>
 
@@ -331,14 +329,14 @@
             <button class="lp-tool-btn" id="btn-draw-trasse" data-click="toggleDrawTrasse()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;">✏ Trasse zeichnen</button>
           </div>
           <div class="lp-tool-grid" style="margin-top:6px;">
-            <button class="lp-tool-btn" id="btn-osm-strassen" data-click="loadOsmStrassen()" style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;">↓ Straßen aus OSM laden</button>
+            <button class="lp-tool-btn" id="btn-osm-strassen" data-click="loadOsmStrassen()" style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;" title="Straßenverläufe aus OpenStreetMap im aktuellen Kartenausschnitt laden — als Vorlage für Trassenführung">↓ Straßen aus OSM laden</button>
           </div>
           <div class="lp-tool-grid" style="margin-top:4px;">
-            <button class="lp-tool-btn" data-click="adoptAllOsmStrassen()" style="grid-column:1/-1;font-size:11px;border-color:#ff9800;color:#ff9800;">✓ Alle übernehmen</button>
+            <button class="lp-tool-btn" data-click="adoptAllOsmStrassen()" style="grid-column:1/-1;font-size:11px;border-color:#ff9800;color:#ff9800;" title="Alle geladenen OSM-Straßen auf einmal als Elektrotrassen übernehmen">✓ Alle übernehmen</button>
           </div>
           <div class="lp-tool-grid" style="margin-top:4px;">
-            <button class="lp-tool-btn" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()" style="font-size:11px;">👁 Ausblenden</button>
-            <button class="lp-tool-btn" data-click="clearOsmStrassen()" style="font-size:11px;border-color:#e57373;color:#e57373;">✕ Löschen</button>
+            <button class="lp-tool-btn" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()" style="font-size:11px;" title="Eingeblendete OSM-Straßen auf der Karte ein-/ausblenden">👁 Ausblenden</button>
+            <button class="lp-tool-btn" data-click="clearOsmStrassen()" style="font-size:11px;border-color:#e57373;color:#e57373;" title="Alle geladenen OSM-Straßen wieder von der Karte entfernen">✕ Löschen</button>
           </div>
         </div>
 
@@ -351,7 +349,7 @@
             <button class="lp-tool-btn" data-click="startDrawStromEdge()" id="btn-draw-strom-edge" style="grid-column:1/-1;">— Kabel zeichnen</button>
           </div>
           <div class="lp-tool-grid" style="margin-top:6px;">
-            <button class="lp-tool-btn" data-click="showAutoNetzDialog()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;">🔌 Auto-Netz</button>
+            <button class="lp-tool-btn" data-click="showAutoNetzDialog()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;" title="Stromnetz automatisch generieren: verbindet Komponenten anhand von Trassen/Distanzen zu einem vollständigen Netz">🔌 Auto-Netz</button>
           </div>
         </div>
 
@@ -361,14 +359,14 @@
         </div>
         <div id="el-sec-calc">
           <div class="lp-tool-grid" style="margin-bottom:8px;">
-            <button class="lp-tool-btn" data-click="elCalcAssets()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;">⚡ Elektroberechnung</button>
-            <button class="lp-tool-btn" id="btn-sld-toggle" data-click="sldToggle()" style="grid-column:1/-1;border-color:#80cbc4;color:#80cbc4;">🔌 Einlinienschema</button>
-            <button class="lp-tool-btn" data-click="showInvestitionsplan()" style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;">📋 Investitionsplan</button>
-            <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()" style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;">🗺️ Netzanalyse</button>
-            <button class="lp-tool-btn" data-click="exportMassnahmenPDF()" style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;">📄 Maßnahmenbericht PDF</button>
-            <button class="lp-tool-btn" data-click="exportVollstaendigXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;">📊 Export Excel (vollständig)</button>
-            <button class="lp-tool-btn" data-click="importVollstaendigXLSX()" style="grid-column:1/-1;border-color:#81d4fa;color:#81d4fa;">📥 Import Excel</button>
-            <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;">⚙ Auto-Netz aus Gebäudedaten</button>
+            <button class="lp-tool-btn" data-click="elCalcAssets()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets durchführen">⚡ Elektroberechnung</button>
+            <button class="lp-tool-btn" id="btn-sld-toggle" data-click="sldToggle()" style="grid-column:1/-1;border-color:#80cbc4;color:#80cbc4;" title="Einlinienschema (schematische Netzdarstellung) ein-/ausblenden">🔌 Einlinienschema</button>
+            <button class="lp-tool-btn" data-click="showInvestitionsplan()" style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;" title="Investitionsplan für das Stromnetz anzeigen: Kosten der geplanten Komponenten und Maßnahmen über die Jahre">📋 Investitionsplan</button>
+            <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()" style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;" title="Netzanalyse öffnen: Lastübersicht, automatische Trafo-Platzierung und MS-Netz-Analyse">🗺️ Netzanalyse</button>
+            <button class="lp-tool-btn" data-click="exportMassnahmenPDF()" style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;" title="Maßnahmenbericht für das Stromnetz als PDF exportieren">📄 Maßnahmenbericht PDF</button>
+            <button class="lp-tool-btn" data-click="exportVollstaendigXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;" title="Alle Stromnetz-Daten (Assets, Leitungen, Maßnahmen) als Excel-Datei exportieren">📊 Export Excel (vollständig)</button>
+            <button class="lp-tool-btn" data-click="importVollstaendigXLSX()" style="grid-column:1/-1;border-color:#81d4fa;color:#81d4fa;" title="Stromnetz-Daten aus einer zuvor exportierten Excel-Datei importieren">📥 Import Excel</button>
+            <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;" title="Stromnetz automatisch aus den hinterlegten Gebäudedaten ableiten und berechnen — schneller Einstieg ohne manuelle Platzierung">⚙ Auto-Netz aus Gebäudedaten</button>
             <button class="lp-tool-btn" data-click="showAutofillWizard()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Verbrauchs- und PV-Werte automatisch ermitteln">✦ Auto-Befüllen (Verbrauch & PV)</button>
           </div>
           <div id="lp-el-calc-result" style="display:none;margin-bottom:8px;font-size:9px;color:var(--text);background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);"></div>
@@ -658,6 +656,23 @@
             onclick="naTogglePanel()">✕</span>
     </div>
     <div id="netzanalyse-content"></div>
+  </div>
+
+  <!-- ── Feldapp-Panel ────────────────────────────────────────────────────── -->
+  <div id="feldapp-panel" class="float-panel"
+       style="display:none;top:60px;min-width:220px;max-width:260px;
+              padding:12px 16px 14px;border:1px solid #8b5cf6;--panel-accent:#8b5cf6;">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'feldapp-panel')">
+      <span style="color:#8b5cf6;font-size:12px;font-weight:600;">📱 Feldapp</span>
+      <span class="drag-dots">⠿</span>
+      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
+            onclick="toggleFeldappPanel()">✕</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+      <button class="tool-btn" id="btn-felddaten-filter" data-click="toggleFelddatenFilter()" style="border-color:#f59e0b;color:#f59e0b;font-size:11px;justify-content:flex-start;width:100%;" title="Nur Objekte mit Felddaten anzeigen">&#128241; Felddaten</button>
+      <button class="tool-btn" id="btn-galerie" data-click="openFotoGalerie()" style="border-color:#8b5cf6;color:#8b5cf6;font-size:11px;justify-content:flex-start;width:100%;" title="Fotogalerie aus Feldbegehung">&#128247; Galerie</button>
+      <button class="tool-btn" id="btn-bericht" data-click="exportBegehungsbericht()" style="border-color:#0891b2;color:#0891b2;font-size:11px;justify-content:flex-start;width:100%;" title="Begehungsbericht als druckbares HTML erzeugen">&#128203; Bericht</button>
+    </div>
   </div>
 
   <!-- ── Einlinienschema Panel ────────────────────────────────────────────── -->

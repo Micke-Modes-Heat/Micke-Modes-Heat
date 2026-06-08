@@ -62,10 +62,11 @@ export const HILFE_TEXTE = {
   'btn-status-toggle': 'Status-Panel: Übersicht aller Erzeuger mit Deckungsanteilen und Kennwerten.',
 
   // Strom-Netz
-  'btn-place-nap': 'NAP = Netzanknüpfungspunkt. Der Einspeisepunkt vom Mittelspannungsnetz. Zuerst platzieren.',
-  'btn-place-trafo': 'Transformator platzieren: Wandelt Mittelspannung in Niederspannung um.',
-  'btn-place-nshv': 'Niederspannungs-Hauptverteilung: Verteilt den Strom an die Gebäude.',
   'btn-draw-strom-edge': 'Kabel zeichnen: Verbindet Strom-Komponenten (NAP → Trafo → NSHV → Gebäude).',
+  'btn-sld-toggle': 'Einlinienschema: schematische Übersicht des Stromnetzes (Schaltanlagen, Trafos, NSHV, Abgänge) als Strukturdiagramm.',
+  'btn-netzanalyse-toggle': 'Netzanalyse: Lastübersicht (Heatmap), automatische Trafo-Standort-Optimierung und MS-Netz-Analyse (Ringe, n-1-Sicherheit) für das Stromnetz.',
+  'btn-osm-strassen': 'Lädt Straßenverläufe aus OpenStreetMap im aktuellen Kartenausschnitt — als Vorlage zum schnellen Anlegen von Elektrotrassen.',
+  'btn-osm-strassen-toggle': 'Blendet die geladenen OSM-Straßen auf der Karte ein oder aus.',
 
   // Erzeuger aktivieren / platzieren
   'btn-activate-gaskessel': 'Gaskessel aktivieren und dem Erzeugermix hinzufügen.',

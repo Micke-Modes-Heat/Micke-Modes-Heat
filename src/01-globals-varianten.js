@@ -537,6 +537,38 @@ export let varianten = [];
 export let activeVariantId = null;
 export let baseNetzSnapshot = null;
 export let baseErzeugerSnapshot = null;
+export let baseStromNetzSnapshot = null;
+
+// ── Persistenz-Helfer für die Varianten-Kernzustände ────────────────────────
+// Andere Module (z.B. _buildProjectData/_loadProject in 03c-gebaeude-io.js)
+// dürfen die obigen `let`-Exports NICHT direkt neu zuweisen (ES-Module-Bindings
+// sind read-only für Importeure) — und auch nicht über `window.*` umgehen,
+// da main.js beim Start nur eine einmalige Kopie auf window legt (kein Live-
+// Binding) und spätere Reassignments hier sonst dort nicht ankämen (stale).
+// Stattdessen über diese Helfer lesen/schreiben:
+export function _captureVariantenKernzustand() {
+  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot };
+}
+export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs } = {}) {
+  varianten = v || [];
+  activeVariantId = (aid === undefined) ? null : aid;
+  baseNetzSnapshot = bn || null;
+  baseErzeugerSnapshot = be || null;
+  baseStromNetzSnapshot = bs || null;
+}
+
+// ── Stromnetz-Snapshot (Elektroassets/Kabel) — variantenspezifischer "Ast" ──
+// captureStromNetzState/applyStromNetzState leben in 05b-stromnetz.js (haben
+// dort direkten Zugriff auf ASSETS/stromEdges/stromNodes). Um einen Zirkelimport
+// zu vermeiden (05b-stromnetz importiert aus dieser Datei), werden sie hier nur
+// defensiv über window.* aufgerufen — analog zum bestehenden Muster für
+// removeStromNode/redrawAllAssets/recalcStromNetz in anderen Modulen.
+function _captureStromNetzState() {
+  return (typeof window.captureStromNetzState === 'function') ? window.captureStromNetzState() : null;
+}
+function _applyStromNetzState(state) {
+  if (typeof window.applyStromNetzState === 'function') window.applyStromNetzState(state);
+}
 
 export function captureNetzState() {
   return {
@@ -811,20 +843,23 @@ export function activateVariant(id) {
   if (activeVariantId === null) {
     baseNetzSnapshot = captureNetzState();
     baseErzeugerSnapshot = captureErzeugerState();
+    baseStromNetzSnapshot = _captureStromNetzState();
   } else {
     const cur = varianten.find(v => v.id === activeVariantId);
-    if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); }
+    if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); cur.stromnetz = _captureStromNetzState(); }
   }
   // Neuen Zustand anwenden
   activeVariantId = id;
   if (id === null) {
     applyNetzState(baseNetzSnapshot);
     applyErzeugerState(baseErzeugerSnapshot);
+    _applyStromNetzState(baseStromNetzSnapshot);
   } else {
     const target = varianten.find(v => v.id === id);
     if (!target) return;
     applyNetzState(target.netz);
     applyErzeugerState(target.erzeuger);
+    _applyStromNetzState(target.stromnetz);
   }
   renderVariantenBar();
   updateVariantBanner();
@@ -837,9 +872,18 @@ export function addVariante() {
   if (activeVariantId === null) {
     baseNetzSnapshot = captureNetzState();
     baseErzeugerSnapshot = captureErzeugerState();
+    baseStromNetzSnapshot = _captureStromNetzState();
   }
   const id = 'v_' + Date.now();
-  varianten.push({ id, name, netz: captureNetzState(), erzeuger: captureErzeugerState(), gebaeudeAusschlüsse: [] });
+  // Neue Variante = Ast vom AKTUELL aktiven Zustand (inkl. Stromnetz/Elektroassets) —
+  // so lassen sich z.B. eigene Erzeugungstrafos mit einer bestehenden Integration vergleichen
+  varianten.push({
+    id, name,
+    netz: captureNetzState(),
+    erzeuger: captureErzeugerState(),
+    stromnetz: _captureStromNetzState(),
+    gebaeudeAusschlüsse: []
+  });
   activeVariantId = id;
   renderVariantenBar();
   updateVariantBanner();

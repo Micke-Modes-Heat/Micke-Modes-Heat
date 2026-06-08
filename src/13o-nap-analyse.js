@@ -165,6 +165,7 @@ export function napBuildAnalyseSection() {
     btn.dataset.section = 'nap';
     btn.dataset.click = "setAnalyseSection('nap')";
     btn.textContent = 'NAP-Lastgang';
+    btn.title = 'NAP-Lastgang-Analyse: zeitlicher Verlauf von Bezug und Einspeisung am Netzanknüpfungspunkt — Jahresdauerlinie, Spitzenlasten und Gleichzeitigkeit über alle Verbraucher/Erzeuger.';
     tabBar.appendChild(btn);
     // data-click delegation
     btn.addEventListener('click', () => {

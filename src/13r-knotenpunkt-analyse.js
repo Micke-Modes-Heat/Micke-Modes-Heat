@@ -1089,6 +1089,7 @@ export function knaBuildAnalyseSection() {
     btn.className='analyse-section-tab';
     btn.dataset.section='kna';
     btn.textContent='Knotenpunkt-Analyse';
+    btn.title='Knotenpunkt-Analyse: zeitlicher Verlauf von Last, Auslastung und Spannungsfall an einem ausgewählten Stromnetz-Asset (z. B. Trafo, NSHV) — Jahresdauerlinie und Spitzenwerte.';
     btn.addEventListener('click',()=>{ if (typeof window.setAnalyseSection==='function') window.setAnalyseSection('kna'); });
     tabBar.appendChild(btn);
   }
