@@ -1487,28 +1487,16 @@ export function _recalcStromNetzInner() {
   window.stromEdges.forEach(e => {
     const absKw = Math.abs(e.peakFlowKw);
 
-    // MS-Kabel: Strom mit MS-Spannung — keine NS-Kabelauslegung
+    // MS-Kabel: Strom und Auslastung mit MS-Spannung — keine NS-Kabelauslegung
     if (e.msLevel) {
-      const uMsKv = parseFloat(
+      const napNode = window.stromNodes.find(n => n.type === 'nap');
+      const uMs = (parseFloat(
         (typeof ASSETS !== 'undefined' ? ASSETS.items : []).find(a => a.type === 'NAP')?.props?.spannungKV
-      ) || 20;
-      const uMs = uMsKv * 1000;
-      e._uMsKv = uMsKv;
+      ) || 20) * 1000;
       e.peakCurrentA = calcStrom(absKw, uMs, cosPhi);
       e.flowDirection = (e.peakFlowKw_V ?? 1) >= (e.peakFlowKw_G ?? 0) ? 1 : -1;
-      e.deltaUPct = 0;
-      // MS-Kabelimpedanz (für Ik''): physikalisch korrekt, aber nach 400V-Referenz
-      // vernachlässigbar klein (Z_NS = Z_MS × (400/20000)² → < 1/2500 der NS-Impedanz)
-      const ktMs = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
-      const Rms = calcRhoKorr(ktMs.rhoOhmMm2pM, ktMs.alphaK || 0.004, tLeiter) / (e.crossSection || 240);
-      const secMs = ktMs.sections?.find(s => s.mm2 === (e.crossSection || 240));
-      // Auslastung: thermischer Nennstrom Iz gilt unabhängig von Spannung (Erwärmung = f(I))
-      e.ratedCurrentA = (secMs?.Iz ?? 0) * kIz;
-      e.auslastungPct = e.ratedCurrentA > 0 ? (e.peakCurrentA / e.ratedCurrentA) * 100 : 0;
-      const Xms = secMs?.xMuOhmPerM ? secMs.xMuOhmPerM / 1e6 : 0.00008;
-      const ratio2 = (400 / uMs) ** 2; // Transformationsquadrat auf 400V-Seite
-      e._R_total = Rms * e.lengthM * ratio2;
-      e._X_total = Xms * e.lengthM * ratio2;
+      e.ratedCurrentA = 0; e.auslastungPct = 0; e.deltaUPct = 0;
+      e._R_total = 0; e._X_total = 0;
       return;
     }
 
