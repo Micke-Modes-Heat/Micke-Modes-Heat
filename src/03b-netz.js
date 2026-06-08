@@ -11,6 +11,7 @@ import { drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon 
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
+import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 
 export function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
@@ -217,6 +218,7 @@ export function calcGeoThermie() {
     }
     redrawGeo();
     if (!window._wirtRefreshing) _geoTriggerDispatch();
+    updateErzeugerAssetProps('geo');
   } else {
     // geoThermie nicht gesetzt — trotzdem leistung-eff aktualisieren
     const effEl = document.getElementById('geo-leistung-eff');
@@ -253,6 +255,7 @@ export function placeGeoAt(latlng) {
   window.geoThermie = { lat: latlng.lat, lng: latlng.lng, n_sonden: 0, cols: 1, rows: 1, abstand, tiefe, flaeche: 0, breite: 0, laenge: 0 };
   moBeiAktivierung('geo');
   calcGeoThermie();
+  syncErzeugerElektroAsset('geo');
   document.getElementById('btn-place-geo').textContent = 'Position verschieben';
   redrawErzeugerIcons();
 }
@@ -340,7 +343,7 @@ export function redrawGeo() {
   // Zentrum verschieben
   const geoIcon = L.divIcon({ className: '', html: '<div style="width:26px;height:26px;background:rgba(121,85,72,0.35);border:2px solid #795548;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;">' + drillSvg('#a1887f',14,20) + '</div>', iconSize: [26,26], iconAnchor: [13,13] });
   L.marker(center, { draggable: true, icon: geoIcon, zIndexOffset: 1000 }).addTo(window.geoLayerGroup)
-    .on('dragend', function() { window.geoThermie.lat = this.getLatLng().lat; window.geoThermie.lng = this.getLatLng().lng; redrawGeo(); });
+    .on('dragend', function() { window.geoThermie.lat = this.getLatLng().lat; window.geoThermie.lng = this.getLatLng().lng; redrawGeo(); moveErzeugerElektroAsset('geo'); });
   if (!map.hasLayer(window.geoLayerGroup)) window.geoLayerGroup.addTo(map);
   redrawVerbindungslinien();
 }
@@ -354,6 +357,7 @@ export function setGeoVisible(visible) {
 export function clearGeo() {
   window.geoThermie = null;
   moBeiDeaktivierung('geo');
+  removeErzeugerElektroAsset('geo');
   if (window.geoLayerGroup) window.geoLayerGroup.clearLayers();
   document.getElementById('btn-place-geo').textContent = 'Auf Karte platzieren';
   // Manuelle Maße zurücksetzen damit sie nicht in andere Varianten bluten
@@ -381,9 +385,9 @@ export function cancelDraw(){
 
 export function finishDraw(){
   if(window.drawPoints.length < 3) return;
-  const id=window.drawingId,pts=[...drawPoints];
+  const id=window.drawingId,pts=[...(window.drawPoints||drawPoints)];
   cancelDraw();
-  const g=gebaeude.find(x=>x.id===id);if(!g) return;
+  const g=(window.gebaeude||gebaeude).find(x=>x.id===id);if(!g) return;
   g.polygon=pts;
   g.flaeche=polygonAreaM2(pts);
   attachPolygonLayer(g);

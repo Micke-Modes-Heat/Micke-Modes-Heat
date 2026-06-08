@@ -17,9 +17,12 @@ import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { _optPopulateYearSelect, _optUpdateEstimate } from './10a-optimizer-core.js';
 import { _liveStopPlay, _onHourSlider } from './10b-hourly-live.js';
+import { autoGkResult, meritOrderKeys } from './06c-dispatch-core.js';
 import { ERZEUGER_CFG, NUTZUNG_DEFAULTS } from './config/erzeuger-cfg.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
 import { napBuildAnalyseSection, napShowSection } from './13o-nap-analyse.js';
+import { knaBuildAnalyseSection, knaShowSection } from './13r-knotenpunkt-analyse.js';
+import { pvaBuildAnalyseSection, pvaShowSection } from './09d-pv-analyse.js';
 
 export function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
@@ -624,16 +627,16 @@ export function setViewMode(mode) {
   // Update header tabs
   document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
   // Show/hide center views
-  const analyseView = document.getElementById('center-analyse-view');
+  const analyseView    = document.getElementById('center-analyse-view');
   const optimierungView = document.getElementById('center-optimierung-view');
-  const vergleichView = document.getElementById('center-vergleich-view');
-  const liveView = document.getElementById('center-live-view');
-  const vergleichOld = document.getElementById('vergleich-panel');
-  if (analyseView) analyseView.style.display = mode === 'analyse' ? 'block' : 'none';
+  const vergleichView  = document.getElementById('center-vergleich-view');
+  const liveView       = document.getElementById('center-live-view');
+  const vergleichOld   = document.getElementById('vergleich-panel');
+  if (analyseView)     analyseView.style.display     = mode === 'analyse'     ? 'block' : 'none';
   if (optimierungView) optimierungView.style.display = mode === 'optimierung' ? 'block' : 'none';
-  if (vergleichView) vergleichView.style.display = mode === 'vergleich' ? 'block' : 'none';
-  if (liveView) liveView.style.display = mode === 'live' ? 'flex' : 'none';
-  if (vergleichOld) vergleichOld.style.display = 'none'; // always hide old panel
+  if (vergleichView)   vergleichView.style.display   = mode === 'vergleich'   ? 'block' : 'none';
+  if (liveView)        liveView.style.display        = mode === 'live'        ? 'flex'  : 'none';
+  if (vergleichOld) vergleichOld.style.display = 'none';
   // Inline-Panels zurücksetzen bevor Modus wechselt
   if (typeof _restoreInlinePanels === 'function') _restoreInlinePanels();
   // Hide floating panels when switching to analyse/vergleich/live
@@ -750,8 +753,8 @@ window.setSidebarTab = setSidebarTab;
 // Update left panel merit order summary
 export function updateLpMeritOrder() {
   const container = document.getElementById('lp-merit-order');
-  if (!container || typeof window.meritOrderKeys === 'undefined') return;
-  const keys = window.meritOrderKeys || [];
+  if (!container) return;
+  const keys = meritOrderKeys;
   if (keys.length === 0) {
     container.innerHTML = '<div style="font-size:10px;color:var(--muted);padding:4px;">Noch keine Erzeuger aktiv</div>';
     return;
@@ -769,9 +772,9 @@ export function updateLpMeritOrder() {
   });
   // Auto-Gaskessel als letzten Eintrag
   if (typeof netzEdges !== 'undefined' && netzEdges.length > 0
-      && window._autoGkResult !== false) {
+      && autoGkResult !== false) {
     const prio = keys.length + 1;
-    const agk = window._autoGkResult;
+    const agk = autoGkResult;
     let detail = '';
     if (agk) detail = ' · ' + Math.round(agk.waermeMwh).toLocaleString('de-DE') + ' MWh';
     html += '<div class="lp-mo-item" style="border-left-color:#78909c;border-left-style:dashed;opacity:0.75;">'
@@ -830,7 +833,7 @@ export function updateLpStepProgress() {
   var done2 = typeof netzEdges !== 'undefined' && netzEdges.length > 0;
   // Step 3: Erzeuger — done when meritOrderKeys has active entries
   var s3 = document.querySelector('#lp-erzeuger .lp-step-num');
-  var done3 = window.meritOrderKeys && window.meritOrderKeys.length > 0;
+  var done3 = meritOrderKeys.length > 0;
   // Step 4: Ergebnis — done when dispatch has results
   var s4 = document.querySelector('#lp-ergebnis .lp-step-num');
   var done4 = window._dispatchEnergy && Object.keys(window._dispatchEnergy).length > 0;
@@ -1036,8 +1039,10 @@ export function refreshAnalyseView() {
   const content = document.getElementById('analyse-section-content');
   if (!grid || !content || !waerme) return;
 
-  // NAP-Tab-Button + Wrapper einmalig injizieren (idempotent)
+  // Tab-Buttons + Wrapper einmalig injizieren (idempotent)
   napBuildAnalyseSection();
+  knaBuildAnalyseSection();
+  pvaBuildAnalyseSection();
 
   // Alle inline-eingebetteten Panels zurücksetzen
   _restoreInlinePanels();
@@ -1049,6 +1054,10 @@ export function refreshAnalyseView() {
   content.style.display = 'none';
   const napWrap = document.getElementById('analyse-nap-wrap');
   if (napWrap) napWrap.style.display = 'none';
+  const knaWrap = document.getElementById('analyse-kna-wrap');
+  if (knaWrap) knaWrap.style.display = 'none';
+  const pvaWrap = document.getElementById('analyse-pva-wrap');
+  if (pvaWrap) pvaWrap.style.display = 'none';
 
   if (analyseCurrentSection === 'uebersicht') {
     grid.style.display = 'grid';
@@ -1073,6 +1082,10 @@ export function refreshAnalyseView() {
     if (emWrap) { emWrap.style.display = 'block'; _renderEmissionenTab(); }
   } else if (analyseCurrentSection === 'nap') {
     napShowSection(true);
+  } else if (analyseCurrentSection === 'kna') {
+    knaShowSection(true);
+  } else if (analyseCurrentSection === 'pva') {
+    pvaShowSection(true);
   }
 }
 

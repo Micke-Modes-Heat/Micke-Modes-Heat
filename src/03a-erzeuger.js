@@ -5,6 +5,56 @@ import { map } from './02b-gebaeude.js';
 import { hidePanels } from './03b-netz.js';
 import { _pvWpM2Global } from './03c-gebaeude-io.js';
 import { stromEmF } from './01-globals-varianten.js';
+import { autoGkResult, meritOrderKeys } from './06c-dispatch-core.js';
+import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
+import { ASSETS, createAsset, deleteAsset } from './13a-assets-core.js';
+import { redrawAllAssets, isAssetLayerVisible } from './13b-assets-render.js';
+
+// ── Freiflächen-PV ↔ PV-Asset Verknüpfung ────────────────────────────────────
+function _ffCentroid(polygon) {
+  if (!polygon?.length) return null;
+  const lats = polygon.map(p => p.lat ?? p[0]);
+  const lngs = polygon.map(p => p.lng ?? p[1]);
+  return { lat: lats.reduce((a, b) => a + b) / lats.length,
+           lng: lngs.reduce((a, b) => a + b) / lngs.length };
+}
+
+function _ffPvProps(ff) {
+  const isOW = (ff.ausrichtung === 'ostwest');
+  return {
+    leistungKWp: parseFloat(calcFFKwp(ff).toFixed(1)),
+    ausrichtung: ff.ausrichtung || 'sued',
+    pvSpez:      isOW ? 950 : 1050,
+  };
+}
+
+function _createFFPvAsset(ff) {
+  const pos = _ffCentroid(ff.polygon);
+  if (!pos) return;
+  const asset = createAsset('PV', pos.lat, pos.lng, {
+    name: ff.name,
+    props: _ffPvProps(ff),
+  });
+  if (asset) asset.linkedFF = ff.id;
+  if (isAssetLayerVisible()) redrawAllAssets();
+}
+
+function _updateFFPvAsset(ff) {
+  const a = ASSETS.items.find(x => x.linkedFF === ff.id);
+  if (!a) return;
+  a.name = ff.name;
+  Object.assign(a.props, _ffPvProps(ff));
+  a._pvProfile = null; // Profil-Cache invalidieren
+  const pos = _ffCentroid(ff.polygon);
+  if (pos) { a.lat = pos.lat; a.lng = pos.lng; if (a._marker?.setLatLng) a._marker.setLatLng([pos.lat, pos.lng]); }
+}
+
+function _removeFFPvAsset(ffId) {
+  const a = ASSETS.items.find(x => x.linkedFF === ffId);
+  if (!a) return;
+  deleteAsset(a.id);
+  if (isAssetLayerVisible()) redrawAllAssets();
+}
 
 export function toggleFFPvPanel() {
   // Freiflächen-PV ist im Elektro-Tab integriert → dorthin navigieren
@@ -81,34 +131,37 @@ export function attachFFLayer(ff) {
       shapes += `<rect x="0" y="${y0}" width="${W}" height="${(rowH * 0.13).toFixed(1)}" fill="${shimmer}"/>`;
     }
   } else {
-    // ── OST-WEST: paarweise Reihen (First-Montage), rücken-an-rücken ────────
+    // ── OST-WEST: paarweise Spalten (N-S), rücken-an-rücken ────────────────
+    // Reihen laufen von Nord nach Süd — Paare nebeneinander in E-W-Richtung
     const nPairs    = 12;
-    const pairPitch = H / nPairs;
-    const singleH   = (pairPitch * gcr) / 2;  // halbe Reihenhöhe je Hälfte
-    const ridge     = singleH * 0.08;          // winzige Firstlücke
-    for (let i = 0; i < nPairs; i++) {
-      const cy = i * pairPitch + pairPitch / 2;  // Paar-Mitte statt Paar-Start
-      // West-Reihe (oben im Paar — Westseite geneigt)
-      const wy0 = (cy - singleH - ridge).toFixed(1);
-      const wy1 = (cy - ridge).toFixed(1);
-      shapes += `<rect x="0" y="${wy0}" width="${W}" height="${singleH.toFixed(1)}" fill="${modFill}"/>`;
-      for (let c = 1; c < nCols; c++) {
-        const cx = (c * colW).toFixed(1);
-        shapes += `<line x1="${cx}" y1="${wy0}" x2="${cx}" y2="${wy1}" stroke="${cellLine}" stroke-width="1.5"/>`;
-      }
-      // Shimmer am oberen Rand (= Westkante, höher)
-      shapes += `<rect x="0" y="${wy0}" width="${W}" height="${(singleH * 0.13).toFixed(1)}" fill="${shimmer}"/>`;
+    const pairPitch = W / nPairs;              // Abstand der Paare in E-W-Richtung
+    const singleW   = (pairPitch * gcr) / 2;  // Breite einer Spalte (West oder Ost)
+    const ridge     = singleW * 0.08;          // Firstlücke zwischen den Hälften
+    const nRows     = 8;                       // Modulreihen innerhalb jeder Spalte (N-S)
+    const rowH      = H / nRows;
 
-      // Ost-Reihe (unten im Paar — Ostseite geneigt)
-      const ey0 = (cy + ridge).toFixed(1);
-      const ey1 = (cy + singleH + ridge).toFixed(1);
-      shapes += `<rect x="0" y="${ey0}" width="${W}" height="${singleH.toFixed(1)}" fill="${modFill}"/>`;
-      for (let c = 1; c < nCols; c++) {
-        const cx = (c * colW).toFixed(1);
-        shapes += `<line x1="${cx}" y1="${ey0}" x2="${cx}" y2="${ey1}" stroke="${cellLine}" stroke-width="1.5"/>`;
+    for (let i = 0; i < nPairs; i++) {
+      const cx = i * pairPitch + pairPitch / 2;  // Firstmitte (E-W)
+
+      // West-Spalte (linke Hälfte — Westseite geneigt, Oberkante = Westkante)
+      const wx0 = cx - singleW - ridge;
+      shapes += `<rect x="${wx0.toFixed(1)}" y="0" width="${singleW.toFixed(1)}" height="${H}" fill="${modFill}"/>`;
+      for (let r = 1; r < nRows; r++) {
+        const ry = (r * rowH).toFixed(1);
+        shapes += `<line x1="${wx0.toFixed(1)}" y1="${ry}" x2="${(wx0 + singleW).toFixed(1)}" y2="${ry}" stroke="${cellLine}" stroke-width="1.5"/>`;
       }
-      // Shimmer am unteren Rand (= Ostkante, höher)
-      shapes += `<rect x="0" y="${(parseFloat(ey1) - singleH * 0.13).toFixed(1)}" width="${W}" height="${(singleH * 0.13).toFixed(1)}" fill="${shimmer}"/>`;
+      // Shimmer an der Westkante (höhere Seite der nach Westen geneigten Platte)
+      shapes += `<rect x="${wx0.toFixed(1)}" y="0" width="${(singleW * 0.13).toFixed(1)}" height="${H}" fill="${shimmer}"/>`;
+
+      // Ost-Spalte (rechte Hälfte — Ostseite geneigt, Oberkante = Ostkante)
+      const ex0 = cx + ridge;
+      shapes += `<rect x="${ex0.toFixed(1)}" y="0" width="${singleW.toFixed(1)}" height="${H}" fill="${modFill}"/>`;
+      for (let r = 1; r < nRows; r++) {
+        const ry = (r * rowH).toFixed(1);
+        shapes += `<line x1="${ex0.toFixed(1)}" y1="${ry}" x2="${(ex0 + singleW).toFixed(1)}" y2="${ry}" stroke="${cellLine}" stroke-width="1.5"/>`;
+      }
+      // Shimmer an der Ostkante (höhere Seite der nach Osten geneigten Platte)
+      shapes += `<rect x="${(ex0 + singleW - singleW * 0.13).toFixed(1)}" y="0" width="${(singleW * 0.13).toFixed(1)}" height="${H}" fill="${shimmer}"/>`;
     }
   }
 
@@ -129,10 +182,6 @@ export function startDrawFF() {
   window.ffDrawPoints = [];
   showHint('Eckpunkte anklicken · Startpunkt (rot) erneut anklicken zum Abschließen · Rechtsklick = Zurück');
   map.getContainer().style.cursor = 'crosshair';
-  // Floating panel buttons (legacy ff-pv-panel)
-  const d1 = document.getElementById('btn-ff-draw');   if (d1) d1.style.display = 'none';
-  const c1 = document.getElementById('btn-ff-cancel'); if (c1) c1.style.display = '';
-  // Elektro-Tab inline buttons
   const d2 = document.getElementById('el-btn-ff-draw');   if (d2) d2.style.display = 'none';
   const c2 = document.getElementById('el-btn-ff-cancel'); if (c2) c2.style.display = '';
 }
@@ -143,10 +192,6 @@ export function cancelDrawFF() {
   window.ffDrawId = null; window.ffDrawPoints = [];
   map.getContainer().style.cursor = '';
   hideHint();
-  // Floating panel buttons (legacy ff-pv-panel)
-  const d1 = document.getElementById('btn-ff-draw');   if (d1) d1.style.display = '';
-  const c1 = document.getElementById('btn-ff-cancel'); if (c1) c1.style.display = 'none';
-  // Elektro-Tab inline buttons
   const d2 = document.getElementById('el-btn-ff-draw');   if (d2) d2.style.display = '';
   const c2 = document.getElementById('el-btn-ff-cancel'); if (c2) c2.style.display = 'none';
 }
@@ -165,6 +210,7 @@ export function finishDrawFF() {
   };
   freiflaechen.push(ff);
   attachFFLayer(ff);
+  _createFFPvAsset(ff);
   renderFFPanel();
   calcStromPanel();
   redrawVerbindungslinien();
@@ -173,6 +219,7 @@ export function finishDrawFF() {
 export function removeFreiflaeche(id) {
   const ff = freiflaechen.find(f => f.id === id);
   if (!ff) return;
+  _removeFFPvAsset(id);
   if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
   if (ff.moduleSvgLayer)  map.removeLayer(ff.moduleSvgLayer);
   freiflaechen = freiflaechen.filter(f => f.id !== id);
@@ -191,22 +238,18 @@ export function updateFF(id, field, val) {
   }
   else if (field === 'name') ff.name = val;
   if (field === 'gcr' || field === 'ausrichtung') attachFFLayer(ff);
+  _updateFFPvAsset(ff);
   renderFFPanel();
   calcStromPanel();
 }
 
 export function renderFFPanel() {
-  const listEl   = document.getElementById('ff-list');
-  const totalEl  = document.getElementById('ff-total');
   const eListEl  = document.getElementById('el-ff-list');
   const eTotalEl = document.getElementById('el-ff-total');
-  if (!listEl && !eListEl) return;
+  if (!eListEl) return;
 
   if (freiflaechen.length === 0) {
-    const emptyHtml = '<div style="font-size:10px;color:var(--muted);text-align:center;padding:8px 0;">Noch keine Freifläche gezeichnet.</div>';
-    if (listEl)  listEl.innerHTML  = emptyHtml;
-    if (eListEl) eListEl.innerHTML = emptyHtml;
-    if (totalEl)  totalEl.style.display  = 'none';
+    eListEl.innerHTML = '<div style="font-size:10px;color:var(--muted);text-align:center;padding:8px 0;">Noch keine Freifläche gezeichnet.</div>';
     if (eTotalEl) eTotalEl.style.display = 'none';
     return;
   }
@@ -246,19 +289,13 @@ export function renderFFPanel() {
     </div>`;
   }).join('');
 
-  if (listEl)  listEl.innerHTML  = itemsHtml;
-  if (eListEl) eListEl.innerHTML = itemsHtml;
+  eListEl.innerHTML = itemsHtml;
 
   const showTotal = freiflaechen.length > 1;
   const totMwh = totalKwp * pvSpez / 1000;
   const kwpTxt = totalKwp.toFixed(1) + ' kWp';
   const mwhTxt = totMwh.toFixed(0) + ' MWh/a';
 
-  if (totalEl) {
-    totalEl.style.display = showTotal ? 'grid' : 'none';
-    const k = document.getElementById('ff-total-kwp'); if (k) k.textContent = kwpTxt;
-    const m = document.getElementById('ff-total-mwh'); if (m) m.textContent = mwhTxt;
-  }
   if (eTotalEl) {
     eTotalEl.style.display = showTotal ? 'grid' : 'none';
     const k = document.getElementById('el-ff-total-kwp'); if (k) k.textContent = kwpTxt;
@@ -287,18 +324,19 @@ export function toggleBhkwPanel() {
 }
 
 export function activateBhkw() {
-  const leistTh = parseFloat(document.getElementById('bhkw-leistung-th').value) || 100;
+  const leistTh = Math.max(1, parseFloat(document.getElementById('bhkw-leistung-th').value) || 100);
   window.bhkw = { leistungThKw: leistTh };
   document.getElementById('bhkw-data-section').style.display = 'block';
   document.getElementById('btn-activate-bhkw').style.display = 'none';
   moBeiAktivierung('bhkw');
   redrawErzeugerIcons();
   updateBhkwDisplay();
+  syncErzeugerElektroAsset('bhkw');
 }
 
 export function updateBhkwDisplay() {
   if (!window.bhkw) return;
-  window.bhkw.leistungThKw = parseFloat(document.getElementById('bhkw-leistung-th').value) || 100;
+  window.bhkw.leistungThKw = Math.max(1, parseFloat(document.getElementById('bhkw-leistung-th').value) || 100);
   const sigma    = parseFloat(document.getElementById('bhkw-skz').value) || 0.45;
   const etaGes   = parseFloat(document.getElementById('bhkw-eta').value) || 88;
   const gaspreis = parseFloat(document.getElementById('wirt-p-gas')?.value) || 10;
@@ -336,6 +374,7 @@ export function updateBhkwDisplay() {
     ? `${co2.toFixed(1)} t/a (fossil)${co2gutschrift > 0 ? ` − ${co2gutschrift.toFixed(1)} Gutschrift = ${co2netto.toFixed(1)} netto` : ''}`
     : '—';
   window._bhkwCo2Netto = { co2, co2gutschrift, co2netto };
+  updateErzeugerAssetProps('bhkw');
   cacheVariantResults();
 }
 
@@ -343,6 +382,7 @@ export function clearBhkw() {
   window.bhkw = null;
   window._bhkwElHourly = null;
   moBeiDeaktivierung('bhkw');
+  removeErzeugerElektroAsset('bhkw');
   redrawErzeugerIcons();
   document.getElementById('bhkw-data-section').style.display = 'none';
   const btn = document.getElementById('btn-activate-bhkw');
@@ -361,18 +401,19 @@ export function toggleStromkesselPanel() {
 }
 
 export function activateStromkessel() {
-  const leistKw = parseFloat(document.getElementById('sk-leistung').value) || 200;
+  const leistKw = Math.max(1, parseFloat(document.getElementById('sk-leistung').value) || 200);
   window.stromkessel = { leistungKw: leistKw };
   document.getElementById('stromkessel-data-section').style.display = 'block';
   document.getElementById('btn-activate-stromkessel').style.display = 'none';
   moBeiAktivierung('stromkessel');
   redrawErzeugerIcons();
   updateStromkesselDisplay();
+  syncErzeugerElektroAsset('stromkessel');
 }
 
 export function updateStromkesselDisplay() {
   if (!window.stromkessel) return;
-  window.stromkessel.leistungKw = parseFloat(document.getElementById('sk-leistung').value) || 200;
+  window.stromkessel.leistungKw = Math.max(1, parseFloat(document.getElementById('sk-leistung').value) || 200);
   const eta        = (parseFloat(document.getElementById('sk-eta').value) || 99) / 100;
   const strompreis = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
   const waerme     = parseFloat(document.getElementById('sk-waerme').value) || 0;
@@ -384,6 +425,7 @@ export function updateStromkesselDisplay() {
   setT('sk-stromverbrauch', waerme > 0 ? stromMwh.toFixed(1) + ' MWh/a' : '—');
   setT('sk-stromkosten',    waerme > 0 ? (stromkosten / 1000).toFixed(1) + ' T€/a' : '—');
   setT('sk-co2',            waerme > 0 ? co2.toFixed(1) + ' t/a' : '—');
+  updateErzeugerAssetProps('stromkessel');
   cacheVariantResults();
 }
 
@@ -391,6 +433,7 @@ export function clearStromkessel() {
   window.stromkessel = null;
   window._skElHourly = null;
   moBeiDeaktivierung('stromkessel');
+  removeErzeugerElektroAsset('stromkessel');
   redrawErzeugerIcons();
   document.getElementById('stromkessel-data-section').style.display = 'none';
   const btn = document.getElementById('btn-activate-stromkessel');
@@ -420,7 +463,7 @@ export function toggleGasKesselPanel() {
 
 export function activateGasKessel() {
   _setDefault30Pct('gk-leistung');
-  const leistung = parseFloat(document.getElementById('gk-leistung').value) || 500;
+  const leistung = Math.max(1, parseFloat(document.getElementById('gk-leistung').value) || 500);
   gasKessel = { leistungKw: leistung };
   document.getElementById('gaskessel-data-section').style.display = 'block';
   document.getElementById('btn-activate-gaskessel').style.display = 'none';
@@ -497,7 +540,7 @@ export function redrawErzeugerIcons() {
   if (!el) return;
 
   // Erzeuger in Merit-Order (nur aktive)
-  const ordered = window.meritOrderKeys.filter(k => isErzeugerAktiv(k));
+  const ordered = meritOrderKeys.filter(k => isErzeugerAktiv(k));
 
   const badge = (n) =>
     `<span style="position:absolute;top:-5px;right:-5px;background:#fff;color:#111;` +
@@ -531,9 +574,9 @@ export function redrawErzeugerIcons() {
   // _autoGkResult === null   → noch keine Daten, Icon ohne Zahlen
   // _autoGkResult === {...}  → Residual bekannt, Icon mit Zahlen
   if (typeof netzEdges !== 'undefined' && netzEdges.length > 0
-      && window._autoGkResult !== false) {
+      && autoGkResult !== false) {
     const prio = ordered.length + 1;
-    const agk  = window._autoGkResult;
+    const agk  = autoGkResult;
     const tip  = agk
       ? `Spitzenlast-Backup (automatisch) · ${agk.leistungKw} kW · ${agk.deckungPct.toFixed(1)} % · ${Math.round(agk.waermeMwh).toLocaleString('de-DE')} MWh/a · Priorität ${prio}`
       : `Spitzenlast-Backup (automatisch) · Priorität ${prio} · Grundlagen berechnen für Details`;
@@ -816,7 +859,7 @@ export function toggleHeizoelPanel() {
 
 export function activateHeizoelKessel() {
   _setDefault30Pct('hko-leistung');
-  const leistung = parseFloat(document.getElementById('hko-leistung').value) || 500;
+  const leistung = Math.max(1, parseFloat(document.getElementById('hko-leistung').value) || 500);
   heizoelKessel = { leistungKw: leistung };
   document.getElementById('heizoel-data-section').style.display = 'block';
   document.getElementById('btn-activate-heizoel').style.display = 'none';
@@ -830,7 +873,7 @@ export function updateHeizoelDisplay() {
   const eta = parseFloat(document.getElementById('hko-eta').value) || 91;
   const oelpreis = parseFloat(document.getElementById('wirt-p-hko')?.value) || 9.5;
   if (heizoelKessel) {
-    heizoelKessel.leistungKw = parseFloat(document.getElementById('hko-leistung').value) || 500;
+    heizoelKessel.leistungKw = Math.max(1, parseFloat(document.getElementById('hko-leistung').value) || 500);
   }
   if (waerme > 0) {
     const oelverbrauch = waerme / (eta / 100);
@@ -878,7 +921,7 @@ export function togglePelletsPanel() {
 
 export function activatePellets() {
   _setDefault30Pct('pk-leistung');
-  pelletsKessel = { leistungKw: parseFloat(document.getElementById('pk-leistung').value)||300 };
+  pelletsKessel = { leistungKw: Math.max(1, parseFloat(document.getElementById('pk-leistung').value)||300) };
   document.getElementById('pellets-data-section').style.display = 'block';
   document.getElementById('btn-activate-pellets').style.display = 'none';
   moBeiAktivierung('pellets');
@@ -888,7 +931,7 @@ export function activatePellets() {
 
 export function updatePelletsDisplay() {
   if (!pelletsKessel) return;
-  pelletsKessel.leistungKw = parseFloat(document.getElementById('pk-leistung').value)||300;
+  pelletsKessel.leistungKw = Math.max(1, parseFloat(document.getElementById('pk-leistung').value)||300);
   const waerme = parseFloat(document.getElementById('pk-waerme').value)||0;
   const eta = parseFloat(document.getElementById('pk-eta').value)||88;
   const preis = parseFloat(document.getElementById('wirt-p-pk')?.value) || 8;
@@ -1005,7 +1048,7 @@ export function toggleHhsPanel() {
 
 export function activateHhs() {
   _setDefault30Pct('hhs-leistung');
-  heizhackschnitzel = { leistungKw: parseFloat(document.getElementById('hhs-leistung').value)||400 };
+  heizhackschnitzel = { leistungKw: Math.max(1, parseFloat(document.getElementById('hhs-leistung').value)||400) };
   document.getElementById('hhs-data-section').style.display = 'block';
   document.getElementById('btn-activate-hhs').style.display = 'none';
   moBeiAktivierung('hhs');
@@ -1015,7 +1058,7 @@ export function activateHhs() {
 
 export function updateHhsDisplay() {
   if (!heizhackschnitzel) return;
-  heizhackschnitzel.leistungKw = parseFloat(document.getElementById('hhs-leistung').value)||400;
+  heizhackschnitzel.leistungKw = Math.max(1, parseFloat(document.getElementById('hhs-leistung').value)||400);
   const waerme = parseFloat(document.getElementById('hhs-waerme').value)||0;
   const eta = parseFloat(document.getElementById('hhs-eta').value)||85;
   const preis = parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6; // ct/kWh
@@ -1114,7 +1157,7 @@ export function toggleFernwaermePanel() {
 }
 
 export function activateFernwaerme() {
-  window.fernwaerme = { leistungKw: parseFloat(document.getElementById('fw-leistung').value)||500 };
+  window.fernwaerme = { leistungKw: Math.max(1, parseFloat(document.getElementById('fw-leistung').value)||500) };
   document.getElementById('fernwaerme-data-section').style.display = 'block';
   document.getElementById('btn-activate-fernwaerme').style.display = 'none';
   moBeiAktivierung('fernwaerme');
@@ -1124,7 +1167,7 @@ export function activateFernwaerme() {
 
 export function updateFernwaermeDisplay() {
   if (!window.fernwaerme) return;
-  window.fernwaerme.leistungKw = parseFloat(document.getElementById('fw-leistung').value)||500;
+  window.fernwaerme.leistungKw = Math.max(1, parseFloat(document.getElementById('fw-leistung').value)||500);
   const waerme = parseFloat(document.getElementById('fw-waerme').value)||0;
   const preis = parseFloat(document.getElementById('wirt-p-fw')?.value) || 8;
   const co2f = parseFloat(document.getElementById('fw-co2f').value)||180;

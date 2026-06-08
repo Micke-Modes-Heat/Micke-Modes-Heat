@@ -11,7 +11,7 @@ const _ELSLP_BUILTIN = [
   { id:'H0',  label:'Haushalt',                      gruppe:'Wohnen',         wpm2: 12 },
   { id:'G0',  label:'Gewerbe allgemein',              gruppe:'Gewerbe',        wpm2: 20 },
   { id:'G1',  label:'Gewerbe werktags 8–18 Uhr',     gruppe:'Gewerbe',        wpm2: 22 },
-  { id:'G2',  label:'Gewerbe mit Abendverbrauch',    gruppe:'Gewerbe',        wpm2: 15 },
+  { id:'G2',  label:'Gewerbe mit Abendverbrauch',     gruppe:'Gewerbe',        wpm2: 15 },
   { id:'G3',  label:'Gewerbe durchlaufend',           gruppe:'Gewerbe',        wpm2: 30 },
   { id:'G4',  label:'Laden / Friseur',                gruppe:'Handel',         wpm2: 35 },
   { id:'G5',  label:'Bäckerei',                       gruppe:'Handel',         wpm2: 55 },
@@ -19,6 +19,10 @@ const _ELSLP_BUILTIN = [
   { id:'L0',  label:'Landwirtschaft allgemein',       gruppe:'Landwirtschaft', wpm2:  6 },
   { id:'L1',  label:'Landwirtschaft Milchwirtschaft', gruppe:'Landwirtschaft', wpm2:  9 },
   { id:'L2',  label:'Landwirtschaft Eigenerzeugung',  gruppe:'Landwirtschaft', wpm2:  5 },
+  { id:'BW0', label:'Bundeswehr allgemein',           gruppe:'Bundeswehr',     wpm2: 20 },
+  { id:'BW1', label:'Unterkunft / Kaserne',           gruppe:'Bundeswehr',     wpm2: 13 },
+  { id:'BW2', label:'Werkstatt / Instandhaltung',     gruppe:'Bundeswehr',     wpm2: 25 },
+  { id:'BW3', label:'Kantine / Truppenverpflegung',   gruppe:'Bundeswehr',     wpm2: 42 },
 ];
 
 // W/m²-Overrides für Built-in-Profile (projekt-persistent, editierbar im Modal)

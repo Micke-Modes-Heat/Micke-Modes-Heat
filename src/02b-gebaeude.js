@@ -314,12 +314,13 @@ export function getColor(val,min,max){
 export function getColorVal(g){
   const stats = getComputedStats(g, window.globalYear);
   if (stats.status === 'geplant' || stats.status === 'abgerissen') return null;
-  if (currentMode === 'spez' || currentMode === 'waerme') {
+  const mode = window.currentMode || currentMode;
+  if (mode === 'spez' || mode === 'waerme') {
     const v = stats.spez;
     return (v !== null && v !== undefined && !isNaN(Number(v))) ? Number(v) : null;
   }
-  if (currentMode === 'verlust') return g.netzVerlustRatioPct ?? null;
-  if (currentMode === 'strom')   return getGebStromMwh(g) || g.elMwh || null;
+  if (mode === 'verlust') return g.netzVerlustRatioPct ?? null;
+  if (mode === 'strom')   return getGebStromMwh(g) || g.elMwh || null;
   return getModeVal(g);
 }
 export function getSizeVal(g){ return getModeVal(g); }
@@ -327,11 +328,12 @@ export function getSizeVal(g){ return getModeVal(g); }
 export function getModeVal(g){
   const stats = getComputedStats(g, window.globalYear);
   if (stats.status === 'geplant' || stats.status === 'abgerissen') return null;
-  if(currentMode==='waerme')   return stats.waerme || null;
-  if(currentMode==='spez')     return stats.spez || null;
-  if(currentMode==='heizlast') return stats.heizlast || null;
-  if(currentMode==='verlust')  return g.netzVerlustKW || null;
-  if(currentMode==='strom')    return getGebStromMwh(g) || g.elMwh || null;
+  const mode = window.currentMode || currentMode;
+  if(mode==='waerme')   return stats.waerme || null;
+  if(mode==='spez')     return stats.spez || null;
+  if(mode==='heizlast') return stats.heizlast || null;
+  if(mode==='verlust')  return g.netzVerlustKW || null;
+  if(mode==='strom')    return getGebStromMwh(g) || g.elMwh || null;
   return null;
 }
 export function getRange(arr){ if(!arr.length) return [0,1]; return [Math.min(...arr),Math.max(...arr)]; }
@@ -850,15 +852,34 @@ export function aggregateGebStrom() {
   return { hourly: total, totalMWh };
 }
 
+function _syncAbrissToAssets(gebId, abrissjahr) {
+  if (!window.ASSETS?.items) return;
+  window.ASSETS.items
+    .filter(a => a.buildingId === gebId)
+    .forEach(a => { a.abrissjahr = abrissjahr; });
+}
+
 export function updateField(id, field, val) {
   const g = window.gebaeude.find(x => x.id === id);
   if (!g) return;
   _invalidateStats();
 
-  if (field === 'flaeche') g.flaeche = val ? parseFloat(val) : null;
-  else if (field === 'baujahr' || field === 'abrissjahr') g[field] = val ? parseInt(val) : null;
-  else if (field === 'stockwerke') g.stockwerke = val ? parseInt(val) : 1;
-  else g[field] = val;
+  if (field === 'flaeche') {
+    const v = parseFloat(val);
+    g.flaeche = (isFinite(v) && v > 0) ? v : null;
+  } else if (field === 'baujahr' || field === 'abrissjahr') {
+    const v = parseInt(val);
+    g[field] = (Number.isInteger(v) && v >= 1800 && v <= 2100) ? v : null;
+    if (field === 'abrissjahr') _syncAbrissToAssets(g.id, g.abrissjahr);
+  } else if (field === 'stockwerke') {
+    const v = parseInt(val);
+    g.stockwerke = (Number.isInteger(v) && v >= 1) ? Math.min(50, v) : 1;
+  } else if (field === 'waerme' || field === 'heizlast' || field === 'strom' || field === 'spezStrom') {
+    const v = parseFloat(val);
+    g[field] = (isFinite(v) && v >= 0) ? val : '';
+  } else {
+    g[field] = val;
+  }
 
   // Manuelle Eingabe merken → Auto-Berechnung sperren
   if (field === 'waerme') g.waermeManual = !!(val && parseFloat(val) > 0);
@@ -985,7 +1006,7 @@ export function savePlan(id, mode) {
     if(val) g.baujahr = parseInt(val);
   } else if (mode === 'abriss') {
     const val = document.getElementById(`inp-abriss-${id}`).value;
-    if(val) g.abrissjahr = parseInt(val);
+    if(val) { g.abrissjahr = parseInt(val); _syncAbrissToAssets(g.id, g.abrissjahr); }
   } else if (mode === 'sanierung') {
     const jahr = parseInt(document.getElementById(`inp-san-jahr-${id}`).value);
     const spez = parseFloat(document.getElementById(`inp-san-spez-${id}`).value);
@@ -1004,7 +1025,7 @@ export function clearPlan(id, type, idx) {
   const g = window.gebaeude.find(x => x.id === id);
   if(!g) return;
   if(type === 'neubau') g.baujahr = null;
-  if(type === 'abriss') g.abrissjahr = null;
+  if(type === 'abriss') { g.abrissjahr = null; _syncAbrissToAssets(g.id, null); }
   if(type === 'sanierung') g.sanierungen.splice(idx, 1);
   _invalidateStats();
   renderList(); updateViz(); updateTotals(); recalcNetz();

@@ -67,6 +67,25 @@ function _html() { return `
     </div>
 
     ${_sep}
+    ${_sub('Freiflächen-PV')}
+    <div class="lp-tool-grid" style="margin-bottom:5px;">
+      <button class="lp-tool-btn" id="el-btn-ff-draw" data-click="startDrawFF()"
+        style="border-color:#ffd54f;color:#ffd54f;">☀ Fläche zeichnen</button>
+      <button class="lp-tool-btn" id="el-btn-ff-cancel" data-click="cancelDrawFF()"
+        style="display:none;border-color:#ef9a9a;color:#ef9a9a;">✕ Abbrechen</button>
+    </div>
+    <div id="el-ff-list" style="display:flex;flex-direction:column;gap:5px;"></div>
+    <div id="el-ff-total" style="display:none;margin-top:6px;padding:6px 8px;
+      background:var(--surface);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:10px;font-family:'DM Mono',monospace;">
+        <span style="color:var(--muted);">Gesamt</span>
+        <span id="el-ff-total-kwp" style="color:#ffd54f;font-weight:600;text-align:right;">—</span>
+        <span style="color:var(--muted);">Ertrag</span>
+        <span id="el-ff-total-mwh" style="color:#a5d6a7;font-weight:600;text-align:right;">—</span>
+      </div>
+    </div>
+
+    ${_sep}
     ${_sub('Trassen')}
     <div class="lp-tool-grid">
       <button class="lp-tool-btn" id="btn-draw-trasse" data-click="toggleDrawTrasse()"
@@ -88,31 +107,6 @@ function _html() { return `
         style="border-color:#fdd835;color:#fdd835;">— Kabel zeichnen</button>
       <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
         style="border-color:#66bb6a;color:#66bb6a;">🔌 Auto-Netz</button>
-    </div>
-  </div>
-
-  <!-- ── Freiflächen-PV ─────────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
-       data-click="toggleSection('el-sec-ff-pv')">
-    <span>☀ Freiflächen-PV</span><span id="el-sec-ff-pv-arrow">▶</span>
-  </div>
-  <div id="el-sec-ff-pv" style="display:none;">
-    ${_sub('Fläche zeichnen')}
-    <div class="lp-tool-grid" style="margin-bottom:6px;">
-      <button class="lp-tool-btn" id="el-btn-ff-draw" data-click="startDrawFF()"
-        style="border-color:#ffd54f;color:#ffd54f;">✏ Fläche zeichnen</button>
-      <button class="lp-tool-btn" id="el-btn-ff-cancel" data-click="cancelDrawFF()"
-        style="display:none;border-color:#ef9a9a;color:#ef9a9a;">✕ Abbrechen</button>
-    </div>
-    <div id="el-ff-list" style="display:flex;flex-direction:column;gap:5px;"></div>
-    <div id="el-ff-total" style="display:none;margin-top:6px;padding:6px 8px;
-      background:var(--surface);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:10px;font-family:'DM Mono',monospace;">
-        <span style="color:var(--muted);">Gesamt</span>
-        <span id="el-ff-total-kwp" style="color:#ffd54f;font-weight:600;text-align:right;">—</span>
-        <span style="color:var(--muted);">Ertrag</span>
-        <span id="el-ff-total-mwh" style="color:#a5d6a7;font-weight:600;text-align:right;">—</span>
-      </div>
     </div>
   </div>
 
@@ -222,6 +216,10 @@ function _html() { return `
         style="border-color:#80cbc4;color:#80cbc4;">🔌 Einlinien&shy;schema</button>
       <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()"
         style="border-color:#b39ddb;color:#ce93d8;">🗺️ Netzanalyse</button>
+      <button class="lp-tool-btn" data-click="openKnotenanalyse()"
+        style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;font-weight:600;">
+        📈 Knotenpunkt-Analyse
+      </button>
       <button class="lp-tool-btn" data-click="showInvestitionsplan()"
         style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;">📋 Investitionsplan</button>
       <button class="lp-tool-btn" data-click="exportMassnahmenPDF()"
@@ -230,6 +228,11 @@ function _html() { return `
         style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;">📊 Export Excel (vollständig)</button>
       <button class="lp-tool-btn" data-click="importVollstaendigXLSX()"
         style="grid-column:1/-1;border-color:#81d4fa;color:#81d4fa;">📥 Import Excel</button>
+      <label class="lp-tool-btn" style="grid-column:1/-1;border-color:#ffcc80;color:#ffcc80;cursor:pointer;text-align:center;">
+        🔗 Verbindungen importieren
+        <input type="file" accept=".xlsx" style="display:none"
+          onchange="importVerbindungenXLSX(event)">
+      </label>
     </div>
   </div>
 

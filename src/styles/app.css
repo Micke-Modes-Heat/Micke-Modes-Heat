@@ -681,6 +681,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .gl-status-dot.ok{background:#81c784;}
 .gl-status-dot.warn{background:#f9a825;}
 .gl-status-dot.empty{background:var(--border);}
+.gl-status-dot.error{background:#e53935;}
 .gl-status-dot.pending{background:#f9a825;animation:gl-pulse .8s ease-in-out infinite alternate;}
 @keyframes gl-pulse{from{opacity:.4}to{opacity:1}}
 .gl-fall-badge{font-size:9px;padding:1px 6px;border-radius:10px;border:1px solid #81c784;

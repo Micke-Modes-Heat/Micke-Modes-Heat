@@ -32,10 +32,10 @@ function calcBuilding(g, cfg = {}) {
   const pv      = assets.find(a => a.type === 'PV');
   const hasArea = (g.flaeche || 0) > 0;
 
-  // SLP-Profil: Wizard-Zuweisung → vorhandenes Asset-Profil → Default G0
+  // SLP-Profil: Wizard-Zuweisung → vorhandenes Asset-Profil → Default BW0
   const slpId = cfg.slpAssignments?.[g.id]
     ?? verbr?.props?.slpTyp
-    ?? 'G0';
+    ?? 'BW0';
 
   // Verbrauch: W/m² aus Registry (mit Session-Override)
   let kw = null;

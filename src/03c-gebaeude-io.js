@@ -5,6 +5,7 @@ import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh,
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
 import { updateLpGebietStatus, updatePrintLegend } from './04a-ui-panels.js';
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
+import { isErzeugerAktiv, meritOrderKeys, setMeritOrderKeys } from './06c-dispatch-core.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, clearAssets } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
@@ -521,7 +522,12 @@ function _buildNutzungOptions(current) {
   }).join('');
 }
 
-const SLP_OPTS = ['H0','G0','G1','G2','G3','G4','G5','G6','L0','L1','L2'];
+// Dynamisch aus Registry — wird beim Rendern aufgerufen, erfasst auch zukünftige Profile
+function _slpOpts(currentSlp) {
+  return getElSlpProfiles().map(p =>
+    `<option value="${p.id}"${(currentSlp||'G0')===p.id?' selected':''}>${p.id} — ${p.label}</option>`
+  ).join('');
+}
 
 window.showNutzungstypenModal = function() {
   document.getElementById('nutzungstypen-modal')?.remove();
@@ -564,7 +570,7 @@ function _renderNutzungstypenModal(editId = null, formData = null) {
       <td><input class="inp-field" id="nt-f-gruppe" value="${escHtml(data.gruppe||'')}" placeholder="Bundeswehr" style="width:100%;font-size:10px;"></td>
       <td><input class="inp-field" id="nt-f-spez"  value="${data.spezStrom??''}"      placeholder="55" type="number" style="width:60px;font-size:10px;"></td>
       <td><select class="inp-field" id="nt-f-slp" style="font-size:10px;padding:2px 4px;">
-        ${SLP_OPTS.map(s => `<option${(data.slp||'G0')===s?' selected':''}>${s}</option>`).join('')}
+        ${_slpOpts(data.slp)}
       </select></td>
       <td><input class="inp-field" id="nt-f-vbh"   value="${data.vbh??''}"           placeholder="2500" type="number" style="width:60px;font-size:10px;"></td>
       <td style="white-space:nowrap;">
@@ -1082,7 +1088,7 @@ export function renderList(){
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
   const el=document.getElementById('geb-list');el.innerHTML='';
   window.gebaeude.forEach(g=>{
-    const stats = getComputedStats(g, globalYear);
+    const stats = getComputedStats(g, window.globalYear || globalYear);
     const card=document.createElement('div');
     const ausgeschlossen = isExcluded(g.id);
     const cls=['geb-card'];
@@ -1150,7 +1156,7 @@ export function _buildProjectData() {
     freiflaechen: freiflaechen.map(ff => ({ id: ff.id, name: ff.name, polygon: ff.polygon, flaeche: ff.flaeche, gcr: ff.gcr, ausrichtung: ff.ausrichtung })),
     pvModul: { breite: document.getElementById('pv-modul-breite')?.value, laenge: document.getElementById('pv-modul-laenge')?.value, wp: document.getElementById('pv-modul-wp')?.value },
     pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value },
-    meritOrderKeys: [...window.meritOrderKeys],
+    meritOrderKeys: [...meritOrderKeys],
     pelletsKessel: pelletsKessel ? { leistungKw: pelletsKessel.leistungKw, eta: document.getElementById('pk-eta').value, waerme: document.getElementById('pk-waerme').value, lat: pelletsKessel.lat, lng: pelletsKessel.lng } : null,
     heizhackschnitzel: heizhackschnitzel ? { leistungKw: heizhackschnitzel.leistungKw, eta: document.getElementById('hhs-eta').value, waerme: document.getElementById('hhs-waerme').value, lat: heizhackschnitzel.lat, lng: heizhackschnitzel.lng } : null,
     fernwaerme: fernwaerme ? { leistungKw: fernwaerme.leistungKw, waerme: document.getElementById('fw-waerme').value, co2f: document.getElementById('fw-co2f').value, lat: fernwaerme.lat, lng: fernwaerme.lng } : null,
@@ -1189,6 +1195,8 @@ export function _buildProjectData() {
           id: a.id, type: a.type, domain: a.domain,
           lat: a.lat, lng: a.lng, name: a.name,
           buildingId: a.buildingId, _movedByUser: a._movedByUser || false,
+          linkedErzeuger: a.linkedErzeuger || null,
+          linkedFF:       a.linkedFF       || null,
           props: { ...a.props },
           baujahr: a.baujahr, abrissjahr: a.abrissjahr,
           massnahmen: a.massnahmen || []
@@ -1486,7 +1494,7 @@ export function _loadProject(project) {
         if (project.pvPanel.leistungspreis){ const el = document.getElementById('strom-leistungspreis'); if (el) el.value = project.pvPanel.leistungspreis; }
       }
       if (project.meritOrderKeys) {
-        window.meritOrderKeys = project.meritOrderKeys.filter(k => isErzeugerAktiv(k));
+        setMeritOrderKeys(project.meritOrderKeys.filter(k => isErzeugerAktiv(k)));
       }
       if (project.pelletsKessel) {
         pelletsKessel = { leistungKw: project.pelletsKessel.leistungKw || 300 };
@@ -1547,12 +1555,14 @@ export function _loadProject(project) {
       if (project.elektroAssets && (project.elektroAssets.items || []).length > 0) {
         // Gespeicherte Assets laden — nur Datenobjekte erstellen, kein Marker-Zeichnen hier
         (project.elektroAssets.items || []).forEach(data => {
-          createAsset(data.type, data.lat, data.lng, {
+          const loaded = createAsset(data.type, data.lat, data.lng, {
             id: data.id, name: data.name, buildingId: data.buildingId,
             _movedByUser: data._movedByUser || false,
             props: data.props || {}, baujahr: data.baujahr,
             abrissjahr: data.abrissjahr, massnahmen: data.massnahmen || []
           });
+          if (loaded && data.linkedErzeuger) loaded.linkedErzeuger = data.linkedErzeuger;
+          if (loaded && data.linkedFF)       loaded.linkedFF       = data.linkedFF;
         });
       } else if (typeof window.autoCreateBuildingAssets === 'function' && Array.isArray(window.gebaeude)) {
         // Altes Projekt ohne gespeicherte Assets → jetzt einmalig auto-erstellen
@@ -1631,7 +1641,7 @@ export function _loadProject(project) {
               edge.msLevel = eData.msLevel || edge.msLevel || false; // addStromEdge auto-detects; keep true if detected
               edge.trennstelle = eData.trennstelle || false;
               if (edge.msLevel) {
-                edge.layer?.setStyle({ color: '#ff9800', weight: 4, dashArray: null });
+                edge.layer?.setStyle({ color: '#7c4dff', weight: 4, dashArray: null });
               }
               if (edge.trennstelle) {
                 edge.layer?.setStyle({ dashArray: '10,8', opacity: 0.5 });
@@ -1748,7 +1758,7 @@ export let _animPipesRunning = false;
 export function animatePipes() {
   if (!_animPipesRunning) return;
   dashOffset -= 0.5;
-  netzEdges.forEach(e => {
+  (window.netzEdges || netzEdges).forEach(e => {
     if(e.load > 0 && e.layer && e.layer._path) {
       e.layer._path.style.strokeDasharray = "12, 12";
       e.layer._path.style.strokeDashoffset = dashOffset + "px";
@@ -1764,7 +1774,7 @@ export let _animStromRunning = false;
 export function animateStromPipes() {
   if (!_animStromRunning) return;
   stromDashOffset -= 0.6;
-  stromEdges.forEach(e => {
+  (window.stromEdges || stromEdges).forEach(e => {
     if (e._flowActive && e.layer && e.layer._path) {
       e.layer._path.style.strokeDashoffset = (stromDashOffset * e._flowDir) + 'px';
     }

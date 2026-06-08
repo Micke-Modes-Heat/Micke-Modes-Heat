@@ -16,7 +16,7 @@ import { showHint } from './03c-gebaeude-io.js';
 import { getKostenProMKlasse, updateLpErgebnisKpis, updateLpStepProgress } from './04a-ui-panels.js';
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { clearSolarthermie, clearThermSpeicher, getThermSpeicherParams, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
-import { _dispatchCore, isErzeugerAktiv, onSystemStateUpdated, updateAllDeckungen } from './06c-dispatch-core.js';
+import { _dispatchCore, autoGkResult, isErzeugerAktiv, meritOrderKeys, onSystemStateUpdated, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
 import { _calcKostenShared, _parseGeoBohrMeter } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
@@ -633,7 +633,7 @@ export function _optVarianteUebernehmen(result, btnEl) {
   if (typeof clearPellets === 'function') clearPellets();
   if (typeof clearHhs === 'function') clearHhs();
   if (typeof clearFernwaerme === 'function') clearFernwaerme();
-  window.meritOrderKeys = [];
+  setMeritOrderKeys([]);
 
   // Default-Position für Erzeuger ohne Koordinaten: Heizzentrale
   let defaultLat = null, defaultLng = null;
@@ -746,12 +746,12 @@ export function _optVarianteUebernehmen(result, btnEl) {
         break;
     }
     // Merit-Order eintragen (ohne sofortige Neuberechnung)
-    if (!window.meritOrderKeys.includes(erz.key)) {
-      window.meritOrderKeys.push(erz.key);
+    if (!meritOrderKeys.includes(erz.key)) {
+      meritOrderKeys.push(erz.key);
     }
   }
 
-  console.log('[OPT-APPLY] meritOrderKeys nach Aktivierung:', window.meritOrderKeys.join(','));
+  console.log('[OPT-APPLY] meritOrderKeys nach Aktivierung:', meritOrderKeys.join(','));
   // Solarthermie-Fläche aus Optimierungsergebnis übernehmen
   if (result.stM2 > 0) {
     const stEl = document.getElementById('st-flaeche');
@@ -890,7 +890,7 @@ export function updateFooterStatus() {
 
   // Erzeuger
   const fsE = document.getElementById('fs-erzeuger');
-  const aktiv = window.meritOrderKeys ? window.meritOrderKeys.filter(k => isErzeugerAktiv(k)) : [];
+  const aktiv = meritOrderKeys.filter(k => isErzeugerAktiv(k));
   if (aktiv.length > 0) {
     const namen = aktiv.map(k => ERZEUGER_CFG[k]?.label || k).join(', ');
     _fsTxt(fsE, aktiv.length + ' Erz: ' + namen);
@@ -1003,7 +1003,7 @@ export function updateStatusPanel() {
 
   // ─── Abschnitt: Erzeuger ────────────────────────────────────────────
   html += `<div style="margin-bottom:6px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">Wärmeerzeuger (aktiv)</span></div>`;
-  const activeErz = window.meritOrderKeys.filter(k => isErzeugerAktiv(k));
+  const activeErz = meritOrderKeys.filter(k => isErzeugerAktiv(k));
   if (activeErz.length === 0) {
     html += `<div style="padding-left:4px;color:#455a64;margin-bottom:8px;">Keine Erzeuger aktiv</div>`;
   } else {
@@ -1019,7 +1019,7 @@ export function updateStatusPanel() {
     });
     html += `</div>`;
     // Auto-GK
-    const agk = window._autoGkResult;
+    const agk = autoGkResult;
     if (agk && agk.waermeMwh > 0.1) {
       html += `<div style="padding-left:4px;margin-bottom:4px;">${warn()}Auto-Spitzenlastkessel: ${val(Math.round(agk.leistungKw), 'kW')} · ${val(agk.waermeMwh.toFixed(0), 'MWh/a')} · ${agk.deckungPct.toFixed(1)} %</div>`;
     }

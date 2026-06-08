@@ -1,3 +1,4 @@
+// @ts-check
 // ── Erzeuger-Konfiguration ──────────────────────────────────────────────
 // Mapping Erzeuger-Key → UI-IDs, Farben, Typen, Gütegrade
 export const ERZEUGER_CFG = {
