@@ -138,7 +138,7 @@ export function stromFileSelected(file) {
   const reader = new FileReader();
   reader.onload = e => {
     // BOM entfernen (UTF-8 BOM bei manchen Excel-Exporten)
-    const text = e.target.result.replace(/^﻿/, '');
+    const text = e.target.result.replace(/^\uFEFF/, '');
 
     // ── Zeilen aufteilen ──
     const lines = text.split(/[\r\n]+/).map(l => l.trim()).filter(l => l.length > 0);
@@ -290,7 +290,7 @@ export function spotPreisFileSelected(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
-    const text = e.target.result.replace(/^﻿/, '');
+    const text = e.target.result.replace(/^\uFEFF/, '');
     const lines = text.split(/[\r\n]+/).map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length < 50) { alert('Zu wenig Zeilen in der Spot-Preis-CSV.'); return; }
 
