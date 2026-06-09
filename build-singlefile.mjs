@@ -26,7 +26,7 @@ const JS_FILES = [
   '04b-emissionen-3d.js',
   '05a-export.js',
   '05b-stromnetz.js',
-  '05c-bericht.js',
+  '05d-bericht.js',
   '05c-sankey.js',
   '06a-gbi-lastgang.js',
   '06b-gl-berechnen.js',
@@ -37,6 +37,7 @@ const JS_FILES = [
   '09a-pv-profile.js',
   '09b-pv-calc.js',
   '09c-pv-charts-opt.js',
+  '09d-pv-analyse.js',
   '10a-optimizer-core.js',
   '10b-hourly-live.js',
   '10c-optimizer-run.js',
@@ -58,6 +59,7 @@ const JS_FILES = [
   '13m-kompaktstation.js',
   '13n-elektro-panel.js',
   '13o-nap-analyse.js',
+  '13r-knotenpunkt-analyse.js',
   // main.js wird NICHT eingebunden — es macht nur import/window-Exposition,
   // die im Monolith überflüssig ist (alles bereits global). Der Namespace-
   // Alias "glBerechnen" würde die private Funktion gleichen Namens überschreiben.
