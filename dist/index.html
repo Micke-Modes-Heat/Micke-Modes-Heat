@@ -23038,6 +23038,8 @@ function _drawSankey(canvas, data) {
 
 
 
+
+
 window.systemState  = null; // wird nach glBerechnen() befüllt
 window.elQuartierH  = null; // Float32Array[8760] — stündl. Stromlastgang Quartier (ohne WP)
 window._wpElHourly  = null; // Float32Array[8760] — stündl. WP-Stromverbrauch (Summe alle WPs)
@@ -23314,6 +23316,16 @@ function gbiBackToMapping() {
 }
 
 // ── Apply Matches ───────────────────────────────────────────────────────
+// Nach Übernahme von CSV-Verbräuchen in Gebäude alles auffrischen.
+// (Ersetzt die Aufrufe von _gbiRefreshAll(), das nie existierte — der
+//  Abgleich crashte beim Übernehmen mit ReferenceError.)
+function _gbiRefreshAll() {
+  updateTotals();
+  updateViz();
+  recalcNetz();
+  glBerechnenAuto();
+}
+
 function gbiApplyMatches() {
   var applied = 0;
   gbiMatches.forEach(function(m) {
@@ -23327,7 +23339,7 @@ function gbiApplyMatches() {
     applied++;
   });
   renderList();
-  updateAll();
+  _gbiRefreshAll();
   var remaining = gbiMatches.filter(function(m) { return m.status === 'unmatched' || m.status === 'rejected'; }).length;
   if (remaining > 0) {
     alert(applied + ' Zuordnungen übernommen.\n' + remaining + ' Zeilen noch nicht zugeordnet — nutze "Manuelle Zuordnung" für die restlichen.');
@@ -23413,7 +23425,7 @@ function gbiManualSelectCsv(csvIdx) {
         gbiApplyToGeb(csvRow, geb);
         m.status = 'applied';
         m.gebId = gbiManualSelectedGeb;
-        renderList(); updateAll();
+        renderList(); _gbiRefreshAll();
       }
     }
     gbiManualSelectedCsv = null;
@@ -23441,7 +23453,7 @@ function gbiManualSelectGeb(gebId) {
         gbiApplyToGeb(csvRow, geb);
         m.status = 'applied';
         m.gebId = gebId;
-        renderList(); updateAll();
+        renderList(); _gbiRefreshAll();
       }
     }
     gbiManualSelectedCsv = null;
@@ -23470,7 +23482,7 @@ function gbiFinish() {
   gbiStopManualMode();
   gbiClose();
   renderList();
-  updateAll();
+  _gbiRefreshAll();
 }
 
 // ── Interne GL-Variablen ──────────────────────────────────────────────────
@@ -41385,7 +41397,7 @@ function buildBodyHtml(asset) {
       <label class="ins-field-label">Name</label>
       <input class="ins-field-input" type="text" data-field="name" value="${esc(asset.name)}">
     </div>
-    ${buildBuildingBadge(asset)}
+    ${buildBuildingSelect(asset)}
     <div class="ins-row-2">
       <div class="ins-field-group">
         <label class="ins-field-label">Baujahr</label>
