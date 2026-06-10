@@ -9,6 +9,14 @@ import { autoGkResult, meritOrderKeys } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 import { ASSETS, createAsset, deleteAsset } from './13a-assets-core.js';
 import { redrawAllAssets, isAssetLayerVisible } from './13b-assets-render.js';
+import { GEG_VERDRAENGUNG_RATIO, bhkwCo2Gutschrift, cacheVariantResults, calculatedLoad, ffDrawId, ffDrawPoints, fliessgewaesser, gasEmF, gebaeude, geoThermie, heizoelEmF, hhsEmF, isExcluded, lwWp, netzEdges, pelletsEmF, solarthermieAktiv } from './01-globals-varianten.js';
+import { closestPointOnPolyline, polygonAreaM2, polygonCenter, updateFliessgewaesserData, updateLwWpDisplay } from './02c-karte-werkzeuge.js';
+import { _setDefault30Pct, calcGeoThermie } from './03b-netz.js';
+import { escHtml, hideHint, showHint } from './03c-gebaeude-io.js';
+import { _hideForDraw } from './04a-ui-panels.js';
+import { _quelleTemp, isErzeugerAktiv, moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
+import { calcStromPanel } from './09b-pv-calc.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 
 // ── Freiflächen-PV ↔ PV-Asset Verknüpfung ────────────────────────────────────
 function _ffCentroid(polygon) {

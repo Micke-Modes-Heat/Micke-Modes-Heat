@@ -24935,7 +24935,9 @@ function onSystemStateUpdated() {
   if (document.getElementById('analyse-panel')?.classList.contains('visible')) {
     saSetTab(saCurrentTab || 'lastgang');
   }
-  calcStromPanel();
+  // KEIN calcStromPanel() hier: _deckungen8760 (via updateAllDeckungen) ruft es
+  // am Ende bereits auf — der Doppelaufruf rechnete das PV/Batterie-Panel
+  // bei jeder Grundlagen-Änderung zweimal.
   // Stromnetz aktualisieren (Lasten aus Dispatch übernehmen)
   if (stromEdges.length > 0 || stromNodes.length > 0) {
     recalcStromNetz();

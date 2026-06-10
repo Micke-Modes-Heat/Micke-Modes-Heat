@@ -9,6 +9,9 @@ import { setNetzSubTab, stromNodeClick } from './05b-stromnetz.js';
 import { gbiManualMode, gbiManualSelectGeb } from './06a-gbi-lastgang.js';
 import { moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
+import { areaPoints, lwWp, trasseSegments } from './01-globals-varianten.js';
+import { _gebLabelHtml, escHtml } from './03c-gebaeude-io.js';
+import { cancelDrawStromEdge } from './05b-stromnetz.js';
 
 export function polygonCenter(coords){
   let lat=0,lng=0,n=coords.length;

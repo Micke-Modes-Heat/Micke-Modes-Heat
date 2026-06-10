@@ -9,6 +9,7 @@ import { saCurrentTab, saSetTab } from './07a-analysis-charts.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { calcStromPanel } from './09b-pv-calc.js';
+import { glBerechnenAuto } from './06b-gl-berechnen.js';
 
 window.systemState  = null; // wird nach glBerechnen() befüllt
 window.elQuartierH  = null; // Float32Array[8760] — stündl. Stromlastgang Quartier (ohne WP)

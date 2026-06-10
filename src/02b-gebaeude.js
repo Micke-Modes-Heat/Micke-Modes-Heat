@@ -8,6 +8,7 @@ import { _gebLabelHtml, cardDotColor, drawChart, renderList, updateTotals } from
 import { glBerechnenDebounced } from './06b-gl-berechnen.js';
 import { updateAllDeckungen } from './06c-dispatch-core.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
+import { _batchImporting } from './01-globals-varianten.js';
 
 // Guard against HMR re-init: reuse cached instance if container is already initialized
 export const map = window._appLeafletMap || (() => {

@@ -9,6 +9,8 @@ import { _optAborted } from './10b-hourly-live.js';
 import { _optFinished } from './10c-optimizer-run.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { OPT_MERIT_ORDER } from './config/optimizer-defaults.js';
+import { _dispatchCore } from './06c-dispatch-core.js';
+import { _calcKostenShared } from './07b-analysis-economics.js';
 
 export function _buildOptWorkerCode() {
   return `

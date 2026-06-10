@@ -13,6 +13,13 @@ import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { readNum } from './lib/util.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
+import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trassePolyline, trasseSegments } from './01-globals-varianten.js';
+import { addEdgeMidHandle, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, standardDNs } from './02a-netz-physik.js';
+import { OSM_SKIP_TYPES, addGebaeude, osmNutzung } from './02b-gebaeude.js';
+import { polygonCenter, redrawFliessgewaesser } from './02c-karte-werkzeuge.js';
+import { redrawGasKessel } from './03a-erzeuger.js';
+import { startAnimPipes, stopAnimPipes, updateTotals } from './03c-gebaeude-io.js';
+import { closeEdgePopup, showEdgePopup, toggleEdgePruned } from './04a-ui-panels.js';
 
 export function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');

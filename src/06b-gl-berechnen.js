@@ -9,6 +9,10 @@ import { glGetGesamtMwh, glGetMonatswerte, glGetTempH, glLastgangKw, glRenderPre
 import { onSystemStateUpdated, updateAllDeckungen } from './06c-dispatch-core.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { readNum } from './lib/util.js';
+import { polygonCenter } from './02c-karte-werkzeuge.js';
+import { isErzeugerAktiv } from './06c-dispatch-core.js';
+import { _PV_SUN, makePvProfile8760 } from './09a-pv-profile.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 
 export let _glAutoTimer  = null;
 export let _glIsRunning  = false;

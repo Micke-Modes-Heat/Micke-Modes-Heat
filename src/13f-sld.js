@@ -2,6 +2,7 @@
 
 import { ASSETS, ASSET_CFG, TYPE_RANK, getAssetStatus, getAsset } from './13a-assets-core.js';
 import { globalYear } from './01-globals-varianten.js';
+import { map } from './02b-gebaeude.js';
 
 const SLD_LH = 120;   // px per rank level (vertical)
 const SLD_CW = 110;   // min column width per node

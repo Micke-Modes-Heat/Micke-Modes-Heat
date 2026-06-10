@@ -23,6 +23,10 @@ import { KMR_KOSTEN } from './config/netz-kosten.js';
 import { napBuildAnalyseSection, napShowSection } from './13o-nap-analyse.js';
 import { knaBuildAnalyseSection, knaShowSection } from './13r-knotenpunkt-analyse.js';
 import { pvaBuildAnalyseSection, pvaShowSection } from './09d-pv-analyse.js';
+import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-globals-varianten.js';
+import { getWLDColor } from './02a-netz-physik.js';
+import { _overpassFetchWithRetry, updateRohrListe } from './03b-netz.js';
+import { _buildProjectData, _loadProject, hideHint, showHint } from './03c-gebaeude-io.js';
 
 export function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);

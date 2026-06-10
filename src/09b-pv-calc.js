@@ -10,6 +10,7 @@ import { GL_MONTH_HOURS, GL_MONTH_START } from './06a-gbi-lastgang.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { getBatParams, makePvProfile8760, onPvVergModellChange } from './09a-pv-profile.js';
 import { _stromCurrentTab, _stromRenderFlussChart, _stromRenderLastgang, _stromRenderMonatsChart, drawSankeyStrom } from './09c-pv-charts-opt.js';
+import { getGebStromMwh } from './02b-gebaeude.js';
 
 export let _calcStromTimer = null;
 export function calcStromPanelDebounced() { clearTimeout(_calcStromTimer); _calcStromTimer = setTimeout(calcStromPanel, 120); }

@@ -6,6 +6,7 @@
 import { areaPolygon, gebaeude, netzEdges } from './01-globals-varianten.js';
 import { setLeftTab } from './04a-ui-panels.js';
 import { HILFE_TEXTE } from './config/hilfe-texte.js';
+import { fernwaerme, gasKessel, geoThermie, heizhackschnitzel, heizoelKessel, lwWp, pelletsKessel } from './01-globals-varianten.js';
 
 export let _hilfeModus = false;
 export let _hilfeOverlay = null;

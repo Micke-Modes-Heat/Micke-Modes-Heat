@@ -16,6 +16,7 @@ import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSp
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus } from './13a-assets-core.js';
 import { redrawAllAssets } from './13b-assets-render.js';
+import { globalYear, stromEdges } from './01-globals-varianten.js';
 
 export function epConfirm(title, message, opts) {
   opts = opts || {};
