@@ -242,7 +242,8 @@ export function updateAllDeckungen() {
 // ═══════════════════════════════════════════════════════════════════════════
 // ── _dispatchCore: Gemeinsamer stundenscharfer Dispatch-Kern ────────────
 // Wird von _deckungen8760 (Haupt-Dispatch) und _optDispatch8760 (Optimizer)
-// genutzt. Der Web Worker hat eine eigene Kopie (String-Template-Limitierung).
+// genutzt. Der Web Worker bindet dieselbe Funktion per _dispatchCore.toString()
+// ein (siehe 10d) — Funktion muss daher self-contained bleiben (keine Closures).
 //
 // cfg = {
 //   lastgangKw, tempH, vlH,      — stündliche Profile (Float32Array / Array)

@@ -5249,6 +5249,55 @@ function calcTrafoImpedanz(ukPct, Sn_kVA, Un_V) {
 }
 
 
+// ── lib/physik-konstanten.js ──
+// @ts-check
+// ── Physikalische Konstanten / Jahres-Grundwerte ─────────────────────────
+// Zentrale Quelle für Werte, die in mehreren Modulen identisch gebraucht werden.
+
+/** Stunden pro (Normal-)Jahr */
+var HOURS_PER_YEAR = 8760;
+
+/** Tage pro (Normal-)Jahr — Nenner in Sinusformeln für Temperaturprofile */
+var DAYS_PER_YEAR = 365;
+
+/** Default-Vollbenutzungsstunden Strom (Netz-Referenzwert) */
+var VBH_STROM_DEFAULT = 1800;
+
+
+// ── lib/util.js ──
+// @ts-check
+// ── Allgemeine Hilfsfunktionen ────────────────────────────────────────────
+
+/**
+ * Liest ein numerisches Input-Feld, clampt auf [min, max] und gibt bei
+ * ungültigem Wert den Fallback zurück.
+ * @param {string} id       - Element-ID
+ * @param {number} fallback - Wert bei leerem/ungültigem Input
+ * @param {number} [min]    - Untere Grenze (inklusiv), Default -Infinity
+ * @param {number} [max]    - Obere Grenze (inklusiv), Default +Infinity
+ * @returns {number}
+ */
+function readNum(id, fallback, min = -Infinity, max = Infinity) {
+  const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+  const raw = parseFloat(el?.value ?? '');
+  const val = isFinite(raw) ? raw : fallback;
+  return Math.max(min, Math.min(max, val));
+}
+
+/**
+ * Clampt einen bereits geparsten Wert auf [min, max].
+ * Bei NaN/Infinity wird min zurückgegeben.
+ * @param {number} val
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+function clampNum(val, min, max) {
+  if (!isFinite(val)) return min;
+  return Math.max(min, Math.min(max, val));
+}
+
+
 // ── 01-globals-varianten.js ──
 
 
@@ -6543,6 +6592,20 @@ function updateNetzColorLegend() {
       ['#f9a825', '15 – 30 €/MWh', 'moderat'],
       ['#ef6c00', '30 – 60 €/MWh', 'teuer — Wirtschaftlichkeit prüfen'],
       ['#e53935', '> 60 €/MWh',    'sehr teuer — Abtrennung prüfen'],
+    ],
+    druck: [
+      ['#4caf50', '< 100 Pa/m',     'gering'],
+      ['#8bc34a', '100 – 200 Pa/m', 'normal'],
+      ['#f9a825', '200 – 300 Pa/m', 'erhöht'],
+      ['#ef6c00', '300 – 400 Pa/m', 'hoch'],
+      ['#e53935', '> 400 Pa/m',     'kritisch — DN prüfen'],
+    ],
+    geschw: [
+      ['#4fc3f7', '< 0,3 m/s',     'sehr langsam'],
+      ['#4caf50', '0,3 – 0,7 m/s', 'gut'],
+      ['#8bc34a', '0,7 – 1,2 m/s', 'normal'],
+      ['#f9a825', '1,2 – 1,8 m/s', 'hoch'],
+      ['#e53935', '> 1,8 m/s',     'zu schnell — Geräusch/Erosion'],
     ],
   };
 
@@ -10351,6 +10414,7 @@ var netzVisible = true;
 
 
 
+
 function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
   const btn = document.getElementById('btn-geo-toggle');
@@ -12186,8 +12250,10 @@ function recalcNetz(){
     maxPathNode: maxPathNode
   };
 
-  const tAussen = parseFloat(document.getElementById('netz-t-aussen').value) ?? -12;
-  const tMittel = parseFloat(document.getElementById('netz-t-mittel').value) ?? 10;
+  // readNum statt parseFloat: parseFloat liefert bei leerem Feld NaN, und
+  // `NaN ?? fallback` greift NICHT (NaN ist nicht nullish) → Verluste würden NaN
+  const tAussen = readNum('netz-t-aussen', -12, -40, 30);
+  const tMittel = readNum('netz-t-mittel', 10, -20, 30);
   const uWertBase = parseFloat(document.getElementById('netz-u-wert').value) || 0.25;
   const tMeanPipe = (vlTemp + rlTemp) / 2;
   const deltaT = tMeanPipe - tAussen;
@@ -12238,7 +12304,9 @@ function recalcNetz(){
       const edge = pInfo.e;
       const mDot = edge.load / (cp * dt); 
       let drop = 0;
-      if (mDot > 0.001) drop = edge.lossKW / (mDot * cp);
+      // lossKW umfasst VL+RL (U-Wert gilt für beide Leitungen) —
+      // den Vorlauf kühlt nur der VL-Anteil (~50 %)
+      if (mDot > 0.001) drop = (edge.lossKW * 0.5) / (mDot * cp);
       
       const rawTempOut = nodeMap[pInfo.pNodeId].tempIn - drop;
       edge.tempIn = nodeMap[pInfo.pNodeId].tempIn;
@@ -25030,7 +25098,8 @@ function updateAllDeckungen() {
 // ═══════════════════════════════════════════════════════════════════════════
 // ── _dispatchCore: Gemeinsamer stundenscharfer Dispatch-Kern ────────────
 // Wird von _deckungen8760 (Haupt-Dispatch) und _optDispatch8760 (Optimizer)
-// genutzt. Der Web Worker hat eine eigene Kopie (String-Template-Limitierung).
+// genutzt. Der Web Worker bindet dieselbe Funktion per _dispatchCore.toString()
+// ein (siehe 10d) — Funktion muss daher self-contained bleiben (keine Closures).
 //
 // cfg = {
 //   lastgangKw, tempH, vlH,      — stündliche Profile (Float32Array / Array)
@@ -29772,9 +29841,11 @@ var CalcEngine = (() => {
   function investEurProKw(techKey, kw) {
     const k = INVEST_KURVEN[techKey];
     if (!k || kw <= 0) return 0;
-    if (kw <= k.maxDez) return k.aDez * Math.pow(kw, k.bDez - 1);
-    if (k.aZen && kw >= k.minZen && kw <= k.maxZen) return k.aZen * Math.pow(kw, k.bZen - 1);
-    if (k.aZen && kw > k.maxZen) return k.aZen * Math.pow(kw, k.bZen - 1);
+    if (k.aDez && kw <= k.maxDez) return k.aDez * Math.pow(kw, k.bDez - 1);
+    if (k.aZen && kw >= k.minZen) return k.aZen * Math.pow(kw, k.bZen - 1);
+    // Keine Dezentral-Kurve (z.B. Stromkessel) → Zentral-Kurve auch unterhalb minZen
+    // (vorher: null × P^b = 0 €/kW für kleine Anlagen)
+    if (!k.aDez) return k.aZen ? k.aZen * Math.pow(kw, k.bZen - 1) : 0;
     let eur = k.aDez * Math.pow(kw, k.bDez - 1);
     if (k.cap) eur = Math.min(eur, k.cap);
     return eur;
@@ -30272,7 +30343,10 @@ function _sensRenderBump() {
     const en   = window._dispatchEnergy || {};
     if (!keys.length) return;
 
-    // Compute annual cost per key at several gas/strom multipliers
+    // Jahreskosten je Erzeuger bei variierten Gas-/Strompreisen.
+    // WICHTIG: Der Multiplikator wirkt NUR auf Gas + Strom — Biomasse, Öl und
+    // Fernwärme bleiben konstant. (Würde er auf alle Träger wirken, skalieren
+    // alle Kosten mit demselben Faktor und die Rangfolge könnte sich nie ändern.)
     const multipliers = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6];
     const mLabels = multipliers.map(m => (m * 100 - 100 >= 0 ? '+' : '') + Math.round(m * 100 - 100) + '%');
 
@@ -30282,16 +30356,22 @@ function _sensRenderBump() {
     const pFw    = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
     const pPk    = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 8;
     const pHhs   = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 6;
+    // BHKW: thermischer Wirkungsgrad aus Panel-Werten (konsistent mit runSensitivitaet)
+    const bhkwSigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
+    const bhkwEtaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
+    const etaThBhkw  = bhkwEtaGes / (1 + bhkwSigma);
+    const skEta      = (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100;
 
     // Map key -> carrier price function
     const priceFor = (k, mult) => {
       if (k === 'lwwp' || k === 'fg' || k === 'geo') return (en[k]?.elMwh || 0) * pStrom * 10 * mult;
+      if (k === 'stromkessel') return (en[k]?.waermeMwh || 0) / skEta * pStrom * 10 * mult;
       if (k === 'gaskessel' || k === '_autoGk') return (en[k]?.waermeMwh || 0) / (0.92) * pGas * 10 * mult;
-      if (k === 'pellets') return (en[k]?.waermeMwh || 0) / (0.85) * pPk * 10 * mult;
-      if (k === 'hhs') return (en[k]?.waermeMwh || 0) / (0.80) * pHhs * 10 * mult;
-      if (k === 'heizoel') return (en[k]?.waermeMwh || 0) / (0.90) * pHko * 10 * mult;
-      if (k === 'fernwaerme') return (en[k]?.waermeMwh || 0) * pFw * 10 * mult;
-      if (k === 'bhkw') return (en[k]?.waermeMwh || 0) / (0.45) * pGas * 10 * mult;
+      if (k === 'pellets') return (en[k]?.waermeMwh || 0) / (0.85) * pPk * 10;
+      if (k === 'hhs') return (en[k]?.waermeMwh || 0) / (0.80) * pHhs * 10;
+      if (k === 'heizoel') return (en[k]?.waermeMwh || 0) / (0.90) * pHko * 10;
+      if (k === 'fernwaerme') return (en[k]?.waermeMwh || 0) * pFw * 10;
+      if (k === 'bhkw') return (en[k]?.waermeMwh || 0) / etaThBhkw * pGas * 10 * mult;
       return 0;
     };
 
@@ -30339,7 +30419,7 @@ function _sensRenderBump() {
       ctx.fillStyle = '#78909c'; ctx.font = '9px system-ui';
       ctx.fillText(mLabels[i], xPos(i), H - pad.bottom + 16);
     });
-    ctx.fillText('Energiepreise', pad.left + pw / 2, H - 4);
+    ctx.fillText('Gas- & Strompreis', pad.left + pw / 2, H - 4);
 
     // Lines
     activeKeys.forEach(k => {
@@ -41601,6 +41681,8 @@ function _renderAssetFelddaten(a) {
 // ── 13f-sld.js — Einlinienschema (Single-Line Diagram) ──────────────────────
 
 
+
+
 var SLD_LH = 120;   // px per rank level (vertical)
 var SLD_CW = 110;   // min column width per node
 var SLD_NW = 86;    // node box width
@@ -49184,6 +49266,183 @@ window.napShowKalibrierungDialog    = napShowKalibrierungDialog;
 window.napApplyKalibrierung         = napApplyKalibrierung;
 window.napApplyKalibrierungMitProfil = napApplyKalibrierungMitProfil;
 window.napKalUpdateFactor           = napKalUpdateFactor;
+
+
+// ── 13p-erzeuger-assets.js ──
+// ── 13p-erzeuger-assets.js — Auto-Verknüpfung Wärmeerzeuger ↔ Elektroassets ──
+// Wenn ein strombetriebener Wärmeerzeuger aktiviert (platziert) wird, entsteht
+// automatisch ein passendes Elektroasset. Beim Löschen des Erzeugers wird es
+// wieder entfernt. Werte (Leistung, JAZ, …) werden aus dem Erzeuger-Zustand
+// übernommen. Das Property `linkedErzeuger` auf dem Asset verknüpft beide Seiten.
+
+
+
+
+
+// Mapping erzeuger-key → Asset-Typ + Name
+var ERZEUGER_ASSET_CFG = {
+  lwwp:        { assetType: 'WP',          name: 'Luft-WP' },
+  geo:         { assetType: 'WP',          name: 'Geo-WP' },
+  fg:          { assetType: 'WP',          name: 'FG-WP' },
+  bhkw:        { assetType: 'KWK',         name: 'BHKW/KWK' },
+  stromkessel: { assetType: 'Verbraucher', name: 'Stromkessel' },
+};
+
+// Koordinaten des Wärmeerzeugers ermitteln
+function _coords(key) {
+  if (key === 'lwwp' && window.lwWp?.lat != null)
+    return { lat: window.lwWp.lat, lng: window.lwWp.lng };
+
+  if (key === 'geo' && window.geoThermie?.lat != null)
+    return { lat: window.geoThermie.lat, lng: window.geoThermie.lng };
+
+  if (key === 'fg') {
+    const pts = window.fliessgewaesser?.latlngs;
+    if (pts?.length) {
+      const mid = pts[Math.floor(pts.length / 2)];
+      return { lat: mid.lat, lng: mid.lng };
+    }
+  }
+
+  // Fallback: Heizzentrale (netz-zentrale)
+  const zentId = parseInt(document.getElementById('netz-zentrale')?.value);
+  if (zentId && window.gebaeude) {
+    const g = window.gebaeude.find(x => x.id === zentId);
+    if (g?.polygon?.length) {
+      const lats = g.polygon.map(p => p.lat ?? p[0]);
+      const lngs = g.polygon.map(p => p.lng ?? p[1]);
+      return {
+        lat: lats.reduce((a, b) => a + b) / lats.length,
+        lng: lngs.reduce((a, b) => a + b) / lngs.length,
+      };
+    }
+  }
+
+  // Letzter Fallback: Kartenmitte
+  if (map?.getCenter) {
+    const c = map.getCenter();
+    return { lat: c.lat, lng: c.lng };
+  }
+  return null;
+}
+
+// Props je Erzeuger-Typ berechnen
+function _props(key) {
+  switch (key) {
+    case 'lwwp': {
+      const pTh = window.lwWp?.leistungKw || parseFloat(document.getElementById('lwwp-leistung')?.value) || 12;
+      // Dispatch schreibt berechnete JAZ zurück in lwwp-jaz → immer aktuellster Wert
+      const jaz = parseFloat(document.getElementById('lwwp-jaz')?.value) || 3.0;
+      return { leistungThKW: pTh, leistungElKW: Math.round(pTh / jaz), jaz };
+    }
+    case 'geo': {
+      const pTh = window.geoThermie?.leistungKwEff
+        || parseFloat(document.getElementById('geo-leistung-eff')?.value) || 100;
+      // Dispatch schreibt berechnete JAZ zurück in geo-jaz → immer aktuellster Wert
+      const jaz = parseFloat(document.getElementById('geo-jaz')?.value) || 4.5;
+      return { leistungThKW: pTh, leistungElKW: Math.round(pTh / jaz), jaz };
+    }
+    case 'fg': {
+      const pTh = window.fliessgewaesser?.leistungKw
+        || parseFloat(document.getElementById('fg-leistung')?.value) || 100;
+      const jaz = window.fliessgewaesser?.jaz
+        || parseFloat(document.getElementById('fg-jaz')?.value) || 4.5;
+      return { leistungThKW: pTh, leistungElKW: Math.round(pTh / jaz), jaz };
+    }
+    case 'bhkw': {
+      const sigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
+      const pTh    = window.bhkw?.leistungThKw
+        || parseFloat(document.getElementById('bhkw-leistung-th')?.value) || 100;
+      const pEl    = Math.round(pTh * sigma);
+      return {
+        leistungElKW:   pEl,
+        leistungThKW:   pTh,
+        wirkungsgradEl: Math.round(sigma * 100),
+        brennstoff:     'Erdgas',
+      };
+    }
+    case 'stromkessel': {
+      const pTh = window.stromkessel?.leistungKw
+        || parseFloat(document.getElementById('sk-leistung')?.value) || 200;
+      const eta = parseFloat(document.getElementById('sk-eta')?.value) || 99;
+      return { leistungKW: Math.round(pTh * 100 / eta) };
+    }
+    default:
+      return {};
+  }
+}
+
+// Verknüpftes Asset suchen
+function _findLinked(key) {
+  return ASSETS.items.find(a => a.linkedErzeuger === key) || null;
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+/**
+ * Erstellt oder aktualisiert das Elektroasset für einen strombetriebenen
+ * Wärmeerzeuger. Aufzurufen nach jedem Aktivieren/Neu-Platzieren.
+ */
+function syncErzeugerElektroAsset(key) {
+  const cfg = ERZEUGER_ASSET_CFG[key];
+  if (!cfg) return;
+
+  const coords = _coords(key);
+  if (!coords) return;
+
+  const props = _props(key);
+
+  const existing = _findLinked(key);
+  if (existing) {
+    // Position immer mitführen — Erzeuger ist die Positionsquelle
+    existing.lat = coords.lat;
+    existing.lng = coords.lng;
+    if (existing._marker?.setLatLng) existing._marker.setLatLng([coords.lat, coords.lng]);
+    Object.assign(existing.props, props);
+  } else {
+    const asset = createAsset(cfg.assetType, coords.lat, coords.lng, {
+      name: cfg.name,
+      props,
+    });
+    if (asset) asset.linkedErzeuger = key;
+  }
+
+  if (isAssetLayerVisible()) redrawAllAssets();
+}
+
+/**
+ * Nur Props aktualisieren (kein Redraw). Für Update-Display-Funktionen,
+ * damit bei jeder Parameteränderung die Werte frisch bleiben.
+ */
+function updateErzeugerAssetProps(key) {
+  const existing = _findLinked(key);
+  if (!existing) return;
+  Object.assign(existing.props, _props(key));
+}
+
+/**
+ * Nur Position aktualisieren (kein Props-Rebuild, kein Redraw).
+ * Aufzurufen aus Drag-End-Handlern der Wärmeerzeuger-Marker.
+ */
+function moveErzeugerElektroAsset(key) {
+  const a = _findLinked(key);
+  if (!a) return;
+  const coords = _coords(key);
+  if (!coords) return;
+  a.lat = coords.lat;
+  a.lng = coords.lng;
+  if (a._marker?.setLatLng) a._marker.setLatLng([coords.lat, coords.lng]);
+}
+
+/**
+ * Entfernt das verknüpfte Elektroasset. Aufzurufen beim Löschen des Erzeugers.
+ */
+function removeErzeugerElektroAsset(key) {
+  const a = _findLinked(key);
+  if (!a) return;
+  deleteAsset(a.id);
+  if (isAssetLayerVisible()) redrawAllAssets();
+}
 
 
 // ── 13r-knotenpunkt-analyse.js ──

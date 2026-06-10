@@ -348,6 +348,20 @@ export function updateNetzColorLegend() {
       ['#ef6c00', '30 – 60 €/MWh', 'teuer — Wirtschaftlichkeit prüfen'],
       ['#e53935', '> 60 €/MWh',    'sehr teuer — Abtrennung prüfen'],
     ],
+    druck: [
+      ['#4caf50', '< 100 Pa/m',     'gering'],
+      ['#8bc34a', '100 – 200 Pa/m', 'normal'],
+      ['#f9a825', '200 – 300 Pa/m', 'erhöht'],
+      ['#ef6c00', '300 – 400 Pa/m', 'hoch'],
+      ['#e53935', '> 400 Pa/m',     'kritisch — DN prüfen'],
+    ],
+    geschw: [
+      ['#4fc3f7', '< 0,3 m/s',     'sehr langsam'],
+      ['#4caf50', '0,3 – 0,7 m/s', 'gut'],
+      ['#8bc34a', '0,7 – 1,2 m/s', 'normal'],
+      ['#f9a825', '1,2 – 1,8 m/s', 'hoch'],
+      ['#e53935', '> 1,8 m/s',     'zu schnell — Geräusch/Erosion'],
+    ],
   };
 
   const items = legends[netzColorMode] || [];

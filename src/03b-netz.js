@@ -10,6 +10,7 @@ import { drillSvg, redrawErzeugerIcons, redrawVerbindungslinien } from './03a-er
 import { drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
+import { readNum } from './lib/util.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 
@@ -1848,8 +1849,10 @@ export function recalcNetz(){
     maxPathNode: maxPathNode
   };
 
-  const tAussen = parseFloat(document.getElementById('netz-t-aussen').value) ?? -12;
-  const tMittel = parseFloat(document.getElementById('netz-t-mittel').value) ?? 10;
+  // readNum statt parseFloat: parseFloat liefert bei leerem Feld NaN, und
+  // `NaN ?? fallback` greift NICHT (NaN ist nicht nullish) → Verluste würden NaN
+  const tAussen = readNum('netz-t-aussen', -12, -40, 30);
+  const tMittel = readNum('netz-t-mittel', 10, -20, 30);
   const uWertBase = parseFloat(document.getElementById('netz-u-wert').value) || 0.25;
   const tMeanPipe = (vlTemp + rlTemp) / 2;
   const deltaT = tMeanPipe - tAussen;
@@ -1900,7 +1903,9 @@ export function recalcNetz(){
       const edge = pInfo.e;
       const mDot = edge.load / (cp * dt); 
       let drop = 0;
-      if (mDot > 0.001) drop = edge.lossKW / (mDot * cp);
+      // lossKW umfasst VL+RL (U-Wert gilt für beide Leitungen) —
+      // den Vorlauf kühlt nur der VL-Anteil (~50 %)
+      if (mDot > 0.001) drop = (edge.lossKW * 0.5) / (mDot * cp);
       
       const rawTempOut = nodeMap[pInfo.pNodeId].tempIn - drop;
       edge.tempIn = nodeMap[pInfo.pNodeId].tempIn;

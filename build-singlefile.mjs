@@ -15,6 +15,8 @@ const JS_FILES = [
   'config/optimizer-defaults.js',
   'config/hilfe-texte.js',
   'lib/elektro-formeln.js',      // ← Shared lib: muss vor 05b und 13g stehen
+  'lib/physik-konstanten.js',    // ← DAYS_PER_YEAR/HOURS_PER_YEAR: u.a. 04b, 05b, 05c, 06c
+  'lib/util.js',                 // ← readNum/clampNum: u.a. 06b
   '01-globals-varianten.js',
   '02a-netz-physik.js',
   '02b-gebaeude.js',
@@ -59,6 +61,7 @@ const JS_FILES = [
   '13m-kompaktstation.js',
   '13n-elektro-panel.js',
   '13o-nap-analyse.js',
+  '13p-erzeuger-assets.js',
   '13r-knotenpunkt-analyse.js',
   // main.js wird NICHT eingebunden — es macht nur import/window-Exposition,
   // die im Monolith überflüssig ist (alles bereits global). Der Namespace-

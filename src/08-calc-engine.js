@@ -637,9 +637,11 @@ export const CalcEngine = (() => {
   function investEurProKw(techKey, kw) {
     const k = INVEST_KURVEN[techKey];
     if (!k || kw <= 0) return 0;
-    if (kw <= k.maxDez) return k.aDez * Math.pow(kw, k.bDez - 1);
-    if (k.aZen && kw >= k.minZen && kw <= k.maxZen) return k.aZen * Math.pow(kw, k.bZen - 1);
-    if (k.aZen && kw > k.maxZen) return k.aZen * Math.pow(kw, k.bZen - 1);
+    if (k.aDez && kw <= k.maxDez) return k.aDez * Math.pow(kw, k.bDez - 1);
+    if (k.aZen && kw >= k.minZen) return k.aZen * Math.pow(kw, k.bZen - 1);
+    // Keine Dezentral-Kurve (z.B. Stromkessel) → Zentral-Kurve auch unterhalb minZen
+    // (vorher: null × P^b = 0 €/kW für kleine Anlagen)
+    if (!k.aDez) return k.aZen ? k.aZen * Math.pow(kw, k.bZen - 1) : 0;
     let eur = k.aDez * Math.pow(kw, k.bDez - 1);
     if (k.cap) eur = Math.min(eur, k.cap);
     return eur;
@@ -1137,7 +1139,10 @@ function _sensRenderBump() {
     const en   = window._dispatchEnergy || {};
     if (!keys.length) return;
 
-    // Compute annual cost per key at several gas/strom multipliers
+    // Jahreskosten je Erzeuger bei variierten Gas-/Strompreisen.
+    // WICHTIG: Der Multiplikator wirkt NUR auf Gas + Strom — Biomasse, Öl und
+    // Fernwärme bleiben konstant. (Würde er auf alle Träger wirken, skalieren
+    // alle Kosten mit demselben Faktor und die Rangfolge könnte sich nie ändern.)
     const multipliers = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6];
     const mLabels = multipliers.map(m => (m * 100 - 100 >= 0 ? '+' : '') + Math.round(m * 100 - 100) + '%');
 
@@ -1147,16 +1152,22 @@ function _sensRenderBump() {
     const pFw    = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
     const pPk    = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 8;
     const pHhs   = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 6;
+    // BHKW: thermischer Wirkungsgrad aus Panel-Werten (konsistent mit runSensitivitaet)
+    const bhkwSigma  = parseFloat(document.getElementById('bhkw-skz')?.value) || 0.45;
+    const bhkwEtaGes = (parseFloat(document.getElementById('bhkw-eta')?.value) || 88) / 100;
+    const etaThBhkw  = bhkwEtaGes / (1 + bhkwSigma);
+    const skEta      = (parseFloat(document.getElementById('sk-eta')?.value) || 99) / 100;
 
     // Map key -> carrier price function
     const priceFor = (k, mult) => {
       if (k === 'lwwp' || k === 'fg' || k === 'geo') return (en[k]?.elMwh || 0) * pStrom * 10 * mult;
+      if (k === 'stromkessel') return (en[k]?.waermeMwh || 0) / skEta * pStrom * 10 * mult;
       if (k === 'gaskessel' || k === '_autoGk') return (en[k]?.waermeMwh || 0) / (0.92) * pGas * 10 * mult;
-      if (k === 'pellets') return (en[k]?.waermeMwh || 0) / (0.85) * pPk * 10 * mult;
-      if (k === 'hhs') return (en[k]?.waermeMwh || 0) / (0.80) * pHhs * 10 * mult;
-      if (k === 'heizoel') return (en[k]?.waermeMwh || 0) / (0.90) * pHko * 10 * mult;
-      if (k === 'fernwaerme') return (en[k]?.waermeMwh || 0) * pFw * 10 * mult;
-      if (k === 'bhkw') return (en[k]?.waermeMwh || 0) / (0.45) * pGas * 10 * mult;
+      if (k === 'pellets') return (en[k]?.waermeMwh || 0) / (0.85) * pPk * 10;
+      if (k === 'hhs') return (en[k]?.waermeMwh || 0) / (0.80) * pHhs * 10;
+      if (k === 'heizoel') return (en[k]?.waermeMwh || 0) / (0.90) * pHko * 10;
+      if (k === 'fernwaerme') return (en[k]?.waermeMwh || 0) * pFw * 10;
+      if (k === 'bhkw') return (en[k]?.waermeMwh || 0) / etaThBhkw * pGas * 10 * mult;
       return 0;
     };
 
@@ -1204,7 +1215,7 @@ function _sensRenderBump() {
       ctx.fillStyle = '#78909c'; ctx.font = '9px system-ui';
       ctx.fillText(mLabels[i], xPos(i), H - pad.bottom + 16);
     });
-    ctx.fillText('Energiepreise', pad.left + pw / 2, H - 4);
+    ctx.fillText('Gas- & Strompreis', pad.left + pw / 2, H - 4);
 
     // Lines
     activeKeys.forEach(k => {
