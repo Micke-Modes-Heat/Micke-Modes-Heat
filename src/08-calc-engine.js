@@ -839,7 +839,7 @@ function runSensitivitaet() {
   // Basispreise
   const basePreise = {
     Erdgas:        parseFloat(document.getElementById('wirt-p-gas')?.value) || 10,
-    Strom:         parseFloat(document.getElementById('wirt-p-strom')?.value) || 30,
+    Strom:         parseFloat(document.getElementById('wirt-p-strom')?.value) || 35,
     Pellets:       parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
     Hackschnitzel: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
     Heizoel:       parseFloat(document.getElementById('wirt-p-hko')?.value) || 9.5,

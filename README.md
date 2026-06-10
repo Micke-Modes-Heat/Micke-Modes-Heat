@@ -1,73 +1,61 @@
-# Energieplanung v2 — Modulare Version
+# Micke-Modes-Heat — Energieplanung
+
+Browser-App zur Wärmenetz- und Energiekonzept-Planung: Gebäude auf der Karte erfassen
+(OSM/WFS-Import), Wärmenetz zeichnen und dimensionieren, Erzeuger auslegen
+(WP, BHKW, Kessel, Solarthermie, Speicher, PV), stundenscharfer Merit-Order-Dispatch,
+Wirtschaftlichkeit nach VDI 2067, Stromnetz, Optimierer und Variantenvergleich.
 
 ## Struktur
 
 ```
-v2/
 ├── index.html                  ← HTML-Markup (kein inline JS)
-├── build.sh                    ← Einzeldatei erzeugen → dist/Index.html
-├── package.json                ← npm-Projekt (Vite, ESLint)
-├── vite.config.js              ← Vite Dev-Server Config
+├── build-singlefile.mjs        ← Build: alles → dist/index.html (eine Datei)
+│                                  ⚠ Neue src-Dateien MÜSSEN in JS_FILES eingetragen
+│                                  werden — der Build bricht sonst mit Hinweis ab.
+├── build-feldapp.mjs           ← Build: field-app → dist/feldapp.html (offline-fähig)
 ├── eslint.config.js            ← ESLint Flat Config
+├── eslint-undef.config.mjs     ← Zusatz-Check: findet fehlende Imports (Dev-Modus)
 ├── src/
 │   ├── styles/app.css
-│   ├── config/
-│   │   ├── netz-kosten.js      ← KMR_KOSTEN, KABEL_TYPEN, TRAFO_GROESSEN
-│   │   ├── erzeuger-cfg.js     ← ERZEUGER_CFG, NUTZUNG_DEFAULTS
-│   │   ├── optimizer-defaults.js ← OPT_INVEST_DEFAULT, OPT_NUTZUNG, OPT_IH
-│   │   └── hilfe-texte.js      ← HILFE_TEXTE
-│   ├── 01-globals-varianten.js ← Globale Variablen, Variantenverwaltung
-│   ├── 02a-netz-physik.js      ← Rohrphysik, Farbschemata, Legende
-│   ├── 02b-gebaeude.js         ← Karte-Init, Gebäude-CRUD, OSM
-│   ├── 02c-karte-werkzeuge.js  ← Zeichenwerkzeuge, Trasse, LWWP
-│   ├── 03a-erzeuger.js         ← Erzeuger-Panels (WP, BHKW, Kessel, FW)
-│   ├── 03b-netz.js             ← Geothermie, Netzgraph, Strang-Report
-│   ├── 03c-gebaeude-io.js      ← Gebäude-UI, Import/Export
-│   ├── 04a-ui-panels.js        ← Panels, Layout, LP-KPIs
-│   ├── 04b-emissionen-3d.js    ← Emissionen, Dispatch-Chart, 3D-Energiekrone
-│   ├── 05a-export.js           ← CSV/PDF-Export, Druckansicht
-│   ├── 05b-stromnetz.js        ← Elektrisches Netz, Kabel, Trafo
-│   ├── 05c-sankey.js           ← Sankey-Diagramm
-│   ├── 06a-gbi-lastgang.js     ← CSV-Import, Lastgang-UI, Klimadaten
-│   ├── 06b-gl-berechnen.js     ← Hauptberechnung, Synthese, Solarthermie
-│   ├── 06c-dispatch-core.js    ← Merit-Order, _dispatchCore
-│   ├── 07a-analysis-charts.js  ← Analyse-Charts (JDL, Heatmap, Lastgang)
-│   ├── 07b-analysis-economics.js ← Wirtschaftlichkeit, CO2, Jahresscheiben
-│   ├── 08-calc-engine.js       ← CalcEngine (SigLinDe, COP, VDI 2067)
-│   ├── 09a-pv-profile.js       ← PV-Profil, Datei-Upload, Preise
-│   ├── 09b-pv-calc.js          ← Strom-Panel Berechnung, Batterie
-│   ├── 09c-pv-charts-opt.js    ← Strom-Charts, PV+Bat-Optimierung
-│   ├── 10a-optimizer-core.js   ← Optimizer-Kern, Dispatch, Kennwerte
-│   ├── 10b-hourly-live.js      ← Stündliche Live-Ansicht, Timeline
-│   ├── 10c-optimizer-run.js    ← Worker-Orchestrierung
-│   ├── 10d-optimizer-worker.js ← Worker-Code, Ergebnis-Charts
-│   ├── 11-hilfe-leitfaden.js   ← Hilfe-Tooltips, Leitfaden
-│   └── 12-inline-handlers.js   ← Event-Delegation, Details-Toggle
+│   ├── config/                 ← Kostentabellen, Erzeuger-Defaults, Hilfetexte
+│   ├── lib/                    ← Shared: util.js, physik-konstanten.js, elektro-formeln.js
+│   ├── 01–12 …                 ← Karte, Netz, Erzeuger, Dispatch, Analyse, PV, Optimizer
+│   ├── 13a–13r …               ← Elektro-Assets, SLD, Netzanalyse, NAP, Knotenpunkte
+│   └── main.js                 ← ES-Module-Entry (nur Vite-Dev; exponiert Exporte auf window)
+├── tests/                      ← Vitest (CalcEngine, Dispatch, Netz, WGK, Optimizer …)
+├── field-app/                  ← PWA für Vor-Ort-Datenaufnahme
 └── dist/
-    └── Index.html              ← Gebaute Einzeldatei
+    ├── index.html              ← Gebaute Einzeldatei (per Doppelklick nutzbar)
+    └── feldapp.html            ← Gebaute Feldapp
 ```
 
 ## Entwicklung
 
 ```bash
-cd v2
 npm install         # einmalig
-npm run dev         # Vite Dev-Server mit Auto-Reload (Port 3000)
-npm run lint        # ESLint prüfen
+npm run dev         # Vite Dev-Server (Port 3000) — Achtung: ESM-Migration unvollständig,
+                    #   einige Aktionen crashen nur im Dev-Modus (siehe eslint-undef.config.mjs)
+npm test            # Vitest (Rechenkern-Tests)
+npm run lint        # ESLint
+npm run typecheck   # tsc --noEmit
 ```
-
-Alternativ: `index.html` direkt im Browser öffnen.
 
 ## Ausliefern
 
 ```bash
-./build.sh          # → dist/Index.html (eine Datei, wie bisher)
+npm run build           # → dist/index.html (eine Datei, doppelklickbar)
+npm run build:feldapp   # → dist/feldapp.html
 ```
 
 ## Architektur
 
-- Alle JS-Dateien teilen sich den globalen Scope (plain `<script>` Tags)
-- Event-Handler über Event-Delegation (`data-click`, `data-input`, `data-change`)
-- Config-Objekte in `src/config/` separiert
-- Reihenfolge der Script-Tags in index.html ist wichtig
-- `build.sh` konkateniert alles zu einer Einzeldatei
+- **Zwei Laufzeitwelten:** Vite-Dev nutzt echte ES-Module; der Singlefile-Build entfernt
+  alle import/export-Anweisungen und verkettet alles in einen globalen `<script>`-Block.
+  Code muss in beiden Welten funktionieren — bevorzugt `window.*` für laufzeit-erzeugten
+  Zustand und Setter-Funktionen statt Direktzuweisung an importierte Variablen.
+- Event-Handler über Delegation (`data-click`, `data-input`, `data-change`), siehe
+  `src/12-inline-handlers.js`.
+- Der Optimizer-Worker bindet `_dispatchCore` per `toString()` ein — die Funktion muss
+  self-contained bleiben (keine Closures).
+- Reihenfolge der Dateien in `JS_FILES` (build-singlefile.mjs) ist maßgeblich für die
+  Initialisierung von Top-Level-Variablen.

@@ -635,8 +635,8 @@ export function _deckungen8760(ss) {
 
   // ── Heizlastfall-Leistung berechnen ──
   const _normAt = parseFloat(document.getElementById('gl-norm-at')?.value) || -12;
-  const _vl5    = parseFloat(document.getElementById('gl-vl5')?.value) || 80;
-  const _vl15   = parseFloat(document.getElementById('gl-vl15')?.value) || 55;
+  const _vl5    = parseFloat(document.getElementById('gl-vl5')?.value) || 90;   // = HTML-Default
+  const _vl15   = parseFloat(document.getElementById('gl-vl15')?.value) || 60;  // = HTML-Default
   const _vlDesign = Math.max(_vl5, _vl15);
   let _spitzenlastKw = 0;
   for (let i = 0; i < lastgangKw.length; i++) { if (lastgangKw[i] > _spitzenlastKw) _spitzenlastKw = lastgangKw[i]; }

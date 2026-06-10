@@ -89,12 +89,13 @@ export function _runOptWorker(resDiv) {
 
   // Wirtschaftsparameter
   const params = {
-    pStrom: parseFloat(document.getElementById('wirt-p-strom')?.value) || 30,
+    // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
+    pStrom: parseFloat(document.getElementById('wirt-p-strom')?.value) || 35,
     pGas: parseFloat(document.getElementById('wirt-p-gas')?.value) || 10,
-    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 7,
-    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 4,
-    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 9.5,
-    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 8,
+    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
+    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
+    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 10,
+    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 17,
     pEinsp: parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8,
     pBhkwEinsp: parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8,
     pBhkwKwkE: parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8,

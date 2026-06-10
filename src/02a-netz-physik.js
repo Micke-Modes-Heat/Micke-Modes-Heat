@@ -67,10 +67,20 @@ export function calcEdgeLength(e) {
   return len;
 }
 
+// Vollbenutzungsstunden für die WLD-Bewertung: nach der Grundlagenberechnung
+// die echten VBH aus dem Lastgang (Jahresenergie / Spitzenlast), sonst
+// konservativ 1800 h/a als Vorab-Schätzung.
+export function getNetzVBH() {
+  const ss = window.systemState;
+  if (ss && ss.pMaxKw > 0 && ss.gesamtMwhMitNV > 0) {
+    return (ss.gesamtMwhMitNV * 1000) / ss.pMaxKw;
+  }
+  return 1800;
+}
+
 export function getWLD(edge) {
   // Wärmeliniendichte in MWh/(m·a) = Jahreswärme der angeschlossenen Abnehmer / Trassenlänge
-  // Heizlast → Jahreswärme mit Vollbenutzungsstunden (VBH): konservativ 1800h/a
-  const VBH = 1800;
+  const VBH = getNetzVBH();
   if (!edge.length || edge.length <= 0) return 0;
   const waerme_mwh = ((edge.loadRaw || edge.load) * VBH) / 1000; // kW * h / 1000 = MWh
   return waerme_mwh / edge.length;

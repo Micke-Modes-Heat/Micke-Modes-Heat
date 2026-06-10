@@ -1,7 +1,7 @@
 // Build: Quell-Module + HTML + CSS → eine einzige HTML-Datei für Doppelklick
 // Kein Rollup/Vite nötig — alle JS-Dateien werden direkt in einen <script>-Block
 // zusammengefügt, genau wie im originalen Index.html.
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs';
 import { resolve, join } from 'path';
 
 const SRC = resolve('src');
@@ -67,6 +67,36 @@ const JS_FILES = [
   // die im Monolith überflüssig ist (alles bereits global). Der Namespace-
   // Alias "glBerechnen" würde die private Funktion gleichen Namens überschreiben.
 ];
+
+// ── Wächter: keine src-Datei darf in JS_FILES fehlen ────────────────────────
+// Vergessene Dateien führten bereits 3× zu "function X is not defined" in
+// dist/index.html (lib/util.js, lib/physik-konstanten.js, 13p-erzeuger-assets.js).
+// Der Build bricht ab, statt stillschweigend eine kaputte Datei zu erzeugen.
+{
+  const istJsDatei = f => f.endsWith('.js') && !f.endsWith('.d.ts');
+  const alleSrcJs = [];
+  const sammle = (dir, prefix) => {
+    for (const f of readdirSync(join(SRC, dir))) {
+      const rel = dir ? `${dir}/${f}` : f;
+      if (statSync(join(SRC, rel)).isDirectory()) {
+        if (f !== 'styles') sammle(rel, prefix);
+      } else if (istJsDatei(f)) {
+        alleSrcJs.push(rel);
+      }
+    }
+  };
+  sammle('', '');
+  const AUSNAHMEN = ['main.js']; // main.js macht nur import/window-Exposition
+  const fehltImBuild = alleSrcJs.filter(f => !JS_FILES.includes(f) && !AUSNAHMEN.includes(f));
+  const fehltAufPlatte = JS_FILES.filter(f => !alleSrcJs.includes(f));
+  if (fehltImBuild.length || fehltAufPlatte.length) {
+    if (fehltImBuild.length)
+      console.error('✗ BUILD ABGEBROCHEN — diese src-Dateien fehlen in JS_FILES (build-singlefile.mjs):\n  ' + fehltImBuild.join('\n  '));
+    if (fehltAufPlatte.length)
+      console.error('✗ BUILD ABGEBROCHEN — diese JS_FILES-Einträge existieren nicht in src/:\n  ' + fehltAufPlatte.join('\n  '));
+    process.exit(1);
+  }
+}
 
 // Vorab alle Export-Namen je Datei sammeln (für import * as X → var X = {...})
 function getExportNames(code) {

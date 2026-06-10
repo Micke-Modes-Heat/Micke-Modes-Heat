@@ -309,11 +309,6 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   });
 
   // Debug
-  console.log('[OPT-WGK] Kapitalkosten:', Math.round(result.kapitalJk), '€/a | Invest:', Math.round(result.investGesamt), '€ | BohrM:', Math.round(_dynBohrMeter));
-  console.log('[OPT-WGK] Energiekosten:', Math.round(result.energieJk + result.co2Jk + result.pvJk), '€/a');
-  console.log('[OPT-WGK] Jahreskosten ges.:', Math.round(result.jahreskosten), '€/a | Wärme:', result.totalWaerme.toFixed(1), 'MWh | WGK:', result.wgk.toFixed(1), 'ct/kWh');
-  console.log('[OPT-WGK] pKw:', JSON.stringify(_bPKw), '| pvKwp:', pvKwp, '| pvEigen:', pvEigenMwh.toFixed(1), '| pvEinsp:', pvEinspMwh.toFixed(1));
-  for (const erz of erzeugerList) console.log('[OPT-WGK] Erzeuger', erz.key, ': leistKw=', erz.leistKw, 'waermeMwh=', erz.waermeMwh?.toFixed(1), 'elMwh=', erz.elMwh?.toFixed(1));
 
   const spez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
   const pvErtragMwh = pvKwp * spez / 1000;
@@ -653,7 +648,6 @@ export function _optVarianteUebernehmen(result, btnEl) {
 
   // Erzeuger der Kombination aktivieren und Leistung setzen
   // (ohne moBeiAktivierung in der Schleife — wird einmal am Ende aufgerufen)
-  console.log('[OPT-APPLY] Variante übernehmen:', result.keys.join('+'), '| config:', JSON.stringify(result.config.map(e => e.key + ':' + e.leistKw)));
   for (const erz of result.config) {
     const leist = Math.max(1, Math.round(erz.leistKw));
     const setBtn = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
@@ -751,7 +745,6 @@ export function _optVarianteUebernehmen(result, btnEl) {
     }
   }
 
-  console.log('[OPT-APPLY] meritOrderKeys nach Aktivierung:', meritOrderKeys.join(','));
   // Solarthermie-Fläche aus Optimierungsergebnis übernehmen
   if (result.stM2 > 0) {
     const stEl = document.getElementById('st-flaeche');

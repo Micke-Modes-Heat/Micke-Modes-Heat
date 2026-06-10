@@ -2607,6 +2607,10 @@
       <label class="inp-label">Jahresmitteltemp. Außen (°C)</label>
       <input class="inp-field" type="number" id="netz-t-mittel" value="10" step="1" data-change="recalcNetz()" title="Jahresmitteltemperatur – für Jahresverluste in MWh/a (typ. 9–11°C in DE)"/>
     </div>
+    <div class="inp-group">
+      <label class="inp-label">Erdreichtemp. Winter (°C)</label>
+      <input class="inp-field" type="number" id="netz-t-erdreich" value="4" step="1" data-change="recalcNetz()" title="Erdreichtemperatur in Verlegetiefe (0,8–1 m) im Winter, typ. 3–5 °C. Maßgeblich für die Spitzen-Wärmeverluste der erdverlegten KMR-Rohre – nicht die Lufttemperatur."/>
+    </div>
     <div class="inp-group" style="grid-column:1/-1">
       <label class="inp-label">U-Wert Rohr (W/m·K)</label>
       <input class="inp-field" type="number" id="netz-u-wert" value="0.25" step="0.05" min="0.05" data-change="recalcNetz()" title="Wärmedurchgangskoeffizient KMR-Rohr, typ. 0.2–0.4"/>

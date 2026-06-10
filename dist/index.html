@@ -4027,6 +4027,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
       <label class="inp-label">Jahresmitteltemp. Außen (°C)</label>
       <input class="inp-field" type="number" id="netz-t-mittel" value="10" step="1" data-change="recalcNetz()" title="Jahresmitteltemperatur – für Jahresverluste in MWh/a (typ. 9–11°C in DE)"/>
     </div>
+    <div class="inp-group">
+      <label class="inp-label">Erdreichtemp. Winter (°C)</label>
+      <input class="inp-field" type="number" id="netz-t-erdreich" value="4" step="1" data-change="recalcNetz()" title="Erdreichtemperatur in Verlegetiefe (0,8–1 m) im Winter, typ. 3–5 °C. Maßgeblich für die Spitzen-Wärmeverluste der erdverlegten KMR-Rohre – nicht die Lufttemperatur."/>
+    </div>
     <div class="inp-group" style="grid-column:1/-1">
       <label class="inp-label">U-Wert Rohr (W/m·K)</label>
       <input class="inp-field" type="number" id="netz-u-wert" value="0.25" step="0.05" min="0.05" data-change="recalcNetz()" title="Wärmedurchgangskoeffizient KMR-Rohr, typ. 0.2–0.4"/>
@@ -6312,10 +6316,20 @@ function calcEdgeLength(e) {
   return len;
 }
 
+// Vollbenutzungsstunden für die WLD-Bewertung: nach der Grundlagenberechnung
+// die echten VBH aus dem Lastgang (Jahresenergie / Spitzenlast), sonst
+// konservativ 1800 h/a als Vorab-Schätzung.
+function getNetzVBH() {
+  const ss = window.systemState;
+  if (ss && ss.pMaxKw > 0 && ss.gesamtMwhMitNV > 0) {
+    return (ss.gesamtMwhMitNV * 1000) / ss.pMaxKw;
+  }
+  return 1800;
+}
+
 function getWLD(edge) {
   // Wärmeliniendichte in MWh/(m·a) = Jahreswärme der angeschlossenen Abnehmer / Trassenlänge
-  // Heizlast → Jahreswärme mit Vollbenutzungsstunden (VBH): konservativ 1800h/a
-  const VBH = 1800;
+  const VBH = getNetzVBH();
   if (!edge.length || edge.length <= 0) return 0;
   const waerme_mwh = ((edge.loadRaw || edge.load) * VBH) / 1000; // kW * h / 1000 = MWh
   return waerme_mwh / edge.length;
@@ -12252,11 +12266,14 @@ function recalcNetz(){
 
   // readNum statt parseFloat: parseFloat liefert bei leerem Feld NaN, und
   // `NaN ?? fallback` greift NICHT (NaN ist nicht nullish) → Verluste würden NaN
-  const tAussen = readNum('netz-t-aussen', -12, -40, 30);
   const tMittel = readNum('netz-t-mittel', 10, -20, 30);
+  // KMR liegt im Erdreich: Spitzenverluste gegen Winter-Erdreichtemperatur
+  // (~3–5 °C in 0,8–1 m Tiefe), NICHT gegen die Auslegungs-Lufttemperatur (−12 °C) —
+  // sonst werden die Verluste um ~25 % überschätzt.
+  const tErdreich = readNum('netz-t-erdreich', 4, -20, 20);
   const uWertBase = parseFloat(document.getElementById('netz-u-wert').value) || 0.25;
   const tMeanPipe = (vlTemp + rlTemp) / 2;
-  const deltaT = tMeanPipe - tAussen;
+  const deltaT = tMeanPipe - tErdreich;
   const deltaTMittel = tMeanPipe - tMittel;
 
   let totalLossKW = 0;
@@ -12312,7 +12329,7 @@ function recalcNetz(){
       edge.tempIn = nodeMap[pInfo.pNodeId].tempIn;
       edge.tempOut = rawTempOut;
       edge.thermischKritisch = rawTempOut < rlTemp;
-      nodeMap[curr].tempIn = Math.max(rawTempOut, tAussen);
+      nodeMap[curr].tempIn = Math.max(rawTempOut, tErdreich);
 
       const bC = gebMap.get(curr);
       if(bC) bC.tempIn = nodeMap[curr].tempIn;
@@ -12356,7 +12373,7 @@ function recalcNetz(){
 
   // ── Subtree-WLD + Wirtschaftlichkeit pro Kante ──────────────────────────
   // Für jede Kante: welche Wärme + Länge liegt im Subtree dahinter?
-  const VBH = 1800;
+  const VBH = getNetzVBH(); // echte VBH aus Lastgang, Fallback 1800 h/a
   const subtreeLoad = {};   // nodeId → kW im Subtree (inkl. eigener Last)
   const subtreeLength = {}; // nodeId → Trassenmeter ab hier
   const subtreeKosten = {}; // nodeId → Investition im Subtree
@@ -25491,8 +25508,8 @@ function _deckungen8760(ss) {
 
   // ── Heizlastfall-Leistung berechnen ──
   const _normAt = parseFloat(document.getElementById('gl-norm-at')?.value) || -12;
-  const _vl5    = parseFloat(document.getElementById('gl-vl5')?.value) || 80;
-  const _vl15   = parseFloat(document.getElementById('gl-vl15')?.value) || 55;
+  const _vl5    = parseFloat(document.getElementById('gl-vl5')?.value) || 90;   // = HTML-Default
+  const _vl15   = parseFloat(document.getElementById('gl-vl15')?.value) || 60;  // = HTML-Default
   const _vlDesign = Math.max(_vl5, _vl15);
   let _spitzenlastKw = 0;
   for (let i = 0; i < lastgangKw.length; i++) { if (lastgangKw[i] > _spitzenlastKw) _spitzenlastKw = lastgangKw[i]; }
@@ -27806,7 +27823,7 @@ function _syncZins() {
 function calcWirtschaftPanel() {
   _syncZins();
   const wrap = document.getElementById('wirt-table-wrap');
-  if (!wrap) { console.warn('[WIRT-WGK] ABBRUCH: wirt-table-wrap nicht gefunden'); return; }
+  if (!wrap) return;
 
   const keys  = window._dispatchActiveKeys || [];
   const en    = window._dispatchEnergy    || {};
@@ -27814,11 +27831,9 @@ function calcWirtschaftPanel() {
   const ovVdi = window._wirtVdiOverrides       || {};
 
   if (!keys.length) {
-    console.warn('[WIRT-WGK] ABBRUCH: keine dispatchActiveKeys');
     wrap.innerHTML = '<p style="color:var(--muted);font-size:11px;padding:8px;">Erst Berechnung starten.</p>';
     return;
   }
-  console.log('[WIRT-WGK] START — keys:', keys.join(','));
 
   const zins  = parseFloat(document.getElementById('wirt-zins')?.value)    || 2.7;
   const lohn  = parseFloat(document.getElementById('wirt-lohn')?.value)    || 45;
@@ -28244,13 +28259,6 @@ function calcWirtschaftPanel() {
     || 1;
   const wgk = gesamtMwh > 0.01 ? (gesamtJk + gesamtEnergieMitCo2) / gesamtMwh / 10 : 0; // ct/kWh
 
-  // Debug: WGK-Aufschlüsselung für Vergleich mit Optimierer
-  console.log('[WIRT-WGK] Kapitalkosten (Bausteine):', Math.round(gesamtJk), '€/a | Invest:', Math.round(gesamtInvest), '€ | BohrM:', Math.round(bohrm));
-  console.log('[WIRT-WGK] Energiekosten:', Math.round(gesamtEnergieMitCo2), '€/a');
-  console.log('[WIRT-WGK] Jahreskosten ges.:', Math.round(gesamtJk + gesamtEnergieMitCo2), '€/a | Wärme:', gesamtMwh.toFixed(1), 'MWh | WGK:', wgk.toFixed(1), 'ct/kWh');
-  console.log('[WIRT-WGK] pKw:', JSON.stringify(pKw), '| keys:', keys.join(','));
-  console.log('[WIRT-WGK] PV: pvEigen=', _pvEigenMwh.toFixed(1), 'pvEinsp=', _pvEinspMwh.toFixed(1), 'pvJk=', Math.round(pvJk));
-  keys.forEach(k => { const e = en[k]||{}; console.log('[WIRT-WGK] Erzeuger', k, ': pKw=', (pKw[k]||0).toFixed(0), 'waermeMwh=', (e.waermeMwh||0).toFixed(1), 'elMwh=', (e.elMwh||0).toFixed(1)); });
 
   window._lastWgk = wgk;
   window._lastInvestGes = gesamtInvest + pvInvestGes;
@@ -30043,7 +30051,7 @@ function runSensitivitaet() {
   // Basispreise
   const basePreise = {
     Erdgas:        parseFloat(document.getElementById('wirt-p-gas')?.value) || 10,
-    Strom:         parseFloat(document.getElementById('wirt-p-strom')?.value) || 30,
+    Strom:         parseFloat(document.getElementById('wirt-p-strom')?.value) || 35,
     Pellets:       parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
     Hackschnitzel: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
     Heizoel:       parseFloat(document.getElementById('wirt-p-hko')?.value) || 9.5,
@@ -34501,11 +34509,6 @@ function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWa
   });
 
   // Debug
-  console.log('[OPT-WGK] Kapitalkosten:', Math.round(result.kapitalJk), '€/a | Invest:', Math.round(result.investGesamt), '€ | BohrM:', Math.round(_dynBohrMeter));
-  console.log('[OPT-WGK] Energiekosten:', Math.round(result.energieJk + result.co2Jk + result.pvJk), '€/a');
-  console.log('[OPT-WGK] Jahreskosten ges.:', Math.round(result.jahreskosten), '€/a | Wärme:', result.totalWaerme.toFixed(1), 'MWh | WGK:', result.wgk.toFixed(1), 'ct/kWh');
-  console.log('[OPT-WGK] pKw:', JSON.stringify(_bPKw), '| pvKwp:', pvKwp, '| pvEigen:', pvEigenMwh.toFixed(1), '| pvEinsp:', pvEinspMwh.toFixed(1));
-  for (const erz of erzeugerList) console.log('[OPT-WGK] Erzeuger', erz.key, ': leistKw=', erz.leistKw, 'waermeMwh=', erz.waermeMwh?.toFixed(1), 'elMwh=', erz.elMwh?.toFixed(1));
 
   const spez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
   const pvErtragMwh = pvKwp * spez / 1000;
@@ -34845,7 +34848,6 @@ function _optVarianteUebernehmen(result, btnEl) {
 
   // Erzeuger der Kombination aktivieren und Leistung setzen
   // (ohne moBeiAktivierung in der Schleife — wird einmal am Ende aufgerufen)
-  console.log('[OPT-APPLY] Variante übernehmen:', result.keys.join('+'), '| config:', JSON.stringify(result.config.map(e => e.key + ':' + e.leistKw)));
   for (const erz of result.config) {
     const leist = Math.max(1, Math.round(erz.leistKw));
     const setBtn = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
@@ -34943,7 +34945,6 @@ function _optVarianteUebernehmen(result, btnEl) {
     }
   }
 
-  console.log('[OPT-APPLY] meritOrderKeys nach Aktivierung:', meritOrderKeys.join(','));
   // Solarthermie-Fläche aus Optimierungsergebnis übernehmen
   if (result.stM2 > 0) {
     const stEl = document.getElementById('st-flaeche');
@@ -36704,12 +36705,13 @@ function _runOptWorker(resDiv) {
 
   // Wirtschaftsparameter
   const params = {
-    pStrom: parseFloat(document.getElementById('wirt-p-strom')?.value) || 30,
+    // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
+    pStrom: parseFloat(document.getElementById('wirt-p-strom')?.value) || 35,
     pGas: parseFloat(document.getElementById('wirt-p-gas')?.value) || 10,
-    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 7,
-    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 4,
-    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 9.5,
-    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 8,
+    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
+    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
+    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 10,
+    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 17,
     pEinsp: parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8,
     pBhkwEinsp: parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8,
     pBhkwKwkE: parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8,
@@ -37832,12 +37834,13 @@ function _doRunOptimierung(resDiv) {
   if (peak < 1) peak = 1;
 
   // 2. Wirtschaftsparameter
-  const pStrom   = parseFloat(document.getElementById('wirt-p-strom')?.value) || 30;
+  // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
+  const pStrom   = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
   const pGas     = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
-  const pPk      = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 7;
-  const pHhs     = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 4;
-  const pHko     = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 9.5;
-  const pFw      = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 8;
+  const pPk      = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 8;
+  const pHhs     = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 6;
+  const pHko     = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 10;
+  const pFw      = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
   const pEinsp   = parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8;
   const pBhkwEinsp = parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8;
   const pBhkwKwkE  = parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8;

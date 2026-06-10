@@ -3,7 +3,7 @@
 import { areaPolygon, gebaeude, globalYear, isDrawingTrasse, isExcluded, isPlacingLwWp, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 
 let netzVisible = true;
-import { updateNetzColorLegend } from './02a-netz-physik.js';
+import { getNetzVBH, updateNetzColorLegend } from './02a-netz-physik.js';
 import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
 import { clearArea, polygonAreaM2, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
 import { drillSvg, redrawErzeugerIcons, redrawVerbindungslinien } from './03a-erzeuger.js';
@@ -1851,11 +1851,14 @@ export function recalcNetz(){
 
   // readNum statt parseFloat: parseFloat liefert bei leerem Feld NaN, und
   // `NaN ?? fallback` greift NICHT (NaN ist nicht nullish) → Verluste würden NaN
-  const tAussen = readNum('netz-t-aussen', -12, -40, 30);
   const tMittel = readNum('netz-t-mittel', 10, -20, 30);
+  // KMR liegt im Erdreich: Spitzenverluste gegen Winter-Erdreichtemperatur
+  // (~3–5 °C in 0,8–1 m Tiefe), NICHT gegen die Auslegungs-Lufttemperatur (−12 °C) —
+  // sonst werden die Verluste um ~25 % überschätzt.
+  const tErdreich = readNum('netz-t-erdreich', 4, -20, 20);
   const uWertBase = parseFloat(document.getElementById('netz-u-wert').value) || 0.25;
   const tMeanPipe = (vlTemp + rlTemp) / 2;
-  const deltaT = tMeanPipe - tAussen;
+  const deltaT = tMeanPipe - tErdreich;
   const deltaTMittel = tMeanPipe - tMittel;
 
   let totalLossKW = 0;
@@ -1911,7 +1914,7 @@ export function recalcNetz(){
       edge.tempIn = nodeMap[pInfo.pNodeId].tempIn;
       edge.tempOut = rawTempOut;
       edge.thermischKritisch = rawTempOut < rlTemp;
-      nodeMap[curr].tempIn = Math.max(rawTempOut, tAussen);
+      nodeMap[curr].tempIn = Math.max(rawTempOut, tErdreich);
 
       const bC = gebMap.get(curr);
       if(bC) bC.tempIn = nodeMap[curr].tempIn;
@@ -1955,7 +1958,7 @@ export function recalcNetz(){
 
   // ── Subtree-WLD + Wirtschaftlichkeit pro Kante ──────────────────────────
   // Für jede Kante: welche Wärme + Länge liegt im Subtree dahinter?
-  const VBH = 1800;
+  const VBH = getNetzVBH(); // echte VBH aus Lastgang, Fallback 1800 h/a
   const subtreeLoad = {};   // nodeId → kW im Subtree (inkl. eigener Last)
   const subtreeLength = {}; // nodeId → Trassenmeter ab hier
   const subtreeKosten = {}; // nodeId → Investition im Subtree

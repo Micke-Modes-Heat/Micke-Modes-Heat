@@ -737,12 +737,13 @@ export function _doRunOptimierung(resDiv) {
   if (peak < 1) peak = 1;
 
   // 2. Wirtschaftsparameter
-  const pStrom   = parseFloat(document.getElementById('wirt-p-strom')?.value) || 30;
+  // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
+  const pStrom   = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
   const pGas     = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
-  const pPk      = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 7;
-  const pHhs     = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 4;
-  const pHko     = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 9.5;
-  const pFw      = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 8;
+  const pPk      = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 8;
+  const pHhs     = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 6;
+  const pHko     = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 10;
+  const pFw      = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
   const pEinsp   = parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8;
   const pBhkwEinsp = parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8;
   const pBhkwKwkE  = parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8;
