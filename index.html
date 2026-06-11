@@ -32,7 +32,7 @@
   <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;">🛰</button>
   <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
   <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋</button>
-  <button class="tool-btn" id="btn-feedback" data-click="sendAppFeedback()" style="border-color:#66bb6a;color:#81c784;" title="Feedback geben (öffnet E-Mail mit Versionsangabe)">✉</button>
+  <button class="tool-btn" id="btn-feedback" data-click="sendAppFeedback()" style="border-color:#66bb6a;color:#81c784;" title="Feedback geben (lädt Datei mit Screenshot &amp; Versionsangabe herunter)">✉</button>
   <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;" title="Berechnungslogik — Wie wird gerechnet?">📐</button>
   <div class="addr-search-wrap" style="flex-shrink:0;">
     <span class="addr-search-icon">🔍</span>
@@ -3310,21 +3310,101 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (d.indexOf('__') === 0) d = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
-  window.FEEDBACK_EMAIL = 'andre.modes@ofd-bau.nrw.de';
+
+  // Erzeugt eine Feedback-HTML-Datei (Text + Metadaten + Screenshot) zum
+  // Download. Die Datei kann das Team einfach weiterleiten/teilen.
+  function _buildFeedbackHtml(text, screenshotDataUrl) {
+    var ver = window.APP_VERSION || 'dev';
+    var meta = {
+      'Version': ver + (window.APP_BUILD_DATE ? ' (Build ' + window.APP_BUILD_DATE + ')' : ''),
+      'Datum': new Date().toLocaleString('de-DE'),
+      'Browser': navigator.userAgent,
+      'Bildschirm': window.innerWidth + ' x ' + window.innerHeight,
+      'Seite': location.href
+    };
+    var esc = function (s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); };
+    var metaRows = Object.keys(meta).map(function (k) {
+      return '<tr><td style="padding:2px 12px 2px 0;color:#9a9080;white-space:nowrap;">' + esc(k) + '</td><td>' + esc(meta[k]) + '</td></tr>';
+    }).join('');
+    return '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">' +
+      '<title>Feedback Micke-Heat ' + esc(ver) + '</title>' +
+      '<style>body{font-family:sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#222;}' +
+      'h1{font-size:18px;}h2{font-size:13px;color:#666;margin-top:24px;}' +
+      'pre{white-space:pre-wrap;background:#f4f4f4;border:1px solid #ddd;border-radius:6px;padding:12px;}' +
+      'table{border-collapse:collapse;font-size:12px;}img{max-width:100%;border:1px solid #ddd;border-radius:6px;}</style>' +
+      '</head><body>' +
+      '<h1>Feedback – Micke-Heat ' + esc(ver) + '</h1>' +
+      '<h2>Rückmeldung</h2><pre>' + esc(text) + '</pre>' +
+      '<h2>Metadaten</h2><table>' + metaRows + '</table>' +
+      (screenshotDataUrl ? '<h2>Screenshot</h2><img src="' + screenshotDataUrl + '" alt="Screenshot">' : '') +
+      '</body></html>';
+  }
+
+  function _downloadFeedback(text, screenshotDataUrl) {
+    var html = _buildFeedbackHtml(text, screenshotDataUrl);
+    var blob = new Blob([html], { type: 'text/html' });
+    var url = URL.createObjectURL(blob);
+    var ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'Feedback_Micke-Heat_v' + (window.APP_VERSION || 'dev') + '_' + ts + '.html';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   window.sendAppFeedback = function () {
-    var ver = window.APP_VERSION || 'dev';
-    var subject = '[Micke-Heat ' + ver + '] Feedback';
-    var body =
-      'Was ist passiert / welche Idee:\n\n\n' +
-      'Erwartetes Verhalten:\n\n\n' +
-      '------------------------------\n' +
-      'Version: ' + ver + (window.APP_BUILD_DATE ? ' (Build ' + window.APP_BUILD_DATE + ')' : '') + '\n' +
-      'Browser: ' + navigator.userAgent + '\n' +
-      'Seite: ' + location.href;
-    window.location.href = 'mailto:' + window.FEEDBACK_EMAIL +
-      '?subject=' + encodeURIComponent(subject) +
-      '&body=' + encodeURIComponent(body);
+    document.getElementById('feedback-modal')?.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'feedback-modal';
+    overlay.className = 'ep-modal-overlay';
+    overlay.style.zIndex = '30000';
+    overlay.innerHTML =
+      '<div class="ep-modal" style="width:420px;max-width:94vw;">' +
+        '<div class="ep-modal-title">Feedback geben</div>' +
+        '<div class="ep-modal-body">' +
+          'Was ist passiert / welche Idee hast du? Version, Browser und auf Wunsch ' +
+          'ein Screenshot der aktuellen Ansicht werden automatisch beigefügt.' +
+        '</div>' +
+        '<textarea id="feedback-text" class="ep-modal-input" rows="5" ' +
+          'placeholder="Beschreibung, Schritte zum Nachstellen, Erwartung..." ' +
+          'style="resize:vertical;font-family:inherit;"></textarea>' +
+        '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--muted);">' +
+          '<input type="checkbox" id="feedback-screenshot" checked style="margin:0;"> Screenshot der aktuellen Ansicht beifügen' +
+        '</label>' +
+        '<div class="ep-modal-btns" style="margin-top:14px;">' +
+          '<button class="ep-modal-btn" data-click="this.closest(\'.ep-modal-overlay\').remove()">Abbrechen</button>' +
+          '<button class="ep-modal-btn primary" id="feedback-submit">Datei erzeugen</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+    var textEl = overlay.querySelector('#feedback-text');
+    textEl.focus();
+
+    overlay.querySelector('#feedback-submit').addEventListener('click', function () {
+      var btn = this;
+      var text = textEl.value.trim();
+      var withScreenshot = overlay.querySelector('#feedback-screenshot').checked;
+
+      function finish(screenshotDataUrl) {
+        _downloadFeedback(text, screenshotDataUrl);
+        overlay.remove();
+      }
+
+      if (withScreenshot && typeof html2canvas !== 'undefined') {
+        btn.disabled = true;
+        btn.textContent = 'Screenshot wird erstellt…';
+        html2canvas(document.body, { useCORS: true, allowTaint: true, scale: 1, logging: false })
+          .then(function (canvas) { finish(canvas.toDataURL('image/png')); })
+          .catch(function (e) { console.warn('Screenshot fehlgeschlagen:', e); finish(null); });
+      } else {
+        finish(null);
+      }
+    });
   };
 
   document.addEventListener('DOMContentLoaded', function () {
