@@ -1258,6 +1258,24 @@ function _napDrawZeitreihe(ctx,w,h,data) {
   ctx.stroke();
   ctx.font='9px sans-serif'; ctx.fillStyle='#ef5350'; ctx.textAlign='right';
   ctx.fillText(`Peak: ${maxV.toFixed(0)} kW`,m.l+cw-2,m.t+12);
+
+  // NAP-Grenzen aus Strom-Grundlagen (null = kein Limit)
+  const napEinsp = window.elNapMaxEinspKw ?? null;
+  const napBez   = window.elNapMaxBezugKw ?? null;
+  if (napBez != null && napBez <= maxV) {
+    const yL = yOf(napBez);
+    ctx.save(); ctx.setLineDash([6,3]); ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(m.l,yL); ctx.lineTo(m.l+cw,yL); ctx.stroke();
+    ctx.setLineDash([]); ctx.font='9px sans-serif'; ctx.fillStyle='#4fc3f7'; ctx.textAlign='left';
+    ctx.fillText(`NAP Bezug ${napBez.toFixed(0)} kW`,m.l+4,yL-3); ctx.restore();
+  }
+  if (napEinsp != null && napEinsp <= maxV) {
+    const yL = yOf(napEinsp);
+    ctx.save(); ctx.setLineDash([6,3]); ctx.strokeStyle='#ef9a9a'; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(m.l,yL); ctx.lineTo(m.l+cw,yL); ctx.stroke();
+    ctx.setLineDash([]); ctx.font='9px sans-serif'; ctx.fillStyle='#ef9a9a'; ctx.textAlign='right';
+    ctx.fillText(`NAP Einsp. ${napEinsp.toFixed(0)} kW`,m.l+cw-2,yL-3); ctx.restore();
+  }
 }
 
 // ── Jahresdauerlinie ──────────────────────────────────────────────────────────
@@ -1309,6 +1327,25 @@ function _napDrawDauerlinie(ctx,w,h,data) {
   ctx.beginPath(); ctx.moveTo(xTb,m.t); ctx.lineTo(xTb,m.t+ch); ctx.stroke();
   ctx.setLineDash([]); ctx.textAlign='center'; ctx.fillStyle='#78909c'; ctx.font='8px sans-serif';
   ctx.fillText(`Tb=${Math.round(s.benutzungsdauer)}h`,xTb,m.t+9);
+
+  // NAP-Grenzen aus Strom-Grundlagen (null = kein Limit)
+  const napEinspD = window.elNapMaxEinspKw ?? null;
+  const napBezD   = window.elNapMaxBezugKw ?? null;
+  const yOfD = v => m.t+(1-v/s.peak)*ch;
+  if (napBezD != null && napBezD <= s.peak) {
+    const yL=yOfD(napBezD);
+    ctx.save(); ctx.setLineDash([6,3]); ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(m.l,yL); ctx.lineTo(m.l+cw,yL); ctx.stroke();
+    ctx.setLineDash([]); ctx.font='9px sans-serif'; ctx.fillStyle='#4fc3f7'; ctx.textAlign='left';
+    ctx.fillText(`NAP Bezug ${napBezD.toFixed(0)} kW`,m.l+4,yL-3); ctx.restore();
+  }
+  if (napEinspD != null && napEinspD <= s.peak) {
+    const yL=yOfD(napEinspD);
+    ctx.save(); ctx.setLineDash([6,3]); ctx.strokeStyle='#ef9a9a'; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(m.l,yL); ctx.lineTo(m.l+cw,yL); ctx.stroke();
+    ctx.setLineDash([]); ctx.font='9px sans-serif'; ctx.fillStyle='#ef9a9a'; ctx.textAlign='right';
+    ctx.fillText(`NAP Einsp. ${napEinspD.toFixed(0)} kW`,m.l+cw-2,yL-3); ctx.restore();
+  }
 }
 
 // ── Tagesgang ─────────────────────────────────────────────────────────────────
