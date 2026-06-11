@@ -18,6 +18,7 @@ export function _buildOptWorkerCode() {
 // ═══ Web Worker: Optimierungsberechnung (DOM-frei) ═══
 
 let D; // DOM-Parameter (wird via postMessage empfangen)
+let QH = null; // Quartier-Stromlastgang — von onmessage gesetzt, von kennwerte() gelesen
 
 function _annF(z, n) {
   if (z <= 0 || n <= 0) return n > 0 ? 1 / n : 1;
@@ -207,7 +208,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
 
   // Quartier-Strom
   let quartierStromMwh = 0;
-  if (quartierH) { for (let t = 0; t < 8760; t++) quartierStromMwh += quartierH[t]; quartierStromMwh /= 1000; }
+  if (QH) { for (let t = 0; t < 8760; t++) quartierStromMwh += QH[t]; quartierStromMwh /= 1000; }
 
   // PV-Daten
   const pvEigenMwh = pvBatR ? (pvBatR.pvEigenMwh != null ? pvBatR.pvEigenMwh : pvBatR.eigenMwh) : 0;
@@ -373,6 +374,7 @@ self.onmessage = function(e) {
   D = data.dom;
   const { lastgangKw, tempH, vlH, pvProfile, stNormProfile, quartierH,
     params, aktiv, constraints, ziel, quality, pvAktiv, batAktiv, stAktiv, tsAktiv, globalYear } = data;
+  QH = quartierH;
 
   let peak = 0;
   for (let i = 0; i < lastgangKw.length; i++) if (lastgangKw[i] > peak) peak = lastgangKw[i];
@@ -570,7 +572,19 @@ self.onmessage = function(e) {
       if (now - lastProgressAt > 500) {
         lastProgressAt = now;
         const pct = Math.round(doneConfigs / totalConfigs * 100);
-      self.postMessage({ type: 'progress', phase: 'Grobsuche', pct, done: doneConfigs, total: totalConfigs, workerIdx: _workerIdx });
+        // Aktuell beste 3 Varianten mitschicken (O(n)-Auswahl alle 500 ms)
+        const best3 = [];
+        for (const r of grobResults) {
+          if (best3.length < 3) { best3.push(r); best3.sort((a, b) => a.score - b.score); }
+          else if (r.score < best3[2].score) { best3[2] = r; best3.sort((a, b) => a.score - b.score); }
+        }
+        const best3Min = best3.map(r => ({
+          kombiKey: r.kombiKey, score: r.score,
+          wgk: r.kw ? r.kw.wgk : null,
+          config: (r.config || []).map(c => ({ key: c.key, leistKw: c.leistKw })),
+          pvKwp: r.pvKwp, batKwh: r.batKwh, stM2: r.stM2, tsVol: r.tsVol,
+        }));
+      self.postMessage({ type: 'progress', phase: 'Grobsuche', pct, done: doneConfigs, total: totalConfigs, workerIdx: _workerIdx, best3: best3Min });
     }
   }
 
