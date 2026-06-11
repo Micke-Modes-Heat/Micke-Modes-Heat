@@ -489,7 +489,7 @@ export function toggleDrawArea() {
   if (window.isDrawingTrasse) toggleDrawTrasse();
   if (window.isDrawingRiver) toggleDrawRiver();
   if ((window.drawingId ?? drawingId) !== null) cancelDraw();
-  if ((window.ffDrawId ?? ffDrawId) !== null) cancelDrawFF();
+  if (ffDrawId !== null) cancelDrawFF();
 
   window.areaDrawing = true;
   window.areaPoints = [];
@@ -666,16 +666,15 @@ map.on('click',e=>{
     redrawTrasse();
     return;
   }
-  if ((window.ffDrawId ?? ffDrawId) !== null) {
-    const _ffPts = window.ffDrawPoints || ffDrawPoints;
-    if (_ffPts.length === 0) {
+  if (ffDrawId !== null) {
+    if (ffDrawPoints.length === 0) {
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
       window.ffDrawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
       window.ffDrawStartMarker.on('click', (ev) => { L.DomEvent.stopPropagation(ev); finishDrawFF(); });
     }
-    _ffPts.push(e.latlng);
+    ffDrawPoints.push(e.latlng);
     if (window.ffDrawPolyline) map.removeLayer(window.ffDrawPolyline);
-    window.ffDrawPolyline = L.polyline([..._ffPts], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
+    window.ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
     return;
   }
   if((window.drawingId ?? drawingId) !== null){

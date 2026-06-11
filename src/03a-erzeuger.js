@@ -18,7 +18,7 @@ import { _quelleTemp, isErzeugerAktiv, moBeiAktivierung, moBeiDeaktivierung } fr
 import { calcStromPanel } from './09b-pv-calc.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
-import { fernwaermeLayerGroup, ffCounter, freiflaechen, gasKessel, heizhackschnitzel, heizoelKessel, hhsLayerGroup, pelletsKessel, pelletsLayerGroup, setFernwaermeEmF, setFernwaermeLayerGroup, setFfCounter, setFreiflaechen, setGasKessel, setHeizhackschnitzel, setHeizoelKessel, setHhsLayerGroup, setIsPlacingFernwaerme, setIsPlacingHhs, setIsPlacingPellets, setPefFernwaerme, setPelletsKessel, setPelletsLayerGroup } from './01-globals-varianten.js';
+import { fernwaermeLayerGroup, ffCounter, freiflaechen, gasKessel, heizhackschnitzel, heizoelKessel, hhsLayerGroup, pelletsKessel, pelletsLayerGroup, setFernwaermeEmF, setFernwaermeLayerGroup, setFfCounter, setFfDrawId, setFfDrawPoints, setFreiflaechen, setGasKessel, setHeizhackschnitzel, setHeizoelKessel, setHhsLayerGroup, setIsPlacingFernwaerme, setIsPlacingHhs, setIsPlacingPellets, setPefFernwaerme, setPelletsKessel, setPelletsLayerGroup } from './01-globals-varianten.js';
 
 // ── Freiflächen-PV ↔ PV-Asset Verknüpfung ────────────────────────────────────
 function _ffCentroid(polygon) {
@@ -67,17 +67,21 @@ function _removeFFPvAsset(ffId) {
 }
 
 export function toggleFFPvPanel() {
-  // Freiflächen-PV ist im Elektro-Tab integriert → dorthin navigieren
+  // Läuft schon eine Zeichnung → Klick bricht ab (Toggle-Verhalten)
+  if (ffDrawId !== null) { cancelDrawFF(); return; }
+  // Elektro-Tab öffnen (dort liegen Liste + Ausrichtung Süd/Ost-West) und
+  // direkt das Flächen-Zeichnen starten — Fläche abklicken verortet die PV.
   if (typeof window.setLeftTab === 'function') {
     window.setLeftTab('elektro');
     setTimeout(() => {
-      const sec = document.getElementById('el-sec-ff-pv');
-      if (sec && sec.style.display === 'none') {
-        if (typeof window.toggleSection === 'function') window.toggleSection('el-sec-ff-pv');
+      const sec = document.getElementById('el-sec-netz');
+      if (sec && sec.style.display === 'none' && typeof window.toggleSection === 'function') {
+        window.toggleSection('el-sec-netz');
       }
       renderFFPanel();
     }, 120);
   }
+  startDrawFF();
 }
 
 export function calcFFKwp(ff) {
@@ -189,9 +193,9 @@ export function attachFFLayer(ff) {
 
 export function startDrawFF() {
   cancelDrawFF();
-  window.ffDrawId = ffCounter;
+  setFfDrawId(ffCounter);
   setFfCounter(ffCounter + 1);
-  window.ffDrawPoints = [];
+  setFfDrawPoints([]);
   showHint('Eckpunkte anklicken · Startpunkt (rot) erneut anklicken zum Abschließen · Rechtsklick = Zurück');
   map.getContainer().style.cursor = 'crosshair';
   const d2 = document.getElementById('el-btn-ff-draw');   if (d2) d2.style.display = 'none';
@@ -201,7 +205,7 @@ export function startDrawFF() {
 export function cancelDrawFF() {
   const _fpl = window.ffDrawPolyline; if (_fpl) { map.removeLayer(_fpl); window.ffDrawPolyline = null; }
   const _fsm = window.ffDrawStartMarker; if (_fsm) { map.removeLayer(_fsm); window.ffDrawStartMarker = null; }
-  window.ffDrawId = null; window.ffDrawPoints = [];
+  setFfDrawId(null); setFfDrawPoints([]);
   map.getContainer().style.cursor = '';
   hideHint();
   const d2 = document.getElementById('el-btn-ff-draw');   if (d2) d2.style.display = '';

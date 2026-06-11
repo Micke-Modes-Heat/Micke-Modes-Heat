@@ -5605,7 +5605,9 @@ function setFreiflaechen(v) { freiflaechen = v; }
 var ffCounter    = 1;
 function setFfCounter(v) { ffCounter = v; }
 var ffDrawId     = null;
+function setFfDrawId(v) { ffDrawId = v; }
 var ffDrawPoints = [];
+function setFfDrawPoints(v) { ffDrawPoints = v; }
 var ffDrawPolyline   = null;
 var ffDrawStartMarker = null;
 var bhkw      = null;
@@ -8402,7 +8404,7 @@ function toggleDrawArea() {
   if (window.isDrawingTrasse) toggleDrawTrasse();
   if (window.isDrawingRiver) toggleDrawRiver();
   if ((window.drawingId ?? drawingId) !== null) cancelDraw();
-  if ((window.ffDrawId ?? ffDrawId) !== null) cancelDrawFF();
+  if (ffDrawId !== null) cancelDrawFF();
 
   window.areaDrawing = true;
   window.areaPoints = [];
@@ -8579,16 +8581,15 @@ map.on('click',e=>{
     redrawTrasse();
     return;
   }
-  if ((window.ffDrawId ?? ffDrawId) !== null) {
-    const _ffPts = window.ffDrawPoints || ffDrawPoints;
-    if (_ffPts.length === 0) {
+  if (ffDrawId !== null) {
+    if (ffDrawPoints.length === 0) {
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
       window.ffDrawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
       window.ffDrawStartMarker.on('click', (ev) => { L.DomEvent.stopPropagation(ev); finishDrawFF(); });
     }
-    _ffPts.push(e.latlng);
+    ffDrawPoints.push(e.latlng);
     if (window.ffDrawPolyline) map.removeLayer(window.ffDrawPolyline);
-    window.ffDrawPolyline = L.polyline([..._ffPts], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
+    window.ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
     return;
   }
   if((window.drawingId ?? drawingId) !== null){
@@ -9513,17 +9514,21 @@ function _removeFFPvAsset(ffId) {
 }
 
 function toggleFFPvPanel() {
-  // Freiflächen-PV ist im Elektro-Tab integriert → dorthin navigieren
+  // Läuft schon eine Zeichnung → Klick bricht ab (Toggle-Verhalten)
+  if (ffDrawId !== null) { cancelDrawFF(); return; }
+  // Elektro-Tab öffnen (dort liegen Liste + Ausrichtung Süd/Ost-West) und
+  // direkt das Flächen-Zeichnen starten — Fläche abklicken verortet die PV.
   if (typeof window.setLeftTab === 'function') {
     window.setLeftTab('elektro');
     setTimeout(() => {
-      const sec = document.getElementById('el-sec-ff-pv');
-      if (sec && sec.style.display === 'none') {
-        if (typeof window.toggleSection === 'function') window.toggleSection('el-sec-ff-pv');
+      const sec = document.getElementById('el-sec-netz');
+      if (sec && sec.style.display === 'none' && typeof window.toggleSection === 'function') {
+        window.toggleSection('el-sec-netz');
       }
       renderFFPanel();
     }, 120);
   }
+  startDrawFF();
 }
 
 function calcFFKwp(ff) {
@@ -9635,9 +9640,9 @@ function attachFFLayer(ff) {
 
 function startDrawFF() {
   cancelDrawFF();
-  window.ffDrawId = ffCounter;
+  setFfDrawId(ffCounter);
   setFfCounter(ffCounter + 1);
-  window.ffDrawPoints = [];
+  setFfDrawPoints([]);
   showHint('Eckpunkte anklicken · Startpunkt (rot) erneut anklicken zum Abschließen · Rechtsklick = Zurück');
   map.getContainer().style.cursor = 'crosshair';
   const d2 = document.getElementById('el-btn-ff-draw');   if (d2) d2.style.display = 'none';
@@ -9647,7 +9652,7 @@ function startDrawFF() {
 function cancelDrawFF() {
   const _fpl = window.ffDrawPolyline; if (_fpl) { map.removeLayer(_fpl); window.ffDrawPolyline = null; }
   const _fsm = window.ffDrawStartMarker; if (_fsm) { map.removeLayer(_fsm); window.ffDrawStartMarker = null; }
-  window.ffDrawId = null; window.ffDrawPoints = [];
+  setFfDrawId(null); setFfDrawPoints([]);
   map.getContainer().style.cursor = '';
   hideHint();
   const d2 = document.getElementById('el-btn-ff-draw');   if (d2) d2.style.display = '';
