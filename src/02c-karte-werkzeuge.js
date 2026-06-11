@@ -422,6 +422,16 @@ export function toggleAnsichtMenu() {
   const menu = document.getElementById('ansicht-menu');
   if (!menu) return;
   const offen = menu.style.display !== 'none';
+  if (!offen) {
+    // position:fixed unter dem Button — die Kontextleiste clippt absolute
+    // Kinder wegen overflow-x:auto, fixed entkommt dem Scroll-Container
+    const btn = document.getElementById('btn-ansicht-menu');
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      menu.style.top = (r.bottom + 4) + 'px';
+      menu.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 215)) + 'px';
+    }
+  }
   menu.style.display = offen ? 'none' : 'block';
   if (!offen && !window._ansichtMenuCloser) {
     window._ansichtMenuCloser = true;

@@ -1594,7 +1594,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
     <button class="mode-btn"        data-click="setMode('strom')"  id="btn-strom" title="Gebäude nach Strombedarf einfärben — schaltet auch die Sidebar auf den Elektro-Bereich">⚡ Strom</button>
     <div style="position:relative;display:inline-block;">
       <button class="mode-btn" id="btn-ansicht-menu" data-click="toggleAnsichtMenu()" title="Weitere Kartenansichten und Gebäude-Symbole">Ansicht ▾</button>
-      <div id="ansicht-menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 12px;min-width:200px;box-shadow:0 6px 18px rgba(0,0,0,0.45);">
+      <div id="ansicht-menu" style="display:none;position:fixed;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 12px;min-width:200px;box-shadow:0 6px 18px rgba(0,0,0,0.45);">
         <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Einfärbung</div>
         <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:9px;">
           <button class="mode-btn" data-click="setMode('spez')"     id="btn-spez" style="text-align:left;" title="Spezifischer Wärmebedarf (kWh/m²a)">Spez. Wärmebedarf</button>
@@ -8329,6 +8329,16 @@ function toggleAnsichtMenu() {
   const menu = document.getElementById('ansicht-menu');
   if (!menu) return;
   const offen = menu.style.display !== 'none';
+  if (!offen) {
+    // position:fixed unter dem Button — die Kontextleiste clippt absolute
+    // Kinder wegen overflow-x:auto, fixed entkommt dem Scroll-Container
+    const btn = document.getElementById('btn-ansicht-menu');
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      menu.style.top = (r.bottom + 4) + 'px';
+      menu.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 215)) + 'px';
+    }
+  }
   menu.style.display = offen ? 'none' : 'block';
   if (!offen && !window._ansichtMenuCloser) {
     window._ansichtMenuCloser = true;
