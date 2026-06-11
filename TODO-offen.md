@@ -1,39 +1,41 @@
-# Offene Punkte (Stand 12.06.2026, nach Review-/Fix-Session)
+# Offene Punkte (Stand 11.06.2026, nach Abarbeitungs-Session)
 
-Erledigt bis hier: siehe `git log` (5 Commits, 39b1a94…2ff758b) — Build-Crashes,
-Build-Wächter, fachliche Fixes (Erdreich/Defaults/VBH), ESM Phase 1 (230 Imports),
-latente Crashes (CSV-Abgleich, Asset-Inspektor), Variantenvergleich-Fallback.
+Erledigt in dieser Session (Commits 038bd70…):
+- **ESM Phase 2 komplett**: 111 Zuweisungen auf Setter umgestellt
+  (tools/phase2-setters.mjs), `no-undef` + `no-import-assign` stehen jetzt
+  auf `error` — die Fehlerklasse „fehlender Import crasht nur im Dev" wird
+  ab sofort von ESLint/CI gefangen. Dabei 5 echte latente Bugs gefixt
+  (synState-Doppelberechnung, ctx-Global-Leak, toter Sensitivitäts-Tab im
+  Dev, fg→fliessgewaesser im Leitfaden, selectedStrandId im data-click).
+- **CI ausgebaut**: Playwright-Smoke-Test gegen dist (LWWP → Grundlage →
+  pMaxKw/Live-Tab/Konsolenfehler), `npm run typecheck` in CI, lint vor test.
+  Lokal: `npm run test:e2e`.
+- **Optimierer**: zeigt während Grob-/Feinsuche live die besten 3 Varianten.
+  Dabei kritischen Worker-Crash gefixt (quartierH-ReferenceError): Der
+  Optimierer lief seit Einführung des Quartier-Stroms IMMER im langsamen
+  Main-Thread-Fallback — jetzt wieder echt parallel (alle Kerne). Die
+  „~9 min bei Standard" dürften deutlich sinken.
+- **Fachlicher Kleinkram**: separate Speicher-Laderate (ts-lade-kw, Dispatch
+  Phase 6 + PV-Pfade + Optimizer), 100%-Deckung nicht mehr orange,
+  Export-Parser erkennt Mehrfach-Deklarationen (tools/export-names.mjs).
+- **JSON-Export dokumentiert**: docs/json-export.md (für Berichts-Workflow).
 
-## 1. ESM Phase 2 — Setter-Refactor (mittel, mit Sorgfalt)
-~54 Stellen weisen importierten Variablen direkt zu (Liste: `node tools/fix-missing-imports.mjs`
-Probelauf, Abschnitt "Übersprungen"). Pro Variable Setter im exportierenden Modul anlegen
-(Muster: `setMeritOrderKeys` in 06c), Aufrufstellen umstellen. Danach in eslint.config.js
-`no-undef` von 'off' auf 'error' → CI fängt die Fehlerklasse künftig automatisch.
-Verifikation: 227 Tests, dist-Diff minimal, Browser-Smoke (WP platzieren, Grundlage, Live-Tab).
-
-## 2. GitHub-Push (klein, braucht Konsti)
-5 lokale Commits auf main. Vorher: echten Autor setzen
+## 1. GitHub-Push (klein, braucht Konsti)
+Inzwischen 12 lokale Commits auf main. Vorher: echten Autor setzen
 (`git config user.name/user.email` — aktuell Platzhalter 'Konsti <konsti@local>')
 und GitHub-Authentifizierung einrichten (PAT oder SSH).
 
-## 3. Browser-Smoke-Test in CI (klein-mittel, risikofrei, lohnend)
-Playwright-Test, der dist/index.html lädt und durchklickt: LWWP platzieren →
-Grundlage berechnen (gl-gesamt=500) → prüfen: systemState.pMaxKw>0, Live-Tab sichtbar,
-keine Konsolenfehler. In test.yml ergänzen; außerdem `npm run typecheck` in CI aufnehmen
-und lint vor test ziehen.
+## 2. Pilotprojekt Berichts-Workflow (eigentliches Ziel, braucht Konsti)
+JSON-Export aus dem Tool → Bericht generieren (Vorlage in Berichtvorlagen/).
+Eingangsdaten in Projekte/[PROJEKT]/Eingangsdaten/ ablegen, dann Claude den
+Bericht generieren lassen. docs/json-export.md beschreibt, welche Werte im
+JSON stehen und was nachgefragt werden muss (Förderprogramm, Schall etc.).
 
-## 4. Optimierer: Zwischenergebnisse (mittel)
-Während der Grobsuche (~9 min bei Standard) die jeweils besten 3 Varianten live anzeigen
-(Worker posten Teilergebnisse bereits an 10c-optimizer-run — dort einhängen).
-
-## 5. Fachlicher Kleinkram (winzig)
-- Wärmespeicher: `entladeKw` begrenzt in 06c-dispatch-core Phase 6 auch das LADEN —
-  separate Laderate einführen (getThermSpeicherParams + UI-Feld).
-- Live-Ansicht: „100 % Deckung" erscheint in Warnfarbe orange, obwohl alles ok.
-- Codemod-Limitation: Mehrfach-Deklarationen (`export const R_MIN = 4, R_MAX = 54`)
-  werden von tools/fix-missing-imports.mjs und build-singlefile.mjs getExportNames
-  nur mit dem ersten Namen erfasst.
-
-## 6. Eigentliches Ziel (Arbeitsordner-Workflow)
-- Pilotprojekt: JSON-Export aus dem Tool → Bericht generieren (Vorlage in Berichtvorlagen/)
-- JSON-Exportstruktur dokumentieren
+## 3. Kleinigkeiten (optional)
+- package.json: `"type": "module"` setzen (ESLint-Warnung beim Laden der
+  Config; vorher prüfen, dass build-singlefile.mjs/Skripte unverändert laufen).
+- Grundlagen-Einstellungen (gl-*-Felder: Klimastandort, Profil, Netzverlust)
+  werden nicht mit ins Projekt-JSON exportiert — bei Bedarf ergänzen
+  (_buildProjectData/_loadProject in 03c).
+- Optimierer-Zwischenstand zeigt Grob-Konfigurationen mit teils kleinen
+  kW-Werten (Roh-Stufen vor Feinsuche) — kosmetisch, ggf. ausblenden bei <5%.
