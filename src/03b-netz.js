@@ -2307,7 +2307,9 @@ export function updateNetzStrandVisibility() {
   const stromMode = (currentMode === 'strom');
   window.netzEdges.forEach(e => {
     const dim = (selectedStrandId != null && e.strandId !== selectedStrandId);
-    const w = Math.max(3, Math.min(14, 2 + (e.dn||0) / 15));
+    // Gleiche Dickenformel wie recalcNetz/drawEdgeGradient — sonst springt die
+    // Liniendicke beim Moduswechsel Wärme↔Strom auf klobige Werte
+    const w = Math.max(1.5, Math.min(5, 1 + (e.dn||0) / 50));
     if (e.segLayers && e.segLayers.length > 0) {
       e.segLayers.forEach(s => s.setStyle({opacity: stromMode ? 0.1 : (dim ? 0.2 : 0.85), weight: dim ? 2 : w}));
       e.layer.setStyle({opacity: 0});
