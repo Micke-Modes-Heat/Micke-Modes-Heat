@@ -20,10 +20,14 @@ Erledigt in dieser Session (Commits 038bd70…):
   Export-Parser erkennt Mehrfach-Deklarationen (tools/export-names.mjs).
 - **JSON-Export dokumentiert**: docs/json-export.md (für Berichts-Workflow).
 
-## 1. GitHub-Push (klein, braucht Konsti)
-Inzwischen 12 lokale Commits auf main. Vorher: echten Autor setzen
-(`git config user.name/user.email` — aktuell Platzhalter 'Konsti <konsti@local>')
-und GitHub-Authentifizierung einrichten (PAT oder SSH).
+## 1. GitHub-Push — ERLEDIGT (11.06.2026)
+origin/main gemergt (PRs #26–#29 des Kollegen: Elektro-Assets-Chips,
+Release-Workflow, Feedback-Button — Feedback-Button ins „⋯ Mehr"-Menü
+integriert) und gepusht. Zugang lief über gespeicherte Credentials im
+Windows-Anmeldemanager. Hinweis: Commits tragen die Platzhalter-Identität
+'Konsti <konsti@local>' (bewusst so gepusht). Für künftige Commits ggf.
+`git config user.name/user.email` auf die echte Identität setzen.
+Backup des Stands vor dem Merge: Branch `backup-vor-merge-2026-06-11`.
 
 ## 2. Pilotprojekt Berichts-Workflow (eigentliches Ziel, braucht Konsti)
 JSON-Export aus dem Tool → Bericht generieren (Vorlage in Berichtvorlagen/).
