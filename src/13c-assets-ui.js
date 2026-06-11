@@ -21,6 +21,15 @@ export function buildPalette() {
     { label: 'Sonstiges',         types: ['Reserve'], fullWidth: true },
   ];
 
+  // Diese Typen legen UNgekoppelte Assets an (Bestands-/Fremdanlagen) —
+  // die Wärmenetz-Anlagen laufen über "Gekoppelte Erzeuger & Speicher"
+  const UNGEKOPPELT_HINWEIS = {
+    PV: 'Hinweis: Legt eine eigenständige (ungekoppelte) PV an — die PV der Liegenschaft besser über „Gekoppelte Erzeuger & Speicher" anlegen.',
+    WP: 'Hinweis: Legt eine eigenständige (ungekoppelte) WP als Verbraucher an — die Wärmenetz-WP besser über „Gekoppelte Erzeuger & Speicher" anlegen (wird automatisch verknüpft).',
+    KWK: 'Hinweis: Legt eine eigenständige (ungekoppelte) KWK an — das Wärmenetz-BHKW besser über „Gekoppelte Erzeuger & Speicher" anlegen.',
+    Batterie: 'Hinweis: Legt eine eigenständige (ungekoppelte) Batterie an — den Quartiersspeicher besser über „Gekoppelte Erzeuger & Speicher" anlegen.',
+  };
+
   for (const group of GROUPS) {
     const header = document.createElement('div');
     header.className = 'asset-palette-group-header';
@@ -34,6 +43,7 @@ export function buildPalette() {
       btn.className = 'asset-palette-btn' + (group.fullWidth ? ' full-width' : '');
       btn.dataset.type = type;
       if (cfg.beschreibung) btn.title = cfg.beschreibung;
+      if (UNGEKOPPELT_HINWEIS[type]) btn.title = (btn.title ? btn.title + '\n\n' : '') + UNGEKOPPELT_HINWEIS[type];
       btn.innerHTML = `<span class="asset-palette-btn-icon" style="color:${cfg.color}">${cfg.icon}</span><span>${cfg.label}</span>`;
       btn.addEventListener('click', () => setPendingType(type));
       panel.appendChild(btn);
