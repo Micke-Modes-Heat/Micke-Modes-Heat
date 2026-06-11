@@ -5454,8 +5454,18 @@ function cacheVariantResults() {
   const netzVerbrauch = gebaeude.filter(g => connectedIds.has(g.id) && !isExcluded(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
   // Fallback: wenn kein Netz gezeichnet, alle Gebäude zählen (wie im Dispatch)
   const alleVerbrauch = gebaeude.filter(g => !isExcluded(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
-  const totalVerbrauch = netzVerbrauch > 0 ? netzVerbrauch : alleVerbrauch;
-  const totalLoss = netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0) * 8.76;
+  let totalVerbrauch = netzVerbrauch > 0 ? netzVerbrauch : alleVerbrauch;
+  let totalLoss = netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0) * 8.76;
+  // Fallback 2: weder Netz noch Gebäude (Bedarf direkt eingegeben) →
+  // Werte aus der Grundlagenberechnung, statt irreführende Nullen zu zeigen.
+  // Verluste = Differenz Erzeugung − Nutzwärme (aus dem Netzverlust-%-Feld).
+  let lastgangBasis = false;
+  const _ss = window.systemState;
+  if (totalVerbrauch <= 0 && _ss && _ss.gesamtMwhMitNV > 0) {
+    totalVerbrauch = _ss.nutzwaermeMwh || _ss.gesamtMwhMitNV;
+    totalLoss = Math.max(0, _ss.gesamtMwhMitNV - totalVerbrauch);
+    lastgangBasis = true;
+  }
   const totalErzeugung = totalVerbrauch + totalLoss;
   const vlTemp = parseFloat(document.getElementById('netz-vl').value) || 90;
   const rlTemp = parseFloat(document.getElementById('netz-rl').value) || 60;
@@ -5535,7 +5545,7 @@ function cacheVariantResults() {
     label: activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '') : 'Basisdaten',
     gebäudebedarf: totalVerbrauch, netzverluste: totalLoss,
     netzverlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
-    erzeugung: totalErzeugung, vlTemp, rlTemp, erzeuger: erzeugerList, ausschlüsse,
+    erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, ausschlüsse,
     investGes, jkGes, co2GesH, co2GesLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
   };
   if (typeof currentViewMode !== 'undefined' && currentViewMode === 'vergleich') renderVergleich();
@@ -5570,9 +5580,9 @@ function renderVergleich() {
   const rows = [
     { label: 'NETZ', header: true },
     { label: 'VL / RL', fn: r => r ? `${r.vlTemp}°C / ${r.rlTemp}°C` : '—' },
-    { label: 'Gebäudebedarf', fn: r => r ? fmt(r.gebäudebedarf, 'MWh/a') : '—' },
-    { label: 'Netzverluste', fn: r => r ? `${fmt(r.netzverluste, 'MWh/a')} (${fmt(r.netzverlustePct, '%', 1)})` : '—', numFn: r => r?.netzverlustePct, best: 'min' },
-    { label: 'Zentrale erzeugt', fn: r => r ? fmt(r.erzeugung, 'MWh/a') : '—', bold: true },
+    { label: 'Gebäudebedarf', fn: r => r ? fmt(r.gebäudebedarf, 'MWh/a') + (r.lastgangBasis ? ' *' : '') : '—' },
+    { label: 'Netzverluste', fn: r => r ? `${fmt(r.netzverluste, 'MWh/a')} (${fmt(r.netzverlustePct, '%', 1)})${r.lastgangBasis ? ' *' : ''}` : '—', numFn: r => r?.netzverlustePct, best: 'min' },
+    { label: 'Zentrale erzeugt', fn: r => r ? fmt(r.erzeugung, 'MWh/a') + (r.lastgangBasis ? ' *' : '') : '—', bold: true },
     { label: 'Abgekoppelte Gebäude', fn: r => r ? (r.ausschlüsse > 0 ? r.ausschlüsse + ' Geb.' : '—') : '—' },
     { label: 'ERZEUGER', header: true },
     { label: 'Typ', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => e.typ).join(', ') : '—' },
@@ -5633,6 +5643,10 @@ function renderVergleich() {
     html += `</tr>`;
   });
   html += `</tbody></table>`;
+  // Fußnote, wenn eine Variante ohne gezeichnetes Netz/Gebäude rechnet
+  if (cols.some(id => variantResults[id]?.lastgangBasis)) {
+    html += `<div style="color:var(--muted);font-size:9px;padding:4px 2px 0;">* kein Netz/Gebäude gezeichnet — Werte aus Grundlagen-Lastgang (Bedarf = Nutzwärme, Verluste aus Netzverlust-%)</div>`;
+  }
   wrap.innerHTML = html;
   // Also update the new vergleich-view container
   const newWrap = document.getElementById('vergleich-view-table-wrap');
