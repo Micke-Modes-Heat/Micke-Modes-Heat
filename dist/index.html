@@ -1455,7 +1455,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 <body>
 
 <header>
-  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span>Energiekonzepte <span>·</span> <span style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span></div>
+  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span>Energiekonzepte <span>·</span> <span style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="App-Version" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
   <div class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
@@ -1470,6 +1470,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
   <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;">🛰</button>
   <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
   <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋</button>
+  <button class="tool-btn" id="btn-feedback" data-click="sendAppFeedback()" style="border-color:#66bb6a;color:#81c784;" title="Feedback geben (öffnet E-Mail mit Versionsangabe)">✉</button>
   <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;" title="Berechnungslogik — Wie wird gerechnet?">📐</button>
   <div class="addr-search-wrap" style="flex-shrink:0;">
     <span class="addr-search-icon">🔍</span>
@@ -4736,6 +4737,40 @@ Turnhalle;Öffentlich;1982;A;850</div>
 <!-- Edge popup (injected into map container) -->
 <div id="edge-popup" class="edge-popup" style="display:none;"></div>
 
+
+<!-- App-Version & Feedback-Button. Platzhalter werden von build-singlefile.mjs
+     ersetzt; im Dev-Modus (ungebaut) bleibt 'dev' stehen. -->
+<script>
+(function () {
+  var v = '0.1.0';
+  if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
+  var d = '2026-06-11';
+  if (d.indexOf('__') === 0) d = '';
+  window.APP_VERSION = v;
+  window.APP_BUILD_DATE = d;
+  window.FEEDBACK_EMAIL = 'andre.modes@ofd-bau.nrw.de';
+
+  window.sendAppFeedback = function () {
+    var ver = window.APP_VERSION || 'dev';
+    var subject = '[Micke-Heat ' + ver + '] Feedback';
+    var body =
+      'Was ist passiert / welche Idee:\n\n\n' +
+      'Erwartetes Verhalten:\n\n\n' +
+      '------------------------------\n' +
+      'Version: ' + ver + (window.APP_BUILD_DATE ? ' (Build ' + window.APP_BUILD_DATE + ')' : '') + '\n' +
+      'Browser: ' + navigator.userAgent + '\n' +
+      'Seite: ' + location.href;
+    window.location.href = 'mailto:' + window.FEEDBACK_EMAIL +
+      '?subject=' + encodeURIComponent(subject) +
+      '&body=' + encodeURIComponent(body);
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var el = document.getElementById('app-version');
+    if (el) el.textContent = 'v' + (window.APP_VERSION || 'dev');
+  });
+})();
+</script>
 
 
 

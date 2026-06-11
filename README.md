@@ -61,8 +61,45 @@ Alternativ: `index.html` direkt im Browser öffnen.
 ## Ausliefern
 
 ```bash
-./build.sh          # → dist/Index.html (eine Datei, wie bisher)
+npm run build          # → dist/index.html (eine Datei, Version wird injiziert)
 ```
+
+Die aktuelle Version aus `package.json` wird beim Build in die Datei
+geschrieben und im Header neben „Micke-Heat" als Badge angezeigt.
+
+## Release & Verteilung ans Team
+
+**Versionierung:** SemVer (`vMAJOR.MINOR.PATCH`), Quelle ist das `version`-Feld
+in `package.json`.
+
+**Eine neue Version veröffentlichen:**
+
+```bash
+npm version minor      # erhöht package.json + erstellt Git-Tag vX.Y.Z (z. B. v0.2.0)
+git push && git push --tags
+```
+
+Das Tag startet den Workflow `.github/workflows/release.yml`. Er baut die
+Einzeldatei und legt automatisch ein **GitHub Release** mit angehängter
+`index.html` (eingefroren, referenzierbar) an.
+
+**Zwei Verteilungswege:**
+
+| Weg            | URL / Ort                                         | Stand          |
+|----------------|---------------------------------------------------|----------------|
+| GitHub Pages   | `https://<owner>.github.io/<repo>/`               | immer aktuell  |
+| GitHub Release | Repo → *Releases* → `index.html` herunterladen    | eingefroren    |
+
+GitHub Pages aktualisiert sich bei jedem Push auf `main`
+(`.github/workflows/deploy-pages.yml`).
+> Einmalig nötig: Repository → **Settings → Pages → Source: „GitHub Actions"**.
+
+## Feedback vom Team
+
+In der App gibt es oben rechts einen **✉-Button**. Er öffnet eine vorausgefüllte
+E-Mail (Vorlage + automatische Versions-/Browserangabe) an die im
+`index.html`-Inline-Script hinterlegte Adresse (`FEEDBACK_EMAIL`). So enthält
+jedes Feedback automatisch die genutzte Version.
 
 ## Architektur
 
