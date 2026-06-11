@@ -25,7 +25,7 @@ import { knaBuildAnalyseSection, knaShowSection } from './13r-knotenpunkt-analys
 import { pvaBuildAnalyseSection, pvaShowSection } from './09d-pv-analyse.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { getWLDColor } from './02a-netz-physik.js';
-import { _overpassFetchWithRetry, updateRohrListe } from './03b-netz.js';
+import { OVERPASS_ENDPOINTS, updateRohrListe } from './03b-netz.js';
 import { _buildProjectData, _loadProject, hideHint, showHint } from './03c-gebaeude-io.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { netzPruningMode, setNetzPruningMode } from './01-globals-varianten.js';
@@ -244,8 +244,17 @@ async function queryOsmRoadType(latA, lngA, latB, lngB) {
   const delta = 0.0003;
   const bbox = `${midLat-delta},${midLng-delta},${midLat+delta},${midLng+delta}`;
   const q = `[out:json][timeout:5];way["highway"](${bbox});out tags 1;`;
+  // Stille Einzelabfrage statt _overpassFetchWithRetry: Hintergrund-Task darf
+  // keine Hints/Fehlermeldungen anzeigen, und eine leere Antwort (keine Straße
+  // in der Nähe) ist hier ein normales Ergebnis, kein Serverfehler.
   try {
-    const d = await _overpassFetchWithRetry(q, null, 2);
+    const resp = await fetch(OVERPASS_ENDPOINTS[0], {
+      method: 'POST',
+      body: 'data=' + encodeURIComponent(q),
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!resp.ok) return 'mittel';
+    const d = await resp.json();
     if (d && d.elements && d.elements.length > 0) {
       const hw = d.elements[0].tags?.highway || '';
       return HIGHWAY_KOSTEN[hw] || 'mittel';
