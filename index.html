@@ -3012,6 +3012,25 @@
     </div>
     <input type="file" id="spot-file-input" accept=".csv,.txt" style="display:none;" data-change="spotPreisFileSelected(this.files[0])"/>
 
+    <!-- NAP-Grenzen -->
+    <div class="sa-section-title" style="margin-top:4px;">NAP-Grenzen <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">für PV-Analyse &amp; NAP-Lastgang · leer = unbegrenzt · 0 = kein Strom</span></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:140px;">
+        <span style="font-size:10px;color:#ef9a9a;flex-shrink:0;">Max. Einspeisung:</span>
+        <input class="inp-field" type="number" id="strom-nap-einsp-kw" min="0" step="10"
+          placeholder="∞" style="width:70px;text-align:right;"
+          data-input="window.elNapMaxEinspKw=(this.value===''?null:parseFloat(this.value));window._pvAnalyse&&(window._pvAnalyse.napMaxEinspKw=window.elNapMaxEinspKw??0);(document.getElementById('pva-nap-einsp')||{}).value=window.elNapMaxEinspKw??''"/>
+        <span style="font-size:10px;color:var(--muted);">kW</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:140px;">
+        <span style="font-size:10px;color:#4fc3f7;flex-shrink:0;">Max. Bezug:</span>
+        <input class="inp-field" type="number" id="strom-nap-bezug-kw" min="0" step="10"
+          placeholder="∞" style="width:70px;text-align:right;"
+          data-input="window.elNapMaxBezugKw=(this.value===''?null:parseFloat(this.value));window._pvAnalyse&&(window._pvAnalyse.napMaxBezugKw=window.elNapMaxBezugKw??0);(document.getElementById('pva-nap-bezug')||{}).value=window.elNapMaxBezugKw??''"/>
+        <span style="font-size:10px;color:var(--muted);">kW</span>
+      </div>
+    </div>
+
     <!-- Strompreise -->
     <div class="sa-section-title" style="margin-top:4px;">Strompreise</div>
     <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">

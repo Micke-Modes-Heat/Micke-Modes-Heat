@@ -168,6 +168,7 @@ export function attachFFLayer(ff) {
   const clipId = `ff-clip-${ff.id}`;
   const svgEl  = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svgEl.setAttribute('preserveAspectRatio', 'none');
   svgEl.style.overflow = 'hidden';
   svgEl.innerHTML = `<defs><clipPath id="${clipId}"><polygon points="${polyPts}"/></clipPath></defs>` +
                     `<g clip-path="url(#${clipId})">${shapes}</g>`;

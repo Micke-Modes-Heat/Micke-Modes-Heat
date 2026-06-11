@@ -74,8 +74,11 @@ export const ASSET_PROPS_SCHEMA = {
   Batterie:     [{ key:'leistungKW',          label:'Leistung (kW)' },
                  { key:'kapazitaetKWh',       label:'Kapazität (kWh)' },
                  { key:'betriebsmodus',       label:'Betriebsmodus' }],
-  Lade:         [{ key:'anzahlPunkte',        label:'Anzahl Ladepunkte' },
-                 { key:'leistungProPunktKW',  label:'Leistung/Punkt (kW)' }],
+  Lade:         [{ key:'anzahlPunkte',        label:'Anz. Standardladepunkte' },
+                 { key:'leistungProPunktKW',  label:'Leistung/Punkt (kW)' },
+                 { key:'gleichzeitigFaktor',  label:'Gleichzeitigkeitsfaktor (0–1)' },
+                 { key:'anzahlSchnell',       label:'Anz. Schnelllader' },
+                 { key:'leistungSchnellKW',   label:'Leistung Schnelllader (kW)' }],
   WP:           [{ key:'leistungThKW',         label:'Th. Leistung (kW)' },
                  { key:'leistungElKW',         label:'El. Bedarf (kW)' },
                  { key:'jaz',                  label:'JAZ' }],
@@ -172,7 +175,8 @@ export function deleteAsset(id) {
   if (i < 0) return false;
   const a = ASSETS.items[i];
   // Marker entfernen (falls Renderer gesetzt hat)
-  if (a._marker && a._marker.remove) a._marker.remove();
+  if (a._marker    && a._marker.remove)    a._marker.remove();
+  if (a._ladeLayer && a._ladeLayer.remove) a._ladeLayer.remove();
   // Zugehörige Leitungen löschen
   ASSETS.edges = ASSETS.edges.filter(e => e.aId !== id && e.bId !== id);
   ASSETS.items.splice(i, 1);
