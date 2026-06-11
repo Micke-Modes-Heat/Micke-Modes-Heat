@@ -8,6 +8,11 @@ const SRC = resolve('src');
 const dist = resolve('dist');
 mkdirSync(dist, { recursive: true });
 
+// Version + Build-Datum aus package.json → werden unten in die HTML injiziert
+// (Platzhalter __APP_VERSION__ / __BUILD_DATE__ im index.html-Quelltext)
+const APP_VERSION = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version || '0.0.0';
+const BUILD_DATE = new Date().toISOString().slice(0, 10);
+
 // Reihenfolge wie im Original — Konfiguration zuerst, dann numerisch
 const JS_FILES = [
   'config/netz-kosten.js',
@@ -185,6 +190,11 @@ const bodyIdx = html.lastIndexOf('</body>');
 html = html.substring(0, bodyIdx)
   + `<script>\n${jsAll}</script>\n</body>`
   + html.substring(bodyIdx + 7);
+
+// 4b. Version + Build-Datum injizieren (Platzhalter aus index.html-Inline-Script)
+html = html
+  .replace(/__APP_VERSION__/g, APP_VERSION)
+  .replace(/__BUILD_DATE__/g, BUILD_DATE);
 
 // 5. Schreiben
 writeFileSync(join(dist, 'index.html'), html);
