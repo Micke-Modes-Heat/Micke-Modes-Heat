@@ -1167,7 +1167,13 @@
       <!-- Left: Flow Schema -->
       <div id="live-flow-wrap">
         <div style="font-size:10px;color:rgba(255,255,255,0.35);padding:8px 14px;letter-spacing:0.5px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.04);flex-shrink:0;">
-          <span>Energiefluss</span>
+          <span style="display:flex;align-items:center;gap:10px;">Energiefluss
+            <span style="display:inline-flex;gap:2px;text-transform:none;letter-spacing:0;">
+              <button class="live-flow-mode-btn" data-mode="box" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Klassisch</button>
+              <button class="live-flow-mode-btn" data-mode="sankey" data-active="1" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Hub-Sankey</button>
+              <button class="live-flow-mode-btn" data-mode="sankey-detail" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Hub-Sankey Detail</button>
+            </span>
+          </span>
           <span id="live-flow-hour" style="font-size:9px;color:rgba(255,255,255,0.2);"></span>
         </div>
         <div id="live-flow-svg" style="width:100%;padding:6px;"></div>
