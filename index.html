@@ -27,12 +27,17 @@
   </div>
   <div class="header-spacer" style="flex:1;"></div>
   <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Kartenebenen ein-/ausblenden">⊞ Ebenen</button>
-  <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱</button>
-  <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;" title="Farbschema wechseln">🎨</button>
-  <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;">🛰</button>
-  <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
-  <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋</button>
-  <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;" title="Berechnungslogik — Wie wird gerechnet?">📐</button>
+  <div style="position:relative;display:inline-block;">
+    <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:#607d8b;color:#90a4ae;font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Berechnungslogik">⋯ Mehr</button>
+    <div id="mehr-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:190px;box-shadow:0 6px 18px rgba(0,0,0,0.45);flex-direction:column;gap:3px;">
+      <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;justify-content:flex-start;font-size:11px;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱 Feldapp</button>
+      <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Farbschema wechseln">🎨 Farbschema</button>
+      <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;">🛰 Satellit</button>
+      <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓ Hilfe-Modus</button>
+      <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;justify-content:flex-start;font-size:11px;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋 Leitfaden</button>
+      <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;justify-content:flex-start;font-size:11px;" title="Berechnungslogik — Wie wird gerechnet?">📐 Berechnungslogik</button>
+    </div>
+  </div>
   <div class="addr-search-wrap" style="flex-shrink:0;">
     <span class="addr-search-icon">🔍</span>
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"

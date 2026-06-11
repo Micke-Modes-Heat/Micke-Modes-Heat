@@ -1447,12 +1447,17 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
   </div>
   <div class="header-spacer" style="flex:1;"></div>
   <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Kartenebenen ein-/ausblenden">⊞ Ebenen</button>
-  <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱</button>
-  <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;" title="Farbschema wechseln">🎨</button>
-  <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;">🛰</button>
-  <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
-  <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋</button>
-  <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;" title="Berechnungslogik — Wie wird gerechnet?">📐</button>
+  <div style="position:relative;display:inline-block;">
+    <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:#607d8b;color:#90a4ae;font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Berechnungslogik">⋯ Mehr</button>
+    <div id="mehr-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:190px;box-shadow:0 6px 18px rgba(0,0,0,0.45);flex-direction:column;gap:3px;">
+      <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;justify-content:flex-start;font-size:11px;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱 Feldapp</button>
+      <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Farbschema wechseln">🎨 Farbschema</button>
+      <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;">🛰 Satellit</button>
+      <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓ Hilfe-Modus</button>
+      <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;justify-content:flex-start;font-size:11px;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋 Leitfaden</button>
+      <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;justify-content:flex-start;font-size:11px;" title="Berechnungslogik — Wie wird gerechnet?">📐 Berechnungslogik</button>
+    </div>
+  </div>
   <div class="addr-search-wrap" style="flex-shrink:0;">
     <span class="addr-search-icon">🔍</span>
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
@@ -8146,6 +8151,24 @@ function setMode(m){
     if (!elektroAktiv && typeof window.setLeftTab === 'function') window.setLeftTab('elektro');
   } else {
     if (elektroAktiv && typeof window.setLeftTab === 'function') window.setLeftTab(window._lastWaermeTab || 'erzeuger');
+  }
+}
+
+// ── "⋯ Mehr"-Menü in der Kopfleiste (Feldapp, Farbschema, Satellit, Hilfe …) ──
+function toggleMehrMenu() {
+  const menu = document.getElementById('mehr-menu');
+  if (!menu) return;
+  const offen = menu.style.display !== 'none';
+  menu.style.display = offen ? 'none' : 'flex';
+  if (!offen && !window._mehrMenuCloser) {
+    window._mehrMenuCloser = true;
+    // Klick außerhalb schließt das Menü
+    document.addEventListener('click', (e) => {
+      const m = document.getElementById('mehr-menu');
+      if (m && m.style.display !== 'none'
+        && !e.target.closest('#mehr-menu')
+        && !e.target.closest('#btn-mehr-menu')) m.style.display = 'none';
+    });
   }
 }
 
@@ -39464,6 +39487,7 @@ function _optRenderScatter(container) {
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
+
 var _hilfeModus = false;
 var _hilfeOverlay = null;
 var _hilfeTooltip = null;
@@ -39476,13 +39500,13 @@ function toggleHilfeModus() {
     btn.style.borderColor = '#4caf50';
     btn.style.color = '#4caf50';
     btn.style.background = 'rgba(76,175,80,0.15)';
-    btn.textContent = '❓ Hilfe (aktiv)';
+    btn.textContent = '❓ Hilfe-Modus (aktiv)';
     _showHilfeOverlay();
   } else {
     btn.style.borderColor = '#607d8b';
     btn.style.color = '#90a4ae';
     btn.style.background = '';
-    btn.textContent = '❓';
+    btn.textContent = '❓ Hilfe-Modus';
     _hideHilfeOverlay();
   }
 }

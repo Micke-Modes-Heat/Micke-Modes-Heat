@@ -399,6 +399,24 @@ export function setMode(m){
   }
 }
 
+// ── "⋯ Mehr"-Menü in der Kopfleiste (Feldapp, Farbschema, Satellit, Hilfe …) ──
+export function toggleMehrMenu() {
+  const menu = document.getElementById('mehr-menu');
+  if (!menu) return;
+  const offen = menu.style.display !== 'none';
+  menu.style.display = offen ? 'none' : 'flex';
+  if (!offen && !window._mehrMenuCloser) {
+    window._mehrMenuCloser = true;
+    // Klick außerhalb schließt das Menü
+    document.addEventListener('click', (e) => {
+      const m = document.getElementById('mehr-menu');
+      if (m && m.style.display !== 'none'
+        && !e.target.closest('#mehr-menu')
+        && !e.target.closest('#btn-mehr-menu')) m.style.display = 'none';
+    });
+  }
+}
+
 // ── "Ansicht ▾"-Menü in der Kontextleiste (Nischenansichten + Gebäude-Symbole) ──
 export function toggleAnsichtMenu() {
   const menu = document.getElementById('ansicht-menu');

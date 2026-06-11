@@ -22,13 +22,13 @@ export function toggleHilfeModus() {
     btn.style.borderColor = '#4caf50';
     btn.style.color = '#4caf50';
     btn.style.background = 'rgba(76,175,80,0.15)';
-    btn.textContent = '❓ Hilfe (aktiv)';
+    btn.textContent = '❓ Hilfe-Modus (aktiv)';
     _showHilfeOverlay();
   } else {
     btn.style.borderColor = '#607d8b';
     btn.style.color = '#90a4ae';
     btn.style.background = '';
-    btn.textContent = '❓';
+    btn.textContent = '❓ Hilfe-Modus';
     _hideHilfeOverlay();
   }
 }
