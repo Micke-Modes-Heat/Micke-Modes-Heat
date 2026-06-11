@@ -12,6 +12,8 @@ import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElekt
 import { areaPoints, lwWp, trasseSegments } from './01-globals-varianten.js';
 import { _gebLabelHtml, escHtml } from './03c-gebaeude-io.js';
 import { cancelDrawStromEdge } from './05b-stromnetz.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { _setFliessgewaesserVisible } from './01-globals-varianten.js';
 
 export function polygonCenter(coords){
   let lat=0,lng=0,n=coords.length;
@@ -1046,6 +1048,7 @@ export function updateFliessgewaesserVisibility() {
 }
 
 export function setFliessgewaesserVisible(visible) {
+  _setFliessgewaesserVisible(visible); // Modul-Binding in 01-globals aktuell halten
   window.fliessgewaesserVisible = visible;
   updateFliessgewaesserVisibility();
 }

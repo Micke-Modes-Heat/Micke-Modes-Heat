@@ -819,7 +819,7 @@ export const CalcEngine = (() => {
 // ══════════════════════════════════════════════════════════════════════════
 
 // ── Sensitivitäts-Slider / Carrier-Inputs ─────────────────────────────────
-function sensSliderChanged(val) {
+export function sensSliderChanged(val) {
   document.getElementById('sens-global-label').textContent = '±' + val + '%';
   // Alle Carrier-Inputs auf Slider-Wert setzen
   ['sens-t-gas','sens-t-strom','sens-t-pk','sens-t-hhs','sens-t-hko','sens-t-fw'].forEach(id => {
@@ -827,11 +827,11 @@ function sensSliderChanged(val) {
   });
   runSensitivitaet();
 }
-function sensCarrierChanged() {
+export function sensCarrierChanged() {
   runSensitivitaet();
 }
 
-function runSensitivitaet() {
+export function runSensitivitaet() {
   const keys = window._dispatchActiveKeys || [];
   const en   = window._dispatchEnergy || {};
   if (!keys.length) return;

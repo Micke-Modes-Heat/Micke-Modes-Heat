@@ -15,6 +15,7 @@ export const standardDNs = [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 
 // KMR_KOSTEN → config/netz-kosten.js (wird vorher geladen)
 
 export let kostenSzenario = 'mittel'; // 'niedrig' | 'mittel' | 'hoch'
+export function setKostenSzenario(v) { kostenSzenario = v; }
 export let netzColorMode = 'wld'; // 'wld' | 'temp' | 'dn' | 'auslastung' | 'abkuehlung'
 
 export function getKostenProM(dn, edgeKlasse) {

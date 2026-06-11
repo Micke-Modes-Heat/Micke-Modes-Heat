@@ -15,6 +15,8 @@ import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { OPT_IH, OPT_INVEST_DEFAULT, OPT_NUTZUNG } from './config/optimizer-defaults.js';
 import { autoGkResult } from './06c-dispatch-core.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, solarthermieAktiv, stromEmF, stromEmFLZ, thermSpeicherAktiv } from './01-globals-varianten.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { runSensitivitaet } from './08-calc-engine.js';
 
 window._wirtBausteineOverrides = window._wirtBausteineOverrides || {};
 window._wirtVdiOverrides       = window._wirtVdiOverrides       || {};

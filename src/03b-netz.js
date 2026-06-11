@@ -20,6 +20,10 @@ import { polygonCenter, redrawFliessgewaesser } from './02c-karte-werkzeuge.js';
 import { redrawGasKessel } from './03a-erzeuger.js';
 import { startAnimPipes, stopAnimPipes, updateTotals } from './03c-gebaeude-io.js';
 import { closeEdgePopup, showEdgePopup, toggleEdgePruned } from './04a-ui-panels.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { setEdgeStartId, setSelectedStrandId, set_batchImporting } from './01-globals-varianten.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { selectedStrandId } from './01-globals-varianten.js';
 
 export function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
@@ -1201,7 +1205,7 @@ out body;>;out skel qt;`;
 
     // Gebäude in Häppchen einfügen — Polygone erscheinen batch-weise auf der Karte
     const CHUNK = 20;
-    _batchImporting = true;
+    set_batchImporting(true);
     for(let i = 0; i < toAdd.length; i += CHUNK){
       toAdd.slice(i, i + CHUNK).forEach(opts => {
         const g = addGebaeude(opts);
@@ -1214,7 +1218,7 @@ out body;>;out skel qt;`;
       showHint(`OSM: ${Math.min(i + CHUNK, toAdd.length)} / ${toAdd.length} Gebäude…`);
       await new Promise(r => setTimeout(r, 0));
     }
-    _batchImporting = false;
+    set_batchImporting(false);
 
     // Sofort Erfolgsmeldung + ausblenden
     showHint(`✓ ${toAdd.length} Gebäude geladen`);
@@ -1231,7 +1235,7 @@ out body;>;out skel qt;`;
     if (areaPolygon) { map.removeLayer(areaPolygon); }
     areaEditMarkers.forEach(m => map.removeLayer(m));
   }catch(err){
-    _batchImporting = false;
+    set_batchImporting(false);
     showHint('⚠ Fehler: '+err.message);setTimeout(hideHint,4000);console.error(err);
   }
   btn.classList.remove('loading');
@@ -1532,7 +1536,7 @@ export function clearNetz(){
     if(e.segLayers) e.segLayers.forEach(s => { if(map.hasLayer(s)) map.removeLayer(s); });
   });
   window.netzEdges = [];
-  selectedStrandId = null;
+  setSelectedStrandId(null);
   const sel = document.getElementById('netz-strang');
   if (sel) sel.value = '';
   updateRohrListe();
@@ -2263,7 +2267,7 @@ export function updateStrangReport() {
     const col = ampelCol[s.ampel];
     const rowStyle = selectedStrandId === s.id ? 'background:rgba(255,255,255,0.05);' : '';
     h += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;${rowStyle}" `
-       + `data-click="selectedStrandId=${s.id};document.getElementById('netz-strang').value='${s.id}';updateNetzStrandVisibility();" `
+       + `data-click="setSelectedStrandId(${s.id});document.getElementById('netz-strang').value='${s.id}';updateNetzStrandVisibility();" `
        + `title="${ampelTxt[s.ampel]}: ${fmtD(s.zuschlag,0)} €/MWh Netzkosten, ${fmtD(s.verlustPct,1)}% Verluste">`;
     h += `<td style="padding:3px 4px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${col};"></span></td>`;
     h += `<td style="padding:3px 3px;color:var(--text);">${s.id + 1}</td>`;
@@ -2420,19 +2424,19 @@ export function toggleDrawEdge(){
   if(window.isDrawingEdge){
     btn.classList.add('active');
     showHint('Klicke auf das erste Gebäude für die Leitung.');
-    edgeStartId = null;
+    setEdgeStartId(null);
     map.getContainer().style.cursor='crosshair';
   } else {
     btn.classList.remove('active');
     hideHint();
-    edgeStartId = null;
+    setEdgeStartId(null);
     map.getContainer().style.cursor='';
   }
 }
 
 export function startNetzEdgeFrom(id) {
   if (!window.isDrawingEdge) toggleDrawEdge();
-  edgeStartId = id;
+  setEdgeStartId(id);
   showHint('Zweites Gebäude auf der Karte anklicken.');
 }
 

@@ -20,6 +20,7 @@ export let drawPolyline= null;
 export let drawStartMarker = null;
 export let selectedId  = null;
 export let idCounter   = 1;
+export function setIdCounter(v) { idCounter = v; }
 
 export const R_MIN = 4, R_MAX = 54;
 
@@ -37,11 +38,15 @@ export let areaEditMarkers = [];
 export let netzEdges = [];
 export let calculatedLoad = {};
 export let edgeWaypoints = {};
+export function setEdgeWaypoints(v) { edgeWaypoints = v; }
 export function edgeKey(u, v) { return `${Math.min(u,v)}_${Math.max(u,v)}`; }
 export let isDrawingEdge = false;
 export let edgeStartId = null;
+export function setEdgeStartId(v) { edgeStartId = v; }
 export let selectedStrandId = null;
+export function setSelectedStrandId(v) { selectedStrandId = v; }
 export let netzPruningMode = false;
+export function setNetzPruningMode(v) { netzPruningMode = v; }
 
 // ── Stromnetz state ──────────────────────────────────────────────────────
 export let stromEdges = [];
@@ -59,17 +64,22 @@ export let stromNetzSubTab = 'waerme'; // 'waerme' | 'strom'
 
 export let isDrawingTrasse = false;
 export let trassePoints = [];
+export function setTrassePoints(v) { trassePoints = v; }
 export let trassePolyline = null;
 export let trasseEditMarkers = [];
 // Mehrstrang-Trasse: Array von Segmenten [{points: [idx1, idx2, ...]}]
 // Jedes Segment verbindet aufeinanderfolgende trassePoints-Indizes
 export let trasseSegments = []; // [{start, end}] — Bereiche in trassePoints
+export function setTrasseSegments(v) { trasseSegments = v; }
 export let trasseCurrentSegStart = 0; // Index in trassePoints wo aktuelles Segment beginnt
+export function setTrasseCurrentSegStart(v) { trasseCurrentSegStart = v; }
 export let trasseDetached = false; // true = Strang losgelöst, warte auf Wiedereinstieg
 
 export let fliessgewaesser = null;
+export function setFliessgewaesser(v) { fliessgewaesser = v; }
 export let fliessgewaesserLayerGroup = null;
 export let fliessgewaesserVisible = true;
+export function _setFliessgewaesserVisible(v) { fliessgewaesserVisible = v; }
 export let isDrawingRiver = false;
 export let riverPoints = [];
 export let riverDrawPolyline = null;
@@ -85,50 +95,84 @@ export let netzVisible = true;
 export let gebVisible = true;
 export let labelsVisible = false;
 export let _batchImporting = false; // unterdrückt teure Recalcs während OSM-Massenimport
+export function set_batchImporting(v) { _batchImporting = v; }
 export let geoThermie = null;
+export function setGeoThermie(v) { geoThermie = v; }
 export let geoLayerGroup = null;
+export function setGeoLayerGroup(v) { geoLayerGroup = v; }
 export let isPlacingGeo = false;
 export let stromEmF = 363;   // g CO₂eq/kWh Strom aktuell (UBA 2024)
+export function setStromEmF(v) { stromEmF = v; }
 export let stromEmFLZ = 72;  // g CO₂eq/kWh Strom Ø 2030–2050 (iinas 2025, NECP-Szenario)
+export function setStromEmFLZ(v) { stromEmFLZ = v; }
 export let bhkwCo2Gutschrift = true;   // Toggle: BHKW-Strom verdrängt Netzstrom
 export let pvCo2Gutschrift = true;     // Toggle: PV-Einspeisung verdrängt Netzstrom
 export const GEG_VERDRAENGUNG_RATIO = 860 / 560; // GEG Anlage 9: Verdrängungsstrommix/Netzbezug
 export let gasKessel    = null;
+export function setGasKessel(v) { gasKessel = v; }
 export let stromkessel  = null;
+export function setStromkessel(v) { stromkessel = v; }
 export let solarthermieAktiv = false;  // Solarthermie-Kollektoren
+export function setSolarthermieAktiv(v) { solarthermieAktiv = v; }
 export let thermSpeicherAktiv = false; // Thermischer Wärmespeicher
+export function setThermSpeicherAktiv(v) { thermSpeicherAktiv = v; }
 export let freiflaechen = [];
+export function setFreiflaechen(v) { freiflaechen = v; }
 export let ffCounter    = 1;
+export function setFfCounter(v) { ffCounter = v; }
 export let ffDrawId     = null;
 export let ffDrawPoints = [];
 export let ffDrawPolyline   = null;
 export let ffDrawStartMarker = null;
 export let bhkw      = null;
+export function setBhkw(v) { bhkw = v; }
 export let erzeugerIconLayerGroup = null;
 export let gasEmF = 240; // g CO₂eq/kWh Erdgas (GEG Anlage 9, inkl. Vorkette)
+export function setGasEmF(v) { gasEmF = v; }
 export let heizoelKessel = null;
+export function setHeizoelKessel(v) { heizoelKessel = v; }
 export let heizoelEmF = 310; // g CO₂eq/kWh Heizöl EL (GEG Anlage 9)
+export function setHeizoelEmF(v) { heizoelEmF = v; }
 export let pelletsKessel = null;
+export function setPelletsKessel(v) { pelletsKessel = v; }
 export let pelletsLayerGroup = null;
+export function setPelletsLayerGroup(v) { pelletsLayerGroup = v; }
 export let pelletsEmF = 20; // g CO₂eq/kWh Holzpellets (GEG Anlage 9, biogen)
+export function setPelletsEmF(v) { pelletsEmF = v; }
 export let fernwaermeEmF = 180; // g CO₂eq/kWh Fernwärme (GEG Anlage 9, Gas-KWK ≥70%, Standardwert)
+export function setFernwaermeEmF(v) { fernwaermeEmF = v; }
 export let isPlacingPellets = false;
+export function setIsPlacingPellets(v) { isPlacingPellets = v; }
 export let heizhackschnitzel = null;
+export function setHeizhackschnitzel(v) { heizhackschnitzel = v; }
 export let hhsLayerGroup = null;
+export function setHhsLayerGroup(v) { hhsLayerGroup = v; }
 export let hhsEmF = 20; // g CO₂eq/kWh Holzhackschnitzel (GEG Anlage 9, biogen)
+export function setHhsEmF(v) { hhsEmF = v; }
 export let isPlacingHhs = false;
+export function setIsPlacingHhs(v) { isPlacingHhs = v; }
 // Primärenergiefaktoren fp (nicht-erneuerbar) – GEG Anlage 4 (2024)
 export let pefStrom = 1.8;       // Strom Netz-Mix
+export function setPefStrom(v) { pefStrom = v; }
 export let pefWP = 1.2;          // Strom für Wärmepumpen ≥ 500 kW el. (GEG Anlage 4)
+export function setPefWP(v) { pefWP = v; }
 export let pefGas = 1.1;         // Erdgas
+export function setPefGas(v) { pefGas = v; }
 export let pefHeizoel = 1.1;     // Heizöl EL
+export function setPefHeizoel(v) { pefHeizoel = v; }
 export let pefPellets = 0.2;     // Holzpellets
+export function setPefPellets(v) { pefPellets = v; }
 export let pefHhs = 0.2;         // Holzhackschnitzel
+export function setPefHhs(v) { pefHhs = v; }
 export let pefFernwaerme = 0.3;  // Fernwärme (Mindestwert GEG)
+export function setPefFernwaerme(v) { pefFernwaerme = v; }
 export const PEF_KAPPUNG = 0.3;  // Kappungsgrenze GEG Anlage 4 – fP = Math.max(berechnet, PEF_KAPPUNG)
 export let fernwaerme = null;
+export function setFernwaerme(v) { fernwaerme = v; }
 export let fernwaermeLayerGroup = null;
+export function setFernwaermeLayerGroup(v) { fernwaermeLayerGroup = v; }
 export let isPlacingFernwaerme = false;
+export function setIsPlacingFernwaerme(v) { isPlacingFernwaerme = v; }
 export let verbindungsLayerGroup = null;
 
 // ── Vergleich ────────────────────────────────────────────────────────────────

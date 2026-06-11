@@ -17,6 +17,8 @@ import { _hideForDraw } from './04a-ui-panels.js';
 import { _quelleTemp, isErzeugerAktiv, moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { fernwaermeLayerGroup, ffCounter, freiflaechen, gasKessel, heizhackschnitzel, heizoelKessel, hhsLayerGroup, pelletsKessel, pelletsLayerGroup, setFernwaermeEmF, setFernwaermeLayerGroup, setFfCounter, setFreiflaechen, setGasKessel, setHeizhackschnitzel, setHeizoelKessel, setHhsLayerGroup, setIsPlacingFernwaerme, setIsPlacingHhs, setIsPlacingPellets, setPefFernwaerme, setPelletsKessel, setPelletsLayerGroup } from './01-globals-varianten.js';
 
 // ── Freiflächen-PV ↔ PV-Asset Verknüpfung ────────────────────────────────────
 function _ffCentroid(polygon) {
@@ -186,7 +188,8 @@ export function attachFFLayer(ff) {
 
 export function startDrawFF() {
   cancelDrawFF();
-  window.ffDrawId = (typeof ffCounter !== 'undefined' ? ffCounter++ : (window.ffCounter = (window.ffCounter||0)+1));
+  window.ffDrawId = ffCounter;
+  setFfCounter(ffCounter + 1);
   window.ffDrawPoints = [];
   showHint('Eckpunkte anklicken · Startpunkt (rot) erneut anklicken zum Abschließen · Rechtsklick = Zurück');
   map.getContainer().style.cursor = 'crosshair';
@@ -230,7 +233,7 @@ export function removeFreiflaeche(id) {
   _removeFFPvAsset(id);
   if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
   if (ff.moduleSvgLayer)  map.removeLayer(ff.moduleSvgLayer);
-  freiflaechen = freiflaechen.filter(f => f.id !== id);
+  setFreiflaechen(freiflaechen.filter(f => f.id !== id));
   renderFFPanel();
   calcStromPanel();
   redrawVerbindungslinien();
@@ -472,7 +475,7 @@ export function toggleGasKesselPanel() {
 export function activateGasKessel() {
   _setDefault30Pct('gk-leistung');
   const leistung = Math.max(1, parseFloat(document.getElementById('gk-leistung').value) || 500);
-  gasKessel = { leistungKw: leistung };
+  setGasKessel({ leistungKw: leistung });
   document.getElementById('gaskessel-data-section').style.display = 'block';
   document.getElementById('btn-activate-gaskessel').style.display = 'none';
   moBeiAktivierung('gaskessel');
@@ -837,7 +840,7 @@ export function gasKesselUseNetworkValues() {
 }
 
 export function clearGasKessel() {
-  gasKessel = null;
+  setGasKessel(null);
   moBeiDeaktivierung('gaskessel');
   redrawErzeugerIcons();
   document.getElementById('gaskessel-data-section').style.display = 'none';
@@ -868,7 +871,7 @@ export function toggleHeizoelPanel() {
 export function activateHeizoelKessel() {
   _setDefault30Pct('hko-leistung');
   const leistung = Math.max(1, parseFloat(document.getElementById('hko-leistung').value) || 500);
-  heizoelKessel = { leistungKw: leistung };
+  setHeizoelKessel({ leistungKw: leistung });
   document.getElementById('heizoel-data-section').style.display = 'block';
   document.getElementById('btn-activate-heizoel').style.display = 'none';
   moBeiAktivierung('heizoel');
@@ -897,7 +900,7 @@ export function updateHeizoelDisplay() {
 }
 
 export function clearHeizoelKessel() {
-  heizoelKessel = null;
+  setHeizoelKessel(null);
   document.getElementById('heizoel-data-section').style.display = 'none';
   document.getElementById('btn-activate-heizoel').style.display = '';
   moBeiDeaktivierung('heizoel');
@@ -929,7 +932,7 @@ export function togglePelletsPanel() {
 
 export function activatePellets() {
   _setDefault30Pct('pk-leistung');
-  pelletsKessel = { leistungKw: Math.max(1, parseFloat(document.getElementById('pk-leistung').value)||300) };
+  setPelletsKessel({ leistungKw: Math.max(1, parseFloat(document.getElementById('pk-leistung').value)||300) });
   document.getElementById('pellets-data-section').style.display = 'block';
   document.getElementById('btn-activate-pellets').style.display = 'none';
   moBeiAktivierung('pellets');
@@ -961,7 +964,7 @@ export function updatePelletsDisplay() {
 }
 
 export function clearPellets() {
-  pelletsKessel = null;
+  setPelletsKessel(null);
   if (pelletsLayerGroup) pelletsLayerGroup.clearLayers();
   document.getElementById('pellets-data-section').style.display = 'none';
   document.getElementById('btn-activate-pellets').style.display = '';
@@ -973,7 +976,7 @@ export function clearPellets() {
 }
 
 export function redrawPellets() {
-  if (!pelletsLayerGroup) pelletsLayerGroup = L.layerGroup().addTo(map);
+  if (!pelletsLayerGroup) setPelletsLayerGroup(L.layerGroup().addTo(map));
   pelletsLayerGroup.clearLayers();
   if (!pelletsKessel || pelletsKessel.lat == null) { redrawVerbindungslinien(); return; }
   const center = L.latLng(pelletsKessel.lat, pelletsKessel.lng);
@@ -1007,7 +1010,7 @@ export function togglePlacePellets() {
     redrawVerbindungslinien();
     document.getElementById('btn-place-pellets').textContent = 'Lager auf Karte platzieren';
   } else {
-    isPlacingPellets = true;
+    setIsPlacingPellets(true);
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
     showHint('Klicke auf die Karte, um das Pellettlager zu platzieren.');
@@ -1056,7 +1059,7 @@ export function toggleHhsPanel() {
 
 export function activateHhs() {
   _setDefault30Pct('hhs-leistung');
-  heizhackschnitzel = { leistungKw: Math.max(1, parseFloat(document.getElementById('hhs-leistung').value)||400) };
+  setHeizhackschnitzel({ leistungKw: Math.max(1, parseFloat(document.getElementById('hhs-leistung').value)||400) });
   document.getElementById('hhs-data-section').style.display = 'block';
   document.getElementById('btn-activate-hhs').style.display = 'none';
   moBeiAktivierung('hhs');
@@ -1088,7 +1091,7 @@ export function updateHhsDisplay() {
 }
 
 export function clearHhs() {
-  heizhackschnitzel = null;
+  setHeizhackschnitzel(null);
   moBeiDeaktivierung('hhs');
   if (hhsLayerGroup) hhsLayerGroup.clearLayers();
   document.getElementById('hhs-data-section').style.display = 'none';
@@ -1100,7 +1103,7 @@ export function clearHhs() {
 }
 
 export function redrawHhs() {
-  if (!hhsLayerGroup) hhsLayerGroup = L.layerGroup().addTo(map);
+  if (!hhsLayerGroup) setHhsLayerGroup(L.layerGroup().addTo(map));
   hhsLayerGroup.clearLayers();
   if (!heizhackschnitzel || heizhackschnitzel.lat == null) { redrawVerbindungslinien(); return; }
   const center = L.latLng(heizhackschnitzel.lat, heizhackschnitzel.lng);
@@ -1134,7 +1137,7 @@ export function togglePlaceHhs() {
     redrawVerbindungslinien();
     document.getElementById('btn-place-hhs').textContent = 'Lager auf Karte platzieren';
   } else {
-    isPlacingHhs = true;
+    setIsPlacingHhs(true);
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
     showHint('Klicke auf die Karte, um das HHS-Lager zu platzieren.');
@@ -1181,10 +1184,10 @@ export function updateFernwaermeDisplay() {
   const co2f = parseFloat(document.getElementById('fw-co2f').value)||180;
   // Sync FW-Panel ↔ Kennwerte-Panel (CO₂-Faktor + PEF)
   const kennCo2 = document.getElementById('fernwaerme-emf');
-  if (kennCo2 && parseFloat(kennCo2.value) !== co2f) { kennCo2.value = co2f; fernwaermeEmF = co2f; }
+  if (kennCo2 && parseFloat(kennCo2.value) !== co2f) { kennCo2.value = co2f; setFernwaermeEmF(co2f); }
   const fwPef = parseFloat(document.getElementById('fw-pef').value)||0.3;
   const kennPef = document.getElementById('pef-fernwaerme');
-  if (kennPef && parseFloat(kennPef.value) !== fwPef) { kennPef.value = fwPef; pefFernwaerme = fwPef; }
+  if (kennPef && parseFloat(kennPef.value) !== fwPef) { kennPef.value = fwPef; setPefFernwaerme(fwPef); }
   if (waerme > 0) {
     const kosten = waerme * preis * 10;
     const co2 = waerme * co2f / 1000;
@@ -1209,7 +1212,7 @@ export function clearFernwaerme() {
 }
 
 export function redrawFernwaerme() {
-  if (!fernwaermeLayerGroup) fernwaermeLayerGroup = L.layerGroup().addTo(map);
+  if (!fernwaermeLayerGroup) setFernwaermeLayerGroup(L.layerGroup().addTo(map));
   fernwaermeLayerGroup.clearLayers();
   if (!window.fernwaerme || window.fernwaerme.lat == null) { redrawVerbindungslinien(); return; }
   const fwIcon = L.divIcon({ className:'', html:'<div style="width:26px;height:26px;background:rgba(198,40,40,0.35);border:2px solid #c62828;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;font-size:14px;">🌡</div>', iconSize:[26,26], iconAnchor:[13,13] });
@@ -1227,7 +1230,7 @@ export function togglePlaceFernwaerme() {
     redrawVerbindungslinien();
     document.getElementById('btn-place-fw').textContent = 'Einspeisepunkt auf Karte platzieren';
   } else {
-    isPlacingFernwaerme = true;
+    setIsPlacingFernwaerme(true);
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
     showHint('Klicke auf die Karte, um den Fernwärme-Einspeisepunkt zu platzieren.');

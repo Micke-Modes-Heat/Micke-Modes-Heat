@@ -14,6 +14,8 @@ export default [
         L: 'readonly',
         // html2canvas
         html2canvas: 'readonly',
+        // JSZip (per <script> geladen, Nutzung mit typeof-Guard)
+        JSZip: 'readonly',
       }
     },
     rules: {
@@ -26,10 +28,12 @@ export default [
       'no-constant-condition': 'warn',
       'eqeqeq': ['warn', 'smart'],   // === statt == (smart erlaubt == null)
 
-      // ── Bewusst deaktiviert (Module-Migration: shared mutable state) ──
-      'no-undef': 'off',             // cross-file references via import
+      // ── Seit ESM Phase 2 aktiv: fängt fehlende Imports (Dev-Crashes) in CI ──
+      'no-undef': 'error',
+      'no-import-assign': 'error',   // Zuweisungen an Imports → Setter verwenden (Muster: setMeritOrderKeys)
+
+      // ── Bewusst deaktiviert ──
       'no-unused-vars': 'off',       // exports used from other modules
-      'no-import-assign': 'off',     // mutable globals reassigned cross-file (legacy pattern)
 
       // ── Nicht zu streng ──
       'no-empty': 'off',

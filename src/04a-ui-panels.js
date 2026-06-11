@@ -27,6 +27,8 @@ import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-gl
 import { getWLDColor } from './02a-netz-physik.js';
 import { _overpassFetchWithRetry, updateRohrListe } from './03b-netz.js';
 import { _buildProjectData, _loadProject, hideHint, showHint } from './03c-gebaeude-io.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { netzPruningMode, setNetzPruningMode } from './01-globals-varianten.js';
 
 export function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
@@ -366,7 +368,7 @@ export function setEdgeKost(klass) {
 
 // ── Netz-Pruning ──────────────────────────────────────────────────────────
 export function togglePruningMode() {
-  netzPruningMode = !netzPruningMode;
+  setNetzPruningMode(!netzPruningMode);
   const btn = document.getElementById('btn-pruning-mode');
   const info = document.getElementById('pruning-info');
   if (btn) {

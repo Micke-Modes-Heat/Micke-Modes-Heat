@@ -5329,6 +5329,7 @@ var drawPolyline= null;
 var drawStartMarker = null;
 var selectedId  = null;
 var idCounter   = 1;
+function setIdCounter(v) { idCounter = v; }
 
 var R_MIN = 4, R_MAX = 54;
 
@@ -5346,11 +5347,15 @@ var areaEditMarkers = [];
 var netzEdges = [];
 var calculatedLoad = {};
 var edgeWaypoints = {};
+function setEdgeWaypoints(v) { edgeWaypoints = v; }
 function edgeKey(u, v) { return `${Math.min(u,v)}_${Math.max(u,v)}`; }
 var isDrawingEdge = false;
 var edgeStartId = null;
+function setEdgeStartId(v) { edgeStartId = v; }
 var selectedStrandId = null;
+function setSelectedStrandId(v) { selectedStrandId = v; }
 var netzPruningMode = false;
+function setNetzPruningMode(v) { netzPruningMode = v; }
 
 // ── Stromnetz state ──────────────────────────────────────────────────────
 var stromEdges = [];
@@ -5368,17 +5373,22 @@ var stromNetzSubTab = 'waerme'; // 'waerme' | 'strom'
 
 var isDrawingTrasse = false;
 var trassePoints = [];
+function setTrassePoints(v) { trassePoints = v; }
 var trassePolyline = null;
 var trasseEditMarkers = [];
 // Mehrstrang-Trasse: Array von Segmenten [{points: [idx1, idx2, ...]}]
 // Jedes Segment verbindet aufeinanderfolgende trassePoints-Indizes
 var trasseSegments = []; // [{start, end}] — Bereiche in trassePoints
+function setTrasseSegments(v) { trasseSegments = v; }
 var trasseCurrentSegStart = 0; // Index in trassePoints wo aktuelles Segment beginnt
+function setTrasseCurrentSegStart(v) { trasseCurrentSegStart = v; }
 var trasseDetached = false; // true = Strang losgelöst, warte auf Wiedereinstieg
 
 var fliessgewaesser = null;
+function setFliessgewaesser(v) { fliessgewaesser = v; }
 var fliessgewaesserLayerGroup = null;
 var fliessgewaesserVisible = true;
+function _setFliessgewaesserVisible(v) { fliessgewaesserVisible = v; }
 var isDrawingRiver = false;
 var riverPoints = [];
 var riverDrawPolyline = null;
@@ -5394,50 +5404,84 @@ var netzVisible = true;
 var gebVisible = true;
 var labelsVisible = false;
 var _batchImporting = false; // unterdrückt teure Recalcs während OSM-Massenimport
+function set_batchImporting(v) { _batchImporting = v; }
 var geoThermie = null;
+function setGeoThermie(v) { geoThermie = v; }
 var geoLayerGroup = null;
+function setGeoLayerGroup(v) { geoLayerGroup = v; }
 var isPlacingGeo = false;
 var stromEmF = 363;   // g CO₂eq/kWh Strom aktuell (UBA 2024)
+function setStromEmF(v) { stromEmF = v; }
 var stromEmFLZ = 72;  // g CO₂eq/kWh Strom Ø 2030–2050 (iinas 2025, NECP-Szenario)
+function setStromEmFLZ(v) { stromEmFLZ = v; }
 var bhkwCo2Gutschrift = true;   // Toggle: BHKW-Strom verdrängt Netzstrom
 var pvCo2Gutschrift = true;     // Toggle: PV-Einspeisung verdrängt Netzstrom
 var GEG_VERDRAENGUNG_RATIO = 860 / 560; // GEG Anlage 9: Verdrängungsstrommix/Netzbezug
 var gasKessel    = null;
+function setGasKessel(v) { gasKessel = v; }
 var stromkessel  = null;
+function setStromkessel(v) { stromkessel = v; }
 var solarthermieAktiv = false;  // Solarthermie-Kollektoren
+function setSolarthermieAktiv(v) { solarthermieAktiv = v; }
 var thermSpeicherAktiv = false; // Thermischer Wärmespeicher
+function setThermSpeicherAktiv(v) { thermSpeicherAktiv = v; }
 var freiflaechen = [];
+function setFreiflaechen(v) { freiflaechen = v; }
 var ffCounter    = 1;
+function setFfCounter(v) { ffCounter = v; }
 var ffDrawId     = null;
 var ffDrawPoints = [];
 var ffDrawPolyline   = null;
 var ffDrawStartMarker = null;
 var bhkw      = null;
+function setBhkw(v) { bhkw = v; }
 var erzeugerIconLayerGroup = null;
 var gasEmF = 240; // g CO₂eq/kWh Erdgas (GEG Anlage 9, inkl. Vorkette)
+function setGasEmF(v) { gasEmF = v; }
 var heizoelKessel = null;
+function setHeizoelKessel(v) { heizoelKessel = v; }
 var heizoelEmF = 310; // g CO₂eq/kWh Heizöl EL (GEG Anlage 9)
+function setHeizoelEmF(v) { heizoelEmF = v; }
 var pelletsKessel = null;
+function setPelletsKessel(v) { pelletsKessel = v; }
 var pelletsLayerGroup = null;
+function setPelletsLayerGroup(v) { pelletsLayerGroup = v; }
 var pelletsEmF = 20; // g CO₂eq/kWh Holzpellets (GEG Anlage 9, biogen)
+function setPelletsEmF(v) { pelletsEmF = v; }
 var fernwaermeEmF = 180; // g CO₂eq/kWh Fernwärme (GEG Anlage 9, Gas-KWK ≥70%, Standardwert)
+function setFernwaermeEmF(v) { fernwaermeEmF = v; }
 var isPlacingPellets = false;
+function setIsPlacingPellets(v) { isPlacingPellets = v; }
 var heizhackschnitzel = null;
+function setHeizhackschnitzel(v) { heizhackschnitzel = v; }
 var hhsLayerGroup = null;
+function setHhsLayerGroup(v) { hhsLayerGroup = v; }
 var hhsEmF = 20; // g CO₂eq/kWh Holzhackschnitzel (GEG Anlage 9, biogen)
+function setHhsEmF(v) { hhsEmF = v; }
 var isPlacingHhs = false;
+function setIsPlacingHhs(v) { isPlacingHhs = v; }
 // Primärenergiefaktoren fp (nicht-erneuerbar) – GEG Anlage 4 (2024)
 var pefStrom = 1.8;       // Strom Netz-Mix
+function setPefStrom(v) { pefStrom = v; }
 var pefWP = 1.2;          // Strom für Wärmepumpen ≥ 500 kW el. (GEG Anlage 4)
+function setPefWP(v) { pefWP = v; }
 var pefGas = 1.1;         // Erdgas
+function setPefGas(v) { pefGas = v; }
 var pefHeizoel = 1.1;     // Heizöl EL
+function setPefHeizoel(v) { pefHeizoel = v; }
 var pefPellets = 0.2;     // Holzpellets
+function setPefPellets(v) { pefPellets = v; }
 var pefHhs = 0.2;         // Holzhackschnitzel
+function setPefHhs(v) { pefHhs = v; }
 var pefFernwaerme = 0.3;  // Fernwärme (Mindestwert GEG)
+function setPefFernwaerme(v) { pefFernwaerme = v; }
 var PEF_KAPPUNG = 0.3;  // Kappungsgrenze GEG Anlage 4 – fP = Math.max(berechnet, PEF_KAPPUNG)
 var fernwaerme = null;
+function setFernwaerme(v) { fernwaerme = v; }
 var fernwaermeLayerGroup = null;
+function setFernwaermeLayerGroup(v) { fernwaermeLayerGroup = v; }
 var isPlacingFernwaerme = false;
+function setIsPlacingFernwaerme(v) { isPlacingFernwaerme = v; }
 var verbindungsLayerGroup = null;
 
 // ── Vergleich ────────────────────────────────────────────────────────────────
@@ -6283,6 +6327,7 @@ var standardDNs = [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300,
 // KMR_KOSTEN → config/netz-kosten.js (wird vorher geladen)
 
 var kostenSzenario = 'mittel'; // 'niedrig' | 'mittel' | 'hoch'
+function setKostenSzenario(v) { kostenSzenario = v; }
 var netzColorMode = 'wld'; // 'wld' | 'temp' | 'dn' | 'auslastung' | 'abkuehlung'
 
 function getKostenProM(dn, edgeKlasse) {
@@ -7703,6 +7748,10 @@ function clearPlan(id, type, idx) {
 
 
 
+
+
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 function polygonCenter(coords){
   let lat=0,lng=0,n=coords.length;
   coords.forEach(c=>{ lat+=c.lat; lng+=c.lng; });
@@ -8736,6 +8785,7 @@ function updateFliessgewaesserVisibility() {
 }
 
 function setFliessgewaesserVisible(visible) {
+  _setFliessgewaesserVisible(visible); // Modul-Binding in 01-globals aktuell halten
   window.fliessgewaesserVisible = visible;
   updateFliessgewaesserVisibility();
 }
@@ -9173,6 +9223,15 @@ function toggleKennwertePanel() {
 
 
 
+
+
+
+
+
+
+
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 // ── Freiflächen-PV ↔ PV-Asset Verknüpfung ────────────────────────────────────
 function _ffCentroid(polygon) {
   if (!polygon?.length) return null;
@@ -9341,7 +9400,8 @@ function attachFFLayer(ff) {
 
 function startDrawFF() {
   cancelDrawFF();
-  window.ffDrawId = (typeof ffCounter !== 'undefined' ? ffCounter++ : (window.ffCounter = (window.ffCounter||0)+1));
+  window.ffDrawId = ffCounter;
+  setFfCounter(ffCounter + 1);
   window.ffDrawPoints = [];
   showHint('Eckpunkte anklicken · Startpunkt (rot) erneut anklicken zum Abschließen · Rechtsklick = Zurück');
   map.getContainer().style.cursor = 'crosshair';
@@ -9385,7 +9445,7 @@ function removeFreiflaeche(id) {
   _removeFFPvAsset(id);
   if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
   if (ff.moduleSvgLayer)  map.removeLayer(ff.moduleSvgLayer);
-  freiflaechen = freiflaechen.filter(f => f.id !== id);
+  setFreiflaechen(freiflaechen.filter(f => f.id !== id));
   renderFFPanel();
   calcStromPanel();
   redrawVerbindungslinien();
@@ -9627,7 +9687,7 @@ function toggleGasKesselPanel() {
 function activateGasKessel() {
   _setDefault30Pct('gk-leistung');
   const leistung = Math.max(1, parseFloat(document.getElementById('gk-leistung').value) || 500);
-  gasKessel = { leistungKw: leistung };
+  setGasKessel({ leistungKw: leistung });
   document.getElementById('gaskessel-data-section').style.display = 'block';
   document.getElementById('btn-activate-gaskessel').style.display = 'none';
   moBeiAktivierung('gaskessel');
@@ -9992,7 +10052,7 @@ function gasKesselUseNetworkValues() {
 }
 
 function clearGasKessel() {
-  gasKessel = null;
+  setGasKessel(null);
   moBeiDeaktivierung('gaskessel');
   redrawErzeugerIcons();
   document.getElementById('gaskessel-data-section').style.display = 'none';
@@ -10023,7 +10083,7 @@ function toggleHeizoelPanel() {
 function activateHeizoelKessel() {
   _setDefault30Pct('hko-leistung');
   const leistung = Math.max(1, parseFloat(document.getElementById('hko-leistung').value) || 500);
-  heizoelKessel = { leistungKw: leistung };
+  setHeizoelKessel({ leistungKw: leistung });
   document.getElementById('heizoel-data-section').style.display = 'block';
   document.getElementById('btn-activate-heizoel').style.display = 'none';
   moBeiAktivierung('heizoel');
@@ -10052,7 +10112,7 @@ function updateHeizoelDisplay() {
 }
 
 function clearHeizoelKessel() {
-  heizoelKessel = null;
+  setHeizoelKessel(null);
   document.getElementById('heizoel-data-section').style.display = 'none';
   document.getElementById('btn-activate-heizoel').style.display = '';
   moBeiDeaktivierung('heizoel');
@@ -10084,7 +10144,7 @@ function togglePelletsPanel() {
 
 function activatePellets() {
   _setDefault30Pct('pk-leistung');
-  pelletsKessel = { leistungKw: Math.max(1, parseFloat(document.getElementById('pk-leistung').value)||300) };
+  setPelletsKessel({ leistungKw: Math.max(1, parseFloat(document.getElementById('pk-leistung').value)||300) });
   document.getElementById('pellets-data-section').style.display = 'block';
   document.getElementById('btn-activate-pellets').style.display = 'none';
   moBeiAktivierung('pellets');
@@ -10116,7 +10176,7 @@ function updatePelletsDisplay() {
 }
 
 function clearPellets() {
-  pelletsKessel = null;
+  setPelletsKessel(null);
   if (pelletsLayerGroup) pelletsLayerGroup.clearLayers();
   document.getElementById('pellets-data-section').style.display = 'none';
   document.getElementById('btn-activate-pellets').style.display = '';
@@ -10128,7 +10188,7 @@ function clearPellets() {
 }
 
 function redrawPellets() {
-  if (!pelletsLayerGroup) pelletsLayerGroup = L.layerGroup().addTo(map);
+  if (!pelletsLayerGroup) setPelletsLayerGroup(L.layerGroup().addTo(map));
   pelletsLayerGroup.clearLayers();
   if (!pelletsKessel || pelletsKessel.lat == null) { redrawVerbindungslinien(); return; }
   const center = L.latLng(pelletsKessel.lat, pelletsKessel.lng);
@@ -10162,7 +10222,7 @@ function togglePlacePellets() {
     redrawVerbindungslinien();
     document.getElementById('btn-place-pellets').textContent = 'Lager auf Karte platzieren';
   } else {
-    isPlacingPellets = true;
+    setIsPlacingPellets(true);
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
     showHint('Klicke auf die Karte, um das Pellettlager zu platzieren.');
@@ -10211,7 +10271,7 @@ function toggleHhsPanel() {
 
 function activateHhs() {
   _setDefault30Pct('hhs-leistung');
-  heizhackschnitzel = { leistungKw: Math.max(1, parseFloat(document.getElementById('hhs-leistung').value)||400) };
+  setHeizhackschnitzel({ leistungKw: Math.max(1, parseFloat(document.getElementById('hhs-leistung').value)||400) });
   document.getElementById('hhs-data-section').style.display = 'block';
   document.getElementById('btn-activate-hhs').style.display = 'none';
   moBeiAktivierung('hhs');
@@ -10243,7 +10303,7 @@ function updateHhsDisplay() {
 }
 
 function clearHhs() {
-  heizhackschnitzel = null;
+  setHeizhackschnitzel(null);
   moBeiDeaktivierung('hhs');
   if (hhsLayerGroup) hhsLayerGroup.clearLayers();
   document.getElementById('hhs-data-section').style.display = 'none';
@@ -10255,7 +10315,7 @@ function clearHhs() {
 }
 
 function redrawHhs() {
-  if (!hhsLayerGroup) hhsLayerGroup = L.layerGroup().addTo(map);
+  if (!hhsLayerGroup) setHhsLayerGroup(L.layerGroup().addTo(map));
   hhsLayerGroup.clearLayers();
   if (!heizhackschnitzel || heizhackschnitzel.lat == null) { redrawVerbindungslinien(); return; }
   const center = L.latLng(heizhackschnitzel.lat, heizhackschnitzel.lng);
@@ -10289,7 +10349,7 @@ function togglePlaceHhs() {
     redrawVerbindungslinien();
     document.getElementById('btn-place-hhs').textContent = 'Lager auf Karte platzieren';
   } else {
-    isPlacingHhs = true;
+    setIsPlacingHhs(true);
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
     showHint('Klicke auf die Karte, um das HHS-Lager zu platzieren.');
@@ -10336,10 +10396,10 @@ function updateFernwaermeDisplay() {
   const co2f = parseFloat(document.getElementById('fw-co2f').value)||180;
   // Sync FW-Panel ↔ Kennwerte-Panel (CO₂-Faktor + PEF)
   const kennCo2 = document.getElementById('fernwaerme-emf');
-  if (kennCo2 && parseFloat(kennCo2.value) !== co2f) { kennCo2.value = co2f; fernwaermeEmF = co2f; }
+  if (kennCo2 && parseFloat(kennCo2.value) !== co2f) { kennCo2.value = co2f; setFernwaermeEmF(co2f); }
   const fwPef = parseFloat(document.getElementById('fw-pef').value)||0.3;
   const kennPef = document.getElementById('pef-fernwaerme');
-  if (kennPef && parseFloat(kennPef.value) !== fwPef) { kennPef.value = fwPef; pefFernwaerme = fwPef; }
+  if (kennPef && parseFloat(kennPef.value) !== fwPef) { kennPef.value = fwPef; setPefFernwaerme(fwPef); }
   if (waerme > 0) {
     const kosten = waerme * preis * 10;
     const co2 = waerme * co2f / 1000;
@@ -10364,7 +10424,7 @@ function clearFernwaerme() {
 }
 
 function redrawFernwaerme() {
-  if (!fernwaermeLayerGroup) fernwaermeLayerGroup = L.layerGroup().addTo(map);
+  if (!fernwaermeLayerGroup) setFernwaermeLayerGroup(L.layerGroup().addTo(map));
   fernwaermeLayerGroup.clearLayers();
   if (!window.fernwaerme || window.fernwaerme.lat == null) { redrawVerbindungslinien(); return; }
   const fwIcon = L.divIcon({ className:'', html:'<div style="width:26px;height:26px;background:rgba(198,40,40,0.35);border:2px solid #c62828;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;font-size:14px;">🌡</div>', iconSize:[26,26], iconAnchor:[13,13] });
@@ -10382,7 +10442,7 @@ function togglePlaceFernwaerme() {
     redrawVerbindungslinien();
     document.getElementById('btn-place-fw').textContent = 'Einspeisepunkt auf Karte platzieren';
   } else {
-    isPlacingFernwaerme = true;
+    setIsPlacingFernwaerme(true);
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
     showHint('Klicke auf die Karte, um den Fernwärme-Einspeisepunkt zu platzieren.');
@@ -10448,6 +10508,16 @@ var netzVisible = true;
 
 
 
+
+
+
+
+
+
+
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
 function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
@@ -11629,7 +11699,7 @@ out body;>;out skel qt;`;
 
     // Gebäude in Häppchen einfügen — Polygone erscheinen batch-weise auf der Karte
     const CHUNK = 20;
-    _batchImporting = true;
+    set_batchImporting(true);
     for(let i = 0; i < toAdd.length; i += CHUNK){
       toAdd.slice(i, i + CHUNK).forEach(opts => {
         const g = addGebaeude(opts);
@@ -11642,7 +11712,7 @@ out body;>;out skel qt;`;
       showHint(`OSM: ${Math.min(i + CHUNK, toAdd.length)} / ${toAdd.length} Gebäude…`);
       await new Promise(r => setTimeout(r, 0));
     }
-    _batchImporting = false;
+    set_batchImporting(false);
 
     // Sofort Erfolgsmeldung + ausblenden
     showHint(`✓ ${toAdd.length} Gebäude geladen`);
@@ -11659,7 +11729,7 @@ out body;>;out skel qt;`;
     if (areaPolygon) { map.removeLayer(areaPolygon); }
     areaEditMarkers.forEach(m => map.removeLayer(m));
   }catch(err){
-    _batchImporting = false;
+    set_batchImporting(false);
     showHint('⚠ Fehler: '+err.message);setTimeout(hideHint,4000);console.error(err);
   }
   btn.classList.remove('loading');
@@ -11960,7 +12030,7 @@ function clearNetz(){
     if(e.segLayers) e.segLayers.forEach(s => { if(map.hasLayer(s)) map.removeLayer(s); });
   });
   window.netzEdges = [];
-  selectedStrandId = null;
+  setSelectedStrandId(null);
   const sel = document.getElementById('netz-strang');
   if (sel) sel.value = '';
   updateRohrListe();
@@ -12691,7 +12761,7 @@ function updateStrangReport() {
     const col = ampelCol[s.ampel];
     const rowStyle = selectedStrandId === s.id ? 'background:rgba(255,255,255,0.05);' : '';
     h += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;${rowStyle}" `
-       + `data-click="selectedStrandId=${s.id};document.getElementById('netz-strang').value='${s.id}';updateNetzStrandVisibility();" `
+       + `data-click="setSelectedStrandId(${s.id});document.getElementById('netz-strang').value='${s.id}';updateNetzStrandVisibility();" `
        + `title="${ampelTxt[s.ampel]}: ${fmtD(s.zuschlag,0)} €/MWh Netzkosten, ${fmtD(s.verlustPct,1)}% Verluste">`;
     h += `<td style="padding:3px 4px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${col};"></span></td>`;
     h += `<td style="padding:3px 3px;color:var(--text);">${s.id + 1}</td>`;
@@ -12848,19 +12918,19 @@ function toggleDrawEdge(){
   if(window.isDrawingEdge){
     btn.classList.add('active');
     showHint('Klicke auf das erste Gebäude für die Leitung.');
-    edgeStartId = null;
+    setEdgeStartId(null);
     map.getContainer().style.cursor='crosshair';
   } else {
     btn.classList.remove('active');
     hideHint();
-    edgeStartId = null;
+    setEdgeStartId(null);
     map.getContainer().style.cursor='';
   }
 }
 
 function startNetzEdgeFrom(id) {
   if (!window.isDrawingEdge) toggleDrawEdge();
-  edgeStartId = id;
+  setEdgeStartId(id);
   showHint('Zweites Gebäude auf der Karte anklicken.');
 }
 
@@ -12888,6 +12958,7 @@ function startNetzEdgeFrom(id) {
 
 
 
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
 function updateTotals(){
   let tw=0, th=0;
@@ -14137,10 +14208,10 @@ function _loadProject(project) {
       clearSolarthermie();
       clearThermSpeicher();
       clearAssets();
-      idCounter = 1;
+      setIdCounter(1);
 
       if (project.gebaeude) {
-         _batchImporting = true;
+         set_batchImporting(true);
          try { project.gebaeude.forEach(g => {
             const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name, fromOsm: g.fromOsm, osmId: g.osmId, skipAutoCreate: true });
             newG.waerme = g.waerme;
@@ -14165,9 +14236,9 @@ function _loadProject(project) {
             newG.dachAzimut    = g.dachAzimut    ?? null;
             newG.dachNeigung   = g.dachNeigung   ?? null;
             newG.dachAutoAzimut = g.dachAutoAzimut || false;
-            if (g.id >= idCounter) idCounter = g.id + 1;
+            if (g.id >= idCounter) setIdCounter(g.id + 1);
          });
-         } finally { _batchImporting = false; }
+         } finally { set_batchImporting(false); }
       }
 
       if (project.netz) {
@@ -14188,7 +14259,7 @@ function _loadProject(project) {
          document.getElementById('netz-plan-rl').value = project.netz.planRl || '';
 
          if (project.netz.kostenSzenario) {
-           kostenSzenario = project.netz.kostenSzenario;
+           setKostenSzenario(project.netz.kostenSzenario);
            document.getElementById('kosten-szenario').value = kostenSzenario;
          }
 
@@ -14214,13 +14285,13 @@ function _loadProject(project) {
       }
 
       if (project.trasse && project.trasse.length > 0) {
-         trassePoints = project.trasse.map(p => L.latLng(p.lat, p.lng));
-         trasseSegments = project.trasseSegments || [];
-         trasseCurrentSegStart = trassePoints.length;
+         setTrassePoints(project.trasse.map(p => L.latLng(p.lat, p.lng)));
+         setTrasseSegments(project.trasseSegments || []);
+         setTrasseCurrentSegStart(trassePoints.length);
          redrawTrasse();
       }
 
-      edgeWaypoints = project.edgeWaypoints || {};
+      setEdgeWaypoints(project.edgeWaypoints || {});
       const _prunedMap = {};
       if (project.customEdges) {
          project.customEdges.forEach(e => { if (e.pruned) _prunedMap[edgeKey(e.u, e.v)] = true; });
@@ -14239,14 +14310,14 @@ function _loadProject(project) {
       }
 
       if (project.fliessgewaesser && project.fliessgewaesser.latlngs && project.fliessgewaesser.latlngs.length >= 2) {
-        fliessgewaesser = {
+        setFliessgewaesser({
           latlngs: project.fliessgewaesser.latlngs,
           durchflussLs: project.fliessgewaesser.durchflussLs || 50,
           leistungKw: project.fliessgewaesser.leistungKw || 200,
           jaz: project.fliessgewaesser.jaz || 4.5,
           visible: project.fliessgewaesser.visible !== false
-        };
-        fliessgewaesserVisible = fliessgewaesser.visible;
+        });
+        setFliessgewaesserVisible(fliessgewaesser.visible);
         document.getElementById('fg-visible').checked = fliessgewaesserVisible;
         document.getElementById('fg-durchfluss').value = fliessgewaesser.durchflussLs;
         document.getElementById('fg-leistung').value = fliessgewaesser.leistungKw;
@@ -14270,8 +14341,8 @@ function _loadProject(project) {
         window.lwWpVisible = true; window.lwWpVisible = true; window.lwWpVisible = true; if (!window.lwWpLayerGroup) window.lwWpLayerGroup = L.layerGroup().addTo(map); redrawLwWp(); updateLwWpDisplay(); updateLwWpVisibility();
       }
       if (project.geoThermie && project.geoThermie.lat != null) {
-        if (!geoLayerGroup) geoLayerGroup = L.layerGroup().addTo(map);
-        geoThermie = { ...project.geoThermie };
+        if (!geoLayerGroup) setGeoLayerGroup(L.layerGroup().addTo(map));
+        setGeoThermie({ ...project.geoThermie });
         document.getElementById('geo-heizlast').value = project.geoThermie.heizlast || '';
         document.getElementById('geo-waerme').value = project.geoThermie.waerme || '';
         document.getElementById('geo-jaz').value = project.geoThermie.jaz || 4.5;
@@ -14286,7 +14357,7 @@ function _loadProject(project) {
       }
 
       if (project.gasKessel) {
-        gasKessel = { leistungKw: project.gasKessel.leistungKw || 500 };
+        setGasKessel({ leistungKw: project.gasKessel.leistungKw || 500 });
         document.getElementById('gk-leistung').value = gasKessel.leistungKw;
         if (project.gasKessel.eta)      document.getElementById('gk-eta').value      = project.gasKessel.eta;
         if (project.gasKessel.waerme)   document.getElementById('gk-waerme').value   = project.gasKessel.waerme;
@@ -14295,7 +14366,7 @@ function _loadProject(project) {
         redrawGasKessel(); updateGasKesselDisplay();
       }
       if (project.heizoelKessel) {
-        heizoelKessel = { leistungKw: project.heizoelKessel.leistungKw || 500 };
+        setHeizoelKessel({ leistungKw: project.heizoelKessel.leistungKw || 500 });
         document.getElementById('hko-leistung').value = heizoelKessel.leistungKw;
         if (project.heizoelKessel.eta)      document.getElementById('hko-eta').value      = project.heizoelKessel.eta;
         if (project.heizoelKessel.waerme)   document.getElementById('hko-waerme').value   = project.heizoelKessel.waerme;
@@ -14304,7 +14375,7 @@ function _loadProject(project) {
         redrawHeizoelKessel(); updateHeizoelDisplay();
       }
       if (project.bhkw) {
-        bhkw = { leistungThKw: project.bhkw.leistungThKw || 100 };
+        setBhkw({ leistungThKw: project.bhkw.leistungThKw || 100 });
         document.getElementById('bhkw-leistung-th').value = bhkw.leistungThKw;
         if (project.bhkw.skz)     document.getElementById('bhkw-skz').value     = project.bhkw.skz;
         if (project.bhkw.eta)     document.getElementById('bhkw-eta').value     = project.bhkw.eta;
@@ -14314,7 +14385,7 @@ function _loadProject(project) {
         moBeiAktivierung('bhkw'); updateBhkwDisplay();
       }
       if (project.stromkessel) {
-        stromkessel = { leistungKw: project.stromkessel.leistungKw || 200 };
+        setStromkessel({ leistungKw: project.stromkessel.leistungKw || 200 });
         document.getElementById('sk-leistung').value = stromkessel.leistungKw;
         if (project.stromkessel.eta)    document.getElementById('sk-eta').value    = project.stromkessel.eta;
         if (project.stromkessel.waerme) document.getElementById('sk-waerme').value = project.stromkessel.waerme;
@@ -14325,7 +14396,7 @@ function _loadProject(project) {
       if (project.solarthermie) {
         document.getElementById('st-flaeche').value = project.solarthermie.flaeche || 0;
         document.getElementById('st-spez').value = project.solarthermie.spez || 400;
-        solarthermieAktiv = (project.solarthermie.flaeche || 0) > 0;
+        setSolarthermieAktiv((project.solarthermie.flaeche || 0) > 0);
         if (project.solarthermie.polygon && project.solarthermie.polygon.length >= 3) {
           window._stPolygon = project.solarthermie.polygon;
           _attachSTLayer(project.solarthermie.polygon);
@@ -14342,7 +14413,7 @@ function _loadProject(project) {
         document.getElementById('ts-verlust').value = project.waermespeicher.verlust || 0.5;
         document.getElementById('ts-entlade-kw').value = project.waermespeicher.entladeKw || 200;
         document.getElementById('ts-lade-kw').value = project.waermespeicher.ladeKw || project.waermespeicher.entladeKw || 200;
-        thermSpeicherAktiv = (project.waermespeicher.volumen || 0) > 0;
+        setThermSpeicherAktiv((project.waermespeicher.volumen || 0) > 0);
         updateThermSpeicherDisplay();
         document.getElementById('therm-speicher-panel').style.display = 'block';
       }
@@ -14350,7 +14421,7 @@ function _loadProject(project) {
         project.freiflaechen.forEach(ff => {
           const obj = { id: ff.id, name: ff.name, polygon: ff.polygon, flaeche: ff.flaeche, gcr: ff.gcr !== undefined ? ff.gcr : 35, ausrichtung: ff.ausrichtung || 'sued' };
           freiflaechen.push(obj);
-          if (obj.id >= ffCounter) ffCounter = obj.id + 1;
+          if (obj.id >= ffCounter) setFfCounter(obj.id + 1);
           attachFFLayer(obj);
         });
         renderFFPanel();
@@ -14373,7 +14444,7 @@ function _loadProject(project) {
         setMeritOrderKeys(project.meritOrderKeys.filter(k => isErzeugerAktiv(k)));
       }
       if (project.pelletsKessel) {
-        pelletsKessel = { leistungKw: project.pelletsKessel.leistungKw || 300 };
+        setPelletsKessel({ leistungKw: project.pelletsKessel.leistungKw || 300 });
         if (project.pelletsKessel.lat != null) { pelletsKessel.lat = project.pelletsKessel.lat; pelletsKessel.lng = project.pelletsKessel.lng; }
         if (project.pelletsKessel.eta) document.getElementById('pk-eta').value = project.pelletsKessel.eta;
         if (project.pelletsKessel.waerme) document.getElementById('pk-waerme').value = project.pelletsKessel.waerme;
@@ -14382,7 +14453,7 @@ function _loadProject(project) {
         redrawPellets(); updatePelletsDisplay();
       }
       if (project.heizhackschnitzel) {
-        heizhackschnitzel = { leistungKw: project.heizhackschnitzel.leistungKw || 400 };
+        setHeizhackschnitzel({ leistungKw: project.heizhackschnitzel.leistungKw || 400 });
         if (project.heizhackschnitzel.lat != null) { heizhackschnitzel.lat = project.heizhackschnitzel.lat; heizhackschnitzel.lng = project.heizhackschnitzel.lng; }
         if (project.heizhackschnitzel.eta) document.getElementById('hhs-eta').value = project.heizhackschnitzel.eta;
         if (project.heizhackschnitzel.waerme) document.getElementById('hhs-waerme').value = project.heizhackschnitzel.waerme;
@@ -14391,7 +14462,7 @@ function _loadProject(project) {
         redrawHhs(); updateHhsDisplay();
       }
       if (project.fernwaerme) {
-        fernwaerme = { leistungKw: project.fernwaerme.leistungKw || 500 };
+        setFernwaerme({ leistungKw: project.fernwaerme.leistungKw || 500 });
         if (project.fernwaerme.lat != null) { fernwaerme.lat = project.fernwaerme.lat; fernwaerme.lng = project.fernwaerme.lng; }
         if (project.fernwaerme.waerme) document.getElementById('fw-waerme').value = project.fernwaerme.waerme;
         if (project.fernwaerme.co2f) document.getElementById('fw-co2f').value = project.fernwaerme.co2f;
@@ -14400,20 +14471,20 @@ function _loadProject(project) {
         redrawFernwaerme(); updateFernwaermeDisplay();
       }
       // Emissionsfaktoren
-      if (project.heizoelEmF) { heizoelEmF = project.heizoelEmF; document.getElementById('heizoel-emf').value = heizoelEmF; }
-      if (project.gasEmF)     { gasEmF     = project.gasEmF;     document.getElementById('gas-emf').value      = gasEmF; }
-      if (project.pelletsEmF)     { pelletsEmF     = project.pelletsEmF;     document.getElementById('pellets-emf').value      = pelletsEmF; }
-      if (project.hhsEmF)         { hhsEmF         = project.hhsEmF;         document.getElementById('hhs-emf').value          = hhsEmF; }
-      if (project.fernwaermeEmF)  { fernwaermeEmF  = project.fernwaermeEmF;  document.getElementById('fernwaerme-emf').value   = fernwaermeEmF; }
-      if (project.stromEmF)   { stromEmF   = project.stromEmF;   document.getElementById('strom-emf').value    = stromEmF; }
-      if (project.stromEmFLZ) { stromEmFLZ = project.stromEmFLZ; document.getElementById('strom-emf-lz').value = stromEmFLZ; }
-      if (project.pefStrom      != null) { pefStrom      = project.pefStrom;      document.getElementById('pef-strom').value      = pefStrom; }
-      if (project.pefWP         != null) { pefWP         = project.pefWP;         document.getElementById('pef-wp').value         = pefWP; }
-      if (project.pefGas        != null) { pefGas        = project.pefGas;        document.getElementById('pef-gas').value        = pefGas; }
-      if (project.pefHeizoel    != null) { pefHeizoel    = project.pefHeizoel;    document.getElementById('pef-heizoel').value    = pefHeizoel; }
-      if (project.pefPellets    != null) { pefPellets    = project.pefPellets;    document.getElementById('pef-pellets').value    = pefPellets; }
-      if (project.pefHhs        != null) { pefHhs        = project.pefHhs;        document.getElementById('pef-hhs').value        = pefHhs; }
-      if (project.pefFernwaerme != null) { pefFernwaerme = project.pefFernwaerme; document.getElementById('pef-fernwaerme').value = pefFernwaerme; }
+      if (project.heizoelEmF) { setHeizoelEmF(project.heizoelEmF); document.getElementById('heizoel-emf').value = heizoelEmF; }
+      if (project.gasEmF)     { setGasEmF(project.gasEmF);     document.getElementById('gas-emf').value      = gasEmF; }
+      if (project.pelletsEmF)     { setPelletsEmF(project.pelletsEmF);     document.getElementById('pellets-emf').value      = pelletsEmF; }
+      if (project.hhsEmF)         { setHhsEmF(project.hhsEmF);         document.getElementById('hhs-emf').value          = hhsEmF; }
+      if (project.fernwaermeEmF)  { setFernwaermeEmF(project.fernwaermeEmF);  document.getElementById('fernwaerme-emf').value   = fernwaermeEmF; }
+      if (project.stromEmF)   { setStromEmF(project.stromEmF);   document.getElementById('strom-emf').value    = stromEmF; }
+      if (project.stromEmFLZ) { setStromEmFLZ(project.stromEmFLZ); document.getElementById('strom-emf-lz').value = stromEmFLZ; }
+      if (project.pefStrom      != null) { setPefStrom(project.pefStrom);      document.getElementById('pef-strom').value      = pefStrom; }
+      if (project.pefWP         != null) { setPefWP(project.pefWP);         document.getElementById('pef-wp').value         = pefWP; }
+      if (project.pefGas        != null) { setPefGas(project.pefGas);        document.getElementById('pef-gas').value        = pefGas; }
+      if (project.pefHeizoel    != null) { setPefHeizoel(project.pefHeizoel);    document.getElementById('pef-heizoel').value    = pefHeizoel; }
+      if (project.pefPellets    != null) { setPefPellets(project.pefPellets);    document.getElementById('pef-pellets').value    = pefPellets; }
+      if (project.pefHhs        != null) { setPefHhs(project.pefHhs);        document.getElementById('pef-hhs').value        = pefHhs; }
+      if (project.pefFernwaerme != null) { setPefFernwaerme(project.pefFernwaerme); document.getElementById('pef-fernwaerme').value = pefFernwaerme; }
       // Wirtschaftlichkeits-Overrides wiederherstellen
       if (project.wirtBausteineOverrides) window._wirtBausteineOverrides = project.wirtBausteineOverrides;
       if (project.wirtVdiOverrides)       window._wirtVdiOverrides       = project.wirtVdiOverrides;
@@ -14580,7 +14651,7 @@ function loadGebaeudeFromParent(gebaeudeArray) {
   window.gebaeude = [];
   clearNetz();
   clearTrasse();
-  idCounter = 1;
+  setIdCounter(1);
   gebaeudeArray.forEach(g => {
     const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name || 'Gebäude ' + g.id, fromOsm: g.fromOsm || false, osmId: g.osmId || null, stockwerke: g.stockwerke != null ? g.stockwerke : 1, baujahr: g.baujahr || null });
     newG.waerme = g.waerme;
@@ -14592,7 +14663,7 @@ function loadGebaeudeFromParent(gebaeudeArray) {
     newG.abrissjahr = g.abrissjahr;
     newG.sanierungen = g.sanierungen || [];
     newG.nutzung = g.nutzung || '';
-    if (g.id >= idCounter) idCounter = g.id + 1;
+    if (g.id >= idCounter) setIdCounter(g.id + 1);
   });
   _invalidateStats();
   renderList();
@@ -14698,6 +14769,7 @@ window.toggleVormerkenGeb = toggleVormerkenGeb;
 
 
 
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
 function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
@@ -15037,7 +15109,7 @@ function setEdgeKost(klass) {
 
 // ── Netz-Pruning ──────────────────────────────────────────────────────────
 function togglePruningMode() {
-  netzPruningMode = !netzPruningMode;
+  setNetzPruningMode(!netzPruningMode);
   const btn = document.getElementById('btn-pruning-mode');
   const info = document.getElementById('pruning-info');
   if (btn) {
@@ -24123,6 +24195,8 @@ function glUpdateStatus() {
 
 
 
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 
 var _glAutoTimer  = null;
 var _glIsRunning  = false;
@@ -24185,6 +24259,7 @@ async function glBerechnen() {
     let lastgangKw; // Float32Array 8760h
     let gesamtMwh;
     let nurGebaeude = false; // Flag: Lastgang stammt nur aus Gebäudedaten (ohne explizite Verbrauchsangabe)
+    let synState = null;     // CalcEngine-Ergebnis der Synthese (Fälle 3–5) — für tempState wiederverwendet
 
     if (glLastgangKw && !hatMonat) {
       // Fall 1: Direkt (Lastgang hochgeladen → Verluste bereits enthalten)
@@ -24213,7 +24288,7 @@ async function glBerechnen() {
       }
 
       // CalcEngine für Lastgang-Synthese aufrufen (ohne Erzeuger)
-      const synState = await CalcEngine.run({
+      synState = await CalcEngine.run({
         stadt, normAussentemp: normAt,
         tempH: tempHDwd,   // DWD-Profil (ggf. TRY-Kassel-Fallback)
         sigProfil1: profil1, sigProfil2: profil2,
@@ -24254,7 +24329,7 @@ async function glBerechnen() {
     }
 
     // Temperaturprofil: aus synState wiederverwenden (Fall 3-5) oder neu berechnen (Fall 1-2)
-    const tempState = typeof synState !== 'undefined' && synState?.tempH ? synState : await CalcEngine.run({
+    const tempState = synState?.tempH ? synState : await CalcEngine.run({
       stadt, normAussentemp: normAt,
       tempH: tempHDwd || undefined,
       sigProfil1: profil1, sigProfil2: profil2,
@@ -24746,10 +24821,10 @@ function updateThermSpeicherDisplay() {
   const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
   if (p) {
     el('ts-kap', p.kapKwh.toFixed(0) + ' kWh (' + (p.kapKwh / 1000).toFixed(1) + ' MWh)');
-    thermSpeicherAktiv = true;
+    setThermSpeicherAktiv(true);
   } else {
     el('ts-kap', '—');
-    thermSpeicherAktiv = false;
+    setThermSpeicherAktiv(false);
   }
   if (typeof redrawThermSpeicherMap === 'function') redrawThermSpeicherMap();
 }
@@ -24766,7 +24841,7 @@ function getThermSpeicherParams() {
 }
 
 function clearThermSpeicher() {
-  thermSpeicherAktiv = false;
+  setThermSpeicherAktiv(false);
   document.getElementById('ts-volumen').value = 0;
   _removeThermSpeicherMapLayers();
   updateThermSpeicherDisplay();
@@ -25878,6 +25953,7 @@ function moSwap(key, dir) {
 
 
 
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
 var saCurrentTab = 'lastgang';
 
@@ -26434,6 +26510,7 @@ function _daZeitlinien(ctx, W, H, startH, endH, nVis) {
 function _daBindEvents(canvas, hourly, keys, lg, pMax, nTotal, W, H, startH, endH) {
   const nVis = endH - startH;
   const tip  = document.getElementById('da-tooltip');
+  const ctx  = canvas.getContext('2d');
 
   function hAtX(x) {
     return Math.min(endH - 1, Math.max(startH, Math.round(startH + x / W * nVis)));
@@ -27562,6 +27639,7 @@ function daUpdateIfOpen() {
 
 
 
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
 window._wirtBausteineOverrides = window._wirtBausteineOverrides || {};
 window._wirtVdiOverrides       = window._wirtVdiOverrides       || {};
@@ -39283,6 +39361,8 @@ function _optRenderScatter(container) {
 
 
 
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 var _hilfeModus = false;
 var _hilfeOverlay = null;
 var _hilfeTooltip = null;
@@ -39463,7 +39543,7 @@ var LEITFADEN_STEPS = [
     doneText: () => {
       const names = [];
       if (typeof lwWp !== 'undefined' && lwWp && lwWp.leistungKw > 0) names.push('Luft-WP');
-      if (typeof fg !== 'undefined' && fg && fg.leistungKw > 0) names.push('Flusswasser-WP');
+      if (fliessgewaesser && fliessgewaesser.leistungKw > 0) names.push('Flusswasser-WP');
       if (typeof geoThermie !== 'undefined' && geoThermie && geoThermie.leistKw > 0) names.push('Sole-WP');
       if (typeof gasKessel !== 'undefined' && gasKessel && gasKessel.leistungKw > 0) names.push('Gaskessel');
       if (typeof heizoelKessel !== 'undefined' && heizoelKessel && heizoelKessel.leistungKw > 0) names.push('Ölkessel');
@@ -39613,8 +39693,8 @@ function _createLeitfadenPanel() {
     chk.addEventListener('click', function(e) {
       e.stopPropagation();
       const idx = parseInt(this.dataset.step);
-      if (!_leitfadenManualChecks) window._leitfadenManualChecks = {};
-      _leitfadenManualChecks[idx] = !_leitfadenManualChecks[idx];
+      if (!window._leitfadenManualChecks) window._leitfadenManualChecks = {};
+      window._leitfadenManualChecks[idx] = !window._leitfadenManualChecks[idx];
       _updateLeitfadenStatus();
     });
   });

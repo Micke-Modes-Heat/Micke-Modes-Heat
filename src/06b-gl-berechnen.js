@@ -13,6 +13,8 @@ import { polygonCenter } from './02c-karte-werkzeuge.js';
 import { isErzeugerAktiv } from './06c-dispatch-core.js';
 import { _PV_SUN, makePvProfile8760 } from './09a-pv-profile.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { setThermSpeicherAktiv, thermSpeicherAktiv } from './01-globals-varianten.js';
 
 export let _glAutoTimer  = null;
 export let _glIsRunning  = false;
@@ -75,6 +77,7 @@ async function glBerechnen() {
     let lastgangKw; // Float32Array 8760h
     let gesamtMwh;
     let nurGebaeude = false; // Flag: Lastgang stammt nur aus Gebäudedaten (ohne explizite Verbrauchsangabe)
+    let synState = null;     // CalcEngine-Ergebnis der Synthese (Fälle 3–5) — für tempState wiederverwendet
 
     if (glLastgangKw && !hatMonat) {
       // Fall 1: Direkt (Lastgang hochgeladen → Verluste bereits enthalten)
@@ -103,7 +106,7 @@ async function glBerechnen() {
       }
 
       // CalcEngine für Lastgang-Synthese aufrufen (ohne Erzeuger)
-      const synState = await CalcEngine.run({
+      synState = await CalcEngine.run({
         stadt, normAussentemp: normAt,
         tempH: tempHDwd,   // DWD-Profil (ggf. TRY-Kassel-Fallback)
         sigProfil1: profil1, sigProfil2: profil2,
@@ -144,7 +147,7 @@ async function glBerechnen() {
     }
 
     // Temperaturprofil: aus synState wiederverwenden (Fall 3-5) oder neu berechnen (Fall 1-2)
-    const tempState = typeof synState !== 'undefined' && synState?.tempH ? synState : await CalcEngine.run({
+    const tempState = synState?.tempH ? synState : await CalcEngine.run({
       stadt, normAussentemp: normAt,
       tempH: tempHDwd || undefined,
       sigProfil1: profil1, sigProfil2: profil2,
@@ -636,10 +639,10 @@ export function updateThermSpeicherDisplay() {
   const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
   if (p) {
     el('ts-kap', p.kapKwh.toFixed(0) + ' kWh (' + (p.kapKwh / 1000).toFixed(1) + ' MWh)');
-    thermSpeicherAktiv = true;
+    setThermSpeicherAktiv(true);
   } else {
     el('ts-kap', '—');
-    thermSpeicherAktiv = false;
+    setThermSpeicherAktiv(false);
   }
   if (typeof redrawThermSpeicherMap === 'function') redrawThermSpeicherMap();
 }
@@ -656,7 +659,7 @@ export function getThermSpeicherParams() {
 }
 
 export function clearThermSpeicher() {
-  thermSpeicherAktiv = false;
+  setThermSpeicherAktiv(false);
   document.getElementById('ts-volumen').value = 0;
   _removeThermSpeicherMapLayers();
   updateThermSpeicherDisplay();
