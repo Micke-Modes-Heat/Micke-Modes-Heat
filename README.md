@@ -96,10 +96,12 @@ GitHub Pages aktualisiert sich bei jedem Push auf `main`
 
 ## Feedback vom Team
 
-In der App gibt es oben rechts einen **✉-Button**. Er öffnet eine vorausgefüllte
-E-Mail (Vorlage + automatische Versions-/Browserangabe) an die im
-`index.html`-Inline-Script hinterlegte Adresse (`FEEDBACK_EMAIL`). So enthält
-jedes Feedback automatisch die genutzte Version.
+In der App gibt es oben rechts einen **✉-Button**. Er öffnet ein kleines
+Formular (Beschreibung + optionaler Screenshot der aktuellen Ansicht) und
+erzeugt daraus eine **HTML-Datei zum Download** (`Feedback_Micke-Heat_vX.Y.Z_…html`)
+mit Text, Screenshot und Metadaten (Version, Build-Datum, Browser, Auflösung,
+Seite). Diese Datei kann das Team einfach weiterleiten – sie lässt sich direkt
+im Browser öffnen und enthält alle Infos für die Auswertung.
 
 ## Architektur
 
