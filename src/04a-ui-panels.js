@@ -4,7 +4,7 @@
 import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
 import { _invalidateStats, getComputedStats, map } from './02b-gebaeude.js';
-import { updateViz } from './02c-karte-werkzeuge.js';
+import { setMode, updateViz } from './02c-karte-werkzeuge.js';
 import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
 import { renderList, updateTotals } from './03c-gebaeude-io.js';
 import { _renderEmissionenTab, refreshVergleichView, renderAnalyseDispatch } from './04b-emissionen-3d.js';
@@ -726,6 +726,8 @@ export function setLeftTab(tabId) {
       if (n.type === 'geb' && n.marker) n.marker.setOpacity(0);
     });
     setAssetLayerVisible(true);
+    // Karten-Modus mitführen: Elektro-Arbeitsbereich = Strom-Ansicht
+    if (window.currentMode !== 'strom') setMode('strom');
   } else {
     // Alte Gebäude-Strom-Icons wieder einblenden wenn Strom-Ansicht aktiv
     (window.stromNodes || []).forEach(n => {
@@ -734,6 +736,10 @@ export function setLeftTab(tabId) {
     setStromNetzVisible(false);
     setNetzVisible(true);
     setAssetLayerVisible(false);
+    // Wärme-Arbeitsbereiche merken (für Rücksprung aus dem Strom-Modus)
+    if (tabId !== 'ergebnis') window._lastWaermeTab = tabId;
+    // Karten-Modus mitführen: zurück im Wärme-Bereich → Wärme-Einfärbung
+    if (window.currentMode === 'strom' && tabId !== 'ergebnis') setMode('waerme');
   }
   setTimeout(function() { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
 }

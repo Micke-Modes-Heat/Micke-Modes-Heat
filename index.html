@@ -146,18 +146,24 @@
   <div class="ctx-sep"></div>
   <div class="ctx-group">
     <span class="ctx-label">Karte</span>
-    <button class="mode-btn active" data-click="setMode('waerme')"   id="btn-waerme">Wärme</button>
-    <button class="mode-btn"        data-click="setMode('spez')"     id="btn-spez">Spez.</button>
-    <button class="mode-btn"        data-click="setMode('heizlast')" id="btn-heizlast">Heizlast</button>
-    <button class="mode-btn"        data-click="setMode('verlust')"  id="btn-verlust">Verlust</button>
-    <button class="mode-btn"        data-click="setMode('strom')"    id="btn-strom">⚡ Strom</button>
-  </div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group">
-    <div class="viz-toggle">
-      <button class="viz-btn active" id="vbtn-circle" data-click="setViz('circle')">⬤</button>
-      <button class="viz-btn"        id="vbtn-bar"    data-click="setViz('bar')">▮</button>
-      <button class="viz-btn"        id="vbtn-none"   data-click="setViz('none')">▣</button>
+    <button class="mode-btn active" data-click="setMode('waerme')" id="btn-waerme" title="Gebäude nach Wärmebedarf einfärben — schaltet auch die Sidebar auf den Wärme-Bereich">Wärme</button>
+    <button class="mode-btn"        data-click="setMode('strom')"  id="btn-strom" title="Gebäude nach Strombedarf einfärben — schaltet auch die Sidebar auf den Elektro-Bereich">⚡ Strom</button>
+    <div style="position:relative;display:inline-block;">
+      <button class="mode-btn" id="btn-ansicht-menu" data-click="toggleAnsichtMenu()" title="Weitere Kartenansichten und Gebäude-Symbole">Ansicht ▾</button>
+      <div id="ansicht-menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 12px;min-width:200px;box-shadow:0 6px 18px rgba(0,0,0,0.45);">
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Einfärbung</div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:9px;">
+          <button class="mode-btn" data-click="setMode('spez')"     id="btn-spez" style="text-align:left;" title="Spezifischer Wärmebedarf (kWh/m²a)">Spez. Wärmebedarf</button>
+          <button class="mode-btn" data-click="setMode('heizlast')" id="btn-heizlast" style="text-align:left;" title="Heizlast (kW)">Heizlast</button>
+          <button class="mode-btn" data-click="setMode('verlust')"  id="btn-verlust" style="text-align:left;" title="Wärmeverlust der Hausanschlüsse">Netzverlust</button>
+        </div>
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Gebäude-Symbole</div>
+        <div class="viz-toggle">
+          <button class="viz-btn active" id="vbtn-circle" data-click="setViz('circle')" title="Kreise (Größe = Wärmebedarf)">⬤ Kreise</button>
+          <button class="viz-btn"        id="vbtn-bar"    data-click="setViz('bar')" title="Balken">▮ Balken</button>
+          <button class="viz-btn"        id="vbtn-none"   data-click="setViz('none')" title="Keine Symbole">▣ Keine</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>

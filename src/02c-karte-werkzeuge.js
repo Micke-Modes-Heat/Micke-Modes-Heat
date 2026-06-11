@@ -378,13 +378,42 @@ export function setMode(m){
   window.currentMode=m;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('btn-'+m).classList.add('active');
+  // "Ansicht ▾"-Menübutton zeigt die aktive Nischenansicht an (und schließt das Menü)
+  const _nischenLabel = { spez: 'Spez. Wärmebedarf', heizlast: 'Heizlast', verlust: 'Netzverlust' };
+  const amBtn = document.getElementById('btn-ansicht-menu');
+  if (amBtn) {
+    amBtn.textContent = (_nischenLabel[m] || 'Ansicht') + ' ▾';
+    amBtn.classList.toggle('active', !!_nischenLabel[m]);
+  }
+  const amMenu = document.getElementById('ansicht-menu');
+  if (amMenu) amMenu.style.display = 'none';
   updateNetzStrandVisibility();
   updateViz();updateTotals();
-  // Netz-Sichtbarkeit dem Modus folgen lassen
+  // Sidebar mitführen — Karte=Strom und Arbeitsbereich=Elektro sind dieselbe Sicht.
+  // setLeftTab() setzt dabei auch die Netz-Sichtbarkeit (Wärme- vs. Stromnetz).
+  const elektroAktiv = document.querySelector('#lp-tabs .lp-tab[data-tab="elektro"]')?.classList.contains('active');
   if (m === 'strom') {
-    setNetzSubTab('strom'); // setzt stromNetzVisible=true, netzVisible=false
+    if (!elektroAktiv && typeof window.setLeftTab === 'function') window.setLeftTab('elektro');
   } else {
-    setNetzSubTab('waerme'); // setzt netzVisible=true, stromNetzVisible=false
+    if (elektroAktiv && typeof window.setLeftTab === 'function') window.setLeftTab(window._lastWaermeTab || 'erzeuger');
+  }
+}
+
+// ── "Ansicht ▾"-Menü in der Kontextleiste (Nischenansichten + Gebäude-Symbole) ──
+export function toggleAnsichtMenu() {
+  const menu = document.getElementById('ansicht-menu');
+  if (!menu) return;
+  const offen = menu.style.display !== 'none';
+  menu.style.display = offen ? 'none' : 'block';
+  if (!offen && !window._ansichtMenuCloser) {
+    window._ansichtMenuCloser = true;
+    // Klick außerhalb schließt das Menü
+    document.addEventListener('click', (e) => {
+      const m = document.getElementById('ansicht-menu');
+      if (m && m.style.display !== 'none'
+        && !e.target.closest('#ansicht-menu')
+        && !e.target.closest('#btn-ansicht-menu')) m.style.display = 'none';
+    });
   }
 }
 
