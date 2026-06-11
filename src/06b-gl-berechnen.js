@@ -599,6 +599,8 @@ export function tsTypChanged() {
   document.getElementById('ts-dt').value = p.dt;
   document.getElementById('ts-verlust').value = p.verlust;
   document.getElementById('ts-entlade-kw').value = p.entlade;
+  const ladeEl = document.getElementById('ts-lade-kw');
+  if (ladeEl) ladeEl.value = p.entlade;
   // Volumen automatisch aus WP-Leistung berechnen
   const vol = _autoSpeicherVolumen(typ, p.dt);
   document.getElementById('ts-volumen').value = vol;
@@ -648,8 +650,9 @@ export function getThermSpeicherParams() {
   const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
   const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
   const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
+  const ladeKw = parseFloat(document.getElementById('ts-lade-kw')?.value) || entladeKw;
   const kapKwh = vol * 1.16 * dt; // V × ρc/3600 × ΔT ≈ V × 1.16 × ΔT
-  return { vol, dt, kapKwh, verlustRate: verlustPctH / 100, entladeKw };
+  return { vol, dt, kapKwh, verlustRate: verlustPctH / 100, entladeKw, ladeKw };
 }
 
 export function clearThermSpeicher() {

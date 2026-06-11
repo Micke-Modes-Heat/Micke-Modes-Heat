@@ -13,6 +13,7 @@
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { join, relative, dirname } from 'path';
+import { getExportNames } from './export-names.mjs';
 
 const SRC = 'src';
 const WRITE = process.argv.includes('--write');
@@ -30,17 +31,11 @@ const allFiles = [];
 
 for (const file of allFiles) {
   const code = readFileSync(file, 'utf8');
-  for (const line of code.split('\n')) {
-    const t = line.trimStart();
-    let m;
-    if ((m = t.match(/^export\s+(?:async\s+)?function\s+([\w$]+)/)) ||
-        (m = t.match(/^export\s+(?:const|let|var)\s+([\w$]+)/))) {
-      const name = m[1];
-      if (exportOwner.has(name) && exportOwner.get(name) !== file) {
-        exportOwner.set(name, 'AMBIGUOUS');
-      } else {
-        exportOwner.set(name, file);
-      }
+  for (const name of getExportNames(code)) {
+    if (exportOwner.has(name) && exportOwner.get(name) !== file) {
+      exportOwner.set(name, 'AMBIGUOUS');
+    } else {
+      exportOwner.set(name, file);
     }
   }
 }
@@ -124,6 +119,6 @@ for (const [file, names] of undefByFile) {
 }
 
 console.log(`\n${WRITE ? 'Geschrieben' : 'Probelauf'}: ${stats.importiert} Importe in ${undefByFile.size} Dateien`);
-if (stats.zuweisungen.size) console.log(`\nÜbersprungen (Zuweisung → Phase 2 Setter nötig): ${stats.zuweisungen.size}\n  ` + [...stats.zuweisungen].slice(0, 40).join('\n  '));
+if (stats.zuweisungen.size) console.log(`\nÜbersprungen (Zuweisung → Phase 2 Setter nötig): ${stats.zuweisungen.size}\n  ` + [...stats.zuweisungen].join('\n  '));
 if (stats.unbekannt.size) console.log(`\nKein Export gefunden (window-Globals o.ä.): ${[...stats.unbekannt].join(', ')}`);
 if (stats.ambiguous.size) console.log(`\nMehrdeutig (mehrere Module exportieren den Namen): ${[...stats.ambiguous].join(', ')}`);

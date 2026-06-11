@@ -82,7 +82,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
   // Speicher-Parameter aus Worker-Config aufbauen
   let thSp = null;
   if (typeof optSpeicherVol === 'number' && optSpeicherVol > 0) {
-    thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw };
+    thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw, ladeKw: D.tsLadeKw ?? D.tsEntladeKw };
   }
 
   // Typ + Gütegrad sicherstellen (makeErzObj setzt typ, aber Sicherheit)
@@ -124,7 +124,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     speicherEntladenMwh: r.thermEntladenGes / 1000,
     speicherGeladenMwh: r.thermGeladenGes / 1000,
     wpResKwH: r.wpResKwH, wpResCopH: r.wpResCopH,
-    thSpParams: r.hatSpeicher ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw } : null,
+    thSpParams: r.hatSpeicher ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw, ladeKw: r.speicherParams.ladeKw ?? r.speicherParams.entladeKw } : null,
   };
 }
 
@@ -156,12 +156,12 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
     let pvWpSp = 0;
     if (rGen > 0.1 && dispResult && dispResult.thSpParams && dispResult.wpResKwH) {
       const tsCap = dispResult.thSpParams.kapKwh;
-      const tsEntlKw = dispResult.thSpParams.entladeKw;
+      const tsLadeKw = dispResult.thSpParams.ladeKw ?? dispResult.thSpParams.entladeKw;
       const wpRKw = dispResult.wpResKwH[t] || 0;
       const wpCop = dispResult.wpResCopH[t] || 0;
       if (wpRKw > 0.1 && wpCop > 0 && tsCap > 0) {
         const tsFree = Math.max(0, tsCap - tsSoc);
-        const ladeBudget = Math.min(tsFree, tsEntlKw);
+        const ladeBudget = Math.min(tsFree, tsLadeKw);
         if (ladeBudget > 0.1) {
           const maxElKw = wpRKw / wpCop;
           const elUsed = Math.min(rGen, maxElKw);

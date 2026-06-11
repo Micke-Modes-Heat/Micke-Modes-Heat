@@ -1162,7 +1162,7 @@ export function _buildProjectData() {
     bhkw: bhkw ? { leistungThKw: parseFloat(document.getElementById('bhkw-leistung-th').value)||100, skz: document.getElementById('bhkw-skz').value, eta: document.getElementById('bhkw-eta').value, waerme: document.getElementById('bhkw-waerme').value } : null,
     stromkessel: stromkessel ? { leistungKw: parseFloat(document.getElementById('sk-leistung').value)||200, eta: document.getElementById('sk-eta').value, waerme: document.getElementById('sk-waerme').value } : null,
     solarthermie: solarthermieAktiv ? { flaeche: parseFloat(document.getElementById('st-flaeche')?.value)||0, spez: parseFloat(document.getElementById('st-spez')?.value)||400, polygon: window._stPolygon || null } : null,
-    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
+    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200, ladeKw: parseFloat(document.getElementById('ts-lade-kw')?.value)||parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
     freiflaechen: freiflaechen.map(ff => ({ id: ff.id, name: ff.name, polygon: ff.polygon, flaeche: ff.flaeche, gcr: ff.gcr, ausrichtung: ff.ausrichtung })),
     pvModul: { breite: document.getElementById('pv-modul-breite')?.value, laenge: document.getElementById('pv-modul-laenge')?.value, wp: document.getElementById('pv-modul-wp')?.value },
     pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value },
@@ -1473,6 +1473,7 @@ export function _loadProject(project) {
         document.getElementById('ts-dt').value = project.waermespeicher.dt || 40;
         document.getElementById('ts-verlust').value = project.waermespeicher.verlust || 0.5;
         document.getElementById('ts-entlade-kw').value = project.waermespeicher.entladeKw || 200;
+        document.getElementById('ts-lade-kw').value = project.waermespeicher.ladeKw || project.waermespeicher.entladeKw || 200;
         thermSpeicherAktiv = (project.waermespeicher.volumen || 0) > 0;
         updateThermSpeicherDisplay();
         document.getElementById('therm-speicher-panel').style.display = 'block';

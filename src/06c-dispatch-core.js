@@ -521,7 +521,7 @@ export function _dispatchCore(cfg) {
     if (hatSpeicher && thermSOC < thSp.kapKwh && wpReservesThisH.length > 0) {
       const h = t % 24;
       if (h >= 8 && h < 18) {
-        let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.entladeKw);
+        let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.ladeKw ?? thSp.entladeKw);
         for (const wp of wpReservesThisH) {
           if (restLade <= 0.1 || wp.reserveKw <= 0.1 || wp.cop <= 0) break;
           const ladeKw = Math.min(wp.reserveKw, restLade);

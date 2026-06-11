@@ -900,7 +900,9 @@ export function _updateHourlyOverlay(t) {
     const sumKw = erzFiltered.reduce((s, e) => s + e.kw, 0);
     const delta = sumKw - lastKw;
     const deckung = lastKw > 0 ? Math.min(100, sumKw / lastKw * 100) : 0;
-    const deckColor = deckung >= 100 ? '#66bb6a' : (deckung >= 80 ? '#ffb74d' : '#ef5350');
+    // Farbe am angezeigten (gerundeten) Wert festmachen — sonst erscheint "100%" orange
+    const deckungAnzeige = Math.round(deckung);
+    const deckColor = deckungAnzeige >= 100 ? '#66bb6a' : (deckungAnzeige >= 80 ? '#ffb74d' : '#ef5350');
     const deltaArrow = delta >= 0 ? '\u25b2' : '\u25bc';
     const deltaColor = delta >= 0 ? 'rgba(102,187,106,0.7)' : 'rgba(239,83,80,0.7)';
     const cell = (label, value, unit, color, sub) =>

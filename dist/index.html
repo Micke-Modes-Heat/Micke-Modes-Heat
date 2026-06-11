@@ -3674,6 +3674,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
         <label class="inp-label" title="Maximale thermische Entladeleistung (begrenzt durch Wärmetauscher)">Entladeleistung (kW)</label>
         <input class="inp-field" type="number" id="ts-entlade-kw" value="200" min="1" step="10" data-input="updateAllDeckungen()"/>
       </div>
+      <div class="inp-group">
+        <label class="inp-label" title="Maximale thermische Ladeleistung (begrenzt durch Wärmetauscher)">Ladeleistung (kW)</label>
+        <input class="inp-field" type="number" id="ts-lade-kw" value="200" min="1" step="10" data-input="updateAllDeckungen()"/>
+      </div>
     </div>
     <div style="padding:7px 8px;background:var(--bg);border-radius:5px;border:1px solid var(--border);font-size:10px;font-family:'DM Mono',monospace;margin-bottom:10px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;">
       <span style="color:var(--muted)">Kapazität</span><span id="ts-kap" style="color:#80cbc4;">—</span>
@@ -5993,7 +5997,7 @@ function captureErzeugerState() {
       waerme: document.getElementById('sk-waerme').value,
     } : null,
     solarthermie: solarthermieAktiv ? { flaeche: parseFloat(document.getElementById('st-flaeche')?.value)||0, spez: parseFloat(document.getElementById('st-spez')?.value)||400, polygon: window._stPolygon || null } : null,
-    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
+    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200, ladeKw: parseFloat(document.getElementById('ts-lade-kw')?.value)||parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
     // Merit-Order und Wirtschaftlichkeits-Overrides mit sichern
     meritOrderKeys: [...meritOrderKeys],
     wirtVdiOverrides: JSON.parse(JSON.stringify(window._wirtVdiOverrides || {})),
@@ -6140,6 +6144,7 @@ function applyErzeugerState(state) {
     document.getElementById('ts-dt').value = state.waermespeicher.dt || 40;
     document.getElementById('ts-verlust').value = state.waermespeicher.verlust || 0.5;
     document.getElementById('ts-entlade-kw').value = state.waermespeicher.entladeKw || 200;
+    document.getElementById('ts-lade-kw').value = state.waermespeicher.ladeKw || state.waermespeicher.entladeKw || 200;
     thermSpeicherAktiv = (state.waermespeicher.volumen || 0) > 0;
     updateThermSpeicherDisplay();
     document.getElementById('therm-speicher-panel').style.display = 'block';
@@ -6659,6 +6664,7 @@ function updateNetzColorLegend() {
 
 
 
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
 // Guard against HMR re-init: reuse cached instance if container is already initialized
 var map = window._appLeafletMap || (() => {
@@ -12873,6 +12879,16 @@ function startNetzEdgeFrom(id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
 function updateTotals(){
   let tw=0, th=0;
   window.gebaeude.forEach(g=>{
@@ -14014,7 +14030,7 @@ function _buildProjectData() {
     bhkw: bhkw ? { leistungThKw: parseFloat(document.getElementById('bhkw-leistung-th').value)||100, skz: document.getElementById('bhkw-skz').value, eta: document.getElementById('bhkw-eta').value, waerme: document.getElementById('bhkw-waerme').value } : null,
     stromkessel: stromkessel ? { leistungKw: parseFloat(document.getElementById('sk-leistung').value)||200, eta: document.getElementById('sk-eta').value, waerme: document.getElementById('sk-waerme').value } : null,
     solarthermie: solarthermieAktiv ? { flaeche: parseFloat(document.getElementById('st-flaeche')?.value)||0, spez: parseFloat(document.getElementById('st-spez')?.value)||400, polygon: window._stPolygon || null } : null,
-    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
+    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200, ladeKw: parseFloat(document.getElementById('ts-lade-kw')?.value)||parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
     freiflaechen: freiflaechen.map(ff => ({ id: ff.id, name: ff.name, polygon: ff.polygon, flaeche: ff.flaeche, gcr: ff.gcr, ausrichtung: ff.ausrichtung })),
     pvModul: { breite: document.getElementById('pv-modul-breite')?.value, laenge: document.getElementById('pv-modul-laenge')?.value, wp: document.getElementById('pv-modul-wp')?.value },
     pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value },
@@ -14325,6 +14341,7 @@ function _loadProject(project) {
         document.getElementById('ts-dt').value = project.waermespeicher.dt || 40;
         document.getElementById('ts-verlust').value = project.waermespeicher.verlust || 0.5;
         document.getElementById('ts-entlade-kw').value = project.waermespeicher.entladeKw || 200;
+        document.getElementById('ts-lade-kw').value = project.waermespeicher.ladeKw || project.waermespeicher.entladeKw || 200;
         thermSpeicherAktiv = (project.waermespeicher.volumen || 0) > 0;
         updateThermSpeicherDisplay();
         document.getElementById('therm-speicher-panel').style.display = 'block';
@@ -24103,6 +24120,10 @@ function glUpdateStatus() {
 
 
 
+
+
+
+
 var _glAutoTimer  = null;
 var _glIsRunning  = false;
 
@@ -24688,6 +24709,8 @@ function tsTypChanged() {
   document.getElementById('ts-dt').value = p.dt;
   document.getElementById('ts-verlust').value = p.verlust;
   document.getElementById('ts-entlade-kw').value = p.entlade;
+  const ladeEl = document.getElementById('ts-lade-kw');
+  if (ladeEl) ladeEl.value = p.entlade;
   // Volumen automatisch aus WP-Leistung berechnen
   const vol = _autoSpeicherVolumen(typ, p.dt);
   document.getElementById('ts-volumen').value = vol;
@@ -24737,8 +24760,9 @@ function getThermSpeicherParams() {
   const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
   const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
   const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
+  const ladeKw = parseFloat(document.getElementById('ts-lade-kw')?.value) || entladeKw;
   const kapKwh = vol * 1.16 * dt; // V × ρc/3600 × ΔT ≈ V × 1.16 × ΔT
-  return { vol, dt, kapKwh, verlustRate: verlustPctH / 100, entladeKw };
+  return { vol, dt, kapKwh, verlustRate: verlustPctH / 100, entladeKw, ladeKw };
 }
 
 function clearThermSpeicher() {
@@ -24901,6 +24925,9 @@ function _drawErdbeckenSpeicher() {
 // ── Merit-Order System ────────────────────────────────────────────────────
 // Reihenfolge bestimmt, welcher Erzeuger die Grundlast trägt.
 // Neuzugänge kommen an letzter Stelle (Spitzenlast).
+
+
+
 
 
 
@@ -25417,7 +25444,7 @@ function _dispatchCore(cfg) {
     if (hatSpeicher && thermSOC < thSp.kapKwh && wpReservesThisH.length > 0) {
       const h = t % 24;
       if (h >= 8 && h < 18) {
-        let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.entladeKw);
+        let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.ladeKw ?? thSp.entladeKw);
         for (const wp of wpReservesThisH) {
           if (restLade <= 0.1 || wp.reserveKw <= 0.1 || wp.cop <= 0) break;
           const ladeKw = Math.min(wp.reserveKw, restLade);
@@ -30994,6 +31021,7 @@ function updatePvInvestAuto() {
 
 
 
+
 var _calcStromTimer = null;
 function calcStromPanelDebounced() { clearTimeout(_calcStromTimer); _calcStromTimer = setTimeout(calcStromPanel, 120); }
 function calcStromPanel() {
@@ -31191,7 +31219,7 @@ function calcStromPanel() {
         const curFree = Math.max(0, tsCap - tss.socH[t]);
         if (curFree > 0.1) {
           const wpList = tss.wpReservesH?.[t] || [];
-          let restLade = Math.min(curFree, tss.params.entladeKw);
+          let restLade = Math.min(curFree, tss.params.ladeKw ?? tss.params.entladeKw);
           let wpUsed = false;
           // Alle WPs nach COP absteigend (bereits sortiert), PV-Strom → WP → Speicher
           for (const wp of wpList) {
@@ -31215,7 +31243,7 @@ function calcStromPanel() {
             const hatWP = ['lwwp','fg','geo'].some(k => (window._dispatchEnergy||{})[k]?.waermeMwh > 0);
             if (!hatWP && (window._dispatchEnergy||{})['stromkessel']) {
               const skFree = Math.max(0, tsCap - tss.socH[t]);
-              const skLoad = Math.min(rGen, skFree, tss.params.entladeKw);
+              const skLoad = Math.min(rGen, skFree, tss.params.ladeKw ?? tss.params.entladeKw);
               if (skLoad > 0.1) {
                 tss.socH[t] = Math.min(tsCap, tss.socH[t] + skLoad);
                 tss.ladeH[t] += skLoad;
@@ -34251,6 +34279,9 @@ window.pvGetMaxKwpFromAssets  = pvGetMaxKwpFromAssets;
 
 
 
+
+
+
 var _OPT_CE_KEY = {
   lwwp:'LuftWP', fg:'FlussWP', geo:'GeoWP', gaskessel:'Gaskessel',
   bhkw:'BHKW', stromkessel:'Stromkessel', pellets:'Pellets',
@@ -34299,7 +34330,8 @@ function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, 
     const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
     const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
     const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
-    thSp = { vol: optSpeicherVol, dt, kapKwh: optSpeicherVol * 1.16 * dt, verlustRate: verlustPctH / 100, entladeKw };
+    const ladeKw = parseFloat(document.getElementById('ts-lade-kw')?.value) || entladeKw;
+    thSp = { vol: optSpeicherVol, dt, kapKwh: optSpeicherVol * 1.16 * dt, verlustRate: verlustPctH / 100, entladeKw, ladeKw };
   } else if (window.thermSpeicherAktiv) {
     thSp = getThermSpeicherParams();
   }
@@ -34343,7 +34375,7 @@ function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, 
     speicherEntladenMwh: r.thermEntladenGes / 1000,
     speicherGeladenMwh: r.thermGeladenGes / 1000,
     wpResKwH: r.wpResKwH, wpResCopH: r.wpResCopH,
-    thSpParams: r.speicherParams ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw } : null,
+    thSpParams: r.speicherParams ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw, ladeKw: r.speicherParams.ladeKw ?? r.speicherParams.entladeKw } : null,
   };
 }
 
@@ -34393,12 +34425,12 @@ function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
     // PV-Überschuss → WP → thermischer Speicher
     if (rGen > 0.1 && dispResult && dispResult.thSpParams && dispResult.wpResKwH) {
       const tsCap = dispResult.thSpParams.kapKwh;
-      const tsEntlKw = dispResult.thSpParams.entladeKw;
+      const tsLadeKw = dispResult.thSpParams.ladeKw ?? dispResult.thSpParams.entladeKw;
       const wpResKw = dispResult.wpResKwH[t] || 0;
       const wpCop = dispResult.wpResCopH[t] || 0;
       if (wpResKw > 0.1 && wpCop > 0 && tsCap > 0) {
         const tsFree = Math.max(0, tsCap - tsSoc);
-        const ladeBudget = Math.min(tsFree, tsEntlKw);
+        const ladeBudget = Math.min(tsFree, tsLadeKw);
         if (ladeBudget > 0.1) {
           const maxElKw = wpResKw / wpCop;
           const elUsed = Math.min(rGen, maxElKw);
@@ -34795,7 +34827,7 @@ function _collectOptDomParams() {
     geoDtAbsenkung: f('geo-dt-absenkung', 0),
     geoTiefe: Math.min(400, Math.max(30, f('geo-tiefe', 100))),
     geoQPerM: Math.min(60, Math.max(10, f('geo-q-perm', 31))),
-    tsDt: f('ts-dt', 40), tsVerlust: f('ts-verlust', 0.5), tsEntladeKw: f('ts-entlade-kw', 200),
+    tsDt: f('ts-dt', 40), tsVerlust: f('ts-verlust', 0.5), tsEntladeKw: f('ts-entlade-kw', 200), tsLadeKw: f('ts-lade-kw', f('ts-entlade-kw', 200)),
     tsTyp: s('ts-typ', 'puffer'),
     etaGk: f('gk-eta', 92) / 100, etaHko: f('hko-eta', 90) / 100,
     etaPk: f('pk-eta', 88) / 100, etaHhs: f('hhs-eta', 85) / 100,
@@ -36205,7 +36237,9 @@ function _updateHourlyOverlay(t) {
     const sumKw = erzFiltered.reduce((s, e) => s + e.kw, 0);
     const delta = sumKw - lastKw;
     const deckung = lastKw > 0 ? Math.min(100, sumKw / lastKw * 100) : 0;
-    const deckColor = deckung >= 100 ? '#66bb6a' : (deckung >= 80 ? '#ffb74d' : '#ef5350');
+    // Farbe am angezeigten (gerundeten) Wert festmachen — sonst erscheint "100%" orange
+    const deckungAnzeige = Math.round(deckung);
+    const deckColor = deckungAnzeige >= 100 ? '#66bb6a' : (deckungAnzeige >= 80 ? '#ffb74d' : '#ef5350');
     const deltaArrow = delta >= 0 ? '\u25b2' : '\u25bc';
     const deltaColor = delta >= 0 ? 'rgba(102,187,106,0.7)' : 'rgba(239,83,80,0.7)';
     const cell = (label, value, unit, color, sub) =>
@@ -37135,6 +37169,8 @@ function _renderWorkerResults(topFein, grobResults, resDiv, startTime, params) {
 
 
 
+
+
 function _buildOptWorkerCode() {
   return `
 'use strict';
@@ -37205,7 +37241,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
   // Speicher-Parameter aus Worker-Config aufbauen
   let thSp = null;
   if (typeof optSpeicherVol === 'number' && optSpeicherVol > 0) {
-    thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw };
+    thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw, ladeKw: D.tsLadeKw ?? D.tsEntladeKw };
   }
 
   // Typ + Gütegrad sicherstellen (makeErzObj setzt typ, aber Sicherheit)
@@ -37247,7 +37283,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     speicherEntladenMwh: r.thermEntladenGes / 1000,
     speicherGeladenMwh: r.thermGeladenGes / 1000,
     wpResKwH: r.wpResKwH, wpResCopH: r.wpResCopH,
-    thSpParams: r.hatSpeicher ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw } : null,
+    thSpParams: r.hatSpeicher ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw, ladeKw: r.speicherParams.ladeKw ?? r.speicherParams.entladeKw } : null,
   };
 }
 
@@ -37279,12 +37315,12 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
     let pvWpSp = 0;
     if (rGen > 0.1 && dispResult && dispResult.thSpParams && dispResult.wpResKwH) {
       const tsCap = dispResult.thSpParams.kapKwh;
-      const tsEntlKw = dispResult.thSpParams.entladeKw;
+      const tsLadeKw = dispResult.thSpParams.ladeKw ?? dispResult.thSpParams.entladeKw;
       const wpRKw = dispResult.wpResKwH[t] || 0;
       const wpCop = dispResult.wpResCopH[t] || 0;
       if (wpRKw > 0.1 && wpCop > 0 && tsCap > 0) {
         const tsFree = Math.max(0, tsCap - tsSoc);
-        const ladeBudget = Math.min(tsFree, tsEntlKw);
+        const ladeBudget = Math.min(tsFree, tsLadeKw);
         if (ladeBudget > 0.1) {
           const maxElKw = wpRKw / wpCop;
           const elUsed = Math.min(rGen, maxElKw);

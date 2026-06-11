@@ -209,7 +209,7 @@ export function calcStromPanel() {
         const curFree = Math.max(0, tsCap - tss.socH[t]);
         if (curFree > 0.1) {
           const wpList = tss.wpReservesH?.[t] || [];
-          let restLade = Math.min(curFree, tss.params.entladeKw);
+          let restLade = Math.min(curFree, tss.params.ladeKw ?? tss.params.entladeKw);
           let wpUsed = false;
           // Alle WPs nach COP absteigend (bereits sortiert), PV-Strom → WP → Speicher
           for (const wp of wpList) {
@@ -233,7 +233,7 @@ export function calcStromPanel() {
             const hatWP = ['lwwp','fg','geo'].some(k => (window._dispatchEnergy||{})[k]?.waermeMwh > 0);
             if (!hatWP && (window._dispatchEnergy||{})['stromkessel']) {
               const skFree = Math.max(0, tsCap - tss.socH[t]);
-              const skLoad = Math.min(rGen, skFree, tss.params.entladeKw);
+              const skLoad = Math.min(rGen, skFree, tss.params.ladeKw ?? tss.params.entladeKw);
               if (skLoad > 0.1) {
                 tss.socH[t] = Math.min(tsCap, tss.socH[t] + skLoad);
                 tss.ladeH[t] += skLoad;

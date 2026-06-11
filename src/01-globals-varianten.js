@@ -688,7 +688,7 @@ export function captureErzeugerState() {
       waerme: document.getElementById('sk-waerme').value,
     } : null,
     solarthermie: solarthermieAktiv ? { flaeche: parseFloat(document.getElementById('st-flaeche')?.value)||0, spez: parseFloat(document.getElementById('st-spez')?.value)||400, polygon: window._stPolygon || null } : null,
-    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
+    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200, ladeKw: parseFloat(document.getElementById('ts-lade-kw')?.value)||parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
     // Merit-Order und Wirtschaftlichkeits-Overrides mit sichern
     meritOrderKeys: [...meritOrderKeys],
     wirtVdiOverrides: JSON.parse(JSON.stringify(window._wirtVdiOverrides || {})),
@@ -835,6 +835,7 @@ export function applyErzeugerState(state) {
     document.getElementById('ts-dt').value = state.waermespeicher.dt || 40;
     document.getElementById('ts-verlust').value = state.waermespeicher.verlust || 0.5;
     document.getElementById('ts-entlade-kw').value = state.waermespeicher.entladeKw || 200;
+    document.getElementById('ts-lade-kw').value = state.waermespeicher.ladeKw || state.waermespeicher.entladeKw || 200;
     thermSpeicherAktiv = (state.waermespeicher.volumen || 0) > 0;
     updateThermSpeicherDisplay();
     document.getElementById('therm-speicher-panel').style.display = 'block';

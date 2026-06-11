@@ -3,6 +3,7 @@
 // zusammengefügt, genau wie im originalen Index.html.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs';
 import { resolve, join } from 'path';
+import { getExportNames } from './tools/export-names.mjs';
 
 const SRC = resolve('src');
 const dist = resolve('dist');
@@ -99,16 +100,7 @@ const JS_FILES = [
 }
 
 // Vorab alle Export-Namen je Datei sammeln (für import * as X → var X = {...})
-function getExportNames(code) {
-  const names = [];
-  for (const line of code.split('\n')) {
-    const t = line.trimStart();
-    let m;
-    if ((m = t.match(/^export\s+(?:async\s+)?function\s+(\w+)/))) names.push(m[1]);
-    if ((m = t.match(/^export\s+(?:const|let|var)\s+(\w+)/))) names.push(m[1]);
-  }
-  return names;
-}
+// getExportNames kommt aus tools/export-names.mjs (erfasst Mehrfach-Deklarationen)
 
 // Map: relativer Pfad (wie im import-Statement) → Liste der Export-Namen
 const exportMap = {};
