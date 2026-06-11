@@ -143,6 +143,33 @@ function _topologyProfile(asset) {
   return prof;
 }
 
+// Fallback-Tagesprofil für Ladeinfrastruktur (Anteil der Spitzenlast je Stunde)
+const _LADE_ZP_DEFAULT = {
+  WT: [0.06,0.05,0.05,0.05,0.06,0.10,0.30,0.65,0.85,0.70,0.55,0.50,0.45,0.45,0.55,0.70,0.80,0.95,0.90,0.75,0.55,0.35,0.20,0.10],
+  Sa: [0.05,0.05,0.05,0.05,0.05,0.05,0.10,0.20,0.45,0.65,0.75,0.78,0.75,0.70,0.65,0.60,0.65,0.75,0.70,0.55,0.40,0.25,0.15,0.05],
+  So: [0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.10,0.25,0.45,0.55,0.60,0.58,0.55,0.50,0.45,0.50,0.55,0.50,0.38,0.28,0.18,0.10,0.05],
+};
+
+function _ladeProfile(asset) {
+  const p   = asset.props || {};
+  const gzf = Math.min(1, Math.max(0, parseFloat(p.gleichzeitigFaktor) || 0.3));
+  const pStd = (parseInt(p.anzahlPunkte)||8)  * (parseFloat(p.leistungProPunktKW)||11) * gzf;
+  const pSch = (parseInt(p.anzahlSchnell)||0) * (parseFloat(p.leistungSchnellKW)||150);
+  const peak = pStd + pSch;
+  if (peak <= 0) return new Float32Array(8760);
+
+  const zp   = p.zeitprofil || _LADE_ZP_DEFAULT;
+  const prof = new Float32Array(8760);
+  // 01.01. eines Normjahres beginnt an einem Montag (dow=0)
+  for (let h = 0; h < 8760; h++) {
+    const dow  = Math.floor(h / 24) % 7;          // 0=Mo … 6=So
+    const hour = h % 24;
+    const key  = dow === 6 ? 'So' : dow === 5 ? 'Sa' : 'WT';
+    prof[h]    = peak * ((zp[key]?.[hour]) ?? 0.3);
+  }
+  return prof;
+}
+
 export function getNodeProfile8760(asset) {
   if (_cache.has(asset.id)) return _cache.get(asset.id);
   let prof;
@@ -152,7 +179,7 @@ export function getNodeProfile8760(asset) {
     case 'WP':           prof=_wpProfile(asset);          break;
     case 'KWK':          prof=_kwkProfile(asset);         break;
     case 'Verbraucher':  prof=_verbraucherProfile(asset); break;
-    case 'Lade':         prof=_flat(parseFloat(asset.props?.leistungKW)||0); break;
+    case 'Lade':         prof=_ladeProfile(asset);                          break;
     case 'NAP': case 'Schaltanlage': case 'Trafo':
     case 'NSHV': case 'UV': case 'KVS':
                          prof=_topologyProfile(asset);    break;

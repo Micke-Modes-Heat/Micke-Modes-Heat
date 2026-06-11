@@ -15,7 +15,7 @@ import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSpannungsfall, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus } from './13a-assets-core.js';
-import { redrawAllAssets } from './13b-assets-render.js';
+import { collapseAssetSpider, redrawAllAssets } from './13b-assets-render.js';
 import { globalYear, stromEdges } from './01-globals-varianten.js';
 
 export function epConfirm(title, message, opts) {
@@ -308,6 +308,7 @@ export function startDrawStromEdge() {
 export function cancelDrawStromEdge() {
   window.isDrawingStromEdge = false;
   window.stromEdgeStartId = null;
+  if (typeof collapseAssetSpider === 'function') collapseAssetSpider();
   map.getContainer().style.cursor = '';
   const btn = document.getElementById('btn-draw-strom-edge');
   if (btn) { btn.style.background = ''; btn.style.fontWeight = ''; }
@@ -1295,7 +1296,12 @@ export function _recalcStromNetzInner() {
         const p = asset.props || {};
         switch (asset.type) {
           case 'Verbraucher': nm.loadKw = parseFloat(p.leistungKW) || 0; break;
-          case 'Lade':        nm.loadKw = (parseInt(p.anzahlPunkte) || 4) * (parseFloat(p.leistungProPunktKW) || 22); break;
+          case 'Lade': {
+            const gzf = Math.min(1, Math.max(0, parseFloat(p.gleichzeitigFaktor) || 0.3));
+            nm.loadKw = (parseInt(p.anzahlPunkte)||8)  * (parseFloat(p.leistungProPunktKW)||11) * gzf
+                      + (parseInt(p.anzahlSchnell)||0) * (parseFloat(p.leistungSchnellKW)||150);
+            break;
+          }
           case 'WP':          nm.loadKw = parseFloat(p.leistungKW) || 0; break;
           case 'PV':          nm.loadKw = -((parseFloat(p.leistungKWp) || 0) * 0.8); break;
           case 'Wind':        nm.loadKw = -(parseFloat(p.leistungKW) || 0); break;
@@ -2175,7 +2181,11 @@ export function elCalcAssets() {
     const p = a.props || {};
     switch (a.type) {
       case 'Verbraucher': return parseFloat(p.leistungKW) || 0;
-      case 'Lade':        return (parseInt(p.anzahlPunkte) || 4) * (parseFloat(p.leistungProPunktKW) || 22);
+      case 'Lade': {
+        const gzf = Math.min(1, Math.max(0, parseFloat(p.gleichzeitigFaktor) || 0.3));
+        return (parseInt(p.anzahlPunkte)||8)  * (parseFloat(p.leistungProPunktKW)||11) * gzf
+             + (parseInt(p.anzahlSchnell)||0) * (parseFloat(p.leistungSchnellKW)||150);
+      }
       case 'WP':          return parseFloat(p.leistungKW) || 0;
       default:            return 0;
     }

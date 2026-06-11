@@ -24,7 +24,7 @@ function wireSectionToggles(panel) {
 }
 
 import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset } from './13a-assets-core.js';
-import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
+import { drawAssetMarker, redrawAllAssets, updateLadeParking } from './13b-assets-render.js';
 import { openSlpEditor } from './13i-slp-editor.js';
 import { globalYear } from './01-globals-varianten.js';
 import { makePvProfile8760, _PV_SPEZ_DEFAULT } from './09a-pv-profile.js';
@@ -326,11 +326,32 @@ function buildPropsForm(asset) {
       </div>`;
     }
 
-    case 'Lade':
-      return row2(
-        numField(id, 'anzahlPunkte',       'Anz. Punkte',   4,  {props:p, step:1, min:1}),
-        numField(id, 'leistungProPunktKW', 'kW / Punkt',   22,  {props:p})
-      );
+    case 'Lade': {
+      const rot  = parseFloat(p.rotation)           || 0;
+      const gzf  = parseFloat(p.gleichzeitigFaktor) || 0.3;
+      const pStd = (parseInt(p.anzahlPunkte)||8) * (parseFloat(p.leistungProPunktKW)||11) * gzf;
+      return `
+        <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Standard-Lader</div>
+        ${row2(
+          numField(id, 'anzahlPunkte',       'Anz. Punkte',     8,  {props:p, step:1, min:1}),
+          numField(id, 'leistungProPunktKW', 'kW / Punkt',     11,  {props:p})
+        )}
+        ${numField(id, 'gleichzeitigFaktor', 'Gleichzeitigkeitsfaktor (0–1)', 0.3, {props:p, step:0.05, min:0})}
+        <div style="padding:5px 8px;background:rgba(77,208,225,0.08);border-radius:4px;border-left:2px solid #4dd0e1;margin-top:6px;">
+          <div style="font-size:9px;color:var(--muted);">Gleichzeitige Spitzenlast</div>
+          <div style="font-size:13px;font-weight:700;color:#4dd0e1;" id="lade-peak-${id}">${pStd.toFixed(0)} kW</div>
+        </div>
+        <div class="ins-field-group" style="margin-top:8px;">
+          <label class="ins-field-label">Drehung (°)</label>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input class="ins-field-input" type="range" min="0" max="360" step="1"
+              value="${rot}" data-prop="rotation" data-id="${id}"
+              style="flex:1;padding:0;height:22px;cursor:pointer;">
+            <span id="lade-rot-val-${id}" style="min-width:30px;font-size:10px;text-align:right;color:var(--muted);">${Math.round(rot)}°</span>
+          </div>
+        </div>
+      `;
+    }
 
     case 'Nsa':
       return row2(
@@ -756,6 +777,201 @@ function _drawPvInspectorChart(panel, asset) {
   ctx.fillText((mKwh.reduce((a,b) => a+b,0) / 1000).toFixed(0) + ' MWh', W - 4, 11);
 }
 
+// ── Lade-Asset: Zeitprofil (3-Szenario 24h-Canvas-Editor) ───────────────────
+
+const LADE_DEFAULT_PROFIL = {
+  WT: [0.06,0.05,0.05,0.05,0.06,0.10,0.30,0.65,0.85,0.70,0.55,0.50,0.45,0.45,0.55,0.70,0.80,0.95,0.90,0.75,0.55,0.35,0.20,0.10],
+  Sa: [0.05,0.05,0.05,0.05,0.05,0.05,0.10,0.20,0.45,0.65,0.75,0.78,0.75,0.70,0.65,0.60,0.65,0.75,0.70,0.55,0.40,0.25,0.15,0.05],
+  So: [0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.10,0.25,0.45,0.55,0.60,0.58,0.55,0.50,0.45,0.50,0.55,0.50,0.38,0.28,0.18,0.10,0.05],
+};
+
+function _buildLadeZeitprofilSection(id) {
+  return `
+    <div class="ins-section-header" data-target="ins-sec-zeitprofil-${id}">
+      <span class="asset-ins-section-title">🕐 Zeitprofil</span>
+      <span class="ins-section-chevron">▾</span>
+    </div>
+    <div class="ins-section-content" id="ins-sec-zeitprofil-${id}">
+      <div class="lade-zp-tabs" id="lade-zp-tabs-${id}">
+        <button class="lade-zp-tab active" data-tab="WT">Werktag</button>
+        <button class="lade-zp-tab" data-tab="Sa">Samstag</button>
+        <button class="lade-zp-tab" data-tab="So">Sonntag</button>
+      </div>
+      <canvas id="lade-zp-canvas-${id}"
+        style="width:100%;height:80px;display:block;border-radius:4px;
+               background:rgba(255,255,255,0.03);cursor:crosshair;
+               margin-top:2px;touch-action:none;"></canvas>
+      <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:9px;color:var(--muted);">
+        <span id="lade-zp-avg-${id}">Ø —</span>
+        <span id="lade-zp-max-${id}">Max —</span>
+        <span id="lade-zp-kwh-${id}">— kWh/d</span>
+      </div>
+      <button class="ins-link-btn" id="lade-zp-reset-${id}" style="margin-top:4px;">↺ Standardprofil laden</button>
+    </div>`;
+}
+
+function _wireLadeProps(panel, asset) {
+  const id = asset.id;
+
+  // Drehung: live update + Marker neu zeichnen
+  const rotSlider = panel.querySelector(`[data-prop="rotation"][data-id="${id}"]`);
+  const rotVal    = panel.querySelector(`#lade-rot-val-${id}`);
+  if (rotSlider) {
+    rotSlider.addEventListener('input', () => {
+      const v = parseFloat(rotSlider.value) || 0;
+      asset.props.rotation = v;
+      if (rotVal) rotVal.textContent = Math.round(v) + '°';
+      updateLadeParking(asset);  // nur Polygone neu — kein Marker-Flicker
+    });
+  }
+
+  // Marker neu zeichnen wenn Stellplatzanzahl ändert
+  const punkEl = panel.querySelector(`[data-prop="anzahlPunkte"][data-id="${id}"]`);
+  if (punkEl) punkEl.addEventListener('change', () => drawAssetMarker(asset));
+
+  // Spitzenlast-Anzeige live aktualisieren wenn Leistungsparameter sich ändern
+  function _updatePeak() {
+    const p    = asset.props;
+    const gzf  = Math.min(1, Math.max(0, parseFloat(p.gleichzeitigFaktor) || 0.3));
+    const pStd = (parseInt(p.anzahlPunkte)||8) * (parseFloat(p.leistungProPunktKW)||11) * gzf;
+    const peakEl = panel.querySelector(`#lade-peak-${id}`);
+    if (peakEl) peakEl.textContent = pStd.toFixed(0) + ' kW';
+  }
+
+  ['anzahlPunkte','leistungProPunktKW','gleichzeitigFaktor']
+    .forEach(key => {
+      const el = panel.querySelector(`[data-prop="${key}"][data-id="${id}"]`);
+      if (el) el.addEventListener('change', _updatePeak);
+    });
+}
+
+function _wireZeitprofil(panel, asset) {
+  const id = asset.id;
+
+  // Default-Profil initialisieren falls noch nicht vorhanden
+  if (!asset.props.zeitprofil) {
+    asset.props.zeitprofil = {
+      WT: [...LADE_DEFAULT_PROFIL.WT],
+      Sa: [...LADE_DEFAULT_PROFIL.Sa],
+      So: [...LADE_DEFAULT_PROFIL.So],
+    };
+  }
+
+  let currentTab = 'WT';
+  const canvas   = panel.querySelector(`#lade-zp-canvas-${id}`);
+  if (!canvas) return;
+
+  function getProfile() { return asset.props.zeitprofil[currentTab]; }
+
+  function updateKpi() {
+    const prof   = getProfile();
+    const avg    = prof.reduce((a, b) => a + b, 0) / 24;
+    const max    = Math.max(...prof);
+    const gzf    = Math.min(1, Math.max(0, parseFloat(asset.props.gleichzeitigFaktor) || 0.3));
+    const pStd   = (parseInt(asset.props.anzahlPunkte)||8) * (parseFloat(asset.props.leistungProPunktKW)||11) * gzf;
+    const pSch   = (parseInt(asset.props.anzahlSchnell)||2) * (parseFloat(asset.props.leistungSchnellKW)||150);
+    const kwhDay = avg * (pStd + pSch) * 24;
+    const avgEl  = panel.querySelector(`#lade-zp-avg-${id}`);
+    const maxEl  = panel.querySelector(`#lade-zp-max-${id}`);
+    const kwhEl  = panel.querySelector(`#lade-zp-kwh-${id}`);
+    if (avgEl)  avgEl.textContent  = `Ø ${Math.round(avg * 100)} %`;
+    if (maxEl)  maxEl.textContent  = `Max ${Math.round(max * 100)} %`;
+    if (kwhEl)  kwhEl.textContent  = `${kwhDay.toFixed(0)} kWh/d`;
+  }
+
+  function drawChart() {
+    const W = canvas.offsetWidth || 240;
+    const H = canvas.offsetHeight || 80;
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx  = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const prof  = getProfile();
+    const barW  = W / 24;
+    const GAP   = 1;
+    const maxH  = H - 13;
+
+    // Stunden-Labels (0, 6, 12, 18)
+    ctx.font      = '8px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.textAlign = 'center';
+    [0, 6, 12, 18].forEach(h => {
+      ctx.fillText(h + 'h', h * barW + barW / 2, H - 2);
+    });
+
+    // Balken
+    for (let h = 0; h < 24; h++) {
+      const v  = prof[h];
+      const bH = Math.max(1, Math.round(v * maxH));
+      const x  = h * barW + GAP / 2;
+      const bW = barW - GAP;
+      const y  = maxH - bH;
+      ctx.fillStyle = `rgba(77,208,225,${0.25 + v * 0.75})`;
+      ctx.fillRect(Math.round(x), y, Math.ceil(bW), bH);
+    }
+
+    // Aktuell bearbeiteter Balken-Index markieren (Hover-Cursor-Hilfe)
+    // Durchschnittslinie
+    const avg  = prof.reduce((a, b) => a + b, 0) / 24;
+    const avgY = maxH - Math.round(avg * maxH);
+    ctx.strokeStyle = 'rgba(77,208,225,0.35)';
+    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, avgY);
+    ctx.lineTo(W, avgY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function setBarAt(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const x    = clientX - rect.left;
+    const y    = clientY - rect.top;
+    const bar  = Math.min(23, Math.max(0, Math.floor(x / (rect.width / 24))));
+    const maxH = rect.height - 13;
+    const val  = Math.min(1, Math.max(0, 1 - y / maxH));
+    getProfile()[bar] = Math.round(val * 20) / 20; // auf 5 % runden
+    drawChart();
+    updateKpi();
+  }
+
+  let dragging = false;
+  canvas.addEventListener('mousedown', e => { dragging = true; setBarAt(e.clientX, e.clientY); });
+  canvas.addEventListener('mousemove', e => {
+    if (!dragging || e.buttons === 0) { dragging = false; return; }
+    setBarAt(e.clientX, e.clientY);
+  });
+  canvas.addEventListener('mouseup',    () => { dragging = false; });
+  canvas.addEventListener('mouseleave', () => { dragging = false; });
+  canvas.addEventListener('touchstart', e => { dragging = true; setBarAt(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('touchmove',  e => { if (!dragging) return; setBarAt(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('touchend',   () => { dragging = false; });
+
+  // Tab-Wechsel
+  const tabs = panel.querySelector(`#lade-zp-tabs-${id}`);
+  tabs?.querySelectorAll('.lade-zp-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabs.querySelectorAll('.lade-zp-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentTab = btn.dataset.tab;
+      drawChart();
+      updateKpi();
+    });
+  });
+
+  // Standardprofil zurücksetzen
+  panel.querySelector(`#lade-zp-reset-${id}`)?.addEventListener('click', () => {
+    asset.props.zeitprofil[currentTab] = [...LADE_DEFAULT_PROFIL[currentTab]];
+    drawChart();
+    updateKpi();
+  });
+
+  drawChart();
+  updateKpi();
+}
+
 // ── Gemeinsamer Rumpf (floating panel + sidebar card) ────────────────────────
 function buildBodyHtml(asset) {
   return `
@@ -826,7 +1042,8 @@ function renderInspector(asset) {
         ${buildPropsForm(asset)}
         ${buildResultBlock(asset)}
       </div>
-      ${asset.type === 'PV' ? _buildPvProfileSection(asset.id) : ''}
+      ${asset.type === 'PV'   ? _buildPvProfileSection(asset.id)      : ''}
+      ${asset.type === 'Lade' ? _buildLadeZeitprofilSection(asset.id) : ''}
       <div class="ins-section-header" data-target="ins-sec-massnahmen">
         <span class="asset-ins-section-title">Maßnahmen</span>
         <span class="ins-section-chevron">▾</span>
@@ -844,8 +1061,11 @@ function renderInspector(asset) {
   wireSectionToggles(panel);
   wireEvents(panel, asset);
   wireMassnahmen(panel, asset);
-  // PV-Erzeugungsprofil nach erstem Paint zeichnen
   if (asset.type === 'PV') requestAnimationFrame(() => _drawPvInspectorChart(panel, asset));
+  if (asset.type === 'Lade') {
+    _wireLadeProps(panel, asset);
+    requestAnimationFrame(() => _wireZeitprofil(panel, asset));
+  }
 }
 
 // ── Asset-Sidebar ─────────────────────────────────────────────────────────────

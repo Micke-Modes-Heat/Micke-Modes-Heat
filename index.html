@@ -17,7 +17,7 @@
 <body>
 
 <header>
-  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span>Energiekonzepte <span>·</span> <span style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span></div>
+  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span>Energiekonzepte <span>·</span> <span style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="App-Version" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
   <div class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
@@ -28,13 +28,14 @@
   <div class="header-spacer" style="flex:1;"></div>
   <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Kartenebenen ein-/ausblenden">⊞ Ebenen</button>
   <div style="position:relative;display:inline-block;">
-    <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:#607d8b;color:#90a4ae;font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Berechnungslogik">⋯ Mehr</button>
+    <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:#607d8b;color:#90a4ae;font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Feedback, Berechnungslogik">⋯ Mehr</button>
     <div id="mehr-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:190px;box-shadow:0 6px 18px rgba(0,0,0,0.45);flex-direction:column;gap:3px;">
       <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;justify-content:flex-start;font-size:11px;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱 Feldapp</button>
       <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Farbschema wechseln">🎨 Farbschema</button>
       <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;">🛰 Satellit</button>
       <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓ Hilfe-Modus</button>
       <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;justify-content:flex-start;font-size:11px;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋 Leitfaden</button>
+      <button class="tool-btn" id="btn-feedback" data-click="sendAppFeedback()" style="border-color:#66bb6a;color:#81c784;justify-content:flex-start;font-size:11px;" title="Feedback geben (lädt Datei mit Screenshot &amp; Versionsangabe herunter)">✉ Feedback</button>
       <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;justify-content:flex-start;font-size:11px;" title="Berechnungslogik — Wie wird gerechnet?">📐 Berechnungslogik</button>
     </div>
   </div>
@@ -3037,6 +3038,25 @@
     </div>
     <input type="file" id="spot-file-input" accept=".csv,.txt" style="display:none;" data-change="spotPreisFileSelected(this.files[0])"/>
 
+    <!-- NAP-Grenzen -->
+    <div class="sa-section-title" style="margin-top:4px;">NAP-Grenzen <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">für PV-Analyse &amp; NAP-Lastgang · leer = unbegrenzt · 0 = kein Strom</span></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:140px;">
+        <span style="font-size:10px;color:#ef9a9a;flex-shrink:0;">Max. Einspeisung:</span>
+        <input class="inp-field" type="number" id="strom-nap-einsp-kw" min="0" step="10"
+          placeholder="∞" style="width:70px;text-align:right;"
+          data-input="window.elNapMaxEinspKw=(this.value===''?null:parseFloat(this.value));window._pvAnalyse&&(window._pvAnalyse.napMaxEinspKw=window.elNapMaxEinspKw??0);(document.getElementById('pva-nap-einsp')||{}).value=window.elNapMaxEinspKw??''"/>
+        <span style="font-size:10px;color:var(--muted);">kW</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:140px;">
+        <span style="font-size:10px;color:#4fc3f7;flex-shrink:0;">Max. Bezug:</span>
+        <input class="inp-field" type="number" id="strom-nap-bezug-kw" min="0" step="10"
+          placeholder="∞" style="width:70px;text-align:right;"
+          data-input="window.elNapMaxBezugKw=(this.value===''?null:parseFloat(this.value));window._pvAnalyse&&(window._pvAnalyse.napMaxBezugKw=window.elNapMaxBezugKw??0);(document.getElementById('pva-nap-bezug')||{}).value=window.elNapMaxBezugKw??''"/>
+        <span style="font-size:10px;color:var(--muted);">kW</span>
+      </div>
+    </div>
+
     <!-- Strompreise -->
     <div class="sa-section-title" style="margin-top:4px;">Strompreise</div>
     <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
@@ -3304,6 +3324,120 @@ Turnhalle;Öffentlich;1982;A;850</div>
 <!-- Edge popup (injected into map container) -->
 <div id="edge-popup" class="edge-popup" style="display:none;"></div>
 
+
+<!-- App-Version & Feedback-Button. Platzhalter werden von build-singlefile.mjs
+     ersetzt; im Dev-Modus (ungebaut) bleibt 'dev' stehen. -->
+<script>
+(function () {
+  var v = '__APP_VERSION__';
+  if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
+  var d = '__BUILD_DATE__';
+  if (d.indexOf('__') === 0) d = '';
+  window.APP_VERSION = v;
+  window.APP_BUILD_DATE = d;
+
+  // Erzeugt eine Feedback-HTML-Datei (Text + Metadaten + Screenshot) zum
+  // Download. Die Datei kann das Team einfach weiterleiten/teilen.
+  function _buildFeedbackHtml(text, screenshotDataUrl) {
+    var ver = window.APP_VERSION || 'dev';
+    var meta = {
+      'Version': ver + (window.APP_BUILD_DATE ? ' (Build ' + window.APP_BUILD_DATE + ')' : ''),
+      'Datum': new Date().toLocaleString('de-DE'),
+      'Browser': navigator.userAgent,
+      'Bildschirm': window.innerWidth + ' x ' + window.innerHeight,
+      'Seite': location.href
+    };
+    var esc = function (s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); };
+    var metaRows = Object.keys(meta).map(function (k) {
+      return '<tr><td style="padding:2px 12px 2px 0;color:#9a9080;white-space:nowrap;">' + esc(k) + '</td><td>' + esc(meta[k]) + '</td></tr>';
+    }).join('');
+    return '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">' +
+      '<title>Feedback Micke-Heat ' + esc(ver) + '</title>' +
+      '<style>body{font-family:sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#222;}' +
+      'h1{font-size:18px;}h2{font-size:13px;color:#666;margin-top:24px;}' +
+      'pre{white-space:pre-wrap;background:#f4f4f4;border:1px solid #ddd;border-radius:6px;padding:12px;}' +
+      'table{border-collapse:collapse;font-size:12px;}img{max-width:100%;border:1px solid #ddd;border-radius:6px;}</style>' +
+      '</head><body>' +
+      '<h1>Feedback – Micke-Heat ' + esc(ver) + '</h1>' +
+      '<h2>Rückmeldung</h2><pre>' + esc(text) + '</pre>' +
+      '<h2>Metadaten</h2><table>' + metaRows + '</table>' +
+      (screenshotDataUrl ? '<h2>Screenshot</h2><img src="' + screenshotDataUrl + '" alt="Screenshot">' : '') +
+      '</body></html>';
+  }
+
+  function _downloadFeedback(text, screenshotDataUrl) {
+    var html = _buildFeedbackHtml(text, screenshotDataUrl);
+    var blob = new Blob([html], { type: 'text/html' });
+    var url = URL.createObjectURL(blob);
+    var ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'Feedback_Micke-Heat_v' + (window.APP_VERSION || 'dev') + '_' + ts + '.html';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  window.sendAppFeedback = function () {
+    document.getElementById('feedback-modal')?.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'feedback-modal';
+    overlay.className = 'ep-modal-overlay';
+    overlay.style.zIndex = '30000';
+    overlay.innerHTML =
+      '<div class="ep-modal" style="width:420px;max-width:94vw;">' +
+        '<div class="ep-modal-title">Feedback geben</div>' +
+        '<div class="ep-modal-body">' +
+          'Was ist passiert / welche Idee hast du? Version, Browser und auf Wunsch ' +
+          'ein Screenshot der aktuellen Ansicht werden automatisch beigefügt.' +
+        '</div>' +
+        '<textarea id="feedback-text" class="ep-modal-input" rows="5" ' +
+          'placeholder="Beschreibung, Schritte zum Nachstellen, Erwartung..." ' +
+          'style="resize:vertical;font-family:inherit;"></textarea>' +
+        '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--muted);">' +
+          '<input type="checkbox" id="feedback-screenshot" checked style="margin:0;"> Screenshot der aktuellen Ansicht beifügen' +
+        '</label>' +
+        '<div class="ep-modal-btns" style="margin-top:14px;">' +
+          '<button class="ep-modal-btn" data-click="this.closest(\'.ep-modal-overlay\').remove()">Abbrechen</button>' +
+          '<button class="ep-modal-btn primary" id="feedback-submit">Datei erzeugen</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+    var textEl = overlay.querySelector('#feedback-text');
+    textEl.focus();
+
+    overlay.querySelector('#feedback-submit').addEventListener('click', function () {
+      var btn = this;
+      var text = textEl.value.trim();
+      var withScreenshot = overlay.querySelector('#feedback-screenshot').checked;
+
+      function finish(screenshotDataUrl) {
+        _downloadFeedback(text, screenshotDataUrl);
+        overlay.remove();
+      }
+
+      if (withScreenshot && typeof html2canvas !== 'undefined') {
+        btn.disabled = true;
+        btn.textContent = 'Screenshot wird erstellt…';
+        html2canvas(document.body, { useCORS: true, allowTaint: true, scale: 1, logging: false })
+          .then(function (canvas) { finish(canvas.toDataURL('image/png')); })
+          .catch(function (e) { console.warn('Screenshot fehlgeschlagen:', e); finish(null); });
+      } else {
+        finish(null);
+      }
+    });
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var el = document.getElementById('app-version');
+    if (el) el.textContent = 'v' + (window.APP_VERSION || 'dev');
+  });
+})();
+</script>
 
 <script type="module" src="/src/main.js"></script>
 

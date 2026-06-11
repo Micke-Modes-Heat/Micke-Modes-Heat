@@ -4,7 +4,7 @@
 
 import { map } from './02b-gebaeude.js';
 import { globalYear } from './01-globals-varianten.js';
-import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 
 let assetLayer = null;       // Gebäude-gruppierte Assets (zoom-abhängig)
 let standaloneLayer = null; // Frei platzierte Assets (immer sichtbar)
@@ -129,15 +129,30 @@ function _buildGroupTooltip(assets) {
   return `<div style="min-width:145px;">${rows}${more}</div>`;
 }
 
-// Drei Zoom-Stufen:
-//   z < COLLAPSED        → komplett aus
-//   COLLAPSED ≤ z < DETAIL → 1 Sammel-Icon pro Gebäude
-//   z ≥ DETAIL           → alle Einzel-Icons nebeneinander
+// Zwei Zoom-Stufen:
+//   z < COLLAPSED → komplett aus
+//   z ≥ COLLAPSED → 1 Typ-Chip-Container pro Gebäude
 const ASSET_COLLAPSED_ZOOM = 16;
-const ASSET_DETAIL_ZOOM    = 18;
 
-// Sammel-Icon bei mittlerem Zoom
-const COLLAPSED_ICON = '⚙';
+// Max. Anzahl Typ-Chips im Container, bevor "+N" greift
+const MAX_TYPE_CHIPS = 4;
+
+// Chip-Kantenlänge (px) — an die Karten-Auflösung gekoppelt (wie die Lade-
+// Polygone), damit die Chips mit der Karte mitskalieren: beim Rauszoomen
+// schrumpfen die Gebäude UND die Chips. Ein Chip entspricht einer festen
+// Bodenbreite (Meter); umgerechnet über Meter-pro-Pixel der aktuellen Zoomstufe.
+// Geklammert auf [CHIP_MIN_PX, CHIP_MAX_PX], damit sie weder verschwinden noch
+// (bei extremem Reinzoomen) die Karte fluten.
+const CHIP_GROUND_M = 3.6;   // Ziel-Bodenbreite eines Chips in Metern
+const CHIP_MIN_PX   = 6;
+const CHIP_MAX_PX   = 24;
+function chipSizeAtZoom(z) {
+  const lat = map.getCenter().lat;
+  // Meter pro Pixel (Web-Mercator) bei Zoom z und Breitengrad lat
+  const mPerPx = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
+  const px = CHIP_GROUND_M / mPerPx;
+  return Math.round(Math.max(CHIP_MIN_PX, Math.min(CHIP_MAX_PX, px)));
+}
 
 // Prüft ob ein Asset geplante (noch offene) Maßnahmen hat → Badge anzeigen
 function hasPendingMassnahmen(asset) {
@@ -146,6 +161,19 @@ function hasPendingMassnahmen(asset) {
 
 const ASSET_MARKER_SIZE = 20;
 function sizeAtZoom(_z) { return ASSET_MARKER_SIZE; }
+
+// Assets eines Gebäudes nach Typ gruppieren, sortiert nach Versorgungs-Rang.
+// Liefert [{ type, cfg, count, assets }] für die Chip-Darstellung.
+function _groupByType(assets) {
+  const byType = new Map();
+  for (const a of assets) {
+    if (!byType.has(a.type)) byType.set(a.type, []);
+    byType.get(a.type).push(a);
+  }
+  return [...byType.entries()]
+    .map(([type, list]) => ({ type, cfg: ASSET_CFG[type], count: list.length, assets: list }))
+    .sort((x, y) => (TYPE_RANK[x.type] ?? 9) - (TYPE_RANK[y.type] ?? 9));
+}
 
 function ensureLayer() {
   if (!assetLayer) {
@@ -170,6 +198,32 @@ function applyLayerVisibility() {
   if (standaloneLayer) {
     if (layerVisible) standaloneLayer.addTo(map);
     else              standaloneLayer.remove();
+  }
+}
+
+// Strom-Domain-Assets als Strom-Knoten registrieren, damit Kabel angeschlossen werden können.
+// isAsset:true → setStromNetzVisible soll diese Marker NICHT direkt auf die Karte legen,
+// da sie vom Asset-Layer-System verwaltet werden.
+function _registerStromNode(asset, marker, lat, lng, buildingId) {
+  const cfg = ASSET_CFG[asset.type];
+  if (cfg.domain !== 'strom') return;
+  window.stromNodes = window.stromNodes || [];
+  const existing = window.stromNodes.find(n => n.id === asset.id);
+  if (!existing) {
+    window.stromNodes.push({
+      id: asset.id, type: asset.type.toLowerCase(),
+      lat, lng,
+      marker, label: cfg.label || asset.type,
+      buildingId: buildingId || null,
+      peakLoadKw: 0, annualMwh: 0, isProducer: false,
+      isAsset: true,
+    });
+  } else {
+    existing.marker = marker;
+    existing.isAsset = true;
+    existing.buildingId = buildingId || null;
+    existing.lat = lat;
+    existing.lng = lng;
   }
 }
 
@@ -201,41 +255,28 @@ function drawBuildingGroup(buildingId) {
   const firstMoved = assets.find(a => a._movedByUser);
   const c = firstMoved ? { lat: firstMoved.lat, lng: firstMoved.lng } : polygonC;
 
-  const zoom = map.getZoom();
-  const collapsed = zoom < ASSET_DETAIL_ZOOM;
-  const size = sizeAtZoom(zoom);
+  // ── Typ-Chip-Container: pro Asset-Typ ein farbiges Icon-Chip ──
+  const chip   = chipSizeAtZoom(map.getZoom());
+  const fs     = Math.round(chip * 0.6);
+  const groups = _groupByType(assets);
+  const shown  = groups.slice(0, MAX_TYPE_CHIPS);
+  const rest   = groups.length - shown.length;
 
-  let html, width, height;
+  const chipsHtml = shown.map(grp => {
+    const status  = grp.assets.some(a => getAssetStatus(a, globalYear) === 'active') ? 'active' : 'planned';
+    const opacity = status === 'active' ? 1 : 0.45;
+    const cntSub  = grp.count > 1 ? `<span class="asset-chip-n">${grp.count}</span>` : '';
+    return `<span class="asset-chip" style="background:${grp.cfg.color};opacity:${opacity};width:${chip}px;height:${chip}px;font-size:${fs}px;">${grp.cfg.icon}${cntSub}</span>`;
+  }).join('');
+  const moreChip = rest > 0 ? `<span class="asset-chip-more" style="font-size:${fs}px;">+${rest}</span>` : '';
+  const pendingBadge = assets.some(hasPendingMassnahmen) ? `<span class="asset-massn-badge"></span>` : '';
 
-  if (collapsed) {
-    // Sammel-Marker: ein generisches Icon + Zahl-Badge
-    const fontSize = Math.round(size * 0.65);
-    const countBadge = assets.length > 1
-      ? `<span class="asset-group-count">${assets.length}</span>`
-      : '';
-    const hasAnyPending = assets.some(hasPendingMassnahmen);
-    const pendingBadge = hasAnyPending
-      ? `<span class="asset-massn-badge"></span>`
-      : '';
-    html = `<div class="asset-group asset-group-collapsed" style="width:${size}px;height:${size}px;font-size:${fontSize}px;">${COLLAPSED_ICON}${countBadge}${pendingBadge}</div>`;
-    width  = size + 8;
-    height = size + 8;
-  } else {
-    // Alle Einzel-Icons nebeneinander — direkt klickbar via data-asset-id
-    const fontSize = Math.round(size * 0.6);
-    const iconsHtml = assets.slice(0, 6).map(a => {
-      const cfg    = ASSET_CFG[a.type];
-      const status = getAssetStatus(a, globalYear);
-      const opacity = status === 'active' ? 1 : 0.4;
-      const pendingBadge = hasPendingMassnahmen(a)
-        ? `<span class="asset-massn-badge asset-massn-badge-sm"></span>`
-        : '';
-      return `<span class="asset-group-icon" data-asset-id="${a.id}" style="background:${cfg.color};opacity:${opacity};width:${size}px;height:${size}px;font-size:${fontSize}px;">${cfg.icon}${pendingBadge}</span>`;
-    }).join('');
-    html = `<div class="asset-group">${iconsHtml}</div>`;
-    width  = size * Math.min(assets.length, 6) + 4;
-    height = size + 4;
-  }
+  const html = `<div class="asset-chips">${chipsHtml}${moreChip}${pendingBadge}</div>`;
+
+  // iconSize abschätzen (Chips + Gaps + Padding) für korrekte Zentrierung
+  const nSlots = shown.length + (rest > 0 ? 1 : 0);
+  const width  = nSlots * (chip + 2) + 8;
+  const height = chip + 8;
 
   const icon = L.divIcon({
     className: '',
@@ -245,17 +286,7 @@ function drawBuildingGroup(buildingId) {
   });
 
   const m = L.marker([c.lat, c.lng], { icon, draggable: true, zIndexOffset: 200 });
-
-  // Tooltip: im Detail-Modus asset-spezifisch per Hover-Delegation, sonst Gruppen-Liste
   m.bindTooltip(_buildGroupTooltip(assets), { sticky: true, className: 'geb-tooltip', offset: [8, 0] });
-  if (!collapsed) {
-    m.on('mouseover', function(ev) {
-      const el = ev.originalEvent?.target?.closest?.('[data-asset-id]');
-      const id = el?.dataset?.assetId;
-      const a  = id ? ASSETS.items.find(x => x.id === id) : null;
-      m.setTooltipContent(a ? _buildAssetTooltip(a) : _buildGroupTooltip(assets));
-    });
-  }
 
   m.on('dragend', () => {
     const ll = m.getLatLng();
@@ -263,33 +294,37 @@ function drawBuildingGroup(buildingId) {
       a.lat = ll.lat;
       a.lng = ll.lng;
       a._movedByUser = true;
+      const sn = (window.stromNodes || []).find(n => n.id === a.id);
+      if (sn) {
+        sn.lat = ll.lat; sn.lng = ll.lng;
+        if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+      }
+      if (a.type === 'Lade') _drawLadeParkingRects(a);
     }
   });
 
   m.on('click', e => {
-    if (window.isDrawingStromEdge) return;
     L.DomEvent.stopPropagation(e);
-    // Detail-Modus: getroffenes Icon direkt öffnen (data-asset-id)
-    if (!collapsed) {
-      const el = e.originalEvent?.target?.closest?.('[data-asset-id]');
-      const id = el?.dataset?.assetId;
-      const a  = id ? ASSETS.items.find(x => x.id === id) : null;
-      if (a) {
-        ASSETS.selectedId = a.id;
-        if (typeof window.openAssetInspector === 'function') window.openAssetInspector(a);
-        return;
-      }
+    // Kabelmodus: Container auffächern, damit ein einzelnes Asset als
+    // Leitungs-Endpunkt gewählt werden kann.
+    if (window.isDrawingStromEdge) {
+      spiderfyBuilding(buildingId, m.getLatLng());
+      return;
     }
-    // Collapsed-Modus ODER Klick auf Rand → Liste
     openBuildingAssetList(buildingId, m);
   });
 
   m.addTo(assetLayer);
-  // Alle Assets der Gruppe teilen den Marker-Ref (für deleteAsset)
+  // Alle Assets der Gruppe teilen den Marker-Ref (für deleteAsset) und werden
+  // am Container-Standort als Strom-Knoten registriert (für Kabelanschluss).
   for (const a of assets) {
+    if (a._marker && a._marker !== m) a._marker.remove();
+    if (a._ladeLayer) { a._ladeLayer.remove(); a._ladeLayer = null; }
     a._marker = m;
     a.lat = c.lat;
     a.lng = c.lng;
+    _registerStromNode(a, m, c.lat, c.lng, buildingId);
+    if (a.type === 'Lade') _drawLadeParkingRects(a);
   }
 }
 
@@ -333,6 +368,123 @@ function openBuildingAssetList(buildingId, marker) {
   }, 0);
 }
 
+// ── Spiderfy: Gebäude-Container auffächern ──────────────────────────────────
+// Im Kabelmodus klappt der Container in seine Einzel-Assets auf, damit der
+// Nutzer ein konkretes Asset als Leitungs-Endpunkt wählen kann. Die Fächer-
+// Marker sind temporär (kein Daten-Marker) und sitzen pixelgenau um den Mittelpunkt.
+let _spiderLayer = null;
+
+export function collapseAssetSpider() {
+  if (_spiderLayer) { _spiderLayer.remove(); _spiderLayer = null; }
+}
+
+function spiderfyBuilding(buildingId, centerLatLng) {
+  collapseAssetSpider();
+  const assets = getAssetsForBuilding(buildingId);
+  if (assets.length === 0) return;
+
+  // Einzelnes Asset → direkt als Endpunkt wählen, kein Fächer nötig
+  if (assets.length === 1) {
+    if (typeof window.stromNodeClick === 'function') window.stromNodeClick(assets[0].id);
+    return;
+  }
+
+  _spiderLayer = L.layerGroup().addTo(map);
+  const cPt = map.latLngToLayerPoint(centerLatLng);
+  const R   = 22 + assets.length * 6;   // px Fächer-Radius
+  const sz  = 26;
+
+  assets.forEach((a, i) => {
+    const ang = (2 * Math.PI * i / assets.length) - Math.PI / 2;
+    const ll  = map.layerPointToLatLng(L.point(cPt.x + R * Math.cos(ang), cPt.y + R * Math.sin(ang)));
+    const cfg = ASSET_CFG[a.type];
+
+    L.polyline([centerLatLng, ll], { color: '#fdd835', weight: 1.5, opacity: 0.7, dashArray: '3 3', interactive: false }).addTo(_spiderLayer);
+
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="asset-spider-icon" style="background:${cfg.color};width:${sz}px;height:${sz}px;font-size:${Math.round(sz * 0.55)}px;">${cfg.icon}</div>`,
+      iconSize:   [sz, sz],
+      iconAnchor: [sz / 2, sz / 2],
+    });
+    const sm = L.marker(ll, { icon, zIndexOffset: 5000 }).addTo(_spiderLayer);
+    sm.bindTooltip(a.name, { direction: 'top', className: 'geb-tooltip', offset: [0, -6] });
+    sm.on('click', ev => {
+      L.DomEvent.stopPropagation(ev);
+      if (window.isDrawingStromEdge && typeof window.stromNodeClick === 'function') {
+        window.stromNodeClick(a.id);
+      } else {
+        ASSETS.selectedId = a.id;
+        if (typeof window.openAssetInspector === 'function') window.openAssetInspector(a);
+      }
+      collapseAssetSpider();
+    });
+  });
+
+  // Klick auf die leere Karte schließt den Fächer wieder
+  map.once('click', collapseAssetSpider);
+}
+
+// ── Lade-Asset: Geo-Koordinaten-Polygone (wie Geothermie) ────────────────────
+// Stellplätze als L.polygon mit echten Meterdimensionen — skaliert automatisch
+// mit dem Zoom, kein SVG-Pixelproblem.
+
+// Berechnet alle Eckpunkte für n Stellplätze + Sammelschiene
+function _ladeParkingCoords(lat0, lng0, rotR, n) {
+  const SW_m = 2.5, SH_m = 5.0, SG_m = 0.1;
+  const mPerLat = 111320;
+  const mPerLng = 111320 * Math.cos(lat0 * Math.PI / 180);
+  const totalW  = n * SW_m + (n - 1) * SG_m;
+
+  function toLL(x_m, y_m) {
+    const rx =  x_m * Math.cos(rotR) + y_m * Math.sin(rotR);
+    const ry = -x_m * Math.sin(rotR) + y_m * Math.cos(rotR);
+    return [lat0 + ry / mPerLat, lng0 + rx / mPerLng];
+  }
+
+  const spots = [];
+  for (let i = 0; i < n; i++) {
+    const x0 = -totalW / 2 + i * (SW_m + SG_m);
+    spots.push([toLL(x0, 0), toLL(x0 + SW_m, 0), toLL(x0 + SW_m, SH_m), toLL(x0, SH_m)]);
+  }
+  const bus = [toLL(-totalW / 2, 0), toLL(totalW / 2, 0)];
+  return { spots, bus };
+}
+
+function _drawLadeParkingRects(asset) {
+  if (asset._ladeLayer) { asset._ladeLayer.remove(); asset._ladeLayer = null; }
+
+  const p      = asset.props || {};
+  const n      = Math.max(1, parseInt(p.anzahlPunkte) || 4);
+  const rotR   = ((parseFloat(p.rotation) || 0) * Math.PI) / 180;
+  const status = getAssetStatus(asset, globalYear);
+  const opacity = status === 'active' ? 1 : 0.5;
+  const dash    = status === 'planned' ? '4 3' : null;
+  const { spots, bus } = _ladeParkingCoords(asset.lat, asset.lng, rotR, n);
+
+  const group = L.layerGroup();
+  asset._ladePolygons = spots.map(corners =>
+    L.polygon(corners, { color:'#4dd0e1', weight:1.5, fillColor:'#4dd0e1',
+      fillOpacity:0.12 * opacity, opacity, dashArray:dash }).addTo(group)
+  );
+  asset._ladeBusLine = L.polyline(bus,
+    { color:'#4dd0e1', weight:2.5, opacity:0.9 * opacity }).addTo(group);
+
+  group.addTo(standaloneLayer);
+  asset._ladeLayer = group;
+}
+
+// Live-Update nur der Koordinaten (kein Layer-Neubau) — für drag und Rotation
+function _updateLadeParkingCoords(asset, lat, lng) {
+  if (!asset._ladePolygons || !asset._ladeBusLine) return;
+  const p    = asset.props || {};
+  const n    = Math.max(1, parseInt(p.anzahlPunkte) || 4);
+  const rotR = ((parseFloat(p.rotation) || 0) * Math.PI) / 180;
+  const { spots, bus } = _ladeParkingCoords(lat, lng, rotR, n);
+  spots.forEach((corners, i) => asset._ladePolygons[i]?.setLatLngs(corners));
+  asset._ladeBusLine.setLatLngs(bus);
+}
+
 // ── Einzel-Marker (Assets ohne Gebäude) ─────────────────────────────────────
 function drawSingleMarker(asset) {
   ensureLayer();
@@ -340,8 +492,12 @@ function drawSingleMarker(asset) {
   if (!cfg) return;
 
   if (asset._marker) {
-    standaloneLayer.removeLayer(asset._marker);
+    asset._marker.remove();
     asset._marker = null;
+  }
+  if (asset._ladeLayer) {
+    asset._ladeLayer.remove();
+    asset._ladeLayer = null;
   }
 
   const status  = getAssetStatus(asset, globalYear);
@@ -370,29 +526,7 @@ function drawSingleMarker(asset) {
   const m = L.marker([markerLat, markerLng], { icon, draggable: true, zIndexOffset: 3000 });
   m.bindTooltip(() => _buildAssetTooltip(asset), { sticky: true, className: 'geb-tooltip', offset: [8, 0] });
 
-  // Strom-Domain-Assets als Strom-Knoten registrieren, damit Kabel angeschlossen werden können
-  // isAsset:true → setStromNetzVisible soll diese Marker NICHT direkt auf die Karte legen,
-  // da sie vom Asset-Layer-System (standaloneLayer) verwaltet werden.
-  if (cfg.domain === 'strom') {
-    window.stromNodes = window.stromNodes || [];
-    const existing = window.stromNodes.find(n => n.id === asset.id);
-    if (!existing) {
-      window.stromNodes.push({
-        id: asset.id, type: asset.type.toLowerCase(),
-        lat: markerLat, lng: markerLng,
-        marker: m, label: cfg.label || asset.type,
-        buildingId: asset.buildingId || null,
-        peakLoadKw: 0, annualMwh: 0, isProducer: false,
-        isAsset: true,
-      });
-    } else {
-      existing.marker = m;
-      existing.isAsset = true;
-      existing.buildingId = asset.buildingId || null;
-      existing.lat = markerLat;
-      existing.lng = markerLng;
-    }
-  }
+  _registerStromNode(asset, m, markerLat, markerLng, asset.buildingId);
 
   m.on('click', e => {
     if (window.isDrawingStromEdge) {
@@ -406,10 +540,18 @@ function drawSingleMarker(asset) {
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
   });
 
+  if (asset.type === 'Lade') {
+    m.on('drag', () => {
+      const ll = m.getLatLng();
+      _updateLadeParkingCoords(asset, ll.lat, ll.lng);
+    });
+  }
+
   m.on('dragend', () => {
     const ll = m.getLatLng();
     asset.lat = ll.lat;
     asset.lng = ll.lng;
+    if (asset.type === 'Lade') _drawLadeParkingRects(asset);
     // Strom-Knoten-Position synchron halten
     const sn = (window.stromNodes || []).find(n => n.id === asset.id);
     if (sn) {
@@ -432,20 +574,50 @@ function drawSingleMarker(asset) {
 
   m.addTo(standaloneLayer);
   asset._marker = m;
+
+  // Lade: Parkplatz-Polygone in Geo-Koordinaten (skaliert automatisch mit Zoom)
+  if (asset.type === 'Lade') _drawLadeParkingRects(asset);
 }
 
 // ── Öffentliche API ─────────────────────────────────────────────────────────
 export function drawAssetMarker(asset) {
-  drawSingleMarker(asset);
+  if (asset.buildingId) drawBuildingGroup(asset.buildingId);
+  else drawSingleMarker(asset);
+}
+
+// Nur Parkplatz-Polygone neu zeichnen (ohne Anker-Marker anzufassen) — für Live-Rotation
+export function updateLadeParking(asset) {
+  if (asset._ladePolygons && asset._ladeBusLine) {
+    _updateLadeParkingCoords(asset, asset.lat, asset.lng);
+  } else {
+    _drawLadeParkingRects(asset);
+  }
+}
+
+// Nur die Gebäude-Container neu zeichnen (für Zoom-Rescale) — Einzel-Marker
+// und Lade-Polygone bleiben unangetastet.
+function redrawBuildingGroups() {
+  if (!assetLayer) return;
+  assetLayer.clearLayers();
+  const buildingIds = new Set();
+  for (const a of ASSETS.items) if (a.buildingId) buildingIds.add(a.buildingId);
+  for (const buildingId of buildingIds) drawBuildingGroup(buildingId);
 }
 
 export function redrawAllAssets() {
   ensureLayer();
   assetLayer.clearLayers();
   standaloneLayer.clearLayers();
-  for (const a of ASSETS.items) a._marker = null;
+  for (const a of ASSETS.items) { a._marker = null; a._ladeLayer = null; }
 
-  for (const a of ASSETS.items) drawSingleMarker(a);
+  // Assets mit Gebäude-Zuordnung → ein Typ-Chip-Container pro Gebäude,
+  // alle übrigen Assets als Einzel-Marker.
+  const buildingIds = new Set();
+  for (const a of ASSETS.items) {
+    if (a.buildingId) buildingIds.add(a.buildingId);
+    else drawSingleMarker(a);
+  }
+  for (const buildingId of buildingIds) drawBuildingGroup(buildingId);
 
   // Sidebar-Liste synchron halten (window-Bridge, kein zirkulärer Import)
   if (typeof window.renderSidebarAssetList === 'function') {
@@ -468,9 +640,10 @@ export function isAssetLayerVisible() {
   return layerVisible;
 }
 
-// Zoom-Listener: nur Sichtbarkeit (Icons haben feste Größe/Position)
 setTimeout(() => {
   map.on('zoomend', () => {
     applyLayerVisibility();
+    // Chip-Größe an neue Zoomstufe anpassen (nur wenn Container sichtbar)
+    if (layerVisible && map.getZoom() >= ASSET_COLLAPSED_ZOOM) redrawBuildingGroups();
   });
 }, 0);
