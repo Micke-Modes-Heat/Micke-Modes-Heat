@@ -951,9 +951,11 @@ export function pvBerechneAlle() {
 
   state.ergebnisse = ergebnisse;
   state.berechnet  = true;
+  state.lastParams = params;
   _pvFsArgs = { demandH, pvProfile, napParams, params };
   renderVariantenTabelle(ergebnisse);
   renderMethodik(ergebnisse);
+  renderRechenweg(ergebnisse);
   renderOptSurface3D(demandH, pvProfile, napParams, params, ergebnisse);
   renderGrenznutzenChart(demandH, pvProfile, napParams, params, ergebnisse);
   renderEvKurve(demandH, pvProfile, napParams, params, ergebnisse);
@@ -1295,6 +1297,9 @@ function _pvBuildPanelHtml() {
     <!-- Lesehilfe: So entstehen die Varianten -->
     <div id="pva-methodik" style="margin-bottom:20px;"></div>
 
+    <!-- Rechenweg: vollständige Herleitung der Wirtschaftlichkeit je Variante -->
+    <div id="pva-rechenweg" style="margin-bottom:22px;"></div>
+
     <!-- Abb. 1 — 3D-Optimierungsfläche: PV × Batterie -->
     <div id="pva-chart-heatmap" style="margin-bottom:22px;overflow:hidden;"></div>
 
@@ -1363,6 +1368,108 @@ function renderMethodik(varianten) {
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
     ${cards}
   </div>`;
+}
+
+// ── Rechenweg: vollständige, nachvollziehbare Wirtschaftlichkeits-Herleitung ───
+// Spiegelt Anhang B von docs/PV-Batterie-Auslegung-Grundlagen.md mit Live-Zahlen.
+
+function renderRechenweg(varianten) {
+  const el = document.getElementById('pva-rechenweg');
+  if (!el || !varianten?.length) return;
+
+  const p = window._pvAnalyse.lastParams;
+  if (!p) { el.innerHTML = ''; return; }
+
+  // Auswahl-Variante (Default: wirtschaftlich optimiert)
+  const selId = window._pvAnalyse._rechenwegId
+    || varianten.find(v => v.id === 'wirt-opt')?.id || varianten[0].id;
+  const v = varianten.find(x => x.id === selId) || varianten[0];
+  const w = v.wirt, s = v.sim;
+
+  const aPv  = annF(p.zins, p.pvLife  || 20);
+  const aBat = annF(p.zins, p.batLife || 15);
+  const aInf = annF(p.zins, 20);
+  const ihPv = (OPT_IH.pv ?? 0.01), ihBat = (OPT_IH.bat ?? 0.01);
+  const genutztMwh = s.eigenMwh + s.einspeiseMwh;
+  const lcoe = genutztMwh > 0 ? w.gesamtJk / (genutztMwh * 1000) : 0;
+  const useSpot = (v.strategie === 'spot' || v.strategie === 'spot-dyn') && s.spotRevenue;
+  const spread  = (p.pStrom - p.pEinsp) / 100;                  // €/kWh
+  const beKwh   = (v.batKwh > 0 && spread > 0) ? w.batJk / spread : null;  // Break-even kWh/a
+
+  const e   = n => Math.round(n).toLocaleString('de-DE') + ' €';
+  const ea  = n => Math.round(n).toLocaleString('de-DE') + ' €/a';
+  const mwh = n => (Math.round(n * 10) / 10).toLocaleString('de-DE') + ' MWh';
+  const num = (n, d=2) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  // Zeile: Bezeichnung | Formel/Herleitung | Wert
+  const row = (label, formel, wert, strong) => `
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+      <td style="padding:3px 8px 3px 0;color:${strong ? 'var(--text)' : 'var(--muted)'};white-space:nowrap;${strong ? 'font-weight:600;' : ''}">${label}</td>
+      <td style="padding:3px 8px;color:#607d8b;font-family:'DM Mono',monospace;font-size:8.5px;">${formel}</td>
+      <td style="padding:3px 0;text-align:right;font-family:'DM Mono',monospace;color:${strong ? '#a5d6a7' : 'var(--text)'};${strong ? 'font-weight:700;' : ''}white-space:nowrap;">${wert}</td>
+    </tr>`;
+  const block = (titel, rows) => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:10px 12px;">
+      <div style="font-size:9px;font-weight:700;color:var(--text);letter-spacing:.04em;text-transform:uppercase;margin-bottom:5px;">${titel}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:9px;">${rows}</table>
+    </div>`;
+
+  const options = varianten.map(x =>
+    `<option value="${x.id}" ${x.id === v.id ? 'selected' : ''}>${x.icon} ${x.label}</option>`).join('');
+
+  const blkEnergie = block('Energie & Kennzahlen (aus Simulation)',
+    row('PV-Ertrag',      `${Math.round(v.pvKwp)} kWp · ${pvGetSpez()} kWh/kWp`, mwh(v.ertragMwh)) +
+    row('Eigenverbrauch', '→ deckt Bedarf', mwh(s.eigenMwh)) +
+    row('Einspeisung',    '→ ins Netz', mwh(s.einspeiseMwh)) +
+    row('Abregelung',     '→ verworfen', mwh(s.curtailMwh)) +
+    row('Netzbezug',      'Bedarf − Eigenverbrauch', mwh(s.netzbezugMwh)) +
+    row('Eigenverbrauchsquote', 'E_eigen / E_pv', num(w.pvEigenQuote, 0) + ' %', true) +
+    row('Autarkiegrad',   'E_eigen / E_bedarf', num(w.autarkie, 0) + ' %', true));
+
+  const blkInvest = block('Investition',
+    row('PV',    `${Math.round(v.pvKwp)} kWp · ${p.pvInvestPerKwp} €/kWp`, e(w.pvInvest)) +
+    (v.batKwh > 0 ? row('Batterie', `${Math.round(v.batKwh)} kWh · ${p.batInvestPerKwh} €/kWh`, e(w.batInvest)) : '') +
+    row('Infrastruktur', w.infraLabel, e(w.infraInvest)) +
+    row('Summe', 'I_gesamt', e(w.investGes), true));
+
+  const blkJk = block('Jahreskosten (Annuität + Instandhaltung)',
+    row('Annuitätenfaktoren', `a(${num(p.zins*100,1)} %, ${p.pvLife}a)=${num(aPv,4)} · a(…,${p.batLife}a)=${num(aBat,4)}`, '') +
+    row('PV',    `${e(w.pvInvest)} · (${num(aPv,4)}+${num(ihPv,2)})`, ea(w.pvJk)) +
+    (v.batKwh > 0 ? row('Batterie', `${e(w.batInvest)} · (${num(aBat,4)}+${num(ihBat,2)})`, ea(w.batJk)) : '') +
+    row('Infrastruktur', `${e(w.infraInvest)} · ${num(aInf,4)}`, ea(w.infJk)) +
+    row('Summe', 'JK_gesamt', ea(w.gesamtJk), true));
+
+  const blkErloes = block('Erlöse & Ersparnisse',
+    row('Eigenverbrauchs-Ersparnis', `${mwh(s.eigenMwh)} · ${p.pStrom} ct`, ea(w.eigenErsparnis)) +
+    row('Einspeiseerlös', useSpot ? `Σ E_einsp(t) · Spotpreis(t)` : `${mwh(s.einspeiseMwh)} · ${p.pEinsp} ct`, ea(w.einspeisErloes)) +
+    row('Summe', 'Erlöse_gesamt', ea(w.gesamtErloes), true));
+
+  const blkErgebnis = block('Ergebnis',
+    row('Netto-Jahresüberschuss', 'Erlöse − Jahreskosten', ea(-w.nettoJk), true) +
+    row('Amortisation (statisch)', 'I_gesamt / Erlöse', isFinite(w.amort) ? num(w.amort, 1) + ' a' : '> 20 a') +
+    row('Stromgestehungskosten', `JK_gesamt / ${mwh(genutztMwh)}`, num(lcoe * 100, 1) + ' ct/kWh') +
+    (beKwh != null ? row('Batterie-Break-even', `JK_Bat / (${p.pStrom}−${p.pEinsp}) ct`,
+      mwh(beKwh / 1000) + '/a · ' + num(beKwh / v.batKwh, 0) + ' Zyklen') : ''));
+
+  el.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Rechenweg — Nachvollziehbarkeit
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">jede Zahl mit Formel; entspricht Anhang B der Grundlagen-Doku</span>
+    </span>
+    <label style="font-size:9px;color:var(--muted);">Variante:
+      <select id="pva-rw-sel" style="margin-left:4px;padding:2px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:9px;">${options}</select>
+    </label>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;align-items:start;">
+    ${blkEnergie}${blkInvest}${blkJk}${blkErloes}
+    <div style="grid-column:1/-1;">${blkErgebnis}</div>
+  </div>`;
+
+  const sel = el.querySelector('#pva-rw-sel');
+  if (sel) sel.addEventListener('change', ev => {
+    window._pvAnalyse._rechenwegId = ev.target.value;
+    renderRechenweg(varianten);
+  });
 }
 
 // ── 2D-Optimierungsfläche: Jahres-Netto-Überschuss über (PV × Batterie) ───────
@@ -1880,6 +1987,7 @@ function _pvSyncFromState() {
   if (s.berechnet && s.ergebnisse?.length) {
     renderVariantenTabelle(s.ergebnisse);
     renderMethodik(s.ergebnisse);
+    renderRechenweg(s.ergebnisse);
     renderBilanzChart(s.ergebnisse);
     renderScatterChart(s.ergebnisse);
     renderRueckAmpel(s.ergebnisse);
