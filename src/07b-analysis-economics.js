@@ -14,6 +14,9 @@ import { CalcEngine } from './08-calc-engine.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { OPT_IH, OPT_INVEST_DEFAULT, OPT_NUTZUNG } from './config/optimizer-defaults.js';
 import { autoGkResult } from './06c-dispatch-core.js';
+import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, solarthermieAktiv, stromEmF, stromEmFLZ, thermSpeicherAktiv } from './01-globals-varianten.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { runSensitivitaet } from './08-calc-engine.js';
 
 window._wirtBausteineOverrides = window._wirtBausteineOverrides || {};
 window._wirtVdiOverrides       = window._wirtVdiOverrides       || {};
@@ -330,7 +333,7 @@ export function _syncZins() {
 export function calcWirtschaftPanel() {
   _syncZins();
   const wrap = document.getElementById('wirt-table-wrap');
-  if (!wrap) { console.warn('[WIRT-WGK] ABBRUCH: wirt-table-wrap nicht gefunden'); return; }
+  if (!wrap) return;
 
   const keys  = window._dispatchActiveKeys || [];
   const en    = window._dispatchEnergy    || {};
@@ -338,11 +341,9 @@ export function calcWirtschaftPanel() {
   const ovVdi = window._wirtVdiOverrides       || {};
 
   if (!keys.length) {
-    console.warn('[WIRT-WGK] ABBRUCH: keine dispatchActiveKeys');
     wrap.innerHTML = '<p style="color:var(--muted);font-size:11px;padding:8px;">Erst Berechnung starten.</p>';
     return;
   }
-  console.log('[WIRT-WGK] START — keys:', keys.join(','));
 
   const zins  = parseFloat(document.getElementById('wirt-zins')?.value)    || 2.7;
   const lohn  = parseFloat(document.getElementById('wirt-lohn')?.value)    || 45;
@@ -768,13 +769,6 @@ export function calcWirtschaftPanel() {
     || 1;
   const wgk = gesamtMwh > 0.01 ? (gesamtJk + gesamtEnergieMitCo2) / gesamtMwh / 10 : 0; // ct/kWh
 
-  // Debug: WGK-Aufschlüsselung für Vergleich mit Optimierer
-  console.log('[WIRT-WGK] Kapitalkosten (Bausteine):', Math.round(gesamtJk), '€/a | Invest:', Math.round(gesamtInvest), '€ | BohrM:', Math.round(bohrm));
-  console.log('[WIRT-WGK] Energiekosten:', Math.round(gesamtEnergieMitCo2), '€/a');
-  console.log('[WIRT-WGK] Jahreskosten ges.:', Math.round(gesamtJk + gesamtEnergieMitCo2), '€/a | Wärme:', gesamtMwh.toFixed(1), 'MWh | WGK:', wgk.toFixed(1), 'ct/kWh');
-  console.log('[WIRT-WGK] pKw:', JSON.stringify(pKw), '| keys:', keys.join(','));
-  console.log('[WIRT-WGK] PV: pvEigen=', _pvEigenMwh.toFixed(1), 'pvEinsp=', _pvEinspMwh.toFixed(1), 'pvJk=', Math.round(pvJk));
-  keys.forEach(k => { const e = en[k]||{}; console.log('[WIRT-WGK] Erzeuger', k, ': pKw=', (pKw[k]||0).toFixed(0), 'waermeMwh=', (e.waermeMwh||0).toFixed(1), 'elMwh=', (e.elMwh||0).toFixed(1)); });
 
   window._lastWgk = wgk;
   window._lastInvestGes = gesamtInvest + pvInvestGes;

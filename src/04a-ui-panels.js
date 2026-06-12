@@ -4,7 +4,7 @@
 import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
 import { _invalidateStats, getComputedStats, map } from './02b-gebaeude.js';
-import { updateViz } from './02c-karte-werkzeuge.js';
+import { setMode, updateViz } from './02c-karte-werkzeuge.js';
 import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
 import { renderList, updateTotals } from './03c-gebaeude-io.js';
 import { _renderEmissionenTab, refreshVergleichView, renderAnalyseDispatch } from './04b-emissionen-3d.js';
@@ -23,6 +23,12 @@ import { KMR_KOSTEN } from './config/netz-kosten.js';
 import { napBuildAnalyseSection, napShowSection } from './13o-nap-analyse.js';
 import { knaBuildAnalyseSection, knaShowSection } from './13r-knotenpunkt-analyse.js';
 import { pvaBuildAnalyseSection, pvaShowSection } from './09d-pv-analyse.js';
+import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-globals-varianten.js';
+import { getWLDColor } from './02a-netz-physik.js';
+import { OVERPASS_ENDPOINTS, updateRohrListe } from './03b-netz.js';
+import { _buildProjectData, _loadProject, hideHint, showHint } from './03c-gebaeude-io.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { netzPruningMode, setNetzPruningMode } from './01-globals-varianten.js';
 
 export function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
@@ -238,8 +244,17 @@ async function queryOsmRoadType(latA, lngA, latB, lngB) {
   const delta = 0.0003;
   const bbox = `${midLat-delta},${midLng-delta},${midLat+delta},${midLng+delta}`;
   const q = `[out:json][timeout:5];way["highway"](${bbox});out tags 1;`;
+  // Stille Einzelabfrage statt _overpassFetchWithRetry: Hintergrund-Task darf
+  // keine Hints/Fehlermeldungen anzeigen, und eine leere Antwort (keine Straße
+  // in der Nähe) ist hier ein normales Ergebnis, kein Serverfehler.
   try {
-    const d = await _overpassFetchWithRetry(q, null, 2);
+    const resp = await fetch(OVERPASS_ENDPOINTS[0], {
+      method: 'POST',
+      body: 'data=' + encodeURIComponent(q),
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!resp.ok) return 'mittel';
+    const d = await resp.json();
     if (d && d.elements && d.elements.length > 0) {
       const hw = d.elements[0].tags?.highway || '';
       return HIGHWAY_KOSTEN[hw] || 'mittel';
@@ -362,7 +377,7 @@ export function setEdgeKost(klass) {
 
 // ── Netz-Pruning ──────────────────────────────────────────────────────────
 export function togglePruningMode() {
-  netzPruningMode = !netzPruningMode;
+  setNetzPruningMode(!netzPruningMode);
   const btn = document.getElementById('btn-pruning-mode');
   const info = document.getElementById('pruning-info');
   if (btn) {
@@ -720,6 +735,8 @@ export function setLeftTab(tabId) {
       if (n.type === 'geb' && n.marker) n.marker.setOpacity(0);
     });
     setAssetLayerVisible(true);
+    // Karten-Modus mitführen: Elektro-Arbeitsbereich = Strom-Ansicht
+    if (window.currentMode !== 'strom') setMode('strom');
   } else {
     // Alte Gebäude-Strom-Icons wieder einblenden wenn Strom-Ansicht aktiv
     (window.stromNodes || []).forEach(n => {
@@ -728,6 +745,10 @@ export function setLeftTab(tabId) {
     setStromNetzVisible(false);
     setNetzVisible(true);
     setAssetLayerVisible(false);
+    // Wärme-Arbeitsbereiche merken (für Rücksprung aus dem Strom-Modus)
+    if (tabId !== 'ergebnis') window._lastWaermeTab = tabId;
+    // Karten-Modus mitführen: zurück im Wärme-Bereich → Wärme-Einfärbung
+    if (window.currentMode === 'strom' && tabId !== 'ergebnis') setMode('waerme');
   }
   setTimeout(function() { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
 }

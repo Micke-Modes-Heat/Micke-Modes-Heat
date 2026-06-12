@@ -16,6 +16,9 @@ import { calcStromPanel } from './09b-pv-calc.js';
 import { _checkShowHourlySlider, _hourlyModeActive, _updateHourlyOverlay } from './10b-hourly-live.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { DAYS_PER_YEAR } from './lib/physik-konstanten.js';
+import { updateFliessgewaesserData, updateLwWpData } from './02c-karte-werkzeuge.js';
+import { updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay } from './03a-erzeuger.js';
+import { _glIsRunning } from './06b-gl-berechnen.js';
 
 export let meritOrderKeys = [];
 export let autoGkResult = null; // { leistungKw, deckungPct, waermeMwh } | false | null
@@ -62,7 +65,9 @@ export function onSystemStateUpdated() {
   if (document.getElementById('analyse-panel')?.classList.contains('visible')) {
     saSetTab(saCurrentTab || 'lastgang');
   }
-  calcStromPanel();
+  // KEIN calcStromPanel() hier: _deckungen8760 (via updateAllDeckungen) ruft es
+  // am Ende bereits auf — der Doppelaufruf rechnete das PV/Batterie-Panel
+  // bei jeder Grundlagen-Änderung zweimal.
   // Stromnetz aktualisieren (Lasten aus Dispatch übernehmen)
   if (stromEdges.length > 0 || stromNodes.length > 0) {
     recalcStromNetz();
@@ -242,7 +247,8 @@ export function updateAllDeckungen() {
 // ═══════════════════════════════════════════════════════════════════════════
 // ── _dispatchCore: Gemeinsamer stundenscharfer Dispatch-Kern ────────────
 // Wird von _deckungen8760 (Haupt-Dispatch) und _optDispatch8760 (Optimizer)
-// genutzt. Der Web Worker hat eine eigene Kopie (String-Template-Limitierung).
+// genutzt. Der Web Worker bindet dieselbe Funktion per _dispatchCore.toString()
+// ein (siehe 10d) — Funktion muss daher self-contained bleiben (keine Closures).
 //
 // cfg = {
 //   lastgangKw, tempH, vlH,      — stündliche Profile (Float32Array / Array)
@@ -515,7 +521,7 @@ export function _dispatchCore(cfg) {
     if (hatSpeicher && thermSOC < thSp.kapKwh && wpReservesThisH.length > 0) {
       const h = t % 24;
       if (h >= 8 && h < 18) {
-        let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.entladeKw);
+        let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.ladeKw ?? thSp.entladeKw);
         for (const wp of wpReservesThisH) {
           if (restLade <= 0.1 || wp.reserveKw <= 0.1 || wp.cop <= 0) break;
           const ladeKw = Math.min(wp.reserveKw, restLade);
@@ -634,8 +640,8 @@ export function _deckungen8760(ss) {
 
   // ── Heizlastfall-Leistung berechnen ──
   const _normAt = parseFloat(document.getElementById('gl-norm-at')?.value) || -12;
-  const _vl5    = parseFloat(document.getElementById('gl-vl5')?.value) || 80;
-  const _vl15   = parseFloat(document.getElementById('gl-vl15')?.value) || 55;
+  const _vl5    = parseFloat(document.getElementById('gl-vl5')?.value) || 90;   // = HTML-Default
+  const _vl15   = parseFloat(document.getElementById('gl-vl15')?.value) || 60;  // = HTML-Default
   const _vlDesign = Math.max(_vl5, _vl15);
   let _spitzenlastKw = 0;
   for (let i = 0; i < lastgangKw.length; i++) { if (lastgangKw[i] > _spitzenlastKw) _spitzenlastKw = lastgangKw[i]; }

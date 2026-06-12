@@ -17,7 +17,7 @@
 <body>
 
 <header>
-  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span>Energiekonzepte <span>·</span> <span style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span></div>
+  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span>Energiekonzepte <span>·</span> <span style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="App-Version" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
   <div class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
@@ -27,12 +27,18 @@
   </div>
   <div class="header-spacer" style="flex:1;"></div>
   <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Kartenebenen ein-/ausblenden">⊞ Ebenen</button>
-  <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱</button>
-  <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;" title="Farbschema wechseln">🎨</button>
-  <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;">🛰</button>
-  <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓</button>
-  <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋</button>
-  <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;" title="Berechnungslogik — Wie wird gerechnet?">📐</button>
+  <div style="position:relative;display:inline-block;">
+    <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:#607d8b;color:#90a4ae;font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Feedback, Berechnungslogik">⋯ Mehr</button>
+    <div id="mehr-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:190px;box-shadow:0 6px 18px rgba(0,0,0,0.45);flex-direction:column;gap:3px;">
+      <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;justify-content:flex-start;font-size:11px;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱 Feldapp</button>
+      <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Farbschema wechseln">🎨 Farbschema</button>
+      <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;">🛰 Satellit</button>
+      <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓ Hilfe-Modus</button>
+      <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;justify-content:flex-start;font-size:11px;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋 Leitfaden</button>
+      <button class="tool-btn" id="btn-feedback" data-click="sendAppFeedback()" style="border-color:#66bb6a;color:#81c784;justify-content:flex-start;font-size:11px;" title="Feedback geben (lädt Datei mit Screenshot &amp; Versionsangabe herunter)">✉ Feedback</button>
+      <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;justify-content:flex-start;font-size:11px;" title="Berechnungslogik — Wie wird gerechnet?">📐 Berechnungslogik</button>
+    </div>
+  </div>
   <div class="addr-search-wrap" style="flex-shrink:0;">
     <span class="addr-search-icon">🔍</span>
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
@@ -146,18 +152,24 @@
   <div class="ctx-sep"></div>
   <div class="ctx-group">
     <span class="ctx-label">Karte</span>
-    <button class="mode-btn active" data-click="setMode('waerme')"   id="btn-waerme">Wärme</button>
-    <button class="mode-btn"        data-click="setMode('spez')"     id="btn-spez">Spez.</button>
-    <button class="mode-btn"        data-click="setMode('heizlast')" id="btn-heizlast">Heizlast</button>
-    <button class="mode-btn"        data-click="setMode('verlust')"  id="btn-verlust">Verlust</button>
-    <button class="mode-btn"        data-click="setMode('strom')"    id="btn-strom">⚡ Strom</button>
-  </div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group">
-    <div class="viz-toggle">
-      <button class="viz-btn active" id="vbtn-circle" data-click="setViz('circle')">⬤</button>
-      <button class="viz-btn"        id="vbtn-bar"    data-click="setViz('bar')">▮</button>
-      <button class="viz-btn"        id="vbtn-none"   data-click="setViz('none')">▣</button>
+    <button class="mode-btn active" data-click="setMode('waerme')" id="btn-waerme" title="Gebäude nach Wärmebedarf einfärben — schaltet auch die Sidebar auf den Wärme-Bereich">Wärme</button>
+    <button class="mode-btn"        data-click="setMode('strom')"  id="btn-strom" title="Gebäude nach Strombedarf einfärben — schaltet auch die Sidebar auf den Elektro-Bereich">⚡ Strom</button>
+    <div style="position:relative;display:inline-block;">
+      <button class="mode-btn" id="btn-ansicht-menu" data-click="toggleAnsichtMenu()" title="Weitere Kartenansichten und Gebäude-Symbole">Ansicht ▾</button>
+      <div id="ansicht-menu" style="display:none;position:fixed;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 12px;min-width:200px;box-shadow:0 6px 18px rgba(0,0,0,0.45);">
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Einfärbung</div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:9px;">
+          <button class="mode-btn" data-click="setMode('spez')"     id="btn-spez" style="text-align:left;" title="Spezifischer Wärmebedarf (kWh/m²a)">Spez. Wärmebedarf</button>
+          <button class="mode-btn" data-click="setMode('heizlast')" id="btn-heizlast" style="text-align:left;" title="Heizlast (kW)">Heizlast</button>
+          <button class="mode-btn" data-click="setMode('verlust')"  id="btn-verlust" style="text-align:left;" title="Wärmeverlust der Hausanschlüsse">Netzverlust</button>
+        </div>
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Gebäude-Symbole</div>
+        <div class="viz-toggle">
+          <button class="viz-btn active" id="vbtn-circle" data-click="setViz('circle')" title="Kreise (Größe = Wärmebedarf)">⬤ Kreise</button>
+          <button class="viz-btn"        id="vbtn-bar"    data-click="setViz('bar')" title="Balken">▮ Balken</button>
+          <button class="viz-btn"        id="vbtn-none"   data-click="setViz('none')" title="Keine Symbole">▣ Keine</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -290,6 +302,12 @@
           <button class="lp-tool-btn" data-click="toggleStromkesselPanel()" style="border-color:#ff69b4;color:#ff69b4;">🔌 Stromkessel</button>
           <button class="lp-tool-btn" data-click="toggleBhkwPanel()" style="border-color:#ff8f00;color:#ffb74d;">⚡ BHKW</button>
           <button class="lp-tool-btn" data-click="toggleSolarthermiePanel()" style="border-color:#ff6f00;color:#ffab40;">☀ Solarthermie</button>
+        </div>
+        <div class="lp-section-title" style="margin-top:12px;">Stromerzeugung <span class="htip" data-tip="Dieselben Anlagen wie im Elektro-Tab — nur ein zweiter Zugang. Eine hier angelegte PV-Anlage erscheint automatisch auch im Stromteil (gleiche Liegenschaft, ein Objekt).">?</span></div>
+        <div class="lp-tool-grid">
+          <button class="lp-tool-btn" data-click="togglePvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="Zentrale PV-Anlage (kWp pauschal oder PVGIS-Lastgang) — identisch mit der PV im Stromteil">☀ PV-Anlage</button>
+          <button class="lp-tool-btn" data-click="toggleGebPvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="PV auf Gebäudedächern aktivieren — fließt in dieselbe Strombilanz">☀ Gebäude-PV</button>
+          <button class="lp-tool-btn" data-click="toggleFFPvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="Freiflächen-PV zeichnen — öffnet die Freiflächen-Sektion im Elektro-Tab (gleiche Anlagen)">☀ Freifläche-PV</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Speicher</div>
         <div class="lp-tool-grid">
@@ -1149,7 +1167,13 @@
       <!-- Left: Flow Schema -->
       <div id="live-flow-wrap">
         <div style="font-size:10px;color:rgba(255,255,255,0.35);padding:8px 14px;letter-spacing:0.5px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.04);flex-shrink:0;">
-          <span>Energiefluss</span>
+          <span style="display:flex;align-items:center;gap:10px;">Energiefluss
+            <span style="display:inline-flex;gap:2px;text-transform:none;letter-spacing:0;">
+              <button class="live-flow-mode-btn" data-mode="box" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Klassisch</button>
+              <button class="live-flow-mode-btn" data-mode="sankey" data-active="1" style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Hub-Sankey</button>
+              <button class="live-flow-mode-btn" data-mode="sankey-detail" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:1px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;cursor:pointer;">Hub-Sankey Detail</button>
+            </span>
+          </span>
           <span id="live-flow-hour" style="font-size:9px;color:rgba(255,255,255,0.2);"></span>
         </div>
         <div id="live-flow-svg" style="width:100%;padding:6px;"></div>
@@ -2254,6 +2278,10 @@
         <label class="inp-label" title="Maximale thermische Entladeleistung (begrenzt durch Wärmetauscher)">Entladeleistung (kW)</label>
         <input class="inp-field" type="number" id="ts-entlade-kw" value="200" min="1" step="10" data-input="updateAllDeckungen()"/>
       </div>
+      <div class="inp-group">
+        <label class="inp-label" title="Maximale thermische Ladeleistung (begrenzt durch Wärmetauscher)">Ladeleistung (kW)</label>
+        <input class="inp-field" type="number" id="ts-lade-kw" value="200" min="1" step="10" data-input="updateAllDeckungen()"/>
+      </div>
     </div>
     <div style="padding:7px 8px;background:var(--bg);border-radius:5px;border:1px solid var(--border);font-size:10px;font-family:'DM Mono',monospace;margin-bottom:10px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;">
       <span style="color:var(--muted)">Kapazität</span><span id="ts-kap" style="color:#80cbc4;">—</span>
@@ -2606,6 +2634,10 @@
     <div class="inp-group">
       <label class="inp-label">Jahresmitteltemp. Außen (°C)</label>
       <input class="inp-field" type="number" id="netz-t-mittel" value="10" step="1" data-change="recalcNetz()" title="Jahresmitteltemperatur – für Jahresverluste in MWh/a (typ. 9–11°C in DE)"/>
+    </div>
+    <div class="inp-group">
+      <label class="inp-label">Erdreichtemp. Winter (°C)</label>
+      <input class="inp-field" type="number" id="netz-t-erdreich" value="4" step="1" data-change="recalcNetz()" title="Erdreichtemperatur in Verlegetiefe (0,8–1 m) im Winter, typ. 3–5 °C. Maßgeblich für die Spitzen-Wärmeverluste der erdverlegten KMR-Rohre – nicht die Lufttemperatur."/>
     </div>
     <div class="inp-group" style="grid-column:1/-1">
       <label class="inp-label">U-Wert Rohr (W/m·K)</label>
@@ -3298,6 +3330,120 @@ Turnhalle;Öffentlich;1982;A;850</div>
 <!-- Edge popup (injected into map container) -->
 <div id="edge-popup" class="edge-popup" style="display:none;"></div>
 
+
+<!-- App-Version & Feedback-Button. Platzhalter werden von build-singlefile.mjs
+     ersetzt; im Dev-Modus (ungebaut) bleibt 'dev' stehen. -->
+<script>
+(function () {
+  var v = '__APP_VERSION__';
+  if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
+  var d = '__BUILD_DATE__';
+  if (d.indexOf('__') === 0) d = '';
+  window.APP_VERSION = v;
+  window.APP_BUILD_DATE = d;
+
+  // Erzeugt eine Feedback-HTML-Datei (Text + Metadaten + Screenshot) zum
+  // Download. Die Datei kann das Team einfach weiterleiten/teilen.
+  function _buildFeedbackHtml(text, screenshotDataUrl) {
+    var ver = window.APP_VERSION || 'dev';
+    var meta = {
+      'Version': ver + (window.APP_BUILD_DATE ? ' (Build ' + window.APP_BUILD_DATE + ')' : ''),
+      'Datum': new Date().toLocaleString('de-DE'),
+      'Browser': navigator.userAgent,
+      'Bildschirm': window.innerWidth + ' x ' + window.innerHeight,
+      'Seite': location.href
+    };
+    var esc = function (s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); };
+    var metaRows = Object.keys(meta).map(function (k) {
+      return '<tr><td style="padding:2px 12px 2px 0;color:#9a9080;white-space:nowrap;">' + esc(k) + '</td><td>' + esc(meta[k]) + '</td></tr>';
+    }).join('');
+    return '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">' +
+      '<title>Feedback Micke-Heat ' + esc(ver) + '</title>' +
+      '<style>body{font-family:sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#222;}' +
+      'h1{font-size:18px;}h2{font-size:13px;color:#666;margin-top:24px;}' +
+      'pre{white-space:pre-wrap;background:#f4f4f4;border:1px solid #ddd;border-radius:6px;padding:12px;}' +
+      'table{border-collapse:collapse;font-size:12px;}img{max-width:100%;border:1px solid #ddd;border-radius:6px;}</style>' +
+      '</head><body>' +
+      '<h1>Feedback – Micke-Heat ' + esc(ver) + '</h1>' +
+      '<h2>Rückmeldung</h2><pre>' + esc(text) + '</pre>' +
+      '<h2>Metadaten</h2><table>' + metaRows + '</table>' +
+      (screenshotDataUrl ? '<h2>Screenshot</h2><img src="' + screenshotDataUrl + '" alt="Screenshot">' : '') +
+      '</body></html>';
+  }
+
+  function _downloadFeedback(text, screenshotDataUrl) {
+    var html = _buildFeedbackHtml(text, screenshotDataUrl);
+    var blob = new Blob([html], { type: 'text/html' });
+    var url = URL.createObjectURL(blob);
+    var ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'Feedback_Micke-Heat_v' + (window.APP_VERSION || 'dev') + '_' + ts + '.html';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  window.sendAppFeedback = function () {
+    document.getElementById('feedback-modal')?.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'feedback-modal';
+    overlay.className = 'ep-modal-overlay';
+    overlay.style.zIndex = '30000';
+    overlay.innerHTML =
+      '<div class="ep-modal" style="width:420px;max-width:94vw;">' +
+        '<div class="ep-modal-title">Feedback geben</div>' +
+        '<div class="ep-modal-body">' +
+          'Was ist passiert / welche Idee hast du? Version, Browser und auf Wunsch ' +
+          'ein Screenshot der aktuellen Ansicht werden automatisch beigefügt.' +
+        '</div>' +
+        '<textarea id="feedback-text" class="ep-modal-input" rows="5" ' +
+          'placeholder="Beschreibung, Schritte zum Nachstellen, Erwartung..." ' +
+          'style="resize:vertical;font-family:inherit;"></textarea>' +
+        '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--muted);">' +
+          '<input type="checkbox" id="feedback-screenshot" checked style="margin:0;"> Screenshot der aktuellen Ansicht beifügen' +
+        '</label>' +
+        '<div class="ep-modal-btns" style="margin-top:14px;">' +
+          '<button class="ep-modal-btn" data-click="this.closest(\'.ep-modal-overlay\').remove()">Abbrechen</button>' +
+          '<button class="ep-modal-btn primary" id="feedback-submit">Datei erzeugen</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+    var textEl = overlay.querySelector('#feedback-text');
+    textEl.focus();
+
+    overlay.querySelector('#feedback-submit').addEventListener('click', function () {
+      var btn = this;
+      var text = textEl.value.trim();
+      var withScreenshot = overlay.querySelector('#feedback-screenshot').checked;
+
+      function finish(screenshotDataUrl) {
+        _downloadFeedback(text, screenshotDataUrl);
+        overlay.remove();
+      }
+
+      if (withScreenshot && typeof html2canvas !== 'undefined') {
+        btn.disabled = true;
+        btn.textContent = 'Screenshot wird erstellt…';
+        html2canvas(document.body, { useCORS: true, allowTaint: true, scale: 1, logging: false })
+          .then(function (canvas) { finish(canvas.toDataURL('image/png')); })
+          .catch(function (e) { console.warn('Screenshot fehlgeschlagen:', e); finish(null); });
+      } else {
+        finish(null);
+      }
+    });
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var el = document.getElementById('app-version');
+    if (el) el.textContent = 'v' + (window.APP_VERSION || 'dev');
+  });
+})();
+</script>
 
 <script type="module" src="/src/main.js"></script>
 

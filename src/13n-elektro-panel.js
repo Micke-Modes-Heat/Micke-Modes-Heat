@@ -66,6 +66,25 @@ function _html() { return `
     </button>
   </div>
 
+  <!-- ── Gekoppelte Erzeuger (Wärme ↔ Strom) ─────────────────────────────── -->
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+       data-click="toggleSection('el-sec-gekoppelt')">
+    <span>Gekoppelte Erzeuger &amp; Speicher <span class="htip" data-tip="Dieselben Anlagen wie im Erzeuger-Tab (Wärme) — nur ein zweiter Zugang. Strombetriebene Wärmeerzeuger bekommen automatisch ein verknüpftes Elektro-Asset; Änderungen wirken in Wärme- UND Strombilanz.">?</span></span><span id="el-sec-gekoppelt-arrow">▼</span>
+  </div>
+  <div id="el-sec-gekoppelt">
+    <div style="font-size:9px;color:var(--muted);margin-bottom:5px;">Eine Anlage, zwei Zugänge — identisch mit dem 🔥-Erzeuger-Tab.</div>
+    <div class="lp-tool-grid">
+      <button class="lp-tool-btn" data-click="toggleLwWpPanel()" style="border-color:#66bb6a;color:#66bb6a;" title="Luft-Wasser-Wärmepumpe — Stromverbraucher im Netz, Elektro-Asset wird automatisch verknüpft">🌊 Luft-WP</button>
+      <button class="lp-tool-btn" data-click="toggleGeoPanel()" style="border-color:#8d6e63;color:#bcaaa4;" title="Sole-Wasser-Wärmepumpe (Erdsonden) — Stromverbraucher im Netz">⛏ Geothermie</button>
+      <button class="lp-tool-btn" data-click="toggleFliessgewaesserPanel()" style="border-color:#4fc3f7;color:#4fc3f7;" title="Flusswasser-Wärmepumpe — Stromverbraucher im Netz">〰 Fließgew.-WP</button>
+      <button class="lp-tool-btn" data-click="toggleBhkwPanel()" style="border-color:#ff8f00;color:#ffb74d;" title="BHKW — Stromerzeuger im Netz (KWK-Asset wird automatisch verknüpft)">⚡ BHKW</button>
+      <button class="lp-tool-btn" data-click="toggleStromkesselPanel()" style="border-color:#ff69b4;color:#ff69b4;" title="Stromkessel (Power-to-Heat) — Stromverbraucher im Netz">🔌 Stromkessel</button>
+      <button class="lp-tool-btn" data-click="togglePvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="Zentrale PV-Anlage (kWp pauschal oder PVGIS-Lastgang) — identisch mit der PV im Wärme-Tab">☀ PV-Anlage</button>
+      <button class="lp-tool-btn" data-click="toggleGebPvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="PV auf Gebäudedächern — fließt in dieselbe Strombilanz">☀ Gebäude-PV</button>
+      <button class="lp-tool-btn" data-click="toggleBatteriePanel()" style="border-color:#b39ddb;color:#ce93d8;" title="Batteriespeicher — identisch mit dem Batteriespeicher im Erzeuger-Tab">🔋 Batterie</button>
+    </div>
+  </div>
+
   <!-- ── 1 · Netz aufbauen ────────────────────────────────────────────────── -->
   <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
        data-click="toggleSection('el-sec-netz')">

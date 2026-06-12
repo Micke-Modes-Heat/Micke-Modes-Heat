@@ -10,6 +10,7 @@ import { GL_MONTH_HOURS, GL_MONTH_START } from './06a-gbi-lastgang.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { getBatParams, makePvProfile8760, onPvVergModellChange } from './09a-pv-profile.js';
 import { _stromCurrentTab, _stromRenderFlussChart, _stromRenderLastgang, _stromRenderMonatsChart, drawSankeyStrom } from './09c-pv-charts-opt.js';
+import { getGebStromMwh } from './02b-gebaeude.js';
 
 export let _calcStromTimer = null;
 export function calcStromPanelDebounced() { clearTimeout(_calcStromTimer); _calcStromTimer = setTimeout(calcStromPanel, 120); }
@@ -208,7 +209,7 @@ export function calcStromPanel() {
         const curFree = Math.max(0, tsCap - tss.socH[t]);
         if (curFree > 0.1) {
           const wpList = tss.wpReservesH?.[t] || [];
-          let restLade = Math.min(curFree, tss.params.entladeKw);
+          let restLade = Math.min(curFree, tss.params.ladeKw ?? tss.params.entladeKw);
           let wpUsed = false;
           // Alle WPs nach COP absteigend (bereits sortiert), PV-Strom → WP → Speicher
           for (const wp of wpList) {
@@ -232,7 +233,7 @@ export function calcStromPanel() {
             const hatWP = ['lwwp','fg','geo'].some(k => (window._dispatchEnergy||{})[k]?.waermeMwh > 0);
             if (!hatWP && (window._dispatchEnergy||{})['stromkessel']) {
               const skFree = Math.max(0, tsCap - tss.socH[t]);
-              const skLoad = Math.min(rGen, skFree, tss.params.entladeKw);
+              const skLoad = Math.min(rGen, skFree, tss.params.ladeKw ?? tss.params.entladeKw);
               if (skLoad > 0.1) {
                 tss.socH[t] = Math.min(tsCap, tss.socH[t] + skLoad);
                 tss.ladeH[t] += skLoad;

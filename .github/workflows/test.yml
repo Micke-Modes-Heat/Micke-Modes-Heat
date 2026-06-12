@@ -19,6 +19,16 @@ jobs:
 
       - run: npm ci
 
+      # Lint zuerst: fängt fehlende Imports (no-undef) und Import-Zuweisungen
+      - run: npm run lint
+
+      - run: npm run typecheck
+
       - run: npm test
 
-      - run: npm run lint
+      # Browser-Smoke gegen den frisch gebauten Singlefile-Build
+      - run: npm run build
+
+      - run: npx playwright install chromium --with-deps
+
+      - run: npm run test:e2e

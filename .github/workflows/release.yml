@@ -1,0 +1,47 @@
+# Baut die Einzeldatei index.html und veröffentlicht sie als GitHub Release.
+# Auslösung: ein Versions-Tag (z. B. v0.1.0) wird gepusht.
+#
+# Release schneiden (lokal):
+#   npm version minor      # erhöht package.json + erstellt Git-Tag vX.Y.Z
+#   git push && git push --tags
+#
+# Das Tag triggert diesen Workflow → Release mit angehängter index.html.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:   # manuell auslösbar (nutzt den ausgewählten Ref)
+
+permissions:
+  contents: write   # nötig zum Anlegen des Releases
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Einzeldatei bauen
+        run: npm run build
+
+      - name: Datei für Release umbenennen (mit Versionsnummer)
+        run: cp dist/index.html "Micke-Heat-${GITHUB_REF_NAME}.html"
+
+      - name: Release anlegen
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/index.html
+            Micke-Heat-${{ github.ref_name }}.html
+          generate_release_notes: true
+          fail_on_unmatched_files: true

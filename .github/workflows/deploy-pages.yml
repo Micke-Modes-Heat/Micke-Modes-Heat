@@ -1,14 +1,21 @@
-# Baut die Feldapp als Einzeldatei und veröffentlicht sie auf GitHub Pages.
-# Erreichbar unter: https://<ihr-name>.github.io/<repo-name>/feldapp.html
+# Baut beide Einzeldateien und veröffentlicht sie auf GitHub Pages.
+#   Hauptapp:  https://<owner>.github.io/<repo>/         (index.html)
+#   Feldapp:   https://<owner>.github.io/<repo>/feldapp.html
 #
-# Aktivierung: Repository → Settings → Pages → Source: "GitHub Actions"
+# Pages zeigt immer den neuesten Stand von main ("latest").
+# Eingefrorene, versionierte Stände kommen über die GitHub Releases (release.yml).
+#
+# Aktivierung (einmalig): Repository → Settings → Pages → Source: "GitHub Actions"
 
-name: Deploy Feldapp
+name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [main, master]
     paths:
+      - 'index.html'
+      - 'src/**'
+      - 'build-singlefile.mjs'
       - 'field-app/**'
       - 'build-feldapp.mjs'
   workflow_dispatch:   # manuell auslösbar
@@ -35,9 +42,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
-      - name: Feldapp bauen
-        run: node build-feldapp.mjs
+      - run: npm ci
+
+      - name: Hauptapp bauen (dist/index.html)
+        run: npm run build
+
+      - name: Feldapp bauen (dist/feldapp.html)
+        run: npm run build:feldapp
 
       - name: GitHub Pages vorbereiten
         uses: actions/configure-pages@v4

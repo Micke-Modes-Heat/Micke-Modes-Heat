@@ -5,6 +5,8 @@
 import { CalcEngine } from './08-calc-engine.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { autoGkResult } from './06c-dispatch-core.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { runSensitivitaet } from './08-calc-engine.js';
 
 export let saCurrentTab = 'lastgang';
 
@@ -561,6 +563,7 @@ export function _daZeitlinien(ctx, W, H, startH, endH, nVis) {
 export function _daBindEvents(canvas, hourly, keys, lg, pMax, nTotal, W, H, startH, endH) {
   const nVis = endH - startH;
   const tip  = document.getElementById('da-tooltip');
+  const ctx  = canvas.getContext('2d');
 
   function hAtX(x) {
     return Math.min(endH - 1, Math.max(startH, Math.round(startH + x / W * nVis)));

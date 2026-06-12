@@ -89,12 +89,13 @@ export function _runOptWorker(resDiv) {
 
   // Wirtschaftsparameter
   const params = {
-    pStrom: parseFloat(document.getElementById('wirt-p-strom')?.value) || 30,
+    // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
+    pStrom: parseFloat(document.getElementById('wirt-p-strom')?.value) || 35,
     pGas: parseFloat(document.getElementById('wirt-p-gas')?.value) || 10,
-    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 7,
-    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 4,
-    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 9.5,
-    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 8,
+    pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
+    pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
+    pHko: parseFloat(document.getElementById('wirt-p-hko')?.value) || 10,
+    pFw: parseFloat(document.getElementById('wirt-p-fw')?.value) || 17,
     pEinsp: parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8,
     pBhkwEinsp: parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8,
     pBhkwKwkE: parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8,
@@ -159,11 +160,43 @@ export function _runOptWorker(resDiv) {
 
   // ── Fortschrittsanzeige ──
   const workerProgress = new Array(numWorkers).fill(0);
+  const workerBest3 = new Array(numWorkers).fill(null); // Zwischenstände je Worker (Grobsuche)
+
+  function _zwischenstandHtml() {
+    const all = [];
+    for (const b of workerBest3) if (b) all.push(...b);
+    if (!all.length) return '';
+    all.sort((a, b) => a.score - b.score);
+    const seen = new Set(); const top = [];
+    for (const r of all) {
+      if (!seen.has(r.kombiKey)) { seen.add(r.kombiKey); top.push(r); if (top.length === 3) break; }
+    }
+    const name = k => ERZEUGER_CFG[k]?.label || k;
+    const rows = top.map((r, i) => {
+      const erz = (r.config || []).map(c => name(c.key) + ' ' + Math.round(c.leistKw) + ' kW').join(' + ');
+      const extras = [];
+      if (r.pvKwp > 0) extras.push('PV ' + r.pvKwp + ' kWp');
+      if (r.batKwh > 0) extras.push('Bat. ' + r.batKwh + ' kWh');
+      if (r.stM2 > 0) extras.push('ST ' + r.stM2 + ' m²');
+      if (r.tsVol > 0) extras.push('Speicher ' + r.tsVol + ' m³');
+      const wgk = (r.wgk != null && r.wgk < 1e6) ? r.wgk.toFixed(1).replace('.', ',') + ' €/MWh' : '';
+      return '<div style="padding:3px 6px;border-left:2px solid ' + (i === 0 ? '#fdd835' : 'var(--border)') + ';margin-bottom:2px;font-size:9px;color:var(--text);">'
+        + (i + 1) + '. ' + escHtml(erz)
+        + (extras.length ? ' · ' + escHtml(extras.join(' · ')) : '')
+        + (wgk ? ' <span style="color:#fdd835;">' + wgk + '</span>' : '')
+        + '</div>';
+    });
+    return '<div style="margin-top:6px;text-align:left;">'
+      + '<div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Beste Varianten bisher</div>'
+      + rows.join('') + '</div>';
+  }
+
   function updateProgress(phase) {
     const totalPct = Math.round(workerProgress.reduce((s, v) => s + v, 0) / numWorkers);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
     const nwLabel = numWorkers > 1 ? ' \u00b7 ' + numWorkers + ' Kerne' : '';
-    resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;font-size:10px;">' + phase + ': ' + totalPct + '% \u00b7 ' + elapsed + 's' + nwLabel + '</div>';
+    resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;font-size:10px;">' + phase + ': ' + totalPct + '% \u00b7 ' + elapsed + 's' + nwLabel + '</div>'
+      + _zwischenstandHtml();
   }
 
   // ── Single Worker (Fallback für 1 Kern) ──
@@ -175,6 +208,7 @@ export function _runOptWorker(resDiv) {
       const msg = e.data;
       if (msg.type === 'progress') {
         workerProgress[0] = msg.pct;
+        if (msg.best3) workerBest3[0] = msg.best3;
         updateProgress(msg.phase);
       } else if (msg.type === 'done') {
         window._optGrobResults = msg.grobResults;
@@ -207,6 +241,7 @@ export function _runOptWorker(resDiv) {
       const msg = e.data;
       if (msg.type === 'progress') {
         workerProgress[msg.workerIdx || i] = msg.pct;
+        if (msg.best3) workerBest3[msg.workerIdx || i] = msg.best3;
         updateProgress('Grobsuche');
       } else if (msg.type === 'grob_done') {
         allGrobResults.push(...(msg.grobResults || []));

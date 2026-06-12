@@ -6,6 +6,9 @@
 import { areaPolygon, gebaeude, netzEdges } from './01-globals-varianten.js';
 import { setLeftTab } from './04a-ui-panels.js';
 import { HILFE_TEXTE } from './config/hilfe-texte.js';
+import { fernwaerme, gasKessel, geoThermie, heizhackschnitzel, heizoelKessel, lwWp, pelletsKessel } from './01-globals-varianten.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { fliessgewaesser } from './01-globals-varianten.js';
 
 export let _hilfeModus = false;
 export let _hilfeOverlay = null;
@@ -19,13 +22,13 @@ export function toggleHilfeModus() {
     btn.style.borderColor = '#4caf50';
     btn.style.color = '#4caf50';
     btn.style.background = 'rgba(76,175,80,0.15)';
-    btn.textContent = '❓ Hilfe (aktiv)';
+    btn.textContent = '❓ Hilfe-Modus (aktiv)';
     _showHilfeOverlay();
   } else {
     btn.style.borderColor = '#607d8b';
     btn.style.color = '#90a4ae';
     btn.style.background = '';
-    btn.textContent = '❓';
+    btn.textContent = '❓ Hilfe-Modus';
     _hideHilfeOverlay();
   }
 }
@@ -187,7 +190,7 @@ export const LEITFADEN_STEPS = [
     doneText: () => {
       const names = [];
       if (typeof lwWp !== 'undefined' && lwWp && lwWp.leistungKw > 0) names.push('Luft-WP');
-      if (typeof fg !== 'undefined' && fg && fg.leistungKw > 0) names.push('Flusswasser-WP');
+      if (fliessgewaesser && fliessgewaesser.leistungKw > 0) names.push('Flusswasser-WP');
       if (typeof geoThermie !== 'undefined' && geoThermie && geoThermie.leistKw > 0) names.push('Sole-WP');
       if (typeof gasKessel !== 'undefined' && gasKessel && gasKessel.leistungKw > 0) names.push('Gaskessel');
       if (typeof heizoelKessel !== 'undefined' && heizoelKessel && heizoelKessel.leistungKw > 0) names.push('Ölkessel');
@@ -337,8 +340,8 @@ export function _createLeitfadenPanel() {
     chk.addEventListener('click', function(e) {
       e.stopPropagation();
       const idx = parseInt(this.dataset.step);
-      if (!_leitfadenManualChecks) window._leitfadenManualChecks = {};
-      _leitfadenManualChecks[idx] = !_leitfadenManualChecks[idx];
+      if (!window._leitfadenManualChecks) window._leitfadenManualChecks = {};
+      window._leitfadenManualChecks[idx] = !window._leitfadenManualChecks[idx];
       _updateLeitfadenStatus();
     });
   });

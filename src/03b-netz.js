@@ -3,15 +3,27 @@
 import { areaPolygon, gebaeude, globalYear, isDrawingTrasse, isExcluded, isPlacingLwWp, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 
 let netzVisible = true;
-import { updateNetzColorLegend } from './02a-netz-physik.js';
+import { getNetzVBH, updateNetzColorLegend } from './02a-netz-physik.js';
 import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
 import { clearArea, polygonAreaM2, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
 import { drillSvg, redrawErzeugerIcons, redrawVerbindungslinien } from './03a-erzeuger.js';
 import { drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
+import { readNum } from './lib/util.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
+import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trassePolyline, trasseSegments } from './01-globals-varianten.js';
+import { addEdgeMidHandle, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, standardDNs } from './02a-netz-physik.js';
+import { OSM_SKIP_TYPES, addGebaeude, osmNutzung } from './02b-gebaeude.js';
+import { polygonCenter, redrawFliessgewaesser } from './02c-karte-werkzeuge.js';
+import { redrawGasKessel } from './03a-erzeuger.js';
+import { startAnimPipes, stopAnimPipes, updateTotals } from './03c-gebaeude-io.js';
+import { closeEdgePopup, showEdgePopup, toggleEdgePruned } from './04a-ui-panels.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { setEdgeStartId, setSelectedStrandId, set_batchImporting } from './01-globals-varianten.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { selectedStrandId } from './01-globals-varianten.js';
 
 export function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
@@ -1193,7 +1205,7 @@ out body;>;out skel qt;`;
 
     // Gebäude in Häppchen einfügen — Polygone erscheinen batch-weise auf der Karte
     const CHUNK = 20;
-    _batchImporting = true;
+    set_batchImporting(true);
     for(let i = 0; i < toAdd.length; i += CHUNK){
       toAdd.slice(i, i + CHUNK).forEach(opts => {
         const g = addGebaeude(opts);
@@ -1206,7 +1218,7 @@ out body;>;out skel qt;`;
       showHint(`OSM: ${Math.min(i + CHUNK, toAdd.length)} / ${toAdd.length} Gebäude…`);
       await new Promise(r => setTimeout(r, 0));
     }
-    _batchImporting = false;
+    set_batchImporting(false);
 
     // Sofort Erfolgsmeldung + ausblenden
     showHint(`✓ ${toAdd.length} Gebäude geladen`);
@@ -1223,7 +1235,7 @@ out body;>;out skel qt;`;
     if (areaPolygon) { map.removeLayer(areaPolygon); }
     areaEditMarkers.forEach(m => map.removeLayer(m));
   }catch(err){
-    _batchImporting = false;
+    set_batchImporting(false);
     showHint('⚠ Fehler: '+err.message);setTimeout(hideHint,4000);console.error(err);
   }
   btn.classList.remove('loading');
@@ -1524,7 +1536,7 @@ export function clearNetz(){
     if(e.segLayers) e.segLayers.forEach(s => { if(map.hasLayer(s)) map.removeLayer(s); });
   });
   window.netzEdges = [];
-  selectedStrandId = null;
+  setSelectedStrandId(null);
   const sel = document.getElementById('netz-strang');
   if (sel) sel.value = '';
   updateRohrListe();
@@ -1848,11 +1860,16 @@ export function recalcNetz(){
     maxPathNode: maxPathNode
   };
 
-  const tAussen = parseFloat(document.getElementById('netz-t-aussen').value) ?? -12;
-  const tMittel = parseFloat(document.getElementById('netz-t-mittel').value) ?? 10;
+  // readNum statt parseFloat: parseFloat liefert bei leerem Feld NaN, und
+  // `NaN ?? fallback` greift NICHT (NaN ist nicht nullish) → Verluste würden NaN
+  const tMittel = readNum('netz-t-mittel', 10, -20, 30);
+  // KMR liegt im Erdreich: Spitzenverluste gegen Winter-Erdreichtemperatur
+  // (~3–5 °C in 0,8–1 m Tiefe), NICHT gegen die Auslegungs-Lufttemperatur (−12 °C) —
+  // sonst werden die Verluste um ~25 % überschätzt.
+  const tErdreich = readNum('netz-t-erdreich', 4, -20, 20);
   const uWertBase = parseFloat(document.getElementById('netz-u-wert').value) || 0.25;
   const tMeanPipe = (vlTemp + rlTemp) / 2;
-  const deltaT = tMeanPipe - tAussen;
+  const deltaT = tMeanPipe - tErdreich;
   const deltaTMittel = tMeanPipe - tMittel;
 
   let totalLossKW = 0;
@@ -1900,13 +1917,15 @@ export function recalcNetz(){
       const edge = pInfo.e;
       const mDot = edge.load / (cp * dt); 
       let drop = 0;
-      if (mDot > 0.001) drop = edge.lossKW / (mDot * cp);
+      // lossKW umfasst VL+RL (U-Wert gilt für beide Leitungen) —
+      // den Vorlauf kühlt nur der VL-Anteil (~50 %)
+      if (mDot > 0.001) drop = (edge.lossKW * 0.5) / (mDot * cp);
       
       const rawTempOut = nodeMap[pInfo.pNodeId].tempIn - drop;
       edge.tempIn = nodeMap[pInfo.pNodeId].tempIn;
       edge.tempOut = rawTempOut;
       edge.thermischKritisch = rawTempOut < rlTemp;
-      nodeMap[curr].tempIn = Math.max(rawTempOut, tAussen);
+      nodeMap[curr].tempIn = Math.max(rawTempOut, tErdreich);
 
       const bC = gebMap.get(curr);
       if(bC) bC.tempIn = nodeMap[curr].tempIn;
@@ -1950,7 +1969,7 @@ export function recalcNetz(){
 
   // ── Subtree-WLD + Wirtschaftlichkeit pro Kante ──────────────────────────
   // Für jede Kante: welche Wärme + Länge liegt im Subtree dahinter?
-  const VBH = 1800;
+  const VBH = getNetzVBH(); // echte VBH aus Lastgang, Fallback 1800 h/a
   const subtreeLoad = {};   // nodeId → kW im Subtree (inkl. eigener Last)
   const subtreeLength = {}; // nodeId → Trassenmeter ab hier
   const subtreeKosten = {}; // nodeId → Investition im Subtree
@@ -2248,7 +2267,7 @@ export function updateStrangReport() {
     const col = ampelCol[s.ampel];
     const rowStyle = selectedStrandId === s.id ? 'background:rgba(255,255,255,0.05);' : '';
     h += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;${rowStyle}" `
-       + `data-click="selectedStrandId=${s.id};document.getElementById('netz-strang').value='${s.id}';updateNetzStrandVisibility();" `
+       + `data-click="setSelectedStrandId(${s.id});document.getElementById('netz-strang').value='${s.id}';updateNetzStrandVisibility();" `
        + `title="${ampelTxt[s.ampel]}: ${fmtD(s.zuschlag,0)} €/MWh Netzkosten, ${fmtD(s.verlustPct,1)}% Verluste">`;
     h += `<td style="padding:3px 4px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${col};"></span></td>`;
     h += `<td style="padding:3px 3px;color:var(--text);">${s.id + 1}</td>`;
@@ -2288,7 +2307,9 @@ export function updateNetzStrandVisibility() {
   const stromMode = (currentMode === 'strom');
   window.netzEdges.forEach(e => {
     const dim = (selectedStrandId != null && e.strandId !== selectedStrandId);
-    const w = Math.max(3, Math.min(14, 2 + (e.dn||0) / 15));
+    // Gleiche Dickenformel wie recalcNetz/drawEdgeGradient — sonst springt die
+    // Liniendicke beim Moduswechsel Wärme↔Strom auf klobige Werte
+    const w = Math.max(1.5, Math.min(5, 1 + (e.dn||0) / 50));
     if (e.segLayers && e.segLayers.length > 0) {
       e.segLayers.forEach(s => s.setStyle({opacity: stromMode ? 0.1 : (dim ? 0.2 : 0.85), weight: dim ? 2 : w}));
       e.layer.setStyle({opacity: 0});
@@ -2405,19 +2426,19 @@ export function toggleDrawEdge(){
   if(window.isDrawingEdge){
     btn.classList.add('active');
     showHint('Klicke auf das erste Gebäude für die Leitung.');
-    edgeStartId = null;
+    setEdgeStartId(null);
     map.getContainer().style.cursor='crosshair';
   } else {
     btn.classList.remove('active');
     hideHint();
-    edgeStartId = null;
+    setEdgeStartId(null);
     map.getContainer().style.cursor='';
   }
 }
 
 export function startNetzEdgeFrom(id) {
   if (!window.isDrawingEdge) toggleDrawEdge();
-  edgeStartId = id;
+  setEdgeStartId(id);
   showHint('Zweites Gebäude auf der Karte anklicken.');
 }
 

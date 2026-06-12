@@ -979,7 +979,7 @@ function buildBodyHtml(asset) {
       <label class="ins-field-label">Name</label>
       <input class="ins-field-input" type="text" data-field="name" value="${esc(asset.name)}">
     </div>
-    ${buildBuildingBadge(asset)}
+    ${buildBuildingSelect(asset)}
     <div class="ins-row-2">
       <div class="ins-field-group">
         <label class="ins-field-label">Baujahr</label>

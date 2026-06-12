@@ -8,6 +8,11 @@ import { glKannBerechnen } from './06b-gl-berechnen.js';
 import { DA_LABELS, _daColor } from './07a-analysis-charts.js';
 import { autoGkResult, meritOrderKeys } from './06c-dispatch-core.js';
 import { DAYS_PER_YEAR } from './lib/physik-konstanten.js';
+import { activateVariant, fernwaermeEmF, heizoelEmF, hhsEmF, pefFernwaerme, pefHeizoel, pefHhs, pefPellets, pefStrom, pefWP, pelletsEmF, refreshVergleich, stromEmF } from './01-globals-varianten.js';
+import { _glIsRunning, glBerechnenDebounced } from './06b-gl-berechnen.js';
+import { DA_COLORS_FALLBACK } from './07a-analysis-charts.js';
+import { _renderWirtCo2Chart } from './07b-analysis-economics.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 
 export let _emCurrentTab = 'em-stunden';
 export let _emZoom = { startH: 0, endH: 8760 };

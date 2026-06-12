@@ -2,13 +2,15 @@
 // ── Globaler Systemzustand ────────────────────────────────────────────────
 import { gebaeude } from './01-globals-varianten.js';
 import { calcAutoEnergy } from './02b-gebaeude.js';
-import { hidePanels } from './03b-netz.js';
-import { escHtml, renderList } from './03c-gebaeude-io.js';
+import { hidePanels, recalcNetz } from './03b-netz.js';
+import { updateViz } from './02c-karte-werkzeuge.js';
+import { escHtml, renderList, updateTotals } from './03c-gebaeude-io.js';
 import { glBerechnenDebounced, glKannBerechnen } from './06b-gl-berechnen.js';
 import { saCurrentTab, saSetTab } from './07a-analysis-charts.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { calcStromPanel } from './09b-pv-calc.js';
+import { glBerechnenAuto } from './06b-gl-berechnen.js';
 
 window.systemState  = null; // wird nach glBerechnen() befüllt
 window.elQuartierH  = null; // Float32Array[8760] — stündl. Stromlastgang Quartier (ohne WP)
@@ -286,6 +288,16 @@ export function gbiBackToMapping() {
 }
 
 // ── Apply Matches ───────────────────────────────────────────────────────
+// Nach Übernahme von CSV-Verbräuchen in Gebäude alles auffrischen.
+// (Ersetzt die Aufrufe von _gbiRefreshAll(), das nie existierte — der
+//  Abgleich crashte beim Übernehmen mit ReferenceError.)
+function _gbiRefreshAll() {
+  updateTotals();
+  updateViz();
+  recalcNetz();
+  glBerechnenAuto();
+}
+
 export function gbiApplyMatches() {
   var applied = 0;
   gbiMatches.forEach(function(m) {
@@ -299,7 +311,7 @@ export function gbiApplyMatches() {
     applied++;
   });
   renderList();
-  updateAll();
+  _gbiRefreshAll();
   var remaining = gbiMatches.filter(function(m) { return m.status === 'unmatched' || m.status === 'rejected'; }).length;
   if (remaining > 0) {
     alert(applied + ' Zuordnungen übernommen.\n' + remaining + ' Zeilen noch nicht zugeordnet — nutze "Manuelle Zuordnung" für die restlichen.');
@@ -385,7 +397,7 @@ export function gbiManualSelectCsv(csvIdx) {
         gbiApplyToGeb(csvRow, geb);
         m.status = 'applied';
         m.gebId = gbiManualSelectedGeb;
-        renderList(); updateAll();
+        renderList(); _gbiRefreshAll();
       }
     }
     gbiManualSelectedCsv = null;
@@ -413,7 +425,7 @@ export function gbiManualSelectGeb(gebId) {
         gbiApplyToGeb(csvRow, geb);
         m.status = 'applied';
         m.gebId = gebId;
-        renderList(); updateAll();
+        renderList(); _gbiRefreshAll();
       }
     }
     gbiManualSelectedCsv = null;
@@ -442,7 +454,7 @@ export function gbiFinish() {
   gbiStopManualMode();
   gbiClose();
   renderList();
-  updateAll();
+  _gbiRefreshAll();
 }
 
 // ── Interne GL-Variablen ──────────────────────────────────────────────────

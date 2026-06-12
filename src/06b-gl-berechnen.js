@@ -9,6 +9,12 @@ import { glGetGesamtMwh, glGetMonatswerte, glGetTempH, glLastgangKw, glRenderPre
 import { onSystemStateUpdated, updateAllDeckungen } from './06c-dispatch-core.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { readNum } from './lib/util.js';
+import { polygonCenter } from './02c-karte-werkzeuge.js';
+import { isErzeugerAktiv } from './06c-dispatch-core.js';
+import { _PV_SUN, makePvProfile8760 } from './09a-pv-profile.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { setThermSpeicherAktiv, thermSpeicherAktiv } from './01-globals-varianten.js';
 
 export let _glAutoTimer  = null;
 export let _glIsRunning  = false;
@@ -71,6 +77,7 @@ async function glBerechnen() {
     let lastgangKw; // Float32Array 8760h
     let gesamtMwh;
     let nurGebaeude = false; // Flag: Lastgang stammt nur aus Gebäudedaten (ohne explizite Verbrauchsangabe)
+    let synState = null;     // CalcEngine-Ergebnis der Synthese (Fälle 3–5) — für tempState wiederverwendet
 
     if (glLastgangKw && !hatMonat) {
       // Fall 1: Direkt (Lastgang hochgeladen → Verluste bereits enthalten)
@@ -99,7 +106,7 @@ async function glBerechnen() {
       }
 
       // CalcEngine für Lastgang-Synthese aufrufen (ohne Erzeuger)
-      const synState = await CalcEngine.run({
+      synState = await CalcEngine.run({
         stadt, normAussentemp: normAt,
         tempH: tempHDwd,   // DWD-Profil (ggf. TRY-Kassel-Fallback)
         sigProfil1: profil1, sigProfil2: profil2,
@@ -140,7 +147,7 @@ async function glBerechnen() {
     }
 
     // Temperaturprofil: aus synState wiederverwenden (Fall 3-5) oder neu berechnen (Fall 1-2)
-    const tempState = typeof synState !== 'undefined' && synState?.tempH ? synState : await CalcEngine.run({
+    const tempState = synState?.tempH ? synState : await CalcEngine.run({
       stadt, normAussentemp: normAt,
       tempH: tempHDwd || undefined,
       sigProfil1: profil1, sigProfil2: profil2,
@@ -595,6 +602,8 @@ export function tsTypChanged() {
   document.getElementById('ts-dt').value = p.dt;
   document.getElementById('ts-verlust').value = p.verlust;
   document.getElementById('ts-entlade-kw').value = p.entlade;
+  const ladeEl = document.getElementById('ts-lade-kw');
+  if (ladeEl) ladeEl.value = p.entlade;
   // Volumen automatisch aus WP-Leistung berechnen
   const vol = _autoSpeicherVolumen(typ, p.dt);
   document.getElementById('ts-volumen').value = vol;
@@ -630,10 +639,10 @@ export function updateThermSpeicherDisplay() {
   const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
   if (p) {
     el('ts-kap', p.kapKwh.toFixed(0) + ' kWh (' + (p.kapKwh / 1000).toFixed(1) + ' MWh)');
-    thermSpeicherAktiv = true;
+    setThermSpeicherAktiv(true);
   } else {
     el('ts-kap', '—');
-    thermSpeicherAktiv = false;
+    setThermSpeicherAktiv(false);
   }
   if (typeof redrawThermSpeicherMap === 'function') redrawThermSpeicherMap();
 }
@@ -644,12 +653,13 @@ export function getThermSpeicherParams() {
   const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
   const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
   const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
+  const ladeKw = parseFloat(document.getElementById('ts-lade-kw')?.value) || entladeKw;
   const kapKwh = vol * 1.16 * dt; // V × ρc/3600 × ΔT ≈ V × 1.16 × ΔT
-  return { vol, dt, kapKwh, verlustRate: verlustPctH / 100, entladeKw };
+  return { vol, dt, kapKwh, verlustRate: verlustPctH / 100, entladeKw, ladeKw };
 }
 
 export function clearThermSpeicher() {
-  thermSpeicherAktiv = false;
+  setThermSpeicherAktiv(false);
   document.getElementById('ts-volumen').value = 0;
   _removeThermSpeicherMapLayers();
   updateThermSpeicherDisplay();

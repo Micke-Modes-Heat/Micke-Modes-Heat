@@ -9,6 +9,8 @@ import { _optAborted } from './10b-hourly-live.js';
 import { _optFinished } from './10c-optimizer-run.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { OPT_MERIT_ORDER } from './config/optimizer-defaults.js';
+import { _dispatchCore } from './06c-dispatch-core.js';
+import { _calcKostenShared } from './07b-analysis-economics.js';
 
 export function _buildOptWorkerCode() {
   return `
@@ -16,6 +18,7 @@ export function _buildOptWorkerCode() {
 // ═══ Web Worker: Optimierungsberechnung (DOM-frei) ═══
 
 let D; // DOM-Parameter (wird via postMessage empfangen)
+let QH = null; // Quartier-Stromlastgang — von onmessage gesetzt, von kennwerte() gelesen
 
 function _annF(z, n) {
   if (z <= 0 || n <= 0) return n > 0 ? 1 / n : 1;
@@ -80,7 +83,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
   // Speicher-Parameter aus Worker-Config aufbauen
   let thSp = null;
   if (typeof optSpeicherVol === 'number' && optSpeicherVol > 0) {
-    thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw };
+    thSp = { kapKwh: optSpeicherVol * 1.16 * D.tsDt, verlustRate: D.tsVerlust / 100, entladeKw: D.tsEntladeKw, ladeKw: D.tsLadeKw ?? D.tsEntladeKw };
   }
 
   // Typ + Gütegrad sicherstellen (makeErzObj setzt typ, aber Sicherheit)
@@ -122,7 +125,7 @@ function dispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeicherVol, stEx
     speicherEntladenMwh: r.thermEntladenGes / 1000,
     speicherGeladenMwh: r.thermGeladenGes / 1000,
     wpResKwH: r.wpResKwH, wpResCopH: r.wpResCopH,
-    thSpParams: r.hatSpeicher ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw } : null,
+    thSpParams: r.hatSpeicher ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw, ladeKw: r.speicherParams.ladeKw ?? r.speicherParams.entladeKw } : null,
   };
 }
 
@@ -154,12 +157,12 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
     let pvWpSp = 0;
     if (rGen > 0.1 && dispResult && dispResult.thSpParams && dispResult.wpResKwH) {
       const tsCap = dispResult.thSpParams.kapKwh;
-      const tsEntlKw = dispResult.thSpParams.entladeKw;
+      const tsLadeKw = dispResult.thSpParams.ladeKw ?? dispResult.thSpParams.entladeKw;
       const wpRKw = dispResult.wpResKwH[t] || 0;
       const wpCop = dispResult.wpResCopH[t] || 0;
       if (wpRKw > 0.1 && wpCop > 0 && tsCap > 0) {
         const tsFree = Math.max(0, tsCap - tsSoc);
-        const ladeBudget = Math.min(tsFree, tsEntlKw);
+        const ladeBudget = Math.min(tsFree, tsLadeKw);
         if (ladeBudget > 0.1) {
           const maxElKw = wpRKw / wpCop;
           const elUsed = Math.min(rGen, maxElKw);
@@ -205,7 +208,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
 
   // Quartier-Strom
   let quartierStromMwh = 0;
-  if (quartierH) { for (let t = 0; t < 8760; t++) quartierStromMwh += quartierH[t]; quartierStromMwh /= 1000; }
+  if (QH) { for (let t = 0; t < 8760; t++) quartierStromMwh += QH[t]; quartierStromMwh /= 1000; }
 
   // PV-Daten
   const pvEigenMwh = pvBatR ? (pvBatR.pvEigenMwh != null ? pvBatR.pvEigenMwh : pvBatR.eigenMwh) : 0;
@@ -371,6 +374,7 @@ self.onmessage = function(e) {
   D = data.dom;
   const { lastgangKw, tempH, vlH, pvProfile, stNormProfile, quartierH,
     params, aktiv, constraints, ziel, quality, pvAktiv, batAktiv, stAktiv, tsAktiv, globalYear } = data;
+  QH = quartierH;
 
   let peak = 0;
   for (let i = 0; i < lastgangKw.length; i++) if (lastgangKw[i] > peak) peak = lastgangKw[i];
@@ -568,7 +572,19 @@ self.onmessage = function(e) {
       if (now - lastProgressAt > 500) {
         lastProgressAt = now;
         const pct = Math.round(doneConfigs / totalConfigs * 100);
-      self.postMessage({ type: 'progress', phase: 'Grobsuche', pct, done: doneConfigs, total: totalConfigs, workerIdx: _workerIdx });
+        // Aktuell beste 3 Varianten mitschicken (O(n)-Auswahl alle 500 ms)
+        const best3 = [];
+        for (const r of grobResults) {
+          if (best3.length < 3) { best3.push(r); best3.sort((a, b) => a.score - b.score); }
+          else if (r.score < best3[2].score) { best3[2] = r; best3.sort((a, b) => a.score - b.score); }
+        }
+        const best3Min = best3.map(r => ({
+          kombiKey: r.kombiKey, score: r.score,
+          wgk: r.kw ? r.kw.wgk : null,
+          config: (r.config || []).map(c => ({ key: c.key, leistKw: c.leistKw })),
+          pvKwp: r.pvKwp, batKwh: r.batKwh, stM2: r.stM2, tsVol: r.tsVol,
+        }));
+      self.postMessage({ type: 'progress', phase: 'Grobsuche', pct, done: doneConfigs, total: totalConfigs, workerIdx: _workerIdx, best3: best3Min });
     }
   }
 
@@ -737,12 +753,13 @@ export function _doRunOptimierung(resDiv) {
   if (peak < 1) peak = 1;
 
   // 2. Wirtschaftsparameter
-  const pStrom   = parseFloat(document.getElementById('wirt-p-strom')?.value) || 30;
+  // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
+  const pStrom   = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
   const pGas     = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
-  const pPk      = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 7;
-  const pHhs     = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 4;
-  const pHko     = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 9.5;
-  const pFw      = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 8;
+  const pPk      = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 8;
+  const pHhs     = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 6;
+  const pHko     = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 10;
+  const pFw      = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
   const pEinsp   = parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8;
   const pBhkwEinsp = parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8;
   const pBhkwKwkE  = parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8;

@@ -22,6 +22,9 @@ import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
+import { activeVariantId } from './01-globals-varianten.js';
+import { _quelleTemp } from './06c-dispatch-core.js';
+import { OPT_EE_KEYS, OPT_IH, OPT_MERIT_ORDER, OPT_NUTZUNG } from './config/optimizer-defaults.js';
 
 export const _OPT_CE_KEY = {
   lwwp:'LuftWP', fg:'FlussWP', geo:'GeoWP', gaskessel:'Gaskessel',
@@ -71,7 +74,8 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
     const dt = parseFloat(document.getElementById('ts-dt')?.value) || 40;
     const verlustPctH = parseFloat(document.getElementById('ts-verlust')?.value) || 0.5;
     const entladeKw = parseFloat(document.getElementById('ts-entlade-kw')?.value) || 200;
-    thSp = { vol: optSpeicherVol, dt, kapKwh: optSpeicherVol * 1.16 * dt, verlustRate: verlustPctH / 100, entladeKw };
+    const ladeKw = parseFloat(document.getElementById('ts-lade-kw')?.value) || entladeKw;
+    thSp = { vol: optSpeicherVol, dt, kapKwh: optSpeicherVol * 1.16 * dt, verlustRate: verlustPctH / 100, entladeKw, ladeKw };
   } else if (window.thermSpeicherAktiv) {
     thSp = getThermSpeicherParams();
   }
@@ -115,7 +119,7 @@ export function _optDispatch8760(lastgangKw, tempH, vlH, erzeugerList, optSpeich
     speicherEntladenMwh: r.thermEntladenGes / 1000,
     speicherGeladenMwh: r.thermGeladenGes / 1000,
     wpResKwH: r.wpResKwH, wpResCopH: r.wpResCopH,
-    thSpParams: r.speicherParams ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw } : null,
+    thSpParams: r.speicherParams ? { kapKwh: r.speicherParams.kapKwh, entladeKw: r.speicherParams.entladeKw, ladeKw: r.speicherParams.ladeKw ?? r.speicherParams.entladeKw } : null,
   };
 }
 
@@ -165,12 +169,12 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
     // PV-Überschuss → WP → thermischer Speicher
     if (rGen > 0.1 && dispResult && dispResult.thSpParams && dispResult.wpResKwH) {
       const tsCap = dispResult.thSpParams.kapKwh;
-      const tsEntlKw = dispResult.thSpParams.entladeKw;
+      const tsLadeKw = dispResult.thSpParams.ladeKw ?? dispResult.thSpParams.entladeKw;
       const wpResKw = dispResult.wpResKwH[t] || 0;
       const wpCop = dispResult.wpResCopH[t] || 0;
       if (wpResKw > 0.1 && wpCop > 0 && tsCap > 0) {
         const tsFree = Math.max(0, tsCap - tsSoc);
-        const ladeBudget = Math.min(tsFree, tsEntlKw);
+        const ladeBudget = Math.min(tsFree, tsLadeKw);
         if (ladeBudget > 0.1) {
           const maxElKw = wpResKw / wpCop;
           const elUsed = Math.min(rGen, maxElKw);
@@ -309,11 +313,6 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   });
 
   // Debug
-  console.log('[OPT-WGK] Kapitalkosten:', Math.round(result.kapitalJk), '€/a | Invest:', Math.round(result.investGesamt), '€ | BohrM:', Math.round(_dynBohrMeter));
-  console.log('[OPT-WGK] Energiekosten:', Math.round(result.energieJk + result.co2Jk + result.pvJk), '€/a');
-  console.log('[OPT-WGK] Jahreskosten ges.:', Math.round(result.jahreskosten), '€/a | Wärme:', result.totalWaerme.toFixed(1), 'MWh | WGK:', result.wgk.toFixed(1), 'ct/kWh');
-  console.log('[OPT-WGK] pKw:', JSON.stringify(_bPKw), '| pvKwp:', pvKwp, '| pvEigen:', pvEigenMwh.toFixed(1), '| pvEinsp:', pvEinspMwh.toFixed(1));
-  for (const erz of erzeugerList) console.log('[OPT-WGK] Erzeuger', erz.key, ': leistKw=', erz.leistKw, 'waermeMwh=', erz.waermeMwh?.toFixed(1), 'elMwh=', erz.elMwh?.toFixed(1));
 
   const spez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
   const pvErtragMwh = pvKwp * spez / 1000;
@@ -572,7 +571,7 @@ export function _collectOptDomParams() {
     geoDtAbsenkung: f('geo-dt-absenkung', 0),
     geoTiefe: Math.min(400, Math.max(30, f('geo-tiefe', 100))),
     geoQPerM: Math.min(60, Math.max(10, f('geo-q-perm', 31))),
-    tsDt: f('ts-dt', 40), tsVerlust: f('ts-verlust', 0.5), tsEntladeKw: f('ts-entlade-kw', 200),
+    tsDt: f('ts-dt', 40), tsVerlust: f('ts-verlust', 0.5), tsEntladeKw: f('ts-entlade-kw', 200), tsLadeKw: f('ts-lade-kw', f('ts-entlade-kw', 200)),
     tsTyp: s('ts-typ', 'puffer'),
     etaGk: f('gk-eta', 92) / 100, etaHko: f('hko-eta', 90) / 100,
     etaPk: f('pk-eta', 88) / 100, etaHhs: f('hhs-eta', 85) / 100,
@@ -653,7 +652,6 @@ export function _optVarianteUebernehmen(result, btnEl) {
 
   // Erzeuger der Kombination aktivieren und Leistung setzen
   // (ohne moBeiAktivierung in der Schleife — wird einmal am Ende aufgerufen)
-  console.log('[OPT-APPLY] Variante übernehmen:', result.keys.join('+'), '| config:', JSON.stringify(result.config.map(e => e.key + ':' + e.leistKw)));
   for (const erz of result.config) {
     const leist = Math.max(1, Math.round(erz.leistKw));
     const setBtn = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
@@ -751,7 +749,6 @@ export function _optVarianteUebernehmen(result, btnEl) {
     }
   }
 
-  console.log('[OPT-APPLY] meritOrderKeys nach Aktivierung:', meritOrderKeys.join(','));
   // Solarthermie-Fläche aus Optimierungsergebnis übernehmen
   if (result.stM2 > 0) {
     const stEl = document.getElementById('st-flaeche');

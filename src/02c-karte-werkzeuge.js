@@ -9,6 +9,11 @@ import { setNetzSubTab, stromNodeClick } from './05b-stromnetz.js';
 import { gbiManualMode, gbiManualSelectGeb } from './06a-gbi-lastgang.js';
 import { moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
+import { areaPoints, lwWp, trasseSegments } from './01-globals-varianten.js';
+import { _gebLabelHtml, escHtml } from './03c-gebaeude-io.js';
+import { cancelDrawStromEdge } from './05b-stromnetz.js';
+// Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+import { _setFliessgewaesserVisible } from './01-globals-varianten.js';
 
 export function polygonCenter(coords){
   let lat=0,lng=0,n=coords.length;
@@ -373,13 +378,70 @@ export function setMode(m){
   window.currentMode=m;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('btn-'+m).classList.add('active');
+  // "Ansicht ▾"-Menübutton zeigt die aktive Nischenansicht an (und schließt das Menü)
+  const _nischenLabel = { spez: 'Spez. Wärmebedarf', heizlast: 'Heizlast', verlust: 'Netzverlust' };
+  const amBtn = document.getElementById('btn-ansicht-menu');
+  if (amBtn) {
+    amBtn.textContent = (_nischenLabel[m] || 'Ansicht') + ' ▾';
+    amBtn.classList.toggle('active', !!_nischenLabel[m]);
+  }
+  const amMenu = document.getElementById('ansicht-menu');
+  if (amMenu) amMenu.style.display = 'none';
   updateNetzStrandVisibility();
   updateViz();updateTotals();
-  // Netz-Sichtbarkeit dem Modus folgen lassen
+  // Sidebar mitführen — Karte=Strom und Arbeitsbereich=Elektro sind dieselbe Sicht.
+  // setLeftTab() setzt dabei auch die Netz-Sichtbarkeit (Wärme- vs. Stromnetz).
+  const elektroAktiv = document.querySelector('#lp-tabs .lp-tab[data-tab="elektro"]')?.classList.contains('active');
   if (m === 'strom') {
-    setNetzSubTab('strom'); // setzt stromNetzVisible=true, netzVisible=false
+    if (!elektroAktiv && typeof window.setLeftTab === 'function') window.setLeftTab('elektro');
   } else {
-    setNetzSubTab('waerme'); // setzt netzVisible=true, stromNetzVisible=false
+    if (elektroAktiv && typeof window.setLeftTab === 'function') window.setLeftTab(window._lastWaermeTab || 'erzeuger');
+  }
+}
+
+// ── "⋯ Mehr"-Menü in der Kopfleiste (Feldapp, Farbschema, Satellit, Hilfe …) ──
+export function toggleMehrMenu() {
+  const menu = document.getElementById('mehr-menu');
+  if (!menu) return;
+  const offen = menu.style.display !== 'none';
+  menu.style.display = offen ? 'none' : 'flex';
+  if (!offen && !window._mehrMenuCloser) {
+    window._mehrMenuCloser = true;
+    // Klick außerhalb schließt das Menü
+    document.addEventListener('click', (e) => {
+      const m = document.getElementById('mehr-menu');
+      if (m && m.style.display !== 'none'
+        && !e.target.closest('#mehr-menu')
+        && !e.target.closest('#btn-mehr-menu')) m.style.display = 'none';
+    });
+  }
+}
+
+// ── "Ansicht ▾"-Menü in der Kontextleiste (Nischenansichten + Gebäude-Symbole) ──
+export function toggleAnsichtMenu() {
+  const menu = document.getElementById('ansicht-menu');
+  if (!menu) return;
+  const offen = menu.style.display !== 'none';
+  if (!offen) {
+    // position:fixed unter dem Button — die Kontextleiste clippt absolute
+    // Kinder wegen overflow-x:auto, fixed entkommt dem Scroll-Container
+    const btn = document.getElementById('btn-ansicht-menu');
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      menu.style.top = (r.bottom + 4) + 'px';
+      menu.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 215)) + 'px';
+    }
+  }
+  menu.style.display = offen ? 'none' : 'block';
+  if (!offen && !window._ansichtMenuCloser) {
+    window._ansichtMenuCloser = true;
+    // Klick außerhalb schließt das Menü
+    document.addEventListener('click', (e) => {
+      const m = document.getElementById('ansicht-menu');
+      if (m && m.style.display !== 'none'
+        && !e.target.closest('#ansicht-menu')
+        && !e.target.closest('#btn-ansicht-menu')) m.style.display = 'none';
+    });
   }
 }
 
@@ -427,7 +489,7 @@ export function toggleDrawArea() {
   if (window.isDrawingTrasse) toggleDrawTrasse();
   if (window.isDrawingRiver) toggleDrawRiver();
   if ((window.drawingId ?? drawingId) !== null) cancelDraw();
-  if ((window.ffDrawId ?? ffDrawId) !== null) cancelDrawFF();
+  if (ffDrawId !== null) cancelDrawFF();
 
   window.areaDrawing = true;
   window.areaPoints = [];
@@ -604,16 +666,15 @@ map.on('click',e=>{
     redrawTrasse();
     return;
   }
-  if ((window.ffDrawId ?? ffDrawId) !== null) {
-    const _ffPts = window.ffDrawPoints || ffDrawPoints;
-    if (_ffPts.length === 0) {
+  if (ffDrawId !== null) {
+    if (ffDrawPoints.length === 0) {
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
       window.ffDrawStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
       window.ffDrawStartMarker.on('click', (ev) => { L.DomEvent.stopPropagation(ev); finishDrawFF(); });
     }
-    _ffPts.push(e.latlng);
+    ffDrawPoints.push(e.latlng);
     if (window.ffDrawPolyline) map.removeLayer(window.ffDrawPolyline);
-    window.ffDrawPolyline = L.polyline([..._ffPts], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
+    window.ffDrawPolyline = L.polyline([...ffDrawPoints], {color:'#ffd54f', weight:2, dashArray:'6 4'}).addTo(map);
     return;
   }
   if((window.drawingId ?? drawingId) !== null){
@@ -1043,6 +1104,7 @@ export function updateFliessgewaesserVisibility() {
 }
 
 export function setFliessgewaesserVisible(visible) {
+  _setFliessgewaesserVisible(visible); // Modul-Binding in 01-globals aktuell halten
   window.fliessgewaesserVisible = visible;
   updateFliessgewaesserVisibility();
 }

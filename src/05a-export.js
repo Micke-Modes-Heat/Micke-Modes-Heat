@@ -6,6 +6,12 @@ import { updateLpMeritOrder, updateLpNetzSummary } from './04a-ui-panels.js';
 import { updateLpStromSummary } from './05b-stromnetz.js';
 import { DA_LABELS } from './07a-analysis-charts.js';
 import { ASSETS, getAssetStatus, ASSET_PROPS_SCHEMA } from './13a-assets-core.js';
+import { stromEdges, stromNodes, variantResults } from './01-globals-varianten.js';
+import { getGebStromMwh } from './02b-gebaeude.js';
+import { recalcNetz } from './03b-netz.js';
+import { renderList } from './03c-gebaeude-io.js';
+import { renderSidebarAssetList } from './13e-assets-inspector.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 
 const ASSET_LABELS = {
   NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
