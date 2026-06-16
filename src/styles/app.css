@@ -4,6 +4,15 @@
   --bg:#12110e;--surface:#1c1a15;--surface2:#24221b;--border:#3a3528;
   --text:#ece8df;--muted:#9a9080;--accent:#d4a855;
 }
+/* ── Globale Scrollbars im Design-Stil ───────────────────────────────
+   Gilt überall; spezifischere Regeln (versteckte/schmale Leisten) überschreiben. */
+*{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+*::-webkit-scrollbar{width:8px;height:8px;}
+*::-webkit-scrollbar-track{background:transparent;}
+*::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+*::-webkit-scrollbar-thumb:hover{background:var(--accent);}
+*::-webkit-scrollbar-corner{background:transparent;}
+
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-weight:normal;}
 
 header{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;gap:8px;white-space:nowrap;overflow:visible;}
@@ -350,7 +359,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .bom-table th { color: var(--muted); font-family: 'DM Sans', sans-serif; font-weight: normal; }
 
 .leaflet-control-zoom{border:1px solid var(--border)!important;border-radius:6px!important;overflow:hidden;}
-.leaflet-control-zoom a{background:var(--surface)!important;color:var(--text)!important;border:none!important;font-weight:normal!important;}
+.leaflet-control-zoom a{background:var(--surface)!important;color:var(--text)!important;border:none!important;font-weight:normal!important;user-select:none;-webkit-user-select:none;caret-color:transparent;}
 
 /* ── Unified Asset-System Marker ──────────────────────────── */
 .asset-marker {
