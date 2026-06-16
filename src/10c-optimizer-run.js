@@ -88,9 +88,13 @@ export function _runOptWorker(resDiv) {
   const _optScaledLastgang = _optGetScaledLastgang(optYear);
 
   // Wirtschaftsparameter
+  const _pStromOpt = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
+  const _pWpRawOpt = parseFloat(document.getElementById('wirt-p-strom-wp')?.value);
+  const _zinsRawOpt = parseFloat(document.getElementById('wirt-zins')?.value);
   const params = {
     // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
-    pStrom: parseFloat(document.getElementById('wirt-p-strom')?.value) || 35,
+    pStrom: _pStromOpt,
+    pStromWp: isNaN(_pWpRawOpt) ? _pStromOpt : _pWpRawOpt, // optionaler WP-Sondervertragspreis
     pGas: parseFloat(document.getElementById('wirt-p-gas')?.value) || 10,
     pPk: parseFloat(document.getElementById('wirt-p-pk')?.value) || 8,
     pHhs: parseFloat(document.getElementById('wirt-p-hhs')?.value) || 6,
@@ -100,7 +104,7 @@ export function _runOptWorker(resDiv) {
     pBhkwEinsp: parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8,
     pBhkwKwkE: parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8,
     pBhkwKwkEig: parseFloat(document.getElementById('bhkw-kwk-eigen')?.value) || 4,
-    zinssatz: (parseFloat(document.getElementById('wirt-zins')?.value) || 2.7) / 100,
+    zinssatz: (isNaN(_zinsRawOpt) ? 3.5 : _zinsRawOpt) / 100,
   };
 
   // Quartier-Strom (gleiche Kaskade wie calcStromPanel)

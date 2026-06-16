@@ -2722,6 +2722,10 @@
       <input class="inp-field" type="number" id="wirt-p-strom" value="35" min="0" step="1" data-input="_onStrompreisChange('wirt-p-strom')"/>
     </div>
     <div class="inp-group">
+      <label class="inp-label" title="Arbeitspreis für WP-/Stromkessel-Strom (Sondervertrag, reduzierte Netzentgelte, ggf. §14a EnWG). Leer = allgemeiner Strompreis. Großwärmepumpen zahlen typisch 18–25 ct statt Haushaltstarif.">WP-Strom (ct/kWh)</label>
+      <input class="inp-field" type="number" id="wirt-p-strom-wp" placeholder="= Strom" min="0" step="1" data-input="calcWirtschaftPanel()"/>
+    </div>
+    <div class="inp-group">
       <label class="inp-label">Erdgas (ct/kWh)</label>
       <input class="inp-field" type="number" id="wirt-p-gas" value="10" min="0" step="0.5" data-input="_onGaspreisChange('wirt-p-gas')"/>
     </div>

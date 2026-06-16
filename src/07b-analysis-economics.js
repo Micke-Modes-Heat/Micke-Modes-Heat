@@ -33,7 +33,8 @@ export function _parseGeoBohrMeter() {
 // Pure function: kein DOM, keine Globals. Alle Eingaben über Parameter-Objekt.
 // ══════════════════════════════════════════════════════════════════════════════
 export function _calcKostenShared(p) {
-  var zinsFrac = (p.zinsPct || 3.5) / 100;
+  // NaN-sicher statt ||-Fallback: 0 % Zins ist ein gültiger Wert (z.B. Eigenmittel)
+  var zinsFrac = (p.zinsPct != null && !isNaN(p.zinsPct) ? p.zinsPct : 3.5) / 100;
   var pKw = p.pKw || {};
   var aktiv = function(k) { return (pKw[k] || 0) > 0.1; };
   var sumKw = 0; for (var _k in pKw) { if (pKw.hasOwnProperty(_k)) sumKw += (pKw[_k] || 0); }
@@ -58,11 +59,10 @@ export function _calcKostenShared(p) {
 
   // ── Bausteine (Kapitalkosten) ──
   var bausteinRows = [];
-  var basisInvest = 0, kapitalJk = 0;
+  var kapitalJk = 0;
   function add(id, inv, vdi) {
     var jk = annJK(inv, vdi);
     bausteinRows.push({ id: id, inv: inv, vdi: vdi, jk: jk });
-    basisInvest += inv;
     kapitalJk += jk;
   }
 
@@ -78,9 +78,12 @@ export function _calcKostenShared(p) {
   if (aktiv('hhs'))         { var _hkw2=pKw.hhs||0; add('hhs_lager', Math.round(_hkw2*150), {n:30,inst:1.0,wart:1.0,bedien:_hkw2<50?100:_hkw2<200?200:_hkw2<500?400:612}); }
   if (aktiv('heizoel'))     add('hko', investFn('heizoel', pKw.heizoel), {n:20,inst:1.0,wart:2.0,bedien:20});
   if (aktiv('gaskessel'))   add('gk', investFn('gaskessel', pKw.gaskessel), {n:20,inst:1.0,wart:2.0,bedien:20});
+  // Auto-Spitzenlastkessel: füllt der Dispatch die Deckungslücke mit Gas, muss
+  // dieser Kessel auch Invest kosten — sonst erscheinen Gas-Lösungen zu billig
+  if (aktiv('_autoGk'))     add('gk_auto', investFn('gaskessel', pKw._autoGk), {n:20,inst:1.0,wart:2.0,bedien:20});
   if (aktiv('bhkw'))        { var _bkw=pKw.bhkw||0; add('bhkw', investFn('bhkw',_bkw), {n:15,inst:3.0,wart:3.5,bedien:_bkw<20?100:_bkw<100?200:_bkw<500?300:408}); }
   if (aktiv('bhkw'))        add('bhkw_hydr', Math.round((pKw.bhkw||0)*150), {n:25,inst:1.5,wart:1.0,bedien:0});
-  if (aktiv('stromkessel')) add('stromkessel', Math.round((pKw.stromkessel||0)*80), {n:20,inst:1.0,wart:1.0,bedien:0});
+  if (aktiv('stromkessel')) add('stromkessel', investFn('stromkessel', pKw.stromkessel) || Math.round((pKw.stromkessel||0)*80), {n:20,inst:1.0,wart:1.0,bedien:0});
   if (aktiv('fernwaerme'))  add('fw_pumpe', Math.round((pKw.fernwaerme||0)*80), {n:18,inst:2.0,wart:1.0,bedien:0});
 
   // Solarthermie
@@ -97,9 +100,11 @@ export function _calcKostenShared(p) {
   }
 
   // Nebenkomponenten
-  var combustKw = (pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw.bhkw||0);
+  var combustKw = (pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw._autoGk||0)+(pKw.bhkw||0);
   if (combustKw > 0.1)     add('schornstein', Math.round(combustKw*60), {n:40,inst:1.0,wart:2.0,bedien:0});
-  if (sumKw > 0)            add('puffer', Math.round(sumKw*25*7/1000)*1000, {n:20,inst:1.0,wart:1.0,bedien:0});
+  // Pufferspeicher nur, wenn kein eigener Wärmespeicher konfiguriert ist
+  // (sonst doppelt: der große Speicher übernimmt die hydraulische Entkopplung)
+  if (sumKw > 0 && !((extra.optSpeicherVol||0) > 0)) add('puffer', Math.round(sumKw*25*7/1000)*1000, {n:20,inst:1.0,wart:1.0,bedien:0});
   var schallKw = (pKw.lwwp||0)+(pKw.bhkw||0);
   if (schallKw > 0.1)      add('schallschutz', Math.round(schallKw*75), {n:25,inst:0.5,wart:0.5,bedien:0});
   var bioKw = (pKw.pellets||0)+(pKw.hhs||0);
@@ -108,14 +113,22 @@ export function _calcKostenShared(p) {
   if (nGeb > 1) {
     var avgKw = sumKw > 0 ? sumKw / nGeb : 50;
     add('huest', nGeb * (avgKw<30?5000:avgKw<100?8000:avgKw<300?12000:15000), {n:25,inst:1.0,wart:1.0,bedien:0});
+    // Heizzentrale/Technikgebäude — bei Netzprojekten eigener Posten,
+    // die 5 % Bauteil-Zuschlag decken kein eigenes Gebäude
+    if (sumKw > 0) add('heizzentrale', Math.round(sumKw * (sumKw<500?300:sumKw<2000?225:150)), {n:50,inst:1.0,wart:0.5,bedien:0});
   }
   var elKw = (pKw.lwwp||0)+(pKw.fg||0)+(pKw.geo||0)+(pKw.stromkessel||0);
   if (elKw > 500)           add('netzanschluss', Math.round(elKw*40), {n:40,inst:0.5,wart:0,bedien:0});
   if (aktiv('fg'))          add('fg_entnahme', Math.round((pKw.fg||0)*300), {n:30,inst:2.0,wart:1.0,bedien:100});
-  if ((extra.netzInvest||0) > 0) add('waermenetz', extra.netzInvest, {n:50,inst:1.5,wart:0.5,bedien:40});
+  // Netz-Betriebskosten: VDI 2067 Erdleitungen ≈ 1 %/a Instandsetzung, keine Wartung
+  if ((extra.netzInvest||0) > 0) add('waermenetz', extra.netzInvest, {n:50,inst:1.0,wart:0,bedien:40});
 
-  // Prozentuale Zuschläge auf Basisinvestition
-  var base = basisInvest;
+  // Prozentuale Zuschläge auf Basisinvestition der Erzeugungsanlagen.
+  // Netz, Erdsonden und HÜST sind Vollkosten-Sätze (inkl. Tiefbau/Montage) —
+  // darauf nochmal 34 % Nebenkosten zu rechnen wäre doppelt.
+  var PCT_EXCLUDE = {waermenetz:1, geo_sonden:1, huest:1};
+  var base = 0;
+  for (var _b=0; _b<bausteinRows.length; _b++) { if (!PCT_EXCLUDE[bausteinRows[_b].id]) base += bausteinRows[_b].inv; }
   if (base > 0) {
     add('bauteil',  Math.round(base*0.05), {n:50,inst:1.0,wart:1.0,bedien:0});
     add('hydr_elt', Math.round(base*0.12), {n:40,inst:1.0,wart:0,  bedien:0});
@@ -141,6 +154,9 @@ export function _calcKostenShared(p) {
 
   var energieJk = 0;
   var energyRows = [];
+  // WP-/Stromkessel-Strom: optional eigener Arbeitspreis (Sondervertrag),
+  // sonst allgemeiner Strompreis
+  var pStromWp = (prices.stromWp != null && !isNaN(prices.stromWp)) ? prices.stromWp : (prices.strom||35);
   for (var _j=0; _j<erzList.length; _j++) {
     var erz = erzList[_j];
     var wMwh = erz.waermeMwh || 0;
@@ -149,13 +165,13 @@ export function _calcKostenShared(p) {
     var kosten = 0;
     if (erz.key === 'lwwp' || erz.key === 'fg' || erz.key === 'geo') {
       var pvAbzug = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (eMwh / gesamtStromMwh) : 0;
-      kosten = Math.max(0, eMwh - pvAbzug) * (prices.strom||35) * 10;
+      kosten = Math.max(0, eMwh - pvAbzug) * pStromWp * 10;
     } else if (erz.key === 'fernwaerme') {
       kosten = wMwh * (prices.fw||17) * 10;
     } else if (erz.key === 'stromkessel') {
       var skEl = eMwh > 0.1 ? eMwh : wMwh;
       var pvAbzugSk = pvEigenMwh > 0 && gesamtStromMwh > 0 ? pvEigenMwh * (skEl / gesamtStromMwh) : 0;
-      kosten = Math.max(0, skEl - pvAbzugSk) * (prices.strom||35) * 10;
+      kosten = Math.max(0, skEl - pvAbzugSk) * pStromWp * 10;
     } else if (erz.typ === 'kwk' || erz.key === 'bhkw') {
       var bhkwSigma = etas.bhkwSigma || 0.45;
       var etaTh = (etas.bhkw||0.88) / (1 + bhkwSigma);
@@ -321,7 +337,8 @@ export function wirtVdiBlur(el, id, field) {
 }
 
 export function _syncZins() {
-  const v = parseFloat(document.getElementById('wirt-zins')?.value) || 3.5;
+  const _vRaw = parseFloat(document.getElementById('wirt-zins')?.value);
+  const v = isNaN(_vRaw) ? 3.5 : _vRaw;
   const hidden = document.getElementById('opt-zinssatz');
   const display = document.getElementById('opt-zinssatz-sync');
   if (hidden) hidden.value = v;
@@ -345,9 +362,14 @@ export function calcWirtschaftPanel() {
     return;
   }
 
-  const zins  = parseFloat(document.getElementById('wirt-zins')?.value)    || 2.7;
+  // NaN-sicher: 0 % Zins ist gültig (Eigenmittel) — ||-Fallback würde 0 verschlucken
+  const _zinsRaw = parseFloat(document.getElementById('wirt-zins')?.value);
+  const zins  = isNaN(_zinsRaw) ? 3.5 : _zinsRaw;
   const lohn  = parseFloat(document.getElementById('wirt-lohn')?.value)    || 45;
   const pStrom = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
+  // Optionaler Sondervertragspreis für WP-/Stromkessel-Strom (leer = pStrom)
+  const _pWpRaw = parseFloat(document.getElementById('wirt-p-strom-wp')?.value);
+  const pStromWp = isNaN(_pWpRaw) ? pStrom : _pWpRaw;
   const pGas   = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
   const pHko   = parseFloat(document.getElementById('wirt-p-hko')?.value)   || 10;
   const pFw    = parseFloat(document.getElementById('wirt-p-fw')?.value)    || 17;
@@ -388,19 +410,19 @@ export function calcWirtschaftPanel() {
     if (typeof CalcEngine !== 'undefined') return Math.round(kw * CalcEngine.investEurProKw(tech, kw));
     return 0;
   };
-  // Tooltip-Helfer: zeigt Kostenkurve-Formel + aktuelles Ergebnis
+  // Tooltip-Helfer: zeigt spez. Kosten + Kurvenbereich (Dezentral/Zentral/Übergang)
   const iKWtip = (tech, kw, extra) => {
     if (typeof CalcEngine === 'undefined' || !kw) return extra || '';
     const eur = CalcEngine.investEurProKw(tech, kw);
     const K = CalcEngine.INVEST_KURVEN?.[tech];
-    let formel = '';
+    let bereich = '';
     if (K) {
-      const isZen = kw > (K.maxDez || 100);
-      const a = isZen ? K.aZen : K.aDez;
-      const b = isZen ? K.bZen : K.bDez;
-      if (a && b) formel = a + ' × P^(' + (b-1).toFixed(2) + ') = ' + Math.round(eur) + ' €/kW';
+      if (K.aDez && kw <= K.maxDez) bereich = ' (Dezentral-Kurve)';
+      else if (K.aZen && kw >= (K.minZen || 0) && kw <= (K.maxZen || Infinity)) bereich = ' (Zentral-Kurve)';
+      else if (K.maxZen && kw > K.maxZen) bereich = ' (über Kurvenbereich — spez. Preis eingefroren)';
+      else bereich = ' (Übergangsbereich, interpoliert)';
     }
-    return (extra ? extra + '. ' : '') + (formel || Math.round(eur) + ' €/kW') + ' bei ' + Math.round(kw) + ' kW (Quelle: KWW-Technikkatalog 2025)';
+    return (extra ? extra + '. ' : '') + Math.round(eur) + ' €/kW bei ' + Math.round(kw) + ' kW' + bereich + ' — Kurve im „Kostenkurven"-Tab (Quelle: KWW-Technikkatalog 2025)';
   };
 
   // Direkte Bausteine
@@ -440,6 +462,10 @@ export function calcWirtschaftPanel() {
       aktiv:()=>aktiv('gaskessel'),
       auto:()=>iKW('Gaskessel', (pKw.gaskessel||0)),
       get tooltip(){return iKWtip('Gaskessel', pKw.gaskessel||0, 'Gaskessel inkl. Brenner und Regelung');} },
+    { id:'gk_auto',    label:'Spitzenlast-Kessel (auto)', vdi:{n:20,inst:1.0,wart:2.0,bedien:20},
+      aktiv:()=>keys.includes('_autoGk') && (pKw._autoGk||0) > 0.1,
+      auto:()=>iKW('Gaskessel', (pKw._autoGk||0)),
+      get tooltip(){return iKWtip('Gaskessel', pKw._autoGk||0, 'Automatischer Spitzenlast-Gaskessel: deckt die Restlast im Dispatch — auch er muss gebaut werden, daher Invest wie Gaskessel');} },
     { id:'bhkw_agg',   label:'BHKW-Aggregat',
       get vdi(){ const kw=pKw.bhkw||0; return {n:15,inst:3.0,wart:3.5,bedien:kw<20?100:kw<100?200:kw<500?300:408}; },
       aktiv:()=>aktiv('bhkw'),   auto:()=>iKW('BHKW', pKw.bhkw||0),
@@ -451,8 +477,9 @@ export function calcWirtschaftPanel() {
       aktiv:()=>aktiv('bhkw'),   auto:()=>Math.round((pKw.bhkw||0)*150),
       tooltip:'BHKW-Peripherie: Hydraulik, Abgaswärmetauscher, 150 €/kW_th' },
     { id:'sk',         label:'Stromkessel',               vdi:{n:20,inst:1.0,wart:1.0,bedien:0},
-      aktiv:()=>aktiv('stromkessel'), auto:()=>Math.round((pKw.stromkessel||0)*80),
-      tooltip:'Elektroheizkessel ca. 80 €/kW' },
+      aktiv:()=>aktiv('stromkessel'),
+      auto:()=>iKW('Stromkessel', pKw.stromkessel||0) || Math.round((pKw.stromkessel||0)*80),
+      get tooltip(){return iKWtip('Stromkessel', pKw.stromkessel||0, 'Elektroheizkessel inkl. Anschluss/Hydraulik');} },
     { id:'solarthermie',label:'Solarthermie-Kollektoren', vdi:{n:25,inst:1.0,wart:1.0,bedien:0},
       aktiv:()=>solarthermieAktiv,
       auto:()=>{ const fl=parseFloat(document.getElementById('st-flaeche')?.value)||0; return Math.round(fl*300); },
@@ -490,8 +517,9 @@ export function calcWirtschaftPanel() {
       auto:()=>Math.round(((pKw.pellets||0)+(pKw.hhs||0)+(pKw.heizoel||0)+(pKw.gaskessel||0)+(pKw.bhkw||0))*60),
       tooltip:'Schornstein für alle Feuerungsanlagen (inkl. BHKW), 60 €/kW' },
     { id:'puffer',     label:'Pufferspeicher',           vdi:{n:20,inst:1.0,wart:1.0,bedien:0},
-      aktiv:()=>sumKw > 0,        auto:()=>Math.round(sumKw * 25 * 7 / 1000) * 1000,
-      tooltip:'~25 L/kW à 7 €/L Speichervolumen (Stahl-Pufferspeicher, inkl. Dämmung + Aufstellung)' },
+      aktiv:()=>sumKw > 0 && !thermSpeicherAktiv,
+      auto:()=>Math.round(sumKw * 25 * 7 / 1000) * 1000,
+      tooltip:'~25 L/kW à 7 €/L Speichervolumen (Stahl-Pufferspeicher, inkl. Dämmung + Aufstellung). Entfällt, wenn ein eigener Wärmespeicher konfiguriert ist (der übernimmt die hydraulische Entkopplung)' },
     { id:'schallschutz',label:'Schallschutz/Einhausung', vdi:{n:25,inst:0.5,wart:0.5,bedien:0},
       aktiv:()=>aktiv('lwwp')||aktiv('bhkw'),
       auto:()=>Math.round(((pKw.lwwp||0)+(pKw.bhkw||0))*75),
@@ -520,6 +548,13 @@ export function calcWirtschaftPanel() {
         return nGeb>1?nGeb*eurProSt:0;
       },
       tooltip:'Dezentrale Hausübergabestationen (HÜST) im Wärmenetz. Staffelung nach Größe: <30kW: 5.000€, <100kW: 8.000€, <300kW: 12.000€, ≥300kW: 15.000€ je Station (AGFW 2024)' },
+    { id:'heizzentrale',label:'Heizzentrale (Gebäude)',  vdi:{n:50,inst:1.0,wart:0.5,bedien:0},
+      aktiv:()=>{
+        const nGeb=parseInt(document.getElementById('netz-n-geb')?.value)||0;
+        return nGeb>1 && sumKw>0; // nur bei Netzprojekten: eigenes Technikgebäude
+      },
+      auto:()=>Math.round(sumKw * (sumKw<500?300:sumKw<2000?225:150)),
+      tooltip:'Technikgebäude/Heizzentrale inkl. Erschließung: 300 €/kW (<500 kW), 225 €/kW (<2 MW), 150 €/kW (≥2 MW) — eigener Posten, die 5 % Bauteil-Zuschlag decken kein Gebäude. Grundstückskauf nicht enthalten' },
     { id:'netzanschluss',label:'Elektro-Netzanschluss', vdi:{n:40,inst:0.5,wart:0,bedien:0},
       aktiv:()=>(pKw.lwwp||0)+(pKw.fg||0)+(pKw.geo||0)+(pKw.stromkessel||0)>500,
       auto:()=>{
@@ -531,7 +566,7 @@ export function calcWirtschaftPanel() {
       aktiv:()=>aktiv('fg'),
       auto:()=>Math.round((pKw.fg||0)*300),
       tooltip:'Entnahmebauwerk + Rechen + Rückgabekanal für Fließgewässer-WP, ~300 €/kW (stark standortabhängig, ggf. +Wasserrechtl. Genehmigung)' },
-    { id:'waermenetz', get label(){ return networkLocked ? (window._netzSanierung ? 'Wärmenetz (Sanierung)' : 'Wärmenetz (Bestand)') : 'Wärmenetz (KMR-Trassen)'; },  vdi:{n:50,inst:1.5,wart:0.5,bedien:40},
+    { id:'waermenetz', get label(){ return networkLocked ? (window._netzSanierung ? 'Wärmenetz (Sanierung)' : 'Wärmenetz (Bestand)') : 'Wärmenetz (KMR-Trassen)'; },  vdi:{n:50,inst:1.0,wart:0,bedien:40},
       aktiv:()=>typeof netzEdges!=='undefined'&&netzEdges.some(e=>!e.pruned),
       auto:()=>{
         if(typeof netzEdges==='undefined'||!netzEdges.length) return 0;
@@ -551,13 +586,16 @@ export function calcWirtschaftPanel() {
       get tooltip(){
         if(networkLocked && !window._netzSanierung) return 'Bestandsnetz: Investitionskosten = 0 (Rohre bereits verlegt)';
         if(networkLocked && window._netzSanierung) return 'Netzsanierung: ' + (parseFloat(document.getElementById('netz-sanierung-pct')?.value)||40) + '% der Neubaukosten (Rohrtausch, Erdarbeiten)';
-        return 'KMR-Rohrleitungen inkl. Erdarbeiten + Verlegung (KWW-Technikkatalog 2025). n=50a, Inst.1.5%, Wart.0.5%, Betrieb ~40h/a';
+        return 'KMR-Rohrleitungen inkl. Erdarbeiten + Verlegung (KWW-Technikkatalog 2025). n=50a, Instandsetzung 1%/a (VDI 2067 Erdleitungen), Betrieb ~40h/a';
       } },
   ];
 
   // 1. Pass: direkte Bausteine
   const rows = [];
   let basisInvest = 0;
+  // Netz, Erdsonden und HÜST sind Vollkosten-Sätze (inkl. Tiefbau/Montage) —
+  // sie gehören nicht in die Basis der prozentualen Nebenkosten-Zuschläge
+  const PCT_EXCLUDE = new Set(['waermenetz', 'geo_sonden', 'huest']);
   for (const b of BD) {
     if (!b.aktiv()) continue;
     const autoVal = b.auto();
@@ -565,19 +603,19 @@ export function calcWirtschaftPanel() {
     const effVdi  = { ...b.vdi, ...(ovVdi[b.id] || {}) };
     const jk      = _calcBausteinJK(effVal, effVdi, zins, lohn);
     rows.push({ ...b, autoVal, effVal, effVdi, jk });
-    if (b.vdi.n > 0) basisInvest += effVal;
+    if (b.vdi.n > 0 && !PCT_EXCLUDE.has(b.id)) basisInvest += effVal;
   }
 
-  // 2. Pass: prozentuale Bausteine
+  // 2. Pass: prozentuale Bausteine (Basis = Erzeugungsanlagen ohne Netz/Sonden/HÜST)
   const PCT = [
     { id:'bauteil',  label:'Bauteil (5%)',          vdi:{n:50,inst:1.0,wart:1.0,bedien:0}, pct:0.05,
-      tooltip:'Bauteilleistungen 5% der Basisinvestition' },
+      tooltip:'Bauteilleistungen 5% der Basisinvestition (Erzeugungsanlagen — Netz, Erdsonden und HÜST sind Vollkosten-Sätze und ausgenommen)' },
     { id:'hydr_elt', label:'Hydr./Elek./MSR (12%)', vdi:{n:40,inst:1.0,wart:0,  bedien:0}, pct:0.12,
-      tooltip:'Hydraulik, Elektro und MSR-Technik 12% der Basisinvestition' },
+      tooltip:'Hydraulik, Elektro und MSR-Technik 12% der Basisinvestition (ohne Netz/Sonden/HÜST)' },
     { id:'planung',  label:'Planung (10%)',          vdi:{n:20,inst:0,  wart:0,   bedien:0}, pct:0.10,
-      tooltip:'Planung und Projektsteuerung 10% der Basisinvestition' },
+      tooltip:'Planung und Projektsteuerung 10% der Basisinvestition (ohne Netz/Sonden/HÜST — Netzplanung ist in den KMR-Vollkosten-Sätzen enthalten)' },
     { id:'unvorg',   label:'Unvorhergesehenes (7%)',  vdi:{n:20,inst:0,  wart:0,   bedien:0}, pct:0.07,
-      tooltip:'Risikozuschlag für Unvorhergesehenes 7% der Basisinvestition (HOAI/KfW-Empfehlung: 5–10%)' },
+      tooltip:'Risikozuschlag für Unvorhergesehenes 7% der Basisinvestition ohne Netz/Sonden/HÜST (HOAI/KfW-Empfehlung: 5–10%)' },
   ];
   if (basisInvest > 0) {
     for (const b of PCT) {
@@ -631,10 +669,10 @@ export function calcWirtschaftPanel() {
       // PV-Eigenverbrauchsanteil abziehen (nur Netzbezug kostet)
       const pvAbzug = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * (eMwh / _gesamtStromMwh) : 0;
       const netzbezugMwh = Math.max(0, eMwh - pvAbzug);
-      kosten = netzbezugMwh * pStrom * 10;
+      kosten = netzbezugMwh * pStromWp * 10;
       detail = pvAbzug > 0.1
-        ? `${eMwh.toFixed(0)} MWh Strom − ${pvAbzug.toFixed(0)} MWh PV = ${netzbezugMwh.toFixed(0)} MWh × ${pStrom} ct/kWh`
-        : `${eMwh.toFixed(0)} MWh Strom × ${pStrom} ct/kWh`;
+        ? `${eMwh.toFixed(0)} MWh Strom − ${pvAbzug.toFixed(0)} MWh PV = ${netzbezugMwh.toFixed(0)} MWh × ${pStromWp} ct/kWh`
+        : `${eMwh.toFixed(0)} MWh Strom × ${pStromWp} ct/kWh`;
     } else if (k === 'fernwaerme') {
       kosten = wMwh * pFw * 10;
       detail = `${wMwh.toFixed(0)} MWh × ${pFw} ct/kWh`;
@@ -654,10 +692,10 @@ export function calcWirtschaftPanel() {
       const skElMwh = eMwh > 0.1 ? eMwh : wMwh;
       const pvAbzugSk = _pvEigenMwh > 0 && _gesamtStromMwh > 0 ? _pvEigenMwh * (skElMwh / _gesamtStromMwh) : 0;
       const skNetzbezug = Math.max(0, skElMwh - pvAbzugSk);
-      kosten = skNetzbezug * pStrom * 10;
+      kosten = skNetzbezug * pStromWp * 10;
       detail = pvAbzugSk > 0.1
-        ? `${skElMwh.toFixed(0)} MWh Strom − ${pvAbzugSk.toFixed(0)} MWh PV = ${skNetzbezug.toFixed(0)} MWh × ${pStrom} ct/kWh`
-        : `${wMwh.toFixed(0)} MWh Strom × ${pStrom} ct/kWh`;
+        ? `${skElMwh.toFixed(0)} MWh Strom − ${pvAbzugSk.toFixed(0)} MWh PV = ${skNetzbezug.toFixed(0)} MWh × ${pStromWp} ct/kWh`
+        : `${wMwh.toFixed(0)} MWh Strom × ${pStromWp} ct/kWh`;
     } else if (ETA[k]) {
       const verb = wMwh / ETA[k];
       kosten = verb * P[k] * 10;
@@ -721,7 +759,7 @@ export function calcWirtschaftPanel() {
   const _pvKwp = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
   const _batKwh = parseFloat(document.getElementById('bat-kapazitaet')?.value) || 0;
   if (_pvKwp > 0 || _batKwh > 0) {
-    const _zinsFrac = (parseFloat(document.getElementById('wirt-zins')?.value) || 3.5) / 100;
+    const _zinsFrac = zins / 100;
     const _annF = (z, n) => z > 0 ? z * Math.pow(1+z,n) / (Math.pow(1+z,n)-1) : 1/n;
     if (_pvKwp > 0) {
       const pvAutoChk = document.getElementById('pv-invest-auto');
@@ -762,17 +800,22 @@ export function calcWirtschaftPanel() {
 
   const gesamtEnergieMitCo2 = energyRows.reduce((s, r) => s + r.kosten, 0);
 
-  // WGK
+  // WGK — zwei Bezugsgrößen:
+  // erzeugte Wärme (inkl. Netzverluste) = klassische Erzeuger-WGK,
+  // verkaufte Nutzwärme (ohne Verluste) = kundenrelevanter Wert fürs Wärmenetz
   const gesamtMwh = window.systemState?.gesamtMwhMitNV
     || window.systemState?.nutzwaermeMwh
     || Object.values(en).reduce((s, e) => s + (e.waermeMwh || 0), 0)
     || 1;
+  const nutzMwh = window.systemState?.nutzwaermeMwh || gesamtMwh;
   const wgk = gesamtMwh > 0.01 ? (gesamtJk + gesamtEnergieMitCo2) / gesamtMwh / 10 : 0; // ct/kWh
+  const wgkVerkauft = nutzMwh > 0.01 ? (gesamtJk + gesamtEnergieMitCo2) / nutzMwh / 10 : 0; // ct/kWh
 
 
   window._lastWgk = wgk;
   window._lastInvestGes = gesamtInvest + pvInvestGes;
   window._lastJkGes = gesamtJk + gesamtEnergieMitCo2;
+  window._wirtPKw = pKw; // für Punkt-Marker im Kostenkurven-View
 
   // Erzeuger-WGKs aktualisieren (CO₂-Preis/Switch kann sich geändert haben)
   // Guard verhindert Endlosschleife: calcGeoThermie → dispatch → calcWirtschaftPanel
@@ -808,11 +851,11 @@ export function calcWirtschaftPanel() {
   const INVEST_GROUPS = [
     { label:'Wärmepumpen',     color:'#66bb6a', ids:['lwwp','fg','geo_wp','geo_sonden'] },
     { label:'Biomasse',        color:'#ff7043', ids:['pk','pk_lager','hhs','hhs_lager'] },
-    { label:'Verbrennung/Gas', color:'#78909c', ids:['hko','gk'] },
+    { label:'Verbrennung/Gas', color:'#78909c', ids:['hko','gk','gk_auto'] },
     { label:'BHKW',            color:'#ab47bc', ids:['bhkw_agg','bhkw_hydr'] },
     { label:'Solarthermie',     color:'#ef6c00', ids:['solarthermie'] },
     { label:'Stromkessel',      color:'#ff69b4', ids:['sk'] },
-    { label:'Sonstige',        color:'var(--muted)', ids:['thermSpeicher','fw_pumpe','puffer','schornstein','schallschutz','entstaubung','huest','netzanschluss','fg_entnahme','waermenetz'] },
+    { label:'Sonstige',        color:'var(--muted)', ids:['thermSpeicher','fw_pumpe','puffer','schornstein','schallschutz','entstaubung','huest','heizzentrale','netzanschluss','fg_entnahme','waermenetz'] },
     { label:'Nebenkosten',     color:'#ff9800', ids:['bauteil','hydr_elt','planung','unvorg'] },
   ];
 
@@ -859,7 +902,7 @@ export function calcWirtschaftPanel() {
     const isOpen = !!_openGrps[gi];
     const subLabel = grpRows.length === 1 ? grpRows[0].label : '(' + grpRows.length + ' Bausteine)';
     invHtml += '<tr class="wirt-grp-header" style="cursor:pointer;background:rgba(255,255,255,0.03);"' +
-      ' data-click="window._wirtOpenGroups[' + gi + ']=!window._wirtOpenGroups[' + gi + '];document.querySelectorAll(\'.wirt-grp-' + gi + '\').forEach(function(r){r.style.display=window._wirtOpenGroups[' + gi + ']?\'\':\'none\'});this.querySelector(\'.wirt-grp-arrow\').textContent=window._wirtOpenGroups[' + gi + ']?\'▾\':\'▸\'">' +
+      ' data-click="_wirtToggleGroup(this,' + gi + ')">' +
       '<td style="font-weight:600;font-size:11px;" colspan="2">' +
         '<span class="wirt-grp-arrow" style="display:inline-block;width:14px;color:var(--muted);font-size:10px;">' + (isOpen ? '▾' : '▸') + '</span>' +
         '<span style="color:' + grp.color + ';">' + grp.label + '</span> ' +
@@ -897,6 +940,7 @@ export function calcWirtschaftPanel() {
       <div style="display:flex;gap:2px;">
         <button class="viz-btn active" id="wirt-view-table" data-click="_wirtSetView('table')" style="font-size:9px;padding:2px 8px;">Tabelle</button>
         <button class="viz-btn" id="wirt-view-waterfall" data-click="_wirtSetView('waterfall')" style="font-size:9px;padding:2px 8px;">Aufbau</button>
+        <button class="viz-btn" id="wirt-view-kurven" data-click="_wirtSetView('kurven')" style="font-size:9px;padding:2px 8px;" title="Spezifische Investitionskosten (€/kW) nach Anlagengröße — KWW-Kostenkurven der Wärmeerzeuger, eigene Anlagen als Punkte markiert">Kostenkurven</button>
       </div>
     </div>
     <div id="wirt-wrap-table">
@@ -923,6 +967,11 @@ export function calcWirtschaftPanel() {
     <div id="wirt-wrap-waterfall" style="display:none;">
       <canvas id="wirt-waterfall-canvas" height="260" style="width:100%;display:block;border-radius:4px;margin-bottom:14px;"></canvas>
     </div>
+    <div id="wirt-wrap-kurven" style="display:none;position:relative;">
+      <canvas id="wirt-kurven-canvas" height="300" style="width:100%;display:block;border-radius:4px;"></canvas>
+      <div id="wirt-kurven-tt" style="position:absolute;pointer-events:none;display:none;background:#1a1d26;color:#cfd8dc;border:1px solid #2a3040;border-radius:4px;padding:4px 8px;font-family:'DM Mono',monospace;font-size:10px;white-space:nowrap;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,0.5);"></div>
+      <div id="wirt-kurven-legend" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin:6px 0 14px;font-size:9px;"></div>
+    </div>
     ${enHtml ? `
     <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Energiekosten</div>
     <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
@@ -938,8 +987,9 @@ export function calcWirtschaftPanel() {
     </table>` : ''}
     <div style="background:rgba(76,175,80,0.12);border:2px solid #66bb6a;border-radius:8px;padding:14px 10px;margin-bottom:8px;">
       <div style="text-align:center;margin-bottom:10px;">
-        <div style="font-size:9px;font-weight:600;color:#a5d6a7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">WGK (VDI 2067 Annuität) <span class="htip" data-tip="Wärmegestehungskosten nach VDI 2067: Investitionskosten werden auf jährliche Raten umgerechnet (Annuität). Dazu Wartung, Instandhaltung und Energiekosten. Abzüglich BHKW-Stromerlöse. Geteilt durch die gesamte Nutzwärme.">?</span></div>
+        <div style="font-size:9px;font-weight:600;color:#a5d6a7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">WGK (VDI 2067 Annuität) <span class="htip" data-tip="Wärmegestehungskosten nach VDI 2067: Investitionskosten werden auf jährliche Raten umgerechnet (Annuität). Dazu Wartung, Instandhaltung und Energiekosten. Abzüglich BHKW-Stromerlöse. Bezogen auf die erzeugte Wärme inkl. Netzverluste.">?</span></div>
         <div style="font-family:'DM Mono',monospace;font-size:28px;font-weight:700;color:#a5d6a7;">${wgk.toFixed(1)} <span style="font-size:14px;font-weight:400;">ct/kWh</span></div>
+        ${wgkVerkauft > wgk * 1.01 ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;" title="Gleiche Jahreskosten, geteilt durch die beim Kunden ankommende Nutzwärme (ohne Netzverluste) — der für Wärmepreis-Kalkulationen relevante Wert.">je verkaufter kWh (ohne Netzverluste): <span style="font-family:'DM Mono',monospace;color:#a5d6a7;">${wgkVerkauft.toFixed(1)} ct/kWh</span></div>` : ''}
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:10px;border-top:1px solid rgba(165,214,167,0.2);">
         <tr><td style="color:var(--muted);padding:3px 0;">Annuität (Kapital) <span class="htip" data-tip="Jährliche Rate aus den Investitionskosten — wie bei einem Kredit. Umfasst Zinsen und Tilgung über die Nutzungsdauer der Anlage (VDI 2067).">?</span></td>
@@ -978,14 +1028,186 @@ export function calcWirtschaftPanel() {
   if (typeof calcJahresscheiben === 'function') calcJahresscheiben();
 }
 
-// ── Waterfall toggle ────────────────────────────────────────────────
+// ── View-Toggle (Tabelle / Aufbau / Kostenkurven) ───────────────────
 export function _wirtSetView(mode) {
-  ['table','waterfall'].forEach(v => {
+  ['table','waterfall','kurven'].forEach(v => {
     document.getElementById('wirt-view-' + v)?.classList.toggle('active', v === mode);
     const w = document.getElementById('wirt-wrap-' + v);
     if (w) w.style.display = v === mode ? '' : 'none';
   });
   if (mode === 'waterfall') _wirtRenderWaterfall();
+  if (mode === 'kurven') _wirtRenderKurven();
+}
+
+// ── Kostenkurven-View: spez. Invest €/kW über Anlagengröße (log-log) ──
+// Techs, Farben und Labels — Farben passend zu ERZEUGER_CFG
+const _KURVEN_TECHS = [
+  { ce:'LuftWP',        label:'Luft-WP',     color:'#66bb6a' },
+  { ce:'FlussWP',       label:'Fluss-WP',    color:'#29b6f6' },
+  { ce:'GeoWP',         label:'Geo-WP',      color:'#a1887f' },
+  { ce:'Gaskessel',     label:'Gaskessel',   color:'#78909c' },
+  { ce:'Heizoel',       label:'Heizöl',      color:'#455a64' },
+  { ce:'BHKW',          label:'BHKW (th.)',  color:'#ff69b4' },
+  { ce:'Pellets',       label:'Pellets',     color:'#ff7043' },
+  { ce:'Hackschnitzel', label:'HHS',         color:'#8d6e63' },
+  { ce:'Stromkessel',   label:'Stromkessel', color:'#ff8f00' },
+];
+// Zuordnung Erzeuger-Key (pKw) → CalcEngine-Tech für die Punkt-Marker
+const _KURVEN_KEY2CE = { lwwp:'LuftWP', fg:'FlussWP', geo:'GeoWP', gaskessel:'Gaskessel', _autoGk:'Gaskessel', heizoel:'Heizoel', bhkw:'BHKW', pellets:'Pellets', hhs:'Hackschnitzel', stromkessel:'Stromkessel' };
+
+// Gruppen-Zeile auf-/zuklappen — als benannte Funktion, weil der data-click-
+// Sicherheitsfilter (12-inline-handlers) window.*-Zuweisungen blockiert
+export function _wirtToggleGroup(tr, gi) {
+  window._wirtOpenGroups = window._wirtOpenGroups || {};
+  window._wirtOpenGroups[gi] = !window._wirtOpenGroups[gi];
+  const open = window._wirtOpenGroups[gi];
+  document.querySelectorAll('.wirt-grp-' + gi).forEach(r => { r.style.display = open ? '' : 'none'; });
+  const arrow = tr.querySelector('.wirt-grp-arrow');
+  if (arrow) arrow.textContent = open ? '▾' : '▸';
+}
+
+export function _wirtToggleKurve(ce) {
+  window._wirtKurvenHidden = window._wirtKurvenHidden || {};
+  window._wirtKurvenHidden[ce] = !window._wirtKurvenHidden[ce];
+  _wirtRenderKurven();
+}
+
+export function _wirtRenderKurven() {
+  const canvas = document.getElementById('wirt-kurven-canvas');
+  if (!canvas || typeof CalcEngine === 'undefined') return;
+  const W = canvas.parentElement?.clientWidth || canvas.offsetWidth || 500;
+  canvas.width = W;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  window._wirtKurvenHidden = window._wirtKurvenHidden || {};
+  const hidden = window._wirtKurvenHidden;
+
+  const KW_MIN = 10, KW_MAX = 20000;
+  const pad = { top: 14, right: 14, bottom: 34, left: 52 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+
+  // Sichtbare Kurven samplen (log-Raster) → y-Bereich bestimmen
+  const samples = {};
+  let yMin = Infinity, yMax = 0;
+  for (const t of _KURVEN_TECHS) {
+    if (hidden[t.ce]) continue;
+    const pts = [];
+    for (let i = 0; i <= 120; i++) {
+      const kw = KW_MIN * Math.pow(KW_MAX / KW_MIN, i / 120);
+      const eur = CalcEngine.investEurProKw(t.ce, kw);
+      if (eur > 0) { pts.push({ kw, eur }); if (eur < yMin) yMin = eur; if (eur > yMax) yMax = eur; }
+    }
+    samples[t.ce] = pts;
+  }
+  if (!isFinite(yMin) || yMax <= 0) { yMin = 50; yMax = 5000; }
+  yMin = Math.max(10, yMin * 0.8); yMax = yMax * 1.15;
+
+  const x = kw => pad.left + (Math.log(kw) - Math.log(KW_MIN)) / (Math.log(KW_MAX) - Math.log(KW_MIN)) * plotW;
+  const y = eur => pad.top + plotH - (Math.log(eur) - Math.log(yMin)) / (Math.log(yMax) - Math.log(yMin)) * plotH;
+
+  // Gitter + Achsen
+  ctx.font = '9px system-ui'; ctx.fillStyle = '#78909c';
+  ctx.strokeStyle = '#333844'; ctx.lineWidth = 0.5;
+  const xTicks = [10, 30, 100, 300, 1000, 3000, 10000];
+  ctx.textAlign = 'center';
+  for (const kw of xTicks) {
+    const px = x(kw);
+    ctx.beginPath(); ctx.moveTo(px, pad.top); ctx.lineTo(px, pad.top + plotH); ctx.stroke();
+    ctx.fillText(kw >= 1000 ? (kw / 1000) + ' MW' : kw + ' kW', px, H - pad.bottom + 14);
+  }
+  ctx.textAlign = 'right';
+  for (let e = Math.ceil(Math.log10(yMin)); Math.pow(10, e) < yMax; e++) {
+    for (const m of [1, 2, 5]) {
+      const v = m * Math.pow(10, e);
+      if (v < yMin || v > yMax) continue;
+      const py = y(v);
+      ctx.beginPath(); ctx.moveTo(pad.left, py); ctx.lineTo(W - pad.right, py); ctx.stroke();
+      ctx.fillText(v.toLocaleString('de-DE') + ' €/kW', pad.left - 4, py + 3);
+    }
+  }
+  ctx.fillStyle = '#9aa4b0'; ctx.textAlign = 'left';
+  ctx.fillText('Anlagengröße (thermisch, log.)', pad.left, H - 6);
+
+  // Kurven zeichnen
+  const hoverCurves = [];
+  for (const t of _KURVEN_TECHS) {
+    const pts = samples[t.ce];
+    if (!pts || !pts.length) continue;
+    ctx.strokeStyle = t.color; ctx.lineWidth = 1.6; ctx.beginPath();
+    pts.forEach((pt, i) => { const px = x(pt.kw), py = y(pt.eur); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+    ctx.stroke();
+    hoverCurves.push({ ...t, pts });
+  }
+
+  // Punkt-Marker: aktuell konfigurierte Anlagen
+  const pKw = window._wirtPKw || {};
+  const dots = [];
+  for (const key in pKw) {
+    const ce = _KURVEN_KEY2CE[key];
+    const kw = pKw[key] || 0;
+    if (!ce || kw < 0.5 || hidden[ce]) continue;
+    const eur = CalcEngine.investEurProKw(ce, kw);
+    if (eur <= 0) continue;
+    const t = _KURVEN_TECHS.find(tt => tt.ce === ce);
+    const px = x(Math.max(KW_MIN, Math.min(KW_MAX, kw))), py = y(eur);
+    ctx.fillStyle = t?.color || '#fff';
+    ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#0f1116'; ctx.lineWidth = 1.5; ctx.stroke();
+    dots.push({ x: px, y: py, label: (t?.label || ce) + ' (eigene Anlage)', kw, eur });
+  }
+
+  canvas._kurvenGeo = { hoverCurves, dots, x, y, KW_MIN, KW_MAX, pad, plotW, plotH };
+
+  // Legende mit Klick-Toggle
+  const legend = document.getElementById('wirt-kurven-legend');
+  if (legend) {
+    legend.innerHTML = _KURVEN_TECHS.map(t =>
+      `<span data-click="_wirtToggleKurve('${t.ce}')"
+         style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;opacity:${hidden[t.ce] ? 0.35 : 1};" title="Klick: Kurve ein-/ausblenden">
+        <span style="width:14px;height:2.5px;background:${t.color};display:inline-block;border-radius:1px;"></span>${t.label}</span>`
+    ).join('') +
+    `<span style="display:inline-flex;align-items:center;gap:4px;color:var(--muted);">
+      <span style="width:8px;height:8px;border-radius:50%;background:#cfd8dc;display:inline-block;"></span>eigene Anlagen · Quelle: KWW-Technikkatalog 2025</span>`;
+  }
+
+  // Hover-Tooltip
+  if (!canvas._kurvenHoverInit) {
+    canvas._kurvenHoverInit = true;
+    canvas.addEventListener('mousemove', ev => {
+      const geo = canvas._kurvenGeo;
+      const tt = document.getElementById('wirt-kurven-tt');
+      if (!geo || !tt) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
+      let hit = null;
+      for (const d of geo.dots) {
+        if (Math.hypot(mx - d.x, my - d.y) < 7) { hit = `<b>${d.label}</b><br>${Math.round(d.kw).toLocaleString('de-DE')} kW · ${Math.round(d.eur).toLocaleString('de-DE')} €/kW<br>Invest ≈ ${Math.round(d.kw * d.eur).toLocaleString('de-DE')} €`; break; }
+      }
+      if (!hit && mx > geo.pad.left && mx < geo.pad.left + geo.plotW) {
+        const kw = Math.exp(Math.log(geo.KW_MIN) + (mx - geo.pad.left) / geo.plotW * (Math.log(geo.KW_MAX) - Math.log(geo.KW_MIN)));
+        let best = null, bestDy = 12;
+        for (const c of geo.hoverCurves) {
+          const eur = CalcEngine.investEurProKw(c.ce, kw);
+          if (eur <= 0) continue;
+          const dy = Math.abs(geo.y(eur) - my);
+          if (dy < bestDy) { bestDy = dy; best = { c, eur }; }
+        }
+        if (best) hit = `<b style="color:${best.c.color}">${best.c.label}</b><br>${Math.round(kw).toLocaleString('de-DE')} kW · ${Math.round(best.eur).toLocaleString('de-DE')} €/kW<br>Invest ≈ ${Math.round(kw * best.eur).toLocaleString('de-DE')} €`;
+      }
+      if (hit) {
+        tt.innerHTML = hit; tt.style.display = 'block';
+        tt.style.left = Math.min(mx + 14, rect.width - 170) + 'px';
+        tt.style.top = (my + 14) + 'px';
+      } else { tt.style.display = 'none'; }
+    });
+    canvas.addEventListener('mouseleave', () => {
+      const tt = document.getElementById('wirt-kurven-tt');
+      if (tt) tt.style.display = 'none';
+    });
+  }
 }
 
 export function _wirtRenderWaterfall() {

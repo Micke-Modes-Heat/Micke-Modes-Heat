@@ -135,8 +135,10 @@ export const CalcEngine = (() => {
     Hackschnitzel:0.85, Fernwaerme:1.0
   };
 
-  // KWW-Kostenkurven: Invest[€] = a × P[kW]^(b-1)  →  €/kW bei Leistung P
+  // KWW-Kostenkurven: spez. Kosten [€/kW] = a × P[kW]^(b-1) bei Leistung P
   // {aDez, bDez, maxDez, aZen, bZen, minZen, maxZen, cap}
+  // maxZen = Ende des Gültigkeitsbereichs (darüber wird der spez. Preis eingefroren),
+  // cap = Untergrenze €/kW (Marktpreis-Floor, Großanlagen werden nicht beliebig billig)
   const INVEST_KURVEN = {
     LuftWP:        {aDez:5909, bDez:0.71,maxDez:100, aZen:2848, bZen:0.86,minZen:300,  maxZen:20000},
     GeoWP:         {aDez:8429, bDez:0.75,maxDez:100, aZen:3200, bZen:0.82,minZen:100,  maxZen:5000},
@@ -146,7 +148,9 @@ export const CalcEngine = (() => {
     BHKW:          {aDez:14000,bDez:0.52,maxDez:100, aZen:4200, bZen:0.75,minZen:100,  maxZen:5000},
     Pellets:       {aDez:13124,bDez:0.43,maxDez:100, aZen:5500, bZen:0.68,minZen:100,  maxZen:2000, cap:550},
     Hackschnitzel: {aDez:16541,bDez:0.37,maxDez:100, aZen:6200, bZen:0.65,minZen:100,  maxZen:3000, cap:550},
-    Stromkessel:   {aDez:null, bDez:null,maxDez:null,aZen:300,  bZen:0.65,minZen:100,  maxZen:10000},
+    // E-Heizkessel inkl. Anschluss/Hydraulik: ~205 €/kW @50 kW … ~80 €/kW @5 MW
+    // (vorher aZen:300/bZen:0.65 → 27 €/kW bei 1 MW, unrealistisch billig)
+    Stromkessel:   {aDez:null, bDez:null,maxDez:null,aZen:467,  bZen:0.79,minZen:100,  maxZen:10000},
   };
 
   // VDI 2067: {n [a], inst [%/a], wart [%/a], bedien [h/a]}
@@ -634,16 +638,43 @@ export const CalcEngine = (() => {
   }
 
   // ── Invest-Kosten (KWW) ───────────────────────────────────────────────────
+  // Stetige Kurve aus Dezentral- und Zentral-Ast:
+  // - Loch zwischen maxDez und minZen (z.B. FlussWP 100 kW…10 MW): log-log-
+  //   Interpolation zwischen den Kurvenenden statt Extrapolation der
+  //   Kleinanlagen-Kurve (die lieferte z.B. 146 €/kW für eine 5-MW-FlussWP).
+  // - Stoßen die Äste direkt aneinander (maxDez == minZen), wird der Sprung an
+  //   der Naht über eine Übergangszone [B/2, 2B] log-linear geglättet
+  //   (GeoWP sprang sonst bei 100→150 kW um −51 %).
+  // - Oberhalb maxZen wird der spez. Preis eingefroren (Kurven gelten nur bis
+  //   dort — unbegrenzte Extrapolation machte 10-MW-Anlagen unrealistisch billig).
+  // - cap = Untergrenze €/kW (Marktpreis-Floor für Großanlagen).
   function investEurProKw(techKey, kw) {
     const k = INVEST_KURVEN[techKey];
     if (!k || kw <= 0) return 0;
-    if (k.aDez && kw <= k.maxDez) return k.aDez * Math.pow(kw, k.bDez - 1);
-    if (k.aZen && kw >= k.minZen) return k.aZen * Math.pow(kw, k.bZen - 1);
-    // Keine Dezentral-Kurve (z.B. Stromkessel) → Zentral-Kurve auch unterhalb minZen
-    // (vorher: null × P^b = 0 €/kW für kleine Anlagen)
-    if (!k.aDez) return k.aZen ? k.aZen * Math.pow(kw, k.bZen - 1) : 0;
-    let eur = k.aDez * Math.pow(kw, k.bDez - 1);
-    if (k.cap) eur = Math.min(eur, k.cap);
+    const dez = (p) => k.aDez * Math.pow(p, k.bDez - 1);
+    const zen = (p) => k.aZen * Math.pow(Math.min(p, k.maxZen || p), k.bZen - 1);
+    let eur;
+    if (!k.aDez) {
+      eur = k.aZen ? zen(kw) : 0;
+    } else if (!k.aZen) {
+      eur = dez(kw);
+    } else if (k.maxDez < k.minZen) {
+      if (kw <= k.maxDez) eur = dez(kw);
+      else if (kw >= k.minZen) eur = zen(kw);
+      else {
+        const x = (Math.log(kw) - Math.log(k.maxDez)) / (Math.log(k.minZen) - Math.log(k.maxDez));
+        eur = Math.exp(Math.log(dez(k.maxDez)) * (1 - x) + Math.log(zen(k.minZen)) * x);
+      }
+    } else {
+      const B = k.maxDez;
+      if (kw <= B / 2) eur = dez(kw);
+      else if (kw >= 2 * B) eur = zen(kw);
+      else {
+        const x = (Math.log(kw) - Math.log(B / 2)) / (Math.log(2 * B) - Math.log(B / 2));
+        eur = Math.exp(Math.log(dez(Math.min(kw, B))) * (1 - x) + Math.log(zen(Math.max(kw, B))) * x);
+      }
+    }
+    if (k.cap) eur = Math.max(eur, k.cap);
     return eur;
   }
 

@@ -194,7 +194,7 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
 
 function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeicherVol) {
   const { erzeugerList, autoGkMwh, autoGkPeakKw, gesamtMwh } = dispR;
-  const { pStrom, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
+  const { pStrom, pStromWp, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
 
   // pKw aus erzeugerList
   const _bPKw = {};
@@ -248,7 +248,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
     erzList: erzListTyped,
     zinsPct: zinssatz * 100,
     lohn: D.lohn || 45,
-    prices: { strom: pStrom, gas: pGas, hko: pHko, fw: pFw, pk: pPk, hhs: pHhs },
+    prices: { strom: pStrom, stromWp: pStromWp, gas: pGas, hko: pHko, fw: pFw, pk: pPk, hhs: pHhs },
     etas: { gaskessel: D.etaGk, heizoel: D.etaHko, pellets: D.etaPk, hhs: D.etaHhs, bhkw: D.etaBhkw, bhkwSigma: D.bhkwSkz },
     investFn: function(key, kw) { return kw > 0.1 ? Math.round(kw * _investProKw(key, kw)) : 0; },
     extra: {
@@ -755,6 +755,8 @@ export function _doRunOptimierung(resDiv) {
   // 2. Wirtschaftsparameter
   // Fallbacks = HTML-Defaults der wirt-p-* Felder (einheitlich in allen Modulen)
   const pStrom   = parseFloat(document.getElementById('wirt-p-strom')?.value) || 35;
+  const _pWpRaw  = parseFloat(document.getElementById('wirt-p-strom-wp')?.value);
+  const pStromWp = isNaN(_pWpRaw) ? pStrom : _pWpRaw; // optionaler WP-Sondervertragspreis
   const pGas     = parseFloat(document.getElementById('wirt-p-gas')?.value)   || 10;
   const pPk      = parseFloat(document.getElementById('wirt-p-pk')?.value)    || 8;
   const pHhs     = parseFloat(document.getElementById('wirt-p-hhs')?.value)   || 6;
@@ -764,8 +766,9 @@ export function _doRunOptimierung(resDiv) {
   const pBhkwEinsp = parseFloat(document.getElementById('bhkw-preis-einsp')?.value) || 8;
   const pBhkwKwkE  = parseFloat(document.getElementById('bhkw-kwk-einsp')?.value) || 8;
   const pBhkwKwkEig = parseFloat(document.getElementById('bhkw-kwk-eigen')?.value) || 4;
-  const zins     = (parseFloat(document.getElementById('wirt-zins')?.value) || 2.7) / 100;
-  const params = { pStrom, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz: zins };
+  const _zRaw    = parseFloat(document.getElementById('wirt-zins')?.value);
+  const zins     = (isNaN(_zRaw) ? 3.5 : _zRaw) / 100;
+  const params = { pStrom, pStromWp, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz: zins };
 
   // 3. Aktive Kandidaten + Constraints
   const allKeys = ['lwwp','fg','geo','gaskessel','bhkw','stromkessel','pellets','hhs','fernwaerme','heizoel'];

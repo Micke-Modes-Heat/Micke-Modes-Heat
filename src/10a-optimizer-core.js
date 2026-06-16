@@ -210,7 +210,7 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
 // ── Kennwerte (WGK, CO2, EE-Anteil, Autarkie) — Wrapper um _calcKostenShared ──
 export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, params, stWaermeMwhOpt, stM2Opt, optSpeicherVol) {
   const { erzeugerList, gesamtMwh } = dispatchResult;
-  const { pStrom, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
+  const { pStrom, pStromWp, pGas, pPk, pHhs, pHko, pFw, pEinsp, pBhkwEinsp, pBhkwKwkE, pBhkwKwkEig, zinssatz } = params;
 
   // Peak-Leistungen für Bausteine
   const _bPKw = {};
@@ -263,7 +263,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
     erzList: erzListTyped,
     zinsPct: zinssatz * 100,
     lohn: parseFloat(document.getElementById('wirt-lohn')?.value) || 45,
-    prices: { strom: pStrom, gas: pGas, hko: pHko, fw: pFw, pk: pPk, hhs: pHhs },
+    prices: { strom: pStrom, stromWp: pStromWp, gas: pGas, hko: pHko, fw: pFw, pk: pPk, hhs: pHhs },
     etas: {
       gaskessel: (parseFloat(document.getElementById('gk-eta')?.value) || 92) / 100,
       heizoel: (parseFloat(document.getElementById('hko-eta')?.value) || 90) / 100,
