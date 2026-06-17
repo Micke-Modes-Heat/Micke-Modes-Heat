@@ -237,6 +237,7 @@ export const HIGHWAY_KOSTEN = {
   cycleway:'niedrig', pedestrian:'niedrig', unclassified:'mittel',
 };
 
+let _aaecRunning = false;
 async function queryOsmRoadType(latA, lngA, latB, lngB) {
   // Find the OSM way closest to the midpoint of the edge
   const midLat = (latA + latB) / 2;
@@ -244,34 +245,51 @@ async function queryOsmRoadType(latA, lngA, latB, lngB) {
   const delta = 0.0003;
   const bbox = `${midLat-delta},${midLng-delta},${midLat+delta},${midLng+delta}`;
   const q = `[out:json][timeout:5];way["highway"](${bbox});out tags 1;`;
-  // Stille Einzelabfrage statt _overpassFetchWithRetry: Hintergrund-Task darf
-  // keine Hints/Fehlermeldungen anzeigen, und eine leere Antwort (keine Straße
-  // in der Nähe) ist hier ein normales Ergebnis, kein Serverfehler.
-  try {
-    const resp = await fetch(OVERPASS_ENDPOINTS[0], {
-      method: 'POST',
-      body: 'data=' + encodeURIComponent(q),
-      signal: AbortSignal.timeout(6000)
-    });
-    if (!resp.ok) return 'mittel';
-    const d = await resp.json();
-    if (d && d.elements && d.elements.length > 0) {
-      const hw = d.elements[0].tags?.highway || '';
-      return HIGHWAY_KOSTEN[hw] || 'mittel';
-    }
-  } catch(e) {}
-  return 'mittel';
+  const resp = await fetch(OVERPASS_ENDPOINTS[0], {
+    method: 'POST',
+    body: 'data=' + encodeURIComponent(q),
+    signal: AbortSignal.timeout(6000)
+  });
+  // Harter Fehler (429/5xx) → werfen, damit der Aufrufer den Circuit-Breaker auslöst.
+  if (!resp.ok) throw new Error('overpass ' + resp.status);
+  const d = await resp.json();
+  if (d && d.elements && d.elements.length > 0) {
+    const hw = d.elements[0].tags?.highway || '';
+    return HIGHWAY_KOSTEN[hw] || 'mittel';
+  }
+  return 'mittel'; // erfolgreich, aber keine Straße in der Nähe → Default
 }
 
 export async function autoAssignEdgeCosts() {
-  // Called after autoGenerateNetz — queries road type for each edge in background
-  for (const e of netzEdges) {
-    if (e.kostOverride) continue; // don't overwrite manual settings
-    const uPt = e.uNode?.pt;
-    const vPt = e.vNode?.pt;
-    if (!uPt || !vPt) continue;
-    const klass = await queryOsmRoadType(uPt.lat, uPt.lng, vPt.lat, vPt.lng);
-    e.kostKlasse = klass;
+  // Straßentyp je Kante → Kostenklasse (Hintergrund, nach autoGenerateNetz).
+  // Robust gegen Overpass-Ausfälle/Rate-Limits (429) und file://-CORS: früh
+  // aufhören statt den Browser mit hunderten fehlschlagenden Requests zu fluten
+  // (das machte ihn "brutal langsam", wenn der Hintergrund-Sturm weiterlief).
+  if (_aaecRunning) return; // nur ein Lauf gleichzeitig — kein Request-Sturm bei Mehrfachauslösung
+  // file:// (Doppelklick auf dist/index.html): Overpass ist per CORS chancenlos → gar nicht anfragen.
+  const offline = typeof location === 'undefined' || location.protocol === 'file:' || location.origin === 'null';
+  if (offline) {
+    for (const e of netzEdges) if (!e.kostOverride && !e.kostKlasse) e.kostKlasse = 'mittel';
+    updateRohrListe();
+    return;
+  }
+  _aaecRunning = true;
+  try {
+    let fails = 0;
+    for (const e of netzEdges) {
+      if (e.kostOverride) continue; // manuelle Einstellung nicht überschreiben
+      const uPt = e.uNode?.pt, vPt = e.vNode?.pt;
+      if (!uPt || !vPt) continue;
+      if (fails >= 2) { if (!e.kostKlasse) e.kostKlasse = 'mittel'; continue; } // Circuit-Breaker: Overpass nicht erreichbar
+      try {
+        e.kostKlasse = await queryOsmRoadType(uPt.lat, uPt.lng, vPt.lat, vPt.lng);
+      } catch (_) {
+        fails++;
+        if (!e.kostKlasse) e.kostKlasse = 'mittel';
+      }
+    }
+  } finally {
+    _aaecRunning = false;
   }
   updateRohrListe();
 }

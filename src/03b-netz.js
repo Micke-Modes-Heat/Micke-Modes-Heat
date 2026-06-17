@@ -229,7 +229,9 @@ export function calcGeoThermie() {
       if (effEl) effEl.value = heizlastKw;
     }
     redrawGeo();
-    if (!window._wirtRefreshing) _geoTriggerDispatch();
+    // _geoNoReentry: gesetzt, wenn calcGeoThermie aus dem Dispatch-Ergebnis kommt —
+    // dann NICHT erneut den Dispatch anstoßen (sonst Endlos-Loop + Layer-Leak).
+    if (!window._wirtRefreshing && !window._geoNoReentry) _geoTriggerDispatch();
     updateErzeugerAssetProps('geo');
   } else {
     // geoThermie nicht gesetzt — trotzdem leistung-eff aktualisieren
@@ -303,7 +305,10 @@ export function redrawGeo() {
     const r   = n_sonden > 800 ? abstand * 0.25 : n_sonden > 300 ? abstand * 0.35 : abstand * 0.45;
     const wt  = n_sonden > 300 ? 0 : 1;
     const fop = n_sonden > 800 ? 0.55 : 0.75;
-    const renderer = L.canvas({ padding: 0.5 });
+    // Renderer einmalig wiederverwenden — sonst bleibt pro redrawGeo ein verwaister
+    // L.canvas auf der Karte zurück (clearLayers räumt nur die Gruppe) → Layer-Leak.
+    if (!window._geoCanvasRenderer) window._geoCanvasRenderer = L.canvas({ padding: 0.5 });
+    const renderer = window._geoCanvasRenderer;
     let cnt = 0;
     for (let row = 0; row < rows && cnt < n_sonden; row++)
       for (let col = 0; col < cols && cnt < n_sonden; col++) {
@@ -312,46 +317,9 @@ export function redrawGeo() {
         cnt++;
       }
   }
-  // Griffe
-  const hIco = cur => L.divIcon({ className: '', html: `<div style="width:10px;height:10px;background:#f5f5f5;border:2px solid #795548;border-radius:2px;cursor:${cur};box-shadow:0 1px 3px rgba(0,0,0,.6);"></div>`, iconSize: [10,10], iconAnchor: [5,5] });
-  const cIco = cur => L.divIcon({ className: '', html: `<div style="width:12px;height:12px;background:#fff3e0;border:2px solid #795548;border-radius:0;cursor:${cur};box-shadow:0 1px 3px rgba(0,0,0,.7);"></div>`, iconSize: [12,12], iconAnchor: [6,6] });
-  const mLng = () => (sw.lng + ne.lng) / 2;
-  const mLat = () => (sw.lat + ne.lat) / 2;
-  function upRect() { rect.setBounds([L.latLng(sw.lat, sw.lng), L.latLng(ne.lat, ne.lng)]); const f = fb(actF()); rect.setStyle({ fillColor: f.c, fillOpacity: f.o }); }
-  function done() {
-    const aL = (ne.lat - sw.lat) / latPerM, aB = (ne.lng - sw.lng) / lngPerM;
-    window.geoThermie.lat = (sw.lat + ne.lat) / 2;
-    window.geoThermie.lng = (sw.lng + ne.lng) / 2;
-    document.getElementById('geo-man-laenge').value = aL.toFixed(1);
-    document.getElementById('geo-man-breite').value = aB.toFixed(1);
-    calcGeoThermie();
-  }
-  // Seitengriffe: N S E W
-  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.geoLayerGroup);
-  nH.on('drag', function() { const lat = this.getLatLng().lat; if (lat > sw.lat + 3 * latPerM) { ne.lat = lat; upRect(); } });
-  nH.on('dragend', done);
-  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.geoLayerGroup);
-  sH.on('drag', function() { const lat = this.getLatLng().lat; if (lat < ne.lat - 3 * latPerM) { sw.lat = lat; upRect(); } });
-  sH.on('dragend', done);
-  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.geoLayerGroup);
-  eH.on('drag', function() { const lng = this.getLatLng().lng; if (lng > sw.lng + 3 * lngPerM) { ne.lng = lng; upRect(); } });
-  eH.on('dragend', done);
-  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.geoLayerGroup);
-  wH.on('drag', function() { const lng = this.getLatLng().lng; if (lng < ne.lng - 3 * lngPerM) { sw.lng = lng; upRect(); } });
-  wH.on('dragend', done);
-  // Eckengriffe: NE NW SE SW
-  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.geoLayerGroup);
-  neH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
-  neH.on('dragend', done);
-  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.geoLayerGroup);
-  nwH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
-  nwH.on('dragend', done);
-  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.geoLayerGroup);
-  seH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
-  seH.on('dragend', done);
-  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.geoLayerGroup);
-  swH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
-  swH.on('dragend', done);
+  // Größen-Anfasser (weiße Quadrate) entfernt — wirkten unruhig (analog LW-WP).
+  // Fläche skaliert automatisch aus der Sondenzahl; manuelle Maße über die Felder
+  // „Länge/Breite manuell" im Geothermie-Panel.
   // Zentrum verschieben
   const geoIcon = L.divIcon({ className: '', html: '<div style="width:26px;height:26px;background:rgba(121,85,72,0.35);border:2px solid #795548;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;">' + drillSvg('#a1887f',14,20) + '</div>', iconSize: [26,26], iconAnchor: [13,13] });
   L.marker(center, { draggable: true, icon: geoIcon, zIndexOffset: 1000 }).addTo(window.geoLayerGroup)
@@ -403,7 +371,12 @@ export function finishDraw(){
   g.polygon=pts;
   g.flaeche=polygonAreaM2(pts);
   attachPolygonLayer(g);
-  
+
+  // Bestandsnetz: neu gezeichnetes Gebäude automatisch per Lotpunkt-Stich anschließen
+  if (networkLocked && window.netzEdges && window.netzEdges.length) {
+    try { connectGebToNearestPipe(g); } catch(e) { console.warn('connectGebToNearestPipe:', e); }
+  }
+
   if(g.flaeche > 0) {
     if(g.waerme) g.spez = Math.round(parseFloat(g.waerme)*1000/g.flaeche*10)/10;
     if(g.heizlast) g.spezHeizlast = Math.round(parseFloat(g.heizlast)*1000/g.flaeche*10)/10;
@@ -1361,7 +1334,10 @@ export function populateZentraleSelect(){
       sel.appendChild(opt);
     }
   });
-  if(currentVal && gebaeude.some(g => g.id === currentVal)) {
+  // Wichtig: g.id ist Zahl, currentVal (Dropdown-Wert) ist String → als String vergleichen.
+  // (Früher '==', durch ESLint-Umstellung auf '===' verschärft → Zentrale ging beim
+  //  Neuzeichnen/renderList verloren, recalcNetz/autoGenerateNetz brachen ab.)
+  if(currentVal && gebaeude.some(g => String(g.id) === currentVal)) {
     sel.value = currentVal;
   }
 }
@@ -1525,6 +1501,100 @@ export function addNetzEdge(u, v){
 
   window.netzEdges.push(edgeObj);
   addEdgeMidHandle(edgeObj);
+}
+
+// ── Bestandsnetz: neu gezeichnetes Gebäude per Lotpunkt-Stich anschließen ──────
+// Sucht die nächstgelegene Leitung, fügt am Lotfußpunkt einen Abzweig-Knoten ein
+// (Leitung wird gesplittet und behält ihre DN) und legt einen Stich zum Gebäude.
+// recalcNetz() prüft danach die Auslastung → gelbes ⚠-Dreieck bei Überlast.
+// Hinweis: Abzweig-Knoten (id ≥ 20000) werden – wie Trasse-Knoten – derzeit nicht
+// in der Projektdatei gespeichert (customEdges nur Gebäude↔Gebäude).
+function _nextJunctionId(){
+  let maxId = 19999;
+  window.netzEdges.forEach(e => {
+    if (e.uNode && e.uNode.type === 'junction' && e.u > maxId) maxId = e.u;
+    if (e.vNode && e.vNode.type === 'junction' && e.v > maxId) maxId = e.v;
+  });
+  return maxId + 1;
+}
+
+// Baut ein vollwertiges Kanten-Objekt zwischen zwei beliebigen Knoten (geb/trasse/junction)
+function _makeNetzEdge(uNode, vNode, dn){
+  const layer    = L.polyline([uNode.pt, vNode.pt], {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
+  const hitLayer = L.polyline([uNode.pt, vNode.pt], {color: 'transparent', weight: 20, pane: 'netzPane'});
+  if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
+  const edgeObj = {
+    u: uNode.id, v: vNode.id, uNode, vNode,
+    layer, hitLayer, load: 0, dn: dn || 0,
+    _straightLength: uNode.pt.distanceTo(vNode.pt), length: uNode.pt.distanceTo(vNode.pt),
+    waypoint: null, segLayers: [], warnMarker: null, midMarker: null
+  };
+  hitLayer.on('click', (ev) => {
+    if (window.isDrawingEdge) return;
+    if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
+    showEdgePopup(edgeObj, ev.originalEvent);
+    L.DomEvent.stopPropagation(ev);
+  });
+  hitLayer.on('contextmenu', () => {
+    map.removeLayer(layer); map.removeLayer(hitLayer);
+    if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
+    if (edgeObj.warnMarker) map.removeLayer(edgeObj.warnMarker);
+    if (edgeObj.segLayers) edgeObj.segLayers.forEach(s => map.removeLayer(s));
+    window.netzEdges = window.netzEdges.filter(e => e !== edgeObj);
+    closeEdgePopup(); recalcNetz();
+  });
+  window.netzEdges.push(edgeObj);
+  addEdgeMidHandle(edgeObj);
+  return edgeObj;
+}
+
+export function connectGebToNearestPipe(g){
+  if (!g || !g.polygon || !networkLocked) return false;
+  if (!window.netzEdges || window.netzEdges.length === 0) return false;
+  if (window.netzEdges.some(e => e.u === g.id || e.v === g.id)) return false; // schon angeschlossen
+
+  const gc = polygonCenter(g.polygon);
+
+  // Nächstgelegene Leitung + Lotfußpunkt suchen (Projektion auf das Segment)
+  let best = null;
+  for (const e of window.netzEdges) {
+    if (e.pruned || !e.uNode || !e.vNode || !e.uNode.pt || !e.vNode.pt) continue;
+    const A = e.uNode.pt, B = e.vNode.pt;
+    const dLat = B.lat - A.lat, dLng = B.lng - A.lng;
+    const denom = dLat * dLat + dLng * dLng;
+    let t = denom === 0 ? 0 : ((gc.lat - A.lat) * dLat + (gc.lng - A.lng) * dLng) / denom;
+    t = Math.max(0, Math.min(1, t));
+    const foot = L.latLng(A.lat + t * dLat, A.lng + t * dLng);
+    const d = gc.distanceTo(foot);
+    if (!best || d < best.d) best = { e, foot, d };
+  }
+  if (!best) return false;
+
+  const E = best.e;
+  const gNode = { id: g.id, type: 'geb', pt: gc, load: 0 };
+  const SNAP = 8; // m — Lotpunkt liegt praktisch auf einem Endknoten → dort direkt anschließen
+  const dToU = best.foot.distanceTo(E.uNode.pt);
+  const dToV = best.foot.distanceTo(E.vNode.pt);
+
+  if (dToU < SNAP || dToV < SNAP) {
+    const target = dToU <= dToV ? E.uNode : E.vNode;
+    _makeNetzEdge(target, gNode, 0);
+  } else {
+    // Leitung am Lotpunkt splitten (Teilstücke behalten DN) + Stich zum Gebäude
+    const jNode = { id: _nextJunctionId(), type: 'junction', pt: best.foot, load: 0 };
+    const dn = E.dn || 0;
+    map.removeLayer(E.layer);
+    if (E.hitLayer) map.removeLayer(E.hitLayer);
+    if (E.midMarker) map.removeLayer(E.midMarker);
+    if (E.warnMarker) map.removeLayer(E.warnMarker);
+    if (E.segLayers) E.segLayers.forEach(s => map.removeLayer(s));
+    window.netzEdges = window.netzEdges.filter(x => x !== E);
+    _makeNetzEdge(E.uNode, jNode, dn);
+    _makeNetzEdge(jNode, E.vNode, dn);
+    _makeNetzEdge(jNode, gNode, 0); // Stich → neue DN wird in recalcNetz dimensioniert
+  }
+  recalcNetz();
+  return true;
 }
 
 export function clearNetz(){

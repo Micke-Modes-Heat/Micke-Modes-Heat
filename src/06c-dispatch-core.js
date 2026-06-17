@@ -221,9 +221,15 @@ export function updateAllDeckungen() {
 
   if (ss && ss.lastgangKw && ss.tempH && ss.vlH) {
     try {
+      // _geoNoReentry: während der Dispatch-Ergebnisphase darf calcGeoThermie (von
+      // _updateErzeugerWaerme / Geo-Ergebnis aufgerufen) den Dispatch NICHT erneut
+      // anstoßen — sonst Endlos-Loop alle 400ms (Browser wird progressiv langsam).
+      window._geoNoReentry = true;
       _deckungen8760(ss);
     } catch (err) {
       console.error('Dispatch-Fehler:', err);
+    } finally {
+      window._geoNoReentry = false;
     }
   } else {
     // Kein systemState → echte Berechnung anstoßen statt JDL-Näherung
@@ -825,7 +831,8 @@ export function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, 
     const s  = document.getElementById('geo-r-strom'); if (s)  s.textContent = elMwh.toFixed(0) + ' MWh/a';
     const e  = document.getElementById('geo-r-erde');  if (e)  e.textContent = (thMwh - elMwh).toFixed(0) + ' MWh/a';
     const co = document.getElementById('geo-r-co2');   if (co) co.textContent = (elMwh * stromEmF / 1000).toFixed(1) + ' t/a · ' + (elMwh * stromEmFLZ / 1000).toFixed(1) + ' t/a (Ø 2030–50)';
-    // Sondendimensionierung mit echter JAZ neu berechnen (überschreibt Carnot-Schätzung)
+    // Sondendimensionierung mit echter JAZ neu berechnen (überschreibt Carnot-Schätzung).
+    // Re-Trigger des Dispatch wird durch _geoNoReentry (in updateAllDeckungen gesetzt) verhindert.
     calcGeoThermie();
   }
 }

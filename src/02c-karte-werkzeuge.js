@@ -1330,47 +1330,9 @@ export function redrawLwWp() {
       });
     }
   }
-  // Griffe
-  const hIco = cur => L.divIcon({ className: '', html: `<div style="width:10px;height:10px;background:#f5f5f5;border:2px solid #388e3c;border-radius:2px;cursor:${cur};box-shadow:0 1px 3px rgba(0,0,0,.6);"></div>`, iconSize: [10,10], iconAnchor: [5,5] });
-  const cIco = cur => L.divIcon({ className: '', html: `<div style="width:12px;height:12px;background:#f1f8e9;border:2px solid #388e3c;border-radius:0;cursor:${cur};box-shadow:0 1px 3px rgba(0,0,0,.7);"></div>`, iconSize: [12,12], iconAnchor: [6,6] });
-  const mLng = () => (sw.lng + ne.lng) / 2;
-  const mLat = () => (sw.lat + ne.lat) / 2;
-  function upRect() { rect.setBounds([L.latLng(sw.lat, sw.lng), L.latLng(ne.lat, ne.lng)]); const f = fb(actF()); rect.setStyle({ fillColor: f.c, fillOpacity: f.o }); }
-  function done() {
-    const aL = (ne.lat - sw.lat) / latPerM, aB = (ne.lng - sw.lng) / lngPerM;
-    window.lwWp.lat = (sw.lat + ne.lat) / 2;
-    window.lwWp.lng = (sw.lng + ne.lng) / 2;
-    document.getElementById('lwwp-man-laenge').value = aL.toFixed(1);
-    document.getElementById('lwwp-man-breite').value = aB.toFixed(1);
-    updateLwWpDisplay();
-    redrawLwWp();
-  }
-  // Seitengriffe: N S E W
-  const nH = L.marker(L.latLng(ne.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
-  nH.on('drag', function() { const lat = this.getLatLng().lat; if (lat > sw.lat + 3 * latPerM) { ne.lat = lat; upRect(); } });
-  nH.on('dragend', done);
-  const sH = L.marker(L.latLng(sw.lat, mLng()), { draggable: true, icon: hIco('ns-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
-  sH.on('drag', function() { const lat = this.getLatLng().lat; if (lat < ne.lat - 3 * latPerM) { sw.lat = lat; upRect(); } });
-  sH.on('dragend', done);
-  const eH = L.marker(L.latLng(mLat(), ne.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
-  eH.on('drag', function() { const lng = this.getLatLng().lng; if (lng > sw.lng + 3 * lngPerM) { ne.lng = lng; upRect(); } });
-  eH.on('dragend', done);
-  const wH = L.marker(L.latLng(mLat(), sw.lng), { draggable: true, icon: hIco('ew-resize'), zIndexOffset: 2000 }).addTo(window.lwWpLayerGroup);
-  wH.on('drag', function() { const lng = this.getLatLng().lng; if (lng < ne.lng - 3 * lngPerM) { sw.lng = lng; upRect(); } });
-  wH.on('dragend', done);
-  // Eckengriffe: NE NW SE SW
-  const neH = L.marker(L.latLng(ne.lat, ne.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
-  neH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
-  neH.on('dragend', done);
-  const nwH = L.marker(L.latLng(ne.lat, sw.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
-  nwH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat > sw.lat + 3 * latPerM) ne.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
-  nwH.on('dragend', done);
-  const seH = L.marker(L.latLng(sw.lat, ne.lng), { draggable: true, icon: cIco('nwse-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
-  seH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng > sw.lng + 3 * lngPerM) ne.lng = ll.lng; upRect(); });
-  seH.on('dragend', done);
-  const swH = L.marker(L.latLng(sw.lat, sw.lng), { draggable: true, icon: cIco('nesw-resize'), zIndexOffset: 2100 }).addTo(window.lwWpLayerGroup);
-  swH.on('drag', function() { const ll = this.getLatLng(); if (ll.lat < ne.lat - 3 * latPerM) sw.lat = ll.lat; if (ll.lng < ne.lng - 3 * lngPerM) sw.lng = ll.lng; upRect(); });
-  swH.on('dragend', done);
+  // Hinweis: Größen-Anfasser (weiße Quadrate) wurden entfernt — wirkten unruhig.
+  // Die Fläche skaliert automatisch aus dem Platzbedarf; manuelle Maße weiterhin
+  // über die Felder „Länge/Breite manuell" im LW-WP-Panel.
   // Hauptmarker (Gerät verschieben) — groß genug um auch ohne Zoom greifbar zu sein
   const wpIcon = L.divIcon({ className: '', html: '<div style="width:32px;height:32px;background:rgba(56,142,60,0.5);border:2px solid #66bb6a;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 0 8px rgba(102,187,106,0.5);">' + windSvg('#c8e6c9',17,14) + '</div>', iconSize: [32,32], iconAnchor: [16,16] });
   const marker = L.marker(pt, { draggable: true, icon: wpIcon, title: 'Luft-Wasser-WP verschieben', zIndexOffset: 3000 }).addTo(window.lwWpLayerGroup);
