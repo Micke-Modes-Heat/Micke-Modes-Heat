@@ -8,3 +8,5 @@ dist-vite/
 .claude/
 test-results/
 playwright-report/
+Testlink/
+.staticrypt.json

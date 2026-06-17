@@ -1,7 +1,7 @@
 // Build: Quell-Module + HTML + CSS → eine einzige HTML-Datei für Doppelklick
 // Kein Rollup/Vite nötig — alle JS-Dateien werden direkt in einen <script>-Block
 // zusammengefügt, genau wie im originalen Index.html.
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 import { getExportNames } from './tools/export-names.mjs';
 
@@ -158,6 +158,24 @@ function stripModule(code) {
 
 // 1. Alle JS-Module zusammenfügen
 let jsAll = '';
+
+// ── Klimadaten einbetten (data/klima/*.js → window.KLIMA_DATA) ──────────────
+// Jede Datei setzt window.KLIMA_DATA['Stadt'] = {...}. Vorangestellt, damit die
+// stündlichen DWD-Temperaturprofile auch im Single-File-Build/Testlink verfügbar
+// sind. Ohne sie fällt glGetTempH() für JEDE Stadt auf TRY Kassel zurück.
+let klimaCount = 0;
+const klimaDir = resolve('data', 'klima');
+if (existsSync(klimaDir)) {
+  jsAll += '// ── Eingebettete Klimadaten (data/klima/) ──\n';
+  for (const f of readdirSync(klimaDir).filter(n => n.endsWith('.js')).sort()) {
+    jsAll += readFileSync(join(klimaDir, f), 'utf8') + '\n';
+    klimaCount++;
+  }
+  jsAll += '\n';
+} else {
+  console.warn('⚠ data/klima/ nicht gefunden — Single-File-Build nutzt TRY-Kassel-Fallback für alle Städte.');
+}
+
 for (const file of JS_FILES) {
   const raw = readFileSync(join(SRC, file), 'utf8');
   jsAll += `// ── ${file} ──\n` + stripModule(raw) + '\n\n';
@@ -225,4 +243,4 @@ html = html
 writeFileSync(join(dist, 'index.html'), html);
 
 const size = (Buffer.byteLength(html) / 1024).toFixed(0);
-console.log(`Einzeldatei: dist/index.html (${size} KB)`);
+console.log(`Einzeldatei: dist/index.html (${size} KB, ${klimaCount} Klima-Städte eingebettet)`);
