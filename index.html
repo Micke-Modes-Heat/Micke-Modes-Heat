@@ -2599,11 +2599,11 @@
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
     <div class="inp-group">
       <label class="inp-label">Vorlauftemperatur (°C)</label>
-      <input class="inp-field" type="number" id="netz-vl" value="90" data-change="syncVLTemps('netz');recalcNetz()"/>
+      <input class="inp-field" type="number" id="netz-vl" value="90" data-change="syncVLTemps('netz');recalcNetz();if(window.glBerechnenDebounced&&window.glKannBerechnen&&window.glKannBerechnen())window.glBerechnenDebounced()"/>
     </div>
     <div class="inp-group">
       <label class="inp-label">Rücklauftemperatur (°C)</label>
-      <input class="inp-field" type="number" id="netz-rl" value="60" data-change="syncVLTemps('netz');recalcNetz()"/>
+      <input class="inp-field" type="number" id="netz-rl" value="60" data-change="syncVLTemps('netz');recalcNetz();if(window.glBerechnenDebounced&&window.glKannBerechnen&&window.glKannBerechnen())window.glBerechnenDebounced()"/>
     </div>
     <div class="inp-group">
       <label class="inp-label">Ziel-Fließgeschw. (m/s)</label>
