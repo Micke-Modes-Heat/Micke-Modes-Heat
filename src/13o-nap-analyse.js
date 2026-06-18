@@ -92,10 +92,22 @@ function _napBuildProfileDescriptor(asset, gzf) {
     return { mode: 'custom', asset, dir: profileDirection(asset), gzf };
   }
 
-  // 2. BDEW-SLP: z.B. Verbraucher mit slpTyp='H0'
+  // 2. Ladesäulen: Gleichzeitigkeitsfaktor + Wochentag/Wochenende-Zeitprofil
+  // (einzige Quelle der Wahrheit, siehe ladeProfil8760 in 13r-knotenpunkt-analyse.js)
+  if (asset.type === 'Lade') {
+    const arr = window.ladeProfil8760?.(asset);
+    if (arr) {
+      let peak = 0;
+      for (let i = 0; i < arr.length; i++) if (arr[i] > peak) peak = arr[i];
+      if (peak > 0) return { mode: 'lade', arr, gzf };
+    }
+    return null; // statischer Fallback im Aufrufer
+  }
+
+  // 3. BDEW-SLP: z.B. Verbraucher mit slpTyp='H0'
   // Typ-basierter Fallback falls slpTyp nie explizit gesetzt wurde
   // (Inspector öffnen schreibt Default jetzt direkt in props, aber für ältere Assets)
-  const SLP_DEFAULTS = { Verbraucher: 'G0', Lade: 'G3' };
+  const SLP_DEFAULTS = { Verbraucher: 'G0' };
   const slpTyp = p.slpTyp || SLP_DEFAULTS[asset.type] || null;
   if (slpTyp) {
     const slp = getSlpProfile(slpTyp);
@@ -112,7 +124,7 @@ function _napBuildProfileDescriptor(asset, gzf) {
     }
   }
 
-  // 3. PV → synthetisches Solarprofil
+  // 4. PV → synthetisches Solarprofil
   if (asset.type === 'PV') {
     const kWp = parseFloat(p.leistungKWp) || 0;
     if (kWp > 0) {
@@ -151,6 +163,10 @@ function _napEvalDescriptor(desc, tsMs) {
   if (desc.mode === 'pv') {
     const v = desc.pvProf[Math.min(hoy, desc.pvProf.length - 1)] * desc.scale;
     return { bezugKW: 0, einspKW: Math.max(0, v) };
+  }
+  if (desc.mode === 'lade') {
+    const v = desc.arr[Math.min(hoy, desc.arr.length - 1)] * desc.gzf;
+    return { bezugKW: v, einspKW: 0 };
   }
   return null;
 }
@@ -258,6 +274,7 @@ window.napOnStromGrundlagenChanged = function() {
       }
     }
   }
+  if (typeof window._pvaRefreshIfVisible === 'function') window._pvaRefreshIfVisible();
 };
 
 // ── Daten-Helfer ─────────────────────────────────────────────────────────────
@@ -656,6 +673,87 @@ export function napComputeSyntheticAndShow() {
   _N.topSeriesMode = result.isOverlay ? 'messungPlusProfil' : 'synthetisch';
   napBuildMassnahmen();
   napRenderPanel();
+}
+
+// Prüft ob eine NAP-Messung vorhanden ist (Basis für Endausbau-Lastgang)
+export function napHasMeasuredData() {
+  return !!(_N.baseMeasuredData || _N.data)?.raw?.length;
+}
+
+// ── Endausbau-Lastgang für PV-Analyse ────────────────────────────────────────
+// Überlagert den gemessenen Bestands-Lastgang additiv mit allen Neubau-/Abriss-
+// Maßnahmen, deren Bau- bzw. Abrissjahr bis (inkl.) bisJahr liegt.
+// Unabhängig vom Checkbox-Status in der NAP-Maßnahmenliste (UI-State).
+// Gibt null zurück wenn keine Messung oder keine relevanten Maßnahmen vorhanden.
+export function napGetEndausbauLastgang(bisJahr) {
+  const baseMeasured = _N.baseMeasuredData || _N.data;
+  if (!baseMeasured?.raw?.length) return null;
+
+  const gzf      = _N.gzf;
+  const allA     = _allAssets();
+  const dataYear = baseMeasured.year || _yr();
+  const zielJahr = bisJahr || dataYear;
+
+  const CONSUMER_TYPES = ['Verbraucher','Lade','WP','Nsa','PV','KWK','Wind','Batterie'];
+  const entries = [];
+  for (const a of allA) {
+    if (!CONSUMER_TYPES.includes(a.type)) continue;
+    const bj = parseInt(a.baujahr)    || null;
+    const aj = parseInt(a.abrissjahr) || null;
+
+    // Neubau: realisiert zwischen Datenjahr und Zieljahr
+    if (bj && bj > dataYear && bj <= zielJahr) {
+      const { loadKW, genKW } = _assetPower(a);
+      const desc = _napBuildProfileDescriptor(a, gzf);
+      entries.push({ asset: a, desc, isAbbruch: false, loadKW, genKW });
+    }
+
+    // Abriss: Asset heute noch vorhanden, Abriss bis Zieljahr durchgeführt
+    if (aj && aj > dataYear && aj <= zielJahr && (!bj || bj <= dataYear)) {
+      const { loadKW, genKW } = _assetPower(a);
+      if (loadKW > 0 || genKW > 0) {
+        const desc = _napBuildProfileDescriptor(a, gzf);
+        entries.push({ asset: a, desc, isAbbruch: true, loadKW, genKW });
+      }
+    }
+  }
+
+  if (!entries.length) return null;
+
+  // Statische Summe für Maßnahmen ohne Profil (Vorzeichen −1 bei Abriss)
+  let staticBezug = 0, staticEinsp = 0;
+  for (const e of entries) {
+    if (e.desc) continue;
+    const sign = e.isAbbruch ? -1 : 1;
+    staticBezug += (e.loadKW || 0) * gzf * sign;
+    staticEinsp += (e.genKW  || 0) * gzf * sign;
+  }
+  const dynEntries = entries.filter(e => !!e.desc);
+
+  const arr = new Float32Array(baseMeasured.raw.length);
+  for (let i = 0; i < baseMeasured.raw.length; i++) {
+    const pt = baseMeasured.raw[i];
+    let addB = staticBezug, addE = staticEinsp;
+    for (const e of dynEntries) {
+      const r = _napEvalDescriptor(e.desc, +pt.ts);
+      if (r) {
+        const sign = e.isAbbruch ? -1 : 1;
+        addB += r.bezugKW * sign;
+        addE += r.einspKW * sign;
+      }
+    }
+    arr[i] = pt.kw + addB - addE;
+  }
+
+  return {
+    arr,
+    n: arr.length,
+    jahr: zielJahr,
+    dataYear,
+    nMassnahmen: entries.length,
+    nNeubau: entries.filter(e => !e.isAbbruch).length,
+    nAbriss: entries.filter(e => e.isAbbruch).length,
+  };
 }
 
 // ── CSV-Import ───────────────────────────────────────────────────────────────
@@ -1741,7 +1839,7 @@ function _napBuildKalibrierungEntries() {
     const sw          = parseInt(building?.stockwerke) || 1;
     const nutzflaeche = Math.round(gf * sw * 0.8);
     // SLP-Typ aus Asset-Props (selbe Quelle wie Inspector + Profil-Berechnung)
-    const SLP_ASSET_DEFAULTS = { Verbraucher: 'G0', Lade: 'G3', WP: 'H0' };
+    const SLP_ASSET_DEFAULTS = { Verbraucher: 'G0', WP: 'H0' };
     const slpTyp      = (asset.props?.slpTyp) || SLP_ASSET_DEFAULTS[asset.type] || 'G0';
     const typeFactor  = factors[slpTyp] ?? 1.0;
     const weight      = nutzflaeche > 0 ? typeFactor * nutzflaeche : 0;
@@ -2036,3 +2134,5 @@ window.napShowKalibrierungDialog    = napShowKalibrierungDialog;
 window.napApplyKalibrierung         = napApplyKalibrierung;
 window.napApplyKalibrierungMitProfil = napApplyKalibrierungMitProfil;
 window.napKalUpdateFactor           = napKalUpdateFactor;
+window.napGetEndausbauLastgang      = napGetEndausbauLastgang;
+window.napHasMeasuredData           = napHasMeasuredData;

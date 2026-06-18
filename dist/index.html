@@ -4788,7 +4788,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-06-17';
+  var d = '2026-06-18';
   if (d.indexOf('__') === 0) d = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -63830,7 +63830,9 @@ function updateNetzColorLegend() {
 
 
 
+
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 
 // Guard against HMR re-init: reuse cached instance if container is already initialized
 var map = window._appLeafletMap || (() => {
@@ -70179,6 +70181,9 @@ function startNetzEdgeFrom(id) {
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
+
+
+
 function updateTotals(){
   let tw=0, th=0;
   window.gebaeude.forEach(g=>{
@@ -73175,6 +73180,11 @@ window._ebpSatellit = function(checked) {
 
 
 
+
+
+
+
+
 var _emCurrentTab = 'em-stunden';
 var _emZoom = { startH: 0, endH: 8760 };
 var _emRubber = null;
@@ -74623,6 +74633,12 @@ function exportVergleichCSV() {
 // ── 05a-export.js ──
 // â”€â”€ 05a-export.js â€” CSV-Export, PDF-Report, Druckansicht â”€â”€
 // â”€â”€ Export: Dispatch CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+
+
+
+
+
 
 
 
@@ -83074,6 +83090,7 @@ function moSwap(key, dir) {
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
+
 var saCurrentTab = 'lastgang';
 
 // ── Farben aus ERZEUGER_CFG (nach dem Laden geladen) + Fallbacks ──────────
@@ -90545,14 +90562,14 @@ window._pvAnalyse = window._pvAnalyse || {
   erzNetz: { laengeM: 0, preisPrM: 250, typKabel: 'NS', schutzEUR: 5000 },
   skKVA: 0,            // Kurzschlussleistung S_k″ am NAP (kVA); 0 = unbekannt → nur Leistungskriterium
   uBudgetPct: 3,       // zulässige Spannungsanhebung durch Einspeisung (VDE-AR-N 4105: 3 % NS, 4110: 2 % MS)
-  customVarianten: [],        // { id, label, pvKwp, batKwh }
   spotPreise: null,           // Float32Array[N] in ct/kWh (null = nicht geladen)
   spotJahr: null,
   spotStatus: 'nicht geladen',
   napMaxEinspKw: 0,           // 0 = unbegrenzt
   napMaxBezugKw: 0,           // 0 = unbegrenzt
   pvMaxKwpOverride: 0,        // 0 = aus Assets berechnen
-  demandMode: 'basis',        // 'basis' = nur Strom-Lastgang | 'gesamt' = + WP + SK
+  demandMode: 'basis',        // 'basis' = nur Strom-Lastgang | 'gesamt' = + WP + SK | 'endausbau' = NAP-Endausbau-Lastgang
+  endausbauJahr: new Date().getFullYear() + 15, // Zieljahr für Endausbau-Lastgang
   ergebnisse: [],             // berechnete Varianten-Ergebnisse
   berechnet: false,
 };
@@ -90579,6 +90596,14 @@ function pvGetDemandH() {
   const b1h   = window.elQuartierH;
   const wpH   = window._wpElHourly;
   const skH   = window._skElHourly;
+
+  // Endausbau-Modus: gemessener Lastgang + NAP-Maßnahmen (Neubau/Abriss) bis Zieljahr
+  if (mode === 'endausbau') {
+    const jahr = window._pvAnalyse?.endausbauJahr;
+    const result = window.napGetEndausbauLastgang?.(jahr);
+    if (result?.arr) return result.arr;
+    return b15 || b1h || null; // Fallback auf Basis, falls keine NAP-Messung/Maßnahmen vorhanden
+  }
 
   // Im Basis-Modus oder wenn keine Zusatzdaten vorhanden: nativen Lastgang zurückgeben
   if (mode === 'basis' || (!wpH && !skH)) return b15 || b1h || null;
@@ -90780,6 +90805,7 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
   let batVerlustMwh = 0, spotRevenue = 0;  // spotRevenue in € (ct/kWh × MWh / 10)
   let maxEinspeiseKw = 0, einspeiseStunden = 0;  // Rückspeise-Spitze & -Dauer am NAP
   const batSocArr = new Float32Array(N);
+  const deckungArr = new Float32Array(N);  // Anteil des Bedarfs gedeckt durch PV+Batterie (0..1), je Zeitschritt
 
   for (let t = 0; t < N; t++) {
     const dem    = demandH[t];
@@ -90828,6 +90854,10 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
       soc  -= dEkwh / ETA; batVerlustMwh += (dEkwh / ETA - dEkwh);
       rDem -= dEkwh / dt;
     }
+
+    // Deckungsgrad dieser Stunde (vor Netzbezugs-Kappung in Schritt 6, denn die
+    // betrifft nur das KPI "ungedeckter Bedarf", nicht den Autarkiegrad).
+    deckungArr[t] = dem > 0 ? Math.max(0, Math.min(1, (dem - rDem) / dem)) : 1;
 
     // 5a. Spot-Arbitrage ('spot'): Zusatz-Einspeisung wenn Preis ≥ 150% Ø.
     //     SOC-Reserve 15% sichern, damit abends Eigenverbrauch gedeckt bleibt.
@@ -90879,7 +90909,7 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
 
   // batVerlustMwh wird oben in kWh akkumuliert → hier auf MWh normieren (Konsistenz)
   return { eigenMwh, einspeiseMwh, netzbezugMwh, curtailMwh, batVerlustMwh: batVerlustMwh / 1000,
-           maxEinspeiseKw, einspeiseStunden, batSocArr, spotRevenue };
+           maxEinspeiseKw, einspeiseStunden, batSocArr, deckungArr, spotRevenue };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -91375,22 +91405,6 @@ function pvBerechneAlle() {
     if (eMaxPv && nullAbrHinweis) eMaxPv.hinweis = nullAbrHinweis;
   }
 
-  // ── Benutzerdefinierte Varianten ──
-  for (const cv of state.customVarianten) {
-    if (cv.pvKwp <= 0) continue;
-    const ertragMwh = cv.pvKwp * spez / 1000;
-    const strat = cv.batKwh > 0 ? 'ev' : 'none';
-    const sim   = pvNapSim(cv.pvKwp, cv.batKwh, demandH, pvProfile, napParams, strat, spotH);
-    const wirt  = pvWirtschaft(cv.pvKwp, cv.batKwh, sim, ertragMwh, params, strat);
-    ergebnisse.push({
-      id: cv.id, label: cv.label, farbe: '#ff7043', icon: '✎',
-      info: { label: cv.label, frage: 'Manuell definiert', ziel: 'Vom Nutzer vorgegebene Auslegung',
-        herleitung: `Frei gewählte Kombination: ${cv.pvKwp} kWp${cv.batKwh > 0 ? ` + ${cv.batKwh} kWh Batterie` : ''}.`,
-        bewertung:  'Vergleichswert zu den automatischen Varianten.' },
-      pvKwp: cv.pvKwp, batKwh: cv.batKwh, strategie: strat, ertragMwh, sim, wirt,
-    });
-  }
-
   // ── Rückspeise- & Erzeugungsnetz-Beurteilung je Variante ──
   const skKVA      = parseFloat(document.getElementById('pva-sk')?.value) || state.skKVA || 0;
   const uBudgetPct = state.uBudgetPct || 3;
@@ -91415,6 +91429,8 @@ function pvBerechneAlle() {
   renderScatterChart(ergebnisse);
   renderRueckAmpel(ergebnisse);
   renderEnergieFluss(demandH, pvProfile, napParams, params, ergebnisse);
+  renderAutarkieHeatmap(ergebnisse);
+  renderSensitivitaet(ergebnisse);
   _pvUpdateBerechnenBtn(false);
 }
 
@@ -91473,6 +91489,24 @@ function initPvAnalyse() {
   pvaShowSection(true);
 }
 
+// Wird nach Upload/Löschen des Strom-Lastgangs (auch über den Upload-Button hier im
+// PVA-Panel) aufgerufen, damit Status-Zeilen, Buttons usw. aktualisiert werden.
+window._pvaRefreshIfVisible = function _pvaRefreshIfVisible() {
+  const wrap = document.getElementById('analyse-pva-wrap');
+  if (wrap && wrap.style.display !== 'none') _pvInitInWrap(wrap);
+};
+
+// Spannungsebene-Auswahl liefert nur einen Richtwert für S_k″ — abhängig vom
+// vorgelagerten Netz (Trafo, Leitungslänge), nicht von der Anschlussleistung.
+window.pvSpannungsebeneChanged = function pvSpannungsebeneChanged(ebene) {
+  const richtwerte = { ns: 500, ms: 10000 };
+  const sk = richtwerte[ebene];
+  if (sk == null) return;
+  const el = document.getElementById('pva-sk');
+  if (el) el.value = sk;
+  window._pvAnalyse.skKVA = sk;
+};
+
 function _pvBuildPanelHtml() {
   return `
 <div style="padding:20px 24px;">
@@ -91485,72 +91519,151 @@ function _pvBuildPanelHtml() {
     <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:11px;">← Zurück zur Karte</button>
   </div>
 
-  <!-- Steuer-Deck: alle Parameter als kompaktes Kartenraster (kein leerer Raum mehr) -->
-  <div class="pva-controls" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(244px,1fr));gap:12px;align-items:start;">
+  <!-- Steuer-Deck: ein großer strukturierter Container statt vieler kleiner Karten -->
+  <div class="pva-controls" style="display:flex;flex-direction:column;gap:12px;">
 
-      <!-- Lastgang-Basis -->
-      ${(() => {
-        const mode   = window._pvAnalyse.demandMode || 'basis';
-        const hasBase = !!(window.elQuartierH15 || window.elQuartierH);
-        const hasWP  = !!(window._wpElHourly || window._skElHourly);
+    <!-- Abschnitt 1: Stromlast-Basis & Strompreise -->
+    ${(() => {
+      const mode   = window._pvAnalyse.demandMode || 'basis';
+      const hasBase = !!(window.elQuartierH15 || window.elQuartierH);
+      const hasWP  = !!(window._wpElHourly || window._skElHourly);
 
-        const baseMwh = (() => {
-          const a = window.elQuartierH15 || window.elQuartierH;
-          if (!a) return 0;
-          let s = 0; for (let i = 0; i < a.length; i++) s += a[i];
-          return (s * (a.length > 9000 ? 0.25 : 1) / 1000).toFixed(0);
-        })();
-        const wpMwh = _pvArrMwh(window._wpElHourly).toFixed(0);
-        const skMwh = _pvArrMwh(window._skElHourly).toFixed(0);
+      const baseInfo = (() => {
+        const a = window.elQuartierH15 || window.elQuartierH;
+        if (!a) return null;
+        let s = 0; for (let i = 0; i < a.length; i++) s += a[i];
+        const mwh = (s * (a.length > 9000 ? 0.25 : 1) / 1000).toFixed(0);
+        const filename = window.elQuartierFilename;
+        const resLbl = window.elQuartierResolution === 15
+          ? `15-min · ${a.length.toLocaleString('de-DE')} Werte`
+          : `stündlich · ${a.length.toLocaleString('de-DE')} Werte`;
+        return { mwh, filename, resLbl };
+      })();
+      const wpMwh = _pvArrMwh(window._wpElHourly).toFixed(0);
+      const skMwh = _pvArrMwh(window._skElHourly).toFixed(0);
 
-        const btnStyle = (active) =>
-          `flex:1;padding:4px 6px;border-radius:3px;cursor:pointer;font-size:9px;font-weight:600;border:1px solid var(--border);` +
-          (active ? 'background:#fdd835;color:#000;' : 'background:var(--surface);color:var(--text);');
+      const btnStyle = (active) =>
+        `flex:1;padding:4px 6px;border-radius:3px;cursor:pointer;font-size:9px;font-weight:600;border:1px solid var(--border);` +
+        (active ? 'background:#fdd835;color:#000;' : 'background:var(--surface);color:var(--text);');
 
-        const zeilen = [
-          `<div style="font-size:8px;color:var(--muted);line-height:1.6;">Strom-Lastgang: <b style="color:${hasBase?'var(--text)':'#ef9a9a'}">${hasBase ? baseMwh+' MWh/a' : 'nicht geladen'}</b></div>`,
-          hasWP
-            ? `<div style="font-size:8px;color:var(--muted);line-height:1.6;">Wärmepumpen: <b style="color:var(--text)">${wpMwh} MWh/a</b>` +
-              (window._skElHourly ? ` · Stromkessel: <b style="color:var(--text)">${skMwh} MWh/a</b>` : '') + `</div>`
-            : `<div style="font-size:8px;color:#607d8b;line-height:1.6;">WP / SK: — (Wärmesimulation ausführen)</div>`,
-        ].join('');
+      // Planungsjahr (Endausbau-Zieljahr) als Slider; Vorschau zeigt Anzahl Maßnahmen bis Zieljahr
+      const curYear = globalYear || new Date().getFullYear();
+      const endausbauJahr = window._pvAnalyse.endausbauJahr || (curYear + 15);
+      const hasNapMessung = !!window.napHasMeasuredData?.();
+      const endausbauPreview = hasNapMessung ? window.napGetEndausbauLastgang?.(endausbauJahr) : null;
 
-        return `
-        <div style="background:var(--surface2);border-radius:7px;padding:10px 12px;border:1px solid var(--border);">
-          <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">
-            Stromlast-Basis
-            <span class="htip" data-tip="Welche Lasten werden für die PV-Simulation verwendet?&#10;· Nur Strom: hochgeladener Quartierlastgang&#10;· + Wärmepumpen: addiert WP- &amp; Stromkessel-Strom aus Wärmesimulation">?</span>
+      const endausbauZeile = mode === 'endausbau'
+        ? (endausbauPreview
+            ? `<div style="font-size:8px;color:var(--muted);line-height:1.6;margin-top:4px;">Endausbau ${endausbauPreview.jahr}: <b style="color:var(--text)">${endausbauPreview.nNeubau} Neubau · ${endausbauPreview.nAbriss} Abriss</b></div>`
+            : `<div style="font-size:8px;color:#ef9a9a;line-height:1.6;margin-top:4px;">Keine NAP-Messung/Maßnahmen → Fallback auf Strom-Lastgang</div>`)
+        : '';
+
+      const spotInfo = window.elSpotPreiseH
+        ? `${window.elSpotPreiseFilename || '?'} · Ø ${(window.elSpotPreiseH.reduce((s,v)=>s+v,0)/window.elSpotPreiseH.length).toFixed(1)} ct/kWh · ${window.elSpotPreiseH.length.toLocaleString('de-DE')} Werte`
+        : null;
+
+      return `
+      <div style="background:var(--surface2);border-radius:7px;padding:12px 14px;border:1px solid var(--border);">
+        <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">
+          Stromlast-Basis &amp; Strompreise
+          <span class="htip" data-tip="Welche Lasten werden für die PV-Simulation verwendet?&#10;· Nur Strom: hochgeladener Quartierlastgang&#10;· + Wärmepumpen: addiert WP- &amp; Stromkessel-Strom aus Wärmesimulation&#10;· Endausbau: NAP-Messung + Neubau-/Abriss-Maßnahmen aus der NAP-Analyse bis zum Planungsjahr">?</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;">
+
+          <!-- Lastgang-Upload & Modus -->
+          <div>
+            <div id="pva-strom-upload-area" data-click="document.getElementById('pva-strom-file-input').click()"
+              style="border:1px dashed var(--border);border-radius:6px;padding:7px 10px;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;gap:8px;transition:.15s;"
+              onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
+              <span style="font-size:14px;">📂</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:9px;color:var(--muted);">Strom-Lastgang CSV hochladen — 15-min oder Stunden (kW)</div>
+                <div style="font-size:9px;margin-top:2px;color:${hasBase?'var(--text)':'#ef9a9a'};">
+                  ${hasBase
+                    ? `${baseInfo.filename ? baseInfo.filename + ' · ' : ''}${baseInfo.mwh} MWh/a · ${baseInfo.resLbl}`
+                    : 'nicht geladen'}
+                </div>
+              </div>
+            </div>
+            <input type="file" id="pva-strom-file-input" accept=".csv,.txt" style="display:none;" data-change="stromFileSelected(this.files[0])"/>
+
+            <div style="display:flex;gap:4px;margin-bottom:6px;">
+              <button id="pva-dm-basis" data-pva-dm="basis" style="${btnStyle(mode==='basis')}">Nur Strom</button>
+              <button id="pva-dm-gesamt" data-pva-dm="gesamt"
+                style="${btnStyle(mode==='gesamt')}${!hasWP ? 'opacity:0.4;cursor:default;' : ''}"
+                ${!hasWP ? 'disabled' : ''}>+ Wärmepumpen</button>
+              <button id="pva-dm-endausbau" data-pva-dm="endausbau"
+                style="${btnStyle(mode==='endausbau')}${!hasNapMessung ? 'opacity:0.4;cursor:default;' : ''}"
+                ${!hasNapMessung ? 'disabled' : ''}>Endausbau</button>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;${mode==='endausbau'?'':'opacity:0.5;'}">
+              <span style="font-size:9px;color:var(--muted);white-space:nowrap;">Planungsjahr:</span>
+              <input id="pva-endausbau-jahr" type="range" value="${endausbauJahr}" min="${curYear}" max="2060" step="1"
+                style="flex:1;accent-color:#fdd835;"
+                ${mode==='endausbau' ? '' : 'disabled'}
+                data-input="document.getElementById('pva-endausbau-jahr-val').textContent=this.value;window._pvAnalyse.endausbauJahr=parseInt(this.value)||window._pvAnalyse.endausbauJahr;window._pvAnalyse.berechnet=false;"/>
+              <span id="pva-endausbau-jahr-val" style="font-size:10px;color:var(--text);font-family:'DM Mono',monospace;min-width:34px;text-align:right;">${endausbauJahr}</span>
+            </div>
+
+            <div style="font-size:8px;color:var(--muted);line-height:1.6;margin-top:6px;">
+              ${hasWP
+                ? `Wärmepumpen: <b style="color:var(--text)">${wpMwh} MWh/a</b>` +
+                  (window._skElHourly ? ` · Stromkessel: <b style="color:var(--text)">${skMwh} MWh/a</b>` : '')
+                : `<span style="color:#607d8b;">WP / SK: — (Wärmesimulation ausführen)</span>`}
+            </div>
+            ${endausbauZeile}
           </div>
-          <div style="display:flex;gap:4px;margin-bottom:6px;">
-            <button id="pva-dm-basis" data-pva-dm="basis" style="${btnStyle(mode==='basis')}">Nur Strom</button>
-            <button id="pva-dm-gesamt" data-pva-dm="gesamt"
-              style="${btnStyle(mode==='gesamt')}${!hasWP ? 'opacity:0.4;cursor:default;' : ''}"
-              ${!hasWP ? 'disabled' : ''}>+ Wärmepumpen</button>
+
+          <!-- Spot-Preise & Strompreise -->
+          <div>
+            <div id="pva-spot-upload-area" data-click="document.getElementById('pva-spot-file-input').click()"
+              style="border:1px dashed var(--border);border-radius:6px;padding:7px 10px;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;gap:8px;transition:.15s;"
+              onmouseenter="this.style.borderColor='#ab47bc'" onmouseleave="this.style.borderColor='var(--border)'">
+              <span style="font-size:14px;">💹</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:9px;color:var(--muted);">Spot-Preise CSV (EPEX DE, SMARD/ENTSO-E)</div>
+                <div id="pva-spot-status" style="font-size:9px;margin-top:2px;color:${spotInfo ? '#ab47bc' : 'var(--muted)'};">
+                  ${spotInfo || 'nicht geladen'}
+                </div>
+              </div>
+            </div>
+            <input type="file" id="pva-spot-file-input" accept=".csv,.txt" style="display:none;" data-change="spotPreisFileSelected(this.files[0])"/>
+            <div style="font-size:8px;color:#607d8b;">Wenn vorhanden, rechnen 'Wirtschaftlich optimiert' und 'Max PV' mit Börsenerlösen statt fester Einspeisevergütung.</div>
+
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:10px;margin-top:10px;">
+              ${_pvWirtInput('pva-p-strom', 'Strombezugspreis (ct/kWh)', 30)}
+              ${_pvWirtInput('pva-p-einsp', 'Einspeisevergütung (ct/kWh)', 8)}
+            </div>
           </div>
-          ${zeilen}
-        </div>`;
-      })()}
+
+        </div>
+      </div>`;
+    })()}
+
+    <!-- Abschnitt 2: NAP-Parameter & PV-Parameter -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
 
       <!-- NAP-Parameter -->
-      <div style="background:var(--surface2);border-radius:7px;padding:10px 12px;border:1px solid var(--border);">
+      <div style="background:var(--surface2);border-radius:7px;padding:12px 14px;border:1px solid var(--border);">
         <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">
           Netzanschlusspunkt (NAP)
-          <span class="htip" data-tip="Grenzen am Netzanschlusspunkt. 0 = unbegrenzt. Einspeisebegrenzung aktiviert Abregelungs-KPI und erzwingt Batterie-Pufferung.">?</span>
+          <span class="htip" data-tip="Grenzen am Netzanschlusspunkt. 0 = unbegrenzt. Einspeisebegrenzung aktiviert Abregelungs-KPI und erzwingt Batterie-Pufferung. Verknüpft mit den NAP-Grenzen in ⚡ Strom-Grundlagen.">?</span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;">
           <div>
             <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Max. Einspeisung (kW)</div>
             <input id="pva-nap-einsp" type="number" value="0" min="0" step="10"
               style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-              data-change="window._pvAnalyse.napMaxEinspKw=parseFloat(this.value)||0"
-              title="0 = kein Limit"/>
+              data-change="window._pvAnalyse.napMaxEinspKw=parseFloat(this.value)||0;window.elNapMaxEinspKw=window._pvAnalyse.napMaxEinspKw||null;(document.getElementById('strom-nap-einsp-kw')||{}).value=this.value"
+              title="0 = kein Limit · verknüpft mit ⚡ Strom-Grundlagen"/>
           </div>
           <div>
             <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Max. Bezug (kW)</div>
             <input id="pva-nap-bezug" type="number" value="0" min="0" step="10"
               style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-              data-change="window._pvAnalyse.napMaxBezugKw=parseFloat(this.value)||0"
-              title="0 = kein Limit"/>
+              data-change="window._pvAnalyse.napMaxBezugKw=parseFloat(this.value)||0;window.elNapMaxBezugKw=window._pvAnalyse.napMaxBezugKw||null;(document.getElementById('strom-nap-bezug-kw')||{}).value=this.value"
+              title="0 = kein Limit · verknüpft mit ⚡ Strom-Grundlagen"/>
           </div>
         </div>
         <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
@@ -91558,6 +91671,14 @@ function _pvBuildPanelHtml() {
             Netzstärke (für Rückspeise-Bewertung)
             <span class="htip" data-tip="Kurzschlussleistung S_k″ am NAP (aus VNB-Netzauskunft). Damit wird die Spannungsanhebung Δu ≈ 100·P_rückspeise/S_k″ je Variante abgeschätzt (VDE-AR-N 4105: 3 % Budget). 0 = unbekannt → nur das Leistungskriterium (Spitze vs. Max. Einspeisung) wird genutzt.">?</span>
           </div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Spannungsebene (Richtwert für S_k″)</div>
+          <select id="pva-spannungsebene"
+            style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:6px;"
+            data-change="pvSpannungsebeneChanged(this.value)">
+            <option value="">– wählen (nur Richtwert) –</option>
+            <option value="ns">Niederspannung NS (0,4 kV) — ~500 kVA</option>
+            <option value="ms">Mittelspannung MS (10/20 kV) — ~10.000 kVA</option>
+          </select>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;">
             <div>
               <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">S_k″ (kVA)</div>
@@ -91574,11 +91695,12 @@ function _pvBuildPanelHtml() {
                 title="Zulässige Spannungsanhebung: 3 % NS (4105), 2 % MS (4110)"/>
             </div>
           </div>
+          <div style="font-size:8px;color:#607d8b;margin-top:4px;">S_k″ hängt vom vorgelagerten Netz (Trafo, Leitungslänge) ab, nicht von der eigenen Anschlussleistung — die Spannungsebene liefert nur einen groben Richtwert. Bei VNB-Netzauskunft bitte überschreiben.</div>
         </div>
       </div>
 
       <!-- PV-Parameter -->
-      <div style="background:var(--surface2);border-radius:7px;padding:10px 12px;border:1px solid var(--border);">
+      <div style="background:var(--surface2);border-radius:7px;padding:12px 14px;border:1px solid var(--border);">
         <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">
           PV-Parameter
           <span class="htip" data-tip="Max kWp aus Projekt: Summe aller PV-Anlagen (Gebäude-PV, Freiflächen, Strom-Panel kWp-Feld). 0 = kein PV im Projekt definiert → Max kWp manuell eingeben.">?</span>
@@ -91605,22 +91727,26 @@ function _pvBuildPanelHtml() {
           data-change="window._pvAnalyse.pvMaxKwpOverride=parseFloat(this.value)||0"/>
       </div>
 
-      <!-- Infrastruktur -->
-      <div style="background:var(--surface2);border-radius:7px;padding:10px 12px;border:1px solid var(--border);">
-        <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">
-          Infrastrukturkosten
-          <span class="htip" data-tip="Netzanschluss und Zusatzkosten je PV-Leistungsstufe. Werden automatisch der Variante zugeordnet.">?</span>
-        </div>
+    </div>
+
+    <!-- Abschnitt 3: Infrastruktur -->
+    <div style="background:var(--surface2);border-radius:7px;padding:12px 14px;border:1px solid var(--border);">
+      <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">
+        Infrastrukturkosten
+        <span class="htip" data-tip="Netzanschluss und Zusatzkosten je PV-Leistungsstufe — Werte editierbar. Werden automatisch der Variante zugeordnet.">?</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
         <div id="pva-infra-stufen" style="font-size:9px;"></div>
-        <!-- Erzeugungsnetz -->
-        <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:9px;color:var(--text);">
+
+        <div>
+          <!-- Erzeugungsnetz -->
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:9px;color:var(--text);margin-bottom:6px;">
             <input type="checkbox" id="pva-erznetz-aktiv"
-              data-change="window._pvAnalyse.erzNetzAktiv=this.checked;document.getElementById('pva-erznetz-detail').style.display=this.checked?'block':'none'"
+              data-change="window._pvAnalyse.erzNetzAktiv=this.checked;document.getElementById('pva-erznetz-detail').style.display=this.checked?'grid':'none'"
               style="accent-color:#fdd835;">
             Erzeugungsnetz (dediziert)
           </label>
-          <div id="pva-erznetz-detail" style="display:none;margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+          <div id="pva-erznetz-detail" style="display:none;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px;">
             <div>
               <div style="font-size:8px;color:var(--muted);">Länge (m)</div>
               <input id="pva-erznetz-laenge" type="number" value="0" min="0" step="10"
@@ -91640,9 +91766,7 @@ function _pvBuildPanelHtml() {
                 data-change="window._pvAnalyse.erzNetz.schutzEUR=parseFloat(this.value)||5000"/>
             </div>
           </div>
-        </div>
-        <!-- Mehrkostenprinzip -->
-        <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+          <!-- Mehrkostenprinzip -->
           <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">
             Mehrkosten (geteilte Infrastruktur)
             <span class="htip" data-tip="Infrastruktur die sowieso ertüchtigt werden müsste, aber wegen PV anders dimensioniert wird: Differenzkosten eingeben.">?</span>
@@ -91666,55 +91790,19 @@ function _pvBuildPanelHtml() {
             data-change="window._pvAnalyse.mehrkosten.label=this.value"/>
         </div>
       </div>
+    </div>
 
-      <!-- Eigene Variante hinzufügen -->
-      <div style="background:var(--surface2);border-radius:7px;padding:10px 12px;border:1px solid var(--border);">
-        <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">Eigene Variante</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
-          <div>
-            <div style="font-size:8px;color:var(--muted);">kWp</div>
-            <input id="pva-custom-kwp" type="number" value="" min="0" step="10"
-              style="width:100%;padding:3px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;"/>
-          </div>
-          <div>
-            <div style="font-size:8px;color:var(--muted);">Bat kWh</div>
-            <input id="pva-custom-kwh" type="number" value="" min="0" step="10"
-              style="width:100%;padding:3px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;"/>
-          </div>
-        </div>
-        <input id="pva-custom-label" type="text" placeholder="Bezeichnung..."
-          style="width:100%;margin-bottom:4px;padding:3px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:9px;box-sizing:border-box;"/>
-        <button class="btn-secondary" style="width:100%;font-size:9px;padding:4px 0;"
-          data-click="pvAddCustomVariante()">+ Variante hinzufügen</button>
-        <div id="pva-custom-list" style="margin-top:6px;font-size:9px;"></div>
+    <!-- Abschnitt 4: Wirtschaftsparameter -->
+    <div style="background:var(--surface2);border-radius:7px;padding:12px 14px;border:1px solid var(--border);">
+      <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">Wirtschaftsparameter</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;font-size:10px;">
+        ${_pvWirtInput('pva-pv-invest', 'PV-Invest (€/kWp)', OPT_INVEST_DEFAULT.pv)}
+        ${_pvWirtInput('pva-bat-invest','Bat-Invest (€/kWh)', OPT_INVEST_DEFAULT.bat)}
+        ${_pvWirtInput('pva-zins',      'Zinssatz (%)', 3.5)}
+        ${_pvWirtInput('pva-pv-life',   'PV-Nutzungsdauer (a)', 20)}
+        ${_pvWirtInput('pva-bat-life',  'Bat-Nutzungsdauer (a)', 15)}
       </div>
-
-      <!-- Spot-Preise -->
-      <div style="background:var(--surface2);border-radius:7px;padding:10px 12px;border:1px solid var(--border);">
-        <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:6px;">
-          Spot-Preise (EPEX DE)
-          <span class="htip" data-tip="Spot-Preise in ⚡ Strom-Grundlagen hochladen (SMARD, ENTSO-E o.ä.). Wenn vorhanden, rechnen 'Wirtschaftlich optimiert' und 'Max PV' mit Börsenerlösen statt fester Einspeisevergütung (keine Einspeisung bei Negativpreisen, aktive Speicherentladung bei positiven Preisen).">?</span>
-        </div>
-        <div id="pva-spot-status" style="font-size:9px;color:${window.elSpotPreiseH ? '#ab47bc' : 'var(--muted)'};">
-          ${window.elSpotPreiseH
-            ? `${window.elSpotPreiseFilename || '?'} · Ø ${(window.elSpotPreiseH.reduce((s,v)=>s+v,0)/window.elSpotPreiseH.length).toFixed(1)} ct/kWh`
-            : 'nicht geladen — in ⚡ Strom-Grundlagen hochladen'}
-        </div>
-      </div>
-
-      <!-- Invest + Wirtschaft -->
-      <div style="background:var(--surface2);border-radius:7px;padding:10px 12px;border:1px solid var(--border);">
-        <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">Wirtschaftsparameter</div>
-        <div style="display:flex;flex-direction:column;gap:5px;font-size:10px;">
-          ${_pvWirtInput('pva-p-strom',   'Strombezugspreis (ct/kWh)', 30)}
-          ${_pvWirtInput('pva-p-einsp',   'Einspeisevergütung (ct/kWh)', 8)}
-          ${_pvWirtInput('pva-pv-invest', 'PV-Invest (€/kWp)', OPT_INVEST_DEFAULT.pv)}
-          ${_pvWirtInput('pva-bat-invest','Bat-Invest (€/kWh)', OPT_INVEST_DEFAULT.bat)}
-          ${_pvWirtInput('pva-zins',      'Zinssatz (%)', 3.5)}
-          ${_pvWirtInput('pva-pv-life',   'PV-Nutzungsdauer (a)', 20)}
-          ${_pvWirtInput('pva-bat-life',  'Bat-Nutzungsdauer (a)', 15)}
-        </div>
-      </div>
+    </div>
 
   </div>
 
@@ -91771,7 +91859,13 @@ function _pvBuildPanelHtml() {
     <div id="pva-chart-rueck" style="margin-bottom:22px;overflow:hidden;"></div>
 
     <!-- Abb. 7 — Interaktives Energieflussdiagramm -->
-    <div id="pva-chart-fluss" style="margin-bottom:8px;overflow:hidden;"></div>
+    <div id="pva-chart-fluss" style="margin-bottom:22px;overflow:hidden;"></div>
+
+    <!-- Abb. 8 — Autarkie-Heatmap (Jahresverlauf) -->
+    <div id="pva-chart-autarkie-heatmap" style="margin-bottom:22px;overflow:hidden;"></div>
+
+    <!-- Abb. 9 — Sensitivitätsanalyse (Tornado) -->
+    <div id="pva-chart-sensitivitaet" style="margin-bottom:8px;overflow:hidden;"></div>
 
   </div>
 </div>`;
@@ -92092,13 +92186,9 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
     for (let i = 0; i < nx; i++) {
       const kwp = (i / (nx - 1)) * maxKwp;
       const bat = (j / (ny - 1)) * batMax;
-      let val;
-      if (kwp <= 0) val = 0;
-      else {
-        const strat = bat > 0 ? (spotH ? 'spot-dyn' : 'ev') : 'none';
-        const sim   = pvNapSim(kwp, bat, demandH, pvProfile, napParams, strat, spotH);
-        val = -pvWirtschaft(kwp, bat, sim, kwp * spez / 1000, params, strat).nettoJk;
-      }
+      const strat = bat > 0 ? (spotH ? 'spot-dyn' : 'ev') : 'none';
+      const sim   = pvNapSim(kwp, bat, demandH, pvProfile, napParams, strat, spotH);
+      const val   = -pvWirtschaft(kwp, bat, sim, kwp * spez / 1000, params, strat).nettoJk;
       grid[j][i] = val;
       if (val < vMin) vMin = val;
       if (val > vMax) vMax = val;
@@ -92396,12 +92486,9 @@ function _pvBindEvents() {
       if (btn.disabled) return;
       window._pvAnalyse.demandMode = mode;
       window._pvAnalyse.berechnet  = false; // Ergebnisse invalidieren
-      // Buttonfarben aktualisieren
-      document.querySelectorAll('[data-pva-dm]').forEach(b => {
-        const active = b.dataset.pvaDm === mode;
-        b.style.background = active ? '#fdd835' : 'var(--surface)';
-        b.style.color      = active ? '#000'    : 'var(--text)';
-      });
+      // Panel komplett neu rendern (Zieljahr-Input-Status + Endausbau-Vorschau aktualisieren)
+      const wrap = document.getElementById('analyse-pva-wrap');
+      if (wrap) _pvInitInWrap(wrap);
     });
   });
 }
@@ -92418,6 +92505,9 @@ function _pvSyncFromState() {
   set('pva-sk',                 s.skKVA || 0);
   set('pva-ubudget',            s.uBudgetPct || 3);
   set('pva-max-kwp',            s.pvMaxKwpOverride || 0);
+  set('pva-endausbau-jahr',     s.endausbauJahr || ((globalYear || new Date().getFullYear()) + 15));
+  const jahrVal = document.getElementById('pva-endausbau-jahr-val');
+  if (jahrVal) jahrVal.textContent = s.endausbauJahr || ((globalYear || new Date().getFullYear()) + 15);
   set('pva-erznetz-laenge',     s.erzNetz.laengeM  || 0);
   set('pva-erznetz-preis',      s.erzNetz.preisPrM || 250);
   set('pva-erznetz-schutz',     s.erzNetz.schutzEUR || 5000);
@@ -92460,20 +92550,44 @@ function _pvSyncFromState() {
       renderOptSurface3D(d, p, np, prm, s.ergebnisse);
       renderGrenznutzenChart(d, p, np, prm, s.ergebnisse);
       renderEnergieFluss(d, p, np, prm, s.ergebnisse);
+      renderAutarkieHeatmap(s.ergebnisse);
+      renderSensitivitaet(s.ergebnisse);
     }
   }
-  // Custom-Varianten-Liste
-  _pvRenderCustomList();
+}
+
+// Liefert die (ggf. benutzerdefinierten) Kostenpositionen einer Infrastruktur-Stufe.
+// Beim ersten Zugriff wird eine editierbare Kopie der Default-Items angelegt.
+function _pvInfraItems(stufeId) {
+  const state = window._pvAnalyse;
+  if (!state.infraKonfig) state.infraKonfig = {};
+  if (!state.infraKonfig[stufeId]) {
+    const stufe = PV_INFRA_STUFEN.find(s => s.id === stufeId);
+    state.infraKonfig[stufeId] = stufe.items.map(i => ({ ...i }));
+  }
+  return state.infraKonfig[stufeId];
 }
 
 function _pvRenderInfraStufen() {
   const el = document.getElementById('pva-infra-stufen');
   if (!el) return;
   el.innerHTML = PV_INFRA_STUFEN.map(stufe => {
-    const sumInvest = stufe.items.reduce((s, i) => s + (i.aktiv ? i.investEUR : 0), 0);
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
-      <span style="color:var(--muted);font-size:8px;">${stufe.label}</span>
-      <span style="color:var(--text);font-family:'DM Mono',monospace;font-size:8px;">${sumInvest > 0 ? sumInvest.toLocaleString('de-DE') + ' €' : '+'}</span>
+    const items = _pvInfraItems(stufe.id);
+    const rows = items.map((item, idx) => `
+      <div style="display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+        <label style="flex:1;display:flex;align-items:center;gap:5px;color:var(--muted);font-size:8px;cursor:pointer;min-width:0;">
+          <input type="checkbox" ${item.aktiv ? 'checked' : ''} style="accent-color:#fdd835;flex-shrink:0;"
+            data-change="window._pvAnalyse.infraKonfig['${stufe.id}'][${idx}].aktiv=this.checked"/>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.label}</span>
+        </label>
+        <input type="number" value="${item.investEUR || 0}" min="0" step="100"
+          style="width:72px;flex-shrink:0;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;font-size:8px;text-align:right;"
+          data-change="window._pvAnalyse.infraKonfig['${stufe.id}'][${idx}].investEUR=parseFloat(this.value)||0"/>
+        <span style="font-size:8px;color:var(--muted);flex-shrink:0;">€${item.perKwh ? ` +${(item.perKwh * 100).toFixed(1)}ct/kWh` : ''}</span>
+      </div>`).join('');
+    return `<div style="margin-bottom:6px;">
+      <div style="font-size:9px;font-weight:600;color:var(--text);margin-bottom:2px;">${stufe.label}</div>
+      ${rows}
     </div>`;
   }).join('');
 }
@@ -93158,35 +93272,377 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
   );
 }
 
-// ── Eigene Variante hinzufügen/entfernen ──────────────────────────────────
+// ── Abb. 8 — Autarkie-Heatmap: Jahresverlauf der Bedarfsdeckung durch PV + Speicher ─
+// Tag (x) × Stunde (y), Farbe = Deckungsgrad je Stunde (grün = vollständig PV/Batterie,
+// rot = vollständig Netzbezug). Variante per Tab wählbar.
 
-function pvAddCustomVariante() {
-  const kwp   = parseFloat(document.getElementById('pva-custom-kwp')?.value)   || 0;
-  const kwh   = parseFloat(document.getElementById('pva-custom-kwh')?.value)   || 0;
-  const label = document.getElementById('pva-custom-label')?.value?.trim() || `Eigene ${kwp} kWp`;
-  if (kwp <= 0) { alert('Bitte kWp eingeben.'); return; }
-  const id = 'c_' + Date.now();
-  window._pvAnalyse.customVarianten.push({ id, label, pvKwp: kwp, batKwh: kwh });
-  _pvRenderCustomList();
-  document.getElementById('pva-custom-kwp').value = '';
-  document.getElementById('pva-custom-kwh').value = '';
-  document.getElementById('pva-custom-label').value = '';
+var _PVAH_MONTH_DAYS  = [31,28,31,30,31,30,31,31,30,31,30,31];
+var _PVAH_MONTH_NAMES = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+
+function _pvahDayToDate(dayIdx) {
+  let m = 0, d = Math.max(0, Math.min(364, dayIdx));
+  while (m < 11 && d >= _PVAH_MONTH_DAYS[m]) { d -= _PVAH_MONTH_DAYS[m]; m++; }
+  return `${d + 1}. ${_PVAH_MONTH_NAMES[m]}`;
 }
 
-function pvRemoveCustomVariante(id) {
-  window._pvAnalyse.customVarianten = window._pvAnalyse.customVarianten.filter(v => v.id !== id);
-  _pvRenderCustomList();
+// Deckungsgrad (0..1) → Farbe: rot (0 %) → gelb (50 %) → grün (100 %)
+function _pvahColor(v) {
+  v = Math.max(0, Math.min(1, v));
+  const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+  let r, g, b;
+  if (v < 0.5) {
+    const t = v / 0.5;
+    r = lerp(239, 255, t); g = lerp(83, 213, t); b = lerp(80, 79, t);
+  } else {
+    const t = (v - 0.5) / 0.5;
+    r = lerp(255, 102, t); g = lerp(213, 187, t); b = lerp(79, 106, t);
+  }
+  return `rgb(${r},${g},${b})`;
 }
 
-function _pvRenderCustomList() {
-  const el = document.getElementById('pva-custom-list');
-  if (!el) return;
-  el.innerHTML = window._pvAnalyse.customVarianten.map(v =>
-    `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-       <span style="color:var(--text);">${v.label} · ${v.pvKwp} kWp${v.batKwh > 0 ? ' / ' + v.batKwh + ' kWh' : ''}</span>
-       <button data-click="pvRemoveCustomVariante('${v.id}')" style="font-size:9px;padding:1px 5px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;">✕</button>
-     </div>`
-  ).join('');
+// Stündlicher Deckungsgrad aus deckungArr (mittelt 15-min-Schritte falls nötig)
+function _pvahHourly(deckungArr, dt) {
+  if (dt === 1) return deckungArr;
+  const stepsPerHour = Math.round(1 / dt);
+  const nHours = Math.floor(deckungArr.length / stepsPerHour);
+  const out = new Float32Array(nHours);
+  for (let h = 0; h < nHours; h++) {
+    let s = 0;
+    for (let k = 0; k < stepsPerHour; k++) s += deckungArr[h * stepsPerHour + k];
+    out[h] = s / stepsPerHour;
+  }
+  return out;
+}
+
+var _pvahVarId = null;
+var _pvahPvKwp = null;
+var _pvahBatKwh = null;
+
+function renderAutarkieHeatmap(varianten, overrideEl) {
+  const el = overrideEl || document.getElementById('pva-chart-autarkie-heatmap');
+  if (!el || !varianten?.length) return;
+
+  const demandH   = _pvFsArgs?.demandH;
+  const pvProfile = _pvFsArgs?.pvProfile;
+  const napParams = _pvFsArgs?.napParams;
+  if (!demandH || !pvProfile) { el.innerHTML = ''; return; }
+  const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
+  const kanon  = varianten.filter(v => v.info && v.info.frage);
+
+  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
+  const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
+  const pvStep = 1, batStep = 5;
+  const COL = { pv: '#fdd835', es: '#42a5f5' };
+
+  // Startwerte: aktuell gewählte Variante (oder wirtschaftlich optimiert / erste)
+  if (!_pvahVarId || !kanon.some(v => v.id === _pvahVarId)) {
+    const start = kanon.find(v => v.id === 'autarkie') || kanon[0] || varianten[0];
+    _pvahVarId  = start.id;
+    _pvahPvKwp  = start.pvKwp;
+    _pvahBatKwh = start.batKwh;
+  }
+  if (_pvahPvKwp == null || _pvahBatKwh == null) {
+    const v = kanon.find(v => v.id === _pvahVarId) || varianten[0];
+    _pvahPvKwp  = v.pvKwp;
+    _pvahBatKwh = v.batKwh;
+  }
+
+  const dt = demandH.length > 8784 ? 0.25 : 1.0;
+
+  // Tabs zur Varianten-Sprungmarke (setzen beide Slider auf die Variante)
+  const tabs = kanon.map(v =>
+    `<button data-pvah-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
+      style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border:1px solid ${v.farbe};border-radius:10px;background:transparent;color:${v.farbe};font-size:9px;cursor:pointer;white-space:nowrap;">
+      ${v.icon} ${Math.round(v.pvKwp)} kWp${v.batKwh>0?` · ${(v.batKwh/1000).toFixed(v.batKwh<1000?2:1)} MWh`:''}</button>`).join('');
+
+  const elW = el.getBoundingClientRect().width || 700;
+  const W = Math.max(420, elW - 4);
+  const H = overrideEl ? 360 : 220;
+
+  el.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 8 — Autarkie-Heatmap: Bedarfsdeckung durch PV + Speicher im Jahresverlauf
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Slider ziehen oder Variante wählen — die Heatmap aktualisiert sich live</span>
+      <span id="pva-pvah-sub" style="display:block;font-size:8px;color:#a5d6a7;margin-top:2px;"></span>
+    </span>
+    ${overrideEl ? '' : '<button data-pva-fs="autarkie-heatmap" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:8px;align-items:center;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">PV-Leistung</span>
+      <input id="pva-pvah-pv" type="range" min="0" max="${Math.round(maxKwp)}" step="${pvStep}" value="${Math.round(_pvahPvKwp)}" style="flex:1;accent-color:${COL.pv};">
+      <span id="pva-pvah-pv-val" style="font-size:9px;color:${COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvahPvKwp)} kWp</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Batterie</span>
+      <input id="pva-pvah-bat" type="range" min="0" max="${Math.round(batMax)}" step="${batStep}" value="${Math.round(_pvahBatKwh)}" style="flex:1;accent-color:${COL.es};">
+      <span id="pva-pvah-bat-val" style="font-size:9px;color:${COL.es};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(_pvahBatKwh/1000).toFixed(2)} MWh</span>
+    </div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${tabs}</div>
+  <div id="pva-pvah-svg"></div>`;
+
+  const svgWrap = el.querySelector('#pva-pvah-svg');
+  const pvIn  = el.querySelector('#pva-pvah-pv');
+  const batIn = el.querySelector('#pva-pvah-bat');
+  const subEl = el.querySelector('#pva-pvah-sub');
+
+  function draw(pv, bat) {
+    const strat = bat > 0 ? (spotH ? 'spot-dyn' : 'ev') : 'none';
+    const sim    = pvNapSim(pv, bat, demandH, pvProfile, napParams, strat, spotH);
+    const hourly = _pvahHourly(sim.deckungArr, dt);
+    const nDays  = Math.floor(hourly.length / 24);
+
+    const PL = 30, PT = 24, PR = 16, PB = 30;
+    const cW = W - PL - PR, cH = H - PT - PB;
+    const cellW = cW / nDays, cellH = cH / 24;
+
+    // Zellen
+    let cells = '';
+    for (let d = 0; d < nDays; d++) {
+      for (let h = 0; h < 24; h++) {
+        const v = hourly[d * 24 + h] ?? 1;
+        const x = PL + d * cellW, y = PT + h * cellH;
+        cells += `<rect data-pvah-day="${d}" data-pvah-hour="${h}" data-pvah-val="${v.toFixed(4)}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(cellW + 0.3).toFixed(2)}" height="${(cellH + 0.3).toFixed(2)}" fill="${_pvahColor(v)}"/>`;
+      }
+    }
+
+    // Monatsmarken
+    let monthMarks = '';
+    let cum = 0;
+    for (let m = 0; m < 12; m++) {
+      const x = PL + cum * cellW;
+      const wMonth = _PVAH_MONTH_DAYS[m] * cellW;
+      monthMarks += `<text x="${(x + wMonth / 2).toFixed(1)}" y="${(PT - 7).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8">${_PVAH_MONTH_NAMES[m]}</text>`;
+      if (m > 0) monthMarks += `<line x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${(PT + cH).toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+      cum += _PVAH_MONTH_DAYS[m];
+    }
+
+    // Stundenmarken
+    const hourMarks = [0, 6, 12, 18].map(h =>
+      `<text x="${(PL - 5).toFixed(1)}" y="${(PT + h * cellH + cellH / 2 + 3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="8">${h}</text>`
+    ).join('');
+
+    // Legende: Farbverlauf
+    const legW = 120, legH = 8;
+    const legX = PL, legY = PT + cH + 16;
+    const gradId = 'pvah-grad-' + (overrideEl ? 'fs' : 'm');
+    const gradStops = `<stop offset="0%" stop-color="${_pvahColor(0)}"/><stop offset="50%" stop-color="${_pvahColor(0.5)}"/><stop offset="100%" stop-color="${_pvahColor(1)}"/>`;
+
+    // Kennzahl: Anteil vollständig autarker Stunden
+    let fullCount = 0;
+    for (let i = 0; i < hourly.length; i++) if (hourly[i] >= 0.999) fullCount++;
+    const fullPct = (fullCount / hourly.length * 100).toFixed(0);
+
+    // Aktuelle Konfiguration einer kanonischen Variante zuordnen (für Label/Farbe)
+    const match = kanon.find(v => v.pvKwp === pv && v.batKwh === bat);
+    const farbe = match ? match.farbe : COL.pv;
+    const label = match ? `${match.icon} ${match.label}` : 'Eigene Auslegung';
+    if (subEl) subEl.textContent = `${fullPct} % der Stunden im Jahr vollständig autark (${label})`;
+
+    svgWrap.innerHTML = `
+    <svg width="${W}" height="${H + 24}" style="display:block;overflow:hidden;cursor:default;">
+      <defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">${gradStops}</linearGradient></defs>
+      ${monthMarks}
+      ${hourMarks}
+      ${cells}
+      <rect x="${PL}" y="${(PT + cH + 1).toFixed(1)}" width="${cW.toFixed(1)}" height="${cH.toFixed(1)}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <rect x="${legX}" y="${legY}" width="${legW}" height="${legH}" fill="url(#${gradId})" rx="2"/>
+      <text x="${legX}" y="${(legY + legH + 10)}" fill="#90a4ae" font-size="8">0&thinsp;% gedeckt</text>
+      <text x="${(legX + legW).toFixed(1)}" y="${(legY + legH + 10)}" text-anchor="end" fill="#90a4ae" font-size="8">100&thinsp;% gedeckt</text>
+    </svg>`;
+
+    const svg = svgWrap.querySelector('svg');
+    svg.addEventListener('mousemove', ev => {
+      const target = ev.target;
+      if (!(target instanceof SVGRectElement) || target.dataset.pvahDay === undefined) { _pvHideTT(); return; }
+      const day = +target.dataset.pvahDay, hour = +target.dataset.pvahHour, val = +target.dataset.pvahVal;
+      _pvShowTT(ev,
+        `<span style="color:${farbe};font-weight:700">${label}</span><br>` +
+        `${_pvahDayToDate(day)}, ${hour}:00–${hour + 1}:00 Uhr<br>` +
+        `Deckung: <strong>${(val * 100).toFixed(0)}&thinsp;%</strong> · Netzbezug: <strong>${(100 - val * 100).toFixed(0)}&thinsp;%</strong>`
+      );
+    });
+    svg.addEventListener('mouseleave', _pvHideTT);
+  }
+
+  function sync() {
+    const pv = parseFloat(pvIn.value) || 0, bat = parseFloat(batIn.value) || 0;
+    _pvahPvKwp = pv; _pvahBatKwh = bat;
+    el.querySelector('#pva-pvah-pv-val').textContent = Math.round(pv) + ' kWp';
+    el.querySelector('#pva-pvah-bat-val').textContent = (bat/1000).toFixed(2) + ' MWh';
+    draw(pv, bat);
+  }
+  pvIn.addEventListener('input', sync);
+  batIn.addEventListener('input', sync);
+  el.querySelectorAll('[data-pvah-var]').forEach(b => b.addEventListener('click', () => {
+    const [p, q] = b.dataset.pvahVar.split('|').map(parseFloat);
+    pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
+  }));
+  sync();
+
+  const fsBtn = el.querySelector('[data-pva-fs="autarkie-heatmap"]');
+  if (fsBtn) fsBtn.addEventListener('click', () =>
+    _pvOpenFs('Autarkie-Heatmap: Bedarfsdeckung durch PV + Speicher', cnt =>
+      renderAutarkieHeatmap(window._pvAnalyse.ergebnisse, cnt)
+    )
+  );
+}
+
+// ── Abb. 9 — Sensitivitätsanalyse (Tornado) ─────────────────────────────────
+// Zeigt für eine Referenz-Variante, wie stark der Jahresüberschuss (−nettoJk) auf
+// Unsicherheit in den Wirtschaftsannahmen reagiert. Da bei fester Auslegung nur die
+// Wirtschaftsrechnung (nicht die physikalische Simulation) von Preisen/Invest/Zins
+// abhängt, wird die bereits berechnete sim der Variante wiederverwendet — sehr günstig.
+
+var _pvSensVarId = null;
+
+function renderSensitivitaet(varianten, overrideEl) {
+  const el = overrideEl || document.getElementById('pva-chart-sensitivitaet');
+  if (!el || !varianten?.length) return;
+
+  const baseParams = _pvFsArgs?.params;
+  if (!baseParams) { el.innerHTML = ''; return; }
+
+  const kanon = varianten.filter(v => v.info && v.info.frage);
+  if (!kanon.length) { el.innerHTML = ''; return; }
+
+  if (!_pvSensVarId || !kanon.some(v => v.id === _pvSensVarId)) {
+    _pvSensVarId = (kanon.find(v => v.id === 'wirt-opt') || kanon[0]).id;
+  }
+  const v = kanon.find(x => x.id === _pvSensVarId) || kanon[0];
+
+  // Überschuss (€/a) für gegebene (überschriebene) Parameter — sim bleibt konstant.
+  const surplusFor = (overrides) => {
+    const p = { ...baseParams, ...overrides };
+    return -pvWirtschaft(v.pvKwp, v.batKwh, v.sim, v.ertragMwh, p, v.strategie).nettoJk;
+  };
+  const baseSurplus = surplusFor({});
+
+  // Plausible Unsicherheitsbänder je Annahme (für Gutachten dokumentiert in der Achse).
+  const bp = baseParams;
+  let rows = [
+    { key:'pStrom',          label:'Strombezugspreis', lo: bp.pStrom*0.7,  hi: bp.pStrom*1.3,  unit:' ct', dez:0 },
+    { key:'pEinsp',          label:'Einspeisevergütung', lo: Math.max(0, bp.pEinsp*0.5), hi: bp.pEinsp*1.6, unit:' ct', dez:1 },
+    { key:'pvInvestPerKwp',  label:'PV-Invest',          lo: bp.pvInvestPerKwp*0.75, hi: bp.pvInvestPerKwp*1.25, unit:' €/kWp', dez:0 },
+    { key:'batInvestPerKwh', label:'Batterie-Invest',    lo: bp.batInvestPerKwh*0.7,  hi: bp.batInvestPerKwh*1.3, unit:' €/kWh', dez:0 },
+    { key:'zins',            label:'Zinssatz',           lo: Math.max(0.005, bp.zins-0.02), hi: bp.zins+0.02, unit:' %', dez:1, isPct:true },
+    { key:'pvLife',          label:'PV-Nutzungsdauer',   lo: Math.max(5, bp.pvLife-5), hi: bp.pvLife+5, unit:' a', dez:0 },
+  ].map(r => {
+    const sLo = surplusFor({ [r.key]: r.lo });
+    const sHi = surplusFor({ [r.key]: r.hi });
+    return { ...r, sLo, sHi, span: Math.abs(sHi - sLo) };
+  }).filter(r => r.span > 1);                    // Annahmen ohne Wirkung (z.B. Bat-Invest bei Bat=0) weglassen
+  rows.sort((a, b) => b.span - a.span);          // Tornado: größter Hebel oben
+
+  if (!rows.length) { el.innerHTML = ''; return; }
+
+  // Varianten-Sprungmarken (gleiche Optik wie Abb. 7/8)
+  const chips = kanon.map(x =>
+    `<button data-pvsens-var="${x.id}" title="${x.label}"
+      style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border:1px solid ${x.farbe};border-radius:10px;
+      background:${x.id===v.id?x.farbe:'transparent'};color:${x.id===v.id?'#0a0e16':x.farbe};font-size:9px;cursor:pointer;font-weight:600;white-space:nowrap;">
+      ${x.icon} ${x.label}</button>`).join('');
+
+  const elW = el.getBoundingClientRect().width || 700;
+  const W   = Math.max(440, elW - 4);
+  const PL = 150, PR = 28, PT = 10, PB = 30;
+  const barH = 22, gap = 12;
+  const plotW = W - PL - PR;
+  const H = PT + rows.length * (barH + gap) + PB;
+
+  // Wertebereich x-Achse
+  let dMin = baseSurplus, dMax = baseSurplus;
+  for (const r of rows) { dMin = Math.min(dMin, r.sLo, r.sHi); dMax = Math.max(dMax, r.sLo, r.sHi); }
+  const padd = (dMax - dMin) * 0.08 || 1000;
+  dMin -= padd; dMax += padd;
+  const xOf = val => PL + (val - dMin) / (dMax - dMin) * plotW;
+  const xBase = xOf(baseSurplus);
+
+  const COL_UP = '#66bb6a', COL_DN = '#ef5350';
+  const fmtEUR = n => Math.round(n).toLocaleString('de-DE');
+
+  // Achsen-Ticks (k€/a)
+  const ticks = 4;
+  let tickSvg = '';
+  for (let i = 0; i <= ticks; i++) {
+    const val = dMin + (dMax - dMin) * i / ticks;
+    const x = xOf(val);
+    tickSvg += `<line x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${(H-PB).toFixed(1)}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+      <text x="${x.toFixed(1)}" y="${(H-PB+13).toFixed(1)}" text-anchor="middle" fill="#78909c" font-size="8">${(val/1000).toFixed(0)}k</text>`;
+  }
+
+  let bars = '';
+  rows.forEach((r, i) => {
+    const y = PT + i * (barH + gap);
+    const loEnd = Math.min(r.sLo, r.sHi), hiEnd = Math.max(r.sLo, r.sHi);
+    const xLo = xOf(loEnd), xHi = xOf(hiEnd);
+    // roter (Downside, links der Basis) und grüner (Upside, rechts der Basis) Anteil
+    const xSplit = Math.max(xLo, Math.min(xHi, xBase));
+    const wDn = Math.max(0, xSplit - xLo), wUp = Math.max(0, xHi - xSplit);
+    const valLo = r.isPct ? (r.lo*100).toFixed(r.dez) : r.lo.toFixed(r.dez);
+    const valHi = r.isPct ? (r.hi*100).toFixed(r.dez) : r.hi.toFixed(r.dez);
+    // Welcher Parameterwert gehört an welches Bar-Ende? (sLo gehört zu r.lo usw.)
+    const leftIsLo  = r.sLo <= r.sHi;
+    const leftTxt  = (leftIsLo ? valLo : valHi) + r.unit;
+    const rightTxt = (leftIsLo ? valHi : valLo) + r.unit;
+    bars += `
+      <g data-pvsens-row="${i}" style="cursor:default;">
+        <text x="${PL-10}" y="${(y+barH/2+3).toFixed(1)}" text-anchor="end" fill="#cfd8dc" font-size="9">${r.label}</text>
+        <rect x="${xLo.toFixed(1)}" y="${y}" width="${wDn.toFixed(1)}" height="${barH}" fill="${COL_DN}" opacity="0.55"/>
+        <rect x="${xSplit.toFixed(1)}" y="${y}" width="${wUp.toFixed(1)}" height="${barH}" fill="${COL_UP}" opacity="0.6"/>
+        <rect x="${xLo.toFixed(1)}" y="${y}" width="${(xHi-xLo).toFixed(1)}" height="${barH}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="0.5"/>
+        <text x="${(xLo-4).toFixed(1)}" y="${(y+barH/2+3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="7.5">${leftTxt}</text>
+        <text x="${(xHi+4).toFixed(1)}" y="${(y+barH/2+3).toFixed(1)}" text-anchor="start" fill="#90a4ae" font-size="7.5">${rightTxt}</text>
+      </g>`;
+  });
+
+  el.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 9 — Sensitivitätsanalyse: Hebel auf den Jahresüberschuss
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">jede Annahme einzeln variiert, übrige auf Basiswert — längster Balken = größter Hebel</span>
+      <span style="display:block;font-size:8px;color:#a5d6a7;margin-top:2px;">Referenz: ${v.icon} ${v.label} · Basis-Überschuss <b>${fmtEUR(baseSurplus)} €/a</b></span>
+    </span>
+    ${overrideEl ? '' : '<button data-pva-fs="sensitivitaet" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
+  </div>
+  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">${chips}</div>
+  <svg width="${W}" height="${H}" style="display:block;overflow:visible;">
+    ${tickSvg}
+    <line x1="${xBase.toFixed(1)}" y1="${PT}" x2="${xBase.toFixed(1)}" y2="${(H-PB).toFixed(1)}" stroke="#fdd835" stroke-width="1.2" stroke-dasharray="3,2"/>
+    <text x="${xBase.toFixed(1)}" y="${(PT-1).toFixed(1)}" text-anchor="middle" fill="#fdd835" font-size="8">Basis</text>
+    ${bars}
+    <text x="${(PL+plotW/2).toFixed(1)}" y="${(H-2).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8.5">Jahresüberschuss (k€/a) →</text>
+  </svg>`;
+
+  // Tooltip je Balken
+  const svg = el.querySelector('svg');
+  svg.addEventListener('mousemove', ev => {
+    const g = ev.target.closest?.('[data-pvsens-row]');
+    if (!g) { _pvHideTT(); return; }
+    const r = rows[+g.dataset.pvsensRow];
+    const valLo = (r.isPct ? r.lo*100 : r.lo).toFixed(r.dez);
+    const valHi = (r.isPct ? r.hi*100 : r.hi).toFixed(r.dez);
+    _pvShowTT(ev,
+      `<b style="color:#cfd8dc">${r.label}</b><br>` +
+      `${valLo}${r.unit} → <b>${fmtEUR(r.sLo)} €/a</b><br>` +
+      `${valHi}${r.unit} → <b>${fmtEUR(r.sHi)} €/a</b><br>` +
+      `<span style="color:#90a4ae">Bandbreite: ${fmtEUR(r.span)} €/a</span>`
+    );
+  });
+  svg.addEventListener('mouseleave', _pvHideTT);
+
+  el.querySelectorAll('[data-pvsens-var]').forEach(b => b.addEventListener('click', () => {
+    _pvSensVarId = b.dataset.pvsensVar;
+    renderSensitivitaet(window._pvAnalyse.ergebnisse, overrideEl);
+  }));
+
+  const fsBtn = el.querySelector('[data-pva-fs="sensitivitaet"]');
+  if (fsBtn) fsBtn.addEventListener('click', () =>
+    _pvOpenFs('Sensitivitätsanalyse: Hebel auf den Jahresüberschuss', cnt =>
+      renderSensitivitaet(window._pvAnalyse.ergebnisse, cnt)
+    )
+  );
 }
 
 function _pvUpdateBerechnenBtn(loading) {
@@ -93204,8 +93660,6 @@ function _pvUpdateBerechnenBtn(loading) {
 // Globale Exports für inline data-click/data-change Handler und setViewMode
 window.initPvAnalyse          = initPvAnalyse;
 window.pvBerechneAlle         = pvBerechneAlle;
-window.pvAddCustomVariante    = pvAddCustomVariante;
-window.pvRemoveCustomVariante = pvRemoveCustomVariante;
 // pvLadeSpotPreise nicht mehr nötig (Upload über Strom-Grundlagen)
 window.pvGetMaxKwpFromAssets  = pvGetMaxKwpFromAssets;
 
@@ -99316,7 +99770,7 @@ setInterval(() => { if (_leitfadenOpen) _updateLeitfadenStatus(); }, 3000);
 
 (function() {
   // Allowed prefixes: function call, event., this., document., !function, or multi-statement starting with one of these
-  const _SAFE = /^\s*(!?\s*)?([\w$][\w$]*\s*\(|event\.|this\.|document\.)/;
+  const _SAFE = /^\s*(!?\s*)?([\w$][\w$]*\s*\(|event\.|this\.|document\.|window\.)/;
   function exec(el, code) {
     if (!_SAFE.test(code)) {
       console.warn('[Security] Blocked data-handler with unexpected pattern:', code);
@@ -101721,6 +102175,7 @@ function _renderAssetFelddaten(a) {
 
 // ── 13f-sld.js ──
 // ── 13f-sld.js — Einlinienschema (Single-Line Diagram) ──────────────────────
+
 
 
 
@@ -107420,10 +107875,22 @@ function _napBuildProfileDescriptor(asset, gzf) {
     return { mode: 'custom', asset, dir: profileDirection(asset), gzf };
   }
 
-  // 2. BDEW-SLP: z.B. Verbraucher mit slpTyp='H0'
+  // 2. Ladesäulen: Gleichzeitigkeitsfaktor + Wochentag/Wochenende-Zeitprofil
+  // (einzige Quelle der Wahrheit, siehe ladeProfil8760 in 13r-knotenpunkt-analyse.js)
+  if (asset.type === 'Lade') {
+    const arr = window.ladeProfil8760?.(asset);
+    if (arr) {
+      let peak = 0;
+      for (let i = 0; i < arr.length; i++) if (arr[i] > peak) peak = arr[i];
+      if (peak > 0) return { mode: 'lade', arr, gzf };
+    }
+    return null; // statischer Fallback im Aufrufer
+  }
+
+  // 3. BDEW-SLP: z.B. Verbraucher mit slpTyp='H0'
   // Typ-basierter Fallback falls slpTyp nie explizit gesetzt wurde
   // (Inspector öffnen schreibt Default jetzt direkt in props, aber für ältere Assets)
-  const SLP_DEFAULTS = { Verbraucher: 'G0', Lade: 'G3' };
+  const SLP_DEFAULTS = { Verbraucher: 'G0' };
   const slpTyp = p.slpTyp || SLP_DEFAULTS[asset.type] || null;
   if (slpTyp) {
     const slp = getSlpProfile(slpTyp);
@@ -107440,7 +107907,7 @@ function _napBuildProfileDescriptor(asset, gzf) {
     }
   }
 
-  // 3. PV → synthetisches Solarprofil
+  // 4. PV → synthetisches Solarprofil
   if (asset.type === 'PV') {
     const kWp = parseFloat(p.leistungKWp) || 0;
     if (kWp > 0) {
@@ -107479,6 +107946,10 @@ function _napEvalDescriptor(desc, tsMs) {
   if (desc.mode === 'pv') {
     const v = desc.pvProf[Math.min(hoy, desc.pvProf.length - 1)] * desc.scale;
     return { bezugKW: 0, einspKW: Math.max(0, v) };
+  }
+  if (desc.mode === 'lade') {
+    const v = desc.arr[Math.min(hoy, desc.arr.length - 1)] * desc.gzf;
+    return { bezugKW: v, einspKW: 0 };
   }
   return null;
 }
@@ -107586,6 +108057,7 @@ window.napOnStromGrundlagenChanged = function() {
       }
     }
   }
+  if (typeof window._pvaRefreshIfVisible === 'function') window._pvaRefreshIfVisible();
 };
 
 // ── Daten-Helfer ─────────────────────────────────────────────────────────────
@@ -107984,6 +108456,87 @@ function napComputeSyntheticAndShow() {
   _N.topSeriesMode = result.isOverlay ? 'messungPlusProfil' : 'synthetisch';
   napBuildMassnahmen();
   napRenderPanel();
+}
+
+// Prüft ob eine NAP-Messung vorhanden ist (Basis für Endausbau-Lastgang)
+function napHasMeasuredData() {
+  return !!(_N.baseMeasuredData || _N.data)?.raw?.length;
+}
+
+// ── Endausbau-Lastgang für PV-Analyse ────────────────────────────────────────
+// Überlagert den gemessenen Bestands-Lastgang additiv mit allen Neubau-/Abriss-
+// Maßnahmen, deren Bau- bzw. Abrissjahr bis (inkl.) bisJahr liegt.
+// Unabhängig vom Checkbox-Status in der NAP-Maßnahmenliste (UI-State).
+// Gibt null zurück wenn keine Messung oder keine relevanten Maßnahmen vorhanden.
+function napGetEndausbauLastgang(bisJahr) {
+  const baseMeasured = _N.baseMeasuredData || _N.data;
+  if (!baseMeasured?.raw?.length) return null;
+
+  const gzf      = _N.gzf;
+  const allA     = _allAssets();
+  const dataYear = baseMeasured.year || _yr();
+  const zielJahr = bisJahr || dataYear;
+
+  const CONSUMER_TYPES = ['Verbraucher','Lade','WP','Nsa','PV','KWK','Wind','Batterie'];
+  const entries = [];
+  for (const a of allA) {
+    if (!CONSUMER_TYPES.includes(a.type)) continue;
+    const bj = parseInt(a.baujahr)    || null;
+    const aj = parseInt(a.abrissjahr) || null;
+
+    // Neubau: realisiert zwischen Datenjahr und Zieljahr
+    if (bj && bj > dataYear && bj <= zielJahr) {
+      const { loadKW, genKW } = _assetPower(a);
+      const desc = _napBuildProfileDescriptor(a, gzf);
+      entries.push({ asset: a, desc, isAbbruch: false, loadKW, genKW });
+    }
+
+    // Abriss: Asset heute noch vorhanden, Abriss bis Zieljahr durchgeführt
+    if (aj && aj > dataYear && aj <= zielJahr && (!bj || bj <= dataYear)) {
+      const { loadKW, genKW } = _assetPower(a);
+      if (loadKW > 0 || genKW > 0) {
+        const desc = _napBuildProfileDescriptor(a, gzf);
+        entries.push({ asset: a, desc, isAbbruch: true, loadKW, genKW });
+      }
+    }
+  }
+
+  if (!entries.length) return null;
+
+  // Statische Summe für Maßnahmen ohne Profil (Vorzeichen −1 bei Abriss)
+  let staticBezug = 0, staticEinsp = 0;
+  for (const e of entries) {
+    if (e.desc) continue;
+    const sign = e.isAbbruch ? -1 : 1;
+    staticBezug += (e.loadKW || 0) * gzf * sign;
+    staticEinsp += (e.genKW  || 0) * gzf * sign;
+  }
+  const dynEntries = entries.filter(e => !!e.desc);
+
+  const arr = new Float32Array(baseMeasured.raw.length);
+  for (let i = 0; i < baseMeasured.raw.length; i++) {
+    const pt = baseMeasured.raw[i];
+    let addB = staticBezug, addE = staticEinsp;
+    for (const e of dynEntries) {
+      const r = _napEvalDescriptor(e.desc, +pt.ts);
+      if (r) {
+        const sign = e.isAbbruch ? -1 : 1;
+        addB += r.bezugKW * sign;
+        addE += r.einspKW * sign;
+      }
+    }
+    arr[i] = pt.kw + addB - addE;
+  }
+
+  return {
+    arr,
+    n: arr.length,
+    jahr: zielJahr,
+    dataYear,
+    nMassnahmen: entries.length,
+    nNeubau: entries.filter(e => !e.isAbbruch).length,
+    nAbriss: entries.filter(e => e.isAbbruch).length,
+  };
 }
 
 // ── CSV-Import ───────────────────────────────────────────────────────────────
@@ -109069,7 +109622,7 @@ function _napBuildKalibrierungEntries() {
     const sw          = parseInt(building?.stockwerke) || 1;
     const nutzflaeche = Math.round(gf * sw * 0.8);
     // SLP-Typ aus Asset-Props (selbe Quelle wie Inspector + Profil-Berechnung)
-    const SLP_ASSET_DEFAULTS = { Verbraucher: 'G0', Lade: 'G3', WP: 'H0' };
+    const SLP_ASSET_DEFAULTS = { Verbraucher: 'G0', WP: 'H0' };
     const slpTyp      = (asset.props?.slpTyp) || SLP_ASSET_DEFAULTS[asset.type] || 'G0';
     const typeFactor  = factors[slpTyp] ?? 1.0;
     const weight      = nutzflaeche > 0 ? typeFactor * nutzflaeche : 0;
@@ -109364,6 +109917,8 @@ window.napShowKalibrierungDialog    = napShowKalibrierungDialog;
 window.napApplyKalibrierung         = napApplyKalibrierung;
 window.napApplyKalibrierungMitProfil = napApplyKalibrierungMitProfil;
 window.napKalUpdateFactor           = napKalUpdateFactor;
+window.napGetEndausbauLastgang      = napGetEndausbauLastgang;
+window.napHasMeasuredData           = napHasMeasuredData;
 
 
 // ── 13p-erzeuger-assets.js ──
@@ -109696,7 +110251,10 @@ var _LADE_ZP_DEFAULT = {
   So: [0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.10,0.25,0.45,0.55,0.60,0.58,0.55,0.50,0.45,0.50,0.55,0.50,0.38,0.28,0.18,0.10,0.05],
 };
 
-function _ladeProfile(asset) {
+// Lastprofil für Ladesäulen: Gleichzeitigkeitsfaktor + Wochentag/Wochenende-Zeitprofil.
+// Exportiert, da auch von NAP-Analyse (13o) und PV-Analyse (09d) genutzt — einzige
+// Quelle der Wahrheit für das Lastverhalten von Lade-Assets.
+function ladeProfil8760(asset) {
   const p   = asset.props || {};
   const gzf = Math.min(1, Math.max(0, parseFloat(p.gleichzeitigFaktor) || 0.3));
   const pStd = (parseInt(p.anzahlPunkte)||8)  * (parseFloat(p.leistungProPunktKW)||11) * gzf;
@@ -109725,7 +110283,7 @@ function getNodeProfile8760(asset) {
     case 'WP':           prof=_wpProfile(asset);          break;
     case 'KWK':          prof=_kwkProfile(asset);         break;
     case 'Verbraucher':  prof=_verbraucherProfile(asset); break;
-    case 'Lade':         prof=_ladeProfile(asset);                          break;
+    case 'Lade':         prof=ladeProfil8760(asset);                        break;
     case 'NAP': case 'Schaltanlage': case 'Trafo':
     case 'NSHV': case 'UV': case 'KVS':
                          prof=_topologyProfile(asset);    break;
@@ -110732,6 +111290,7 @@ function openKnotenanalyseFor(assetId) {
 
 // Für data-click Inline-Handler
 if (typeof window!=='undefined') {
+  window.ladeProfil8760       = ladeProfil8760;
   window.openKnotenanalyse    = openKnotenanalyse;
   window.openKnotenanalyseFor = openKnotenanalyseFor;
   window.knaSelectNode        = knaSelectNode;
