@@ -3058,6 +3058,7 @@ let _pvResVarId = null, _pvResPvKwp = null, _pvResBatKwh = null;
 let _pvResDurH = null, _pvResPvOn = null, _pvResFuel = null, _pvResLoadFrac = null;
 let _pvResGenMode = null;   // 'peak' (auf Spitzenlast) | 'buffer' (Generator lädt Batterie)
 let _pvResUsable = null;    // nutzbare Batteriekapazität in % (Entladetiefe + Kälte-Derating)
+let _pvResSelStart = null;  // per Heatmap-Klick gewählter Ausfall-Start (null = Worst-Case)
 
 // 15-min → stündlich mitteln (Leistungsgrößen)
 function _pvResHourly(arr, dt) {
@@ -3185,7 +3186,7 @@ function renderResilienz(varianten, overrideEl) {
   const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
   const COL = { pv: '#fdd835', bat: '#42a5f5', gen: '#ff8f00', unmet: '#ef5350' };
 
-  const DURS = [ [6,'6 h'], [12,'12 h'], [24,'24 h'], [48,'2 Tage'], [72,'3 Tage'], [168,'7 Tage'] ];
+  const DURS = [ [6,'6 h'], [12,'12 h'], [24,'24 h'], [48,'2 Tage'], [72,'3 Tage'], [168,'7 Tage'], [336,'14 Tage'] ];
 
   const tabs = kanon.map(v =>
     `<button data-pvres-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
@@ -3306,19 +3307,22 @@ function renderResilienz(varianten, overrideEl) {
       if (r.eGen > worstEGen) { worstEGen = r.eGen; worstStart = s; }
     }
 
-    // Worst-Case-Fenster: Spitzenlast + Generatordimensionierung je nach Modus
+    // Gewählter Ausfall-Start: per Heatmap-Klick gesetzt, sonst Worst-Case
+    const selStart = (_pvResSelStart != null && _pvResSelStart < nDays * 24) ? _pvResSelStart : worstStart;
+    const isWorst  = selStart === worstStart;
+
+    // Fenster des gewählten Starts: Spitzenlast + Generatordimensionierung je nach Modus
     let peakLoad = 0;
-    for (let k = 0; k < durH; k++) peakLoad = Math.max(peakLoad, loadEff[(worstStart + k) % nHours]);
-    const initSoc = Math.min(batKwh * capFrac, socAt(worstStart));
+    for (let k = 0; k < durH; k++) peakLoad = Math.max(peakLoad, loadEff[(selStart + k) % nHours]);
+    const initSoc = Math.min(batKwh * capFrac, socAt(selStart));
     // #3 Batteriepuffer-Modus → kleinste ausreichende Generatorleistung
     const genKw = _pvResGenMode === 'buffer'
-      ? _pvResMinGen(loadEff, pvH, batKwh, worstStart, durH, nHours, initSoc, fuel, peakLoad, capFrac)
+      ? _pvResMinGen(loadEff, pvH, batKwh, selStart, durH, nHours, initSoc, fuel, peakLoad, capFrac)
       : peakLoad;
-    const r = _pvResSim(loadEff, pvH, batKwh, genKw, worstStart, durH, nHours, initSoc, fuel, _pvResGenMode, capFrac);
+    const r = _pvResSim(loadEff, pvH, batKwh, genKw, selStart, durH, nHours, initSoc, fuel, _pvResGenMode, capFrac);
     const { eLoad, ePv, eBat, eGen, eUnmet, liters, genRunH, steps } = r;
-    const bridgeH = bridgeArr[worstStart] ?? durH;     // Überbrückung Batterie+PV allein
-    const batAlt = eGen / ETA;            // Batterie-Mehrbedarf, um den Generator komplett zu ersetzen (kWh)
-    const effSfc = eGen > 0 ? liters / eGen : 0;   // effektiver l/kWh inkl. Teillast
+    const bridgeH = bridgeArr[selStart] ?? durH;       // Überbrückung Batterie+PV allein
+    const effSfc = eGen > 0 ? liters / eGen : 0;       // effektiver l/kWh inkl. Teillast
     const socStartPct = batKwh > 0 ? initSoc / batKwh * 100 : 0;
 
     // #7 Kosten der Resilienz-Auslegung
@@ -3330,13 +3334,15 @@ function renderResilienz(varianten, overrideEl) {
     const capexCost  = gensetCost + tankCost;
     const fmtK = v => v >= 10000 ? `${(v/1000).toFixed(0)} k€` : `${Math.round(v).toLocaleString('de-DE')} €`;
 
-    // KPIs
-    const dayIdx = Math.floor(worstStart / 24), hr = worstStart % 24;
-    const endIdx = (worstStart + durH) % nHours, endDay = Math.floor(endIdx / 24), endHr = endIdx % 24;
+    // KPIs — gewählter Start + Worst-Case-Referenz bleibt erhalten
+    const selDay = Math.floor(selStart / 24), selHr = selStart % 24;
+    const wDay = Math.floor(worstStart / 24), wHr = worstStart % 24;
+    const endIdx = (selStart + durH) % nHours, endDay = Math.floor(endIdx / 24), endHr = endIdx % 24;
     const genLabel = _pvResGenMode === 'buffer' ? 'Notstrom-Leistung (mit Puffer)' : 'Notstrom-Leistung (Spitze)';
     const hasGen = eGen > 0;
     kpiEl.innerHTML =
-      kpiCard('Worst-Case-Start', `${_pvahDayToDate(dayIdx)}, ${hr}:00`, '#ffcc80') +
+      kpiCard('Gewählter Start' + (isWorst ? ' (Worst-Case)' : ''), `${_pvahDayToDate(selDay)}, ${selHr}:00`, isWorst ? '#ffcc80' : '#4fc3f7') +
+      kpiCard('Worst-Case-Start', `${_pvahDayToDate(wDay)}, ${wHr}:00`, '#ffcc80') +
       kpiCard(genLabel, `${Math.ceil(genKw)} kW`, COL.gen) +
       kpiCard(`Sprit (${fuel.label})`, hasGen ? `${Math.ceil(liters).toLocaleString('de-DE')} l` : '0 l', COL.gen) +
       kpiCard('Überbrückung ohne Generator', bridgeH >= durH ? `> ${durH} h` : `${bridgeH} h`, bridgeH >= durH ? '#66bb6a' : COL.bat) +
@@ -3347,7 +3353,8 @@ function renderResilienz(varianten, overrideEl) {
       kpiCard('Resilienz-Capex', hasGen ? fmtK(capexCost) : '0 €', '#a5d6a7') +
       kpiCard('Spritkosten / Ereignis', hasGen ? fmtK(fuelCost) : '0 €', '#a5d6a7');
 
-    subEl.innerHTML = `Schlechtestes ${durH}-h-Fenster: ${_pvahDayToDate(dayIdx)} ${hr}:00 → ${_pvahDayToDate(endDay)} ${endHr}:00`
+    subEl.innerHTML = `${isWorst ? 'Worst-Case' : 'Gewähltes'} ${durH}-h-Fenster: ${_pvahDayToDate(selDay)} ${selHr}:00 → ${_pvahDayToDate(endDay)} ${endHr}:00`
+      + (isWorst ? '' : ` · Worst-Case liegt bei ${_pvahDayToDate(wDay)} ${wHr}:00`)
       + ` · Batterie bei Ausfall ${socStartPct.toFixed(0)} % geladen · nutzbar ${_pvResUsable} %`
       + (frac < 1 ? ` · Notbetrieb ${_pvResLoadFrac} % der Last` : '')
       + (_pvResGenMode === 'buffer' ? ` · Generator lädt Batterie mit (Spitzenlast wäre ${Math.ceil(peakLoad)} kW)` : '')
@@ -3358,13 +3365,13 @@ function renderResilienz(varianten, overrideEl) {
       + (eUnmet > 0.01 ? ` · ⚠ ${(eUnmet/1000).toFixed(2)} MWh ungedeckt` : '')
       + ` · Annahmen: Aggregat ${_PV_RES_COST.gensetEurPerKw} €/kW · ${fuel.label} ${fuel.price.toFixed(2)} €/l · Tank ${_PV_RES_COST.tankEurPerL.toFixed(2)} €/l`;
 
-    drawHeatmap(bridgeArr, durH, worstStart);
-    drawDetail(steps, peakLoad, batKwh, durH, worstStart);
-    // #6 Trade-off: Batteriegröße ↔ Generatorleistung ↔ Sprit im aktuellen Worst-Case-Fenster
-    drawTradeoff(loadEff, pvH, worstStart, durH, peakLoad, batMax, batKwh, socStartPct / 100, fuel, capFrac);
+    drawHeatmap(bridgeArr, durH, worstStart, selStart, isWorst);
+    drawDetail(steps, peakLoad, batKwh, durH, selStart, isWorst);
+    // #6 Trade-off: Batteriegröße ↔ Generatorleistung ↔ Sprit im gewählten Fenster
+    drawTradeoff(loadEff, pvH, selStart, durH, peakLoad, batMax, batKwh, socStartPct / 100, fuel, capFrac);
   }
 
-  function drawHeatmap(bridgeArr, durH, worstStart) {
+  function drawHeatmap(bridgeArr, durH, worstStart, selStart, isWorst) {
     const H = overrideEl ? 230 : 170;
     const PL = 30, PT = 22, PR = 16, PB = 26;
     const cW = W - PL - PR, cH = H - PT - PB;
@@ -3384,16 +3391,24 @@ function renderResilienz(varianten, overrideEl) {
     }
     const hourMarks = [0,6,12,18].map(h =>
       `<text x="${(PL-5).toFixed(1)}" y="${(PT+h*cellH+cellH/2+3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="8">${h}</text>`).join('');
-    // Worst-Case-Markierung
-    const wd = Math.floor(worstStart/24), wh = worstStart % 24;
-    const wx = PL + wd*cellW, wy = PT + wh*cellH;
-    const marker = `<rect x="${(wx-1).toFixed(1)}" y="${(wy-1).toFixed(1)}" width="${(cellW+2).toFixed(1)}" height="${(cellH+2).toFixed(1)}" fill="none" stroke="#fff" stroke-width="1.4"/>
-      <text x="${Math.min(wx+4, W-PR-90).toFixed(1)}" y="${(wy<PT+cH/2 ? wy+cellH+10 : wy-3).toFixed(1)}" fill="#fff" font-size="8" font-weight="700">◀ Worst-Case</text>`;
+    // Markierung: Worst-Case (weiß, bleibt immer) + gewählter Start (cyan), falls verschoben
+    const cellMark = (startIdx, stroke, label, dash) => {
+      const md = Math.floor(startIdx/24), mh = startIdx % 24;
+      const mx = PL + md*cellW, my = PT + mh*cellH;
+      const labelX = Math.min(mx + 4, W - PR - 90), labelY = (my < PT + cH/2 ? my + cellH + 10 : my - 3);
+      return `<rect x="${(mx-1).toFixed(1)}" y="${(my-1).toFixed(1)}" width="${(cellW+2).toFixed(1)}" height="${(cellH+2).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="1.6"${dash?` stroke-dasharray="${dash}"`:''}/>`
+        + `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" fill="${stroke}" font-size="8" font-weight="700">${label}</text>`;
+    };
+    const marker = cellMark(worstStart, '#fff', '◀ Worst-Case')
+      + (isWorst ? '' : cellMark(selStart, '#4fc3f7', '◀ gewählt', '2,1.5'));
     const legW = 130, legH = 8, legX = PL, legY = PT + cH + 14;
     const gradId = 'pvres-grad-' + (overrideEl ? 'fs' : 'm');
     heatEl.innerHTML = `
-    <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Überbrückung Batterie+PV, wenn der Blackout zu diesem Zeitpunkt beginnt</div>
-    <svg width="${W}" height="${H+18}" style="display:block;overflow:hidden;cursor:default;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;gap:8px;">
+      <span style="font-size:8px;color:var(--muted);">Überbrückung Batterie+PV je Blackout-Start — <b style="color:#4fc3f7;">Zelle anklicken</b> verschiebt den Ausfall-Start</span>
+      ${isWorst ? '' : '<button data-pvres-reset style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.22);border-radius:4px;color:#ffcc80;font-size:8px;padding:1px 7px;white-space:nowrap;">↺ Worst-Case</button>'}
+    </div>
+    <svg width="${W}" height="${H+18}" style="display:block;overflow:hidden;cursor:pointer;">
       <defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">
         <stop offset="0%" stop-color="${_pvahColor(0)}"/><stop offset="50%" stop-color="${_pvahColor(0.5)}"/><stop offset="100%" stop-color="${_pvahColor(1)}"/></linearGradient></defs>
       ${monthMarks}${hourMarks}${cells}
@@ -3408,12 +3423,20 @@ function renderResilienz(varianten, overrideEl) {
       const tg = ev.target;
       if (!(tg instanceof SVGRectElement) || tg.dataset.pvresDay === undefined) { _pvHideTT(); return; }
       const d = +tg.dataset.pvresDay, h = +tg.dataset.pvresHour, b = +tg.dataset.pvresB;
-      _pvShowTT(ev, `Blackout-Start: ${_pvahDayToDate(d)}, ${h}:00 Uhr<br>überbrückbar (Batterie+PV): <strong>${b >= durH ? '≥ '+durH : b} h</strong>`);
+      _pvShowTT(ev, `Blackout-Start: ${_pvahDayToDate(d)}, ${h}:00 Uhr<br>überbrückbar (Batterie+PV): <strong>${b >= durH ? '≥ '+durH : b} h</strong><br><span style="color:#4fc3f7">Klicken, um dieses Fenster zu zeigen</span>`);
     });
     svg.addEventListener('mouseleave', _pvHideTT);
+    svg.addEventListener('click', ev => {
+      const tg = ev.target;
+      if (!(tg instanceof SVGRectElement) || tg.dataset.pvresDay === undefined) return;
+      _pvResSelStart = (+tg.dataset.pvresDay) * 24 + (+tg.dataset.pvresHour);
+      _pvHideTT(); draw();
+    });
+    const resetBtn = heatEl.querySelector('[data-pvres-reset]');
+    if (resetBtn) resetBtn.addEventListener('click', () => { _pvResSelStart = null; draw(); });
   }
 
-  function drawDetail(steps, peakLoad, batKwh, durH, worstStart) {
+  function drawDetail(steps, peakLoad, batKwh, durH, startIdx, isWorst) {
     const H = overrideEl ? 240 : 190;
     const PL = 38, PT = 14, PR = 40, PB = 28;
     const cW = W - PL - PR, cH = H - PT - PB;
@@ -3442,7 +3465,7 @@ function renderResilienz(varianten, overrideEl) {
     const stepLbl = Math.max(1, Math.round(durH / 6));
     let xmarks = '';
     for (let k = 0; k <= durH; k += stepLbl) {
-      const x = PL + k*colW, gi = (worstStart + k) % nHours, gh = gi % 24;
+      const x = PL + k*colW, gi = (startIdx + k) % nHours, gh = gi % 24;
       xmarks += `<text x="${x.toFixed(1)}" y="${(PT+cH+11).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="7.5">+${k}h</text>
         <text x="${x.toFixed(1)}" y="${(PT+cH+20).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="7">${gh}:00</text>`;
     }
@@ -3455,7 +3478,7 @@ function renderResilienz(varianten, overrideEl) {
       <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:9px;height:9px;background:${COL.gen};border-radius:1px;"></span>Generator</span>
       <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:${COL.bat};"></span>Batterie-Ladestand</span>`;
     detailEl.innerHTML = `
-    <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Worst-Case-Fenster im Detail — Lastdeckung je Stunde</div>
+    <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">${isWorst ? 'Worst-Case-Fenster' : 'Gewähltes Fenster'} im Detail — Lastdeckung je Stunde (Start ${_pvahDayToDate(Math.floor(startIdx/24))}, ${startIdx%24}:00)</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:8px;color:#cfd8dc;margin-bottom:3px;">${legend}</div>
     <svg width="${W}" height="${H}" style="display:block;overflow:visible;cursor:default;">
       ${yticks}${bars}
@@ -3517,7 +3540,7 @@ function renderResilienz(varianten, overrideEl) {
       <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:12px;height:2px;background:${COLl};"></span>Sprit im Fenster (l)</span>
       <span style="color:#90a4ae;">┊ aktuelle Batterie</span>`;
     tradeEl.innerHTML = `
-    <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Trade-off im Worst-Case-Fenster — mehr Batterie senkt nötige Generatorleistung und Spritmenge (Batteriepuffer-Betrieb)</div>
+    <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Trade-off im aktuellen Fenster — mehr Batterie senkt nötige Generatorleistung und Spritmenge (Batteriepuffer-Betrieb)</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:8px;color:#cfd8dc;margin-bottom:3px;">${legend}</div>
     <svg width="${W}" height="${H}" style="display:block;overflow:visible;cursor:default;">
       <line x1="${nowX.toFixed(1)}" y1="${PT}" x2="${nowX.toFixed(1)}" y2="${(PT+cH).toFixed(1)}" stroke="#fff" stroke-width="1" stroke-dasharray="3,2" opacity="0.7"/>
@@ -3565,10 +3588,12 @@ function renderResilienz(varianten, overrideEl) {
   el.querySelector('#pva-pvres-fuel').addEventListener('change', e => { _pvResFuel = e.target.value; draw(); });
   el.querySelector('#pva-pvres-genmode').addEventListener('change', e => { _pvResGenMode = e.target.value; draw(); });
   el.querySelectorAll('[data-pvres-dur]').forEach(b => b.addEventListener('click', () => {
-    _pvResDurH = +b.dataset.pvresDur; renderResilienz(varianten, overrideEl);
+    _pvResDurH = +b.dataset.pvresDur; _pvResSelStart = null;   // Fensterlänge geändert → Worst-Case neu
+    renderResilienz(varianten, overrideEl);
   }));
   el.querySelectorAll('[data-pvres-var]').forEach(b => b.addEventListener('click', () => {
     const [p, q] = b.dataset.pvresVar.split('|').map(parseFloat);
+    _pvResSelStart = null;                                     // andere Auslegung → Worst-Case neu
     pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
   }));
   draw();
