@@ -3093,12 +3093,14 @@ function _pvResScan(loadH, pvH, batKwh, start, durH, nHours, initSoc, capFrac) {
 }
 
 // Vollständige Insel-Simulation eines Fensters mit Generator und Treibstoff.
-//  mode 'peak'   — Generator folgt der Last (deckt nur die Momentan-Restlast).
-//                  Muss daher auf die Spitzenlast ausgelegt sein.
-//  mode 'buffer' — Generator läuft zyklisch bei VOLLLAST (effizient) und lädt die
-//                  Batterie mit; die Batterie puffert die Lastspitzen. Dadurch
-//                  genügt ein Aggregat nahe der Durchschnittslast (#3).
-// Liefert Energiebilanz, Treibstoff (Teillast-Kennlinie), Laufzeit, Schritt-Array.
+// Einheitlicher Dispatch (Peak- wie Puffer-Modus): der Generator trägt die
+// Grundlast und lädt die Batterie opportunistisch nach (moduliert, max. genKw);
+// die Batterie kappt nur die Spitzen, die über die Generatorleistung gehen.
+// Dadurch wird die Batterie für die Lastspitzen genutzt (Abend), nicht gierig
+// schon nachts bei Grundlast leergezogen. Die Modi unterscheiden sich allein in
+// der Generatorleistung genKw (Peak = Spitzenlast, Puffer = kleinste mögliche).
+// Monoton in genKw: mehr Leistung → nie mehr ungedeckte Last.
+// gen = Gesamtabgabe (Last + Laden, für Sprit); genLoad = nur last-deckend (Stapel).
 function _pvResSim(loadEff, pvH, batKwh, genKw, start, durH, nHours, initSoc, fuel, mode, capFrac) {
   const ETA = 0.90, rate = batKwh > 0 ? batKwh / 2 : 0, cap = batKwh * (capFrac ?? 1);
   const Ff = fuel.sfc * genKw, idleRate = fuel.idle * Ff;   // l/h Voll-/Leerlauf
@@ -3110,37 +3112,24 @@ function _pvResSim(loadEff, pvH, batKwh, genKw, start, durH, nHours, initSoc, fu
     const load = loadEff[t], pv = pvH[t];
     const pvToLoad = Math.min(pv, load);
     eLoad += load; ePv += pvToLoad;
-    let bat = 0, gen = 0;
+    let bat = 0, gen = 0, genLoad = 0;
     const net = load - pv;
     if (net <= 0) {
       const c = Math.min(-net, rate, (cap - soc) / ETA); soc += c * ETA;
     } else {
       const batAvail = Math.min(rate, soc * ETA);
-      if (mode === 'buffer' && genKw > 0) {
-        // Generator deckt die Last und lädt die Batterie opportunistisch nach
-        // (moduliert, max. genKw). Monoton: mehr genKw → nie mehr ungedeckte Last.
-        const chargePot = Math.min(rate, (cap - soc) / ETA);   // kW, die die Batterie aufnehmen kann
-        gen = Math.min(genKw, net + chargePot);
-        const toLoad = Math.min(gen, net);
-        const rem = net - toLoad;
-        bat = Math.min(rem, batAvail); soc -= bat / ETA;
-        if (rem - bat > 1e-6) eUnmet += rem - bat;
-        const surplus = gen - toLoad;              // Generator-Überschuss lädt die Batterie
-        if (surplus > 0) { const c = Math.min(surplus, chargePot); soc += c * ETA; }
-        if (gen > 0.001) { liters += idleRate + (Ff - idleRate) * (gen / genKw); genRunH++; }
-      } else if (mode === 'buffer') {              // genKw == 0 → reiner Batteriebetrieb
-        bat = Math.min(net, batAvail); soc -= bat / ETA;
-        if (net - bat > 1e-6) eUnmet += net - bat;
-      } else {                                     // 'peak' — lastfolgend
-        bat = Math.min(net, batAvail); soc -= bat / ETA;
-        const resid = net - bat;
-        gen = Math.min(resid, genKw);
-        eUnmet += Math.max(0, resid - genKw);
-        if (gen > 0.001 && genKw > 0) { liters += idleRate + (Ff - idleRate) * (gen / genKw); genRunH++; }
-      }
+      const chargePot = Math.min(rate, (cap - soc) / ETA);   // kW, die die Batterie aufnehmen kann
+      gen = Math.min(genKw, net + chargePot);                // Last + Nachladen, gedeckelt auf genKw
+      genLoad = Math.min(gen, net);                          // davon last-deckend
+      const rem = net - genLoad;
+      bat = Math.min(rem, batAvail); soc -= bat / ETA;       // Batterie kappt die Spitze
+      if (rem - bat > 1e-6) eUnmet += rem - bat;
+      const surplus = gen - genLoad;                         // Generator-Überschuss lädt die Batterie
+      if (surplus > 0) { const c = Math.min(surplus, chargePot); soc += c * ETA; }
+      if (gen > 0.001 && genKw > 0) { liters += idleRate + (Ff - idleRate) * (gen / genKw); genRunH++; }
     }
     eBat += bat; eGen += gen;
-    steps.push({ t, load, pv: pvToLoad, bat, gen, soc });
+    steps.push({ t, load, pv: pvToLoad, bat, gen, genLoad, soc });
   }
   return { eLoad, ePv, eBat, eGen, eUnmet, liters, genRunH, steps };
 }
@@ -3434,7 +3423,7 @@ function renderResilienz(varianten, overrideEl) {
     let bars = '';
     steps.forEach((s, i) => {
       const x = PL + i * colW;
-      const hPv  = (s.pv  / yMax) * cH, hBat = (s.bat / yMax) * cH, hGen = (s.gen / yMax) * cH;
+      const hPv  = (s.pv  / yMax) * cH, hBat = (s.bat / yMax) * cH, hGen = (s.genLoad / yMax) * cH;
       let yb = PT + cH;
       const seg = (h, col) => { if (h <= 0) return ''; yb -= h; return `<rect x="${x.toFixed(2)}" y="${yb.toFixed(2)}" width="${(colW+0.4).toFixed(2)}" height="${h.toFixed(2)}" fill="${col}"/>`; };
       bars += `<g data-pvres-step="${i}">${seg(hPv,COL.pv)}${seg(hBat,COL.bat)}${seg(hGen,COL.gen)}</g>`;
@@ -3482,7 +3471,8 @@ function renderResilienz(varianten, overrideEl) {
       _pvShowTT(ev,
         `+${+g.dataset.pvresStep} h (${s.t % 24}:00 Uhr)<br>` +
         `Last: <strong>${s.load.toFixed(1)} kW</strong><br>` +
-        `<span style="color:${COL.pv}">PV ${s.pv.toFixed(1)}</span> · <span style="color:${COL.bat}">Batt ${s.bat.toFixed(1)}</span> · <span style="color:${COL.gen}">Gen ${s.gen.toFixed(1)}</span> kW<br>` +
+        `<span style="color:${COL.pv}">PV ${s.pv.toFixed(1)}</span> · <span style="color:${COL.bat}">Batt ${s.bat.toFixed(1)}</span> · <span style="color:${COL.gen}">Gen ${s.genLoad.toFixed(1)}</span> kW (an Last)<br>` +
+        (s.gen - s.genLoad > 0.5 ? `<span style="color:${COL.gen}">+ ${(s.gen-s.genLoad).toFixed(1)} kW lädt Batterie</span><br>` : '') +
         `Batterie-Ladestand: <strong>${batKwh>0?(s.soc/batKwh*100).toFixed(0):0} %</strong>`);
     });
     svg.addEventListener('mouseleave', _pvHideTT);
