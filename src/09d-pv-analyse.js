@@ -3041,14 +3041,23 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
 // Dadurch frisst ein auf die Spitzenlast ausgelegtes Aggregat bei Teillast
 // deutlich mehr je kWh als der Volllast-Wert vermuten lässt (wet stacking).
 const _PV_FUELS = {
-  diesel: { label: 'Diesel',  sfc: 0.28, idle: 0.25 },   // ~34 % Wirkungsgrad bei Volllast
-  benzin: { label: 'Benzin',  sfc: 0.38, idle: 0.30 },   // kleinere/ineffizientere Aggregate
-  gas:    { label: 'Flüssiggas (LPG)', sfc: 0.50, idle: 0.25 }, // geringere Energiedichte
+  diesel: { label: 'Diesel',  sfc: 0.28, idle: 0.25, price: 1.70 },   // ~34 % Wirkungsgrad bei Volllast
+  benzin: { label: 'Benzin',  sfc: 0.38, idle: 0.30, price: 1.85 },   // kleinere/ineffizientere Aggregate
+  gas:    { label: 'Flüssiggas (LPG)', sfc: 0.50, idle: 0.25, price: 1.00 }, // geringere Energiedichte
+};
+
+// Kosten-Annahmen Resilienz (#7) — als Konstanten dokumentiert, leicht anpassbar.
+const _PV_RES_COST = {
+  gensetEurPerKw: 450,   // Diesel-Notstromaggregat inkl. Schaltung, €/kW (Richtwert)
+  tankEurPerL:    1.50,  // doppelwandiger/aufgefangener Lagertank, € je Liter Volumen
+  tankMargin:     1.15,  // Tank etwas größer als die reine Ereignis-Spritmenge
+  meldeschwelleL: 1000,  // ab ~1000 l oberirdischer Diesellagerung: AwSV-Anzeige-/Auflagen
 };
 
 let _pvResVarId = null, _pvResPvKwp = null, _pvResBatKwh = null;
 let _pvResDurH = null, _pvResPvOn = null, _pvResFuel = null, _pvResLoadFrac = null;
 let _pvResGenMode = null;   // 'peak' (auf Spitzenlast) | 'buffer' (Generator lädt Batterie)
+let _pvResUsable = null;    // nutzbare Batteriekapazität in % (Entladetiefe + Kälte-Derating)
 
 // 15-min → stündlich mitteln (Leistungsgrößen)
 function _pvResHourly(arr, dt) {
@@ -3063,14 +3072,15 @@ function _pvResHourly(arr, dt) {
 // Ladestand initSoc (aus der Jahressimulation zum Ausfallzeitpunkt), Generator
 // unbegrenzt. Liefert Überbrückungsdauer (Stunden bis Batterie+PV erstmals nicht
 // reichen) und die Generator-Energie (kWh) zum Decken der Restlast.
-function _pvResScan(loadH, pvH, batKwh, start, durH, nHours, initSoc) {
+function _pvResScan(loadH, pvH, batKwh, start, durH, nHours, initSoc, capFrac) {
   const ETA = 0.90, rate = batKwh > 0 ? batKwh / 2 : 0;
-  let soc = Math.min(batKwh, initSoc), eGen = 0, bridge = durH, hit = false;
+  const cap = batKwh * (capFrac ?? 1);            // nutzbare Kapazität (#5)
+  let soc = Math.min(cap, initSoc), eGen = 0, bridge = durH, hit = false;
   for (let k = 0; k < durH; k++) {
     const t = (start + k) % nHours;
     const net = loadH[t] - pvH[t];
     if (net <= 0) {
-      const c = Math.min(-net, rate, (batKwh - soc) / ETA);
+      const c = Math.min(-net, rate, (cap - soc) / ETA);
       soc += c * ETA;
     } else {
       const fromBat = Math.min(net, rate, soc * ETA);
@@ -3089,12 +3099,11 @@ function _pvResScan(loadH, pvH, batKwh, start, durH, nHours, initSoc) {
 //                  Batterie mit; die Batterie puffert die Lastspitzen. Dadurch
 //                  genügt ein Aggregat nahe der Durchschnittslast (#3).
 // Liefert Energiebilanz, Treibstoff (Teillast-Kennlinie), Laufzeit, Schritt-Array.
-function _pvResSim(loadEff, pvH, batKwh, genKw, start, durH, nHours, initSoc, fuel, mode) {
-  const ETA = 0.90, rate = batKwh > 0 ? batKwh / 2 : 0, cap = batKwh;
+function _pvResSim(loadEff, pvH, batKwh, genKw, start, durH, nHours, initSoc, fuel, mode, capFrac) {
+  const ETA = 0.90, rate = batKwh > 0 ? batKwh / 2 : 0, cap = batKwh * (capFrac ?? 1);
   const Ff = fuel.sfc * genKw, idleRate = fuel.idle * Ff;   // l/h Voll-/Leerlauf
   let soc = Math.min(cap, initSoc);
   let eLoad = 0, ePv = 0, eBat = 0, eGen = 0, eUnmet = 0, liters = 0, genRunH = 0;
-  let genOn = false;
   const steps = [];
   for (let k = 0; k < durH; k++) {
     const t = (start + k) % nHours;
@@ -3107,23 +3116,21 @@ function _pvResSim(loadEff, pvH, batKwh, genKw, start, durH, nHours, initSoc, fu
       const c = Math.min(-net, rate, (cap - soc) / ETA); soc += c * ETA;
     } else {
       const batAvail = Math.min(rate, soc * ETA);
-      if (mode === 'buffer') {
-        if (soc <= cap * 0.30) genOn = true;
-        if (soc >= cap * 0.90) genOn = false;
-        if (net > batAvail) genOn = true;          // Batterie allein reicht nicht → Generator muss laufen
-        if (genOn && genKw > 0) {
-          gen = genKw;
-          const toLoad = Math.min(gen, net);
-          const rem = net - toLoad;
-          bat = Math.min(rem, batAvail); soc -= bat / ETA;
-          if (rem - bat > 1e-6) eUnmet += rem - bat;
-          const surplus = gen - toLoad;            // Generator-Überschuss lädt die Batterie
-          if (surplus > 0) { const c = Math.min(surplus, rate, (cap - soc) / ETA); soc += c * ETA; }
-          liters += idleRate + (Ff - idleRate) * (gen / genKw); genRunH++;
-        } else {
-          bat = Math.min(net, batAvail); soc -= bat / ETA;
-          if (net - bat > 1e-6) eUnmet += net - bat;
-        }
+      if (mode === 'buffer' && genKw > 0) {
+        // Generator deckt die Last und lädt die Batterie opportunistisch nach
+        // (moduliert, max. genKw). Monoton: mehr genKw → nie mehr ungedeckte Last.
+        const chargePot = Math.min(rate, (cap - soc) / ETA);   // kW, die die Batterie aufnehmen kann
+        gen = Math.min(genKw, net + chargePot);
+        const toLoad = Math.min(gen, net);
+        const rem = net - toLoad;
+        bat = Math.min(rem, batAvail); soc -= bat / ETA;
+        if (rem - bat > 1e-6) eUnmet += rem - bat;
+        const surplus = gen - toLoad;              // Generator-Überschuss lädt die Batterie
+        if (surplus > 0) { const c = Math.min(surplus, chargePot); soc += c * ETA; }
+        if (gen > 0.001) { liters += idleRate + (Ff - idleRate) * (gen / genKw); genRunH++; }
+      } else if (mode === 'buffer') {              // genKw == 0 → reiner Batteriebetrieb
+        bat = Math.min(net, batAvail); soc -= bat / ETA;
+        if (net - bat > 1e-6) eUnmet += net - bat;
       } else {                                     // 'peak' — lastfolgend
         bat = Math.min(net, batAvail); soc -= bat / ETA;
         const resid = net - bat;
@@ -3140,12 +3147,12 @@ function _pvResSim(loadEff, pvH, batKwh, genKw, start, durH, nHours, initSoc, fu
 
 // Kleinste Generatorleistung (Batteriepuffer-Modus), die das Fenster vollständig
 // deckt — Binärsuche zwischen 0 und der (immer ausreichenden) Spitzenlast.
-function _pvResMinGen(loadEff, pvH, batKwh, start, durH, nHours, initSoc, fuel, peakLoad) {
+function _pvResMinGen(loadEff, pvH, batKwh, start, durH, nHours, initSoc, fuel, peakLoad, capFrac) {
   if (batKwh <= 0) return peakLoad;                // ohne Puffer = Spitzenlast
   let lo = 0, hi = peakLoad;
   for (let i = 0; i < 18; i++) {
     const mid = (lo + hi) / 2;
-    const r = _pvResSim(loadEff, pvH, batKwh, mid, start, durH, nHours, initSoc, fuel, 'buffer');
+    const r = _pvResSim(loadEff, pvH, batKwh, mid, start, durH, nHours, initSoc, fuel, 'buffer', capFrac);
     if (r.eUnmet > 1e-3) lo = mid; else hi = mid;
   }
   return hi;
@@ -3180,6 +3187,7 @@ function renderResilienz(varianten, overrideEl) {
   if (_pvResDurH   == null) _pvResDurH = 24;
   if (_pvResPvOn   == null) _pvResPvOn = true;
   if (_pvResLoadFrac == null) _pvResLoadFrac = 100;
+  if (_pvResUsable == null) _pvResUsable = 90;
   if (!_pvResGenMode) _pvResGenMode = 'peak';
   if (!_pvResFuel || !_PV_FUELS[_pvResFuel]) _pvResFuel = 'diesel';
 
@@ -3243,6 +3251,11 @@ function renderResilienz(varianten, overrideEl) {
       <input id="pva-pvres-load" type="range" min="10" max="100" step="5" value="${_pvResLoadFrac}" style="flex:1;accent-color:#ef9a9a;">
       <span id="pva-pvres-load-val" style="font-size:9px;color:#ef9a9a;font-family:'DM Mono',monospace;width:62px;text-align:right;">${_pvResLoadFrac} % Last</span>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;" title="Im Notfall tatsächlich nutzbarer Anteil der Nennkapazität — berücksichtigt Entladetiefe (DoD) und Kapazitätsverlust bei Kälte (Worst-Case = Winter)">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Nutzbare Kap.</span>
+      <input id="pva-pvres-usable" type="range" min="50" max="100" step="5" value="${_pvResUsable}" style="flex:1;accent-color:#80cbc4;">
+      <span id="pva-pvres-usable-val" style="font-size:9px;color:#80cbc4;font-family:'DM Mono',monospace;width:62px;text-align:right;">${_pvResUsable} %</span>
+    </div>
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${tabs}</div>
 
@@ -3272,8 +3285,9 @@ function renderResilienz(varianten, overrideEl) {
     const durH = _pvResDurH;
     const pvOn = _pvResPvOn;
     const frac = _pvResLoadFrac / 100;
+    const capFrac = _pvResUsable / 100;            // #5 nutzbare Batteriekapazität
     const fuel = _PV_FUELS[_pvResFuel];
-    const ETA = 0.90, rate = batKwh > 0 ? batKwh / 2 : 0;
+    const ETA = 0.90;
 
     // PV-Leistungsprofil (kW) für diese Auslegung
     const pvH = new Float32Array(nHours);
@@ -3298,7 +3312,7 @@ function renderResilienz(varianten, overrideEl) {
     const bridgeArr = new Float32Array(nHours);
     let worstStart = 0, worstEGen = -1;
     for (let s = 0; s < nDays * 24; s++) {
-      const r = _pvResScan(loadEff, pvH, batKwh, s, durH, nHours, socAt(s));
+      const r = _pvResScan(loadEff, pvH, batKwh, s, durH, nHours, socAt(s), capFrac);
       bridgeArr[s] = r.bridge;
       if (r.eGen > worstEGen) { worstEGen = r.eGen; worstStart = s; }
     }
@@ -3306,43 +3320,59 @@ function renderResilienz(varianten, overrideEl) {
     // Worst-Case-Fenster: Spitzenlast + Generatordimensionierung je nach Modus
     let peakLoad = 0;
     for (let k = 0; k < durH; k++) peakLoad = Math.max(peakLoad, loadEff[(worstStart + k) % nHours]);
-    const initSoc = socAt(worstStart);
+    const initSoc = Math.min(batKwh * capFrac, socAt(worstStart));
     // #3 Batteriepuffer-Modus → kleinste ausreichende Generatorleistung
     const genKw = _pvResGenMode === 'buffer'
-      ? _pvResMinGen(loadEff, pvH, batKwh, worstStart, durH, nHours, initSoc, fuel, peakLoad)
+      ? _pvResMinGen(loadEff, pvH, batKwh, worstStart, durH, nHours, initSoc, fuel, peakLoad, capFrac)
       : peakLoad;
-    const r = _pvResSim(loadEff, pvH, batKwh, genKw, worstStart, durH, nHours, initSoc, fuel, _pvResGenMode);
+    const r = _pvResSim(loadEff, pvH, batKwh, genKw, worstStart, durH, nHours, initSoc, fuel, _pvResGenMode, capFrac);
     const { eLoad, ePv, eBat, eGen, eUnmet, liters, genRunH, steps } = r;
     const bridgeH = bridgeArr[worstStart] ?? durH;     // Überbrückung Batterie+PV allein
     const batAlt = eGen / ETA;            // Batterie-Mehrbedarf, um den Generator komplett zu ersetzen (kWh)
     const effSfc = eGen > 0 ? liters / eGen : 0;   // effektiver l/kWh inkl. Teillast
     const socStartPct = batKwh > 0 ? initSoc / batKwh * 100 : 0;
 
+    // #7 Kosten der Resilienz-Auslegung
+    const recGenKw   = Math.ceil(genKw * 1.2 / 5) * 5;          // Empfehlung inkl. 20 % Reserve
+    const gensetCost = recGenKw * _PV_RES_COST.gensetEurPerKw;
+    const tankL      = Math.ceil(liters * _PV_RES_COST.tankMargin / 50) * 50;
+    const tankCost   = tankL * _PV_RES_COST.tankEurPerL;
+    const fuelCost   = liters * fuel.price;
+    const capexCost  = gensetCost + tankCost;
+    const fmtK = v => v >= 10000 ? `${(v/1000).toFixed(0)} k€` : `${Math.round(v).toLocaleString('de-DE')} €`;
+
     // KPIs
     const dayIdx = Math.floor(worstStart / 24), hr = worstStart % 24;
     const endIdx = (worstStart + durH) % nHours, endDay = Math.floor(endIdx / 24), endHr = endIdx % 24;
     const genLabel = _pvResGenMode === 'buffer' ? 'Notstrom-Leistung (mit Puffer)' : 'Notstrom-Leistung (Spitze)';
+    const hasGen = eGen > 0;
     kpiEl.innerHTML =
       kpiCard('Worst-Case-Start', `${_pvahDayToDate(dayIdx)}, ${hr}:00`, '#ffcc80') +
       kpiCard(genLabel, `${Math.ceil(genKw)} kW`, COL.gen) +
-      kpiCard(`Sprit (${fuel.label})`, eGen > 0 ? `${Math.ceil(liters).toLocaleString('de-DE')} l` : '0 l', COL.gen) +
+      kpiCard(`Sprit (${fuel.label})`, hasGen ? `${Math.ceil(liters).toLocaleString('de-DE')} l` : '0 l', COL.gen) +
       kpiCard('Überbrückung ohne Generator', bridgeH >= durH ? `> ${durH} h` : `${bridgeH} h`, bridgeH >= durH ? '#66bb6a' : COL.bat) +
-      kpiCard('Energiebedarf im Fenster', `${(eLoad/1000).toFixed(2)} MWh`, '#cfd8dc');
+      kpiCard('Energiebedarf im Fenster', `${(eLoad/1000).toFixed(2)} MWh`, '#cfd8dc') +
+      // #7 Kosten-Karten
+      kpiCard('Aggregat (Capex)', hasGen ? fmtK(gensetCost) : '–', '#a5d6a7') +
+      kpiCard('Tankvolumen', hasGen ? `${tankL.toLocaleString('de-DE')} l` : '–', '#a5d6a7') +
+      kpiCard('Resilienz-Capex', hasGen ? fmtK(capexCost) : '0 €', '#a5d6a7') +
+      kpiCard('Spritkosten / Ereignis', hasGen ? fmtK(fuelCost) : '0 €', '#a5d6a7');
 
     subEl.innerHTML = `Schlechtestes ${durH}-h-Fenster: ${_pvahDayToDate(dayIdx)} ${hr}:00 → ${_pvahDayToDate(endDay)} ${endHr}:00`
-      + ` · Batterie bei Ausfall ${socStartPct.toFixed(0)} % geladen`
+      + ` · Batterie bei Ausfall ${socStartPct.toFixed(0)} % geladen · nutzbar ${_pvResUsable} %`
       + (frac < 1 ? ` · Notbetrieb ${_pvResLoadFrac} % der Last` : '')
       + (_pvResGenMode === 'buffer' ? ` · Generator lädt Batterie mit (Spitzenlast wäre ${Math.ceil(peakLoad)} kW)` : '')
       + ` · Deckung: PV ${(ePv/eLoad*100||0).toFixed(0)} % · Batterie ${(eBat/eLoad*100||0).toFixed(0)} % · Generator ${(eGen/eLoad*100||0).toFixed(0)} %`
-      + (eGen > 0 ? ` · Aggregat läuft ${genRunH} h, Ø ${effSfc.toFixed(2)} l/kWh` : '')
-      + (eGen > 0 ? ` · Generator komplett durch Batterie ersetzen: +${(batAlt/1000).toFixed(2)} MWh` : '')
+      + (hasGen ? ` · Aggregat läuft ${genRunH} h, Ø ${effSfc.toFixed(2)} l/kWh` : '')
+      + (hasGen ? ` · Empfehlung Aggregat ~${recGenKw} kW (inkl. 20 % Reserve)` : '')
+      + (tankL > _PV_RES_COST.meldeschwelleL ? ` · ⚠ Tank > ${_PV_RES_COST.meldeschwelleL} l: AwSV-Anzeige/Auflagen beachten` : '')
       + (eUnmet > 0.01 ? ` · ⚠ ${(eUnmet/1000).toFixed(2)} MWh ungedeckt` : '')
-      + ` · Empfehlung Aggregat ~${Math.ceil(genKw * 1.2 / 5) * 5} kW (inkl. 20 % Reserve)`;
+      + ` · Annahmen: Aggregat ${_PV_RES_COST.gensetEurPerKw} €/kW · ${fuel.label} ${fuel.price.toFixed(2)} €/l · Tank ${_PV_RES_COST.tankEurPerL.toFixed(2)} €/l`;
 
     drawHeatmap(bridgeArr, durH, worstStart);
     drawDetail(steps, peakLoad, batKwh, durH, worstStart);
     // #6 Trade-off: Batteriegröße ↔ Generatorleistung ↔ Sprit im aktuellen Worst-Case-Fenster
-    drawTradeoff(loadEff, pvH, worstStart, durH, peakLoad, batMax, batKwh, socStartPct / 100, fuel);
+    drawTradeoff(loadEff, pvH, worstStart, durH, peakLoad, batMax, batKwh, socStartPct / 100, fuel, capFrac);
   }
 
   function drawHeatmap(bridgeArr, durH, worstStart) {
@@ -3461,14 +3491,14 @@ function renderResilienz(varianten, overrideEl) {
   // #6 Trade-off-Kurve: wie tauscht man Batterie gegen Generatorleistung & Sprit?
   // Für das aktuelle Worst-Case-Fenster wird über Batteriegrößen iteriert; je
   // Punkt die kleinste ausreichende Generatorleistung (Batteriepuffer) + Sprit.
-  function drawTradeoff(loadEff, pvH, worstStart, durH, peakLoad, batMax, batNow, socFrac, fuel) {
+  function drawTradeoff(loadEff, pvH, worstStart, durH, peakLoad, batMax, batNow, socFrac, fuel, capFrac) {
     const N = 11;
     const pts = [];
     for (let i = 0; i < N; i++) {
       const bk = batMax * i / (N - 1);
-      const iSoc = bk * socFrac;
-      const g = _pvResMinGen(loadEff, pvH, bk, worstStart, durH, nHours, iSoc, fuel, peakLoad);
-      const sim = _pvResSim(loadEff, pvH, bk, g, worstStart, durH, nHours, iSoc, fuel, 'buffer');
+      const iSoc = bk * socFrac;          // gleicher Nominal-Ladestand wie aktueller Punkt
+      const g = _pvResMinGen(loadEff, pvH, bk, worstStart, durH, nHours, iSoc, fuel, peakLoad, capFrac);
+      const sim = _pvResSim(loadEff, pvH, bk, g, worstStart, durH, nHours, iSoc, fuel, 'buffer', capFrac);
       pts.push({ bat: bk, gen: g, liters: sim.liters });
     }
     const maxGen = Math.max(...pts.map(p => p.gen), 1);
@@ -3534,6 +3564,11 @@ function renderResilienz(varianten, overrideEl) {
   loadIn.addEventListener('input', () => {
     _pvResLoadFrac = parseFloat(loadIn.value) || 100;
     el.querySelector('#pva-pvres-load-val').textContent = _pvResLoadFrac + ' % Last';
+    draw();
+  });
+  el.querySelector('#pva-pvres-usable').addEventListener('input', e => {
+    _pvResUsable = parseFloat(e.target.value) || 90;
+    el.querySelector('#pva-pvres-usable-val').textContent = _pvResUsable + ' %';
     draw();
   });
   el.querySelector('#pva-pvres-pvon').addEventListener('change', e => { _pvResPvOn = e.target.checked; draw(); });
