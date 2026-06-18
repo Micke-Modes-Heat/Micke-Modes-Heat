@@ -91431,6 +91431,7 @@ function pvBerechneAlle() {
   renderEnergieFluss(demandH, pvProfile, napParams, params, ergebnisse);
   renderAutarkieHeatmap(ergebnisse);
   renderSensitivitaet(ergebnisse);
+  renderResilienz(ergebnisse);
   _pvUpdateBerechnenBtn(false);
 }
 
@@ -91865,7 +91866,10 @@ function _pvBuildPanelHtml() {
     <div id="pva-chart-autarkie-heatmap" style="margin-bottom:22px;overflow:hidden;"></div>
 
     <!-- Abb. 9 — Sensitivitätsanalyse (Tornado) -->
-    <div id="pva-chart-sensitivitaet" style="margin-bottom:8px;overflow:hidden;"></div>
+    <div id="pva-chart-sensitivitaet" style="margin-bottom:22px;overflow:hidden;"></div>
+
+    <!-- Abb. 10 — Resilienz / Blackout-Analyse -->
+    <div id="pva-chart-resilienz" style="margin-bottom:8px;overflow:hidden;"></div>
 
   </div>
 </div>`;
@@ -92552,6 +92556,7 @@ function _pvSyncFromState() {
       renderEnergieFluss(d, p, np, prm, s.ergebnisse);
       renderAutarkieHeatmap(s.ergebnisse);
       renderSensitivitaet(s.ergebnisse);
+      renderResilienz(s.ergebnisse);
     }
   }
 }
@@ -93488,6 +93493,405 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
       renderAutarkieHeatmap(window._pvAnalyse.ergebnisse, cnt)
     )
   );
+}
+
+// ── Abb. 10 — Resilienz / Blackout-Analyse ──────────────────────────────────
+// Frage: Wie autark ist die Anlage bei einem Netzausfall zum SCHLECHTESTEN
+// Zeitpunkt? Inselbetrieb wird stündlich simuliert (Batterie startet voll, PV
+// optional als Netzbildner, Generator deckt den Rest). Ergebnisse:
+//   • Heatmap Tag×Stunde — wie viele Stunden Batterie+PV allein überbrücken,
+//     wenn der Blackout zu diesem Zeitpunkt beginnt (dunkelrot = sofort am Limit).
+//   • Worst-Case-Fenster im Detail — Lastdeckung (PV/Batterie/Generator), SOC,
+//     benötigte Generator-Leistung und Sprit für die gewünschte Autarkie-Dauer.
+
+// sfc = spez. Verbrauch bei VOLLLAST (l/kWh_el); idle = Leerlauf-Verbrauch als
+// Anteil des Volllast-Verbrauchs. Teillast-Kennlinie (linear, branchenüblich):
+//   l/h(P) = idle·Ff + (1−idle)·Ff·(P/Pnenn),  Ff = sfc·Pnenn  (Volllast-Rate l/h)
+// Dadurch frisst ein auf die Spitzenlast ausgelegtes Aggregat bei Teillast
+// deutlich mehr je kWh als der Volllast-Wert vermuten lässt (wet stacking).
+var _PV_FUELS = {
+  diesel: { label: 'Diesel',  sfc: 0.28, idle: 0.25 },   // ~34 % Wirkungsgrad bei Volllast
+  benzin: { label: 'Benzin',  sfc: 0.38, idle: 0.30 },   // kleinere/ineffizientere Aggregate
+  gas:    { label: 'Flüssiggas (LPG)', sfc: 0.50, idle: 0.25 }, // geringere Energiedichte
+};
+
+var _pvResVarId = null, _pvResPvKwp = null, _pvResBatKwh = null;
+var _pvResDurH = null, _pvResPvOn = null, _pvResFuel = null, _pvResLoadFrac = null;
+
+// 15-min → stündlich mitteln (Leistungsgrößen)
+function _pvResHourly(arr, dt) {
+  if (dt === 1) return arr;
+  const sph = Math.round(1 / dt), n = Math.floor(arr.length / sph);
+  const out = new Float32Array(n);
+  for (let h = 0; h < n; h++) { let s = 0; for (let k = 0; k < sph; k++) s += arr[h * sph + k]; out[h] = s / sph; }
+  return out;
+}
+
+// Inselbetrieb ab Startstunde über durH Stunden. Batterie startet mit dem REALEN
+// Ladestand initSoc (aus der Jahressimulation zum Ausfallzeitpunkt), Generator
+// unbegrenzt. Liefert Überbrückungsdauer (Stunden bis Batterie+PV erstmals nicht
+// reichen) und die Generator-Energie (kWh) zum Decken der Restlast.
+function _pvResScan(loadH, pvH, batKwh, start, durH, nHours, initSoc) {
+  const ETA = 0.90, rate = batKwh > 0 ? batKwh / 2 : 0;
+  let soc = Math.min(batKwh, initSoc), eGen = 0, bridge = durH, hit = false;
+  for (let k = 0; k < durH; k++) {
+    const t = (start + k) % nHours;
+    const net = loadH[t] - pvH[t];
+    if (net <= 0) {
+      const c = Math.min(-net, rate, (batKwh - soc) / ETA);
+      soc += c * ETA;
+    } else {
+      const fromBat = Math.min(net, rate, soc * ETA);
+      soc -= fromBat / ETA;
+      const resid = net - fromBat;
+      if (resid > 0.001) { if (!hit) { bridge = k; hit = true; } eGen += resid; }
+    }
+  }
+  return { bridge, eGen };
+}
+
+function renderResilienz(varianten, overrideEl) {
+  const el = overrideEl || document.getElementById('pva-chart-resilienz');
+  if (!el || !varianten?.length) return;
+
+  const demandH   = _pvFsArgs?.demandH;
+  const pvProfile = _pvFsArgs?.pvProfile;
+  const napParams = _pvFsArgs?.napParams || {};
+  if (!demandH || !pvProfile) { el.innerHTML = ''; return; }
+  const spotH = window.elSpotPreiseH || window._pvAnalyse?.spotPreise || null;
+  const kanon = varianten.filter(v => v.info && v.info.frage);
+  if (!kanon.length) { el.innerHTML = ''; return; }
+
+  const spez = pvGetSpez();
+  const dt   = demandH.length > 8784 ? 0.25 : 1.0;
+  const loadH   = _pvResHourly(demandH, dt);
+  const pvProfH = _pvResHourly(pvProfile, dt);
+  const nHours  = Math.min(loadH.length, pvProfH.length);
+  const nDays   = Math.floor(nHours / 24);
+
+  // Startzustand
+  if (!_pvResVarId || !kanon.some(v => v.id === _pvResVarId)) {
+    const start = kanon.find(v => v.id === 'autarkie') || kanon[0];
+    _pvResVarId = start.id; _pvResPvKwp = start.pvKwp; _pvResBatKwh = start.batKwh;
+  }
+  if (_pvResPvKwp  == null) _pvResPvKwp  = (kanon.find(v => v.id === _pvResVarId) || kanon[0]).pvKwp;
+  if (_pvResBatKwh == null) _pvResBatKwh = (kanon.find(v => v.id === _pvResVarId) || kanon[0]).batKwh;
+  if (_pvResDurH   == null) _pvResDurH = 24;
+  if (_pvResPvOn   == null) _pvResPvOn = true;
+  if (_pvResLoadFrac == null) _pvResLoadFrac = 100;
+  if (!_pvResFuel || !_PV_FUELS[_pvResFuel]) _pvResFuel = 'diesel';
+
+  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
+  const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
+  const COL = { pv: '#fdd835', bat: '#42a5f5', gen: '#ff8f00', unmet: '#ef5350' };
+
+  const DURS = [ [6,'6 h'], [12,'12 h'], [24,'24 h'], [48,'2 Tage'], [72,'3 Tage'], [168,'7 Tage'] ];
+
+  const tabs = kanon.map(v =>
+    `<button data-pvres-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
+      style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border:1px solid ${v.farbe};border-radius:10px;background:transparent;color:${v.farbe};font-size:9px;cursor:pointer;white-space:nowrap;">
+      ${v.icon} ${Math.round(v.pvKwp)} kWp${v.batKwh>0?` · ${(v.batKwh/1000).toFixed(v.batKwh<1000?2:1)} MWh`:''}</button>`).join('');
+
+  const durBtns = DURS.map(([h,lbl]) =>
+    `<button data-pvres-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:9px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
+
+  const fuelOpts = Object.entries(_PV_FUELS).map(([k,f]) =>
+    `<option value="${k}" ${k===_pvResFuel?'selected':''}>${f.label}</option>`).join('');
+
+  const elW = el.getBoundingClientRect().width || 700;
+  const W   = Math.max(440, elW - 4);
+  const fmtEUR = n => Math.round(n).toLocaleString('de-DE');
+
+  el.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 10 — Resilienz: Autarkie bei Netzausfall zum schlechtesten Zeitpunkt
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Inselbetrieb simuliert — Batterie startet mit realem Ladestand (Jahressim.), Generator deckt die Restlast</span>
+      <span id="pva-pvres-sub" style="display:block;font-size:8px;color:#ffcc80;margin-top:2px;"></span>
+    </span>
+    ${overrideEl ? '' : '<button data-pva-fs="resilienz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+    <span style="font-size:9px;color:var(--muted);">Autark sein für</span>${durBtns}
+    <label style="font-size:9px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;margin-left:6px;cursor:pointer;">
+      <input id="pva-pvres-pvon" type="checkbox" ${_pvResPvOn?'checked':''} style="accent-color:${COL.pv};margin:0;"> PV im Inselbetrieb</label>
+    <label style="font-size:9px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;margin-left:2px;">Aggregat
+      <select id="pva-pvres-fuel" style="background:#11151d;color:#cfd8dc;border:1px solid rgba(255,255,255,0.2);border-radius:4px;font-size:9px;padding:1px 3px;">${fuelOpts}</select></label>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:8px;align-items:center;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">PV-Leistung</span>
+      <input id="pva-pvres-pv" type="range" min="0" max="${Math.round(maxKwp)}" step="1" value="${Math.round(_pvResPvKwp)}" style="flex:1;accent-color:${COL.pv};">
+      <span id="pva-pvres-pv-val" style="font-size:9px;color:${COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvResPvKwp)} kWp</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Batterie</span>
+      <input id="pva-pvres-bat" type="range" min="0" max="${Math.round(batMax)}" step="5" value="${Math.round(_pvResBatKwh)}" style="flex:1;accent-color:${COL.bat};">
+      <span id="pva-pvres-bat-val" style="font-size:9px;color:${COL.bat};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(_pvResBatKwh/1000).toFixed(2)} MWh</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;" title="Im Inselbetrieb gedeckte Last als Anteil der Normallast (Notbetrieb = nur kritische Verbraucher)">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Notbetrieb</span>
+      <input id="pva-pvres-load" type="range" min="10" max="100" step="5" value="${_pvResLoadFrac}" style="flex:1;accent-color:#ef9a9a;">
+      <span id="pva-pvres-load-val" style="font-size:9px;color:#ef9a9a;font-family:'DM Mono',monospace;width:62px;text-align:right;">${_pvResLoadFrac} % Last</span>
+    </div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${tabs}</div>
+
+  <div id="pva-pvres-kpi" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+  <div id="pva-pvres-heat"></div>
+  <div id="pva-pvres-detail" style="margin-top:8px;"></div>`;
+
+  const pvIn  = el.querySelector('#pva-pvres-pv');
+  const batIn = el.querySelector('#pva-pvres-bat');
+  const loadIn = el.querySelector('#pva-pvres-load');
+  const subEl = el.querySelector('#pva-pvres-sub');
+  const kpiEl = el.querySelector('#pva-pvres-kpi');
+  const heatEl   = el.querySelector('#pva-pvres-heat');
+  const detailEl = el.querySelector('#pva-pvres-detail');
+
+  function kpiCard(label, value, color) {
+    return `<div style="flex:1;min-width:110px;background:#11151d;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:6px 9px;">
+      <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">${label}</div>
+      <div style="font-size:14px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${value}</div></div>`;
+  }
+
+  function draw() {
+    const pvKwp = parseFloat(pvIn.value) || 0;
+    const batKwh = parseFloat(batIn.value) || 0;
+    const durH = _pvResDurH;
+    const pvOn = _pvResPvOn;
+    const frac = _pvResLoadFrac / 100;
+    const fuel = _PV_FUELS[_pvResFuel];
+    const ETA = 0.90, rate = batKwh > 0 ? batKwh / 2 : 0;
+
+    // PV-Leistungsprofil (kW) für diese Auslegung
+    const pvH = new Float32Array(nHours);
+    if (pvOn) for (let t = 0; t < nHours; t++) pvH[t] = pvProfH[t] * pvKwp * spez;
+    // Im Inselbetrieb gedeckte Last (Notbetrieb = nur kritische Verbraucher)
+    const loadEff = new Float32Array(nHours);
+    for (let t = 0; t < nHours; t++) loadEff[t] = loadH[t] * frac;
+
+    // #1 Realer Batterie-Ladestand bei Ausfall: aus der netzgekoppelten Jahres-
+    //    simulation (Normalbetrieb) zum jeweiligen Startzeitpunkt übernommen.
+    let socStart;
+    if (batKwh > 0) {
+      const strat = spotH ? 'spot-dyn' : 'ev';
+      const yr = pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, strat, spotH);
+      socStart = _pvResHourly(yr.batSocArr, dt);
+    } else {
+      socStart = new Float32Array(nHours);
+    }
+    const socAt = s => (socStart[s] ?? 0);
+
+    // Scan: Überbrückungsdauer + Generator-Energie je Startstunde, Worst-Case = max. Generatorbedarf
+    const bridgeArr = new Float32Array(nHours);
+    let worstStart = 0, worstEGen = -1;
+    for (let s = 0; s < nDays * 24; s++) {
+      const r = _pvResScan(loadEff, pvH, batKwh, s, durH, nHours, socAt(s));
+      bridgeArr[s] = r.bridge;
+      if (r.eGen > worstEGen) { worstEGen = r.eGen; worstStart = s; }
+    }
+
+    // Worst-Case-Fenster im Detail (Generator = Spitzenlast → keine ungedeckte Last)
+    let peakLoad = 0;
+    for (let k = 0; k < durH; k++) peakLoad = Math.max(peakLoad, loadEff[(worstStart + k) % nHours]);
+    const genKw = peakLoad;
+    // #4 Teillast-Treibstoffkennlinie des Aggregats
+    const Ff = fuel.sfc * genKw, idleRate = fuel.idle * Ff;   // l/h bei Voll- bzw. Leerlauf
+    let soc = socAt(worstStart), eLoad = 0, ePv = 0, eBat = 0, eGen = 0, eUnmet = 0;
+    let liters = 0, genRunH = 0, bridgeH = durH, hit = false;
+    const steps = [];
+    for (let k = 0; k < durH; k++) {
+      const t = (worstStart + k) % nHours;
+      const load = loadEff[t], pv = pvH[t];
+      const pvToLoad = Math.min(pv, load);
+      eLoad += load; ePv += pvToLoad;
+      let bat = 0, gen = 0;
+      const net = load - pv;
+      if (net <= 0) {
+        const c = Math.min(-net, rate, (batKwh - soc) / ETA); soc += c * ETA;
+      } else {
+        bat = Math.min(net, rate, soc * ETA); soc -= bat / ETA;
+        const resid = net - bat;
+        gen = Math.min(resid, genKw);
+        if (resid > 0.001 && !hit) { bridgeH = k; hit = true; }
+        eUnmet += Math.max(0, resid - genKw);
+      }
+      if (gen > 0.001 && genKw > 0) { liters += idleRate + (Ff - idleRate) * (gen / genKw); genRunH++; }
+      eBat += bat; eGen += gen;
+      steps.push({ t, load, pv: pvToLoad, bat, gen, soc });
+    }
+    const batAlt = eGen / ETA;            // Batterie-Mehrbedarf, um den Generator komplett zu ersetzen (kWh)
+    const effSfc = eGen > 0 ? liters / eGen : 0;   // effektiver l/kWh inkl. Teillast
+    const socStartPct = batKwh > 0 ? socAt(worstStart) / batKwh * 100 : 0;
+
+    // KPIs
+    const dayIdx = Math.floor(worstStart / 24), hr = worstStart % 24;
+    const endIdx = (worstStart + durH) % nHours, endDay = Math.floor(endIdx / 24), endHr = endIdx % 24;
+    kpiEl.innerHTML =
+      kpiCard('Worst-Case-Start', `${_pvahDayToDate(dayIdx)}, ${hr}:00`, '#ffcc80') +
+      kpiCard('Notstrom-Leistung', `${Math.ceil(genKw)} kW`, COL.gen) +
+      kpiCard(`Sprit (${fuel.label})`, eGen > 0 ? `${Math.ceil(liters).toLocaleString('de-DE')} l` : '0 l', COL.gen) +
+      kpiCard('Überbrückung ohne Generator', bridgeH >= durH ? `> ${durH} h` : `${bridgeH} h`, bridgeH >= durH ? '#66bb6a' : COL.bat) +
+      kpiCard('Energiebedarf im Fenster', `${(eLoad/1000).toFixed(2)} MWh`, '#cfd8dc');
+
+    subEl.innerHTML = `Schlechtestes ${durH}-h-Fenster: ${_pvahDayToDate(dayIdx)} ${hr}:00 → ${_pvahDayToDate(endDay)} ${endHr}:00`
+      + ` · Batterie bei Ausfall ${socStartPct.toFixed(0)} % geladen`
+      + (frac < 1 ? ` · Notbetrieb ${_pvResLoadFrac} % der Last` : '')
+      + ` · Deckung: PV ${(ePv/eLoad*100||0).toFixed(0)} % · Batterie ${(eBat/eLoad*100||0).toFixed(0)} % · Generator ${(eGen/eLoad*100||0).toFixed(0)} %`
+      + (eGen > 0 ? ` · Aggregat läuft ${genRunH} h, Ø ${effSfc.toFixed(2)} l/kWh (Teillast)` : '')
+      + (eGen > 0 ? ` · Generator komplett durch Batterie ersetzen: +${(batAlt/1000).toFixed(2)} MWh` : '')
+      + (eUnmet > 0.01 ? ` · ⚠ ${(eUnmet/1000).toFixed(2)} MWh ungedeckt` : '')
+      + ` · Empfehlung Aggregat ~${Math.ceil(genKw * 1.2 / 5) * 5} kW (inkl. 20 % Reserve)`;
+
+    drawHeatmap(bridgeArr, durH, worstStart);
+    drawDetail(steps, peakLoad, batKwh, durH, worstStart);
+  }
+
+  function drawHeatmap(bridgeArr, durH, worstStart) {
+    const H = overrideEl ? 230 : 170;
+    const PL = 30, PT = 22, PR = 16, PB = 26;
+    const cW = W - PL - PR, cH = H - PT - PB;
+    const cellW = cW / nDays, cellH = cH / 24;
+    let cells = '';
+    for (let d = 0; d < nDays; d++) for (let h = 0; h < 24; h++) {
+      const s = d * 24 + h, b = bridgeArr[s] ?? durH;
+      const x = PL + d * cellW, y = PT + h * cellH;
+      cells += `<rect data-pvres-day="${d}" data-pvres-hour="${h}" data-pvres-b="${b}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(cellW+0.3).toFixed(2)}" height="${(cellH+0.3).toFixed(2)}" fill="${_pvahColor(b/durH)}"/>`;
+    }
+    let monthMarks = '', cum = 0;
+    for (let m = 0; m < 12; m++) {
+      const x = PL + cum * cellW, wM = _PVAH_MONTH_DAYS[m] * cellW;
+      monthMarks += `<text x="${(x+wM/2).toFixed(1)}" y="${(PT-6).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8">${_PVAH_MONTH_NAMES[m]}</text>`;
+      if (m > 0) monthMarks += `<line x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${(PT+cH).toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+      cum += _PVAH_MONTH_DAYS[m];
+    }
+    const hourMarks = [0,6,12,18].map(h =>
+      `<text x="${(PL-5).toFixed(1)}" y="${(PT+h*cellH+cellH/2+3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="8">${h}</text>`).join('');
+    // Worst-Case-Markierung
+    const wd = Math.floor(worstStart/24), wh = worstStart % 24;
+    const wx = PL + wd*cellW, wy = PT + wh*cellH;
+    const marker = `<rect x="${(wx-1).toFixed(1)}" y="${(wy-1).toFixed(1)}" width="${(cellW+2).toFixed(1)}" height="${(cellH+2).toFixed(1)}" fill="none" stroke="#fff" stroke-width="1.4"/>
+      <text x="${Math.min(wx+4, W-PR-90).toFixed(1)}" y="${(wy<PT+cH/2 ? wy+cellH+10 : wy-3).toFixed(1)}" fill="#fff" font-size="8" font-weight="700">◀ Worst-Case</text>`;
+    const legW = 130, legH = 8, legX = PL, legY = PT + cH + 14;
+    const gradId = 'pvres-grad-' + (overrideEl ? 'fs' : 'm');
+    heatEl.innerHTML = `
+    <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Überbrückung Batterie+PV, wenn der Blackout zu diesem Zeitpunkt beginnt</div>
+    <svg width="${W}" height="${H+18}" style="display:block;overflow:hidden;cursor:default;">
+      <defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="${_pvahColor(0)}"/><stop offset="50%" stop-color="${_pvahColor(0.5)}"/><stop offset="100%" stop-color="${_pvahColor(1)}"/></linearGradient></defs>
+      ${monthMarks}${hourMarks}${cells}
+      <rect x="${PL}" y="${(PT+cH+1).toFixed(1)}" width="${cW.toFixed(1)}" height="${cH.toFixed(1)}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      ${marker}
+      <rect x="${legX}" y="${legY}" width="${legW}" height="${legH}" fill="url(#${gradId})" rx="2"/>
+      <text x="${legX}" y="${(legY+legH+9)}" fill="#90a4ae" font-size="8">sofort am Limit</text>
+      <text x="${(legX+legW).toFixed(1)}" y="${(legY+legH+9)}" text-anchor="end" fill="#90a4ae" font-size="8">≥ ${durH} h überbrückt</text>
+    </svg>`;
+    const svg = heatEl.querySelector('svg');
+    svg.addEventListener('mousemove', ev => {
+      const tg = ev.target;
+      if (!(tg instanceof SVGRectElement) || tg.dataset.pvresDay === undefined) { _pvHideTT(); return; }
+      const d = +tg.dataset.pvresDay, h = +tg.dataset.pvresHour, b = +tg.dataset.pvresB;
+      _pvShowTT(ev, `Blackout-Start: ${_pvahDayToDate(d)}, ${h}:00 Uhr<br>überbrückbar (Batterie+PV): <strong>${b >= durH ? '≥ '+durH : b} h</strong>`);
+    });
+    svg.addEventListener('mouseleave', _pvHideTT);
+  }
+
+  function drawDetail(steps, peakLoad, batKwh, durH, worstStart) {
+    const H = overrideEl ? 240 : 190;
+    const PL = 38, PT = 14, PR = 40, PB = 28;
+    const cW = W - PL - PR, cH = H - PT - PB;
+    const n = steps.length, colW = cW / n;
+    const yMax = peakLoad * 1.08 || 1;
+    const yOf = kw => PT + cH - (kw / yMax) * cH;
+    let bars = '';
+    steps.forEach((s, i) => {
+      const x = PL + i * colW;
+      const hPv  = (s.pv  / yMax) * cH, hBat = (s.bat / yMax) * cH, hGen = (s.gen / yMax) * cH;
+      let yb = PT + cH;
+      const seg = (h, col) => { if (h <= 0) return ''; yb -= h; return `<rect x="${x.toFixed(2)}" y="${yb.toFixed(2)}" width="${(colW+0.4).toFixed(2)}" height="${h.toFixed(2)}" fill="${col}"/>`; };
+      bars += `<g data-pvres-step="${i}">${seg(hPv,COL.pv)}${seg(hBat,COL.bat)}${seg(hGen,COL.gen)}</g>`;
+    });
+    // SOC-Linie (rechte Achse, 0..100 %)
+    let socPts = '';
+    if (batKwh > 0) socPts = steps.map((s, i) =>
+      `${(PL + i*colW + colW/2).toFixed(1)},${(PT + cH - (s.soc/batKwh)*cH).toFixed(1)}`).join(' ');
+    // Achsen
+    const yticks = [0, 0.5, 1].map(f => {
+      const y = yOf(yMax*f);
+      return `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${(PL+cW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)"/>
+        <text x="${(PL-4).toFixed(1)}" y="${(y+3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="8">${Math.round(yMax*f)}</text>`;
+    }).join('');
+    // Zeitmarken: ca. 6 Beschriftungen
+    const stepLbl = Math.max(1, Math.round(durH / 6));
+    let xmarks = '';
+    for (let k = 0; k <= durH; k += stepLbl) {
+      const x = PL + k*colW, gi = (worstStart + k) % nHours, gh = gi % 24;
+      xmarks += `<text x="${x.toFixed(1)}" y="${(PT+cH+11).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="7.5">+${k}h</text>
+        <text x="${x.toFixed(1)}" y="${(PT+cH+20).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="7">${gh}:00</text>`;
+    }
+    const socLabel = batKwh > 0
+      ? `<text x="${(PL+cW+4).toFixed(1)}" y="${(PT+8).toFixed(1)}" fill="${COL.bat}" font-size="8">SOC 100%</text>
+         <text x="${(PL+cW+4).toFixed(1)}" y="${(PT+cH).toFixed(1)}" fill="${COL.bat}" font-size="8">0%</text>` : '';
+    const legend = `
+      <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:9px;height:9px;background:${COL.pv};border-radius:1px;"></span>PV</span>
+      <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:9px;height:9px;background:${COL.bat};border-radius:1px;"></span>Batterie</span>
+      <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:9px;height:9px;background:${COL.gen};border-radius:1px;"></span>Generator</span>
+      <span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:${COL.bat};"></span>Batterie-Ladestand</span>`;
+    detailEl.innerHTML = `
+    <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">Worst-Case-Fenster im Detail — Lastdeckung je Stunde</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:8px;color:#cfd8dc;margin-bottom:3px;">${legend}</div>
+    <svg width="${W}" height="${H}" style="display:block;overflow:visible;cursor:default;">
+      ${yticks}${bars}
+      ${socPts ? `<polyline points="${socPts}" fill="none" stroke="${COL.bat}" stroke-width="1.4" stroke-dasharray="3,2" opacity="0.9"/>` : ''}
+      ${socLabel}${xmarks}
+      <text x="${(PL-30).toFixed(1)}" y="${(PT+cH/2).toFixed(1)}" fill="#90a4ae" font-size="8" transform="rotate(-90 ${(PL-30).toFixed(1)} ${(PT+cH/2).toFixed(1)})" text-anchor="middle">Last (kW)</text>
+    </svg>`;
+    const svg = detailEl.querySelector('svg');
+    svg.addEventListener('mousemove', ev => {
+      const g = ev.target.closest?.('[data-pvres-step]');
+      if (!g) { _pvHideTT(); return; }
+      const s = steps[+g.dataset.pvresStep];
+      _pvShowTT(ev,
+        `+${+g.dataset.pvresStep} h (${s.t % 24}:00 Uhr)<br>` +
+        `Last: <strong>${s.load.toFixed(1)} kW</strong><br>` +
+        `<span style="color:${COL.pv}">PV ${s.pv.toFixed(1)}</span> · <span style="color:${COL.bat}">Batt ${s.bat.toFixed(1)}</span> · <span style="color:${COL.gen}">Gen ${s.gen.toFixed(1)}</span> kW<br>` +
+        `Batterie-Ladestand: <strong>${batKwh>0?(s.soc/batKwh*100).toFixed(0):0} %</strong>`);
+    });
+    svg.addEventListener('mouseleave', _pvHideTT);
+  }
+
+  function sync() {
+    _pvResPvKwp  = parseFloat(pvIn.value) || 0;
+    _pvResBatKwh = parseFloat(batIn.value) || 0;
+    el.querySelector('#pva-pvres-pv-val').textContent  = Math.round(_pvResPvKwp) + ' kWp';
+    el.querySelector('#pva-pvres-bat-val').textContent = (_pvResBatKwh/1000).toFixed(2) + ' MWh';
+    draw();
+  }
+  pvIn.addEventListener('input', sync);
+  batIn.addEventListener('input', sync);
+  loadIn.addEventListener('input', () => {
+    _pvResLoadFrac = parseFloat(loadIn.value) || 100;
+    el.querySelector('#pva-pvres-load-val').textContent = _pvResLoadFrac + ' % Last';
+    draw();
+  });
+  el.querySelector('#pva-pvres-pvon').addEventListener('change', e => { _pvResPvOn = e.target.checked; draw(); });
+  el.querySelector('#pva-pvres-fuel').addEventListener('change', e => { _pvResFuel = e.target.value; draw(); });
+  el.querySelectorAll('[data-pvres-dur]').forEach(b => b.addEventListener('click', () => {
+    _pvResDurH = +b.dataset.pvresDur; renderResilienz(varianten, overrideEl);
+  }));
+  el.querySelectorAll('[data-pvres-var]').forEach(b => b.addEventListener('click', () => {
+    const [p, q] = b.dataset.pvresVar.split('|').map(parseFloat);
+    pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
+  }));
+  draw();
+
+  const fsBtn = el.querySelector('[data-pva-fs="resilienz"]');
+  if (fsBtn) fsBtn.addEventListener('click', () =>
+    _pvOpenFs('Resilienz: Autarkie bei Netzausfall', cnt =>
+      renderResilienz(window._pvAnalyse.ergebnisse, cnt)));
 }
 
 // ── Abb. 9 — Sensitivitätsanalyse (Tornado) ─────────────────────────────────
