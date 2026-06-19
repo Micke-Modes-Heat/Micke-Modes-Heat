@@ -1078,6 +1078,21 @@ svg.leaflet-image-layer.leaflet-interactive path {
     .building-label-inner.vorgemerkt {
       border-color: gold !important; box-shadow: 0 0 0.5em 0.08em gold;
     }
+
+    /* Warnbanner bei instabiler Herkunft (z. B. aus WhatsApp geöffnet) */
+    #origin-warning {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 4000;
+      background: #B71C1C; color: #fff;
+      padding: 12px 40px 12px 16px;
+      font-size: 13px; line-height: 1.45;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    }
+    #origin-warning b { font-weight: 700; }
+    .origin-warning-x {
+      position: absolute; top: 6px; right: 8px;
+      background: transparent; border: none; color: #fff;
+      font-size: 18px; line-height: 1; padding: 4px 8px; cursor: pointer;
+    }
   </style>
 <script>
 // Leaflet Default-Icon-Pfad deaktivieren (keine externen Bild-Requests)
@@ -1090,6 +1105,12 @@ if (typeof L !== 'undefined') {
 <body>
 
 <!-- ═══ IMPORT SCREEN ═══════════════════════════════════ -->
+<div id="origin-warning" style="display:none">
+  <button class="origin-warning-x" onclick="dismissOriginWarning()" aria-label="Schließen">✕</button>
+  <b>⚠️ Achtung – Daten könnten verloren gehen</b><br>
+  Diese Datei läuft aus einer temporären Quelle (z. B. direkt aus WhatsApp). Gespeicherte Fotos &amp; Notizen können beim nächsten Öffnen weg sein.<br>
+  <b>So sicher öffnen:</b> Datei zuerst in „Downloads" speichern, dann über „Eigene Dateien → Downloads" mit Chrome öffnen.
+</div>
 <div id="screen-import" class="screen active">
   <div class="import-card">
     <div class="import-logo">🗺️</div>
@@ -1097,7 +1118,7 @@ if (typeof L !== 'undefined') {
     <p class="subtitle">Energieplanung Außendienst<br>Fotos & Notizen vor Ort erfassen</p>
 
     <button class="btn btn-primary" id="btn-load">📂 Projekt-JSON laden</button>
-    <input type="file" id="json-input" accept=".json,application/json,text/plain,*/*" hidden>
+    <input type="file" id="json-input" accept="application/json,.json" hidden>
 
     <button class="btn btn-secondary" id="btn-continue" style="display:none">
       Bestehendes Projekt öffnen →
@@ -1874,8 +1895,34 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
+// ── Datensicherheit ───────────────────────────────────────
+// Browser bitten, IndexedDB/Fotos dauerhaft zu behalten (nicht bei Speicherdruck löschen)
+async function requestPersistence() {
+  try {
+    if (navigator.storage && navigator.storage.persist) {
+      const already = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+      if (!already) await navigator.storage.persist();
+    }
+  } catch { /* nicht unterstützt – ignorieren */ }
+}
+
+// Warnen, wenn die App aus einer flüchtigen Quelle läuft (z. B. direkt aus WhatsApp,
+// content://…) — dort kann der Browser gespeicherte Fotos/Notizen verlieren.
+function checkStorageSafety() {
+  const proto = location.protocol;            // 'content:', 'blob:', 'file:', 'http:', 'https:'
+  const unstable = (proto === 'content:' || proto === 'blob:');
+  const el = document.getElementById('origin-warning');
+  if (el) el.style.display = unstable ? 'block' : 'none';
+}
+window.dismissOriginWarning = () => {
+  const el = document.getElementById('origin-warning');
+  if (el) el.style.display = 'none';
+};
+
 // ── Startup ───────────────────────────────────────────────
 async function init() {
+  await requestPersistence();   // Browser bitten, Daten nicht zu löschen
+  checkStorageSafety();         // Warnen, wenn aus instabiler Quelle geöffnet
   await DB.init();
   _project = await DB.getProject();
 
@@ -2506,13 +2553,28 @@ async function exportZip() {
 
     blobUrls.forEach(u => URL.revokeObjectURL(u));
 
+    const sizeMb = (blob.size / 1024 / 1024).toFixed(1);
+    const fname = `feldapp_${datum}.zip`;
+
+    // Bevorzugt direkt teilen (WhatsApp/Mail) — viel zuverlässiger auf dem Handy.
+    const file = new File([blob], fname, { type: 'application/zip' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Feldapp Export', text: `Feld-Dokumentation · ${allPhotos.length} Fotos` });
+        toast(`Geteilt · ${allPhotos.length} Fotos · ${sizeMb} MB`);
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') { toast('Teilen abgebrochen'); return; }
+        // sonst: auf Download zurückfallen
+      }
+    }
+
+    // Fallback: als Datei herunterladen (landet in „Downloads")
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `feldapp_${datum}.zip`;
+    a.download = fname;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-
-    const sizeMb = (blob.size / 1024 / 1024).toFixed(1);
     toast(`Export fertig · ${allPhotos.length} Fotos · ${sizeMb} MB`);
   } catch (err) {
     toast('Export fehlgeschlagen: ' + err.message);
