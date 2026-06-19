@@ -3388,6 +3388,12 @@ function renderResilienz(varianten, overrideEl) {
       + (!genActive && eUnmet > 0.5 ? ` · ⚠ ${(eUnmet/1000).toFixed(2)} MWh nicht gedeckt — Fenster nicht durchgehend autark` : '')
       + (hasGenset ? ` · Annahmen: Aggregat ${_PV_RES_COST.gensetEurPerKw} €/kW · ${fuel.label} ${fuel.price.toFixed(2)} €/l · Tank ${_PV_RES_COST.tankEurPerL.toFixed(2)} €/l` : '');
 
+    // Handoff an die Netzanalyse (Notstrom-Platzierung): empfohlene Auslegung
+    window._pvResReco = {
+      genKw: hasGenset ? recGenKw : 0, peakKW: Math.ceil(peakLoad),
+      durH, kraftstoff: fuel.label, fuelId: _pvResFuel, mode: _pvResMode, ts: Date.now(),
+    };
+
     drawHeatmap(bridgeArr, durH, worstStart, selStart, isWorst);
     drawDetail(steps, peakLoad, batKwh, durH, selStart, isWorst);
     // #6 Trade-off (nur sinnvoll, wenn ein Aggregat gegen Batterie getauscht werden kann)
