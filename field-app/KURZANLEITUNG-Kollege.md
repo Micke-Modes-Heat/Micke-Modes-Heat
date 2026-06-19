@@ -3,6 +3,10 @@
 Mit der Feldapp dokumentierst du Gebäude vor Ort: Fotos, Notizen und Status –
 alles offline auf dem Handy. Am Ende schickst du ein ZIP zurück ins Büro.
 
+> 💡 **Tipp zum Einstieg:** Tippe auf dem Startbildschirm auf
+> **„🎬 Kurzer Rundgang (Demo)"** – die App zeigt dir an Beispiel-Gebäuden in
+> 12 Schritten, wo welcher Knopf ist. Dein echtes Projekt bleibt dabei unberührt.
+
 ---
 
 ## 1. App aufs Handy holen (einmalig)
