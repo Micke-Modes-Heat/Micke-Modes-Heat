@@ -150,7 +150,10 @@ const _LADE_ZP_DEFAULT = {
   So: [0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.10,0.25,0.45,0.55,0.60,0.58,0.55,0.50,0.45,0.50,0.55,0.50,0.38,0.28,0.18,0.10,0.05],
 };
 
-function _ladeProfile(asset) {
+// Lastprofil für Ladesäulen: Gleichzeitigkeitsfaktor + Wochentag/Wochenende-Zeitprofil.
+// Exportiert, da auch von NAP-Analyse (13o) und PV-Analyse (09d) genutzt — einzige
+// Quelle der Wahrheit für das Lastverhalten von Lade-Assets.
+export function ladeProfil8760(asset) {
   const p   = asset.props || {};
   const gzf = Math.min(1, Math.max(0, parseFloat(p.gleichzeitigFaktor) || 0.3));
   const pStd = (parseInt(p.anzahlPunkte)||8)  * (parseFloat(p.leistungProPunktKW)||11) * gzf;
@@ -179,7 +182,7 @@ export function getNodeProfile8760(asset) {
     case 'WP':           prof=_wpProfile(asset);          break;
     case 'KWK':          prof=_kwkProfile(asset);         break;
     case 'Verbraucher':  prof=_verbraucherProfile(asset); break;
-    case 'Lade':         prof=_ladeProfile(asset);                          break;
+    case 'Lade':         prof=ladeProfil8760(asset);                        break;
     case 'NAP': case 'Schaltanlage': case 'Trafo':
     case 'NSHV': case 'UV': case 'KVS':
                          prof=_topologyProfile(asset);    break;
@@ -1186,6 +1189,7 @@ export function openKnotenanalyseFor(assetId) {
 
 // Für data-click Inline-Handler
 if (typeof window!=='undefined') {
+  window.ladeProfil8760       = ladeProfil8760;
   window.openKnotenanalyse    = openKnotenanalyse;
   window.openKnotenanalyseFor = openKnotenanalyseFor;
   window.knaSelectNode        = knaSelectNode;

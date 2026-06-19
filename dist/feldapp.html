@@ -1064,6 +1064,20 @@ svg.leaflet-image-layer.leaflet-interactive path {
     .filter-chip.on span.chip-label { color: white; }
     .filter-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
+    /* Gebäude-Namen-Label auf der Karte */
+    .building-label { background: none; border: none; }
+    .building-label-inner {
+      transform: translate(-50%, -50%);
+      display: inline-block; white-space: nowrap; box-sizing: border-box;
+      padding: 0.12em 0.38em; font-size: 11px; font-weight: 700;
+      color: #1a1a2e; background: rgba(255,255,255,0.85);
+      border: 0.09em solid; border-radius: 0.4em;
+      box-shadow: 0 0.08em 0.25em rgba(0,0,0,0.28);
+      cursor: pointer; line-height: 1.1; overflow: hidden;
+    }
+    .building-label-inner.vorgemerkt {
+      border-color: gold !important; box-shadow: 0 0 0.5em 0.08em gold;
+    }
   </style>
 <script>
 // Leaflet Default-Icon-Pfad deaktivieren (keine externen Bild-Requests)
@@ -1100,7 +1114,7 @@ if (typeof L !== 'undefined') {
 <div id="search-overlay">
   <div class="search-box">
     <span style="font-size:18px;color:var(--text-muted);">🔍</span>
-    <input id="search-input" type="search" placeholder="Gebäude oder Asset suchen…" autocomplete="off">
+    <input id="search-input" type="search" placeholder="Gebäude suchen…" autocomplete="off">
     <button class="search-close" id="btn-search-close">✕</button>
   </div>
   <div class="search-results" id="search-results"></div>
@@ -1383,6 +1397,53 @@ let _currentAsset = null;
 let _blobUrls = new Map();       // photo id → blob URL (cleaned up on sheet close)
 let _notesTimer = null;
 
+// Gebäude-Namen-Labels: skalieren mit dem Gebäudeumriss (nicht größer als das Gebäude)
+const _buildingLabels = [];      // { marker, g, name, hasPolygon }
+let _measureCtx = null;
+function measureCtx() {
+  if (!_measureCtx) _measureCtx = document.createElement('canvas').getContext('2d');
+  return _measureCtx;
+}
+
+// Pixelgröße des Gebäudeumrisses am aktuellen Zoom
+function buildingPixelSize(g) {
+  const pts = normalizePolygon(g.polygon).map(p => L.latLng(p[0], p[1]));
+  const b = L.latLngBounds(pts);
+  const nw = _map.latLngToContainerPoint(b.getNorthWest());
+  const se = _map.latLngToContainerPoint(b.getSouthEast());
+  return { w: Math.abs(se.x - nw.x), h: Math.abs(se.y - nw.y) };
+}
+
+// Schriftgröße so wählen, dass der Name innerhalb von Breite UND Höhe des Gebäudes bleibt
+function fitFontSize(text, wPx, hPx) {
+  const ctx = measureCtx();
+  let fs = Math.max(0.5, hPx * 0.5);          // Höhen-Beschränkung
+  ctx.font = `700 ${fs}px Arial`;
+  const tw = ctx.measureText(text).width || 1;
+  const maxTextW = wPx * 0.72;                // Breiten-Beschränkung (Rest für Innenabstand)
+  if (tw > maxTextW) fs *= maxTextW / tw;
+  return Math.min(fs, 48);
+}
+
+// Unterhalb dieser Schriftgröße ist das Gebäude zu klein für ein lesbares Label → ausblenden
+const LABEL_MIN_PX = 6;
+
+function applyLabelSize(entry) {
+  if (!entry.hasPolygon || !_map) return;
+  const el = entry.marker.getElement()?.querySelector('.building-label-inner');
+  if (!el) return;
+  const { w, h } = buildingPixelSize(entry.g);
+  const fs = fitFontSize(entry.name, w, h);
+  if (fs < LABEL_MIN_PX) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.style.fontSize = fs.toFixed(2) + 'px';
+  el.style.maxWidth = Math.max(6, w) + 'px';  // nie breiter als das Gebäude
+}
+
+function updateLabelSizes() {
+  _buildingLabels.forEach(applyLabelSize);
+}
+
 
 // ── DB: FeldStatus ────────────────────────────────────────────────────────────
 // Erweitert das bestehende DB-Objekt um getFeldStatus / saveFeldStatus.
@@ -1617,20 +1678,6 @@ function renderSearchResults(query) {
     }
   }
 
-  // Elektro-Assets
-  for (const a of (_project.elektroAssets?.items || [])) {
-    if (a.lat == null) continue;
-    if (!q || a.name?.toLowerCase().includes(q) || a.type?.toLowerCase().includes(q)) {
-      const cfg = assetCfg(a.type);
-      results.push({
-        icon: cfg.icon, color: cfg.color,
-        name: a.name || cfg.label, sub: cfg.label,
-        vorgemerkt: a.feldVorgemerkt,
-        action: () => { closeSearch(); _map.setView([a.lat, a.lng], 18); openSheet({ type: 'elektro', data: a }); }
-      });
-    }
-  }
-
   if (results.length === 0) {
     container.innerHTML = `<div class="search-no-results">Keine Ergebnisse für „${esc(query)}"</div>`;
     return;
@@ -1748,9 +1795,6 @@ function openFilterPanel() {
 
   const allNutzungen = Object.entries(NUTZUNG);
   const allErzeuger  = Object.entries(ERZEUGER);
-  const allAssets    = Object.entries(ASSET_CFG).filter(([k]) =>
-    !['Verbraucher'].includes(k)
-  );
 
   function chip(key, label, color, emoji) {
     const off = _hiddenTypes[key];
@@ -1771,12 +1815,6 @@ function openFilterPanel() {
       <div class="filter-section-title">🔥 Wärmeerzeuger</div>
       <div class="filter-chips">
         ${allErzeuger.map(([k,v]) => chip(k, v.label, v.color, v.icon)).join('')}
-      </div>
-    </div>
-    <div class="filter-section">
-      <div class="filter-section-title">⚡ Elektro-Assets</div>
-      <div class="filter-chips">
-        ${allAssets.map(([k,v]) => chip(k, v.label, v.color, v.icon)).join('')}
       </div>
     </div>
   `;
@@ -1870,6 +1908,15 @@ async function init() {
   setupSheetDrag();
 
   /* Service Worker nicht verfügbar in Einzeldatei-Modus */
+
+  // Warnung beim Schließen wenn unexportierte Daten vorhanden
+  window.addEventListener('beforeunload', e => {
+    const badge = document.getElementById('export-badge');
+    if (badge && badge.style.display !== 'none') {
+      e.preventDefault();
+      e.returnValue = 'Es gibt noch nicht exportierte Fotos/Notizen. Trotzdem schließen?';
+    }
+  });
 }
 
 function setStatus(msg) { document.getElementById('import-status').textContent = msg; }
@@ -1921,6 +1968,8 @@ function openMap() {
       attribution: '© OpenStreetMap',
       maxZoom: 19,
     }).addTo(_map);
+    // Gebäude-Labels nach jedem Zoom an die neue Gebäudegröße anpassen
+    _map.on('zoomend', updateLabelSizes);
   }
   // Leaflet braucht einen kurzen Moment nachdem der Container sichtbar wird
   setTimeout(() => {
@@ -1935,6 +1984,7 @@ function renderMap() {
 
   // Clear non-tile layers
   _map.eachLayer(l => { if (!(l instanceof L.TileLayer)) _map.removeLayer(l); });
+  _buildingLabels.length = 0;
 
   const bounds = [];
   const gebaeude = _project.gebaeude || [];
@@ -1976,18 +2026,25 @@ function renderMap() {
     const ni = nutzung(g.nutzung);
 
     if (g.polygon && g.polygon.length >= 3) {
-      L.polygon(normalizePolygon(g.polygon), {
+      const poly = L.polygon(normalizePolygon(g.polygon), {
         color: ni.color, fillColor: ni.color,
         fillOpacity: 0.15 * op, weight: 1.5, opacity: 0.5 * op,
       }).addTo(_map);
+      poly.on('click', () => openSheet({ type: 'gebaeude', data: g }));
     }
 
-    const marker = L.circleMarker(ctr, {
-      radius: isV ? 11 : 9, fillColor: ni.color,
-      color: isV ? 'gold' : 'white', weight: isV ? 3 : 2.5, fillOpacity: 0.92 * op,
-    }).addTo(_map);
-
+    const name = g.name || 'Gebäude ' + g.id;
+    const labelIcon = L.divIcon({
+      className: 'building-label',
+      html: `<div class="building-label-inner${isV ? ' vorgemerkt' : ''}" style="border-color:${ni.color};opacity:${op};">${esc(name)}</div>`,
+      iconSize: [0, 0], iconAnchor: [0, 0],
+    });
+    const marker = L.marker(ctr, { icon: labelIcon }).addTo(_map);
     marker.on('click', () => openSheet({ type: 'gebaeude', data: g }));
+
+    const entry = { marker, g, name, hasPolygon: !!(g.polygon && g.polygon.length >= 3) };
+    _buildingLabels.push(entry);
+    applyLabelSize(entry);
   });
 
   // Erzeuger
@@ -2011,46 +2068,12 @@ function renderMap() {
     m.on('click', () => openSheet({ type: 'erzeuger', key, info, data: erz }));
   });
 
-  // Elektro-Assets
-  const elItems = _project.elektroAssets?.items || [];
-  const elEdges = _project.elektroAssets?.edges || [];
-
-  // Build lat/lng lookup for edge drawing
-  const elPosById = {};
-  elItems.forEach(a => { if (a.lat != null) elPosById[a.id] = [a.lat, a.lng]; });
-
-  // Draw elektro edges as thin lines
-  elEdges.forEach(e => {
-    const a = elPosById[e.u], b = elPosById[e.v];
-    if (a && b) {
-      L.polyline([a, b], { color: '#F9A825', weight: 1.5, opacity: 0.55 }).addTo(_map);
-    }
-  });
-
-  // Draw elektro asset markers (skip Verbraucher – already shown via Gebäude)
-  elItems.forEach(a => {
-    if (a.lat == null || a.type === 'Verbraucher') return;
-    const pos = [a.lat, a.lng];
-    bounds.push(pos);
-    const cfg = assetCfg(a.type);
-    const icon = L.divIcon({
-      className: '',
-      html: `<div style="background:${cfg.color};color:#000;border-radius:50%;width:22px;height:22px;font-size:13px;display:flex;align-items:center;justify-content:center;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);" title="${esc(cfg.label)}">${cfg.icon}</div>`,
-      iconSize: [22, 22], iconAnchor: [11, 11],
-    });
-    const elV = !!a.feldVorgemerkt;
-    if (_filterVorgemerkt && !elV) return;
-    if (_hiddenTypes[a.type]) return;
-    const elOp = _anyVorgemerkt && !elV ? 0.25 : 1;
-    const m = L.marker(pos, { icon, opacity: elOp }).addTo(_map);
-    m.on('click', () => openSheet({ type: 'elektro', data: a }));
-  });
+  // Elektro-Assets werden auf der Karte bewusst nicht mehr dargestellt.
 
   if (bounds.length) _map.fitBounds(L.latLngBounds(bounds), { padding: [60, 60] });
 
-  const erzCount = Object.keys(ERZEUGER).filter(k => _project[k]?.lat != null).length;
   document.getElementById('proj-name').textContent = 'Energieplanung';
-  document.getElementById('proj-stats').textContent = `${gebaeude.length} Geb. · ${elItems.length} Assets`;
+  document.getElementById('proj-stats').textContent = `${gebaeude.length} Gebäude`;
 
   updateExportBadge();
 }

@@ -4,7 +4,7 @@ import { _renderOptKostenUebersicht } from './07b-analysis-economics.js';
 
 (function() {
   // Allowed prefixes: function call, event., this., document., !function, or multi-statement starting with one of these
-  const _SAFE = /^\s*(!?\s*)?([\w$][\w$]*\s*\(|event\.|this\.|document\.)/;
+  const _SAFE = /^\s*(!?\s*)?([\w$][\w$]*\s*\(|event\.|this\.|document\.|window\.)/;
   function exec(el, code) {
     if (!_SAFE.test(code)) {
       console.warn('[Security] Blocked data-handler with unexpected pattern:', code);
