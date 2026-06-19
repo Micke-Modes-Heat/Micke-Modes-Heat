@@ -1907,7 +1907,16 @@ async function init() {
 
   setupSheetDrag();
 
-  /* Service Worker nicht verfügbar in Einzeldatei-Modus */);
+  /* Service Worker nicht verfügbar in Einzeldatei-Modus */
+
+  // Warnung beim Schließen wenn unexportierte Daten vorhanden
+  window.addEventListener('beforeunload', e => {
+    const badge = document.getElementById('export-badge');
+    if (badge && badge.style.display !== 'none') {
+      e.preventDefault();
+      e.returnValue = 'Es gibt noch nicht exportierte Fotos/Notizen. Trotzdem schließen?';
+    }
+  });
 }
 
 function setStatus(msg) { document.getElementById('import-status').textContent = msg; }

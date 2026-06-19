@@ -71,8 +71,10 @@ if (typeof L !== 'undefined') {
   // manifest.json-Link entfernen (funktioniert nicht aus einer Einzeldatei heraus)
   html = html.replace(/<link rel="manifest"[^>]*>/g, '');
   // Service-Worker-Registrierung entfernen (SW braucht eigene Origin)
+  // Exakt den if-Block matchen: bis zum ersten ';' gefolgt von schließender '}'.
+  // (Früheres Muster }\s*} griff zu weit und fraß den nächsten Block an → stray ');'.)
   html = html.replace(
-    /if\s*\('serviceWorker' in navigator\)[\s\S]*?}\s*\}/,
+    /if\s*\('serviceWorker' in navigator\)\s*\{[\s\S]*?;\s*\}/,
     '/* Service Worker nicht verfügbar in Einzeldatei-Modus */'
   );
 
