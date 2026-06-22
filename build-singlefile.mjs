@@ -228,6 +228,19 @@ html = html.replace(
   `$1${LEAFLET_ICON_FIX}`
 );
 
+// html2canvas CDN-Tag durch lokal eingebettete Version ersetzen (für Offline/file://)
+const html2canvasPath = resolve('html2canvas.min.js');
+if (existsSync(html2canvasPath)) {
+  const h2cCode = readFileSync(html2canvasPath, 'utf8');
+  html = html.replace(
+    /<script src="https:\/\/unpkg\.com\/html2canvas[^"]*"[^>]*><\/script>/,
+    `<script>${h2cCode}</script>`
+  );
+  console.log('html2canvas eingebettet (offline-fähig)');
+} else {
+  console.warn('WARNUNG: html2canvas.min.js nicht gefunden – Screenshot im Feedback funktioniert nur online.');
+}
+
 // 4. JS-Code vor </body> einfügen (ein einziger <script>-Block, kein type="module")
 const bodyIdx = html.lastIndexOf('</body>');
 html = html.substring(0, bodyIdx)
