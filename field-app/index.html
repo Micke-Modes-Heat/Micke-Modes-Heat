@@ -417,11 +417,56 @@
     .building-label-inner.vorgemerkt {
       border-color: gold !important; box-shadow: 0 0 0.5em 0.08em gold;
     }
+
+    /* Warnbanner bei instabiler Herkunft (z. B. aus WhatsApp geöffnet) */
+    #origin-warning {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 4000;
+      background: #B71C1C; color: #fff;
+      padding: 12px 40px 12px 16px;
+      font-size: 13px; line-height: 1.45;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    }
+    #origin-warning b { font-weight: 700; }
+    .origin-warning-x {
+      position: absolute; top: 6px; right: 8px;
+      background: transparent; border: none; color: #fff;
+      font-size: 18px; line-height: 1; padding: 4px 8px; cursor: pointer;
+    }
+
+    /* Geführter Rundgang (Demo-Tour) */
+    #tour { position: fixed; inset: 0; z-index: 4900; }   /* fängt App-Taps ab */
+    #tour-spot {
+      position: fixed; z-index: 4901; border-radius: 10px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.62);
+      pointer-events: none; transition: all 0.25s ease;
+    }
+    #tour-pop {
+      position: fixed; z-index: 4902; max-width: 320px; width: calc(100vw - 32px);
+      background: #fff; color: #1a1a2e; border-radius: 14px;
+      padding: 16px 16px 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+      font-size: 14px; line-height: 1.5;
+    }
+    #tour-step { font-size: 11px; font-weight: 700; color: var(--primary); letter-spacing: .5px; margin-bottom: 4px; }
+    #tour-title { font-size: 16px; font-weight: 800; margin-bottom: 6px; }
+    #tour-text { color: #374151; }
+    #tour-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+    #tour-actions button {
+      padding: 8px 14px; border-radius: 9px; font-size: 13px; font-weight: 700;
+      border: 1.5px solid var(--border); background: var(--bg); color: var(--text-muted); cursor: pointer;
+    }
+    #tour-next { border-color: var(--primary) !important; background: var(--primary) !important; color: #fff !important; }
+    #tour-prev:disabled { opacity: .4; }
   </style>
 </head>
 <body>
 
 <!-- ═══ IMPORT SCREEN ═══════════════════════════════════ -->
+<div id="origin-warning" style="display:none">
+  <button class="origin-warning-x" onclick="dismissOriginWarning()" aria-label="Schließen">✕</button>
+  <b>⚠️ Achtung – Daten könnten verloren gehen</b><br>
+  Diese Datei läuft aus einer temporären Quelle (z. B. direkt aus WhatsApp). Gespeicherte Fotos &amp; Notizen können beim nächsten Öffnen weg sein.<br>
+  <b>So sicher öffnen:</b> Datei zuerst in „Downloads" speichern, dann über „Eigene Dateien → Downloads" mit Chrome öffnen.
+</div>
 <div id="screen-import" class="screen active">
   <div class="import-card">
     <div class="import-logo">🗺️</div>
@@ -429,7 +474,7 @@
     <p class="subtitle">Energieplanung Außendienst<br>Fotos & Notizen vor Ort erfassen</p>
 
     <button class="btn btn-primary" id="btn-load">📂 Projekt-JSON laden</button>
-    <input type="file" id="json-input" accept=".json,application/json,text/plain,*/*" hidden>
+    <input type="file" id="json-input" accept="application/json,.json" hidden>
 
     <button class="btn btn-secondary" id="btn-continue" style="display:none">
       Bestehendes Projekt öffnen →
@@ -437,6 +482,8 @@
     <button class="btn btn-ghost" id="btn-clear" style="display:none">
       Projekt löschen
     </button>
+
+    <button class="btn btn-ghost" id="btn-demo">🎬 Kurzer Rundgang (Demo)</button>
 
     <div class="import-status" id="import-status"></div>
   </div>
@@ -511,6 +558,22 @@
 
 <!-- Toast -->
 <div id="toast"></div>
+
+<!-- Geführter Rundgang (Demo) -->
+<div id="tour" style="display:none">
+  <div id="tour-spot"></div>
+  <div id="tour-pop">
+    <div id="tour-step"></div>
+    <div id="tour-title"></div>
+    <div id="tour-text"></div>
+    <div id="tour-actions">
+      <button id="tour-skip" type="button">Beenden</button>
+      <span style="flex:1"></span>
+      <button id="tour-prev" type="button">Zurück</button>
+      <button id="tour-next" type="button">Weiter</button>
+    </div>
+  </div>
+</div>
 
 <!-- Progress -->
 <div id="progress">
@@ -1189,8 +1252,147 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
+// ── Geführter Rundgang (Demo) ─────────────────────────────
+// Beispiel-Projekt nur für die Tour; landet NICHT in der DB.
+const DEMO_PROJECT = {
+  _demo: true,
+  gebaeude: [
+    { id: 'demo-1', name: 'Rathaus', nutzung: 'OEB', waerme: 185, flaeche: 1240, baujahr: 1962, zustand: 'saniert', stockwerke: 3, heizlast: 95,
+      polygon: [[48.1374,11.5752],[48.1377,11.5752],[48.1377,11.5759],[48.1374,11.5759]] },
+    { id: 'demo-2', name: 'Wohnhaus Hauptstr. 1', nutzung: 'EFH', feldVorgemerkt: true, waerme: 28, flaeche: 160, baujahr: 1998, zustand: 'gut', stockwerke: 2, heizlast: 12,
+      polygon: [[48.1369,11.5762],[48.1371,11.5762],[48.1371,11.5766],[48.1369,11.5766]] },
+    { id: 'demo-3', name: 'Grundschule', nutzung: 'SCHULE', waerme: 240, flaeche: 2100, baujahr: 1975, zustand: 'teilsaniert', stockwerke: 2, heizlast: 130,
+      polygon: [[48.1379,11.5765],[48.1382,11.5765],[48.1382,11.5772],[48.1379,11.5772]] },
+  ],
+};
+
+let _tourActive = false;
+let _tourReal = null;
+let _tourStep = 0;
+let _tourSteps = [];
+
+function tourSteps() {
+  return [
+    { title: 'Willkommen 👋', text: 'Ein kurzer Rundgang durch die Feldapp – mit Beispiel-Gebäuden. Dein echtes Projekt bleibt dabei unangetastet.' },
+    { sel: '.building-label-inner', title: 'Gebäude auf der Karte', text: 'Jedes Gebäude zeigt seinen Namen im Umriss. Antippen öffnet die Details.' },
+    { sel: '#btn-search', title: 'Suchen', text: 'Ein Gebäude schnell über seinen Namen finden.' },
+    { sel: '#btn-filter-vorgemerkt', title: 'Vorgemerkte', text: 'Zeigt nur die im Büro vorgemerkten Gebäude (Stern-Symbol).' },
+    { sel: '#btn-gps', title: 'Mein Standort', text: 'Zeigt deine eigene Position auf der Karte – praktisch direkt vor Ort.' },
+    { sel: '#btn-cache-tiles', title: 'Karte offline speichern', text: 'WICHTIG vor der Abfahrt (solange du Netz hast!): lädt die Kartenkacheln fürs Funkloch herunter.' },
+    { sel: '#btn-layer-filter', title: 'Typen filtern', text: 'Gebäudetypen nach Bedarf ein- oder ausblenden.' },
+    { before: async () => { await openSheet({ type: 'gebaeude', data: DEMO_PROJECT.gebaeude[0] }); }, wait: 480, sel: '#sheet', title: 'Detail-Karte', text: 'Beim Antippen eines Gebäudes öffnet sich diese Karte mit allen Infos.' },
+    { sel: '#notes-ta', title: 'Notiz', text: 'Beobachtungen, Mängel oder Besonderheiten eintragen – wird automatisch gespeichert.' },
+    { sel: '.add-photo-btn', title: 'Foto', text: 'Ein Foto aufnehmen oder aus der Galerie hinzufügen.' },
+    { before: async () => { await closeSheet(); }, wait: 380, sel: '#btn-export', title: 'Export am Tagesende', text: 'Alles als ZIP zusammenpacken und direkt per WhatsApp/Mail ans Büro teilen.' },
+    { title: 'Fertig ✓', text: 'Das war der Rundgang. Du kannst ihn jederzeit über „🎬 Kurzer Rundgang" neu starten.' },
+  ];
+}
+
+async function startTour() {
+  _tourActive = true;
+  _tourReal = _project;
+  _project = DEMO_PROJECT;
+  openMap();                                    // Demo-Karte rendern
+  _tourSteps = tourSteps();
+  document.getElementById('tour').style.display = 'block';
+  await new Promise(r => setTimeout(r, 650));   // warten bis Karte/Labels da sind
+  await gotoTourStep(0);
+}
+
+async function endTour() {
+  document.getElementById('tour').style.display = 'none';
+  document.getElementById('tour-spot').style.display = 'none';
+  await closeSheet();        // noch _tourActive=true → flushNotes schreibt keine Demo-Notiz
+  _tourActive = false;
+  _project = _tourReal;
+  _tourReal = null;
+  if (_project) { showScreen('screen-map'); renderMap(); }
+  else { showScreen('screen-import'); }
+}
+
+async function gotoTourStep(i) {
+  if (i < 0 || i >= _tourSteps.length) return;
+  _tourStep = i;
+  const step = _tourSteps[i];
+  if (step.before) { try { await step.before(); } catch {} }
+  await new Promise(r => setTimeout(r, step.wait || 120));
+  positionTour(step);
+}
+
+function positionTour(step) {
+  const spot = document.getElementById('tour-spot');
+  const pop  = document.getElementById('tour-pop');
+  const el   = step.sel ? document.querySelector(step.sel) : null;
+
+  // Inhalte
+  document.getElementById('tour-step').textContent  = `Schritt ${_tourStep + 1} / ${_tourSteps.length}`;
+  document.getElementById('tour-title').textContent = step.title || '';
+  document.getElementById('tour-text').textContent  = step.text || '';
+  const prev = document.getElementById('tour-prev');
+  const next = document.getElementById('tour-next');
+  prev.disabled = _tourStep === 0;
+  next.textContent = _tourStep === _tourSteps.length - 1 ? 'Fertig ✓' : 'Weiter';
+
+  pop.style.display = 'block';
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const vw = window.innerWidth, vh = window.innerHeight;
+
+  if (el) {
+    const r = el.getBoundingClientRect();
+    spot.style.display = 'block';
+    spot.style.left   = (r.left - 6) + 'px';
+    spot.style.top    = (r.top - 6) + 'px';
+    spot.style.width  = (r.width + 12) + 'px';
+    spot.style.height = (r.height + 12) + 'px';
+    // Sprechblase unter das Element, sonst darüber
+    let top = r.bottom + 14;
+    if (top + ph > vh - 8) top = r.top - ph - 14;
+    top = Math.max(8, Math.min(top, vh - ph - 8));
+    let left = r.left + r.width / 2 - pw / 2;
+    left = Math.max(8, Math.min(left, vw - pw - 8));
+    pop.style.left = left + 'px';
+    pop.style.top  = top + 'px';
+  } else {
+    // Zentriert, voller Abdunkler ohne Loch
+    spot.style.display = 'block';
+    spot.style.left = (vw / 2) + 'px';
+    spot.style.top  = (vh / 2) + 'px';
+    spot.style.width = '0px';
+    spot.style.height = '0px';
+    pop.style.left = (vw / 2 - pw / 2) + 'px';
+    pop.style.top  = (vh / 2 - ph / 2) + 'px';
+  }
+}
+window.startTour = startTour;
+
+// ── Datensicherheit ───────────────────────────────────────
+// Browser bitten, IndexedDB/Fotos dauerhaft zu behalten (nicht bei Speicherdruck löschen)
+async function requestPersistence() {
+  try {
+    if (navigator.storage && navigator.storage.persist) {
+      const already = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+      if (!already) await navigator.storage.persist();
+    }
+  } catch { /* nicht unterstützt – ignorieren */ }
+}
+
+// Warnen, wenn die App aus einer flüchtigen Quelle läuft (z. B. direkt aus WhatsApp,
+// content://…) — dort kann der Browser gespeicherte Fotos/Notizen verlieren.
+function checkStorageSafety() {
+  const proto = location.protocol;            // 'content:', 'blob:', 'file:', 'http:', 'https:'
+  const unstable = (proto === 'content:' || proto === 'blob:');
+  const el = document.getElementById('origin-warning');
+  if (el) el.style.display = unstable ? 'block' : 'none';
+}
+window.dismissOriginWarning = () => {
+  const el = document.getElementById('origin-warning');
+  if (el) el.style.display = 'none';
+};
+
 // ── Startup ───────────────────────────────────────────────
 async function init() {
+  await requestPersistence();   // Browser bitten, Daten nicht zu löschen
+  checkStorageSafety();         // Warnen, wenn aus instabiler Quelle geöffnet
   await DB.init();
   _project = await DB.getProject();
 
@@ -1206,6 +1408,10 @@ async function init() {
   document.getElementById('json-input').addEventListener('change', onJsonFile);
   document.getElementById('btn-continue').addEventListener('click', openMap);
   document.getElementById('btn-clear').addEventListener('click', clearProject);
+  document.getElementById('btn-demo').addEventListener('click', startTour);
+  document.getElementById('tour-next').addEventListener('click', () => _tourStep >= _tourSteps.length - 1 ? endTour() : gotoTourStep(_tourStep + 1));
+  document.getElementById('tour-prev').addEventListener('click', () => gotoTourStep(_tourStep - 1));
+  document.getElementById('tour-skip').addEventListener('click', endTour);
   document.getElementById('btn-back').addEventListener('click', () => showScreen('screen-import'));
   document.getElementById('btn-gps').addEventListener('click', toggleGps);
   document.getElementById('btn-filter-vorgemerkt').addEventListener('click', toggleFilterVorgemerkt);
@@ -1554,6 +1760,7 @@ async function renderSheet(asset) {
 
 async function flushNotes() {
   clearTimeout(_notesTimer);
+  if (_tourActive) return;        // Demo-Rundgang nichts in die echte DB schreiben
   if (!_currentAsset) return;
   const ta = document.getElementById('notes-ta');
   if (!ta) return;
@@ -1823,13 +2030,28 @@ async function exportZip() {
 
     blobUrls.forEach(u => URL.revokeObjectURL(u));
 
+    const sizeMb = (blob.size / 1024 / 1024).toFixed(1);
+    const fname = `feldapp_${datum}.zip`;
+
+    // Bevorzugt direkt teilen (WhatsApp/Mail) — viel zuverlässiger auf dem Handy.
+    const file = new File([blob], fname, { type: 'application/zip' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Feldapp Export', text: `Feld-Dokumentation · ${allPhotos.length} Fotos` });
+        toast(`Geteilt · ${allPhotos.length} Fotos · ${sizeMb} MB`);
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') { toast('Teilen abgebrochen'); return; }
+        // sonst: auf Download zurückfallen
+      }
+    }
+
+    // Fallback: als Datei herunterladen (landet in „Downloads")
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `feldapp_${datum}.zip`;
+    a.download = fname;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-
-    const sizeMb = (blob.size / 1024 / 1024).toFixed(1);
     toast(`Export fertig · ${allPhotos.length} Fotos · ${sizeMb} MB`);
   } catch (err) {
     toast('Export fehlgeschlagen: ' + err.message);

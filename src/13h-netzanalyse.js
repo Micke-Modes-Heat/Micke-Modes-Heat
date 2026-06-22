@@ -62,6 +62,17 @@ const NA = {
   erzeugungsnetz:     false,
   naErzeugResult:     null,
   naErzeugMaxKW:      null,
+
+  // Speicher-/Notstrom-Platzierung
+  batMode:     'zentral',   // 'zentral' | 'verteilt'
+  batK:        3,
+  batShavePct: 40,          // Batterieleistung = % der Zonenlast
+  batHours:    2,           // Kapazität = Leistung × Stunden
+  batResult:   null,
+  nsaMode:     'zentral',
+  nsaK:        3,
+  nsaSource:   'resilienz', // 'resilienz' | 'spitzenlast'
+  nsaResult:   null,
 };
 
 // Leaflet-Layer-Gruppen (lazy init)
@@ -72,6 +83,8 @@ let grpKabeltrassen   = null;
 let grpKMeans         = null;
 let grpExistingTrafos = null;
 let grpErzeugungKMeans = null;
+let grpBatPlace       = null;
+let grpNsaPlace       = null;
 
 function _ensureGroups() {
   if (!grpHeatmapLoad)    grpHeatmapLoad    = L.layerGroup();
@@ -81,6 +94,8 @@ function _ensureGroups() {
   if (!grpKMeans)         grpKMeans         = L.layerGroup();
   if (!grpExistingTrafos) grpExistingTrafos = L.layerGroup();
   if (!grpErzeugungKMeans) grpErzeugungKMeans = L.layerGroup();
+  if (!grpBatPlace)       grpBatPlace       = L.layerGroup();
+  if (!grpNsaPlace)       grpNsaPlace       = L.layerGroup();
 }
 
 // ── Adapter: Lastpunkte aus aktiven Assets ───────────────────────────────────
@@ -971,7 +986,7 @@ export function naSetGzf(v)          { NA.gzf        = parseFloat(v) ?? 0.7; naR
 export function naSetMinUtil(v)      { NA.minUtilPct = parseInt(v) || 0; }
 export function naSetProxRadius(v)   { NA.proxRadius = parseInt(v) || 0; naRenderPanel(); }
 export function naSetUseExisting(v)  { NA.useExisting = !!v; naRenderPanel(); }
-export function naSetTab(tab)        { NA.activeTab = (tab === 'trafo' || tab === 'ms') ? tab : 'last'; naRenderPanel(); }
+export function naSetTab(tab)        { NA.activeTab = ['trafo','ms','bat','nsa'].includes(tab) ? tab : 'last'; naRenderPanel(); }
 export function naApplyKCompare(k)   { NA.mode = 'manual'; NA.k = k; naRunTrafoOptimierung(); }
 export function naSetKabelEurM(v)    { NA.naKabelEurM = parseFloat(v) || 200; naRenderPanel(); }
 export function naSetErzeugungsnetz(v) { NA.erzeugungsnetz = !!v; naRenderPanel(); }
@@ -1328,6 +1343,143 @@ export function naUebernehmenAlsKompaktstation() {
   if (map.hasLayer(grpErzeugungKMeans)) map.removeLayer(grpErzeugungKMeans);
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// SPEICHER- & NOTSTROM-PLATZIERUNG (Tabs 'bat' / 'nsa')
+// Spiegelt das Trafo-Platzierungs-Paradigma: Lasten clustern → Einheiten an den
+// Cluster-Schwerpunkten vorschlagen → "Übernehmen" legt echte Assets an.
+//   • zentral  = 1 Einheit am Gesamt-Lastschwerpunkt (k=1)
+//   • verteilt = k Einheiten an Cluster-Schwerpunkten
+// Notstrom-Dimensionierung: Default aus der Resilienz-Analyse (window._pvResReco),
+// umschaltbar auf die Karten-Spitzenlast.
+// ══════════════════════════════════════════════════════════════════════════════
+
+const COL_BAT = '#aed581', COL_NSA = '#ff7043';
+
+// Lasten in k Zonen clustern (gewichtet nach Bezugsleistung); leere Cluster raus.
+function _naClusterLoads(k) {
+  const pts = naGetLoadPoints().filter(p => p.loadKW > 0);
+  if (!pts.length) return null;
+  const weighted = pts.map(p => ({ ...p, weight: p.loadKW }));
+  const kk = Math.max(1, Math.min(k, pts.length));
+  return _refineCentroids(_kMeansCluster(weighted, kk, 150, 5)).filter(cl => cl.points.length > 0);
+}
+
+// Marker + (bei mehreren) Voronoi-Zonen für die vorgeschlagenen Einheiten zeichnen.
+function _naDrawPlacementUnits(grp, clusters, units, kind) {
+  grp.clearLayers();
+  const col  = kind === 'bat' ? COL_BAT : COL_NSA;
+  const icon = kind === 'bat' ? '🔋' : '⚙';
+  if (units.length > 1) {
+    const centroids = units.map(u => ({ lat: u.lat, lng: u.lng }));
+    const allPts = clusters.flatMap(c => c.points);
+    const vCells = _computeVoronoi(centroids, _voronoiBBox([...allPts, ...centroids]));
+    units.forEach((u, i) => {
+      const vc = vCells[i];
+      if (vc && vc.polygon.length >= 3)
+        L.polygon(vc.polygon.map(p => [p.lat, p.lng]), {
+          color: col, fillColor: col, fillOpacity: 0.06, opacity: 0.5, weight: 2, dashArray: '7 4',
+        }).addTo(grp);
+    });
+  }
+  units.forEach((u, i) => {
+    L.marker([u.lat, u.lng], {
+      icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+        html: `<div style="background:${col};border:2px solid #fff;border-radius:50%;width:26px;height:26px;
+               display:flex;align-items:center;justify-content:center;font-size:13px;
+               box-shadow:0 2px 6px rgba(0,0,0,.45);">${icon}</div>` }),
+      zIndexOffset: 600,
+    }).bindPopup(kind === 'bat'
+      ? `<b>🔋 Batteriespeicher ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
+        `Leistung: <b>${u.kW} kW</b><br>Kapazität: <b>${u.kWh} kWh</b><br>Punkte: ${u.pts}`
+      : `<b>⚙ Notstromaggregat ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
+        `Leistung: <b>${u.kW} kW</b><br>Autonomie: ${u.autonomieH} h · ${u.kraftstoff}<br>Punkte: ${u.pts}`
+    ).addTo(grp);
+  });
+  if (!map.hasLayer(grp)) grp.addTo(map);
+}
+
+export function naRunSpeicherPlatzierung() {
+  _ensureGroups();
+  const clusters = _naClusterLoads(NA.batMode === 'zentral' ? 1 : NA.batK);
+  if (!clusters) { grpBatPlace.clearLayers(); NA.batResult = null; alert('Keine aktiven Lastpunkte gefunden.'); naRenderPanel(); return; }
+  const shave = NA.batShavePct / 100, hours = NA.batHours;
+  const units = clusters.map(cl => {
+    const kW = Math.max(1, Math.round(cl.bezugKW * shave));
+    return { lat: cl.centroid.lat, lng: cl.centroid.lng, kW, kWh: Math.round(kW * hours),
+             loadKW: cl.bezugKW, pts: cl.points.length };
+  });
+  NA.batResult = units;
+  _naDrawPlacementUnits(grpBatPlace, clusters, units, 'bat');
+  naRenderPanel();
+}
+
+export function naRunNotstromPlatzierung() {
+  _ensureGroups();
+  const clusters = _naClusterLoads(NA.nsaMode === 'zentral' ? 1 : NA.nsaK);
+  if (!clusters) { grpNsaPlace.clearLayers(); NA.nsaResult = null; alert('Keine aktiven Lastpunkte gefunden.'); naRenderPanel(); return; }
+  const reco    = window._pvResReco;
+  const useReco = NA.nsaSource === 'resilienz' && reco && reco.genKw > 0;
+  const sumLoad = clusters.reduce((s, cl) => s + cl.bezugKW, 0) || 1;
+  const sitePeak = Math.ceil(sumLoad * (NA.gzf || 0.7));   // koinzidente Karten-Spitzenlast
+  const totalKW  = useReco ? Math.ceil(reco.genKw) : sitePeak;
+  const autonomieH = useReco ? reco.durH : 24;
+  const kraftstoff = useReco ? (reco.kraftstoff || 'Diesel') : 'Diesel';
+  const units = clusters.map(cl => {
+    const share = NA.nsaMode === 'zentral' ? 1 : cl.bezugKW / sumLoad;
+    return { lat: cl.centroid.lat, lng: cl.centroid.lng, kW: Math.max(1, Math.round(totalKW * share)),
+             autonomieH, kraftstoff, loadKW: cl.bezugKW, pts: cl.points.length };
+  });
+  NA.nsaResult = { units, totalKW, source: useReco ? 'resilienz' : 'spitzenlast',
+                   autonomieH, kraftstoff, sitePeak, recoKW: reco ? Math.ceil(reco.genKw) : null };
+  _naDrawPlacementUnits(grpNsaPlace, clusters, units, 'nsa');
+  naRenderPanel();
+}
+
+export function naUebernehmenSpeicher() {
+  if (!window.createAsset) { alert('createAsset nicht verfügbar'); return; }
+  const units = NA.batResult;
+  if (!units || !units.length) { alert('Bitte zuerst die Speicher-Platzierung berechnen.'); return; }
+  if (!confirm(`${units.length} Batteriespeicher als Assets anlegen?`)) return;
+  let created = 0;
+  for (const u of units) {
+    const a = window.createAsset('Batterie', u.lat, u.lng, { props: {
+      leistungKW: String(u.kW), kapazitaetKWh: String(u.kWh), betriebsmodus: 'eigenverbrauch' } });
+    if (a) created++;
+  }
+  if (grpBatPlace) grpBatPlace.clearLayers();
+  if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+  if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+  alert(`${created} Batteriespeicher erstellt. Positionen per Drag & Drop anpassbar.`);
+}
+
+export function naUebernehmenNotstrom() {
+  if (!window.createAsset) { alert('createAsset nicht verfügbar'); return; }
+  const res = NA.nsaResult;
+  if (!res || !res.units.length) { alert('Bitte zuerst die Notstrom-Platzierung berechnen.'); return; }
+  if (!confirm(`${res.units.length} Notstromaggregat(e) als Assets anlegen?`)) return;
+  let created = 0;
+  for (const u of res.units) {
+    const a = window.createAsset('Nsa', u.lat, u.lng, { props: {
+      leistungKW: String(u.kW), autonomieH: String(u.autonomieH), kraftstoff: u.kraftstoff } });
+    if (a) created++;
+  }
+  if (grpNsaPlace) grpNsaPlace.clearLayers();
+  if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+  if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+  alert(`${created} Notstromaggregat(e) erstellt. Positionen per Drag & Drop anpassbar.`);
+}
+
+export function naClearSpeicher() { _ensureGroups(); grpBatPlace.clearLayers(); NA.batResult = null; naRenderPanel(); }
+export function naClearNotstrom() { _ensureGroups(); grpNsaPlace.clearLayers(); NA.nsaResult = null; naRenderPanel(); }
+
+export function naSetBatMode(m)   { NA.batMode = m === 'verteilt' ? 'verteilt' : 'zentral'; naRenderPanel(); }
+export function naSetBatK(v)      { NA.batK = Math.max(1, Math.min(20, parseInt(v) || 3)); naRenderPanel(); }
+export function naSetBatShave(v)  { NA.batShavePct = Math.max(5, Math.min(100, parseInt(v) || 40)); naRenderPanel(); }
+export function naSetBatHours(v)  { NA.batHours = Math.max(0.5, Math.min(12, parseFloat(v) || 2)); naRenderPanel(); }
+export function naSetNsaMode(m)   { NA.nsaMode = m === 'verteilt' ? 'verteilt' : 'zentral'; naRenderPanel(); }
+export function naSetNsaK(v)      { NA.nsaK = Math.max(1, Math.min(20, parseInt(v) || 3)); naRenderPanel(); }
+export function naSetNsaSource(s) { NA.nsaSource = s === 'spitzenlast' ? 'spitzenlast' : 'resilienz'; naRenderPanel(); }
+
 // ── Panel-Rendering ──────────────────────────────────────────────────────────
 export function naRenderPanel() {
   const panel = document.getElementById('netzanalyse-content');
@@ -1368,8 +1520,10 @@ export function naRenderPanel() {
   const tabBarHtml = `
 <div style="display:flex;gap:2px;margin-bottom:10px;border-bottom:1px solid var(--border);">
   ${_tabBtn('last',  '🌡 Lastübersicht',     '#ce93d8', 'Heatmap der räumlichen Verteilung von Verbrauch und Erzeugung auf der Karte anzeigen')}
-  ${_tabBtn('trafo', '⚡ Trafo-Platzierung', '#4fc3f7', 'Optimale Trafo-Standorte automatisch berechnen (Clustering nach Last/Erzeugung) und als Kompaktstationen übernehmen')}
-  ${_tabBtn('ms',    '🔗 MS-Netz',           '#f9a825', 'Mittelspannungsnetz zwischen NAP und Trafos analysieren und automatisch verlegen')}
+  ${_tabBtn('trafo', '⚡ Trafo',     '#4fc3f7', 'Optimale Trafo-Standorte automatisch berechnen (Clustering nach Last/Erzeugung) und als Kompaktstationen übernehmen')}
+  ${_tabBtn('bat',   '🔋 Speicher',  '#aed581', 'Optimale Standorte für Batteriespeicher (Peak-Shaving/Netzentlastung) berechnen und als Assets übernehmen')}
+  ${_tabBtn('nsa',   '⚙ Notstrom',  '#ff7043', 'Optimale Standorte für Notstromaggregate berechnen — Dimensionierung aus der Resilienz-Analyse')}
+  ${_tabBtn('ms',    '🔗 MS-Netz',   '#f9a825', 'Mittelspannungsnetz zwischen NAP und Trafos analysieren und automatisch verlegen')}
 </div>`;
 
   // ── Tab 1: Lastübersicht (Heatmap) ─────────────────────────────────────────
@@ -1720,6 +1874,73 @@ ${hasAnyResult ? `
   <div id="ms-ring-results" style="margin-top:8px;font-size:10px;"></div>
 </div>`;
 
+  // ── Tabs 4/5: Speicher- & Notstrom-Platzierung ──────────────────────────────
+  const _inp = 'background:#11151d;color:#cfd8dc;border:1px solid #444;border-radius:3px;padding:1px 3px;font-family:inherit;font-size:10px;';
+  const _modeBtn = (grp, val, lbl, cur) => {
+    const c = grp === 'bat' ? COL_BAT : COL_NSA, on = cur === val;
+    return `<button onclick="naSet${grp === 'bat' ? 'Bat' : 'Nsa'}Mode('${val}')"
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+             border:1px solid ${on ? c : '#555'};color:${on ? c : '#999'};background:${on ? 'rgba(255,255,255,.06)' : 'transparent'};">${lbl}</button>`;
+  };
+  const _runBtn  = (col) => `width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;border:1px solid ${col};color:${col};background:rgba(255,255,255,.04);`;
+  const _takeBtn = 'flex:3;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;border:1px solid #66bb6a;color:#66bb6a;background:rgba(102,187,106,.1);';
+  const _clrBtn  = 'flex:1;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid var(--muted);color:var(--muted);background:transparent;';
+
+  const batRes = NA.batResult;
+  const tabBatHtml = `
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Batteriespeicher platzieren</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+    Schlägt Speicher-Standorte vor (Peak-Shaving / Netzentlastung). Leistung = Anteil der Zonenlast, Kapazität = Leistung × Dauer.
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:6px;">${_modeBtn('bat','zentral','zentral',NA.batMode)}${_modeBtn('bat','verteilt','verteilt (Zonen)',NA.batMode)}</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px;font-size:10px;color:var(--muted);">
+    ${NA.batMode==='verteilt' ? `<label>Zonen <input type="number" min="1" max="20" value="${NA.batK}" onchange="naSetBatK(this.value)" style="width:42px;${_inp}"></label>` : ''}
+    <label>Shave <input type="number" min="5" max="100" value="${NA.batShavePct}" onchange="naSetBatShave(this.value)" style="width:46px;${_inp}"> %</label>
+    <label>Dauer <input type="number" min="0.5" max="12" step="0.5" value="${NA.batHours}" onchange="naSetBatHours(this.value)" style="width:46px;${_inp}"> h</label>
+  </div>
+  <button onclick="naRunSpeicherPlatzierung()" style="${_runBtn(COL_BAT)}">🔋 Platzierung berechnen</button>
+  ${batRes ? `
+  <div style="margin-top:8px;font-size:10px;color:#cfd8dc;"><b>${batRes.length}</b> Speicher · Σ <b>${batRes.reduce((s,u)=>s+u.kW,0)}</b> kW · <b>${batRes.reduce((s,u)=>s+u.kWh,0).toLocaleString('de-DE')}</b> kWh</div>
+  <div style="display:flex;gap:6px;margin-top:6px;">
+    <button onclick="naUebernehmenSpeicher()" style="${_takeBtn}">⬆ Als Assets übernehmen</button>
+    <button onclick="naClearSpeicher()" title="Vorschlag verwerfen" style="${_clrBtn}">✕</button>
+  </div>` : ''}
+</div>`;
+
+  const reco   = window._pvResReco;
+  const nsaRes = NA.nsaResult;
+  const recoTxt = reco && reco.genKw > 0
+    ? `Resilienz-Empfehlung: <b>${Math.ceil(reco.genKw)} kW</b> · ${reco.durH} h · ${reco.kraftstoff}`
+    : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (Abb. 10) — Fallback: Karten-Spitzenlast</span>`;
+  const _srcBtn = (val, lbl) => {
+    const on = NA.nsaSource === val;
+    return `<button onclick="naSetNsaSource('${val}')"
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+             border:1px solid ${on ? COL_NSA : '#555'};color:${on ? COL_NSA : '#999'};background:${on ? 'rgba(255,112,67,.1)' : 'transparent'};">${lbl}</button>`;
+  };
+  const tabNsaHtml = `
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Notstromaggregat platzieren</div>
+<div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+    Schlägt Aggregat-Standorte vor. Gesamtleistung aus der Resilienz-Analyse oder der Karten-Spitzenlast, auf die Zonen verteilt.
+  </div>
+  <div style="font-size:10px;margin-bottom:6px;padding:5px;border-radius:4px;background:rgba(255,112,67,.08);border:1px solid rgba(255,112,67,.3);color:#cfd8dc;">${recoTxt}</div>
+  <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Dimensionierung</div>
+  <div style="display:flex;gap:6px;margin-bottom:6px;">${_srcBtn('resilienz','aus Resilienz')}${_srcBtn('spitzenlast','Karten-Spitzenlast')}</div>
+  <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Platzierung</div>
+  <div style="display:flex;gap:6px;margin-bottom:6px;">${_modeBtn('nsa','zentral','zentral',NA.nsaMode)}${_modeBtn('nsa','verteilt','verteilt (Zonen)',NA.nsaMode)}</div>
+  ${NA.nsaMode==='verteilt' ? `<label style="font-size:10px;color:var(--muted);display:block;margin-bottom:6px;">Zonen <input type="number" min="1" max="20" value="${NA.nsaK}" onchange="naSetNsaK(this.value)" style="width:42px;${_inp}"></label>` : ''}
+  <button onclick="naRunNotstromPlatzierung()" style="${_runBtn(COL_NSA)}">⚙ Platzierung berechnen</button>
+  ${nsaRes ? `
+  <div style="margin-top:8px;font-size:10px;color:#cfd8dc;"><b>${nsaRes.units.length}</b> Aggregat(e) · Σ <b>${nsaRes.totalKW}</b> kW · ${nsaRes.autonomieH} h · ${nsaRes.kraftstoff}
+    <div style="font-size:9px;color:var(--muted);margin-top:2px;">Quelle: ${nsaRes.source==='resilienz' ? 'Resilienz-Analyse' : `Karten-Spitzenlast (${nsaRes.sitePeak} kW)`}</div></div>
+  <div style="display:flex;gap:6px;margin-top:6px;">
+    <button onclick="naUebernehmenNotstrom()" style="${_takeBtn}">⬆ Als Assets übernehmen</button>
+    <button onclick="naClearNotstrom()" title="Vorschlag verwerfen" style="${_clrBtn}">✕</button>
+  </div>` : ''}
+</div>`;
+
   panel.innerHTML = `
 <!-- Übersicht -->
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Übersicht Lastpunkte</div>
@@ -1737,7 +1958,7 @@ ${hasAnyResult ? `
 
 ${tabBarHtml}
 
-${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'ms' ? tabMsHtml : tabLastHtml}`;
+${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : activeTab === 'nsa' ? tabNsaHtml : activeTab === 'ms' ? tabMsHtml : tabLastHtml}`;
 }
 
 // ── Panel-Toggle ─────────────────────────────────────────────────────────────
