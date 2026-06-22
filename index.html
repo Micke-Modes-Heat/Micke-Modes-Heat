@@ -27,6 +27,7 @@
   </div>
   <div class="header-spacer" style="flex:1;"></div>
   <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Kartenebenen ein-/ausblenden">⊞ Ebenen</button>
+  <button class="tool-btn" id="btn-feedback-main" data-click="sendAppFeedback()" style="background:#e65100;border-color:#e65100;color:#fff;font-size:11px;padding:0 14px;font-weight:600;letter-spacing:0.2px;" title="Testversion: Feedback oder Fehler melden">✉ Feedback geben</button>
   <div style="position:relative;display:inline-block;">
     <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:#607d8b;color:#90a4ae;font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Feedback, Berechnungslogik">⋯ Mehr</button>
     <div id="mehr-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:190px;box-shadow:0 6px 18px rgba(0,0,0,0.45);flex-direction:column;gap:3px;">
@@ -3346,11 +3347,49 @@ Turnhalle;Öffentlich;1982;A;850</div>
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
 
+  // Konsolenfehler/-warnungen von Beginn an abfangen
+  var _consoleLogs = [];
+  var _maxLogs = 50;
+  function _patchConsole(level, orig) {
+    return function () {
+      if (_consoleLogs.length < _maxLogs) {
+        var args = Array.prototype.slice.call(arguments);
+        var msg = args.map(function (a) {
+          try { return (typeof a === 'object') ? JSON.stringify(a) : String(a); } catch (e) { return '[Object]'; }
+        }).join(' ');
+        _consoleLogs.push('[' + level.toUpperCase() + '] ' + msg);
+      }
+      orig.apply(console, arguments);
+    };
+  }
+  console.error = _patchConsole('error', console.error.bind(console));
+  console.warn  = _patchConsole('warn',  console.warn.bind(console));
+  window.addEventListener('error', function (e) {
+    if (_consoleLogs.length < _maxLogs)
+      _consoleLogs.push('[UNCAUGHT] ' + e.message + (e.filename ? ' (' + e.filename + ':' + e.lineno + ')' : ''));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    if (_consoleLogs.length < _maxLogs)
+      _consoleLogs.push('[PROMISE] ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)));
+  });
+
+  // DOM-Snapshot: Script-Inhalte + Data-URIs per Regex entfernen, auf 200 KB kürzen
+  function _captureHtmlSnapshot() {
+    try {
+      var html = document.documentElement.outerHTML;
+      html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '<script>[entfernt]<\/script>');
+      html = html.replace(/(<img\b[^>]*)\bsrc="data:[^"]*"/gi, '$1src="" alt="[Bild entfernt]"');
+      if (html.length > 200000) html = html.slice(0, 200000) + '\n<!-- [DOM-Snapshot gekürzt] -->';
+      return '<!DOCTYPE html><html>' + html + '</html>';
+    } catch (e) { return null; }
+  }
+
   // Erzeugt eine Feedback-HTML-Datei (Text + Metadaten + Screenshot) zum
   // Download. Die Datei kann das Team einfach weiterleiten/teilen.
-  function _buildFeedbackHtml(text, screenshotDataUrl) {
+  function _buildFeedbackHtml(text, kategorie, consoleLogs, screenshotDataUrl, snapshot) {
     var ver = window.APP_VERSION || 'dev';
     var meta = {
+      'Kategorie': kategorie,
       'Version': ver + (window.APP_BUILD_DATE ? ' (Build ' + window.APP_BUILD_DATE + ')' : ''),
       'Datum': new Date().toLocaleString('de-DE'),
       'Browser': navigator.userAgent,
@@ -3361,28 +3400,52 @@ Turnhalle;Öffentlich;1982;A;850</div>
     var metaRows = Object.keys(meta).map(function (k) {
       return '<tr><td style="padding:2px 12px 2px 0;color:#9a9080;white-space:nowrap;">' + esc(k) + '</td><td>' + esc(meta[k]) + '</td></tr>';
     }).join('');
+    var katBadgeColor = kategorie === 'Fehler' ? '#c62828' : kategorie === 'Verbesserung' ? '#1565c0' : '#555';
     return '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">' +
-      '<title>Feedback Micke-Heat ' + esc(ver) + '</title>' +
+      '<title>' + esc(kategorie) + ': Feedback Micke-Heat ' + esc(ver) + '</title>' +
       '<style>body{font-family:sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#222;}' +
       'h1{font-size:18px;}h2{font-size:13px;color:#666;margin-top:24px;}' +
-      'pre{white-space:pre-wrap;background:#f4f4f4;border:1px solid #ddd;border-radius:6px;padding:12px;}' +
+      'pre{white-space:pre-wrap;background:#f4f4f4;border:1px solid #ddd;border-radius:6px;padding:12px;font-size:11px;}' +
+      '.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:bold;color:#fff;background:' + katBadgeColor + ';margin-left:10px;vertical-align:middle;}' +
       'table{border-collapse:collapse;font-size:12px;}img{max-width:100%;border:1px solid #ddd;border-radius:6px;}</style>' +
       '</head><body>' +
-      '<h1>Feedback – Micke-Heat ' + esc(ver) + '</h1>' +
+      '<h1>Feedback – Micke-Heat ' + esc(ver) + '<span class="badge">' + esc(kategorie) + '</span></h1>' +
       '<h2>Rückmeldung</h2><pre>' + esc(text) + '</pre>' +
       '<h2>Metadaten</h2><table>' + metaRows + '</table>' +
+      (consoleLogs && consoleLogs.length ? '<h2>Konsolenmeldungen (' + consoleLogs.length + ')</h2><pre>' + esc(consoleLogs.join('\n')) + '</pre>' : '') +
       (screenshotDataUrl ? '<h2>Screenshot</h2><img src="' + screenshotDataUrl + '" alt="Screenshot">' : '') +
+      (snapshot && !screenshotDataUrl ? '<h2>DOM-Snapshot <span style="font-weight:normal;font-size:11px;color:#888;">(Fallback – Screenshot nicht verfügbar)</span></h2>' +
+        '<iframe src="data:text/html;charset=utf-8,' + encodeURIComponent(snapshot) + '" style="width:100%;height:520px;border:1px solid #ddd;border-radius:6px;"></iframe>' : '') +
       '</body></html>';
   }
 
-  function _downloadFeedback(text, screenshotDataUrl) {
-    var html = _buildFeedbackHtml(text, screenshotDataUrl);
+  function _sendByMail(text, kategorie, consoleLogs) {
+    var ver = window.APP_VERSION || 'dev';
+    var subject = '[Micke-Heat ' + kategorie + '] v' + ver + ' – Feedback';
+    var body = 'Kategorie: ' + kategorie + '\r\n' +
+      'Version: ' + ver + (window.APP_BUILD_DATE ? ' (Build ' + window.APP_BUILD_DATE + ')' : '') + '\r\n' +
+      'Datum: ' + new Date().toLocaleString('de-DE') + '\r\n' +
+      'Browser: ' + navigator.userAgent + '\r\n' +
+      'Bildschirm: ' + window.innerWidth + ' x ' + window.innerHeight + '\r\n' +
+      '\r\n──────────────────────────────\r\nRückmeldung\r\n──────────────────────────────\r\n' +
+      (text || '(kein Text eingegeben)') +
+      (consoleLogs && consoleLogs.length
+        ? '\r\n\r\n──────────────────────────────\r\nKonsolenmeldungen (' + consoleLogs.length + ')\r\n──────────────────────────────\r\n' + consoleLogs.join('\r\n')
+        : '');
+    window.location.href = 'mailto:andre.modes@ofd-bau.nrw.de' +
+      '?subject=' + encodeURIComponent(subject) +
+      '&body=' + encodeURIComponent(body);
+  }
+
+  function _downloadFeedback(text, kategorie, consoleLogs, screenshotDataUrl, snapshot) {
+    var html = _buildFeedbackHtml(text, kategorie, consoleLogs, screenshotDataUrl, snapshot);
     var blob = new Blob([html], { type: 'text/html' });
     var url = URL.createObjectURL(blob);
     var ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+    var katSlug = { 'Fehler': 'Fehler', 'Verbesserung': 'Idee', 'Sonstiges': 'Sonstiges' }[kategorie] || 'Feedback';
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'Feedback_Micke-Heat_v' + (window.APP_VERSION || 'dev') + '_' + ts + '.html';
+    a.download = katSlug + '_Micke-Heat_v' + (window.APP_VERSION || 'dev') + '_' + ts + '.html';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -3392,52 +3455,106 @@ Turnhalle;Öffentlich;1982;A;850</div>
   window.sendAppFeedback = function () {
     document.getElementById('feedback-modal')?.remove();
 
+    var hasLogs = _consoleLogs.length > 0;
+    var firefoxFileHint = location.protocol === 'file:' && navigator.userAgent.includes('Firefox');
     var overlay = document.createElement('div');
     overlay.id = 'feedback-modal';
     overlay.className = 'ep-modal-overlay';
     overlay.style.zIndex = '30000';
     overlay.innerHTML =
-      '<div class="ep-modal" style="width:420px;max-width:94vw;">' +
+      '<div class="ep-modal" style="width:440px;max-width:94vw;">' +
         '<div class="ep-modal-title">Feedback geben</div>' +
         '<div class="ep-modal-body">' +
           'Was ist passiert / welche Idee hast du? Version, Browser und auf Wunsch ' +
           'ein Screenshot der aktuellen Ansicht werden automatisch beigefügt.' +
         '</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
+          '<button class="ep-modal-btn feedback-kat" data-kat="Fehler" data-color="#c62828" style="flex:1;">🔴 Fehler</button>' +
+          '<button class="ep-modal-btn feedback-kat" data-kat="Verbesserung" data-color="#1565c0" style="flex:1;">🔵 Verbesserung</button>' +
+          '<button class="ep-modal-btn feedback-kat" data-kat="Sonstiges" data-color="#546e7a" style="flex:1;">⚪ Sonstiges</button>' +
+        '</div>' +
         '<textarea id="feedback-text" class="ep-modal-input" rows="5" ' +
           'placeholder="Beschreibung, Schritte zum Nachstellen, Erwartung..." ' +
           'style="resize:vertical;font-family:inherit;"></textarea>' +
-        '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--muted);">' +
-          '<input type="checkbox" id="feedback-screenshot" checked style="margin:0;"> Screenshot der aktuellen Ansicht beifügen' +
-        '</label>' +
+        '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">' +
+            '<input type="checkbox" id="feedback-screenshot" checked style="margin:0;"> Screenshot der aktuellen Ansicht beifügen' +
+          '</label>' +
+          (firefoxFileHint
+            ? '<div style="font-size:10px;color:#e65100;padding-left:18px;margin-top:2px;">Firefox + lokale Datei: Screenshot nicht möglich → DOM-Snapshot wird als Fallback beigefügt</div>'
+            : '') +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">' +
+            '<input type="checkbox" id="feedback-consolelogs"' + (hasLogs ? ' checked' : ' disabled') + ' style="margin:0;"> ' +
+            'Konsolenmeldungen beifügen' + (hasLogs ? ' (' + _consoleLogs.length + ' Einträge)' : ' (keine vorhanden)') +
+          '</label>' +
+        '</div>' +
         '<div class="ep-modal-btns" style="margin-top:14px;">' +
           '<button class="ep-modal-btn" data-click="this.closest(\'.ep-modal-overlay\').remove()">Abbrechen</button>' +
-          '<button class="ep-modal-btn primary" id="feedback-submit">Datei erzeugen</button>' +
+          '<button class="ep-modal-btn" id="feedback-download" title="HTML-Datei mit Screenshot herunterladen">⬇ Datei</button>' +
+          '<button class="ep-modal-btn primary" id="feedback-mail">📧 Per Mail senden</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(overlay);
     overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
 
+    // Kategorie-Buttons
+    var activeKat = 'Fehler';
+    function _applyKatStyle(btn, active) {
+      var color = btn.dataset.color;
+      if (active) {
+        btn.style.background = color;
+        btn.style.borderColor = color;
+        btn.style.color = '#fff';
+        btn.style.fontWeight = 'bold';
+      } else {
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = color;
+        btn.style.fontWeight = '';
+      }
+    }
+    overlay.querySelectorAll('.feedback-kat').forEach(function (btn) {
+      _applyKatStyle(btn, btn.dataset.kat === activeKat);
+      btn.addEventListener('click', function () {
+        overlay.querySelectorAll('.feedback-kat').forEach(function (b) { _applyKatStyle(b, false); });
+        _applyKatStyle(btn, true);
+        activeKat = btn.dataset.kat;
+      });
+    });
+
     var textEl = overlay.querySelector('#feedback-text');
     textEl.focus();
 
-    overlay.querySelector('#feedback-submit').addEventListener('click', function () {
+    // Mail-Button: alle Textdaten direkt in Outlook öffnen
+    overlay.querySelector('#feedback-mail').addEventListener('click', function () {
+      var text = textEl.value.trim();
+      var withLogs = overlay.querySelector('#feedback-consolelogs').checked;
+      var logs = withLogs ? _consoleLogs.slice() : [];
+      _sendByMail(text, activeKat, logs);
+      overlay.remove();
+    });
+
+    // Download-Button: HTML-Datei mit Screenshot/Snapshot erzeugen
+    overlay.querySelector('#feedback-download').addEventListener('click', function () {
       var btn = this;
       var text = textEl.value.trim();
       var withScreenshot = overlay.querySelector('#feedback-screenshot').checked;
+      var withLogs = overlay.querySelector('#feedback-consolelogs').checked;
+      var logs = withLogs ? _consoleLogs.slice() : [];
 
-      function finish(screenshotDataUrl) {
-        _downloadFeedback(text, screenshotDataUrl);
+      function finish(screenshotDataUrl, snapshot) {
+        _downloadFeedback(text, activeKat, logs, screenshotDataUrl, snapshot || null);
         overlay.remove();
       }
 
       if (withScreenshot && typeof html2canvas !== 'undefined') {
         btn.disabled = true;
-        btn.textContent = 'Screenshot wird erstellt…';
+        btn.textContent = 'Screenshot…';
         html2canvas(document.body, { useCORS: true, allowTaint: true, scale: 1, logging: false })
-          .then(function (canvas) { finish(canvas.toDataURL('image/png')); })
-          .catch(function (e) { console.warn('Screenshot fehlgeschlagen:', e); finish(null); });
+          .then(function (canvas) { finish(canvas.toDataURL('image/png'), null); })
+          .catch(function () { finish(null, _captureHtmlSnapshot()); });
       } else {
-        finish(null);
+        finish(null, null);
       }
     });
   };
