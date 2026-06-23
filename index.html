@@ -3470,7 +3470,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   // parallel zur Mail). Landet im Netlify-Dashboard unter „Forms"; optional
   // mit Mail-Benachrichtigung. Schlägt es fehl (lokale Datei / kein Netlify-
   // Host), bleibt es lautlos — Mail und Datei-Download decken das bereits ab.
-  function _sendToNetlify(text, kategorie, logs, screenshotDataUrl) {
+  function _sendToNetlify(text, kategorie, logs, screenshotDataUrl, snapshot) {
     if (location.protocol === 'file:') return;     // kein Server erreichbar
     var fd = new FormData();
     fd.append('form-name', 'feedback');
@@ -3482,11 +3482,19 @@ Turnhalle;Öffentlich;1982;A;850</div>
     fd.append('bildschirm', window.innerWidth + ' x ' + window.innerHeight);
     fd.append('seite', location.href);
     fd.append('konsolenlogs', (logs && logs.length) ? logs.join('\n') : '');
+    // Immer EIN Artefakt ins Feld "screenshot": das PNG, sonst ersatzweise den
+    // DOM-Snapshot als HTML-Datei (html2canvas scheitert oft an Karten-Kacheln).
     if (screenshotDataUrl) {
       try { fd.append('screenshot', _dataUrlToBlob(screenshotDataUrl), 'screenshot.png'); }
-      catch (e) { console.warn('Screenshot-Anhang fehlgeschlagen:', e); }
+      catch (e) {
+        console.warn('Screenshot-Anhang fehlgeschlagen:', e);
+        if (snapshot) fd.append('screenshot', new Blob([snapshot], { type: 'text/html' }), 'dom-snapshot.html');
+      }
+    } else if (snapshot) {
+      fd.append('screenshot', new Blob([snapshot], { type: 'text/html' }), 'dom-snapshot.html');
     }
-    // Kein Content-Type setzen — der Browser ergänzt die multipart-Boundary selbst.
+    // WICHTIG: keinen Content-Type setzen — sonst speichert Netlify die Datei
+    // nicht. Der Browser ergänzt die multipart-Boundary selbst.
     fetch('/', { method: 'POST', body: fd }).catch(function (err) {
       console.warn('Netlify-Feedback nicht gesendet (Mail/Datei greifen weiterhin):', err);
     });
@@ -3596,11 +3604,17 @@ Turnhalle;Öffentlich;1982;A;850</div>
       // 2) Zusätzlich zentral an Netlify; Screenshot nach Schließen des Modals
       //    erstellen (damit das Overlay nicht mit drauf ist).
       if (withScreenshot && typeof html2canvas !== 'undefined' && location.protocol !== 'file:') {
-        html2canvas(document.body, { useCORS: true, allowTaint: true, scale: 1, logging: false })
-          .then(function (canvas) { _sendToNetlify(text, activeKat, logs, canvas.toDataURL('image/png')); })
-          .catch(function () { _sendToNetlify(text, activeKat, logs, null); });
+        // allowTaint:false → exportierbare Canvas (Karten-Kacheln vergiften sie nicht).
+        // Schlägt der Screenshot trotzdem fehl, geht ersatzweise der DOM-Snapshot mit.
+        html2canvas(document.body, { useCORS: true, allowTaint: false, scale: 1, logging: false })
+          .then(function (canvas) {
+            var dataUrl = null;
+            try { dataUrl = canvas.toDataURL('image/png'); } catch (e) { dataUrl = null; }
+            _sendToNetlify(text, activeKat, logs, dataUrl, dataUrl ? null : _captureHtmlSnapshot());
+          })
+          .catch(function () { _sendToNetlify(text, activeKat, logs, null, _captureHtmlSnapshot()); });
       } else {
-        _sendToNetlify(text, activeKat, logs, null);
+        _sendToNetlify(text, activeKat, logs, null, null);
       }
     });
 
