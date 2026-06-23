@@ -3336,6 +3336,24 @@ Turnhalle;Öffentlich;1982;A;850</div>
 <div id="edge-popup" class="edge-popup" style="display:none;"></div>
 
 
+<!-- ══ Netlify Forms — verstecktes Erkennungsformular ════════════════════════
+     Netlify scannt beim Deploy die statische HTML nach <form data-netlify="true">
+     und registriert nur so gefundene Formulare. Dieses Formular wird nie
+     angezeigt (hidden); der Feedback-Button sendet per fetch() an denselben
+     Namen ("feedback"). Die Feldnamen müssen mit _sendToNetlify übereinstimmen. -->
+<form name="feedback" data-netlify="true" netlify-honeypot="bot-field"
+      enctype="multipart/form-data" hidden>
+  <input type="text" name="kategorie" />
+  <textarea name="nachricht"></textarea>
+  <input type="text" name="version" />
+  <input type="text" name="browser" />
+  <input type="text" name="bildschirm" />
+  <input type="text" name="seite" />
+  <textarea name="konsolenlogs"></textarea>
+  <input type="file" name="screenshot" />
+  <input type="text" name="bot-field" />
+</form>
+
 <!-- App-Version & Feedback-Button. Platzhalter werden von build-singlefile.mjs
      ersetzt; im Dev-Modus (ungebaut) bleibt 'dev' stehen. -->
 <script>
@@ -3432,9 +3450,46 @@ Turnhalle;Öffentlich;1982;A;850</div>
       (consoleLogs && consoleLogs.length
         ? '\r\n\r\n──────────────────────────────\r\nKonsolenmeldungen (' + consoleLogs.length + ')\r\n──────────────────────────────\r\n' + consoleLogs.join('\r\n')
         : '');
-    window.location.href = 'mailto:andre.modes@ofd-bau.nrw.de' +
+    // Beide als direkte Empfänger (An): André + Konstantin
+    window.location.href = 'mailto:andre.modes@ofd-bau.nrw.de,Konstantin.Micke@blb.nrw.de' +
       '?subject=' + encodeURIComponent(subject) +
       '&body=' + encodeURIComponent(body);
+  }
+
+  // data:-URL (Screenshot-PNG) → Blob für den Netlify-Datei-Upload.
+  function _dataUrlToBlob(dataUrl) {
+    var parts = dataUrl.split(',');
+    var mime = (parts[0].match(/:(.*?);/) || [])[1] || 'image/png';
+    var bin = atob(parts[1]);
+    var arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+
+  // Zusätzlicher zentraler Versand an Netlify Forms (still im Hintergrund,
+  // parallel zur Mail). Landet im Netlify-Dashboard unter „Forms"; optional
+  // mit Mail-Benachrichtigung. Schlägt es fehl (lokale Datei / kein Netlify-
+  // Host), bleibt es lautlos — Mail und Datei-Download decken das bereits ab.
+  function _sendToNetlify(text, kategorie, logs, screenshotDataUrl) {
+    if (location.protocol === 'file:') return;     // kein Server erreichbar
+    var fd = new FormData();
+    fd.append('form-name', 'feedback');
+    fd.append('bot-field', '');                    // Honeypot bleibt leer
+    fd.append('kategorie', kategorie || '');
+    fd.append('nachricht', text || '');
+    fd.append('version', (window.APP_VERSION || 'dev') + (window.APP_BUILD_DATE ? ' (Build ' + window.APP_BUILD_DATE + ')' : ''));
+    fd.append('browser', navigator.userAgent);
+    fd.append('bildschirm', window.innerWidth + ' x ' + window.innerHeight);
+    fd.append('seite', location.href);
+    fd.append('konsolenlogs', (logs && logs.length) ? logs.join('\n') : '');
+    if (screenshotDataUrl) {
+      try { fd.append('screenshot', _dataUrlToBlob(screenshotDataUrl), 'screenshot.png'); }
+      catch (e) { console.warn('Screenshot-Anhang fehlgeschlagen:', e); }
+    }
+    // Kein Content-Type setzen — der Browser ergänzt die multipart-Boundary selbst.
+    fetch('/', { method: 'POST', body: fd }).catch(function (err) {
+      console.warn('Netlify-Feedback nicht gesendet (Mail/Datei greifen weiterhin):', err);
+    });
   }
 
   function _downloadFeedback(text, kategorie, consoleLogs, screenshotDataUrl, snapshot) {
@@ -3466,7 +3521,8 @@ Turnhalle;Öffentlich;1982;A;850</div>
         '<div class="ep-modal-title">Feedback geben</div>' +
         '<div class="ep-modal-body">' +
           'Was ist passiert / welche Idee hast du? Version, Browser und auf Wunsch ' +
-          'ein Screenshot der aktuellen Ansicht werden automatisch beigefügt.' +
+          'ein Screenshot der aktuellen Ansicht werden automatisch beigefügt. ' +
+          'Deine Rückmeldung geht per Mail ans Team und wird zusätzlich zentral gesammelt.' +
         '</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
           '<button class="ep-modal-btn feedback-kat" data-kat="Fehler" data-color="#c62828" style="flex:1;">🔴 Fehler</button>' +
@@ -3525,13 +3581,27 @@ Turnhalle;Öffentlich;1982;A;850</div>
     var textEl = overlay.querySelector('#feedback-text');
     textEl.focus();
 
-    // Mail-Button: alle Textdaten direkt in Outlook öffnen
+    // Mail-Button: Mail an André (CC Konstantin) öffnen UND parallel still an
+    // Netlify hochladen. Die Mail wird zuerst synchron im Klick ausgelöst, damit
+    // André alles unverändert wie bisher bekommt; danach läuft der Netlify-Upload.
     overlay.querySelector('#feedback-mail').addEventListener('click', function () {
       var text = textEl.value.trim();
       var withLogs = overlay.querySelector('#feedback-consolelogs').checked;
+      var withScreenshot = overlay.querySelector('#feedback-screenshot').checked;
       var logs = withLogs ? _consoleLogs.slice() : [];
-      _sendByMail(text, activeKat, logs);
+
+      _sendByMail(text, activeKat, logs);   // 1) Mail (André + CC Konstantin) — unverändert
       overlay.remove();
+
+      // 2) Zusätzlich zentral an Netlify; Screenshot nach Schließen des Modals
+      //    erstellen (damit das Overlay nicht mit drauf ist).
+      if (withScreenshot && typeof html2canvas !== 'undefined' && location.protocol !== 'file:') {
+        html2canvas(document.body, { useCORS: true, allowTaint: true, scale: 1, logging: false })
+          .then(function (canvas) { _sendToNetlify(text, activeKat, logs, canvas.toDataURL('image/png')); })
+          .catch(function () { _sendToNetlify(text, activeKat, logs, null); });
+      } else {
+        _sendToNetlify(text, activeKat, logs, null);
+      }
     });
 
     // Download-Button: HTML-Datei mit Screenshot/Snapshot erzeugen

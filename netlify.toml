@@ -1,0 +1,15 @@
+# Netlify-Deploy-Konfiguration für Micke-Heat
+#
+# Baut beide Einzeldateien (wie der GitHub-Pages-Workflow) und veröffentlicht
+# den dist/-Ordner:
+#   Hauptapp:  https://<deine-site>.netlify.app/            (index.html)
+#   Feldapp:   https://<deine-site>.netlify.app/feldapp.html
+#
+# Netlify Forms: Das versteckte <form name="feedback"> in index.html wird beim
+# Deploy automatisch erkannt und registriert. Einsendungen erscheinen unter
+# Netlify → Site → Forms. WICHTIG: Die hochgeladene index.html darf NICHT mit
+# StatiCrypt verschlüsselt sein, sonst sieht Netlify das Formular nicht.
+
+[build]
+  command = "npm run build && npm run build:feldapp"
+  publish = "dist"
