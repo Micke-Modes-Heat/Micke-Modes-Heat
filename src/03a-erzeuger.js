@@ -90,35 +90,13 @@ export function calcFFKwp(ff) {
   return fl * gcr * _pvWpM2Global() / 1000;
 }
 
-export function attachFFLayer(ff) {
-  if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
-  if (ff.moduleSvgLayer) { map.removeLayer(ff.moduleSvgLayer); ff.moduleSvgLayer = null; }
-
-  // Yellow border + light transparent yellow fill
-  ff.polygonLayer = L.polygon(ff.polygon, {
-    color: 'rgba(255,213,79,0.85)', weight: 2,
-    fillColor: 'rgba(255,213,79,0.18)', fillOpacity: 1
-  }).addTo(map);
-  ff.polygonLayer.on('click', () => {
-    toggleFFPvPanel();
-  });
-
-  if (ff.polygon.length < 3) return;
-  const isOW = ff.ausrichtung === 'ostwest';
-  const gcr  = (ff.gcr !== undefined ? ff.gcr : (isOW ? 55 : 35)) / 100;
-  const lats = ff.polygon.map(p => p.lat);
-  const lngs = ff.polygon.map(p => p.lng);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-  if (maxLat === minLat || maxLng === minLng) return;
-
-  const W = 1000, H = 1000;
-  const polyPts = ff.polygon.map(p => {
-    const x = ((p.lng - minLng) / (maxLng - minLng) * W).toFixed(1);
-    const y = ((maxLat - p.lat) / (maxLat - minLat) * H).toFixed(1);
-    return `${x},${y}`;
-  }).join(' ');
-
+/**
+ * Erzeugt die SVG-Modulmuster (Reihen/Spalten + Trennlinien + Shimmer) für eine
+ * PV-Fläche im normierten Koordinatensystem 0..W × 0..H.
+ * Wiederverwendet von Freiflächen (attachFFLayer) und Gebäude-Belegungsflächen
+ * (attachGebPvLayer in 03c). isOW=true → Ost-West-Aufständerung, sonst Süd-Reihen.
+ */
+export function buildPvModuleShapes(isOW, gcr, W = 1000, H = 1000) {
   const modFill  = 'rgba(26,35,126,0.82)';   // dark indigo blue modules
   const cellLine = 'rgba(92,107,192,0.50)';   // lighter blue cell grid
   const shimmer  = 'rgba(92,107,192,0.28)';   // tilt-side highlight
@@ -178,6 +156,40 @@ export function attachFFLayer(ff) {
       shapes += `<rect x="${(ex0 + singleW - singleW * 0.13).toFixed(1)}" y="0" width="${(singleW * 0.13).toFixed(1)}" height="${H}" fill="${shimmer}"/>`;
     }
   }
+
+  return shapes;
+}
+
+export function attachFFLayer(ff) {
+  if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
+  if (ff.moduleSvgLayer) { map.removeLayer(ff.moduleSvgLayer); ff.moduleSvgLayer = null; }
+
+  // Yellow border + light transparent yellow fill
+  ff.polygonLayer = L.polygon(ff.polygon, {
+    color: 'rgba(255,213,79,0.85)', weight: 2,
+    fillColor: 'rgba(255,213,79,0.18)', fillOpacity: 1
+  }).addTo(map);
+  ff.polygonLayer.on('click', () => {
+    toggleFFPvPanel();
+  });
+
+  if (ff.polygon.length < 3) return;
+  const isOW = ff.ausrichtung === 'ostwest';
+  const gcr  = (ff.gcr !== undefined ? ff.gcr : (isOW ? 55 : 35)) / 100;
+  const lats = ff.polygon.map(p => p.lat);
+  const lngs = ff.polygon.map(p => p.lng);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  if (maxLat === minLat || maxLng === minLng) return;
+
+  const W = 1000, H = 1000;
+  const polyPts = ff.polygon.map(p => {
+    const x = ((p.lng - minLng) / (maxLng - minLng) * W).toFixed(1);
+    const y = ((maxLat - p.lat) / (maxLat - minLat) * H).toFixed(1);
+    return `${x},${y}`;
+  }).join(' ');
+
+  const shapes = buildPvModuleShapes(isOW, gcr, W, H);
 
   const clipId = `ff-clip-${ff.id}`;
   const svgEl  = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

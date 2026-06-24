@@ -295,10 +295,16 @@ function buildPropsForm(asset) {
     }
 
     case 'WP':
-      return row2(
+    case 'Geo':
+    case 'FG': {
+      const linked = asset.linkedErzeuger
+        ? `<div style="font-size:9px;color:#80cbc4;margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
+        : '';
+      return linked + row2(
         numField(id, 'leistungThKW', 'Th. Leistung (kW)', 100, {props:p}),
         numField(id, 'leistungElKW', 'El. Bedarf (kW)',    40, {props:p})
       ) + numField(id, 'jaz', 'JAZ', 2.5, {props:p, step:0.1});
+    }
 
     case 'PV': {
       const spezDefault = _PV_SPEZ_DEFAULT[p.ausrichtung || 'sued'] || 1050;
@@ -361,9 +367,19 @@ function buildPropsForm(asset) {
           [{value:'Diesel',label:'Diesel'},{value:'Gas',label:'Gas'},{value:'HVO',label:'HVO (Biokraftstoff)'}],
           p.kraftstoff || 'Diesel');
 
+    case 'Stromkessel': {
+      const linked = asset.linkedErzeuger
+        ? `<div style="font-size:9px;color:#80cbc4;margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
+        : '';
+      return linked + numField(id, 'leistungKW', 'El. Leistung (kW)', 200, {props:p});
+    }
+
     case 'KWK': {
+      const linked = asset.linkedErzeuger
+        ? `<div style="font-size:9px;color:#80cbc4;margin-bottom:4px;padding:3px 6px;background:rgba(128,203,196,0.1);border-radius:3px;">🔗 Aus dem Erzeuger-Tab synchronisiert</div>`
+        : '';
       const brennstoff = p.brennstoff || 'Erdgas';
-      return row2(
+      return linked + row2(
         numField(id, 'leistungElKW',     'El. Leistung (kW)',       100, {props:p}),
         numField(id, 'leistungThKW',     'Th. Leistung (kW)',       160, {props:p})
       ) + row2(
@@ -1069,7 +1085,7 @@ function renderInspector(asset) {
 }
 
 // ── Asset-Sidebar ─────────────────────────────────────────────────────────────
-const TYPE_ORDER = ['NAP','Schaltanlage','Trafo','NSHV','UV','Verbraucher','Lade','PV','Wind','Batterie','WP','KWK','Nsa'];
+const TYPE_ORDER = ['NAP','Schaltanlage','Trafo','NSHV','UV','Verbraucher','Lade','PV','Wind','Batterie','WP','Geo','FG','KWK','Stromkessel','Nsa'];
 
 export function renderAssetSidebar(filterText) {
   const container = document.getElementById('asset-sidebar-list');

@@ -11,11 +11,18 @@ import { map } from './02b-gebaeude.js';
 // Mapping erzeuger-key → Asset-Typ + Name
 const ERZEUGER_ASSET_CFG = {
   lwwp:        { assetType: 'WP',          name: 'Luft-WP' },
-  geo:         { assetType: 'WP',          name: 'Geo-WP' },
-  fg:          { assetType: 'WP',          name: 'FG-WP' },
+  geo:         { assetType: 'Geo',         name: 'Geothermie-WP' },
+  fg:          { assetType: 'FG',          name: 'Fließgew.-WP' },
   bhkw:        { assetType: 'KWK',         name: 'BHKW/KWK' },
-  stromkessel: { assetType: 'Verbraucher', name: 'Stromkessel' },
+  stromkessel: { assetType: 'Stromkessel', name: 'Stromkessel' },
 };
+
+// Gebäude-ID für das verknüpfte Asset ermitteln (Heizzentrale als Fallback)
+function _buildingId() {
+  const zentId = parseInt(document.getElementById('netz-zentrale')?.value);
+  if (zentId && window.gebaeude?.find(x => x.id === zentId)) return zentId;
+  return null;
+}
 
 // Koordinaten des Wärmeerzeugers ermitteln
 function _coords(key) {
@@ -121,17 +128,20 @@ export function syncErzeugerElektroAsset(key) {
 
   const props = _props(key);
 
+  const buildingId = _buildingId();
   const existing = _findLinked(key);
   if (existing) {
     // Position immer mitführen — Erzeuger ist die Positionsquelle
     existing.lat = coords.lat;
     existing.lng = coords.lng;
     if (existing._marker?.setLatLng) existing._marker.setLatLng([coords.lat, coords.lng]);
+    if (!existing.buildingId && buildingId) existing.buildingId = buildingId;
     Object.assign(existing.props, props);
   } else {
     const asset = createAsset(cfg.assetType, coords.lat, coords.lng, {
       name: cfg.name,
       props,
+      buildingId,
     });
     if (asset) asset.linkedErzeuger = key;
   }
