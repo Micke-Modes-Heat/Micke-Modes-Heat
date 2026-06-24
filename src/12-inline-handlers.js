@@ -16,7 +16,12 @@ import { _renderOptKostenUebersicht } from './07b-analysis-economics.js';
 
   document.addEventListener('click', function(event) {
     const el = event.target.closest('[data-click]');
-    if (el) exec(el, el.dataset.click);
+    if (el) {
+      if (!el.classList.contains('asset-palette-btn') && window._pendingAssetType) {
+        window.cancelPendingAsset?.();
+      }
+      exec(el, el.dataset.click);
+    }
   });
 
   document.addEventListener('input', function(event) {

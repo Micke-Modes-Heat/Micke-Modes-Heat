@@ -2,6 +2,10 @@
 // Generiert den gesamten HTML-Inhalt des Elektro-Tabs und injiziert ihn in
 // #lp-elektro. Einmalig beim ersten Öffnen des Tabs aufgerufen.
 
+import { isErzeugerAktiv } from './06c-dispatch-core.js';
+import { lwWp, bhkw, gebaeude } from './01-globals-varianten.js';
+import { getBatParams } from './09a-pv-profile.js';
+
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 
 function _inp(id, label, value, { min = 0, max, step = 1, change = '', title = '' } = {}) {
@@ -21,97 +25,53 @@ function _stat(label, id, tip = '') {
   return `<div class="lp-netz-row"><span class="lbl">${label}${tipH}</span><span class="val" id="${id}">—</span></div>`;
 }
 
-const _sep = '<div style="border-top:1px solid var(--border);margin:8px 0 6px;"></div>';
+const _sep = '<div style="border-top:1px solid var(--border);margin:5px 0 4px;"></div>';
 
 const _sub = (label) =>
-  `<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:8px 0 5px;">${label}</div>`;
+  `<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:5px 0 3px;">${label}</div>`;
 
 // ── Panel-HTML ────────────────────────────────────────────────────────────────
 
 function _html() { return `
 
   <!-- Kopf -->
-  <div class="lp-step" style="margin-bottom:12px;">
+  <div class="lp-step" style="margin-bottom:10px;">
     <div class="lp-step-num" data-num="4">⚡</div>
-    <div class="lp-step-text">Stromnetz planen<span>Schritt für Schritt zum fertigen Netz</span></div>
+    <div class="lp-step-text">Stromnetz planen<span>vier Stufen, oben nach unten</span></div>
   </div>
 
-  <!-- ── Schnellstart ─────────────────────────────────────────────────────── -->
-  <div class="lp-section-title" style="color:#78909c;font-size:9px;letter-spacing:.08em;">SCHNELLSTART</div>
-  <div class="lp-tool-grid" style="margin-bottom:4px;">
-    <button class="lp-tool-btn" data-click="showAutofillWizard()"
-      style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;"
-      title="Verbrauchs- und PV-Werte automatisch ermitteln">
-      ✦ Auto-Befüllen (Verbrauch &amp; PV)
-    </button>
-    <button class="lp-tool-btn" id="btn-schnellstart-osm" data-click="loadAndAdoptOsmStrassen()"
-      style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;"
-      title="Straßen aus OpenStreetMap laden und direkt als Trassen übernehmen">
-      ↓ OSM-Straßen laden &amp; übernehmen
-    </button>
-    <button class="lp-tool-btn" data-click="naTogglePanel()"
-      style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;"
-      title="Netzanalyse öffnen — Auto-Trafoplatzierung berechnen und als Kompaktstationen übernehmen">
-      🗺️ Netzanalyse — Trafoplatzierung &amp; Kompaktstationen
-    </button>
-    <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
-      style="grid-column:1/-1;border-color:#66bb6a;color:#66bb6a;"
-      title="Stromnetz automatisch generieren: verbindet platzierte Komponenten anhand von Trassen/Distanzen zu einem vollständigen Netz">
-      🔌 Auto-Netz
-    </button>
-    <button class="lp-tool-btn" data-click="elCalcAssets()"
-      style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;font-weight:600;"
-      title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets durchführen (Auslastung, Spannungsfall, Kurzschlussstrom)">
-      ⚡ Elektroberechnung starten
-    </button>
+  <!-- ── Angeschlossene Anlagen ─────────────────────────────────────────────── -->
+  <div class="lp-section-title lp-section-collapsible"
+       data-click="toggleSection('el-sec-anlagen')">
+    <span>Angeschlossene Anlagen <span class="htip" data-tip="Dieselben Anlagen wie im Erzeuger-Tab (Wärme) — hier nur gespiegelt. Strombetriebene Wärmeerzeuger (WP, Stromkessel), BHKW, PV und Batterie wirken automatisch in der Strombilanz.">?</span></span>
+    <span id="el-sec-anlagen-arrow">▼</span>
   </div>
-
-  <!-- ── Gekoppelte Erzeuger (Wärme ↔ Strom) ─────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
-       data-click="toggleSection('el-sec-gekoppelt')">
-    <span>Gekoppelte Erzeuger &amp; Speicher <span class="htip" data-tip="Dieselben Anlagen wie im Erzeuger-Tab (Wärme) — nur ein zweiter Zugang. Strombetriebene Wärmeerzeuger bekommen automatisch ein verknüpftes Elektro-Asset; Änderungen wirken in Wärme- UND Strombilanz.">?</span></span><span id="el-sec-gekoppelt-arrow">▼</span>
-  </div>
-  <div id="el-sec-gekoppelt">
-    <div style="font-size:9px;color:var(--muted);margin-bottom:5px;">Eine Anlage, zwei Zugänge — identisch mit dem 🔥-Erzeuger-Tab.</div>
-    <div class="lp-tool-grid">
-      <button class="lp-tool-btn" data-click="toggleLwWpPanel()" style="border-color:#66bb6a;color:#66bb6a;" title="Luft-Wasser-Wärmepumpe — Stromverbraucher im Netz, Elektro-Asset wird automatisch verknüpft">🌊 Luft-WP</button>
-      <button class="lp-tool-btn" data-click="toggleGeoPanel()" style="border-color:#8d6e63;color:#bcaaa4;" title="Sole-Wasser-Wärmepumpe (Erdsonden) — Stromverbraucher im Netz">⛏ Geothermie</button>
-      <button class="lp-tool-btn" data-click="toggleFliessgewaesserPanel()" style="border-color:#4fc3f7;color:#4fc3f7;" title="Flusswasser-Wärmepumpe — Stromverbraucher im Netz">〰 Fließgew.-WP</button>
-      <button class="lp-tool-btn" data-click="toggleBhkwPanel()" style="border-color:#ff8f00;color:#ffb74d;" title="BHKW — Stromerzeuger im Netz (KWK-Asset wird automatisch verknüpft)">⚡ BHKW</button>
-      <button class="lp-tool-btn" data-click="toggleStromkesselPanel()" style="border-color:#ff69b4;color:#ff69b4;" title="Stromkessel (Power-to-Heat) — Stromverbraucher im Netz">🔌 Stromkessel</button>
-      <button class="lp-tool-btn" data-click="togglePvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="Zentrale PV-Anlage (kWp pauschal oder PVGIS-Lastgang) — identisch mit der PV im Wärme-Tab">☀ PV-Anlage</button>
-      <button class="lp-tool-btn" data-click="toggleGebPvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="PV auf Gebäudedächern — fließt in dieselbe Strombilanz">☀ Gebäude-PV</button>
-      <button class="lp-tool-btn" data-click="toggleBatteriePanel()" style="border-color:#b39ddb;color:#ce93d8;" title="Batteriespeicher — identisch mit dem Batteriespeicher im Erzeuger-Tab">🔋 Batterie</button>
-    </div>
-  </div>
-
-  <!-- ── 1 · Netz aufbauen ────────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
-       data-click="toggleSection('el-sec-netz')">
-    <span>1 · Netz aufbauen</span><span id="el-sec-netz-arrow">▼</span>
-  </div>
-  <div id="el-sec-netz">
-
-    ${_sub('Komponenten platzieren')}
-    <div id="asset-palette" class="asset-palette-inline"></div>
-    <div class="lp-tool-grid" style="margin-top:5px;">
-      <button class="lp-tool-btn" data-click="showKompaktstationDialog()"
-        style="grid-column:1/-1;border-color:#cf6679;color:#cf6679;"
-        title="Kompaktstation (Schaltanlage + Trafo + NSHV als Einheit) per Klick auf der Karte platzieren">
-        🏗 Kompaktstation
+  <div id="el-sec-anlagen">
+    <div style="font-size:9px;color:var(--muted);margin-bottom:5px;">Status aus dem Erzeuger-Tab (Wärme) — eine Anlage, hier nur gespiegelt:</div>
+    <div id="el-gekoppelt-status" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <button class="lp-tool-btn" data-click="setLeftTab('erzeuger')"
+        style="border-color:#546e7a;color:#90a4ae;"
+        title="Zum Erzeuger-Tab (Wärme) wechseln">
+        → Im Erzeuger-Tab bearbeiten
+      </button>
+      <button class="lp-tool-btn" data-click="showAutofillWizard()"
+        style="border-color:#4fc3f7;color:#4fc3f7;"
+        title="Verbrauchs- und PV-Werte automatisch ermitteln">
+        ✦ Auto-Befüllen (Verbrauch &amp; PV)
+      </button>
+      <button class="lp-tool-btn" id="el-btn-ff-draw" data-click="startDrawFF()"
+        style="border-color:#ffd54f;color:#ffd54f;"
+        title="PV-Freifläche auf der Karte einzeichnen (Klick auf Eckpunkte, Doppelklick zum Abschluss)">
+        ☀ Freiflächen-PV zeichnen
+      </button>
+      <button class="lp-tool-btn" id="el-btn-ff-cancel" data-click="cancelDrawFF()"
+        style="display:none;border-color:#ef9a9a;color:#ef9a9a;">
+        ✕ Abbrechen
       </button>
     </div>
-
-    ${_sep}
-    ${_sub('Freiflächen-PV')}
-    <div class="lp-tool-grid" style="margin-bottom:5px;">
-      <button class="lp-tool-btn" id="el-btn-ff-draw" data-click="startDrawFF()"
-        style="border-color:#ffd54f;color:#ffd54f;" title="PV-Freifläche auf der Karte einzeichnen (Klick auf Eckpunkte, Doppelklick zum Abschluss)">☀ Fläche zeichnen</button>
-      <button class="lp-tool-btn" id="el-btn-ff-cancel" data-click="cancelDrawFF()"
-        style="display:none;border-color:#ef9a9a;color:#ef9a9a;" title="Freiflächen-Zeichnung abbrechen">✕ Abbrechen</button>
-    </div>
-    <div id="el-ff-list" style="display:flex;flex-direction:column;gap:5px;"></div>
-    <div id="el-ff-total" style="display:none;margin-top:6px;padding:6px 8px;
+    <div id="el-ff-list" style="display:flex;flex-direction:column;gap:4px;margin-top:4px;"></div>
+    <div id="el-ff-total" style="display:none;margin-top:5px;padding:5px 8px;
       background:var(--surface);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
       <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:10px;font-family:'DM Mono',monospace;">
         <span style="color:var(--muted);">Gesamt</span>
@@ -120,64 +80,75 @@ function _html() { return `
         <span id="el-ff-total-mwh" style="color:#a5d6a7;font-weight:600;text-align:right;">—</span>
       </div>
     </div>
+  </div>
+
+  <!-- ── 1 · Netz aufbauen ────────────────────────────────────────────────── -->
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
+       data-click="toggleSection('el-sec-netz')">
+    <span>1 · Netz aufbauen</span><span id="el-sec-netz-arrow">▼</span>
+  </div>
+  <div id="el-sec-netz">
+    ${_sub('Komponenten')}
+    <div id="asset-palette" class="asset-palette-inline"></div>
+    <div style="margin-top:3px;">
+      <button class="lp-tool-btn" data-click="showKompaktstationDialog()"
+        style="width:100%;border-color:#cf6679;color:#cf6679;"
+        title="Kompaktstation (Schaltanlage + Trafo + NSHV als Einheit) per Klick platzieren">
+        Kompaktstation
+      </button>
+    </div>
 
     ${_sep}
-    ${_sub('Trassen')}
-    <div class="lp-tool-grid">
+    ${_sub('Trassen &amp; Kabel')}
+    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:2px;">
       <button class="lp-tool-btn" id="btn-draw-trasse" data-click="toggleDrawTrasse()"
-        style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;">✏ Trasse zeichnen</button>
-      <button class="lp-tool-btn" id="btn-osm-strassen" data-click="loadOsmStrassen()"
-        style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;">↓ Straßen aus OSM laden</button>
-      <button class="lp-tool-btn" data-click="adoptAllOsmStrassen()"
-        style="border-color:#ff9800;color:#ff9800;font-size:10px;" title="Alle geladenen OSM-Straßen auf einmal als Elektrotrassen übernehmen">✓ Alle übernehmen</button>
-      <button class="lp-tool-btn" data-click="clearOsmStrassen()"
-        style="border-color:#e57373;color:#e57373;font-size:10px;" title="Alle geladenen OSM-Straßen wieder von der Karte entfernen">✕ OSM löschen</button>
-      <button class="lp-tool-btn" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()"
-        style="grid-column:1/-1;font-size:10px;">👁 OSM ein-/ausblenden</button>
-    </div>
-
-    ${_sep}
-    ${_sub('Kabel')}
-    <div class="lp-tool-grid">
+        style="border-color:#ff9800;color:#ff9800;justify-content:center;">— Trasse</button>
+      <button class="lp-tool-btn" id="btn-schnellstart-osm" data-click="loadAndAdoptOsmStrassen()"
+        style="border-color:#90a4ae;color:#90a4ae;justify-content:center;"
+        title="Straßen aus OpenStreetMap laden und direkt als Trassen übernehmen">↓ OSM laden</button>
       <button class="lp-tool-btn" id="btn-draw-strom-edge" data-click="startDrawStromEdge()"
-        style="border-color:#fdd835;color:#fdd835;">— Kabel zeichnen</button>
-      <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
-        style="border-color:#66bb6a;color:#66bb6a;" title="Stromnetz automatisch generieren: verbindet platzierte Komponenten anhand von Trassen/Distanzen zu einem vollständigen Netz">🔌 Auto-Netz</button>
+        style="border-color:#fdd835;color:#fdd835;justify-content:center;">— Kabel</button>
     </div>
+    <div class="lp-tool-grid" style="margin-bottom:2px;">
+      <button class="lp-tool-btn" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()">OSM ein-/aus</button>
+      <button class="lp-tool-btn" data-click="clearOsmStrassen()"
+        style="border-color:#e57373;color:#e57373;">✕ OSM löschen</button>
+    </div>
+    <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
+      style="border-color:#66bb6a;color:#66bb6a;"
+      title="Stromnetz automatisch generieren">Auto-Netz</button>
   </div>
 
   <!-- ── 2 · Berechnen ────────────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
        data-click="toggleSection('el-sec-calc')">
     <span>2 · Berechnen</span><span id="el-sec-calc-arrow">▼</span>
   </div>
   <div id="el-sec-calc">
-    <div style="font-size:9px;color:var(--muted);margin-bottom:2px;margin-top:4px;">Kabeltyp</div>
-    <select id="strom-kabel-typ"
-      style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:10px;">
-      <option value="NAYY">NAYY (Aluminium)</option>
-      <option value="NYY" selected>NYY (Kupfer) — Standard</option>
-    </select>
-
-    <!-- Primär-CTA -->
     <button class="lp-tool-btn" data-click="elCalcAssets()"
-      style="width:100%;justify-content:center;padding:9px 8px;font-size:12px;font-weight:600;
+      style="width:100%;justify-content:center;padding:7px 8px;font-size:11px;font-weight:600;
              background:rgba(79,195,247,0.10);border:1.5px solid #4fc3f7;color:#4fc3f7;
-             border-radius:5px;margin-bottom:8px;letter-spacing:.02em;"
-      title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets durchführen (Auslastung, Spannungsfall, Kurzschlussstrom)">
+             border-radius:5px;margin:4px 0 6px;letter-spacing:.02em;"
+      title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets">
       ⚡ Elektroberechnung starten
     </button>
     <div id="lp-el-calc-result"
-      style="display:none;margin-bottom:8px;font-size:9px;color:var(--text);
+      style="display:none;margin-bottom:6px;font-size:9px;color:var(--text);
              background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);">
     </div>
-
-    <!-- Kennwerte -->
-    <div class="lp-section-title lp-section-collapsible" style="margin-top:4px;"
-         data-click="toggleSection('lp-strom-info')">
-      Kennwerte <span id="lp-strom-info-arrow">▶</span>
+    <div style="display:flex;gap:6px;">
+      <div class="lp-section-title lp-section-collapsible"
+           style="margin:0;flex:1;border:none;padding-bottom:0;"
+           data-click="toggleSection('lp-strom-info')">
+        ▸ Kennwerte <span id="lp-strom-info-arrow"></span>
+      </div>
+      <div class="lp-section-title lp-section-collapsible"
+           style="margin:0;flex:1;border:none;padding-bottom:0;"
+           data-click="toggleSection('lp-strom-param')">
+        ▸ Parameter <span id="lp-strom-param-arrow"></span>
+      </div>
     </div>
-    <div id="lp-strom-info" class="lp-netz-summary" style="display:none;">
+    <div id="lp-strom-info" class="lp-netz-summary" style="display:none;margin-top:4px;">
       ${_stat('Szenario-Stunde',  'lp-strom-sz-hour')}
       ${_stat('Gesamtlast',       'lp-strom-last')}
       ${_stat('Einspeisung',      'lp-strom-einsp')}
@@ -190,13 +161,13 @@ function _html() { return `
       ${_stat('Kabellänge',   'lp-strom-kabel-len')}
       ${_stat('Komponenten',  'lp-strom-komp')}
     </div>
-
-    <!-- Berechnungsparameter -->
-    <div class="lp-section-title lp-section-collapsible" style="margin-top:4px;"
-         data-click="toggleSection('lp-strom-param')">
-      Parameter <span id="lp-strom-param-arrow">▶</span>
-    </div>
-    <div id="lp-strom-param" style="display:none;">
+    <div id="lp-strom-param" style="display:none;margin-top:4px;">
+      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Kabeltyp</div>
+      <select id="strom-kabel-typ"
+        style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:6px;">
+        <option value="NAYY">NAYY (Aluminium)</option>
+        <option value="NYY" selected>NYY (Kupfer) — Standard</option>
+      </select>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;">
         ${_inp('strom-ns-cosphi', 'NS cos φ', '0.95',
           { min:0.70, max:1.00, step:0.01, change:'recalcStromNetz()', title:'Leistungsfaktor NS-Netz (typ. 0,95)' })}
@@ -243,30 +214,30 @@ function _html() { return `
   </div>
 
   <!-- ── 3 · Auswerten & Export ────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
        data-click="toggleSection('el-sec-auswerten')">
     <span>3 · Auswerten &amp; Export</span><span id="el-sec-auswerten-arrow">▼</span>
   </div>
   <div id="el-sec-auswerten">
-    <div class="lp-tool-grid" style="margin-top:4px;">
+    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:4px;margin-bottom:2px;">
       <button class="lp-tool-btn" id="btn-sld-toggle" data-click="sldToggle()"
-        style="border-color:#80cbc4;color:#80cbc4;">🔌 Einlinien&shy;schema</button>
+        style="border-color:#80cbc4;color:#80cbc4;justify-content:center;">Einlinien&shy;schema</button>
       <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()"
-        style="border-color:#b39ddb;color:#ce93d8;">🗺️ Netzanalyse</button>
+        style="border-color:#b39ddb;color:#ce93d8;justify-content:center;">Netzanalyse</button>
       <button class="lp-tool-btn" data-click="openKnotenanalyse()"
-        style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;font-weight:600;"
-        title="Detailanalyse einzelner Netzknoten: Auslastung, Spannungsfall und Kurzschlussstrom je Asset über die Zeit">
-        📈 Knotenpunkt-Analyse
-      </button>
+        style="border-color:#4fc3f7;color:#4fc3f7;justify-content:center;"
+        title="Detailanalyse einzelner Netzknoten">Knotenanalyse</button>
+    </div>
+    <div class="lp-tool-grid">
       <button class="lp-tool-btn" data-click="showInvestitionsplan()"
-        style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;" title="Investitionsplan für das Stromnetz anzeigen: Kosten der geplanten Komponenten und Maßnahmen über die Jahre">📋 Investitionsplan</button>
+        style="border-color:#ce93d8;color:#ce93d8;justify-content:center;">Investitionsplan</button>
       <button class="lp-tool-btn" data-click="exportMassnahmenPDF()"
-        style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;" title="Maßnahmenbericht für das Stromnetz als PDF exportieren">📄 Maßnahmenbericht PDF</button>
+        style="border-color:#ef9a9a;color:#ef9a9a;justify-content:center;">Bericht PDF</button>
     </div>
   </div>
 
   <!-- ── Darstellung ──────────────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
        data-click="toggleSection('lp-strom-viz')">
     Darstellung <span id="lp-strom-viz-arrow">▼</span>
   </div>
@@ -285,7 +256,7 @@ function _html() { return `
   </div>
 
   <!-- ── Kosten (eingeklappt) ────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
        data-click="toggleSection('lp-strom-kosten')">
     Kostenkennwerte <span id="lp-strom-kosten-arrow">▶</span>
   </div>
@@ -328,6 +299,46 @@ function _html() { return `
 
 `; }
 
+// ── Status-Chip der gekoppelten Anlagen ─────────────────────────────────────────
+function _statusChip(label, color, aktiv, info) {
+  if (aktiv) {
+    const suffix = info ? ` · ${info}` : '';
+    return `<span style="font-size:10px;color:${color};border:1px solid ${color}66;border-radius:10px;padding:2px 8px;white-space:nowrap;">${label}${suffix}</span>`;
+  }
+  return `<span style="font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:2px 8px;white-space:nowrap;opacity:.55;">${label} · —</span>`;
+}
+
+// Spiegelt den Aktiv-Status der stromrelevanten Erzeuger aus dem Erzeuger-Tab.
+// Jede Abfrage defensiv gekapselt — fehlende Quelle ⇒ „—" statt Fehler.
+export function renderGekoppelteStatus() {
+  const box = document.getElementById('el-gekoppelt-status');
+  if (!box) return;
+  const safe = (fn, d = false) => { try { return fn(); } catch (e) { return d; } };
+  const kw = (v) => (v != null && isFinite(v)) ? Math.round(v) : null;
+  const chip = (label, color, info) => {
+    const suffix = info ? ` · ${info}` : '';
+    return `<span style="font-size:10px;color:${color};border:1px solid ${color}66;border-radius:10px;padding:2px 8px;white-space:nowrap;">${label}${suffix}</span>`;
+  };
+
+  const chips = [];
+  const lwAktiv = safe(() => isErzeugerAktiv('lwwp'));
+  if (lwAktiv) chips.push(chip('Luft-WP', '#66bb6a', kw(lwWp?.leistung) != null ? `${kw(lwWp.leistung)} kW` : ''));
+  if (safe(() => isErzeugerAktiv('geo')))        chips.push(chip('Geothermie',   '#bcaaa4', ''));
+  if (safe(() => isErzeugerAktiv('fg')))         chips.push(chip('Fließgew.-WP', '#4fc3f7', ''));
+  const bhAktiv = safe(() => isErzeugerAktiv('bhkw'));
+  if (bhAktiv) chips.push(chip('BHKW', '#ffb74d', kw(bhkw?.leistung) != null ? `${kw(bhkw.leistung)} kW` : ''));
+  if (safe(() => isErzeugerAktiv('stromkessel'))) chips.push(chip('Stromkessel', '#ff69b4', ''));
+  const pvKwp = safe(() => parseFloat(document.getElementById('pv-kwp')?.value) || 0, 0);
+  if (pvKwp > 0) chips.push(chip('PV', '#ffd54f', `${kw(pvKwp)} kWp`));
+  if (safe(() => Array.isArray(gebaeude) && gebaeude.some(g => g.pvAktiv))) chips.push(chip('Gebäude-PV', '#ffd54f', ''));
+  const bat = safe(() => (typeof getBatParams === 'function') ? getBatParams() : null, null);
+  if (bat) chips.push(chip('Batterie', '#ce93d8', kw(bat.kapKwh) != null ? `${kw(bat.kapKwh)} kWh` : ''));
+
+  box.innerHTML = chips.length
+    ? chips.join('')
+    : '<span style="font-size:9px;color:var(--muted);">Keine aktiven Anlagen</span>';
+}
+
 // ── Öffentliche API ───────────────────────────────────────────────────────────
 export function buildElektroPanel() {
   const el = document.getElementById('lp-elektro');
@@ -339,4 +350,6 @@ export function buildElektroPanel() {
   if (palette) delete palette.dataset.built;
   // Freiflächen-Liste sofort befüllen, falls bereits Flächen existieren
   window.renderFFPanel?.();
+  // Gekoppelte-Anlagen-Status initial füllen
+  renderGekoppelteStatus();
 }

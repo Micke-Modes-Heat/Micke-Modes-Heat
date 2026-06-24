@@ -963,14 +963,37 @@ export function renameVariante(id) {
   if (name) { v.name = name; renderVariantenBar(); }
 }
 
+let _varPillsExpanded = false;
+export function toggleVarPills() {
+  _varPillsExpanded = !_varPillsExpanded;
+  renderVariantenBar();
+}
+
 export function renderVariantenBar() {
   const pills = document.getElementById('var-pills');
-  pills.innerHTML =
+  if (!pills) return;
+  const MAX = 3; // bei mehr Varianten einklappen → „…+N"
+  let shown = varianten;
+  let hidden = 0;
+  if (varianten.length > MAX && !_varPillsExpanded) {
+    shown = varianten.slice(0, MAX);
+    // aktive Variante immer sichtbar halten, auch wenn eingeklappt
+    const act = varianten.find(v => v.id === activeVariantId);
+    if (act && !shown.includes(act)) shown = shown.concat(act);
+    hidden = varianten.length - shown.length;
+  }
+  const pillHtml = v =>
+    `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" data-click="activateVariant('${v.id}')" ondblclick="renameVariante('${v.id}')" title="Doppelklick zum Umbenennen">${escHtml(v.name)}</span>` +
+    `<span class="var-del-btn" data-click="deleteVariante('${v.id}')" title="Variante löschen">✕</span>`;
+  let html =
     `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)">Basisdaten</span>` +
-    varianten.map(v =>
-      `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" data-click="activateVariant('${v.id}')" ondblclick="renameVariante('${v.id}')" title="Doppelklick zum Umbenennen">${escHtml(v.name)}</span>` +
-      `<span class="var-del-btn" data-click="deleteVariante('${v.id}')" title="Variante löschen">✕</span>`
-    ).join('');
+    shown.map(pillHtml).join('');
+  if (hidden > 0) {
+    html += `<span class="var-pill var-pill-more" data-click="toggleVarPills()" title="Alle ${varianten.length} Varianten anzeigen">…+${hidden}</span>`;
+  } else if (_varPillsExpanded && varianten.length > MAX) {
+    html += `<span class="var-pill var-pill-more" data-click="toggleVarPills()" title="Weniger anzeigen">‹ weniger</span>`;
+  }
+  pills.innerHTML = html;
 }
 
 export function updateVariantBanner() {

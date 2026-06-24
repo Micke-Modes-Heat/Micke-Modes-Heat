@@ -478,26 +478,26 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 
 /* Asset-Palette Buttons */
 .asset-palette-inline {
-  display:grid; grid-template-columns:1fr 1fr; gap:3px;
+  display:grid; grid-template-columns:1fr 1fr; gap:2px;
 }
 .asset-palette-group-header {
   grid-column:1/-1; font-size:8px; color:var(--muted);
   text-transform:uppercase; letter-spacing:.07em;
-  padding:7px 0 3px; margin-top:2px;
+  padding:4px 0 2px; margin-top:1px;
   border-bottom:1px solid var(--border);
 }
-.asset-palette-group-header:first-child { padding-top:2px; margin-top:0; }
+.asset-palette-group-header:first-child { padding-top:1px; margin-top:0; }
 .asset-palette-btn {
   background:var(--surface2); border:1px solid var(--border); color:var(--text);
-  border-radius:5px; padding:5px 6px; font-size:10px; cursor:pointer;
-  display:flex; align-items:center; gap:5px; text-align:left;
+  border-radius:4px; padding:3px 5px; font-size:9px; cursor:pointer;
+  display:flex; align-items:center; gap:4px; text-align:left;
   white-space:nowrap; overflow:hidden; min-width:0;
 }
 .asset-palette-btn span:last-child { overflow:hidden; text-overflow:ellipsis; }
 .asset-palette-btn:hover { background:var(--border); }
 .asset-palette-btn.active { background:var(--accent); color:#000; border-color:var(--accent); }
 .asset-palette-btn.full-width { grid-column:1/-1; }
-.asset-palette-btn-icon { font-size:13px; flex-shrink:0; }
+.asset-palette-btn-icon { font-size:11px; flex-shrink:0; }
 
 /* Asset-Inspector Panel */
 .asset-inspector {
@@ -596,9 +596,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 
 
 /* Adresssuche */
-.addr-search-wrap{position:relative;}
-.addr-search-input{background:var(--bg);border:1px solid var(--border);border-radius:18px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:11px;padding:4px 12px 4px 28px;width:200px;transition:.15s;outline:none;}
-.addr-search-input:focus{border-color:var(--accent);width:260px;}
+.addr-search-wrap{position:relative;flex-shrink:0;}
+.addr-search-input{background:var(--bg);border:1px solid var(--border);border-radius:18px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:11px;padding:4px 0 4px 28px;width:32px;cursor:pointer;transition:width .18s,padding .18s,border-color .15s;outline:none;}
+.addr-search-input:hover{border-color:var(--muted);}
+.addr-search-input:focus{border-color:var(--accent);width:240px;padding:4px 12px 4px 28px;cursor:text;}
+.addr-search-input::placeholder{color:transparent;}
+.addr-search-input:focus::placeholder{color:var(--muted);}
 .addr-search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);pointer-events:none;}
 .addr-results{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:7px;z-index:5000;box-shadow:0 8px 24px rgba(0,0,0,.6);max-height:220px;overflow-y:auto;display:none;}
 .addr-results.open{display:block;}
@@ -631,7 +634,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .cost-badge.auto{opacity:.6;}
 /* Varianten-Bar */
 .varianten-bar{display:flex;align-items:center;padding:4px 12px;background:var(--surface2);border-bottom:1px solid var(--border);gap:8px;flex-shrink:0;overflow-x:auto;}
-.var-pills{display:flex;gap:4px;align-items:center;flex-wrap:wrap;}
+.var-pills{display:flex;gap:4px;align-items:center;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;max-width:340px;}
+.var-pills::-webkit-scrollbar{display:none;}
+.var-pill-more{color:var(--accent);border-color:var(--border);font-variant-numeric:tabular-nums;}
+.var-pill-more:hover{border-color:var(--accent);color:var(--accent);}
 .var-pill{padding:2px 10px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;white-space:nowrap;font-family:inherit;transition:.15s;}
 .var-pill:hover{color:var(--text);border-color:var(--muted);}
 .var-pill.active{background:var(--accent);color:#000;border-color:var(--accent);}
@@ -828,7 +834,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .lp-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .lp-content{display:none;}
 .lp-content.active{display:block;}
-.lp-section-title{font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border);}
+.lp-section-title{font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:8px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--border);}
 .lp-section-title:first-child{margin-top:0;}
 .lp-section-collapsible{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;}
 .lp-section-collapsible:hover{color:var(--text);}
@@ -952,8 +958,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .inv-num{text-align:right;font-family:'DM Mono',monospace;}
 
 /* Werkzeuge-Grid */
-.lp-tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
-.lp-tool-btn{display:flex;align-items:center;gap:4px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;transition:.15s;white-space:nowrap;}
+.lp-tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;}
+.lp-tool-btn{display:flex;align-items:center;gap:4px;padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:9px;cursor:pointer;transition:.15s;white-space:nowrap;}
 .lp-tool-btn:hover{background:rgba(255,255,255,.04);color:var(--text);}
 .lp-tool-btn.active{background:rgba(79,195,247,.08);border-color:var(--accent);color:var(--accent);}
 
@@ -1490,8 +1496,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
     <button class="view-tab" data-mode="optimierung" data-click="setViewMode('optimierung')">Optimierung</button>
     <button class="view-tab" data-mode="vergleich" data-click="setViewMode('vergleich')">Vergleich</button>
   </div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-group">
+    <span class="ctx-label">Jahr</span>
+    <input type="range" class="timeline-slider" id="year-slider" min="2026" max="2050" value="2026" step="1" data-input="setGlobalYear(this.value)" style="width:120px;accent-color:var(--accent);cursor:pointer;">
+    <span class="timeline-label" id="year-display" style="font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:32px;">2026</span>
+  </div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-group" id="varianten-bar">
+    <span class="ctx-label">Varianten</span>
+    <div class="var-pills" id="var-pills" style="display:flex;gap:3px;">
+      <span class="var-pill var-pill-base active" data-click="activateVariant(null)">Basisdaten</span>
+    </div>
+    <button class="var-add-btn" data-click="addVariante()" style="font-size:10px;">+ Variante</button>
+  </div>
   <div class="header-spacer" style="flex:1;"></div>
-  <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Kartenebenen ein-/ausblenden">⊞ Ebenen</button>
+  <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Ansicht: Einfärbung, Gebäude-Symbole und Karten­ebenen">⊞ Ansicht</button>
   <button class="tool-btn" id="btn-feedback-main" data-click="sendAppFeedback()" style="background:#e65100;border-color:#e65100;color:#fff;font-size:11px;padding:0 14px;font-weight:600;letter-spacing:0.2px;" title="Testversion: Feedback oder Fehler melden">✉ Feedback geben</button>
   <div style="position:relative;display:inline-block;">
     <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:#607d8b;color:#90a4ae;font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Feedback, Berechnungslogik">⋯ Mehr</button>
@@ -1516,8 +1536,26 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 <!-- ══ Ebenen-Panel ════════════════════════════════════════════════════════ -->
 <div id="ebenen-panel" class="ebenen-panel" style="display:none;" role="dialog" aria-label="Kartenebenen">
   <div class="ebp-head">
-    <span class="ebp-title">Kartenebenen</span>
+    <span class="ebp-title">Ansicht</span>
     <button class="ebp-close" data-click="toggleEbenenPanel()">✕</button>
+  </div>
+
+  <div class="ebp-cat">
+    <div class="ebp-cat-label" style="--ebp-c:#d4a855;">🎨 Einfärbung</div>
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <button class="mode-btn active" data-click="setMode('spez')"     id="btn-spez"     style="text-align:left;" title="Spezifischer Wärmebedarf (kWh/m²a)">Spez. Wärmebedarf</button>
+      <button class="mode-btn"        data-click="setMode('heizlast')" id="btn-heizlast" style="text-align:left;" title="Heizlast (kW)">Heizlast</button>
+      <button class="mode-btn"        data-click="setMode('verlust')"  id="btn-verlust"  style="text-align:left;" title="Wärmeverlust der Hausanschlüsse">Netzverlust</button>
+    </div>
+  </div>
+
+  <div class="ebp-cat">
+    <div class="ebp-cat-label" style="--ebp-c:#26a69a;">⬤ Gebäude-Symbole</div>
+    <div class="viz-toggle">
+      <button class="viz-btn active" id="vbtn-circle" data-click="setViz('circle')" title="Kreise (Größe = Wärmebedarf)">⬤ Kreise</button>
+      <button class="viz-btn"        id="vbtn-bar"    data-click="setViz('bar')"    title="Balken">▮ Balken</button>
+      <button class="viz-btn"        id="vbtn-none"   data-click="setViz('none')"   title="Keine Symbole">▣ Keine</button>
+    </div>
   </div>
 
   <div class="ebp-cat">
@@ -1601,45 +1639,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
   <button id="btn-status-toggle" data-click="toggleStatusPanel()"></button>
 </div>
 
-<div class="context-bar">
-  <div class="ctx-group">
-    <span class="ctx-label">Jahr</span>
-    <input type="range" class="timeline-slider" id="year-slider" min="2026" max="2050" value="2026" step="1" data-input="setGlobalYear(this.value)" style="width:140px;accent-color:var(--accent);cursor:pointer;">
-    <span class="timeline-label" id="year-display" style="font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:32px;">2026</span>
-  </div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group" id="varianten-bar">
-    <span class="ctx-label">Varianten</span>
-    <div class="var-pills" id="var-pills" style="display:flex;gap:3px;">
-      <span class="var-pill var-pill-base active" data-click="activateVariant(null)">Basisdaten</span>
-    </div>
-    <button class="var-add-btn" data-click="addVariante()" style="font-size:10px;">+ Variante</button>
-  </div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-group">
-    <span class="ctx-label">Karte</span>
-    <button class="mode-btn active" data-click="setMode('waerme')" id="btn-waerme" title="Gebäude nach Wärmebedarf einfärben — schaltet auch die Sidebar auf den Wärme-Bereich">Wärme</button>
-    <button class="mode-btn"        data-click="setMode('strom')"  id="btn-strom" title="Gebäude nach Strombedarf einfärben — schaltet auch die Sidebar auf den Elektro-Bereich">⚡ Strom</button>
-    <div style="position:relative;display:inline-block;">
-      <button class="mode-btn" id="btn-ansicht-menu" data-click="toggleAnsichtMenu()" title="Weitere Kartenansichten und Gebäude-Symbole">Ansicht ▾</button>
-      <div id="ansicht-menu" style="display:none;position:fixed;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 12px;min-width:200px;box-shadow:0 6px 18px rgba(0,0,0,0.45);">
-        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Einfärbung</div>
-        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:9px;">
-          <button class="mode-btn" data-click="setMode('spez')"     id="btn-spez" style="text-align:left;" title="Spezifischer Wärmebedarf (kWh/m²a)">Spez. Wärmebedarf</button>
-          <button class="mode-btn" data-click="setMode('heizlast')" id="btn-heizlast" style="text-align:left;" title="Heizlast (kW)">Heizlast</button>
-          <button class="mode-btn" data-click="setMode('verlust')"  id="btn-verlust" style="text-align:left;" title="Wärmeverlust der Hausanschlüsse">Netzverlust</button>
-        </div>
-        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Gebäude-Symbole</div>
-        <div class="viz-toggle">
-          <button class="viz-btn active" id="vbtn-circle" data-click="setViz('circle')" title="Kreise (Größe = Wärmebedarf)">⬤ Kreise</button>
-          <button class="viz-btn"        id="vbtn-bar"    data-click="setViz('bar')" title="Balken">▮ Balken</button>
-          <button class="viz-btn"        id="vbtn-none"   data-click="setViz('none')" title="Keine Symbole">▣ Keine</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="main">
   <!-- ══ Left Panel ═══════════════════════════════════════════════════ -->
   <div class="left-panel" id="left-panel">
@@ -1676,27 +1675,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" id="btn-osm-import" data-click="showOsmPanel()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;">↓ OSM-Import (OpenStreetMap)</button>
           <button class="lp-tool-btn" data-click="openGebListImport()" style="border-color:#ff9800;color:#ffb74d;grid-column:1/-1;">📋 Gebäudeliste importieren (CSV)</button>
-        </div>
-        <div class="lp-section-title" style="margin-top:12px;">Ansicht</div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="geb-visible" checked data-change="setGebVisible(this.checked)"/> Gebäude
-          </label>
-          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="netz-visible-ansicht" checked data-change="setNetzVisible(this.checked)"/> Netz
-          </label>
-          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="labels-visible" data-change="setLabelsVisible(this.checked)"/> Beschriftung
-          </label>
-          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="chart-visible-cb" data-change="toggleChartPanel()"/> Zeitstrahl-Chart
-          </label>
-          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="overlay-visible-cb" data-change="toggleOverlayPanel()"/> Plan-Overlay
-          </label>
-          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="assets-visible" checked data-change="setAssetLayerVisible(this.checked)"/> Anlagen
-          </label>
         </div>
       </div>
 
@@ -4825,7 +4803,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-06-23';
+  var d = '2026-06-24';
   if (d.indexOf('__') === 0) d = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -63610,14 +63588,37 @@ function renameVariante(id) {
   if (name) { v.name = name; renderVariantenBar(); }
 }
 
+var _varPillsExpanded = false;
+function toggleVarPills() {
+  _varPillsExpanded = !_varPillsExpanded;
+  renderVariantenBar();
+}
+
 function renderVariantenBar() {
   const pills = document.getElementById('var-pills');
-  pills.innerHTML =
+  if (!pills) return;
+  const MAX = 3; // bei mehr Varianten einklappen → „…+N"
+  let shown = varianten;
+  let hidden = 0;
+  if (varianten.length > MAX && !_varPillsExpanded) {
+    shown = varianten.slice(0, MAX);
+    // aktive Variante immer sichtbar halten, auch wenn eingeklappt
+    const act = varianten.find(v => v.id === activeVariantId);
+    if (act && !shown.includes(act)) shown = shown.concat(act);
+    hidden = varianten.length - shown.length;
+  }
+  const pillHtml = v =>
+    `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" data-click="activateVariant('${v.id}')" ondblclick="renameVariante('${v.id}')" title="Doppelklick zum Umbenennen">${escHtml(v.name)}</span>` +
+    `<span class="var-del-btn" data-click="deleteVariante('${v.id}')" title="Variante löschen">✕</span>`;
+  let html =
     `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)">Basisdaten</span>` +
-    varianten.map(v =>
-      `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" data-click="activateVariant('${v.id}')" ondblclick="renameVariante('${v.id}')" title="Doppelklick zum Umbenennen">${escHtml(v.name)}</span>` +
-      `<span class="var-del-btn" data-click="deleteVariante('${v.id}')" title="Variante löschen">✕</span>`
-    ).join('');
+    shown.map(pillHtml).join('');
+  if (hidden > 0) {
+    html += `<span class="var-pill var-pill-more" data-click="toggleVarPills()" title="Alle ${varianten.length} Varianten anzeigen">…+${hidden}</span>`;
+  } else if (_varPillsExpanded && varianten.length > MAX) {
+    html += `<span class="var-pill var-pill-more" data-click="toggleVarPills()" title="Weniger anzeigen">‹ weniger</span>`;
+  }
+  pills.innerHTML = html;
 }
 
 function updateVariantBanner() {
@@ -64049,7 +64050,9 @@ function updateNetzColorLegend() {
 
 
 
+
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 
 // Guard against HMR re-init: reuse cached instance if container is already initialized
 var map = window._appLeafletMap || (() => {
@@ -65455,7 +65458,7 @@ function setLabelsVisible(visible) {
 function setMode(m){
   window.currentMode=m;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('btn-'+m).classList.add('active');
+  document.getElementById('btn-'+m)?.classList.add('active');
   // "Ansicht ▾"-Menübutton zeigt die aktive Nischenansicht an (und schließt das Menü)
   const _nischenLabel = { spez: 'Spez. Wärmebedarf', heizlast: 'Heizlast', verlust: 'Netzverlust' };
   const amBtn = document.getElementById('btn-ansicht-menu');
@@ -70398,6 +70401,9 @@ function startNetzEdgeFrom(id) {
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
+
+
+
 function updateTotals(){
   let tw=0, th=0;
   window.gebaeude.forEach(g=>{
@@ -72925,6 +72931,7 @@ function setLeftTab(tabId) {
     setNetzVisible(false);
     setStromNetzVisible(true);
     buildElektroPanel();
+    renderGekoppelteStatus(); // Status der gekoppelten Anlagen bei jedem Öffnen aktualisieren
     buildPalette();
     // Assets für alle Gebäude nacherstellen, die noch keines haben (Migration alter Projekte)
     if (typeof window.autoCreateBuildingAssets === 'function' && Array.isArray(window.gebaeude)) {
@@ -73387,6 +73394,11 @@ window._ebpSatellit = function(checked) {
 // ══════════════════════════════════════════════════════════════════════════
 // ── Emissionen-Tab: Sub-Tab-Steuerung + Rendering ────────────────────────
 // ══════════════════════════════════════════════════════════════════════════
+
+
+
+
+
 
 
 
@@ -74842,6 +74854,12 @@ function exportVergleichCSV() {
 // ── 05a-export.js ──
 // â”€â”€ 05a-export.js â€” CSV-Export, PDF-Report, Druckansicht â”€â”€
 // â”€â”€ Export: Dispatch CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+
+
+
+
+
 
 
 
@@ -83292,6 +83310,7 @@ function moSwap(key, dir) {
 
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 
 var saCurrentTab = 'lastgang';
 
@@ -100599,7 +100618,12 @@ setInterval(() => { if (_leitfadenOpen) _updateLeitfadenStatus(); }, 3000);
 
   document.addEventListener('click', function(event) {
     const el = event.target.closest('[data-click]');
-    if (el) exec(el, el.dataset.click);
+    if (el) {
+      if (!el.classList.contains('asset-palette-btn') && window._pendingAssetType) {
+        window.cancelPendingAsset?.();
+      }
+      exec(el, el.dataset.click);
+    }
   });
 
   document.addEventListener('input', function(event) {
@@ -101553,13 +101577,18 @@ function buildPalette() {
   panel.dataset.built = '1';
 }
 
+function cancelPendingType() {
+  if (!pendingType) return;
+  pendingType = null;
+  window._pendingAssetType = null;
+  document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
+  map.getContainer().style.cursor = '';
+}
+
 function setPendingType(type) {
   // Erneuter Klick auf aktiven Typ → abwählen
   if (pendingType === type) {
-    pendingType = null;
-    window._pendingAssetType = null;
-    document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
-    map.getContainer().style.cursor = '';
+    cancelPendingType();
     return;
   }
   // Andere Modi beenden
@@ -101621,6 +101650,7 @@ function onKeydownForAsset(e) {
 setTimeout(() => {
   map.on('click', onMapClickForAsset);
   document.addEventListener('keydown', onKeydownForAsset);
+  window.cancelPendingAsset = cancelPendingType;
 }, 0);
 
 
@@ -102992,6 +103022,7 @@ function _renderAssetFelddaten(a) {
 
 // ── 13f-sld.js ──
 // ── 13f-sld.js — Einlinienschema (Single-Line Diagram) ──────────────────────
+
 
 
 
@@ -108477,6 +108508,10 @@ function showKompaktstationDialog() {
 // Generiert den gesamten HTML-Inhalt des Elektro-Tabs und injiziert ihn in
 // #lp-elektro. Einmalig beim ersten Öffnen des Tabs aufgerufen.
 
+
+
+
+
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 
 function _inp(id, label, value, { min = 0, max, step = 1, change = '', title = '' } = {}) {
@@ -108496,97 +108531,53 @@ function _stat(label, id, tip = '') {
   return `<div class="lp-netz-row"><span class="lbl">${label}${tipH}</span><span class="val" id="${id}">—</span></div>`;
 }
 
-var _sep = '<div style="border-top:1px solid var(--border);margin:8px 0 6px;"></div>';
+var _sep = '<div style="border-top:1px solid var(--border);margin:5px 0 4px;"></div>';
 
 var _sub = (label) =>
-  `<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:8px 0 5px;">${label}</div>`;
+  `<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:5px 0 3px;">${label}</div>`;
 
 // ── Panel-HTML ────────────────────────────────────────────────────────────────
 
 function _html() { return `
 
   <!-- Kopf -->
-  <div class="lp-step" style="margin-bottom:12px;">
+  <div class="lp-step" style="margin-bottom:10px;">
     <div class="lp-step-num" data-num="4">⚡</div>
-    <div class="lp-step-text">Stromnetz planen<span>Schritt für Schritt zum fertigen Netz</span></div>
+    <div class="lp-step-text">Stromnetz planen<span>vier Stufen, oben nach unten</span></div>
   </div>
 
-  <!-- ── Schnellstart ─────────────────────────────────────────────────────── -->
-  <div class="lp-section-title" style="color:#78909c;font-size:9px;letter-spacing:.08em;">SCHNELLSTART</div>
-  <div class="lp-tool-grid" style="margin-bottom:4px;">
-    <button class="lp-tool-btn" data-click="showAutofillWizard()"
-      style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;"
-      title="Verbrauchs- und PV-Werte automatisch ermitteln">
-      ✦ Auto-Befüllen (Verbrauch &amp; PV)
-    </button>
-    <button class="lp-tool-btn" id="btn-schnellstart-osm" data-click="loadAndAdoptOsmStrassen()"
-      style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;"
-      title="Straßen aus OpenStreetMap laden und direkt als Trassen übernehmen">
-      ↓ OSM-Straßen laden &amp; übernehmen
-    </button>
-    <button class="lp-tool-btn" data-click="naTogglePanel()"
-      style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;"
-      title="Netzanalyse öffnen — Auto-Trafoplatzierung berechnen und als Kompaktstationen übernehmen">
-      🗺️ Netzanalyse — Trafoplatzierung &amp; Kompaktstationen
-    </button>
-    <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
-      style="grid-column:1/-1;border-color:#66bb6a;color:#66bb6a;"
-      title="Stromnetz automatisch generieren: verbindet platzierte Komponenten anhand von Trassen/Distanzen zu einem vollständigen Netz">
-      🔌 Auto-Netz
-    </button>
-    <button class="lp-tool-btn" data-click="elCalcAssets()"
-      style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;font-weight:600;"
-      title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets durchführen (Auslastung, Spannungsfall, Kurzschlussstrom)">
-      ⚡ Elektroberechnung starten
-    </button>
+  <!-- ── Angeschlossene Anlagen ─────────────────────────────────────────────── -->
+  <div class="lp-section-title lp-section-collapsible"
+       data-click="toggleSection('el-sec-anlagen')">
+    <span>Angeschlossene Anlagen <span class="htip" data-tip="Dieselben Anlagen wie im Erzeuger-Tab (Wärme) — hier nur gespiegelt. Strombetriebene Wärmeerzeuger (WP, Stromkessel), BHKW, PV und Batterie wirken automatisch in der Strombilanz.">?</span></span>
+    <span id="el-sec-anlagen-arrow">▼</span>
   </div>
-
-  <!-- ── Gekoppelte Erzeuger (Wärme ↔ Strom) ─────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
-       data-click="toggleSection('el-sec-gekoppelt')">
-    <span>Gekoppelte Erzeuger &amp; Speicher <span class="htip" data-tip="Dieselben Anlagen wie im Erzeuger-Tab (Wärme) — nur ein zweiter Zugang. Strombetriebene Wärmeerzeuger bekommen automatisch ein verknüpftes Elektro-Asset; Änderungen wirken in Wärme- UND Strombilanz.">?</span></span><span id="el-sec-gekoppelt-arrow">▼</span>
-  </div>
-  <div id="el-sec-gekoppelt">
-    <div style="font-size:9px;color:var(--muted);margin-bottom:5px;">Eine Anlage, zwei Zugänge — identisch mit dem 🔥-Erzeuger-Tab.</div>
-    <div class="lp-tool-grid">
-      <button class="lp-tool-btn" data-click="toggleLwWpPanel()" style="border-color:#66bb6a;color:#66bb6a;" title="Luft-Wasser-Wärmepumpe — Stromverbraucher im Netz, Elektro-Asset wird automatisch verknüpft">🌊 Luft-WP</button>
-      <button class="lp-tool-btn" data-click="toggleGeoPanel()" style="border-color:#8d6e63;color:#bcaaa4;" title="Sole-Wasser-Wärmepumpe (Erdsonden) — Stromverbraucher im Netz">⛏ Geothermie</button>
-      <button class="lp-tool-btn" data-click="toggleFliessgewaesserPanel()" style="border-color:#4fc3f7;color:#4fc3f7;" title="Flusswasser-Wärmepumpe — Stromverbraucher im Netz">〰 Fließgew.-WP</button>
-      <button class="lp-tool-btn" data-click="toggleBhkwPanel()" style="border-color:#ff8f00;color:#ffb74d;" title="BHKW — Stromerzeuger im Netz (KWK-Asset wird automatisch verknüpft)">⚡ BHKW</button>
-      <button class="lp-tool-btn" data-click="toggleStromkesselPanel()" style="border-color:#ff69b4;color:#ff69b4;" title="Stromkessel (Power-to-Heat) — Stromverbraucher im Netz">🔌 Stromkessel</button>
-      <button class="lp-tool-btn" data-click="togglePvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="Zentrale PV-Anlage (kWp pauschal oder PVGIS-Lastgang) — identisch mit der PV im Wärme-Tab">☀ PV-Anlage</button>
-      <button class="lp-tool-btn" data-click="toggleGebPvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="PV auf Gebäudedächern — fließt in dieselbe Strombilanz">☀ Gebäude-PV</button>
-      <button class="lp-tool-btn" data-click="toggleBatteriePanel()" style="border-color:#b39ddb;color:#ce93d8;" title="Batteriespeicher — identisch mit dem Batteriespeicher im Erzeuger-Tab">🔋 Batterie</button>
-    </div>
-  </div>
-
-  <!-- ── 1 · Netz aufbauen ────────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
-       data-click="toggleSection('el-sec-netz')">
-    <span>1 · Netz aufbauen</span><span id="el-sec-netz-arrow">▼</span>
-  </div>
-  <div id="el-sec-netz">
-
-    ${_sub('Komponenten platzieren')}
-    <div id="asset-palette" class="asset-palette-inline"></div>
-    <div class="lp-tool-grid" style="margin-top:5px;">
-      <button class="lp-tool-btn" data-click="showKompaktstationDialog()"
-        style="grid-column:1/-1;border-color:#cf6679;color:#cf6679;"
-        title="Kompaktstation (Schaltanlage + Trafo + NSHV als Einheit) per Klick auf der Karte platzieren">
-        🏗 Kompaktstation
+  <div id="el-sec-anlagen">
+    <div style="font-size:9px;color:var(--muted);margin-bottom:5px;">Status aus dem Erzeuger-Tab (Wärme) — eine Anlage, hier nur gespiegelt:</div>
+    <div id="el-gekoppelt-status" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <button class="lp-tool-btn" data-click="setLeftTab('erzeuger')"
+        style="border-color:#546e7a;color:#90a4ae;"
+        title="Zum Erzeuger-Tab (Wärme) wechseln">
+        → Im Erzeuger-Tab bearbeiten
+      </button>
+      <button class="lp-tool-btn" data-click="showAutofillWizard()"
+        style="border-color:#4fc3f7;color:#4fc3f7;"
+        title="Verbrauchs- und PV-Werte automatisch ermitteln">
+        ✦ Auto-Befüllen (Verbrauch &amp; PV)
+      </button>
+      <button class="lp-tool-btn" id="el-btn-ff-draw" data-click="startDrawFF()"
+        style="border-color:#ffd54f;color:#ffd54f;"
+        title="PV-Freifläche auf der Karte einzeichnen (Klick auf Eckpunkte, Doppelklick zum Abschluss)">
+        ☀ Freiflächen-PV zeichnen
+      </button>
+      <button class="lp-tool-btn" id="el-btn-ff-cancel" data-click="cancelDrawFF()"
+        style="display:none;border-color:#ef9a9a;color:#ef9a9a;">
+        ✕ Abbrechen
       </button>
     </div>
-
-    ${_sep}
-    ${_sub('Freiflächen-PV')}
-    <div class="lp-tool-grid" style="margin-bottom:5px;">
-      <button class="lp-tool-btn" id="el-btn-ff-draw" data-click="startDrawFF()"
-        style="border-color:#ffd54f;color:#ffd54f;" title="PV-Freifläche auf der Karte einzeichnen (Klick auf Eckpunkte, Doppelklick zum Abschluss)">☀ Fläche zeichnen</button>
-      <button class="lp-tool-btn" id="el-btn-ff-cancel" data-click="cancelDrawFF()"
-        style="display:none;border-color:#ef9a9a;color:#ef9a9a;" title="Freiflächen-Zeichnung abbrechen">✕ Abbrechen</button>
-    </div>
-    <div id="el-ff-list" style="display:flex;flex-direction:column;gap:5px;"></div>
-    <div id="el-ff-total" style="display:none;margin-top:6px;padding:6px 8px;
+    <div id="el-ff-list" style="display:flex;flex-direction:column;gap:4px;margin-top:4px;"></div>
+    <div id="el-ff-total" style="display:none;margin-top:5px;padding:5px 8px;
       background:var(--surface);border-radius:5px;border:1px solid rgba(255,213,79,0.2);">
       <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:10px;font-family:'DM Mono',monospace;">
         <span style="color:var(--muted);">Gesamt</span>
@@ -108595,64 +108586,75 @@ function _html() { return `
         <span id="el-ff-total-mwh" style="color:#a5d6a7;font-weight:600;text-align:right;">—</span>
       </div>
     </div>
+  </div>
+
+  <!-- ── 1 · Netz aufbauen ────────────────────────────────────────────────── -->
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
+       data-click="toggleSection('el-sec-netz')">
+    <span>1 · Netz aufbauen</span><span id="el-sec-netz-arrow">▼</span>
+  </div>
+  <div id="el-sec-netz">
+    ${_sub('Komponenten')}
+    <div id="asset-palette" class="asset-palette-inline"></div>
+    <div style="margin-top:3px;">
+      <button class="lp-tool-btn" data-click="showKompaktstationDialog()"
+        style="width:100%;border-color:#cf6679;color:#cf6679;"
+        title="Kompaktstation (Schaltanlage + Trafo + NSHV als Einheit) per Klick platzieren">
+        Kompaktstation
+      </button>
+    </div>
 
     ${_sep}
-    ${_sub('Trassen')}
-    <div class="lp-tool-grid">
+    ${_sub('Trassen &amp; Kabel')}
+    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:2px;">
       <button class="lp-tool-btn" id="btn-draw-trasse" data-click="toggleDrawTrasse()"
-        style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;">✏ Trasse zeichnen</button>
-      <button class="lp-tool-btn" id="btn-osm-strassen" data-click="loadOsmStrassen()"
-        style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;">↓ Straßen aus OSM laden</button>
-      <button class="lp-tool-btn" data-click="adoptAllOsmStrassen()"
-        style="border-color:#ff9800;color:#ff9800;font-size:10px;" title="Alle geladenen OSM-Straßen auf einmal als Elektrotrassen übernehmen">✓ Alle übernehmen</button>
-      <button class="lp-tool-btn" data-click="clearOsmStrassen()"
-        style="border-color:#e57373;color:#e57373;font-size:10px;" title="Alle geladenen OSM-Straßen wieder von der Karte entfernen">✕ OSM löschen</button>
-      <button class="lp-tool-btn" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()"
-        style="grid-column:1/-1;font-size:10px;">👁 OSM ein-/ausblenden</button>
-    </div>
-
-    ${_sep}
-    ${_sub('Kabel')}
-    <div class="lp-tool-grid">
+        style="border-color:#ff9800;color:#ff9800;justify-content:center;">— Trasse</button>
+      <button class="lp-tool-btn" id="btn-schnellstart-osm" data-click="loadAndAdoptOsmStrassen()"
+        style="border-color:#90a4ae;color:#90a4ae;justify-content:center;"
+        title="Straßen aus OpenStreetMap laden und direkt als Trassen übernehmen">↓ OSM laden</button>
       <button class="lp-tool-btn" id="btn-draw-strom-edge" data-click="startDrawStromEdge()"
-        style="border-color:#fdd835;color:#fdd835;">— Kabel zeichnen</button>
-      <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
-        style="border-color:#66bb6a;color:#66bb6a;" title="Stromnetz automatisch generieren: verbindet platzierte Komponenten anhand von Trassen/Distanzen zu einem vollständigen Netz">🔌 Auto-Netz</button>
+        style="border-color:#fdd835;color:#fdd835;justify-content:center;">— Kabel</button>
     </div>
+    <div class="lp-tool-grid" style="margin-bottom:2px;">
+      <button class="lp-tool-btn" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()">OSM ein-/aus</button>
+      <button class="lp-tool-btn" data-click="clearOsmStrassen()"
+        style="border-color:#e57373;color:#e57373;">✕ OSM löschen</button>
+    </div>
+    <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
+      style="border-color:#66bb6a;color:#66bb6a;"
+      title="Stromnetz automatisch generieren">Auto-Netz</button>
   </div>
 
   <!-- ── 2 · Berechnen ────────────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
        data-click="toggleSection('el-sec-calc')">
     <span>2 · Berechnen</span><span id="el-sec-calc-arrow">▼</span>
   </div>
   <div id="el-sec-calc">
-    <div style="font-size:9px;color:var(--muted);margin-bottom:2px;margin-top:4px;">Kabeltyp</div>
-    <select id="strom-kabel-typ"
-      style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:10px;">
-      <option value="NAYY">NAYY (Aluminium)</option>
-      <option value="NYY" selected>NYY (Kupfer) — Standard</option>
-    </select>
-
-    <!-- Primär-CTA -->
     <button class="lp-tool-btn" data-click="elCalcAssets()"
-      style="width:100%;justify-content:center;padding:9px 8px;font-size:12px;font-weight:600;
+      style="width:100%;justify-content:center;padding:7px 8px;font-size:11px;font-weight:600;
              background:rgba(79,195,247,0.10);border:1.5px solid #4fc3f7;color:#4fc3f7;
-             border-radius:5px;margin-bottom:8px;letter-spacing:.02em;"
-      title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets durchführen (Auslastung, Spannungsfall, Kurzschlussstrom)">
+             border-radius:5px;margin:4px 0 6px;letter-spacing:.02em;"
+      title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets">
       ⚡ Elektroberechnung starten
     </button>
     <div id="lp-el-calc-result"
-      style="display:none;margin-bottom:8px;font-size:9px;color:var(--text);
+      style="display:none;margin-bottom:6px;font-size:9px;color:var(--text);
              background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);">
     </div>
-
-    <!-- Kennwerte -->
-    <div class="lp-section-title lp-section-collapsible" style="margin-top:4px;"
-         data-click="toggleSection('lp-strom-info')">
-      Kennwerte <span id="lp-strom-info-arrow">▶</span>
+    <div style="display:flex;gap:6px;">
+      <div class="lp-section-title lp-section-collapsible"
+           style="margin:0;flex:1;border:none;padding-bottom:0;"
+           data-click="toggleSection('lp-strom-info')">
+        ▸ Kennwerte <span id="lp-strom-info-arrow"></span>
+      </div>
+      <div class="lp-section-title lp-section-collapsible"
+           style="margin:0;flex:1;border:none;padding-bottom:0;"
+           data-click="toggleSection('lp-strom-param')">
+        ▸ Parameter <span id="lp-strom-param-arrow"></span>
+      </div>
     </div>
-    <div id="lp-strom-info" class="lp-netz-summary" style="display:none;">
+    <div id="lp-strom-info" class="lp-netz-summary" style="display:none;margin-top:4px;">
       ${_stat('Szenario-Stunde',  'lp-strom-sz-hour')}
       ${_stat('Gesamtlast',       'lp-strom-last')}
       ${_stat('Einspeisung',      'lp-strom-einsp')}
@@ -108665,13 +108667,13 @@ function _html() { return `
       ${_stat('Kabellänge',   'lp-strom-kabel-len')}
       ${_stat('Komponenten',  'lp-strom-komp')}
     </div>
-
-    <!-- Berechnungsparameter -->
-    <div class="lp-section-title lp-section-collapsible" style="margin-top:4px;"
-         data-click="toggleSection('lp-strom-param')">
-      Parameter <span id="lp-strom-param-arrow">▶</span>
-    </div>
-    <div id="lp-strom-param" style="display:none;">
+    <div id="lp-strom-param" style="display:none;margin-top:4px;">
+      <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Kabeltyp</div>
+      <select id="strom-kabel-typ"
+        style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:6px;">
+        <option value="NAYY">NAYY (Aluminium)</option>
+        <option value="NYY" selected>NYY (Kupfer) — Standard</option>
+      </select>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;">
         ${_inp('strom-ns-cosphi', 'NS cos φ', '0.95',
           { min:0.70, max:1.00, step:0.01, change:'recalcStromNetz()', title:'Leistungsfaktor NS-Netz (typ. 0,95)' })}
@@ -108718,30 +108720,30 @@ function _html() { return `
   </div>
 
   <!-- ── 3 · Auswerten & Export ────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
        data-click="toggleSection('el-sec-auswerten')">
     <span>3 · Auswerten &amp; Export</span><span id="el-sec-auswerten-arrow">▼</span>
   </div>
   <div id="el-sec-auswerten">
-    <div class="lp-tool-grid" style="margin-top:4px;">
+    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:4px;margin-bottom:2px;">
       <button class="lp-tool-btn" id="btn-sld-toggle" data-click="sldToggle()"
-        style="border-color:#80cbc4;color:#80cbc4;">🔌 Einlinien&shy;schema</button>
+        style="border-color:#80cbc4;color:#80cbc4;justify-content:center;">Einlinien&shy;schema</button>
       <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()"
-        style="border-color:#b39ddb;color:#ce93d8;">🗺️ Netzanalyse</button>
+        style="border-color:#b39ddb;color:#ce93d8;justify-content:center;">Netzanalyse</button>
       <button class="lp-tool-btn" data-click="openKnotenanalyse()"
-        style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;font-weight:600;"
-        title="Detailanalyse einzelner Netzknoten: Auslastung, Spannungsfall und Kurzschlussstrom je Asset über die Zeit">
-        📈 Knotenpunkt-Analyse
-      </button>
+        style="border-color:#4fc3f7;color:#4fc3f7;justify-content:center;"
+        title="Detailanalyse einzelner Netzknoten">Knotenanalyse</button>
+    </div>
+    <div class="lp-tool-grid">
       <button class="lp-tool-btn" data-click="showInvestitionsplan()"
-        style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;" title="Investitionsplan für das Stromnetz anzeigen: Kosten der geplanten Komponenten und Maßnahmen über die Jahre">📋 Investitionsplan</button>
+        style="border-color:#ce93d8;color:#ce93d8;justify-content:center;">Investitionsplan</button>
       <button class="lp-tool-btn" data-click="exportMassnahmenPDF()"
-        style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;" title="Maßnahmenbericht für das Stromnetz als PDF exportieren">📄 Maßnahmenbericht PDF</button>
+        style="border-color:#ef9a9a;color:#ef9a9a;justify-content:center;">Bericht PDF</button>
     </div>
   </div>
 
   <!-- ── Darstellung ──────────────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
        data-click="toggleSection('lp-strom-viz')">
     Darstellung <span id="lp-strom-viz-arrow">▼</span>
   </div>
@@ -108760,7 +108762,7 @@ function _html() { return `
   </div>
 
   <!-- ── Kosten (eingeklappt) ────────────────────────────────────────────── -->
-  <div class="lp-section-title lp-section-collapsible" style="margin-top:16px;"
+  <div class="lp-section-title lp-section-collapsible" style="margin-top:10px;"
        data-click="toggleSection('lp-strom-kosten')">
     Kostenkennwerte <span id="lp-strom-kosten-arrow">▶</span>
   </div>
@@ -108803,6 +108805,46 @@ function _html() { return `
 
 `; }
 
+// ── Status-Chip der gekoppelten Anlagen ─────────────────────────────────────────
+function _statusChip(label, color, aktiv, info) {
+  if (aktiv) {
+    const suffix = info ? ` · ${info}` : '';
+    return `<span style="font-size:10px;color:${color};border:1px solid ${color}66;border-radius:10px;padding:2px 8px;white-space:nowrap;">${label}${suffix}</span>`;
+  }
+  return `<span style="font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:2px 8px;white-space:nowrap;opacity:.55;">${label} · —</span>`;
+}
+
+// Spiegelt den Aktiv-Status der stromrelevanten Erzeuger aus dem Erzeuger-Tab.
+// Jede Abfrage defensiv gekapselt — fehlende Quelle ⇒ „—" statt Fehler.
+function renderGekoppelteStatus() {
+  const box = document.getElementById('el-gekoppelt-status');
+  if (!box) return;
+  const safe = (fn, d = false) => { try { return fn(); } catch (e) { return d; } };
+  const kw = (v) => (v != null && isFinite(v)) ? Math.round(v) : null;
+  const chip = (label, color, info) => {
+    const suffix = info ? ` · ${info}` : '';
+    return `<span style="font-size:10px;color:${color};border:1px solid ${color}66;border-radius:10px;padding:2px 8px;white-space:nowrap;">${label}${suffix}</span>`;
+  };
+
+  const chips = [];
+  const lwAktiv = safe(() => isErzeugerAktiv('lwwp'));
+  if (lwAktiv) chips.push(chip('Luft-WP', '#66bb6a', kw(lwWp?.leistung) != null ? `${kw(lwWp.leistung)} kW` : ''));
+  if (safe(() => isErzeugerAktiv('geo')))        chips.push(chip('Geothermie',   '#bcaaa4', ''));
+  if (safe(() => isErzeugerAktiv('fg')))         chips.push(chip('Fließgew.-WP', '#4fc3f7', ''));
+  const bhAktiv = safe(() => isErzeugerAktiv('bhkw'));
+  if (bhAktiv) chips.push(chip('BHKW', '#ffb74d', kw(bhkw?.leistung) != null ? `${kw(bhkw.leistung)} kW` : ''));
+  if (safe(() => isErzeugerAktiv('stromkessel'))) chips.push(chip('Stromkessel', '#ff69b4', ''));
+  const pvKwp = safe(() => parseFloat(document.getElementById('pv-kwp')?.value) || 0, 0);
+  if (pvKwp > 0) chips.push(chip('PV', '#ffd54f', `${kw(pvKwp)} kWp`));
+  if (safe(() => Array.isArray(gebaeude) && gebaeude.some(g => g.pvAktiv))) chips.push(chip('Gebäude-PV', '#ffd54f', ''));
+  const bat = safe(() => (typeof getBatParams === 'function') ? getBatParams() : null, null);
+  if (bat) chips.push(chip('Batterie', '#ce93d8', kw(bat.kapKwh) != null ? `${kw(bat.kapKwh)} kWh` : ''));
+
+  box.innerHTML = chips.length
+    ? chips.join('')
+    : '<span style="font-size:9px;color:var(--muted);">Keine aktiven Anlagen</span>';
+}
+
 // ── Öffentliche API ───────────────────────────────────────────────────────────
 function buildElektroPanel() {
   const el = document.getElementById('lp-elektro');
@@ -108814,6 +108856,8 @@ function buildElektroPanel() {
   if (palette) delete palette.dataset.built;
   // Freiflächen-Liste sofort befüllen, falls bereits Flächen existieren
   window.renderFFPanel?.();
+  // Gekoppelte-Anlagen-Status initial füllen
+  renderGekoppelteStatus();
 }
 
 
