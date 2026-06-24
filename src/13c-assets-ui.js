@@ -53,13 +53,18 @@ export function buildPalette() {
   panel.dataset.built = '1';
 }
 
+export function cancelPendingType() {
+  if (!pendingType) return;
+  pendingType = null;
+  window._pendingAssetType = null;
+  document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
+  map.getContainer().style.cursor = '';
+}
+
 export function setPendingType(type) {
   // Erneuter Klick auf aktiven Typ → abwählen
   if (pendingType === type) {
-    pendingType = null;
-    window._pendingAssetType = null;
-    document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
-    map.getContainer().style.cursor = '';
+    cancelPendingType();
     return;
   }
   // Andere Modi beenden
@@ -121,4 +126,5 @@ function onKeydownForAsset(e) {
 setTimeout(() => {
   map.on('click', onMapClickForAsset);
   document.addEventListener('keydown', onKeydownForAsset);
+  window.cancelPendingAsset = cancelPendingType;
 }, 0);

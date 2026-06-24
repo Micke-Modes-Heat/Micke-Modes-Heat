@@ -377,7 +377,7 @@ export function setLabelsVisible(visible) {
 export function setMode(m){
   window.currentMode=m;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('btn-'+m).classList.add('active');
+  document.getElementById('btn-'+m)?.classList.add('active');
   // "Ansicht ▾"-Menübutton zeigt die aktive Nischenansicht an (und schließt das Menü)
   const _nischenLabel = { spez: 'Spez. Wärmebedarf', heizlast: 'Heizlast', verlust: 'Netzverlust' };
   const amBtn = document.getElementById('btn-ansicht-menu');

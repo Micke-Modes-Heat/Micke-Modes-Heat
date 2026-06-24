@@ -10,7 +10,7 @@ import { renderList, updateTotals } from './03c-gebaeude-io.js';
 import { _renderEmissionenTab, refreshVergleichView, renderAnalyseDispatch } from './04b-emissionen-3d.js';
 import { setStromNetzVisible } from './05b-stromnetz.js';
 import { buildPalette } from './13c-assets-ui.js';
-import { buildElektroPanel } from './13n-elektro-panel.js';
+import { buildElektroPanel, renderGekoppelteStatus } from './13n-elektro-panel.js';
 import { setAssetLayerVisible } from './13b-assets-render.js';
 import { saSetTab } from './07a-analysis-charts.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
@@ -741,6 +741,7 @@ export function setLeftTab(tabId) {
     setNetzVisible(false);
     setStromNetzVisible(true);
     buildElektroPanel();
+    renderGekoppelteStatus(); // Status der gekoppelten Anlagen bei jedem Öffnen aktualisieren
     buildPalette();
     // Assets für alle Gebäude nacherstellen, die noch keines haben (Migration alter Projekte)
     if (typeof window.autoCreateBuildingAssets === 'function' && Array.isArray(window.gebaeude)) {
