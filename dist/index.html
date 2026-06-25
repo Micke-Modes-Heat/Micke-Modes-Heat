@@ -89060,12 +89060,17 @@ function pvOrientationMix() {
   const spezSued = _PV_SPEZ_DEFAULT.sued    * siteFactor;
   const spezOst  = _PV_SPEZ_DEFAULT.ostwest * siteFactor;
 
+  // Test-robust: im isolierten Test-Setup sind die globals nicht geladen → typeof-Guard
+  // statt blanker Referenz (sonst ReferenceError). Im App-Betrieb die live-Bindings.
+  const _ffs  = (typeof freiflaechen !== 'undefined' ? freiflaechen : null) || [];
+  const _gebs = (typeof gebaeude     !== 'undefined' ? gebaeude     : null) || [];
+
   let kSued = 0, kOst = 0;
-  for (const ff of (freiflaechen || [])) {
+  for (const ff of _ffs) {
     const k = calcFFKwp(ff) || 0;
     if (ff.ausrichtung === 'ostwest') kOst += k; else kSued += k;
   }
-  for (const g of (gebaeude || [])) {
+  for (const g of _gebs) {
     if (!g.pvAktiv) continue;
     const k = calcGebKwp(g) || 0;
     let cls = 'sued';
