@@ -626,6 +626,7 @@
           <button class="lp-tool-btn" data-click="exportDispatchCSV()" style="border-color:#ff9800;color:#ffb74d;">📋 Dispatch CSV</button>
           <button class="lp-tool-btn" data-click="exportGebaeudeCSV()" style="border-color:#81c784;color:#81c784;">📋 Gebäude CSV</button>
           <button class="lp-tool-btn" data-click="exportPDFReport()" style="border-color:#ef5350;color:#ef9a9a;grid-column:1/-1;">📄 PDF-Bericht erstellen</button>
+          <button class="lp-tool-btn" data-click="exportGutachtenDigest()" style="border-color:#90a4ae;color:#b0bec5;grid-column:1/-1;" title="Anonymisierte, aggregierte Projektkennzahlen als strukturiertes Markdown-Dokument (Arbeitsgrundlage für den Gutachten-Entwurf)">📝 Kennzahlen-Digest (MD)</button>
         </div>
       </div>
 
@@ -2788,17 +2789,17 @@
       <div class="inp-group" style="margin:0">
         <label class="inp-label">Breite (m)</label>
         <input class="inp-field" type="number" id="pv-modul-breite" value="1.1" min="0.5" max="2.5" step="0.05"
-          data-input="renderGebPvPanel()"/>
+          data-input="onPvModulChange()"/>
       </div>
       <div class="inp-group" style="margin:0">
         <label class="inp-label">Länge (m)</label>
         <input class="inp-field" type="number" id="pv-modul-laenge" value="1.7" min="0.5" max="3.0" step="0.05"
-          data-input="renderGebPvPanel()"/>
+          data-input="onPvModulChange()"/>
       </div>
       <div class="inp-group" style="margin:0">
         <label class="inp-label">Leistung (Wp)</label>
         <input class="inp-field" type="number" id="pv-modul-wp" value="450" min="100" max="800" step="5"
-          data-input="renderGebPvPanel()"/>
+          data-input="onPvModulChange()"/>
       </div>
     </div>
     <div id="pv-modul-info" style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:8px;"></div>

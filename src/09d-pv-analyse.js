@@ -6,7 +6,7 @@ import { freiflaechen, gebaeude, globalYear } from './01-globals-varianten.js';
 import { calcFFKwp } from './03a-erzeuger.js';
 import { calcGebKwp } from './03c-gebaeude-io.js';
 import { CalcEngine } from './08-calc-engine.js';
-import { makePvProfile8760 } from './09a-pv-profile.js';
+import { makePvProfile8760, makePvProfileEffective, pvGetEffectiveSpez } from './09a-pv-profile.js';
 import { OPT_INVEST_DEFAULT, OPT_IH, OPT_NUTZUNG } from './config/optimizer-defaults.js';
 import { ASSETS } from './13a-assets-core.js';
 
@@ -192,7 +192,7 @@ function pvGetDt() {
  */
 function pvGetPvProfile() {
   const N = pvGetN();
-  const h = makePvProfile8760();          // immer 8.760 Stunden
+  const h = makePvProfileEffective();     // immer 8.760 Stunden (Ausrichtungs-Mix)
 
   if (N <= 8760) return h;
 
@@ -244,9 +244,9 @@ function pvGetAssetBreakdown() {
   return { assetKwp, assetN, gebKwp, ffKwp, manual };
 }
 
-/** Spezifischer Ertrag (kWh/kWp/a) */
+/** Spezifischer Ertrag (kWh/kWp/a) — effektiv aus dem Ausrichtungs-Mix gewichtet. */
 function pvGetSpez() {
-  return parseFloat(document.getElementById('pv-spez')?.value) || 1000;
+  return pvGetEffectiveSpez();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

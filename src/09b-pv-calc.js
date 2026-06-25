@@ -8,7 +8,7 @@ import { updateNetzStrandVisibility } from './03b-netz.js';
 import { calcGebKwp } from './03c-gebaeude-io.js';
 import { GL_MONTH_HOURS, GL_MONTH_START } from './06a-gbi-lastgang.js';
 import { CalcEngine } from './08-calc-engine.js';
-import { getBatParams, makePvProfile8760, onPvVergModellChange } from './09a-pv-profile.js';
+import { getBatParams, makePvProfile8760, makePvProfileEffective, pvGetEffectiveSpez, onPvVergModellChange } from './09a-pv-profile.js';
 import { _stromCurrentTab, _stromRenderFlussChart, _stromRenderLastgang, _stromRenderMonatsChart, drawSankeyStrom } from './09c-pv-charts-opt.js';
 import { getGebStromMwh } from './02b-gebaeude.js';
 
@@ -97,8 +97,11 @@ export function calcStromPanel() {
     window._elQuartierFromGeb = flat;
   }
 
-  // PV-Erzeugung — Pauschal (Upload oder kWp) + Gebäude-PV
-  const pvSpez = parseFloat(document.getElementById('pv-spez')?.value) || 1000;
+  // PV-Erzeugung — Pauschal (Upload oder kWp) + Gebäude-PV.
+  // Profil + spez. Ertrag aus dem energiegewichteten Ausrichtungs-Mix aller Anlagen
+  // (Süd = Mittagsspitze/1050, Ost-West = Doppelhöcker/950); reduziert sich auf das
+  // globale Profil, wenn keine ausrichtungs-spezifischen Anlagen vorhanden sind.
+  const pvSpez = pvGetEffectiveSpez();
   let pvH = null;
   let pauschMwh = 0;
 
@@ -108,7 +111,7 @@ export function calcStromPanel() {
   } else {
     const kwp = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
     if (kwp > 0) {
-      const profile = makePvProfile8760();
+      const profile = makePvProfileEffective();
       pvH = new Float32Array(8760);
       for (let t = 0; t < 8760; t++) pvH[t] = profile[t] * kwp * pvSpez;
       pauschMwh = kwp * pvSpez / 1000;
@@ -119,7 +122,7 @@ export function calcStromPanel() {
   const gebaeudeKwp = gebaeude.reduce((s, g) => s + (g.pvAktiv ? calcGebKwp(g) : 0), 0);
   let gebPvMwh = 0;
   if (gebaeudeKwp > 0) {
-    const profile = makePvProfile8760();
+    const profile = makePvProfileEffective();
     if (!pvH) pvH = new Float32Array(8760);
     for (let t = 0; t < 8760; t++) pvH[t] += profile[t] * gebaeudeKwp * pvSpez;
     gebPvMwh = gebaeudeKwp * pvSpez / 1000;
@@ -129,7 +132,7 @@ export function calcStromPanel() {
   const ffKwp = freiflaechen.reduce((s, ff) => s + calcFFKwp(ff), 0);
   let ffPvMwh = 0;
   if (ffKwp > 0) {
-    const profile = makePvProfile8760();
+    const profile = makePvProfileEffective();
     if (!pvH) pvH = new Float32Array(8760);
     for (let t = 0; t < 8760; t++) pvH[t] += profile[t] * ffKwp * pvSpez;
     ffPvMwh = ffKwp * pvSpez / 1000;

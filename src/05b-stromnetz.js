@@ -1302,7 +1302,10 @@ export function _recalcStromNetzInner() {
                       + (parseInt(p.anzahlSchnell)||0) * (parseFloat(p.leistungSchnellKW)||150);
             break;
           }
-          case 'WP':          nm.loadKw = parseFloat(p.leistungKW) || 0; break;
+          case 'WP':          nm.loadKw = parseFloat(p.leistungElKW) || parseFloat(p.leistungKW) || 0; break;
+          case 'Geo':         nm.loadKw = parseFloat(p.leistungElKW) || 0; break;
+          case 'FG':          nm.loadKw = parseFloat(p.leistungElKW) || 0; break;
+          case 'Stromkessel': nm.loadKw = parseFloat(p.leistungKW)   || 0; break;
           case 'PV':          nm.loadKw = -((parseFloat(p.leistungKWp) || 0) * 0.8); break;
           case 'Wind':        nm.loadKw = -(parseFloat(p.leistungKW) || 0); break;
           case 'KWK':         nm.loadKw = -(parseFloat(p.leistungElKW) || 0); break;
@@ -2186,7 +2189,10 @@ export function elCalcAssets() {
         return (parseInt(p.anzahlPunkte)||8)  * (parseFloat(p.leistungProPunktKW)||11) * gzf
              + (parseInt(p.anzahlSchnell)||0) * (parseFloat(p.leistungSchnellKW)||150);
       }
-      case 'WP':          return parseFloat(p.leistungKW) || 0;
+      case 'WP':          return parseFloat(p.leistungElKW) || parseFloat(p.leistungKW) || 0;
+      case 'Geo':         return parseFloat(p.leistungElKW) || 0;
+      case 'FG':          return parseFloat(p.leistungElKW) || 0;
+      case 'Stromkessel': return parseFloat(p.leistungKW)   || 0;
       default:            return 0;
     }
   }

@@ -46,6 +46,10 @@ export function toggleTile(){
   if(currentTile==='osm'){ map.removeLayer(osmTile); esriTile.addTo(map); currentTile='esri'; document.getElementById('btn-tile').textContent='🗺 OSM'; }
   else { map.removeLayer(esriTile); osmTile.addTo(map); currentTile='osm'; document.getElementById('btn-tile').textContent='🛰 Satellit'; }
 }
+// Stellt die Satellitenansicht sicher (für PV-Flächenzeichnung auf dem Dach)
+export function ensureSatellite(){
+  if(currentTile==='osm') toggleTile();
+}
 
 // ── Farbschemata ──────────────────────────────────────────────────────────
 export const THEMES = [
@@ -402,6 +406,7 @@ export function addGebaeude(opts={}){
            baujahr: opts.baujahr!=null?opts.baujahr:null, baujährQuelle: opts.baujährQuelle||null,
            abrissjahr: null, sanierungen: [], selected: false,
            pvAktiv: false, pvDachanteil: opts.pvDachanteil ?? 30,
+           pvModus: 'pauschal', pvFlaechen: [], pvFlGcr: null, pvFlAusrichtung: 'sued', pvFlBelegung: null,
            strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || '',
            dachform:      opts.dachform      || 'sattel',
            dachAzimut:    opts.dachAzimut    ?? null,
@@ -445,6 +450,8 @@ export function removeGebaeude(id){
   if(g.polygonLayer) map.removeLayer(g.polygonLayer);
   if(g.circleMarker) map.removeLayer(g.circleMarker);
   if(g.labelMarker) map.removeLayer(g.labelMarker);
+  if(g.pvFlaechen) g.pvFlaechen.forEach(f=>{ if(f.layer) map.removeLayer(f.layer); if(f.svgLayer) map.removeLayer(f.svgLayer); });
+  if(g._pvModuleLayer){ map.removeLayer(g._pvModuleLayer); g._pvModuleLayer=null; }
   window.gebaeude=window.gebaeude.filter(x=>x.id!==id);
   window.netzEdges = window.netzEdges.filter(e => {
     if(e.u === id || e.v === id){

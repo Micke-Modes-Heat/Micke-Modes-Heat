@@ -36,11 +36,17 @@ export const ASSET_CFG = {
   // ── Strom-Speicher ──
   Batterie:     { label:'Batterie',          icon:'🔋', color:'#aed581', domain:'strom', kategorie:'speicher', energy_in:['strom'], energy_out:['strom'],
                   beschreibung:'Batteriespeicher: speichert überschüssigen Strom (z. B. PV-Erzeugung) zwischen und entlastet damit Netzanschluss und Trafo bei Lastspitzen.' },
-  // ── Hybrid (Strom + Wärme) ──
-  WP:           { label:'Wärmepumpe',        icon:'💨', color:'#ce93d8', domain:'hybrid', kategorie:'erzeuger', energy_in:['strom'], energy_out:['waerme'],
-                  beschreibung:'Wärmepumpe: wandelt Strom in Wärme um (Umweltwärme als Quelle) — zählt im Stromnetz als Verbraucher, im Wärmenetz als Erzeuger.' },
-  KWK:          { label:'KWK-Anlage',        icon:'🔥', color:'#f48fb1', domain:'hybrid', kategorie:'erzeuger', energy_in:['gas'], energy_out:['strom','waerme'],
-                  beschreibung:'Blockheizkraftwerk (Kraft-Wärme-Kopplung): erzeugt gleichzeitig Strom und Wärme aus Brennstoff (i. d. R. Gas).' },
+  // ── Hybrid (Strom + Wärme) — werden über Erzeuger-Tab gesteuert, nicht manuell platzierbar ──
+  WP:           { label:'Luft-WP',           icon:'💨', color:'#66bb6a', domain:'hybrid', kategorie:'erzeuger', energy_in:['strom'], energy_out:['waerme'],
+                  beschreibung:'Luft-Wärmepumpe: wandelt Strom in Wärme um — wird über den Erzeuger-Tab verwaltet.' },
+  Geo:          { label:'Geothermie',         icon:'♨',  color:'#a1887f', domain:'hybrid', kategorie:'erzeuger', energy_in:['strom'], energy_out:['waerme'],
+                  beschreibung:'Geothermie-Wärmepumpe: nutzt Erdwärme als Quelle — wird über den Erzeuger-Tab verwaltet.' },
+  FG:           { label:'Fließgew.-WP',       icon:'∼',  color:'#29b6f6', domain:'hybrid', kategorie:'erzeuger', energy_in:['strom'], energy_out:['waerme'],
+                  beschreibung:'Fließgewässer-Wärmepumpe: nutzt Flusswasser als Wärmequelle — wird über den Erzeuger-Tab verwaltet.' },
+  KWK:          { label:'KWK-Anlage',         icon:'🔥', color:'#f48fb1', domain:'hybrid', kategorie:'erzeuger', energy_in:['gas'], energy_out:['strom','waerme'],
+                  beschreibung:'Blockheizkraftwerk (Kraft-Wärme-Kopplung): erzeugt gleichzeitig Strom und Wärme — wird über den Erzeuger-Tab verwaltet.' },
+  Stromkessel:  { label:'Stromkessel',        icon:'⚡',  color:'#ff8f00', domain:'hybrid', kategorie:'erzeuger', energy_in:['strom'], energy_out:['waerme'],
+                  beschreibung:'Elektrischer Heizkessel: wandelt Strom direkt in Wärme — wird über den Erzeuger-Tab verwaltet.' },
   // ── Reserve ──
   Reserve:      { label:'Reserve',           icon:'◻', color:'#90a4ae', domain:'strom', kategorie:'sonstiges', energy_in:[], energy_out:[],
                   beschreibung:'Reserve-Asset: Platzhalter für zukünftige Erweiterungen oder noch nicht klassifizierte Komponenten.' },
@@ -49,7 +55,7 @@ export const ASSET_CFG = {
 // Typrangfolge für Sortierung/Topologie: niedriger = versorgungsseitig
 export const TYPE_RANK = {
   NAP:0, Schaltanlage:1, Trafo:2, NSHV:3, UV:4, KVS:4,
-  Verbraucher:5, WP:5, Lade:5, Nsa:5, KWK:5,
+  Verbraucher:5, WP:5, Geo:5, FG:5, Stromkessel:5, Lade:5, Nsa:5, KWK:5,
   Wind:6, PV:6, Batterie:6, Reserve:7,
 };
 
@@ -79,9 +85,16 @@ export const ASSET_PROPS_SCHEMA = {
                  { key:'gleichzeitigFaktor',  label:'Gleichzeitigkeitsfaktor (0–1)' },
                  { key:'anzahlSchnell',       label:'Anz. Schnelllader' },
                  { key:'leistungSchnellKW',   label:'Leistung Schnelllader (kW)' }],
-  WP:           [{ key:'leistungThKW',         label:'Th. Leistung (kW)' },
-                 { key:'leistungElKW',         label:'El. Bedarf (kW)' },
-                 { key:'jaz',                  label:'JAZ' }],
+  WP:           [{ key:'leistungThKW',  label:'Th. Leistung (kW)' },
+                 { key:'leistungElKW',  label:'El. Bedarf (kW)' },
+                 { key:'jaz',           label:'JAZ' }],
+  Geo:          [{ key:'leistungThKW',  label:'Th. Leistung (kW)' },
+                 { key:'leistungElKW',  label:'El. Bedarf (kW)' },
+                 { key:'jaz',           label:'JAZ' }],
+  FG:           [{ key:'leistungThKW',  label:'Th. Leistung (kW)' },
+                 { key:'leistungElKW',  label:'El. Bedarf (kW)' },
+                 { key:'jaz',           label:'JAZ' }],
+  Stromkessel:  [{ key:'leistungKW',    label:'El. Leistung (kW)' }],
   Nsa:          [{ key:'leistungKW',          label:'Leistung (kW)' },
                  { key:'autonomieH',          label:'Autonomie (h)' },
                  { key:'kraftstoff',          label:'Kraftstoff' }],

@@ -84,9 +84,18 @@ export function toggleFFPvPanel() {
   startDrawFF();
 }
 
+// Standard-Bodenbedeckung (GCR) für Freiflächen je Ausrichtung:
+//  Süd  ~40 % (Reihenabstand gegen Selbstverschattung)
+//  Ost-West ~85 % (Rücken-an-Rücken-Aufständerung, dichter belegbar)
+export const FF_GCR_SUED    = 40;
+export const FF_GCR_OSTWEST = 85;
+export function ffGcrDefault(ff) {
+  return ff && ff.ausrichtung === 'ostwest' ? FF_GCR_OSTWEST : FF_GCR_SUED;
+}
+
 export function calcFFKwp(ff) {
   const fl  = parseFloat(ff.flaeche) || 0;
-  const gcr = (ff.gcr !== undefined ? ff.gcr : (ff.ausrichtung === 'ostwest' ? 55 : 35)) / 100;
+  const gcr = (ff.gcr !== undefined ? ff.gcr : ffGcrDefault(ff)) / 100;
   return fl * gcr * _pvWpM2Global() / 1000;
 }
 
@@ -103,92 +112,21 @@ export function attachFFLayer(ff) {
     toggleFFPvPanel();
   });
 
+  ff._pvModCount = 0;
   if (ff.polygon.length < 3) return;
-  const isOW = ff.ausrichtung === 'ostwest';
-  const gcr  = (ff.gcr !== undefined ? ff.gcr : (isOW ? 55 : 35)) / 100;
-  const lats = ff.polygon.map(p => p.lat);
-  const lngs = ff.polygon.map(p => p.lng);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-  if (maxLat === minLat || maxLng === minLng) return;
 
-  const W = 1000, H = 1000;
-  const polyPts = ff.polygon.map(p => {
-    const x = ((p.lng - minLng) / (maxLng - minLng) * W).toFixed(1);
-    const y = ((maxLat - p.lat) / (maxLat - minLat) * H).toFixed(1);
-    return `${x},${y}`;
-  }).join(' ');
-
-  const modFill  = 'rgba(26,35,126,0.82)';   // dark indigo blue modules
-  const cellLine = 'rgba(92,107,192,0.50)';   // lighter blue cell grid
-  const shimmer  = 'rgba(92,107,192,0.28)';   // tilt-side highlight
-  const nCols    = 8;
-  const colW     = W / nCols;
-
-  let shapes = '';
-
-  if (!isOW) {
-    // ── SÜD: gleichmäßige Reihen, alle in gleicher Richtung ─────────────────
-    const nRows    = 18;
-    const rowPitch = H / nRows;
-    const rowH     = rowPitch * gcr;
-    for (let i = 0; i < nRows; i++) {
-      const y0 = (i * rowPitch + (rowPitch - rowH) / 2).toFixed(1);
-      const y1 = (parseFloat(y0) + rowH).toFixed(0);
-      shapes += `<rect x="0" y="${y0}" width="${W}" height="${rowH.toFixed(1)}" fill="${modFill}"/>`;
-      // Vertikale Modultrennlinien
-      for (let c = 1; c < nCols; c++) {
-        const cx = (c * colW).toFixed(1);
-        shapes += `<line x1="${cx}" y1="${y0}" x2="${cx}" y2="${y1}" stroke="${cellLine}" stroke-width="1.5"/>`;
-      }
-      // Heller Streifen oben (Nordkante = höhere Seite bei Südneigung)
-      shapes += `<rect x="0" y="${y0}" width="${W}" height="${(rowH * 0.13).toFixed(1)}" fill="${shimmer}"/>`;
-    }
-  } else {
-    // ── OST-WEST: paarweise Spalten (N-S), rücken-an-rücken ────────────────
-    // Reihen laufen von Nord nach Süd — Paare nebeneinander in E-W-Richtung
-    const nPairs    = 12;
-    const pairPitch = W / nPairs;              // Abstand der Paare in E-W-Richtung
-    const singleW   = (pairPitch * gcr) / 2;  // Breite einer Spalte (West oder Ost)
-    const ridge     = singleW * 0.08;          // Firstlücke zwischen den Hälften
-    const nRows     = 8;                       // Modulreihen innerhalb jeder Spalte (N-S)
-    const rowH      = H / nRows;
-
-    for (let i = 0; i < nPairs; i++) {
-      const cx = i * pairPitch + pairPitch / 2;  // Firstmitte (E-W)
-
-      // West-Spalte (linke Hälfte — Westseite geneigt, Oberkante = Westkante)
-      const wx0 = cx - singleW - ridge;
-      shapes += `<rect x="${wx0.toFixed(1)}" y="0" width="${singleW.toFixed(1)}" height="${H}" fill="${modFill}"/>`;
-      for (let r = 1; r < nRows; r++) {
-        const ry = (r * rowH).toFixed(1);
-        shapes += `<line x1="${wx0.toFixed(1)}" y1="${ry}" x2="${(wx0 + singleW).toFixed(1)}" y2="${ry}" stroke="${cellLine}" stroke-width="1.5"/>`;
-      }
-      // Shimmer an der Westkante (höhere Seite der nach Westen geneigten Platte)
-      shapes += `<rect x="${wx0.toFixed(1)}" y="0" width="${(singleW * 0.13).toFixed(1)}" height="${H}" fill="${shimmer}"/>`;
-
-      // Ost-Spalte (rechte Hälfte — Ostseite geneigt, Oberkante = Ostkante)
-      const ex0 = cx + ridge;
-      shapes += `<rect x="${ex0.toFixed(1)}" y="0" width="${singleW.toFixed(1)}" height="${H}" fill="${modFill}"/>`;
-      for (let r = 1; r < nRows; r++) {
-        const ry = (r * rowH).toFixed(1);
-        shapes += `<line x1="${ex0.toFixed(1)}" y1="${ry}" x2="${(ex0 + singleW).toFixed(1)}" y2="${ry}" stroke="${cellLine}" stroke-width="1.5"/>`;
-      }
-      // Shimmer an der Ostkante (höhere Seite der nach Osten geneigten Platte)
-      shapes += `<rect x="${(ex0 + singleW - singleW * 0.13).toFixed(1)}" y="0" width="${(singleW * 0.13).toFixed(1)}" height="${H}" fill="${shimmer}"/>`;
-    }
-  }
-
-  const clipId = `ff-clip-${ff.id}`;
-  const svgEl  = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svgEl.setAttribute('preserveAspectRatio', 'none');
-  svgEl.style.overflow = 'hidden';
-  svgEl.innerHTML = `<defs><clipPath id="${clipId}"><polygon points="${polyPts}"/></clipPath></defs>` +
-                    `<g clip-path="url(#${clipId})">${shapes}</g>`;
-
-  const bounds = [[minLat, minLng], [maxLat, maxLng]];
-  ff.moduleSvgLayer = L.svgOverlay(svgEl, bounds, { opacity: 1, interactive: false, zIndex: 201 }).addTo(map);
+  // Reale Module über die gemeinsame Platzierungs-Engine (wie Gebäudedächer).
+  // Freifläche = ebene Aufständerung → Flachdach-Modus, Reihenabstand aus GCR.
+  // ausrichtung steuert das Modulmuster (Süd-Reihen vs. Ost-West-Paare).
+  const gcr = (ff.gcr !== undefined ? ff.gcr : ffGcrDefault(ff)) / 100;
+  const mb  = parseFloat(document.getElementById('pv-modul-breite')?.value) || 1.1;
+  const ml  = parseFloat(document.getElementById('pv-modul-laenge')?.value) || 1.7;
+  if (typeof window.placePvModules !== 'function' || typeof window.buildPvModuleOverlay !== 'function') return;
+  const res = window.placePvModules([ff.polygon], [], { pitched: false, coverage: gcr, ausrichtung: ff.ausrichtung, moduleW: mb, moduleL: ml });
+  ff._pvModCount = res.count;          // Modulanzahl für Panel-/Asset-Anzeige
+  const ov  = window.buildPvModuleOverlay(res);
+  if (!ov) return;
+  ff.moduleSvgLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 201 }).addTo(map);
 }
 
 export function startDrawFF() {
@@ -222,7 +160,7 @@ export function finishDrawFF() {
     polygon: pts, polygonLayer: null,
     flaeche: polygonAreaM2(pts),
     ausrichtung: 'sued',
-    gcr: 35,
+    gcr: FF_GCR_SUED,
   };
   freiflaechen.push(ff);
   attachFFLayer(ff);
@@ -247,10 +185,10 @@ export function removeFreiflaeche(id) {
 export function updateFF(id, field, val) {
   const ff = freiflaechen.find(f => f.id === id);
   if (!ff) return;
-  if (field === 'gcr') { ff.gcr = parseFloat(val) || 35; ff._gcrManual = true; }
+  if (field === 'gcr') { ff.gcr = parseFloat(val) || ffGcrDefault(ff); ff._gcrManual = true; }
   else if (field === 'ausrichtung') {
     ff.ausrichtung = val;
-    if (!ff._gcrManual) ff.gcr = val === 'ostwest' ? 55 : 35;
+    if (!ff._gcrManual) ff.gcr = ffGcrDefault(ff);   // Default-Dichte je Ausrichtung mitziehen
   }
   else if (field === 'name') ff.name = val;
   if (field === 'gcr' || field === 'ausrichtung') attachFFLayer(ff);
@@ -286,7 +224,7 @@ export function renderFFPanel() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px;">
         <div class="inp-group">
           <div class="inp-label" title="Ground Coverage Ratio: Anteil der Modulfläche an der Gesamtfläche">GCR (% Bodenbedeckung)</div>
-          <input class="inp-field" type="number" value="${ff.gcr !== undefined ? ff.gcr : (ff.ausrichtung === 'ostwest' ? 55 : 35)}" min="5" max="90" step="5"
+          <input class="inp-field" type="number" value="${ff.gcr !== undefined ? ff.gcr : ffGcrDefault(ff)}" min="5" max="95" step="5"
             data-input="updateFF(${ff.id},'gcr',this.value)"/>
         </div>
         <div class="inp-group">
@@ -297,9 +235,10 @@ export function renderFFPanel() {
           </select>
         </div>
       </div>
-      <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">${((ff.gcr !== undefined ? ff.gcr : 35) / 100 * _pvWpM2Global()).toFixed(0)} Wp/m² Gesamtfläche (= ${(ff.gcr !== undefined ? ff.gcr : 35)}% × ${_pvWpM2Global().toFixed(0)} Wp/m² Modulleistung)</div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">${((ff.gcr !== undefined ? ff.gcr : ffGcrDefault(ff)) / 100 * _pvWpM2Global()).toFixed(0)} Wp/m² Gesamtfläche (= ${(ff.gcr !== undefined ? ff.gcr : ffGcrDefault(ff))}% × ${_pvWpM2Global().toFixed(0)} Wp/m² Modulleistung)</div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-family:'DM Mono',monospace;">
         <span style="color:var(--muted)">Fläche</span><span style="color:var(--text)">${fl}</span>
+        ${ff._pvModCount ? `<span style="color:var(--muted)">Module</span><span style="color:var(--text)">${ff._pvModCount.toLocaleString('de-DE')}</span>` : ''}
         <span style="color:var(--muted)">Leistung</span><span style="color:#ffd54f;">${kwp.toFixed(1)} kWp</span>
       </div>
     </div>`;

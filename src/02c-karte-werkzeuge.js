@@ -666,6 +666,19 @@ map.on('click',e=>{
     redrawTrasse();
     return;
   }
+  if (window.gebPvDraw) {
+    const st = window.gebPvDraw;
+    const col = st.typ === 'sperr' ? '#e53935' : '#ffd54f';
+    if (st.points.length === 0) {
+      const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
+      st.startMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
+      st.startMarker.on('click', (ev) => { L.DomEvent.stopPropagation(ev); window.finishGebPvDraw && window.finishGebPvDraw(); });
+    }
+    st.points.push(e.latlng);
+    if (st.polyline) map.removeLayer(st.polyline);
+    st.polyline = L.polyline([...st.points], {color: col, weight: 2, dashArray: '6 4'}).addTo(map);
+    return;
+  }
   if (ffDrawId !== null) {
     if (ffDrawPoints.length === 0) {
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
@@ -727,6 +740,16 @@ map.on('contextmenu', e => {
     } else {
       if (window.ffDrawStartMarker) { map.removeLayer(window.ffDrawStartMarker); window.ffDrawStartMarker = null; }
     }
+  } else if (window.gebPvDraw && window.gebPvDraw.points.length > 0) {
+    const st = window.gebPvDraw;
+    const col = st.typ === 'sperr' ? '#e53935' : '#ffd54f';
+    st.points.pop();
+    if (st.polyline) map.removeLayer(st.polyline);
+    if (st.points.length > 0) {
+      st.polyline = L.polyline([...st.points], {color: col, weight: 2, dashArray: '6 4'}).addTo(map);
+    } else if (st.startMarker) {
+      map.removeLayer(st.startMarker); st.startMarker = null;
+    }
   }
 });
 
@@ -744,6 +767,7 @@ map.on('zoomend', function() {
 
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
+    if (window.gebPvDraw) { window.cancelGebPvDraw && window.cancelGebPvDraw(); return; }
     if (window.areaDrawing) { clearArea(); return; }
     if (window.isPlacingLwWp) togglePlaceLwWp();
     if(window.isDrawingRiver) toggleDrawRiver();
