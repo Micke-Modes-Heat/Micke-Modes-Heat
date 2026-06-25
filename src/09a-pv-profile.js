@@ -27,9 +27,82 @@ export function pvAusrichtungChanged() {
   const ausrichtung = document.getElementById('pv-ausrichtung')?.value || 'sued';
   const spezField = document.getElementById('pv-spez');
   if (spezField) spezField.value = _PV_SPEZ_DEFAULT[ausrichtung] || 1000;
-  // Profil-Cache invalidieren
+  // Profil-Cache invalidieren (globales + effektives Misch-Profil)
   window._pvProfileCache = null;
+  window._pvProfileEffCache = null;
   calcStromPanel();
+}
+
+/**
+ * Ausrichtungs-Mix über alle PV-Quellen (kWp je Klasse Süd / Ost-West).
+ * - Freiflächen: ff.ausrichtung
+ * - Gebäude im Flach-Flächenmodus: g.pvFlAusrichtung
+ * - alles andere (Schräg-/Pauschal-Gebäude, manuelle kWp): globale Ausrichtung
+ * spezSued/spezOst skalieren mit dem Standortfaktor (pv-spez relativ zum Default).
+ */
+export function pvOrientationMix() {
+  const globalAus  = document.getElementById('pv-ausrichtung')?.value || 'sued';
+  const globalSpez = parseFloat(document.getElementById('pv-spez')?.value);
+  const baseDef    = _PV_SPEZ_DEFAULT[globalAus] || 1000;
+  const siteFactor = (globalSpez && globalSpez > 0) ? globalSpez / baseDef : 1;
+  const spezSued = _PV_SPEZ_DEFAULT.sued    * siteFactor;
+  const spezOst  = _PV_SPEZ_DEFAULT.ostwest * siteFactor;
+
+  let kSued = 0, kOst = 0;
+  for (const ff of (freiflaechen || [])) {
+    const k = calcFFKwp(ff) || 0;
+    if (ff.ausrichtung === 'ostwest') kOst += k; else kSued += k;
+  }
+  for (const g of (gebaeude || [])) {
+    if (!g.pvAktiv) continue;
+    const k = calcGebKwp(g) || 0;
+    let cls = 'sued';
+    if (g.pvModus === 'flaechen') {
+      if (!g.dachform || g.dachform === 'flach') {
+        cls = g.pvFlAusrichtung === 'ostwest' ? 'ostwest' : 'sued';
+      } else if (g.dachform === 'sattel') {
+        // Satteldach: First Nord-Süd (Azimut nahe Ost/West) ⇒ physikalisch Ost-West-Anlage
+        const A = g.dachAzimut != null ? g.dachAzimut : 180;
+        const devEW = Math.min(Math.abs(A - 90), Math.abs(A - 270));
+        cls = devEW <= 45 ? 'ostwest' : 'sued';
+      }
+    }
+    if (cls === 'ostwest') kOst += k; else kSued += k;
+  }
+  // Manuelle kWp-Eingabe → globale Ausrichtung
+  const kManual = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+  if (globalAus === 'ostwest') kOst += kManual; else kSued += kManual;
+
+  return { kSued, kOst, spezSued, spezOst, globalAus };
+}
+
+/** Energiegewichteter effektiver spez. Ertrag (kWh/kWp·a) aus dem Ausrichtungs-Mix. */
+export function pvGetEffectiveSpez() {
+  const { kSued, kOst, spezSued, spezOst } = pvOrientationMix();
+  const kTot = kSued + kOst;
+  if (kTot <= 0) return parseFloat(document.getElementById('pv-spez')?.value) || 1000;
+  return (kSued * spezSued + kOst * spezOst) / kTot;
+}
+
+/**
+ * Effektives PV-Profil: energiegewichtete Mischung aus Süd- und Ost-West-Profil
+ * entsprechend dem tatsächlichen Anlagen-Mix. Reduziert sich auf das globale Profil,
+ * wenn keine ausrichtungs-spezifischen Anlagen vorhanden sind. Gecacht (Signatur).
+ */
+export function makePvProfileEffective() {
+  const { kSued, kOst, spezSued, spezOst } = pvOrientationMix();
+  const eSued = kSued * spezSued, eOst = kOst * spezOst;
+  const eTot = eSued + eOst;
+  if (eTot <= 0) return makePvProfile8760();   // Fallback: globales Profil
+  const sig = `${eSued.toFixed(1)}|${eOst.toFixed(1)}`;
+  if (window._pvProfileEffCache && window._pvProfileEffSig === sig) return window._pvProfileEffCache;
+  const pS = makePvProfile8760('sued');
+  const pO = makePvProfile8760('ostwest');
+  const wS = eSued / eTot, wO = eOst / eTot;
+  const out = new Float32Array(8760);
+  for (let t = 0; t < 8760; t++) out[t] = wS * pS[t] + wO * pO[t];
+  window._pvProfileEffCache = out; window._pvProfileEffSig = sig;
+  return out;
 }
 
 export function makePvProfile8760(ausrichtung) {
@@ -52,10 +125,12 @@ export function makePvProfile8760(ausrichtung) {
         // Klassische Sinusglocke (Mittagsspitze)
         shape[h] = Math.sin(Math.PI * t);
       } else {
-        // Ost-West / flach: zwei Peaks morgens+abends, flacheres Mittagstal
-        // cos²-abgeflachte Glocke → breiterer Ertrag über den Tag
-        const s = Math.sin(Math.PI * t);
-        shape[h] = s * (0.7 + 0.3 * Math.cos(Math.PI * (t - 0.5)));
+        // Ost-West: echter Doppelhöcker — Glockenhülle (0 an den Rändern) mit einer
+        // Gauß-Kerbe bei Mittag (t=0.5). Ergebnis: Spitzen vormittags + nachmittags,
+        // abgesenktes Mittagstal → breiterer, flacherer Tagesertrag.
+        const base = Math.sin(Math.PI * t);
+        const dip  = 1 - 0.45 * Math.exp(-Math.pow((t - 0.5) / 0.16, 2));
+        shape[h] = base * dip;
       }
       shapeSum += shape[h];
     }

@@ -101,6 +101,263 @@ export function exportGebaeudeCSV() {
   a.click();
 }
 
+// ── Export: Anonymisierter Gutachten-Digest (Markdown) ─────────────────────
+// Liefert eine ANONYMISIERTE, aggregierte Datengrundlage als Markdown entlang der
+// Gutachten-Gliederung (1–6). Gedacht als Vorlage für einen KI-gestützten
+// Gutachten-Entwurf: die KI textet die Prosa, der Ingenieur korrigiert.
+//   Anonymisiert  → keine Gebäudenamen, Adressen, Koordinaten, OSM-IDs.
+//   Aggregiert    → Gebäude werden zu Nutzungs-/Baualtersklassen verdichtet.
+//   Platzhalter   → [zu ergänzen: …] markiert Stellen für die fachliche Bewertung.
+const _GUT_NUTZUNG_LABEL = {
+  efh:'Einfamilienhaus', mfh:'Mehrfamilienhaus', ghd:'Gewerbe/Handel', gewerbe:'Gewerbe',
+  schule:'Schule', kita:'Kita', buero:'Büro', verwaltung:'Verwaltung', industrie:'Industrie',
+  oeffentlich:'Öffentliches Gebäude', wohnen:'Wohnen', sporthalle:'Sporthalle',
+  krankenhaus:'Krankenhaus', hotel:'Hotel/Beherbergung', unbekannt:'Unbekannt',
+};
+function _gutBaualtersklasse(bj) {
+  if (!bj || isNaN(bj)) return 'unbekannt';
+  if (bj < 1919) return 'bis 1918';
+  if (bj < 1949) return '1919–1948';
+  if (bj < 1979) return '1949–1978';
+  if (bj < 1995) return '1979–1994';
+  if (bj < 2010) return '1995–2009';
+  return 'ab 2010';
+}
+
+export function exportGutachtenDigest() {
+  const fmt  = (v, d = 0) => Number(v || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const pct  = (a, b) => (b > 0 ? (a / b * 100) : 0);
+  const geb  = Array.isArray(gebaeude) ? gebaeude : [];
+  const jahr = globalYear || new Date().getFullYear();
+  const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  // ── Pro Gebäude: berechnete Kennzahlen einsammeln (ohne identifizierende Felder) ──
+  const stats = geb.map(g => {
+    const st = typeof getComputedStats === 'function' ? getComputedStats(g, globalYear) : {};
+    return {
+      nutzung:  g.nutzung || 'unbekannt',
+      flaeche:  parseFloat(g.flaeche) || 0,
+      waerme:   parseFloat(st.waerme ?? g.waerme) || 0,
+      heizlast: parseFloat(st.heizlast ?? g.heizlast) || 0,
+      strom:    typeof getGebStromMwh === 'function' ? (getGebStromMwh(g) || 0) : (parseFloat(g.strom) || 0),
+      baualter: _gutBaualtersklasse(parseInt(g.baujahr)),
+      pvAktiv:  !!g.pvAktiv,
+    };
+  });
+  const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+  const totFlaeche  = sum(stats, s => s.flaeche);
+  const totWaerme   = sum(stats, s => s.waerme);
+  const totHeizlast = sum(stats, s => s.heizlast);
+  const totStrom    = sum(stats, s => s.strom);
+
+  // ── Wärmenetz-Kennzahlen ──
+  const edges = Array.isArray(netzEdges) ? netzEdges.filter(e => !e.pruned) : [];
+  const trasseLaenge = Math.round(edges.reduce((s, e) => s + (e.length || 0), 0));
+  const connectedIds = new Set(edges.flatMap(e => [e.u, e.v]));
+  const nAngeschlossen = geb.filter(g => connectedIds.has(g.id)).length;
+  const vl = document.getElementById('netz-vl')?.value || '—';
+  const rl = document.getElementById('netz-rl')?.value || '—';
+
+  // ── Aggregation ──
+  const aggBy = (keyFn) => {
+    const acc = {};
+    stats.forEach(s => {
+      const k = keyFn(s);
+      if (!acc[k]) acc[k] = { count: 0, flaeche: 0, waerme: 0 };
+      acc[k].count++; acc[k].flaeche += s.flaeche; acc[k].waerme += s.waerme;
+    });
+    return acc;
+  };
+  const byNutzung  = aggBy(s => s.nutzung);
+  const byBaualter = aggBy(s => s.baualter);
+
+  // ── Elektro-Assets aggregieren (anonym, ohne Koordinaten) ──
+  const assets = (typeof ASSETS !== 'undefined' && Array.isArray(ASSETS.items)) ? ASSETS.items : [];
+  const assetByType = {};
+  assets.forEach(a => { assetByType[a.type] = (assetByType[a.type] || 0) + 1; });
+  const trafoKva = assets.filter(a => a.type === 'Trafo').reduce((s, a) => s + (parseFloat(a.props?.leistungKVA) || 0), 0);
+  const pvKwp    = assets.filter(a => a.type === 'PV').reduce((s, a) => s + (parseFloat(a.props?.leistungKWp) || 0), 0);
+  const battKwh  = assets.filter(a => a.type === 'Batterie').reduce((s, a) => s + (parseFloat(a.props?.kapazitaetKWh) || 0), 0);
+
+  // ── Varianten ──
+  const vrKeys = (typeof variantResults !== 'undefined') ? Object.keys(variantResults) : [];
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Markdown aufbauen
+  // ════════════════════════════════════════════════════════════════════════
+  let md = '';
+  const L = (s = '') => { md += s + '\n'; };
+
+  L('# Kennzahlen-Digest — anonymisierte Datengrundlage für den Gutachten-Entwurf');
+  L('');
+  L('> **Hinweis:** Diese Datei fasst die Projektkennzahlen anonymisiert (keine Gebäudenamen,');
+  L('> Adressen, Koordinaten) und aggregiert zusammen, strukturiert entlang der Gutachten-');
+  L('> Gliederung. Sie dient als Arbeitsgrundlage für den Gutachten-*Entwurf*: Zahlen unverändert');
+  L('> übernehmen, keine Werte erfinden, offene Stellen mit `[zu ergänzen: …]` kennzeichnen.');
+  L('');
+  L(`*Betrachtungsjahr:* ${jahr}  ·  *Gebäude:* ${geb.length}  ·  *Stand:* ${today}`);
+  L('');
+  L('---');
+  L('');
+
+  // ── 1 EINLEITUNG ──
+  L('## 1 Einleitung');
+  L('');
+  L('### 1.1 Ziele und Grundsätze');
+  L('[zu ergänzen: Anlass, Zielsetzung und methodische Grundsätze des Gutachtens.]');
+  L('');
+  L('### 1.2 Liegenschaftsinformationen');
+  L('');
+  L(`Die Liegenschaft umfasst **${geb.length} Gebäude** mit einer Gesamtfläche von `
+    + `**${fmt(totFlaeche)} m²**. Der jährliche Wärmebedarf beträgt **${fmt(totWaerme)} MWh/a**, `
+    + `die Gesamtheizlast **${fmt(totHeizlast)} kW**, der Strombedarf **${fmt(totStrom, 1)} MWh/a**.`);
+  L('');
+  L('**Nutzungsstruktur:**');
+  L('');
+  L('| Nutzung | Anzahl | Fläche m² | Wärme MWh/a | Anteil Wärme % |');
+  L('|---|---:|---:|---:|---:|');
+  Object.keys(byNutzung).sort((a, b) => byNutzung[b].waerme - byNutzung[a].waerme).forEach(k => {
+    const d = byNutzung[k];
+    L(`| ${_GUT_NUTZUNG_LABEL[k] || k} | ${d.count} | ${fmt(d.flaeche)} | ${fmt(d.waerme, 1)} | ${fmt(pct(d.waerme, totWaerme), 1)} |`);
+  });
+  L('');
+  L('**Baualtersstruktur:**');
+  L('');
+  L('| Baualtersklasse | Anzahl | Fläche m² | Wärme MWh/a |');
+  L('|---|---:|---:|---:|');
+  ['bis 1918', '1919–1948', '1949–1978', '1979–1994', '1995–2009', 'ab 2010', 'unbekannt'].forEach(k => {
+    const d = byBaualter[k]; if (!d) return;
+    L(`| ${k} | ${d.count} | ${fmt(d.flaeche)} | ${fmt(d.waerme, 1)} |`);
+  });
+  L('');
+  L('[zu ergänzen: Bedeutung/Funktion der Liegenschaft, geplante Liegenschaftsentwicklung.]');
+  L('');
+
+  // ── 2 WÄRME ──
+  L('## 2 Wärme');
+  L('');
+  L('### 2.1 Ist-Zustand');
+  L('');
+  L(`- Wärmebedarf gesamt: **${fmt(totWaerme)} MWh/a**`);
+  L(`- Heizlast gesamt: **${fmt(totHeizlast)} kW**`);
+  L(`- Spez. Wärmebedarf (Mittel): **${fmt(totFlaeche > 0 ? totWaerme * 1000 / totFlaeche : 0, 0)} kWh/m²a**`);
+  L('');
+  L('[zu ergänzen: Beschreibung der bestehenden Wärmeerzeugung, des Versorgungsnetzes und der Hausstationen.]');
+  L('');
+  L('### 2.2 Soll-Zustand (Wärmenetz)');
+  L('');
+  if (trasseLaenge > 0) {
+    L(`- Trassenlänge (geplant/aktiv): **${fmt(trasseLaenge)} m**`);
+    L(`- Anschlussgrad: **${nAngeschlossen} von ${geb.length} Gebäuden** (${fmt(pct(nAngeschlossen, geb.length), 0)} %)`);
+    L(`- Netztemperaturen VL/RL: **${vl}/${rl} °C**`);
+  } else {
+    L('[zu ergänzen: Es ist noch kein Wärmenetz konfiguriert. Auslegung WEA, Versorgungsnetz, Hausstationen.]');
+  }
+  L('');
+  L('### 2.3 Analyse möglicher Energiequellen und Technologien');
+  L('[zu ergänzen: Energieträger/-quellen, Technologien, Energiespeicher.]');
+  L('');
+  L('### 2.4 Mögliche Varianten');
+  L('');
+  if (vrKeys.length) {
+    vrKeys.forEach(k => {
+      const v = variantResults[k];
+      L(`**${v.label || k}**`);
+      if (Array.isArray(v.erzeuger) && v.erzeuger.length) {
+        L('');
+        L('| Erzeuger | Leistung kW |');
+        L('|---|---:|');
+        v.erzeuger.forEach(e => L(`| ${e.typ} | ${e.leistungKw ? fmt(e.leistungKw) : '—'} |`));
+        L('');
+      } else {
+        L('[zu ergänzen: Erzeugerzusammensetzung]');
+        L('');
+      }
+    });
+  } else {
+    L('[zu ergänzen: Es wurden noch keine Varianten gerechnet — bitte im Tool Varianten anlegen und durchrechnen.]');
+    L('');
+  }
+  L('### 2.5 Wirtschaftlichkeit');
+  L('');
+  if (vrKeys.length) {
+    L('| Variante | WGK | Investition € | Jahreskosten €/a |');
+    L('|---|---:|---:|---:|');
+    vrKeys.forEach(k => {
+      const v = variantResults[k];
+      L(`| ${v.label || k} | ${v.wgkText || '—'} | ${v.investGes ? fmt(v.investGes) : '—'} | ${v.jkGes ? fmt(v.jkGes) : '—'} |`);
+    });
+    L('');
+  } else {
+    L('[zu ergänzen: Wirtschaftlichkeit nach VDI 2067 — liegt erst nach Variantenrechnung vor.]');
+    L('');
+  }
+  L('### 2.6 Variantenvergleich und Empfehlung');
+  L('');
+  if (vrKeys.length) {
+    L('| Kennwert | ' + vrKeys.map(k => variantResults[k].label || k).join(' | ') + ' |');
+    L('|---|' + vrKeys.map(() => '---:').join('|') + '|');
+    const vrows = [
+      ['Gebäudebedarf MWh/a', k => fmt(variantResults[k].gebäudebedarf || 0, 0)],
+      ['Erzeugung MWh/a',     k => fmt(variantResults[k].erzeugung || 0, 0)],
+      ['Netzverluste %',      k => fmt(variantResults[k].netzverlustePct || 0, 1)],
+      ['EE-Anteil %',         k => variantResults[k].eeAnteil != null ? fmt(variantResults[k].eeAnteil, 1) : '—'],
+      ['WGK',                 k => variantResults[k].wgkText || '—'],
+      ['Investition €',       k => variantResults[k].investGes ? fmt(variantResults[k].investGes) : '—'],
+      ['Jahreskosten €/a',    k => variantResults[k].jkGes ? fmt(variantResults[k].jkGes) : '—'],
+      ['CO₂ t/a',             k => variantResults[k].co2GesH > 0 ? fmt(variantResults[k].co2GesH, 1) : '—'],
+    ];
+    vrows.forEach(r => L('| ' + r[0] + ' | ' + vrKeys.map(k => r[1](k)).join(' | ') + ' |'));
+    L('');
+  }
+  L('[zu ergänzen: Bewertung der Varianten (CO₂, Primärenergie, Wirtschaftlichkeit, Resilienz) und begründete Empfehlung.]');
+  L('');
+
+  // ── 3 ELEKTROTECHNIK ──
+  L('## 3 Elektrotechnik');
+  L('');
+  L('### 3.1 Ist-Zustand');
+  L('');
+  L(`- Strombedarf gesamt: **${fmt(totStrom, 1)} MWh/a**`);
+  if (Object.keys(assetByType).length) {
+    L('- Erfasste Komponenten:');
+    Object.keys(assetByType).sort().forEach(t => {
+      L(`  - ${ASSET_LABELS[t] || t}: ${assetByType[t]}`);
+    });
+    if (trafoKva > 0) L(`- Installierte Trafoleistung: **${fmt(trafoKva)} kVA**`);
+  } else {
+    L('[zu ergänzen: Auswertung der Stromdaten, Liegenschaftsnetzanschluss, Stromnetz, Notstromversorgung.]');
+  }
+  L('');
+  L('### 3.2 Soll-Zustand');
+  L('');
+  if (pvKwp > 0)   L(`- Geplante PV-Leistung: **${fmt(pvKwp)} kWp**`);
+  if (battKwh > 0) L(`- Batteriespeicher: **${fmt(battKwh)} kWh**`);
+  L('[zu ergänzen: Geplanter Gebäudebestand, Liegenschaftsanschluss, Stromnetz, Notstrom/Lastmanagement, PV & Speicher.]');
+  L('');
+
+  // ── 4–6 (überwiegend qualitativ) ──
+  L('## 4 Gebäudeautomation');
+  L('[zu ergänzen: Konzept Gebäudeautomation, Kommunikationsnetz.]');
+  L('');
+  L('## 5 Maßnahmen zur Steigerung der Resilienz');
+  L('[zu ergänzen: Erläuterung Bewertungstool Resilienz, Bewertung der Resilienz.]');
+  L('');
+  L('## 6 Fazit und Handlungsempfehlung');
+  L('[zu ergänzen: Handlungsempfehlung Wärmeversorgung und Elektrotechnik — kurz-, mittel-, langfristig.]');
+  L('');
+  L('---');
+  L('');
+  L(`*Automatisch erzeugt aus dem Energieplanungs-Tool · anonymisiert · ${today}*`);
+
+  // ── Download ──
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'kennzahlen-digest_anonym_' + new Date().toISOString().slice(0, 10) + '.md';
+  a.click();
+}
+
 // â”€â”€ Export: PDF Bericht (Transformationsplan-Stil) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function exportPDFReport() {
   const keys = window._dispatchActiveKeys || [];
