@@ -4886,25 +4886,6 @@ Turnhalle;Öffentlich;1982;A;850</div>
       '</body></html>';
   }
 
-  function _sendByMail(text, kategorie, consoleLogs) {
-    var ver = window.APP_VERSION || 'dev';
-    var subject = '[Micke-Heat ' + kategorie + '] v' + ver + ' – Feedback';
-    var body = 'Kategorie: ' + kategorie + '\r\n' +
-      'Version: ' + ver + (window.APP_BUILD_DATE ? ' (Build ' + window.APP_BUILD_DATE + ')' : '') + '\r\n' +
-      'Datum: ' + new Date().toLocaleString('de-DE') + '\r\n' +
-      'Browser: ' + navigator.userAgent + '\r\n' +
-      'Bildschirm: ' + window.innerWidth + ' x ' + window.innerHeight + '\r\n' +
-      '\r\n──────────────────────────────\r\nRückmeldung\r\n──────────────────────────────\r\n' +
-      (text || '(kein Text eingegeben)') +
-      (consoleLogs && consoleLogs.length
-        ? '\r\n\r\n──────────────────────────────\r\nKonsolenmeldungen (' + consoleLogs.length + ')\r\n──────────────────────────────\r\n' + consoleLogs.join('\r\n')
-        : '');
-    // Beide als direkte Empfänger (An): André + Konstantin
-    window.location.href = 'mailto:andre.modes@ofd-bau.nrw.de,Konstantin.Micke@blb.nrw.de' +
-      '?subject=' + encodeURIComponent(subject) +
-      '&body=' + encodeURIComponent(body);
-  }
-
   // data:-URL (Screenshot-PNG) → Blob für den Netlify-Datei-Upload.
   function _dataUrlToBlob(dataUrl) {
     var parts = dataUrl.split(',');
@@ -4915,12 +4896,12 @@ Turnhalle;Öffentlich;1982;A;850</div>
     return new Blob([arr], { type: mime });
   }
 
-  // Zusätzlicher zentraler Versand an Netlify Forms (still im Hintergrund,
-  // parallel zur Mail). Landet im Netlify-Dashboard unter „Forms"; optional
-  // mit Mail-Benachrichtigung. Schlägt es fehl (lokale Datei / kein Netlify-
-  // Host), bleibt es lautlos — Mail und Datei-Download decken das bereits ab.
+  // Zentraler Versand an Netlify Forms. Gibt ein Promise<boolean> zurück:
+  // true = von Netlify angenommen, false = kein Server erreichbar oder
+  // fehlgeschlagen (dann greift beim Aufrufer der Datei-Download als Fallback).
+  // Landet im Netlify-Dashboard unter „Forms" (optional mit Mail-Benachrichtigung).
   function _sendToNetlify(text, kategorie, logs, screenshotDataUrl, snapshot) {
-    if (location.protocol === 'file:') return;     // kein Server erreichbar
+    if (location.protocol === 'file:') return Promise.resolve(false);  // kein Server erreichbar
     var fd = new FormData();
     fd.append('form-name', 'feedback');
     fd.append('bot-field', '');                    // Honeypot bleibt leer
@@ -4944,9 +4925,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
     }
     // WICHTIG: keinen Content-Type setzen — sonst speichert Netlify die Datei
     // nicht. Der Browser ergänzt die multipart-Boundary selbst.
-    fetch('/', { method: 'POST', body: fd }).catch(function (err) {
-      console.warn('Netlify-Feedback nicht gesendet (Mail/Datei greifen weiterhin):', err);
-    });
+    return fetch('/', { method: 'POST', body: fd })
+      .then(function (r) { return r.ok; })
+      .catch(function (err) { console.warn('Netlify-Feedback fehlgeschlagen:', err); return false; });
   }
 
   function _downloadFeedback(text, kategorie, consoleLogs, screenshotDataUrl, snapshot) {
@@ -4964,6 +4945,20 @@ Turnhalle;Öffentlich;1982;A;850</div>
     URL.revokeObjectURL(url);
   }
 
+  // Ersetzt den Modal-Inhalt durch eine Abschluss-Meldung; schließt nach 5 s.
+  function _feedbackDone(overlay, msg) {
+    if (!overlay) return;
+    overlay.innerHTML =
+      '<div class="ep-modal" style="width:440px;max-width:94vw;">' +
+        '<div class="ep-modal-title">Feedback</div>' +
+        '<div class="ep-modal-body" style="margin-bottom:14px;">' + msg + '</div>' +
+        '<div class="ep-modal-btns">' +
+          '<button class="ep-modal-btn primary" data-click="this.closest(\'.ep-modal-overlay\').remove()">Schließen</button>' +
+        '</div>' +
+      '</div>';
+    setTimeout(function () { if (overlay && overlay.parentNode) overlay.remove(); }, 5000);
+  }
+
   window.sendAppFeedback = function () {
     document.getElementById('feedback-modal')?.remove();
 
@@ -4979,7 +4974,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
         '<div class="ep-modal-body">' +
           'Was ist passiert / welche Idee hast du? Version, Browser und auf Wunsch ' +
           'ein Screenshot der aktuellen Ansicht werden automatisch beigefügt. ' +
-          'Deine Rückmeldung geht per Mail ans Team und wird zusätzlich zentral gesammelt.' +
+          'Deine Rückmeldung wird direkt an Konstantin gesendet.' +
         '</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
           '<button class="ep-modal-btn feedback-kat" data-kat="Fehler" data-color="#c62828" style="flex:1;">🔴 Fehler</button>' +
@@ -5004,7 +4999,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
         '<div class="ep-modal-btns" style="margin-top:14px;">' +
           '<button class="ep-modal-btn" data-click="this.closest(\'.ep-modal-overlay\').remove()">Abbrechen</button>' +
           '<button class="ep-modal-btn" id="feedback-download" title="HTML-Datei mit Screenshot herunterladen">⬇ Datei</button>' +
-          '<button class="ep-modal-btn primary" id="feedback-mail">📧 Per Mail senden</button>' +
+          '<button class="ep-modal-btn primary" id="feedback-send">Feedback absenden</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(overlay);
@@ -5038,32 +5033,46 @@ Turnhalle;Öffentlich;1982;A;850</div>
     var textEl = overlay.querySelector('#feedback-text');
     textEl.focus();
 
-    // Mail-Button: Mail an André (CC Konstantin) öffnen UND parallel still an
-    // Netlify hochladen. Die Mail wird zuerst synchron im Klick ausgelöst, damit
-    // André alles unverändert wie bisher bekommt; danach läuft der Netlify-Upload.
-    overlay.querySelector('#feedback-mail').addEventListener('click', function () {
+    // Senden-Button: Feedback zentral an Netlify hochladen (inkl. optionalem
+    // Screenshot bzw. DOM-Snapshot als Ersatz). Ist kein Netlify-Server
+    // erreichbar (lokale Datei, anderer Host, offline), wird die Rückmeldung
+    // ersatzweise als Datei heruntergeladen — so geht nie etwas verloren.
+    overlay.querySelector('#feedback-send').addEventListener('click', function () {
+      var btn = this;
       var text = textEl.value.trim();
+      if (!text) { textEl.focus(); return; }
       var withLogs = overlay.querySelector('#feedback-consolelogs').checked;
       var withScreenshot = overlay.querySelector('#feedback-screenshot').checked;
       var logs = withLogs ? _consoleLogs.slice() : [];
+      btn.disabled = true;
+      btn.textContent = 'Wird gesendet…';
+      // Modal ausblenden, damit es weder im Screenshot noch im DOM-Snapshot auftaucht.
+      overlay.style.visibility = 'hidden';
 
-      _sendByMail(text, activeKat, logs);   // 1) Mail (André + CC Konstantin) — unverändert
-      overlay.remove();
+      function send(screenshotDataUrl, snapshot) {
+        overlay.style.visibility = '';   // für die Abschlussmeldung wieder einblenden
+        _sendToNetlify(text, activeKat, logs, screenshotDataUrl, snapshot).then(function (ok) {
+          if (ok) {
+            _feedbackDone(overlay, 'Danke! Dein Feedback wurde gesendet.');
+          } else {
+            _downloadFeedback(text, activeKat, logs, screenshotDataUrl, snapshot);
+            _feedbackDone(overlay, 'Direkter Versand nicht möglich — Feedback wurde als Datei gespeichert. Bitte an Konstantin weiterleiten.');
+          }
+        });
+      }
 
-      // 2) Zusätzlich zentral an Netlify; Screenshot nach Schließen des Modals
-      //    erstellen (damit das Overlay nicht mit drauf ist).
-      if (withScreenshot && typeof html2canvas !== 'undefined' && location.protocol !== 'file:') {
-        // allowTaint:false → exportierbare Canvas (Karten-Kacheln vergiften sie nicht).
-        // Schlägt der Screenshot trotzdem fehl, geht ersatzweise der DOM-Snapshot mit.
+      // allowTaint:false → exportierbare Canvas (Karten-Kacheln vergiften sie nicht).
+      // Schlägt der Screenshot fehl, geht ersatzweise der DOM-Snapshot mit.
+      if (withScreenshot && typeof html2canvas !== 'undefined') {
         html2canvas(document.body, { useCORS: true, allowTaint: false, scale: 1, logging: false })
           .then(function (canvas) {
             var dataUrl = null;
             try { dataUrl = canvas.toDataURL('image/png'); } catch (e) { dataUrl = null; }
-            _sendToNetlify(text, activeKat, logs, dataUrl, dataUrl ? null : _captureHtmlSnapshot());
+            send(dataUrl, dataUrl ? null : _captureHtmlSnapshot());
           })
-          .catch(function () { _sendToNetlify(text, activeKat, logs, null, _captureHtmlSnapshot()); });
+          .catch(function () { send(null, _captureHtmlSnapshot()); });
       } else {
-        _sendToNetlify(text, activeKat, logs, null, null);
+        send(null, null);
       }
     });
 
@@ -64056,9 +64065,7 @@ function updateNetzColorLegend() {
 
 
 
-
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
-
 
 // Guard against HMR re-init: reuse cached instance if container is already initialized
 var map = window._appLeafletMap || (() => {
@@ -70395,9 +70402,6 @@ function startNetzEdgeFrom(id) {
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
-
-
-
 function updateTotals(){
   let tw=0, th=0;
   window.gebaeude.forEach(g=>{
@@ -74056,11 +74060,6 @@ window._ebpSatellit = function(checked) {
 
 
 
-
-
-
-
-
 var _emCurrentTab = 'em-stunden';
 var _emZoom = { startH: 0, endH: 8760 };
 var _emRubber = null;
@@ -75509,12 +75508,6 @@ function exportVergleichCSV() {
 // ── 05a-export.js ──
 // â”€â”€ 05a-export.js â€” CSV-Export, PDF-Report, Druckansicht â”€â”€
 // â”€â”€ Export: Dispatch CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-
-
-
-
-
 
 
 
@@ -84228,7 +84221,6 @@ function moSwap(key, dir) {
 
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
-
 
 var saCurrentTab = 'lastgang';
 
@@ -104211,7 +104203,6 @@ function _renderAssetFelddaten(a) {
 
 // ── 13f-sld.js ──
 // ── 13f-sld.js — Einlinienschema (Single-Line Diagram) ──────────────────────
-
 
 
 
