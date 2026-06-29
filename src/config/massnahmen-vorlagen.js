@@ -59,8 +59,9 @@ export const MASSN_VORLAGEN = {
       { key: 'leistungKVA', label: 'Neue Trafo-Leistung (kVA)' },
       { key: 'nennstromA',  label: 'Neuer Nennstrom (A)' },
     ],
-    kostenRichtwert: 0,
-    kostenHinweis: 'Trafo-Ersatz / NAP-Erweiterung — Wert folgt M3 aus PV_INFRA_STUFEN (09d)',
+    // Richtwert: Trafo 630 kVA NS/MS inkl. Montage (ERT_TRAFO_STUFEN, 14b)
+    kostenRichtwert: 38000,
+    kostenHinweis: 'Trafo-Ersatz 630 kVA inkl. Montage; Annuität 30 J. / 0,5 % IH (ERT_TRAFO_STUFEN)',
     dependsOnTypen: [],
   },
 

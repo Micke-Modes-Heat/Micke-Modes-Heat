@@ -150,8 +150,9 @@ export function pvMeritNettoUeberschuss(dispatch, pvKwp, pvErtragMwh, params, pv
  *   batKwh?,                 — 0 = keine Batterie
  *   batInvestPerKwh?,
  *   zins?, pvLife?, batLife?,
- *   napMaxEinsKw?,           — 0 = unbegrenzt
+ *   napMaxEinsKw?,           — 0 = unbegrenzt (hartes Abregelungslimit)
  *   pvInfraStufen?,          — Fallback auf PV_INFRA_STUFEN aus 09d
+ *   deltaInfraFn?,           — (napId, spitzeKwNeu, spitzeKwAlt) → €/a; optional (M3)
  * }
  *
  * Rückgabe: { ranking, kurve }
@@ -160,15 +161,16 @@ export function pvMeritNettoUeberschuss(dispatch, pvKwp, pvErtragMwh, params, pv
  */
 export function pvMeritOrderCore(kandidaten, demandH, pvProfileSued, pvProfileOstWest, params) {
   const {
-    batKwh        = 0,
-    napMaxEinsKw  = 0,
+    batKwh         = 0,
+    napMaxEinsKw   = 0,
     pStrom, pEinsp,
     pvInvestPerKwp,
     batInvestPerKwh = 400,
-    zins          = 0.035,
-    pvLife        = 20,
-    batLife       = 15,
+    zins           = 0.035,
+    pvLife         = 20,
+    batLife        = 15,
     pvInfraStufen,
+    deltaInfraFn,  // optional: (napId, spitzeKwNeu, spitzeKwAlt) → €/a (M3)
   } = params;
 
   const infStufen = pvInfraStufen || PV_INFRA_STUFEN;
@@ -199,9 +201,10 @@ export function pvMeritOrderCore(kandidaten, demandH, pvProfileSued, pvProfileOs
     const trialGen     = new Float32Array(8760); // Arbeits-Buffer, wird überschrieben
     let selectedKwp    = 0;
     let uebSelected    = 0; // Netto-Überschuss für leere Menge = 0 (kein Invest, kein Ertrag)
+    let spitzeKwSelected = 0; // Rückspeise-Spitze der bisher gewählten Menge (M3)
 
     while (remaining.length > 0) {
-      let bestDelta = -Infinity, bestIdx = -1, bestUeb = uebSelected;
+      let bestDelta = -Infinity, bestIdx = -1, bestUeb = uebSelected, bestSpitze = spitzeKwSelected;
 
       for (let i = 0; i < remaining.length; i++) {
         // Probier-Profil: bisheriges Profil + Kandidat i
@@ -213,11 +216,16 @@ export function pvMeritOrderCore(kandidaten, demandH, pvProfileSued, pvProfileOs
         for (let t = 0; t < 8760; t++) trialErtragMwh += trialGen[t];
         trialErtragMwh /= 1000;
 
-        const dispatch = pvMeritDispatch(trialGen, batKwh, demand, napMaxEinsKw);
-        const ueb      = pvMeritNettoUeberschuss(dispatch, trialKwp, trialErtragMwh, wParams, infStufen);
-        const delta    = ueb - uebSelected;
+        const dispatch   = pvMeritDispatch(trialGen, batKwh, demand, napMaxEinsKw);
+        const ueb        = pvMeritNettoUeberschuss(dispatch, trialKwp, trialErtragMwh, wParams, infStufen);
+        const deltaInfra = deltaInfraFn
+          ? (deltaInfraFn(napId, dispatch.maxEinspeiseKw, spitzeKwSelected) || 0)
+          : 0;
+        const delta      = ueb - uebSelected - deltaInfra;
 
-        if (delta > bestDelta) { bestDelta = delta; bestIdx = i; bestUeb = ueb; }
+        if (delta > bestDelta) {
+          bestDelta = delta; bestIdx = i; bestUeb = ueb; bestSpitze = dispatch.maxEinspeiseKw;
+        }
       }
 
       // Abbruch wenn kein Kandidat mehr einen positiven Beitrag liefert
@@ -230,8 +238,9 @@ export function pvMeritOrderCore(kandidaten, demandH, pvProfileSued, pvProfileOs
       const best = remaining[bestIdx];
       const bg   = candGenH[bestIdx];
       for (let t = 0; t < 8760; t++) genHSelected[t] += bg[t];
-      selectedKwp += best.kWp;
-      uebSelected  = bestUeb;
+      selectedKwp      += best.kWp;
+      uebSelected       = bestUeb;
+      spitzeKwSelected  = bestSpitze;
 
       ranking.push({ kandidat: best, delta: bestDelta, napId });
       kurve.push({ kWpKumuliert: selectedKwp, ueberschussKumuliert: uebSelected });

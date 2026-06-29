@@ -132,7 +132,7 @@ Bei UI-Meilensteinen zusätzlich manuell in `dist/index.html` prüfen.
 - [x] M0 Entscheidungen & Setup
 - [x] M1 Datenmodell-Fundament
 - [x] M2 Flächen-Merit-Order
-- [ ] M3 Infrastruktur-Ertüchtigung
+- [x] M3 Infrastruktur-Ertüchtigung
 - [ ] M4 Fahrplan-Logik
 - [ ] M5 Selektion + Bulk-Bar
 - [ ] M6 Ausbauplaner-Board

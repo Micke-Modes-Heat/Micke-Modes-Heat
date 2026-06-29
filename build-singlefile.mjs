@@ -71,6 +71,7 @@ const JS_FILES = [
   '13p-erzeuger-assets.js',
   '13r-knotenpunkt-analyse.js',
   '14a-kandidaten.js',
+  '14b-ertuechtigung.js',
   // main.js wird NICHT eingebunden — es macht nur import/window-Exposition,
   // die im Monolith überflüssig ist (alles bereits global). Der Namespace-
   // Alias "glBerechnen" würde die private Funktion gleichen Namens überschreiben.
