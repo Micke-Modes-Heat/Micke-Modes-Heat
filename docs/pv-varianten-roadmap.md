@@ -131,7 +131,7 @@ Bei UI-Meilensteinen zusätzlich manuell in `dist/index.html` prüfen.
 ## Fortschritt
 - [x] M0 Entscheidungen & Setup
 - [x] M1 Datenmodell-Fundament
-- [ ] M2 Flächen-Merit-Order
+- [x] M2 Flächen-Merit-Order
 - [ ] M3 Infrastruktur-Ertüchtigung
 - [ ] M4 Fahrplan-Logik
 - [ ] M5 Selektion + Bulk-Bar

@@ -51,6 +51,7 @@ import * as kompaktstation from './13m-kompaktstation.js';
 import * as elektroPanel from './13n-elektro-panel.js';
 import * as napAnalyse from './13o-nap-analyse.js';
 import * as knotenAnalyse from './13r-knotenpunkt-analyse.js';
+import * as kandidaten from './14a-kandidaten.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -66,6 +67,7 @@ const modules = [
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
   slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel,
   napAnalyse, knotenAnalyse,
+  kandidaten,
 ];
 
 for (const mod of modules) {
