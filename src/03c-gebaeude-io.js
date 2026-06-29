@@ -2110,6 +2110,7 @@ export function _loadProject(project) {
         baseNetzSnapshot: project.baseNetzSnapshot || null,
         baseErzeugerSnapshot: project.baseErzeugerSnapshot || null,
         baseStromNetzSnapshot: project.baseStromNetzSnapshot || null,
+        phasen: project.phasen || [],
       });
       renderVariantenBar();
       updateVariantBanner();

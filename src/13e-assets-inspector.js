@@ -416,8 +416,10 @@ const MASSN_STATUS = {
 };
 
 const MASSN_TYP = {
-  Sanierung: { label: 'Sanierung', icon: '🔧', hasNewProps: true  },
-  Abriss:    { label: 'Abriss',    icon: '🏚', hasNewProps: false },
+  Sanierung:     { label: 'Sanierung',    icon: '🔧', hasNewProps: true  },
+  Abriss:        { label: 'Abriss',       icon: '🏚', hasNewProps: false },
+  Bau:           { label: 'Neubau/Bau',   icon: '🏗', hasNewProps: false },
+  Ertuechtigung: { label: 'Ertüchtigung', icon: '⚡', hasNewProps: true  },
 };
 
 function _massnRowHtml(m) {
@@ -553,8 +555,11 @@ function wireMassnahmen(panel, asset) {
     if (editingId) {
       const m = asset.massnahmen.find(x => x.id === editingId);
       if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps });
+      // dependsOn/phaseId werden durch das Board (M5+) gesetzt, hier nur als Default sichern
+      if (!m.dependsOn) m.dependsOn = [];
+      if (m.phaseId === undefined) m.phaseId = null;
     } else {
-      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps });
+      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps, dependsOn: [], phaseId: null });
     }
     closeForm();
     refreshList();

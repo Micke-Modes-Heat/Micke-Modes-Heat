@@ -599,6 +599,25 @@ export let baseNetzSnapshot = null;
 export let baseErzeugerSnapshot = null;
 export let baseStromNetzSnapshot = null;
 
+// ── Phasen (Ausbaustufen) ─────────────────────────────────────────────────────
+// Phase = { id, name, jahrVon, jahrBis, variantId, reihenfolge }
+// variantId === null → projektweit (Default); sonst variantenspezifisch.
+export let phasen = [];
+
+export function setPhasen(arr) { phasen = arr || []; }
+
+export function _capturePhasenZustand() { return { phasen: phasen.map(p => ({ ...p })) }; }
+export function _restorePhasenZustand({ phasen: ps } = {}) { phasen = ps || []; }
+
+// Löst das effektive Jahr einer Maßnahme auf:
+// Ist m.jahr gesetzt, gewinnt es (Einzel-Override). Sonst erbt die Maßnahme
+// das jahrVon der zugehörigen Phase. Gibt null zurück wenn beides fehlt.
+export function massnahmeJahr(m) {
+  if (m.jahr) return parseInt(m.jahr);
+  const p = phasen.find(x => x.id === m.phaseId);
+  return p ? parseInt(p.jahrVon) : null;
+}
+
 // ── Persistenz-Helfer für die Varianten-Kernzustände ────────────────────────
 // Andere Module (z.B. _buildProjectData/_loadProject in 03c-gebaeude-io.js)
 // dürfen die obigen `let`-Exports NICHT direkt neu zuweisen (ES-Module-Bindings
@@ -607,14 +626,15 @@ export let baseStromNetzSnapshot = null;
 // Binding) und spätere Reassignments hier sonst dort nicht ankämen (stale).
 // Stattdessen über diese Helfer lesen/schreiben:
 export function _captureVariantenKernzustand() {
-  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot };
+  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, ..._capturePhasenZustand() };
 }
-export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs } = {}) {
+export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, phasen: ps } = {}) {
   varianten = v || [];
   activeVariantId = (aid === undefined) ? null : aid;
   baseNetzSnapshot = bn || null;
   baseErzeugerSnapshot = be || null;
   baseStromNetzSnapshot = bs || null;
+  phasen = ps || [];
 }
 
 // ── Stromnetz-Snapshot (Elektroassets/Kabel) — variantenspezifischer "Ast" ──
