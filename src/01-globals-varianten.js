@@ -334,6 +334,48 @@ export function renderVergleich() {
     { label: 'Jahreskosten gesamt', fn: r => r?.jkGes > 0 ? fmt(r.jkGes/1000, 'k€/a', 1) : '—', numFn: r => r?.jkGes, best: 'min' },
     { label: 'WGK System gesamt', fn: r => r?.wgkText || '—', numFn: r => r?.wgkNum, best: 'min', bold: true },
     { label: 'Stromkosten WP', fn: r => r?.stromkostenWp != null ? fmt(r.stromkostenWp, '€/a') : '—', numFn: r => r?.stromkostenWp, best: 'min' },
+    { label: 'PV-AUSBAU (Merit-Order)', header: true },
+    { label: 'PV installiert (A+B)',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        const kwp = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+        return kwp > 0 ? Math.round(kwp).toLocaleString('de-DE') + ' kWp' : '—';
+      },
+      numFn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return null;
+        return pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+      },
+      best: 'max', bold: true },
+    { label: 'PV-Ertrag/a',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        const mwh = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.jahresertragKWh || 0) / 1000, 0);
+        return mwh > 0 ? mwh.toLocaleString('de-DE', {maximumFractionDigits:0}) + ' MWh/a' : '—';
+      } },
+    { label: 'Invest PV gesamt',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        const kwp = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+        const inv = kwp * (pv.pvInvestPerKwp || 1200);
+        return inv > 0 ? Math.round(inv / 1000).toLocaleString('de-DE') + ' k€' : '—';
+      },
+      numFn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return null;
+        const kwp = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+        return kwp * (pv.pvInvestPerKwp || 1200);
+      },
+      best: 'min' },
+    { label: 'Anzahl Flächen (A+B)',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        return String(pv.ranking.filter(x => x.tier !== 'C').length);
+      } },
     { label: 'CO₂ EMISSIONEN', header: true },
     { label: 'CO₂ je Erzeuger (heute)', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => e.co2 || '—').join(', ') : '—' },
     { label: 'CO₂ gesamt (heute)', fn: r => r?.co2GesH > 0 ? fmt(r.co2GesH, 't/a', 1) : '—', numFn: r => r?.co2GesH, best: 'min', bold: true },
@@ -348,7 +390,7 @@ export function renderVergleich() {
     let bestVal = null, bestIds = [];
     cols.forEach(id => {
       const r = variantResults[id];
-      const v = r ? row.numFn(r) : null;
+      const v = r ? row.numFn(r, id) : null;
       if (v == null || isNaN(v) || v <= 0) return;
       if (bestVal === null || (row.best === 'min' ? v < bestVal : v > bestVal)) { bestVal = v; bestIds = [id]; }
       else if (v === bestVal) bestIds.push(id);
@@ -375,7 +417,7 @@ export function renderVergleich() {
     html += `<tr><td>${row.label}</td>`;
     cols.forEach(id => {
       const r = variantResults[id];
-      const val = r ? row.fn(r) : '—';
+      const val = r ? row.fn(r, id) : '—';
       const active = isActive(id);
       const isBest = bestIdx[ri] && bestIdx[ri].has(id);
       const style = `${active?'color:var(--accent);':''}${row.bold?'font-weight:bold;':''}${isBest?'color:#66bb6a;':''}`;

@@ -136,6 +136,6 @@ Bei UI-Meilensteinen zusätzlich manuell in `dist/index.html` prüfen.
 - [x] M4 Fahrplan-Logik
 - [x] M5 Selektion + Bulk-Bar
 - [x] M6 Ausbauplaner-Board
-- [ ] M7 Integration & Politur
+- [x] M7 Integration & Politur
 - [ ] M8 Release
 </content>

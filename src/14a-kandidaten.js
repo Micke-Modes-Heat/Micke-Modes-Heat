@@ -488,11 +488,20 @@ export function pvRunMeritOrder(opts = {}) {
   const pvProfileSued    = makePvProfile8760('sued');
   const pvProfileOstWest = makePvProfile8760('ostwest');
 
-  return pvMeritOrderCore(kandidaten, demandH8760, pvProfileSued, pvProfileOstWest, {
+  const result = pvMeritOrderCore(kandidaten, demandH8760, pvProfileSued, pvProfileOstWest, {
     pStrom, pEinsp, pvInvestPerKwp, batKwh, zins,
     napMaxEinsKw: 0,
     pvInfraStufen: PV_INFRA_STUFEN,
   });
+
+  // Ergebnis global + per Variante ablegen (für Vergleichstabelle)
+  if (result) {
+    window._lastMeritOrderResult = result;
+    const key = (window.activeVariantId != null ? window.activeVariantId : 'base');
+    window._pvVariantResults = window._pvVariantResults || {};
+    window._pvVariantResults[key] = { ...result, pvInvestPerKwp, pStrom, pEinsp, zins };
+  }
+  return result;
 }
 
 /** 15-min-Array auf 8760 Stundenwerte mitteln (gleitender Mittelwert je 4 Slots). */

@@ -62544,6 +62544,12 @@ var HILFE_TEXTE = {
   'opt-cand-st': 'Solarthermie in die Optimierung einbeziehen — Kollektorfläche wird automatisch variiert.',
   'opt-cand-ts': 'Wärmespeicher in die Optimierung einbeziehen — Volumen wird automatisch variiert.',
   'opt-pv-max-amort': 'Maximale Amortisationszeit für PV-Anlagen (Jahre) — Varianten mit längerer Amortisation werden verworfen.',
+
+  // PV-Varianten-Workflow (M2–M6)
+  'btn-pv-merit-order': 'Startet die Flächen-Merit-Order: Bewertet alle PV-Kandidaten (Dächer, Freifl., Assets) nach wirtschaftlichem Zusatznutzen (Δ Überschuss abzgl. Δ Infrastrukturkosten) und ordnet sie in Tiers A/B/C ein.',
+  'btn-pv-ertuechtigung': 'Berechnet die notwendigen Netzertüchtigungen (Trafoverstärkung, Leitungsausbau) für jeden NAP und integriert die Kosten in das Merit-Order-Ranking.',
+  'analyse-section-tab-ausbauplaner': 'Öffnet den Ausbauplaner: Gantt-Board mit Gewerk-Swimlanes, Phasen-Editor und Drag-Drop-Planung der PV-Ausbaumaßnahmen. Auto-Plan erzeugt einen optimierten Fahrplan aus dem Merit-Order-Ergebnis.',
+  'asset-bulk-bar': 'Bulk-Aktionen für ausgewählte Elektro-Assets: Phase zuweisen, Maßnahme aus Vorlage anlegen, Status und Jahr setzen. Assets per Shift+Klick oder Box-Select (Shift+Ziehen auf der Karte) wählen.',
 };
 
 
@@ -63074,6 +63080,48 @@ function renderVergleich() {
     { label: 'Jahreskosten gesamt', fn: r => r?.jkGes > 0 ? fmt(r.jkGes/1000, 'k€/a', 1) : '—', numFn: r => r?.jkGes, best: 'min' },
     { label: 'WGK System gesamt', fn: r => r?.wgkText || '—', numFn: r => r?.wgkNum, best: 'min', bold: true },
     { label: 'Stromkosten WP', fn: r => r?.stromkostenWp != null ? fmt(r.stromkostenWp, '€/a') : '—', numFn: r => r?.stromkostenWp, best: 'min' },
+    { label: 'PV-AUSBAU (Merit-Order)', header: true },
+    { label: 'PV installiert (A+B)',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        const kwp = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+        return kwp > 0 ? Math.round(kwp).toLocaleString('de-DE') + ' kWp' : '—';
+      },
+      numFn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return null;
+        return pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+      },
+      best: 'max', bold: true },
+    { label: 'PV-Ertrag/a',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        const mwh = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.jahresertragKWh || 0) / 1000, 0);
+        return mwh > 0 ? mwh.toLocaleString('de-DE', {maximumFractionDigits:0}) + ' MWh/a' : '—';
+      } },
+    { label: 'Invest PV gesamt',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        const kwp = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+        const inv = kwp * (pv.pvInvestPerKwp || 1200);
+        return inv > 0 ? Math.round(inv / 1000).toLocaleString('de-DE') + ' k€' : '—';
+      },
+      numFn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return null;
+        const kwp = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+        return kwp * (pv.pvInvestPerKwp || 1200);
+      },
+      best: 'min' },
+    { label: 'Anzahl Flächen (A+B)',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        return String(pv.ranking.filter(x => x.tier !== 'C').length);
+      } },
     { label: 'CO₂ EMISSIONEN', header: true },
     { label: 'CO₂ je Erzeuger (heute)', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => e.co2 || '—').join(', ') : '—' },
     { label: 'CO₂ gesamt (heute)', fn: r => r?.co2GesH > 0 ? fmt(r.co2GesH, 't/a', 1) : '—', numFn: r => r?.co2GesH, best: 'min', bold: true },
@@ -63088,7 +63136,7 @@ function renderVergleich() {
     let bestVal = null, bestIds = [];
     cols.forEach(id => {
       const r = variantResults[id];
-      const v = r ? row.numFn(r) : null;
+      const v = r ? row.numFn(r, id) : null;
       if (v == null || isNaN(v) || v <= 0) return;
       if (bestVal === null || (row.best === 'min' ? v < bestVal : v > bestVal)) { bestVal = v; bestIds = [id]; }
       else if (v === bestVal) bestIds.push(id);
@@ -63115,7 +63163,7 @@ function renderVergleich() {
     html += `<tr><td>${row.label}</td>`;
     cols.forEach(id => {
       const r = variantResults[id];
-      const val = r ? row.fn(r) : '—';
+      const val = r ? row.fn(r, id) : '—';
       const active = isActive(id);
       const isBest = bestIdx[ri] && bestIdx[ri].has(id);
       const style = `${active?'color:var(--accent);':''}${row.bold?'font-weight:bold;':''}${isBest?'color:#66bb6a;':''}`;
@@ -113975,11 +114023,20 @@ function pvRunMeritOrder(opts = {}) {
   const pvProfileSued    = makePvProfile8760('sued');
   const pvProfileOstWest = makePvProfile8760('ostwest');
 
-  return pvMeritOrderCore(kandidaten, demandH8760, pvProfileSued, pvProfileOstWest, {
+  const result = pvMeritOrderCore(kandidaten, demandH8760, pvProfileSued, pvProfileOstWest, {
     pStrom, pEinsp, pvInvestPerKwp, batKwh, zins,
     napMaxEinsKw: 0,
     pvInfraStufen: PV_INFRA_STUFEN,
   });
+
+  // Ergebnis global + per Variante ablegen (für Vergleichstabelle)
+  if (result) {
+    window._lastMeritOrderResult = result;
+    const key = (window.activeVariantId != null ? window.activeVariantId : 'base');
+    window._pvVariantResults = window._pvVariantResults || {};
+    window._pvVariantResults[key] = { ...result, pvInvestPerKwp, pStrom, pEinsp, zins };
+  }
+  return result;
 }
 
 /** 15-min-Array auf 8760 Stundenwerte mitteln (gleitender Mittelwert je 4 Slots). */

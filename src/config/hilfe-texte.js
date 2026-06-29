@@ -245,4 +245,10 @@ export const HILFE_TEXTE = {
   'opt-cand-st': 'Solarthermie in die Optimierung einbeziehen — Kollektorfläche wird automatisch variiert.',
   'opt-cand-ts': 'Wärmespeicher in die Optimierung einbeziehen — Volumen wird automatisch variiert.',
   'opt-pv-max-amort': 'Maximale Amortisationszeit für PV-Anlagen (Jahre) — Varianten mit längerer Amortisation werden verworfen.',
+
+  // PV-Varianten-Workflow (M2–M6)
+  'btn-pv-merit-order': 'Startet die Flächen-Merit-Order: Bewertet alle PV-Kandidaten (Dächer, Freifl., Assets) nach wirtschaftlichem Zusatznutzen (Δ Überschuss abzgl. Δ Infrastrukturkosten) und ordnet sie in Tiers A/B/C ein.',
+  'btn-pv-ertuechtigung': 'Berechnet die notwendigen Netzertüchtigungen (Trafoverstärkung, Leitungsausbau) für jeden NAP und integriert die Kosten in das Merit-Order-Ranking.',
+  'analyse-section-tab-ausbauplaner': 'Öffnet den Ausbauplaner: Gantt-Board mit Gewerk-Swimlanes, Phasen-Editor und Drag-Drop-Planung der PV-Ausbaumaßnahmen. Auto-Plan erzeugt einen optimierten Fahrplan aus dem Merit-Order-Ergebnis.',
+  'asset-bulk-bar': 'Bulk-Aktionen für ausgewählte Elektro-Assets: Phase zuweisen, Maßnahme aus Vorlage anlegen, Status und Jahr setzen. Assets per Shift+Klick oder Box-Select (Shift+Ziehen auf der Karte) wählen.',
 };
