@@ -94,6 +94,7 @@
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible"          data-change="_ebpChart(this.checked)">Zeitstrahl-Chart</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-overlay-visible"        data-change="_ebpOverlay(this.checked)">Plan-Overlay</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-viz-circles"    checked data-change="_ebpViz(this.checked)">Wärme-Visualisierung</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible"     checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
   </div>
 
   <div class="ebp-cat">
@@ -1304,6 +1305,27 @@
     <div class="sb-tab-body" id="sb-tab-elektro">
       <!-- Inspector-Slot: wird befüllt wenn ein Asset gewählt wird -->
       <div id="sb-asset-inspector-slot"></div>
+      <!-- Sammelaktions-Leiste (sichtbar wenn ≥1 Asset selektiert) -->
+      <div id="asset-bulk-bar" style="display:none;flex-wrap:wrap;gap:4px;padding:5px 6px;background:var(--surface2);border-bottom:1px solid var(--border);align-items:center;font-size:10px;">
+        <span id="asset-bulk-lbl" style="font-weight:600;white-space:nowrap;">0 Assets</span>
+        <select id="asset-bulk-phase" onchange="selBulkPhaseChanged(this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+          <option value="">→ Phase</option>
+        </select>
+        <select id="asset-bulk-massn" onchange="selBulkMassnChanged(this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+          <option value="">+ Maßnahme</option>
+        </select>
+        <select onchange="selBulkStatusChanged(this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+          <option value="">Status</option>
+          <option value="geplant">geplant</option>
+          <option value="umgesetzt">umgesetzt</option>
+        </select>
+        <input id="asset-bulk-jahr" type="number" placeholder="Jahr" min="2020" max="2060"
+          style="width:56px;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;"
+          onchange="selBulkJahrApply()">
+        <button onclick="selFromMeritOrderTier('A');selRenderBulkBar()" title="Tier-A-Kandidaten aus Merit-Order selektieren"
+          style="font-size:10px;padding:2px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">Tier A ▸</button>
+        <button onclick="selClear()" style="margin-left:auto;font-size:10px;padding:2px 6px;background:none;border:none;cursor:pointer;color:var(--muted);">✕</button>
+      </div>
       <!-- Asset-Liste: alle Assets nach Typ gruppiert -->
       <div id="sb-asset-list" class="sidebar-scroll"></div>
     </div>

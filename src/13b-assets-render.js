@@ -512,9 +512,10 @@ function drawSingleMarker(asset) {
   const pendingBadge = hasPendingMassnahmen(asset)
     ? `<span class="asset-massn-badge"></span>`
     : '';
+  const selClass = window.assetSelection?.has(asset.id) ? ' asset-selected' : '';
   const icon = L.divIcon({
     className: '',
-    html: `<div class="asset-marker asset-marker-${status}"
+    html: `<div class="asset-marker asset-marker-${status}${selClass}"
               style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;">
              <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
              ${pendingBadge}
@@ -536,6 +537,11 @@ function drawSingleMarker(asset) {
       return;
     }
     L.DomEvent.stopPropagation(e);
+    // Shift+Click → Selektion umschalten statt Inspector öffnen
+    if (e.originalEvent?.shiftKey && typeof window.selToggle === 'function') {
+      window.selToggle(asset.id);
+      return;
+    }
     ASSETS.selectedId = asset.id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
   });

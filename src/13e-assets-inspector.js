@@ -99,8 +99,11 @@ export function renderSidebarAssetList() {
       const pendingDot = hasPending
         ? `<span class="sb-asset-pending-dot" title="Offene Maßnahmen"></span>`
         : '';
-      const sel = ASSETS.selectedId === a.id ? ' selected' : '';
+      const isSel   = window.assetSelection?.has(a.id);
+      const sel     = (ASSETS.selectedId === a.id ? ' selected' : '') + (isSel ? ' asset-bulk-selected' : '');
+      const checked = isSel ? ' checked' : '';
       return `<div class="sb-asset-row${sel}" data-asset-id="${a.id}">
+        <input type="checkbox" class="sb-asset-cb"${checked} onclick="event.stopPropagation();selToggle('${a.id}')" title="Auswählen" style="flex-shrink:0;cursor:pointer;accent-color:var(--accent,#2196F3);">
         <span class="sb-asset-row-icon" style="background:${cfg.color};opacity:${opacity};">${cfg.icon}</span>
         <span class="sb-asset-row-name">${esc(a.name)}</span>
         ${pendingDot}

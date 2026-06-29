@@ -73,6 +73,7 @@ const JS_FILES = [
   '14a-kandidaten.js',
   '14b-ertuechtigung.js',
   '14c-phasen.js',
+  '14d-selektion.js',
   // main.js wird NICHT eingebunden — es macht nur import/window-Exposition,
   // die im Monolith überflüssig ist (alles bereits global). Der Namespace-
   // Alias "glBerechnen" würde die private Funktion gleichen Namens überschreiben.
@@ -189,12 +190,14 @@ for (const file of JS_FILES) {
 jsAll += `
 // ── Initialisierung (aus main.js) ──
 window._isSingleFileBuild = true; // verhindert data/klima/-Dateiladen (kein Verzeichnis im Build)
-if (typeof initBdewProfiles === 'function') {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { initBdewProfiles(); });
-  } else {
-    initBdewProfiles();
-  }
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof initBdewProfiles === 'function') initBdewProfiles();
+    if (typeof selInitBoxSelect === 'function') selInitBoxSelect();
+  });
+} else {
+  if (typeof initBdewProfiles === 'function') initBdewProfiles();
+  if (typeof selInitBoxSelect === 'function') selInitBoxSelect();
 }
 `;
 
