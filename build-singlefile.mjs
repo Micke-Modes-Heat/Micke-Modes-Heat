@@ -74,6 +74,7 @@ const JS_FILES = [
   '14b-ertuechtigung.js',
   '14c-phasen.js',
   '14d-selektion.js',
+  '14e-ausbauplaner-ui.js',
   // main.js wird NICHT eingebunden — es macht nur import/window-Exposition,
   // die im Monolith überflüssig ist (alles bereits global). Der Namespace-
   // Alias "glBerechnen" würde die private Funktion gleichen Namens überschreiben.

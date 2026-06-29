@@ -23,6 +23,7 @@ import { KMR_KOSTEN } from './config/netz-kosten.js';
 import { napBuildAnalyseSection, napShowSection } from './13o-nap-analyse.js';
 import { knaBuildAnalyseSection, knaShowSection } from './13r-knotenpunkt-analyse.js';
 import { pvaBuildAnalyseSection, pvaShowSection } from './09d-pv-analyse.js';
+import { ausbauShow } from './14e-ausbauplaner-ui.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { getWLDColor } from './02a-netz-physik.js';
 import { OVERPASS_ENDPOINTS, updateRohrListe } from './03b-netz.js';
@@ -1098,6 +1099,8 @@ export function refreshAnalyseView() {
   if (knaWrap) knaWrap.style.display = 'none';
   const pvaWrap = document.getElementById('analyse-pva-wrap');
   if (pvaWrap) pvaWrap.style.display = 'none';
+  const ausbWrap = document.getElementById('ausbauplaner-wrap');
+  if (ausbWrap) ausbWrap.style.display = 'none';
 
   if (analyseCurrentSection === 'uebersicht') {
     grid.style.display = 'grid';
@@ -1126,6 +1129,8 @@ export function refreshAnalyseView() {
     knaShowSection(true);
   } else if (analyseCurrentSection === 'pva') {
     pvaShowSection(true);
+  } else if (analyseCurrentSection === 'ausbauplaner') {
+    if (typeof ausbauShow === 'function') ausbauShow(true);
   }
 }
 

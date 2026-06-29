@@ -294,6 +294,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .btn-secondary.active{background:#e53935;color:#fff;border-color:#e53935;}
 .btn-purple{padding:6px 12px;border-radius:5px;border:1px solid #9c27b0;background:transparent;color:#ce93d8;font-family:inherit;font-size:11px;cursor:pointer;margin-left:auto;font-weight:normal;}
 .btn-purple:hover{background:#2a1040;}
+.btn-xs{padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;font-weight:normal;}
+.btn-xs:hover{border-color:var(--accent);color:var(--accent);}
+.btn-xs.blue{border-color:#4fc3f7;color:#4fc3f7;}
+.btn-xs.blue:hover{background:rgba(79,195,247,.12);}
 
 .tb-sep{display:inline-flex;align-items:center;margin:0 3px 0 6px;padding-left:7px;border-left:1px solid rgba(255,255,255,0.1);font-size:7.5px;color:rgba(255,255,255,0.28);letter-spacing:.09em;text-transform:uppercase;white-space:nowrap;align-self:stretch;}
 .erzeuger-bar{display:flex;align-items:center;justify-content:space-evenly;gap:4px;padding:5px 14px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;}
