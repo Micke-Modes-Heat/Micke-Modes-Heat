@@ -17,6 +17,7 @@ const BUILD_DATE = new Date().toISOString().slice(0, 10);
 // Reihenfolge wie im Original — Konfiguration zuerst, dann numerisch
 const JS_FILES = [
   'config/netz-kosten.js',
+  'config/massnahmen-vorlagen.js',
   'config/erzeuger-cfg.js',
   'config/optimizer-defaults.js',
   'config/hilfe-texte.js',

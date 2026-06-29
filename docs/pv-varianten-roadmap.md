@@ -129,7 +129,7 @@ Bei UI-Meilensteinen zusätzlich manuell in `dist/index.html` prüfen.
 | Phase 3 (Abschluss) | ~1–2 | Politur + Release |
 
 ## Fortschritt
-- [ ] M0 Entscheidungen & Setup
+- [x] M0 Entscheidungen & Setup
 - [ ] M1 Datenmodell-Fundament
 - [ ] M2 Flächen-Merit-Order
 - [ ] M3 Infrastruktur-Ertüchtigung

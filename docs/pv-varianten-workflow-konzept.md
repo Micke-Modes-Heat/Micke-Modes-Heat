@@ -359,6 +359,23 @@ Sensitivitäten, Export/Bericht (`05a/05d`), Hilfetexte (`config/hilfe-texte.js`
 5. **Abregelung als Maßnahme** oder als NAP-Parameter? (beeinflusst, wie sie im Fahrplan
    erscheint.)
 
+### Nachtrag M0 — getroffene Entscheidungen (2026-06-29)
+
+1. **Phasen-Geltung: projektweit als Default** — `variantId === null` für alle neu angelegten
+   Phasen. Variantenspezifische Phasen sind der Spezialfall, den der Planer explizit setzt.
+2. **Vorlagen-Katalog: `src/config/massnahmen-vorlagen.js`** — analog `netz-kosten.js`; in
+   `JS_FILES` direkt nach `config/netz-kosten.js` eintragen. Gerüst mit Platzhalter-Kosten (0)
+   für alle MASSN_TYP-Einträge; echte Kostenwerte folgen in M3.
+3. **Per-NAP immer, Grenze in M3** — PV-Anlagen werden typisch einem Trafo/NAP zugeordnet;
+   im Regelfall gibt es einen NAP pro Projekt. M2 macht daher immer Per-NAP (= meist eine
+   Gruppe). Die Frage globaler Dispatch bei mehreren NAPs mit gemeinsamer MS-Übergabe wird
+   erst in M3 konkret und dort entschieden.
+4. **Gantt-Renderer: eigenes SVG** — keine externen Runtime-Deps; Single-File-Build-Restriktion
+   ist faktisch zwingend. SVG + Mouse-Events reichen für Balken, Drag, `dependsOn`-Pfeile.
+5. **Kein MASSN_TYP.Abregelung** — PV-Abregelung ist bereits im Dispatch über NAP-Kapazitäts-
+   werte abgebildet (Max-Einspeisung in Stromgrunddaten). Kein neuer Typ nötig; im Step-4-
+   Kontext ist Abregelung ein implizites Dispatch-Ergebnis, kein Maßnahmen-Objekt.
+
 ---
 
 ## 10. Risiken / Fallstricke
