@@ -1,3 +1,5 @@
+import { setViewMode, setLeftTab, setAnalyseSection, setWaermeTab } from './04a-ui-panels.js';
+
 // ── Viewer-Modus (?viewer=1) ─────────────────────────────────────────────────
 // Aktiviert eine read-only TOC-Sidebar (Gutachten-Gliederung 1–6) im left-panel.
 // Aktivierung: URL mit ?viewer=1 aufrufen.
