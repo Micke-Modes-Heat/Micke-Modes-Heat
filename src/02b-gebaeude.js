@@ -831,6 +831,16 @@ export function getSlpProfile(profilTyp) {
       const seasonal = 1.0 + 0.2 * Math.cos((m - 6) / 12 * 2 * Math.PI);
       const hourly = hourOfDay >= 5 && hourOfDay <= 19 ? 1.3 : 0.6;
       baseLoad = seasonal * hourly;
+    } else if (profilTyp === 'TWW') {
+      // Trinkwarmwasser-Zapfprofil: ausgeprägte Morgen-/Abendspitze, ganzjährig
+      // (nur schwach saisonal — kälteres Kaltwasser im Winter), wochentagsunabhängig.
+      const seasonal = 1.0 + 0.10 * Math.cos((m - 0.5) / 12 * 2 * Math.PI);
+      const hourly = (hourOfDay >= 6 && hourOfDay <= 8)  ? 2.2 :   // Morgenspitze
+                     (hourOfDay >= 18 && hourOfDay <= 21) ? 1.8 :   // Abendspitze
+                     (hourOfDay >= 9 && hourOfDay <= 17)  ? 0.8 :
+                     (hourOfDay >= 22 || hourOfDay <= 5)  ? 0.25 : 0.6;
+      const weekendFactor = isWeekend ? 1.15 : 1.0;               // morgens länger zuhause
+      baseLoad = seasonal * hourly * weekendFactor;
     }
     profile[h] = baseLoad;
   }

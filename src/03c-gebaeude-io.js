@@ -9,7 +9,7 @@ import { isErzeugerAktiv, meritOrderKeys, setMeritOrderKeys } from './06c-dispat
 import { calcStromPanel } from './09b-pv-calc.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, clearAssets } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
-import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById } from './13k-elslp-registry.js';
+import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById, getElSlpWpm2, showElSlpModal } from './13k-elslp-registry.js';
 import { activeVariantId, edgeKey, freiflaechen, lwWp, lwWpVisible, networkLocked, netzEdges, renderVariantenBar, stromNetzVisible, stromNodes, updateVariantBanner } from './01-globals-varianten.js';
 import { _invalidateStats, addGebaeude, toggleNetworkLock, ensureSatellite } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, clearTrasse, polygonAreaM2, polygonCenter, redrawFliessgewaesser, redrawLwWp, redrawTrasse, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
@@ -463,8 +463,7 @@ function buildGebVerbraucherSection(g) {
   const slpTyp  = verbr?.props?.slpTyp || 'G0';
   const existKw = verbr?.props?.leistungKW;
   const fl      = parseFloat(g.flaeche) || 0;
-  const slpPr   = getElSlpById(slpTyp);
-  const wpm2    = slpPr?.wpm2 ?? 20;
+  const wpm2    = getElSlpWpm2(slpTyp);
   const autoKw  = fl > 0 ? Math.round(fl * wpm2 / 1000 * 10) / 10 : null;
   const dispKw  = existKw != null ? existKw : (autoKw ?? '');
   const badge   = existKw != null
@@ -476,7 +475,7 @@ function buildGebVerbraucherSection(g) {
       <div class="geb-dach-hdr" data-click="toggleGebVerbr(${g.id})">
         <span class="geb-dach-hdr-icon" style="color:#4fc3f7;">⚡</span>
         <span class="geb-dach-hdr-label">Leistungsschätzung</span>
-        <span class="geb-dach-kwp-badge" style="color:#4fc3f7;">${badge}</span>
+        <span class="geb-dach-kwp-badge" id="geb-verbr-badge-${g.id}" style="color:#4fc3f7;">${badge}</span>
         <span class="geb-dach-chevron${isOpen ? '' : ' rotated'}">▾</span>
       </div>
       <div class="geb-dach-rows" id="geb-verbr-rows-${g.id}"${isOpen ? '' : ' style="display:none;"'}>
@@ -496,10 +495,10 @@ function buildGebVerbraucherSection(g) {
           </div>
         </div>
         ${fl > 0
-          ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;">
-               ↳ ${Math.round(fl)} m² × ${wpm2} W/m² ÷ 1000 = ${autoKw} kW (${slpTyp})
+          ? `<div id="geb-verbr-formel-${g.id}" style="font-size:9px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;">
+               ↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${g.id})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:#4fc3f7;cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpTyp})
              </div>`
-          : `<div style="font-size:9px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe</div>`}
+          : `<div id="geb-verbr-formel-${g.id}" style="font-size:9px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe (<a data-click="openElSlpManager(${g.id})" style="color:#4fc3f7;cursor:pointer;text-decoration:underline dotted;">W/m² verwalten</a>)</div>`}
         ${verbr
           ? `<button class="btn-xs" data-click="overwriteVerbrAsset(${g.id})"
                style="width:100%;margin-top:6px;display:flex;justify-content:center;gap:4px;border-color:#4fc3f7;color:#4fc3f7;">
@@ -521,15 +520,29 @@ window.toggleGebVerbr = function(gId) {
   chevron?.classList.toggle('rotated', wasOpen); // rotated = closed
 };
 
-// Wenn SLP im Leistungsschätzung-Reiter ändert: kW-Schätzung live aktualisieren
+// Wenn SLP im Leistungsschätzung-Reiter ändert: kW-Schätzung, Formel & Badge live aktualisieren
 window.updateGebVerbrSlp = function(gId, slpId) {
   const g   = window.gebaeude?.find(x => x.id === gId);
   if (!g) return;
-  const fl   = parseFloat(g.flaeche) || 0;
-  const wpm2 = getElSlpById(slpId)?.wpm2 ?? 20;
+  const fl     = parseFloat(g.flaeche) || 0;
+  const wpm2   = getElSlpWpm2(slpId);
   const autoKw = fl > 0 ? Math.round(fl * wpm2 / 1000 * 10) / 10 : null;
-  const kwInp = document.getElementById(`geb-verbr-kw-${gId}`);
+  const kwInp  = document.getElementById(`geb-verbr-kw-${gId}`);
   if (kwInp && autoKw != null) kwInp.value = autoKw;
+  // Formel-Zeile live nachziehen
+  const formel = document.getElementById(`geb-verbr-formel-${gId}`);
+  if (formel && fl > 0) {
+    formel.innerHTML = `↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${gId})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:#4fc3f7;cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpId})`;
+  }
+  // Badge live nachziehen (zeigt die aktuelle Schätzung)
+  const badge = document.getElementById(`geb-verbr-badge-${gId}`);
+  if (badge && autoKw != null) badge.textContent = '~' + autoKw + ' kW';
+};
+
+// W/m²-Annahmen verwalten — öffnet das SLP-Registry-Modal; nach Schließen Karte neu rendern,
+// damit geänderte W/m²-Werte in Schätzung, Formel & Badge durchschlagen.
+window.openElSlpManager = function(gId) {
+  showElSlpModal(() => { if (gId != null) _rerenderCard(gId); });
 };
 
 // Werte aus Leistungsschätzung in Verbraucher-Asset schreiben
@@ -546,7 +559,7 @@ window.overwriteVerbrAsset = function(gId) {
   _rerenderCard(gId);
 };
 
-// Berechnetes kWp (Dach & PV) in PV-Asset schreiben
+// Berechnetes kWp (Dach & PV) in PV-Asset schreiben (inkl. Ausrichtung + Spez)
 window.overwritePvAsset = function(gId) {
   const g  = window.gebaeude?.find(x => x.id === gId);
   const pv = getAssetsForBuilding(gId).find(a => a.type === 'PV');
@@ -554,6 +567,17 @@ window.overwritePvAsset = function(gId) {
   const kwp = calcGebKwpKorr(g);
   if (!pv.props) pv.props = {};
   pv.props.leistungKWp = Math.round(kwp * 10) / 10;
+  // Ausrichtung ableiten: Flachdach nach pvFlAusrichtung, Satteldach nach First-Richtung
+  let aus = 'sued';
+  if (g.dachform === 'sattel') {
+    const A = g.dachAzimut ?? 180;
+    const devEW = Math.min(Math.abs(A - 90), Math.abs(A - 270));
+    aus = devEW <= 45 ? 'ostwest' : 'sued';
+  } else if (!g.dachform || g.dachform === 'flach') {
+    aus = g.pvFlAusrichtung === 'ostwest' ? 'ostwest' : 'sued';
+  }
+  pv.props.ausrichtung = aus;
+  pv.props.pvSpez      = aus === 'ostwest' ? 950 : 1050;
   _rerenderCard(gId);
 };
 
@@ -815,25 +839,52 @@ function buildDachSection(g, opts = {}) {
   const usedNei = g.dachNeigung != null ? g.dachNeigung : defNei;
 
   // Steuerelemente je Dachform: Flachdach = GCR + Aufständerung · Schrägdach = Belegungsgrad
+  const usedAz = g.dachAzimut ?? 180;
   const flaechenControls = isPitched ? `
-    <div style="font-size:9px;color:var(--muted);margin-top:6px;">${isSattel ? 'Ganze Dachfläche zeichnen — wird automatisch am First in zwei Seiten (Azimut + Gegenseite) geteilt. ' : 'Dachfläche je Dachseite zeichnen. '}Module liegen parallel zum Dach; Grundriss wird mit 1/cos(Neigung) auf die echte Dachfläche projiziert. Ausrichtung &amp; Neigung aus den Feldern oben.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
+    <div style="font-size:9px;color:var(--muted);margin-top:6px;">${isSattel ? 'Ganze Dachfläche zeichnen — wird automatisch am First in zwei Seiten (Azimut + Gegenseite) geteilt. ' : 'Dachfläche je Dachseite zeichnen. '}Module liegen parallel zum Dach; Grundriss wird mit 1/cos(Neigung) auf die echte Dachfläche projiziert.</div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-top:5px;">
       <div class="inp-group">
         <div class="inp-label" title="Anteil der Dachfläche, der mit Modulen belegt wird (Ränder/Rahmen abgezogen)">Belegungsgrad (%)</div>
-        <input class="inp-field" type="number" min="40" max="100" step="5" value="${flBeleg}"
-          data-input="updateGebPvFl(${g.id},'belegung',this.value)"/>
+        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+          <input type="range" min="40" max="100" step="5" value="${flBeleg}"
+            style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
+            oninput="this.nextElementSibling.textContent=this.value+'%'"
+            data-change="updateGebPvFl(${g.id},'belegung',this.value)"/>
+          <span style="min-width:30px;text-align:right;font-size:11px;color:#ffd54f;font-weight:600;">${flBeleg}%</span>
+        </div>
       </div>
       <div class="inp-group">
-        <div class="inp-label">Neigung · Azimut</div>
-        <div class="inp-field" style="display:flex;align-items:center;color:var(--muted);cursor:default;">${usedNei}° · ${g.dachAzimut ?? 180}°</div>
+        <div class="inp-label" title="Neigung der Dachfläche in Grad">Neigung (°)</div>
+        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+          <input type="range" min="5" max="75" step="5" value="${usedNei}"
+            style="flex:1;cursor:pointer;accent-color:#80deea;height:4px;"
+            oninput="this.nextElementSibling.textContent=this.value+'°'"
+            data-change="updateGebDach(${g.id},'dachNeigung',this.value)"/>
+          <span style="min-width:28px;text-align:right;font-size:11px;color:#80deea;font-weight:600;">${usedNei}°</span>
+        </div>
+      </div>
+      <div class="inp-group">
+        <div class="inp-label" title="Ausrichtung der Südseite in Grad (0=Nord, 180=Süd, 90=Ost)">Azimut (°)</div>
+        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+          <input type="range" min="0" max="355" step="5" value="${usedAz}"
+            style="flex:1;cursor:pointer;accent-color:#ef9a9a;height:4px;"
+            oninput="this.nextElementSibling.textContent=this.value+'°'"
+            data-change="updateGebDach(${g.id},'dachAzimut',this.value)"/>
+          <span style="min-width:28px;text-align:right;font-size:11px;color:#ef9a9a;font-weight:600;">${usedAz}°</span>
+        </div>
       </div>
     </div>` : `
     <div style="font-size:9px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
       <div class="inp-group">
         <div class="inp-label" title="Ground Coverage Ratio: Anteil Modulfläche an gezeichneter Fläche">GCR (% Belegung)</div>
-        <input class="inp-field" type="number" min="5" max="95" step="5" value="${flGcr}"
-          data-input="updateGebPvFl(${g.id},'gcr',this.value)"/>
+        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+          <input type="range" min="5" max="95" step="5" value="${flGcr}"
+            style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
+            oninput="this.nextElementSibling.textContent=this.value+'%'"
+            data-change="updateGebPvFl(${g.id},'gcr',this.value)"/>
+          <span style="min-width:30px;text-align:right;font-size:11px;color:#ffd54f;font-weight:600;">${flGcr}%</span>
+        </div>
       </div>
       <div class="inp-group">
         <div class="inp-label">Aufständerung</div>
@@ -951,9 +1002,46 @@ export function attachGebPvLayer(g, fl) {
     color: col.border, weight: 2,
     fillColor: col.fill, fillOpacity: fl.typ === 'sperr' ? 1 : 0.6,
     dashArray: fl.typ === 'sperr' ? '4 3' : null,
-  }).addTo(map);
+  });
+  if ((fl.typ !== 'sperr' || window.selectedId === g.id) && window._pvLayerVisible !== false) fl.layer.addTo(map);
   fl.layer.on('click', () => { if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id); });
 }
+
+export function syncSperrLayerVisibility() {
+  const selId = window.selectedId;
+  for (const g of (window.gebaeude || [])) {
+    for (const fl of (g.pvFlaechen || [])) {
+      if (fl.typ !== 'sperr' || !fl.layer) continue;
+      if (selId === g.id) { if (!map.hasLayer(fl.layer)) fl.layer.addTo(map); }
+      else                { if ( map.hasLayer(fl.layer)) map.removeLayer(fl.layer); }
+    }
+  }
+}
+window.syncSperrLayerVisibility = syncSperrLayerVisibility;
+
+window.setPvVisible = function(visible) {
+  window._pvLayerVisible = visible;
+  const selId = window.selectedId;
+  for (const g of (window.gebaeude || [])) {
+    if (g._pvModuleLayer) {
+      if (visible) { if (!map.hasLayer(g._pvModuleLayer)) g._pvModuleLayer.addTo(map); }
+      else         { if ( map.hasLayer(g._pvModuleLayer)) map.removeLayer(g._pvModuleLayer); }
+    }
+    for (const fl of (g.pvFlaechen || [])) {
+      if (!fl.layer) continue;
+      const show = visible && (fl.typ !== 'sperr' || selId === g.id);
+      if (show) { if (!map.hasLayer(fl.layer)) fl.layer.addTo(map); }
+      else      { if ( map.hasLayer(fl.layer)) map.removeLayer(fl.layer); }
+    }
+  }
+  for (const ff of (window.freiflaechen || [])) {
+    [ff.polygonLayer, ff.moduleSvgLayer].forEach(l => {
+      if (!l) return;
+      if (visible) { if (!map.hasLayer(l)) l.addTo(map); }
+      else         { if ( map.hasLayer(l)) map.removeLayer(l); }
+    });
+  }
+};
 
 // ── Punkt-in-Polygon (Ray-Casting) im metrischen XY-Raum ────────────────────
 function _pip(pt, poly) {
@@ -1118,6 +1206,17 @@ export function buildPvModuleOverlay(res) {
     shapes += `<polygon points="${pts}" fill="${modFill}" stroke="${cellLine}" stroke-width="0.03"/>`;
     shapes += `<line x1="${m.edge[0].x.toFixed(2)}" y1="${m.edge[0].y.toFixed(2)}" x2="${m.edge[1].x.toFixed(2)}" y2="${m.edge[1].y.toFixed(2)}" stroke="${shimmer}" stroke-width="0.12"/>`;
   }
+  // Firstlinie bei Satteldach-Split: gestrichelte Linie durch den Schwerpunkt, senkrecht zum Azimut
+  if (res.ridgeLine) {
+    const { cx, cy, azDeg } = res.ridgeLine;
+    const azR  = azDeg * Math.PI / 180;
+    // Firstrichtung in SVG (x=Ost, y=Süd): senkrecht zur Falllinie
+    const rdx  = Math.cos(azR), rdy = Math.sin(azR);
+    const ext  = Math.max(Wm, Hm) * 0.8;
+    const x1   = (cx - rdx * ext).toFixed(2), y1 = (cy - rdy * ext).toFixed(2);
+    const x2   = (cx + rdx * ext).toFixed(2), y2 = (cy + rdy * ext).toFixed(2);
+    shapes += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(255,220,80,0.85)" stroke-width="0.25" stroke-dasharray="1.2,0.8"/>`;
+  }
   const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgEl.setAttribute('viewBox', `0 0 ${Wm.toFixed(2)} ${Hm.toFixed(2)}`);
   svgEl.setAttribute('preserveAspectRatio', 'none');
@@ -1160,11 +1259,22 @@ function _computeGebPvModules(g) {
     const rF = placePvModules(front, sperr, { ...base, azimutDeg: A });
     const rB = placePvModules(back,  sperr, { ...base, azimutDeg: A + 180 });
     const bbox = (rF.bbox || rB.bbox);
+    // Firstlinie: Schwerpunkt in SVG-Koordinaten für Overlay-Rendering
+    let ridgeLine = null;
+    if (bbox) {
+      const { minLat: bMinLat, maxLat: bMaxLat, minLng: bMinLng } = bbox;
+      const bCosL = Math.cos((bMinLat + bMaxLat) / 2 * Math.PI / 180);
+      ridgeLine = {
+        cx: (C.lng - bMinLng) * 111320 * bCosL,
+        cy: (bMaxLat - C.lat) * 111320,
+        azDeg: A,
+      };
+    }
     return {
       modules: rF.modules.concat(rB.modules),
       count: rF.count + rB.count,
       frontCount: rF.count, backCount: rB.count, splitAzimut: A,
-      bbox,
+      bbox, ridgeLine,
     };
   }
 
@@ -1223,7 +1333,8 @@ export function redrawGebPvModules(g) {
   g._pvModuleDrawnSig = g._pvModSig;
   const ov = buildPvModuleOverlay(g._pvModCache);
   if (!ov) return;
-  g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 203 }).addTo(map);
+  g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 203 });
+  if (window._pvLayerVisible !== false) g._pvModuleLayer.addTo(map);
 }
 
 // Alle Flächen + Module eines Gebäudes neu zeichnen.

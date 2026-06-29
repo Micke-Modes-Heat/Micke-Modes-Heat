@@ -36,7 +36,7 @@ const TYPE_RANK = {
 // ── Profil-Richtung & Zeitreihen-Lookup (Modul-Ebene) ────────────────────────
 function profileDirection(asset) {
   if (!asset) return 'bezug';
-  if (['WP','Verbraucher','Lade','Nsa'].includes(asset.type)) return 'bezug';
+  if (['WP','Verbraucher','Lade','TWW','Nsa'].includes(asset.type)) return 'bezug';
   if (asset.type === 'PV') return 'einspeisung';
   if (asset.type === 'Batterie') {
     const ep = asset.props || {};
@@ -107,7 +107,7 @@ function _napBuildProfileDescriptor(asset, gzf) {
   // 3. BDEW-SLP: z.B. Verbraucher mit slpTyp='H0'
   // Typ-basierter Fallback falls slpTyp nie explizit gesetzt wurde
   // (Inspector öffnen schreibt Default jetzt direkt in props, aber für ältere Assets)
-  const SLP_DEFAULTS = { Verbraucher: 'G0' };
+  const SLP_DEFAULTS = { Verbraucher: 'G0', TWW: 'TWW' };
   const slpTyp = p.slpTyp || SLP_DEFAULTS[asset.type] || null;
   if (slpTyp) {
     const slp = getSlpProfile(slpTyp);
@@ -321,6 +321,7 @@ function _assetPower(a) {
   let loadKW = 0, genKW = 0;
   switch (a.type) {
     case 'Verbraucher': loadKW = parseFloat(ep.leistungKW)  || 0; break;
+    case 'TWW':         loadKW = parseFloat(ep.leistungKW)  || 0; break;
     case 'Lade':        loadKW = (parseInt(ep.anzahlPunkte)||1)*(parseFloat(ep.leistungProPunktKW)||11); break;
     case 'WP':          loadKW = parseFloat(ep.leistungKW)  || 0; break;
     case 'Nsa':         loadKW = parseFloat(ep.leistungKW)  || 0; break;
@@ -338,7 +339,7 @@ function _assetPower(a) {
     const peak = Math.max(...vals);
     if (peak > 0) {
       if (loadKW > 0 || (genKW === 0 && ['PV','Wind','KWK'].includes(a.type)))         genKW  = peak;
-      if (genKW  > 0 || (loadKW === 0 && ['Verbraucher','Lade','WP','Nsa'].includes(a.type))) loadKW = peak;
+      if (genKW  > 0 || (loadKW === 0 && ['Verbraucher','Lade','TWW','WP','Nsa'].includes(a.type))) loadKW = peak;
     }
   }
   return { loadKW, genKW };
@@ -348,7 +349,7 @@ function _assetPower(a) {
 export function napBuildMassnahmen() {
   const dataYear = _N.baseMeasuredData?.year || _N.data?.year || _yr();
   const list = [];
-  const CONSUMER_TYPES = ['Verbraucher','Lade','WP','Nsa','PV','KWK','Wind','Batterie'];
+  const CONSUMER_TYPES = ['Verbraucher','Lade','TWW','WP','Nsa','PV','KWK','Wind','Batterie'];
 
   for (const a of _allAssets()) {
     if (!CONSUMER_TYPES.includes(a.type)) continue;
@@ -694,7 +695,7 @@ export function napGetEndausbauLastgang(bisJahr) {
   const dataYear = baseMeasured.year || _yr();
   const zielJahr = bisJahr || dataYear;
 
-  const CONSUMER_TYPES = ['Verbraucher','Lade','WP','Nsa','PV','KWK','Wind','Batterie'];
+  const CONSUMER_TYPES = ['Verbraucher','Lade','TWW','WP','Nsa','PV','KWK','Wind','Batterie'];
   const entries = [];
   for (const a of allA) {
     if (!CONSUMER_TYPES.includes(a.type)) continue;
