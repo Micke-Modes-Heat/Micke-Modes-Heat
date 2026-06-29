@@ -107,7 +107,8 @@ export function attachFFLayer(ff) {
   ff.polygonLayer = L.polygon(ff.polygon, {
     color: 'rgba(255,213,79,0.85)', weight: 2,
     fillColor: 'rgba(255,213,79,0.18)', fillOpacity: 1
-  }).addTo(map);
+  });
+  if (window._pvLayerVisible !== false) ff.polygonLayer.addTo(map);
   ff.polygonLayer.on('click', () => {
     toggleFFPvPanel();
   });
@@ -126,7 +127,8 @@ export function attachFFLayer(ff) {
   ff._pvModCount = res.count;          // Modulanzahl für Panel-/Asset-Anzeige
   const ov  = window.buildPvModuleOverlay(res);
   if (!ov) return;
-  ff.moduleSvgLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 201 }).addTo(map);
+  ff.moduleSvgLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 201 });
+  if (window._pvLayerVisible !== false) ff.moduleSvgLayer.addTo(map);
 }
 
 export function startDrawFF() {

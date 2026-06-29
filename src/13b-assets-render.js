@@ -5,6 +5,7 @@
 import { map } from './02b-gebaeude.js';
 import { globalYear } from './01-globals-varianten.js';
 import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
+import { selectFromMap } from './02c-karte-werkzeuge.js';
 
 let assetLayer = null;       // Gebäude-gruppierte Assets (zoom-abhängig)
 let standaloneLayer = null; // Frei platzierte Assets (immer sichtbar)
@@ -311,7 +312,12 @@ function drawBuildingGroup(buildingId) {
       spiderfyBuilding(buildingId, m.getLatLng());
       return;
     }
+    selectFromMap(buildingId);
     openBuildingAssetList(buildingId, m);
+  });
+  m.on('contextmenu', e => {
+    L.DomEvent.stopPropagation(e);
+    _showAssetDeletePopup(buildingId, m.getLatLng());
   });
 
   m.addTo(assetLayer);
@@ -329,6 +335,39 @@ function drawBuildingGroup(buildingId) {
 }
 
 // Liste aller Assets des Gebäudes — Auswahl öffnet Inspector
+function _showAssetDeletePopup(buildingId, latlng) {
+  const assets = getAssetsForBuilding(buildingId);
+  if (assets.length === 0) return;
+  if (assets.length === 1) {
+    deleteAsset(assets[0].id);
+    redrawAllAssets();
+    return;
+  }
+  const rows = assets.map(a => {
+    const cfg = ASSET_CFG[a.type];
+    return `<div class="asset-del-row" data-id="${a.id}" style="display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:4px;">` +
+      `<span style="background:${cfg.color};width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${cfg.icon}</span>` +
+      `<span style="flex:1;font-size:11px;">${a.name}</span>` +
+      `<span style="color:#ef5350;font-size:12px;font-weight:700;">✕</span>` +
+      `</div>`;
+  }).join('');
+  const popup = L.popup({ className: 'asset-list-popup', offset: [0, -8], maxWidth: 240 })
+    .setLatLng(latlng)
+    .setContent(`<div style="font-size:10px;color:var(--muted);padding:4px 6px 2px;border-bottom:1px solid var(--border);margin-bottom:4px;">Löschen</div><div>${rows}</div>`)
+    .openOn(map);
+  setTimeout(() => {
+    document.querySelectorAll('.asset-del-row').forEach(row => {
+      row.addEventListener('mouseenter', () => row.style.background = 'rgba(239,83,80,0.12)');
+      row.addEventListener('mouseleave', () => row.style.background = '');
+      row.addEventListener('click', () => {
+        deleteAsset(row.dataset.id);
+        map.closePopup(popup);
+        redrawAllAssets();
+      });
+    });
+  }, 0);
+}
+
 function openBuildingAssetList(buildingId, marker) {
   const assets = getAssetsForBuilding(buildingId);
   if (assets.length === 0) return;
@@ -418,6 +457,12 @@ function spiderfyBuilding(buildingId, centerLatLng) {
         if (typeof window.openAssetInspector === 'function') window.openAssetInspector(a);
       }
       collapseAssetSpider();
+    });
+    sm.on('contextmenu', ev => {
+      L.DomEvent.stopPropagation(ev);
+      collapseAssetSpider();
+      deleteAsset(a.id);
+      redrawAllAssets();
     });
   });
 
@@ -538,6 +583,11 @@ function drawSingleMarker(asset) {
     L.DomEvent.stopPropagation(e);
     ASSETS.selectedId = asset.id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
+  });
+  m.on('contextmenu', e => {
+    L.DomEvent.stopPropagation(e);
+    deleteAsset(asset.id);
+    redrawAllAssets();
   });
 
   if (asset.type === 'Lade') {

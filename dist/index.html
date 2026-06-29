@@ -1579,6 +1579,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
   </div>
 
   <div class="ebp-cat">
+    <div class="ebp-cat-label" style="--ebp-c:#ffd54f;">☀ PV</div>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible" checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
+  </div>
+
+  <div class="ebp-cat">
     <div class="ebp-cat-label" style="--ebp-c:#78909c;">🗺 Hintergrund</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-satellit-visible"       data-change="_ebpSatellit(this.checked)">Satellit</label>
   </div>
@@ -4804,7 +4809,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-06-25';
+  var d = '2026-06-29';
   if (d.indexOf('__') === 0) d = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -64881,6 +64886,16 @@ function getSlpProfile(profilTyp) {
       const seasonal = 1.0 + 0.2 * Math.cos((m - 6) / 12 * 2 * Math.PI);
       const hourly = hourOfDay >= 5 && hourOfDay <= 19 ? 1.3 : 0.6;
       baseLoad = seasonal * hourly;
+    } else if (profilTyp === 'TWW') {
+      // Trinkwarmwasser-Zapfprofil: ausgeprägte Morgen-/Abendspitze, ganzjährig
+      // (nur schwach saisonal — kälteres Kaltwasser im Winter), wochentagsunabhängig.
+      const seasonal = 1.0 + 0.10 * Math.cos((m - 0.5) / 12 * 2 * Math.PI);
+      const hourly = (hourOfDay >= 6 && hourOfDay <= 8)  ? 2.2 :   // Morgenspitze
+                     (hourOfDay >= 18 && hourOfDay <= 21) ? 1.8 :   // Abendspitze
+                     (hourOfDay >= 9 && hourOfDay <= 17)  ? 0.8 :
+                     (hourOfDay >= 22 || hourOfDay <= 5)  ? 0.25 : 0.6;
+      const weekendFactor = isWeekend ? 1.15 : 1.0;               // morgens länger zuhause
+      baseLoad = seasonal * hourly * weekendFactor;
     }
     profile[h] = baseLoad;
   }
@@ -65373,7 +65388,13 @@ function selectFromMap(id){
     return;
   }
   window.selectedId=id;
+  window.syncSperrLayerVisibility?.();
   _expandedIds.add(id);
+  // Im Elektro-Tab: rechte Sidebar auf Gebäude-Tab umschalten statt linkes Panel zu wechseln
+  const _activeTabBtn = document.querySelector('#lp-tabs .lp-tab.active');
+  if (_activeTabBtn && _activeTabBtn.dataset.tab === 'elektro') {
+    if (typeof window.setSidebarTab === 'function') window.setSidebarTab('gebaeude');
+  }
   _rerenderCard(id);
   highlightCard(id);
   const el = document.getElementById('card-'+id);
@@ -66721,7 +66742,8 @@ function attachFFLayer(ff) {
   ff.polygonLayer = L.polygon(ff.polygon, {
     color: 'rgba(255,213,79,0.85)', weight: 2,
     fillColor: 'rgba(255,213,79,0.18)', fillOpacity: 1
-  }).addTo(map);
+  });
+  if (window._pvLayerVisible !== false) ff.polygonLayer.addTo(map);
   ff.polygonLayer.on('click', () => {
     toggleFFPvPanel();
   });
@@ -66740,7 +66762,8 @@ function attachFFLayer(ff) {
   ff._pvModCount = res.count;          // Modulanzahl für Panel-/Asset-Anzeige
   const ov  = window.buildPvModuleOverlay(res);
   if (!ov) return;
-  ff.moduleSvgLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 201 }).addTo(map);
+  ff.moduleSvgLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 201 });
+  if (window._pvLayerVisible !== false) ff.moduleSvgLayer.addTo(map);
 }
 
 function startDrawFF() {
@@ -70817,8 +70840,7 @@ function buildGebVerbraucherSection(g) {
   const slpTyp  = verbr?.props?.slpTyp || 'G0';
   const existKw = verbr?.props?.leistungKW;
   const fl      = parseFloat(g.flaeche) || 0;
-  const slpPr   = getElSlpById(slpTyp);
-  const wpm2    = slpPr?.wpm2 ?? 20;
+  const wpm2    = getElSlpWpm2(slpTyp);
   const autoKw  = fl > 0 ? Math.round(fl * wpm2 / 1000 * 10) / 10 : null;
   const dispKw  = existKw != null ? existKw : (autoKw ?? '');
   const badge   = existKw != null
@@ -70830,7 +70852,7 @@ function buildGebVerbraucherSection(g) {
       <div class="geb-dach-hdr" data-click="toggleGebVerbr(${g.id})">
         <span class="geb-dach-hdr-icon" style="color:#4fc3f7;">⚡</span>
         <span class="geb-dach-hdr-label">Leistungsschätzung</span>
-        <span class="geb-dach-kwp-badge" style="color:#4fc3f7;">${badge}</span>
+        <span class="geb-dach-kwp-badge" id="geb-verbr-badge-${g.id}" style="color:#4fc3f7;">${badge}</span>
         <span class="geb-dach-chevron${isOpen ? '' : ' rotated'}">▾</span>
       </div>
       <div class="geb-dach-rows" id="geb-verbr-rows-${g.id}"${isOpen ? '' : ' style="display:none;"'}>
@@ -70850,10 +70872,10 @@ function buildGebVerbraucherSection(g) {
           </div>
         </div>
         ${fl > 0
-          ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;">
-               ↳ ${Math.round(fl)} m² × ${wpm2} W/m² ÷ 1000 = ${autoKw} kW (${slpTyp})
+          ? `<div id="geb-verbr-formel-${g.id}" style="font-size:9px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;">
+               ↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${g.id})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:#4fc3f7;cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpTyp})
              </div>`
-          : `<div style="font-size:9px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe</div>`}
+          : `<div id="geb-verbr-formel-${g.id}" style="font-size:9px;color:rgba(249,168,37,.7);margin-top:2px;">↳ Keine Fläche — manuelle Eingabe (<a data-click="openElSlpManager(${g.id})" style="color:#4fc3f7;cursor:pointer;text-decoration:underline dotted;">W/m² verwalten</a>)</div>`}
         ${verbr
           ? `<button class="btn-xs" data-click="overwriteVerbrAsset(${g.id})"
                style="width:100%;margin-top:6px;display:flex;justify-content:center;gap:4px;border-color:#4fc3f7;color:#4fc3f7;">
@@ -70875,15 +70897,29 @@ window.toggleGebVerbr = function(gId) {
   chevron?.classList.toggle('rotated', wasOpen); // rotated = closed
 };
 
-// Wenn SLP im Leistungsschätzung-Reiter ändert: kW-Schätzung live aktualisieren
+// Wenn SLP im Leistungsschätzung-Reiter ändert: kW-Schätzung, Formel & Badge live aktualisieren
 window.updateGebVerbrSlp = function(gId, slpId) {
   const g   = window.gebaeude?.find(x => x.id === gId);
   if (!g) return;
-  const fl   = parseFloat(g.flaeche) || 0;
-  const wpm2 = getElSlpById(slpId)?.wpm2 ?? 20;
+  const fl     = parseFloat(g.flaeche) || 0;
+  const wpm2   = getElSlpWpm2(slpId);
   const autoKw = fl > 0 ? Math.round(fl * wpm2 / 1000 * 10) / 10 : null;
-  const kwInp = document.getElementById(`geb-verbr-kw-${gId}`);
+  const kwInp  = document.getElementById(`geb-verbr-kw-${gId}`);
   if (kwInp && autoKw != null) kwInp.value = autoKw;
+  // Formel-Zeile live nachziehen
+  const formel = document.getElementById(`geb-verbr-formel-${gId}`);
+  if (formel && fl > 0) {
+    formel.innerHTML = `↳ ${Math.round(fl)} m² × <a data-click="openElSlpManager(${gId})" title="W/m²-Annahmen verwalten / Profile hinzufügen" style="color:#4fc3f7;cursor:pointer;text-decoration:underline dotted;">${wpm2} W/m²</a> ÷ 1000 = ${autoKw} kW (${slpId})`;
+  }
+  // Badge live nachziehen (zeigt die aktuelle Schätzung)
+  const badge = document.getElementById(`geb-verbr-badge-${gId}`);
+  if (badge && autoKw != null) badge.textContent = '~' + autoKw + ' kW';
+};
+
+// W/m²-Annahmen verwalten — öffnet das SLP-Registry-Modal; nach Schließen Karte neu rendern,
+// damit geänderte W/m²-Werte in Schätzung, Formel & Badge durchschlagen.
+window.openElSlpManager = function(gId) {
+  showElSlpModal(() => { if (gId != null) _rerenderCard(gId); });
 };
 
 // Werte aus Leistungsschätzung in Verbraucher-Asset schreiben
@@ -70900,7 +70936,7 @@ window.overwriteVerbrAsset = function(gId) {
   _rerenderCard(gId);
 };
 
-// Berechnetes kWp (Dach & PV) in PV-Asset schreiben
+// Berechnetes kWp (Dach & PV) in PV-Asset schreiben (inkl. Ausrichtung + Spez)
 window.overwritePvAsset = function(gId) {
   const g  = window.gebaeude?.find(x => x.id === gId);
   const pv = getAssetsForBuilding(gId).find(a => a.type === 'PV');
@@ -70908,6 +70944,17 @@ window.overwritePvAsset = function(gId) {
   const kwp = calcGebKwpKorr(g);
   if (!pv.props) pv.props = {};
   pv.props.leistungKWp = Math.round(kwp * 10) / 10;
+  // Ausrichtung ableiten: Flachdach nach pvFlAusrichtung, Satteldach nach First-Richtung
+  let aus = 'sued';
+  if (g.dachform === 'sattel') {
+    const A = g.dachAzimut ?? 180;
+    const devEW = Math.min(Math.abs(A - 90), Math.abs(A - 270));
+    aus = devEW <= 45 ? 'ostwest' : 'sued';
+  } else if (!g.dachform || g.dachform === 'flach') {
+    aus = g.pvFlAusrichtung === 'ostwest' ? 'ostwest' : 'sued';
+  }
+  pv.props.ausrichtung = aus;
+  pv.props.pvSpez      = aus === 'ostwest' ? 950 : 1050;
   _rerenderCard(gId);
 };
 
@@ -71169,25 +71216,52 @@ function buildDachSection(g, opts = {}) {
   const usedNei = g.dachNeigung != null ? g.dachNeigung : defNei;
 
   // Steuerelemente je Dachform: Flachdach = GCR + Aufständerung · Schrägdach = Belegungsgrad
+  const usedAz = g.dachAzimut ?? 180;
   const flaechenControls = isPitched ? `
-    <div style="font-size:9px;color:var(--muted);margin-top:6px;">${isSattel ? 'Ganze Dachfläche zeichnen — wird automatisch am First in zwei Seiten (Azimut + Gegenseite) geteilt. ' : 'Dachfläche je Dachseite zeichnen. '}Module liegen parallel zum Dach; Grundriss wird mit 1/cos(Neigung) auf die echte Dachfläche projiziert. Ausrichtung &amp; Neigung aus den Feldern oben.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
+    <div style="font-size:9px;color:var(--muted);margin-top:6px;">${isSattel ? 'Ganze Dachfläche zeichnen — wird automatisch am First in zwei Seiten (Azimut + Gegenseite) geteilt. ' : 'Dachfläche je Dachseite zeichnen. '}Module liegen parallel zum Dach; Grundriss wird mit 1/cos(Neigung) auf die echte Dachfläche projiziert.</div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-top:5px;">
       <div class="inp-group">
         <div class="inp-label" title="Anteil der Dachfläche, der mit Modulen belegt wird (Ränder/Rahmen abgezogen)">Belegungsgrad (%)</div>
-        <input class="inp-field" type="number" min="40" max="100" step="5" value="${flBeleg}"
-          data-input="updateGebPvFl(${g.id},'belegung',this.value)"/>
+        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+          <input type="range" min="40" max="100" step="5" value="${flBeleg}"
+            style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
+            oninput="this.nextElementSibling.textContent=this.value+'%'"
+            data-change="updateGebPvFl(${g.id},'belegung',this.value)"/>
+          <span style="min-width:30px;text-align:right;font-size:11px;color:#ffd54f;font-weight:600;">${flBeleg}%</span>
+        </div>
       </div>
       <div class="inp-group">
-        <div class="inp-label">Neigung · Azimut</div>
-        <div class="inp-field" style="display:flex;align-items:center;color:var(--muted);cursor:default;">${usedNei}° · ${g.dachAzimut ?? 180}°</div>
+        <div class="inp-label" title="Neigung der Dachfläche in Grad">Neigung (°)</div>
+        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+          <input type="range" min="5" max="75" step="5" value="${usedNei}"
+            style="flex:1;cursor:pointer;accent-color:#80deea;height:4px;"
+            oninput="this.nextElementSibling.textContent=this.value+'°'"
+            data-change="updateGebDach(${g.id},'dachNeigung',this.value)"/>
+          <span style="min-width:28px;text-align:right;font-size:11px;color:#80deea;font-weight:600;">${usedNei}°</span>
+        </div>
+      </div>
+      <div class="inp-group">
+        <div class="inp-label" title="Ausrichtung der Südseite in Grad (0=Nord, 180=Süd, 90=Ost)">Azimut (°)</div>
+        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+          <input type="range" min="0" max="355" step="5" value="${usedAz}"
+            style="flex:1;cursor:pointer;accent-color:#ef9a9a;height:4px;"
+            oninput="this.nextElementSibling.textContent=this.value+'°'"
+            data-change="updateGebDach(${g.id},'dachAzimut',this.value)"/>
+          <span style="min-width:28px;text-align:right;font-size:11px;color:#ef9a9a;font-weight:600;">${usedAz}°</span>
+        </div>
       </div>
     </div>` : `
     <div style="font-size:9px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
       <div class="inp-group">
         <div class="inp-label" title="Ground Coverage Ratio: Anteil Modulfläche an gezeichneter Fläche">GCR (% Belegung)</div>
-        <input class="inp-field" type="number" min="5" max="95" step="5" value="${flGcr}"
-          data-input="updateGebPvFl(${g.id},'gcr',this.value)"/>
+        <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+          <input type="range" min="5" max="95" step="5" value="${flGcr}"
+            style="flex:1;cursor:pointer;accent-color:#ffd54f;height:4px;"
+            oninput="this.nextElementSibling.textContent=this.value+'%'"
+            data-change="updateGebPvFl(${g.id},'gcr',this.value)"/>
+          <span style="min-width:30px;text-align:right;font-size:11px;color:#ffd54f;font-weight:600;">${flGcr}%</span>
+        </div>
       </div>
       <div class="inp-group">
         <div class="inp-label">Aufständerung</div>
@@ -71305,9 +71379,46 @@ function attachGebPvLayer(g, fl) {
     color: col.border, weight: 2,
     fillColor: col.fill, fillOpacity: fl.typ === 'sperr' ? 1 : 0.6,
     dashArray: fl.typ === 'sperr' ? '4 3' : null,
-  }).addTo(map);
+  });
+  if ((fl.typ !== 'sperr' || window.selectedId === g.id) && window._pvLayerVisible !== false) fl.layer.addTo(map);
   fl.layer.on('click', () => { if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id); });
 }
+
+function syncSperrLayerVisibility() {
+  const selId = window.selectedId;
+  for (const g of (window.gebaeude || [])) {
+    for (const fl of (g.pvFlaechen || [])) {
+      if (fl.typ !== 'sperr' || !fl.layer) continue;
+      if (selId === g.id) { if (!map.hasLayer(fl.layer)) fl.layer.addTo(map); }
+      else                { if ( map.hasLayer(fl.layer)) map.removeLayer(fl.layer); }
+    }
+  }
+}
+window.syncSperrLayerVisibility = syncSperrLayerVisibility;
+
+window.setPvVisible = function(visible) {
+  window._pvLayerVisible = visible;
+  const selId = window.selectedId;
+  for (const g of (window.gebaeude || [])) {
+    if (g._pvModuleLayer) {
+      if (visible) { if (!map.hasLayer(g._pvModuleLayer)) g._pvModuleLayer.addTo(map); }
+      else         { if ( map.hasLayer(g._pvModuleLayer)) map.removeLayer(g._pvModuleLayer); }
+    }
+    for (const fl of (g.pvFlaechen || [])) {
+      if (!fl.layer) continue;
+      const show = visible && (fl.typ !== 'sperr' || selId === g.id);
+      if (show) { if (!map.hasLayer(fl.layer)) fl.layer.addTo(map); }
+      else      { if ( map.hasLayer(fl.layer)) map.removeLayer(fl.layer); }
+    }
+  }
+  for (const ff of (window.freiflaechen || [])) {
+    [ff.polygonLayer, ff.moduleSvgLayer].forEach(l => {
+      if (!l) return;
+      if (visible) { if (!map.hasLayer(l)) l.addTo(map); }
+      else         { if ( map.hasLayer(l)) map.removeLayer(l); }
+    });
+  }
+};
 
 // ── Punkt-in-Polygon (Ray-Casting) im metrischen XY-Raum ────────────────────
 function _pip(pt, poly) {
@@ -71472,6 +71583,17 @@ function buildPvModuleOverlay(res) {
     shapes += `<polygon points="${pts}" fill="${modFill}" stroke="${cellLine}" stroke-width="0.03"/>`;
     shapes += `<line x1="${m.edge[0].x.toFixed(2)}" y1="${m.edge[0].y.toFixed(2)}" x2="${m.edge[1].x.toFixed(2)}" y2="${m.edge[1].y.toFixed(2)}" stroke="${shimmer}" stroke-width="0.12"/>`;
   }
+  // Firstlinie bei Satteldach-Split: gestrichelte Linie durch den Schwerpunkt, senkrecht zum Azimut
+  if (res.ridgeLine) {
+    const { cx, cy, azDeg } = res.ridgeLine;
+    const azR  = azDeg * Math.PI / 180;
+    // Firstrichtung in SVG (x=Ost, y=Süd): senkrecht zur Falllinie
+    const rdx  = Math.cos(azR), rdy = Math.sin(azR);
+    const ext  = Math.max(Wm, Hm) * 0.8;
+    const x1   = (cx - rdx * ext).toFixed(2), y1 = (cy - rdy * ext).toFixed(2);
+    const x2   = (cx + rdx * ext).toFixed(2), y2 = (cy + rdy * ext).toFixed(2);
+    shapes += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(255,220,80,0.85)" stroke-width="0.25" stroke-dasharray="1.2,0.8"/>`;
+  }
   const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgEl.setAttribute('viewBox', `0 0 ${Wm.toFixed(2)} ${Hm.toFixed(2)}`);
   svgEl.setAttribute('preserveAspectRatio', 'none');
@@ -71514,11 +71636,22 @@ function _computeGebPvModules(g) {
     const rF = placePvModules(front, sperr, { ...base, azimutDeg: A });
     const rB = placePvModules(back,  sperr, { ...base, azimutDeg: A + 180 });
     const bbox = (rF.bbox || rB.bbox);
+    // Firstlinie: Schwerpunkt in SVG-Koordinaten für Overlay-Rendering
+    let ridgeLine = null;
+    if (bbox) {
+      const { minLat: bMinLat, maxLat: bMaxLat, minLng: bMinLng } = bbox;
+      const bCosL = Math.cos((bMinLat + bMaxLat) / 2 * Math.PI / 180);
+      ridgeLine = {
+        cx: (C.lng - bMinLng) * 111320 * bCosL,
+        cy: (bMaxLat - C.lat) * 111320,
+        azDeg: A,
+      };
+    }
     return {
       modules: rF.modules.concat(rB.modules),
       count: rF.count + rB.count,
       frontCount: rF.count, backCount: rB.count, splitAzimut: A,
-      bbox,
+      bbox, ridgeLine,
     };
   }
 
@@ -71577,7 +71710,8 @@ function redrawGebPvModules(g) {
   g._pvModuleDrawnSig = g._pvModSig;
   const ov = buildPvModuleOverlay(g._pvModCache);
   if (!ov) return;
-  g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 203 }).addTo(map);
+  g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 203 });
+  if (window._pvLayerVisible !== false) g._pvModuleLayer.addTo(map);
 }
 
 // Alle Flächen + Module eines Gebäudes neu zeichnen.
@@ -101540,6 +101674,8 @@ var ASSET_CFG = {
                   beschreibung:'Allgemeiner Stromverbraucher (z. B. Gebäude/Anschlussnehmer ohne eigenes Asset). Anschlussleistung in kW bestimmt die Last.' },
   Lade:         { label:'Ladeinfrastruktur', icon:'🔌', color:'#4dd0e1', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[],
                   beschreibung:'Ladeinfrastruktur (z. B. Wallboxen, Ladesäulen): Last ergibt sich aus Anzahl Ladepunkte × Leistung je Punkt.' },
+  TWW:          { label:'E-Trinkwasser',     icon:'🚿', color:'#ba68c8', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[],
+                  beschreibung:'Elektrische Trinkwasser-Nacherwärmung (Heizstab oder Booster-WP): hebt das vom Wärmenetz vorgewärmte Trinkwasser auf Zieltemperatur (Legionellenschutz 60 °C). Last = el. Nacherwärmungsbedarf am Gebäude.' },
   // ── Strom-Erzeuger ──
   PV:           { label:'PV',                icon:'☀', color:'#ffee58', domain:'strom', kategorie:'erzeuger', energy_in:['solar'], energy_out:['strom'],
                   beschreibung:'Photovoltaik-Anlage: erzeugt Strom aus Solarstrahlung. Speist je nach Eigenverbrauch/Überschuss ins Netz ein.' },
@@ -101569,7 +101705,7 @@ var ASSET_CFG = {
 // Typrangfolge für Sortierung/Topologie: niedriger = versorgungsseitig
 var TYPE_RANK = {
   NAP:0, Schaltanlage:1, Trafo:2, NSHV:3, UV:4, KVS:4,
-  Verbraucher:5, WP:5, Geo:5, FG:5, Stromkessel:5, Lade:5, Nsa:5, KWK:5,
+  Verbraucher:5, WP:5, Geo:5, FG:5, Stromkessel:5, Lade:5, TWW:5, Nsa:5, KWK:5,
   Wind:6, PV:6, Batterie:6, Reserve:7,
 };
 
@@ -101588,6 +101724,11 @@ var ASSET_PROPS_SCHEMA = {
   KVS:          [{ key:'nennstromA',          label:'Nennstrom (A)' },
                  { key:'abgaenge',            label:'Abgänge' }],
   Verbraucher:  [{ key:'leistungKW',          label:'Leistung (kW)' }],
+  TWW:          [{ key:'leistungKW',          label:'El. Leistung (kW)' },
+                 { key:'eingabeModus',        label:'Eingabe' },
+                 { key:'personen',            label:'Personen' },
+                 { key:'energieKwhA',         label:'TWW-Wärme (kWh/a)' },
+                 { key:'geraet',              label:'Gerät' }],
   PV:           [{ key:'leistungKWp',  label:'Leistung (kWp)' },
                  { key:'ausrichtung', label:'Ausrichtung' },
                  { key:'pvSpez',      label:'Ertrag (kWh/kWp·a)' }],
@@ -101730,6 +101871,65 @@ function getAssetsForBuilding(buildingId) {
   return ASSETS.items.filter(a => a.buildingId === buildingId);
 }
 
+// ── TWW-Nacherwärmung: Defaults & Leistungsberechnung ──────────────────────
+// Elektrische Trinkwasser-Nacherwärmung (Heizstab / Booster-WP). Die VL-Temperatur
+// kommt aus dem Wärmenetz (g.tempIn, sonst globaler Netz-VL); daraus der Temperatur-
+// hub auf Zieltemperatur (60 °C Legionellenschutz). Leistung wahlweise aus Personen-
+// zahl oder direkter TWW-Energie.
+var TWW_DEFAULTS = {
+  eingabeModus:   'personen',  // 'personen' | 'energie'
+  personen:       20,
+  kwhProPersonA:  500,         // TWW-Wärmebedarf je Person [kWh/a] (Richtwert Wohnen)
+  energieKwhA:    10000,       // direkte TWW-Wärmemenge gesamt [kWh/a, thermisch]
+  geraet:         'heizstab',  // 'heizstab' (COP 1) | 'booster' (Booster-WP)
+  copBooster:     2.5,         // COP Booster-WP beim Hub auf ~60 °C
+  zielTempC:      60,          // Legionellenschutz DVGW W551
+  kaltwasserTempC:10,
+  hxApproachK:    5,           // Übergabeverlust Netz → TWW-Speicher
+  vbhTww:         1500,        // Vollbenutzungsstunden TWW-Nacherwärmung → Energie ⇒ Spitze
+};
+
+function _twwNum(v, dflt) { const n = parseFloat(v); return isNaN(n) ? dflt : n; }
+
+// VL-Temperatur am Gebäude: bevorzugt aus Wärmenetz (abgekühlter Vorlauf), sonst global
+function getGebVlTemp(geb) {
+  if (geb && geb.tempIn != null && !isNaN(parseFloat(geb.tempIn))) return parseFloat(geb.tempIn);
+  if (typeof document !== 'undefined') {
+    const el = document.getElementById('netz-vl');
+    if (el) return parseFloat(el.value) || 90;
+  }
+  return 90;
+}
+
+// Elektrische Nacherwärmungs-Spitzenleistung + Zwischengrößen für Anzeige
+function computeTwwKw(props = {}, geb = null) {
+  const d     = TWW_DEFAULTS;
+  const modus = props.eingabeModus || d.eingabeModus;
+  const ziel  = _twwNum(props.zielTempC, d.zielTempC);
+  const kw    = _twwNum(props.kaltwasserTempC, d.kaltwasserTempC);
+  const hx    = _twwNum(props.hxApproachK, d.hxApproachK);
+  const geraet= props.geraet || d.geraet;
+  const cop   = geraet === 'booster' ? Math.max(0.1, _twwNum(props.copBooster, d.copBooster)) : 1.0;
+  const vbh   = Math.max(1, _twwNum(props.vbhTww, d.vbhTww));
+
+  // TWW-Wärmebedarf gesamt [kWh/a, thermisch]
+  const qTwwTotal = modus === 'energie'
+    ? _twwNum(props.energieKwhA, d.energieKwhA)
+    : _twwNum(props.personen, d.personen) * _twwNum(props.kwhProPersonA, d.kwhProPersonA);
+
+  // Nutzbare Netz-Temperatur am TWW-Speicher und Nacherwärmungsanteil
+  const tVl   = getGebVlTemp(geb);
+  const tNet  = tVl - hx;
+  const span  = Math.max(1, ziel - kw);
+  const anteil= Math.max(0, Math.min(1, (ziel - tNet) / span));
+
+  const qNachTh = qTwwTotal * anteil;       // thermischer Nacherwärmungsbedarf [kWh/a]
+  const qNachEl = qNachTh / cop;            // elektrisch [kWh/a]
+  const leistungKW = Math.round(qNachEl / vbh * 10) / 10;
+
+  return { leistungKW, qTwwTotal, anteil, qNachTh, qNachEl, tVl, tNet, ziel, cop, vbh, geraet, modus };
+}
+
 // Komplette Asset-Liste leeren (z.B. beim Projekt-Laden)
 function clearAssets() {
   for (const a of ASSETS.items) {
@@ -101745,6 +101945,7 @@ function clearAssets() {
 // ── 13b-assets-render.js — Leaflet-Marker für Assets ────────────────────────
 // Eine Marker-Gruppe pro Gebäude (am Polygon-Schwerpunkt), Klick öffnet Liste.
 // Assets ohne Gebäude → Einzel-Marker.
+
 
 
 
@@ -102055,7 +102256,12 @@ function drawBuildingGroup(buildingId) {
       spiderfyBuilding(buildingId, m.getLatLng());
       return;
     }
+    selectFromMap(buildingId);
     openBuildingAssetList(buildingId, m);
+  });
+  m.on('contextmenu', e => {
+    L.DomEvent.stopPropagation(e);
+    _showAssetDeletePopup(buildingId, m.getLatLng());
   });
 
   m.addTo(assetLayer);
@@ -102073,6 +102279,39 @@ function drawBuildingGroup(buildingId) {
 }
 
 // Liste aller Assets des Gebäudes — Auswahl öffnet Inspector
+function _showAssetDeletePopup(buildingId, latlng) {
+  const assets = getAssetsForBuilding(buildingId);
+  if (assets.length === 0) return;
+  if (assets.length === 1) {
+    deleteAsset(assets[0].id);
+    redrawAllAssets();
+    return;
+  }
+  const rows = assets.map(a => {
+    const cfg = ASSET_CFG[a.type];
+    return `<div class="asset-del-row" data-id="${a.id}" style="display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:4px;">` +
+      `<span style="background:${cfg.color};width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${cfg.icon}</span>` +
+      `<span style="flex:1;font-size:11px;">${a.name}</span>` +
+      `<span style="color:#ef5350;font-size:12px;font-weight:700;">✕</span>` +
+      `</div>`;
+  }).join('');
+  const popup = L.popup({ className: 'asset-list-popup', offset: [0, -8], maxWidth: 240 })
+    .setLatLng(latlng)
+    .setContent(`<div style="font-size:10px;color:var(--muted);padding:4px 6px 2px;border-bottom:1px solid var(--border);margin-bottom:4px;">Löschen</div><div>${rows}</div>`)
+    .openOn(map);
+  setTimeout(() => {
+    document.querySelectorAll('.asset-del-row').forEach(row => {
+      row.addEventListener('mouseenter', () => row.style.background = 'rgba(239,83,80,0.12)');
+      row.addEventListener('mouseleave', () => row.style.background = '');
+      row.addEventListener('click', () => {
+        deleteAsset(row.dataset.id);
+        map.closePopup(popup);
+        redrawAllAssets();
+      });
+    });
+  }, 0);
+}
+
 function openBuildingAssetList(buildingId, marker) {
   const assets = getAssetsForBuilding(buildingId);
   if (assets.length === 0) return;
@@ -102162,6 +102401,12 @@ function spiderfyBuilding(buildingId, centerLatLng) {
         if (typeof window.openAssetInspector === 'function') window.openAssetInspector(a);
       }
       collapseAssetSpider();
+    });
+    sm.on('contextmenu', ev => {
+      L.DomEvent.stopPropagation(ev);
+      collapseAssetSpider();
+      deleteAsset(a.id);
+      redrawAllAssets();
     });
   });
 
@@ -102282,6 +102527,11 @@ function drawSingleMarker(asset) {
     L.DomEvent.stopPropagation(e);
     ASSETS.selectedId = asset.id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
+  });
+  m.on('contextmenu', e => {
+    L.DomEvent.stopPropagation(e);
+    deleteAsset(asset.id);
+    redrawAllAssets();
   });
 
   if (asset.type === 'Lade') {
@@ -102411,7 +102661,7 @@ function buildPalette() {
 
   const GROUPS = [
     { label: 'Netzinfrastruktur', types: ['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS'] },
-    { label: 'Verbraucher',       types: ['Verbraucher', 'Lade'] },
+    { label: 'Verbraucher',       types: ['Verbraucher', 'Lade', 'TWW'] },
     { label: 'Erzeugung',         types: ['PV', 'Wind'] },
     { label: 'Speicher & Backup', types: ['Batterie', 'Nsa'] },
     { label: 'Sonstiges',         types: ['Reserve'], fullWidth: true },
@@ -102904,6 +103154,47 @@ function buildPropsForm(asset) {
       return numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p})
         + slpSelectHtml
         + `<button class="ins-link-btn" data-slp-open="${curSlp}">Profil ansehen →</button>`;
+    }
+
+    case 'TWW': {
+      const d = TWW_DEFAULTS;
+      if (!p.eingabeModus) p.eingabeModus = d.eingabeModus;
+      if (!p.geraet)       p.geraet       = d.geraet;
+      const geb = (typeof window !== 'undefined' && window.gebaeude)
+        ? window.gebaeude.find(g => g.id === asset.buildingId) : null;
+      const res = computeTwwKw(p, geb);
+      p.leistungKW = res.leistungKW;   // an NAP-/Ergebnis-Logik durchreichen
+
+      const eingabeSel = selectField(id, 'eingabeModus', 'Bedarf über',
+        [{value:'personen', label:'Personenzahl'}, {value:'energie', label:'TWW-Energie (kWh/a)'}],
+        p.eingabeModus);
+      const bedarfFields = p.eingabeModus === 'energie'
+        ? numField(id, 'energieKwhA', 'TWW-Wärme gesamt (kWh/a)', d.energieKwhA, {props:p, step:100, min:0})
+        : row2(
+            numField(id, 'personen',      'Personen',        d.personen,      {props:p, step:1, min:0}),
+            numField(id, 'kwhProPersonA', 'kWh/(Pers.·a)',   d.kwhProPersonA, {props:p, step:10, min:0})
+          );
+      const geraetSel = selectField(id, 'geraet', 'Nacherwärmung',
+        [{value:'heizstab', label:'Heizstab (COP 1)'}, {value:'booster', label:'Booster-WP'}],
+        p.geraet);
+      const copField = p.geraet === 'booster'
+        ? numField(id, 'copBooster', 'COP Booster', d.copBooster, {props:p, step:0.1, min:0.5})
+        : '';
+      const paramRow = row2(
+        numField(id, 'zielTempC', 'Zieltemp. (°C)', d.zielTempC, {props:p, step:1, min:30}),
+        numField(id, 'vbhTww',    'Vollben.-std (h/a)', d.vbhTww,  {props:p, step:50, min:100})
+      );
+      const hub = Math.max(0, res.ziel - res.tNet);
+      const readout = `
+        <div style="margin-top:8px;padding:7px 9px;background:rgba(186,104,206,0.10);border-left:2px solid #ba68c8;border-radius:4px;font-size:10px;line-height:1.5;">
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">VL am Gebäude${geb?'':' (global)'}</span><span>${res.tVl.toFixed(0)} °C → nutzbar ${res.tNet.toFixed(0)} °C</span></div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Hub auf ${res.ziel.toFixed(0)} °C · Nacherw.-Anteil</span><span>${hub.toFixed(0)} K · ${(res.anteil*100).toFixed(0)} %</span></div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">El. Energie</span><span>${Math.round(res.qNachEl).toLocaleString('de-DE')} kWh/a</span></div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;border-top:1px solid var(--border);padding-top:3px;">
+            <span style="font-weight:700;">El. Anschlussleistung</span><span style="font-weight:700;color:#ce93d8;font-size:13px;">${res.leistungKW.toFixed(1)} kW</span></div>
+          ${res.anteil <= 0 ? `<div style="color:#66bb6a;margin-top:3px;">✓ Netz-VL erreicht Zieltemperatur — keine Nacherwärmung nötig.</div>` : ''}
+        </div>`;
+      return eingabeSel + bedarfFields + geraetSel + copField + paramRow + readout;
     }
 
     case 'WP':
@@ -103697,7 +103988,7 @@ function renderInspector(asset) {
 }
 
 // ── Asset-Sidebar ─────────────────────────────────────────────────────────────
-var TYPE_ORDER = ['NAP','Schaltanlage','Trafo','NSHV','UV','Verbraucher','Lade','PV','Wind','Batterie','WP','Geo','FG','KWK','Stromkessel','Nsa'];
+var TYPE_ORDER = ['NAP','Schaltanlage','Trafo','NSHV','UV','Verbraucher','Lade','TWW','PV','Wind','Batterie','WP','Geo','FG','KWK','Stromkessel','Nsa'];
 
 function renderAssetSidebar(filterText) {
   const container = document.getElementById('asset-sidebar-list');
@@ -103832,6 +104123,8 @@ function wireEvents(panel, asset) {
         asset._pvProfile = null; // Cache invalidieren
         _drawPvInspectorChart(panel, asset);
       }
+      // TWW: Leistung hängt von mehreren Feldern + Netz-VL ab → Panel neu aufbauen
+      if (asset.type === 'TWW') renderInspector(asset);
     };
     el.addEventListener('change', handler);
   });
@@ -109787,7 +110080,7 @@ var TYPE_RANK = {
 // ── Profil-Richtung & Zeitreihen-Lookup (Modul-Ebene) ────────────────────────
 function profileDirection(asset) {
   if (!asset) return 'bezug';
-  if (['WP','Verbraucher','Lade','Nsa'].includes(asset.type)) return 'bezug';
+  if (['WP','Verbraucher','Lade','TWW','Nsa'].includes(asset.type)) return 'bezug';
   if (asset.type === 'PV') return 'einspeisung';
   if (asset.type === 'Batterie') {
     const ep = asset.props || {};
@@ -109858,7 +110151,7 @@ function _napBuildProfileDescriptor(asset, gzf) {
   // 3. BDEW-SLP: z.B. Verbraucher mit slpTyp='H0'
   // Typ-basierter Fallback falls slpTyp nie explizit gesetzt wurde
   // (Inspector öffnen schreibt Default jetzt direkt in props, aber für ältere Assets)
-  const SLP_DEFAULTS = { Verbraucher: 'G0' };
+  const SLP_DEFAULTS = { Verbraucher: 'G0', TWW: 'TWW' };
   const slpTyp = p.slpTyp || SLP_DEFAULTS[asset.type] || null;
   if (slpTyp) {
     const slp = getSlpProfile(slpTyp);
@@ -110072,6 +110365,7 @@ function _assetPower(a) {
   let loadKW = 0, genKW = 0;
   switch (a.type) {
     case 'Verbraucher': loadKW = parseFloat(ep.leistungKW)  || 0; break;
+    case 'TWW':         loadKW = parseFloat(ep.leistungKW)  || 0; break;
     case 'Lade':        loadKW = (parseInt(ep.anzahlPunkte)||1)*(parseFloat(ep.leistungProPunktKW)||11); break;
     case 'WP':          loadKW = parseFloat(ep.leistungKW)  || 0; break;
     case 'Nsa':         loadKW = parseFloat(ep.leistungKW)  || 0; break;
@@ -110089,7 +110383,7 @@ function _assetPower(a) {
     const peak = Math.max(...vals);
     if (peak > 0) {
       if (loadKW > 0 || (genKW === 0 && ['PV','Wind','KWK'].includes(a.type)))         genKW  = peak;
-      if (genKW  > 0 || (loadKW === 0 && ['Verbraucher','Lade','WP','Nsa'].includes(a.type))) loadKW = peak;
+      if (genKW  > 0 || (loadKW === 0 && ['Verbraucher','Lade','TWW','WP','Nsa'].includes(a.type))) loadKW = peak;
     }
   }
   return { loadKW, genKW };
@@ -110099,7 +110393,7 @@ function _assetPower(a) {
 function napBuildMassnahmen() {
   const dataYear = _N.baseMeasuredData?.year || _N.data?.year || _yr();
   const list = [];
-  const CONSUMER_TYPES = ['Verbraucher','Lade','WP','Nsa','PV','KWK','Wind','Batterie'];
+  const CONSUMER_TYPES = ['Verbraucher','Lade','TWW','WP','Nsa','PV','KWK','Wind','Batterie'];
 
   for (const a of _allAssets()) {
     if (!CONSUMER_TYPES.includes(a.type)) continue;
@@ -110445,7 +110739,7 @@ function napGetEndausbauLastgang(bisJahr) {
   const dataYear = baseMeasured.year || _yr();
   const zielJahr = bisJahr || dataYear;
 
-  const CONSUMER_TYPES = ['Verbraucher','Lade','WP','Nsa','PV','KWK','Wind','Batterie'];
+  const CONSUMER_TYPES = ['Verbraucher','Lade','TWW','WP','Nsa','PV','KWK','Wind','Batterie'];
   const entries = [];
   for (const a of allA) {
     if (!CONSUMER_TYPES.includes(a.type)) continue;
@@ -113281,6 +113575,139 @@ if (typeof window!=='undefined') {
   window.knaSetTypeFilter     = knaSetTypeFilter;
   window.knaSetZoomMonth      = knaSetZoomMonth;
   window.knaOpenFullscreen    = knaOpenFullscreen;
+}
+
+
+// ── 14-viewer.js ──
+// ── Viewer-Modus (?viewer=1) ─────────────────────────────────────────────────
+// Aktiviert eine read-only TOC-Sidebar (Gutachten-Gliederung 1–6) im left-panel.
+// Aktivierung: URL mit ?viewer=1 aufrufen.
+
+(function () {
+  if (!/[?&]viewer=1/.test(location.search)) return;
+
+  var _CSS = [
+    // Normale Tab-Buttons ausblenden
+    'body.viewer #lp-tabs { display: none; }',
+    'body.viewer .lp-head .lp-collapse-btn { display: none; }',
+    // TOC-Container
+    '#viewer-toc { padding: 10px 8px 8px; border-bottom: 1px solid var(--border); }',
+    // Header-Zeile
+    '.vtoc-header { display: flex; justify-content: space-between; align-items: center;',
+    '  margin-bottom: 10px; padding: 0 4px; }',
+    '.vtoc-header-label { font-size: 9px; letter-spacing: 0.08em; color: var(--muted);',
+    '  text-transform: uppercase; }',
+    '.vtoc-badge { font-size: 8px; background: rgba(239,83,80,0.12);',
+    '  border: 1px solid rgba(239,83,80,0.35); color: #ef9a9a;',
+    '  border-radius: 3px; padding: 2px 6px; letter-spacing: 0.05em; white-space: nowrap; }',
+    // Nav
+    '.vtoc-nav { display: flex; flex-direction: column; gap: 2px; }',
+    '.vtoc-divider { height: 1px; background: var(--border); margin: 5px 4px; }',
+    // Einzelner Eintrag
+    '.vtoc-item { display: flex; align-items: center; gap: 8px; width: 100%;',
+    '  text-align: left; padding: 7px 8px; background: none;',
+    '  border: 1px solid transparent; border-radius: 5px;',
+    '  color: var(--muted); cursor: pointer; font-size: 11px; font-family: inherit;',
+    '  transition: background 0.12s, border-color 0.12s, color 0.12s; }',
+    '.vtoc-item:hover { background: rgba(255,255,255,0.04);',
+    '  border-color: var(--border); color: var(--text); }',
+    '.vtoc-item.active { background: rgba(79,195,247,0.10);',
+    '  border-color: rgba(79,195,247,0.35); color: var(--accent); }',
+    // Nummerkreis
+    '.vtoc-num { flex-shrink: 0; width: 20px; height: 20px;',
+    '  display: flex; align-items: center; justify-content: center;',
+    "  border-radius: 50%; background: rgba(255,255,255,0.06);",
+    "  font-size: 9px; font-family: 'DM Mono', monospace; }",
+    '.vtoc-item.active .vtoc-num { background: rgba(79,195,247,0.18); }',
+    '.vtoc-label { font-size: 11px; line-height: 1.3; }',
+  ].join('\n');
+
+  var _CHAPTERS = [
+    [1, 'Projektgebiet'],
+    [2, 'Gebäudebestand'],
+    null, // divider
+    [3, 'Wärme & Energiebedarf'],
+    [4, 'Versorgungsvarianten'],
+    [5, 'Wirtschaftlichkeit'],
+    null, // divider
+    [6, 'Emissionen & Fazit'],
+  ];
+
+  function _item(n, label) {
+    return '<button class="vtoc-item' + (n === 1 ? ' active' : '') +
+      '" data-vtoc="' + n + '" data-click="viewerNav(' + n + ')">' +
+      '<span class="vtoc-num">' + n + '</span>' +
+      '<span class="vtoc-label">' + label + '</span>' +
+      '</button>';
+  }
+
+  function _activate() {
+    // CSS
+    var s = document.createElement('style');
+    s.textContent = _CSS;
+    document.head.appendChild(s);
+
+    // body-Klasse
+    document.body.classList.add('viewer');
+
+    // TOC aufbauen
+    var lp = document.getElementById('lp-tabs');
+    if (!lp) return;
+
+    var nav = _CHAPTERS.map(function(ch) {
+      return ch ? _item(ch[0], ch[1]) : '<div class="vtoc-divider"></div>';
+    }).join('');
+
+    var toc = document.createElement('div');
+    toc.id = 'viewer-toc';
+    toc.innerHTML =
+      '<div class="vtoc-header">' +
+        '<span class="vtoc-header-label">Gliederung</span>' +
+        '<span class="vtoc-badge">Nur-Lesen</span>' +
+      '</div>' +
+      '<nav class="vtoc-nav">' + nav + '</nav>';
+
+    lp.parentNode.insertBefore(toc, lp);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _activate);
+  } else {
+    _activate();
+  }
+})();
+
+function viewerNav(n) {
+  document.querySelectorAll('.vtoc-item').forEach(function(b) {
+    b.classList.toggle('active', +b.dataset.vtoc === n);
+  });
+  switch (n) {
+    case 1:
+      setViewMode('karte');
+      setLeftTab('gebiet');
+      break;
+    case 2:
+      setViewMode('karte');
+      setLeftTab('ergebnis');
+      break;
+    case 3:
+      setViewMode('analyse');
+      setAnalyseSection('waerme');
+      if (typeof setWaermeTab === 'function') setWaermeTab('lastgang');
+      break;
+    case 4:
+      setViewMode('analyse');
+      setAnalyseSection('uebersicht');
+      break;
+    case 5:
+      setViewMode('analyse');
+      setAnalyseSection('wirtschaft');
+      break;
+    case 6:
+      setViewMode('analyse');
+      setAnalyseSection('emissionen');
+      break;
+  }
 }
 
 

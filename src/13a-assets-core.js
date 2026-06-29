@@ -26,6 +26,8 @@ export const ASSET_CFG = {
                   beschreibung:'Allgemeiner Stromverbraucher (z. B. Gebäude/Anschlussnehmer ohne eigenes Asset). Anschlussleistung in kW bestimmt die Last.' },
   Lade:         { label:'Ladeinfrastruktur', icon:'🔌', color:'#4dd0e1', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[],
                   beschreibung:'Ladeinfrastruktur (z. B. Wallboxen, Ladesäulen): Last ergibt sich aus Anzahl Ladepunkte × Leistung je Punkt.' },
+  TWW:          { label:'E-Trinkwasser',     icon:'🚿', color:'#ba68c8', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[],
+                  beschreibung:'Elektrische Trinkwasser-Nacherwärmung (Heizstab oder Booster-WP): hebt das vom Wärmenetz vorgewärmte Trinkwasser auf Zieltemperatur (Legionellenschutz 60 °C). Last = el. Nacherwärmungsbedarf am Gebäude.' },
   // ── Strom-Erzeuger ──
   PV:           { label:'PV',                icon:'☀', color:'#ffee58', domain:'strom', kategorie:'erzeuger', energy_in:['solar'], energy_out:['strom'],
                   beschreibung:'Photovoltaik-Anlage: erzeugt Strom aus Solarstrahlung. Speist je nach Eigenverbrauch/Überschuss ins Netz ein.' },
@@ -55,7 +57,7 @@ export const ASSET_CFG = {
 // Typrangfolge für Sortierung/Topologie: niedriger = versorgungsseitig
 export const TYPE_RANK = {
   NAP:0, Schaltanlage:1, Trafo:2, NSHV:3, UV:4, KVS:4,
-  Verbraucher:5, WP:5, Geo:5, FG:5, Stromkessel:5, Lade:5, Nsa:5, KWK:5,
+  Verbraucher:5, WP:5, Geo:5, FG:5, Stromkessel:5, Lade:5, TWW:5, Nsa:5, KWK:5,
   Wind:6, PV:6, Batterie:6, Reserve:7,
 };
 
@@ -74,6 +76,11 @@ export const ASSET_PROPS_SCHEMA = {
   KVS:          [{ key:'nennstromA',          label:'Nennstrom (A)' },
                  { key:'abgaenge',            label:'Abgänge' }],
   Verbraucher:  [{ key:'leistungKW',          label:'Leistung (kW)' }],
+  TWW:          [{ key:'leistungKW',          label:'El. Leistung (kW)' },
+                 { key:'eingabeModus',        label:'Eingabe' },
+                 { key:'personen',            label:'Personen' },
+                 { key:'energieKwhA',         label:'TWW-Wärme (kWh/a)' },
+                 { key:'geraet',              label:'Gerät' }],
   PV:           [{ key:'leistungKWp',  label:'Leistung (kWp)' },
                  { key:'ausrichtung', label:'Ausrichtung' },
                  { key:'pvSpez',      label:'Ertrag (kWh/kWp·a)' }],
@@ -214,6 +221,65 @@ export function listAssets({ domain, type, buildingId } = {}) {
 // Alle Assets eines Gebäudes (per-Building-View)
 export function getAssetsForBuilding(buildingId) {
   return ASSETS.items.filter(a => a.buildingId === buildingId);
+}
+
+// ── TWW-Nacherwärmung: Defaults & Leistungsberechnung ──────────────────────
+// Elektrische Trinkwasser-Nacherwärmung (Heizstab / Booster-WP). Die VL-Temperatur
+// kommt aus dem Wärmenetz (g.tempIn, sonst globaler Netz-VL); daraus der Temperatur-
+// hub auf Zieltemperatur (60 °C Legionellenschutz). Leistung wahlweise aus Personen-
+// zahl oder direkter TWW-Energie.
+export const TWW_DEFAULTS = {
+  eingabeModus:   'personen',  // 'personen' | 'energie'
+  personen:       20,
+  kwhProPersonA:  500,         // TWW-Wärmebedarf je Person [kWh/a] (Richtwert Wohnen)
+  energieKwhA:    10000,       // direkte TWW-Wärmemenge gesamt [kWh/a, thermisch]
+  geraet:         'heizstab',  // 'heizstab' (COP 1) | 'booster' (Booster-WP)
+  copBooster:     2.5,         // COP Booster-WP beim Hub auf ~60 °C
+  zielTempC:      60,          // Legionellenschutz DVGW W551
+  kaltwasserTempC:10,
+  hxApproachK:    5,           // Übergabeverlust Netz → TWW-Speicher
+  vbhTww:         1500,        // Vollbenutzungsstunden TWW-Nacherwärmung → Energie ⇒ Spitze
+};
+
+function _twwNum(v, dflt) { const n = parseFloat(v); return isNaN(n) ? dflt : n; }
+
+// VL-Temperatur am Gebäude: bevorzugt aus Wärmenetz (abgekühlter Vorlauf), sonst global
+export function getGebVlTemp(geb) {
+  if (geb && geb.tempIn != null && !isNaN(parseFloat(geb.tempIn))) return parseFloat(geb.tempIn);
+  if (typeof document !== 'undefined') {
+    const el = document.getElementById('netz-vl');
+    if (el) return parseFloat(el.value) || 90;
+  }
+  return 90;
+}
+
+// Elektrische Nacherwärmungs-Spitzenleistung + Zwischengrößen für Anzeige
+export function computeTwwKw(props = {}, geb = null) {
+  const d     = TWW_DEFAULTS;
+  const modus = props.eingabeModus || d.eingabeModus;
+  const ziel  = _twwNum(props.zielTempC, d.zielTempC);
+  const kw    = _twwNum(props.kaltwasserTempC, d.kaltwasserTempC);
+  const hx    = _twwNum(props.hxApproachK, d.hxApproachK);
+  const geraet= props.geraet || d.geraet;
+  const cop   = geraet === 'booster' ? Math.max(0.1, _twwNum(props.copBooster, d.copBooster)) : 1.0;
+  const vbh   = Math.max(1, _twwNum(props.vbhTww, d.vbhTww));
+
+  // TWW-Wärmebedarf gesamt [kWh/a, thermisch]
+  const qTwwTotal = modus === 'energie'
+    ? _twwNum(props.energieKwhA, d.energieKwhA)
+    : _twwNum(props.personen, d.personen) * _twwNum(props.kwhProPersonA, d.kwhProPersonA);
+
+  // Nutzbare Netz-Temperatur am TWW-Speicher und Nacherwärmungsanteil
+  const tVl   = getGebVlTemp(geb);
+  const tNet  = tVl - hx;
+  const span  = Math.max(1, ziel - kw);
+  const anteil= Math.max(0, Math.min(1, (ziel - tNet) / span));
+
+  const qNachTh = qTwwTotal * anteil;       // thermischer Nacherwärmungsbedarf [kWh/a]
+  const qNachEl = qNachTh / cop;            // elektrisch [kWh/a]
+  const leistungKW = Math.round(qNachEl / vbh * 10) / 10;
+
+  return { leistungKW, qTwwTotal, anteil, qNachTh, qNachEl, tVl, tNet, ziel, cop, vbh, geraet, modus };
 }
 
 // Komplette Asset-Liste leeren (z.B. beim Projekt-Laden)
