@@ -2,7 +2,7 @@
 // Datenstruktur & CRUD für Anlagen. Neutral benannt (ASSETS, nicht EL.assets),
 // damit Wärme-Erzeuger später in dasselbe System einziehen können.
 
-import { globalYear } from './01-globals-varianten.js';
+import { globalYear, massnahmeJahr } from './01-globals-varianten.js';
 
 // ── Asset-Typ-Katalog ──────────────────────────────────────────────────────
 // domain: 'strom' | 'waerme' | 'hybrid' (z.B. WP, BHKW später)
@@ -144,8 +144,8 @@ export function getAssetPropsForYear(asset, year) {
   const props = { ...(asset.props || {}) };
   const measures = (asset.massnahmen || [])
     .filter(m => m.status === 'umgesetzt' && m.newProps && Object.keys(m.newProps).length > 0)
-    .filter(m => !m.jahr || parseInt(m.jahr) <= y)
-    .sort((a, b) => (a.jahr || 0) - (b.jahr || 0));
+    .filter(m => { const mj = massnahmeJahr(m); return mj === null || mj <= y; })
+    .sort((a, b) => (massnahmeJahr(a) ?? 0) - (massnahmeJahr(b) ?? 0));
   for (const m of measures) {
     Object.assign(props, m.newProps);
   }
@@ -200,6 +200,17 @@ export function deleteAsset(id) {
   // Zugehörige Leitungen löschen
   ASSETS.edges = ASSETS.edges.filter(e => e.aId !== id && e.bId !== id);
   ASSETS.items.splice(i, 1);
+  // Registrierten Strom-Knoten mitsamt Marker entfernen — sonst bleibt ein
+  // verwaister Knoten in window.stromNodes zurück, der beim Speichern persistiert
+  // und beim Laden als grauer „Geister"-Marker (klickt nicht zum Inspektor) erscheint.
+  if (typeof window !== 'undefined' && Array.isArray(window.stromNodes)) {
+    const ni = window.stromNodes.findIndex(n => n.id === id);
+    if (ni >= 0) {
+      const sn = window.stromNodes[ni];
+      if (sn.marker && sn.marker.remove) sn.marker.remove();
+      window.stromNodes.splice(ni, 1);
+    }
+  }
   if (ASSETS.selectedId === id) ASSETS.selectedId = null;
   return true;
 }

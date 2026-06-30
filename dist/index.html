@@ -338,6 +338,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .btn-secondary.active{background:#e53935;color:#fff;border-color:#e53935;}
 .btn-purple{padding:6px 12px;border-radius:5px;border:1px solid #9c27b0;background:transparent;color:#ce93d8;font-family:inherit;font-size:11px;cursor:pointer;margin-left:auto;font-weight:normal;}
 .btn-purple:hover{background:#2a1040;}
+.btn-xs{padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;font-weight:normal;}
+.btn-xs:hover{border-color:var(--accent);color:var(--accent);}
+.btn-xs.blue{border-color:#4fc3f7;color:#4fc3f7;}
+.btn-xs.blue:hover{background:rgba(79,195,247,.12);}
 
 .tb-sep{display:inline-flex;align-items:center;margin:0 3px 0 6px;padding-left:7px;border-left:1px solid rgba(255,255,255,0.1);font-size:7.5px;color:rgba(255,255,255,0.28);letter-spacing:.09em;text-transform:uppercase;white-space:nowrap;align-self:stretch;}
 .erzeuger-bar{display:flex;align-items:center;justify-content:space-evenly;gap:4px;padding:5px 14px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;}
@@ -902,6 +906,26 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .ci-select{flex:1;padding:4px 8px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:11px;outline:none;}
 .ci-select:focus{border-color:var(--accent);}
 .ci-select:disabled{opacity:0.4;cursor:not-allowed;}
+
+/* Asset Selektions-Ring (Bulk-Auswahl via Shift+Click / Checkbox) */
+.asset-marker.asset-selected { box-shadow: 0 0 0 3px #2196F3, 0 0 8px 2px rgba(33,150,243,0.35); }
+.sb-asset-row.asset-bulk-selected { background:rgba(33,150,243,.12); outline:1px solid rgba(33,150,243,.3); }
+
+/* Bulk-Modus: nicht-selektierte Marker ausgrauen (wie „abgerissen") — weiterhin
+   sichtbar und anklickbar, aber blass/grau, damit selektierte hervorstechen.
+   Wrapper-Ebene → wirkt auch für gebäudegruppierte Chip-Marker. */
+.leaflet-marker-icon.asset-bulk-dimmed { opacity: 0.35; filter: grayscale(1); transition: opacity .15s, filter .15s; }
+
+/* Bulk-Modus: Karte auf Elektro-Assets reduzieren — wie „Ansicht: nur Elektro-Assets".
+   Andere Daten-Ebenen aus, Basiskarte bleibt normal, Asset-Marker bleiben sichtbar/klickbar. */
+.leaflet-container.bulk-isolate .leaflet-overlay-pane,
+.leaflet-container.bulk-isolate .leaflet-pv-pane,
+.leaflet-container.bulk-isolate .leaflet-netz-pane     { display: none; }
+.leaflet-container.bulk-isolate .leaflet-marker-icon:not(.asset-divicon) { display: none; }
+
+/* Bulk-Modus: Checkboxen nur einblenden wenn aktiv */
+#sb-asset-list .sb-asset-cb { display: none; }
+#sb-asset-list.bulk-active .sb-asset-cb { display: inline-block; }
 
 /* Asset Status-Ringe (nach elCalcAssets) */
 .asset-marker.av-ok      { box-shadow: 0 0 0 3px #4caf50; }
@@ -1565,11 +1589,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible"          data-change="_ebpChart(this.checked)">Zeitstrahl-Chart</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-overlay-visible"        data-change="_ebpOverlay(this.checked)">Plan-Overlay</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-viz-circles"    checked data-change="_ebpViz(this.checked)">Wärme-Visualisierung</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible"     checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
   </div>
 
   <div class="ebp-cat">
     <div class="ebp-cat-label" style="--ebp-c:#ef5350;">🔥 Wärmenetz</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-visible"   checked data-change="setNetzVisible(this.checked);_ebpSync('netz-visible-ansicht',this.checked)">Leitungen</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-trasse-visible"        data-change="setTrasseVisible(this.checked)">Trassen</label>
   </div>
 
   <div class="ebp-cat">
@@ -2234,6 +2260,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
       <button class="analyse-section-tab" data-section="wirtschaft" data-click="setAnalyseSection('wirtschaft')">Wirtschaftlichkeit</button>
       <button class="analyse-section-tab" data-section="strom" data-click="setAnalyseSection('strom')">Strom</button>
       <button class="analyse-section-tab" data-section="emissionen" data-click="setAnalyseSection('emissionen')">Emissionen</button>
+      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" style="color:#4fc3f7;" title="Ausbauplaner — Maßnahmen-Fahrplan (alle Assets)">📅 Ausbauplaner</button>
     </div>
 
     <!-- ── Übersicht (Dashboard) ─────────────────────────────── -->
@@ -2780,6 +2807,81 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
     <div class="sb-tab-body" id="sb-tab-elektro">
       <!-- Inspector-Slot: wird befüllt wenn ein Asset gewählt wird -->
       <div id="sb-asset-inspector-slot"></div>
+      <!-- Bulk-Modus Toggle -->
+      <div style="padding:5px 6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;">
+        <button id="bulk-mode-toggle" onclick="selToggleBulkMode()" style="font-size:10px;padding:3px 8px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;">&#9678; Bulk-Modus</button>
+        <span style="font-size:10px;color:var(--muted);">Shift+Drag = Box (Typ-Filter wirkt) · Rechtsklick = Auswahl löschen</span>
+      </div>
+      <!-- Sammelaktions-Leiste (sichtbar wenn ≥1 Asset selektiert oder Bulk-Modus aktiv) -->
+      <div id="asset-bulk-bar" style="display:none;padding:5px 7px 6px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;box-sizing:border-box;">
+        <!-- Kopfzeile: Auswahl-Info + Tier-Buttons + Schließen -->
+        <div style="display:flex;align-items:center;gap:3px;margin-bottom:4px;">
+          <span id="asset-bulk-lbl" style="font-weight:600;white-space:nowrap;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">0 Assets</span>
+          <button onclick="selFromMeritOrderTier('A');selRenderBulkBar()" title="Tier-A-Kandidaten selektieren"
+            style="font-size:9px;padding:2px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Tier A ▸</button>
+          <button onclick="selFromMeritOrderTier('B');selRenderBulkBar()" title="Tier-B-Kandidaten selektieren"
+            style="font-size:9px;padding:2px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Tier B ▸</button>
+          <button onclick="selClear()" title="Auswahl aufheben" style="font-size:11px;padding:1px 5px;background:none;border:none;cursor:pointer;color:var(--muted);flex-shrink:0;">✕</button>
+        </div>
+        <!-- Topologie-Filter: Typ hinter Objekt selektieren -->
+        <div style="display:flex;flex-direction:column;gap:3px;padding:5px 6px;margin-bottom:5px;background:var(--surface);border:1px solid var(--border);border-radius:4px;">
+          <div style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em;">Auswahl nach Netz-Topologie</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <select id="asset-bulk-filter-type" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">alle Typen</option>
+            </select>
+            <span style="color:var(--muted);flex-shrink:0;">hinter</span>
+            <select id="asset-bulk-filter-root" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— Objekt wählen —</option>
+            </select>
+          </div>
+          <button onclick="selBulkFilterApply()" title="Alle Objekte des gewählten Typs selektieren, die elektrisch hinter dem Objekt hängen"
+            style="font-size:10px;padding:3px 8px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;align-self:flex-start;">⌕ Selektieren</button>
+        </div>
+        <!-- Formularfelder: Label links (feste Breite), Input rechts (füllt Rest) -->
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Phase</span>
+            <select id="asset-bulk-phase" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+            </select>
+            <button onclick="selBulkNeuePhase()" title="Neue Phase anlegen"
+              style="flex-shrink:0;font-size:12px;line-height:1;padding:2px 7px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">+</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Maßnahme</span>
+            <select id="asset-bulk-massn" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Status</span>
+            <select id="asset-bulk-status" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+              <option value="geplant">geplant</option>
+              <option value="umgesetzt">umgesetzt</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Bau-Jahr</span>
+            <input id="asset-bulk-bau-jahr" type="number" placeholder="z. B. 2026" min="2020" max="2060"
+              style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Abriss-Jahr</span>
+            <input id="asset-bulk-abriss-jahr" type="number" placeholder="z. B. 2040" min="2020" max="2080"
+              style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+          </div>
+        </div>
+        <!-- Übernehmen-Button + Bestätigung -->
+        <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+          <button onclick="selBulkApplyAll()" id="bulk-apply-btn"
+            style="font-size:10px;padding:3px 12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;">
+            ✓ Übernehmen
+          </button>
+          <span id="bulk-confirm-msg" style="display:none;font-size:10px;font-weight:600;"></span>
+        </div>
+      </div>
       <!-- Asset-Liste: alle Assets nach Typ gruppiert -->
       <div id="sb-asset-list" class="sidebar-scroll"></div>
     </div>
@@ -4809,7 +4911,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-06-29';
+  var d = '2026-06-30';
   if (d.indexOf('__') === 0) d = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -62136,6 +62238,80 @@ var KABEL_TYPEN = {
 var TRAFO_GROESSEN = [250, 400, 630, 1000, 1600, 2500];
 
 
+// ── config/massnahmen-vorlagen.js ──
+// @ts-check
+// ── Maßnahmen-Vorlagen-Katalog ───────────────────────────────────────────────
+// Standard-Vorlagen für Maßnahmen-Typen: Kosten-Richtwerte, newProps-Schemas
+// und dependsOn-Muster für den automatischen Ausbauplaner (Step 3–5).
+//
+// Kosten-Richtwerte sind Platzhalter (0) bis M3 — dort werden reale Werte
+// aus PV_INFRA_STUFEN (09d), netz-kosten.js und Erfahrungswerten ergänzt.
+//
+// Struktur je Vorlage:
+//   label        — Anzeigename
+//   icon         — Emoji-Icon (identisch mit MASSN_TYP in 13e)
+//   hasNewProps  — ob newProps-Felder relevant sind
+//   newPropsSchema — Felder analog ASSET_PROPS_SCHEMA (13a), leer = kein Schema
+//   kostenRichtwert — pauschaler Richtwert in € (0 = noch nicht hinterlegt)
+//   kostenHinweis   — Quelle / Berechnungshinweis für den Richtwert
+//   dependsOnTypen  — Maßnahmen-Typen, die typischerweise vorher stehen
+
+var MASSN_VORLAGEN = {
+
+  Sanierung: {
+    label: 'Sanierung',
+    icon: '🔧',
+    hasNewProps: true,
+    newPropsSchema: [],   // variantenspezifisch — kein Einheits-Schema
+    kostenRichtwert: 0,
+    kostenHinweis: 'projektspezifisch',
+    dependsOnTypen: [],
+  },
+
+  Abriss: {
+    label: 'Abriss',
+    icon: '🏚',
+    hasNewProps: false,
+    newPropsSchema: [],
+    kostenRichtwert: 0,
+    kostenHinweis: 'projektspezifisch',
+    dependsOnTypen: [],
+  },
+
+  Bau: {
+    label: 'Neubau/Bau',
+    icon: '🏗',
+    hasNewProps: false,
+    newPropsSchema: [],
+    kostenRichtwert: 0,
+    kostenHinweis: 'Investitionskosten PV-Anlage (€/kWp × Leistung) — Wert folgt M3',
+    dependsOnTypen: ['Ertuechtigung'],  // Ertüchtigung muss vor PV-Bau stehen
+  },
+
+  Ertuechtigung: {
+    label: 'Ertüchtigung',
+    icon: '⚡',
+    hasNewProps: true,
+    // newProps-Keys entsprechen ASSET_PROPS_SCHEMA-Schlüsseln des Ziel-Assets:
+    //   Trafo:  leistungKVA, ukProzent
+    //   NAP:    spannungKV
+    //   NSHV/UV/KVS: nennstromA, abgaenge
+    newPropsSchema: [
+      { key: 'leistungKVA', label: 'Neue Trafo-Leistung (kVA)' },
+      { key: 'nennstromA',  label: 'Neuer Nennstrom (A)' },
+    ],
+    // Richtwert: Trafo 630 kVA NS/MS inkl. Montage (ERT_TRAFO_STUFEN, 14b)
+    kostenRichtwert: 38000,
+    kostenHinweis: 'Trafo-Ersatz 630 kVA inkl. Montage; Annuität 30 J. / 0,5 % IH (ERT_TRAFO_STUFEN)',
+    dependsOnTypen: [],
+  },
+
+};
+
+// Reihenfolge der Typen für UI-Dropdowns
+var MASSN_VORLAGEN_REIHENFOLGE = ['Sanierung', 'Abriss', 'Bau', 'Ertuechtigung'];
+
+
 // ── config/erzeuger-cfg.js ──
 // @ts-check
 // ── Erzeuger-Konfiguration ──────────────────────────────────────────────
@@ -62444,6 +62620,12 @@ var HILFE_TEXTE = {
   'opt-cand-st': 'Solarthermie in die Optimierung einbeziehen — Kollektorfläche wird automatisch variiert.',
   'opt-cand-ts': 'Wärmespeicher in die Optimierung einbeziehen — Volumen wird automatisch variiert.',
   'opt-pv-max-amort': 'Maximale Amortisationszeit für PV-Anlagen (Jahre) — Varianten mit längerer Amortisation werden verworfen.',
+
+  // PV-Varianten-Workflow (M2–M6)
+  'btn-pv-merit-order': 'Startet die Flächen-Merit-Order: Bewertet alle PV-Kandidaten (Dächer, Freifl., Assets) nach wirtschaftlichem Zusatznutzen (Δ Überschuss abzgl. Δ Infrastrukturkosten) und ordnet sie in Tiers A/B/C ein.',
+  'btn-pv-ertuechtigung': 'Berechnet die notwendigen Netzertüchtigungen (Trafoverstärkung, Leitungsausbau) für jeden NAP und integriert die Kosten in das Merit-Order-Ranking.',
+  'analyse-section-tab-ausbauplaner': 'Öffnet den Ausbauplaner: Gantt-Board mit Gewerk-Swimlanes, Phasen-Editor und Drag-Drop-Planung der PV-Ausbaumaßnahmen. Auto-Plan erzeugt einen optimierten Fahrplan aus dem Merit-Order-Ergebnis.',
+  'asset-bulk-bar': 'Bulk-Aktionen für ausgewählte Elektro-Assets: Phase zuweisen, Maßnahme aus Vorlage anlegen, Status und Jahr setzen. Assets per Shift+Klick oder Box-Select (Shift+Ziehen auf der Karte) wählen.',
 };
 
 
@@ -62974,6 +63156,48 @@ function renderVergleich() {
     { label: 'Jahreskosten gesamt', fn: r => r?.jkGes > 0 ? fmt(r.jkGes/1000, 'k€/a', 1) : '—', numFn: r => r?.jkGes, best: 'min' },
     { label: 'WGK System gesamt', fn: r => r?.wgkText || '—', numFn: r => r?.wgkNum, best: 'min', bold: true },
     { label: 'Stromkosten WP', fn: r => r?.stromkostenWp != null ? fmt(r.stromkostenWp, '€/a') : '—', numFn: r => r?.stromkostenWp, best: 'min' },
+    { label: 'PV-AUSBAU (Merit-Order)', header: true },
+    { label: 'PV installiert (A+B)',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        const kwp = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+        return kwp > 0 ? Math.round(kwp).toLocaleString('de-DE') + ' kWp' : '—';
+      },
+      numFn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return null;
+        return pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+      },
+      best: 'max', bold: true },
+    { label: 'PV-Ertrag/a',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        const mwh = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.jahresertragKWh || 0) / 1000, 0);
+        return mwh > 0 ? mwh.toLocaleString('de-DE', {maximumFractionDigits:0}) + ' MWh/a' : '—';
+      } },
+    { label: 'Invest PV gesamt',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        const kwp = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+        const inv = kwp * (pv.pvInvestPerKwp || 1200);
+        return inv > 0 ? Math.round(inv / 1000).toLocaleString('de-DE') + ' k€' : '—';
+      },
+      numFn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return null;
+        const kwp = pv.ranking.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
+        return kwp * (pv.pvInvestPerKwp || 1200);
+      },
+      best: 'min' },
+    { label: 'Anzahl Flächen (A+B)',
+      fn: (r, id) => {
+        const pv = window._pvVariantResults?.[id];
+        if (!pv?.ranking) return '—';
+        return String(pv.ranking.filter(x => x.tier !== 'C').length);
+      } },
     { label: 'CO₂ EMISSIONEN', header: true },
     { label: 'CO₂ je Erzeuger (heute)', fn: r => r?.erzeuger?.length ? r.erzeuger.map(e => e.co2 || '—').join(', ') : '—' },
     { label: 'CO₂ gesamt (heute)', fn: r => r?.co2GesH > 0 ? fmt(r.co2GesH, 't/a', 1) : '—', numFn: r => r?.co2GesH, best: 'min', bold: true },
@@ -62988,7 +63212,7 @@ function renderVergleich() {
     let bestVal = null, bestIds = [];
     cols.forEach(id => {
       const r = variantResults[id];
-      const v = r ? row.numFn(r) : null;
+      const v = r ? row.numFn(r, id) : null;
       if (v == null || isNaN(v) || v <= 0) return;
       if (bestVal === null || (row.best === 'min' ? v < bestVal : v > bestVal)) { bestVal = v; bestIds = [id]; }
       else if (v === bestVal) bestIds.push(id);
@@ -63015,7 +63239,7 @@ function renderVergleich() {
     html += `<tr><td>${row.label}</td>`;
     cols.forEach(id => {
       const r = variantResults[id];
-      const val = r ? row.fn(r) : '—';
+      const val = r ? row.fn(r, id) : '—';
       const active = isActive(id);
       const isBest = bestIdx[ri] && bestIdx[ri].has(id);
       const style = `${active?'color:var(--accent);':''}${row.bold?'font-weight:bold;':''}${isBest?'color:#66bb6a;':''}`;
@@ -63239,6 +63463,25 @@ var baseNetzSnapshot = null;
 var baseErzeugerSnapshot = null;
 var baseStromNetzSnapshot = null;
 
+// ── Phasen (Ausbaustufen) ─────────────────────────────────────────────────────
+// Phase = { id, name, jahrVon, jahrBis, variantId, reihenfolge }
+// variantId === null → projektweit (Default); sonst variantenspezifisch.
+var phasen = [];
+
+function setPhasen(arr) { phasen = arr || []; }
+
+function _capturePhasenZustand() { return { phasen: phasen.map(p => ({ ...p })) }; }
+function _restorePhasenZustand({ phasen: ps } = {}) { phasen = ps || []; }
+
+// Löst das effektive Jahr einer Maßnahme auf:
+// Ist m.jahr gesetzt, gewinnt es (Einzel-Override). Sonst erbt die Maßnahme
+// das jahrVon der zugehörigen Phase. Gibt null zurück wenn beides fehlt.
+function massnahmeJahr(m) {
+  if (m.jahr) return parseInt(m.jahr);
+  const p = phasen.find(x => x.id === m.phaseId);
+  return p ? parseInt(p.jahrVon) : null;
+}
+
 // ── Persistenz-Helfer für die Varianten-Kernzustände ────────────────────────
 // Andere Module (z.B. _buildProjectData/_loadProject in 03c-gebaeude-io.js)
 // dürfen die obigen `let`-Exports NICHT direkt neu zuweisen (ES-Module-Bindings
@@ -63247,14 +63490,15 @@ var baseStromNetzSnapshot = null;
 // Binding) und spätere Reassignments hier sonst dort nicht ankämen (stale).
 // Stattdessen über diese Helfer lesen/schreiben:
 function _captureVariantenKernzustand() {
-  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot };
+  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, ..._capturePhasenZustand() };
 }
-function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs } = {}) {
+function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, phasen: ps } = {}) {
   varianten = v || [];
   activeVariantId = (aid === undefined) ? null : aid;
   baseNetzSnapshot = bn || null;
   baseErzeugerSnapshot = be || null;
   baseStromNetzSnapshot = bs || null;
+  phasen = ps || [];
 }
 
 // ── Stromnetz-Snapshot (Elektroassets/Kabel) — variantenspezifischer "Ast" ──
@@ -64065,7 +64309,9 @@ function updateNetzColorLegend() {
 
 
 
+
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 
 // Guard against HMR re-init: reuse cached instance if container is already initialized
 var map = window._appLeafletMap || (() => {
@@ -65388,7 +65634,7 @@ function selectFromMap(id){
     return;
   }
   window.selectedId=id;
-  window.syncSperrLayerVisibility?.();
+  window.updateSperrVisibility?.();
   _expandedIds.add(id);
   // Im Elektro-Tab: rechte Sidebar auf Gebäude-Tab umschalten statt linkes Panel zu wechseln
   const _activeTabBtn = document.querySelector('#lp-tabs .lp-tab.active');
@@ -65900,6 +66146,10 @@ function toggleDrawTrasse() {
   window.isDrawingTrasse = !window.isDrawingTrasse;
   const btn = document.getElementById('btn-draw-trasse');
   if (window.isDrawingTrasse) {
+    // Trasse zum Bearbeiten sichtbar machen (Ansicht-Checkbox synchronisieren)
+    window.trasseVisible = true;
+    const _tcb = document.getElementById('el-trasse-visible');
+    if (_tcb) _tcb.checked = true;
     // Andere Modi beenden
     if (window.isDrawingStromEdge && typeof cancelDrawStromEdge === 'function') cancelDrawStromEdge();
     if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
@@ -65982,6 +66232,10 @@ function redrawTrasse() {
   window.trasseEditMarkers.forEach(m => map.removeLayer(m));
   window.trasseEditMarkers = [];
 
+  // Trassen-Ebene ausblendbar (Ansicht-Panel). Default versteckt: undefined/false → nicht zeichnen.
+  // Im Zeichenmodus wird trasseVisible erzwungen (siehe toggleDrawTrasse).
+  if (!window.trasseVisible) return;
+
   if (window.trassePoints.length === 0) return;
 
   // Alle abgeschlossenen Segmente zeichnen
@@ -66023,6 +66277,12 @@ function redrawTrasse() {
     }
     window.trasseEditMarkers.push(m);
   });
+}
+
+// Trassen ein-/ausblenden (Ansicht-Panel). Default versteckt.
+function setTrasseVisible(visible) {
+  window.trasseVisible = !!visible;
+  redrawTrasse();
 }
 
 function deleteTrasse(segIdx) {
@@ -70402,6 +70662,9 @@ function startNetzEdgeFrom(id) {
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 
+
+
+
 function updateTotals(){
   let tw=0, th=0;
   window.gebaeude.forEach(g=>{
@@ -71369,48 +71632,58 @@ var GEBPV_COLORS = {
   sperr:    { border: 'rgba(229,57,53,0.9)',   fill: 'rgba(229,57,53,0.22)'  },
 };
 
+// ── PV-Pane: alle Gebäude-PV-Layer landen in einem eigenen Leaflet-Pane ────────
+// z-Index 401 = knapp über overlayPane (400) → PV-Module liegen über Gebäude-
+// umrissen, aber unter Markern/Labels (markerPane 600).
+function _ensurePvPane() {
+  if (!map.getPane('pvPane')) {
+    map.createPane('pvPane').style.zIndex = '401';
+  }
+}
+
 // Belegungs-/Sperrfläche als Umriss auf der Karte rendern. Die eigentlichen
 // Module werden gebäudeweit von redrawGebPvModules() platziert (PV-Sol-Stil).
 function attachGebPvLayer(g, fl) {
   if (fl.layer)   { map.removeLayer(fl.layer);   fl.layer = null; }
   if (fl.svgLayer){ map.removeLayer(fl.svgLayer); fl.svgLayer = null; }
+  _ensurePvPane();
   const col = GEBPV_COLORS[fl.typ] || GEBPV_COLORS.belegung;
   fl.layer = L.polygon(fl.polygon, {
     color: col.border, weight: 2,
     fillColor: col.fill, fillOpacity: fl.typ === 'sperr' ? 1 : 0.6,
     dashArray: fl.typ === 'sperr' ? '4 3' : null,
-  });
-  if ((fl.typ !== 'sperr' || window.selectedId === g.id) && window._pvLayerVisible !== false) fl.layer.addTo(map);
+    pane: 'pvPane',
+  }).addTo(map);
   fl.layer.on('click', () => { if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id); });
-}
-
-function syncSperrLayerVisibility() {
-  const selId = window.selectedId;
-  for (const g of (window.gebaeude || [])) {
-    for (const fl of (g.pvFlaechen || [])) {
-      if (fl.typ !== 'sperr' || !fl.layer) continue;
-      if (selId === g.id) { if (!map.hasLayer(fl.layer)) fl.layer.addTo(map); }
-      else                { if ( map.hasLayer(fl.layer)) map.removeLayer(fl.layer); }
-    }
+  // Sperrflächen initial unsichtbar — updateSperrVisibility zeigt sie beim selektierten Gebäude
+  if (fl.typ === 'sperr') {
+    fl.layer.setStyle({ opacity: 0, fillOpacity: 0 });
   }
 }
-window.syncSperrLayerVisibility = syncSperrLayerVisibility;
 
-window.setPvVisible = function(visible) {
+// Sperrflächen je nach aktuellem window.selectedId ein-/ausblenden.
+window.updateSperrVisibility = function() {
+  const selId = window.selectedId;
+  (window.gebaeude || []).forEach(g => {
+    const isSel = g.id === selId;
+    (g.pvFlaechen || []).forEach(fl => {
+      if (fl.typ === 'sperr' && fl.layer) {
+        fl.layer.setStyle(isSel
+          ? { opacity: 0.9, fillOpacity: 1 }
+          : { opacity: 0,   fillOpacity: 0 });
+      }
+    });
+  });
+};
+
+// PV-Anlagen global ein-/ausblenden: Pane-Display toggeln statt jedes Layer einzeln.
+// Freiflächen liegen außerhalb der pvPane und werden einzeln getoggelt.
+function setPvVisible(visible) {
+  window.pvVisible = visible;
   window._pvLayerVisible = visible;
-  const selId = window.selectedId;
-  for (const g of (window.gebaeude || [])) {
-    if (g._pvModuleLayer) {
-      if (visible) { if (!map.hasLayer(g._pvModuleLayer)) g._pvModuleLayer.addTo(map); }
-      else         { if ( map.hasLayer(g._pvModuleLayer)) map.removeLayer(g._pvModuleLayer); }
-    }
-    for (const fl of (g.pvFlaechen || [])) {
-      if (!fl.layer) continue;
-      const show = visible && (fl.typ !== 'sperr' || selId === g.id);
-      if (show) { if (!map.hasLayer(fl.layer)) fl.layer.addTo(map); }
-      else      { if ( map.hasLayer(fl.layer)) map.removeLayer(fl.layer); }
-    }
-  }
+  _ensurePvPane();
+  const pane = map.getPane('pvPane');
+  if (pane) pane.style.display = visible ? '' : 'none';
   for (const ff of (window.freiflaechen || [])) {
     [ff.polygonLayer, ff.moduleSvgLayer].forEach(l => {
       if (!l) return;
@@ -71418,7 +71691,11 @@ window.setPvVisible = function(visible) {
       else         { if ( map.hasLayer(l)) map.removeLayer(l); }
     });
   }
-};
+  // Sperrflächen-Opazität nach Wiedereinblenden korrekt setzen
+  if (visible) window.updateSperrVisibility?.();
+}
+window.setPvVisible = setPvVisible;
+
 
 // ── Punkt-in-Polygon (Ray-Casting) im metrischen XY-Raum ────────────────────
 function _pip(pt, poly) {
@@ -71710,8 +71987,8 @@ function redrawGebPvModules(g) {
   g._pvModuleDrawnSig = g._pvModSig;
   const ov = buildPvModuleOverlay(g._pvModCache);
   if (!ov) return;
-  g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 203 });
-  if (window._pvLayerVisible !== false) g._pvModuleLayer.addTo(map);
+  _ensurePvPane();
+  g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, pane: 'pvPane' }).addTo(map);
 }
 
 // Alle Flächen + Module eines Gebäudes neu zeichnen.
@@ -72598,6 +72875,7 @@ function _loadProject(project) {
         baseNetzSnapshot: project.baseNetzSnapshot || null,
         baseErzeugerSnapshot: project.baseErzeugerSnapshot || null,
         baseStromNetzSnapshot: project.baseStromNetzSnapshot || null,
+        phasen: project.phasen || [],
       });
       renderVariantenBar();
       updateVariantBanner();
@@ -72631,10 +72909,23 @@ function _loadProject(project) {
           if (ktSel) ktSel.value = project.stromNetz.kabelTyp;
         }
         if (project.stromNetz.nodes) {
+          // Asset-Typen, die NIE als „plain" Strom-Knoten existieren (immer ein Asset):
+          // Erzeuger/Verbraucher/Speicher (PV, Wind, Batterie, Verbraucher, …).
+          // Infrastruktur (NAP/Trafo/NSHV/UV/KVS) kann dagegen ein Plain-Knoten sein
+          // (Auto-Netz, manuelles Zeichnen) → die nicht filtern.
+          const _nonInfraAssetTypes = new Set(
+            Object.entries(ASSET_CFG)
+              .filter(([, cfg]) => cfg.domain !== 'waerme' && cfg.kategorie !== 'infrastruktur')
+              .map(([k]) => k.toLowerCase())
+          );
           project.stromNetz.nodes.forEach(n => {
             // Assets wurden bereits via redrawAllAssets() als stromNodes registriert (isAsset:true)
             // → nicht nochmal als plain addStromNode() erstellen (würde graue Duplikat-Marker erzeugen)
             if ((window.stromNodes || []).find(sn => sn.id === n.id && sn.isAsset)) return;
+            // Verwaister Knoten eines gelöschten Erzeuger/Verbraucher-Assets (z. B. PV):
+            // existiert kein Asset mehr mit dieser id → überspringen (sonst grauer Geister-Marker).
+            if (_nonInfraAssetTypes.has((n.type || '').toLowerCase())
+                && !ASSETS.items.some(a => a.id === n.id)) return;
             addStromNode(n.type, L.latLng(n.lat, n.lng), {
               id: n.id, label: n.label, maxKva: n.maxKva, ratedKva: n.ratedKva, ukPct: n.ukPct
             });
@@ -72742,6 +73033,24 @@ function _loadProject(project) {
       updateViz();
       updateTotals();
       glBerechnenDebounced(800);
+
+      // Standard-Ansicht: nur Gebäudeumrisse + PV (Symbole „Keine", übrige Ebenen aus)
+      if (typeof window.applyDefaultViewOnLoad === 'function') window.applyDefaultViewOnLoad();
+
+      // Auf die geladene Liegenschaft springen (Gesamt-Umriss aller Gebäude;
+      // ersatzweise alle Asset-Positionen).
+      try {
+        const bounds = L.latLngBounds([]);
+        (window.gebaeude || []).forEach(g => {
+          if (g.polygonLayer) bounds.extend(g.polygonLayer.getBounds());
+        });
+        if (!bounds.isValid()) {
+          (ASSETS.items || []).forEach(a => {
+            if (a.lat != null && a.lng != null) bounds.extend([a.lat, a.lng]);
+          });
+        }
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60], maxZoom: 19 });
+      } catch (e) { /* Karte bleibt auf aktueller Position */ }
 }
 
 function loadGebaeudeFromParent(gebaeudeArray) {
@@ -72849,6 +73158,7 @@ window.toggleVormerkenGeb = toggleVormerkenGeb;
 // ── 04a-ui-panels.js ──
 // ── 04a-ui-panels.js — Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold ──
 // NUTZUNG_DEFAULTS → src/config/erzeuger-cfg.js
+
 
 
 
@@ -73947,6 +74257,8 @@ function refreshAnalyseView() {
   if (knaWrap) knaWrap.style.display = 'none';
   const pvaWrap = document.getElementById('analyse-pva-wrap');
   if (pvaWrap) pvaWrap.style.display = 'none';
+  const ausbWrap = document.getElementById('ausbauplaner-wrap');
+  if (ausbWrap) ausbWrap.style.display = 'none';
 
   if (analyseCurrentSection === 'uebersicht') {
     grid.style.display = 'grid';
@@ -73975,6 +74287,8 @@ function refreshAnalyseView() {
     knaShowSection(true);
   } else if (analyseCurrentSection === 'pva') {
     pvaShowSection(true);
+  } else if (analyseCurrentSection === 'ausbauplaner') {
+    if (typeof ausbauShow === 'function') ausbauShow(true);
   }
 }
 
@@ -74035,6 +74349,37 @@ window._ebpViz = function(checked) {
   if (typeof window.updateViz === 'function') window.updateViz();
 };
 
+// Standard-Ansicht nach dem Laden eines Projekts: nur Gebäudeumrisse + PV-Anlagen
+// sichtbar, Gebäude-Symbole auf „Keine". Alle übrigen Daten-Ebenen aus.
+// (Hintergrund/Satellit bleibt unverändert — Kartenwahl, keine Datenebene.)
+window.applyDefaultViewOnLoad = function() {
+  // Gebäude-Symbole → Keine
+  if (typeof window.setViz === 'function') window.setViz('none');
+
+  // Checkbox-Status + zugehörigen Setter setzen
+  const setLayer = (cbId, on, fn) => {
+    const cb = document.getElementById(cbId);
+    if (cb) cb.checked = on;
+    if (typeof fn === 'function') fn(on);
+  };
+
+  // Sichtbar: Gebäudeumrisse + PV-Anlagen
+  setLayer('el-geb-visible', true, window.setGebVisible);
+  setLayer('el-pv-visible',  true, window.setPvVisible);
+
+  // Aus: Beschriftung, Wärmenetz-Leitungen, Trassen, Elektro-Assets, Stromnetz
+  setLayer('el-labels-visible',    false, window.setLabelsVisible);
+  setLayer('el-netz-visible',      false, window.setNetzVisible);
+  setLayer('el-trasse-visible',    false, window.setTrasseVisible);
+  setLayer('el-assets-visible',    false, window.setAssetLayerVisible);
+  setLayer('el-stromnetz-visible', false, window.setStromNetzVisible);
+
+  // Aus: Wärme-Visualisierung (eigener Mechanismus)
+  const cbViz = document.getElementById('el-viz-circles');
+  if (cbViz) cbViz.checked = false;
+  if (typeof window._ebpViz === 'function') window._ebpViz(false);
+};
+
 // Satellit-Toggle
 window._ebpSatellit = function(checked) {
   const cbSat = document.getElementById('cb-satellit');
@@ -74053,6 +74398,11 @@ window._ebpSatellit = function(checked) {
 // ══════════════════════════════════════════════════════════════════════════
 // ── Emissionen-Tab: Sub-Tab-Steuerung + Rendering ────────────────────────
 // ══════════════════════════════════════════════════════════════════════════
+
+
+
+
+
 
 
 
@@ -75508,6 +75858,12 @@ function exportVergleichCSV() {
 // ── 05a-export.js ──
 // â”€â”€ 05a-export.js â€” CSV-Export, PDF-Report, Druckansicht â”€â”€
 // â”€â”€ Export: Dispatch CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+
+
+
+
+
 
 
 
@@ -84221,6 +84577,7 @@ function moSwap(key, dir) {
 
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 
 var saCurrentTab = 'lastgang';
 
@@ -101792,8 +102149,8 @@ function getAssetPropsForYear(asset, year) {
   const props = { ...(asset.props || {}) };
   const measures = (asset.massnahmen || [])
     .filter(m => m.status === 'umgesetzt' && m.newProps && Object.keys(m.newProps).length > 0)
-    .filter(m => !m.jahr || parseInt(m.jahr) <= y)
-    .sort((a, b) => (a.jahr || 0) - (b.jahr || 0));
+    .filter(m => { const mj = massnahmeJahr(m); return mj === null || mj <= y; })
+    .sort((a, b) => (massnahmeJahr(a) ?? 0) - (massnahmeJahr(b) ?? 0));
   for (const m of measures) {
     Object.assign(props, m.newProps);
   }
@@ -101848,6 +102205,17 @@ function deleteAsset(id) {
   // Zugehörige Leitungen löschen
   ASSETS.edges = ASSETS.edges.filter(e => e.aId !== id && e.bId !== id);
   ASSETS.items.splice(i, 1);
+  // Registrierten Strom-Knoten mitsamt Marker entfernen — sonst bleibt ein
+  // verwaister Knoten in window.stromNodes zurück, der beim Speichern persistiert
+  // und beim Laden als grauer „Geister"-Marker (klickt nicht zum Inspektor) erscheint.
+  if (typeof window !== 'undefined' && Array.isArray(window.stromNodes)) {
+    const ni = window.stromNodes.findIndex(n => n.id === id);
+    if (ni >= 0) {
+      const sn = window.stromNodes[ni];
+      if (sn.marker && sn.marker.remove) sn.marker.remove();
+      window.stromNodes.splice(ni, 1);
+    }
+  }
   if (ASSETS.selectedId === id) ASSETS.selectedId = null;
   return true;
 }
@@ -102223,8 +102591,12 @@ function drawBuildingGroup(buildingId) {
   const width  = nSlots * (chip + 2) + 8;
   const height = chip + 8;
 
+  // Bulk-Modus: Gruppe ausgegraut, solange KEIN Asset darauf selektiert ist —
+  // direkt beim Zeichnen setzen, damit Neuzeichnen das Dimming nicht verliert.
+  const anySelected = assets.some(a => window.assetSelection?.has(a.id));
+  const dimClass = (window.isBulkModeActive?.() && !anySelected) ? ' asset-bulk-dimmed' : '';
   const icon = L.divIcon({
-    className: '',
+    className: 'asset-divicon' + dimClass,
     html,
     iconSize:   [width, height],
     iconAnchor: [width / 2, height / 2],
@@ -102385,7 +102757,7 @@ function spiderfyBuilding(buildingId, centerLatLng) {
     L.polyline([centerLatLng, ll], { color: '#fdd835', weight: 1.5, opacity: 0.7, dashArray: '3 3', interactive: false }).addTo(_spiderLayer);
 
     const icon = L.divIcon({
-      className: '',
+      className: 'asset-divicon',
       html: `<div class="asset-spider-icon" style="background:${cfg.color};width:${sz}px;height:${sz}px;font-size:${Math.round(sz * 0.55)}px;">${cfg.icon}</div>`,
       iconSize:   [sz, sz],
       iconAnchor: [sz / 2, sz / 2],
@@ -102501,9 +102873,13 @@ function drawSingleMarker(asset) {
   const pendingBadge = hasPendingMassnahmen(asset)
     ? `<span class="asset-massn-badge"></span>`
     : '';
+  const selClass = window.assetSelection?.has(asset.id) ? ' asset-selected' : '';
+  // Bulk-Modus: nicht-selektierte Marker ausgegraut — direkt beim Zeichnen setzen,
+  // damit ein Neuzeichnen (Auswahl/Inspector) das Dimming nicht verliert.
+  const dimClass = (window.isBulkModeActive?.() && !window.assetSelection?.has(asset.id)) ? ' asset-bulk-dimmed' : '';
   const icon = L.divIcon({
-    className: '',
-    html: `<div class="asset-marker asset-marker-${status}"
+    className: 'asset-divicon' + dimClass,
+    html: `<div class="asset-marker asset-marker-${status}${selClass}"
               style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;">
              <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
              ${pendingBadge}
@@ -102525,6 +102901,11 @@ function drawSingleMarker(asset) {
       return;
     }
     L.DomEvent.stopPropagation(e);
+    // Shift+Click → Selektion umschalten statt Inspector öffnen
+    if (e.originalEvent?.shiftKey && typeof window.selToggle === 'function') {
+      window.selToggle(asset.id);
+      return;
+    }
     ASSETS.selectedId = asset.id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
   });
@@ -102961,8 +103342,11 @@ function renderSidebarAssetList() {
       const pendingDot = hasPending
         ? `<span class="sb-asset-pending-dot" title="Offene Maßnahmen"></span>`
         : '';
-      const sel = ASSETS.selectedId === a.id ? ' selected' : '';
+      const isSel   = window.assetSelection?.has(a.id);
+      const sel     = (ASSETS.selectedId === a.id ? ' selected' : '') + (isSel ? ' asset-bulk-selected' : '');
+      const checked = isSel ? ' checked' : '';
       return `<div class="sb-asset-row${sel}" data-asset-id="${a.id}">
+        <input type="checkbox" class="sb-asset-cb"${checked} onclick="event.stopPropagation();selToggle('${a.id}')" title="Auswählen" style="flex-shrink:0;cursor:pointer;accent-color:var(--accent,#2196F3);">
         <span class="sb-asset-row-icon" style="background:${cfg.color};opacity:${opacity};">${cfg.icon}</span>
         <span class="sb-asset-row-name">${esc(a.name)}</span>
         ${pendingDot}
@@ -103319,8 +103703,10 @@ var MASSN_STATUS = {
 };
 
 var MASSN_TYP = {
-  Sanierung: { label: 'Sanierung', icon: '🔧', hasNewProps: true  },
-  Abriss:    { label: 'Abriss',    icon: '🏚', hasNewProps: false },
+  Sanierung:     { label: 'Sanierung',    icon: '🔧', hasNewProps: true  },
+  Abriss:        { label: 'Abriss',       icon: '🏚', hasNewProps: false },
+  Bau:           { label: 'Neubau/Bau',   icon: '🏗', hasNewProps: false },
+  Ertuechtigung: { label: 'Ertüchtigung', icon: '⚡', hasNewProps: true  },
 };
 
 function _massnRowHtml(m) {
@@ -103456,8 +103842,11 @@ function wireMassnahmen(panel, asset) {
     if (editingId) {
       const m = asset.massnahmen.find(x => x.id === editingId);
       if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps });
+      // dependsOn/phaseId werden durch das Board (M5+) gesetzt, hier nur als Default sichern
+      if (!m.dependsOn) m.dependsOn = [];
+      if (m.phaseId === undefined) m.phaseId = null;
     } else {
-      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps });
+      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps, dependsOn: [], phaseId: null });
     }
     closeForm();
     refreshList();
@@ -104203,6 +104592,7 @@ function _renderAssetFelddaten(a) {
 
 // ── 13f-sld.js ──
 // ── 13f-sld.js — Einlinienschema (Single-Line Diagram) ──────────────────────
+
 
 
 
@@ -113579,6 +113969,8 @@ if (typeof window!=='undefined') {
 
 
 // ── 14-viewer.js ──
+
+
 // ── Viewer-Modus (?viewer=1) ─────────────────────────────────────────────────
 // Aktiviert eine read-only TOC-Sidebar (Gutachten-Gliederung 1–6) im left-panel.
 // Aktivierung: URL mit ?viewer=1 aufrufen.
@@ -113711,15 +114103,2103 @@ function viewerNav(n) {
 }
 
 
+// ── 14a-kandidaten.js ──
+// ── 14a-kandidaten.js — PV-Flächen-Enumeration + Merit-Order ────────────────
+// M2: pvEnumerateKandidaten (4 Quellen) + pvMeritOrderCore (Greedy-Marginal)
+//
+// Zwei Schichten:
+//   PURE (export, testbar, kein DOM):
+//     pvMeritAnnF, pvMeritDispatch, pvMeritInfraJk, pvMeritNettoUeberschuss,
+//     pvMeritOrderCore
+//   APP-SIDE (liest DOM/ASSETS/gebaeude/freiflaechen):
+//     pvEnumerateKandidaten, pvRunMeritOrder
+
+
+// ── Pure Helpers ──────────────────────────────────────────────────────────────
+
+/** Annuitätenfaktor (VDI 2067). */
+function pvMeritAnnF(z, n) {
+  if (!z || z <= 0) return n > 0 ? 1 / n : 1;
+  return z * Math.pow(1 + z, n) / (Math.pow(1 + z, n) - 1);
+}
+
+/**
+ * Strom-Dispatch am NAP für eine vorberechnete PV-Erzeugung.
+ * pvGenH: Float32Array[N] in kWh/h (absolute Erzeugung, nicht normiert)
+ * batKwh: Batteriekapazität in kWh (0 = keine Batterie)
+ * demandH: Float32Array[N] in kW (= kWh/h)
+ * napMaxEinsKw: Einspeiselimit am NAP (0 = unbegrenzt)
+ * → { eigenMwh, einspeiseMwh, netzbezugMwh, curtailMwh, batVerlustMwh, maxEinspeiseKw }
+ */
+function pvMeritDispatch(pvGenH, batKwh, demandH, napMaxEinsKw) {
+  const N = demandH.length;
+  const dt = N > 8784 ? 0.25 : 1.0;
+  const ETA = 0.90;
+  const batLeistKw = batKwh > 0 ? batKwh / 2 : 0; // C/2-Rate
+  const maxEinsp = (napMaxEinsKw > 0) ? napMaxEinsKw : Infinity;
+
+  let soc = 0;
+  let eigenMwh = 0, einspeiseMwh = 0, netzbezugMwh = 0, curtailMwh = 0, batVerlustMwh = 0;
+  let maxEinspeiseKw = 0;
+
+  for (let t = 0; t < N; t++) {
+    const dem   = demandH[t];
+    const pvGen = pvGenH ? pvGenH[t] : 0;
+
+    // 1. Direkter Eigenverbrauch
+    const dsc = Math.min(pvGen, dem);
+    let rDem = dem - dsc;
+    let rGen = pvGen - dsc;
+
+    // 2. NAP-Einspeiselimit → Batterie zwingen
+    if (rGen > maxEinsp && batKwh > 0) {
+      const mustStore = rGen - maxEinsp;
+      const cPow  = Math.min(mustStore, batLeistKw);
+      const cEkwh = Math.min(cPow * dt, (batKwh - soc) / ETA);
+      soc += cEkwh * ETA; batVerlustMwh += cEkwh * (1 - ETA);
+      rGen -= cEkwh / dt;
+    }
+    if (rGen > maxEinsp) { curtailMwh += (rGen - maxEinsp) * dt / 1000; rGen = maxEinsp; }
+
+    // 3. Batterie entladen für Restbedarf
+    if (rDem > 0 && soc > 0) {
+      const dPow  = Math.min(rDem, batLeistKw, soc / dt);
+      soc -= dPow * dt;
+      rDem -= dPow;
+    }
+
+    // 4. Restüberschuss in Batterie laden
+    if (rGen > 0 && soc < batKwh) {
+      const cPow  = Math.min(rGen, batLeistKw);
+      const cEkwh = Math.min(cPow * dt, (batKwh - soc) / ETA);
+      soc += cEkwh * ETA; batVerlustMwh += cEkwh * (1 - ETA);
+      rGen -= cEkwh / ETA / dt;
+      if (rGen < 0) rGen = 0;
+    }
+
+    eigenMwh      += dsc  * dt / 1000;
+    netzbezugMwh  += rDem * dt / 1000;
+    if (rGen > 0) {
+      einspeiseMwh += rGen * dt / 1000;
+      if (rGen > maxEinspeiseKw) maxEinspeiseKw = rGen;
+    }
+  }
+
+  return { eigenMwh, einspeiseMwh, netzbezugMwh, curtailMwh, batVerlustMwh, maxEinspeiseKw };
+}
+
+/**
+ * Jährliche Infra-Kapitalkosten (Netzanschluss-Stufen) für pvKwp.
+ * Entspricht dem Annuitätsanteil aus pvInfraKosten in 09d, aber
+ * vollständig DOM-frei (pvInfraStufen = PV_INFRA_STUFEN oder Test-Fixture).
+ */
+function pvMeritInfraJk(pvKwp, pvErtragMwh, pvInfraStufen, zins) {
+  if (!pvKwp || !pvInfraStufen?.length) return 0;
+  const stufe = pvInfraStufen.find(s => pvKwp <= s.bisKwp) || pvInfraStufen[pvInfraStufen.length - 1];
+  let invest = 0, jaehrlich = 0;
+  for (const item of stufe.items) {
+    if (item.aktiv === false) continue;
+    invest    += item.investEUR || 0;
+    jaehrlich += item.perKwh ? item.perKwh * pvErtragMwh * 10 : 0; // ct/kWh → €/a
+  }
+  return invest * pvMeritAnnF(zins, 20) + jaehrlich;
+}
+
+/**
+ * Netto-Jahresüberschuss einer PV-Konfiguration (positiv = wirtschaftlich vorteilhaft).
+ * dispatch: Ergebnis von pvMeritDispatch
+ * pvKwp:    Gesamt-kWp der Konfiguration
+ * pvErtragMwh: Jahresertrag in MWh
+ * params: { pStrom, pEinsp, pvInvestPerKwp, batKwh?, batInvestPerKwh?, zins?, pvLife?, batLife? }
+ * pvInfraStufen: PV_INFRA_STUFEN oder Test-Fixture
+ */
+function pvMeritNettoUeberschuss(dispatch, pvKwp, pvErtragMwh, params, pvInfraStufen) {
+  const {
+    pStrom, pEinsp,
+    pvInvestPerKwp,
+    batKwh        = 0,
+    batInvestPerKwh = 400,
+    zins          = 0.035,
+    pvLife        = 20,
+    batLife       = 15,
+  } = params;
+
+  const annPv  = pvMeritAnnF(zins, pvLife);
+  const annBat = pvMeritAnnF(zins, batLife);
+
+  const pvJk   = pvKwp  * pvInvestPerKwp   * (annPv  + 0.01); // 1 % IH
+  const batJk  = batKwh * batInvestPerKwh  * (annBat + 0.01); // 1 % IH
+  const infJk  = pvMeritInfraJk(pvKwp, pvErtragMwh, pvInfraStufen, zins);
+
+  const eigenErsparnis = dispatch.eigenMwh    * pStrom * 10; // ct/kWh → €/a
+  const einspeisErloes = dispatch.einspeiseMwh * pEinsp  * 10;
+
+  return (eigenErsparnis + einspeisErloes) - (pvJk + batJk + infJk);
+}
+
+/**
+ * Greedy-Marginal-Merit-Order für einen Satz PV-Kandidaten.
+ *
+ * kandidaten: Kandidat[] mit { id, kWp, ausrichtung, pvSpez, napId }
+ * demandH: Float32Array[8760] in kW (geteilter Lastgang für alle NAPs in M2;
+ *          Per-NAP-Lastgänge kommen in M3)
+ * pvProfileSued / pvProfileOstWest: normierte 8760h-Profile (Summe ≈ 1.0)
+ * params: {
+ *   pStrom, pEinsp,          — ct/kWh
+ *   pvInvestPerKwp,          — €/kWp
+ *   batKwh?,                 — 0 = keine Batterie
+ *   batInvestPerKwh?,
+ *   zins?, pvLife?, batLife?,
+ *   napMaxEinsKw?,           — 0 = unbegrenzt (hartes Abregelungslimit)
+ *   pvInfraStufen?,          — Fallback auf PV_INFRA_STUFEN aus 09d
+ *   deltaInfraFn?,           — (napId, spitzeKwNeu, spitzeKwAlt) → €/a; optional (M3)
+ * }
+ *
+ * Rückgabe: { ranking, kurve }
+ *   ranking: [{ kandidat, delta, napId, tier }]   (nach Δ absteigend, C ans Ende)
+ *   kurve:   [{ kWpKumuliert, ueberschussKumuliert }]
+ */
+function pvMeritOrderCore(kandidaten, demandH, pvProfileSued, pvProfileOstWest, params) {
+  const {
+    batKwh         = 0,
+    napMaxEinsKw   = 0,
+    pStrom, pEinsp,
+    pvInvestPerKwp,
+    batInvestPerKwh = 400,
+    zins           = 0.035,
+    pvLife         = 20,
+    batLife        = 15,
+    pvInfraStufen,
+    deltaInfraFn,  // optional: (napId, spitzeKwNeu, spitzeKwAlt) → €/a (M3)
+  } = params;
+
+  const infStufen = pvInfraStufen || PV_INFRA_STUFEN;
+  const wParams   = { pStrom, pEinsp, pvInvestPerKwp, batKwh, batInvestPerKwh, zins, pvLife, batLife };
+
+  // Per-NAP-Zerlegung: Kandidaten nach napId gruppieren
+  const napGroups = new Map();
+  for (const k of kandidaten) {
+    const nid = k.napId ?? 'default';
+    if (!napGroups.has(nid)) napGroups.set(nid, []);
+    napGroups.get(nid).push(k);
+  }
+
+  const ranking = []; // alle Ergebnis-Einträge (A/B vorn, C hinten)
+  const kurve   = []; // kumulative Überschuss-Kurve
+
+  for (const [napId, groupKand] of napGroups) {
+    // In M2: gemeinsamer Lastgang für alle NAPs.
+    // In M3 wird pro NAP ein eigener Lastgang ergänzt.
+    const demand = demandH;
+
+    // Vorab alle Beitrags-Profile berechnen (je Kandidat eine 8760h-Kurve in kWh/h)
+    const remaining   = [...groupKand];
+    const candGenH    = remaining.map(c => _buildCandGenH(c, pvProfileSued, pvProfileOstWest));
+
+    // Inkrementelles Gesamt-Profil für die bisher gewählte Menge
+    const genHSelected = new Float32Array(8760);
+    const trialGen     = new Float32Array(8760); // Arbeits-Buffer, wird überschrieben
+    let selectedKwp    = 0;
+    let uebSelected    = 0; // Netto-Überschuss für leere Menge = 0 (kein Invest, kein Ertrag)
+    let spitzeKwSelected = 0; // Rückspeise-Spitze der bisher gewählten Menge (M3)
+
+    while (remaining.length > 0) {
+      let bestDelta = -Infinity, bestIdx = -1, bestUeb = uebSelected, bestSpitze = spitzeKwSelected;
+
+      for (let i = 0; i < remaining.length; i++) {
+        // Probier-Profil: bisheriges Profil + Kandidat i
+        const cg = candGenH[i];
+        for (let t = 0; t < 8760; t++) trialGen[t] = genHSelected[t] + cg[t];
+
+        const trialKwp = selectedKwp + remaining[i].kWp;
+        let trialErtragMwh = 0;
+        for (let t = 0; t < 8760; t++) trialErtragMwh += trialGen[t];
+        trialErtragMwh /= 1000;
+
+        const dispatch   = pvMeritDispatch(trialGen, batKwh, demand, napMaxEinsKw);
+        const ueb        = pvMeritNettoUeberschuss(dispatch, trialKwp, trialErtragMwh, wParams, infStufen);
+        const deltaInfra = deltaInfraFn
+          ? (deltaInfraFn(napId, dispatch.maxEinspeiseKw, spitzeKwSelected) || 0)
+          : 0;
+        const delta      = ueb - uebSelected - deltaInfra;
+
+        if (delta > bestDelta) {
+          bestDelta = delta; bestIdx = i; bestUeb = ueb; bestSpitze = dispatch.maxEinspeiseKw;
+        }
+      }
+
+      // Abbruch wenn kein Kandidat mehr einen positiven Beitrag liefert
+      if (bestDelta <= 0) {
+        for (const c of remaining) ranking.push({ kandidat: c, delta: bestDelta, napId, tier: 'C' });
+        break;
+      }
+
+      // Besten Kandidaten zur gewählten Menge hinzufügen
+      const best = remaining[bestIdx];
+      const bg   = candGenH[bestIdx];
+      for (let t = 0; t < 8760; t++) genHSelected[t] += bg[t];
+      selectedKwp      += best.kWp;
+      uebSelected       = bestUeb;
+      spitzeKwSelected  = bestSpitze;
+
+      ranking.push({ kandidat: best, delta: bestDelta, napId });
+      kurve.push({ kWpKumuliert: selectedKwp, ueberschussKumuliert: uebSelected });
+
+      remaining.splice(bestIdx, 1);
+      candGenH.splice(bestIdx, 1);
+    }
+  }
+
+  // Tiers A/B für die im Algorithmus gewählten Einträge vergeben
+  _assignTiers(ranking);
+
+  return { ranking, kurve };
+}
+
+// ── Interne Helpers ───────────────────────────────────────────────────────────
+
+function _buildCandGenH(c, pvProfileSued, pvProfileOstWest) {
+  const prof  = (c.ausrichtung === 'ostwest') ? pvProfileOstWest : pvProfileSued;
+  const spez  = c.pvSpez || _PV_SPEZ_DEFAULT[c.ausrichtung] || 1000;
+  const scale = c.kWp * spez;
+  const gen   = new Float32Array(8760);
+  for (let t = 0; t < 8760; t++) gen[t] = prof[t] * scale;
+  return gen;
+}
+
+function _assignTiers(ranking) {
+  const selected = ranking.filter(r => !r.tier);
+  if (!selected.length) return;
+  const maxDelta  = Math.max(...selected.map(r => r.delta));
+  const threshold = maxDelta * 0.3; // A-Tier: obere 70 % der Delta-Spanne
+  for (const r of selected) {
+    r.tier = r.delta > threshold ? 'A' : 'B';
+  }
+}
+
+/** BFS durch ASSETS.edges vom startId → gibt ID des nächsten NAP-Assets zurück, oder null. */
+function _findNapForAsset(startId) {
+  const edges = ASSETS.edges;
+  const items = ASSETS.items;
+  const visited = new Set([startId]);
+  const queue   = [startId];
+  while (queue.length) {
+    const id    = queue.shift();
+    const asset = items.find(a => a.id === id);
+    if (asset?.type === 'NAP') return asset.id;
+    for (const e of edges) {
+      if (e.u === id && !visited.has(e.v)) { visited.add(e.v); queue.push(e.v); }
+      if (e.v === id && !visited.has(e.u)) { visited.add(e.u); queue.push(e.u); }
+    }
+  }
+  return null;
+}
+
+/** Ableitung der Ausrichtung eines Gebäudes (analog pvOrientationMix). */
+function _gebAusrichtung(g) {
+  if (g.pvModus === 'flaechen') {
+    if (!g.dachform || g.dachform === 'flach') return g.pvFlAusrichtung || 'sued';
+    if (g.dachform === 'sattel') {
+      const A     = g.dachAzimut != null ? g.dachAzimut : 180;
+      const devEW = Math.min(Math.abs(A - 90), Math.abs(A - 270));
+      return devEW <= 45 ? 'ostwest' : 'sued';
+    }
+  }
+  return 'sued';
+}
+
+/** Standortspezifischer Ertrag (DOM-safe, fällt auf Default zurück). */
+function _pvSpezFor(ausrichtung) {
+  const globalSpez = parseFloat(
+    typeof document !== 'undefined' ? document.getElementById?.('pv-spez')?.value : ''
+  );
+  const baseSued = _PV_SPEZ_DEFAULT['sued'] || 1050;
+  const baseDef  = _PV_SPEZ_DEFAULT[ausrichtung] || 1000;
+  if (!globalSpez || isNaN(globalSpez) || globalSpez <= 0) return baseDef;
+  return baseDef * (globalSpez / baseSued);
+}
+
+// ── App-Side: Kandidaten-Enumeration ────────────────────────────────────────
+
+/**
+ * Listet alle PV-Ausbaukandidaten aus den 4 Quellen auf.
+ * Gibt ein reines Datenobjekt zurück, berührt keinen State.
+ *
+ * Kandidat = { id, quelle, refId, name, lat, lng, kWp, ausrichtung, pvSpez,
+ *              jahresertragKWh, napId, score, tier, deltaUeberschuss, status }
+ */
+function pvEnumerateKandidaten() {
+  const result = [];
+
+  // 1. Elektro-Assets vom Typ 'PV'
+  for (const a of (ASSETS?.items || []).filter(a => a.type === 'PV')) {
+    const kWp = parseFloat(a.props?.leistungKWp) || 0;
+    if (kWp <= 0) continue;
+    const ausrichtung = a.props?.ausrichtung || 'sued';
+    const pvSpez      = parseFloat(a.props?.pvSpez) || _pvSpezFor(ausrichtung);
+    result.push({
+      id:              'pv_asset_' + a.id,
+      quelle:          'asset',
+      refId:           a.id,
+      name:            a.name || ('PV ' + a.id),
+      lat:             a.lat,
+      lng:             a.lng,
+      kWp,
+      ausrichtung,
+      pvSpez,
+      jahresertragKWh: kWp * pvSpez,
+      napId:           _findNapForAsset(a.id),
+      score:           null,
+      tier:            null,
+      deltaUeberschuss: null,
+      status:          'kandidat',
+    });
+  }
+
+  // 2. Gebäude-integrierte PV (pvAktiv)
+  for (const g of (typeof gebaeude !== 'undefined' ? gebaeude : [])) {
+    if (!g.pvAktiv) continue;
+    const kWp = calcGebKwp(g) || 0;
+    if (kWp <= 0) continue;
+    const ausrichtung = _gebAusrichtung(g);
+    const pvSpez      = _pvSpezFor(ausrichtung);
+    const center      = _gebCenter(g);
+    result.push({
+      id:              'pv_geb_' + g.id,
+      quelle:          'gebaeude',
+      refId:           g.id,
+      name:            g.name || ('Gebäude ' + g.id),
+      lat:             center.lat,
+      lng:             center.lng,
+      kWp,
+      ausrichtung,
+      pvSpez,
+      jahresertragKWh: kWp * pvSpez,
+      napId:           null, // Gebäude-PV hat keine direkte NAP-Verknüpfung in M2
+      score:           null,
+      tier:            null,
+      deltaUeberschuss: null,
+      status:          'kandidat',
+    });
+  }
+
+  // 3. Freiflächen-PV
+  for (const ff of (typeof freiflaechen !== 'undefined' ? freiflaechen : [])) {
+    const kWp = calcFFKwp(ff) || 0;
+    if (kWp <= 0) continue;
+    const ausrichtung = ff.ausrichtung || 'sued';
+    const pvSpez      = _pvSpezFor(ausrichtung);
+    result.push({
+      id:              'pv_ff_' + ff.id,
+      quelle:          'freiflaeche',
+      refId:           ff.id,
+      name:            ff.name || ('Freifläche ' + ff.id),
+      lat:             ff.lat  || null,
+      lng:             ff.lng  || null,
+      kWp,
+      ausrichtung,
+      pvSpez,
+      jahresertragKWh: kWp * pvSpez,
+      napId:           ff.napId || null,
+      score:           null,
+      tier:            null,
+      deltaUeberschuss: null,
+      status:          'kandidat',
+    });
+  }
+
+  // 4. Manuelle kWp-Eingabe (eine Einzel-Quelle)
+  const manualKwp = parseFloat(
+    typeof document !== 'undefined' ? document.getElementById?.('pv-kwp')?.value : ''
+  ) || 0;
+  if (manualKwp > 0) {
+    const ausrichtung = (typeof document !== 'undefined'
+      ? document.getElementById?.('pv-ausrichtung')?.value
+      : null) || 'sued';
+    const pvSpez = _pvSpezFor(ausrichtung);
+    result.push({
+      id:              'pv_manuell',
+      quelle:          'manuell',
+      refId:           null,
+      name:            'Manuelle PV (' + manualKwp + ' kWp)',
+      lat:             null,
+      lng:             null,
+      kWp:             manualKwp,
+      ausrichtung,
+      pvSpez,
+      jahresertragKWh: manualKwp * pvSpez,
+      napId:           null,
+      score:           null,
+      tier:            null,
+      deltaUeberschuss: null,
+      status:          'kandidat',
+    });
+  }
+
+  return result;
+}
+
+/** Mittelpunkt eines Gebäudes aus seinem Polygon (oder 0/0 als Fallback). */
+function _gebCenter(g) {
+  const poly = g.polygon;
+  if (!poly?.length) return { lat: g.lat || 0, lng: g.lng || 0 };
+  let la = 0, ln = 0;
+  for (const pt of poly) { la += pt[0]; ln += pt[1]; }
+  return { lat: la / poly.length, lng: ln / poly.length };
+}
+
+// ── App-Side: Merit-Order starten ─────────────────────────────────────────────
+
+/**
+ * Führt die Merit-Order für alle aktuellen Kandidaten durch.
+ * Liest PV-Profile und wirtschaftliche Parameter aus dem DOM.
+ * opts überschreibt DOM-Defaults (nützlich für Tests / programmatischen Aufruf).
+ *
+ * opts: {
+ *   kandidaten?: Kandidat[]   — Standard: pvEnumerateKandidaten()
+ *   demandH?: Float32Array    — Standard: window.elQuartierH || window.elQuartierH15
+ *   pStrom?: number           — ct/kWh, Standard: DOM 'strom-preis'
+ *   pEinsp?: number           — ct/kWh, Standard: DOM 'pv-verg'
+ *   pvInvestPerKwp?: number   — €/kWp, Standard: DOM 'opt-pv-invest'
+ *   batKwh?: number           — kWh, Standard: 0
+ *   zins?: number             — Dezimalbruch, Standard: DOM 'opt-zins'
+ * }
+ */
+function pvRunMeritOrder(opts = {}) {
+  const dom = (id) => parseFloat(document.getElementById?.(id)?.value) || 0;
+
+  const kandidaten     = opts.kandidaten ?? pvEnumerateKandidaten();
+  const demandH        = opts.demandH    ?? window.elQuartierH ?? window.elQuartierH15;
+  if (!demandH?.length) {
+    console.warn('pvRunMeritOrder: kein Lastgang verfügbar — Merit-Order abgebrochen');
+    return null;
+  }
+
+  const demandH8760 = demandH.length <= 8784
+    ? demandH
+    : _resampleTo8760(demandH); // 15-min → stündlich für den Merit-Order-Core
+
+  const pStrom         = opts.pStrom         != null ? opts.pStrom         : (dom('strom-preis')  || 30);
+  const pEinsp         = opts.pEinsp         != null ? opts.pEinsp         : (dom('pv-verg')       || 8);
+  const pvInvestPerKwp = opts.pvInvestPerKwp != null ? opts.pvInvestPerKwp : (dom('opt-pv-invest') || 1200);
+  const batKwh         = opts.batKwh         != null ? opts.batKwh         : 0;
+  const zins           = opts.zins           != null ? opts.zins           : (dom('opt-zins') / 100 || 0.035);
+
+  const pvProfileSued    = makePvProfile8760('sued');
+  const pvProfileOstWest = makePvProfile8760('ostwest');
+
+  const result = pvMeritOrderCore(kandidaten, demandH8760, pvProfileSued, pvProfileOstWest, {
+    pStrom, pEinsp, pvInvestPerKwp, batKwh, zins,
+    napMaxEinsKw: 0,
+    pvInfraStufen: PV_INFRA_STUFEN,
+  });
+
+  // Ergebnis global + per Variante ablegen (für Vergleichstabelle)
+  if (result) {
+    window._lastMeritOrderResult = result;
+    const key = (window.activeVariantId != null ? window.activeVariantId : 'base');
+    window._pvVariantResults = window._pvVariantResults || {};
+    window._pvVariantResults[key] = { ...result, pvInvestPerKwp, pStrom, pEinsp, zins };
+  }
+  return result;
+}
+
+/** 15-min-Array auf 8760 Stundenwerte mitteln (gleitender Mittelwert je 4 Slots). */
+function _resampleTo8760(arr15) {
+  const out = new Float32Array(8760);
+  const N15 = Math.min(arr15.length, 35040);
+  for (let h = 0; h < 8760; h++) {
+    const i = h * 4;
+    out[h] = i + 3 < N15
+      ? (arr15[i] + arr15[i+1] + arr15[i+2] + arr15[i+3]) / 4
+      : (i < N15 ? arr15[i] : 0);
+  }
+  return out;
+}
+
+
+// ── 14b-ertuechtigung.js ──
+// ── 14b-ertuechtigung.js — Infrastruktur-Ertüchtigung für PV-Ausbau ──────────
+// M3: Headroom → Alternativen; Δinfra für Merit-Order-Callback
+//
+// Zwei Schichten:
+//   PURE (export, testbar, kein DOM):
+//     ERT_TRAFO_STUFEN, ertTrafoKapKw, ertDeltaInfraJk, ertGeneriereAlternativen
+//   APP-SIDE (liest ASSETS):
+//     ertFindTrafoFuerNap, ertNapKapazitaetKw, ertNapKapazitaetMap,
+//     ertMakeDeltaInfraFn, ertRunMitInfra
+
+
+// ── Trafo-Kostenstufen ────────────────────────────────────────────────────────
+// Standardtrafo NS/MS inkl. Montage; gerundete DE-Richtwerte 2024.
+// bisKvA = Nennleistung des neuen Trafos;  investEUR = Gesamtkosten ca.
+// lebensdauerJ = Nutzungsdauer für Annuität; iHProzent = jährl. Instandhaltung
+var ERT_TRAFO_STUFEN = [
+  { bisKvA:  100, investEUR:  12000, lebensdauerJ: 30, iHProzent: 0.5 },
+  { bisKvA:  250, investEUR:  18000, lebensdauerJ: 30, iHProzent: 0.5 },
+  { bisKvA:  400, investEUR:  25000, lebensdauerJ: 30, iHProzent: 0.5 },
+  { bisKvA:  630, investEUR:  38000, lebensdauerJ: 30, iHProzent: 0.5 },
+  { bisKvA: 1000, investEUR:  58000, lebensdauerJ: 30, iHProzent: 0.5 },
+  { bisKvA: 1600, investEUR:  85000, lebensdauerJ: 30, iHProzent: 0.5 },
+  { bisKvA: 2500, investEUR: 125000, lebensdauerJ: 30, iHProzent: 0.5 },
+  { bisKvA: Infinity, investEUR: 200000, lebensdauerJ: 30, iHProzent: 0.5 }, // Übergabestation
+];
+
+// Leistungsfaktor für kVA → kW Umrechnung (konservativ NS = 0.9)
+var PF_NS = 0.9;
+
+// ── Pure Helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Kapazität eines Trafo-Assets in kW (aus leistungKVA-Prop).
+ * Gibt 0 zurück wenn keine Angabe vorhanden.
+ */
+function ertTrafoKapKw(asset, pfFaktor) {
+  const kva = parseFloat(asset?.props?.leistungKVA) || 0;
+  return kva * (pfFaktor != null ? pfFaktor : PF_NS);
+}
+
+/**
+ * Kleinstmögliche Trafo-Stufe, die mindestens minKapKw liefert.
+ * Gibt null zurück wenn keine Stufe ausreichend ist (sollte nicht vorkommen).
+ */
+function ertNaechsteTrafoStufe(minKapKw, trafoStufen) {
+  const st = trafoStufen || ERT_TRAFO_STUFEN;
+  return st.find(s => s.bisKvA * PF_NS >= minKapKw) || st[st.length - 1];
+}
+
+/**
+ * Jährliche Kapitalkosten eines Trafo-Upgrades.
+ * aktuellKapKw: aktuelle Kapazität (0 = kein Trafo vorhanden)
+ * benoetigtKw: benötigte Kapazität nach Ausbau
+ * zins: Kalkulationszinssatz (Dezimalbruch)
+ * trafoStufen: optional (Fixture für Tests)
+ */
+function ertTrafoUpgradeJk(aktuellKapKw, benoetigtKw, zins, trafoStufen) {
+  if (benoetigtKw <= aktuellKapKw) return 0;
+  const st   = trafoStufen || ERT_TRAFO_STUFEN;
+  const neu  = ertNaechsteTrafoStufe(benoetigtKw, st);
+  if (!neu) return 0;
+  const iHF  = (neu.iHProzent || 0.5) / 100;
+  return neu.investEUR * (pvMeritAnnF(zins, neu.lebensdauerJ) + iHF);
+}
+
+/**
+ * Jährliche Marginalkosten der Infrastruktur-Ertüchtigung.
+ * Wird von pvMeritOrderCore als deltaInfraFn-Callback aufgerufen.
+ *
+ * Logik:
+ *   - spitzeKwAlt ≤ napKapKw  UND  spitzeKwNeu ≤ napKapKw → kein Bottleneck → 0
+ *   - spitzeKwAlt ≤ napKapKw  UND  spitzeKwNeu >  napKapKw → Bottleneck neu ausgelöst
+ *       → günstigste Upgrade-Annuität (Trafo auf nächste Stufe)
+ *   - spitzeKwAlt >  napKapKw                              → schon vorher Bottleneck
+ *       → zusätzliche Kosten nur wenn eine höhere Stufe benötigt wird
+ *
+ * napKapKw: Ist-Kapazität des NAP (aus Trafo-Nennleistung × PF)
+ * zins: Kalkulationszinssatz
+ * trafoStufen: optional für Tests
+ */
+function ertDeltaInfraJk(spitzeKwNeu, napKapKw, spitzeKwAlt, zins, trafoStufen) {
+  if (!napKapKw || napKapKw <= 0) return 0; // unbekannte Kapazität → kein Constraint
+  if (spitzeKwNeu <= napKapKw) return 0;     // passt noch rein
+
+  // Welche Upgrade-Stufe war bisher nötig (für spitzeKwAlt)?
+  const jkAlt = spitzeKwAlt > napKapKw
+    ? ertTrafoUpgradeJk(napKapKw, spitzeKwAlt, zins, trafoStufen)
+    : 0;
+
+  // Welche Upgrade-Stufe wird jetzt nötig (für spitzeKwNeu)?
+  const jkNeu = ertTrafoUpgradeJk(napKapKw, spitzeKwNeu, zins, trafoStufen);
+
+  // Nur der Marginalanteil (kann 0 sein wenn schon dieselbe Stufe nötig war)
+  return Math.max(0, jkNeu - jkAlt);
+}
+
+/**
+ * Erzeugt eine Liste von Upgrade-Alternativen für einen NAP-Engpass.
+ * Jede Alternative ist ein Maßnahmen-Objekt (passt zu asset.massnahmen[]).
+ *
+ * spitzeKw: aufgetretene Rückspeise-Spitze in kW
+ * napKapKw: aktuelle NAP-Kapazität in kW
+ * params: { zins, trafoStufen?, skKva?, uBudgetPct? }
+ *
+ * Rückgabe: Alternative[] mit { id, label, investEUR, jkEUR, deltaKapKw, typ, newProps }
+ */
+function ertGeneriereAlternativen(spitzeKw, napKapKw, params) {
+  const { zins = 0.035, trafoStufen, skKva = 0, uBudgetPct = 3 } = params || {};
+  const st = trafoStufen || ERT_TRAFO_STUFEN;
+  const alternativen = [];
+  const ueberlastKw  = spitzeKw - napKapKw;
+
+  // 1. Spannungscheck (nur wenn S_k″ bekannt)
+  let spannungOk = true;
+  let deltaU_pct = 0;
+  if (skKva > 0) {
+    // Δu ≈ 100 · P_rück / S_k″; zulässig: uBudgetPct %
+    deltaU_pct = 100 * spitzeKw / skKva;
+    spannungOk = deltaU_pct <= uBudgetPct;
+  }
+
+  // 2. Trafo-Upgrade-Alternativen (Stufenfolge ab der aktuell nötigen Kapazität)
+  const relevanteStuden = st.filter(s => s.bisKvA * PF_NS >= spitzeKw);
+  for (const s of relevanteStuden.slice(0, 3)) { // max. 3 Optionen
+    const newKapKw = s.bisKvA * PF_NS;
+    const jk       = ertTrafoUpgradeJk(napKapKw, newKapKw, zins, st);
+    const stufenLabel = s.bisKvA < Infinity ? `${s.bisKvA} kVA` : 'Übergabestation';
+    alternativen.push({
+      id:          `trafo_${s.bisKvA}`,
+      label:       `Trafo neu/verstärkt — ${stufenLabel}`,
+      investEUR:   s.investEUR,
+      jkEUR:       jk,
+      deltaKapKw:  newKapKw - napKapKw,
+      typ:         'Ertuechtigung',
+      newProps:    { leistungKVA: s.bisKvA },
+      spannungOk,
+      deltaU_pct:  deltaU_pct.toFixed(1),
+    });
+  }
+
+  // 3. Abregelung (immer als günstigste Option, 0 €)
+  alternativen.push({
+    id:          'abregelung',
+    label:       `Abregelung auf ${napKapKw.toFixed(0)} kW (${ueberlastKw.toFixed(0)} kW kappen)`,
+    investEUR:   0,
+    jkEUR:       0,
+    deltaKapKw:  0,
+    typ:         'abregelung',
+    newProps:    { napMaxEinsKw: napKapKw },
+    spannungOk:  true,
+    deltaU_pct:  uBudgetPct.toFixed(1),
+  });
+
+  // Nach jkEUR aufsteigend sortieren (günstigste Variante zuerst)
+  alternativen.sort((a, b) => a.jkEUR - b.jkEUR);
+  return alternativen;
+}
+
+// ── App-Side Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Sucht den ersten Trafo im Netz, der einem NAP-Asset (napId) vorgelagert ist.
+ * Traversiert ASSETS.edges rückwärts (Richtung Netzeinspeisung).
+ * Gibt das Trafo-Asset zurück oder null.
+ */
+function ertFindTrafoFuerNap(napId) {
+  const items = ASSETS?.items || [];
+  const edges = ASSETS?.edges || [];
+  const visited = new Set([napId]);
+  const queue   = [napId];
+  while (queue.length) {
+    const id   = queue.shift();
+    const asset = items.find(a => a.id === id);
+    if (id !== napId && asset?.type === 'Trafo') return asset;
+    for (const e of edges) {
+      if (e.u === id && !visited.has(e.v)) { visited.add(e.v); queue.push(e.v); }
+      if (e.v === id && !visited.has(e.u)) { visited.add(e.u); queue.push(e.u); }
+    }
+  }
+  return null;
+}
+
+/**
+ * Kapazität eines NAP in kW (aus dem vorgelagerten Trafo-Asset oder NAP-Props).
+ * Gibt 0 zurück wenn unbekannt.
+ */
+function ertNapKapazitaetKw(napId, pfFaktor) {
+  // Zuerst: NAP-Asset selbst nach leistungKVA-Prop befragen (selten gesetzt)
+  const items = ASSETS?.items || [];
+  const napAsset = items.find(a => a.id === napId);
+  const direktKva = parseFloat(napAsset?.props?.leistungKVA) || 0;
+  if (direktKva > 0) return direktKva * (pfFaktor != null ? pfFaktor : PF_NS);
+
+  // Dann: vorgelagerten Trafo suchen
+  const trafo = ertFindTrafoFuerNap(napId);
+  return trafo ? ertTrafoKapKw(trafo, pfFaktor) : 0;
+}
+
+/**
+ * Gibt eine Map<napId, kapKw> für alle NAPs im ASSETS-Netz zurück.
+ * NAPs ohne Kapazitätsangabe werden ausgelassen (Map hat keinen Eintrag → kein Limit).
+ */
+function ertNapKapazitaetMap(pfFaktor) {
+  const items = ASSETS?.items || [];
+  const map   = new Map();
+  for (const a of items) {
+    if (a.type !== 'NAP') continue;
+    const kapKw = ertNapKapazitaetKw(a.id, pfFaktor);
+    if (kapKw > 0) map.set(a.id, kapKw);
+  }
+  return map;
+}
+
+/**
+ * Erzeugt eine deltaInfraFn, die in pvMeritOrderCore als params.deltaInfraFn
+ * übergeben werden kann.
+ *
+ * napKapazitaeten: Map<napId, kw> — typischerweise von ertNapKapazitaetMap()
+ * zins: Kalkulationszinssatz
+ * trafoStufen: optional (für Tests)
+ */
+function ertMakeDeltaInfraFn(napKapazitaeten, zins, trafoStufen) {
+  return function(napId, spitzeKwNeu, spitzeKwAlt) {
+    const napKapKw = napKapazitaeten?.get(napId) || 0;
+    return ertDeltaInfraJk(spitzeKwNeu, napKapKw, spitzeKwAlt, zins, trafoStufen);
+  };
+}
+
+/**
+ * Wrapper: Merit-Order mit automatischer Infra-Einbeziehung.
+ * Liest NAP-Kapazitäten aus ASSETS und wired deltaInfraFn automatisch.
+ * opts wird an pvRunMeritOrder weitergegeben (kann alle pvRunMeritOrder-Felder enthalten).
+ */
+function ertRunMitInfra(opts) {
+  const dom   = id => parseFloat(document?.getElementById?.(id)?.value) || 0;
+  const zins  = opts?.zins != null ? opts.zins : (dom('opt-zins') / 100 || 0.035);
+  const napKapazitaeten = ertNapKapazitaetMap();
+
+  const pvProfileSued    = makePvProfile8760('sued');
+  const pvProfileOstWest = makePvProfile8760('ostwest');
+
+  const kandidaten = opts?.kandidaten ?? pvEnumerateKandidaten();
+  const demandH    = opts?.demandH    ?? window.elQuartierH ?? window.elQuartierH15;
+  if (!demandH?.length) {
+    console.warn('ertRunMitInfra: kein Lastgang verfügbar');
+    return null;
+  }
+
+  const pStrom         = opts?.pStrom         != null ? opts.pStrom         : (dom('strom-preis')  || 30);
+  const pEinsp         = opts?.pEinsp         != null ? opts.pEinsp         : (dom('pv-verg')       || 8);
+  const pvInvestPerKwp = opts?.pvInvestPerKwp != null ? opts.pvInvestPerKwp : (dom('opt-pv-invest') || 1200);
+  const batKwh         = opts?.batKwh         != null ? opts.batKwh         : 0;
+
+  return pvMeritOrderCore(
+    kandidaten, demandH, pvProfileSued, pvProfileOstWest,
+    {
+      pStrom, pEinsp, pvInvestPerKwp, batKwh, zins,
+      napMaxEinsKw:  0,
+      pvInfraStufen: PV_INFRA_STUFEN,
+      deltaInfraFn:  ertMakeDeltaInfraFn(napKapazitaeten, zins),
+    }
+  );
+}
+
+
+// ── 14c-phasen.js ──
+// ── 14c-phasen.js — Fahrplan-Logik: Topo-Sort, Phasen-Schnitt, Validierung ──
+// M4: dependsOn-Graph → Bau-Sequenz; Auto-Schnitt in Phasen; Verletzungsprüfung
+//
+// Zwei Schichten:
+//   PURE (export, testbar, kein DOM):
+//     fahrplanTopoSort, fahrplanDetektZyklus, fahrplanValidiereReihenfolge,
+//     fahrplanAutoSchnitt, fahrplanBerechneInvestJePhase
+//   APP-SIDE:
+//     fahrplanAutoGenerieren, fahrplanSchreibeAufAssets
+
+
+// ── Typen (JSDoc-Referenz) ────────────────────────────────────────────────────
+// FahrplanItem = {
+//   id:        string,        — eindeutige ID dieser Fahrplan-Maßnahme
+//   assetId:   string,        — zugehöriges Asset
+//   typ:       string,        — 'Bau' | 'Ertuechtigung' | 'Sanierung' | ...
+//   titel:     string,
+//   kosten:    number,        — €
+//   jahr:      number|null,   — explizites Jahr (Override, null = aus Phase)
+//   phaseId:   string|null,
+//   dependsOn: string[],      — IDs anderer FahrplanItems (Prereqs)
+//   deltaRank: number,        — Δ aus Merit-Order (0 wenn nicht aus MO)
+// }
+
+// ── Pure: Topologische Sortierung ────────────────────────────────────────────
+
+/**
+ * Kahn-Algorithmus: sortiert FahrplanItems so, dass jede Maßnahme erst nach
+ * allen ihren Prereqs erscheint.
+ *
+ * items: FahrplanItem[]  (jedes hat .id und .dependsOn: string[])
+ * Gibt sortiertes Array zurück.
+ * Wirft Error wenn ein Zyklus erkannt wird (mit betroffenen IDs).
+ */
+function fahrplanTopoSort(items) {
+  const idMap   = new Map(items.map(it => [it.id, it]));
+  const indegree = new Map(items.map(it => [it.id, 0]));
+
+  // Eingehende Kanten zählen
+  for (const it of items) {
+    for (const dep of (it.dependsOn || [])) {
+      if (!idMap.has(dep)) continue; // externe Dep, ignorieren
+      indegree.set(it.id, (indegree.get(it.id) || 0) + 1);
+    }
+  }
+
+  // Startknoten: alle ohne eingehende Kanten (innerhalb des Sets)
+  const queue  = items.filter(it => indegree.get(it.id) === 0).map(it => it.id);
+  const result = [];
+
+  while (queue.length > 0) {
+    const cur  = queue.shift();
+    const item = idMap.get(cur);
+    if (!item) continue;
+    result.push(item);
+
+    // Alle Items die cur als Prereq haben → indegree senken
+    for (const other of items) {
+      if (!(other.dependsOn || []).includes(cur)) continue;
+      const newDeg = (indegree.get(other.id) || 0) - 1;
+      indegree.set(other.id, newDeg);
+      if (newDeg === 0) queue.push(other.id);
+    }
+  }
+
+  if (result.length < items.length) {
+    const remaining = items.filter(it => !result.find(r => r.id === it.id)).map(it => it.id);
+    throw new Error('Zyklus erkannt in FahrplanItems: ' + remaining.join(', '));
+  }
+
+  return result;
+}
+
+/**
+ * Prüft ob im dependsOn-Graph ein Zyklus existiert.
+ * Gibt Array der am Zyklus beteiligten IDs zurück, oder null wenn zyklenfrei.
+ */
+function fahrplanDetektZyklus(items) {
+  try {
+    fahrplanTopoSort(items);
+    return null;
+  } catch (e) {
+    const match = e.message.match(/: (.+)$/);
+    return match ? match[1].split(', ') : [];
+  }
+}
+
+/**
+ * Prüft ob die zeitliche Reihenfolge (massnahmeJahr) die dependsOn-Kanten respektiert.
+ * Eine Verletzung liegt vor wenn ein Item früher geplant ist als einer seiner Prereqs.
+ *
+ * items: FahrplanItem[]
+ * phasenArr: Phase[]  (zur Jahr-Auflösung via massnahmeJahr)
+ *
+ * Gibt array von { item, prereqId, itemJahr, prereqJahr } zurück (leer = alles ok).
+ */
+function fahrplanValidiereReihenfolge(items, phasenArr) {
+  const idMap     = new Map(items.map(it => [it.id, it]));
+  const jahrFn    = (it) => _itemJahr(it, phasenArr);
+  const verletzungen = [];
+
+  for (const it of items) {
+    const itJahr = jahrFn(it);
+    if (itJahr == null) continue; // kein Jahr → kein Check möglich
+    for (const depId of (it.dependsOn || [])) {
+      const prereq = idMap.get(depId);
+      if (!prereq) continue;
+      const prereqJahr = jahrFn(prereq);
+      if (prereqJahr == null) continue;
+      if (itJahr < prereqJahr) {
+        verletzungen.push({ item: it, prereqId: depId, itemJahr: itJahr, prereqJahr });
+      }
+    }
+  }
+  return verletzungen;
+}
+
+/**
+ * Verteilt eine topo-sortierte Sequenz von FahrplanItems auf Phasen.
+ * Pro Phase werden maximal `msProPhase` Items zugeordnet (Standard: 5).
+ * Gibt ein Array von { phaseIdx, items } zurück.
+ *
+ * sortierteItems: FahrplanItem[] (bereits topo-sortiert)
+ * msProPhase: max. Items pro Phase (Standard 5)
+ *
+ * Hinweis: Diese Funktion weist NICHT phaseId zu — das macht der Aufrufer.
+ * Sie liefert nur die Gruppen-Indizes.
+ */
+function fahrplanAutoSchnitt(sortierteItems, msProPhase) {
+  const n       = msProPhase > 0 ? msProPhase : 5;
+  const gruppen = [];
+  for (let i = 0; i < sortierteItems.length; i += n) {
+    gruppen.push({ phaseIdx: gruppen.length, items: sortierteItems.slice(i, i + n) });
+  }
+  return gruppen;
+}
+
+/**
+ * Aggregiert Invest-Kosten je Phase.
+ * items: FahrplanItem[]
+ * phasenArr: Phase[]
+ *
+ * Gibt Map<phaseId|null, gesamtKostenEUR> zurück.
+ * Null-Key = Items ohne Phase (ungeplant).
+ */
+function fahrplanBerechneInvestJePhase(items, phasenArr) {
+  const map = new Map();
+  for (const it of items) {
+    const pid = it.phaseId || null;
+    map.set(pid, (map.get(pid) || 0) + (it.kosten || 0));
+  }
+  return map;
+}
+
+// ── App-Side ──────────────────────────────────────────────────────────────────
+
+/**
+ * Vollständiger Auto-Fahrplan aus Merit-Order-Ranking + optionalen Ertüchtigungen.
+ *
+ * ranking: Ergebnis von pvMeritOrderCore().ranking (nur A+B-Einträge werden verarbeitet)
+ * infraMap: Map<massnahmeId, { typ, titel, kosten, assetId, newProps }> — Ertüchtigungen
+ *           die durch den Merit-Order-Lauf erzeugt wurden (optional, kann leer Map sein)
+ * phasenArr: Phase[] — vorhandene Phasen (für Schnitt)
+ * opts: {
+ *   msProPhase?: number,      — Items pro Phase (Standard 5)
+ *   pvInvestPerKwp?: number,  — €/kWp für Bau-Kosten
+ * }
+ *
+ * Gibt { items: FahrplanItem[], gruppen: [{phaseIdx, items}] } zurück.
+ * Weist phaseId aus phasenArr zu (oder null wenn keine Phasen vorhanden).
+ */
+function fahrplanAutoGenerieren(ranking, infraMap, phasenArr, opts) {
+  const { msProPhase = 5, pvInvestPerKwp = 1200 } = opts || {};
+  const items = [];
+  const infra = infraMap || new Map();
+
+  // 1. Ertüchtigungs-Items voranstellen (müssen VOR den Bau-Items kommen)
+  for (const [mId, ert] of infra) {
+    items.push({
+      id:        mId,
+      assetId:   ert.assetId || null,
+      typ:       ert.typ || 'Ertuechtigung',
+      titel:     ert.titel || 'Ertüchtigung',
+      kosten:    ert.kosten || 0,
+      jahr:      null,
+      phaseId:   null,
+      dependsOn: [],
+      deltaRank: 0,
+      newProps:  ert.newProps || {},
+    });
+  }
+
+  // 2. Bau-Items aus Ranking (Tier A+B, in Ranking-Reihenfolge = absteigendes Δ)
+  for (let i = 0; i < ranking.length; i++) {
+    const r = ranking[i];
+    if (r.tier === 'C') continue;
+    const k   = r.kandidat;
+    const bid = 'bau_' + k.id;
+
+    // Prereqs: alle Ertüchtigungen die diesem NAP zugeordnet sind
+    const ertPrereqs = [];
+    for (const [mId, ert] of infra) {
+      if (ert.napId === k.napId || ert.assetId === k.napId) ertPrereqs.push(mId);
+    }
+
+    items.push({
+      id:        bid,
+      assetId:   k.refId || k.id,
+      typ:       'Bau',
+      titel:     'PV-Anlage ' + (k.name || k.id),
+      kosten:    Math.round(k.kWp * pvInvestPerKwp),
+      jahr:      null,
+      phaseId:   null,
+      dependsOn: ertPrereqs,
+      deltaRank: r.delta,
+      newProps:  { leistungKWp: k.kWp, ausrichtung: k.ausrichtung },
+    });
+  }
+
+  // 3. Topo-Sort
+  const sortiert = fahrplanTopoSort(items);
+
+  // 4. Auto-Schnitt in Phasen
+  const gruppen = fahrplanAutoSchnitt(sortiert, msProPhase);
+
+  // 5. phaseId zuweisen (aus phasenArr wenn vorhanden, sonst Phasen-Index als Placeholder)
+  const sortPhasen = [...(phasenArr || [])].sort(
+    (a, b) => parseInt(a.reihenfolge) - parseInt(b.reihenfolge)
+  );
+  for (const g of gruppen) {
+    const phase = sortPhasen[g.phaseIdx] || null;
+    for (const it of g.items) {
+      it.phaseId = phase ? phase.id : null;
+    }
+  }
+
+  return { items: sortiert, gruppen };
+}
+
+/**
+ * Schreibt einen fertig berechneten Fahrplan auf die echten Asset-Maßnahmen zurück.
+ * Bestehende Maßnahmen mit passender ID werden aktualisiert, neue werden angelegt.
+ *
+ * items: FahrplanItem[]
+ * assetsList: Asset[]  (typischerweise ASSETS.items)
+ *
+ * Gibt Anzahl der geschriebenen Einträge zurück.
+ */
+function fahrplanSchreibeAufAssets(items, assetsList) {
+  const assets = assetsList || ASSETS?.items || [];
+  let count = 0;
+  for (const it of items) {
+    const asset = assets.find(a => a.id === it.assetId);
+    if (!asset) continue;
+    if (!asset.massnahmen) asset.massnahmen = [];
+    const vorh = asset.massnahmen.find(m => m.id === it.id);
+    if (vorh) {
+      // Bestehende Maßnahme aktualisieren (nur Felder die der Fahrplan setzt)
+      Object.assign(vorh, {
+        typ:       it.typ,
+        titel:     it.titel,
+        kosten:    it.kosten,
+        phaseId:   it.phaseId,
+        jahr:      it.jahr,
+        dependsOn: it.dependsOn,
+        newProps:  it.newProps || vorh.newProps || {},
+        status:    vorh.status || 'geplant',
+      });
+    } else {
+      asset.massnahmen.push({
+        id:        it.id,
+        typ:       it.typ,
+        titel:     it.titel,
+        kosten:    it.kosten,
+        phaseId:   it.phaseId,
+        jahr:      it.jahr,
+        dependsOn: it.dependsOn,
+        newProps:  it.newProps || {},
+        status:    'geplant',
+      });
+    }
+    count++;
+  }
+  return count;
+}
+
+// ── Interner Helper ───────────────────────────────────────────────────────────
+
+function _itemJahr(it, phasenArr) {
+  if (it.jahr != null) return parseInt(it.jahr);
+  if (!it.phaseId || !phasenArr?.length) return null;
+  const p = phasenArr.find(p => p.id === it.phaseId);
+  return p ? parseInt(p.jahrVon) : null;
+}
+
+
+// ── 14d-selektion.js ──
+// ── 14d-selektion.js — Asset-Selektion + Elektro-Bulk-Bar ────────────────────
+// M5: assetSelection-State; Shift+Click + Box-Selektion auf Karte;
+//     Checkboxen in Sidebar; schwebende Bulk-Bar mit Sammelaktionen.
+
+
+// ── Selektions-State ──────────────────────────────────────────────────────────
+
+// Stabile Referenz — wird immer mutiert (clear/add), nie ersetzt, damit window.assetSelection
+// (und alle Marker-Render-Pfade) immer dasselbe, aktuelle Set sehen.
+var assetSelection = new Set();
+var bulkModeActive  = false;
+
+// Live-Getter für andere Module (z. B. Marker-Rendering in 13b) — eine reassignte
+// `export let`-Variable würde auf window.* veralten, eine Funktion liest immer aktuell.
+function isBulkModeActive() { return bulkModeActive; }
+
+function selToggle(id) {
+  if (assetSelection.has(id)) assetSelection.delete(id);
+  else assetSelection.add(id);
+  _afterSelChange();
+}
+
+function selAdd(id) {
+  assetSelection.add(id);
+  _afterSelChange();
+}
+
+function selRemove(id) {
+  assetSelection.delete(id);
+  _afterSelChange();
+}
+
+function selSet(ids) {
+  assetSelection.clear();
+  for (const id of ids) assetSelection.add(id);
+  _afterSelChange();
+}
+
+function selClear() {
+  assetSelection.clear();
+  _afterSelChange();
+}
+
+// ── Bulk-Modus ────────────────────────────────────────────────────────────────
+
+// Vorheriger Sichtbarkeits-Zustand der Elektro-Asset-Ebene (zum Wiederherstellen).
+var _prevAssetLayerVisible = null;
+
+function selToggleBulkMode() {
+  bulkModeActive = !bulkModeActive;
+  if (!bulkModeActive) {
+    assetSelection.clear(); // Selektion beim Deaktivieren leeren
+  }
+  _applyBulkModeView();
+  _refreshDimming();
+  _updateBulkModeToggleBtn();
+  selRenderBulkBar();
+}
+
+function selSetBulkMode(active) {
+  if (bulkModeActive === active) return;
+  bulkModeActive = active;
+  if (!active) assetSelection.clear();
+  _applyBulkModeView();
+  _refreshDimming();
+  _updateBulkModeToggleBtn();
+  selRenderBulkBar();
+}
+
+// Erzwingt im Bulk-Modus die Sichtbarkeit der Elektro-Asset-Ebene (sonst keine Marker
+// zum Anklicken) und reduziert die Karte per CSS-Isolation. Beim Verlassen wird der
+// vorherige Ansicht-Zustand wiederhergestellt.
+function _applyBulkModeView() {
+  if (bulkModeActive) {
+    // Vorherigen Zustand merken und Asset-Ebene einschalten
+    if (_prevAssetLayerVisible === null && typeof window.isAssetLayerVisible === 'function') {
+      _prevAssetLayerVisible = window.isAssetLayerVisible();
+    }
+    if (typeof window.setAssetLayerVisible === 'function') window.setAssetLayerVisible(true);
+    const cb = document.getElementById('el-assets-visible');
+    if (cb) cb.checked = true;
+  } else if (_prevAssetLayerVisible !== null) {
+    // Vorherigen Zustand wiederherstellen
+    if (typeof window.setAssetLayerVisible === 'function') window.setAssetLayerVisible(_prevAssetLayerVisible);
+    const cb = document.getElementById('el-assets-visible');
+    if (cb) cb.checked = _prevAssetLayerVisible;
+    _prevAssetLayerVisible = null;
+  }
+
+  // Karte auf Elektro-Assets reduzieren (CSS-Isolation via .bulk-isolate)
+  const mapEl = window._appLeafletMap?.getContainer?.();
+  if (mapEl) mapEl.classList.toggle('bulk-isolate', bulkModeActive);
+}
+
+function _updateBulkModeToggleBtn() {
+  const btn  = document.getElementById('bulk-mode-toggle');
+  const list = document.getElementById('sb-asset-list');
+  if (btn) {
+    btn.textContent       = bulkModeActive ? '◉ Bulk-Modus AN' : '◎ Bulk-Modus';
+    btn.style.background  = bulkModeActive ? 'rgba(33,150,243,.22)' : '';
+    btn.style.color       = bulkModeActive ? '#4fc3f7' : '';
+    btn.style.borderColor = bulkModeActive ? '#4fc3f7' : '';
+  }
+  if (list) list.classList.toggle('bulk-active', bulkModeActive);
+}
+
+// ── Dimming: nicht-selektierte Marker ausgrauen (wie „abgerissen") ────────────
+// Arbeitet auf der Marker-Wrapper-Ebene (.leaflet-marker-icon), damit es auch für
+// gebäudegruppierte Chip-Marker funktioniert (mehrere Assets teilen einen Marker).
+// Ein Marker gilt als selektiert, sobald mindestens eines seiner Assets selektiert ist.
+
+function _refreshDimming() {
+  const iconHasSel = new Map(); // markerIcon-Element → ob ein Asset darauf selektiert ist
+  for (const a of ASSETS.items) {
+    const icon = a._marker?._icon;
+    if (!icon) continue;
+    if (!iconHasSel.has(icon)) iconHasSel.set(icon, false);
+    if (assetSelection.has(a.id)) iconHasSel.set(icon, true);
+  }
+  for (const [icon, hasSel] of iconHasSel) {
+    icon.classList.toggle('asset-bulk-dimmed', bulkModeActive && !hasSel);
+  }
+}
+
+function selRefreshMarkerDim() {
+  _refreshDimming();
+}
+
+function selHas(id) {
+  return assetSelection.has(id);
+}
+
+function selGetAssets() {
+  return ASSETS.items.filter(a => assetSelection.has(a.id));
+}
+
+// Aus Merit-Order-Ergebnis füllen (window._lastMeritOrderResult, gesetzt von pvRunMeritOrder)
+function selFromMeritOrderTier(tier) {
+  const result = window._lastMeritOrderResult;
+  if (!result?.ranking) {
+    console.warn('selFromMeritOrderTier: kein Merit-Order-Ergebnis (pvRunMeritOrder() zuerst aufrufen)');
+    return;
+  }
+  const ids = result.ranking
+    .filter(r => r.tier === tier && r.kandidat?.refId)
+    .map(r => r.kandidat.refId);
+  selSet(ids);
+}
+
+// ── Topologie-Filter: Assets hinter einem Objekt selektieren ──────────────────
+// Baut denselben gerichteten Eltern-Kind-Baum wie das SLD (13f): jeder Knoten hat
+// genau ein Elternteil. Damit bleibt die Auswahl strikt im Teilbaum unter der Wurzel
+// und läuft nicht über gleichrangige Kanten (z. B. NSHV↔NSHV) in Nachbarzweige.
+function _buildTopologyTree() {
+  const assetMap = new Map(ASSETS.items.map(a => [a.id, a]));
+  const edges = (window.stromEdges || []).filter(e => assetMap.has(e.u) && assetMap.has(e.v));
+  const children = new Map(ASSETS.items.map(a => [a.id, []]));
+  const parentOf = new Map();
+
+  const link = (srcId, snkId) => {
+    if (parentOf.has(snkId)) return;            // genau ein Elternteil (erste Zuweisung gewinnt)
+    parentOf.set(snkId, srcId);
+    if (!children.get(srcId).includes(snkId)) children.get(srcId).push(snkId);
+  };
+
+  // Pass 1: Kanten mit unterschiedlichem Rang → klare Hierarchie (niedriger Rang = Elternteil)
+  for (const e of edges) {
+    const rA = TYPE_RANK[assetMap.get(e.u).type] ?? 6;
+    const rB = TYPE_RANK[assetMap.get(e.v).type] ?? 6;
+    if (rA === rB) continue;
+    const [srcId, snkId] = rA < rB ? [e.u, e.v] : [e.v, e.u];
+    link(srcId, snkId);
+  }
+  // Pass 2: gleichrangige Kanten → Richtung anhand bereits etablierter Elternschaft
+  for (const e of edges) {
+    const rA = TYPE_RANK[assetMap.get(e.u).type] ?? 6;
+    const rB = TYPE_RANK[assetMap.get(e.v).type] ?? 6;
+    if (rA !== rB) continue;
+    const aHasParent = parentOf.has(e.u);
+    const bHasParent = parentOf.has(e.v);
+    if      ( aHasParent && !bHasParent) link(e.u, e.v);
+    else if (!aHasParent &&  bHasParent) link(e.v, e.u);
+  }
+  return { children, assetMap };
+}
+
+// Alle Assets im Teilbaum unter rootId (echte nachgelagerte Objekte).
+function _bfsDownstreamAssets(rootId) {
+  const { children, assetMap } = _buildTopologyTree();
+  const visited = new Set([rootId]);
+  const stack   = [...(children.get(rootId) || [])];
+  const found   = [];
+  while (stack.length) {
+    const id = stack.pop();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const a = assetMap.get(id);
+    if (a) found.push(a);
+    for (const c of (children.get(id) || [])) if (!visited.has(c)) stack.push(c);
+  }
+  return found;
+}
+
+// Selektiert alle Assets vom Typ typeFilter ('' = alle), die hinter rootId hängen.
+function selFilterDownstream(rootId, typeFilter) {
+  if (!rootId) return;
+  const downstream = _bfsDownstreamAssets(rootId);
+  const matches = typeFilter
+    ? downstream.filter(a => a.type === typeFilter)
+    : downstream;
+  selSet(matches.map(a => a.id));
+  return matches.length;
+}
+
+// Aus den Bulk-Bar-Dropdowns lesen und filtern (aufgerufen aus HTML).
+function selBulkFilterApply() {
+  const rootId = document.getElementById('asset-bulk-filter-root')?.value || '';
+  const typ    = document.getElementById('asset-bulk-filter-type')?.value || '';
+  if (!rootId) {
+    const msg = document.getElementById('bulk-confirm-msg');
+    if (msg) {
+      msg.textContent = '(Objekt wählen)';
+      msg.style.display = 'inline';
+      msg.style.color = 'var(--muted)';
+      clearTimeout(msg._tid);
+      msg._tid = setTimeout(() => { msg.style.display = 'none'; }, 2500);
+    }
+    return;
+  }
+  const n = selFilterDownstream(rootId, typ);
+  const msg = document.getElementById('bulk-confirm-msg');
+  if (msg) {
+    msg.textContent = `${n} Objekt${n !== 1 ? 'e' : ''} selektiert`;
+    msg.style.display = 'inline';
+    msg.style.color = n > 0 ? '#4caf50' : 'var(--muted)';
+    clearTimeout(msg._tid);
+    msg._tid = setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  }
+}
+
+// ── Interner After-Change-Handler ─────────────────────────────────────────────
+
+function _afterSelChange() {
+  _refreshSelectedRings();
+  _refreshDimming();
+  selRenderBulkBar();
+  // Sidebar-Liste refreshen (leichtgewichtig: nur Checkbox-State)
+  _refreshSidebarCheckboxes();
+}
+
+// ── Marker-Ring-Update (ohne vollen Redraw) ───────────────────────────────────
+
+function _applyRing(asset) {
+  const el = asset._marker?._icon?.querySelector('.asset-marker');
+  if (!el) return;
+  if (assetSelection.has(asset.id)) el.classList.add('asset-selected');
+  else el.classList.remove('asset-selected');
+}
+
+function _refreshSelectedRings() {
+  for (const a of ASSETS.items) _applyRing(a);
+}
+
+function selRefreshMarkerRing(asset) {
+  _applyRing(asset);
+}
+
+// ── Sidebar-Checkboxen refresh (kein Re-Render der ganzen Liste) ──────────────
+
+function _refreshSidebarCheckboxes() {
+  const container = document.getElementById('sb-asset-list');
+  if (!container) return;
+  container.querySelectorAll('.sb-asset-cb').forEach(cb => {
+    const id = cb.closest('[data-asset-id]')?.dataset.assetId;
+    if (id) cb.checked = assetSelection.has(id);
+  });
+}
+
+// ── Bulk-Bar ──────────────────────────────────────────────────────────────────
+
+function selRenderBulkBar() {
+  const bar = document.getElementById('asset-bulk-bar');
+  if (!bar) return;
+
+  const selAssets = selGetAssets();
+  const count     = selAssets.length;
+
+  if (count === 0 && !bulkModeActive) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  const totalKwp = selAssets.reduce((s, a) => {
+    const kWp = parseFloat(a.props?.leistungKWp) || parseFloat(a.pvKwpCalc) || 0;
+    return s + kWp;
+  }, 0);
+  const kwpLabel = totalKwp > 0
+    ? ` · Σ ${totalKwp < 1000 ? totalKwp.toFixed(0) + ' kWp' : (totalKwp / 1000).toFixed(1) + ' MWp'}`
+    : '';
+
+  document.getElementById('asset-bulk-lbl').textContent =
+    count === 0 ? 'Auswahl' : `${count} Asset${count > 1 ? 's' : ''}${kwpLabel}`;
+
+  // Phasen-Dropdown befüllen
+  const phSel = document.getElementById('asset-bulk-phase');
+  if (phSel) {
+    const curVal = phSel.value;
+    phSel.innerHTML = '<option value="">— keine Änderung —</option>'
+      + phasen.map(p => `<option value="${p.id}">${p.name} (${p.jahrVon})</option>`).join('');
+    if (curVal) phSel.value = curVal;
+  }
+
+  // Maßnahmen-Dropdown befüllen (einmalig beim ersten Render)
+  const maSel = document.getElementById('asset-bulk-massn');
+  if (maSel && !maSel._filled) {
+    maSel._filled = true;
+    maSel.innerHTML = '<option value="">— keine Änderung —</option>'
+      + MASSN_VORLAGEN_REIHENFOLGE.map(k =>
+          `<option value="${k}">${MASSN_VORLAGEN[k].icon} ${MASSN_VORLAGEN[k].label}</option>`
+        ).join('');
+  }
+
+  _fillFilterDropdowns();
+
+  bar.style.display = 'block';
+}
+
+// Befüllt die Topologie-Filter-Dropdowns (Objekt + Typ).
+function _fillFilterDropdowns() {
+  // Objekt-Dropdown: Infrastruktur-Assets als mögliche Wurzel (NAP, Trafo, NSHV, UV, …)
+  const rootSel = document.getElementById('asset-bulk-filter-root');
+  if (rootSel) {
+    const curVal = rootSel.value;
+    const infra = ASSETS.items
+      .filter(a => ASSET_CFG[a.type]?.kategorie === 'infrastruktur')
+      .sort((a, b) => (TYPE_RANK[a.type] ?? 9) - (TYPE_RANK[b.type] ?? 9)
+                   || (a.name || '').localeCompare(b.name || ''));
+    rootSel.innerHTML = '<option value="">— Objekt wählen —</option>'
+      + infra.map(a => {
+          const icon = ASSET_CFG[a.type]?.icon || '';
+          return `<option value="${a.id}">${icon} ${a.name}</option>`;
+        }).join('');
+    if (curVal) rootSel.value = curVal;
+  }
+
+  // Typ-Dropdown: alle Typen, die aktuell unter den Assets vorkommen
+  const typeSel = document.getElementById('asset-bulk-filter-type');
+  if (typeSel) {
+    const curVal = typeSel.value;
+    const vorhandene = [...new Set(ASSETS.items.map(a => a.type))]
+      .sort((a, b) => (TYPE_RANK[a] ?? 9) - (TYPE_RANK[b] ?? 9));
+    typeSel.innerHTML = '<option value="">alle Typen</option>'
+      + vorhandene.map(t => {
+          const cfg = ASSET_CFG[t];
+          return `<option value="${t}">${cfg?.icon || ''} ${cfg?.label || t}</option>`;
+        }).join('');
+    if (curVal) typeSel.value = curVal;
+  }
+}
+
+// ── Sammelaktionen ────────────────────────────────────────────────────────────
+
+/**
+ * Weist jedem selektierten Asset eine Phase zu.
+ * Sucht eine vorhandene Bau-Maßnahme oder legt eine neue an.
+ */
+function selApplyPhase(phaseId) {
+  if (!phaseId) return;
+  for (const a of selGetAssets()) {
+    if (!a.massnahmen) a.massnahmen = [];
+    let bau = a.massnahmen.find(m => m.typ === 'Bau');
+    if (bau) {
+      bau.phaseId = phaseId;
+      bau.jahr    = null; // Phase überschreibt explizites Jahr
+    } else {
+      a.massnahmen.push({
+        id:        'bau_' + a.id + '_' + Date.now(),
+        typ:       'Bau',
+        titel:     'PV-Anlage',
+        kosten:    0,
+        status:    'geplant',
+        phaseId,
+        jahr:      null,
+        dependsOn: [],
+        newProps:  {},
+      });
+    }
+  }
+  _bulkDone('Phase zugewiesen');
+}
+
+/**
+ * Legt je selektiertem Asset eine neue Maßnahme aus der Vorlage an.
+ */
+function selApplyMassnahmeVorlage(typKey) {
+  if (!typKey || !MASSN_VORLAGEN[typKey]) return;
+  const vorl = MASSN_VORLAGEN[typKey];
+  for (const a of selGetAssets()) {
+    if (!a.massnahmen) a.massnahmen = [];
+    a.massnahmen.push({
+      id:        typKey + '_' + a.id + '_' + Date.now(),
+      typ:       typKey,
+      titel:     vorl.label,
+      kosten:    vorl.kostenRichtwert || 0,
+      status:    'geplant',
+      phaseId:   null,
+      jahr:      null,
+      dependsOn: [],
+      newProps:  {},
+    });
+  }
+  _bulkDone('Maßnahmen angelegt');
+}
+
+/**
+ * Setzt den Status der zuletzt angelegten Maßnahme jedes selektierten Assets.
+ */
+function selApplyStatus(status) {
+  if (!status) return;
+  for (const a of selGetAssets()) {
+    const ms = a.massnahmen || [];
+    if (ms.length === 0) continue;
+    ms[ms.length - 1].status = status;
+  }
+  _bulkDone('Status gesetzt');
+}
+
+/**
+ * Setzt ein explizites Jahr auf alle selektierten Assets' neueste Maßnahme.
+ */
+function selApplyJahr(jahr) {
+  const y = parseInt(jahr);
+  if (!y || isNaN(y)) return;
+  for (const a of selGetAssets()) {
+    const ms = a.massnahmen || [];
+    if (ms.length === 0) continue;
+    ms[ms.length - 1].jahr = y;
+    ms[ms.length - 1].phaseId = null;
+  }
+  _bulkDone('Jahr gesetzt');
+}
+
+function _bulkDone(msg) {
+  // Reset Dropdown-Werte nach Aktion
+  const phSel = document.getElementById('asset-bulk-phase');
+  const maSel = document.getElementById('asset-bulk-massn');
+  if (phSel) phSel.value = '';
+  if (maSel) maSel.value = '';
+  // Sidebar-Liste refreshen
+  if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
+  console.info('[Bulk]', msg, '—', assetSelection.size, 'Assets');
+}
+
+// Neue Phase direkt aus der Bulk-Bar anlegen (gleiche Logik wie im Ausbauplaner)
+// und im Phase-Dropdown gleich vorauswählen.
+function selBulkNeuePhase() {
+  const maxR = phasen.reduce((m, p) => Math.max(m, +p.reihenfolge), -1);
+  const lJ   = phasen.reduce((m, p) => Math.max(m, +p.jahrBis || 0), new Date().getFullYear());
+  const id   = 'ph_' + Date.now();
+  setPhasen([...phasen, {
+    id, name: 'Phase ' + (phasen.length + 1),
+    jahrVon: String(lJ + 1), jahrBis: String(lJ + 1),
+    variantId: null, reihenfolge: maxR + 1,
+  }]);
+  selRenderBulkBar();
+  const phSel = document.getElementById('asset-bulk-phase');
+  if (phSel) phSel.value = id; // neue Phase vorauswählen
+  // Ausbauplaner aktualisieren, falls geöffnet
+  if (typeof window.ausbauRender === 'function'
+      && document.getElementById('ausbauplaner-wrap')
+      && document.getElementById('ausbauplaner-wrap').style.display !== 'none') {
+    try { window.ausbauRender(); } catch (e) { /* ignore */ }
+  }
+}
+
+// ── Sammel-Anwenden: alle Felder auf einmal schreiben ─────────────────────────
+
+function selBulkApplyAll() {
+  const phaseId   = document.getElementById('asset-bulk-phase')?.value || '';
+  const massnKey  = document.getElementById('asset-bulk-massn')?.value || '';
+  const status    = document.getElementById('asset-bulk-status')?.value || '';
+  const bauJahr   = parseInt(document.getElementById('asset-bulk-bau-jahr')?.value || '');
+  const abrissJahr = parseInt(document.getElementById('asset-bulk-abriss-jahr')?.value || '');
+
+  let changed = 0;
+
+  if (phaseId)    { selApplyPhase(phaseId);             changed++; }
+  if (massnKey)   { selApplyMassnahmeVorlage(massnKey); changed++; }
+  if (status)     { selApplyStatus(status);             changed++; }
+  // Bau-/Abriss-Jahr überschreiben die Asset-Eigenschaften (Eigenschaftsfenster).
+  // Liegt das Jahr in der ZUKUNFT (> aktuelles Jahr), ist es ein geplanter Vorgang
+  // und wird zusätzlich als Maßnahme angelegt → erscheint im Ausbauplaner-Fahrplan.
+  const curYear = new Date().getFullYear();
+  if (!isNaN(bauJahr)) {
+    for (const a of selGetAssets()) {
+      a.baujahr = bauJahr;
+      if (bauJahr > curYear) _ensureMassnahmeJahr(a, 'Bau', bauJahr);
+    }
+    changed++;
+  }
+  if (!isNaN(abrissJahr)) {
+    for (const a of selGetAssets()) {
+      a.abrissjahr = abrissJahr;
+      if (abrissJahr > curYear) _ensureMassnahmeJahr(a, 'Abriss', abrissJahr);
+    }
+    changed++;
+  }
+
+  // Felder zurücksetzen
+  const ids = ['asset-bulk-phase','asset-bulk-massn','asset-bulk-status'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const numIds = ['asset-bulk-bau-jahr','asset-bulk-abriss-jahr'];
+  numIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+  // Bestätigung anzeigen
+  const msg = document.getElementById('bulk-confirm-msg');
+  if (msg) {
+    const n = assetSelection.size;
+    msg.textContent = changed > 0
+      ? `✓ ${n} Asset${n !== 1 ? 's' : ''} aktualisiert`
+      : '(keine Felder ausgefüllt)';
+    msg.style.display = 'inline';
+    msg.style.color = changed > 0 ? '#4caf50' : 'var(--muted)';
+    clearTimeout(msg._tid);
+    msg._tid = setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  }
+
+  if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
+  // Marker neu zeichnen — Bau-/Abrissjahr ändern den Lebenszyklus-Status (Sichtbarkeit/Stil).
+  if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+  _refreshDimming();
+  selRenderBulkBar(); // Phase-Dropdown ggf. um neu angelegte Phasen aktualisieren
+}
+
+// Stellt sicher, dass das Asset eine Maßnahme des Typs hat und setzt ihr Jahr
+// (vorhandene Maßnahme wird aktualisiert statt dupliziert). Für geplante Zukunfts-
+// Bauten/-Abrisse, damit sie im Ausbauplaner-Fahrplan erscheinen.
+function _ensureMassnahmeJahr(a, typ, jahr) {
+  if (!a.massnahmen) a.massnahmen = [];
+  const vorl = MASSN_VORLAGEN[typ];
+  let m = a.massnahmen.find(x => x.typ === typ);
+  if (!m) {
+    m = {
+      id:        typ + '_' + a.id + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      typ,
+      titel:     vorl?.label ?? typ,
+      kosten:    vorl?.kostenRichtwert ?? 0,
+      status:    'geplant',
+      phaseId:   null,
+      jahr:      null,
+      dependsOn: [],
+      newProps:  {},
+    };
+    a.massnahmen.push(m);
+  }
+  m.jahr = jahr;
+  // Maßnahme einer Phase zuordnen, die dieses Jahr abdeckt — existiert keine
+  // passende Phase, wird eine neue angelegt (chronologisch einsortiert).
+  const cur = m.phaseId ? phasen.find(p => p.id === m.phaseId) : null;
+  const curDeckt = cur
+    && jahr >= (parseInt(cur.jahrVon) || 0)
+    && jahr <= (parseInt(cur.jahrBis) || 9999);
+  if (!curDeckt) {
+    const ph = _findOrCreatePhaseForJahr(jahr);
+    if (ph) m.phaseId = ph.id;
+  }
+}
+
+// Sucht eine Phase, deren Jahresbereich `jahr` enthält; legt sonst eine neue an
+// und vergibt die Reihenfolge aller Phasen chronologisch nach jahrVon neu.
+function _findOrCreatePhaseForJahr(jahr) {
+  let ph = phasen.find(p => {
+    const von = parseInt(p.jahrVon), bis = parseInt(p.jahrBis);
+    return !isNaN(von) && !isNaN(bis) && jahr >= von && jahr <= bis;
+  });
+  if (ph) return ph;
+  ph = {
+    id:         'ph_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
+    name:       'Phase ' + (phasen.length + 1),
+    jahrVon:    String(jahr),
+    jahrBis:    String(jahr),
+    variantId:  null,
+    reihenfolge: 0,
+  };
+  const all = [...phasen, ph].sort((a, b) => (parseInt(a.jahrVon) || 0) - (parseInt(b.jahrVon) || 0));
+  all.forEach((p, i) => { p.reihenfolge = i; });
+  setPhasen(all);
+  return ph;
+}
+
+// ── Box-Selektion auf Karte (Shift+Drag) ─────────────────────────────────────
+
+function selInitBoxSelect() {
+  const m = window._appLeafletMap;
+  if (!m || m._selBoxInited) return;
+  m._selBoxInited = true;
+
+  // Eigenes Pane für die Auswahlbox — bleibt im Bulk-Modus sichtbar (CSS-Isolation
+  // blendet overlayPane aus, dieses Pane aber nicht).
+  if (!m.getPane('bulkBoxPane')) {
+    m.createPane('bulkBoxPane').style.zIndex = '460';
+  }
+
+  let startLl = null, rect = null, active = false;
+
+  L.DomEvent.on(m.getContainer(), 'mousedown', e => {
+    if (!e.shiftKey || e.button !== 0) return;
+    active   = true;
+    startLl  = m.mouseEventToLatLng(e);
+    m.dragging.disable();
+    L.DomEvent.preventDefault(e);
+  });
+
+  L.DomEvent.on(m.getContainer(), 'mousemove', e => {
+    if (!active || !startLl) return;
+    const curLl = m.mouseEventToLatLng(e);
+    const bounds = L.latLngBounds(startLl, curLl);
+    if (!rect) {
+      rect = L.rectangle(bounds, {
+        color: '#2196F3', weight: 1.5, fillOpacity: 0.07, interactive: false, pane: 'bulkBoxPane',
+      }).addTo(m);
+    } else {
+      rect.setBounds(bounds);
+    }
+  });
+
+  L.DomEvent.on(m.getContainer(), 'mouseup', e => {
+    if (!active) return;
+    active = false;
+    m.dragging.enable();
+    if (rect) {
+      const bounds = rect.getBounds();
+      rect.remove(); rect = null;
+      // Optionaler Typ-Filter aus der Bulk-Bar: nur Assets dieses Typs im Bereich wählen.
+      const typeFilter = document.getElementById('asset-bulk-filter-type')?.value || '';
+      const ids = ASSETS.items
+        .filter(a => a.lat != null && a.lng != null && bounds.contains([a.lat, a.lng]))
+        .filter(a => !typeFilter || a.type === typeFilter)
+        .map(a => a.id);
+      if (ids.length > 0) {
+        for (const id of ids) assetSelection.add(id);
+        _afterSelChange();
+      }
+    }
+    startLl = null;
+  });
+
+  // Rechtsklick auf der Karte löscht die Auswahl (nur im Bulk-Modus).
+  m.on('contextmenu', e => {
+    if (!bulkModeActive || assetSelection.size === 0) return;
+    if (e.originalEvent) L.DomEvent.preventDefault(e.originalEvent);
+    selClear();
+  });
+}
+
+
+// ── 14e-ausbauplaner-ui.js ──
+// ── 14e-ausbauplaner-ui.js — Ausbauplaner-Board ───────────────────────────────
+// Fahrplan-Board für ALLE Maßnahmen ALLER Assets (gekoppelt an den Bulk-Modus):
+// Gantt-Swimlanes je Gewerk (Maßnahmen-Typ), Spalten = Phasen, Drag-Drop zwischen
+// Phasen (schreibt direkt auf die Maßnahme zurück), dependsOn-Pfeile, Validierung.
+
+
+// ── Gewerk-Farben (Maßnahmen-Typen) ──────────────────────────────────────────
+var GEWERK_COLOR = {
+  Ertuechtigung: '#f59e0b',
+  Bau:           '#4fc3f7',
+  Sanierung:     '#a78bfa',
+  Abriss:        '#f87171',
+};
+var GEWERK_FALLBACK_COLOR = '#90a4ae';
+
+// ── Modul-State ───────────────────────────────────────────────────────────────
+var _plan       = { items: [] };
+var _konflikte  = new Set();
+var _draggingId = null;
+
+// ── Init + Show/Hide ──────────────────────────────────────────────────────────
+
+function ausbauInit() {
+  if (document.getElementById('ausbauplaner-wrap')) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'ausbauplaner-wrap';
+  wrap.style.display = 'none';
+  wrap.innerHTML = `
+<div id="ausb-inner" style="display:flex;flex-direction:row;height:calc(100vh - 160px);min-height:400px;gap:0;background:var(--bg);border-radius:8px;overflow:hidden;border:1px solid var(--border);">
+  <div id="ausb-sidebar" style="width:220px;overflow-y:auto;flex-shrink:0;border-right:1px solid var(--border);padding:10px 10px 16px;background:var(--surface);"></div>
+  <div id="ausb-main" style="flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;">
+    <div id="ausb-toolbar" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;flex-wrap:wrap;font-size:11px;"></div>
+    <div id="ausb-content" style="flex:1;overflow:auto;padding:10px 14px;"></div>
+  </div>
+</div>`;
+  const analyseView = document.getElementById('center-analyse-view');
+  if (analyseView) analyseView.appendChild(wrap);
+}
+
+function ausbauShow(visible) {
+  ausbauInit();
+  const wrap = document.getElementById('ausbauplaner-wrap');
+  if (!wrap) return;
+  wrap.style.display = visible ? '' : 'none';
+  if (visible) ausbauRender();
+}
+
+// ── Haupt-Render ──────────────────────────────────────────────────────────────
+
+function ausbauRender() {
+  _buildPlan();
+  _validatePlan();
+  _renderSidebar();
+  _renderToolbar();
+  _renderGantt();
+}
+
+// ── Plan aus den Maßnahmen aller Assets aufbauen ──────────────────────────────
+// Jedes Plan-Item referenziert die echte Maßnahme (_m), damit Drag-Drop direkt
+// die phaseId der Maßnahme am Asset überschreibt (Kopplung mit dem Bulk-Modus).
+
+function _buildPlan() {
+  const items = [];
+  for (const a of ASSETS.items) {
+    for (const m of (a.massnahmen || [])) {
+      if (!m || !m.typ) continue;
+      items.push({
+        id:        m.id,
+        assetId:   a.id,
+        assetName: a.name,
+        typ:       m.typ,
+        titel:     a.name,
+        kosten:    m.kosten || 0,
+        status:    m.status || 'geplant',
+        phaseId:   m.phaseId || null,
+        jahr:      m.jahr ?? null,
+        dependsOn: m.dependsOn || [],
+        _m:        m,
+      });
+    }
+  }
+  _plan = { items };
+}
+
+// Aktive Gewerk-Swimlanes (nur Typen, die tatsächlich vorkommen — Katalog zuerst).
+function _gewerke() {
+  const present = new Set(_plan.items.map(it => it.typ));
+  const ordered = MASSN_VORLAGEN_REIHENFOLGE.filter(k => present.has(k));
+  for (const t of present) if (!ordered.includes(t)) ordered.push(t);
+  return ordered.map(k => ({
+    key:   k,
+    label: MASSN_VORLAGEN[k]?.label || k,
+    icon:  MASSN_VORLAGEN[k]?.icon || '',
+    color: GEWERK_COLOR[k] || GEWERK_FALLBACK_COLOR,
+  }));
+}
+
+// ── Validierung ───────────────────────────────────────────────────────────────
+
+function _validatePlan() {
+  _konflikte = new Set();
+  try { fahrplanTopoSort(_plan.items); }
+  catch (_) { _plan.items.forEach(it => _konflikte.add(it.id)); return; }
+  for (const viol of fahrplanValidiereReihenfolge(_plan.items, phasen)) {
+    _konflikte.add(viol.item.id);
+    _konflikte.add(viol.prereqId);
+  }
+}
+
+// ── Toolbar ────────────────────────────────────────────────────────────────────
+
+function _renderToolbar() {
+  const tb = document.getElementById('ausb-toolbar');
+  if (!tb) return;
+  const nGeplant = _plan.items.filter(it => it.phaseId).length;
+  tb.innerHTML = `
+    <span style="font-weight:600;color:var(--accent);">📅 Maßnahmen-Fahrplan</span>
+    <span style="color:var(--muted);font-size:10px;">${_plan.items.length} Maßnahme(n) · ${nGeplant} verplant</span>
+    <span style="margin-left:8px;border-left:1px solid var(--border);padding-left:8px;">
+      <button class="btn-xs" onclick="ausbauNeuePhase()">+ Phase</button>
+    </span>
+    <span style="margin-left:auto;color:var(--muted);font-size:10px;">${phasen.length} Phasen</span>
+    <span style="color:${_konflikte.size > 0 ? '#ef4444' : '#4caf50'};font-size:10px;">${_konflikte.size > 0 ? '⚠ ' + _konflikte.size + ' Konflikt(e)' : '✓ konfliktfrei'}</span>
+    <button class="btn-xs" onclick="ausbauShow(false)" style="margin-left:4px;">✕</button>
+  `;
+}
+
+// ── Sidebar: Phasen-Editor ────────────────────────────────────────────────────
+
+function _renderSidebar() {
+  const sb = document.getElementById('ausb-sidebar');
+  if (!sb) return;
+
+  // Übersicht je Gewerk (Anzahl Maßnahmen)
+  const gewerke = _gewerke();
+  const gewerkHtml = gewerke.length === 0
+    ? `<div style="font-size:9px;color:var(--muted);">Keine Maßnahmen</div>`
+    : gewerke.map(g => {
+        const n = _plan.items.filter(it => it.typ === g.key).length;
+        return `<div style="font-size:10px;color:var(--muted);line-height:1.9;">
+          <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${g.color};margin-right:5px;"></span>
+          ${g.icon} ${esc(g.label)}: <span style="color:var(--text);font-weight:600;">${n}</span>
+        </div>`;
+      }).join('');
+
+  const phasenHtml = phasen.length === 0
+    ? `<div style="color:var(--muted);font-size:10px;padding:4px 0;">Noch keine Phasen — auf „+ Phase" klicken.</div>`
+    : [...phasen].sort((a, b) => +a.reihenfolge - +b.reihenfolge).map(p => {
+        const invest = _plan.items.filter(it => it.phaseId === p.id).reduce((s, it) => s + (it.kosten || 0), 0);
+        return `<div style="margin-bottom:8px;padding:6px;background:var(--surface2);border-radius:5px;border:1px solid var(--border);">
+          <div style="font-weight:600;font-size:11px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;">
+            <span>${esc(p.name)}${invest > 0 ? `<span style="color:var(--muted);font-size:9px;font-weight:400;"> ${(invest/1000).toFixed(0)} k€</span>` : ''}</span>
+            <span class="ausb-phase-del" title="Phase löschen" onclick="ausbauPhaseLoeschen('${p.id}')" style="cursor:pointer;color:var(--muted);font-size:11px;">✕</span>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <label style="font-size:9px;color:var(--muted);">von</label>
+            <input type="number" value="${p.jahrVon}" min="2020" max="2060"
+              style="width:50px;font-size:10px;padding:2px 4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;"
+              onchange="ausbauEditPhaseJahr('${p.id}','jahrVon',this.value)">
+            <label style="font-size:9px;color:var(--muted);">bis</label>
+            <input type="number" value="${p.jahrBis}" min="2020" max="2060"
+              style="width:50px;font-size:10px;padding:2px 4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;"
+              onchange="ausbauEditPhaseJahr('${p.id}','jahrBis',this.value)">
+          </div>
+        </div>`;
+      }).join('');
+
+  const konflikteHtml = _konflikte.size === 0
+    ? `<div style="color:#4caf50;font-size:10px;padding:4px 0;">✓ Keine Konflikte</div>`
+    : [..._konflikte].slice(0, 8).map(id => {
+        const it = _plan.items.find(x => x.id === id);
+        return `<div style="color:#ef4444;font-size:10px;padding:2px 0;">⚠ ${esc(it?.titel || id)}</div>`;
+      }).join('');
+
+  const nUngeplant = _plan.items.filter(it => !it.phaseId).length;
+
+  sb.innerHTML = `
+    <div style="font-size:11px;font-weight:600;margin-bottom:6px;color:var(--accent);">Maßnahmen</div>
+    ${gewerkHtml}
+    <div style="border-top:1px solid var(--border);margin:10px 0 6px;"></div>
+    <div style="font-size:11px;font-weight:600;margin-bottom:6px;color:var(--accent);">Phasen</div>
+    ${phasenHtml}
+    ${nUngeplant > 0 ? `<div style="color:var(--muted);font-size:10px;margin-top:4px;">${nUngeplant} ungeplant</div>` : ''}
+    ${_konflikte.size > 0 ? `<div style="border-top:1px solid var(--border);margin:10px 0 6px;"></div>
+    <div style="font-size:11px;font-weight:600;margin-bottom:4px;color:#ef4444;">Konflikte</div>
+    ${konflikteHtml}` : ''}
+  `;
+}
+
+// ── Gantt-Fahrplan-Ansicht ────────────────────────────────────────────────────
+
+function _renderGantt() {
+  const wrap = document.getElementById('ausb-content');
+  if (!wrap) return;
+
+  if (_plan.items.length === 0) {
+    wrap.innerHTML = `
+      <div style="max-width:520px;margin:24px auto;padding:20px 24px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Noch keine Maßnahmen</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.7;">
+          Der Fahrplan zeigt alle Maßnahmen aller Assets. Lege Maßnahmen an über:<br><br>
+          • den <b>Bulk-Modus</b> (Elektro-Tab → Assets auswählen → Maßnahme zuweisen)<br>
+          • oder den <b>Asset-Inspektor</b> (einzelnes Asset → „+ Maßnahme")<br><br>
+          Anschließend erscheinen sie hier und lassen sich per Drag-&-Drop den Phasen zuordnen.
+        </div>
+      </div>`;
+    return;
+  }
+
+  const aktGewerke = _gewerke();
+  const sortPhasen = [...phasen].sort((a, b) => +a.reihenfolge - +b.reihenfolge);
+
+  let html = `<div class="ausb-gantt" style="display:grid;grid-template-columns:130px repeat(${sortPhasen.length + 1},minmax(140px,1fr));gap:2px;position:relative;">`;
+
+  // Kopfzeile
+  html += `<div style="font-size:10px;color:var(--muted);padding:4px 6px;">Gewerk</div>`;
+  for (const p of sortPhasen) {
+    html += `<div ondragover="ausbauDragOver(event,'${p.id}')" ondrop="ausbauDrop(event,'${p.id}')"
+      style="font-size:10px;font-weight:600;padding:4px 6px;background:var(--surface2);border-radius:4px 4px 0 0;text-align:center;">
+      ${esc(p.name)}<br><span style="font-weight:400;color:var(--muted);">${p.jahrVon}–${p.jahrBis}</span>
+    </div>`;
+  }
+  html += `<div ondragover="ausbauDragOver(event,null)" ondrop="ausbauDrop(event,null)"
+    style="font-size:10px;font-weight:600;padding:4px 6px;background:var(--surface2);border-radius:4px 4px 0 0;text-align:center;color:var(--muted);">Ungeplant</div>`;
+
+  for (const gw of aktGewerke) {
+    html += `<div style="font-size:10px;font-weight:600;padding:4px 6px;border-right:1px solid var(--border);">${gw.icon} ${esc(gw.label)}</div>`;
+    for (const p of sortPhasen) {
+      html += _cellHtml(gw, _plan.items.filter(it => it.typ === gw.key && it.phaseId === p.id), p.id);
+    }
+    html += _cellHtml(gw, _plan.items.filter(it => it.typ === gw.key && !it.phaseId), null);
+  }
+  html += `</div><svg id="ausb-arrows" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;"></svg>`;
+  wrap.innerHTML = html;
+  wrap.style.position = 'relative';
+  requestAnimationFrame(() => _drawArrows(wrap));
+}
+
+function _cellHtml(gw, items, phaseId) {
+  const phAttr = phaseId ? `'${phaseId}'` : 'null';
+  const barsHtml = items.map(it => {
+    const err = _konflikte.has(it.id);
+    const jahrTxt = it.jahr ? ` · ${it.jahr}` : '';
+    const kostenTxt = it.kosten ? ` (${(it.kosten/1000).toFixed(0)} k€)` : '';
+    return `<div class="ausb-bar" id="ausb-bar-${_cssId(it.id)}"
+      data-item-id="${esc(it.id)}" draggable="true" ondragstart="ausbauDragStart(event,'${esc(it.id)}')"
+      title="${esc(it.titel)} — ${esc(gw.label)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
+      style="background:${gw.color}22;border:${err?'2px solid #ef4444':'1px solid '+gw.color+'44'};${err?'box-shadow:0 0 0 2px #ef4444;':''}border-radius:4px;padding:3px 6px;font-size:9px;cursor:grab;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
+      ${err?'⚠ ':''}${esc(it.titel)}${jahrTxt}</div>`;
+  }).join('');
+  return `<div ondragover="ausbauDragOver(event,${phAttr})" ondrop="ausbauDrop(event,${phAttr})"
+    style="min-height:40px;padding:3px;border:1px solid var(--border);border-radius:2px;">${barsHtml}</div>`;
+}
+
+function _drawArrows(wrap) {
+  const svg = document.getElementById('ausb-arrows');
+  if (!svg) return;
+  const wr = wrap.getBoundingClientRect();
+  const sx = wrap.scrollLeft, sy = wrap.scrollTop;
+  let paths = '';
+  for (const it of _plan.items) {
+    if (!it.dependsOn?.length) continue;
+    const toEl = document.getElementById('ausb-bar-' + _cssId(it.id));
+    if (!toEl) continue;
+    const toR = toEl.getBoundingClientRect();
+    const tx = toR.left - wr.left + sx, ty = toR.top - wr.top + sy + toR.height / 2;
+    for (const depId of it.dependsOn) {
+      const fEl = document.getElementById('ausb-bar-' + _cssId(depId));
+      if (!fEl) continue;
+      const fR = fEl.getBoundingClientRect();
+      const fx = fR.right - wr.left + sx, fy = fR.top - wr.top + sy + fR.height / 2;
+      const mx = (fx + tx) / 2;
+      const col = (_konflikte.has(it.id)||_konflikte.has(depId)) ? '#ef4444' : '#888';
+      paths += `<path d="M${fx},${fy} C${mx},${fy} ${mx},${ty} ${tx},${ty}" stroke="${col}" stroke-width="1.5" fill="none" marker-end="url(#ausb-ah)" opacity="0.7"/>`;
+    }
+  }
+  svg.innerHTML = `<defs><marker id="ausb-ah" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#888"/></marker></defs>${paths}`;
+}
+
+// ── Drag-and-Drop (schreibt phaseId direkt auf die Maßnahme zurück) ───────────
+
+function ausbauDragStart(e, itemId) {
+  _draggingId = itemId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', itemId);
+  setTimeout(() => { if (e.currentTarget) e.currentTarget.style.opacity = '0.4'; }, 0);
+}
+
+function ausbauDragOver(e, _phaseId) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.style.background = 'rgba(33,150,243,0.12)';
+}
+
+function ausbauDrop(e, phaseId) {
+  e.preventDefault();
+  e.currentTarget.style.background = '';
+  const itemId = e.dataTransfer.getData('text/plain') || _draggingId;
+  if (!itemId) return;
+  const it = _plan.items.find(x => x.id === itemId);
+  if (it && it._m) {
+    it._m.phaseId = phaseId || null;
+    it._m.jahr    = null; // Phase überschreibt explizites Jahr
+  }
+  _draggingId = null;
+  if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
+  ausbauRender();
+}
+
+// ── Phasen-Verwaltung ─────────────────────────────────────────────────────────
+
+function ausbauNeuePhase() {
+  const maxR = phasen.reduce((m, p) => Math.max(m, +p.reihenfolge), -1);
+  const lJ   = phasen.reduce((m, p) => Math.max(m, +p.jahrBis || 0), new Date().getFullYear());
+  setPhasen([...phasen, {
+    id: 'ph_' + Date.now(), name: 'Phase ' + (phasen.length + 1),
+    jahrVon: String(lJ + 1), jahrBis: String(lJ + 1),
+    variantId: null, reihenfolge: maxR + 1,
+  }]);
+  ausbauRender();
+}
+
+function ausbauEditPhaseJahr(phaseId, field, value) {
+  const p = phasen.find(x => x.id === phaseId);
+  if (p) { p[field] = value; ausbauRender(); }
+}
+
+function ausbauPhaseLoeschen(phaseId) {
+  // Maßnahmen dieser Phase auf „ungeplant" zurücksetzen
+  for (const a of ASSETS.items) {
+    for (const m of (a.massnahmen || [])) {
+      if (m.phaseId === phaseId) m.phaseId = null;
+    }
+  }
+  setPhasen(phasen.filter(p => p.id !== phaseId));
+  if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
+  ausbauRender();
+}
+
+// ── Getter ────────────────────────────────────────────────────────────────────
+function ausbauGetPlan() { return _plan; }
+function ausbauGetKonflikte() { return _konflikte; }
+
+// ── Helfer ────────────────────────────────────────────────────────────────────
+function _cssId(id) { return String(id).replace(/[^a-z0-9]/gi, '_'); }
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
 
 // ── Initialisierung (aus main.js) ──
 window._isSingleFileBuild = true; // verhindert data/klima/-Dateiladen (kein Verzeichnis im Build)
-if (typeof initBdewProfiles === 'function') {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { initBdewProfiles(); });
-  } else {
-    initBdewProfiles();
-  }
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof initBdewProfiles === 'function') initBdewProfiles();
+    if (typeof selInitBoxSelect === 'function') selInitBoxSelect();
+  });
+} else {
+  if (typeof initBdewProfiles === 'function') initBdewProfiles();
+  if (typeof selInitBoxSelect === 'function') selInitBoxSelect();
 }
 </script>
 </body>

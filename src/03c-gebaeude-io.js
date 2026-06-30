@@ -992,48 +992,58 @@ const GEBPV_COLORS = {
   sperr:    { border: 'rgba(229,57,53,0.9)',   fill: 'rgba(229,57,53,0.22)'  },
 };
 
+// ── PV-Pane: alle Gebäude-PV-Layer landen in einem eigenen Leaflet-Pane ────────
+// z-Index 401 = knapp über overlayPane (400) → PV-Module liegen über Gebäude-
+// umrissen, aber unter Markern/Labels (markerPane 600).
+function _ensurePvPane() {
+  if (!map.getPane('pvPane')) {
+    map.createPane('pvPane').style.zIndex = '401';
+  }
+}
+
 // Belegungs-/Sperrfläche als Umriss auf der Karte rendern. Die eigentlichen
 // Module werden gebäudeweit von redrawGebPvModules() platziert (PV-Sol-Stil).
 export function attachGebPvLayer(g, fl) {
   if (fl.layer)   { map.removeLayer(fl.layer);   fl.layer = null; }
   if (fl.svgLayer){ map.removeLayer(fl.svgLayer); fl.svgLayer = null; }
+  _ensurePvPane();
   const col = GEBPV_COLORS[fl.typ] || GEBPV_COLORS.belegung;
   fl.layer = L.polygon(fl.polygon, {
     color: col.border, weight: 2,
     fillColor: col.fill, fillOpacity: fl.typ === 'sperr' ? 1 : 0.6,
     dashArray: fl.typ === 'sperr' ? '4 3' : null,
-  });
-  if ((fl.typ !== 'sperr' || window.selectedId === g.id) && window._pvLayerVisible !== false) fl.layer.addTo(map);
+    pane: 'pvPane',
+  }).addTo(map);
   fl.layer.on('click', () => { if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id); });
-}
-
-export function syncSperrLayerVisibility() {
-  const selId = window.selectedId;
-  for (const g of (window.gebaeude || [])) {
-    for (const fl of (g.pvFlaechen || [])) {
-      if (fl.typ !== 'sperr' || !fl.layer) continue;
-      if (selId === g.id) { if (!map.hasLayer(fl.layer)) fl.layer.addTo(map); }
-      else                { if ( map.hasLayer(fl.layer)) map.removeLayer(fl.layer); }
-    }
+  // Sperrflächen initial unsichtbar — updateSperrVisibility zeigt sie beim selektierten Gebäude
+  if (fl.typ === 'sperr') {
+    fl.layer.setStyle({ opacity: 0, fillOpacity: 0 });
   }
 }
-window.syncSperrLayerVisibility = syncSperrLayerVisibility;
 
-window.setPvVisible = function(visible) {
+// Sperrflächen je nach aktuellem window.selectedId ein-/ausblenden.
+window.updateSperrVisibility = function() {
+  const selId = window.selectedId;
+  (window.gebaeude || []).forEach(g => {
+    const isSel = g.id === selId;
+    (g.pvFlaechen || []).forEach(fl => {
+      if (fl.typ === 'sperr' && fl.layer) {
+        fl.layer.setStyle(isSel
+          ? { opacity: 0.9, fillOpacity: 1 }
+          : { opacity: 0,   fillOpacity: 0 });
+      }
+    });
+  });
+};
+
+// PV-Anlagen global ein-/ausblenden: Pane-Display toggeln statt jedes Layer einzeln.
+// Freiflächen liegen außerhalb der pvPane und werden einzeln getoggelt.
+export function setPvVisible(visible) {
+  window.pvVisible = visible;
   window._pvLayerVisible = visible;
-  const selId = window.selectedId;
-  for (const g of (window.gebaeude || [])) {
-    if (g._pvModuleLayer) {
-      if (visible) { if (!map.hasLayer(g._pvModuleLayer)) g._pvModuleLayer.addTo(map); }
-      else         { if ( map.hasLayer(g._pvModuleLayer)) map.removeLayer(g._pvModuleLayer); }
-    }
-    for (const fl of (g.pvFlaechen || [])) {
-      if (!fl.layer) continue;
-      const show = visible && (fl.typ !== 'sperr' || selId === g.id);
-      if (show) { if (!map.hasLayer(fl.layer)) fl.layer.addTo(map); }
-      else      { if ( map.hasLayer(fl.layer)) map.removeLayer(fl.layer); }
-    }
-  }
+  _ensurePvPane();
+  const pane = map.getPane('pvPane');
+  if (pane) pane.style.display = visible ? '' : 'none';
   for (const ff of (window.freiflaechen || [])) {
     [ff.polygonLayer, ff.moduleSvgLayer].forEach(l => {
       if (!l) return;
@@ -1041,7 +1051,11 @@ window.setPvVisible = function(visible) {
       else         { if ( map.hasLayer(l)) map.removeLayer(l); }
     });
   }
-};
+  // Sperrflächen-Opazität nach Wiedereinblenden korrekt setzen
+  if (visible) window.updateSperrVisibility?.();
+}
+window.setPvVisible = setPvVisible;
+
 
 // ── Punkt-in-Polygon (Ray-Casting) im metrischen XY-Raum ────────────────────
 function _pip(pt, poly) {
@@ -1333,8 +1347,8 @@ export function redrawGebPvModules(g) {
   g._pvModuleDrawnSig = g._pvModSig;
   const ov = buildPvModuleOverlay(g._pvModCache);
   if (!ov) return;
-  g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 203 });
-  if (window._pvLayerVisible !== false) g._pvModuleLayer.addTo(map);
+  _ensurePvPane();
+  g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, pane: 'pvPane' }).addTo(map);
 }
 
 // Alle Flächen + Module eines Gebäudes neu zeichnen.
@@ -2221,6 +2235,7 @@ export function _loadProject(project) {
         baseNetzSnapshot: project.baseNetzSnapshot || null,
         baseErzeugerSnapshot: project.baseErzeugerSnapshot || null,
         baseStromNetzSnapshot: project.baseStromNetzSnapshot || null,
+        phasen: project.phasen || [],
       });
       renderVariantenBar();
       updateVariantBanner();
@@ -2254,10 +2269,23 @@ export function _loadProject(project) {
           if (ktSel) ktSel.value = project.stromNetz.kabelTyp;
         }
         if (project.stromNetz.nodes) {
+          // Asset-Typen, die NIE als „plain" Strom-Knoten existieren (immer ein Asset):
+          // Erzeuger/Verbraucher/Speicher (PV, Wind, Batterie, Verbraucher, …).
+          // Infrastruktur (NAP/Trafo/NSHV/UV/KVS) kann dagegen ein Plain-Knoten sein
+          // (Auto-Netz, manuelles Zeichnen) → die nicht filtern.
+          const _nonInfraAssetTypes = new Set(
+            Object.entries(ASSET_CFG)
+              .filter(([, cfg]) => cfg.domain !== 'waerme' && cfg.kategorie !== 'infrastruktur')
+              .map(([k]) => k.toLowerCase())
+          );
           project.stromNetz.nodes.forEach(n => {
             // Assets wurden bereits via redrawAllAssets() als stromNodes registriert (isAsset:true)
             // → nicht nochmal als plain addStromNode() erstellen (würde graue Duplikat-Marker erzeugen)
             if ((window.stromNodes || []).find(sn => sn.id === n.id && sn.isAsset)) return;
+            // Verwaister Knoten eines gelöschten Erzeuger/Verbraucher-Assets (z. B. PV):
+            // existiert kein Asset mehr mit dieser id → überspringen (sonst grauer Geister-Marker).
+            if (_nonInfraAssetTypes.has((n.type || '').toLowerCase())
+                && !ASSETS.items.some(a => a.id === n.id)) return;
             addStromNode(n.type, L.latLng(n.lat, n.lng), {
               id: n.id, label: n.label, maxKva: n.maxKva, ratedKva: n.ratedKva, ukPct: n.ukPct
             });
@@ -2365,6 +2393,24 @@ export function _loadProject(project) {
       updateViz();
       updateTotals();
       glBerechnenDebounced(800);
+
+      // Standard-Ansicht: nur Gebäudeumrisse + PV (Symbole „Keine", übrige Ebenen aus)
+      if (typeof window.applyDefaultViewOnLoad === 'function') window.applyDefaultViewOnLoad();
+
+      // Auf die geladene Liegenschaft springen (Gesamt-Umriss aller Gebäude;
+      // ersatzweise alle Asset-Positionen).
+      try {
+        const bounds = L.latLngBounds([]);
+        (window.gebaeude || []).forEach(g => {
+          if (g.polygonLayer) bounds.extend(g.polygonLayer.getBounds());
+        });
+        if (!bounds.isValid()) {
+          (ASSETS.items || []).forEach(a => {
+            if (a.lat != null && a.lng != null) bounds.extend([a.lat, a.lng]);
+          });
+        }
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60], maxZoom: 19 });
+      } catch (e) { /* Karte bleibt auf aktueller Position */ }
 }
 
 export function loadGebaeudeFromParent(gebaeudeArray) {

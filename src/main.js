@@ -51,6 +51,11 @@ import * as kompaktstation from './13m-kompaktstation.js';
 import * as elektroPanel from './13n-elektro-panel.js';
 import * as napAnalyse from './13o-nap-analyse.js';
 import * as knotenAnalyse from './13r-knotenpunkt-analyse.js';
+import * as kandidaten from './14a-kandidaten.js';
+import * as ertuechtigung from './14b-ertuechtigung.js';
+import * as phasenFahrplan from './14c-phasen.js';
+import * as selektion from './14d-selektion.js';
+import * as ausbauplaner from './14e-ausbauplaner-ui.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -66,6 +71,7 @@ const modules = [
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
   slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel,
   napAnalyse, knotenAnalyse,
+  kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
 ];
 
 for (const mod of modules) {
@@ -76,7 +82,11 @@ for (const mod of modules) {
 
 // BDEW-SLP-Tabellen in den Cache laden (ersetzt die vereinfachte Approximation)
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => slpEditor.initBdewProfiles());
+  document.addEventListener('DOMContentLoaded', () => {
+    slpEditor.initBdewProfiles();
+    selektion.selInitBoxSelect();
+  });
 } else {
   slpEditor.initBdewProfiles();
+  selektion.selInitBoxSelect();
 }

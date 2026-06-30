@@ -23,6 +23,7 @@ import { KMR_KOSTEN } from './config/netz-kosten.js';
 import { napBuildAnalyseSection, napShowSection } from './13o-nap-analyse.js';
 import { knaBuildAnalyseSection, knaShowSection } from './13r-knotenpunkt-analyse.js';
 import { pvaBuildAnalyseSection, pvaShowSection } from './09d-pv-analyse.js';
+import { ausbauShow } from './14e-ausbauplaner-ui.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { getWLDColor } from './02a-netz-physik.js';
 import { OVERPASS_ENDPOINTS, updateRohrListe } from './03b-netz.js';
@@ -1098,6 +1099,8 @@ export function refreshAnalyseView() {
   if (knaWrap) knaWrap.style.display = 'none';
   const pvaWrap = document.getElementById('analyse-pva-wrap');
   if (pvaWrap) pvaWrap.style.display = 'none';
+  const ausbWrap = document.getElementById('ausbauplaner-wrap');
+  if (ausbWrap) ausbWrap.style.display = 'none';
 
   if (analyseCurrentSection === 'uebersicht') {
     grid.style.display = 'grid';
@@ -1126,6 +1129,8 @@ export function refreshAnalyseView() {
     knaShowSection(true);
   } else if (analyseCurrentSection === 'pva') {
     pvaShowSection(true);
+  } else if (analyseCurrentSection === 'ausbauplaner') {
+    if (typeof ausbauShow === 'function') ausbauShow(true);
   }
 }
 
@@ -1184,6 +1189,37 @@ window._ebpViz = function(checked) {
   const cbViz = document.getElementById('cb-viz-circles');
   if (cbViz) { cbViz.checked = checked; cbViz.dispatchEvent(new Event('change')); }
   if (typeof window.updateViz === 'function') window.updateViz();
+};
+
+// Standard-Ansicht nach dem Laden eines Projekts: nur Gebäudeumrisse + PV-Anlagen
+// sichtbar, Gebäude-Symbole auf „Keine". Alle übrigen Daten-Ebenen aus.
+// (Hintergrund/Satellit bleibt unverändert — Kartenwahl, keine Datenebene.)
+window.applyDefaultViewOnLoad = function() {
+  // Gebäude-Symbole → Keine
+  if (typeof window.setViz === 'function') window.setViz('none');
+
+  // Checkbox-Status + zugehörigen Setter setzen
+  const setLayer = (cbId, on, fn) => {
+    const cb = document.getElementById(cbId);
+    if (cb) cb.checked = on;
+    if (typeof fn === 'function') fn(on);
+  };
+
+  // Sichtbar: Gebäudeumrisse + PV-Anlagen
+  setLayer('el-geb-visible', true, window.setGebVisible);
+  setLayer('el-pv-visible',  true, window.setPvVisible);
+
+  // Aus: Beschriftung, Wärmenetz-Leitungen, Trassen, Elektro-Assets, Stromnetz
+  setLayer('el-labels-visible',    false, window.setLabelsVisible);
+  setLayer('el-netz-visible',      false, window.setNetzVisible);
+  setLayer('el-trasse-visible',    false, window.setTrasseVisible);
+  setLayer('el-assets-visible',    false, window.setAssetLayerVisible);
+  setLayer('el-stromnetz-visible', false, window.setStromNetzVisible);
+
+  // Aus: Wärme-Visualisierung (eigener Mechanismus)
+  const cbViz = document.getElementById('el-viz-circles');
+  if (cbViz) cbViz.checked = false;
+  if (typeof window._ebpViz === 'function') window._ebpViz(false);
 };
 
 // Satellit-Toggle

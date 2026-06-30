@@ -279,8 +279,12 @@ function drawBuildingGroup(buildingId) {
   const width  = nSlots * (chip + 2) + 8;
   const height = chip + 8;
 
+  // Bulk-Modus: Gruppe ausgegraut, solange KEIN Asset darauf selektiert ist —
+  // direkt beim Zeichnen setzen, damit Neuzeichnen das Dimming nicht verliert.
+  const anySelected = assets.some(a => window.assetSelection?.has(a.id));
+  const dimClass = (window.isBulkModeActive?.() && !anySelected) ? ' asset-bulk-dimmed' : '';
   const icon = L.divIcon({
-    className: '',
+    className: 'asset-divicon' + dimClass,
     html,
     iconSize:   [width, height],
     iconAnchor: [width / 2, height / 2],
@@ -441,7 +445,7 @@ function spiderfyBuilding(buildingId, centerLatLng) {
     L.polyline([centerLatLng, ll], { color: '#fdd835', weight: 1.5, opacity: 0.7, dashArray: '3 3', interactive: false }).addTo(_spiderLayer);
 
     const icon = L.divIcon({
-      className: '',
+      className: 'asset-divicon',
       html: `<div class="asset-spider-icon" style="background:${cfg.color};width:${sz}px;height:${sz}px;font-size:${Math.round(sz * 0.55)}px;">${cfg.icon}</div>`,
       iconSize:   [sz, sz],
       iconAnchor: [sz / 2, sz / 2],
@@ -557,9 +561,13 @@ function drawSingleMarker(asset) {
   const pendingBadge = hasPendingMassnahmen(asset)
     ? `<span class="asset-massn-badge"></span>`
     : '';
+  const selClass = window.assetSelection?.has(asset.id) ? ' asset-selected' : '';
+  // Bulk-Modus: nicht-selektierte Marker ausgegraut — direkt beim Zeichnen setzen,
+  // damit ein Neuzeichnen (Auswahl/Inspector) das Dimming nicht verliert.
+  const dimClass = (window.isBulkModeActive?.() && !window.assetSelection?.has(asset.id)) ? ' asset-bulk-dimmed' : '';
   const icon = L.divIcon({
-    className: '',
-    html: `<div class="asset-marker asset-marker-${status}"
+    className: 'asset-divicon' + dimClass,
+    html: `<div class="asset-marker asset-marker-${status}${selClass}"
               style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;">
              <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
              ${pendingBadge}
@@ -581,6 +589,11 @@ function drawSingleMarker(asset) {
       return;
     }
     L.DomEvent.stopPropagation(e);
+    // Shift+Click → Selektion umschalten statt Inspector öffnen
+    if (e.originalEvent?.shiftKey && typeof window.selToggle === 'function') {
+      window.selToggle(asset.id);
+      return;
+    }
     ASSETS.selectedId = asset.id;
     if (typeof window.openAssetInspector === 'function') window.openAssetInspector(asset);
   });

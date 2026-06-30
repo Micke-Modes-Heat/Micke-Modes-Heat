@@ -94,11 +94,13 @@
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible"          data-change="_ebpChart(this.checked)">Zeitstrahl-Chart</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-overlay-visible"        data-change="_ebpOverlay(this.checked)">Plan-Overlay</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-viz-circles"    checked data-change="_ebpViz(this.checked)">Wärme-Visualisierung</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible"     checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
   </div>
 
   <div class="ebp-cat">
     <div class="ebp-cat-label" style="--ebp-c:#ef5350;">🔥 Wärmenetz</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-visible"   checked data-change="setNetzVisible(this.checked);_ebpSync('netz-visible-ansicht',this.checked)">Leitungen</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-trasse-visible"        data-change="setTrasseVisible(this.checked)">Trassen</label>
   </div>
 
   <div class="ebp-cat">
@@ -763,6 +765,7 @@
       <button class="analyse-section-tab" data-section="wirtschaft" data-click="setAnalyseSection('wirtschaft')">Wirtschaftlichkeit</button>
       <button class="analyse-section-tab" data-section="strom" data-click="setAnalyseSection('strom')">Strom</button>
       <button class="analyse-section-tab" data-section="emissionen" data-click="setAnalyseSection('emissionen')">Emissionen</button>
+      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" style="color:#4fc3f7;" title="Ausbauplaner — Maßnahmen-Fahrplan (alle Assets)">📅 Ausbauplaner</button>
     </div>
 
     <!-- ── Übersicht (Dashboard) ─────────────────────────────── -->
@@ -1309,6 +1312,81 @@
     <div class="sb-tab-body" id="sb-tab-elektro">
       <!-- Inspector-Slot: wird befüllt wenn ein Asset gewählt wird -->
       <div id="sb-asset-inspector-slot"></div>
+      <!-- Bulk-Modus Toggle -->
+      <div style="padding:5px 6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;">
+        <button id="bulk-mode-toggle" onclick="selToggleBulkMode()" style="font-size:10px;padding:3px 8px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;">&#9678; Bulk-Modus</button>
+        <span style="font-size:10px;color:var(--muted);">Shift+Drag = Box (Typ-Filter wirkt) · Rechtsklick = Auswahl löschen</span>
+      </div>
+      <!-- Sammelaktions-Leiste (sichtbar wenn ≥1 Asset selektiert oder Bulk-Modus aktiv) -->
+      <div id="asset-bulk-bar" style="display:none;padding:5px 7px 6px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;box-sizing:border-box;">
+        <!-- Kopfzeile: Auswahl-Info + Tier-Buttons + Schließen -->
+        <div style="display:flex;align-items:center;gap:3px;margin-bottom:4px;">
+          <span id="asset-bulk-lbl" style="font-weight:600;white-space:nowrap;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">0 Assets</span>
+          <button onclick="selFromMeritOrderTier('A');selRenderBulkBar()" title="Tier-A-Kandidaten selektieren"
+            style="font-size:9px;padding:2px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Tier A ▸</button>
+          <button onclick="selFromMeritOrderTier('B');selRenderBulkBar()" title="Tier-B-Kandidaten selektieren"
+            style="font-size:9px;padding:2px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Tier B ▸</button>
+          <button onclick="selClear()" title="Auswahl aufheben" style="font-size:11px;padding:1px 5px;background:none;border:none;cursor:pointer;color:var(--muted);flex-shrink:0;">✕</button>
+        </div>
+        <!-- Topologie-Filter: Typ hinter Objekt selektieren -->
+        <div style="display:flex;flex-direction:column;gap:3px;padding:5px 6px;margin-bottom:5px;background:var(--surface);border:1px solid var(--border);border-radius:4px;">
+          <div style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em;">Auswahl nach Netz-Topologie</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <select id="asset-bulk-filter-type" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">alle Typen</option>
+            </select>
+            <span style="color:var(--muted);flex-shrink:0;">hinter</span>
+            <select id="asset-bulk-filter-root" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— Objekt wählen —</option>
+            </select>
+          </div>
+          <button onclick="selBulkFilterApply()" title="Alle Objekte des gewählten Typs selektieren, die elektrisch hinter dem Objekt hängen"
+            style="font-size:10px;padding:3px 8px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;align-self:flex-start;">⌕ Selektieren</button>
+        </div>
+        <!-- Formularfelder: Label links (feste Breite), Input rechts (füllt Rest) -->
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Phase</span>
+            <select id="asset-bulk-phase" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+            </select>
+            <button onclick="selBulkNeuePhase()" title="Neue Phase anlegen"
+              style="flex-shrink:0;font-size:12px;line-height:1;padding:2px 7px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">+</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Maßnahme</span>
+            <select id="asset-bulk-massn" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Status</span>
+            <select id="asset-bulk-status" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+              <option value="geplant">geplant</option>
+              <option value="umgesetzt">umgesetzt</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Bau-Jahr</span>
+            <input id="asset-bulk-bau-jahr" type="number" placeholder="z. B. 2026" min="2020" max="2060"
+              style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Abriss-Jahr</span>
+            <input id="asset-bulk-abriss-jahr" type="number" placeholder="z. B. 2040" min="2020" max="2080"
+              style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+          </div>
+        </div>
+        <!-- Übernehmen-Button + Bestätigung -->
+        <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+          <button onclick="selBulkApplyAll()" id="bulk-apply-btn"
+            style="font-size:10px;padding:3px 12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;">
+            ✓ Übernehmen
+          </button>
+          <span id="bulk-confirm-msg" style="display:none;font-size:10px;font-weight:600;"></span>
+        </div>
+      </div>
       <!-- Asset-Liste: alle Assets nach Typ gruppiert -->
       <div id="sb-asset-list" class="sidebar-scroll"></div>
     </div>

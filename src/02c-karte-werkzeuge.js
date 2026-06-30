@@ -277,7 +277,7 @@ export function selectFromMap(id){
     return;
   }
   window.selectedId=id;
-  window.syncSperrLayerVisibility?.();
+  window.updateSperrVisibility?.();
   _expandedIds.add(id);
   // Im Elektro-Tab: rechte Sidebar auf Gebäude-Tab umschalten statt linkes Panel zu wechseln
   const _activeTabBtn = document.querySelector('#lp-tabs .lp-tab.active');
@@ -789,6 +789,10 @@ export function toggleDrawTrasse() {
   window.isDrawingTrasse = !window.isDrawingTrasse;
   const btn = document.getElementById('btn-draw-trasse');
   if (window.isDrawingTrasse) {
+    // Trasse zum Bearbeiten sichtbar machen (Ansicht-Checkbox synchronisieren)
+    window.trasseVisible = true;
+    const _tcb = document.getElementById('el-trasse-visible');
+    if (_tcb) _tcb.checked = true;
     // Andere Modi beenden
     if (window.isDrawingStromEdge && typeof cancelDrawStromEdge === 'function') cancelDrawStromEdge();
     if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
@@ -871,6 +875,10 @@ export function redrawTrasse() {
   window.trasseEditMarkers.forEach(m => map.removeLayer(m));
   window.trasseEditMarkers = [];
 
+  // Trassen-Ebene ausblendbar (Ansicht-Panel). Default versteckt: undefined/false → nicht zeichnen.
+  // Im Zeichenmodus wird trasseVisible erzwungen (siehe toggleDrawTrasse).
+  if (!window.trasseVisible) return;
+
   if (window.trassePoints.length === 0) return;
 
   // Alle abgeschlossenen Segmente zeichnen
@@ -912,6 +920,12 @@ export function redrawTrasse() {
     }
     window.trasseEditMarkers.push(m);
   });
+}
+
+// Trassen ein-/ausblenden (Ansicht-Panel). Default versteckt.
+export function setTrasseVisible(visible) {
+  window.trasseVisible = !!visible;
+  redrawTrasse();
 }
 
 export function deleteTrasse(segIdx) {

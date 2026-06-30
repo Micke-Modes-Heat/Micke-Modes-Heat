@@ -99,8 +99,11 @@ export function renderSidebarAssetList() {
       const pendingDot = hasPending
         ? `<span class="sb-asset-pending-dot" title="Offene Maßnahmen"></span>`
         : '';
-      const sel = ASSETS.selectedId === a.id ? ' selected' : '';
+      const isSel   = window.assetSelection?.has(a.id);
+      const sel     = (ASSETS.selectedId === a.id ? ' selected' : '') + (isSel ? ' asset-bulk-selected' : '');
+      const checked = isSel ? ' checked' : '';
       return `<div class="sb-asset-row${sel}" data-asset-id="${a.id}">
+        <input type="checkbox" class="sb-asset-cb"${checked} onclick="event.stopPropagation();selToggle('${a.id}')" title="Auswählen" style="flex-shrink:0;cursor:pointer;accent-color:var(--accent,#2196F3);">
         <span class="sb-asset-row-icon" style="background:${cfg.color};opacity:${opacity};">${cfg.icon}</span>
         <span class="sb-asset-row-name">${esc(a.name)}</span>
         ${pendingDot}
@@ -457,8 +460,10 @@ const MASSN_STATUS = {
 };
 
 const MASSN_TYP = {
-  Sanierung: { label: 'Sanierung', icon: '🔧', hasNewProps: true  },
-  Abriss:    { label: 'Abriss',    icon: '🏚', hasNewProps: false },
+  Sanierung:     { label: 'Sanierung',    icon: '🔧', hasNewProps: true  },
+  Abriss:        { label: 'Abriss',       icon: '🏚', hasNewProps: false },
+  Bau:           { label: 'Neubau/Bau',   icon: '🏗', hasNewProps: false },
+  Ertuechtigung: { label: 'Ertüchtigung', icon: '⚡', hasNewProps: true  },
 };
 
 function _massnRowHtml(m) {
@@ -594,8 +599,11 @@ function wireMassnahmen(panel, asset) {
     if (editingId) {
       const m = asset.massnahmen.find(x => x.id === editingId);
       if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps });
+      // dependsOn/phaseId werden durch das Board (M5+) gesetzt, hier nur als Default sichern
+      if (!m.dependsOn) m.dependsOn = [];
+      if (m.phaseId === undefined) m.phaseId = null;
     } else {
-      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps });
+      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps, dependsOn: [], phaseId: null });
     }
     closeForm();
     refreshList();
