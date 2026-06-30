@@ -193,6 +193,17 @@ export function deleteAsset(id) {
   // Zugehörige Leitungen löschen
   ASSETS.edges = ASSETS.edges.filter(e => e.aId !== id && e.bId !== id);
   ASSETS.items.splice(i, 1);
+  // Registrierten Strom-Knoten mitsamt Marker entfernen — sonst bleibt ein
+  // verwaister Knoten in window.stromNodes zurück, der beim Speichern persistiert
+  // und beim Laden als grauer „Geister"-Marker (klickt nicht zum Inspektor) erscheint.
+  if (typeof window !== 'undefined' && Array.isArray(window.stromNodes)) {
+    const ni = window.stromNodes.findIndex(n => n.id === id);
+    if (ni >= 0) {
+      const sn = window.stromNodes[ni];
+      if (sn.marker && sn.marker.remove) sn.marker.remove();
+      window.stromNodes.splice(ni, 1);
+    }
+  }
   if (ASSETS.selectedId === id) ASSETS.selectedId = null;
   return true;
 }

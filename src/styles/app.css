@@ -867,6 +867,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .asset-marker.asset-selected { box-shadow: 0 0 0 3px #2196F3, 0 0 8px 2px rgba(33,150,243,0.35); }
 .sb-asset-row.asset-bulk-selected { background:rgba(33,150,243,.12); outline:1px solid rgba(33,150,243,.3); }
 
+/* Bulk-Modus: nicht-selektierte Marker ausgrauen (wie „abgerissen") — weiterhin
+   sichtbar und anklickbar, aber blass/grau, damit selektierte hervorstechen.
+   Wrapper-Ebene → wirkt auch für gebäudegruppierte Chip-Marker. */
+.leaflet-marker-icon.asset-bulk-dimmed { opacity: 0.35; filter: grayscale(1); transition: opacity .15s, filter .15s; }
+
+/* Bulk-Modus: Karte auf Elektro-Assets reduzieren — wie „Ansicht: nur Elektro-Assets".
+   Andere Daten-Ebenen aus, Basiskarte bleibt normal, Asset-Marker bleiben sichtbar/klickbar. */
+.leaflet-container.bulk-isolate .leaflet-overlay-pane,
+.leaflet-container.bulk-isolate .leaflet-pv-pane,
+.leaflet-container.bulk-isolate .leaflet-netz-pane     { display: none; }
+.leaflet-container.bulk-isolate .leaflet-marker-icon:not(.asset-divicon) { display: none; }
+
+/* Bulk-Modus: Checkboxen nur einblenden wenn aktiv */
+#sb-asset-list .sb-asset-cb { display: none; }
+#sb-asset-list.bulk-active .sb-asset-cb { display: inline-block; }
+
 /* Asset Status-Ringe (nach elCalcAssets) */
 .asset-marker.av-ok      { box-shadow: 0 0 0 3px #4caf50; }
 .asset-marker.av-warn    { box-shadow: 0 0 0 3px #f9a825; }

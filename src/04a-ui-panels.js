@@ -1191,6 +1191,37 @@ window._ebpViz = function(checked) {
   if (typeof window.updateViz === 'function') window.updateViz();
 };
 
+// Standard-Ansicht nach dem Laden eines Projekts: nur Gebäudeumrisse + PV-Anlagen
+// sichtbar, Gebäude-Symbole auf „Keine". Alle übrigen Daten-Ebenen aus.
+// (Hintergrund/Satellit bleibt unverändert — Kartenwahl, keine Datenebene.)
+window.applyDefaultViewOnLoad = function() {
+  // Gebäude-Symbole → Keine
+  if (typeof window.setViz === 'function') window.setViz('none');
+
+  // Checkbox-Status + zugehörigen Setter setzen
+  const setLayer = (cbId, on, fn) => {
+    const cb = document.getElementById(cbId);
+    if (cb) cb.checked = on;
+    if (typeof fn === 'function') fn(on);
+  };
+
+  // Sichtbar: Gebäudeumrisse + PV-Anlagen
+  setLayer('el-geb-visible', true, window.setGebVisible);
+  setLayer('el-pv-visible',  true, window.setPvVisible);
+
+  // Aus: Beschriftung, Wärmenetz-Leitungen, Trassen, Elektro-Assets, Stromnetz
+  setLayer('el-labels-visible',    false, window.setLabelsVisible);
+  setLayer('el-netz-visible',      false, window.setNetzVisible);
+  setLayer('el-trasse-visible',    false, window.setTrasseVisible);
+  setLayer('el-assets-visible',    false, window.setAssetLayerVisible);
+  setLayer('el-stromnetz-visible', false, window.setStromNetzVisible);
+
+  // Aus: Wärme-Visualisierung (eigener Mechanismus)
+  const cbViz = document.getElementById('el-viz-circles');
+  if (cbViz) cbViz.checked = false;
+  if (typeof window._ebpViz === 'function') window._ebpViz(false);
+};
+
 // Satellit-Toggle
 window._ebpSatellit = function(checked) {
   const cbSat = document.getElementById('cb-satellit');

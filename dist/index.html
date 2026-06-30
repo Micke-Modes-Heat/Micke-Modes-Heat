@@ -911,6 +911,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .asset-marker.asset-selected { box-shadow: 0 0 0 3px #2196F3, 0 0 8px 2px rgba(33,150,243,0.35); }
 .sb-asset-row.asset-bulk-selected { background:rgba(33,150,243,.12); outline:1px solid rgba(33,150,243,.3); }
 
+/* Bulk-Modus: nicht-selektierte Marker ausgrauen (wie „abgerissen") — weiterhin
+   sichtbar und anklickbar, aber blass/grau, damit selektierte hervorstechen.
+   Wrapper-Ebene → wirkt auch für gebäudegruppierte Chip-Marker. */
+.leaflet-marker-icon.asset-bulk-dimmed { opacity: 0.35; filter: grayscale(1); transition: opacity .15s, filter .15s; }
+
+/* Bulk-Modus: Karte auf Elektro-Assets reduzieren — wie „Ansicht: nur Elektro-Assets".
+   Andere Daten-Ebenen aus, Basiskarte bleibt normal, Asset-Marker bleiben sichtbar/klickbar. */
+.leaflet-container.bulk-isolate .leaflet-overlay-pane,
+.leaflet-container.bulk-isolate .leaflet-pv-pane,
+.leaflet-container.bulk-isolate .leaflet-netz-pane     { display: none; }
+.leaflet-container.bulk-isolate .leaflet-marker-icon:not(.asset-divicon) { display: none; }
+
+/* Bulk-Modus: Checkboxen nur einblenden wenn aktiv */
+#sb-asset-list .sb-asset-cb { display: none; }
+#sb-asset-list.bulk-active .sb-asset-cb { display: inline-block; }
+
 /* Asset Status-Ringe (nach elCalcAssets) */
 .asset-marker.av-ok      { box-shadow: 0 0 0 3px #4caf50; }
 .asset-marker.av-warn    { box-shadow: 0 0 0 3px #f9a825; }
@@ -1579,6 +1595,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
   <div class="ebp-cat">
     <div class="ebp-cat-label" style="--ebp-c:#ef5350;">🔥 Wärmenetz</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-visible"   checked data-change="setNetzVisible(this.checked);_ebpSync('netz-visible-ansicht',this.checked)">Leitungen</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-trasse-visible"        data-change="setTrasseVisible(this.checked)">Trassen</label>
   </div>
 
   <div class="ebp-cat">
@@ -2238,7 +2255,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
       <button class="analyse-section-tab" data-section="wirtschaft" data-click="setAnalyseSection('wirtschaft')">Wirtschaftlichkeit</button>
       <button class="analyse-section-tab" data-section="strom" data-click="setAnalyseSection('strom')">Strom</button>
       <button class="analyse-section-tab" data-section="emissionen" data-click="setAnalyseSection('emissionen')">Emissionen</button>
-      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" style="color:#4fc3f7;" title="PV-Ausbauplaner — Gantt-Fahrplan">🔆 Ausbauplaner</button>
+      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" style="color:#4fc3f7;" title="Ausbauplaner — Maßnahmen-Fahrplan (alle Assets)">📅 Ausbauplaner</button>
     </div>
 
     <!-- ── Übersicht (Dashboard) ─────────────────────────────── -->
@@ -2785,26 +2802,80 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
     <div class="sb-tab-body" id="sb-tab-elektro">
       <!-- Inspector-Slot: wird befüllt wenn ein Asset gewählt wird -->
       <div id="sb-asset-inspector-slot"></div>
-      <!-- Sammelaktions-Leiste (sichtbar wenn ≥1 Asset selektiert) -->
-      <div id="asset-bulk-bar" style="display:none;flex-wrap:wrap;gap:4px;padding:5px 6px;background:var(--surface2);border-bottom:1px solid var(--border);align-items:center;font-size:10px;">
-        <span id="asset-bulk-lbl" style="font-weight:600;white-space:nowrap;">0 Assets</span>
-        <select id="asset-bulk-phase" onchange="selBulkPhaseChanged(this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
-          <option value="">→ Phase</option>
-        </select>
-        <select id="asset-bulk-massn" onchange="selBulkMassnChanged(this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
-          <option value="">+ Maßnahme</option>
-        </select>
-        <select onchange="selBulkStatusChanged(this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
-          <option value="">Status</option>
-          <option value="geplant">geplant</option>
-          <option value="umgesetzt">umgesetzt</option>
-        </select>
-        <input id="asset-bulk-jahr" type="number" placeholder="Jahr" min="2020" max="2060"
-          style="width:56px;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;"
-          onchange="selBulkJahrApply()">
-        <button onclick="selFromMeritOrderTier('A');selRenderBulkBar()" title="Tier-A-Kandidaten aus Merit-Order selektieren"
-          style="font-size:10px;padding:2px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">Tier A ▸</button>
-        <button onclick="selClear()" style="margin-left:auto;font-size:10px;padding:2px 6px;background:none;border:none;cursor:pointer;color:var(--muted);">✕</button>
+      <!-- Bulk-Modus Toggle -->
+      <div style="padding:5px 6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;">
+        <button id="bulk-mode-toggle" onclick="selToggleBulkMode()" style="font-size:10px;padding:3px 8px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;">&#9678; Bulk-Modus</button>
+        <span style="font-size:10px;color:var(--muted);">Shift+Drag = Box (Typ-Filter wirkt) · Rechtsklick = Auswahl löschen</span>
+      </div>
+      <!-- Sammelaktions-Leiste (sichtbar wenn ≥1 Asset selektiert oder Bulk-Modus aktiv) -->
+      <div id="asset-bulk-bar" style="display:none;padding:5px 7px 6px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;box-sizing:border-box;">
+        <!-- Kopfzeile: Auswahl-Info + Tier-Buttons + Schließen -->
+        <div style="display:flex;align-items:center;gap:3px;margin-bottom:4px;">
+          <span id="asset-bulk-lbl" style="font-weight:600;white-space:nowrap;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">0 Assets</span>
+          <button onclick="selFromMeritOrderTier('A');selRenderBulkBar()" title="Tier-A-Kandidaten selektieren"
+            style="font-size:9px;padding:2px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Tier A ▸</button>
+          <button onclick="selFromMeritOrderTier('B');selRenderBulkBar()" title="Tier-B-Kandidaten selektieren"
+            style="font-size:9px;padding:2px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Tier B ▸</button>
+          <button onclick="selClear()" title="Auswahl aufheben" style="font-size:11px;padding:1px 5px;background:none;border:none;cursor:pointer;color:var(--muted);flex-shrink:0;">✕</button>
+        </div>
+        <!-- Topologie-Filter: Typ hinter Objekt selektieren -->
+        <div style="display:flex;flex-direction:column;gap:3px;padding:5px 6px;margin-bottom:5px;background:var(--surface);border:1px solid var(--border);border-radius:4px;">
+          <div style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em;">Auswahl nach Netz-Topologie</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <select id="asset-bulk-filter-type" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">alle Typen</option>
+            </select>
+            <span style="color:var(--muted);flex-shrink:0;">hinter</span>
+            <select id="asset-bulk-filter-root" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— Objekt wählen —</option>
+            </select>
+          </div>
+          <button onclick="selBulkFilterApply()" title="Alle Objekte des gewählten Typs selektieren, die elektrisch hinter dem Objekt hängen"
+            style="font-size:10px;padding:3px 8px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;align-self:flex-start;">⌕ Selektieren</button>
+        </div>
+        <!-- Formularfelder: Label links (feste Breite), Input rechts (füllt Rest) -->
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Phase</span>
+            <select id="asset-bulk-phase" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+            </select>
+            <button onclick="selBulkNeuePhase()" title="Neue Phase anlegen"
+              style="flex-shrink:0;font-size:12px;line-height:1;padding:2px 7px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">+</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Maßnahme</span>
+            <select id="asset-bulk-massn" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Status</span>
+            <select id="asset-bulk-status" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+              <option value="geplant">geplant</option>
+              <option value="umgesetzt">umgesetzt</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Bau-Jahr</span>
+            <input id="asset-bulk-bau-jahr" type="number" placeholder="z. B. 2026" min="2020" max="2060"
+              style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Abriss-Jahr</span>
+            <input id="asset-bulk-abriss-jahr" type="number" placeholder="z. B. 2040" min="2020" max="2080"
+              style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+          </div>
+        </div>
+        <!-- Übernehmen-Button + Bestätigung -->
+        <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+          <button onclick="selBulkApplyAll()" id="bulk-apply-btn"
+            style="font-size:10px;padding:3px 12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;">
+            ✓ Übernehmen
+          </button>
+          <span id="bulk-confirm-msg" style="display:none;font-size:10px;font-weight:600;"></span>
+        </div>
       </div>
       <!-- Asset-Liste: alle Assets nach Typ gruppiert -->
       <div id="sb-asset-list" class="sidebar-scroll"></div>
@@ -4835,7 +4906,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-06-29';
+  var d = '2026-06-30';
   if (d.indexOf('__') === 0) d = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -66055,6 +66126,10 @@ function toggleDrawTrasse() {
   window.isDrawingTrasse = !window.isDrawingTrasse;
   const btn = document.getElementById('btn-draw-trasse');
   if (window.isDrawingTrasse) {
+    // Trasse zum Bearbeiten sichtbar machen (Ansicht-Checkbox synchronisieren)
+    window.trasseVisible = true;
+    const _tcb = document.getElementById('el-trasse-visible');
+    if (_tcb) _tcb.checked = true;
     // Andere Modi beenden
     if (window.isDrawingStromEdge && typeof cancelDrawStromEdge === 'function') cancelDrawStromEdge();
     if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
@@ -66137,6 +66212,10 @@ function redrawTrasse() {
   window.trasseEditMarkers.forEach(m => map.removeLayer(m));
   window.trasseEditMarkers = [];
 
+  // Trassen-Ebene ausblendbar (Ansicht-Panel). Default versteckt: undefined/false → nicht zeichnen.
+  // Im Zeichenmodus wird trasseVisible erzwungen (siehe toggleDrawTrasse).
+  if (!window.trasseVisible) return;
+
   if (window.trassePoints.length === 0) return;
 
   // Alle abgeschlossenen Segmente zeichnen
@@ -66178,6 +66257,12 @@ function redrawTrasse() {
     }
     window.trasseEditMarkers.push(m);
   });
+}
+
+// Trassen ein-/ausblenden (Ansicht-Panel). Default versteckt.
+function setTrasseVisible(visible) {
+  window.trasseVisible = !!visible;
+  redrawTrasse();
 }
 
 function deleteTrasse(segIdx) {
@@ -72719,10 +72804,23 @@ function _loadProject(project) {
           if (ktSel) ktSel.value = project.stromNetz.kabelTyp;
         }
         if (project.stromNetz.nodes) {
+          // Asset-Typen, die NIE als „plain" Strom-Knoten existieren (immer ein Asset):
+          // Erzeuger/Verbraucher/Speicher (PV, Wind, Batterie, Verbraucher, …).
+          // Infrastruktur (NAP/Trafo/NSHV/UV/KVS) kann dagegen ein Plain-Knoten sein
+          // (Auto-Netz, manuelles Zeichnen) → die nicht filtern.
+          const _nonInfraAssetTypes = new Set(
+            Object.entries(ASSET_CFG)
+              .filter(([, cfg]) => cfg.domain !== 'waerme' && cfg.kategorie !== 'infrastruktur')
+              .map(([k]) => k.toLowerCase())
+          );
           project.stromNetz.nodes.forEach(n => {
             // Assets wurden bereits via redrawAllAssets() als stromNodes registriert (isAsset:true)
             // → nicht nochmal als plain addStromNode() erstellen (würde graue Duplikat-Marker erzeugen)
             if ((window.stromNodes || []).find(sn => sn.id === n.id && sn.isAsset)) return;
+            // Verwaister Knoten eines gelöschten Erzeuger/Verbraucher-Assets (z. B. PV):
+            // existiert kein Asset mehr mit dieser id → überspringen (sonst grauer Geister-Marker).
+            if (_nonInfraAssetTypes.has((n.type || '').toLowerCase())
+                && !ASSETS.items.some(a => a.id === n.id)) return;
             addStromNode(n.type, L.latLng(n.lat, n.lng), {
               id: n.id, label: n.label, maxKva: n.maxKva, ratedKva: n.ratedKva, ukPct: n.ukPct
             });
@@ -72830,6 +72928,24 @@ function _loadProject(project) {
       updateViz();
       updateTotals();
       glBerechnenDebounced(800);
+
+      // Standard-Ansicht: nur Gebäudeumrisse + PV (Symbole „Keine", übrige Ebenen aus)
+      if (typeof window.applyDefaultViewOnLoad === 'function') window.applyDefaultViewOnLoad();
+
+      // Auf die geladene Liegenschaft springen (Gesamt-Umriss aller Gebäude;
+      // ersatzweise alle Asset-Positionen).
+      try {
+        const bounds = L.latLngBounds([]);
+        (window.gebaeude || []).forEach(g => {
+          if (g.polygonLayer) bounds.extend(g.polygonLayer.getBounds());
+        });
+        if (!bounds.isValid()) {
+          (ASSETS.items || []).forEach(a => {
+            if (a.lat != null && a.lng != null) bounds.extend([a.lat, a.lng]);
+          });
+        }
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60], maxZoom: 19 });
+      } catch (e) { /* Karte bleibt auf aktueller Position */ }
 }
 
 function loadGebaeudeFromParent(gebaeudeArray) {
@@ -74126,6 +74242,37 @@ window._ebpViz = function(checked) {
   const cbViz = document.getElementById('cb-viz-circles');
   if (cbViz) { cbViz.checked = checked; cbViz.dispatchEvent(new Event('change')); }
   if (typeof window.updateViz === 'function') window.updateViz();
+};
+
+// Standard-Ansicht nach dem Laden eines Projekts: nur Gebäudeumrisse + PV-Anlagen
+// sichtbar, Gebäude-Symbole auf „Keine". Alle übrigen Daten-Ebenen aus.
+// (Hintergrund/Satellit bleibt unverändert — Kartenwahl, keine Datenebene.)
+window.applyDefaultViewOnLoad = function() {
+  // Gebäude-Symbole → Keine
+  if (typeof window.setViz === 'function') window.setViz('none');
+
+  // Checkbox-Status + zugehörigen Setter setzen
+  const setLayer = (cbId, on, fn) => {
+    const cb = document.getElementById(cbId);
+    if (cb) cb.checked = on;
+    if (typeof fn === 'function') fn(on);
+  };
+
+  // Sichtbar: Gebäudeumrisse + PV-Anlagen
+  setLayer('el-geb-visible', true, window.setGebVisible);
+  setLayer('el-pv-visible',  true, window.setPvVisible);
+
+  // Aus: Beschriftung, Wärmenetz-Leitungen, Trassen, Elektro-Assets, Stromnetz
+  setLayer('el-labels-visible',    false, window.setLabelsVisible);
+  setLayer('el-netz-visible',      false, window.setNetzVisible);
+  setLayer('el-trasse-visible',    false, window.setTrasseVisible);
+  setLayer('el-assets-visible',    false, window.setAssetLayerVisible);
+  setLayer('el-stromnetz-visible', false, window.setStromNetzVisible);
+
+  // Aus: Wärme-Visualisierung (eigener Mechanismus)
+  const cbViz = document.getElementById('el-viz-circles');
+  if (cbViz) cbViz.checked = false;
+  if (typeof window._ebpViz === 'function') window._ebpViz(false);
 };
 
 // Satellit-Toggle
@@ -101946,6 +102093,17 @@ function deleteAsset(id) {
   // Zugehörige Leitungen löschen
   ASSETS.edges = ASSETS.edges.filter(e => e.aId !== id && e.bId !== id);
   ASSETS.items.splice(i, 1);
+  // Registrierten Strom-Knoten mitsamt Marker entfernen — sonst bleibt ein
+  // verwaister Knoten in window.stromNodes zurück, der beim Speichern persistiert
+  // und beim Laden als grauer „Geister"-Marker (klickt nicht zum Inspektor) erscheint.
+  if (typeof window !== 'undefined' && Array.isArray(window.stromNodes)) {
+    const ni = window.stromNodes.findIndex(n => n.id === id);
+    if (ni >= 0) {
+      const sn = window.stromNodes[ni];
+      if (sn.marker && sn.marker.remove) sn.marker.remove();
+      window.stromNodes.splice(ni, 1);
+    }
+  }
   if (ASSETS.selectedId === id) ASSETS.selectedId = null;
   return true;
 }
@@ -102261,8 +102419,12 @@ function drawBuildingGroup(buildingId) {
   const width  = nSlots * (chip + 2) + 8;
   const height = chip + 8;
 
+  // Bulk-Modus: Gruppe ausgegraut, solange KEIN Asset darauf selektiert ist —
+  // direkt beim Zeichnen setzen, damit Neuzeichnen das Dimming nicht verliert.
+  const anySelected = assets.some(a => window.assetSelection?.has(a.id));
+  const dimClass = (window.isBulkModeActive?.() && !anySelected) ? ' asset-bulk-dimmed' : '';
   const icon = L.divIcon({
-    className: '',
+    className: 'asset-divicon' + dimClass,
     html,
     iconSize:   [width, height],
     iconAnchor: [width / 2, height / 2],
@@ -102385,7 +102547,7 @@ function spiderfyBuilding(buildingId, centerLatLng) {
     L.polyline([centerLatLng, ll], { color: '#fdd835', weight: 1.5, opacity: 0.7, dashArray: '3 3', interactive: false }).addTo(_spiderLayer);
 
     const icon = L.divIcon({
-      className: '',
+      className: 'asset-divicon',
       html: `<div class="asset-spider-icon" style="background:${cfg.color};width:${sz}px;height:${sz}px;font-size:${Math.round(sz * 0.55)}px;">${cfg.icon}</div>`,
       iconSize:   [sz, sz],
       iconAnchor: [sz / 2, sz / 2],
@@ -102496,8 +102658,11 @@ function drawSingleMarker(asset) {
     ? `<span class="asset-massn-badge"></span>`
     : '';
   const selClass = window.assetSelection?.has(asset.id) ? ' asset-selected' : '';
+  // Bulk-Modus: nicht-selektierte Marker ausgegraut — direkt beim Zeichnen setzen,
+  // damit ein Neuzeichnen (Auswahl/Inspector) das Dimming nicht verliert.
+  const dimClass = (window.isBulkModeActive?.() && !window.assetSelection?.has(asset.id)) ? ' asset-bulk-dimmed' : '';
   const icon = L.divIcon({
-    className: '',
+    className: 'asset-divicon' + dimClass,
     html: `<div class="asset-marker asset-marker-${status}${selClass}"
               style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;">
              <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
@@ -114624,7 +114789,14 @@ function _itemJahr(it, phasenArr) {
 
 // ── Selektions-State ──────────────────────────────────────────────────────────
 
+// Stabile Referenz — wird immer mutiert (clear/add), nie ersetzt, damit window.assetSelection
+// (und alle Marker-Render-Pfade) immer dasselbe, aktuelle Set sehen.
 var assetSelection = new Set();
+var bulkModeActive  = false;
+
+// Live-Getter für andere Module (z. B. Marker-Rendering in 13b) — eine reassignte
+// `export let`-Variable würde auf window.* veralten, eine Funktion liest immer aktuell.
+function isBulkModeActive() { return bulkModeActive; }
 
 function selToggle(id) {
   if (assetSelection.has(id)) assetSelection.delete(id);
@@ -114643,13 +114815,99 @@ function selRemove(id) {
 }
 
 function selSet(ids) {
-  assetSelection = new Set(ids);
+  assetSelection.clear();
+  for (const id of ids) assetSelection.add(id);
   _afterSelChange();
 }
 
 function selClear() {
-  assetSelection = new Set();
+  assetSelection.clear();
   _afterSelChange();
+}
+
+// ── Bulk-Modus ────────────────────────────────────────────────────────────────
+
+// Vorheriger Sichtbarkeits-Zustand der Elektro-Asset-Ebene (zum Wiederherstellen).
+var _prevAssetLayerVisible = null;
+
+function selToggleBulkMode() {
+  bulkModeActive = !bulkModeActive;
+  if (!bulkModeActive) {
+    assetSelection.clear(); // Selektion beim Deaktivieren leeren
+  }
+  _applyBulkModeView();
+  _refreshDimming();
+  _updateBulkModeToggleBtn();
+  selRenderBulkBar();
+}
+
+function selSetBulkMode(active) {
+  if (bulkModeActive === active) return;
+  bulkModeActive = active;
+  if (!active) assetSelection.clear();
+  _applyBulkModeView();
+  _refreshDimming();
+  _updateBulkModeToggleBtn();
+  selRenderBulkBar();
+}
+
+// Erzwingt im Bulk-Modus die Sichtbarkeit der Elektro-Asset-Ebene (sonst keine Marker
+// zum Anklicken) und reduziert die Karte per CSS-Isolation. Beim Verlassen wird der
+// vorherige Ansicht-Zustand wiederhergestellt.
+function _applyBulkModeView() {
+  if (bulkModeActive) {
+    // Vorherigen Zustand merken und Asset-Ebene einschalten
+    if (_prevAssetLayerVisible === null && typeof window.isAssetLayerVisible === 'function') {
+      _prevAssetLayerVisible = window.isAssetLayerVisible();
+    }
+    if (typeof window.setAssetLayerVisible === 'function') window.setAssetLayerVisible(true);
+    const cb = document.getElementById('el-assets-visible');
+    if (cb) cb.checked = true;
+  } else if (_prevAssetLayerVisible !== null) {
+    // Vorherigen Zustand wiederherstellen
+    if (typeof window.setAssetLayerVisible === 'function') window.setAssetLayerVisible(_prevAssetLayerVisible);
+    const cb = document.getElementById('el-assets-visible');
+    if (cb) cb.checked = _prevAssetLayerVisible;
+    _prevAssetLayerVisible = null;
+  }
+
+  // Karte auf Elektro-Assets reduzieren (CSS-Isolation via .bulk-isolate)
+  const mapEl = window._appLeafletMap?.getContainer?.();
+  if (mapEl) mapEl.classList.toggle('bulk-isolate', bulkModeActive);
+}
+
+function _updateBulkModeToggleBtn() {
+  const btn  = document.getElementById('bulk-mode-toggle');
+  const list = document.getElementById('sb-asset-list');
+  if (btn) {
+    btn.textContent       = bulkModeActive ? '◉ Bulk-Modus AN' : '◎ Bulk-Modus';
+    btn.style.background  = bulkModeActive ? 'rgba(33,150,243,.22)' : '';
+    btn.style.color       = bulkModeActive ? '#4fc3f7' : '';
+    btn.style.borderColor = bulkModeActive ? '#4fc3f7' : '';
+  }
+  if (list) list.classList.toggle('bulk-active', bulkModeActive);
+}
+
+// ── Dimming: nicht-selektierte Marker ausgrauen (wie „abgerissen") ────────────
+// Arbeitet auf der Marker-Wrapper-Ebene (.leaflet-marker-icon), damit es auch für
+// gebäudegruppierte Chip-Marker funktioniert (mehrere Assets teilen einen Marker).
+// Ein Marker gilt als selektiert, sobald mindestens eines seiner Assets selektiert ist.
+
+function _refreshDimming() {
+  const iconHasSel = new Map(); // markerIcon-Element → ob ein Asset darauf selektiert ist
+  for (const a of ASSETS.items) {
+    const icon = a._marker?._icon;
+    if (!icon) continue;
+    if (!iconHasSel.has(icon)) iconHasSel.set(icon, false);
+    if (assetSelection.has(a.id)) iconHasSel.set(icon, true);
+  }
+  for (const [icon, hasSel] of iconHasSel) {
+    icon.classList.toggle('asset-bulk-dimmed', bulkModeActive && !hasSel);
+  }
+}
+
+function selRefreshMarkerDim() {
+  _refreshDimming();
 }
 
 function selHas(id) {
@@ -114673,10 +114931,102 @@ function selFromMeritOrderTier(tier) {
   selSet(ids);
 }
 
+// ── Topologie-Filter: Assets hinter einem Objekt selektieren ──────────────────
+// Baut denselben gerichteten Eltern-Kind-Baum wie das SLD (13f): jeder Knoten hat
+// genau ein Elternteil. Damit bleibt die Auswahl strikt im Teilbaum unter der Wurzel
+// und läuft nicht über gleichrangige Kanten (z. B. NSHV↔NSHV) in Nachbarzweige.
+function _buildTopologyTree() {
+  const assetMap = new Map(ASSETS.items.map(a => [a.id, a]));
+  const edges = (window.stromEdges || []).filter(e => assetMap.has(e.u) && assetMap.has(e.v));
+  const children = new Map(ASSETS.items.map(a => [a.id, []]));
+  const parentOf = new Map();
+
+  const link = (srcId, snkId) => {
+    if (parentOf.has(snkId)) return;            // genau ein Elternteil (erste Zuweisung gewinnt)
+    parentOf.set(snkId, srcId);
+    if (!children.get(srcId).includes(snkId)) children.get(srcId).push(snkId);
+  };
+
+  // Pass 1: Kanten mit unterschiedlichem Rang → klare Hierarchie (niedriger Rang = Elternteil)
+  for (const e of edges) {
+    const rA = TYPE_RANK[assetMap.get(e.u).type] ?? 6;
+    const rB = TYPE_RANK[assetMap.get(e.v).type] ?? 6;
+    if (rA === rB) continue;
+    const [srcId, snkId] = rA < rB ? [e.u, e.v] : [e.v, e.u];
+    link(srcId, snkId);
+  }
+  // Pass 2: gleichrangige Kanten → Richtung anhand bereits etablierter Elternschaft
+  for (const e of edges) {
+    const rA = TYPE_RANK[assetMap.get(e.u).type] ?? 6;
+    const rB = TYPE_RANK[assetMap.get(e.v).type] ?? 6;
+    if (rA !== rB) continue;
+    const aHasParent = parentOf.has(e.u);
+    const bHasParent = parentOf.has(e.v);
+    if      ( aHasParent && !bHasParent) link(e.u, e.v);
+    else if (!aHasParent &&  bHasParent) link(e.v, e.u);
+  }
+  return { children, assetMap };
+}
+
+// Alle Assets im Teilbaum unter rootId (echte nachgelagerte Objekte).
+function _bfsDownstreamAssets(rootId) {
+  const { children, assetMap } = _buildTopologyTree();
+  const visited = new Set([rootId]);
+  const stack   = [...(children.get(rootId) || [])];
+  const found   = [];
+  while (stack.length) {
+    const id = stack.pop();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const a = assetMap.get(id);
+    if (a) found.push(a);
+    for (const c of (children.get(id) || [])) if (!visited.has(c)) stack.push(c);
+  }
+  return found;
+}
+
+// Selektiert alle Assets vom Typ typeFilter ('' = alle), die hinter rootId hängen.
+function selFilterDownstream(rootId, typeFilter) {
+  if (!rootId) return;
+  const downstream = _bfsDownstreamAssets(rootId);
+  const matches = typeFilter
+    ? downstream.filter(a => a.type === typeFilter)
+    : downstream;
+  selSet(matches.map(a => a.id));
+  return matches.length;
+}
+
+// Aus den Bulk-Bar-Dropdowns lesen und filtern (aufgerufen aus HTML).
+function selBulkFilterApply() {
+  const rootId = document.getElementById('asset-bulk-filter-root')?.value || '';
+  const typ    = document.getElementById('asset-bulk-filter-type')?.value || '';
+  if (!rootId) {
+    const msg = document.getElementById('bulk-confirm-msg');
+    if (msg) {
+      msg.textContent = '(Objekt wählen)';
+      msg.style.display = 'inline';
+      msg.style.color = 'var(--muted)';
+      clearTimeout(msg._tid);
+      msg._tid = setTimeout(() => { msg.style.display = 'none'; }, 2500);
+    }
+    return;
+  }
+  const n = selFilterDownstream(rootId, typ);
+  const msg = document.getElementById('bulk-confirm-msg');
+  if (msg) {
+    msg.textContent = `${n} Objekt${n !== 1 ? 'e' : ''} selektiert`;
+    msg.style.display = 'inline';
+    msg.style.color = n > 0 ? '#4caf50' : 'var(--muted)';
+    clearTimeout(msg._tid);
+    msg._tid = setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  }
+}
+
 // ── Interner After-Change-Handler ─────────────────────────────────────────────
 
 function _afterSelChange() {
   _refreshSelectedRings();
+  _refreshDimming();
   selRenderBulkBar();
   // Sidebar-Liste refreshen (leichtgewichtig: nur Checkbox-State)
   _refreshSidebarCheckboxes();
@@ -114719,7 +115069,7 @@ function selRenderBulkBar() {
   const selAssets = selGetAssets();
   const count     = selAssets.length;
 
-  if (count === 0) {
+  if (count === 0 && !bulkModeActive) {
     bar.style.display = 'none';
     return;
   }
@@ -114732,13 +115082,14 @@ function selRenderBulkBar() {
     ? ` · Σ ${totalKwp < 1000 ? totalKwp.toFixed(0) + ' kWp' : (totalKwp / 1000).toFixed(1) + ' MWp'}`
     : '';
 
-  document.getElementById('asset-bulk-lbl').textContent = `${count} Asset${count > 1 ? 's' : ''}${kwpLabel}`;
+  document.getElementById('asset-bulk-lbl').textContent =
+    count === 0 ? 'Auswahl' : `${count} Asset${count > 1 ? 's' : ''}${kwpLabel}`;
 
   // Phasen-Dropdown befüllen
   const phSel = document.getElementById('asset-bulk-phase');
   if (phSel) {
     const curVal = phSel.value;
-    phSel.innerHTML = '<option value="">— Phase —</option>'
+    phSel.innerHTML = '<option value="">— keine Änderung —</option>'
       + phasen.map(p => `<option value="${p.id}">${p.name} (${p.jahrVon})</option>`).join('');
     if (curVal) phSel.value = curVal;
   }
@@ -114747,13 +115098,48 @@ function selRenderBulkBar() {
   const maSel = document.getElementById('asset-bulk-massn');
   if (maSel && !maSel._filled) {
     maSel._filled = true;
-    maSel.innerHTML = '<option value="">— Maßnahme —</option>'
+    maSel.innerHTML = '<option value="">— keine Änderung —</option>'
       + MASSN_VORLAGEN_REIHENFOLGE.map(k =>
           `<option value="${k}">${MASSN_VORLAGEN[k].icon} ${MASSN_VORLAGEN[k].label}</option>`
         ).join('');
   }
 
-  bar.style.display = 'flex';
+  _fillFilterDropdowns();
+
+  bar.style.display = 'block';
+}
+
+// Befüllt die Topologie-Filter-Dropdowns (Objekt + Typ).
+function _fillFilterDropdowns() {
+  // Objekt-Dropdown: Infrastruktur-Assets als mögliche Wurzel (NAP, Trafo, NSHV, UV, …)
+  const rootSel = document.getElementById('asset-bulk-filter-root');
+  if (rootSel) {
+    const curVal = rootSel.value;
+    const infra = ASSETS.items
+      .filter(a => ASSET_CFG[a.type]?.kategorie === 'infrastruktur')
+      .sort((a, b) => (TYPE_RANK[a.type] ?? 9) - (TYPE_RANK[b.type] ?? 9)
+                   || (a.name || '').localeCompare(b.name || ''));
+    rootSel.innerHTML = '<option value="">— Objekt wählen —</option>'
+      + infra.map(a => {
+          const icon = ASSET_CFG[a.type]?.icon || '';
+          return `<option value="${a.id}">${icon} ${a.name}</option>`;
+        }).join('');
+    if (curVal) rootSel.value = curVal;
+  }
+
+  // Typ-Dropdown: alle Typen, die aktuell unter den Assets vorkommen
+  const typeSel = document.getElementById('asset-bulk-filter-type');
+  if (typeSel) {
+    const curVal = typeSel.value;
+    const vorhandene = [...new Set(ASSETS.items.map(a => a.type))]
+      .sort((a, b) => (TYPE_RANK[a] ?? 9) - (TYPE_RANK[b] ?? 9));
+    typeSel.innerHTML = '<option value="">alle Typen</option>'
+      + vorhandene.map(t => {
+          const cfg = ASSET_CFG[t];
+          return `<option value="${t}">${cfg?.icon || ''} ${cfg?.label || t}</option>`;
+        }).join('');
+    if (curVal) typeSel.value = curVal;
+  }
 }
 
 // ── Sammelaktionen ────────────────────────────────────────────────────────────
@@ -114849,23 +115235,141 @@ function _bulkDone(msg) {
   console.info('[Bulk]', msg, '—', assetSelection.size, 'Assets');
 }
 
-// ── Handler für die Bulk-Bar-Dropdowns (aufgerufen aus HTML) ──────────────────
-
-function selBulkPhaseChanged(phaseId) {
-  if (phaseId) selApplyPhase(phaseId);
+// Neue Phase direkt aus der Bulk-Bar anlegen (gleiche Logik wie im Ausbauplaner)
+// und im Phase-Dropdown gleich vorauswählen.
+function selBulkNeuePhase() {
+  const maxR = phasen.reduce((m, p) => Math.max(m, +p.reihenfolge), -1);
+  const lJ   = phasen.reduce((m, p) => Math.max(m, +p.jahrBis || 0), new Date().getFullYear());
+  const id   = 'ph_' + Date.now();
+  setPhasen([...phasen, {
+    id, name: 'Phase ' + (phasen.length + 1),
+    jahrVon: String(lJ + 1), jahrBis: String(lJ + 1),
+    variantId: null, reihenfolge: maxR + 1,
+  }]);
+  selRenderBulkBar();
+  const phSel = document.getElementById('asset-bulk-phase');
+  if (phSel) phSel.value = id; // neue Phase vorauswählen
+  // Ausbauplaner aktualisieren, falls geöffnet
+  if (typeof window.ausbauRender === 'function'
+      && document.getElementById('ausbauplaner-wrap')
+      && document.getElementById('ausbauplaner-wrap').style.display !== 'none') {
+    try { window.ausbauRender(); } catch (e) { /* ignore */ }
+  }
 }
 
-function selBulkMassnChanged(typKey) {
-  if (typKey) selApplyMassnahmeVorlage(typKey);
+// ── Sammel-Anwenden: alle Felder auf einmal schreiben ─────────────────────────
+
+function selBulkApplyAll() {
+  const phaseId   = document.getElementById('asset-bulk-phase')?.value || '';
+  const massnKey  = document.getElementById('asset-bulk-massn')?.value || '';
+  const status    = document.getElementById('asset-bulk-status')?.value || '';
+  const bauJahr   = parseInt(document.getElementById('asset-bulk-bau-jahr')?.value || '');
+  const abrissJahr = parseInt(document.getElementById('asset-bulk-abriss-jahr')?.value || '');
+
+  let changed = 0;
+
+  if (phaseId)    { selApplyPhase(phaseId);             changed++; }
+  if (massnKey)   { selApplyMassnahmeVorlage(massnKey); changed++; }
+  if (status)     { selApplyStatus(status);             changed++; }
+  // Bau-/Abriss-Jahr überschreiben die Asset-Eigenschaften (Eigenschaftsfenster).
+  // Liegt das Jahr in der ZUKUNFT (> aktuelles Jahr), ist es ein geplanter Vorgang
+  // und wird zusätzlich als Maßnahme angelegt → erscheint im Ausbauplaner-Fahrplan.
+  const curYear = new Date().getFullYear();
+  if (!isNaN(bauJahr)) {
+    for (const a of selGetAssets()) {
+      a.baujahr = bauJahr;
+      if (bauJahr > curYear) _ensureMassnahmeJahr(a, 'Bau', bauJahr);
+    }
+    changed++;
+  }
+  if (!isNaN(abrissJahr)) {
+    for (const a of selGetAssets()) {
+      a.abrissjahr = abrissJahr;
+      if (abrissJahr > curYear) _ensureMassnahmeJahr(a, 'Abriss', abrissJahr);
+    }
+    changed++;
+  }
+
+  // Felder zurücksetzen
+  const ids = ['asset-bulk-phase','asset-bulk-massn','asset-bulk-status'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const numIds = ['asset-bulk-bau-jahr','asset-bulk-abriss-jahr'];
+  numIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+  // Bestätigung anzeigen
+  const msg = document.getElementById('bulk-confirm-msg');
+  if (msg) {
+    const n = assetSelection.size;
+    msg.textContent = changed > 0
+      ? `✓ ${n} Asset${n !== 1 ? 's' : ''} aktualisiert`
+      : '(keine Felder ausgefüllt)';
+    msg.style.display = 'inline';
+    msg.style.color = changed > 0 ? '#4caf50' : 'var(--muted)';
+    clearTimeout(msg._tid);
+    msg._tid = setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  }
+
+  if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
+  // Marker neu zeichnen — Bau-/Abrissjahr ändern den Lebenszyklus-Status (Sichtbarkeit/Stil).
+  if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+  _refreshDimming();
+  selRenderBulkBar(); // Phase-Dropdown ggf. um neu angelegte Phasen aktualisieren
 }
 
-function selBulkStatusChanged(status) {
-  if (status) selApplyStatus(status);
+// Stellt sicher, dass das Asset eine Maßnahme des Typs hat und setzt ihr Jahr
+// (vorhandene Maßnahme wird aktualisiert statt dupliziert). Für geplante Zukunfts-
+// Bauten/-Abrisse, damit sie im Ausbauplaner-Fahrplan erscheinen.
+function _ensureMassnahmeJahr(a, typ, jahr) {
+  if (!a.massnahmen) a.massnahmen = [];
+  const vorl = MASSN_VORLAGEN[typ];
+  let m = a.massnahmen.find(x => x.typ === typ);
+  if (!m) {
+    m = {
+      id:        typ + '_' + a.id + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      typ,
+      titel:     vorl?.label ?? typ,
+      kosten:    vorl?.kostenRichtwert ?? 0,
+      status:    'geplant',
+      phaseId:   null,
+      jahr:      null,
+      dependsOn: [],
+      newProps:  {},
+    };
+    a.massnahmen.push(m);
+  }
+  m.jahr = jahr;
+  // Maßnahme einer Phase zuordnen, die dieses Jahr abdeckt — existiert keine
+  // passende Phase, wird eine neue angelegt (chronologisch einsortiert).
+  const cur = m.phaseId ? phasen.find(p => p.id === m.phaseId) : null;
+  const curDeckt = cur
+    && jahr >= (parseInt(cur.jahrVon) || 0)
+    && jahr <= (parseInt(cur.jahrBis) || 9999);
+  if (!curDeckt) {
+    const ph = _findOrCreatePhaseForJahr(jahr);
+    if (ph) m.phaseId = ph.id;
+  }
 }
 
-function selBulkJahrApply() {
-  const inp = document.getElementById('asset-bulk-jahr');
-  if (inp) selApplyJahr(inp.value);
+// Sucht eine Phase, deren Jahresbereich `jahr` enthält; legt sonst eine neue an
+// und vergibt die Reihenfolge aller Phasen chronologisch nach jahrVon neu.
+function _findOrCreatePhaseForJahr(jahr) {
+  let ph = phasen.find(p => {
+    const von = parseInt(p.jahrVon), bis = parseInt(p.jahrBis);
+    return !isNaN(von) && !isNaN(bis) && jahr >= von && jahr <= bis;
+  });
+  if (ph) return ph;
+  ph = {
+    id:         'ph_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
+    name:       'Phase ' + (phasen.length + 1),
+    jahrVon:    String(jahr),
+    jahrBis:    String(jahr),
+    variantId:  null,
+    reihenfolge: 0,
+  };
+  const all = [...phasen, ph].sort((a, b) => (parseInt(a.jahrVon) || 0) - (parseInt(b.jahrVon) || 0));
+  all.forEach((p, i) => { p.reihenfolge = i; });
+  setPhasen(all);
+  return ph;
 }
 
 // ── Box-Selektion auf Karte (Shift+Drag) ─────────────────────────────────────
@@ -114874,6 +115378,12 @@ function selInitBoxSelect() {
   const m = window._appLeafletMap;
   if (!m || m._selBoxInited) return;
   m._selBoxInited = true;
+
+  // Eigenes Pane für die Auswahlbox — bleibt im Bulk-Modus sichtbar (CSS-Isolation
+  // blendet overlayPane aus, dieses Pane aber nicht).
+  if (!m.getPane('bulkBoxPane')) {
+    m.createPane('bulkBoxPane').style.zIndex = '460';
+  }
 
   let startLl = null, rect = null, active = false;
 
@@ -114891,7 +115401,7 @@ function selInitBoxSelect() {
     const bounds = L.latLngBounds(startLl, curLl);
     if (!rect) {
       rect = L.rectangle(bounds, {
-        color: '#2196F3', weight: 1.5, fillOpacity: 0.07, interactive: false,
+        color: '#2196F3', weight: 1.5, fillOpacity: 0.07, interactive: false, pane: 'bulkBoxPane',
       }).addTo(m);
     } else {
       rect.setBounds(bounds);
@@ -114905,8 +115415,11 @@ function selInitBoxSelect() {
     if (rect) {
       const bounds = rect.getBounds();
       rect.remove(); rect = null;
+      // Optionaler Typ-Filter aus der Bulk-Bar: nur Assets dieses Typs im Bereich wählen.
+      const typeFilter = document.getElementById('asset-bulk-filter-type')?.value || '';
       const ids = ASSETS.items
         .filter(a => a.lat != null && a.lng != null && bounds.contains([a.lat, a.lng]))
+        .filter(a => !typeFilter || a.type === typeFilter)
         .map(a => a.id);
       if (ids.length > 0) {
         for (const id of ids) assetSelection.add(id);
@@ -114915,30 +115428,36 @@ function selInitBoxSelect() {
     }
     startLl = null;
   });
+
+  // Rechtsklick auf der Karte löscht die Auswahl (nur im Bulk-Modus).
+  m.on('contextmenu', e => {
+    if (!bulkModeActive || assetSelection.size === 0) return;
+    if (e.originalEvent) L.DomEvent.preventDefault(e.originalEvent);
+    selClear();
+  });
 }
 
 
 // ── 14e-ausbauplaner-ui.js ──
 // ── 14e-ausbauplaner-ui.js — Ausbauplaner-Board ───────────────────────────────
-// Zwei-Tab-Board: "Merit-Order" (Berechnungs-Button + Ranking) und
-// "Fahrplan" (Gantt-Swimlanes, Drag-Drop, dependsOn-Pfeile, Live-Validierung).
+// Fahrplan-Board für ALLE Maßnahmen ALLER Assets (gekoppelt an den Bulk-Modus):
+// Gantt-Swimlanes je Gewerk (Maßnahmen-Typ), Spalten = Phasen, Drag-Drop zwischen
+// Phasen (schreibt direkt auf die Maßnahme zurück), dependsOn-Pfeile, Validierung.
 
 
-// ── Gewerk-Definitionen (Swimlane-Reihenfolge) ────────────────────────────────
-var GEWERKE = [
-  { key: 'Ertuechtigung', label: 'Ertüchtigung', color: '#f59e0b' },
-  { key: 'Bau',           label: 'PV-Anlage',    color: '#4fc3f7' },
-  { key: 'Sanierung',     label: 'Sanierung',     color: '#a78bfa' },
-  { key: 'Abriss',        label: 'Abriss',        color: '#f87171' },
-];
-
-var TIER_COLOR = { A: '#4caf50', B: '#fdd835', C: '#ef9a9a' };
+// ── Gewerk-Farben (Maßnahmen-Typen) ──────────────────────────────────────────
+var GEWERK_COLOR = {
+  Ertuechtigung: '#f59e0b',
+  Bau:           '#4fc3f7',
+  Sanierung:     '#a78bfa',
+  Abriss:        '#f87171',
+};
+var GEWERK_FALLBACK_COLOR = '#90a4ae';
 
 // ── Modul-State ───────────────────────────────────────────────────────────────
-var _plan       = { items: [], gruppen: [] };
+var _plan       = { items: [] };
 var _konflikte  = new Set();
 var _draggingId = null;
-var _tab        = 'meritorder'; // 'meritorder' | 'fahrplan'
 
 // ── Init + Show/Hide ──────────────────────────────────────────────────────────
 
@@ -114967,19 +115486,54 @@ function ausbauShow(visible) {
   if (visible) ausbauRender();
 }
 
-function ausbauSetTab(tab) {
-  _tab = tab;
-  ausbauRender();
-}
-
 // ── Haupt-Render ──────────────────────────────────────────────────────────────
 
 function ausbauRender() {
+  _buildPlan();
   _validatePlan();
   _renderSidebar();
   _renderToolbar();
-  if (_tab === 'meritorder') _renderMeritOrderView();
-  else _renderGantt();
+  _renderGantt();
+}
+
+// ── Plan aus den Maßnahmen aller Assets aufbauen ──────────────────────────────
+// Jedes Plan-Item referenziert die echte Maßnahme (_m), damit Drag-Drop direkt
+// die phaseId der Maßnahme am Asset überschreibt (Kopplung mit dem Bulk-Modus).
+
+function _buildPlan() {
+  const items = [];
+  for (const a of ASSETS.items) {
+    for (const m of (a.massnahmen || [])) {
+      if (!m || !m.typ) continue;
+      items.push({
+        id:        m.id,
+        assetId:   a.id,
+        assetName: a.name,
+        typ:       m.typ,
+        titel:     a.name,
+        kosten:    m.kosten || 0,
+        status:    m.status || 'geplant',
+        phaseId:   m.phaseId || null,
+        jahr:      m.jahr ?? null,
+        dependsOn: m.dependsOn || [],
+        _m:        m,
+      });
+    }
+  }
+  _plan = { items };
+}
+
+// Aktive Gewerk-Swimlanes (nur Typen, die tatsächlich vorkommen — Katalog zuerst).
+function _gewerke() {
+  const present = new Set(_plan.items.map(it => it.typ));
+  const ordered = MASSN_VORLAGEN_REIHENFOLGE.filter(k => present.has(k));
+  for (const t of present) if (!ordered.includes(t)) ordered.push(t);
+  return ordered.map(k => ({
+    key:   k,
+    label: MASSN_VORLAGEN[k]?.label || k,
+    icon:  MASSN_VORLAGEN[k]?.icon || '',
+    color: GEWERK_COLOR[k] || GEWERK_FALLBACK_COLOR,
+  }));
 }
 
 // ── Validierung ───────────────────────────────────────────────────────────────
@@ -114994,32 +115548,20 @@ function _validatePlan() {
   }
 }
 
-// ── Toolbar mit Tab-Leiste ────────────────────────────────────────────────────
+// ── Toolbar ────────────────────────────────────────────────────────────────────
 
 function _renderToolbar() {
   const tb = document.getElementById('ausb-toolbar');
   if (!tb) return;
-  const moResult = window._lastMeritOrderResult;
-  const hasMo    = !!(moResult?.ranking?.length);
-  const tabStyle = (key) =>
-    `padding:3px 10px;border-radius:4px 4px 0 0;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);border-bottom:${_tab === key ? '1px solid var(--bg)' : '1px solid var(--border)'};background:${_tab === key ? 'var(--bg)' : 'var(--surface2)'};color:${_tab === key ? 'var(--accent)' : 'var(--muted)'};`;
-
+  const nGeplant = _plan.items.filter(it => it.phaseId).length;
   tb.innerHTML = `
-    <button style="${tabStyle('meritorder')}" onclick="ausbauSetTab('meritorder')">
-      📊 Merit-Order${hasMo ? ' ✓' : ''}
-    </button>
-    <button style="${tabStyle('fahrplan')}" onclick="ausbauSetTab('fahrplan')">
-      📅 Fahrplan${_plan.items.length > 0 ? ' (' + _plan.items.length + ')' : ''}
-    </button>
+    <span style="font-weight:600;color:var(--accent);">📅 Maßnahmen-Fahrplan</span>
+    <span style="color:var(--muted);font-size:10px;">${_plan.items.length} Maßnahme(n) · ${nGeplant} verplant</span>
     <span style="margin-left:8px;border-left:1px solid var(--border);padding-left:8px;">
-      ${_tab === 'meritorder'
-        ? `<button class="btn-xs blue" onclick="ausbauMeritOrderBerechnen()" title="PV-Kandidaten (Dächer, Freifl., Assets) nach Wirtschaftlichkeit ranken">📊 Merit-Order berechnen</button>`
-        : `<button class="btn-xs" onclick="ausbauNeuePhase()">+ Phase</button>
-           <button class="btn-xs blue" onclick="ausbauAutoGenerieren()" title="Fahrplan aus Merit-Order erzeugen — Phasen müssen bereits angelegt sein">⚡ Auto-Plan erzeugen</button>`
-      }
+      <button class="btn-xs" onclick="ausbauNeuePhase()">+ Phase</button>
     </span>
     <span style="margin-left:auto;color:var(--muted);font-size:10px;">${phasen.length} Phasen</span>
-    ${_tab === 'fahrplan' ? `<span style="color:${_konflikte.size > 0 ? '#ef4444' : '#4caf50'};font-size:10px;">${_konflikte.size > 0 ? '⚠ ' + _konflikte.size + ' Konflikt(e)' : '✓ konfliktfrei'}</span>` : ''}
+    <span style="color:${_konflikte.size > 0 ? '#ef4444' : '#4caf50'};font-size:10px;">${_konflikte.size > 0 ? '⚠ ' + _konflikte.size + ' Konflikt(e)' : '✓ konfliktfrei'}</span>
     <button class="btn-xs" onclick="ausbauShow(false)" style="margin-left:4px;">✕</button>
   `;
 }
@@ -115030,30 +115572,26 @@ function _renderSidebar() {
   const sb = document.getElementById('ausb-sidebar');
   if (!sb) return;
 
-  const moResult   = window._lastMeritOrderResult;
-  const moSummary  = moResult?.ranking?.length
-    ? (() => {
-        const r = moResult.ranking;
-        const a = r.filter(x => x.tier === 'A').length;
-        const b = r.filter(x => x.tier === 'B').length;
-        const c = r.filter(x => x.tier === 'C').length;
-        const kwp = r.filter(x => x.tier !== 'C').reduce((s, x) => s + (x.kandidat?.kWp || 0), 0);
-        return `<div style="font-size:9px;color:var(--muted);line-height:1.8;">
-          <span style="color:${TIER_COLOR.A};font-weight:600;">A: ${a}</span> &nbsp;
-          <span style="color:${TIER_COLOR.B};font-weight:600;">B: ${b}</span> &nbsp;
-          <span style="color:#888;">C: ${c}</span><br>
-          ${Math.round(kwp).toLocaleString('de-DE')} kWp (A+B)
-        </div>`
-      })()
-    : `<div style="font-size:9px;color:var(--muted);">Noch nicht berechnet</div>`;
+  // Übersicht je Gewerk (Anzahl Maßnahmen)
+  const gewerke = _gewerke();
+  const gewerkHtml = gewerke.length === 0
+    ? `<div style="font-size:9px;color:var(--muted);">Keine Maßnahmen</div>`
+    : gewerke.map(g => {
+        const n = _plan.items.filter(it => it.typ === g.key).length;
+        return `<div style="font-size:10px;color:var(--muted);line-height:1.9;">
+          <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${g.color};margin-right:5px;"></span>
+          ${g.icon} ${esc(g.label)}: <span style="color:var(--text);font-weight:600;">${n}</span>
+        </div>`;
+      }).join('');
 
   const phasenHtml = phasen.length === 0
     ? `<div style="color:var(--muted);font-size:10px;padding:4px 0;">Noch keine Phasen — auf „+ Phase" klicken.</div>`
     : [...phasen].sort((a, b) => +a.reihenfolge - +b.reihenfolge).map(p => {
         const invest = _plan.items.filter(it => it.phaseId === p.id).reduce((s, it) => s + (it.kosten || 0), 0);
         return `<div style="margin-bottom:8px;padding:6px;background:var(--surface2);border-radius:5px;border:1px solid var(--border);">
-          <div style="font-weight:600;font-size:11px;margin-bottom:4px;">${esc(p.name)}
-            ${invest > 0 ? `<span style="color:var(--muted);font-size:9px;font-weight:400;"> ${(invest/1000).toFixed(0)} k€</span>` : ''}
+          <div style="font-weight:600;font-size:11px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;">
+            <span>${esc(p.name)}${invest > 0 ? `<span style="color:var(--muted);font-size:9px;font-weight:400;"> ${(invest/1000).toFixed(0)} k€</span>` : ''}</span>
+            <span class="ausb-phase-del" title="Phase löschen" onclick="ausbauPhaseLoeschen('${p.id}')" style="cursor:pointer;color:var(--muted);font-size:11px;">✕</span>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
             <label style="font-size:9px;color:var(--muted);">von</label>
@@ -115070,131 +115608,24 @@ function _renderSidebar() {
 
   const konflikteHtml = _konflikte.size === 0
     ? `<div style="color:#4caf50;font-size:10px;padding:4px 0;">✓ Keine Konflikte</div>`
-    : [..._konflikte].slice(0, 6).map(id => {
+    : [..._konflikte].slice(0, 8).map(id => {
         const it = _plan.items.find(x => x.id === id);
         return `<div style="color:#ef4444;font-size:10px;padding:2px 0;">⚠ ${esc(it?.titel || id)}</div>`;
       }).join('');
 
+  const nUngeplant = _plan.items.filter(it => !it.phaseId).length;
+
   sb.innerHTML = `
-    <div style="font-size:11px;font-weight:600;margin-bottom:6px;color:var(--accent);">Merit-Order</div>
-    ${moSummary}
+    <div style="font-size:11px;font-weight:600;margin-bottom:6px;color:var(--accent);">Maßnahmen</div>
+    ${gewerkHtml}
     <div style="border-top:1px solid var(--border);margin:10px 0 6px;"></div>
     <div style="font-size:11px;font-weight:600;margin-bottom:6px;color:var(--accent);">Phasen</div>
     ${phasenHtml}
-    ${_plan.items.filter(it => !it.phaseId).length > 0
-      ? `<div style="color:var(--muted);font-size:10px;margin-top:4px;">${_plan.items.filter(it=>!it.phaseId).length} ungeplant</div>` : ''}
+    ${nUngeplant > 0 ? `<div style="color:var(--muted);font-size:10px;margin-top:4px;">${nUngeplant} ungeplant</div>` : ''}
     ${_konflikte.size > 0 ? `<div style="border-top:1px solid var(--border);margin:10px 0 6px;"></div>
     <div style="font-size:11px;font-weight:600;margin-bottom:4px;color:#ef4444;">Konflikte</div>
     ${konflikteHtml}` : ''}
   `;
-}
-
-// ── Merit-Order-Ansicht ───────────────────────────────────────────────────────
-
-function _renderMeritOrderView() {
-  const wrap = document.getElementById('ausb-content');
-  if (!wrap) return;
-  const moResult = window._lastMeritOrderResult;
-
-  if (!moResult?.ranking?.length) {
-    const hasLastgang = !!(window.elQuartierH15 || window.elQuartierH);
-    const hasAssets   = (window.ASSETS?.items?.length || 0) > 0;
-    wrap.innerHTML = `
-      <div style="max-width:520px;margin:24px auto;padding:20px 24px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
-        <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Merit-Order berechnen</div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:16px;">
-          Die Merit-Order bewertet alle PV-Flächen der Liegenschaft (Dächer, Freifl., Assets)
-          nach ihrem wirtschaftlichen Zusatznutzen und ordnet sie in Tiers ein:<br><br>
-          <span style="color:${TIER_COLOR.A};font-weight:600;">Tier A</span> — wirtschaftlich positiv · sollte gebaut werden<br>
-          <span style="color:${TIER_COLOR.B};font-weight:600;">Tier B</span> — knapp positiv oder neutral<br>
-          <span style="color:#888;">Tier C</span> — Überschuss überwiegt · aktuell nicht wirtschaftlich
-        </div>
-        <div style="font-size:10px;margin-bottom:14px;">
-          ${hasLastgang
-            ? `<span style="color:#4caf50;">✓ Strom-Lastgang vorhanden</span>`
-            : `<span style="color:#ef4444;">⚠ Kein Strom-Lastgang — bitte im PV-Analyse-Tab hochladen</span>`}
-          &nbsp;·&nbsp;
-          ${hasAssets
-            ? `<span style="color:#4caf50;">✓ ${window.ASSETS.items.length} Assets</span>`
-            : `<span style="color:var(--muted);">Keine Assets</span>`}
-        </div>
-        <button class="btn-xs blue" style="font-size:11px;padding:6px 16px;"
-          onclick="ausbauMeritOrderBerechnen()"
-          ${!hasLastgang ? 'disabled title="Zuerst Strom-Lastgang hochladen"' : ''}>
-          📊 Merit-Order berechnen
-        </button>
-      </div>`;
-    return;
-  }
-
-  // Ergebnis-Tabelle
-  const ranking = moResult.ranking;
-  const kwpGesamt = ranking.filter(r => r.tier !== 'C').reduce((s, r) => s + (r.kandidat?.kWp || 0), 0);
-  const ertragMwh = ranking.filter(r => r.tier !== 'C').reduce((s, r) => s + (r.kandidat?.jahresertragKWh || 0) / 1000, 0);
-
-  const rows = ranking.map((r, i) => {
-    const k   = r.kandidat;
-    const tier = r.tier || '—';
-    const tc   = TIER_COLOR[tier] || '#888';
-    const delta = (r.delta / 1000).toFixed(1);
-    const kwp   = Math.round(k?.kWp || 0);
-    return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:4px 8px;color:var(--muted);font-size:10px;">${i + 1}</td>
-      <td style="padding:4px 8px;font-size:10px;font-weight:600;color:${tc};">${tier}</td>
-      <td style="padding:4px 8px;font-size:10px;">${esc(k?.id || '—')}</td>
-      <td style="padding:4px 8px;font-size:10px;color:var(--muted);">${esc(k?.typ || '—')}</td>
-      <td style="padding:4px 8px;font-size:10px;text-align:right;">${kwp.toLocaleString('de-DE')} kWp</td>
-      <td style="padding:4px 8px;font-size:10px;text-align:right;color:${parseFloat(delta) >= 0 ? '#4caf50' : '#ef4444'};">${delta} k€/a</td>
-      <td style="padding:4px 8px;font-size:10px;color:var(--muted);">${esc(r.napId || '—')}</td>
-    </tr>`;
-  }).join('');
-
-  wrap.innerHTML = `
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap;">
-      <div>
-        <span style="font-size:13px;font-weight:600;">Merit-Order-Ergebnis</span>
-        <span style="font-size:10px;color:var(--muted);margin-left:8px;">${ranking.length} Kandidaten</span>
-      </div>
-      <div style="display:flex;gap:12px;font-size:11px;">
-        ${['A','B','C'].map(t => {
-            const n = ranking.filter(r => r.tier === t).length;
-            return `<span><span style="color:${TIER_COLOR[t]};font-weight:600;">Tier ${t}:</span> ${n}</span>`;
-          }).join('')}
-        <span style="color:var(--muted);">| ${Math.round(kwpGesamt).toLocaleString('de-DE')} kWp (A+B) · ${ertragMwh.toFixed(0)} MWh/a</span>
-      </div>
-      <button class="btn-xs" onclick="ausbauMeritOrderBerechnen()" style="margin-left:auto;" title="Neu berechnen">↻ Neu berechnen</button>
-      <button class="btn-xs blue" onclick="ausbauSetTab('fahrplan')" title="Zu Fahrplan wechseln">→ Zum Fahrplan</button>
-    </div>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;">
-      <thead>
-        <tr style="background:var(--surface2);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">
-          <th style="padding:4px 8px;text-align:left;">#</th>
-          <th style="padding:4px 8px;text-align:left;">Tier</th>
-          <th style="padding:4px 8px;text-align:left;">Fläche / Asset</th>
-          <th style="padding:4px 8px;text-align:left;">Typ</th>
-          <th style="padding:4px 8px;text-align:right;">kWp</th>
-          <th style="padding:4px 8px;text-align:right;">Δ €/a</th>
-          <th style="padding:4px 8px;text-align:left;">NAP</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
-}
-
-// ── Merit-Order-Berechnung ────────────────────────────────────────────────────
-
-function ausbauMeritOrderBerechnen() {
-  if (typeof window.pvRunMeritOrder !== 'function') {
-    alert('pvRunMeritOrder nicht verfügbar — Build neu laden.');
-    return;
-  }
-  const result = window.pvRunMeritOrder();
-  if (!result?.ranking) {
-    alert('Merit-Order konnte nicht berechnet werden.\n\nHinweis: Ein Strom-Lastgang muss vorhanden sein.\nBitte im Tab „PV-Analyse" den Quartier-Lastgang hochladen.');
-    return;
-  }
-  ausbauRender();
 }
 
 // ── Gantt-Fahrplan-Ansicht ────────────────────────────────────────────────────
@@ -115204,33 +115635,23 @@ function _renderGantt() {
   if (!wrap) return;
 
   if (_plan.items.length === 0) {
-    const hasMo = !!(window._lastMeritOrderResult?.ranking?.length);
     wrap.innerHTML = `
-      <div style="max-width:480px;margin:24px auto;padding:20px 24px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Fahrplan erstellen</div>
-        ${!hasMo
-          ? `<div style="font-size:11px;color:#ef9a9a;margin-bottom:12px;">⚠ Noch keine Merit-Order berechnet.<br>
-             <a href="#" onclick="ausbauSetTab('meritorder');return false;" style="color:#4fc3f7;">→ Zuerst Merit-Order berechnen</a></div>`
-          : `<div style="font-size:11px;color:#4caf50;margin-bottom:12px;">✓ Merit-Order vorhanden (${window._lastMeritOrderResult.ranking.length} Kandidaten)</div>`}
-        ${phasen.length === 0
-          ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Lege zuerst Phasen an (Schaltfläche „+ Phase" oben).</div>`
-          : `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">${phasen.length} Phase(n) vorhanden.</div>`}
-        <button class="btn-xs blue" style="font-size:11px;padding:6px 16px;"
-          onclick="ausbauAutoGenerieren()"
-          ${!hasMo || phasen.length === 0 ? 'disabled' : ''}>
-          ⚡ Auto-Plan erzeugen
-        </button>
+      <div style="max-width:520px;margin:24px auto;padding:20px 24px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Noch keine Maßnahmen</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.7;">
+          Der Fahrplan zeigt alle Maßnahmen aller Assets. Lege Maßnahmen an über:<br><br>
+          • den <b>Bulk-Modus</b> (Elektro-Tab → Assets auswählen → Maßnahme zuweisen)<br>
+          • oder den <b>Asset-Inspektor</b> (einzelnes Asset → „+ Maßnahme")<br><br>
+          Anschließend erscheinen sie hier und lassen sich per Drag-&-Drop den Phasen zuordnen.
+        </div>
       </div>`;
     return;
   }
 
-  const vorhandeneTypen = new Set(_plan.items.map(it => it.typ));
-  const aktGewerke = GEWERKE.filter(g => vorhandeneTypen.has(g.key));
-  if (aktGewerke.length === 0) aktGewerke.push(GEWERKE[0]);
-
+  const aktGewerke = _gewerke();
   const sortPhasen = [...phasen].sort((a, b) => +a.reihenfolge - +b.reihenfolge);
 
-  let html = `<div class="ausb-gantt" style="display:grid;grid-template-columns:120px repeat(${sortPhasen.length + 1},minmax(140px,1fr));gap:2px;position:relative;">`;
+  let html = `<div class="ausb-gantt" style="display:grid;grid-template-columns:130px repeat(${sortPhasen.length + 1},minmax(140px,1fr));gap:2px;position:relative;">`;
 
   // Kopfzeile
   html += `<div style="font-size:10px;color:var(--muted);padding:4px 6px;">Gewerk</div>`;
@@ -115244,7 +115665,7 @@ function _renderGantt() {
     style="font-size:10px;font-weight:600;padding:4px 6px;background:var(--surface2);border-radius:4px 4px 0 0;text-align:center;color:var(--muted);">Ungeplant</div>`;
 
   for (const gw of aktGewerke) {
-    html += `<div style="font-size:10px;font-weight:600;padding:4px 6px;border-right:1px solid var(--border);">${esc(gw.label)}</div>`;
+    html += `<div style="font-size:10px;font-weight:600;padding:4px 6px;border-right:1px solid var(--border);">${gw.icon} ${esc(gw.label)}</div>`;
     for (const p of sortPhasen) {
       html += _cellHtml(gw, _plan.items.filter(it => it.typ === gw.key && it.phaseId === p.id), p.id);
     }
@@ -115260,11 +115681,13 @@ function _cellHtml(gw, items, phaseId) {
   const phAttr = phaseId ? `'${phaseId}'` : 'null';
   const barsHtml = items.map(it => {
     const err = _konflikte.has(it.id);
-    return `<div class="ausb-bar" id="ausb-bar-${it.id.replace(/[^a-z0-9]/gi,'_')}"
-      data-item-id="${it.id}" draggable="true" ondragstart="ausbauDragStart(event,'${it.id}')"
-      title="${esc(it.titel)} (${(it.kosten/1000).toFixed(0)} k€)${err?' ⚠ Reihenfolge verletzt!':''}"
+    const jahrTxt = it.jahr ? ` · ${it.jahr}` : '';
+    const kostenTxt = it.kosten ? ` (${(it.kosten/1000).toFixed(0)} k€)` : '';
+    return `<div class="ausb-bar" id="ausb-bar-${_cssId(it.id)}"
+      data-item-id="${esc(it.id)}" draggable="true" ondragstart="ausbauDragStart(event,'${esc(it.id)}')"
+      title="${esc(it.titel)} — ${esc(gw.label)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
       style="background:${gw.color}22;border:${err?'2px solid #ef4444':'1px solid '+gw.color+'44'};${err?'box-shadow:0 0 0 2px #ef4444;':''}border-radius:4px;padding:3px 6px;font-size:9px;cursor:grab;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
-      ${err?'⚠ ':''}${esc(it.titel)}</div>`;
+      ${err?'⚠ ':''}${esc(it.titel)}${jahrTxt}</div>`;
   }).join('');
   return `<div ondragover="ausbauDragOver(event,${phAttr})" ondrop="ausbauDrop(event,${phAttr})"
     style="min-height:40px;padding:3px;border:1px solid var(--border);border-radius:2px;">${barsHtml}</div>`;
@@ -115278,12 +115701,12 @@ function _drawArrows(wrap) {
   let paths = '';
   for (const it of _plan.items) {
     if (!it.dependsOn?.length) continue;
-    const toEl = document.getElementById('ausb-bar-' + it.id.replace(/[^a-z0-9]/gi,'_'));
+    const toEl = document.getElementById('ausb-bar-' + _cssId(it.id));
     if (!toEl) continue;
     const toR = toEl.getBoundingClientRect();
     const tx = toR.left - wr.left + sx, ty = toR.top - wr.top + sy + toR.height / 2;
     for (const depId of it.dependsOn) {
-      const fEl = document.getElementById('ausb-bar-' + depId.replace(/[^a-z0-9]/gi,'_'));
+      const fEl = document.getElementById('ausb-bar-' + _cssId(depId));
       if (!fEl) continue;
       const fR = fEl.getBoundingClientRect();
       const fx = fR.right - wr.left + sx, fy = fR.top - wr.top + sy + fR.height / 2;
@@ -115295,7 +115718,7 @@ function _drawArrows(wrap) {
   svg.innerHTML = `<defs><marker id="ausb-ah" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#888"/></marker></defs>${paths}`;
 }
 
-// ── Drag-and-Drop ─────────────────────────────────────────────────────────────
+// ── Drag-and-Drop (schreibt phaseId direkt auf die Maßnahme zurück) ───────────
 
 function ausbauDragStart(e, itemId) {
   _draggingId = itemId;
@@ -115304,7 +115727,7 @@ function ausbauDragStart(e, itemId) {
   setTimeout(() => { if (e.currentTarget) e.currentTarget.style.opacity = '0.4'; }, 0);
 }
 
-function ausbauDragOver(e, phaseId) {
+function ausbauDragOver(e, _phaseId) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
   e.currentTarget.style.background = 'rgba(33,150,243,0.12)';
@@ -115316,31 +115739,12 @@ function ausbauDrop(e, phaseId) {
   const itemId = e.dataTransfer.getData('text/plain') || _draggingId;
   if (!itemId) return;
   const it = _plan.items.find(x => x.id === itemId);
-  if (it) { it.phaseId = phaseId || null; it.jahr = null; }
+  if (it && it._m) {
+    it._m.phaseId = phaseId || null;
+    it._m.jahr    = null; // Phase überschreibt explizites Jahr
+  }
   _draggingId = null;
-  ausbauRender();
-}
-
-// ── Auto-Plan-Generierung ─────────────────────────────────────────────────────
-
-function ausbauAutoGenerieren() {
-  const moResult = window._lastMeritOrderResult;
-  if (!moResult?.ranking) {
-    alert('Kein Merit-Order-Ergebnis vorhanden.\nBitte zuerst den Tab „Merit-Order" öffnen und berechnen.');
-    return;
-  }
-  if (phasen.length === 0) {
-    alert('Bitte zuerst mindestens eine Phase anlegen (Schaltfläche „+ Phase").');
-    return;
-  }
-  try {
-    _plan = fahrplanAutoGenerieren(moResult.ranking, window._lastInfraMap || new Map(), phasen, { msProPhase: 3, pvInvestPerKwp: 1200 });
-  } catch (err) {
-    console.error('ausbauAutoGenerieren:', err);
-    alert('Fehler beim Fahrplan-Erzeugen: ' + err.message);
-    return;
-  }
-  _tab = 'fahrplan';
+  if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
   ausbauRender();
 }
 
@@ -115362,12 +115766,16 @@ function ausbauEditPhaseJahr(phaseId, field, value) {
   if (p) { p[field] = value; ausbauRender(); }
 }
 
-// ── Fahrplan auf Assets zurückschreiben ───────────────────────────────────────
-
-function ausbauSchreibeZurueck() {
-  const count = fahrplanSchreibeAufAssets(_plan.items, ASSETS.items);
+function ausbauPhaseLoeschen(phaseId) {
+  // Maßnahmen dieser Phase auf „ungeplant" zurücksetzen
+  for (const a of ASSETS.items) {
+    for (const m of (a.massnahmen || [])) {
+      if (m.phaseId === phaseId) m.phaseId = null;
+    }
+  }
+  setPhasen(phasen.filter(p => p.id !== phaseId));
   if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
-  console.info('[Ausbauplaner] Fahrplan auf', count, 'Assets zurückgeschrieben.');
+  ausbauRender();
 }
 
 // ── Getter ────────────────────────────────────────────────────────────────────
@@ -115375,6 +115783,7 @@ function ausbauGetPlan() { return _plan; }
 function ausbauGetKonflikte() { return _konflikte; }
 
 // ── Helfer ────────────────────────────────────────────────────────────────────
+function _cssId(id) { return String(id).replace(/[^a-z0-9]/gi, '_'); }
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
