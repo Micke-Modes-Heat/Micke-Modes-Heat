@@ -279,6 +279,11 @@ export function selectFromMap(id){
   window.selectedId=id;
   window.updateSperrVisibility?.();
   _expandedIds.add(id);
+  // Im Elektro-Tab: rechte Sidebar auf Gebäude-Tab umschalten statt linkes Panel zu wechseln
+  const _activeTabBtn = document.querySelector('#lp-tabs .lp-tab.active');
+  if (_activeTabBtn && _activeTabBtn.dataset.tab === 'elektro') {
+    if (typeof window.setSidebarTab === 'function') window.setSidebarTab('gebaeude');
+  }
   _rerenderCard(id);
   highlightCard(id);
   const el = document.getElementById('card-'+id);

@@ -23,7 +23,7 @@ function wireSectionToggles(panel) {
   });
 }
 
-import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset, computeTwwKw, TWW_DEFAULTS } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets, updateLadeParking } from './13b-assets-render.js';
 import { openSlpEditor } from './13i-slp-editor.js';
 import { globalYear } from './01-globals-varianten.js';
@@ -295,6 +295,47 @@ function buildPropsForm(asset) {
       return numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p})
         + slpSelectHtml
         + `<button class="ins-link-btn" data-slp-open="${curSlp}">Profil ansehen →</button>`;
+    }
+
+    case 'TWW': {
+      const d = TWW_DEFAULTS;
+      if (!p.eingabeModus) p.eingabeModus = d.eingabeModus;
+      if (!p.geraet)       p.geraet       = d.geraet;
+      const geb = (typeof window !== 'undefined' && window.gebaeude)
+        ? window.gebaeude.find(g => g.id === asset.buildingId) : null;
+      const res = computeTwwKw(p, geb);
+      p.leistungKW = res.leistungKW;   // an NAP-/Ergebnis-Logik durchreichen
+
+      const eingabeSel = selectField(id, 'eingabeModus', 'Bedarf über',
+        [{value:'personen', label:'Personenzahl'}, {value:'energie', label:'TWW-Energie (kWh/a)'}],
+        p.eingabeModus);
+      const bedarfFields = p.eingabeModus === 'energie'
+        ? numField(id, 'energieKwhA', 'TWW-Wärme gesamt (kWh/a)', d.energieKwhA, {props:p, step:100, min:0})
+        : row2(
+            numField(id, 'personen',      'Personen',        d.personen,      {props:p, step:1, min:0}),
+            numField(id, 'kwhProPersonA', 'kWh/(Pers.·a)',   d.kwhProPersonA, {props:p, step:10, min:0})
+          );
+      const geraetSel = selectField(id, 'geraet', 'Nacherwärmung',
+        [{value:'heizstab', label:'Heizstab (COP 1)'}, {value:'booster', label:'Booster-WP'}],
+        p.geraet);
+      const copField = p.geraet === 'booster'
+        ? numField(id, 'copBooster', 'COP Booster', d.copBooster, {props:p, step:0.1, min:0.5})
+        : '';
+      const paramRow = row2(
+        numField(id, 'zielTempC', 'Zieltemp. (°C)', d.zielTempC, {props:p, step:1, min:30}),
+        numField(id, 'vbhTww',    'Vollben.-std (h/a)', d.vbhTww,  {props:p, step:50, min:100})
+      );
+      const hub = Math.max(0, res.ziel - res.tNet);
+      const readout = `
+        <div style="margin-top:8px;padding:7px 9px;background:rgba(186,104,206,0.10);border-left:2px solid #ba68c8;border-radius:4px;font-size:10px;line-height:1.5;">
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">VL am Gebäude${geb?'':' (global)'}</span><span>${res.tVl.toFixed(0)} °C → nutzbar ${res.tNet.toFixed(0)} °C</span></div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Hub auf ${res.ziel.toFixed(0)} °C · Nacherw.-Anteil</span><span>${hub.toFixed(0)} K · ${(res.anteil*100).toFixed(0)} %</span></div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">El. Energie</span><span>${Math.round(res.qNachEl).toLocaleString('de-DE')} kWh/a</span></div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;border-top:1px solid var(--border);padding-top:3px;">
+            <span style="font-weight:700;">El. Anschlussleistung</span><span style="font-weight:700;color:#ce93d8;font-size:13px;">${res.leistungKW.toFixed(1)} kW</span></div>
+          ${res.anteil <= 0 ? `<div style="color:#66bb6a;margin-top:3px;">✓ Netz-VL erreicht Zieltemperatur — keine Nacherwärmung nötig.</div>` : ''}
+        </div>`;
+      return eingabeSel + bedarfFields + geraetSel + copField + paramRow + readout;
     }
 
     case 'WP':
@@ -1093,7 +1134,7 @@ function renderInspector(asset) {
 }
 
 // ── Asset-Sidebar ─────────────────────────────────────────────────────────────
-const TYPE_ORDER = ['NAP','Schaltanlage','Trafo','NSHV','UV','Verbraucher','Lade','PV','Wind','Batterie','WP','Geo','FG','KWK','Stromkessel','Nsa'];
+const TYPE_ORDER = ['NAP','Schaltanlage','Trafo','NSHV','UV','Verbraucher','Lade','TWW','PV','Wind','Batterie','WP','Geo','FG','KWK','Stromkessel','Nsa'];
 
 export function renderAssetSidebar(filterText) {
   const container = document.getElementById('asset-sidebar-list');
@@ -1228,6 +1269,8 @@ function wireEvents(panel, asset) {
         asset._pvProfile = null; // Cache invalidieren
         _drawPvInspectorChart(panel, asset);
       }
+      // TWW: Leistung hängt von mehreren Feldern + Netz-VL ab → Panel neu aufbauen
+      if (asset.type === 'TWW') renderInspector(asset);
     };
     el.addEventListener('change', handler);
   });

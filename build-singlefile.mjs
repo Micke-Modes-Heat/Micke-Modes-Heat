@@ -70,6 +70,7 @@ const JS_FILES = [
   '13o-nap-analyse.js',
   '13p-erzeuger-assets.js',
   '13r-knotenpunkt-analyse.js',
+  '14-viewer.js',
   '14a-kandidaten.js',
   '14b-ertuechtigung.js',
   '14c-phasen.js',

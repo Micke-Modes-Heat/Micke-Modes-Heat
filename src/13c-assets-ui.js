@@ -15,7 +15,7 @@ export function buildPalette() {
 
   const GROUPS = [
     { label: 'Netzinfrastruktur', types: ['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS'] },
-    { label: 'Verbraucher',       types: ['Verbraucher', 'Lade'] },
+    { label: 'Verbraucher',       types: ['Verbraucher', 'Lade', 'TWW'] },
     { label: 'Erzeugung',         types: ['PV', 'Wind'] },
     { label: 'Speicher & Backup', types: ['Batterie', 'Nsa'] },
     { label: 'Sonstiges',         types: ['Reserve'], fullWidth: true },
