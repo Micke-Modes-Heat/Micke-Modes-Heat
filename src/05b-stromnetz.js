@@ -71,13 +71,20 @@ export function epPrompt(title, message, defaultVal, opts) {
   });
 }
 
+// Kabel-Editor rechts in der Sidebar öffnen (wie die anderen Elektro-Assets),
+// statt im schwebenden Modal. Nutzt den Inspector-Slot der Elektro-Sidebar.
 export function openCableInspector(edge) {
-  const overlay = document.createElement('div');
-  overlay.className = 'ep-modal-overlay';
-  const modal = document.createElement('div');
-  modal.className = 'ep-modal';
+  const panel = document.getElementById('sb-asset-inspector-slot');
+  if (!panel) return;
+  selectStromEdge(edge);
+  if (typeof window.setSidebarTab === 'function') window.setSidebarTab('elektro');
+  const listEl = document.getElementById('sb-asset-list');
+  if (listEl) listEl.style.display = 'none';
+  panel.style.display = 'flex';
+  _renderCableInspector(panel, edge);
+}
 
-  const kt0 = KABEL_TYPEN[edge.cableType] || KABEL_TYPEN.NAYY;
+function _renderCableInspector(panel, edge) {
   const FUSE_SIZES = [0, 16, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250];
   const typeOpts = Object.entries(KABEL_TYPEN)
     .map(([k, v]) => `<option value="${k}"${k === edge.cableType ? ' selected' : ''}>${v.label}</option>`)
@@ -88,52 +95,52 @@ export function openCableInspector(edge) {
 
   const auslColor = edge.auslastungPct < 80 ? '#4caf50' : edge.auslastungPct < 100 ? '#f9a825' : '#e53935';
   const duColor   = edge.deltaUPct   < 1   ? '#4caf50' : edge.deltaUPct   < 3   ? '#f9a825' : '#e53935';
+  const qsTxt     = edge.autoSized ? `auto · ${edge.crossSection || '?'} mm²` : `${edge.crossSection || '?'} mm²`;
 
-  modal.innerHTML = `
-    <div class="ep-modal-title">Kabel bearbeiten</div>
-    <div class="ci-info">
-      <div class="ci-info-item">Länge<br><span>${Math.round(edge.lengthM || 0)} m</span></div>
-      <div class="ci-info-item">Leistung<br><span>${Math.abs(edge.peakFlowKw || 0).toFixed(1)} kW</span></div>
-      <div class="ci-info-item">Auslastung<br><span style="color:${auslColor}">${(edge.auslastungPct || 0).toFixed(1)} %</span></div>
-      <div class="ci-info-item">Spannungsfall<br><span style="color:${duColor}">${(edge.deltaUPct || 0).toFixed(2)} %</span></div>
+  panel.innerHTML = `
+    <button class="sb-asset-back-btn" id="sb-cable-back">← Alle Assets</button>
+    <div class="asset-ins-header" style="background:#5c6bc0;">
+      <span class="asset-ins-icon">⚡</span>
+      <span class="asset-ins-title">Kabel · ${edge.cableType || 'NAYY'} ${qsTxt}</span>
     </div>
-    <div class="ci-field">
-      <label>Kabeltyp</label>
-      <select class="ci-select" id="ci-type">${typeOpts}</select>
-    </div>
-    <div class="ci-field">
-      <label>Querschnitt</label>
-      <select class="ci-select" id="ci-qs"></select>
-    </div>
-    <div class="ci-field">
-      <label>Sicherung</label>
-      <select class="ci-select" id="ci-fuse">${fuseOpts}</select>
-    </div>
-    <div class="ci-field">
-      <label>Parallelkabel</label>
-      <input class="ci-select" id="ci-parallel" type="number" min="1" max="8" step="1"
-        value="${edge.nParallel || 1}" style="text-align:center;">
-    </div>
-    <div class="ci-field" style="margin-bottom:16px;">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-        <input type="checkbox" id="ci-auto"${edge.autoSized ? ' checked' : ''}>
-        Automatisch dimensionieren
-      </label>
-    </div>
-    <div class="ep-modal-btns">
-      <button class="ep-modal-btn danger" id="ci-del">Löschen</button>
-      <button class="ep-modal-btn" id="ci-cancel">Abbrechen</button>
-      <button class="ep-modal-btn primary" id="ci-ok">Übernehmen</button>
+    <div class="asset-ins-body">
+      <div class="ci-info">
+        <div class="ci-info-item">Länge<br><span>${Math.round(edge.lengthM || 0)} m</span></div>
+        <div class="ci-info-item">Leistung<br><span>${Math.abs(edge.peakFlowKw || 0).toFixed(1)} kW</span></div>
+        <div class="ci-info-item">Auslastung<br><span style="color:${auslColor}">${(edge.auslastungPct || 0).toFixed(1)} %</span></div>
+        <div class="ci-info-item">Spannungsfall<br><span style="color:${duColor}">${(edge.deltaUPct || 0).toFixed(2)} %</span></div>
+      </div>
+      <div class="ci-field">
+        <label>Kabeltyp</label>
+        <select class="ci-select" id="ci-type">${typeOpts}</select>
+      </div>
+      <div class="ci-field">
+        <label>Querschnitt</label>
+        <select class="ci-select" id="ci-qs"></select>
+      </div>
+      <div class="ci-field">
+        <label>Sicherung</label>
+        <select class="ci-select" id="ci-fuse">${fuseOpts}</select>
+      </div>
+      <div class="ci-field">
+        <label>Parallelkabel</label>
+        <input class="ci-select" id="ci-parallel" type="number" min="1" max="8" step="1"
+          value="${edge.nParallel || 1}" style="text-align:center;">
+      </div>
+      <div class="ci-field" style="margin-bottom:6px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="ci-auto"${edge.autoSized ? ' checked' : ''}>
+          Automatisch dimensionieren
+        </label>
+      </div>
+      <button class="asset-ins-delete" id="ci-del">🗑 Kabel löschen</button>
     </div>`;
 
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  const typeEl     = modal.querySelector('#ci-type');
-  const qsEl       = modal.querySelector('#ci-qs');
-  const fuseEl     = modal.querySelector('#ci-fuse');
-  const parallelEl = modal.querySelector('#ci-parallel');
-  const autoEl     = modal.querySelector('#ci-auto');
+  const typeEl     = panel.querySelector('#ci-type');
+  const qsEl       = panel.querySelector('#ci-qs');
+  const fuseEl     = panel.querySelector('#ci-fuse');
+  const parallelEl = panel.querySelector('#ci-parallel');
+  const autoEl     = panel.querySelector('#ci-auto');
 
   function populateQs(typeName, selected) {
     const kt = KABEL_TYPEN[typeName] || KABEL_TYPEN.NAYY;
@@ -144,30 +151,39 @@ export function openCableInspector(edge) {
   }
   populateQs(edge.cableType || 'NAYY', edge.crossSection);
 
-  typeEl.addEventListener('change', () => populateQs(typeEl.value, null));
-  autoEl.addEventListener('change', () => { qsEl.disabled = autoEl.checked; });
-
-  const close = () => document.body.removeChild(overlay);
-
-  modal.querySelector('#ci-del').onclick = () => {
-    close();
-    epConfirm('Kabel entfernen',
-      'Dieses Kabel (' + (edge.cableType || 'NAYY') + ' ' + (edge.crossSection || '?') + ' mm²) entfernen?',
-      { danger: true, okText: 'Entfernen' }
-    ).then(ok => { if (ok) removeStromEdge(edge); });
-  };
-  modal.querySelector('#ci-cancel').onclick = close;
-  overlay.addEventListener('click', ev => { if (ev.target === overlay) close(); });
-
-  modal.querySelector('#ci-ok').onclick = () => {
+  // Änderungen sofort übernehmen (wie bei den anderen Assets) und neu rechnen.
+  // Danach das Panel neu rendern, damit Auslastung/Spannungsfall live aktualisieren.
+  const apply = () => {
     edge.cableType    = typeEl.value;
     edge.autoSized    = autoEl.checked;
     edge.crossSection = autoEl.checked ? 0 : parseInt(qsEl.value);
     edge.fuseA        = parseInt(fuseEl.value) || 0;
     edge.nParallel    = Math.max(1, parseInt(parallelEl.value) || 1);
-    close();
     recalcStromNetz();
     if (typeof window.sldRefresh === 'function') window.sldRefresh();
+    _renderCableInspector(panel, edge);
+  };
+
+  typeEl.addEventListener('change', () => { populateQs(typeEl.value, null); apply(); });
+  qsEl.addEventListener('change', apply);
+  fuseEl.addEventListener('change', apply);
+  parallelEl.addEventListener('change', apply);
+  autoEl.addEventListener('change', () => { qsEl.disabled = autoEl.checked; apply(); });
+
+  panel.querySelector('#sb-cable-back').onclick = () => {
+    deselectStromEdge();
+    if (typeof window.closeAssetInspector === 'function') window.closeAssetInspector();
+  };
+
+  panel.querySelector('#ci-del').onclick = () => {
+    epConfirm('Kabel entfernen',
+      'Dieses Kabel (' + (edge.cableType || 'NAYY') + ' ' + (edge.crossSection || '?') + ' mm²) entfernen?',
+      { danger: true, okText: 'Entfernen' }
+    ).then(ok => {
+      if (!ok) return;
+      removeStromEdge(edge);
+      if (typeof window.closeAssetInspector === 'function') window.closeAssetInspector();
+    });
   };
 }
 

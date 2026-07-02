@@ -228,11 +228,19 @@ function _html() { return `
         style="border-color:#4fc3f7;color:#4fc3f7;justify-content:center;"
         title="Detailanalyse einzelner Netzknoten">Knotenanalyse</button>
     </div>
-    <div class="lp-tool-grid">
+    <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
       <button class="lp-tool-btn" data-click="showInvestitionsplan()"
         style="border-color:#ce93d8;color:#ce93d8;justify-content:center;">Investitionsplan</button>
       <button class="lp-tool-btn" data-click="exportMassnahmenPDF()"
         style="border-color:#ef9a9a;color:#ef9a9a;justify-content:center;">Bericht PDF</button>
+      <button class="lp-tool-btn" id="btn-pv-uebersicht-toggle" data-click="pvuTogglePanel()"
+        style="border-color:#ffd54f;color:#ffd54f;justify-content:center;"
+        title="Abgleich gezeichnete PV-Fläche ↔ kWp im PV-Asset">PV-Übersicht</button>
+    </div>
+    <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
+      <button class="lp-tool-btn" id="btn-windanalyse-toggle" data-click="windaTogglePanel()"
+        style="border-color:#4dd0e1;color:#4dd0e1;justify-content:center;"
+        title="Ertrag, Abstände, Eignungsfläche &amp; Szenarien-Vergleich aller Windkraftanlagen">🌀 Windanalyse</button>
     </div>
   </div>
 

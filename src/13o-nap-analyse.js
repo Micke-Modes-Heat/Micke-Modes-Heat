@@ -11,6 +11,7 @@ import { globalYear } from './01-globals-varianten.js';
 import { getSlpProfile } from './02b-gebaeude.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { getElSlpProfiles } from './13k-elslp-registry.js';
+import { windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 const _N = {
@@ -66,6 +67,19 @@ function _getPvProfile(ausrichtung) {
     _napPvProfileCache.set(ausrichtung, makePvProfile8760(ausrichtung));
   }
   return _napPvProfileCache.get(ausrichtung);
+}
+
+// Wind-Profile-Cache — Signatur aus Asset-ID + Kennlinienwerten (je Turbine individuell).
+// Der Zeitstempel der ERA5-Standortdaten ist Teil der Signatur, damit ein frisch
+// geladener Datensatz die gecachten synthetischen Profile invalidiert.
+const _napWindProfileCache = new Map();
+function _getWindProfile(asset, cfg) {
+  const siteStamp = getWindSiteData()?.geladen || '';
+  const sig = `${asset.id}|${cfg.vMean}|${cfg.k}|${cfg.ratedKw}|${cfg.cutIn}|${cfg.ratedWind}|${cfg.cutOut}|${siteStamp}`;
+  if (!_napWindProfileCache.has(sig)) {
+    _napWindProfileCache.set(sig, windProfileForAsset(asset));
+  }
+  return _napWindProfileCache.get(sig);
 }
 
 // Stunden-des-Jahres-Index aus einem Timestamp (0 = 1. Jan 00:00 Uhr)
@@ -138,6 +152,23 @@ function _napBuildProfileDescriptor(asset, gzf) {
     }
   }
 
+  // 5. Wind → synthetisches Windprofil (Weibull-Verteilung + AR(1)-Persistenz, siehe 13q-wind-ertrag.js)
+  // Gleiche Defaults wie im Inspector — leere props (unberührtes Asset) sollen nicht
+  // stillschweigend übersprungen werden, sonst weicht die NAP-Analyse vom Inspector ab.
+  if (asset.type === 'Wind') {
+    const ratedKw = parseFloat(p.leistungKW)     || 500;
+    const vMean   = parseFloat(p.mittlereWindMs) || 6.0;
+    const cfg = {
+      vMean, k: parseFloat(p.weibullK) || 2, ratedKw,
+      cutIn: parseFloat(p.einschaltwindMs) || 3,
+      ratedWind: parseFloat(p.nennwindMs) || 12,
+      cutOut: parseFloat(p.abschaltwindMs) || 25,
+    };
+    const windProf = _getWindProfile(asset, cfg);
+    // windProf liefert bereits reale kW-Werte (kein Peak-Rescaling wie bei PV nötig)
+    return { mode: 'wind', windProf, gzf };
+  }
+
   return null; // kein Profil → statisch im Aufrufer
 }
 
@@ -167,6 +198,10 @@ function _napEvalDescriptor(desc, tsMs) {
   if (desc.mode === 'lade') {
     const v = desc.arr[Math.min(hoy, desc.arr.length - 1)] * desc.gzf;
     return { bezugKW: v, einspKW: 0 };
+  }
+  if (desc.mode === 'wind') {
+    const v = desc.windProf[Math.min(hoy, desc.windProf.length - 1)] * desc.gzf;
+    return { bezugKW: 0, einspKW: Math.max(0, v) };
   }
   return null;
 }

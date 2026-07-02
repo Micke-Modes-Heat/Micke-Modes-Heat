@@ -279,10 +279,15 @@ export function selectFromMap(id){
   window.selectedId=id;
   window.updateSperrVisibility?.();
   _expandedIds.add(id);
-  // Im Elektro-Tab: rechte Sidebar auf Gebäude-Tab umschalten statt linkes Panel zu wechseln
-  const _activeTabBtn = document.querySelector('#lp-tabs .lp-tab.active');
-  if (_activeTabBtn && _activeTabBtn.dataset.tab === 'elektro') {
-    if (typeof window.setSidebarTab === 'function') window.setSidebarTab('gebaeude');
+  // Rechte Sidebar auf den Gebäude-Tab schalten, damit die Eigenschaften des
+  // angeklickten Gebäudes immer sichtbar werden — unabhängig vom linken Tab und
+  // davon, ob das Gebäude ein Elektro-Asset hat. (Bisher nur im Elektro-Tab, dadurch
+  // sprangen Gebäude OHNE Asset nicht in die Eigenschaften, wenn die Sidebar auf
+  // „Elektro" stand.) Asset-Marker öffnen danach ggf. den Inspector und schalten
+  // selbst wieder auf „elektro".
+  if (typeof window.setSidebarTab === 'function') {
+    const _sbActive = document.querySelector('.sb-tab-body.active')?.id;
+    if (_sbActive && _sbActive !== 'sb-tab-gebaeude') window.setSidebarTab('gebaeude');
   }
   _rerenderCard(id);
   highlightCard(id);
@@ -576,6 +581,132 @@ export function finishAreaDraw() {
   showAreaEditPanel();
 }
 
+// ── Windgebiet: eigenständiges Zeichengebiet für die Windkraft-Standortanalyse ──
+// Unabhängig vom allgemeinen Plangebiet (window.areaPolygon) — kann größer/anders
+// zugeschnitten sein (z.B. gesamte Liegenschaft für die Abstandsprüfung, während das
+// Plangebiet nur den Baubereich meint). Wird von der Eignungsflächen-Berechnung in
+// 13b-assets-render.js bevorzugt genutzt, wenn vorhanden (sonst Fallback auf areaPolygon).
+export function cleanupDrawWindGebietEvents() {
+  map.off('click', onDrawWindGebietClick);
+  map.off('contextmenu', onDrawWindGebietCancel);
+  window.windGebietDrawing = false;
+  map.dragging.enable();
+  map.doubleClickZoom.enable();
+  map.getContainer().style.cursor = '';
+  hideHint();
+  _restoreAfterDraw();
+}
+
+export function clearWindGebiet() {
+  if (window.windGebietPolygon) map.removeLayer(window.windGebietPolygon);
+  if (window.windGebietPolyline) map.removeLayer(window.windGebietPolyline);
+  if (window.windGebietStartMarker) map.removeLayer(window.windGebietStartMarker);
+  (window.windGebietEditMarkers || []).forEach(m => map.removeLayer(m));
+
+  window.windGebietEditMarkers = [];
+  window.windGebietPoints = [];
+  window.windGebietLatLngs = null;
+  window.windGebietDrawing = false;
+  window.windGebietPolygon = null;
+  window.windGebietPolyline = null;
+  window.windGebietStartMarker = null;
+
+  cleanupDrawWindGebietEvents();
+  if (typeof window._onWindGebietChanged === 'function') window._onWindGebietChanged();
+}
+
+export function toggleDrawWindGebiet() {
+  if (window.windGebietDrawing || window.windGebietPolygon) { clearWindGebiet(); return; }
+
+  // Andere Zeichenmodi abbrechen
+  if (window.areaDrawing) toggleDrawArea();
+  if (window.isDrawingTrasse) toggleDrawTrasse();
+  if (window.isDrawingRiver) toggleDrawRiver();
+  if ((window.drawingId ?? drawingId) !== null) cancelDraw();
+  if (ffDrawId !== null) cancelDrawFF();
+  // Offene Asset-Platzierung (z.B. "Windkraftanlage" noch nicht gesetzt) abbrechen, sonst
+  // würde der erste Kartenklick beim Zeichnen zusätzlich ein neues Asset platzieren.
+  if (typeof window.cancelPendingAsset === 'function') window.cancelPendingAsset();
+
+  window.windGebietDrawing = true;
+  window.windGebietPoints = [];
+  showHint('Windgebiet zeichnen: Klicke für Eckpunkte auf die Karte. Startpunkt (rot) erneut anklicken zum Abschließen. Rechtsklick zum Widerrufen. ESC zum Abbrechen.');
+
+  _hideForDraw();
+  map.doubleClickZoom.disable();
+  map.dragging.disable();
+  map.getContainer().style.cursor = 'crosshair';
+  map.off('click', onDrawWindGebietClick);
+  map.off('contextmenu', onDrawWindGebietCancel);
+  map.on('click', onDrawWindGebietClick);
+  map.on('contextmenu', onDrawWindGebietCancel);
+}
+
+export function onDrawWindGebietClick(e) {
+  if (!window.windGebietDrawing) return;
+
+  if (window.windGebietStartMarker && window.windGebietPoints.length >= 3) {
+    const startLL = window.windGebietStartMarker.getLatLng();
+    const d = map.latLngToContainerPoint(e.latlng).distanceTo(map.latLngToContainerPoint(startLL));
+    if (d < 20) { finishWindGebietDraw(); return; }
+  }
+
+  if (window.windGebietPoints.length === 0) {
+    const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
+    window.windGebietStartMarker = L.marker(e.latlng, {icon: startIcon, zIndexOffset: 2000}).addTo(map);
+    window.windGebietStartMarker.on('click', (ev) => {
+      L.DomEvent.stopPropagation(ev);
+      finishWindGebietDraw();
+    });
+  }
+
+  window.windGebietPoints.push(e.latlng);
+  if (window.windGebietPolyline) map.removeLayer(window.windGebietPolyline);
+  window.windGebietPolyline = L.polyline([...window.windGebietPoints], {color: '#4dd0e1', weight: 2, dashArray: '8 4'}).addTo(map);
+}
+
+export function onDrawWindGebietCancel(e) {
+  if (!window.windGebietDrawing) return;
+
+  if (window.windGebietPoints.length > 0) {
+    window.windGebietPoints.pop();
+    if (window.windGebietPolyline) map.removeLayer(window.windGebietPolyline);
+
+    if (window.windGebietPoints.length > 0) {
+      window.windGebietPolyline = L.polyline([...window.windGebietPoints], {color: '#4dd0e1', weight: 2, dashArray: '8 4'}).addTo(map);
+    } else if (window.windGebietStartMarker) {
+      map.removeLayer(window.windGebietStartMarker);
+      window.windGebietStartMarker = null;
+    }
+  }
+}
+
+export function finishWindGebietDraw() {
+  if (window.windGebietPoints.length < 3) return;
+  window.windGebietLatLngs = [...window.windGebietPoints];
+  window.windGebietDrawing = false;
+
+  if (window.windGebietPolyline) map.removeLayer(window.windGebietPolyline);
+  if (window.windGebietStartMarker) { map.removeLayer(window.windGebietStartMarker); window.windGebietStartMarker = null; }
+
+  window.windGebietPolygon = L.polygon(window.windGebietLatLngs, {color: '#4dd0e1', weight: 2, dashArray: '8 4', fillColor: '#4dd0e1', fillOpacity: 0.06}).addTo(map);
+
+  const editIcon = L.divIcon({className: 'area-edit-handle', html: '', iconSize: [12, 12]});
+  window.windGebietEditMarkers = [];
+  window.windGebietLatLngs.forEach((latlng, index) => {
+    const marker = L.marker(latlng, {draggable: true, icon: editIcon, zIndexOffset: 2000}).addTo(map);
+    marker.on('drag', function(e) {
+      window.windGebietLatLngs[index] = e.target.getLatLng();
+      window.windGebietPolygon.setLatLngs(window.windGebietLatLngs);
+    });
+    marker.on('dragend', () => { if (typeof window._onWindGebietChanged === 'function') window._onWindGebietChanged(); });
+    window.windGebietEditMarkers.push(marker);
+  });
+
+  cleanupDrawWindGebietEvents();
+  if (typeof window._onWindGebietChanged === 'function') window._onWindGebietChanged();
+}
+
 setTimeout(() => {
 map.on('click',e=>{
   if (window.isPlacingLwWp) { placeLwWpAt(e.latlng); return; }
@@ -670,6 +801,14 @@ map.on('click',e=>{
       window.trassePoints.push(e.latlng);
     }
     redrawTrasse();
+    return;
+  }
+  if (window.gebFirstDraw) {
+    const st = window.gebFirstDraw;
+    st.points.push(e.latlng);
+    if (st.polyline) map.removeLayer(st.polyline);
+    st.polyline = L.polyline([...st.points], {color: '#ffd54f', weight: 2, dashArray: '4 4'}).addTo(map);
+    if (st.points.length >= 2) window.finishGebFirstDraw && window.finishGebFirstDraw();
     return;
   }
   if (window.gebPvDraw) {
@@ -773,8 +912,10 @@ map.on('zoomend', function() {
 
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
+    if (window.gebFirstDraw) { window.cancelGebFirstDraw && window.cancelGebFirstDraw(); return; }
     if (window.gebPvDraw) { window.cancelGebPvDraw && window.cancelGebPvDraw(); return; }
     if (window.areaDrawing) { clearArea(); return; }
+    if (window.windGebietDrawing) { clearWindGebiet(); return; }
     if (window.isPlacingLwWp) togglePlaceLwWp();
     if(window.isDrawingRiver) toggleDrawRiver();
     if(window.isDrawingTrasse) toggleDrawTrasse();

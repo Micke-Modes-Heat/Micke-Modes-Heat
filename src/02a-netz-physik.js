@@ -7,8 +7,6 @@ import { recalcNetz } from './03b-netz.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
 
 export let overlayLayer = null;
-export let overlayMarkerNW = null;
-export let overlayMarkerSE = null;
 
 export const standardDNs = [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800];
 

@@ -9,6 +9,7 @@ import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760, makePvProfileEffective, pvGetEffectiveSpez } from './09a-pv-profile.js';
 import { OPT_INVEST_DEFAULT, OPT_IH, OPT_NUTZUNG } from './config/optimizer-defaults.js';
 import { ASSETS } from './13a-assets-core.js';
+import { computeWindElHourly, getWindAssetsSummary } from './13q-wind-ertrag.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // KONSTANTEN
@@ -210,8 +211,35 @@ function pvGetPvProfile() {
   return m;
 }
 
+// Wind-Profil (immer 8.760h, siehe computeWindElHourly) auf die Lastgang-Länge N gebracht —
+// gleiche Resampling-Logik wie pvGetPvProfile, da windH sonst bei 15-min-Lastgängen ab
+// Index 8760 undefined liefert und die gesamte Bilanz in pvNapSim mit NaN kontaminiert.
+function _expandWindProfile(h, N) {
+  if (!h) return null;
+  if (N <= 8760) return h;
+  const m = new Float32Array(N);
+  if (N <= 8784) {
+    for (let i = 0; i < 8760; i++) m[i] = h[i];
+  } else {
+    for (let i = 0; i < 8760; i++) {
+      m[i*4] = m[i*4+1] = m[i*4+2] = m[i*4+3] = h[i];
+    }
+  }
+  return m;
+}
+
+/** Gebäude, deren PV-Leistung bereits über ein verknüpftes Elektro-PV-Asset
+ *  erfasst ist (die Quelle der Wahrheit für alle Analysen — siehe PV-Übersicht
+ *  im Elektro-Tab). Für diese Gebäude darf calcGebKwp(g) NICHT zusätzlich
+ *  gezählt werden — das wäre dieselbe Dachfläche ein zweites Mal. */
+function _pvGebaeudeIdsMitAsset() {
+  return new Set((ASSETS?.items || [])
+    .filter(a => a.type === 'PV' && a.buildingId != null)
+    .map(a => a.buildingId));
+}
+
 /** Maximale PV-Leistung aus allen Quellen (kWp):
- *  Elektro-PV-Assets (13a) + Gebäude-PV + Freiflächen-PV + Strom-Panel-Eingabe */
+ *  Elektro-PV-Assets (13a) + Gebäude-PV ohne eigenes Asset + Freiflächen-PV + Strom-Panel-Eingabe */
 function pvGetMaxKwpFromAssets() {
   if (window._pvAnalyse.pvMaxKwpOverride > 0) return window._pvAnalyse.pvMaxKwpOverride;
 
@@ -220,8 +248,10 @@ function pvGetMaxKwpFromAssets() {
     .filter(a => a.type === 'PV')
     .reduce((s, a) => s + (parseFloat(a.props?.leistungKWp) || 0), 0);
 
-  // 2. Gebäude-integrierte PV (Wärme-Modul)
-  const gebKwp = gebaeude.reduce((s, g) => s + (g.pvAktiv ? calcGebKwp(g) : 0), 0);
+  // 2. Gebäude-integrierte PV (Wärme-Modul) — nur Gebäude OHNE eigenes PV-Asset,
+  //    sonst würde dieselbe Dachfläche doppelt gezählt (Asset + Pauschale/Fläche).
+  const mitAsset = _pvGebaeudeIdsMitAsset();
+  const gebKwp = gebaeude.reduce((s, g) => s + (g.pvAktiv && !mitAsset.has(g.id) ? calcGebKwp(g) : 0), 0);
 
   // 3. Freiflächen-PV (Wärme-Modul)
   const ffKwp = freiflaechen.reduce((s, ff) => s + calcFFKwp(ff), 0);
@@ -237,7 +267,8 @@ function pvGetAssetBreakdown() {
   const assetKwp = (ASSETS?.items || [])
     .filter(a => a.type === 'PV')
     .reduce((s, a) => s + (parseFloat(a.props?.leistungKWp) || 0), 0);
-  const gebKwp   = gebaeude.reduce((s, g) => s + (g.pvAktiv ? calcGebKwp(g) : 0), 0);
+  const mitAsset = _pvGebaeudeIdsMitAsset();
+  const gebKwp   = gebaeude.reduce((s, g) => s + (g.pvAktiv && !mitAsset.has(g.id) ? calcGebKwp(g) : 0), 0);
   const ffKwp    = freiflaechen.reduce((s, ff) => s + calcFFKwp(ff), 0);
   const manual   = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
   const assetN   = (ASSETS?.items || []).filter(a => a.type === 'PV').length;
@@ -313,10 +344,19 @@ function pvInfraKosten(pvKwp, pvErtragMwh) {
  * @param {Float32Array|null} spotH - Spot-Preise ct/kWh (nur für 'spot')
  * @returns {object}
  */
-function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, spotH) {
+function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, spotH, windScale = 1) {
   const N    = demandH.length;
   const dt   = N > 8784 ? 0.25 : 1.0;   // Schaltjahr (35.136) und Normaljahr (35.040)
   const spez = pvGetSpez();
+  // Windkraft-Sockel: Erzeugung der konfigurierten Anlagen (13q-wind-ertrag.js), als
+  // "must-take" neben PV. windScale (Default 1) skaliert den Sockel linear — für die
+  // Wind-Ausbau-Exploration (Grenznutzen-Chart, Slider); zulässig, weil alle Anlagen
+  // denselben Standortwind teilen. window._windElHourly ist nur gesetzt, wenn der Nutzer
+  // "Windkraftanlagen einbeziehen" aktiviert hat. Immer 8.760h lang, daher
+  // hier (wie das PV-Profil in pvGetPvProfile) auf die tatsächliche Lastgang-Auflösung
+  // gebracht — sonst wird windH[t] bei 15-min-Lastgängen ab t=8760 undefined → NaN in der
+  // gesamten Bilanz (data[optIdx] undefined-Crash in renderGrenznutzenChart war ein Symptom).
+  const windH = _expandWindProfile(window._windElHourly, N);
   // null = kein Limit; 0 = tatsächlich 0 kW; positiv = Limit in kW
   const maxEinsp  = (napParams.maxEinspeisKw != null) ? napParams.maxEinspeisKw : Infinity;
   const maxBezug  = (napParams.maxBezugKw    != null) ? napParams.maxBezugKw    : Infinity;
@@ -333,15 +373,21 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
 
   let soc = 0;
   let eigenMwh = 0, einspeiseMwh = 0, netzbezugMwh = 0, curtailMwh = 0;
+  let windEigenMwh = 0, windEinspMwh = 0; // Anteil der Windkraft an Eigenverbrauch/Einspeisung (für getrennten Tarif)
   let batVerlustMwh = 0, spotRevenue = 0;  // spotRevenue in € (ct/kWh × MWh / 10)
   let maxEinspeiseKw = 0, einspeiseStunden = 0;  // Rückspeise-Spitze & -Dauer am NAP
   const batSocArr = new Float32Array(N);
   const deckungArr = new Float32Array(N);  // Anteil des Bedarfs gedeckt durch PV+Batterie (0..1), je Zeitschritt
 
   for (let t = 0; t < N; t++) {
-    const dem    = demandH[t];
-    const pvGen  = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
-    const spot   = (spotH && t < spotH.length) ? spotH[t] : avgSpot;
+    const dem     = demandH[t];
+    const pvKw    = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
+    const windKw  = windH ? windH[t] * windScale : 0;
+    const pvGen   = pvKw + windKw;
+    // Anteil Wind an der momentanen Erzeugung — wird unten proportional auf Eigenverbrauch/
+    // Einspeisung dieses Zeitschritts angewendet (gleiches Prinzip wie PV/BHKW-Split in calcStromPanel).
+    const windFrac = pvGen > 0 ? windKw / pvGen : 0;
+    const spot    = (spotH && t < spotH.length) ? spotH[t] : avgSpot;
 
     // 1. Direkter Eigenverbrauch
     const dsc = Math.min(pvGen, dem);
@@ -429,6 +475,8 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
     eigenMwh     += evStep * dt / 1000;
     einspeiseMwh += rGen   * dt / 1000;
     netzbezugMwh += rDem   * dt / 1000;
+    windEigenMwh += evStep * windFrac * dt / 1000;
+    windEinspMwh += rGen   * windFrac * dt / 1000;
     if (rGen > maxEinspeiseKw) maxEinspeiseKw = rGen;     // Rückspeise-Spitze (kW)
     if (rGen > 0.5)            einspeiseStunden += dt;     // Rückspeise-Dauer (h/a)
     // Spot-gewichteter Einspeisung-Erlös (ct/kWh → €: × dt/1000 × /100)
@@ -440,7 +488,8 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
 
   // batVerlustMwh wird oben in kWh akkumuliert → hier auf MWh normieren (Konsistenz)
   return { eigenMwh, einspeiseMwh, netzbezugMwh, curtailMwh, batVerlustMwh: batVerlustMwh / 1000,
-           maxEinspeiseKw, einspeiseStunden, batSocArr, deckungArr, spotRevenue };
+           maxEinspeiseKw, einspeiseStunden, batSocArr, deckungArr, spotRevenue,
+           windEigenMwh, windEinspMwh };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -708,7 +757,7 @@ function pvRueckBewertung(maxKw, skKVA, anschlussKw, uBudgetPct) {
 // WIRTSCHAFTLICHKEIT
 // ══════════════════════════════════════════════════════════════════════════════
 
-function pvWirtschaft(pvKwp, batKwh, simResult, pvErtragMwh, params, strategie) {
+function pvWirtschaft(pvKwp, batKwh, simResult, pvErtragMwh, params, strategie, windKwOverride = null) {
   const { pStrom, pEinsp, pvInvestPerKwp, batInvestPerKwh, zins, pvLife, batLife } = params;
 
   const pvInvest  = pvKwp  * pvInvestPerKwp;
@@ -722,21 +771,43 @@ function pvWirtschaft(pvKwp, batKwh, simResult, pvErtragMwh, params, strategie) 
   const batJk  = batInvest * (annBat + (OPT_IH.bat || 0.01));
   const infJk  = infra.investEUR * annF(zins, 20) + infra.jaehrlichEUR;
 
-  const eigenErsparnis = simResult.eigenMwh * pStrom * 10; // €/a
+  // Windkraft: Erlöse fließen über simResult ein — dann müssen auch die Kosten rein,
+  // sonst ist der Netto-Überschuss systematisch geschönt. windKwOverride erlaubt der
+  // Wind-Ausbau-Exploration (Grenznutzen/Slider) abweichende Leistungen; Default ist
+  // die installierte Leistung aus params. IH-Satz 3 %/a (Wartung/Pacht höher als PV).
+  const windKw     = windKwOverride != null ? windKwOverride : (params.windKwInstalled || 0);
+  const windInvest = windKw * (params.windInvestPerKw || 0);
+  const windJk     = windInvest * (annF(zins, 20) + 0.03);
+
+  const eigenErsparnis = simResult.eigenMwh * pStrom * 10; // €/a — Quelle irrelevant, vermiedener Bezug kostet gleich viel
   // spot/spot-dyn: tatsächliche Markterlöse statt Flatrate-Preis verwenden
   const useSpotRev     = (strategie === 'spot' || strategie === 'spot-dyn') && simResult.spotRevenue;
+  // Windkraft-Einspeisung: gemeinsamer PV-Satz oder eigener Wind-Tarif (params.windTarifModus/pWindEinsp,
+  // aus der PV-Analyse-Oberfläche). Nur die Einspeisevergütung wird getrennt — die Eigenverbrauchs-
+  // Ersparnis ist unabhängig von der Erzeugungsquelle (vermiedener Netzbezug zum selben Preis).
+  const windEinspMwh       = simResult.windEinspMwh || 0;
+  const pvEinspMwh         = Math.max(0, simResult.einspeiseMwh - windEinspMwh);
+  const windGetrennt       = params.windTarifModus === 'getrennt' && windEinspMwh > 0;
+  const pWindEinsp         = params.pWindEinsp != null ? params.pWindEinsp : pEinsp;
+  const pvEinspeisErloes   = pvEinspMwh   * pEinsp * 10;
+  const windEinspeisErloes = windEinspMwh * (windGetrennt ? pWindEinsp : pEinsp) * 10;
   const einspeisErloes = useSpotRev
-    ? simResult.spotRevenue                      // €/a aus Börsenpreisen
-    : simResult.einspeiseMwh * pEinsp * 10;     // €/a Flatrate
-  const abregelVerlust = simResult.curtailMwh * pEinsp * 10; // €/a entgangener Erlös
+    ? simResult.spotRevenue                      // €/a aus Börsenpreisen (PV + Wind gemeinsam, quellenunabhängig)
+    : pvEinspeisErloes + windEinspeisErloes;      // €/a Flatrate, ggf. mit getrenntem Wind-Tarif
+  const abregelVerlust = simResult.curtailMwh * pEinsp * 10; // €/a entgangener Erlös (vereinfacht: ein Satz, keine Quellentrennung bei Abregelung)
 
   const gesamtErloes = eigenErsparnis + einspeisErloes;
-  const gesamtJk     = pvJk + batJk + infJk;
+  const gesamtJk     = pvJk + batJk + infJk + windJk;
   const nettoJk      = gesamtJk - gesamtErloes;
-  const investGes    = pvInvest + batInvest + infra.investEUR;
+  const investGes    = pvInvest + batInvest + infra.investEUR + windInvest;
   const amort        = gesamtErloes > 0 ? investGes / gesamtErloes : Infinity;
 
-  const pvEigenQuote = pvErtragMwh > 0 ? simResult.eigenMwh    / pvErtragMwh * 100 : 0;
+  // PV-eigene Kennzahl: Windanteil am Eigenverbrauch herausrechnen, sonst verzerrt Wind
+  // (fließt zusätzlich in simResult.eigenMwh ein) die PV-Eigenverbrauchsquote nach oben (>100 %).
+  // Kappung auf 100 %: Die Quellen-Zuordnung des Batterie-Eigenverbrauchs erfolgt je
+  // Zeitschritt über den momentanen Erzeugungsmix — Lade-/Entladeverschiebung kann die
+  // PV-Zuordnung dadurch um wenige Prozent überzeichnen (>100 % ist physikalisch sinnlos).
+  const pvEigenQuote = pvErtragMwh > 0 ? Math.min(100, Math.max(0, simResult.eigenMwh - (simResult.windEigenMwh || 0)) / pvErtragMwh * 100) : 0;
   const gesamtBedarf = (() => { const d = pvGetDemandH(); if (!d) return 1; let s = 0; for (let i = 0; i < d.length; i++) s += d[i]; return s * pvGetDt() / 1000; })();
   const autarkie     = gesamtBedarf > 0 ? (1 - simResult.netzbezugMwh / gesamtBedarf) * 100 : 0;
   const curtailQuote = pvErtragMwh  > 0 ? simResult.curtailMwh / pvErtragMwh * 100 : 0;
@@ -744,7 +815,9 @@ function pvWirtschaft(pvKwp, batKwh, simResult, pvErtragMwh, params, strategie) 
   return {
     pvInvest, batInvest, infraInvest: infra.investEUR, infraLabel: infra.stufeLabel,
     investGes, pvJk, batJk, infJk, gesamtJk, gesamtErloes, nettoJk,
+    windKw, windInvest, windJk,
     eigenErsparnis, einspeisErloes, abregelVerlust,
+    pvEinspeisErloes, windEinspeisErloes, windEinspMwh, pvEinspMwh, windGetrennt,
     pvEigenQuote, autarkie, curtailQuote, amort,
     infDetail: infra.detail,
   };
@@ -874,7 +947,19 @@ export function pvBerechneAlle() {
   const pvLife         = parseFloat(document.getElementById('pva-pv-life')?.value) || 20;
   const batLife        = parseFloat(document.getElementById('pva-bat-life')?.value) || 15;
 
-  const params = { pStrom, pEinsp, pvInvestPerKwp, batInvestPerKwh, zins, pvLife, batLife };
+  // Windkraft: fixer Erzeugungssockel für die Simulation (window._windElHourly, siehe pvNapSim)
+  // + Tarifwahl für die Einspeisevergütung (gemeinsam mit PV oder eigener Wind-Satz)
+  // + Investkosten und installierte Leistung für die Wirtschaftlichkeit/Grenznutzen-Analyse.
+  const windEnabled = document.getElementById('pva-wind-enable')?.checked === true;
+  window._windElHourly = windEnabled ? computeWindElHourly() : null;
+  const windTarifModus  = document.getElementById('pva-wind-tarif-modus')?.value || 'gemeinsam';
+  const pWindEinsp      = parseFloat(document.getElementById('pva-wind-p-einsp')?.value) || 7.0;
+  const windInvestPerKw = parseFloat(document.getElementById('pva-wind-invest')?.value) || 1800;
+  window._pvAnalyse.windInvestPerKw = windInvestPerKw;   // Panel-Re-Render soll den Wert behalten
+  const windKwInstalled = windEnabled ? getWindAssetsSummary().kw : 0;
+
+  const params = { pStrom, pEinsp, pvInvestPerKwp, batInvestPerKwh, zins, pvLife, batLife,
+                   windTarifModus, pWindEinsp, windInvestPerKw, windKwInstalled };
 
   const ergebnisse = [];
 
@@ -955,6 +1040,7 @@ export function pvBerechneAlle() {
   renderRechenweg(ergebnisse);
   renderOptSurface3D(demandH, pvProfile, napParams, params, ergebnisse);
   renderGrenznutzenChart(demandH, pvProfile, napParams, params, ergebnisse);
+  renderWindGrenznutzenChart(demandH, pvProfile, napParams, params, ergebnisse);
   renderEvKurve(demandH, pvProfile, napParams, params, ergebnisse);
   renderBilanzChart(ergebnisse);
   renderScatterChart(ergebnisse);
@@ -1167,6 +1253,42 @@ function _pvBuildPanelHtml() {
               ${_pvWirtInput('pva-p-strom', 'Strombezugspreis (ct/kWh)', 30)}
               ${_pvWirtInput('pva-p-einsp', 'Einspeisevergütung (ct/kWh)', 8)}
             </div>
+
+            <!-- Windkraft-Einbindung -->
+            <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
+              ${(() => {
+                const ws         = getWindAssetsSummary();
+                const windEnabled = window._pvAnalyse.windEnabled === true && ws.count > 0;
+                const tarifModus  = window._pvAnalyse.windTarifModus || 'gemeinsam';
+                const pWindEinsp  = window._pvAnalyse.pWindEinsp ?? 7.0;
+                return `
+                <label style="display:flex;align-items:center;gap:6px;cursor:${ws.count>0?'pointer':'default'};font-size:10px;color:${ws.count>0?'var(--text)':'#607d8b'};">
+                  <input type="checkbox" id="pva-wind-enable" ${windEnabled?'checked':''} ${ws.count===0?'disabled':''}
+                    data-change="window._pvAnalyse.windEnabled=this.checked;document.getElementById('pva-wind-detail').style.display=this.checked?'block':'none';window._pvAnalyse.berechnet=false;"
+                    style="accent-color:#4dd0e1;">
+                  🌀 Windkraftanlagen einbeziehen
+                  ${ws.count > 0
+                    ? `<span style="color:#4dd0e1;font-weight:600;">(${ws.count}× · ${ws.mwh.toFixed(0)} MWh/a)</span>`
+                    : `<span style="font-size:9px;">— keine aktive Windkraftanlage im Projekt</span>`}
+                </label>
+                <div id="pva-wind-detail" style="display:${windEnabled?'block':'none'};margin-top:6px;padding-left:20px;">
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Tarif für Windstrom-Einspeisung</div>
+                  <select id="pva-wind-tarif-modus"
+                    style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;margin-bottom:6px;"
+                    data-change="window._pvAnalyse.windTarifModus=this.value;document.getElementById('pva-wind-p-einsp-row').style.display=this.value==='getrennt'?'flex':'none';window._pvAnalyse.berechnet=false;">
+                    <option value="gemeinsam" ${tarifModus!=='getrennt'?'selected':''}>Gemeinsam mit PV-Einspeisevergütung</option>
+                    <option value="getrennt" ${tarifModus==='getrennt'?'selected':''}>Getrennt — eigener Windkraft-Tarif</option>
+                  </select>
+                  <div id="pva-wind-p-einsp-row" style="display:${tarifModus==='getrennt'?'flex':'none'};">
+                    ${_pvWirtInput('pva-wind-p-einsp', 'Wind-Einspeisevergütung (ct/kWh)', pWindEinsp)}
+                  </div>
+                  <div style="margin-top:5px;">
+                    ${_pvWirtInput('pva-wind-invest', 'Wind-Invest (€/kW, inkl. Fundament/Anschluss)', window._pvAnalyse.windInvestPerKw ?? 1800)}
+                  </div>
+                  <div style="font-size:8px;color:#607d8b;margin-top:4px;">Windprofil ist eine feste Vorgabe aus den Windkraft-Assets (Standort-/Höhenauswahl bereits erfolgt) — PV und Batterie werden weiterhin optimiert, Wind fließt als zusätzliche Erzeugung mit ein. Die Wind-Investkosten gehen in Jahreskosten/Überschuss aller Varianten und in das Wind-Ausbau-Diagramm (Abb. 2b) ein; Instandhaltung pauschal 3 %/a.</div>
+                </div>`;
+              })()}
+            </div>
           </div>
 
         </div>
@@ -1242,7 +1364,7 @@ function _pvBuildPanelHtml() {
           const total  = bd.assetKwp + bd.gebKwp + bd.ffKwp + bd.manual;
           const parts  = [];
           if (bd.assetKwp > 0) parts.push(`Elektro-Assets (${bd.assetN}×): ${bd.assetKwp.toFixed(0)} kWp`);
-          if (bd.gebKwp   > 0) parts.push(`Gebäude-PV: ${bd.gebKwp.toFixed(0)} kWp`);
+          if (bd.gebKwp   > 0) parts.push(`Gebäude-PV ohne eigenes Asset: ${bd.gebKwp.toFixed(0)} kWp`);
           if (bd.ffKwp    > 0) parts.push(`Freifläche: ${bd.ffKwp.toFixed(0)} kWp`);
           if (bd.manual   > 0) parts.push(`Strom-Panel: ${bd.manual} kWp`);
           return `<div style="font-size:9px;color:var(--muted);margin-bottom:6px;">
@@ -1378,6 +1500,9 @@ function _pvBuildPanelHtml() {
     <!-- Abb. 2 — Ausbau-Grenznutzen -->
     <div id="pva-chart-grenznutzen" style="margin-bottom:22px;overflow:hidden;"></div>
 
+    <!-- Abb. 2b — Wind-Ausbau-Grenznutzen (nur bei aktivierter Windkraft) -->
+    <div id="pva-chart-wind-grenz" style="margin-bottom:22px;overflow:hidden;"></div>
+
     <!-- Abb. 3 — Eigenverbrauchsquote -->
     <div id="pva-ev-kurve" style="margin-bottom:22px;overflow:hidden;"></div>
 
@@ -1498,18 +1623,21 @@ function renderRechenweg(varianten) {
   const options = varianten.map(x =>
     `<option value="${x.id}" ${x.id === v.id ? 'selected' : ''}>${x.icon} ${x.label}</option>`).join('');
 
+  const windAktiv = (s.windEigenMwh || 0) + (s.windEinspMwh || 0) > 0.01;
   const blkEnergie = block('Energie & Kennzahlen (aus Simulation)',
     row('PV-Ertrag',      `${Math.round(v.pvKwp)} kWp · ${pvGetSpez()} kWh/kWp`, mwh(v.ertragMwh)) +
-    row('Eigenverbrauch', '→ deckt Bedarf', mwh(s.eigenMwh)) +
-    row('Einspeisung',    '→ ins Netz', mwh(s.einspeiseMwh)) +
+    (windAktiv ? row('davon Wind', `${mwh((s.windEigenMwh||0)+(s.windEinspMwh||0))} zusätzlich`, '↳ fester Sockel') : '') +
+    row('Eigenverbrauch', '→ deckt Bedarf' + (windAktiv ? ' (PV + Wind)' : ''), mwh(s.eigenMwh)) +
+    row('Einspeisung',    '→ ins Netz' + (windAktiv ? ' (PV + Wind)' : ''), mwh(s.einspeiseMwh)) +
     row('Abregelung',     '→ verworfen', mwh(s.curtailMwh)) +
     row('Netzbezug',      'Bedarf − Eigenverbrauch', mwh(s.netzbezugMwh)) +
-    row('Eigenverbrauchsquote', 'E_eigen / E_pv', num(w.pvEigenQuote, 0) + ' %', true) +
+    row('Eigenverbrauchsquote', windAktiv ? '(E_eigen − E_eigen,Wind) / E_pv' : 'E_eigen / E_pv', num(w.pvEigenQuote, 0) + ' %', true) +
     row('Autarkiegrad',   'E_eigen / E_bedarf', num(w.autarkie, 0) + ' %', true));
 
   const blkInvest = block('Investition',
     row('PV',    `${Math.round(v.pvKwp)} kWp · ${p.pvInvestPerKwp} €/kWp`, e(w.pvInvest)) +
     (v.batKwh > 0 ? row('Batterie', `${Math.round(v.batKwh)} kWh · ${p.batInvestPerKwh} €/kWh`, e(w.batInvest)) : '') +
+    ((w.windKw || 0) > 0 ? row('Wind', `${Math.round(w.windKw)} kW · ${p.windInvestPerKw} €/kW`, e(w.windInvest)) : '') +
     row('Infrastruktur', w.infraLabel, e(w.infraInvest)) +
     row('Summe', 'I_gesamt', e(w.investGes), true));
 
@@ -1517,12 +1645,19 @@ function renderRechenweg(varianten) {
     row('Annuitätenfaktoren', `a(${num(p.zins*100,1)} %, ${p.pvLife}a)=${num(aPv,4)} · a(…,${p.batLife}a)=${num(aBat,4)}`, '') +
     row('PV',    `${e(w.pvInvest)} · (${num(aPv,4)}+${num(ihPv,2)})`, ea(w.pvJk)) +
     (v.batKwh > 0 ? row('Batterie', `${e(w.batInvest)} · (${num(aBat,4)}+${num(ihBat,2)})`, ea(w.batJk)) : '') +
+    ((w.windKw || 0) > 0 ? row('Wind', `${e(w.windInvest)} · (${num(aInf,4)}+0,03)`, ea(w.windJk)) : '') +
     row('Infrastruktur', `${e(w.infraInvest)} · ${num(aInf,4)}`, ea(w.infJk)) +
     row('Summe', 'JK_gesamt', ea(w.gesamtJk), true));
 
   const blkErloes = block('Erlöse & Ersparnisse',
     row('Eigenverbrauchs-Ersparnis', `${mwh(s.eigenMwh)} · ${p.pStrom} ct`, ea(w.eigenErsparnis)) +
-    row('Einspeiseerlös', useSpot ? `Σ E_einsp(t) · Spotpreis(t)` : `${mwh(s.einspeiseMwh)} · ${p.pEinsp} ct`, ea(w.einspeisErloes)) +
+    (useSpot
+      ? row('Einspeiseerlös', `Σ E_einsp(t) · Spotpreis(t)`, ea(w.einspeisErloes))
+      : w.windGetrennt
+        ? row('Einspeiseerlös PV',   `${mwh(w.pvEinspMwh)} · ${p.pEinsp} ct`,     ea(w.pvEinspeisErloes)) +
+          row('Einspeiseerlös Wind', `${mwh(w.windEinspMwh)} · ${p.pWindEinsp} ct`, ea(w.windEinspeisErloes))
+        : row('Einspeiseerlös', `${mwh(s.einspeiseMwh)} · ${p.pEinsp} ct`, ea(w.einspeisErloes))
+    ) +
     row('Summe', 'Erlöse_gesamt', ea(w.gesamtErloes), true));
 
   const blkErgebnis = block('Ergebnis',
@@ -1927,9 +2062,11 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
 
   const nettoPath = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${xS(d.kwp).toFixed(1)},${yS(d.netto).toFixed(1)}`).join(' ');
 
-  // Optimum = Maximum der Netto-Kurve
-  const optIdx = nettoVals.indexOf(Math.max(...nettoVals));
-  const optKwp = data[optIdx].kwp;
+  // Optimum = Maximum der Netto-Kurve (Fallback auf ersten Punkt, falls die Simulation
+  // z.B. durch fehlerhafte Eingaben NaN liefert — Chart soll nie hart abstürzen)
+  const optIdxRaw = nettoVals.indexOf(Math.max(...nettoVals));
+  const optIdx = optIdxRaw >= 0 ? optIdxRaw : 0;
+  const optKwp = data[optIdx]?.kwp ?? 0;
 
   // Infrastruktur-Stufengrenzen als vertikale Marker
   const infraGrenzen = PV_INFRA_STUFEN.filter(s => isFinite(s.bisKwp) && s.bisKwp < maxKwp).map(s => s.bisKwp);
@@ -1995,6 +2132,116 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
   if (fsBtn) fsBtn.addEventListener('click', () =>
     _pvOpenFs('Ausbau-Grenznutzen — Jahresüberschuss je PV-Größe', cnt =>
       renderGrenznutzenChart(_pvFsArgs.demandH, _pvFsArgs.pvProfile, _pvFsArgs.napParams, _pvFsArgs.params, window._pvAnalyse.ergebnisse, cnt)
+    )
+  );
+}
+
+// ── Abb. 2b — Wind-Ausbau-Grenznutzen: wie viel Windleistung lohnt sich? ───────
+// Spiegelbild von Abb. 2: PV & Batterie werden auf der wirtschaftlich optimierten
+// Variante festgehalten, die Windleistung wird von 0 bis 2× der installierten
+// Leistung skaliert (linear zulässig — alle Anlagen teilen denselben Standortwind).
+// Netto-Überschuss enthält Wind-Investkosten (params.windInvestPerKw, IH 3 %/a).
+function renderWindGrenznutzenChart(demandH, pvProfile, napParams, params, varianten, overrideEl) {
+  const el = overrideEl || document.getElementById('pva-chart-wind-grenz');
+  if (!el) return;
+
+  const windKwInst = params.windKwInstalled || 0;
+  if (!window._windElHourly || windKwInst <= 0) { el.innerHTML = ''; return; }
+
+  const spez  = pvGetSpez();
+  const spotH = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
+  const kanon = (varianten || []).filter(v => v.info && v.info.frage);
+  const ref   = kanon.find(v => v.id === 'wirt-opt') || kanon[0] || { pvKwp: 0, batKwh: 0, strategie: 'none' };
+  const strat = ref.batKwh > 0 ? (spotH ? 'spot-dyn' : 'ev') : 'none';
+
+  const maxKw = windKwInst * 2;
+  const steps = [];
+  const nStep = 24;
+  for (let i = 0; i <= nStep; i++) steps.push((maxKw * i) / nStep);
+
+  const data = steps.map(kw => {
+    const scale = kw / windKwInst;
+    const sim   = pvNapSim(ref.pvKwp, ref.batKwh, demandH, pvProfile, napParams, strat, spotH, scale);
+    const wirt  = pvWirtschaft(ref.pvKwp, ref.batKwh, sim, ref.pvKwp * spez / 1000, params, strat, kw);
+    return { kw, netto: -wirt.nettoJk };
+  });
+
+  const nettoVals = data.map(d => d.netto);
+  const yMax = Math.max(1000, ...nettoVals);
+  const yMin = Math.min(0, ...nettoVals);
+  const optIdxRaw = nettoVals.indexOf(Math.max(...nettoVals));
+  const optIdx = optIdxRaw >= 0 ? optIdxRaw : 0;
+  const optKw  = data[optIdx]?.kw ?? 0;
+
+  const elW = el.getBoundingClientRect().width || 700;
+  const W = Math.max(400, elW - 4);
+  const H = overrideEl ? 440 : 300;
+  const PL = 58, PT = 16, PR = 20, PB = 36;
+  const cW = W - PL - PR, cH = H - PT - PB;
+  const xS = v => PL + (v / maxKw) * cW;
+  const yS = v => PT + cH - ((v - yMin) / (yMax - yMin)) * cH;
+  const yZero = yS(0).toFixed(1);
+  const path = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${xS(d.kw).toFixed(1)},${yS(d.netto).toFixed(1)}`).join(' ');
+
+  const instNetto = data.reduce((b, c) => Math.abs(c.kw - windKwInst) < Math.abs(b.kw - windKwInst) ? c : b).netto;
+  const fmtKw = v => v >= 1000 ? (v / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MW' : Math.round(v) + ' kW';
+
+  el.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 2b — Wind-Ausbau-Grenznutzen: Jahresüberschuss je Windleistung <span style="color:var(--muted);font-weight:400;">(PV/Batterie fix: ${ref.icon || ''} ${Math.round(ref.pvKwp)} kWp / ${(ref.batKwh / 1000).toFixed(1)} MWh)</span>
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Profilform bleibt gleich (gleicher Standortwind) · Kosten: ${params.windInvestPerKw} €/kW + 3 %/a IH · Wake-Verluste nicht berücksichtigt</span>
+    </span>
+    ${overrideEl ? '' : '<button data-pva-fs="wind-grenz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
+  </div>
+  <svg width="${W}" height="${H}" style="display:block;overflow:hidden;cursor:crosshair;">
+    ${[0, 0.25, 0.5, 0.75, 1].map(f => {
+      const val = yMin + f * (yMax - yMin);
+      const y = yS(val).toFixed(1);
+      return `<line x1="${PL}" y1="${y}" x2="${PL + cW}" y2="${y}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+        <text x="${PL - 5}" y="${(parseFloat(y) + 3).toFixed(1)}" text-anchor="end" fill="#607d8b" font-size="8">${(val / 1000).toFixed(0)}k</text>`;
+    }).join('')}
+    <line x1="${PL}" y1="${yZero}" x2="${PL + cW}" y2="${yZero}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+    ${[0, 0.25, 0.5, 0.75, 1].map(f => `
+      <text x="${xS(f * maxKw).toFixed(1)}" y="${PT + cH + 14}" text-anchor="middle" fill="#607d8b" font-size="8">${fmtKw(f * maxKw)}</text>
+    `).join('')}
+    <text x="${PL + cW / 2}" y="${H - 3}" text-anchor="middle" fill="#607d8b" font-size="9">Windleistung (installiert: ${fmtKw(windKwInst)})</text>
+    <text x="11" y="${PT + cH / 2}" text-anchor="middle" fill="#607d8b" font-size="9" transform="rotate(-90,11,${PT + cH / 2})">Netto-Überschuss (€/a)</text>
+    <path d="${path}" fill="none" stroke="#4dd0e1" stroke-width="2.5"/>
+    <line x1="${xS(windKwInst).toFixed(1)}" y1="${PT}" x2="${xS(windKwInst).toFixed(1)}" y2="${PT + cH}" stroke="#90a4ae" stroke-width="1" stroke-dasharray="2,3" opacity="0.7"/>
+    <text x="${xS(windKwInst).toFixed(1)}" y="${PT + cH - 4}" text-anchor="middle" fill="#90a4ae" font-size="8">installiert</text>
+    <line x1="${xS(optKw).toFixed(1)}" y1="${PT}" x2="${xS(optKw).toFixed(1)}" y2="${PT + cH}" stroke="#4dd0e1" stroke-width="1" stroke-dasharray="3,2" opacity="0.8"/>
+    <text x="${Math.min(xS(optKw) + 4, W - 110)}" y="${PT + 20}" fill="#4dd0e1" font-size="9" font-weight="600">Optimum ≈ ${fmtKw(optKw)}</text>
+    <line id="pva-windgrenz-xhair" x1="-2" y1="${PT}" x2="-2" y2="${PT + cH}" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="3,2"/>
+  </svg>
+  <div style="font-size:8px;color:#607d8b;margin-top:2px;">
+    ${optKw > windKwInst * 1.05
+      ? `Mehr Wind lohnt sich: Optimum bei ${fmtKw(optKw)} (+${(data[optIdx].netto - instNetto) >= 1000 ? ((data[optIdx].netto - instNetto) / 1000).toFixed(1) + ' k€/a' : Math.round(data[optIdx].netto - instNetto) + ' €/a'} gegenüber Bestand). Ob die Fläche das hergibt → Windanalyse-Platzierungsvorschläge.`
+      : optKw < windKwInst * 0.95
+        ? `Der aktuelle Windausbau (${fmtKw(windKwInst)}) liegt über dem wirtschaftlichen Optimum von ${fmtKw(optKw)} — mit diesen Kosten-/Tarif-Annahmen wäre weniger Wind rentabler.`
+        : `Der aktuelle Windausbau (${fmtKw(windKwInst)}) liegt nahe am wirtschaftlichen Optimum.`}
+  </div>`;
+
+  const svg = el.querySelector('svg');
+  svg.addEventListener('mousemove', ev => {
+    const r = svg.getBoundingClientRect();
+    const lx = ev.clientX - r.left;
+    if (lx < PL || lx > PL + cW) { _pvHideTT(); return; }
+    const kwHit = (lx - PL) / cW * maxKw;
+    const d = data.reduce((b, c) => Math.abs(c.kw - kwHit) < Math.abs(b.kw - kwHit) ? c : b);
+    const xhair = el.querySelector('#pva-windgrenz-xhair');
+    if (xhair) { xhair.setAttribute('x1', xS(d.kw).toFixed(1)); xhair.setAttribute('x2', xS(d.kw).toFixed(1)); }
+    _pvShowTT(ev,
+      `<strong style="color:#4dd0e1">${fmtKw(d.kw)}</strong> Windleistung` +
+      `<br><span style="color:#66bb6a">●</span> Netto-Überschuss: <strong>${(d.netto / 1000).toFixed(1)} k€/a</strong>` +
+      `<br><span style="color:#90a4ae">●</span> ggü. Bestand: <strong>${((d.netto - instNetto) / 1000).toFixed(1)} k€/a</strong>`
+    );
+  });
+  svg.addEventListener('mouseleave', _pvHideTT);
+
+  const fsBtn = el.querySelector('[data-pva-fs="wind-grenz"]');
+  if (fsBtn) fsBtn.addEventListener('click', () =>
+    _pvOpenFs('Wind-Ausbau-Grenznutzen — Jahresüberschuss je Windleistung', cnt =>
+      renderWindGrenznutzenChart(_pvFsArgs.demandH, _pvFsArgs.pvProfile, _pvFsArgs.napParams, _pvFsArgs.params, window._pvAnalyse.ergebnisse, cnt)
     )
   );
 }
@@ -2079,11 +2326,19 @@ function _pvSyncFromState() {
       const zins   = (parseFloat(document.getElementById('pva-zins')?.value) || 3.5) / 100;
       const pvLife = parseFloat(document.getElementById('pva-pv-life')?.value) || 20;
       const batLife= parseFloat(document.getElementById('pva-bat-life')?.value) || 15;
-      const prm = { pStrom, pEinsp, pvInvestPerKwp: pvInv, batInvestPerKwh: batInv, zins, pvLife, batLife };
+      const windTarifModus  = document.getElementById('pva-wind-tarif-modus')?.value || 'gemeinsam';
+      const pWindEinsp      = parseFloat(document.getElementById('pva-wind-p-einsp')?.value) || 7.0;
+      const windEnabled     = document.getElementById('pva-wind-enable')?.checked === true;
+      window._windElHourly  = windEnabled ? computeWindElHourly() : null;
+      const windInvestPerKw = parseFloat(document.getElementById('pva-wind-invest')?.value) || 1800;
+      const windKwInstalled = windEnabled ? getWindAssetsSummary().kw : 0;
+      const prm = { pStrom, pEinsp, pvInvestPerKwp: pvInv, batInvestPerKwh: batInv, zins, pvLife, batLife,
+                    windTarifModus, pWindEinsp, windInvestPerKw, windKwInstalled };
       _pvFsArgs = { demandH: d, pvProfile: p, napParams: np, params: prm };
       renderEvKurve(d, p, np, prm, s.ergebnisse);
       renderOptSurface3D(d, p, np, prm, s.ergebnisse);
       renderGrenznutzenChart(d, p, np, prm, s.ergebnisse);
+      renderWindGrenznutzenChart(d, p, np, prm, s.ergebnisse);
       renderEnergieFluss(d, p, np, prm, s.ergebnisse);
       renderAutarkieHeatmap(s.ergebnisse);
       renderSensitivitaet(s.ergebnisse);
@@ -2666,9 +2921,13 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
   // Startwerte: wirtschaftlich optimierte Variante (oder erste)
   const start = kanon.find(v => v.id === 'wirt-opt') || kanon[0] || { pvKwp: Math.round(maxKwp/2), batKwh: 0 };
 
-  const COL = { ev:'#66bb6a', es:'#42a5f5', ct:'#ff9800', nb:'#ef5350', vl:'#78909c', pv:'#fdd835' };
+  const COL = { ev:'#66bb6a', es:'#42a5f5', ct:'#ff9800', nb:'#ef5350', vl:'#78909c', pv:'#fdd835', wd:'#4dd0e1' };
   const pvStep  = 1;   // fein, damit Varianten-Sprungmarken exakt getroffen werden
   const batStep = 5;
+
+  // Wind-Slider nur wenn Windkraft in der Analyse aktiviert ist (skaliert den Sockel linear)
+  const windKwInst = (window._windElHourly && params.windKwInstalled > 0) ? params.windKwInstalled : 0;
+  const windMax    = windKwInst > 0 ? Math.round(windKwInst * 2) : 0;
 
   const chips = kanon.map(v =>
     `<button data-fluss-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
@@ -2693,23 +2952,31 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
       <input id="pva-fluss-bat" type="range" min="0" max="${Math.round(batMax)}" step="${batStep}" value="${Math.round(start.batKwh)}" style="flex:1;accent-color:${COL.es};">
       <span id="pva-fluss-bat-val" style="font-size:9px;color:${COL.es};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(start.batKwh/1000).toFixed(2)} MWh</span>
     </div>
+    ${windKwInst > 0 ? `
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Wind</span>
+      <input id="pva-fluss-wind" type="range" min="0" max="${windMax}" step="10" value="${Math.round(windKwInst)}" style="flex:1;accent-color:${COL.wd};">
+      <span id="pva-fluss-wind-val" style="font-size:9px;color:${COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(windKwInst)} kW</span>
+    </div>` : ''}
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${chips}</div>
   <div id="pva-fluss-kpi" style="font-size:9px;color:var(--muted);margin-bottom:6px;"></div>
   <div id="pva-fluss-svg" style="overflow:hidden;"></div>`;
 
   const svgWrap = el.querySelector('#pva-fluss-svg');
-  const pvIn  = el.querySelector('#pva-fluss-pv');
-  const batIn = el.querySelector('#pva-fluss-bat');
+  const pvIn   = el.querySelector('#pva-fluss-pv');
+  const batIn  = el.querySelector('#pva-fluss-bat');
+  const windIn = el.querySelector('#pva-fluss-wind');
 
-  function drawSankey(pv, bat) {
+  function drawSankey(pv, bat, windKw) {
     // Gleiche Strategie wie die Varianten/Tabelle: spot-dyn (falls Spotpreise) lädt
     // jetzt ebenfalls für den Eigenverbrauch → größere Batterie senkt Einspeisung UND
     // Netzbezug, konsistent zur Tabelle.
     const strat = bat > 0 ? (spotH ? 'spot-dyn' : 'ev') : 'none';
     const ertrag = pv * spez / 1000;
-    const sim  = pvNapSim(pv, bat, demandH, pvProfile, napParams, strat, spotH);
-    const wirt = pvWirtschaft(pv, bat, sim, ertrag, params, strat);
+    const windScale = windKwInst > 0 ? (windKw / windKwInst) : 1;
+    const sim  = pvNapSim(pv, bat, demandH, pvProfile, napParams, strat, spotH, windScale);
+    const wirt = pvWirtschaft(pv, bat, sim, ertrag, params, strat, windKwInst > 0 ? windKw : null);
     const eigen = sim.eigenMwh, einsp = sim.einspeiseMwh, curt = sim.curtailMwh || 0;
     const verl = sim.batVerlustMwh || 0, netz = sim.netzbezugMwh;
     const bedarf = eigen + netz;
@@ -2768,7 +3035,7 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
       ${node(xR, esY, esH, COL.es)}
       ${node(xR, ctY, ctH, COL.ct)}
       ${node(xR, vlY, vlH, COL.vl)}
-      ${lbl(xL-6, pvY, pvH, 'PV-Erzeugung', pvSum, COL.pv, 'end')}
+      ${lbl(xL-6, pvY, pvH, (windKwInst > 0 && windKw > 0) ? 'PV + Wind' : 'PV-Erzeugung', pvSum, COL.pv, 'end')}
       ${lbl(xL-6, nbY, nbH, 'Netzbezug', netz, COL.nb, 'end')}
       ${lbl(xR+barW+6, bedY, bedH, 'Bedarf', bedarf, '#cfd8dc', 'start')}
       ${lbl(xR+barW+6, esY, esH, 'Einspeisung', einsp, COL.es, 'start')}
@@ -2788,15 +3055,20 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
 
   function sync() {
     const pv = parseFloat(pvIn.value) || 0, bat = parseFloat(batIn.value) || 0;
+    const windKw = windIn ? (parseFloat(windIn.value) || 0) : windKwInst;
     el.querySelector('#pva-fluss-pv-val').textContent = Math.round(pv) + ' kWp';
     el.querySelector('#pva-fluss-bat-val').textContent = (bat/1000).toFixed(2) + ' MWh';
-    drawSankey(pv, bat);
+    if (windIn) el.querySelector('#pva-fluss-wind-val').textContent = Math.round(windKw) + ' kW';
+    drawSankey(pv, bat, windKw);
   }
   pvIn.addEventListener('input', sync);
   batIn.addEventListener('input', sync);
+  if (windIn) windIn.addEventListener('input', sync);
   el.querySelectorAll('[data-fluss-var]').forEach(b => b.addEventListener('click', () => {
     const [p, q] = b.dataset.flussVar.split('|').map(parseFloat);
-    pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
+    pvIn.value = Math.round(p); batIn.value = Math.round(q);
+    if (windIn) windIn.value = Math.round(windKwInst);  // Varianten rechnen mit Bestand
+    sync();
   }));
   sync();
 
@@ -2853,6 +3125,7 @@ function _pvahHourly(deckungArr, dt) {
 let _pvahVarId = null;
 let _pvahPvKwp = null;
 let _pvahBatKwh = null;
+let _pvahWindKw = null;
 
 function renderAutarkieHeatmap(varianten, overrideEl) {
   const el = overrideEl || document.getElementById('pva-chart-autarkie-heatmap');
@@ -2869,7 +3142,12 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
   const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
   const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
   const pvStep = 1, batStep = 5;
-  const COL = { pv: '#fdd835', es: '#42a5f5' };
+  const COL = { pv: '#fdd835', es: '#42a5f5', wd: '#4dd0e1' };
+
+  // Wind-Slider nur wenn Windkraft in der Analyse aktiviert ist
+  const windKwInst = (window._windElHourly && (_pvFsArgs?.params?.windKwInstalled || 0) > 0)
+    ? _pvFsArgs.params.windKwInstalled : 0;
+  const windMax = windKwInst > 0 ? Math.round(windKwInst * 2) : 0;
 
   // Startwerte: aktuell gewählte Variante (oder wirtschaftlich optimiert / erste)
   if (!_pvahVarId || !kanon.some(v => v.id === _pvahVarId)) {
@@ -2883,6 +3161,7 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
     _pvahPvKwp  = v.pvKwp;
     _pvahBatKwh = v.batKwh;
   }
+  if (_pvahWindKw == null || windKwInst <= 0) _pvahWindKw = windKwInst;
 
   const dt = demandH.length > 8784 ? 0.25 : 1.0;
 
@@ -2915,18 +3194,26 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
       <input id="pva-pvah-bat" type="range" min="0" max="${Math.round(batMax)}" step="${batStep}" value="${Math.round(_pvahBatKwh)}" style="flex:1;accent-color:${COL.es};">
       <span id="pva-pvah-bat-val" style="font-size:9px;color:${COL.es};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(_pvahBatKwh/1000).toFixed(2)} MWh</span>
     </div>
+    ${windKwInst > 0 ? `
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Wind</span>
+      <input id="pva-pvah-wind" type="range" min="0" max="${windMax}" step="10" value="${Math.round(_pvahWindKw)}" style="flex:1;accent-color:${COL.wd};">
+      <span id="pva-pvah-wind-val" style="font-size:9px;color:${COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvahWindKw)} kW</span>
+    </div>` : ''}
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${tabs}</div>
   <div id="pva-pvah-svg"></div>`;
 
   const svgWrap = el.querySelector('#pva-pvah-svg');
-  const pvIn  = el.querySelector('#pva-pvah-pv');
-  const batIn = el.querySelector('#pva-pvah-bat');
+  const pvIn   = el.querySelector('#pva-pvah-pv');
+  const batIn  = el.querySelector('#pva-pvah-bat');
+  const windIn = el.querySelector('#pva-pvah-wind');
   const subEl = el.querySelector('#pva-pvah-sub');
 
-  function draw(pv, bat) {
+  function draw(pv, bat, windKw) {
     const strat = bat > 0 ? (spotH ? 'spot-dyn' : 'ev') : 'none';
-    const sim    = pvNapSim(pv, bat, demandH, pvProfile, napParams, strat, spotH);
+    const windScale = windKwInst > 0 ? ((windKw ?? windKwInst) / windKwInst) : 1;
+    const sim    = pvNapSim(pv, bat, demandH, pvProfile, napParams, strat, spotH, windScale);
     const hourly = _pvahHourly(sim.deckungArr, dt);
     const nDays  = Math.floor(hourly.length / 24);
 
@@ -3005,16 +3292,21 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
 
   function sync() {
     const pv = parseFloat(pvIn.value) || 0, bat = parseFloat(batIn.value) || 0;
-    _pvahPvKwp = pv; _pvahBatKwh = bat;
+    const windKw = windIn ? (parseFloat(windIn.value) || 0) : windKwInst;
+    _pvahPvKwp = pv; _pvahBatKwh = bat; _pvahWindKw = windKw;
     el.querySelector('#pva-pvah-pv-val').textContent = Math.round(pv) + ' kWp';
     el.querySelector('#pva-pvah-bat-val').textContent = (bat/1000).toFixed(2) + ' MWh';
-    draw(pv, bat);
+    if (windIn) el.querySelector('#pva-pvah-wind-val').textContent = Math.round(windKw) + ' kW';
+    draw(pv, bat, windKw);
   }
   pvIn.addEventListener('input', sync);
   batIn.addEventListener('input', sync);
+  if (windIn) windIn.addEventListener('input', sync);
   el.querySelectorAll('[data-pvah-var]').forEach(b => b.addEventListener('click', () => {
     const [p, q] = b.dataset.pvahVar.split('|').map(parseFloat);
-    pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
+    pvIn.value = Math.round(p); batIn.value = Math.round(q);
+    if (windIn) windIn.value = Math.round(windKwInst);  // Varianten rechnen mit Bestand
+    sync();
   }));
   sync();
 

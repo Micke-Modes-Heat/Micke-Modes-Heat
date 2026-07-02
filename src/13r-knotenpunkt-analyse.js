@@ -2,6 +2,7 @@
 // Tabs: Jahreslastgang · Jahresdauerlinie · Monatsprofil
 // Profil-Quellen je Typ:
 //   PV          → makePvProfile8760(ausrichtung) × kWp × pvSpez
+//   Wind        → windProfileForAsset (ERA5-Standortreihe oder Weibull-Synthetik, 13q-wind-ertrag.js)
 //   WP          → _wpElHourly  × Anteil (leistungThKW)
 //   KWK/BHKW    → _bhkwElHourly × Anteil (leistungElKW)
 //   Verbraucher → _elQuartierFromGeb × Gebäudeanteil
@@ -11,6 +12,7 @@ import { ASSETS, ASSET_CFG, TYPE_RANK, getAsset, getAssetStatus } from './13a-as
 import { makePvProfile8760, _PV_SPEZ_DEFAULT } from './09a-pv-profile.js';
 import { globalYear } from './01-globals-varianten.js';
 import { buildSlpProfile8760 } from './13i-slp-editor.js';
+import { windProfileForAsset } from './13q-wind-ertrag.js';
 
 // ── Modulzustand ──────────────────────────────────────────────────────────────
 const _K = {
@@ -52,6 +54,12 @@ function _pvProfile(asset) {
   const prof=new Float32Array(8760);
   for (let t=0;t<8760;t++) prof[t]=norm[t]*kwp*spez;
   return prof;
+}
+
+// Kanonisches Windprofil aus 13q — reale ERA5-Standortreihe wenn geladen, sonst
+// synthetisches Weibull-Profil; identische Defaults wie Inspector/NAP-/PV-Analyse.
+function _windProfile(asset) {
+  return windProfileForAsset(asset);
 }
 
 function _wpProfile(asset) {
@@ -178,7 +186,7 @@ export function getNodeProfile8760(asset) {
   let prof;
   switch (asset.type) {
     case 'PV':           prof=_pvProfile(asset);          break;
-    case 'Wind':         prof=_flat((parseFloat(asset.props?.leistungKW)||0)*0.25); break;
+    case 'Wind':         prof=_windProfile(asset);         break;
     case 'WP':           prof=_wpProfile(asset);          break;
     case 'KWK':          prof=_kwkProfile(asset);         break;
     case 'Verbraucher':  prof=_verbraucherProfile(asset); break;
@@ -583,6 +591,25 @@ function _getCapacityKW(asset) {
     case 'KVS':  return (parseFloat(p.nennstromA)||0) * 0.4 * Math.sqrt(3) * 0.95;
     default:     return 0;
   }
+}
+
+// ── Öffentliche Adapter für die Speicher-Merit-Order (13h-netzanalyse) ───────────
+// Die Knotenpunkt-Analyse ist die einzige Quelle der Wahrheit für Knoten-Residual-
+// profile (Topologie-BFS) und Betriebsmittelkapazitäten — die Speicher-Platzierung
+// greift darauf zu, statt die Logik zu duplizieren.
+export function getNodeCapacityKW(asset) { return asset ? _getCapacityKW(asset) : 0; }
+export function isInfraNode(asset)        { return !!asset && INFRA_TYPES.has(asset.type); }
+
+// Residualprofil eines Infrastrukturknotens + abgeleitete Kennzahlen.
+// peakKW = max. Bezug (Last-dominiert), feedKW = max. Rückspeisung (Erzeugungs-dominiert).
+export function getInfraNodeResidual(asset) {
+  const prof = getNodeProfile8760(asset);
+  let peak = 0, feed = 0;
+  for (let t = 0; t < prof.length; t++) {
+    if (prof[t] > peak) peak = prof[t];
+    if (prof[t] < feed) feed = prof[t];
+  }
+  return { prof, peakKW: peak, feedKW: -feed, capacityKW: _getCapacityKW(asset) };
 }
 
 /** Profil mit Berücksichtigung deaktivierter Beiträge */

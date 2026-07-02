@@ -12,6 +12,11 @@
         integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"
         integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-toolbar@0.4.0-alpha.2/dist/leaflet.toolbar.css"/>
+<script src="https://unpkg.com/leaflet-toolbar@0.4.0-alpha.2/dist/leaflet.toolbar.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-distortableimage@0.21.9/dist/leaflet.distortableimage.css"/>
+<script src="https://unpkg.com/leaflet-distortableimage@0.21.9/dist/leaflet.distortableimage.js"></script>
+<script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <link rel="stylesheet" href="src/styles/app.css"/>
 </head>
 <body>
@@ -199,6 +204,9 @@
         </div>
         <button id="btn-draw-area-main" data-click="toggleDrawArea()" style="width:100%;padding:10px 12px;border-radius:7px;border:1.5px solid #ab47bc;background:rgba(171,71,188,0.08);color:#ce93d8;font-family:inherit;font-size:12px;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:8px;justify-content:center;">
           <span style="font-size:16px;">⬡</span> Plangebiet / Bereich zeichnen
+        </button>
+        <button id="btn-overlay-main" data-click="toggleOverlayPanel()" style="width:100%;margin-top:6px;padding:10px 12px;border-radius:7px;border:1.5px solid #78909c;background:rgba(120,144,156,0.08);color:#b0bec5;font-family:inherit;font-size:12px;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:8px;justify-content:center;" title="Bild oder PDF-Grundriss transparent über die Karte legen, skalieren, drehen und Gebäude nachzeichnen">
+          <span style="font-size:16px;">📐</span> Plan-Overlay laden…
         </button>
         <div id="lp-gebiet-status" style="font-size:9px;color:var(--muted);margin-bottom:10px;padding:2px 0;min-height:14px;"></div>
         <div class="lp-section-title">Projektdaten</div>
@@ -655,6 +663,32 @@
             onclick="naTogglePanel()">✕</span>
     </div>
     <div id="netzanalyse-content"></div>
+  </div>
+
+  <!-- ── PV-Übersicht-Panel ───────────────────────────────────────────────── -->
+  <div id="pv-uebersicht-panel" class="float-panel"
+       style="display:none;top:80px;min-width:360px;max-width:460px;max-height:82vh;
+              padding:15px 18px 12px;overflow-y:auto;border:1px solid #ffd54f;">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'pv-uebersicht-panel')">
+      <span style="color:#ffd54f;font-size:12px;font-weight:600;">☀ PV-Übersicht</span>
+      <span class="drag-dots">⠿</span>
+      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
+            onclick="pvuTogglePanel()">✕</span>
+    </div>
+    <div id="pv-uebersicht-content"></div>
+  </div>
+
+  <!-- ── Windanalyse-Panel ────────────────────────────────────────────────── -->
+  <div id="windanalyse-panel" class="float-panel"
+       style="display:none;top:80px;min-width:360px;max-width:460px;max-height:82vh;
+              padding:15px 18px 12px;overflow-y:auto;border:1px solid #4dd0e1;">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'windanalyse-panel')">
+      <span style="color:#4dd0e1;font-size:12px;font-weight:600;">🌀 Windanalyse</span>
+      <span class="drag-dots">⠿</span>
+      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
+            onclick="windaTogglePanel()">✕</span>
+    </div>
+    <div id="windanalyse-content"></div>
   </div>
 
   <!-- ── Feldapp-Panel ────────────────────────────────────────────────────── -->
@@ -1315,7 +1349,7 @@
       <!-- Bulk-Modus Toggle -->
       <div style="padding:5px 6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;">
         <button id="bulk-mode-toggle" onclick="selToggleBulkMode()" style="font-size:10px;padding:3px 8px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;">&#9678; Bulk-Modus</button>
-        <span style="font-size:10px;color:var(--muted);">Shift+Drag = Box (Typ-Filter wirkt) · Rechtsklick = Auswahl löschen</span>
+        <span style="font-size:10px;color:var(--muted);">Shift+Drag = Box (Bereich bleibt merkbar, Typ-Filter nachträglich änderbar) · Rechtsklick = Auswahl löschen</span>
       </div>
       <!-- Sammelaktions-Leiste (sichtbar wenn ≥1 Asset selektiert oder Bulk-Modus aktiv) -->
       <div id="asset-bulk-bar" style="display:none;padding:5px 7px 6px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;box-sizing:border-box;">
@@ -1327,6 +1361,20 @@
           <button onclick="selFromMeritOrderTier('B');selRenderBulkBar()" title="Tier-B-Kandidaten selektieren"
             style="font-size:9px;padding:2px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Tier B ▸</button>
           <button onclick="selClear()" title="Auswahl aufheben" style="font-size:11px;padding:1px 5px;background:none;border:none;cursor:pointer;color:var(--muted);flex-shrink:0;">✕</button>
+        </div>
+        <!-- Kartenbereich-Filter: nach Shift+Drag bleibt der Bereich gemerkt, Typ-Filter
+             wirkt nachträglich beliebig oft, ohne erneut zu draggen. Nur sichtbar, wenn
+             gerade ein Bereich aufgezogen wurde (selBoxAreaClear() blendet wieder aus). -->
+        <div id="asset-bulk-box-section" style="display:none;flex-direction:column;gap:3px;padding:5px 6px;margin-bottom:5px;background:var(--surface);border:1px solid var(--border);border-radius:4px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em;flex:1;">📍 Auswahl nach Kartenbereich</span>
+            <span id="asset-bulk-box-count" style="color:var(--muted);font-size:9px;"></span>
+            <span onclick="selBoxAreaClear()" title="Bereich vergessen" style="font-size:11px;cursor:pointer;color:var(--muted);line-height:1;">✕</span>
+          </div>
+          <select id="asset-bulk-box-filter-type" onchange="selBoxAreaFilterChange(this.value)"
+            style="width:100%;font-size:10px;padding:2px 4px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+            <option value="">alle Typen</option>
+          </select>
         </div>
         <!-- Topologie-Filter: Typ hinter Objekt selektieren -->
         <div style="display:flex;flex-direction:column;gap:3px;padding:5px 6px;margin-bottom:5px;background:var(--surface);border:1px solid var(--border);border-radius:4px;">
@@ -1407,15 +1455,16 @@
 
 <div class="float-panel purple-border" id="overlay-panel">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'overlay-panel')"><span style="color:#ce93d8;font-size:12px">🗺️ Hintergrundplan einblenden</span><span class="drag-dots">⠿</span></div>
-  <div class="panel-info">Lade ein Bild (JPG oder PNG) eines Bestandsplans hoch. Das Bild erscheint auf der Karte. Ziehe die gelben Eckpunkte, um den Plan passgenau auf die Karte zu legen.</div>
+  <div class="panel-info">Lade ein Bild (JPG/PNG) oder einen PDF-Grundriss hoch. Der Plan erscheint transparent auf der Karte. Klicke auf den Plan, um über die Eckgriffe zu skalieren, zu drehen und zu verzerren, bis er passgenau liegt.</div>
   <div class="inp-group" style="margin-bottom:10px">
-    <input type="file" id="overlay-file" accept="image/png, image/jpeg" class="inp-field" data-change="loadOverlay(this)" style="padding:4px"/>
+    <input type="file" id="overlay-file" accept="image/png, image/jpeg, application/pdf" class="inp-field" data-change="loadOverlay(this)" style="padding:4px"/>
   </div>
   <div class="inp-group" style="margin-bottom:15px">
     <label class="inp-label">Deckkraft des Plans</label>
     <input type="range" id="overlay-opacity" min="0.1" max="1" step="0.1" value="0.5" data-input="changeOverlayOpacity(this.value)"/>
   </div>
   <div class="panel-btns">
+    <button class="btn-secondary" data-click="addGebaeude({nutzung:'custom'})">📐 Gebäude auf Plan nachzeichnen</button>
     <button class="btn-secondary" data-click="clearOverlay()">Bild entfernen</button>
     <button class="btn-secondary" data-click="hidePanels()">Schließen</button>
   </div>

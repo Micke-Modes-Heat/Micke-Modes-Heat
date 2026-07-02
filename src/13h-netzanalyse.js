@@ -9,8 +9,9 @@
 //   • Bestehende Trafos analysieren (Auslastung + Erschöpfungsjahr)
 
 import { map, addGebaeude } from './02b-gebaeude.js';
-import { ASSETS, ASSET_CFG, getAssetStatus } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, getAssetStatus, getAsset, TYPE_RANK } from './13a-assets-core.js';
 import { globalYear } from './01-globals-varianten.js';
+import { getInfraNodeResidual, isInfraNode, invalidateKnotenProfileCache } from './13r-knotenpunkt-analyse.js';
 
 // ── Farben ───────────────────────────────────────────────────────────────────
 const NA_CLUSTER_COLORS = [
@@ -64,10 +65,14 @@ const NA = {
   naErzeugMaxKW:      null,
 
   // Speicher-/Notstrom-Platzierung
+  batMethod:   'netz',      // 'netz' (Merit-Order über Netzknoten) | 'geo' (Lastschwerpunkte)
   batMode:     'zentral',   // 'zentral' | 'verteilt'
   batK:        3,
-  batShavePct: 40,          // Batterieleistung = % der Zonenlast
-  batHours:    2,           // Kapazität = Leistung × Stunden
+  batShavePct: 40,          // Batterieleistung = % der Zonenlast / Knotenspitze
+  batHours:    2,           // Kapazität = Leistung × Stunden (Energie-Budget)
+  batSizeMode: 'auto',      // 'auto' (Shave-basiert) | 'pv' (feste Größe aus PV-Variante)
+  batPvVariantId: null,     // gewählte PV-Variante (id), null = erste mit Batterie
+  batGuideOpen: false,      // Anleitung zentral/dezentral aufgeklappt
   batResult:   null,
   nsaMode:     'zentral',
   nsaK:        3,
@@ -113,6 +118,7 @@ export function naGetLoadPoints(year) {
       case 'WP':          loadKW = parseFloat(props.leistungKW)  || 0; break;
       case 'NSHV':        loadKW = parseFloat(props.leistungKW)  || 0; break;
       case 'PV':          genKW  = (parseFloat(props.leistungKWp) || 0) * 0.8; break;
+      case 'Wind':        genKW  = parseFloat(props.leistungKW)  || 0; break;
       case 'Batterie':    genKW  = parseFloat(props.leistungKW)  || 0; break;
     }
     const peakKW = Math.max(loadKW, genKW);
@@ -1389,8 +1395,14 @@ function _naDrawPlacementUnits(grp, clusters, units, kind) {
                box-shadow:0 2px 6px rgba(0,0,0,.45);">${icon}</div>` }),
       zIndexOffset: 600,
     }).bindPopup(kind === 'bat'
-      ? `<b>🔋 Batteriespeicher ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
-        `Leistung: <b>${u.kW} kW</b><br>Kapazität: <b>${u.kWh} kWh</b><br>Punkte: ${u.pts}`
+      ? (u.name !== undefined
+          ? `<b>🔋 Speicher · ${u.name}</b><br>Knotenspitze: <b>${u.loadKW.toFixed(0)} kW</b>` +
+            (u.auslastung > 0 ? ` (Auslastung ${(u.auslastung*100).toFixed(0)} %)` : '') + '<br>' +
+            (u.overloadKW > 0 ? `<span style="color:#c62828">Überlast: <b>${u.overloadKW.toFixed(0)} kW</b></span><br>` : '') +
+            `Leistung: <b>${u.kW} kW</b><br>Kapazität: <b>${u.kWh} kWh</b><br>` +
+            `Bedarf volle Kappung: ${u.reqKWh} kWh ${u.gedeckt ? '✓ gedeckt' : '⚠ Dauer zu kurz'}`
+          : `<b>🔋 Batteriespeicher ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
+            `Leistung: <b>${u.kW} kW</b><br>Kapazität: <b>${u.kWh} kWh</b><br>Punkte: ${u.pts}`)
       : `<b>⚙ Notstromaggregat ${i + 1}</b><br>Zonenlast: <b>${u.loadKW.toFixed(0)} kW</b><br>` +
         `Leistung: <b>${u.kW} kW</b><br>Autonomie: ${u.autonomieH} h · ${u.kraftstoff}<br>Punkte: ${u.pts}`
     ).addTo(grp);
@@ -1398,8 +1410,184 @@ function _naDrawPlacementUnits(grp, clusters, units, kind) {
   if (!map.hasLayer(grp)) grp.addTo(map);
 }
 
+// ── Speicher-Merit-Order über Netzknoten ─────────────────────────────────────
+// Ein Speicher entlastet nur das, was elektrisch oberhalb von ihm liegt. Wir
+// bewerten daher die realen Infrastrukturknoten (NAP/Trafo/NSHV/UV/KVS) anhand
+// ihres Residualprofils (Topologie-BFS aus 13r) statt geografischer Cluster:
+//   • zentral  → der Verknüpfungspunkt mit dem größten Residual (Leistungspreis/EV)
+//   • verteilt → die K unabhängigen Knoten mit der höchsten Entlastung je kWh
+//                (Engpass-/Spannungsentlastung am belasteten Strang)
+
+// Aktive Infrastrukturknoten mit Koordinaten.
+function _naInfraNodes(yr) {
+  const out = [];
+  for (const a of ASSETS.items) {
+    if (!isInfraNode(a)) continue;
+    if (getAssetStatus(a, yr) !== 'active') continue;
+    if (!isFinite(a.lat) || !isFinite(a.lng)) continue;
+    out.push(a);
+  }
+  return out;
+}
+
+// Infrastrukturknoten, die elektrisch unterhalb von startId liegen (höherer
+// TYPE_RANK = weiter vom Netzanschluss entfernt). Dient der Überlappungsprüfung:
+// Eltern- und Kindknoten teilen sich dasselbe Residual, dürfen also nicht doppelt
+// bestückt werden.
+function _infraDownstreamSet(startId) {
+  const edges = window.stromEdges || [];
+  const startA = getAsset(startId);
+  const startRk = startA ? (TYPE_RANK[startA.type] ?? 0) : 0;
+  const visited = new Set([startId]);
+  const queue = [startId];
+  const down = new Set();
+  while (queue.length) {
+    const cur = queue.shift();
+    const neighbors = [...new Set(edges
+      .filter(e => e.u === cur || e.v === cur)
+      .map(e => (e.u === cur ? e.v : e.u)))].filter(id => !visited.has(id));
+    for (const nid of neighbors) {
+      visited.add(nid);
+      const na = getAsset(nid);
+      if (!na) continue;
+      const rk = TYPE_RANK[na.type] ?? 0;
+      if (rk <= startRk) continue;            // nur abwärts in der Hierarchie
+      if (isInfraNode(na)) { down.add(nid); queue.push(nid); }
+    }
+  }
+  return down;
+}
+
+// Kappungsanalyse eines Residualprofils: Spitze, Kappleistung und die Energie,
+// die der Speicher im größten zusammenhängenden Über-Schwellen-Ereignis halten
+// muss, um die Spitze auf die Schwelle zu drücken.
+function _shaveAnalysis(prof, shaveFrac) {
+  let peak = 0;
+  for (let t = 0; t < prof.length; t++) if (prof[t] > peak) peak = prof[t];
+  if (peak <= 0) return { peak: 0, threshold: 0, shaveKW: 0, reqKWh: 0, hoursOver: 0 };
+  const threshold = peak * (1 - shaveFrac);
+  const shaveKW = peak - threshold;
+  let maxEvent = 0, cur = 0, hoursOver = 0;
+  for (let t = 0; t < prof.length; t++) {
+    const ex = prof[t] - threshold;
+    if (ex > 0) { cur += ex; hoursOver++; if (cur > maxEvent) maxEvent = cur; }
+    else cur = 0;
+  }
+  return { peak, threshold, shaveKW, reqKWh: maxEvent, hoursOver };
+}
+
+// Knoten bewerten und sortieren. Primär: Überlast (Netzcode-Verletzung) zuerst.
+// Sekundär: Entlastungseffizienz = gekappte kW je benötigter kWh (peaky → besser).
+function _naScoreInfraNodes(shaveFrac) {
+  const yr = globalYear || new Date().getFullYear();
+  invalidateKnotenProfileCache();            // frische Profile (Assets/Jahr können sich geändert haben)
+  const scored = [];
+  for (const a of _naInfraNodes(yr)) {
+    const { prof, peakKW, capacityKW } = getInfraNodeResidual(a);
+    if (peakKW <= 0) continue;               // reiner Einspeise-/Leerknoten → kein Bezugs-Peak zu kappen
+    const sh = _shaveAnalysis(prof, shaveFrac);
+    const overloadKW = capacityKW > 0 ? Math.max(0, peakKW - capacityKW) : 0;
+    const auslastung = capacityKW > 0 ? peakKW / capacityKW : 0;
+    const effizienz  = sh.reqKWh > 0 ? sh.shaveKW / sh.reqKWh : 0;
+    scored.push({ asset: a, lat: a.lat, lng: a.lng, name: a.name || a.type,
+                  peakKW, capacityKW, auslastung, overloadKW,
+                  shaveKW: sh.shaveKW, reqKWh: sh.reqKWh, hoursOver: sh.hoursOver, effizienz });
+  }
+  scored.sort((x, y) => (y.overloadKW - x.overloadKW) || (y.effizienz - x.effizienz) || (y.peakKW - x.peakKW));
+  return scored;
+}
+
+// ── Feste Speichergrößen aus den PV-Analyse-Varianten ───────────────────────
+// Die PV-Analyse (09d) optimiert je Variante eine Batteriegröße (batKwh). Diese
+// kann hier als feste Auslegungsgröße übernommen werden, statt aus Shave % zu
+// dimensionieren — so bleibt die Netzplatzierung konsistent zur PV-Auslegung.
+function _naPvVarianten() {
+  const erg = window._pvAnalyse?.ergebnisse || [];
+  if (!window._pvAnalyse?.berechnet) return [];
+  return erg.filter(e => (e.batKwh || 0) > 0)
+            .map(e => ({ id: e.id, label: e.label, batKwh: Math.round(e.batKwh), pvKwp: Math.round(e.pvKwp || 0) }));
+}
+function _naSelectedPvVariant() {
+  const vars = _naPvVarianten();
+  if (!vars.length) return null;
+  return vars.find(v => v.id === NA.batPvVariantId) || vars[0];
+}
+
+// Units so umskalieren, dass ihre Gesamtkapazität exakt totalKWh ergibt;
+// Verteilung nach dem bisherigen Leistungsanteil (kW), Leistung über C/2-Rate
+// (wie in der PV-Analyse: batLeistKw = batKwh/2).
+function _naApplyFixedBudget(units, totalKWh) {
+  if (!(totalKWh > 0) || !units.length) return units;
+  const sumW = units.reduce((s, u) => s + Math.max(u.kW, 1), 0) || 1;
+  for (const u of units) {
+    const w = Math.max(u.kW, 1) / sumW;
+    u.kWh = Math.max(1, Math.round(totalKWh * w));
+    u.kW  = Math.max(1, Math.round(u.kWh / 2));
+    u.fixedFromPv = true;
+    if (u.reqKWh !== undefined) u.gedeckt = u.kWh >= u.reqKWh;
+  }
+  return units;
+}
+
+// Top-K elektrisch unabhängige Knoten (kein Eltern-/Kind-Verhältnis untereinander).
+function _naSelectIndependentNodes(scored, k) {
+  const picked = [];
+  for (const cand of scored) {
+    const overlap = picked.some(p => {
+      const dp = _infraDownstreamSet(p.asset.id);
+      const dc = _infraDownstreamSet(cand.asset.id);
+      return dp.has(cand.asset.id) || dc.has(p.asset.id);
+    });
+    if (overlap) continue;
+    picked.push(cand);
+    if (picked.length >= k) break;
+  }
+  return picked;
+}
+
+export function naRunSpeicherMeritOrder() {
+  _ensureGroups();
+  const shaveFrac = NA.batShavePct / 100, hours = NA.batHours;
+  const scored = _naScoreInfraNodes(shaveFrac);
+  if (!scored.length) {
+    grpBatPlace.clearLayers(); NA.batResult = null;
+    alert('Keine bewertbaren Netzknoten gefunden. Netz verkabeln (Stromnetz) oder geografische Platzierung wählen.');
+    naRenderPanel(); return;
+  }
+  let chosen;
+  if (NA.batMode === 'zentral') {
+    // Verknüpfungspunkt = Knoten mit größtem Residual (aggregiert alles Nachgelagerte)
+    chosen = [scored.reduce((best, n) => (n.peakKW > best.peakKW ? n : best), scored[0])];
+  } else {
+    chosen = _naSelectIndependentNodes(scored, NA.batK);
+  }
+  const units = chosen.map(n => {
+    const kW  = Math.max(1, Math.round(Math.max(n.shaveKW, n.overloadKW)));
+    const kWh = Math.max(1, Math.round(kW * hours));
+    return { lat: n.lat, lng: n.lng, kW, kWh,
+             loadKW: n.peakKW, pts: 0, name: n.name,
+             auslastung: n.auslastung, overloadKW: n.overloadKW,
+             reqKWh: Math.round(n.reqKWh), gedeckt: kWh >= n.reqKWh };
+  });
+  units.method = 'netz';
+  units.scoredCount = scored.length;
+  // Feste Größe aus PV-Variante übernehmen (überschreibt die Shave-Dimensionierung)
+  if (NA.batSizeMode === 'pv') {
+    const v = _naSelectedPvVariant();
+    if (v) { _naApplyFixedBudget(units, v.batKwh); units.pvVariant = v; }
+  }
+  NA.batResult = units;
+  _naDrawPlacementUnits(grpBatPlace, [], units, 'bat');
+  naRenderPanel();
+}
+
 export function naRunSpeicherPlatzierung() {
   _ensureGroups();
+  // Netz-Merit-Order, sofern gewählt und ein verkabeltes Netz vorhanden ist.
+  if (NA.batMethod === 'netz' && (window.stromEdges || []).length > 0) {
+    naRunSpeicherMeritOrder();
+    return;
+  }
   const clusters = _naClusterLoads(NA.batMode === 'zentral' ? 1 : NA.batK);
   if (!clusters) { grpBatPlace.clearLayers(); NA.batResult = null; alert('Keine aktiven Lastpunkte gefunden.'); naRenderPanel(); return; }
   const shave = NA.batShavePct / 100, hours = NA.batHours;
@@ -1408,9 +1596,58 @@ export function naRunSpeicherPlatzierung() {
     return { lat: cl.centroid.lat, lng: cl.centroid.lng, kW, kWh: Math.round(kW * hours),
              loadKW: cl.bezugKW, pts: cl.points.length };
   });
+  units.method = 'geo';
+  if (NA.batSizeMode === 'pv') {
+    const v = _naSelectedPvVariant();
+    if (v) { _naApplyFixedBudget(units, v.batKwh); units.pvVariant = v; }
+  }
   NA.batResult = units;
   _naDrawPlacementUnits(grpBatPlace, clusters, units, 'bat');
   naRenderPanel();
+}
+
+// ── Anleitung: zentral oder dezentral? — datengestützte Empfehlung ───────────
+// Folgt der Werthebel-Logik: Bilanzgrenzen-Hebel (Leistungspreis, Eigenverbrauch)
+// → zentral am Verknüpfungspunkt; lokale Netzprobleme (Auslastung, Spannung) tief
+// im Netz → dezentral am belasteten Knoten. Liefert {empfehlung, kurz, gruende[]}.
+export function naSpeicherEmpfehlung() {
+  if (!(window.stromEdges || []).length)
+    return { empfehlung: null, kurz: 'Kein verkabeltes Netz — bitte Stromnetz verkabeln oder geografisch platzieren.', gruende: [] };
+  const scored = _naScoreInfraNodes(NA.batShavePct / 100);
+  if (!scored.length)
+    return { empfehlung: null, kurz: 'Keine bewertbaren Netzknoten gefunden.', gruende: [] };
+
+  const boundaryRank = Math.min(...scored.map(n => TYPE_RANK[n.asset.type] ?? 0));
+  const isBoundary   = n => (TYPE_RANK[n.asset.type] ?? 0) === boundaryRank;
+  const overloaded   = scored.filter(n => n.overloadKW > 0);
+  const downstreamOverloaded = overloaded.filter(n => !isBoundary(n));
+  const hochlast     = scored.filter(n => n.auslastung >= 0.9 && !isBoundary(n));
+  const boundary     = scored.reduce((best, n) => (n.peakKW > best.peakKW ? n : best), scored[0]);
+
+  const gruende = [];
+  let empfehlung, kurz, modeK;
+
+  if (downstreamOverloaded.length >= 1 || hochlast.length >= 1) {
+    const krit = (downstreamOverloaded.length ? downstreamOverloaded : hochlast);
+    empfehlung = 'dezentral'; modeK = Math.min(Math.max(krit.length, 1), 20);
+    kurz = `Dezentral an ${krit.length} belastetem/n Strang/Strängen — der Speicher muss elektrisch unterhalb des Engpasses sitzen.`;
+    for (const n of krit.slice(0, 4))
+      gruende.push(`${n.name}: Auslastung ${(n.auslastung * 100).toFixed(0)} %${n.overloadKW > 0 ? `, Überlast ${n.overloadKW.toFixed(0)} kW` : ''} → lokale Entlastung nötig.`);
+    if (downstreamOverloaded.length >= 2)
+      gruende.push('Mehrere unabhängige Engpässe → verteilte Standorte entlasten gezielter als ein zentraler Speicher.');
+  } else if (overloaded.some(isBoundary) || boundary.auslastung >= 0.9) {
+    empfehlung = 'zentral'; modeK = 1;
+    kurz = 'Zentral am Verknüpfungspunkt — der Engpass liegt an der Bilanzgrenze (NAP/Trafo), nicht in einzelnen Strängen.';
+    gruende.push(`${boundary.name}: Auslastung ${(boundary.auslastung * 100).toFixed(0)} % an der Bilanzgrenze → Leistungsspitze zentral kappen (Leistungspreis).`);
+    gruende.push('Downstream keine Engpässe — ein zentraler Speicher genügt und ist je kWh günstiger.');
+  } else {
+    empfehlung = 'zentral'; modeK = 1;
+    kurz = 'Zentral am Verknüpfungspunkt — keine Netzengpässe; der Werthebel ist Eigenverbrauch/Leistungspreis an der Bilanzgrenze.';
+    const feed = boundary.feedKW || 0;
+    if (feed > 0) gruende.push(`Rückspeisung bis ${Math.round(feed)} kW am ${boundary.name} → zentraler Speicher hebt den Eigenverbrauch (Mittagsüberschuss in die Abendlast).`);
+    gruende.push('Kein Knoten über 90 % Auslastung → lokale Entlastung nicht erforderlich; Durchmischung macht einen zentralen Speicher effizienter.');
+  }
+  return { empfehlung, kurz, gruende, modeK, boundaryName: boundary.name };
 }
 
 export function naRunNotstromPlatzierung() {
@@ -1472,7 +1709,26 @@ export function naUebernehmenNotstrom() {
 export function naClearSpeicher() { _ensureGroups(); grpBatPlace.clearLayers(); NA.batResult = null; naRenderPanel(); }
 export function naClearNotstrom() { _ensureGroups(); grpNsaPlace.clearLayers(); NA.nsaResult = null; naRenderPanel(); }
 
+export function naSetBatMethod(m) { NA.batMethod = m === 'geo' ? 'geo' : 'netz'; naRenderPanel(); }
 export function naSetBatMode(m)   { NA.batMode = m === 'verteilt' ? 'verteilt' : 'zentral'; naRenderPanel(); }
+export function naSetBatSizeMode(m){ NA.batSizeMode = m === 'pv' ? 'pv' : 'auto'; naRenderPanel(); }
+export function naSetBatPvVariant(id){ NA.batPvVariantId = id || null; naRenderPanel(); }
+export function naToggleBatGuide(){ NA.batGuideOpen = !NA.batGuideOpen; naRenderPanel(); }
+
+// Sprung in die PV-Analyse (Analyse-Ansicht, Abschnitt „pva").
+export function naOeffnePvAnalyse() {
+  if (typeof window.setViewMode === 'function')       window.setViewMode('analyse');
+  if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('pva');
+}
+
+// Empfehlung übernehmen: setzt Modus (zentral/verteilt) + Knotenzahl entsprechend.
+export function naEmpfehlungUebernehmen() {
+  const e = naSpeicherEmpfehlung();
+  if (!e.empfehlung) { alert(e.kurz); return; }
+  NA.batMode = e.empfehlung === 'dezentral' ? 'verteilt' : 'zentral';
+  if (e.empfehlung === 'dezentral' && e.modeK) NA.batK = e.modeK;
+  naRenderPanel();
+}
 export function naSetBatK(v)      { NA.batK = Math.max(1, Math.min(20, parseInt(v) || 3)); naRenderPanel(); }
 export function naSetBatShave(v)  { NA.batShavePct = Math.max(5, Math.min(100, parseInt(v) || 40)); naRenderPanel(); }
 export function naSetBatHours(v)  { NA.batHours = Math.max(0.5, Math.min(12, parseFloat(v) || 2)); naRenderPanel(); }
@@ -1887,25 +2143,116 @@ ${hasAnyResult ? `
   const _clrBtn  = 'flex:1;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;border:1px solid var(--muted);color:var(--muted);background:transparent;';
 
   const batRes = NA.batResult;
+  const isNetz = NA.batMethod === 'netz';
+  const _methodBtn = (val, lbl, tip) => {
+    const on = NA.batMethod === val;
+    return `<button onclick="naSetBatMethod('${val}')" title="${tip}"
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+             border:1px solid ${on ? COL_BAT : '#555'};color:${on ? COL_BAT : '#999'};
+             background:${on ? 'rgba(174,213,129,.12)' : 'transparent'};">${lbl}</button>`;
+  };
+  const hasNetz = (window.stromEdges || []).length > 0;
+  // Netz-Ergebnis: Knoten-Zeilen mit Auslastung/Deckung
+  const batNetzRows = batRes && batRes.method === 'netz'
+    ? batRes.map((u, i) => `<div style="display:flex;justify-content:space-between;gap:6px;padding:3px 0;
+         border-bottom:1px solid rgba(255,255,255,.05);font-size:10px;color:#cfd8dc;">
+         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px;" title="${u.name}">${i+1}. ${u.name}</span>
+         <span>${u.kW} kW · ${u.kWh} kWh${u.overloadKW>0?` · <span style="color:#ef9a9a">Überlast ${u.overloadKW.toFixed(0)}</span>`:''}${u.gedeckt?'':' <span style="color:#ffa726" title="Dauer deckt das größte Lastereignis nicht ab">⚠</span>'}</span>
+       </div>`).join('')
+    : '';
+
+  // ── Dimensionierung: Shave-basiert vs. feste Größe aus PV-Variante ──
+  const isPvSize = NA.batSizeMode === 'pv';
+  const pvVars   = _naPvVarianten();
+  const selPvVar = _naSelectedPvVariant();
+  const _sizeBtn = (val, lbl, tip) => {
+    const on = NA.batSizeMode === val;
+    return `<button onclick="naSetBatSizeMode('${val}')" title="${tip}"
+      style="flex:1;padding:4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+             border:1px solid ${on ? COL_BAT : '#555'};color:${on ? COL_BAT : '#999'};
+             background:${on ? 'rgba(174,213,129,.12)' : 'transparent'};">${lbl}</button>`;
+  };
+  const pvLinkBtn = `<button onclick="naOeffnePvAnalyse()" title="Zur PV-Analyse wechseln (Analyse → PV)"
+      style="width:100%;padding:5px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;
+             border:1px solid #42a5f5;color:#42a5f5;background:rgba(66,165,245,.08);margin-top:5px;">↗ PV-Analyse öffnen</button>`;
+  const pvSizeHtml = isPvSize ? (pvVars.length
+    ? `<div style="margin-bottom:6px;">
+         <select onchange="naSetBatPvVariant(this.value)" style="width:100%;${_inp}padding:3px;">
+           ${pvVars.map(v => `<option value="${v.id}" ${selPvVar && v.id===selPvVar.id?'selected':''}>${v.label} — ${v.batKwh.toLocaleString('de-DE')} kWh (${v.pvKwp} kWp)</option>`).join('')}
+         </select>
+         <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.4;">
+           Feste Gesamtkapazität aus der PV-Variante; Leistung über C/2-Rate. Bei „verteilt" anteilig auf die Knoten verteilt.
+         </div>
+         ${pvLinkBtn}
+       </div>`
+    : `<div style="margin-bottom:6px;font-size:10px;color:#ffa726;line-height:1.4;">
+         Noch keine PV-Varianten mit Batterie berechnet. Bitte zuerst die PV-Analyse rechnen.${pvLinkBtn}
+       </div>`) : '';
+
+  // ── Anleitung: zentral oder dezentral? (datengestützte Empfehlung) ──
+  const emp = NA.batGuideOpen ? naSpeicherEmpfehlung() : null;
+  const empCol = emp && emp.empfehlung === 'dezentral' ? '#ffa726' : '#66bb6a';
+  const guideHtml = `
+  <div style="margin-top:8px;border-top:1px solid rgba(255,255,255,.07);padding-top:6px;">
+    <button onclick="naToggleBatGuide()" style="width:100%;text-align:left;background:transparent;border:none;
+      cursor:pointer;font-family:inherit;font-size:10px;color:#90caf9;padding:2px 0;">
+      ${NA.batGuideOpen ? '▾' : '▸'} Anleitung: zentral oder dezentral?
+    </button>
+    ${NA.batGuideOpen ? `
+    <div style="font-size:10px;color:#cfd8dc;line-height:1.5;margin-top:4px;">
+      <div style="color:var(--muted);margin-bottom:5px;">Der beste Ort hängt vom Werthebel ab — ein Speicher entlastet nur, was elektrisch oberhalb von ihm liegt:</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin-bottom:6px;">
+        <div style="color:#66bb6a;font-weight:600;">zentral</div><div>Leistungspreis kappen · Eigenverbrauch/PV-Überschuss · Arbitrage → am Verknüpfungspunkt (NAP/Trafo).</div>
+        <div style="color:#ffa726;font-weight:600;">dezentral</div><div>Engpass / Betriebsmittel-Überlast · Spannungshaltung · Backup → am belasteten Knoten tief im Netz.</div>
+      </div>
+      ${emp && emp.empfehlung ? `
+        <div style="background:rgba(255,255,255,.04);border:1px solid ${empCol};border-radius:5px;padding:6px;">
+          <div style="font-weight:700;color:${empCol};margin-bottom:3px;">Empfehlung: ${emp.empfehlung === 'dezentral' ? 'dezentral' : 'zentral'}</div>
+          <div style="margin-bottom:4px;">${emp.kurz}</div>
+          <ul style="margin:0 0 4px 0;padding-left:14px;color:var(--muted);">${emp.gruende.map(g => `<li>${g}</li>`).join('')}</ul>
+          <button onclick="naEmpfehlungUebernehmen()" style="width:100%;padding:4px;border-radius:4px;cursor:pointer;
+            font-family:inherit;font-size:10px;font-weight:600;border:1px solid ${empCol};color:${empCol};background:transparent;">
+            ✓ Empfehlung übernehmen</button>
+        </div>` : `<div style="color:#ffa726;font-size:10px;">${emp ? emp.kurz : ''}</div>`}
+    </div>` : ''}
+  </div>`;
+
   const tabBatHtml = `
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Batteriespeicher platzieren</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
-  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
-    Schlägt Speicher-Standorte vor (Peak-Shaving / Netzentlastung). Leistung = Anteil der Zonenlast, Kapazität = Leistung × Dauer.
+  <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">Methode</div>
+  <div style="display:flex;gap:6px;margin-bottom:6px;">
+    ${_methodBtn('netz','Netz-Merit-Order','Bewertet reale Netzknoten nach Entlastung je kWh (Topologie-Residualprofil). Empfohlen, wenn das Stromnetz verkabelt ist.')}
+    ${_methodBtn('geo','geografisch','Clustert Lastpunkte räumlich (k-Means). Fallback ohne verkabeltes Netz.')}
   </div>
-  <div style="display:flex;gap:6px;margin-bottom:6px;">${_modeBtn('bat','zentral','zentral',NA.batMode)}${_modeBtn('bat','verteilt','verteilt (Zonen)',NA.batMode)}</div>
+  ${isNetz && !hasNetz ? `<div style="font-size:9px;color:#ffa726;margin-bottom:6px;">⚠ Kein verkabeltes Stromnetz — fällt auf geografische Platzierung zurück.</div>` : ''}
+  <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
+    ${isNetz
+      ? 'Bewertet NAP/Trafo/NSHV/UV/KVS anhand ihres Residualprofils. <b>zentral</b> = Verknüpfungspunkt (Leistungspreis/Eigenverbrauch), <b>verteilt</b> = belastete Stränge (Engpass).'
+      : 'Schlägt Speicher-Standorte aus Lastschwerpunkten vor. Leistung = Anteil der Zonenlast, Kapazität = Leistung × Dauer.'}
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:6px;">${_modeBtn('bat','zentral','zentral',NA.batMode)}${_modeBtn('bat','verteilt',isNetz?'verteilt (Knoten)':'verteilt (Zonen)',NA.batMode)}</div>
+  <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">Dimensionierung</div>
+  <div style="display:flex;gap:6px;margin-bottom:6px;">
+    ${_sizeBtn('auto','aus Netz (Shave %)','Leistung aus Knotenspitze × Shave-Anteil, Kapazität = Leistung × Dauer.')}
+    ${_sizeBtn('pv','feste Größe (PV-Variante)','Übernimmt die optimierte Batteriegröße einer PV-Analyse-Variante als feste Gesamtkapazität.')}
+  </div>
+  ${pvSizeHtml}
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px;font-size:10px;color:var(--muted);">
-    ${NA.batMode==='verteilt' ? `<label>Zonen <input type="number" min="1" max="20" value="${NA.batK}" onchange="naSetBatK(this.value)" style="width:42px;${_inp}"></label>` : ''}
+    ${NA.batMode==='verteilt' ? `<label>${isNetz?'Knoten':'Zonen'} <input type="number" min="1" max="20" value="${NA.batK}" onchange="naSetBatK(this.value)" style="width:42px;${_inp}"></label>` : ''}
     <label>Shave <input type="number" min="5" max="100" value="${NA.batShavePct}" onchange="naSetBatShave(this.value)" style="width:46px;${_inp}"> %</label>
-    <label>Dauer <input type="number" min="0.5" max="12" step="0.5" value="${NA.batHours}" onchange="naSetBatHours(this.value)" style="width:46px;${_inp}"> h</label>
+    ${isPvSize ? '' : `<label>Dauer <input type="number" min="0.5" max="12" step="0.5" value="${NA.batHours}" onchange="naSetBatHours(this.value)" style="width:46px;${_inp}"> h</label>`}
   </div>
   <button onclick="naRunSpeicherPlatzierung()" style="${_runBtn(COL_BAT)}">🔋 Platzierung berechnen</button>
   ${batRes ? `
-  <div style="margin-top:8px;font-size:10px;color:#cfd8dc;"><b>${batRes.length}</b> Speicher · Σ <b>${batRes.reduce((s,u)=>s+u.kW,0)}</b> kW · <b>${batRes.reduce((s,u)=>s+u.kWh,0).toLocaleString('de-DE')}</b> kWh</div>
+  <div style="margin-top:8px;font-size:10px;color:#cfd8dc;"><b>${batRes.length}</b> Speicher · Σ <b>${batRes.reduce((s,u)=>s+u.kW,0)}</b> kW · <b>${batRes.reduce((s,u)=>s+u.kWh,0).toLocaleString('de-DE')}</b> kWh${batRes.method==='netz'?` <span style="color:var(--muted)">· ${batRes.scoredCount} Knoten bewertet</span>`:''}</div>
+  ${batRes.pvVariant ? `<div style="font-size:9px;color:#90caf9;margin-top:2px;">feste Größe aus PV-Variante „${batRes.pvVariant.label}" (${batRes.pvVariant.batKwh.toLocaleString('de-DE')} kWh)</div>` : ''}
+  ${batNetzRows ? `<div style="margin-top:5px;">${batNetzRows}</div>` : ''}
   <div style="display:flex;gap:6px;margin-top:6px;">
     <button onclick="naUebernehmenSpeicher()" style="${_takeBtn}">⬆ Als Assets übernehmen</button>
     <button onclick="naClearSpeicher()" title="Vorschlag verwerfen" style="${_clrBtn}">✕</button>
   </div>` : ''}
+  ${guideHtml}
 </div>`;
 
   const reco   = window._pvResReco;
