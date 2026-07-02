@@ -24,11 +24,13 @@ function wireSectionToggles(panel) {
 }
 
 import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAsset, deleteAsset, computeTwwKw, TWW_DEFAULTS } from './13a-assets-core.js';
-import { drawAssetMarker, redrawAllAssets, updateLadeParking } from './13b-assets-render.js';
+import { drawAssetMarker, redrawAllAssets, updateLadeParking, zoomToWindEignungsflaeche } from './13b-assets-render.js';
 import { openSlpEditor } from './13i-slp-editor.js';
 import { globalYear } from './01-globals-varianten.js';
 import { makePvProfile8760, _PV_SPEZ_DEFAULT } from './09a-pv-profile.js';
 import { getElSlpProfiles, getElSlpGruppen } from './13k-elslp-registry.js';
+import { computeWindYield, calcWindLwaAuto, computeWindScenarios, windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
+import { toggleDrawWindGebiet, clearWindGebiet } from './02c-karte-werkzeuge.js';
 
 // Inspector-Slot sitzt im Elektro-Tab der rechten Sidebar
 function getPanel() { return document.getElementById('sb-asset-inspector-slot'); }
@@ -223,6 +225,115 @@ function row2(...fields) {
 }
 function row3(...fields) {
   return `<div class="ins-row-3">${fields.join('')}</div>`;
+}
+
+// ── Wind: Hilfsfunktionen für Szenarien-Vergleich ───────────────────────────
+// Jahres-Strombedarf der Liegenschaft: bevorzugt Endausbau-Lastgang (Bestand +
+// geplante Maßnahmen, wie NAP-/PV-Analyse ihn verwenden), sonst Basis-Lastgang.
+export function _liegenschaftJahresbedarfMWh() {
+  let arr = null;
+  if (typeof window.napGetEndausbauLastgang === 'function') {
+    const res = window.napGetEndausbauLastgang(globalYear);
+    if (res?.arr) arr = res.arr;
+  }
+  if (!arr) arr = window.elQuartierH15 || window.elQuartierH || null;
+  if (!arr || !arr.length) return 0;
+  let s = 0;
+  for (let i = 0; i < arr.length; i++) s += arr[i];
+  const dt = arr.length > 8784 ? 0.25 : 1.0;
+  return (s * dt) / 1000;
+}
+
+// Kürzester Abstand eines Punkts zur Grenze des maßgeblichen Gebiets, in Metern.
+// Bevorzugt das eigene Windgebiet (window.windGebietPolygon, meist größer/anders
+// zugeschnitten als das allgemeine Plangebiet); Fallback: window.areaPolygon.
+// Liefert null, wenn keines von beiden gezeichnet ist.
+export function _distanceToPlangebietM(lat, lng) {
+  const poly = window.windGebietPolygon || window.areaPolygon;
+  if (!poly || typeof poly.getLatLngs !== 'function') return null;
+  const rings = poly.getLatLngs();
+  const ring = Array.isArray(rings[0]) ? rings[0] : rings;
+  if (!ring || ring.length < 2) return null;
+  const mPerLat = 111320;
+  const mPerLng = 111320 * Math.cos(lat * Math.PI / 180);
+  const toXY = pt => [(pt.lng - lng) * mPerLng, (pt.lat - lat) * mPerLat];
+  const pointSegDist = (ax, ay, bx, by) => {
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 > 0 ? (-ax * dx - ay * dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + t * dx, cy = ay + t * dy;
+    return Math.hypot(cx, cy);
+  };
+  let minD = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const a = toXY(ring[i]);
+    const b = toXY(ring[(i + 1) % ring.length]);
+    minD = Math.min(minD, pointSegDist(a[0], a[1], b[0], b[1]));
+  }
+  return Number.isFinite(minD) ? minD : null;
+}
+
+// Welches Gebiet die Eignungsflächen-/Abstandsberechnung gerade verwendet — Windgebiet
+// (eigenes, ggf. größeres Zeichengebiet für die Standortanalyse) geht vor Plangebiet.
+export function _activeGebietLabel() {
+  if (window.windGebietPolygon) return 'Windgebiet';
+  if (window.areaPolygon)       return 'Plangebiet';
+  return null;
+}
+
+function _windGebietZeichnenBlock() {
+  const has = !!window.windGebietPolygon;
+  const drawing = !!window.windGebietDrawing;
+  const label = _activeGebietLabel();
+  return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0 4px;flex-wrap:wrap;">
+    <button class="ins-link-btn" onclick="toggleDrawWindGebiet()" style="margin:0;">
+      ${drawing ? '✎ Zeichnen läuft … (ESC zum Abbrechen)' : has ? '↺ Windgebiet neu zeichnen' : '🗺 Eigenes Windgebiet zeichnen'}
+    </button>
+    ${has ? `<button class="ins-link-btn" onclick="clearWindGebiet()" style="margin:0;color:#ef9a9a;">✕ löschen</button>` : ''}
+  </div>
+  <div style="font-size:8px;color:var(--muted);margin:-2px 0 6px;">
+    ${has
+      ? 'Eigenes Windgebiet aktiv — kann größer/anders als das allgemeine Plangebiet sein.'
+      : window.areaPolygon
+        ? 'Kein eigenes Windgebiet — nutzt aktuell das allgemeine Plangebiet.'
+        : 'Kein Windgebiet und kein Plangebiet gezeichnet.'}
+  </div>`;
+}
+
+function _windEignungsHinweis(asset) {
+  const p = asset.props || {};
+  if (p.eignungsflaecheVisible !== true) return '';
+  const s = asset._eignungsStats;
+  const gebiet = _activeGebietLabel() || 'Gebiet';
+  if (!s) {
+    return `<div style="font-size:9px;color:var(--muted);margin:-3px 0 4px;">Fläche wird berechnet …</div>`;
+  }
+  if (s.error === 'no-plangebiet') {
+    return `<div style="font-size:9px;color:#f9a825;margin:-3px 0 4px;">⚠ Kein Windgebiet/Plangebiet gezeichnet — Button oben nutzen oder im Gebiet-Tab „Plangebiet / Bereich zeichnen".</div>`;
+  }
+  if (!s.cells || !s.cells.length) {
+    return `<div style="font-size:9px;color:#f9a825;margin:-3px 0 4px;">Keine geeignete Fläche gefunden — ${gebiet} zu klein für ${s.radiusM.toFixed(0)} m Mindestabstand.</div>`;
+  }
+  const ha = (s.areaM2 / 10000).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+  const trunc = s.truncated ? ' (Raster unvollständig — Wert ist Untergrenze)' : '';
+  return `<div style="font-size:9px;color:var(--muted);margin:-3px 0 2px;">≈ ${ha} ha geeignete Fläche im ${gebiet} (Raster ${s.gridStepM} m, Mindestabstand ${s.radiusM.toFixed(0)} m zu Grenze &amp; Gebäuden)${trunc}.</div>`
+    + `<button class="ins-link-btn" onclick="zoomToWindEignungsflaeche()" style="margin:0 0 6px;">🔍 Zur Fläche zoomen</button>`;
+}
+
+function _windScenarioRow(s) {
+  if (!s) return '';
+  const gh = s.gesamthoeheM;
+  const ghCol = gh <= 50 ? '#4caf50' : '#f9a825';
+  return `<div style="display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.06);">
+    <div style="font-size:10px;font-weight:700;color:var(--text);">${esc(s.label)}</div>
+    <div style="font-size:10px;color:${ghCol};font-weight:700;">Gesamthöhe ${gh.toFixed(0)} m</div>
+    <div style="font-size:9px;color:var(--muted);grid-column:1/3;">
+      ${s.ratedKw.toFixed(0)} kW · Ø ${s.rotorDurchmesserM.toFixed(0)} m · Nabenhöhe ${s.nabenhoheM.toFixed(0)} m
+      &nbsp;→&nbsp; <span style="color:#4dd0e1;">${s.annualMWh.toLocaleString('de-DE',{maximumFractionDigits:0})} MWh/a</span>
+      · ${s.volllaststundenH.toFixed(0)} Vlh
+    </div>
+  </div>`;
 }
 
 // ── Props-Formular je Typ ───────────────────────────────────────────────────
@@ -433,7 +544,36 @@ function buildPropsForm(asset) {
           ['Erdgas','Biogas','Wasserstoff','Heizöl'], brennstoff);
     }
 
-    case 'Wind':
+    case 'Wind': {
+      const ratedKw   = parseFloat(p.leistungKW)        || 500;
+      const cutIn     = parseFloat(p.einschaltwindMs)   || 3;
+      const ratedWind = parseFloat(p.nennwindMs)        || 12;
+      const cutOut    = parseFloat(p.abschaltwindMs)    || 25;
+      const rotorD    = parseFloat(p.rotordurchmesserM) || 60;
+      const vMean     = parseFloat(p.mittlereWindMs)    || 6.0;
+      const wK        = parseFloat(p.weibullK)          || 2.0;
+      const mult      = parseFloat(p.abstandMultiplikator) || 5;
+      const y = computeWindYield({ vMean, k: wK, ratedKw, cutIn, ratedWind, cutOut, rotorDiameterM: rotorD });
+      const rotorFlaeche = Math.PI * Math.pow(rotorD / 2, 2);
+      const specWarn = y.spezFlaecheWm2 > 0 && (y.spezFlaecheWm2 < 150 || y.spezFlaecheWm2 > 500)
+        ? `<div style="font-size:9px;color:#f9a825;margin-top:4px;">⚠ Unübliches Verhältnis Leistung/Rotorfläche (${y.spezFlaecheWm2.toFixed(0)} W/m²) – Werte prüfen.</div>`
+        : '';
+      const zielJahresbedarfMWh = _liegenschaftJahresbedarfMWh();
+      const maxRadiusM = _distanceToPlangebietM(asset.lat, asset.lng);
+      const scen = computeWindScenarios({
+        nabenhoheM: parseFloat(p.nabenhoheM) || 100, rotorDurchmesserM: rotorD,
+        ratedKw, cutIn, ratedWind, cutOut, vMean, k: wK,
+        hellmannAlpha: getWindSiteData()?.alpha ?? 0.2,
+        zielJahresbedarfMWh, maxRadiusM, abstandMultiplikator: mult,
+      });
+      const flaechenHinweis = maxRadiusM == null
+        ? 'Kein Plangebiet gezeichnet — nur Marktobergrenze berücksichtigt.'
+        : scen.scenMax.flaechenlimitiert
+          ? `Flächenlimitiert: ${maxRadiusM.toFixed(0)} m bis Plangebietsgrenze.`
+          : 'Marktobergrenze limitiert (Fläche würde mehr zulassen).';
+      const bedarfHinweis = zielJahresbedarfMWh > 0
+        ? `Ziel: ${zielJahresbedarfMWh.toLocaleString('de-DE',{maximumFractionDigits:0})} MWh/a Liegenschaftsbedarf.`
+        : 'Kein Strombedarf ermittelbar (kein Lastgang hinterlegt).';
       return row2(
         numField(id, 'leistungKW',         'Nennleistung (kW)',    500, {props:p}),
         numField(id, 'nabenhoheM',          'Nabenhöhe (m)',        100, {props:p, step:1})
@@ -443,7 +583,36 @@ function buildPropsForm(asset) {
       ) + row2(
         numField(id, 'nennwindMs',         'Nennwind (m/s)',         12, {props:p, step:0.5}),
         numField(id, 'abschaltwindMs',     'Abschaltwind (m/s)',     25, {props:p, step:0.5})
-      );
+      ) + `<div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:8px 0 3px;">Ertragsschätzung (Weibull)</div>`
+        + row2(
+          numField(id, 'mittlereWindMs', 'Ø Windgeschw. Nabenhöhe (m/s)', 6.0, {props:p, step:0.1, min:0}),
+          numField(id, 'weibullK',       'Weibull-Formfaktor k',          2.0, {props:p, step:0.1, min:1})
+        )
+        + `<div class="ins-result-block" style="border-left-color:#4dd0e1;">
+            <div class="ins-result-label">Jahresertrag (geschätzt)</div>
+            <div class="ins-result-value" style="color:#4dd0e1;">${y.annualMWh.toLocaleString('de-DE',{maximumFractionDigits:1})} MWh/a</div>
+            <div class="ins-result-sub">${y.volllaststundenH.toFixed(0)} Volllaststunden/a · Kapazitätsfaktor ${y.kapazitaetsfaktorPct.toFixed(0)} %</div>
+            <div class="ins-result-sub">Spez. Flächenleistung: ${y.spezFlaecheWm2.toFixed(0)} W/m² (Rotorfläche ${rotorFlaeche.toFixed(0)} m²)</div>
+          </div>`
+        + specWarn
+        + `<div style="font-size:9px;color:var(--muted);margin-top:6px;">Vereinfachte Schätzung: Weibull-Windverteilung × generische kubische Leistungskurve. Für Genehmigungsunterlagen reale Herstellerkurve + Standortwindgutachten verwenden.</div>`
+        + `<div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 3px;">Abstände auf der Karte</div>`
+        + numField(id, 'abstandMultiplikator', 'Planungsabstand: x-facher Rotordurchmesser', 5, {props:p, step:0.5, min:1})
+        + `<div style="font-size:9px;color:var(--muted);margin:-4px 0 6px;">≈ ${(( parseFloat(p.abstandMultiplikator)||5) * rotorD).toFixed(0)} m Radius — Faustregel für Abstand zu Nachbaranlagen/Bebauung, ersetzt keine Einzelfallprüfung.</div>`
+        + checkField(id, 'abstandVisible', 'Abstandsradius auf Karte anzeigen', p.abstandVisible !== false)
+        + numField(id, 'windLwa', 'Schallleistungspegel Lwa (dB(A))', calcWindLwaAuto(ratedKw), {props:p, step:1})
+        + checkField(id, 'laermVisible', 'Lärmringe auf Karte anzeigen', p.laermVisible === true)
+        + checkField(id, 'eignungsflaecheVisible', 'Eignungsfläche auf Karte anzeigen', p.eignungsflaecheVisible === true)
+        + _windGebietZeichnenBlock()
+        + _windEignungsHinweis(asset)
+        + `<div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 0;">Szenarien-Vergleich</div>`
+        + `<div style="font-size:9px;color:var(--muted);margin:1px 0 2px;">Gleiche Windkennlinie &amp; spez. Flächenleistung wie oben — nur Größe/Höhe variiert.</div>`
+        + _windScenarioRow(scen.scen50)
+        + (scen.scenBedarf ? _windScenarioRow(scen.scenBedarf) : `<div style="font-size:9px;color:var(--muted);padding:6px 0;border-top:1px solid rgba(255,255,255,0.06);">Bedarfsgerecht: ${bedarfHinweis}</div>`)
+        + (scen.scenBedarf ? `<div style="font-size:9px;color:var(--muted);margin:-3px 0 4px;">${bedarfHinweis}</div>` : '')
+        + _windScenarioRow(scen.scenMax)
+        + `<div style="font-size:9px;color:var(--muted);margin:-3px 0 4px;">${flaechenHinweis}</div>`;
+    }
 
     default:
       return `<div style="font-size:10px;color:var(--muted);">Keine weiteren Eigenschaften.</div>`;
@@ -842,6 +1011,101 @@ function _drawPvInspectorChart(panel, asset) {
   ctx.fillText((mKwh.reduce((a,b) => a+b,0) / 1000).toFixed(0) + ' MWh', W - 4, 11);
 }
 
+// ── Wind-Erzeugungsprofil (synthetisches 8760h-Profil, siehe 13q-wind-ertrag.js) ──
+function _buildWindProfileSection(assetId) {
+  return `
+    <div class="ins-section-header" data-target="ins-sec-windprofil">
+      <span class="asset-ins-section-title">🌀 Erzeugungsprofil</span>
+      <span class="ins-section-chevron">▾</span>
+    </div>
+    <div class="ins-section-content" id="ins-sec-windprofil">
+      <canvas id="wind-profile-canvas-${assetId}"
+        style="width:100%;height:64px;border-radius:4px;display:block;
+               background:rgba(255,255,255,0.04);margin-bottom:6px;"></canvas>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:10px;">
+        <div><div style="color:var(--muted);font-size:9px;">Jahresertrag</div>
+             <div id="wind-prof-annual-${assetId}"
+               style="font-family:'DM Mono',monospace;color:#4dd0e1;">—</div></div>
+        <div><div style="color:var(--muted);font-size:9px;">Volllaststunden</div>
+             <div id="wind-prof-vlh-${assetId}"
+               style="font-family:'DM Mono',monospace;color:#4dd0e1;">—</div></div>
+        <div><div style="color:var(--muted);font-size:9px;">Kapazitätsfaktor</div>
+             <div id="wind-prof-kf-${assetId}"
+               style="font-family:'DM Mono',monospace;color:var(--text);">—</div></div>
+      </div>
+      <div style="font-size:9px;color:var(--muted);margin-top:4px;">${(() => {
+        const s = getWindSiteData();
+        return s
+          ? `<span style="color:#4dd0e1;">🌐 Reale ERA5-Windreihe ${s.profilJahr}</span> (Ø ${s.vMean100.toFixed(1)} m/s @ 100 m, auf Nabenhöhe extrapoliert, α ${s.alpha.toFixed(2)}). Wird für alle Analysen verwendet.`
+          : 'Synthetisch aus Weibull-Verteilung + Wind-Persistenz (AR(1)) — keine reale Wetterzeitreihe. Über die Windanalyse lassen sich echte Standortdaten (ERA5) laden.';
+      })()}</div>
+    </div>`;
+}
+
+function _drawWindInspectorChart(panel, asset) {
+  const p = asset.props || {};
+  const ratedKw   = parseFloat(p.leistungKW)        || 500;
+  const aid       = asset.id;
+
+  // Reale ERA5-Stundenreihe wenn Standortdaten geladen, sonst synthetisches Weibull-Profil
+  const profile = windProfileForAsset(asset);
+  let sumKwh = 0;
+  for (let i = 0; i < profile.length; i++) sumKwh += profile[i];
+  const annMwh = sumKwh / 1000;
+  const vlh = ratedKw > 0 ? sumKwh / ratedKw : 0;
+  const kf  = (vlh / 8760) * 100;
+
+  const annEl = panel.querySelector(`#wind-prof-annual-${aid}`);
+  const vlhEl = panel.querySelector(`#wind-prof-vlh-${aid}`);
+  const kfEl  = panel.querySelector(`#wind-prof-kf-${aid}`);
+  if (annEl) annEl.textContent = annMwh.toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MWh/a';
+  if (vlhEl) vlhEl.textContent = vlh.toFixed(0) + ' h/a';
+  if (kfEl)  kfEl.textContent  = kf.toFixed(0) + ' %';
+
+  const MDAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+  const MLBL  = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+  const mKwh  = new Array(12).fill(0);
+  let ptr = 0;
+  for (let m = 0; m < 12; m++) {
+    const hrs = MDAYS[m] * 24;
+    for (let i = 0; i < hrs && ptr < profile.length; i++, ptr++) mKwh[m] += profile[ptr];
+  }
+
+  const cv = panel.querySelector(`#wind-profile-canvas-${aid}`);
+  if (!cv) return;
+  const W = cv.offsetWidth || 260;
+  const H = 64;
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fillRect(0, 0, W, H);
+
+  const mMax = Math.max(...mKwh);
+  if (mMax <= 0) return;
+
+  const barW = Math.floor((W - 24) / 12);
+  const gap  = Math.max(1, Math.floor((W - 24 - barW * 12) / 11));
+
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  for (let m = 0; m < 12; m++) {
+    const x  = 12 + m * (barW + gap);
+    const bH = Math.max(1, (mKwh[m] / mMax) * (H - 16));
+    ctx.fillStyle = '#4dd0e1';
+    ctx.fillRect(x, H - 14 - bH, barW, bH);
+    if (bH > 12) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText(Math.round(mKwh[m] / 1000), x + barW / 2, H - 16 - bH + 10);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillText(MLBL[m], x + barW / 2, H - 2);
+  }
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(77,208,225,0.7)';
+  ctx.font = '9px sans-serif';
+  ctx.fillText((mKwh.reduce((a,b) => a+b,0) / 1000).toFixed(0) + ' MWh', W - 4, 11);
+}
+
 // ── Lade-Asset: Zeitprofil (3-Szenario 24h-Canvas-Editor) ───────────────────
 
 const LADE_DEFAULT_PROFIL = {
@@ -1108,6 +1372,7 @@ function renderInspector(asset) {
         ${buildResultBlock(asset)}
       </div>
       ${asset.type === 'PV'   ? _buildPvProfileSection(asset.id)      : ''}
+      ${asset.type === 'Wind' ? _buildWindProfileSection(asset.id)    : ''}
       ${asset.type === 'Lade' ? _buildLadeZeitprofilSection(asset.id) : ''}
       <div class="ins-section-header" data-target="ins-sec-massnahmen">
         <span class="asset-ins-section-title">Maßnahmen</span>
@@ -1127,6 +1392,7 @@ function renderInspector(asset) {
   wireEvents(panel, asset);
   wireMassnahmen(panel, asset);
   if (asset.type === 'PV') requestAnimationFrame(() => _drawPvInspectorChart(panel, asset));
+  if (asset.type === 'Wind') requestAnimationFrame(() => _drawWindInspectorChart(panel, asset));
   if (asset.type === 'Lade') {
     _wireLadeProps(panel, asset);
     requestAnimationFrame(() => _wireZeitprofil(panel, asset));
@@ -1271,6 +1537,9 @@ function wireEvents(panel, asset) {
       }
       // TWW: Leistung hängt von mehreren Feldern + Netz-VL ab → Panel neu aufbauen
       if (asset.type === 'TWW') renderInspector(asset);
+      // Wind: Ertragsschätzung hängt von mehreren Feldern ab → Panel neu aufbauen;
+      // Abstands-/Lärmringe auf der Karte ebenfalls aktualisieren
+      if (asset.type === 'Wind') { drawAssetMarker(asset); renderInspector(asset); }
     };
     el.addEventListener('change', handler);
   });
@@ -1312,7 +1581,23 @@ setTimeout(() => {
   window.renderSidebarAssetList = renderSidebarAssetList;
   window.renderAssetSidebar     = renderAssetSidebar;
   window.filterAssetSidebar     = filterAssetSidebar;
+  window.zoomToWindEignungsflaeche = zoomToWindEignungsflaeche;
+  window.toggleDrawWindGebiet = toggleDrawWindGebiet;
+  window.clearWindGebiet      = clearWindGebiet;
+  window._onWindGebietChanged = onWindGebietChanged;
 }, 0);
+
+// Windgebiet wurde gezeichnet/geändert/gelöscht: alle Wind-Assets (Abstands-/Lärmringe,
+// Eignungsfläche) neu berechnen + offenen Inspector aktualisieren.
+function onWindGebietChanged() {
+  for (const a of (ASSETS.items || [])) {
+    if (a.type === 'Wind') drawAssetMarker(a);
+  }
+  if (ASSETS.selectedId) {
+    const sel = (ASSETS.items || []).find(a => a.id === ASSETS.selectedId);
+    if (sel && sel.type === 'Wind') renderInspector(sel);
+  }
+}
 
 // ── Vormerken Asset ───────────────────────────────────────────────────────────
 export function toggleVormerkenAsset(id) {

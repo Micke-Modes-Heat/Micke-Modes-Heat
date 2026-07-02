@@ -7,7 +7,7 @@ import { updateLpGebietStatus, updatePrintLegend } from './04a-ui-panels.js';
 import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
 import { isErzeugerAktiv, meritOrderKeys, setMeritOrderKeys } from './06c-dispatch-core.js';
 import { calcStromPanel } from './09b-pv-calc.js';
-import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, clearAssets } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, deleteAsset, clearAssets } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
 import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById, getElSlpWpm2, showElSlpModal } from './13k-elslp-registry.js';
 import { activeVariantId, edgeKey, freiflaechen, lwWp, lwWpVisible, networkLocked, netzEdges, renderVariantenBar, stromNetzVisible, stromNodes, updateVariantBanner } from './01-globals-varianten.js';
@@ -275,8 +275,9 @@ export function getDachDefaultNeigung(dachform) {
 export function getPvKorrFaktor(g) {
   const dachform = g.dachform || 'sattel';
 
-  // Flachdach: Aufständerung auf 30° Süd → immer optimal
-  if (dachform === 'flach') return 1.0;
+  // Flachdach: Süd-Aufständerung (30°) → optimal; Ost-West liegt real bei ~90% des
+  // Süd-Ertrags (zwei Halbfelder je ~15° Neigung, Ost/West-Ausrichtung).
+  if (dachform === 'flach') return g.pvFlAusrichtung === 'ostwest' ? 0.90 : 1.0;
 
   const azimut  = g.dachAzimut  ?? 180;
   const neigung = g.dachNeigung ?? getDachDefaultNeigung(dachform);
@@ -581,6 +582,183 @@ window.overwritePvAsset = function(gId) {
   _rerenderCard(gId);
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PV-ÜBERSICHT — Abgleich „gezeichnete Fläche" ↔ „kWp im PV-Asset"
+// Fängt den häufigen Bruch ab: Belegungsfläche gezeichnet (Module platziert), aber
+// das kWp nie ins PV-Asset übernommen → Anlage zählt in keiner Analyse mit.
+// ══════════════════════════════════════════════════════════════════════════════
+let _pvuPanelOpen = false;
+
+// Bestandsaufnahme aller Dach-PV-Gebäude + Freiflächen.
+function _pvuScan() {
+  const gs = window.gebaeude || [];
+  const dach = [];
+  for (const g of gs) {
+    const hasBel   = _hasBelegung(g);
+    const pv       = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
+    const assetKwp = pv ? (parseFloat(pv.props?.leistungKWp) || 0) : null;
+    if (!hasBel && assetKwp == null) continue;            // weder Fläche noch Asset
+    const mods  = hasBel ? getGebPvModules(g).count : 0;
+    const drawn = hasBel ? (calcGebKwpKorr(g) || 0) : 0;
+    let status;
+    if      (hasBel && pv == null)                              status = 'fehlt';
+    else if (hasBel && Math.abs((assetKwp || 0) - drawn) > 0.5) status = 'abweichend';
+    else if (!hasBel && assetKwp != null)                       status = 'assetOhneFlaeche';
+    else                                                        status = 'ok';
+    dach.push({ id: g.id, name: g.name || ('#' + g.id), modus: g.pvModus || 'dachanteil',
+                hasBel, mods, drawn: Math.round(drawn * 10) / 10, assetKwp, status });
+  }
+  const frei = (window.freiflaechen || []).map((ff, i) => ({
+    name: ff.name || ('Freifläche ' + (i + 1)),
+    mods: ff._pvModCount || 0,
+    kwp:  Math.round((parseFloat(ff.leistungKWp) || 0) * 10) / 10,
+  }));
+  return { dach, frei };
+}
+
+// Fehlendes PV-Asset für ein Gebäude im Polygon-Schwerpunkt anlegen.
+function _pvuEnsurePvAsset(g) {
+  let pv = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
+  if (!pv && g.polygon && g.polygon.length >= 3) {
+    const c = polygonCenter(g.polygon);
+    pv = createAsset('PV', c.lat, c.lng, { buildingId: g.id, name: 'PV ' + (g.name || g.id), props: {} });
+  }
+  return pv;
+}
+
+// Ein Gebäude angleichen (Asset ggf. anlegen + kWp übernehmen).
+window.pvuFixOne = function(gId) {
+  const g = (window.gebaeude || []).find(x => x.id === gId);
+  if (!g) return;
+  if (!_pvuEnsurePvAsset(g)) { alert('Kein PV-Asset anlegbar (Gebäude ohne Polygon).'); return; }
+  window.overwritePvAsset(gId);
+  if (typeof recalcStromNetz === 'function') recalcStromNetz();
+  if (typeof redrawAllAssets === 'function') redrawAllAssets();
+  pvuRender();
+};
+
+// Gebäude auf der Karte fokussieren.
+window.pvuFocus = function(gId) {
+  if (typeof flyTo === 'function') flyTo(gId);
+};
+
+// Alle abweichenden/fehlenden Gebäude in einem Rutsch angleichen.
+export function pvuUebernehmenAlle() {
+  const todo = _pvuScan().dach.filter(d => d.status === 'fehlt' || d.status === 'abweichend');
+  if (!todo.length) { alert('Alle gezeichneten PV-Flächen sind bereits als Leistung übernommen.'); return; }
+  if (!confirm(`${todo.length} Gebäude angleichen?\nkWp aus der gezeichneten Fläche ins PV-Asset schreiben, fehlende PV-Assets anlegen.`)) return;
+  let created = 0, updated = 0;
+  for (const d of todo) {
+    const g = (window.gebaeude || []).find(x => x.id === d.id);
+    if (!g) continue;
+    const had = !!getAssetsForBuilding(g.id).find(a => a.type === 'PV');
+    if (!_pvuEnsurePvAsset(g)) continue;
+    if (!had) created++;
+    window.overwritePvAsset(g.id);
+    updated++;
+  }
+  if (typeof recalcStromNetz === 'function') recalcStromNetz();
+  if (typeof redrawAllAssets === 'function') redrawAllAssets();
+  pvuRender();
+  alert(`${updated} PV-Assets aktualisiert (${created} neu angelegt).`);
+}
+
+// PV-Assets ohne gezeichnete Belegungsfläche entfernen (Karteileichen aus
+// gelöschten Flächen oder versehentlich angelegte Anlagen).
+export function pvuLoescheAssetsOhneFlaeche() {
+  const todo = _pvuScan().dach.filter(d => d.status === 'assetOhneFlaeche');
+  if (!todo.length) { alert('Keine PV-Assets ohne gezeichnete Fläche vorhanden.'); return; }
+  if (!confirm(`${todo.length} PV-Asset(s) ohne gezeichnete Fläche löschen?\nEs werden nur PV-Anlagen ohne Belegungsfläche entfernt — gezeichnete Flächen bleiben unberührt.`)) return;
+  let del = 0;
+  for (const d of todo) {
+    const pv = getAssetsForBuilding(d.id).find(a => a.type === 'PV');
+    if (pv && deleteAsset(pv.id)) del++;
+  }
+  if (typeof recalcStromNetz === 'function') recalcStromNetz();
+  if (typeof redrawAllAssets === 'function') redrawAllAssets();
+  pvuRender();
+  alert(`${del} PV-Asset(s) ohne Fläche gelöscht.`);
+}
+
+export function pvuTogglePanel() {
+  _pvuPanelOpen = !_pvuPanelOpen;
+  const panel = document.getElementById('pv-uebersicht-panel');
+  const btn   = document.getElementById('btn-pv-uebersicht-toggle');
+  if (!panel) return;
+  panel.style.display = _pvuPanelOpen ? 'block' : 'none';
+  btn?.classList.toggle('active', _pvuPanelOpen);
+  if (_pvuPanelOpen) pvuRender();
+}
+
+export function pvuRender() {
+  const el = document.getElementById('pv-uebersicht-content');
+  if (!el) return;
+  const { dach, frei } = _pvuScan();
+  const sumDrawn  = dach.reduce((s, d) => s + (d.drawn || 0), 0);
+  const sumAsset  = dach.reduce((s, d) => s + (d.assetKwp || 0), 0);
+  const sumFrei   = frei.reduce((s, f) => s + (f.kwp || 0), 0);
+  const offen     = dach.filter(d => d.status === 'fehlt' || d.status === 'abweichend');
+  const ohneFl    = dach.filter(d => d.status === 'assetOhneFlaeche');
+
+  const STAT = {
+    ok:               { txt: '✓ ok',          col: '#66bb6a' },
+    abweichend:       { txt: '⚠ abweichend',   col: '#ffa726' },
+    fehlt:            { txt: '⛔ kein Asset',   col: '#ef5350' },
+    assetOhneFlaeche: { txt: 'ⓘ ohne Fläche',  col: '#90a4ae' },
+  };
+  const rowHtml = d => {
+    const s = STAT[d.status] || STAT.ok;
+    const act = (d.status === 'fehlt' || d.status === 'abweichend')
+      ? `<button onclick="pvuFixOne(${d.id})" title="kWp übernehmen (Asset ggf. anlegen)"
+           style="padding:1px 6px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:9px;
+                  border:1px solid #ffd54f;color:#ffd54f;background:rgba(255,213,79,.08);">übernehmen</button>`
+      : '';
+    return `<div style="display:grid;grid-template-columns:1.4fr .5fr .6fr .6fr .9fr;gap:4px;align-items:center;
+         padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:10px;">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;color:#cfd8dc;"
+            title="${d.name} — auf Karte zeigen" onclick="pvuFocus(${d.id})">${d.name}</span>
+      <span style="text-align:right;color:var(--muted);">${d.mods || '—'}</span>
+      <span style="text-align:right;color:#ffd54f;">${d.hasBel ? d.drawn.toLocaleString('de-DE') : '—'}</span>
+      <span style="text-align:right;color:${d.assetKwp == null ? '#ef5350' : '#cfd8dc'};">${d.assetKwp == null ? '—' : d.assetKwp.toLocaleString('de-DE')}</span>
+      <span style="text-align:right;color:${s.col};display:flex;gap:4px;justify-content:flex-end;align-items:center;">${s.txt}${act ? ' ' + act : ''}</span>
+    </div>`;
+  };
+
+  el.innerHTML = `
+  <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:8px;
+       display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center;">
+    <div><div style="font-size:15px;font-weight:700;color:#ffd54f;">${sumDrawn.toFixed(0)}</div>
+         <div style="font-size:9px;color:var(--muted);">kWp gezeichnet</div></div>
+    <div><div style="font-size:15px;font-weight:700;color:#cfd8dc;">${sumAsset.toFixed(0)}</div>
+         <div style="font-size:9px;color:var(--muted);">kWp in Assets</div></div>
+    <div><div style="font-size:15px;font-weight:700;color:${offen.length ? '#ffa726' : '#66bb6a'};">${offen.length}</div>
+         <div style="font-size:9px;color:var(--muted);">zu übernehmen</div></div>
+  </div>
+  ${offen.length ? `<button onclick="pvuUebernehmenAlle()"
+      style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
+             border:1px solid #ffd54f;color:#ffd54f;background:rgba(255,213,79,.08);margin-bottom:8px;">
+      ☀ Alle ${offen.length} übernehmen (fehlende Assets anlegen)</button>` : ''}
+  ${ohneFl.length ? `<button onclick="pvuLoescheAssetsOhneFlaeche()"
+      title="PV-Assets entfernen, denen keine gezeichnete Belegungsfläche zugrunde liegt"
+      style="width:100%;padding:6px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;
+             border:1px solid #ef5350;color:#ef5350;background:rgba(239,83,80,.06);margin-bottom:8px;">
+      🗑 ${ohneFl.length} PV-Asset(s) ohne Fläche löschen</button>` : ''}
+  ${dach.length ? `
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;">Dach-PV (${dach.length})</div>
+    <div style="display:grid;grid-template-columns:1.4fr .5fr .6fr .6fr .9fr;gap:4px;font-size:9px;color:var(--muted);padding-bottom:2px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <span>Gebäude</span><span style="text-align:right;">Mod.</span><span style="text-align:right;">gez.</span><span style="text-align:right;">Asset</span><span style="text-align:right;">Status</span>
+    </div>
+    ${dach.map(rowHtml).join('')}` : '<div style="font-size:10px;color:var(--muted);">Keine Dach-PV-Flächen gezeichnet.</div>'}
+  ${frei.length ? `
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 2px;">Freiflächen-PV (${frei.length}) · Σ ${sumFrei.toFixed(0)} kWp</div>
+    ${frei.map(f => `<div style="display:flex;justify-content:space-between;font-size:10px;color:#cfd8dc;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+      <span>${f.name}</span><span style="color:#ffd54f;">${f.kwp.toLocaleString('de-DE')} kWp · ${f.mods} Mod.</span></div>`).join('')}` : ''}
+  <div style="font-size:9px;color:var(--muted);margin-top:8px;line-height:1.4;">
+    „gezeichnet" = kWp aus den platzierten Modulen · „Asset" = aktueller Wert im PV-Asset (treibt alle Analysen).
+    Abweichungen entstehen, wenn nach dem Zeichnen „kWp übernehmen" vergessen wurde.
+  </div>`;
+}
+
 // ── Nutzungstypen-Dropdown & Modal ──────────────────────────────────────────
 function _buildNutzungOptions(current) {
   const typen = getNutzungstypen();
@@ -841,7 +1019,7 @@ function buildDachSection(g, opts = {}) {
   // Steuerelemente je Dachform: Flachdach = GCR + Aufständerung · Schrägdach = Belegungsgrad
   const usedAz = g.dachAzimut ?? 180;
   const flaechenControls = isPitched ? `
-    <div style="font-size:9px;color:var(--muted);margin-top:6px;">${isSattel ? 'Ganze Dachfläche zeichnen — wird automatisch am First in zwei Seiten (Azimut + Gegenseite) geteilt. ' : 'Dachfläche je Dachseite zeichnen. '}Module liegen parallel zum Dach; Grundriss wird mit 1/cos(Neigung) auf die echte Dachfläche projiziert.</div>
+    <div style="font-size:9px;color:var(--muted);margin-top:6px;">${isSattel ? 'Ganze Dachfläche zeichnen — wird automatisch am First in zwei Seiten (Azimut + Gegenseite) geteilt. ' : 'Dachfläche je Dachseite zeichnen. '}Module liegen parallel zum Dach; Grundriss wird mit 1/cos(Neigung) auf die echte Dachfläche projiziert. Rand (0,3 m) bleibt frei.</div>
     <div style="display:flex;flex-direction:column;gap:4px;margin-top:5px;">
       <div class="inp-group">
         <div class="inp-label" title="Anteil der Dachfläche, der mit Modulen belegt wird (Ränder/Rahmen abgezogen)">Belegungsgrad (%)</div>
@@ -873,8 +1051,14 @@ function buildDachSection(g, opts = {}) {
           <span style="min-width:28px;text-align:right;font-size:11px;color:#ef9a9a;font-weight:600;">${usedAz}°</span>
         </div>
       </div>
+      ${isSattel ? `
+      <div style="display:flex;align-items:center;gap:4px;">
+        <button class="btn-xs" style="flex:1;" data-click="startGebFirstDraw(${g.id})" title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks) — nötig bei schiefen/asymmetrischen Grundrissen">📐 First neu zeichnen</button>
+        ${g.pvRidgeOverride ? `<button class="btn-xs" data-click="resetGebFirst(${g.id})" title="First zurück auf automatische Mitte">↺</button>` : ''}
+      </div>
+      ${g.pvRidgeOverride ? '<div style="font-size:9px;color:#ffd54f;">First manuell gesetzt.</div>' : ''}` : ''}
     </div>` : `
-    <div style="font-size:9px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen.</div>
+    <div style="font-size:9px;color:var(--muted);margin-top:6px;">Belegbare Dachflächen zeichnen (Satellit), Sperrflächen für Kamine/Gauben/Verschattung abziehen. Rand (0,3 m) bleibt frei; Ost-West-Aufständerung rechnet mit ~90 % Ertragsfaktor.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;">
       <div class="inp-group">
         <div class="inp-label" title="Ground Coverage Ratio: Anteil Modulfläche an gezeichneter Fläche">GCR (% Belegung)</div>
@@ -959,6 +1143,7 @@ window.updateGebDach = function(gId, field, value) {
   if (field === 'dachform') {
     g.dachform = value;
     g.dachAutoAzimut = false; // Manuelle Änderung löscht Auto-Flag
+    if (value !== 'sattel') delete g.pvRidgeOverride; // First-Override nur für Satteldach relevant
   } else if (field === 'dachAzimut') {
     g.dachAzimut = value === '' ? null : parseFloat(value);
     g.dachAutoAzimut = false;
@@ -977,6 +1162,7 @@ window.ermittleAzimut = function(gId) {
   if (az === null) return;
   g.dachAzimut     = az;
   g.dachAutoAzimut = true;
+  delete g.pvRidgeOverride; // zurück auf automatische Firstlage (Schwerpunkt)
   if (g.pvModus === 'flaechen' && _hasBelegung(g)) { redrawGebPvModules(g); calcStromPanel(); }
   _rerenderCard(gId);
 };
@@ -1057,6 +1243,45 @@ export function setPvVisible(visible) {
 window.setPvVisible = setPvVisible;
 
 
+// Halbebenen-Clip im metrischen XY-Raum: behält die Seite, auf der
+// (p−a)·normal ≥ 0 gilt. Baustein für den Rand-Inset unten.
+function _clipHalfPlaneXY(poly, a, normal) {
+  const f = p => (p.x - a.x) * normal.x + (p.y - a.y) * normal.y;
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const pa = poly[i], pb = poly[(i + 1) % poly.length];
+    const fa = f(pa), fb = f(pb);
+    if (fa >= 0) out.push(pa);
+    if ((fa >= 0) !== (fb >= 0)) {
+      const t = fa / (fa - fb);
+      out.push({ x: pa.x + t * (pb.x - pa.x), y: pa.y + t * (pb.y - pa.y) });
+    }
+  }
+  return out;
+}
+
+// Polygon um `dist` Meter nach innen versetzen (Randabstand für Modulraster,
+// z. B. Wind-/Brandschutzzonen). Schneidet für jede Kante die inwärts verschobene
+// Halbebene — exakt für konvexe Polygone, bei konkaven ggf. leicht konservativ
+// (kappt Einbuchtungen etwas zu früh, nie zu spät → nie mehr Module als real passen).
+function _insetPolygonXY(poly, dist) {
+  if (!(dist > 0) || poly.length < 3) return poly;
+  let cx = 0, cy = 0;
+  for (const p of poly) { cx += p.x; cy += p.y; }
+  cx /= poly.length; cy /= poly.length;
+  let result = poly;
+  for (let i = 0; i < poly.length && result.length >= 3; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const ex = b.x - a.x, ey = b.y - a.y;
+    const len = Math.hypot(ex, ey);
+    if (!len) continue;
+    let nx = -ey / len, ny = ex / len; // Normalenkandidat, senkrecht zur Kante
+    if ((cx - a.x) * nx + (cy - a.y) * ny < 0) { nx = -nx; ny = -ny; } // Richtung zum Schwerpunkt = innen
+    result = _clipHalfPlaneXY(result, { x: a.x + nx * dist, y: a.y + ny * dist }, { x: nx, y: ny });
+  }
+  return result;
+}
+
 // ── Punkt-in-Polygon (Ray-Casting) im metrischen XY-Raum ────────────────────
 function _pip(pt, poly) {
   let inside = false;
@@ -1127,8 +1352,12 @@ export function placePvModules(belPolys, sperrPolys, opts = {}) {
   const cosL   = Math.cos(latRef * Math.PI / 180);
   // metrische Projektion: Ursprung oben/links, y nach unten (SVG-konform)
   const toXY = p => ({ x: (p.lng - minLng) * 111320 * cosL, y: (maxLat - p.lat) * 111320 });
-  const belXY   = bel.map(poly => poly.map(toXY));
+  // Randabstand: Belegungsfläche vor der Rasterung um `edgeInset` Meter nach innen
+  // versetzen (Wind-/Brandschutzzonen, Montagerand) — Default 0,3 m.
+  const edgeInset = opts.edgeInset != null ? opts.edgeInset : 0.3;
+  const belXY   = bel.map(poly => _insetPolygonXY(poly.map(toXY), edgeInset)).filter(p => p.length >= 3);
   const sperrXY = sperr.map(poly => poly.map(toXY));
+  if (!belXY.length) return { modules: [], count: 0, bbox: null };
 
   const mb  = opts.moduleW || 1.1;
   const ml  = opts.moduleL || 1.7;
@@ -1260,8 +1489,9 @@ function _computeGebPvModules(g) {
     const maxLng = Math.max(...allPts.map(p => p.lng)), minLng = Math.min(...allPts.map(p => p.lng));
     const cosL   = Math.cos((maxLat + minLat) / 2 * Math.PI / 180);
     const frame  = { minLat, maxLat, minLng, maxLng };
-    // Eine Firstlinie durch den Gesamt-Schwerpunkt; jede Belegung daran klippen
-    const C = _polyCentroidLL(allPts);
+    // Firstlinie: manuell gesetzter Punkt (First neu zeichnen) oder Schwerpunkt der
+    // Belegung als Default; jede Belegung wird an dieser Linie geklippt.
+    const C = g.pvRidgeOverride || _polyCentroidLL(allPts);
     const front = [], back = [];
     for (const poly of bel) {
       const fr = _clipPolyHalfPlane(poly, C, A, cosL, true);
@@ -1311,8 +1541,9 @@ function _gebPvSig(g) {
   const b = document.getElementById('pv-modul-breite')?.value;
   const l = document.getElementById('pv-modul-laenge')?.value;
   const fls = (g.pvFlaechen || []).map(f => `${f.id}:${f.typ}:${Math.round(f.flaeche || 0)}`).join(',');
+  const ridge = g.pvRidgeOverride ? `${g.pvRidgeOverride.lat.toFixed(6)},${g.pvRidgeOverride.lng.toFixed(6)}` : '';
   return [fls, g.pvFlGcr, g.pvFlAusrichtung, g.pvFlBelegung,
-          g.dachform, g.dachNeigung, g.dachAzimut, b, l].join('|');
+          g.dachform, g.dachNeigung, g.dachAzimut, ridge, b, l].join('|');
 }
 
 // Satteldach-Ertragsfaktor: nach Modulanzahl gewichteter Mittelwert der beiden
@@ -1397,6 +1628,67 @@ window.cancelGebPvDraw = function() {
   window.gebPvDraw = null;
   if (typeof map !== 'undefined') map.getContainer().style.cursor = '';
   hideHint();
+};
+
+// ── First manuell nachzeichnen (Satteldach) ─────────────────────────────────
+// 2 Klicks auf die echte Firstlinie (Satellitenbild) statt Auto-Split am
+// Flächen-Schwerpunkt. Legt nur die POSITION fest (pvRidgeOverride); die
+// Richtung übernimmt weiterhin den Azimut-Regler (aus den 2 Punkten neu gesetzt).
+window.startGebFirstDraw = function(gId) {
+  const g = window.gebaeude?.find(x => x.id === gId);
+  if (!g) return;
+  window.cancelGebPvDraw();
+  window.cancelGebFirstDraw();
+  ensureSatellite();
+  if (g.polygonLayer) { try { map.fitBounds(g.polygonLayer.getBounds(), { padding: [60, 60], maxZoom: 21 }); } catch(e) {} }
+  window.gebFirstDraw = { gId, points: [], polyline: null };
+  map.getContainer().style.cursor = 'crosshair';
+  showHint('📐 First: Anfangs- und Endpunkt der Firstlinie anklicken · Esc = abbrechen');
+};
+
+window.cancelGebFirstDraw = function() {
+  const st = window.gebFirstDraw;
+  if (st?.polyline) map.removeLayer(st.polyline);
+  window.gebFirstDraw = null;
+  if (typeof map !== 'undefined') map.getContainer().style.cursor = '';
+  hideHint();
+};
+
+window.finishGebFirstDraw = function() {
+  const st = window.gebFirstDraw;
+  if (!st || st.points.length < 2) return;
+  const [p1, p2] = st.points;
+  const g = window.gebaeude?.find(x => x.id === st.gId);
+  window.cancelGebFirstDraw();
+  if (!g) return;
+  const cosL  = Math.cos(((p1.lat + p2.lat) / 2) * Math.PI / 180);
+  const dLat  = (p2.lat - p1.lat) * 111320;
+  const dLng  = (p2.lng - p1.lng) * 111320 * cosL;
+  // Firstrichtung (0–180°, da eine Linie keine Vorzugsrichtung hat) → Falllinie senkrecht dazu
+  const ridgeAngle = ((Math.atan2(dLng, dLat) * 180 / Math.PI) % 180 + 180) % 180;
+  const faceA = (ridgeAngle + 90) % 360;
+  const faceB = (ridgeAngle - 90 + 360) % 360;
+  const cur   = g.dachAzimut ?? 180;
+  const devA  = Math.min(Math.abs(faceA - cur), 360 - Math.abs(faceA - cur));
+  const devB  = Math.min(Math.abs(faceB - cur), 360 - Math.abs(faceB - cur));
+  g.dachAzimut     = Math.round(devA <= devB ? faceA : faceB);
+  g.dachAutoAzimut = false;
+  g.pvRidgeOverride = { lat: (p1.lat + p2.lat) / 2, lng: (p1.lng + p2.lng) / 2 };
+  redrawGebPvModules(g);
+  _rerenderCard(g.id);
+  _updateGebLabelPv(g.id);
+  calcStromPanel();
+  renderGebPvPanel();
+};
+
+window.resetGebFirst = function(gId) {
+  const g = window.gebaeude?.find(x => x.id === gId);
+  if (!g || !g.pvRidgeOverride) return;
+  delete g.pvRidgeOverride;
+  redrawGebPvModules(g);
+  _rerenderCard(gId);
+  calcStromPanel();
+  renderGebPvPanel();
 };
 
 window.finishGebPvDraw = function() {
@@ -1796,6 +2088,7 @@ export function _buildProjectData() {
       strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',
       dachform: g.dachform || 'sattel', dachAzimut: g.dachAzimut ?? null,
       dachNeigung: g.dachNeigung ?? null, dachAutoAzimut: g.dachAutoAzimut || false,
+      pvRidgeOverride: g.pvRidgeOverride || null,
       pvModus: g.pvModus || 'pauschal', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null,
       pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche })),
@@ -1889,6 +2182,9 @@ export function _buildProjectData() {
     customNutzungstypen: NUTZUNGSTYPEN_CUSTOM.map(t => ({ ...t })),
     customElSlpProfiles: ELSLP_CUSTOM.map(p => ({ ...p })),
     elSlpWpm2Overrides:  { ...ELSLP_WPM2 },
+    // ERA5-Standort-Winddaten (window-Bridge aus 13q-wind-ertrag.js) — einmal geladen,
+    // sollen sie Reload/Offline-Nutzung überleben (~60 KB, Stundenwerte gerundet)
+    windStandortDaten: (typeof window.windSiteSerialize === 'function' ? window.windSiteSerialize() : null),
   };
 }
 
@@ -1965,6 +2261,7 @@ export function _loadProject(project) {
             newG.dachAzimut    = g.dachAzimut    ?? null;
             newG.dachNeigung   = g.dachNeigung   ?? null;
             newG.dachAutoAzimut = g.dachAutoAzimut || false;
+            newG.pvRidgeOverride = g.pvRidgeOverride || null;
             // PV-Flächenzeichnung (Belegungs-/Sperrflächen) wiederherstellen
             newG.pvModus        = g.pvModus || 'pauschal';
             newG.pvFlGcr        = g.pvFlGcr ?? null;
@@ -2385,6 +2682,12 @@ export function _loadProject(project) {
       if (project.elSlpWpm2Overrides && typeof project.elSlpWpm2Overrides === 'object') {
         Object.keys(ELSLP_WPM2).forEach(k => delete ELSLP_WPM2[k]);
         Object.assign(ELSLP_WPM2, project.elSlpWpm2Overrides);
+      }
+
+      // ERA5-Standort-Winddaten wiederherstellen — bzw. leeren, wenn das geladene
+      // Projekt keine enthält (sonst blieben Daten der vorigen Liegenschaft aktiv)
+      if (typeof window.windSiteRestore === 'function') {
+        window.windSiteRestore(project.windStandortDaten || null);
       }
 
       redrawErzeugerIcons();

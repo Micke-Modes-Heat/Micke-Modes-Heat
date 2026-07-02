@@ -5,7 +5,9 @@
 import { map } from './02b-gebaeude.js';
 import { globalYear } from './01-globals-varianten.js';
 import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
-import { selectFromMap } from './02c-karte-werkzeuge.js';
+import { selectFromMap, lwWpSchallRadiusM } from './02c-karte-werkzeuge.js';
+import { calcWindLwaAuto } from './13q-wind-ertrag.js';
+import { computeSuitabilityGrid } from './13s-wind-flaeche.js';
 
 let assetLayer = null;       // Gebäude-gruppierte Assets (zoom-abhängig)
 let standaloneLayer = null; // Frei platzierte Assets (immer sichtbar)
@@ -305,6 +307,7 @@ function drawBuildingGroup(buildingId) {
         if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
       }
       if (a.type === 'Lade') _drawLadeParkingRects(a);
+      if (a.type === 'Wind') { _drawWindRings(a); _drawWindEignungsflaeche(a); }
     }
   });
 
@@ -335,6 +338,7 @@ function drawBuildingGroup(buildingId) {
     a.lng = c.lng;
     _registerStromNode(a, m, c.lat, c.lng, buildingId);
     if (a.type === 'Lade') _drawLadeParkingRects(a);
+    if (a.type === 'Wind') { _drawWindRings(a); _drawWindEignungsflaeche(a); }
   }
 }
 
@@ -534,6 +538,125 @@ function _updateLadeParkingCoords(asset, lat, lng) {
   asset._ladeBusLine.setLatLngs(bus);
 }
 
+// ── Wind-Asset: Abstands- und Lärmringe (analog zu den LW-WP-Schallringen) ──
+function _drawWindRings(asset) {
+  if (asset._windLayer) { asset._windLayer.remove(); asset._windLayer = null; }
+  const p = asset.props || {};
+  const showAbstand = p.abstandVisible !== false;
+  const showLaerm   = p.laermVisible === true;
+  if (!showAbstand && !showLaerm) return;
+
+  const pt    = L.latLng(asset.lat, asset.lng);
+  const group = L.layerGroup();
+
+  if (showAbstand) {
+    const rotorD = parseFloat(p.rotordurchmesserM)   || 60;
+    const mult   = parseFloat(p.abstandMultiplikator) || 5;
+    const r = mult * rotorD;
+    if (r > 0) {
+      L.circle(pt, { radius: r, color: '#ab47bc', weight: 1.5, dashArray: '6 4', fillColor: '#ab47bc', fillOpacity: 0.06 })
+        .bindTooltip(`Planungsabstand (Faustregel): ${mult}× Rotordurchmesser = ${r.toFixed(0)} m`, { sticky: true })
+        .addTo(group);
+    }
+  }
+
+  if (showLaerm) {
+    const ratedKw = parseFloat(p.leistungKW) || 500;
+    const lwa = parseFloat(p.windLwa) || calcWindLwaAuto(ratedKw);
+    const schallStufen = [55, 50, 45, 40, 35];
+    const schallFarben = ['#b71c1c', '#e65100', '#f9a825', '#8bc34a', '#2e7d32'];
+    for (let i = schallStufen.length - 1; i >= 0; i--) {
+      const r = lwWpSchallRadiusM(lwa, schallStufen[i]);
+      if (r > 0.5 && r < 3000) {
+        const circle = L.circle(pt, { radius: r, color: schallFarben[i], weight: 1.5, fillColor: schallFarben[i], fillOpacity: 0.06 }).addTo(group);
+        circle.bindTooltip('', { sticky: true, direction: 'top', opacity: 0.9 });
+        circle.on('mousemove', ev => {
+          const d = pt.distanceTo(ev.latlng);
+          if (d <= 0) return;
+          const lpAtD = lwa - 11 - 20 * Math.log10(d);
+          const tt = circle.getTooltip();
+          if (!tt) return;
+          tt.setContent(`<div class="lwwp-tooltip">Abstand: ${d.toFixed(1)} m<br>Pegel ≈ ${lpAtD.toFixed(1)} dB(A)</div>`);
+          tt.setLatLng(ev.latlng);
+          if (!map.hasLayer(tt)) circle.openTooltip(ev.latlng);
+        });
+      }
+    }
+  }
+
+  group.addTo(standaloneLayer);
+  asset._windLayer = group;
+}
+
+// Live-Update nur der Ring-Position (kein Layer-Neubau) — für drag
+function _updateWindRingsPosition(asset, lat, lng) {
+  if (!asset._windLayer) return;
+  const pt = L.latLng(lat, lng);
+  asset._windLayer.eachLayer(layer => { if (layer.setLatLng) layer.setLatLng(pt); });
+}
+
+// ── Wind-Eignungsfläche: Rasterüberlagerung des Plangebiets ─────────────────
+// Nur eine Instanz gleichzeitig sichtbar (zuletzt aktivierte Anlagenkonfiguration) —
+// mehrere überlagerte Raster wären auf der Karte kaum unterscheidbar.
+let _windEignungsLayer = null;
+
+function _buildingRingsForEignung() {
+  const buildings = window.gebaeude || [];
+  return buildings
+    .filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3)
+    .map(g => g.polygon.map(pt => ({ lat: pt.lat ?? pt[0], lng: pt.lng ?? pt[1] })));
+}
+
+function _drawWindEignungsflaeche(asset) {
+  if (_windEignungsLayer) { _windEignungsLayer.remove(); _windEignungsLayer = null; }
+  asset._eignungsStats = null;
+  const p = asset.props || {};
+  if (p.eignungsflaecheVisible !== true) return;
+
+  // Eigenes Windgebiet geht vor dem allgemeinen Plangebiet (siehe 02c-karte-werkzeuge.js
+  // toggleDrawWindGebiet / _distanceToPlangebietM in 13e-assets-inspector.js).
+  const poly = window.windGebietPolygon || window.areaPolygon;
+  if (!poly || typeof poly.getLatLngs !== 'function') { asset._eignungsStats = { error: 'no-plangebiet' }; return; }
+  const rings = poly.getLatLngs();
+  const ring  = (Array.isArray(rings[0]) ? rings[0] : rings).map(ll => ({ lat: ll.lat, lng: ll.lng }));
+
+  const rotorD  = parseFloat(p.rotordurchmesserM)    || 60;
+  const mult    = parseFloat(p.abstandMultiplikator) || 5;
+  const radiusM = rotorD * mult;
+
+  const result = computeSuitabilityGrid({
+    polygonRing: ring,
+    buildingRings: _buildingRingsForEignung(),
+    radiusM,
+    gridStepM: Math.max(10, Math.round(radiusM / 10)),
+  });
+  asset._eignungsStats = { ...result, radiusM };
+  if (!result.cells.length) return;
+
+  const group = L.featureGroup(); // featureGroup statt layerGroup — liefert .getBounds() für Zoom-Funktion
+  const mPerLat = 111320;
+  const half = result.gridStepM / 2;
+  for (const c of result.cells) {
+    const mPerLng = 111320 * Math.cos((c.lat * Math.PI) / 180);
+    const dLat = half / mPerLat, dLng = half / mPerLng;
+    L.rectangle([[c.lat - dLat, c.lng - dLng], [c.lat + dLat, c.lng + dLng]], {
+      color: '#00e676', weight: 1, opacity: 0.9, fillColor: '#00e676', fillOpacity: 0.55, interactive: false,
+    }).addTo(group);
+  }
+  group.addTo(standaloneLayer);
+  _windEignungsLayer = group;
+}
+
+// Kartenausschnitt auf die zuletzt berechnete Eignungsfläche zoomen (Fläche kann bei
+// großen Plangebieten weit vom aktuell sichtbaren Kartenausschnitt entfernt liegen).
+export function zoomToWindEignungsflaeche() {
+  if (!_windEignungsLayer) return false;
+  const bounds = _windEignungsLayer.getBounds?.();
+  if (!bounds || !bounds.isValid || !bounds.isValid()) return false;
+  map.fitBounds(bounds, { padding: [40, 40] });
+  return true;
+}
+
 // ── Einzel-Marker (Assets ohne Gebäude) ─────────────────────────────────────
 function drawSingleMarker(asset) {
   ensureLayer();
@@ -609,12 +732,19 @@ function drawSingleMarker(asset) {
       _updateLadeParkingCoords(asset, ll.lat, ll.lng);
     });
   }
+  if (asset.type === 'Wind') {
+    m.on('drag', () => {
+      const ll = m.getLatLng();
+      _updateWindRingsPosition(asset, ll.lat, ll.lng);
+    });
+  }
 
   m.on('dragend', () => {
     const ll = m.getLatLng();
     asset.lat = ll.lat;
     asset.lng = ll.lng;
     if (asset.type === 'Lade') _drawLadeParkingRects(asset);
+    if (asset.type === 'Wind') { _drawWindRings(asset); _drawWindEignungsflaeche(asset); }
     // Strom-Knoten-Position synchron halten
     const sn = (window.stromNodes || []).find(n => n.id === asset.id);
     if (sn) {
@@ -640,6 +770,8 @@ function drawSingleMarker(asset) {
 
   // Lade: Parkplatz-Polygone in Geo-Koordinaten (skaliert automatisch mit Zoom)
   if (asset.type === 'Lade') _drawLadeParkingRects(asset);
+  // Wind: Abstands-/Lärmringe und Eignungsfläche
+  if (asset.type === 'Wind') { _drawWindRings(asset); _drawWindEignungsflaeche(asset); }
 }
 
 // ── Öffentliche API ─────────────────────────────────────────────────────────
@@ -671,7 +803,8 @@ export function redrawAllAssets() {
   ensureLayer();
   assetLayer.clearLayers();
   standaloneLayer.clearLayers();
-  for (const a of ASSETS.items) { a._marker = null; a._ladeLayer = null; }
+  _windEignungsLayer = null;
+  for (const a of ASSETS.items) { a._marker = null; a._ladeLayer = null; a._windLayer = null; a._eignungsStats = null; }
 
   // Assets mit Gebäude-Zuordnung → ein Typ-Chip-Container pro Gebäude,
   // alle übrigen Assets als Einzel-Marker.

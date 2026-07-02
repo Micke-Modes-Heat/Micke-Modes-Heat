@@ -14,6 +14,13 @@ import { redrawAllAssets } from './13b-assets-render.js';
 export const assetSelection = new Set();
 export let bulkModeActive  = false;
 
+// Zuletzt per Shift+Drag aufgezogener Kartenbereich (Leaflet-LatLngBounds) — bleibt
+// nach dem Loslassen „gemerkt", damit der Typ-Filter danach beliebig oft auf denselben
+// Bereich angewendet werden kann, ohne erneut zu draggen. Wird von selBoxAreaClear(),
+// selClear() und beim Verlassen des Bulk-Modus zurückgesetzt; ein neuer Drag überschreibt sie.
+let _lastBoxBounds = null;
+export function selGetBoxArea() { return _lastBoxBounds; }
+
 // Live-Getter für andere Module (z. B. Marker-Rendering in 13b) — eine reassignte
 // `export let`-Variable würde auf window.* veralten, eine Funktion liest immer aktuell.
 export function isBulkModeActive() { return bulkModeActive; }
@@ -42,7 +49,26 @@ export function selSet(ids) {
 
 export function selClear() {
   assetSelection.clear();
+  _lastBoxBounds = null;
   _afterSelChange();
+}
+
+// Kartenbereich „vergessen" (Bereichs-Typ-Filter ausblenden), ohne die aktuelle
+// Selektion anzutasten.
+export function selBoxAreaClear() {
+  _lastBoxBounds = null;
+  selRenderBulkBar();
+}
+
+// Typ-Filter nachträglich auf den gemerkten Kartenbereich anwenden (ersetzt die
+// Selektion durch die Treffer im Bereich — wie der Topologie-Filter).
+export function selBoxAreaFilterChange(type) {
+  if (!_lastBoxBounds) return;
+  const ids = ASSETS.items
+    .filter(a => a.lat != null && a.lng != null && _lastBoxBounds.contains([a.lat, a.lng]))
+    .filter(a => !type || a.type === type)
+    .map(a => a.id);
+  selSet(ids);
 }
 
 // ── Bulk-Modus ────────────────────────────────────────────────────────────────
@@ -54,6 +80,7 @@ export function selToggleBulkMode() {
   bulkModeActive = !bulkModeActive;
   if (!bulkModeActive) {
     assetSelection.clear(); // Selektion beim Deaktivieren leeren
+    _lastBoxBounds = null;
   }
   _applyBulkModeView();
   _refreshDimming();
@@ -64,7 +91,7 @@ export function selToggleBulkMode() {
 export function selSetBulkMode(active) {
   if (bulkModeActive === active) return;
   bulkModeActive = active;
-  if (!active) assetSelection.clear();
+  if (!active) { assetSelection.clear(); _lastBoxBounds = null; }
   _applyBulkModeView();
   _refreshDimming();
   _updateBulkModeToggleBtn();
@@ -325,8 +352,21 @@ export function selRenderBulkBar() {
   }
 
   _fillFilterDropdowns();
+  _renderBoxAreaSection();
 
   bar.style.display = 'block';
+}
+
+// Typ-<option>-Liste aus den vorkommenden Asset-Typen (gemeinsam für Topologie- und
+// Kartenbereich-Filter, sortiert nach Netz-Hierarchie).
+function _typeOptionsHtml() {
+  const vorhandene = [...new Set(ASSETS.items.map(a => a.type))]
+    .sort((a, b) => (TYPE_RANK[a] ?? 9) - (TYPE_RANK[b] ?? 9));
+  return '<option value="">alle Typen</option>'
+    + vorhandene.map(t => {
+        const cfg = ASSET_CFG[t];
+        return `<option value="${t}">${cfg?.icon || ''} ${cfg?.label || t}</option>`;
+      }).join('');
 }
 
 // Befüllt die Topologie-Filter-Dropdowns (Objekt + Typ).
@@ -351,14 +391,29 @@ function _fillFilterDropdowns() {
   const typeSel = document.getElementById('asset-bulk-filter-type');
   if (typeSel) {
     const curVal = typeSel.value;
-    const vorhandene = [...new Set(ASSETS.items.map(a => a.type))]
-      .sort((a, b) => (TYPE_RANK[a] ?? 9) - (TYPE_RANK[b] ?? 9));
-    typeSel.innerHTML = '<option value="">alle Typen</option>'
-      + vorhandene.map(t => {
-          const cfg = ASSET_CFG[t];
-          return `<option value="${t}">${cfg?.icon || ''} ${cfg?.label || t}</option>`;
-        }).join('');
+    typeSel.innerHTML = _typeOptionsHtml();
     if (curVal) typeSel.value = curVal;
+  }
+}
+
+// Kartenbereich-Sektion: nur sichtbar, wenn gerade ein Bereich per Shift+Drag
+// gemerkt ist. Zeigt die Trefferzahl im Bereich (unabhängig vom Typ-Filter) und
+// hält den Typ-Filter-Dropdown synchron mit der aktuellen Auswahl.
+function _renderBoxAreaSection() {
+  const section = document.getElementById('asset-bulk-box-section');
+  if (!section) return;
+  if (!_lastBoxBounds) { section.style.display = 'none'; return; }
+  section.style.display = 'flex';
+
+  const inArea = ASSETS.items.filter(a => a.lat != null && a.lng != null && _lastBoxBounds.contains([a.lat, a.lng]));
+  const countEl = document.getElementById('asset-bulk-box-count');
+  if (countEl) countEl.textContent = `${inArea.length} im Bereich`;
+
+  const boxTypeSel = document.getElementById('asset-bulk-box-filter-type');
+  if (boxTypeSel) {
+    const curVal = boxTypeSel.value;
+    boxTypeSel.innerHTML = _typeOptionsHtml();
+    if (curVal) boxTypeSel.value = curVal;
   }
 }
 
@@ -643,8 +698,11 @@ export function selInitBoxSelect() {
         .map(a => a.id);
       if (ids.length > 0) {
         for (const id of ids) assetSelection.add(id);
-        _afterSelChange();
       }
+      // Bereich merken — der eigene Bereichs-Typ-Filter kann ihn danach beliebig
+      // oft neu auswerten, ohne dass erneut gedraggt werden muss.
+      _lastBoxBounds = bounds;
+      _afterSelChange();
     }
     startLl = null;
   });

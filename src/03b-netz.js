@@ -506,6 +506,10 @@ export function toggleNetzPanel(){
 export function loadOverlay(input) {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+    loadOverlayFromPdf(file);
+    return;
+  }
   const reader = new FileReader();
   reader.onload = function(e) {
     const dataUrl = e.target.result;
@@ -518,6 +522,21 @@ export function loadOverlay(input) {
   reader.readAsDataURL(file);
 }
 
+async function loadOverlayFromPdf(file) {
+  if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  }
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 3 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  setupOverlayOnMap(canvas.toDataURL('image/png'), canvas.width, canvas.height);
+}
+
 export function setupOverlayOnMap(url, w, h) {
   clearOverlay();
   const center = map.getCenter();
@@ -525,31 +544,70 @@ export function setupOverlayOnMap(url, w, h) {
   const ratio = w / h;
   const offsetLng = offsetLat * ratio;
 
-  const bounds = [
-    [center.lat + offsetLat, center.lng - offsetLng], 
-    [center.lat - offsetLat, center.lng + offsetLng]  
+  const corners = [
+    L.latLng(center.lat + offsetLat, center.lng - offsetLng), // NW
+    L.latLng(center.lat + offsetLat, center.lng + offsetLng), // NE
+    L.latLng(center.lat - offsetLat, center.lng - offsetLng), // SW
+    L.latLng(center.lat - offsetLat, center.lng + offsetLng), // SE
   ];
 
   const opacity = document.getElementById('overlay-opacity').value;
-  window.overlayLayer = L.imageOverlay(url, bounds, {opacity: opacity, interactive: false}).addTo(map);
+  window.overlayLayer = L.distortableImageOverlay(url, { corners, opacity }).addTo(map);
+  window.overlayLayer.editing.enable();
+  createOverlayEdgeHandles();
+  window.overlayLayer.on('update', repositionOverlayEdgeHandles);
 
-  const iconNW = L.divIcon({className: 'area-edit-handle', html: '', iconSize: [14, 14]});
-  const iconSE = L.divIcon({className: 'area-edit-handle', html: '', iconSize: [14, 14]});
-
-  window.overlayMarkerNW = L.marker(bounds[0], {draggable: true, icon: iconNW, zIndexOffset: 3000}).addTo(map);
-  window.overlayMarkerSE = L.marker(bounds[1], {draggable: true, icon: iconSE, zIndexOffset: 3000}).addTo(map);
-
-  window.overlayMarkerNW.on('drag', updateOverlayBounds);
-  window.overlayMarkerSE.on('drag', updateOverlayBounds);
-
-  showHint('Verschiebe die gelben Punkte, um den Plan auf der Karte auszurichten.');
+  showHint('Klicke auf den Plan: Über die Eckgriffe kannst du ihn skalieren, drehen (Rotate-Aktion) und verzerren. Über die blauen Kantengriffe kannst du eine einzelne Seite verschieben.');
 }
 
-export function updateOverlayBounds() {
-  if (!window.overlayLayer || !window.overlayMarkerNW || !window.overlayMarkerSE) return;
-  const nw = window.overlayMarkerNW.getLatLng();
-  const se = window.overlayMarkerSE.getLatLng();
-  window.overlayLayer.setBounds([nw, se]);
+// corners = [TL, TR, BL, BR] (Reihenfolge von Leaflet.DistortableImage). Kantenpaare: oben, rechts, unten, links.
+const _OVERLAY_EDGE_PAIRS = [[0, 1], [1, 3], [3, 2], [2, 0]];
+
+function _overlayEdgeMidpoint(corners, pair) {
+  const a = corners[pair[0]], b = corners[pair[1]];
+  return L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
+}
+
+function createOverlayEdgeHandles() {
+  removeOverlayEdgeHandles();
+  const layer = window.overlayLayer;
+  if (!layer) return;
+  const icon = L.divIcon({ className: 'overlay-edge-handle', iconSize: [12, 12] });
+  window.overlayEdgeMarkers = _OVERLAY_EDGE_PAIRS.map(pair => {
+    const marker = L.marker(_overlayEdgeMidpoint(layer.getCorners(), pair), {
+      draggable: true, icon, zIndexOffset: 3100
+    }).addTo(map);
+    let lastLatLng = marker.getLatLng();
+    marker.on('dragstart', () => { window._overlayEdgeDragging = marker; });
+    marker.on('drag', () => {
+      const cur = marker.getLatLng();
+      const dLat = cur.lat - lastLatLng.lat;
+      const dLng = cur.lng - lastLatLng.lng;
+      lastLatLng = cur;
+      const newCorners = layer.getCorners().slice();
+      pair.forEach(i => { newCorners[i] = L.latLng(newCorners[i].lat + dLat, newCorners[i].lng + dLng); });
+      layer.setCorners(newCorners);
+    });
+    marker.on('dragend', () => { window._overlayEdgeDragging = null; });
+    return marker;
+  });
+}
+
+function repositionOverlayEdgeHandles() {
+  const layer = window.overlayLayer;
+  if (!window.overlayEdgeMarkers || !layer) return;
+  const corners = layer.getCorners();
+  window.overlayEdgeMarkers.forEach((marker, idx) => {
+    if (marker === window._overlayEdgeDragging) return;
+    marker.setLatLng(_overlayEdgeMidpoint(corners, _OVERLAY_EDGE_PAIRS[idx]));
+  });
+}
+
+function removeOverlayEdgeHandles() {
+  if (window.overlayEdgeMarkers) {
+    window.overlayEdgeMarkers.forEach(m => map.removeLayer(m));
+    window.overlayEdgeMarkers = null;
+  }
 }
 
 export function changeOverlayOpacity(val) {
@@ -557,9 +615,8 @@ export function changeOverlayOpacity(val) {
 }
 
 export function clearOverlay() {
+  removeOverlayEdgeHandles();
   if (window.overlayLayer) { map.removeLayer(window.overlayLayer); window.overlayLayer = null; }
-  if (window.overlayMarkerNW) { map.removeLayer(window.overlayMarkerNW); window.overlayMarkerNW = null; }
-  if (window.overlayMarkerSE) { map.removeLayer(window.overlayMarkerSE); window.overlayMarkerSE = null; }
   const fileInput = document.getElementById('overlay-file');
   if(fileInput) fileInput.value = '';
 }
