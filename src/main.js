@@ -17,6 +17,7 @@ import * as uiPanels from './04a-ui-panels.js';
 import * as emissionen3d from './04b-emissionen-3d.js';
 import * as exportMod from './05a-export.js';
 import * as bericht from './05d-bericht.js';
+import * as praesentation from './05e-praesentation.js';
 import * as stromnetz from './05b-stromnetz.js';
 import * as sankey from './05c-sankey.js';
 import * as gbiLastgang from './06a-gbi-lastgang.js';
@@ -62,7 +63,7 @@ const modules = [
   physikKonstanten, netzKosten, erzeugerCfg, optimizerDefaults, hilfeTexte,
   globals, netzPhysik, gebaeude, karteWerkzeuge,
   erzeuger, netz, gebaeudeIo, uiPanels,
-  emissionen3d, exportMod, bericht, stromnetz, sankey,
+  emissionen3d, exportMod, bericht, praesentation, stromnetz, sankey,
   gbiLastgang, glBerechnen, dispatchCore,
   analysisCharts, analysisEconomics, calcEngine,
   pvProfile, pvCalc, pvChartsOpt, pvAnalyse,

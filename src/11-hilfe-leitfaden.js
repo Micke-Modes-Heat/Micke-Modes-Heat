@@ -260,6 +260,7 @@ export const LEITFADEN_STEPS = [
       'Klicke unten in der Leiste auf <strong>„💾 Speichern"</strong> — es wird eine JSON-Datei heruntergeladen, die alle Gebäude, Netze, Erzeuger und Einstellungen enthält. Über <strong>„📂 Öffnen"</strong> kannst du sie jederzeit wieder laden.<br><br>' +
       '<strong>Ergebnisse exportieren (Tab „Ergebnis"):</strong><br>' +
       '• <strong>„📄 PDF-Bericht erstellen"</strong> — Vollständiger Bericht mit Karten, Kennzahlen und Diagrammen<br>' +
+      '• <strong>„🎬 Interaktive Präsentation"</strong> — Ergebnis-Präsentation als eigenständige HTML-Datei mit Folien und interaktiven Diagrammen, direkt an den Auftraggeber weitergebbar<br>' +
       '• <strong>„📋 Dispatch CSV"</strong> — Stundenscharfe Erzeugungsdaten aller Erzeuger<br>' +
       '• <strong>„📋 Gebäude CSV"</strong> — Gebäudeliste mit Bedarfswerten<br>' +
       '• <strong>„🖨 PDF"</strong> (unten in der Leiste) — Druckt die aktuelle Kartenansicht',

@@ -36,6 +36,7 @@ const JS_FILES = [
   '05a-export.js',
   '05b-stromnetz.js',
   '05d-bericht.js',
+  '05e-praesentation.js',
   '05c-sankey.js',
   '06a-gbi-lastgang.js',
   '06b-gl-berechnen.js',
