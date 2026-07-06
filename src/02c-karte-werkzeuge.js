@@ -202,6 +202,9 @@ export function updateViz(){
       }
     }
 
+    // Solaranlagen mit dem Gebäude ausgrauen, wenn abgerissen/geplant.
+    if (typeof window.applyGebPvDimming === 'function') window.applyGebPvDimming(g, stats.status);
+
     if(g.circleMarker){ map.removeLayer(g.circleMarker); g.circleMarker=null; }
     if(g.labelMarker) { map.removeLayer(g.labelMarker);  g.labelMarker=null; }
 

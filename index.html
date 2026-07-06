@@ -1453,19 +1453,18 @@
   <span id="fs-variante" style="color:var(--muted);margin-left:auto;">—</span>
 </div>
 
-<div class="float-panel purple-border" id="overlay-panel">
+<div class="float-panel purple-border" id="overlay-panel" style="width:380px">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'overlay-panel')"><span style="color:#ce93d8;font-size:12px">🗺️ Hintergrundplan einblenden</span><span class="drag-dots">⠿</span></div>
-  <div class="panel-info">Lade ein Bild (JPG/PNG) oder einen PDF-Grundriss hoch. Der Plan erscheint transparent auf der Karte. Klicke auf den Plan, um über die Eckgriffe zu skalieren, zu drehen und zu verzerren, bis er passgenau liegt.</div>
+  <div class="panel-info">Mehrere Bilder/PDF-Pläne als Overlays. Je Plan: 👁 ein-/ausblenden, umbenennen, Deckkraft, löschen. Ausrichten des <b>aktiven</b> Plans über Eckgriffe oder <b>Referenzpunkte</b>. Beim Schließen wird er fixiert; Pläne werden mit dem Projekt gespeichert. <span style="opacity:.7">Tipp: ▾ in der Titelleiste klappt das Panel ein, die Ecke unten rechts zieht es größer/kleiner.</span></div>
   <div class="inp-group" style="margin-bottom:10px">
-    <input type="file" id="overlay-file" accept="image/png, image/jpeg, application/pdf" class="inp-field" data-change="loadOverlay(this)" style="padding:4px"/>
+    <label class="inp-label">Plan(e) hinzufügen</label>
+    <input type="file" id="overlay-file" accept="image/png, image/jpeg, application/pdf" multiple class="inp-field" data-change="loadOverlay(this)" style="padding:4px"/>
   </div>
-  <div class="inp-group" style="margin-bottom:15px">
-    <label class="inp-label">Deckkraft des Plans</label>
-    <input type="range" id="overlay-opacity" min="0.1" max="1" step="0.1" value="0.5" data-input="changeOverlayOpacity(this.value)"/>
-  </div>
+  <div id="overlay-list" style="margin-bottom:12px"></div>
   <div class="panel-btns">
+    <button class="btn-secondary" data-click="startOverlayReference()" title="2–4 markante Punkte auf dem aktiven Plan und dieselben Stellen auf der Karte anklicken – der Plan wird dann automatisch gedreht und skaliert">🎯 Über Referenzpunkte ausrichten</button>
     <button class="btn-secondary" data-click="addGebaeude({nutzung:'custom'})">📐 Gebäude auf Plan nachzeichnen</button>
-    <button class="btn-secondary" data-click="clearOverlay()">Bild entfernen</button>
+    <button class="btn-secondary" data-click="clearOverlay()">Alle Pläne entfernen</button>
     <button class="btn-secondary" data-click="hidePanels()">Schließen</button>
   </div>
 </div>

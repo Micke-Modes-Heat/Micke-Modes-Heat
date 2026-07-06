@@ -2949,19 +2949,18 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
   <span id="fs-variante" style="color:var(--muted);margin-left:auto;">—</span>
 </div>
 
-<div class="float-panel purple-border" id="overlay-panel">
+<div class="float-panel purple-border" id="overlay-panel" style="width:380px">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'overlay-panel')"><span style="color:#ce93d8;font-size:12px">🗺️ Hintergrundplan einblenden</span><span class="drag-dots">⠿</span></div>
-  <div class="panel-info">Lade ein Bild (JPG/PNG) oder einen PDF-Grundriss hoch. Der Plan erscheint transparent auf der Karte. Klicke auf den Plan, um über die Eckgriffe zu skalieren, zu drehen und zu verzerren, bis er passgenau liegt.</div>
+  <div class="panel-info">Mehrere Bilder/PDF-Pläne als Overlays. Je Plan: 👁 ein-/ausblenden, umbenennen, Deckkraft, löschen. Ausrichten des <b>aktiven</b> Plans über Eckgriffe oder <b>Referenzpunkte</b>. Beim Schließen wird er fixiert; Pläne werden mit dem Projekt gespeichert. <span style="opacity:.7">Tipp: ▾ in der Titelleiste klappt das Panel ein, die Ecke unten rechts zieht es größer/kleiner.</span></div>
   <div class="inp-group" style="margin-bottom:10px">
-    <input type="file" id="overlay-file" accept="image/png, image/jpeg, application/pdf" class="inp-field" data-change="loadOverlay(this)" style="padding:4px"/>
+    <label class="inp-label">Plan(e) hinzufügen</label>
+    <input type="file" id="overlay-file" accept="image/png, image/jpeg, application/pdf" multiple class="inp-field" data-change="loadOverlay(this)" style="padding:4px"/>
   </div>
-  <div class="inp-group" style="margin-bottom:15px">
-    <label class="inp-label">Deckkraft des Plans</label>
-    <input type="range" id="overlay-opacity" min="0.1" max="1" step="0.1" value="0.5" data-input="changeOverlayOpacity(this.value)"/>
-  </div>
+  <div id="overlay-list" style="margin-bottom:12px"></div>
   <div class="panel-btns">
+    <button class="btn-secondary" data-click="startOverlayReference()" title="2–4 markante Punkte auf dem aktiven Plan und dieselben Stellen auf der Karte anklicken – der Plan wird dann automatisch gedreht und skaliert">🎯 Über Referenzpunkte ausrichten</button>
     <button class="btn-secondary" data-click="addGebaeude({nutzung:'custom'})">📐 Gebäude auf Plan nachzeichnen</button>
-    <button class="btn-secondary" data-click="clearOverlay()">Bild entfernen</button>
+    <button class="btn-secondary" data-click="clearOverlay()">Alle Pläne entfernen</button>
     <button class="btn-secondary" data-click="hidePanels()">Schließen</button>
   </div>
 </div>
@@ -4961,7 +4960,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-07-02';
+  var d = '2026-07-06';
   if (d.indexOf('__') === 0) d = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -65607,6 +65606,9 @@ function updateViz(){
       }
     }
 
+    // Solaranlagen mit dem Gebäude ausgrauen, wenn abgerissen/geplant.
+    if (typeof window.applyGebPvDimming === 'function') window.applyGebPvDimming(g, stats.status);
+
     if(g.circleMarker){ map.removeLayer(g.circleMarker); g.circleMarker=null; }
     if(g.labelMarker) { map.removeLayer(g.labelMarker);  g.labelMarker=null; }
 
@@ -68758,6 +68760,8 @@ function hidePanels(){
   if (window.isPlacingPellets) { window.isPlacingPellets = false; map.getContainer().style.cursor = ''; }
   if (window.isPlacingHhs) { window.isPlacingHhs = false; map.getContainer().style.cursor = ''; }
   if (window.isPlacingFernwaerme) { window.isPlacingFernwaerme = false; map.getContainer().style.cursor = ''; }
+  // Overlay fixieren, sobald das Panel geschlossen wird (nicht während der Referenzpunkt-Modus läuft).
+  if (!window._ovRef) setOverlayLocked(true);
   _restoreAfterDraw();
 }
 
@@ -68767,10 +68771,21 @@ function toggleOverlayPanel() {
   if(p.classList.contains('visible')){
     p.classList.remove('visible');
     btn.classList.remove('active');
+    setOverlayLocked(true);          // Panel zu → aktiver Plan fixiert
+    _renderOverlays();
   } else {
     hidePanels();
     p.classList.add('visible');
     btn.classList.add('active');
+    // Beim Öffnen einen sichtbaren Plan zum Bearbeiten aktivieren (den aktiven, sonst den letzten).
+    const list = window.overlays || [];
+    const act = _overlayById(window._activeOverlayId);
+    if (act && act.visible) setActiveOverlay(act.id);
+    else {
+      const last = [...list].reverse().find(o => o.visible);
+      if (last) setActiveOverlay(last.id);
+      else _renderOverlays();
+    }
   }
 }
 
@@ -68817,60 +68832,73 @@ function toggleNetzPanel(){
 }
 
 function loadOverlay(input) {
-  if (!input.files || !input.files[0]) return;
-  const file = input.files[0];
-  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-    loadOverlayFromPdf(file);
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const dataUrl = e.target.result;
-    const img = new Image();
-    img.onload = function() {
-      setupOverlayOnMap(dataUrl, img.width, img.height);
-    };
-    img.src = dataUrl;
-  };
-  reader.readAsDataURL(file);
+  if (!input.files || !input.files.length) return;
+  Array.from(input.files).forEach(file => {
+    const name = file.name.replace(/\.[^.]+$/, '');
+    const pid = _addOverlayPending(name);   // Lade-Anzeige in der Liste
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      loadOverlayFromPdf(file, name, pid);
+    } else {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const dataUrl = e.target.result;
+        const img = new Image();
+        img.onload = function() { _removeOverlayPending(pid); setupOverlayOnMap(dataUrl, img.width, img.height, name); };
+        img.onerror = function() { _removeOverlayPending(pid); showHint('Bild konnte nicht geladen werden: ' + name); };
+        img.src = dataUrl;
+      };
+      reader.onerror = function() { _removeOverlayPending(pid); showHint('Datei konnte nicht gelesen werden: ' + name); };
+      reader.readAsDataURL(file);
+    }
+  });
+  input.value = '';   // erlaubt erneutes Laden derselben Datei
 }
 
-async function loadOverlayFromPdf(file) {
-  if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+async function loadOverlayFromPdf(file, name, pid) {
+  try {
+    if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    }
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 3 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    _removeOverlayPending(pid);
+    setupOverlayOnMap(canvas.toDataURL('image/png'), canvas.width, canvas.height, name);
+  } catch (e) {
+    console.error('PDF-Overlay fehlgeschlagen:', e);
+    _removeOverlayPending(pid);
+    showHint('PDF konnte nicht geladen werden: ' + name);
   }
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const page = await pdf.getPage(1);
-  const viewport = page.getViewport({ scale: 3 });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-  setupOverlayOnMap(canvas.toDataURL('image/png'), canvas.width, canvas.height);
 }
 
-function setupOverlayOnMap(url, w, h) {
-  clearOverlay();
+// Neuen Plan als Overlay hinzufügen (mehrere Pläne werden in window.overlays gesammelt).
+function setupOverlayOnMap(url, w, h, name) {
+  if (!window.overlays) window.overlays = [];
+  if (!window._overlayCounter) window._overlayCounter = 1;
   const center = map.getCenter();
   const offsetLat = 0.003;
-  const ratio = w / h;
+  const ratio = (w && h) ? w / h : 1;
   const offsetLng = offsetLat * ratio;
-
   const corners = [
-    L.latLng(center.lat + offsetLat, center.lng - offsetLng), // NW
-    L.latLng(center.lat + offsetLat, center.lng + offsetLng), // NE
-    L.latLng(center.lat - offsetLat, center.lng - offsetLng), // SW
-    L.latLng(center.lat - offsetLat, center.lng + offsetLng), // SE
+    { lat: center.lat + offsetLat, lng: center.lng - offsetLng }, // NW
+    { lat: center.lat + offsetLat, lng: center.lng + offsetLng }, // NE
+    { lat: center.lat - offsetLat, lng: center.lng - offsetLng }, // SW
+    { lat: center.lat - offsetLat, lng: center.lng + offsetLng }, // SE
   ];
-
-  const opacity = document.getElementById('overlay-opacity').value;
-  window.overlayLayer = L.distortableImageOverlay(url, { corners, opacity }).addTo(map);
-  window.overlayLayer.editing.enable();
-  createOverlayEdgeHandles();
-  window.overlayLayer.on('update', repositionOverlayEdgeHandles);
-
-  showHint('Klicke auf den Plan: Über die Eckgriffe kannst du ihn skalieren, drehen (Rotate-Aktion) und verzerren. Über die blauen Kantengriffe kannst du eine einzelne Seite verschieben.');
+  const ov = {
+    id: window._overlayCounter++,
+    name: name || `Plan ${window.overlays.length + 1}`,
+    url, w, h, corners, opacity: 0.5, visible: true, layer: null,
+  };
+  window.overlays.push(ov);
+  _createOverlayLayer(ov);
+  setActiveOverlay(ov.id);
+  showHint('Neuer Plan hinzugefügt. Über die Eck-/Kantengriffe ausrichten oder „Über Referenzpunkte ausrichten". Beim Schließen des Panels werden alle Pläne fixiert.');
 }
 
 // corners = [TL, TR, BL, BR] (Reihenfolge von Leaflet.DistortableImage). Kantenpaare: oben, rechts, unten, links.
@@ -68923,15 +68951,513 @@ function removeOverlayEdgeHandles() {
   }
 }
 
-function changeOverlayOpacity(val) {
+function changeOverlayOpacity(val) {   // wirkt auf den aktiven Plan (Alt-Kompatibilität)
   if (window.overlayLayer) window.overlayLayer.setOpacity(val);
 }
 
-function clearOverlay() {
+// ── Mehrere Pläne verwalten ──────────────────────────────────────────────────
+function _overlayById(id) { return (window.overlays || []).find(o => o.id === id); }
+function _activeOverlay() { return _overlayById(window._activeOverlayId); }
+
+// Bild eines nicht-aktiven Overlays klick-transparent + ohne Editiergriffe.
+function _lockLayer(layer) {
+  if (!layer) return;
+  try { layer.editing.disable(); } catch (e) {}
+  const el = layer.getElement && layer.getElement();
+  if (el) el.style.pointerEvents = 'none';
+}
+
+// DistortableImage-Layer für einen Overlay-Eintrag (neu) erzeugen – initial gesperrt.
+function _createOverlayLayer(ov) {
+  if (ov.layer) { map.removeLayer(ov.layer); ov.layer = null; }
+  if (!ov.visible) return;
+  const corners = ov.corners.map(c => L.latLng(c.lat, c.lng));
+  ov.layer = L.distortableImageOverlay(ov.url, { corners, opacity: ov.opacity }).addTo(map);
+  ov.layer.on('update', repositionOverlayEdgeHandles);
+  const lock = () => _lockLayer(ov.layer);
+  ov.layer.on('load', lock);
+  lock();
+}
+
+// Genau einen Plan zum Bearbeiten aktivieren; alle anderen sperren.
+function setActiveOverlay(id) {
+  const prev = _activeOverlay();
+  if (prev && prev.id !== id && prev.layer) { window.overlayLayer = prev.layer; setOverlayLocked(true); }
+  window._activeOverlayId = id;
+  const act = _overlayById(id);
+  window.overlayLayer = act && act.layer ? act.layer : null;
+  (window.overlays || []).forEach(ov => { if (ov !== act && ov.layer) _lockLayer(ov.layer); });
+  const panelOpen = document.getElementById('overlay-panel')?.classList.contains('visible');
+  if (act && act.layer && act.visible && panelOpen && !window._ovRef) setOverlayLocked(false);
+  _renderOverlays();
+}
+
+function toggleOverlayVisible(id) {
+  const ov = _overlayById(id); if (!ov) return;
+  ov.visible = !ov.visible;
+  if (ov.visible) {
+    _createOverlayLayer(ov);
+    if (ov.id === window._activeOverlayId) setActiveOverlay(ov.id);
+  } else {
+    if (ov.id === window._activeOverlayId) { removeOverlayEdgeHandles(); window.overlayLayer = null; }
+    if (ov.layer) { map.removeLayer(ov.layer); ov.layer = null; }
+  }
+  _renderOverlays();
+}
+
+function changeOverlayItemOpacity(id, val) {
+  const ov = _overlayById(id); if (!ov) return;
+  ov.opacity = parseFloat(val);
+  if (ov.layer) ov.layer.setOpacity(ov.opacity);
+}
+
+function renameOverlay(id, name) { const ov = _overlayById(id); if (ov) ov.name = name; }
+
+function removeOverlayItem(id) {
+  const idx = (window.overlays || []).findIndex(o => o.id === id);
+  if (idx < 0) return;
+  const ov = window.overlays[idx];
+  if (ov.id === window._activeOverlayId) {
+    if (window._ovRef) _ovRefCancel();
+    removeOverlayEdgeHandles();
+    window.overlayLayer = null; window._activeOverlayId = null;
+  }
+  if (ov.layer) map.removeLayer(ov.layer);
+  window.overlays.splice(idx, 1);
+  _renderOverlays();
+}
+
+function clearAllOverlays() {
+  if (window._ovRef) _ovRefCancel();
   removeOverlayEdgeHandles();
-  if (window.overlayLayer) { map.removeLayer(window.overlayLayer); window.overlayLayer = null; }
+  (window.overlays || []).forEach(ov => { if (ov.layer) map.removeLayer(ov.layer); });
+  window.overlays = [];
+  window.overlayLayer = null;
+  window._activeOverlayId = null;
+  _renderOverlays();
   const fileInput = document.getElementById('overlay-file');
-  if(fileInput) fileInput.value = '';
+  if (fileInput) fileInput.value = '';
+}
+
+// Alle Pläne fürs Projekt-Speichern serialisieren (Corners live aus dem Layer lesen).
+function serializeOverlays() {
+  return (window.overlays || []).map(ov => {
+    const cs = (ov.layer ? ov.layer.getCorners() : ov.corners).map(c => ({ lat: c.lat, lng: c.lng }));
+    return { name: ov.name, url: ov.url, w: ov.w, h: ov.h, corners: cs, opacity: ov.opacity, visible: ov.visible };
+  });
+}
+
+// Pläne aus einem geladenen Projekt wiederherstellen.
+function loadOverlays(arr) {
+  clearAllOverlays();
+  if (!window._overlayCounter) window._overlayCounter = 1;
+  (arr || []).forEach(o => {
+    if (!o || !o.url || !Array.isArray(o.corners) || o.corners.length !== 4) return;
+    const ov = {
+      id: window._overlayCounter++, name: o.name || 'Plan', url: o.url, w: o.w, h: o.h,
+      corners: o.corners, opacity: o.opacity ?? 0.5, visible: o.visible !== false, layer: null,
+    };
+    window.overlays.push(ov);
+    _createOverlayLayer(ov);
+  });
+  _renderOverlays();
+}
+
+// Lade-Anzeige: Platzhalter, solange eine Datei (v.a. PDF) noch verarbeitet wird.
+function _addOverlayPending(name) {
+  if (!window._overlayPending) window._overlayPending = [];
+  if (!window._overlayPendCounter) window._overlayPendCounter = 1;
+  const id = window._overlayPendCounter++;
+  window._overlayPending.push({ id, name });
+  _renderOverlays();
+  return id;
+}
+function _removeOverlayPending(id) {
+  if (!window._overlayPending) return;
+  window._overlayPending = window._overlayPending.filter(p => p.id !== id);
+  _renderOverlays();
+}
+
+// Plan-Liste im Overlay-Panel rendern.
+function _renderOverlays() {
+  const box = document.getElementById('overlay-list');
+  if (!box) return;
+  const list = window.overlays || [];
+  const pending = window._overlayPending || [];
+  const pendHtml = pending.map(p => `<div style="display:flex;align-items:center;gap:8px;border:1px dashed rgba(206,147,216,0.5);border-radius:7px;padding:8px;margin-bottom:6px;background:rgba(206,147,216,0.06);">
+      <span style="display:inline-block;width:12px;height:12px;border:2px solid #ce93d8;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;flex:0 0 auto;"></span>
+      <span style="font-size:12px;color:#ce93d8;">${(p.name || 'Plan').replace(/</g, '&lt;')} — wird geladen…</span>
+    </div>`).join('');
+  if (!list.length && !pending.length) {
+    box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px 2px;">Noch keine Pläne geladen.</div>';
+    return;
+  }
+  box.innerHTML = pendHtml + list.map(ov => {
+    const isActive = ov.id === window._activeOverlayId;
+    const eye = ov.visible ? '👁' : '🚫';
+    const safeName = (ov.name || '').replace(/"/g, '&quot;');
+    return `<div style="border:1px solid ${isActive ? '#ce93d8' : 'rgba(255,255,255,0.12)'};border-radius:7px;padding:7px 8px;margin-bottom:6px;background:rgba(255,255,255,0.03);">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="btn-xs" title="Ein-/Ausblenden" data-click="toggleOverlayVisible(${ov.id})" style="flex:0 0 auto;opacity:${ov.visible ? 1 : 0.5};">${eye}</button>
+        <input type="text" value="${safeName}" data-change="renameOverlay(${ov.id}, this.value)" style="flex:1;min-width:0;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,0.15);color:var(--fg);font-size:12px;padding:2px 0;"/>
+        <button class="btn-xs" title="Plan löschen" data-click="removeOverlayItem(${ov.id})" style="flex:0 0 auto;color:#e57373;">🗑</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+        <button class="btn-xs" data-click="setActiveOverlay(${ov.id})" style="flex:0 0 auto;${isActive ? 'border-color:#ce93d8;color:#ce93d8;' : ''}" ${ov.visible ? '' : 'disabled'}>${isActive ? '✏️ aktiv' : 'Bearbeiten'}</button>
+        <input type="range" min="0.1" max="1" step="0.05" value="${ov.opacity}" data-input="changeOverlayItemOpacity(${ov.id}, this.value)" style="flex:1;" title="Deckkraft"/>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Plan-Overlay fixieren (locked=true) oder wieder editierbar machen (locked=false).
+// Fixiert: keine Editier-/Kantengriffe, Bild klick-transparent → Karte bleibt bedienbar.
+function setOverlayLocked(locked) {
+  const layer = window.overlayLayer;
+  if (!layer) return;
+  window._overlayLocked = !!locked;
+  const imgEl = layer.getElement && layer.getElement();
+  if (locked) {
+    removeOverlayEdgeHandles();
+    try { layer.editing.disable(); } catch (e) {}
+    if (imgEl) imgEl.style.pointerEvents = 'none';
+  } else {
+    try { layer.editing.enable(); } catch (e) {}
+    createOverlayEdgeHandles();
+    if (imgEl) imgEl.style.pointerEvents = '';
+  }
+}
+
+function clearOverlay() { clearAllOverlays(); }   // alle Pläne entfernen
+
+// ── Plan über Referenzpunkte (Passpunkte) ausrichten ─────────────────────────
+// Der Nutzer klickt paarweise: erst ein Merkmal auf dem PLAN, dann dieselbe
+// Stelle auf der KARTE. Aus 2 Paaren wird eine Ähnlichkeits- (drehen + gleichmäßig
+// skalieren), aus 3+ Paaren eine Affintransformation berechnet und auf die 4
+// Eckpunkte des Overlays angewandt. Gerechnet wird im projizierten CRS-Raum
+// (Web-Mercator), damit Drehung/Skalierung metrisch stimmen.
+
+function _ovProj(latlng) { const p = map.options.crs.project(latlng); return { x: p.x, y: p.y }; }
+function _ovUnproj(pt)   { return map.options.crs.unproject(L.point(pt.x, pt.y)); }
+
+function _ovSolveN(A, b) {
+  // Gauß-Elimination mit Teilpivotisierung für ein n×n-System; null bei (nahezu)
+  // singulärer Matrix.
+  const n = b.length;
+  const M = A.map((r, i) => [...r, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    if (Math.abs(M[piv][col]) < 1e-12) return null;
+    [M[col], M[piv]] = [M[piv], M[col]];
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const f = M[r][col] / M[col][col];
+      for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+    }
+  }
+  return M.map((r, i) => r[n] / r[i]);   // nach voller Gauß-Jordan-Elimination: Pivot von Zeile i steht an Spalte i
+}
+
+function _ovMul3(A, B) {
+  const C = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++)
+    C[i][j] = A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j];
+  return C;
+}
+
+function _ovInv3(m) {
+  const [a, b, c] = m[0], [d, e, f] = m[1], [g, h, i] = m[2];
+  const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+  if (Math.abs(det) < 1e-15) return null;
+  const id = 1 / det;
+  return [
+    [(e * i - f * h) * id, (c * h - b * i) * id, (b * f - c * e) * id],
+    [(f * g - d * i) * id, (a * i - c * g) * id, (c * d - a * f) * id],
+    [(d * h - e * g) * id, (b * g - a * h) * id, (a * e - b * d) * id],
+  ];
+}
+
+// Hartley-Normalisierung: verschiebt in den Schwerpunkt und skaliert auf mittleren
+// Abstand √2 → konditioniert die (sonst mit Mercator-Metern schlecht gestellten)
+// Homographie-Normalgleichungen. Gibt T (Original→normalisiert) und norm. Punkte.
+function _ovNormalize(pts) {
+  const n = pts.length;
+  let cx = 0, cy = 0;
+  for (const p of pts) { cx += p.x; cy += p.y; }
+  cx /= n; cy /= n;
+  let d = 0;
+  for (const p of pts) d += Math.hypot(p.x - cx, p.y - cy);
+  d /= n;
+  const s = d > 1e-9 ? Math.SQRT2 / d : 1;
+  return {
+    T: [[s, 0, -s * cx], [0, s, -s * cy], [0, 0, 1]],
+    pts: pts.map(p => ({ x: (p.x - cx) * s, y: (p.y - cy) * s })),
+  };
+}
+
+function _ovFitSimilarity(src, dst) {
+  // X = a·x − b·y + tx ; Y = b·x + a·y + ty  (Rotation + gleichmäßige Skalierung)
+  const n = src.length;
+  let mx = 0, my = 0, Mx = 0, My = 0;
+  for (let i = 0; i < n; i++) { mx += src[i].x; my += src[i].y; Mx += dst[i].x; My += dst[i].y; }
+  mx /= n; my /= n; Mx /= n; My /= n;
+  let aNum = 0, bNum = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    const x = src[i].x - mx, y = src[i].y - my, X = dst[i].x - Mx, Y = dst[i].y - My;
+    aNum += x * X + y * Y;
+    bNum += x * Y - y * X;
+    den  += x * x + y * y;
+  }
+  if (den < 1e-6) return null;                 // Quellpunkte fallen zusammen
+  const a = aNum / den, b = bNum / den;
+  const tx = Mx - (a * mx - b * my);
+  const ty = My - (b * mx + a * my);
+  return p => ({ x: a * p.x - b * p.y + tx, y: b * p.x + a * p.y + ty });
+}
+
+function _ovFitAffine(src, dst) {
+  // X = a·x + b·y + c ; Y = d·x + e·y + f  (Least-Squares über Normalgleichungen)
+  let Sxx = 0, Sxy = 0, Syy = 0, Sx = 0, Sy = 0; const n = src.length;
+  const bX = [0, 0, 0], bY = [0, 0, 0];
+  for (let i = 0; i < n; i++) {
+    const x = src[i].x, y = src[i].y, X = dst[i].x, Y = dst[i].y;
+    Sxx += x * x; Sxy += x * y; Syy += y * y; Sx += x; Sy += y;
+    bX[0] += x * X; bX[1] += y * X; bX[2] += X;
+    bY[0] += x * Y; bY[1] += y * Y; bY[2] += Y;
+  }
+  const A = [[Sxx, Sxy, Sx], [Sxy, Syy, Sy], [Sx, Sy, n]];
+  const cx = _ovSolveN(A, bX), cy = _ovSolveN(A, bY);
+  if (!cx || !cy) return null;                 // kollineare Punkte
+  return p => ({ x: cx[0] * p.x + cx[1] * p.y + cx[2], y: cy[0] * p.x + cy[1] * p.y + cy[2] });
+}
+
+function _ovFitHomography(src, dst) {
+  // Projektive Transformation (Perspektiv-Entzerrung). Normalisierter DLT mit
+  // fixiertem h₈=1 → 8×8-Least-Squares. H = Tdst⁻¹ · Hₙ · Tsrc.
+  const N = src.length;
+  const ns = _ovNormalize(src), nd = _ovNormalize(dst);
+  const S = ns.pts, D = nd.pts;
+  const A = Array.from({ length: 8 }, () => new Array(8).fill(0));
+  const bb = new Array(8).fill(0);
+  const addRow = (row, rhs) => {
+    for (let i = 0; i < 8; i++) {
+      bb[i] += row[i] * rhs;
+      for (let j = 0; j < 8; j++) A[i][j] += row[i] * row[j];
+    }
+  };
+  for (let k = 0; k < N; k++) {
+    const x = S[k].x, y = S[k].y, X = D[k].x, Y = D[k].y;
+    addRow([x, y, 1, 0, 0, 0, -x * X, -y * X], X);
+    addRow([0, 0, 0, x, y, 1, -x * Y, -y * Y], Y);
+  }
+  const h = _ovSolveN(A, bb);
+  if (!h) return null;
+  const Hn = [[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1]];
+  const TdstInv = _ovInv3(nd.T);
+  if (!TdstInv) return null;
+  const H = _ovMul3(_ovMul3(TdstInv, Hn), ns.T);
+  return p => {
+    const w = H[2][0] * p.x + H[2][1] * p.y + H[2][2];
+    if (Math.abs(w) < 1e-12) return null;
+    return {
+      x: (H[0][0] * p.x + H[0][1] * p.y + H[0][2]) / w,
+      y: (H[1][0] * p.x + H[1][1] * p.y + H[1][2]) / w,
+    };
+  };
+}
+
+// Passendes Verfahren nach Punktzahl wählen und Transformation liefern.
+function _ovFitFor(pairs) {
+  const src = pairs.map(p => _ovProj(p.src));
+  const dst = pairs.map(p => _ovProj(p.dst));
+  if (pairs.length >= 4) return { T: _ovFitHomography(src, dst), method: 'Projektiv (Perspektive)' };
+  if (pairs.length >= 3) return { T: _ovFitAffine(src, dst), method: 'Affin (Skalierung x/y + Scherung)' };
+  return { T: _ovFitSimilarity(src, dst), method: 'Ähnlichkeit (drehen + skalieren)' };
+}
+
+// Restfehler je Passpunkt in echten Metern (Ellipsoid-Abstand über map.distance).
+function _ovResiduals(pairs, T) {
+  return pairs.map(p => {
+    const m = T(_ovProj(p.src));
+    return m ? map.distance(_ovUnproj(m), p.dst) : Infinity;
+  });
+}
+
+function startOverlayReference() {
+  if (!window.overlayLayer) { showHint('Bitte zuerst einen Plan laden bzw. in der Liste „Bearbeiten" wählen, bevor du ihn über Referenzpunkte ausrichtest.'); return; }
+  if (window._ovRef) return;                   // läuft bereits
+
+  // Editier-Griffe & Kantengriffe entfernen und Bild klick-transparent machen,
+  // damit die Karten-Klicks durchkommen.
+  try { window.overlayLayer.editing.disable(); } catch (e) {}
+  removeOverlayEdgeHandles();
+  const imgEl = window.overlayLayer.getElement && window.overlayLayer.getElement();
+  if (imgEl) imgEl.style.pointerEvents = 'none';
+
+  window._ovRef = { pairs: [], expecting: 'plan', tempSrc: null, tempMarker: null, markers: [], lines: [] };
+  document.getElementById('overlay-panel')?.classList.remove('visible');
+  map.on('click', _ovRefClick);
+  _ovRefBuildControl();
+  _ovRefUpdate();
+}
+
+function _ovRefMarker(latlng, label, kind) {
+  const isPlan = kind === 'plan';
+  const bg = isPlan ? '#ce93d8' : '#4dd0e1';
+  const html = `<div style="width:22px;height:22px;border-radius:50%;background:${bg};border:2px solid #0a0e1a;`
+    + `display:flex;align-items:center;justify-content:center;font:700 11px/1 'DM Sans',sans-serif;color:#0a0e1a;`
+    + `box-shadow:0 1px 4px rgba(0,0,0,.5);">${label}</div>`;
+  return L.marker(latlng, {
+    icon: L.divIcon({ className: 'ov-ref-marker', html, iconSize: [22, 22], iconAnchor: [11, 11] }),
+    interactive: false, zIndexOffset: 3200,
+  }).addTo(map);
+}
+
+function _ovRefClick(e) {
+  const ref = window._ovRef;
+  if (!ref) return;
+  const n = ref.pairs.length + 1;
+  if (ref.expecting === 'plan') {
+    ref.tempSrc = e.latlng;
+    ref.tempMarker = _ovRefMarker(e.latlng, n, 'plan');
+    ref.expecting = 'map';
+  } else {
+    const srcLL = ref.tempSrc;
+    const dstMarker = _ovRefMarker(e.latlng, n, 'map');
+    const line = L.polyline([srcLL, e.latlng], {
+      color: '#ce93d8', weight: 1.5, dashArray: '4 4', interactive: false,
+    }).addTo(map);
+    ref.pairs.push({ src: srcLL, dst: e.latlng });
+    ref.markers.push(ref.tempMarker, dstMarker);
+    ref.lines.push(line);
+    ref.tempSrc = null; ref.tempMarker = null;
+    ref.expecting = 'plan';
+  }
+  _ovRefUpdate();
+}
+
+function _ovRefUndo() {
+  const ref = window._ovRef;
+  if (!ref) return;
+  if (ref.expecting === 'map' && ref.tempMarker) {          // offenen Plan-Punkt zurücknehmen
+    map.removeLayer(ref.tempMarker);
+    ref.tempMarker = null; ref.tempSrc = null;
+    ref.expecting = 'plan';
+  } else if (ref.pairs.length) {                            // letztes vollständiges Paar zurücknehmen
+    ref.pairs.pop();
+    const dst = ref.markers.pop(); const src = ref.markers.pop();
+    if (dst) map.removeLayer(dst);
+    if (src) map.removeLayer(src);
+    const ln = ref.lines.pop(); if (ln) map.removeLayer(ln);
+  }
+  _ovRefUpdate();
+}
+
+function _ovRefApply() {
+  const ref = window._ovRef;
+  if (!ref || ref.pairs.length < 2) { showHint('Mindestens 2 Referenzpunkt-Paare nötig.'); return; }
+  const { T, method } = _ovFitFor(ref.pairs);
+  if (!T) { showHint('Punkte liegen zu dicht beieinander oder auf einer Linie — bitte weiter auseinander oder versetzt wählen.'); return; }
+  const newCorners = window.overlayLayer.getCorners().map(c => _ovUnproj(T(_ovProj(c))));
+  if (newCorners.some(c => !c || !isFinite(c.lat) || !isFinite(c.lng))) {
+    showHint('Ausrichtung fehlgeschlagen — die Passpunkte ergeben keine gültige Transformation. Bitte Punkte prüfen.');
+    return;
+  }
+  const res = _ovResiduals(ref.pairs, T);
+  const maxR = Math.max(...res), meanR = res.reduce((a, b) => a + b, 0) / res.length;
+  const n = ref.pairs.length;
+  _ovRefTeardown();
+  window.overlayLayer.setCorners(newCorners);
+  setOverlayLocked(true);            // ausgerichtet → Plan sofort fixiert
+  showHint(`Plan über ${n} Referenzpunkte ausgerichtet (${method}). `
+    + `Passgenauigkeit: Ø ${meanR.toFixed(1)} m, max ${maxR.toFixed(1)} m. `
+    + `Der Plan ist jetzt fixiert – zum Nachjustieren das Plan-Overlay-Panel erneut öffnen.`);
+}
+
+function _ovRefCancel() {
+  _ovRefTeardown();
+  toggleOverlayPanel();              // zurück ins (editierbare) Overlay-Panel – entsperrt den Plan
+  hideHint();
+}
+
+function _ovRefTeardown() {
+  const ref = window._ovRef;
+  if (!ref) return;
+  map.off('click', _ovRefClick);
+  ref.markers.forEach(m => map.removeLayer(m));
+  ref.lines.forEach(l => map.removeLayer(l));
+  if (ref.tempMarker) map.removeLayer(ref.tempMarker);
+  document.getElementById('ov-ref-control')?.remove();
+  window._ovRef = null;
+}
+
+function _ovRefBuildControl() {
+  document.getElementById('ov-ref-control')?.remove();
+  const box = document.createElement('div');
+  box.id = 'ov-ref-control';
+  box.style.cssText = 'position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:3300;'
+    + 'background:rgba(16,20,34,.96);border:1.5px solid #ce93d8;border-radius:9px;padding:12px 14px;'
+    + "min-width:300px;max-width:360px;font-family:'DM Sans',sans-serif;color:#e6e9f0;box-shadow:0 6px 24px rgba(0,0,0,.5);";
+  box.innerHTML = `
+    <div style="font-size:12px;font-weight:700;color:#ce93d8;margin-bottom:6px;">🎯 Plan über Referenzpunkte ausrichten</div>
+    <div id="ov-ref-hint" style="font-size:11px;line-height:1.45;color:#b9c0d4;margin-bottom:8px;"></div>
+    <div id="ov-ref-status" style="font-size:11px;margin-bottom:10px;"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button id="ov-ref-apply" class="btn-secondary" style="flex:1;min-width:120px;">Ausrichten</button>
+      <button id="ov-ref-undo"  class="btn-secondary" style="flex:0 0 auto;">↶ Zurück</button>
+      <button id="ov-ref-cancel" class="btn-secondary" style="flex:0 0 auto;">Abbrechen</button>
+    </div>`;
+  (map.getContainer() || document.body).appendChild(box);
+  box.querySelector('#ov-ref-apply').addEventListener('click', _ovRefApply);
+  box.querySelector('#ov-ref-undo').addEventListener('click', _ovRefUndo);
+  box.querySelector('#ov-ref-cancel').addEventListener('click', _ovRefCancel);
+}
+
+function _ovRefUpdate() {
+  const ref = window._ovRef;
+  if (!ref) return;
+  const n = ref.pairs.length;
+  const hintEl = document.getElementById('ov-ref-hint');
+  const statEl = document.getElementById('ov-ref-status');
+  const applyBtn = document.getElementById('ov-ref-apply');
+  if (hintEl) {
+    const tip = n === 1 ? ' — je weiter auseinander, desto genauer.'
+      : n >= 3 ? ' — weitere Punkte erhöhen die Genauigkeit (überbestimmter Fit).' : '';
+    hintEl.innerHTML = ref.expecting === 'plan'
+      ? `Klicke Merkmal <b>Nr. ${n + 1} auf dem PLAN</b> (z.B. eine Gebäude-/Hallenecke).${tip}`
+      : `Jetzt dieselbe Stelle <b>Nr. ${n + 1} auf der KARTE</b> anklicken.`;
+  }
+  if (statEl) {
+    let html = `<span style="color:#4dd0e1;">${n}</span> vollständige${n === 1 ? 's' : ''} Punktepaar${n === 1 ? '' : 'e'}`;
+    if (n >= 2) {
+      const { T, method } = _ovFitFor(ref.pairs);
+      html += ` · Verfahren: <b>${method}</b>`;
+      if (T) {
+        const res = _ovResiduals(ref.pairs, T);
+        const maxR = Math.max(...res), meanR = res.reduce((a, b) => a + b, 0) / res.length;
+        const worst = res.indexOf(maxR) + 1;
+        // Bei minimaler Punktzahl (exakter Fit) sind Residuen ~0 → als Kontrolle markieren.
+        const exact = (n === 2) || (n === 3) || (n === 4);
+        const col = maxR > 3 ? '#ef9a9a' : '#a5d6a7';
+        html += `<br><span style="color:#8891a8;">Passgenauigkeit (Vorschau):</span> `
+          + `<span style="color:${col};">Ø ${meanR.toFixed(1)} m, max ${maxR.toFixed(1)} m`
+          + `${maxR > 0.05 ? ` (Punkt ${worst})` : ''}</span>`
+          + `${exact ? ' <span style="color:#8891a8;">— exakt bestimmt</span>' : ''}`;
+      } else {
+        html += `<br><span style="color:#ef9a9a;">Punkte kollinear/zu dicht — bitte versetzt wählen.</span>`;
+      }
+    } else {
+      html += ' · min. 2 nötig';
+    }
+    statEl.innerHTML = html;
+  }
+  if (applyBtn) {
+    applyBtn.disabled = n < 2;
+    applyBtn.style.opacity = n < 2 ? '.45' : '1';
+    applyBtn.style.cursor = n < 2 ? 'not-allowed' : 'pointer';
+    applyBtn.textContent = n < 2 ? 'Ausrichten' : `Ausrichten (${n} Punkte)`;
+  }
 }
 
 function pointInPolygon(pt, poly) {
@@ -72091,6 +72617,7 @@ function attachGebPvLayer(g, fl) {
   if (fl.typ === 'sperr') {
     fl.layer.setStyle({ opacity: 0, fillOpacity: 0 });
   }
+  applyGebPvDimming(g);   // Belegungsfläche bei abgerissenem/geplantem Gebäude ausgrauen
 }
 
 // Sperrflächen je nach aktuellem window.selectedId ein-/ausblenden.
@@ -72466,6 +72993,22 @@ function redrawGebPvModules(g) {
   if (!ov) return;
   _ensurePvPane();
   g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, pane: 'pvPane' }).addTo(map);
+  applyGebPvDimming(g);   // neu gezeichnete Module ggf. sofort ausgrauen (abgerissen/geplant)
+}
+
+// Solaranlagen eines Gebäudes ausgrauen, wenn das Gebäude abgerissen (oder geplant)
+// ist – analog zum ausgegrauten Gebäude-Umriss. status optional; sonst aus dem Jahr.
+function applyGebPvDimming(g, status) {
+  if (status == null) status = getComputedStats(g, window.globalYear || globalYear).status;
+  const dimmed = status === 'abgerissen' || status === 'geplant';
+  if (g._pvModuleLayer && g._pvModuleLayer.setOpacity) g._pvModuleLayer.setOpacity(dimmed ? 0.22 : 1);
+  (g.pvFlaechen || []).forEach(fl => {
+    if (!fl.layer || fl.typ === 'sperr') return;   // Sperrflächen steuert updateSperrVisibility
+    const col = GEBPV_COLORS[fl.typ] || GEBPV_COLORS.belegung;
+    fl.layer.setStyle(dimmed
+      ? { color: '#777', fillColor: '#777', opacity: 0.25, fillOpacity: 0.06 }
+      : { color: col.border, fillColor: col.fill, opacity: 1, fillOpacity: 0.6, dashArray: null });
+  });
 }
 
 // Alle Flächen + Module eines Gebäudes neu zeichnen.
@@ -73071,6 +73614,8 @@ function _buildProjectData() {
     // ERA5-Standort-Winddaten (window-Bridge aus 13q-wind-ertrag.js) — einmal geladen,
     // sollen sie Reload/Offline-Nutzung überleben (~60 KB, Stundenwerte gerundet)
     windStandortDaten: (typeof window.windSiteSerialize === 'function' ? window.windSiteSerialize() : null),
+    // Plan-Overlays (Hintergrundpläne) mit Bilddaten, Passlage, Deckkraft, Sichtbarkeit
+    overlays: (typeof window.serializeOverlays === 'function' ? window.serializeOverlays() : []),
   };
 }
 
@@ -73575,6 +74120,9 @@ function _loadProject(project) {
       if (typeof window.windSiteRestore === 'function') {
         window.windSiteRestore(project.windStandortDaten || null);
       }
+
+      // Plan-Overlays (Hintergrundpläne) wiederherstellen bzw. leeren
+      if (typeof window.loadOverlays === 'function') window.loadOverlays(project.overlays || []);
 
       redrawErzeugerIcons();
       _invalidateStats();
