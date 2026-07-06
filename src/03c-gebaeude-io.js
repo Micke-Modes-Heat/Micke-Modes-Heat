@@ -1205,6 +1205,7 @@ export function attachGebPvLayer(g, fl) {
   if (fl.typ === 'sperr') {
     fl.layer.setStyle({ opacity: 0, fillOpacity: 0 });
   }
+  applyGebPvDimming(g);   // Belegungsfläche bei abgerissenem/geplantem Gebäude ausgrauen
 }
 
 // Sperrflächen je nach aktuellem window.selectedId ein-/ausblenden.
@@ -1580,6 +1581,22 @@ export function redrawGebPvModules(g) {
   if (!ov) return;
   _ensurePvPane();
   g._pvModuleLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, pane: 'pvPane' }).addTo(map);
+  applyGebPvDimming(g);   // neu gezeichnete Module ggf. sofort ausgrauen (abgerissen/geplant)
+}
+
+// Solaranlagen eines Gebäudes ausgrauen, wenn das Gebäude abgerissen (oder geplant)
+// ist – analog zum ausgegrauten Gebäude-Umriss. status optional; sonst aus dem Jahr.
+export function applyGebPvDimming(g, status) {
+  if (status == null) status = getComputedStats(g, window.globalYear || globalYear).status;
+  const dimmed = status === 'abgerissen' || status === 'geplant';
+  if (g._pvModuleLayer && g._pvModuleLayer.setOpacity) g._pvModuleLayer.setOpacity(dimmed ? 0.22 : 1);
+  (g.pvFlaechen || []).forEach(fl => {
+    if (!fl.layer || fl.typ === 'sperr') return;   // Sperrflächen steuert updateSperrVisibility
+    const col = GEBPV_COLORS[fl.typ] || GEBPV_COLORS.belegung;
+    fl.layer.setStyle(dimmed
+      ? { color: '#777', fillColor: '#777', opacity: 0.25, fillOpacity: 0.06 }
+      : { color: col.border, fillColor: col.fill, opacity: 1, fillOpacity: 0.6, dashArray: null });
+  });
 }
 
 // Alle Flächen + Module eines Gebäudes neu zeichnen.
@@ -2185,6 +2202,8 @@ export function _buildProjectData() {
     // ERA5-Standort-Winddaten (window-Bridge aus 13q-wind-ertrag.js) — einmal geladen,
     // sollen sie Reload/Offline-Nutzung überleben (~60 KB, Stundenwerte gerundet)
     windStandortDaten: (typeof window.windSiteSerialize === 'function' ? window.windSiteSerialize() : null),
+    // Plan-Overlays (Hintergrundpläne) mit Bilddaten, Passlage, Deckkraft, Sichtbarkeit
+    overlays: (typeof window.serializeOverlays === 'function' ? window.serializeOverlays() : []),
   };
 }
 
@@ -2689,6 +2708,9 @@ export function _loadProject(project) {
       if (typeof window.windSiteRestore === 'function') {
         window.windSiteRestore(project.windStandortDaten || null);
       }
+
+      // Plan-Overlays (Hintergrundpläne) wiederherstellen bzw. leeren
+      if (typeof window.loadOverlays === 'function') window.loadOverlays(project.overlays || []);
 
       redrawErzeugerIcons();
       _invalidateStats();
