@@ -68967,13 +68967,21 @@ function _lockLayer(layer) {
   if (el) el.style.pointerEvents = 'none';
 }
 
+// Live-Eckpunkte des Layers in den Overlay-Eintrag zurückschreiben, damit
+// Ausrichtung (Drag, Referenzpunkte, Rotate/Distort) das Ausblenden überlebt —
+// ov.layer wird beim Verstecken zerstört, ov.corners bleibt bestehen.
+function _syncOverlayCorners(ov) {
+  if (!ov || !ov.layer) return;
+  ov.corners = ov.layer.getCorners().map(c => ({ lat: c.lat, lng: c.lng }));
+}
+
 // DistortableImage-Layer für einen Overlay-Eintrag (neu) erzeugen – initial gesperrt.
 function _createOverlayLayer(ov) {
   if (ov.layer) { map.removeLayer(ov.layer); ov.layer = null; }
   if (!ov.visible) return;
   const corners = ov.corners.map(c => L.latLng(c.lat, c.lng));
   ov.layer = L.distortableImageOverlay(ov.url, { corners, opacity: ov.opacity }).addTo(map);
-  ov.layer.on('update', repositionOverlayEdgeHandles);
+  ov.layer.on('update', () => { _syncOverlayCorners(ov); repositionOverlayEdgeHandles(); });
   const lock = () => _lockLayer(ov.layer);
   ov.layer.on('load', lock);
   lock();
@@ -69000,6 +69008,7 @@ function toggleOverlayVisible(id) {
     if (ov.id === window._activeOverlayId) setActiveOverlay(ov.id);
   } else {
     if (ov.id === window._activeOverlayId) { removeOverlayEdgeHandles(); window.overlayLayer = null; }
+    _syncOverlayCorners(ov);   // Ausrichtung sichern, bevor der Layer verschwindet
     if (ov.layer) { map.removeLayer(ov.layer); ov.layer = null; }
   }
   _renderOverlays();
