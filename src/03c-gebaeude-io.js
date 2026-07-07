@@ -1123,6 +1123,43 @@ export function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/<
 export function escVal(v){return v!=null&&v!==''?v:'';}
 export function flyTo(id){const g=window.gebaeude.find(x=>x.id===id);if(g?.polygonLayer)map.flyToBounds(g.polygonLayer.getBounds(),{padding:[40,40]});}
 
+// Kälteversorgung: UI-Eingaben (für Round-Trip) + berechnete Ergebnisse (für Bericht)
+function _captureKaelte() {
+  const v = (id) => document.getElementById(id)?.value;
+  const c = (id) => !!document.getElementById(id)?.checked;
+  const ks = window.kaelteState;
+  const aktiv = c('kaelte-revwp-on') || c('kaelte-chiller-on');
+  if (!aktiv && !ks) return null;
+  return {
+    eingabe: {
+      lastMode: v('kaelte-last-mode'),
+      mwh: v('kaelte-mwh'),
+      nutzung: v('kaelte-nutzung'),
+      spez: v('kaelte-spez'),
+      flaeche: v('kaelte-flaeche'),
+      kuehlgrenze: v('kaelte-kuehlgrenze'),
+      kaltwasserVl: v('kaelte-kw-vl'),
+      revwp: { on: c('kaelte-revwp-on'), quelle: v('kaelte-revwp-quelle'), guetegradK: v('kaelte-revwp-gg'),
+               auto: c('kaelte-revwp-auto'), leistungKw: v('kaelte-revwp-kw'), freecool: c('kaelte-revwp-freecool') },
+      chiller: { on: c('kaelte-chiller-on'), quelle: v('kaelte-chiller-quelle'), guetegradK: v('kaelte-chiller-gg'),
+                 leistungKw: v('kaelte-chiller-kw'), freecool: c('kaelte-chiller-freecool') },
+      freecoolDtMin: v('kaelte-freecool-dt'),
+      freecoolEer: v('kaelte-freecool-eer'),
+      investChillerEurKw: v('kaelte-invest-chiller'),
+      investRevwpEurKw: v('kaelte-invest-revwp'),
+      zins: v('kaelte-zins'),
+    },
+    ergebnis: ks ? {
+      kaelteMwh: ks.kaelteTotMwh, stromMwh: ks.stromTotMwh, seer: ks.seerGesamt,
+      peakKw: ks.peakKw, restMwh: ks.restMwh, freecoolMwh: ks.freecoolMwh,
+      investEur: ks.invest, stromkostenEurA: ks.stromKostenEur,
+      jahreskostenEurA: ks.jahreskostenEur, wgkKaelteCt: ks.wgkKaelteCt,
+      co2TonnenA: ks.co2TonnenA, monthlyEer: ks.monthlyEer,
+      erzeuger: ks.perErz,
+    } : null,
+  };
+}
+
 export function _buildProjectData() {
   return {
     version: 1,
@@ -1171,6 +1208,7 @@ export function _buildProjectData() {
     pvModul: { breite: document.getElementById('pv-modul-breite')?.value, laenge: document.getElementById('pv-modul-laenge')?.value, wp: document.getElementById('pv-modul-wp')?.value },
     pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value },
     meritOrderKeys: [...meritOrderKeys],
+    kaelte: _captureKaelte(),
     pelletsKessel: pelletsKessel ? { leistungKw: pelletsKessel.leistungKw, eta: document.getElementById('pk-eta').value, waerme: document.getElementById('pk-waerme').value, lat: pelletsKessel.lat, lng: pelletsKessel.lng } : null,
     heizhackschnitzel: heizhackschnitzel ? { leistungKw: heizhackschnitzel.leistungKw, eta: document.getElementById('hhs-eta').value, waerme: document.getElementById('hhs-waerme').value, lat: heizhackschnitzel.lat, lng: heizhackschnitzel.lng } : null,
     fernwaerme: fernwaerme ? { leistungKw: fernwaerme.leistungKw, waerme: document.getElementById('fw-waerme').value, co2f: document.getElementById('fw-co2f').value, lat: fernwaerme.lat, lng: fernwaerme.lng } : null,
@@ -1481,6 +1519,27 @@ export function _loadProject(project) {
         setThermSpeicherAktiv((project.waermespeicher.volumen || 0) > 0);
         updateThermSpeicherDisplay();
         document.getElementById('therm-speicher-panel').style.display = 'block';
+      }
+      if (project.kaelte?.eingabe) {
+        const e = project.kaelte.eingabe;
+        const sv = (id, val) => { const el = document.getElementById(id); if (el != null && val != null) el.value = val; };
+        const sc = (id, val) => { const el = document.getElementById(id); if (el != null && val != null) el.checked = !!val; };
+        sv('kaelte-last-mode', e.lastMode); sv('kaelte-mwh', e.mwh); sv('kaelte-nutzung', e.nutzung);
+        sv('kaelte-spez', e.spez); sv('kaelte-flaeche', e.flaeche);
+        sv('kaelte-kuehlgrenze', e.kuehlgrenze); sv('kaelte-kw-vl', e.kaltwasserVl);
+        sc('kaelte-revwp-on', e.revwp?.on); sv('kaelte-revwp-quelle', e.revwp?.quelle);
+        sv('kaelte-revwp-gg', e.revwp?.guetegradK); sc('kaelte-revwp-auto', e.revwp?.auto);
+        sv('kaelte-revwp-kw', e.revwp?.leistungKw); sc('kaelte-revwp-freecool', e.revwp?.freecool);
+        sc('kaelte-chiller-on', e.chiller?.on); sv('kaelte-chiller-quelle', e.chiller?.quelle);
+        sv('kaelte-chiller-gg', e.chiller?.guetegradK); sv('kaelte-chiller-kw', e.chiller?.leistungKw);
+        sc('kaelte-chiller-freecool', e.chiller?.freecool);
+        sv('kaelte-freecool-dt', e.freecoolDtMin); sv('kaelte-freecool-eer', e.freecoolEer);
+        sv('kaelte-invest-chiller', e.investChillerEurKw); sv('kaelte-invest-revwp', e.investRevwpEurKw);
+        sv('kaelte-zins', e.zins);
+        if (e.lastMode) { const el = document.getElementById('kaelte-last-direkt-wrap'); const fl = document.getElementById('kaelte-last-flaeche-wrap');
+          if (el) el.style.display = e.lastMode === 'direkt' ? '' : 'none';
+          if (fl) fl.style.display = e.lastMode === 'flaeche' ? '' : 'none'; }
+        if ((e.revwp?.on) || (e.chiller?.on)) document.getElementById('kaelte-panel').style.display = 'block';
       }
       if (project.freiflaechen && project.freiflaechen.length > 0) {
         project.freiflaechen.forEach(ff => {

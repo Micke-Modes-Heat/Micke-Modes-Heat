@@ -39,6 +39,7 @@ const JS_FILES = [
   '06a-gbi-lastgang.js',
   '06b-gl-berechnen.js',
   '06c-dispatch-core.js',
+  '06d-kaelte-core.js',
   '07a-analysis-charts.js',
   '07b-analysis-economics.js',
   '08-calc-engine.js',
