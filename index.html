@@ -302,6 +302,10 @@
           <button class="lp-tool-btn" data-click="toggleThermSpeicherPanel()" style="border-color:#26a69a;color:#80cbc4;">🔋 Wärmespeicher</button>
           <button class="lp-tool-btn" data-click="toggleBatteriePanel()" style="border-color:#b39ddb;color:#ce93d8;">🔋 Batteriespeicher</button>
         </div>
+        <div class="lp-section-title" style="margin-top:12px;">Kälteversorgung <span class="htip" data-tip="Kälteanlagen / reversible Wärmepumpen. Stromverbrauch und EER werden stundenscharf (8.760 h) gerechnet – analog zur Wärmepumpe, nur mit Kühl-Wirkungsgrad (EER).">?</span></div>
+        <div class="lp-tool-grid">
+          <button class="lp-tool-btn" data-click="toggleKaeltePanel()" style="border-color:#26c6da;color:#4dd0e1;">🧊 Kälte / Kühlung</button>
+        </div>
         <div class="lp-section-title" style="margin-top:12px;">Merit-Order <span class="htip" data-tip="Einsatzreihenfolge der Erzeuger: Der billigste wird zuerst eingesetzt, dann der nächste, bis der Wärmebedarf gedeckt ist. Per Drag&amp;Drop änderbar.">?</span></div>
         <div id="lp-merit-order">
           <div style="font-size:10px;color:var(--muted);padding:4px;">Noch keine Erzeuger aktiv</div>
@@ -2400,6 +2404,179 @@
   <div class="panel-btns">
     <button class="btn-secondary" data-click="clearThermSpeicher()" style="border-color:#e53935;color:#e53935;">Speicher entfernen</button>
     <button class="btn-secondary" data-click="document.getElementById('therm-speicher-panel').style.display='none';">Schließen</button>
+  </div>
+</div>
+
+<!-- ══ Kälteversorgung ════════════════════════════════════════════ -->
+<div class="float-panel" id="kaelte-panel" style="border-color:#26c6da;--panel-accent:#26c6da;display:none;">
+  <div class="panel-drag-handle" onmousedown="startDrag(event,'kaelte-panel')"><span style="color:#4dd0e1;font-size:12px">🧊 Kälteversorgung</span><span class="panel-minimize-btn" data-click="togglePanelMinimize('kaelte-panel')">▲</span><span class="drag-dots">⠿</span></div>
+  <div class="panel-info">Kälteanlagen und reversible Wärmepumpen. EER und Stromverbrauch werden stundenscharf über 8.760 h gerechnet – wie bei der Wärmepumpe, nur mit Kühl-Wirkungsgrad. Reversible WP nutzt im Sommer dieselbe Maschine wie die Wärme-WP.</div>
+
+  <div id="kaelte-hint" style="display:none;font-size:10px;color:#ffb74d;background:var(--bg);border:1px solid #ffb74d;border-radius:5px;padding:6px 8px;margin-bottom:10px;"></div>
+
+  <!-- Kältelast -->
+  <div class="lp-section-title" style="margin-top:0;">Kältebedarf</div>
+  <div class="inp-group" style="margin-bottom:8px;">
+    <label class="inp-label">Eingabe der Kältemenge</label>
+    <select class="inp-field" id="kaelte-last-mode" style="font-size:11px;" data-change="kaelteLastModeChanged()">
+      <option value="direkt">Direkt (MWh/a)</option>
+      <option value="flaeche">Flächenbasiert (kWh/m²a × Fläche)</option>
+    </select>
+  </div>
+  <div id="kaelte-last-direkt-wrap" style="margin-bottom:10px;">
+    <div class="inp-group">
+      <label class="inp-label">Jahres-Kältebedarf (MWh/a)</label>
+      <input class="inp-field" type="number" id="kaelte-mwh" value="100" min="0" step="1" data-input="updateKaelte()"/>
+    </div>
+  </div>
+  <div id="kaelte-last-flaeche-wrap" style="display:none;margin-bottom:10px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="inp-group">
+        <label class="inp-label">Nutzungstyp</label>
+        <select class="inp-field" id="kaelte-nutzung" style="font-size:11px;" data-change="kaelteNutzungChanged()">
+          <option value="buero">Büro (35)</option>
+          <option value="ghd">GHD/Handel (30)</option>
+          <option value="schule">Schule (15)</option>
+          <option value="oeffentlich">Öffentlich (25)</option>
+          <option value="industrie">Industrie (40)</option>
+          <option value="rechenzentrum">Rechenzentrum (800)</option>
+          <option value="mfh">Wohnen MFH (10)</option>
+        </select>
+      </div>
+      <div class="inp-group">
+        <label class="inp-label" title="Spezifischer Jahres-Kältebedarf">spez. Kälte (kWh/m²a)</label>
+        <input class="inp-field" type="number" id="kaelte-spez" value="35" min="0" step="1" data-input="updateKaelte()"/>
+      </div>
+      <div class="inp-group" style="grid-column:1/3;">
+        <label class="inp-label">gekühlte Fläche (m²)</label>
+        <input class="inp-field" type="number" id="kaelte-flaeche" value="2000" min="0" step="50" data-input="updateKaelte()"/>
+      </div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+    <div class="inp-group">
+      <label class="inp-label" title="Tagesmittel-Außentemperatur, ab der gekühlt wird (Kühlgrenze des Gebäudes).">Kühlgrenze (°C)</label>
+      <input class="inp-field" type="number" id="kaelte-kuehlgrenze" value="12" min="5" max="26" step="0.5" data-input="updateKaelte()"/>
+    </div>
+    <div class="inp-group">
+      <label class="inp-label" title="Kaltwasser-Vorlauftemperatur. 6–8 °C: Komfortkühlung. 14–18 °C: Hochtemperaturkühlung (Betonkernaktivierung) – ideal für freie Kühlung.">Kaltwasser-VL (°C)</label>
+      <input class="inp-field" type="number" id="kaelte-kw-vl" value="7" min="4" max="20" step="0.5" data-input="updateKaelte()"/>
+    </div>
+  </div>
+
+  <!-- Reversible WP -->
+  <div class="lp-section-title">Reversible Wärmepumpe</div>
+  <div class="inp-group" style="margin-bottom:6px;">
+    <input type="checkbox" id="kaelte-revwp-on" data-change="updateKaelte()"/>
+    <label for="kaelte-revwp-on" style="font-size:12px;cursor:pointer;">Reversible WP aktiv (kühlt im Sommer)</label>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;">
+    <div class="inp-group">
+      <label class="inp-label" title="Wärmequelle = Rückkühlung im Kühlbetrieb. Luft = luftgekühlt. Fließgew./Erdsonde = ermöglicht freie Kühlung.">Quelle/Rückkühlung</label>
+      <select class="inp-field" id="kaelte-revwp-quelle" style="font-size:11px;" data-change="updateKaelte()">
+        <option value="luft">Luft (luftgekühlt)</option>
+        <option value="fg">Fließgewässer</option>
+        <option value="geo">Erdsonde (Geo)</option>
+      </select>
+    </div>
+    <div class="inp-group">
+      <label class="inp-label" title="Carnot-Gütegrad Kühlbetrieb: EER = η × T_KW / (T_RW − T_KW). Typ. 0.35–0.45.">Gütegrad η_K</label>
+      <input class="inp-field" type="number" id="kaelte-revwp-gg" value="0.38" min="0.20" max="0.60" step="0.01" data-input="updateKaelte()"/>
+    </div>
+  </div>
+  <div class="inp-group" style="margin-bottom:6px;">
+    <input type="checkbox" id="kaelte-revwp-auto" checked data-change="updateKaelte()"/>
+    <label for="kaelte-revwp-auto" style="font-size:11px;cursor:pointer;" title="Nennleistung von der gekoppelten Wärme-WP übernehmen (dieselbe Maschine kühlt). Deaktivieren, um eine eigene Kälteleistung zu setzen.">Kälteleistung = Wärme-WP (gekoppelt)</label>
+  </div>
+  <div class="inp-group" style="margin-bottom:6px;">
+    <label class="inp-label">eigene Kälteleistung (kW)</label>
+    <input class="inp-field" type="number" id="kaelte-revwp-kw" value="100" min="0" step="1" data-input="updateKaelte()"/>
+  </div>
+  <div class="inp-group" style="margin-bottom:10px;">
+    <input type="checkbox" id="kaelte-revwp-freecool" data-change="updateKaelte()"/>
+    <label for="kaelte-revwp-freecool" style="font-size:11px;cursor:pointer;" title="Nur bei Fließgewässer/Erdsonde: direktes Kühlen über die kalte Quelle (nur Pumpenstrom), wenn diese kalt genug ist.">Freie Kühlung nutzen (nur Quelle ≠ Luft)</label>
+  </div>
+
+  <!-- Dedizierte Kältemaschine -->
+  <div class="lp-section-title">Dedizierte Kältemaschine</div>
+  <div class="inp-group" style="margin-bottom:6px;">
+    <input type="checkbox" id="kaelte-chiller-on" data-change="updateKaelte()"/>
+    <label for="kaelte-chiller-on" style="font-size:12px;cursor:pointer;">Eigenständige Kältemaschine aktiv</label>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;">
+    <div class="inp-group">
+      <label class="inp-label">Quelle/Rückkühlung</label>
+      <select class="inp-field" id="kaelte-chiller-quelle" style="font-size:11px;" data-change="updateKaelte()">
+        <option value="luft">Luft (luftgekühlt)</option>
+        <option value="fg">Fließgewässer</option>
+        <option value="geo">Erdsonde (Geo)</option>
+      </select>
+    </div>
+    <div class="inp-group">
+      <label class="inp-label" title="Carnot-Gütegrad Kühlbetrieb. Schraubenverdichter typ. 0.40–0.50.">Gütegrad η_K</label>
+      <input class="inp-field" type="number" id="kaelte-chiller-gg" value="0.40" min="0.20" max="0.60" step="0.01" data-input="updateKaelte()"/>
+    </div>
+    <div class="inp-group">
+      <label class="inp-label">Kälteleistung (kW)</label>
+      <input class="inp-field" type="number" id="kaelte-chiller-kw" value="200" min="0" step="1" data-input="updateKaelte()"/>
+    </div>
+    <div class="inp-group" style="display:flex;align-items:flex-end;">
+      <label style="font-size:11px;cursor:pointer;"><input type="checkbox" id="kaelte-chiller-freecool" data-change="updateKaelte()"/> Freie Kühlung</label>
+    </div>
+  </div>
+
+  <!-- Freie-Kühlung-Parameter -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+    <div class="inp-group">
+      <label class="inp-label" title="Mindest-Temperaturabstand: Quelle muss um diesen Wert kälter als der Kaltwasser-VL sein, damit freie Kühlung greift.">ΔT_min freie Kühlung (K)</label>
+      <input class="inp-field" type="number" id="kaelte-freecool-dt" value="2" min="0" max="10" step="0.5" data-input="updateKaelte()"/>
+    </div>
+    <div class="inp-group">
+      <label class="inp-label" title="Effektives EER der freien Kühlung (nur Pumpen-/Ventilatorstrom). Typ. 15–25.">EER freie Kühlung</label>
+      <input class="inp-field" type="number" id="kaelte-freecool-eer" value="20" min="5" max="40" step="1" data-input="updateKaelte()"/>
+    </div>
+  </div>
+
+  <!-- Ergebnis -->
+  <div class="lp-section-title">Ergebnis (8.760 h)</div>
+  <div style="padding:8px;background:var(--bg);border:1px solid #26c6da;border-radius:6px;font-size:10px;font-family:'DM Mono',monospace;margin-bottom:8px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;">
+    <span style="color:var(--muted)">SEER (Jahres-EER)</span><span id="kaelte-res-seer" style="color:#4dd0e1;font-size:13px;">—</span>
+    <span style="color:var(--muted)">Kälte erzeugt</span><span id="kaelte-res-kaelte" style="color:var(--text);">—</span>
+    <span style="color:var(--muted)">Stromverbrauch</span><span id="kaelte-res-strom" style="color:#ffb74d;">—</span>
+    <span style="color:var(--muted)">davon freie Kühlung</span><span id="kaelte-res-freecool" style="color:#80cbc4;">—</span>
+    <span style="color:var(--muted)">Restkälte</span><span id="kaelte-res-rest" style="color:var(--text);">—</span>
+  </div>
+  <div id="kaelte-erz-breakdown" style="font-size:10px;margin-bottom:8px;"></div>
+  <div id="kaelte-eer-wrap" style="display:none;margin-bottom:8px;">
+    <div style="font-size:9px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;margin-bottom:3px;">Monats-EER</div>
+    <svg id="kaelte-eer-svg" viewBox="0 0 300 80" style="width:100%;height:auto;"></svg>
+  </div>
+
+  <!-- Wirtschaftlichkeit & CO₂ -->
+  <div class="lp-section-title">Wirtschaftlichkeit &amp; CO₂</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+    <div class="inp-group">
+      <label class="inp-label" title="Spezifische Investition dedizierte Kältemaschine inkl. Rückkühler (Richtwert 300–500 €/kW).">Invest Kältemasch. (€/kW)</label>
+      <input class="inp-field" type="number" id="kaelte-invest-chiller" value="400" min="0" step="10" data-input="updateKaelte()"/>
+    </div>
+    <div class="inp-group">
+      <label class="inp-label" title="Aufpreis für Reversibilität (4-Wege-Ventil, zusätzl. Wärmetauscher) – die WP selbst steckt in der Wärme-Investition.">Aufpreis reversibel (€/kW)</label>
+      <input class="inp-field" type="number" id="kaelte-invest-revwp" value="80" min="0" step="10" data-input="updateKaelte()"/>
+    </div>
+    <div class="inp-group">
+      <label class="inp-label">Kalk. Zins (%)</label>
+      <input class="inp-field" type="number" id="kaelte-zins" value="4" min="0" max="12" step="0.5" data-input="updateKaelte()"/>
+    </div>
+  </div>
+  <div style="padding:8px;background:var(--bg);border:1px solid #26c6da;border-radius:6px;font-size:10px;font-family:'DM Mono',monospace;margin-bottom:10px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;">
+    <span style="color:var(--muted)">Investition</span><span id="kaelte-res-invest" style="color:var(--text);">—</span>
+    <span style="color:var(--muted)">Stromkosten</span><span id="kaelte-res-stromkosten" style="color:#ffb74d;">—</span>
+    <span style="color:var(--muted)" title="Kältegestehungskosten: Vollkosten je kWh Kälte (Annuität + Strom + Wartung).">Kältegestehungskosten</span><span id="kaelte-res-wgk" style="color:#4dd0e1;font-size:12px;">—</span>
+    <span style="color:var(--muted)" title="CO₂ aus Kältestrom (aktueller Strom-Mix).">CO₂ (Kältestrom)</span><span id="kaelte-res-co2" style="color:var(--text);">—</span>
+  </div>
+
+  <div class="panel-btns">
+    <button class="btn-secondary" data-click="document.getElementById('kaelte-panel').style.display='none';">Schließen</button>
   </div>
 </div>
 

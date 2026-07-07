@@ -57,6 +57,22 @@ Gemeinsame Felder: `leistungKw` (thermisch), `waerme` (Deckel MWh/a, leer = unbe
 - `waermespeicher`: `typ` (puffer/gross/saisonal), `volumen` (m³), `dt` (K), `verlust` (%/h), `entladeKw`, `ladeKw`
 - `solarthermie`: `flaeche` (m²), `spez` (kWh/m²a)
 
+### `kaelte` — Kälteversorgung (`null`, wenn nicht im Projekt)
+Stundenscharfe Kälteberechnung (EER analog zur Wärmepumpe). Zwei Unterobjekte:
+
+**`kaelte.eingabe`** — die UI-Parameter (Round-Trip):
+- `lastMode` (`direkt` = MWh/a | `flaeche` = kWh/m²a × Fläche), `mwh`, `nutzung`, `spez` (kWh/m²a), `flaeche` (m²)
+- `kuehlgrenze` (°C, Tagesmittel ab dem gekühlt wird), `kaltwasserVl` (°C Kaltwasser-Vorlauf)
+- `revwp` — reversible WP: `on`, `quelle` (`luft`/`fg`/`geo` = Rückkühlung), `guetegradK` (η_K), `auto` (Leistung = Wärme-WP), `leistungKw`, `freecool`
+- `chiller` — dedizierte Kältemaschine: `on`, `quelle`, `guetegradK`, `leistungKw`, `freecool`
+- `freecoolDtMin` (K), `freecoolEer`, `investChillerEurKw`, `investRevwpEurKw`, `zins` (%)
+
+**`kaelte.ergebnis`** — berechnete Werte (für den Bericht):
+- `kaelteMwh` (erzeugte Kälte MWh/a), `stromMwh` (Kältestrom MWh/a), `seer` (Jahres-EER)
+- `peakKw` (Spitzen-Kältelast), `restMwh` (ungedeckt), `freecoolMwh` (freie Kühlung)
+- `investEur`, `stromkostenEurA`, `jahreskostenEurA`, `wgkKaelteCt` (Kältegestehungskosten ct/kWh), `co2TonnenA`
+- `monthlyEer[12]`, `erzeuger[]` (je Erzeuger: `kaelteMwh`, `stromMwh`, `seer`, …)
+
 ### Emissions- und Primärenergiefaktoren
 `stromEmF` (heute) und `stromEmFLZ` (Lebenszyklus/Zieljahr) in g/kWh; übrige
 `*EmF` analog. `pef*` = Primärenergiefaktoren für den GEG-Nachweis.
