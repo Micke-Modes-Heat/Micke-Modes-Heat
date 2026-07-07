@@ -61,6 +61,10 @@ export function moBeiDeaktivierung(key) {
 // ── Hook: wird nach glBerechnen() aufgerufen ─────────────────────────────
 export function onSystemStateUpdated() {
   updateAllDeckungen();
+  // Kälteversorgung neu rechnen (nutzt das frische Temperaturprofil)
+  if (typeof window.updateKaelte === 'function') {
+    try { window.updateKaelte(); } catch (e) { console.error('Kälte-Fehler:', e); }
+  }
   // Systemanalyse-Charts refreshen wenn Panel gerade offen ist
   if (document.getElementById('analyse-panel')?.classList.contains('visible')) {
     saSetTab(saCurrentTab || 'lastgang');
