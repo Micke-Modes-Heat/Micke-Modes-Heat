@@ -75782,6 +75782,11 @@ window._ebpSatellit = function(checked) {
 
 
 
+
+
+
+
+
 var _emCurrentTab = 'em-stunden';
 var _emZoom = { startH: 0, endH: 8760 };
 var _emRubber = null;
@@ -86660,6 +86665,7 @@ function _renderEerChart(monthlyEer) {
 
 
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
+
 
 var saCurrentTab = 'lastgang';
 
@@ -107418,6 +107424,7 @@ function _renderAssetFelddaten(a) {
 
 
 
+
 var SLD_LH = 120;   // px per rank level (vertical)
 var SLD_CW = 110;   // min column width per node
 var SLD_NW = 86;    // node box width
@@ -116266,9 +116273,6 @@ function removeErzeugerElektroAsset(key) {
 // reale Leistungskurve des Herstellers sowie ein Standortwindgutachten heranzuziehen.
 
 
-
-
-
 // Lanczos-Näherung der Gammafunktion (g=7, n=9) — Standardkoeffizienten
 var _LANCZOS_G = 7;
 var _LANCZOS_C = [
@@ -117986,13 +117990,6 @@ function computeTurbinePlacements({ polygonRing, buildingRings = [], exclusionRi
 // (13q-wind-ertrag.js, 13e-assets-inspector.js) — keine neue Fachlogik.
 
 
-
-
-
-
-
-
-
 // Anlagenklassen für die Platzierungsvorschläge — repräsentative, marktübliche Größen
 // (kein Bezug zu evtl. schon vorhandenen Anlagen, dafür gibt es je Anlage die eigene
 // Szenarien-Vergleich-Karte). Wind-/Nennwind-Defaults wie überall im Wind-Modul.
@@ -119075,12 +119072,6 @@ function viewerNav(n) {
 //     pvEnumerateKandidaten, pvRunMeritOrder
 
 
-
-
-
-
-
-
 // ── Pure Helpers ──────────────────────────────────────────────────────────────
 
 /** Annuitätenfaktor (VDI 2067). */
@@ -119596,10 +119587,6 @@ function _resampleTo8760(arr15) {
 //     ertMakeDeltaInfraFn, ertRunMitInfra
 
 
-
-
-
-
 // ── Trafo-Kostenstufen ────────────────────────────────────────────────────────
 // Standardtrafo NS/MS inkl. Montage; gerundete DE-Richtwerte 2024.
 // bisKvA = Nennleistung des neuen Trafos;  investEUR = Gesamtkosten ca.
@@ -119864,8 +119851,6 @@ function ertRunMitInfra(opts) {
 //     fahrplanAutoSchnitt, fahrplanBerechneInvestJePhase
 //   APP-SIDE:
 //     fahrplanAutoGenerieren, fahrplanSchreibeAufAssets
-
-
 
 
 // ── Typen (JSDoc-Referenz) ────────────────────────────────────────────────────
@@ -120157,10 +120142,6 @@ function _itemJahr(it, phasenArr) {
 // ── 14d-selektion.js — Asset-Selektion + Elektro-Bulk-Bar ────────────────────
 // M5: assetSelection-State; Shift+Click + Box-Selektion auf Karte;
 //     Checkboxen in Sidebar; schwebende Bulk-Bar mit Sammelaktionen.
-
-
-
-
 
 
 // ── Selektions-State ──────────────────────────────────────────────────────────
@@ -120877,10 +120858,6 @@ function selInitBoxSelect() {
 // Fahrplan-Board für ALLE Maßnahmen ALLER Assets (gekoppelt an den Bulk-Modus):
 // Gantt-Swimlanes je Gewerk (Maßnahmen-Typ), Spalten = Phasen, Drag-Drop zwischen
 // Phasen (schreibt direkt auf die Maßnahme zurück), dependsOn-Pfeile, Validierung.
-
-
-
-
 
 
 // ── Gewerk-Farben (Maßnahmen-Typen) ──────────────────────────────────────────
