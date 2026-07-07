@@ -97,6 +97,15 @@ function _renderCableInspector(panel, edge) {
   const duColor   = edge.deltaUPct   < 1   ? '#4caf50' : edge.deltaUPct   < 3   ? '#f9a825' : '#e53935';
   const qsTxt     = edge.autoSized ? `auto · ${edge.crossSection || '?'} mm²` : `${edge.crossSection || '?'} mm²`;
 
+  // Lebenszyklus: von den Endpunkten geerbt (refreshStromEdgeYears)
+  _refreshEdgeYears(edge);
+  const _yr = globalYear ?? new Date().getFullYear();
+  const st  = getStromEdgeStatus(edge, _yr);
+  const stMeta = { active: { c: '#4caf50', t: 'aktiv' }, planned: { c: '#f9a825', t: 'geplant' }, demolished: { c: '#e53935', t: 'abgerissen' } }[st];
+  const _lifeTxt = (edge.baujahr || edge.abrissjahr)
+    ? `${edge.baujahr ? 'ab ' + edge.baujahr : 'seit jeher'}${edge.abrissjahr ? ' · bis ' + edge.abrissjahr : ''}`
+    : 'ohne Jahresangabe';
+
   panel.innerHTML = `
     <button class="sb-asset-back-btn" id="sb-cable-back">← Alle Assets</button>
     <div class="asset-ins-header" style="background:#5c6bc0;">
@@ -133,6 +142,15 @@ function _renderCableInspector(panel, edge) {
           Automatisch dimensionieren
         </label>
       </div>
+      <div style="margin:4px 0 8px;padding:6px 8px;background:var(--surface2);border-radius:6px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="width:8px;height:8px;border-radius:50%;background:${stMeta.c};flex-shrink:0;"></span>
+          <span style="font-size:10px;color:var(--text);flex:1;">Lebenszyklus <b style="color:${stMeta.c};">${stMeta.t}</b></span>
+          <span style="font-size:9px;color:var(--muted);">${_lifeTxt}</span>
+        </div>
+        <div style="font-size:8px;color:var(--muted);margin-top:3px;">Bau-/Abrissjahr von den verbundenen Assets übernommen.</div>
+      </div>
+      ${_cableMassnSection(edge)}
       <button class="asset-ins-delete" id="ci-del">🗑 Kabel löschen</button>
     </div>`;
 
@@ -170,6 +188,8 @@ function _renderCableInspector(panel, edge) {
   parallelEl.addEventListener('change', apply);
   autoEl.addEventListener('change', () => { qsEl.disabled = autoEl.checked; apply(); });
 
+  _wireCableMassn(panel, edge);
+
   panel.querySelector('#sb-cable-back').onclick = () => {
     deselectStromEdge();
     if (typeof window.closeAssetInspector === 'function') window.closeAssetInspector();
@@ -185,6 +205,117 @@ function _renderCableInspector(panel, edge) {
       if (typeof window.closeAssetInspector === 'function') window.closeAssetInspector();
     });
   };
+}
+
+// ── Kabel-Maßnahmen (kompakter Editor, analog zum Asset-Inspector) ──────────────
+const _CABLE_MASSN_STATUS = {
+  geplant:   { label: 'Geplant',   color: '#4fc3f7' },
+  umgesetzt: { label: 'Umgesetzt', color: '#4caf50' },
+  abgelehnt: { label: 'Abgelehnt', color: '#9e9e9e' },
+};
+const _CABLE_MASSN_TYP = {
+  Verlegung:   { label: 'Neuverlegung', icon: '🧵' },
+  Ertuecht:    { label: 'Ertüchtigung', icon: '⚡' },
+  Austausch:   { label: 'Austausch',    icon: '🔧' },
+  Rueckbau:    { label: 'Rückbau',      icon: '🏚' },
+};
+function _cableMassnId() { return 'cm_' + Math.random().toString(36).slice(2, 8); }
+
+function _cableMassnRow(m) {
+  const s = _CABLE_MASSN_STATUS[m.status] || _CABLE_MASSN_STATUS.geplant;
+  const t = _CABLE_MASSN_TYP[m.typ]       || _CABLE_MASSN_TYP.Austausch;
+  const kosten = m.kosten ? m.kosten.toLocaleString('de-DE') + ' €' : '—';
+  return `<div class="ins-massn-row" data-cm-id="${m.id}">
+    <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
+    <div class="ins-massn-info">
+      <div class="ins-massn-titel">${t.icon} ${(m.titel || '—').replace(/</g,'&lt;')}</div>
+      <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten} · <span class="ins-massn-typ-tag">${t.label}</span></div>
+    </div>
+    <button class="ins-massn-edit" data-cm-id="${m.id}" title="Bearbeiten">✎</button>
+    <button class="ins-massn-del"  data-cm-id="${m.id}" title="Löschen">×</button>
+  </div>`;
+}
+
+function _cableMassnSection(edge) {
+  const list = edge.massnahmen || [];
+  const rows = list.map(_cableMassnRow).join('');
+  const typOpts    = Object.entries(_CABLE_MASSN_TYP).map(([v, t]) => `<option value="${v}">${t.icon} ${t.label}</option>`).join('');
+  const statusOpts = Object.entries(_CABLE_MASSN_STATUS).map(([v, s]) => `<option value="${v}">${s.label}</option>`).join('');
+  const eid = edge.id;
+  return `
+    <div class="ins-section-header" style="margin-top:8px;"><span class="asset-ins-section-title">Maßnahmen</span></div>
+    <div class="ins-massn-list" id="cm-list-${eid}">${rows || '<div class="ins-massn-empty">Keine Maßnahmen</div>'}</div>
+    <button class="ins-massn-add-btn" id="cm-add-${eid}">+ Maßnahme hinzufügen</button>
+    <div class="ins-massn-form" id="cm-form-${eid}" style="display:none;">
+      <input class="ins-field-input" type="text" id="cm-titel-${eid}" placeholder="Titel der Maßnahme">
+      <div class="ins-row-2" style="margin-top:4px;">
+        <input class="ins-field-input" type="number" id="cm-jahr-${eid}"   placeholder="Jahr">
+        <input class="ins-field-input" type="number" id="cm-kosten-${eid}" placeholder="Kosten €" min="0">
+      </div>
+      <div class="ins-row-2" style="margin-top:4px;">
+        <select class="ins-field-input" id="cm-typ-${eid}">${typOpts}</select>
+        <select class="ins-field-input" id="cm-status-${eid}">${statusOpts}</select>
+      </div>
+      <div class="ins-massn-form-btns">
+        <button class="ins-massn-form-cancel" id="cm-cancel-${eid}">Abbrechen</button>
+        <button class="ins-massn-form-save"   id="cm-save-${eid}">Speichern</button>
+      </div>
+    </div>`;
+}
+
+function _wireCableMassn(panel, edge) {
+  const eid = edge.id;
+  let editingId = null;
+  const $ = sel => panel.querySelector(sel);
+
+  function refreshList() {
+    const listEl = $(`#cm-list-${eid}`);
+    if (!listEl) return;
+    const list = edge.massnahmen || [];
+    listEl.innerHTML = list.length ? list.map(_cableMassnRow).join('') : '<div class="ins-massn-empty">Keine Maßnahmen</div>';
+    bindRows();
+  }
+  function openForm(m) {
+    editingId = m ? m.id : null;
+    const form = $(`#cm-form-${eid}`);
+    $(`#cm-titel-${eid}`).value  = m?.titel  || '';
+    $(`#cm-jahr-${eid}`).value   = m?.jahr   || '';
+    $(`#cm-kosten-${eid}`).value = m?.kosten || '';
+    $(`#cm-typ-${eid}`).value    = m?.typ    || 'Austausch';
+    $(`#cm-status-${eid}`).value = m?.status || 'geplant';
+    form.style.display = '';
+    $(`#cm-titel-${eid}`).focus();
+  }
+  function closeForm() { editingId = null; $(`#cm-form-${eid}`).style.display = 'none'; }
+  function saveForm() {
+    const titel = $(`#cm-titel-${eid}`).value.trim();
+    if (!titel) return;
+    const jahr   = parseInt($(`#cm-jahr-${eid}`).value)    || null;
+    const kosten = parseFloat($(`#cm-kosten-${eid}`).value) || 0;
+    const typ    = $(`#cm-typ-${eid}`).value;
+    const status = $(`#cm-status-${eid}`).value;
+    if (!edge.massnahmen) edge.massnahmen = [];
+    if (editingId) {
+      const m = edge.massnahmen.find(x => x.id === editingId);
+      if (m) Object.assign(m, { titel, jahr, kosten, typ, status });
+    } else {
+      edge.massnahmen.push({ id: _cableMassnId(), titel, jahr, kosten, typ, status });
+    }
+    closeForm();
+    refreshList();
+  }
+  function bindRows() {
+    panel.querySelectorAll(`#cm-list-${eid} .ins-massn-edit`).forEach(btn => {
+      btn.onclick = () => { const m = (edge.massnahmen || []).find(x => x.id === btn.dataset.cmId); if (m) openForm(m); };
+    });
+    panel.querySelectorAll(`#cm-list-${eid} .ins-massn-del`).forEach(btn => {
+      btn.onclick = () => { edge.massnahmen = (edge.massnahmen || []).filter(x => x.id !== btn.dataset.cmId); refreshList(); };
+    });
+  }
+  $(`#cm-add-${eid}`)?.addEventListener('click', () => openForm(null));
+  $(`#cm-cancel-${eid}`)?.addEventListener('click', closeForm);
+  $(`#cm-save-${eid}`)?.addEventListener('click', saveForm);
+  bindRows();
 }
 
 export function setNetzSubTab(sub) {
@@ -632,7 +763,9 @@ export function addStromEdge(uId, vId) {
     cableType: defaultType, crossSection: 0, autoSized: true, fuseA: 0, nParallel: 1,
     lengthM: lengthM,
     peakCurrentA: 0, ratedCurrentA: 0, auslastungPct: 0,
-    deltaUPct: 0, peakFlowKw: 0, flowDirection: 1
+    deltaUPct: 0, peakFlowKw: 0, flowDirection: 1,
+    // Lebenszyklus: von den Endpunkten geerbt (siehe refreshStromEdgeYears) + eigene Maßnahmen
+    baujahr: null, abrissjahr: null, massnahmen: []
   };
 
   // Auto-Erkennung MS-Kabel: NAP und Schaltanlage (TYPE_RANK ≤ 1) sind MS-seitig
@@ -673,8 +806,41 @@ export function addStromEdge(uId, vId) {
   });
 
   window.stromEdges.push(edge);
+  _refreshEdgeYears(edge);
   startAnimStrom();
   return edge;
+}
+
+// Bau-/Abrissjahr eines Kabels aus seinen beiden Endpunkten ableiten:
+// gebaut, sobald BEIDE Endpunkte existieren (spätestes Baujahr);
+// entfällt, sobald EINER wegfällt (frühestes Abrissjahr). Endpunkte ohne
+// Jahresangabe (reine Netzknoten NAP/Trafo/NSHV) schränken nicht ein.
+function _endpointYears(nodeId) {
+  const a = ASSETS.items.find(x => x.id === nodeId);
+  if (!a) return { bj: null, aj: null };
+  return {
+    bj: a.baujahr    ? parseInt(a.baujahr)    : null,
+    aj: a.abrissjahr ? parseInt(a.abrissjahr) : null,
+  };
+}
+export function _refreshEdgeYears(edge) {
+  const yu = _endpointYears(edge.u), yv = _endpointYears(edge.v);
+  const bjs = [yu.bj, yv.bj].filter(v => v != null);
+  const ajs = [yu.aj, yv.aj].filter(v => v != null);
+  edge.baujahr    = bjs.length ? Math.max(...bjs) : null;
+  edge.abrissjahr = ajs.length ? Math.min(...ajs) : null;
+}
+export function refreshStromEdgeYears() {
+  (window.stromEdges || []).forEach(_refreshEdgeYears);
+}
+
+// Status eines Kabels im gegebenen Jahr (wie getAssetStatus, aber für Kanten)
+export function getStromEdgeStatus(edge, year) {
+  const bj = edge.baujahr    ? parseInt(edge.baujahr)    : null;
+  const aj = edge.abrissjahr ? parseInt(edge.abrissjahr) : null;
+  if (bj && year <  bj) return 'planned';
+  if (aj && year >= aj) return 'demolished';
+  return 'active';
 }
 
 // ── Kabel-Auswahl & Hervorhebung ────────────────────────────────
@@ -926,6 +1092,13 @@ export function buildStromEdgeTooltip(e) {
 
   h += _ttHr;
   h += _ttKv('Kosten', kostenEur.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €');
+
+  if (e.baujahr || e.abrissjahr) {
+    const lz = `${e.baujahr ? 'ab ' + e.baujahr : ''}${e.abrissjahr ? (e.baujahr ? ' · ' : '') + 'bis ' + e.abrissjahr : ''}`;
+    h += _ttKv('Lebenszyklus', lz);
+  }
+  const nPlan = (e.massnahmen || []).filter(m => m.status === 'geplant').length;
+  if (nPlan > 0) h += _ttKv('Maßnahmen', `<span style="color:#4fc3f7">${nPlan} geplant</span>`);
 
   if (endNode?.ikMinA > 0 && isFinite(endNode.ikMinA)) {
     const ikC = endNode.ikMinA < 1000 ? '#f9a825' : '#4caf50';
@@ -1206,6 +1379,9 @@ export function recalcStromNetz() {
 export function _recalcStromNetzInner() {
 
   hookStromNodeClicks();
+
+  // Kabel erben Bau-/Abrissjahr laufend von ihren Endpunkten
+  refreshStromEdgeYears();
 
   // Auto-register gebaeude as strom nodes (type='geb') with small ⚡ markers
   if (typeof gebaeude !== 'undefined') {
@@ -1738,6 +1914,17 @@ export function updateStromEdgeVisuals() {
       }
     }
     if (e.trennstelle) e.layer.setStyle({ dashArray: '12,8', opacity: 0.55 });
+
+    // Lebenszyklus: geplante Kabel gestrichelt-blass, abgerissene stark abgeblendet
+    const _yr = globalYear ?? new Date().getFullYear();
+    const est = getStromEdgeStatus(e, _yr);
+    if (est === 'planned') {
+      e.layer.setStyle({ opacity: 0.4, dashArray: '4,6' });
+      if (e.outlineLayer) e.outlineLayer.setStyle({ opacity: 0.2 });
+    } else if (est === 'demolished') {
+      e.layer.setStyle({ opacity: 0.15 });
+      if (e.outlineLayer) e.outlineLayer.setStyle({ opacity: 0.1 });
+    }
 
     // Arrow marker for direction
     const un = window.stromNodes.find(n => n.id === e.u);

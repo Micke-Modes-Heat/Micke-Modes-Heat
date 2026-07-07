@@ -1590,9 +1590,10 @@ function _enrichBaujahrFromSources(bbox, blId, buildings) {
 export var OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
 ];
-var _overpassServerNames = ['overpass-api.de', 'kumi.systems', 'maps.mail.ru'];
+var _overpassServerNames = ['overpass-api.de', 'kumi.systems', 'private.coffee', 'maps.mail.ru'];
 var _overpassCancelled = false;
 
 function _overpassSingleAttempt(query) {

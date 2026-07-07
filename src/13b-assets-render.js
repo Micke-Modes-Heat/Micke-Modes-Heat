@@ -162,8 +162,10 @@ function hasPendingMassnahmen(asset) {
   return (asset.massnahmen || []).some(m => m.status === 'geplant');
 }
 
-const ASSET_MARKER_SIZE = 20;
-function sizeAtZoom(_z) { return ASSET_MARKER_SIZE; }
+// Einzel-Marker (Assets ohne Gebäude) skalieren wie die Gebäude-Chips mit dem Zoom —
+// sonst wirken sie bei manchen Zoomstufen deutlich größer/kleiner als die Chips
+// derselben Assets innerhalb eines Gebäudes.
+function sizeAtZoom(z) { return chipSizeAtZoom(z); }
 
 // Assets eines Gebäudes nach Typ gruppieren, sortiert nach Versorgungs-Rang.
 // Liefert [{ type, cfg, count, assets }] für die Chip-Darstellung.
@@ -622,12 +624,18 @@ function _drawWindEignungsflaeche(asset) {
 
   const rotorD  = parseFloat(p.rotordurchmesserM)    || 60;
   const mult    = parseFloat(p.abstandMultiplikator) || 5;
+  const nabenhoehe = parseFloat(p.nabenhoheM)        || 100;
   const radiusM = rotorD * mult;
+  // Zur Gebietsgrenze reicht die Kipphöhe (≈ Gesamthöhe); der volle Planungsabstand
+  // gilt nur zu Gebäuden — gleiche Logik wie die Platzierungsvorschläge (13t/13s).
+  const boundaryM = nabenhoehe + rotorD / 2;
 
   const result = computeSuitabilityGrid({
     polygonRing: ring,
     buildingRings: _buildingRingsForEignung(),
+    exclusionRings: (window.getWindRestriktRings && window.getWindRestriktRings()) || [],
     radiusM,
+    boundaryM,
     gridStepM: Math.max(10, Math.round(radiusM / 10)),
   });
   asset._eignungsStats = { ...result, radiusM };
@@ -645,6 +653,15 @@ function _drawWindEignungsflaeche(asset) {
   }
   group.addTo(standaloneLayer);
   _windEignungsLayer = group;
+}
+
+// Eignungsflächen aller Anlagen mit aktiver Anzeige neu berechnen — z.B. wenn sich die
+// OSM-Restriktions-Ausschlüsse (13u) geändert haben. Über window-Bridge aufrufbar.
+export function refreshWindEignung() {
+  for (const a of (ASSETS.items || [])) {
+    if (a.type === 'Wind' && a.props?.eignungsflaecheVisible === true) _drawWindEignungsflaeche(a);
+  }
+  if (typeof window.windaRenderPanel === 'function') window.windaRenderPanel();
 }
 
 // Kartenausschnitt auf die zuletzt berechnete Eignungsfläche zoomen (Fläche kann bei
@@ -789,14 +806,25 @@ export function updateLadeParking(asset) {
   }
 }
 
-// Nur die Gebäude-Container neu zeichnen (für Zoom-Rescale) — Einzel-Marker
-// und Lade-Polygone bleiben unangetastet.
+// Nur die Gebäude-Container neu zeichnen (für Zoom-Rescale) — Lade-Polygone
+// bleiben unangetastet.
 function redrawBuildingGroups() {
   if (!assetLayer) return;
   assetLayer.clearLayers();
   const buildingIds = new Set();
   for (const a of ASSETS.items) if (a.buildingId) buildingIds.add(a.buildingId);
   for (const buildingId of buildingIds) drawBuildingGroup(buildingId);
+}
+
+// Einzel-Marker (Assets ohne Gebäude) neu zeichnen (für Zoom-Rescale) — sie
+// skalieren wie die Gebäude-Chips über chipSizeAtZoom() und müssen deshalb
+// bei jedem Zoomwechsel mit-aktualisiert werden, sonst bleiben sie auf der
+// Größe der letzten Zoomstufe stehen und wirken kleiner/größer als die Chips.
+function redrawStandaloneMarkers() {
+  if (!standaloneLayer) return;
+  for (const a of ASSETS.items) {
+    if (!a.buildingId) drawSingleMarker(a);
+  }
 }
 
 export function redrawAllAssets() {
@@ -837,9 +865,11 @@ export function isAssetLayerVisible() {
 }
 
 setTimeout(() => {
+  window.refreshWindEignungAll = refreshWindEignung;
   map.on('zoomend', () => {
     applyLayerVisibility();
-    // Chip-Größe an neue Zoomstufe anpassen (nur wenn Container sichtbar)
+    // Chip-/Marker-Größe an neue Zoomstufe anpassen (nur wenn Layer sichtbar)
     if (layerVisible && map.getZoom() >= ASSET_COLLAPSED_ZOOM) redrawBuildingGroups();
+    if (layerVisible) redrawStandaloneMarkers();
   });
 }, 0);
