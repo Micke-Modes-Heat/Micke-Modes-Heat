@@ -93,8 +93,8 @@ function _html() { return `
     <div style="margin-top:3px;">
       <button class="lp-tool-btn" data-click="showKompaktstationDialog()"
         style="width:100%;border-color:#cf6679;color:#cf6679;"
-        title="Kompaktstation (Schaltanlage + Trafo + NSHV als Einheit) per Klick platzieren">
-        Kompaktstation
+        title="Standardgebäude (Trafostation, Übergabestation, Batteriespeicher, NEA, Energiezentrale, Ladepark) mit fertiger Elektro-Ausstattung per Klick platzieren">
+        Standardgebäude
       </button>
     </div>
 

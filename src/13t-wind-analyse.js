@@ -11,15 +11,17 @@ import { drawAssetMarker } from './13b-assets-render.js';
 import { computeWindYield, computeWindScenarios, getWindAssetsSummary,
          fetchWindSiteData, getWindSiteData, windSiteVAtHeight } from './13q-wind-ertrag.js';
 import { computeTurbinePlacements } from './13s-wind-flaeche.js';
+import { windRestriktBlock, getWindRestriktRings } from './13u-wind-restriktion.js';
 import { _liegenschaftJahresbedarfMWh, _distanceToPlangebietM, _activeGebietLabel } from './13e-assets-inspector.js';
 
 // Anlagenklassen für die Platzierungsvorschläge — repräsentative, marktübliche Größen
 // (kein Bezug zu evtl. schon vorhandenen Anlagen, dafür gibt es je Anlage die eigene
 // Szenarien-Vergleich-Karte). Wind-/Nennwind-Defaults wie überall im Wind-Modul.
-const _WINDA_KLASSEN = [
-  { id: 'klein',  label: 'Klein · ≤ 50 m Gesamthöhe', ratedKw: 150,  rotorD: 30,  nabenhoehe: 35  },
-  { id: 'mittel', label: 'Mittel · Standard-Binnenland', ratedKw: 500,  rotorD: 60,  nabenhoehe: 100 },
-  { id: 'gross',  label: 'Groß · moderne Anlage', ratedKw: 4200, rotorD: 140, nabenhoehe: 150 },
+export const _WINDA_KLASSEN = [
+  { id: 'klein',      label: 'Klein · ≤ 50 m Gesamthöhe', ratedKw: 150,  rotorD: 30,  nabenhoehe: 35  },
+  { id: 'mittel',     label: 'Mittel · Standard-Binnenland', ratedKw: 500,  rotorD: 60,  nabenhoehe: 100 },
+  { id: 'mittelgross', label: 'Mittelgroß · 2,5-MW-Klasse', ratedKw: 2500, rotorD: 110, nabenhoehe: 120 },
+  { id: 'gross',      label: 'Groß · moderne Anlage', ratedKw: 4200, rotorD: 140, nabenhoehe: 150 },
 ];
 
 let _panelOpen = false;
@@ -53,10 +55,11 @@ export function windaRenderPanel() {
     </div>`;
 
   const siteBlock         = _windaSiteBlock(items.length);
+  const kartenLayerBlock  = (typeof windRestriktBlock === 'function') ? windRestriktBlock() : '';
   const platzierungBlock  = _windaPlatzierungBlock();
 
   if (!items.length) {
-    el.innerHTML = gebietBlock + siteBlock + platzierungBlock + `<div style="font-size:11px;color:var(--muted);padding:8px 0;">Keine Windkraftanlagen im Projekt — im Elektro-Tab unter „Erzeugung → Windkraftanlage" anlegen, oder oben einen Platzierungsvorschlag übernehmen.</div>`;
+    el.innerHTML = gebietBlock + siteBlock + kartenLayerBlock + platzierungBlock + `<div style="font-size:11px;color:var(--muted);padding:8px 0;">Keine Windkraftanlagen im Projekt — im Elektro-Tab unter „Erzeugung → Windkraftanlage" anlegen, oder oben einen Platzierungsvorschlag übernehmen.</div>`;
     return;
   }
 
@@ -80,7 +83,7 @@ export function windaRenderPanel() {
     </div>`;
 
   const cards = items.map(a => _windaCard(a, zielMwh)).join('');
-  el.innerHTML = gebietBlock + siteBlock + platzierungBlock + headerBlock + cards;
+  el.innerHTML = gebietBlock + siteBlock + kartenLayerBlock + platzierungBlock + headerBlock + cards;
 }
 
 // ── Standort-Winddaten (Open-Meteo / ERA5) ───────────────────────────────────
@@ -232,14 +235,16 @@ function _windaComputeVarianten() {
 
   return _WINDA_KLASSEN.map(k => {
     const radiusM = k.rotorD * mult;
-    const placement = computeTurbinePlacements({ polygonRing: ring, buildingRings, radiusM });
+    const gesamthoeheK = k.nabenhoehe + k.rotorD / 2;
+    // Zur Gebietsgrenze reicht die Kipphöhe (≈ Gesamthöhe) — der volle Planungsabstand
+    // gilt nur untereinander und zu Gebäuden, sonst wird die Anlagenzahl unterschätzt.
+    const placement = computeTurbinePlacements({ polygonRing: ring, buildingRings, exclusionRings: getWindRestriktRings(), radiusM, boundaryM: gesamthoeheK });
     // Wind auf Nabenhöhe der Klasse (Hellmann ab 100-m-Referenz) — sonst würde die
     // 35-m-Kleinanlage mit demselben Wind gerechnet wie die 150-m-Anlage.
     const vHub = vMean100 * Math.pow(k.nabenhoehe / 100, alpha);
     const y = computeWindYield({ vMean: vHub, k: wK, ratedKw: k.ratedKw, cutIn: 3, ratedWind: 12, cutOut: 25, rotorDiameterM: k.rotorD });
-    const gesamthoehe = k.nabenhoehe + k.rotorD / 2;
     return {
-      ...k, radiusM, mult, vMean: vHub, vMean100, gesamthoehe,
+      ...k, radiusM, mult, vMean: vHub, vMean100, gesamthoehe: gesamthoeheK, boundaryM: gesamthoeheK,
       count: placement.points.length, points: placement.points,
       annualMWhEach: y.annualMWh, vlh: y.volllaststundenH,
     };
@@ -267,7 +272,7 @@ function _windaPlatzierungBlock() {
         <span style="font-size:9px;color:${hoeheCol};font-weight:700;">${v.gesamthoehe.toFixed(0)} m Gesamthöhe</span>
       </div>
       <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">
-        ${v.ratedKw.toFixed(0)} kW · Ø ${v.rotorD.toFixed(0)} m · Nabenhöhe ${v.nabenhoehe.toFixed(0)} m · Planungsabstand ${v.radiusM.toFixed(0)} m
+        ${v.ratedKw.toFixed(0)} kW · Ø ${v.rotorD.toFixed(0)} m · Nabenhöhe ${v.nabenhoehe.toFixed(0)} m · Abstand ${v.radiusM.toFixed(0)} m untereinander / ${v.boundaryM.toFixed(0)} m zur Grenze
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div style="flex:1;font-size:10px;">
@@ -297,7 +302,7 @@ function _windaPlatzierungBlock() {
       </div>
     </div>
     ${rows}
-    <div style="font-size:8px;color:#607d8b;margin-bottom:12px;">Näherung (Raster-Greedy, kein echtes Packungsoptimum) — bereits platzierte Anlagen sind als Ausschlusszonen berücksichtigt. „Übernehmen" legt echte Windkraftanlagen mit diesen Kennwerten an, danach im Inspector feinjustierbar.</div>`;
+    <div style="font-size:8px;color:#607d8b;margin-bottom:12px;">Näherung (Raster-Greedy, kein echtes Packungsoptimum) — Planungsabstand (×Ø) gilt untereinander und zu Gebäuden, zur Gebietsgrenze nur die Kipphöhe (≈ Gesamthöhe); bereits platzierte Anlagen sind als Ausschlusszonen berücksichtigt. „Übernehmen" legt echte Windkraftanlagen mit diesen Kennwerten an, danach im Inspector feinjustierbar.</div>`;
 }
 
 window._windaApplyPlacement = function (klassenId) {

@@ -74,6 +74,7 @@ const JS_FILES = [
   '13r-knotenpunkt-analyse.js',
   '13s-wind-flaeche.js',
   '13t-wind-analyse.js',
+  '13u-wind-restriktion.js',
   '14-viewer.js',
   '14a-kandidaten.js',
   '14b-ertuechtigung.js',

@@ -872,12 +872,16 @@ export function aggregateGebStrom() {
   return { hourly: total, totalMWh };
 }
 
-function _syncAbrissToAssets(gebId, abrissjahr) {
+// Bau-/Abrissjahr eines Gebäudes auf seine verknüpften Assets übertragen, damit
+// die Elektro-Assets denselben Lebenszyklus (geplant/aktiv/abgerissen) haben.
+function _syncYearToAssets(gebId, field, year) {
   if (!window.ASSETS?.items) return;
   window.ASSETS.items
     .filter(a => a.buildingId === gebId)
-    .forEach(a => { a.abrissjahr = abrissjahr; });
+    .forEach(a => { a[field] = year; });
 }
+function _syncAbrissToAssets(gebId, abrissjahr) { _syncYearToAssets(gebId, 'abrissjahr', abrissjahr); }
+function _syncBaujahrToAssets(gebId, baujahr)   { _syncYearToAssets(gebId, 'baujahr',    baujahr); }
 
 export function updateField(id, field, val) {
   const g = window.gebaeude.find(x => x.id === id);
@@ -891,6 +895,7 @@ export function updateField(id, field, val) {
     const v = parseInt(val);
     g[field] = (Number.isInteger(v) && v >= 1800 && v <= 2100) ? v : null;
     if (field === 'abrissjahr') _syncAbrissToAssets(g.id, g.abrissjahr);
+    if (field === 'baujahr')    _syncBaujahrToAssets(g.id, g.baujahr);
   } else if (field === 'stockwerke') {
     const v = parseInt(val);
     g.stockwerke = (Number.isInteger(v) && v >= 1) ? Math.min(50, v) : 1;
@@ -1023,7 +1028,7 @@ export function savePlan(id, mode) {
   
   if (mode === 'neubau') {
     const val = document.getElementById(`inp-neubau-${id}`).value;
-    if(val) g.baujahr = parseInt(val);
+    if(val) { g.baujahr = parseInt(val); _syncBaujahrToAssets(g.id, g.baujahr); }
   } else if (mode === 'abriss') {
     const val = document.getElementById(`inp-abriss-${id}`).value;
     if(val) { g.abrissjahr = parseInt(val); _syncAbrissToAssets(g.id, g.abrissjahr); }
@@ -1044,7 +1049,7 @@ export function savePlan(id, mode) {
 export function clearPlan(id, type, idx) {
   const g = window.gebaeude.find(x => x.id === id);
   if(!g) return;
-  if(type === 'neubau') g.baujahr = null;
+  if(type === 'neubau') { g.baujahr = null; _syncBaujahrToAssets(g.id, null); }
   if(type === 'abriss') { g.abrissjahr = null; _syncAbrissToAssets(g.id, null); }
   if(type === 'sanierung') g.sanierungen.splice(idx, 1);
   _invalidateStats();

@@ -1,6 +1,10 @@
 // ── 13s-wind-flaeche.js — Eignungsflächen-Raster für Windkraft (reine Geometrie, kein Leaflet) ──
 // Rastert das Plangebiet und markiert jede Zelle als geeignet, wenn sie innerhalb des Plangebiets
-// liegt UND mindestens radiusM von der Plangebietsgrenze sowie von jedem Gebäude entfernt ist.
+// liegt UND mindestens boundaryM von der Plangebietsgrenze sowie radiusM von jedem Gebäude
+// entfernt ist. Grenzabstand und Gebäude-/Anlagenabstand sind getrennt, weil real der große
+// Planungsabstand (z.B. 5×Rotor-Ø) zur Wohnbebauung gilt, zur Gebietsgrenze aber nur die
+// Kipphöhe (≈ Gesamthöhe) — sonst wird die Anlagenzahl im Gebiet massiv unterschätzt
+// (validiert am Windpark Rosengarten II: 2 reale Anlagen auf ~150–240 ha).
 // Grobe Näherung (quadratisches Raster statt echter Polygon-Erosion), reicht aber für eine
 // Standort-Übersicht auf der Karte.
 
@@ -36,16 +40,23 @@ function distToPolygonBoundaryXY(x, y, poly) {
   return minD;
 }
 
-// polygonRing / buildingRings: Arrays aus {lat, lng}. radiusM: Mindestabstand zu Grenze und Gebäuden.
-export function computeSuitabilityGrid({ polygonRing, buildingRings = [], radiusM, gridStepM = 20, maxCells = 6000 }) {
+// polygonRing / buildingRings: Arrays aus {lat, lng}. radiusM: Mindestabstand zu Gebäuden;
+// boundaryM: Mindestabstand zur Gebietsgrenze (Default: wie radiusM, für Altaufrufer).
+export function computeSuitabilityGrid({ polygonRing, buildingRings = [], exclusionRings = [], radiusM, boundaryM = null, gridStepM = 20, maxCells = 6000 }) {
   const empty = { cells: [], areaM2: 0, gridStepM, truncated: false };
   if (!polygonRing || polygonRing.length < 3 || !(radiusM > 0)) return empty;
+  const bndM = boundaryM > 0 ? boundaryM : radiusM;
 
   const origin  = polygonRing[0];
   const mPerLat = 111320;
   const mPerLng = 111320 * Math.cos((origin.lat * Math.PI) / 180);
   const polyXY  = polygonRing.map(p => toXY(p, origin, mPerLat, mPerLng));
   const buildingsXY = buildingRings
+    .filter(r => r && r.length >= 3)
+    .map(ring => ring.map(p => toXY(p, origin, mPerLat, mPerLng)));
+  // Restriktions-Ausschlusszonen (Straßen/Bahn/Leitungen aus 13u) — der Abstand ist
+  // bereits in die Ring-Geometrie einbaut, daher reicht hier ein reiner Innen-Test.
+  const exclusionsXY = exclusionRings
     .filter(r => r && r.length >= 3)
     .map(ring => ring.map(p => toXY(p, origin, mPerLat, mPerLng)));
 
@@ -62,10 +73,14 @@ export function computeSuitabilityGrid({ polygonRing, buildingRings = [], radius
   for (let y = minY + step / 2; y <= maxY; y += step) {
     for (let x = minX + step / 2; x <= maxX; x += step) {
       if (!pointInPolygonXY(x, y, polyXY)) continue;
-      if (distToPolygonBoundaryXY(x, y, polyXY) < radiusM) continue;
+      if (distToPolygonBoundaryXY(x, y, polyXY) < bndM) continue;
       let blocked = false;
       for (const b of buildingsXY) {
         if (pointInPolygonXY(x, y, b) || distToPolygonBoundaryXY(x, y, b) < radiusM) { blocked = true; break; }
+      }
+      if (blocked) continue;
+      for (const ex of exclusionsXY) {
+        if (pointInPolygonXY(x, y, ex)) { blocked = true; break; }
       }
       if (blocked) continue;
       if (cells.length >= maxCells) { truncated = true; break outer; }
@@ -85,13 +100,14 @@ function distLatLngM(a, b) {
 }
 
 // Platzierungsvorschläge: greedy Auswahl von Standorten aus dem Eignungsraster, die
-// untereinander mindestens radiusM Abstand einhalten (gleicher Planungsabstand wie zu
-// Grenze/Gebäuden). Kein echtes Optimum (z.B. Kreispackung), aber eine schnelle, robuste
-// Näherung für eine Standort-Übersicht — Raster wird feiner als die Eignungsflächen-
-// Darstellung gewählt, damit die Auswahl nicht unnötig lückenhaft ausfällt.
-export function computeTurbinePlacements({ polygonRing, buildingRings = [], radiusM, gridStepM, maxTurbines = 200 }) {
+// untereinander mindestens radiusM Abstand einhalten (Planungsabstand, z.B. 5×Rotor-Ø);
+// zur Gebietsgrenze gilt der kleinere boundaryM (Kipphöhe). Kein echtes Optimum (z.B.
+// Kreispackung), aber eine schnelle, robuste Näherung für eine Standort-Übersicht —
+// Raster wird feiner als die Eignungsflächen-Darstellung gewählt, damit die Auswahl
+// nicht unnötig lückenhaft ausfällt.
+export function computeTurbinePlacements({ polygonRing, buildingRings = [], exclusionRings = [], radiusM, boundaryM = null, gridStepM, maxTurbines = 200 }) {
   const step = gridStepM || Math.max(15, Math.round(radiusM / 6));
-  const grid = computeSuitabilityGrid({ polygonRing, buildingRings, radiusM, gridStepM: step, maxCells: 20000 });
+  const grid = computeSuitabilityGrid({ polygonRing, buildingRings, exclusionRings, radiusM, boundaryM, gridStepM: step, maxCells: 20000 });
   const picked = [];
   for (const c of grid.cells) {
     let ok = true;
