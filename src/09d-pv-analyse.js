@@ -2402,6 +2402,9 @@ function renderVariantenTabelle(varianten) {
   // Fallback (z.B. nur Custom-Varianten): niedrigste Amortisation.
   const hasWirtOpt = varianten.some(v => v.id === 'wirt-opt');
   const bestAmort  = Math.min(...varianten.map(v => v.wirt.amort).filter(a => isFinite(a)));
+  // Wind-Spalte nur zeigen, wenn Windkraft in der Analyse aktiviert ist (fester Sockel,
+  // in allen Varianten gleich — Invest/Erlöse stecken bereits in Invest/Erlös/Überschuss)
+  const windAktiv = varianten.some(v => (v.wirt.windKw || 0) > 0);
 
   let html = `
   <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">Varianten-Vergleich</div>
@@ -2412,6 +2415,7 @@ function renderVariantenTabelle(varianten) {
         <th style="text-align:left;padding:3px 5px;white-space:nowrap;">Variante</th>
         <th style="padding:3px 5px;">kWp</th>
         <th style="padding:3px 5px;">Bat kWh</th>
+        ${windAktiv ? `<th style="padding:3px 5px;" title="Installierte Windkraftleistung — fester Sockel, in allen Varianten gleich; Invest und Erlöse sind in den €-Spalten enthalten">Wind&nbsp;kW</th>` : ''}
         <th style="padding:3px 5px;">EV&nbsp;%</th>
         <th style="padding:3px 5px;">Aut&nbsp;%</th>
         <th style="padding:3px 5px;color:${napAktiv ? '#ef9a9a' : '#546e7a'};" title="Abgeregelte Energie (nur bei aktiver NAP-Einspeisebegrenzung)">Abr&nbsp;%</th>
@@ -2440,6 +2444,7 @@ function renderVariantenTabelle(varianten) {
         </td>
         <td style="text-align:right;padding:4px 5px;font-family:'DM Mono',monospace;color:#fdd835;">${fmt(v.pvKwp)}</td>
         <td style="text-align:right;padding:4px 5px;font-family:'DM Mono',monospace;color:#80deea;">${v.batKwh > 0 ? fmt(v.batKwh) : '—'}</td>
+        ${windAktiv ? `<td style="text-align:right;padding:4px 5px;font-family:'DM Mono',monospace;color:#4dd0e1;">${(w.windKw || 0) > 0 ? fmt(w.windKw) : '—'}</td>` : ''}
         <td style="text-align:right;padding:4px 5px;color:#a5d6a7;">${pct(w.pvEigenQuote)}</td>
         <td style="text-align:right;padding:4px 5px;color:#4fc3f7;">${pct(w.autarkie)}</td>
         <td style="text-align:right;padding:4px 5px;color:${abregelColor};" title="${napAktiv ? 'Abregelung durch NAP-Limit' : 'Kein NAP-Limit gesetzt'}">
@@ -2461,6 +2466,7 @@ function renderVariantenTabelle(varianten) {
     ${napAktiv
       ? `<span style="color:#ef9a9a;">Abr %</span> / <span style="color:#ef9a9a;">Abr MWh</span> = Abregelungsverluste durch NAP-Einspeisebegrenzung`
       : `<span style="color:#546e7a;">Abr %/MWh</span> = kein NAP-Limit gesetzt — in ⚡ Strom-Grundlagen oder oben eingeben`}
+    ${windAktiv ? `<br><span style="color:#4dd0e1;">Wind kW</span> = Windkraft-Sockel (in allen Varianten identisch) — EV %/Aut %, Erlöse und Überschuss enthalten den Windbeitrag; EV % ist die PV-eigene Quote ohne Wind` : ''}
   </div>`;
 
   // Detail-Zeilen: Infra-Detail ausklappbar
@@ -2630,13 +2636,18 @@ function renderBilanzChart(varianten, overrideEl) {
   const PL = 50, PT = 28, PR = 16, PB = 48;
   const cW = W - PL - PR, cH = H - PT - PB;
 
-  const COL = { ev:'#66bb6a', nb:'#ef5350', es:'#42a5f5', ct:'#ff9800', bedarf:'#78909c' };
+  const COL = { ev:'#66bb6a', nb:'#ef5350', es:'#42a5f5', ct:'#ff9800', bedarf:'#78909c', wd:'#4dd0e1' };
 
+  // Wind-Anteile (pvNapSim: windEigenMwh/windEinspMwh) als eigene Segmente ausweisen,
+  // damit PV- und Windbeitrag in Deckung und Überschuss unterscheidbar bleiben.
   const rows = varianten.map(v => {
     const ev = v.sim.eigenMwh, nb = v.sim.netzbezugMwh;
     const es = v.sim.einspeiseMwh, ct = v.sim.curtailMwh || 0;
-    return { v, ev, nb, es, ct, bedarf: ev + nb, pv: es + ct };
+    const wEv = Math.min(ev, v.sim.windEigenMwh || 0);
+    const wEs = Math.min(es, v.sim.windEinspMwh || 0);
+    return { v, ev, nb, es, ct, wEv, wEs, bedarf: ev + nb, pv: es + ct };
   });
+  const windAktiv = rows.some(r => r.wEv + r.wEs > 0.01);
   const maxVal = Math.max(1, ...rows.map(r => Math.max(r.bedarf, r.pv)));
   const yS = val => (PT + cH) - (val / maxVal) * cH;
 
@@ -2657,8 +2668,12 @@ function renderBilanzChart(varianten, overrideEl) {
     const gx = PL + i * groupW + (groupW - trioW) / 2;
     const x1 = gx, x2 = gx + barW + innerGap, x3 = gx + 2 * (barW + innerGap);
     bars += seg(x1, r.bedarf, 0, COL.bedarf);                 // Bedarf
-    bars += seg(x2, r.ev, 0, COL.ev) + seg(x2, r.ev + r.nb, r.ev, COL.nb);   // Deckung
-    bars += seg(x3, r.es, 0, COL.es) + seg(x3, r.es + r.ct, r.es, COL.ct);   // PV-Verbleib
+    // Deckung: PV-Eigenverbrauch · Wind-Eigenverbrauch · Netzbezug
+    bars += seg(x2, r.ev - r.wEv, 0, COL.ev) + seg(x2, r.ev, r.ev - r.wEv, COL.wd)
+          + seg(x2, r.ev + r.nb, r.ev, COL.nb);
+    // Überschuss: PV-Einspeisung · Wind-Einspeisung · Abregelung
+    bars += seg(x3, r.es - r.wEs, 0, COL.es) + seg(x3, r.es, r.es - r.wEs, COL.wd)
+          + seg(x3, r.es + r.ct, r.es, COL.ct);
     [['B', x1], ['D', x2], ['P', x3]].forEach(([t, xx]) =>
       labels += `<text x="${(xx + barW / 2).toFixed(1)}" y="${PT + cH + 12}" text-anchor="middle" fill="#607d8b" font-size="8">${t}</text>`);
     const nm = r.v.label.length > 18 ? r.v.label.slice(0, 17) + '…' : r.v.label;
@@ -2671,7 +2686,8 @@ function renderBilanzChart(varianten, overrideEl) {
       <text x="${PL - 5}" y="${(y + 3).toFixed(1)}" text-anchor="end" fill="#607d8b" font-size="8">${val.toFixed(0)}</text>`;
   }).join('');
 
-  const legendItems = [['Eigenverbrauch', COL.ev], ['Netzbezug', COL.nb], ['Einspeisung', COL.es], ['Abregelung', COL.ct], ['Bedarf', COL.bedarf]];
+  const legendItems = [['Eigenverbrauch', COL.ev], ['Netzbezug', COL.nb], ['Einspeisung', COL.es],
+    ...(windAktiv ? [['davon Wind', COL.wd]] : []), ['Abregelung', COL.ct], ['Bedarf', COL.bedarf]];
   let lx = PL;
   const legendSvg = legendItems.map(([t, c]) => {
     const s = `<rect x="${lx.toFixed(1)}" y="2" width="8" height="8" fill="${c}" opacity="0.92"/><text x="${(lx + 11).toFixed(1)}" y="10" fill="#90a4ae" font-size="8">${t}</text>`;
@@ -2681,7 +2697,7 @@ function renderBilanzChart(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 4 — Energiebilanz je Variante
-      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">B = Bedarf · D = Deckung (Eigenverbrauch + Netzbezug) · P = PV-Überschuss (Einspeisung + Abregelung)</span>
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">B = Bedarf · D = Deckung (Eigenverbrauch + Netzbezug) · P = ${windAktiv ? 'PV+Wind' : 'PV'}-Überschuss (Einspeisung + Abregelung)</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="bilanz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -2700,17 +2716,19 @@ function renderBilanzChart(varianten, overrideEl) {
     const lx2 = ev.clientX - r.left;
     const i = Math.floor((lx2 - PL) / groupW);
     if (i < 0 || i >= rows.length || lx2 < PL) { _pvHideTT(); return; }
-    const { v, ev: evM, nb, es, ct, bedarf, pv } = rows[i];
+    const { v, ev: evM, nb, es, ct, wEv, wEs, bedarf, pv } = rows[i];
     const fmt = x => x.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' MWh';
     const aut = bedarf > 0 ? (evM / bedarf * 100).toFixed(0) : '0';
     const pvGen = evM + es + ct;
     _pvShowTT(ev,
       `<span style="color:${v.farbe};font-weight:700">${v.icon} ${v.label}</span><br>` +
       `<u>Bedarf</u>: <strong>${fmt(bedarf)}</strong><br>` +
-      `<span style="color:${COL.ev}">■</span> Eigenverbrauch: <strong>${fmt(evM)}</strong> · Aut. ${aut}&thinsp;%<br>` +
+      `<span style="color:${COL.ev}">■</span> Eigenverbrauch: <strong>${fmt(evM)}</strong> · Aut. ${aut}&thinsp;%` +
+      (wEv > 0.5 ? ` <span style="color:${COL.wd}">(davon Wind ${fmt(wEv)})</span>` : '') + `<br>` +
       `<span style="color:${COL.nb}">■</span> Netzbezug: <strong>${fmt(nb)}</strong><br>` +
-      `<u>PV-Überschuss</u>: <strong>${fmt(pv)}</strong>${pvGen > 0 ? ` (von ${fmt(pvGen)} Ertrag)` : ''}<br>` +
-      `<span style="color:${COL.es}">■</span> Einspeisung: <strong>${fmt(es)}</strong><br>` +
+      `<u>${wEv + wEs > 0.01 ? 'PV+Wind' : 'PV'}-Überschuss</u>: <strong>${fmt(pv)}</strong>${pvGen > 0 ? ` (von ${fmt(pvGen)} Ertrag)` : ''}<br>` +
+      `<span style="color:${COL.es}">■</span> Einspeisung: <strong>${fmt(es)}</strong>` +
+      (wEs > 0.5 ? ` <span style="color:${COL.wd}">(davon Wind ${fmt(wEs)})</span>` : '') + `<br>` +
       (ct > 0.5 ? `<span style="color:${COL.ct}">■</span> Abregelung: <strong>${fmt(ct)}</strong>` +
         (pvGen > 0 ? ` (${(ct / pvGen * 100).toFixed(0)}&thinsp;%)` : '') : `<span style="color:${COL.ct}">■</span> Abregelung: <strong>0 MWh</strong>`)
     );
@@ -2880,7 +2898,7 @@ function renderRueckAmpel(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
     <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 6 — Rückspeise- &amp; Erzeugungsnetz-Bewertung
-      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Rückspeisespitze am NAP (Batterie schert sie) gegen Spannungsband &amp; Anschlusskapazität</span>
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Rückspeisespitze am NAP (Batterie schert sie) gegen Spannungsband &amp; Anschlusskapazität${varianten.some(v => (v.wirt?.windKw || 0) > 0) ? ' · inkl. Windkraft-Sockel' : ''}</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="rueck" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>

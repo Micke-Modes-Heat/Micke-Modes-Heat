@@ -645,9 +645,15 @@ function _overlayById(id) { return (window.overlays || []).find(o => o.id === id
 function _activeOverlay() { return _overlayById(window._activeOverlayId); }
 
 // Bild eines nicht-aktiven Overlays klick-transparent + ohne Editiergriffe.
+// Wichtig: editing.disable() allein reicht nicht — die DistortableImage-Lib
+// bindet beim Hinzufügen zusätzlich ein eigenes L.Draggable auf das <img>
+// (layer.editing.dragging), das per pointer-events wieder aktiv geschaltet
+// wird und unabhängig vom Editier-/Handle-Status Drags entgegennimmt. Ohne
+// explizites disable() hier lässt sich der Plan trotz "gesperrt" verschieben.
 function _lockLayer(layer) {
   if (!layer) return;
   try { layer.editing.disable(); } catch (e) {}
+  try { layer.editing.dragging.disable(); } catch (e) {}
   const el = layer.getElement && layer.getElement();
   if (el) el.style.pointerEvents = 'none';
 }
@@ -665,7 +671,10 @@ function _createOverlayLayer(ov) {
   if (ov.layer) { map.removeLayer(ov.layer); ov.layer = null; }
   if (!ov.visible) return;
   const corners = ov.corners.map(c => L.latLng(c.lat, c.lng));
-  ov.layer = L.distortableImageOverlay(ov.url, { corners, opacity: ov.opacity }).addTo(map);
+  // editable:false — sonst aktiviert die Lib beim Bild-Load intern automatisch ihr
+  // eigenes editing.dragging (unabhängig von unserem lock()-Aufruf), wodurch sich
+  // frisch geladene/erzeugte Pläne trotz geschlossenem Overlay-Panel verschieben ließen.
+  ov.layer = L.distortableImageOverlay(ov.url, { corners, opacity: ov.opacity, editable: false }).addTo(map);
   ov.layer.on('update', () => { _syncOverlayCorners(ov); repositionOverlayEdgeHandles(); });
   const lock = () => _lockLayer(ov.layer);
   ov.layer.on('load', lock);
@@ -814,9 +823,11 @@ export function setOverlayLocked(locked) {
   if (locked) {
     removeOverlayEdgeHandles();
     try { layer.editing.disable(); } catch (e) {}
+    try { layer.editing.dragging.disable(); } catch (e) {}
     if (imgEl) imgEl.style.pointerEvents = 'none';
   } else {
     try { layer.editing.enable(); } catch (e) {}
+    try { layer.editing.dragging.enable(); } catch (e) {}
     createOverlayEdgeHandles();
     if (imgEl) imgEl.style.pointerEvents = '';
   }

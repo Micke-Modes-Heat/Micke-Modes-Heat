@@ -103,10 +103,16 @@ export function attachFFLayer(ff) {
   if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
   if (ff.moduleSvgLayer) { map.removeLayer(ff.moduleSvgLayer); ff.moduleSvgLayer = null; }
 
+  // Freiflächen-PV teilt sich die pvPane mit der Dach-PV (statt der default
+  // overlayPane) — nur so lässt sie sich global/im Bulk-Modus gemeinsam mit
+  // den Gebäude-PV-Flächen über die Pane ein-/ausblenden (setPvVisible()).
+  if (!map.getPane('pvPane')) map.createPane('pvPane').style.zIndex = '401';
+
   // Yellow border + light transparent yellow fill
   ff.polygonLayer = L.polygon(ff.polygon, {
     color: 'rgba(255,213,79,0.85)', weight: 2,
-    fillColor: 'rgba(255,213,79,0.18)', fillOpacity: 1
+    fillColor: 'rgba(255,213,79,0.18)', fillOpacity: 1,
+    pane: 'pvPane',
   });
   if (window._pvLayerVisible !== false) ff.polygonLayer.addTo(map);
   ff.polygonLayer.on('click', () => {
@@ -127,7 +133,7 @@ export function attachFFLayer(ff) {
   ff._pvModCount = res.count;          // Modulanzahl für Panel-/Asset-Anzeige
   const ov  = window.buildPvModuleOverlay(res);
   if (!ov) return;
-  ff.moduleSvgLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 201 });
+  ff.moduleSvgLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 201, pane: 'pvPane' });
   if (window._pvLayerVisible !== false) ff.moduleSvgLayer.addTo(map);
 }
 

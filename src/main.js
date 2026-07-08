@@ -57,6 +57,8 @@ import * as ertuechtigung from './14b-ertuechtigung.js';
 import * as phasenFahrplan from './14c-phasen.js';
 import * as selektion from './14d-selektion.js';
 import * as ausbauplaner from './14e-ausbauplaner-ui.js';
+import * as clusterCore from './14f-cluster-core.js';
+import * as clusterMap from './14g-cluster-map.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -73,6 +75,7 @@ const modules = [
   slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel,
   napAnalyse, knotenAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
+  clusterCore, clusterMap,
 ];
 
 for (const mod of modules) {
@@ -86,8 +89,10 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     slpEditor.initBdewProfiles();
     selektion.selInitBoxSelect();
+    clusterMap.clusterInit();
   });
 } else {
   slpEditor.initBdewProfiles();
   selektion.selInitBoxSelect();
+  clusterMap.clusterInit();
 }

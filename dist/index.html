@@ -929,6 +929,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .leaflet-container.bulk-isolate .leaflet-netz-pane     { display: none; }
 .leaflet-container.bulk-isolate .leaflet-marker-icon:not(.asset-divicon) { display: none; }
 
+/* Bulk-Modus: PV-Flächen optional wieder einblenden (Toggle in der Bulk-Leiste) —
+   höhere Selektor-Spezifität (2 Klassen) gewinnt gegen die Regel darüber. */
+.leaflet-container.bulk-isolate.bulk-show-pv .leaflet-pv-pane { display: block; }
+
 /* Bulk-Modus: Checkboxen nur einblenden wenn aktiv */
 #sb-asset-list .sb-asset-cb { display: none; }
 #sb-asset-list.bulk-active .sb-asset-cb { display: inline-block; }
@@ -1547,6 +1551,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
     <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:#607d8b;color:#90a4ae;font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Feedback, Berechnungslogik">⋯ Mehr</button>
     <div id="mehr-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:190px;box-shadow:0 6px 18px rgba(0,0,0,0.45);flex-direction:column;gap:3px;">
       <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;justify-content:flex-start;font-size:11px;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱 Feldapp</button>
+      <button class="tool-btn" id="btn-cluster-toggle" data-click="clusterTogglePanel()" style="border-color:#90a4ae;color:#b0bec5;justify-content:flex-start;font-size:11px;" title="Liegenschaft in Cluster/Ausbaustufen gliedern (Klimafahrplan)">🗺 Cluster / Ausbaustufen</button>
       <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Farbschema wechseln">🎨 Farbschema</button>
       <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;">🛰 Satellit</button>
       <button class="tool-btn" id="btn-hilfe-toggle" data-click="toggleHilfeModus()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Hilfe-Modus: Hover über Buttons für Erklärungen">❓ Hilfe-Modus</button>
@@ -2849,6 +2854,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
       <!-- Bulk-Modus Toggle -->
       <div style="padding:5px 6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;">
         <button id="bulk-mode-toggle" onclick="selToggleBulkMode()" style="font-size:10px;padding:3px 8px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;">&#9678; Bulk-Modus</button>
+        <label id="bulk-show-pv-row" style="display:none;align-items:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0;" title="PV-Flächen trotz Bulk-Ansicht mit anzeigen">
+          <input id="bulk-show-pv-cb" type="checkbox" onchange="selToggleBulkShowPv(this.checked)" style="cursor:pointer;">PV-Flächen
+        </label>
         <span style="font-size:10px;color:var(--muted);">Shift+Drag = Box (Bereich bleibt merkbar, Typ-Filter nachträglich änderbar) · Rechtsklick = Auswahl löschen</span>
       </div>
       <!-- Sammelaktions-Leiste (sichtbar wenn ≥1 Asset selektiert oder Bulk-Modus aktiv) -->
@@ -5137,7 +5145,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-07-07';
+  var d = '2026-07-08';
   if (d.indexOf('__') === 0) d = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -67371,10 +67379,16 @@ function attachFFLayer(ff) {
   if (ff.polygonLayer)    map.removeLayer(ff.polygonLayer);
   if (ff.moduleSvgLayer) { map.removeLayer(ff.moduleSvgLayer); ff.moduleSvgLayer = null; }
 
+  // Freiflächen-PV teilt sich die pvPane mit der Dach-PV (statt der default
+  // overlayPane) — nur so lässt sie sich global/im Bulk-Modus gemeinsam mit
+  // den Gebäude-PV-Flächen über die Pane ein-/ausblenden (setPvVisible()).
+  if (!map.getPane('pvPane')) map.createPane('pvPane').style.zIndex = '401';
+
   // Yellow border + light transparent yellow fill
   ff.polygonLayer = L.polygon(ff.polygon, {
     color: 'rgba(255,213,79,0.85)', weight: 2,
-    fillColor: 'rgba(255,213,79,0.18)', fillOpacity: 1
+    fillColor: 'rgba(255,213,79,0.18)', fillOpacity: 1,
+    pane: 'pvPane',
   });
   if (window._pvLayerVisible !== false) ff.polygonLayer.addTo(map);
   ff.polygonLayer.on('click', () => {
@@ -67395,7 +67409,7 @@ function attachFFLayer(ff) {
   ff._pvModCount = res.count;          // Modulanzahl für Panel-/Asset-Anzeige
   const ov  = window.buildPvModuleOverlay(res);
   if (!ov) return;
-  ff.moduleSvgLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 201 });
+  ff.moduleSvgLayer = L.svgOverlay(ov.svgEl, ov.bounds, { opacity: 1, interactive: false, zIndex: 201, pane: 'pvPane' });
   if (window._pvLayerVisible !== false) ff.moduleSvgLayer.addTo(map);
 }
 
@@ -69142,9 +69156,15 @@ function _overlayById(id) { return (window.overlays || []).find(o => o.id === id
 function _activeOverlay() { return _overlayById(window._activeOverlayId); }
 
 // Bild eines nicht-aktiven Overlays klick-transparent + ohne Editiergriffe.
+// Wichtig: editing.disable() allein reicht nicht — die DistortableImage-Lib
+// bindet beim Hinzufügen zusätzlich ein eigenes L.Draggable auf das <img>
+// (layer.editing.dragging), das per pointer-events wieder aktiv geschaltet
+// wird und unabhängig vom Editier-/Handle-Status Drags entgegennimmt. Ohne
+// explizites disable() hier lässt sich der Plan trotz "gesperrt" verschieben.
 function _lockLayer(layer) {
   if (!layer) return;
   try { layer.editing.disable(); } catch (e) {}
+  try { layer.editing.dragging.disable(); } catch (e) {}
   const el = layer.getElement && layer.getElement();
   if (el) el.style.pointerEvents = 'none';
 }
@@ -69162,7 +69182,10 @@ function _createOverlayLayer(ov) {
   if (ov.layer) { map.removeLayer(ov.layer); ov.layer = null; }
   if (!ov.visible) return;
   const corners = ov.corners.map(c => L.latLng(c.lat, c.lng));
-  ov.layer = L.distortableImageOverlay(ov.url, { corners, opacity: ov.opacity }).addTo(map);
+  // editable:false — sonst aktiviert die Lib beim Bild-Load intern automatisch ihr
+  // eigenes editing.dragging (unabhängig von unserem lock()-Aufruf), wodurch sich
+  // frisch geladene/erzeugte Pläne trotz geschlossenem Overlay-Panel verschieben ließen.
+  ov.layer = L.distortableImageOverlay(ov.url, { corners, opacity: ov.opacity, editable: false }).addTo(map);
   ov.layer.on('update', () => { _syncOverlayCorners(ov); repositionOverlayEdgeHandles(); });
   const lock = () => _lockLayer(ov.layer);
   ov.layer.on('load', lock);
@@ -69311,9 +69334,11 @@ function setOverlayLocked(locked) {
   if (locked) {
     removeOverlayEdgeHandles();
     try { layer.editing.disable(); } catch (e) {}
+    try { layer.editing.dragging.disable(); } catch (e) {}
     if (imgEl) imgEl.style.pointerEvents = 'none';
   } else {
     try { layer.editing.enable(); } catch (e) {}
+    try { layer.editing.dragging.enable(); } catch (e) {}
     createOverlayEdgeHandles();
     if (imgEl) imgEl.style.pointerEvents = '';
   }
@@ -73750,6 +73775,7 @@ function _buildProjectData() {
       pvModus: g.pvModus || 'pauschal', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null,
       pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche })),
+      massnahmen: g.massnahmen || [],
     })),
     netz: {
       zentrale: document.getElementById('netz-zentrale').value,
@@ -73847,6 +73873,8 @@ function _buildProjectData() {
     windStandortDaten: (typeof window.windSiteSerialize === 'function' ? window.windSiteSerialize() : null),
     // Plan-Overlays (Hintergrundpläne) mit Bilddaten, Passlage, Deckkraft, Sichtbarkeit
     overlays: (typeof window.serializeOverlays === 'function' ? window.serializeOverlays() : []),
+    // Liegenschafts-Cluster (Klimafahrplan/Ausbaustufen, variantenübergreifend)
+    cluster: (typeof window.clusterSerialize === 'function' ? window.clusterSerialize() : []),
   };
 }
 
@@ -73929,6 +73957,7 @@ function _loadProject(project) {
             newG.baujährQuelle = g.baujährQuelle || null;
             newG.abrissjahr = g.abrissjahr;
             newG.sanierungen = g.sanierungen || [];
+            newG.massnahmen = g.massnahmen || [];
             newG.nutzung = g.nutzung || '';
             newG.stockwerke = g.stockwerke || 1;
             newG.waermeManual = g.waermeManual || false;
@@ -74400,6 +74429,10 @@ function _loadProject(project) {
 
       // Plan-Overlays (Hintergrundpläne) wiederherstellen bzw. leeren
       if (typeof window.loadOverlays === 'function') window.loadOverlays(project.overlays || []);
+
+      // Liegenschafts-Cluster (Ausbaustufen) wiederherstellen bzw. leeren
+      if (typeof window.clusterDeserialize === 'function') window.clusterDeserialize(project.cluster || []);
+      if (typeof window.clusterRenderLayers === 'function') window.clusterRenderLayers();
 
       redrawErzeugerIcons();
       _initYearSliderFromBaujahr();
@@ -81389,15 +81422,25 @@ function updateStromEdgeVisuals() {
     if (est === 'planned') {
       e.layer.setStyle({ opacity: 0.4, dashArray: '4,6' });
       if (e.outlineLayer) e.outlineLayer.setStyle({ opacity: 0.2 });
+      e._flowActive = false;
+      if (e.layer._path) e.layer._path.style.strokeDashoffset = '';
     } else if (est === 'demolished') {
-      e.layer.setStyle({ opacity: 0.15 });
-      if (e.outlineLayer) e.outlineLayer.setStyle({ opacity: 0.1 });
+      // abgerissen: ausgegraut + gestrichelt — analog zu abgerissenen Gebäuden
+      // (graue Füllung #555, dashArray '4 4') statt nur stark abgeblendet.
+      // _flowActive hier hart auf false: sonst läuft die Fluss-Animation
+      // (wandernder strokeDashoffset, s. applyStromDash) unverändert weiter
+      // und das Kabel wirkt trotz Grau-Darstellung weiter "aktiv/dynamisch".
+      e.layer.setStyle({ color: '#555', weight: 2, opacity: 0.45, dashArray: '4,4' });
+      if (e.outlineLayer) e.outlineLayer.setStyle({ color: '#555', weight: 5, opacity: 0.15, dashArray: '4,4' });
+      e._flowActive = false;
+      if (e.layer._path) e.layer._path.style.strokeDashoffset = '';
     }
 
-    // Arrow marker for direction
+    // Arrow marker for direction — nicht bei geplanten/abgerissenen Kabeln:
+    // die sollen rein statisch ausgegraut sein, kein Flusspfeil in Originalfarbe.
     const un = window.stromNodes.find(n => n.id === e.u);
     const vn = window.stromNodes.find(n => n.id === e.v);
-    if (un && vn && absKw > 0.1) {
+    if (est === 'active' && un && vn && absKw > 0.1) {
       const pt1 = L.latLng(un.lat, un.lng);
       const pt2 = L.latLng(vn.lat, vn.lng);
       const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2);
@@ -96530,6 +96573,9 @@ function renderVariantenTabelle(varianten) {
   // Fallback (z.B. nur Custom-Varianten): niedrigste Amortisation.
   const hasWirtOpt = varianten.some(v => v.id === 'wirt-opt');
   const bestAmort  = Math.min(...varianten.map(v => v.wirt.amort).filter(a => isFinite(a)));
+  // Wind-Spalte nur zeigen, wenn Windkraft in der Analyse aktiviert ist (fester Sockel,
+  // in allen Varianten gleich — Invest/Erlöse stecken bereits in Invest/Erlös/Überschuss)
+  const windAktiv = varianten.some(v => (v.wirt.windKw || 0) > 0);
 
   let html = `
   <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">Varianten-Vergleich</div>
@@ -96540,6 +96586,7 @@ function renderVariantenTabelle(varianten) {
         <th style="text-align:left;padding:3px 5px;white-space:nowrap;">Variante</th>
         <th style="padding:3px 5px;">kWp</th>
         <th style="padding:3px 5px;">Bat kWh</th>
+        ${windAktiv ? `<th style="padding:3px 5px;" title="Installierte Windkraftleistung — fester Sockel, in allen Varianten gleich; Invest und Erlöse sind in den €-Spalten enthalten">Wind&nbsp;kW</th>` : ''}
         <th style="padding:3px 5px;">EV&nbsp;%</th>
         <th style="padding:3px 5px;">Aut&nbsp;%</th>
         <th style="padding:3px 5px;color:${napAktiv ? '#ef9a9a' : '#546e7a'};" title="Abgeregelte Energie (nur bei aktiver NAP-Einspeisebegrenzung)">Abr&nbsp;%</th>
@@ -96568,6 +96615,7 @@ function renderVariantenTabelle(varianten) {
         </td>
         <td style="text-align:right;padding:4px 5px;font-family:'DM Mono',monospace;color:#fdd835;">${fmt(v.pvKwp)}</td>
         <td style="text-align:right;padding:4px 5px;font-family:'DM Mono',monospace;color:#80deea;">${v.batKwh > 0 ? fmt(v.batKwh) : '—'}</td>
+        ${windAktiv ? `<td style="text-align:right;padding:4px 5px;font-family:'DM Mono',monospace;color:#4dd0e1;">${(w.windKw || 0) > 0 ? fmt(w.windKw) : '—'}</td>` : ''}
         <td style="text-align:right;padding:4px 5px;color:#a5d6a7;">${pct(w.pvEigenQuote)}</td>
         <td style="text-align:right;padding:4px 5px;color:#4fc3f7;">${pct(w.autarkie)}</td>
         <td style="text-align:right;padding:4px 5px;color:${abregelColor};" title="${napAktiv ? 'Abregelung durch NAP-Limit' : 'Kein NAP-Limit gesetzt'}">
@@ -96589,6 +96637,7 @@ function renderVariantenTabelle(varianten) {
     ${napAktiv
       ? `<span style="color:#ef9a9a;">Abr %</span> / <span style="color:#ef9a9a;">Abr MWh</span> = Abregelungsverluste durch NAP-Einspeisebegrenzung`
       : `<span style="color:#546e7a;">Abr %/MWh</span> = kein NAP-Limit gesetzt — in ⚡ Strom-Grundlagen oder oben eingeben`}
+    ${windAktiv ? `<br><span style="color:#4dd0e1;">Wind kW</span> = Windkraft-Sockel (in allen Varianten identisch) — EV %/Aut %, Erlöse und Überschuss enthalten den Windbeitrag; EV % ist die PV-eigene Quote ohne Wind` : ''}
   </div>`;
 
   // Detail-Zeilen: Infra-Detail ausklappbar
@@ -96758,13 +96807,18 @@ function renderBilanzChart(varianten, overrideEl) {
   const PL = 50, PT = 28, PR = 16, PB = 48;
   const cW = W - PL - PR, cH = H - PT - PB;
 
-  const COL = { ev:'#66bb6a', nb:'#ef5350', es:'#42a5f5', ct:'#ff9800', bedarf:'#78909c' };
+  const COL = { ev:'#66bb6a', nb:'#ef5350', es:'#42a5f5', ct:'#ff9800', bedarf:'#78909c', wd:'#4dd0e1' };
 
+  // Wind-Anteile (pvNapSim: windEigenMwh/windEinspMwh) als eigene Segmente ausweisen,
+  // damit PV- und Windbeitrag in Deckung und Überschuss unterscheidbar bleiben.
   const rows = varianten.map(v => {
     const ev = v.sim.eigenMwh, nb = v.sim.netzbezugMwh;
     const es = v.sim.einspeiseMwh, ct = v.sim.curtailMwh || 0;
-    return { v, ev, nb, es, ct, bedarf: ev + nb, pv: es + ct };
+    const wEv = Math.min(ev, v.sim.windEigenMwh || 0);
+    const wEs = Math.min(es, v.sim.windEinspMwh || 0);
+    return { v, ev, nb, es, ct, wEv, wEs, bedarf: ev + nb, pv: es + ct };
   });
+  const windAktiv = rows.some(r => r.wEv + r.wEs > 0.01);
   const maxVal = Math.max(1, ...rows.map(r => Math.max(r.bedarf, r.pv)));
   const yS = val => (PT + cH) - (val / maxVal) * cH;
 
@@ -96785,8 +96839,12 @@ function renderBilanzChart(varianten, overrideEl) {
     const gx = PL + i * groupW + (groupW - trioW) / 2;
     const x1 = gx, x2 = gx + barW + innerGap, x3 = gx + 2 * (barW + innerGap);
     bars += seg(x1, r.bedarf, 0, COL.bedarf);                 // Bedarf
-    bars += seg(x2, r.ev, 0, COL.ev) + seg(x2, r.ev + r.nb, r.ev, COL.nb);   // Deckung
-    bars += seg(x3, r.es, 0, COL.es) + seg(x3, r.es + r.ct, r.es, COL.ct);   // PV-Verbleib
+    // Deckung: PV-Eigenverbrauch · Wind-Eigenverbrauch · Netzbezug
+    bars += seg(x2, r.ev - r.wEv, 0, COL.ev) + seg(x2, r.ev, r.ev - r.wEv, COL.wd)
+          + seg(x2, r.ev + r.nb, r.ev, COL.nb);
+    // Überschuss: PV-Einspeisung · Wind-Einspeisung · Abregelung
+    bars += seg(x3, r.es - r.wEs, 0, COL.es) + seg(x3, r.es, r.es - r.wEs, COL.wd)
+          + seg(x3, r.es + r.ct, r.es, COL.ct);
     [['B', x1], ['D', x2], ['P', x3]].forEach(([t, xx]) =>
       labels += `<text x="${(xx + barW / 2).toFixed(1)}" y="${PT + cH + 12}" text-anchor="middle" fill="#607d8b" font-size="8">${t}</text>`);
     const nm = r.v.label.length > 18 ? r.v.label.slice(0, 17) + '…' : r.v.label;
@@ -96799,7 +96857,8 @@ function renderBilanzChart(varianten, overrideEl) {
       <text x="${PL - 5}" y="${(y + 3).toFixed(1)}" text-anchor="end" fill="#607d8b" font-size="8">${val.toFixed(0)}</text>`;
   }).join('');
 
-  const legendItems = [['Eigenverbrauch', COL.ev], ['Netzbezug', COL.nb], ['Einspeisung', COL.es], ['Abregelung', COL.ct], ['Bedarf', COL.bedarf]];
+  const legendItems = [['Eigenverbrauch', COL.ev], ['Netzbezug', COL.nb], ['Einspeisung', COL.es],
+    ...(windAktiv ? [['davon Wind', COL.wd]] : []), ['Abregelung', COL.ct], ['Bedarf', COL.bedarf]];
   let lx = PL;
   const legendSvg = legendItems.map(([t, c]) => {
     const s = `<rect x="${lx.toFixed(1)}" y="2" width="8" height="8" fill="${c}" opacity="0.92"/><text x="${(lx + 11).toFixed(1)}" y="10" fill="#90a4ae" font-size="8">${t}</text>`;
@@ -96809,7 +96868,7 @@ function renderBilanzChart(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 4 — Energiebilanz je Variante
-      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">B = Bedarf · D = Deckung (Eigenverbrauch + Netzbezug) · P = PV-Überschuss (Einspeisung + Abregelung)</span>
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">B = Bedarf · D = Deckung (Eigenverbrauch + Netzbezug) · P = ${windAktiv ? 'PV+Wind' : 'PV'}-Überschuss (Einspeisung + Abregelung)</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="bilanz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -96828,17 +96887,19 @@ function renderBilanzChart(varianten, overrideEl) {
     const lx2 = ev.clientX - r.left;
     const i = Math.floor((lx2 - PL) / groupW);
     if (i < 0 || i >= rows.length || lx2 < PL) { _pvHideTT(); return; }
-    const { v, ev: evM, nb, es, ct, bedarf, pv } = rows[i];
+    const { v, ev: evM, nb, es, ct, wEv, wEs, bedarf, pv } = rows[i];
     const fmt = x => x.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' MWh';
     const aut = bedarf > 0 ? (evM / bedarf * 100).toFixed(0) : '0';
     const pvGen = evM + es + ct;
     _pvShowTT(ev,
       `<span style="color:${v.farbe};font-weight:700">${v.icon} ${v.label}</span><br>` +
       `<u>Bedarf</u>: <strong>${fmt(bedarf)}</strong><br>` +
-      `<span style="color:${COL.ev}">■</span> Eigenverbrauch: <strong>${fmt(evM)}</strong> · Aut. ${aut}&thinsp;%<br>` +
+      `<span style="color:${COL.ev}">■</span> Eigenverbrauch: <strong>${fmt(evM)}</strong> · Aut. ${aut}&thinsp;%` +
+      (wEv > 0.5 ? ` <span style="color:${COL.wd}">(davon Wind ${fmt(wEv)})</span>` : '') + `<br>` +
       `<span style="color:${COL.nb}">■</span> Netzbezug: <strong>${fmt(nb)}</strong><br>` +
-      `<u>PV-Überschuss</u>: <strong>${fmt(pv)}</strong>${pvGen > 0 ? ` (von ${fmt(pvGen)} Ertrag)` : ''}<br>` +
-      `<span style="color:${COL.es}">■</span> Einspeisung: <strong>${fmt(es)}</strong><br>` +
+      `<u>${wEv + wEs > 0.01 ? 'PV+Wind' : 'PV'}-Überschuss</u>: <strong>${fmt(pv)}</strong>${pvGen > 0 ? ` (von ${fmt(pvGen)} Ertrag)` : ''}<br>` +
+      `<span style="color:${COL.es}">■</span> Einspeisung: <strong>${fmt(es)}</strong>` +
+      (wEs > 0.5 ? ` <span style="color:${COL.wd}">(davon Wind ${fmt(wEs)})</span>` : '') + `<br>` +
       (ct > 0.5 ? `<span style="color:${COL.ct}">■</span> Abregelung: <strong>${fmt(ct)}</strong>` +
         (pvGen > 0 ? ` (${(ct / pvGen * 100).toFixed(0)}&thinsp;%)` : '') : `<span style="color:${COL.ct}">■</span> Abregelung: <strong>0 MWh</strong>`)
     );
@@ -97008,7 +97069,7 @@ function renderRueckAmpel(varianten, overrideEl) {
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
     <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 6 — Rückspeise- &amp; Erzeugungsnetz-Bewertung
-      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Rückspeisespitze am NAP (Batterie schert sie) gegen Spannungsband &amp; Anschlusskapazität</span>
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Rückspeisespitze am NAP (Batterie schert sie) gegen Spannungsband &amp; Anschlusskapazität${varianten.some(v => (v.wirt?.windKw || 0) > 0) ? ' · inkl. Windkraft-Sockel' : ''}</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="rueck" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -113007,6 +113068,11 @@ function autoNetzAssets(opts = {}) {
 // Energiezentrale, Ladepark — je ein Gebäude-Polygon plus fertig verkabelte Assets.
 
 
+
+
+
+
+
 // ── Standard-Leistungen ───────────────────────────────────────────────────────
 var TRAFO_KVA = [100, 160, 250, 315, 400, 500, 630, 800, 1000, 1250];
 
@@ -117990,6 +118056,14 @@ function computeTurbinePlacements({ polygonRing, buildingRings = [], exclusionRi
 // (13q-wind-ertrag.js, 13e-assets-inspector.js) — keine neue Fachlogik.
 
 
+
+
+
+
+
+
+
+
 // Anlagenklassen für die Platzierungsvorschläge — repräsentative, marktübliche Größen
 // (kein Bezug zu evtl. schon vorhandenen Anlagen, dafür gibt es je Anlage die eigene
 // Szenarien-Vergleich-Karte). Wind-/Nennwind-Defaults wie überall im Wind-Modul.
@@ -118396,6 +118470,10 @@ setTimeout(() => {
 //
 // Alles ist Screening-Unterstützung: die Abstände sind Faustwerte (Land-/Einzelfall-
 // abhängig), die Layer ersetzen keine fachrechtliche Prüfung.
+
+
+
+
 
 
 // ── Restriktions-Kategorien: OSM-Filter, Farbe ───────────────────────────────
@@ -120144,6 +120222,10 @@ function _itemJahr(it, phasenArr) {
 //     Checkboxen in Sidebar; schwebende Bulk-Bar mit Sammelaktionen.
 
 
+
+
+
+
 // ── Selektions-State ──────────────────────────────────────────────────────────
 
 // Stabile Referenz — wird immer mutiert (clear/add), nie ersetzt, damit window.assetSelection
@@ -120213,6 +120295,21 @@ function selBoxAreaFilterChange(type) {
 // Vorheriger Sichtbarkeits-Zustand der Elektro-Asset-Ebene (zum Wiederherstellen).
 var _prevAssetLayerVisible = null;
 
+// Merkt sich die "PV-Flächen im Bulk-Modus zeigen"-Einstellung über mehrere
+// Bulk-Sessions hinweg (Nutzer-Präferenz, kein Reset beim Verlassen nötig —
+// die CSS-Regel greift ohnehin nur zusammen mit .bulk-isolate).
+var bulkShowPv = false;
+
+// PV-Flächen (Dach + Freifläche, beide in der pvPane) trotz Bulk-Isolation
+// wieder einblenden — z. B. um Elektro-Assets im räumlichen Bezug zu den
+// zugehörigen PV-Modulen zu selektieren/zuzuordnen.
+function selToggleBulkShowPv(checked) {
+  bulkShowPv = arguments.length ? !!checked : !bulkShowPv;
+  const mapEl = window._appLeafletMap?.getContainer?.();
+  if (mapEl) mapEl.classList.toggle('bulk-show-pv', bulkShowPv);
+  _updateBulkModeToggleBtn();
+}
+
 function selToggleBulkMode() {
   bulkModeActive = !bulkModeActive;
   if (!bulkModeActive) {
@@ -120270,6 +120367,10 @@ function _updateBulkModeToggleBtn() {
     btn.style.borderColor = bulkModeActive ? '#4fc3f7' : '';
   }
   if (list) list.classList.toggle('bulk-active', bulkModeActive);
+  const pvRow = document.getElementById('bulk-show-pv-row');
+  const pvCb  = document.getElementById('bulk-show-pv-cb');
+  if (pvRow) pvRow.style.display = bulkModeActive ? 'flex' : 'none';
+  if (pvCb)  pvCb.checked = bulkShowPv;
 }
 
 // ── Dimming: nicht-selektierte Marker ausgrauen (wie „abgerissen") ────────────
@@ -120873,6 +120974,8 @@ var GEWERK_FALLBACK_COLOR = '#90a4ae';
 var _plan       = { items: [] };
 var _konflikte  = new Set();
 var _draggingId = null;
+var _gruppierung = 'gewerk';   // 'gewerk' | 'cluster' — Swimlane-Achse
+var OHNE_CLUSTER = '__ohne__';
 
 // ── Init + Show/Hide ──────────────────────────────────────────────────────────
 
@@ -120917,6 +121020,7 @@ function ausbauRender() {
 
 function _buildPlan() {
   const items = [];
+  // Elektro-Asset-Maßnahmen
   for (const a of ASSETS.items) {
     for (const m of (a.massnahmen || [])) {
       if (!m || !m.typ) continue;
@@ -120931,11 +121035,56 @@ function _buildPlan() {
         phaseId:   m.phaseId || null,
         jahr:      m.jahr ?? null,
         dependsOn: m.dependsOn || [],
+        clusterId:   m.clusterId || null,
+        clusterName: m.clusterName || null,
+        _m:        m,
+      });
+    }
+  }
+  // Gebäude-Maßnahmen (u.a. aus Cluster-Paketen). Cluster-Zuordnung: explizites Tag
+  // gewinnt, sonst Live-Mitgliedschaft (Schwerpunkt-in-Polygon).
+  for (const g of (window.gebaeude || [])) {
+    if (!Array.isArray(g.massnahmen) || !g.massnahmen.length) continue;
+    const liveCl = clusterFuerGebaeude(g, clusters);
+    for (const m of g.massnahmen) {
+      if (!m || !m.typ) continue;
+      items.push({
+        id:        m.id,
+        assetId:   g.id,
+        assetName: g.name,
+        typ:       m.typ,
+        titel:     g.name || ('Gebäude ' + g.id),
+        kosten:    m.kosten || 0,
+        status:    m.status || 'geplant',
+        phaseId:   m.phaseId || null,
+        jahr:      m.jahr ?? null,
+        dependsOn: m.dependsOn || [],
+        clusterId:   m.clusterId || (liveCl ? liveCl.id : null),
+        clusterName: m.clusterName || (liveCl ? liveCl.name : null),
         _m:        m,
       });
     }
   }
   _plan = { items };
+}
+
+// ── Swimlane-Achsen: Gewerk (Maßnahmen-Typ) oder Cluster ──────────────────────
+function _lanes() {
+  if (_gruppierung === 'cluster') return _clusterLanes();
+  return _gewerke().map(g => ({ ...g, match: it => it.typ === g.key }));
+}
+
+function _clusterLanes() {
+  // Cluster in fester Reihenfolge (Stufe, dann Name); nur solche mit Maßnahmen + Rest-Lane.
+  const vorhanden = new Set(_plan.items.map(it => it.clusterId || OHNE_CLUSTER));
+  const geordnet = [...clusters]
+    .sort((a, b) => (a.stufe ?? 99) - (b.stufe ?? 99) || String(a.name).localeCompare(String(b.name)))
+    .filter(c => vorhanden.has(c.id))
+    .map(c => ({ key: c.id, label: c.name + (c.stufe != null ? ` (St. ${c.stufe})` : ''), icon: '🗺', color: c.farbe, match: it => it.clusterId === c.id }));
+  if (vorhanden.has(OHNE_CLUSTER)) {
+    geordnet.push({ key: OHNE_CLUSTER, label: 'ohne Cluster', icon: '', color: GEWERK_FALLBACK_COLOR, match: it => !it.clusterId });
+  }
+  return geordnet;
 }
 
 // Aktive Gewerk-Swimlanes (nur Typen, die tatsächlich vorkommen — Katalog zuerst).
@@ -120974,6 +121123,11 @@ function _renderToolbar() {
     <span style="color:var(--muted);font-size:10px;">${_plan.items.length} Maßnahme(n) · ${nGeplant} verplant</span>
     <span style="margin-left:8px;border-left:1px solid var(--border);padding-left:8px;">
       <button class="btn-xs" onclick="ausbauNeuePhase()">+ Phase</button>
+    </span>
+    <span style="margin-left:8px;border-left:1px solid var(--border);padding-left:8px;font-size:10px;color:var(--muted);">
+      Achse:
+      <button class="btn-xs" onclick="ausbauSetGruppierung('gewerk')" style="${_gruppierung==='gewerk'?'font-weight:700;color:var(--accent);':''}">Gewerk</button>
+      <button class="btn-xs" onclick="ausbauSetGruppierung('cluster')" style="${_gruppierung==='cluster'?'font-weight:700;color:var(--accent);':''}">Cluster</button>
     </span>
     <span style="margin-left:auto;color:var(--muted);font-size:10px;">${phasen.length} Phasen</span>
     <span style="color:${_konflikte.size > 0 ? '#ef4444' : '#4caf50'};font-size:10px;">${_konflikte.size > 0 ? '⚠ ' + _konflikte.size + ' Konflikt(e)' : '✓ konfliktfrei'}</span>
@@ -121054,7 +121208,8 @@ function _renderGantt() {
       <div style="max-width:520px;margin:24px auto;padding:20px 24px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Noch keine Maßnahmen</div>
         <div style="font-size:11px;color:var(--muted);line-height:1.7;">
-          Der Fahrplan zeigt alle Maßnahmen aller Assets. Lege Maßnahmen an über:<br><br>
+          Der Fahrplan zeigt alle Maßnahmen aller Assets und Gebäude. Lege Maßnahmen an über:<br><br>
+          • ein <b>Cluster-Maßnahmenpaket</b> (Mehr → 🗺 Cluster → „auf Mitglieder anwenden")<br>
           • den <b>Bulk-Modus</b> (Elektro-Tab → Assets auswählen → Maßnahme zuweisen)<br>
           • oder den <b>Asset-Inspektor</b> (einzelnes Asset → „+ Maßnahme")<br><br>
           Anschließend erscheinen sie hier und lassen sich per Drag-&-Drop den Phasen zuordnen.
@@ -121063,13 +121218,14 @@ function _renderGantt() {
     return;
   }
 
-  const aktGewerke = _gewerke();
+  const aktLanes = _lanes();
   const sortPhasen = [...phasen].sort((a, b) => +a.reihenfolge - +b.reihenfolge);
+  const achseLabel = _gruppierung === 'cluster' ? 'Cluster' : 'Gewerk';
 
   let html = `<div class="ausb-gantt" style="display:grid;grid-template-columns:130px repeat(${sortPhasen.length + 1},minmax(140px,1fr));gap:2px;position:relative;">`;
 
   // Kopfzeile
-  html += `<div style="font-size:10px;color:var(--muted);padding:4px 6px;">Gewerk</div>`;
+  html += `<div style="font-size:10px;color:var(--muted);padding:4px 6px;">${achseLabel}</div>`;
   for (const p of sortPhasen) {
     html += `<div ondragover="ausbauDragOver(event,'${p.id}')" ondrop="ausbauDrop(event,'${p.id}')"
       style="font-size:10px;font-weight:600;padding:4px 6px;background:var(--surface2);border-radius:4px 4px 0 0;text-align:center;">
@@ -121079,12 +121235,13 @@ function _renderGantt() {
   html += `<div ondragover="ausbauDragOver(event,null)" ondrop="ausbauDrop(event,null)"
     style="font-size:10px;font-weight:600;padding:4px 6px;background:var(--surface2);border-radius:4px 4px 0 0;text-align:center;color:var(--muted);">Ungeplant</div>`;
 
-  for (const gw of aktGewerke) {
-    html += `<div style="font-size:10px;font-weight:600;padding:4px 6px;border-right:1px solid var(--border);">${gw.icon} ${esc(gw.label)}</div>`;
+  for (const lane of aktLanes) {
+    const laneItems = _plan.items.filter(lane.match);
+    html += `<div style="font-size:10px;font-weight:600;padding:4px 6px;border-right:1px solid var(--border);border-left:3px solid ${lane.color};">${lane.icon} ${esc(lane.label)}</div>`;
     for (const p of sortPhasen) {
-      html += _cellHtml(gw, _plan.items.filter(it => it.typ === gw.key && it.phaseId === p.id), p.id);
+      html += _cellHtml(laneItems.filter(it => it.phaseId === p.id), p.id);
     }
-    html += _cellHtml(gw, _plan.items.filter(it => it.typ === gw.key && !it.phaseId), null);
+    html += _cellHtml(laneItems.filter(it => !it.phaseId), null);
   }
   html += `</div><svg id="ausb-arrows" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;"></svg>`;
   wrap.innerHTML = html;
@@ -121092,17 +121249,24 @@ function _renderGantt() {
   requestAnimationFrame(() => _drawArrows(wrap));
 }
 
-function _cellHtml(gw, items, phaseId) {
+// Balken werden immer nach Gewerk (Maßnahmen-Typ) eingefärbt — so bleibt der Typ auch
+// in der Cluster-Swimlane erkennbar. Der Titel zeigt in der Cluster-Ansicht zusätzlich
+// den Gewerk-Namen (im Gewerk-Modus zeigt die Lane das ohnehin).
+function _cellHtml(items, phaseId) {
   const phAttr = phaseId ? `'${phaseId}'` : 'null';
   const barsHtml = items.map(it => {
     const err = _konflikte.has(it.id);
+    const col = GEWERK_COLOR[it.typ] || GEWERK_FALLBACK_COLOR;
+    const gwLabel = MASSN_VORLAGEN[it.typ]?.label || it.typ;
+    const gwIcon  = MASSN_VORLAGEN[it.typ]?.icon || '';
     const jahrTxt = it.jahr ? ` · ${it.jahr}` : '';
     const kostenTxt = it.kosten ? ` (${(it.kosten/1000).toFixed(0)} k€)` : '';
+    const praefix = _gruppierung === 'cluster' && gwIcon ? gwIcon + ' ' : '';
     return `<div class="ausb-bar" id="ausb-bar-${_cssId(it.id)}"
       data-item-id="${esc(it.id)}" draggable="true" ondragstart="ausbauDragStart(event,'${esc(it.id)}')"
-      title="${esc(it.titel)} — ${esc(gw.label)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
-      style="background:${gw.color}22;border:${err?'2px solid #ef4444':'1px solid '+gw.color+'44'};${err?'box-shadow:0 0 0 2px #ef4444;':''}border-radius:4px;padding:3px 6px;font-size:9px;cursor:grab;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
-      ${err?'⚠ ':''}${esc(it.titel)}${jahrTxt}</div>`;
+      title="${esc(it.titel)} — ${esc(gwLabel)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
+      style="background:${col}22;border:${err?'2px solid #ef4444':'1px solid '+col+'44'};${err?'box-shadow:0 0 0 2px #ef4444;':''}border-radius:4px;padding:3px 6px;font-size:9px;cursor:grab;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
+      ${err?'⚠ ':''}${praefix}${esc(it.titel)}${jahrTxt}</div>`;
   }).join('');
   return `<div ondragover="ausbauDragOver(event,${phAttr})" ondrop="ausbauDrop(event,${phAttr})"
     style="min-height:40px;padding:3px;border:1px solid var(--border);border-radius:2px;">${barsHtml}</div>`;
@@ -121182,14 +121346,25 @@ function ausbauEditPhaseJahr(phaseId, field, value) {
 }
 
 function ausbauPhaseLoeschen(phaseId) {
-  // Maßnahmen dieser Phase auf „ungeplant" zurücksetzen
+  // Maßnahmen dieser Phase auf „ungeplant" zurücksetzen (Assets UND Gebäude)
   for (const a of ASSETS.items) {
     for (const m of (a.massnahmen || [])) {
       if (m.phaseId === phaseId) m.phaseId = null;
     }
   }
+  for (const g of (window.gebaeude || [])) {
+    for (const m of (g.massnahmen || [])) {
+      if (m.phaseId === phaseId) m.phaseId = null;
+    }
+  }
   setPhasen(phasen.filter(p => p.id !== phaseId));
   if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
+  ausbauRender();
+}
+
+// Swimlane-Achse umschalten (Gewerk ⇄ Cluster)
+function ausbauSetGruppierung(modus) {
+  _gruppierung = modus === 'cluster' ? 'cluster' : 'gewerk';
   ausbauRender();
 }
 
@@ -121201,6 +121376,804 @@ function ausbauGetKonflikte() { return _konflikte; }
 function _cssId(id) { return String(id).replace(/[^a-z0-9]/gi, '_'); }
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
+// ── 14f-cluster-core.js ──
+// ── 14f-cluster-core.js — Liegenschafts-Cluster: Datenmodell, Mitglieder, Persistenz ──
+// Schritt 1 des Klimafahrplan-/Ausbaustufen-Konzepts: die Liegenschaft geografisch
+// in benannte Cluster (A, B, C … + zentral) gliedern. Ein Cluster ist ein Polygon
+// auf der Karte plus eine Ausbaustufe (Stufe-Nr. + Fertigstellungsjahr). Die Mitglieder
+// (Gebäude) werden NICHT gespeichert, sondern jederzeit aus der Geometrie abgeleitet
+// (Punkt-in-Polygon des Gebäude-Schwerpunkts) — so bleiben Cluster konsistent, wenn sich
+// Gebäude oder Polygone ändern.
+//
+// Entscheidung (2026-07-08): Cluster sind variantenübergreifend gleich (Geometrie + Zeit
+// liegenschaftsweit, nicht in den Varianten-Snapshots). CO₂-KPIs je Stufe kommen später.
+//
+// Dieses Modul ist bewusst Leaflet-frei und rein → testbar (tests/cluster-core.test.js).
+// Das Rendering/Zeichnen liegt in 14g-cluster-map.js.
+
+// Cluster = {
+//   id:      string,             — eindeutige ID
+//   name:    string,             — Kürzel/Label, z.B. "A", "zentral"
+//   farbe:   string,             — Hex-Farbe für Overlay + Badge
+//   polygon: [{lat,lng}, …],     — Umriss (mind. 3 Punkte)
+//   stufe:   number|null,        — Ausbaustufe (0–9), null = noch nicht zugeordnet
+//   jahr:    number|null,        — Fertigstellung bis … (Jahr), null = offen
+//   notiz:   string,             — freie Beschreibung der Maßnahmenpakete
+// }
+
+// Palette in Anlehnung an die Klimafahrplan-Slides (A=indigo, B=gelb, C=blau, …).
+var CLUSTER_PALETTE = [
+  { name: 'A', farbe: '#5c6bc0' },
+  { name: 'B', farbe: '#fdd835' },
+  { name: 'C', farbe: '#1e88e5' },
+  { name: 'D', farbe: '#fb8c00' },
+  { name: 'E', farbe: '#8e24aa' },
+  { name: 'F', farbe: '#43a047' },
+  { name: 'G', farbe: '#f4511e' },
+  { name: 'zentral', farbe: '#2e7d32' },
+];
+
+// WICHTIG: nie neu zuweisen (clusters = …) — das erzeugt in der teil-migrierten ESM-Welt
+// stale Bindings (window.clusters vs. Modul-Binding). Immer in-place mutieren.
+var clusters = [];
+
+// ── Geometrie-Helfer (planar auf lat/lng — für die kleinen Liegenschafts-Ausdehnungen
+//    als Mitgliedschaftstest völlig ausreichend) ──────────────────────────────────────
+
+function _pt(p) {
+  // Normalisiert Leaflet-taugliche Punkte: [lat,lng] ODER {lat,lng}.
+  if (Array.isArray(p)) return { lat: +p[0], lng: +p[1] };
+  return { lat: +p.lat, lng: +p.lng };
+}
+
+function pointInRingLL(pt, ring) {
+  const p = _pt(pt);
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = _pt(ring[i]), b = _pt(ring[j]);
+    const intersect = ((a.lat > p.lat) !== (b.lat > p.lat)) &&
+      (p.lng < ((b.lng - a.lng) * (p.lat - a.lat)) / (b.lat - a.lat) + a.lng);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function ringCentroidLL(ring) {
+  if (!ring || !ring.length) return null;
+  let sLat = 0, sLng = 0;
+  for (const raw of ring) { const p = _pt(raw); sLat += p.lat; sLng += p.lng; }
+  return { lat: sLat / ring.length, lng: sLng / ring.length };
+}
+
+// ── Mitglieder-Zuordnung ──────────────────────────────────────────────────────────────
+// Gibt die IDs aller Gebäude zurück, deren Schwerpunkt im Cluster-Polygon liegt.
+// gebaeudeArr: Array mit { id, polygon:[…] } (window.gebaeude).
+function clusterMitgliedIds(cluster, gebaeudeArr) {
+  if (!cluster || !cluster.polygon || cluster.polygon.length < 3) return [];
+  const out = [];
+  for (const g of (gebaeudeArr || [])) {
+    if (!g || !g.polygon || g.polygon.length < 3) continue;
+    const c = ringCentroidLL(g.polygon);
+    if (c && pointInRingLL(c, cluster.polygon)) out.push(g.id);
+  }
+  return out;
+}
+
+// Umgekehrt: welchem Cluster gehört ein Gebäude an? (Erstes Treffer-Cluster; überlappen
+// sollten sich Cluster ohnehin nicht.) Gibt das Cluster-Objekt oder null.
+function clusterFuerGebaeude(g, clustersArr = clusters) {
+  if (!g || !g.polygon || g.polygon.length < 3) return null;
+  const c = ringCentroidLL(g.polygon);
+  if (!c) return null;
+  for (const cl of clustersArr) {
+    if (cl.polygon && cl.polygon.length >= 3 && pointInRingLL(c, cl.polygon)) return cl;
+  }
+  return null;
+}
+
+// ── CRUD ────────────────────────────────────────────────────────────────────────────
+
+var _seq = 0;
+function _neueId() { return 'cl_' + Date.now().toString(36) + '_' + (_seq++).toString(36); }
+
+// Wählt das nächste freie Paletten-Kürzel/Farbe (A, B, C … dann zyklisch).
+function _naechsteVorlage() {
+  const used = new Set(clusters.map(c => c.name));
+  for (const v of CLUSTER_PALETTE) if (!used.has(v.name)) return v;
+  return CLUSTER_PALETTE[clusters.length % CLUSTER_PALETTE.length];
+}
+
+function clusterErstellen({ polygon, name, farbe, stufe = null, jahr = null, notiz = '' } = {}) {
+  const vorlage = _naechsteVorlage();
+  const cluster = {
+    id: _neueId(),
+    name: name || vorlage.name,
+    farbe: farbe || vorlage.farbe,
+    polygon: (polygon || []).map(_pt),
+    stufe: stufe == null ? null : Number(stufe),
+    jahr: jahr == null ? null : Number(jahr),
+    notiz: notiz || '',
+  };
+  clusters.push(cluster);
+  return cluster;
+}
+
+function clusterFindeById(id) {
+  return clusters.find(c => c.id === id) || null;
+}
+
+function clusterAktualisieren(id, patch = {}) {
+  const c = clusterFindeById(id);
+  if (!c) return null;
+  if (patch.name !== undefined)  c.name  = patch.name;
+  if (patch.farbe !== undefined) c.farbe = patch.farbe;
+  if (patch.notiz !== undefined) c.notiz = patch.notiz;
+  if (patch.stufe !== undefined) c.stufe = patch.stufe === '' || patch.stufe == null ? null : Number(patch.stufe);
+  if (patch.jahr !== undefined)  c.jahr  = patch.jahr  === '' || patch.jahr  == null ? null : Number(patch.jahr);
+  if (patch.polygon !== undefined) c.polygon = (patch.polygon || []).map(_pt);
+  return c;
+}
+
+function clusterLoeschen(id) {
+  const i = clusters.findIndex(c => c.id === id);
+  if (i >= 0) clusters.splice(i, 1);
+  return i >= 0;
+}
+
+// ── Maßnahmenpakete: Cluster → Einzelmaßnahmen auf den Mitgliedsgebäuden ────────────────
+// Ein Cluster-Paket erzeugt je Mitgliedsgebäude eine Maßnahme pro gewähltem Typ. Die
+// Maßnahmen tragen clusterId/clusterName, damit das Fahrplan-Board (14e) sie als Cluster-
+// Swimlane gruppieren und die Generierung sie idempotent ersetzen kann. Typen entsprechen
+// den Gewerk-Keys aus MASSN_VORLAGEN (Sanierung/Abriss/Bau), damit Farbe/Icon im Board passen.
+var CLUSTER_MASSN_TYPEN = ['Sanierung', 'Abriss', 'Bau'];
+
+var _mSeq = 0;
+function _neueMassnId() { return 'clm_' + Date.now().toString(36) + '_' + (_mSeq++).toString(36); }
+
+// Alle vom Cluster erzeugten Maßnahmen (an m.clusterId erkennbar) aus allen Gebäuden entfernen.
+// Gibt eine Map (buildingId|typ → {phaseId, jahr, id}) der entfernten zurück, damit der Aufrufer
+// beim Neugenerieren die Phasen-/Jahr-Zuordnung des Nutzers erhalten kann.
+function clusterEntferneMassnahmen(cluster, gebaeudeArr) {
+  const bewahrt = new Map();
+  for (const g of (gebaeudeArr || [])) {
+    if (!Array.isArray(g.massnahmen) || !g.massnahmen.length) continue;
+    g.massnahmen = g.massnahmen.filter(m => {
+      if (m && m.clusterId === cluster.id) {
+        bewahrt.set(g.id + '|' + m.typ, { phaseId: m.phaseId || null, jahr: m.jahr ?? null, id: m.id });
+        return false;
+      }
+      return true;
+    });
+  }
+  return bewahrt;
+}
+
+// Erzeugt/aktualisiert die Maßnahmen dieses Clusters auf seinen Mitgliedsgebäuden.
+// typen: Teilmenge von CLUSTER_MASSN_TYPEN. jahr: Ziel-Fertigstellung (default cluster.jahr).
+// Bestehende, per Drag-&-Drop verplante Zuordnungen (phaseId/jahr/id) bleiben je (Gebäude,Typ)
+// erhalten. Gibt { gebaeude, massnahmen } (Anzahlen) zurück.
+function clusterGeneriereMassnahmen(cluster, gebaeudeArr, { typen, jahr } = {}) {
+  const gewaehlt = (typen && typen.length ? typen : ['Sanierung']).filter(t => CLUSTER_MASSN_TYPEN.includes(t));
+  const zieljahr = jahr != null && jahr !== '' ? Number(jahr) : (cluster.jahr ?? null);
+  const bewahrt = clusterEntferneMassnahmen(cluster, gebaeudeArr);
+  const mitglieder = clusterMitgliedIds(cluster, gebaeudeArr);
+  const idSet = new Set(mitglieder);
+
+  let anzM = 0;
+  for (const g of (gebaeudeArr || [])) {
+    if (!idSet.has(g.id)) continue;
+    if (!Array.isArray(g.massnahmen)) g.massnahmen = [];
+    for (const typ of gewaehlt) {
+      const key = g.id + '|' + typ;
+      const alt = bewahrt.get(key);
+      g.massnahmen.push({
+        id:        alt?.id || _neueMassnId(),
+        typ,
+        titel:     typ + ' ' + (cluster.name ? 'Cluster ' + cluster.name : ''),
+        kosten:    0,
+        status:    'geplant',
+        phaseId:   alt?.phaseId ?? null,
+        jahr:      alt ? alt.jahr : zieljahr,
+        dependsOn: [],
+        clusterId:   cluster.id,
+        clusterName: cluster.name,
+      });
+      anzM++;
+    }
+  }
+  return { gebaeude: mitglieder.length, massnahmen: anzM };
+}
+
+// Zählt die von diesem Cluster erzeugten Maßnahmen über alle Gebäude.
+function clusterMassnahmenAnzahl(cluster, gebaeudeArr) {
+  let n = 0;
+  for (const g of (gebaeudeArr || [])) {
+    for (const m of (g.massnahmen || [])) if (m.clusterId === cluster.id) n++;
+  }
+  return n;
+}
+
+// ── Zeitreise: Meilensteine + Zustand je Jahr (Schritt 3) ──────────────────────────────
+// Effektives Jahr einer Maßnahme: explizites m.jahr gewinnt, sonst jahrVon der Phase
+// (falls verplant), sonst null. phasenArr wird explizit übergeben (kein Global-Zugriff → testbar).
+function massnahmeEffektivesJahr(m, phasenArr) {
+  if (m.jahr != null && m.jahr !== '') return Number(m.jahr);
+  if (m.phaseId) {
+    const p = (phasenArr || []).find(x => x.id === m.phaseId);
+    if (p && p.jahrVon != null && p.jahrVon !== '') return parseInt(p.jahrVon);
+  }
+  return null;
+}
+
+// Sortierte, eindeutige Meilenstein-Jahre aus Cluster-Fertigstellungen und Maßnahmen.
+function fahrplanMeilensteine(clustersArr, gebaeudeArr, phasenArr) {
+  const jahre = new Set();
+  for (const c of (clustersArr || [])) if (c.jahr != null) jahre.add(Number(c.jahr));
+  for (const g of (gebaeudeArr || [])) for (const m of (g.massnahmen || [])) {
+    const j = massnahmeEffektivesJahr(m, phasenArr);
+    if (j != null) jahre.add(j);
+  }
+  return [...jahre].sort((a, b) => a - b);
+}
+
+// Zustand der Liegenschaft bei einem Stichjahr: Cluster umgesetzt/geplant, Maßnahmen
+// erledigt/gesamt, kumulierter Invest, sowie die Stufe(n), die genau in diesem Jahr fertig werden.
+function fahrplanZustandBeiJahr(jahr, clustersArr, gebaeudeArr, phasenArr) {
+  const clusterStatus = {};
+  for (const c of (clustersArr || [])) {
+    clusterStatus[c.id] = (c.jahr != null && Number(c.jahr) <= jahr) ? 'umgesetzt' : 'geplant';
+  }
+  let done = 0, total = 0, invest = 0;
+  const gebaeudeDone = new Set();
+  for (const g of (gebaeudeArr || [])) {
+    for (const m of (g.massnahmen || [])) {
+      total++;
+      const j = massnahmeEffektivesJahr(m, phasenArr);
+      if (j != null && j <= jahr) { done++; invest += (m.kosten || 0); gebaeudeDone.add(g.id); }
+    }
+  }
+  const stufen = (clustersArr || [])
+    .filter(c => c.jahr != null && Number(c.jahr) === jahr && c.stufe != null)
+    .map(c => c.stufe).sort((a, b) => a - b);
+  return { clusterStatus, massnahmenDone: done, massnahmenTotal: total, investDone: invest, stufeJahr: stufen.length ? stufen[0] : null, gebaeudeDone };
+}
+
+// ── Persistenz (Projekt-JSON) ─────────────────────────────────────────────────────────
+
+function clusterSerialize() {
+  return clusters.map(c => ({
+    id: c.id, name: c.name, farbe: c.farbe,
+    polygon: c.polygon.map(p => ({ lat: p.lat, lng: p.lng })),
+    stufe: c.stufe, jahr: c.jahr, notiz: c.notiz,
+  }));
+}
+
+function clusterDeserialize(arr) {
+  clusters.length = 0;
+  for (const raw of (arr || [])) {
+    clusters.push({
+      id: raw.id || _neueId(),
+      name: raw.name || '?',
+      farbe: raw.farbe || '#607d8b',
+      polygon: (raw.polygon || []).map(_pt),
+      stufe: raw.stufe == null ? null : Number(raw.stufe),
+      jahr: raw.jahr == null ? null : Number(raw.jahr),
+      notiz: raw.notiz || '',
+    });
+  }
+  return clusters;
+}
+
+
+// ── 14g-cluster-map.js ──
+// ── 14g-cluster-map.js — Cluster-Overlay auf der Karte + Zeichnen + Verwaltungspanel ──
+// Rendert die in 14f verwalteten Cluster als farbige Polygone mit Badge (Kürzel + Stufe/
+// Jahr), stellt ein Zeichenwerkzeug für neue Cluster bereit (Muster wie Windgebiet in
+// 02c-karte-werkzeuge.js) und ein Float-Panel zum Umbenennen/Färben/Stufe-setzen/Löschen.
+//
+// Leaflet (`map`, `L`) und Helfer (`showHint`, `hideHint`, `_hideForDraw`,
+// `_restoreAfterDraw`) kommen als Globals aus 02b/02c.
+
+
+// Anzeigenamen/Icons der generierbaren Maßnahmen-Typen (Gewerk-Keys aus MASSN_VORLAGEN).
+var MASSN_LABEL = { Sanierung: '🔧 Sanierung', Abriss: '🏚 Stilllegung/Abriss', Bau: '🏗 Neubau' };
+
+// ── Modul-State ───────────────────────────────────────────────────────────────────────
+var _layers      = [];      // { polygon, badge } je Cluster — für sauberes Neuzeichnen
+var _sichtbar    = true;    // Overlay-Layer ein/aus
+var _panelOpen   = false;
+
+// Zeichen-State (ein neues Cluster-Polygon)
+var _drawing     = false;
+var _drawPoints  = [];
+var _drawPolyline = null;
+var _drawStart   = null;
+
+// Vertex-Edit-State (bestehendes Cluster-Polygon bearbeiten)
+var _editId      = null;
+var _editMarkers = [];
+
+// Zeitreise-State (Schritt 3): Durchschalten der Ausbaustufen/Jahre
+var _zeitAktiv   = false;
+var _zeitJahr    = null;
+var _zeitMarker  = [];     // Maßnahmen-Marker an Mitgliedsgebäuden
+var _zeitTimer   = null;   // Play-Intervall
+
+// ── Init: Float-Panel einhängen ─────────────────────────────────────────────────────────
+function clusterInit() {
+  if (document.getElementById('cluster-panel')) return;
+  const panel = document.createElement('div');
+  panel.id = 'cluster-panel';
+  panel.className = 'float-panel';
+  panel.style.cssText = 'display:none;top:80px;min-width:340px;max-width:420px;max-height:82vh;padding:15px 18px 12px;overflow-y:auto;border:1px solid #90a4ae;';
+  panel.innerHTML = `
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'cluster-panel')">
+      <span style="color:#b0bec5;font-size:12px;font-weight:600;">🗺 Cluster / Ausbaustufen</span>
+      <span class="drag-dots">⠿</span>
+      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
+            onclick="clusterTogglePanel()">✕</span>
+    </div>
+    <div id="cluster-content"></div>`;
+  document.body.appendChild(panel);
+}
+
+// ── Panel Show/Hide ─────────────────────────────────────────────────────────────────────
+function clusterTogglePanel() {
+  clusterInit();
+  _panelOpen = !_panelOpen;
+  const panel = document.getElementById('cluster-panel');
+  const btn   = document.getElementById('btn-cluster-toggle');
+  if (!panel) return;
+  panel.style.display = _panelOpen ? 'block' : 'none';
+  btn?.classList.toggle('active', _panelOpen);
+  if (_panelOpen) { clusterRenderPanel(); clusterRenderLayers(); }
+}
+
+// ── Panel-Inhalt ────────────────────────────────────────────────────────────────────────
+function _esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+
+function clusterRenderPanel() {
+  const el = document.getElementById('cluster-content');
+  if (!el) return;
+  const geb = window.gebaeude || [];
+
+  const kopf = `
+    <div style="display:flex;gap:6px;align-items:center;margin:10px 0 8px;flex-wrap:wrap;">
+      <button class="ins-link-btn" onclick="toggleDrawCluster()" style="margin:0;">
+        ${_drawing ? '✎ Zeichnen läuft … (ESC zum Abbrechen)' : '＋ Cluster zeichnen'}
+      </button>
+      <label style="font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+        <input type="checkbox" ${_sichtbar ? 'checked' : ''} onchange="clusterShowLayers(this.checked)"> Overlay
+      </label>
+      <button class="ins-link-btn" style="margin:0;" onclick="clusterZeitreiseToggle()">${_zeitAktiv ? '■ Zeitreise aus' : '▶ Zeitreise'}</button>
+    </div>`;
+
+  if (!clusters.length) {
+    el.innerHTML = kopf + `<div style="font-size:11px;color:var(--muted);padding:8px 0;line-height:1.5;">
+      Noch keine Cluster. Klicke <b>＋ Cluster zeichnen</b> und umfahre einen Bereich der Liegenschaft
+      (Startpunkt erneut anklicken zum Schließen). Danach kannst du Stufe und Jahr hinterlegen.</div>`;
+    return;
+  }
+
+  const karten = [...clusters]
+    .sort((a, b) => (a.stufe ?? 99) - (b.stufe ?? 99) || String(a.name).localeCompare(String(b.name)))
+    .map(c => {
+      const n   = clusterMitgliedIds(c, geb).length;
+      const nM  = clusterMassnahmenAnzahl(c, geb);
+      const typChecks = CLUSTER_MASSN_TYPEN.map(t => `
+        <label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--fg);cursor:pointer;">
+          <input type="checkbox" data-cl-typ="${c.id}" value="${t}"> ${MASSN_LABEL[t] || t}
+        </label>`).join('');
+      return `
+      <div style="border:1px solid var(--border);border-left:4px solid ${c.farbe};border-radius:6px;padding:8px 10px;margin:6px 0;background:var(--surface2);">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="color" value="${c.farbe}" title="Farbe"
+                 onchange="clusterEditFeld('${c.id}','farbe',this.value)"
+                 style="width:22px;height:22px;padding:0;border:none;background:none;cursor:pointer;flex-shrink:0;">
+          <input type="text" value="${_esc(c.name)}" title="Name"
+                 onchange="clusterEditFeld('${c.id}','name',this.value)"
+                 style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 6px;font-size:12px;font-weight:600;">
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${n} Geb.</span>
+          <span onclick="clusterLoeschenUI('${c.id}')" title="Cluster löschen"
+                style="cursor:pointer;color:#ef9a9a;font-size:13px;">✕</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);flex-wrap:wrap;">
+          <label style="display:inline-flex;align-items:center;gap:4px;">Stufe
+            <input type="number" min="0" max="9" value="${c.stufe ?? ''}" placeholder="–"
+                   onchange="clusterEditFeld('${c.id}','stufe',this.value)"
+                   style="width:46px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 4px;"></label>
+          <label style="display:inline-flex;align-items:center;gap:4px;">Jahr
+            <input type="number" min="2020" max="2060" value="${c.jahr ?? ''}" placeholder="–"
+                   onchange="clusterEditFeld('${c.id}','jahr',this.value)"
+                   style="width:60px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 4px;"></label>
+          <button class="ins-link-btn" style="margin:0;padding:2px 6px;"
+                  onclick="clusterEditPolygon('${c.id}')">${_editId === c.id ? '✓ fertig' : '✎ Umriss'}</button>
+        </div>
+        <div style="border-top:1px dashed var(--border);margin-top:7px;padding-top:6px;">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Maßnahmenpaket auf ${n} Mitglied(er)${nM ? ` · <b style="color:var(--fg);">${nM} Maßnahme(n) aktiv</b>` : ''}</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:5px;">${typChecks}</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <button class="ins-link-btn" style="margin:0;padding:2px 8px;" onclick="clusterPaketAnwenden('${c.id}')">→ auf Mitglieder anwenden</button>
+            ${nM ? `<button class="ins-link-btn" style="margin:0;padding:2px 6px;color:#ef9a9a;" onclick="clusterPaketEntfernen('${c.id}')">✕ Paket</button>` : ''}
+            ${nM ? `<button class="ins-link-btn" style="margin:0;padding:2px 6px;" onclick="clusterFahrplanOeffnen()">📅 Fahrplan</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+  el.innerHTML = kopf + karten;
+  // Checkbox-Status je Cluster aus den aktuell vorhandenen Maßnahmen vorbelegen
+  for (const c of clusters) {
+    const aktiveTypen = new Set();
+    for (const g of geb) for (const m of (g.massnahmen || [])) if (m.clusterId === c.id) aktiveTypen.add(m.typ);
+    el.querySelectorAll(`input[data-cl-typ="${c.id}"]`).forEach(cb => {
+      cb.checked = aktiveTypen.size ? aktiveTypen.has(cb.value) : cb.value === 'Sanierung';
+    });
+  }
+}
+
+// ── Overlay-Layer zeichnen ───────────────────────────────────────────────────────────────
+function clusterRenderLayers() {
+  const map = window.map;
+  if (!map || typeof L === 'undefined') return;
+  // Alte Layer entfernen
+  for (const l of _layers) { if (l.polygon) map.removeLayer(l.polygon); if (l.badge) map.removeLayer(l.badge); }
+  for (const m of _zeitMarker) map.removeLayer(m);
+  _layers = [];
+  _zeitMarker = [];
+  if (!_sichtbar) return;
+
+  // Zeitreise-Zustand (falls aktiv): welche Cluster sind zum Stichjahr umgesetzt?
+  const zustand = (_zeitAktiv && _zeitJahr != null)
+    ? fahrplanZustandBeiJahr(_zeitJahr, clusters, window.gebaeude || [], window.phasen || [])
+    : null;
+
+  for (const c of clusters) {
+    if (!c.polygon || c.polygon.length < 3) continue;
+    const latlngs = c.polygon.map(p => [p.lat, p.lng]);
+    const status = zustand ? zustand.clusterStatus[c.id] : null;   // 'umgesetzt' | 'geplant' | null
+    const umgesetzt = status === 'umgesetzt';
+    const geplant   = status === 'geplant';
+
+    const polygon = L.polygon(latlngs, {
+      color:       c.farbe,
+      weight:      geplant ? 1.5 : 2,
+      dashArray:   geplant ? '6 5' : null,
+      fillColor:   c.farbe,
+      fillOpacity: umgesetzt ? 0.28 : (geplant ? 0.04 : 0.10),
+      opacity:     geplant ? 0.6 : 1,
+    }).addTo(map);
+    polygon.on('click', () => { if (!_panelOpen) clusterTogglePanel(); });
+
+    const center = _ringCenter(c.polygon);
+    const sub = (c.stufe != null || c.jahr != null)
+      ? `<span style="display:block;font-size:9px;font-weight:500;opacity:.95;">${c.stufe != null ? 'Stufe ' + c.stufe : ''}${c.stufe != null && c.jahr != null ? ' · ' : ''}${c.jahr != null ? c.jahr : ''}</span>`
+      : '';
+    const check = umgesetzt ? '✓ ' : '';
+    const badge = L.marker(center, {
+      interactive: false,
+      icon: L.divIcon({
+        className: 'cluster-badge',
+        html: `<div style="background:${c.farbe};color:#fff;border-radius:14px;padding:2px 9px;font-weight:700;font-size:12px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;line-height:1.15;opacity:${geplant ? 0.55 : 1};">${check}${_esc(c.name)}${sub}</div>`,
+        iconSize: [0, 0],
+      }),
+      zIndexOffset: 1500,
+    }).addTo(map);
+
+    _layers.push({ polygon, badge });
+  }
+
+  // Maßnahmen-Marker: an jedem Mitgliedsgebäude mit erledigter Maßnahme zum Stichjahr
+  if (zustand) _renderZeitMarker(map, zustand);
+}
+
+function _ringCenter(ring) {
+  let sLat = 0, sLng = 0;
+  for (const p of ring) { sLat += p.lat; sLng += p.lng; }
+  return [sLat / ring.length, sLng / ring.length];
+}
+
+// Kleiner Häkchen-Marker (in Clusterfarbe) auf jedem Gebäude, dessen Maßnahme bis zum
+// Stichjahr erledigt ist — visualisiert das „Aufblühen" der Liegenschaft über die Zeit.
+function _renderZeitMarker(map, zustand) {
+  // Cluster-Zuordnung je Gebäude (für die Markerfarbe)
+  const clFarbe = {};
+  for (const c of clusters) clFarbe[c.id] = c.farbe;
+  for (const g of (window.gebaeude || [])) {
+    if (!zustand.gebaeudeDone.has(g.id) || !g.polygon || g.polygon.length < 3) continue;
+    // erste erledigte Maßnahme → Farbe des zugehörigen Clusters
+    const m = (g.massnahmen || []).find(x => {
+      const j = massnahmeEffektivesJahr(x, window.phasen || []);
+      return j != null && j <= _zeitJahr;
+    });
+    const farbe = (m && clFarbe[m.clusterId]) || '#78909c';
+    const c = ringCentroidLL(g.polygon);
+    const marker = L.marker([c.lat, c.lng], {
+      interactive: false,
+      icon: L.divIcon({
+        className: 'cluster-massn-marker',
+        html: `<div style="width:14px;height:14px;border-radius:50%;background:${farbe};color:#fff;font-size:9px;line-height:14px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.5);border:1px solid #fff;">✓</div>`,
+        iconSize: [14, 14], iconAnchor: [7, 7],
+      }),
+      zIndexOffset: 1400,
+    }).addTo(map);
+    _zeitMarker.push(marker);
+  }
+}
+
+function clusterShowLayers(on) {
+  _sichtbar = !!on;
+  clusterRenderLayers();
+  if (_panelOpen) clusterRenderPanel();
+}
+
+// ── Panel-Aktionen (an window gebunden über main.js) ────────────────────────────────────
+function clusterEditFeld(id, feld, wert) {
+  clusterAktualisieren(id, { [feld]: wert });
+  clusterRenderLayers();
+  clusterRenderPanel();
+  if (_zeitAktiv) _zeitBarRender();
+}
+
+function clusterLoeschenUI(id) {
+  if (_editId === id) _stopVertexEdit();
+  const c = clusterFindeById(id);
+  if (c) clusterEntferneMassnahmen(c, window.gebaeude || []);
+  clusterLoeschen(id);
+  clusterRenderLayers();
+  clusterRenderPanel();
+  _refreshFahrplan();
+}
+
+// ── Maßnahmenpakete ──────────────────────────────────────────────────────────────────
+function clusterPaketAnwenden(id) {
+  const c = clusterFindeById(id);
+  if (!c) return;
+  const panel = document.getElementById('cluster-content');
+  const typen = [...(panel?.querySelectorAll(`input[data-cl-typ="${id}"]:checked`) || [])].map(cb => cb.value);
+  if (!typen.length) { if (typeof window.showHint === 'function') window.showHint('Bitte mindestens einen Maßnahmen-Typ ankreuzen.'); return; }
+  const res = clusterGeneriereMassnahmen(c, window.gebaeude || [], { typen, jahr: c.jahr });
+  if (typeof window.showHint === 'function') {
+    window.showHint(res.gebaeude ? `Cluster ${c.name}: ${res.massnahmen} Maßnahme(n) auf ${res.gebaeude} Gebäude erzeugt.` : `Cluster ${c.name} hat keine Mitgliedsgebäude.`);
+    setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 3500);
+  }
+  clusterRenderPanel();
+  _refreshFahrplan();
+  if (_zeitAktiv) { _zeitBarRender(); clusterRenderLayers(); }
+}
+
+function clusterPaketEntfernen(id) {
+  const c = clusterFindeById(id);
+  if (!c) return;
+  clusterEntferneMassnahmen(c, window.gebaeude || []);
+  clusterRenderPanel();
+  _refreshFahrplan();
+  if (_zeitAktiv) { _zeitBarRender(); clusterRenderLayers(); }
+}
+
+function clusterFahrplanOeffnen() {
+  if (typeof window.ausbauShow === 'function') window.ausbauShow(true);
+}
+
+// Board neu zeichnen, falls es gerade offen ist (Maßnahmen haben sich geändert).
+function _refreshFahrplan() {
+  if (typeof window.ausbauRender === 'function' && document.getElementById('ausbauplaner-wrap')?.style.display !== 'none') {
+    window.ausbauRender();
+  }
+  if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
+}
+
+// ── Polygon zeichnen (neues Cluster) ─────────────────────────────────────────────────────
+function toggleDrawCluster() {
+  const map = window.map;
+  if (!map) return;
+  if (_drawing) { _cancelDraw(); return; }
+
+  // Andere Zeichenmodi abbrechen (defensiv, wie das Windgebiet-Werkzeug)
+  if (window.areaDrawing && typeof window.toggleDrawArea === 'function') window.toggleDrawArea();
+  if (window.windGebietDrawing && typeof window.toggleDrawWindGebiet === 'function') window.toggleDrawWindGebiet();
+  if (typeof window.cancelPendingAsset === 'function') window.cancelPendingAsset();
+  _stopVertexEdit();
+
+  _drawing = true;
+  _drawPoints = [];
+  if (typeof window.showHint === 'function') window.showHint('Cluster zeichnen: Klicke Eckpunkte auf die Karte. Startpunkt (rot) erneut anklicken zum Schließen. Rechtsklick widerruft, ESC bricht ab.');
+  if (typeof window._hideForDraw === 'function') window._hideForDraw();
+  map.doubleClickZoom.disable();
+  map.dragging.disable();
+  map.getContainer().style.cursor = 'crosshair';
+  map.off('click', onDrawClusterClick);
+  map.off('contextmenu', onDrawClusterCancel);
+  map.on('click', onDrawClusterClick);
+  map.on('contextmenu', onDrawClusterCancel);
+  clusterRenderPanel();
+}
+
+function onDrawClusterClick(e) {
+  if (!_drawing) return;
+  const map = window.map;
+  if (_drawStart && _drawPoints.length >= 3) {
+    const d = map.latLngToContainerPoint(e.latlng).distanceTo(map.latLngToContainerPoint(_drawStart.getLatLng()));
+    if (d < 20) { _finishDraw(); return; }
+  }
+  if (_drawPoints.length === 0) {
+    _drawStart = L.marker(e.latlng, { icon: L.divIcon({ className: 'area-start-handle', html: '', iconSize: [14, 14] }), zIndexOffset: 2000 }).addTo(map);
+    _drawStart.on('click', ev => { L.DomEvent.stopPropagation(ev); _finishDraw(); });
+  }
+  _drawPoints.push(e.latlng);
+  if (_drawPolyline) map.removeLayer(_drawPolyline);
+  _drawPolyline = L.polyline([..._drawPoints], { color: '#b0bec5', weight: 2, dashArray: '8 4' }).addTo(map);
+}
+
+function onDrawClusterCancel(e) {
+  if (!_drawing) return;
+  const map = window.map;
+  if (_drawPoints.length > 0) {
+    _drawPoints.pop();
+    if (_drawPolyline) map.removeLayer(_drawPolyline);
+    if (_drawPoints.length > 0) {
+      _drawPolyline = L.polyline([..._drawPoints], { color: '#b0bec5', weight: 2, dashArray: '8 4' }).addTo(map);
+    } else if (_drawStart) { map.removeLayer(_drawStart); _drawStart = null; }
+  }
+}
+
+function _cleanupDrawEvents() {
+  const map = window.map;
+  map.off('click', onDrawClusterClick);
+  map.off('contextmenu', onDrawClusterCancel);
+  _drawing = false;
+  map.dragging.enable();
+  map.doubleClickZoom.enable();
+  map.getContainer().style.cursor = '';
+  if (typeof window.hideHint === 'function') window.hideHint();
+  if (typeof window._restoreAfterDraw === 'function') window._restoreAfterDraw();
+}
+
+function _cancelDraw() {
+  const map = window.map;
+  if (_drawPolyline) { map.removeLayer(_drawPolyline); _drawPolyline = null; }
+  if (_drawStart) { map.removeLayer(_drawStart); _drawStart = null; }
+  _drawPoints = [];
+  _cleanupDrawEvents();
+  clusterRenderPanel();
+}
+
+function _finishDraw() {
+  const map = window.map;
+  if (_drawPoints.length < 3) return;
+  const polygon = _drawPoints.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+  if (_drawPolyline) { map.removeLayer(_drawPolyline); _drawPolyline = null; }
+  if (_drawStart) { map.removeLayer(_drawStart); _drawStart = null; }
+  _drawPoints = [];
+  _cleanupDrawEvents();
+  clusterErstellen({ polygon });
+  clusterRenderLayers();
+  clusterRenderPanel();
+}
+
+// ── Vertex-Editieren eines bestehenden Cluster-Polygons ──────────────────────────────────
+function clusterEditPolygon(id) {
+  if (_editId === id) { _stopVertexEdit(); clusterRenderPanel(); return; }
+  _stopVertexEdit();
+  const map = window.map;
+  const c = clusterFindeById(id);
+  if (!map || !c || !c.polygon.length) return;
+  _editId = id;
+  const editIcon = L.divIcon({ className: 'area-edit-handle', html: '', iconSize: [12, 12] });
+  c.polygon.forEach((p, index) => {
+    const marker = L.marker([p.lat, p.lng], { draggable: true, icon: editIcon, zIndexOffset: 2000 }).addTo(map);
+    marker.on('drag', ev => {
+      const ll = ev.target.getLatLng();
+      c.polygon[index] = { lat: ll.lat, lng: ll.lng };
+      clusterRenderLayers();
+    });
+    marker.on('dragend', () => clusterRenderPanel());
+    _editMarkers.push(marker);
+  });
+  clusterRenderPanel();
+}
+
+function _stopVertexEdit() {
+  const map = window.map;
+  if (map) for (const m of _editMarkers) map.removeLayer(m);
+  _editMarkers = [];
+  _editId = null;
+}
+
+// ── Zeitreise: Ausbaustufen/Jahre durchschalten (Schritt 3) ────────────────────────────
+function _meilensteine() {
+  return fahrplanMeilensteine(clusters, window.gebaeude || [], window.phasen || []);
+}
+
+function clusterZeitreiseToggle() {
+  _zeitAktiv = !_zeitAktiv;
+  _zeitStopPlay();
+  if (_zeitAktiv) {
+    const ms = _meilensteine();
+    _zeitJahr = ms.length ? ms[ms.length - 1] : null;   // Start: Endausbau (alles sichtbar)
+  } else {
+    _zeitJahr = null;
+  }
+  _zeitBarRender();
+  clusterRenderLayers();
+  clusterRenderPanel();
+}
+
+function _zeitBar() {
+  let bar = document.getElementById('cluster-zeitreise');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'cluster-zeitreise';
+    bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:3200;background:var(--surface);border:1px solid #90a4ae;border-radius:10px;padding:10px 16px;box-shadow:0 8px 32px rgba(0,0,0,.6);min-width:420px;max-width:min(680px,92vw);display:none;';
+    document.body.appendChild(bar);
+  }
+  return bar;
+}
+
+function _zeitBarRender() {
+  const bar = _zeitBar();
+  if (!_zeitAktiv) { bar.style.display = 'none'; return; }
+  const ms = _meilensteine();
+  if (!ms.length) {
+    bar.style.display = 'block';
+    bar.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+      <span style="font-size:12px;color:var(--muted);">Noch keine Termine — Cluster-Jahre setzen oder Maßnahmenpakete anwenden.</span>
+      <span style="cursor:pointer;color:var(--muted);" onclick="clusterZeitreiseToggle()">✕</span></div>`;
+    return;
+  }
+  if (_zeitJahr == null || !ms.includes(_zeitJahr)) _zeitJahr = ms[ms.length - 1];
+  const idx = ms.indexOf(_zeitJahr);
+  const z = fahrplanZustandBeiJahr(_zeitJahr, clusters, window.gebaeude || [], window.phasen || []);
+  const stufeTxt = z.stufeJahr != null ? `Stufe ${z.stufeJahr}` : '';
+  const investTxt = z.investDone ? `${(z.investDone / 1000).toFixed(0)} k€` : '0 k€';
+  const playing = !!_zeitTimer;
+
+  bar.style.display = 'block';
+  bar.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:7px;">
+      <span style="font-size:15px;font-weight:700;color:var(--accent);white-space:nowrap;">${_zeitJahr}${stufeTxt ? ` · ${stufeTxt}` : ''}</span>
+      <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${z.massnahmenDone}/${z.massnahmenTotal} Maßnahmen · Invest kumuliert ${investTxt}</span>
+      <span style="margin-left:auto;cursor:pointer;color:var(--muted);font-size:14px;" title="Zeitreise beenden" onclick="clusterZeitreiseToggle()">✕</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button class="ins-link-btn" style="margin:0;padding:2px 8px;" title="${playing ? 'Pause' : 'Abspielen'}" onclick="clusterZeitPlay()">${playing ? '⏸' : '▶'}</button>
+      <input type="range" min="0" max="${ms.length - 1}" value="${idx}" step="1"
+             oninput="clusterZeitSet(this.value)"
+             style="flex:1;accent-color:var(--accent);cursor:pointer;">
+      <span style="font-size:10px;color:var(--muted);white-space:nowrap;">${ms[0]}–${ms[ms.length - 1]}</span>
+    </div>`;
+}
+
+function clusterZeitSet(idx) {
+  const ms = _meilensteine();
+  const i = Math.max(0, Math.min(ms.length - 1, parseInt(idx) || 0));
+  _zeitJahr = ms[i];
+  _zeitBarRender();
+  clusterRenderLayers();
+}
+
+function clusterZeitPlay() {
+  if (_zeitTimer) { _zeitStopPlay(); _zeitBarRender(); return; }
+  const ms = _meilensteine();
+  if (!ms.length) return;
+  // Wenn am Ende, von vorn beginnen
+  if (_zeitJahr == null || _zeitJahr >= ms[ms.length - 1]) _zeitJahr = ms[0];
+  _zeitTimer = setInterval(() => {
+    const arr = _meilensteine();
+    const i = arr.indexOf(_zeitJahr);
+    if (i < 0 || i >= arr.length - 1) { _zeitStopPlay(); _zeitBarRender(); return; }
+    _zeitJahr = arr[i + 1];
+    _zeitBarRender();
+    clusterRenderLayers();
+  }, 1100);
+  _zeitBarRender(); clusterRenderLayers();   // nach Timer-Start → Button zeigt sofort ⏸
+}
+
+function _zeitStopPlay() {
+  if (_zeitTimer) { clearInterval(_zeitTimer); _zeitTimer = null; }
 }
 
 

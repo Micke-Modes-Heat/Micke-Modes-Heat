@@ -880,6 +880,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .leaflet-container.bulk-isolate .leaflet-netz-pane     { display: none; }
 .leaflet-container.bulk-isolate .leaflet-marker-icon:not(.asset-divicon) { display: none; }
 
+/* Bulk-Modus: PV-Flächen optional wieder einblenden (Toggle in der Bulk-Leiste) —
+   höhere Selektor-Spezifität (2 Klassen) gewinnt gegen die Regel darüber. */
+.leaflet-container.bulk-isolate.bulk-show-pv .leaflet-pv-pane { display: block; }
+
 /* Bulk-Modus: Checkboxen nur einblenden wenn aktiv */
 #sb-asset-list .sb-asset-cb { display: none; }
 #sb-asset-list.bulk-active .sb-asset-cb { display: inline-block; }

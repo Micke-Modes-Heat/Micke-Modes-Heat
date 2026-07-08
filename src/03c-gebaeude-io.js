@@ -2146,6 +2146,7 @@ export function _buildProjectData() {
       pvModus: g.pvModus || 'pauschal', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null,
       pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche })),
+      massnahmen: g.massnahmen || [],
     })),
     netz: {
       zentrale: document.getElementById('netz-zentrale').value,
@@ -2243,6 +2244,8 @@ export function _buildProjectData() {
     windStandortDaten: (typeof window.windSiteSerialize === 'function' ? window.windSiteSerialize() : null),
     // Plan-Overlays (Hintergrundpläne) mit Bilddaten, Passlage, Deckkraft, Sichtbarkeit
     overlays: (typeof window.serializeOverlays === 'function' ? window.serializeOverlays() : []),
+    // Liegenschafts-Cluster (Klimafahrplan/Ausbaustufen, variantenübergreifend)
+    cluster: (typeof window.clusterSerialize === 'function' ? window.clusterSerialize() : []),
   };
 }
 
@@ -2325,6 +2328,7 @@ export function _loadProject(project) {
             newG.baujährQuelle = g.baujährQuelle || null;
             newG.abrissjahr = g.abrissjahr;
             newG.sanierungen = g.sanierungen || [];
+            newG.massnahmen = g.massnahmen || [];
             newG.nutzung = g.nutzung || '';
             newG.stockwerke = g.stockwerke || 1;
             newG.waermeManual = g.waermeManual || false;
@@ -2796,6 +2800,10 @@ export function _loadProject(project) {
 
       // Plan-Overlays (Hintergrundpläne) wiederherstellen bzw. leeren
       if (typeof window.loadOverlays === 'function') window.loadOverlays(project.overlays || []);
+
+      // Liegenschafts-Cluster (Ausbaustufen) wiederherstellen bzw. leeren
+      if (typeof window.clusterDeserialize === 'function') window.clusterDeserialize(project.cluster || []);
+      if (typeof window.clusterRenderLayers === 'function') window.clusterRenderLayers();
 
       redrawErzeugerIcons();
       _initYearSliderFromBaujahr();

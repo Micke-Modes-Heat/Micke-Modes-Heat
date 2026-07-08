@@ -1921,15 +1921,25 @@ export function updateStromEdgeVisuals() {
     if (est === 'planned') {
       e.layer.setStyle({ opacity: 0.4, dashArray: '4,6' });
       if (e.outlineLayer) e.outlineLayer.setStyle({ opacity: 0.2 });
+      e._flowActive = false;
+      if (e.layer._path) e.layer._path.style.strokeDashoffset = '';
     } else if (est === 'demolished') {
-      e.layer.setStyle({ opacity: 0.15 });
-      if (e.outlineLayer) e.outlineLayer.setStyle({ opacity: 0.1 });
+      // abgerissen: ausgegraut + gestrichelt — analog zu abgerissenen Gebäuden
+      // (graue Füllung #555, dashArray '4 4') statt nur stark abgeblendet.
+      // _flowActive hier hart auf false: sonst läuft die Fluss-Animation
+      // (wandernder strokeDashoffset, s. applyStromDash) unverändert weiter
+      // und das Kabel wirkt trotz Grau-Darstellung weiter "aktiv/dynamisch".
+      e.layer.setStyle({ color: '#555', weight: 2, opacity: 0.45, dashArray: '4,4' });
+      if (e.outlineLayer) e.outlineLayer.setStyle({ color: '#555', weight: 5, opacity: 0.15, dashArray: '4,4' });
+      e._flowActive = false;
+      if (e.layer._path) e.layer._path.style.strokeDashoffset = '';
     }
 
-    // Arrow marker for direction
+    // Arrow marker for direction — nicht bei geplanten/abgerissenen Kabeln:
+    // die sollen rein statisch ausgegraut sein, kein Flusspfeil in Originalfarbe.
     const un = window.stromNodes.find(n => n.id === e.u);
     const vn = window.stromNodes.find(n => n.id === e.v);
-    if (un && vn && absKw > 0.1) {
+    if (est === 'active' && un && vn && absKw > 0.1) {
       const pt1 = L.latLng(un.lat, un.lng);
       const pt2 = L.latLng(vn.lat, vn.lng);
       const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2);
