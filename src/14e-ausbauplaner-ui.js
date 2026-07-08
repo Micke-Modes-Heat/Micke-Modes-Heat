@@ -7,6 +7,7 @@ import { ASSETS } from './13a-assets-core.js';
 import { phasen, setPhasen } from './01-globals-varianten.js';
 import { fahrplanTopoSort, fahrplanValidiereReihenfolge } from './14c-phasen.js';
 import { MASSN_VORLAGEN, MASSN_VORLAGEN_REIHENFOLGE } from './config/massnahmen-vorlagen.js';
+import { clusters, clusterFuerGebaeude } from './14f-cluster-core.js';
 
 // ── Gewerk-Farben (Maßnahmen-Typen) ──────────────────────────────────────────
 const GEWERK_COLOR = {
@@ -21,6 +22,8 @@ const GEWERK_FALLBACK_COLOR = '#90a4ae';
 let _plan       = { items: [] };
 let _konflikte  = new Set();
 let _draggingId = null;
+let _gruppierung = 'gewerk';   // 'gewerk' | 'cluster' — Swimlane-Achse
+const OHNE_CLUSTER = '__ohne__';
 
 // ── Init + Show/Hide ──────────────────────────────────────────────────────────
 
@@ -65,6 +68,7 @@ export function ausbauRender() {
 
 function _buildPlan() {
   const items = [];
+  // Elektro-Asset-Maßnahmen
   for (const a of ASSETS.items) {
     for (const m of (a.massnahmen || [])) {
       if (!m || !m.typ) continue;
@@ -79,11 +83,56 @@ function _buildPlan() {
         phaseId:   m.phaseId || null,
         jahr:      m.jahr ?? null,
         dependsOn: m.dependsOn || [],
+        clusterId:   m.clusterId || null,
+        clusterName: m.clusterName || null,
+        _m:        m,
+      });
+    }
+  }
+  // Gebäude-Maßnahmen (u.a. aus Cluster-Paketen). Cluster-Zuordnung: explizites Tag
+  // gewinnt, sonst Live-Mitgliedschaft (Schwerpunkt-in-Polygon).
+  for (const g of (window.gebaeude || [])) {
+    if (!Array.isArray(g.massnahmen) || !g.massnahmen.length) continue;
+    const liveCl = clusterFuerGebaeude(g, clusters);
+    for (const m of g.massnahmen) {
+      if (!m || !m.typ) continue;
+      items.push({
+        id:        m.id,
+        assetId:   g.id,
+        assetName: g.name,
+        typ:       m.typ,
+        titel:     g.name || ('Gebäude ' + g.id),
+        kosten:    m.kosten || 0,
+        status:    m.status || 'geplant',
+        phaseId:   m.phaseId || null,
+        jahr:      m.jahr ?? null,
+        dependsOn: m.dependsOn || [],
+        clusterId:   m.clusterId || (liveCl ? liveCl.id : null),
+        clusterName: m.clusterName || (liveCl ? liveCl.name : null),
         _m:        m,
       });
     }
   }
   _plan = { items };
+}
+
+// ── Swimlane-Achsen: Gewerk (Maßnahmen-Typ) oder Cluster ──────────────────────
+function _lanes() {
+  if (_gruppierung === 'cluster') return _clusterLanes();
+  return _gewerke().map(g => ({ ...g, match: it => it.typ === g.key }));
+}
+
+function _clusterLanes() {
+  // Cluster in fester Reihenfolge (Stufe, dann Name); nur solche mit Maßnahmen + Rest-Lane.
+  const vorhanden = new Set(_plan.items.map(it => it.clusterId || OHNE_CLUSTER));
+  const geordnet = [...clusters]
+    .sort((a, b) => (a.stufe ?? 99) - (b.stufe ?? 99) || String(a.name).localeCompare(String(b.name)))
+    .filter(c => vorhanden.has(c.id))
+    .map(c => ({ key: c.id, label: c.name + (c.stufe != null ? ` (St. ${c.stufe})` : ''), icon: '🗺', color: c.farbe, match: it => it.clusterId === c.id }));
+  if (vorhanden.has(OHNE_CLUSTER)) {
+    geordnet.push({ key: OHNE_CLUSTER, label: 'ohne Cluster', icon: '', color: GEWERK_FALLBACK_COLOR, match: it => !it.clusterId });
+  }
+  return geordnet;
 }
 
 // Aktive Gewerk-Swimlanes (nur Typen, die tatsächlich vorkommen — Katalog zuerst).
@@ -122,6 +171,11 @@ function _renderToolbar() {
     <span style="color:var(--muted);font-size:10px;">${_plan.items.length} Maßnahme(n) · ${nGeplant} verplant</span>
     <span style="margin-left:8px;border-left:1px solid var(--border);padding-left:8px;">
       <button class="btn-xs" onclick="ausbauNeuePhase()">+ Phase</button>
+    </span>
+    <span style="margin-left:8px;border-left:1px solid var(--border);padding-left:8px;font-size:10px;color:var(--muted);">
+      Achse:
+      <button class="btn-xs" onclick="ausbauSetGruppierung('gewerk')" style="${_gruppierung==='gewerk'?'font-weight:700;color:var(--accent);':''}">Gewerk</button>
+      <button class="btn-xs" onclick="ausbauSetGruppierung('cluster')" style="${_gruppierung==='cluster'?'font-weight:700;color:var(--accent);':''}">Cluster</button>
     </span>
     <span style="margin-left:auto;color:var(--muted);font-size:10px;">${phasen.length} Phasen</span>
     <span style="color:${_konflikte.size > 0 ? '#ef4444' : '#4caf50'};font-size:10px;">${_konflikte.size > 0 ? '⚠ ' + _konflikte.size + ' Konflikt(e)' : '✓ konfliktfrei'}</span>
@@ -202,7 +256,8 @@ function _renderGantt() {
       <div style="max-width:520px;margin:24px auto;padding:20px 24px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Noch keine Maßnahmen</div>
         <div style="font-size:11px;color:var(--muted);line-height:1.7;">
-          Der Fahrplan zeigt alle Maßnahmen aller Assets. Lege Maßnahmen an über:<br><br>
+          Der Fahrplan zeigt alle Maßnahmen aller Assets und Gebäude. Lege Maßnahmen an über:<br><br>
+          • ein <b>Cluster-Maßnahmenpaket</b> (Mehr → 🗺 Cluster → „auf Mitglieder anwenden")<br>
           • den <b>Bulk-Modus</b> (Elektro-Tab → Assets auswählen → Maßnahme zuweisen)<br>
           • oder den <b>Asset-Inspektor</b> (einzelnes Asset → „+ Maßnahme")<br><br>
           Anschließend erscheinen sie hier und lassen sich per Drag-&-Drop den Phasen zuordnen.
@@ -211,13 +266,14 @@ function _renderGantt() {
     return;
   }
 
-  const aktGewerke = _gewerke();
+  const aktLanes = _lanes();
   const sortPhasen = [...phasen].sort((a, b) => +a.reihenfolge - +b.reihenfolge);
+  const achseLabel = _gruppierung === 'cluster' ? 'Cluster' : 'Gewerk';
 
   let html = `<div class="ausb-gantt" style="display:grid;grid-template-columns:130px repeat(${sortPhasen.length + 1},minmax(140px,1fr));gap:2px;position:relative;">`;
 
   // Kopfzeile
-  html += `<div style="font-size:10px;color:var(--muted);padding:4px 6px;">Gewerk</div>`;
+  html += `<div style="font-size:10px;color:var(--muted);padding:4px 6px;">${achseLabel}</div>`;
   for (const p of sortPhasen) {
     html += `<div ondragover="ausbauDragOver(event,'${p.id}')" ondrop="ausbauDrop(event,'${p.id}')"
       style="font-size:10px;font-weight:600;padding:4px 6px;background:var(--surface2);border-radius:4px 4px 0 0;text-align:center;">
@@ -227,12 +283,13 @@ function _renderGantt() {
   html += `<div ondragover="ausbauDragOver(event,null)" ondrop="ausbauDrop(event,null)"
     style="font-size:10px;font-weight:600;padding:4px 6px;background:var(--surface2);border-radius:4px 4px 0 0;text-align:center;color:var(--muted);">Ungeplant</div>`;
 
-  for (const gw of aktGewerke) {
-    html += `<div style="font-size:10px;font-weight:600;padding:4px 6px;border-right:1px solid var(--border);">${gw.icon} ${esc(gw.label)}</div>`;
+  for (const lane of aktLanes) {
+    const laneItems = _plan.items.filter(lane.match);
+    html += `<div style="font-size:10px;font-weight:600;padding:4px 6px;border-right:1px solid var(--border);border-left:3px solid ${lane.color};">${lane.icon} ${esc(lane.label)}</div>`;
     for (const p of sortPhasen) {
-      html += _cellHtml(gw, _plan.items.filter(it => it.typ === gw.key && it.phaseId === p.id), p.id);
+      html += _cellHtml(laneItems.filter(it => it.phaseId === p.id), p.id);
     }
-    html += _cellHtml(gw, _plan.items.filter(it => it.typ === gw.key && !it.phaseId), null);
+    html += _cellHtml(laneItems.filter(it => !it.phaseId), null);
   }
   html += `</div><svg id="ausb-arrows" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;"></svg>`;
   wrap.innerHTML = html;
@@ -240,17 +297,24 @@ function _renderGantt() {
   requestAnimationFrame(() => _drawArrows(wrap));
 }
 
-function _cellHtml(gw, items, phaseId) {
+// Balken werden immer nach Gewerk (Maßnahmen-Typ) eingefärbt — so bleibt der Typ auch
+// in der Cluster-Swimlane erkennbar. Der Titel zeigt in der Cluster-Ansicht zusätzlich
+// den Gewerk-Namen (im Gewerk-Modus zeigt die Lane das ohnehin).
+function _cellHtml(items, phaseId) {
   const phAttr = phaseId ? `'${phaseId}'` : 'null';
   const barsHtml = items.map(it => {
     const err = _konflikte.has(it.id);
+    const col = GEWERK_COLOR[it.typ] || GEWERK_FALLBACK_COLOR;
+    const gwLabel = MASSN_VORLAGEN[it.typ]?.label || it.typ;
+    const gwIcon  = MASSN_VORLAGEN[it.typ]?.icon || '';
     const jahrTxt = it.jahr ? ` · ${it.jahr}` : '';
     const kostenTxt = it.kosten ? ` (${(it.kosten/1000).toFixed(0)} k€)` : '';
+    const praefix = _gruppierung === 'cluster' && gwIcon ? gwIcon + ' ' : '';
     return `<div class="ausb-bar" id="ausb-bar-${_cssId(it.id)}"
       data-item-id="${esc(it.id)}" draggable="true" ondragstart="ausbauDragStart(event,'${esc(it.id)}')"
-      title="${esc(it.titel)} — ${esc(gw.label)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
-      style="background:${gw.color}22;border:${err?'2px solid #ef4444':'1px solid '+gw.color+'44'};${err?'box-shadow:0 0 0 2px #ef4444;':''}border-radius:4px;padding:3px 6px;font-size:9px;cursor:grab;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
-      ${err?'⚠ ':''}${esc(it.titel)}${jahrTxt}</div>`;
+      title="${esc(it.titel)} — ${esc(gwLabel)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
+      style="background:${col}22;border:${err?'2px solid #ef4444':'1px solid '+col+'44'};${err?'box-shadow:0 0 0 2px #ef4444;':''}border-radius:4px;padding:3px 6px;font-size:9px;cursor:grab;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
+      ${err?'⚠ ':''}${praefix}${esc(it.titel)}${jahrTxt}</div>`;
   }).join('');
   return `<div ondragover="ausbauDragOver(event,${phAttr})" ondrop="ausbauDrop(event,${phAttr})"
     style="min-height:40px;padding:3px;border:1px solid var(--border);border-radius:2px;">${barsHtml}</div>`;
@@ -330,14 +394,25 @@ export function ausbauEditPhaseJahr(phaseId, field, value) {
 }
 
 export function ausbauPhaseLoeschen(phaseId) {
-  // Maßnahmen dieser Phase auf „ungeplant" zurücksetzen
+  // Maßnahmen dieser Phase auf „ungeplant" zurücksetzen (Assets UND Gebäude)
   for (const a of ASSETS.items) {
     for (const m of (a.massnahmen || [])) {
       if (m.phaseId === phaseId) m.phaseId = null;
     }
   }
+  for (const g of (window.gebaeude || [])) {
+    for (const m of (g.massnahmen || [])) {
+      if (m.phaseId === phaseId) m.phaseId = null;
+    }
+  }
   setPhasen(phasen.filter(p => p.id !== phaseId));
   if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
+  ausbauRender();
+}
+
+// Swimlane-Achse umschalten (Gewerk ⇄ Cluster)
+export function ausbauSetGruppierung(modus) {
+  _gruppierung = modus === 'cluster' ? 'cluster' : 'gewerk';
   ausbauRender();
 }
 

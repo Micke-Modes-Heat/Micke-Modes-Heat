@@ -76,6 +76,21 @@ export function selBoxAreaFilterChange(type) {
 // Vorheriger Sichtbarkeits-Zustand der Elektro-Asset-Ebene (zum Wiederherstellen).
 let _prevAssetLayerVisible = null;
 
+// Merkt sich die "PV-Flächen im Bulk-Modus zeigen"-Einstellung über mehrere
+// Bulk-Sessions hinweg (Nutzer-Präferenz, kein Reset beim Verlassen nötig —
+// die CSS-Regel greift ohnehin nur zusammen mit .bulk-isolate).
+export let bulkShowPv = false;
+
+// PV-Flächen (Dach + Freifläche, beide in der pvPane) trotz Bulk-Isolation
+// wieder einblenden — z. B. um Elektro-Assets im räumlichen Bezug zu den
+// zugehörigen PV-Modulen zu selektieren/zuzuordnen.
+export function selToggleBulkShowPv(checked) {
+  bulkShowPv = arguments.length ? !!checked : !bulkShowPv;
+  const mapEl = window._appLeafletMap?.getContainer?.();
+  if (mapEl) mapEl.classList.toggle('bulk-show-pv', bulkShowPv);
+  _updateBulkModeToggleBtn();
+}
+
 export function selToggleBulkMode() {
   bulkModeActive = !bulkModeActive;
   if (!bulkModeActive) {
@@ -133,6 +148,10 @@ function _updateBulkModeToggleBtn() {
     btn.style.borderColor = bulkModeActive ? '#4fc3f7' : '';
   }
   if (list) list.classList.toggle('bulk-active', bulkModeActive);
+  const pvRow = document.getElementById('bulk-show-pv-row');
+  const pvCb  = document.getElementById('bulk-show-pv-cb');
+  if (pvRow) pvRow.style.display = bulkModeActive ? 'flex' : 'none';
+  if (pvCb)  pvCb.checked = bulkShowPv;
 }
 
 // ── Dimming: nicht-selektierte Marker ausgrauen (wie „abgerissen") ────────────
