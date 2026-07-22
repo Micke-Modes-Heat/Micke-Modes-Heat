@@ -23,6 +23,8 @@ beforeAll(() => {
   loadScript('07b-analysis-economics.js');
   loadScript('06a-gbi-lastgang.js');
   loadScript('09a-pv-profile.js');
+  loadScript('lib/pv-battery-core.js');
+  loadScript('lib/battery-aging.js');
   loadScript('10a-optimizer-core.js');
   loadScript('10d-optimizer-worker.js');
 });
@@ -141,6 +143,35 @@ function refDispatch(lastgangKw, tempH, vlH, erzList, speicherVol) {
     thSpParams: null,
   };
 }
+
+describe('Cross-Engine-Golden: Hauptdispatch ↔ Optimierer ↔ Workerquelle', () => {
+  it('liefert für eine gemischte 8760h-Fixture dieselben Energie- und Stundenwerte', () => {
+    const hours = 8760;
+    const load = Float32Array.from({length:hours}, (_, h) => 80 + 45 * (1 + Math.sin(2 * Math.PI * h / 24)) + (h % 168 < 72 ? 35 : 0));
+    const temp = Float32Array.from({length:hours}, (_, h) => 7 + 11 * Math.sin(2 * Math.PI * (h / 24 - 170) / 365));
+    const vl = Float32Array.from({length:hours}, (_, h) => 48 - Math.min(12, temp[h]) * 0.6);
+    const source = [
+      {key:'lwwp', typ:'wp', leistKw:90, guetegrad:0.42},
+      {key:'bhkw', typ:'bhkw', leistKw:55, eta:0.9},
+      {key:'stromkessel', typ:'stromkessel', leistKw:40},
+      {key:'gaskessel', typ:'kessel', leistKw:120, eta:0.92},
+    ];
+    const direct = refDispatch(load, temp, vl, source.map(item => ({...item})), 35);
+    const optimized = _optDispatch8760(load, temp, vl, source.map(item => ({...item})), 35, null);
+
+    expect(optimized.gesamtMwh).toBeCloseTo(direct.gesamtMwh, 10);
+    expect(optimized.autoGkMwh).toBeCloseTo(direct.autoGkMwh, 10);
+    for (const key of source.map(item => item.key)) {
+      const a = optimized.erzeugerList.find(item => item.key === key);
+      const b = direct.erzeugerList.find(item => item.key === key);
+      expect(a.waermeMwh).toBeCloseTo(b.waermeMwh, 10);
+      expect(a.elMwh).toBeCloseTo(b.elMwh, 10);
+    }
+    expect(Array.from(optimized.wpElH)).toEqual(Array.from(direct.wpElH));
+    expect(Array.from(optimized.bhkwElH)).toEqual(Array.from(direct.bhkwElH));
+    expect(Array.from(optimized.skElH)).toEqual(Array.from(direct.skElH));
+  });
+});
 
 function refKennwerte(disp, pvKwp, batKwh, stMwh) {
   const pvBat = { eigenMwh: 0, einspeiseMwh: 0, pvEigenMwh: 0, pvEinspMwh: 0, bhkwEigenMwh: 0, bhkwEinspMwh: 0 };
@@ -549,6 +580,9 @@ describe('Ansatz 5: Worker-Code Struktur', () => {
     expect(code).toContain('function score');
     expect(code).toContain('function _findOptPvBat');
     expect(code).toContain('function _calcKostenShared');
+    expect(code).toContain(_dispatchCore.toString());
+    expect(code).toContain(pvBatteryStep.toString());
+    expect(code).toContain(estimateBatteryAging.toString());
   });
 
   it('Worker-Code enthält alle nötigen Hilfsfunktionen', () => {

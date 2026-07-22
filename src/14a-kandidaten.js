@@ -8,7 +8,7 @@
 //   APP-SIDE (liest DOM/ASSETS/gebaeude/freiflaechen):
 //     pvEnumerateKandidaten, pvRunMeritOrder
 
-import { ASSETS } from './13a-assets-core.js';
+import { ASSETS, getCanonicalAssetEdges } from './13a-assets-core.js';
 import { freiflaechen, gebaeude } from './01-globals-varianten.js';
 import { calcFFKwp } from './03a-erzeuger.js';
 import { calcGebKwp } from './03c-gebaeude-io.js';
@@ -152,7 +152,7 @@ export function pvMeritNettoUeberschuss(dispatch, pvKwp, pvErtragMwh, params, pv
  *   zins?, pvLife?, batLife?,
  *   napMaxEinsKw?,           — 0 = unbegrenzt (hartes Abregelungslimit)
  *   pvInfraStufen?,          — Fallback auf PV_INFRA_STUFEN aus 09d
- *   deltaInfraFn?,           — (napId, spitzeKwNeu, spitzeKwAlt) → €/a; optional (M3)
+ *   deltaInfraFn?,           — (napId, spitzeKwNeu, spitzeKwAlt) → €/a oder null bei unbekannter Kapazität
  * }
  *
  * Rückgabe: { ranking, kurve }
@@ -219,8 +219,9 @@ export function pvMeritOrderCore(kandidaten, demandH, pvProfileSued, pvProfileOs
         const dispatch   = pvMeritDispatch(trialGen, batKwh, demand, napMaxEinsKw);
         const ueb        = pvMeritNettoUeberschuss(dispatch, trialKwp, trialErtragMwh, wParams, infStufen);
         const deltaInfra = deltaInfraFn
-          ? (deltaInfraFn(napId, dispatch.maxEinspeiseKw, spitzeKwSelected) || 0)
+          ? deltaInfraFn(napId, dispatch.maxEinspeiseKw, spitzeKwSelected)
           : 0;
+        if (deltaInfra == null) continue;
         const delta      = ueb - uebSelected - deltaInfra;
 
         if (delta > bestDelta) {
@@ -229,6 +230,10 @@ export function pvMeritOrderCore(kandidaten, demandH, pvProfileSued, pvProfileOs
       }
 
       // Abbruch wenn kein Kandidat mehr einen positiven Beitrag liefert
+      if (bestIdx < 0) {
+        for (const c of remaining) ranking.push({ kandidat: c, delta: null, napId, tier: 'C', status: 'kapazitaet_unbekannt' });
+        break;
+      }
       if (bestDelta <= 0) {
         for (const c of remaining) ranking.push({ kandidat: c, delta: bestDelta, napId, tier: 'C' });
         break;
@@ -277,9 +282,9 @@ function _assignTiers(ranking) {
   }
 }
 
-/** BFS durch ASSETS.edges vom startId → gibt ID des nächsten NAP-Assets zurück, oder null. */
+/** BFS durch den kanonischen Stromgraphen vom startId zum nächsten NAP. */
 function _findNapForAsset(startId) {
-  const edges = ASSETS.edges;
+  const edges = getCanonicalAssetEdges();
   const items = ASSETS.items;
   const visited = new Set([startId]);
   const queue   = [startId];

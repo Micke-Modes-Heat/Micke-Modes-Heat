@@ -150,14 +150,26 @@ declare global {
     _optWorker?: Worker | null;
     _optWorkers?: Worker[];
     _optGrobResults?: unknown[];
+    _optSeriesTransport?: 'shared-array-buffer' | 'transferable-copy';
 
     // Elektrisches Netz (stündliche Profile)
     elQuartierH?: Float32Array | null;
     elPvH?: Float32Array | null;
+    elPvMeta?: Record<string, unknown> | null;
     _wpElHourly?: Float32Array | null;
     _skElHourly?: Float32Array | null;
     _bhkwElHourly?: Float32Array | null;
     _elQuartierFromGeb?: Float32Array | null;
+    _batteryAging?: Record<string, number> | null;
+    _lastPlanningTransaction?: {label:string;at:string};
+    captureNetzState?: ()=>unknown;
+    captureErzeugerState?: ()=>unknown;
+    captureStromNetzState?: ()=>unknown;
+    applyNetzState?: (state:unknown)=>void;
+    applyErzeugerState?: (state:unknown)=>void;
+    applyStromNetzState?: (state:unknown)=>void;
+    withoutPlanningTransactions?: <T>(mutate:()=>T)=>T;
+    clearPlanningTransactionHistory?: ()=>void;
 
     // UI / State
     gebaeude?: Gebaeude[];

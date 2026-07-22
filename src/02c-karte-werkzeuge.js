@@ -2,18 +2,43 @@
 import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, lwWpLayerGroup, lwWpSchallLayerGroup, netzEdges, pelletsKessel, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getEffectiveRMax, getSizeRange, getSizeVal, highlightCard, map, renameGebaeude } from './02b-gebaeude.js';
 import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, redrawVerbindungslinien, windSvg } from './03a-erzeuger.js';
-import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
+import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, confirmAutoGenerateNetz, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
 import { _rerenderCard, hideHint, renderList, showHint, updateTotals } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, updateLpGebietStatus } from './04a-ui-panels.js';
 import { setNetzSubTab, stromNodeClick } from './05b-stromnetz.js';
 import { gbiManualMode, gbiManualSelectGeb } from './06a-gbi-lastgang.js';
 import { moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
-import { areaPoints, lwWp, trasseSegments } from './01-globals-varianten.js';
+import { lwWp, setIsDrawingTrasse, setSelectedId, setTrasseCurrentSegStart, setTrasseDetached, setTrasseEditMarkers, setTrassePoints, setTrassePolyline, setTrasseSegments, trasseSegments } from './01-globals-varianten.js';
 import { _gebLabelHtml, escHtml } from './03c-gebaeude-io.js';
 import { cancelDrawStromEdge } from './05b-stromnetz.js';
+import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
+import { createLifecycleScope } from './lib/lifecycle.js';
+
+/** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
+let areaDrawLifecycle = null;
+/** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
+let windAreaDrawLifecycle = null;
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { _setFliessgewaesserVisible } from './01-globals-varianten.js';
+
+let trasseRedoPoints = [];
+
+export function undoTrassePoint() {
+  if (!window.isDrawingTrasse || window.trassePoints.length <= window.trasseCurrentSegStart) return false;
+  trasseRedoPoints.push(window.trassePoints.pop());
+  redrawTrasse();
+  showHint('Letzten Trassenpunkt zurückgenommen. Strg/Cmd+Umschalt+Z stellt ihn wieder her.', 3500);
+  return true;
+}
+
+export function redoTrassePoint() {
+  if (!window.isDrawingTrasse || trasseRedoPoints.length === 0) return false;
+  window.trassePoints.push(trasseRedoPoints.pop());
+  redrawTrasse();
+  showHint('Trassenpunkt wiederhergestellt.', 2500);
+  return true;
+}
 
 export function polygonCenter(coords){
   let lat=0,lng=0,n=coords.length;
@@ -279,7 +304,7 @@ export function selectFromMap(id){
     else { if(window.edgeStartId !== id){ addNetzEdge(window.edgeStartId, id); recalcNetz(); } window.edgeStartId = null; showHint('Nächstes Gebäude anklicken oder Tool beenden.'); }
     return;
   }
-  window.selectedId=id;
+  setSelectedId(id);
   window.updateSperrVisibility?.();
   _expandedIds.add(id);
   // Rechte Sidebar auf den Gebäude-Tab schalten, damit die Eigenschaften des
@@ -460,8 +485,8 @@ export function toggleAnsichtMenu() {
 }
 
 export function cleanupDrawAreaEvents() {
-  map.off('click', onDrawAreaClick);
-  map.off('contextmenu', onDrawAreaCancel);
+  areaDrawLifecycle?.dispose();
+  areaDrawLifecycle = null;
   map.dragging.enable();
   map.doubleClickZoom.enable();
   map.getContainer().style.cursor = '';
@@ -498,12 +523,7 @@ export function lockArea() {
 
 export function toggleDrawArea() {
   if (window.areaDrawing || window.areaPolygon) { clearArea(); return; }
-
-  // Andere Zeichenmodi abbrechen
-  if (window.isDrawingTrasse) toggleDrawTrasse();
-  if (window.isDrawingRiver) toggleDrawRiver();
-  if ((window.drawingId ?? drawingId) !== null) cancelDraw();
-  if (ffDrawId !== null) cancelDrawFF();
+  beginInteraction({id:'draw-area',label:'Plangebiet zeichnen',hint:'Eckpunkte setzen, Startpunkt schließt die Fläche.',cancel:clearArea});
 
   window.areaDrawing = true;
   window.areaPoints = [];
@@ -514,11 +534,10 @@ export function toggleDrawArea() {
   map.doubleClickZoom.disable();
   map.dragging.disable();
   map.getContainer().style.cursor = 'crosshair';
-  // Sicherstellen, dass keine doppelten Listener entstehen
-  map.off('click', onDrawAreaClick);
-  map.off('contextmenu', onDrawAreaCancel);
-  map.on('click', onDrawAreaClick);
-  map.on('contextmenu', onDrawAreaCancel);
+  areaDrawLifecycle?.dispose();
+  areaDrawLifecycle = createLifecycleScope('draw-area');
+  areaDrawLifecycle.mapOn(map,'click',onDrawAreaClick);
+  areaDrawLifecycle.mapOn(map,'contextmenu',onDrawAreaCancel);
 }
 
 export function onDrawAreaClick(e) {
@@ -542,7 +561,7 @@ export function onDrawAreaClick(e) {
 
   window.areaPoints.push(e.latlng);
   if (window.areaPolyline) map.removeLayer(window.areaPolyline);
-  window.areaPolyline = L.polyline([...areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
+  window.areaPolyline = L.polyline([...window.areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
 }
 
 export function onDrawAreaCancel(e) {
@@ -553,7 +572,7 @@ export function onDrawAreaCancel(e) {
     if (window.areaPolyline) map.removeLayer(window.areaPolyline);
 
     if (window.areaPoints.length > 0) {
-      window.areaPolyline = L.polyline([...areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
+      window.areaPolyline = L.polyline([...window.areaPoints], {color: '#ab47bc', weight: 2, dashArray: '8 4'}).addTo(map);
     } else {
       if (window.areaStartMarker) { map.removeLayer(window.areaStartMarker); window.areaStartMarker = null; }
     }
@@ -562,8 +581,9 @@ export function onDrawAreaCancel(e) {
 
 export function finishAreaDraw() {
   if (window.areaPoints.length < 3) return;
-  window.areaLatLngs = [...areaPoints];
+  window.areaLatLngs = [...window.areaPoints];
   window.areaDrawing = false;
+  commitInteraction('draw-area');
 
   if (window.areaPolyline) map.removeLayer(window.areaPolyline);
   if (window.areaStartMarker) { map.removeLayer(window.areaStartMarker); window.areaStartMarker = null; }
@@ -590,8 +610,8 @@ export function finishAreaDraw() {
 // Plangebiet nur den Baubereich meint). Wird von der Eignungsflächen-Berechnung in
 // 13b-assets-render.js bevorzugt genutzt, wenn vorhanden (sonst Fallback auf areaPolygon).
 export function cleanupDrawWindGebietEvents() {
-  map.off('click', onDrawWindGebietClick);
-  map.off('contextmenu', onDrawWindGebietCancel);
+  windAreaDrawLifecycle?.dispose();
+  windAreaDrawLifecycle = null;
   window.windGebietDrawing = false;
   map.dragging.enable();
   map.doubleClickZoom.enable();
@@ -620,16 +640,7 @@ export function clearWindGebiet() {
 
 export function toggleDrawWindGebiet() {
   if (window.windGebietDrawing || window.windGebietPolygon) { clearWindGebiet(); return; }
-
-  // Andere Zeichenmodi abbrechen
-  if (window.areaDrawing) toggleDrawArea();
-  if (window.isDrawingTrasse) toggleDrawTrasse();
-  if (window.isDrawingRiver) toggleDrawRiver();
-  if ((window.drawingId ?? drawingId) !== null) cancelDraw();
-  if (ffDrawId !== null) cancelDrawFF();
-  // Offene Asset-Platzierung (z.B. "Windkraftanlage" noch nicht gesetzt) abbrechen, sonst
-  // würde der erste Kartenklick beim Zeichnen zusätzlich ein neues Asset platzieren.
-  if (typeof window.cancelPendingAsset === 'function') window.cancelPendingAsset();
+  beginInteraction({id:'draw-wind-area',label:'Windgebiet zeichnen',hint:'Eckpunkte setzen, Startpunkt schließt die Fläche.',cancel:clearWindGebiet});
 
   window.windGebietDrawing = true;
   window.windGebietPoints = [];
@@ -639,10 +650,10 @@ export function toggleDrawWindGebiet() {
   map.doubleClickZoom.disable();
   map.dragging.disable();
   map.getContainer().style.cursor = 'crosshair';
-  map.off('click', onDrawWindGebietClick);
-  map.off('contextmenu', onDrawWindGebietCancel);
-  map.on('click', onDrawWindGebietClick);
-  map.on('contextmenu', onDrawWindGebietCancel);
+  windAreaDrawLifecycle?.dispose();
+  windAreaDrawLifecycle = createLifecycleScope('draw-wind-area');
+  windAreaDrawLifecycle.mapOn(map,'click',onDrawWindGebietClick);
+  windAreaDrawLifecycle.mapOn(map,'contextmenu',onDrawWindGebietCancel);
 }
 
 export function onDrawWindGebietClick(e) {
@@ -688,6 +699,7 @@ export function finishWindGebietDraw() {
   if (window.windGebietPoints.length < 3) return;
   window.windGebietLatLngs = [...window.windGebietPoints];
   window.windGebietDrawing = false;
+  commitInteraction('draw-wind-area');
 
   if (window.windGebietPolyline) map.removeLayer(window.windGebietPolyline);
   if (window.windGebietStartMarker) { map.removeLayer(window.windGebietStartMarker); window.windGebietStartMarker = null; }
@@ -714,6 +726,7 @@ setTimeout(() => {
 map.on('click',e=>{
   if (window.isPlacingLwWp) { placeLwWpAt(e.latlng); return; }
   if (window.isPlacingGeo) {
+    commitInteraction('place-geothermal');
     placeGeoAt(e.latlng);
     window.isPlacingGeo = false;
     const btn = document.getElementById('btn-place-geo');
@@ -728,6 +741,7 @@ map.on('click',e=>{
     return;
   }
   if (window.isPlacingPellets) {
+    commitInteraction('place-pellet-storage');
     if (pelletsKessel) { pelletsKessel.lat = e.latlng.lat; pelletsKessel.lng = e.latlng.lng; }
     window.isPlacingPellets = false;
     map.getContainer().style.cursor = '';
@@ -743,6 +757,7 @@ map.on('click',e=>{
     return;
   }
   if (window.isPlacingHhs) {
+    commitInteraction('place-wood-storage');
     if (heizhackschnitzel) { heizhackschnitzel.lat = e.latlng.lat; heizhackschnitzel.lng = e.latlng.lng; }
     window.isPlacingHhs = false;
     map.getContainer().style.cursor = '';
@@ -758,6 +773,7 @@ map.on('click',e=>{
     return;
   }
   if (window.isPlacingFernwaerme) {
+    commitInteraction('place-district-heat');
     if (fernwaerme) { fernwaerme.lat = e.latlng.lat; fernwaerme.lng = e.latlng.lng; }
     window.isPlacingFernwaerme = false;
     map.getContainer().style.cursor = '';
@@ -778,28 +794,45 @@ map.on('click',e=>{
     return;
   }
   if(window.isDrawingTrasse) {
+    trasseRedoPoints = [];
     if (window.trasseDetached) {
-      // Prüfen ob Klick nahe einem bestehenden Trasse-Punkt ist (Wiedereinstieg)
+      // Erst auf vorhandene Knoten, danach auch auf die nächstgelegene Linie
+      // einrasten. So kann ein Abzweig mitten aus einer Trasse beginnen.
       let snapIdx = -1;
       let snapDist = Infinity;
+      let snapLatLng = null;
       const clickPx = map.latLngToContainerPoint(e.latlng);
       for (let i = 0; i < window.trassePoints.length; i++) {
         const px = map.latLngToContainerPoint(window.trassePoints[i]);
         const d = clickPx.distanceTo(px);
-        if (d < 20 && d < snapDist) { snapDist = d; snapIdx = i; }
+        if (d < 6 && d < snapDist) { snapDist = d; snapIdx = i; snapLatLng = window.trassePoints[i]; }
       }
-      if (snapIdx >= 0) {
+      if (snapIdx < 0) {
+        for (const seg of window.trasseSegments) {
+          for (let i = seg.start; i < seg.end; i++) {
+            const a = map.latLngToContainerPoint(window.trassePoints[i]);
+            const b = map.latLngToContainerPoint(window.trassePoints[i + 1]);
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const den = dx * dx + dy * dy;
+            const t = den ? Math.max(0, Math.min(1, ((clickPx.x-a.x)*dx + (clickPx.y-a.y)*dy) / den)) : 0;
+            const projected = L.point(a.x + t*dx, a.y + t*dy);
+            const d = clickPx.distanceTo(projected);
+            if (d < 20 && d < snapDist) { snapDist = d; snapLatLng = map.containerPointToLatLng(projected); }
+          }
+        }
+      }
+      if (snapLatLng) {
         // Neuen Strang ab bestehendem Punkt starten
-        window.trasseCurrentSegStart = window.trassePoints.length;
-        window.trassePoints.push(L.latLng(window.trassePoints[snapIdx].lat, window.trassePoints[snapIdx].lng));
+        setTrasseCurrentSegStart(window.trassePoints.length);
+        window.trassePoints.push(L.latLng(snapLatLng.lat, snapLatLng.lng));
         showHint('Neuer Strang ab Abzweigung. Klicke weiter oder "Abschließen".');
       } else {
         // Neuen isolierten Strang beginnen
-        window.trasseCurrentSegStart = window.trassePoints.length;
+        setTrasseCurrentSegStart(window.trassePoints.length);
         window.trassePoints.push(e.latlng);
         showHint('Neuer Strang gestartet. Klicke weiter oder Rechtsklick = loslösen.');
       }
-      window.trasseDetached = false;
+      setTrasseDetached(false);
     } else {
       window.trassePoints.push(e.latlng);
     }
@@ -859,18 +892,9 @@ map.on('contextmenu', e => {
   if(window.isDrawingRiver && window.riverPoints.length > 0){
     window.riverPoints.pop();
     redrawRiverDuringDraw();
-  } else if(window.isDrawingTrasse && window.trassePoints.length > 0){
-    // Rechtsklick: aktuellen Strang loslösen
-    if (window.trassePoints.length > window.trasseCurrentSegStart + 1) {
-      window.trasseSegments.push({ start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1 });
-    } else if (window.trassePoints.length > window.trasseCurrentSegStart) {
-      // Einzelner Punkt ohne Segment: entfernen
-      window.trassePoints.pop();
-    }
-    window.trasseDetached = true;
-    window.trasseCurrentSegStart = window.trassePoints.length;
-    showHint('Strang losgelöst. Klicke auf einen bestehenden Trasse-Punkt zum Abzweigen, oder auf die Karte für neuen Strang.');
-    redrawTrasse();
+  } else if(window.isDrawingTrasse && window.trassePoints.length > window.trasseCurrentSegStart){
+    // Einheitliche Zeichenlogik: Rechtsklick nimmt den letzten Punkt zurück.
+    undoTrassePoint();
   } else if((window.drawingId ?? drawingId) !== null && (window.drawPoints || drawPoints).length > 0){
     const _drawPts = window.drawPoints || drawPoints;
     _drawPts.pop();
@@ -914,6 +938,12 @@ map.on('zoomend', function() {
 });
 
 document.addEventListener('keydown',e=>{
+  if (window.isDrawingTrasse && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) redoTrassePoint();
+    else undoTrassePoint();
+    return;
+  }
   if(e.key==='Escape'){
     if (window.gebFirstDraw) { window.cancelGebFirstDraw && window.cancelGebFirstDraw(); return; }
     if (window.gebPvDraw) { window.cancelGebPvDraw && window.cancelGebPvDraw(); return; }
@@ -929,10 +959,19 @@ document.addEventListener('keydown',e=>{
 });
 }, 0);
 
-export function toggleDrawTrasse() {
-  window.isDrawingTrasse = !window.isDrawingTrasse;
-  const btn = document.getElementById('btn-draw-trasse');
+let trasseDrawDomain = 'waerme';
+function cancelTrasseInteraction() {
+  if (!window.isDrawingTrasse) return;
+  window.trassePoints.splice(window.trasseCurrentSegStart);
+  toggleDrawTrasse();
+}
+export function toggleDrawTrasse(domain) {
+  if (!window.isDrawingTrasse && (domain === 'waerme' || domain === 'strom')) trasseDrawDomain = domain;
+  setIsDrawingTrasse(!window.isDrawingTrasse);
+  const buttons = document.querySelectorAll('.trasse-draw-btn');
   if (window.isDrawingTrasse) {
+    beginInteraction({id:'draw-trasse',label:trasseDrawDomain === 'strom' ? 'Elektro-Korridor zeichnen' : 'Wärme-Haupttrasse zeichnen',hint:'Punkte setzen; neuer Strang erzeugt einen Abzweig.',cancel:cancelTrasseInteraction});
+    trasseRedoPoints = [];
     // Trasse zum Bearbeiten sichtbar machen (Ansicht-Checkbox synchronisieren)
     window.trasseVisible = true;
     const _tcb = document.getElementById('el-trasse-visible');
@@ -940,9 +979,9 @@ export function toggleDrawTrasse() {
     // Andere Modi beenden
     if (window.isDrawingStromEdge && typeof cancelDrawStromEdge === 'function') cancelDrawStromEdge();
     if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
-    btn.classList.add('active');
-    window.trasseDetached = false;
-    showHint('Klicke, um Trassenknoten zu setzen. Rechtsklick = Strang loslösen.');
+    buttons.forEach(btn => btn.classList.add('active'));
+    setTrasseDetached(false);
+    showHint(`${trasseDrawDomain === 'strom' ? 'Elektro-Korridor' : 'Wärme-Haupttrasse'}: Punkte setzen. Rechtsklick = letzter Punkt zurück. „Neuer Strang“ startet einen Abzweig.`);
     showTrasseFinishBtn();
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
@@ -965,9 +1004,11 @@ export function toggleDrawTrasse() {
       if (g.labelMarker) { map.removeLayer(g.labelMarker); }
     });
     // Aktuelles Segment starten
-    window.trasseCurrentSegStart = window.trassePoints.length;
+    setTrasseCurrentSegStart(window.trassePoints.length);
   } else {
-    btn.classList.remove('active');
+    commitInteraction('draw-trasse');
+    trasseRedoPoints = [];
+    buttons.forEach(btn => btn.classList.remove('active'));
     hideHint();
     hideTrasseFinishBtn();
     _restoreAfterDraw();
@@ -975,38 +1016,91 @@ export function toggleDrawTrasse() {
     updateViz();
     map.getContainer().style.cursor = '';
     map.doubleClickZoom.enable();
-    window.trasseDetached = false;
+    setTrasseDetached(false);
     // Aktuelles Segment abschließen
     if (window.trassePoints.length > window.trasseCurrentSegStart + 1) {
-      window.trasseSegments.push({ start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1 });
+      window.trasseSegments.push({ start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1, domains:[trasseDrawDomain] });
     } else if (window.trassePoints.length > window.trasseCurrentSegStart) {
       // Einzelner Punkt: entfernen
       window.trassePoints.pop();
     }
-    if (window.trassePoints.length > 0) autoGenerateNetz();
+    redrawTrasse();
+    if (window.trassePoints.length > 0) showHint('✓ Trasse gespeichert. Das vorhandene Netz blieb unverändert. Mit „Auto-Netz“ bewusst neu erzeugen.', 7000);
     // Bestandskabel entlang neuer Trasse neu routen
     if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
   }
 }
 
 export function showTrasseFinishBtn() {
-  let btn = document.getElementById('trasse-finish-btn');
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'trasse-finish-btn';
-    btn.textContent = '✓ Trassenzeichnung abschließen';
-    btn.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:10000;padding:10px 20px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);';
-    btn.onmouseenter = () => btn.style.filter = 'brightness(1.15)';
-    btn.onmouseleave = () => btn.style.filter = '';
-    btn.onclick = () => { if (window.isDrawingTrasse) toggleDrawTrasse(); };
-    document.body.appendChild(btn);
+  let bar = document.getElementById('trasse-editor-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'trasse-editor-bar';
+    bar.setAttribute('role','toolbar');
+    bar.setAttribute('aria-label','Wärme-Haupttrasse bearbeiten');
+    bar.innerHTML = `
+      <div class="trasse-editor-title"><strong>Wärme-Haupttrasse</strong><span>Stützpunkte ziehen · + zwischen Punkten fügt einen Knick ein</span></div>
+      <button type="button" id="trasse-undo-btn" title="Letzten neuen Punkt zurücknehmen (Strg/Cmd+Z)">↶</button>
+      <button type="button" id="trasse-redo-btn" title="Punkt wiederherstellen (Strg/Cmd+Umschalt+Z)">↷</button>
+      <button type="button" id="trasse-branch-btn">⑂ Abzweig</button>
+      <button type="button" id="trasse-finish-btn" class="primary">✓ Fertig</button>
+      <button type="button" id="trasse-generate-btn" class="generate">⚙ Fertig & Netz erzeugen</button>
+      <button type="button" id="trasse-cancel-btn" title="Aktuellen, noch nicht abgeschlossenen Strang verwerfen">Abbrechen</button>`;
+    document.body.appendChild(bar);
+    bar.querySelector('#trasse-undo-btn').onclick = undoTrassePoint;
+    bar.querySelector('#trasse-redo-btn').onclick = redoTrassePoint;
+    bar.querySelector('#trasse-branch-btn').onclick = startNewTrasseBranch;
+    bar.querySelector('#trasse-finish-btn').onclick = () => { if (window.isDrawingTrasse) toggleDrawTrasse(); };
+    bar.querySelector('#trasse-generate-btn').onclick = finishTrasseAndGenerateNetz;
+    bar.querySelector('#trasse-cancel-btn').onclick = () => cancelInteraction('draw-trasse');
   }
-  btn.style.display = 'block';
+  bar.style.display = 'flex';
+}
+
+export function finishTrasseAndGenerateNetz() {
+  if (window.isDrawingTrasse) toggleDrawTrasse();
+  confirmAutoGenerateNetz();
+}
+
+export function startNewTrasseBranch() {
+  if (!window.isDrawingTrasse) return;
+  trasseRedoPoints = [];
+  if (window.trassePoints.length > window.trasseCurrentSegStart + 1) {
+    window.trasseSegments.push({start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1, domains:[trasseDrawDomain]});
+  } else if (window.trassePoints.length > window.trasseCurrentSegStart) window.trassePoints.pop();
+  setTrasseCurrentSegStart(window.trassePoints.length);
+  setTrasseDetached(true);
+  redrawTrasse();
+  showHint('Klicke auf einen vorhandenen Punkt oder direkt auf eine Trassenlinie, um dort abzuzweigen.');
 }
 
 export function hideTrasseFinishBtn() {
-  const btn = document.getElementById('trasse-finish-btn');
-  if (btn) btn.style.display = 'none';
+  const bar = document.getElementById('trasse-editor-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function updateTrasseLinesDuringDrag() {
+  if (!Array.isArray(window.trassePolyline)) return;
+  window.trassePolyline.forEach(pl => {
+    const seg = pl._trasseSegment;
+    if (!seg) return;
+    pl.setLatLngs(window.trassePoints.slice(seg.start, seg.end + 1));
+  });
+}
+
+export function insertTrassePoint(segIdx, afterIndex, latlng) {
+  const seg = window.trasseSegments[segIdx];
+  if (!seg || afterIndex < seg.start || afterIndex >= seg.end) return false;
+  const insertAt = afterIndex + 1;
+  window.trassePoints.splice(insertAt, 0, L.latLng(latlng.lat, latlng.lng));
+  window.trasseSegments.forEach((candidate, idx) => {
+    if (idx === segIdx) candidate.end++;
+    else if (candidate.start >= insertAt) { candidate.start++; candidate.end++; }
+    else if (candidate.end >= insertAt) candidate.end++;
+  });
+  if (window.trasseCurrentSegStart >= insertAt) setTrasseCurrentSegStart(window.trasseCurrentSegStart + 1);
+  redrawTrasse();
+  return true;
 }
 
 export function redrawTrasse() {
@@ -1015,9 +1109,9 @@ export function redrawTrasse() {
     if (Array.isArray(window.trassePolyline)) window.trassePolyline.forEach(p => map.removeLayer(p));
     else map.removeLayer(window.trassePolyline);
   }
-  window.trassePolyline = [];
+  setTrassePolyline([]);
   window.trasseEditMarkers.forEach(m => map.removeLayer(m));
-  window.trasseEditMarkers = [];
+  setTrasseEditMarkers([]);
 
   // Trassen-Ebene ausblendbar (Ansicht-Panel). Default versteckt: undefined/false → nicht zeichnen.
   // Im Zeichenmodus wird trasseVisible erzwungen (siehe toggleDrawTrasse).
@@ -1037,7 +1131,11 @@ export function redrawTrasse() {
     const pts = [];
     for (let i = seg.start; i <= seg.end; i++) pts.push(window.trassePoints[i]);
     if (pts.length >= 2) {
-      const pl = L.polyline(pts, { color: '#ff9800', weight: 14, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+      const domains = seg.domains || ['waerme','strom'];
+      const color = domains.includes('waerme') && domains.includes('strom') ? '#ab47bc'
+        : domains.includes('strom') ? '#42a5f5' : '#ff9800';
+      const pl = L.polyline(pts, { color, weight: 14, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+      pl._trasseSegment = seg;
       if (allSegIdx < window.trasseSegments.length) {
         pl.on('contextmenu', (e) => {
           L.DomEvent.stop(e);
@@ -1058,12 +1156,34 @@ export function redrawTrasse() {
     if (!window.trasseDetached) {
       m.on('drag', e => {
         window.trassePoints[idx] = e.target.getLatLng();
-        redrawTrasse();
+        updateTrasseLinesDuringDrag();
       });
-      m.on('dragend', () => autoGenerateNetz());
+      m.on('dragend', () => {
+        redrawTrasse();
+        showHint('Trassenverlauf geändert. Mit „Fertig & Netz erzeugen“ werden die Wärmeleitungen neu daran angebunden.', 5000);
+      });
     }
     window.trasseEditMarkers.push(m);
   });
+
+  // Einfügegriffe zwischen Stützpunkten: realistische Kurven und Straßenverläufe
+  // lassen sich so nachträglich verfeinern, ohne einen Strang neu zu zeichnen.
+  if (!window.trasseDetached) {
+    window.trasseSegments.forEach((seg, segIdx) => {
+      for (let idx = seg.start; idx < seg.end; idx++) {
+        const a = window.trassePoints[idx], b = window.trassePoints[idx + 1];
+        if (!a || !b) continue;
+        const mid = L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
+        const icon = L.divIcon({className:'trasse-insert-handle',html:'+',iconSize:[18,18],iconAnchor:[9,9]});
+        const marker = L.marker(mid,{icon,zIndexOffset:1900}).addTo(map);
+        marker.on('click', event => {
+          L.DomEvent.stopPropagation(event);
+          insertTrassePoint(segIdx,idx,mid);
+        });
+        window.trasseEditMarkers.push(marker);
+      }
+    });
+  }
 }
 
 // Trassen ein-/ausblenden (Ansicht-Panel). Default versteckt.
@@ -1083,20 +1203,19 @@ export function deleteTrasse(segIdx) {
     window.trasseSegments[i].end   -= count;
   }
   if (window.trasseCurrentSegStart > seg.start) {
-    window.trasseCurrentSegStart = Math.max(0, window.trasseCurrentSegStart - count);
+    setTrasseCurrentSegStart(Math.max(0, window.trasseCurrentSegStart - count));
   }
   redrawTrasse();
-  autoGenerateNetz();
   if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
 }
 
 export function clearTrasse() {
-  window.trassePoints = [];
-  window.trasseSegments = [];
-  window.trasseCurrentSegStart = 0;
-  window.trasseDetached = false;
+  setTrassePoints([]);
+  setTrasseSegments([]);
+  setTrasseCurrentSegStart(0);
+  setTrasseDetached(false);
   redrawTrasse();
-  autoGenerateNetz();
+  showHint('Trasse gelöscht. Wärme- und Stromleitungen bleiben bis zur bewussten Neuberechnung erhalten.', 6000);
 }
 
 export function toggleFliessgewaesserPanel() {
@@ -1127,6 +1246,10 @@ export function toggleDrawRiver() {
   window.isDrawingRiver = !window.isDrawingRiver;
   const btn = document.getElementById('btn-draw-river');
   if (window.isDrawingRiver) {
+    beginInteraction({id:'draw-river',label:'Flussverlauf zeichnen',hint:'Mindestens zwei Punkte setzen und anschließend fertigstellen.',cancel:()=>{
+      window.riverPoints = [];
+      if (window.isDrawingRiver) toggleDrawRiver();
+    }});
     if (window.fliessgewaesser) clearFliessgewaesser();
     window.riverPoints = [];
     redrawRiverDuringDraw();
@@ -1138,6 +1261,7 @@ export function toggleDrawRiver() {
     map.getContainer().style.cursor = 'crosshair';
     map.doubleClickZoom.disable();
   } else {
+    commitInteraction('draw-river');
     btn.classList.remove('active');
     btn.textContent = 'Fluss zeichnen';
     btn.onclick = function(){ toggleDrawRiver(); };
@@ -1185,6 +1309,7 @@ export function redrawRiverDuringDraw() {
 
 export function finishDrawRiver() {
   if (window.riverPoints.length < 2) return;
+  commitInteraction('draw-river');
   const latlngs = window.riverPoints.map(p => ({ lat: p.lat, lng: p.lng }));
   const durchfluss = parseFloat(document.getElementById('fg-durchfluss').value) || 50;
   const leistung = parseFloat(document.getElementById('fg-leistung').value) || 200;
@@ -1420,6 +1545,7 @@ export function togglePlaceLwWp() {
   window.isPlacingLwWp = !window.isPlacingLwWp;
   const btn = document.getElementById('btn-place-lwwp');
   if (window.isPlacingLwWp) {
+    beginInteraction({id:'place-air-heat-pump',label:'Luft-Wärmepumpe platzieren',hint:'Position auf der Karte anklicken.',cancel:()=>{ if (window.isPlacingLwWp) togglePlaceLwWp(); }});
     btn.classList.add('active');
     btn.textContent = 'Klicken auf Karte zum Platzieren';
     showHint('Klicke auf die Karte, um die Luft-Wasser-Wärmepumpe zu platzieren.');
@@ -1428,6 +1554,7 @@ export function togglePlaceLwWp() {
     document.getElementById('lwwp-panel').classList.remove('visible');
     document.getElementById('btn-lwwp-toggle')?.classList.remove('active');
   } else {
+    cancelInteraction('place-air-heat-pump');
     btn.classList.remove('active');
     btn.textContent = window.lwWp ? 'Position verschieben' : 'Auf Karte platzieren';
     hideHint();
@@ -1443,6 +1570,7 @@ export function placeLwWpAt(latlng) {
   document.getElementById('lwwp-man-laenge').value = '';
   document.getElementById('lwwp-man-breite').value = '';
   window.isPlacingLwWp = false;
+  commitInteraction('place-air-heat-pump');
   document.getElementById('btn-place-lwwp').classList.remove('active');
   document.getElementById('btn-place-lwwp').textContent = 'Position verschieben';
   document.getElementById('lwwp-data-section').style.display = 'block';
@@ -1676,4 +1804,3 @@ export function toggleKennwertePanel() {
   hidePanels();
   if (!isOpen) { p.classList.add('visible'); btn.classList.add('active'); }
 }
-

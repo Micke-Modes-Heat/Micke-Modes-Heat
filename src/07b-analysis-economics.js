@@ -241,15 +241,13 @@ export function _calcKostenShared(p) {
     pvJk += pvInv * (annF(zinsFrac, 20) + 0.01);
     if (pvEinspMwh > 0.01) {
       var pEinspEff = pv.pEinsp || 8;
-      if (pv.vergModell === 'teil') { pEinspEff = pvKwp <= 0 ? 8.1 : (Math.min(pvKwp,10)*8.1 + Math.max(0,Math.min(pvKwp,40)-10)*7.0 + Math.max(0,pvKwp-40)*5.7) / pvKwp; }
-      else if (pv.vergModell === 'voll') { pEinspEff = pvKwp <= 0 ? 12.9 : (Math.min(pvKwp,10)*12.9 + Math.max(0,pvKwp-10)*10.8) / pvKwp; }
       pvJk -= pvEinspMwh * pEinspEff * 10;
     }
   }
   if (batKwh > 0) {
     var batInv = batKwh * (pv.batInvPerKwh || 400);
     pvInvestGes += batInv;
-    pvJk += batInv * (annF(zinsFrac, 15) + 0.01);
+    pvJk += batInv * (annF(zinsFrac, pv.batLifeYears || 15) + 0.01);
   }
 
   // ── Ergebnis ──
@@ -465,7 +463,7 @@ export function calcWirtschaftPanel() {
     { id:'gk_auto',    label:'Spitzenlast-Kessel (auto)', vdi:{n:20,inst:1.0,wart:2.0,bedien:20},
       aktiv:()=>keys.includes('_autoGk') && (pKw._autoGk||0) > 0.1,
       auto:()=>iKW('Gaskessel', (pKw._autoGk||0)),
-      get tooltip(){return iKWtip('Gaskessel', pKw._autoGk||0, 'Automatischer Spitzenlast-Gaskessel: deckt die Restlast im Dispatch — auch er muss gebaut werden, daher Invest wie Gaskessel');} },
+      get tooltip(){return iKWtip('Gaskessel', pKw._autoGk||0, 'Automatischer Spitzenlast-Gaskessel: deckt die Restlast in der stündlichen Einsatzplanung — auch er muss gebaut werden, daher Invest wie Gaskessel');} },
     { id:'bhkw_agg',   label:'BHKW-Aggregat',
       get vdi(){ const kw=pKw.bhkw||0; return {n:15,inst:3.0,wart:3.5,bedien:kw<20?100:kw<100?200:kw<500?300:408}; },
       aktiv:()=>aktiv('bhkw'),   auto:()=>iKW('BHKW', pKw.bhkw||0),
@@ -774,13 +772,7 @@ export function calcWirtschaftPanel() {
       pvJk += pvInvEuro * (_annF(_zinsFrac, OPT_NUTZUNG.pv) + OPT_IH.pv);
       // Einspeisevergütung
       if (_pvEinspMwh > 0.01) {
-        const pvVergModell = document.getElementById('pv-verg-modell')?.value || 'teil';
-        let pEinspEff = parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8;
-        if (pvVergModell === 'teil') {
-          if (_pvKwp <= 10) pEinspEff = 8.1; else if (_pvKwp <= 40) pEinspEff = 7.0; else pEinspEff = 5.7;
-        } else if (pvVergModell === 'voll') {
-          if (_pvKwp <= 10) pEinspEff = 12.9; else pEinspEff = 10.8;
-        }
+        const pEinspEff = parseFloat(document.getElementById('strom-preis-einsp')?.value) || 8;
         pvJk -= _pvEinspMwh * pEinspEff * 10;
       }
     }
@@ -1501,7 +1493,7 @@ export function calcJahresscheiben() {
 
   if (!keys.length) {
     const r = document.getElementById('js-result');
-    if (r) { r.style.display = 'block'; r.innerHTML = '<p style="color:var(--muted);font-size:10px;">Erst Dispatch berechnen.</p>'; }
+    if (r) { r.style.display = 'block'; r.innerHTML = '<p style="color:var(--muted);font-size:10px;">Erst die stündliche Einsatzplanung berechnen.</p>'; }
     return;
   }
 
@@ -1938,4 +1930,3 @@ export function _renderOptKostenUebersicht() {
     + ' Bedienung wird mit '+lohn+' €/h bewertet.</div>';
   wrap.innerHTML = html;
 }
-

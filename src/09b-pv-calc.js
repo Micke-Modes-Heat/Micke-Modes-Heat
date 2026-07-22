@@ -11,6 +11,9 @@ import { CalcEngine } from './08-calc-engine.js';
 import { getBatParams, makePvProfile8760, makePvProfileEffective, pvGetEffectiveSpez, onPvVergModellChange } from './09a-pv-profile.js';
 import { _stromCurrentTab, _stromRenderFlussChart, _stromRenderLastgang, _stromRenderMonatsChart, drawSankeyStrom } from './09c-pv-charts-opt.js';
 import { getGebStromMwh } from './02b-gebaeude.js';
+import { hourlyEnergyMwh } from './lib/electric-demand.js';
+import { pvBatteryStep } from './lib/pv-battery-core.js';
+import { estimateBatteryAging } from './lib/battery-aging.js';
 
 export let _calcStromTimer = null;
 export function calcStromPanelDebounced() { clearTimeout(_calcStromTimer); _calcStromTimer = setTimeout(calcStromPanel, 120); }
@@ -51,6 +54,8 @@ export function calcStromPanel() {
 
   // Stromkessel-Verbrauch (aus Dispatch)
   const skMwh = (en['stromkessel'] || {}).elMwh || 0;
+  const kaelteH = window._kaelteElHourly;
+  const kaelteMwh = hourlyEnergyMwh(kaelteH);
 
   // Quartier-Stromlastgang
   let quartierMwh = 0;
@@ -159,12 +164,14 @@ export function calcStromPanel() {
   let eigenverbrauchMwh = 0, netzbezugMwh = 0, einspeisungMwh = 0;
   let pvEigenMwh = 0, pvEinspMwh = 0, bhkwEigenMwh = 0, bhkwEinspMwh = 0;
   let batLadeVerlustMwh = 0;
+  let batDischargeKwh = 0;
   // Aufschlüsselung Strom-Quellen pro Verbraucher (für Sankey)
   let pvToWp = 0, pvToSk = 0, pvToQuartier = 0;
   let bhkwToWp = 0, bhkwToSk = 0, bhkwToQuartier = 0;
   let netzToWp = 0, netzToSk = 0, netzToQuartier = 0;
+  let pvToKaelte = 0, bhkwToKaelte = 0, netzToKaelte = 0;
 
-  const gesamtMwh = wpMwh + skMwh + quartierMwh;
+  const gesamtMwh = wpMwh + skMwh + quartierMwh + kaelteMwh;
   const batSocArr = bat ? new Float32Array(8760) : null;
   if (pvH || bat || bhkwMwh > 0) {
     let soc = 0; // Batterieladezustand [kWh]
@@ -174,36 +181,20 @@ export function calcStromPanel() {
       demand += (window._skElHourly ? window._skElHourly[t] : (skMwh * 1000 / 8760));
       const qArr = window.elQuartierH || window._elQuartierFromGeb;
       demand += (qArr ? qArr[t] : (quartierMwh * 1000 / 8760));
+      demand += kaelteH ? (kaelteH[t] || 0) : 0;
       // Lokale Erzeugung: PV + BHKW (getrennt)
       const pvGen   = pvH ? pvH[t] : 0;
       const bhkwGen = bhkwElHourly ? bhkwElHourly[t] : (bhkwMwh > 0 ? bhkwMwh * 1000 / 8760 : 0);
-      const gen = pvGen + bhkwGen;
-
-      // 1. Direkter Eigenverbrauch — proportional nach Erzeugungsanteil PV/BHKW aufteilen
-      const dsc  = Math.min(gen, demand);
-      const pvFrac = gen > 0 ? pvGen / gen : 0;
-      let rDem   = demand - dsc;  // verbleibende Nachfrage
-      let rGen   = gen   - dsc;  // verbleibender Überschuss
-
-      if (bat) {
-        const kapKwh  = bat.kapKwh;
-        const leistKw = bat.leistKw;
-        const eta     = bat.eta;
-        // 2. Laden: Überschuss → Batterie (begrenzt auf Leistung + freie Kapazität, mit Ladeverlusten)
-        if (rGen > 0) {
-          const c = Math.min(rGen, leistKw, (kapKwh - soc) / eta);
-          soc  += c * eta;
-          batLadeVerlustMwh += (c - c * eta) / 1000;
-          rGen -= c;
-        }
-        // 3. Entladen: Batterie deckt Restbedarf (begrenzt auf Leistung + Ladezustand × η)
-        if (rDem > 0) {
-          const avail  = Math.min(soc * eta, rDem, leistKw * eta);
-          soc  -= avail / eta;
-          batLadeVerlustMwh += (avail / eta - avail) / 1000;
-          rDem -= avail;
-        }
-      }
+      const step = pvBatteryStep({demand,pvGen,bhkwGen,socKwh:soc,
+        capacityKwh:bat?.kapKwh || 0,powerKw:bat?.leistKw || 0,etaCharge:1,etaDischarge:bat?.eta || .9});
+      const gen = step.gen;
+      const dsc = step.direct;
+      const pvFrac = step.pvFraction;
+      let rDem = step.residualDemand;
+      let rGen = step.residualGeneration;
+      soc = step.socKwh;
+      batLadeVerlustMwh += step.lossesKwh / 1000;
+      batDischargeKwh += step.dischargedKwh;
 
       // 4. PV-Überschuss nach Batterie → WP → thermischer Speicher
       const tss = window._thermSpeicherState;
@@ -262,6 +253,7 @@ export function calcStromPanel() {
       const wpD  = (window._wpElHourly ? window._wpElHourly[t] : 0);
       const skD  = (window._skElHourly ? window._skElHourly[t] : (skMwh * 1000 / 8760));
       const qD   = (qArr ? qArr[t] : (quartierMwh * 1000 / 8760));
+      const kD   = kaelteH ? (kaelteH[t] || 0) : 0;
       const evKw = demand - rDem; // gedeckt durch Eigen (PV+BHKW+Bat)
       const evFrac = demand > 0 ? evKw / demand : 0;
       pvToWp       += wpD * evFrac * pvFrac / 1000;
@@ -273,6 +265,9 @@ export function calcStromPanel() {
       netzToWp       += wpD * (1 - evFrac) / 1000;
       netzToSk       += skD * (1 - evFrac) / 1000;
       netzToQuartier += qD  * (1 - evFrac) / 1000;
+      pvToKaelte      += kD * evFrac * pvFrac / 1000;
+      bhkwToKaelte    += kD * evFrac * (1 - pvFrac) / 1000;
+      netzToKaelte    += kD * (1 - evFrac) / 1000;
       if (batSocArr) batSocArr[t] = soc;
     }
   } else {
@@ -289,6 +284,17 @@ export function calcStromPanel() {
   const eigenverbrauchQuote = pvMwh > 0 ? eigenverbrauchMwh / pvMwh * 100 : 0;
   const autarkieQuote = gesamtMwh > 0 ? (1 - netzbezugMwh / gesamtMwh) * 100 : 0;
   const wpAnteil = gesamtMwh > 0 ? (wpMwh / gesamtMwh * 100) : 0;
+  window._batteryAging = bat ? estimateBatteryAging({
+    capacityKwh:bat.kapKwh, annualDischargeKwh:batDischargeKwh,
+    calendarFadePctPerYear:parseFloat(document.getElementById('bat-calendar-fade')?.value) || 0,
+    cycleLife:parseFloat(document.getElementById('bat-cycle-life')?.value) || 6000,
+    eolCapacityPct:parseFloat(document.getElementById('bat-eol-pct')?.value) || 80,
+    studyYears:parseFloat(document.getElementById('opt-bat-life')?.value) || 15,
+  }) : null;
+  const agingHint = document.getElementById('bat-aging-hint');
+  if (agingHint) agingHint.textContent = window._batteryAging
+    ? `${window._batteryAging.cyclesPerYear.toFixed(0)} Vollzyklen/a · ${window._batteryAging.annualFadePct.toFixed(2)} % Kapazitätsverlust/a · EOL nach ca. ${Number.isFinite(window._batteryAging.expectedLifeYears) ? window._batteryAging.expectedLifeYears.toFixed(1) : '∞'} Jahren`
+    : 'Alterung wird nach der Strombilanz aus Kalender- und Vollzyklen geschätzt.';
 
   // Stromkosten — differenziert nach PV und BHKW
   const preisB  = (parseFloat(document.getElementById('strom-preis-bezug')?.value) || 30) / 100;  // €/kWh
@@ -313,7 +319,7 @@ export function calcStromPanel() {
   window._pvStromErloes = pvEinspeisungserloes + pvEigenverbrauchErloes;
   window._stromBilanz = { pvEigenMwh, pvEinspMwh, bhkwEigenMwh, bhkwEinspMwh,
     pvToWp, pvToSk, pvToQuartier, bhkwToWp, bhkwToSk, bhkwToQuartier,
-    netzToWp, netzToSk, netzToQuartier };
+    netzToWp, netzToSk, netzToQuartier, pvToKaelte, bhkwToKaelte, netzToKaelte };
   // CO₂-Bilanz Strom (inkl. optionaler PV-Einspeisung-Gutschrift)
   const vEmF = calcVerdraengungEmF();
   const pvCo2GutschriftT = pvCo2Gutschrift && einspeisungMwh > 0 ? einspeisungMwh * vEmF / 1e3 : 0; // t CO₂/a — Einspeisung verdrängt Marginalstrom
@@ -330,6 +336,7 @@ export function calcStromPanel() {
       demand += (window._skElHourly ? window._skElHourly[t] : (skMwh * 1000 / 8760));
       const qArr2 = window.elQuartierH || window._elQuartierFromGeb;
       demand += (qArr2 ? qArr2[t] : (quartierMwh * 1000 / 8760));
+      demand += kaelteH ? (kaelteH[t] || 0) : 0;
       const pvGen   = pvH ? pvH[t] : 0;
       const bhkwGen = bhkwElHourly ? bhkwElHourly[t] : (bhkwMwh * 1000 / 8760);
       const gen = pvGen + bhkwGen;
@@ -472,7 +479,7 @@ export function calcStromPanel() {
   // Sankey-Daten setzen (für drawSankeyStrom)
   window._sankeyData = {
     pvMwh, netzbezugMwh, einspeisungMwh, eigenverbrauchMwh,
-    wpMwh, skMwh, quartierMwh, bhkwStromMwh: bhkwMwh,
+    wpMwh, skMwh, quartierMwh, kaelteMwh, bhkwStromMwh: bhkwMwh,
     pvEigenMwh, pvEinspMwh, bhkwEigenMwh, bhkwEinspMwh
   };
   if (_stromCurrentTab === 'sankey')   drawSankeyStrom();

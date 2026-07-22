@@ -9,6 +9,9 @@ import { GL_MONTH_HOURS } from './06a-gbi-lastgang.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { calcStromPanel } from './09b-pv-calc.js';
+import { DEFAULT_PV_TARIFF_SCENARIO_ID, getPvTariffResult } from './config/tariff-scenarios.js';
+import { DEFAULT_ECONOMIC_SCENARIO_ID, getEconomicScenario } from './config/economic-scenarios.js';
+import { parsePvProfileCsv } from './lib/pv-profile-import.js';
 
 export const _PV_SUN = [[8,16],[7,17],[6,18],[5,20],[5,21],[4,21],[4,21],[5,20],[6,19],[7,18],[8,16],[8,16]];
 
@@ -155,19 +158,16 @@ export function pvFileSelected(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
-    const text = e.target.result;
-    const tokens = text.split(/[\n\r;,]+/).map(s => s.trim()).filter(s => s !== '' && !isNaN(s));
-    if (tokens.length < 100) { alert('Zu wenig Werte — bitte 8760-Werte-CSV hochladen.'); return; }
-    const arr = new Float32Array(8760);
+    let parsed;
+    try { parsed = parsePvProfileCsv(e.target.result, {filename:file.name}); }
+    catch (error) { alert(`PV-Profil konnte nicht importiert werden: ${error.message}`); return; }
+    window.elPvH = parsed.values;
+    window.elPvMeta = parsed.meta;
     let sum = 0, pMax = 0;
-    for (let i = 0; i < 8760; i++) {
-      const v = parseFloat(tokens[i]) || 0;
-      arr[i] = v; sum += v; if (v > pMax) pMax = v;
-    }
-    window.elPvH = arr;
+    for (const v of parsed.values) { sum += v; if (v > pMax) pMax = v; }
     document.getElementById('pv-kwp').value = '';
     document.getElementById('pv-upload-info').textContent =
-      `${file.name} · ${(sum/1000).toFixed(0)} MWh/a · max ${Math.round(pMax)} kW`;
+      `${file.name} · ${(sum/1000).toFixed(0)} MWh/a · max ${Math.round(pMax)} kW · ${parsed.meta.quality === 'modeled_external' ? 'PVGIS-Modell' : 'Upload ungeprüft'}`;
     document.getElementById('pv-clear-btn').style.display = '';
     document.getElementById('pv-file-input').value = '';
     calcStromPanel();
@@ -177,6 +177,7 @@ export function pvFileSelected(file) {
 
 export function pvClear() {
   window.elPvH = null;
+  window.elPvMeta = null;
   document.getElementById('pv-upload-info').textContent = '';
   document.getElementById('pv-clear-btn').style.display = 'none';
   document.getElementById('pv-file-input').value = '';
@@ -488,46 +489,78 @@ export function _onStrompreisChange(srcId) {
   updateStromkesselDisplay();
 }
 
+const ECONOMIC_FIELD_IDS = Object.freeze({
+  stromCtKwh:'wirt-p-strom', wpStromCtKwh:'wirt-p-strom-wp', gasCtKwh:'wirt-p-gas',
+  heizoelCtKwh:'wirt-p-hko', fernwaermeCtKwh:'wirt-p-fw', pelletsCtKwh:'wirt-p-pk',
+  hhsCtKwh:'wirt-p-hhs', co2EurT:'wirt-p-co2', kapitalzinsPct:'wirt-zins', lohnEurH:'wirt-lohn',
+});
+
+export function onEconomicScenarioChange() {
+  const select = document.getElementById('wirt-szenario');
+  const id = select?.value || DEFAULT_ECONOMIC_SCENARIO_ID;
+  const scenario = getEconomicScenario(id);
+  const hint = document.getElementById('wirt-szenario-hint');
+  if (!scenario) {
+    if (hint) hint.textContent = 'Manuelle Annahmen aktiv; Herkunft und Stand werden in der Projektdatei als Override dokumentiert.';
+    calcWirtschaftPanel();
+    return;
+  }
+  for (const [key, fieldId] of Object.entries(ECONOMIC_FIELD_IDS)) {
+    const el = document.getElementById(fieldId);
+    if (el) el.value = scenario.values[key] == null ? '' : String(scenario.values[key]);
+  }
+  const co2Alle = document.getElementById('wirt-co2-alle');
+  if (co2Alle) co2Alle.checked = !!scenario.values.co2Alle;
+  const co2Label = document.getElementById('wirt-co2-alle-label');
+  if (co2Label) co2Label.textContent = scenario.values.co2Alle ? 'alle Energieträger' : 'nur fossile';
+  if (hint) hint.textContent = `${scenario.label}, Stand ${scenario.effectiveDate}: ${scenario.source}.`;
+  _onStrompreisChange('wirt-p-strom');
+  _onGaspreisChange('wirt-p-gas');
+  if (typeof window._syncZins === 'function') window._syncZins();
+  calcWirtschaftPanel();
+}
+
+export function onEconomicManualInput() {
+  const select = document.getElementById('wirt-szenario');
+  if (select) select.value = 'manual';
+  const hint = document.getElementById('wirt-szenario-hint');
+  if (hint) hint.textContent = 'Manuelle Annahmen aktiv; Herkunft und Stand werden in der Projektdatei als Override dokumentiert.';
+}
+
 // ── PV-Vergütungsmodell Dropdown ─────────────────────────────────────────
 export function onPvVergModellChange() {
   const modell = document.getElementById('pv-verg-modell')?.value || 'teil';
+  const scenarioEl = document.getElementById('pv-tarif-szenario');
+  const scenarioId = scenarioEl?.value || DEFAULT_PV_TARIFF_SCENARIO_ID;
   const einspEl = document.getElementById('strom-preis-einsp');
   const hintEl = document.getElementById('pv-verg-hint');
-  const pvKwp = parseFloat(document.getElementById('pv-kwp')?.value) || 100;
-  let einsp = 8.1, hint = '';
-  switch (modell) {
-    case 'teil':
-      // EEG §48 Teileinspeisung: gestaffelt nach Anlagengröße
-      if (pvKwp <= 10) einsp = 8.1;
-      else if (pvKwp <= 40) einsp = 7.0;
-      else if (pvKwp <= 100) einsp = 5.7;
-      else if (pvKwp <= 400) einsp = 5.7;
-      else einsp = 5.7;
-      hint = 'EEG §48 Teileinspeisung: bis 10 kWp 8,1 ct, bis 40 kWp 7,0 ct, ab 40 kWp 5,7 ct/kWh';
-      break;
-    case 'voll':
-      // EEG §48 Volleinspeisung: höhere Vergütung
-      if (pvKwp <= 10) einsp = 12.9;
-      else if (pvKwp <= 40) einsp = 10.8;
-      else if (pvKwp <= 100) einsp = 10.8;
-      else if (pvKwp <= 400) einsp = 10.8;
-      else einsp = 10.8;
-      hint = 'EEG §48 Volleinspeisung: bis 10 kWp 12,9 ct, ab 10 kWp 10,8 ct/kWh';
-      break;
-    case 'ausschreibung':
-      einsp = 5.5;
-      hint = 'Ausschreibungszuschlag PV >1 MWp: ca. 5,0–6,0 ct/kWh (mittlerer Zuschlagswert)';
-      break;
-    case 'markt':
-      einsp = 7.5;
-      hint = 'Marktprämienmodell: Marktwert Solar (ca. 7–8 ct/kWh, variiert mit Börsenpreis)';
-      break;
-    case 'manuell':
-      hint = 'Manuell: Einspeisungspreis frei einstellbar';
-      break;
+  const pvKwp = (parseFloat(document.getElementById('pv-kwp')?.value) || 0)
+    + gebaeude.reduce((sum, g) => sum + (g.pvAktiv ? calcGebKwp(g) : 0), 0)
+    + freiflaechen.reduce((sum, ff) => sum + (calcFFKwp(ff) || 0), 0);
+  const manual = modell === 'manuell' || scenarioId === 'manual';
+  const result = getPvTariffResult(scenarioId, modell, pvKwp || 10);
+  let hint = 'Manuelle Annahme: frei einstellbarer Rechenwert; bitte Quelle und Förderfähigkeit extern prüfen.';
+  if (!manual && result.rate != null) {
+    if (einspEl) einspEl.value = result.rate.toFixed(2);
+    hint = `Leistungsgewichteter Satz für ${Math.max(pvKwp, 0).toFixed(1)} kWp: ${result.rate.toFixed(2)} ct/kWh. Gültig ${result.scenario.validFrom}–${result.scenario.validTo}; Quelle: Bundesnetzagentur. Keine Förder- oder Rechtsberatung.`;
+  } else if (!manual) {
+    hint = modell === 'ausschreibung'
+      ? 'Ausschreibungspflichtige Anlage: Zuschlagswert projektspezifisch manuell eintragen.'
+      : 'Anlagengröße oder Modell liegt außerhalb dieses veröffentlichten Tarifs. Wert manuell prüfen und eintragen.';
+    if (scenarioEl) scenarioEl.value = 'manual';
   }
-  if (modell !== 'manuell' && einspEl) einspEl.value = einsp;
+  if (einspEl) einspEl.readOnly = !manual && result.rate != null;
   if (hintEl) hintEl.textContent = hint;
+  calcStromPanel();
+}
+
+export function onPvTariffManualInput() {
+  const scenarioEl = document.getElementById('pv-tarif-szenario');
+  if (scenarioEl) scenarioEl.value = 'manual';
+  const modelEl = document.getElementById('pv-verg-modell');
+  if (modelEl && modelEl.value !== 'manuell') modelEl.value = 'manuell';
+  const hintEl = document.getElementById('pv-verg-hint');
+  if (hintEl) hintEl.textContent = 'Manuelle Annahme: frei eingestellter Rechenwert; bitte Quelle und Förderfähigkeit extern prüfen.';
   calcStromPanel();
 }
 
@@ -546,4 +579,3 @@ export function updatePvInvestAuto() {
   }
   calcStromPanel();
 }
-

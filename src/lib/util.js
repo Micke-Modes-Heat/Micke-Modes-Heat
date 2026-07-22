@@ -29,3 +29,19 @@ export function clampNum(val, min, max) {
   if (!isFinite(val)) return min;
   return Math.max(min, Math.min(max, val));
 }
+
+let idFallbackCounter = 0;
+
+/**
+ * Erzeugt eine praktisch kollisionsfreie ID. Der monotone Fallback ist für
+ * ältere/file:-Browser gedacht, in denen crypto.randomUUID nicht existiert.
+ * @param {string} prefix
+ * @returns {string}
+ */
+export function createId(prefix) {
+  const safePrefix = String(prefix || 'id').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return `${safePrefix}_${uuid}`;
+  idFallbackCounter += 1;
+  return `${safePrefix}_${Date.now().toString(36)}_${idFallbackCounter.toString(36)}`;
+}

@@ -232,6 +232,76 @@ export function getEdgeMidDisplayPt(e) {
   return interpolateAlongPts(pts, 0.5);
 }
 
+export function getEdgeWaypoints(e) {
+  if (Array.isArray(e?.waypoints)) return e.waypoints;
+  if (e?.waypoint) return [e.waypoint];
+  return [];
+}
+
+export function getEdgePathPoints(e) {
+  const start = e?.uNode?.pt || e?.layer?.getLatLngs?.()?.[0];
+  const current = e?.layer?.getLatLngs?.() || [];
+  const end = e?.vNode?.pt || current[current.length - 1];
+  return start && end ? [start, ...getEdgeWaypoints(e), end] : current;
+}
+
+function _persistEdgeWaypoints(edgeObj) {
+  const points = getEdgeWaypoints(edgeObj);
+  edgeObj.waypoints = points;
+  edgeObj.waypoint = points[0] || null; // lesbare Rückwärtskompatibilität
+  const key = edgeKey(edgeObj.u, edgeObj.v);
+  if (points.length) edgeWaypoints[key] = points.map(p => ({lat: p.lat, lng: p.lng}));
+  else delete edgeWaypoints[key];
+}
+
+function _setEdgePath(edgeObj) {
+  const points = getEdgePathPoints(edgeObj);
+  edgeObj.layer?.setLatLngs(points);
+  edgeObj.hitLayer?.setLatLngs(points);
+}
+
+function _nearestSegmentIndex(edgeObj, point) {
+  const points = getEdgePathPoints(edgeObj);
+  let bestIndex = 0, bestDistance = Infinity;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = map.latLngToLayerPoint(points[i]);
+    const b = map.latLngToLayerPoint(points[i + 1]);
+    const p = map.latLngToLayerPoint(point);
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const denominator = dx * dx + dy * dy;
+    const t = denominator ? Math.max(0, Math.min(1, ((p.x-a.x)*dx + (p.y-a.y)*dy) / denominator)) : 0;
+    const distance = p.distanceTo(L.point(a.x + t*dx, a.y + t*dy));
+    if (distance < bestDistance) { bestDistance = distance; bestIndex = i; }
+  }
+  return bestIndex;
+}
+
+export function removeEdgeWaypointMarkers(edgeObj) {
+  (edgeObj?.waypointMarkers || []).forEach(marker => map.removeLayer(marker));
+  if (edgeObj) edgeObj.waypointMarkers = [];
+}
+
+function _renderEdgeWaypointMarkers(edgeObj) {
+  removeEdgeWaypointMarkers(edgeObj);
+  const icon = L.divIcon({className:'netz-waypoint-handle', html:'', iconSize:[10,10], iconAnchor:[5,5]});
+  edgeObj.waypointMarkers = getEdgeWaypoints(edgeObj).map((point, index) => {
+    const marker = L.marker(point, {draggable:true, icon, zIndexOffset:1550});
+    if (netzVisible) marker.addTo(map);
+    marker.on('drag', function() {
+      edgeObj.waypoints[index] = this.getLatLng();
+      _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
+    });
+    marker.on('dragend', () => recalcNetz());
+    marker.on('dblclick', event => {
+      L.DomEvent.stopPropagation(event);
+      edgeObj.waypoints.splice(index, 1);
+      _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
+      _renderEdgeWaypointMarkers(edgeObj); recalcNetz();
+    });
+    return marker;
+  });
+}
+
 export function clearEdgeGradient(e) {
   if (!e.segLayers) { e.segLayers = []; return; }
   e.segLayers.forEach(s => { if (map.hasLayer(s)) map.removeLayer(s); });
@@ -271,32 +341,28 @@ export function addEdgeMidHandle(edgeObj) {
   const midPt = getEdgeMidDisplayPt(edgeObj);
   edgeObj.midMarker = L.marker(midPt, {draggable: true, icon, zIndexOffset: 1500});
   if (netzVisible) edgeObj.midMarker.addTo(map);
-  edgeObj.midMarker.on('drag', function() {
-    edgeObj.waypoint = this.getLatLng();
-    edgeWaypoints[edgeKey(edgeObj.u, edgeObj.v)] = {lat: edgeObj.waypoint.lat, lng: edgeObj.waypoint.lng};
-    const ll = edgeObj.layer.getLatLngs();
-    const start = ll[0], end = ll[ll.length-1];
-    edgeObj.layer.setLatLngs([start, edgeObj.waypoint, end]);
-    if (edgeObj.hitLayer) edgeObj.hitLayer.setLatLngs([start, edgeObj.waypoint, end]);
-    if (edgeObj.segLayers && edgeObj.segLayers.length > 0) {
-      const vlTemp = parseFloat(document.getElementById('netz-vl').value)||90;
-      const rlTemp = parseFloat(document.getElementById('netz-rl').value)||60;
-      const dt = Math.max(1, vlTemp-rlTemp);
-      const vFlow = parseFloat(document.getElementById('netz-v').value)||1.0;
-      drawEdgeGradient(edgeObj, vlTemp, dt, vFlow);
-    }
+  edgeObj.waypoints = getEdgeWaypoints(edgeObj);
+  _persistEdgeWaypoints(edgeObj);
+  _setEdgePath(edgeObj);
+  _renderEdgeWaypointMarkers(edgeObj);
+  edgeObj.midMarker.on('dragend', function() {
+    const point = this.getLatLng();
+    const insertAt = _nearestSegmentIndex(edgeObj, point);
+    edgeObj.waypoints.splice(insertAt, 0, point);
+    _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
+    _renderEdgeWaypointMarkers(edgeObj);
+    this.setLatLng(getEdgeMidDisplayPt(edgeObj));
+    recalcNetz();
   });
   edgeObj.midMarker.on('dblclick', function(ev) {
     L.DomEvent.stopPropagation(ev);
+    edgeObj.waypoints = [];
     edgeObj.waypoint = null;
     delete edgeWaypoints[edgeKey(edgeObj.u, edgeObj.v)];
-    const ll = edgeObj.layer.getLatLngs();
-    const start = ll[0], end = ll[ll.length-1];
-    edgeObj.layer.setLatLngs([start, end]);
-    if (edgeObj.hitLayer) edgeObj.hitLayer.setLatLngs([start, end]);
+    _setEdgePath(edgeObj);
+    _renderEdgeWaypointMarkers(edgeObj);
     recalcNetz();
   });
-  edgeObj.midMarker.on('dragend', function() { recalcNetz(); });
 }
 
 export function updateNetzColorLegend() {

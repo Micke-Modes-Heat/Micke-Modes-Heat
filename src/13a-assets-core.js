@@ -3,6 +3,7 @@
 // damit Wärme-Erzeuger später in dasselbe System einziehen können.
 
 import { globalYear, massnahmeJahr } from './01-globals-varianten.js';
+import { createId } from './lib/util.js';
 
 // ── Asset-Typ-Katalog ──────────────────────────────────────────────────────
 // domain: 'strom' | 'waerme' | 'hybrid' (z.B. WP, BHKW später)
@@ -118,13 +119,19 @@ export const ASSET_PROPS_SCHEMA = {
 // ── Single Source of Truth — alle Anlagen, alle Domains ────────────────────
 export const ASSETS = {
   items:    [],  // Asset-Objekte: {id,type,domain,lat,lng,buildingId,name,props,baujahr,abrissjahr,massnahmen,_marker}
-  edges:    [],  // Leitungen (Strom + später Wärme): {id,aId,bId,domain,route,qs,...}
+  edges:    [],  // Nur Legacy-Import; kanonische Leitungen liegen ausschließlich in stromEdges.
   selectedId: null,
 };
 
+export function getCanonicalAssetEdges() {
+  const ids = new Set(ASSETS.items.map(a => a.id));
+  return ((typeof window !== 'undefined' && window.stromEdges) || [])
+    .filter(e => ids.has(e.u) && ids.has(e.v));
+}
+
 // ── Hilfsfunktionen ────────────────────────────────────────────────────────
 export function assetUid() {
-  return 'a_' + Math.random().toString(36).slice(2, 9);
+  return createId('a');
 }
 
 // Lebenszyklus-Status eines Assets/Edges bezogen auf ein Jahr
@@ -190,7 +197,10 @@ export function createAsset(type, lat, lng, opts = {}) {
   return asset;
 }
 
-export function deleteAsset(id) {
+export function deleteAsset(id, _transactionActive = false) {
+  if (!_transactionActive && typeof window !== 'undefined' && typeof window.runPlanningTransaction === 'function') {
+    return window.runPlanningTransaction('Asset löschen', () => deleteAsset(id, true));
+  }
   const i = ASSETS.items.findIndex(a => a.id === id);
   if (i < 0) return false;
   const a = ASSETS.items[i];
@@ -198,7 +208,8 @@ export function deleteAsset(id) {
   if (a._marker    && a._marker.remove)    a._marker.remove();
   if (a._ladeLayer && a._ladeLayer.remove) a._ladeLayer.remove();
   // Zugehörige Leitungen löschen
-  ASSETS.edges = ASSETS.edges.filter(e => e.aId !== id && e.bId !== id);
+  // Der kanonische elektrische Graph entfernt Knoten und zugehörige Kanten.
+  if (typeof window.removeStromNode === 'function') window.removeStromNode(id);
   ASSETS.items.splice(i, 1);
   // Registrierten Strom-Knoten mitsamt Marker entfernen — sonst bleibt ein
   // verwaister Knoten in window.stromNodes zurück, der beim Speichern persistiert
@@ -299,6 +310,6 @@ export function clearAssets() {
     if (a._marker && a._marker.remove) a._marker.remove();
   }
   ASSETS.items.length = 0;
-  ASSETS.edges.length = 0;
+  ASSETS.edges.length = 0; // historischen, nicht mehr beschriebenen Puffer leeren
   ASSETS.selectedId = null;
 }

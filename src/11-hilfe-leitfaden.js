@@ -9,6 +9,7 @@ import { HILFE_TEXTE } from './config/hilfe-texte.js';
 import { fernwaerme, gasKessel, geoThermie, heizhackschnitzel, heizoelKessel, lwWp, pelletsKessel } from './01-globals-varianten.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { fliessgewaesser } from './01-globals-varianten.js';
+import { appLifecycle } from './lib/lifecycle.js';
 
 export let _hilfeModus = false;
 export let _hilfeOverlay = null;
@@ -464,5 +465,4 @@ export function _updateLeitfadenStatus() {
 }
 
 // Status periodisch aktualisieren wenn Leitfaden offen
-setInterval(() => { if (_leitfadenOpen) _updateLeitfadenStatus(); }, 3000);
-
+appLifecycle.interval(() => { if (_leitfadenOpen) _updateLeitfadenStatus(); }, 3000);

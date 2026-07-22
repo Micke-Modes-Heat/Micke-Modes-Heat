@@ -25,6 +25,11 @@ let _draggingId = null;
 let _gruppierung = 'gewerk';   // 'gewerk' | 'cluster' — Swimlane-Achse
 const OHNE_CLUSTER = '__ohne__';
 
+function _planningChange(label, mutate) {
+  try { (typeof window.runPlanningTransaction === 'function' ? window.runPlanningTransaction(label, mutate) : mutate()); return true; }
+  catch (error) { console.error(error); alert(error.message); return false; }
+}
+
 // ── Init + Show/Hide ──────────────────────────────────────────────────────────
 
 export function ausbauInit() {
@@ -180,6 +185,7 @@ function _renderToolbar() {
     <span style="margin-left:auto;color:var(--muted);font-size:10px;">${phasen.length} Phasen</span>
     <span style="color:${_konflikte.size > 0 ? '#ef4444' : '#4caf50'};font-size:10px;">${_konflikte.size > 0 ? '⚠ ' + _konflikte.size + ' Konflikt(e)' : '✓ konfliktfrei'}</span>
     <button class="btn-xs" onclick="ausbauShow(false)" style="margin-left:4px;">✕</button>
+    <button class="btn-xs" onclick="ausbauUndoLast()" title="Letzte Planungsänderung vollständig rückgängig machen">↶ Rückgängig</button>
   `;
 }
 
@@ -256,10 +262,10 @@ function _renderGantt() {
       <div style="max-width:520px;margin:24px auto;padding:20px 24px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Noch keine Maßnahmen</div>
         <div style="font-size:11px;color:var(--muted);line-height:1.7;">
-          Der Fahrplan zeigt alle Maßnahmen aller Assets und Gebäude. Lege Maßnahmen an über:<br><br>
+          Der Fahrplan zeigt alle Maßnahmen aller Anlagen, Netzkomponenten und Gebäude. Lege Maßnahmen an über:<br><br>
           • ein <b>Cluster-Maßnahmenpaket</b> (Mehr → 🗺 Cluster → „auf Mitglieder anwenden")<br>
-          • den <b>Bulk-Modus</b> (Elektro-Tab → Assets auswählen → Maßnahme zuweisen)<br>
-          • oder den <b>Asset-Inspektor</b> (einzelnes Asset → „+ Maßnahme")<br><br>
+          • die <b>Sammelauswahl</b> (Elektro-Tab → Anlagen auswählen → Maßnahme zuweisen)<br>
+          • oder die <b>Anlagendetails</b> (einzelne Anlage → „+ Maßnahme")<br><br>
           Anschließend erscheinen sie hier und lassen sich per Drag-&-Drop den Phasen zuordnen.
         </div>
       </div>`;
@@ -366,10 +372,10 @@ export function ausbauDrop(e, phaseId) {
   const itemId = e.dataTransfer.getData('text/plain') || _draggingId;
   if (!itemId) return;
   const it = _plan.items.find(x => x.id === itemId);
-  if (it && it._m) {
+  if (it && it._m) _planningChange('Maßnahme in Phase verschieben', () => {
     it._m.phaseId = phaseId || null;
-    it._m.jahr    = null; // Phase überschreibt explizites Jahr
-  }
+    it._m.jahr = null;
+  });
   _draggingId = null;
   if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
   ausbauRender();
@@ -380,32 +386,24 @@ export function ausbauDrop(e, phaseId) {
 export function ausbauNeuePhase() {
   const maxR = phasen.reduce((m, p) => Math.max(m, +p.reihenfolge), -1);
   const lJ   = phasen.reduce((m, p) => Math.max(m, +p.jahrBis || 0), new Date().getFullYear());
-  setPhasen([...phasen, {
+  _planningChange('Phase anlegen', () => setPhasen([...phasen, {
     id: 'ph_' + Date.now(), name: 'Phase ' + (phasen.length + 1),
-    jahrVon: String(lJ + 1), jahrBis: String(lJ + 1),
-    variantId: null, reihenfolge: maxR + 1,
-  }]);
+    jahrVon: String(lJ + 1), jahrBis: String(lJ + 1), variantId: null, reihenfolge: maxR + 1,
+  }]));
   ausbauRender();
 }
 
 export function ausbauEditPhaseJahr(phaseId, field, value) {
   const p = phasen.find(x => x.id === phaseId);
-  if (p) { p[field] = value; ausbauRender(); }
+  if (p) { _planningChange('Phasenzeitraum ändern', () => { p[field] = value; }); ausbauRender(); }
 }
 
 export function ausbauPhaseLoeschen(phaseId) {
-  // Maßnahmen dieser Phase auf „ungeplant" zurücksetzen (Assets UND Gebäude)
-  for (const a of ASSETS.items) {
-    for (const m of (a.massnahmen || [])) {
-      if (m.phaseId === phaseId) m.phaseId = null;
-    }
-  }
-  for (const g of (window.gebaeude || [])) {
-    for (const m of (g.massnahmen || [])) {
-      if (m.phaseId === phaseId) m.phaseId = null;
-    }
-  }
-  setPhasen(phasen.filter(p => p.id !== phaseId));
+  _planningChange('Phase löschen', () => {
+    for (const a of ASSETS.items) for (const m of (a.massnahmen || [])) if (m.phaseId === phaseId) m.phaseId = null;
+    for (const g of (window.gebaeude || [])) for (const m of (g.massnahmen || [])) if (m.phaseId === phaseId) m.phaseId = null;
+    setPhasen(phasen.filter(p => p.id !== phaseId));
+  });
   if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
   ausbauRender();
 }
@@ -413,6 +411,13 @@ export function ausbauPhaseLoeschen(phaseId) {
 // Swimlane-Achse umschalten (Gewerk ⇄ Cluster)
 export function ausbauSetGruppierung(modus) {
   _gruppierung = modus === 'cluster' ? 'cluster' : 'gewerk';
+  ausbauRender();
+}
+
+export function ausbauUndoLast() {
+  if (typeof window.undoLastPlanningTransaction !== 'function' || !window.undoLastPlanningTransaction()) return;
+  if (typeof window.renderSidebarAssetList === 'function') window.renderSidebarAssetList();
+  if (typeof window.clusterRenderAll === 'function') window.clusterRenderAll();
   ausbauRender();
 }
 

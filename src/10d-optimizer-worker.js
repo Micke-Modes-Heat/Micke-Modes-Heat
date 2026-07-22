@@ -6,11 +6,13 @@ import { _autoSpeicherVolumen, makeStProfile8760 } from './06b-gl-berechnen.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { _findOptPvBatMain, _optDispatch8760, _optGetScaledLastgang, _optKennwerte2, _optPvBatSim8760, _optScore, _readGuetegrad } from './10a-optimizer-core.js';
 import { _optAborted } from './10b-hourly-live.js';
-import { _optFinished } from './10c-optimizer-run.js';
+import { _optFinished } from './10e-optimizer-session.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { OPT_MERIT_ORDER } from './config/optimizer-defaults.js';
 import { _dispatchCore } from './06c-dispatch-core.js';
 import { _calcKostenShared } from './07b-analysis-economics.js';
+import { pvBatteryStep } from './lib/pv-battery-core.js';
+import { estimateBatteryAging } from './lib/battery-aging.js';
 
 export function _buildOptWorkerCode() {
   return `
@@ -19,6 +21,9 @@ export function _buildOptWorkerCode() {
 
 let D; // DOM-Parameter (wird via postMessage empfangen)
 let QH = null; // Quartier-Stromlastgang — von onmessage gesetzt, von kennwerte() gelesen
+
+${pvBatteryStep.toString()}
+${estimateBatteryAging.toString()}
 
 function _annF(z, n) {
   if (z <= 0 || n <= 0) return n > 0 ? 1 / n : 1;
@@ -141,17 +146,17 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
   const batLeistKw = batKwh > 0 ? batKwh / 2 : 0;
   let sv = 0, ins = 0, bez = 0, soc = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
-  let tsSoc = 0, pvWpSpGes = 0;
+  let tsSoc = 0, pvWpSpGes = 0, batDischargeKwh = 0;
   for (let t = 0; t < 8760; t++) {
     const dem = demandH[t];
     const pvGen = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
     const bhkwGen = bhkwElH ? bhkwElH[t] : 0;
-    const gen = pvGen + bhkwGen;
-    const dsc = Math.min(gen, dem);
-    const pvFrac = gen > 0 ? pvGen / gen : 0;
-    let rDem = dem - dsc, rGen = gen - dsc;
-    if (batKwh > 0 && rGen > 0) { const c = Math.min(rGen, batLeistKw, batKwh - soc); soc += c; rGen -= c; }
-    if (batKwh > 0 && rDem > 0) { const a = Math.min(soc * 0.90, rDem, batLeistKw); soc -= a / 0.90; rDem -= a; }
+    const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:.9});
+    const dsc = step.direct;
+    const pvFrac = step.pvFraction;
+    let rDem = step.residualDemand, rGen = step.residualGeneration;
+    soc = step.socKwh;
+    batDischargeKwh += step.dischargedKwh;
 
     // PV-Überschuss → WP → thermischer Speicher
     let pvWpSp = 0;
@@ -187,7 +192,7 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
   }
   return { eigenMwh: sv / 1000 + pvWpSpGes, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
            pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp,
-           pvWpSpeicherMwh: pvWpSpGes };
+           pvWpSpeicherMwh: pvWpSpGes, batDischargeMwh:batDischargeKwh/1000 };
 }
 
 // _calcBausteinKostenW ENTFERNT — nutzt jetzt _calcKostenShared
@@ -242,6 +247,8 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
 
   // PV-Invest
   const pvInvPerKwp = D.pvInvestMode === 'auto' ? _pvInvestPerKwp(pvKwp) : D.pvInvestManual;
+  const batAging = batKwh > 0 ? estimateBatteryAging({capacityKwh:batKwh,annualDischargeKwh:(pvBatR?.batDischargeMwh||0)*1000,
+    calendarFadePctPerYear:D.batCalendarFade,cycleLife:D.batCycleLife,eolCapacityPct:D.batEolPct,studyYears:20}) : null;
 
   const result = _calcKostenShared({
     pKw: _bPKw,
@@ -265,6 +272,7 @@ function kennwerte(dispR, pvKwp, batKwh, pvBatR, params, stMwh, stM2, optSpeiche
       gesamtEigenMwh: gesamtEigenMwh,
       invPerKwp: pvInvPerKwp,
       batInvPerKwh: D.batInvest,
+      batLifeYears: batAging && Number.isFinite(batAging.expectedLifeYears) ? Math.max(1,batAging.expectedLifeYears) : 15,
       vergModell: D.pvVergModell || 'teil',
       pEinsp: pEinsp,
     },
@@ -2127,5 +2135,3 @@ export function _optRenderScatter(container) {
   // Initial
   render();
 }
-
-

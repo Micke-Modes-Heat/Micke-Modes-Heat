@@ -1,8 +1,8 @@
-const CACHE_APP   = 'feldapp-v5';
+const CACHE_APP   = 'feldapp-v6';
 const CACHE_TILES = 'feldapp-tiles-v1';
 
-// index.html wird NICHT gecacht — immer frisch vom Server laden
 const PRECACHE = [
+  './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
@@ -12,7 +12,13 @@ const PRECACHE = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE_APP).then(c => c.addAll(PRECACHE)));
+  // Jede Ressource einzeln: ein vorübergehend nicht erreichbares CDN darf die
+  // Installation der lokalen Offline-Shell nicht komplett scheitern lassen.
+  e.waitUntil(caches.open(CACHE_APP).then(c =>
+    Promise.all(PRECACHE.map(url => c.add(url).catch(err => {
+      if (url === './index.html') throw err;
+    })))
+  ));
   self.skipWaiting();
 });
 
@@ -30,10 +36,13 @@ self.addEventListener('fetch', e => {
   const url = e.request.url;
   if (url.startsWith('chrome-extension')) return;
 
-  // index.html: immer vom Netz (kein Cache) — so kommen Updates sofort an
+  // HTML: Network-First, bei Funkloch garantiert die vorinstallierte Shell.
   if (url.endsWith('/') || url.includes('index.html')) {
     e.respondWith(
-      fetch(e.request).catch(() => caches.match('./index.html'))
+      fetch(e.request).then(res => {
+        if (res.ok) caches.open(CACHE_APP).then(c => c.put('./index.html', res.clone()));
+        return res;
+      }).catch(() => caches.match('./index.html'))
     );
     return;
   }

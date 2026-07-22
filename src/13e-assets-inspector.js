@@ -1,5 +1,7 @@
 // ── 13e-assets-inspector.js — Editor-Panel für selektiertes Asset ──────────
 
+import { createId } from './lib/util.js';
+
 // Persistiert den Einklapp-Zustand der Sektionen innerhalb einer Session
 const _sectionCollapsed = {};
 // Persistiert den Einklapp-Zustand der Asset-Gruppen in der Hauptliste
@@ -620,7 +622,7 @@ function buildPropsForm(asset) {
 }
 
 // ── Maßnahmen-Hilfsfunktionen ────────────────────────────────────────────────
-function massnahmeId() { return 'm_' + Math.random().toString(36).slice(2, 8); }
+function massnahmeId() { return createId('m'); }
 
 const MASSN_STATUS = {
   geplant:    { label: 'Geplant',   color: '#4fc3f7' },
@@ -824,7 +826,7 @@ export function showInvestitionsplan() {
     overlay.className = 'ep-modal-overlay';
     overlay.innerHTML = `<div class="ep-modal">
       <div class="ep-modal-title">Investitionsplan</div>
-      <div class="ep-modal-body">Keine Maßnahmen vorhanden.<br>Öffne ein Asset und füge Maßnahmen hinzu.</div>
+      <div class="ep-modal-body">Keine Maßnahmen vorhanden.<br>Öffne eine Anlage oder Netzkomponente und füge Maßnahmen hinzu.</div>
       <div class="ep-modal-btns"><button class="ep-modal-btn primary" id="inv-close">Schließen</button></div>
     </div>`;
     document.body.appendChild(overlay);
@@ -871,7 +873,7 @@ export function showInvestitionsplan() {
     </div>
     <div class="inv-table-wrap">
       <table class="inv-table">
-        <thead><tr><th>Asset</th><th>Maßnahme</th><th>Typ</th><th class="inv-num">Kosten</th><th>Status</th></tr></thead>
+        <thead><tr><th>Anlage/Komponente</th><th>Maßnahme</th><th>Typ</th><th class="inv-num">Kosten</th><th>Status</th></tr></thead>
         <tbody>${tableHtml}</tbody>
       </table>
     </div>
@@ -1336,7 +1338,7 @@ function renderInspector(asset) {
   const cfg = ASSET_CFG[asset.type];
 
   panel.innerHTML = `
-    <button class="sb-asset-back-btn" id="sb-asset-back">← Alle Assets</button>
+    <button class="sb-asset-back-btn" id="sb-asset-back">← Alle Anlagen</button>
     <div class="asset-ins-header" style="background:${cfg.color};">
       <span class="asset-ins-icon">${cfg.icon}</span>
       <span class="asset-ins-title">${cfg.label}</span>
@@ -1448,7 +1450,7 @@ export function renderAssetSidebar(filterText) {
     html += '</div>';
   }
 
-  container.innerHTML = html || '<div class="asb-empty">Keine Assets vorhanden.</div>';
+  container.innerHTML = html || '<div class="asb-empty">Keine Anlagen oder Netzkomponenten vorhanden.</div>';
 
   // Events für geöffnete Karte verdrahten
   if (ASSETS.selectedId) {
@@ -1485,7 +1487,7 @@ export function renderAssetSidebar(filterText) {
     btn.addEventListener('click', () => {
       const asset = (ASSETS.items || []).find(a => a.id === btn.dataset.asid);
       if (!asset) return;
-      if (!confirm(`Asset "${asset.name}" wirklich löschen?`)) return;
+      if (!confirm(`Anlage/Komponente „${asset.name}“ wirklich löschen?`)) return;
       if (typeof window.removeStromNode === 'function') window.removeStromNode(asset.id);
       deleteAsset(asset.id);
       redrawAllAssets();

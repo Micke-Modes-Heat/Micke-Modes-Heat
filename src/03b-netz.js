@@ -11,17 +11,19 @@ import { drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon 
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { readNum } from './lib/util.js';
+import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trassePolyline, trasseSegments } from './01-globals-varianten.js';
-import { addEdgeMidHandle, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, standardDNs } from './02a-netz-physik.js';
+import { addEdgeMidHandle, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
 import { OSM_SKIP_TYPES, addGebaeude, osmNutzung } from './02b-gebaeude.js';
 import { polygonCenter, redrawFliessgewaesser } from './02c-karte-werkzeuge.js';
+import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
 import { redrawGasKessel } from './03a-erzeuger.js';
 import { startAnimPipes, stopAnimPipes, updateTotals } from './03c-gebaeude-io.js';
 import { closeEdgePopup, showEdgePopup, toggleEdgePruned } from './04a-ui-panels.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
-import { setEdgeStartId, setSelectedStrandId, set_batchImporting } from './01-globals-varianten.js';
+import { setEdgeStartId, setNetzEdges, setSelectedId, setSelectedStrandId, set_batchImporting } from './01-globals-varianten.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
 
@@ -244,6 +246,7 @@ export function togglePlaceGeo() {
   window.isPlacingGeo = !window.isPlacingGeo;
   const btn = document.getElementById('btn-place-geo');
   if (window.isPlacingGeo) {
+    beginInteraction({id:'place-geothermal',label:'Sondenfeld platzieren',hint:'Position auf der Karte anklicken.',cancel:()=>{ if (window.isPlacingGeo) togglePlaceGeo(); }});
     btn.textContent = 'Klicke auf Karte…';
     btn.style.borderColor = '#4caf50';
     _hideForDraw();
@@ -252,6 +255,7 @@ export function togglePlaceGeo() {
     document.getElementById('geo-panel').classList.remove('visible');
     document.getElementById('btn-geo-toggle')?.classList.remove('active');
   } else {
+    cancelInteraction('place-geothermal');
     btn.textContent = 'Auf Karte platzieren';
     btn.style.borderColor = '';
     _restoreAfterDraw();
@@ -260,6 +264,7 @@ export function togglePlaceGeo() {
 }
 
 export function placeGeoAt(latlng) {
+  commitInteraction('place-geothermal');
   if (!window.geoLayerGroup) window.geoLayerGroup = L.layerGroup().addTo(map);
   const jaz = parseFloat(document.getElementById('geo-jaz').value) || 4.5;
   const tiefe = parseFloat(document.getElementById('geo-tiefe').value) || 100;
@@ -348,11 +353,12 @@ export function clearGeo() {
 
 export function startDraw(id){
   clearArea(); cancelDraw();
+  beginInteraction({id:'draw-generator-area',label:'Anlagenfläche zeichnen',hint:'Eckpunkte setzen und Startpunkt zum Abschließen anklicken.',cancel:cancelDraw});
   window.drawingId=id; window.drawPoints=[];
   showHint('Eckpunkte anklicken · Am Ende Startpunkt (rot) anklicken · Rechtsklick = Zurück');
   _hideForDraw();
   map.getContainer().style.cursor='crosshair';
-  window.selectedId=id; renderList();
+  setSelectedId(id); renderList();
 }
 
 export function cancelDraw(){
@@ -361,10 +367,12 @@ export function cancelDraw(){
   window.drawingId=null;window.drawPoints=[];
   map.getContainer().style.cursor='';hideHint();
   _restoreAfterDraw();
+  cancelInteraction('draw-generator-area');
 }
 
 export function finishDraw(){
   if(window.drawPoints.length < 3) return;
+  commitInteraction('draw-generator-area');
   const id=window.drawingId,pts=[...(window.drawPoints||drawPoints)];
   cancelDraw();
   const g=(window.gebaeude||gebaeude).find(x=>x.id===id);if(!g) return;
@@ -542,10 +550,15 @@ export function loadOverlay(input) {
 async function loadOverlayFromPdf(file, name, pid) {
   try {
     if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+      if (window.__PDF_WORKER_CODE__) {
+        window._pdfWorkerBlobUrl = window._pdfWorkerBlobUrl || URL.createObjectURL(new Blob([window.__PDF_WORKER_CODE__], {type:'text/javascript'}));
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = window._pdfWorkerBlobUrl;
+      } else {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs';
+      }
     }
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
     const page = await pdf.getPage(1);
     const viewport = page.getViewport({ scale: 3 });
     const canvas = document.createElement('canvas');
@@ -1968,14 +1981,56 @@ export function autoGenerateNetz(){
   });
 
   let tIdCounter = 10000;
-  const tNodes = trassePoints.map(pt => ({ id: tIdCounter++, type: 'trasse', pt: pt, load: 0 }));
-  allPts.push(...tNodes);
+  const heatSegments = trasseSegments.filter(seg => !seg.domains || seg.domains.includes('waerme'));
+  const heatPointIndices = new Set();
+  if (trasseSegments.length === 0) trassePoints.forEach((_, i) => heatPointIndices.add(i));
+  else heatSegments.forEach(seg => { for (let i=seg.start; i<=seg.end; i++) heatPointIndices.add(i); });
+  const sharedTrasseNodes = new Map();
+  const tNodes = trassePoints.map((pt, index) => {
+    if (!heatPointIndices.has(index)) return null;
+    const key = `${Number(pt.lat).toFixed(7)},${Number(pt.lng).toFixed(7)}`;
+    if (!sharedTrasseNodes.has(key)) sharedTrasseNodes.set(key, { id: tIdCounter++, type: 'trasse', pt, load: 0 });
+    return sharedTrasseNodes.get(key);
+  });
+  allPts.push(...sharedTrasseNodes.values());
 
   const possibleEdges = [];
-  for(let i=0; i<allPts.length; i++){
-    for(let j=i+1; j<allPts.length; j++){
-      if(allPts[i].type === 'trasse' && allPts[j].type === 'trasse') continue; 
-      possibleEdges.push({ u: allPts[i].id, v: allPts[j].id, uNode: allPts[i], vNode: allPts[j], dist: allPts[i].pt.distanceTo(allPts[j].pt) });
+  const hasTrasse = sharedTrasseNodes.size > 0;
+  if (hasTrasse) {
+    // Räumlicher Rasterindex: pro Gebäude genügen die drei nächsten
+    // Trassenknoten. Damit wächst die Kandidatenmenge linear statt B×T.
+    const CELL = 0.001;
+    const grid = new Map();
+    const cellKey = (x, y) => `${x}:${y}`;
+    for (const node of sharedTrasseNodes.values()) {
+      const x = Math.floor(node.pt.lat / CELL), y = Math.floor(node.pt.lng / CELL);
+      const key = cellKey(x, y);
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(node);
+    }
+    const nearest = pt => {
+      const cx = Math.floor(pt.lat / CELL), cy = Math.floor(pt.lng / CELL);
+      const found = new Map();
+      let radius = 0;
+      while (radius < 50 && (found.size < 3 || radius < 2)) {
+        for (let dx = -radius; dx <= radius; dx++) for (let dy = -radius; dy <= radius; dy++) {
+          if (radius > 0 && Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+          for (const node of grid.get(cellKey(cx + dx, cy + dy)) || []) found.set(node.id, node);
+        }
+        radius++;
+      }
+      const candidates = found.size ? [...found.values()] : [...sharedTrasseNodes.values()];
+      return candidates.map(node => ({node, dist: pt.distanceTo(node.pt)})).sort((a,b) => a.dist-b.dist).slice(0, 3);
+    };
+    for (const building of allPts.filter(n => n.type === 'geb')) {
+      for (const candidate of nearest(building.pt)) {
+        possibleEdges.push({u:building.id, v:candidate.node.id, uNode:building, vNode:candidate.node, dist:candidate.dist});
+      }
+    }
+  } else {
+    const buildings = allPts.filter(n => n.type === 'geb');
+    for (let i=0; i<buildings.length; i++) for (let j=i+1; j<buildings.length; j++) {
+      possibleEdges.push({u:buildings[i].id, v:buildings[j].id, uNode:buildings[i], vNode:buildings[j], dist:buildings[i].pt.distanceTo(buildings[j].pt)});
     }
   }
 
@@ -2000,11 +2055,11 @@ export function autoGenerateNetz(){
   const mstEdges = [];
 
   // Trasse-Knoten segmentweise verbinden (Multi-Branch-Unterstützung)
-  const segs = trasseSegments.length > 0 ? trasseSegments : (tNodes.length > 1 ? [{start: 0, end: tNodes.length - 1}] : []);
+  const segs = heatSegments.length > 0 ? heatSegments : (trasseSegments.length === 0 && sharedTrasseNodes.size > 1 ? [{start: 0, end: tNodes.length - 1}] : []);
   segs.forEach(seg => {
     for (let i = seg.start; i < seg.end; i++) {
       const ni = i, nj = i + 1;
-      if (ni < tNodes.length && nj < tNodes.length) {
+      if (ni < tNodes.length && nj < tNodes.length && tNodes[ni] && tNodes[nj] && tNodes[ni].id !== tNodes[nj].id) {
         union(tNodes[ni].id, tNodes[nj].id);
         mstEdges.push({ u: tNodes[ni].id, v: tNodes[nj].id, uNode: tNodes[ni], vNode: tNodes[nj] });
       }
@@ -2032,12 +2087,14 @@ export function autoGenerateNetz(){
       L.DomEvent.stopPropagation(ev);
     });
     hitLayer.on('contextmenu', () => {
+      if (!ensureWaermeNetzStructureEditable()) return;
       map.removeLayer(layer);
       map.removeLayer(hitLayer);
       if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
+      removeEdgeWaypointMarkers(edgeObj);
       if (edgeObj.warnMarker) map.removeLayer(edgeObj.warnMarker);
       if (edgeObj.segLayers) edgeObj.segLayers.forEach(s => map.removeLayer(s));
-      window.netzEdges = window.netzEdges.filter(x => x !== edgeObj);
+      setNetzEdges(window.netzEdges.filter(x => x !== edgeObj));
       closeEdgePopup();
       recalcNetz();
     });
@@ -2055,7 +2112,32 @@ export function autoGenerateNetz(){
   }
 }
 
-export function addNetzEdge(u, v){
+export function confirmAutoGenerateNetz(){
+  if (!ensureWaermeNetzStructureEditable()) return false;
+  const existing = window.netzEdges?.length || 0;
+  if (existing > 0) {
+    const ok = window.confirm(
+      `${networkLocked ? '🔒 Bestandsnetz: ' : ''}Das automatisch erzeugte Netz ersetzt ${existing} vorhandene Leitung${existing === 1 ? '' : 'en'}.\n\n` +
+      'Die gezeichnete Trasse und die Gebäude bleiben erhalten. Fortfahren?'
+    );
+    if (!ok) return false;
+  }
+  autoGenerateNetz();
+  return true;
+}
+
+export function confirmClearNetz(){
+  if (!ensureWaermeNetzStructureEditable()) return false;
+  const existing = window.netzEdges?.length || 0;
+  if (!existing) { clearNetz(); return true; }
+  const prefix = networkLocked ? 'Das Bestandsnetz ist gesperrt. ' : '';
+  if (!window.confirm(`${prefix}Wirklich alle ${existing} Wärmeleitungen löschen?`)) return false;
+  clearNetz();
+  return true;
+}
+
+export function addNetzEdge(u, v, {force = false} = {}){
+  if (!force && !ensureWaermeNetzStructureEditable()) return;
   const gU = gebaeude.find(g=>g.id===u);
   const gV = gebaeude.find(g=>g.id===v);
   if(!gU || !gV || !gU.polygon || !gV.polygon) return;
@@ -2091,12 +2173,14 @@ export function addNetzEdge(u, v){
     L.DomEvent.stopPropagation(ev);
   });
   hitLayer.on('contextmenu', () => {
+    if (!ensureWaermeNetzStructureEditable()) return;
     map.removeLayer(layer);
     map.removeLayer(hitLayer);
     if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
+    removeEdgeWaypointMarkers(edgeObj);
     if (edgeObj.warnMarker) map.removeLayer(edgeObj.warnMarker);
     if (edgeObj.segLayers) edgeObj.segLayers.forEach(s => map.removeLayer(s));
-    window.netzEdges = window.netzEdges.filter(e => e !== edgeObj);
+    setNetzEdges(window.netzEdges.filter(e => e !== edgeObj));
     closeEdgePopup();
     recalcNetz();
   });
@@ -2138,11 +2222,13 @@ function _makeNetzEdge(uNode, vNode, dn){
     L.DomEvent.stopPropagation(ev);
   });
   hitLayer.on('contextmenu', () => {
+    if (!ensureWaermeNetzStructureEditable()) return;
     map.removeLayer(layer); map.removeLayer(hitLayer);
     if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
+    removeEdgeWaypointMarkers(edgeObj);
     if (edgeObj.warnMarker) map.removeLayer(edgeObj.warnMarker);
     if (edgeObj.segLayers) edgeObj.segLayers.forEach(s => map.removeLayer(s));
-    window.netzEdges = window.netzEdges.filter(e => e !== edgeObj);
+    setNetzEdges(window.netzEdges.filter(e => e !== edgeObj));
     closeEdgePopup(); recalcNetz();
   });
   window.netzEdges.push(edgeObj);
@@ -2150,8 +2236,82 @@ function _makeNetzEdge(uNode, vNode, dn){
   return edgeObj;
 }
 
+// Vollständiger, JSON-tauglicher Snapshot des Wärmenetz-Graphen. Anders als das
+// historische customEdges-Format bleiben damit auch Trassen-/Abzweigknoten,
+// Bestands-DN, Kostenklasse und manuell verschobene Leitungen erhalten.
+export function captureWaermeNetzGraph(){
+  const nodes = new Map();
+  const remember = n => {
+    if (!n || n.id == null || !n.pt) return;
+    nodes.set(n.id, {
+      id: n.id,
+      type: n.type || 'junction',
+      lat: Number(n.pt.lat),
+      lng: Number(n.pt.lng),
+      load: Number(n.load) || 0
+    });
+  };
+  const edges = (window.netzEdges || []).map(e => {
+    remember(e.uNode); remember(e.vNode);
+    return {
+      u: e.u, v: e.v,
+      dn: Number(e.dn) || 0,
+      pruned: e.pruned === true,
+      kostKlasse: e.kostKlasse || null,
+      kostOverride: e.kostOverride === true,
+      waypoints: getEdgeWaypoints(e).map(point => ({lat: Number(point.lat), lng: Number(point.lng)})),
+      waypoint: e.waypoint ? {lat: Number(e.waypoint.lat), lng: Number(e.waypoint.lng)} : null
+    };
+  });
+  return { nodes: [...nodes.values()], edges };
+}
+
+// Stellt einen zuvor erfassten Graphen ohne automatische Neugenerierung wieder
+// her. Gebäudeknoten werden bewusst an ihre aktuelle Polygonmitte gebunden;
+// freie Trassen- und Abzweigknoten verwenden ihre gespeicherten Koordinaten.
+export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
+  clearNetz();
+  if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) return;
+
+  const nodes = new Map();
+  graph.nodes.forEach(data => {
+    let pt = null;
+    let load = Number(data.load) || 0;
+    if (data.type === 'geb') {
+      const g = gebaeude.find(item => item.id === data.id);
+      if (!g?.polygon) return;
+      pt = polygonCenter(g.polygon);
+      load = getComputedStats(g, globalYear).heizlast || 0;
+    } else {
+      pt = L.latLng(Number(data.lat), Number(data.lng));
+    }
+    nodes.set(data.id, {id: data.id, type: data.type || 'junction', pt, load});
+  });
+
+  graph.edges.forEach(data => {
+    const uNode = nodes.get(data.u), vNode = nodes.get(data.v);
+    if (!uNode || !vNode) return;
+    const edge = _makeNetzEdge(uNode, vNode, Number(data.dn) || 0);
+    edge.pruned = data.pruned === true;
+    edge.kostKlasse = data.kostKlasse || null;
+    edge.kostOverride = data.kostOverride === true;
+    const storedWaypoints = Array.isArray(data.waypoints) ? data.waypoints : (data.waypoint ? [data.waypoint] : []);
+    if (storedWaypoints.length) {
+      edge.waypoints = storedWaypoints.map(point => L.latLng(Number(point.lat), Number(point.lng)));
+      edge.waypoint = edge.waypoints[0] || null;
+      edge.layer.setLatLngs([uNode.pt, ...edge.waypoints, vNode.pt]);
+      edge.hitLayer?.setLatLngs([uNode.pt, ...edge.waypoints, vNode.pt]);
+      if (edge.midMarker) map.removeLayer(edge.midMarker);
+      removeEdgeWaypointMarkers(edge);
+      addEdgeMidHandle(edge);
+    }
+  });
+  if (recalculate) recalcNetz();
+}
+
 export function connectGebToNearestPipe(g){
   if (!g || !g.polygon || !networkLocked) return false;
+  if (!ensureWaermeNetzStructureEditable()) return false;
   if (!window.netzEdges || window.netzEdges.length === 0) return false;
   if (window.netzEdges.some(e => e.u === g.id || e.v === g.id)) return false; // schon angeschlossen
 
@@ -2188,9 +2348,10 @@ export function connectGebToNearestPipe(g){
     map.removeLayer(E.layer);
     if (E.hitLayer) map.removeLayer(E.hitLayer);
     if (E.midMarker) map.removeLayer(E.midMarker);
+    removeEdgeWaypointMarkers(E);
     if (E.warnMarker) map.removeLayer(E.warnMarker);
     if (E.segLayers) E.segLayers.forEach(s => map.removeLayer(s));
-    window.netzEdges = window.netzEdges.filter(x => x !== E);
+    setNetzEdges(window.netzEdges.filter(x => x !== E));
     _makeNetzEdge(E.uNode, jNode, dn);
     _makeNetzEdge(jNode, E.vNode, dn);
     _makeNetzEdge(jNode, gNode, 0); // Stich → neue DN wird in recalcNetz dimensioniert
@@ -2204,10 +2365,11 @@ export function clearNetz(){
     map.removeLayer(e.layer);
     if(e.hitLayer) map.removeLayer(e.hitLayer);
     if(e.midMarker) map.removeLayer(e.midMarker);
+    removeEdgeWaypointMarkers(e);
     if(e.warnMarker) map.removeLayer(e.warnMarker);
     if(e.segLayers) e.segLayers.forEach(s => { if(map.hasLayer(s)) map.removeLayer(s); });
   });
-  window.netzEdges = [];
+  setNetzEdges([]);
   setSelectedStrandId(null);
   const sel = document.getElementById('netz-strang');
   if (sel) sel.value = '';
@@ -2217,26 +2379,30 @@ export function clearNetz(){
 
 export function applyWaypoints() {
   window.netzEdges.forEach(e => {
-    const wp = edgeWaypoints[edgeKey(e.u, e.v)];
-    if (!wp) return;
-    e.waypoint = L.latLng(wp.lat, wp.lng);
+    const stored = edgeWaypoints[edgeKey(e.u, e.v)];
+    if (!stored) return;
+    const points = Array.isArray(stored) ? stored : [stored];
+    e.waypoints = points.map(wp => L.latLng(wp.lat, wp.lng));
+    e.waypoint = e.waypoints[0] || null;
     const ll = e.layer.getLatLngs();
-    e.layer.setLatLngs([ll[0], e.waypoint, ll[ll.length - 1]]);
-    if (e.hitLayer) e.hitLayer.setLatLngs([ll[0], e.waypoint, ll[ll.length - 1]]);
-    if (e.midMarker) e.midMarker.setLatLng(e.waypoint);
+    e.layer.setLatLngs([ll[0], ...e.waypoints, ll[ll.length - 1]]);
+    if (e.hitLayer) e.hitLayer.setLatLngs([ll[0], ...e.waypoints, ll[ll.length - 1]]);
+    if (e.midMarker) { map.removeLayer(e.midMarker); removeEdgeWaypointMarkers(e); addEdgeMidHandle(e); }
   });
 }
 
 export function abklemmenGebaeude(id) {
+  if (!ensureWaermeNetzStructureEditable()) return false;
   const toRemove = window.netzEdges.filter(e => e.u === id || e.v === id);
   toRemove.forEach(e => {
     if (map.hasLayer(e.layer)) map.removeLayer(e.layer);
     if (e.hitLayer && map.hasLayer(e.hitLayer)) map.removeLayer(e.hitLayer);
     if (e.midMarker) map.removeLayer(e.midMarker);
+    removeEdgeWaypointMarkers(e);
     if (e.warnMarker) map.removeLayer(e.warnMarker);
     if (e.segLayers) e.segLayers.forEach(s => { if(map.hasLayer(s)) map.removeLayer(s); });
   });
-  window.netzEdges = window.netzEdges.filter(e => e.u !== id && e.v !== id);
+  setNetzEdges(window.netzEdges.filter(e => e.u !== id && e.v !== id));
   closeEdgePopup();
   recalcNetz();
   renderList();
@@ -2245,7 +2411,7 @@ export function abklemmenGebaeude(id) {
 export function setNetzVisible(visible) {
   netzVisible = visible;
   window.netzEdges.forEach(e => {
-    const layers = [e.layer, e.hitLayer, e.midMarker, e.warnMarker, ...(e.segLayers||[])].filter(Boolean);
+    const layers = [e.layer, e.hitLayer, e.midMarker, e.warnMarker, ...(e.waypointMarkers||[]), ...(e.segLayers||[])].filter(Boolean);
     layers.forEach(l => {
       if (visible) { if (!map.hasLayer(l)) map.addLayer(l); }
       else { if (map.hasLayer(l)) map.removeLayer(l); }
@@ -2325,6 +2491,29 @@ export function recalcNetz(){
     nodeMap[e.v].adj.push({ to: e.u, edge: e, ptTo: (e.uNode?e.uNode.pt:null) });
   });
 
+  const consumerIds = gebaeude
+    .filter(g => g.id !== zId && !isExcluded(g.id) && getComputedStats(g, globalYear).heizlast > 0)
+    .map(g => g.id);
+  const topology = validateRadialHeatGraph(window.netzEdges, zId, consumerIds);
+  window._waermeNetzValidation = {
+    cycleEdges: topology.cycleEdgeIndexes.length,
+    disconnectedConsumerIds: topology.disconnectedConsumerIds
+  };
+  window.netzEdges.forEach((edge, index) => {
+    edge.notHydraulicallySolved = topology.cycleEdgeIndexes.includes(index);
+    edge.disconnected = !edge.pruned && (!topology.reachable.has(edge.u) || !topology.reachable.has(edge.v));
+    if (edge.notHydraulicallySolved) edge.layer?.setStyle({dashArray: '8,6', color: '#ab47bc'});
+    else if (edge.disconnected) edge.layer?.setStyle({dashArray: '4,6', color: '#ff9800'});
+  });
+  const topologyWarning = document.getElementById('netz-topology-warning');
+  if (topologyWarning) {
+    const parts = [];
+    if (topology.disconnectedConsumerIds.length) parts.push(`${topology.disconnectedConsumerIds.length} Verbraucher nicht mit der Zentrale verbunden`);
+    if (topology.cycleEdgeIndexes.length) parts.push(`${topology.cycleEdgeIndexes.length} Ringkante(n) nicht hydraulisch gelöst`);
+    topologyWarning.textContent = parts.length ? `⚠ ${parts.join(' · ')}` : '';
+    topologyWarning.style.display = parts.length ? 'block' : 'none';
+  }
+
   const order = [];
   const parentEdge = {};
   const visited = new Set([zId]);
@@ -2401,8 +2590,8 @@ export function recalcNetz(){
          if(bC&&bC.polygon) ptC = polygonCenter(bC.polygon);
       }
       if(ptP && ptC) {
-          const wpt = pInfo.e.waypoint;
-          const newPts = wpt ? [ptP, wpt, ptC] : [ptP, ptC];
+          const waypoints = getEdgeWaypoints(pInfo.e);
+          const newPts = [ptP, ...waypoints, ptC];
           pInfo.e.layer.setLatLngs(newPts);
           if(pInfo.e.hitLayer) pInfo.e.hitLayer.setLatLngs(newPts);
       }
@@ -2862,7 +3051,7 @@ export function recalcNetz(){
     }
 
     // midMarker position aktualisieren (wenn kein manueller Waypoint)
-    if (e.midMarker && !e.waypoint) {
+    if (e.midMarker) {
       e.midMarker.setLatLng(getEdgeMidDisplayPt(e));
     }
   });
@@ -3093,19 +3282,23 @@ export function exportRohreCSV() {
 }
 
 export function toggleDrawEdge(){
+  if (!window.isDrawingEdge && !ensureWaermeNetzStructureEditable()) return false;
   window.isDrawingEdge = !window.isDrawingEdge;
   const btn = document.getElementById('btn-draw-edge');
   if(window.isDrawingEdge){
+    beginInteraction({id:'draw-heat-edge',label:'Wärmeleitung verbinden',hint:'Ersten und zweiten Anschluss anklicken.',cancel:()=>{ if (window.isDrawingEdge) toggleDrawEdge(); }});
     btn.classList.add('active');
     showHint('Klicke auf das erste Gebäude für die Leitung.');
     setEdgeStartId(null);
     map.getContainer().style.cursor='crosshair';
   } else {
+    cancelInteraction('draw-heat-edge');
     btn.classList.remove('active');
     hideHint();
     setEdgeStartId(null);
     map.getContainer().style.cursor='';
   }
+  return window.isDrawingEdge;
 }
 
 export function startNetzEdgeFrom(id) {
@@ -3113,4 +3306,8 @@ export function startNetzEdgeFrom(id) {
   setEdgeStartId(id);
   showHint('Zweites Gebäude auf der Karte anklicken.');
 }
-
+export function ensureWaermeNetzStructureEditable() {
+  if (!networkLocked) return true;
+  showHint('🔒 Das Bestandsnetz ist gesperrt. Zum Ändern der Netzstruktur zuerst auf „Neubaunetz“ umschalten.', 6000);
+  return false;
+}

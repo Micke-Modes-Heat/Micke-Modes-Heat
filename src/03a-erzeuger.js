@@ -17,6 +17,7 @@ import { _hideForDraw } from './04a-ui-panels.js';
 import { _quelleTemp, isErzeugerAktiv, moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { fernwaermeLayerGroup, ffCounter, freiflaechen, gasKessel, heizhackschnitzel, heizoelKessel, hhsLayerGroup, pelletsKessel, pelletsLayerGroup, setFernwaermeEmF, setFernwaermeLayerGroup, setFfCounter, setFfDrawId, setFfDrawPoints, setFreiflaechen, setGasKessel, setHeizhackschnitzel, setHeizoelKessel, setHhsLayerGroup, setIsPlacingFernwaerme, setIsPlacingHhs, setIsPlacingPellets, setPefFernwaerme, setPelletsKessel, setPelletsLayerGroup } from './01-globals-varianten.js';
 
@@ -139,6 +140,7 @@ export function attachFFLayer(ff) {
 
 export function startDrawFF() {
   cancelDrawFF();
+  beginInteraction({id:'draw-pv-area',label:'PV-Freifläche zeichnen',hint:'Eckpunkte setzen, Startpunkt schließt die Fläche.',cancel:cancelDrawFF});
   setFfDrawId(ffCounter);
   setFfCounter(ffCounter + 1);
   setFfDrawPoints([]);
@@ -156,10 +158,12 @@ export function cancelDrawFF() {
   hideHint();
   const d2 = document.getElementById('el-btn-ff-draw');   if (d2) d2.style.display = '';
   const c2 = document.getElementById('el-btn-ff-cancel'); if (c2) c2.style.display = 'none';
+  cancelInteraction('draw-pv-area');
 }
 
 export function finishDrawFF() {
   if (ffDrawPoints.length < 3) return;
+  commitInteraction('draw-pv-area');
   const id = ffDrawId;
   const pts = [...ffDrawPoints];
   cancelDrawFF();
@@ -962,6 +966,9 @@ export function togglePlacePellets() {
     redrawVerbindungslinien();
     document.getElementById('btn-place-pellets').textContent = 'Lager auf Karte platzieren';
   } else {
+    beginInteraction({id:'place-pellet-storage',label:'Pelletlager platzieren',hint:'Position auf der Karte anklicken.',cancel:()=>{
+      setIsPlacingPellets(false); map.getContainer().style.cursor = ''; cancelInteraction('place-pellet-storage');
+    }});
     setIsPlacingPellets(true);
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
@@ -1089,6 +1096,9 @@ export function togglePlaceHhs() {
     redrawVerbindungslinien();
     document.getElementById('btn-place-hhs').textContent = 'Lager auf Karte platzieren';
   } else {
+    beginInteraction({id:'place-wood-storage',label:'Hackschnitzellager platzieren',hint:'Position auf der Karte anklicken.',cancel:()=>{
+      setIsPlacingHhs(false); map.getContainer().style.cursor = ''; cancelInteraction('place-wood-storage');
+    }});
     setIsPlacingHhs(true);
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
@@ -1182,6 +1192,9 @@ export function togglePlaceFernwaerme() {
     redrawVerbindungslinien();
     document.getElementById('btn-place-fw').textContent = 'Einspeisepunkt auf Karte platzieren';
   } else {
+    beginInteraction({id:'place-district-heat',label:'Fernwärme-Einspeisung platzieren',hint:'Position auf der Karte anklicken.',cancel:()=>{
+      setIsPlacingFernwaerme(false); map.getContainer().style.cursor = ''; cancelInteraction('place-district-heat');
+    }});
     setIsPlacingFernwaerme(true);
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
@@ -1229,4 +1242,3 @@ export function redrawVerbindungslinien() {
       { color: '#ef6c00', weight: 1.5, dashArray: '8,6', opacity: 0.6 }).addTo(window.verbindungsLayerGroup);
   }
 }
-

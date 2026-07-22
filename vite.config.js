@@ -5,6 +5,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     open: false,
+    headers: {'Cross-Origin-Opener-Policy':'same-origin','Cross-Origin-Embedder-Policy':'require-corp'},
   },
   preview: {
     port: 5173,

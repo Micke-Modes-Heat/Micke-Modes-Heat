@@ -1,7 +1,7 @@
 // ── 04a-ui-panels.js — Gebäude-Daten, Bulk-Edit, Filter, Panels, Layout, LP-KPIs, Analyse-Scaffold ──
 // NUTZUNG_DEFAULTS → src/config/erzeuger-cfg.js
 
-import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, variantResults } from './01-globals-varianten.js';
+import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, networkLocked, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
 import { _invalidateStats, getComputedStats, map } from './02b-gebaeude.js';
 import { setMode, updateViz } from './02c-karte-werkzeuge.js';
@@ -29,7 +29,10 @@ import { getWLDColor } from './02a-netz-physik.js';
 import { OVERPASS_ENDPOINTS, updateRohrListe } from './03b-netz.js';
 import { _buildProjectData, _loadProject, hideHint, showHint } from './03c-gebaeude-io.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
-import { netzPruningMode, setNetzPruningMode } from './01-globals-varianten.js';
+import { netzPruningMode, setNetzPruningMode, setNetworkLocked } from './01-globals-varianten.js';
+import { loadLatestAutosave, saveAutosaveProject } from './lib/autosave-store.js';
+import { appLifecycle } from './lib/lifecycle.js';
+import { beginInteraction, cancelInteraction } from './lib/interaction-state.js';
 
 export function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
@@ -197,19 +200,26 @@ document.addEventListener('click', e => {
 });
 
 // ── Autosave (LocalStorage) ───────────────────────────────────────────
-export function autosave() {
+let _latestAutosave = null;
+export async function autosave() {
   try {
-    localStorage.setItem('energiekarte_autosave', JSON.stringify(_buildProjectData()));
-  } catch(e) {}
+    _latestAutosave = await saveAutosaveProject(_buildProjectData());
+    window._autosaveStatus = {ok: true, savedAt: _latestAutosave.savedAt};
+  } catch(e) {
+    window._autosaveStatus = {ok: false, error: e.message};
+    console.error(e);
+    /** @type {any} */ (window).reportDiagnostic?.({severity:'error',area:'Automatische Sicherung',message:e.message,action:'Projekt jetzt manuell exportieren und verfügbaren Browserspeicher prüfen.'});
+    showHint('⚠ Automatische Sicherung fehlgeschlagen. Projekt bitte manuell speichern.', 8000);
+  }
 }
-setInterval(autosave, 30000);
+appLifecycle.interval(autosave, 30000);
 
 // Restore autosave on load if no manual project loaded
-export function tryRestoreAutosave() {
+export async function tryRestoreAutosave() {
   try {
-    const raw = localStorage.getItem('energiekarte_autosave');
-    if (!raw) return;
-    const project = JSON.parse(raw);
+    _latestAutosave = await loadLatestAutosave();
+    if (!_latestAutosave) return;
+    const project = _latestAutosave.project;
     if (!project.gebaeude || !project.gebaeude.length) return;
     const hint = document.getElementById('hint');
     hint.innerHTML = 'Autosave gefunden. <span style="color:var(--accent);cursor:pointer;text-decoration:underline" data-click="loadAutosave()">Wiederherstellen?</span> <span style="color:var(--muted);cursor:pointer;margin-left:8px;" data-click="document.getElementById(\'hint\').classList.add(\'hidden\');document.getElementById(\'hint\').style.pointerEvents=\'\';">✕</span>';
@@ -218,11 +228,11 @@ export function tryRestoreAutosave() {
   } catch(e) {}
 }
 
-export function loadAutosave() {
-  const raw = localStorage.getItem('energiekarte_autosave');
-  if (!raw) return;
+export async function loadAutosave() {
   try {
-    _loadProject(JSON.parse(raw));
+    const snapshot = _latestAutosave || await loadLatestAutosave();
+    if (!snapshot) return;
+    await _loadProject(snapshot.project);
     showHint('✓ Autosave wiederhergestellt.');
     setTimeout(hideHint, 3000);
   } catch(e) { showHint('Fehler beim Wiederherstellen.'); console.error(e); }
@@ -370,7 +380,7 @@ export function setEdgeDN(val) {
   const dn = parseInt(val);
   activeEdgePopup.dnOverride = dn > 0;
   activeEdgePopup.dn = dn > 0 ? dn : 0;
-  window.networkLocked = activeEdgePopup.dnOverride; // auto-lock when DN set manually
+  setNetworkLocked(activeEdgePopup.dnOverride); // auto-lock when DN set manually
   recalcNetz();
   if (activeEdgePopup) showEdgePopup(activeEdgePopup, {
     clientX: parseInt(document.getElementById('edge-popup').style.left) + document.getElementById('map').getBoundingClientRect().left,
@@ -397,10 +407,12 @@ export function setEdgeKost(klass) {
 // ── Netz-Pruning ──────────────────────────────────────────────────────────
 export function togglePruningMode() {
   setNetzPruningMode(!netzPruningMode);
+  if (netzPruningMode) beginInteraction({id:'prune-heat-network',label:'Netzabschnitte ausschließen',hint:'Leitungen anklicken; Escape beendet den Modus.',cancel:()=>{ if (netzPruningMode) togglePruningMode(); }});
+  else cancelInteraction('prune-heat-network');
   const btn = document.getElementById('btn-pruning-mode');
   const info = document.getElementById('pruning-info');
   if (btn) {
-    btn.textContent = netzPruningMode ? '✂ Pruning-Modus: An' : '✂ Pruning-Modus: Aus';
+    btn.textContent = netzPruningMode ? '✂ Abschnitte ausschließen: An' : '✂ Abschnitte ausschließen: Aus';
     btn.style.borderColor = netzPruningMode ? '#f9a825' : 'var(--border)';
     btn.style.color = netzPruningMode ? '#f9a825' : '';
     btn.style.background = netzPruningMode ? 'rgba(249,168,37,0.08)' : '';
@@ -410,12 +422,16 @@ export function togglePruningMode() {
   if (lpBtn) {
     lpBtn.style.borderColor = netzPruningMode ? '#f9a825' : 'var(--border)';
     lpBtn.style.color = netzPruningMode ? '#f9a825' : '';
-    lpBtn.textContent = netzPruningMode ? '✂ Pruning (aktiv)' : '✂ Pruning';
+    lpBtn.textContent = netzPruningMode ? '✂ Ausschließen (aktiv)' : '✂ Abschnitte ausschließen';
   }
   updatePruningSummary();
 }
 
 export function toggleEdgePruned(edge) {
+  if (networkLocked) {
+    showHint('🔒 Pruning verändert die wirksame Bestandsnetzstruktur. Zum Bearbeiten zuerst entsperren.', 6000);
+    return false;
+  }
   const e = edge || activeEdgePopup;
   if (!e) return;
   e.pruned = !e.pruned;
@@ -622,7 +638,7 @@ export function toggleSidebar() {
   const btn = document.getElementById('sidebar-toggle');
   const collapsed = sb.classList.toggle('collapsed');
   btn.textContent = collapsed ? '▶' : '◀';
-  btn.style.right = collapsed ? '0' : '340px';
+  btn.style.right = collapsed ? '0' : `${Math.round(sb.getBoundingClientRect().width)}px`;
   const es = document.getElementById('erzeuger-status');
   if (es) es.style.right = collapsed ? '10px' : '350px';
   setTimeout(() => map.invalidateSize(), 210);
@@ -719,9 +735,19 @@ export function toggleLeftPanel() {
   const btn = document.getElementById('lp-toggle');
   lp.classList.toggle('collapsed', leftPanelCollapsed);
   btn.textContent = leftPanelCollapsed ? '▶' : '◀';
-  btn.style.left = leftPanelCollapsed ? '0' : '280px';
+  btn.style.left = leftPanelCollapsed ? '0' : `${Math.round(lp.getBoundingClientRect().width)}px`;
   document.querySelector('.lp-collapse-btn').textContent = leftPanelCollapsed ? '▶' : '◀';
   setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 260);
+}
+
+/** Startlayout mit ausreichend freier Kartenfläche für Laptop und Tablet. */
+export function initResponsiveLayout() {
+  const width = window.innerWidth;
+  const sidebar = document.getElementById('sidebar');
+  const left = document.getElementById('left-panel');
+  if (width <= 1100 && sidebar && !sidebar.classList.contains('collapsed')) toggleSidebar();
+  if (width <= 760 && left && !left.classList.contains('collapsed')) toggleLeftPanel();
+  document.documentElement.dataset.viewportClass = width <= 760 ? 'tablet-portrait' : width <= 1100 ? 'compact' : 'desktop';
 }
 
 export function toggleSection(id) {
@@ -1232,4 +1258,3 @@ window._ebpSatellit = function(checked) {
   }
   if (typeof window.toggleTile === 'function') window.toggleTile(checked);
 };
-

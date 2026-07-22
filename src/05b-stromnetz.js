@@ -5,7 +5,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ── Styled Modal-Dialoge ────────────────────────────────────────
-import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, trassePoints, trasseSegments } from './01-globals-varianten.js';
+import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, setStromEdges, setStromNodes, setTrasseCurrentSegStart, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { getGebStromMwh, map } from './02b-gebaeude.js';
 import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { setNetzVisible } from './03b-netz.js';
@@ -14,8 +14,10 @@ import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js'
 import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSpannungsfall, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
+import { createId } from './lib/util.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus } from './13a-assets-core.js';
 import { collapseAssetSpider, redrawAllAssets } from './13b-assets-render.js';
+import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
 import { globalYear, stromEdges } from './01-globals-varianten.js';
 
 export function epConfirm(title, message, opts) {
@@ -219,7 +221,7 @@ const _CABLE_MASSN_TYP = {
   Austausch:   { label: 'Austausch',    icon: '🔧' },
   Rueckbau:    { label: 'Rückbau',      icon: '🏚' },
 };
-function _cableMassnId() { return 'cm_' + Math.random().toString(36).slice(2, 8); }
+function _cableMassnId() { return createId('cm'); }
 
 function _cableMassnRow(m) {
   const s = _CABLE_MASSN_STATUS[m.status] || _CABLE_MASSN_STATUS.geplant;
@@ -348,6 +350,7 @@ export function startPlaceStromNode(type) {
   // Cancel any other placement mode
   if (window.isPlacingStromNode === type) { cancelPlaceStromNode(); return; }
   cancelPlaceStromNode();
+  beginInteraction({id:'place-strom-node',label:'Stromkomponente platzieren',hint:'Gewünschte Position auf der Karte anklicken.',cancel:cancelPlaceStromNode});
   window.isPlacingStromNode = type;
   const btnId = { nap: 'btn-place-nap', trafo: 'btn-place-trafo', nshv: 'btn-place-nshv' }[type];
   const btn = document.getElementById(btnId);
@@ -357,6 +360,7 @@ export function startPlaceStromNode(type) {
   map.once('click', function(ev) {
     if (!window.isPlacingStromNode) return;
     const nodeType = window.isPlacingStromNode;
+    commitInteraction('place-strom-node');
     cancelPlaceStromNode();
     addStromNode(nodeType, ev.latlng);
     recalcStromNetz();
@@ -367,6 +371,7 @@ export function cancelPlaceStromNode() {
   window.isPlacingStromNode = null;
   map.getContainer().style.cursor = '';
   _restoreAfterDraw();
+  cancelInteraction('place-strom-node');
   ['btn-place-nap','btn-place-trafo','btn-place-nshv'].forEach(id => {
     const b = document.getElementById(id);
     if (b) { b.style.background = ''; b.style.fontWeight = ''; }
@@ -442,9 +447,7 @@ export function removeStromNode(id) {
 // ── Kabel (Strom-Kanten) ────────────────────────────────────────
 export function startDrawStromEdge() {
   if (window.isDrawingStromEdge) { cancelDrawStromEdge(); return; }
-  // Andere Modi beenden
-  if (window.isDrawingTrasse && typeof window.toggleDrawTrasse === 'function') window.toggleDrawTrasse();
-  if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
+  beginInteraction({id:'draw-strom-edge',label:'Stromkabel verbinden',hint:'Erste und zweite Komponente anklicken.',cancel:cancelDrawStromEdge});
   window.isDrawingStromEdge = true;
   window.stromEdgeStartId = null;
   const btn = document.getElementById('btn-draw-strom-edge');
@@ -455,6 +458,7 @@ export function startDrawStromEdge() {
 export function cancelDrawStromEdge() {
   window.isDrawingStromEdge = false;
   window.stromEdgeStartId = null;
+  cancelInteraction('draw-strom-edge');
   if (typeof collapseAssetSpider === 'function') collapseAssetSpider();
   map.getContainer().style.cursor = '';
   const btn = document.getElementById('btn-draw-strom-edge');
@@ -490,7 +494,7 @@ export function stromNodeClick(nodeId) {
 // Konvertiert window.trassePoints + window.trasseSegments in das EL.trassen-Format
 function _getTrassenForRouting() {
   const pts = window.trassePoints;
-  const segs = window.trasseSegments;
+  const segs = window.trasseSegments.filter(seg => !seg.domains || seg.domains.includes('strom'));
   if (!pts || pts.length < 2 || !segs || segs.length === 0) return [];
   return segs
     .map((seg, i) => ({
@@ -757,7 +761,7 @@ export function addStromEdge(uId, vId) {
   if (window.stromNetzVisible) { outlineLayer.addTo(map); layer.addTo(map); hitLayer.addTo(map); }
 
   const edge = {
-    id: 'se_' + Math.random().toString(36).slice(2, 9),
+    id: createId('se'),
     u: uId, v: vId, uNode: uNode, vNode: vNode,
     layer: layer, outlineLayer: outlineLayer, hitLayer: hitLayer, arrowMarker: null,
     cableType: defaultType, crossSection: 0, autoSized: true, fuseA: 0, nParallel: 1,
@@ -827,8 +831,8 @@ export function _refreshEdgeYears(edge) {
   const yu = _endpointYears(edge.u), yv = _endpointYears(edge.v);
   const bjs = [yu.bj, yv.bj].filter(v => v != null);
   const ajs = [yu.aj, yv.aj].filter(v => v != null);
-  edge.baujahr    = bjs.length ? Math.max(...bjs) : null;
-  edge.abrissjahr = ajs.length ? Math.min(...ajs) : null;
+  if (!edge._baujahrExplicit) edge.baujahr = bjs.length ? Math.max(...bjs) : null;
+  if (!edge._abrissjahrExplicit) edge.abrissjahr = ajs.length ? Math.min(...ajs) : null;
 }
 export function refreshStromEdgeYears() {
   (window.stromEdges || []).forEach(_refreshEdgeYears);
@@ -2118,7 +2122,8 @@ export function _schnellberechnungStromInner() {
   if (typeof trassePoints !== 'undefined' && trassePoints.length >= 2) {
     var jBaseId = 30000;
     var jIdx = 0;
-    var segs = trasseSegments.length > 0 ? trasseSegments : [{ start: 0, end: trassePoints.length - 1 }];
+    var stromSegs = trasseSegments.filter(seg => !seg.domains || seg.domains.includes('strom'));
+    var segs = stromSegs.length > 0 ? stromSegs : (trasseSegments.length === 0 ? [{ start: 0, end: trassePoints.length - 1 }] : []);
 
     segs.forEach(function(seg) {
       var lastJunction = null;
@@ -2887,8 +2892,8 @@ function _adoptOsmStrasse(pl, skipRedraw) {
 
   const startIdx = window.trassePoints.length;
   for (const pt of pl._osmPts) window.trassePoints.push(pt);
-  window.trasseSegments.push({ start: startIdx, end: window.trassePoints.length - 1 });
-  window.trasseCurrentSegStart = window.trassePoints.length;
+  window.trasseSegments.push({ start: startIdx, end: window.trassePoints.length - 1, domains:['strom'] });
+  setTrasseCurrentSegStart(window.trassePoints.length);
 
   if (!skipRedraw) {
     redrawTrasse();
@@ -2942,8 +2947,8 @@ export function clearStromNetz() {
   window.stromNodes.forEach(n => {
     if (n.marker && map.hasLayer(n.marker)) map.removeLayer(n.marker);
   });
-  window.stromEdges = [];
-  window.stromNodes = [];
+  setStromEdges([]);
+  setStromNodes([]);
   window.stromNextId = 20000;
   window._stromNetzKpis = null;
   _selectedEdge = null;

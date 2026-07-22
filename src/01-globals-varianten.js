@@ -1,7 +1,7 @@
 import { map } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, redrawFliessgewaesser, redrawLwWp, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { calcVerdraengungEmF, clearBhkw, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
-import { calcGeoThermie, clearGeo, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
+import { applyWaermeNetzGraph, calcGeoThermie, captureWaermeNetzGraph, clearGeo, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
 import { escHtml, renderList, updateTotals } from './03c-gebaeude-io.js';
 import { currentViewMode, setViewMode } from './04a-ui-panels.js';
 import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
@@ -9,6 +9,7 @@ import { autoGkResult, isErzeugerAktiv, meritOrderKeys, setAutoGkResult, setMeri
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 
 export let gebaeude = [];
+export function setGebaeude(v) { gebaeude = v; }
 export const _expandedIds = new Set(); // tracks which building cards are expanded
 export let _vizTimer = null;
 export function updateVizDebounced() { clearTimeout(_vizTimer); _vizTimer = setTimeout(updateViz, 80); }
@@ -19,23 +20,34 @@ export let drawPoints  = [];
 export let drawPolyline= null;
 export let drawStartMarker = null;
 export let selectedId  = null;
+export function setSelectedId(v) { selectedId = v; }
 export let idCounter   = 1;
 export function setIdCounter(v) { idCounter = v; }
 
 export const R_MIN = 4, R_MAX = 54;
 
 export let globalYear  = 2026;
+export function setGlobalYearValue(v) { globalYear = Number.parseInt(v); }
 export let networkLocked = true; 
+export function setNetworkLocked(v) { networkLocked = !!v; }
 
 export let areaDrawing  = false;
+export function setAreaDrawing(v) { areaDrawing = !!v; }
 export let areaPoints   = [];
+export function setAreaPoints(v) { areaPoints = Array.isArray(v) ? v : []; }
 export let areaPolyline = null;
+export function setAreaPolyline(v) { areaPolyline = v; }
 export let areaPolygon  = null;
+export function setAreaPolygon(v) { areaPolygon = v; }
 export let areaLatLngs  = null;
+export function setAreaLatLngs(v) { areaLatLngs = v; }
 export let areaStartMarker = null;
+export function setAreaStartMarker(v) { areaStartMarker = v; }
 export let areaEditMarkers = [];
+export function setAreaEditMarkers(v) { areaEditMarkers = Array.isArray(v) ? v : []; }
 
 export let netzEdges = [];
+export function setNetzEdges(v) { netzEdges = v; }
 export let calculatedLoad = {};
 export let edgeWaypoints = {};
 export function setEdgeWaypoints(v) { edgeWaypoints = v; }
@@ -51,22 +63,33 @@ export function setNetzPruningMode(v) { netzPruningMode = v; }
 // ── Stromnetz state ──────────────────────────────────────────────────────
 export let stromEdges = [];
 export let stromNodes = [];
+export function setStromEdges(v) { stromEdges = v; }
+export function setStromNodes(v) { stromNodes = v; }
 export let stromNextId = 20000; // IDs: NAP=20000+, Trafo=21000+, NSHV=22000+, Gebäude nutzen gebId
+export function setStromNextId(v) { stromNextId = Number(v); }
 export let isPlacingStromNode = null; // null | 'nap' | 'trafo' | 'nshv'
+export function setIsPlacingStromNode(v) { isPlacingStromNode = v; }
 export let isDrawingStromEdge = false;
+export function setIsDrawingStromEdge(v) { isDrawingStromEdge = !!v; }
 export let stromEdgeStartId = null;
+export function setStromEdgeStartId(v) { stromEdgeStartId = v; }
 export let stromNetzVisible = true;
+export function setStromNetzVisibleState(v) { stromNetzVisible = !!v; }
 export let stromColorMode = 'auslastung'; // auslastung | spannungsfall | leistung | richtung
+export function setStromColorModeState(v) { stromColorMode = v; }
 export let stromNetzSubTab = 'waerme'; // 'waerme' | 'strom'
 
 // Kabeltypen (VDE 0298-4, Verlegeart D — Erdverlegung, 4-adrig)
 // KABEL_TYPEN, TRAFO_GROESSEN → config/netz-kosten.js (wird vorher geladen)
 
 export let isDrawingTrasse = false;
+export function setIsDrawingTrasse(v) { isDrawingTrasse = !!v; }
 export let trassePoints = [];
 export function setTrassePoints(v) { trassePoints = v; }
 export let trassePolyline = null;
+export function setTrassePolyline(v) { trassePolyline = v; }
 export let trasseEditMarkers = [];
+export function setTrasseEditMarkers(v) { trasseEditMarkers = v; }
 // Mehrstrang-Trasse: Array von Segmenten [{points: [idx1, idx2, ...]}]
 // Jedes Segment verbindet aufeinanderfolgende trassePoints-Indizes
 export let trasseSegments = []; // [{start, end}] — Bereiche in trassePoints
@@ -74,6 +97,7 @@ export function setTrasseSegments(v) { trasseSegments = v; }
 export let trasseCurrentSegStart = 0; // Index in trassePoints wo aktuelles Segment beginnt
 export function setTrasseCurrentSegStart(v) { trasseCurrentSegStart = v; }
 export let trasseDetached = false; // true = Strang losgelöst, warte auf Wiedereinstieg
+export function setTrasseDetached(v) { trasseDetached = !!v; }
 
 export let fliessgewaesser = null;
 export function setFliessgewaesser(v) { fliessgewaesser = v; }
@@ -86,9 +110,11 @@ export let riverDrawPolyline = null;
 export let riverEditMarkers = [];
 
 export let lwWp = null;
+export function setLwWp(v) { lwWp = v; }
 export let lwWpLayerGroup = null;
 export let lwWpSchallLayerGroup = null;
 export let lwWpVisible = true;
+export function setLwWpVisible(v) { lwWpVisible = !!v; }
 export let lwWpSchallVisible = true;
 export let isPlacingLwWp = false;
 export let netzVisible = true;
@@ -637,9 +663,13 @@ export function _getEtaMap() {
 // ── Varianten ────────────────────────────────────────────────────────────────
 export let varianten = [];
 export let activeVariantId = null;
+export function setActiveVariantId(v) { activeVariantId = v; }
 export let baseNetzSnapshot = null;
 export let baseErzeugerSnapshot = null;
 export let baseStromNetzSnapshot = null;
+export function setBaseNetzSnapshot(v) { baseNetzSnapshot = v; }
+export function setBaseErzeugerSnapshot(v) { baseErzeugerSnapshot = v; }
+export function setBaseStromNetzSnapshot(v) { baseStromNetzSnapshot = v; }
 
 // ── Phasen (Ausbaustufen) ─────────────────────────────────────────────────────
 // Phase = { id, name, jahrVon, jahrBis, variantId, reihenfolge }
@@ -694,6 +724,7 @@ function _applyStromNetzState(state) {
 
 export function captureNetzState() {
   return {
+    zentrale: document.getElementById('netz-zentrale').value,
     vl: document.getElementById('netz-vl').value,
     rl: document.getElementById('netz-rl').value,
     v: document.getElementById('netz-v').value,
@@ -702,11 +733,19 @@ export function captureNetzState() {
     uWert: document.getElementById('netz-u-wert').value,
     gzfMethode: document.getElementById('netz-gzf-methode')?.value || 'richtwert',
     gzfManuell: parseFloat(document.getElementById('netz-gzf-manuell')?.value) || 0.6,
+    planJahr: document.getElementById('netz-plan-jahr')?.value || '',
+    planVl: document.getElementById('netz-plan-vl')?.value || '',
+    planRl: document.getElementById('netz-plan-rl')?.value || '',
+    trasse: trassePoints.map(p => ({lat: p.lat, lng: p.lng})),
+    trasseSegments: trasseSegments.map(s => ({...s})),
+    graph: captureWaermeNetzGraph(),
   };
 }
 
 export function applyNetzState(state) {
   if (!state) return;
+  const zentrale = document.getElementById('netz-zentrale');
+  if (zentrale && state.zentrale != null) zentrale.value = state.zentrale;
   document.getElementById('netz-vl').value = state.vl ?? 90;
   document.getElementById('netz-rl').value = state.rl ?? 60;
   syncVLTemps('netz');
@@ -719,9 +758,16 @@ export function applyNetzState(state) {
     document.getElementById('netz-gzf-manuell-wrap').style.display = state.gzfMethode === 'manuell' ? '' : 'none';
   }
   if (state.gzfManuell != null) document.getElementById('netz-gzf-manuell').value = state.gzfManuell;
-  // Netz-Topologie bleibt erhalten; Parameter-Neuberechnung per setTimeout
-  // damit applyErzeugerState() zuerst vollständig abläuft
-  setTimeout(() => { if (typeof netzEdges !== 'undefined' && netzEdges.length > 0) recalcNetz(); }, 50);
+  if (state.planJahr != null) document.getElementById('netz-plan-jahr').value = state.planJahr;
+  if (state.planVl != null) document.getElementById('netz-plan-vl').value = state.planVl;
+  if (state.planRl != null) document.getElementById('netz-plan-rl').value = state.planRl;
+  if (Array.isArray(state.trasse)) {
+    setTrassePoints(state.trasse.map(p => L.latLng(p.lat, p.lng)));
+    setTrasseSegments((state.trasseSegments || []).map(s => ({...s})));
+    setTrasseCurrentSegStart(trassePoints.length);
+    if (typeof window.redrawTrasse === 'function') window.redrawTrasse();
+  }
+  if (state.graph) applyWaermeNetzGraph(state.graph, {recalculate: false});
 }
 
 export function captureErzeugerState() {
@@ -961,7 +1007,10 @@ export function applyErzeugerState(state) {
   window._wirtBausteineOverrides = JSON.parse(JSON.stringify(state?.wirtBausteineOverrides || {}));
 }
 
-export function activateVariant(id) {
+export function activateVariant(id, _transactionActive = false) {
+  if (!_transactionActive && typeof window.runPlanningTransaction === 'function') {
+    return window.runPlanningTransaction('Variante wechseln', () => activateVariant(id, true));
+  }
   // Aktuellen Zustand sichern
   if (activeVariantId === null) {
     baseNetzSnapshot = captureNetzState();
@@ -984,6 +1033,10 @@ export function activateVariant(id) {
     applyErzeugerState(target.erzeuger);
     _applyStromNetzState(target.stromnetz);
   }
+  // Variantenwechsel ist eine synchrone Transaktion: erst alle Teilzustände
+  // anwenden, dann genau einmal den Wärmegraphen und die Ergebnis-Caches erneuern.
+  if (netzEdges.length > 0) recalcNetz();
+  variantResults = {};
   renderVariantenBar();
   updateVariantBanner();
   updateAllDeckungen();
@@ -992,6 +1045,13 @@ export function activateVariant(id) {
 export function addVariante() {
   const name = prompt('Name der neuen Variante:', `Variante ${varianten.length + 1}`);
   if (!name) return;
+  if (typeof window.runPlanningTransaction === 'function') {
+    return window.runPlanningTransaction('Variante anlegen', () => _addVarianteWithName(name));
+  }
+  return _addVarianteWithName(name);
+}
+
+function _addVarianteWithName(name) {
   if (activeVariantId === null) {
     baseNetzSnapshot = captureNetzState();
     baseErzeugerSnapshot = captureErzeugerState();
@@ -1013,6 +1073,13 @@ export function addVariante() {
 }
 
 export function deleteVariante(id) {
+  if (typeof window.runPlanningTransaction === 'function') {
+    return window.runPlanningTransaction('Variante löschen', () => _deleteVariante(id));
+  }
+  return _deleteVariante(id);
+}
+
+function _deleteVariante(id) {
   if (activeVariantId === id) activateVariant(null);
   varianten = varianten.filter(v => v.id !== id);
   renderVariantenBar();
@@ -1022,7 +1089,11 @@ export function renameVariante(id) {
   const v = varianten.find(x => x.id === id);
   if (!v) return;
   const name = prompt('Neuer Name:', v.name);
-  if (name) { v.name = name; renderVariantenBar(); }
+  if (name) {
+    const apply = () => { v.name = name; renderVariantenBar(); };
+    if (typeof window.runPlanningTransaction === 'function') return window.runPlanningTransaction('Variante umbenennen', apply);
+    apply();
+  }
 }
 
 let _varPillsExpanded = false;

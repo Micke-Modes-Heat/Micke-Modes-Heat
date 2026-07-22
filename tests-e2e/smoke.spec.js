@@ -37,11 +37,17 @@ test('dist: LWWP platzieren, Grundlage 500 MWh, Live-Tab sichtbar, keine Konsole
     pMaxKw: window.systemState.pMaxKw,
     gesamtMwh: window.systemState.gesamtMwhMitNV,
     liveTabSichtbar: (() => { const t = document.getElementById('view-tab-live'); return !!t && t.style.display !== 'none'; })(),
+    pdfVersion: window.pdfjsLib?.version,
+    tablistRole: document.getElementById('view-tabs')?.getAttribute('role'),
+    activeTabAria: document.querySelector('.view-tab.active')?.getAttribute('aria-selected'),
   }));
 
   expect(state.pMaxKw).toBeGreaterThan(0);
   expect(state.gesamtMwh).toBeGreaterThan(490);
   expect(state.liveTabSichtbar).toBe(true);
+  expect(state.pdfVersion).toMatch(/^5\./);
+  expect(state.tablistRole).toBe('tablist');
+  expect(state.activeTabAria).toBe('true');
 
   expect(pageErrors, 'Unbehandelte Exceptions:\n' + pageErrors.join('\n')).toHaveLength(0);
   expect(consoleErrors, 'Konsolenfehler:\n' + consoleErrors.join('\n')).toHaveLength(0);

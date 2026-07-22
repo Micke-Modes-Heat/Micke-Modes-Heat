@@ -13,6 +13,13 @@ import {
   clusterMassnahmenAnzahl, massnahmeEffektivesJahr,
   fahrplanMeilensteine, fahrplanZustandBeiJahr,
 } from './14f-cluster-core.js';
+import { runPlanningTransaction } from './lib/planning-transaction.js';
+import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
+
+function _clusterChange(label, mutate) {
+  try { return runPlanningTransaction(label, mutate); }
+  catch (error) { console.error(error); alert(error.message); return null; }
+}
 
 // Anzeigenamen/Icons der generierbaren Maßnahmen-Typen (Gewerk-Keys aus MASSN_VORLAGEN).
 const MASSN_LABEL = { Sanierung: '🔧 Sanierung', Abriss: '🏚 Stilllegung/Abriss', Bau: '🏗 Neubau' };
@@ -248,7 +255,7 @@ export function clusterShowLayers(on) {
 
 // ── Panel-Aktionen (an window gebunden über main.js) ────────────────────────────────────
 export function clusterEditFeld(id, feld, wert) {
-  clusterAktualisieren(id, { [feld]: wert });
+  _clusterChange('Cluster bearbeiten', () => clusterAktualisieren(id, { [feld]: wert }));
   clusterRenderLayers();
   clusterRenderPanel();
   if (_zeitAktiv) _zeitBarRender();
@@ -257,8 +264,10 @@ export function clusterEditFeld(id, feld, wert) {
 export function clusterLoeschenUI(id) {
   if (_editId === id) _stopVertexEdit();
   const c = clusterFindeById(id);
-  if (c) clusterEntferneMassnahmen(c, window.gebaeude || []);
-  clusterLoeschen(id);
+  _clusterChange('Cluster löschen', () => {
+    if (c) clusterEntferneMassnahmen(c, window.gebaeude || []);
+    clusterLoeschen(id);
+  });
   clusterRenderLayers();
   clusterRenderPanel();
   _refreshFahrplan();
@@ -271,7 +280,8 @@ export function clusterPaketAnwenden(id) {
   const panel = document.getElementById('cluster-content');
   const typen = [...(panel?.querySelectorAll(`input[data-cl-typ="${id}"]:checked`) || [])].map(cb => cb.value);
   if (!typen.length) { if (typeof window.showHint === 'function') window.showHint('Bitte mindestens einen Maßnahmen-Typ ankreuzen.'); return; }
-  const res = clusterGeneriereMassnahmen(c, window.gebaeude || [], { typen, jahr: c.jahr });
+  const res = _clusterChange('Cluster-Maßnahmen erzeugen', () => clusterGeneriereMassnahmen(c, window.gebaeude || [], { typen, jahr: c.jahr }));
+  if (!res) return;
   if (typeof window.showHint === 'function') {
     window.showHint(res.gebaeude ? `Cluster ${c.name}: ${res.massnahmen} Maßnahme(n) auf ${res.gebaeude} Gebäude erzeugt.` : `Cluster ${c.name} hat keine Mitgliedsgebäude.`);
     setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 3500);
@@ -284,7 +294,7 @@ export function clusterPaketAnwenden(id) {
 export function clusterPaketEntfernen(id) {
   const c = clusterFindeById(id);
   if (!c) return;
-  clusterEntferneMassnahmen(c, window.gebaeude || []);
+  _clusterChange('Cluster-Maßnahmen entfernen', () => clusterEntferneMassnahmen(c, window.gebaeude || []));
   clusterRenderPanel();
   _refreshFahrplan();
   if (_zeitAktiv) { _zeitBarRender(); clusterRenderLayers(); }
@@ -308,11 +318,8 @@ export function toggleDrawCluster() {
   if (!map) return;
   if (_drawing) { _cancelDraw(); return; }
 
-  // Andere Zeichenmodi abbrechen (defensiv, wie das Windgebiet-Werkzeug)
-  if (window.areaDrawing && typeof window.toggleDrawArea === 'function') window.toggleDrawArea();
-  if (window.windGebietDrawing && typeof window.toggleDrawWindGebiet === 'function') window.toggleDrawWindGebiet();
-  if (typeof window.cancelPendingAsset === 'function') window.cancelPendingAsset();
   _stopVertexEdit();
+  beginInteraction({id:'draw-cluster',label:'Cluster zeichnen',hint:'Eckpunkte setzen, Startpunkt schließt das Cluster.',cancel:_cancelDraw});
 
   _drawing = true;
   _drawPoints = [];
@@ -374,18 +381,20 @@ function _cancelDraw() {
   if (_drawStart) { map.removeLayer(_drawStart); _drawStart = null; }
   _drawPoints = [];
   _cleanupDrawEvents();
+  cancelInteraction('draw-cluster');
   clusterRenderPanel();
 }
 
 function _finishDraw() {
   const map = window.map;
   if (_drawPoints.length < 3) return;
+  commitInteraction('draw-cluster');
   const polygon = _drawPoints.map(ll => ({ lat: ll.lat, lng: ll.lng }));
   if (_drawPolyline) { map.removeLayer(_drawPolyline); _drawPolyline = null; }
   if (_drawStart) { map.removeLayer(_drawStart); _drawStart = null; }
   _drawPoints = [];
   _cleanupDrawEvents();
-  clusterErstellen({ polygon });
+  _clusterChange('Cluster anlegen', () => clusterErstellen({ polygon }));
   clusterRenderLayers();
   clusterRenderPanel();
 }

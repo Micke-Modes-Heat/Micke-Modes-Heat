@@ -120,8 +120,8 @@ describe('ertDeltaInfraJk', () => {
   it('kein Engpass → 0', () => {
     expect(ertDeltaInfraJk(80, 100, 50, ZINS, TRAFO_FIXTURE)).toBe(0);
   });
-  it('napKapKw = 0 (unbekannt) → immer 0', () => {
-    expect(ertDeltaInfraJk(500, 0, 0, ZINS, TRAFO_FIXTURE)).toBe(0);
+  it('napKapKw = 0 (unbekannt) → explizit null statt kostenlose Machbarkeit', () => {
+    expect(ertDeltaInfraJk(500, 0, 0, ZINS, TRAFO_FIXTURE)).toBeNull();
   });
   it('Engpass neu ausgelöst → positive Marginalkosten', () => {
     // spitzeAlt=50 ≤ kap=100, spitzeNeu=150 > kap=100 → Upgrade nötig
@@ -239,10 +239,18 @@ describe('pvMeritOrderCore mit deltaInfraFn — Δinfra beeinflusst Ranking', ()
     expect(tiers1).toBe(tiers2);
   });
 
-  it('ertMakeDeltaInfraFn: unbekannter NAP (kein Eintrag) → 0', () => {
+  it('ertMakeDeltaInfraFn: unbekannter NAP (kein Eintrag) → null', () => {
     const leereMap = new Map();
     const fn = ertMakeDeltaInfraFn(leereMap, ZINS, TRAFO_FIXTURE);
-    expect(fn('nap999', 500, 0)).toBe(0);
+    expect(fn('nap999', 500, 0)).toBeNull();
+  });
+
+  it('unbekannte NAP-Kapazität wird nicht kostenlos gerankt', () => {
+    const params = { ...baseParams, deltaInfraFn: ertMakeDeltaInfraFn(new Map(), ZINS, TRAFO_FIXTURE) };
+    const result = pvMeritOrderCore(kandidaten, demand, pvProfileSued, pvProfileOstWest, params);
+    expect(result.ranking.every(r => r.tier === 'C')).toBe(true);
+    expect(result.ranking.every(r => r.status === 'kapazitaet_unbekannt')).toBe(true);
+    expect(result.ranking.every(r => r.delta === null)).toBe(true);
   });
 
   it('ertMakeDeltaInfraFn: kein Engpass → 0', () => {
