@@ -13,17 +13,12 @@ import { computeWindYield, computeWindScenarios, getWindAssetsSummary,
 import { computeTurbinePlacements } from './13s-wind-flaeche.js';
 import { windRestriktBlock, getWindRestriktRings } from './13u-wind-restriktion.js';
 import { _liegenschaftJahresbedarfMWh, _distanceToPlangebietM, _activeGebietLabel } from './13e-assets-inspector.js';
+import { _WINDA_KLASSEN } from './config/wind-defaults.js';
+export { _WINDA_KLASSEN } from './config/wind-defaults.js';
 
 // Anlagenklassen für die Platzierungsvorschläge — repräsentative, marktübliche Größen
 // (kein Bezug zu evtl. schon vorhandenen Anlagen, dafür gibt es je Anlage die eigene
 // Szenarien-Vergleich-Karte). Wind-/Nennwind-Defaults wie überall im Wind-Modul.
-export const _WINDA_KLASSEN = [
-  { id: 'klein',      label: 'Klein · ≤ 50 m Gesamthöhe', ratedKw: 150,  rotorD: 30,  nabenhoehe: 35  },
-  { id: 'mittel',     label: 'Mittel · Standard-Binnenland', ratedKw: 500,  rotorD: 60,  nabenhoehe: 100 },
-  { id: 'mittelgross', label: 'Mittelgroß · 2,5-MW-Klasse', ratedKw: 2500, rotorD: 110, nabenhoehe: 120 },
-  { id: 'gross',      label: 'Groß · moderne Anlage', ratedKw: 4200, rotorD: 140, nabenhoehe: 150 },
-];
-
 let _panelOpen = false;
 
 export function windaTogglePanel() {

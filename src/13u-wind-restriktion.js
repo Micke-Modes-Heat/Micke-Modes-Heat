@@ -13,7 +13,7 @@
 import { map } from './02b-gebaeude.js';
 import { _overpassFetchWithRetry } from './03b-netz.js';
 import { ASSETS } from './13a-assets-core.js';
-import { _WINDA_KLASSEN } from './13t-wind-analyse.js';
+import { _WINDA_KLASSEN } from './config/wind-defaults.js';
 
 // ── Restriktions-Kategorien: OSM-Filter, Farbe ───────────────────────────────
 // Die Abstände sind HÖHENABHÄNGIG (Kipphöhe = Nabenhöhe + Rotor/2) bzw. rotorabhängig

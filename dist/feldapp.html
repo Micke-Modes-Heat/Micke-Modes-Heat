@@ -1153,6 +1153,12 @@ if (typeof L !== 'undefined') {
 
     <button class="btn btn-ghost" id="btn-demo">🎬 Kurzer Rundgang (Demo)</button>
 
+    <details style="margin-top:12px;text-align:left;font-size:12px;line-height:1.45;color:var(--text-muted);">
+      <summary style="cursor:pointer;font-weight:700;color:var(--primary);">🔒 Datenschutz &amp; lokale Speicherung</summary>
+      <p style="margin-top:7px;">Projekt, Notizen, Fotos und Offline-Karten liegen lokal in diesem Browser. Sie können Adressen, GPS-Bezug und personenbezogene Inhalte enthalten. Daten vor Gerätewechsel exportieren; das Gerät schützen und nur berechtigte Aufnahmen erstellen.</p>
+      <button class="btn btn-ghost" id="btn-privacy-clear" style="margin-top:6px;">Alle lokalen Feld-App-Daten löschen</button>
+    </details>
+
     <div class="import-status" id="import-status"></div>
   </div>
 </div>
@@ -1195,6 +1201,7 @@ if (typeof L !== 'undefined') {
     <button class="icon-btn" id="btn-gps" title="Meinen Standort anzeigen">📍</button>
     <button class="icon-btn" id="btn-cache-tiles" title="Karte für Offline cachen">🗺</button>
     <button class="icon-btn" id="btn-layer-filter" title="Typen ein-/ausblenden">⚙</button>
+    <button class="icon-btn" id="btn-privacy-info" title="Datenschutz und lokale Daten">🔒</button>
     <div class="export-btn-wrap">
       <button class="icon-btn" id="btn-export" title="Als ZIP exportieren">⬇️</button>
       <div class="export-badge" id="export-badge"></div>
@@ -1203,7 +1210,7 @@ if (typeof L !== 'undefined') {
   <div id="progress-strip" style="display:none;position:absolute;top:52px;left:0;right:0;z-index:999;height:4px;background:var(--border);">
     <div id="progress-bar" style="height:100%;background:#16a34a;transition:width 0.4s;width:0%;"></div>
   </div>
-  <div id="progress-label-strip" style="display:none;position:absolute;top:52px;right:8px;z-index:999;font-size:10px;font-weight:700;color:#16a34a;background:white;padding:1px 5px;border-radius:0 0 6px 6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);" id="progress-label"></div>
+  <div id="progress-label-strip" style="display:none;position:absolute;top:52px;right:8px;z-index:999;font-size:10px;font-weight:700;color:#16a34a;background:white;padding:1px 5px;border-radius:0 0 6px 6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);"><span id="progress-label"></span></div>
   <div id="map"></div>
 
 <div id="backdrop"></div>
@@ -2094,6 +2101,8 @@ async function init() {
   document.getElementById('btn-continue').addEventListener('click', openMap);
   document.getElementById('btn-clear').addEventListener('click', clearProject);
   document.getElementById('btn-demo').addEventListener('click', startTour);
+  document.getElementById('btn-privacy-clear').addEventListener('click', clearAllPrivateData);
+  document.getElementById('btn-privacy-info').addEventListener('click', showPrivacyInfo);
   document.getElementById('tour-next').addEventListener('click', () => _tourStep >= _tourSteps.length - 1 ? endTour() : gotoTourStep(_tourStep + 1));
   document.getElementById('tour-prev').addEventListener('click', () => gotoTourStep(_tourStep - 1));
   document.getElementById('tour-skip').addEventListener('click', endTour);
@@ -2123,6 +2132,22 @@ async function init() {
       e.returnValue = 'Es gibt noch nicht exportierte Fotos/Notizen. Trotzdem schließen?';
     }
   });
+}
+
+function showPrivacyInfo() {
+  alert('Projekt, Gebäudedaten, Notizen, Fotos und Offline-Karten werden lokal in diesem Browser gespeichert. Exporte werden nur auf deine Aktion erzeugt. GPS wird nur nach Browserfreigabe verwendet. Lokale Daten sind nicht automatisch verschlüsselt oder synchronisiert.');
+}
+
+async function clearAllPrivateData() {
+  if (!confirm('Wirklich Projekt, Notizen, Fotos und Offline-Karten auf diesem Gerät löschen? Benötigte Daten vorher exportieren.')) return;
+  await DB.clearAll();
+  if (typeof caches !== 'undefined') {
+    for (const name of await caches.keys()) if (name.startsWith('feldapp-')) await caches.delete(name);
+  }
+  _project = null;
+  refreshImportButtons();
+  showScreen('screen-import');
+  setStatus('Alle lokalen Feld-App-Daten wurden gelöscht.');
 }
 
 function setStatus(msg) { document.getElementById('import-status').textContent = msg; }

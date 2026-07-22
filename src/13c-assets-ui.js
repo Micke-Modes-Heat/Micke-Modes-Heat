@@ -3,6 +3,7 @@
 import { map } from './02b-gebaeude.js';
 import { ASSETS, ASSET_CFG, createAsset } from './13a-assets-core.js';
 import { drawAssetMarker, setAssetLayerVisible, isAssetLayerVisible } from './13b-assets-render.js';
+import { beginInteraction, cancelInteraction } from './lib/interaction-state.js';
 
 // State: welcher Asset-Typ wird gerade platziert?
 let pendingType = null;
@@ -59,6 +60,7 @@ export function cancelPendingType() {
   window._pendingAssetType = null;
   document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));
   map.getContainer().style.cursor = '';
+  cancelInteraction('place-asset');
 }
 
 export function setPendingType(type) {
@@ -67,9 +69,7 @@ export function setPendingType(type) {
     cancelPendingType();
     return;
   }
-  // Andere Modi beenden
-  if (window.isDrawingTrasse && typeof window.toggleDrawTrasse === 'function') window.toggleDrawTrasse();
-  if (window.isDrawingStromEdge && typeof window.cancelDrawStromEdge === 'function') window.cancelDrawStromEdge();
+  beginInteraction({id:'place-asset',label:'Anlage platzieren',hint:'Position auf der Karte anklicken; mehrere Platzierungen sind möglich.',cancel:cancelPendingType});
   pendingType = type;
   window._pendingAssetType = type;
   document.querySelectorAll('.asset-palette-btn').forEach(b => b.classList.remove('active'));

@@ -9,9 +9,14 @@ import { _collectOptDomParams, _optGetScaledLastgang, _optKennwerte2, _optScore 
 
 import { _buildOptWorkerCode, _doRunOptimierung, _optRenderBarChart, _optRenderRadar, _optRenderScatter } from './10d-optimizer-worker.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { _optFinished } from './10e-optimizer-session.js';
+import { addHourlyElectricLoad } from './lib/electric-demand.js';
+import { canUseSharedWorkerSeries, copyWorkerSeries } from './lib/worker-series.js';
+export { _optFinished } from './10e-optimizer-session.js';
 
 export function runOptimierung() {
   if (window._optRunning) { _optAbbrechen(); return; }
+  window._optRunId = (window._optRunId || 0) + 1;
   window._optAborted = false;
   window._optRunning = true;
   const btn = document.getElementById('btn-opt-start');
@@ -22,16 +27,19 @@ export function runOptimierung() {
   const resDiv = document.getElementById('opt-result-list');
   resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;">Berechne&#x2026;</div>';
 
-  // Versuche Web Worker, Fallback auf Main-Thread
+  // Die schwere Suche läuft ausschließlich im Worker, damit ein Plattformfehler
+  // nicht zu einer minutenlangen Blockade der Oberfläche führt.
   try {
     _runOptWorker(resDiv);
   } catch (e) {
-    console.warn('Web Worker nicht verfügbar, Fallback auf Main-Thread:', e);
-    setTimeout(() => _doRunOptimierung(resDiv), 30);
+    console.error('Web Worker nicht verfügbar:', e);
+    _optFinished();
+    resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;">Optimierung konnte nicht gestartet werden: Web Worker ist in diesem Browser nicht verfügbar.</div>';
   }
 }
 
 export function _optAbbrechen() {
+  window._optRunId = (window._optRunId || 0) + 1;
   window._optAborted = true;
   if (window._optWorker) { window._optWorker.terminate(); window._optWorker = null; }
   for (const w of window._optWorkers) { try { w.terminate(); } catch(e) {} }
@@ -41,19 +49,8 @@ export function _optAbbrechen() {
   if (resDiv) resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Abgebrochen.</div>';
 }
 
-export function _optFinished() {
-  window._optRunning = false;
-  window._optWorker = null;
-  window._optWorkers = [];
-  const btn = document.getElementById('btn-opt-start');
-  if (btn) {
-    btn.removeAttribute('data-running');
-    btn.innerHTML = '&#x26A1; Optimalvarianten berechnen';
-    btn.disabled = false;
-  }
-}
-
 export function _runOptWorker(resDiv) {
+  const runId = window._optRunId;
   const ss = window.systemState;
   if (!ss?.lastgangKw || ss.lastgangKw.length < 8760 || !ss.tempH || !ss.vlH) {
     resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Kein stundenscharfer Lastgang verfügbar.</div>';
@@ -126,6 +123,8 @@ export function _runOptWorker(resDiv) {
       }
     }
   }
+  // Kälte ist keine separate Nebenrechnung, sondern Teil derselben Stromnachfrage.
+  addHourlyElectricLoad(quartierH, window._kaelteElHourly || null);
 
   // Anzahl paralleler Worker bestimmen (min 1, max 8, einen Kern für UI freilassen)
   const numWorkers = Math.max(1, Math.min((navigator.hardwareConcurrency || 4) - 1, 8));
@@ -140,19 +139,26 @@ export function _runOptWorker(resDiv) {
     dom, params, aktiv, constraints, ziel, quality,
     pvAktiv, batAktiv, stAktiv, tsAktiv, globalYear: globalYr,
   };
+  const shareSeries = canUseSharedWorkerSeries();
+  const sharedSeries = shareSeries ? {
+    lastgang:copyWorkerSeries(_optScaledLastgang || ss.lastgangKw,true), temp:copyWorkerSeries(ss.tempH,true),
+    vl:copyWorkerSeries(ss.vlH,true), pv:pvProfile?copyWorkerSeries(pvProfile,true):null,
+    st:stNormProfile?copyWorkerSeries(stNormProfile,true):null, quartier:copyWorkerSeries(quartierH,true),
+  } : null;
+  window._optSeriesTransport = shareSeries ? 'shared-array-buffer' : 'transferable-copy';
 
   // ── Hilfsfunktion: Worker mit Daten-Kopie starten ──
   function createAndSendWorker(mode, extraPayload) {
     const w = new Worker(blobUrl);
-    const lastgang = new Float32Array(_optScaledLastgang || ss.lastgangKw);
-    const tempArr = new Float32Array(ss.tempH);
-    const vlArr = new Float32Array(ss.vlH);
-    const pvArr = pvProfile ? new Float32Array(pvProfile) : null;
-    const stArr = stNormProfile ? new Float32Array(stNormProfile) : null;
-    const qArr = new Float32Array(quartierH);
-    const transferList = [lastgang.buffer, tempArr.buffer, vlArr.buffer, qArr.buffer];
-    if (pvArr) transferList.push(pvArr.buffer);
-    if (stArr) transferList.push(stArr.buffer);
+    const lastgang = sharedSeries?.lastgang || new Float32Array(_optScaledLastgang || ss.lastgangKw);
+    const tempArr = sharedSeries?.temp || new Float32Array(ss.tempH);
+    const vlArr = sharedSeries?.vl || new Float32Array(ss.vlH);
+    const pvArr = sharedSeries?.pv || (pvProfile ? new Float32Array(pvProfile) : null);
+    const stArr = sharedSeries?.st || (stNormProfile ? new Float32Array(stNormProfile) : null);
+    const qArr = sharedSeries?.quartier || new Float32Array(quartierH);
+    const transferList = shareSeries ? [] : [lastgang.buffer, tempArr.buffer, vlArr.buffer, qArr.buffer];
+    if (!shareSeries && pvArr) transferList.push(pvArr.buffer);
+    if (!shareSeries && stArr) transferList.push(stArr.buffer);
     const payload = {
       ...basePayload, ...extraPayload, mode,
       lastgangKw: lastgang, tempH: tempArr, vlH: vlArr,
@@ -209,6 +215,7 @@ export function _runOptWorker(resDiv) {
     window._optWorker = worker;
     window._optWorkers = [worker];
     worker.onmessage = function(e) {
+      if (runId !== window._optRunId) return;
       const msg = e.data;
       if (msg.type === 'progress') {
         workerProgress[0] = msg.pct;
@@ -220,10 +227,11 @@ export function _runOptWorker(resDiv) {
       }
     };
     worker.onerror = function(e) {
+      if (runId !== window._optRunId) return;
       console.error('OptWorker Error:', e);
       window._optWorker = null; window._optWorkers = [];
-      resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;">Worker-Fehler, Fallback&#x2026;</div>';
-      setTimeout(() => _doRunOptimierung(resDiv), 30);
+      _optFinished();
+      resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;">Worker-Fehler. Die Suche wurde beendet; es erfolgt keine blockierende Berechnung im Hauptfenster.</div>';
     };
     URL.revokeObjectURL(blobUrl);
     return;
@@ -241,6 +249,7 @@ export function _runOptWorker(resDiv) {
     window._optWorkers.push(w);
 
     w.onmessage = function(e) {
+      if (runId !== window._optRunId) return;
       if (window._optAborted) return;
       const msg = e.data;
       if (msg.type === 'progress') {
@@ -260,13 +269,14 @@ export function _runOptWorker(resDiv) {
     };
 
     w.onerror = function(e) {
+      if (runId !== window._optRunId) return;
       console.error('OptWorker', i, 'Error:', e);
       if (!hadError) {
         hadError = true;
         for (const wk of window._optWorkers) { try { wk.terminate(); } catch(ex) {} }
         window._optWorker = null; window._optWorkers = [];
-        resDiv.innerHTML = '<div style="color:var(--muted);text-align:center;padding:10px;">Worker-Fehler, Fallback&#x2026;</div>';
-        setTimeout(() => _doRunOptimierung(resDiv), 30);
+        _optFinished();
+        resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;">Worker-Fehler. Die Suche wurde beendet; bitte erneut starten oder Suchqualität reduzieren.</div>';
       }
     };
   }
@@ -303,15 +313,15 @@ export function _runOptWorker(resDiv) {
     const url2 = URL.createObjectURL(blob2);
     const feinWorker = new Worker(url2);
     // Daten-Kopien für den Fein-Worker erstellen und senden
-    const fLastgang = new Float32Array(_optScaledLastgang || ss.lastgangKw);
-    const fTempArr = new Float32Array(ss.tempH);
-    const fVlArr = new Float32Array(ss.vlH);
-    const fPvArr = pvProfile ? new Float32Array(pvProfile) : null;
-    const fStArr = stNormProfile ? new Float32Array(stNormProfile) : null;
-    const fQArr = new Float32Array(quartierH);
-    const fTransferList = [fLastgang.buffer, fTempArr.buffer, fVlArr.buffer, fQArr.buffer];
-    if (fPvArr) fTransferList.push(fPvArr.buffer);
-    if (fStArr) fTransferList.push(fStArr.buffer);
+    const fLastgang = sharedSeries?.lastgang || new Float32Array(_optScaledLastgang || ss.lastgangKw);
+    const fTempArr = sharedSeries?.temp || new Float32Array(ss.tempH);
+    const fVlArr = sharedSeries?.vl || new Float32Array(ss.vlH);
+    const fPvArr = sharedSeries?.pv || (pvProfile ? new Float32Array(pvProfile) : null);
+    const fStArr = sharedSeries?.st || (stNormProfile ? new Float32Array(stNormProfile) : null);
+    const fQArr = sharedSeries?.quartier || new Float32Array(quartierH);
+    const fTransferList = shareSeries ? [] : [fLastgang.buffer, fTempArr.buffer, fVlArr.buffer, fQArr.buffer];
+    if (!shareSeries && fPvArr) fTransferList.push(fPvArr.buffer);
+    if (!shareSeries && fStArr) fTransferList.push(fStArr.buffer);
     feinWorker.postMessage({
       ...basePayload, mode: 'fein', workerIdx: 0, numWorkers: 1, topNGrob,
       lastgangKw: fLastgang, tempH: fTempArr, vlH: fVlArr,
@@ -322,6 +332,7 @@ export function _runOptWorker(resDiv) {
     URL.revokeObjectURL(url2);
 
     feinWorker.onmessage = function(e) {
+      if (runId !== window._optRunId) return;
       if (window._optAborted) return;
       const msg = e.data;
       if (msg.type === 'progress') {
@@ -333,6 +344,7 @@ export function _runOptWorker(resDiv) {
     };
 
     feinWorker.onerror = function(e) {
+      if (runId !== window._optRunId) return;
       console.error('Fein-Worker Error:', e);
       _optFinished();
       resDiv.innerHTML = '<div style="color:#ef9a9a;padding:8px;background:var(--surface2);border-radius:5px;font-size:10px;">Feinsuche fehlgeschlagen.</div>';
@@ -513,4 +525,3 @@ export function _renderWorkerResults(topFein, grobResults, resDiv, startTime, pa
   window._optCachedPvProfile = null;
   _optFinished();
 }
-

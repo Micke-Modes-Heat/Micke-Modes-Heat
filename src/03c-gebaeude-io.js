@@ -4,7 +4,7 @@ import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh,
          getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
 import { updateLpGebietStatus, updatePrintLegend } from './04a-ui-panels.js';
-import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw } from './06a-gbi-lastgang.js';
+import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw, glTimeSeriesMeta } from './06a-gbi-lastgang.js';
 import { isErzeugerAktiv, meritOrderKeys, setMeritOrderKeys } from './06c-dispatch-core.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, deleteAsset, clearAssets } from './13a-assets-core.js';
@@ -14,16 +14,21 @@ import { activeVariantId, edgeKey, freiflaechen, lwWp, lwWpVisible, networkLocke
 import { _invalidateStats, addGebaeude, toggleNetworkLock, ensureSatellite, setGlobalYear } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, clearTrasse, polygonAreaM2, polygonCenter, redrawFliessgewaesser, redrawLwWp, redrawTrasse, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { attachFFLayer, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawGasKessel, redrawHeizoelKessel, redrawHhs, redrawPellets, renderFFPanel, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
-import { addNetzEdge, autoGenerateNetz, calcGeoThermie, clearNetz, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
+import { addNetzEdge, applyWaermeNetzGraph, autoGenerateNetz, calcGeoThermie, captureWaermeNetzGraph, clearNetz, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
 import { applyEdgePrunedStyle, updatePruningSummary } from './04a-ui-panels.js';
 import { addStromEdge, addStromNode, clearStromNetz, recalcStromNetz, stromNodeClick } from './05b-stromnetz.js';
 import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, glBerechnenDebounced, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { moBeiAktivierung } from './06c-dispatch-core.js';
-import { _onStrompreisChange } from './09a-pv-profile.js';
+import { _onGaspreisChange, _onStrompreisChange, onPvVergModellChange } from './09a-pv-profile.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
-import { bhkw, edgeWaypoints, fernwaerme, fernwaermeEmF, ffCounter, fliessgewaesser, fliessgewaesserVisible, gasEmF, gasKessel, geoLayerGroup, geoThermie, heizhackschnitzel, heizoelEmF, heizoelKessel, hhsEmF, idCounter, pefFernwaerme, pefGas, pefHeizoel, pefHhs, pefPellets, pefStrom, pefWP, pelletsEmF, pelletsKessel, setBhkw, setEdgeWaypoints, setFernwaerme, setFernwaermeEmF, setFfCounter, setFliessgewaesser, setGasEmF, setGasKessel, setGeoLayerGroup, setGeoThermie, setHeizhackschnitzel, setHeizoelEmF, setHeizoelKessel, setHhsEmF, setIdCounter, setPefFernwaerme, setPefGas, setPefHeizoel, setPefHhs, setPefPellets, setPefStrom, setPefWP, setPelletsEmF, setPelletsKessel, setSolarthermieAktiv, setStromEmF, setStromEmFLZ, setStromkessel, setThermSpeicherAktiv, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, set_batchImporting, solarthermieAktiv, stromEmF, stromEmFLZ, stromkessel, thermSpeicherAktiv, trassePoints, trasseSegments } from './01-globals-varianten.js';
+import { bhkw, edgeWaypoints, fernwaerme, fernwaermeEmF, ffCounter, fliessgewaesser, fliessgewaesserVisible, gasEmF, gasKessel, geoLayerGroup, geoThermie, heizhackschnitzel, heizoelEmF, heizoelKessel, hhsEmF, idCounter, pefFernwaerme, pefGas, pefHeizoel, pefHhs, pefPellets, pefStrom, pefWP, pelletsEmF, pelletsKessel, setBhkw, setEdgeWaypoints, setFernwaerme, setFernwaermeEmF, setFfCounter, setFliessgewaesser, setGasEmF, setGasKessel, setGebaeude, setGeoLayerGroup, setGeoThermie, setHeizhackschnitzel, setHeizoelEmF, setHeizoelKessel, setHhsEmF, setIdCounter, setPefFernwaerme, setPefGas, setPefHeizoel, setPefHhs, setPefPellets, setPefStrom, setPefWP, setPelletsEmF, setPelletsKessel, setSolarthermieAktiv, setStromEmF, setStromEmFLZ, setStromkessel, setThermSpeicherAktiv, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, set_batchImporting, solarthermieAktiv, stromEmF, stromEmFLZ, stromkessel, thermSpeicherAktiv, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { kostenSzenario, setKostenSzenario } from './02a-netz-physik.js';
 import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
+import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
+import { createCalculationManifest } from './lib/calculation-manifest.js';
+import { getPvTariffProvenance } from './config/tariff-scenarios.js';
+import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
+import { syntheticPvProfileMeta } from './lib/pv-profile-import.js';
 
 export function updateTotals(){
   let tw=0, th=0;
@@ -2130,15 +2135,39 @@ function _captureKaelte() {
   };
 }
 
-export function _buildProjectData() {
+function _finiteNumberOr(value, fallback) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function _captureEconomicScenario() {
+  const scenarioId = document.getElementById('wirt-szenario')?.value || 'manual';
+  const n = id => _finiteNumberOr(document.getElementById(id)?.value, 0);
   return {
-    version: 1,
+    scenarioId,
+    provenance: getEconomicScenarioProvenance(scenarioId, scenarioId === 'manual'),
+    values: {
+      stromCtKwh:n('wirt-p-strom'), wpStromCtKwh:document.getElementById('wirt-p-strom-wp')?.value === '' ? null : n('wirt-p-strom-wp'),
+      gasCtKwh:n('wirt-p-gas'), heizoelCtKwh:n('wirt-p-hko'), fernwaermeCtKwh:n('wirt-p-fw'),
+      pelletsCtKwh:n('wirt-p-pk'), hhsCtKwh:n('wirt-p-hhs'), co2EurT:n('wirt-p-co2'),
+      co2Alle:!!document.getElementById('wirt-co2-alle')?.checked,
+      kapitalzinsPct:n('wirt-zins'), lohnEurH:n('wirt-lohn'),
+    },
+  };
+}
+
+export function _buildProjectData() {
+  const economicScenario = _captureEconomicScenario();
+  return {
+    version: PROJECT_SCHEMA_VERSION,
+    calculationManifest: createCalculationManifest({timeSeriesMeta: glTimeSeriesMeta, pvProfileMeta: window.elPvMeta || syntheticPvProfileMeta(), tariffMeta: getPvTariffProvenance(document.getElementById('pv-tarif-szenario')?.value), economicMeta: economicScenario.provenance}),
+    economicScenario,
     gebaeude: window.gebaeude.map(g => ({
       id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
       flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
       baujahr: g.baujahr, baujährQuelle: g.baujährQuelle || null, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen,
-      stockwerke: g.stockwerke || 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
-      pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil || 30, zustand: g.zustand || '',
+      stockwerke: g.stockwerke ?? 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
+      pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil ?? 30, zustand: g.zustand || '',
       strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',
       dachform: g.dachform || 'sattel', dachAzimut: g.dachAzimut ?? null,
       dachNeigung: g.dachNeigung ?? null, dachAutoAzimut: g.dachAutoAzimut || false,
@@ -2162,26 +2191,32 @@ export function _buildProjectData() {
       isLocked: networkLocked,
       kostenSzenario: kostenSzenario,
       sanierung: window._netzSanierung || false,
-      sanierungPct: parseFloat(document.getElementById('netz-sanierung-pct')?.value) || 40,
+      sanierungPct: _finiteNumberOr(document.getElementById('netz-sanierung-pct')?.value, 40),
       gzfMethode: document.getElementById('netz-gzf-methode')?.value || 'richtwert',
-      gzfManuell: parseFloat(document.getElementById('netz-gzf-manuell')?.value) || 0.6
+      gzfManuell: _finiteNumberOr(document.getElementById('netz-gzf-manuell')?.value, 0.6)
     },
     trasse: trassePoints.map(p => ({lat: p.lat, lng: p.lng})),
     trasseSegments: trasseSegments,
+    waermeNetzGraph: captureWaermeNetzGraph(),
     customEdges: netzEdges.filter(e => e.u < 10000 && e.v < 10000).map(e => ({u: e.u, v: e.v, pruned: e.pruned || false})),
     edgeWaypoints: edgeWaypoints,
     fliessgewaesser: fliessgewaesser ? { latlngs: fliessgewaesser.latlngs, durchflussLs: fliessgewaesser.durchflussLs, leistungKw: fliessgewaesser.leistungKw, jaz: fliessgewaesser.jaz, visible: fliessgewaesserVisible } : null,
-    lwWp: lwWp ? { lat: lwWp.lat, lng: lwWp.lng, leistungKw: lwWp.leistungKw, lwaDb: lwWp.lwaDb, jaz: parseFloat(document.getElementById('lwwp-jaz').value)||3.0, waerme: document.getElementById('lwwp-waerme').value, minCop: document.getElementById('lwwp-min-cop')?.value || '', visible: lwWpVisible } : null,
-    geoThermie: geoThermie ? { ...geoThermie, heizlast: document.getElementById('geo-heizlast').value, waerme: document.getElementById('geo-waerme').value, jaz: parseFloat(document.getElementById('geo-jaz').value)||4.5, tiefe: parseFloat(document.getElementById('geo-tiefe').value)||100, qPerM: parseFloat(document.getElementById('geo-q-perm').value)||50, abstand: parseFloat(document.getElementById('geo-abstand').value)||10, dtAbsenkung: parseFloat(document.getElementById('geo-dt-absenkung').value)||0 } : null,
+    lwWp: lwWp ? { lat: lwWp.lat, lng: lwWp.lng, leistungKw: lwWp.leistungKw, lwaDb: lwWp.lwaDb, jaz: _finiteNumberOr(document.getElementById('lwwp-jaz').value, 3.0), waerme: document.getElementById('lwwp-waerme').value, minCop: document.getElementById('lwwp-min-cop')?.value || '', visible: lwWpVisible } : null,
+    geoThermie: geoThermie ? { ...geoThermie, heizlast: document.getElementById('geo-heizlast').value, waerme: document.getElementById('geo-waerme').value, jaz: _finiteNumberOr(document.getElementById('geo-jaz').value, 4.5), tiefe: _finiteNumberOr(document.getElementById('geo-tiefe').value, 100), qPerM: _finiteNumberOr(document.getElementById('geo-q-perm').value, 50), abstand: _finiteNumberOr(document.getElementById('geo-abstand').value, 10), dtAbsenkung: _finiteNumberOr(document.getElementById('geo-dt-absenkung').value, 0) } : null,
     gasKessel: gasKessel ? { leistungKw: gasKessel.leistungKw, eta: document.getElementById('gk-eta').value, waerme: document.getElementById('gk-waerme').value } : null,
     heizoelKessel: heizoelKessel ? { leistungKw: heizoelKessel.leistungKw, eta: document.getElementById('hko-eta').value, waerme: document.getElementById('hko-waerme').value } : null,
-    bhkw: bhkw ? { leistungThKw: parseFloat(document.getElementById('bhkw-leistung-th').value)||100, skz: document.getElementById('bhkw-skz').value, eta: document.getElementById('bhkw-eta').value, waerme: document.getElementById('bhkw-waerme').value } : null,
-    stromkessel: stromkessel ? { leistungKw: parseFloat(document.getElementById('sk-leistung').value)||200, eta: document.getElementById('sk-eta').value, waerme: document.getElementById('sk-waerme').value } : null,
-    solarthermie: solarthermieAktiv ? { flaeche: parseFloat(document.getElementById('st-flaeche')?.value)||0, spez: parseFloat(document.getElementById('st-spez')?.value)||400, polygon: window._stPolygon || null } : null,
-    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: parseFloat(document.getElementById('ts-volumen')?.value)||0, dt: parseFloat(document.getElementById('ts-dt')?.value)||40, verlust: parseFloat(document.getElementById('ts-verlust')?.value)||0.5, entladeKw: parseFloat(document.getElementById('ts-entlade-kw')?.value)||200, ladeKw: parseFloat(document.getElementById('ts-lade-kw')?.value)||parseFloat(document.getElementById('ts-entlade-kw')?.value)||200 } : null,
+    bhkw: bhkw ? { leistungThKw: _finiteNumberOr(document.getElementById('bhkw-leistung-th').value, 100), skz: document.getElementById('bhkw-skz').value, eta: document.getElementById('bhkw-eta').value, waerme: document.getElementById('bhkw-waerme').value } : null,
+    stromkessel: stromkessel ? { leistungKw: _finiteNumberOr(document.getElementById('sk-leistung').value, 200), eta: document.getElementById('sk-eta').value, waerme: document.getElementById('sk-waerme').value } : null,
+    solarthermie: solarthermieAktiv ? { flaeche: _finiteNumberOr(document.getElementById('st-flaeche')?.value, 0), spez: _finiteNumberOr(document.getElementById('st-spez')?.value, 400), polygon: window._stPolygon || null } : null,
+    waermespeicher: thermSpeicherAktiv ? { typ: document.getElementById('ts-typ')?.value||'puffer', volumen: _finiteNumberOr(document.getElementById('ts-volumen')?.value, 0), dt: _finiteNumberOr(document.getElementById('ts-dt')?.value, 40), verlust: _finiteNumberOr(document.getElementById('ts-verlust')?.value, 0.5), entladeKw: _finiteNumberOr(document.getElementById('ts-entlade-kw')?.value, 200), ladeKw: _finiteNumberOr(document.getElementById('ts-lade-kw')?.value, _finiteNumberOr(document.getElementById('ts-entlade-kw')?.value, 200)) } : null,
     freiflaechen: freiflaechen.map(ff => ({ id: ff.id, name: ff.name, polygon: ff.polygon, flaeche: ff.flaeche, gcr: ff.gcr, ausrichtung: ff.ausrichtung })),
     pvModul: { breite: document.getElementById('pv-modul-breite')?.value, laenge: document.getElementById('pv-modul-laenge')?.value, wp: document.getElementById('pv-modul-wp')?.value },
-    pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value },
+    pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value, vergModell: document.getElementById('pv-verg-modell')?.value, tarifSzenario: document.getElementById('pv-tarif-szenario')?.value },
+    pvProfile: window.elPvH ? {values:Array.from(window.elPvH), meta:window.elPvMeta || {quality:'uploaded_unverified',source:'Legacy PV upload'}} : null,
+    battery: {capacityKwh:_finiteNumberOr(document.getElementById('bat-kapazitaet')?.value,0),powerKw:_finiteNumberOr(document.getElementById('bat-leistung')?.value,0),
+      investEurKwh:_finiteNumberOr(document.getElementById('opt-bat-invest')?.value,400),studyLifeYears:_finiteNumberOr(document.getElementById('opt-bat-life')?.value,15),
+      calendarFadePctPerYear:_finiteNumberOr(document.getElementById('bat-calendar-fade')?.value,1.5),cycleLife:_finiteNumberOr(document.getElementById('bat-cycle-life')?.value,6000),
+      eolCapacityPct:_finiteNumberOr(document.getElementById('bat-eol-pct')?.value,80),aging:window._batteryAging ? {...window._batteryAging}:null},
     meritOrderKeys: [...meritOrderKeys],
     kaelte: _captureKaelte(),
     pelletsKessel: pelletsKessel ? { leistungKw: pelletsKessel.leistungKw, eta: document.getElementById('pk-eta').value, waerme: document.getElementById('pk-waerme').value, lat: pelletsKessel.lat, lng: pelletsKessel.lng } : null,
@@ -2294,12 +2329,44 @@ export function _initYearSliderFromBaujahr() {
 }
 
 export function _loadProject(project) {
+      // Erst vollständig strukturell prüfen und klonen. Bis dieser Schritt
+      // erfolgreich war, wird der aktuell geöffnete Projektzustand nicht verändert.
+      const prepared = prepareProjectForImport(project);
+      if (prepared.warnings.length) console.warn('Projektimport:', prepared.warnings.join(' · '));
+      // Die bestehende Restore-Logik berührt viele DOM-/Kartenmodule. Falls dort
+      // trotz gültiger Datei ein Laufzeitfehler entsteht, den vorherigen Stand
+      // automatisch zurückspielen statt ein halb geladenes Projekt zu hinterlassen.
+      const backup = _buildProjectData();
+      try {
+        if (typeof window.withoutPlanningTransactions === 'function') window.withoutPlanningTransactions(() => _applyProjectData(prepared.project));
+        else _applyProjectData(prepared.project);
+        if (typeof window.clearPlanningTransactionHistory === 'function') window.clearPlanningTransactionHistory();
+      } catch (importError) {
+        console.error('Projektimport fehlgeschlagen – stelle vorherigen Stand wieder her:', importError);
+        try {
+          if (typeof window.withoutPlanningTransactions === 'function') window.withoutPlanningTransactions(() => _applyProjectData(backup));
+          else _applyProjectData(backup);
+        } catch (rollbackError) {
+          console.error('Wiederherstellung des vorherigen Projektstands fehlgeschlagen:', rollbackError);
+          const combined = new Error('Projektimport und automatische Wiederherstellung sind fehlgeschlagen. Bitte Seite nicht schließen und Diagnose exportieren.');
+          combined.cause = { importError, rollbackError };
+          throw combined;
+        }
+        const rolledBack = new Error('Projekt konnte nicht geladen werden. Der vorherige Projektstand wurde wiederhergestellt.');
+        rolledBack.cause = importError;
+        throw rolledBack;
+      }
+}
+
+// Interne, nicht validierende Restore-Funktion. Ausschließlich über _loadProject
+// oder für den bereits validierten In-Memory-Rollback aufrufen.
+function _applyProjectData(project) {
       window.gebaeude.forEach(g => {
         if(g.polygonLayer) map.removeLayer(g.polygonLayer);
         if(g.circleMarker) map.removeLayer(g.circleMarker);
         if(g.labelMarker) map.removeLayer(g.labelMarker);
       });
-      window.gebaeude = [];
+      setGebaeude([]);
       clearNetz();
       clearTrasse();
       clearFliessgewaesser();
@@ -2330,14 +2397,14 @@ export function _loadProject(project) {
             newG.sanierungen = g.sanierungen || [];
             newG.massnahmen = g.massnahmen || [];
             newG.nutzung = g.nutzung || '';
-            newG.stockwerke = g.stockwerke || 1;
+            newG.stockwerke = g.stockwerke ?? 1;
             newG.waermeManual = g.waermeManual || false;
             newG.heizlastManual = g.heizlastManual || false;
             newG.strom = g.strom || '';
             newG.spezStrom = g.spezStrom || '';
             newG.stromProfil = g.stromProfil || 'auto';
             newG.pvAktiv = g.pvAktiv || false;
-            newG.pvDachanteil = g.pvDachanteil || 30;
+            newG.pvDachanteil = g.pvDachanteil ?? 30;
             newG.zustand = g.zustand || '';
             newG.dachform      = g.dachform      || 'sattel';
             newG.dachAzimut    = g.dachAzimut    ?? null;
@@ -2361,13 +2428,13 @@ export function _loadProject(project) {
       }
 
       if (project.netz) {
-         document.getElementById('netz-vl').value = project.netz.vl || 90;
-         document.getElementById('netz-rl').value = project.netz.rl || 60;
+         document.getElementById('netz-vl').value = project.netz.vl ?? 90;
+         document.getElementById('netz-rl').value = project.netz.rl ?? 60;
          syncVLTemps('netz');
-         document.getElementById('netz-v').value = project.netz.v || 1.0;
+         document.getElementById('netz-v').value = project.netz.v ?? 1.0;
          document.getElementById('netz-t-aussen').value = project.netz.tAussen ?? -12;
          document.getElementById('netz-t-mittel').value = project.netz.tMittel ?? 10;
-         document.getElementById('netz-u-wert').value = project.netz.uWert || 0.25;
+         document.getElementById('netz-u-wert').value = project.netz.uWert ?? 0.25;
          if (project.netz.gzfMethode) {
            document.getElementById('netz-gzf-methode').value = project.netz.gzfMethode;
            document.getElementById('netz-gzf-manuell-wrap').style.display = project.netz.gzfMethode === 'manuell' ? '' : 'none';
@@ -2397,7 +2464,7 @@ export function _loadProject(project) {
            const det = document.getElementById('netz-sanierung-detail');
            if (det) det.style.display = 'flex';
          }
-         if (project.netz.sanierungPct) {
+         if (project.netz.sanierungPct != null) {
            const inp = document.getElementById('netz-sanierung-pct');
            if (inp) inp.value = project.netz.sanierungPct;
          }
@@ -2412,17 +2479,19 @@ export function _loadProject(project) {
 
       setEdgeWaypoints(project.edgeWaypoints || {});
       const _prunedMap = {};
-      if (project.customEdges) {
+      if (project.waermeNetzGraph) {
+         applyWaermeNetzGraph(project.waermeNetzGraph);
+      } else if (project.customEdges) {
          project.customEdges.forEach(e => { if (e.pruned) _prunedMap[edgeKey(e.u, e.v)] = true; });
-         project.customEdges.forEach(e => addNetzEdge(e.u, e.v));
+         project.customEdges.forEach(e => addNetzEdge(e.u, e.v, {force: true}));
       }
-      if (project.netz && project.netz.zentrale) {
+      if (!project.waermeNetzGraph && (!project.customEdges || project.customEdges.length === 0) && project.netz && project.netz.zentrale) {
          autoGenerateNetz();
       }
       // Restore pruned state
-      if (Object.keys(_prunedMap).length > 0) {
+      if (project.waermeNetzGraph || Object.keys(_prunedMap).length > 0) {
         netzEdges.forEach(e => {
-          if (_prunedMap[edgeKey(e.u, e.v)]) { e.pruned = true; applyEdgePrunedStyle(e); }
+          if (e.pruned || _prunedMap[edgeKey(e.u, e.v)]) { e.pruned = true; applyEdgePrunedStyle(e); }
         });
         recalcNetz();
         updatePruningSummary();
@@ -2431,9 +2500,9 @@ export function _loadProject(project) {
       if (project.fliessgewaesser && project.fliessgewaesser.latlngs && project.fliessgewaesser.latlngs.length >= 2) {
         setFliessgewaesser({
           latlngs: project.fliessgewaesser.latlngs,
-          durchflussLs: project.fliessgewaesser.durchflussLs || 50,
-          leistungKw: project.fliessgewaesser.leistungKw || 200,
-          jaz: project.fliessgewaesser.jaz || 4.5,
+          durchflussLs: project.fliessgewaesser.durchflussLs ?? 50,
+          leistungKw: project.fliessgewaesser.leistungKw ?? 200,
+          jaz: project.fliessgewaesser.jaz ?? 4.5,
           visible: project.fliessgewaesser.visible !== false
         });
         setFliessgewaesserVisible(fliessgewaesser.visible);
@@ -2448,14 +2517,14 @@ export function _loadProject(project) {
       }
 
     if (project.lwWp && project.lwWp.lat != null && project.lwWp.lng != null) {
-        window.lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw || 12, lwaDb: project.lwWp.lwaDb || 80, visible: project.lwWp.visible !== false };
+        window.lwWp = { lat: project.lwWp.lat, lng: project.lwWp.lng, leistungKw: project.lwWp.leistungKw ?? 12, lwaDb: project.lwWp.lwaDb ?? 80, visible: project.lwWp.visible !== false };
         window.lwWpVisible = window.lwWp.visible !== false;
         document.getElementById('lwwp-visible').checked = lwWpVisible;
         document.getElementById('lwwp-leistung').value = lwWp.leistungKw;
         document.getElementById('lwwp-lwa').value = lwWp.lwaDb;
-        if (project.lwWp.jaz) document.getElementById('lwwp-jaz').value = project.lwWp.jaz;
-        if (project.lwWp.waerme) document.getElementById('lwwp-waerme').value = project.lwWp.waerme;
-        if (project.lwWp.minCop) document.getElementById('lwwp-min-cop').value = project.lwWp.minCop;
+        if (project.lwWp.jaz != null) document.getElementById('lwwp-jaz').value = project.lwWp.jaz;
+        if (project.lwWp.waerme != null) document.getElementById('lwwp-waerme').value = project.lwWp.waerme;
+        if (project.lwWp.minCop != null) document.getElementById('lwwp-min-cop').value = project.lwWp.minCop;
         document.getElementById('lwwp-data-section').style.display = 'block';
         window.lwWpVisible = true; window.lwWpVisible = true; window.lwWpVisible = true; if (!window.lwWpLayerGroup) window.lwWpLayerGroup = L.layerGroup().addTo(map); redrawLwWp(); updateLwWpDisplay(); updateLwWpVisibility();
       }
@@ -2464,19 +2533,19 @@ export function _loadProject(project) {
         setGeoThermie({ ...project.geoThermie });
         document.getElementById('geo-heizlast').value = project.geoThermie.heizlast || '';
         document.getElementById('geo-waerme').value = project.geoThermie.waerme || '';
-        document.getElementById('geo-jaz').value = project.geoThermie.jaz || 4.5;
-        document.getElementById('geo-tiefe').value = project.geoThermie.tiefe || 100;
-        document.getElementById('geo-q-perm').value = Math.min(60, Math.max(10, project.geoThermie.qPerM || 31));
-        document.getElementById('geo-abstand').value = Math.min(15, Math.max(6, project.geoThermie.abstand || 10));
-        document.getElementById('geo-lambda').value = Math.min(5, Math.max(0.5, project.geoThermie.lambda || 2.0));
-        document.getElementById('geo-guetegrad').value = Math.min(0.70, Math.max(0.20, project.geoThermie.guetegrad || 0.50));
+        document.getElementById('geo-jaz').value = project.geoThermie.jaz ?? 4.5;
+        document.getElementById('geo-tiefe').value = project.geoThermie.tiefe ?? 100;
+        document.getElementById('geo-q-perm').value = Math.min(60, Math.max(10, project.geoThermie.qPerM ?? 31));
+        document.getElementById('geo-abstand').value = Math.min(15, Math.max(6, project.geoThermie.abstand ?? 10));
+        document.getElementById('geo-lambda').value = Math.min(5, Math.max(0.5, project.geoThermie.lambda ?? 2.0));
+        document.getElementById('geo-guetegrad').value = Math.min(0.70, Math.max(0.20, project.geoThermie.guetegrad ?? 0.50));
         if (project.geoThermie.dtAbsenkung != null) document.getElementById('geo-dt-absenkung').value = project.geoThermie.dtAbsenkung;
         document.getElementById('btn-place-geo').textContent = 'Position verschieben';
         calcGeoThermie(); redrawGeo();
       }
 
       if (project.gasKessel) {
-        setGasKessel({ leistungKw: project.gasKessel.leistungKw || 500 });
+        setGasKessel({ leistungKw: project.gasKessel.leistungKw ?? 500 });
         document.getElementById('gk-leistung').value = gasKessel.leistungKw;
         if (project.gasKessel.eta)      document.getElementById('gk-eta').value      = project.gasKessel.eta;
         if (project.gasKessel.waerme)   document.getElementById('gk-waerme').value   = project.gasKessel.waerme;
@@ -2485,7 +2554,7 @@ export function _loadProject(project) {
         redrawGasKessel(); updateGasKesselDisplay();
       }
       if (project.heizoelKessel) {
-        setHeizoelKessel({ leistungKw: project.heizoelKessel.leistungKw || 500 });
+        setHeizoelKessel({ leistungKw: project.heizoelKessel.leistungKw ?? 500 });
         document.getElementById('hko-leistung').value = heizoelKessel.leistungKw;
         if (project.heizoelKessel.eta)      document.getElementById('hko-eta').value      = project.heizoelKessel.eta;
         if (project.heizoelKessel.waerme)   document.getElementById('hko-waerme').value   = project.heizoelKessel.waerme;
@@ -2494,7 +2563,7 @@ export function _loadProject(project) {
         redrawHeizoelKessel(); updateHeizoelDisplay();
       }
       if (project.bhkw) {
-        setBhkw({ leistungThKw: project.bhkw.leistungThKw || 100 });
+        setBhkw({ leistungThKw: project.bhkw.leistungThKw ?? 100 });
         document.getElementById('bhkw-leistung-th').value = bhkw.leistungThKw;
         if (project.bhkw.skz)     document.getElementById('bhkw-skz').value     = project.bhkw.skz;
         if (project.bhkw.eta)     document.getElementById('bhkw-eta').value     = project.bhkw.eta;
@@ -2504,7 +2573,7 @@ export function _loadProject(project) {
         moBeiAktivierung('bhkw'); updateBhkwDisplay();
       }
       if (project.stromkessel) {
-        setStromkessel({ leistungKw: project.stromkessel.leistungKw || 200 });
+        setStromkessel({ leistungKw: project.stromkessel.leistungKw ?? 200 });
         document.getElementById('sk-leistung').value = stromkessel.leistungKw;
         if (project.stromkessel.eta)    document.getElementById('sk-eta').value    = project.stromkessel.eta;
         if (project.stromkessel.waerme) document.getElementById('sk-waerme').value = project.stromkessel.waerme;
@@ -2513,9 +2582,9 @@ export function _loadProject(project) {
         moBeiAktivierung('stromkessel'); updateStromkesselDisplay();
       }
       if (project.solarthermie) {
-        document.getElementById('st-flaeche').value = project.solarthermie.flaeche || 0;
-        document.getElementById('st-spez').value = project.solarthermie.spez || 400;
-        setSolarthermieAktiv((project.solarthermie.flaeche || 0) > 0);
+        document.getElementById('st-flaeche').value = project.solarthermie.flaeche ?? 0;
+        document.getElementById('st-spez').value = project.solarthermie.spez ?? 400;
+        setSolarthermieAktiv((project.solarthermie.flaeche ?? 0) > 0);
         if (project.solarthermie.polygon && project.solarthermie.polygon.length >= 3) {
           window._stPolygon = project.solarthermie.polygon;
           _attachSTLayer(project.solarthermie.polygon);
@@ -2527,12 +2596,12 @@ export function _loadProject(project) {
       }
       if (project.waermespeicher) {
         document.getElementById('ts-typ').value = project.waermespeicher.typ || 'puffer';
-        document.getElementById('ts-volumen').value = project.waermespeicher.volumen || 0;
-        document.getElementById('ts-dt').value = project.waermespeicher.dt || 40;
-        document.getElementById('ts-verlust').value = project.waermespeicher.verlust || 0.5;
-        document.getElementById('ts-entlade-kw').value = project.waermespeicher.entladeKw || 200;
-        document.getElementById('ts-lade-kw').value = project.waermespeicher.ladeKw || project.waermespeicher.entladeKw || 200;
-        setThermSpeicherAktiv((project.waermespeicher.volumen || 0) > 0);
+        document.getElementById('ts-volumen').value = project.waermespeicher.volumen ?? 0;
+        document.getElementById('ts-dt').value = project.waermespeicher.dt ?? 40;
+        document.getElementById('ts-verlust').value = project.waermespeicher.verlust ?? 0.5;
+        document.getElementById('ts-entlade-kw').value = project.waermespeicher.entladeKw ?? 200;
+        document.getElementById('ts-lade-kw').value = project.waermespeicher.ladeKw ?? project.waermespeicher.entladeKw ?? 200;
+        setThermSpeicherAktiv((project.waermespeicher.volumen ?? 0) > 0);
         updateThermSpeicherDisplay();
         document.getElementById('therm-speicher-panel').style.display = 'block';
       }
@@ -2567,24 +2636,51 @@ export function _loadProject(project) {
         renderFFPanel();
       }
       if (project.pvModul) {
-        if (project.pvModul.breite) document.getElementById('pv-modul-breite').value = project.pvModul.breite;
-        if (project.pvModul.laenge) document.getElementById('pv-modul-laenge').value = project.pvModul.laenge;
-        if (project.pvModul.wp)     document.getElementById('pv-modul-wp').value     = project.pvModul.wp;
+        if (project.pvModul.breite != null) document.getElementById('pv-modul-breite').value = project.pvModul.breite;
+        if (project.pvModul.laenge != null) document.getElementById('pv-modul-laenge').value = project.pvModul.laenge;
+        if (project.pvModul.wp != null)     document.getElementById('pv-modul-wp').value     = project.pvModul.wp;
       }
       if (project.pvPanel) {
-        if (project.pvPanel.kwp)          { const el = document.getElementById('pv-kwp');             if (el) el.value = project.pvPanel.kwp; }
-        if (project.pvPanel.spez)         { const el = document.getElementById('pv-spez');            if (el) el.value = project.pvPanel.spez; }
+        if (project.pvPanel.kwp != null)          { const el = document.getElementById('pv-kwp');             if (el) el.value = project.pvPanel.kwp; }
+        if (project.pvPanel.spez != null)         { const el = document.getElementById('pv-spez');            if (el) el.value = project.pvPanel.spez; }
         if (project.pvPanel.ausrichtung) { const el = document.getElementById('pv-ausrichtung');     if (el) el.value = project.pvPanel.ausrichtung; }
-        if (project.pvPanel.quartierMwh)  { const el = document.getElementById('strom-quartier-mwh'); if (el) el.value = project.pvPanel.quartierMwh; }
-        if (project.pvPanel.strompreis)   { const el = document.getElementById('strom-preis-bezug');  if (el) el.value = project.pvPanel.strompreis; _onStrompreisChange('strom-preis-bezug'); }
-        if (project.pvPanel.einspeisung)   { const el = document.getElementById('strom-preis-einsp');    if (el) el.value = project.pvPanel.einspeisung; }
-        if (project.pvPanel.leistungspreis){ const el = document.getElementById('strom-leistungspreis'); if (el) el.value = project.pvPanel.leistungspreis; }
+        if (project.pvPanel.quartierMwh != null)  { const el = document.getElementById('strom-quartier-mwh'); if (el) el.value = project.pvPanel.quartierMwh; }
+        if (project.pvPanel.strompreis != null)   { const el = document.getElementById('strom-preis-bezug');  if (el) el.value = project.pvPanel.strompreis; _onStrompreisChange('strom-preis-bezug'); }
+        if (project.pvPanel.einspeisung != null)   { const el = document.getElementById('strom-preis-einsp');    if (el) el.value = project.pvPanel.einspeisung; }
+        if (project.pvPanel.leistungspreis != null){ const el = document.getElementById('strom-leistungspreis'); if (el) el.value = project.pvPanel.leistungspreis; }
+        if (project.pvPanel.vergModell)     { const el = document.getElementById('pv-verg-modell');     if (el) el.value = project.pvPanel.vergModell; }
+        if (project.pvPanel.tarifSzenario) { const el = document.getElementById('pv-tarif-szenario'); if (el) el.value = project.pvPanel.tarifSzenario; }
+        onPvVergModellChange();
+      }
+      if (project.pvProfile?.values) {
+        if (project.pvProfile.values.length !== 8760) throw new Error('Gespeichertes PV-Profil muss genau 8.760 Stunden enthalten.');
+        window.elPvH = Float32Array.from(project.pvProfile.values);
+        window.elPvMeta = project.pvProfile.meta || {quality:'uploaded_unverified',source:'Legacy project'};
+        const info = document.getElementById('pv-upload-info'); if (info) info.textContent = `${window.elPvMeta.filename || 'Gespeichertes PV-Profil'} · ${window.elPvMeta.quality || 'Qualität unbekannt'}`;
+        const clear = document.getElementById('pv-clear-btn'); if (clear) clear.style.display = '';
+      } else { window.elPvH = null; window.elPvMeta = null; }
+      if (project.battery) {
+        const ids = {capacityKwh:'bat-kapazitaet',powerKw:'bat-leistung',investEurKwh:'opt-bat-invest',studyLifeYears:'opt-bat-life',calendarFadePctPerYear:'bat-calendar-fade',cycleLife:'bat-cycle-life',eolCapacityPct:'bat-eol-pct'};
+        for (const [key,id] of Object.entries(ids)) { const el=document.getElementById(id); if(el && project.battery[key] != null) el.value=project.battery[key]; }
+      }
+      if (project.economicScenario?.values) {
+        const es = project.economicScenario;
+        const ids = {stromCtKwh:'wirt-p-strom',wpStromCtKwh:'wirt-p-strom-wp',gasCtKwh:'wirt-p-gas',heizoelCtKwh:'wirt-p-hko',fernwaermeCtKwh:'wirt-p-fw',pelletsCtKwh:'wirt-p-pk',hhsCtKwh:'wirt-p-hhs',co2EurT:'wirt-p-co2',kapitalzinsPct:'wirt-zins',lohnEurH:'wirt-lohn'};
+        const sel = document.getElementById('wirt-szenario'); if (sel) sel.value = es.scenarioId || 'manual';
+        for (const [key, id] of Object.entries(ids)) {
+          const el = document.getElementById(id); if (el && es.values[key] != null) el.value = es.values[key];
+          if (el && key === 'wpStromCtKwh' && es.values[key] == null) el.value = '';
+        }
+        const co2 = document.getElementById('wirt-co2-alle'); if (co2) co2.checked = !!es.values.co2Alle;
+        const label = document.getElementById('wirt-co2-alle-label'); if (label) label.textContent = es.values.co2Alle ? 'alle Energieträger' : 'nur fossile';
+        const hint = document.getElementById('wirt-szenario-hint'); if (hint) hint.textContent = es.scenarioId === 'manual' ? 'Manuelle Annahmen aus Projektdatei.' : `Gespeichertes Wirtschaftsszenario ${es.scenarioId}.`;
+        _onStrompreisChange('wirt-p-strom'); _onGaspreisChange('wirt-p-gas');
       }
       if (project.meritOrderKeys) {
         setMeritOrderKeys(project.meritOrderKeys.filter(k => isErzeugerAktiv(k)));
       }
       if (project.pelletsKessel) {
-        setPelletsKessel({ leistungKw: project.pelletsKessel.leistungKw || 300 });
+        setPelletsKessel({ leistungKw: project.pelletsKessel.leistungKw ?? 300 });
         if (project.pelletsKessel.lat != null) { pelletsKessel.lat = project.pelletsKessel.lat; pelletsKessel.lng = project.pelletsKessel.lng; }
         if (project.pelletsKessel.eta) document.getElementById('pk-eta').value = project.pelletsKessel.eta;
         if (project.pelletsKessel.waerme) document.getElementById('pk-waerme').value = project.pelletsKessel.waerme;
@@ -2593,7 +2689,7 @@ export function _loadProject(project) {
         redrawPellets(); updatePelletsDisplay();
       }
       if (project.heizhackschnitzel) {
-        setHeizhackschnitzel({ leistungKw: project.heizhackschnitzel.leistungKw || 400 });
+        setHeizhackschnitzel({ leistungKw: project.heizhackschnitzel.leistungKw ?? 400 });
         if (project.heizhackschnitzel.lat != null) { heizhackschnitzel.lat = project.heizhackschnitzel.lat; heizhackschnitzel.lng = project.heizhackschnitzel.lng; }
         if (project.heizhackschnitzel.eta) document.getElementById('hhs-eta').value = project.heizhackschnitzel.eta;
         if (project.heizhackschnitzel.waerme) document.getElementById('hhs-waerme').value = project.heizhackschnitzel.waerme;
@@ -2602,7 +2698,7 @@ export function _loadProject(project) {
         redrawHhs(); updateHhsDisplay();
       }
       if (project.fernwaerme) {
-        setFernwaerme({ leistungKw: project.fernwaerme.leistungKw || 500 });
+        setFernwaerme({ leistungKw: project.fernwaerme.leistungKw ?? 500 });
         if (project.fernwaerme.lat != null) { fernwaerme.lat = project.fernwaerme.lat; fernwaerme.lng = project.fernwaerme.lng; }
         if (project.fernwaerme.waerme) document.getElementById('fw-waerme').value = project.fernwaerme.waerme;
         if (project.fernwaerme.co2f) document.getElementById('fw-co2f').value = project.fernwaerme.co2f;
@@ -2611,13 +2707,13 @@ export function _loadProject(project) {
         redrawFernwaerme(); updateFernwaermeDisplay();
       }
       // Emissionsfaktoren
-      if (project.heizoelEmF) { setHeizoelEmF(project.heizoelEmF); document.getElementById('heizoel-emf').value = heizoelEmF; }
-      if (project.gasEmF)     { setGasEmF(project.gasEmF);     document.getElementById('gas-emf').value      = gasEmF; }
-      if (project.pelletsEmF)     { setPelletsEmF(project.pelletsEmF);     document.getElementById('pellets-emf').value      = pelletsEmF; }
-      if (project.hhsEmF)         { setHhsEmF(project.hhsEmF);         document.getElementById('hhs-emf').value          = hhsEmF; }
-      if (project.fernwaermeEmF)  { setFernwaermeEmF(project.fernwaermeEmF);  document.getElementById('fernwaerme-emf').value   = fernwaermeEmF; }
-      if (project.stromEmF)   { setStromEmF(project.stromEmF);   document.getElementById('strom-emf').value    = stromEmF; }
-      if (project.stromEmFLZ) { setStromEmFLZ(project.stromEmFLZ); document.getElementById('strom-emf-lz').value = stromEmFLZ; }
+      if (project.heizoelEmF != null) { setHeizoelEmF(project.heizoelEmF); document.getElementById('heizoel-emf').value = heizoelEmF; }
+      if (project.gasEmF != null)     { setGasEmF(project.gasEmF);     document.getElementById('gas-emf').value      = gasEmF; }
+      if (project.pelletsEmF != null)     { setPelletsEmF(project.pelletsEmF);     document.getElementById('pellets-emf').value      = pelletsEmF; }
+      if (project.hhsEmF != null)         { setHhsEmF(project.hhsEmF);         document.getElementById('hhs-emf').value          = hhsEmF; }
+      if (project.fernwaermeEmF != null)  { setFernwaermeEmF(project.fernwaermeEmF);  document.getElementById('fernwaerme-emf').value   = fernwaermeEmF; }
+      if (project.stromEmF != null)   { setStromEmF(project.stromEmF);   document.getElementById('strom-emf').value    = stromEmF; }
+      if (project.stromEmFLZ != null) { setStromEmFLZ(project.stromEmFLZ); document.getElementById('strom-emf-lz').value = stromEmFLZ; }
       if (project.pefStrom      != null) { setPefStrom(project.pefStrom);      document.getElementById('pef-strom').value      = pefStrom; }
       if (project.pefWP         != null) { setPefWP(project.pefWP);         document.getElementById('pef-wp').value         = pefWP; }
       if (project.pefGas        != null) { setPefGas(project.pefGas);        document.getElementById('pef-gas').value        = pefGas; }
@@ -2747,8 +2843,8 @@ export function _loadProject(project) {
               edge.massnahmen = eData.massnahmen || [];
               // Bau-/Abrissjahr werden ohnehin aus den Endpunkten neu abgeleitet;
               // gespeicherte Werte als Startwert übernehmen, falls vorhanden.
-              if (eData.baujahr != null)    edge.baujahr    = eData.baujahr;
-              if (eData.abrissjahr != null) edge.abrissjahr = eData.abrissjahr;
+              if (eData.baujahr != null)    { edge.baujahr = eData.baujahr; edge._baujahrExplicit = true; }
+              if (eData.abrissjahr != null) { edge.abrissjahr = eData.abrissjahr; edge._abrissjahrExplicit = true; }
               if (edge.msLevel) {
                 edge.layer?.setStyle({ color: '#7c4dff', weight: 4, dashArray: null });
               }
@@ -2839,7 +2935,7 @@ export function loadGebaeudeFromParent(gebaeudeArray) {
     if (g.circleMarker) map.removeLayer(g.circleMarker);
     if (g.labelMarker) map.removeLayer(g.labelMarker);
   });
-  window.gebaeude = [];
+  setGebaeude([]);
   clearNetz();
   clearTrasse();
   setIdCounter(1);
@@ -2868,25 +2964,35 @@ export function loadGebaeudeFromParent(gebaeudeArray) {
 
 export function sendToLiegenschaftsrechner() {
   if (window.parent === window) return;
+  const parentOrigin = window._energiekarteParentOrigin;
+  if (!parentOrigin) { showHint('Senden blockiert: Herkunft des Elternfensters ist nicht vertrauenswürdig.'); return; }
   const payload = window.gebaeude.map(g => ({
     id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
     flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
     baujahr: g.baujahr, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen || [], stockwerke: g.stockwerke != null ? g.stockwerke : 1
   }));
-  window.parent.postMessage({ type: 'ENERGIEKARTE_APPLY_GEBAEUDE', gebaeude: payload }, '*');
+  window.parent.postMessage({ type: 'ENERGIEKARTE_APPLY_GEBAEUDE', gebaeude: payload }, parentOrigin);
   showHint('An Liegenschaftsrechner gesendet.');
   setTimeout(hideHint, 2500);
 }
 
 (function initEnergiekarteIframe() {
   if (window.self === window.top) return;
+  let parentOrigin = null;
+  try {
+    const ref = new URL(document.referrer);
+    if (ref.protocol === 'https:' || ref.protocol === 'http:') parentOrigin = ref.origin;
+  } catch { /* ohne prüfbaren Referrer keine Nachrichtenannahme */ }
+  window._energiekarteParentOrigin = parentOrigin;
+  if (!parentOrigin) return;
   const btn = document.getElementById('btn-send-to-lr');
   if (btn) btn.style.display = 'block';
   window.addEventListener('message', function(e) {
+    if (e.source !== window.parent || e.origin !== parentOrigin) return;
     if (!e.data || e.data.type !== 'ENERGIEKARTE_LOAD_BUILDINGS') return;
     if (Array.isArray(e.data.gebaeude)) loadGebaeudeFromParent(e.data.gebaeude);
   });
-  setTimeout(function() { window.parent.postMessage({ type: 'ENERGIEKARTE_READY' }, '*'); }, 800);
+  setTimeout(function() { window.parent.postMessage({ type: 'ENERGIEKARTE_READY' }, parentOrigin); }, 800);
 })();
 
 export function showHint(msg){const h=document.getElementById('hint');h.textContent=msg;h.classList.remove('hidden');}

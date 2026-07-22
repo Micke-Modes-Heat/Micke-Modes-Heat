@@ -139,7 +139,7 @@ ${gebMitFeld.length ? `
 <div class="content">${gebSections}</div>` : ''}
 
 ${assetsMitFeld.length ? `
-<div class="section-title page-break">⚡ Elektro-Assets (${assetsMitFeld.length})</div>
+<div class="section-title page-break">⚡ Stromnetz-Komponenten und Anlagen (${assetsMitFeld.length})</div>
 <div class="content">${assetSections}</div>` : ''}
 
 ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `

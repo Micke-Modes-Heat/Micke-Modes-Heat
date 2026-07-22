@@ -23,8 +23,15 @@ import { makePvProfile8760 } from './09a-pv-profile.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { OPT_INVEST_DEFAULT } from './config/optimizer-defaults.js';
 import { activeVariantId } from './01-globals-varianten.js';
+import { appLifecycle } from './lib/lifecycle.js';
+const optimizerLifecycle = typeof appLifecycle !== 'undefined' ? appLifecycle : {
+  timeout: (callback, delay) => setTimeout(callback, delay),
+  interval: (callback, delay) => setInterval(callback, delay),
+};
 import { _quelleTemp } from './06c-dispatch-core.js';
 import { OPT_EE_KEYS, OPT_IH, OPT_MERIT_ORDER, OPT_NUTZUNG } from './config/optimizer-defaults.js';
+import { pvBatteryStep } from './lib/pv-battery-core.js';
+import { estimateBatteryAging } from './lib/battery-aging.js';
 
 export const _OPT_CE_KEY = {
   lwwp:'LuftWP', fg:'FlussWP', geo:'GeoWP', gaskessel:'Gaskessel',
@@ -141,30 +148,19 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
   let sv = 0, ins = 0, bez = 0, soc = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
   let tsSoc = 0, pvWpSpeicherGes = 0; // Thermischer Speicher SOC + PV→WP→Speicher kumulativ
+  let batDischargeKwh = 0;
   for (let t = 0; t < 8760; t++) {
     let pvWpSpeicher = 0; // pro Stunde
     const dem = demandH[t];
     const pvGen = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
     const bhkwGen = bhkwElH ? bhkwElH[t] : 0;
-    const gen = pvGen + bhkwGen;
-
-    const dsc = Math.min(gen, dem);
-    const pvFrac = gen > 0 ? pvGen / gen : 0;
-    let rDem = dem - dsc;
-    let rGen = gen - dsc;
-
-    // Batterie laden
-    if (batKwh > 0 && rGen > 0) {
-      const cMax = Math.min(rGen, batLeistKw, batKwh - soc);
-      soc += cMax;
-      rGen -= cMax;
-    }
-    // Batterie entladen
-    if (batKwh > 0 && rDem > 0) {
-      const avail = Math.min(soc * ETA_BAT, rDem, batLeistKw);
-      soc -= avail / ETA_BAT;
-      rDem -= avail;
-    }
+    const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:ETA_BAT});
+    const dsc = step.direct;
+    const pvFrac = step.pvFraction;
+    let rDem = step.residualDemand;
+    let rGen = step.residualGeneration;
+    soc = step.socKwh;
+    batDischargeKwh += step.dischargedKwh;
 
     // PV-Überschuss → WP → thermischer Speicher
     if (rGen > 0.1 && dispResult && dispResult.thSpParams && dispResult.wpResKwH) {
@@ -202,7 +198,7 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
 
   return { eigenMwh: sv / 1000 + pvWpSpeicherGes, einspeiseMwh: ins / 1000, netzbezugMwh: bez / 1000,
            pvEigenMwh: pvEig, pvEinspMwh: pvEinsp, bhkwEigenMwh: bhkwEig, bhkwEinspMwh: bhkwEinsp,
-           pvWpSpeicherMwh: pvWpSpeicherGes };
+           pvWpSpeicherMwh: pvWpSpeicherGes, batDischargeMwh:batDischargeKwh/1000 };
 }
 
 // _calcBausteinKostenOpt ENTFERNT — nutzt jetzt _calcKostenShared
@@ -257,6 +253,9 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
   // BHKW-Erlös-Daten
   const bhkwEigMwh = pvBatResult ? (pvBatResult.bhkwEigenMwh || 0) : 0;
   const bhkwEinspMwh = pvBatResult ? (pvBatResult.bhkwEinspMwh || 0) : 0;
+  const batAging = batKwh > 0 ? estimateBatteryAging({capacityKwh:batKwh,annualDischargeKwh:(pvBatResult?.batDischargeMwh||0)*1000,
+    calendarFadePctPerYear:parseFloat(document.getElementById('bat-calendar-fade')?.value)||1.5,
+    cycleLife:parseFloat(document.getElementById('bat-cycle-life')?.value)||6000,eolCapacityPct:parseFloat(document.getElementById('bat-eol-pct')?.value)||80,studyYears:20}) : null;
 
   const result = _calcKostenShared({
     pKw: _bPKw,
@@ -288,6 +287,7 @@ export function _optKennwerte2(dispatchResult, pvKwp, batKwh, pvBatResult, param
       gesamtEigenMwh: gesamtEigenMwh,
       invPerKwp: pvInvPerKwp,
       batInvPerKwh: parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat,
+      batLifeYears: batAging && Number.isFinite(batAging.expectedLifeYears) ? Math.max(1,batAging.expectedLifeYears) : OPT_NUTZUNG.bat,
       vergModell: document.getElementById('pv-verg-modell')?.value || 'teil',
       pEinsp: pEinsp
     },
@@ -581,6 +581,9 @@ export function _collectOptDomParams() {
     investKurven, pvInvestMode, pvInvestManual,
     pvInvestTabelle,
     batInvest: f('opt-bat-invest', OPT_INVEST_DEFAULT.bat),
+    batCalendarFade: f('bat-calendar-fade', 1.5),
+    batCycleLife: f('bat-cycle-life', 6000),
+    batEolPct: f('bat-eol-pct', 80),
     pvVergModell: s('pv-verg-modell', 'teil'),
     // Emissionsfaktoren
     stromEmF: typeof stromEmF !== 'undefined' ? stromEmF : 363,
@@ -606,7 +609,10 @@ export function _collectOptDomParams() {
   };
 }
 
-export function _optVarianteUebernehmen(result, btnEl) {
+export function _optVarianteUebernehmen(result, btnEl, _transactionActive = false) {
+  if (!_transactionActive && typeof window.runPlanningTransaction === 'function') {
+    return window.runPlanningTransaction('Optimierung als Variante übernehmen', () => _optVarianteUebernehmen(result, btnEl, true));
+  }
   if (!result) { console.warn('OptVariante: kein result'); return; }
   try {
   const titel = result.keys.map(k => ERZEUGER_CFG[k]?.label || k).join('+');
@@ -929,7 +935,7 @@ export function updateFooterStatus() {
 }
 
 // Footer alle 2s aktualisieren + nach wichtigen Events
-setTimeout(() => setInterval(updateFooterStatus, 2000), 0);
+optimizerLifecycle.timeout(() => optimizerLifecycle.interval(updateFooterStatus, 2000), 0);
 
 // ── Eingabestatus-Panel ──────────────────────────────────────────────────
 export function toggleStatusPanel() {
@@ -1071,7 +1077,7 @@ export function updateStatusPanel() {
 // Auto-Update: nach Dispatch, Strom, Wirtschaftlichkeit
 export const _origOnSystemStateUpdated = typeof onSystemStateUpdated === 'function' ? onSystemStateUpdated : null;
 // Wir patchen nicht, sondern nutzen ein Interval das prüft ob Panel offen ist
-setInterval(() => {
+optimizerLifecycle.interval(() => {
   if (document.getElementById('status-panel')?.classList.contains('visible')) updateStatusPanel();
 }, 3000);
 

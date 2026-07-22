@@ -1,6 +1,6 @@
 // ── 02b-gebaeude.js — Karte-Init, Gebäude-CRUD, Energie, OSM, Rendering ──
 
-import { R_MIN, currentMode, isExcluded, updateVizDebounced } from './01-globals-varianten.js';
+import { R_MIN, currentMode, isExcluded, setGebaeude, setGlobalYearValue, setNetzEdges, setNetworkLocked, setSelectedId, setStromEdges, setStromNodes, updateVizDebounced } from './01-globals-varianten.js';
 import { lerpColor } from './02a-netz-physik.js';
 import { polygonAreaM2, polygonCenter, selectFromMap, updateViz } from './02c-karte-werkzeuge.js';
 import { hidePanels, populateZentraleSelect, recalcNetz, startDraw } from './03b-netz.js';
@@ -86,7 +86,7 @@ export function applyTheme(t) {
 document.getElementById('map').addEventListener('contextmenu', e => e.preventDefault());
 
 export function setGlobalYear(val) {
-  window.globalYear = parseInt(val);
+  setGlobalYearValue(val);
   document.getElementById('year-display').textContent = window.globalYear;
   // Lastgang für das Betrachtungsjahr skalieren (Abriss/Neubau/Sanierung)
   if (window._basisLastgangKw) _rescaleLastgangForYear(window.globalYear);
@@ -100,7 +100,7 @@ export function setGlobalYear(val) {
 }
 
 export function toggleNetworkLock() {
-  window.networkLocked = !window.networkLocked;
+  setNetworkLocked(!window.networkLocked);
   _syncNetworkLockUI();
   recalcNetz();
   if (typeof calcWirtschaftPanel === 'function') calcWirtschaftPanel();
@@ -452,8 +452,8 @@ export function removeGebaeude(id){
   if(g.labelMarker) map.removeLayer(g.labelMarker);
   if(g.pvFlaechen) g.pvFlaechen.forEach(f=>{ if(f.layer) map.removeLayer(f.layer); if(f.svgLayer) map.removeLayer(f.svgLayer); });
   if(g._pvModuleLayer){ map.removeLayer(g._pvModuleLayer); g._pvModuleLayer=null; }
-  window.gebaeude=window.gebaeude.filter(x=>x.id!==id);
-  window.netzEdges = window.netzEdges.filter(e => {
+  setGebaeude(window.gebaeude.filter(x=>x.id!==id));
+  setNetzEdges(window.netzEdges.filter(e => {
     if(e.u === id || e.v === id){
       map.removeLayer(e.layer);
       if(e.hitLayer) map.removeLayer(e.hitLayer);
@@ -463,9 +463,9 @@ export function removeGebaeude(id){
       return false;
     }
     return true;
-  });
+  }));
   // Stromnetz-Kanten für dieses Gebäude entfernen
-  window.stromEdges = window.stromEdges.filter(e => {
+  setStromEdges(window.stromEdges.filter(e => {
     const uN = window.stromNodes.find(n => n.id === e.u);
     const vN = window.stromNodes.find(n => n.id === e.v);
     if ((uN && uN.type === 'geb' && uN.gebId === id) || (vN && vN.type === 'geb' && vN.gebId === id)) {
@@ -475,8 +475,8 @@ export function removeGebaeude(id){
       return false;
     }
     return true;
-  });
-  window.stromNodes = window.stromNodes.filter(n => !(n.type === 'geb' && n.gebId === id));
+  }));
+  setStromNodes(window.stromNodes.filter(n => !(n.type === 'geb' && n.gebId === id)));
   renderList(); updateViz(); recalcNetz();
 }
 
@@ -490,7 +490,7 @@ export function clearOsmBuildings(){
     if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
   });
   const osmIds = new Set(osmGeb.map(g=>g.id));
-  window.netzEdges = window.netzEdges.filter(e => {
+  setNetzEdges(window.netzEdges.filter(e => {
     if(osmIds.has(e.u) || osmIds.has(e.v)){
       if(e.layer) map.removeLayer(e.layer);
       if(e.hitLayer) map.removeLayer(e.hitLayer);
@@ -500,8 +500,8 @@ export function clearOsmBuildings(){
       return false;
     }
     return true;
-  });
-  window.stromEdges = window.stromEdges.filter(e => {
+  }));
+  setStromEdges(window.stromEdges.filter(e => {
     const uN = window.stromNodes.find(n => n.id === e.u);
     const vN = window.stromNodes.find(n => n.id === e.v);
     if ((uN && uN.type === 'geb' && osmIds.has(uN.gebId)) || (vN && vN.type === 'geb' && osmIds.has(vN.gebId))) {
@@ -511,9 +511,9 @@ export function clearOsmBuildings(){
       return false;
     }
     return true;
-  });
-  window.stromNodes = window.stromNodes.filter(n => !(n.type === 'geb' && osmIds.has(n.gebId)));
-  window.gebaeude = window.gebaeude.filter(g => !g.fromOsm);
+  }));
+  setStromNodes(window.stromNodes.filter(n => !(n.type === 'geb' && osmIds.has(n.gebId))));
+  setGebaeude(window.gebaeude.filter(g => !g.fromOsm));
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }
 
@@ -1005,7 +1005,7 @@ export function renameGebaeude(id,name){
 }
 
 export function highlightCard(id) {
-  window.selectedId = id;
+  setSelectedId(id);
   document.querySelectorAll('.geb-card').forEach(c => c.classList.remove('selected'));
   const card = document.getElementById('card-' + id);
   if (card) card.classList.add('selected');
@@ -1055,4 +1055,3 @@ export function clearPlan(id, type, idx) {
   _invalidateStats();
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }
-

@@ -12,6 +12,7 @@ import { getSlpProfile } from './02b-gebaeude.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { getElSlpProfiles } from './13k-elslp-registry.js';
 import { windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
+import { escHtml } from './03c-gebaeude-io.js';
 
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 const _N = {
@@ -986,7 +987,7 @@ export function napRenderPanel() {
   const hdrInfo = document.getElementById('nap-hdr-info');
   if (hdrInfo && data) {
     const s = data.stats;
-    hdrInfo.innerHTML = `${data.isSynthetic?'⚡':'📄'} <b style="color:#ccc">${data.filename}</b>
+    hdrInfo.innerHTML = `${data.isSynthetic?'⚡':'📄'} <b style="color:#ccc">${escHtml(data.filename)}</b>
       &nbsp;·&nbsp; ${data.year} &nbsp;·&nbsp; ${s.peak.toFixed(0)} kW Peak`;
   } else if (hdrInfo) hdrInfo.innerHTML='';
   _napRenderSidebar();

@@ -31,12 +31,17 @@ const DEPS = [
   },
 ];
 
-async function fetchText(url) {
-  process.stdout.write(`  Lade ${url} … `);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} für ${url}`);
-  const text = await res.text();
-  console.log(`${(text.length / 1024).toFixed(0)} KB`);
+const LOCAL_DEPS = new Map([
+  ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'node_modules/leaflet/dist/leaflet.css'],
+  ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'node_modules/leaflet/dist/leaflet.js'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', 'node_modules/jszip/dist/jszip.min.js'],
+]);
+
+function loadDependency(url) {
+  const local = LOCAL_DEPS.get(url);
+  if (!local) throw new Error(`Keine gesperrte lokale Quelle für ${url}`);
+  const text = readFileSync(resolve(local), 'utf8');
+  console.log(`  Lokal ${local} (${(text.length / 1024).toFixed(0)} KB)`);
   return text;
 }
 
@@ -60,7 +65,7 @@ if (typeof L !== 'undefined') {
   );
 
   for (const dep of DEPS) {
-    const content = await fetchText(dep.url);
+    const content = loadDependency(dep.url);
     // Leaflet inline: Marker-PNG-URLs aus CSS entfernen (würden 404 geben)
     const cleaned = dep.url.includes('leaflet.css')
       ? content.replace(/url\([^)]*images\/marker[^)]*\)/g, 'url()')

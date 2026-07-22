@@ -717,8 +717,6 @@ export function _deckungen8760(ss) {
       if (key === 'geo') {
         const disp = document.getElementById('geo-jaz-display');
         if (disp) disp.textContent = jaz.toFixed(2) + ' (stundenscharf)';
-        const jazHid = document.getElementById('geo-jaz');
-        if (jazHid) jazHid.value = jaz.toFixed(2);
       }
       _updateErzeugerWaerme(key, thKwh[key] / 1000);
       _updateWpPanelDispatch(key, thKwh[key], elKwh[key], leistungen[key], thKwhM[key], elKwhM[key]);
@@ -809,8 +807,8 @@ export function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, 
       const jaz = thMwh / elMwh;
       const disp = document.getElementById('lwwp-jaz-display');
       if (disp) disp.textContent = jaz.toFixed(2) + ' (stundenscharf)';
-      const jazHid = document.getElementById('lwwp-jaz');
-      if (jazHid) jazHid.value = jaz.toFixed(2);
+      window._dispatchResultsByErzeuger = window._dispatchResultsByErzeuger || {};
+      window._dispatchResultsByErzeuger.lwwp = {...(window._dispatchResultsByErzeuger.lwwp || {}), jaz};
     }
   }
 
@@ -826,8 +824,8 @@ export function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, 
       const jaz = thMwh / elMwh;
       const disp = document.getElementById('fg-jaz-display');
       if (disp) disp.textContent = jaz.toFixed(2) + ' (stundenscharf)';
-      const jazHid = document.getElementById('fg-jaz');
-      if (jazHid) jazHid.value = jaz.toFixed(2);
+      window._dispatchResultsByErzeuger = window._dispatchResultsByErzeuger || {};
+      window._dispatchResultsByErzeuger.fg = {...(window._dispatchResultsByErzeuger.fg || {}), jaz};
     }
   }
 
@@ -835,13 +833,11 @@ export function _updateWpPanelDispatch(key, thKwhTotal, elKwhTotal, leistungKw, 
     const s  = document.getElementById('geo-r-strom'); if (s)  s.textContent = elMwh.toFixed(0) + ' MWh/a';
     const e  = document.getElementById('geo-r-erde');  if (e)  e.textContent = (thMwh - elMwh).toFixed(0) + ' MWh/a';
     const co = document.getElementById('geo-r-co2');   if (co) co.textContent = (elMwh * stromEmF / 1000).toFixed(1) + ' t/a · ' + (elMwh * stromEmFLZ / 1000).toFixed(1) + ' t/a (Ø 2030–50)';
-    // Sondendimensionierung mit echter JAZ neu berechnen (überschreibt Carnot-Schätzung).
-    // Re-Trigger des Dispatch wird durch _geoNoReentry (in updateAllDeckungen gesetzt) verhindert.
-    calcGeoThermie();
+    // Ergebnis bleibt Ergebnis: keine Rückkopplung in die Sondendimensionierung.
   }
 }
 
-// ── Wärmeabgabe aus Dispatch in Panel-Feld schreiben + Display neu rechnen ─
+// ── Wärmeabgabe aus Dispatch separat vom unveränderten Eingabemodell halten ─
 export const _WAERME_IDS = {
   lwwp: 'lwwp-waerme', fg: 'fg-waerme', geo: 'geo-waerme',
   fernwaerme: 'fw-waerme', pellets: 'pk-waerme', hhs: 'hhs-waerme',
@@ -855,10 +851,11 @@ export const _DISPLAY_FNS = () => ({
 });
 export function _updateErzeugerWaerme(key, waermeMwh) {
   if (waermeMwh < 0.1) return;
-  const el = document.getElementById(_WAERME_IDS[key]);
-  if (el) el.value = Math.round(waermeMwh);
-  const fn = _DISPLAY_FNS()[key];
-  if (fn) fn();
+  window._dispatchResultsByErzeuger = window._dispatchResultsByErzeuger || {};
+  window._dispatchResultsByErzeuger[key] = {
+    ...(window._dispatchResultsByErzeuger[key] || {}),
+    waermeMwh
+  };
 }
 
 export function _renderWpCopChart(svgId, wrapId, monthlyCops, color) {

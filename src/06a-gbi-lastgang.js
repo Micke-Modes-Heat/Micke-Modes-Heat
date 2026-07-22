@@ -9,6 +9,7 @@ import { glBerechnenDebounced, glKannBerechnen } from './06b-gl-berechnen.js';
 import { saCurrentTab, saSetTab } from './07a-analysis-charts.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { CalcEngine } from './08-calc-engine.js';
+import { normalizeHourlyYear } from './lib/time-series.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { glBerechnenAuto } from './06b-gl-berechnen.js';
 
@@ -17,6 +18,7 @@ window.elQuartierH  = null; // Float32Array[8760] — stündl. Stromlastgang Qua
 window._wpElHourly  = null; // Float32Array[8760] — stündl. WP-Stromverbrauch (Summe alle WPs)
 window._skElHourly  = null; // Float32Array[8760] — stündl. Stromkessel-Stromverbrauch
 window.elPvH         = null; // Float32Array[8760] — stündl. PV-Erzeugung (Upload oder synthetisch)
+window.elPvMeta      = null; // Herkunft/Qualität eines hochgeladenen PV-Profils
 window._bhkwElHourly = null; // Float32Array[8760] — stündl. BHKW-Stromerzeugung
 
 // Globale Monatsgrenzen (stündlich, 365-Tage-Jahr ohne Schalttag)
@@ -461,6 +463,7 @@ export function gbiFinish() {
 export let glRawCsv = null;       // roher CSV-Text
 export let glRawData = null;      // Float32Array nach Parse, original (8760/8784h)
 export let glLastgangKw = null;   // Float32Array 8760h, aufbereitet (normiert)
+export let glTimeSeriesMeta = null; // Intervall, Zeitzone, Quelle, Qualität, Transformationen
 export let glColHeaders = [];     // Spaltenköpfe falls mehrspaltig
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -776,23 +779,13 @@ export function glParseLastgang(csvOverride, sepOverride, colOverride) {
   }
 
   const n = values.length;
-  if (n < 8700) { glSetUploadError(`Nur ${n} Werte gefunden — mindestens 8700 erwartet.`); return; }
-  if (n > 8800) { glSetUploadError(`${n} Werte gefunden — maximal 8784 erwartet.`); return; }
-
-  // Schaltjahr (8784h) → auf 8760h normieren durch gleichmäßiges Ausdünnen
-  let arr;
-  if (n === 8784) {
-    arr = new Float32Array(8760);
-    for (let i = 0; i < 8760; i++) arr[i] = values[Math.round(i * 8784 / 8760)];
-  } else {
-    arr = new Float32Array(n);
-    for (let i = 0; i < n; i++) arr[i] = values[i];
-    if (n < 8760) { // auffüllen mit letztem Wert
-      const full = new Float32Array(8760);
-      full.set(arr);
-      arr = full;
-    }
+  if (n !== 8760 && n !== 8784) {
+    glSetUploadError(`${n} Werte gefunden — erwartet werden genau 8760 (Normaljahr) oder 8784 (Schaltjahr). Fehlende Stunden werden nicht mehr still aufgefüllt.`);
+    return;
   }
+  const normalized = normalizeHourlyYear(values, {source: 'measured'});
+  const arr = normalized.values;
+  glTimeSeriesMeta = normalized.meta;
 
   glRawData = arr;
   glLastgangKw = arr;
@@ -802,7 +795,7 @@ export function glParseLastgang(csvOverride, sepOverride, colOverride) {
   const sumMwh = arr.reduce((a, b) => a + b, 0) / 1000;
   document.getElementById('gl-upload-zone').classList.add('loaded');
   document.getElementById('gl-upload-info').textContent =
-    `${n} Werte · P_max ${Math.round(pMax).toLocaleString('de-DE')} kW · ${Math.round(sumMwh).toLocaleString('de-DE')} MWh/a`;
+    `${n} Messwerte · ${glTimeSeriesMeta.quality}${n === 8784 ? ' · 29. Februar kalenderkorrekt entfernt' : ''} · P_max ${Math.round(pMax).toLocaleString('de-DE')} kW · ${Math.round(sumMwh).toLocaleString('de-DE')} MWh/a`;
 
   glAutoNetzverlust(arr);
   glRenderPreview(arr, pMax);
@@ -948,7 +941,7 @@ export function glSetUploadError(msg) {
   document.getElementById('gl-upload-info').textContent = '⚠ ' + msg;
   document.getElementById('gl-upload-zone').classList.remove('loaded');
   document.getElementById('gl-preview-wrap').style.display = 'none';
-  glRawData = null; glLastgangKw = null;
+  glRawData = null; glLastgangKw = null; glTimeSeriesMeta = null;
   glUpdateStatus();
 }
 
@@ -957,6 +950,7 @@ export function glClearLastgang() {
   glRawCsv = null;
   glRawData = null;
   glLastgangKw = null;
+  glTimeSeriesMeta = null;
   glColHeaders = [];
   document.getElementById('gl-upload-zone').classList.remove('loaded');
   document.getElementById('gl-upload-info').textContent = '';
@@ -1045,4 +1039,3 @@ export function glUpdateStatus() {
   if (slpSection) slpSection.style.display = hatLastgang ? 'none' : '';
   if (gesamtRow) gesamtRow.style.display = hatLastgang ? 'none' : '';
 }
-

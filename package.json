@@ -2,6 +2,7 @@
   "name": "energieplanung-v2",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "node build-singlefile.mjs",
@@ -11,13 +12,19 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:esm": "playwright test --config playwright.esm.config.mjs",
+    "analyze:imports": "node tools/import-graph.mjs",
+    "test:all": "npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run build:feldapp && npm run test:e2e && npm run test:e2e:esm"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@playwright/test": "^1.60.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
     "@types/leaflet": "^1.9.21",
+    "@vitest/coverage-v8": "^4.1.4",
     "eslint": "^9.0.0",
     "globals": "^15.0.0",
     "sharp": "^0.34.5",
@@ -25,5 +32,13 @@
     "vite": "^6.0.0",
     "vite-plugin-singlefile": "^2.3.2",
     "vitest": "^4.1.4"
+  },
+  "dependencies": {
+    "html2canvas": "^1.4.1",
+    "jszip": "^3.10.1",
+    "leaflet": "^1.9.4",
+    "leaflet-distortableimage": "^0.21.9",
+    "leaflet-toolbar": "^0.4.0-alpha.2",
+    "pdfjs-dist": "^5.6.205"
   }
 }

@@ -378,6 +378,8 @@ export function updateKaelte() {
 
   if (window.kaelteState) _kaelteEconomics(window.kaelteState, erzList);
   _renderKaelteResults(window.kaelteState);
+  // Kältestrom unmittelbar in PV/Batterie/Netzbezug und Lastspitzen nachführen.
+  if (typeof window.calcStromPanel === 'function') window.calcStromPanel();
 }
 
 // Wirtschaftlichkeit & CO₂ (in sich geschlossen, ohne Eingriff in die Wärme-WGK).

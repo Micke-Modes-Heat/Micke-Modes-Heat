@@ -2,9 +2,28 @@
 // Imports all modules and exposes their exports on window for data-* handlers.
 
 import * as physikKonstanten from './lib/physik-konstanten.js';
+import * as projectSchema from './lib/project-schema.js';
+import * as autosaveStore from './lib/autosave-store.js';
+import * as waermeGraphValidation from './lib/waerme-graph-validation.js';
+import * as timeSeries from './lib/time-series.js';
+import * as calculationManifest from './lib/calculation-manifest.js';
+import * as electricDemand from './lib/electric-demand.js';
+import * as pvBatteryCore from './lib/pv-battery-core.js';
+import * as pvProfileImport from './lib/pv-profile-import.js';
+import * as batteryAging from './lib/battery-aging.js';
+import * as workerSeries from './lib/worker-series.js';
+import * as planningTransaction from './lib/planning-transaction.js';
+import * as interactionState from './lib/interaction-state.js';
+import * as lifecycle from './lib/lifecycle.js';
+import * as localDataPrivacy from './lib/local-data-privacy.js';
+import * as diagnostics from './lib/diagnostics.js';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import * as netzKosten from './config/netz-kosten.js';
 import * as erzeugerCfg from './config/erzeuger-cfg.js';
 import * as optimizerDefaults from './config/optimizer-defaults.js';
+import * as tariffScenarios from './config/tariff-scenarios.js';
+import * as economicScenarios from './config/economic-scenarios.js';
+import * as terminology from './config/terminology.js';
 import * as hilfeTexte from './config/hilfe-texte.js';
 import * as globals from './01-globals-varianten.js';
 import * as netzPhysik from './02a-netz-physik.js';
@@ -34,6 +53,7 @@ import * as optimizerCore from './10a-optimizer-core.js';
 import * as hourlyLive from './10b-hourly-live.js';
 import * as optimizerRun from './10c-optimizer-run.js';
 import * as optimizerWorker from './10d-optimizer-worker.js';
+import * as optimizerSession from './10e-optimizer-session.js';
 import * as hilfeLeitfaden from './11-hilfe-leitfaden.js';
 import './12-inline-handlers.js';
 import * as assetsCore from './13a-assets-core.js';
@@ -62,14 +82,14 @@ import * as clusterMap from './14g-cluster-map.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
-  physikKonstanten, netzKosten, erzeugerCfg, optimizerDefaults, hilfeTexte,
+  pdfjsLib, physikKonstanten, projectSchema, autosaveStore, waermeGraphValidation, timeSeries, calculationManifest, electricDemand, pvBatteryCore, pvProfileImport, batteryAging, workerSeries, planningTransaction, interactionState, lifecycle, localDataPrivacy, diagnostics, netzKosten, erzeugerCfg, optimizerDefaults, tariffScenarios, economicScenarios, terminology, hilfeTexte,
   globals, netzPhysik, gebaeude, karteWerkzeuge,
   erzeuger, netz, gebaeudeIo, uiPanels,
   emissionen3d, exportMod, bericht, stromnetz, sankey,
   gbiLastgang, glBerechnen, dispatchCore, kaelteCore,
   analysisCharts, analysisEconomics, calcEngine,
   pvProfile, pvCalc, pvChartsOpt, pvAnalyse,
-  optimizerCore, hourlyLive, optimizerRun, optimizerWorker,
+  optimizerCore, hourlyLive, optimizerRun, optimizerWorker, optimizerSession,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
   slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel,
@@ -77,10 +97,58 @@ const modules = [
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap,
 ];
+window.pdfjsLib = pdfjsLib;
+lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});
+diagnostics.installGlobalDiagnostics();
 
-for (const mod of modules) {
+// Normale Funktionsoberfläche zuerst. Der zentrale State wird anschließend als
+// Live-Accessor exponiert; dadurch ist window.x im ESM-Modus kein veralteter
+// Startwert mehr und Zuweisungen laufen – soweit vorhanden – über Actions.
+for (const mod of modules.filter(mod => mod !== globals)) {
   for (const [key, value] of Object.entries(mod)) {
     window[key] = value;
+  }
+}
+for (const [key, value] of Object.entries(globals)) {
+  if (typeof value === 'function') { window[key] = value; continue; }
+  const setterName = key === 'globalYear'
+    ? 'setGlobalYearValue'
+    : key === 'stromNetzVisible' ? 'setStromNetzVisibleState'
+    : key === 'stromColorMode' ? 'setStromColorModeState'
+    : `set${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+  const setter = globals[setterName];
+  if (typeof setter === 'function') {
+    Object.defineProperty(window, key, {
+      configurable: true,
+      enumerable: true,
+      get: () => globals[key],
+      set: next => { setter(next); },
+    });
+  } else window[key] = value;
+}
+
+function initAccessibilityBaseline() {
+  document.querySelectorAll('button:not([aria-label])').forEach(button => {
+    if (!button.textContent.trim() && button.title) button.setAttribute('aria-label', button.title);
+  });
+  const tabList = document.getElementById('view-tabs');
+  if (tabList) {
+    tabList.setAttribute('role', 'tablist');
+    const sync = () => tabList.querySelectorAll('.view-tab').forEach(tab => {
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', String(tab.classList.contains('active')));
+      tab.setAttribute('tabindex', tab.classList.contains('active') ? '0' : '-1');
+    });
+    sync();
+    new MutationObserver(sync).observe(tabList, {subtree:true, attributes:true, attributeFilter:['class']});
+    tabList.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      const tabs = [...tabList.querySelectorAll('.view-tab')].filter(tab => tab.style.display !== 'none');
+      const current = tabs.indexOf(document.activeElement);
+      const delta = event.key === 'ArrowRight' ? 1 : -1;
+      tabs[(current + delta + tabs.length) % tabs.length]?.focus();
+      event.preventDefault();
+    });
   }
 }
 
@@ -90,9 +158,13 @@ if (document.readyState === 'loading') {
     slpEditor.initBdewProfiles();
     selektion.selInitBoxSelect();
     clusterMap.clusterInit();
+    initAccessibilityBaseline();
+    uiPanels.initResponsiveLayout();
   });
 } else {
   slpEditor.initBdewProfiles();
   selektion.selInitBoxSelect();
   clusterMap.clusterInit();
+  initAccessibilityBaseline();
+  uiPanels.initResponsiveLayout();
 }

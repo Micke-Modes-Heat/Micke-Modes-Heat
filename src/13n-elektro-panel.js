@@ -116,7 +116,7 @@ function _html() { return `
     </div>
     <button class="lp-tool-btn" data-click="showAutoNetzDialog()"
       style="border-color:#66bb6a;color:#66bb6a;"
-      title="Stromnetz automatisch generieren">Auto-Netz</button>
+      title="Stromnetz automatisch erzeugen">Netz automatisch erzeugen</button>
   </div>
 
   <!-- ── 2 · Berechnen ────────────────────────────────────────────────────── -->
@@ -129,7 +129,7 @@ function _html() { return `
       style="width:100%;justify-content:center;padding:7px 8px;font-size:11px;font-weight:600;
              background:rgba(79,195,247,0.10);border:1.5px solid #4fc3f7;color:#4fc3f7;
              border-radius:5px;margin:4px 0 6px;letter-spacing:.02em;"
-      title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets">
+      title="Elektrische Auslastungsberechnung für alle Stromnetz-Komponenten">
       ⚡ Elektroberechnung starten
     </button>
     <div id="lp-el-calc-result"
@@ -235,7 +235,7 @@ function _html() { return `
         style="border-color:#ef9a9a;color:#ef9a9a;justify-content:center;">Bericht PDF</button>
       <button class="lp-tool-btn" id="btn-pv-uebersicht-toggle" data-click="pvuTogglePanel()"
         style="border-color:#ffd54f;color:#ffd54f;justify-content:center;"
-        title="Abgleich gezeichnete PV-Fläche ↔ kWp im PV-Asset">PV-Übersicht</button>
+        title="Abgleich gezeichnete PV-Fläche ↔ kWp der PV-Anlage">PV-Übersicht</button>
     </div>
     <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
       <button class="lp-tool-btn" id="btn-windanalyse-toggle" data-click="windaTogglePanel()"
@@ -277,7 +277,7 @@ function _html() { return `
       ${_inp('strom-k-nd',      'Nutzungsdauer (a)',    '40',   { min:1, max:60, step:5, change:'recalcStromNetz()' })}
     </div>
     ${_sep}
-    <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Asset-Kostenfaktoren</div>
+    <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Anlagen-Kostenfaktoren</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
       ${_inp('ak-pv-kwp',    'PV (€/kWp)',          '1200', { min:0, step:100 })}
       ${_inp('ak-trafo-kva', 'Trafo (€/kVA)',        '80',   { min:0, step:10  })}

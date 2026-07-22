@@ -3,6 +3,8 @@
 // ── Monatschart ───────────────────────────────────────────────────────────
 import { lerpColor } from './02a-netz-physik.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
+import { pvBatteryStep } from './lib/pv-battery-core.js';
+import { estimateBatteryAging } from './lib/battery-aging.js';
 
 export function _stromRenderMonatsChart(monthlyQuartier, monthlyWp, monthlyPv) {
   const canvas = document.getElementById('strom-monats-canvas');
@@ -117,7 +119,7 @@ export function drawSankeyStrom() {
   if (!d) { svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#666" font-size="11">Keine Daten — Wärme-Grundlagen konfigurieren und Erzeuger platzieren.</text>'; return; }
 
   const { pvMwh, netzbezugMwh, einspeisungMwh, eigenverbrauchMwh,
-          wpMwh, skMwh, quartierMwh, bhkwStromMwh } = d;
+          wpMwh, skMwh, quartierMwh, kaelteMwh, bhkwStromMwh } = d;
 
   const W = svg.parentElement.clientWidth || 380;
   const H = 270;
@@ -133,6 +135,7 @@ export function drawSankeyStrom() {
   if ((wpMwh          || 0) > 0.5) snk.push({ id:'wp',          label:'Wärmepumpen',  val: wpMwh,          color:'#42a5f5' });
   if ((skMwh          || 0) > 0.5) snk.push({ id:'sk',          label:'Stromkessel',  val: skMwh,          color:'#ab47bc' });
   if ((quartierMwh    || 0) > 0.5) snk.push({ id:'quartier',    label:'Quartier',     val: quartierMwh,    color:'#78909c' });
+  if ((kaelteMwh      || 0) > 0.5) snk.push({ id:'kaelte',      label:'Kälte',        val: kaelteMwh,      color:'#26c6da' });
   if ((einspeisungMwh || 0) > 0.5) snk.push({ id:'einspeisung', label:'Einspeisung',  val: einspeisungMwh, color:'#66bb6a' });
 
   if (src.length === 0 || snk.length === 0) {
@@ -157,7 +160,7 @@ export function drawSankeyStrom() {
   const snkMap = Object.fromEntries(snk.map(n => [n.id, n]));
 
   // Flüsse definieren: Eigenverbrauch + Einspeisung von PV/BHKW, Netzbezug zu Verbrauchern
-  const totalDemand = (wpMwh || 0) + (skMwh || 0) + (quartierMwh || 0);
+  const totalDemand = (wpMwh || 0) + (skMwh || 0) + (quartierMwh || 0) + (kaelteMwh || 0);
   const links = [];
   const addFlow = (srcId, snkId, val) => {
     if (val > 0.5 && srcMap[srcId] && snkMap[snkId]) links.push({ srcId, snkId, val, color: srcMap[srcId].color });
@@ -495,6 +498,7 @@ export function _stromRenderFlussChart(weekIdx) {
   const bhkwH  = window._bhkwElHourly;      // Float32Array[8760] kWh/h | null
   const socH   = window._stromBatSocH;      // Float32Array[8760] kWh   | null
   const qH     = window.elQuartierH;        // Float32Array[8760] kWh/h | null
+  const kH     = window._kaelteElHourly;    // Float32Array[8760] kWh/h | null
   const skMwhTotal = (window._dispatchEnergy?.stromkessel?.elMwh) || 0;
   const qPauschal  = parseFloat(document.getElementById('strom-quartier-mwh')?.value) || 0;
 
@@ -527,7 +531,7 @@ export function _stromRenderFlussChart(weekIdx) {
     WP[h]  = wpAt(t);
     SK[h]  = skAt(t);
     BH[h]  = bhAt(t);
-    Q[h]   = qAt(t);
+    Q[h]   = qAt(t) + (kH ? (kH[t] || 0) : 0);
     const gen = PV[h] + BH[h];
     const dem = WP[h] + SK[h] + Q[h];
     if (gen > maxGen) maxGen = gen;
@@ -824,36 +828,31 @@ export function _runPvBatOpt(resultDiv) {
   // Annuitätenfaktoren
   const annF = (z, n) => z > 0 ? z * Math.pow(1+z,n) / (Math.pow(1+z,n)-1) : 1/n;
   const pvAnnKwp  = pvInvest  * (annF(zinssatz, pvLife)  + omPct); // €/kWp·a Jahreskosten
-  const batAnnKwh = batInvest * (annF(zinssatz, batLife) + omPct); // €/kWh·a Jahreskosten
   const ETA_BAT   = 0.90; // Entlade-Wirkungsgrad (Round-trip)
 
   // ── Stundensimulation ────────────────────────────────────────────────────
   function simulate(kwp, batKwh) {
     const annKwh = kwp * spez;
-    let sv = 0, ins = 0, bez = 0, soc = 0;
+    let sv = 0, ins = 0, bez = 0, soc = 0, batDischargeKwh = 0;
     for (let t = 0; t < 8760; t++) {
       const gen = pvProfile[t] * annKwh;
       const dem = demand[t];
-      // 1. Direkter Eigenverbrauch
-      const dsc  = Math.min(gen, dem);
-      let rDem   = dem - dsc;
-      let rGen   = gen - dsc;
-      // 2. Speicher laden mit Überschuss-PV
-      if (batKwh > 0 && rGen > 0) {
-        const c = Math.min(rGen, batKwh - soc);
-        soc += c; rGen -= c;
-      }
-      // 3. Speicher entladen bei Restbedarf (Entladewirkungsgrad 90%)
-      if (batKwh > 0 && rDem > 0) {
-        const avail = Math.min(soc * ETA_BAT, rDem);
-        soc -= avail / ETA_BAT; rDem -= avail;
-      }
+      const step = pvBatteryStep({demand:dem,pvGen:gen,bhkwGen:0,socKwh:soc,capacityKwh:batKwh,powerKw:batKwh,etaCharge:1,etaDischarge:ETA_BAT});
+      const dsc = step.direct;
+      const rDem = step.residualDemand;
+      const rGen = step.residualGeneration;
+      soc = step.socKwh;
+      batDischargeKwh += step.dischargedKwh;
       sv  += dsc + (dem - dsc - rDem); // Eigenverbrauch (direkt + Speicher)
       ins += rGen;
       bez += rDem;
     }
     const saving     = sv * preisB + ins * preisE;                      // €/a Ersparnis
-    const annualCost = kwp * pvAnnKwp + batKwh * batAnnKwh;             // €/a Kosten
+    const aging = batKwh > 0 ? estimateBatteryAging({capacityKwh:batKwh,annualDischargeKwh:batDischargeKwh,
+      calendarFadePctPerYear:parseFloat(document.getElementById('bat-calendar-fade')?.value)||1.5,
+      cycleLife:parseFloat(document.getElementById('bat-cycle-life')?.value)||6000,eolCapacityPct:parseFloat(document.getElementById('bat-eol-pct')?.value)||80,studyYears:batLife}) : null;
+    const effectiveBatLife = aging && Number.isFinite(aging.expectedLifeYears) ? Math.max(1,aging.expectedLifeYears) : batLife;
+    const annualCost = kwp * pvAnnKwp + batKwh * batInvest * (annF(zinssatz, effectiveBatLife) + omPct); // €/a
     const invest     = kwp * pvInvest + batKwh * batInvest;             // € Investition
     const omYear     = invest * omPct;
     const payback    = (saving - omYear) > 0 ? invest / (saving - omYear) : Infinity;
@@ -862,7 +861,7 @@ export function _runPvBatOpt(resultDiv) {
     const rendite    = invest > 0 ? (netBenefit / invest * 100) : 0; // % p.a.
     return { netBenefit, saving, annualCost, invest, payback, autarkie, rendite,
              eigenverbrauchMwh: sv/1000, einspeisungMwh: ins/1000, netzbezugMwh: bez/1000,
-             kwp, batKwh };
+             kwp, batKwh, batteryAging:aging };
   }
 
   // Bewertungsfunktion je nach gewähltem Kriterium

@@ -6,6 +6,11 @@ import { ASSETS, ASSET_CFG, TYPE_RANK } from './13a-assets-core.js';
 import { phasen, massnahmeJahr, setPhasen } from './01-globals-varianten.js';
 import { MASSN_VORLAGEN, MASSN_VORLAGEN_REIHENFOLGE } from './config/massnahmen-vorlagen.js';
 import { redrawAllAssets } from './13b-assets-render.js';
+import { createId } from './lib/util.js';
+function _selectionChange(label, mutate) {
+  try { return typeof window.runPlanningTransaction === 'function' ? window.runPlanningTransaction(label, mutate) : mutate(); }
+  catch (error) { console.error(error); alert(error.message); return null; }
+}
 
 // ── Selektions-State ──────────────────────────────────────────────────────────
 
@@ -349,7 +354,7 @@ export function selRenderBulkBar() {
     : '';
 
   document.getElementById('asset-bulk-lbl').textContent =
-    count === 0 ? 'Auswahl' : `${count} Asset${count > 1 ? 's' : ''}${kwpLabel}`;
+    count === 0 ? 'Auswahl' : `${count} ${count === 1 ? 'Anlage' : 'Anlagen'}${kwpLabel}`;
 
   // Phasen-Dropdown befüllen
   const phSel = document.getElementById('asset-bulk-phase');
@@ -444,7 +449,7 @@ function _renderBoxAreaSection() {
  */
 export function selApplyPhase(phaseId) {
   if (!phaseId) return;
-  for (const a of selGetAssets()) {
+  _selectionChange('Phase mehreren Assets zuweisen', () => { for (const a of selGetAssets()) {
     if (!a.massnahmen) a.massnahmen = [];
     let bau = a.massnahmen.find(m => m.typ === 'Bau');
     if (bau) {
@@ -463,7 +468,7 @@ export function selApplyPhase(phaseId) {
         newProps:  {},
       });
     }
-  }
+  }});
   _bulkDone('Phase zugewiesen');
 }
 
@@ -473,7 +478,7 @@ export function selApplyPhase(phaseId) {
 export function selApplyMassnahmeVorlage(typKey) {
   if (!typKey || !MASSN_VORLAGEN[typKey]) return;
   const vorl = MASSN_VORLAGEN[typKey];
-  for (const a of selGetAssets()) {
+  _selectionChange('Maßnahmen auf mehrere Assets anwenden', () => { for (const a of selGetAssets()) {
     if (!a.massnahmen) a.massnahmen = [];
     a.massnahmen.push({
       id:        typKey + '_' + a.id + '_' + Date.now(),
@@ -486,7 +491,7 @@ export function selApplyMassnahmeVorlage(typKey) {
       dependsOn: [],
       newProps:  {},
     });
-  }
+  }});
   _bulkDone('Maßnahmen angelegt');
 }
 
@@ -495,11 +500,11 @@ export function selApplyMassnahmeVorlage(typKey) {
  */
 export function selApplyStatus(status) {
   if (!status) return;
-  for (const a of selGetAssets()) {
+  _selectionChange('Maßnahmenstatus gesammelt ändern', () => { for (const a of selGetAssets()) {
     const ms = a.massnahmen || [];
     if (ms.length === 0) continue;
     ms[ms.length - 1].status = status;
-  }
+  }});
   _bulkDone('Status gesetzt');
 }
 
@@ -509,12 +514,12 @@ export function selApplyStatus(status) {
 export function selApplyJahr(jahr) {
   const y = parseInt(jahr);
   if (!y || isNaN(y)) return;
-  for (const a of selGetAssets()) {
+  _selectionChange('Maßnahmenjahr gesammelt ändern', () => { for (const a of selGetAssets()) {
     const ms = a.massnahmen || [];
     if (ms.length === 0) continue;
     ms[ms.length - 1].jahr = y;
     ms[ms.length - 1].phaseId = null;
-  }
+  }});
   _bulkDone('Jahr gesetzt');
 }
 
@@ -535,11 +540,11 @@ export function selBulkNeuePhase() {
   const maxR = phasen.reduce((m, p) => Math.max(m, +p.reihenfolge), -1);
   const lJ   = phasen.reduce((m, p) => Math.max(m, +p.jahrBis || 0), new Date().getFullYear());
   const id   = 'ph_' + Date.now();
-  setPhasen([...phasen, {
+  _selectionChange('Phase aus Sammelbearbeitung anlegen', () => setPhasen([...phasen, {
     id, name: 'Phase ' + (phasen.length + 1),
     jahrVon: String(lJ + 1), jahrBis: String(lJ + 1),
     variantId: null, reihenfolge: maxR + 1,
-  }]);
+  }]));
   selRenderBulkBar();
   const phSel = document.getElementById('asset-bulk-phase');
   if (phSel) phSel.value = id; // neue Phase vorauswählen
@@ -562,27 +567,23 @@ export function selBulkApplyAll() {
 
   let changed = 0;
 
-  if (phaseId)    { selApplyPhase(phaseId);             changed++; }
-  if (massnKey)   { selApplyMassnahmeVorlage(massnKey); changed++; }
-  if (status)     { selApplyStatus(status);             changed++; }
-  // Bau-/Abriss-Jahr überschreiben die Asset-Eigenschaften (Eigenschaftsfenster).
-  // Liegt das Jahr in der ZUKUNFT (> aktuelles Jahr), ist es ein geplanter Vorgang
-  // und wird zusätzlich als Maßnahme angelegt → erscheint im Ausbauplaner-Fahrplan.
-  const curYear = new Date().getFullYear();
-  if (!isNaN(bauJahr)) {
-    for (const a of selGetAssets()) {
-      a.baujahr = bauJahr;
-      if (bauJahr > curYear) _ensureMassnahmeJahr(a, 'Bau', bauJahr);
+  const committed = _selectionChange('Sammeländerung im Ausbauplaner', () => {
+    if (phaseId)    { selApplyPhase(phaseId);             changed++; }
+    if (massnKey)   { selApplyMassnahmeVorlage(massnKey); changed++; }
+    if (status)     { selApplyStatus(status);             changed++; }
+    // Bau-/Abriss-Jahr überschreiben die Asset-Eigenschaften und erzeugen bei
+    // Zukunftsjahren atomar die zugehörige Maßnahme/Phase.
+    const curYear = new Date().getFullYear();
+    if (!isNaN(bauJahr)) {
+      for (const a of selGetAssets()) { a.baujahr = bauJahr; if (bauJahr > curYear) _ensureMassnahmeJahr(a, 'Bau', bauJahr); }
+      changed++;
     }
-    changed++;
-  }
-  if (!isNaN(abrissJahr)) {
-    for (const a of selGetAssets()) {
-      a.abrissjahr = abrissJahr;
-      if (abrissJahr > curYear) _ensureMassnahmeJahr(a, 'Abriss', abrissJahr);
+    if (!isNaN(abrissJahr)) {
+      for (const a of selGetAssets()) { a.abrissjahr = abrissJahr; if (abrissJahr > curYear) _ensureMassnahmeJahr(a, 'Abriss', abrissJahr); }
+      changed++;
     }
-    changed++;
-  }
+  });
+  if (committed === null) changed = 0;
 
   // Felder zurücksetzen
   const ids = ['asset-bulk-phase','asset-bulk-massn','asset-bulk-status'];
@@ -595,7 +596,7 @@ export function selBulkApplyAll() {
   if (msg) {
     const n = assetSelection.size;
     msg.textContent = changed > 0
-      ? `✓ ${n} Asset${n !== 1 ? 's' : ''} aktualisiert`
+      ? `✓ ${n} ${n === 1 ? 'Anlage' : 'Anlagen'} aktualisiert`
       : '(keine Felder ausgefüllt)';
     msg.style.display = 'inline';
     msg.style.color = changed > 0 ? '#4caf50' : 'var(--muted)';
@@ -619,7 +620,7 @@ function _ensureMassnahmeJahr(a, typ, jahr) {
   let m = a.massnahmen.find(x => x.typ === typ);
   if (!m) {
     m = {
-      id:        typ + '_' + a.id + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      id:        createId(`${typ}_${a.id}`),
       typ,
       titel:     vorl?.label ?? typ,
       kosten:    vorl?.kostenRichtwert ?? 0,
@@ -653,7 +654,7 @@ function _findOrCreatePhaseForJahr(jahr) {
   });
   if (ph) return ph;
   ph = {
-    id:         'ph_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
+    id:         createId('ph'),
     name:       'Phase ' + (phasen.length + 1),
     jahrVon:    String(jahr),
     jahrBis:    String(jahr),

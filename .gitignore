@@ -8,6 +8,7 @@ dist-vite/
 .claude/
 test-results/
 playwright-report/
+coverage/
 Testlink/
 .staticrypt.json
 geothermiefehler/

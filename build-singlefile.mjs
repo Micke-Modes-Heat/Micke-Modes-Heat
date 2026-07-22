@@ -1,9 +1,9 @@
-// Build: Quell-Module + HTML + CSS → eine einzige HTML-Datei für Doppelklick
-// Kein Rollup/Vite nötig — alle JS-Dateien werden direkt in einen <script>-Block
-// zusammengefügt, genau wie im originalen Index.html.
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from 'fs';
+// Build: derselbe kanonische ESM-Einstieg wie im Entwicklungsmodus wird durch
+// Rollup geparst und als eine offline-fähige HTML-Datei ausgeliefert.
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
-import { getExportNames } from './tools/export-names.mjs';
+import { rollup } from 'rollup';
+import { nodeResolve } from '@rollup/plugin-node-resolve';
 
 const SRC = resolve('src');
 const dist = resolve('dist');
@@ -12,166 +12,19 @@ mkdirSync(dist, { recursive: true });
 // Version + Build-Datum aus package.json → werden unten in die HTML injiziert
 // (Platzhalter __APP_VERSION__ / __BUILD_DATE__ im index.html-Quelltext)
 const APP_VERSION = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version || '0.0.0';
-const BUILD_DATE = new Date().toISOString().slice(0, 10);
+const sourceEpoch = Number.parseInt(process.env.SOURCE_DATE_EPOCH || '', 10);
+const buildInstant = Number.isFinite(sourceEpoch) ? new Date(sourceEpoch * 1000) : new Date();
+const BUILD_DATE = buildInstant.toISOString().slice(0, 10);
 
-// Reihenfolge wie im Original — Konfiguration zuerst, dann numerisch
-const JS_FILES = [
-  'config/netz-kosten.js',
-  'config/massnahmen-vorlagen.js',
-  'config/erzeuger-cfg.js',
-  'config/optimizer-defaults.js',
-  'config/hilfe-texte.js',
-  'lib/elektro-formeln.js',      // ← Shared lib: muss vor 05b und 13g stehen
-  'lib/physik-konstanten.js',    // ← DAYS_PER_YEAR/HOURS_PER_YEAR: u.a. 04b, 05b, 05c, 06c
-  'lib/util.js',                 // ← readNum/clampNum: u.a. 06b
-  '01-globals-varianten.js',
-  '02a-netz-physik.js',
-  '02b-gebaeude.js',
-  '02c-karte-werkzeuge.js',
-  '03a-erzeuger.js',
-  '03b-netz.js',
-  '03c-gebaeude-io.js',
-  '04a-ui-panels.js',
-  '04b-emissionen-3d.js',
-  '05a-export.js',
-  '05b-stromnetz.js',
-  '05d-bericht.js',
-  '05c-sankey.js',
-  '06a-gbi-lastgang.js',
-  '06b-gl-berechnen.js',
-  '06c-dispatch-core.js',
-  '06d-kaelte-core.js',
-  '07a-analysis-charts.js',
-  '07b-analysis-economics.js',
-  '08-calc-engine.js',
-  '09a-pv-profile.js',
-  '09b-pv-calc.js',
-  '09c-pv-charts-opt.js',
-  '09d-pv-analyse.js',
-  '10a-optimizer-core.js',
-  '10b-hourly-live.js',
-  '10c-optimizer-run.js',
-  '10d-optimizer-worker.js',
-  '11-hilfe-leitfaden.js',
-  '12-inline-handlers.js',
-  '13a-assets-core.js',
-  '13b-assets-render.js',
-  '13c-assets-ui.js',
-  '13d-assets-autocreate.js',
-  '13e-assets-inspector.js',
-  '13f-sld.js',
-  '13g-ms-ring.js',
-  '13h-netzanalyse.js',
-  '13i-slp-editor.js',
-  '13j-autofill-wizard.js',
-  '13k-elslp-registry.js',
-  '13l-autonetz.js',
-  '13m-kompaktstation.js',
-  '13n-elektro-panel.js',
-  '13o-nap-analyse.js',
-  '13p-erzeuger-assets.js',
-  '13q-wind-ertrag.js',
-  '13r-knotenpunkt-analyse.js',
-  '13s-wind-flaeche.js',
-  '13t-wind-analyse.js',
-  '13u-wind-restriktion.js',
-  '14-viewer.js',
-  '14a-kandidaten.js',
-  '14b-ertuechtigung.js',
-  '14c-phasen.js',
-  '14d-selektion.js',
-  '14e-ausbauplaner-ui.js',
-  '14f-cluster-core.js',
-  '14g-cluster-map.js',
-  // main.js wird NICHT eingebunden — es macht nur import/window-Exposition,
-  // die im Monolith überflüssig ist (alles bereits global). Der Namespace-
-  // Alias "glBerechnen" würde die private Funktion gleichen Namens überschreiben.
-];
-
-// ── Wächter: keine src-Datei darf in JS_FILES fehlen ────────────────────────
-// Vergessene Dateien führten bereits 3× zu "function X is not defined" in
-// dist/index.html (lib/util.js, lib/physik-konstanten.js, 13p-erzeuger-assets.js).
-// Der Build bricht ab, statt stillschweigend eine kaputte Datei zu erzeugen.
-{
-  const istJsDatei = f => f.endsWith('.js') && !f.endsWith('.d.ts');
-  const alleSrcJs = [];
-  const sammle = (dir, prefix) => {
-    for (const f of readdirSync(join(SRC, dir))) {
-      const rel = dir ? `${dir}/${f}` : f;
-      if (statSync(join(SRC, rel)).isDirectory()) {
-        if (f !== 'styles') sammle(rel, prefix);
-      } else if (istJsDatei(f)) {
-        alleSrcJs.push(rel);
-      }
-    }
-  };
-  sammle('', '');
-  const AUSNAHMEN = ['main.js']; // main.js macht nur import/window-Exposition
-  const fehltImBuild = alleSrcJs.filter(f => !JS_FILES.includes(f) && !AUSNAHMEN.includes(f));
-  const fehltAufPlatte = JS_FILES.filter(f => !alleSrcJs.includes(f));
-  if (fehltImBuild.length || fehltAufPlatte.length) {
-    if (fehltImBuild.length)
-      console.error('✗ BUILD ABGEBROCHEN — diese src-Dateien fehlen in JS_FILES (build-singlefile.mjs):\n  ' + fehltImBuild.join('\n  '));
-    if (fehltAufPlatte.length)
-      console.error('✗ BUILD ABGEBROCHEN — diese JS_FILES-Einträge existieren nicht in src/:\n  ' + fehltAufPlatte.join('\n  '));
-    process.exit(1);
-  }
-}
-
-// Vorab alle Export-Namen je Datei sammeln (für import * as X → var X = {...})
-// getExportNames kommt aus tools/export-names.mjs (erfasst Mehrfach-Deklarationen)
-
-// Map: relativer Pfad (wie im import-Statement) → Liste der Export-Namen
-const exportMap = {};
-for (const file of JS_FILES) {
-  const raw = readFileSync(join(SRC, file), 'utf8');
-  // Schlüssel so normalisieren, wie er in import-Statements auftaucht (./ + Pfad)
-  exportMap['./' + file] = getExportNames(raw);
-  // Kurzform ohne führendes Verzeichnis für Dateien im selben Ordner
-  const baseName = file.split('/').pop();
-  exportMap['./' + baseName] = exportMap['./' + file];
-}
-
-// Jede Datei lesen, import/export entfernen
-// let/const → var, damit alle Variablen als window.* Properties verfügbar sind
-// (viele Module lesen Zustand über window.gebaeude, window.netzEdges, etc.)
-function stripModule(code) {
-  // ── Schritt 1: "import * as X from './Y'" → synthetisches Namespace-Objekt ──
-  code = code.replace(
-    /^import\s+\*\s+as\s+(\w+)\s+from\s+['"]([^'"]+)['"]\s*;?/gm,
-    (_, alias, fromPath) => {
-      const names = exportMap[fromPath] || exportMap['./' + fromPath.split('/').pop()] || [];
-      return names.length ? `var ${alias} = { ${names.join(', ')} };` : '';
-    }
-  );
-
-  // ── Schritt 2: alle import-Anweisungen entfernen (auch mehrzeilig) ──
-  // Mehrzeilig: "import {\n  a, b\n} from './x'"
-  code = code.replace(/^import\s[\s\S]*?from\s*['"][^'"]*['"]\s*;?\n?/gm, '');
-  // Bare side-effect imports: import './x.js'
-  code = code.replace(/^import\s+['"][^'"]+['"]\s*;?\n?/gm, '');
-
-  // ── Schritt 3: export-Transformationen + let/const → var (zeilenweise) ──
-  return code
-    .split('\n')
-    .map(line => {
-      const trimmed = line.trimStart();
-      if (trimmed.startsWith('export async function ')) return line.replace('export async function ', 'async function ');
-      if (trimmed.startsWith('export function '))       return line.replace('export function ', 'function ');
-      if (trimmed.startsWith('export const '))          return line.replace('export const ', 'var ');
-      if (trimmed.startsWith('export let '))            return line.replace('export let ',   'var ');
-      if (trimmed.startsWith('export var '))            return line.replace('export var ',   'var ');
-      if (trimmed.startsWith('export {'))               return '';
-      if (trimmed.startsWith('export default '))        return '';
-      if (line.startsWith('let '))   return 'var ' + line.slice(4);
-      if (line.startsWith('const ')) return 'var ' + line.slice(6);
-      return line;
-    })
-    .join('\n');
-}
-
-// 1. Alle JS-Module zusammenfügen
+// 1. Lokale Vorläufer und der kanonisch gebündelte Anwendungseinstieg
 let jsAll = '';
+
+// PDF-Worker ebenfalls einbetten; 03b erzeugt daraus bei Bedarf eine Blob-URL.
+const pdfWorkerPath = resolve('node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs');
+if (existsSync(pdfWorkerPath)) {
+  const workerCode = readFileSync(pdfWorkerPath, 'utf8').replace(/<\/script/gi, '<\\/script');
+  jsAll += `window.__PDF_WORKER_CODE__ = ${JSON.stringify(workerCode)};\n`;
+}
 
 // ── Klimadaten einbetten (data/klima/*.js → window.KLIMA_DATA) ──────────────
 // Jede Datei setzt window.KLIMA_DATA['Stadt'] = {...}. Vorangestellt, damit die
@@ -190,25 +43,25 @@ if (existsSync(klimaDir)) {
   console.warn('⚠ data/klima/ nicht gefunden — Single-File-Build nutzt TRY-Kassel-Fallback für alle Städte.');
 }
 
-for (const file of JS_FILES) {
-  const raw = readFileSync(join(SRC, file), 'utf8');
-  jsAll += `// ── ${file} ──\n` + stripModule(raw) + '\n\n';
-}
-
-// BDEW-Initialisierung (ersetzt den main.js-Aufruf)
-jsAll += `
-// ── Initialisierung (aus main.js) ──
-window._isSingleFileBuild = true; // verhindert data/klima/-Dateiladen (kein Verzeichnis im Build)
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', function() {
-    if (typeof initBdewProfiles === 'function') initBdewProfiles();
-    if (typeof selInitBoxSelect === 'function') selInitBoxSelect();
-  });
-} else {
-  if (typeof initBdewProfiles === 'function') initBdewProfiles();
-  if (typeof selInitBoxSelect === 'function') selInitBoxSelect();
-}
-`;
+jsAll += 'window._isSingleFileBuild = true;\n';
+const appBundle = await rollup({
+  input: join(SRC, 'main.js'),
+  plugins: [nodeResolve({browser: true})],
+  onwarn(warning, warn) {
+    if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+    warn(warning);
+  },
+});
+const appGenerated = await appBundle.generate({
+  format: 'iife',
+  name: 'MickeHeatApp',
+  inlineDynamicImports: true,
+  sourcemap: false,
+});
+await appBundle.close();
+const appCode = appGenerated.output.find(chunk => chunk.type === 'chunk')?.code;
+if (!appCode) throw new Error('Anwendung konnte nicht kanonisch gebündelt werden');
+jsAll += `${appCode}\n`;
 
 // 2. CSS lesen
 const cssCode = readFileSync(join(SRC, 'styles', 'app.css'), 'utf8');
@@ -220,13 +73,13 @@ const FAVICON = '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=\'http:/
 // Leaflet-Icon-Fix: verhindert "Unsafe attempt"-Fehler durch relative Marker-Bild-URLs
 const LEAFLET_ICON_FIX = `
 <script>
-// Leaflet-Marker-Icons aus CDN explizit setzen, damit keine relative file://-URL entsteht
+// Kleine eingebettete Marker statt relativer/CDN-Bilddateien.
 if (typeof L !== 'undefined') {
   delete L.Icon.Default.prototype._getIconUrl;
   L.Icon.Default.mergeOptions({
-    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    iconUrl: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41"%3E%3Cpath fill="%234fc3f7" stroke="%23111" d="M12.5 1C6 1 1 6 1 12.5 1 22 12.5 40 12.5 40S24 22 24 12.5C24 6 19 1 12.5 1z"/%3E%3Ccircle cx="12.5" cy="12.5" r="4" fill="white"/%3E%3C/svg%3E',
+    iconRetinaUrl: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41"%3E%3Cpath fill="%234fc3f7" stroke="%23111" d="M12.5 1C6 1 1 6 1 12.5 1 22 12.5 40 12.5 40S24 22 24 12.5C24 6 19 1 12.5 1z"/%3E%3Ccircle cx="12.5" cy="12.5" r="4" fill="white"/%3E%3C/svg%3E',
+    shadowUrl: '',
   });
 }
 </script>`;
@@ -238,11 +91,25 @@ let html = srcHtml
   .replace(/<script type="module"[^>]*>.*?<\/script>/, '')
   .replace('</title>', `</title>\n${FAVICON}`);
 
-// Leaflet-Icon-Fix direkt nach dem Leaflet-Script-Tag einfügen
-html = html.replace(
-  /(<script src="https:\/\/unpkg\.com\/leaflet[^>]*><\/script>)/,
-  `$1${LEAFLET_ICON_FIX}`
-);
+// Alle UI-Laufzeitbibliotheken aus package-lock-gebundenen lokalen Paketen
+// einbetten. Der fertige Doppelklick-Build lädt keinen ausführbaren CDN-Code.
+const inlineVendor = [
+  {pattern:/<link rel="stylesheet" href="https:\/\/unpkg\.com\/leaflet@1\.9\.4\/dist\/leaflet\.css"[\s\S]*?\/>/, path:'node_modules/leaflet/dist/leaflet.css', kind:'css'},
+  {pattern:/<script src="https:\/\/unpkg\.com\/leaflet@1\.9\.4\/dist\/leaflet\.js"[\s\S]*?<\/script>/, path:'node_modules/leaflet/dist/leaflet.js', kind:'js'},
+  {pattern:/<script src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/jszip\/3\.10\.1\/jszip\.min\.js"[\s\S]*?<\/script>/, path:'node_modules/jszip/dist/jszip.min.js', kind:'js'},
+  {pattern:/<link rel="stylesheet" href="https:\/\/unpkg\.com\/leaflet-toolbar[^>]*>/, path:'node_modules/leaflet-toolbar/dist/leaflet.toolbar.css', kind:'css'},
+  {pattern:/<script src="https:\/\/unpkg\.com\/leaflet-toolbar[^>]*><\/script>/, path:'node_modules/leaflet-toolbar/dist/leaflet.toolbar.js', kind:'js'},
+  {pattern:/<link rel="stylesheet" href="https:\/\/unpkg\.com\/leaflet-distortableimage[^>]*>/, path:'node_modules/leaflet-distortableimage/dist/leaflet.distortableimage.css', kind:'css'},
+  {pattern:/<script src="https:\/\/unpkg\.com\/leaflet-distortableimage[^>]*><\/script>/, path:'node_modules/leaflet-distortableimage/dist/leaflet.distortableimage.js', kind:'js'},
+];
+for (const vendor of inlineVendor) {
+  if (!existsSync(resolve(vendor.path))) throw new Error(`Vendor-Datei fehlt: ${vendor.path}`);
+  const code = readFileSync(resolve(vendor.path), 'utf8');
+  html = html.replace(vendor.pattern, () => vendor.kind === 'css' ? `<style>${code}</style>` : `<script>${code}</script>`);
+}
+// PDF.js ist bereits Teil des kanonischen main.js-Bundles.
+html = html.replace(/<!-- PDFJS_LOCAL_BUNDLE:[\s\S]*?-->/, '');
+html = html.replace('</head>', `${LEAFLET_ICON_FIX}\n</head>`);
 
 // html2canvas CDN-Tag durch lokal eingebettete Version ersetzen (für Offline/file://)
 const html2canvasPath = resolve('html2canvas.min.js');

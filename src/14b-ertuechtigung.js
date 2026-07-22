@@ -8,7 +8,7 @@
 //     ertFindTrafoFuerNap, ertNapKapazitaetKw, ertNapKapazitaetMap,
 //     ertMakeDeltaInfraFn, ertRunMitInfra
 
-import { ASSETS } from './13a-assets-core.js';
+import { ASSETS, getCanonicalAssetEdges } from './13a-assets-core.js';
 import { pvMeritOrderCore, pvMeritAnnF, pvEnumerateKandidaten, pvRunMeritOrder } from './14a-kandidaten.js';
 import { makePvProfile8760 } from './09a-pv-profile.js';
 import { PV_INFRA_STUFEN } from './09d-pv-analyse.js';
@@ -83,7 +83,7 @@ export function ertTrafoUpgradeJk(aktuellKapKw, benoetigtKw, zins, trafoStufen) 
  * trafoStufen: optional für Tests
  */
 export function ertDeltaInfraJk(spitzeKwNeu, napKapKw, spitzeKwAlt, zins, trafoStufen) {
-  if (!napKapKw || napKapKw <= 0) return 0; // unbekannte Kapazität → kein Constraint
+  if (!napKapKw || napKapKw <= 0) return null; // unbekannt ist weder ausreichend noch kostenlos
   if (spitzeKwNeu <= napKapKw) return 0;     // passt noch rein
 
   // Welche Upgrade-Stufe war bisher nötig (für spitzeKwAlt)?
@@ -164,12 +164,12 @@ export function ertGeneriereAlternativen(spitzeKw, napKapKw, params) {
 
 /**
  * Sucht den ersten Trafo im Netz, der einem NAP-Asset (napId) vorgelagert ist.
- * Traversiert ASSETS.edges rückwärts (Richtung Netzeinspeisung).
+ * Traversiert den kanonischen Stromgraphen rückwärts (Richtung Netzeinspeisung).
  * Gibt das Trafo-Asset zurück oder null.
  */
 export function ertFindTrafoFuerNap(napId) {
   const items = ASSETS?.items || [];
-  const edges = ASSETS?.edges || [];
+  const edges = getCanonicalAssetEdges();
   const visited = new Set([napId]);
   const queue   = [napId];
   while (queue.length) {
@@ -225,7 +225,8 @@ export function ertNapKapazitaetMap(pfFaktor) {
  */
 export function ertMakeDeltaInfraFn(napKapazitaeten, zins, trafoStufen) {
   return function(napId, spitzeKwNeu, spitzeKwAlt) {
-    const napKapKw = napKapazitaeten?.get(napId) || 0;
+    if (!napKapazitaeten?.has(napId)) return null;
+    const napKapKw = napKapazitaeten.get(napId);
     return ertDeltaInfraJk(spitzeKwNeu, napKapKw, spitzeKwAlt, zins, trafoStufen);
   };
 }

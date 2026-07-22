@@ -16,7 +16,7 @@
 <script src="https://unpkg.com/leaflet-toolbar@0.4.0-alpha.2/dist/leaflet.toolbar.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet-distortableimage@0.21.9/dist/leaflet.distortableimage.css"/>
 <script src="https://unpkg.com/leaflet-distortableimage@0.21.9/dist/leaflet.distortableimage.js"></script>
-<script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<!-- PDFJS_LOCAL_BUNDLE: Vite lädt das gesperrte npm-Paket; Singlefile ersetzt diesen Platzhalter. -->
 <link rel="stylesheet" href="src/styles/app.css"/>
 </head>
 <body>
@@ -58,6 +58,8 @@
       <button class="tool-btn" id="btn-leitfaden" data-click="toggleLeitfaden()" style="border-color:#ff9800;color:#ffb74d;justify-content:flex-start;font-size:11px;" title="Leitfaden: Schritt-für-Schritt Anleitung">📋 Leitfaden</button>
       <button class="tool-btn" id="btn-feedback" data-click="sendAppFeedback()" style="border-color:#66bb6a;color:#81c784;justify-content:flex-start;font-size:11px;" title="Feedback geben (lädt Datei mit Screenshot &amp; Versionsangabe herunter)">✉ Feedback</button>
       <button class="tool-btn" id="btn-berechnungslogik" data-click="window.open('docs/berechnungslogik.html','_blank')" style="border-color:#d4a855;color:#d4a855;justify-content:flex-start;font-size:11px;" title="Berechnungslogik — Wie wird gerechnet?">📐 Berechnungslogik</button>
+      <button class="tool-btn" id="btn-privacy" data-click="showPrivacyPanel()" style="border-color:#90a4ae;color:#cfd8dc;justify-content:flex-start;font-size:11px;">🔒 Datenschutz &amp; lokale Daten</button>
+      <button class="tool-btn" id="btn-diagnostics" data-click="showDiagnostics()" style="border-color:#78909c;color:#b0bec5;justify-content:flex-start;font-size:11px;">🩺 Diagnose <span id="diagnostics-badge" style="display:none;background:#e53935;color:#fff;border-radius:9px;padding:0 5px;"></span></button>
     </div>
   </div>
   <div class="addr-search-wrap" style="flex-shrink:0;">
@@ -67,6 +69,28 @@
     <div class="addr-results" id="addr-results"></div>
   </div>
 </header>
+
+<div class="float-panel" id="privacy-panel" style="min-width:420px;max-width:620px;--panel-accent:#90a4ae;">
+  <div class="panel-drag-handle"><span style="font-weight:700;">🔒 Datenschutz &amp; lokale Daten</span><button data-click="document.getElementById('privacy-panel').classList.remove('visible')" aria-label="Schließen">✕</button></div>
+  <div style="font-size:12px;line-height:1.55;display:grid;gap:10px;">
+    <p><b>Speicherung:</b> Projekte und Sicherungen liegen lokal in diesem Browser. Die Feld-App speichert Projekt, Notizen, Fotos und Offline-Kartenausschnitte ebenfalls lokal auf dem verwendeten Gerät.</p>
+    <p><b>Möglicherweise sensible Daten:</b> Gebäudeadressen und -positionen, technische Anlagendaten, GPS-Position, Freitextnotizen und Fotos. Verwende Notizen und Fotos nur mit entsprechender Berechtigung.</p>
+    <p><b>Weitergabe:</b> Erst ein von dir ausgelöster Projekt-, Berichts-, Feedback- oder Feld-App-Export erzeugt eine Datei beziehungsweise nutzt die gewählte Freigabe. Externe Kartendienste erhalten technisch die angefragten Kartenbereiche; GPS bleibt bis zu einer bewussten Freigabe im Browser.</p>
+    <p><b>Geräteverlust/Browserwechsel:</b> Lokale Daten sind nicht automatisch verschlüsselt oder synchronisiert. Benötigte Daten regelmäßig exportieren und auf verwalteten Geräten arbeiten.</p>
+    <div style="padding:10px;border:1px solid rgba(229,57,53,.45);border-radius:7px;background:rgba(229,57,53,.07);">
+      <b style="color:#ef9a9a;">Lokale Daten vollständig entfernen</b>
+      <p style="margin:5px 0 9px;">Löscht bekannte App-Datenbanken, Autosaves, lokale Einstellungen sowie App- und Offline-Karten-Caches dieser Anwendung auf der aktuellen Browser-Adresse.</p>
+      <button class="tool-btn red" data-click="deleteAllLocalAppData()">Alle lokalen App-Daten löschen</button>
+    </div>
+  </div>
+</div>
+
+<div class="float-panel" id="diagnostics-panel" style="min-width:420px;max-width:680px;--panel-accent:#78909c;">
+  <div class="panel-drag-handle"><span style="font-weight:700;">🩺 Diagnosezentrum</span><button data-click="document.getElementById('diagnostics-panel').classList.remove('visible')" aria-label="Schließen">✕</button></div>
+  <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">Dauerhafte Fehler und Warnungen dieser Sitzung mit empfohlenem nächsten Schritt. Enthält keine Fotos oder Projektdaten.</p>
+  <div id="diagnostics-list" style="max-height:55vh;overflow:auto;border:1px solid var(--border);border-radius:6px;"></div>
+  <button class="tool-btn" data-click="clearDiagnostics()" style="margin-top:9px;">Meldungen leeren</button>
+</div>
 
 <!-- ══ Ebenen-Panel ════════════════════════════════════════════════════════ -->
 <div id="ebenen-panel" class="ebenen-panel" style="display:none;" role="dialog" aria-label="Kartenebenen">
@@ -100,18 +124,17 @@
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible"          data-change="_ebpChart(this.checked)">Zeitstrahl-Chart</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-overlay-visible"        data-change="_ebpOverlay(this.checked)">Plan-Overlay</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-viz-circles"    checked data-change="_ebpViz(this.checked)">Wärme-Visualisierung</label>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible"     checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
   </div>
 
   <div class="ebp-cat">
     <div class="ebp-cat-label" style="--ebp-c:#ef5350;">🔥 Wärmenetz</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-visible"   checked data-change="setNetzVisible(this.checked);_ebpSync('netz-visible-ansicht',this.checked)">Leitungen</label>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-trasse-visible"        data-change="setTrasseVisible(this.checked)">Trassen</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-trasse-visible"        data-change="setTrasseVisible(this.checked)">Planungskorridore</label>
   </div>
 
   <div class="ebp-cat">
     <div class="ebp-cat-label" style="--ebp-c:#4fc3f7;">⚡ Elektro</div>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-assets-visible"         data-change="setAssetLayerVisible(this.checked);_ebpSync('assets-visible',this.checked)">Elektro-Assets</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-assets-visible"         data-change="setAssetLayerVisible(this.checked);_ebpSync('assets-visible',this.checked)">Stromnetz-Komponenten</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-stromnetz-visible"      data-change="setStromNetzVisible(this.checked)">Stromnetz (Kabel)</label>
   </div>
 
@@ -232,10 +255,12 @@
         <div id="lp-netz-waerme">
         <div class="lp-tool-grid" style="margin-bottom:8px;">
           <button class="lp-tool-btn" data-click="toggleNetzPanel()" style="border-color:#e53935;color:#e53935;grid-column:1/-1;justify-content:center;">🔗 Wärmenetz konfigurieren</button>
+          <button class="lp-tool-btn trasse-draw-btn" data-click="toggleDrawTrasse('waerme')" style="border-color:#ff9800;color:#ffb74d;">✏ Trasse planen</button>
+          <button class="lp-tool-btn" data-click="confirmAutoGenerateNetz()" style="border-color:#66bb6a;color:#81c784;">⚙ Netz erzeugen</button>
         </div>
         <div id="lp-netz-hint" style="background:rgba(79,195,247,0.08);border:1px solid rgba(79,195,247,0.25);border-radius:6px;padding:10px;margin-bottom:10px;font-size:10px;color:var(--accent);line-height:1.5;display:none;">
           💡 <strong>Noch kein Wärmenetz vorhanden.</strong><br>
-          Wähle oben eine Zentrale und klicke „Auto-Netz" — oder zeichne Leitungen manuell.
+          Wähle oben eine Zentrale und klicke „Netz automatisch erzeugen“ — oder zeichne Wärmeleitungen manuell.
         </div>
         <div class="lp-section-title">Netz-Kennwerte</div>
         <div id="lp-netz-info" class="lp-netz-summary">
@@ -251,7 +276,7 @@
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Werkzeuge</div>
         <div class="lp-tool-grid">
-          <button class="lp-tool-btn" id="lp-btn-pruning" data-click="togglePruningMode()" style="border-color:#f9a825;color:#f9a825;">✂ Pruning</button>
+          <button class="lp-tool-btn" id="lp-btn-pruning" data-click="togglePruningMode()" style="border-color:#f9a825;color:#f9a825;">✂ Abschnitte ausschließen</button>
           <button class="lp-tool-btn" data-click="toggleNetworkLock()" id="lp-btn-lock" style="border-color:#4caf50;color:#4caf50;background:rgba(76,175,80,0.1);">🔒 Bestandsnetz</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Einfärbung</div>
@@ -337,7 +362,7 @@
         </div>
         <div id="el-sec-trasse">
           <div class="lp-tool-grid">
-            <button class="lp-tool-btn" id="btn-draw-trasse" data-click="toggleDrawTrasse()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;">✏ Trasse zeichnen</button>
+            <button class="lp-tool-btn trasse-draw-btn" id="btn-draw-trasse-strom" data-click="toggleDrawTrasse('strom')" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;">✏ Elektro-Korridor zeichnen</button>
           </div>
           <div class="lp-tool-grid" style="margin-top:6px;">
             <button class="lp-tool-btn" id="btn-osm-strassen" data-click="loadOsmStrassen()" style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;" title="Straßenverläufe aus OpenStreetMap im aktuellen Kartenausschnitt laden — als Vorlage für Trassenführung">↓ Straßen aus OSM laden</button>
@@ -360,7 +385,7 @@
             <button class="lp-tool-btn" data-click="startDrawStromEdge()" id="btn-draw-strom-edge" style="grid-column:1/-1;">— Kabel zeichnen</button>
           </div>
           <div class="lp-tool-grid" style="margin-top:6px;">
-            <button class="lp-tool-btn" data-click="showAutoNetzDialog()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;" title="Stromnetz automatisch generieren: verbindet Komponenten anhand von Trassen/Distanzen zu einem vollständigen Netz">🔌 Auto-Netz</button>
+            <button class="lp-tool-btn" data-click="showAutoNetzDialog()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;" title="Stromnetz automatisch erzeugen: verbindet Komponenten anhand von Korridoren und Entfernungen">🔌 Netz automatisch erzeugen</button>
           </div>
         </div>
 
@@ -370,14 +395,15 @@
         </div>
         <div id="el-sec-calc">
           <div class="lp-tool-grid" style="margin-bottom:8px;">
-            <button class="lp-tool-btn" data-click="elCalcAssets()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Elektrische Lastfluss-/Auslastungsberechnung für alle Stromnetz-Assets durchführen">⚡ Elektroberechnung</button>
+            <button class="lp-tool-btn" data-click="elCalcAssets()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Elektrische Auslastungsberechnung für alle Stromnetz-Komponenten durchführen">⚡ Elektroberechnung</button>
+            <div style="grid-column:1/-1;padding:7px;border:1px solid rgba(255,152,0,.35);border-radius:5px;color:#ffb74d;font-size:9px;line-height:1.4;">Überschlägige Vorprüfung: symmetrisches 3-Phasen-Ersatzmodell mit pauschalem cos φ. Spannungsfall, Kurzschluss und Selektivität ersetzen keine prüffähige Netz-/Schutzstudie nach IEC/VDE. Die automatische Dimensionierung ist eine lokale Vorauswahl, keine global optimierte Netzlösung.</div>
             <button class="lp-tool-btn" id="btn-sld-toggle" data-click="sldToggle()" style="grid-column:1/-1;border-color:#80cbc4;color:#80cbc4;" title="Einlinienschema (schematische Netzdarstellung) ein-/ausblenden">🔌 Einlinienschema</button>
             <button class="lp-tool-btn" data-click="showInvestitionsplan()" style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;" title="Investitionsplan für das Stromnetz anzeigen: Kosten der geplanten Komponenten und Maßnahmen über die Jahre">📋 Investitionsplan</button>
             <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()" style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;" title="Netzanalyse öffnen: Lastübersicht, automatische Trafo-Platzierung und MS-Netz-Analyse">🗺️ Netzanalyse</button>
             <button class="lp-tool-btn" data-click="exportMassnahmenPDF()" style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;" title="Maßnahmenbericht für das Stromnetz als PDF exportieren">📄 Maßnahmenbericht PDF</button>
-            <button class="lp-tool-btn" data-click="exportVollstaendigXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;" title="Alle Stromnetz-Daten (Assets, Leitungen, Maßnahmen) als Excel-Datei exportieren">📊 Export Excel (vollständig)</button>
+            <button class="lp-tool-btn" data-click="exportVollstaendigXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;" title="Alle Stromnetz-Daten (Komponenten, Kabel, Maßnahmen) als Excel-Datei exportieren">📊 Export Excel (vollständig)</button>
             <button class="lp-tool-btn" data-click="importVollstaendigXLSX()" style="grid-column:1/-1;border-color:#81d4fa;color:#81d4fa;" title="Stromnetz-Daten aus einer zuvor exportierten Excel-Datei importieren">📥 Import Excel</button>
-            <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;" title="Stromnetz automatisch aus den hinterlegten Gebäudedaten ableiten und berechnen — schneller Einstieg ohne manuelle Platzierung">⚙ Auto-Netz aus Gebäudedaten</button>
+            <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;" title="Stromnetz automatisch aus den hinterlegten Gebäudedaten ableiten und berechnen — schneller Einstieg ohne manuelle Platzierung">⚙ Netz aus Gebäudedaten erzeugen</button>
             <button class="lp-tool-btn" data-click="showAutofillWizard()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Verbrauchs- und PV-Werte automatisch ermitteln">✦ Auto-Befüllen (Verbrauch & PV)</button>
           </div>
           <div id="lp-el-calc-result" style="display:none;margin-bottom:8px;font-size:9px;color:var(--text);background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);"></div>
@@ -506,7 +532,7 @@
               </div>
             </div>
             <div style="border-top:1px solid var(--border);margin:4px 0 6px;"></div>
-            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Asset-Kostenfaktoren (Richtwerte)</div>
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Anlagen-Kostenfaktoren (Richtwerte)</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
               <div>
                 <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">PV (€/kWp)</div>
@@ -514,7 +540,7 @@
                   style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
               </div>
               <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Trafo Asset (€/kVA)</div>
+                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Transformator (€/kVA)</div>
                 <input id="ak-trafo-kva" type="number" value="80" min="0" step="10"
                   style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
               </div>
@@ -601,7 +627,7 @@
       <div class="lp-content" id="lp-ergebnis">
         <div class="lp-step">
           <div class="lp-step-num" data-num="4">4</div>
-          <div class="lp-step-text">Auswerten &amp; Exportieren<span>Wirtschaftlichkeit, Dispatch, Berichte</span></div>
+          <div class="lp-step-text">Auswerten &amp; Exportieren<span>Wirtschaftlichkeit, Einsatzplanung, Berichte</span></div>
         </div>
         <div id="lp-ergebnis-kpis" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:12px;">
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:6px 8px;">
@@ -643,7 +669,7 @@
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Export</div>
         <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="exportDispatchCSV()" style="border-color:#ff9800;color:#ffb74d;">📋 Dispatch CSV</button>
+          <button class="lp-tool-btn" data-click="exportDispatchCSV()" style="border-color:#ff9800;color:#ffb74d;">📋 Einsatzplanung als CSV</button>
           <button class="lp-tool-btn" data-click="exportGebaeudeCSV()" style="border-color:#81c784;color:#81c784;">📋 Gebäude CSV</button>
           <button class="lp-tool-btn" data-click="exportPDFReport()" style="border-color:#ef5350;color:#ef9a9a;grid-column:1/-1;">📄 PDF-Bericht erstellen</button>
           <button class="lp-tool-btn" data-click="exportGutachtenDigest()" style="border-color:#90a4ae;color:#b0bec5;grid-column:1/-1;" title="Anonymisierte, aggregierte Projektkennzahlen als strukturiertes Markdown-Dokument (Arbeitsgrundlage für den Gutachten-Entwurf)">📝 Kennzahlen-Digest (MD)</button>
@@ -731,7 +757,7 @@
     <div class="sld-canvas-wrap" id="sld-canvas-wrap">
       <div id="sld-canvas" class="sld-empty">
         <span style="font-size:20px;">⚡</span>
-        <span>Berechnung starten oder Asset platzieren</span>
+        <span>Berechnung starten oder Anlage platzieren</span>
       </div>
     </div>
     <div id="sld-info-bar" style="display:none;">
@@ -804,7 +830,7 @@
       <button class="analyse-section-tab" data-section="wirtschaft" data-click="setAnalyseSection('wirtschaft')">Wirtschaftlichkeit</button>
       <button class="analyse-section-tab" data-section="strom" data-click="setAnalyseSection('strom')">Strom</button>
       <button class="analyse-section-tab" data-section="emissionen" data-click="setAnalyseSection('emissionen')">Emissionen</button>
-      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" style="color:#4fc3f7;" title="Ausbauplaner — Maßnahmen-Fahrplan (alle Assets)">📅 Ausbauplaner</button>
+      <button class="analyse-section-tab" data-section="ausbauplaner" data-click="setAnalyseSection('ausbauplaner')" style="color:#4fc3f7;" title="Ausbauplaner — Maßnahmen-Fahrplan für Anlagen, Netzkomponenten und Gebäude">📅 Ausbauplaner</button>
     </div>
 
     <!-- ── Übersicht (Dashboard) ─────────────────────────────── -->
@@ -820,7 +846,7 @@
       </div>
       <div class="analyse-full-card full-width">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div class="analyse-full-card-title" id="ekrone-title">3D-Teppich — Dispatch (365 × 24 h)</div>
+          <div class="analyse-full-card-title" id="ekrone-title">3D-Teppich — stündliche Einsatzplanung (365 × 24 h)</div>
           <div style="display:flex;gap:6px;align-items:center;">
             <div style="display:flex;gap:1px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden;">
               <button class="ekrone-mode-btn active" data-mode="carpet" data-click="_setEkroneMode('carpet')" style="font-size:9px;padding:2px 8px;border:none;background:rgba(77,208,225,0.15);color:#4dd0e1;cursor:pointer;font-family:inherit;">Teppich</button>
@@ -1066,7 +1092,8 @@
 
       <!-- Spalte 3: Button -->
       <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;">
-        <button class="btn-confirm" id="btn-opt-start" data-click="if(_optRunning){_optAbbrechen()}else{runOptimierung()}" style="width:100%;padding:10px 20px;font-size:12px;">&#x26A1; Optimalvarianten berechnen</button>
+        <button class="btn-confirm" id="btn-opt-start" data-click="if(_optRunning){_optAbbrechen()}else{runOptimierung()}" style="width:100%;padding:10px 20px;font-size:12px;">&#x26A1; Beste Varianten suchen</button>
+        <div style="margin-top:6px;padding:7px;border:1px solid rgba(255,152,0,.35);border-radius:5px;color:#ffb74d;font-size:9px;line-height:1.45;">Heuristische Raster- und Top-Kandidaten-Suche: Das Ergebnis ist die beste gefundene Variante im geprüften Suchraum, kein mathematischer Nachweis des globalen Optimums.</div>
       </div>
     </div>
 
@@ -1088,7 +1115,7 @@
         <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:auto;">Ablauf Schritt f&#x00fc;r Schritt erkl&#x00e4;rt</span>
       </summary>
       <div style="padding:10px 14px 14px;font-size:10px;line-height:1.7;color:#b0bec5;">
-        <p style="margin:0 0 10px;color:#e0e0e0;font-weight:600;font-size:11px;">Die Optimierung sucht automatisch die wirtschaftlichste Kombination aus W&#x00e4;rmeerzeugern, PV-Anlage und Batteriespeicher f&#x00fc;r Ihr Quartier.</p>
+        <p style="margin:0 0 10px;color:#e0e0e0;font-weight:600;font-size:11px;">Die heuristische Suche vergleicht viele Kombinationen aus W&#x00e4;rmeerzeugern, PV-Anlage und Batteriespeicher und zeigt die besten im geprüften Raster gefundenen Varianten.</p>
 
         <div style="margin-bottom:12px;">
           <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2776; Kombinationen aufstellen</div>
@@ -1097,7 +1124,7 @@
 
         <div style="margin-bottom:12px;">
           <div style="color:#ff9800;font-weight:600;margin-bottom:3px;">&#x2777; Grobphase &mdash; Jede Variante stundengenau simulieren</div>
-          <div>F&#x00fc;r jede Variante wird ein <b>8.760-Stunden-Dispatch</b> (ein ganzes Jahr, Stunde f&#x00fc;r Stunde) berechnet:
+          <div>Für jede Variante wird eine <b>stündliche Einsatzplanung mit 8.760 Stunden</b> (ein ganzes Jahr) berechnet:
             <ul style="margin:4px 0 4px 16px;padding:0;">
               <li>In jeder Stunde wird der W&#x00e4;rmebedarf des Quartiers auf die Erzeuger verteilt &mdash; die g&#x00fc;nstigsten zuerst (Merit-Order).</li>
               <li>Daraus ergibt sich, wie viel jeder Erzeuger &#x00fc;ber das Jahr liefert und wie viel Strom (f&#x00fc;r W&#x00e4;rmepumpen) ben&#x00f6;tigt wird.</li>
@@ -1138,7 +1165,7 @@
         </div>
 
         <div style="margin-top:10px;padding:8px 10px;background:rgba(77,208,225,0.06);border:1px solid rgba(77,208,225,0.15);border-radius:5px;font-size:9px;color:#80cbc4;">
-          <b>Rechenaufwand:</b> Bei 6 Erzeugern und Qualit&#x00e4;t &bdquo;Standard&ldquo; werden ca. 500&ndash;2.000 Varianten durchgerechnet, jede mit 8.760 Stunden. Die Berechnung l&#x00e4;uft parallel auf mehreren CPU-Kernen (Web Worker), damit die Oberfl&#x00e4;che bedienbar bleibt.
+          <b>Rechenaufwand:</b> Bei 6 Erzeugern und Qualit&#x00e4;t &bdquo;Standard&ldquo; werden ca. 500&ndash;2.000 Varianten durchgerechnet, jede mit 8.760 Stunden. Die Berechnung l&#x00e4;uft parallel auf mehreren Prozessorkernen, damit die Oberfl&#x00e4;che bedienbar bleibt.
         </div>
       </div>
     </details>
@@ -1201,10 +1228,10 @@
       </div>
       <!-- Right: Charts stacked vertically -->
       <div id="live-charts-col">
-        <!-- Wärme-Dispatch -->
+        <!-- Stündliche Wärme-Einsatzplanung -->
         <div class="live-chart-panel" id="live-chart-waerme" style="flex:1.2;">
           <div class="live-chart-header">
-            <span>W&#xE4;rme-Dispatch</span>
+            <span>W&#xE4;rme-Einsatzplanung</span>
             <div class="live-zoom-tabs" id="live-zoom-tabs">
               <button class="live-zoom-tab" data-zoom="tag" data-click="_setLiveZoom('tag')">Tag</button>
               <button class="live-zoom-tab" data-zoom="woche" data-click="_setLiveZoom('woche')">Woche</button>
@@ -1363,7 +1390,7 @@
       <div id="asset-bulk-bar" style="display:none;padding:5px 7px 6px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;box-sizing:border-box;">
         <!-- Kopfzeile: Auswahl-Info + Tier-Buttons + Schließen -->
         <div style="display:flex;align-items:center;gap:3px;margin-bottom:4px;">
-          <span id="asset-bulk-lbl" style="font-weight:600;white-space:nowrap;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">0 Assets</span>
+          <span id="asset-bulk-lbl" style="font-weight:600;white-space:nowrap;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">0 Anlagen</span>
           <button onclick="selFromMeritOrderTier('A');selRenderBulkBar()" title="Tier-A-Kandidaten selektieren"
             style="font-size:9px;padding:2px 5px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Tier A ▸</button>
           <button onclick="selFromMeritOrderTier('B');selRenderBulkBar()" title="Tier-B-Kandidaten selektieren"
@@ -1823,7 +1850,7 @@
 
 <div class="float-panel accent-gradient" id="analyse-panel" style="min-width:600px;max-width:900px;">
   <div class="panel-drag-handle" onmousedown="startDrag(event,'analyse-panel')">
-    <span style="color:var(--accent);font-size:12px">📊 Dispatch-Analyse</span>
+    <span style="color:var(--accent);font-size:12px">📊 Einsatzanalyse</span>
     <span class="drag-dots">⠿</span>
   </div>
 
@@ -1923,7 +1950,7 @@
   <!-- ══ Tab: Metriken ════════════════════════════════════════════════ -->
   <div class="sa-tab-content" id="sa-tab-metriken">
     <div id="da-metriken-wrap">
-      <div style="color:var(--muted);font-size:11px;padding:20px 0;text-align:center;">Dispatch ausführen um Metriken zu sehen.</div>
+      <div style="color:var(--muted);font-size:11px;padding:20px 0;text-align:center;">Stündliche Einsatzplanung ausführen, um Kennwerte zu sehen.</div>
     </div>
   </div>
 
@@ -2076,7 +2103,7 @@
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
       <div class="inp-group">
         <label class="inp-label" style="display:flex;justify-content:space-between;">JAZ <span class="htip" data-tip="Jahresarbeitszahl: Wie effizient arbeitet die Wärmepumpe im Jahresmittel? JAZ 4 = aus 1 kWh Strom werden 4 kWh Wärme. Wird stundenscharf aus 8.760 COP-Werten berechnet.">?</span> <span id="fg-jaz-hint" style="color:var(--accent);font-size:9px;font-style:italic;">wird berechnet</span></label>
-        <div class="inp-field" id="fg-jaz-display" style="display:flex;align-items:center;color:var(--text-muted);font-size:12px;cursor:default;" title="Stundenscharf aus 8760 COP-Werten — nach Dispatch verfügbar">—</div>
+        <div class="inp-field" id="fg-jaz-display" style="display:flex;align-items:center;color:var(--text-muted);font-size:12px;cursor:default;" title="Stundenscharf aus 8.760 COP-Werten — nach der Einsatzplanung verfügbar">—</div>
         <input type="hidden" id="fg-jaz" value="4.5"/>
       </div>
       <div class="inp-group">
@@ -2095,7 +2122,7 @@
       </div>
     </div>
     <div class="inp-group" style="margin-bottom:10px;">
-      <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Dispatch</span></label>
+      <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
       <input class="inp-field" type="number" id="fg-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
     </div>
     <div class="panel-btns">
@@ -2160,11 +2187,11 @@
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
       <div class="inp-group">
         <label class="inp-label" style="display:flex;justify-content:space-between;">JAZ <span class="htip" data-tip="Jahresarbeitszahl: Wie effizient arbeitet die Wärmepumpe im Jahresmittel? JAZ 4 = aus 1 kWh Strom werden 4 kWh Wärme. Wird stundenscharf aus 8.760 COP-Werten berechnet.">?</span> <span id="lwwp-jaz-hint" style="color:var(--accent);font-size:9px;font-style:italic;">wird berechnet</span></label>
-        <div class="inp-field" id="lwwp-jaz-display" style="display:flex;align-items:center;color:var(--text-muted);font-size:12px;cursor:default;" title="Stundenscharf aus 8760 COP-Werten — nach Dispatch verfügbar">—</div>
+        <div class="inp-field" id="lwwp-jaz-display" style="display:flex;align-items:center;color:var(--text-muted);font-size:12px;cursor:default;" title="Stundenscharf aus 8.760 COP-Werten — nach der Einsatzplanung verfügbar">—</div>
         <input type="hidden" id="lwwp-jaz" value="3.0"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Dispatch</span></label>
+        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
         <input class="inp-field" type="number" id="lwwp-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
       </div>
       <div class="inp-group">
@@ -2228,7 +2255,7 @@
         <input class="inp-field" type="number" id="gk-eta" value="92" min="50" max="110" step="1" data-input="updateGasKesselDisplay()" title="Feuerungstechnischer Wirkungsgrad (Niedertemperatur typ. 88–92 %, Brennwert bis 107 %)"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Dispatch</span></label>
+        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
         <input class="inp-field" type="number" id="gk-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
       </div>
     </div>
@@ -2311,7 +2338,7 @@
         <input class="inp-field" type="number" id="sk-eta" value="99" min="80" max="100" step="1" data-input="updateStromkesselDisplay()"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Dispatch</span></label>
+        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
         <input class="inp-field" type="number" id="sk-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
       </div>
     </div>
@@ -2351,7 +2378,7 @@
     <div style="padding:7px 8px;background:var(--bg);border-radius:5px;border:1px solid var(--border);font-size:10px;font-family:'DM Mono',monospace;margin-bottom:10px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;">
       <span style="color:var(--muted)">Jahresertrag</span><span id="st-ertrag" style="color:#ffab40;">—</span>
       <span style="color:var(--muted)">Spitzenleistung</span><span id="st-peak" style="color:var(--text);">—</span>
-      <span style="color:var(--muted)">Wärmeabgabe (Dispatch)</span><span id="st-waerme" style="color:var(--text);">—</span>
+      <span style="color:var(--muted)">Wärmeabgabe (Einsatzplanung)</span><span id="st-waerme" style="color:var(--text);">—</span>
       <span style="color:var(--muted)">→ davon Speicher</span><span id="st-speicher" style="color:#26a69a;">—</span>
     </div>
   </div>
@@ -2602,7 +2629,7 @@
         <input class="inp-field" type="number" id="hko-eta" value="91" min="50" max="110" step="1" data-input="updateHeizoelDisplay()"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Dispatch</span></label>
+        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
         <input class="inp-field" type="number" id="hko-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
       </div>
     </div>
@@ -2638,7 +2665,7 @@
         <input class="inp-field" type="number" id="pk-eta" value="88" min="50" max="110" step="1" data-input="updatePelletsDisplay()"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Dispatch</span></label>
+        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
         <input class="inp-field" type="number" id="pk-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
       </div>
     </div>
@@ -2678,7 +2705,7 @@
         <input class="inp-field" type="number" id="hhs-eta" value="85" min="50" max="110" step="1" data-input="updateHhsDisplay()"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Dispatch</span></label>
+        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
         <input class="inp-field" type="number" id="hhs-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
       </div>
     </div>
@@ -2714,7 +2741,7 @@
         <input class="inp-field" type="number" id="fw-leistung" value="500" min="1" step="10" data-input="updateFernwaermeDisplay(); updateAllDeckungen()"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Dispatch</span></label>
+        <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
         <input class="inp-field" type="number" id="fw-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
       </div>
       <div class="inp-group">
@@ -2756,7 +2783,7 @@
       <input type="hidden" id="geo-leistung-eff" value="0"/>
     </div>
     <div class="inp-group">
-      <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Dispatch</span></label>
+      <label class="inp-label">Wärmeabgabe (MWh/a) <span style="font-size:9px;color:var(--muted);font-style:italic;">aus Einsatzplanung</span></label>
       <input class="inp-field" type="number" id="geo-waerme" value="" placeholder="wird berechnet…" step="1" readonly/>
     </div>
   </div>
@@ -2780,7 +2807,7 @@
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div class="inp-group">
         <label class="inp-label" style="display:flex;justify-content:space-between;">JAZ <span class="htip" data-tip="Jahresarbeitszahl: Wie effizient arbeitet die Wärmepumpe im Jahresmittel? JAZ 4 = aus 1 kWh Strom werden 4 kWh Wärme. Wird stundenscharf aus 8.760 COP-Werten berechnet.">?</span> <span id="geo-jaz-hint" style="color:var(--accent);font-size:9px;font-style:italic;">wird berechnet</span></label>
-        <div class="inp-field" id="geo-jaz-display" style="display:flex;align-items:center;color:var(--text-muted);font-size:12px;cursor:default;" title="Stundenscharf berechnet aus Gütegrad × Carnot (Auslegung) — nach Dispatch: echter Jahreswert">—</div>
+        <div class="inp-field" id="geo-jaz-display" style="display:flex;align-items:center;color:var(--text-muted);font-size:12px;cursor:default;" title="Stundenscharf berechnet aus Gütegrad × Carnot (Auslegung) — nach der Einsatzplanung: echter Jahreswert">—</div>
         <input type="hidden" id="geo-jaz" value="4.5"/>
       </div>
       <div class="inp-group">
@@ -2874,7 +2901,7 @@
   </div>
   <div class="inp-group" style="margin-bottom:12px">
     <button class="btn-secondary" id="btn-pruning-mode" data-click="togglePruningMode()" style="width:100%; text-align:center; padding:8px; border-color:var(--border); transition:0.3s;">
-      ✂ Pruning-Modus: Aus
+      ✂ Abschnitte ausschließen: Aus
     </button>
     <div id="pruning-info" style="display:none;font-size:9px;color:#f9a825;margin-top:4px;padding:4px 6px;background:rgba(249,168,37,0.08);border:1px solid rgba(249,168,37,0.25);border-radius:4px;">
       Klicke auf Leitungsabschnitte, um sie zu deaktivieren/aktivieren. Abgeklemmte Abschnitte werden gestrichelt dargestellt.
@@ -2976,13 +3003,14 @@
     </div>
   </div>
   <div id="netz-color-legend" style="padding:7px 9px;background:var(--bg);border-radius:5px;border:1px solid var(--border);margin-bottom:12px;font-size:10px;"></div>
+  <div id="netz-topology-warning" role="alert" style="display:none;margin:0 12px 10px;padding:8px;border:1px solid #ff9800;border-radius:5px;color:#ffb74d;font-size:11px;"></div>
 
   <div class="panel-btns">
-    <button class="btn-confirm" style="background:#e53935" data-click="autoGenerateNetz()">Auto-Netz (MST)</button>
-    <button class="btn-secondary" data-click="toggleDrawTrasse()" id="btn-draw-trasse">Haupttrasse zeichnen</button>
+    <button class="btn-confirm" style="background:#2e7d32" data-click="confirmAutoGenerateNetz()" title="Verbindet Gebäude entlang der geplanten Wärme-Haupttrasse">⚙ Wärmenetz aus Trasse erzeugen</button>
+    <button class="btn-secondary trasse-draw-btn" data-click="toggleDrawTrasse('waerme')" id="btn-draw-trasse-waerme">✏ Wärme-Haupttrasse planen und bearbeiten</button>
     <button class="btn-secondary" data-click="toggleDrawEdge()" id="btn-draw-edge">Leitung zeichnen</button>
-    <button class="btn-secondary" data-click="clearTrasse()">Trasse löschen</button>
-    <button class="btn-secondary" data-click="clearNetz()">Netz löschen</button>
+    <button class="btn-secondary" data-click="clearTrasse()">Wärme-Haupttrasse löschen</button>
+    <button class="btn-secondary" data-click="confirmClearNetz()">Netz löschen</button>
     <div style="font-size:9px;color:var(--muted);margin-top:6px;">💡 Klick auf Leitung → DN/Kosten · Rechtsklick → löschen</div>
   </div>
   <div id="bom-container" style="display:none; margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
@@ -3002,34 +3030,43 @@
   </div>
   <div class="panel-info">Investitions- und Betriebskosten nach VDI 2067 · KWW-Technikkatalog 12/2025</div>
 
+  <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px;">
+    <label for="wirt-szenario" style="font-size:10px;color:var(--muted);">Wirtschaftsszenario:</label>
+    <select class="inp-field" id="wirt-szenario" style="flex:1;font-size:10px;" data-change="onEconomicScenarioChange()">
+      <option value="project-base-2026-07-v1">Projektbasis 07/2026 · v1</option>
+      <option value="manual">Manuelle Annahmen</option>
+    </select>
+  </div>
+  <div id="wirt-szenario-hint" style="font-size:9px;color:var(--muted);margin-bottom:8px;">Dokumentierte Projektannahmen, Stand 18.07.2026; vor Beschluss projektspezifisch plausibilisieren.</div>
+
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 8px;margin-bottom:8px;">
     <div class="inp-group">
       <label class="inp-label">Strom (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-strom" value="35" min="0" step="1" data-input="_onStrompreisChange('wirt-p-strom')"/>
+      <input class="inp-field" type="number" id="wirt-p-strom" value="35" min="0" step="1" data-input="onEconomicManualInput();_onStrompreisChange('wirt-p-strom')"/>
     </div>
     <div class="inp-group">
       <label class="inp-label" title="Arbeitspreis für WP-/Stromkessel-Strom (Sondervertrag, reduzierte Netzentgelte, ggf. §14a EnWG). Leer = allgemeiner Strompreis. Großwärmepumpen zahlen typisch 18–25 ct statt Haushaltstarif.">WP-Strom (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-strom-wp" placeholder="= Strom" min="0" step="1" data-input="calcWirtschaftPanel()"/>
+      <input class="inp-field" type="number" id="wirt-p-strom-wp" placeholder="= Strom" min="0" step="1" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
     </div>
     <div class="inp-group">
       <label class="inp-label">Erdgas (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-gas" value="10" min="0" step="0.5" data-input="_onGaspreisChange('wirt-p-gas')"/>
+      <input class="inp-field" type="number" id="wirt-p-gas" value="10" min="0" step="0.5" data-input="onEconomicManualInput();_onGaspreisChange('wirt-p-gas')"/>
     </div>
     <div class="inp-group">
       <label class="inp-label">Heizöl (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-hko" value="10" min="0" step="0.5" data-input="calcWirtschaftPanel()"/>
+      <input class="inp-field" type="number" id="wirt-p-hko" value="10" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
     </div>
     <div class="inp-group">
       <label class="inp-label">Fernwärme (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-fw" value="17" min="0" step="0.5" data-input="calcWirtschaftPanel()"/>
+      <input class="inp-field" type="number" id="wirt-p-fw" value="17" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
     </div>
     <div class="inp-group">
       <label class="inp-label">Pellets (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-pk" value="8" min="0" step="0.5" data-input="calcWirtschaftPanel()"/>
+      <input class="inp-field" type="number" id="wirt-p-pk" value="8" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
     </div>
     <div class="inp-group">
       <label class="inp-label">HHS (ct/kWh)</label>
-      <input class="inp-field" type="number" id="wirt-p-hhs" value="6" min="0" step="0.5" data-input="calcWirtschaftPanel()"/>
+      <input class="inp-field" type="number" id="wirt-p-hhs" value="6" min="0" step="0.5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
     </div>
     <div class="inp-group">
       <label class="inp-label" title="BHKW-Vergütung wird oben im Strom-Tab differenziert eingestellt (Einspeisung/Eigenverbrauch/KWK-Zuschlag)">BHKW-Vergütung</label>
@@ -3040,27 +3077,27 @@
       <label class="inp-label" style="display:flex;align-items:center;gap:6px;">
         <span title="CO₂-Kostenansatz für interne Wirtschaftlichkeitsrechnung (z.B. CO₂-Preis Projektionsbericht)">CO₂-Ansatz (€/t)</span>
         <label class="tog" style="margin-left:auto;" title="Ein: CO₂-Kosten auf alle Energieträger anrechnen (Gas, Öl, Biomasse, Fernwärme, WP-Strom) · Aus: CO₂-Kosten nur auf fossile Brennstoffe (Gas, Öl)">
-          <input type="checkbox" id="wirt-co2-alle" checked data-change="document.getElementById('wirt-co2-alle-label').textContent=this.checked?'alle Energieträger':'nur fossile';calcWirtschaftPanel()"/>
+          <input type="checkbox" id="wirt-co2-alle" checked data-change="onEconomicManualInput();document.getElementById('wirt-co2-alle-label').textContent=this.checked?'alle Energieträger':'nur fossile';calcWirtschaftPanel()"/>
           <span class="tog-track"></span>
           <span class="tog-label" id="wirt-co2-alle-label">alle Energieträger</span>
         </label>
       </label>
-      <input class="inp-field" type="number" id="wirt-p-co2" value="120" min="0" step="10" data-input="calcWirtschaftPanel()"/>
+      <input class="inp-field" type="number" id="wirt-p-co2" value="120" min="0" step="10" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
     </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-bottom:12px;">
     <div class="inp-group">
       <label class="inp-label">Kapitalzins (%)</label>
-      <input class="inp-field" type="number" id="wirt-zins" value="3.5" min="0" max="15" step="0.5" data-input="_syncZins();calcWirtschaftPanel()"/>
+      <input class="inp-field" type="number" id="wirt-zins" value="3.5" min="0" max="15" step="0.5" data-input="onEconomicManualInput();_syncZins();calcWirtschaftPanel()"/>
     </div>
     <div class="inp-group">
       <label class="inp-label">Stundensatz Bedienung (€/h)</label>
-      <input class="inp-field" type="number" id="wirt-lohn" value="45" min="0" step="5" data-input="calcWirtschaftPanel()"/>
+      <input class="inp-field" type="number" id="wirt-lohn" value="45" min="0" step="5" data-input="onEconomicManualInput();calcWirtschaftPanel()"/>
     </div>
   </div>
 
   <div id="wirt-table-wrap">
-    <div style="color:var(--muted);font-size:10px;text-align:center;padding:12px 0;">Dispatch ausführen um Ergebnisse zu sehen.</div>
+    <div style="color:var(--muted);font-size:10px;text-align:center;padding:12px 0;">Stündliche Einsatzplanung ausführen, um Ergebnisse zu sehen.</div>
   </div>
   <!-- Jahresscheiben-Berechnung -->
   <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
@@ -3158,7 +3195,7 @@
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
       <span style="font-size:10px;color:var(--muted);flex-shrink:0;">oder synthetisch:</span>
       <input class="inp-field" type="number" id="pv-kwp" value="0" placeholder="kWp" min="0" step="10"
-        style="flex:1;text-align:right;" data-input="calcStromPanelDebounced()"/>
+        style="flex:1;text-align:right;" data-input="onPvVergModellChange()"/>
       <span style="font-size:10px;color:var(--muted);flex-shrink:0;">kWp ×</span>
       <input class="inp-field" type="number" id="pv-spez" value="1050" min="100" max="1600" step="50"
         style="width:64px;text-align:right;" data-input="calcStromPanelDebounced()"/>
@@ -3184,11 +3221,18 @@
           <option value="manuell">Manuell</option>
         </select>
       </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+        <label for="pv-tarif-szenario" style="font-size:9px;color:var(--muted);">Tarifstand:</label>
+        <select class="inp-field" id="pv-tarif-szenario" style="font-size:9px;flex:1;" data-change="onPvVergModellChange()">
+          <option value="de-eeg-2026-02-01">EEG 01.02.–31.07.2026</option>
+          <option value="manual">Manuelle Annahme</option>
+        </select>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
           <span style="font-size:9px;color:var(--muted);flex-shrink:0;">Einspeisung:</span>
-          <input class="inp-field" type="number" id="strom-preis-einsp" value="8.1" min="0" max="30" step="0.1"
-            style="flex:1;text-align:right;" data-input="calcStromPanelDebounced()"/>
+          <input class="inp-field" type="number" id="strom-preis-einsp" value="7.78" min="0" max="30" step="0.01"
+            style="flex:1;text-align:right;" data-input="onPvTariffManualInput()"/>
           <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
         </div>
         <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
@@ -3198,7 +3242,7 @@
           <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
         </div>
       </div>
-      <div id="pv-verg-hint" style="font-size:9px;color:var(--muted);margin-top:4px;">EEG §48: Teileinspeisung bis 10 kWp 8,1 ct, bis 40 kWp 7,0 ct, bis 100 kWp 5,7 ct/kWh</div>
+      <div id="pv-verg-hint" style="font-size:9px;color:var(--muted);margin-top:4px;">EEG-Einspeisevergütung, Stand 01.02.–31.07.2026. Keine Förder- oder Rechtsberatung.</div>
     </div>
 
     <!-- PV-Wirtschaftlichkeit -->
@@ -3258,6 +3302,12 @@
       <div style="font-size:9px;color:var(--muted);line-height:1.4;">
         Wirkungsgrad 90 % (Round-trip, LFP-Technologie)
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:7px;">
+        <label style="font-size:9px;color:var(--muted);">Kalenderverlust %/a<input class="inp-field" type="number" id="bat-calendar-fade" value="1.5" min="0" max="5" step="0.1" data-input="calcStromPanelDebounced()"/></label>
+        <label style="font-size:9px;color:var(--muted);">Zyklen bis EOL<input class="inp-field" type="number" id="bat-cycle-life" value="6000" min="500" max="20000" step="500" data-input="calcStromPanelDebounced()"/></label>
+        <label style="font-size:9px;color:var(--muted);">EOL-Kapazität %<input class="inp-field" type="number" id="bat-eol-pct" value="80" min="50" max="95" step="1" data-input="calcStromPanelDebounced()"/></label>
+      </div>
+      <div id="bat-aging-hint" style="font-size:9px;color:#ce93d8;margin-top:6px;">Alterung wird nach der Strombilanz aus Kalender- und Vollzyklen geschätzt.</div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:7px;">
@@ -3809,7 +3859,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
         '<div class="ep-modal-title">Feedback geben</div>' +
         '<div class="ep-modal-body">' +
           'Was ist passiert / welche Idee hast du? Version, Browser und auf Wunsch ' +
-          'ein Screenshot der aktuellen Ansicht werden automatisch beigefügt. ' +
+          'Diagnosedaten werden nur nach deiner ausdrücklichen Auswahl beigefügt. ' +
           'Deine Rückmeldung wird direkt an Konstantin gesendet.' +
         '</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
@@ -3822,14 +3872,17 @@ Turnhalle;Öffentlich;1982;A;850</div>
           'style="resize:vertical;font-family:inherit;"></textarea>' +
         '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">' +
           '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">' +
-            '<input type="checkbox" id="feedback-screenshot" checked style="margin:0;"> Screenshot der aktuellen Ansicht beifügen' +
+            '<input type="checkbox" id="feedback-screenshot" style="margin:0;"> Screenshot beifügen (kann Gebäudenamen, Kartenposition und Projektwerte zeigen)' +
           '</label>' +
           (firefoxFileHint
-            ? '<div style="font-size:10px;color:#e65100;padding-left:18px;margin-top:2px;">Firefox + lokale Datei: Screenshot nicht möglich → DOM-Snapshot wird als Fallback beigefügt</div>'
+            ? '<div style="font-size:10px;color:#e65100;padding-left:18px;margin-top:2px;">Firefox + lokale Datei: Screenshot eventuell nicht möglich. DOM-Diagnose wird nur mit eigener Zustimmung beigefügt.</div>'
             : '') +
           '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">' +
-            '<input type="checkbox" id="feedback-consolelogs"' + (hasLogs ? ' checked' : ' disabled') + ' style="margin:0;"> ' +
+            '<input type="checkbox" id="feedback-consolelogs"' + (hasLogs ? '' : ' disabled') + ' style="margin:0;"> ' +
             'Konsolenmeldungen beifügen' + (hasLogs ? ' (' + _consoleLogs.length + ' Einträge)' : ' (keine vorhanden)') +
+          '</label>' +
+          '<label style="display:flex;align-items:flex-start;gap:6px;font-size:11px;color:#ffb74d;">' +
+            '<input type="checkbox" id="feedback-domsnapshot" style="margin-top:2px;"> DOM-Diagnose beifügen (bis 200 KB; kann sichtbare Projektdaten und Eingabewerte enthalten)' +
           '</label>' +
         '</div>' +
         '<div class="ep-modal-btns" style="margin-top:14px;">' +
@@ -3879,6 +3932,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
       if (!text) { textEl.focus(); return; }
       var withLogs = overlay.querySelector('#feedback-consolelogs').checked;
       var withScreenshot = overlay.querySelector('#feedback-screenshot').checked;
+      var withDomSnapshot = overlay.querySelector('#feedback-domsnapshot').checked;
       var logs = withLogs ? _consoleLogs.slice() : [];
       btn.disabled = true;
       btn.textContent = 'Wird gesendet…';
@@ -3904,9 +3958,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
           .then(function (canvas) {
             var dataUrl = null;
             try { dataUrl = canvas.toDataURL('image/png'); } catch (e) { dataUrl = null; }
-            send(dataUrl, dataUrl ? null : _captureHtmlSnapshot());
+            send(dataUrl, !dataUrl && withDomSnapshot ? _captureHtmlSnapshot() : null);
           })
-          .catch(function () { send(null, _captureHtmlSnapshot()); });
+          .catch(function () { send(null, withDomSnapshot ? _captureHtmlSnapshot() : null); });
       } else {
         send(null, null);
       }
@@ -3918,6 +3972,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
       var text = textEl.value.trim();
       var withScreenshot = overlay.querySelector('#feedback-screenshot').checked;
       var withLogs = overlay.querySelector('#feedback-consolelogs').checked;
+      var withDomSnapshot = overlay.querySelector('#feedback-domsnapshot').checked;
       var logs = withLogs ? _consoleLogs.slice() : [];
 
       function finish(screenshotDataUrl, snapshot) {
@@ -3930,7 +3985,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
         btn.textContent = 'Screenshot…';
         html2canvas(document.body, { useCORS: true, allowTaint: true, scale: 1, logging: false })
           .then(function (canvas) { finish(canvas.toDataURL('image/png'), null); })
-          .catch(function () { finish(null, _captureHtmlSnapshot()); });
+          .catch(function () { finish(null, withDomSnapshot ? _captureHtmlSnapshot() : null); });
       } else {
         finish(null, null);
       }
@@ -3954,7 +4009,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
       <select id="galerie-filter" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);">
         <option value="all">Alle Objekte</option>
         <option value="gebaeude">Nur Gebäude</option>
-        <option value="assets">Nur Assets</option>
+        <option value="assets">Nur Anlagen/Komponenten</option>
       </select>
       <input id="galerie-search" type="search" placeholder="Suchen…" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);width:140px;">
       <button onclick="closeFotoGalerie()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--text);font-size:12px;">✕ Schließen</button>
