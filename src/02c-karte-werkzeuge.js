@@ -1059,7 +1059,10 @@ export function showTrasseFinishBtn() {
 
 export function finishTrasseAndGenerateNetz() {
   if (window.isDrawingTrasse) toggleDrawTrasse();
-  confirmAutoGenerateNetz();
+  confirmAutoGenerateNetz({
+    strategy: 'trasse',
+    trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 50,
+  });
 }
 
 export function startNewTrasseBranch() {

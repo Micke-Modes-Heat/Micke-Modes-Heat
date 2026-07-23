@@ -258,7 +258,7 @@ export const LEITFADEN_STEPS = [
   { id: 'lf-s9', title: '💾 Speichern & Exportieren',
     text: 'Vergiss nicht, dein Projekt zu sichern!<br><br>' +
       '<strong>Projekt speichern:</strong><br>' +
-      'Klicke unten in der Leiste auf <strong>„💾 Speichern"</strong> — es wird eine JSON-Datei heruntergeladen, die alle Gebäude, Netze, Erzeuger und Einstellungen enthält. Über <strong>„📂 Öffnen"</strong> kannst du sie jederzeit wieder laden.<br><br>' +
+      'Klicke unten in der Leiste auf <strong>„💾 Speichern"</strong>. Nach dem Öffnen einer Projektdatei wird diese in unterstützten Browsern direkt aktualisiert. Mit <strong>„Speichern unter"</strong> wählst du einen neuen Namen oder Speicherort. Browser ohne direkten Dateizugriff laden stattdessen eine JSON-Datei herunter.<br><br>' +
       '<strong>Ergebnisse exportieren (Tab „Ergebnis"):</strong><br>' +
       '• <strong>„📄 PDF-Bericht erstellen"</strong> — Vollständiger Bericht mit Karten, Kennzahlen und Diagrammen<br>' +
       '• <strong>„📋 Dispatch CSV"</strong> — Stundenscharfe Erzeugungsdaten aller Erzeuger<br>' +

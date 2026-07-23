@@ -2182,6 +2182,8 @@ export function _buildProjectData() {
       vl: document.getElementById('netz-vl').value,
       rl: document.getElementById('netz-rl').value,
       v: document.getElementById('netz-v').value,
+      dpMain: document.getElementById('netz-dp-main')?.value ?? 150,
+      dpService: document.getElementById('netz-dp-service')?.value ?? 250,
       tAussen: document.getElementById('netz-t-aussen').value,
       tMittel: document.getElementById('netz-t-mittel').value,
       uWert: document.getElementById('netz-u-wert').value,
@@ -2284,10 +2286,96 @@ export function _buildProjectData() {
   };
 }
 
-export function exportJSON(){
+let _projectFileHandle = null;
+
+function _projectJsonBlob() {
   const project = _buildProjectData();
-  const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='liegenschaft_projekt.json';a.click();
+  return new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
+}
+
+function _setProjectFileStatus(name = null) {
+  const status = document.getElementById('project-file-status');
+  if (status) status.textContent = name ? `Datei: ${name}` : 'Noch keine Projektdatei geöffnet';
+}
+
+function _downloadProjectJson(filename = 'liegenschaft_projekt.json') {
+  const url = URL.createObjectURL(_projectJsonBlob());
+  const a=document.createElement('a');
+  a.href=url; a.download=filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url),0);
+}
+
+async function _writeProjectHandle(handle) {
+  const writable = await handle.createWritable();
+  await writable.write(_projectJsonBlob());
+  await writable.close();
+  _projectFileHandle = handle;
+  _setProjectFileStatus(handle.name || 'Projektdatei');
+  showHint(`✓ Projekt gespeichert: ${handle.name || 'Projektdatei'}`,3000);
+  return true;
+}
+
+export async function saveProjectAs() {
+  if (typeof window.showSaveFilePicker !== 'function') {
+    _downloadProjectJson();
+    showHint('Projekt als JSON-Datei heruntergeladen.',3000);
+    return true;
+  }
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName:_projectFileHandle?.name || 'liegenschaft_projekt.json',
+      types:[{description:'Micke-Heat Projekt',accept:{'application/json':['.json']}}],
+    });
+    return await _writeProjectHandle(handle);
+  } catch (error) {
+    if (error?.name === 'AbortError') return false;
+    console.error('Speichern unter fehlgeschlagen:',error);
+    showHint('Projekt konnte nicht gespeichert werden.',5000);
+    return false;
+  }
+}
+
+export async function saveProject() {
+  if (!_projectFileHandle) return saveProjectAs();
+  try {
+    return await _writeProjectHandle(_projectFileHandle);
+  } catch (error) {
+    if (error?.name === 'NotAllowedError') return saveProjectAs();
+    console.error('Speichern fehlgeschlagen:',error);
+    showHint('Datei konnte nicht überschrieben werden. Bitte „Speichern unter“ verwenden.',6000);
+    return false;
+  }
+}
+
+// Rückwärtskompatibler Name für alte Buttons/Integrationen.
+export function exportJSON(){
+  return saveProject();
+}
+
+export async function openProjectFile() {
+  if (typeof window.showOpenFilePicker !== 'function') {
+    document.getElementById('import-file')?.click();
+    return false;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      multiple:false,
+      types:[{description:'Micke-Heat Projekt',accept:{'application/json':['.json']}}],
+    });
+    if (!handle) return false;
+    const file = await handle.getFile();
+    const project = JSON.parse(await file.text());
+    _loadProject(project);
+    _projectFileHandle = handle;
+    _setProjectFileStatus(handle.name || file.name);
+    showHint(`✓ Projekt geöffnet: ${handle.name || file.name}`,3000);
+    return true;
+  } catch (error) {
+    if (error?.name === 'AbortError') return false;
+    console.error('Projekt öffnen fehlgeschlagen:',error);
+    showHint('Fehler beim Laden der Datei.',5000);
+    return false;
+  }
 }
 
 export function importJSON(event) {
@@ -2298,6 +2386,10 @@ export function importJSON(event) {
     try {
       const project = JSON.parse(e.target.result);
       _loadProject(project);
+      // Klassischer Datei-Input liefert aus Sicherheitsgründen keinen
+      // überschreibbaren Dateizugriff. „Speichern“ öffnet daher Speichern unter.
+      _projectFileHandle = null;
+      _setProjectFileStatus(`${file.name} · Speichern unter erforderlich`);
       showHint('Projekt erfolgreich geladen.');
       setTimeout(hideHint, 3000);
     } catch (err) {
@@ -2432,6 +2524,8 @@ function _applyProjectData(project) {
          document.getElementById('netz-rl').value = project.netz.rl ?? 60;
          syncVLTemps('netz');
          document.getElementById('netz-v').value = project.netz.v ?? 1.0;
+         document.getElementById('netz-dp-main').value = project.netz.dpMain ?? 150;
+         document.getElementById('netz-dp-service').value = project.netz.dpService ?? 250;
          document.getElementById('netz-t-aussen').value = project.netz.tAussen ?? -12;
          document.getElementById('netz-t-mittel').value = project.netz.tMittel ?? 10;
          document.getElementById('netz-u-wert').value = project.netz.uWert ?? 0.25;
@@ -2479,17 +2573,19 @@ function _applyProjectData(project) {
 
       setEdgeWaypoints(project.edgeWaypoints || {});
       const _prunedMap = {};
-      if (project.waermeNetzGraph) {
+      const hasSavedWaermeGraph = Array.isArray(project.waermeNetzGraph?.edges) &&
+        project.waermeNetzGraph.edges.length > 0;
+      if (hasSavedWaermeGraph) {
          applyWaermeNetzGraph(project.waermeNetzGraph);
       } else if (project.customEdges) {
          project.customEdges.forEach(e => { if (e.pruned) _prunedMap[edgeKey(e.u, e.v)] = true; });
          project.customEdges.forEach(e => addNetzEdge(e.u, e.v, {force: true}));
       }
-      if (!project.waermeNetzGraph && (!project.customEdges || project.customEdges.length === 0) && project.netz && project.netz.zentrale) {
+      if (!hasSavedWaermeGraph && (!project.customEdges || project.customEdges.length === 0) && project.netz && project.netz.zentrale) {
          autoGenerateNetz();
       }
       // Restore pruned state
-      if (project.waermeNetzGraph || Object.keys(_prunedMap).length > 0) {
+      if (hasSavedWaermeGraph || Object.keys(_prunedMap).length > 0) {
         netzEdges.forEach(e => {
           if (e.pruned || _prunedMap[edgeKey(e.u, e.v)]) { e.pruned = true; applyEdgePrunedStyle(e); }
         });
@@ -2995,8 +3091,14 @@ export function sendToLiegenschaftsrechner() {
   setTimeout(function() { window.parent.postMessage({ type: 'ENERGIEKARTE_READY' }, parentOrigin); }, 800);
 })();
 
-export function showHint(msg){const h=document.getElementById('hint');h.textContent=msg;h.classList.remove('hidden');}
-export function hideHint(){document.getElementById('hint').classList.add('hidden');}
+let _hintTimer = null;
+export function showHint(msg, duration){
+  const h=document.getElementById('hint');
+  clearTimeout(_hintTimer);
+  h.textContent=msg;h.classList.remove('hidden');
+  if (duration > 0) _hintTimer=setTimeout(hideHint,duration);
+}
+export function hideHint(){clearTimeout(_hintTimer);document.getElementById('hint').classList.add('hidden');}
 
 export const sty=document.createElement('style');
 sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}`;

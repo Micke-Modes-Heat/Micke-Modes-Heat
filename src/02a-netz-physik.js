@@ -3,7 +3,7 @@
 
 import { edgeKey, edgeWaypoints, netzVisible, selectedStrandId } from './01-globals-varianten.js';
 import { map } from './02b-gebaeude.js';
-import { recalcNetz } from './03b-netz.js';
+import { netzEditMode, recalcNetz } from './03b-netz.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
 
 export let overlayLayer = null;
@@ -286,7 +286,7 @@ function _renderEdgeWaypointMarkers(edgeObj) {
   const icon = L.divIcon({className:'netz-waypoint-handle', html:'', iconSize:[10,10], iconAnchor:[5,5]});
   edgeObj.waypointMarkers = getEdgeWaypoints(edgeObj).map((point, index) => {
     const marker = L.marker(point, {draggable:true, icon, zIndexOffset:1550});
-    if (netzVisible) marker.addTo(map);
+    if (netzVisible && netzEditMode) marker.addTo(map);
     marker.on('drag', function() {
       edgeObj.waypoints[index] = this.getLatLng();
       _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
@@ -340,7 +340,7 @@ export function addEdgeMidHandle(edgeObj) {
   const icon = L.divIcon({className:'netz-mid-handle', html:'', iconSize:[8,8], iconAnchor:[4,4]});
   const midPt = getEdgeMidDisplayPt(edgeObj);
   edgeObj.midMarker = L.marker(midPt, {draggable: true, icon, zIndexOffset: 1500});
-  if (netzVisible) edgeObj.midMarker.addTo(map);
+  if (netzVisible && netzEditMode) edgeObj.midMarker.addTo(map);
   edgeObj.waypoints = getEdgeWaypoints(edgeObj);
   _persistEdgeWaypoints(edgeObj);
   _setEdgePath(edgeObj);

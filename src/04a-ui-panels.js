@@ -29,7 +29,7 @@ import { getWLDColor } from './02a-netz-physik.js';
 import { OVERPASS_ENDPOINTS, updateRohrListe } from './03b-netz.js';
 import { _buildProjectData, _loadProject, hideHint, showHint } from './03c-gebaeude-io.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
-import { netzPruningMode, setNetzPruningMode, setNetworkLocked } from './01-globals-varianten.js';
+import { netzPruningMode, setNetzPruningMode } from './01-globals-varianten.js';
 import { loadLatestAutosave, saveAutosaveProject } from './lib/autosave-store.js';
 import { appLifecycle } from './lib/lifecycle.js';
 import { beginInteraction, cancelInteraction } from './lib/interaction-state.js';
@@ -319,6 +319,7 @@ export function showEdgePopup(e, mouseEvt) {
 
   const kostKlasse = e.kostKlasse || 'mittel';
   const kostAuto   = !e.kostOverride;
+  const dnLocked = networkLocked && e.visibleFromYear == null;
 
   popup.innerHTML = `
     <div class="edge-popup-title">
@@ -328,8 +329,8 @@ export function showEdgePopup(e, mouseEvt) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
       <div>
         <div class="inp-label" style="margin-bottom:3px">Durchmesser</div>
-        <select data-change="setEdgeDN(this.value)">${dnOptions}</select>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px">${e.dn===0||!e.dn?'Auto: DN '+e.dn:'Manuell: DN '+e.dn}</div>
+        <select data-change="setEdgeDN(this.value)" ${dnLocked?'disabled title="Bestands-DN ist gesperrt"':''}>${dnOptions}</select>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px">${dnLocked?'🔒 Bestands-DN':(e.dnOverride?'Manuell: DN '+e.dn:'Auto: DN '+e.dn)}</div>
       </div>
       <div>
         <div class="inp-label" style="margin-bottom:3px">Kostenklasse</div>
@@ -350,6 +351,7 @@ export function showEdgePopup(e, mouseEvt) {
       <span>WLD: <span style="color:${getWLDColor(getWLD(e))}">${getWLD(e).toFixed(2)} MWh/(m·a)</span></span>
       <span>Kosten: <span style="color:#4fc3f7">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
     </div>
+    ${e.infoHtml ? `<div class="edge-popup-details">${e.infoHtml}</div>` : ''}
     <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;">
       <button data-click="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">
         ${e.pruned?'✓ Wieder anschließen':'✂ Abschnitt deaktivieren'}
@@ -377,10 +379,13 @@ export function closeEdgePopup() {
 
 export function setEdgeDN(val) {
   if (!activeEdgePopup) return;
+  if (networkLocked && activeEdgePopup.visibleFromYear == null) {
+    showHint('🔒 Der Durchmesser einer Bestandsleitung ist gesperrt.',4500);
+    return;
+  }
   const dn = parseInt(val);
   activeEdgePopup.dnOverride = dn > 0;
   activeEdgePopup.dn = dn > 0 ? dn : 0;
-  setNetworkLocked(activeEdgePopup.dnOverride); // auto-lock when DN set manually
   recalcNetz();
   if (activeEdgePopup) showEdgePopup(activeEdgePopup, {
     clientX: parseInt(document.getElementById('edge-popup').style.left) + document.getElementById('map').getBoundingClientRect().left,
@@ -982,10 +987,14 @@ export function updateLpNetzSummary() {
     setVal('lp-netz-foerderhoehe', pump.foerderhoeheMWS.toFixed(1) + ' mWS (' + pump.vDotGesamt.toFixed(1) + ' m³/h)');
     const pDisp = pump.pumpenLeistungKW < 1 ? (pump.pumpenLeistungKW * 1000).toFixed(0) + ' W' : pump.pumpenLeistungKW.toFixed(1) + ' kW';
     setVal('lp-netz-pumpe', pDisp + ' (η=' + Math.round(pump.etaPumpe * 100) + '%)');
+    setVal('lp-netz-hydraulik', pump.bottleneckCount > 0
+      ? pump.bottleneckCount + ' hydraulische Engpässe'
+      : '✓ Grenzwerte eingehalten');
   } else {
     setVal('lp-netz-dp', '—');
     setVal('lp-netz-foerderhoehe', '—');
     setVal('lp-netz-pumpe', '—');
+    setVal('lp-netz-hydraulik', '—');
   }
 }
 

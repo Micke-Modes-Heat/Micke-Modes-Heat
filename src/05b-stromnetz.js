@@ -5,7 +5,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ── Styled Modal-Dialoge ────────────────────────────────────────
-import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, setStromEdges, setStromNodes, setTrasseCurrentSegStart, trassePoints, trasseSegments } from './01-globals-varianten.js';
+import { areaLatLngs, bhkw, freiflaechen, gebaeude, geoThermie, lwWp, setStromEdges, setStromNodes, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { getGebStromMwh, map } from './02b-gebaeude.js';
 import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { setNetzVisible } from './03b-netz.js';
@@ -2775,6 +2775,7 @@ function _showElCalcResult(lines) {
 let _osmStrassenLayer = null;
 let _osmStrassenVisible = true;
 const _osmStrassenAdopted = new Set(); // OSM Way-IDs die bereits als Trasse übernommen wurden
+let _osmStrassenCache = null;
 
 export async function loadOsmStrassen() {
   let bbox;
@@ -2783,6 +2784,13 @@ export async function loadOsmStrassen() {
     const lats = area.map(p => p.lat);
     const lngs = area.map(p => p.lng);
     bbox = `${Math.min(...lats)},${Math.min(...lngs)},${Math.max(...lats)},${Math.max(...lngs)}`;
+  } else if (gebaeude.some(building => Array.isArray(building.polygon) && building.polygon.length >= 3)) {
+    const points = gebaeude.flatMap(building => building.polygon || []);
+    const lats = points.map(point => Number(point.lat)).filter(Number.isFinite);
+    const lngs = points.map(point => Number(point.lng)).filter(Number.isFinite);
+    const padding = 0.0007;
+    bbox = `${Math.min(...lats)-padding},${Math.min(...lngs)-padding},${Math.max(...lats)+padding},${Math.max(...lngs)+padding}`;
+    showHint('Lade Straßenzüge im bebauten Projektgebiet …', 2500);
   } else {
     const b = map.getBounds();
     bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
@@ -2792,51 +2800,47 @@ export async function loadOsmStrassen() {
   const btn = document.getElementById('btn-osm-strassen');
   if (btn) { btn.textContent = '⏳ Lade...'; btn.disabled = true; }
 
-  const query = `[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
+  const query = `[out:json][timeout:12];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
 
-  // Mehrere Overpass-Endpunkte — der erste erreichbare wird verwendet.
-  // Proxy-Fallback via GET ermöglicht Anfragen von file:// (Origin: null).
+  // Mehrere Overpass-Endpunkte parallel — der erste erfolgreiche gewinnt.
+  // Ein gemeinsames Zeitlimit verhindert, dass nicht erreichbare Server den
+  // gesamten Erstellungsdialog minutenlang blockieren.
   async function _fetchOverpass(q) {
     const enc = encodeURIComponent(q);
     const body = 'data=' + enc;
     const postHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
-
-    // 1) Direkte POST-Endpunkte (klappen von echten Web-Servern)
-    const directUrls = [
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter',
-      'https://overpass.openstreetmap.ru/api/interpreter',
-    ];
-    for (const url of directUrls) {
-      try {
-        const r = await fetch(url, { method: 'POST', headers: postHeaders, body });
-        if (r.ok) return r.json();
-      } catch (_) { /* nächsten Endpunkt versuchen */ }
-    }
-
-    // 2) GET via CORS-Proxy — funktioniert auch von file:// (Origin: null)
-    //    corsproxy.io erwartet die Ziel-URL NICHT nochmal URL-kodiert
     const getTarget = 'https://overpass-api.de/api/interpreter?data=' + enc;
-    const proxyUrls = [
-      'https://overpass.private.coffee/api/interpreter?data=' + enc,
-      'https://corsproxy.io/?' + getTarget,
-      'https://api.allorigins.win/raw?url=' + encodeURIComponent(getTarget),
+    const requests = [
+      {url:'https://maps.mail.ru/osm/tools/overpass/api/interpreter', options:{method:'POST',headers:postHeaders,body}},
+      {url:'https://overpass-api.de/api/interpreter', options:{method:'POST',headers:postHeaders,body}},
+      {url:'https://overpass.private.coffee/api/interpreter?data=' + enc, options:{}},
+      {url:'https://corsproxy.io/?' + getTarget, options:{}},
     ];
-    let lastErr;
-    for (const url of proxyUrls) {
-      try {
-        const r = await fetch(url);
-        if (r.ok) return r.json();
-        lastErr = new Error(url.slice(0, 50) + '… HTTP ' + r.status);
-      } catch (err) {
-        lastErr = err;
-      }
+    const controllers = requests.map(() => new AbortController());
+    const timeout = setTimeout(() => controllers.forEach(controller => controller.abort()), 5000);
+    try {
+      const attempts = requests.map(async (request, index) => {
+        const response = await fetch(request.url, {...request.options, signal:controllers[index].signal});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!Array.isArray(data?.elements)) throw new Error('Ungültige OSM-Antwort');
+        return data;
+      });
+      return await Promise.any(attempts);
+    } catch (error) {
+      throw new Error(error?.name === 'AggregateError'
+        ? 'Kein OSM-Server innerhalb von 5 Sekunden erreichbar'
+        : error.message);
+    } finally {
+      clearTimeout(timeout);
+      controllers.forEach(controller => controller.abort());
     }
-    throw lastErr || new Error('Alle Overpass-Endpunkte nicht erreichbar');
   }
 
   try {
-    const data = await _fetchOverpass(query);
+    const cacheValid = _osmStrassenCache?.bbox === bbox && Date.now() - _osmStrassenCache.timestamp < 15 * 60 * 1000;
+    const data = cacheValid ? _osmStrassenCache.data : await _fetchOverpass(query);
+    if (!cacheValid) _osmStrassenCache = {bbox, data, timestamp:Date.now()};
 
     clearOsmStrassen();
     _osmStrassenLayer = L.layerGroup();
@@ -2859,10 +2863,10 @@ export async function loadOsmStrassen() {
 
       pl.on('click', () => _adoptOsmStrasse(pl));
       pl.on('mouseover', () => {
-        if (!_osmStrassenAdopted.has(wayId)) pl.setStyle({ color: '#4fc3f7', opacity: 0.9 });
+        if (![..._osmStrassenAdopted].some(key => key.endsWith(`:${wayId}`))) pl.setStyle({ color: '#4fc3f7', opacity: 0.9 });
       });
       pl.on('mouseout', () => {
-        if (!_osmStrassenAdopted.has(wayId)) pl.setStyle({ color: '#90a4ae', opacity: 0.6 });
+        if (![..._osmStrassenAdopted].some(key => key.endsWith(`:${wayId}`))) pl.setStyle({ color: '#90a4ae', opacity: 0.6 });
       });
 
       _osmStrassenLayer.addLayer(pl);
@@ -2876,36 +2880,60 @@ export async function loadOsmStrassen() {
       btn.disabled = false;
     }
     if (count === 0) showHint('⚠ Keine Straßen im Planungsgebiet gefunden.');
+    else if (cacheValid) showHint(`✓ ${count} Straßenzüge aus dem Zwischenspeicher geladen.`, 3500);
   } catch (e) {
     if (btn) { btn.textContent = '↓ Straßen aus OSM laden'; btn.disabled = false; }
     showHint('⚠ OSM-Laden fehlgeschlagen: ' + e.message);
   }
 }
 
-function _adoptOsmStrasse(pl, skipRedraw) {
-  const wayId = pl._osmWayId;
-  if (_osmStrassenAdopted.has(wayId)) return;
+function _adoptOsmStrasse(pl, skipRedraw, domain = 'strom') {
+  const wayId = `${domain}:${pl._osmWayId}`;
+  if (_osmStrassenAdopted.has(wayId)) return false;
   _osmStrassenAdopted.add(wayId);
-  pl.setStyle({ color: '#ff9800', weight: 4, opacity: 0.9, dashArray: null });
+  if (domain === 'strom') {
+    pl.setStyle({ color: '#ff9800', weight: 4, opacity: 0.9, dashArray: null });
+  }
   pl.off('mouseover');
   pl.off('mouseout');
 
   const startIdx = window.trassePoints.length;
   for (const pt of pl._osmPts) window.trassePoints.push(pt);
-  window.trasseSegments.push({ start: startIdx, end: window.trassePoints.length - 1, domains:['strom'] });
+  window.trasseSegments.push({ start: startIdx, end: window.trassePoints.length - 1, domains:[domain], source:'osm-street', osmWayId:pl._osmWayId });
   setTrasseCurrentSegStart(window.trassePoints.length);
 
   if (!skipRedraw) {
     redrawTrasse();
     if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
   }
+  return true;
 }
 
-export function adoptAllOsmStrassen() {
-  if (!_osmStrassenLayer) return;
-  _osmStrassenLayer.getLayers().forEach(pl => _adoptOsmStrasse(pl, true));
+export function adoptAllOsmStrassen(domain = 'strom') {
+  if (!_osmStrassenLayer) return 0;
+  if (domain === 'waerme') {
+    // Erneutes Erzeugen ersetzt nur zuvor automatisch übernommene Wärme-
+    // Straßen. Manuell gezeichnete Wärme- und vorhandene Elektrotrassen bleiben.
+    const keptPoints = [];
+    const keptSegments = [];
+    for (const segment of trasseSegments) {
+      if (segment.source === 'osm-street' && segment.domains?.includes('waerme')) continue;
+      const points = trassePoints.slice(segment.start, segment.end + 1);
+      if (points.length < 2) continue;
+      const start = keptPoints.length;
+      keptPoints.push(...points);
+      keptSegments.push({...segment, start, end: keptPoints.length - 1});
+    }
+    setTrassePoints(keptPoints);
+    setTrasseSegments(keptSegments);
+    setTrasseCurrentSegStart(keptPoints.length);
+    [..._osmStrassenAdopted].filter(key => key.startsWith('waerme:')).forEach(key => _osmStrassenAdopted.delete(key));
+  }
+  let adopted = 0;
+  _osmStrassenLayer.getLayers().forEach(pl => { if (_adoptOsmStrasse(pl, true, domain)) adopted++; });
   redrawTrasse();
   if (typeof window.updateStromEdgeGeometry === 'function') window.updateStromEdgeGeometry();
+  return adopted;
 }
 
 export async function loadAndAdoptOsmStrassen() {

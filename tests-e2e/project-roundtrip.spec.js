@@ -1,5 +1,51 @@
 import { test, expect } from '@playwright/test';
 
+test('dist: Öffnen merkt sich die Projektdatei, Speichern überschreibt und Speichern unter wählt neu', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.openProjectFile === 'function' &&
+    typeof window.saveProject === 'function' && typeof window.saveProjectAs === 'function');
+
+  const result = await page.evaluate(async () => {
+    const fixture = _buildProjectData();
+    const writes = [];
+    const makeHandle = name => ({
+      name,
+      async getFile() { return new File([JSON.stringify(fixture)],name,{type:'application/json'}); },
+      async createWritable() {
+        return {
+          async write(blob) { writes.push({name,text:await blob.text()}); },
+          async close() {},
+        };
+      },
+    });
+    const openedHandle = makeHandle('bestand.json');
+    const newHandle = makeHandle('variante.json');
+    let savePickerCalls = 0;
+    window.showOpenFilePicker = async () => [openedHandle];
+    window.showSaveFilePicker = async () => {
+      savePickerCalls++;
+      return newHandle;
+    };
+
+    const opened = await openProjectFile();
+    const saved = await saveProject();
+    const savedAs = await saveProjectAs();
+    return {
+      opened,saved,savedAs,savePickerCalls,
+      writeNames:writes.map(item => item.name),
+      validJson:writes.every(item => Boolean(JSON.parse(item.text).netz)),
+      status:document.getElementById('project-file-status').textContent,
+    };
+  });
+
+  expect(result).toEqual({
+    opened:true,saved:true,savedAs:true,savePickerCalls:1,
+    writeNames:['bestand.json','variante.json'],validJson:true,
+    status:'Datei: variante.json',
+  });
+});
+
 test('dist: Projekt-Roundtrip erhält Trasse, Wärmegraph und legitime Nullwerte', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(String(error)));

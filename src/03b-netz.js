@@ -3,6 +3,10 @@
 import { areaPolygon, gebaeude, globalYear, isDrawingTrasse, isExcluded, isPlacingLwWp, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 
 let netzVisible = true;
+export let netzEditMode = false;
+export let netzRewireMode = false;
+let netzRewireMarkers = [];
+let netzRewirePreview = null;
 import { getNetzVBH, updateNetzColorLegend } from './02a-netz-physik.js';
 import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
 import { clearArea, polygonAreaM2, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
@@ -14,16 +18,16 @@ import { readNum } from './lib/util.js';
 import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
-import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trassePolyline, trasseSegments } from './01-globals-varianten.js';
+import { areaEditMarkers, areaLatLngs, cacheVariantResults, currentMode, drawPoints, edgeKey, edgeWaypoints, fliessgewaesser, gasKessel, geoThermie, networkLocked, netzPruningMode, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { addEdgeMidHandle, calcEdgeLength, clearEdgeGradient, drawEdgeGradient, getEdgeColor, getEdgeMidDisplayPt, getEdgeWaypoints, getKostenProM, getUWertForDN, getVFlowForDN, getWLD, getWLDColor, kostenSzenario, netzColorMode, removeEdgeWaypointMarkers, standardDNs } from './02a-netz-physik.js';
 import { OSM_SKIP_TYPES, addGebaeude, osmNutzung } from './02b-gebaeude.js';
-import { polygonCenter, redrawFliessgewaesser } from './02c-karte-werkzeuge.js';
+import { polygonCenter, redrawFliessgewaesser, redrawTrasse } from './02c-karte-werkzeuge.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
 import { redrawGasKessel } from './03a-erzeuger.js';
 import { startAnimPipes, stopAnimPipes, updateTotals } from './03c-gebaeude-io.js';
-import { closeEdgePopup, showEdgePopup, toggleEdgePruned } from './04a-ui-panels.js';
+import { closeEdgePopup, setLeftTab, showEdgePopup, toggleEdgePruned } from './04a-ui-panels.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
-import { setEdgeStartId, setNetzEdges, setSelectedId, setSelectedStrandId, set_batchImporting } from './01-globals-varianten.js';
+import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelectedStrandId, set_batchImporting } from './01-globals-varianten.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
 
@@ -522,6 +526,61 @@ export function toggleNetzPanel(){
     updateRohrListe();
     updateNetzColorLegend();
   }
+}
+
+export function openNetzWorkspace(mode = 'edit') {
+  const workspace = document.getElementById('netz-workspace');
+  const createArea = document.getElementById('netz-workspace-create');
+  const editArea = document.getElementById('netz-workspace-edit');
+  const centralArea = document.getElementById('netz-workspace-central');
+  const settingsArea = document.getElementById('netz-workspace-settings');
+  const settingsContent = document.getElementById('netz-settings-content');
+  const centralControl = document.getElementById('netz-central-control');
+  const createMenu = document.getElementById('netz-create-menu');
+  if (!workspace || !createArea || !editArea) return false;
+  setLeftTab('netz');
+  document.getElementById('left-panel')?.classList.remove('collapsed');
+  document.getElementById('netz-panel')?.classList.remove('visible');
+  document.getElementById('btn-netz-toggle')?.classList.remove('active');
+  const netzOverview = document.getElementById('lp-netz-waerme');
+  if (netzOverview) netzOverview.hidden = true;
+  workspace.hidden = false;
+  createArea.hidden = mode !== 'create';
+  editArea.hidden = mode !== 'edit';
+  document.getElementById('netz-workspace-title').textContent = mode === 'create'
+    ? 'Wärmenetz erstellen' : 'Wärmenetz bearbeiten';
+  document.getElementById('netz-workspace-subtitle').textContent = mode === 'create'
+    ? 'Aufbau und Netzstruktur festlegen' : 'Anschlüsse und Leitungen auf der Karte anpassen';
+  if (settingsArea && settingsContent) settingsArea.appendChild(settingsContent);
+  if (centralArea && centralControl) centralArea.appendChild(centralControl);
+  if (mode === 'create' && createMenu) {
+    createArea.appendChild(createMenu);
+    createMenu.hidden = false;
+  }
+  workspace.scrollIntoView({behavior:'smooth',block:'start'});
+  return true;
+}
+
+export function closeNetzWorkspace() {
+  const workspace = document.getElementById('netz-workspace');
+  const createMenu = document.getElementById('netz-create-menu');
+  const settingsContent = document.getElementById('netz-settings-content');
+  const centralControl = document.getElementById('netz-central-control');
+  const netzPanel = document.getElementById('netz-panel');
+  if (centralControl && settingsContent) settingsContent.prepend(centralControl);
+  if (settingsContent && netzPanel) netzPanel.appendChild(settingsContent);
+  const originalShell = settingsContent?.querySelector('.netz-create-shell');
+  if (createMenu && originalShell) {
+    originalShell.appendChild(createMenu);
+    createMenu.hidden = true;
+  }
+  setNetzEditMode(false);
+  setNetzRewireMode(false);
+  if (window.isDrawingEdge) toggleDrawEdge();
+  if (workspace) workspace.hidden = true;
+  const netzOverview = document.getElementById('lp-netz-waerme');
+  if (netzOverview) netzOverview.hidden = false;
+  return true;
 }
 
 export function loadOverlay(input) {
@@ -1957,7 +2016,36 @@ export function populateZentraleSelect(){
   }
 }
 
-export function autoGenerateNetz(){
+const WAERME_NETZ_BASISJAHR = 2026;
+
+function _netzPlanningYears() {
+  const years = new Set([WAERME_NETZ_BASISJAHR,globalYear]);
+  gebaeude.forEach(g => {
+    const events = [
+      Number.parseInt(g.baujahr,10),
+      Number.parseInt(g.abrissjahr,10),
+      ...(g.sanierungen || []).map(item => Number.parseInt(item.jahr,10)),
+    ].filter(Number.isFinite);
+    events.forEach(year => {
+      if (year < WAERME_NETZ_BASISJAHR) return;
+      years.add(year);
+      if (year > WAERME_NETZ_BASISJAHR) years.add(year - 1);
+    });
+  });
+  return [...years].sort((a,b) => a-b);
+}
+
+function _maxBuildingLoad(g, years = _netzPlanningYears()) {
+  return years.reduce((maximum,year) =>
+    Math.max(maximum,getComputedStats(g,year).heizlast || 0),0);
+}
+
+export function autoGenerateNetz(options = {}){
+  const strategy = options.strategy || 'trasse';
+  const loyalty = Math.max(0, Math.min(100, Number(options.trasseTreue ?? document.getElementById('netz-trassentreue')?.value ?? 50)));
+  const loyaltyRatio = loyalty / 100;
+  const trunkConnectionFactor = 1.8 - 1.6 * loyaltyRatio;
+  const neighbourConnectionFactor = 0.4 + 1.6 * loyaltyRatio;
   const zId = parseInt(document.getElementById('netz-zentrale').value);
   if(!zId || isNaN(zId)){
     showHint('⚠ Bitte zuerst eine Heizzentrale auswählen!', 5000);
@@ -1969,74 +2057,159 @@ export function autoGenerateNetz(){
 
   clearNetz();
 
-  const nodes = gebaeude.filter(g => g.polygon && getComputedStats(g, globalYear).heizlast > 0);
+  const planningYears = _netzPlanningYears();
+  const nodes = gebaeude.filter(g => {
+    if (!g.polygon) return false;
+    return networkLocked
+      ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
+      : _maxBuildingLoad(g,planningYears) > 0;
+  });
   if(nodes.length < 2) {
     showHint('Es müssen mindestens zwei Gebäude mit Verbrauch gezeichnet sein.');
     return;
   }
 
   const allPts = nodes.map(g => {
-    const stats = getComputedStats(g, globalYear);
-    return { id: g.id, type: 'geb', pt: polygonCenter(g.polygon), load: stats.heizlast||0 };
+    const load = networkLocked
+      ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast || 0
+      : _maxBuildingLoad(g,planningYears);
+    return { id: g.id, type: 'geb', pt: polygonCenter(g.polygon), load };
   });
 
+  const usedNodeIds = new Set(allPts.map(node => node.id));
   let tIdCounter = 10000;
-  const heatSegments = trasseSegments.filter(seg => !seg.domains || seg.domains.includes('waerme'));
+  const nextTrasseNodeId = () => {
+    while (usedNodeIds.has(tIdCounter)) tIdCounter++;
+    const id = tIdCounter++;
+    usedNodeIds.add(id);
+    return id;
+  };
+  const useHeatTrasse = strategy !== 'quick';
+  const heatSegments = useHeatTrasse
+    ? trasseSegments.filter(seg => !seg.domains || seg.domains.includes('waerme'))
+    : [];
   const heatPointIndices = new Set();
-  if (trasseSegments.length === 0) trassePoints.forEach((_, i) => heatPointIndices.add(i));
+  if (useHeatTrasse && trasseSegments.length === 0) trassePoints.forEach((_, i) => heatPointIndices.add(i));
   else heatSegments.forEach(seg => { for (let i=seg.start; i<=seg.end; i++) heatPointIndices.add(i); });
   const sharedTrasseNodes = new Map();
+  const getTrasseNode = pt => {
+    const key = `${Number(pt.lat).toFixed(7)},${Number(pt.lng).toFixed(7)}`;
+    if (!sharedTrasseNodes.has(key)) sharedTrasseNodes.set(key, { id: nextTrasseNodeId(), type: 'trasse', pt, load: 0 });
+    return sharedTrasseNodes.get(key);
+  };
   const tNodes = trassePoints.map((pt, index) => {
     if (!heatPointIndices.has(index)) return null;
-    const key = `${Number(pt.lat).toFixed(7)},${Number(pt.lng).toFixed(7)}`;
-    if (!sharedTrasseNodes.has(key)) sharedTrasseNodes.set(key, { id: tIdCounter++, type: 'trasse', pt, load: 0 });
-    return sharedTrasseNodes.get(key);
+    return getTrasseNode(pt);
   });
-  allPts.push(...sharedTrasseNodes.values());
 
   const possibleEdges = [];
   const hasTrasse = sharedTrasseNodes.size > 0;
   if (hasTrasse) {
-    // Räumlicher Rasterindex: pro Gebäude genügen die drei nächsten
-    // Trassenknoten. Damit wächst die Kandidatenmenge linear statt B×T.
-    const CELL = 0.001;
-    const grid = new Map();
-    const cellKey = (x, y) => `${x}:${y}`;
-    for (const node of sharedTrasseNodes.values()) {
-      const x = Math.floor(node.pt.lat / CELL), y = Math.floor(node.pt.lng / CELL);
-      const key = cellKey(x, y);
-      if (!grid.has(key)) grid.set(key, []);
-      grid.get(key).push(node);
-    }
-    const nearest = pt => {
-      const cx = Math.floor(pt.lat / CELL), cy = Math.floor(pt.lng / CELL);
-      const found = new Map();
-      let radius = 0;
-      while (radius < 50 && (found.size < 3 || radius < 2)) {
-        for (let dx = -radius; dx <= radius; dx++) for (let dy = -radius; dy <= radius; dy++) {
-          if (radius > 0 && Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
-          for (const node of grid.get(cellKey(cx + dx, cy + dy)) || []) found.set(node.id, node);
-        }
-        radius++;
-      }
-      const candidates = found.size ? [...found.values()] : [...sharedTrasseNodes.values()];
-      return candidates.map(node => ({node, dist: pt.distanceTo(node.pt)})).sort((a,b) => a.dist-b.dist).slice(0, 3);
+    // Gebäude nicht an die wenigen Zeichen-Stützpunkte hängen, sondern an den
+    // geometrisch nächsten Punkt der Trassenlinie. Die dort entstehenden
+    // Anschlussknoten teilen die Haupttrasse anschließend sauber auf.
+    const projectionZoom = 18;
+    const projectionsByLeg = new Map();
+    const projectToLeg = (pt, a, b) => {
+      const p = map.project(pt, projectionZoom);
+      const pa = map.project(a, projectionZoom);
+      const pb = map.project(b, projectionZoom);
+      const dx = pb.x - pa.x, dy = pb.y - pa.y;
+      const denominator = dx * dx + dy * dy;
+      const t = denominator > 0
+        ? Math.max(0, Math.min(1, ((p.x - pa.x) * dx + (p.y - pa.y) * dy) / denominator))
+        : 0;
+      const projected = map.unproject(L.point(pa.x + t * dx, pa.y + t * dy), projectionZoom);
+      return {pt: projected, t, dist: pt.distanceTo(projected)};
     };
-    for (const building of allPts.filter(n => n.type === 'geb')) {
-      for (const candidate of nearest(building.pt)) {
-        possibleEdges.push({u:building.id, v:candidate.node.id, uNode:building, vNode:candidate.node, dist:candidate.dist});
+    const buildingNodes = allPts.filter(n => n.type === 'geb');
+    for (const building of buildingNodes) {
+      let best = null;
+      heatSegments.forEach((seg, segIndex) => {
+        for (let pointIndex = seg.start; pointIndex < seg.end; pointIndex++) {
+          const a = trassePoints[pointIndex], b = trassePoints[pointIndex + 1];
+          if (!a || !b) continue;
+          const candidate = projectToLeg(building.pt, a, b);
+          if (!best || candidate.dist < best.dist) best = {...candidate, segIndex, pointIndex};
+        }
+      });
+      // Kompatibilität mit alten Projekten ohne explizite Segmentliste.
+      if (!best && trasseSegments.length === 0) {
+        for (let pointIndex = 0; pointIndex < trassePoints.length - 1; pointIndex++) {
+          const candidate = projectToLeg(building.pt, trassePoints[pointIndex], trassePoints[pointIndex + 1]);
+          if (!best || candidate.dist < best.dist) best = {...candidate, segIndex: 0, pointIndex};
+        }
+      }
+      if (!best) continue;
+      const junction = getTrasseNode(best.pt);
+      const legKey = `${best.segIndex}:${best.pointIndex}`;
+      if (!projectionsByLeg.has(legKey)) projectionsByLeg.set(legKey, []);
+      projectionsByLeg.get(legKey).push({t: best.t, node: junction});
+      possibleEdges.push({
+        u: building.id, v: junction.id, uNode: building, vNode: junction,
+        dist: best.dist, sortCost: best.dist * trunkConnectionFactor,
+      });
+    }
+
+    // Lokale Verteilung: Gebäude dürfen sich über kurze Nachbarschaftskanten
+    // sammeln. Der MST wählt daraus wenige Trassenanschlüsse statt eines
+    // sternförmigen Einzelanschlusses jedes Gebäudes. Sechs Nachbarn reichen
+    // für robuste Quartiersnetze, ohne die Kandidatenmenge quadratisch wachsen
+    // zu lassen.
+    const localEdgeKeys = new Set();
+    for (const building of buildingNodes) {
+      const neighbours = buildingNodes
+        .filter(other => other.id !== building.id)
+        .map(other => ({other, dist: building.pt.distanceTo(other.pt)}))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 6);
+      for (const {other, dist} of neighbours) {
+        const key = String(building.id) < String(other.id)
+          ? `${building.id}:${other.id}` : `${other.id}:${building.id}`;
+        if (localEdgeKeys.has(key)) continue;
+        localEdgeKeys.add(key);
+        possibleEdges.push({
+          u: building.id, v: other.id, uNode: building, vNode: other,
+          dist, sortCost: dist * neighbourConnectionFactor,
+        });
       }
     }
+
+    const segmentsForRouting = heatSegments.length > 0
+      ? heatSegments
+      : [{start: 0, end: trassePoints.length - 1}];
+    segmentsForRouting.forEach((seg, segIndex) => {
+      for (let pointIndex = seg.start; pointIndex < seg.end; pointIndex++) {
+        const inserted = (projectionsByLeg.get(`${segIndex}:${pointIndex}`) || [])
+          .sort((a, b) => a.t - b.t)
+          .map(item => item.node);
+        const sequence = [tNodes[pointIndex], ...inserted, tNodes[pointIndex + 1]].filter(Boolean);
+        for (let i = 0; i < sequence.length - 1; i++) {
+          if (sequence[i].id === sequence[i + 1].id) continue;
+          possibleEdges.push({
+            u: sequence[i].id, v: sequence[i + 1].id,
+            uNode: sequence[i], vNode: sequence[i + 1],
+            dist: sequence[i].pt.distanceTo(sequence[i + 1].pt),
+            forcedTrasse: strategy !== 'street',
+            streetRoad: strategy === 'street',
+          });
+        }
+      }
+    });
   } else {
     const buildings = allPts.filter(n => n.type === 'geb');
     for (let i=0; i<buildings.length; i++) for (let j=i+1; j<buildings.length; j++) {
-      possibleEdges.push({u:buildings[i].id, v:buildings[j].id, uNode:buildings[i], vNode:buildings[j], dist:buildings[i].pt.distanceTo(buildings[j].pt)});
+      const dist = buildings[i].pt.distanceTo(buildings[j].pt);
+      const directToCentral = buildings[i].id === zId || buildings[j].id === zId;
+      possibleEdges.push({
+        u:buildings[i].id, v:buildings[j].id, uNode:buildings[i], vNode:buildings[j], dist,
+        sortCost: dist * (directToCentral ? trunkConnectionFactor : neighbourConnectionFactor),
+      });
     }
   }
 
-  possibleEdges.sort((a, b) => a.dist - b.dist);
-
   const parent = {};
+  allPts.push(...sharedTrasseNodes.values());
   allPts.forEach(n => parent[n.id] = n.id);
   function find(i) {
     if (parent[i] === i) return i;
@@ -2054,21 +2227,37 @@ export function autoGenerateNetz(){
 
   const mstEdges = [];
 
-  // Trasse-Knoten segmentweise verbinden (Multi-Branch-Unterstützung)
-  const segs = heatSegments.length > 0 ? heatSegments : (trasseSegments.length === 0 && sharedTrasseNodes.size > 1 ? [{start: 0, end: tNodes.length - 1}] : []);
-  segs.forEach(seg => {
-    for (let i = seg.start; i < seg.end; i++) {
-      const ni = i, nj = i + 1;
-      if (ni < tNodes.length && nj < tNodes.length && tNodes[ni] && tNodes[nj] && tNodes[ni].id !== tNodes[nj].id) {
-        union(tNodes[ni].id, tNodes[nj].id);
-        mstEdges.push({ u: tNodes[ni].id, v: tNodes[nj].id, uNode: tNodes[ni], vNode: tNodes[nj] });
-      }
-    }
-  });
-
-  for(const edge of possibleEdges) {
+  // Die gezeichnete Haupttrasse ist eine Planungsvorgabe und darf durch den
+  // Minimalbaum nicht zugunsten einer vermeintlich kürzeren Abkürzung entfallen.
+  const forcedEdges = possibleEdges.filter(edge => edge.forcedTrasse);
+  const optionalEdges = possibleEdges.filter(edge => !edge.forcedTrasse)
+    .sort((a, b) => (a.sortCost ?? a.dist) - (b.sortCost ?? b.dist));
+  for (const edge of [...forcedEdges, ...optionalEdges]) {
     if(union(edge.u, edge.v)) {
       mstEdges.push(edge);
+    }
+  }
+
+  if (strategy === 'street') {
+    // Der OSM-Import enthält auch Straßenäste ohne versorgtes Gebäude. Diese
+    // Blätter iterativ entfernen; übrig bleiben nur Straßenpfade, die echte
+    // Gebäudeanschlüsse miteinander verbinden.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const degree = new Map();
+      mstEdges.forEach(edge => {
+        degree.set(edge.u, (degree.get(edge.u) || 0) + 1);
+        degree.set(edge.v, (degree.get(edge.v) || 0) + 1);
+      });
+      for (let i = mstEdges.length - 1; i >= 0; i--) {
+        const edge = mstEdges[i];
+        const uLeaf = edge.uNode.type === 'trasse' && degree.get(edge.u) === 1;
+        const vLeaf = edge.vNode.type === 'trasse' && degree.get(edge.v) === 1;
+        if (!edge.streetRoad || (!uLeaf && !vLeaf)) continue;
+        mstEdges.splice(i, 1);
+        changed = true;
+      }
     }
   }
 
@@ -2104,35 +2293,142 @@ export function autoGenerateNetz(){
 
   applyWaypoints();
   recalcNetz();
-  autoAssignEdgeCosts();
-  // Haupttrasse nach Netzgenerierung ausblenden
-  if (trassePolyline) {
-    if (Array.isArray(trassePolyline)) trassePolyline.forEach(p => p.setStyle({opacity: 0}));
-    else trassePolyline.setStyle({opacity: 0});
+  // Ein Bestandsnetz bildet ausschließlich den Gebäudebestand im Basisjahr
+  // ab. Bereits erfasste spätere Neubauten erhalten anschließend nur einen
+  // zeitlich geschalteten Hausanschluss; die Bestandstrasse bleibt unverändert.
+  if (networkLocked) {
+    gebaeude
+      .filter(g => g.polygon &&
+        getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast <= 0 &&
+        _maxBuildingLoad(g,planningYears) > 0)
+      .sort((a,b) => (Number.parseInt(a.baujahr,10) || 9999) - (Number.parseInt(b.baujahr,10) || 9999))
+      .forEach(g => connectGebToNearestPipe(g));
+  } else {
+    // Terminale Anschlüsse geplanter Neubauten folgen deren Lebenszeit. Ein
+    // Gebäude, das als Durchgangspunkt für weitere Abnehmer dient, wird nicht
+    // ausgeblendet, weil sonst der restliche Strang optisch unterbrochen wäre.
+    const degree = new Map();
+    window.netzEdges.forEach(edge => {
+      degree.set(edge.u,(degree.get(edge.u) || 0) + 1);
+      degree.set(edge.v,(degree.get(edge.v) || 0) + 1);
+    });
+    gebaeude.forEach(g => {
+      const built = Number.parseInt(g.baujahr,10);
+      if (!Number.isFinite(built) || built <= WAERME_NETZ_BASISJAHR || degree.get(g.id) !== 1) return;
+      const edge = window.netzEdges.find(candidate => candidate.u === g.id || candidate.v === g.id);
+      if (!edge) return;
+      edge.visibleFromYear = built;
+      edge.visibleUntilYear = Number.parseInt(g.abrissjahr,10) || null;
+    });
+    recalcNetz();
   }
+  autoAssignEdgeCosts();
+  // Nach der Erzeugung bewusst in eine ruhige Ergebnisansicht wechseln.
+  setNetzRewireMode(false);
+  setNetzEditMode(false);
+  window.trasseVisible = false;
+  const trasseCheckbox = document.getElementById('el-trasse-visible');
+  if (trasseCheckbox) trasseCheckbox.checked = false;
+  redrawTrasse();
+  showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte.`, 3000);
 }
 
-export function confirmAutoGenerateNetz(){
-  if (!ensureWaermeNetzStructureEditable()) return false;
+export async function confirmAutoGenerateNetz(options = {}){
   const existing = window.netzEdges?.length || 0;
   if (existing > 0) {
-    const ok = window.confirm(
-      `${networkLocked ? '🔒 Bestandsnetz: ' : ''}Das automatisch erzeugte Netz ersetzt ${existing} vorhandene Leitung${existing === 1 ? '' : 'en'}.\n\n` +
-      'Die gezeichnete Trasse und die Gebäude bleiben erhalten. Fortfahren?'
-    );
+    const message = `Das vorhandene Wärmenetz mit <strong>${existing} Leitungsabschnitten</strong> wird durch die neue Berechnung ersetzt.` +
+      '<br><br><span style="color:var(--muted);font-size:10px">Gebäude, Haupttrasse und Konfiguration bleiben erhalten.</span>';
+    const ok = typeof window.epConfirm === 'function'
+      ? await window.epConfirm('Wärmenetz neu erstellen',message,{
+          okText:'Netz ersetzen',cancelText:'Abbrechen',danger:true,
+        })
+      : window.confirm(`Das vorhandene Wärmenetz mit ${existing} Leitungsabschnitten wird ersetzt. Fortfahren?`);
     if (!ok) return false;
   }
-  autoGenerateNetz();
+  autoGenerateNetz(options);
   return true;
 }
 
+export function toggleNetzCreateMenu(force) {
+  const menu = document.getElementById('netz-create-menu');
+  const button = document.getElementById('btn-netz-create');
+  if (!menu) return false;
+  const open = typeof force === 'boolean' ? force : menu.hidden;
+  menu.hidden = !open;
+  button?.setAttribute('aria-expanded', String(open));
+  return open;
+}
+
+export function updateTrassentreueLabel(value) {
+  const numeric = Math.max(0, Math.min(100, Number(value) || 0));
+  const output = document.getElementById('netz-trassentreue-output');
+  const description = document.getElementById('netz-trassentreue-description');
+  if (output) output.textContent = `${numeric}%`;
+  if (description) description.textContent = numeric < 34
+    ? 'Lokal gebündelt: kurze Verbindungen zwischen Nachbargebäuden'
+    : numeric > 66
+      ? 'Direkt angebunden: mehr Anschlüsse an Zentrale, Straße oder Haupttrasse'
+      : 'Ausgewogen: lokale Gruppen mit gezielten direkten Anschlüssen';
+}
+
+export async function createQuickWaermeNetz() {
+  toggleNetzCreateMenu(false);
+  const created = await confirmAutoGenerateNetz({strategy: 'quick'});
+  if (created) closeNetzWorkspace();
+  return created;
+}
+
+export function startGuidedTrasseCreation() {
+  toggleNetzCreateMenu(false);
+  closeNetzWorkspace();
+  if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
+}
+
+export async function createStreetOrientedWaermeNetz() {
+  const button = document.getElementById('btn-netz-create-street');
+  const original = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'Straßenzüge werden geladen …'; }
+  try {
+    if (typeof window.loadOsmStrassen !== 'function' || typeof window.adoptAllOsmStrassen !== 'function') {
+      showHint('OSM-Straßenmodul ist nicht verfügbar.', 6000);
+      return false;
+    }
+    await window.loadOsmStrassen();
+    const adopted = window.adoptAllOsmStrassen('waerme');
+    if (!adopted) {
+      showHint('Keine geeigneten Straßenzüge im Planungsgebiet gefunden.', 6000);
+      return false;
+    }
+    // Die OSM-Linien sind nur Berechnungsgrundlage. Der Vorschau-Layer würde
+    // das fertige Wärmenetz gelb überlagern und wird daher vor der Erzeugung
+    // entfernt; die übernommene Geometrie bleibt in der Trasse erhalten.
+    window.clearOsmStrassen?.();
+    toggleNetzCreateMenu(false);
+    const created = await confirmAutoGenerateNetz({strategy: 'street'});
+    if (created) closeNetzWorkspace();
+    return created;
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
 export function confirmClearNetz(){
-  if (!ensureWaermeNetzStructureEditable()) return false;
   const existing = window.netzEdges?.length || 0;
-  if (!existing) { clearNetz(); return true; }
+  if (!existing) {
+    clearNetz();
+    if (networkLocked) {
+      setNetworkLocked(false);
+      window._syncNetworkLockUI?.();
+    }
+    return true;
+  }
   const prefix = networkLocked ? 'Das Bestandsnetz ist gesperrt. ' : '';
   if (!window.confirm(`${prefix}Wirklich alle ${existing} Wärmeleitungen löschen?`)) return false;
   clearNetz();
+  if (networkLocked) {
+    setNetworkLocked(false);
+    window._syncNetworkLockUI?.();
+  }
   return true;
 }
 
@@ -2256,6 +2552,10 @@ export function captureWaermeNetzGraph(){
     return {
       u: e.u, v: e.v,
       dn: Number(e.dn) || 0,
+      ...(e.visibleFromYear != null && Number.isFinite(Number(e.visibleFromYear))
+        ? {visibleFromYear:Number(e.visibleFromYear)} : {}),
+      ...(e.visibleUntilYear != null && Number.isFinite(Number(e.visibleUntilYear))
+        ? {visibleUntilYear:Number(e.visibleUntilYear)} : {}),
       pruned: e.pruned === true,
       kostKlasse: e.kostKlasse || null,
       kostOverride: e.kostOverride === true,
@@ -2295,6 +2595,8 @@ export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
     edge.pruned = data.pruned === true;
     edge.kostKlasse = data.kostKlasse || null;
     edge.kostOverride = data.kostOverride === true;
+    edge.visibleFromYear = data.visibleFromYear == null ? null : Number(data.visibleFromYear);
+    edge.visibleUntilYear = data.visibleUntilYear == null ? null : Number(data.visibleUntilYear);
     const storedWaypoints = Array.isArray(data.waypoints) ? data.waypoints : (data.waypoint ? [data.waypoint] : []);
     if (storedWaypoints.length) {
       edge.waypoints = storedWaypoints.map(point => L.latLng(Number(point.lat), Number(point.lng)));
@@ -2311,56 +2613,65 @@ export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
 
 export function connectGebToNearestPipe(g){
   if (!g || !g.polygon || !networkLocked) return false;
-  if (!ensureWaermeNetzStructureEditable()) return false;
   if (!window.netzEdges || window.netzEdges.length === 0) return false;
   if (window.netzEdges.some(e => e.u === g.id || e.v === g.id)) return false; // schon angeschlossen
 
   const gc = polygonCenter(g.polygon);
 
-  // Nächstgelegene Leitung + Lotfußpunkt suchen (Projektion auf das Segment)
+  // Nächstgelegenen Punkt auf dem vollständigen Leitungsverlauf suchen. Das
+  // Bestandsnetz darf dabei weder begradigt noch neu dimensioniert werden.
   let best = null;
   for (const e of window.netzEdges) {
-    if (e.pruned || !e.uNode || !e.vNode || !e.uNode.pt || !e.vNode.pt) continue;
-    const A = e.uNode.pt, B = e.vNode.pt;
-    const dLat = B.lat - A.lat, dLng = B.lng - A.lng;
-    const denom = dLat * dLat + dLng * dLng;
-    let t = denom === 0 ? 0 : ((gc.lat - A.lat) * dLat + (gc.lng - A.lng) * dLng) / denom;
-    t = Math.max(0, Math.min(1, t));
-    const foot = L.latLng(A.lat + t * dLat, A.lng + t * dLng);
-    const d = gc.distanceTo(foot);
-    if (!best || d < best.d) best = { e, foot, d };
+    if (e.pruned || e.visibleFromYear != null ||
+        !e.uNode || !e.vNode || !e.uNode.pt || !e.vNode.pt) continue;
+    const projection = _nearestPointOnNetzEdge(e,gc);
+    if (!projection) continue;
+    const distance = gc.distanceTo(projection.point);
+    if (!best || distance < best.distance) best = {...projection,distance};
   }
   if (!best) return false;
 
-  const E = best.e;
+  const E = best.edge;
   const gNode = { id: g.id, type: 'geb', pt: gc, load: 0 };
+  const addBuildingConnection = targetNode => {
+    const edge = _makeNetzEdge(targetNode,gNode,0);
+    edge.visibleFromYear = Number.parseInt(g.baujahr,10) || null;
+    edge.visibleUntilYear = Number.parseInt(g.abrissjahr,10) || null;
+    return edge;
+  };
   const SNAP = 8; // m — Lotpunkt liegt praktisch auf einem Endknoten → dort direkt anschließen
-  const dToU = best.foot.distanceTo(E.uNode.pt);
-  const dToV = best.foot.distanceTo(E.vNode.pt);
+  const dToU = best.point.distanceTo(E.uNode.pt);
+  const dToV = best.point.distanceTo(E.vNode.pt);
 
   if (dToU < SNAP || dToV < SNAP) {
     const target = dToU <= dToV ? E.uNode : E.vNode;
-    _makeNetzEdge(target, gNode, 0);
+    addBuildingConnection(target);
   } else {
-    // Leitung am Lotpunkt splitten (Teilstücke behalten DN) + Stich zum Gebäude
-    const jNode = { id: _nextJunctionId(), type: 'junction', pt: best.foot, load: 0 };
+    // Die vorhandene Leitung wird am Abzweig nur topologisch geteilt. Beide
+    // Teilstücke behalten DN, Kostenklasse und ihren bisherigen Linienverlauf.
+    const jNode = { id: _nextJunctionId(), type: 'junction', pt: best.point, load: 0 };
     const dn = E.dn || 0;
-    map.removeLayer(E.layer);
-    if (E.hitLayer) map.removeLayer(E.hitLayer);
-    if (E.midMarker) map.removeLayer(E.midMarker);
-    removeEdgeWaypointMarkers(E);
-    if (E.warnMarker) map.removeLayer(E.warnMarker);
-    if (E.segLayers) E.segLayers.forEach(s => map.removeLayer(s));
-    setNetzEdges(window.netzEdges.filter(x => x !== E));
-    _makeNetzEdge(E.uNode, jNode, dn);
-    _makeNetzEdge(jNode, E.vNode, dn);
-    _makeNetzEdge(jNode, gNode, 0); // Stich → neue DN wird in recalcNetz dimensioniert
+    const sourceProps = {
+      kostKlasse:E.kostKlasse || null,
+      kostOverride:E.kostOverride === true,
+      pruned:E.pruned === true,
+    };
+    const leftWaypoints = best.path.slice(1,best.index+1);
+    const rightWaypoints = best.path.slice(best.index+1,-1);
+    _removeNetzEdge(E);
+    const left = _makeNetzEdge(E.uNode,jNode,dn);
+    const right = _makeNetzEdge(jNode,E.vNode,dn);
+    Object.assign(left,sourceProps); Object.assign(right,sourceProps);
+    _applySplitWaypoints(left,leftWaypoints);
+    _applySplitWaypoints(right,rightWaypoints);
+    addBuildingConnection(jNode); // Stich → neue DN wird in recalcNetz dimensioniert
   }
   recalcNetz();
   return true;
 }
 
 export function clearNetz(){
+  setNetzRewireMode(false);
   window.netzEdges.forEach(e => {
     map.removeLayer(e.layer);
     if(e.hitLayer) map.removeLayer(e.hitLayer);
@@ -2411,17 +2722,242 @@ export function abklemmenGebaeude(id) {
 export function setNetzVisible(visible) {
   netzVisible = visible;
   window.netzEdges.forEach(e => {
-    const layers = [e.layer, e.hitLayer, e.midMarker, e.warnMarker, ...(e.waypointMarkers||[]), ...(e.segLayers||[])].filter(Boolean);
+    const layers = [e.layer, e.hitLayer, ...(e.segLayers||[])].filter(Boolean);
     layers.forEach(l => {
-      if (visible) { if (!map.hasLayer(l)) map.addLayer(l); }
+      if (visible && !e.temporallyHidden) { if (!map.hasLayer(l)) map.addLayer(l); }
       else { if (map.hasLayer(l)) map.removeLayer(l); }
     });
+    const editLayers = [e.midMarker, ...(e.waypointMarkers||[])].filter(Boolean);
+    editLayers.forEach(layer => {
+      if (visible && netzEditMode && !e.temporallyHidden) { if (!map.hasLayer(layer)) map.addLayer(layer); }
+      else if (map.hasLayer(layer)) map.removeLayer(layer);
+    });
+    if (!visible || !netzEditMode) {
+      if (e.warnMarker && map.hasLayer(e.warnMarker)) map.removeLayer(e.warnMarker);
+    }
   });
   // Beide Checkboxen synchron halten
   const cb1 = document.getElementById('netz-visible');
   const cb2 = document.getElementById('netz-visible-ansicht');
   if (cb1) cb1.checked = visible;
   if (cb2) cb2.checked = visible;
+}
+
+export function setNetzEditMode(enabled) {
+  if (enabled && networkLocked) {
+    showHint('🔒 Leitungsverläufe des Bestandsnetzes sind gesperrt. Zulässig sind nur neue Gebäudeanschlüsse.',5000);
+    return false;
+  }
+  netzEditMode = !!enabled;
+  if (netzEditMode) setNetzVisible(true);
+  window.netzEdges.forEach(edge => {
+    [edge.midMarker, ...(edge.waypointMarkers || [])].filter(Boolean).forEach(layer => {
+      if (netzEditMode && netzVisible && !edge.temporallyHidden) { if (!map.hasLayer(layer)) map.addLayer(layer); }
+      else if (map.hasLayer(layer)) map.removeLayer(layer);
+    });
+  });
+  const button = document.getElementById('btn-netz-edit-mode');
+  if (button) {
+    button.classList.toggle('active', netzEditMode);
+    const label = button.querySelector('strong');
+    if (label) label.textContent = netzEditMode ? 'Leitungsbearbeitung beenden' : 'Leitungsverläufe bearbeiten';
+    else button.textContent = netzEditMode ? 'Bearbeitung beenden' : 'Leitungsverläufe bearbeiten';
+  }
+  recalcNetz();
+  if (netzEditMode) showHint('Bearbeitungsmodus: weißen Punkt ziehen; Doppelklick entfernt einen Knickpunkt.');
+  else hideHint();
+  return netzEditMode;
+}
+
+export function toggleNetzEditMode() {
+  return setNetzEditMode(!netzEditMode);
+}
+
+function _removeNetzEdge(edge) {
+  if (!edge) return;
+  [edge.layer, edge.hitLayer, edge.midMarker, edge.warnMarker, ...(edge.waypointMarkers || []), ...(edge.segLayers || [])]
+    .filter(Boolean).forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
+  removeEdgeWaypointMarkers(edge);
+  setNetzEdges(window.netzEdges.filter(candidate => candidate !== edge));
+}
+
+function _parentEdgeForBuilding(buildingId) {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  if (!centralId || buildingId === centralId) return null;
+  const adjacency = new Map();
+  window.netzEdges.filter(edge => !edge.pruned).forEach(edge => {
+    if (!adjacency.has(edge.u)) adjacency.set(edge.u, []);
+    if (!adjacency.has(edge.v)) adjacency.set(edge.v, []);
+    adjacency.get(edge.u).push({id:edge.v,edge});
+    adjacency.get(edge.v).push({id:edge.u,edge});
+  });
+  const visited = new Set([centralId]);
+  const queue = [centralId];
+  while (queue.length) {
+    const nodeId = queue.shift();
+    for (const neighbour of adjacency.get(nodeId) || []) {
+      if (visited.has(neighbour.id)) continue;
+      if (neighbour.id === buildingId) return neighbour.edge;
+      visited.add(neighbour.id);
+      queue.push(neighbour.id);
+    }
+  }
+  return null;
+}
+
+function _buildingSideNodes(buildingId, excludedEdge) {
+  const adjacency = new Map();
+  window.netzEdges.filter(edge => edge !== excludedEdge && !edge.pruned).forEach(edge => {
+    if (!adjacency.has(edge.u)) adjacency.set(edge.u, []);
+    if (!adjacency.has(edge.v)) adjacency.set(edge.v, []);
+    adjacency.get(edge.u).push(edge.v);
+    adjacency.get(edge.v).push(edge.u);
+  });
+  const visited = new Set([buildingId]);
+  const queue = [buildingId];
+  while (queue.length) {
+    const nodeId = queue.shift();
+    for (const neighbour of adjacency.get(nodeId) || []) {
+      if (!visited.has(neighbour)) { visited.add(neighbour); queue.push(neighbour); }
+    }
+  }
+  return visited;
+}
+
+function _nearestPointOnNetzEdge(edge, latlng) {
+  const points = [edge.uNode.pt, ...getEdgeWaypoints(edge), edge.vNode.pt];
+  const cursor = map.latLngToLayerPoint(latlng);
+  let best = null;
+  for (let index = 0; index < points.length - 1; index++) {
+    const a = map.latLngToLayerPoint(points[index]);
+    const b = map.latLngToLayerPoint(points[index + 1]);
+    const dx = b.x-a.x, dy = b.y-a.y;
+    const denominator = dx*dx+dy*dy;
+    const t = denominator ? Math.max(0,Math.min(1,((cursor.x-a.x)*dx+(cursor.y-a.y)*dy)/denominator)) : 0;
+    const projected = L.point(a.x+t*dx,a.y+t*dy);
+    const distancePx = cursor.distanceTo(projected);
+    if (!best || distancePx < best.distancePx) {
+      best = {edge,index,t,distancePx,point:map.layerPointToLatLng(projected),path:points};
+    }
+  }
+  return best;
+}
+
+function _applySplitWaypoints(edge, points) {
+  edge.waypoints = points.map(point => L.latLng(point.lat,point.lng));
+  edge.waypoint = edge.waypoints[0] || null;
+  edge.layer.setLatLngs([edge.uNode.pt,...edge.waypoints,edge.vNode.pt]);
+  edge.hitLayer?.setLatLngs([edge.uNode.pt,...edge.waypoints,edge.vNode.pt]);
+  if (edge.midMarker) map.removeLayer(edge.midMarker);
+  removeEdgeWaypointMarkers(edge);
+  addEdgeMidHandle(edge);
+}
+
+export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
+  const building = gebaeude.find(item => item.id === buildingId);
+  const parentEdge = _parentEdgeForBuilding(buildingId);
+  if (networkLocked && parentEdge?.visibleFromYear == null) {
+    showHint('🔒 Dieser Anschluss gehört zum Bestandsnetz und kann nicht umgehängt werden.',4500);
+    return false;
+  }
+  if (!building?.polygon || !parentEdge || !targetEdge || targetEdge === parentEdge) return false;
+  const forbidden = _buildingSideNodes(buildingId,parentEdge);
+  if (forbidden.has(targetEdge.u) && forbidden.has(targetEdge.v)) {
+    showHint('Dieses Ziel liegt im nachgelagerten Teilnetz des Gebäudes.',3500);
+    return false;
+  }
+  const snapshot = captureWaermeNetzGraph();
+  const buildingNode = parentEdge.u === buildingId ? parentEdge.uNode : parentEdge.vNode;
+  const projection = _nearestPointOnNetzEdge(targetEdge,targetPoint);
+  if (!projection) return false;
+  const dn = targetEdge.dn || 0;
+  const sourceProps = {kostKlasse:targetEdge.kostKlasse||null,kostOverride:targetEdge.kostOverride===true};
+  _removeNetzEdge(parentEdge);
+  const distanceU = projection.point.distanceTo(targetEdge.uNode.pt);
+  const distanceV = projection.point.distanceTo(targetEdge.vNode.pt);
+  if (distanceU < 5 || distanceV < 5) {
+    _makeNetzEdge(distanceU <= distanceV ? targetEdge.uNode : targetEdge.vNode,buildingNode,0);
+  } else {
+    const junction = {id:_nextJunctionId(),type:'junction',pt:projection.point,load:0};
+    const leftWaypoints = projection.path.slice(1,projection.index+1);
+    const rightWaypoints = projection.path.slice(projection.index+1,-1);
+    _removeNetzEdge(targetEdge);
+    const left = _makeNetzEdge(targetEdge.uNode,junction,dn);
+    const right = _makeNetzEdge(junction,targetEdge.vNode,dn);
+    Object.assign(left,sourceProps); Object.assign(right,sourceProps);
+    _applySplitWaypoints(left,leftWaypoints);
+    _applySplitWaypoints(right,rightWaypoints);
+    _makeNetzEdge(junction,buildingNode,0);
+  }
+  recalcNetz();
+  if ((window._waermeNetzValidation?.cycleEdges || 0) > 0 ||
+      (window._waermeNetzValidation?.disconnectedConsumerIds || []).includes(buildingId)) {
+    applyWaermeNetzGraph(snapshot);
+    showHint('Anschluss nicht geändert: Das Ziel würde eine ungültige Netzstruktur erzeugen.',4500);
+    return false;
+  }
+  showHint(`✓ Anschluss von „${building.name}“ umgehängt.`,3000);
+  return true;
+}
+
+function _renderNetzRewireMarkers() {
+  netzRewireMarkers.forEach(marker => map.removeLayer(marker));
+  netzRewireMarkers = [];
+  if (!netzRewireMode) return;
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value,10);
+  const connected = new Set(window.netzEdges.flatMap(edge => [edge.u,edge.v]));
+  const icon = L.divIcon({className:'netz-rewire-handle',html:'↗',iconSize:[18,18],iconAnchor:[9,9]});
+  gebaeude.filter(building => {
+    if (building.id === centralId || !connected.has(building.id) || !building.polygon) return false;
+    return !networkLocked || _parentEdgeForBuilding(building.id)?.visibleFromYear != null;
+  }).forEach(building => {
+    const origin = polygonCenter(building.polygon);
+    const marker = L.marker(origin,{draggable:true,icon,zIndexOffset:2600,title:`Anschluss ${building.name} umhängen`}).addTo(map);
+    marker._netzBuildingId = building.id;
+    marker.on('dragstart',() => {
+      netzRewirePreview = L.polyline([origin,origin],{color:'#29b6f6',weight:2,dashArray:'5,4',interactive:false}).addTo(map);
+    });
+    marker.on('drag',event => netzRewirePreview?.setLatLngs([origin,event.target.getLatLng()]));
+    marker.on('dragend',event => {
+      if (netzRewirePreview) { map.removeLayer(netzRewirePreview); netzRewirePreview=null; }
+      const parentEdge = _parentEdgeForBuilding(building.id);
+      const forbidden = parentEdge ? _buildingSideNodes(building.id,parentEdge) : new Set();
+      const candidates = window.netzEdges
+        .filter(edge => edge !== parentEdge && !(forbidden.has(edge.u) && forbidden.has(edge.v)))
+        .map(edge => _nearestPointOnNetzEdge(edge,event.target.getLatLng()))
+        .filter(Boolean).sort((a,b)=>a.distancePx-b.distancePx);
+      const target = candidates[0];
+      marker.setLatLng(origin);
+      if (!target || target.distancePx > 35) {
+        showHint('Kein Anschlussziel getroffen. Griff direkt auf eine Netzleitung ziehen.',3500);
+        return;
+      }
+      if (rewireBuildingConnection(building.id,target.edge,target.point)) _renderNetzRewireMarkers();
+    });
+    netzRewireMarkers.push(marker);
+  });
+}
+
+export function setNetzRewireMode(enabled) {
+  netzRewireMode = !!enabled;
+  if (netzRewireMode) {
+    setNetzEditMode(false);
+    setNetzVisible(true);
+    showHint('Blauen Anschlussgriff eines Gebäudes auf die gewünschte Netzleitung ziehen.');
+  } else hideHint();
+  _renderNetzRewireMarkers();
+  const button = document.getElementById('btn-netz-rewire-mode');
+  if (button) {
+    button.classList.toggle('active',netzRewireMode);
+    const label = button.querySelector('strong');
+    if (label) label.textContent = netzRewireMode ? 'Umhängen beenden' : 'Gebäudeanschluss umhängen';
+    else button.textContent = netzRewireMode ? 'Umhängen beenden' : 'Gebäudeanschluss umhängen';
+  }
+  return netzRewireMode;
+}
+
+export function toggleNetzRewireMode() {
+  return setNetzRewireMode(!netzRewireMode);
 }
 
 export function syncVLTemps(source) {
@@ -2458,7 +2994,9 @@ export function recalcNetz(){
   }
 
   const dt = Math.max(1, vlTemp - rlTemp);
-  const vFlow = parseFloat(document.getElementById('netz-v').value) || 1.0;
+  const vFlow = readNum('netz-v', 1.0, 0.3, 2.0);
+  const dpLimitMain = readNum('netz-dp-main', 150, 50, 500);
+  const dpLimitService = readNum('netz-dp-service', 250, 50, 500);
 
   // Gleichzeitigkeitsfaktor (GZF) für Wärmenetz
   const wGzfMethode = document.getElementById('netz-gzf-methode')?.value || 'richtwert';
@@ -2600,21 +3138,84 @@ export function recalcNetz(){
     }
   }
 
+  // Auslegungsfall über den vollständigen Projektzeitraum. Neubaunetze
+  // behalten damit ihre DN beim Jahreswechsel und sind für den jeweils
+  // ungünstigsten zeitlichen Zustand dimensioniert. Beim Bestandsnetz wird
+  // dieser Wert ausschließlich für neue, noch undimensionierte Anschlüsse
+  // verwendet; vorhandene DN bleiben gesperrt.
+  window.netzEdges.forEach(e => { e.designLoad = 0; e.designLoadRaw = 0; e.designYear = null; });
+  _netzPlanningYears().forEach(year => {
+    const yearLoad = {};
+    const yearConsumers = {};
+    Object.keys(nodeMap).forEach(id => {
+      const g = gebMap.get(Number(id));
+      const load = g && !isExcluded(g.id) ? getComputedStats(g,year).heizlast || 0 : 0;
+      yearLoad[id] = load;
+      yearConsumers[id] = load > 0 ? 1 : 0;
+    });
+    for (let i = order.length - 1; i > 0; i--) {
+      const nodeId = order[i];
+      const pInfo = parentEdge[nodeId];
+      if (!pInfo) continue;
+      const raw = yearLoad[nodeId] || 0;
+      const count = yearConsumers[nodeId] || 0;
+      const designLoad = raw * _wGzf(count);
+      if (designLoad > pInfo.e.designLoad) {
+        pInfo.e.designLoad = designLoad;
+        pInfo.e.designLoadRaw = raw;
+        pInfo.e.designYear = year;
+      }
+      yearLoad[pInfo.pNodeId] = (yearLoad[pInfo.pNodeId] || 0) + raw;
+      yearConsumers[pInfo.pNodeId] = (yearConsumers[pInfo.pNodeId] || 0) + count;
+    }
+  });
+
   const cp = 4.184;
+  const rhoWater = 975; // kg/m³ bei ~70°C
+  const nuWater = 0.000000415; // kinematische Viskosität m²/s bei ~70°C
+  const kRough = 0.00005; // Rohrrauhigkeit Stahl/KMR [m]
+  const hydraulicsFor = (load,dn) => {
+    const dInner = dn / 1000;
+    const area = Math.PI * Math.pow(dInner / 2,2);
+    const massFlow = load / (cp * dt);
+    const velocity = (massFlow / rhoWater) / area;
+    const reynolds = velocity * dInner / nuWater;
+    const lambda = reynolds < 2300
+      ? 64 / Math.max(reynolds,100)
+      : 0.25 / Math.pow(Math.log10(kRough / (3.7 * dInner) + 5.74 / Math.pow(reynolds,0.9)),2);
+    return {velocity,dpPerM:lambda * rhoWater * Math.pow(velocity,2) / (2 * dInner),reynolds,lambda};
+  };
   // Rohr-Dimensionierung mit DN-abhängiger Fließgeschwindigkeit (2 Iterationen für Konvergenz)
   for (let iter = 0; iter < 2; iter++) {
     window.netzEdges.forEach(e => {
       if(e.load > 0){
-        const vEff = e.dn > 0 ? getVFlowForDN(e.dn, vFlow) : vFlow;
-        const mDot = e.load / (cp * dt);
-        const reqArea = (mDot / 1000) / vEff;
-        const reqDMm = Math.sqrt(4 * reqArea / Math.PI) * 1000;
+        e.isHouseConnection = e._nVerbraucher === 1 &&
+          (e.uNode?.type === 'geb' || e.vNode?.type === 'geb');
+        e.dpLimit = e.isHouseConnection ? dpLimitService : dpLimitMain;
 
-        if (!networkLocked || e.dn === 0) {
-            e.dn = standardDNs.find(dn => dn >= reqDMm) || standardDNs[standardDNs.length - 1];
+        if ((!networkLocked && !e.dnOverride) || e.dn === 0) {
+            const sizingLoad = Math.max(e.load,e.designLoad || 0);
+            e.dn = standardDNs.find(dn => {
+              const candidate = hydraulicsFor(sizingLoad,dn);
+              return candidate.velocity <= getVFlowForDN(dn,vFlow) && candidate.dpPerM <= e.dpLimit;
+            }) || standardDNs[standardDNs.length - 1];
         }
       } else {
-        e.dn = 0;
+        // Zukünftig aktive Hausanschlüsse werden bereits für ihre spätere
+        // Last dimensioniert, bleiben bis zum Baujahr aber unsichtbar.
+        if (e.dn === 0 && e.designLoad > 0) {
+          e.isHouseConnection = e._nVerbraucher <= 1 &&
+            (e.uNode?.type === 'geb' || e.vNode?.type === 'geb');
+          e.dpLimit = e.isHouseConnection ? dpLimitService : dpLimitMain;
+          e.dn = standardDNs.find(dn => {
+            const candidate = hydraulicsFor(e.designLoad,dn);
+            return candidate.velocity <= getVFlowForDN(dn,vFlow) && candidate.dpPerM <= e.dpLimit;
+          }) || standardDNs[standardDNs.length - 1];
+        } else if (!networkLocked) {
+          // Bei Neubaunetzen nie anhand des gerade inaktiven Jahres auf DN 0
+          // zurückfallen; designLoad ist die maßgebliche Größe.
+          e.dn = e.designLoad > 0 ? e.dn : 0;
+        }
       }
     });
   }
@@ -2622,42 +3223,28 @@ export function recalcNetz(){
   // ── Druckverluste (Darcy-Weisbach vereinfacht mit R-Wert) ──────────────
   // R = Druckverlust pro Meter [Pa/m], abhängig von DN, Volumenstrom, Rauigkeit
   // Formel: R = (lambda * rho * v^2) / (2 * d_i)  mit lambda aus Moody (vereinfacht)
-  const rhoWater = 975; // kg/m³ bei ~70°C
-  const nuWater = 0.000000415; // kinematische Viskosität m²/s bei ~70°C
-  const kRough = 0.00005; // Rohrrauhigkeit Stahl/KMR [m]
-
   window.netzEdges.forEach(e => {
     if (e.load > 0 && e.dn > 0) {
-      const dInner = (e.dn / 1000); // Innendurchmesser in m (DN ≈ Innendurchmesser bei KMR)
-      const aInner = Math.PI * Math.pow(dInner / 2, 2);
-      const vEff = getVFlowForDN(e.dn, vFlow);
-      const mDot = e.load / (cp * dt); // kg/s
-      const vActual = (mDot / rhoWater) / aInner; // tatsächliche Fließgeschwindigkeit m/s
-
-      // Reynolds-Zahl
-      const Re = vActual * dInner / nuWater;
-
-      // Rohrreibungszahl lambda (Colebrook-White Näherung nach Swamee-Jain)
-      let lambda;
-      if (Re < 2300) {
-        lambda = 64 / Math.max(Re, 100); // laminar
-      } else {
-        const term = kRough / (3.7 * dInner) + 5.74 / Math.pow(Re, 0.9);
-        lambda = 0.25 / Math.pow(Math.log10(term), 2);
-      }
-
-      // Druckverlust pro Meter [Pa/m] — Vorlauf + Rücklauf = Faktor 2
-      e.dpPerM = lambda * rhoWater * Math.pow(vActual, 2) / (2 * dInner); // Pa/m, eine Leitung
+      const hydraulic = hydraulicsFor(e.load,e.dn);
+      const vActual = hydraulic.velocity;
+      e.dpPerM = hydraulic.dpPerM; // Pa/m, eine Leitung
       e.dpTotal = e.dpPerM * e.length * 2; // Pa, VL+RL
       e._vActual = vActual;
-      e._reynolds = Re;
-      e._lambda = lambda;
+      e._reynolds = hydraulic.reynolds;
+      e._lambda = hydraulic.lambda;
+      e.dpExceeded = e.dpPerM > (e.dpLimit || dpLimitMain);
+      e.velocityLimit = getVFlowForDN(e.dn,vFlow);
+      e.velocityExceeded = e._vActual > e.velocityLimit;
+      e.hydraulicBottleneck = e.dpExceeded || e.velocityExceeded;
     } else {
       e.dpPerM = 0;
       e.dpTotal = 0;
       e._vActual = 0;
       e._reynolds = 0;
       e._lambda = 0;
+      e.dpExceeded = false;
+      e.velocityExceeded = false;
+      e.hydraulicBottleneck = false;
     }
   });
 
@@ -2675,7 +3262,7 @@ export function recalcNetz(){
     // Hausstationsdruckverlust: ~30 kPa pro Übergabestation
     const bNode = gebMap.get(nodeId);
     if (bNode && nodeMap[nodeId] && nodeMap[nodeId].load > 0) {
-      pathDp += 30000; // 30 kPa Hausstation
+      pathDp += 50000; // 50 kPa Hausstation / verfügbare Regelreserve
     }
     if (pathDp > maxPathDp) {
       maxPathDp = pathDp;
@@ -2719,6 +3306,8 @@ export function recalcNetz(){
     mDotGesamt: mDotGesamt,
     vDotGesamt: vDotGesamt * 3600, // m³/h
     maxPathNode: maxPathNode
+    ,dpExceededCount: window.netzEdges.filter(edge => edge.dpExceeded).length
+    ,bottleneckCount: window.netzEdges.filter(edge => edge.hydraulicBottleneck).length
   };
 
   // readNum statt parseFloat: parseFloat liefert bei leerem Feld NaN, und
@@ -2916,14 +3505,18 @@ export function recalcNetz(){
 
   window.netzEdges.forEach(e => {
     const targetLayer = e.hitLayer || e.layer;
+    e.temporallyHidden = (e.visibleFromYear != null && globalYear < e.visibleFromYear) ||
+      (e.visibleUntilYear != null && globalYear >= e.visibleUntilYear);
 
     if(e.load > 0){
       const actualArea = Math.PI * Math.pow((e.dn / 1000) / 2, 2);
       const mDot = e.load / (cp * dt); 
-      const actualVel = (mDot / 1000) / actualArea;
-      const maxMDot = actualArea * vFlow * 1000;
+      const actualVel = (mDot / rhoWater) / actualArea;
+      const allowedVelocity = e.velocityLimit || getVFlowForDN(e.dn,vFlow);
+      const maxMDot = actualArea * allowedVelocity * rhoWater;
       const maxLoad = maxMDot * cp * dt;
       const auslastung = (e.load / maxLoad) * 100;
+      e.utilizationPct = auslastung;
 
       const wld = getWLD(e);
       const wldColor = getWLDColor(wld);
@@ -2931,6 +3524,7 @@ export function recalcNetz(){
 
       let pColor = getEdgeColor(e, vlTemp, dt, vFlow);
       if (networkLocked && auslastung > 110) pColor = '#f44336';
+      if (e.dpExceeded) pColor = '#f44336';
 
       const dim = (selectedStrandId != null && e.strandId !== selectedStrandId);
       e.layer.setStyle({weight: dim ? 2 : w, color: pColor, opacity: dim ? 0.2 : 0.8});
@@ -2958,9 +3552,16 @@ export function recalcNetz(){
       } else {
         ttHtml += `Last (Σ ${e._nVerbraucher} Gebäude): ${e.load.toFixed(1)} kW<br>`;
       }
+      const utilizationColor = auslastung <= 80 ? '#4caf50' : auslastung <= 100 ? '#f9a825' : '#f44336';
+      ttHtml += `Leitungsauslastung: <span style="color:${utilizationColor}">${auslastung.toFixed(1)} %</span> · ${actualVel.toFixed(2)} m/s<br>`;
+      ttHtml += `${_m}Kapazität: ${maxLoad.toFixed(0)} kW bei ${allowedVelocity.toFixed(2)} m/s zulässiger Zielgeschwindigkeit${_me}<br>`;
+      if (!networkLocked && e.designYear != null) {
+        ttHtml += `${_m}Dimensioniert für ${e.designLoad.toFixed(1)} kW im maßgebenden Jahr ${e.designYear}${_me}<br>`;
+      }
       if (networkLocked) {
-        ttHtml += `Auslastung: ${auslastung.toFixed(1)} % · ${actualVel.toFixed(2)} m/s<br>`;
-        ttHtml += `${_m}Kapazität: ${maxLoad.toFixed(0)} kW bei ${vFlow} m/s Auslegungsgeschwindigkeit${_me}<br>`;
+        if (e.hydraulicBottleneck) {
+          ttHtml += `<span style="color:#f44336">⚠ Hydraulischer Engpass im Bestandsnetz</span><br>`;
+        }
       }
 
       // ── 2. THERMIK ──
@@ -2981,8 +3582,10 @@ export function recalcNetz(){
         }
         // Druckverlust
         if (e.dpPerM > 0) {
-          const dpColor = e.dpPerM < 100 ? '#4caf50' : e.dpPerM < 200 ? '#8bc34a' : e.dpPerM < 300 ? '#f9a825' : '#e53935';
-          ttHtml += `Druckverlust: <span style="color:${dpColor}">${e.dpPerM.toFixed(0)} Pa/m</span> · ${(e.dpTotal/1000).toFixed(1)} kPa gesamt<br>`;
+          const dpRatio = e.dpPerM / (e.dpLimit || dpLimitMain);
+          const dpColor = dpRatio <= 1 ? '#4caf50' : dpRatio <= 1.2 ? '#f9a825' : '#e53935';
+          ttHtml += `Druckverlust: <span style="color:${dpColor}">${e.dpPerM.toFixed(0)} Pa/m</span> · Grenzwert ${Math.round(e.dpLimit || dpLimitMain)} Pa/m<br>`;
+          ttHtml += `${_m}${e.isHouseConnection ? 'Hausanschluss' : 'Netzleitung'} · ${(e.dpTotal/1000).toFixed(1)} kPa für Vor- und Rücklauf${_me}<br>`;
           ttHtml += `${_m}Reibungsverlust im Rohr, bestimmt die benötigte Pumpenleistung${_me}<br>`;
         }
       }
@@ -3017,7 +3620,8 @@ export function recalcNetz(){
         }
       }
 
-      targetLayer.bindTooltip(ttHtml, {sticky: true, className:'geb-tooltip'});
+      targetLayer.unbindTooltip();
+      e.infoHtml = ttHtml;
 
       // Gradient
       if (netzColorMode === 'temp' || netzColorMode === 'abkuehlung') {
@@ -3027,7 +3631,7 @@ export function recalcNetz(){
       }
 
       // Warndreieck bei Überlastung
-      const showWarn = auslastung > 100;
+      const showWarn = netzEditMode && auslastung > 100;
       const midPt = getEdgeMidDisplayPt(e);
       if (showWarn) {
         if (!e.warnMarker) {
@@ -3043,16 +3647,30 @@ export function recalcNetz(){
       }
 
     } else {
+      e.utilizationPct = 0;
       clearEdgeGradient(e);
       if (e.warnMarker) { map.removeLayer(e.warnMarker); e.warnMarker = null; }
       const dim = (selectedStrandId != null && e.strandId !== selectedStrandId);
       e.layer.setStyle({weight: 2, color: '#999', dashArray: '6, 4', opacity: dim ? 0.2 : 0.8});
-      targetLayer.bindTooltip(`<span style="font-weight:normal">0 kW (inaktiv/Ringleitung)</span>`, {sticky: true, className:'geb-tooltip'});
+      targetLayer.unbindTooltip();
+      e.infoHtml = '<span style="font-weight:normal">0 kW (inaktiv/Ringleitung)</span>';
     }
 
     // midMarker position aktualisieren (wenn kein manueller Waypoint)
     if (e.midMarker) {
       e.midMarker.setLatLng(getEdgeMidDisplayPt(e));
+    }
+    const temporalLayers = [e.layer,e.hitLayer,e.midMarker,e.warnMarker,
+      ...(e.waypointMarkers || []),...(e.segLayers || [])].filter(Boolean);
+    if (e.temporallyHidden || !netzVisible) {
+      temporalLayers.forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
+    } else {
+      [e.layer,e.hitLayer,...(e.segLayers || [])].filter(Boolean).forEach(layer => {
+        if (!map.hasLayer(layer)) map.addLayer(layer);
+      });
+      if (netzEditMode) [e.midMarker,...(e.waypointMarkers || [])].filter(Boolean).forEach(layer => {
+        if (!map.hasLayer(layer)) map.addLayer(layer);
+      });
     }
   });
 
@@ -3064,8 +3682,10 @@ export function recalcNetz(){
   if (fliessgewaesser) redrawFliessgewaesser();
   if (gasKessel) redrawGasKessel();
   cacheVariantResults();
-  // Pipe-Animation nur starten wenn aktive Kanten vorhanden
-  if (window.netzEdges.some(e => e.load > 0)) startAnimPipes(); else stopAnimPipes();
+  // Die bewegten Leitungsstriche visualisieren den Wärmefluss. Bearbeitungs-
+  // punkte und Haupttrasse bleiben davon unabhängig in der ruhigen Ansicht aus.
+  if (window.netzEdges.some(edge => edge.load > 0)) startAnimPipes();
+  else stopAnimPipes();
 }
 
 export function updateStrandDropdown() {
