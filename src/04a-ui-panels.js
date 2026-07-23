@@ -133,18 +133,33 @@ export function filterList(val) {
 // ── Adresssuche (Nominatim) ───────────────────────────────────────────
 export let addrDebounce = null;
 export let addrSelected = -1;
+let addrRequest = null;
 
 export function addrSearch(val) {
   clearTimeout(addrDebounce);
   const res = document.getElementById('addr-results');
-  if (!val || val.length < 3) { res.classList.remove('open'); return; }
+  if (!val || val.trim().length < 3) {
+    addrRequest?.abort();
+    res.classList.remove('open');
+    res.innerHTML = '';
+    return;
+  }
+  res.innerHTML = '<div class="addr-result-item addr-result-status">Suche …</div>';
+  res.classList.add('open');
   addrDebounce = setTimeout(async () => {
+    addrRequest?.abort();
+    addrRequest = new AbortController();
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=6&q=${encodeURIComponent(val)}`;
-      const data = await fetch(url, {headers:{'Accept-Language':'de'}}).then(r => r.json());
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(val.trim())}`;
+      const response = await fetch(url, {
+        headers: {'Accept-Language': 'de'},
+        signal: addrRequest.signal
+      });
+      if (!response.ok) throw new Error(`Adressdienst: HTTP ${response.status}`);
+      const data = await response.json();
       res.innerHTML = '';
       if (!data.length) {
-        res.innerHTML = '<div class="addr-result-item" style="color:var(--muted)">Keine Ergebnisse</div>';
+        res.innerHTML = '<div class="addr-result-item addr-result-status">Keine Ergebnisse</div>';
       } else {
         data.forEach((item, i) => {
           const div = document.createElement('div');
@@ -158,7 +173,12 @@ export function addrSearch(val) {
       }
       addrSelected = -1;
       res.classList.add('open');
-    } catch(e) { console.error(e); }
+    } catch(e) {
+      if (e.name === 'AbortError') return;
+      console.error('Adresssuche fehlgeschlagen:', e);
+      res.innerHTML = '<div class="addr-result-item addr-result-status">Adresssuche momentan nicht erreichbar</div>';
+      res.classList.add('open');
+    }
   }, 350);
 }
 
@@ -185,8 +205,10 @@ export function addrKeydown(e) {
     addrSelected = Math.max(addrSelected - 1, 0);
     items.forEach((el, i) => el.style.background = i === addrSelected ? 'var(--surface2)' : '');
     e.preventDefault();
-  } else if (e.key === 'Enter' && addrSelected >= 0) {
-    items[addrSelected].click();
+  } else if (e.key === 'Enter') {
+    const index = addrSelected >= 0 ? addrSelected : 0;
+    if (!items[index].classList.contains('addr-result-status')) items[index].click();
+    e.preventDefault();
   } else if (e.key === 'Escape') {
     res.classList.remove('open');
   }

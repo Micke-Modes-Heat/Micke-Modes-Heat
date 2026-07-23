@@ -194,7 +194,7 @@ export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hi
 
   // 1) Energetische Abdeckung — gestapelter Balken
   const energieExtra = `${Math.round(wpMwh).toLocaleString('de-DE')} MWh/a${jazStr ? ' · JAZ ' + jazStr : ''}`;
-  const energieHtml = _stackedBar(allDeckungen, 'pct', deckungPct, 'Energetische Abdeckung', energieExtra);
+  const energieHtml = _stackedBar(allDeckungen, 'pct', deckungPct, 'Anteil Jahreswärme', energieExtra);
 
   // 2) Leistungsabdeckung im Heizlastfall — gestapelter Balken
   let heizlastHtml = '';
@@ -204,7 +204,7 @@ export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hi
     const leistungLabel = isWp
       ? `Nenn ${nennKw.toFixed(0)} kW · Heizlast ${heizlastKw.toFixed(0)} kW`
       : `${nennKw.toFixed(0)} kW`;
-    heizlastHtml = _stackedBar(allDeckungen, 'hlPct', myHlPct, 'Leistungsabdeckung im Heizlastfall', leistungLabel);
+    heizlastHtml = _stackedBar(allDeckungen, 'hlPct', myHlPct, 'Anteil Netz-Spitzenlast', leistungLabel);
   }
 
   w.innerHTML = `${legendHtml}

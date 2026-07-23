@@ -40,9 +40,20 @@ export function updateTotals(){
   });
   document.getElementById('tot-waerme').textContent=tw?tw.toLocaleString('de-DE',{maximumFractionDigits:1}):'—';
   document.getElementById('tc-waerme').title='Summe Wärmebedarf aller Gebäude (ohne Netzverluste)';
-  document.getElementById('tot-hl').textContent=th?Math.round(th).toLocaleString('de-DE'):'—';
-  document.getElementById('tot-hl-lbl').textContent='Heizlast (kW)';
-  document.getElementById('tc-hl').title='Summe der Gebäude-Normheizlasten (DIN 12831).\nWird für Rohrdimensionierung im Netz verwendet.';
+  const ss = window.systemState;
+  const hatSpitzenlast = Number.isFinite(ss?.pMaxKw) && ss.pMaxKw > 0;
+  document.getElementById('tot-hl').textContent = hatSpitzenlast
+    ? Math.round(ss.pMaxKw).toLocaleString('de-DE')
+    : th ? Math.round(th).toLocaleString('de-DE') : '—';
+  document.getElementById('tot-hl-lbl').textContent = hatSpitzenlast
+    ? 'Netz-Spitzenlast (kW)'
+    : 'Normheizlast (kW)';
+  document.getElementById('tot-hl-sub').textContent = hatSpitzenlast && th
+    ? `Σ Gebäude: ${Math.round(th).toLocaleString('de-DE')} kW`
+    : '';
+  document.getElementById('tc-hl').title = hatSpitzenlast
+    ? `Maßgebende Spitzenlast aus dem berechneten Lastgang inklusive Netzverlusten: ${Math.round(ss.pMaxKw)} kW.\nSumme der Gebäude-Normheizlasten (DIN 12831): ${Math.round(th)} kW.`
+    : 'Summe der Gebäude-Normheizlasten (DIN 12831).\nNach der Lastgangberechnung wird hier die maßgebende Netz-Spitzenlast angezeigt.';
   // Strom-Totals
   let ts=0, tsl=0;
   if (window.elQuartierH) {
@@ -59,7 +70,6 @@ export function updateTotals(){
   // Quellenübersicht
   const srcEl = document.getElementById('tot-sources');
   if (srcEl) {
-    const ss = window.systemState;
     const hatLg = typeof glLastgangKw !== 'undefined' && !!glLastgangKw;
     const hatMonat = typeof glGetMonatswerte === 'function' && glGetMonatswerte().some(v => v !== null);
     const hatGesamt = typeof glGetGesamtMwh === 'function' && glGetGesamtMwh() > 0;

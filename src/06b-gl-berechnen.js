@@ -211,8 +211,11 @@ async function glBerechnen() {
     document.getElementById('tc-waerme').title = `${Math.round(gesamtMwhMitNV)} MWh/a inkl. Netzverluste (Lastgang).\nOhne Verluste: ${Math.round(nutzwaermeMwh)} MWh/a`;
     document.getElementById('tot-hl').textContent =
       Math.round(window.systemState.pMaxKw).toLocaleString('de-DE', {maximumFractionDigits: 1});
-    document.getElementById('tot-hl-lbl').textContent = 'Spitzenlast (kW)';
-    document.getElementById('tc-hl').title = `Spitzenlast aus berechnetem Lastgang: ${Math.round(window.systemState.pMaxKw)} kW.\nDas ist die höchste Stundenlast im Jahr — realistischer als die Summe der Normheizlasten, da nie alle Gebäude gleichzeitig Volllast heizen.\nΣ Normheizlast: ${Math.round(gebaeude.reduce((s,g) => s + (getComputedStats(g,globalYear).heizlast||0), 0))} kW`;
+    document.getElementById('tot-hl-lbl').textContent = 'Netz-Spitzenlast (kW)';
+    const normheizlastKw = gebaeude.reduce((s,g) => s + (getComputedStats(g,globalYear).heizlast||0), 0);
+    document.getElementById('tot-hl-sub').textContent =
+      `Σ Gebäude: ${Math.round(normheizlastKw).toLocaleString('de-DE')} kW`;
+    document.getElementById('tc-hl').title = `Maßgebende Spitzenlast aus dem berechneten Lastgang inklusive Netzverlusten: ${Math.round(window.systemState.pMaxKw)} kW.\nSumme der Gebäude-Normheizlasten (DIN 12831): ${Math.round(normheizlastKw)} kW.`;
 
     // Status aktualisieren
     const dot = document.getElementById('gl-status-dot');
@@ -810,4 +813,3 @@ export function _drawErdbeckenSpeicher() {
 
   window._tsSvgLayer = L.svgOverlay(svgEl, bounds, { opacity: 1, interactive: false, zIndex: 200 }).addTo(map);
 }
-

@@ -9562,6 +9562,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 
 .totals{padding:6px 14px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:4px;}
 .total-card{background:var(--bg);border-radius:5px;padding:4px 8px;}
+.total-sub{font-size:8px;color:var(--muted);line-height:1.2;margin-top:1px;white-space:nowrap;}
 .total-val{font-size:13px;font-weight:normal;font-family:'DM Mono',monospace;color:var(--accent);}
 .total-val.tot-strom{color:#ffd54f;}
 .total-sources{grid-column:1/-1;font-size:8px;color:var(--muted);line-height:1.4;padding:2px 4px 0;display:flex;gap:10px;flex-wrap:wrap;}
@@ -9929,6 +9930,8 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .addr-result-item{padding:6px 10px;font-size:11px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);}
 .addr-result-item:last-child{border-bottom:none;}
 .addr-result-item:hover{background:var(--surface2);color:var(--accent);}
+.addr-result-status{color:var(--muted);cursor:default;}
+.addr-result-status:hover{background:transparent;color:var(--muted);}
 /* Gebäude-Filter in Sidebar */
 .geb-filter{padding:5px 6px 0;}
 .geb-filter-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:11px;padding:4px 8px;outline:none;transition:.15s;}
@@ -12250,7 +12253,7 @@ if (typeof L !== 'undefined') {
       </div>
       <div class="totals">
         <div class="total-card" id="tc-waerme" title="Summe Wärmebedarf aller Gebäude (ohne Netzverluste)"><div class="total-val" id="tot-waerme">—</div><div class="total-lbl">Wärme (MWh/a)</div></div>
-        <div class="total-card" id="tc-hl" title="Summe der Gebäude-Normheizlasten (DIN 12831)"><div class="total-val" id="tot-hl">—</div><div class="total-lbl" id="tot-hl-lbl">Heizlast (kW)</div></div>
+        <div class="total-card" id="tc-hl" title="Summe der Gebäude-Normheizlasten (DIN 12831)"><div class="total-val" id="tot-hl">—</div><div class="total-lbl" id="tot-hl-lbl">Normheizlast (kW)</div><div class="total-sub" id="tot-hl-sub"></div></div>
         <div class="total-card" id="tc-strom" title="Summe Jahresstromverbrauch aller Gebäude"><div class="total-val tot-strom" id="tot-strom">—</div><div class="total-lbl">Strom (MWh/a)</div></div>
         <div class="total-card" id="tc-stromlast" title="Summe der elektrischen Spitzenlasten"><div class="total-val tot-strom" id="tot-stromlast">—</div><div class="total-lbl">Stromlast (kW)</div></div>
         <div class="total-sources" id="tot-sources"></div>
@@ -85404,7 +85407,7 @@ window._isSingleFileBuild = true;
 
     // 1) Energetische Abdeckung — gestapelter Balken
     const energieExtra = `${Math.round(wpMwh).toLocaleString('de-DE')} MWh/a${jazStr ? ' · JAZ ' + jazStr : ''}`;
-    const energieHtml = _stackedBar(allDeckungen, 'pct', deckungPct, 'Energetische Abdeckung', energieExtra);
+    const energieHtml = _stackedBar(allDeckungen, 'pct', deckungPct, 'Anteil Jahreswärme', energieExtra);
 
     // 2) Leistungsabdeckung im Heizlastfall — gestapelter Balken
     let heizlastHtml = '';
@@ -85414,7 +85417,7 @@ window._isSingleFileBuild = true;
       const leistungLabel = isWp
         ? `Nenn ${nennKw.toFixed(0)} kW · Heizlast ${heizlastKw.toFixed(0)} kW`
         : `${nennKw.toFixed(0)} kW`;
-      heizlastHtml = _stackedBar(allDeckungen, 'hlPct', myHlPct, 'Leistungsabdeckung im Heizlastfall', leistungLabel);
+      heizlastHtml = _stackedBar(allDeckungen, 'hlPct', myHlPct, 'Anteil Netz-Spitzenlast', leistungLabel);
     }
 
     w.innerHTML = `${legendHtml}
@@ -89221,8 +89224,11 @@ window._isSingleFileBuild = true;
       document.getElementById('tc-waerme').title = `${Math.round(gesamtMwhMitNV)} MWh/a inkl. Netzverluste (Lastgang).\nOhne Verluste: ${Math.round(nutzwaermeMwh)} MWh/a`;
       document.getElementById('tot-hl').textContent =
         Math.round(window.systemState.pMaxKw).toLocaleString('de-DE', {maximumFractionDigits: 1});
-      document.getElementById('tot-hl-lbl').textContent = 'Spitzenlast (kW)';
-      document.getElementById('tc-hl').title = `Spitzenlast aus berechnetem Lastgang: ${Math.round(window.systemState.pMaxKw)} kW.\nDas ist die höchste Stundenlast im Jahr — realistischer als die Summe der Normheizlasten, da nie alle Gebäude gleichzeitig Volllast heizen.\nΣ Normheizlast: ${Math.round(gebaeude.reduce((s,g) => s + (getComputedStats(g,globalYear).heizlast||0), 0))} kW`;
+      document.getElementById('tot-hl-lbl').textContent = 'Netz-Spitzenlast (kW)';
+      const normheizlastKw = gebaeude.reduce((s,g) => s + (getComputedStats(g,globalYear).heizlast||0), 0);
+      document.getElementById('tot-hl-sub').textContent =
+        `Σ Gebäude: ${Math.round(normheizlastKw).toLocaleString('de-DE')} kW`;
+      document.getElementById('tc-hl').title = `Maßgebende Spitzenlast aus dem berechneten Lastgang inklusive Netzverlusten: ${Math.round(window.systemState.pMaxKw)} kW.\nSumme der Gebäude-Normheizlasten (DIN 12831): ${Math.round(normheizlastKw)} kW.`;
 
       // Status aktualisieren
       const dot = document.getElementById('gl-status-dot');
@@ -102340,18 +102346,33 @@ ${massTbl}
   // ── Adresssuche (Nominatim) ───────────────────────────────────────────
   let addrDebounce = null;
   let addrSelected = -1;
+  let addrRequest = null;
 
   function addrSearch(val) {
     clearTimeout(addrDebounce);
     const res = document.getElementById('addr-results');
-    if (!val || val.length < 3) { res.classList.remove('open'); return; }
+    if (!val || val.trim().length < 3) {
+      addrRequest?.abort();
+      res.classList.remove('open');
+      res.innerHTML = '';
+      return;
+    }
+    res.innerHTML = '<div class="addr-result-item addr-result-status">Suche …</div>';
+    res.classList.add('open');
     addrDebounce = setTimeout(async () => {
+      addrRequest?.abort();
+      addrRequest = new AbortController();
       try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=6&q=${encodeURIComponent(val)}`;
-        const data = await fetch(url, {headers:{'Accept-Language':'de'}}).then(r => r.json());
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(val.trim())}`;
+        const response = await fetch(url, {
+          headers: {'Accept-Language': 'de'},
+          signal: addrRequest.signal
+        });
+        if (!response.ok) throw new Error(`Adressdienst: HTTP ${response.status}`);
+        const data = await response.json();
         res.innerHTML = '';
         if (!data.length) {
-          res.innerHTML = '<div class="addr-result-item" style="color:var(--muted)">Keine Ergebnisse</div>';
+          res.innerHTML = '<div class="addr-result-item addr-result-status">Keine Ergebnisse</div>';
         } else {
           data.forEach((item, i) => {
             const div = document.createElement('div');
@@ -102365,7 +102386,12 @@ ${massTbl}
         }
         addrSelected = -1;
         res.classList.add('open');
-      } catch(e) { console.error(e); }
+      } catch(e) {
+        if (e.name === 'AbortError') return;
+        console.error('Adresssuche fehlgeschlagen:', e);
+        res.innerHTML = '<div class="addr-result-item addr-result-status">Adresssuche momentan nicht erreichbar</div>';
+        res.classList.add('open');
+      }
     }, 350);
   }
 
@@ -102392,8 +102418,10 @@ ${massTbl}
       addrSelected = Math.max(addrSelected - 1, 0);
       items.forEach((el, i) => el.style.background = i === addrSelected ? 'var(--surface2)' : '');
       e.preventDefault();
-    } else if (e.key === 'Enter' && addrSelected >= 0) {
-      items[addrSelected].click();
+    } else if (e.key === 'Enter') {
+      const index = addrSelected >= 0 ? addrSelected : 0;
+      if (!items[index].classList.contains('addr-result-status')) items[index].click();
+      e.preventDefault();
     } else if (e.key === 'Escape') {
       res.classList.remove('open');
     }
@@ -103533,9 +103561,20 @@ ${massTbl}
     });
     document.getElementById('tot-waerme').textContent=tw?tw.toLocaleString('de-DE',{maximumFractionDigits:1}):'—';
     document.getElementById('tc-waerme').title='Summe Wärmebedarf aller Gebäude (ohne Netzverluste)';
-    document.getElementById('tot-hl').textContent=th?Math.round(th).toLocaleString('de-DE'):'—';
-    document.getElementById('tot-hl-lbl').textContent='Heizlast (kW)';
-    document.getElementById('tc-hl').title='Summe der Gebäude-Normheizlasten (DIN 12831).\nWird für Rohrdimensionierung im Netz verwendet.';
+    const ss = window.systemState;
+    const hatSpitzenlast = Number.isFinite(ss?.pMaxKw) && ss.pMaxKw > 0;
+    document.getElementById('tot-hl').textContent = hatSpitzenlast
+      ? Math.round(ss.pMaxKw).toLocaleString('de-DE')
+      : th ? Math.round(th).toLocaleString('de-DE') : '—';
+    document.getElementById('tot-hl-lbl').textContent = hatSpitzenlast
+      ? 'Netz-Spitzenlast (kW)'
+      : 'Normheizlast (kW)';
+    document.getElementById('tot-hl-sub').textContent = hatSpitzenlast && th
+      ? `Σ Gebäude: ${Math.round(th).toLocaleString('de-DE')} kW`
+      : '';
+    document.getElementById('tc-hl').title = hatSpitzenlast
+      ? `Maßgebende Spitzenlast aus dem berechneten Lastgang inklusive Netzverlusten: ${Math.round(ss.pMaxKw)} kW.\nSumme der Gebäude-Normheizlasten (DIN 12831): ${Math.round(th)} kW.`
+      : 'Summe der Gebäude-Normheizlasten (DIN 12831).\nNach der Lastgangberechnung wird hier die maßgebende Netz-Spitzenlast angezeigt.';
     // Strom-Totals
     let ts=0, tsl=0;
     if (window.elQuartierH) {

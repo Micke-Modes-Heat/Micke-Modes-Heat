@@ -238,6 +238,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 
 .totals{padding:6px 14px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:4px;}
 .total-card{background:var(--bg);border-radius:5px;padding:4px 8px;}
+.total-sub{font-size:8px;color:var(--muted);line-height:1.2;margin-top:1px;white-space:nowrap;}
 .total-val{font-size:13px;font-weight:normal;font-family:'DM Mono',monospace;color:var(--accent);}
 .total-val.tot-strom{color:#ffd54f;}
 .total-sources{grid-column:1/-1;font-size:8px;color:var(--muted);line-height:1.4;padding:2px 4px 0;display:flex;gap:10px;flex-wrap:wrap;}
@@ -605,6 +606,8 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .addr-result-item{padding:6px 10px;font-size:11px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);}
 .addr-result-item:last-child{border-bottom:none;}
 .addr-result-item:hover{background:var(--surface2);color:var(--accent);}
+.addr-result-status{color:var(--muted);cursor:default;}
+.addr-result-status:hover{background:transparent;color:var(--muted);}
 /* Gebäude-Filter in Sidebar */
 .geb-filter{padding:5px 6px 0;}
 .geb-filter-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:11px;padding:4px 8px;outline:none;transition:.15s;}
