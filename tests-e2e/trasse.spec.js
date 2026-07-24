@@ -226,7 +226,13 @@ test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Si
       ].map(element => [...element.parentElement.children].indexOf(element)),
       furtherSettingsCollapsed: !document.querySelector('#netz-workspace > .netz-workspace-settings').open,
       overviewHidden: document.getElementById('lp-netz-waerme').hidden,
+      typeOptions: [...document.querySelectorAll('.netz-workspace-type button')].map(button=>button.textContent.trim()),
+      bestandActive: document.getElementById('btn-netz-type-bestand').classList.contains('active'),
     };
+    setWaermeNetzType(false);
+    create.neubauSelectable = !window.networkLocked &&
+      document.getElementById('btn-netz-type-neubau').classList.contains('active');
+    setWaermeNetzType(true);
     closeNetzWorkspace();
     openNetzWorkspace('edit');
     const edit = {
@@ -255,10 +261,12 @@ test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Si
   expect(result.create).toEqual({
     panelClosed:true,sidebarActive:true,workspaceVisible:true,menuInSidebar:true,
     settingsInSidebar:true,centralAvailable:true,creationOrder:[1,2,4],furtherSettingsCollapsed:true,overviewHidden:true,
+    typeOptions:['🏛 Bestand 2026','Neubaunetz'],bestandActive:true,neubauSelectable:true,
   });
   expect(result.edit.visible).toBe(true);
-  expect(result.edit.actions[0]).toBe('Gebäudeanschluss umhängen');
+  expect(result.edit.actions[0]).toBe('Gebäude anschließen / umhängen');
   expect(result.edit.actions).toContain('Leitungsverläufe bearbeiten');
+  expect(result.edit.actions).toContain('Netz verwerfen');
   expect(result.edit.duplicateEditIds).toBe(1);
   expect(result.edit.duplicateRewireIds).toBe(1);
   expect(result.edit.hasPruningAction).toBe(false);
@@ -645,4 +653,47 @@ test('dist: Ersetzen eines vorhandenen Netzes nutzt den gestalteten Programmdial
   await expect(modal).toBeHidden();
   expect(await page.evaluate(()=>window._netzReplaceResult)).toBe(false);
   expect(await page.evaluate(()=>window.netzEdges.length)).toBe(130);
+});
+
+test('dist: Lebenszyklus-Optimierung kann mehrere wirtschaftliche Zentralabgänge bilden',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.autoGenerateNetz==='function');
+  const result=await page.evaluate(()=>{
+    clearNetz();
+    setGebaeude([]);
+    const makeBuilding=(id,lat,lng,name,load=1200)=>{
+      const building=addGebaeude({
+        id,name,baujahr:2000,skipAutoCreate:true,
+        coords:[
+          L.latLng(lat-.00004,lng-.00004),L.latLng(lat-.00004,lng+.00004),
+          L.latLng(lat+.00004,lng+.00004),L.latLng(lat+.00004,lng-.00004),
+        ],
+      });
+      building.heizlast=String(load);
+      building.waerme=String(load*2);
+    };
+    makeBuilding(901,52.08,8,'Zentrale',1);
+    [
+      [52.082,8],[52.0814,8.0021],[52.0793,8.0028],
+      [52.078,8],[52.0793,7.9972],[52.0814,7.9979],
+    ].forEach((point,index)=>makeBuilding(902+index,...point,`Haus ${index+1}`));
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='901';
+    document.getElementById('wirt-p-strom').value='45';
+    setNetworkLocked(false);
+    autoGenerateNetz({strategy:'quick',trasseTreue:0});
+    const connectedIds=new Set(window.netzEdges.flatMap(edge=>[edge.u,edge.v]));
+    return {
+      meta:window._netzTopologyOptimization,
+      edgeCount:window.netzEdges.length,
+      nodeCount:connectedIds.size,
+      centralDegree:window.netzEdges.filter(edge=>edge.u===901||edge.v===901).length,
+    };
+  });
+  expect(result.edgeCount).toBe(result.nodeCount-1);
+  expect(result.centralDegree).toBeGreaterThan(1);
+  expect(result.meta.swaps).toBeGreaterThan(0);
+  expect(result.meta.centralBranchesAfter).toBeGreaterThan(result.meta.centralBranchesBefore);
+  expect(result.meta.scoreAfterEur).toBeLessThan(result.meta.scoreBeforeEur);
 });

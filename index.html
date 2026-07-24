@@ -261,7 +261,15 @@
             <button type="button" data-click="closeNetzWorkspace()" title="Arbeitsbereich schließen">×</button>
           </div>
           <div id="netz-workspace-central" class="netz-workspace-central"></div>
-          <div id="netz-workspace-create" hidden></div>
+          <div id="netz-workspace-create" hidden>
+            <div class="netz-workspace-type">
+              <span>Netztyp für die Berechnung</span>
+              <div>
+                <button id="btn-netz-type-bestand" type="button" data-click="setWaermeNetzType(true)">🏛 Bestand 2026</button>
+                <button id="btn-netz-type-neubau" type="button" data-click="setWaermeNetzType(false)">Neubaunetz</button>
+              </div>
+            </div>
+          </div>
           <div id="netz-workspace-edit" class="netz-workspace-edit" hidden>
             <button class="netz-workspace-action primary" id="btn-netz-rewire-mode" type="button" data-click="toggleNetzRewireMode()">
               <strong>Gebäude anschließen / umhängen</strong>
@@ -270,6 +278,10 @@
             <button class="netz-workspace-action" id="btn-netz-edit-mode" type="button" data-click="toggleNetzEditMode()">
               <strong>Leitungsverläufe bearbeiten</strong>
               <span>Knick- und Zwischenpunkte einer Leitung verschieben</span>
+            </button>
+            <button class="netz-workspace-action danger" type="button" data-click="confirmClearNetz()">
+              <strong>Netz verwerfen</strong>
+              <span>Alle Wärmeleitungen entfernen; Gebäude und Einstellungen bleiben erhalten</span>
             </button>
             <button class="btn-secondary netz-workspace-done" type="button" data-click="closeNetzWorkspace()">Bearbeitung beenden</button>
           </div>

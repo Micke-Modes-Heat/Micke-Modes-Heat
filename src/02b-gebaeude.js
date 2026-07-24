@@ -105,6 +105,13 @@ export function toggleNetworkLock() {
   recalcNetz();
   if (typeof calcWirtschaftPanel === 'function') calcWirtschaftPanel();
 }
+export function setWaermeNetzType(bestand) {
+  setNetworkLocked(!!bestand);
+  _syncNetworkLockUI();
+  recalcNetz();
+  if (typeof calcWirtschaftPanel === 'function') calcWirtschaftPanel();
+  return window.networkLocked;
+}
 export function _syncNetworkLockUI() {
   // Left-Panel Button
   const btn = document.getElementById('lp-btn-lock');
@@ -138,6 +145,10 @@ export function _syncNetworkLockUI() {
   }
   const opts = document.getElementById('netz-bestand-options');
   if (opts) opts.style.display = window.networkLocked ? '' : 'none';
+  const bestandBtn = document.getElementById('btn-netz-type-bestand');
+  const neubauBtn = document.getElementById('btn-netz-type-neubau');
+  bestandBtn?.classList.toggle('active',window.networkLocked);
+  neubauBtn?.classList.toggle('active',!window.networkLocked);
 }
 
 export function _invalidateStats() { /* no-op: cache removed */ }

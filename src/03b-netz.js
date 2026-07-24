@@ -557,6 +557,7 @@ export function openNetzWorkspace(mode = 'edit') {
     createArea.appendChild(createMenu);
     createMenu.hidden = false;
   }
+  window._syncNetworkLockUI?.();
   workspace.scrollIntoView({behavior:'smooth',block:'start'});
   return true;
 }
@@ -2040,6 +2041,193 @@ function _maxBuildingLoad(g, years = _netzPlanningYears()) {
     Math.max(maximum,getComputedStats(g,year).heizlast || 0),0);
 }
 
+// Vergleicht ausschließlich radiale Varianten desselben Kandidatengraphen.
+// Damit bleibt die gewählte räumliche Planungsart maßgeblich; optimiert wird
+// nur, welcher Ast an welcher Stelle an die Zentrale angebunden ist.
+function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,strategy) {
+  const lifetimeYears = 20;
+  const cp = 4.184;
+  const rhoWater = 975;
+  const nuWater = 0.000000415;
+  const roughness = 0.00005;
+  const vlTemp = readNum('netz-vl',90,20,150);
+  const rlTemp = readNum('netz-rl',60,0,140);
+  const dt = Math.max(1,vlTemp - rlTemp);
+  const vFlow = readNum('netz-v',1,0.3,2);
+  const dpMain = readNum('netz-dp-main',150,50,500);
+  const dpService = readNum('netz-dp-service',250,50,500);
+  const uBase = readNum('netz-u-wert',0.25,0.05,2);
+  const soilMean = readNum('netz-t-mittel',10,-20,30);
+  const meanPipeTemp = (vlTemp + rlTemp) / 2;
+  const heatPrice = 80; // konservativer Fallback, solange keine belastbaren WGK vorliegen
+  const electricityPrice = readNum('wirt-p-strom',35,0,200) / 100;
+  const annualHours = Math.max(1,getNetzVBH() || 1800);
+  const loadById = new Map(buildingNodes.map(node => [node.id,node.load || 0]));
+  const requiredIds = new Set(buildingNodes.map(node => node.id));
+  const edgeKeyOf = edge => String(edge.u) < String(edge.v)
+    ? `${edge.u}:${edge.v}` : `${edge.v}:${edge.u}`;
+  const centralDegree = edges => edges.reduce((sum,edge) =>
+    sum + (edge.u === zId || edge.v === zId ? 1 : 0),0);
+  const hydraulicsFor = (load,dn) => {
+    const diameter = dn / 1000;
+    const area = Math.PI * Math.pow(diameter / 2,2);
+    const massFlow = load / (cp * dt);
+    const velocity = (massFlow / rhoWater) / area;
+    const reynolds = velocity * diameter / nuWater;
+    const lambda = reynolds < 2300
+      ? 64 / Math.max(reynolds,100)
+      : 0.25 / Math.pow(Math.log10(roughness / (3.7 * diameter) + 5.74 / Math.pow(reynolds,0.9)),2);
+    return {velocity,dpPerM:lambda * rhoWater * Math.pow(velocity,2) / (2 * diameter)};
+  };
+  const gzf = count => {
+    const method = document.getElementById('netz-gzf-methode')?.value || 'richtwert';
+    if (method === 'keine') return 1;
+    if (method === 'manuell') return Math.max(0.1,Math.min(1,readNum('netz-gzf-manuell',0.6,0.1,1)));
+    return Math.max(0.45,1 / Math.pow(Math.max(1,count),0.15));
+  };
+  const scoreTree = edges => {
+    const adjacency = new Map();
+    edges.forEach(edge => {
+      if (!adjacency.has(edge.u)) adjacency.set(edge.u,[]);
+      if (!adjacency.has(edge.v)) adjacency.set(edge.v,[]);
+      adjacency.get(edge.u).push({to:edge.v,edge});
+      adjacency.get(edge.v).push({to:edge.u,edge});
+    });
+    const parent = new Map([[zId,null]]);
+    const parentEdge = new Map();
+    const order = [zId];
+    for (let i = 0; i < order.length; i++) {
+      for (const item of adjacency.get(order[i]) || []) {
+        if (item.to === parent.get(order[i])) continue;
+        if (parent.has(item.to)) return {score:Infinity};
+        parent.set(item.to,order[i]);
+        parentEdge.set(item.to,item.edge);
+        order.push(item.to);
+      }
+    }
+    if ([...requiredIds].some(id => !parent.has(id))) return {score:Infinity};
+
+    const loads = new Map(order.map(id => [id,loadById.get(id) || 0]));
+    const consumers = new Map(order.map(id => [id,(loadById.get(id) || 0) > 0 ? 1 : 0]));
+    const pathDp = new Map([[zId,0]]);
+    const sized = new Map();
+    for (let i = order.length - 1; i > 0; i--) {
+      const id = order[i];
+      const upstream = parent.get(id);
+      const rawLoad = loads.get(id) || 0;
+      const count = consumers.get(id) || 0;
+      const designLoad = rawLoad * gzf(count);
+      const edge = parentEdge.get(id);
+      const houseConnection = count === 1 &&
+        (edge.uNode?.type === 'geb' || edge.vNode?.type === 'geb');
+      const dpLimit = houseConnection ? dpService : dpMain;
+      const dn = standardDNs.find(candidate => {
+        const hydraulic = hydraulicsFor(designLoad,candidate);
+        return hydraulic.velocity <= getVFlowForDN(candidate,vFlow) &&
+          hydraulic.dpPerM <= dpLimit;
+      }) || standardDNs[standardDNs.length - 1];
+      sized.set(id,{edge,dn,hydraulic:hydraulicsFor(designLoad,dn)});
+      loads.set(upstream,(loads.get(upstream) || 0) + rawLoad);
+      consumers.set(upstream,(consumers.get(upstream) || 0) + count);
+    }
+
+    let investment = 0;
+    let lossMWhPerYear = 0;
+    order.slice(1).forEach(id => {
+      const sizedEdge = sized.get(id);
+      const length = sizedEdge.edge.dist;
+      investment += length * getKostenProM(sizedEdge.dn);
+      lossMWhPerYear += getUWertForDN(sizedEdge.dn,uBase) * length *
+        Math.max(0,meanPipeTemp - soilMean) / 1000 * 8.76;
+      const upstream = parent.get(id);
+      pathDp.set(id,(pathDp.get(upstream) || 0) +
+        sizedEdge.hydraulic.dpPerM * length * 2);
+    });
+    const maxPathDp = Math.max(0,...[...requiredIds].map(id => pathDp.get(id) || 0)) + 50000;
+    const rootLoad = loads.get(zId) || 0;
+    const rootFlowM3s = (rootLoad / (cp * dt) / rhoWater);
+    const hydraulicKW = rootFlowM3s * maxPathDp / 1000;
+    const efficiency = hydraulicKW < 0.1 ? 0.25
+      : hydraulicKW < 0.5 ? 0.4
+      : hydraulicKW < 2 ? 0.55
+      : hydraulicKW < 10 ? 0.65
+      : hydraulicKW < 50 ? 0.73
+      : hydraulicKW < 200 ? 0.78 : 0.82;
+    const pumpKW = hydraulicKW / efficiency;
+    const operating = lifetimeYears *
+      (lossMWhPerYear * heatPrice + pumpKW * annualHours * electricityPrice);
+    return {score:investment + operating,investment,operating,pumpKW,maxPathDp};
+  };
+
+  let current = [...treeEdges];
+  const before = scoreTree(current);
+  const centralCandidates = possibleEdges
+    .filter(edge => edge.u === zId || edge.v === zId)
+    .sort((a,b) => a.dist - b.dist)
+    .slice(0,Math.min(16,possibleEdges.length));
+  let swaps = 0;
+  for (let pass = 0; pass < 4; pass++) {
+    const currentKeys = new Set(current.map(edgeKeyOf));
+    let best = null;
+    for (const candidate of centralCandidates) {
+      if (currentKeys.has(edgeKeyOf(candidate))) continue;
+      const adjacency = new Map();
+      current.forEach(edge => {
+        if (!adjacency.has(edge.u)) adjacency.set(edge.u,[]);
+        if (!adjacency.has(edge.v)) adjacency.set(edge.v,[]);
+        adjacency.get(edge.u).push({to:edge.v,edge});
+        adjacency.get(edge.v).push({to:edge.u,edge});
+      });
+      const queue = [candidate.u];
+      const previous = new Map([[candidate.u,null]]);
+      for (let i = 0; i < queue.length && !previous.has(candidate.v); i++) {
+        for (const item of adjacency.get(queue[i]) || []) {
+          if (previous.has(item.to)) continue;
+          previous.set(item.to,{node:queue[i],edge:item.edge});
+          queue.push(item.to);
+        }
+      }
+      if (!previous.has(candidate.v)) continue;
+      const cycleEdges = [];
+      for (let node = candidate.v; node !== candidate.u;) {
+        const step = previous.get(node);
+        cycleEdges.push(step.edge);
+        node = step.node;
+      }
+      for (const removed of cycleEdges) {
+        const isBuildingToTrasse =
+          (removed.uNode?.type === 'geb' && removed.vNode?.type === 'trasse') ||
+          (removed.vNode?.type === 'geb' && removed.uNode?.type === 'trasse');
+        // Die Anzahl direkter Trassenanschlüsse ist die sichtbare Wirkung des
+        // Treue-Reglers. Der Kostenvergleich darf diese Nutzerentscheidung
+        // deshalb nicht nachträglich wieder zurückdrehen.
+        if (removed.forcedTrasse || isBuildingToTrasse ||
+            removed.u === zId || removed.v === zId) continue;
+        const trial = current.filter(edge => edge !== removed);
+        trial.push(candidate);
+        const result = scoreTree(trial);
+        if (!Number.isFinite(result.score)) continue;
+        if (!best || result.score < best.result.score) best = {trial,result};
+      }
+    }
+    const currentResult = scoreTree(current);
+    if (!best || best.result.score >= currentResult.score * 0.995) break;
+    current = best.trial;
+    swaps++;
+  }
+  const after = scoreTree(current);
+  window._netzTopologyOptimization = {
+    strategy,
+    lifetimeYears,
+    scoreBeforeEur:before.score,
+    scoreAfterEur:after.score,
+    centralBranchesBefore:centralDegree(treeEdges),
+    centralBranchesAfter:centralDegree(current),
+    swaps,
+  };
+  return current;
+}
+
 export function autoGenerateNetz(options = {}){
   const strategy = options.strategy || 'trasse';
   const loyalty = Math.max(0, Math.min(100, Number(options.trasseTreue ?? document.getElementById('netz-trassentreue')?.value ?? 50)));
@@ -2260,6 +2448,11 @@ export function autoGenerateNetz(options = {}){
       }
     }
   }
+
+  const optimizedEdges = _optimizeCentralBranches(
+    mstEdges,possibleEdges,allPts.filter(node => node.type === 'geb'),zId,strategy
+  );
+  mstEdges.splice(0,mstEdges.length,...optimizedEdges);
 
   mstEdges.forEach(e => {
     const layer = L.polyline([e.uNode.pt, e.vNode.pt], {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
