@@ -9697,8 +9697,8 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .netz-mid-handle:hover,.netz-waypoint-handle:hover{transform:scale(1.35)}
 .netz-mid-handle:active,.netz-waypoint-handle:active{cursor:grabbing!important}
 .netz-rewire-handle{display:flex!important;align-items:center;justify-content:center;background:#102b3a!important;color:#81d4fa!important;border:2px solid #29b6f6!important;border-radius:50%!important;font:bold 11px/1 sans-serif;box-shadow:0 2px 7px rgba(0,0,0,.65);cursor:grab!important}.netz-rewire-handle:hover{transform:scale(1.2);background:#16455f!important}.netz-rewire-handle:active{cursor:grabbing!important}
-.netz-flow-arrow{display:flex!important;align-items:center;justify-content:center;color:#fff3e0;font:bold 13px/1 sans-serif;text-shadow:0 1px 3px rgba(0,0,0,.9);pointer-events:none}
-.netz-flow-arrow span{display:block;transform:rotate(var(--netz-arrow-angle,0deg))}
+.netz-flow-arrow{display:flex!important;align-items:center;justify-content:center;pointer-events:none;opacity:.72}
+.netz-flow-arrow svg{display:block;overflow:visible;transform:rotate(var(--netz-arrow-angle,0deg));filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))}
 .trasse-snap-handle{background:rgba(255,152,0,0.6);border:2px solid #ff9800;border-radius:50%;cursor:crosshair;width:14px!important;height:14px!important;transition:.15s;animation:trasse-snap-pulse 1.5s infinite;}.trasse-snap-handle:hover{background:#ff9800;transform:scale(1.3);}
 @keyframes trasse-snap-pulse{0%,100%{box-shadow:0 0 4px rgba(255,152,0,0.4);}50%{box-shadow:0 0 12px rgba(255,152,0,0.8);}}
 @keyframes strom-flow{0%{stroke-dashoffset:0;}100%{stroke-dashoffset:var(--strom-flow-dir, 18);}}
@@ -14705,7 +14705,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-24';
   if (d.indexOf('__') === 0) d = '';
-  var c = '5d9007b';
+  var c = '35060aa';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -109696,7 +109696,6 @@ ${massTbl}
   function finishTrasseAndGenerateNetz() {
     if (window.isDrawingTrasse) toggleDrawTrasse();
     if (window._streetHelperDrawing) {
-      window._streetHelperDrawing = false;
       createStreetOrientedWaermeNetz();
       return;
     }
@@ -109796,16 +109795,17 @@ ${massTbl}
     const handleSize = window.trasseDetached ? 14 : 8;
     const handleCls = window.trasseDetached ? 'trasse-snap-handle' : 'trasse-edit-handle';
     const icon = L.divIcon({ className: handleCls, html: '', iconSize: [handleSize, handleSize], iconAnchor: [handleSize/2, handleSize/2] });
-    const helperVisiblePoints = new Set();
-    if (window._streetHelperDrawing) {
-      window.trasseSegments.forEach(seg => {
-        if (seg.source === 'osm-street') return;
-        for (let idx = seg.start; idx <= seg.end; idx++) helperVisiblePoints.add(idx);
-      });
-      for (let idx = window.trasseCurrentSegStart; idx < window.trassePoints.length; idx++) helperVisiblePoints.add(idx);
-    }
+    // Automatisch übernommene OSM-Straßen können aus Tausenden Stützpunkten
+    // bestehen. Sie sind Routinggrundlage, aber keine einzeln bearbeitbare
+    // Haupttrasse und erhalten deshalb grundsätzlich keine Karten-Griffe.
+    const editablePointIndices = new Set();
+    window.trasseSegments.forEach(seg => {
+      if (seg.source === 'osm-street') return;
+      for (let idx = seg.start; idx <= seg.end; idx++) editablePointIndices.add(idx);
+    });
+    for (let idx = window.trasseCurrentSegStart; idx < window.trassePoints.length; idx++) editablePointIndices.add(idx);
     window.trassePoints.forEach((pt, idx) => {
-      if (window._streetHelperDrawing && !helperVisiblePoints.has(idx)) return;
+      if (!editablePointIndices.has(idx)) return;
       const m = L.marker(pt, { draggable: !window.trasseDetached, icon: icon, zIndexOffset: 2000 }).addTo(map);
       if (!window.trasseDetached) {
         m.on('drag', e => {
@@ -109824,7 +109824,7 @@ ${massTbl}
     // lassen sich so nachträglich verfeinern, ohne einen Strang neu zu zeichnen.
     if (!window.trasseDetached) {
       window.trasseSegments.forEach((seg, segIdx) => {
-        if (window._streetHelperDrawing && seg.source === 'osm-street') return;
+        if (seg.source === 'osm-street') return;
         for (let idx = seg.start; idx < seg.end; idx++) {
           const a = window.trassePoints[idx], b = window.trassePoints[idx + 1];
           if (!a || !b) continue;
@@ -113194,6 +113194,7 @@ out body;>;out skel qt;`;
   async function createStreetOrientedWaermeNetz() {
     const button = document.getElementById('btn-netz-create-street');
     const original = button?.textContent;
+    const helperWorkflow = !!window._streetHelperDrawing;
     if (button) { button.disabled = true; button.textContent = 'Straßenzüge werden geladen …'; }
     try {
       if (typeof window.loadOsmStrassen !== 'function' || typeof window.adoptAllOsmStrassen !== 'function') {
@@ -113215,6 +113216,13 @@ out body;>;out skel qt;`;
       if (created) closeNetzWorkspace();
       return created;
     } finally {
+      if (helperWorkflow) {
+        window._streetHelperDrawing = false;
+        window.trasseVisible = false;
+        const trasseCheckbox = document.getElementById('el-trasse-visible');
+        if (trasseCheckbox) trasseCheckbox.checked = false;
+        redrawTrasse();
+      }
       if (button) { button.disabled = false; button.textContent = original; }
     }
   }
@@ -113583,11 +113591,14 @@ out body;>;out skel qt;`;
       if (!(edge.load > 0) || edge.temporallyHidden || edge.pruned) return;
       const arrow = _edgeFlowArrow(edge);
       if (!arrow) return;
+      const zoom = map.getZoom();
+      const size = zoom <= 15 ? 7 : zoom <= 17 ? 8 : 10;
+      const color = edge.layer?.options?.color || '#e53935';
       const icon = L.divIcon({
         className: 'netz-flow-arrow',
-        html: `<span style="--netz-arrow-angle:${arrow.angle}deg">▶</span>`,
-        iconSize: [18,18],
-        iconAnchor: [9,9]
+        html: `<svg style="--netz-arrow-angle:${arrow.angle}deg" width="${size}" height="${size}" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1.5 L7 5 L2 8.5" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+        iconSize: [size,size],
+        iconAnchor: [size / 2,size / 2]
       });
       L.marker(arrow.latLng, {icon, interactive:false, keyboard:false, zIndexOffset:800})
         .addTo(netzFlowArrowLayer);
@@ -113627,7 +113638,7 @@ out body;>;out skel qt;`;
       else button.textContent = netzEditMode ? 'Bearbeitung beenden' : 'Leitungsverläufe bearbeiten';
     }
     recalcNetz();
-    if (netzEditMode) showHint('Bearbeitungsmodus: weißen Punkt ziehen; Doppelklick entfernt einen Knickpunkt.');
+    if (netzEditMode) showHint('Bearbeitungsmodus: Leitungspunkt auf den gewünschten Straßenverlauf ziehen – der Abschnitt wird beim Loslassen neu geroutet. Doppelklick entfernt einen Knickpunkt.');
     else hideHint();
     return netzEditMode;
   }
@@ -115171,6 +115182,148 @@ out body;>;out skel qt;`;
     return bestIndex;
   }
 
+  function _streetRoutingGraph() {
+    const adjacency = new Map();
+    const positions = new Map();
+    const legs = [];
+    const keyFor = point => `${Number(point.lat).toFixed(7)},${Number(point.lng).toFixed(7)}`;
+    const connect = (a,b,distance) => {
+      if (!adjacency.has(a)) adjacency.set(a,[]);
+      if (!adjacency.has(b)) adjacency.set(b,[]);
+      adjacency.get(a).push({to:b,distance});
+      adjacency.get(b).push({to:a,distance});
+    };
+    trasseSegments
+      .filter(segment => !segment.domains || segment.domains.includes('waerme'))
+      .forEach((segment,segmentIndex) => {
+        for (let index = segment.start; index < segment.end; index++) {
+          const a = trassePoints[index], b = trassePoints[index + 1];
+          if (!a || !b) continue;
+          const aKey = keyFor(a), bKey = keyFor(b);
+          positions.set(aKey,a); positions.set(bKey,b);
+          const distance = a.distanceTo(b);
+          if (distance < 0.05) continue;
+          connect(aKey,bKey,distance);
+          legs.push({id:`${segmentIndex}:${index}`,aKey,bKey,a,b,distance});
+        }
+      });
+    return {adjacency,positions,legs,connect};
+  }
+
+  function _snapToStreetLeg(point,legs) {
+    const zoom = 18;
+    const source = map.project(point,zoom);
+    let best = null;
+    legs.forEach(leg => {
+      const a = map.project(leg.a,zoom), b = map.project(leg.b,zoom);
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const denominator = dx * dx + dy * dy;
+      const t = denominator
+        ? Math.max(0,Math.min(1,((source.x-a.x)*dx + (source.y-a.y)*dy) / denominator))
+        : 0;
+      const projected = map.unproject(L.point(a.x + t*dx,a.y + t*dy),zoom);
+      const distance = point.distanceTo(projected);
+      if (!best || distance < best.distance) best = {leg,t,point:projected,distance};
+    });
+    return best;
+  }
+
+  function _shortestStreetPath(adjacency,positions,start,end) {
+    const distances = new Map([[start,0]]);
+    const previous = new Map();
+    const heap = [{key:start,distance:0}];
+    const push = item => {
+      heap.push(item);
+      let index = heap.length - 1;
+      while (index > 0) {
+        const parent = Math.floor((index - 1) / 2);
+        if (heap[parent].distance <= item.distance) break;
+        heap[index] = heap[parent];
+        index = parent;
+      }
+      heap[index] = item;
+    };
+    const pop = () => {
+      const first = heap[0];
+      const last = heap.pop();
+      if (heap.length && last) {
+        let index = 0;
+        while (true) {
+          const left = index * 2 + 1, right = left + 1;
+          if (left >= heap.length) break;
+          const child = right < heap.length && heap[right].distance < heap[left].distance ? right : left;
+          if (heap[child].distance >= last.distance) break;
+          heap[index] = heap[child];
+          index = child;
+        }
+        heap[index] = last;
+      }
+      return first;
+    };
+    while (heap.length) {
+      const current = pop();
+      if (!current || current.distance !== distances.get(current.key)) continue;
+      if (current.key === end) break;
+      (adjacency.get(current.key) || []).forEach(edge => {
+        const distance = current.distance + edge.distance;
+        if (distance >= (distances.get(edge.to) ?? Infinity)) return;
+        distances.set(edge.to,distance);
+        previous.set(edge.to,current.key);
+        push({key:edge.to,distance});
+      });
+    }
+    if (!distances.has(end)) return null;
+    const keys = [];
+    for (let key = end; key != null; key = previous.get(key)) {
+      keys.push(key);
+      if (key === start) break;
+    }
+    if (keys[keys.length - 1] !== start) return null;
+    return keys.reverse().map(key => positions.get(key)).filter(Boolean);
+  }
+
+  function rerouteEdgeViaStreet(edgeObj,viaPoint) {
+    const path = getEdgePathPoints(edgeObj);
+    if (path.length < 2) return false;
+    const graph = _streetRoutingGraph();
+    if (!graph.legs.length) return false;
+    const snaps = [
+      _snapToStreetLeg(path[0],graph.legs),
+      _snapToStreetLeg(viaPoint,graph.legs),
+      _snapToStreetLeg(path[path.length - 1],graph.legs),
+    ];
+    // Ein weit entfernter Ziehpunkt ist bewusst freie Geometrie und soll nicht
+    // überraschend auf eine beliebige Straße springen.
+    if (snaps.some(snap => !snap) || snaps[1].distance > 35) return false;
+    snaps.forEach((snap,index) => {
+      const key = `@route-${index}`;
+      snap.key = key;
+      graph.positions.set(key,snap.point);
+      graph.connect(key,snap.leg.aKey,snap.t * snap.leg.distance);
+      graph.connect(key,snap.leg.bKey,(1 - snap.t) * snap.leg.distance);
+    });
+    // Liegen mehrere virtuelle Punkte auf demselben Straßenstück, muss auch der
+    // direkte Teilweg zwischen ihnen verfügbar sein.
+    for (let a = 0; a < snaps.length; a++) {
+      for (let b = a + 1; b < snaps.length; b++) {
+        if (snaps[a].leg.id !== snaps[b].leg.id) continue;
+        graph.connect(snaps[a].key,snaps[b].key,
+          Math.abs(snaps[a].t - snaps[b].t) * snaps[a].leg.distance);
+      }
+    }
+    const first = _shortestStreetPath(graph.adjacency,graph.positions,snaps[0].key,snaps[1].key);
+    const second = _shortestStreetPath(graph.adjacency,graph.positions,snaps[1].key,snaps[2].key);
+    if (!first || !second) return false;
+    const routed = [...first,...second.slice(1)];
+    const fullPath = [path[0],...routed,path[path.length - 1]].filter((point,index,array) =>
+      index === 0 || point.distanceTo(array[index - 1]) > 0.15);
+    edgeObj.waypoints = fullPath.slice(1,-1);
+    _persistEdgeWaypoints(edgeObj);
+    _setEdgePath(edgeObj);
+    _renderEdgeWaypointMarkers(edgeObj);
+    return true;
+  }
+
   function removeEdgeWaypointMarkers(edgeObj) {
     (edgeObj?.waypointMarkers || []).forEach(marker => map.removeLayer(marker));
     if (edgeObj) edgeObj.waypointMarkers = [];
@@ -115186,7 +115339,10 @@ out body;>;out skel qt;`;
         edgeObj.waypoints[index] = this.getLatLng();
         _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
       });
-      marker.on('dragend', () => recalcNetz());
+      marker.on('dragend', function() {
+        rerouteEdgeViaStreet(edgeObj,this.getLatLng());
+        recalcNetz();
+      });
       marker.on('dblclick', event => {
         L.DomEvent.stopPropagation(event);
         edgeObj.waypoints.splice(index, 1);
@@ -115242,10 +115398,12 @@ out body;>;out skel qt;`;
     _renderEdgeWaypointMarkers(edgeObj);
     edgeObj.midMarker.on('dragend', function() {
       const point = this.getLatLng();
-      const insertAt = _nearestSegmentIndex(edgeObj, point);
-      edgeObj.waypoints.splice(insertAt, 0, point);
-      _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
-      _renderEdgeWaypointMarkers(edgeObj);
+      if (!rerouteEdgeViaStreet(edgeObj,point)) {
+        const insertAt = _nearestSegmentIndex(edgeObj, point);
+        edgeObj.waypoints.splice(insertAt, 0, point);
+        _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
+        _renderEdgeWaypointMarkers(edgeObj);
+      }
       this.setLatLng(getEdgeMidDisplayPt(edgeObj));
       recalcNetz();
     });
@@ -115366,6 +115524,7 @@ out body;>;out skel qt;`;
     get netzColorMode () { return netzColorMode; },
     overlayLayer: overlayLayer,
     removeEdgeWaypointMarkers: removeEdgeWaypointMarkers,
+    rerouteEdgeViaStreet: rerouteEdgeViaStreet,
     setKostenSzenario: setKostenSzenario,
     setNetzColorMode: setNetzColorMode,
     standardDNs: standardDNs,

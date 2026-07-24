@@ -2681,6 +2681,7 @@ export function startStreetHelperDrawing() {
 export async function createStreetOrientedWaermeNetz() {
   const button = document.getElementById('btn-netz-create-street');
   const original = button?.textContent;
+  const helperWorkflow = !!window._streetHelperDrawing;
   if (button) { button.disabled = true; button.textContent = 'Straßenzüge werden geladen …'; }
   try {
     if (typeof window.loadOsmStrassen !== 'function' || typeof window.adoptAllOsmStrassen !== 'function') {
@@ -2702,6 +2703,13 @@ export async function createStreetOrientedWaermeNetz() {
     if (created) closeNetzWorkspace();
     return created;
   } finally {
+    if (helperWorkflow) {
+      window._streetHelperDrawing = false;
+      window.trasseVisible = false;
+      const trasseCheckbox = document.getElementById('el-trasse-visible');
+      if (trasseCheckbox) trasseCheckbox.checked = false;
+      redrawTrasse();
+    }
     if (button) { button.disabled = false; button.textContent = original; }
   }
 }
@@ -3074,11 +3082,14 @@ export function refreshNetzFlowArrows() {
     if (!(edge.load > 0) || edge.temporallyHidden || edge.pruned) return;
     const arrow = _edgeFlowArrow(edge);
     if (!arrow) return;
+    const zoom = map.getZoom();
+    const size = zoom <= 15 ? 7 : zoom <= 17 ? 8 : 10;
+    const color = edge.layer?.options?.color || '#e53935';
     const icon = L.divIcon({
       className: 'netz-flow-arrow',
-      html: `<span style="--netz-arrow-angle:${arrow.angle}deg">▶</span>`,
-      iconSize: [18,18],
-      iconAnchor: [9,9]
+      html: `<svg style="--netz-arrow-angle:${arrow.angle}deg" width="${size}" height="${size}" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1.5 L7 5 L2 8.5" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      iconSize: [size,size],
+      iconAnchor: [size / 2,size / 2]
     });
     L.marker(arrow.latLng, {icon, interactive:false, keyboard:false, zIndexOffset:800})
       .addTo(netzFlowArrowLayer);
@@ -3118,7 +3129,7 @@ export function setNetzEditMode(enabled) {
     else button.textContent = netzEditMode ? 'Bearbeitung beenden' : 'Leitungsverläufe bearbeiten';
   }
   recalcNetz();
-  if (netzEditMode) showHint('Bearbeitungsmodus: weißen Punkt ziehen; Doppelklick entfernt einen Knickpunkt.');
+  if (netzEditMode) showHint('Bearbeitungsmodus: Leitungspunkt auf den gewünschten Straßenverlauf ziehen – der Abschnitt wird beim Loslassen neu geroutet. Doppelklick entfernt einen Knickpunkt.');
   else hideHint();
   return netzEditMode;
 }

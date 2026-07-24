@@ -277,6 +277,71 @@ test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Si
   expect(result.edit.editingOrder).toEqual([1,3,4]);
 });
 
+test('dist: OSM-Routinggrundlage erzeugt keine tausenden Bearbeitungsgriffe', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.redrawTrasse === 'function');
+
+  const result = await page.evaluate(() => {
+    const osmPoints = Array.from({length: 1500}, (_, index) =>
+      L.latLng(52 + index * 0.000001, 9 + index * 0.000001));
+    const manualPoints = [L.latLng(52.002,9.002),L.latLng(52.003,9.003)];
+    setTrassePoints([...osmPoints,...manualPoints]);
+    setTrasseSegments([
+      {start:0,end:osmPoints.length - 1,domains:['waerme'],source:'osm-street'},
+      {start:osmPoints.length,end:osmPoints.length + 1,domains:['waerme']},
+    ]);
+    setTrasseCurrentSegStart(osmPoints.length + 2);
+    window.trasseVisible = true;
+    window._streetHelperDrawing = false;
+    const started = performance.now();
+    redrawTrasse();
+    return {
+      handles: window.trasseEditMarkers.length,
+      polylines: window.trassePolyline.length,
+      durationMs: performance.now() - started,
+    };
+  });
+
+  expect(result.handles).toBe(3);
+  expect(result.polylines).toBe(2);
+  expect(result.durationMs).toBeLessThan(1000);
+});
+
+test('dist: gezogener Leitungspunkt routet über die gewählte Straßenseite', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.rerouteEdgeViaStreet === 'function');
+
+  const result = await page.evaluate(() => {
+    const bottom = L.latLng(52,9);
+    const left = L.latLng(52.0005,8.9995);
+    const top = L.latLng(52.001,9);
+    const right = L.latLng(52.0005,9.0005);
+    setTrassePoints([bottom,left,top,bottom,right,top]);
+    setTrasseSegments([
+      {start:0,end:2,domains:['waerme'],source:'osm-street'},
+      {start:3,end:5,domains:['waerme'],source:'osm-street'},
+    ]);
+    setTrasseCurrentSegStart(6);
+    const layer = L.polyline([bottom,left,top]).addTo(map);
+    const hitLayer = L.polyline([bottom,left,top]).addTo(map);
+    const edge = {
+      u:1,v:2,uNode:{id:1,type:'trasse',pt:bottom},vNode:{id:2,type:'trasse',pt:top},
+      layer,hitLayer,waypoints:[left],waypointMarkers:[],
+    };
+    const routed = rerouteEdgeViaStreet(edge,right);
+    return {
+      routed,
+      waypoints: edge.waypoints.map(point => ({lat:point.lat,lng:point.lng})),
+    };
+  });
+
+  expect(result.routed).toBe(true);
+  expect(result.waypoints.some(point => point.lng > 9.0004)).toBe(true);
+  expect(result.waypoints.some(point => point.lng < 8.9996)).toBe(false);
+});
+
 test('dist: Straßennetz nutzt versorgungsrelevante Wege und verwirft unbenutzte Äste', async ({page}) => {
   await page.route(/tile\.openstreetmap\.org/, route => route.abort());
   await page.goto('/');

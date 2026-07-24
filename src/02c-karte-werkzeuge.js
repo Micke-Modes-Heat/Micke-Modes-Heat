@@ -1074,7 +1074,6 @@ export function showTrasseFinishBtn() {
 export function finishTrasseAndGenerateNetz() {
   if (window.isDrawingTrasse) toggleDrawTrasse();
   if (window._streetHelperDrawing) {
-    window._streetHelperDrawing = false;
     createStreetOrientedWaermeNetz();
     return;
   }
@@ -1174,16 +1173,17 @@ export function redrawTrasse() {
   const handleSize = window.trasseDetached ? 14 : 8;
   const handleCls = window.trasseDetached ? 'trasse-snap-handle' : 'trasse-edit-handle';
   const icon = L.divIcon({ className: handleCls, html: '', iconSize: [handleSize, handleSize], iconAnchor: [handleSize/2, handleSize/2] });
-  const helperVisiblePoints = new Set();
-  if (window._streetHelperDrawing) {
-    window.trasseSegments.forEach(seg => {
-      if (seg.source === 'osm-street') return;
-      for (let idx = seg.start; idx <= seg.end; idx++) helperVisiblePoints.add(idx);
-    });
-    for (let idx = window.trasseCurrentSegStart; idx < window.trassePoints.length; idx++) helperVisiblePoints.add(idx);
-  }
+  // Automatisch übernommene OSM-Straßen können aus Tausenden Stützpunkten
+  // bestehen. Sie sind Routinggrundlage, aber keine einzeln bearbeitbare
+  // Haupttrasse und erhalten deshalb grundsätzlich keine Karten-Griffe.
+  const editablePointIndices = new Set();
+  window.trasseSegments.forEach(seg => {
+    if (seg.source === 'osm-street') return;
+    for (let idx = seg.start; idx <= seg.end; idx++) editablePointIndices.add(idx);
+  });
+  for (let idx = window.trasseCurrentSegStart; idx < window.trassePoints.length; idx++) editablePointIndices.add(idx);
   window.trassePoints.forEach((pt, idx) => {
-    if (window._streetHelperDrawing && !helperVisiblePoints.has(idx)) return;
+    if (!editablePointIndices.has(idx)) return;
     const m = L.marker(pt, { draggable: !window.trasseDetached, icon: icon, zIndexOffset: 2000 }).addTo(map);
     if (!window.trasseDetached) {
       m.on('drag', e => {
@@ -1202,7 +1202,7 @@ export function redrawTrasse() {
   // lassen sich so nachträglich verfeinern, ohne einen Strang neu zu zeichnen.
   if (!window.trasseDetached) {
     window.trasseSegments.forEach((seg, segIdx) => {
-      if (window._streetHelperDrawing && seg.source === 'osm-street') return;
+      if (seg.source === 'osm-street') return;
       for (let idx = seg.start; idx < seg.end; idx++) {
         const a = window.trassePoints[idx], b = window.trassePoints[idx + 1];
         if (!a || !b) continue;

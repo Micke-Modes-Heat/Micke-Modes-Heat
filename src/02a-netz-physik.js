@@ -1,7 +1,7 @@
 // ── 02a-netz-physik.js — Rohrphysik, Wärmeverlust, Farbschemata, Legende ──
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { edgeKey, edgeWaypoints, netzVisible, selectedStrandId } from './01-globals-varianten.js';
+import { edgeKey, edgeWaypoints, netzVisible, selectedStrandId, trassePoints, trasseSegments } from './01-globals-varianten.js';
 import { map } from './02b-gebaeude.js';
 import { netzEditMode, recalcNetz } from './03b-netz.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
@@ -276,6 +276,148 @@ function _nearestSegmentIndex(edgeObj, point) {
   return bestIndex;
 }
 
+function _streetRoutingGraph() {
+  const adjacency = new Map();
+  const positions = new Map();
+  const legs = [];
+  const keyFor = point => `${Number(point.lat).toFixed(7)},${Number(point.lng).toFixed(7)}`;
+  const connect = (a,b,distance) => {
+    if (!adjacency.has(a)) adjacency.set(a,[]);
+    if (!adjacency.has(b)) adjacency.set(b,[]);
+    adjacency.get(a).push({to:b,distance});
+    adjacency.get(b).push({to:a,distance});
+  };
+  trasseSegments
+    .filter(segment => !segment.domains || segment.domains.includes('waerme'))
+    .forEach((segment,segmentIndex) => {
+      for (let index = segment.start; index < segment.end; index++) {
+        const a = trassePoints[index], b = trassePoints[index + 1];
+        if (!a || !b) continue;
+        const aKey = keyFor(a), bKey = keyFor(b);
+        positions.set(aKey,a); positions.set(bKey,b);
+        const distance = a.distanceTo(b);
+        if (distance < 0.05) continue;
+        connect(aKey,bKey,distance);
+        legs.push({id:`${segmentIndex}:${index}`,aKey,bKey,a,b,distance});
+      }
+    });
+  return {adjacency,positions,legs,connect};
+}
+
+function _snapToStreetLeg(point,legs) {
+  const zoom = 18;
+  const source = map.project(point,zoom);
+  let best = null;
+  legs.forEach(leg => {
+    const a = map.project(leg.a,zoom), b = map.project(leg.b,zoom);
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const denominator = dx * dx + dy * dy;
+    const t = denominator
+      ? Math.max(0,Math.min(1,((source.x-a.x)*dx + (source.y-a.y)*dy) / denominator))
+      : 0;
+    const projected = map.unproject(L.point(a.x + t*dx,a.y + t*dy),zoom);
+    const distance = point.distanceTo(projected);
+    if (!best || distance < best.distance) best = {leg,t,point:projected,distance};
+  });
+  return best;
+}
+
+function _shortestStreetPath(adjacency,positions,start,end) {
+  const distances = new Map([[start,0]]);
+  const previous = new Map();
+  const heap = [{key:start,distance:0}];
+  const push = item => {
+    heap.push(item);
+    let index = heap.length - 1;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (heap[parent].distance <= item.distance) break;
+      heap[index] = heap[parent];
+      index = parent;
+    }
+    heap[index] = item;
+  };
+  const pop = () => {
+    const first = heap[0];
+    const last = heap.pop();
+    if (heap.length && last) {
+      let index = 0;
+      while (true) {
+        const left = index * 2 + 1, right = left + 1;
+        if (left >= heap.length) break;
+        const child = right < heap.length && heap[right].distance < heap[left].distance ? right : left;
+        if (heap[child].distance >= last.distance) break;
+        heap[index] = heap[child];
+        index = child;
+      }
+      heap[index] = last;
+    }
+    return first;
+  };
+  while (heap.length) {
+    const current = pop();
+    if (!current || current.distance !== distances.get(current.key)) continue;
+    if (current.key === end) break;
+    (adjacency.get(current.key) || []).forEach(edge => {
+      const distance = current.distance + edge.distance;
+      if (distance >= (distances.get(edge.to) ?? Infinity)) return;
+      distances.set(edge.to,distance);
+      previous.set(edge.to,current.key);
+      push({key:edge.to,distance});
+    });
+  }
+  if (!distances.has(end)) return null;
+  const keys = [];
+  for (let key = end; key != null; key = previous.get(key)) {
+    keys.push(key);
+    if (key === start) break;
+  }
+  if (keys[keys.length - 1] !== start) return null;
+  return keys.reverse().map(key => positions.get(key)).filter(Boolean);
+}
+
+export function rerouteEdgeViaStreet(edgeObj,viaPoint) {
+  const path = getEdgePathPoints(edgeObj);
+  if (path.length < 2) return false;
+  const graph = _streetRoutingGraph();
+  if (!graph.legs.length) return false;
+  const snaps = [
+    _snapToStreetLeg(path[0],graph.legs),
+    _snapToStreetLeg(viaPoint,graph.legs),
+    _snapToStreetLeg(path[path.length - 1],graph.legs),
+  ];
+  // Ein weit entfernter Ziehpunkt ist bewusst freie Geometrie und soll nicht
+  // überraschend auf eine beliebige Straße springen.
+  if (snaps.some(snap => !snap) || snaps[1].distance > 35) return false;
+  snaps.forEach((snap,index) => {
+    const key = `@route-${index}`;
+    snap.key = key;
+    graph.positions.set(key,snap.point);
+    graph.connect(key,snap.leg.aKey,snap.t * snap.leg.distance);
+    graph.connect(key,snap.leg.bKey,(1 - snap.t) * snap.leg.distance);
+  });
+  // Liegen mehrere virtuelle Punkte auf demselben Straßenstück, muss auch der
+  // direkte Teilweg zwischen ihnen verfügbar sein.
+  for (let a = 0; a < snaps.length; a++) {
+    for (let b = a + 1; b < snaps.length; b++) {
+      if (snaps[a].leg.id !== snaps[b].leg.id) continue;
+      graph.connect(snaps[a].key,snaps[b].key,
+        Math.abs(snaps[a].t - snaps[b].t) * snaps[a].leg.distance);
+    }
+  }
+  const first = _shortestStreetPath(graph.adjacency,graph.positions,snaps[0].key,snaps[1].key);
+  const second = _shortestStreetPath(graph.adjacency,graph.positions,snaps[1].key,snaps[2].key);
+  if (!first || !second) return false;
+  const routed = [...first,...second.slice(1)];
+  const fullPath = [path[0],...routed,path[path.length - 1]].filter((point,index,array) =>
+    index === 0 || point.distanceTo(array[index - 1]) > 0.15);
+  edgeObj.waypoints = fullPath.slice(1,-1);
+  _persistEdgeWaypoints(edgeObj);
+  _setEdgePath(edgeObj);
+  _renderEdgeWaypointMarkers(edgeObj);
+  return true;
+}
+
 export function removeEdgeWaypointMarkers(edgeObj) {
   (edgeObj?.waypointMarkers || []).forEach(marker => map.removeLayer(marker));
   if (edgeObj) edgeObj.waypointMarkers = [];
@@ -291,7 +433,10 @@ function _renderEdgeWaypointMarkers(edgeObj) {
       edgeObj.waypoints[index] = this.getLatLng();
       _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
     });
-    marker.on('dragend', () => recalcNetz());
+    marker.on('dragend', function() {
+      rerouteEdgeViaStreet(edgeObj,this.getLatLng());
+      recalcNetz();
+    });
     marker.on('dblclick', event => {
       L.DomEvent.stopPropagation(event);
       edgeObj.waypoints.splice(index, 1);
@@ -347,10 +492,12 @@ export function addEdgeMidHandle(edgeObj) {
   _renderEdgeWaypointMarkers(edgeObj);
   edgeObj.midMarker.on('dragend', function() {
     const point = this.getLatLng();
-    const insertAt = _nearestSegmentIndex(edgeObj, point);
-    edgeObj.waypoints.splice(insertAt, 0, point);
-    _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
-    _renderEdgeWaypointMarkers(edgeObj);
+    if (!rerouteEdgeViaStreet(edgeObj,point)) {
+      const insertAt = _nearestSegmentIndex(edgeObj, point);
+      edgeObj.waypoints.splice(insertAt, 0, point);
+      _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
+      _renderEdgeWaypointMarkers(edgeObj);
+    }
     this.setLatLng(getEdgeMidDisplayPt(edgeObj));
     recalcNetz();
   });
