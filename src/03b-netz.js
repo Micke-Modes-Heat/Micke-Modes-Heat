@@ -3,6 +3,9 @@
 import { areaPolygon, gebaeude, globalYear, isDrawingTrasse, isExcluded, isPlacingLwWp, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 
 let netzVisible = true;
+let netzMotionless = false;
+let netzFlowArrowLayer = null;
+let netzFlowArrowEventsBound = false;
 export let netzEditMode = false;
 export let netzRewireMode = false;
 let netzRewireMarkers = [];
@@ -2230,7 +2233,7 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
 
 export function autoGenerateNetz(options = {}){
   const strategy = options.strategy || 'trasse';
-  const loyalty = Math.max(0, Math.min(100, Number(options.trasseTreue ?? document.getElementById('netz-trassentreue')?.value ?? 50)));
+  const loyalty = Math.max(0, Math.min(100, Number(options.trasseTreue ?? document.getElementById('netz-trassentreue')?.value ?? 80)));
   const loyaltyRatio = loyalty / 100;
   const trunkConnectionFactor = 1.8 - 1.6 * loyaltyRatio;
   const neighbourConnectionFactor = 0.4 + 1.6 * loyaltyRatio;
@@ -3024,6 +3027,78 @@ export function setNetzVisible(visible) {
   const cb2 = document.getElementById('netz-visible-ansicht');
   if (cb1) cb1.checked = visible;
   if (cb2) cb2.checked = visible;
+  refreshNetzFlowArrows();
+}
+
+function _edgeFlowArrow(edge) {
+  const latLngs = edge.layer?.getLatLngs?.() || [];
+  if (latLngs.length < 2) return null;
+  const points = latLngs.map(latLng => map.latLngToLayerPoint(latLng));
+  const lengths = [];
+  let total = 0;
+  for (let index = 1; index < points.length; index++) {
+    const length = points[index - 1].distanceTo(points[index]);
+    lengths.push(length);
+    total += length;
+  }
+  if (total < 18) return null;
+  let target = total / 2;
+  for (let index = 0; index < lengths.length; index++) {
+    if (target > lengths[index]) {
+      target -= lengths[index];
+      continue;
+    }
+    const start = points[index];
+    const end = points[index + 1];
+    const ratio = lengths[index] ? target / lengths[index] : 0;
+    const point = L.point(
+      start.x + (end.x - start.x) * ratio,
+      start.y + (end.y - start.y) * ratio
+    );
+    return {
+      latLng: map.layerPointToLatLng(point),
+      angle: Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI
+    };
+  }
+  return null;
+}
+
+export function refreshNetzFlowArrows() {
+  if (!netzFlowArrowLayer) netzFlowArrowLayer = L.layerGroup();
+  netzFlowArrowLayer.clearLayers();
+  if (!netzMotionless || !netzVisible) {
+    if (map.hasLayer(netzFlowArrowLayer)) map.removeLayer(netzFlowArrowLayer);
+    return;
+  }
+  window.netzEdges.forEach(edge => {
+    if (!(edge.load > 0) || edge.temporallyHidden || edge.pruned) return;
+    const arrow = _edgeFlowArrow(edge);
+    if (!arrow) return;
+    const icon = L.divIcon({
+      className: 'netz-flow-arrow',
+      html: `<span style="--netz-arrow-angle:${arrow.angle}deg">▶</span>`,
+      iconSize: [18,18],
+      iconAnchor: [9,9]
+    });
+    L.marker(arrow.latLng, {icon, interactive:false, keyboard:false, zIndexOffset:800})
+      .addTo(netzFlowArrowLayer);
+  });
+  if (!map.hasLayer(netzFlowArrowLayer)) netzFlowArrowLayer.addTo(map);
+}
+
+export function setNetzMotionless(enabled) {
+  netzMotionless = !!enabled;
+  const panelCheckbox = document.getElementById('netz-motionless');
+  const layerCheckbox = document.getElementById('el-netz-motionless');
+  if (panelCheckbox) panelCheckbox.checked = netzMotionless;
+  if (layerCheckbox) layerCheckbox.checked = netzMotionless;
+  if (netzMotionless) stopAnimPipes();
+  else if (window.netzEdges.some(edge => edge.load > 0)) startAnimPipes();
+  if (!netzFlowArrowEventsBound) {
+    map.on('zoomend moveend', refreshNetzFlowArrows);
+    netzFlowArrowEventsBound = true;
+  }
+  refreshNetzFlowArrows();
 }
 
 export function setNetzEditMode(enabled) {
@@ -3976,8 +4051,9 @@ export function recalcNetz(){
   cacheVariantResults();
   // Die bewegten Leitungsstriche visualisieren den Wärmefluss. Bearbeitungs-
   // punkte und Haupttrasse bleiben davon unabhängig in der ruhigen Ansicht aus.
-  if (window.netzEdges.some(edge => edge.load > 0)) startAnimPipes();
+  if (!netzMotionless && window.netzEdges.some(edge => edge.load > 0)) startAnimPipes();
   else stopAnimPipes();
+  refreshNetzFlowArrows();
 }
 
 export function updateStrandDropdown() {

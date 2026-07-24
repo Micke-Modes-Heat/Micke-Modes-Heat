@@ -1080,7 +1080,7 @@ export function finishTrasseAndGenerateNetz() {
   }
   confirmAutoGenerateNetz({
     strategy: 'trasse',
-    trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 50,
+    trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 80,
   });
 }
 

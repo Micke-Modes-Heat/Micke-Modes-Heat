@@ -129,6 +129,7 @@
   <div class="ebp-cat">
     <div class="ebp-cat-label" style="--ebp-c:#ef5350;">🔥 Wärmenetz</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-visible"   checked data-change="setNetzVisible(this.checked);_ebpSync('netz-visible-ansicht',this.checked)">Leitungen</label>
+    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-netz-motionless" data-change="setNetzMotionless(this.checked)">Netz bewegungslos</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-trasse-visible"        data-change="setTrasseVisible(this.checked)">Planungskorridore</label>
   </div>
 
@@ -334,6 +335,9 @@
         <div class="lp-section-title" style="margin-top:12px;">Ansicht</div>
         <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
           <input type="checkbox" id="netz-visible" checked data-change="setNetzVisible(this.checked)"/> Netz sichtbar
+        </label>
+        <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:5px;">
+          <input type="checkbox" id="netz-motionless" data-change="setNetzMotionless(this.checked)"/> Bewegungslos mit Richtungspfeilen
         </label>
         </div><!-- /lp-netz-waerme -->
       </div>
@@ -3071,12 +3075,12 @@
 
       <div class="netz-create-global-control">
         <label for="netz-trassentreue">
-          <span>Netzstruktur</span><output id="netz-trassentreue-output">50%</output>
+          <span>Netzstruktur</span><output id="netz-trassentreue-output">80%</output>
         </label>
-        <input id="netz-trassentreue" type="range" min="0" max="100" step="5" value="50"
+        <input id="netz-trassentreue" type="range" min="0" max="100" step="5" value="80"
                data-input="updateTrassentreueLabel(this.value)"/>
         <div class="netz-create-scale-ends"><span>lokal gebündelt</span><span>direkt angebunden</span></div>
-        <div id="netz-trassentreue-description" class="netz-create-scale-text">Ausgewogen: lokale Gruppen mit gezielten direkten Anschlüssen</div>
+        <div id="netz-trassentreue-description" class="netz-create-scale-text">Direkt angebunden: mehr Anschlüsse an Zentrale, Straße oder Haupttrasse</div>
         <small>Gilt für Auto-Netz, Straßennetz und gezeichnete Haupttrasse.</small>
       </div>
 

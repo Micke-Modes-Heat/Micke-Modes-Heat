@@ -86,7 +86,7 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
     'Auto-Netz direkt',
     'Haupttrasse zeichnen',
   ]);
-  expect(result.trassentreue).toBe('50');
+  expect(result.trassentreue).toBe('80');
   expect(result.markerSurvivedDrag).toBe(true);
   expect(result.lockedState).toEqual({
     clearResult: false,

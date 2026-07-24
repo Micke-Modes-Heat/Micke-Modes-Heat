@@ -3370,11 +3370,13 @@ let _animPipesLastFrame = 0;
 export function animatePipes(timestamp = performance.now()) {
   if (!_animPipesRunning) return;
   if (!_animPipesLastFrame) _animPipesLastFrame = timestamp;
-  const elapsedMs = Math.min(250, Math.max(0, timestamp - _animPipesLastFrame));
+  const elapsedMs = Math.max(0, timestamp - _animPipesLastFrame);
   _animPipesLastFrame = timestamp;
-  // Zeitbasiert statt pro Frame: Bei aufwendigem SVG-Rendering im hohen
-  // Kartenzoom bleibt die sichtbare Fließgeschwindigkeit konstant.
-  dashOffset = (dashOffset - elapsedMs * 0.03) % 24;
+  // Ruhiger Hybrid: zeitbasiert bei normaler Bildrate, aber ohne große
+  // Aufholsprünge, wenn das SVG-Rendering im hohen Kartenzoom Frames auslässt.
+  // 12 px/s wirken deutlich gelassener als die bisher nominalen 30 px/s.
+  const frameMovement = Math.min(0.4, elapsedMs * 0.012);
+  dashOffset = (dashOffset - frameMovement) % 24;
   (window.netzEdges || netzEdges).forEach(e => {
     if(e.load > 0 && e.layer && e.layer._path) {
       e.layer._path.style.strokeDasharray = "12, 12";
