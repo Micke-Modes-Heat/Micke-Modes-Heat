@@ -9676,6 +9676,8 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .netz-create-trasse label{width:100%;display:flex;justify-content:space-between;margin-top:7px;font-size:10px}.netz-create-trasse output{color:#ffb74d;font-family:'DM Mono',monospace}
 .netz-create-trasse input[type=range]{width:100%;accent-color:#ff9800}.netz-create-scale-text{font-size:9px;color:var(--muted);min-height:24px}
 .netz-create-trasse button{width:100%;margin-top:3px}
+.netz-create-street-actions{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.netz-create-street-actions .trasse-draw-btn{margin-top:3px;white-space:normal}
 .netz-create-edit{font-size:10px;color:var(--muted)}.netz-create-edit summary{cursor:pointer;padding:6px 2px;color:var(--text)}
 .netz-create-edit-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:5px}.netz-create-edit-actions button{font-size:9px;padding:6px}.netz-create-edit-actions .danger{border-color:#e57373;color:#e57373}
 .netz-create-edit p{font-size:8px;line-height:1.4;margin:7px 2px 0}
@@ -13962,10 +13964,18 @@ if (typeof L !== 'undefined') {
         <small>Gilt für Auto-Netz, Straßennetz und gezeichnete Haupttrasse.</small>
       </div>
 
-      <button class="netz-create-option" id="btn-netz-create-street" type="button" data-click="createStreetOrientedWaermeNetz()">
-        <strong>Netz an Straßenzügen orientieren</strong>
-        <span>Lädt geeignete OpenStreetMap-Straßen und baut daran ein Verteilnetz auf.</span>
-      </button>
+      <div class="netz-create-option netz-create-trasse">
+        <div>
+          <strong>Netz an Straßenzügen orientieren</strong>
+          <span>Lädt OSM-Straßen; fehlende Bereiche werden lokal ergänzt.</span>
+        </div>
+        <div class="netz-create-street-actions">
+          <button class="btn-secondary trasse-draw-btn" type="button"
+                  data-click="startStreetHelperDrawing()">Fehlenden Weg ergänzen</button>
+          <button class="btn-secondary trasse-draw-btn" id="btn-netz-create-street" type="button"
+                  data-click="createStreetOrientedWaermeNetz()">Straßen-Netz erstellen</button>
+        </div>
+      </div>
 
       <button class="netz-create-option" type="button" data-click="createQuickWaermeNetz()">
         <strong>Auto-Netz direkt</strong>
@@ -14694,7 +14704,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-24';
   if (d.indexOf('__') === 0) d = '';
-  var c = '2fec1f5';
+  var c = 'fc4da57';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -78315,7 +78325,10 @@ window._isSingleFileBuild = true;
     const btn = document.getElementById('btn-osm-strassen');
     if (btn) { btn.textContent = '⏳ Lade...'; btn.disabled = true; }
 
-    const query = `[out:json][timeout:12];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
+    // Neben öffentlichen Straßen auch typische private Erschließungs- und
+    // Betriebswege laden. Gerade auf großen Liegenschaften sind interne Wege in
+    // OSM häufig nur als living_street, track oder path klassifiziert.
+    const query = `[out:json][timeout:12];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${bbox});out geom;`;
 
     // Mehrere Overpass-Endpunkte parallel — der erste erfolgreiche gewinnt.
     // Ein gemeinsames Zeitlimit verhindert, dass nicht erreichbare Server den
@@ -106245,6 +106258,7 @@ ${massTbl}
       let nextId = Math.max(0,...usedIds) + 1;
       let imported = 0;
       let skipped = 0;
+      const importedBuildings = [];
       mutationStarted = true;
       set_batchImporting(true);
       try {
@@ -106273,6 +106287,7 @@ ${massTbl}
             usedIds.add(nextId);
             existingKeys.add(importKey);
             if (polygonSignature) polygonSignatures.add(polygonSignature);
+            importedBuildings.push(target);
             nextId++;
             imported++;
           }
@@ -106287,6 +106302,16 @@ ${massTbl}
       updateTotals();
       recalcNetz();
       populateZentraleSelect();
+      // Beim additiven Import bewusst nur auf die neu ergänzten Gebäude
+      // springen. Bereits vorhandene, weit entfernte Gebäude würden den
+      // Kartenausschnitt sonst unnötig groß machen.
+      if (importedBuildings.length > 0) {
+        const bounds = L.latLngBounds([]);
+        importedBuildings.forEach(building => {
+          if (building.polygonLayer) bounds.extend(building.polygonLayer.getBounds());
+        });
+        if (bounds.isValid()) map.fitBounds(bounds,{padding:[60,60],maxZoom:19});
+      }
       const skippedText = skipped ? ` · ${skipped} Duplikate übersprungen` : '';
       showHint(`✓ ${imported} Gebäude aus ${files.length} Projekt${files.length === 1 ? '' : 'en'} ergänzt${skippedText}`,5000);
       return {imported,skipped,sources:files.length};
@@ -109648,6 +109673,11 @@ ${massTbl}
 
   function finishTrasseAndGenerateNetz() {
     if (window.isDrawingTrasse) toggleDrawTrasse();
+    if (window._streetHelperDrawing) {
+      window._streetHelperDrawing = false;
+      createStreetOrientedWaermeNetz();
+      return;
+    }
     confirmAutoGenerateNetz({
       strategy: 'trasse',
       trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 50,
@@ -112762,6 +112792,19 @@ out body;>;out skel qt;`;
         return {pt: projected, t, dist: pt.distanceTo(projected)};
       };
       const buildingNodes = allPts.filter(n => n.type === 'geb');
+      const nearestBuildingDistances = buildingNodes.map(building => {
+        const distances = buildingNodes
+          .filter(other => other.id !== building.id)
+          .map(other => building.pt.distanceTo(other.pt));
+        return distances.length ? Math.min(...distances) : 30;
+      }).sort((a,b) => a-b);
+      const medianBuildingDistance = nearestBuildingDistances.length
+        ? nearestBuildingDistances[Math.floor(nearestBuildingDistances.length / 2)]
+        : 30;
+      const streetCoverageLimitM = Math.max(25,Math.min(60,medianBuildingDistance * 1.5));
+      const streetLocalMaxM = Math.max(45,Math.min(140,medianBuildingDistance * 3));
+      const roadProjectionByBuilding = new Map();
+
       for (const building of buildingNodes) {
         let best = null;
         heatSegments.forEach((seg, segIndex) => {
@@ -112780,13 +112823,76 @@ out body;>;out skel qt;`;
           }
         }
         if (!best) continue;
+        roadProjectionByBuilding.set(building.id,best);
+      }
+
+      // OSM ist auf privaten Liegenschaften oft nur teilweise vollständig.
+      // Gebäude weit außerhalb des Straßengraphen werden deshalb zu lokalen
+      // freien Gruppen zusammengefasst. Pro Gruppe erhält nur das straßennächste
+      // Gebäude eine Übergangsleitung; der Rest wird lokal verbunden.
+      const streetCoveredIds = new Set();
+      const streetGatewayIds = new Set();
+      const streetClusterByBuilding = new Map();
+      if (strategy === 'street') {
+        buildingNodes.forEach(building => {
+          const projection = roadProjectionByBuilding.get(building.id);
+          if (projection && projection.dist <= streetCoverageLimitM) streetCoveredIds.add(building.id);
+        });
+        const uncovered = buildingNodes.filter(building => !streetCoveredIds.has(building.id));
+        const unassigned = new Set(uncovered.map(building => building.id));
+        let clusterId = 0;
+        while (unassigned.size) {
+          const firstId = unassigned.values().next().value;
+          const queue = [buildingNodes.find(building => building.id === firstId)];
+          unassigned.delete(firstId);
+          const cluster = [];
+          for (let index = 0; index < queue.length; index++) {
+            const current = queue[index];
+            if (!current) continue;
+            cluster.push(current);
+            uncovered.forEach(other => {
+              if (!unassigned.has(other.id)) return;
+              if (current.pt.distanceTo(other.pt) > streetLocalMaxM) return;
+              unassigned.delete(other.id);
+              queue.push(other);
+            });
+          }
+          cluster.forEach(building => streetClusterByBuilding.set(building.id,clusterId));
+          const gateway = cluster
+            .filter(building => roadProjectionByBuilding.has(building.id))
+            .sort((a,b) =>
+              roadProjectionByBuilding.get(a.id).dist - roadProjectionByBuilding.get(b.id).dist)[0];
+          if (gateway) streetGatewayIds.add(gateway.id);
+          clusterId++;
+        }
+        window._streetRoutingDiagnostics = {
+          coverageLimitM:streetCoverageLimitM,
+          localMaxM:streetLocalMaxM,
+          coveredBuildings:streetCoveredIds.size,
+          uncoveredBuildings:uncovered.length,
+          freeClusters:new Set(streetClusterByBuilding.values()).size,
+          gatewayBuildings:streetGatewayIds.size,
+        };
+      } else {
+        window._streetRoutingDiagnostics = null;
+      }
+
+      for (const building of buildingNodes) {
+        const best = roadProjectionByBuilding.get(building.id);
+        if (!best) continue;
+        if (strategy === 'street' &&
+            !streetCoveredIds.has(building.id) &&
+            !streetGatewayIds.has(building.id)) continue;
         const junction = getTrasseNode(best.pt);
         const legKey = `${best.segIndex}:${best.pointIndex}`;
         if (!projectionsByLeg.has(legKey)) projectionsByLeg.set(legKey, []);
         projectionsByLeg.get(legKey).push({t: best.t, node: junction});
         possibleEdges.push({
           u: building.id, v: junction.id, uNode: building, vNode: junction,
-          dist: best.dist, sortCost: best.dist * trunkConnectionFactor,
+          dist: best.dist,
+          sortCost:best.dist * trunkConnectionFactor *
+            (strategy === 'street' && streetGatewayIds.has(building.id) ? 1.2 : 1),
+          streetGateway:strategy === 'street' && streetGatewayIds.has(building.id),
         });
       }
 
@@ -112803,6 +112909,16 @@ out body;>;out skel qt;`;
           .sort((a, b) => a.dist - b.dist)
           .slice(0, 6);
         for (const {other, dist} of neighbours) {
+          if (strategy === 'street') {
+            const buildingCovered = streetCoveredIds.has(building.id);
+            const otherCovered = streetCoveredIds.has(other.id);
+            const sameFreeCluster = !buildingCovered && !otherCovered &&
+              streetClusterByBuilding.get(building.id) === streetClusterByBuilding.get(other.id);
+            const shortCoveredPair = buildingCovered && otherCovered && dist <= Math.min(45,streetLocalMaxM);
+            const shortTransition = buildingCovered !== otherCovered && dist <= streetCoverageLimitM;
+            if (dist > streetLocalMaxM ||
+                (!sameFreeCluster && !shortCoveredPair && !shortTransition)) continue;
+          }
           const key = String(building.id) < String(other.id)
             ? `${building.id}:${other.id}` : `${other.id}:${building.id}`;
           if (localEdgeKeys.has(key)) continue;
@@ -112973,7 +113089,10 @@ out body;>;out skel qt;`;
     const trasseCheckbox = document.getElementById('el-trasse-visible');
     if (trasseCheckbox) trasseCheckbox.checked = false;
     redrawTrasse();
-    showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte.`, 3000);
+    const streetInfo = strategy === 'street' && window._streetRoutingDiagnostics?.uncoveredBuildings > 0
+      ? ` · ${window._streetRoutingDiagnostics.uncoveredBuildings} Gebäude in ${window._streetRoutingDiagnostics.freeClusters} OSM-Lücke${window._streetRoutingDiagnostics.freeClusters === 1 ? '' : 'n'} lokal ergänzt`
+      : '';
+    showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${streetInfo}.`, 4500);
   }
 
   async function confirmAutoGenerateNetz(options = {}){
@@ -113022,9 +113141,18 @@ out body;>;out skel qt;`;
   }
 
   function startGuidedTrasseCreation() {
+    window._streetHelperDrawing = false;
     toggleNetzCreateMenu(false);
     closeNetzWorkspace();
     if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
+  }
+
+  function startStreetHelperDrawing() {
+    window._streetHelperDrawing = true;
+    toggleNetzCreateMenu(false);
+    closeNetzWorkspace();
+    if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
+    showHint('Fehlenden Erschließungsweg auf der Karte zeichnen. Er dient beim Straßen-Netz als zusätzliche Routinggrundlage.',6000);
   }
 
   async function createStreetOrientedWaermeNetz() {
@@ -114639,6 +114767,7 @@ out body;>;out skel qt;`;
     startGuidedTrasseCreation: startGuidedTrasseCreation,
     startNetzEdgeFrom: startNetzEdgeFrom,
     startOverlayReference: startOverlayReference,
+    startStreetHelperDrawing: startStreetHelperDrawing,
     syncVLTemps: syncVLTemps,
     toggleChartPanel: toggleChartPanel,
     toggleDrawEdge: toggleDrawEdge,
