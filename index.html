@@ -3076,10 +3076,18 @@
         <small>Gilt für Auto-Netz, Straßennetz und gezeichnete Haupttrasse.</small>
       </div>
 
-      <button class="netz-create-option" id="btn-netz-create-street" type="button" data-click="createStreetOrientedWaermeNetz()">
-        <strong>Netz an Straßenzügen orientieren</strong>
-        <span>Lädt geeignete OpenStreetMap-Straßen und baut daran ein Verteilnetz auf.</span>
-      </button>
+      <div class="netz-create-option netz-create-trasse">
+        <div>
+          <strong>Netz an Straßenzügen orientieren</strong>
+          <span>Lädt OSM-Straßen; fehlende Bereiche werden lokal ergänzt.</span>
+        </div>
+        <div class="netz-create-street-actions">
+          <button class="btn-secondary trasse-draw-btn" type="button"
+                  data-click="startStreetHelperDrawing()">Fehlenden Weg ergänzen</button>
+          <button class="btn-secondary trasse-draw-btn" id="btn-netz-create-street" type="button"
+                  data-click="createStreetOrientedWaermeNetz()">Straßen-Netz erstellen</button>
+        </div>
+      </div>
 
       <button class="netz-create-option" type="button" data-click="createQuickWaermeNetz()">
         <strong>Auto-Netz direkt</strong>

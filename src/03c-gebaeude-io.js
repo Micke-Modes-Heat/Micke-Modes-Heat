@@ -2574,6 +2574,7 @@ export async function importBuildingsFromProjects(event) {
     let nextId = Math.max(0,...usedIds) + 1;
     let imported = 0;
     let skipped = 0;
+    const importedBuildings = [];
     mutationStarted = true;
     set_batchImporting(true);
     try {
@@ -2602,6 +2603,7 @@ export async function importBuildingsFromProjects(event) {
           usedIds.add(nextId);
           existingKeys.add(importKey);
           if (polygonSignature) polygonSignatures.add(polygonSignature);
+          importedBuildings.push(target);
           nextId++;
           imported++;
         }
@@ -2616,6 +2618,16 @@ export async function importBuildingsFromProjects(event) {
     updateTotals();
     recalcNetz();
     populateZentraleSelect();
+    // Beim additiven Import bewusst nur auf die neu ergänzten Gebäude
+    // springen. Bereits vorhandene, weit entfernte Gebäude würden den
+    // Kartenausschnitt sonst unnötig groß machen.
+    if (importedBuildings.length > 0) {
+      const bounds = L.latLngBounds([]);
+      importedBuildings.forEach(building => {
+        if (building.polygonLayer) bounds.extend(building.polygonLayer.getBounds());
+      });
+      if (bounds.isValid()) map.fitBounds(bounds,{padding:[60,60],maxZoom:19});
+    }
     const skippedText = skipped ? ` · ${skipped} Duplikate übersprungen` : '';
     showHint(`✓ ${imported} Gebäude aus ${files.length} Projekt${files.length === 1 ? '' : 'en'} ergänzt${skippedText}`,5000);
     return {imported,skipped,sources:files.length};

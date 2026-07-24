@@ -2800,7 +2800,10 @@ export async function loadOsmStrassen() {
   const btn = document.getElementById('btn-osm-strassen');
   if (btn) { btn.textContent = '⏳ Lade...'; btn.disabled = true; }
 
-  const query = `[out:json][timeout:12];way["highway"~"^(primary|secondary|tertiary|residential|unclassified|service)$"](${bbox});out geom;`;
+  // Neben öffentlichen Straßen auch typische private Erschließungs- und
+  // Betriebswege laden. Gerade auf großen Liegenschaften sind interne Wege in
+  // OSM häufig nur als living_street, track oder path klassifiziert.
+  const query = `[out:json][timeout:12];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${bbox});out geom;`;
 
   // Mehrere Overpass-Endpunkte parallel — der erste erfolgreiche gewinnt.
   // Ein gemeinsames Zeitlimit verhindert, dass nicht erreichbare Server den

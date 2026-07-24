@@ -34,6 +34,7 @@ test('dist: Gebäudedaten mehrerer Projekte werden kollisionsfrei und ohne Dupli
     const fileA=new File([JSON.stringify(projectA)],'Quartier Nord.json',{type:'application/json'});
     const fileB=new File([JSON.stringify(projectB)],'Quartier Süd.json',{type:'application/json'});
     const first=await importBuildingsFromProjects({target:{files:[fileA,fileB],value:'x'}});
+    const mapContainsImportAfterAdd=map.getBounds().contains(L.latLng(52.083,8.003));
     const second=await importBuildingsFromProjects({target:{files:[fileA],value:'x'}});
     const ids=window.gebaeude.map(building=>building.id);
     const imported=window.gebaeude.filter(building=>building.importSourceId);
@@ -61,6 +62,7 @@ test('dist: Gebäudedaten mehrerer Projekte werden kollisionsfrei und ohne Dupli
       roundtripSources:window.gebaeude.filter(building=>building.importSourceId).length,
       roundtripKey:window.gebaeude.find(building=>building.name==='A Verwaltung')?.importBuildingKey || '',
       yearMin:document.getElementById('year-slider').min,
+      mapContainsImportAfterAdd,
     };
   });
 
@@ -76,6 +78,7 @@ test('dist: Gebäudedaten mehrerer Projekte werden kollisionsfrei und ohne Dupli
   expect(result.roundtripSources).toBe(3);
   expect(result.roundtripKey).toContain('project-');
   expect(result.yearMin).toBe('1970');
+  expect(result.mapContainsImportAfterAdd).toBe(true);
   expect(result.names).toEqual(['A Lager','A Verwaltung','B Werkstatt','Bestand']);
   expect(pageErrors).toEqual([]);
 });

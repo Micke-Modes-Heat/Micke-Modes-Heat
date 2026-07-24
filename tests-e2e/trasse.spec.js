@@ -315,10 +315,61 @@ test('dist: Straßennetz nutzt versorgungsrelevante Wege und verwirft unbenutzte
     edge.layer?._path?.style?.strokeDasharray === '12, 12'));
 });
 
+test('dist: Straßennetz bündelt Gebäude in einer OSM-Lücke zu einem freien Teilnetz',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.autoGenerateNetz==='function');
+  const result=await page.evaluate(()=>{
+    clearNetz();
+    setGebaeude([]);
+    const add=(id,lat,lng)=>{
+      const building=addGebaeude({id,name:`Haus ${id}`,baujahr:2000,skipAutoCreate:true,coords:[
+        L.latLng(lat-.00003,lng-.00003),L.latLng(lat-.00003,lng+.00003),
+        L.latLng(lat+.00003,lng+.00003),L.latLng(lat+.00003,lng-.00003),
+      ]});
+      building.heizlast='100';
+      building.waerme='200';
+    };
+    add(251,52.0800,8.0001);
+    add(252,52.0800,8.0040);
+    add(253,52.0803,8.0041);
+    add(254,52.0806,8.0040);
+    add(255,52.0809,8.0041);
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='251';
+    setTrassePoints([L.latLng(52.0795,8),L.latLng(52.0815,8)]);
+    setTrasseSegments([{start:0,end:1,domains:['waerme'],source:'osm-street'}]);
+    setNetworkLocked(false);
+    autoGenerateNetz({strategy:'street',trasseTreue:70});
+    const buildingToRoad=window.netzEdges.filter(edge=>
+      (edge.uNode.type==='geb'&&edge.vNode.type==='trasse')||
+      (edge.vNode.type==='geb'&&edge.uNode.type==='trasse')).length;
+    const freeEdges=window.netzEdges.filter(edge=>
+      edge.uNode.type==='geb'&&edge.vNode.type==='geb');
+    return {
+      diagnostics:window._streetRoutingDiagnostics,
+      buildingToRoad,
+      freeEdges:freeEdges.length,
+      maxFreeLength:Math.max(0,...freeEdges.map(edge=>edge.length)),
+      connectedBuildings:new Set(window.netzEdges.flatMap(edge=>[edge.u,edge.v])
+        .filter(id=>id>=251&&id<=255)).size,
+    };
+  });
+  expect(result.diagnostics.uncoveredBuildings).toBe(4);
+  expect(result.diagnostics.freeClusters).toBe(1);
+  expect(result.diagnostics.gatewayBuildings).toBe(1);
+  expect(result.buildingToRoad).toBe(2);
+  expect(result.freeEdges).toBe(3);
+  expect(result.maxFreeLength).toBeLessThan(result.diagnostics.localMaxM);
+  expect(result.connectedBuildings).toBe(5);
+});
+
 test('dist: OSM-Straßen werden parallel geladen und für dasselbe Gebiet wiederverwendet', async ({page}) => {
   let osmRequests = 0;
+  const osmQueries = [];
   await page.route(/overpass|corsproxy/, async route => {
     osmRequests++;
+    osmQueries.push(decodeURIComponent(route.request().postData() || route.request().url()));
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -350,6 +401,7 @@ test('dist: OSM-Straßen werden parallel geladen und für dasselbe Gebiet wieder
 
   expect(afterFirst).toBeGreaterThan(0);
   expect(osmRequests).toBe(afterFirst);
+  expect(osmQueries.some(query=>query.includes('living_street')&&query.includes('track')&&query.includes('path'))).toBe(true);
   expect(first.text).toContain('1 geladen');
   expect(second.text).toContain('1 geladen');
   expect(second.duration).toBeLessThan(first.duration + 50);

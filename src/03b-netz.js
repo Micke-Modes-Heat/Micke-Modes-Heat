@@ -2311,6 +2311,19 @@ export function autoGenerateNetz(options = {}){
       return {pt: projected, t, dist: pt.distanceTo(projected)};
     };
     const buildingNodes = allPts.filter(n => n.type === 'geb');
+    const nearestBuildingDistances = buildingNodes.map(building => {
+      const distances = buildingNodes
+        .filter(other => other.id !== building.id)
+        .map(other => building.pt.distanceTo(other.pt));
+      return distances.length ? Math.min(...distances) : 30;
+    }).sort((a,b) => a-b);
+    const medianBuildingDistance = nearestBuildingDistances.length
+      ? nearestBuildingDistances[Math.floor(nearestBuildingDistances.length / 2)]
+      : 30;
+    const streetCoverageLimitM = Math.max(25,Math.min(60,medianBuildingDistance * 1.5));
+    const streetLocalMaxM = Math.max(45,Math.min(140,medianBuildingDistance * 3));
+    const roadProjectionByBuilding = new Map();
+
     for (const building of buildingNodes) {
       let best = null;
       heatSegments.forEach((seg, segIndex) => {
@@ -2329,13 +2342,76 @@ export function autoGenerateNetz(options = {}){
         }
       }
       if (!best) continue;
+      roadProjectionByBuilding.set(building.id,best);
+    }
+
+    // OSM ist auf privaten Liegenschaften oft nur teilweise vollständig.
+    // Gebäude weit außerhalb des Straßengraphen werden deshalb zu lokalen
+    // freien Gruppen zusammengefasst. Pro Gruppe erhält nur das straßennächste
+    // Gebäude eine Übergangsleitung; der Rest wird lokal verbunden.
+    const streetCoveredIds = new Set();
+    const streetGatewayIds = new Set();
+    const streetClusterByBuilding = new Map();
+    if (strategy === 'street') {
+      buildingNodes.forEach(building => {
+        const projection = roadProjectionByBuilding.get(building.id);
+        if (projection && projection.dist <= streetCoverageLimitM) streetCoveredIds.add(building.id);
+      });
+      const uncovered = buildingNodes.filter(building => !streetCoveredIds.has(building.id));
+      const unassigned = new Set(uncovered.map(building => building.id));
+      let clusterId = 0;
+      while (unassigned.size) {
+        const firstId = unassigned.values().next().value;
+        const queue = [buildingNodes.find(building => building.id === firstId)];
+        unassigned.delete(firstId);
+        const cluster = [];
+        for (let index = 0; index < queue.length; index++) {
+          const current = queue[index];
+          if (!current) continue;
+          cluster.push(current);
+          uncovered.forEach(other => {
+            if (!unassigned.has(other.id)) return;
+            if (current.pt.distanceTo(other.pt) > streetLocalMaxM) return;
+            unassigned.delete(other.id);
+            queue.push(other);
+          });
+        }
+        cluster.forEach(building => streetClusterByBuilding.set(building.id,clusterId));
+        const gateway = cluster
+          .filter(building => roadProjectionByBuilding.has(building.id))
+          .sort((a,b) =>
+            roadProjectionByBuilding.get(a.id).dist - roadProjectionByBuilding.get(b.id).dist)[0];
+        if (gateway) streetGatewayIds.add(gateway.id);
+        clusterId++;
+      }
+      window._streetRoutingDiagnostics = {
+        coverageLimitM:streetCoverageLimitM,
+        localMaxM:streetLocalMaxM,
+        coveredBuildings:streetCoveredIds.size,
+        uncoveredBuildings:uncovered.length,
+        freeClusters:new Set(streetClusterByBuilding.values()).size,
+        gatewayBuildings:streetGatewayIds.size,
+      };
+    } else {
+      window._streetRoutingDiagnostics = null;
+    }
+
+    for (const building of buildingNodes) {
+      const best = roadProjectionByBuilding.get(building.id);
+      if (!best) continue;
+      if (strategy === 'street' &&
+          !streetCoveredIds.has(building.id) &&
+          !streetGatewayIds.has(building.id)) continue;
       const junction = getTrasseNode(best.pt);
       const legKey = `${best.segIndex}:${best.pointIndex}`;
       if (!projectionsByLeg.has(legKey)) projectionsByLeg.set(legKey, []);
       projectionsByLeg.get(legKey).push({t: best.t, node: junction});
       possibleEdges.push({
         u: building.id, v: junction.id, uNode: building, vNode: junction,
-        dist: best.dist, sortCost: best.dist * trunkConnectionFactor,
+        dist: best.dist,
+        sortCost:best.dist * trunkConnectionFactor *
+          (strategy === 'street' && streetGatewayIds.has(building.id) ? 1.2 : 1),
+        streetGateway:strategy === 'street' && streetGatewayIds.has(building.id),
       });
     }
 
@@ -2352,6 +2428,16 @@ export function autoGenerateNetz(options = {}){
         .sort((a, b) => a.dist - b.dist)
         .slice(0, 6);
       for (const {other, dist} of neighbours) {
+        if (strategy === 'street') {
+          const buildingCovered = streetCoveredIds.has(building.id);
+          const otherCovered = streetCoveredIds.has(other.id);
+          const sameFreeCluster = !buildingCovered && !otherCovered &&
+            streetClusterByBuilding.get(building.id) === streetClusterByBuilding.get(other.id);
+          const shortCoveredPair = buildingCovered && otherCovered && dist <= Math.min(45,streetLocalMaxM);
+          const shortTransition = buildingCovered !== otherCovered && dist <= streetCoverageLimitM;
+          if (dist > streetLocalMaxM ||
+              (!sameFreeCluster && !shortCoveredPair && !shortTransition)) continue;
+        }
         const key = String(building.id) < String(other.id)
           ? `${building.id}:${other.id}` : `${other.id}:${building.id}`;
         if (localEdgeKeys.has(key)) continue;
@@ -2523,7 +2609,10 @@ export function autoGenerateNetz(options = {}){
   const trasseCheckbox = document.getElementById('el-trasse-visible');
   if (trasseCheckbox) trasseCheckbox.checked = false;
   redrawTrasse();
-  showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte.`, 3000);
+  const streetInfo = strategy === 'street' && window._streetRoutingDiagnostics?.uncoveredBuildings > 0
+    ? ` · ${window._streetRoutingDiagnostics.uncoveredBuildings} Gebäude in ${window._streetRoutingDiagnostics.freeClusters} OSM-Lücke${window._streetRoutingDiagnostics.freeClusters === 1 ? '' : 'n'} lokal ergänzt`
+    : '';
+  showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${streetInfo}.`, 4500);
 }
 
 export async function confirmAutoGenerateNetz(options = {}){
@@ -2572,9 +2661,18 @@ export async function createQuickWaermeNetz() {
 }
 
 export function startGuidedTrasseCreation() {
+  window._streetHelperDrawing = false;
   toggleNetzCreateMenu(false);
   closeNetzWorkspace();
   if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
+}
+
+export function startStreetHelperDrawing() {
+  window._streetHelperDrawing = true;
+  toggleNetzCreateMenu(false);
+  closeNetzWorkspace();
+  if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
+  showHint('Fehlenden Erschließungsweg auf der Karte zeichnen. Er dient beim Straßen-Netz als zusätzliche Routinggrundlage.',6000);
 }
 
 export async function createStreetOrientedWaermeNetz() {

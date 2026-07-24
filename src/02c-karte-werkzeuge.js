@@ -2,7 +2,7 @@
 import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, pelletsKessel, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getEffectiveRMax, getSizeRange, getSizeVal, highlightCard, map, renameGebaeude } from './02b-gebaeude.js';
 import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, redrawVerbindungslinien, windSvg } from './03a-erzeuger.js';
-import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, confirmAutoGenerateNetz, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
+import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, confirmAutoGenerateNetz, createStreetOrientedWaermeNetz, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
 import { _rerenderCard, hideHint, renderList, showHint, updateTotals } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, updateLpGebietStatus } from './04a-ui-panels.js';
 import { setNetzSubTab, stromNodeClick } from './05b-stromnetz.js';
@@ -1066,6 +1066,11 @@ export function showTrasseFinishBtn() {
 
 export function finishTrasseAndGenerateNetz() {
   if (window.isDrawingTrasse) toggleDrawTrasse();
+  if (window._streetHelperDrawing) {
+    window._streetHelperDrawing = false;
+    createStreetOrientedWaermeNetz();
+    return;
+  }
   confirmAutoGenerateNetz({
     strategy: 'trasse',
     trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 50,
