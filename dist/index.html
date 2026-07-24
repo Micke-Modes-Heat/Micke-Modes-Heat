@@ -9511,7 +9511,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .geb-badge{font-size:9px;padding:1px 6px;border-radius:8px;font-family:'DM Mono',monospace;background:var(--border);color:var(--muted);white-space:nowrap;flex-shrink:0;font-weight:normal;}
 .geb-badge.ok{background:#1b3a2a;color:#4caf50;}
 .geb-badge.osm{background:#2a1040;color:#ce93d8;}
-.geb-compact-row{display:flex;align-items:center;gap:5px;padding:5px 8px;cursor:pointer;user-select:none;min-height:32px;border-radius:4px;margin:-2px -4px 0 -4px;}
+.geb-compact-row{display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:5px 8px;cursor:pointer;user-select:none;min-height:32px;border-radius:4px;margin:-2px -4px 0 -4px;min-width:0;}
+.geb-compact-row>div{min-width:0;max-width:100%;}
 .geb-compact-row:hover{background:rgba(255,255,255,0.04);}
 .geb-compact-name{flex:1;min-width:0;font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .geb-compact-nutzung{font-size:9px;color:var(--muted);flex-shrink:0;min-width:28px;}
@@ -14674,7 +14675,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-24';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'e1f8835';
+  var c = '3f450ee';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -83342,6 +83343,10 @@ window._isSingleFileBuild = true;
 
   let _hourlyModeActive = false;
 
+  function _setHourlyModeActive(active) {
+    _hourlyModeActive = !!active;
+  }
+
   function _toggleHourlyMode() {
     const hasData = window._dispatchHourly && window._dispatchActiveKeys?.length > 0;
     if (!hasData) return;
@@ -85244,6 +85249,7 @@ window._isSingleFileBuild = true;
     _optWorker: _optWorker,
     _optWorkers: _optWorkers,
     _removeHourlyOverlay: _removeHourlyOverlay,
+    _setHourlyModeActive: _setHourlyModeActive,
     _setLiveZoom: _setLiveZoom,
     _showHourlySlider: _showHourlySlider,
     get _tlHistoDrawn () { return _tlHistoDrawn; },
@@ -103013,6 +103019,7 @@ ${massTbl}
 
   function setViewMode(mode) {
     currentViewMode = mode;
+    _setHourlyModeActive(mode === 'live');
     // Stop live play when leaving live view
     if (mode !== 'live' && typeof _liveStopPlay === 'function') _liveStopPlay();
     // Update header tabs
@@ -103042,7 +103049,6 @@ ${massTbl}
     }
     if (mode === 'vergleich') refreshVergleichView();
     if (mode === 'live') {
-      window._hourlyModeActive = true;
       if (typeof window._tlHistoDrawn !== 'undefined') window._tlHistoDrawn = false; // Redraw histogram
       const slider = document.getElementById('live-slider');
       _onHourSlider(slider?.value || 0);
@@ -110060,7 +110066,7 @@ ${massTbl}
         if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
       }
     } else {
-      if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
+      if (map.hasLayer(window.lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
       if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
     }
   }
@@ -110072,17 +110078,26 @@ ${massTbl}
 
   function clearLwWp() {
     window.lwWp = null;
+    window.isPlacingLwWp = false;
+    cancelInteraction('place-air-heat-pump');
     moBeiDeaktivierung('lwwp');
     removeErzeugerElektroAsset('lwwp');
     if (window.lwWpLayerGroup) {
       window.lwWpLayerGroup.clearLayers();
-      if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
+      if (map.hasLayer(window.lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
     }
     if (window.lwWpSchallLayerGroup) {
       window.lwWpSchallLayerGroup.clearLayers();
       if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
     }
     document.getElementById('lwwp-data-section').style.display = 'none';
+    const placeButton = document.getElementById('btn-place-lwwp');
+    if (placeButton) {
+      placeButton.classList.remove('active');
+      placeButton.textContent = 'Auf Karte platzieren';
+    }
+    map.getContainer().style.cursor = '';
+    _restoreAfterDraw();
     document.getElementById('lwwp-visible').checked = true;
     document.getElementById('lwwp-schall-visible').checked = true;
     window.lwWpVisible = true;
