@@ -360,7 +360,7 @@ export function clearGeo() {
 
 export function startDraw(id){
   clearArea(); cancelDraw();
-  beginInteraction({id:'draw-generator-area',label:'Anlagenfläche zeichnen',hint:'Eckpunkte setzen und Startpunkt zum Abschließen anklicken.',cancel:cancelDraw});
+  beginInteraction({id:'draw-generator-area',label:'Gebäudegrundriss zeichnen',hint:'Eckpunkte setzen und Startpunkt zum Abschließen anklicken.',cancel:cancelDraw});
   window.drawingId=id; window.drawPoints=[];
   showHint('Eckpunkte anklicken · Am Ende Startpunkt (rot) anklicken · Rechtsklick = Zurück');
   _hideForDraw();
@@ -2682,6 +2682,11 @@ export async function createStreetOrientedWaermeNetz() {
   const button = document.getElementById('btn-netz-create-street');
   const original = button?.textContent;
   const helperWorkflow = !!window._streetHelperDrawing;
+  // Straßennetz-Erstellung ist kein Zeichenwerkzeug. Insbesondere ein durch
+  // ältere/importierte polygonlose Gebäudedaten offen gebliebener
+  // Grundrissmodus darf die folgenden Kartenklicks nicht abfangen.
+  cancelInteraction();
+  if (window.drawingId != null) cancelDraw();
   if (button) { button.disabled = true; button.textContent = 'Straßenzüge werden geladen …'; }
   try {
     if (typeof window.loadOsmStrassen !== 'function' || typeof window.adoptAllOsmStrassen !== 'function') {
@@ -2853,6 +2858,9 @@ export function captureWaermeNetzGraph(){
       kostKlasse: e.kostKlasse || null,
       kostOverride: e.kostOverride === true,
       waypoints: getEdgeWaypoints(e).map(point => ({lat: Number(point.lat), lng: Number(point.lng)})),
+      routingViaPoints: (e.routingViaPoints || []).map(point => ({
+        lat:Number(point.lat),lng:Number(point.lng)
+      })),
       waypoint: e.waypoint ? {lat: Number(e.waypoint.lat), lng: Number(e.waypoint.lng)} : null
     };
   });
@@ -2891,6 +2899,8 @@ export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
     edge.visibleFromYear = data.visibleFromYear == null ? null : Number(data.visibleFromYear);
     edge.visibleUntilYear = data.visibleUntilYear == null ? null : Number(data.visibleUntilYear);
     const storedWaypoints = Array.isArray(data.waypoints) ? data.waypoints : (data.waypoint ? [data.waypoint] : []);
+    edge.routingViaPoints = (Array.isArray(data.routingViaPoints) ? data.routingViaPoints : [])
+      .map(point => L.latLng(Number(point.lat),Number(point.lng)));
     if (storedWaypoints.length) {
       edge.waypoints = storedWaypoints.map(point => L.latLng(Number(point.lat), Number(point.lng)));
       edge.waypoint = edge.waypoints[0] || null;
@@ -3097,14 +3107,31 @@ export function refreshNetzFlowArrows() {
   if (!map.hasLayer(netzFlowArrowLayer)) netzFlowArrowLayer.addTo(map);
 }
 
+function _setNetzFlowLineStyle(animated) {
+  window.netzEdges.forEach(edge => {
+    if (!(edge.load > 0) || !edge.layer) return;
+    if (!animated) {
+      edge.layer.setStyle({dashArray:null});
+      if (edge.layer._path) {
+        edge.layer._path.style.strokeDasharray = '';
+        edge.layer._path.style.strokeDashoffset = '';
+      }
+    }
+  });
+}
+
 export function setNetzMotionless(enabled) {
   netzMotionless = !!enabled;
   const panelCheckbox = document.getElementById('netz-motionless');
   const layerCheckbox = document.getElementById('el-netz-motionless');
   if (panelCheckbox) panelCheckbox.checked = netzMotionless;
   if (layerCheckbox) layerCheckbox.checked = netzMotionless;
-  if (netzMotionless) stopAnimPipes();
-  else if (window.netzEdges.some(edge => edge.load > 0)) startAnimPipes();
+  if (netzMotionless) {
+    stopAnimPipes();
+    _setNetzFlowLineStyle(false);
+  } else if (window.netzEdges.some(edge => edge.load > 0)) {
+    startAnimPipes();
+  }
   if (!netzFlowArrowEventsBound) {
     map.on('zoomend moveend', refreshNetzFlowArrows);
     netzFlowArrowEventsBound = true;
@@ -4062,8 +4089,12 @@ export function recalcNetz(){
   cacheVariantResults();
   // Die bewegten Leitungsstriche visualisieren den Wärmefluss. Bearbeitungs-
   // punkte und Haupttrasse bleiben davon unabhängig in der ruhigen Ansicht aus.
-  if (!netzMotionless && window.netzEdges.some(edge => edge.load > 0)) startAnimPipes();
-  else stopAnimPipes();
+  if (!netzMotionless && window.netzEdges.some(edge => edge.load > 0)) {
+    startAnimPipes();
+  } else {
+    stopAnimPipes();
+    if (netzMotionless) _setNetzFlowLineStyle(false);
+  }
   refreshNetzFlowArrows();
 }
 

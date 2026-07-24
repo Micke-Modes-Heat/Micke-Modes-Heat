@@ -2732,7 +2732,7 @@ function _applyProjectData(project) {
       if (project.gebaeude) {
          set_batchImporting(true);
          try { project.gebaeude.forEach(g => {
-            const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name, fromOsm: g.fromOsm, osmId: g.osmId, skipAutoCreate: true });
+            const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name, fromOsm: g.fromOsm, osmId: g.osmId, skipAutoCreate: true, skipDraw: true });
             newG.waerme = g.waerme;
             newG.heizlast = g.heizlast;
             newG.spez = g.spez;
@@ -3296,7 +3296,7 @@ export function loadGebaeudeFromParent(gebaeudeArray) {
   clearTrasse();
   setIdCounter(1);
   gebaeudeArray.forEach(g => {
-    const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name || 'Gebäude ' + g.id, fromOsm: g.fromOsm || false, osmId: g.osmId || null, stockwerke: g.stockwerke != null ? g.stockwerke : 1, baujahr: g.baujahr || null });
+    const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name || 'Gebäude ' + g.id, fromOsm: g.fromOsm || false, osmId: g.osmId || null, stockwerke: g.stockwerke != null ? g.stockwerke : 1, baujahr: g.baujahr || null, skipDraw: true });
     newG.waerme = g.waerme;
     newG.heizlast = g.heizlast;
     newG.spez = g.spez;

@@ -376,19 +376,38 @@ function _shortestStreetPath(adjacency,positions,start,end) {
   return keys.reverse().map(key => positions.get(key)).filter(Boolean);
 }
 
-export function rerouteEdgeViaStreet(edgeObj,viaPoint) {
+function _positionAlongEdgePath(edgeObj,point) {
+  const path = getEdgePathPoints(edgeObj);
+  const projected = map.project(point,18);
+  let travelled = 0, best = {distance:Infinity,position:0};
+  for (let index = 0; index < path.length - 1; index++) {
+    const a = map.project(path[index],18), b = map.project(path[index + 1],18);
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const denominator = dx * dx + dy * dy;
+    const t = denominator
+      ? Math.max(0,Math.min(1,((projected.x-a.x)*dx + (projected.y-a.y)*dy) / denominator))
+      : 0;
+    const nearest = L.point(a.x + t*dx,a.y + t*dy);
+    const distance = projected.distanceTo(nearest);
+    const legLength = path[index].distanceTo(path[index + 1]);
+    if (distance < best.distance) best = {distance,position:travelled + t * legLength};
+    travelled += legLength;
+  }
+  return best.position;
+}
+
+export function rerouteEdgeViaStreet(edgeObj,viaPoints = edgeObj.routingViaPoints || []) {
   const path = getEdgePathPoints(edgeObj);
   if (path.length < 2) return false;
   const graph = _streetRoutingGraph();
   if (!graph.legs.length) return false;
-  const snaps = [
-    _snapToStreetLeg(path[0],graph.legs),
-    _snapToStreetLeg(viaPoint,graph.legs),
-    _snapToStreetLeg(path[path.length - 1],graph.legs),
-  ];
+  const requestedViaPoints = (Array.isArray(viaPoints) ? viaPoints : [viaPoints]).filter(Boolean);
+  const requestedPoints = [path[0],...requestedViaPoints,path[path.length - 1]];
+  const snaps = requestedPoints.map(point => _snapToStreetLeg(point,graph.legs));
   // Ein weit entfernter Ziehpunkt ist bewusst freie Geometrie und soll nicht
   // überraschend auf eine beliebige Straße springen.
-  if (snaps.some(snap => !snap) || snaps[1].distance > 35) return false;
+  if (snaps.some(snap => !snap) ||
+      snaps.slice(1,-1).some(snap => snap.distance > 35)) return false;
   snaps.forEach((snap,index) => {
     const key = `@route-${index}`;
     snap.key = key;
@@ -405,12 +424,16 @@ export function rerouteEdgeViaStreet(edgeObj,viaPoint) {
         Math.abs(snaps[a].t - snaps[b].t) * snaps[a].leg.distance);
     }
   }
-  const first = _shortestStreetPath(graph.adjacency,graph.positions,snaps[0].key,snaps[1].key);
-  const second = _shortestStreetPath(graph.adjacency,graph.positions,snaps[1].key,snaps[2].key);
-  if (!first || !second) return false;
-  const routed = [...first,...second.slice(1)];
+  const routed = [];
+  for (let index = 0; index < snaps.length - 1; index++) {
+    const part = _shortestStreetPath(
+      graph.adjacency,graph.positions,snaps[index].key,snaps[index + 1].key);
+    if (!part) return false;
+    routed.push(...(index ? part.slice(1) : part));
+  }
   const fullPath = [path[0],...routed,path[path.length - 1]].filter((point,index,array) =>
     index === 0 || point.distanceTo(array[index - 1]) > 0.15);
+  edgeObj.routingViaPoints = snaps.slice(1,-1).map(snap => snap.point);
   edgeObj.waypoints = fullPath.slice(1,-1);
   _persistEdgeWaypoints(edgeObj);
   _setEdgePath(edgeObj);
@@ -426,22 +449,41 @@ export function removeEdgeWaypointMarkers(edgeObj) {
 function _renderEdgeWaypointMarkers(edgeObj) {
   removeEdgeWaypointMarkers(edgeObj);
   const icon = L.divIcon({className:'netz-waypoint-handle', html:'', iconSize:[10,10], iconAnchor:[5,5]});
-  edgeObj.waypointMarkers = getEdgeWaypoints(edgeObj).map((point, index) => {
+  edgeObj.routingViaPoints = (edgeObj.routingViaPoints || []).map(point => L.latLng(point.lat,point.lng));
+  edgeObj.waypointMarkers = edgeObj.routingViaPoints.map((point, index) => {
     const marker = L.marker(point, {draggable:true, icon, zIndexOffset:1550});
     if (netzVisible && netzEditMode) marker.addTo(map);
     marker.on('drag', function() {
-      edgeObj.waypoints[index] = this.getLatLng();
-      _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
+      const preview = [...edgeObj.routingViaPoints];
+      preview[index] = this.getLatLng();
+      // Während des Ziehens nur eine leichte direkte Vorschau; das vollständige
+      // Straßenrouting erfolgt beim Loslassen.
+      edgeObj.layer?.setLatLngs([edgeObj.uNode.pt,...preview,edgeObj.vNode.pt]);
+      edgeObj.hitLayer?.setLatLngs([edgeObj.uNode.pt,...preview,edgeObj.vNode.pt]);
     });
     marker.on('dragend', function() {
-      rerouteEdgeViaStreet(edgeObj,this.getLatLng());
+      const vias = [...edgeObj.routingViaPoints];
+      vias[index] = this.getLatLng();
+      if (!rerouteEdgeViaStreet(edgeObj,vias)) {
+        edgeObj.routingViaPoints = vias;
+        edgeObj.waypoints = vias;
+        _persistEdgeWaypoints(edgeObj);
+        _setEdgePath(edgeObj);
+        _renderEdgeWaypointMarkers(edgeObj);
+      }
       recalcNetz();
     });
     marker.on('dblclick', event => {
       L.DomEvent.stopPropagation(event);
-      edgeObj.waypoints.splice(index, 1);
-      _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
-      _renderEdgeWaypointMarkers(edgeObj); recalcNetz();
+      const vias = edgeObj.routingViaPoints.filter((_,viaIndex) => viaIndex !== index);
+      if (!rerouteEdgeViaStreet(edgeObj,vias)) {
+        edgeObj.routingViaPoints = vias;
+        edgeObj.waypoints = vias;
+        _persistEdgeWaypoints(edgeObj);
+        _setEdgePath(edgeObj);
+        _renderEdgeWaypointMarkers(edgeObj);
+      }
+      recalcNetz();
     });
     return marker;
   });
@@ -492,9 +534,12 @@ export function addEdgeMidHandle(edgeObj) {
   _renderEdgeWaypointMarkers(edgeObj);
   edgeObj.midMarker.on('dragend', function() {
     const point = this.getLatLng();
-    if (!rerouteEdgeViaStreet(edgeObj,point)) {
+    const vias = [...(edgeObj.routingViaPoints || []),point]
+      .sort((a,b) => _positionAlongEdgePath(edgeObj,a) - _positionAlongEdgePath(edgeObj,b));
+    if (!rerouteEdgeViaStreet(edgeObj,vias)) {
       const insertAt = _nearestSegmentIndex(edgeObj, point);
       edgeObj.waypoints.splice(insertAt, 0, point);
+      edgeObj.routingViaPoints = vias;
       _persistEdgeWaypoints(edgeObj); _setEdgePath(edgeObj);
       _renderEdgeWaypointMarkers(edgeObj);
     }
@@ -505,6 +550,7 @@ export function addEdgeMidHandle(edgeObj) {
     L.DomEvent.stopPropagation(ev);
     edgeObj.waypoints = [];
     edgeObj.waypoint = null;
+    edgeObj.routingViaPoints = [];
     delete edgeWaypoints[edgeKey(edgeObj.u, edgeObj.v)];
     _setEdgePath(edgeObj);
     _renderEdgeWaypointMarkers(edgeObj);
