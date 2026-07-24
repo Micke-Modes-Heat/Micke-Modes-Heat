@@ -12,6 +12,10 @@ import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 
 export let _hourlyModeActive = false;
 
+export function _setHourlyModeActive(active) {
+  _hourlyModeActive = !!active;
+}
+
 export function _toggleHourlyMode() {
   const hasData = window._dispatchHourly && window._dispatchActiveKeys?.length > 0;
   if (!hasData) return;
@@ -1888,4 +1892,3 @@ export let _optRunning = false;
 
 export let _optWorker = null;  // Single Worker oder Array von Workers
 export let _optWorkers = [];   // Multi-Worker-Referenzen für Abbruch
-

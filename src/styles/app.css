@@ -187,7 +187,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .geb-badge{font-size:9px;padding:1px 6px;border-radius:8px;font-family:'DM Mono',monospace;background:var(--border);color:var(--muted);white-space:nowrap;flex-shrink:0;font-weight:normal;}
 .geb-badge.ok{background:#1b3a2a;color:#4caf50;}
 .geb-badge.osm{background:#2a1040;color:#ce93d8;}
-.geb-compact-row{display:flex;align-items:center;gap:5px;padding:5px 8px;cursor:pointer;user-select:none;min-height:32px;border-radius:4px;margin:-2px -4px 0 -4px;}
+.geb-compact-row{display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:5px 8px;cursor:pointer;user-select:none;min-height:32px;border-radius:4px;margin:-2px -4px 0 -4px;min-width:0;}
+.geb-compact-row>div{min-width:0;max-width:100%;}
 .geb-compact-row:hover{background:rgba(255,255,255,0.04);}
 .geb-compact-name{flex:1;min-width:0;font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .geb-compact-nutzung{font-size:9px;color:var(--muted);flex-shrink:0;min-width:28px;}

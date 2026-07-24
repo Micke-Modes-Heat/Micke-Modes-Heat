@@ -1,5 +1,5 @@
 // ── 02c-karte-werkzeuge.js — Zeichenwerkzeuge, Trasse, Fließgewässer, LWWP, Wirtschaftlichkeit ──
-import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, lwWpLayerGroup, lwWpSchallLayerGroup, netzEdges, pelletsKessel, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
+import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, pelletsKessel, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getEffectiveRMax, getSizeRange, getSizeVal, highlightCard, map, renameGebaeude } from './02b-gebaeude.js';
 import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, redrawVerbindungslinien, windSvg } from './03a-erzeuger.js';
 import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, confirmAutoGenerateNetz, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
@@ -1770,7 +1770,7 @@ export function updateLwWpVisibility() {
       if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
     }
   } else {
-    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
+    if (map.hasLayer(window.lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
     if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
   }
 }
@@ -1782,17 +1782,26 @@ export function setSchallVisible(visible) {
 
 export function clearLwWp() {
   window.lwWp = null;
+  window.isPlacingLwWp = false;
+  cancelInteraction('place-air-heat-pump');
   moBeiDeaktivierung('lwwp');
   removeErzeugerElektroAsset('lwwp');
   if (window.lwWpLayerGroup) {
     window.lwWpLayerGroup.clearLayers();
-    if (map.hasLayer(lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
+    if (map.hasLayer(window.lwWpLayerGroup)) map.removeLayer(window.lwWpLayerGroup);
   }
   if (window.lwWpSchallLayerGroup) {
     window.lwWpSchallLayerGroup.clearLayers();
     if (map.hasLayer(window.lwWpSchallLayerGroup)) map.removeLayer(window.lwWpSchallLayerGroup);
   }
   document.getElementById('lwwp-data-section').style.display = 'none';
+  const placeButton = document.getElementById('btn-place-lwwp');
+  if (placeButton) {
+    placeButton.classList.remove('active');
+    placeButton.textContent = 'Auf Karte platzieren';
+  }
+  map.getContainer().style.cursor = '';
+  _restoreAfterDraw();
   document.getElementById('lwwp-visible').checked = true;
   document.getElementById('lwwp-schall-visible').checked = true;
   window.lwWpVisible = true;
