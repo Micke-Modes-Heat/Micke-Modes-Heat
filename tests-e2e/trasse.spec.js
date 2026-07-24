@@ -41,15 +41,13 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
     setNetworkLocked(true);
     const lockedClearResult = confirmClearNetz();
     const lockedDrawResult = toggleDrawEdge();
-    const lockedPruneResult = toggleEdgePruned(existingEdge);
     const lockedState = {
       clearResult: lockedClearResult,
       drawResult: lockedDrawResult,
-      pruneResult: lockedPruneResult,
       edgeCount: window.netzEdges.length,
       drawingEdge: window.isDrawingEdge,
-      pruned: existingEdge.pruned === true,
     };
+    toggleDrawEdge();
     setNetworkLocked(false);
 
     return {
@@ -92,11 +90,9 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
   expect(result.markerSurvivedDrag).toBe(true);
   expect(result.lockedState).toEqual({
     clearResult: false,
-    drawResult: false,
-    pruneResult: false,
+    drawResult: true,
     edgeCount: 1,
-    drawingEdge: false,
-    pruned: false,
+    drawingEdge: true,
   });
   expect(pageErrors).toHaveLength(0);
 });
@@ -513,16 +509,27 @@ test('dist: Bestands- und Neubaunetz folgen unterschiedlichen Zeit- und Sperrreg
     const permanentEdges = window.netzEdges.filter(edge => edge.visibleFromYear == null);
     permanentEdges.forEach(edge => { edge.dn=15; });
     recalcNetz();
+    const initialBottlenecks=window._netzPumpe?.bottleneckCount || 0;
     const permanentEdge=permanentEdges[0];
+    const dnStages=[permanentEdge.dn];
     showEdgePopup(permanentEdge,{clientX:400,clientY:300});
     setEdgeDN(200);
+    dnStages.push(permanentEdge.dn);
     closeEdgePopup();
-    const editBlocked=setNetzEditMode(true)===false;
+    const editAllowed=setNetzEditMode(true)===true;
+    setNetzEditMode(false);
+    const pruningAllowed=toggleEdgePruned(permanentEdge)!==false && permanentEdge.pruned===true;
+    dnStages.push(permanentEdge.dn);
+    toggleEdgePruned(permanentEdge);
+    dnStages.push(permanentEdge.dn);
+    setNetzRewireMode(true);
+    const rewireHandles=document.querySelectorAll('.netz-rewire-handle').length;
+    setNetzRewireMode(false);
     const bestands = {
       plannedConnection:Boolean(plannedConnection),
       permanentDns:[...new Set(permanentEdges.map(edge => edge.dn))],
       bottlenecks:window._netzPumpe?.bottleneckCount || 0,
-      editBlocked,
+      initialBottlenecks,editAllowed,pruningAllowed,rewireHandles,dnStages,
     };
 
     // Problemfall aus der Bedienung: Bestand löschen, Trasse löschen,
@@ -530,7 +537,8 @@ test('dist: Bestands- und Neubaunetz folgen unterschiedlichen Zeit- und Sperrreg
     window.confirm=()=>true;
     const deleted=confirmClearNetz();
     clearTrasse();
-    const unlockedAfterDelete=!window.networkLocked;
+    const stayedBestandAfterDelete=window.networkLocked;
+    setNetworkLocked(false);
     setGlobalYearValue(2026);
     autoGenerateNetz({strategy:'quick',trasseTreue:50});
     const manualEdge=window.netzEdges[0];
@@ -538,7 +546,7 @@ test('dist: Bestands- und Neubaunetz folgen unterschiedlichen Zeit- und Sperrreg
     setEdgeDN(80);
     closeEdgePopup();
     const restart = {
-      deleted,unlockedAfterDelete,
+      deleted,stayedBestandAfterDelete,
       edgeCount:window.netzEdges.length,
       includesFuture:new Set(window.netzEdges.flatMap(edge => [edge.u,edge.v])).has(603),
       manualDn:manualEdge.dn,
@@ -557,12 +565,65 @@ test('dist: Bestands- und Neubaunetz folgen unterschiedlichen Zeit- und Sperrreg
     futureVisible:true,bottlenecks:0,limitsOk:true,
   });
   expect(result.bestands.plannedConnection).toBe(true);
-  expect(result.bestands.permanentDns).toEqual([15]);
-  expect(result.bestands.bottlenecks).toBeGreaterThan(0);
-  expect(result.bestands.editBlocked).toBe(true);
+  expect(result.bestands.dnStages).toEqual([15,200,200,200]);
+  expect(result.bestands.permanentDns).toEqual([200]);
+  expect(result.bestands.initialBottlenecks).toBeGreaterThan(0);
+  expect(result.bestands.bottlenecks).toBe(0);
+  expect(result.bestands.editAllowed).toBe(true);
+  expect(result.bestands.pruningAllowed).toBe(true);
+  expect(result.bestands.rewireHandles).toBeGreaterThan(0);
   expect(result.restart).toEqual({
-    deleted:true,unlockedAfterDelete:true,edgeCount:2,includesFuture:true,
+    deleted:true,stayedBestandAfterDelete:true,edgeCount:2,includesFuture:true,
     manualDn:80,stayedNeubau:true,emptyGraphRecovered:true,
+  });
+});
+
+test('dist: unverbundenes Gebäude lässt sich an ein bestehendes Bestandsnetz anschließen', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.rewireBuildingConnection === 'function');
+
+  const result=await page.evaluate(() => {
+    clearNetz(); setGebaeude([]); setNetworkLocked(true);
+    const add=(id,lat,lng,name) => {
+      const g=addGebaeude({id,name,baujahr:2000,skipAutoCreate:true,coords:[
+        L.latLng(lat-.000035,lng-.000035),L.latLng(lat-.000035,lng+.000035),
+        L.latLng(lat+.000035,lng+.000035),L.latLng(lat+.000035,lng-.000035),
+      ]});
+      g.heizlast='100'; g.waerme='200';
+      return g;
+    };
+    add(701,52.0810,8.0040,'Zentrale');
+    add(702,52.0820,8.0040,'Bestand');
+    populateZentraleSelect(); document.getElementById('netz-zentrale').value='701';
+    addNetzEdge(701,702);
+    recalcNetz();
+
+    add(703,52.0820,8.0050,'Wiederanschluss');
+    const before=window.netzEdges.some(edge=>edge.u===703||edge.v===703);
+    setNetzRewireMode(true);
+    const handles=document.querySelectorAll('.netz-rewire-handle').length;
+    setNetzRewireMode(false);
+
+    const target=window.netzEdges[0];
+    const targetPoint=L.latLng(
+      (target.uNode.pt.lat+target.vNode.pt.lat)/2,
+      (target.uNode.pt.lng+target.vNode.pt.lng)/2
+    );
+    const connected=rewireBuildingConnection(703,target,targetPoint);
+    const connection=window.netzEdges.find(edge=>edge.u===703||edge.v===703);
+    setNetzEditMode(true);
+    const editable=Boolean(connection?.midMarker && map.hasLayer(connection.midMarker));
+    setNetzEditMode(false);
+    return {before,connected,editable,handles,edgeCount:window.netzEdges.length};
+  });
+
+  expect(result).toEqual({
+    before:false,
+    connected:true,
+    editable:true,
+    handles:2,
+    edgeCount:3,
   });
 });
 

@@ -110,7 +110,7 @@ export function _syncNetworkLockUI() {
   const btn = document.getElementById('lp-btn-lock');
   if (btn) {
     if (window.networkLocked) {
-      btn.innerHTML = '🔒 Bestandsnetz';
+      btn.innerHTML = '🏛 Bestandsnetz (2026)';
       btn.style.borderColor = '#4caf50';
       btn.style.color = '#4caf50';
       btn.style.background = 'rgba(76, 175, 80, 0.1)';
@@ -125,7 +125,7 @@ export function _syncNetworkLockUI() {
   const btn2 = document.getElementById('btn-lock-netz');
   if (btn2) {
     if (window.networkLocked) {
-      btn2.innerHTML = '🔒 Bestandsnetz';
+      btn2.innerHTML = '🏛 Bestandsnetz (2026)';
       btn2.style.borderColor = '#4caf50';
       btn2.style.color = '#4caf50';
       btn2.style.background = 'rgba(76, 175, 80, 0.1)';

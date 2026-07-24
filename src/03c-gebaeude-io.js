@@ -4,7 +4,7 @@ import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh,
          getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
 import { updateLpGebietStatus, updatePrintLegend } from './04a-ui-panels.js';
-import { glGetGesamtMwh, glGetMonatswerte, glLastgangKw, glTimeSeriesMeta } from './06a-gbi-lastgang.js';
+import { captureWaermeGrundlagen, glGetGesamtMwh, glGetMonatswerte, glLastgangKw, glTimeSeriesMeta, restoreWaermeGrundlagen } from './06a-gbi-lastgang.js';
 import { isErzeugerAktiv, meritOrderKeys, setMeritOrderKeys } from './06c-dispatch-core.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, deleteAsset, clearAssets } from './13a-assets-core.js';
@@ -2172,6 +2172,7 @@ export function _buildProjectData() {
     version: PROJECT_SCHEMA_VERSION,
     calculationManifest: createCalculationManifest({timeSeriesMeta: glTimeSeriesMeta, pvProfileMeta: window.elPvMeta || syntheticPvProfileMeta(), tariffMeta: getPvTariffProvenance(document.getElementById('pv-tarif-szenario')?.value), economicMeta: economicScenario.provenance}),
     economicScenario,
+    waermeGrundlagen:captureWaermeGrundlagen(),
     gebaeude: window.gebaeude.map(g => ({
       id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
       flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
@@ -2463,6 +2464,10 @@ export function _loadProject(project) {
 // Interne, nicht validierende Restore-Funktion. Ausschließlich über _loadProject
 // oder für den bereits validierten In-Memory-Rollback aufrufen.
 function _applyProjectData(project) {
+      // Immer vor dem Gebäudetausch zurücksetzen/wiederherstellen. Alte Projekte
+      // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die
+      // Monatswerte oder Lastgänge der zuvor geöffneten Liegenschaft.
+      restoreWaermeGrundlagen(project.waermeGrundlagen || null);
       window.gebaeude.forEach(g => {
         if(g.polygonLayer) map.removeLayer(g.polygonLayer);
         if(g.circleMarker) map.removeLayer(g.circleMarker);
@@ -3015,7 +3020,7 @@ function _applyProjectData(project) {
       updateTotals();
       glBerechnenDebounced(800);
 
-      // Standard-Ansicht: nur Gebäudeumrisse + PV (Symbole „Keine", übrige Ebenen aus)
+      // Standard-Ansicht: Gebäudeumrisse, Kreise und PV; übrige Ebenen aus
       if (typeof window.applyDefaultViewOnLoad === 'function') window.applyDefaultViewOnLoad();
 
       // Auf die geladene Liegenschaft springen (Gesamt-Umriss aller Gebäude;

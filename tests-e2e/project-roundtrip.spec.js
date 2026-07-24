@@ -46,6 +46,60 @@ test('dist: Öffnen merkt sich die Projektdatei, Speichern überschreibt und Spe
   });
 });
 
+test('dist: Projektwechsel übernimmt keine fremden Wärme-Grundlagendaten', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.restoreWaermeGrundlagen === 'function');
+
+  await page.evaluate(() => {
+    // Simuliert die zuvor geöffnete Liegenschaft mit deutlich zu großen
+    // Monatswerten – genau dieser Zustand durfte bisher weiterwirken.
+    document.getElementById('gl-gesamt').value='';
+    for(let i=0;i<12;i++) document.getElementById(`gl-m${i}`).value='600';
+    glMonatChange();
+
+    const legacy=_buildProjectData();
+    delete legacy.waermeGrundlagen;
+    const polygon=(lat,lng)=>[
+      {lat,lng},{lat,lng:lng+.0002},
+      {lat:lat+.0002,lng:lng+.0002},{lat:lat+.0002,lng},
+    ];
+    legacy.gebaeude=[{
+      id:801,name:'Neues Projekt',waerme:'1200',heizlast:'500',spez:'100',spezHeizlast:'42',
+      flaeche:12000,nutzung:'wohnen',baujahr:2000,abrissjahr:null,sanierungen:[],massnahmen:[],
+      polygon:polygon(52.081,8.004),
+    },{
+      // Rohwert 6× so groß, im Betrachtungsjahr aber noch nicht gebaut.
+      // Der frühere Fallback rechnete ihn trotzdem vollständig ein.
+      id:802,name:'Später Neubau',waerme:'7200',heizlast:'3000',spez:'100',spezHeizlast:'42',
+      flaeche:72000,nutzung:'wohnen',baujahr:2040,abrissjahr:null,sanierungen:[],massnahmen:[],
+      polygon:polygon(52.082,8.005),
+    }];
+    legacy.netz={...legacy.netz,zentrale:'',isLocked:true};
+    legacy.waermeNetzGraph={nodes:[],edges:[]};
+    legacy.customEdges=[];
+    _loadProject(legacy);
+  });
+
+  await expect.poll(() => page.evaluate(() => window.systemState?.nurGebaeude)).toBe(true);
+  const result=await page.evaluate(() => ({
+    gesamtInput:document.getElementById('gl-gesamt').value,
+    monate:Array.from({length:12},(_,i)=>document.getElementById(`gl-m${i}`).value),
+    nutzwaerme:window.systemState.nutzwaermeMwh,
+    brutto:window.systemState.gesamtMwhMitNV,
+    rohwertSumme:window.gebaeude.reduce((sum,g)=>sum+(Number(g.waerme)||0),0),
+    aktuelleSumme:window.gebaeude.reduce((sum,g)=>sum+(getComputedStats(g,window.globalYear).waerme||0),0),
+  }));
+  expect(result.gesamtInput).toBe('');
+  expect(result.monate).toEqual(Array(12).fill(''));
+  expect(result.nutzwaerme).toBeCloseTo(1200,1);
+  expect(result.brutto).toBeCloseTo(1200/0.9,1);
+  expect(result.rohwertSumme).toBe(8400);
+  expect(result.aktuelleSumme).toBe(1200);
+  await expect(page.locator('#vbtn-circle')).toHaveClass(/active/);
+  await expect(page.locator('#el-viz-circles')).toBeChecked();
+});
+
 test('dist: Projekt-Roundtrip erhält Trasse, Wärmegraph und legitime Nullwerte', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(String(error)));

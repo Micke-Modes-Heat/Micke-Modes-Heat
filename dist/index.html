@@ -11141,8 +11141,8 @@ if (typeof L !== 'undefined') {
           <div id="netz-workspace-create" hidden></div>
           <div id="netz-workspace-edit" class="netz-workspace-edit" hidden>
             <button class="netz-workspace-action primary" id="btn-netz-rewire-mode" type="button" data-click="toggleNetzRewireMode()">
-              <strong>Gebäudeanschluss umhängen</strong>
-              <span>Blauen Gebäudepunkt auf den gewünschten Netzstrang ziehen</span>
+              <strong>Gebäude anschließen / umhängen</strong>
+              <span>Auch unverbundene Gebäude per blauem Griff auf einen Netzstrang ziehen</span>
             </button>
             <button class="netz-workspace-action" id="btn-netz-edit-mode" type="button" data-click="toggleNetzEditMode()">
               <strong>Leitungsverläufe bearbeiten</strong>
@@ -11179,7 +11179,7 @@ if (typeof L !== 'undefined') {
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Werkzeuge</div>
         <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="toggleNetworkLock()" id="lp-btn-lock" style="border-color:#4caf50;color:#4caf50;background:rgba(76,175,80,0.1);grid-column:1/-1;">🔒 Bestandsnetz</button>
+          <button class="lp-tool-btn" data-click="toggleNetworkLock()" id="lp-btn-lock" style="border-color:#4caf50;color:#4caf50;background:rgba(76,175,80,0.1);grid-column:1/-1;">🏛 Bestandsnetz (2026)</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Einfärbung</div>
         <div id="lp-netz-viz" class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
@@ -13797,7 +13797,7 @@ if (typeof L !== 'undefined') {
   <div id="strang-report" style="display:none;margin-bottom:12px;"></div>
   <div class="inp-group" style="margin-bottom:12px">
     <button class="btn-secondary" id="btn-lock-netz" data-click="toggleNetworkLock()" style="width:100%; text-align:center; padding:8px; border-color:#4caf50; color:#4caf50; background:rgba(76,175,80,0.1); transition:0.3s;">
-      🔒 Bestandsnetz
+      🏛 Bestandsnetz (2026)
     </button>
   </div>
 
@@ -13951,7 +13951,7 @@ if (typeof L !== 'undefined') {
         <summary>Bestehendes Netz bearbeiten</summary>
         <div class="netz-create-edit-actions">
           <button class="btn-secondary" data-click="toggleNetzEditMode()">Leitungsverläufe bearbeiten</button>
-          <button class="btn-secondary" data-click="toggleNetzRewireMode()">Gebäudeanschluss umhängen</button>
+          <button class="btn-secondary" data-click="toggleNetzRewireMode()">Gebäude anschließen / umhängen</button>
           <button class="btn-secondary" data-click="toggleDrawEdge()" id="btn-draw-edge">Leitung ergänzen</button>
           <button class="btn-secondary trasse-draw-btn" data-click="toggleDrawTrasse('waerme')">Haupttrasse bearbeiten</button>
           <button class="btn-secondary" data-click="clearTrasse()">Haupttrasse löschen</button>
@@ -14658,7 +14658,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-07-23';
+  var d = '2026-07-24';
   if (d.indexOf('__') === 0) d = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -88378,6 +88378,82 @@ window._isSingleFileBuild = true;
   let glTimeSeriesMeta = null; // Intervall, Zeitzone, Quelle, Qualität, Transformationen
   let glColHeaders = [];     // Spaltenköpfe falls mehrspaltig
 
+  // Wärme-Grundlagen sind projektbezogene Eingaben. Sie müssen beim Projektwechsel
+  // gemeinsam mit den Gebäuden wechseln; andernfalls rechnet ein altes Monatsprofil
+  // oder ein alter Upload unbemerkt mit der neu geladenen Liegenschaft weiter.
+  function captureWaermeGrundlagen() {
+    const value = id => document.getElementById(id)?.value ?? '';
+    return {
+      gesamtMwh:value('gl-gesamt'),
+      monatswerte:Array.from({length:12},(_,i) => value(`gl-m${i}`)),
+      stadt:value('gl-stadt'),
+      klimajahr:value('gl-klimajahr'),
+      normAussentemp:value('gl-norm-at'),
+      netzverlustPct:value('gl-netzverlust'),
+      vlMinus5:value('gl-vl5'),
+      vl15:value('gl-vl15'),
+      profil1:value('gl-profil1'),
+      profil2:value('gl-profil2'),
+      gewicht1:value('gl-gew1'),
+      gewicht2:value('gl-gew2'),
+      lastgangKw:glLastgangKw ? Array.from(glLastgangKw) : null,
+      timeSeriesMeta:glTimeSeriesMeta ? structuredClone(glTimeSeriesMeta) : null,
+    };
+  }
+
+  function restoreWaermeGrundlagen(data) {
+    const source = data && typeof data === 'object' ? data : {};
+    const set = (id,value,fallback='') => {
+      const element=document.getElementById(id);
+      if (element) element.value=value ?? fallback;
+    };
+    set('gl-gesamt',source.gesamtMwh,'');
+    for (let i=0;i<12;i++) set(`gl-m${i}`,source.monatswerte?.[i],'');
+    set('gl-stadt',source.stadt,'Kassel');
+    set('gl-klimajahr',source.klimajahr,'TMY');
+    set('gl-norm-at',source.normAussentemp,'-12');
+    set('gl-netzverlust',source.netzverlustPct,'10');
+    set('gl-vl5',source.vlMinus5,'90');
+    set('gl-vl15',source.vl15,'60');
+    set('gl-profil1',source.profil1,'HEF33');
+    set('gl-profil2',source.profil2,'');
+    set('gl-gew1',source.gewicht1,'100');
+    set('gl-gew2',source.gewicht2,'0');
+
+    glRawCsv=null;
+    glRawData=null;
+    glColHeaders=[];
+    glLastgangKw=Array.isArray(source.lastgangKw) && source.lastgangKw.length===8760
+      ? Float32Array.from(source.lastgangKw)
+      : null;
+    glTimeSeriesMeta=glLastgangKw && source.timeSeriesMeta
+      ? structuredClone(source.timeSeriesMeta)
+      : null;
+
+    window.systemState=null;
+    window._basisLastgangKw=null;
+    window._basisGebWaermeSumme=null;
+    window._dispatchLastgangKw=null;
+    window._dispatchEnergy=null;
+    window._dispatchHourly=null;
+    window._dimLastgangKw=null;
+    window._dimJdlSorted=null;
+
+    document.getElementById('gl-upload-zone')?.classList.toggle('loaded',!!glLastgangKw);
+    const info=document.getElementById('gl-upload-info');
+    if (info) info.textContent=glLastgangKw
+      ? `${source.timeSeriesMeta?.filename || 'Gespeicherter Lastgang'} · 8.760 Werte`
+      : '';
+    const preview=document.getElementById('gl-preview-wrap');
+    if (preview) preview.style.display='none';
+    const sum=document.getElementById('gl-monats-sum');
+    if (sum) {
+      const monthSum=glGetMonatswerte().reduce((total,current)=>total+(current||0),0);
+      sum.textContent=monthSum>0 ? `${Math.round(monthSum).toLocaleString('de-DE')} MWh` : '—';
+    }
+    glUpdateStatus();
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
   function glInit() {
     // Stadtdropdown
@@ -88959,6 +89035,7 @@ window._isSingleFileBuild = true;
     _gbiDownloadVorlage: _gbiDownloadVorlage,
     _klimaLoaded: _klimaLoaded,
     _origGebClick: _origGebClick,
+    captureWaermeGrundlagen: captureWaermeGrundlagen,
     gbiApplyMatches: gbiApplyMatches,
     gbiApplyToGeb: gbiApplyToGeb,
     gbiAutoMapColumns: gbiAutoMapColumns,
@@ -89020,6 +89097,7 @@ window._isSingleFileBuild = true;
     glUpdateKlimaStatus: glUpdateKlimaStatus,
     glUpdateStatus: glUpdateStatus,
     openGebListImport: openGebListImport,
+    restoreWaermeGrundlagen: restoreWaermeGrundlagen,
     toggleAnalysePanel: toggleAnalysePanel,
     toggleGrundlagenPanel: toggleGrundlagenPanel,
     toggleStromPanel: toggleStromPanel,
@@ -89106,7 +89184,14 @@ window._isSingleFileBuild = true;
         // Fälle 3–5: Synthese via CalcEngine
         // Gesamtmenge ermitteln — Gebäude als Fallback wenn kein manueller Gesamt
         if (!hatMonat && !gesamt) {
-          const gebSumMwh = gebaeude.reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
+          // Exakt dieselbe zeit- und variantenabhängige Gebäudesumme wie in der
+          // Kennzahlen-Kachel verwenden. Rohwerte aller Gebäude würden auch
+          // ausgeschlossene, noch nicht gebaute oder bereits abgerissene Objekte
+          // einrechnen und konnten den Lastgang um ein Mehrfaches überhöhen.
+          const gebSumMwh = gebaeude.reduce((sum,g) => {
+            if (isExcluded(g.id)) return sum;
+            return sum+(getComputedStats(g,globalYear).waerme || 0);
+          },0);
           if (gebSumMwh > 0) { gesamt = gebSumMwh; nurGebaeude = true; }
           else throw new Error('Bitte Gesamtverbrauch oder Monatswerte eingeben.');
         }
@@ -89202,6 +89287,7 @@ window._isSingleFileBuild = true;
       window._basisLastgangKw = new Float32Array(lastgangKw);
       window._basisYear = globalYear;
       window._basisGebWaermeSumme = gebaeude.reduce((s, g) => {
+        if (isExcluded(g.id)) return s;
         const st = getComputedStats(g, globalYear);
         return s + (st.waerme || 0);
       }, 0);
@@ -102554,8 +102640,6 @@ ${massTbl}
 
     const kostKlasse = e.kostKlasse || 'mittel';
     const kostAuto   = !e.kostOverride;
-    const dnLocked = networkLocked && e.visibleFromYear == null;
-
     popup.innerHTML = `
     <div class="edge-popup-title">
       <span style="color:var(--accent)">⛕ Leitungsabschnitt</span>
@@ -102564,8 +102648,8 @@ ${massTbl}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
       <div>
         <div class="inp-label" style="margin-bottom:3px">Durchmesser</div>
-        <select data-change="setEdgeDN(this.value)" ${dnLocked?'disabled title="Bestands-DN ist gesperrt"':''}>${dnOptions}</select>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px">${dnLocked?'🔒 Bestands-DN':(e.dnOverride?'Manuell: DN '+e.dn:'Auto: DN '+e.dn)}</div>
+        <select data-change="setEdgeDN(this.value)">${dnOptions}</select>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px">${e.dnOverride?'Manuell: DN '+e.dn:'Auto: DN '+e.dn}</div>
       </div>
       <div>
         <div class="inp-label" style="margin-bottom:3px">Kostenklasse</div>
@@ -102614,10 +102698,6 @@ ${massTbl}
 
   function setEdgeDN(val) {
     if (!activeEdgePopup) return;
-    if (networkLocked && activeEdgePopup.visibleFromYear == null) {
-      showHint('🔒 Der Durchmesser einer Bestandsleitung ist gesperrt.',4500);
-      return;
-    }
     const dn = parseInt(val);
     activeEdgePopup.dnOverride = dn > 0;
     activeEdgePopup.dn = dn > 0 ? dn : 0;
@@ -102668,10 +102748,6 @@ ${massTbl}
   }
 
   function toggleEdgePruned(edge) {
-    if (networkLocked) {
-      showHint('🔒 Pruning verändert die wirksame Bestandsnetzstruktur. Zum Bearbeiten zuerst entsperren.', 6000);
-      return false;
-    }
     const e = edge || activeEdgePopup;
     if (!e) return;
     e.pruned = !e.pruned;
@@ -103443,12 +103519,12 @@ ${massTbl}
     if (typeof window.updateViz === 'function') window.updateViz();
   };
 
-  // Standard-Ansicht nach dem Laden eines Projekts: nur Gebäudeumrisse + PV-Anlagen
-  // sichtbar, Gebäude-Symbole auf „Keine". Alle übrigen Daten-Ebenen aus.
+  // Standard-Ansicht nach dem Laden eines Projekts: Gebäudeumrisse, Kreise und
+  // PV-Anlagen sichtbar. Alle übrigen Daten-Ebenen aus.
   // (Hintergrund/Satellit bleibt unverändert — Kartenwahl, keine Datenebene.)
   window.applyDefaultViewOnLoad = function() {
-    // Gebäude-Symbole → Keine
-    if (typeof window.setViz === 'function') window.setViz('none');
+    // Gebäude-Symbole → Kreise
+    if (typeof window.setViz === 'function') window.setViz('circle');
 
     // Checkbox-Status + zugehörigen Setter setzen
     const setLayer = (cbId, on, fn) => {
@@ -103468,10 +103544,10 @@ ${massTbl}
     setLayer('el-assets-visible',    false, window.setAssetLayerVisible);
     setLayer('el-stromnetz-visible', false, window.setStromNetzVisible);
 
-    // Aus: Wärme-Visualisierung (eigener Mechanismus)
+    // An: Wärme-Visualisierung (eigener Mechanismus)
     const cbViz = document.getElementById('el-viz-circles');
-    if (cbViz) cbViz.checked = false;
-    if (typeof window._ebpViz === 'function') window._ebpViz(false);
+    if (cbViz) cbViz.checked = true;
+    if (typeof window._ebpViz === 'function') window._ebpViz(true);
   };
 
   // Satellit-Toggle
@@ -105693,6 +105769,7 @@ ${massTbl}
       version: PROJECT_SCHEMA_VERSION,
       calculationManifest: createCalculationManifest({timeSeriesMeta: glTimeSeriesMeta, pvProfileMeta: window.elPvMeta || syntheticPvProfileMeta(), tariffMeta: getPvTariffProvenance(document.getElementById('pv-tarif-szenario')?.value), economicMeta: economicScenario.provenance}),
       economicScenario,
+      waermeGrundlagen:captureWaermeGrundlagen(),
       gebaeude: window.gebaeude.map(g => ({
         id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
         flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
@@ -105984,6 +106061,10 @@ ${massTbl}
   // Interne, nicht validierende Restore-Funktion. Ausschließlich über _loadProject
   // oder für den bereits validierten In-Memory-Rollback aufrufen.
   function _applyProjectData(project) {
+        // Immer vor dem Gebäudetausch zurücksetzen/wiederherstellen. Alte Projekte
+        // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die
+        // Monatswerte oder Lastgänge der zuvor geöffneten Liegenschaft.
+        restoreWaermeGrundlagen(project.waermeGrundlagen || null);
         window.gebaeude.forEach(g => {
           if(g.polygonLayer) map.removeLayer(g.polygonLayer);
           if(g.circleMarker) map.removeLayer(g.circleMarker);
@@ -106534,7 +106615,7 @@ ${massTbl}
         updateTotals();
         glBerechnenDebounced(800);
 
-        // Standard-Ansicht: nur Gebäudeumrisse + PV (Symbole „Keine", übrige Ebenen aus)
+        // Standard-Ansicht: Gebäudeumrisse, Kreise und PV; übrige Ebenen aus
         if (typeof window.applyDefaultViewOnLoad === 'function') window.applyDefaultViewOnLoad();
 
         // Auf die geladene Liegenschaft springen (Gesamt-Umriss aller Gebäude;
@@ -112320,7 +112401,6 @@ out body;>;out skel qt;`;
         L.DomEvent.stopPropagation(ev);
       });
       hitLayer.on('contextmenu', () => {
-        if (!ensureWaermeNetzStructureEditable()) return;
         map.removeLayer(layer);
         map.removeLayer(hitLayer);
         if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
@@ -112460,24 +112540,14 @@ out body;>;out skel qt;`;
     const existing = window.netzEdges?.length || 0;
     if (!existing) {
       clearNetz();
-      if (networkLocked) {
-        setNetworkLocked(false);
-        window._syncNetworkLockUI?.();
-      }
       return true;
     }
-    const prefix = networkLocked ? 'Das Bestandsnetz ist gesperrt. ' : '';
-    if (!window.confirm(`${prefix}Wirklich alle ${existing} Wärmeleitungen löschen?`)) return false;
+    if (!window.confirm(`Wirklich alle ${existing} Wärmeleitungen löschen?`)) return false;
     clearNetz();
-    if (networkLocked) {
-      setNetworkLocked(false);
-      window._syncNetworkLockUI?.();
-    }
     return true;
   }
 
   function addNetzEdge(u, v, {force = false} = {}){
-    if (!force && !ensureWaermeNetzStructureEditable()) return;
     const gU = gebaeude.find(g=>g.id===u);
     const gV = gebaeude.find(g=>g.id===v);
     if(!gU || !gV || !gU.polygon || !gV.polygon) return;
@@ -112513,7 +112583,6 @@ out body;>;out skel qt;`;
       L.DomEvent.stopPropagation(ev);
     });
     hitLayer.on('contextmenu', () => {
-      if (!ensureWaermeNetzStructureEditable()) return;
       map.removeLayer(layer);
       map.removeLayer(hitLayer);
       if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
@@ -112562,7 +112631,6 @@ out body;>;out skel qt;`;
       L.DomEvent.stopPropagation(ev);
     });
     hitLayer.on('contextmenu', () => {
-      if (!ensureWaermeNetzStructureEditable()) return;
       map.removeLayer(layer); map.removeLayer(hitLayer);
       if (edgeObj.midMarker) map.removeLayer(edgeObj.midMarker);
       removeEdgeWaypointMarkers(edgeObj);
@@ -112747,7 +112815,6 @@ out body;>;out skel qt;`;
   }
 
   function abklemmenGebaeude(id) {
-    if (!ensureWaermeNetzStructureEditable()) return false;
     const toRemove = window.netzEdges.filter(e => e.u === id || e.v === id);
     toRemove.forEach(e => {
       if (map.hasLayer(e.layer)) map.removeLayer(e.layer);
@@ -112788,10 +112855,6 @@ out body;>;out skel qt;`;
   }
 
   function setNetzEditMode(enabled) {
-    if (enabled && networkLocked) {
-      showHint('🔒 Leitungsverläufe des Bestandsnetzes sind gesperrt. Zulässig sind nur neue Gebäudeanschlüsse.',5000);
-      return false;
-    }
     netzEditMode = !!enabled;
     if (netzEditMode) setNetzVisible(true);
     window.netzEdges.forEach(edge => {
@@ -112900,23 +112963,22 @@ out body;>;out skel qt;`;
   function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
     const building = gebaeude.find(item => item.id === buildingId);
     const parentEdge = _parentEdgeForBuilding(buildingId);
-    if (networkLocked && parentEdge?.visibleFromYear == null) {
-      showHint('🔒 Dieser Anschluss gehört zum Bestandsnetz und kann nicht umgehängt werden.',4500);
-      return false;
-    }
-    if (!building?.polygon || !parentEdge || !targetEdge || targetEdge === parentEdge) return false;
-    const forbidden = _buildingSideNodes(buildingId,parentEdge);
-    if (forbidden.has(targetEdge.u) && forbidden.has(targetEdge.v)) {
+    if (!building?.polygon || !targetEdge || targetEdge === parentEdge || targetEdge.pruned) return false;
+    const forbidden = parentEdge ? _buildingSideNodes(buildingId,parentEdge) : new Set();
+    if (parentEdge && forbidden.has(targetEdge.u) && forbidden.has(targetEdge.v)) {
       showHint('Dieses Ziel liegt im nachgelagerten Teilnetz des Gebäudes.',3500);
       return false;
     }
     const snapshot = captureWaermeNetzGraph();
-    const buildingNode = parentEdge.u === buildingId ? parentEdge.uNode : parentEdge.vNode;
+    const stats = getComputedStats(building,globalYear);
+    const buildingNode = parentEdge
+      ? (parentEdge.u === buildingId ? parentEdge.uNode : parentEdge.vNode)
+      : {id:building.id,type:'geb',pt:polygonCenter(building.polygon),load:stats.heizlast || 0};
     const projection = _nearestPointOnNetzEdge(targetEdge,targetPoint);
     if (!projection) return false;
     const dn = targetEdge.dn || 0;
     const sourceProps = {kostKlasse:targetEdge.kostKlasse||null,kostOverride:targetEdge.kostOverride===true};
-    _removeNetzEdge(parentEdge);
+    if (parentEdge) _removeNetzEdge(parentEdge);
     const distanceU = projection.point.distanceTo(targetEdge.uNode.pt);
     const distanceV = projection.point.distanceTo(targetEdge.vNode.pt);
     if (distanceU < 5 || distanceV < 5) {
@@ -112940,7 +113002,9 @@ out body;>;out skel qt;`;
       showHint('Anschluss nicht geändert: Das Ziel würde eine ungültige Netzstruktur erzeugen.',4500);
       return false;
     }
-    showHint(`✓ Anschluss von „${building.name}“ umgehängt.`,3000);
+    showHint(parentEdge
+      ? `✓ Anschluss von „${building.name}“ umgehängt.`
+      : `✓ „${building.name}“ an das Wärmenetz angeschlossen.`,3000);
     return true;
   }
 
@@ -112949,14 +113013,17 @@ out body;>;out skel qt;`;
     netzRewireMarkers = [];
     if (!netzRewireMode) return;
     const centralId = parseInt(document.getElementById('netz-zentrale')?.value,10);
-    const connected = new Set(window.netzEdges.flatMap(edge => [edge.u,edge.v]));
     const icon = L.divIcon({className:'netz-rewire-handle',html:'↗',iconSize:[18,18],iconAnchor:[9,9]});
     gebaeude.filter(building => {
-      if (building.id === centralId || !connected.has(building.id) || !building.polygon) return false;
-      return !networkLocked || _parentEdgeForBuilding(building.id)?.visibleFromYear != null;
+      if (building.id === centralId || !building.polygon || isExcluded(building.id)) return false;
+      return getComputedStats(building,globalYear).heizlast > 0;
     }).forEach(building => {
       const origin = polygonCenter(building.polygon);
-      const marker = L.marker(origin,{draggable:true,icon,zIndexOffset:2600,title:`Anschluss ${building.name} umhängen`}).addTo(map);
+      const connected = Boolean(_parentEdgeForBuilding(building.id));
+      const marker = L.marker(origin,{
+        draggable:true,icon,zIndexOffset:2600,
+        title:connected ? `Anschluss ${building.name} umhängen` : `${building.name} an das Netz anschließen`
+      }).addTo(map);
       marker._netzBuildingId = building.id;
       marker.on('dragstart',() => {
         netzRewirePreview = L.polyline([origin,origin],{color:'#29b6f6',weight:2,dashArray:'5,4',interactive:false}).addTo(map);
@@ -112967,7 +113034,8 @@ out body;>;out skel qt;`;
         const parentEdge = _parentEdgeForBuilding(building.id);
         const forbidden = parentEdge ? _buildingSideNodes(building.id,parentEdge) : new Set();
         const candidates = window.netzEdges
-          .filter(edge => edge !== parentEdge && !(forbidden.has(edge.u) && forbidden.has(edge.v)))
+          .filter(edge => !edge.pruned && !edge.temporallyHidden && edge !== parentEdge &&
+            !(parentEdge && forbidden.has(edge.u) && forbidden.has(edge.v)))
           .map(edge => _nearestPointOnNetzEdge(edge,event.target.getLatLng()))
           .filter(Boolean).sort((a,b)=>a.distancePx-b.distancePx);
         const target = candidates[0];
@@ -112987,15 +113055,15 @@ out body;>;out skel qt;`;
     if (netzRewireMode) {
       setNetzEditMode(false);
       setNetzVisible(true);
-      showHint('Blauen Anschlussgriff eines Gebäudes auf die gewünschte Netzleitung ziehen.');
+      showHint('Blauen Gebäudepunkt auf eine Netzleitung ziehen – zum Anschließen oder Umhängen.');
     } else hideHint();
     _renderNetzRewireMarkers();
     const button = document.getElementById('btn-netz-rewire-mode');
     if (button) {
       button.classList.toggle('active',netzRewireMode);
       const label = button.querySelector('strong');
-      if (label) label.textContent = netzRewireMode ? 'Umhängen beenden' : 'Gebäudeanschluss umhängen';
-      else button.textContent = netzRewireMode ? 'Umhängen beenden' : 'Gebäudeanschluss umhängen';
+      if (label) label.textContent = netzRewireMode ? 'Anschlussbearbeitung beenden' : 'Gebäude anschließen / umhängen';
+      else button.textContent = netzRewireMode ? 'Anschlussbearbeitung beenden' : 'Gebäude anschließen / umhängen';
     }
     return netzRewireMode;
   }
@@ -113062,7 +113130,10 @@ out body;>;out skel qt;`;
     }
 
     window.netzEdges.forEach(e => {
-      if (e.pruned) { e.load = 0; e.loadRaw = 0; e.dn = 0; e.lossKW = 0; e.lossKW_annual = 0; return; }
+      // Deaktivieren schaltet den Abschnitt nur hydraulisch aus. Geometrie und
+      // erfasster DN bleiben erhalten, damit ein Wiederanschließen den
+      // modellierten Bestand nicht unbemerkt neu dimensioniert.
+      if (e.pruned) { e.load = 0; e.loadRaw = 0; e.lossKW = 0; e.lossKW_annual = 0; return; }
       let uLoad = 0; if (e.uNode && e.uNode.type === 'geb') { const gu=gebMap.get(e.u); if(gu && !isExcluded(gu.id)) uLoad = getComputedStats(gu, globalYear).heizlast||0; }
       let vLoad = 0; if (e.vNode && e.vNode.type === 'geb') { const gv=gebMap.get(e.v); if(gv && !isExcluded(gv.id)) vLoad = getComputedStats(gv, globalYear).heizlast||0; }
 
@@ -113186,7 +113257,7 @@ out body;>;out skel qt;`;
     // behalten damit ihre DN beim Jahreswechsel und sind für den jeweils
     // ungünstigsten zeitlichen Zustand dimensioniert. Beim Bestandsnetz wird
     // dieser Wert ausschließlich für neue, noch undimensionierte Anschlüsse
-    // verwendet; vorhandene DN bleiben gesperrt.
+    // verwendet; erfasste DN werden nicht automatisch verändert.
     window.netzEdges.forEach(e => { e.designLoad = 0; e.designLoadRaw = 0; e.designYear = null; });
     _netzPlanningYears().forEach(year => {
       const yearLoad = {};
@@ -113944,7 +114015,6 @@ out body;>;out skel qt;`;
   }
 
   function toggleDrawEdge(){
-    if (!window.isDrawingEdge && !ensureWaermeNetzStructureEditable()) return false;
     window.isDrawingEdge = !window.isDrawingEdge;
     const btn = document.getElementById('btn-draw-edge');
     if(window.isDrawingEdge){
@@ -113969,9 +114039,7 @@ out body;>;out skel qt;`;
     showHint('Zweites Gebäude auf der Karte anklicken.');
   }
   function ensureWaermeNetzStructureEditable() {
-    if (!networkLocked) return true;
-    showHint('🔒 Das Bestandsnetz ist gesperrt. Zum Ändern der Netzstruktur zuerst auf „Neubaunetz“ umschalten.', 6000);
-    return false;
+    return true;
   }
 
   var netz = /*#__PURE__*/Object.freeze({
@@ -114641,7 +114709,7 @@ out body;>;out skel qt;`;
     const btn = document.getElementById('lp-btn-lock');
     if (btn) {
       if (window.networkLocked) {
-        btn.innerHTML = '🔒 Bestandsnetz';
+        btn.innerHTML = '🏛 Bestandsnetz (2026)';
         btn.style.borderColor = '#4caf50';
         btn.style.color = '#4caf50';
         btn.style.background = 'rgba(76, 175, 80, 0.1)';
@@ -114656,7 +114724,7 @@ out body;>;out skel qt;`;
     const btn2 = document.getElementById('btn-lock-netz');
     if (btn2) {
       if (window.networkLocked) {
-        btn2.innerHTML = '🔒 Bestandsnetz';
+        btn2.innerHTML = '🏛 Bestandsnetz (2026)';
         btn2.style.borderColor = '#4caf50';
         btn2.style.color = '#4caf50';
         btn2.style.background = 'rgba(76, 175, 80, 0.1)';
@@ -151052,7 +151120,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     'btn-leitfaden': 'Öffnet den Schritt-für-Schritt Leitfaden für die Quartierplanung.',
 
     // Netz
-    'lp-btn-lock': 'Wechselt zwischen Neubaunetz (frei planbar) und Bestandsnetz (fixierte Trassen, nur Dimensionierung änderbar).',
+    'lp-btn-lock': 'Wechselt den Berechnungsfall: Bestandsnetz bildet den frei bearbeitbaren Stand 2026 mit nicht automatisch veränderten DN und Engpasshinweisen ab; Neubaunetz wird für alle Planjahre ausreichend dimensioniert.',
     'lp-btn-pruning': 'Pruning-Modus: Klicke auf Netzleitungen um sie zu entfernen (abzuklemmen). Nochmal klicken stellt sie wieder her.',
 
     // Netz-Einfärbung

@@ -1,6 +1,6 @@
 // ── 06b-gl-berechnen.js — Hauptberechnung, Synthese, Skalierung, Solarthermie ──
 // ── Auto-Trigger ──────────────────────────────────────────────────────────
-import { gebaeude, globalYear } from './01-globals-varianten.js';
+import { gebaeude, globalYear, isExcluded } from './01-globals-varianten.js';
 import { getComputedStats, map } from './02b-gebaeude.js';
 import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
 import { redrawVerbindungslinien } from './03a-erzeuger.js';
@@ -93,7 +93,14 @@ async function glBerechnen() {
       // Fälle 3–5: Synthese via CalcEngine
       // Gesamtmenge ermitteln — Gebäude als Fallback wenn kein manueller Gesamt
       if (!hatMonat && !gesamt) {
-        const gebSumMwh = gebaeude.reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
+        // Exakt dieselbe zeit- und variantenabhängige Gebäudesumme wie in der
+        // Kennzahlen-Kachel verwenden. Rohwerte aller Gebäude würden auch
+        // ausgeschlossene, noch nicht gebaute oder bereits abgerissene Objekte
+        // einrechnen und konnten den Lastgang um ein Mehrfaches überhöhen.
+        const gebSumMwh = gebaeude.reduce((sum,g) => {
+          if (isExcluded(g.id)) return sum;
+          return sum+(getComputedStats(g,globalYear).waerme || 0);
+        },0);
         if (gebSumMwh > 0) { gesamt = gebSumMwh; nurGebaeude = true; }
         else throw new Error('Bitte Gesamtverbrauch oder Monatswerte eingeben.');
       }
@@ -189,6 +196,7 @@ async function glBerechnen() {
     window._basisLastgangKw = new Float32Array(lastgangKw);
     window._basisYear = globalYear;
     window._basisGebWaermeSumme = gebaeude.reduce((s, g) => {
+      if (isExcluded(g.id)) return s;
       const st = getComputedStats(g, globalYear);
       return s + (st.waerme || 0);
     }, 0);

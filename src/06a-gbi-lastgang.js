@@ -466,6 +466,82 @@ export let glLastgangKw = null;   // Float32Array 8760h, aufbereitet (normiert)
 export let glTimeSeriesMeta = null; // Intervall, Zeitzone, Quelle, Qualität, Transformationen
 export let glColHeaders = [];     // Spaltenköpfe falls mehrspaltig
 
+// Wärme-Grundlagen sind projektbezogene Eingaben. Sie müssen beim Projektwechsel
+// gemeinsam mit den Gebäuden wechseln; andernfalls rechnet ein altes Monatsprofil
+// oder ein alter Upload unbemerkt mit der neu geladenen Liegenschaft weiter.
+export function captureWaermeGrundlagen() {
+  const value = id => document.getElementById(id)?.value ?? '';
+  return {
+    gesamtMwh:value('gl-gesamt'),
+    monatswerte:Array.from({length:12},(_,i) => value(`gl-m${i}`)),
+    stadt:value('gl-stadt'),
+    klimajahr:value('gl-klimajahr'),
+    normAussentemp:value('gl-norm-at'),
+    netzverlustPct:value('gl-netzverlust'),
+    vlMinus5:value('gl-vl5'),
+    vl15:value('gl-vl15'),
+    profil1:value('gl-profil1'),
+    profil2:value('gl-profil2'),
+    gewicht1:value('gl-gew1'),
+    gewicht2:value('gl-gew2'),
+    lastgangKw:glLastgangKw ? Array.from(glLastgangKw) : null,
+    timeSeriesMeta:glTimeSeriesMeta ? structuredClone(glTimeSeriesMeta) : null,
+  };
+}
+
+export function restoreWaermeGrundlagen(data) {
+  const source = data && typeof data === 'object' ? data : {};
+  const set = (id,value,fallback='') => {
+    const element=document.getElementById(id);
+    if (element) element.value=value ?? fallback;
+  };
+  set('gl-gesamt',source.gesamtMwh,'');
+  for (let i=0;i<12;i++) set(`gl-m${i}`,source.monatswerte?.[i],'');
+  set('gl-stadt',source.stadt,'Kassel');
+  set('gl-klimajahr',source.klimajahr,'TMY');
+  set('gl-norm-at',source.normAussentemp,'-12');
+  set('gl-netzverlust',source.netzverlustPct,'10');
+  set('gl-vl5',source.vlMinus5,'90');
+  set('gl-vl15',source.vl15,'60');
+  set('gl-profil1',source.profil1,'HEF33');
+  set('gl-profil2',source.profil2,'');
+  set('gl-gew1',source.gewicht1,'100');
+  set('gl-gew2',source.gewicht2,'0');
+
+  glRawCsv=null;
+  glRawData=null;
+  glColHeaders=[];
+  glLastgangKw=Array.isArray(source.lastgangKw) && source.lastgangKw.length===8760
+    ? Float32Array.from(source.lastgangKw)
+    : null;
+  glTimeSeriesMeta=glLastgangKw && source.timeSeriesMeta
+    ? structuredClone(source.timeSeriesMeta)
+    : null;
+
+  window.systemState=null;
+  window._basisLastgangKw=null;
+  window._basisGebWaermeSumme=null;
+  window._dispatchLastgangKw=null;
+  window._dispatchEnergy=null;
+  window._dispatchHourly=null;
+  window._dimLastgangKw=null;
+  window._dimJdlSorted=null;
+
+  document.getElementById('gl-upload-zone')?.classList.toggle('loaded',!!glLastgangKw);
+  const info=document.getElementById('gl-upload-info');
+  if (info) info.textContent=glLastgangKw
+    ? `${source.timeSeriesMeta?.filename || 'Gespeicherter Lastgang'} · 8.760 Werte`
+    : '';
+  const preview=document.getElementById('gl-preview-wrap');
+  if (preview) preview.style.display='none';
+  const sum=document.getElementById('gl-monats-sum');
+  if (sum) {
+    const monthSum=glGetMonatswerte().reduce((total,current)=>total+(current||0),0);
+    sum.textContent=monthSum>0 ? `${Math.round(monthSum).toLocaleString('de-DE')} MWh` : '—';
+  }
+  glUpdateStatus();
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 export function glInit() {
   // Stadtdropdown

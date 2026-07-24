@@ -31,7 +31,7 @@ export const HILFE_TEXTE = {
   'btn-leitfaden': 'Öffnet den Schritt-für-Schritt Leitfaden für die Quartierplanung.',
 
   // Netz
-  'lp-btn-lock': 'Wechselt zwischen Neubaunetz (frei planbar) und Bestandsnetz (fixierte Trassen, nur Dimensionierung änderbar).',
+  'lp-btn-lock': 'Wechselt den Berechnungsfall: Bestandsnetz bildet den frei bearbeitbaren Stand 2026 mit nicht automatisch veränderten DN und Engpasshinweisen ab; Neubaunetz wird für alle Planjahre ausreichend dimensioniert.',
   'lp-btn-pruning': 'Pruning-Modus: Klicke auf Netzleitungen um sie zu entfernen (abzuklemmen). Nochmal klicken stellt sie wieder her.',
 
   // Netz-Einfärbung

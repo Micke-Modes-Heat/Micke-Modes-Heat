@@ -2416,19 +2416,10 @@ export function confirmClearNetz(){
   const existing = window.netzEdges?.length || 0;
   if (!existing) {
     clearNetz();
-    if (networkLocked) {
-      setNetworkLocked(false);
-      window._syncNetworkLockUI?.();
-    }
     return true;
   }
-  const prefix = networkLocked ? 'Das Bestandsnetz ist gesperrt. ' : '';
-  if (!window.confirm(`${prefix}Wirklich alle ${existing} Wärmeleitungen löschen?`)) return false;
+  if (!window.confirm(`Wirklich alle ${existing} Wärmeleitungen löschen?`)) return false;
   clearNetz();
-  if (networkLocked) {
-    setNetworkLocked(false);
-    window._syncNetworkLockUI?.();
-  }
   return true;
 }
 
@@ -2744,10 +2735,6 @@ export function setNetzVisible(visible) {
 }
 
 export function setNetzEditMode(enabled) {
-  if (enabled && networkLocked) {
-    showHint('🔒 Leitungsverläufe des Bestandsnetzes sind gesperrt. Zulässig sind nur neue Gebäudeanschlüsse.',5000);
-    return false;
-  }
   netzEditMode = !!enabled;
   if (netzEditMode) setNetzVisible(true);
   window.netzEdges.forEach(edge => {
@@ -2856,23 +2843,22 @@ function _applySplitWaypoints(edge, points) {
 export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
   const building = gebaeude.find(item => item.id === buildingId);
   const parentEdge = _parentEdgeForBuilding(buildingId);
-  if (networkLocked && parentEdge?.visibleFromYear == null) {
-    showHint('🔒 Dieser Anschluss gehört zum Bestandsnetz und kann nicht umgehängt werden.',4500);
-    return false;
-  }
-  if (!building?.polygon || !parentEdge || !targetEdge || targetEdge === parentEdge) return false;
-  const forbidden = _buildingSideNodes(buildingId,parentEdge);
-  if (forbidden.has(targetEdge.u) && forbidden.has(targetEdge.v)) {
+  if (!building?.polygon || !targetEdge || targetEdge === parentEdge || targetEdge.pruned) return false;
+  const forbidden = parentEdge ? _buildingSideNodes(buildingId,parentEdge) : new Set();
+  if (parentEdge && forbidden.has(targetEdge.u) && forbidden.has(targetEdge.v)) {
     showHint('Dieses Ziel liegt im nachgelagerten Teilnetz des Gebäudes.',3500);
     return false;
   }
   const snapshot = captureWaermeNetzGraph();
-  const buildingNode = parentEdge.u === buildingId ? parentEdge.uNode : parentEdge.vNode;
+  const stats = getComputedStats(building,globalYear);
+  const buildingNode = parentEdge
+    ? (parentEdge.u === buildingId ? parentEdge.uNode : parentEdge.vNode)
+    : {id:building.id,type:'geb',pt:polygonCenter(building.polygon),load:stats.heizlast || 0};
   const projection = _nearestPointOnNetzEdge(targetEdge,targetPoint);
   if (!projection) return false;
   const dn = targetEdge.dn || 0;
   const sourceProps = {kostKlasse:targetEdge.kostKlasse||null,kostOverride:targetEdge.kostOverride===true};
-  _removeNetzEdge(parentEdge);
+  if (parentEdge) _removeNetzEdge(parentEdge);
   const distanceU = projection.point.distanceTo(targetEdge.uNode.pt);
   const distanceV = projection.point.distanceTo(targetEdge.vNode.pt);
   if (distanceU < 5 || distanceV < 5) {
@@ -2896,7 +2882,9 @@ export function rewireBuildingConnection(buildingId, targetEdge, targetPoint) {
     showHint('Anschluss nicht geändert: Das Ziel würde eine ungültige Netzstruktur erzeugen.',4500);
     return false;
   }
-  showHint(`✓ Anschluss von „${building.name}“ umgehängt.`,3000);
+  showHint(parentEdge
+    ? `✓ Anschluss von „${building.name}“ umgehängt.`
+    : `✓ „${building.name}“ an das Wärmenetz angeschlossen.`,3000);
   return true;
 }
 
@@ -2905,14 +2893,17 @@ function _renderNetzRewireMarkers() {
   netzRewireMarkers = [];
   if (!netzRewireMode) return;
   const centralId = parseInt(document.getElementById('netz-zentrale')?.value,10);
-  const connected = new Set(window.netzEdges.flatMap(edge => [edge.u,edge.v]));
   const icon = L.divIcon({className:'netz-rewire-handle',html:'↗',iconSize:[18,18],iconAnchor:[9,9]});
   gebaeude.filter(building => {
-    if (building.id === centralId || !connected.has(building.id) || !building.polygon) return false;
-    return !networkLocked || _parentEdgeForBuilding(building.id)?.visibleFromYear != null;
+    if (building.id === centralId || !building.polygon || isExcluded(building.id)) return false;
+    return getComputedStats(building,globalYear).heizlast > 0;
   }).forEach(building => {
     const origin = polygonCenter(building.polygon);
-    const marker = L.marker(origin,{draggable:true,icon,zIndexOffset:2600,title:`Anschluss ${building.name} umhängen`}).addTo(map);
+    const connected = Boolean(_parentEdgeForBuilding(building.id));
+    const marker = L.marker(origin,{
+      draggable:true,icon,zIndexOffset:2600,
+      title:connected ? `Anschluss ${building.name} umhängen` : `${building.name} an das Netz anschließen`
+    }).addTo(map);
     marker._netzBuildingId = building.id;
     marker.on('dragstart',() => {
       netzRewirePreview = L.polyline([origin,origin],{color:'#29b6f6',weight:2,dashArray:'5,4',interactive:false}).addTo(map);
@@ -2923,7 +2914,8 @@ function _renderNetzRewireMarkers() {
       const parentEdge = _parentEdgeForBuilding(building.id);
       const forbidden = parentEdge ? _buildingSideNodes(building.id,parentEdge) : new Set();
       const candidates = window.netzEdges
-        .filter(edge => edge !== parentEdge && !(forbidden.has(edge.u) && forbidden.has(edge.v)))
+        .filter(edge => !edge.pruned && !edge.temporallyHidden && edge !== parentEdge &&
+          !(parentEdge && forbidden.has(edge.u) && forbidden.has(edge.v)))
         .map(edge => _nearestPointOnNetzEdge(edge,event.target.getLatLng()))
         .filter(Boolean).sort((a,b)=>a.distancePx-b.distancePx);
       const target = candidates[0];
@@ -2943,15 +2935,15 @@ export function setNetzRewireMode(enabled) {
   if (netzRewireMode) {
     setNetzEditMode(false);
     setNetzVisible(true);
-    showHint('Blauen Anschlussgriff eines Gebäudes auf die gewünschte Netzleitung ziehen.');
+    showHint('Blauen Gebäudepunkt auf eine Netzleitung ziehen – zum Anschließen oder Umhängen.');
   } else hideHint();
   _renderNetzRewireMarkers();
   const button = document.getElementById('btn-netz-rewire-mode');
   if (button) {
     button.classList.toggle('active',netzRewireMode);
     const label = button.querySelector('strong');
-    if (label) label.textContent = netzRewireMode ? 'Umhängen beenden' : 'Gebäudeanschluss umhängen';
-    else button.textContent = netzRewireMode ? 'Umhängen beenden' : 'Gebäudeanschluss umhängen';
+    if (label) label.textContent = netzRewireMode ? 'Anschlussbearbeitung beenden' : 'Gebäude anschließen / umhängen';
+    else button.textContent = netzRewireMode ? 'Anschlussbearbeitung beenden' : 'Gebäude anschließen / umhängen';
   }
   return netzRewireMode;
 }
@@ -3018,7 +3010,10 @@ export function recalcNetz(){
   }
 
   window.netzEdges.forEach(e => {
-    if (e.pruned) { e.load = 0; e.loadRaw = 0; e.dn = 0; e.lossKW = 0; e.lossKW_annual = 0; return; }
+    // Deaktivieren schaltet den Abschnitt nur hydraulisch aus. Geometrie und
+    // erfasster DN bleiben erhalten, damit ein Wiederanschließen den
+    // modellierten Bestand nicht unbemerkt neu dimensioniert.
+    if (e.pruned) { e.load = 0; e.loadRaw = 0; e.lossKW = 0; e.lossKW_annual = 0; return; }
     let uLoad = 0; if (e.uNode && e.uNode.type === 'geb') { const gu=gebMap.get(e.u); if(gu && !isExcluded(gu.id)) uLoad = getComputedStats(gu, globalYear).heizlast||0; }
     let vLoad = 0; if (e.vNode && e.vNode.type === 'geb') { const gv=gebMap.get(e.v); if(gv && !isExcluded(gv.id)) vLoad = getComputedStats(gv, globalYear).heizlast||0; }
 
@@ -3142,7 +3137,7 @@ export function recalcNetz(){
   // behalten damit ihre DN beim Jahreswechsel und sind für den jeweils
   // ungünstigsten zeitlichen Zustand dimensioniert. Beim Bestandsnetz wird
   // dieser Wert ausschließlich für neue, noch undimensionierte Anschlüsse
-  // verwendet; vorhandene DN bleiben gesperrt.
+  // verwendet; erfasste DN werden nicht automatisch verändert.
   window.netzEdges.forEach(e => { e.designLoad = 0; e.designLoadRaw = 0; e.designYear = null; });
   _netzPlanningYears().forEach(year => {
     const yearLoad = {};
@@ -3927,7 +3922,5 @@ export function startNetzEdgeFrom(id) {
   showHint('Zweites Gebäude auf der Karte anklicken.');
 }
 export function ensureWaermeNetzStructureEditable() {
-  if (!networkLocked) return true;
-  showHint('🔒 Das Bestandsnetz ist gesperrt. Zum Ändern der Netzstruktur zuerst auf „Neubaunetz“ umschalten.', 6000);
-  return false;
+  return true;
 }

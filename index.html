@@ -264,8 +264,8 @@
           <div id="netz-workspace-create" hidden></div>
           <div id="netz-workspace-edit" class="netz-workspace-edit" hidden>
             <button class="netz-workspace-action primary" id="btn-netz-rewire-mode" type="button" data-click="toggleNetzRewireMode()">
-              <strong>Gebäudeanschluss umhängen</strong>
-              <span>Blauen Gebäudepunkt auf den gewünschten Netzstrang ziehen</span>
+              <strong>Gebäude anschließen / umhängen</strong>
+              <span>Auch unverbundene Gebäude per blauem Griff auf einen Netzstrang ziehen</span>
             </button>
             <button class="netz-workspace-action" id="btn-netz-edit-mode" type="button" data-click="toggleNetzEditMode()">
               <strong>Leitungsverläufe bearbeiten</strong>
@@ -302,7 +302,7 @@
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Werkzeuge</div>
         <div class="lp-tool-grid">
-          <button class="lp-tool-btn" data-click="toggleNetworkLock()" id="lp-btn-lock" style="border-color:#4caf50;color:#4caf50;background:rgba(76,175,80,0.1);grid-column:1/-1;">🔒 Bestandsnetz</button>
+          <button class="lp-tool-btn" data-click="toggleNetworkLock()" id="lp-btn-lock" style="border-color:#4caf50;color:#4caf50;background:rgba(76,175,80,0.1);grid-column:1/-1;">🏛 Bestandsnetz (2026)</button>
         </div>
         <div class="lp-section-title" style="margin-top:12px;">Einfärbung</div>
         <div id="lp-netz-viz" class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
@@ -2920,7 +2920,7 @@
   <div id="strang-report" style="display:none;margin-bottom:12px;"></div>
   <div class="inp-group" style="margin-bottom:12px">
     <button class="btn-secondary" id="btn-lock-netz" data-click="toggleNetworkLock()" style="width:100%; text-align:center; padding:8px; border-color:#4caf50; color:#4caf50; background:rgba(76,175,80,0.1); transition:0.3s;">
-      🔒 Bestandsnetz
+      🏛 Bestandsnetz (2026)
     </button>
   </div>
 
@@ -3074,7 +3074,7 @@
         <summary>Bestehendes Netz bearbeiten</summary>
         <div class="netz-create-edit-actions">
           <button class="btn-secondary" data-click="toggleNetzEditMode()">Leitungsverläufe bearbeiten</button>
-          <button class="btn-secondary" data-click="toggleNetzRewireMode()">Gebäudeanschluss umhängen</button>
+          <button class="btn-secondary" data-click="toggleNetzRewireMode()">Gebäude anschließen / umhängen</button>
           <button class="btn-secondary" data-click="toggleDrawEdge()" id="btn-draw-edge">Leitung ergänzen</button>
           <button class="btn-secondary trasse-draw-btn" data-click="toggleDrawTrasse('waerme')">Haupttrasse bearbeiten</button>
           <button class="btn-secondary" data-click="clearTrasse()">Haupttrasse löschen</button>

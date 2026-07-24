@@ -341,8 +341,6 @@ export function showEdgePopup(e, mouseEvt) {
 
   const kostKlasse = e.kostKlasse || 'mittel';
   const kostAuto   = !e.kostOverride;
-  const dnLocked = networkLocked && e.visibleFromYear == null;
-
   popup.innerHTML = `
     <div class="edge-popup-title">
       <span style="color:var(--accent)">⛕ Leitungsabschnitt</span>
@@ -351,8 +349,8 @@ export function showEdgePopup(e, mouseEvt) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
       <div>
         <div class="inp-label" style="margin-bottom:3px">Durchmesser</div>
-        <select data-change="setEdgeDN(this.value)" ${dnLocked?'disabled title="Bestands-DN ist gesperrt"':''}>${dnOptions}</select>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px">${dnLocked?'🔒 Bestands-DN':(e.dnOverride?'Manuell: DN '+e.dn:'Auto: DN '+e.dn)}</div>
+        <select data-change="setEdgeDN(this.value)">${dnOptions}</select>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px">${e.dnOverride?'Manuell: DN '+e.dn:'Auto: DN '+e.dn}</div>
       </div>
       <div>
         <div class="inp-label" style="margin-bottom:3px">Kostenklasse</div>
@@ -401,10 +399,6 @@ export function closeEdgePopup() {
 
 export function setEdgeDN(val) {
   if (!activeEdgePopup) return;
-  if (networkLocked && activeEdgePopup.visibleFromYear == null) {
-    showHint('🔒 Der Durchmesser einer Bestandsleitung ist gesperrt.',4500);
-    return;
-  }
   const dn = parseInt(val);
   activeEdgePopup.dnOverride = dn > 0;
   activeEdgePopup.dn = dn > 0 ? dn : 0;
@@ -455,10 +449,6 @@ export function togglePruningMode() {
 }
 
 export function toggleEdgePruned(edge) {
-  if (networkLocked) {
-    showHint('🔒 Pruning verändert die wirksame Bestandsnetzstruktur. Zum Bearbeiten zuerst entsperren.', 6000);
-    return false;
-  }
   const e = edge || activeEdgePopup;
   if (!e) return;
   e.pruned = !e.pruned;
@@ -1248,12 +1238,12 @@ window._ebpViz = function(checked) {
   if (typeof window.updateViz === 'function') window.updateViz();
 };
 
-// Standard-Ansicht nach dem Laden eines Projekts: nur Gebäudeumrisse + PV-Anlagen
-// sichtbar, Gebäude-Symbole auf „Keine". Alle übrigen Daten-Ebenen aus.
+// Standard-Ansicht nach dem Laden eines Projekts: Gebäudeumrisse, Kreise und
+// PV-Anlagen sichtbar. Alle übrigen Daten-Ebenen aus.
 // (Hintergrund/Satellit bleibt unverändert — Kartenwahl, keine Datenebene.)
 window.applyDefaultViewOnLoad = function() {
-  // Gebäude-Symbole → Keine
-  if (typeof window.setViz === 'function') window.setViz('none');
+  // Gebäude-Symbole → Kreise
+  if (typeof window.setViz === 'function') window.setViz('circle');
 
   // Checkbox-Status + zugehörigen Setter setzen
   const setLayer = (cbId, on, fn) => {
@@ -1273,10 +1263,10 @@ window.applyDefaultViewOnLoad = function() {
   setLayer('el-assets-visible',    false, window.setAssetLayerVisible);
   setLayer('el-stromnetz-visible', false, window.setStromNetzVisible);
 
-  // Aus: Wärme-Visualisierung (eigener Mechanismus)
+  // An: Wärme-Visualisierung (eigener Mechanismus)
   const cbViz = document.getElementById('el-viz-circles');
-  if (cbViz) cbViz.checked = false;
-  if (typeof window._ebpViz === 'function') window._ebpViz(false);
+  if (cbViz) cbViz.checked = true;
+  if (typeof window._ebpViz === 'function') window._ebpViz(true);
 };
 
 // Satellit-Toggle
