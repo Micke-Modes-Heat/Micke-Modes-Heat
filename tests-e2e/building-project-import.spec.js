@@ -20,7 +20,7 @@ test('dist: Gebäudedaten mehrerer Projekte werden kollisionsfrei und ohne Dupli
     const projectA={
       version:2,
       gebaeude:[
-        {id:1,name:'A Verwaltung',polygon:shared,waerme:'500',heizlast:'200',nutzung:'buero',sanierungen:[{jahr:2030,zielSpez:60}]},
+        {id:1,name:'A Verwaltung',polygon:shared,waerme:'500',heizlast:'200',nutzung:'buero',baujahr:1970,sanierungen:[{jahr:2030,zielSpez:60}]},
         {id:2,name:'A Lager',polygon:polygon(52.083,8.003),waerme:'300',heizlast:'120',nutzung:'ghd'},
       ],
     };
@@ -60,6 +60,7 @@ test('dist: Gebäudedaten mehrerer Projekte werden kollisionsfrei und ohne Dupli
       expectedOutlineColor:outlined.importSourceColor,
       roundtripSources:window.gebaeude.filter(building=>building.importSourceId).length,
       roundtripKey:window.gebaeude.find(building=>building.name==='A Verwaltung')?.importBuildingKey || '',
+      yearMin:document.getElementById('year-slider').min,
     };
   });
 
@@ -74,6 +75,7 @@ test('dist: Gebäudedaten mehrerer Projekte werden kollisionsfrei und ohne Dupli
   expect(result.outlineColor).toBe(result.expectedOutlineColor);
   expect(result.roundtripSources).toBe(3);
   expect(result.roundtripKey).toContain('project-');
+  expect(result.yearMin).toBe('1970');
   expect(result.names).toEqual(['A Lager','A Verwaltung','B Werkstatt','Bestand']);
   expect(pageErrors).toEqual([]);
 });

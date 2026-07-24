@@ -2610,6 +2610,7 @@ export async function importBuildingsFromProjects(event) {
     } finally {
       set_batchImporting(false);
     }
+    _initYearSliderFromBaujahr();
     renderList();
     updateViz();
     updateTotals();
