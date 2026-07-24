@@ -2865,6 +2865,7 @@ export function clearNetz(){
     if(e.segLayers) e.segLayers.forEach(s => { if(map.hasLayer(s)) map.removeLayer(s); });
   });
   setNetzEdges([]);
+  window._netzAnnualLossMWh = null;
   setSelectedStrandId(null);
   const sel = document.getElementById('netz-strang');
   if (sel) sel.value = '';
@@ -3156,6 +3157,7 @@ export function syncVLTemps(source) {
 }
 
 export function recalcNetz(){
+  window._netzAnnualLossMWh = null;
   const gebMap = new Map(gebaeude.map(g => [g.id, g]));
   // Auto-GK neu berechnen wenn Netz entsteht oder sich ändert
   if (typeof updateAllDeckungen === 'function') updateAllDeckungen();
@@ -3530,6 +3532,10 @@ export function recalcNetz(){
 
   const totalLossKW_annual = window.netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
   const totalLossJahrMWh = totalLossKW_annual * 8.76;
+  // Zentrale Verlustquelle für Lastgang und Kennzahlen. Sobald ein
+  // berechnetes Netz existiert, ersetzt dieser leitungsgenaue Jahreswert den
+  // pauschalen Prozentansatz aus den Wärme-Grundlagendaten.
+  window._netzAnnualLossMWh = totalLossJahrMWh;
   const connectedIds = new Set(window.netzEdges.flatMap(e => [e.u, e.v]));
   const totalVerbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
   const totalErzeugungMWh = totalLossJahrMWh + totalVerbrauchMWh;

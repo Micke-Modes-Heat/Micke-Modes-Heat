@@ -435,7 +435,7 @@ export function addGebaeude(opts={}){
     }
   }
   if(!_batchImporting) renderList();
-  if(!opts.coords) startDraw(id);
+  if(!opts.coords && !opts.skipDraw) startDraw(id);
   if(!_batchImporting) updateViz();
   // Unified Asset-System: Auto-Create UV + Verbraucher + PV
   // Nur wenn NICHT beim Projekt-Laden (skipAutoCreate:true) — dann kommen Assets aus dem Speicherzustand

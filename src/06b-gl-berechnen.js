@@ -134,23 +134,42 @@ async function glBerechnen() {
       }
     }
 
-    // Netzverluste
+    // Netzverluste: Bei vorhandenem, berechnetem Netz ist dessen
+    // leitungsgenauer Jahresverlust maßgeblich. Der Prozentwert bleibt der
+    // Fallback für Projekte ohne aufgebautes Wärmenetz.
     const nvPct = Math.min(netzverlust, 50);
     const nvFaktor = 1 - nvPct / 100;
+    const detailedNetworkLossMWh = window.netzEdges?.length > 0 &&
+      Number.isFinite(window._netzAnnualLossMWh)
+      ? Math.max(0,window._netzAnnualLossMWh)
+      : null;
     let nutzwaermeMwh, gesamtMwhMitNV;
 
     if (nurGebaeude) {
-      // Nur Gebäudedaten → Netzverluste AUFSCHLAGEN (Energie + Leistung)
+      // Nur Gebäudedaten → Netzverluste AUFSCHLAGEN (Energie + Leistung).
       // Heizlast ergibt sich aus dem Synthese-Lastgang (pMaxKw), nicht aus Σ Einzel-Heizlasten
       // → GLF ist implizit durch die Profilsynthese aus Gesamtenergie abgedeckt
-      const aufschlag = 1 / nvFaktor; // z.B. 10% Verlust → Faktor 1.111
       nutzwaermeMwh = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
-      for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] *= aufschlag;
+      if (detailedNetworkLossMWh !== null) {
+        const averageLossKw = detailedNetworkLossMWh * 1000 / lastgangKw.length;
+        for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] += averageLossKw;
+      } else {
+        const aufschlag = 1 / nvFaktor; // z.B. 10% Verlust → Faktor 1.111
+        for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] *= aufschlag;
+      }
       gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
     } else {
       // Fälle 1–4: Eingegebene/hochgeladene Werte enthalten Verluste bereits
       gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
-      nutzwaermeMwh = gesamtMwhMitNV * nvFaktor;
+      nutzwaermeMwh = detailedNetworkLossMWh !== null
+        ? Math.max(0,gesamtMwhMitNV - Math.min(detailedNetworkLossMWh,gesamtMwhMitNV * 0.5))
+        : gesamtMwhMitNV * nvFaktor;
+    }
+    const effectiveLossMWh = Math.max(0,gesamtMwhMitNV - nutzwaermeMwh);
+    const effectiveLossPct = gesamtMwhMitNV > 0 ? effectiveLossMWh / gesamtMwhMitNV * 100 : 0;
+    const lossHint = document.getElementById('gl-netzverlust-hint');
+    if (lossHint && detailedNetworkLossMWh !== null) {
+      lossHint.textContent = `aus Wärmenetz · ${Math.round(effectiveLossMWh).toLocaleString('de-DE')} MWh/a`;
     }
 
     // Temperaturprofil: aus synState wiederverwenden (Fall 3-5) oder neu berechnen (Fall 1-2)
@@ -179,7 +198,9 @@ async function glBerechnen() {
       // Metadaten
       gesamtMwhMitNV,
       nutzwaermeMwh,
-      netzverlustPct: netzverlust,
+      netzverlustPct: effectiveLossPct,
+      netzverlustQuelle: detailedNetworkLossMWh !== null ? 'waermenetz' : 'prozentwert',
+      netzverlustMwh: effectiveLossMWh,
       nurGebaeude,
       pMaxKw: Math.max(...lastgangKw),
       tMin: Math.min(...tempState.tempH),
@@ -232,7 +253,7 @@ async function glBerechnen() {
       `✓ Berechnet: ${Math.round(gesamtMwhMitNV).toLocaleString('de-DE')} MWh/a · P_max ${Math.round(window.systemState.pMaxKw).toLocaleString('de-DE')} kW · T_min ${window.systemState.tMin.toFixed(1)}°C`;
 
     // Energiesplit-Chart aktualisieren
-    glRenderSplit(lastgangKw, netzverlust);
+    glRenderSplit(lastgangKw, effectiveLossPct);
 
     // Andere Panels benachrichtigen
     if (typeof onSystemStateUpdated === 'function') onSystemStateUpdated();

@@ -195,6 +195,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .geb-compact-val{font-family:'DM Mono',monospace;font-size:10px;flex-shrink:0;min-width:42px;text-align:right;}
 .geb-compact-unit{font-size:8px;color:var(--muted);flex-shrink:0;}
 .geb-expanded{padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);margin-top:4px;}
+.geb-import-source{display:flex;align-items:center;gap:5px;margin:0 0 6px;padding:3px 6px;border-radius:4px;background:rgba(255,255,255,.035);color:var(--muted);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.geb-import-source span{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 .geb-inputs{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
 .inp-group{display:flex;flex-direction:column;gap:2px;}
 .inp-label{font-size:9px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;font-weight:normal;}
@@ -615,6 +617,10 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .geb-filter{padding:5px 6px 0;}
 .geb-filter-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:11px;padding:4px 8px;outline:none;transition:.15s;}
 .geb-filter-input:focus{border-color:var(--accent);}
+.geb-source-controls{display:flex;align-items:center;gap:6px;margin-top:5px;}
+.geb-source-controls select{min-width:0;flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font:9px 'DM Sans',sans-serif;padding:3px 5px;}
+.geb-source-controls label{display:flex;align-items:center;gap:3px;color:var(--muted);font-size:9px;white-space:nowrap;cursor:pointer;}
+.geb-source-controls input{accent-color:var(--accent);}
 /* Nutzungstyp badge */
 .nutzung-select{background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--muted);font-family:inherit;font-size:10px;padding:2px 4px;cursor:pointer;outline:none;transition:.15s;max-width:120px;}
 .nutzung-select:focus{border-color:var(--accent);}

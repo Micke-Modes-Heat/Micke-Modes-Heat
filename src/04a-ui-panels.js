@@ -118,15 +118,18 @@ export function clearSelection() {
 export let filterText = '';
 export function filterList(val) {
   filterText = val.toLowerCase().trim();
+  const sourceFilter = document.getElementById('geb-source-filter')?.value || '';
   const cards = document.querySelectorAll('#geb-list .geb-card');
   cards.forEach(card => {
     const id = parseInt(card.id.replace('card-', ''));
     const g = gebaeude.find(x => x.id === id);
     if (!g) return;
-    const match = !filterText
+    const textMatch = !filterText
       || g.name.toLowerCase().includes(filterText)
-      || (g.nutzung && NUTZUNG_DEFAULTS[g.nutzung]?.label.toLowerCase().includes(filterText));
-    card.style.display = match ? '' : 'none';
+      || (g.nutzung && (NUTZUNG_DEFAULTS[g.nutzung]?.label || g.nutzung).toLowerCase().includes(filterText))
+      || (g.importSourceName && g.importSourceName.toLowerCase().includes(filterText));
+    const sourceMatch = !sourceFilter || g.importSourceId === sourceFilter;
+    card.style.display = textMatch && sourceMatch ? '' : 'none';
   });
 }
 

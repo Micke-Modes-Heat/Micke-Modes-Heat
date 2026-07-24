@@ -1903,6 +1903,9 @@ export function _renderExpandedPanel(g, stats) {
   if(stats.status === 'geplant') infoLabel = '<div style="color:#f9a825;font-size:10px;margin-bottom:5px;">Geplant</div>';
   else if(stats.status === 'abgerissen') infoLabel = '<div style="color:#e53935;font-size:10px;margin-bottom:5px;">Abgerissen</div>';
   else if(stats.status === 'saniert') infoLabel = `<div style="color:#4caf50;font-size:10px;margin-bottom:5px;">Saniert (${stats.spez.toLocaleString('de-DE',{maximumFractionDigits:1})} kWh/m²a)</div>`;
+  const sourceLabel = g.importSourceName
+    ? `<div class="geb-import-source"><span style="background:${g.importSourceColor || 'var(--muted)'}"></span>Quelle: ${escHtml(g.importSourceName)}</div>`
+    : '';
 
   const fW = window.systemState?.skalierFaktorW;
   const fH = window.systemState?.skalierFaktorH;
@@ -1920,6 +1923,7 @@ export function _renderExpandedPanel(g, stats) {
 
   return `<div class="geb-expanded">
     ${infoLabel}
+    ${sourceLabel}
     <div style="margin-bottom:5px;">
       <input class="inp-field" type="text" placeholder="Bezeichnung…" value="${escHtml(g.name || '')}"
         style="width:100%;box-sizing:border-box;"
@@ -2082,9 +2086,32 @@ export function toggleGebExpand(id) {
   _rerenderCard(id);
 }
 
+function _updateBuildingSourceControls() {
+  const controls = document.getElementById('geb-source-controls');
+  const select = document.getElementById('geb-source-filter');
+  if (!controls || !select) return;
+  const sources = new Map();
+  window.gebaeude.forEach(building => {
+    if (building.importSourceId && building.importSourceName) {
+      sources.set(building.importSourceId,building.importSourceName);
+    }
+  });
+  const selected = select.value;
+  controls.hidden = sources.size === 0;
+  select.innerHTML = '<option value="">Alle Herkunftsprojekte</option>' +
+    [...sources.entries()]
+      .sort((a,b) => a[1].localeCompare(b[1],'de'))
+      .map(([id,name]) => `<option value="${escHtml(id)}">${escHtml(name)}</option>`)
+      .join('');
+  if (sources.has(selected)) select.value = selected;
+  const outline = document.getElementById('geb-source-outline');
+  if (outline) outline.checked = !!window.buildingSourceOutlines;
+}
+
 export function renderList(){
   populateZentraleSelect();
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
+  _updateBuildingSourceControls();
   const el=document.getElementById('geb-list');el.innerHTML='';
   window.gebaeude.forEach(g=>{
     const stats = getComputedStats(g, window.globalYear || globalYear);
@@ -2101,6 +2128,8 @@ export function renderList(){
                      (isExpanded ? _renderExpandedPanel(g, stats) : '');
     el.appendChild(card);
   });
+  const filterInput = document.getElementById('geb-filter');
+  if (typeof window.filterList === 'function') window.filterList(filterInput?.value || '');
   updateTotals();
 }
 
@@ -2187,6 +2216,11 @@ export function _buildProjectData() {
       pvFlBelegung: g.pvFlBelegung ?? null,
       pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche })),
       massnahmen: g.massnahmen || [],
+      importSourceId: g.importSourceId || null,
+      importSourceName: g.importSourceName || null,
+      importSourceColor: g.importSourceColor || null,
+      importOriginalBuildingId: g.importOriginalBuildingId ?? null,
+      importBuildingKey: g.importBuildingKey || null,
     })),
     netz: {
       zentrale: document.getElementById('netz-zentrale').value,
@@ -2412,6 +2446,199 @@ export function importJSON(event) {
   event.target.value = '';
 }
 
+const BUILDING_SOURCE_COLORS = ['#42a5f5','#ab47bc','#26a69a','#ff7043','#9ccc65','#ffa726','#5c6bc0','#ec407a'];
+
+function _buildingPolygonSignature(polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 3) return '';
+  const points = polygon.map(point => `${Number(point.lat).toFixed(7)},${Number(point.lng).toFixed(7)}`);
+  const rotations = sequence => sequence.map((_,index) =>
+    [...sequence.slice(index),...sequence.slice(0,index)].join(';'));
+  return [...rotations(points),...rotations([...points].reverse())].sort()[0];
+}
+
+async function _projectImportFingerprint(text) {
+  if (globalThis.crypto?.subtle) {
+    const digest = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
+    return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2,'0')).join('');
+  }
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i),16777619);
+  return `legacy-${(hash >>> 0).toString(16)}`;
+}
+
+function _sourceLabelForFile(filename,sourceId,pendingLabels) {
+  const existing = window.gebaeude.find(building => building.importSourceId === sourceId)?.importSourceName;
+  if (existing) return existing;
+  const base = String(filename || 'Importiertes Projekt').replace(/\.json$/i,'') || 'Importiertes Projekt';
+  const used = new Set([
+    ...window.gebaeude.map(building => building.importSourceName).filter(Boolean),
+    ...pendingLabels,
+  ]);
+  if (!used.has(base)) return base;
+  for (let index = 2; index < 1000; index++) {
+    const candidate = `${base} (${index})`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${base} (${sourceId.slice(0,6)})`;
+}
+
+function _mergeImportedUsageTypes(project,sourceId) {
+  const remap = new Map();
+  (project.customNutzungstypen || []).forEach(sourceType => {
+    const id = String(sourceType.id || '');
+    if (!id) return;
+    const existing = getNutzungstypById(id);
+    if (!existing) {
+      NUTZUNGSTYPEN_CUSTOM.push({...sourceType,id});
+      remap.set(id,id);
+      return;
+    }
+    const sameDefinition = ['label','spezWaerme','spezHeizlast','spezStrom','stromProfil']
+      .every(key => String(existing[key] ?? '') === String(sourceType[key] ?? ''));
+    if (sameDefinition) {
+      remap.set(id,id);
+      return;
+    }
+    let importedId = `imp_${sourceId.slice(0,8)}_${id}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+    let suffix = 2;
+    while (getNutzungstypById(importedId)) {
+      importedId = `imp_${sourceId.slice(0,8)}_${id}_${suffix++}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+    }
+    NUTZUNGSTYPEN_CUSTOM.push({...sourceType,id:importedId});
+    remap.set(id,importedId);
+  });
+  return remap;
+}
+
+function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
+  const fields = [
+    'waerme','heizlast','spez','spezHeizlast','flaeche','baujahr','baujährQuelle',
+    'abrissjahr','stockwerke','waermeManual','heizlastManual','strom','spezStrom',
+    'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
+    'dachNeigung','dachAutoAzimut','pvRidgeOverride','pvModus','pvFlGcr',
+    'pvFlAusrichtung','pvFlBelegung',
+  ];
+  fields.forEach(field => {
+    if (source[field] !== undefined) target[field] = structuredClone(source[field]);
+  });
+  target.nutzung = nutzungRemap.get(String(source.nutzung || '')) || source.nutzung || '';
+  target.sanierungen = structuredClone(source.sanierungen || []);
+  target.massnahmen = structuredClone(source.massnahmen || []);
+  target.importSourceId = sourceMeta.id;
+  target.importSourceName = sourceMeta.name;
+  target.importSourceColor = sourceMeta.color;
+  target.importOriginalBuildingId = source.id;
+  target.importBuildingKey = `${sourceMeta.id}:${source.id}`;
+  if (!Number.isInteger(window._gebPvFlCounter)) window._gebPvFlCounter = 1;
+  target.pvFlaechen = (source.pvFlaechen || []).map(surface => ({
+    id:window._gebPvFlCounter++,
+    typ:surface.typ,
+    polygon:structuredClone(surface.polygon),
+    flaeche:surface.flaeche,
+    layer:null,
+    svgLayer:null,
+  }));
+  target.pvFlaechen.forEach(surface => attachGebPvLayer(target,surface));
+  redrawGebPvModules(target);
+}
+
+export function openBuildingProjectImport() {
+  document.getElementById('import-buildings-file')?.click();
+}
+
+export async function importBuildingsFromProjects(event) {
+  const files = [...(event.target?.files || [])];
+  if (!files.length) return false;
+  let rollbackProject = null;
+  let mutationStarted = false;
+  try {
+    // Erst alle Dateien lesen und validieren. Bei einem Fehler bleibt das
+    // aktuelle Projekt vollständig unverändert.
+    const preparedFiles = [];
+    const pendingLabels = [];
+    for (const file of files) {
+      const text = await file.text();
+      const prepared = prepareProjectForImport(JSON.parse(text));
+      const fingerprint = await _projectImportFingerprint(text);
+      const sourceId = `project-${fingerprint}`;
+      const sourceName = _sourceLabelForFile(file.name,sourceId,pendingLabels);
+      pendingLabels.push(sourceName);
+      preparedFiles.push({project:prepared.project,sourceId,sourceName});
+    }
+
+    rollbackProject = _buildProjectData();
+    const usedIds = new Set(window.gebaeude.map(building => Number(building.id)));
+    const existingKeys = new Set(window.gebaeude.map(building => building.importBuildingKey).filter(Boolean));
+    const polygonSignatures = new Set(window.gebaeude.map(building =>
+      _buildingPolygonSignature(building.polygon)).filter(Boolean));
+    let nextId = Math.max(0,...usedIds) + 1;
+    let imported = 0;
+    let skipped = 0;
+    mutationStarted = true;
+    set_batchImporting(true);
+    try {
+      for (const item of preparedFiles) {
+        const colorIndex = [...item.sourceId].reduce((sum,char) => sum + char.charCodeAt(0),0) % BUILDING_SOURCE_COLORS.length;
+        const sourceMeta = {id:item.sourceId,name:item.sourceName,color:BUILDING_SOURCE_COLORS[colorIndex]};
+        const nutzungRemap = _mergeImportedUsageTypes(item.project,item.sourceId);
+        for (const source of item.project.gebaeude || []) {
+          const importKey = `${item.sourceId}:${source.id}`;
+          const polygonSignature = _buildingPolygonSignature(source.polygon);
+          if (existingKeys.has(importKey) || (polygonSignature && polygonSignatures.has(polygonSignature))) {
+            skipped++;
+            continue;
+          }
+          while (usedIds.has(nextId)) nextId++;
+          const target = addGebaeude({
+            id:nextId,
+            coords:source.polygon ? structuredClone(source.polygon) : null,
+            name:source.name,
+            fromOsm:source.fromOsm,
+            osmId:source.osmId,
+            skipAutoCreate:true,
+            skipDraw:true,
+          });
+          _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta);
+          usedIds.add(nextId);
+          existingKeys.add(importKey);
+          if (polygonSignature) polygonSignatures.add(polygonSignature);
+          nextId++;
+          imported++;
+        }
+      }
+      setIdCounter(Math.max(window.idCounter || 1,nextId));
+    } finally {
+      set_batchImporting(false);
+    }
+    renderList();
+    updateViz();
+    updateTotals();
+    recalcNetz();
+    populateZentraleSelect();
+    const skippedText = skipped ? ` · ${skipped} Duplikate übersprungen` : '';
+    showHint(`✓ ${imported} Gebäude aus ${files.length} Projekt${files.length === 1 ? '' : 'en'} ergänzt${skippedText}`,5000);
+    return {imported,skipped,sources:files.length};
+  } catch (error) {
+    console.error('Gebäudeimport aus Projekten fehlgeschlagen:',error);
+    if (mutationStarted && rollbackProject) {
+      try {
+        _loadProject(rollbackProject);
+      } catch (rollbackError) {
+        console.error('Rollback des Gebäudeimports fehlgeschlagen:',rollbackError);
+      }
+    }
+    showHint(`Gebäudeimport fehlgeschlagen: ${error.message}`,6000);
+    return false;
+  } finally {
+    if (event.target) event.target.value = '';
+  }
+}
+
+export function toggleBuildingSourceOutlines(visible) {
+  window.buildingSourceOutlines = !!visible;
+  updateViz();
+}
+
 // Jahres-Slider (Kopfleiste) auf das älteste ECHTE Baujahr der Liegenschaft setzen —
 // geschätzte/automatisch erzeugte Baujahre (g.baujährQuelle gesetzt) zählen nicht,
 // da sie keine belastbare Untergrenze für den Betrachtungszeitraum liefern.
@@ -2503,6 +2730,11 @@ function _applyProjectData(project) {
             newG.abrissjahr = g.abrissjahr;
             newG.sanierungen = g.sanierungen || [];
             newG.massnahmen = g.massnahmen || [];
+            newG.importSourceId = g.importSourceId || null;
+            newG.importSourceName = g.importSourceName || null;
+            newG.importSourceColor = g.importSourceColor || null;
+            newG.importOriginalBuildingId = g.importOriginalBuildingId ?? null;
+            newG.importBuildingKey = g.importBuildingKey || null;
             newG.nutzung = g.nutzung || '';
             newG.stockwerke = g.stockwerke ?? 1;
             newG.waermeManual = g.waermeManual || false;

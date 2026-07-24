@@ -208,7 +208,14 @@ export function updateViz(){
       } else {
          const cv=getColorVal(g);
          const col=getColor(cv,cMin,cMax);
-         g.polygonLayer.setStyle({fillColor:col, color: g.fromOsm?'rgba(206,147,216,0.4)':'rgba(79,195,247,0.4)', fillOpacity:cv?0.55:0.08, dashArray:''});
+         const showSource = !!window.buildingSourceOutlines && !!g.importSourceColor;
+         g.polygonLayer.setStyle({
+           fillColor:col,
+           color:showSource ? g.importSourceColor : (g.fromOsm?'rgba(206,147,216,0.4)':'rgba(79,195,247,0.4)'),
+           weight:showSource ? 2.2 : 1.2,
+           fillOpacity:cv?0.55:0.08,
+           dashArray:showSource ? '4 3' : '',
+         });
       }
       // Heizzentrale hervorheben
       const hzId = parseInt(document.getElementById('netz-zentrale')?.value);

@@ -1345,6 +1345,15 @@
     <div class="sb-tab-body active" id="sb-tab-gebaeude">
       <div class="geb-filter">
         <input class="geb-filter-input" id="geb-filter" type="text" placeholder="🔍 Filter…" data-input="filterList(this.value)"/>
+        <div id="geb-source-controls" class="geb-source-controls" hidden>
+          <select id="geb-source-filter" data-change="filterList(document.getElementById('geb-filter')?.value || '')" title="Gebäude nach Herkunftsprojekt filtern">
+            <option value="">Alle Herkunftsprojekte</option>
+          </select>
+          <label title="Herkunftsprojekt als dünne Kontur auf der Karte anzeigen">
+            <input id="geb-source-outline" type="checkbox" data-change="toggleBuildingSourceOutlines(this.checked)">
+            Konturen
+          </label>
+        </div>
       </div>
       <div class="bulk-bar" id="bulk-bar">
         <span class="bulk-lbl" id="bulk-lbl">0 ausgewählt</span>
@@ -1395,10 +1404,14 @@
       </div>
       <div class="export-bar">
         <input type="file" id="import-file" style="display:none" accept=".json" data-change="importJSON(event)">
+        <input type="file" id="import-buildings-file" style="display:none" accept=".json,application/json" multiple data-change="importBuildingsFromProjects(event)">
         <div class="export-row">
           <button class="btn-export primary" data-click="openProjectFile()">📂 Öffnen</button>
           <button class="btn-export primary" data-click="saveProject()">💾 Speichern</button>
           <button class="btn-export" data-click="saveProjectAs()" title="Projekt unter einem neuen Dateinamen speichern">Speichern unter</button>
+        </div>
+        <div class="export-row">
+          <button class="btn-export" data-click="openBuildingProjectImport()" title="Gebäudedaten aus einer oder mehreren Projektdateien ergänzen">＋ Gebäude aus Projekten</button>
         </div>
         <div id="project-file-status" style="font-size:8px;color:var(--muted);padding:1px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noch keine Projektdatei geöffnet</div>
         <div class="export-row">
