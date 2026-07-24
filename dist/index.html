@@ -14694,7 +14694,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-24';
   if (d.indexOf('__') === 0) d = '';
-  var c = '955b21e';
+  var c = '2fec1f5';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -106281,6 +106281,7 @@ ${massTbl}
       } finally {
         set_batchImporting(false);
       }
+      _initYearSliderFromBaujahr();
       renderList();
       updateViz();
       updateTotals();
