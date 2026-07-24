@@ -9519,6 +9519,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .geb-compact-val{font-family:'DM Mono',monospace;font-size:10px;flex-shrink:0;min-width:42px;text-align:right;}
 .geb-compact-unit{font-size:8px;color:var(--muted);flex-shrink:0;}
 .geb-expanded{padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);margin-top:4px;}
+.geb-import-source{display:flex;align-items:center;gap:5px;margin:0 0 6px;padding:3px 6px;border-radius:4px;background:rgba(255,255,255,.035);color:var(--muted);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.geb-import-source span{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 .geb-inputs{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
 .inp-group{display:flex;flex-direction:column;gap:2px;}
 .inp-label{font-size:9px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;font-weight:normal;}
@@ -9939,6 +9941,10 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .geb-filter{padding:5px 6px 0;}
 .geb-filter-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:11px;padding:4px 8px;outline:none;transition:.15s;}
 .geb-filter-input:focus{border-color:var(--accent);}
+.geb-source-controls{display:flex;align-items:center;gap:6px;margin-top:5px;}
+.geb-source-controls select{min-width:0;flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font:9px 'DM Sans',sans-serif;padding:3px 5px;}
+.geb-source-controls label{display:flex;align-items:center;gap:3px;color:var(--muted);font-size:9px;white-space:nowrap;cursor:pointer;}
+.geb-source-controls input{accent-color:var(--accent);}
 /* Nutzungstyp badge */
 .nutzung-select{background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--muted);font-family:inherit;font-size:10px;padding:2px 4px;cursor:pointer;outline:none;transition:.15s;max-width:120px;}
 .nutzung-select:focus{border-color:var(--accent);}
@@ -12225,6 +12231,15 @@ if (typeof L !== 'undefined') {
     <div class="sb-tab-body active" id="sb-tab-gebaeude">
       <div class="geb-filter">
         <input class="geb-filter-input" id="geb-filter" type="text" placeholder="🔍 Filter…" data-input="filterList(this.value)"/>
+        <div id="geb-source-controls" class="geb-source-controls" hidden>
+          <select id="geb-source-filter" data-change="filterList(document.getElementById('geb-filter')?.value || '')" title="Gebäude nach Herkunftsprojekt filtern">
+            <option value="">Alle Herkunftsprojekte</option>
+          </select>
+          <label title="Herkunftsprojekt als dünne Kontur auf der Karte anzeigen">
+            <input id="geb-source-outline" type="checkbox" data-change="toggleBuildingSourceOutlines(this.checked)">
+            Konturen
+          </label>
+        </div>
       </div>
       <div class="bulk-bar" id="bulk-bar">
         <span class="bulk-lbl" id="bulk-lbl">0 ausgewählt</span>
@@ -12275,10 +12290,14 @@ if (typeof L !== 'undefined') {
       </div>
       <div class="export-bar">
         <input type="file" id="import-file" style="display:none" accept=".json" data-change="importJSON(event)">
+        <input type="file" id="import-buildings-file" style="display:none" accept=".json,application/json" multiple data-change="importBuildingsFromProjects(event)">
         <div class="export-row">
           <button class="btn-export primary" data-click="openProjectFile()">📂 Öffnen</button>
           <button class="btn-export primary" data-click="saveProject()">💾 Speichern</button>
           <button class="btn-export" data-click="saveProjectAs()" title="Projekt unter einem neuen Dateinamen speichern">Speichern unter</button>
+        </div>
+        <div class="export-row">
+          <button class="btn-export" data-click="openBuildingProjectImport()" title="Gebäudedaten aus einer oder mehreren Projektdateien ergänzen">＋ Gebäude aus Projekten</button>
         </div>
         <div id="project-file-status" style="font-size:8px;color:var(--muted);padding:1px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noch keine Projektdatei geöffnet</div>
         <div class="export-row">
@@ -14675,7 +14694,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-24';
   if (d.indexOf('__') === 0) d = '';
-  var c = '3f450ee';
+  var c = '955b21e';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -89256,23 +89275,42 @@ window._isSingleFileBuild = true;
         }
       }
 
-      // Netzverluste
+      // Netzverluste: Bei vorhandenem, berechnetem Netz ist dessen
+      // leitungsgenauer Jahresverlust maßgeblich. Der Prozentwert bleibt der
+      // Fallback für Projekte ohne aufgebautes Wärmenetz.
       const nvPct = Math.min(netzverlust, 50);
       const nvFaktor = 1 - nvPct / 100;
+      const detailedNetworkLossMWh = window.netzEdges?.length > 0 &&
+        Number.isFinite(window._netzAnnualLossMWh)
+        ? Math.max(0,window._netzAnnualLossMWh)
+        : null;
       let nutzwaermeMwh, gesamtMwhMitNV;
 
       if (nurGebaeude) {
-        // Nur Gebäudedaten → Netzverluste AUFSCHLAGEN (Energie + Leistung)
+        // Nur Gebäudedaten → Netzverluste AUFSCHLAGEN (Energie + Leistung).
         // Heizlast ergibt sich aus dem Synthese-Lastgang (pMaxKw), nicht aus Σ Einzel-Heizlasten
         // → GLF ist implizit durch die Profilsynthese aus Gesamtenergie abgedeckt
-        const aufschlag = 1 / nvFaktor; // z.B. 10% Verlust → Faktor 1.111
         nutzwaermeMwh = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
-        for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] *= aufschlag;
+        if (detailedNetworkLossMWh !== null) {
+          const averageLossKw = detailedNetworkLossMWh * 1000 / lastgangKw.length;
+          for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] += averageLossKw;
+        } else {
+          const aufschlag = 1 / nvFaktor; // z.B. 10% Verlust → Faktor 1.111
+          for (let i = 0; i < lastgangKw.length; i++) lastgangKw[i] *= aufschlag;
+        }
         gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
       } else {
         // Fälle 1–4: Eingegebene/hochgeladene Werte enthalten Verluste bereits
         gesamtMwhMitNV = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
-        nutzwaermeMwh = gesamtMwhMitNV * nvFaktor;
+        nutzwaermeMwh = detailedNetworkLossMWh !== null
+          ? Math.max(0,gesamtMwhMitNV - Math.min(detailedNetworkLossMWh,gesamtMwhMitNV * 0.5))
+          : gesamtMwhMitNV * nvFaktor;
+      }
+      const effectiveLossMWh = Math.max(0,gesamtMwhMitNV - nutzwaermeMwh);
+      const effectiveLossPct = gesamtMwhMitNV > 0 ? effectiveLossMWh / gesamtMwhMitNV * 100 : 0;
+      const lossHint = document.getElementById('gl-netzverlust-hint');
+      if (lossHint && detailedNetworkLossMWh !== null) {
+        lossHint.textContent = `aus Wärmenetz · ${Math.round(effectiveLossMWh).toLocaleString('de-DE')} MWh/a`;
       }
 
       // Temperaturprofil: aus synState wiederverwenden (Fall 3-5) oder neu berechnen (Fall 1-2)
@@ -89301,7 +89339,9 @@ window._isSingleFileBuild = true;
         // Metadaten
         gesamtMwhMitNV,
         nutzwaermeMwh,
-        netzverlustPct: netzverlust,
+        netzverlustPct: effectiveLossPct,
+        netzverlustQuelle: detailedNetworkLossMWh !== null ? 'waermenetz' : 'prozentwert',
+        netzverlustMwh: effectiveLossMWh,
         nurGebaeude,
         pMaxKw: Math.max(...lastgangKw),
         tMin: Math.min(...tempState.tempH),
@@ -89354,7 +89394,7 @@ window._isSingleFileBuild = true;
         `✓ Berechnet: ${Math.round(gesamtMwhMitNV).toLocaleString('de-DE')} MWh/a · P_max ${Math.round(window.systemState.pMaxKw).toLocaleString('de-DE')} kW · T_min ${window.systemState.tMin.toFixed(1)}°C`;
 
       // Energiesplit-Chart aktualisieren
-      glRenderSplit(lastgangKw, netzverlust);
+      glRenderSplit(lastgangKw, effectiveLossPct);
 
       // Andere Panels benachrichtigen
       if (typeof onSystemStateUpdated === 'function') onSystemStateUpdated();
@@ -102448,15 +102488,18 @@ ${massTbl}
   let filterText = '';
   function filterList(val) {
     filterText = val.toLowerCase().trim();
+    const sourceFilter = document.getElementById('geb-source-filter')?.value || '';
     const cards = document.querySelectorAll('#geb-list .geb-card');
     cards.forEach(card => {
       const id = parseInt(card.id.replace('card-', ''));
       const g = gebaeude.find(x => x.id === id);
       if (!g) return;
-      const match = !filterText
+      const textMatch = !filterText
         || g.name.toLowerCase().includes(filterText)
-        || (g.nutzung && NUTZUNG_DEFAULTS[g.nutzung]?.label.toLowerCase().includes(filterText));
-      card.style.display = match ? '' : 'none';
+        || (g.nutzung && (NUTZUNG_DEFAULTS[g.nutzung]?.label || g.nutzung).toLowerCase().includes(filterText))
+        || (g.importSourceName && g.importSourceName.toLowerCase().includes(filterText));
+      const sourceMatch = !sourceFilter || g.importSourceId === sourceFilter;
+      card.style.display = textMatch && sourceMatch ? '' : 'none';
     });
   }
 
@@ -105531,6 +105574,9 @@ ${massTbl}
     if(stats.status === 'geplant') infoLabel = '<div style="color:#f9a825;font-size:10px;margin-bottom:5px;">Geplant</div>';
     else if(stats.status === 'abgerissen') infoLabel = '<div style="color:#e53935;font-size:10px;margin-bottom:5px;">Abgerissen</div>';
     else if(stats.status === 'saniert') infoLabel = `<div style="color:#4caf50;font-size:10px;margin-bottom:5px;">Saniert (${stats.spez.toLocaleString('de-DE',{maximumFractionDigits:1})} kWh/m²a)</div>`;
+    const sourceLabel = g.importSourceName
+      ? `<div class="geb-import-source"><span style="background:${g.importSourceColor || 'var(--muted)'}"></span>Quelle: ${escHtml(g.importSourceName)}</div>`
+      : '';
 
     const fW = window.systemState?.skalierFaktorW;
     const fH = window.systemState?.skalierFaktorH;
@@ -105548,6 +105594,7 @@ ${massTbl}
 
     return `<div class="geb-expanded">
     ${infoLabel}
+    ${sourceLabel}
     <div style="margin-bottom:5px;">
       <input class="inp-field" type="text" placeholder="Bezeichnung…" value="${escHtml(g.name || '')}"
         style="width:100%;box-sizing:border-box;"
@@ -105710,9 +105757,32 @@ ${massTbl}
     _rerenderCard(id);
   }
 
+  function _updateBuildingSourceControls() {
+    const controls = document.getElementById('geb-source-controls');
+    const select = document.getElementById('geb-source-filter');
+    if (!controls || !select) return;
+    const sources = new Map();
+    window.gebaeude.forEach(building => {
+      if (building.importSourceId && building.importSourceName) {
+        sources.set(building.importSourceId,building.importSourceName);
+      }
+    });
+    const selected = select.value;
+    controls.hidden = sources.size === 0;
+    select.innerHTML = '<option value="">Alle Herkunftsprojekte</option>' +
+      [...sources.entries()]
+        .sort((a,b) => a[1].localeCompare(b[1],'de'))
+        .map(([id,name]) => `<option value="${escHtml(id)}">${escHtml(name)}</option>`)
+        .join('');
+    if (sources.has(selected)) select.value = selected;
+    const outline = document.getElementById('geb-source-outline');
+    if (outline) outline.checked = !!window.buildingSourceOutlines;
+  }
+
   function renderList(){
     populateZentraleSelect();
     if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
+    _updateBuildingSourceControls();
     const el=document.getElementById('geb-list');el.innerHTML='';
     window.gebaeude.forEach(g=>{
       const stats = getComputedStats(g, window.globalYear || globalYear);
@@ -105729,6 +105799,8 @@ ${massTbl}
                        (isExpanded ? _renderExpandedPanel(g, stats) : '');
       el.appendChild(card);
     });
+    const filterInput = document.getElementById('geb-filter');
+    if (typeof window.filterList === 'function') window.filterList(filterInput?.value || '');
     updateTotals();
   }
 
@@ -105815,6 +105887,11 @@ ${massTbl}
         pvFlBelegung: g.pvFlBelegung ?? null,
         pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche })),
         massnahmen: g.massnahmen || [],
+        importSourceId: g.importSourceId || null,
+        importSourceName: g.importSourceName || null,
+        importSourceColor: g.importSourceColor || null,
+        importOriginalBuildingId: g.importOriginalBuildingId ?? null,
+        importBuildingKey: g.importBuildingKey || null,
       })),
       netz: {
         zentrale: document.getElementById('netz-zentrale').value,
@@ -106040,6 +106117,199 @@ ${massTbl}
     event.target.value = '';
   }
 
+  const BUILDING_SOURCE_COLORS = ['#42a5f5','#ab47bc','#26a69a','#ff7043','#9ccc65','#ffa726','#5c6bc0','#ec407a'];
+
+  function _buildingPolygonSignature(polygon) {
+    if (!Array.isArray(polygon) || polygon.length < 3) return '';
+    const points = polygon.map(point => `${Number(point.lat).toFixed(7)},${Number(point.lng).toFixed(7)}`);
+    const rotations = sequence => sequence.map((_,index) =>
+      [...sequence.slice(index),...sequence.slice(0,index)].join(';'));
+    return [...rotations(points),...rotations([...points].reverse())].sort()[0];
+  }
+
+  async function _projectImportFingerprint(text) {
+    if (globalThis.crypto?.subtle) {
+      const digest = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
+      return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2,'0')).join('');
+    }
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i),16777619);
+    return `legacy-${(hash >>> 0).toString(16)}`;
+  }
+
+  function _sourceLabelForFile(filename,sourceId,pendingLabels) {
+    const existing = window.gebaeude.find(building => building.importSourceId === sourceId)?.importSourceName;
+    if (existing) return existing;
+    const base = String(filename || 'Importiertes Projekt').replace(/\.json$/i,'') || 'Importiertes Projekt';
+    const used = new Set([
+      ...window.gebaeude.map(building => building.importSourceName).filter(Boolean),
+      ...pendingLabels,
+    ]);
+    if (!used.has(base)) return base;
+    for (let index = 2; index < 1000; index++) {
+      const candidate = `${base} (${index})`;
+      if (!used.has(candidate)) return candidate;
+    }
+    return `${base} (${sourceId.slice(0,6)})`;
+  }
+
+  function _mergeImportedUsageTypes(project,sourceId) {
+    const remap = new Map();
+    (project.customNutzungstypen || []).forEach(sourceType => {
+      const id = String(sourceType.id || '');
+      if (!id) return;
+      const existing = getNutzungstypById(id);
+      if (!existing) {
+        NUTZUNGSTYPEN_CUSTOM.push({...sourceType,id});
+        remap.set(id,id);
+        return;
+      }
+      const sameDefinition = ['label','spezWaerme','spezHeizlast','spezStrom','stromProfil']
+        .every(key => String(existing[key] ?? '') === String(sourceType[key] ?? ''));
+      if (sameDefinition) {
+        remap.set(id,id);
+        return;
+      }
+      let importedId = `imp_${sourceId.slice(0,8)}_${id}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+      let suffix = 2;
+      while (getNutzungstypById(importedId)) {
+        importedId = `imp_${sourceId.slice(0,8)}_${id}_${suffix++}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+      }
+      NUTZUNGSTYPEN_CUSTOM.push({...sourceType,id:importedId});
+      remap.set(id,importedId);
+    });
+    return remap;
+  }
+
+  function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
+    const fields = [
+      'waerme','heizlast','spez','spezHeizlast','flaeche','baujahr','baujährQuelle',
+      'abrissjahr','stockwerke','waermeManual','heizlastManual','strom','spezStrom',
+      'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
+      'dachNeigung','dachAutoAzimut','pvRidgeOverride','pvModus','pvFlGcr',
+      'pvFlAusrichtung','pvFlBelegung',
+    ];
+    fields.forEach(field => {
+      if (source[field] !== undefined) target[field] = structuredClone(source[field]);
+    });
+    target.nutzung = nutzungRemap.get(String(source.nutzung || '')) || source.nutzung || '';
+    target.sanierungen = structuredClone(source.sanierungen || []);
+    target.massnahmen = structuredClone(source.massnahmen || []);
+    target.importSourceId = sourceMeta.id;
+    target.importSourceName = sourceMeta.name;
+    target.importSourceColor = sourceMeta.color;
+    target.importOriginalBuildingId = source.id;
+    target.importBuildingKey = `${sourceMeta.id}:${source.id}`;
+    if (!Number.isInteger(window._gebPvFlCounter)) window._gebPvFlCounter = 1;
+    target.pvFlaechen = (source.pvFlaechen || []).map(surface => ({
+      id:window._gebPvFlCounter++,
+      typ:surface.typ,
+      polygon:structuredClone(surface.polygon),
+      flaeche:surface.flaeche,
+      layer:null,
+      svgLayer:null,
+    }));
+    target.pvFlaechen.forEach(surface => attachGebPvLayer(target,surface));
+    redrawGebPvModules(target);
+  }
+
+  function openBuildingProjectImport() {
+    document.getElementById('import-buildings-file')?.click();
+  }
+
+  async function importBuildingsFromProjects(event) {
+    const files = [...(event.target?.files || [])];
+    if (!files.length) return false;
+    let rollbackProject = null;
+    let mutationStarted = false;
+    try {
+      // Erst alle Dateien lesen und validieren. Bei einem Fehler bleibt das
+      // aktuelle Projekt vollständig unverändert.
+      const preparedFiles = [];
+      const pendingLabels = [];
+      for (const file of files) {
+        const text = await file.text();
+        const prepared = prepareProjectForImport(JSON.parse(text));
+        const fingerprint = await _projectImportFingerprint(text);
+        const sourceId = `project-${fingerprint}`;
+        const sourceName = _sourceLabelForFile(file.name,sourceId,pendingLabels);
+        pendingLabels.push(sourceName);
+        preparedFiles.push({project:prepared.project,sourceId,sourceName});
+      }
+
+      rollbackProject = _buildProjectData();
+      const usedIds = new Set(window.gebaeude.map(building => Number(building.id)));
+      const existingKeys = new Set(window.gebaeude.map(building => building.importBuildingKey).filter(Boolean));
+      const polygonSignatures = new Set(window.gebaeude.map(building =>
+        _buildingPolygonSignature(building.polygon)).filter(Boolean));
+      let nextId = Math.max(0,...usedIds) + 1;
+      let imported = 0;
+      let skipped = 0;
+      mutationStarted = true;
+      set_batchImporting(true);
+      try {
+        for (const item of preparedFiles) {
+          const colorIndex = [...item.sourceId].reduce((sum,char) => sum + char.charCodeAt(0),0) % BUILDING_SOURCE_COLORS.length;
+          const sourceMeta = {id:item.sourceId,name:item.sourceName,color:BUILDING_SOURCE_COLORS[colorIndex]};
+          const nutzungRemap = _mergeImportedUsageTypes(item.project,item.sourceId);
+          for (const source of item.project.gebaeude || []) {
+            const importKey = `${item.sourceId}:${source.id}`;
+            const polygonSignature = _buildingPolygonSignature(source.polygon);
+            if (existingKeys.has(importKey) || (polygonSignature && polygonSignatures.has(polygonSignature))) {
+              skipped++;
+              continue;
+            }
+            while (usedIds.has(nextId)) nextId++;
+            const target = addGebaeude({
+              id:nextId,
+              coords:source.polygon ? structuredClone(source.polygon) : null,
+              name:source.name,
+              fromOsm:source.fromOsm,
+              osmId:source.osmId,
+              skipAutoCreate:true,
+              skipDraw:true,
+            });
+            _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta);
+            usedIds.add(nextId);
+            existingKeys.add(importKey);
+            if (polygonSignature) polygonSignatures.add(polygonSignature);
+            nextId++;
+            imported++;
+          }
+        }
+        setIdCounter(Math.max(window.idCounter || 1,nextId));
+      } finally {
+        set_batchImporting(false);
+      }
+      renderList();
+      updateViz();
+      updateTotals();
+      recalcNetz();
+      populateZentraleSelect();
+      const skippedText = skipped ? ` · ${skipped} Duplikate übersprungen` : '';
+      showHint(`✓ ${imported} Gebäude aus ${files.length} Projekt${files.length === 1 ? '' : 'en'} ergänzt${skippedText}`,5000);
+      return {imported,skipped,sources:files.length};
+    } catch (error) {
+      console.error('Gebäudeimport aus Projekten fehlgeschlagen:',error);
+      if (mutationStarted && rollbackProject) {
+        try {
+          _loadProject(rollbackProject);
+        } catch (rollbackError) {
+          console.error('Rollback des Gebäudeimports fehlgeschlagen:',rollbackError);
+        }
+      }
+      showHint(`Gebäudeimport fehlgeschlagen: ${error.message}`,6000);
+      return false;
+    } finally {
+      if (event.target) event.target.value = '';
+    }
+  }
+
+  function toggleBuildingSourceOutlines(visible) {
+    window.buildingSourceOutlines = !!visible;
+    updateViz();
+  }
+
   // Jahres-Slider (Kopfleiste) auf das älteste ECHTE Baujahr der Liegenschaft setzen —
   // geschätzte/automatisch erzeugte Baujahre (g.baujährQuelle gesetzt) zählen nicht,
   // da sie keine belastbare Untergrenze für den Betrachtungszeitraum liefern.
@@ -106131,6 +106401,11 @@ ${massTbl}
               newG.abrissjahr = g.abrissjahr;
               newG.sanierungen = g.sanierungen || [];
               newG.massnahmen = g.massnahmen || [];
+              newG.importSourceId = g.importSourceId || null;
+              newG.importSourceName = g.importSourceName || null;
+              newG.importSourceColor = g.importSourceColor || null;
+              newG.importOriginalBuildingId = g.importOriginalBuildingId ?? null;
+              newG.importBuildingKey = g.importBuildingKey || null;
               newG.nutzung = g.nutzung || '';
               newG.stockwerke = g.stockwerke ?? 1;
               newG.waermeManual = g.waermeManual || false;
@@ -106818,8 +107093,10 @@ ${massTbl}
     getGebPvModules: getGebPvModules,
     getPvKorrFaktor: getPvKorrFaktor,
     hideHint: hideHint,
+    importBuildingsFromProjects: importBuildingsFromProjects,
     importJSON: importJSON,
     loadGebaeudeFromParent: loadGebaeudeFromParent,
+    openBuildingProjectImport: openBuildingProjectImport,
     openProjectFile: openProjectFile,
     placePvModules: placePvModules,
     pvNettoFlaeche: pvNettoFlaeche,
@@ -106842,6 +107119,7 @@ ${massTbl}
     stopAnimStrom: stopAnimStrom,
     get stromDashOffset () { return stromDashOffset; },
     sty: sty,
+    toggleBuildingSourceOutlines: toggleBuildingSourceOutlines,
     toggleGebExpand: toggleGebExpand,
     toggleGebPvPanel: toggleGebPvPanel,
     toggleVormerkenGeb: toggleVormerkenGeb,
@@ -108517,7 +108795,14 @@ ${massTbl}
         } else {
            const cv=getColorVal(g);
            const col=getColor(cv);
-           g.polygonLayer.setStyle({fillColor:col, color: g.fromOsm?'rgba(206,147,216,0.4)':'rgba(79,195,247,0.4)', fillOpacity:cv?0.55:0.08, dashArray:''});
+           const showSource = !!window.buildingSourceOutlines && !!g.importSourceColor;
+           g.polygonLayer.setStyle({
+             fillColor:col,
+             color:showSource ? g.importSourceColor : (g.fromOsm?'rgba(206,147,216,0.4)':'rgba(79,195,247,0.4)'),
+             weight:showSource ? 2.2 : 1.2,
+             fillOpacity:cv?0.55:0.08,
+             dashArray:showSource ? '4 3' : '',
+           });
         }
         // Heizzentrale hervorheben
         const hzId = parseInt(document.getElementById('netz-zentrale')?.value);
@@ -113026,6 +113311,7 @@ out body;>;out skel qt;`;
       if(e.segLayers) e.segLayers.forEach(s => { if(map.hasLayer(s)) map.removeLayer(s); });
     });
     setNetzEdges([]);
+    window._netzAnnualLossMWh = null;
     setSelectedStrandId(null);
     const sel = document.getElementById('netz-strang');
     if (sel) sel.value = '';
@@ -113316,6 +113602,7 @@ out body;>;out skel qt;`;
   }
 
   function recalcNetz(){
+    window._netzAnnualLossMWh = null;
     const gebMap = new Map(gebaeude.map(g => [g.id, g]));
     // Auto-GK neu berechnen wenn Netz entsteht oder sich ändert
     if (typeof updateAllDeckungen === 'function') updateAllDeckungen();
@@ -113690,6 +113977,10 @@ out body;>;out skel qt;`;
 
     const totalLossKW_annual = window.netzEdges.reduce((s, e) => s + (e.lossKW_annual || 0), 0);
     const totalLossJahrMWh = totalLossKW_annual * 8.76;
+    // Zentrale Verlustquelle für Lastgang und Kennzahlen. Sobald ein
+    // berechnetes Netz existiert, ersetzt dieser leitungsgenaue Jahreswert den
+    // pauschalen Prozentansatz aus den Wärme-Grundlagendaten.
+    window._netzAnnualLossMWh = totalLossJahrMWh;
     const connectedIds = new Set(window.netzEdges.flatMap(e => [e.u, e.v]));
     const totalVerbrauchMWh = gebaeude.filter(g => connectedIds.has(g.id)).reduce((s, g) => s + (parseFloat(g.waerme) || 0), 0);
     const totalErzeugungMWh = totalLossJahrMWh + totalVerbrauchMWh;
@@ -115245,7 +115536,7 @@ out body;>;out skel qt;`;
       }
     }
     if(!_batchImporting) renderList();
-    if(!opts.coords) startDraw(id);
+    if(!opts.coords && !opts.skipDraw) startDraw(id);
     if(!_batchImporting) updateViz();
     // Unified Asset-System: Auto-Create UV + Verbraucher + PV
     // Nur wenn NICHT beim Projekt-Laden (skipAutoCreate:true) — dann kommen Assets aus dem Speicherzustand
