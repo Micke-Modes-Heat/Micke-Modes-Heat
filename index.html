@@ -22,7 +22,7 @@
 <body>
 
 <header>
-  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span>Energiekonzepte <span>·</span> <span style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="App-Version" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
+  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span>Energiekonzepte <span>·</span> <span style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
   <div class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
@@ -3783,8 +3783,11 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '__BUILD_DATE__';
   if (d.indexOf('__') === 0) d = '';
+  var c = '__COMMIT_SHA__';
+  if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
+  window.APP_COMMIT_SHA = c;
 
   // Konsolenfehler/-warnungen von Beginn an abfangen
   var _consoleLogs = [];
@@ -4080,7 +4083,15 @@ Turnhalle;Öffentlich;1982;A;850</div>
 
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('app-version');
-    if (el) el.textContent = 'v' + (window.APP_VERSION || 'dev');
+    if (el) {
+      var parts = (window.APP_BUILD_DATE || '').split('-');
+      el.textContent = parts.length === 3
+        ? 'Stand ' + parts[2] + '.' + parts[1] + '.' + parts[0]
+        : 'Stand lokal';
+      el.title = 'Ausgelieferter Stand'
+        + (window.APP_COMMIT_SHA ? ' · Commit ' + window.APP_COMMIT_SHA : '')
+        + (window.APP_VERSION ? ' · technische Version ' + window.APP_VERSION : '');
+    }
   });
 })();
 </script>

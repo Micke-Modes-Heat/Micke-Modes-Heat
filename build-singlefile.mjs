@@ -2,6 +2,7 @@
 // Rollup geparst und als eine offline-fähige HTML-Datei ausgeliefert.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
+import { execFileSync } from 'child_process';
 import { rollup } from 'rollup';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 
@@ -9,12 +10,27 @@ const SRC = resolve('src');
 const dist = resolve('dist');
 mkdirSync(dist, { recursive: true });
 
-// Version + Build-Datum aus package.json → werden unten in die HTML injiziert
-// (Platzhalter __APP_VERSION__ / __BUILD_DATE__ im index.html-Quelltext)
+// Technische Version für Exporte/Diagnose sowie sichtbarer Stand des aktuell
+// ausgecheckten Commits. Auf Netlify entspricht das dem ausgelieferten Push.
 const APP_VERSION = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version || '0.0.0';
 const sourceEpoch = Number.parseInt(process.env.SOURCE_DATE_EPOCH || '', 10);
 const buildInstant = Number.isFinite(sourceEpoch) ? new Date(sourceEpoch * 1000) : new Date();
 const BUILD_DATE = buildInstant.toISOString().slice(0, 10);
+const gitValue = (args, fallback) => {
+  try { return execFileSync('git',args,{encoding:'utf8'}).trim() || fallback; }
+  catch { return fallback; }
+};
+const RELEASE_DATE = gitValue(['show','-s','--format=%cs','HEAD'],BUILD_DATE);
+const localGitHead = () => {
+  try {
+    const head=readFileSync(resolve('.git','HEAD'),'utf8').trim();
+    const full=head.startsWith('ref: ')
+      ? readFileSync(resolve('.git',head.slice(5)),'utf8').trim()
+      : head;
+    return full.slice(0,7);
+  } catch { return ''; }
+};
+const COMMIT_SHA = (process.env.COMMIT_REF || gitValue(['rev-parse','--short','HEAD'],localGitHead())).slice(0,7);
 
 // 1. Lokale Vorläufer und der kanonisch gebündelte Anwendungseinstieg
 let jsAll = '';
@@ -133,7 +149,8 @@ html = html.substring(0, bodyIdx)
 // 4b. Version + Build-Datum injizieren (Platzhalter aus index.html-Inline-Script)
 html = html
   .replace(/__APP_VERSION__/g, APP_VERSION)
-  .replace(/__BUILD_DATE__/g, BUILD_DATE);
+  .replace(/__BUILD_DATE__/g, RELEASE_DATE)
+  .replace(/__COMMIT_SHA__/g, COMMIT_SHA);
 
 // 5. Schreiben
 writeFileSync(join(dist, 'index.html'), html);
