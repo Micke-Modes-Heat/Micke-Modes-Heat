@@ -352,8 +352,6 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .netz-create-trasse label{width:100%;display:flex;justify-content:space-between;margin-top:7px;font-size:10px}.netz-create-trasse output{color:#ffb74d;font-family:'DM Mono',monospace}
 .netz-create-trasse input[type=range]{width:100%;accent-color:#ff9800}.netz-create-scale-text{font-size:9px;color:var(--muted);min-height:24px}
 .netz-create-trasse button{width:100%;margin-top:3px}
-.netz-create-street-actions{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:5px}
-.netz-create-street-actions .trasse-draw-btn{margin-top:3px;white-space:normal}
 .netz-create-edit{font-size:10px;color:var(--muted)}.netz-create-edit summary{cursor:pointer;padding:6px 2px;color:var(--text)}
 .netz-create-edit-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:5px}.netz-create-edit-actions button{font-size:9px;padding:6px}.netz-create-edit-actions .danger{border-color:#e57373;color:#e57373}
 .netz-create-edit p{font-size:8px;line-height:1.4;margin:7px 2px 0}

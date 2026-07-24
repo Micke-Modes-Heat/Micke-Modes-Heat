@@ -3366,9 +3366,15 @@ document.head.appendChild(sty);
 
 export let dashOffset = 0;
 export let _animPipesRunning = false;
-export function animatePipes() {
+let _animPipesLastFrame = 0;
+export function animatePipes(timestamp = performance.now()) {
   if (!_animPipesRunning) return;
-  dashOffset -= 0.5;
+  if (!_animPipesLastFrame) _animPipesLastFrame = timestamp;
+  const elapsedMs = Math.min(250, Math.max(0, timestamp - _animPipesLastFrame));
+  _animPipesLastFrame = timestamp;
+  // Zeitbasiert statt pro Frame: Bei aufwendigem SVG-Rendering im hohen
+  // Kartenzoom bleibt die sichtbare Fließgeschwindigkeit konstant.
+  dashOffset = (dashOffset - elapsedMs * 0.03) % 24;
   (window.netzEdges || netzEdges).forEach(e => {
     if(e.load > 0 && e.layer && e.layer._path) {
       e.layer._path.style.strokeDasharray = "12, 12";
@@ -3377,8 +3383,14 @@ export function animatePipes() {
   });
   requestAnimationFrame(animatePipes);
 }
-export function startAnimPipes() { if (!_animPipesRunning) { _animPipesRunning = true; animatePipes(); } }
-export function stopAnimPipes()  { _animPipesRunning = false; }
+export function startAnimPipes() {
+  if (!_animPipesRunning) {
+    _animPipesRunning = true;
+    _animPipesLastFrame = 0;
+    requestAnimationFrame(animatePipes);
+  }
+}
+export function stopAnimPipes()  { _animPipesRunning = false; _animPipesLastFrame = 0; }
 
 export let stromDashOffset = 0;
 export let _animStromRunning = false;

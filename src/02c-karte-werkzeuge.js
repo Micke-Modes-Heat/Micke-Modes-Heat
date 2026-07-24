@@ -1057,7 +1057,14 @@ export function showTrasseFinishBtn() {
     bar.querySelector('#trasse-undo-btn').onclick = undoTrassePoint;
     bar.querySelector('#trasse-redo-btn').onclick = redoTrassePoint;
     bar.querySelector('#trasse-branch-btn').onclick = startNewTrasseBranch;
-    bar.querySelector('#trasse-finish-btn').onclick = () => { if (window.isDrawingTrasse) toggleDrawTrasse(); };
+    bar.querySelector('#trasse-finish-btn').onclick = () => {
+      const wasStreetHelper = !!window._streetHelperDrawing;
+      if (window.isDrawingTrasse) toggleDrawTrasse();
+      if (wasStreetHelper) {
+        window._streetHelperDrawing = false;
+        showHint('Ergänzungsweg gespeichert. Über „Wärmenetz erstellen“ kann das Straßen-Netz neu berechnet werden.', 6000);
+      }
+    };
     bar.querySelector('#trasse-generate-btn').onclick = finishTrasseAndGenerateNetz;
     bar.querySelector('#trasse-cancel-btn').onclick = () => cancelInteraction('draw-trasse');
   }
@@ -1142,6 +1149,7 @@ export function redrawTrasse() {
   }
 
   allSegs.forEach((seg, allSegIdx) => {
+    if (window._streetHelperDrawing && seg.source === 'osm-street') return;
     if (seg.end <= seg.start) return;
     const pts = [];
     for (let i = seg.start; i <= seg.end; i++) pts.push(window.trassePoints[i]);
@@ -1166,7 +1174,16 @@ export function redrawTrasse() {
   const handleSize = window.trasseDetached ? 14 : 8;
   const handleCls = window.trasseDetached ? 'trasse-snap-handle' : 'trasse-edit-handle';
   const icon = L.divIcon({ className: handleCls, html: '', iconSize: [handleSize, handleSize], iconAnchor: [handleSize/2, handleSize/2] });
+  const helperVisiblePoints = new Set();
+  if (window._streetHelperDrawing) {
+    window.trasseSegments.forEach(seg => {
+      if (seg.source === 'osm-street') return;
+      for (let idx = seg.start; idx <= seg.end; idx++) helperVisiblePoints.add(idx);
+    });
+    for (let idx = window.trasseCurrentSegStart; idx < window.trassePoints.length; idx++) helperVisiblePoints.add(idx);
+  }
   window.trassePoints.forEach((pt, idx) => {
+    if (window._streetHelperDrawing && !helperVisiblePoints.has(idx)) return;
     const m = L.marker(pt, { draggable: !window.trasseDetached, icon: icon, zIndexOffset: 2000 }).addTo(map);
     if (!window.trasseDetached) {
       m.on('drag', e => {
@@ -1185,6 +1202,7 @@ export function redrawTrasse() {
   // lassen sich so nachträglich verfeinern, ohne einen Strang neu zu zeichnen.
   if (!window.trasseDetached) {
     window.trasseSegments.forEach((seg, segIdx) => {
+      if (window._streetHelperDrawing && seg.source === 'osm-street') return;
       for (let idx = seg.start; idx < seg.end; idx++) {
         const a = window.trassePoints[idx], b = window.trassePoints[idx + 1];
         if (!a || !b) continue;

@@ -9676,8 +9676,6 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .netz-create-trasse label{width:100%;display:flex;justify-content:space-between;margin-top:7px;font-size:10px}.netz-create-trasse output{color:#ffb74d;font-family:'DM Mono',monospace}
 .netz-create-trasse input[type=range]{width:100%;accent-color:#ff9800}.netz-create-scale-text{font-size:9px;color:var(--muted);min-height:24px}
 .netz-create-trasse button{width:100%;margin-top:3px}
-.netz-create-street-actions{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:5px}
-.netz-create-street-actions .trasse-draw-btn{margin-top:3px;white-space:normal}
 .netz-create-edit{font-size:10px;color:var(--muted)}.netz-create-edit summary{cursor:pointer;padding:6px 2px;color:var(--text)}
 .netz-create-edit-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:5px}.netz-create-edit-actions button{font-size:9px;padding:6px}.netz-create-edit-actions .danger{border-color:#e57373;color:#e57373}
 .netz-create-edit p{font-size:8px;line-height:1.4;margin:7px 2px 0}
@@ -11166,6 +11164,10 @@ if (typeof L !== 'undefined') {
             <button class="netz-workspace-action" id="btn-netz-edit-mode" type="button" data-click="toggleNetzEditMode()">
               <strong>Leitungsverläufe bearbeiten</strong>
               <span>Knick- und Zwischenpunkte einer Leitung verschieben</span>
+            </button>
+            <button class="netz-workspace-action" id="btn-street-helper" type="button" data-click="startStreetHelperDrawing()">
+              <strong>Fehlenden Straßenverlauf ergänzen</strong>
+              <span>Ergänzungsweg zeichnen und das Straßen-Netz anschließend neu berechnen</span>
             </button>
             <button class="netz-workspace-action danger" type="button" data-click="confirmClearNetz()">
               <strong>Netz verwerfen</strong>
@@ -13964,18 +13966,11 @@ if (typeof L !== 'undefined') {
         <small>Gilt für Auto-Netz, Straßennetz und gezeichnete Haupttrasse.</small>
       </div>
 
-      <div class="netz-create-option netz-create-trasse">
-        <div>
-          <strong>Netz an Straßenzügen orientieren</strong>
-          <span>Lädt OSM-Straßen; fehlende Bereiche werden lokal ergänzt.</span>
-        </div>
-        <div class="netz-create-street-actions">
-          <button class="btn-secondary trasse-draw-btn" type="button"
-                  data-click="startStreetHelperDrawing()">Fehlenden Weg ergänzen</button>
-          <button class="btn-secondary trasse-draw-btn" id="btn-netz-create-street" type="button"
-                  data-click="createStreetOrientedWaermeNetz()">Straßen-Netz erstellen</button>
-        </div>
-      </div>
+      <button class="netz-create-option" id="btn-netz-create-street" type="button"
+              data-click="createStreetOrientedWaermeNetz()">
+        <strong>Netz an Straßenzügen orientieren</strong>
+        <span>Lädt OSM-Straßen; fehlende Bereiche werden automatisch lokal ergänzt.</span>
+      </button>
 
       <button class="netz-create-option" type="button" data-click="createQuickWaermeNetz()">
         <strong>Auto-Netz direkt</strong>
@@ -14704,7 +14699,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-24';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'fc4da57';
+  var c = 'd3dc0d7';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -107047,9 +107042,15 @@ ${massTbl}
 
   let dashOffset = 0;
   let _animPipesRunning = false;
-  function animatePipes() {
+  let _animPipesLastFrame = 0;
+  function animatePipes(timestamp = performance.now()) {
     if (!_animPipesRunning) return;
-    dashOffset -= 0.5;
+    if (!_animPipesLastFrame) _animPipesLastFrame = timestamp;
+    const elapsedMs = Math.min(250, Math.max(0, timestamp - _animPipesLastFrame));
+    _animPipesLastFrame = timestamp;
+    // Zeitbasiert statt pro Frame: Bei aufwendigem SVG-Rendering im hohen
+    // Kartenzoom bleibt die sichtbare Fließgeschwindigkeit konstant.
+    dashOffset = (dashOffset - elapsedMs * 0.03) % 24;
     (window.netzEdges || netzEdges).forEach(e => {
       if(e.load > 0 && e.layer && e.layer._path) {
         e.layer._path.style.strokeDasharray = "12, 12";
@@ -107058,8 +107059,14 @@ ${massTbl}
     });
     requestAnimationFrame(animatePipes);
   }
-  function startAnimPipes() { if (!_animPipesRunning) { _animPipesRunning = true; animatePipes(); } }
-  function stopAnimPipes()  { _animPipesRunning = false; }
+  function startAnimPipes() {
+    if (!_animPipesRunning) {
+      _animPipesRunning = true;
+      _animPipesLastFrame = 0;
+      requestAnimationFrame(animatePipes);
+    }
+  }
+  function stopAnimPipes()  { _animPipesRunning = false; _animPipesLastFrame = 0; }
 
   let stromDashOffset = 0;
   let _animStromRunning = false;
@@ -109664,7 +109671,14 @@ ${massTbl}
       bar.querySelector('#trasse-undo-btn').onclick = undoTrassePoint;
       bar.querySelector('#trasse-redo-btn').onclick = redoTrassePoint;
       bar.querySelector('#trasse-branch-btn').onclick = startNewTrasseBranch;
-      bar.querySelector('#trasse-finish-btn').onclick = () => { if (window.isDrawingTrasse) toggleDrawTrasse(); };
+      bar.querySelector('#trasse-finish-btn').onclick = () => {
+        const wasStreetHelper = !!window._streetHelperDrawing;
+        if (window.isDrawingTrasse) toggleDrawTrasse();
+        if (wasStreetHelper) {
+          window._streetHelperDrawing = false;
+          showHint('Ergänzungsweg gespeichert. Über „Wärmenetz erstellen“ kann das Straßen-Netz neu berechnet werden.', 6000);
+        }
+      };
       bar.querySelector('#trasse-generate-btn').onclick = finishTrasseAndGenerateNetz;
       bar.querySelector('#trasse-cancel-btn').onclick = () => cancelInteraction('draw-trasse');
     }
@@ -109749,6 +109763,7 @@ ${massTbl}
     }
 
     allSegs.forEach((seg, allSegIdx) => {
+      if (window._streetHelperDrawing && seg.source === 'osm-street') return;
       if (seg.end <= seg.start) return;
       const pts = [];
       for (let i = seg.start; i <= seg.end; i++) pts.push(window.trassePoints[i]);
@@ -109773,7 +109788,16 @@ ${massTbl}
     const handleSize = window.trasseDetached ? 14 : 8;
     const handleCls = window.trasseDetached ? 'trasse-snap-handle' : 'trasse-edit-handle';
     const icon = L.divIcon({ className: handleCls, html: '', iconSize: [handleSize, handleSize], iconAnchor: [handleSize/2, handleSize/2] });
+    const helperVisiblePoints = new Set();
+    if (window._streetHelperDrawing) {
+      window.trasseSegments.forEach(seg => {
+        if (seg.source === 'osm-street') return;
+        for (let idx = seg.start; idx <= seg.end; idx++) helperVisiblePoints.add(idx);
+      });
+      for (let idx = window.trasseCurrentSegStart; idx < window.trassePoints.length; idx++) helperVisiblePoints.add(idx);
+    }
     window.trassePoints.forEach((pt, idx) => {
+      if (window._streetHelperDrawing && !helperVisiblePoints.has(idx)) return;
       const m = L.marker(pt, { draggable: !window.trasseDetached, icon: icon, zIndexOffset: 2000 }).addTo(map);
       if (!window.trasseDetached) {
         m.on('drag', e => {
@@ -109792,6 +109816,7 @@ ${massTbl}
     // lassen sich so nachträglich verfeinern, ohne einen Strang neu zu zeichnen.
     if (!window.trasseDetached) {
       window.trasseSegments.forEach((seg, segIdx) => {
+        if (window._streetHelperDrawing && seg.source === 'osm-street') return;
         for (let idx = seg.start; idx < seg.end; idx++) {
           const a = window.trassePoints[idx], b = window.trassePoints[idx + 1];
           if (!a || !b) continue;
@@ -113152,7 +113177,7 @@ out body;>;out skel qt;`;
     toggleNetzCreateMenu(false);
     closeNetzWorkspace();
     if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
-    showHint('Fehlenden Erschließungsweg auf der Karte zeichnen. Er dient beim Straßen-Netz als zusätzliche Routinggrundlage.',6000);
+    showHint('Fehlenden Straßenverlauf zeichnen. Die OSM-Hilfslinien sind dabei ausgeblendet; das vorhandene Netz bleibt sichtbar.',6000);
   }
 
   async function createStreetOrientedWaermeNetz() {

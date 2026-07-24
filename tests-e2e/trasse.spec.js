@@ -228,6 +228,7 @@ test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Si
       overviewHidden: document.getElementById('lp-netz-waerme').hidden,
       typeOptions: [...document.querySelectorAll('.netz-workspace-type button')].map(button=>button.textContent.trim()),
       bestandActive: document.getElementById('btn-netz-type-bestand').classList.contains('active'),
+      streetHelperInCreate: document.getElementById('netz-create-menu').textContent.includes('Fehlenden Weg ergänzen'),
     };
     setWaermeNetzType(false);
     create.neubauSelectable = !window.networkLocked &&
@@ -261,11 +262,12 @@ test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Si
   expect(result.create).toEqual({
     panelClosed:true,sidebarActive:true,workspaceVisible:true,menuInSidebar:true,
     settingsInSidebar:true,centralAvailable:true,creationOrder:[1,2,4],furtherSettingsCollapsed:true,overviewHidden:true,
-    typeOptions:['🏛 Bestand 2026','Neubaunetz'],bestandActive:true,neubauSelectable:true,
+    typeOptions:['🏛 Bestand 2026','Neubaunetz'],bestandActive:true,streetHelperInCreate:false,neubauSelectable:true,
   });
   expect(result.edit.visible).toBe(true);
   expect(result.edit.actions[0]).toBe('Gebäude anschließen / umhängen');
   expect(result.edit.actions).toContain('Leitungsverläufe bearbeiten');
+  expect(result.edit.actions).toContain('Fehlenden Straßenverlauf ergänzen');
   expect(result.edit.actions).toContain('Netz verwerfen');
   expect(result.edit.duplicateEditIds).toBe(1);
   expect(result.edit.duplicateRewireIds).toBe(1);

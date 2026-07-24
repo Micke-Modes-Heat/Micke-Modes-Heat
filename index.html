@@ -279,6 +279,10 @@
               <strong>Leitungsverläufe bearbeiten</strong>
               <span>Knick- und Zwischenpunkte einer Leitung verschieben</span>
             </button>
+            <button class="netz-workspace-action" id="btn-street-helper" type="button" data-click="startStreetHelperDrawing()">
+              <strong>Fehlenden Straßenverlauf ergänzen</strong>
+              <span>Ergänzungsweg zeichnen und das Straßen-Netz anschließend neu berechnen</span>
+            </button>
             <button class="netz-workspace-action danger" type="button" data-click="confirmClearNetz()">
               <strong>Netz verwerfen</strong>
               <span>Alle Wärmeleitungen entfernen; Gebäude und Einstellungen bleiben erhalten</span>
@@ -3076,18 +3080,11 @@
         <small>Gilt für Auto-Netz, Straßennetz und gezeichnete Haupttrasse.</small>
       </div>
 
-      <div class="netz-create-option netz-create-trasse">
-        <div>
-          <strong>Netz an Straßenzügen orientieren</strong>
-          <span>Lädt OSM-Straßen; fehlende Bereiche werden lokal ergänzt.</span>
-        </div>
-        <div class="netz-create-street-actions">
-          <button class="btn-secondary trasse-draw-btn" type="button"
-                  data-click="startStreetHelperDrawing()">Fehlenden Weg ergänzen</button>
-          <button class="btn-secondary trasse-draw-btn" id="btn-netz-create-street" type="button"
-                  data-click="createStreetOrientedWaermeNetz()">Straßen-Netz erstellen</button>
-        </div>
-      </div>
+      <button class="netz-create-option" id="btn-netz-create-street" type="button"
+              data-click="createStreetOrientedWaermeNetz()">
+        <strong>Netz an Straßenzügen orientieren</strong>
+        <span>Lädt OSM-Straßen; fehlende Bereiche werden automatisch lokal ergänzt.</span>
+      </button>
 
       <button class="netz-create-option" type="button" data-click="createQuickWaermeNetz()">
         <strong>Auto-Netz direkt</strong>

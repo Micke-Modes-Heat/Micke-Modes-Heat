@@ -2672,7 +2672,7 @@ export function startStreetHelperDrawing() {
   toggleNetzCreateMenu(false);
   closeNetzWorkspace();
   if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
-  showHint('Fehlenden Erschließungsweg auf der Karte zeichnen. Er dient beim Straßen-Netz als zusätzliche Routinggrundlage.',6000);
+  showHint('Fehlenden Straßenverlauf zeichnen. Die OSM-Hilfslinien sind dabei ausgeblendet; das vorhandene Netz bleibt sichtbar.',6000);
 }
 
 export async function createStreetOrientedWaermeNetz() {
