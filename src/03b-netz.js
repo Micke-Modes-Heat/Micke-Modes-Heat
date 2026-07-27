@@ -18,6 +18,7 @@ import { drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon 
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { readNum } from './lib/util.js';
+import { clipBuildingEndpoint, crossesForeignBuilding } from './lib/netz-building-obstacles.js';
 import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
@@ -2030,6 +2031,33 @@ export function populateZentraleSelect(){
 
 const WAERME_NETZ_BASISJAHR = 2026;
 
+function _buildingForNetzNode(node) {
+  if (!node || node.type !== 'geb') return null;
+  return gebaeude.find(building => building.id === node.id && building.polygon?.length >= 3) || null;
+}
+
+function _edgeCrossesForeignBuilding(uNode, vNode) {
+  const allowedIds = [uNode, vNode]
+    .filter(node => node?.type === 'geb')
+    .map(node => node.id);
+  return crossesForeignBuilding(uNode?.pt, vNode?.pt, gebaeude, allowedIds);
+}
+
+function _netzDisplayPoints(uNode, vNode, waypoints = []) {
+  const intermediate = (waypoints || []).map(point => L.latLng(point.lat, point.lng));
+  const startToward = intermediate[0] || vNode.pt;
+  const endToward = intermediate[intermediate.length - 1] || uNode.pt;
+  const uBuilding = _buildingForNetzNode(uNode);
+  const vBuilding = _buildingForNetzNode(vNode);
+  const start = uBuilding
+    ? clipBuildingEndpoint(uNode.pt, startToward, uBuilding.polygon)
+    : uNode.pt;
+  const end = vBuilding
+    ? clipBuildingEndpoint(vNode.pt, endToward, vBuilding.polygon)
+    : vNode.pt;
+  return [L.latLng(start.lat, start.lng), ...intermediate, L.latLng(end.lat, end.lng)];
+}
+
 function _netzPlanningYears() {
   const years = new Set([WAERME_NETZ_BASISJAHR,globalYear]);
   gebaeude.forEach(g => {
@@ -2493,6 +2521,18 @@ export function autoGenerateNetz(options = {}){
     }
   }
 
+  // Gebäude sind echte Hindernisse: Eine Kandidatenkante darf nur die
+  // Grundrisse ihrer eigenen Endgebäude berühren. Dadurch kann der
+  // Minimalbaum keine scheinbar kurze Abkürzung durch ein fremdes Haus wählen.
+  let blockedByBuildings = 0;
+  for (let index = possibleEdges.length - 1; index >= 0; index--) {
+    const edge = possibleEdges[index];
+    if (!_edgeCrossesForeignBuilding(edge.uNode,edge.vNode)) continue;
+    possibleEdges.splice(index,1);
+    blockedByBuildings++;
+  }
+  window._netzBuildingObstacleDiagnostics = {blockedCandidateEdges:blockedByBuildings};
+
   const parent = {};
   allPts.push(...sharedTrasseNodes.values());
   allPts.forEach(n => parent[n.id] = n.id);
@@ -2521,6 +2561,19 @@ export function autoGenerateNetz(options = {}){
     if(union(edge.u, edge.v)) {
       mstEdges.push(edge);
     }
+  }
+
+  const centralRoot = find(zId);
+  const disconnectedBuildings = allPts
+    .filter(node => node.type === 'geb' && find(node.id) !== centralRoot);
+  if (disconnectedBuildings.length) {
+    clearNetz();
+    showHint(
+      `⚠ ${disconnectedBuildings.length} Gebäude konnten ohne Leitungsverlauf durch andere Gebäude nicht angeschlossen werden. ` +
+      'Bitte eine ergänzende Haupttrasse um die Hindernisse zeichnen.',
+      7000,
+    );
+    return;
   }
 
   if (strategy === 'street') {
@@ -2552,12 +2605,13 @@ export function autoGenerateNetz(options = {}){
   mstEdges.splice(0,mstEdges.length,...optimizedEdges);
 
   mstEdges.forEach(e => {
-    const layer = L.polyline([e.uNode.pt, e.vNode.pt], {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-    const hitLayer = L.polyline([e.uNode.pt, e.vNode.pt], {color: 'transparent', weight: 20, pane: 'netzPane'});
+    const displayPoints = _netzDisplayPoints(e.uNode,e.vNode);
+    const layer = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
+    const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
     if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
     const edgeObj = {
         u: e.u, v: e.v, uNode: e.uNode, vNode: e.vNode,
-        layer: layer, hitLayer: hitLayer, load: 0, dn: 0, length: e.uNode.pt.distanceTo(e.vNode.pt),
+        layer: layer, hitLayer: hitLayer, load: 0, dn: 0, length: calcEdgeLength({layer}),
         waypoint: null, segLayers: [], warnMarker: null, midMarker: null
     };
     hitLayer.on('click', (ev) => {
@@ -2753,19 +2807,23 @@ export function addNetzEdge(u, v, {force = false} = {}){
 
   const c1 = polygonCenter(gU.polygon);
   const c2 = polygonCenter(gV.polygon);
-  const layer = L.polyline([c1, c2], {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-  const hitLayer = L.polyline([c1, c2], {color: 'transparent', weight: 20, pane: 'netzPane'});
+  const uNode = {id: u, type: 'geb', pt: c1, load: uLoad};
+  const vNode = {id: v, type: 'geb', pt: c2, load: vLoad};
+  if (_edgeCrossesForeignBuilding(uNode,vNode)) {
+    showHint('Diese Leitung würde durch ein anderes Gebäude verlaufen. Bitte einen Verlauf außen herum zeichnen.');
+    return;
+  }
+  const displayPoints = _netzDisplayPoints(uNode,vNode);
+  const layer = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
+  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
   if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
-
-  const uStats = getComputedStats(gU, globalYear);
-  const vStats = getComputedStats(gV, globalYear);
 
   const edgeObj = {
     u: u, v: v,
-    uNode: {id: u, type: 'geb', pt: c1, load: uStats.heizlast||0},
-    vNode: {id: v, type: 'geb', pt: c2, load: vStats.heizlast||0},
+    uNode,
+    vNode,
     layer: layer, hitLayer: hitLayer, load: 0, dn: 0,
-    _straightLength: c1.distanceTo(c2), length: c1.distanceTo(c2),
+    _straightLength: calcEdgeLength({layer}), length: calcEdgeLength({layer}),
     waypoint: null, segLayers: [], warnMarker: null, midMarker: null
   };
 
@@ -2809,13 +2867,14 @@ function _nextJunctionId(){
 
 // Baut ein vollwertiges Kanten-Objekt zwischen zwei beliebigen Knoten (geb/trasse/junction)
 function _makeNetzEdge(uNode, vNode, dn){
-  const layer    = L.polyline([uNode.pt, vNode.pt], {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-  const hitLayer = L.polyline([uNode.pt, vNode.pt], {color: 'transparent', weight: 20, pane: 'netzPane'});
+  const displayPoints = _netzDisplayPoints(uNode,vNode);
+  const layer    = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
+  const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
   if (netzVisible) { layer.addTo(map); hitLayer.addTo(map); }
   const edgeObj = {
     u: uNode.id, v: vNode.id, uNode, vNode,
     layer, hitLayer, load: 0, dn: dn || 0,
-    _straightLength: uNode.pt.distanceTo(vNode.pt), length: uNode.pt.distanceTo(vNode.pt),
+    _straightLength: calcEdgeLength({layer}), length: calcEdgeLength({layer}),
     waypoint: null, segLayers: [], warnMarker: null, midMarker: null
   };
   hitLayer.on('click', (ev) => {
@@ -2913,8 +2972,9 @@ export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
     if (storedWaypoints.length) {
       edge.waypoints = storedWaypoints.map(point => L.latLng(Number(point.lat), Number(point.lng)));
       edge.waypoint = edge.waypoints[0] || null;
-      edge.layer.setLatLngs([uNode.pt, ...edge.waypoints, vNode.pt]);
-      edge.hitLayer?.setLatLngs([uNode.pt, ...edge.waypoints, vNode.pt]);
+      const displayPoints = _netzDisplayPoints(uNode,vNode,edge.waypoints);
+      edge.layer.setLatLngs(displayPoints);
+      edge.hitLayer?.setLatLngs(displayPoints);
       if (edge.midMarker) map.removeLayer(edge.midMarker);
       removeEdgeWaypointMarkers(edge);
       addEdgeMidHandle(edge);
@@ -2929,6 +2989,7 @@ export function connectGebToNearestPipe(g){
   if (window.netzEdges.some(e => e.u === g.id || e.v === g.id)) return false; // schon angeschlossen
 
   const gc = polygonCenter(g.polygon);
+  const gNode = { id: g.id, type: 'geb', pt: gc, load: 0 };
 
   // Nächstgelegenen Punkt auf dem vollständigen Leitungsverlauf suchen. Das
   // Bestandsnetz darf dabei weder begradigt noch neu dimensioniert werden.
@@ -2938,13 +2999,16 @@ export function connectGebToNearestPipe(g){
         !e.uNode || !e.vNode || !e.uNode.pt || !e.vNode.pt) continue;
     const projection = _nearestPointOnNetzEdge(e,gc);
     if (!projection) continue;
+    const allowedIds = [g.id,e.uNode,e.vNode]
+      .filter(item => typeof item === 'number' || item?.type === 'geb')
+      .map(item => typeof item === 'number' ? item : item.id);
+    if (crossesForeignBuilding(projection.point,gc,gebaeude,allowedIds)) continue;
     const distance = gc.distanceTo(projection.point);
     if (!best || distance < best.distance) best = {...projection,distance};
   }
   if (!best) return false;
 
   const E = best.edge;
-  const gNode = { id: g.id, type: 'geb', pt: gc, load: 0 };
   const addBuildingConnection = targetNode => {
     const edge = _makeNetzEdge(targetNode,gNode,0);
     edge.visibleFromYear = Number.parseInt(g.baujahr,10) || null;
@@ -3008,9 +3072,9 @@ export function applyWaypoints() {
     const points = Array.isArray(stored) ? stored : [stored];
     e.waypoints = points.map(wp => L.latLng(wp.lat, wp.lng));
     e.waypoint = e.waypoints[0] || null;
-    const ll = e.layer.getLatLngs();
-    e.layer.setLatLngs([ll[0], ...e.waypoints, ll[ll.length - 1]]);
-    if (e.hitLayer) e.hitLayer.setLatLngs([ll[0], ...e.waypoints, ll[ll.length - 1]]);
+    const displayPoints = _netzDisplayPoints(e.uNode,e.vNode,e.waypoints);
+    e.layer.setLatLngs(displayPoints);
+    if (e.hitLayer) e.hitLayer.setLatLngs(displayPoints);
     if (e.midMarker) { map.removeLayer(e.midMarker); removeEdgeWaypointMarkers(e); addEdgeMidHandle(e); }
   });
 }
@@ -3226,7 +3290,9 @@ function _buildingSideNodes(buildingId, excludedEdge) {
 }
 
 function _nearestPointOnNetzEdge(edge, latlng) {
-  const points = [edge.uNode.pt, ...getEdgeWaypoints(edge), edge.vNode.pt];
+  const points = edge.layer?.getLatLngs?.() || _netzDisplayPoints(
+    edge.uNode,edge.vNode,getEdgeWaypoints(edge),
+  );
   const cursor = map.latLngToLayerPoint(latlng);
   let best = null;
   for (let index = 0; index < points.length - 1; index++) {
@@ -3247,8 +3313,9 @@ function _nearestPointOnNetzEdge(edge, latlng) {
 function _applySplitWaypoints(edge, points) {
   edge.waypoints = points.map(point => L.latLng(point.lat,point.lng));
   edge.waypoint = edge.waypoints[0] || null;
-  edge.layer.setLatLngs([edge.uNode.pt,...edge.waypoints,edge.vNode.pt]);
-  edge.hitLayer?.setLatLngs([edge.uNode.pt,...edge.waypoints,edge.vNode.pt]);
+  const displayPoints = _netzDisplayPoints(edge.uNode,edge.vNode,edge.waypoints);
+  edge.layer.setLatLngs(displayPoints);
+  edge.hitLayer?.setLatLngs(displayPoints);
   if (edge.midMarker) map.removeLayer(edge.midMarker);
   removeEdgeWaypointMarkers(edge);
   addEdgeMidHandle(edge);
@@ -3539,7 +3606,10 @@ export function recalcNetz(){
       }
       if(ptP && ptC) {
           const waypoints = getEdgeWaypoints(pInfo.e);
-          const newPts = [ptP, ...waypoints, ptC];
+          const forward = pInfo.e.u === pInfo.pNodeId;
+          const newPts = forward
+            ? _netzDisplayPoints(pInfo.e.uNode,pInfo.e.vNode,waypoints)
+            : _netzDisplayPoints(pInfo.e.vNode,pInfo.e.uNode,[...waypoints].reverse());
           pInfo.e.layer.setLatLngs(newPts);
           if(pInfo.e.hitLayer) pInfo.e.hitLayer.setLatLngs(newPts);
       }

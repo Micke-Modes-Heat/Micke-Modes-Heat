@@ -14717,9 +14717,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-07-24';
+  var d = '2026-07-27';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'b7996c6';
+  var c = 'aef124f';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -105845,7 +105845,7 @@ ${massTbl}
       ${g.polygon ? '<button class="btn-xs purple" data-click="flyTo(' + g.id + ')">&#8982;</button>' : ''}
       ${g.polygon ? `<button class="btn-xs ${_grundrissEdit?.gId === g.id ? 'blue' : ''}"
         data-click="toggleGebaeudeGrundrissEdit(${g.id})"
-        title="${_grundrissEdit?.gId === g.id ? 'Grundrissbearbeitung beenden' : 'Gebäudeaußenkanten ziehen'}">
+        title="${_grundrissEdit?.gId === g.id ? 'Grundrissbearbeitung beenden' : 'Gebäude formen oder versetzen'}">
         ${_grundrissEdit?.gId === g.id ? '✓ Grundriss' : '↔ Grundriss'}
       </button>` : ''}
       <button class="btn-xs" data-click="togglePlanPanel(${g.id})" title="Planung & Sanierung">🔧 Planen</button>
@@ -105910,9 +105910,9 @@ ${massTbl}
 
   // ── Dezente Grundrissbearbeitung ──────────────────────────────────────────
   // Die Griffe erscheinen ausschließlich nach expliziter Aktivierung am aktuell
-  // bearbeiteten Gebäude. Ein Griff verschiebt die zugehörige Außenkante parallel;
-  // dadurch lässt sich ein Gebäude vergrößern/verkleinern, ohne dass die Karte im
-  // normalen Betrieb mit Polygonpunkten überladen wird.
+  // bearbeiteten Gebäude. Runde Griffe verschieben eine Außenkante parallel,
+  // quadratische Griffe einen einzelnen Eckpunkt. Der Griff in der Mitte versetzt
+  // den vollständigen Grundriss samt zugehöriger Dach- und Anlagengeometrie.
   let _grundrissEdit = null;
 
   function _clearGrundrissHandles() {
@@ -105935,6 +105935,46 @@ ${massTbl}
       iconAnchor: [7, 7],
       html: '<span style="display:block;width:8px;height:8px;margin:3px;border-radius:50%;background:#eaf7ff;border:1px solid #4fc3f7;box-shadow:0 1px 4px rgba(0,0,0,.55);opacity:.82;"></span>',
     });
+  }
+
+  function _cornerHandleIcon() {
+    return L.divIcon({
+      className: '',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+      html: '<span style="display:block;width:7px;height:7px;margin:3px;border-radius:2px;background:#fff4cf;border:1px solid #f4b942;box-shadow:0 1px 4px rgba(0,0,0,.55);opacity:.88;"></span>',
+    });
+  }
+
+  function _moveHandleIcon() {
+    return L.divIcon({
+      className: '',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+      html: '<span style="display:grid;place-items:center;width:18px;height:18px;margin:3px;border-radius:50%;background:#17344a;border:1px solid #7dd3fc;color:#eaf7ff;box-shadow:0 1px 5px rgba(0,0,0,.6);font:700 13px/1 sans-serif;opacity:.9;">✥</span>',
+    });
+  }
+
+  function _translatePoints(points, dLat, dLng) {
+    return (points || []).map(point => L.latLng(
+      (point.lat ?? point[0]) + dLat,
+      (point.lng ?? point[1]) + dLng,
+    ));
+  }
+
+  function _finishGrundrissChange(g, areaChanged) {
+    if (areaChanged) {
+      g.flaeche = polygonAreaM2(g.polygon);
+      updateField(g.id, 'flaeche', g.flaeche);
+    }
+    g._pvModSig = null;
+    redrawGebPvFlaechen(g);
+    redrawAllAssets();
+    redrawErzeugerIcons();
+    recalcNetz();
+    updateViz();
+    _redrawGrundrissHandles(g);
+    _rerenderCard(g.id);
   }
 
   function _redrawGrundrissHandles(g) {
@@ -105987,16 +106027,83 @@ ${massTbl}
         g.polygonLayer?.setLatLngs(g.polygon);
       });
       marker.on('dragend', () => {
-        g.flaeche = polygonAreaM2(g.polygon);
-        updateField(g.id, 'flaeche', g.flaeche);
-        g._pvModSig = null;
-        redrawGebPvModules(g);
-        recalcNetz();
-        _redrawGrundrissHandles(g);
-        _rerenderCard(g.id);
+        _finishGrundrissChange(g, true);
       });
       _grundrissEdit.markers.push(marker);
     });
+
+    // Bei stark detaillierten OSM-Polygonen nur Eckpunkte der ohnehin sichtbaren
+    // Hauptkanten zeigen. Damit bleibt die Zahl der Griffe beherrschbar.
+    const cornerIndices = g.polygon.length <= 16
+      ? g.polygon.map((_, index) => index)
+      : [...new Set(shown.flatMap(edge => [
+          edge.index,
+          (edge.index + 1) % g.polygon.length,
+        ]))];
+    cornerIndices.forEach(index => {
+      const marker = L.marker(g.polygon[index], {
+        draggable: true,
+        icon: _cornerHandleIcon(),
+        zIndexOffset: 2850,
+        title: 'Eckpunkt ziehen',
+      }).addTo(map);
+      marker.on('drag', event => {
+        g.polygon[index] = event.target.getLatLng();
+        g.polygonLayer?.setLatLngs(g.polygon);
+      });
+      marker.on('dragend', () => _finishGrundrissChange(g, true));
+      _grundrissEdit.markers.push(marker);
+    });
+
+    const center = polygonCenter(g.polygon);
+    const moveMarker = L.marker(center, {
+      draggable: true,
+      icon: _moveHandleIcon(),
+      zIndexOffset: 2900,
+      title: 'Gebäude versetzen',
+    }).addTo(map);
+    let moveStart = null;
+    moveMarker.on('dragstart', () => {
+      moveStart = {
+        center: L.latLng(center.lat, center.lng),
+        polygon: g.polygon.map(point => L.latLng(point.lat, point.lng)),
+        pvFlaechen: (g.pvFlaechen || []).map(fl => ({
+          fl,
+          polygon: (fl.polygon || []).map(point =>
+            L.latLng(point.lat ?? point[0], point.lng ?? point[1])),
+        })),
+        pvRidgeOverride: g.pvRidgeOverride
+          ? L.latLng(g.pvRidgeOverride.lat, g.pvRidgeOverride.lng)
+          : null,
+        assets: ASSETS.items
+          .filter(asset => asset.buildingId === g.id)
+          .map(asset => ({ asset, lat: asset.lat, lng: asset.lng })),
+      };
+    });
+    moveMarker.on('drag', event => {
+      if (!moveStart) return;
+      const current = event.target.getLatLng();
+      const dLat = current.lat - moveStart.center.lat;
+      const dLng = current.lng - moveStart.center.lng;
+      g.polygon = _translatePoints(moveStart.polygon, dLat, dLng);
+      g.polygonLayer?.setLatLngs(g.polygon);
+      moveStart.pvFlaechen.forEach(({ fl, polygon }) => {
+        fl.polygon = _translatePoints(polygon, dLat, dLng);
+        fl.layer?.setLatLngs(fl.polygon);
+      });
+      if (moveStart.pvRidgeOverride) {
+        g.pvRidgeOverride = {
+          lat: moveStart.pvRidgeOverride.lat + dLat,
+          lng: moveStart.pvRidgeOverride.lng + dLng,
+        };
+      }
+      moveStart.assets.forEach(({ asset, lat, lng }) => {
+        asset.lat = lat + dLat;
+        asset.lng = lng + dLng;
+      });
+    });
+    moveMarker.on('dragend', () => _finishGrundrissChange(g, false));
+    _grundrissEdit.markers.push(moveMarker);
   }
 
   function toggleGebaeudeGrundrissEdit(gId) {
@@ -110826,6 +110933,113 @@ ${massTbl}
     updateWirtDisplay: updateWirtDisplay
   });
 
+  // Geometrie-Hilfen für Wärmenetzleitungen an Gebäudegrundrissen.
+  // Für die kleinen Entfernungen eines Quartiers genügt die Rechnung direkt in
+  // Breiten-/Längengraden; alle Tests sind invariant gegenüber der Maßeinheit.
+
+  const EPSILON = 1e-11;
+
+  function xy(point) {
+    return {
+      x: Number(point?.lng ?? point?.[1]),
+      y: Number(point?.lat ?? point?.[0]),
+    };
+  }
+
+  function orientation(a, b, c) {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  }
+
+  function onSegment(a, b, point) {
+    return Math.abs(orientation(a, b, point)) <= EPSILON &&
+      point.x >= Math.min(a.x, b.x) - EPSILON &&
+      point.x <= Math.max(a.x, b.x) + EPSILON &&
+      point.y >= Math.min(a.y, b.y) - EPSILON &&
+      point.y <= Math.max(a.y, b.y) + EPSILON;
+  }
+
+  function segmentsIntersect(aRaw, bRaw, cRaw, dRaw) {
+    const a = xy(aRaw), b = xy(bRaw), c = xy(cRaw), d = xy(dRaw);
+    const o1 = orientation(a, b, c);
+    const o2 = orientation(a, b, d);
+    const o3 = orientation(c, d, a);
+    const o4 = orientation(c, d, b);
+    if (((o1 > EPSILON && o2 < -EPSILON) || (o1 < -EPSILON && o2 > EPSILON)) &&
+        ((o3 > EPSILON && o4 < -EPSILON) || (o3 < -EPSILON && o4 > EPSILON))) return true;
+    return onSegment(a, b, c) || onSegment(a, b, d) ||
+      onSegment(c, d, a) || onSegment(c, d, b);
+  }
+
+  function pointInBuildingPolygon(pointRaw, polygon) {
+    if (!pointRaw || !Array.isArray(polygon) || polygon.length < 3) return false;
+    const point = xy(pointRaw);
+    let inside = false;
+    for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+      const a = xy(polygon[index]), b = xy(polygon[previous]);
+      if (onSegment(a, b, point)) return true;
+      const crosses = ((a.y > point.y) !== (b.y > point.y)) &&
+        point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x;
+      if (crosses) inside = !inside;
+    }
+    return inside;
+  }
+
+  function segmentCrossesBuilding(start, end, polygon) {
+    if (!start || !end || !Array.isArray(polygon) || polygon.length < 3) return false;
+    if (pointInBuildingPolygon(start, polygon) || pointInBuildingPolygon(end, polygon)) return true;
+    for (let index = 0; index < polygon.length; index++) {
+      if (segmentsIntersect(start, end, polygon[index], polygon[(index + 1) % polygon.length])) {
+        return true;
+      }
+    }
+    const midpoint = {
+      lat: (Number(start.lat) + Number(end.lat)) / 2,
+      lng: (Number(start.lng) + Number(end.lng)) / 2,
+    };
+    return pointInBuildingPolygon(midpoint, polygon);
+  }
+
+  function crossesForeignBuilding(start, end, buildings, allowedBuildingIds = []) {
+    const allowed = new Set(allowedBuildingIds);
+    return (buildings || []).some(building =>
+      building?.polygon?.length >= 3 &&
+      !allowed.has(building.id) &&
+      segmentCrossesBuilding(start, end, building.polygon));
+  }
+
+  function segmentIntersectionParameter(startRaw, endRaw, aRaw, bRaw) {
+    const start = xy(startRaw), end = xy(endRaw), a = xy(aRaw), b = xy(bRaw);
+    const rx = end.x - start.x, ry = end.y - start.y;
+    const sx = b.x - a.x, sy = b.y - a.y;
+    const denominator = rx * sy - ry * sx;
+    if (Math.abs(denominator) <= EPSILON) return null;
+    const qx = a.x - start.x, qy = a.y - start.y;
+    const t = (qx * sy - qy * sx) / denominator;
+    const u = (qx * ry - qy * rx) / denominator;
+    if (t < -EPSILON || t > 1 + EPSILON || u < -EPSILON || u > 1 + EPSILON) return null;
+    return Math.max(0, Math.min(1, t));
+  }
+
+  // Gebäudeknoten liegen aus Berechnungsgründen im Schwerpunkt. Für die sichtbare
+  // Leitung wird der Endpunkt auf die Außenkante in Richtung des nächsten
+  // Leitungsstützpunkts verschoben.
+  function clipBuildingEndpoint(center, toward, polygon) {
+    if (!center || !toward || !Array.isArray(polygon) || polygon.length < 3) return center;
+    const parameters = [];
+    for (let index = 0; index < polygon.length; index++) {
+      const t = segmentIntersectionParameter(
+        center, toward, polygon[index], polygon[(index + 1) % polygon.length],
+      );
+      if (t != null && t > EPSILON) parameters.push(t);
+    }
+    if (!parameters.length) return center;
+    const t = Math.min(...parameters);
+    return {
+      lat: Number(center.lat) + (Number(toward.lat) - Number(center.lat)) * t,
+      lng: Number(center.lng) + (Number(toward.lng) - Number(center.lng)) * t,
+    };
+  }
+
   // ── 03b-netz.js — Netzplanung (Geothermie, Polygon-Zeichnen, Panel-Mgmt, OSM, Netzgraph, Strang-Report, Rohr-BOM) ──
   // ── Geothermie-Sondenfeld ────────────────────────────────────────────────────
 
@@ -112833,6 +113047,33 @@ out body;>;out skel qt;`;
 
   const WAERME_NETZ_BASISJAHR = 2026;
 
+  function _buildingForNetzNode(node) {
+    if (!node || node.type !== 'geb') return null;
+    return gebaeude.find(building => building.id === node.id && building.polygon?.length >= 3) || null;
+  }
+
+  function _edgeCrossesForeignBuilding(uNode, vNode) {
+    const allowedIds = [uNode, vNode]
+      .filter(node => node?.type === 'geb')
+      .map(node => node.id);
+    return crossesForeignBuilding(uNode?.pt, vNode?.pt, gebaeude, allowedIds);
+  }
+
+  function _netzDisplayPoints(uNode, vNode, waypoints = []) {
+    const intermediate = (waypoints || []).map(point => L.latLng(point.lat, point.lng));
+    const startToward = intermediate[0] || vNode.pt;
+    const endToward = intermediate[intermediate.length - 1] || uNode.pt;
+    const uBuilding = _buildingForNetzNode(uNode);
+    const vBuilding = _buildingForNetzNode(vNode);
+    const start = uBuilding
+      ? clipBuildingEndpoint(uNode.pt, startToward, uBuilding.polygon)
+      : uNode.pt;
+    const end = vBuilding
+      ? clipBuildingEndpoint(vNode.pt, endToward, vBuilding.polygon)
+      : vNode.pt;
+    return [L.latLng(start.lat, start.lng), ...intermediate, L.latLng(end.lat, end.lng)];
+  }
+
   function _netzPlanningYears() {
     const years = new Set([WAERME_NETZ_BASISJAHR,globalYear]);
     gebaeude.forEach(g => {
@@ -113296,6 +113537,18 @@ out body;>;out skel qt;`;
       }
     }
 
+    // Gebäude sind echte Hindernisse: Eine Kandidatenkante darf nur die
+    // Grundrisse ihrer eigenen Endgebäude berühren. Dadurch kann der
+    // Minimalbaum keine scheinbar kurze Abkürzung durch ein fremdes Haus wählen.
+    let blockedByBuildings = 0;
+    for (let index = possibleEdges.length - 1; index >= 0; index--) {
+      const edge = possibleEdges[index];
+      if (!_edgeCrossesForeignBuilding(edge.uNode,edge.vNode)) continue;
+      possibleEdges.splice(index,1);
+      blockedByBuildings++;
+    }
+    window._netzBuildingObstacleDiagnostics = {blockedCandidateEdges:blockedByBuildings};
+
     const parent = {};
     allPts.push(...sharedTrasseNodes.values());
     allPts.forEach(n => parent[n.id] = n.id);
@@ -113324,6 +113577,19 @@ out body;>;out skel qt;`;
       if(union(edge.u, edge.v)) {
         mstEdges.push(edge);
       }
+    }
+
+    const centralRoot = find(zId);
+    const disconnectedBuildings = allPts
+      .filter(node => node.type === 'geb' && find(node.id) !== centralRoot);
+    if (disconnectedBuildings.length) {
+      clearNetz();
+      showHint(
+        `⚠ ${disconnectedBuildings.length} Gebäude konnten ohne Leitungsverlauf durch andere Gebäude nicht angeschlossen werden. ` +
+        'Bitte eine ergänzende Haupttrasse um die Hindernisse zeichnen.',
+        7000,
+      );
+      return;
     }
 
     if (strategy === 'street') {
@@ -113355,12 +113621,13 @@ out body;>;out skel qt;`;
     mstEdges.splice(0,mstEdges.length,...optimizedEdges);
 
     mstEdges.forEach(e => {
-      const layer = L.polyline([e.uNode.pt, e.vNode.pt], {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-      const hitLayer = L.polyline([e.uNode.pt, e.vNode.pt], {color: 'transparent', weight: 20, pane: 'netzPane'});
+      const displayPoints = _netzDisplayPoints(e.uNode,e.vNode);
+      const layer = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
+      const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
       if (netzVisible$1) { layer.addTo(map); hitLayer.addTo(map); }
       const edgeObj = {
           u: e.u, v: e.v, uNode: e.uNode, vNode: e.vNode,
-          layer: layer, hitLayer: hitLayer, load: 0, dn: 0, length: e.uNode.pt.distanceTo(e.vNode.pt),
+          layer: layer, hitLayer: hitLayer, load: 0, dn: 0, length: calcEdgeLength({layer}),
           waypoint: null, segLayers: [], warnMarker: null, midMarker: null
       };
       hitLayer.on('click', (ev) => {
@@ -113554,19 +113821,23 @@ out body;>;out skel qt;`;
 
     const c1 = polygonCenter(gU.polygon);
     const c2 = polygonCenter(gV.polygon);
-    const layer = L.polyline([c1, c2], {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-    const hitLayer = L.polyline([c1, c2], {color: 'transparent', weight: 20, pane: 'netzPane'});
+    const uNode = {id: u, type: 'geb', pt: c1, load: uLoad};
+    const vNode = {id: v, type: 'geb', pt: c2, load: vLoad};
+    if (_edgeCrossesForeignBuilding(uNode,vNode)) {
+      showHint('Diese Leitung würde durch ein anderes Gebäude verlaufen. Bitte einen Verlauf außen herum zeichnen.');
+      return;
+    }
+    const displayPoints = _netzDisplayPoints(uNode,vNode);
+    const layer = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
+    const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
     if (netzVisible$1) { layer.addTo(map); hitLayer.addTo(map); }
-
-    const uStats = getComputedStats(gU, globalYear);
-    const vStats = getComputedStats(gV, globalYear);
 
     const edgeObj = {
       u: u, v: v,
-      uNode: {id: u, type: 'geb', pt: c1, load: uStats.heizlast||0},
-      vNode: {id: v, type: 'geb', pt: c2, load: vStats.heizlast||0},
+      uNode,
+      vNode,
       layer: layer, hitLayer: hitLayer, load: 0, dn: 0,
-      _straightLength: c1.distanceTo(c2), length: c1.distanceTo(c2),
+      _straightLength: calcEdgeLength({layer}), length: calcEdgeLength({layer}),
       waypoint: null, segLayers: [], warnMarker: null, midMarker: null
     };
 
@@ -113609,13 +113880,14 @@ out body;>;out skel qt;`;
 
   // Baut ein vollwertiges Kanten-Objekt zwischen zwei beliebigen Knoten (geb/trasse/junction)
   function _makeNetzEdge(uNode, vNode, dn){
-    const layer    = L.polyline([uNode.pt, vNode.pt], {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
-    const hitLayer = L.polyline([uNode.pt, vNode.pt], {color: 'transparent', weight: 20, pane: 'netzPane'});
+    const displayPoints = _netzDisplayPoints(uNode,vNode);
+    const layer    = L.polyline(displayPoints, {color: '#e53935', weight: 4, opacity: 0.8, pane: 'netzPane'});
+    const hitLayer = L.polyline(displayPoints, {color: 'transparent', weight: 20, pane: 'netzPane'});
     if (netzVisible$1) { layer.addTo(map); hitLayer.addTo(map); }
     const edgeObj = {
       u: uNode.id, v: vNode.id, uNode, vNode,
       layer, hitLayer, load: 0, dn: dn || 0,
-      _straightLength: uNode.pt.distanceTo(vNode.pt), length: uNode.pt.distanceTo(vNode.pt),
+      _straightLength: calcEdgeLength({layer}), length: calcEdgeLength({layer}),
       waypoint: null, segLayers: [], warnMarker: null, midMarker: null
     };
     hitLayer.on('click', (ev) => {
@@ -113712,8 +113984,9 @@ out body;>;out skel qt;`;
       if (storedWaypoints.length) {
         edge.waypoints = storedWaypoints.map(point => L.latLng(Number(point.lat), Number(point.lng)));
         edge.waypoint = edge.waypoints[0] || null;
-        edge.layer.setLatLngs([uNode.pt, ...edge.waypoints, vNode.pt]);
-        edge.hitLayer?.setLatLngs([uNode.pt, ...edge.waypoints, vNode.pt]);
+        const displayPoints = _netzDisplayPoints(uNode,vNode,edge.waypoints);
+        edge.layer.setLatLngs(displayPoints);
+        edge.hitLayer?.setLatLngs(displayPoints);
         if (edge.midMarker) map.removeLayer(edge.midMarker);
         removeEdgeWaypointMarkers(edge);
         addEdgeMidHandle(edge);
@@ -113728,6 +114001,7 @@ out body;>;out skel qt;`;
     if (window.netzEdges.some(e => e.u === g.id || e.v === g.id)) return false; // schon angeschlossen
 
     const gc = polygonCenter(g.polygon);
+    const gNode = { id: g.id, type: 'geb', pt: gc, load: 0 };
 
     // Nächstgelegenen Punkt auf dem vollständigen Leitungsverlauf suchen. Das
     // Bestandsnetz darf dabei weder begradigt noch neu dimensioniert werden.
@@ -113737,13 +114011,16 @@ out body;>;out skel qt;`;
           !e.uNode || !e.vNode || !e.uNode.pt || !e.vNode.pt) continue;
       const projection = _nearestPointOnNetzEdge(e,gc);
       if (!projection) continue;
+      const allowedIds = [g.id,e.uNode,e.vNode]
+        .filter(item => typeof item === 'number' || item?.type === 'geb')
+        .map(item => typeof item === 'number' ? item : item.id);
+      if (crossesForeignBuilding(projection.point,gc,gebaeude,allowedIds)) continue;
       const distance = gc.distanceTo(projection.point);
       if (!best || distance < best.distance) best = {...projection,distance};
     }
     if (!best) return false;
 
     const E = best.edge;
-    const gNode = { id: g.id, type: 'geb', pt: gc, load: 0 };
     const addBuildingConnection = targetNode => {
       const edge = _makeNetzEdge(targetNode,gNode,0);
       edge.visibleFromYear = Number.parseInt(g.baujahr,10) || null;
@@ -113807,9 +114084,9 @@ out body;>;out skel qt;`;
       const points = Array.isArray(stored) ? stored : [stored];
       e.waypoints = points.map(wp => L.latLng(wp.lat, wp.lng));
       e.waypoint = e.waypoints[0] || null;
-      const ll = e.layer.getLatLngs();
-      e.layer.setLatLngs([ll[0], ...e.waypoints, ll[ll.length - 1]]);
-      if (e.hitLayer) e.hitLayer.setLatLngs([ll[0], ...e.waypoints, ll[ll.length - 1]]);
+      const displayPoints = _netzDisplayPoints(e.uNode,e.vNode,e.waypoints);
+      e.layer.setLatLngs(displayPoints);
+      if (e.hitLayer) e.hitLayer.setLatLngs(displayPoints);
       if (e.midMarker) { map.removeLayer(e.midMarker); removeEdgeWaypointMarkers(e); addEdgeMidHandle(e); }
     });
   }
@@ -114024,7 +114301,9 @@ out body;>;out skel qt;`;
   }
 
   function _nearestPointOnNetzEdge(edge, latlng) {
-    const points = [edge.uNode.pt, ...getEdgeWaypoints(edge), edge.vNode.pt];
+    const points = edge.layer?.getLatLngs?.() || _netzDisplayPoints(
+      edge.uNode,edge.vNode,getEdgeWaypoints(edge),
+    );
     const cursor = map.latLngToLayerPoint(latlng);
     let best = null;
     for (let index = 0; index < points.length - 1; index++) {
@@ -114045,8 +114324,9 @@ out body;>;out skel qt;`;
   function _applySplitWaypoints(edge, points) {
     edge.waypoints = points.map(point => L.latLng(point.lat,point.lng));
     edge.waypoint = edge.waypoints[0] || null;
-    edge.layer.setLatLngs([edge.uNode.pt,...edge.waypoints,edge.vNode.pt]);
-    edge.hitLayer?.setLatLngs([edge.uNode.pt,...edge.waypoints,edge.vNode.pt]);
+    const displayPoints = _netzDisplayPoints(edge.uNode,edge.vNode,edge.waypoints);
+    edge.layer.setLatLngs(displayPoints);
+    edge.hitLayer?.setLatLngs(displayPoints);
     if (edge.midMarker) map.removeLayer(edge.midMarker);
     removeEdgeWaypointMarkers(edge);
     addEdgeMidHandle(edge);
@@ -114337,7 +114617,10 @@ out body;>;out skel qt;`;
         }
         if(ptP && ptC) {
             const waypoints = getEdgeWaypoints(pInfo.e);
-            const newPts = [ptP, ...waypoints, ptC];
+            const forward = pInfo.e.u === pInfo.pNodeId;
+            const newPts = forward
+              ? _netzDisplayPoints(pInfo.e.uNode,pInfo.e.vNode,waypoints)
+              : _netzDisplayPoints(pInfo.e.vNode,pInfo.e.uNode,[...waypoints].reverse());
             pInfo.e.layer.setLatLngs(newPts);
             if(pInfo.e.hitLayer) pInfo.e.hitLayer.setLatLngs(newPts);
         }

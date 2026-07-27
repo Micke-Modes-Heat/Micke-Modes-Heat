@@ -2001,7 +2001,7 @@ export function _renderExpandedPanel(g, stats) {
       ${g.polygon ? '<button class="btn-xs purple" data-click="flyTo(' + g.id + ')">&#8982;</button>' : ''}
       ${g.polygon ? `<button class="btn-xs ${_grundrissEdit?.gId === g.id ? 'blue' : ''}"
         data-click="toggleGebaeudeGrundrissEdit(${g.id})"
-        title="${_grundrissEdit?.gId === g.id ? 'Grundrissbearbeitung beenden' : 'Gebäudeaußenkanten ziehen'}">
+        title="${_grundrissEdit?.gId === g.id ? 'Grundrissbearbeitung beenden' : 'Gebäude formen oder versetzen'}">
         ${_grundrissEdit?.gId === g.id ? '✓ Grundriss' : '↔ Grundriss'}
       </button>` : ''}
       <button class="btn-xs" data-click="togglePlanPanel(${g.id})" title="Planung & Sanierung">🔧 Planen</button>
@@ -2066,9 +2066,9 @@ function _renderFelddatenBlock(g) {
 
 // ── Dezente Grundrissbearbeitung ──────────────────────────────────────────
 // Die Griffe erscheinen ausschließlich nach expliziter Aktivierung am aktuell
-// bearbeiteten Gebäude. Ein Griff verschiebt die zugehörige Außenkante parallel;
-// dadurch lässt sich ein Gebäude vergrößern/verkleinern, ohne dass die Karte im
-// normalen Betrieb mit Polygonpunkten überladen wird.
+// bearbeiteten Gebäude. Runde Griffe verschieben eine Außenkante parallel,
+// quadratische Griffe einen einzelnen Eckpunkt. Der Griff in der Mitte versetzt
+// den vollständigen Grundriss samt zugehöriger Dach- und Anlagengeometrie.
 let _grundrissEdit = null;
 
 function _clearGrundrissHandles() {
@@ -2091,6 +2091,46 @@ function _edgeHandleIcon() {
     iconAnchor: [7, 7],
     html: '<span style="display:block;width:8px;height:8px;margin:3px;border-radius:50%;background:#eaf7ff;border:1px solid #4fc3f7;box-shadow:0 1px 4px rgba(0,0,0,.55);opacity:.82;"></span>',
   });
+}
+
+function _cornerHandleIcon() {
+  return L.divIcon({
+    className: '',
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    html: '<span style="display:block;width:7px;height:7px;margin:3px;border-radius:2px;background:#fff4cf;border:1px solid #f4b942;box-shadow:0 1px 4px rgba(0,0,0,.55);opacity:.88;"></span>',
+  });
+}
+
+function _moveHandleIcon() {
+  return L.divIcon({
+    className: '',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    html: '<span style="display:grid;place-items:center;width:18px;height:18px;margin:3px;border-radius:50%;background:#17344a;border:1px solid #7dd3fc;color:#eaf7ff;box-shadow:0 1px 5px rgba(0,0,0,.6);font:700 13px/1 sans-serif;opacity:.9;">✥</span>',
+  });
+}
+
+function _translatePoints(points, dLat, dLng) {
+  return (points || []).map(point => L.latLng(
+    (point.lat ?? point[0]) + dLat,
+    (point.lng ?? point[1]) + dLng,
+  ));
+}
+
+function _finishGrundrissChange(g, areaChanged) {
+  if (areaChanged) {
+    g.flaeche = polygonAreaM2(g.polygon);
+    updateField(g.id, 'flaeche', g.flaeche);
+  }
+  g._pvModSig = null;
+  redrawGebPvFlaechen(g);
+  redrawAllAssets();
+  redrawErzeugerIcons();
+  recalcNetz();
+  updateViz();
+  _redrawGrundrissHandles(g);
+  _rerenderCard(g.id);
 }
 
 function _redrawGrundrissHandles(g) {
@@ -2143,16 +2183,83 @@ function _redrawGrundrissHandles(g) {
       g.polygonLayer?.setLatLngs(g.polygon);
     });
     marker.on('dragend', () => {
-      g.flaeche = polygonAreaM2(g.polygon);
-      updateField(g.id, 'flaeche', g.flaeche);
-      g._pvModSig = null;
-      redrawGebPvModules(g);
-      recalcNetz();
-      _redrawGrundrissHandles(g);
-      _rerenderCard(g.id);
+      _finishGrundrissChange(g, true);
     });
     _grundrissEdit.markers.push(marker);
   });
+
+  // Bei stark detaillierten OSM-Polygonen nur Eckpunkte der ohnehin sichtbaren
+  // Hauptkanten zeigen. Damit bleibt die Zahl der Griffe beherrschbar.
+  const cornerIndices = g.polygon.length <= 16
+    ? g.polygon.map((_, index) => index)
+    : [...new Set(shown.flatMap(edge => [
+        edge.index,
+        (edge.index + 1) % g.polygon.length,
+      ]))];
+  cornerIndices.forEach(index => {
+    const marker = L.marker(g.polygon[index], {
+      draggable: true,
+      icon: _cornerHandleIcon(),
+      zIndexOffset: 2850,
+      title: 'Eckpunkt ziehen',
+    }).addTo(map);
+    marker.on('drag', event => {
+      g.polygon[index] = event.target.getLatLng();
+      g.polygonLayer?.setLatLngs(g.polygon);
+    });
+    marker.on('dragend', () => _finishGrundrissChange(g, true));
+    _grundrissEdit.markers.push(marker);
+  });
+
+  const center = polygonCenter(g.polygon);
+  const moveMarker = L.marker(center, {
+    draggable: true,
+    icon: _moveHandleIcon(),
+    zIndexOffset: 2900,
+    title: 'Gebäude versetzen',
+  }).addTo(map);
+  let moveStart = null;
+  moveMarker.on('dragstart', () => {
+    moveStart = {
+      center: L.latLng(center.lat, center.lng),
+      polygon: g.polygon.map(point => L.latLng(point.lat, point.lng)),
+      pvFlaechen: (g.pvFlaechen || []).map(fl => ({
+        fl,
+        polygon: (fl.polygon || []).map(point =>
+          L.latLng(point.lat ?? point[0], point.lng ?? point[1])),
+      })),
+      pvRidgeOverride: g.pvRidgeOverride
+        ? L.latLng(g.pvRidgeOverride.lat, g.pvRidgeOverride.lng)
+        : null,
+      assets: ASSETS.items
+        .filter(asset => asset.buildingId === g.id)
+        .map(asset => ({ asset, lat: asset.lat, lng: asset.lng })),
+    };
+  });
+  moveMarker.on('drag', event => {
+    if (!moveStart) return;
+    const current = event.target.getLatLng();
+    const dLat = current.lat - moveStart.center.lat;
+    const dLng = current.lng - moveStart.center.lng;
+    g.polygon = _translatePoints(moveStart.polygon, dLat, dLng);
+    g.polygonLayer?.setLatLngs(g.polygon);
+    moveStart.pvFlaechen.forEach(({ fl, polygon }) => {
+      fl.polygon = _translatePoints(polygon, dLat, dLng);
+      fl.layer?.setLatLngs(fl.polygon);
+    });
+    if (moveStart.pvRidgeOverride) {
+      g.pvRidgeOverride = {
+        lat: moveStart.pvRidgeOverride.lat + dLat,
+        lng: moveStart.pvRidgeOverride.lng + dLng,
+      };
+    }
+    moveStart.assets.forEach(({ asset, lat, lng }) => {
+      asset.lat = lat + dLat;
+      asset.lng = lng + dLng;
+    });
+  });
+  moveMarker.on('dragend', () => _finishGrundrissChange(g, false));
+  _grundrissEdit.markers.push(moveMarker);
 }
 
 export function toggleGebaeudeGrundrissEdit(gId) {
