@@ -1012,6 +1012,7 @@ export function toggleDrawTrasse(domain) {
     });
     // Aktuelles Segment starten
     setTrasseCurrentSegStart(window.trassePoints.length);
+    redrawTrasse();
   } else {
     commitInteraction('draw-trasse');
     trasseRedoPoints = [];
@@ -1168,6 +1169,11 @@ export function redrawTrasse() {
       window.trassePolyline.push(pl);
     }
   });
+
+  // Stütz- und Pluspunkte gehören ausschließlich zum aktiven Zeichen- bzw.
+  // Wiedereinstiegsmodus. Die gespeicherte Trasse kann als ruhige Orientierung
+  // sichtbar bleiben, ohne nach „Fertig“ weiter wie ein Editor auszusehen.
+  if (!window.isDrawingTrasse && !window.trasseDetached) return;
 
   // Edit-Handles für alle Punkte — im detached-Modus größer als Snap-Ziele
   const handleSize = window.trasseDetached ? 14 : 8;

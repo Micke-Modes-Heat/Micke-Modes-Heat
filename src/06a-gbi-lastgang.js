@@ -12,6 +12,7 @@ import { CalcEngine } from './08-calc-engine.js';
 import { normalizeHourlyYear } from './lib/time-series.js';
 import { calcStromPanel } from './09b-pv-calc.js';
 import { glBerechnenAuto } from './06b-gl-berechnen.js';
+import { BWP_KLIMA_META, BWP_KLIMA_PLZ } from './data/bwp-klima-plz.js';
 
 window.systemState  = null; // wird nach glBerechnen() befüllt
 window.elQuartierH  = null; // Float32Array[8760] — stündl. Stromlastgang Quartier (ohne WP)
@@ -475,6 +476,7 @@ export function captureWaermeGrundlagen() {
     gesamtMwh:value('gl-gesamt'),
     monatswerte:Array.from({length:12},(_,i) => value(`gl-m${i}`)),
     stadt:value('gl-stadt'),
+    plz:value('gl-plz'),
     klimajahr:value('gl-klimajahr'),
     normAussentemp:value('gl-norm-at'),
     netzverlustPct:value('gl-netzverlust'),
@@ -499,7 +501,15 @@ export function restoreWaermeGrundlagen(data) {
   for (let i=0;i<12;i++) set(`gl-m${i}`,source.monatswerte?.[i],'');
   set('gl-stadt',source.stadt,'Kassel');
   set('gl-klimajahr',source.klimajahr,'TMY');
-  set('gl-norm-at',source.normAussentemp,'-12');
+  set('gl-plz',source.plz,'');
+  if (source.plz && BWP_KLIMA_PLZ[String(source.plz)]) {
+    glSetKlimaPlz(source.plz, false);
+  } else if (source.normAussentemp !== '' && source.normAussentemp != null) {
+    set('gl-norm-at',source.normAussentemp,'-12');
+    set('netz-t-aussen',source.normAussentemp,'-12');
+  } else {
+    syncNormAussentemperatur(false);
+  }
   set('gl-netzverlust',source.netzverlustPct,'10');
   set('gl-vl5',source.vlMinus5,'90');
   set('gl-vl15',source.vl15,'60');
@@ -517,6 +527,8 @@ export function restoreWaermeGrundlagen(data) {
   glTimeSeriesMeta=glLastgangKw && source.timeSeriesMeta
     ? structuredClone(source.timeSeriesMeta)
     : null;
+
+  glUpdateKlimaStatus();
 
   window.systemState=null;
   window._basisLastgangKw=null;
@@ -555,6 +567,16 @@ export function glInit() {
   });
   // SigLinDe-Profile
   const profile = Object.keys(CalcEngine.SIGLINDE).sort();
+  const sigLinDeLabels = {
+    HEF:'Einfamilienhaus', HMF:'Mehrfamilienhaus',
+    GMK:'Metall und Kfz', GHA:'Einzel- und Großhandel',
+    GKO:'Gebietskörperschaften, Banken, Versicherungen',
+    GBD:'Sonstige betriebliche Dienstleistungen',
+    GGA:'Gaststätten', GBH:'Beherbergung',
+    GWA:'Wäschereien und chemische Reinigungen',
+    GGB:'Gartenbau', GBA:'Backstube', GPD:'Papier und Druck',
+    GMF:'Haushaltsähnliches Gewerbe', GHD:'Gewerbe/Handel/Dienstleistung gesamt',
+  };
   ['gl-profil1','gl-profil2'].forEach((id, idx) => {
     const ps = document.getElementById(id);
     if (idx === 1) {
@@ -564,7 +586,11 @@ export function glInit() {
     }
     profile.forEach(p => {
       const o = document.createElement('option');
-      o.value = p; o.textContent = p;
+      const type = p.substring(0, 3);
+      const variant = p.substring(3);
+      o.value = p;
+      o.textContent = `${sigLinDeLabels[type] || type} · Variante ${variant} (${p})`;
+      o.title = `${p}: ${sigLinDeLabels[type] || type}, SigLinDe-Ausprägung ${variant}`;
       // Standardwerte: Profil 1 = GBH34 (Unterkunft/Beherbergung), Profil 2 = GBD34 (Gebietskörperschaft)
       if (idx === 0 && p === 'GBH34') o.selected = true;
       if (idx === 1 && p === 'GBD34') o.selected = true;
@@ -588,11 +614,59 @@ export function glInit() {
 }
 
 export function glOnStadtChange() {
-  const s = document.getElementById('gl-stadt').value;
-  const d = CalcEngine.STAEDTE[s];
-  if (d) document.getElementById('gl-norm-at').value = d.tNorm;
+  const plz = document.getElementById('gl-plz')?.value;
+  if (plz && BWP_KLIMA_PLZ[plz]) glSetKlimaPlz(plz, true);
+  else syncNormAussentemperatur(true);
   glUpdateKlimaStatus();
   glBerechnenDebounced(600);
+}
+
+export function glSetKlimaPlz(rawPlz, recalculate = true) {
+  const input = document.getElementById('gl-plz');
+  const status = document.getElementById('gl-plz-status');
+  const plz = String(rawPlz ?? '').replace(/\D/g, '').slice(0, 5);
+  if (input && input.value !== plz) input.value = plz;
+  const values = BWP_KLIMA_PLZ[plz];
+  if (!values) {
+    if (status) {
+      status.textContent = plz.length === 5
+        ? 'Für diese PLZ weist die BWP-Karte keinen Wert aus'
+        : 'Für PLZ-genaue DIN-Zuordnung';
+      status.style.color = plz.length === 5 ? '#f9a825' : 'var(--muted)';
+    }
+    return false;
+  }
+  const [normAt, annualMean] = values;
+  document.getElementById('gl-norm-at').value = normAt;
+  document.getElementById('netz-t-aussen').value = normAt;
+  const meanInput = document.getElementById('netz-t-mittel');
+  if (meanInput) meanInput.value = annualMean;
+  if (status) {
+    status.textContent = `✓ offizieller PLZ-Wert · Stand ${BWP_KLIMA_META.retrievedAt}`;
+    status.style.color = '#81c784';
+  }
+  const source = document.getElementById('gl-norm-source');
+  if (source) source.textContent = 'BWP · DIN/TS 12831-1';
+  if (recalculate) {
+    recalcNetz();
+    glBerechnenDebounced(300);
+  }
+  return true;
+}
+
+export function syncNormAussentemperatur(recalculate = false) {
+  const s = document.getElementById('gl-stadt').value;
+  const d = CalcEngine.STAEDTE[s];
+  if (d) {
+    const normAt = Number(d.tNorm);
+    const grundlagen = document.getElementById('gl-norm-at');
+    const netz = document.getElementById('netz-t-aussen');
+    if (grundlagen) grundlagen.value = normAt;
+    if (netz) netz.value = normAt;
+    const source = document.getElementById('gl-norm-source');
+    if (source) source.textContent = 'Standort-Näherung · Projekt-PLZ ergänzen';
+    if (recalculate && typeof recalcNetz === 'function') recalcNetz();
+  }
 }
 
 // ── DWD-Klimadaten laden (dynamisch via <script>) ─────────────────────────

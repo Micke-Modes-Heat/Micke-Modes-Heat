@@ -296,14 +296,20 @@ test('dist: OSM-Routinggrundlage erzeugt keine tausenden Bearbeitungsgriffe', as
     window._streetHelperDrawing = false;
     const started = performance.now();
     redrawTrasse();
+    const calmHandles = window.trasseEditMarkers.length;
+    toggleDrawTrasse('waerme');
+    const editingHandles = window.trasseEditMarkers.length;
+    toggleDrawTrasse();
     return {
-      handles: window.trasseEditMarkers.length,
+      calmHandles,
+      editingHandles,
       polylines: window.trassePolyline.length,
       durationMs: performance.now() - started,
     };
   });
 
-  expect(result.handles).toBe(3);
+  expect(result.calmHandles).toBe(0);
+  expect(result.editingHandles).toBe(3);
   expect(result.polylines).toBe(2);
   expect(result.durationMs).toBeLessThan(1000);
 });
@@ -509,6 +515,39 @@ test('dist: OSM-Straßen werden parallel geladen und für dasselbe Gebiet wieder
   expect(first.text).toContain('1 geladen');
   expect(second.text).toContain('1 geladen');
   expect(second.duration).toBeLessThan(first.duration + 50);
+});
+
+test('dist: eine schnelle leere OSM-Antwort verdrängt keine nutzbaren Straßendaten', async ({page}) => {
+  await page.route(/overpass|corsproxy/, async route => {
+    if (route.request().url().includes('maps.mail.ru')) {
+      await route.fulfill({status:200,contentType:'application/json',body:'{"elements":[]}'});
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve,80));
+    await route.fulfill({
+      status:200,
+      contentType:'application/json',
+      body:JSON.stringify({elements:[{
+        type:'way',id:456,tags:{highway:'service'},
+        geometry:[{lat:52.081,lon:8.003},{lat:52.082,lon:8.004}],
+      }]}),
+    });
+  });
+  await page.route(/tile\.openstreetmap\.org/,route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.loadOsmStrassen === 'function');
+
+  const result = await page.evaluate(async () => {
+    setAreaLatLngs([
+      L.latLng(52.080,8.002),L.latLng(52.080,8.005),
+      L.latLng(52.083,8.005),L.latLng(52.083,8.002),
+    ]);
+    const count = await loadOsmStrassen();
+    return {count,text:document.getElementById('btn-osm-strassen')?.textContent};
+  });
+
+  expect(result.count).toBe(1);
+  expect(result.text).toContain('1 geladen');
 });
 
 test('dist: Gebäudeanschluss lässt sich vom Nachbargebäude an die Haupttrasse umhängen', async ({page}) => {

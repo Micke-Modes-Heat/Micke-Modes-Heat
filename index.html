@@ -1365,6 +1365,9 @@
       </div>
       <div class="bulk-bar" id="bulk-bar">
         <span class="bulk-lbl" id="bulk-lbl">0 ausgewählt</span>
+        <select class="inp-field" id="bulk-nutzung" style="width:125px;font-size:10px;padding:2px 5px;" title="Nutzungstyp für alle ausgewählten Gebäude">
+          <option value="">Nutzung beibehalten</option>
+        </select>
         <input class="inp-field" type="number" placeholder="Spez. kWh/m²a" id="bulk-spez" style="width:90px;font-size:10px;padding:2px 5px;" title="Spezifischer Wärmeverbrauch — wird mit Gebäudefläche multipliziert">
         <input class="inp-field" type="number" placeholder="Wärme MWh/a" id="bulk-waerme" style="width:90px;font-size:10px;padding:2px 5px;" title="Absoluter Jahreswärmebedarf">
         <input class="inp-field" type="number" placeholder="Heizlast kW" id="bulk-hl" style="width:80px;font-size:10px;padding:2px 5px;">
@@ -1420,6 +1423,7 @@
         </div>
         <div class="export-row">
           <button class="btn-export" data-click="openBuildingProjectImport()" title="Gebäudedaten aus einer oder mehreren Projektdateien ergänzen">＋ Gebäude aus Projekten</button>
+          <button class="btn-export" data-click="restoreLatestAutosave()" title="Letzte automatische lokale Sicherung wiederherstellen">↶ Autosave</button>
         </div>
         <div id="project-file-status" style="font-size:8px;color:var(--muted);padding:1px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noch keine Projektdatei geöffnet</div>
         <div class="export-row">
@@ -1767,8 +1771,16 @@
         </select>
       </div>
       <div class="inp-group">
+        <label class="inp-label">Projekt-PLZ</label>
+        <input class="inp-field" type="text" inputmode="numeric" id="gl-plz" maxlength="5" placeholder="z. B. 34117"
+          data-input="glSetKlimaPlz(this.value)" title="Postleitzahl für die offizielle BWP-Klimazuordnung"/>
+        <div id="gl-plz-status" style="font-size:8px;color:var(--muted);margin-top:2px;">Für PLZ-genaue DIN-Zuordnung</div>
+      </div>
+      <div class="inp-group">
         <label class="inp-label">Normaussentemp. (°C)</label>
-        <input class="inp-field" type="number" id="gl-norm-at" value="-12" min="-30" max="0" step="1" style="text-align:right;" data-input="const _na=document.getElementById('netz-t-aussen'); if(_na&&_na.value!==this.value){_na.value=this.value; recalcNetz();} glBerechnenAuto()"/>
+        <input class="inp-field" type="number" id="gl-norm-at" value="-12" style="text-align:right;cursor:default;" readonly
+          title="Offizieller PLZ-Wert der BWP-Klimakarte nach DIN/TS 12831-1."/>
+        <div id="gl-norm-source" style="font-size:8px;color:var(--muted);margin-top:2px;">Standort-Näherung</div>
       </div>
       <div class="inp-group" style="display:flex;align-items:flex-end;">
         <div id="gl-klima-status" style="font-size:9px;color:var(--muted);padding-bottom:2px;">—</div>
@@ -3001,8 +3013,10 @@
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
     <div class="inp-group">
-      <label class="inp-label">Auslegungstemp. Außen (°C)</label>
-      <input class="inp-field" type="number" id="netz-t-aussen" value="-12" step="1" data-change="const _gn=document.getElementById('gl-norm-at'); if(_gn&&_gn.value!==this.value){_gn.value=this.value;} recalcNetz()" title="Kältester Auslegungstag – für Rohrdimensionierung und Temperaturpropagation. Wird mit Grundlagen-Panel synchronisiert."/>
+      <label class="inp-label">Normaussentemp. (°C)</label>
+      <input class="inp-field" type="number" id="netz-t-aussen" value="-12" style="cursor:default;" readonly
+        title="Einheitlicher Standortwert aus den Wärme-Grundlagendaten."/>
+      <div style="font-size:8px;color:var(--muted);margin-top:2px;">aus Wärme-Grundlagen</div>
     </div>
     <div class="inp-group">
       <label class="inp-label">Jahresmitteltemp. Außen (°C)</label>

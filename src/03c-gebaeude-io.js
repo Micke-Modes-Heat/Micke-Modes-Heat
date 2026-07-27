@@ -11,7 +11,7 @@ import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, d
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
 import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById, getElSlpWpm2, showElSlpModal } from './13k-elslp-registry.js';
 import { activeVariantId, edgeKey, freiflaechen, lwWp, lwWpVisible, networkLocked, netzEdges, renderVariantenBar, stromNetzVisible, stromNodes, updateVariantBanner } from './01-globals-varianten.js';
-import { _invalidateStats, addGebaeude, toggleNetworkLock, ensureSatellite, setGlobalYear } from './02b-gebaeude.js';
+import { _invalidateStats, addGebaeude, toggleNetworkLock, ensureSatellite, setGlobalYear, updateField } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, clearTrasse, polygonAreaM2, polygonCenter, redrawFliessgewaesser, redrawLwWp, redrawTrasse, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { attachFFLayer, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawGasKessel, redrawHeizoelKessel, redrawHhs, redrawPellets, renderFFPanel, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
 import { addNetzEdge, applyWaermeNetzGraph, autoGenerateNetz, calcGeoThermie, captureWaermeNetzGraph, clearNetz, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
@@ -1999,10 +1999,15 @@ export function _renderExpandedPanel(g, stats) {
     <div class="geb-actions">
       ${!g.polygon ? `<button class="btn-xs blue" data-click="startDraw(${g.id})">&#9998; Zeichnen</button>` : ''}
       ${g.polygon ? '<button class="btn-xs purple" data-click="flyTo(' + g.id + ')">&#8982;</button>' : ''}
+      ${g.polygon ? `<button class="btn-xs ${_grundrissEdit?.gId === g.id ? 'blue' : ''}"
+        data-click="toggleGebaeudeGrundrissEdit(${g.id})"
+        title="${_grundrissEdit?.gId === g.id ? 'Grundrissbearbeitung beenden' : 'Gebäudeaußenkanten ziehen'}">
+        ${_grundrissEdit?.gId === g.id ? '✓ Grundriss' : '↔ Grundriss'}
+      </button>` : ''}
       <button class="btn-xs" data-click="togglePlanPanel(${g.id})" title="Planung & Sanierung">🔧 Planen</button>
       <button class="btn-xs" data-click="startNetzEdgeFrom(${g.id})" title="Leitung von diesem Gebäude zeichnen" style="border-color:#e53935;color:#e53935;">⛕+</button>
       ${netzEdges.some(e => e.u === g.id || e.v === g.id) ? `<button class="btn-xs red" data-click="abklemmenGebaeude(${g.id})" title="Alle Netzleitungen entfernen">⛕✕</button>` : ''}
-      <button class="btn-xs" data-click="removeGebaeude(${g.id})" title="Löschen" style="margin-left:auto">&#10005;</button>
+      <button class="btn-xs" data-click="finishGebaeudeGrundrissEdit(); removeGebaeude(${g.id})" title="Löschen" style="margin-left:auto">&#10005;</button>
     </div>
     ${activeVariantId !== null ? `<div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border);">
       <button class="btn-xs ${ausgeschlossen ? 'green' : ''}" style="${ausgeschlossen ? '' : 'border-color:#f9a825;color:#f9a825;'}" data-click="toggleAusschluss(${g.id})">
@@ -2057,6 +2062,119 @@ function _renderFelddatenBlock(g) {
     ${notizHtml}
     ${fotoHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${fotoHtml}</div>` : ''}
   </div>`;
+}
+
+// ── Dezente Grundrissbearbeitung ──────────────────────────────────────────
+// Die Griffe erscheinen ausschließlich nach expliziter Aktivierung am aktuell
+// bearbeiteten Gebäude. Ein Griff verschiebt die zugehörige Außenkante parallel;
+// dadurch lässt sich ein Gebäude vergrößern/verkleinern, ohne dass die Karte im
+// normalen Betrieb mit Polygonpunkten überladen wird.
+let _grundrissEdit = null;
+
+function _clearGrundrissHandles() {
+  if (!_grundrissEdit) return;
+  _grundrissEdit.markers.forEach(marker => {
+    try { map.removeLayer(marker); } catch (_) {}
+  });
+  document.removeEventListener('keydown', _grundrissEscape);
+  _grundrissEdit = null;
+}
+
+function _grundrissEscape(event) {
+  if (event.key === 'Escape') finishGebaeudeGrundrissEdit();
+}
+
+function _edgeHandleIcon() {
+  return L.divIcon({
+    className: '',
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    html: '<span style="display:block;width:8px;height:8px;margin:3px;border-radius:50%;background:#eaf7ff;border:1px solid #4fc3f7;box-shadow:0 1px 4px rgba(0,0,0,.55);opacity:.82;"></span>',
+  });
+}
+
+function _redrawGrundrissHandles(g) {
+  if (!_grundrissEdit || _grundrissEdit.gId !== g.id) return;
+  _grundrissEdit.markers.forEach(marker => {
+    try { map.removeLayer(marker); } catch (_) {}
+  });
+  _grundrissEdit.markers = [];
+
+  const candidates = g.polygon.map((a, index) => {
+    const b = g.polygon[(index + 1) % g.polygon.length];
+    return { index, a, b, length: map.distance(a, b) };
+  }).filter(edge => edge.length >= 1.5);
+  // Bei sehr detaillierten OSM-Geometrien nur die maßgeblichen Außenkanten
+  // anbieten. So bleibt der Modus auch bei komplexen Gebäuden übersichtlich.
+  const shown = candidates.length > 12
+    ? candidates.sort((a, b) => b.length - a.length).slice(0, 12)
+    : candidates;
+
+  shown.forEach(edge => {
+    const midpoint = L.latLng(
+      (edge.a.lat + edge.b.lat) / 2,
+      (edge.a.lng + edge.b.lng) / 2,
+    );
+    const marker = L.marker(midpoint, {
+      draggable: true,
+      icon: _edgeHandleIcon(),
+      zIndexOffset: 2800,
+      title: 'Außenkante ziehen',
+    }).addTo(map);
+    let start = null;
+    marker.on('dragstart', () => {
+      start = {
+        midpoint,
+        a: L.latLng(g.polygon[edge.index].lat, g.polygon[edge.index].lng),
+        b: L.latLng(
+          g.polygon[(edge.index + 1) % g.polygon.length].lat,
+          g.polygon[(edge.index + 1) % g.polygon.length].lng,
+        ),
+      };
+    });
+    marker.on('drag', event => {
+      if (!start) return;
+      const current = event.target.getLatLng();
+      const dLat = current.lat - start.midpoint.lat;
+      const dLng = current.lng - start.midpoint.lng;
+      g.polygon[edge.index] = L.latLng(start.a.lat + dLat, start.a.lng + dLng);
+      g.polygon[(edge.index + 1) % g.polygon.length] =
+        L.latLng(start.b.lat + dLat, start.b.lng + dLng);
+      g.polygonLayer?.setLatLngs(g.polygon);
+    });
+    marker.on('dragend', () => {
+      g.flaeche = polygonAreaM2(g.polygon);
+      updateField(g.id, 'flaeche', g.flaeche);
+      g._pvModSig = null;
+      redrawGebPvModules(g);
+      recalcNetz();
+      _redrawGrundrissHandles(g);
+      _rerenderCard(g.id);
+    });
+    _grundrissEdit.markers.push(marker);
+  });
+}
+
+export function toggleGebaeudeGrundrissEdit(gId) {
+  if (_grundrissEdit?.gId === gId) {
+    finishGebaeudeGrundrissEdit();
+    return;
+  }
+  const previousId = _grundrissEdit?.gId;
+  _clearGrundrissHandles();
+  if (previousId != null) _rerenderCard(previousId);
+  const g = window.gebaeude.find(building => building.id === gId);
+  if (!g?.polygon || g.polygon.length < 3) return;
+  _grundrissEdit = { gId, markers: [] };
+  _redrawGrundrissHandles(g);
+  document.addEventListener('keydown', _grundrissEscape);
+  _rerenderCard(gId);
+}
+
+export function finishGebaeudeGrundrissEdit() {
+  const gId = _grundrissEdit?.gId;
+  _clearGrundrissHandles();
+  if (gId != null) _rerenderCard(gId);
 }
 
 export function _rerenderCard(id) {
@@ -2786,8 +2904,12 @@ function _applyProjectData(project) {
          document.getElementById('netz-v').value = project.netz.v ?? 1.0;
          document.getElementById('netz-dp-main').value = project.netz.dpMain ?? 150;
          document.getElementById('netz-dp-service').value = project.netz.dpService ?? 250;
-         document.getElementById('netz-t-aussen').value = project.netz.tAussen ?? -12;
-         document.getElementById('netz-t-mittel').value = project.netz.tMittel ?? 10;
+         // Normaussentemperatur bleibt an den Klimastandort gekoppelt. Der
+         // frühere separate Netzwert wird nur noch zur Abwärtskompatibilität
+         // gespeichert, beim Laden aber nicht mehr als zweite Quelle verwendet.
+         if (!project.waermeGrundlagen?.plz) {
+           document.getElementById('netz-t-mittel').value = project.netz.tMittel ?? 10;
+         }
          document.getElementById('netz-u-wert').value = project.netz.uWert ?? 0.25;
          if (project.netz.gzfMethode) {
            document.getElementById('netz-gzf-methode').value = project.netz.gzfMethode;

@@ -212,7 +212,7 @@ export const HILFE_TEXTE = {
   'pef-fernwaerme': 'Primärenergiefaktor Fernwärme — abhängig vom lokalen Erzeugungsmix.',
 
   // Wärme-Grundlagen Panel
-  'gl-norm-at': 'Normauslegungstemperatur (°C) — Tiefste Temperatur für die Heizlastberechnung (z.B. -12°C für Norddeutschland).',
+  'gl-norm-at': 'Normaussentemperatur (°C) — offizieller PLZ-Wert aus der BWP-Klimakarte nach DIN/TS 12831-1; einheitlich für Wärme- und Netzauslegung.',
   'gl-gesamt': 'Jahresgesamtwärmebedarf des Quartiers (kWh) — wird auf die Gebäude verteilt wenn kein Lastgang vorliegt.',
   'gl-file-input': 'Wärmelastgang hochladen — CSV-Datei mit 8760 Stundenwerten (kW). Höchste Genauigkeit für die Simulation.',
 

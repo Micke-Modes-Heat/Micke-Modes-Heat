@@ -750,7 +750,8 @@ export function applyNetzState(state) {
   document.getElementById('netz-rl').value = state.rl ?? 60;
   syncVLTemps('netz');
   document.getElementById('netz-v').value = state.v ?? 1.0;
-  document.getElementById('netz-t-aussen').value = state.tAussen ?? -12;
+  const klimaNormAt = document.getElementById('gl-norm-at')?.value;
+  document.getElementById('netz-t-aussen').value = klimaNormAt || -12;
   document.getElementById('netz-t-mittel').value = state.tMittel ?? 10;
   document.getElementById('netz-u-wert').value = state.uWert ?? 0.25;
   if (state.gzfMethode) {

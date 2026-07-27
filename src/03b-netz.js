@@ -2003,19 +2003,27 @@ export function populateZentraleSelect(){
   const sel = document.getElementById('netz-zentrale');
   if(!sel) return;
   const currentVal = sel.value;
-  sel.innerHTML = '<option value="">-- bitte wählen --</option>';
-  gebaeude.forEach(g => {
-    if(g.polygon){
+  const choices = gebaeude
+    .filter(g => g.polygon)
+    .map(g => ({value:String(g.id),label:g.name}));
+  const signature = JSON.stringify(choices);
+  // Ein Neuaufbau der <option>-Elemente schließt ein gerade geöffnetes natives
+  // Dropdown. Da diese Funktion aus mehreren Aktualisierungspfaden aufgerufen
+  // wird, nur bei tatsächlich geänderter Gebäudeliste neu rendern.
+  if (sel.dataset.choiceSignature !== signature) {
+    sel.innerHTML = '<option value="">-- bitte wählen --</option>';
+    choices.forEach(choice => {
       const opt = document.createElement('option');
-      opt.value = g.id;
-      opt.textContent = g.name;
+      opt.value = choice.value;
+      opt.textContent = choice.label;
       sel.appendChild(opt);
-    }
-  });
+    });
+    sel.dataset.choiceSignature = signature;
+  }
   // Wichtig: g.id ist Zahl, currentVal (Dropdown-Wert) ist String → als String vergleichen.
   // (Früher '==', durch ESLint-Umstellung auf '===' verschärft → Zentrale ging beim
   //  Neuzeichnen/renderList verloren, recalcNetz/autoGenerateNetz brachen ab.)
-  if(currentVal && gebaeude.some(g => String(g.id) === currentVal)) {
+  if(currentVal && choices.some(choice => choice.value === currentVal)) {
     sel.value = currentVal;
   }
 }
@@ -2693,7 +2701,8 @@ export async function createStreetOrientedWaermeNetz() {
       showHint('OSM-Straßenmodul ist nicht verfügbar.', 6000);
       return false;
     }
-    await window.loadOsmStrassen();
+    const loadedStreetCount = await window.loadOsmStrassen();
+    if (!loadedStreetCount) return false;
     const adopted = window.adoptAllOsmStrassen('waerme');
     if (!adopted) {
       showHint('Keine geeigneten Straßenzüge im Planungsgebiet gefunden.', 6000);

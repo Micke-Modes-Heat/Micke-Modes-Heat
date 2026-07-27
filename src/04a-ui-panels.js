@@ -3,7 +3,7 @@
 
 import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, networkLocked, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
-import { _invalidateStats, getComputedStats, map } from './02b-gebaeude.js';
+import { _invalidateStats, getComputedStats, getNutzungstypen, map } from './02b-gebaeude.js';
 import { setMode, updateViz } from './02c-karte-werkzeuge.js';
 import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
 import { renderList, updateTotals } from './03c-gebaeude-io.js';
@@ -77,6 +77,14 @@ export function updateBulkBar() {
   const sel = gebaeude.filter(g => g.selected);
   const bar = document.getElementById('bulk-bar');
   const lbl = document.getElementById('bulk-lbl');
+  const nutzungSelect = document.getElementById('bulk-nutzung');
+  if (nutzungSelect && nutzungSelect.options.length !== getNutzungstypen().length + 1) {
+    const current = nutzungSelect.value;
+    nutzungSelect.innerHTML = '<option value="">Nutzung beibehalten</option>' +
+      getNutzungstypen().map(type =>
+        `<option value="${type.id}">${type.label} · ${type.gruppe}</option>`).join('');
+    nutzungSelect.value = current;
+  }
   if (sel.length > 0) {
     bar.classList.add('visible');
     lbl.textContent = sel.length + ' ausgewählt';
@@ -86,10 +94,15 @@ export function updateBulkBar() {
 }
 
 export function applyBulk() {
+  const nutzung = document.getElementById('bulk-nutzung').value;
   const spez   = document.getElementById('bulk-spez').value;
   const waerme = document.getElementById('bulk-waerme').value;
   const hl     = document.getElementById('bulk-hl').value;
   gebaeude.filter(g => g.selected).forEach(g => {
+    if (nutzung) {
+      g.nutzung = nutzung;
+      _invalidateStats();
+    }
     if (spez) {
       g.spez = parseFloat(spez);
       if (g.flaeche) g.waerme = Math.round(g.flaeche * parseFloat(spez) / 1000 * 10) / 10;
@@ -102,6 +115,7 @@ export function applyBulk() {
       if (g.flaeche) g.spezHeizlast = Math.round(g.heizlast * 1000 / g.flaeche * 10) / 10;
     }
   });
+  document.getElementById('bulk-nutzung').value = '';
   document.getElementById('bulk-spez').value = '';
   document.getElementById('bulk-waerme').value = '';
   document.getElementById('bulk-hl').value = '';
@@ -153,7 +167,7 @@ export function addrSearch(val) {
     addrRequest?.abort();
     addrRequest = new AbortController();
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(val.trim())}`;
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&q=${encodeURIComponent(val.trim())}`;
       const response = await fetch(url, {
         headers: {'Accept-Language': 'de'},
         signal: addrRequest.signal
@@ -193,6 +207,8 @@ export function selectAddr(item) {
   }).addTo(map);
   setTimeout(() => map.removeLayer(m), 3000);
   document.getElementById('addr-input').value = item.display_name.split(',')[0];
+  const postcode = item.address?.postcode?.match(/\b\d{5}\b/)?.[0];
+  if (postcode && typeof window.glSetKlimaPlz === 'function') window.glSetKlimaPlz(postcode);
   document.getElementById('addr-results').classList.remove('open');
 }
 
@@ -261,6 +277,35 @@ export async function loadAutosave() {
     showHint('✓ Autosave wiederhergestellt.');
     setTimeout(hideHint, 3000);
   } catch(e) { showHint('Fehler beim Wiederherstellen.'); console.error(e); }
+}
+
+export async function restoreLatestAutosave() {
+  try {
+    const snapshot = await loadLatestAutosave();
+    if (!snapshot?.project) {
+      showHint('Keine automatische Sicherung vorhanden.', 4000);
+      return;
+    }
+    if (gebaeude.length) {
+      const savedAt = snapshot.savedAt
+        ? new Date(snapshot.savedAt).toLocaleString('de-DE')
+        : 'unbekannter Zeitpunkt';
+      const confirmed = typeof window.epConfirm === 'function'
+        ? await window.epConfirm(
+          'Autosave wiederherstellen?',
+          `Der aktuelle Projektstand wird durch die lokale Sicherung vom ${savedAt} ersetzt. Bitte speichere benötigte Änderungen vorher als Projektdatei.`,
+          {okText:'Wiederherstellen'},
+        )
+        : window.confirm('Aktuellen Projektstand durch die letzte automatische Sicherung ersetzen?');
+      if (!confirmed) return;
+    }
+    _latestAutosave = snapshot;
+    await _loadProject(snapshot.project);
+    showHint('✓ Autosave wiederhergestellt.', 4000);
+  } catch(e) {
+    showHint('Fehler beim Wiederherstellen des Autosaves.', 5000);
+    console.error(e);
+  }
 }
 
 
