@@ -552,6 +552,65 @@ test('dist: OSM-Straßen werden parallel geladen und für dasselbe Gebiet wieder
   expect(second.duration).toBeLessThan(first.duration + 50);
 });
 
+test('dist: unvollständige große OSM-Teilbereiche werden feiner erneut geladen', async ({page}) => {
+  let largeRequests = 0;
+  let smallRequests = 0;
+  let wayId = 5000;
+  await page.route(/overpass|corsproxy/, async route => {
+    const raw = decodeURIComponent(route.request().postData() || route.request().url());
+    const matches = [...raw.matchAll(/\((-?\d+\.\d+),(-?\d+\.\d+),(-?\d+\.\d+),(-?\d+\.\d+)\)/g)];
+    const bbox = matches.at(-1)?.slice(1).map(Number);
+    const span = bbox ? Math.max(bbox[2]-bbox[0],bbox[3]-bbox[1]) : 0;
+    if (span > 0.006) {
+      largeRequests++;
+      await route.fulfill({
+        status:200,contentType:'application/json',
+        body:JSON.stringify({
+          remark:'runtime error: Query timed out',
+          elements:[{
+            type:'way',id:1,tags:{highway:'primary'},
+            geometry:[{lat:52,lon:8},{lat:52.001,lon:8.001}],
+          }],
+        }),
+      });
+      return;
+    }
+    smallRequests++;
+    const id = wayId++;
+    await route.fulfill({
+      status:200,contentType:'application/json',
+      body:JSON.stringify({elements:[{
+        type:'way',id,tags:{highway:'service'},
+        geometry:[
+          {lat:bbox?.[0] || 52,lon:bbox?.[1] || 8},
+          {lat:bbox?.[2] || 52.001,lon:bbox?.[3] || 8.001},
+        ],
+      }]}),
+    });
+  });
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.loadOsmStrassen==='function');
+
+  const result=await page.evaluate(async()=>{
+    setAreaLatLngs([
+      L.latLng(52,8),L.latLng(52,8.018),
+      L.latLng(52.018,8.018),L.latLng(52.018,8),
+    ]);
+    const count=await loadOsmStrassen();
+    return {
+      count,
+      progressVisible:!document.getElementById('osm-street-progress')?.hidden,
+      progressText:document.getElementById('osm-street-progress-status')?.textContent || '',
+    };
+  });
+  expect(largeRequests).toBeGreaterThan(0);
+  expect(smallRequests).toBeGreaterThan(0);
+  expect(result.count).toBeGreaterThan(0);
+  expect(result.progressVisible).toBe(true);
+  expect(result.progressText).toContain('vollständig geladen');
+});
+
 test('dist: eine schnelle leere OSM-Antwort verdrängt keine nutzbaren Straßendaten', async ({page}) => {
   await page.route(/overpass|corsproxy/, async route => {
     if (route.request().url().includes('maps.mail.ru')) {
@@ -929,6 +988,66 @@ test('dist: Lebenszyklus-Optimierung kann mehrere wirtschaftliche Zentralabgäng
   expect(result.meta.swaps).toBeGreaterThan(0);
   expect(result.meta.centralBranchesAfter).toBeGreaterThan(result.meta.centralBranchesBefore);
   expect(result.meta.scoreAfterEur).toBeLessThan(result.meta.scoreBeforeEur);
+});
+
+test('dist: Straßenoptimierung bewertet echte Varianten mit mehreren Zentralzugängen',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.autoGenerateNetz==='function');
+  const result=await page.evaluate(()=>{
+    clearNetz();
+    setGebaeude([]);
+    const add=(id,lat,lng,load=900)=>{
+      const building=addGebaeude({id,name:`Haus ${id}`,baujahr:2000,skipAutoCreate:true,coords:[
+        L.latLng(lat-.000025,lng-.000025),L.latLng(lat-.000025,lng+.000025),
+        L.latLng(lat+.000025,lng+.000025),L.latLng(lat+.000025,lng-.000025),
+      ]});
+      building.heizlast=String(load);
+      building.waerme=String(load*2);
+    };
+    add(1101,52.001,9.001,1);
+    add(1102,52.00005,9.0001);
+    add(1103,52.00005,9.0019);
+    add(1104,52.00195,9.0001);
+    add(1105,52.00195,9.0019);
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1101';
+    setTrassePoints([
+      L.latLng(52,9),L.latLng(52,9.002),
+      L.latLng(52.002,9),L.latLng(52.002,9.002),
+      L.latLng(52,9),L.latLng(52.002,9),
+      L.latLng(52,9.002),L.latLng(52.002,9.002),
+      L.latLng(52,9),L.latLng(52.001,9.00025),L.latLng(52.002,9),
+    ]);
+    setTrasseSegments([
+      {start:0,end:1,domains:['waerme'],source:'osm-street'},
+      {start:2,end:3,domains:['waerme'],source:'osm-street'},
+      {start:4,end:5,domains:['waerme'],source:'osm-street'},
+      {start:6,end:7,domains:['waerme'],source:'osm-street'},
+      {start:8,end:10,domains:['waerme'],source:'osm-street'},
+    ]);
+    setNetworkLocked(false);
+    const created=autoGenerateNetz({strategy:'street',trasseTreue:80});
+    const meta=window._netzTopologyOptimization;
+    const connectedNodes=new Set(window.netzEdges.flatMap(edge=>[edge.u,edge.v]));
+    return {
+      created,meta,
+      edgeCount:window.netzEdges.length,
+      nodeCount:connectedNodes.size,
+      centralRoadConnections:window.netzEdges.filter(edge=>
+        (edge.u===1101&&edge.vNode.type==='trasse')||
+        (edge.v===1101&&edge.uNode.type==='trasse')).length,
+    };
+  });
+  expect(result.created).toBe(true);
+  expect(result.meta.availableCentralOutlets).toBeGreaterThan(1);
+  expect(result.meta.evaluatedOutletVariants).toBeGreaterThan(1);
+  expect(result.meta.evaluatedRouteVariants).toBe(3);
+  expect(result.meta.distinctRouteVariants).toBeGreaterThan(1);
+  expect(result.meta.evaluatedGeneralSwaps).toBeGreaterThan(0);
+  expect(result.meta.maxStretchAfter).toBeLessThanOrEqual(result.meta.maxStretchBefore);
+  expect(result.edgeCount).toBe(result.nodeCount-1);
+  expect(result.centralRoadConnections).toBeGreaterThan(1);
 });
 
 test('dist: Gebäudekreuzung wird nur als Rückfall genutzt und verhindert den Netzaufbau nicht',async({page})=>{

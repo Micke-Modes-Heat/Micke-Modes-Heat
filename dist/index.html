@@ -9706,6 +9706,12 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 @keyframes strom-flow{0%{stroke-dashoffset:0;}100%{stroke-dashoffset:var(--strom-flow-dir, 18);}}
 @keyframes strom-spin{to{transform:rotate(360deg);}}
 .strom-spinner{width:20px;height:20px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:strom-spin .7s linear infinite;}
+#osm-street-progress{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:12050;width:min(440px,calc(100vw - 28px));pointer-events:none}
+#osm-street-progress[hidden]{display:none}
+.osm-street-progress-card{padding:12px 14px;background:rgba(20,25,31,.97);border:1px solid rgba(79,195,247,.5);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.55)}
+.osm-street-progress-head{display:flex;justify-content:space-between;gap:12px;color:#e8f5e9;font-size:11px}.osm-street-progress-head span{color:#81d4fa;font:10px 'DM Mono',monospace}
+.osm-street-progress-track{height:6px;margin:9px 0 7px;overflow:hidden;border-radius:5px;background:rgba(255,255,255,.09)}#osm-street-progress-bar{height:100%;width:0;background:linear-gradient(90deg,#29b6f6,#66bb6a);transition:width .2s ease}
+#osm-street-progress-status{color:var(--muted);font-size:9px;line-height:1.35}
 .netz-warn-icon{color:#ffc107;font-size:16px;line-height:1;text-shadow:0 0 3px #000,0 0 3px #000;pointer-events:none;user-select:none;}
 /* Fließgewässer: wasserähnliche Fluss-Animation – weiche Wellen, Strichel phasenversetzt */
 .river-flow-path {
@@ -10327,6 +10333,14 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 
 /* ── Center Views ─────────────────────────────────── */
 #center-analyse-view{position:absolute;top:0;left:0;right:0;bottom:0;z-index:600;background:var(--bg);overflow-y:auto;padding:20px 24px;display:none;}
+#center-gebaeude-view{position:absolute;top:0;left:0;right:0;bottom:0;z-index:600;background:var(--bg);overflow:auto;padding:20px 24px;display:none}
+.geb-overview-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}.geb-overview-header h2{margin:0;color:var(--accent);font-size:16px}.geb-overview-header p{margin:4px 0 0;color:var(--muted);font-size:10px}
+.geb-overview-kpis{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:8px;margin-bottom:10px}.geb-overview-kpi{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}.geb-overview-kpi strong{display:block;color:#e0f2f1;font:16px 'DM Mono',monospace}.geb-overview-kpi span{display:block;margin-top:3px;color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.04em}
+.geb-overview-analysis{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-bottom:10px}.geb-analysis-card{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}.geb-analysis-card h3{margin:0 0 8px;color:#b0bec5;font-size:9px;text-transform:uppercase;letter-spacing:.05em}.geb-analysis-row{display:grid;grid-template-columns:minmax(80px,1fr) 2fr auto;align-items:center;gap:7px;margin:5px 0;font-size:9px}.geb-analysis-bar{height:5px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}.geb-analysis-bar i{display:block;height:100%;background:linear-gradient(90deg,#29b6f6,#66bb6a);border-radius:4px}.geb-analysis-row em{font-style:normal;color:var(--muted);font-family:'DM Mono',monospace}
+.geb-overview-tools{display:flex;align-items:center;gap:10px;margin-bottom:8px}.geb-overview-tools input{flex:1;max-width:440px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font:10px inherit}.geb-overview-tools span{color:var(--muted);font-size:9px}
+.geb-table-bulk{display:none;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;padding:8px 10px;border:1px solid rgba(79,195,247,.4);border-radius:7px;background:rgba(41,182,246,.05)}.geb-table-bulk.visible{display:flex}.geb-table-bulk strong{margin-right:4px;color:#81d4fa;font-size:10px}.geb-table-bulk select,.geb-table-bulk input{max-width:150px;padding:6px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:9px inherit}.geb-table-bulk button{padding:6px 9px}
+.geb-overview-table-wrap{min-width:950px;border:1px solid var(--border);border-radius:8px;overflow:auto;background:var(--surface)}.geb-overview-table{width:100%;border-collapse:collapse;font-size:9px}.geb-overview-table th{position:sticky;top:0;z-index:2;padding:8px 6px;background:#20242c;color:#90a4ae;text-align:left;white-space:nowrap;border-bottom:1px solid var(--border);cursor:pointer}.geb-overview-table th.no-sort{cursor:default}.geb-overview-table td{padding:4px 5px;border-bottom:1px solid rgba(255,255,255,.045);white-space:nowrap}.geb-overview-table tr:hover td{background:rgba(79,195,247,.035)}.geb-overview-table tr.selected td{background:rgba(41,182,246,.08)}.geb-overview-table input,.geb-overview-table select{width:100%;min-width:62px;box-sizing:border-box;padding:5px 6px;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--text);font:9px inherit}.geb-overview-table input:hover,.geb-overview-table input:focus,.geb-overview-table select:hover,.geb-overview-table select:focus{border-color:var(--border);background:var(--bg);outline:none}.geb-overview-table .geb-table-name{min-width:150px}.geb-overview-table .geb-table-num{text-align:right;font-family:'DM Mono',monospace}.geb-overview-table .geb-table-readonly{color:var(--muted)}
+@media(max-width:1100px){.geb-overview-kpis{grid-template-columns:repeat(3,1fr)}}
 #center-optimierung-view{position:absolute;top:0;left:0;right:0;bottom:0;z-index:600;background:var(--bg);overflow-y:auto;padding:20px 24px;display:none;}
 #center-optimierung-view .opt-setup{display:grid;grid-template-columns:1fr auto auto;gap:16px;align-items:start;margin-bottom:16px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;}
 #center-optimierung-view .opt-results-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
@@ -10916,6 +10930,7 @@ if (typeof L !== 'undefined') {
   <div class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
+    <button class="view-tab" data-mode="gebaeude" data-click="setViewMode('gebaeude')">Gebäude</button>
     <button class="view-tab" data-mode="analyse" data-click="setViewMode('analyse')">Analyse</button>
     <button class="view-tab" data-mode="optimierung" data-click="setViewMode('optimierung')">Optimierung</button>
     <button class="view-tab" data-mode="vergleich" data-click="setViewMode('vergleich')">Vergleich</button>
@@ -11744,6 +11759,31 @@ if (typeof L !== 'undefined') {
     <div id="vergleich-table-wrap" style="overflow-x:auto;"></div>
   </div>
   <div id="variant-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(15,17,23,0.88);border:1px solid var(--accent);border-radius:20px;padding:4px 16px;font-size:12px;color:var(--accent);pointer-events:none;white-space:nowrap;">⬤ &nbsp;<span id="variant-banner-name"></span></div>
+
+  <!-- ══ Center: Gebäude-View ══════════════════════════════════════ -->
+  <div id="center-gebaeude-view">
+    <div class="geb-overview-header">
+      <div>
+        <h2>Gebäudeübersicht</h2>
+        <p>Gebäudedaten prüfen, sortieren und gemeinsam bearbeiten</p>
+      </div>
+      <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:11px;">← Zurück zur Karte</button>
+    </div>
+    <div id="geb-overview-kpis" class="geb-overview-kpis"></div>
+    <div id="geb-overview-analysis" class="geb-overview-analysis"></div>
+    <div class="geb-overview-tools">
+      <input id="geb-table-filter" type="search" placeholder="Gebäude, Nutzung oder Quelle suchen …"
+        data-input="setGebaeudeTableFilter(this.value)">
+      <span id="geb-table-result-count"></span>
+    </div>
+    <div id="geb-table-bulk" class="geb-table-bulk"></div>
+    <div class="geb-overview-table-wrap">
+      <table class="geb-overview-table">
+        <thead id="geb-table-head"></thead>
+        <tbody id="geb-table-body"></tbody>
+      </table>
+    </div>
+  </div>
 
   <!-- ══ Center: Analyse-View ═══════════════════════════════════════ -->
   <div id="center-analyse-view">
@@ -14720,7 +14760,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-28';
   if (d.indexOf('__') === 0) d = '';
-  var c = '45fd708';
+  var c = '4f6b932';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -74156,6 +74196,20 @@ window._isSingleFileBuild = true;
     return tiles;
   }
 
+  function subdivideOsmBbox(bbox) {
+    if (!Array.isArray(bbox) || bbox.length !== 4) return [];
+    const [south,west,north,east] = bbox.map(Number);
+    if (![south,west,north,east].every(Number.isFinite) || north <= south || east <= west) return [];
+    const midLat = (south + north) / 2;
+    const midLng = (west + east) / 2;
+    return [
+      [south,west,midLat,midLng],
+      [south,midLng,midLat,east],
+      [midLat,west,north,midLng],
+      [midLat,midLng,north,east],
+    ];
+  }
+
   function mergeOsmElements(results) {
     const elements = new Map();
     (results || []).forEach(result => {
@@ -78357,6 +78411,36 @@ window._isSingleFileBuild = true;
   let _osmStrassenVisible = true;
   const _osmStrassenAdopted = new Set(); // OSM Way-IDs die bereits als Trasse übernommen wurden
   let _osmStrassenCache = null;
+  const _osmStreetTileCache = new Map();
+
+  function _setOsmStreetProgress({visible = true,completed = 0,total = 1,ways = 0,status = ''} = {}) {
+    let overlay = document.getElementById('osm-street-progress');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'osm-street-progress';
+      overlay.innerHTML = `
+      <div class="osm-street-progress-card">
+        <div class="osm-street-progress-head">
+          <strong>Straßendaten werden geladen</strong>
+          <span id="osm-street-progress-count"></span>
+        </div>
+        <div class="osm-street-progress-track"><div id="osm-street-progress-bar"></div></div>
+        <div id="osm-street-progress-status"></div>
+      </div>`;
+      document.body.appendChild(overlay);
+    }
+    overlay.hidden = !visible;
+    if (!visible) return;
+    const safeTotal = Math.max(1,total);
+    const percentage = Math.max(0,Math.min(100,completed / safeTotal * 100));
+    const bar = document.getElementById('osm-street-progress-bar');
+    const count = document.getElementById('osm-street-progress-count');
+    const statusNode = document.getElementById('osm-street-progress-status');
+    if (bar) bar.style.width = `${percentage}%`;
+    if (count) count.textContent = `${completed} / ${total} Teilbereiche`;
+    if (statusNode) statusNode.textContent =
+      `${status || 'OpenStreetMap wird abgefragt'}${ways ? ` · ${ways} Straßen gefunden` : ''}`;
+  }
 
   async function loadOsmStrassen() {
     let bbox;
@@ -78419,6 +78503,9 @@ window._isSingleFileBuild = true;
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const data = await response.json();
           if (!Array.isArray(data?.elements)) throw new Error('Ungültige OSM-Antwort');
+          if (data.remark || data.osm3s?.remark) {
+            throw new Error(`Unvollständige OSM-Antwort: ${data.remark || data.osm3s.remark}`);
+          }
           const usableWays = data.elements.filter(element =>
             element.type === 'way' && Array.isArray(element.geometry) && element.geometry.length >= 2);
           if (!usableWays.length) throw new Error('OSM-Antwort enthält keine nutzbaren Straßen');
@@ -78442,36 +78529,72 @@ window._isSingleFileBuild = true;
       if (cacheValid) {
         data = _osmStrassenCache.data;
       } else {
-        const tiles = splitOsmBbox(bboxValues);
+        // Die Kacheln bleiben auch bei großen Gesamtliegenschaften klein genug,
+        // damit Overpass nicht zuerst nur die großen Straßen ausliefert und dann
+        // in ein Zeit-/Speicherlimit läuft.
+        const tiles = splitOsmBbox(bboxValues,{targetMeters:1200,maxTilesPerAxis:10});
         if (tiles.length <= 1) {
+          _setOsmStreetProgress({visible:true,total:1,status:'Straßen im Projektgebiet'});
           data = await _fetchOverpass(query);
+          _setOsmStreetProgress({
+            visible:true,completed:1,total:1,
+            ways:data.elements.filter(element => element.type === 'way').length,
+            status:'Straßendaten vollständig',
+          });
         } else {
           showHint(`Lade großes Straßengebiet in ${tiles.length} Teilbereichen …`,4000);
           const results = [];
-          let cursor = 0;
-          let completed = 0;
+          const tasks = tiles.map(tile => ({bbox:tile,depth:0}));
+          let cursor = 0, completed = 0, total = tasks.length, foundWays = 0;
+          _setOsmStreetProgress({visible:true,completed,total,status:'Teilbereiche werden vorbereitet'});
           const worker = async() => {
-            while (cursor < tiles.length) {
+            while (cursor < tasks.length) {
               const tileIndex = cursor++;
-              const tileBbox = bboxString(...tiles[tileIndex]);
+              const task = tasks[tileIndex];
+              const tileBbox = bboxString(...task.bbox);
               const tileQuery = `[out:json][timeout:18];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${tileBbox});out geom;`;
               try {
-                results.push(await _fetchOverpass(tileQuery));
-              } catch (error) {
-                failedTiles++;
-                console.warn(`OSM-Straßen Teilbereich ${tileIndex + 1}/${tiles.length}:`,error.message);
-              } finally {
+                let tileData = _osmStreetTileCache.get(tileBbox);
+                if (!tileData) {
+                  tileData = await _fetchOverpass(tileQuery);
+                  _osmStreetTileCache.set(tileBbox,tileData);
+                }
+                results.push(tileData);
+                foundWays += tileData.elements.filter(element => element.type === 'way').length;
                 completed++;
-                showHint(`Straßenzüge: ${completed} / ${tiles.length} Teilbereiche geladen …`,2500);
+              } catch (error) {
+                if (task.depth < 2) {
+                  const children = subdivideOsmBbox(task.bbox)
+                    .map(child => ({bbox:child,depth:task.depth + 1}));
+                  tasks.push(...children);
+                  total += children.length - 1;
+                  console.warn(`OSM-Straßen Teilbereich wird feiner geteilt:`,error.message);
+                } else {
+                  failedTiles++;
+                  completed++;
+                  console.warn(`OSM-Straßen Teilbereich endgültig fehlgeschlagen:`,error.message);
+                }
+              } finally {
+                _setOsmStreetProgress({
+                  visible:true,completed,total,ways:foundWays,
+                  status:failedTiles
+                    ? `${failedTiles} Teilbereich${failedTiles === 1 ? '' : 'e'} bisher ohne Antwort`
+                    : 'Vollständige Straßendaten werden zusammengeführt',
+                });
               }
             }
           };
-          await Promise.all(Array.from({length:Math.min(2,tiles.length)},()=>worker()));
-          if (!results.length) throw new Error(`Alle ${tiles.length} Teilbereiche konnten nicht geladen werden`);
+          await Promise.all(Array.from({length:Math.min(2,tasks.length)},()=>worker()));
+          if (!results.length) throw new Error(`Alle ${total} Teilbereiche konnten nicht geladen werden`);
           data = mergeOsmElements(results);
         }
       }
-      if (!cacheValid) _osmStrassenCache = {bbox, data, timestamp:Date.now()};
+      // Eine teilweise geladene Gesamtfläche niemals als vollständig cachen:
+      // Ein erneuter Versuch soll gezielt von den bereits vollständigen
+      // Kachel-Caches profitieren und die Lücken erneut anfragen.
+      if (!cacheValid && failedTiles === 0) {
+        _osmStrassenCache = {bbox, data, timestamp:Date.now()};
+      }
 
       clearOsmStrassen();
       _osmStrassenLayer = L.layerGroup();
@@ -78513,10 +78636,16 @@ window._isSingleFileBuild = true;
       if (count === 0) showHint('⚠ Keine Straßen im Planungsgebiet gefunden.');
       else if (cacheValid) showHint(`✓ ${count} Straßenzüge aus dem Zwischenspeicher geladen.`, 3500);
       else if (failedTiles > 0) showHint(`✓ ${count} Straßenzüge geladen · ${failedTiles} Teilbereich${failedTiles === 1 ? '' : 'e'} ohne Antwort.`,5000);
+      _setOsmStreetProgress({
+        visible:true,completed:1,total:1,ways:count,
+        status:failedTiles ? `Fertig mit ${failedTiles} fehlenden Teilbereichen` : 'Straßendaten vollständig geladen',
+      });
+      setTimeout(() => _setOsmStreetProgress({visible:false}),1800);
       return count;
     } catch (e) {
       if (btn) { btn.textContent = '↓ Straßen aus OSM laden'; btn.disabled = false; }
       showHint('⚠ OSM-Laden fehlgeschlagen: ' + e.message);
+      _setOsmStreetProgress({visible:false});
       return 0;
     }
   }
@@ -102702,6 +102831,215 @@ ${massTbl}
     gebaeude.forEach(g => g.selected = false);
     renderList();
     updateBulkBar();
+    if (currentViewMode === 'gebaeude') renderGebaeudeOverview();
+  }
+
+  // ── Tabellarische Gebäudeübersicht ──────────────────────────────────────────
+  let gebTableFilter = '';
+  let gebTableSort = {key:'name',direction:1};
+
+  function _gebTableEsc(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
+    })[character]);
+  }
+
+  function _gebUsageLabel(g) {
+    return NUTZUNG_DEFAULTS[g.nutzung]?.label ||
+      getNutzungstypen().find(type => type.id === g.nutzung)?.label ||
+      g.nutzung || 'Nicht zugeordnet';
+  }
+
+  function _gebTableValue(g,key) {
+    if (key === 'name') return g.name || '';
+    if (key === 'nutzung') return _gebUsageLabel(g);
+    if (key === 'nutzflaeche') return (Number(g.flaeche) || 0) * (Number(g.stockwerke) || 1) * 0.8;
+    if (key === 'quelle') return g.importSourceName || '';
+    if (key === 'status') return getComputedStats(g,globalYear).status || '';
+    return Number(g[key]) || 0;
+  }
+
+  function _filteredSortedBuildings() {
+    const needle = gebTableFilter.toLowerCase().trim();
+    return gebaeude.filter(g => !needle ||
+      (g.name || '').toLowerCase().includes(needle) ||
+      _gebUsageLabel(g).toLowerCase().includes(needle) ||
+      (g.importSourceName || '').toLowerCase().includes(needle)
+    ).sort((a,b) => {
+      const av = _gebTableValue(a,gebTableSort.key);
+      const bv = _gebTableValue(b,gebTableSort.key);
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return String(av).localeCompare(String(bv),'de',{numeric:true}) * gebTableSort.direction;
+      }
+      return (av - bv) * gebTableSort.direction;
+    });
+  }
+
+  function setGebaeudeTableFilter(value) {
+    gebTableFilter = value || '';
+    renderGebaeudeOverview();
+  }
+
+  function sortGebaeudeTable(key) {
+    gebTableSort = gebTableSort.key === key
+      ? {key,direction:gebTableSort.direction * -1}
+      : {key,direction:1};
+    renderGebaeudeOverview();
+  }
+
+  function toggleGebaeudeTableSelection(id,checked) {
+    const building = gebaeude.find(g => g.id === id);
+    if (building) building.selected = !!checked;
+    updateBulkBar();
+    renderGebaeudeOverview();
+  }
+
+  function toggleAllGebaeudeTable(checked) {
+    _filteredSortedBuildings().forEach(g => { g.selected = !!checked; });
+    updateBulkBar();
+    renderGebaeudeOverview();
+  }
+
+  function updateGebaeudeTableField(id,field,value) {
+    if (field === 'name') window.renameGebaeude?.(id,value);
+    else if (field === 'nutzung') setNutzung(id,value);
+    else window.updateField?.(id,field,value);
+    renderList();
+    renderGebaeudeOverview();
+  }
+
+  function applyGebaeudeTableBulk() {
+    const selected = gebaeude.filter(g => g.selected);
+    if (!selected.length) return;
+    const usage = document.getElementById('geb-bulk-nutzung')?.value || '';
+    const constructionYear = document.getElementById('geb-bulk-baujahr')?.value || '';
+    const floors = document.getElementById('geb-bulk-stockwerke')?.value || '';
+    if (!usage && !constructionYear && !floors) {
+      showHint('Bitte mindestens einen Wert für die Sammeländerung eingeben.',3500);
+      return;
+    }
+    selected.forEach(g => {
+      if (usage) g.nutzung = usage;
+      if (constructionYear) window.updateField?.(g.id,'baujahr',constructionYear,{defer:true});
+      if (floors) window.updateField?.(g.id,'stockwerke',floors,{defer:true});
+    });
+    renderList();
+    updateViz();
+    updateTotals();
+    recalcNetz();
+    window.glBerechnenDebounced?.(500);
+    showHint(`✓ ${selected.length} Gebäude gemeinsam aktualisiert.`,3000);
+    renderGebaeudeOverview();
+  }
+
+  function _renderGebOverviewAnalysis() {
+    const active = gebaeude.map(g => ({g,stats:getComputedStats(g,globalYear)}))
+      .filter(item => item.stats.status !== 'abgerissen' && item.stats.status !== 'geplant');
+    const totals = active.reduce((sum,item) => {
+      const floorArea = (Number(item.g.flaeche) || 0) * (Number(item.g.stockwerke) || 1) * 0.8;
+      sum.area += floorArea;
+      sum.heat += Number(item.stats.waerme) || 0;
+      sum.load += Number(item.stats.heizlast) || 0;
+      return sum;
+    },{area:0,heat:0,load:0});
+    const averageSpecific = totals.area > 0 ? totals.heat * 1000 / totals.area : 0;
+    const kpis = document.getElementById('geb-overview-kpis');
+    if (kpis) kpis.innerHTML = [
+      [gebaeude.length.toLocaleString('de-DE'),'Gebäude gesamt'],
+      [Math.round(totals.area).toLocaleString('de-DE'),'Nutzfläche m²'],
+      [Math.round(totals.heat).toLocaleString('de-DE'),'Wärme MWh/a'],
+      [Math.round(totals.load).toLocaleString('de-DE'),'Heizlast kW'],
+      [averageSpecific.toLocaleString('de-DE',{maximumFractionDigits:1}),'Ø kWh/m²a'],
+    ].map(([value,label]) => `<div class="geb-overview-kpi"><strong>${value}</strong><span>${label}</span></div>`).join('');
+
+    const groups = new Map();
+    active.forEach(({g,stats}) => {
+      const label = _gebUsageLabel(g);
+      if (!groups.has(label)) groups.set(label,{label,count:0,area:0,heat:0,load:0});
+      const group = groups.get(label);
+      group.count++;
+      group.area += (Number(g.flaeche) || 0) * (Number(g.stockwerke) || 1) * 0.8;
+      group.heat += Number(stats.waerme) || 0;
+      group.load += Number(stats.heizlast) || 0;
+    });
+    const rows = [...groups.values()];
+    const analysis = document.getElementById('geb-overview-analysis');
+    if (!analysis) return;
+    const card = (title,key,unit) => {
+      const sorted = [...rows].sort((a,b) => b[key]-a[key]).slice(0,8);
+      const maximum = Math.max(1,...sorted.map(row => row[key]));
+      return `<div class="geb-analysis-card"><h3>${title}</h3>${sorted.map(row => `
+      <div class="geb-analysis-row">
+        <span title="${_gebTableEsc(row.label)}">${_gebTableEsc(row.label)}</span>
+        <span class="geb-analysis-bar"><i style="width:${Math.max(2,row[key]/maximum*100)}%"></i></span>
+        <em>${Math.round(row[key]).toLocaleString('de-DE')} ${unit}</em>
+      </div>`).join('') || '<span style="color:var(--muted);font-size:9px;">Keine Daten</span>'}</div>`;
+    };
+    analysis.innerHTML =
+      card('Wärmeverbrauch nach Nutzung','heat','MWh/a') +
+      card('Nutzfläche nach Nutzung','area','m²') +
+      card('Heizlast nach Nutzung','load','kW');
+  }
+
+  function renderGebaeudeOverview() {
+    const body = document.getElementById('geb-table-body');
+    const head = document.getElementById('geb-table-head');
+    if (!body || !head) return;
+    _renderGebOverviewAnalysis();
+    const rows = _filteredSortedBuildings();
+    const selected = gebaeude.filter(g => g.selected);
+    const allVisibleSelected = rows.length > 0 && rows.every(g => g.selected);
+    const sortLabel = (key,label) => `${label}${gebTableSort.key === key ? (gebTableSort.direction > 0 ? ' ↑' : ' ↓') : ''}`;
+    head.innerHTML = `<tr>
+    <th class="no-sort"><input type="checkbox" ${allVisibleSelected ? 'checked' : ''}
+      data-change="toggleAllGebaeudeTable(this.checked)" title="Alle sichtbaren auswählen"></th>
+    <th data-click="sortGebaeudeTable('name')">${sortLabel('name','Gebäude')}</th>
+    <th data-click="sortGebaeudeTable('nutzung')">${sortLabel('nutzung','Nutzung')}</th>
+    <th data-click="sortGebaeudeTable('baujahr')">${sortLabel('baujahr','Baujahr')}</th>
+    <th data-click="sortGebaeudeTable('stockwerke')">${sortLabel('stockwerke','Geschosse')}</th>
+    <th data-click="sortGebaeudeTable('flaeche')">${sortLabel('flaeche','Grundfläche m²')}</th>
+    <th data-click="sortGebaeudeTable('nutzflaeche')">${sortLabel('nutzflaeche','Nutzfläche m²')}</th>
+    <th data-click="sortGebaeudeTable('waerme')">${sortLabel('waerme','Wärme MWh/a')}</th>
+    <th data-click="sortGebaeudeTable('spez')">${sortLabel('spez','kWh/m²a')}</th>
+    <th data-click="sortGebaeudeTable('heizlast')">${sortLabel('heizlast','Heizlast kW')}</th>
+    <th data-click="sortGebaeudeTable('quelle')">${sortLabel('quelle','Quelle')}</th>
+  </tr>`;
+    const usageTypes = getNutzungstypen();
+    body.innerHTML = rows.map(g => {
+      const netFloorArea = (Number(g.flaeche) || 0) * (Number(g.stockwerke) || 1) * 0.8;
+      const options = [
+        ...(!usageTypes.some(type => type.id === g.nutzung) && g.nutzung
+          ? [{id:g.nutzung,label:_gebUsageLabel(g)}] : []),
+        ...usageTypes,
+      ].map(type => `<option value="${_gebTableEsc(type.id)}" ${type.id === g.nutzung ? 'selected' : ''}>${_gebTableEsc(type.label)}</option>`).join('');
+      return `<tr class="${g.selected ? 'selected' : ''}">
+      <td><input type="checkbox" ${g.selected ? 'checked' : ''} data-change="toggleGebaeudeTableSelection(${g.id},this.checked)"></td>
+      <td><input class="geb-table-name" value="${_gebTableEsc(g.name)}" data-change="updateGebaeudeTableField(${g.id},'name',this.value)"></td>
+      <td><select data-change="updateGebaeudeTableField(${g.id},'nutzung',this.value)"><option value="">—</option>${options}</select></td>
+      <td><input class="geb-table-num" type="number" value="${g.baujahr || ''}" data-change="updateGebaeudeTableField(${g.id},'baujahr',this.value)"></td>
+      <td><input class="geb-table-num" type="number" min="1" max="50" value="${g.stockwerke || 1}" data-change="updateGebaeudeTableField(${g.id},'stockwerke',this.value)"></td>
+      <td><input class="geb-table-num" type="number" min="0" value="${g.flaeche ? Math.round(g.flaeche) : ''}" data-change="updateGebaeudeTableField(${g.id},'flaeche',this.value)"></td>
+      <td class="geb-table-num geb-table-readonly">${Math.round(netFloorArea).toLocaleString('de-DE')}</td>
+      <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.waerme ?? ''}" data-change="updateGebaeudeTableField(${g.id},'waerme',this.value)"></td>
+      <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.spez ?? ''}" data-change="updateGebaeudeTableField(${g.id},'spez',this.value)"></td>
+      <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.heizlast ?? ''}" data-change="updateGebaeudeTableField(${g.id},'heizlast',this.value)"></td>
+      <td class="geb-table-readonly" title="${_gebTableEsc(g.importSourceName || '')}">${_gebTableEsc(g.importSourceName || '—')}</td>
+    </tr>`;
+    }).join('');
+    const count = document.getElementById('geb-table-result-count');
+    if (count) count.textContent = `${rows.length} von ${gebaeude.length} Gebäuden`;
+    const bulk = document.getElementById('geb-table-bulk');
+    if (bulk) {
+      bulk.classList.toggle('visible',selected.length > 0);
+      bulk.innerHTML = selected.length ? `
+      <strong>${selected.length} ausgewählt</strong>
+      <select id="geb-bulk-nutzung"><option value="">Nutzung beibehalten</option>${usageTypes.map(type =>
+        `<option value="${_gebTableEsc(type.id)}">${_gebTableEsc(type.label)}</option>`).join('')}</select>
+      <input id="geb-bulk-baujahr" type="number" min="1800" max="2100" placeholder="Baujahr beibehalten">
+      <input id="geb-bulk-stockwerke" type="number" min="1" max="50" placeholder="Geschosse beibehalten">
+      <button class="btn-secondary" data-click="applyGebaeudeTableBulk()">Auf Auswahl anwenden</button>
+      <button class="btn-secondary" data-click="clearSelection()">Auswahl aufheben</button>` : '';
+    }
   }
 
   // ── Gebäude-Filter ────────────────────────────────────────────────────
@@ -103322,11 +103660,13 @@ ${massTbl}
     // Update header tabs
     document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
     // Show/hide center views
+    const gebaeudeView   = document.getElementById('center-gebaeude-view');
     const analyseView    = document.getElementById('center-analyse-view');
     const optimierungView = document.getElementById('center-optimierung-view');
     const vergleichView  = document.getElementById('center-vergleich-view');
     const liveView       = document.getElementById('center-live-view');
     const vergleichOld   = document.getElementById('vergleich-panel');
+    if (gebaeudeView)    gebaeudeView.style.display    = mode === 'gebaeude'    ? 'block' : 'none';
     if (analyseView)     analyseView.style.display     = mode === 'analyse'     ? 'block' : 'none';
     if (optimierungView) optimierungView.style.display = mode === 'optimierung' ? 'block' : 'none';
     if (vergleichView)   vergleichView.style.display   = mode === 'vergleich'   ? 'block' : 'none';
@@ -103340,6 +103680,7 @@ ${massTbl}
     if (mode === 'karte') setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
     // Populate views
     if (mode === 'analyse') refreshAnalyseView();
+    if (mode === 'gebaeude') renderGebaeudeOverview();
     if (mode === 'optimierung') {
       if (typeof _optPopulateYearSelect === 'function') _optPopulateYearSelect();
       if (typeof _optUpdateEstimate === 'function') _optUpdateEstimate();
@@ -103902,6 +104243,7 @@ ${massTbl}
     get analyseCurrentSection () { return analyseCurrentSection; },
     applyBulk: applyBulk,
     applyEdgePrunedStyle: applyEdgePrunedStyle,
+    applyGebaeudeTableBulk: applyGebaeudeTableBulk,
     autoAssignEdgeCosts: autoAssignEdgeCosts,
     autosave: autosave,
     clearAllPruning: clearAllPruning,
@@ -103917,20 +104259,25 @@ ${massTbl}
     loadAutosave: loadAutosave,
     pruneSubtree: pruneSubtree,
     refreshAnalyseView: refreshAnalyseView,
+    renderGebaeudeOverview: renderGebaeudeOverview,
     restoreLatestAutosave: restoreLatestAutosave,
     selectAddr: selectAddr,
     setAnalyseSection: setAnalyseSection,
     setEdgeDN: setEdgeDN,
     setEdgeKost: setEdgeKost,
+    setGebaeudeTableFilter: setGebaeudeTableFilter,
     setLeftTab: setLeftTab,
     setNutzung: setNutzung,
     setSidebarTab: setSidebarTab,
     setViewMode: setViewMode,
     setWaermeTab: setWaermeTab,
     showEdgePopup: showEdgePopup,
+    sortGebaeudeTable: sortGebaeudeTable,
     startDrag: startDrag,
+    toggleAllGebaeudeTable: toggleAllGebaeudeTable,
     toggleEbenenPanel: toggleEbenenPanel,
     toggleEdgePruned: toggleEdgePruned,
+    toggleGebaeudeTableSelection: toggleGebaeudeTableSelection,
     toggleLeftPanel: toggleLeftPanel,
     togglePanelMinimize: togglePanelMinimize,
     togglePruningMode: togglePruningMode,
@@ -103940,6 +104287,7 @@ ${massTbl}
     tryRestoreAutosave: tryRestoreAutosave,
     unpruneSubtree: unpruneSubtree,
     updateBulkBar: updateBulkBar,
+    updateGebaeudeTableField: updateGebaeudeTableField,
     updateLpErgebnisKpis: updateLpErgebnisKpis,
     updateLpGebietStatus: updateLpGebietStatus,
     updateLpMeritOrder: updateLpMeritOrder,
@@ -106253,17 +106601,41 @@ ${massTbl}
     });
     const selected = select.value;
     controls.hidden = sources.size === 0;
+    const outline = document.getElementById('geb-source-outline');
+    if (outline) outline.checked = !!window.buildingSourceOutlines;
+    const signature = JSON.stringify([...sources.entries()].sort((a,b) => a[0].localeCompare(b[0])));
+    if (select.dataset.sourceSignature === signature) return;
+    if (document.activeElement === select) {
+      if (select.dataset.refreshPending !== 'true') {
+        select.dataset.refreshPending = 'true';
+        select.addEventListener('blur', () => {
+          delete select.dataset.refreshPending;
+          _updateBuildingSourceControls();
+        }, {once:true});
+      }
+      return;
+    }
     select.innerHTML = '<option value="">Alle Herkunftsprojekte</option>' +
       [...sources.entries()]
         .sort((a,b) => a[1].localeCompare(b[1],'de'))
         .map(([id,name]) => `<option value="${escHtml(id)}">${escHtml(name)}</option>`)
         .join('');
     if (sources.has(selected)) select.value = selected;
-    const outline = document.getElementById('geb-source-outline');
-    if (outline) outline.checked = !!window.buildingSourceOutlines;
+    select.dataset.sourceSignature = signature;
   }
 
   function renderList(){
+    const focusedSelect = document.activeElement?.closest?.('#geb-list select');
+    if (focusedSelect) {
+      if (focusedSelect.dataset.renderPending !== 'true') {
+        focusedSelect.dataset.renderPending = 'true';
+        focusedSelect.addEventListener('blur', () => {
+          delete focusedSelect.dataset.renderPending;
+          renderList();
+        }, {once:true});
+      }
+      return;
+    }
     populateZentraleSelect();
     if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
     _updateBuildingSourceControls();
@@ -113119,6 +113491,16 @@ out body;>;out skel qt;`;
     // Dropdown. Da diese Funktion aus mehreren Aktualisierungspfaden aufgerufen
     // wird, nur bei tatsächlich geänderter Gebäudeliste neu rendern.
     if (sel.dataset.choiceSignature !== signature) {
+      if (document.activeElement === sel) {
+        if (sel.dataset.refreshPending !== 'true') {
+          sel.dataset.refreshPending = 'true';
+          sel.addEventListener('blur', () => {
+            delete sel.dataset.refreshPending;
+            populateZentraleSelect();
+          }, {once:true});
+        }
+        return;
+      }
       sel.innerHTML = '<option value="">-- bitte wählen --</option>';
       choices.forEach(choice => {
         const opt = document.createElement('option');
@@ -113187,9 +113569,10 @@ out body;>;out skel qt;`;
       Math.max(maximum,getComputedStats(g,year).heizlast || 0),0);
   }
 
-  // Vergleicht ausschließlich radiale Varianten desselben Kandidatengraphen.
-  // Damit bleibt die gewählte räumliche Planungsart maßgeblich; optimiert wird
-  // nur, welcher Ast an welcher Stelle an die Zentrale angebunden ist.
+  // Vergleicht radiale Varianten desselben Kandidatengraphen. Die räumliche
+  // Planungsart bleibt maßgeblich; variiert werden Zentralzugänge, alternative
+  // Straßenrouten und lokale Verzweigungen. Jede Variante wird anschließend
+  // hydraulisch neu dimensioniert und über ihre Lebenszykluskosten bewertet.
   function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,strategy) {
     const lifetimeYears = 20;
     const cp = 4.184;
@@ -113272,6 +113655,122 @@ out body;>;out skel qt;`;
         }
       }
       return [...edges.values()];
+    };
+    const routedTreeWithPenalties = penalties => {
+      const distances = new Map([[zId,0]]);
+      const previous = new Map();
+      const queue = [{id:zId,distance:0}];
+      const push = item => {
+        queue.push(item);
+        for (let index = queue.length - 1; index > 0;) {
+          const parentIndex = Math.floor((index - 1) / 2);
+          if (queue[parentIndex].distance <= queue[index].distance) break;
+          [queue[parentIndex],queue[index]] = [queue[index],queue[parentIndex]];
+          index = parentIndex;
+        }
+      };
+      const pop = () => {
+        const first = queue[0], last = queue.pop();
+        if (queue.length) {
+          queue[0] = last;
+          for (let index = 0;;) {
+            const left = index * 2 + 1, right = left + 1;
+            let smallest = index;
+            if (left < queue.length && queue[left].distance < queue[smallest].distance) smallest = left;
+            if (right < queue.length && queue[right].distance < queue[smallest].distance) smallest = right;
+            if (smallest === index) break;
+            [queue[index],queue[smallest]] = [queue[smallest],queue[index]];
+            index = smallest;
+          }
+        }
+        return first;
+      };
+      while (queue.length) {
+        const currentNode = pop();
+        if (currentNode.distance !== distances.get(currentNode.id)) continue;
+        for (const item of candidateAdjacency.get(currentNode.id) || []) {
+          const penalty = penalties.get(edgeKeyOf(item.edge)) || 0;
+          const nextDistance = currentNode.distance + item.edge.dist * (1 + penalty);
+          if (nextDistance >= (distances.get(item.to) ?? Infinity)) continue;
+          distances.set(item.to,nextDistance);
+          previous.set(item.to,{from:currentNode.id,edge:item.edge});
+          push({id:item.to,distance:nextDistance});
+        }
+      }
+      const edges = new Map();
+      for (const id of requiredIds) {
+        for (let node = id; node !== zId;) {
+          const step = previous.get(node);
+          if (!step) return null;
+          edges.set(edgeKeyOf(step.edge),step.edge);
+          node = step.from;
+        }
+      }
+      return [...edges.values()];
+    };
+    const outletEdges = strategy === 'street'
+      ? possibleEdges.filter(edge => {
+        if (edge.u !== zId && edge.v !== zId) return false;
+        const other = edge.u === zId ? edge.vNode : edge.uNode;
+        return other?.type === 'trasse';
+      }).filter((edge,index,array) =>
+        array.findIndex(candidate => edgeKeyOf(candidate) === edgeKeyOf(edge)) === index)
+      : [];
+    const outletKeys = new Set(outletEdges.map(edgeKeyOf));
+    const buildOutletTree = selectedOutlets => {
+      const selectedKeys = new Set(selectedOutlets.map(edgeKeyOf));
+      const nodeIds = new Set();
+      possibleEdges.forEach(edge => { nodeIds.add(edge.u); nodeIds.add(edge.v); });
+      const parents = new Map([...nodeIds].map(id => [id,id]));
+      const find = id => {
+        let root = id;
+        while (parents.get(root) !== root) root = parents.get(root);
+        while (id !== root) {
+          const next = parents.get(id);
+          parents.set(id,root);
+          id = next;
+        }
+        return root;
+      };
+      const union = (u,v) => {
+        const rootU = find(u), rootV = find(v);
+        if (rootU === rootV) return false;
+        parents.set(rootU,rootV);
+        return true;
+      };
+      const result = [];
+      for (const edge of selectedOutlets) {
+        if (union(edge.u,edge.v)) result.push(edge);
+      }
+      const remaining = possibleEdges
+        .filter(edge => !outletKeys.has(edgeKeyOf(edge)) || selectedKeys.has(edgeKeyOf(edge)))
+        .filter(edge => !selectedKeys.has(edgeKeyOf(edge)))
+        .sort((a,b) => (a.sortCost ?? a.dist) - (b.sortCost ?? b.dist));
+      remaining.forEach(edge => {
+        if (union(edge.u,edge.v)) result.push(edge);
+      });
+      const root = find(zId);
+      if ([...requiredIds].some(id => !parents.has(id) || find(id) !== root)) return null;
+      let connected = result.filter(edge => find(edge.u) === root && find(edge.v) === root);
+      // Straßenknoten ohne Verbraucher sind nur Rechengraph und dürfen nicht als
+      // tote Äste in die wirtschaftliche Bewertung eingehen.
+      let changed = true;
+      while (changed) {
+        changed = false;
+        const degree = new Map();
+        connected.forEach(edge => {
+          degree.set(edge.u,(degree.get(edge.u) || 0) + 1);
+          degree.set(edge.v,(degree.get(edge.v) || 0) + 1);
+        });
+        connected = connected.filter(edge => {
+          const removeU = edge.uNode?.type === 'trasse' && degree.get(edge.u) === 1;
+          const removeV = edge.vNode?.type === 'trasse' && degree.get(edge.v) === 1;
+          if (!removeU && !removeV) return true;
+          changed = true;
+          return false;
+        });
+      }
+      return connected;
     };
     const hydraulicsFor = (load,dn) => {
       const diameter = dn / 1000;
@@ -113386,6 +113885,52 @@ out body;>;out skel qt;`;
     const rootedCandidate = strategy === 'street' ? shortestPathTree() : null;
     const rootedResult = rootedCandidate ? scoreTree(rootedCandidate) : {score:Infinity};
     if (rootedResult.score < before.score) current = rootedCandidate;
+    let outletVariantCount = 0;
+    let chosenOutletCount = centralDegree(current);
+    if (strategy === 'street' && outletEdges.length > 1) {
+      const variantLimit = 1 << Math.min(6,outletEdges.length);
+      for (let mask = 1; mask < variantLimit; mask++) {
+        const selected = outletEdges.filter((_,index) => mask & (1 << index));
+        const candidate = buildOutletTree(selected);
+        if (!candidate) continue;
+        outletVariantCount++;
+        const candidateResult = scoreTree(candidate);
+        const currentResult = scoreTree(current);
+        if (candidateResult.score >= currentResult.score) continue;
+        current = candidate;
+        chosenOutletCount = selected.length;
+      }
+    }
+    let routeVariantCount = 0;
+    let selectedRouteVariant = 0;
+    const routeVariantSignatures = new Set();
+    if (strategy === 'street') {
+      // Wiederverwendung bereits gewählter Straßen wird schrittweise verteuert.
+      // Dadurch entstehen mehrere deutlich verschiedene kürzeste-Wege-Bäume
+      // (z. B. links/rechts um einen Kreisverkehr oder über Parallelstraßen),
+      // die anschließend wieder mit den realen Lebenszykluskosten bewertet werden.
+      const penalties = new Map();
+      const seed = rootedCandidate || current;
+      routeVariantSignatures.add(seed.map(edgeKeyOf).sort().join('|'));
+      seed.filter(edge => edge.streetRoad).forEach(edge =>
+        penalties.set(edgeKeyOf(edge),0.22));
+      for (let variant = 1; variant <= 3; variant++) {
+        const candidate = routedTreeWithPenalties(penalties);
+        if (!candidate) break;
+        routeVariantCount++;
+        routeVariantSignatures.add(candidate.map(edgeKeyOf).sort().join('|'));
+        const candidateResult = scoreTree(candidate);
+        const currentResult = scoreTree(current);
+        if (candidateResult.score < currentResult.score) {
+          current = candidate;
+          selectedRouteVariant = variant;
+        }
+        candidate.filter(edge => edge.streetRoad).forEach(edge => {
+          const key = edgeKeyOf(edge);
+          penalties.set(key,(penalties.get(key) || 0) + 0.22);
+        });
+      }
+    }
     const centralCandidates = possibleEdges
       .filter(edge => edge.u === zId || edge.v === zId)
       .sort((a,b) => a.dist - b.dist)
@@ -113440,6 +113985,62 @@ out body;>;out skel qt;`;
       current = best.trial;
       swaps++;
     }
+    let generalSwaps = 0;
+    let evaluatedGeneralSwaps = 0;
+    if (strategy === 'street') {
+      // Lokale 1-Kanten-Tausche öffnen den Suchraum auch abseits der Zentrale:
+      // Eine neue Straßenkante erzeugt genau einen Zyklus; durch Entfernen einer
+      // anderen Zykluskante entsteht eine alternative radiale Netzstruktur.
+      for (let pass = 0; pass < 2; pass++) {
+        const currentKeys = new Set(current.map(edgeKeyOf));
+        const alternatives = possibleEdges
+          .filter(edge => !currentKeys.has(edgeKeyOf(edge)) && !edge.forcedTrasse)
+          .sort((a,b) => a.dist - b.dist)
+          .slice(0,80);
+        const adjacency = new Map();
+        current.forEach(edge => {
+          if (!adjacency.has(edge.u)) adjacency.set(edge.u,[]);
+          if (!adjacency.has(edge.v)) adjacency.set(edge.v,[]);
+          adjacency.get(edge.u).push({to:edge.v,edge});
+          adjacency.get(edge.v).push({to:edge.u,edge});
+        });
+        let best = null;
+        for (const candidate of alternatives) {
+          const queue = [candidate.u];
+          const previous = new Map([[candidate.u,null]]);
+          for (let index = 0; index < queue.length && !previous.has(candidate.v); index++) {
+            for (const item of adjacency.get(queue[index]) || []) {
+              if (previous.has(item.to)) continue;
+              previous.set(item.to,{from:queue[index],edge:item.edge});
+              queue.push(item.to);
+            }
+          }
+          if (!previous.has(candidate.v)) continue;
+          const cycle = [];
+          for (let node = candidate.v; node !== candidate.u;) {
+            const step = previous.get(node);
+            cycle.push(step.edge);
+            node = step.from;
+          }
+          const removals = cycle
+            .filter(edge => !edge.forcedTrasse)
+            .sort((a,b) => b.dist - a.dist)
+            .slice(0,5);
+          for (const removed of removals) {
+            const trial = current.filter(edge => edge !== removed);
+            trial.push(candidate);
+            const result = scoreTree(trial);
+            evaluatedGeneralSwaps++;
+            if (!Number.isFinite(result.score)) continue;
+            if (!best || result.score < best.result.score) best = {trial,result};
+          }
+        }
+        const currentResult = scoreTree(current);
+        if (!best || best.result.score >= currentResult.score * 0.998) break;
+        current = best.trial;
+        generalSwaps++;
+      }
+    }
     const after = scoreTree(current);
     window._netzTopologyOptimization = {
       strategy,
@@ -113453,6 +114054,14 @@ out body;>;out skel qt;`;
       detourPenaltyAfterEur:after.detourPenalty || 0,
       maxStretchBefore:before.maxStretch || null,
       maxStretchAfter:after.maxStretch || null,
+      availableCentralOutlets:outletEdges.length,
+      evaluatedOutletVariants:outletVariantCount,
+      chosenCentralOutlets:chosenOutletCount,
+      evaluatedRouteVariants:routeVariantCount,
+      distinctRouteVariants:routeVariantSignatures.size,
+      selectedRouteVariant,
+      evaluatedGeneralSwaps,
+      generalSwaps,
       swaps,
     };
     return current;
@@ -115472,7 +116081,20 @@ out body;>;out skel qt;`;
     if (!sel) return;
     const strands = [...new Set(window.netzEdges.map(e => e.strandId).filter(id => id != null))].sort((a,b)=>a-b);
     const current = sel.value === '' ? null : parseInt(sel.value, 10);
+    const signature = strands.join(',');
+    if (sel.dataset.strandSignature === signature) return;
+    if (document.activeElement === sel) {
+      if (sel.dataset.refreshPending !== 'true') {
+        sel.dataset.refreshPending = 'true';
+        sel.addEventListener('blur', () => {
+          delete sel.dataset.refreshPending;
+          updateStrandDropdown();
+        }, {once:true});
+      }
+      return;
+    }
     sel.innerHTML = '<option value="">Alle Stränge</option>' + strands.map(i => `<option value="${i}" ${current === i ? 'selected' : ''}>Strang ${i + 1}</option>`).join('');
+    sel.dataset.strandSignature = signature;
   }
 
   function updateStrangReport() {
@@ -117333,7 +117955,7 @@ out body;>;out skel qt;`;
   function _syncAbrissToAssets(gebId, abrissjahr) { _syncYearToAssets(gebId, 'abrissjahr', abrissjahr); }
   function _syncBaujahrToAssets(gebId, baujahr)   { _syncYearToAssets(gebId, 'baujahr',    baujahr); }
 
-  function updateField(id, field, val) {
+  function updateField(id, field, val, {defer = false} = {}) {
     const g = window.gebaeude.find(x => x.id === id);
     if (!g) return;
 
@@ -117429,12 +118051,14 @@ out body;>;out skel qt;`;
       if (_cvH) _cvH.textContent = _cs.heizlast > 0 ? Math.round(_cs.heizlast).toLocaleString('de-DE') : '—';
     }
 
-    updateVizDebounced();
-    updateTotals();
-    if (field === 'heizlast' || field === 'spezHeizlast' || autoCalculated) recalcNetz();
-    if (document.getElementById('chart-panel').classList.contains('visible')) drawChart();
-    if (['waerme','heizlast','flaeche','spez','spezHeizlast','baujahr','nutzung'].includes(field)) {
-      glBerechnenDebounced(1500);
+    if (!defer) {
+      updateVizDebounced();
+      updateTotals();
+      if (field === 'heizlast' || field === 'spezHeizlast' || autoCalculated) recalcNetz();
+      if (document.getElementById('chart-panel').classList.contains('visible')) drawChart();
+      if (['waerme','heizlast','flaeche','spez','spezHeizlast','baujahr','nutzung'].includes(field)) {
+        glBerechnenDebounced(1500);
+      }
     }
   }
 

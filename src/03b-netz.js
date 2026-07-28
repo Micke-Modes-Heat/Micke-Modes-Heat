@@ -2013,6 +2013,16 @@ export function populateZentraleSelect(){
   // Dropdown. Da diese Funktion aus mehreren Aktualisierungspfaden aufgerufen
   // wird, nur bei tatsächlich geänderter Gebäudeliste neu rendern.
   if (sel.dataset.choiceSignature !== signature) {
+    if (document.activeElement === sel) {
+      if (sel.dataset.refreshPending !== 'true') {
+        sel.dataset.refreshPending = 'true';
+        sel.addEventListener('blur', () => {
+          delete sel.dataset.refreshPending;
+          populateZentraleSelect();
+        }, {once:true});
+      }
+      return;
+    }
     sel.innerHTML = '<option value="">-- bitte wählen --</option>';
     choices.forEach(choice => {
       const opt = document.createElement('option');
@@ -2081,9 +2091,10 @@ function _maxBuildingLoad(g, years = _netzPlanningYears()) {
     Math.max(maximum,getComputedStats(g,year).heizlast || 0),0);
 }
 
-// Vergleicht ausschließlich radiale Varianten desselben Kandidatengraphen.
-// Damit bleibt die gewählte räumliche Planungsart maßgeblich; optimiert wird
-// nur, welcher Ast an welcher Stelle an die Zentrale angebunden ist.
+// Vergleicht radiale Varianten desselben Kandidatengraphen. Die räumliche
+// Planungsart bleibt maßgeblich; variiert werden Zentralzugänge, alternative
+// Straßenrouten und lokale Verzweigungen. Jede Variante wird anschließend
+// hydraulisch neu dimensioniert und über ihre Lebenszykluskosten bewertet.
 function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,strategy) {
   const lifetimeYears = 20;
   const cp = 4.184;
@@ -2166,6 +2177,122 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
       }
     }
     return [...edges.values()];
+  };
+  const routedTreeWithPenalties = penalties => {
+    const distances = new Map([[zId,0]]);
+    const previous = new Map();
+    const queue = [{id:zId,distance:0}];
+    const push = item => {
+      queue.push(item);
+      for (let index = queue.length - 1; index > 0;) {
+        const parentIndex = Math.floor((index - 1) / 2);
+        if (queue[parentIndex].distance <= queue[index].distance) break;
+        [queue[parentIndex],queue[index]] = [queue[index],queue[parentIndex]];
+        index = parentIndex;
+      }
+    };
+    const pop = () => {
+      const first = queue[0], last = queue.pop();
+      if (queue.length) {
+        queue[0] = last;
+        for (let index = 0;;) {
+          const left = index * 2 + 1, right = left + 1;
+          let smallest = index;
+          if (left < queue.length && queue[left].distance < queue[smallest].distance) smallest = left;
+          if (right < queue.length && queue[right].distance < queue[smallest].distance) smallest = right;
+          if (smallest === index) break;
+          [queue[index],queue[smallest]] = [queue[smallest],queue[index]];
+          index = smallest;
+        }
+      }
+      return first;
+    };
+    while (queue.length) {
+      const currentNode = pop();
+      if (currentNode.distance !== distances.get(currentNode.id)) continue;
+      for (const item of candidateAdjacency.get(currentNode.id) || []) {
+        const penalty = penalties.get(edgeKeyOf(item.edge)) || 0;
+        const nextDistance = currentNode.distance + item.edge.dist * (1 + penalty);
+        if (nextDistance >= (distances.get(item.to) ?? Infinity)) continue;
+        distances.set(item.to,nextDistance);
+        previous.set(item.to,{from:currentNode.id,edge:item.edge});
+        push({id:item.to,distance:nextDistance});
+      }
+    }
+    const edges = new Map();
+    for (const id of requiredIds) {
+      for (let node = id; node !== zId;) {
+        const step = previous.get(node);
+        if (!step) return null;
+        edges.set(edgeKeyOf(step.edge),step.edge);
+        node = step.from;
+      }
+    }
+    return [...edges.values()];
+  };
+  const outletEdges = strategy === 'street'
+    ? possibleEdges.filter(edge => {
+      if (edge.u !== zId && edge.v !== zId) return false;
+      const other = edge.u === zId ? edge.vNode : edge.uNode;
+      return other?.type === 'trasse';
+    }).filter((edge,index,array) =>
+      array.findIndex(candidate => edgeKeyOf(candidate) === edgeKeyOf(edge)) === index)
+    : [];
+  const outletKeys = new Set(outletEdges.map(edgeKeyOf));
+  const buildOutletTree = selectedOutlets => {
+    const selectedKeys = new Set(selectedOutlets.map(edgeKeyOf));
+    const nodeIds = new Set();
+    possibleEdges.forEach(edge => { nodeIds.add(edge.u); nodeIds.add(edge.v); });
+    const parents = new Map([...nodeIds].map(id => [id,id]));
+    const find = id => {
+      let root = id;
+      while (parents.get(root) !== root) root = parents.get(root);
+      while (id !== root) {
+        const next = parents.get(id);
+        parents.set(id,root);
+        id = next;
+      }
+      return root;
+    };
+    const union = (u,v) => {
+      const rootU = find(u), rootV = find(v);
+      if (rootU === rootV) return false;
+      parents.set(rootU,rootV);
+      return true;
+    };
+    const result = [];
+    for (const edge of selectedOutlets) {
+      if (union(edge.u,edge.v)) result.push(edge);
+    }
+    const remaining = possibleEdges
+      .filter(edge => !outletKeys.has(edgeKeyOf(edge)) || selectedKeys.has(edgeKeyOf(edge)))
+      .filter(edge => !selectedKeys.has(edgeKeyOf(edge)))
+      .sort((a,b) => (a.sortCost ?? a.dist) - (b.sortCost ?? b.dist));
+    remaining.forEach(edge => {
+      if (union(edge.u,edge.v)) result.push(edge);
+    });
+    const root = find(zId);
+    if ([...requiredIds].some(id => !parents.has(id) || find(id) !== root)) return null;
+    let connected = result.filter(edge => find(edge.u) === root && find(edge.v) === root);
+    // Straßenknoten ohne Verbraucher sind nur Rechengraph und dürfen nicht als
+    // tote Äste in die wirtschaftliche Bewertung eingehen.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const degree = new Map();
+      connected.forEach(edge => {
+        degree.set(edge.u,(degree.get(edge.u) || 0) + 1);
+        degree.set(edge.v,(degree.get(edge.v) || 0) + 1);
+      });
+      connected = connected.filter(edge => {
+        const removeU = edge.uNode?.type === 'trasse' && degree.get(edge.u) === 1;
+        const removeV = edge.vNode?.type === 'trasse' && degree.get(edge.v) === 1;
+        if (!removeU && !removeV) return true;
+        changed = true;
+        return false;
+      });
+    }
+    return connected;
   };
   const hydraulicsFor = (load,dn) => {
     const diameter = dn / 1000;
@@ -2280,6 +2407,52 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
   const rootedCandidate = strategy === 'street' ? shortestPathTree() : null;
   const rootedResult = rootedCandidate ? scoreTree(rootedCandidate) : {score:Infinity};
   if (rootedResult.score < before.score) current = rootedCandidate;
+  let outletVariantCount = 0;
+  let chosenOutletCount = centralDegree(current);
+  if (strategy === 'street' && outletEdges.length > 1) {
+    const variantLimit = 1 << Math.min(6,outletEdges.length);
+    for (let mask = 1; mask < variantLimit; mask++) {
+      const selected = outletEdges.filter((_,index) => mask & (1 << index));
+      const candidate = buildOutletTree(selected);
+      if (!candidate) continue;
+      outletVariantCount++;
+      const candidateResult = scoreTree(candidate);
+      const currentResult = scoreTree(current);
+      if (candidateResult.score >= currentResult.score) continue;
+      current = candidate;
+      chosenOutletCount = selected.length;
+    }
+  }
+  let routeVariantCount = 0;
+  let selectedRouteVariant = 0;
+  const routeVariantSignatures = new Set();
+  if (strategy === 'street') {
+    // Wiederverwendung bereits gewählter Straßen wird schrittweise verteuert.
+    // Dadurch entstehen mehrere deutlich verschiedene kürzeste-Wege-Bäume
+    // (z. B. links/rechts um einen Kreisverkehr oder über Parallelstraßen),
+    // die anschließend wieder mit den realen Lebenszykluskosten bewertet werden.
+    const penalties = new Map();
+    const seed = rootedCandidate || current;
+    routeVariantSignatures.add(seed.map(edgeKeyOf).sort().join('|'));
+    seed.filter(edge => edge.streetRoad).forEach(edge =>
+      penalties.set(edgeKeyOf(edge),0.22));
+    for (let variant = 1; variant <= 3; variant++) {
+      const candidate = routedTreeWithPenalties(penalties);
+      if (!candidate) break;
+      routeVariantCount++;
+      routeVariantSignatures.add(candidate.map(edgeKeyOf).sort().join('|'));
+      const candidateResult = scoreTree(candidate);
+      const currentResult = scoreTree(current);
+      if (candidateResult.score < currentResult.score) {
+        current = candidate;
+        selectedRouteVariant = variant;
+      }
+      candidate.filter(edge => edge.streetRoad).forEach(edge => {
+        const key = edgeKeyOf(edge);
+        penalties.set(key,(penalties.get(key) || 0) + 0.22);
+      });
+    }
+  }
   const centralCandidates = possibleEdges
     .filter(edge => edge.u === zId || edge.v === zId)
     .sort((a,b) => a.dist - b.dist)
@@ -2334,6 +2507,62 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
     current = best.trial;
     swaps++;
   }
+  let generalSwaps = 0;
+  let evaluatedGeneralSwaps = 0;
+  if (strategy === 'street') {
+    // Lokale 1-Kanten-Tausche öffnen den Suchraum auch abseits der Zentrale:
+    // Eine neue Straßenkante erzeugt genau einen Zyklus; durch Entfernen einer
+    // anderen Zykluskante entsteht eine alternative radiale Netzstruktur.
+    for (let pass = 0; pass < 2; pass++) {
+      const currentKeys = new Set(current.map(edgeKeyOf));
+      const alternatives = possibleEdges
+        .filter(edge => !currentKeys.has(edgeKeyOf(edge)) && !edge.forcedTrasse)
+        .sort((a,b) => a.dist - b.dist)
+        .slice(0,80);
+      const adjacency = new Map();
+      current.forEach(edge => {
+        if (!adjacency.has(edge.u)) adjacency.set(edge.u,[]);
+        if (!adjacency.has(edge.v)) adjacency.set(edge.v,[]);
+        adjacency.get(edge.u).push({to:edge.v,edge});
+        adjacency.get(edge.v).push({to:edge.u,edge});
+      });
+      let best = null;
+      for (const candidate of alternatives) {
+        const queue = [candidate.u];
+        const previous = new Map([[candidate.u,null]]);
+        for (let index = 0; index < queue.length && !previous.has(candidate.v); index++) {
+          for (const item of adjacency.get(queue[index]) || []) {
+            if (previous.has(item.to)) continue;
+            previous.set(item.to,{from:queue[index],edge:item.edge});
+            queue.push(item.to);
+          }
+        }
+        if (!previous.has(candidate.v)) continue;
+        const cycle = [];
+        for (let node = candidate.v; node !== candidate.u;) {
+          const step = previous.get(node);
+          cycle.push(step.edge);
+          node = step.from;
+        }
+        const removals = cycle
+          .filter(edge => !edge.forcedTrasse)
+          .sort((a,b) => b.dist - a.dist)
+          .slice(0,5);
+        for (const removed of removals) {
+          const trial = current.filter(edge => edge !== removed);
+          trial.push(candidate);
+          const result = scoreTree(trial);
+          evaluatedGeneralSwaps++;
+          if (!Number.isFinite(result.score)) continue;
+          if (!best || result.score < best.result.score) best = {trial,result};
+        }
+      }
+      const currentResult = scoreTree(current);
+      if (!best || best.result.score >= currentResult.score * 0.998) break;
+      current = best.trial;
+      generalSwaps++;
+    }
+  }
   const after = scoreTree(current);
   window._netzTopologyOptimization = {
     strategy,
@@ -2347,6 +2576,14 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
     detourPenaltyAfterEur:after.detourPenalty || 0,
     maxStretchBefore:before.maxStretch || null,
     maxStretchAfter:after.maxStretch || null,
+    availableCentralOutlets:outletEdges.length,
+    evaluatedOutletVariants:outletVariantCount,
+    chosenCentralOutlets:chosenOutletCount,
+    evaluatedRouteVariants:routeVariantCount,
+    distinctRouteVariants:routeVariantSignatures.size,
+    selectedRouteVariant,
+    evaluatedGeneralSwaps,
+    generalSwaps,
     swaps,
   };
   return current;
@@ -4372,7 +4609,20 @@ export function updateStrandDropdown() {
   if (!sel) return;
   const strands = [...new Set(window.netzEdges.map(e => e.strandId).filter(id => id != null))].sort((a,b)=>a-b);
   const current = sel.value === '' ? null : parseInt(sel.value, 10);
+  const signature = strands.join(',');
+  if (sel.dataset.strandSignature === signature) return;
+  if (document.activeElement === sel) {
+    if (sel.dataset.refreshPending !== 'true') {
+      sel.dataset.refreshPending = 'true';
+      sel.addEventListener('blur', () => {
+        delete sel.dataset.refreshPending;
+        updateStrandDropdown();
+      }, {once:true});
+    }
+    return;
+  }
   sel.innerHTML = '<option value="">Alle Stränge</option>' + strands.map(i => `<option value="${i}" ${current === i ? 'selected' : ''}>Strang ${i + 1}</option>`).join('');
+  sel.dataset.strandSignature = signature;
 }
 
 export function updateStrangReport() {

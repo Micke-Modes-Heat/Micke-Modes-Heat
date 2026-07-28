@@ -15,7 +15,7 @@ import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSpannungsfall, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
-import { mergeOsmElements, splitOsmBbox } from './lib/osm-bbox-tiles.js';
+import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus } from './13a-assets-core.js';
 import { collapseAssetSpider, redrawAllAssets } from './13b-assets-render.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
@@ -2777,6 +2777,36 @@ let _osmStrassenLayer = null;
 let _osmStrassenVisible = true;
 const _osmStrassenAdopted = new Set(); // OSM Way-IDs die bereits als Trasse übernommen wurden
 let _osmStrassenCache = null;
+const _osmStreetTileCache = new Map();
+
+function _setOsmStreetProgress({visible = true,completed = 0,total = 1,ways = 0,status = ''} = {}) {
+  let overlay = document.getElementById('osm-street-progress');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'osm-street-progress';
+    overlay.innerHTML = `
+      <div class="osm-street-progress-card">
+        <div class="osm-street-progress-head">
+          <strong>Straßendaten werden geladen</strong>
+          <span id="osm-street-progress-count"></span>
+        </div>
+        <div class="osm-street-progress-track"><div id="osm-street-progress-bar"></div></div>
+        <div id="osm-street-progress-status"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+  overlay.hidden = !visible;
+  if (!visible) return;
+  const safeTotal = Math.max(1,total);
+  const percentage = Math.max(0,Math.min(100,completed / safeTotal * 100));
+  const bar = document.getElementById('osm-street-progress-bar');
+  const count = document.getElementById('osm-street-progress-count');
+  const statusNode = document.getElementById('osm-street-progress-status');
+  if (bar) bar.style.width = `${percentage}%`;
+  if (count) count.textContent = `${completed} / ${total} Teilbereiche`;
+  if (statusNode) statusNode.textContent =
+    `${status || 'OpenStreetMap wird abgefragt'}${ways ? ` · ${ways} Straßen gefunden` : ''}`;
+}
 
 export async function loadOsmStrassen() {
   let bbox;
@@ -2839,6 +2869,9 @@ export async function loadOsmStrassen() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (!Array.isArray(data?.elements)) throw new Error('Ungültige OSM-Antwort');
+        if (data.remark || data.osm3s?.remark) {
+          throw new Error(`Unvollständige OSM-Antwort: ${data.remark || data.osm3s.remark}`);
+        }
         const usableWays = data.elements.filter(element =>
           element.type === 'way' && Array.isArray(element.geometry) && element.geometry.length >= 2);
         if (!usableWays.length) throw new Error('OSM-Antwort enthält keine nutzbaren Straßen');
@@ -2862,36 +2895,72 @@ export async function loadOsmStrassen() {
     if (cacheValid) {
       data = _osmStrassenCache.data;
     } else {
-      const tiles = splitOsmBbox(bboxValues);
+      // Die Kacheln bleiben auch bei großen Gesamtliegenschaften klein genug,
+      // damit Overpass nicht zuerst nur die großen Straßen ausliefert und dann
+      // in ein Zeit-/Speicherlimit läuft.
+      const tiles = splitOsmBbox(bboxValues,{targetMeters:1200,maxTilesPerAxis:10});
       if (tiles.length <= 1) {
+        _setOsmStreetProgress({visible:true,total:1,status:'Straßen im Projektgebiet'});
         data = await _fetchOverpass(query);
+        _setOsmStreetProgress({
+          visible:true,completed:1,total:1,
+          ways:data.elements.filter(element => element.type === 'way').length,
+          status:'Straßendaten vollständig',
+        });
       } else {
         showHint(`Lade großes Straßengebiet in ${tiles.length} Teilbereichen …`,4000);
         const results = [];
-        let cursor = 0;
-        let completed = 0;
+        const tasks = tiles.map(tile => ({bbox:tile,depth:0}));
+        let cursor = 0, completed = 0, total = tasks.length, foundWays = 0;
+        _setOsmStreetProgress({visible:true,completed,total,status:'Teilbereiche werden vorbereitet'});
         const worker = async() => {
-          while (cursor < tiles.length) {
+          while (cursor < tasks.length) {
             const tileIndex = cursor++;
-            const tileBbox = bboxString(...tiles[tileIndex]);
+            const task = tasks[tileIndex];
+            const tileBbox = bboxString(...task.bbox);
             const tileQuery = `[out:json][timeout:18];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${tileBbox});out geom;`;
             try {
-              results.push(await _fetchOverpass(tileQuery));
-            } catch (error) {
-              failedTiles++;
-              console.warn(`OSM-Straßen Teilbereich ${tileIndex + 1}/${tiles.length}:`,error.message);
-            } finally {
+              let tileData = _osmStreetTileCache.get(tileBbox);
+              if (!tileData) {
+                tileData = await _fetchOverpass(tileQuery);
+                _osmStreetTileCache.set(tileBbox,tileData);
+              }
+              results.push(tileData);
+              foundWays += tileData.elements.filter(element => element.type === 'way').length;
               completed++;
-              showHint(`Straßenzüge: ${completed} / ${tiles.length} Teilbereiche geladen …`,2500);
+            } catch (error) {
+              if (task.depth < 2) {
+                const children = subdivideOsmBbox(task.bbox)
+                  .map(child => ({bbox:child,depth:task.depth + 1}));
+                tasks.push(...children);
+                total += children.length - 1;
+                console.warn(`OSM-Straßen Teilbereich wird feiner geteilt:`,error.message);
+              } else {
+                failedTiles++;
+                completed++;
+                console.warn(`OSM-Straßen Teilbereich endgültig fehlgeschlagen:`,error.message);
+              }
+            } finally {
+              _setOsmStreetProgress({
+                visible:true,completed,total,ways:foundWays,
+                status:failedTiles
+                  ? `${failedTiles} Teilbereich${failedTiles === 1 ? '' : 'e'} bisher ohne Antwort`
+                  : 'Vollständige Straßendaten werden zusammengeführt',
+              });
             }
           }
         };
-        await Promise.all(Array.from({length:Math.min(2,tiles.length)},()=>worker()));
-        if (!results.length) throw new Error(`Alle ${tiles.length} Teilbereiche konnten nicht geladen werden`);
+        await Promise.all(Array.from({length:Math.min(2,tasks.length)},()=>worker()));
+        if (!results.length) throw new Error(`Alle ${total} Teilbereiche konnten nicht geladen werden`);
         data = mergeOsmElements(results);
       }
     }
-    if (!cacheValid) _osmStrassenCache = {bbox, data, timestamp:Date.now()};
+    // Eine teilweise geladene Gesamtfläche niemals als vollständig cachen:
+    // Ein erneuter Versuch soll gezielt von den bereits vollständigen
+    // Kachel-Caches profitieren und die Lücken erneut anfragen.
+    if (!cacheValid && failedTiles === 0) {
+      _osmStrassenCache = {bbox, data, timestamp:Date.now()};
+    }
 
     clearOsmStrassen();
     _osmStrassenLayer = L.layerGroup();
@@ -2933,10 +3002,16 @@ export async function loadOsmStrassen() {
     if (count === 0) showHint('⚠ Keine Straßen im Planungsgebiet gefunden.');
     else if (cacheValid) showHint(`✓ ${count} Straßenzüge aus dem Zwischenspeicher geladen.`, 3500);
     else if (failedTiles > 0) showHint(`✓ ${count} Straßenzüge geladen · ${failedTiles} Teilbereich${failedTiles === 1 ? '' : 'e'} ohne Antwort.`,5000);
+    _setOsmStreetProgress({
+      visible:true,completed:1,total:1,ways:count,
+      status:failedTiles ? `Fertig mit ${failedTiles} fehlenden Teilbereichen` : 'Straßendaten vollständig geladen',
+    });
+    setTimeout(() => _setOsmStreetProgress({visible:false}),1800);
     return count;
   } catch (e) {
     if (btn) { btn.textContent = '↓ Straßen aus OSM laden'; btn.disabled = false; }
     showHint('⚠ OSM-Laden fehlgeschlagen: ' + e.message);
+    _setOsmStreetProgress({visible:false});
     return 0;
   }
 }

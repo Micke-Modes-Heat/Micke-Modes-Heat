@@ -26,6 +26,7 @@
   <div class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
+    <button class="view-tab" data-mode="gebaeude" data-click="setViewMode('gebaeude')">Gebäude</button>
     <button class="view-tab" data-mode="analyse" data-click="setViewMode('analyse')">Analyse</button>
     <button class="view-tab" data-mode="optimierung" data-click="setViewMode('optimierung')">Optimierung</button>
     <button class="view-tab" data-mode="vergleich" data-click="setViewMode('vergleich')">Vergleich</button>
@@ -854,6 +855,31 @@
     <div id="vergleich-table-wrap" style="overflow-x:auto;"></div>
   </div>
   <div id="variant-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(15,17,23,0.88);border:1px solid var(--accent);border-radius:20px;padding:4px 16px;font-size:12px;color:var(--accent);pointer-events:none;white-space:nowrap;">⬤ &nbsp;<span id="variant-banner-name"></span></div>
+
+  <!-- ══ Center: Gebäude-View ══════════════════════════════════════ -->
+  <div id="center-gebaeude-view">
+    <div class="geb-overview-header">
+      <div>
+        <h2>Gebäudeübersicht</h2>
+        <p>Gebäudedaten prüfen, sortieren und gemeinsam bearbeiten</p>
+      </div>
+      <button class="btn-secondary" data-click="setViewMode('karte')" style="font-size:11px;">← Zurück zur Karte</button>
+    </div>
+    <div id="geb-overview-kpis" class="geb-overview-kpis"></div>
+    <div id="geb-overview-analysis" class="geb-overview-analysis"></div>
+    <div class="geb-overview-tools">
+      <input id="geb-table-filter" type="search" placeholder="Gebäude, Nutzung oder Quelle suchen …"
+        data-input="setGebaeudeTableFilter(this.value)">
+      <span id="geb-table-result-count"></span>
+    </div>
+    <div id="geb-table-bulk" class="geb-table-bulk"></div>
+    <div class="geb-overview-table-wrap">
+      <table class="geb-overview-table">
+        <thead id="geb-table-head"></thead>
+        <tbody id="geb-table-body"></tbody>
+      </table>
+    </div>
+  </div>
 
   <!-- ══ Center: Analyse-View ═══════════════════════════════════════ -->
   <div id="center-analyse-view">

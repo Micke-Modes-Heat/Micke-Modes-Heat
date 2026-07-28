@@ -894,7 +894,7 @@ function _syncYearToAssets(gebId, field, year) {
 function _syncAbrissToAssets(gebId, abrissjahr) { _syncYearToAssets(gebId, 'abrissjahr', abrissjahr); }
 function _syncBaujahrToAssets(gebId, baujahr)   { _syncYearToAssets(gebId, 'baujahr',    baujahr); }
 
-export function updateField(id, field, val) {
+export function updateField(id, field, val, {defer = false} = {}) {
   const g = window.gebaeude.find(x => x.id === id);
   if (!g) return;
   _invalidateStats();
@@ -991,12 +991,14 @@ export function updateField(id, field, val) {
     if (_cvH) _cvH.textContent = _cs.heizlast > 0 ? Math.round(_cs.heizlast).toLocaleString('de-DE') : '—';
   }
 
-  updateVizDebounced();
-  updateTotals();
-  if (field === 'heizlast' || field === 'spezHeizlast' || autoCalculated) recalcNetz();
-  if (document.getElementById('chart-panel').classList.contains('visible')) drawChart();
-  if (['waerme','heizlast','flaeche','spez','spezHeizlast','baujahr','nutzung'].includes(field)) {
-    glBerechnenDebounced(1500);
+  if (!defer) {
+    updateVizDebounced();
+    updateTotals();
+    if (field === 'heizlast' || field === 'spezHeizlast' || autoCalculated) recalcNetz();
+    if (document.getElementById('chart-panel').classList.contains('visible')) drawChart();
+    if (['waerme','heizlast','flaeche','spez','spezHeizlast','baujahr','nutzung'].includes(field)) {
+      glBerechnenDebounced(1500);
+    }
   }
 }
 

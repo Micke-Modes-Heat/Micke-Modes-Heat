@@ -126,6 +126,216 @@ export function clearSelection() {
   gebaeude.forEach(g => g.selected = false);
   renderList();
   updateBulkBar();
+  if (currentViewMode === 'gebaeude') renderGebaeudeOverview();
+}
+
+// ── Tabellarische Gebäudeübersicht ──────────────────────────────────────────
+let gebTableFilter = '';
+let gebTableSort = {key:'name',direction:1};
+
+function _gebTableEsc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
+  })[character]);
+}
+
+function _gebUsageLabel(g) {
+  return NUTZUNG_DEFAULTS[g.nutzung]?.label ||
+    getNutzungstypen().find(type => type.id === g.nutzung)?.label ||
+    g.nutzung || 'Nicht zugeordnet';
+}
+
+function _gebTableValue(g,key) {
+  if (key === 'name') return g.name || '';
+  if (key === 'nutzung') return _gebUsageLabel(g);
+  if (key === 'nutzflaeche') return (Number(g.flaeche) || 0) * (Number(g.stockwerke) || 1) * 0.8;
+  if (key === 'quelle') return g.importSourceName || '';
+  if (key === 'status') return getComputedStats(g,globalYear).status || '';
+  return Number(g[key]) || 0;
+}
+
+function _filteredSortedBuildings() {
+  const needle = gebTableFilter.toLowerCase().trim();
+  return gebaeude.filter(g => !needle ||
+    (g.name || '').toLowerCase().includes(needle) ||
+    _gebUsageLabel(g).toLowerCase().includes(needle) ||
+    (g.importSourceName || '').toLowerCase().includes(needle)
+  ).sort((a,b) => {
+    const av = _gebTableValue(a,gebTableSort.key);
+    const bv = _gebTableValue(b,gebTableSort.key);
+    if (typeof av === 'string' || typeof bv === 'string') {
+      return String(av).localeCompare(String(bv),'de',{numeric:true}) * gebTableSort.direction;
+    }
+    return (av - bv) * gebTableSort.direction;
+  });
+}
+
+export function setGebaeudeTableFilter(value) {
+  gebTableFilter = value || '';
+  renderGebaeudeOverview();
+}
+
+export function sortGebaeudeTable(key) {
+  gebTableSort = gebTableSort.key === key
+    ? {key,direction:gebTableSort.direction * -1}
+    : {key,direction:1};
+  renderGebaeudeOverview();
+}
+
+export function toggleGebaeudeTableSelection(id,checked) {
+  const building = gebaeude.find(g => g.id === id);
+  if (building) building.selected = !!checked;
+  updateBulkBar();
+  renderGebaeudeOverview();
+}
+
+export function toggleAllGebaeudeTable(checked) {
+  _filteredSortedBuildings().forEach(g => { g.selected = !!checked; });
+  updateBulkBar();
+  renderGebaeudeOverview();
+}
+
+export function updateGebaeudeTableField(id,field,value) {
+  if (field === 'name') window.renameGebaeude?.(id,value);
+  else if (field === 'nutzung') setNutzung(id,value);
+  else window.updateField?.(id,field,value);
+  renderList();
+  renderGebaeudeOverview();
+}
+
+export function applyGebaeudeTableBulk() {
+  const selected = gebaeude.filter(g => g.selected);
+  if (!selected.length) return;
+  const usage = document.getElementById('geb-bulk-nutzung')?.value || '';
+  const constructionYear = document.getElementById('geb-bulk-baujahr')?.value || '';
+  const floors = document.getElementById('geb-bulk-stockwerke')?.value || '';
+  if (!usage && !constructionYear && !floors) {
+    showHint('Bitte mindestens einen Wert für die Sammeländerung eingeben.',3500);
+    return;
+  }
+  selected.forEach(g => {
+    if (usage) g.nutzung = usage;
+    if (constructionYear) window.updateField?.(g.id,'baujahr',constructionYear,{defer:true});
+    if (floors) window.updateField?.(g.id,'stockwerke',floors,{defer:true});
+  });
+  _invalidateStats();
+  renderList();
+  updateViz();
+  updateTotals();
+  recalcNetz();
+  window.glBerechnenDebounced?.(500);
+  showHint(`✓ ${selected.length} Gebäude gemeinsam aktualisiert.`,3000);
+  renderGebaeudeOverview();
+}
+
+function _renderGebOverviewAnalysis() {
+  const active = gebaeude.map(g => ({g,stats:getComputedStats(g,globalYear)}))
+    .filter(item => item.stats.status !== 'abgerissen' && item.stats.status !== 'geplant');
+  const totals = active.reduce((sum,item) => {
+    const floorArea = (Number(item.g.flaeche) || 0) * (Number(item.g.stockwerke) || 1) * 0.8;
+    sum.area += floorArea;
+    sum.heat += Number(item.stats.waerme) || 0;
+    sum.load += Number(item.stats.heizlast) || 0;
+    return sum;
+  },{area:0,heat:0,load:0});
+  const averageSpecific = totals.area > 0 ? totals.heat * 1000 / totals.area : 0;
+  const kpis = document.getElementById('geb-overview-kpis');
+  if (kpis) kpis.innerHTML = [
+    [gebaeude.length.toLocaleString('de-DE'),'Gebäude gesamt'],
+    [Math.round(totals.area).toLocaleString('de-DE'),'Nutzfläche m²'],
+    [Math.round(totals.heat).toLocaleString('de-DE'),'Wärme MWh/a'],
+    [Math.round(totals.load).toLocaleString('de-DE'),'Heizlast kW'],
+    [averageSpecific.toLocaleString('de-DE',{maximumFractionDigits:1}),'Ø kWh/m²a'],
+  ].map(([value,label]) => `<div class="geb-overview-kpi"><strong>${value}</strong><span>${label}</span></div>`).join('');
+
+  const groups = new Map();
+  active.forEach(({g,stats}) => {
+    const label = _gebUsageLabel(g);
+    if (!groups.has(label)) groups.set(label,{label,count:0,area:0,heat:0,load:0});
+    const group = groups.get(label);
+    group.count++;
+    group.area += (Number(g.flaeche) || 0) * (Number(g.stockwerke) || 1) * 0.8;
+    group.heat += Number(stats.waerme) || 0;
+    group.load += Number(stats.heizlast) || 0;
+  });
+  const rows = [...groups.values()];
+  const analysis = document.getElementById('geb-overview-analysis');
+  if (!analysis) return;
+  const card = (title,key,unit) => {
+    const sorted = [...rows].sort((a,b) => b[key]-a[key]).slice(0,8);
+    const maximum = Math.max(1,...sorted.map(row => row[key]));
+    return `<div class="geb-analysis-card"><h3>${title}</h3>${sorted.map(row => `
+      <div class="geb-analysis-row">
+        <span title="${_gebTableEsc(row.label)}">${_gebTableEsc(row.label)}</span>
+        <span class="geb-analysis-bar"><i style="width:${Math.max(2,row[key]/maximum*100)}%"></i></span>
+        <em>${Math.round(row[key]).toLocaleString('de-DE')} ${unit}</em>
+      </div>`).join('') || '<span style="color:var(--muted);font-size:9px;">Keine Daten</span>'}</div>`;
+  };
+  analysis.innerHTML =
+    card('Wärmeverbrauch nach Nutzung','heat','MWh/a') +
+    card('Nutzfläche nach Nutzung','area','m²') +
+    card('Heizlast nach Nutzung','load','kW');
+}
+
+export function renderGebaeudeOverview() {
+  const body = document.getElementById('geb-table-body');
+  const head = document.getElementById('geb-table-head');
+  if (!body || !head) return;
+  _renderGebOverviewAnalysis();
+  const rows = _filteredSortedBuildings();
+  const selected = gebaeude.filter(g => g.selected);
+  const allVisibleSelected = rows.length > 0 && rows.every(g => g.selected);
+  const sortLabel = (key,label) => `${label}${gebTableSort.key === key ? (gebTableSort.direction > 0 ? ' ↑' : ' ↓') : ''}`;
+  head.innerHTML = `<tr>
+    <th class="no-sort"><input type="checkbox" ${allVisibleSelected ? 'checked' : ''}
+      data-change="toggleAllGebaeudeTable(this.checked)" title="Alle sichtbaren auswählen"></th>
+    <th data-click="sortGebaeudeTable('name')">${sortLabel('name','Gebäude')}</th>
+    <th data-click="sortGebaeudeTable('nutzung')">${sortLabel('nutzung','Nutzung')}</th>
+    <th data-click="sortGebaeudeTable('baujahr')">${sortLabel('baujahr','Baujahr')}</th>
+    <th data-click="sortGebaeudeTable('stockwerke')">${sortLabel('stockwerke','Geschosse')}</th>
+    <th data-click="sortGebaeudeTable('flaeche')">${sortLabel('flaeche','Grundfläche m²')}</th>
+    <th data-click="sortGebaeudeTable('nutzflaeche')">${sortLabel('nutzflaeche','Nutzfläche m²')}</th>
+    <th data-click="sortGebaeudeTable('waerme')">${sortLabel('waerme','Wärme MWh/a')}</th>
+    <th data-click="sortGebaeudeTable('spez')">${sortLabel('spez','kWh/m²a')}</th>
+    <th data-click="sortGebaeudeTable('heizlast')">${sortLabel('heizlast','Heizlast kW')}</th>
+    <th data-click="sortGebaeudeTable('quelle')">${sortLabel('quelle','Quelle')}</th>
+  </tr>`;
+  const usageTypes = getNutzungstypen();
+  body.innerHTML = rows.map(g => {
+    const netFloorArea = (Number(g.flaeche) || 0) * (Number(g.stockwerke) || 1) * 0.8;
+    const options = [
+      ...(!usageTypes.some(type => type.id === g.nutzung) && g.nutzung
+        ? [{id:g.nutzung,label:_gebUsageLabel(g)}] : []),
+      ...usageTypes,
+    ].map(type => `<option value="${_gebTableEsc(type.id)}" ${type.id === g.nutzung ? 'selected' : ''}>${_gebTableEsc(type.label)}</option>`).join('');
+    return `<tr class="${g.selected ? 'selected' : ''}">
+      <td><input type="checkbox" ${g.selected ? 'checked' : ''} data-change="toggleGebaeudeTableSelection(${g.id},this.checked)"></td>
+      <td><input class="geb-table-name" value="${_gebTableEsc(g.name)}" data-change="updateGebaeudeTableField(${g.id},'name',this.value)"></td>
+      <td><select data-change="updateGebaeudeTableField(${g.id},'nutzung',this.value)"><option value="">—</option>${options}</select></td>
+      <td><input class="geb-table-num" type="number" value="${g.baujahr || ''}" data-change="updateGebaeudeTableField(${g.id},'baujahr',this.value)"></td>
+      <td><input class="geb-table-num" type="number" min="1" max="50" value="${g.stockwerke || 1}" data-change="updateGebaeudeTableField(${g.id},'stockwerke',this.value)"></td>
+      <td><input class="geb-table-num" type="number" min="0" value="${g.flaeche ? Math.round(g.flaeche) : ''}" data-change="updateGebaeudeTableField(${g.id},'flaeche',this.value)"></td>
+      <td class="geb-table-num geb-table-readonly">${Math.round(netFloorArea).toLocaleString('de-DE')}</td>
+      <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.waerme ?? ''}" data-change="updateGebaeudeTableField(${g.id},'waerme',this.value)"></td>
+      <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.spez ?? ''}" data-change="updateGebaeudeTableField(${g.id},'spez',this.value)"></td>
+      <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.heizlast ?? ''}" data-change="updateGebaeudeTableField(${g.id},'heizlast',this.value)"></td>
+      <td class="geb-table-readonly" title="${_gebTableEsc(g.importSourceName || '')}">${_gebTableEsc(g.importSourceName || '—')}</td>
+    </tr>`;
+  }).join('');
+  const count = document.getElementById('geb-table-result-count');
+  if (count) count.textContent = `${rows.length} von ${gebaeude.length} Gebäuden`;
+  const bulk = document.getElementById('geb-table-bulk');
+  if (bulk) {
+    bulk.classList.toggle('visible',selected.length > 0);
+    bulk.innerHTML = selected.length ? `
+      <strong>${selected.length} ausgewählt</strong>
+      <select id="geb-bulk-nutzung"><option value="">Nutzung beibehalten</option>${usageTypes.map(type =>
+        `<option value="${_gebTableEsc(type.id)}">${_gebTableEsc(type.label)}</option>`).join('')}</select>
+      <input id="geb-bulk-baujahr" type="number" min="1800" max="2100" placeholder="Baujahr beibehalten">
+      <input id="geb-bulk-stockwerke" type="number" min="1" max="50" placeholder="Geschosse beibehalten">
+      <button class="btn-secondary" data-click="applyGebaeudeTableBulk()">Auf Auswahl anwenden</button>
+      <button class="btn-secondary" data-click="clearSelection()">Auswahl aufheben</button>` : '';
+  }
 }
 
 // ── Gebäude-Filter ────────────────────────────────────────────────────
@@ -746,11 +956,13 @@ export function setViewMode(mode) {
   // Update header tabs
   document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
   // Show/hide center views
+  const gebaeudeView   = document.getElementById('center-gebaeude-view');
   const analyseView    = document.getElementById('center-analyse-view');
   const optimierungView = document.getElementById('center-optimierung-view');
   const vergleichView  = document.getElementById('center-vergleich-view');
   const liveView       = document.getElementById('center-live-view');
   const vergleichOld   = document.getElementById('vergleich-panel');
+  if (gebaeudeView)    gebaeudeView.style.display    = mode === 'gebaeude'    ? 'block' : 'none';
   if (analyseView)     analyseView.style.display     = mode === 'analyse'     ? 'block' : 'none';
   if (optimierungView) optimierungView.style.display = mode === 'optimierung' ? 'block' : 'none';
   if (vergleichView)   vergleichView.style.display   = mode === 'vergleich'   ? 'block' : 'none';
@@ -764,6 +976,7 @@ export function setViewMode(mode) {
   if (mode === 'karte') setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 100);
   // Populate views
   if (mode === 'analyse') refreshAnalyseView();
+  if (mode === 'gebaeude') renderGebaeudeOverview();
   if (mode === 'optimierung') {
     if (typeof _optPopulateYearSelect === 'function') _optPopulateYearSelect();
     if (typeof _optUpdateEstimate === 'function') _optUpdateEstimate();

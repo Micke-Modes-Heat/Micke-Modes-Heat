@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { mergeOsmElements,splitOsmBbox } from '../src/lib/osm-bbox-tiles.js';
+import { mergeOsmElements,splitOsmBbox,subdivideOsmBbox } from '../src/lib/osm-bbox-tiles.js';
 
 describe('OSM-Straßenabfragen für große Gebiete',()=>{
   it('lässt kleine Gebiete als eine Abfrage bestehen',()=>{
@@ -21,5 +21,18 @@ describe('OSM-Straßenabfragen für große Gebiete',()=>{
     ]);
     expect(merged.elements.map(element=>element.id)).toEqual([1,2,3]);
     expect(merged.elements[1].geometry).toEqual([1]);
+  });
+
+  it('kann einen fehlgeschlagenen Teilbereich lückenlos weiter unterteilen',()=>{
+    const bbox=[52,8,52.02,8.04];
+    const parts=subdivideOsmBbox(bbox);
+    expect(parts).toHaveLength(4);
+    expect(parts[0][0]).toBe(52);
+    expect(parts[0][1]).toBe(8);
+    expect(parts[0][2]).toBeCloseTo(52.01);
+    expect(parts[0][3]).toBeCloseTo(8.02);
+    expect(parts.at(-1)[0]).toBeCloseTo(52.01);
+    expect(parts.at(-1)[1]).toBeCloseTo(8.02);
+    expect(parts.at(-1).slice(2)).toEqual([52.02,8.04]);
   });
 });

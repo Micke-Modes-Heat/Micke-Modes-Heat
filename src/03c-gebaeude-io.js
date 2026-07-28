@@ -2331,17 +2331,41 @@ function _updateBuildingSourceControls() {
   });
   const selected = select.value;
   controls.hidden = sources.size === 0;
+  const outline = document.getElementById('geb-source-outline');
+  if (outline) outline.checked = !!window.buildingSourceOutlines;
+  const signature = JSON.stringify([...sources.entries()].sort((a,b) => a[0].localeCompare(b[0])));
+  if (select.dataset.sourceSignature === signature) return;
+  if (document.activeElement === select) {
+    if (select.dataset.refreshPending !== 'true') {
+      select.dataset.refreshPending = 'true';
+      select.addEventListener('blur', () => {
+        delete select.dataset.refreshPending;
+        _updateBuildingSourceControls();
+      }, {once:true});
+    }
+    return;
+  }
   select.innerHTML = '<option value="">Alle Herkunftsprojekte</option>' +
     [...sources.entries()]
       .sort((a,b) => a[1].localeCompare(b[1],'de'))
       .map(([id,name]) => `<option value="${escHtml(id)}">${escHtml(name)}</option>`)
       .join('');
   if (sources.has(selected)) select.value = selected;
-  const outline = document.getElementById('geb-source-outline');
-  if (outline) outline.checked = !!window.buildingSourceOutlines;
+  select.dataset.sourceSignature = signature;
 }
 
 export function renderList(){
+  const focusedSelect = document.activeElement?.closest?.('#geb-list select');
+  if (focusedSelect) {
+    if (focusedSelect.dataset.renderPending !== 'true') {
+      focusedSelect.dataset.renderPending = 'true';
+      focusedSelect.addEventListener('blur', () => {
+        delete focusedSelect.dataset.renderPending;
+        renderList();
+      }, {once:true});
+    }
+    return;
+  }
   populateZentraleSelect();
   if (typeof updateLpGebietStatus === 'function') updateLpGebietStatus();
   _updateBuildingSourceControls();
