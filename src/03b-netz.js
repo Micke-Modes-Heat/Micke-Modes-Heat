@@ -2108,6 +2108,65 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
     ? `${edge.u}:${edge.v}` : `${edge.v}:${edge.u}`;
   const centralDegree = edges => edges.reduce((sum,edge) =>
     sum + (edge.u === zId || edge.v === zId ? 1 : 0),0);
+  const candidateAdjacency = new Map();
+  possibleEdges.forEach(edge => {
+    if (!candidateAdjacency.has(edge.u)) candidateAdjacency.set(edge.u,[]);
+    if (!candidateAdjacency.has(edge.v)) candidateAdjacency.set(edge.v,[]);
+    candidateAdjacency.get(edge.u).push({to:edge.v,edge});
+    candidateAdjacency.get(edge.v).push({to:edge.u,edge});
+  });
+  const shortestDistances = new Map([[zId,0]]);
+  const shortestPrevious = new Map();
+  const heap = [{id:zId,distance:0}];
+  const heapPush = item => {
+    heap.push(item);
+    for (let index = heap.length - 1; index > 0;) {
+      const parentIndex = Math.floor((index - 1) / 2);
+      if (heap[parentIndex].distance <= heap[index].distance) break;
+      [heap[parentIndex],heap[index]] = [heap[index],heap[parentIndex]];
+      index = parentIndex;
+    }
+  };
+  const heapPop = () => {
+    if (!heap.length) return null;
+    const first = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      for (let index = 0;;) {
+        const left = index * 2 + 1, right = left + 1;
+        let smallest = index;
+        if (left < heap.length && heap[left].distance < heap[smallest].distance) smallest = left;
+        if (right < heap.length && heap[right].distance < heap[smallest].distance) smallest = right;
+        if (smallest === index) break;
+        [heap[index],heap[smallest]] = [heap[smallest],heap[index]];
+        index = smallest;
+      }
+    }
+    return first;
+  };
+  while (heap.length) {
+    const current = heapPop();
+    if (current.distance !== shortestDistances.get(current.id)) continue;
+    for (const item of candidateAdjacency.get(current.id) || []) {
+      const nextDistance = current.distance + item.edge.dist;
+      if (nextDistance >= (shortestDistances.get(item.to) ?? Infinity)) continue;
+      shortestDistances.set(item.to,nextDistance);
+      shortestPrevious.set(item.to,{from:current.id,edge:item.edge});
+      heapPush({id:item.to,distance:nextDistance});
+    }
+  }
+  const shortestPathTree = () => {
+    const edges = new Map();
+    for (const id of requiredIds) {
+      for (let node = id; node !== zId;) {
+        const step = shortestPrevious.get(node);
+        if (!step) return null;
+        edges.set(edgeKeyOf(step.edge),step.edge);
+        node = step.from;
+      }
+    }
+    return [...edges.values()];
+  };
   const hydraulicsFor = (load,dn) => {
     const diameter = dn / 1000;
     const area = Math.PI * Math.pow(diameter / 2,2);
@@ -2173,6 +2232,7 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
 
     let investment = 0;
     let lossMWhPerYear = 0;
+    const pathLength = new Map([[zId,0]]);
     order.slice(1).forEach(id => {
       const sizedEdge = sized.get(id);
       const length = sizedEdge.edge.dist;
@@ -2182,6 +2242,7 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
       const upstream = parent.get(id);
       pathDp.set(id,(pathDp.get(upstream) || 0) +
         sizedEdge.hydraulic.dpPerM * length * 2);
+      pathLength.set(id,(pathLength.get(upstream) || 0) + length);
     });
     const maxPathDp = Math.max(0,...[...requiredIds].map(id => pathDp.get(id) || 0)) + 50000;
     const rootLoad = loads.get(zId) || 0;
@@ -2196,11 +2257,29 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
     const pumpKW = hydraulicKW / efficiency;
     const operating = lifetimeYears *
       (lossMWhPerYear * heatPrice + pumpKW * annualHours * electricityPrice);
-    return {score:investment + operating,investment,operating,pumpKW,maxPathDp};
+    let detourPenalty = 0;
+    let maxStretch = 1;
+    requiredIds.forEach(id => {
+      if (id === zId) return;
+      const shortest = shortestDistances.get(id);
+      if (!shortest || !Number.isFinite(shortest)) return;
+      const stretch = (pathLength.get(id) || shortest) / shortest;
+      maxStretch = Math.max(maxStretch,stretch);
+      const load = Math.max(1,loadById.get(id) || 0);
+      if (stretch > 1.6) detourPenalty += Math.pow(stretch - 1.6,2) * load * 300;
+      if (stretch > 2.5) detourPenalty += (stretch - 2.5) * load * 1500;
+    });
+    return {
+      score:investment + operating + detourPenalty,
+      investment,operating,detourPenalty,pumpKW,maxPathDp,maxStretch,
+    };
   };
 
   let current = [...treeEdges];
   const before = scoreTree(current);
+  const rootedCandidate = strategy === 'street' ? shortestPathTree() : null;
+  const rootedResult = rootedCandidate ? scoreTree(rootedCandidate) : {score:Infinity};
+  if (rootedResult.score < before.score) current = rootedCandidate;
   const centralCandidates = possibleEdges
     .filter(edge => edge.u === zId || edge.v === zId)
     .sort((a,b) => a.dist - b.dist)
@@ -2263,6 +2342,11 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
     scoreAfterEur:after.score,
     centralBranchesBefore:centralDegree(treeEdges),
     centralBranchesAfter:centralDegree(current),
+    rootedCandidateScoreEur:Number.isFinite(rootedResult.score) ? rootedResult.score : null,
+    detourPenaltyBeforeEur:before.detourPenalty || 0,
+    detourPenaltyAfterEur:after.detourPenalty || 0,
+    maxStretchBefore:before.maxStretch || null,
+    maxStretchAfter:after.maxStretch || null,
     swaps,
   };
   return current;
@@ -2364,15 +2448,19 @@ export function autoGenerateNetz(options = {}){
     const streetCoverageLimitM = Math.max(25,Math.min(60,medianBuildingDistance * 1.5));
     const streetLocalMaxM = Math.max(45,Math.min(140,medianBuildingDistance * 3));
     const roadProjectionByBuilding = new Map();
+    const centralRoadAlternatives = [];
 
     for (const building of buildingNodes) {
       let best = null;
+      const candidates = [];
       heatSegments.forEach((seg, segIndex) => {
         for (let pointIndex = seg.start; pointIndex < seg.end; pointIndex++) {
           const a = trassePoints[pointIndex], b = trassePoints[pointIndex + 1];
           if (!a || !b) continue;
           const candidate = projectToLeg(building.pt, a, b);
-          if (!best || candidate.dist < best.dist) best = {...candidate, segIndex, pointIndex};
+          const located = {...candidate, segIndex, pointIndex};
+          if (building.id === zId) candidates.push(located);
+          if (!best || candidate.dist < best.dist) best = located;
         }
       });
       // Kompatibilität mit alten Projekten ohne explizite Segmentliste.
@@ -2384,6 +2472,21 @@ export function autoGenerateNetz(options = {}){
       }
       if (!best) continue;
       roadProjectionByBuilding.set(building.id,best);
+      if (building.id === zId) {
+        // Eine Zentrale darf mehrere nahe, räumlich verschiedene Zugänge zum
+        // Straßengraphen besitzen. Der Optimierer entscheidet anschließend,
+        // ob sich daraus tatsächlich mehrere Hauptäste lohnen.
+        candidates
+          .sort((a,b) => a.dist - b.dist)
+          .filter(candidate => candidate.dist <= Math.min(120,best.dist + 80))
+          .forEach(candidate => {
+            if (centralRoadAlternatives.length >= 4) return;
+            if (centralRoadAlternatives.some(existing =>
+              existing.pt.distanceTo(candidate.pt) < 12)) return;
+            centralRoadAlternatives.push(candidate);
+          });
+        if (!centralRoadAlternatives.length) centralRoadAlternatives.push(best);
+      }
     }
 
     // OSM ist auf privaten Liegenschaften oft nur teilweise vollständig.
@@ -2443,16 +2546,21 @@ export function autoGenerateNetz(options = {}){
       if (strategy === 'street' &&
           !streetCoveredIds.has(building.id) &&
           !streetGatewayIds.has(building.id)) continue;
-      const junction = getTrasseNode(best.pt);
-      const legKey = `${best.segIndex}:${best.pointIndex}`;
-      if (!projectionsByLeg.has(legKey)) projectionsByLeg.set(legKey, []);
-      projectionsByLeg.get(legKey).push({t: best.t, node: junction});
-      possibleEdges.push({
-        u: building.id, v: junction.id, uNode: building, vNode: junction,
-        dist: best.dist,
-        sortCost:best.dist * trunkConnectionFactor *
-          (strategy === 'street' && streetGatewayIds.has(building.id) ? 1.2 : 1),
-        streetGateway:strategy === 'street' && streetGatewayIds.has(building.id),
+      const projections = building.id === zId && strategy === 'street'
+        ? centralRoadAlternatives : [best];
+      projections.forEach((projection,index) => {
+        const junction = getTrasseNode(projection.pt);
+        const legKey = `${projection.segIndex}:${projection.pointIndex}`;
+        if (!projectionsByLeg.has(legKey)) projectionsByLeg.set(legKey, []);
+        projectionsByLeg.get(legKey).push({t: projection.t, node: junction});
+        possibleEdges.push({
+          u: building.id, v: junction.id, uNode: building, vNode: junction,
+          dist: projection.dist,
+          sortCost:projection.dist * trunkConnectionFactor *
+            (strategy === 'street' && streetGatewayIds.has(building.id) ? 1.2 : 1),
+          streetGateway:strategy === 'street' && streetGatewayIds.has(building.id),
+          centralOutlet:index > 0,
+        });
       });
     }
 
@@ -2651,6 +2759,7 @@ export function autoGenerateNetz(options = {}){
     };
     hitLayer.on('click', (ev) => {
       if (window.isDrawingEdge) return;
+      _selectNetzEditEdge(edgeObj);
       showEdgePopup(edgeObj, ev.originalEvent);
       L.DomEvent.stopPropagation(ev);
     });
@@ -2877,6 +2986,7 @@ export function addNetzEdge(u, v, {force = false} = {}){
   hitLayer.on('click', (ev) => {
     if (window.isDrawingEdge) return;
     if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
+    _selectNetzEditEdge(edgeObj);
     showEdgePopup(edgeObj, ev.originalEvent);
     L.DomEvent.stopPropagation(ev);
   });
@@ -2927,6 +3037,7 @@ function _makeNetzEdge(uNode, vNode, dn){
   hitLayer.on('click', (ev) => {
     if (window.isDrawingEdge) return;
     if (netzPruningMode) { toggleEdgePruned(edgeObj); L.DomEvent.stopPropagation(ev); return; }
+    _selectNetzEditEdge(edgeObj);
     showEdgePopup(edgeObj, ev.originalEvent);
     L.DomEvent.stopPropagation(ev);
   });
@@ -3153,11 +3264,16 @@ export function setNetzVisible(visible) {
       if (visible && !e.temporallyHidden) { if (!map.hasLayer(l)) map.addLayer(l); }
       else { if (map.hasLayer(l)) map.removeLayer(l); }
     });
-    const editLayers = [e.midMarker, ...(e.waypointMarkers||[])].filter(Boolean);
-    editLayers.forEach(layer => {
-      if (visible && netzEditMode && !e.temporallyHidden) { if (!map.hasLayer(layer)) map.addLayer(layer); }
-      else if (map.hasLayer(layer)) map.removeLayer(layer);
-    });
+    const showEditLayer = layer => {
+      if (visible && netzEditMode && !e.temporallyHidden) {
+        if (!map.hasLayer(layer)) map.addLayer(layer);
+      } else if (map.hasLayer(layer)) map.removeLayer(layer);
+    };
+    if (e.midMarker) {
+      if (e.editSelected) showEditLayer(e.midMarker);
+      else if (map.hasLayer(e.midMarker)) map.removeLayer(e.midMarker);
+    }
+    (e.waypointMarkers || []).forEach(showEditLayer);
     if (!visible || !netzEditMode) {
       if (e.warnMarker && map.hasLayer(e.warnMarker)) map.removeLayer(e.warnMarker);
     }
@@ -3265,10 +3381,16 @@ export function setNetzEditMode(enabled) {
   netzEditMode = !!enabled;
   if (netzEditMode) setNetzVisible(true);
   window.netzEdges.forEach(edge => {
-    [edge.midMarker, ...(edge.waypointMarkers || [])].filter(Boolean).forEach(layer => {
+    if (!netzEditMode) edge.editSelected = false;
+    (edge.waypointMarkers || []).filter(Boolean).forEach(layer => {
       if (netzEditMode && netzVisible && !edge.temporallyHidden) { if (!map.hasLayer(layer)) map.addLayer(layer); }
       else if (map.hasLayer(layer)) map.removeLayer(layer);
     });
+    if (edge.midMarker) {
+      if (netzEditMode && edge.editSelected && netzVisible && !edge.temporallyHidden) {
+        if (!map.hasLayer(edge.midMarker)) map.addLayer(edge.midMarker);
+      } else if (map.hasLayer(edge.midMarker)) map.removeLayer(edge.midMarker);
+    }
   });
   const button = document.getElementById('btn-netz-edit-mode');
   if (button) {
@@ -3278,9 +3400,22 @@ export function setNetzEditMode(enabled) {
     else button.textContent = netzEditMode ? 'Bearbeitung beenden' : 'Leitungsverläufe bearbeiten';
   }
   recalcNetz();
-  if (netzEditMode) showHint('Bearbeitungsmodus: Leitungspunkt auf den gewünschten Straßenverlauf ziehen – der Abschnitt wird beim Loslassen neu geroutet. Doppelklick entfernt einen Knickpunkt.');
+  if (netzEditMode) showHint('Bearbeitungsmodus: Leitung anklicken und den blauen Punkt auf den gewünschten Straßenverlauf ziehen. Nur rote Punkte sind feste Vorgaben; Doppelklick entfernt sie.');
   else hideHint();
   return netzEditMode;
+}
+
+function _selectNetzEditEdge(selectedEdge) {
+  if (!netzEditMode) return;
+  window.netzEdges.forEach(edge => {
+    edge.editSelected = edge === selectedEdge;
+    if (!edge.midMarker) return;
+    if (edge.editSelected && netzVisible && !edge.temporallyHidden) {
+      if (!map.hasLayer(edge.midMarker)) map.addLayer(edge.midMarker);
+    } else if (map.hasLayer(edge.midMarker)) {
+      map.removeLayer(edge.midMarker);
+    }
+  });
 }
 
 export function toggleNetzEditMode() {
@@ -4201,9 +4336,15 @@ export function recalcNetz(){
       [e.layer,e.hitLayer,...(e.segLayers || [])].filter(Boolean).forEach(layer => {
         if (!map.hasLayer(layer)) map.addLayer(layer);
       });
-      if (netzEditMode) [e.midMarker,...(e.waypointMarkers || [])].filter(Boolean).forEach(layer => {
+      if (netzEditMode) [
+        ...(e.editSelected ? [e.midMarker] : []),
+        ...(e.waypointMarkers || []),
+      ].filter(Boolean).forEach(layer => {
         if (!map.hasLayer(layer)) map.addLayer(layer);
       });
+      if ((!netzEditMode || !e.editSelected) && e.midMarker && map.hasLayer(e.midMarker)) {
+        map.removeLayer(e.midMarker);
+      }
     }
   });
 

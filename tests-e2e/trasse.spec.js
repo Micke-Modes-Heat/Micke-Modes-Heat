@@ -194,7 +194,7 @@ test('dist: aus einer Wärme-Haupttrasse wird ein verbundenes Wärmenetz erzeugt
   expect(result.clickInfo.details).toContain('Leitung');
   expect(result.clickInfo.details).toContain('Leitungsauslastung');
   expect(result.clickInfo.details).toContain('maßgebenden Jahr');
-  expect(result.editHandles).toBeGreaterThan(0);
+  expect(result.editHandles).toBe(0);
   expect(result.buildingIds).toEqual([101, 102]);
   expect(pageErrors).toHaveLength(0);
 });
@@ -312,6 +312,41 @@ test('dist: OSM-Routinggrundlage erzeugt keine tausenden Bearbeitungsgriffe', as
   expect(result.editingHandles).toBe(3);
   expect(result.polylines).toBe(2);
   expect(result.durationMs).toBeLessThan(1000);
+});
+
+test('dist: Netzbearbeitung zeigt nur am angeklickten Abschnitt einen neuen Ziehpunkt', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.setNetzEditMode === 'function');
+
+  const result = await page.evaluate(() => {
+    clearNetz();
+    setGebaeude([]);
+    const add = (id,lng) => {
+      const building = addGebaeude({id,name:`Haus ${id}`,baujahr:2000,skipAutoCreate:true,coords:[
+        L.latLng(52,lng),L.latLng(52,lng+.0001),
+        L.latLng(52.0001,lng+.0001),L.latLng(52.0001,lng),
+      ]});
+      building.heizlast = '100';
+      building.waerme = '200';
+    };
+    add(181,9); add(182,9.001); add(183,9.002);
+    addNetzEdge(181,182);
+    addNetzEdge(182,183);
+    setNetzEditMode(true);
+    const before = window.netzEdges.filter(edge => map.hasLayer(edge.midMarker)).length;
+    window.netzEdges[1].hitLayer.fire('click',{originalEvent:{clientX:200,clientY:200}});
+    const selected = window.netzEdges.filter(edge => map.hasLayer(edge.midMarker));
+    return {
+      before,
+      after:selected.length,
+      selectedEdge:selected[0] === window.netzEdges[1],
+    };
+  });
+
+  expect(result.before).toBe(0);
+  expect(result.after).toBe(1);
+  expect(result.selectedEdge).toBe(true);
 });
 
 test('dist: gezogener Leitungspunkt routet über die gewählte Straßenseite', async ({page}) => {
@@ -816,15 +851,18 @@ test('dist: unverbundenes Gebäude lässt sich an ein bestehendes Bestandsnetz a
     const connected=rewireBuildingConnection(703,target,targetPoint);
     const connection=window.netzEdges.find(edge=>edge.u===703||edge.v===703);
     setNetzEditMode(true);
-    const editable=Boolean(connection?.midMarker && map.hasLayer(connection.midMarker));
+    const hiddenUntilSelected=Boolean(connection?.midMarker && !map.hasLayer(connection.midMarker));
+    connection.hitLayer.fire('click',{originalEvent:{clientX:200,clientY:200}});
+    const editableAfterSelection=Boolean(connection?.midMarker && map.hasLayer(connection.midMarker));
     setNetzEditMode(false);
-    return {before,connected,editable,handles,edgeCount:window.netzEdges.length};
+    return {before,connected,hiddenUntilSelected,editableAfterSelection,handles,edgeCount:window.netzEdges.length};
   });
 
   expect(result).toEqual({
     before:false,
     connected:true,
-    editable:true,
+    hiddenUntilSelected:true,
+    editableAfterSelection:true,
     handles:2,
     edgeCount:3,
   });

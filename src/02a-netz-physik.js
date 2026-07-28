@@ -527,7 +527,7 @@ export function addEdgeMidHandle(edgeObj) {
   const icon = L.divIcon({className:'netz-mid-handle', html:'', iconSize:[8,8], iconAnchor:[4,4]});
   const midPt = getEdgeMidDisplayPt(edgeObj);
   edgeObj.midMarker = L.marker(midPt, {draggable: true, icon, zIndexOffset: 1500});
-  if (netzVisible && netzEditMode) edgeObj.midMarker.addTo(map);
+  if (netzVisible && netzEditMode && edgeObj.editSelected) edgeObj.midMarker.addTo(map);
   edgeObj.waypoints = getEdgeWaypoints(edgeObj);
   _persistEdgeWaypoints(edgeObj);
   _setEdgePath(edgeObj);
