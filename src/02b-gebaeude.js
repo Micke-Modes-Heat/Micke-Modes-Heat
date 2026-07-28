@@ -89,7 +89,8 @@ export function setGlobalYear(val) {
   setGlobalYearValue(val);
   document.getElementById('year-display').textContent = window.globalYear;
   // Lastgang für das Betrachtungsjahr skalieren (Abriss/Neubau/Sanierung)
-  if (window._basisLastgangKw) _rescaleLastgangForYear(window.globalYear);
+  if (window._buildingHeatProfileMode) window.glBerechnenDebounced?.(0);
+  else if (window._basisLastgangKw) _rescaleLastgangForYear(window.globalYear);
   updateViz();
   updateTotals();
   recalcNetz();

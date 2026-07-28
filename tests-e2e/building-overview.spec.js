@@ -39,6 +39,15 @@ test('dist: Gebäudeübersicht bearbeitet, sortiert und sammelt Gebäudedaten',a
 
   expect(initial).toEqual({visible:'block',rows:3,analyses:3,kpis:5});
 
+  await page.evaluate(()=>glBerechnenDebounced(0));
+  await page.waitForFunction(()=>window._buildingHeatProfileMode &&
+    window._buildingHeatProfiles?.size===3);
+  await page.locator('.geb-profile-btn').first().click();
+  await expect(page.locator('#geb-profile-dialog')).toBeVisible();
+  await expect(page.locator('#geb-profile-title')).toContainText('Büro Mitte');
+  await expect(page.locator('#geb-profile-kpis')).toContainText('Profilspitze kW');
+  await page.evaluate(()=>closeGebaeudeHeatProfile());
+
   await page.evaluate(()=>{
     sortGebaeudeTable('baujahr');
     setGebaeudeTableFilter('Büro');

@@ -10340,6 +10340,8 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .geb-overview-tools{display:flex;align-items:center;gap:10px;margin-bottom:8px}.geb-overview-tools input{flex:1;max-width:440px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font:10px inherit}.geb-overview-tools span{color:var(--muted);font-size:9px}
 .geb-table-bulk{display:none;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;padding:8px 10px;border:1px solid rgba(79,195,247,.4);border-radius:7px;background:rgba(41,182,246,.05)}.geb-table-bulk.visible{display:flex}.geb-table-bulk strong{margin-right:4px;color:#81d4fa;font-size:10px}.geb-table-bulk select,.geb-table-bulk input{max-width:150px;padding:6px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:9px inherit}.geb-table-bulk button{padding:6px 9px}
 .geb-overview-table-wrap{min-width:950px;border:1px solid var(--border);border-radius:8px;overflow:auto;background:var(--surface)}.geb-overview-table{width:100%;border-collapse:collapse;font-size:9px}.geb-overview-table th{position:sticky;top:0;z-index:2;padding:8px 6px;background:#20242c;color:#90a4ae;text-align:left;white-space:nowrap;border-bottom:1px solid var(--border);cursor:pointer}.geb-overview-table th.no-sort{cursor:default}.geb-overview-table td{padding:4px 5px;border-bottom:1px solid rgba(255,255,255,.045);white-space:nowrap}.geb-overview-table tr:hover td{background:rgba(79,195,247,.035)}.geb-overview-table tr.selected td{background:rgba(41,182,246,.08)}.geb-overview-table input,.geb-overview-table select{width:100%;min-width:62px;box-sizing:border-box;padding:5px 6px;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--text);font:9px inherit}.geb-overview-table input:hover,.geb-overview-table input:focus,.geb-overview-table select:hover,.geb-overview-table select:focus{border-color:var(--border);background:var(--bg);outline:none}.geb-overview-table .geb-table-name{min-width:150px}.geb-overview-table .geb-table-num{text-align:right;font-family:'DM Mono',monospace}.geb-overview-table .geb-table-readonly{color:var(--muted)}
+.geb-profile-btn{padding:4px 7px;border:1px solid rgba(79,195,247,.35);border-radius:5px;background:rgba(79,195,247,.06);color:#81d4fa;font:8px inherit;white-space:nowrap;cursor:pointer}.geb-profile-btn:hover{background:rgba(79,195,247,.14)}
+.geb-profile-dialog{width:min(900px,calc(100vw - 80px));padding:16px 18px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);box-shadow:0 18px 70px rgba(0,0,0,.55)}.geb-profile-dialog::backdrop{background:rgba(4,7,12,.7)}.geb-profile-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.geb-profile-dialog-head h3{margin:0;color:var(--accent);font-size:14px}.geb-profile-dialog-head p{margin:4px 0 0;color:var(--muted);font-size:9px}.geb-profile-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:14px 0 10px}.geb-profile-kpis div{padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg)}.geb-profile-kpis strong{display:block;color:#e0f2f1;font:13px 'DM Mono',monospace}.geb-profile-kpis span{display:block;margin-top:2px;color:var(--muted);font-size:8px}.geb-profile-dialog canvas{display:block;width:100%;height:280px;border-radius:7px;background:var(--bg)}.geb-profile-note{margin:8px 0 0;color:var(--muted);font-size:8px;line-height:1.5}
 @media(max-width:1100px){.geb-overview-kpis{grid-template-columns:repeat(3,1fr)}}
 #center-optimierung-view{position:absolute;top:0;left:0;right:0;bottom:0;z-index:600;background:var(--bg);overflow-y:auto;padding:20px 24px;display:none;}
 #center-optimierung-view .opt-setup{display:grid;grid-template-columns:1fr auto auto;gap:16px;align-items:start;margin-bottom:16px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;}
@@ -11783,6 +11785,18 @@ if (typeof L !== 'undefined') {
         <tbody id="geb-table-body"></tbody>
       </table>
     </div>
+    <dialog id="geb-profile-dialog" class="geb-profile-dialog">
+      <div class="geb-profile-dialog-head">
+        <div>
+          <h3 id="geb-profile-title">Gebäudelastgang</h3>
+          <p id="geb-profile-subtitle"></p>
+        </div>
+        <button class="btn-secondary" data-click="closeGebaeudeHeatProfile()">Schließen</button>
+      </div>
+      <div id="geb-profile-kpis" class="geb-profile-kpis"></div>
+      <canvas id="geb-profile-canvas" height="280"></canvas>
+      <p class="geb-profile-note">Synthetischer Nutzwärmelastgang vor Netzverlusten. SigLinDe verteilt die Wärmemenge wetterabhängig auf die Tage; das Nutzungsprofil verteilt sie auf Stunden und Wochentage.</p>
+    </dialog>
   </div>
 
   <!-- ══ Center: Analyse-View ═══════════════════════════════════════ -->
@@ -12784,6 +12798,7 @@ if (typeof L !== 'undefined') {
   <!-- 4. Lastprofil SigLinDe -->
   <div class="gl-section" id="gl-slp-section">
     <div class="gl-section-title">Synthetisches Lastprofil (SigLinDe)</div>
+    <div style="font-size:9px;color:var(--muted);line-height:1.45;margin-bottom:7px;">Fallback für Projekte ohne auswertbare Gebäudedaten. Sind Wärmebedarfe je Gebäude vorhanden, werden automatisch gebäudespezifische SigLinDe- und Nutzungsprofile summiert.</div>
     <div class="gl-grid2" style="margin-bottom:6px;">
       <div class="inp-group">
         <label class="inp-label">Profil 1</label>
@@ -14760,7 +14775,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-28';
   if (d.indexOf('__') === 0) d = '';
-  var c = '4f6b932';
+  var c = '858e24d';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -89490,6 +89505,156 @@ window._isSingleFileBuild = true;
     toggleWirtschaftPanel: toggleWirtschaftPanel
   });
 
+  const H = 8760;
+  const THETA_0=40;
+  const SIGLINDE={
+    HEF34:{A:1.3819663,B:-37.4124155,C:6.1723179,D:0.0396284,mh:-0.0672159,bh:1.1167138,mw:-19982e-7,bw:0.135507},
+    HMF34:{A:1.0443538,B:-35.0333754,C:6.2240634,D:0.0502917,mh:-0.053583,bh:0.9995901,mw:-21758e-7,bw:0.1633299},
+    GMK34:{A:1.3284913,B:-35.8715062,C:7.5186829,D:0.017554,mh:-0.0758983,bh:1.1942555,mw:-898e-6,bw:0.0603337},
+    GKO34:{A:1.4256684,B:-36.6590504,C:7.6083226,D:0.0371116,mh:-0.0809359,bh:1.2364527,mw:-7628e-7,bw:0.1002979},
+    GBD34:{A:1.5175792,B:-37.5,C:6.8,D:0.0295801,mh:-0.0788559,bh:1.216125,mw:-13134e-7,bw:0.0968721},
+    GHD34:{A:1.25696,B:-36.6078453,C:7.321187,D:0.077696,mh:-0.0696826,bh:1.1379702,mw:-8522e-7,bw:0.1921068},
+  };
+
+  function sigH(theta,p) {
+    const diff=theta-THETA_0;
+    const denominator=Math.abs(diff)<1e-10 ? (diff<0 ? -1e-10 : 1e-10) : diff;
+    return p.A/(1+Math.pow(p.B/denominator,p.C))+p.D+
+      Math.max(p.mh*theta+p.bh,p.mw*theta+p.bw);
+  }
+
+  // SigLinDe liefert die temperaturabhängige Tagesmenge. Diese Archetypen
+  // ergänzen ausschließlich die Verteilung innerhalb von Tag und Woche.
+  const ARCHETYPES = {
+    efh: {
+      label:'Einfamilienhaus',sig:'HEF34',baseShare:0.18,weekend:1,
+      weekday:[.48,.42,.40,.42,.55,.82,1.18,1.30,1.05,.82,.70,.64,.62,.62,.66,.74,.92,1.18,1.32,1.30,1.14,.92,.70,.56],
+    },
+    mfh: {
+      label:'Mehrfamilienhaus',sig:'HMF34',baseShare:0.22,weekend:1.04,
+      weekday:[.58,.53,.50,.52,.62,.84,1.12,1.25,1.08,.88,.76,.70,.68,.68,.72,.80,.96,1.14,1.26,1.25,1.12,.94,.76,.64],
+    },
+    buero: {
+      label:'Büro und Verwaltung',sig:'GBD34',baseShare:0.04,weekend:0.25,
+      weekday:[.25,.24,.23,.24,.30,.58,1.18,1.48,1.36,1.20,1.10,1.05,1.02,1.02,1.06,1.12,1.04,.80,.55,.40,.33,.29,.27,.25],
+    },
+    schule: {
+      label:'Schule und Kita',sig:'GKO34',baseShare:0.06,weekend:0.16,
+      weekday:[.20,.19,.18,.20,.28,.72,1.42,1.58,1.34,1.20,1.12,1.05,1.00,.94,.82,.62,.45,.34,.28,.25,.23,.22,.21,.20],
+    },
+    industrie: {
+      label:'Industrie und Produktion',sig:'GMK34',baseShare:0.18,weekend:0.55,
+      weekday:[.48,.46,.45,.47,.60,.92,1.12,1.18,1.18,1.17,1.16,1.15,1.14,1.14,1.14,1.12,1.05,.92,.75,.62,.56,.52,.50,.48],
+    },
+    oeffentlich: {
+      label:'Öffentliches Gebäude',sig:'GKO34',baseShare:0.08,weekend:0.35,
+      weekday:[.28,.27,.26,.27,.34,.64,1.18,1.38,1.30,1.20,1.14,1.10,1.08,1.08,1.10,1.08,.96,.76,.58,.46,.39,.34,.31,.29],
+    },
+    ghd: {
+      label:'Gewerbe, Handel und Dienstleistung',sig:'GHD34',baseShare:0.10,weekend:0.48,
+      weekday:[.34,.32,.31,.32,.39,.66,1.08,1.28,1.26,1.20,1.16,1.13,1.10,1.10,1.11,1.10,1.00,.84,.68,.55,.46,.40,.37,.35],
+    },
+  };
+
+  const FALLBACK = ARCHETYPES.ghd;
+
+  function archetypeFor(building) {
+    return ARCHETYPES[building?.heatProfileType || building?.nutzung] || FALLBACK;
+  }
+
+  function normalizeInto(out,raw,totalKwh,share) {
+    let sum=0;
+    for (let i=0;i<raw.length;i++) sum+=raw[i];
+    if (!(sum>0) || !(totalKwh>0) || !(share>0)) return;
+    const factor=totalKwh*share/sum;
+    for (let i=0;i<raw.length;i++) out[i]+=raw[i]*factor;
+  }
+
+  function constrainPeak(profile,maximumKw) {
+    if (!(maximumKw>0)) return;
+    const energy=profile.reduce((sum,value)=>sum+value,0);
+    if (energy>maximumKw*profile.length+1e-3) return;
+    for (let pass=0;pass<4;pass++) {
+      let excess=0,capacity=0;
+      for (let i=0;i<profile.length;i++) {
+        if (profile[i]>maximumKw) excess+=profile[i]-maximumKw;
+        else capacity+=maximumKw-profile[i];
+      }
+      if (excess<1e-4 || capacity<=0) break;
+      for (let i=0;i<profile.length;i++) {
+        if (profile[i]>maximumKw) profile[i]=maximumKw;
+        else profile[i]+=excess*(maximumKw-profile[i])/capacity;
+      }
+    }
+  }
+
+  function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year=2026) {
+    const archetype=archetypeFor(building);
+    const weatherRaw=new Float64Array(H);
+    const baseRaw=new Float64Array(H);
+    const days=Math.min(365,Math.floor((tempH?.length || 0)/24));
+    const firstDay=new Date(Date.UTC(Number(year)||2026,0,1)).getUTCDay();
+    const params=SIGLINDE[archetype.sig] || SIGLINDE.GHD34;
+    for (let day=0;day<days;day++) {
+      let mean=0;
+      for (let hour=0;hour<24;hour++) mean+=Number(tempH[day*24+hour])||0;
+      mean/=24;
+      const weekDay=(firstDay+day)%7;
+      const weekend=weekDay===0 || weekDay===6;
+      const dayFactor=weekend ? archetype.weekend : 1;
+      const weather=Math.max(0,sigH(mean,params))*dayFactor;
+      let scheduleSum=0;
+      for (const value of archetype.weekday) scheduleSum+=value;
+      for (let hour=0;hour<24;hour++) {
+        const index=day*24+hour;
+        const schedule=archetype.weekday[hour]/scheduleSum;
+        weatherRaw[index]=weather*schedule;
+        // Grundlast bleibt weniger wetterabhängig, folgt aber den Nutzungszeiten.
+        baseRaw[index]=(0.45+0.55*schedule*24)*(weekend ? Math.max(.45,archetype.weekend) : 1);
+      }
+    }
+    const result=new Float32Array(H);
+    const totalKwh=Math.max(0,Number(annualMwh)||0)*1000;
+    normalizeInto(result,weatherRaw,totalKwh,1-archetype.baseShare);
+    normalizeInto(result,baseRaw,totalKwh,archetype.baseShare);
+    constrainPeak(result,Number(maximumKw)||0);
+    return {
+      values:result,
+      meta:{
+        type:Object.entries(ARCHETYPES).find(([,value])=>value===archetype)?.[0] || 'ghd',
+        label:archetype.label,
+        sigLinDe:archetype.sig,
+        baseShare:archetype.baseShare,
+        annualMwh:result.reduce((sum,value)=>sum+value,0)/1000,
+        peakKw:Math.max(...result),
+      },
+    };
+  }
+
+  function buildBuildingHeatProfiles(buildings,tempH,year,getStats,isExcluded=()=>false) {
+    const aggregate=new Float32Array(H);
+    const profiles=new Map();
+    for (const building of buildings || []) {
+      if (isExcluded(building.id)) continue;
+      const stats=getStats(building,year);
+      if (!stats || stats.status==='geplant' || stats.status==='abgerissen' || !(stats.waerme>0)) continue;
+      const profile=buildBuildingHeatProfile(building,tempH,stats.waerme,stats.heizlast,year);
+      profiles.set(building.id,profile);
+      for (let i=0;i<H;i++) aggregate[i]+=profile.values[i];
+    }
+    return {aggregate,profiles};
+  }
+
+  function getBuildingHeatProfileMeta(building) {
+    const archetype=archetypeFor(building);
+    return {
+      type:Object.entries(ARCHETYPES).find(([,value])=>value===archetype)?.[0] || 'ghd',
+      label:archetype.label,
+      sigLinDe:archetype.sig,
+      baseShare:archetype.baseShare,
+    };
+  }
+
   // ── 06b-gl-berechnen.js — Hauptberechnung, Synthese, Skalierung, Solarthermie ──
   // ── Auto-Trigger ──────────────────────────────────────────────────────────
 
@@ -89555,6 +89720,8 @@ window._isSingleFileBuild = true;
       let gesamtMwh;
       let nurGebaeude = false; // Flag: Lastgang stammt nur aus Gebäudedaten (ohne explizite Verbrauchsangabe)
       let synState = null;     // CalcEngine-Ergebnis der Synthese (Fälle 3–5) — für tempState wiederverwendet
+      window._buildingHeatProfiles=new Map();
+      window._buildingHeatProfileMode=false;
 
       if (glLastgangKw && !hatMonat) {
         // Fall 1: Direkt (Lastgang hochgeladen → Verluste bereits enthalten)
@@ -89589,7 +89756,9 @@ window._isSingleFileBuild = true;
           gesamtMwh = gesamt || monatSum; // Fall 4 oder 5
         }
 
-        // CalcEngine für Lastgang-Synthese aufrufen (ohne Erzeuger)
+        // Temperatur- und Systemzustand vorbereiten. Bei vorhandenen
+        // Gebäudedaten wird der Wärmelastgang anschließend von unten nach oben
+        // aus den einzelnen Nutzungsprofilen aufgebaut.
         synState = await CalcEngine.run({
           stadt, normAussentemp: normAt,
           tempH: tempHDwd,   // DWD-Profil (ggf. TRY-Kassel-Fallback)
@@ -89602,12 +89771,44 @@ window._isSingleFileBuild = true;
           twwNetzAnteil: 0, twwAnteilVonTwwNetz: 0,
         });
 
-        lastgangKw = new Float32Array(8760);
-        for (let i = 0; i < 8760; i++) lastgangKw[i] = (synState.lastgangMwhH[i] || 0) * 1000;
+        const buildingResult=buildBuildingHeatProfiles(
+          gebaeude,synState.tempH,globalYear,getComputedStats,isExcluded);
+        const buildingMwh=buildingResult.aggregate.reduce((sum,value)=>sum+value,0)/1000;
+        if (buildingMwh>0) {
+          lastgangKw=buildingResult.aggregate;
+          const calibrationFactor=gesamtMwh>0 ? gesamtMwh/buildingMwh : 1;
+          if (Math.abs(calibrationFactor-1)>1e-9) {
+            for (let i=0;i<lastgangKw.length;i++) lastgangKw[i]*=calibrationFactor;
+            buildingResult.profiles.forEach(profile=>{
+              for (let i=0;i<profile.values.length;i++) profile.values[i]*=calibrationFactor;
+              profile.meta.annualMwh*=calibrationFactor;
+              profile.meta.peakKw*=calibrationFactor;
+              profile.meta.calibrationFactor=calibrationFactor;
+            });
+          }
+          window._buildingHeatProfiles=buildingResult.profiles;
+          window._buildingHeatProfileMode=true;
+        } else {
+          lastgangKw=new Float32Array(8760);
+          for (let i=0;i<8760;i++) lastgangKw[i]=(synState.lastgangMwhH[i]||0)*1000;
+          window._buildingHeatProfiles=new Map();
+          window._buildingHeatProfileMode=false;
+        }
 
         // Fälle 3+4: Monatswerte als Floor anwenden
         if (hatMonat) {
-          lastgangKw = glAnwendeMonatsfloor(lastgangKw, monatswerte, gesamtMwh);
+          const beforeMonthly=lastgangKw;
+          lastgangKw=glAnwendeMonatsfloor(beforeMonthly,monatswerte,gesamtMwh);
+          if (window._buildingHeatProfileMode) {
+            window._buildingHeatProfiles.forEach(profile=>{
+              for (let i=0;i<profile.values.length;i++) {
+                const ratio=beforeMonthly[i]>0 ? lastgangKw[i]/beforeMonthly[i] : 1;
+                profile.values[i]*=ratio;
+              }
+              profile.meta.annualMwh=profile.values.reduce((sum,value)=>sum+value,0)/1000;
+              profile.meta.peakKw=Math.max(...profile.values);
+            });
+          }
         }
       }
 
@@ -102770,6 +102971,7 @@ ${massTbl}
       }
     }
     updateViz(); updateTotals();
+    window.glBerechnenDebounced?.(500);
   }
 
   // ── Gebäude-Auswahl & Massenbearbeitung ──────────────────────────────
@@ -102932,6 +103134,87 @@ ${massTbl}
     renderGebaeudeOverview();
   }
 
+  function _drawGebaeudeHeatProfile(values) {
+    const canvas=document.getElementById('geb-profile-canvas');
+    if (!canvas || !values?.length) return;
+    const ratio=Math.max(1,window.devicePixelRatio||1);
+    const width=Math.max(600,canvas.clientWidth||860);
+    const height=280;
+    canvas.width=Math.round(width*ratio);
+    canvas.height=Math.round(height*ratio);
+    const ctx=canvas.getContext('2d');
+    ctx.scale(ratio,ratio);
+    const pad={left:48,right:14,top:16,bottom:30};
+    const plotW=width-pad.left-pad.right,plotH=height-pad.top-pad.bottom;
+    const daily=Array.from({length:365},(_,day)=>{
+      let maximum=0;
+      for (let hour=0;hour<24;hour++) maximum=Math.max(maximum,values[day*24+hour]||0);
+      return maximum;
+    });
+    const maximum=Math.max(1,...daily);
+    ctx.strokeStyle='rgba(255,255,255,.08)';
+    ctx.fillStyle='#78909c';
+    ctx.font='9px DM Mono, monospace';
+    for (let line=0;line<=4;line++) {
+      const y=pad.top+plotH*line/4;
+      ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(width-pad.right,y);ctx.stroke();
+      ctx.fillText(`${Math.round(maximum*(1-line/4))} kW`,3,y+3);
+    }
+    const months=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    const starts=[0,31,59,90,120,151,181,212,243,273,304,334];
+    months.forEach((month,index)=>{
+      const x=pad.left+starts[index]/364*plotW;
+      ctx.fillText(month,x,height-10);
+    });
+    const gradient=ctx.createLinearGradient(0,pad.top,0,pad.top+plotH);
+    gradient.addColorStop(0,'#29b6f6');
+    gradient.addColorStop(1,'#66bb6a');
+    ctx.strokeStyle=gradient;
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    daily.forEach((value,index)=>{
+      const x=pad.left+index/(daily.length-1)*plotW;
+      const y=pad.top+plotH*(1-value/maximum);
+      if (index===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  }
+
+  function showGebaeudeHeatProfile(id) {
+    const building=gebaeude.find(item=>item.id===id);
+    const dialog=document.getElementById('geb-profile-dialog');
+    if (!building || !dialog) return;
+    const profile=window._buildingHeatProfiles?.get?.(id);
+    const defaultMeta=getBuildingHeatProfileMeta(building);
+    document.getElementById('geb-profile-title').textContent=`Lastgang · ${building.name || `Gebäude ${id}`}`;
+    document.getElementById('geb-profile-subtitle').textContent=
+      `${defaultMeta.label} · SigLinDe ${defaultMeta.sigLinDe} · Betrachtungsjahr ${globalYear}`;
+    const kpis=document.getElementById('geb-profile-kpis');
+    const canvas=document.getElementById('geb-profile-canvas');
+    if (!profile) {
+      kpis.innerHTML='<div style="grid-column:1/-1"><strong>Noch nicht berechnet</strong><span>Bitte Wärme-Grundlagen einmal berechnen. Hochgeladene Gesamtlastgänge enthalten keine aufteilbaren Gebäudekurven.</span></div>';
+      canvas.style.display='none';
+    } else {
+      const fullLoadHours=profile.meta.peakKw>0 ? profile.meta.annualMwh*1000/profile.meta.peakKw : 0;
+      kpis.innerHTML=[
+        [profile.meta.annualMwh.toLocaleString('de-DE',{maximumFractionDigits:1}),'Wärme MWh/a'],
+        [profile.meta.peakKw.toLocaleString('de-DE',{maximumFractionDigits:1}),'Profilspitze kW'],
+        [Math.round(fullLoadHours).toLocaleString('de-DE'),'Vollbenutzungsstunden'],
+        [`${Math.round(profile.meta.baseShare*100)} %`,'Grundlastanteil'],
+      ].map(([value,label])=>`<div><strong>${value}</strong><span>${label}</span></div>`).join('');
+      canvas.style.display='';
+      requestAnimationFrame(()=>_drawGebaeudeHeatProfile(profile.values));
+    }
+    if (typeof dialog.showModal==='function') dialog.showModal();
+    else dialog.setAttribute('open','');
+  }
+
+  function closeGebaeudeHeatProfile() {
+    const dialog=document.getElementById('geb-profile-dialog');
+    if (dialog?.open && typeof dialog.close==='function') dialog.close();
+    else dialog?.removeAttribute('open');
+  }
+
   function _renderGebOverviewAnalysis() {
     const active = gebaeude.map(g => ({g,stats:getComputedStats(g,globalYear)}))
       .filter(item => item.stats.status !== 'abgerissen' && item.stats.status !== 'geplant');
@@ -103002,6 +103285,7 @@ ${massTbl}
     <th data-click="sortGebaeudeTable('waerme')">${sortLabel('waerme','Wärme MWh/a')}</th>
     <th data-click="sortGebaeudeTable('spez')">${sortLabel('spez','kWh/m²a')}</th>
     <th data-click="sortGebaeudeTable('heizlast')">${sortLabel('heizlast','Heizlast kW')}</th>
+    <th class="no-sort">Lastprofil</th>
     <th data-click="sortGebaeudeTable('quelle')">${sortLabel('quelle','Quelle')}</th>
   </tr>`;
     const usageTypes = getNutzungstypen();
@@ -103023,6 +103307,7 @@ ${massTbl}
       <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.waerme ?? ''}" data-change="updateGebaeudeTableField(${g.id},'waerme',this.value)"></td>
       <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.spez ?? ''}" data-change="updateGebaeudeTableField(${g.id},'spez',this.value)"></td>
       <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.heizlast ?? ''}" data-change="updateGebaeudeTableField(${g.id},'heizlast',this.value)"></td>
+      <td><button class="geb-profile-btn" data-click="showGebaeudeHeatProfile(${g.id})">${_gebTableEsc(getBuildingHeatProfileMeta(g).label)}</button></td>
       <td class="geb-table-readonly" title="${_gebTableEsc(g.importSourceName || '')}">${_gebTableEsc(g.importSourceName || '—')}</td>
     </tr>`;
     }).join('');
@@ -104249,6 +104534,7 @@ ${massTbl}
     clearAllPruning: clearAllPruning,
     clearSelection: clearSelection,
     closeEdgePopup: closeEdgePopup,
+    closeGebaeudeHeatProfile: closeGebaeudeHeatProfile,
     get currentViewMode () { return currentViewMode; },
     filterList: filterList,
     get filterText () { return filterText; },
@@ -104272,6 +104558,7 @@ ${massTbl}
     setViewMode: setViewMode,
     setWaermeTab: setWaermeTab,
     showEdgePopup: showEdgePopup,
+    showGebaeudeHeatProfile: showGebaeudeHeatProfile,
     sortGebaeudeTable: sortGebaeudeTable,
     startDrag: startDrag,
     toggleAllGebaeudeTable: toggleAllGebaeudeTable,
@@ -117172,7 +117459,8 @@ out body;>;out skel qt;`;
     setGlobalYearValue(val);
     document.getElementById('year-display').textContent = window.globalYear;
     // Lastgang für das Betrachtungsjahr skalieren (Abriss/Neubau/Sanierung)
-    if (window._basisLastgangKw) _rescaleLastgangForYear(window.globalYear);
+    if (window._buildingHeatProfileMode) window.glBerechnenDebounced?.(0);
+    else if (window._basisLastgangKw) _rescaleLastgangForYear(window.globalYear);
     updateViz();
     updateTotals();
     recalcNetz();

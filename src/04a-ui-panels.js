@@ -33,6 +33,7 @@ import { netzPruningMode, setNetzPruningMode } from './01-globals-varianten.js';
 import { loadLatestAutosave, saveAutosaveProject } from './lib/autosave-store.js';
 import { appLifecycle } from './lib/lifecycle.js';
 import { beginInteraction, cancelInteraction } from './lib/interaction-state.js';
+import { getBuildingHeatProfileMeta } from './lib/building-heat-profiles.js';
 
 export function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
@@ -64,6 +65,7 @@ export function setNutzung(id, nutzung) {
     }
   }
   updateViz(); updateTotals();
+  window.glBerechnenDebounced?.(500);
 }
 
 // ── Gebäude-Auswahl & Massenbearbeitung ──────────────────────────────
@@ -228,6 +230,87 @@ export function applyGebaeudeTableBulk() {
   renderGebaeudeOverview();
 }
 
+function _drawGebaeudeHeatProfile(values) {
+  const canvas=document.getElementById('geb-profile-canvas');
+  if (!canvas || !values?.length) return;
+  const ratio=Math.max(1,window.devicePixelRatio||1);
+  const width=Math.max(600,canvas.clientWidth||860);
+  const height=280;
+  canvas.width=Math.round(width*ratio);
+  canvas.height=Math.round(height*ratio);
+  const ctx=canvas.getContext('2d');
+  ctx.scale(ratio,ratio);
+  const pad={left:48,right:14,top:16,bottom:30};
+  const plotW=width-pad.left-pad.right,plotH=height-pad.top-pad.bottom;
+  const daily=Array.from({length:365},(_,day)=>{
+    let maximum=0;
+    for (let hour=0;hour<24;hour++) maximum=Math.max(maximum,values[day*24+hour]||0);
+    return maximum;
+  });
+  const maximum=Math.max(1,...daily);
+  ctx.strokeStyle='rgba(255,255,255,.08)';
+  ctx.fillStyle='#78909c';
+  ctx.font='9px DM Mono, monospace';
+  for (let line=0;line<=4;line++) {
+    const y=pad.top+plotH*line/4;
+    ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(width-pad.right,y);ctx.stroke();
+    ctx.fillText(`${Math.round(maximum*(1-line/4))} kW`,3,y+3);
+  }
+  const months=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const starts=[0,31,59,90,120,151,181,212,243,273,304,334];
+  months.forEach((month,index)=>{
+    const x=pad.left+starts[index]/364*plotW;
+    ctx.fillText(month,x,height-10);
+  });
+  const gradient=ctx.createLinearGradient(0,pad.top,0,pad.top+plotH);
+  gradient.addColorStop(0,'#29b6f6');
+  gradient.addColorStop(1,'#66bb6a');
+  ctx.strokeStyle=gradient;
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  daily.forEach((value,index)=>{
+    const x=pad.left+index/(daily.length-1)*plotW;
+    const y=pad.top+plotH*(1-value/maximum);
+    if (index===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}
+
+export function showGebaeudeHeatProfile(id) {
+  const building=gebaeude.find(item=>item.id===id);
+  const dialog=document.getElementById('geb-profile-dialog');
+  if (!building || !dialog) return;
+  const profile=window._buildingHeatProfiles?.get?.(id);
+  const defaultMeta=getBuildingHeatProfileMeta(building);
+  document.getElementById('geb-profile-title').textContent=`Lastgang · ${building.name || `Gebäude ${id}`}`;
+  document.getElementById('geb-profile-subtitle').textContent=
+    `${defaultMeta.label} · SigLinDe ${defaultMeta.sigLinDe} · Betrachtungsjahr ${globalYear}`;
+  const kpis=document.getElementById('geb-profile-kpis');
+  const canvas=document.getElementById('geb-profile-canvas');
+  if (!profile) {
+    kpis.innerHTML='<div style="grid-column:1/-1"><strong>Noch nicht berechnet</strong><span>Bitte Wärme-Grundlagen einmal berechnen. Hochgeladene Gesamtlastgänge enthalten keine aufteilbaren Gebäudekurven.</span></div>';
+    canvas.style.display='none';
+  } else {
+    const fullLoadHours=profile.meta.peakKw>0 ? profile.meta.annualMwh*1000/profile.meta.peakKw : 0;
+    kpis.innerHTML=[
+      [profile.meta.annualMwh.toLocaleString('de-DE',{maximumFractionDigits:1}),'Wärme MWh/a'],
+      [profile.meta.peakKw.toLocaleString('de-DE',{maximumFractionDigits:1}),'Profilspitze kW'],
+      [Math.round(fullLoadHours).toLocaleString('de-DE'),'Vollbenutzungsstunden'],
+      [`${Math.round(profile.meta.baseShare*100)} %`,'Grundlastanteil'],
+    ].map(([value,label])=>`<div><strong>${value}</strong><span>${label}</span></div>`).join('');
+    canvas.style.display='';
+    requestAnimationFrame(()=>_drawGebaeudeHeatProfile(profile.values));
+  }
+  if (typeof dialog.showModal==='function') dialog.showModal();
+  else dialog.setAttribute('open','');
+}
+
+export function closeGebaeudeHeatProfile() {
+  const dialog=document.getElementById('geb-profile-dialog');
+  if (dialog?.open && typeof dialog.close==='function') dialog.close();
+  else dialog?.removeAttribute('open');
+}
+
 function _renderGebOverviewAnalysis() {
   const active = gebaeude.map(g => ({g,stats:getComputedStats(g,globalYear)}))
     .filter(item => item.stats.status !== 'abgerissen' && item.stats.status !== 'geplant');
@@ -298,6 +381,7 @@ export function renderGebaeudeOverview() {
     <th data-click="sortGebaeudeTable('waerme')">${sortLabel('waerme','Wärme MWh/a')}</th>
     <th data-click="sortGebaeudeTable('spez')">${sortLabel('spez','kWh/m²a')}</th>
     <th data-click="sortGebaeudeTable('heizlast')">${sortLabel('heizlast','Heizlast kW')}</th>
+    <th class="no-sort">Lastprofil</th>
     <th data-click="sortGebaeudeTable('quelle')">${sortLabel('quelle','Quelle')}</th>
   </tr>`;
   const usageTypes = getNutzungstypen();
@@ -319,6 +403,7 @@ export function renderGebaeudeOverview() {
       <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.waerme ?? ''}" data-change="updateGebaeudeTableField(${g.id},'waerme',this.value)"></td>
       <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.spez ?? ''}" data-change="updateGebaeudeTableField(${g.id},'spez',this.value)"></td>
       <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.heizlast ?? ''}" data-change="updateGebaeudeTableField(${g.id},'heizlast',this.value)"></td>
+      <td><button class="geb-profile-btn" data-click="showGebaeudeHeatProfile(${g.id})">${_gebTableEsc(getBuildingHeatProfileMeta(g).label)}</button></td>
       <td class="geb-table-readonly" title="${_gebTableEsc(g.importSourceName || '')}">${_gebTableEsc(g.importSourceName || '—')}</td>
     </tr>`;
   }).join('');

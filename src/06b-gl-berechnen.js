@@ -13,6 +13,7 @@ import { polygonCenter } from './02c-karte-werkzeuge.js';
 import { isErzeugerAktiv } from './06c-dispatch-core.js';
 import { _PV_SUN, makePvProfile8760 } from './09a-pv-profile.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { buildBuildingHeatProfiles } from './lib/building-heat-profiles.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { setThermSpeicherAktiv, thermSpeicherAktiv } from './01-globals-varianten.js';
 
@@ -78,6 +79,8 @@ async function glBerechnen() {
     let gesamtMwh;
     let nurGebaeude = false; // Flag: Lastgang stammt nur aus Gebäudedaten (ohne explizite Verbrauchsangabe)
     let synState = null;     // CalcEngine-Ergebnis der Synthese (Fälle 3–5) — für tempState wiederverwendet
+    window._buildingHeatProfiles=new Map();
+    window._buildingHeatProfileMode=false;
 
     if (glLastgangKw && !hatMonat) {
       // Fall 1: Direkt (Lastgang hochgeladen → Verluste bereits enthalten)
@@ -112,7 +115,9 @@ async function glBerechnen() {
         gesamtMwh = gesamt || monatSum; // Fall 4 oder 5
       }
 
-      // CalcEngine für Lastgang-Synthese aufrufen (ohne Erzeuger)
+      // Temperatur- und Systemzustand vorbereiten. Bei vorhandenen
+      // Gebäudedaten wird der Wärmelastgang anschließend von unten nach oben
+      // aus den einzelnen Nutzungsprofilen aufgebaut.
       synState = await CalcEngine.run({
         stadt, normAussentemp: normAt,
         tempH: tempHDwd,   // DWD-Profil (ggf. TRY-Kassel-Fallback)
@@ -125,12 +130,44 @@ async function glBerechnen() {
         twwNetzAnteil: 0, twwAnteilVonTwwNetz: 0,
       });
 
-      lastgangKw = new Float32Array(8760);
-      for (let i = 0; i < 8760; i++) lastgangKw[i] = (synState.lastgangMwhH[i] || 0) * 1000;
+      const buildingResult=buildBuildingHeatProfiles(
+        gebaeude,synState.tempH,globalYear,getComputedStats,isExcluded);
+      const buildingMwh=buildingResult.aggregate.reduce((sum,value)=>sum+value,0)/1000;
+      if (buildingMwh>0) {
+        lastgangKw=buildingResult.aggregate;
+        const calibrationFactor=gesamtMwh>0 ? gesamtMwh/buildingMwh : 1;
+        if (Math.abs(calibrationFactor-1)>1e-9) {
+          for (let i=0;i<lastgangKw.length;i++) lastgangKw[i]*=calibrationFactor;
+          buildingResult.profiles.forEach(profile=>{
+            for (let i=0;i<profile.values.length;i++) profile.values[i]*=calibrationFactor;
+            profile.meta.annualMwh*=calibrationFactor;
+            profile.meta.peakKw*=calibrationFactor;
+            profile.meta.calibrationFactor=calibrationFactor;
+          });
+        }
+        window._buildingHeatProfiles=buildingResult.profiles;
+        window._buildingHeatProfileMode=true;
+      } else {
+        lastgangKw=new Float32Array(8760);
+        for (let i=0;i<8760;i++) lastgangKw[i]=(synState.lastgangMwhH[i]||0)*1000;
+        window._buildingHeatProfiles=new Map();
+        window._buildingHeatProfileMode=false;
+      }
 
       // Fälle 3+4: Monatswerte als Floor anwenden
       if (hatMonat) {
-        lastgangKw = glAnwendeMonatsfloor(lastgangKw, monatswerte, gesamtMwh);
+        const beforeMonthly=lastgangKw;
+        lastgangKw=glAnwendeMonatsfloor(beforeMonthly,monatswerte,gesamtMwh);
+        if (window._buildingHeatProfileMode) {
+          window._buildingHeatProfiles.forEach(profile=>{
+            for (let i=0;i<profile.values.length;i++) {
+              const ratio=beforeMonthly[i]>0 ? lastgangKw[i]/beforeMonthly[i] : 1;
+              profile.values[i]*=ratio;
+            }
+            profile.meta.annualMwh=profile.values.reduce((sum,value)=>sum+value,0)/1000;
+            profile.meta.peakKw=Math.max(...profile.values);
+          });
+        }
       }
     }
 

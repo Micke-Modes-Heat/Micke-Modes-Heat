@@ -879,6 +879,18 @@
         <tbody id="geb-table-body"></tbody>
       </table>
     </div>
+    <dialog id="geb-profile-dialog" class="geb-profile-dialog">
+      <div class="geb-profile-dialog-head">
+        <div>
+          <h3 id="geb-profile-title">Gebäudelastgang</h3>
+          <p id="geb-profile-subtitle"></p>
+        </div>
+        <button class="btn-secondary" data-click="closeGebaeudeHeatProfile()">Schließen</button>
+      </div>
+      <div id="geb-profile-kpis" class="geb-profile-kpis"></div>
+      <canvas id="geb-profile-canvas" height="280"></canvas>
+      <p class="geb-profile-note">Synthetischer Nutzwärmelastgang vor Netzverlusten. SigLinDe verteilt die Wärmemenge wetterabhängig auf die Tage; das Nutzungsprofil verteilt sie auf Stunden und Wochentage.</p>
+    </dialog>
   </div>
 
   <!-- ══ Center: Analyse-View ═══════════════════════════════════════ -->
@@ -1880,6 +1892,7 @@
   <!-- 4. Lastprofil SigLinDe -->
   <div class="gl-section" id="gl-slp-section">
     <div class="gl-section-title">Synthetisches Lastprofil (SigLinDe)</div>
+    <div style="font-size:9px;color:var(--muted);line-height:1.45;margin-bottom:7px;">Fallback für Projekte ohne auswertbare Gebäudedaten. Sind Wärmebedarfe je Gebäude vorhanden, werden automatisch gebäudespezifische SigLinDe- und Nutzungsprofile summiert.</div>
     <div class="gl-grid2" style="margin-bottom:6px;">
       <div class="inp-group">
         <label class="inp-label">Profil 1</label>
