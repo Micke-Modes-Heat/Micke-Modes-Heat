@@ -11010,7 +11010,6 @@ if (typeof L !== 'undefined') {
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-geb-visible"     checked data-change="setGebVisible(this.checked);_ebpSync('geb-visible',this.checked)">Gebäude</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-labels-visible"         data-change="setLabelsVisible(this.checked);_ebpSync('labels-visible',this.checked)">Beschriftung</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-chart-visible"          data-change="_ebpChart(this.checked)">Zeitstrahl-Chart</label>
-    <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-overlay-visible"        data-change="_ebpOverlay(this.checked)">Plan-Overlay</label>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-viz-circles"    checked data-change="_ebpViz(this.checked)">Wärme-Visualisierung</label>
   </div>
 
@@ -14719,7 +14718,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-27';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'aef124f';
+  var c = '37ae3db';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -74126,6 +74125,46 @@ window._isSingleFileBuild = true;
     return `${safePrefix}_${Date.now().toString(36)}_${idFallbackCounter.toString(36)}`;
   }
 
+  // Große Overpass-Abfragen werden zuverlässiger, wenn das Gebiet in mehrere
+  // überschaubare Bounding Boxes zerlegt wird. Die Begrenzung je Achse verhindert
+  // zugleich eine unkontrollierte Zahl paralleler Serveranfragen.
+
+  function splitOsmBbox(bbox, {targetMeters = 1400, maxTilesPerAxis = 4} = {}) {
+    if (!Array.isArray(bbox) || bbox.length !== 4) return [];
+    const [south,west,north,east] = bbox.map(Number);
+    if (![south,west,north,east].every(Number.isFinite) || north <= south || east <= west) return [];
+    const meanLatRad = ((south + north) / 2) * Math.PI / 180;
+    const heightM = (north - south) * 111320;
+    const widthM = (east - west) * 111320 * Math.max(0.2,Math.cos(meanLatRad));
+    const rows = Math.max(1,Math.min(maxTilesPerAxis,Math.ceil(heightM / targetMeters)));
+    const columns = Math.max(1,Math.min(maxTilesPerAxis,Math.ceil(widthM / targetMeters)));
+    const latStep = (north - south) / rows;
+    const lngStep = (east - west) / columns;
+    const tiles = [];
+    for (let row = 0; row < rows; row++) {
+      for (let column = 0; column < columns; column++) {
+        tiles.push([
+          south + row * latStep,
+          west + column * lngStep,
+          row === rows - 1 ? north : south + (row + 1) * latStep,
+          column === columns - 1 ? east : west + (column + 1) * lngStep,
+        ]);
+      }
+    }
+    return tiles;
+  }
+
+  function mergeOsmElements(results) {
+    const elements = new Map();
+    (results || []).forEach(result => {
+      (result?.elements || []).forEach(element => {
+        if (element?.type == null || element?.id == null) return;
+        elements.set(`${element.type}:${element.id}`,element);
+      });
+    });
+    return {elements:[...elements.values()]};
+  }
+
   // ── 13q-wind-ertrag.js — Windertrags-Schätzung (Weibull-Windverteilung × generische Leistungskurve) ──
   // Vereinfachtes Modell ohne Herstellerkennlinie: kubischer Anstieg zwischen Einschalt- und Nennwind,
   // Nennleistung dazwischen, 0 unter Einschalt-/über Abschaltwind. Für Genehmigungsunterlagen ist die
@@ -78319,6 +78358,7 @@ window._isSingleFileBuild = true;
 
   async function loadOsmStrassen() {
     let bbox;
+    let bboxValues;
     const pointLat = point => Number(Array.isArray(point) ? point[0] : point?.lat);
     const pointLng = point => Number(Array.isArray(point) ? point[1] : point?.lng);
     const bboxString = (south,west,north,east) =>
@@ -78327,20 +78367,23 @@ window._isSingleFileBuild = true;
     if (area && area.length >= 3) {
       const lats = area.map(pointLat).filter(Number.isFinite);
       const lngs = area.map(pointLng).filter(Number.isFinite);
-      bbox = bboxString(Math.min(...lats),Math.min(...lngs),Math.max(...lats),Math.max(...lngs));
+      bboxValues = [Math.min(...lats),Math.min(...lngs),Math.max(...lats),Math.max(...lngs)];
+      bbox = bboxString(...bboxValues);
     } else if (gebaeude.some(building => Array.isArray(building.polygon) && building.polygon.length >= 3)) {
       const points = gebaeude.flatMap(building => building.polygon || []);
       const lats = points.map(pointLat).filter(Number.isFinite);
       const lngs = points.map(pointLng).filter(Number.isFinite);
       const padding = 0.0007;
-      bbox = bboxString(
+      bboxValues = [
         Math.min(...lats)-padding,Math.min(...lngs)-padding,
         Math.max(...lats)+padding,Math.max(...lngs)+padding
-      );
+      ];
+      bbox = bboxString(...bboxValues);
       showHint('Lade Straßenzüge im bebauten Projektgebiet …', 2500);
     } else {
       const b = map.getBounds();
-      bbox = bboxString(b.getSouth(),b.getWest(),b.getNorth(),b.getEast());
+      bboxValues = [b.getSouth(),b.getWest(),b.getNorth(),b.getEast()];
+      bbox = bboxString(...bboxValues);
       showHint('⚠ Kein Planungsgebiet definiert — aktueller Kartenausschnitt wird verwendet.');
     }
 
@@ -78367,7 +78410,7 @@ window._isSingleFileBuild = true;
         {url:'https://corsproxy.io/?' + getTarget, options:{}},
       ];
       const controllers = requests.map(() => new AbortController());
-      const timeout = setTimeout(() => controllers.forEach(controller => controller.abort()), 12000);
+      const timeout = setTimeout(() => controllers.forEach(controller => controller.abort()), 18000);
       try {
         const attempts = requests.map(async (request, index) => {
           const response = await fetch(request.url, {...request.options, signal:controllers[index].signal});
@@ -78382,7 +78425,7 @@ window._isSingleFileBuild = true;
         return await Promise.any(attempts);
       } catch (error) {
         throw new Error(error?.name === 'AggregateError'
-          ? 'Kein OSM-Server innerhalb von 12 Sekunden mit nutzbaren Straßen erreichbar'
+          ? 'Kein OSM-Server innerhalb von 18 Sekunden mit nutzbaren Straßen erreichbar'
           : error.message);
       } finally {
         clearTimeout(timeout);
@@ -78392,7 +78435,40 @@ window._isSingleFileBuild = true;
 
     try {
       const cacheValid = _osmStrassenCache?.bbox === bbox && Date.now() - _osmStrassenCache.timestamp < 15 * 60 * 1000;
-      const data = cacheValid ? _osmStrassenCache.data : await _fetchOverpass(query);
+      let data;
+      let failedTiles = 0;
+      if (cacheValid) {
+        data = _osmStrassenCache.data;
+      } else {
+        const tiles = splitOsmBbox(bboxValues);
+        if (tiles.length <= 1) {
+          data = await _fetchOverpass(query);
+        } else {
+          showHint(`Lade großes Straßengebiet in ${tiles.length} Teilbereichen …`,4000);
+          const results = [];
+          let cursor = 0;
+          let completed = 0;
+          const worker = async() => {
+            while (cursor < tiles.length) {
+              const tileIndex = cursor++;
+              const tileBbox = bboxString(...tiles[tileIndex]);
+              const tileQuery = `[out:json][timeout:18];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${tileBbox});out geom;`;
+              try {
+                results.push(await _fetchOverpass(tileQuery));
+              } catch (error) {
+                failedTiles++;
+                console.warn(`OSM-Straßen Teilbereich ${tileIndex + 1}/${tiles.length}:`,error.message);
+              } finally {
+                completed++;
+                showHint(`Straßenzüge: ${completed} / ${tiles.length} Teilbereiche geladen …`,2500);
+              }
+            }
+          };
+          await Promise.all(Array.from({length:Math.min(2,tiles.length)},()=>worker()));
+          if (!results.length) throw new Error(`Alle ${tiles.length} Teilbereiche konnten nicht geladen werden`);
+          data = mergeOsmElements(results);
+        }
+      }
       if (!cacheValid) _osmStrassenCache = {bbox, data, timestamp:Date.now()};
 
       clearOsmStrassen();
@@ -78434,6 +78510,7 @@ window._isSingleFileBuild = true;
       }
       if (count === 0) showHint('⚠ Keine Straßen im Planungsgebiet gefunden.');
       else if (cacheValid) showHint(`✓ ${count} Straßenzüge aus dem Zwischenspeicher geladen.`, 3500);
+      else if (failedTiles > 0) showHint(`✓ ${count} Straßenzüge geladen · ${failedTiles} Teilbereich${failedTiles === 1 ? '' : 'e'} ohne Antwort.`,5000);
       return count;
     } catch (e) {
       if (btn) { btn.textContent = '↓ Straßen aus OSM laden'; btn.disabled = false; }
@@ -103747,15 +103824,11 @@ ${massTbl}
 
   // Chart-Toggle
   window._ebpChart = function(checked) {
-    const btn = document.querySelector('[data-click="toggleChart()"]');
-    const chart = document.getElementById('chart-container');
-    if (chart) chart.style.display = checked ? '' : 'none';
-    if (btn) btn.classList.toggle('active', checked);
-  };
-
-  // Overlay-Toggle
-  window._ebpOverlay = function(checked) {
-    if (typeof window.setOverlayVisible === 'function') window.setOverlayVisible(checked);
+    const panel = document.getElementById('chart-panel');
+    const visible = panel?.classList.contains('visible') || false;
+    if (visible !== checked && typeof window.toggleChartPanel === 'function') {
+      window.toggleChartPanel();
+    }
   };
 
   // Wärme-Visualisierungs-Toggle
@@ -103952,17 +104025,23 @@ ${massTbl}
     const container = document.getElementById('svg-chart-container');
     if (!container) return;
 
+    const slider = document.getElementById('year-slider');
+    const firstYear = Number.parseInt(slider?.min,10) || 2026;
+    const lastYear = Math.max(firstYear + 1,Number.parseInt(slider?.max,10) || 2050);
     const years = [];
-    for (let y = 2026; y <= 2050; y++) years.push(y);
+    for (let y = firstYear; y <= lastYear; y++) years.push(y);
 
     // Wärme MIT Sanierungen (aktuell)
     const waerme = years.map(y => {
-      let s = 0; window.gebaeude.forEach(g => { s += getComputedStats(g, y).waerme; }); return s;
+      let s = 0; window.gebaeude.forEach(g => {
+        if (!isExcluded(g.id)) s += getComputedStats(g, y).waerme;
+      }); return s;
     });
     // Wärme OHNE Sanierungen (Vergleich)
     const waermeOhne = years.map(y => {
       let s = 0;
       window.gebaeude.forEach(g => {
+        if (isExcluded(g.id)) return;
         const saved = g.sanierungen; g.sanierungen = [];
         s += getComputedStats(g, y).waerme;
         g.sanierungen = saved;
@@ -103971,7 +104050,9 @@ ${massTbl}
     });
     // Heizlast MIT Sanierungen
     const hl = years.map(y => {
-      let s = 0; window.gebaeude.forEach(g => { s += getComputedStats(g, y).heizlast; }); return s;
+      let s = 0; window.gebaeude.forEach(g => {
+        if (!isExcluded(g.id)) s += getComputedStats(g, y).heizlast;
+      }); return s;
     });
 
     const maxW  = Math.max(...waerme, ...waermeOhne, 1);
@@ -104032,9 +104113,9 @@ ${massTbl}
     <text x="${xCur}" y="${padT-4}" fill="#4fc3f7" font-size="8" font-family="DM Mono,monospace" text-anchor="middle">${globalYear}</text>
 
     <!-- X-Achse Labels -->
-    <text x="${padL}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace">2026</text>
-    <text x="${xp(13)}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace" text-anchor="middle">2037</text>
-    <text x="${w-padR}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace" text-anchor="end">2050</text>
+    <text x="${padL}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace">${firstYear}</text>
+    <text x="${xp(Math.floor((years.length-1)/2))}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace" text-anchor="middle">${years[Math.floor((years.length-1)/2)]}</text>
+    <text x="${w-padR}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace" text-anchor="end">${lastYear}</text>
 
     <!-- Achsenbeschriftungen -->
     <text x="${padL-2}" y="${padT-6}" fill="#4caf50" font-size="8" font-family="DM Sans,sans-serif">MWh/a</text>
@@ -109178,7 +109259,10 @@ ${massTbl}
     const effRMax   = getEffectiveRMax();
     const fillOp    = effRMax <= 10 ? 0.55 : 0.65;
     const nGeb      = (window.gebaeude || gebaeude).filter(g => g.polygon).length;
-    const labelZoom = nGeb > 200 ? 19 : nGeb > 80 ? 18 : nGeb > 30 ? 17 : 16;
+    // Beschriftungen sind standardmäßig aus. Wer sie bewusst aktiviert, soll
+    // sie auch in der Quartiersübersicht sehen; bei vielen Gebäuden bleibt die
+    // Schwelle etwas höher, damit die Karte lesbar bleibt.
+    const labelZoom = nGeb > 200 ? 17 : nGeb > 80 ? 16 : nGeb > 30 ? 15 : 14;
     const legendBar = document.getElementById('legend-bar');
 
     if (window.currentMode === 'waerme' || window.currentMode === 'spez') {
@@ -109953,7 +110037,8 @@ ${massTbl}
   });
 
   map.on('zoomend', function() {
-    if (!window.isDrawingTrasse && (window.currentViz === 'circle' || window.currentViz === 'bar')) updateViz();
+    if (!window.isDrawingTrasse &&
+        (window.currentViz === 'circle' || window.currentViz === 'bar' || window.labelsVisible)) updateViz();
     if (window.fliessgewaesser) redrawFliessgewaesser();
   });
 
@@ -112898,6 +112983,7 @@ out body;>;out skel qt;`;
       updateTotals();
       recalcNetz();
       populateZentraleSelect();
+      _initYearSliderFromBaujahr();
 
       // Plangebiet-Polygon + Eckpunkte ausblenden nach erfolgreichem Import
       if (areaPolygon) { map.removeLayer(areaPolygon); }
@@ -113295,7 +113381,7 @@ out body;>;out skel qt;`;
       // Dropdown hervorheben
       const sel = document.getElementById('netz-zentrale');
       if (sel) { sel.style.borderColor = '#e53935'; sel.style.boxShadow = '0 0 8px rgba(229,57,53,0.4)'; sel.focus(); setTimeout(() => { sel.style.borderColor = ''; sel.style.boxShadow = ''; }, 4000); }
-      return;
+      return false;
     }
 
     clearNetz();
@@ -113309,7 +113395,7 @@ out body;>;out skel qt;`;
     });
     if(nodes.length < 2) {
       showHint('Es müssen mindestens zwei Gebäude mit Verbrauch gezeichnet sein.');
-      return;
+      return false;
     }
 
     const allPts = nodes.map(g => {
@@ -113480,9 +113566,10 @@ out body;>;out skel qt;`;
         const neighbours = buildingNodes
           .filter(other => other.id !== building.id)
           .map(other => ({other, dist: building.pt.distanceTo(other.pt)}))
-          .sort((a, b) => a.dist - b.dist)
-          .slice(0, 6);
+          .sort((a, b) => a.dist - b.dist);
+        let acceptedNeighbours = 0;
         for (const {other, dist} of neighbours) {
+          if (acceptedNeighbours >= 6) break;
           if (strategy === 'street') {
             const buildingCovered = streetCoveredIds.has(building.id);
             const otherCovered = streetCoveredIds.has(other.id);
@@ -113496,11 +113583,17 @@ out body;>;out skel qt;`;
           const key = String(building.id) < String(other.id)
             ? `${building.id}:${other.id}` : `${other.id}:${building.id}`;
           if (localEdgeKeys.has(key)) continue;
+          // Nicht nur die sechs geometrisch nächsten Nachbarn betrachten:
+          // Ein nahes Gebäude kann hinter einem anderen Grundriss liegen. In
+          // diesem Fall weiter suchen, bis sechs tatsächlich freie Kandidaten
+          // gefunden wurden.
+          if (_edgeCrossesForeignBuilding(building,other)) continue;
           localEdgeKeys.add(key);
           possibleEdges.push({
             u: building.id, v: other.id, uNode: building, vNode: other,
             dist, sortCost: dist * neighbourConnectionFactor,
           });
+          acceptedNeighbours++;
         }
       }
 
@@ -113589,7 +113682,7 @@ out body;>;out skel qt;`;
         'Bitte eine ergänzende Haupttrasse um die Hindernisse zeichnen.',
         7000,
       );
-      return;
+      return false;
     }
 
     if (strategy === 'street') {
@@ -113693,6 +113786,7 @@ out body;>;out skel qt;`;
       ? ` · ${window._streetRoutingDiagnostics.uncoveredBuildings} Gebäude in ${window._streetRoutingDiagnostics.freeClusters} OSM-Lücke${window._streetRoutingDiagnostics.freeClusters === 1 ? '' : 'n'} lokal ergänzt`
       : '';
     showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${streetInfo}.`, 4500);
+    return window.netzEdges.length > 0;
   }
 
   async function confirmAutoGenerateNetz(options = {}){
@@ -113707,8 +113801,7 @@ out body;>;out skel qt;`;
         : window.confirm(`Das vorhandene Wärmenetz mit ${existing} Leitungsabschnitten wird ersetzt. Fortfahren?`);
       if (!ok) return false;
     }
-    autoGenerateNetz(options);
-    return true;
+    return autoGenerateNetz(options) === true;
   }
 
   function toggleNetzCreateMenu(force) {
@@ -113734,10 +113827,15 @@ out body;>;out skel qt;`;
   }
 
   async function createQuickWaermeNetz() {
-    toggleNetzCreateMenu(false);
-    const created = await confirmAutoGenerateNetz({strategy: 'quick'});
-    if (created) closeNetzWorkspace();
-    return created;
+    try {
+      const created = await confirmAutoGenerateNetz({strategy: 'quick'});
+      if (created) closeNetzWorkspace();
+      return created;
+    } catch (error) {
+      console.error('Freier Wärmenetzaufbau fehlgeschlagen:',error);
+      showHint(`⚠ Wärmenetz konnte nicht erstellt werden: ${error.message}`,7000);
+      return false;
+    }
   }
 
   function startGuidedTrasseCreation() {
@@ -113781,10 +113879,13 @@ out body;>;out skel qt;`;
       // das fertige Wärmenetz gelb überlagern und wird daher vor der Erzeugung
       // entfernt; die übernommene Geometrie bleibt in der Trasse erhalten.
       window.clearOsmStrassen?.();
-      toggleNetzCreateMenu(false);
       const created = await confirmAutoGenerateNetz({strategy: 'street'});
       if (created) closeNetzWorkspace();
       return created;
+    } catch (error) {
+      console.error('Straßenorientierter Wärmenetzaufbau fehlgeschlagen:',error);
+      showHint(`⚠ Straßenorientiertes Netz konnte nicht erstellt werden: ${error.message}`,7000);
+      return false;
     } finally {
       if (helperWorkflow) {
         window._streetHelperDrawing = false;
@@ -152861,7 +152962,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     'geb-visible': 'Gebäude auf der Karte ein-/ausblenden.',
     'netz-visible-ansicht': 'Wärmenetz auf der Karte ein-/ausblenden.',
     'labels-visible': 'Beschriftung (Gebäudenamen, Verbrauchswerte) auf der Karte anzeigen.',
-    'overlay-visible-cb': 'Plan-Overlay (z.B. Bebauungsplan) auf der Karte ein-/ausblenden.',
 
     // Stromnetz-Parameter
     'strom-kabel-typ': 'Kabeltyp für das Stromnetz — bestimmt Querschnitt und Belastbarkeit.',

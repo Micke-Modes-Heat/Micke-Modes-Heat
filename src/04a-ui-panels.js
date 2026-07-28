@@ -1268,15 +1268,11 @@ window._ebpSync = function(srcId, checked) {
 
 // Chart-Toggle
 window._ebpChart = function(checked) {
-  const btn = document.querySelector('[data-click="toggleChart()"]');
-  const chart = document.getElementById('chart-container');
-  if (chart) chart.style.display = checked ? '' : 'none';
-  if (btn) btn.classList.toggle('active', checked);
-};
-
-// Overlay-Toggle
-window._ebpOverlay = function(checked) {
-  if (typeof window.setOverlayVisible === 'function') window.setOverlayVisible(checked);
+  const panel = document.getElementById('chart-panel');
+  const visible = panel?.classList.contains('visible') || false;
+  if (visible !== checked && typeof window.toggleChartPanel === 'function') {
+    window.toggleChartPanel();
+  }
 };
 
 // Wärme-Visualisierungs-Toggle

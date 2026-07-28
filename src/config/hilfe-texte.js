@@ -177,7 +177,6 @@ export const HILFE_TEXTE = {
   'geb-visible': 'Gebäude auf der Karte ein-/ausblenden.',
   'netz-visible-ansicht': 'Wärmenetz auf der Karte ein-/ausblenden.',
   'labels-visible': 'Beschriftung (Gebäudenamen, Verbrauchswerte) auf der Karte anzeigen.',
-  'overlay-visible-cb': 'Plan-Overlay (z.B. Bebauungsplan) auf der Karte ein-/ausblenden.',
 
   // Stromnetz-Parameter
   'strom-kabel-typ': 'Kabeltyp für das Stromnetz — bestimmt Querschnitt und Belastbarkeit.',

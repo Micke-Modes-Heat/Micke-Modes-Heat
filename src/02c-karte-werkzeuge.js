@@ -160,7 +160,10 @@ export function updateViz(){
   const effRMax   = getEffectiveRMax();
   const fillOp    = effRMax <= 10 ? 0.55 : 0.65;
   const nGeb      = (window.gebaeude || gebaeude).filter(g => g.polygon).length;
-  const labelZoom = nGeb > 200 ? 19 : nGeb > 80 ? 18 : nGeb > 30 ? 17 : 16;
+  // Beschriftungen sind standardmäßig aus. Wer sie bewusst aktiviert, soll
+  // sie auch in der Quartiersübersicht sehen; bei vielen Gebäuden bleibt die
+  // Schwelle etwas höher, damit die Karte lesbar bleibt.
+  const labelZoom = nGeb > 200 ? 17 : nGeb > 80 ? 16 : nGeb > 30 ? 15 : 14;
   const legendBar = document.getElementById('legend-bar');
 
   if (window.currentMode === 'waerme' || window.currentMode === 'spez') {
@@ -940,7 +943,8 @@ map.on('dblclick',e=>{
 });
 
 map.on('zoomend', function() {
-  if (!window.isDrawingTrasse && (window.currentViz === 'circle' || window.currentViz === 'bar')) updateViz();
+  if (!window.isDrawingTrasse &&
+      (window.currentViz === 'circle' || window.currentViz === 'bar' || window.labelsVisible)) updateViz();
   if (window.fliessgewaesser) redrawFliessgewaesser();
 });
 

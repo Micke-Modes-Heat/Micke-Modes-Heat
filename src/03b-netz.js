@@ -14,7 +14,7 @@ import { getNetzVBH, updateNetzColorLegend } from './02a-netz-physik.js';
 import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
 import { clearArea, polygonAreaM2, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
 import { drillSvg, redrawErzeugerIcons, redrawVerbindungslinien } from './03a-erzeuger.js';
-import { drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon } from './03c-gebaeude-io.js';
+import { _initYearSliderFromBaujahr, drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { readNum } from './lib/util.js';
@@ -1882,6 +1882,7 @@ out body;>;out skel qt;`;
     updateTotals();
     recalcNetz();
     populateZentraleSelect();
+    _initYearSliderFromBaujahr();
 
     // Plangebiet-Polygon + Eckpunkte ausblenden nach erfolgreichem Import
     if (areaPolygon) { map.removeLayer(areaPolygon); }
@@ -2279,7 +2280,7 @@ export function autoGenerateNetz(options = {}){
     // Dropdown hervorheben
     const sel = document.getElementById('netz-zentrale');
     if (sel) { sel.style.borderColor = '#e53935'; sel.style.boxShadow = '0 0 8px rgba(229,57,53,0.4)'; sel.focus(); setTimeout(() => { sel.style.borderColor = ''; sel.style.boxShadow = ''; }, 4000); }
-    return;
+    return false;
   }
 
   clearNetz();
@@ -2293,7 +2294,7 @@ export function autoGenerateNetz(options = {}){
   });
   if(nodes.length < 2) {
     showHint('Es müssen mindestens zwei Gebäude mit Verbrauch gezeichnet sein.');
-    return;
+    return false;
   }
 
   const allPts = nodes.map(g => {
@@ -2464,9 +2465,10 @@ export function autoGenerateNetz(options = {}){
       const neighbours = buildingNodes
         .filter(other => other.id !== building.id)
         .map(other => ({other, dist: building.pt.distanceTo(other.pt)}))
-        .sort((a, b) => a.dist - b.dist)
-        .slice(0, 6);
+        .sort((a, b) => a.dist - b.dist);
+      let acceptedNeighbours = 0;
       for (const {other, dist} of neighbours) {
+        if (acceptedNeighbours >= 6) break;
         if (strategy === 'street') {
           const buildingCovered = streetCoveredIds.has(building.id);
           const otherCovered = streetCoveredIds.has(other.id);
@@ -2480,11 +2482,17 @@ export function autoGenerateNetz(options = {}){
         const key = String(building.id) < String(other.id)
           ? `${building.id}:${other.id}` : `${other.id}:${building.id}`;
         if (localEdgeKeys.has(key)) continue;
+        // Nicht nur die sechs geometrisch nächsten Nachbarn betrachten:
+        // Ein nahes Gebäude kann hinter einem anderen Grundriss liegen. In
+        // diesem Fall weiter suchen, bis sechs tatsächlich freie Kandidaten
+        // gefunden wurden.
+        if (_edgeCrossesForeignBuilding(building,other)) continue;
         localEdgeKeys.add(key);
         possibleEdges.push({
           u: building.id, v: other.id, uNode: building, vNode: other,
           dist, sortCost: dist * neighbourConnectionFactor,
         });
+        acceptedNeighbours++;
       }
     }
 
@@ -2573,7 +2581,7 @@ export function autoGenerateNetz(options = {}){
       'Bitte eine ergänzende Haupttrasse um die Hindernisse zeichnen.',
       7000,
     );
-    return;
+    return false;
   }
 
   if (strategy === 'street') {
@@ -2678,6 +2686,7 @@ export function autoGenerateNetz(options = {}){
     ? ` · ${window._streetRoutingDiagnostics.uncoveredBuildings} Gebäude in ${window._streetRoutingDiagnostics.freeClusters} OSM-Lücke${window._streetRoutingDiagnostics.freeClusters === 1 ? '' : 'n'} lokal ergänzt`
     : '';
   showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${streetInfo}.`, 4500);
+  return window.netzEdges.length > 0;
 }
 
 export async function confirmAutoGenerateNetz(options = {}){
@@ -2692,8 +2701,7 @@ export async function confirmAutoGenerateNetz(options = {}){
       : window.confirm(`Das vorhandene Wärmenetz mit ${existing} Leitungsabschnitten wird ersetzt. Fortfahren?`);
     if (!ok) return false;
   }
-  autoGenerateNetz(options);
-  return true;
+  return autoGenerateNetz(options) === true;
 }
 
 export function toggleNetzCreateMenu(force) {
@@ -2719,10 +2727,15 @@ export function updateTrassentreueLabel(value) {
 }
 
 export async function createQuickWaermeNetz() {
-  toggleNetzCreateMenu(false);
-  const created = await confirmAutoGenerateNetz({strategy: 'quick'});
-  if (created) closeNetzWorkspace();
-  return created;
+  try {
+    const created = await confirmAutoGenerateNetz({strategy: 'quick'});
+    if (created) closeNetzWorkspace();
+    return created;
+  } catch (error) {
+    console.error('Freier Wärmenetzaufbau fehlgeschlagen:',error);
+    showHint(`⚠ Wärmenetz konnte nicht erstellt werden: ${error.message}`,7000);
+    return false;
+  }
 }
 
 export function startGuidedTrasseCreation() {
@@ -2766,10 +2779,13 @@ export async function createStreetOrientedWaermeNetz() {
     // das fertige Wärmenetz gelb überlagern und wird daher vor der Erzeugung
     // entfernt; die übernommene Geometrie bleibt in der Trasse erhalten.
     window.clearOsmStrassen?.();
-    toggleNetzCreateMenu(false);
     const created = await confirmAutoGenerateNetz({strategy: 'street'});
     if (created) closeNetzWorkspace();
     return created;
+  } catch (error) {
+    console.error('Straßenorientierter Wärmenetzaufbau fehlgeschlagen:',error);
+    showHint(`⚠ Straßenorientiertes Netz konnte nicht erstellt werden: ${error.message}`,7000);
+    return false;
   } finally {
     if (helperWorkflow) {
       window._streetHelperDrawing = false;

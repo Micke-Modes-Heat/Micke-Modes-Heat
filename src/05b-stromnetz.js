@@ -15,6 +15,7 @@ import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSpannungsfall, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
+import { mergeOsmElements, splitOsmBbox } from './lib/osm-bbox-tiles.js';
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus } from './13a-assets-core.js';
 import { collapseAssetSpider, redrawAllAssets } from './13b-assets-render.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
@@ -2779,6 +2780,7 @@ let _osmStrassenCache = null;
 
 export async function loadOsmStrassen() {
   let bbox;
+  let bboxValues;
   const pointLat = point => Number(Array.isArray(point) ? point[0] : point?.lat);
   const pointLng = point => Number(Array.isArray(point) ? point[1] : point?.lng);
   const bboxString = (south,west,north,east) =>
@@ -2787,20 +2789,23 @@ export async function loadOsmStrassen() {
   if (area && area.length >= 3) {
     const lats = area.map(pointLat).filter(Number.isFinite);
     const lngs = area.map(pointLng).filter(Number.isFinite);
-    bbox = bboxString(Math.min(...lats),Math.min(...lngs),Math.max(...lats),Math.max(...lngs));
+    bboxValues = [Math.min(...lats),Math.min(...lngs),Math.max(...lats),Math.max(...lngs)];
+    bbox = bboxString(...bboxValues);
   } else if (gebaeude.some(building => Array.isArray(building.polygon) && building.polygon.length >= 3)) {
     const points = gebaeude.flatMap(building => building.polygon || []);
     const lats = points.map(pointLat).filter(Number.isFinite);
     const lngs = points.map(pointLng).filter(Number.isFinite);
     const padding = 0.0007;
-    bbox = bboxString(
+    bboxValues = [
       Math.min(...lats)-padding,Math.min(...lngs)-padding,
       Math.max(...lats)+padding,Math.max(...lngs)+padding
-    );
+    ];
+    bbox = bboxString(...bboxValues);
     showHint('Lade Straßenzüge im bebauten Projektgebiet …', 2500);
   } else {
     const b = map.getBounds();
-    bbox = bboxString(b.getSouth(),b.getWest(),b.getNorth(),b.getEast());
+    bboxValues = [b.getSouth(),b.getWest(),b.getNorth(),b.getEast()];
+    bbox = bboxString(...bboxValues);
     showHint('⚠ Kein Planungsgebiet definiert — aktueller Kartenausschnitt wird verwendet.');
   }
 
@@ -2827,7 +2832,7 @@ export async function loadOsmStrassen() {
       {url:'https://corsproxy.io/?' + getTarget, options:{}},
     ];
     const controllers = requests.map(() => new AbortController());
-    const timeout = setTimeout(() => controllers.forEach(controller => controller.abort()), 12000);
+    const timeout = setTimeout(() => controllers.forEach(controller => controller.abort()), 18000);
     try {
       const attempts = requests.map(async (request, index) => {
         const response = await fetch(request.url, {...request.options, signal:controllers[index].signal});
@@ -2842,7 +2847,7 @@ export async function loadOsmStrassen() {
       return await Promise.any(attempts);
     } catch (error) {
       throw new Error(error?.name === 'AggregateError'
-        ? 'Kein OSM-Server innerhalb von 12 Sekunden mit nutzbaren Straßen erreichbar'
+        ? 'Kein OSM-Server innerhalb von 18 Sekunden mit nutzbaren Straßen erreichbar'
         : error.message);
     } finally {
       clearTimeout(timeout);
@@ -2852,7 +2857,40 @@ export async function loadOsmStrassen() {
 
   try {
     const cacheValid = _osmStrassenCache?.bbox === bbox && Date.now() - _osmStrassenCache.timestamp < 15 * 60 * 1000;
-    const data = cacheValid ? _osmStrassenCache.data : await _fetchOverpass(query);
+    let data;
+    let failedTiles = 0;
+    if (cacheValid) {
+      data = _osmStrassenCache.data;
+    } else {
+      const tiles = splitOsmBbox(bboxValues);
+      if (tiles.length <= 1) {
+        data = await _fetchOverpass(query);
+      } else {
+        showHint(`Lade großes Straßengebiet in ${tiles.length} Teilbereichen …`,4000);
+        const results = [];
+        let cursor = 0;
+        let completed = 0;
+        const worker = async() => {
+          while (cursor < tiles.length) {
+            const tileIndex = cursor++;
+            const tileBbox = bboxString(...tiles[tileIndex]);
+            const tileQuery = `[out:json][timeout:18];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|service|track|path)$"](${tileBbox});out geom;`;
+            try {
+              results.push(await _fetchOverpass(tileQuery));
+            } catch (error) {
+              failedTiles++;
+              console.warn(`OSM-Straßen Teilbereich ${tileIndex + 1}/${tiles.length}:`,error.message);
+            } finally {
+              completed++;
+              showHint(`Straßenzüge: ${completed} / ${tiles.length} Teilbereiche geladen …`,2500);
+            }
+          }
+        };
+        await Promise.all(Array.from({length:Math.min(2,tiles.length)},()=>worker()));
+        if (!results.length) throw new Error(`Alle ${tiles.length} Teilbereiche konnten nicht geladen werden`);
+        data = mergeOsmElements(results);
+      }
+    }
     if (!cacheValid) _osmStrassenCache = {bbox, data, timestamp:Date.now()};
 
     clearOsmStrassen();
@@ -2894,6 +2932,7 @@ export async function loadOsmStrassen() {
     }
     if (count === 0) showHint('⚠ Keine Straßen im Planungsgebiet gefunden.');
     else if (cacheValid) showHint(`✓ ${count} Straßenzüge aus dem Zwischenspeicher geladen.`, 3500);
+    else if (failedTiles > 0) showHint(`✓ ${count} Straßenzüge geladen · ${failedTiles} Teilbereich${failedTiles === 1 ? '' : 'e'} ohne Antwort.`,5000);
     return count;
   } catch (e) {
     if (btn) { btn.textContent = '↓ Straßen aus OSM laden'; btn.disabled = false; }

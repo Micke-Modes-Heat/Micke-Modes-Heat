@@ -892,3 +892,84 @@ test('dist: Lebenszyklus-Optimierung kann mehrere wirtschaftliche Zentralabgäng
   expect(result.meta.centralBranchesAfter).toBeGreaterThan(result.meta.centralBranchesBefore);
   expect(result.meta.scoreAfterEur).toBeLessThan(result.meta.scoreBeforeEur);
 });
+
+test('dist: fehlgeschlagener Netzaufbau bleibt mit verständlichem Hinweis im Erstellmenü',async({page})=>{
+  await page.route(/tile\\.openstreetmap\\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.createQuickWaermeNetz==='function');
+  const result=await page.evaluate(async()=>{
+    clearNetz();
+    setGebaeude([]);
+    const polygon=(lat,lng,dLat=.00004,dLng=.00004)=>[
+      L.latLng(lat-dLat,lng-dLng),L.latLng(lat-dLat,lng+dLng),
+      L.latLng(lat+dLat,lng+dLng),L.latLng(lat+dLat,lng-dLng),
+    ];
+    const source=addGebaeude({id:951,name:'Zentrale',baujahr:2000,coords:polygon(52.08,8),skipAutoCreate:true});
+    const target=addGebaeude({id:952,name:'Verbraucher',baujahr:2000,coords:polygon(52.08,8.004),skipAutoCreate:true});
+    // Fremdes Gebäude ohne Wärmebedarf blockiert die einzige direkte Kante.
+    addGebaeude({id:953,name:'Hindernis',baujahr:2000,coords:polygon(52.08,8.002,.0002,.00035),skipAutoCreate:true});
+    source.heizlast='100'; source.waerme='200';
+    target.heizlast='100'; target.waerme='200';
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='951';
+    openNetzWorkspace('create');
+    const created=await createQuickWaermeNetz();
+    return {
+      created,
+      edgeCount:window.netzEdges.length,
+      workspaceOpen:!document.getElementById('netz-workspace').hidden,
+      menuOpen:!document.getElementById('netz-create-menu').hidden,
+      hint:document.getElementById('hint').textContent,
+    };
+  });
+  expect(result.created).toBe(false);
+  expect(result.edgeCount).toBe(0);
+  expect(result.workspaceOpen).toBe(true);
+  expect(result.menuOpen).toBe(true);
+  expect(result.hint).toContain('konnten');
+});
+
+test('dist: straßenorientierter Aufbau bleibt bei großer Gebäudemenge verbunden',async({page})=>{
+  test.setTimeout(45000);
+  await page.route(/tile\\.openstreetmap\\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.autoGenerateNetz==='function');
+  const result=await page.evaluate(()=>{
+    clearNetz();
+    setGebaeude([]);
+    const count=120;
+    const road=[];
+    for(let index=0;index<count;index++){
+      const lat=52.08+index*.00011;
+      const lng=8+(index%2===0 ? -.00013 : .00013);
+      const building=addGebaeude({
+        id:1100+index,name:`Gebäude ${index+1}`,baujahr:2000,skipAutoCreate:true,
+        coords:[
+          L.latLng(lat-.000025,lng-.000025),L.latLng(lat-.000025,lng+.000025),
+          L.latLng(lat+.000025,lng+.000025),L.latLng(lat+.000025,lng-.000025),
+        ],
+      });
+      building.heizlast='80';
+      building.waerme='160';
+      road.push(L.latLng(lat,8));
+    }
+    setTrassePoints(road);
+    setTrasseSegments([{start:0,end:road.length-1,domains:['waerme'],source:'osm-street'}]);
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1100';
+    setNetworkLocked(false);
+    const started=performance.now();
+    const created=autoGenerateNetz({strategy:'street',trasseTreue:80});
+    const connected=new Set(window.netzEdges.flatMap(edge=>[edge.u,edge.v]));
+    return {
+      created,
+      durationMs:performance.now()-started,
+      edgeCount:window.netzEdges.length,
+      connectedBuildings:window.gebaeude.filter(building=>connected.has(building.id)).length,
+    };
+  });
+  expect(result.created).toBe(true);
+  expect(result.edgeCount).toBeGreaterThan(0);
+  expect(result.connectedBuildings).toBe(120);
+  expect(result.durationMs).toBeLessThan(15000);
+});

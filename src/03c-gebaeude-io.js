@@ -108,17 +108,23 @@ export function drawChart() {
   const container = document.getElementById('svg-chart-container');
   if (!container) return;
 
+  const slider = document.getElementById('year-slider');
+  const firstYear = Number.parseInt(slider?.min,10) || 2026;
+  const lastYear = Math.max(firstYear + 1,Number.parseInt(slider?.max,10) || 2050);
   const years = [];
-  for (let y = 2026; y <= 2050; y++) years.push(y);
+  for (let y = firstYear; y <= lastYear; y++) years.push(y);
 
   // Wärme MIT Sanierungen (aktuell)
   const waerme = years.map(y => {
-    let s = 0; window.gebaeude.forEach(g => { s += getComputedStats(g, y).waerme; }); return s;
+    let s = 0; window.gebaeude.forEach(g => {
+      if (!isExcluded(g.id)) s += getComputedStats(g, y).waerme;
+    }); return s;
   });
   // Wärme OHNE Sanierungen (Vergleich)
   const waermeOhne = years.map(y => {
     let s = 0;
     window.gebaeude.forEach(g => {
+      if (isExcluded(g.id)) return;
       const saved = g.sanierungen; g.sanierungen = [];
       s += getComputedStats(g, y).waerme;
       g.sanierungen = saved;
@@ -127,7 +133,9 @@ export function drawChart() {
   });
   // Heizlast MIT Sanierungen
   const hl = years.map(y => {
-    let s = 0; window.gebaeude.forEach(g => { s += getComputedStats(g, y).heizlast; }); return s;
+    let s = 0; window.gebaeude.forEach(g => {
+      if (!isExcluded(g.id)) s += getComputedStats(g, y).heizlast;
+    }); return s;
   });
 
   const maxW  = Math.max(...waerme, ...waermeOhne, 1);
@@ -188,9 +196,9 @@ export function drawChart() {
     <text x="${xCur}" y="${padT-4}" fill="#4fc3f7" font-size="8" font-family="DM Mono,monospace" text-anchor="middle">${globalYear}</text>
 
     <!-- X-Achse Labels -->
-    <text x="${padL}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace">2026</text>
-    <text x="${xp(13)}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace" text-anchor="middle">2037</text>
-    <text x="${w-padR}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace" text-anchor="end">2050</text>
+    <text x="${padL}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace">${firstYear}</text>
+    <text x="${xp(Math.floor((years.length-1)/2))}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace" text-anchor="middle">${years[Math.floor((years.length-1)/2)]}</text>
+    <text x="${w-padR}" y="${padT+ch+12}" fill="#7a8099" font-size="8" font-family="DM Mono,monospace" text-anchor="end">${lastYear}</text>
 
     <!-- Achsenbeschriftungen -->
     <text x="${padL-2}" y="${padT-6}" fill="#4caf50" font-size="8" font-family="DM Sans,sans-serif">MWh/a</text>
