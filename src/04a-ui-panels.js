@@ -419,6 +419,9 @@ export function showEdgePopup(e, mouseEvt) {
       <span>WLD: <span style="color:${getWLDColor(getWLD(e))}">${getWLD(e).toFixed(2)} MWh/(m·a)</span></span>
       <span>Kosten: <span style="color:#4fc3f7">${Math.round((getKostenProMKlasse(e.dn, e.kostKlasse||'mittel'))*(e.length||0)).toLocaleString('de-DE')} €</span></span>
     </div>
+    ${e.buildingConflict ? `<div style="margin-top:7px;padding:6px 8px;border:1px solid rgba(249,168,37,.55);border-radius:5px;background:rgba(249,168,37,.1);color:#ffd180;font-size:9px;line-height:1.45;">
+      ⚠ Automatischer Rückfall: Dieser Verlauf kreuzt einen Gebäudegrundriss. Das Netz wäre ohne diesen Abschnitt nicht vollständig verbunden. Bitte den Abschnitt bei Bedarf manuell umlegen.
+    </div>` : ''}
     ${e.infoHtml ? `<div class="edge-popup-details">${e.infoHtml}</div>` : ''}
     <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;">
       <button data-click="toggleEdgePruned()" style="width:100%;padding:5px 8px;background:${e.pruned?'#1b3a2a':'rgba(249,168,37,0.12)'};border:1px solid ${e.pruned?'#4caf50':'#f9a825'};border-radius:4px;color:${e.pruned?'#4caf50':'#f9a825'};cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;">

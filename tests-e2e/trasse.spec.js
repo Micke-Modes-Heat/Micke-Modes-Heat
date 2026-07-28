@@ -893,7 +893,7 @@ test('dist: Lebenszyklus-Optimierung kann mehrere wirtschaftliche Zentralabgäng
   expect(result.meta.scoreAfterEur).toBeLessThan(result.meta.scoreBeforeEur);
 });
 
-test('dist: fehlgeschlagener Netzaufbau bleibt mit verständlichem Hinweis im Erstellmenü',async({page})=>{
+test('dist: Gebäudekreuzung wird nur als Rückfall genutzt und verhindert den Netzaufbau nicht',async({page})=>{
   await page.route(/tile\\.openstreetmap\\.org/,route=>route.abort());
   await page.goto('/');
   await page.waitForFunction(()=>typeof window.createQuickWaermeNetz==='function');
@@ -922,11 +922,11 @@ test('dist: fehlgeschlagener Netzaufbau bleibt mit verständlichem Hinweis im Er
       hint:document.getElementById('hint').textContent,
     };
   });
-  expect(result.created).toBe(false);
-  expect(result.edgeCount).toBe(0);
-  expect(result.workspaceOpen).toBe(true);
-  expect(result.menuOpen).toBe(true);
-  expect(result.hint).toContain('konnten');
+  expect(result.created).toBe(true);
+  expect(result.edgeCount).toBe(1);
+  expect(result.workspaceOpen).toBe(false);
+  expect(result.menuOpen).toBe(false);
+  expect(result.hint).toContain('Gebäudekonflikt');
 });
 
 test('dist: straßenorientierter Aufbau bleibt bei großer Gebäudemenge verbunden',async({page})=>{

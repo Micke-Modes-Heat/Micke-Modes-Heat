@@ -2331,6 +2331,7 @@ export function autoGenerateNetz(options = {}){
   });
 
   const possibleEdges = [];
+  const blockedCandidateEdges = [];
   const hasTrasse = sharedTrasseNodes.size > 0;
   if (hasTrasse) {
     // Gebäude nicht an die wenigen Zeichen-Stützpunkte hängen, sondern an den
@@ -2482,16 +2483,20 @@ export function autoGenerateNetz(options = {}){
         const key = String(building.id) < String(other.id)
           ? `${building.id}:${other.id}` : `${other.id}:${building.id}`;
         if (localEdgeKeys.has(key)) continue;
+        localEdgeKeys.add(key);
         // Nicht nur die sechs geometrisch nächsten Nachbarn betrachten:
         // Ein nahes Gebäude kann hinter einem anderen Grundriss liegen. In
         // diesem Fall weiter suchen, bis sechs tatsächlich freie Kandidaten
         // gefunden wurden.
-        if (_edgeCrossesForeignBuilding(building,other)) continue;
-        localEdgeKeys.add(key);
-        possibleEdges.push({
+        const candidate = {
           u: building.id, v: other.id, uNode: building, vNode: other,
           dist, sortCost: dist * neighbourConnectionFactor,
-        });
+        };
+        if (_edgeCrossesForeignBuilding(building,other)) {
+          blockedCandidateEdges.push({...candidate,buildingConflict:true});
+          continue;
+        }
+        possibleEdges.push(candidate);
         acceptedNeighbours++;
       }
     }
@@ -2529,17 +2534,19 @@ export function autoGenerateNetz(options = {}){
     }
   }
 
-  // Gebäude sind echte Hindernisse: Eine Kandidatenkante darf nur die
-  // Grundrisse ihrer eigenen Endgebäude berühren. Dadurch kann der
-  // Minimalbaum keine scheinbar kurze Abkürzung durch ein fremdes Haus wählen.
-  let blockedByBuildings = 0;
+  // Gebäude sind zunächst harte Hindernisse. Konfliktkanten werden separat
+  // aufbewahrt und nur als letzte Rückfallebene verwendet, falls das Netz
+  // andernfalls nicht vollständig verbunden werden könnte.
   for (let index = possibleEdges.length - 1; index >= 0; index--) {
     const edge = possibleEdges[index];
     if (!_edgeCrossesForeignBuilding(edge.uNode,edge.vNode)) continue;
     possibleEdges.splice(index,1);
-    blockedByBuildings++;
+    blockedCandidateEdges.push({...edge,buildingConflict:true});
   }
-  window._netzBuildingObstacleDiagnostics = {blockedCandidateEdges:blockedByBuildings};
+  window._netzBuildingObstacleDiagnostics = {
+    blockedCandidateEdges:blockedCandidateEdges.length,
+    usedConflictEdges:0,
+  };
 
   const parent = {};
   allPts.push(...sharedTrasseNodes.values());
@@ -2571,14 +2578,31 @@ export function autoGenerateNetz(options = {}){
     }
   }
 
-  const centralRoot = find(zId);
-  const disconnectedBuildings = allPts
+  let centralRoot = find(zId);
+  let disconnectedBuildings = allPts
     .filter(node => node.type === 'geb' && find(node.id) !== centralRoot);
+  // Weiche Rückfallebene: Konfliktfreie Wege haben immer Vorrang. Erst wenn
+  // danach Verbraucher fehlen, verbinden wir die verbliebenen Komponenten mit
+  // möglichst wenigen und möglichst kurzen Konfliktabschnitten.
+  if (disconnectedBuildings.length) {
+    const sortedFallbacks = blockedCandidateEdges
+      .sort((a,b) => (a.sortCost ?? a.dist) - (b.sortCost ?? b.dist));
+    for (const edge of sortedFallbacks) {
+        if (!union(edge.u,edge.v)) continue;
+        mstEdges.push(edge);
+        window._netzBuildingObstacleDiagnostics.usedConflictEdges++;
+        const root = find(zId);
+        if (allPts.every(node => node.type !== 'geb' || find(node.id) === root)) break;
+    }
+    centralRoot = find(zId);
+    disconnectedBuildings = allPts
+      .filter(node => node.type === 'geb' && find(node.id) !== centralRoot);
+  }
   if (disconnectedBuildings.length) {
     clearNetz();
     showHint(
       `⚠ ${disconnectedBuildings.length} Gebäude konnten ohne Leitungsverlauf durch andere Gebäude nicht angeschlossen werden. ` +
-      'Bitte eine ergänzende Haupttrasse um die Hindernisse zeichnen.',
+      'Auch die Rückfallebene konnte keine zusammenhängende Netzstruktur herstellen.',
       7000,
     );
     return false;
@@ -2611,6 +2635,8 @@ export function autoGenerateNetz(options = {}){
     mstEdges,possibleEdges,allPts.filter(node => node.type === 'geb'),zId,strategy
   );
   mstEdges.splice(0,mstEdges.length,...optimizedEdges);
+  window._netzBuildingObstacleDiagnostics.usedConflictEdges =
+    mstEdges.filter(edge => edge.buildingConflict).length;
 
   mstEdges.forEach(e => {
     const displayPoints = _netzDisplayPoints(e.uNode,e.vNode);
@@ -2620,6 +2646,7 @@ export function autoGenerateNetz(options = {}){
     const edgeObj = {
         u: e.u, v: e.v, uNode: e.uNode, vNode: e.vNode,
         layer: layer, hitLayer: hitLayer, load: 0, dn: 0, length: calcEdgeLength({layer}),
+        buildingConflict:e.buildingConflict === true,
         waypoint: null, segLayers: [], warnMarker: null, midMarker: null
     };
     hitLayer.on('click', (ev) => {
@@ -2685,7 +2712,11 @@ export function autoGenerateNetz(options = {}){
   const streetInfo = strategy === 'street' && window._streetRoutingDiagnostics?.uncoveredBuildings > 0
     ? ` · ${window._streetRoutingDiagnostics.uncoveredBuildings} Gebäude in ${window._streetRoutingDiagnostics.freeClusters} OSM-Lücke${window._streetRoutingDiagnostics.freeClusters === 1 ? '' : 'n'} lokal ergänzt`
     : '';
-  showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${streetInfo}.`, 4500);
+  const conflictCount = window._netzBuildingObstacleDiagnostics?.usedConflictEdges || 0;
+  const conflictInfo = conflictCount
+    ? ` · ${conflictCount} Leitungsverlauf${conflictCount === 1 ? '' : 'e'} als Gebäudekonflikt markiert`
+    : '';
+  showHint(`✓ Wärmenetz erstellt: ${window.netzEdges.length} Leitungsabschnitte${streetInfo}${conflictInfo}.`, conflictCount ? 7000 : 4500);
   return window.netzEdges.length > 0;
 }
 
@@ -2939,6 +2970,7 @@ export function captureWaermeNetzGraph(){
       ...(e.visibleUntilYear != null && Number.isFinite(Number(e.visibleUntilYear))
         ? {visibleUntilYear:Number(e.visibleUntilYear)} : {}),
       pruned: e.pruned === true,
+      buildingConflict:e.buildingConflict === true,
       kostKlasse: e.kostKlasse || null,
       kostOverride: e.kostOverride === true,
       waypoints: getEdgeWaypoints(e).map(point => ({lat: Number(point.lat), lng: Number(point.lng)})),
@@ -2978,6 +3010,7 @@ export function applyWaermeNetzGraph(graph, {recalculate = true} = {}){
     if (!uNode || !vNode) return;
     const edge = _makeNetzEdge(uNode, vNode, Number(data.dn) || 0);
     edge.pruned = data.pruned === true;
+    edge.buildingConflict = data.buildingConflict === true;
     edge.kostKlasse = data.kostKlasse || null;
     edge.kostOverride = data.kostOverride === true;
     edge.visibleFromYear = data.visibleFromYear == null ? null : Number(data.visibleFromYear);
