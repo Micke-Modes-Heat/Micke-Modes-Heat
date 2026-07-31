@@ -64,6 +64,8 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
       autoNetzVisible: [...document.querySelectorAll('button')].some(button => button.textContent.includes('Wärmenetz erstellen')),
       createMenuOptions: [...document.querySelectorAll('#netz-create-menu .netz-create-option strong')]
         .map(element => element.textContent.trim()),
+      visibleTrasseDelete: [...document.querySelectorAll('#netz-create-menu button')]
+        .some(button => button.textContent.includes('Gezeichnete Haupttrasse löschen')),
       trassentreue: document.getElementById('netz-trassentreue')?.value,
       markerSurvivedDrag,
       lockedState,
@@ -87,6 +89,7 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
     'Haupttrasse zeichnen',
     'Netz vollständig manuell zeichnen',
   ]);
+  expect(result.visibleTrasseDelete).toBe(true);
   expect(result.trassentreue).toBe('80');
   expect(result.markerSurvivedDrag).toBe(true);
   expect(result.lockedState).toEqual({

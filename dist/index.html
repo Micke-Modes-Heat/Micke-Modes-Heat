@@ -14058,8 +14058,12 @@ if (typeof L !== 'undefined') {
           <strong>Haupttrasse zeichnen</strong>
           <span>Rückgrat vorgeben und Gebäude abhängig von der gewählten Netzstruktur anbinden.</span>
         </div>
-        <button class="btn-secondary trasse-draw-btn" id="btn-draw-trasse-waerme" type="button"
-                data-click="startGuidedTrasseCreation()">Haupttrasse zeichnen und bearbeiten</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-secondary trasse-draw-btn" id="btn-draw-trasse-waerme" type="button"
+                  data-click="startGuidedTrasseCreation()">Haupttrasse zeichnen und bearbeiten</button>
+          <button class="btn-secondary danger" type="button"
+                  data-click="confirmClearTrasse()">Gezeichnete Haupttrasse löschen</button>
+        </div>
       </div>
 
       <div class="netz-create-option netz-create-trasse">
@@ -14078,7 +14082,7 @@ if (typeof L !== 'undefined') {
           <button class="btn-secondary" data-click="toggleNetzRewireMode()">Gebäude anschließen / umhängen</button>
           <button class="btn-secondary" data-click="toggleDrawEdge()" id="btn-draw-edge">Leitung ergänzen</button>
           <button class="btn-secondary trasse-draw-btn" data-click="toggleDrawTrasse('waerme')">Haupttrasse bearbeiten</button>
-          <button class="btn-secondary" data-click="clearTrasse()">Haupttrasse löschen</button>
+          <button class="btn-secondary" data-click="confirmClearTrasse()">Haupttrasse löschen</button>
           <button class="btn-secondary danger" data-click="confirmClearNetz()">Netz löschen</button>
         </div>
         <p>Leitungspunkt ziehen = Verlauf ändern · Doppelklick auf einen Punkt = entfernen · Rechtsklick auf Leitung = löschen</p>
@@ -14784,7 +14788,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-31';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'c9b58d0';
+  var c = 'bf4f434';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -111186,6 +111190,24 @@ ${massTbl}
     showHint('Trasse gelöscht. Wärme- und Stromleitungen bleiben bis zur bewussten Neuberechnung erhalten.', 6000);
   }
 
+  async function confirmClearTrasse() {
+    if (!window.trassePoints.length && !window.trasseSegments.length) {
+      showHint('Es ist keine gezeichnete Haupttrasse vorhanden.',3500);
+      return false;
+    }
+    const ok = typeof window.epConfirm === 'function'
+      ? await window.epConfirm(
+        'Gezeichnete Haupttrasse löschen',
+        'Die gezeichnete Haupttrasse und ihre Abzweige werden entfernt.' +
+          '<br><br><span style="color:var(--muted);font-size:10px">Das bereits erzeugte Wärme- und Stromnetz bleibt unverändert.</span>',
+        {okText:'Haupttrasse löschen',cancelText:'Abbrechen',danger:true},
+      )
+      : window.confirm('Gezeichnete Haupttrasse löschen? Das bestehende Netz bleibt unverändert.');
+    if (!ok) return false;
+    clearTrasse();
+    return true;
+  }
+
   function toggleFliessgewaesserPanel() {
     const p = document.getElementById('fliessgewaesser-panel');
     const btn = document.getElementById('btn-fliessgewaesser-toggle');
@@ -111790,6 +111812,7 @@ ${massTbl}
     clearTrasse: clearTrasse,
     clearWindGebiet: clearWindGebiet,
     closestPointOnPolyline: closestPointOnPolyline,
+    confirmClearTrasse: confirmClearTrasse,
     deleteTrasse: deleteTrasse,
     finishAreaDraw: finishAreaDraw,
     finishDrawRiver: finishDrawRiver,

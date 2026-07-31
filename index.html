@@ -3152,8 +3152,12 @@
           <strong>Haupttrasse zeichnen</strong>
           <span>Rückgrat vorgeben und Gebäude abhängig von der gewählten Netzstruktur anbinden.</span>
         </div>
-        <button class="btn-secondary trasse-draw-btn" id="btn-draw-trasse-waerme" type="button"
-                data-click="startGuidedTrasseCreation()">Haupttrasse zeichnen und bearbeiten</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-secondary trasse-draw-btn" id="btn-draw-trasse-waerme" type="button"
+                  data-click="startGuidedTrasseCreation()">Haupttrasse zeichnen und bearbeiten</button>
+          <button class="btn-secondary danger" type="button"
+                  data-click="confirmClearTrasse()">Gezeichnete Haupttrasse löschen</button>
+        </div>
       </div>
 
       <div class="netz-create-option netz-create-trasse">
@@ -3172,7 +3176,7 @@
           <button class="btn-secondary" data-click="toggleNetzRewireMode()">Gebäude anschließen / umhängen</button>
           <button class="btn-secondary" data-click="toggleDrawEdge()" id="btn-draw-edge">Leitung ergänzen</button>
           <button class="btn-secondary trasse-draw-btn" data-click="toggleDrawTrasse('waerme')">Haupttrasse bearbeiten</button>
-          <button class="btn-secondary" data-click="clearTrasse()">Haupttrasse löschen</button>
+          <button class="btn-secondary" data-click="confirmClearTrasse()">Haupttrasse löschen</button>
           <button class="btn-secondary danger" data-click="confirmClearNetz()">Netz löschen</button>
         </div>
         <p>Leitungspunkt ziehen = Verlauf ändern · Doppelklick auf einen Punkt = entfernen · Rechtsklick auf Leitung = löschen</p>

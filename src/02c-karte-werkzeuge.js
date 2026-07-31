@@ -1406,6 +1406,24 @@ export function clearTrasse() {
   showHint('Trasse gelöscht. Wärme- und Stromleitungen bleiben bis zur bewussten Neuberechnung erhalten.', 6000);
 }
 
+export async function confirmClearTrasse() {
+  if (!window.trassePoints.length && !window.trasseSegments.length) {
+    showHint('Es ist keine gezeichnete Haupttrasse vorhanden.',3500);
+    return false;
+  }
+  const ok = typeof window.epConfirm === 'function'
+    ? await window.epConfirm(
+      'Gezeichnete Haupttrasse löschen',
+      'Die gezeichnete Haupttrasse und ihre Abzweige werden entfernt.' +
+        '<br><br><span style="color:var(--muted);font-size:10px">Das bereits erzeugte Wärme- und Stromnetz bleibt unverändert.</span>',
+      {okText:'Haupttrasse löschen',cancelText:'Abbrechen',danger:true},
+    )
+    : window.confirm('Gezeichnete Haupttrasse löschen? Das bestehende Netz bleibt unverändert.');
+  if (!ok) return false;
+  clearTrasse();
+  return true;
+}
+
 export function toggleFliessgewaesserPanel() {
   const p = document.getElementById('fliessgewaesser-panel');
   const btn = document.getElementById('btn-fliessgewaesser-toggle');
