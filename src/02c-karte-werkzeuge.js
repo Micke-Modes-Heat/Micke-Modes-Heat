@@ -41,6 +41,91 @@ function snapManualWaermePoint(latlng) {
   return L.latLng(best.center.lat, best.center.lng);
 }
 
+function manualWaermeConnectedBuildingIds() {
+  const connected = new Set();
+  const manualSegments = window.trasseSegments.filter(seg => seg.manualNetwork === true);
+  const segments = [...manualSegments];
+  if (window._manualWaermeNetzDrawing &&
+      window.trassePoints.length > window.trasseCurrentSegStart) {
+    segments.push({start:window.trasseCurrentSegStart,end:window.trassePoints.length-1});
+  }
+  gebaeude.forEach(g => {
+    if (!g.polygon?.length) return;
+    const center = polygonCenter(g.polygon);
+    const touches = segments.some(seg => {
+      for (let index=seg.start; index<=seg.end; index++) {
+        if (window.trassePoints[index]?.distanceTo(center) <= 1.25) return true;
+      }
+      return false;
+    });
+    if (touches) connected.add(g.id);
+  });
+  return connected;
+}
+
+function updateManualWaermeBuildingStyles() {
+  if (!window._manualWaermeNetzDrawing) return;
+  const connected = manualWaermeConnectedBuildingIds();
+  const centralId = Number.parseInt(document.getElementById('netz-zentrale')?.value,10);
+  gebaeude.forEach(g => {
+    if (!g.polygonLayer) return;
+    const isConnected = connected.has(g.id);
+    const isCentral = g.id === centralId;
+    g.polygonLayer.setStyle({
+      color:isCentral ? '#42a5f5' : isConnected ? '#66bb6a' : 'rgba(255,255,255,.58)',
+      weight:isCentral || isConnected ? 2.5 : 1.4,
+      dashArray:isConnected || isCentral ? null : '4 4',
+      fillColor:isCentral ? 'rgba(66,165,245,.18)' : isConnected ? 'rgba(102,187,106,.14)' : 'rgba(255,255,255,.035)',
+      fillOpacity:1,
+    });
+  });
+  const subtitle = document.querySelector('#trasse-editor-bar .trasse-editor-title span');
+  if (subtitle) {
+    const total = gebaeude.filter(g => g.polygon?.length).length;
+    const outstanding = Math.max(0,total-connected.size);
+    subtitle.textContent = `${connected.size} Gebäude angeschlossen · ${outstanding} ausstehend · Gebäude direkt anklicken`;
+  }
+}
+
+export function manualWaermeNetzBuildingClick(buildingId) {
+  if (!window.isDrawingTrasse || !window._manualWaermeNetzDrawing) return false;
+  const building = gebaeude.find(candidate => candidate.id === buildingId);
+  if (!building?.polygon?.length) return true;
+  const center = polygonCenter(building.polygon);
+
+  if (window.trasseDetached) {
+    setTrasseCurrentSegStart(window.trassePoints.length);
+    window.trassePoints.push(L.latLng(center.lat,center.lng));
+    setTrasseDetached(false);
+    redrawTrasse();
+    updateManualWaermeBuildingStyles();
+    showHint(`Neuen Strang an „${building.name || `Gebäude ${building.id}`}“ begonnen. Wähle den Verlauf und anschließend das Zielgebäude.`,5000);
+    return true;
+  }
+
+  const last = window.trassePoints.at(-1);
+  if (!last || last.distanceTo(center) > 0.05) {
+    window.trassePoints.push(L.latLng(center.lat,center.lng));
+  }
+  if (window.trassePoints.length > window.trasseCurrentSegStart + 1) {
+    startNewTrasseBranch();
+    updateManualWaermeBuildingStyles();
+    const remaining = gebaeude.filter(g => g.polygon?.length &&
+      !manualWaermeConnectedBuildingIds().has(g.id)).length;
+    showHint(
+      `✓ „${building.name || `Gebäude ${building.id}`}“ angedockt. ` +
+      `${remaining ? `${remaining} Gebäude noch offen. ` : 'Alle Gebäude angedockt. '}` +
+      'Klicke auf eine vorhandene Leitung oder ein Gebäude, um den nächsten Strang zu beginnen.',
+      6500,
+    );
+  } else {
+    redrawTrasse();
+    updateManualWaermeBuildingStyles();
+    showHint(`Strang an „${building.name || `Gebäude ${building.id}`}“ begonnen. Klicke den Verlauf und danach das Zielgebäude.`,5000);
+  }
+  return true;
+}
+
 export function undoTrassePoint() {
   if (!window.isDrawingTrasse || window.trassePoints.length <= window.trasseCurrentSegStart) return false;
   trasseRedoPoints.push(window.trassePoints.pop());
@@ -1037,6 +1122,7 @@ export function toggleDrawTrasse(domain) {
     // Aktuelles Segment starten
     setTrasseCurrentSegStart(window.trassePoints.length);
     redrawTrasse();
+    if (manualHeat) updateManualWaermeBuildingStyles();
   } else {
     commitInteraction('draw-trasse');
     trasseRedoPoints = [];
@@ -1115,13 +1201,19 @@ export function showTrasseFinishBtn() {
   bar.style.display = 'flex';
 }
 
-export function finishTrasseAndGenerateNetz() {
+export async function finishTrasseAndGenerateNetz() {
   const manualHeat = !!window._manualWaermeNetzDrawing;
   if (window.isDrawingTrasse) toggleDrawTrasse();
   if (manualHeat) {
-    window._manualWaermeNetzDrawing = false;
-    confirmManualWaermeNetzFromTrasse();
-    return;
+    const created = await confirmManualWaermeNetzFromTrasse();
+    if (created) {
+      window._manualWaermeNetzDrawing = false;
+    } else if (!window.isDrawingTrasse) {
+      // Bei fehlenden Anschlüssen unmittelbar im Zeichenmodus bleiben. So
+      // kann der Nutzer die offenen Gebäude direkt weiter andocken.
+      toggleDrawTrasse('waerme');
+    }
+    return created;
   }
   if (window._streetHelperDrawing) {
     createStreetOrientedWaermeNetz();
@@ -1204,6 +1296,9 @@ export function redrawTrasse() {
 
   allSegs.forEach((seg, allSegIdx) => {
     if (window._streetHelperDrawing && seg.source === 'osm-street') return;
+    if (window._manualWaermeNetzDrawing &&
+        allSegIdx < window.trasseSegments.length &&
+        seg.manualNetwork !== true) return;
     if (seg.end <= seg.start) return;
     const pts = [];
     for (let i = seg.start; i <= seg.end; i++) pts.push(window.trassePoints[i]);

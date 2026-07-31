@@ -253,6 +253,65 @@ test('dist: vollständig manuelles Wärmenetz übernimmt nur die gezeichneten Le
   expect(result.trasseVisible).toBe(false);
 });
 
+test('dist: manuelles Netz dockt Gebäude per Klick an und blendet alte Straßentrassen aus', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.startManualWaermeNetzCreation === 'function');
+  const result = await page.evaluate(() => {
+    clearNetz();
+    setGebaeude([]);
+    const add = (id,lat,lng,name) => {
+      const building=addGebaeude({
+        id,name,baujahr:2000,skipAutoCreate:true,
+        coords:[
+          L.latLng(lat-.00003,lng-.00003),L.latLng(lat-.00003,lng+.00003),
+          L.latLng(lat+.00003,lng+.00003),L.latLng(lat+.00003,lng-.00003),
+        ],
+      });
+      building.heizlast='80';
+      building.waerme='160';
+      return building;
+    };
+    const central=add(1251,52.08,8,'Zentrale');
+    const east=add(1252,52.08,8.002,'Haus Ost');
+    const north=add(1253,52.081,8.001,'Haus Nord');
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1251';
+    setNetworkLocked(true);
+    setTrassePoints([L.latLng(52.079,7.999),L.latLng(52.079,8.003)]);
+    setTrasseSegments([{start:0,end:1,domains:['waerme'],source:'osm-street'}]);
+    startManualWaermeNetzCreation();
+    const oldStreetLayersWhileDrawing=window.trassePolyline.length;
+    central.polygonLayer.fire('click');
+    east.polygonLayer.fire('click');
+    const afterFirst={
+      detached:window.trasseDetached,
+      manualSegments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
+      eastColor:east.polygonLayer.options.color,
+    };
+    central.polygonLayer.fire('click');
+    north.polygonLayer.fire('click');
+    const subtitle=document.querySelector('#trasse-editor-bar .trasse-editor-title span')?.textContent;
+    toggleDrawTrasse();
+    const created=createManualWaermeNetzFromTrasse();
+    return {
+      oldStreetLayersWhileDrawing,
+      afterFirst,
+      subtitle,
+      created,
+      connectedBuildings:[...new Set(window.netzEdges.flatMap(edge=>[edge.u,edge.v]))]
+        .filter(id=>id>=1251&&id<=1253).sort(),
+    };
+  });
+  expect(result.oldStreetLayersWhileDrawing).toBe(0);
+  expect(result.afterFirst.detached).toBe(true);
+  expect(result.afterFirst.manualSegments).toBe(1);
+  expect(result.afterFirst.eastColor).toBe('#66bb6a');
+  expect(result.subtitle).toContain('3 Gebäude angeschlossen · 0 ausstehend');
+  expect(result.created).toBe(true);
+  expect(result.connectedBuildings).toEqual([1251,1252,1253]);
+});
+
 test('dist: mehrfach angesetzte Haupttrasse bildet am Linien-Snap einen echten Abzweig', async ({page}) => {
   await page.route(/tile\.openstreetmap\.org/, route => route.abort());
   await page.goto('/');

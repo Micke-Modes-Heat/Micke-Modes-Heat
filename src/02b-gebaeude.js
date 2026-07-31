@@ -452,7 +452,14 @@ export function attachPolygonLayer(g){
     color:g.fromOsm?'rgba(206,147,216,0.4)':'rgba(79,195,247,0.4)',
     weight:1.2,fillColor:'rgba(79,195,247,0.08)',fillOpacity:1
   }).addTo(map);
-  g.polygonLayer.on('click',()=>{ selectFromMap(g.id); });
+  g.polygonLayer.on('click',(event)=>{
+    if (typeof window.manualWaermeNetzBuildingClick === 'function' &&
+        window.manualWaermeNetzBuildingClick(g.id)) {
+      if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+      return;
+    }
+    selectFromMap(g.id);
+  });
   if (!_batchImporting) updateViz();
 }
 
