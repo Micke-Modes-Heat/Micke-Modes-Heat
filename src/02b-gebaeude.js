@@ -450,7 +450,8 @@ export function attachPolygonLayer(g){
   if(g.polygonLayer) map.removeLayer(g.polygonLayer);
   g.polygonLayer=L.polygon(g.polygon,{
     color:g.fromOsm?'rgba(206,147,216,0.4)':'rgba(79,195,247,0.4)',
-    weight:1.2,fillColor:'rgba(79,195,247,0.08)',fillOpacity:1
+    weight:1.2,fillColor:'rgba(79,195,247,0.08)',fillOpacity:1,
+    bubblingMouseEvents:false,
   }).addTo(map);
   g.polygonLayer.on('click',(event)=>{
     if (typeof window.manualWaermeNetzBuildingClick === 'function' &&

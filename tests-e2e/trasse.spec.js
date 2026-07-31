@@ -73,8 +73,8 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
   });
 
   expect(result.segments).toHaveLength(2);
-  expect(result.points).toHaveLength(4);
-  expect(result.points[2].lng).toBeCloseTo(8.0035, 4);
+  expect(result.points).toHaveLength(5);
+  expect(result.points[3].lng).toBeCloseTo(8.0035, 4);
   expect(result.edgePreserved).toBe(true);
   expect(result.activeButtons).toBe(0);
   expect(result.duplicateIds).toBe(0);
@@ -293,13 +293,31 @@ test('dist: manuelles Netz dockt Gebäude per Klick an und blendet alte Straßen
       eastColor:east.polygonLayer.options.color,
     };
     central.polygonLayer.fire('click');
+    const afterSecondStart={
+      manualSegments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
+      activePoints:window.trassePoints.length-window.trasseCurrentSegStart,
+      detached:window.trasseDetached,
+    };
     north.polygonLayer.fire('click');
+    document.getElementById('trasse-undo-btn').click();
+    const afterUndo={
+      manualSegments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
+      activePoints:window.trassePoints.length-window.trasseCurrentSegStart,
+    };
+    document.getElementById('trasse-redo-btn').click();
+    const afterRedo={
+      manualSegments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
+      detached:window.trasseDetached,
+    };
     const subtitle=document.querySelector('#trasse-editor-bar .trasse-editor-title span')?.textContent;
     toggleDrawTrasse();
     const created=createManualWaermeNetzFromTrasse();
     return {
       oldStreetLayersWhileDrawing,
       afterFirst,
+      afterSecondStart,
+      afterUndo,
+      afterRedo,
       subtitle,
       created,
       connectedBuildings:[...new Set(window.netzEdges.flatMap(edge=>[edge.u,edge.v]))]
@@ -310,9 +328,130 @@ test('dist: manuelles Netz dockt Gebäude per Klick an und blendet alte Straßen
   expect(result.afterFirst.detached).toBe(true);
   expect(result.afterFirst.manualSegments).toBe(1);
   expect(result.afterFirst.eastColor).toBe('#66bb6a');
+  expect(result.afterSecondStart).toEqual({manualSegments:1,activePoints:1,detached:false});
+  expect(result.afterUndo).toEqual({manualSegments:1,activePoints:1});
+  expect(result.afterRedo).toEqual({manualSegments:2,detached:true});
   expect(result.subtitle).toContain('3 Gebäude angeschlossen · 0 ausstehend');
   expect(result.created).toBe(true);
   expect(result.connectedBuildings).toEqual([1251,1252,1253]);
+});
+
+test('dist: Rechtsklick beendet einen manuellen Strang und Doppel-Rechtsklick nimmt den letzten Punkt zurück',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.startManualWaermeNetzCreation==='function');
+  const result=await page.evaluate(async()=>{
+    clearNetz();
+    setGebaeude([]);
+    const building=addGebaeude({
+      id:1281,name:'Zentrale',baujahr:2000,skipAutoCreate:true,
+      coords:[
+        L.latLng(52.07997,7.99997),L.latLng(52.07997,8.00003),
+        L.latLng(52.08003,8.00003),L.latLng(52.08003,7.99997),
+      ],
+    });
+    building.heizlast='80'; building.waerme='160';
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1281';
+    setTrassePoints([]); setTrasseSegments([]);
+    startManualWaermeNetzCreation();
+    building.polygonLayer.fire('click');
+    map.fire('click',{latlng:L.latLng(52.0802,8.0003)});
+    map.fire('contextmenu',{latlng:L.latLng(52.0802,8.0003)});
+    map.fire('contextmenu',{latlng:L.latLng(52.0802,8.0003)});
+    const afterDoubleRight={
+      activePoints:window.trassePoints.length-window.trasseCurrentSegStart,
+      segments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
+    };
+    map.fire('click',{latlng:L.latLng(52.0802,8.0003)});
+    map.fire('contextmenu',{latlng:L.latLng(52.0802,8.0003)});
+    await new Promise(resolve=>setTimeout(resolve,350));
+    const afterSingleRight={
+      detached:window.trasseDetached,
+      segments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
+      activePoints:window.trassePoints.length-window.trasseCurrentSegStart,
+    };
+    map.fire('click',{latlng:L.latLng(52.0805,8.0005)});
+    const afterNextLeft={
+      detached:window.trasseDetached,
+      segments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
+      activePoints:window.trassePoints.length-window.trasseCurrentSegStart,
+    };
+    return {afterDoubleRight,afterSingleRight,afterNextLeft};
+  });
+  expect(result.afterDoubleRight).toEqual({activePoints:1,segments:0});
+  expect(result.afterSingleRight).toEqual({detached:true,segments:1,activePoints:0});
+  expect(result.afterNextLeft).toEqual({detached:false,segments:1,activePoints:1});
+});
+
+test('dist: verschobener manueller Anschlusspunkt aktualisiert Gebäude und Linien-Snap fügt einen Abzweig ein',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.startManualWaermeNetzCreation==='function');
+  const result=await page.evaluate(()=>{
+    clearNetz();
+    setGebaeude([]);
+    const add=(id,lat,lng,name)=>{
+      const building=addGebaeude({
+        id,name,baujahr:2000,skipAutoCreate:true,
+        coords:[
+          L.latLng(lat-.00003,lng-.00003),L.latLng(lat-.00003,lng+.00003),
+          L.latLng(lat+.00003,lng+.00003),L.latLng(lat+.00003,lng-.00003),
+        ],
+      });
+      building.heizlast='80'; building.waerme='160';
+      return building;
+    };
+    const central=add(1291,52.08,8,'Zentrale');
+    const east=add(1292,52.08,8.002,'Haus Ost');
+    const north=add(1293,52.081,8.001,'Haus Nord');
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1291';
+    setTrassePoints([]); setTrasseSegments([]);
+    startManualWaermeNetzCreation();
+    central.polygonLayer.fire('click');
+    east.polygonLayer.fire('click');
+
+    // Zum Bearbeiten aus dem Abzweig-Wartemodus zurückkehren und den
+    // Anschluss-Endpunkt vom Ost- auf das Nordgebäude ziehen.
+    setTrasseDetached(false);
+    redrawTrasse();
+    const eastCenter=polygonCenter(east.polygon);
+    const northCenter=polygonCenter(north.polygon);
+    const endpoint=window.trasseEditMarkers
+      .filter(marker=>marker.options.draggable)
+      .find(marker=>marker.getLatLng().distanceTo(eastCenter)<1);
+    endpoint.fire('dragstart',{target:endpoint});
+    endpoint.setLatLng(northCenter);
+    endpoint.fire('drag',{target:endpoint});
+    endpoint.fire('dragend',{target:endpoint});
+    const colorsAfterMove={
+      east:east.polygonLayer.options.color,
+      north:north.polygonLayer.options.color,
+    };
+
+    // Ein neuer Strang startet per Klick mitten auf der vorhandenen Leitung.
+    setTrasseDetached(true);
+    redrawTrasse();
+    const midpoint=L.latLng(
+      (polygonCenter(central.polygon).lat+northCenter.lat)/2,
+      (polygonCenter(central.polygon).lng+northCenter.lng)/2,
+    );
+    map.fire('click',{latlng:midpoint});
+    const manualSegment=window.trasseSegments.find(segment=>segment.manualNetwork);
+    return {
+      colorsAfterMove,
+      segmentPointCount:manualSegment.end-manualSegment.start+1,
+      activePointCount:window.trassePoints.length-window.trasseCurrentSegStart,
+      insertedMatchesStart:window.trassePoints[manualSegment.start+1]
+        .distanceTo(window.trassePoints[window.trasseCurrentSegStart])<.1,
+    };
+  });
+  expect(result.colorsAfterMove.east).toBe('rgba(255,183,77,.82)');
+  expect(result.colorsAfterMove.north).toBe('#66bb6a');
+  expect(result.segmentPointCount).toBe(3);
+  expect(result.activePointCount).toBe(1);
+  expect(result.insertedMatchesStart).toBe(true);
 });
 
 test('dist: mehrfach angesetzte Haupttrasse bildet am Linien-Snap einen echten Abzweig', async ({page}) => {

@@ -14788,7 +14788,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-31';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'bf4f434';
+  var c = 'ce40996';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -109812,7 +109812,46 @@ ${massTbl}
   /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
   let windAreaDrawLifecycle = null;
 
-  let trasseRedoPoints = [];
+  let trasseUndoHistory = [];
+  let trasseRedoHistory = [];
+  let manualTrasseRightClickTimer = null;
+
+  function captureTrasseHistoryState() {
+    return {
+      points:window.trassePoints.map(point => ({lat:point.lat,lng:point.lng})),
+      segments:window.trasseSegments.map(segment => ({...segment,domains:segment.domains ? [...segment.domains] : undefined})),
+      currentSegStart:window.trasseCurrentSegStart,
+      detached:!!window.trasseDetached,
+    };
+  }
+
+  function updateTrasseHistoryButtons() {
+    const undo = document.getElementById('trasse-undo-btn');
+    const redo = document.getElementById('trasse-redo-btn');
+    if (undo) undo.disabled = trasseUndoHistory.length === 0;
+    if (redo) redo.disabled = trasseRedoHistory.length === 0;
+  }
+
+  function recordTrasseHistory() {
+    if (!window.isDrawingTrasse) return;
+    trasseUndoHistory.push(captureTrasseHistoryState());
+    if (trasseUndoHistory.length > 200) trasseUndoHistory.shift();
+    trasseRedoHistory = [];
+    updateTrasseHistoryButtons();
+  }
+
+  function restoreTrasseHistoryState(state) {
+    setTrassePoints(state.points.map(point => L.latLng(point.lat,point.lng)));
+    setTrasseSegments(state.segments.map(segment => ({
+      ...segment,
+      domains:segment.domains ? [...segment.domains] : undefined,
+    })));
+    setTrasseCurrentSegStart(state.currentSegStart);
+    setTrasseDetached(state.detached);
+    redrawTrasse();
+    updateManualWaermeBuildingStyles();
+    updateTrasseHistoryButtons();
+  }
 
   function snapManualWaermePoint(latlng) {
     if (!window._manualWaermeNetzDrawing) return latlng;
@@ -109822,13 +109861,41 @@ ${massTbl}
       if (!g.polygon?.length) return;
       const center = polygonCenter(g.polygon);
       const distancePx = click.distanceTo(map.latLngToContainerPoint(center));
-      if (distancePx <= 24 && (!best || distancePx < best.distancePx)) {
+      const distanceM = latlng.distanceTo(center);
+      if (distancePx <= 24 && distanceM <= 35 && (!best || distancePx < best.distancePx)) {
         best = {center, distancePx, gebaeude: g};
       }
     });
     if (!best) return latlng;
     showHint(`An „${best.gebaeude.name || `Gebäude ${best.gebaeude.id}`}“ eingerastet.`, 1800);
     return L.latLng(best.center.lat, best.center.lng);
+  }
+
+  function findTrasseLineSnap(latlng,excludePointIndex=-1,maxDistancePx=20) {
+    const clickPx = map.latLngToContainerPoint(latlng);
+    let best = null;
+    window.trasseSegments.forEach((seg,segIdx) => {
+      if (window._manualWaermeNetzDrawing && seg.manualNetwork !== true) return;
+      for (let pointIndex=seg.start; pointIndex<seg.end; pointIndex++) {
+        if (excludePointIndex >= 0 &&
+            (pointIndex === excludePointIndex || pointIndex+1 === excludePointIndex)) continue;
+        const a=map.latLngToContainerPoint(window.trassePoints[pointIndex]);
+        const b=map.latLngToContainerPoint(window.trassePoints[pointIndex+1]);
+        const dx=b.x-a.x,dy=b.y-a.y;
+        const denominator=dx*dx+dy*dy;
+        const t=denominator
+          ? Math.max(0,Math.min(1,((clickPx.x-a.x)*dx+(clickPx.y-a.y)*dy)/denominator))
+          : 0;
+        const projected=L.point(a.x+t*dx,a.y+t*dy);
+        const distancePx=clickPx.distanceTo(projected);
+        if (distancePx>maxDistancePx || (best && distancePx>=best.distancePx)) continue;
+        best={
+          segIdx,pointIndex,t,distancePx,
+          latlng:map.containerPointToLatLng(projected),
+        };
+      }
+    });
+    return best;
   }
 
   function manualWaermeConnectedBuildingIds() {
@@ -109862,10 +109929,10 @@ ${massTbl}
       const isConnected = connected.has(g.id);
       const isCentral = g.id === centralId;
       g.polygonLayer.setStyle({
-        color:isCentral ? '#42a5f5' : isConnected ? '#66bb6a' : 'rgba(255,255,255,.58)',
-        weight:isCentral || isConnected ? 2.5 : 1.4,
+        color:isCentral ? '#42a5f5' : isConnected ? '#66bb6a' : 'rgba(255,183,77,.82)',
+        weight:isCentral || isConnected ? 2.5 : 1.8,
         dashArray:isConnected || isCentral ? null : '4 4',
-        fillColor:isCentral ? 'rgba(66,165,245,.18)' : isConnected ? 'rgba(102,187,106,.14)' : 'rgba(255,255,255,.035)',
+        fillColor:isCentral ? 'rgba(66,165,245,.18)' : isConnected ? 'rgba(102,187,106,.14)' : 'rgba(255,183,77,.07)',
         fillOpacity:1,
       });
     });
@@ -109882,6 +109949,7 @@ ${massTbl}
     const building = gebaeude.find(candidate => candidate.id === buildingId);
     if (!building?.polygon?.length) return true;
     const center = polygonCenter(building.polygon);
+    recordTrasseHistory();
 
     if (window.trasseDetached) {
       setTrasseCurrentSegStart(window.trassePoints.length);
@@ -109917,18 +109985,18 @@ ${massTbl}
   }
 
   function undoTrassePoint() {
-    if (!window.isDrawingTrasse || window.trassePoints.length <= window.trasseCurrentSegStart) return false;
-    trasseRedoPoints.push(window.trassePoints.pop());
-    redrawTrasse();
-    showHint('Letzten Trassenpunkt zurückgenommen. Strg/Cmd+Umschalt+Z stellt ihn wieder her.', 3500);
+    if (!window.isDrawingTrasse || trasseUndoHistory.length === 0) return false;
+    trasseRedoHistory.push(captureTrasseHistoryState());
+    restoreTrasseHistoryState(trasseUndoHistory.pop());
+    showHint('Letzte Zeichenaktion zurückgenommen. Strg/Cmd+Umschalt+Z stellt sie wieder her.', 3500);
     return true;
   }
 
   function redoTrassePoint() {
-    if (!window.isDrawingTrasse || trasseRedoPoints.length === 0) return false;
-    window.trassePoints.push(trasseRedoPoints.pop());
-    redrawTrasse();
-    showHint('Trassenpunkt wiederhergestellt.', 2500);
+    if (!window.isDrawingTrasse || trasseRedoHistory.length === 0) return false;
+    trasseUndoHistory.push(captureTrasseHistoryState());
+    restoreTrasseHistoryState(trasseRedoHistory.pop());
+    showHint('Zeichenaktion wiederhergestellt.', 2500);
     return true;
   }
 
@@ -110691,7 +110759,7 @@ ${massTbl}
       return;
     }
     if(window.isDrawingTrasse) {
-      trasseRedoPoints = [];
+      recordTrasseHistory();
       const clickedLatLng = snapManualWaermePoint(e.latlng);
       if (window.trasseDetached) {
         // Erst auf vorhandene Knoten, danach auch auf die nächstgelegene Linie
@@ -110699,6 +110767,7 @@ ${massTbl}
         let snapIdx = -1;
         let snapDist = Infinity;
         let snapLatLng = null;
+        let lineSnap = null;
         const clickPx = map.latLngToContainerPoint(clickedLatLng);
         for (let i = 0; i < window.trassePoints.length; i++) {
           const px = map.latLngToContainerPoint(window.trassePoints[i]);
@@ -110706,20 +110775,20 @@ ${massTbl}
           if (d < 6 && d < snapDist) { snapDist = d; snapIdx = i; snapLatLng = window.trassePoints[i]; }
         }
         if (snapIdx < 0) {
-          for (const seg of window.trasseSegments) {
-            for (let i = seg.start; i < seg.end; i++) {
-              const a = map.latLngToContainerPoint(window.trassePoints[i]);
-              const b = map.latLngToContainerPoint(window.trassePoints[i + 1]);
-              const dx = b.x - a.x, dy = b.y - a.y;
-              const den = dx * dx + dy * dy;
-              const t = den ? Math.max(0, Math.min(1, ((clickPx.x-a.x)*dx + (clickPx.y-a.y)*dy) / den)) : 0;
-              const projected = L.point(a.x + t*dx, a.y + t*dy);
-              const d = clickPx.distanceTo(projected);
-              if (d < 20 && d < snapDist) { snapDist = d; snapLatLng = map.containerPointToLatLng(projected); }
-            }
+          lineSnap=findTrasseLineSnap(clickedLatLng,-1,20);
+          if (lineSnap) {
+            snapDist=lineSnap.distancePx;
+            snapLatLng=lineSnap.latlng;
           }
         }
         if (snapLatLng) {
+          // Liegt der neue Abzweig mitten auf einer vorhandenen Leitung, wird
+          // dort nicht nur optisch eingerastet: Die bestehende Linie erhält
+          // einen echten Stütz- und Abzweigpunkt.
+          if (lineSnap && lineSnap.t > 0.0001 && lineSnap.t < 0.9999) {
+            insertTrassePoint(lineSnap.segIdx,lineSnap.pointIndex,snapLatLng,false);
+            snapLatLng=window.trassePoints[lineSnap.pointIndex+1];
+          }
           // Neuen Strang ab bestehendem Punkt starten
           setTrasseCurrentSegStart(window.trassePoints.length);
           window.trassePoints.push(L.latLng(snapLatLng.lat, snapLatLng.lng));
@@ -110786,12 +110855,38 @@ ${massTbl}
     }
   });
 
+  function finishCurrentManualTrasseStrand() {
+    if (!window.isDrawingTrasse || !window._manualWaermeNetzDrawing) return false;
+    if (window.trassePoints.length <= window.trasseCurrentSegStart) {
+      setTrasseDetached(true);
+      showHint('Aktueller Strang ist beendet. Linksklick startet den nächsten Strang.',3500);
+      return true;
+    }
+    recordTrasseHistory();
+    startNewTrasseBranch();
+    updateManualWaermeBuildingStyles();
+    showHint('Strang beendet. Linksklick auf ein Gebäude oder eine vorhandene Leitung startet den nächsten Strang.',5000);
+    return true;
+  }
+
   map.on('contextmenu', e => {
     if(window.isDrawingRiver && window.riverPoints.length > 0){
       window.riverPoints.pop();
       redrawRiverDuringDraw();
+    } else if (window.isDrawingTrasse && window._manualWaermeNetzDrawing) {
+      // Zwei schnelle Rechtsklicks unterscheiden wir bewusst vom einfachen
+      // Rechtsklick. Einfach = Strang beenden, doppelt = letzte Aktion zurück.
+      if (manualTrasseRightClickTimer) {
+        clearTimeout(manualTrasseRightClickTimer);
+        manualTrasseRightClickTimer = null;
+        undoTrassePoint();
+      } else {
+        manualTrasseRightClickTimer = setTimeout(() => {
+          manualTrasseRightClickTimer = null;
+          finishCurrentManualTrasseStrand();
+        },300);
+      }
     } else if(window.isDrawingTrasse && window.trassePoints.length > window.trasseCurrentSegStart){
-      // Einheitliche Zeichenlogik: Rechtsklick nimmt den letzten Punkt zurück.
       undoTrassePoint();
     } else if((window.drawingId ?? drawingId) !== null && (window.drawPoints || drawPoints).length > 0){
       const _drawPts = window.drawPoints || drawPoints;
@@ -110871,7 +110966,8 @@ ${massTbl}
     if (window.isDrawingTrasse) {
       const manualHeat = trasseDrawDomain === 'waerme' && window._manualWaermeNetzDrawing;
       beginInteraction({id:'draw-trasse',label:trasseDrawDomain === 'strom' ? 'Elektro-Korridor zeichnen' : manualHeat ? 'Wärmenetz vollständig manuell zeichnen' : 'Wärme-Haupttrasse zeichnen',hint:'Punkte setzen; neuer Strang erzeugt einen Abzweig.',cancel:cancelTrasseInteraction});
-      trasseRedoPoints = [];
+      trasseUndoHistory = [];
+      trasseRedoHistory = [];
       // Trasse zum Bearbeiten sichtbar machen (Ansicht-Checkbox synchronisieren)
       window.trasseVisible = true;
       const _tcb = document.getElementById('el-trasse-visible');
@@ -110881,7 +110977,7 @@ ${massTbl}
       if (typeof window.setPendingType === 'function' && window._pendingAssetType) window.setPendingType(window._pendingAssetType);
       buttons.forEach(btn => btn.classList.add('active'));
       setTrasseDetached(false);
-      showHint(`${trasseDrawDomain === 'strom' ? 'Elektro-Korridor' : manualHeat ? 'Manuelles Wärmenetz' : 'Wärme-Haupttrasse'}: Punkte setzen. Rechtsklick = letzter Punkt zurück. „Neuer Strang“ startet einen Abzweig.${manualHeat ? ' Nahe Gebäude werden automatisch exakt eingerastet.' : ''}`);
+      showHint(`${trasseDrawDomain === 'strom' ? 'Elektro-Korridor' : manualHeat ? 'Manuelles Wärmenetz' : 'Wärme-Haupttrasse'}: Punkte setzen.${manualHeat ? ' Rechtsklick = Strang beenden · Doppel-Rechtsklick = zurück. Gebäude können direkt angeklickt werden.' : ' Rechtsklick = zurück. „Neuer Strang“ startet einen Abzweig.'}`);
       showTrasseFinishBtn();
       _hideForDraw();
       map.getContainer().style.cursor = 'crosshair';
@@ -110909,7 +111005,12 @@ ${massTbl}
       if (manualHeat) updateManualWaermeBuildingStyles();
     } else {
       commitInteraction('draw-trasse');
-      trasseRedoPoints = [];
+      trasseUndoHistory = [];
+      trasseRedoHistory = [];
+      if (manualTrasseRightClickTimer) {
+        clearTimeout(manualTrasseRightClickTimer);
+        manualTrasseRightClickTimer = null;
+      }
       buttons.forEach(btn => btn.classList.remove('active'));
       hideHint();
       hideTrasseFinishBtn();
@@ -110956,7 +111057,10 @@ ${massTbl}
       document.body.appendChild(bar);
       bar.querySelector('#trasse-undo-btn').onclick = undoTrassePoint;
       bar.querySelector('#trasse-redo-btn').onclick = redoTrassePoint;
-      bar.querySelector('#trasse-branch-btn').onclick = startNewTrasseBranch;
+      bar.querySelector('#trasse-branch-btn').onclick = () => {
+        recordTrasseHistory();
+        startNewTrasseBranch();
+      };
       bar.querySelector('#trasse-finish-btn').onclick = () => {
         const wasStreetHelper = !!window._streetHelperDrawing;
         const wasManualNetwork = !!window._manualWaermeNetzDrawing;
@@ -110983,6 +111087,7 @@ ${massTbl}
       : 'Stützpunkte ziehen · + zwischen Punkten fügt einen Knick ein';
     if (generate) generate.textContent = manualHeat ? '✓ Zeichnung als Netz übernehmen' : '⚙ Fertig & Netz erzeugen';
     bar.style.display = 'flex';
+    updateTrasseHistoryButtons();
   }
 
   async function finishTrasseAndGenerateNetz() {
@@ -111011,7 +111116,6 @@ ${massTbl}
 
   function startNewTrasseBranch() {
     if (!window.isDrawingTrasse) return;
-    trasseRedoPoints = [];
     if (window.trassePoints.length > window.trasseCurrentSegStart + 1) {
       window.trasseSegments.push({
         start:window.trasseCurrentSegStart,
@@ -111040,9 +111144,10 @@ ${massTbl}
     });
   }
 
-  function insertTrassePoint(segIdx, afterIndex, latlng) {
+  function insertTrassePoint(segIdx, afterIndex, latlng,recordHistory=true) {
     const seg = window.trasseSegments[segIdx];
     if (!seg || afterIndex < seg.start || afterIndex >= seg.end) return false;
+    if (recordHistory) recordTrasseHistory();
     const insertAt = afterIndex + 1;
     window.trassePoints.splice(insertAt, 0, L.latLng(latlng.lat, latlng.lng));
     window.trasseSegments.forEach((candidate, idx) => {
@@ -111125,12 +111230,26 @@ ${massTbl}
       if (!editablePointIndices.has(idx)) return;
       const m = L.marker(pt, { draggable: !window.trasseDetached, icon: icon, zIndexOffset: 2000 }).addTo(map);
       if (!window.trasseDetached) {
+        m.on('dragstart', recordTrasseHistory);
         m.on('drag', e => {
           window.trassePoints[idx] = e.target.getLatLng();
           updateTrasseLinesDuringDrag();
         });
         m.on('dragend', () => {
+          if (window._manualWaermeNetzDrawing) {
+            const pointPx=map.latLngToContainerPoint(window.trassePoints[idx]);
+            const nearBuilding=gebaeude.some(g => g.polygon?.length &&
+              pointPx.distanceTo(map.latLngToContainerPoint(polygonCenter(g.polygon)))<=24 &&
+              window.trassePoints[idx].distanceTo(polygonCenter(g.polygon))<=35);
+            if (nearBuilding) {
+              window.trassePoints[idx]=snapManualWaermePoint(window.trassePoints[idx]);
+            } else {
+              const lineSnap=findTrasseLineSnap(window.trassePoints[idx],idx,20);
+              if (lineSnap) window.trassePoints[idx]=L.latLng(lineSnap.latlng.lat,lineSnap.latlng.lng);
+            }
+          }
           redrawTrasse();
+          updateManualWaermeBuildingStyles();
           showHint('Trassenverlauf geändert. Mit „Fertig & Netz erzeugen“ werden die Wärmeleitungen neu daran angebunden.', 5000);
         });
       }
@@ -118219,7 +118338,8 @@ out body;>;out skel qt;`;
     if(g.polygonLayer) map.removeLayer(g.polygonLayer);
     g.polygonLayer=L.polygon(g.polygon,{
       color:g.fromOsm?'rgba(206,147,216,0.4)':'rgba(79,195,247,0.4)',
-      weight:1.2,fillColor:'rgba(79,195,247,0.08)',fillOpacity:1
+      weight:1.2,fillColor:'rgba(79,195,247,0.08)',fillOpacity:1,
+      bubblingMouseEvents:false,
     }).addTo(map);
     g.polygonLayer.on('click',(event)=>{
       if (typeof window.manualWaermeNetzBuildingClick === 'function' &&
