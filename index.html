@@ -3165,8 +3165,12 @@
           <strong>Netz vollständig manuell zeichnen</strong>
           <span>Pläne exakt nachzeichnen: Leitungen und Abzweige werden ohne automatische Neuverlegung übernommen.</span>
         </div>
-        <button class="btn-secondary trasse-draw-btn" id="btn-draw-netz-manual" type="button"
-                data-click="startManualWaermeNetzCreation()">Manuelles Netz zeichnen</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-secondary trasse-draw-btn" id="btn-draw-netz-manual" type="button"
+                  data-click="startManualWaermeNetzCreation()">Manuelles Netz zeichnen</button>
+          <button class="btn-secondary" type="button"
+                  data-click="startManualWaermeNetzFromExisting()">Erzeugtes Netz manuell weiterbearbeiten</button>
+        </div>
       </div>
 
       <details class="netz-create-edit">
@@ -3174,6 +3178,7 @@
         <div class="netz-create-edit-actions">
           <button class="btn-secondary" data-click="toggleNetzEditMode()">Leitungsverläufe bearbeiten</button>
           <button class="btn-secondary" data-click="toggleNetzRewireMode()">Gebäude anschließen / umhängen</button>
+          <button class="btn-secondary" data-click="startManualWaermeNetzFromExisting()">Netz als manuelle Zeichnung bearbeiten</button>
           <button class="btn-secondary" data-click="toggleDrawEdge()" id="btn-draw-edge">Leitung ergänzen</button>
           <button class="btn-secondary trasse-draw-btn" data-click="toggleDrawTrasse('waerme')">Haupttrasse bearbeiten</button>
           <button class="btn-secondary" data-click="confirmClearTrasse()">Haupttrasse löschen</button>

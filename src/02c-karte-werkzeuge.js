@@ -25,6 +25,7 @@ import { _setFliessgewaesserVisible } from './01-globals-varianten.js';
 let trasseUndoHistory = [];
 let trasseRedoHistory = [];
 let manualTrasseRightClickTimer = null;
+let selectedManualTrassePointIndex = null;
 
 function captureTrasseHistoryState() {
   return {
@@ -63,6 +64,10 @@ function restoreTrasseHistoryState(state) {
   updateTrasseHistoryButtons();
 }
 
+function clearSelectedManualTrassePoint() {
+  selectedManualTrassePointIndex=null;
+}
+
 function snapManualWaermePoint(latlng) {
   if (!window._manualWaermeNetzDrawing) return latlng;
   const click = map.latLngToContainerPoint(latlng);
@@ -83,12 +88,14 @@ function snapManualWaermePoint(latlng) {
 
 function findTrasseLineSnap(latlng,excludePointIndex=-1,maxDistancePx=20) {
   const clickPx = map.latLngToContainerPoint(latlng);
+  const excludedPointIndices=new Set(Array.isArray(excludePointIndex)
+    ? excludePointIndex
+    : excludePointIndex>=0 ? [excludePointIndex] : []);
   let best = null;
   window.trasseSegments.forEach((seg,segIdx) => {
     if (window._manualWaermeNetzDrawing && seg.manualNetwork !== true) return;
     for (let pointIndex=seg.start; pointIndex<seg.end; pointIndex++) {
-      if (excludePointIndex >= 0 &&
-          (pointIndex === excludePointIndex || pointIndex+1 === excludePointIndex)) continue;
+      if (excludedPointIndices.has(pointIndex) || excludedPointIndices.has(pointIndex+1)) continue;
       const a=map.latLngToContainerPoint(window.trassePoints[pointIndex]);
       const b=map.latLngToContainerPoint(window.trassePoints[pointIndex+1]);
       const dx=b.x-a.x,dy=b.y-a.y;
@@ -139,10 +146,10 @@ function updateManualWaermeBuildingStyles() {
     const isConnected = connected.has(g.id);
     const isCentral = g.id === centralId;
     g.polygonLayer.setStyle({
-      color:isCentral ? '#42a5f5' : isConnected ? '#66bb6a' : 'rgba(255,183,77,.82)',
+      color:isCentral ? '#42a5f5' : isConnected ? '#66bb6a' : 'rgba(255,255,255,.84)',
       weight:isCentral || isConnected ? 2.5 : 1.8,
       dashArray:isConnected || isCentral ? null : '4 4',
-      fillColor:isCentral ? 'rgba(66,165,245,.18)' : isConnected ? 'rgba(102,187,106,.14)' : 'rgba(255,183,77,.07)',
+      fillColor:isCentral ? 'rgba(66,165,245,.18)' : isConnected ? 'rgba(102,187,106,.14)' : 'rgba(255,255,255,.065)',
       fillOpacity:1,
     });
   });
@@ -162,6 +169,18 @@ export function manualWaermeNetzBuildingClick(buildingId) {
   recordTrasseHistory();
 
   if (window.trasseDetached) {
+    if (selectedManualTrassePointIndex!=null) {
+      const start=window.trassePoints[selectedManualTrassePointIndex];
+      setTrasseCurrentSegStart(window.trassePoints.length);
+      window.trassePoints.push(L.latLng(start.lat,start.lng));
+      window.trassePoints.push(L.latLng(center.lat,center.lng));
+      clearSelectedManualTrassePoint();
+      setTrasseDetached(false);
+      startNewTrasseBranch();
+      updateManualWaermeBuildingStyles();
+      showHint(`✓ „${building.name || `Gebäude ${building.id}`}“ vom markierten Punkt aus angedockt.`,5000);
+      return true;
+    }
     setTrasseCurrentSegStart(window.trassePoints.length);
     window.trassePoints.push(L.latLng(center.lat,center.lng));
     setTrasseDetached(false);
@@ -976,6 +995,20 @@ map.on('click',e=>{
   if(window.isDrawingTrasse) {
     recordTrasseHistory();
     const clickedLatLng = snapManualWaermePoint(e.latlng);
+    if (window._manualWaermeNetzDrawing &&
+        window.trasseDetached &&
+        selectedManualTrassePointIndex!=null) {
+      const start=window.trassePoints[selectedManualTrassePointIndex];
+      setTrasseCurrentSegStart(window.trassePoints.length);
+      window.trassePoints.push(L.latLng(start.lat,start.lng));
+      window.trassePoints.push(L.latLng(clickedLatLng.lat,clickedLatLng.lng));
+      clearSelectedManualTrassePoint();
+      setTrasseDetached(false);
+      redrawTrasse();
+      updateManualWaermeBuildingStyles();
+      showHint('Neuer Strang vom markierten Punkt gestartet. Weitere Punkte setzen oder per Rechtsklick beenden.',5000);
+      return;
+    }
     if (window.trasseDetached) {
       // Erst auf vorhandene Knoten, danach auch auf die nächstgelegene Linie
       // einrasten. So kann ein Abzweig mitten aus einer Trasse beginnen.
@@ -1184,6 +1217,7 @@ export function toggleDrawTrasse(domain) {
     beginInteraction({id:'draw-trasse',label:trasseDrawDomain === 'strom' ? 'Elektro-Korridor zeichnen' : manualHeat ? 'Wärmenetz vollständig manuell zeichnen' : 'Wärme-Haupttrasse zeichnen',hint:'Punkte setzen; neuer Strang erzeugt einen Abzweig.',cancel:cancelTrasseInteraction});
     trasseUndoHistory = [];
     trasseRedoHistory = [];
+    clearSelectedManualTrassePoint();
     // Trasse zum Bearbeiten sichtbar machen (Ansicht-Checkbox synchronisieren)
     window.trasseVisible = true;
     const _tcb = document.getElementById('el-trasse-visible');
@@ -1223,6 +1257,7 @@ export function toggleDrawTrasse(domain) {
     commitInteraction('draw-trasse');
     trasseUndoHistory = [];
     trasseRedoHistory = [];
+    clearSelectedManualTrassePoint();
     if (manualTrasseRightClickTimer) {
       clearTimeout(manualTrasseRightClickTimer);
       manualTrasseRightClickTimer = null;
@@ -1376,6 +1411,52 @@ export function insertTrassePoint(segIdx, afterIndex, latlng,recordHistory=true)
   return true;
 }
 
+export function deleteTrassePoint(pointIndex) {
+  if (!window.isDrawingTrasse || pointIndex < 0 || pointIndex >= window.trassePoints.length) return false;
+  recordTrasseHistory();
+  const segmentIndex=window.trasseSegments.findIndex(segment =>
+    pointIndex>=segment.start && pointIndex<=segment.end);
+  if (segmentIndex>=0) {
+    const segment=window.trasseSegments[segmentIndex];
+    const segmentLength=segment.end-segment.start+1;
+    if (segmentLength<=2) {
+      // Ein einzelner Punkt ist keine Leitung. Bei einem Zweipunkt-Strang
+      // wird deshalb der komplette, nun ungültige Strang entfernt.
+      const count=segmentLength;
+      window.trassePoints.splice(segment.start,count);
+      window.trasseSegments.splice(segmentIndex,1);
+      window.trasseSegments.forEach(candidate => {
+        if (candidate.start>segment.start) {
+          candidate.start-=count;
+          candidate.end-=count;
+        }
+      });
+      if (window.trasseCurrentSegStart>segment.start) {
+        setTrasseCurrentSegStart(Math.max(0,window.trasseCurrentSegStart-count));
+      }
+    } else {
+      window.trassePoints.splice(pointIndex,1);
+      window.trasseSegments.forEach((candidate,index) => {
+        if (index===segmentIndex) candidate.end--;
+        else if (candidate.start>pointIndex) {
+          candidate.start--;
+          candidate.end--;
+        }
+      });
+      if (window.trasseCurrentSegStart>pointIndex) {
+        setTrasseCurrentSegStart(window.trasseCurrentSegStart-1);
+      }
+    }
+  } else {
+    // Noch nicht abgeschlossener, aktuell gezeichneter Strang.
+    window.trassePoints.splice(pointIndex,1);
+  }
+  redrawTrasse();
+  updateManualWaermeBuildingStyles();
+  showHint('Stützpunkt gelöscht. Mit ↶ kann die Änderung rückgängig gemacht werden.',3500);
+  return true;
+}
+
 export function redrawTrasse() {
   // Multi-Segment Trasse: jedes Segment als eigene Polyline
   if (window.trassePolyline) {
@@ -1442,13 +1523,49 @@ export function redrawTrasse() {
     for (let idx = seg.start; idx <= seg.end; idx++) editablePointIndices.add(idx);
   });
   for (let idx = window.trasseCurrentSegStart; idx < window.trassePoints.length; idx++) editablePointIndices.add(idx);
+  const renderedManualPointKeys=new Set();
   window.trassePoints.forEach((pt, idx) => {
     if (!editablePointIndices.has(idx)) return;
-    const m = L.marker(pt, { draggable: !window.trasseDetached, icon: icon, zIndexOffset: 2000 }).addTo(map);
-    if (!window.trasseDetached) {
-      m.on('dragstart', recordTrasseHistory);
+    const pointKey=`${Number(pt.lat).toFixed(8)},${Number(pt.lng).toFixed(8)}`;
+    if (window._manualWaermeNetzDrawing && renderedManualPointKeys.has(pointKey)) return;
+    renderedManualPointKeys.add(pointKey);
+    const isManualSelected=window._manualWaermeNetzDrawing && selectedManualTrassePointIndex===idx;
+    const pointIcon=isManualSelected
+      ? L.divIcon({className:'trasse-edit-handle trasse-edit-handle-selected',html:'',iconSize:[13,13],iconAnchor:[6.5,6.5]})
+      : icon;
+    const draggable=window._manualWaermeNetzDrawing
+      ? isManualSelected
+      : !window.trasseDetached;
+    const m = L.marker(pt, { draggable, icon:pointIcon, zIndexOffset:isManualSelected ? 2300 : 2000 }).addTo(map);
+    m._trassePointIndex=idx;
+    m.on('click',event => {
+      if (!window._manualWaermeNetzDrawing) return;
+      if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+      selectedManualTrassePointIndex=idx;
+      redrawTrasse();
+      showHint('Punkt markiert. Erneut greifen und halten zum Verschieben – oder auf die Karte klicken, um hier einen neuen Strang zu beginnen.',5500);
+    });
+    m.on('contextmenu',event => {
+      if (event?.originalEvent) {
+        L.DomEvent.preventDefault(event.originalEvent);
+        L.DomEvent.stopPropagation(event.originalEvent);
+      }
+      deleteTrassePoint(idx);
+    });
+    if (draggable) {
+      let linkedPointIndices=[idx];
+      m.on('dragstart',() => {
+        recordTrasseHistory();
+        const original=window.trassePoints[idx];
+        linkedPointIndices=window.trassePoints
+          .map((candidate,index) => candidate.distanceTo(original)<.05 ? index : -1)
+          .filter(index => index>=0);
+      });
       m.on('drag', e => {
-        window.trassePoints[idx] = e.target.getLatLng();
+        const moved=e.target.getLatLng();
+        linkedPointIndices.forEach(index => {
+          window.trassePoints[index]=L.latLng(moved.lat,moved.lng);
+        });
         updateTrasseLinesDuringDrag();
       });
       m.on('dragend', () => {
@@ -1458,12 +1575,18 @@ export function redrawTrasse() {
             pointPx.distanceTo(map.latLngToContainerPoint(polygonCenter(g.polygon)))<=24 &&
             window.trassePoints[idx].distanceTo(polygonCenter(g.polygon))<=35);
           if (nearBuilding) {
-            window.trassePoints[idx]=snapManualWaermePoint(window.trassePoints[idx]);
+            const snapped=snapManualWaermePoint(window.trassePoints[idx]);
+            linkedPointIndices.forEach(index => {
+              window.trassePoints[index]=L.latLng(snapped.lat,snapped.lng);
+            });
           } else {
-            const lineSnap=findTrasseLineSnap(window.trassePoints[idx],idx,20);
-            if (lineSnap) window.trassePoints[idx]=L.latLng(lineSnap.latlng.lat,lineSnap.latlng.lng);
+            const lineSnap=findTrasseLineSnap(window.trassePoints[idx],linkedPointIndices,20);
+            if (lineSnap) linkedPointIndices.forEach(index => {
+              window.trassePoints[index]=L.latLng(lineSnap.latlng.lat,lineSnap.latlng.lng);
+            });
           }
         }
+        clearSelectedManualTrassePoint();
         redrawTrasse();
         updateManualWaermeBuildingStyles();
         showHint('Trassenverlauf geändert. Mit „Fertig & Netz erzeugen“ werden die Wärmeleitungen neu daran angebunden.', 5000);

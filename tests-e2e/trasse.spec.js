@@ -418,6 +418,9 @@ test('dist: verschobener manueller Anschlusspunkt aktualisiert Gebäude und Lini
     redrawTrasse();
     const eastCenter=polygonCenter(east.polygon);
     const northCenter=polygonCenter(north.polygon);
+    const selectableEndpoint=window.trasseEditMarkers
+      .find(marker=>marker.getLatLng().distanceTo(eastCenter)<1);
+    selectableEndpoint.fire('click');
     const endpoint=window.trasseEditMarkers
       .filter(marker=>marker.options.draggable)
       .find(marker=>marker.getLatLng().distanceTo(eastCenter)<1);
@@ -447,11 +450,146 @@ test('dist: verschobener manueller Anschlusspunkt aktualisiert Gebäude und Lini
         .distanceTo(window.trassePoints[window.trasseCurrentSegStart])<.1,
     };
   });
-  expect(result.colorsAfterMove.east).toBe('rgba(255,183,77,.82)');
+  expect(result.colorsAfterMove.east).toBe('rgba(255,255,255,.84)');
   expect(result.colorsAfterMove.north).toBe('#66bb6a');
   expect(result.segmentPointCount).toBe(3);
   expect(result.activePointCount).toBe(1);
   expect(result.insertedMatchesStart).toBe(true);
+});
+
+test('dist: Rechtsklick auf einen Stützpunkt löscht nur diesen Punkt und bleibt rückgängig machbar',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.deleteTrassePoint==='function');
+  const result=await page.evaluate(()=>{
+    setTrassePoints([
+      L.latLng(52.08,8),
+      L.latLng(52.0805,8.0005),
+      L.latLng(52.081,8.001),
+    ]);
+    setTrasseSegments([{start:0,end:2,domains:['waerme'],manualNetwork:true}]);
+    window._manualWaermeNetzDrawing=true;
+    toggleDrawTrasse('waerme');
+    const middle=window.trasseEditMarkers.find(marker=>marker._trassePointIndex===1);
+    middle.fire('contextmenu');
+    const afterMiddleDelete={
+      points:window.trassePoints.length,
+      segmentLength:window.trasseSegments[0].end-window.trasseSegments[0].start+1,
+    };
+    document.getElementById('trasse-undo-btn').click();
+    const afterUndo={
+      points:window.trassePoints.length,
+      segmentLength:window.trasseSegments[0].end-window.trasseSegments[0].start+1,
+    };
+    const endpoint=window.trasseEditMarkers.find(marker=>marker._trassePointIndex===0);
+    endpoint.fire('contextmenu');
+    const afterEndpointDelete={
+      points:window.trassePoints.length,
+      segments:window.trasseSegments.length,
+    };
+    const lastShortEndpoint=window.trasseEditMarkers.find(marker=>marker._trassePointIndex===0);
+    lastShortEndpoint.fire('contextmenu');
+    return {
+      afterMiddleDelete,
+      afterUndo,
+      afterEndpointDelete,
+      afterShortSegmentDelete:{
+        points:window.trassePoints.length,
+        segments:window.trasseSegments.length,
+      },
+    };
+  });
+  expect(result.afterMiddleDelete).toEqual({points:2,segmentLength:2});
+  expect(result.afterUndo).toEqual({points:3,segmentLength:3});
+  // Nach dem Undo besitzt der Strang wieder drei Punkte; ein Endpunkt kürzt
+  // ihn daher auf zwei Punkte, statt den gesamten Strang zu entfernen.
+  expect(result.afterEndpointDelete).toEqual({points:2,segments:1});
+  expect(result.afterShortSegmentDelete).toEqual({points:0,segments:0});
+});
+
+test('dist: markierter bestehender Punkt startet ohne sichtbaren Doppelpunkt einen neuen Strang',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.startManualWaermeNetzCreation==='function');
+  const result=await page.evaluate(()=>{
+    setTrassePoints([
+      L.latLng(52.08,8),
+      L.latLng(52.0805,8.0005),
+      L.latLng(52.081,8.001),
+    ]);
+    setTrasseSegments([{start:0,end:2,domains:['waerme'],manualNetwork:true}]);
+    window._manualWaermeNetzDrawing=true;
+    toggleDrawTrasse('waerme');
+    setTrasseDetached(true);
+    redrawTrasse();
+    const point=window.trasseEditMarkers.find(marker=>marker._trassePointIndex===1);
+    point.fire('click');
+    const selected={
+      draggable:window.trasseEditMarkers.some(marker=>
+        marker._trassePointIndex===1&&marker.options.draggable),
+      selectedHandles:document.querySelectorAll('.trasse-edit-handle-selected').length,
+    };
+    map.fire('click',{latlng:L.latLng(52.081,8.002)});
+    return {
+      selected,
+      segments:window.trasseSegments.length,
+      activePoints:window.trassePoints.length-window.trasseCurrentSegStart,
+      renderedPointHandles:window.trasseEditMarkers
+        .filter(marker=>marker._trassePointIndex!=null).length,
+      activeStartsAtSelected:window.trassePoints[window.trasseCurrentSegStart]
+        .distanceTo(window.trassePoints[1])<.1,
+    };
+  });
+  expect(result.selected).toEqual({draggable:true,selectedHandles:1});
+  expect(result.segments).toBe(1);
+  expect(result.activePoints).toBe(2);
+  expect(result.renderedPointHandles).toBe(4);
+  expect(result.activeStartsAtSelected).toBe(true);
+});
+
+test('dist: automatisch erzeugtes Netz lässt sich als manuelle Zeichnung weiterbearbeiten',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.startManualWaermeNetzFromExisting==='function');
+  const result=await page.evaluate(async()=>{
+    clearNetz();
+    clearTrasse();
+    setGebaeude([]);
+    const add=(id,lat,lng)=>{
+      const building=addGebaeude({
+        id,name:`Gebäude ${id}`,baujahr:2000,skipAutoCreate:true,
+        coords:[
+          L.latLng(lat-.00003,lng-.00003),L.latLng(lat-.00003,lng+.00003),
+          L.latLng(lat+.00003,lng+.00003),L.latLng(lat+.00003,lng-.00003),
+        ],
+      });
+      building.heizlast='80'; building.waerme='160';
+    };
+    add(1271,52.08,8);
+    add(1272,52.0805,8.001);
+    add(1273,52.081,8.002);
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1271';
+    setNetworkLocked(false);
+    autoGenerateNetz({strategy:'quick'});
+    const edgeCount=window.netzEdges.length;
+    const edgeSignature=window.netzEdges.map(edge=>`${edge.u}:${edge.v}`).sort();
+    const started=await startManualWaermeNetzFromExisting();
+    return {
+      started,
+      drawing:window.isDrawingTrasse&&window._manualWaermeNetzDrawing,
+      edgeCount,
+      edgePreserved:window.netzEdges.length===edgeCount &&
+        JSON.stringify(window.netzEdges.map(edge=>`${edge.u}:${edge.v}`).sort())===JSON.stringify(edgeSignature),
+      manualSegments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
+      sourceSet:[...new Set(window.trasseSegments.map(segment=>segment.source))],
+    };
+  });
+  expect(result.started).toBe(true);
+  expect(result.drawing).toBe(true);
+  expect(result.edgePreserved).toBe(true);
+  expect(result.manualSegments).toBe(result.edgeCount);
+  expect(result.sourceSet).toEqual(['existing-network']);
 });
 
 test('dist: mehrfach angesetzte Haupttrasse bildet am Linien-Snap einen echten Abzweig', async ({page}) => {

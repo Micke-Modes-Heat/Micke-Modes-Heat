@@ -31,7 +31,7 @@ import { redrawGasKessel } from './03a-erzeuger.js';
 import { startAnimPipes, stopAnimPipes, updateTotals } from './03c-gebaeude-io.js';
 import { closeEdgePopup, setLeftTab, showEdgePopup, toggleEdgePruned } from './04a-ui-panels.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
-import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelectedStrandId, set_batchImporting } from './01-globals-varianten.js';
+import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelectedStrandId, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, set_batchImporting } from './01-globals-varianten.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
 
@@ -3346,6 +3346,61 @@ export function startManualWaermeNetzCreation() {
   toggleNetzCreateMenu(false);
   closeNetzWorkspace();
   if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
+}
+
+export async function startManualWaermeNetzFromExisting() {
+  if (!window.netzEdges?.length) {
+    showHint('Es ist noch kein Wärmenetz vorhanden, das als Vorlage übernommen werden kann.',5000);
+    return false;
+  }
+  if (trassePoints.length || trasseSegments.length) {
+    const ok=typeof window.epConfirm==='function'
+      ? await window.epConfirm(
+        'Netz als manuelle Zeichnung übernehmen',
+        'Die bisherige Trassenzeichnung wird durch den aktuellen Leitungsverlauf ersetzt.' +
+          '<br><br><span style="color:var(--muted);font-size:10px">Das bestehende Wärmenetz bleibt unverändert, bis du die bearbeitete Zeichnung bewusst übernimmst.</span>',
+        {okText:'Als Zeichnung übernehmen',cancelText:'Abbrechen'},
+      )
+      : window.confirm('Bisherige Trassenzeichnung durch das aktuelle Wärmenetz ersetzen?');
+    if (!ok) return false;
+  }
+  const points=[];
+  const segments=[];
+  window.netzEdges.forEach(edge => {
+    const path=[
+      edge.uNode?.pt,
+      ...getEdgeWaypoints(edge),
+      edge.vNode?.pt,
+    ].filter(Boolean);
+    if (path.length<2) return;
+    const start=points.length;
+    path.forEach(point => points.push(L.latLng(point.lat,point.lng)));
+    segments.push({
+      start,
+      end:points.length-1,
+      domains:['waerme'],
+      manualNetwork:true,
+      source:'existing-network',
+    });
+  });
+  if (!segments.length) {
+    showHint('Der vorhandene Netzgraph enthält keine bearbeitbaren Leitungsverläufe.',5000);
+    return false;
+  }
+  setTrassePoints(points);
+  setTrasseSegments(segments);
+  setTrasseCurrentSegStart(points.length);
+  window._manualWaermeNetzDrawing=true;
+  window._streetHelperDrawing=false;
+  toggleNetzCreateMenu(false);
+  closeNetzWorkspace();
+  if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
+  showHint(
+    `✓ ${segments.length} Leitungsabschnitte als manuelle Zeichnung übernommen. ` +
+    'Punkte auswählen, verschieben, löschen oder neue Stränge ergänzen.',
+    6500,
+  );
+  return true;
 }
 
 export function startStreetHelperDrawing() {
