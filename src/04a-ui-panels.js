@@ -298,6 +298,12 @@ export function showGebaeudeHeatProfile(id) {
       [Math.round(fullLoadHours).toLocaleString('de-DE'),'Vollbenutzungsstunden'],
       [`${Math.round(profile.meta.baseShare*100)} %`,'Grundlastanteil'],
     ].map(([value,label])=>`<div><strong>${value}</strong><span>${label}</span></div>`).join('');
+    if (profile.meta.peakConflictDays?.length) {
+      kpis.innerHTML+=`<div style="grid-column:1/-1;border-color:rgba(239,83,80,.55);background:rgba(239,83,80,.08)">
+        <strong style="color:#ef9a9a">${profile.meta.peakConflictDays.length} nicht auflösbare Tage</strong>
+        <span>Tagesenergie überschreitet Heizlast × 24 h. Jahresenergie wurde nicht verändert; Gebäudedaten bitte prüfen.</span>
+      </div>`;
+    }
     canvas.style.display='';
     requestAnimationFrame(()=>_drawGebaeudeHeatProfile(profile.values));
   }

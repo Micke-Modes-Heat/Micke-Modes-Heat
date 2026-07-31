@@ -2851,8 +2851,27 @@ export function autoGenerateNetz(options = {}){
       : [{start: 0, end: trassePoints.length - 1}];
     segmentsForRouting.forEach((seg, segIndex) => {
       for (let pointIndex = seg.start; pointIndex < seg.end; pointIndex++) {
-        const inserted = (projectionsByLeg.get(`${segIndex}:${pointIndex}`) || [])
-          .sort((a, b) => a.t - b.t)
+        const a = trassePoints[pointIndex];
+        const b = trassePoints[pointIndex + 1];
+        // Ein nachträglich begonnener Strang kann optisch mitten auf einer
+        // bestehenden Linie einrasten. Sein Startpunkt muss die bestehende
+        // Linie auch graphisch teilen; andernfalls liegen zwei getrennte
+        // Komponenten nur scheinbar übereinander und der Optimierer verbindet
+        // sie später über freie, ungewollte Abkürzungen.
+        const branchIntersections = [...sharedTrasseNodes.values()]
+          .filter(node => node.id !== tNodes[pointIndex]?.id && node.id !== tNodes[pointIndex + 1]?.id)
+          .map(node => ({node,...projectToLeg(node.pt,a,b)}))
+          .filter(item => item.t > 0.000001 && item.t < 0.999999 && item.dist <= 0.5);
+        const insertedByNode = new Map();
+        [
+          ...(projectionsByLeg.get(`${segIndex}:${pointIndex}`) || []),
+          ...branchIntersections,
+        ].forEach(item => {
+          const existing = insertedByNode.get(item.node.id);
+          if (!existing || item.t < existing.t) insertedByNode.set(item.node.id,item);
+        });
+        const inserted = [...insertedByNode.values()]
+          .sort((left,right) => left.t-right.t)
           .map(item => item.node);
         const sequence = [tNodes[pointIndex], ...inserted, tNodes[pointIndex + 1]].filter(Boolean);
         for (let i = 0; i < sequence.length - 1; i++) {
@@ -2879,17 +2898,26 @@ export function autoGenerateNetz(options = {}){
     }
   }
 
-  // Gebäude sind zunächst harte Hindernisse. Konfliktkanten werden separat
-  // aufbewahrt und nur als letzte Rückfallebene verwendet, falls das Netz
-  // andernfalls nicht vollständig verbunden werden könnte.
+  // Gebäude sind zunächst harte Hindernisse. Frei erzeugte Konfliktkanten
+  // werden separat aufbewahrt und nur als letzte Rückfallebene verwendet.
+  // Eine vom Nutzer gezeichnete Haupttrasse ist dagegen eine verbindliche
+  // Planungsvorgabe: Sie darf bei einem Konflikt nicht stillschweigend
+  // verschwinden, sondern bleibt erhalten und wird sichtbar markiert.
+  let retainedForcedConflicts = 0;
   for (let index = possibleEdges.length - 1; index >= 0; index--) {
     const edge = possibleEdges[index];
     if (!_edgeCrossesForeignBuilding(edge.uNode,edge.vNode)) continue;
+    if (edge.forcedTrasse) {
+      edge.buildingConflict = true;
+      retainedForcedConflicts++;
+      continue;
+    }
     possibleEdges.splice(index,1);
     blockedCandidateEdges.push({...edge,buildingConflict:true});
   }
   window._netzBuildingObstacleDiagnostics = {
     blockedCandidateEdges:blockedCandidateEdges.length,
+    retainedForcedConflicts,
     usedConflictEdges:0,
   };
 
@@ -3081,6 +3109,195 @@ export async function confirmAutoGenerateNetz(options = {}){
   return autoGenerateNetz(options) === true;
 }
 
+function _manualWaermeNetzPlan() {
+  const zId = Number.parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  if (!Number.isFinite(zId)) return {error:'Bitte zuerst eine Heizzentrale auswählen.'};
+
+  const planningYears = _netzPlanningYears();
+  const buildings = gebaeude
+    .filter(g => g.polygon && (
+      networkLocked
+        ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
+        : _maxBuildingLoad(g,planningYears) > 0
+    ))
+    .map(g => ({
+      id:g.id,
+      type:'geb',
+      pt:polygonCenter(g.polygon),
+      load:networkLocked
+        ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast || 0
+        : _maxBuildingLoad(g,planningYears),
+      building:g,
+    }));
+  if (!buildings.some(node => node.id === zId)) {
+    return {error:'Die gewählte Heizzentrale ist im aktuellen Planungsjahr nicht aktiv.'};
+  }
+
+  const manualSegmentsExist = trasseSegments.some(seg => seg.manualNetwork === true);
+  const heatSegments = trasseSegments.filter(seg =>
+    (!manualSegmentsExist || seg.manualNetwork === true) &&
+    (!seg.domains || seg.domains.includes('waerme')) && seg.end > seg.start
+  );
+  if (!heatSegments.length && trassePoints.length > 1) {
+    heatSegments.push({start:0,end:trassePoints.length - 1,domains:['waerme']});
+  }
+  if (!heatSegments.length) return {error:'Zeichne zuerst mindestens einen Leitungsabschnitt.'};
+
+  const keyOf = point => `${Number(point.lat).toFixed(8)},${Number(point.lng).toFixed(8)}`;
+  const explicitPoints = new Map();
+  heatSegments.forEach(seg => {
+    for (let index = seg.start; index <= seg.end; index++) {
+      const point = trassePoints[index];
+      if (point) explicitPoints.set(keyOf(point),L.latLng(point.lat,point.lng));
+    }
+  });
+
+  // Ein Abzweig darf mitten auf einer bereits gezeichneten Leitung beginnen.
+  // Sein Startpunkt wird deshalb auch in die durchlaufende Leitung eingesetzt.
+  const projectToLeg = (point,a,b) => {
+    const zoom = 20;
+    const p = map.project(point,zoom);
+    const pa = map.project(a,zoom);
+    const pb = map.project(b,zoom);
+    const dx = pb.x-pa.x, dy = pb.y-pa.y;
+    const denominator = dx*dx+dy*dy;
+    const t = denominator
+      ? ((p.x-pa.x)*dx+(p.y-pa.y)*dy)/denominator
+      : 0;
+    const projected = map.unproject(L.point(pa.x+t*dx,pa.y+t*dy),zoom);
+    return {t,dist:point.distanceTo(projected)};
+  };
+
+  const usedIds = new Set(gebaeude.map(g => g.id));
+  let junctionId = 30000;
+  const nextJunctionId = () => {
+    while (usedIds.has(junctionId)) junctionId++;
+    usedIds.add(junctionId);
+    return junctionId++;
+  };
+  const nodesByPoint = new Map();
+  const nodeForPoint = point => {
+    const key = keyOf(point);
+    if (nodesByPoint.has(key)) return nodesByPoint.get(key);
+    const building = buildings
+      .map(node => ({node,distance:node.pt.distanceTo(point)}))
+      .filter(candidate => candidate.distance <= 1.25)
+      .sort((a,b) => a.distance-b.distance)[0]?.node;
+    const node = building || {id:nextJunctionId(),type:'junction',pt:L.latLng(point.lat,point.lng),load:0};
+    nodesByPoint.set(key,node);
+    return node;
+  };
+
+  const plannedEdges = [];
+  const edgeKeys = new Set();
+  heatSegments.forEach(seg => {
+    for (let index = seg.start; index < seg.end; index++) {
+      const a = trassePoints[index], b = trassePoints[index+1];
+      if (!a || !b || a.distanceTo(b) < 0.05) continue;
+      const inserted = [...explicitPoints.values()]
+        .map(point => ({point,...projectToLeg(point,a,b)}))
+        .filter(item => item.t > 0.000001 && item.t < 0.999999 && item.dist <= 0.5)
+        .sort((left,right) => left.t-right.t);
+      const sequence = [a,...inserted.map(item => item.point),b];
+      for (let part = 0; part < sequence.length-1; part++) {
+        const uNode = nodeForPoint(sequence[part]);
+        const vNode = nodeForPoint(sequence[part+1]);
+        if (uNode.id === vNode.id) continue;
+        const edgeKey = String(uNode.id) < String(vNode.id)
+          ? `${uNode.id}:${vNode.id}` : `${vNode.id}:${uNode.id}`;
+        if (edgeKeys.has(edgeKey)) continue;
+        edgeKeys.add(edgeKey);
+        plannedEdges.push({uNode,vNode});
+      }
+    }
+  });
+  if (!plannedEdges.length) return {error:'Die Zeichnung enthält keinen verwertbaren Leitungsabschnitt.'};
+
+  const adjacency = new Map();
+  plannedEdges.forEach(({uNode,vNode}) => {
+    if (!adjacency.has(uNode.id)) adjacency.set(uNode.id,new Set());
+    if (!adjacency.has(vNode.id)) adjacency.set(vNode.id,new Set());
+    adjacency.get(uNode.id).add(vNode.id);
+    adjacency.get(vNode.id).add(uNode.id);
+  });
+  const reached = new Set([zId]);
+  const queue = [zId];
+  while (queue.length) {
+    const id = queue.shift();
+    (adjacency.get(id) || []).forEach(next => {
+      if (reached.has(next)) return;
+      reached.add(next);
+      queue.push(next);
+    });
+  }
+  const missing = buildings.filter(node => !reached.has(node.id));
+  if (missing.length) {
+    const names = missing.slice(0,4).map(node => node.building.name || `Gebäude ${node.id}`).join(', ');
+    return {
+      error:`${missing.length} Gebäude sind noch nicht mit der Heizzentrale verbunden (${names}${missing.length > 4 ? ', …' : ''}). ` +
+        'Ergänze dafür weitere Stränge; das vorhandene Netz wurde nicht verändert.',
+    };
+  }
+  return {plannedEdges};
+}
+
+export function createManualWaermeNetzFromTrasse() {
+  const plan = _manualWaermeNetzPlan();
+  if (plan.error) {
+    showHint(`⚠ ${plan.error}`,8000);
+    window.trasseVisible = true;
+    redrawTrasse();
+    return false;
+  }
+  clearNetz();
+  plan.plannedEdges.forEach(({uNode,vNode}) => _makeNetzEdge(uNode,vNode,0));
+  recalcNetz();
+  autoAssignEdgeCosts();
+  setNetzRewireMode(false);
+  setNetzEditMode(false);
+  window.trasseVisible = false;
+  const checkbox = document.getElementById('el-trasse-visible');
+  if (checkbox) checkbox.checked = false;
+  redrawTrasse();
+  showHint(`✓ Manuelle Zeichnung unverändert als Wärmenetz übernommen: ${window.netzEdges.length} Leitungsabschnitte.`,6000);
+  return true;
+}
+
+export async function confirmManualWaermeNetzFromTrasse() {
+  // Erst die Zeichnung prüfen. Ein fehlerhafter oder noch unvollständiger Plan
+  // darf das vorhandene Netz nicht löschen.
+  const plan = _manualWaermeNetzPlan();
+  if (plan.error) {
+    showHint(`⚠ ${plan.error}`,8000);
+    window.trasseVisible = true;
+    redrawTrasse();
+    return false;
+  }
+  const existing = window.netzEdges?.length || 0;
+  if (existing) {
+    const message = `Das vorhandene Wärmenetz mit <strong>${existing} Leitungsabschnitten</strong> wird durch die manuelle Zeichnung ersetzt.` +
+      '<br><br><span style="color:var(--muted);font-size:10px">Der gezeichnete Verlauf wird ohne automatische Optimierung übernommen.</span>';
+    const ok = typeof window.epConfirm === 'function'
+      ? await window.epConfirm('Manuelles Wärmenetz übernehmen',message,{
+        okText:'Zeichnung übernehmen',cancelText:'Abbrechen',danger:true,
+      })
+      : window.confirm(`Das vorhandene Wärmenetz mit ${existing} Leitungsabschnitten wird ersetzt. Fortfahren?`);
+    if (!ok) return false;
+  }
+  clearNetz();
+  plan.plannedEdges.forEach(({uNode,vNode}) => _makeNetzEdge(uNode,vNode,0));
+  recalcNetz();
+  autoAssignEdgeCosts();
+  setNetzRewireMode(false);
+  setNetzEditMode(false);
+  window.trasseVisible = false;
+  const checkbox = document.getElementById('el-trasse-visible');
+  if (checkbox) checkbox.checked = false;
+  redrawTrasse();
+  showHint(`✓ Manuelle Zeichnung unverändert als Wärmenetz übernommen: ${window.netzEdges.length} Leitungsabschnitte.`,6000);
+  return true;
+}
+
 export function toggleNetzCreateMenu(force) {
   const menu = document.getElementById('netz-create-menu');
   const button = document.getElementById('btn-netz-create');
@@ -3116,7 +3333,16 @@ export async function createQuickWaermeNetz() {
 }
 
 export function startGuidedTrasseCreation() {
+  window._manualWaermeNetzDrawing = false;
   window._streetHelperDrawing = false;
+  toggleNetzCreateMenu(false);
+  closeNetzWorkspace();
+  if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');
+}
+
+export function startManualWaermeNetzCreation() {
+  window._streetHelperDrawing = false;
+  window._manualWaermeNetzDrawing = true;
   toggleNetzCreateMenu(false);
   closeNetzWorkspace();
   if (!window.isDrawingTrasse) toggleDrawTrasse('waerme');

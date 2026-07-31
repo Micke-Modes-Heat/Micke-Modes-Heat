@@ -22,6 +22,28 @@ describe('gebäudespezifische Wärmelastgänge',()=>{
     expect(Math.min(...profile.values)).toBeGreaterThanOrEqual(0);
   });
 
+  it('verteilt Spitzen ausschließlich innerhalb desselben Tages um',()=>{
+    const temp=temperatures();
+    const raw=buildBuildingHeatProfile({nutzung:'schule'},temp,300,0,2026);
+    const constrained=buildBuildingHeatProfile({nutzung:'schule'},temp,300,120,2026);
+    expect(constrained.meta.peakAdjustedDays).toBeGreaterThan(0);
+    expect(constrained.meta.peakConflictDays).toHaveLength(0);
+    expect(constrained.meta.peakKw).toBeLessThanOrEqual(120.01);
+    for (let day=0;day<365;day++) {
+      const start=day*24;
+      const rawDay=raw.values.slice(start,start+24).reduce((sum,value)=>sum+value,0);
+      const constrainedDay=constrained.values.slice(start,start+24).reduce((sum,value)=>sum+value,0);
+      expect(constrainedDay).toBeCloseTo(rawDay,3);
+    }
+  });
+
+  it('meldet eine physikalisch unmögliche Tagesbilanz statt Energie zu verlieren',()=>{
+    const profile=buildBuildingHeatProfile({nutzung:'schule'},temperatures(),9000,20,2026);
+    expect(profile.meta.peakConflictDays.length).toBeGreaterThan(0);
+    expect(profile.meta.annualMwh).toBeCloseTo(9000,2);
+    expect(profile.meta.peakKw).toBeGreaterThan(20);
+  });
+
   it('erzeugt für Schule und Wohnen unterschiedliche Wochenverläufe',()=>{
     const temp=temperatures();
     const school=buildBuildingHeatProfile({nutzung:'schule'},temp,300,500,2026).values;

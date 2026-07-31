@@ -64,21 +64,42 @@ function normalizeInto(out,raw,totalKwh,share) {
 }
 
 function constrainPeak(profile,maximumKw) {
-  if (!(maximumKw>0)) return;
-  const energy=profile.reduce((sum,value)=>sum+value,0);
-  if (energy>maximumKw*profile.length+1e-3) return;
-  for (let pass=0;pass<4;pass++) {
-    let excess=0,capacity=0;
-    for (let i=0;i<profile.length;i++) {
+  const result={adjustedDays:0,conflictDays:[]};
+  if (!(maximumKw>0)) return result;
+  for (let day=0;day<365;day++) {
+    const start=day*24,end=start+24;
+    let dayEnergy=0,excess=0,capacity=0;
+    for (let i=start;i<end;i++) {
+      dayEnergy+=profile[i];
       if (profile[i]>maximumKw) excess+=profile[i]-maximumKw;
       else capacity+=maximumKw-profile[i];
     }
-    if (excess<1e-4 || capacity<=0) break;
-    for (let i=0;i<profile.length;i++) {
+    if (excess<1e-5) continue;
+    if (dayEnergy>maximumKw*24+1e-3 || capacity+1e-5<excess) {
+      result.conflictDays.push({day,requiredKwh:dayEnergy,maximumKwh:maximumKw*24});
+      continue;
+    }
+    result.adjustedDays++;
+    for (let i=start;i<end;i++) {
       if (profile[i]>maximumKw) profile[i]=maximumKw;
       else profile[i]+=excess*(maximumKw-profile[i])/capacity;
     }
+    // Float32-Rundungen dürfen die feste Tagesbilanz nicht auf andere Tage
+    // verlagern. Eine kleine Restdifferenz bleibt innerhalb dieses Tages.
+    let correctedEnergy=0;
+    for (let i=start;i<end;i++) correctedEnergy+=profile[i];
+    const difference=dayEnergy-correctedEnergy;
+    if (Math.abs(difference)>1e-6) {
+      for (let i=start;i<end;i++) {
+        const room=maximumKw-profile[i];
+        if (room<=0) continue;
+        const correction=Math.max(-profile[i],Math.min(room,difference));
+        profile[i]+=correction;
+        break;
+      }
+    }
   }
+  return result;
 }
 
 export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year=2026) {
@@ -110,7 +131,7 @@ export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year
   const totalKwh=Math.max(0,Number(annualMwh)||0)*1000;
   normalizeInto(result,weatherRaw,totalKwh,1-archetype.baseShare);
   normalizeInto(result,baseRaw,totalKwh,archetype.baseShare);
-  constrainPeak(result,Number(maximumKw)||0);
+  const peakConstraint=constrainPeak(result,Number(maximumKw)||0);
   return {
     values:result,
     meta:{
@@ -120,6 +141,8 @@ export function buildBuildingHeatProfile(building,tempH,annualMwh,maximumKw,year
       baseShare:archetype.baseShare,
       annualMwh:result.reduce((sum,value)=>sum+value,0)/1000,
       peakKw:Math.max(...result),
+      peakAdjustedDays:peakConstraint.adjustedDays,
+      peakConflictDays:peakConstraint.conflictDays,
     },
   };
 }

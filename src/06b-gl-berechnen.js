@@ -81,6 +81,7 @@ async function glBerechnen() {
     let synState = null;     // CalcEngine-Ergebnis der Synthese (Fälle 3–5) — für tempState wiederverwendet
     window._buildingHeatProfiles=new Map();
     window._buildingHeatProfileMode=false;
+    window._buildingHeatProfileConflicts=[];
 
     if (glLastgangKw && !hatMonat) {
       // Fall 1: Direkt (Lastgang hochgeladen → Verluste bereits enthalten)
@@ -130,23 +131,18 @@ async function glBerechnen() {
         twwNetzAnteil: 0, twwAnteilVonTwwNetz: 0,
       });
 
-      const buildingResult=buildBuildingHeatProfiles(
-        gebaeude,synState.tempH,globalYear,getComputedStats,isExcluded);
-      const buildingMwh=buildingResult.aggregate.reduce((sum,value)=>sum+value,0)/1000;
-      if (buildingMwh>0) {
+      const buildingResult=nurGebaeude ? buildBuildingHeatProfiles(
+        gebaeude,synState.tempH,globalYear,getComputedStats,isExcluded) : null;
+      const buildingMwh=buildingResult
+        ? buildingResult.aggregate.reduce((sum,value)=>sum+value,0)/1000
+        : 0;
+      if (nurGebaeude && buildingMwh>0) {
         lastgangKw=buildingResult.aggregate;
-        const calibrationFactor=gesamtMwh>0 ? gesamtMwh/buildingMwh : 1;
-        if (Math.abs(calibrationFactor-1)>1e-9) {
-          for (let i=0;i<lastgangKw.length;i++) lastgangKw[i]*=calibrationFactor;
-          buildingResult.profiles.forEach(profile=>{
-            for (let i=0;i<profile.values.length;i++) profile.values[i]*=calibrationFactor;
-            profile.meta.annualMwh*=calibrationFactor;
-            profile.meta.peakKw*=calibrationFactor;
-            profile.meta.calibrationFactor=calibrationFactor;
-          });
-        }
         window._buildingHeatProfiles=buildingResult.profiles;
         window._buildingHeatProfileMode=true;
+        window._buildingHeatProfileConflicts=[...buildingResult.profiles.entries()]
+          .flatMap(([buildingId,profile])=>(profile.meta.peakConflictDays||[])
+            .map(conflict=>({buildingId,...conflict})));
       } else {
         lastgangKw=new Float32Array(8760);
         for (let i=0;i<8760;i++) lastgangKw[i]=(synState.lastgangMwhH[i]||0)*1000;
@@ -156,18 +152,7 @@ async function glBerechnen() {
 
       // Fälle 3+4: Monatswerte als Floor anwenden
       if (hatMonat) {
-        const beforeMonthly=lastgangKw;
-        lastgangKw=glAnwendeMonatsfloor(beforeMonthly,monatswerte,gesamtMwh);
-        if (window._buildingHeatProfileMode) {
-          window._buildingHeatProfiles.forEach(profile=>{
-            for (let i=0;i<profile.values.length;i++) {
-              const ratio=beforeMonthly[i]>0 ? lastgangKw[i]/beforeMonthly[i] : 1;
-              profile.values[i]*=ratio;
-            }
-            profile.meta.annualMwh=profile.values.reduce((sum,value)=>sum+value,0)/1000;
-            profile.meta.peakKw=Math.max(...profile.values);
-          });
-        }
+        lastgangKw=glAnwendeMonatsfloor(lastgangKw,monatswerte,gesamtMwh);
       }
     }
 

@@ -47,6 +47,19 @@ test('dist: Gebäudeübersicht bearbeitet, sortiert und sammelt Gebäudedaten',a
   await expect(page.locator('#geb-profile-title')).toContainText('Büro Mitte');
   await expect(page.locator('#geb-profile-kpis')).toContainText('Profilspitze kW');
   await page.evaluate(()=>closeGebaeudeHeatProfile());
+  await page.evaluate(()=>{
+    document.getElementById('gl-gesamt').value='500';
+    glBerechnenDebounced(0);
+  });
+  await page.waitForFunction(()=>window.systemState?.gesamtMwhMitNV>490 &&
+    window._buildingHeatProfileMode===false);
+  expect(await page.evaluate(()=>window._buildingHeatProfiles?.size)).toBe(0);
+  await page.evaluate(()=>{
+    document.getElementById('gl-gesamt').value='';
+    glBerechnenDebounced(0);
+  });
+  await page.waitForFunction(()=>window._buildingHeatProfileMode &&
+    window._buildingHeatProfiles?.size===3);
 
   await page.evaluate(()=>{
     sortGebaeudeTable('baujahr');

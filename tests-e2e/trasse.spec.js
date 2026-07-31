@@ -85,6 +85,7 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
     'Netz an Straßenzügen orientieren',
     'Auto-Netz direkt',
     'Haupttrasse zeichnen',
+    'Netz vollständig manuell zeichnen',
   ]);
   expect(result.trassentreue).toBe('80');
   expect(result.markerSurvivedDrag).toBe(true);
@@ -197,6 +198,104 @@ test('dist: aus einer Wärme-Haupttrasse wird ein verbundenes Wärmenetz erzeugt
   expect(result.editHandles).toBe(0);
   expect(result.buildingIds).toEqual([101, 102]);
   expect(pageErrors).toHaveLength(0);
+});
+
+test('dist: vollständig manuelles Wärmenetz übernimmt nur die gezeichneten Leitungsabschnitte', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.createManualWaermeNetzFromTrasse === 'function');
+  const result = await page.evaluate(() => {
+    clearNetz();
+    setGebaeude([]);
+    const add = (id,lat,lng,name) => {
+      const building = addGebaeude({
+        id,name,baujahr:2000,skipAutoCreate:true,
+        coords:[
+          L.latLng(lat-.00003,lng-.00003),L.latLng(lat-.00003,lng+.00003),
+          L.latLng(lat+.00003,lng+.00003),L.latLng(lat+.00003,lng-.00003),
+        ],
+      });
+      building.heizlast='80';
+      building.waerme='160';
+      return building;
+    };
+    add(1201,52.08,8,'Zentrale');
+    add(1202,52.08,8.002,'Haus Ost');
+    add(1203,52.081,8.001,'Haus Nord');
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1201';
+    setNetworkLocked(true);
+    const branch=L.latLng(52.08,8.001);
+    setTrassePoints([
+      L.latLng(52.08,8),branch,L.latLng(52.08,8.002),
+      branch,L.latLng(52.0805,8.0013),L.latLng(52.081,8.001),
+    ]);
+    setTrasseSegments([
+      {start:0,end:2,domains:['waerme'],manualNetwork:true},
+      {start:3,end:5,domains:['waerme'],manualNetwork:true},
+    ]);
+    const created=createManualWaermeNetzFromTrasse();
+    return {
+      created,
+      edgeCount:window.netzEdges.length,
+      buildingIds:[...new Set(window.netzEdges.flatMap(edge=>[edge.u,edge.v]))]
+        .filter(id=>id>=1201&&id<=1203).sort(),
+      nodeTypes:[...new Set(window.netzEdges.flatMap(edge=>[edge.uNode.type,edge.vNode.type]))].sort(),
+      lengths:window.netzEdges.map(edge=>Math.round(edge.length)),
+      trasseVisible:window.trasseVisible,
+    };
+  });
+  expect(result.created).toBe(true);
+  expect(result.edgeCount).toBe(4);
+  expect(result.buildingIds).toEqual([1201,1202,1203]);
+  expect(result.nodeTypes).toEqual(['geb','junction']);
+  expect(result.lengths.every(length=>length>0)).toBe(true);
+  expect(result.trasseVisible).toBe(false);
+});
+
+test('dist: mehrfach angesetzte Haupttrasse bildet am Linien-Snap einen echten Abzweig', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.autoGenerateNetz === 'function');
+  const result = await page.evaluate(() => {
+    clearNetz();
+    setGebaeude([]);
+    const add = (id,lat,lng) => {
+      const building=addGebaeude({
+        id,name:`Gebäude ${id}`,baujahr:2000,skipAutoCreate:true,
+        coords:[
+          L.latLng(lat-.000025,lng-.000025),L.latLng(lat-.000025,lng+.000025),
+          L.latLng(lat+.000025,lng+.000025),L.latLng(lat+.000025,lng-.000025),
+        ],
+      });
+      building.heizlast='80';
+      building.waerme='160';
+    };
+    add(1301,52.0798,8);
+    add(1302,52.0798,8.002);
+    add(1303,52.081,8.0013);
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1301';
+    setNetworkLocked(false);
+    const branch=L.latLng(52.08,8.001);
+    setTrassePoints([
+      L.latLng(52.08,8),L.latLng(52.08,8.002),
+      branch,L.latLng(52.081,8.001),
+    ]);
+    setTrasseSegments([
+      {start:0,end:1,domains:['waerme']},
+      {start:2,end:3,domains:['waerme']},
+    ]);
+    const created=autoGenerateNetz({strategy:'trasse',trasseTreue:100});
+    const branchNode=[...new Set(window.netzEdges.flatMap(edge=>[edge.uNode,edge.vNode]))]
+      .find(node=>node.type==='trasse'&&node.pt.distanceTo(branch)<.5);
+    const branchDegree=branchNode
+      ? window.netzEdges.filter(edge=>edge.u===branchNode.id||edge.v===branchNode.id).length
+      : 0;
+    return {created,branchDegree};
+  });
+  expect(result.created).toBe(true);
+  expect(result.branchDegree).toBeGreaterThanOrEqual(3);
 });
 
 test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Sidebar', async ({page}) => {
