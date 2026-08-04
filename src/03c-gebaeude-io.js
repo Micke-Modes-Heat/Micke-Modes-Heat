@@ -2909,14 +2909,15 @@ export function toggleBuildingSourceOutlines(visible) {
   updateViz();
 }
 
-// Jahres-Slider (Kopfleiste) auf das älteste ECHTE Baujahr der Liegenschaft setzen —
-// geschätzte/automatisch erzeugte Baujahre (g.baujährQuelle gesetzt) zählen nicht,
-// da sie keine belastbare Untergrenze für den Betrachtungszeitraum liefern.
+// Jahres-Slider (Kopfleiste) auf das früheste vorhandene Baujahr setzen.
+// Auch importierte bzw. automatisch ermittelte Baujahre zählen: Für die
+// zeitliche Darstellung muss ein geladenes Gebäude unabhängig von der Quelle
+// ab seinem hinterlegten Baujahr sichtbar sein.
 export function _initYearSliderFromBaujahr() {
   const slider = document.getElementById('year-slider');
   if (!slider) return;
   const echteBaujahre = (window.gebaeude || [])
-    .filter(g => g.baujahr && !g.baujährQuelle)
+    .filter(g => g.baujahr)
     .map(g => parseInt(g.baujahr))
     .filter(y => !isNaN(y));
   if (!echteBaujahre.length) return;
@@ -3632,6 +3633,12 @@ export function animatePipes(timestamp = performance.now()) {
   if (!_animPipesRunning) return;
   if (!_animPipesLastFrame) _animPipesLastFrame = timestamp;
   const elapsedMs = Math.max(0, timestamp - _animPipesLastFrame);
+  // Für die ruhige Fließanimation reichen 30 Bilder/s. Bei großen Netzen
+  // halbiert das die teuren SVG-Stiländerungen, ohne Funktion zu verlieren.
+  if (elapsedMs < 1000 / 30) {
+    requestAnimationFrame(animatePipes);
+    return;
+  }
   _animPipesLastFrame = timestamp;
   // Ruhiger Hybrid: zeitbasiert bei normaler Bildrate, aber ohne große
   // Aufholsprünge, wenn das SVG-Rendering im hohen Kartenzoom Frames auslässt.

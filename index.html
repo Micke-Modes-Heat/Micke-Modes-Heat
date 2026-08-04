@@ -64,7 +64,8 @@
     </div>
   </div>
   <div class="addr-search-wrap" style="flex-shrink:0;">
-    <span class="addr-search-icon">🔍</span>
+    <button class="addr-search-icon" id="addr-search-submit" type="button"
+            data-click="addrSubmit()" title="Ersten Suchtreffer anzeigen" aria-label="Ort suchen">🔍</button>
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
       data-input="addrSearch(this.value)" data-keydown="addrKeydown(event)" autocomplete="off"/>
     <div class="addr-results" id="addr-results"></div>

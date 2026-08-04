@@ -38,6 +38,18 @@ test('dist: Ansicht steuert Beschriftung und zeitliche Wärmeentwicklung',async(
     labelsDefault:false,labelCheckbox:false,overlayCheckbox:false,yearMin:'1970',
   });
 
+  const immediateYear=await page.evaluate(()=>{
+    const building=window.gebaeude.find(candidate=>candidate.id===2000);
+    building.baujährQuelle='automatisch ermittelt';
+    updateField(building.id,'baujahr','1965');
+    return {
+      min:document.getElementById('year-slider').min,
+      value:document.getElementById('year-slider').value,
+      display:document.getElementById('year-display').textContent,
+    };
+  });
+  expect(immediateYear).toEqual({min:'1965',value:'1965',display:'1965'});
+
   await page.evaluate(()=>toggleEbenenPanel());
   await page.locator('#el-labels-visible').check();
   await expect.poll(()=>page.locator('.geb-label').count()).toBeGreaterThan(0);
@@ -45,6 +57,6 @@ test('dist: Ansicht steuert Beschriftung und zeitliche Wärmeentwicklung',async(
   await page.locator('#el-chart-visible').check();
   await expect(page.locator('#chart-panel')).toHaveClass(/visible/);
   await expect(page.locator('#svg-chart-container svg')).toBeVisible();
-  await expect(page.locator('#svg-chart-container')).toContainText('1970');
+  await expect(page.locator('#svg-chart-container')).toContainText('1965');
   await expect(page.locator('#svg-chart-container polyline')).toHaveCount(3);
 });

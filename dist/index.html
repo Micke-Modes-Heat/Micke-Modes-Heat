@@ -9939,7 +9939,7 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .addr-search-input:focus{border-color:var(--accent);width:240px;padding:4px 12px 4px 28px;cursor:text;}
 .addr-search-input::placeholder{color:transparent;}
 .addr-search-input:focus::placeholder{color:var(--muted);}
-.addr-search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);pointer-events:none;}
+.addr-search-icon{position:absolute;left:5px;top:50%;transform:translateY(-50%);z-index:2;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);font-size:11px;line-height:22px;cursor:pointer}.addr-search-icon:hover,.addr-search-icon:focus-visible{color:var(--accent);background:rgba(79,195,247,.12);outline:none}
 .addr-results{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:7px;z-index:5000;box-shadow:0 8px 24px rgba(0,0,0,.6);max-height:220px;overflow-y:auto;display:none;}
 .addr-results.open{display:block;}
 .addr-result-item{padding:6px 10px;font-size:11px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);}
@@ -10970,7 +10970,8 @@ if (typeof L !== 'undefined') {
     </div>
   </div>
   <div class="addr-search-wrap" style="flex-shrink:0;">
-    <span class="addr-search-icon">🔍</span>
+    <button class="addr-search-icon" id="addr-search-submit" type="button"
+            data-click="addrSubmit()" title="Ersten Suchtreffer anzeigen" aria-label="Ort suchen">🔍</button>
     <input class="addr-search-input" id="addr-input" type="text" placeholder="Adresse suchen…"
       data-input="addrSearch(this.value)" data-keydown="addrKeydown(event)" autocomplete="off"/>
     <div class="addr-results" id="addr-results"></div>
@@ -14793,7 +14794,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-07-31';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'ac0ea53';
+  var c = 'ac4fc1a';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -83645,6 +83646,13 @@ window._isSingleFileBuild = true;
 
   function _setHourlyModeActive(active) {
     _hourlyModeActive = !!active;
+    if (!_hourlyModeActive) {
+      const flowContainer = document.getElementById('live-flow-svg');
+      if (flowContainer?._sankeyAnim) {
+        cancelAnimationFrame(flowContainer._sankeyAnim);
+        flowContainer._sankeyAnim = null;
+      }
+    }
   }
 
   function _toggleHourlyMode() {
@@ -84177,7 +84185,7 @@ window._isSingleFileBuild = true;
     // WP identifizieren
     const wpKeys = ['lwwp','fg','geo'];
     const wpErz = erzeuger.filter(e=>wpKeys.includes(e.key));
-    const othErz = erzeuger.filter(e=>!wpKeys.includes(e.key));
+    const othErz = erzeuger.filter(e=>!wpKeys.includes(e.key) && e.key !== '_thermSpeicher');
     const wpKw = wpErz.reduce((a,e)=>a+e.kw, 0);
     const hasWP = wpKw > 0.1;
     const wpEl = strom.wpKw || 0;
@@ -84446,32 +84454,49 @@ window._isSingleFileBuild = true;
     if (strom.einspeisungKw > 0.1) stromOnly.push({ label:'Einspeisung', value:strom.einspeisungKw, color:C.bandEinsp, dir:'out' });
     if (strom.batLadeKw > 0.1)     stromOnly.push({ label:'Batterie ↓', value:strom.batLadeKw, color:C.bat, dir:'out' });
 
-    const wpErz = erzeuger.find(e => ['lwwp','fg','geo'].includes(e.key));
-    const wpKw = wpErz ? wpErz.kw : 0;
-    if (wpErz) {
+    const wpErzeuger = erzeuger.filter(e => ['lwwp','fg','geo'].includes(e.key));
+    const wpKw = wpErzeuger.reduce((sum, e) => sum + e.kw, 0);
+    if (wpKw > 0.1) {
       const wpUmw = Math.max(0, wpKw - (strom.wpKw || 0));
-      bridges.push({ label:wpErz.label, color:C.wp, kind:'wp', stromIn:strom.wpKw||0, waermeOut:wpKw, umwelt:wpUmw, kw:wpKw, cop:strom.wpKw>0.1?wpKw/strom.wpKw:null });
+      const wpLabel = wpErzeuger.length === 1 ? wpErzeuger[0].label : 'Wärmepumpen';
+      bridges.push({ label:wpLabel, color:C.wp, kind:'wp', stromIn:strom.wpKw||0, waermeOut:wpKw, umwelt:wpUmw, kw:wpKw, cop:strom.wpKw>0.1?wpKw/strom.wpKw:null });
       if (wpUmw > 0.1) sonder.push({ label:'Umweltwärme', value:wpUmw, color:C.bandUmwelt, target:'wp' });
     }
     const bhkwErz = erzeuger.find(e => e.key === 'bhkw');
     if (bhkwErz) {
       bridges.push({ label:bhkwErz.label, color:C.bhkw, kind:'bhkw', stromOut:strom.bhkwKw||0, waermeOut:bhkwErz.kw, kw:bhkwErz.kw });
-      sonder.push({ label:'Erdgas (BHKW)', value:bhkwErz.kw + (strom.bhkwKw||0) + 50, color:C.bandBrennstoff, target:'bhkw' });
+      const bhkwEta = _sankeyEtas().bhkw;
+      sonder.push({ label:'Erdgas (BHKW)', value:(bhkwErz.kw + (strom.bhkwKw||0)) / bhkwEta, color:C.bandBrennstoff, target:'bhkw' });
     }
-    if (strom.skKw > 0.1) bridges.push({ label:'Stromkessel', color:C.sk, kind:'sk', stromIn:strom.skKw, waermeOut:strom.skKw, kw:strom.skKw });
+    const skErz = erzeuger.find(e => e.key === 'stromkessel');
+    const skThermalKw = skErz?.kw || 0;
+    if (strom.skKw > 0.1 || skThermalKw > 0.1) bridges.push({
+      label:'Stromkessel', color:C.sk, kind:'sk',
+      stromIn:strom.skKw || 0,
+      waermeOut:skThermalKw,
+      kw:skThermalKw,
+      valueText:Math.round(strom.skKw || 0)+' kW el. → '+Math.round(skThermalKw)+' kW th.',
+    });
 
     for (const e of erzeuger) {
-      if (['lwwp','fg','geo','bhkw'].includes(e.key)) continue;
+      if (['lwwp','fg','geo','bhkw','stromkessel','_thermSpeicher'].includes(e.key)) continue;
       if (e.kw < 0.1) continue;
       let col = C.gk;
       if (e.key === 'fernwaerme') col = C.fw;
       else if (e.key === 'pellets') col = C.pellets;
       else if (e.key === 'hhs')     col = C.hhs;
-      waermeOnly.push({ key:e.key, label:e.label, value:e.kw, color:col, dir:'in' });
+      waermeOnly.push({
+        key:e.key,
+        label:e.label,
+        value:e.kw,
+        color:col,
+        dir:'in',
+      });
     }
 
     if (detail) {
-      const nv = bedarf * 0.10;
+      const netzverlustAnteil = (parseFloat(document.getElementById('gl-netzverlust')?.value) || 10) / 100;
+      const nv = bedarf * netzverlustAnteil;
       const tww = Math.min(_sankeyTwwKw(), bedarf - nv);
       const rw = Math.max(0, bedarf - nv - tww);
       if (nv > 0.1)  waermeOnly.push({ label:'Netzverluste', value:nv, color:C.bandVerlust, dir:'out', verlust:true });
@@ -84585,7 +84610,7 @@ window._isSingleFileBuild = true;
     const waermeOutBoxes = placeColumn(waermeOut, xWaermeRight, cssH - 30 - (waermeOut.length*boxH + Math.max(0,waermeOut.length-1)*vGap));
 
     const xBridgeMid = (hubStrom.cx + hubWaerme.cx) / 2;
-    const bridgeBoxW = 110, bridgeBoxH = 30;
+    const bridgeBoxW = 140, bridgeBoxH = 30;
     const bridgeGap = bridges.length >= 3 ? 56 : 78;
     const totalBridgeH = bridges.length * bridgeBoxH + Math.max(0, bridges.length - 1) * bridgeGap;
     let by = cy - totalBridgeH / 2;
@@ -84696,10 +84721,11 @@ window._isSingleFileBuild = true;
         ctx.fillText(b.label + ' ' + Math.round(b.value||b.kw) + ' kW', b.x+b.w/2, b.y+b.h/2);
       } else {
         ctx.font = '10px DM Mono, monospace';
-        ctx.fillText(b.label, b.x+b.w/2, b.y+b.h/2 - 4);
+        ctx.fillText(b.displayLabel || b.label, b.x+b.w/2, b.y+b.h/2 - 4);
         ctx.font = '9px DM Mono, monospace';
         ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.fillText(Math.round(b.value||b.kw) + ' kW' + (b.cop?' · COP '+b.cop.toFixed(1):''), b.x+b.w/2, b.y+b.h/2 + 7);
+        const valueText = b.valueText || (Math.round(b.value||b.kw) + ' kW' + (b.cop?' · COP '+b.cop.toFixed(1):''));
+        ctx.fillText(valueText, b.x+b.w/2, b.y+b.h/2 + 7);
       }
     }
 
@@ -84880,8 +84906,19 @@ window._isSingleFileBuild = true;
 
     // Animation-Loop
     let phase = 0;
-    function tick() {
-      phase = (phase + 0.005) % 1;
+    let lastFrame = 0;
+    function tick(timestamp) {
+      if (!_hourlyModeActive || !canvas.isConnected) {
+        canvas.parentElement._sankeyAnim = null;
+        return;
+      }
+      if (timestamp - lastFrame < 1000 / 30) {
+        canvas.parentElement._sankeyAnim = requestAnimationFrame(tick);
+        return;
+      }
+      const elapsed = lastFrame ? Math.min(50, timestamp - lastFrame) : 1000 / 30;
+      lastFrame = timestamp;
+      phase = (phase + elapsed * 0.0003) % 1;
       renderAll();
       allBands.forEach(g => {
         const tt2 = (phase + (g.value % 0.7)) % 1;
@@ -85365,6 +85402,8 @@ window._isSingleFileBuild = true;
   }
 
   let _liveTlDragging = false;
+  let _liveTlPendingHour = null;
+  let _liveTlFrame = null;
 
   function _liveTlDown(ev) {
     ev.preventDefault();
@@ -85387,7 +85426,15 @@ window._isSingleFileBuild = true;
     const newH = Math.round(frac * 8759);
     const sl = document.getElementById('live-slider');
     if (sl) sl.value = newH;
-    _onHourSlider(newH);
+    _liveTlPendingHour = newH;
+    if (_liveTlFrame == null) {
+      _liveTlFrame = requestAnimationFrame(() => {
+        _liveTlFrame = null;
+        const hour = _liveTlPendingHour;
+        _liveTlPendingHour = null;
+        if (hour != null) _onHourSlider(hour);
+      });
+    }
   }
 
   function _liveStep(delta) {
@@ -103443,6 +103490,18 @@ ${massTbl}
     document.getElementById('addr-results').classList.remove('open');
   }
 
+  function addrSubmit() {
+    const input=document.getElementById('addr-input');
+    const result=document.querySelector('#addr-results .addr-result-item:not(.addr-result-status)');
+    if(result){
+      result.click();
+      return true;
+    }
+    input?.focus();
+    addrSearch(input?.value||'');
+    return false;
+  }
+
   function addrKeydown(e) {
     const res = document.getElementById('addr-results');
     const items = res.querySelectorAll('.addr-result-item');
@@ -104557,6 +104616,7 @@ ${massTbl}
     addrKeydown: addrKeydown,
     addrSearch: addrSearch,
     get addrSelected () { return addrSelected; },
+    addrSubmit: addrSubmit,
     get analyseCurrentSection () { return analyseCurrentSection; },
     applyBulk: applyBulk,
     applyEdgePrunedStyle: applyEdgePrunedStyle,
@@ -107498,14 +107558,15 @@ ${massTbl}
     updateViz();
   }
 
-  // Jahres-Slider (Kopfleiste) auf das älteste ECHTE Baujahr der Liegenschaft setzen —
-  // geschätzte/automatisch erzeugte Baujahre (g.baujährQuelle gesetzt) zählen nicht,
-  // da sie keine belastbare Untergrenze für den Betrachtungszeitraum liefern.
+  // Jahres-Slider (Kopfleiste) auf das früheste vorhandene Baujahr setzen.
+  // Auch importierte bzw. automatisch ermittelte Baujahre zählen: Für die
+  // zeitliche Darstellung muss ein geladenes Gebäude unabhängig von der Quelle
+  // ab seinem hinterlegten Baujahr sichtbar sein.
   function _initYearSliderFromBaujahr() {
     const slider = document.getElementById('year-slider');
     if (!slider) return;
     const echteBaujahre = (window.gebaeude || [])
-      .filter(g => g.baujahr && !g.baujährQuelle)
+      .filter(g => g.baujahr)
       .map(g => parseInt(g.baujahr))
       .filter(y => !isNaN(y));
     if (!echteBaujahre.length) return;
@@ -108218,6 +108279,12 @@ ${massTbl}
     if (!_animPipesRunning) return;
     if (!_animPipesLastFrame) _animPipesLastFrame = timestamp;
     const elapsedMs = Math.max(0, timestamp - _animPipesLastFrame);
+    // Für die ruhige Fließanimation reichen 30 Bilder/s. Bei großen Netzen
+    // halbiert das die teuren SVG-Stiländerungen, ohne Funktion zu verlieren.
+    if (elapsedMs < 1000 / 30) {
+      requestAnimationFrame(animatePipes);
+      return;
+    }
     _animPipesLastFrame = timestamp;
     // Ruhiger Hybrid: zeitbasiert bei normaler Bildrate, aber ohne große
     // Aufholsprünge, wenn das SVG-Rendering im hohen Kartenzoom Frames auslässt.
@@ -115660,13 +115727,21 @@ out body;>;out skel qt;`;
     }
   }
 
-  function confirmClearNetz(){
+  async function confirmClearNetz(){
     const existing = window.netzEdges?.length || 0;
     if (!existing) {
       clearNetz();
       return true;
     }
-    if (!window.confirm(`Wirklich alle ${existing} Wärmeleitungen löschen?`)) return false;
+    const confirmed=typeof window.epConfirm==='function'
+      ? await window.epConfirm(
+        'Wärmenetz löschen',
+        `Das gesamte Wärmenetz mit <strong>${existing} Leitungsabschnitten</strong> wird entfernt.`+
+          '<br><br><span style="color:var(--muted);font-size:10px">Gebäude, Heizzentralenzuordnung und Trassenzeichnung bleiben erhalten.</span>',
+        {okText:'Netz löschen',cancelText:'Abbrechen',danger:true},
+      )
+      : window.confirm(`Wirklich alle ${existing} Wärmeleitungen löschen?`);
+    if (!confirmed) return false;
     clearNetz();
     return true;
   }
@@ -116001,6 +116076,11 @@ out body;>;out skel qt;`;
     const cb2 = document.getElementById('netz-visible-ansicht');
     if (cb1) cb1.checked = visible;
     if (cb2) cb2.checked = visible;
+    if (!visible || netzMotionless) {
+      stopAnimPipes();
+    } else if (window.netzEdges.some(edge => edge.load > 0)) {
+      startAnimPipes();
+    }
     refreshNetzFlowArrows();
   }
 
@@ -118537,12 +118617,29 @@ out body;>;out skel qt;`;
     if (!_batchImporting) updateViz();
   }
 
-  function removeGebaeude(id){
+  async function removeGebaeude(id){
     const g=window.gebaeude.find(x=>x.id===id);
-    if(!g) return;
+    if(!g) return false;
+    const centralSelect=document.getElementById('netz-zentrale');
+    const isHeatCentral=Number.parseInt(centralSelect?.value,10)===id;
+    if(isHeatCentral){
+      const edgeCount=window.netzEdges?.length||0;
+      const message=`<strong>„${g.name || `Gebäude ${id}`}“</strong> ist derzeit als Heizzentrale des Wärmenetzes festgelegt.`+
+        '<br><br>Beim Löschen werden auch die Zentralenzuordnung und das gesamte Wärmenetz entfernt.'+
+        `<br><br><span style="color:var(--muted);font-size:10px">${edgeCount} Leitungsabschnitt${edgeCount===1?'':'e'} betroffen. Anschließend muss eine neue Heizzentrale gewählt und das Netz neu aufgebaut werden.</span>`;
+      const confirmed=typeof window.epConfirm==='function'
+        ? await window.epConfirm('Heizzentralengebäude löschen',message,{
+          okText:'Gebäude und Netz löschen',cancelText:'Abbrechen',danger:true,
+        })
+        : window.confirm('Dieses Gebäude ist die Heizzentrale. Gebäude, Zentralenzuordnung und Wärmenetz wirklich löschen?');
+      if(!confirmed) return false;
+      clearNetz();
+      if(centralSelect) centralSelect.value='';
+    }
     if(g.polygonLayer) map.removeLayer(g.polygonLayer);
     if(g.circleMarker) map.removeLayer(g.circleMarker);
     if(g.labelMarker) map.removeLayer(g.labelMarker);
+    if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
     if(g.pvFlaechen) g.pvFlaechen.forEach(f=>{ if(f.layer) map.removeLayer(f.layer); if(f.svgLayer) map.removeLayer(f.svgLayer); });
     if(g._pvModuleLayer){ map.removeLayer(g._pvModuleLayer); g._pvModuleLayer=null; }
     setGebaeude(window.gebaeude.filter(x=>x.id!==id));
@@ -118570,7 +118667,9 @@ out body;>;out skel qt;`;
       return true;
     }));
     setStromNodes(window.stromNodes.filter(n => !(n.type === 'geb' && n.gebId === id)));
+    populateZentraleSelect();
     renderList(); updateViz(); recalcNetz();
+    return true;
   }
 
   function clearOsmBuildings(){
@@ -119073,6 +119172,7 @@ out body;>;out skel qt;`;
     }
 
     if (!defer) {
+      if (field === 'baujahr' && g.baujahr) _initYearSliderFromBaujahr();
       updateVizDebounced();
       updateTotals();
       if (field === 'heizlast' || field === 'spezHeizlast' || autoCalculated) recalcNetz();

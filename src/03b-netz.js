@@ -3456,13 +3456,21 @@ export async function createStreetOrientedWaermeNetz() {
   }
 }
 
-export function confirmClearNetz(){
+export async function confirmClearNetz(){
   const existing = window.netzEdges?.length || 0;
   if (!existing) {
     clearNetz();
     return true;
   }
-  if (!window.confirm(`Wirklich alle ${existing} Wärmeleitungen löschen?`)) return false;
+  const confirmed=typeof window.epConfirm==='function'
+    ? await window.epConfirm(
+      'Wärmenetz löschen',
+      `Das gesamte Wärmenetz mit <strong>${existing} Leitungsabschnitten</strong> wird entfernt.`+
+        '<br><br><span style="color:var(--muted);font-size:10px">Gebäude, Heizzentralenzuordnung und Trassenzeichnung bleiben erhalten.</span>',
+      {okText:'Netz löschen',cancelText:'Abbrechen',danger:true},
+    )
+    : window.confirm(`Wirklich alle ${existing} Wärmeleitungen löschen?`);
+  if (!confirmed) return false;
   clearNetz();
   return true;
 }
@@ -3801,6 +3809,11 @@ export function setNetzVisible(visible) {
   const cb2 = document.getElementById('netz-visible-ansicht');
   if (cb1) cb1.checked = visible;
   if (cb2) cb2.checked = visible;
+  if (!visible || netzMotionless) {
+    stopAnimPipes();
+  } else if (window.netzEdges.some(edge => edge.load > 0)) {
+    startAnimPipes();
+  }
   refreshNetzFlowArrows();
 }
 

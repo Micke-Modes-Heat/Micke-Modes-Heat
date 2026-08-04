@@ -35,3 +35,23 @@ test('Adresssuche meldet einen nicht erreichbaren Dienst sichtbar', async ({ pag
 
   await expect(page.locator('#addr-results')).toContainText('momentan nicht erreichbar');
 });
+
+test('Adresssuche übernimmt den ersten Treffer per Klick auf die Lupe', async ({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.route(/nominatim\.openstreetmap\.org\/search/,async route=>{
+    await route.fulfill({
+      contentType:'application/json',
+      body:JSON.stringify([{
+        lat:'53.551086',lon:'9.993682',display_name:'Hamburg, Deutschland',
+        address:{postcode:'20095'},
+      }]),
+    });
+  });
+  await page.goto('/');
+  const input=page.locator('#addr-input');
+  await input.fill('Hamburg');
+  await expect(page.locator('#addr-results')).toContainText('Hamburg, Deutschland');
+  await page.locator('#addr-search-submit').click();
+  await expect(input).toHaveValue('Hamburg');
+  await expect(page.locator('#addr-results')).not.toHaveClass(/open/);
+});

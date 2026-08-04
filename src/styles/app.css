@@ -615,7 +615,7 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .addr-search-input:focus{border-color:var(--accent);width:240px;padding:4px 12px 4px 28px;cursor:text;}
 .addr-search-input::placeholder{color:transparent;}
 .addr-search-input:focus::placeholder{color:var(--muted);}
-.addr-search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);pointer-events:none;}
+.addr-search-icon{position:absolute;left:5px;top:50%;transform:translateY(-50%);z-index:2;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);font-size:11px;line-height:22px;cursor:pointer}.addr-search-icon:hover,.addr-search-icon:focus-visible{color:var(--accent);background:rgba(79,195,247,.12);outline:none}
 .addr-results{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:7px;z-index:5000;box-shadow:0 8px 24px rgba(0,0,0,.6);max-height:220px;overflow-y:auto;display:none;}
 .addr-results.open{display:block;}
 .addr-result-item{padding:6px 10px;font-size:11px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);}

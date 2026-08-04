@@ -39,7 +39,8 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
     toggleDrawTrasse();
 
     setNetworkLocked(true);
-    const lockedClearResult = confirmClearNetz();
+    window.epConfirm=async()=>false;
+    const lockedClearResult = await confirmClearNetz();
     const lockedDrawResult = toggleDrawEdge();
     const lockedState = {
       clearResult: lockedClearResult,
@@ -207,7 +208,7 @@ test('dist: vollständig manuelles Wärmenetz übernimmt nur die gezeichneten Le
   await page.route(/tile\.openstreetmap\.org/, route => route.abort());
   await page.goto('/');
   await page.waitForFunction(() => typeof window.createManualWaermeNetzFromTrasse === 'function');
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate(async () => {
     clearNetz();
     setGebaeude([]);
     const add = (id,lat,lng,name) => {
@@ -590,6 +591,62 @@ test('dist: automatisch erzeugtes Netz lässt sich als manuelle Zeichnung weiter
   expect(result.edgePreserved).toBe(true);
   expect(result.manualSegments).toBe(result.edgeCount);
   expect(result.sourceSet).toEqual(['existing-network']);
+});
+
+test('dist: Löschen des Heizzentralengebäudes warnt gestaltet und entfernt nach Bestätigung das Wärmenetz',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.removeGebaeude==='function');
+  const initial=await page.evaluate(()=>{
+    clearNetz();
+    setGebaeude([]);
+    const add=(id,lat,lng,name)=>{
+      const building=addGebaeude({
+        id,name,baujahr:2000,skipAutoCreate:true,
+        coords:[
+          L.latLng(lat-.00003,lng-.00003),L.latLng(lat-.00003,lng+.00003),
+          L.latLng(lat+.00003,lng+.00003),L.latLng(lat+.00003,lng-.00003),
+        ],
+      });
+      building.heizlast='80'; building.waerme='160';
+    };
+    add(1261,52.08,8,'Heizzentrale Nord');
+    add(1262,52.0805,8.001,'Verbraucher');
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1261';
+    setNetworkLocked(false);
+    autoGenerateNetz({strategy:'quick'});
+    return {edges:window.netzEdges.length};
+  });
+  expect(initial.edges).toBeGreaterThan(0);
+
+  await page.evaluate(()=>{ window._centralDeletionPromise=removeGebaeude(1261); });
+  const dialog=await page.locator('.ep-modal').evaluate(modal=>({
+    title:modal.querySelector('.ep-modal-title')?.textContent,
+    body:modal.querySelector('.ep-modal-body')?.textContent,
+    danger:modal.querySelector('.ep-modal-btn.danger')?.textContent,
+  }));
+  expect(dialog.title).toBe('Heizzentralengebäude löschen');
+  expect(dialog.body).toContain('gesamte Wärmenetz');
+  expect(dialog.danger).toBe('Gebäude und Netz löschen');
+  await page.locator('#ep-m-cancel').click();
+  await page.evaluate(()=>window._centralDeletionPromise);
+  const afterCancel=await page.evaluate(()=>({
+    building:window.gebaeude.some(building=>building.id===1261),
+    edges:window.netzEdges.length,
+    central:document.getElementById('netz-zentrale').value,
+  }));
+  expect(afterCancel).toEqual({building:true,edges:initial.edges,central:'1261'});
+
+  await page.evaluate(()=>{ window._centralDeletionPromise=removeGebaeude(1261); });
+  await page.locator('#ep-m-ok').click();
+  await page.evaluate(()=>window._centralDeletionPromise);
+  const afterConfirm=await page.evaluate(()=>({
+    building:window.gebaeude.some(building=>building.id===1261),
+    edges:window.netzEdges.length,
+    central:document.getElementById('netz-zentrale').value,
+  }));
+  expect(afterConfirm).toEqual({building:false,edges:0,central:''});
 });
 
 test('dist: mehrfach angesetzte Haupttrasse bildet am Linien-Snap einen echten Abzweig', async ({page}) => {
@@ -1201,7 +1258,7 @@ test('dist: Bestands- und Neubaunetz folgen unterschiedlichen Zeit- und Sperrreg
   await page.goto('/');
   await page.waitForFunction(() => typeof window.autoGenerateNetz === 'function');
 
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate(async () => {
     clearNetz(); setGebaeude([]); setTrassePoints([]); setTrasseSegments([]);
     const add = (id,lat,lng,baujahr,heizlast) => {
       const g = addGebaeude({id,name:`Gebäude ${id}`,baujahr,skipAutoCreate:true,coords:[
@@ -1269,8 +1326,8 @@ test('dist: Bestands- und Neubaunetz folgen unterschiedlichen Zeit- und Sperrreg
 
     // Problemfall aus der Bedienung: Bestand löschen, Trasse löschen,
     // anschließend ohne Altzustand ein Neubaunetz erzeugen.
-    window.confirm=()=>true;
-    const deleted=confirmClearNetz();
+    window.epConfirm=async()=>true;
+    const deleted=await confirmClearNetz();
     clearTrasse();
     const stayedBestandAfterDelete=window.networkLocked;
     setNetworkLocked(false);

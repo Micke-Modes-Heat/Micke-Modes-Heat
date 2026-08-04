@@ -513,6 +513,18 @@ export function selectAddr(item) {
   document.getElementById('addr-results').classList.remove('open');
 }
 
+export function addrSubmit() {
+  const input=document.getElementById('addr-input');
+  const result=document.querySelector('#addr-results .addr-result-item:not(.addr-result-status)');
+  if(result){
+    result.click();
+    return true;
+  }
+  input?.focus();
+  addrSearch(input?.value||'');
+  return false;
+}
+
 export function addrKeydown(e) {
   const res = document.getElementById('addr-results');
   const items = res.querySelectorAll('.addr-result-item');

@@ -3,8 +3,8 @@
 import { R_MIN, currentMode, isExcluded, setGebaeude, setGlobalYearValue, setNetzEdges, setNetworkLocked, setSelectedId, setStromEdges, setStromNodes, updateVizDebounced } from './01-globals-varianten.js';
 import { lerpColor } from './02a-netz-physik.js';
 import { polygonAreaM2, polygonCenter, selectFromMap, updateViz } from './02c-karte-werkzeuge.js';
-import { hidePanels, populateZentraleSelect, recalcNetz, startDraw } from './03b-netz.js';
-import { _gebLabelHtml, cardDotColor, drawChart, renderList, updateTotals } from './03c-gebaeude-io.js';
+import { clearNetz, hidePanels, populateZentraleSelect, recalcNetz, startDraw } from './03b-netz.js';
+import { _gebLabelHtml, _initYearSliderFromBaujahr, cardDotColor, drawChart, renderList, updateTotals } from './03c-gebaeude-io.js';
 import { glBerechnenDebounced } from './06b-gl-berechnen.js';
 import { updateAllDeckungen } from './06c-dispatch-core.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
@@ -464,12 +464,29 @@ export function attachPolygonLayer(g){
   if (!_batchImporting) updateViz();
 }
 
-export function removeGebaeude(id){
+export async function removeGebaeude(id){
   const g=window.gebaeude.find(x=>x.id===id);
-  if(!g) return;
+  if(!g) return false;
+  const centralSelect=document.getElementById('netz-zentrale');
+  const isHeatCentral=Number.parseInt(centralSelect?.value,10)===id;
+  if(isHeatCentral){
+    const edgeCount=window.netzEdges?.length||0;
+    const message=`<strong>„${g.name || `Gebäude ${id}`}“</strong> ist derzeit als Heizzentrale des Wärmenetzes festgelegt.`+
+      '<br><br>Beim Löschen werden auch die Zentralenzuordnung und das gesamte Wärmenetz entfernt.'+
+      `<br><br><span style="color:var(--muted);font-size:10px">${edgeCount} Leitungsabschnitt${edgeCount===1?'':'e'} betroffen. Anschließend muss eine neue Heizzentrale gewählt und das Netz neu aufgebaut werden.</span>`;
+    const confirmed=typeof window.epConfirm==='function'
+      ? await window.epConfirm('Heizzentralengebäude löschen',message,{
+        okText:'Gebäude und Netz löschen',cancelText:'Abbrechen',danger:true,
+      })
+      : window.confirm('Dieses Gebäude ist die Heizzentrale. Gebäude, Zentralenzuordnung und Wärmenetz wirklich löschen?');
+    if(!confirmed) return false;
+    clearNetz();
+    if(centralSelect) centralSelect.value='';
+  }
   if(g.polygonLayer) map.removeLayer(g.polygonLayer);
   if(g.circleMarker) map.removeLayer(g.circleMarker);
   if(g.labelMarker) map.removeLayer(g.labelMarker);
+  if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
   if(g.pvFlaechen) g.pvFlaechen.forEach(f=>{ if(f.layer) map.removeLayer(f.layer); if(f.svgLayer) map.removeLayer(f.svgLayer); });
   if(g._pvModuleLayer){ map.removeLayer(g._pvModuleLayer); g._pvModuleLayer=null; }
   setGebaeude(window.gebaeude.filter(x=>x.id!==id));
@@ -497,7 +514,9 @@ export function removeGebaeude(id){
     return true;
   }));
   setStromNodes(window.stromNodes.filter(n => !(n.type === 'geb' && n.gebId === id)));
+  populateZentraleSelect();
   renderList(); updateViz(); recalcNetz();
+  return true;
 }
 
 export function clearOsmBuildings(){
@@ -1001,6 +1020,7 @@ export function updateField(id, field, val, {defer = false} = {}) {
   }
 
   if (!defer) {
+    if (field === 'baujahr' && g.baujahr) _initYearSliderFromBaujahr();
     updateVizDebounced();
     updateTotals();
     if (field === 'heizlast' || field === 'spezHeizlast' || autoCalculated) recalcNetz();
