@@ -36,6 +36,7 @@ import * as uiPanels from './04a-ui-panels.js';
 import * as emissionen3d from './04b-emissionen-3d.js';
 import * as exportMod from './05a-export.js';
 import * as bericht from './05d-bericht.js';
+import * as projektbericht from './05e-projektbericht.js';
 import * as stromnetz from './05b-stromnetz.js';
 import * as sankey from './05c-sankey.js';
 import * as gbiLastgang from './06a-gbi-lastgang.js';
@@ -85,7 +86,7 @@ const modules = [
   pdfjsLib, physikKonstanten, projectSchema, autosaveStore, waermeGraphValidation, timeSeries, calculationManifest, electricDemand, pvBatteryCore, pvProfileImport, batteryAging, workerSeries, planningTransaction, interactionState, lifecycle, localDataPrivacy, diagnostics, netzKosten, erzeugerCfg, optimizerDefaults, tariffScenarios, economicScenarios, terminology, hilfeTexte,
   globals, netzPhysik, gebaeude, karteWerkzeuge,
   erzeuger, netz, gebaeudeIo, uiPanels,
-  emissionen3d, exportMod, bericht, stromnetz, sankey,
+  emissionen3d, exportMod, bericht, projektbericht, stromnetz, sankey,
   gbiLastgang, glBerechnen, dispatchCore, kaelteCore,
   analysisCharts, analysisEconomics, calcEngine,
   pvProfile, pvCalc, pvChartsOpt, pvAnalyse,

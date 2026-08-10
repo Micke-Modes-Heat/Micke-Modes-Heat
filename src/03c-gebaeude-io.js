@@ -223,7 +223,7 @@ window.addEventListener('resize', () => {
 
 export function _renderCompactRow(g, stats, isExpanded) {
   const dot = cardDotColor(g);
-  const nutzungLabel = {efh:'EFH',mfh:'MFH',ghd:'GHD',schule:'Schule',buero:'Büro',industrie:'Ind.',oeffentlich:'Öff.'}[g.nutzung] || '—';
+  const nutzungLabel = getNutzungstypById(g.nutzung)?.label || '—';
   const waermeStr = stats.waerme > 0 ? Math.round(stats.waerme).toLocaleString('de-DE') : '—';
   const hlStr = stats.heizlast > 0 ? Math.round(stats.heizlast).toLocaleString('de-DE') : '—';
   const statusColor = stats.status==='abgerissen'?'#e53935':stats.status==='saniert'?'#4caf50':stats.status==='geplant'?'#f9a825':'transparent';
@@ -238,7 +238,7 @@ export function _renderCompactRow(g, stats, isExpanded) {
     </div>
     <div style="display:flex;align-items:center;gap:4px;padding-left:28px;margin-top:1px;">
       <button data-click="event.stopPropagation();toggleVormerkenGeb(${g.id})" title="${g.feldVorgemerkt ? 'Vorgemerkt – klicken zum Entfernen' : 'Für Feldbegehung vormerken'}" style="background:none;border:none;cursor:pointer;font-size:${g.feldVorgemerkt ? '13' : '11'}px;color:${g.feldVorgemerkt ? '#f59e0b' : '#666'};padding:0 2px;margin-right:2px;line-height:1;flex-shrink:0;">★</button>
-      <span style="font-size:9px;color:var(--muted);min-width:28px;flex-shrink:0;">${nutzungLabel}</span>
+      <span style="font-size:9px;color:var(--muted);max-width:82px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;" title="${escHtml(nutzungLabel)}">${escHtml(nutzungLabel)}</span>
       <span class="geb-compact-val geb-cv-waerme-${g.id}" style="color:var(--accent)">${waermeStr}</span>
       <span class="geb-compact-unit">MWh</span>
       <span class="geb-compact-val geb-cv-hl-${g.id}" style="color:#f9a825">${hlStr}</span>
@@ -2458,6 +2458,7 @@ export function _buildProjectData() {
     version: PROJECT_SCHEMA_VERSION,
     calculationManifest: createCalculationManifest({timeSeriesMeta: glTimeSeriesMeta, pvProfileMeta: window.elPvMeta || syntheticPvProfileMeta(), tariffMeta: getPvTariffProvenance(document.getElementById('pv-tarif-szenario')?.value), economicMeta: economicScenario.provenance}),
     economicScenario,
+    projectReportDraft: window._projectReportDraft ? structuredClone(window._projectReportDraft) : null,
     waermeGrundlagen:captureWaermeGrundlagen(),
     gebaeude: window.gebaeude.map(g => ({
       id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
@@ -2962,6 +2963,7 @@ export function _loadProject(project) {
 // Interne, nicht validierende Restore-Funktion. Ausschließlich über _loadProject
 // oder für den bereits validierten In-Memory-Rollback aufrufen.
 function _applyProjectData(project) {
+      window._projectReportDraft = project.projectReportDraft ? structuredClone(project.projectReportDraft) : null;
       // Immer vor dem Gebäudetausch zurücksetzen/wiederherstellen. Alte Projekte
       // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die
       // Monatswerte oder Lastgänge der zuvor geöffneten Liegenschaft.

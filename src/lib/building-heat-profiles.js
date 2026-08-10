@@ -50,9 +50,21 @@ const ARCHETYPES = {
 };
 
 const FALLBACK = ARCHETYPES.ghd;
+// Erweiterte Nutzungen erhalten bis zur fachlichen Ausarbeitung eigener
+// Wärme-Archetypen eine explizite, nachvollziehbare Referenz. Dadurch fällt
+// kein neuer Gebäudetyp unbemerkt auf das allgemeine GHD-Profil zurück.
+const ARCHETYPE_ALIASES = {
+  unterkunft:'mfh', wohnheim:'mfh', kaserne:'mfh', pflegeheim:'mfh', hotel:'mfh', krankenhaus:'mfh',
+  kita:'schule', hochschule:'schule',
+  verwaltung:'buero', bibliothek:'buero', arztpraxis:'buero', justiz:'oeffentlich',
+  polizei:'oeffentlich', feuerwehr:'oeffentlich', rettungswache:'oeffentlich',
+  sporthalle:'oeffentlich', schwimmbad:'oeffentlich', kultur:'oeffentlich', sakral:'oeffentlich',
+  kantine:'ghd', werkstatt:'industrie', lager:'industrie', technik:'industrie', labor:'industrie',
+};
 
 function archetypeFor(building) {
-  return ARCHETYPES[building?.heatProfileType || building?.nutzung] || FALLBACK;
+  const requested=building?.heatProfileType || building?.nutzung;
+  return ARCHETYPES[requested] || ARCHETYPES[ARCHETYPE_ALIASES[requested]] || FALLBACK;
 }
 
 function normalizeInto(out,raw,totalKwh,share) {

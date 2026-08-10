@@ -116,9 +116,16 @@ export function exportGebaeudeCSV() {
 //   Platzhalter   → [zu ergänzen: …] markiert Stellen für die fachliche Bewertung.
 const _GUT_NUTZUNG_LABEL = {
   efh:'Einfamilienhaus', mfh:'Mehrfamilienhaus', ghd:'Gewerbe/Handel', gewerbe:'Gewerbe',
-  schule:'Schule', kita:'Kita', buero:'Büro', verwaltung:'Verwaltung', industrie:'Industrie',
-  oeffentlich:'Öffentliches Gebäude', wohnen:'Wohnen', sporthalle:'Sporthalle',
+  schule:'Schule', buero:'Büro', industrie:'Industrie',
+  oeffentlich:'Öffentliches Gebäude', wohnen:'Wohnen',
   krankenhaus:'Krankenhaus', hotel:'Hotel/Beherbergung', unbekannt:'Unbekannt',
+  unterkunft:'Unterkunft / Gemeinschaftsunterkunft', wohnheim:'Wohnheim / Internat', kaserne:'Kaserne / Unterkunftsgebäude',
+  pflegeheim:'Pflege- / Seniorenheim', kita:'Kindertagesstätte', hochschule:'Hochschule / Akademie',
+  verwaltung:'Verwaltung / Rathaus', polizei:'Polizei / Sicherheitsdienst', feuerwehr:'Feuerwehr', rettungswache:'Rettungswache',
+  justiz:'Gericht / Justiz / Vollzug', arztpraxis:'Arztpraxis / Ambulanz', sporthalle:'Sport- / Turnhalle',
+  schwimmbad:'Schwimmbad', kultur:'Kultur- / Veranstaltungsgebäude', bibliothek:'Bibliothek / Archiv', sakral:'Sakralgebäude',
+  kantine:'Kantine / Großküche', werkstatt:'Werkstatt / Instandhaltung', lager:'Lager / Depot',
+  technik:'Technik- / Betriebsgebäude', labor:'Labor / Forschung',
 };
 function _gutBaualtersklasse(bj) {
   if (!bj || isNaN(bj)) return 'unbekannt';

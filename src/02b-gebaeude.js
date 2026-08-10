@@ -399,8 +399,7 @@ export function getEffectiveRMax() {
 }
 
 export function nextGebName(nutzung) {
-  const LABELS = { efh:'EFH', mfh:'MFH', ghd:'Gewerbe', schule:'Schule', buero:'Büro', industrie:'Industrie', oeffentlich:'Öffentlich' };
-  const prefix = LABELS[nutzung] || 'Gebäude';
+  const prefix = getNutzungstypById(nutzung)?.label || 'Gebäude';
   const names = new Set(window.gebaeude.map(g => g.name));
   for (let i = 1; i < 10000; i++) {
     const candidate = prefix + ' ' + i;
@@ -579,7 +578,7 @@ var _iwuGrenzen = Object.keys(IWU_SPEZ_WAERME).map(Number).sort(function(a,b){re
 
 export function getSpezNachBaujahr(baujahr, nutzung) {
   var y = parseInt(baujahr, 10) || 1970;
-  var typ = nutzung || '';
+  var typ = getNutzungstypById(nutzung || '')?.waermeRef || nutzung || '';
   // IWU-Tabelle durchgehen
   for (var i = 0; i < _iwuGrenzen.length; i++) {
     if (y <= _iwuGrenzen[i]) {
@@ -596,6 +595,8 @@ export function getSpezNachBaujahr(baujahr, nutzung) {
 // Gebäudetyp (GFK/Nutzung) und Grundfläche.
 export function estimateStockwerke(nutzung, flaecheM2) {
   var f = flaecheM2 || 100;
+  const configured = getNutzungstypById(nutzung || '')?.stockwerke;
+  if (Number.isFinite(configured) && configured > 0) return configured;
   switch (nutzung) {
     case 'efh':    return f > 180 ? 1 : 2;          // großes EFH = Bungalow, sonst 2
     case 'mfh':    return f < 200 ? 3 : (f < 500 ? 4 : 5); // nach Grundfläche gestaffelt
@@ -735,13 +736,21 @@ export function osmNutzung(buildingTag) {
   const t = (buildingTag || '').toLowerCase();
   if (['house','detached','semidetached_house','semi_detached','bungalow',
        'chalet','cottage','terrace','farmhouse','villa','manor'].includes(t)) return 'efh';
-  if (['apartments','residential','dormitory','block','flat'].includes(t)) return 'mfh';
+  if (['apartments','residential','block','flat'].includes(t)) return 'mfh';
+  if (['dormitory','barracks'].includes(t)) return t === 'barracks' ? 'kaserne' : 'wohnheim';
   if (['commercial','retail','supermarket','kiosk','shop','store'].includes(t)) return 'ghd';
   if (['office','bank'].includes(t)) return 'buero';
-  if (['school','university','college','kindergarten','training'].includes(t)) return 'schule';
+  if (['school','training'].includes(t)) return 'schule';
+  if (['university','college'].includes(t)) return 'hochschule';
+  if (t === 'kindergarten') return 'kita';
   if (['industrial','warehouse','factory','manufacture'].includes(t)) return 'industrie';
-  if (['public','civic','hospital','government','fire_station','police',
-       'sports_hall','church','cathedral','mosque','temple'].includes(t)) return 'oeffentlich';
+  if (t === 'hospital') return 'krankenhaus';
+  if (t === 'government') return 'verwaltung';
+  if (t === 'fire_station') return 'feuerwehr';
+  if (t === 'police') return 'polizei';
+  if (t === 'sports_hall') return 'sporthalle';
+  if (['church','cathedral','mosque','temple'].includes(t)) return 'sakral';
+  if (['public','civic'].includes(t)) return 'oeffentlich';
   return '';
 }
 
@@ -756,13 +765,37 @@ export const OSM_SKIP_TYPES = new Set([
 // Eingebaute Typen (schreibgeschützt, immer vorhanden)
 // vbh = Vollbenutzungsstunden/a → Spitzenlast kW = MWh*1000/vbh
 const _NUTZUNGSTYPEN_BUILTIN = [
-  { id:'efh',        label:'EFH',         gruppe:'Wohnen',      spezStrom:25, slp:'H0', vbh:2200 },
-  { id:'mfh',        label:'MFH',         gruppe:'Wohnen',      spezStrom:20, slp:'H0', vbh:2200 },
-  { id:'ghd',        label:'GHD',         gruppe:'Gewerbe',     spezStrom:45, slp:'G0', vbh:2500 },
-  { id:'schule',     label:'Schule',      gruppe:'Öffentlich',  spezStrom:18, slp:'G1', vbh:1800 },
-  { id:'buero',      label:'Büro',        gruppe:'Gewerbe',     spezStrom:35, slp:'G1', vbh:1800 },
-  { id:'industrie',  label:'Industrie',   gruppe:'Industrie',   spezStrom:60, slp:'G0', vbh:2500 },
-  { id:'oeffentlich',label:'Öffentlich',  gruppe:'Öffentlich',  spezStrom:25, slp:'G1', vbh:1800 },
+  { id:'efh', label:'Einfamilienhaus', gruppe:'Wohnen', spezStrom:25, slp:'H0', vbh:2200, waermeRef:'efh' },
+  { id:'mfh', label:'Mehrfamilienhaus', gruppe:'Wohnen', spezStrom:20, slp:'H0', vbh:2200, waermeRef:'mfh' },
+  { id:'unterkunft', label:'Unterkunft / Gemeinschaftsunterkunft', gruppe:'Unterkunft und Pflege', spezStrom:24, slp:'H0', vbh:2400, waermeRef:'mfh', stockwerke:3 },
+  { id:'wohnheim', label:'Wohnheim / Internat', gruppe:'Unterkunft und Pflege', spezStrom:23, slp:'H0', vbh:2400, waermeRef:'mfh', stockwerke:4 },
+  { id:'kaserne', label:'Kaserne / Unterkunftsgebäude', gruppe:'Bundeswehr', spezStrom:26, slp:'BW1', vbh:2400, waermeRef:'mfh', stockwerke:3 },
+  { id:'pflegeheim', label:'Pflege- / Seniorenheim', gruppe:'Unterkunft und Pflege', spezStrom:38, slp:'G3', vbh:2600, waermeRef:'mfh', stockwerke:3 },
+  { id:'hotel', label:'Hotel / Beherbergung', gruppe:'Unterkunft und Pflege', spezStrom:45, slp:'G3', vbh:2500, waermeRef:'mfh', stockwerke:4 },
+  { id:'kita', label:'Kindertagesstätte', gruppe:'Bildung und Betreuung', spezStrom:20, slp:'G1', vbh:1800, waermeRef:'schule', stockwerke:1 },
+  { id:'schule', label:'Schule', gruppe:'Bildung und Betreuung', spezStrom:18, slp:'G1', vbh:1800, waermeRef:'schule' },
+  { id:'hochschule', label:'Hochschule / Akademie', gruppe:'Bildung und Betreuung', spezStrom:42, slp:'G1', vbh:2000, waermeRef:'schule', stockwerke:4 },
+  { id:'verwaltung', label:'Verwaltung / Rathaus', gruppe:'Verwaltung und Sicherheit', spezStrom:35, slp:'G1', vbh:1800, waermeRef:'buero', stockwerke:3 },
+  { id:'buero', label:'Büro', gruppe:'Verwaltung und Sicherheit', spezStrom:35, slp:'G1', vbh:1800, waermeRef:'buero' },
+  { id:'polizei', label:'Polizei / Sicherheitsdienst', gruppe:'Verwaltung und Sicherheit', spezStrom:38, slp:'G3', vbh:2200, waermeRef:'oeffentlich', stockwerke:3 },
+  { id:'feuerwehr', label:'Feuerwehr', gruppe:'Verwaltung und Sicherheit', spezStrom:32, slp:'G3', vbh:2100, waermeRef:'oeffentlich', stockwerke:2 },
+  { id:'rettungswache', label:'Rettungswache', gruppe:'Verwaltung und Sicherheit', spezStrom:38, slp:'G3', vbh:2300, waermeRef:'oeffentlich', stockwerke:2 },
+  { id:'justiz', label:'Gericht / Justiz / Vollzug', gruppe:'Verwaltung und Sicherheit', spezStrom:35, slp:'G1', vbh:2100, waermeRef:'oeffentlich', stockwerke:3 },
+  { id:'krankenhaus', label:'Krankenhaus / Klinik', gruppe:'Gesundheit', spezStrom:75, slp:'G3', vbh:3000, waermeRef:'oeffentlich', stockwerke:4 },
+  { id:'arztpraxis', label:'Arztpraxis / Ambulanz', gruppe:'Gesundheit', spezStrom:48, slp:'G1', vbh:1900, waermeRef:'buero', stockwerke:2 },
+  { id:'sporthalle', label:'Sport- / Turnhalle', gruppe:'Sport und Kultur', spezStrom:25, slp:'G2', vbh:1700, waermeRef:'oeffentlich', stockwerke:1 },
+  { id:'schwimmbad', label:'Schwimmbad', gruppe:'Sport und Kultur', spezStrom:95, slp:'G3', vbh:3200, waermeRef:'oeffentlich', stockwerke:1 },
+  { id:'kultur', label:'Kultur- / Veranstaltungsgebäude', gruppe:'Sport und Kultur', spezStrom:40, slp:'G2', vbh:1700, waermeRef:'oeffentlich', stockwerke:2 },
+  { id:'bibliothek', label:'Bibliothek / Archiv', gruppe:'Sport und Kultur', spezStrom:30, slp:'G1', vbh:1800, waermeRef:'buero', stockwerke:3 },
+  { id:'sakral', label:'Sakralgebäude', gruppe:'Sport und Kultur', spezStrom:10, slp:'G6', vbh:1200, waermeRef:'oeffentlich', stockwerke:1 },
+  { id:'kantine', label:'Kantine / Großküche', gruppe:'Versorgung und Betrieb', spezStrom:70, slp:'BW3', vbh:2200, waermeRef:'ghd', stockwerke:1 },
+  { id:'werkstatt', label:'Werkstatt / Instandhaltung', gruppe:'Versorgung und Betrieb', spezStrom:55, slp:'BW2', vbh:2100, waermeRef:'industrie', stockwerke:1 },
+  { id:'lager', label:'Lager / Depot', gruppe:'Versorgung und Betrieb', spezStrom:15, slp:'G0', vbh:1700, waermeRef:'industrie', stockwerke:1 },
+  { id:'technik', label:'Technik- / Betriebsgebäude', gruppe:'Versorgung und Betrieb', spezStrom:55, slp:'G3', vbh:2600, waermeRef:'industrie', stockwerke:1 },
+  { id:'labor', label:'Labor / Forschung', gruppe:'Versorgung und Betrieb', spezStrom:85, slp:'G3', vbh:2500, waermeRef:'industrie', stockwerke:3 },
+  { id:'ghd', label:'Gewerbe, Handel, Dienstleistung', gruppe:'Gewerbe und Industrie', spezStrom:45, slp:'G0', vbh:2500, waermeRef:'ghd' },
+  { id:'industrie', label:'Industrie / Produktion', gruppe:'Gewerbe und Industrie', spezStrom:60, slp:'G0', vbh:2500, waermeRef:'industrie' },
+  { id:'oeffentlich', label:'Öffentliches Gebäude (allgemein)', gruppe:'Sonstige', spezStrom:25, slp:'G1', vbh:1800, waermeRef:'oeffentlich' },
 ];
 
 // Custom-Typen — projekt-scoped, wird mit Projekt gespeichert/geladen

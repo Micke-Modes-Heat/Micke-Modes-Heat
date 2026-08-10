@@ -77,4 +77,11 @@ describe('gebäudespezifische Wärmelastgänge',()=>{
       type:'ghd',sigLinDe:'GHD34',
     });
   });
+
+  it('ordnet öffentliche Sondernutzungen expliziten Wärme-Referenzprofilen zu',()=>{
+    expect(getBuildingHeatProfileMeta({nutzung:'kaserne'})).toMatchObject({type:'mfh',label:'Mehrfamilienhaus'});
+    expect(getBuildingHeatProfileMeta({nutzung:'kita'})).toMatchObject({type:'schule',label:'Schule und Kita'});
+    expect(getBuildingHeatProfileMeta({nutzung:'verwaltung'})).toMatchObject({type:'buero',label:'Büro und Verwaltung'});
+    expect(getBuildingHeatProfileMeta({nutzung:'werkstatt'})).toMatchObject({type:'industrie',label:'Industrie und Produktion'});
+  });
 });
