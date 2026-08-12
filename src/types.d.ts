@@ -7,6 +7,7 @@
 export interface Gebaeude {
   id: number;
   name?: string;
+  gebaeudenummer?: string;       // freie Kennung (Zahlen, römische Ziffern, Buchstaben)
   adresse?: string;
   flaeche?: number | null;       // Grundfläche m²
   stockwerke?: number;
