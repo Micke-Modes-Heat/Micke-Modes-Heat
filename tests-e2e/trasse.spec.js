@@ -1581,6 +1581,32 @@ test('dist: Gebäudekreuzung wird nur als Rückfall genutzt und verhindert den N
   expect(result.hint).toContain('Gebäudekonflikt');
 });
 
+test('dist: ausgefallene OSM-Straßendaten fallen auf ein freies Netz zurück',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.createStreetOrientedWaermeNetz==='function');
+  const result=await page.evaluate(async()=>{
+    clearNetz();
+    setGebaeude([]);
+    const polygon=(lat,lng)=>[
+      L.latLng(lat-.00004,lng-.00004),L.latLng(lat-.00004,lng+.00004),
+      L.latLng(lat+.00004,lng+.00004),L.latLng(lat+.00004,lng-.00004),
+    ];
+    const source=addGebaeude({id:971,name:'Zentrale',baujahr:2000,coords:polygon(52.08,8),skipAutoCreate:true});
+    const target=addGebaeude({id:972,name:'Verbraucher',baujahr:2000,coords:polygon(52.08,8.002),skipAutoCreate:true});
+    source.heizlast='100'; source.waerme='200';
+    target.heizlast='100'; target.waerme='200';
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='971';
+    window.loadOsmStrassen=async()=>0;
+    window.adoptAllOsmStrassen=()=>0;
+    const created=await createStreetOrientedWaermeNetz();
+    return {created,edgeCount:window.netzEdges.length};
+  });
+  expect(result.created).toBe(true);
+  expect(result.edgeCount).toBeGreaterThan(0);
+});
+
 test('dist: straßenorientierter Aufbau bleibt bei großer Gebäudemenge verbunden',async({page})=>{
   test.setTimeout(45000);
   await page.route(/tile\\.openstreetmap\\.org/,route=>route.abort());

@@ -2971,6 +2971,41 @@ export function autoGenerateNetz(options = {}){
     disconnectedBuildings = allPts
       .filter(node => node.type === 'geb' && find(node.id) !== centralRoot);
   }
+  // Letzte Sicherheitsstufe: Die schnelle Kandidatensuche betrachtet bewusst
+  // nur wenige Nachbarn. Bei langen Gebäuderiegeln oder mehreren Hindernissen
+  // kann dadurch trotz vorhandener geometrischer Verbindung eine Komponente
+  // ohne Kandidaten bleiben. Nur in diesem seltenen Fehlerfall suchen wir
+  // vollständig zwischen den noch getrennten Gebäudekomponenten. Damit bleibt
+  // der Normalfall schnell, eine Kollision verhindert den Netzaufbau aber nie.
+  while (disconnectedBuildings.length) {
+    const root = find(zId);
+    const connected = allPts.filter(node => node.type === 'geb' && find(node.id) === root);
+    const disconnected = allPts.filter(node => node.type === 'geb' && find(node.id) !== root);
+    let bridge = null;
+    for (const uNode of connected) {
+      for (const vNode of disconnected) {
+        const dist = uNode.pt.distanceTo(vNode.pt);
+        const buildingConflict = _edgeCrossesForeignBuilding(uNode,vNode);
+        // Jeder konfliktfreie Umweg ist einer Gebäudekreuzung vorzuziehen.
+        // Erst wenn es wirklich keine freie Brücke gibt, darf die Leitung als
+        // sichtbarer Konflikt durch ein Gebäude verlaufen.
+        if (!bridge || Number(buildingConflict) < Number(bridge.buildingConflict) ||
+            (buildingConflict === bridge.buildingConflict && dist < bridge.dist)) {
+          bridge = {
+            u:uNode.id,v:vNode.id,uNode,vNode,dist,sortCost:dist,
+            buildingConflict,
+            emergencyFallback:true,
+          };
+        }
+      }
+    }
+    if (!bridge || !union(bridge.u,bridge.v)) break;
+    mstEdges.push(bridge);
+    if (bridge.buildingConflict) window._netzBuildingObstacleDiagnostics.usedConflictEdges++;
+    centralRoot = find(zId);
+    disconnectedBuildings = allPts
+      .filter(node => node.type === 'geb' && find(node.id) !== centralRoot);
+  }
   if (disconnectedBuildings.length) {
     clearNetz();
     showHint(
@@ -3427,11 +3462,24 @@ export async function createStreetOrientedWaermeNetz() {
       return false;
     }
     const loadedStreetCount = await window.loadOsmStrassen();
-    if (!loadedStreetCount) return false;
+    if (!loadedStreetCount) {
+      showHint(
+        '⚠ Straßendaten waren nicht rechtzeitig verfügbar. Das Netz wird deshalb frei erzeugt und kann anschließend bearbeitet werden.',
+        8000,
+      );
+      const created = await confirmAutoGenerateNetz({strategy:'quick'});
+      if (created) closeNetzWorkspace();
+      return created;
+    }
     const adopted = window.adoptAllOsmStrassen('waerme');
     if (!adopted) {
-      showHint('Keine geeigneten Straßenzüge im Planungsgebiet gefunden.', 6000);
-      return false;
+      showHint(
+        '⚠ Die geladenen Straßendaten konnten nicht verwendet werden. Das Netz wird deshalb frei erzeugt und kann anschließend bearbeitet werden.',
+        8000,
+      );
+      const created = await confirmAutoGenerateNetz({strategy:'quick'});
+      if (created) closeNetzWorkspace();
+      return created;
     }
     // Die OSM-Linien sind nur Berechnungsgrundlage. Der Vorschau-Layer würde
     // das fertige Wärmenetz gelb überlagern und wird daher vor der Erzeugung

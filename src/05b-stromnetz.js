@@ -2809,6 +2809,8 @@ function _setOsmStreetProgress({visible = true,completed = 0,total = 1,ways = 0,
 }
 
 export async function loadOsmStrassen() {
+  const loadStartedAt = Date.now();
+  const totalLoadBudgetMs = 28000;
   let bbox;
   let bboxValues;
   const pointLat = point => Number(Array.isArray(point) ? point[0] : point?.lat);
@@ -2862,7 +2864,9 @@ export async function loadOsmStrassen() {
       {url:'https://corsproxy.io/?' + getTarget, options:{}},
     ];
     const controllers = requests.map(() => new AbortController());
-    const timeout = setTimeout(() => controllers.forEach(controller => controller.abort()), 18000);
+    const remainingBudget = Math.max(1000,totalLoadBudgetMs - (Date.now() - loadStartedAt));
+    const requestTimeoutMs = Math.min(18000,remainingBudget);
+    const timeout = setTimeout(() => controllers.forEach(controller => controller.abort()), requestTimeoutMs);
     try {
       const attempts = requests.map(async (request, index) => {
         const response = await fetch(request.url, {...request.options, signal:controllers[index].signal});
@@ -2880,7 +2884,7 @@ export async function loadOsmStrassen() {
       return await Promise.any(attempts);
     } catch (error) {
       throw new Error(error?.name === 'AggregateError'
-        ? 'Kein OSM-Server innerhalb von 18 Sekunden mit nutzbaren Straßen erreichbar'
+        ? `Kein OSM-Server innerhalb von ${Math.ceil(requestTimeoutMs / 1000)} Sekunden mit nutzbaren Straßen erreichbar`
         : error.message);
     } finally {
       clearTimeout(timeout);
@@ -2915,6 +2919,11 @@ export async function loadOsmStrassen() {
         _setOsmStreetProgress({visible:true,completed,total,status:'Teilbereiche werden vorbereitet'});
         const worker = async() => {
           while (cursor < tasks.length) {
+            if (Date.now() - loadStartedAt >= totalLoadBudgetMs) {
+              failedTiles += tasks.length - cursor;
+              cursor = tasks.length;
+              break;
+            }
             const tileIndex = cursor++;
             const task = tasks[tileIndex];
             const tileBbox = bboxString(...task.bbox);
@@ -2929,7 +2938,7 @@ export async function loadOsmStrassen() {
               foundWays += tileData.elements.filter(element => element.type === 'way').length;
               completed++;
             } catch (error) {
-              if (task.depth < 2) {
+              if (task.depth < 2 && Date.now() - loadStartedAt < totalLoadBudgetMs - 2000) {
                 const children = subdivideOsmBbox(task.bbox)
                   .map(child => ({bbox:child,depth:task.depth + 1}));
                 tasks.push(...children);
