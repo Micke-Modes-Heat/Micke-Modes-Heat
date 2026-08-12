@@ -2605,11 +2605,21 @@ export function autoGenerateNetz(options = {}){
     return false;
   }
 
+  const centralBuilding = gebaeude.find(g => g.id === zId && g.polygon);
+  if (!centralBuilding) {
+    showHint('⚠ Die gewählte Heizzentrale ist keinem vorhandenen Gebäude mehr zugeordnet. Bitte Heizzentrale neu auswählen.',7000);
+    populateZentraleSelect();
+    return false;
+  }
+
   clearNetz();
 
   const planningYears = _netzPlanningYears();
   const nodes = gebaeude.filter(g => {
     if (!g.polygon) return false;
+    // Die Zentrale ist der hydraulische Startknoten und muss auch dann Teil des
+    // Graphen sein, wenn das Zentralengebäude selbst keinen Wärmebedarf hat.
+    if (g.id === zId) return true;
     return networkLocked
       ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
       : _maxBuildingLoad(g,planningYears) > 0;

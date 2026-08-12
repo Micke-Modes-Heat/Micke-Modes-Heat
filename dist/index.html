@@ -14801,7 +14801,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-08-12';
   if (d.indexOf('__') === 0) d = '';
-  var c = '30c1aae';
+  var c = '8ad4303';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -114989,11 +114989,21 @@ out body;>;out skel qt;`;
       return false;
     }
 
+    const centralBuilding = gebaeude.find(g => g.id === zId && g.polygon);
+    if (!centralBuilding) {
+      showHint('⚠ Die gewählte Heizzentrale ist keinem vorhandenen Gebäude mehr zugeordnet. Bitte Heizzentrale neu auswählen.',7000);
+      populateZentraleSelect();
+      return false;
+    }
+
     clearNetz();
 
     const planningYears = _netzPlanningYears();
     const nodes = gebaeude.filter(g => {
       if (!g.polygon) return false;
+      // Die Zentrale ist der hydraulische Startknoten und muss auch dann Teil des
+      // Graphen sein, wenn das Zentralengebäude selbst keinen Wärmebedarf hat.
+      if (g.id === zId) return true;
       return networkLocked
         ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
         : _maxBuildingLoad(g,planningYears) > 0;
