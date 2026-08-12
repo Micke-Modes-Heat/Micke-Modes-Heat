@@ -14801,7 +14801,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-08-12';
   if (d.indexOf('__') === 0) d = '';
-  var c = '77cb3fb';
+  var c = 'b3d14ae';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -111316,6 +111316,14 @@ ${massTbl}
       const created = await confirmManualWaermeNetzFromTrasse();
       if (created) {
         window._manualWaermeNetzDrawing = false;
+        // Nach erfolgreicher Übernahme bleibt nur das fertige Wärmenetz auf der
+        // Karte. Zeichnung, gelbe Hilfslinie und Erzeugen-Schaltfläche gehören
+        // zum Bearbeitungsmodus und werden gemeinsam geschlossen.
+        window.trasseVisible = false;
+        const trasseCheckbox = document.getElementById('el-trasse-visible');
+        if (trasseCheckbox) trasseCheckbox.checked = false;
+        redrawTrasse();
+        hideTrasseFinishBtn();
       } else if (!window.isDrawingTrasse) {
         // Bei fehlenden Anschlüssen unmittelbar im Zeichenmodus bleiben. So
         // kann der Nutzer die offenen Gebäude direkt weiter andocken.
@@ -111330,6 +111338,13 @@ ${massTbl}
     confirmAutoGenerateNetz({
       strategy: 'trasse',
       trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 80,
+    }).then(created => {
+      if (!created) return;
+      window.trasseVisible = false;
+      const trasseCheckbox = document.getElementById('el-trasse-visible');
+      if (trasseCheckbox) trasseCheckbox.checked = false;
+      redrawTrasse();
+      hideTrasseFinishBtn();
     });
   }
 

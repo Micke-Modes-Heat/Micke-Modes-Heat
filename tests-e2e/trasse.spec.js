@@ -289,6 +289,42 @@ test('dist: manuelles Netz übernimmt eine Heizzentrale ohne Eigenbedarf',async(
   expect(result.connectedIds).toEqual([1231,1232]);
 });
 
+test('dist: Netzübernahme entfernt gelbe Zeichnung und Erzeugen-Leiste',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.startManualWaermeNetzCreation==='function');
+  const result=await page.evaluate(async()=>{
+    clearNetz();
+    setGebaeude([]);
+    const polygon=(lat,lng)=>[
+      L.latLng(lat-.00003,lng-.00003),L.latLng(lat-.00003,lng+.00003),
+      L.latLng(lat+.00003,lng+.00003),L.latLng(lat+.00003,lng-.00003),
+    ];
+    const central=addGebaeude({id:1241,name:'Heizzentrale',baujahr:2000,coords:polygon(52.08,8),skipAutoCreate:true});
+    const target=addGebaeude({id:1242,name:'Verbraucher',baujahr:2000,coords:polygon(52.08,8.002),skipAutoCreate:true});
+    central.heizlast='0'; central.waerme='0';
+    target.heizlast='80'; target.waerme='160';
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1241';
+    setNetworkLocked(true);
+    startManualWaermeNetzCreation();
+    central.polygonLayer.fire('click');
+    target.polygonLayer.fire('click');
+    document.getElementById('trasse-generate-btn').click();
+    await new Promise(resolve=>setTimeout(resolve,100));
+    return {
+      edgeCount:window.netzEdges.length,
+      trasseVisible:window.trasseVisible,
+      checkbox:document.getElementById('el-trasse-visible')?.checked,
+      helperLines:window.trassePolyline?.filter?.(layer=>map.hasLayer(layer)).length || 0,
+      toolbarVisible:document.getElementById('trasse-editor-bar')?.style.display !== 'none',
+    };
+  });
+  expect(result).toEqual({
+    edgeCount:1,trasseVisible:false,checkbox:false,helperLines:0,toolbarVisible:false,
+  });
+});
+
 test('dist: manuelles Netz dockt Gebäude per Klick an und blendet alte Straßentrassen aus', async ({page}) => {
   await page.route(/tile\.openstreetmap\.org/, route => route.abort());
   await page.goto('/');
