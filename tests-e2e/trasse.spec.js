@@ -257,6 +257,38 @@ test('dist: vollständig manuelles Wärmenetz übernimmt nur die gezeichneten Le
   expect(result.trasseVisible).toBe(false);
 });
 
+test('dist: manuelles Netz übernimmt eine Heizzentrale ohne Eigenbedarf',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.confirmManualWaermeNetzFromTrasse==='function');
+  const result=await page.evaluate(async()=>{
+    clearNetz();
+    setGebaeude([]);
+    const polygon=(lat,lng)=>[
+      L.latLng(lat-.00003,lng-.00003),L.latLng(lat-.00003,lng+.00003),
+      L.latLng(lat+.00003,lng+.00003),L.latLng(lat+.00003,lng-.00003),
+    ];
+    const central=addGebaeude({id:1231,name:'Heizzentrale',baujahr:2000,coords:polygon(52.08,8),skipAutoCreate:true});
+    const target=addGebaeude({id:1232,name:'Verbraucher',baujahr:2000,coords:polygon(52.08,8.002),skipAutoCreate:true});
+    central.heizlast='0'; central.waerme='0';
+    target.heizlast='80'; target.waerme='160';
+    populateZentraleSelect();
+    document.getElementById('netz-zentrale').value='1231';
+    setNetworkLocked(true);
+    setTrassePoints([L.latLng(52.08,8),L.latLng(52.08,8.002)]);
+    setTrasseSegments([{start:0,end:1,domains:['waerme'],manualNetwork:true}]);
+    const created=await confirmManualWaermeNetzFromTrasse();
+    return {
+      created,
+      edgeCount:window.netzEdges.length,
+      connectedIds:[...new Set(window.netzEdges.flatMap(edge=>[edge.u,edge.v]))].sort(),
+    };
+  });
+  expect(result.created).toBe(true);
+  expect(result.edgeCount).toBe(1);
+  expect(result.connectedIds).toEqual([1231,1232]);
+});
+
 test('dist: manuelles Netz dockt Gebäude per Klick an und blendet alte Straßentrassen aus', async ({page}) => {
   await page.route(/tile\.openstreetmap\.org/, route => route.abort());
   await page.goto('/');

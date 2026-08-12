@@ -3159,12 +3159,18 @@ function _manualWaermeNetzPlan() {
   const zId = Number.parseInt(document.getElementById('netz-zentrale')?.value, 10);
   if (!Number.isFinite(zId)) return {error:'Bitte zuerst eine Heizzentrale auswählen.'};
 
+  const centralBuilding = gebaeude.find(g => g.id === zId && g.polygon);
+  if (!centralBuilding) {
+    return {error:'Die gewählte Heizzentrale ist keinem vorhandenen Gebäude mehr zugeordnet. Bitte Heizzentrale neu auswählen.'};
+  }
+
   const planningYears = _netzPlanningYears();
   const buildings = gebaeude
     .filter(g => g.polygon && (
-      networkLocked
+      g.id === zId ||
+      (networkLocked
         ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
-        : _maxBuildingLoad(g,planningYears) > 0
+        : _maxBuildingLoad(g,planningYears) > 0)
     ))
     .map(g => ({
       id:g.id,
@@ -3175,10 +3181,6 @@ function _manualWaermeNetzPlan() {
         : _maxBuildingLoad(g,planningYears),
       building:g,
     }));
-  if (!buildings.some(node => node.id === zId)) {
-    return {error:'Die gewählte Heizzentrale ist im aktuellen Planungsjahr nicht aktiv.'};
-  }
-
   const manualSegmentsExist = trasseSegments.some(seg => seg.manualNetwork === true);
   const heatSegments = trasseSegments.filter(seg =>
     (!manualSegmentsExist || seg.manualNetwork === true) &&
