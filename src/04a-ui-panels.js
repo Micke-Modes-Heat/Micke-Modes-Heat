@@ -149,6 +149,7 @@ function _gebUsageLabel(g) {
 
 function _gebTableValue(g,key) {
   if (key === 'name') return g.name || '';
+  if (key === 'gebaeudenummer') return g.gebaeudenummer || '';
   if (key === 'nutzung') return _gebUsageLabel(g);
   if (key === 'nutzflaeche') return (Number(g.flaeche) || 0) * (Number(g.stockwerke) || 1) * 0.8;
   if (key === 'quelle') return g.importSourceName || '';
@@ -160,6 +161,7 @@ function _filteredSortedBuildings() {
   const needle = gebTableFilter.toLowerCase().trim();
   return gebaeude.filter(g => !needle ||
     (g.name || '').toLowerCase().includes(needle) ||
+    (g.gebaeudenummer || '').toLowerCase().includes(needle) ||
     _gebUsageLabel(g).toLowerCase().includes(needle) ||
     (g.importSourceName || '').toLowerCase().includes(needle)
   ).sort((a,b) => {
@@ -378,6 +380,7 @@ export function renderGebaeudeOverview() {
   head.innerHTML = `<tr>
     <th class="no-sort"><input type="checkbox" ${allVisibleSelected ? 'checked' : ''}
       data-change="toggleAllGebaeudeTable(this.checked)" title="Alle sichtbaren auswählen"></th>
+    <th data-click="sortGebaeudeTable('gebaeudenummer')">${sortLabel('gebaeudenummer','Nr.')}</th>
     <th data-click="sortGebaeudeTable('name')">${sortLabel('name','Gebäude')}</th>
     <th data-click="sortGebaeudeTable('nutzung')">${sortLabel('nutzung','Nutzung')}</th>
     <th data-click="sortGebaeudeTable('baujahr')">${sortLabel('baujahr','Baujahr')}</th>
@@ -400,6 +403,7 @@ export function renderGebaeudeOverview() {
     ].map(type => `<option value="${_gebTableEsc(type.id)}" ${type.id === g.nutzung ? 'selected' : ''}>${_gebTableEsc(type.label)}</option>`).join('');
     return `<tr class="${g.selected ? 'selected' : ''}">
       <td><input type="checkbox" ${g.selected ? 'checked' : ''} data-change="toggleGebaeudeTableSelection(${g.id},this.checked)"></td>
+      <td><input class="geb-table-num" style="width:56px" value="${_gebTableEsc(g.gebaeudenummer || '')}" data-change="updateGebaeudeTableField(${g.id},'gebaeudenummer',this.value)"></td>
       <td><input class="geb-table-name" value="${_gebTableEsc(g.name)}" data-change="updateGebaeudeTableField(${g.id},'name',this.value)"></td>
       <td><select data-change="updateGebaeudeTableField(${g.id},'nutzung',this.value)"><option value="">—</option>${options}</select></td>
       <td><input class="geb-table-num" type="number" value="${g.baujahr || ''}" data-change="updateGebaeudeTableField(${g.id},'baujahr',this.value)"></td>
@@ -441,6 +445,7 @@ export function filterList(val) {
     if (!g) return;
     const textMatch = !filterText
       || g.name.toLowerCase().includes(filterText)
+      || (g.gebaeudenummer && g.gebaeudenummer.toLowerCase().includes(filterText))
       || (g.nutzung && (NUTZUNG_DEFAULTS[g.nutzung]?.label || g.nutzung).toLowerCase().includes(filterText))
       || (g.importSourceName && g.importSourceName.toLowerCase().includes(filterText));
     const sourceMatch = !sourceFilter || g.importSourceId === sourceFilter;

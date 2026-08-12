@@ -233,7 +233,7 @@ export function _renderCompactRow(g, stats, isExpanded) {
     <div style="display:flex;align-items:center;gap:5px;width:100%;">
       <input type="checkbox" style="flex-shrink:0;accent-color:var(--accent);cursor:pointer;" ${g.selected?'checked':''} data-change="toggleSelect(${g.id},this.checked)" data-click="event.stopPropagation()" title="Auswählen"/>
       <div class="geb-color-dot" data-dot="${g.id}" style="background:${dot};flex-shrink:0;"></div>
-      <span class="geb-compact-name">${escHtml(g.name)}</span>
+      <span class="geb-compact-name">${g.gebaeudenummer ? escHtml(g.gebaeudenummer) + ' · ' : ''}${escHtml(g.name)}</span>
       <span style="font-size:9px;color:var(--muted);flex-shrink:0;">${isExpanded?'▲':'▼'}</span>
     </div>
     <div style="display:flex;align-items:center;gap:4px;padding-left:28px;margin-top:1px;">
@@ -1792,7 +1792,8 @@ window.onPvModulChange = function() {
 
 export function _gebLabelHtml(g) {
   const pvBadge = g.pvAktiv ? '<span style="color:#ffd54f;font-size:9px;margin-left:3px;vertical-align:middle;">☀</span>' : '';
-  return escHtml(g.name) + pvBadge;
+  const nummerPrefix = g.gebaeudenummer ? escHtml(g.gebaeudenummer) + ' · ' : '';
+  return nummerPrefix + escHtml(g.name) + pvBadge;
 }
 
 export function _updateGebLabelPv(id) {
@@ -1932,9 +1933,12 @@ export function _renderExpandedPanel(g, stats) {
   return `<div class="geb-expanded">
     ${infoLabel}
     ${sourceLabel}
-    <div style="margin-bottom:5px;">
+    <div style="margin-bottom:5px;display:flex;gap:4px;">
+      <input class="inp-field" type="text" placeholder="Nr." value="${escHtml(g.gebaeudenummer || '')}"
+        style="width:64px;flex-shrink:0;box-sizing:border-box;" title="Gebäudenummer"
+        data-input="setGebaeudenummer(${g.id},this.value)"/>
       <input class="inp-field" type="text" placeholder="Bezeichnung…" value="${escHtml(g.name || '')}"
-        style="width:100%;box-sizing:border-box;"
+        style="flex:1;box-sizing:border-box;"
         data-input="renameGebaeude(${g.id},this.value)"/>
     </div>
     <div style="margin-bottom:5px;display:flex;gap:4px;">
@@ -2461,7 +2465,7 @@ export function _buildProjectData() {
     projectReportDraft: window._projectReportDraft ? structuredClone(window._projectReportDraft) : null,
     waermeGrundlagen:captureWaermeGrundlagen(),
     gebaeude: window.gebaeude.map(g => ({
-      id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
+      id: g.id, name: g.name, gebaeudenummer: g.gebaeudenummer || '', waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
       flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
       baujahr: g.baujahr, baujährQuelle: g.baujährQuelle || null, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen,
       stockwerke: g.stockwerke ?? 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
@@ -2770,7 +2774,7 @@ function _mergeImportedUsageTypes(project,sourceId) {
 
 function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
   const fields = [
-    'waerme','heizlast','spez','spezHeizlast','flaeche','baujahr','baujährQuelle',
+    'gebaeudenummer','waerme','heizlast','spez','spezHeizlast','flaeche','baujahr','baujährQuelle',
     'abrissjahr','stockwerke','waermeManual','heizlastManual','strom','spezStrom',
     'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
     'dachNeigung','dachAutoAzimut','pvRidgeOverride','pvModus','pvFlGcr',
@@ -2993,6 +2997,7 @@ function _applyProjectData(project) {
          set_batchImporting(true);
          try { project.gebaeude.forEach(g => {
             const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name, fromOsm: g.fromOsm, osmId: g.osmId, skipAutoCreate: true, skipDraw: true });
+            newG.gebaeudenummer = g.gebaeudenummer || '';
             newG.waerme = g.waerme;
             newG.heizlast = g.heizlast;
             newG.spez = g.spez;
@@ -3560,7 +3565,7 @@ export function loadGebaeudeFromParent(gebaeudeArray) {
   clearTrasse();
   setIdCounter(1);
   gebaeudeArray.forEach(g => {
-    const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name || 'Gebäude ' + g.id, fromOsm: g.fromOsm || false, osmId: g.osmId || null, stockwerke: g.stockwerke != null ? g.stockwerke : 1, baujahr: g.baujahr || null, skipDraw: true });
+    const newG = addGebaeude({ id: g.id, coords: g.polygon, name: g.name || 'Gebäude ' + g.id, gebaeudenummer: g.gebaeudenummer || '', fromOsm: g.fromOsm || false, osmId: g.osmId || null, stockwerke: g.stockwerke != null ? g.stockwerke : 1, baujahr: g.baujahr || null, skipDraw: true });
     newG.waerme = g.waerme;
     newG.heizlast = g.heizlast;
     newG.spez = g.spez;
@@ -3587,7 +3592,7 @@ export function sendToLiegenschaftsrechner() {
   const parentOrigin = window._energiekarteParentOrigin;
   if (!parentOrigin) { showHint('Senden blockiert: Herkunft des Elternfensters ist nicht vertrauenswürdig.'); return; }
   const payload = window.gebaeude.map(g => ({
-    id: g.id, name: g.name, waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
+    id: g.id, name: g.name, gebaeudenummer: g.gebaeudenummer || '', waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
     flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
     baujahr: g.baujahr, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen || [], stockwerke: g.stockwerke != null ? g.stockwerke : 1
   }));

@@ -12,7 +12,7 @@ let netzRewireMarkers = [];
 let netzRewirePreview = null;
 import { getNetzVBH, updateNetzColorLegend } from './02a-netz-physik.js';
 import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
-import { clearArea, polygonAreaM2, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
+import { clearArea, polygonAreaM2, setViz, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
 import { drillSvg, redrawErzeugerIcons, redrawVerbindungslinien } from './03a-erzeuger.js';
 import { _initYearSliderFromBaujahr, drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
@@ -1878,7 +1878,8 @@ out body;>;out skel qt;`;
 
     // Einmalig alles aktualisieren
     renderList();
-    updateViz();
+    // Nach dem Laden eines Plangebiets keine Kreissymbole vorbelegen — Standard ist "keine".
+    setViz('none');
     updateTotals();
     recalcNetz();
     populateZentraleSelect();

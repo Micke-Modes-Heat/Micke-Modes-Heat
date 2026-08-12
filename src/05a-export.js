@@ -1341,7 +1341,7 @@ export async function exportVollstaendigXLSX() {
   // Sheet 1: GebÃ¤ude
   const gebRows = [['ID', 'Name', 'Nutzung', 'FlÃ¤che (mÂ²)', 'Baujahr', 'Abrissjahr', 'Zustand',
     'WÃ¤rmebedarf (MWh/a)', 'Heizlast (kW)', 'Spez. WÃ¤rme (kWh/mÂ²a)',
-    'Strom (MWh/a)', 'PV aktiv', 'PV Dachanteil (%)']];
+    'Strom (MWh/a)', 'PV aktiv', 'PV Dachanteil (%)', 'Gebäudenummer']];
   for (const g of allGebaeude) {
     gebRows.push([
       g.id, g.name || '', g.nutzung || '',
@@ -1353,6 +1353,7 @@ export async function exportVollstaendigXLSX() {
       g.strom != null && g.strom !== '' ? +parseFloat(g.strom).toFixed(2) : '',
       g.pvAktiv ? 'ja' : 'nein',
       g.pvDachanteil || 30,
+      g.gebaeudenummer || '',
     ]);
   }
 
@@ -1615,6 +1616,13 @@ async function _handleXlsxImport(event) {
           // PV Dachanteil
           if (row[12] != null && !isNaN(parseFloat(row[12]))) {
             g.pvDachanteil = parseFloat(row[12]); changed = true;
+          }
+          // Gebäudenummer
+          if (row[13] != null && String(row[13]).trim() !== (g.gebaeudenummer || '')) {
+            const nummer = String(row[13]).trim();
+            if (typeof window.setGebaeudenummer === 'function') window.setGebaeudenummer(id, nummer);
+            else g.gebaeudenummer = nummer;
+            changed = true;
           }
           if (changed) updGeb++;
         }

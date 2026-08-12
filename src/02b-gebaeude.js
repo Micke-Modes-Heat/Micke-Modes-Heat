@@ -410,7 +410,7 @@ export function nextGebName(nutzung) {
 
 export function addGebaeude(opts={}){
   const id=opts.id || window.idCounter++;
-  const g={id,name:opts.name || nextGebName(opts.nutzung),waerme:'',spez:'',heizlast:'',spezHeizlast:'',
+  const g={id,name:opts.name || nextGebName(opts.nutzung),gebaeudenummer:opts.gebaeudenummer||'',waerme:'',spez:'',heizlast:'',spezHeizlast:'',
            flaeche:null,stockwerke:opts.stockwerke!=null?opts.stockwerke:1,nutzung:opts.nutzung||'',
            polygon:null,polygonLayer:null,circleMarker:null,labelMarker:null,
            fromOsm:opts.fromOsm||false,fromWfs:opts.fromWfs||false,osmId:opts.osmId||null,
@@ -1064,13 +1064,18 @@ export function updateField(id, field, val, {defer = false} = {}) {
   }
 }
 
+// Kombiniertes Label "Nummer · Name" für Kompakt-Zeile und Kartenlabel.
+function _gebCompactName(g){
+  return g.gebaeudenummer ? g.gebaeudenummer + ' · ' + g.name : g.name;
+}
+
 export function renameGebaeude(id,name){
   const g=window.gebaeude.find(x=>x.id===id);
   if(!g) return;
   g.name=name;
   // Karten-Header sofort aktualisieren
   const nameSpan = document.querySelector(`#card-${id} .geb-compact-name`);
-  if (nameSpan) nameSpan.textContent = name;
+  if (nameSpan) nameSpan.textContent = _gebCompactName(g);
   // Karten-Label auf der Karte aktualisieren
   if(g.labelMarker){
     const el=g.labelMarker.getElement();
@@ -1079,11 +1084,24 @@ export function renameGebaeude(id,name){
   populateZentraleSelect();
 }
 
+export function setGebaeudenummer(id,nummer){
+  const g=window.gebaeude.find(x=>x.id===id);
+  if(!g) return;
+  g.gebaeudenummer=nummer;
+  const nameSpan = document.querySelector(`#card-${id} .geb-compact-name`);
+  if (nameSpan) nameSpan.textContent = _gebCompactName(g);
+  if(g.labelMarker){
+    const el=g.labelMarker.getElement();
+    if(el){ const inner=el.querySelector('.geb-label-inner'); if(inner) inner.innerHTML=_gebLabelHtml(g); }
+  }
+}
+
 export function highlightCard(id) {
   setSelectedId(id);
   document.querySelectorAll('.geb-card').forEach(c => c.classList.remove('selected'));
   const card = document.getElementById('card-' + id);
   if (card) card.classList.add('selected');
+  updateViz();
 }
 
 export function togglePlanPanel(id){

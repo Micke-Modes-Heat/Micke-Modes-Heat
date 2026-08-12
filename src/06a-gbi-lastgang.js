@@ -1,9 +1,10 @@
 // ── 06a-gbi-lastgang.js — CSV-Import, Lastgang-UI, Klimadaten ──
 // ── Globaler Systemzustand ────────────────────────────────────────────────
 import { gebaeude } from './01-globals-varianten.js';
-import { calcAutoEnergy } from './02b-gebaeude.js';
+import { calcAutoEnergy, getNutzungstypen } from './02b-gebaeude.js';
 import { hidePanels, recalcNetz } from './03b-netz.js';
-import { updateViz } from './02c-karte-werkzeuge.js';
+import { map } from './02b-gebaeude.js';
+import { polygonCenter, updateViz } from './02c-karte-werkzeuge.js';
 import { escHtml, renderList, updateTotals } from './03c-gebaeude-io.js';
 import { glBerechnenDebounced, glKannBerechnen } from './06b-gl-berechnen.js';
 import { saCurrentTab, saSetTab } from './07a-analysis-charts.js';
@@ -35,9 +36,6 @@ export let gbiColumns = {};     // {name:colIdx, nutzung:colIdx, baujahr:colIdx,
 export let gbiHeaders = [];     // raw CSV headers
 export let gbiRawRows = [];     // raw CSV rows (arrays)
 export let gbiMatches = [];     // [{csvIdx, gebId, score, status:'auto'|'manual'|'rejected'}]
-export let gbiManualSelectedCsv = null;   // currently selected CSV row index for manual assign
-export let gbiManualSelectedGeb = null;   // currently selected gebaeude ID for manual assign
-export let gbiManualMode = false;
 
 export function openGebListImport() {
   const p = document.getElementById('geb-import-panel');
@@ -51,14 +49,15 @@ export function gbiClose() {
   var p = document.getElementById('geb-import-panel');
   p.classList.remove('visible');
   p.style.display = '';
-  gbiStopManualMode();
+  gbiDetachMapDropTargets();
+  updateViz();
 }
 
 export function _gbiDownloadVorlage() {
-  const csv = 'Bezeichnung;Nutzung;Baujahr;Zustand;Fläche m²\n'
-    + 'Rathaus;Büro;1968;B;2400\n'
-    + 'Grundschule Am Park;Schule;1975;C;1800\n'
-    + 'MFH Bergstraße 12;MFH;1958;B;620\n';
+  const csv = 'Gebäudenummer;Bezeichnung;Nutzung;Baujahr;Zustand;Fläche m²;Stockwerke;Wärmeverbrauch MWh/a;Heizlast kW;Stromverbrauch MWh/a;Abrissjahr\n'
+    + '12;Rathaus;Büro;1968;B;2400;3;180;95;40;\n'
+    + 'IV-a;Grundschule Am Park;Schule;1975;C;1800;2;;;;\n'
+    + 'B7;MFH Bergstraße 12;MFH;1958;B;620;4;;;;2035\n';
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -68,11 +67,9 @@ export function _gbiDownloadVorlage() {
 
 export function gbiReset() {
   gbiData = []; gbiColumns = {}; gbiHeaders = []; gbiRawRows = []; gbiMatches = [];
-  gbiManualSelectedCsv = null; gbiManualSelectedGeb = null;
   document.getElementById('gbi-step-upload').style.display = '';
   document.getElementById('gbi-step-mapping').style.display = 'none';
   document.getElementById('gbi-step-results').style.display = 'none';
-  document.getElementById('gbi-step-manual').style.display = 'none';
   document.getElementById('gbi-file-info').textContent = '';
   document.getElementById('gbi-file-input').value = '';
 }
@@ -96,14 +93,21 @@ export function gbiFileSelected(file) {
 }
 
 export function gbiAutoMapColumns() {
-  gbiColumns = { name: -1, nutzung: -1, baujahr: -1, zustand: -1, flaeche: -1 };
+  gbiColumns = { name: -1, gebaeudenummer: -1, nutzung: -1, baujahr: -1, zustand: -1, flaeche: -1, stockwerke: -1, waerme: -1, heizlast: -1, strom: -1, abrissjahr: -1 };
   gbiHeaders.forEach(function(h, i) {
     var hl = h.toLowerCase();
-    if (gbiColumns.name === -1 && /(bezeichnung|name|gebäude|objekt|liegenschaft)/i.test(hl)) gbiColumns.name = i;
+    if (gbiColumns.gebaeudenummer === -1 && /(gebäudenummer|gebaeudenummer|geb\.?\s*-?\s*nr\.?|objektnummer|liegenschaftsnummer|\bnr\.?\b)/i.test(hl)) gbiColumns.gebaeudenummer = i;
+    // Header, die bereits als Nummer erkannt wurden, nicht zusätzlich als Bezeichnung werten.
+    if (gbiColumns.name === -1 && !/nummer|\bnr\.?\b/i.test(hl) && /(bezeichnung|name|gebäude|objekt|liegenschaft)/i.test(hl)) gbiColumns.name = i;
     if (gbiColumns.nutzung === -1 && /(nutzung|funktion|typ|art|kategorie)/i.test(hl)) gbiColumns.nutzung = i;
-    if (gbiColumns.baujahr === -1 && /(baujahr|bj|erricht|jahr)/i.test(hl)) gbiColumns.baujahr = i;
+    if (gbiColumns.baujahr === -1 && /(baujahr|bj|erricht)/i.test(hl)) gbiColumns.baujahr = i;
+    if (gbiColumns.abrissjahr === -1 && /(abrissjahr|abriss)/i.test(hl)) gbiColumns.abrissjahr = i;
     if (gbiColumns.zustand === -1 && /(zustand|kondition|qualität|baulich|zustandsklasse)/i.test(hl)) gbiColumns.zustand = i;
     if (gbiColumns.flaeche === -1 && /(fläche|flaeche|bgf|ngf|nuf|m²|qm|area)/i.test(hl)) gbiColumns.flaeche = i;
+    if (gbiColumns.stockwerke === -1 && /(stockwerke|geschosse|etagen)/i.test(hl)) gbiColumns.stockwerke = i;
+    if (gbiColumns.waerme === -1 && /(wärmeverbrauch|waermeverbrauch|wärme\s*mwh|waerme\s*mwh|heizenergie)/i.test(hl)) gbiColumns.waerme = i;
+    if (gbiColumns.heizlast === -1 && /(heizlast)/i.test(hl)) gbiColumns.heizlast = i;
+    if (gbiColumns.strom === -1 && /(stromverbrauch|strombedarf|strom\s*mwh)/i.test(hl)) gbiColumns.strom = i;
   });
 }
 
@@ -122,10 +126,16 @@ export function gbiShowMapping() {
   // Column dropdowns
   var fields = [
     { key: 'name', label: 'Bezeichnung' },
+    { key: 'gebaeudenummer', label: 'Gebäudenummer' },
     { key: 'nutzung', label: 'Nutzung' },
     { key: 'baujahr', label: 'Baujahr' },
     { key: 'zustand', label: 'Zustand (A/B/C)' },
-    { key: 'flaeche', label: 'Fläche m²' }
+    { key: 'flaeche', label: 'Fläche m²' },
+    { key: 'stockwerke', label: 'Stockwerke' },
+    { key: 'waerme', label: 'Wärmeverbrauch MWh/a' },
+    { key: 'heizlast', label: 'Heizlast kW' },
+    { key: 'strom', label: 'Stromverbrauch MWh/a' },
+    { key: 'abrissjahr', label: 'Abrissjahr' }
   ];
   var opts = '<option value="-1">— nicht zuordnen —</option>' + gbiHeaders.map(function(h, i) {
     return '<option value="' + i + '">' + escHtml(h) + '</option>';
@@ -148,14 +158,21 @@ export function gbiBackToUpload() {
 // ── Step 3: Auto-Matching ───────────────────────────────────────────────
 export function gbiStartMatching() {
   // Build CSV data objects
+  var num = function(v) { return parseFloat((v || '').replace(/\./g, '').replace(',', '.')) || 0; };
   gbiData = gbiRawRows.map(function(row, idx) {
     return {
       idx: idx,
       name: gbiColumns.name >= 0 ? (row[gbiColumns.name] || '') : '',
+      gebaeudenummer: gbiColumns.gebaeudenummer >= 0 ? (row[gbiColumns.gebaeudenummer] || '').trim() : '',
       nutzung: gbiColumns.nutzung >= 0 ? (row[gbiColumns.nutzung] || '') : '',
       baujahr: gbiColumns.baujahr >= 0 ? parseInt(row[gbiColumns.baujahr]) || 0 : 0,
       zustand: gbiColumns.zustand >= 0 ? (row[gbiColumns.zustand] || '').toUpperCase().trim() : '',
-      flaeche: gbiColumns.flaeche >= 0 ? parseFloat((row[gbiColumns.flaeche] || '').replace(/\./g, '').replace(',', '.')) || 0 : 0
+      flaeche: gbiColumns.flaeche >= 0 ? num(row[gbiColumns.flaeche]) : 0,
+      stockwerke: gbiColumns.stockwerke >= 0 ? parseInt(row[gbiColumns.stockwerke]) || 0 : 0,
+      waerme: gbiColumns.waerme >= 0 ? num(row[gbiColumns.waerme]) : 0,
+      heizlast: gbiColumns.heizlast >= 0 ? num(row[gbiColumns.heizlast]) : 0,
+      strom: gbiColumns.strom >= 0 ? num(row[gbiColumns.strom]) : 0,
+      abrissjahr: gbiColumns.abrissjahr >= 0 ? parseInt(row[gbiColumns.abrissjahr]) || 0 : 0
     };
   }).filter(function(d) { return d.name || d.flaeche > 0; }); // filter empty rows
 
@@ -179,6 +196,11 @@ export function gbiStartMatching() {
 }
 
 export function gbiCalcScore(csvRow, g) {
+  // Exakte Gebäudenummer ist ein Primärschlüssel-Treffer — schlägt jede Fuzzy-Bewertung.
+  if (csvRow.gebaeudenummer && g.gebaeudenummer &&
+      csvRow.gebaeudenummer.toLowerCase() === String(g.gebaeudenummer).toLowerCase().trim()) {
+    return 100;
+  }
   var score = 0, factors = 0;
   // Fläche (max 40 points)
   if (csvRow.flaeche > 0 && g.flaeche > 0) {
@@ -224,15 +246,31 @@ export function gbiStringSimilarity(a, b) {
   return (2.0 * hits) / (bg1.length + bg2.length);
 }
 
+// Ordnet einen freien Nutzungs-Text (aus der CSV) einer Nutzungstyp-ID zu — geprüft
+// gegen das vollständige Register (eingebaute + projekteigene Typen), mit ein paar
+// gängigen Kurzformen als Fallback, falls der Text nicht im Label vorkommt.
 export function gbiMapNutzung(raw) {
+  if (!raw) return '';
   var r = raw.toLowerCase().trim();
-  if (/efh|einfam|einf\.|1.?fam/i.test(r)) return 'efh';
-  if (/mfh|mehrfam|mehrf\.|wohn/i.test(r)) return 'mfh';
-  if (/ghd|gewerbe|handel|laden|dienstl/i.test(r)) return 'ghd';
-  if (/schule|kita|kindergarten|bildung/i.test(r)) return 'schule';
-  if (/büro|buero|verwaltung|office/i.test(r)) return 'buero';
-  if (/industrie|prod|fabrik|werkstatt|lager/i.test(r)) return 'industrie';
-  if (/öffentl|rathaus|kirche|gemeinde|sport|schwimm|feuerw|polizei/i.test(r)) return 'oeffentlich';
+  var types = getNutzungstypen();
+  var byId = types.find(function(t) { return t.id === r; });
+  if (byId) return byId.id;
+  var byLabel = types.find(function(t) { return t.label.toLowerCase() === r; });
+  if (byLabel) return byLabel.id;
+  var byPartial = types.find(function(t) {
+    var l = t.label.toLowerCase();
+    return l.indexOf(r) !== -1 || r.indexOf(l) !== -1;
+  });
+  if (byPartial) return byPartial.id;
+  if (/^efh$|einfam|einf\.|1.?fam/.test(r)) return 'efh';
+  if (/^mfh$|mehrfam|mehrf\.|wohnung/.test(r)) return 'mfh';
+  if (/ghd|gewerbe|handel|laden|dienstl/.test(r)) return 'ghd';
+  if (/kita|kindergarten/.test(r)) return 'kita';
+  if (/^schule$|grundschule|gesamtschule|realschule/.test(r)) return 'schule';
+  if (/büro|buero|office/.test(r)) return 'buero';
+  if (/industrie|produktion|fabrik/.test(r)) return 'industrie';
+  if (/rathaus|verwaltung/.test(r)) return 'verwaltung';
+  if (/öffentl|oeffentl|gemeinde/.test(r)) return 'oeffentlich';
   return '';
 }
 
@@ -249,6 +287,8 @@ export function gbiShowResults() {
     + '<span style="color:#e53935;">● ' + unmatchedCount + ' ohne Treffer</span> · '
     + 'Gesamt: ' + gbiMatches.length + ' Zeilen → ' + gebaeude.length + ' Gebäude auf Karte';
   gbiRenderMatchTable();
+  gbiAttachMapDropTargets();
+  gbiHighlightAll();
 }
 
 export function gbiRenderMatchTable() {
@@ -258,11 +298,16 @@ export function gbiRenderMatchTable() {
     var csvRow = gbiData.find(function(d) { return d.idx === m.csvIdx; });
     var geb = m.gebId != null ? gebaeude.find(function(g) { return g.id === m.gebId; }) : null;
     var color = m.status === 'auto' ? '#66bb6a' : m.status === 'unsicher' ? '#f9a825' : '#e53935';
-    var bg = m.status === 'rejected' ? 'rgba(229,57,53,0.06)' : 'transparent';
-    var csvLabel = csvRow ? escHtml(csvRow.name || ('Zeile ' + (csvRow.idx + 2))) + (csvRow.flaeche ? ' (' + csvRow.flaeche + ' m²)' : '') : '?';
-    var gebLabel = geb ? escHtml(geb.name) + (geb.flaeche ? ' (' + Math.round(geb.flaeche) + ' m²)' : '') : '<span style="color:var(--muted);">—</span>';
+    var sel = gbiSelectedCsvIdx === m.csvIdx;
+    var bg = sel ? 'rgba(0,229,255,0.12)' : m.status === 'rejected' ? 'rgba(229,57,53,0.06)' : 'transparent';
+    var border = sel ? '1px solid #00e5ff' : '1px solid transparent';
+    var csvLabel = csvRow ? (csvRow.gebaeudenummer ? escHtml(csvRow.gebaeudenummer) + ' · ' : '') + escHtml(csvRow.name || ('Zeile ' + (csvRow.idx + 2))) + (csvRow.flaeche ? ' (' + csvRow.flaeche + ' m²)' : '') : '?';
+    var gebLabel = geb ? (geb.gebaeudenummer ? escHtml(geb.gebaeudenummer) + ' · ' : '') + escHtml(geb.name) + (geb.flaeche ? ' (' + Math.round(geb.flaeche) + ' m²)' : '') : '<span style="color:var(--muted);">—</span>';
     var scoreStr = m.score >= 0 ? m.score + '%' : '—';
-    html += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);background:' + bg + ';">';
+    // Ganze Zeile ist per Drag & Drop auf ein Gebäude auf der Karte ziehbar —
+    // auch bei bereits (automatisch) zugeordneten Zeilen, um Fehlzuordnungen zu korrigieren.
+    // Klick auf die Zeile hebt das zugehörige Gebäude zusätzlich auf der Karte hervor.
+    html += '<tr draggable="true" ondragstart="gbiDragStart(event,' + m.csvIdx + ')" data-click="gbiSelectRow(' + m.csvIdx + ')" style="cursor:grab;border:' + border + ';border-bottom-color:rgba(255,255,255,.04);background:' + bg + ';">';
     html += '<td style="padding:3px 5px;">' + csvLabel + '</td>';
     html += '<td style="padding:3px 5px;">' + gebLabel + '</td>';
     html += '<td style="padding:3px 5px;text-align:center;color:' + color + ';">' + scoreStr + '</td>';
@@ -278,16 +323,35 @@ export function gbiRenderMatchTable() {
   document.getElementById('gbi-match-table').innerHTML = html;
 }
 
-export function gbiReject(idx) { gbiMatches[idx].status = 'rejected'; gbiRenderMatchTable(); }
+// Zeile angeklickt: Gebäude zusätzlich zur Status-Farbe auf der Karte hervorheben
+// und dorthin schwenken — hilft bei vielen Gebäuden, das richtige zu finden.
+let gbiSelectedCsvIdx = null;
+export function gbiSelectRow(csvIdx) {
+  gbiSelectedCsvIdx = csvIdx;
+  gbiRenderMatchTable();
+  gbiHighlightAll();
+  var m = gbiMatches.find(function(m) { return m.csvIdx === csvIdx; });
+  var geb = m && m.gebId != null ? gebaeude.find(function(g) { return g.id === m.gebId; }) : null;
+  if (geb && geb.polygonLayer) {
+    geb.polygonLayer.setStyle({ color: '#00e5ff', weight: 6 });
+    geb.polygonLayer.bringToFront();
+    if (geb.polygon && geb.polygon.length) map.panTo(polygonCenter(geb.polygon));
+  }
+}
+
+export function gbiReject(idx) { gbiMatches[idx].status = 'rejected'; gbiRenderMatchTable(); gbiHighlightAll(); }
 export function gbiUnreject(idx) {
   var m = gbiMatches[idx];
   m.status = m.score >= 70 ? 'auto' : m.score >= 40 ? 'unsicher' : 'unmatched';
   gbiRenderMatchTable();
+  gbiHighlightAll();
 }
 
 export function gbiBackToMapping() {
   document.getElementById('gbi-step-results').style.display = 'none';
   document.getElementById('gbi-step-mapping').style.display = '';
+  gbiDetachMapDropTargets();
+  updateViz();
 }
 
 // ── Apply Matches ───────────────────────────────────────────────────────
@@ -317,7 +381,7 @@ export function gbiApplyMatches() {
   _gbiRefreshAll();
   var remaining = gbiMatches.filter(function(m) { return m.status === 'unmatched' || m.status === 'rejected'; }).length;
   if (remaining > 0) {
-    alert(applied + ' Zuordnungen übernommen.\n' + remaining + ' Zeilen noch nicht zugeordnet — nutze "Manuelle Zuordnung" für die restlichen.');
+    alert(applied + ' Zuordnungen übernommen.\n' + remaining + ' Zeilen noch nicht zugeordnet — zieh sie einzeln auf das passende Gebäude auf der Karte.');
     gbiShowResults();
   } else {
     alert(applied + ' Zuordnungen übernommen. Alle Zeilen zugeordnet!');
@@ -327,137 +391,128 @@ export function gbiApplyMatches() {
 
 export function gbiApplyToGeb(csvRow, geb) {
   if (csvRow.name) geb.name = csvRow.name;
+  if (csvRow.gebaeudenummer) geb.gebaeudenummer = csvRow.gebaeudenummer;
   if (csvRow.nutzung) {
     var mapped = gbiMapNutzung(csvRow.nutzung);
     if (mapped) geb.nutzung = mapped;
   }
   if (csvRow.baujahr > 1800) geb.baujahr = csvRow.baujahr;
   if (csvRow.flaeche > 0) geb.flaeche = csvRow.flaeche;
-  if (csvRow.zustand) geb.zustand = csvRow.zustand;
+  if (csvRow.zustand) {
+    var z = csvRow.zustand.toUpperCase().trim();
+    if (z === 'A' || z === 'B' || z === 'C') geb.zustand = z;
+  }
+  if (csvRow.stockwerke > 0) geb.stockwerke = csvRow.stockwerke;
+  if (csvRow.abrissjahr > 1800) geb.abrissjahr = csvRow.abrissjahr;
+  if (csvRow.strom > 0) geb.strom = csvRow.strom;
+  // Wärme/Heizlast werden sonst automatisch aus Fläche+Baujahr+Nutzung berechnet
+  // (calcAutoEnergy) — ein importierter Wert muss daher als "manuell" markiert
+  // werden, sonst überschreibt die Auto-Berechnung ihn sofort wieder.
+  if (csvRow.waerme > 0) { geb.waerme = csvRow.waerme; geb.waermeManual = true; }
+  if (csvRow.heizlast > 0) { geb.heizlast = csvRow.heizlast; geb.heizlastManual = true; }
   // Recalc energy if possible
   if (typeof calcAutoEnergy === 'function') calcAutoEnergy(geb);
 }
 
-// ── Step 4: Manual Click-to-Assign ──────────────────────────────────────
-export function gbiStartManualMode() {
-  document.getElementById('gbi-step-results').style.display = 'none';
-  document.getElementById('gbi-step-manual').style.display = '';
-  gbiManualMode = true;
-  gbiManualSelectedCsv = null;
-  gbiManualSelectedGeb = null;
-  gbiRenderManualList();
+// Übernimmt eine CSV-Zeile in ein Gebäude und markiert die Zuordnung als erledigt.
+// Funktioniert für jeden Status — so lässt sich auch eine bereits (automatisch)
+// zugeordnete Zeile per Drag & Drop auf ein anderes Gebäude korrigieren.
+function _gbiAssignCsvToGeb(csvIdx, gebId) {
+  var m = gbiMatches.find(function(m) { return m.csvIdx === csvIdx; });
+  if (!m) return false;
+  var csvRow = gbiData.find(function(d) { return d.idx === csvIdx; });
+  var geb = gebaeude.find(function(g) { return g.id === gebId; });
+  if (!csvRow || !geb) return false;
+  gbiApplyToGeb(csvRow, geb);
+  m.status = 'applied';
+  m.gebId = gebId;
+  renderList(); _gbiRefreshAll();
+  return true;
 }
 
-export function gbiStopManualMode() {
-  gbiManualMode = false;
-  gbiManualSelectedCsv = null;
-  gbiManualSelectedGeb = null;
-  var info = document.getElementById('gbi-manual-selected');
-  if (info) info.textContent = '';
+function _gbiAfterAssign() {
+  gbiRenderMatchTable();
+  gbiHighlightAll();
 }
 
-export function gbiBackToResults() {
-  gbiStopManualMode();
-  document.getElementById('gbi-step-manual').style.display = 'none';
-  document.getElementById('gbi-step-results').style.display = '';
-  gbiShowResults();
+// ── Drag & Drop: Zeile auf ein Gebäude auf der Karte ziehen ─────────────
+
+export function gbiDragStart(e, csvIdx) {
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', String(csvIdx));
 }
 
-export function gbiRenderManualList() {
-  var remaining = gbiMatches.filter(function(m) { return m.status === 'unmatched' || m.status === 'rejected'; });
-  if (remaining.length === 0) {
-    document.getElementById('gbi-manual-list').innerHTML = '<div style="text-align:center;color:#66bb6a;padding:12px;">Alle Zeilen zugeordnet!</div>';
-    return;
-  }
-  var html = '';
-  remaining.forEach(function(m) {
-    var csvRow = gbiData.find(function(d) { return d.idx === m.csvIdx; });
-    if (!csvRow) return;
-    var sel = gbiManualSelectedCsv === m.csvIdx;
-    var bg = sel ? 'rgba(79,195,247,0.12)' : 'transparent';
-    var border = sel ? 'var(--accent)' : 'var(--border)';
-    html += '<div data-click="gbiManualSelectCsv(' + m.csvIdx + ')" style="padding:6px 8px;border:1px solid ' + border + ';border-radius:5px;margin-bottom:4px;cursor:pointer;background:' + bg + ';transition:.15s;font-size:10px;">';
-    html += '<strong>' + escHtml(csvRow.name || ('Zeile ' + (csvRow.idx + 2))) + '</strong>';
-    var details = [];
-    if (csvRow.nutzung) details.push(csvRow.nutzung);
-    if (csvRow.flaeche) details.push(csvRow.flaeche + ' m²');
-    if (csvRow.baujahr) details.push('Bj. ' + csvRow.baujahr);
-    if (csvRow.zustand) details.push('Zustand ' + csvRow.zustand);
-    if (details.length) html += '<div style="color:var(--muted);font-size:9px;margin-top:2px;">' + details.join(' · ') + '</div>';
-    html += '</div>';
+// Findet die (nicht abgelehnte) Zeile, die auf dieses Gebäude zeigt — falls vorhanden.
+function gbiMatchFor(gebId) {
+  return gbiMatches.find(function(m) { return m.gebId === gebId && (m.status === 'applied' || m.status === 'auto' || m.status === 'unsicher'); });
+}
+
+function gbiUnassignedStyle(g) {
+  if (g.polygonLayer) g.polygonLayer.setStyle({ color: '#ffb300', weight: 2, fillColor: '#ffb300', fillOpacity: 0.05, dashArray: '5 4' });
+}
+
+// "Sicher" (auto) — Vorschlag, noch nicht per "Zuordnungen übernehmen" bestätigt.
+function gbiPendingAutoStyle(g) {
+  if (g.polygonLayer) g.polygonLayer.setStyle({ color: '#66bb6a', weight: 2.5, fillColor: '#66bb6a', fillOpacity: 0.18, dashArray: '' });
+}
+
+// "Unsicher" — Vorschlag mit niedrigerer Konfidenz, ebenfalls noch nicht bestätigt.
+function gbiPendingUnsicherStyle(g) {
+  if (g.polygonLayer) g.polygonLayer.setStyle({ color: '#42a5f5', weight: 2.5, fillColor: '#42a5f5', fillOpacity: 0.18, dashArray: '' });
+}
+
+// Bereits übernommen/manuell zugeordnet — gleiche Hervorhebung wie bei der Gebäude-
+// Auswahl im Eigenschaften-Panel (siehe selectedId-Highlight in 02c-karte-werkzeuge.js).
+function gbiMatchedStyle(g) {
+  if (g.polygonLayer) g.polygonLayer.setStyle({ color: '#ff1493', weight: 3.5, fillColor: '#ff1493', fillOpacity: 0.3, dashArray: '' });
+}
+
+function gbiRestyleOne(g) {
+  if (!g.polygonLayer) return;
+  var m = gbiMatchFor(g.id);
+  if (!m) gbiUnassignedStyle(g);
+  else if (m.status === 'applied') gbiMatchedStyle(g);
+  else if (m.status === 'auto') gbiPendingAutoStyle(g);
+  else gbiPendingUnsicherStyle(g);
+}
+
+// Färbt alle Gebäude auf der Karte ein: pink = übernommen, grün = sicherer Vorschlag,
+// blau = unsicherer Vorschlag, gestrichelt amber = noch offen.
+// Aktiv, solange die Ergebnistabelle des Imports sichtbar ist.
+export function gbiHighlightAll() {
+  gebaeude.forEach(gbiRestyleOne);
+}
+
+export function gbiAttachMapDropTargets() {
+  gebaeude.forEach(function(g) {
+    var el = g.polygonLayer && g.polygonLayer.getElement && g.polygonLayer.getElement();
+    if (!el || g._gbiDropHandlers) return;
+    var over = function(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+    var enter = function() { if (g.polygonLayer) g.polygonLayer.setStyle({ color: '#29b6f6', weight: 3.5, fillColor: '#29b6f6', fillOpacity: 0.2, dashArray: '' }); };
+    var leave = function() { gbiRestyleOne(g); };
+    var drop = function(e) {
+      e.preventDefault();
+      var csvIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      if (!isNaN(csvIdx) && _gbiAssignCsvToGeb(csvIdx, g.id)) _gbiAfterAssign();
+    };
+    el.addEventListener('dragover', over);
+    el.addEventListener('dragenter', enter);
+    el.addEventListener('dragleave', leave);
+    el.addEventListener('drop', drop);
+    g._gbiDropHandlers = { over: over, enter: enter, leave: leave, drop: drop, el: el };
   });
-  document.getElementById('gbi-manual-list').innerHTML = html;
 }
 
-export function gbiManualSelectCsv(csvIdx) {
-  if (gbiManualSelectedGeb != null) {
-    // Gebaeude was selected first → now assign this CSV row to it
-    var m = gbiMatches.find(function(m) { return m.csvIdx === csvIdx && (m.status === 'unmatched' || m.status === 'rejected'); });
-    if (m) {
-      var csvRow = gbiData.find(function(d) { return d.idx === csvIdx; });
-      var geb = gebaeude.find(function(g) { return g.id === gbiManualSelectedGeb; });
-      if (csvRow && geb) {
-        gbiApplyToGeb(csvRow, geb);
-        m.status = 'applied';
-        m.gebId = gbiManualSelectedGeb;
-        renderList(); _gbiRefreshAll();
-      }
-    }
-    gbiManualSelectedCsv = null;
-    gbiManualSelectedGeb = null;
-    document.getElementById('gbi-manual-selected').textContent = '';
-    gbiRenderManualList();
-    return;
-  }
-  gbiManualSelectedCsv = csvIdx;
-  gbiManualSelectedGeb = null;
-  var csvRowSel = gbiData.find(function(d) { return d.idx === csvIdx; });
-  document.getElementById('gbi-manual-selected').innerHTML = '📋 <strong>' + escHtml(csvRowSel ? csvRowSel.name || 'Zeile' : '?') + '</strong> ausgewählt — jetzt Gebäude auf der Karte anklicken';
-  gbiRenderManualList();
-}
-
-export function gbiManualSelectGeb(gebId) {
-  if (!gbiManualMode) return false;
-  if (gbiManualSelectedCsv != null) {
-    // CSV was selected first → assign to this gebaeude
-    var m = gbiMatches.find(function(m) { return m.csvIdx === gbiManualSelectedCsv && (m.status === 'unmatched' || m.status === 'rejected'); });
-    if (m) {
-      var csvRow = gbiData.find(function(d) { return d.idx === m.csvIdx; });
-      var geb = gebaeude.find(function(g) { return g.id === gebId; });
-      if (csvRow && geb) {
-        gbiApplyToGeb(csvRow, geb);
-        m.status = 'applied';
-        m.gebId = gebId;
-        renderList(); _gbiRefreshAll();
-      }
-    }
-    gbiManualSelectedCsv = null;
-    gbiManualSelectedGeb = null;
-    document.getElementById('gbi-manual-selected').textContent = '';
-    gbiRenderManualList();
-    return true;
-  } else {
-    // Gebaeude selected first → show hint to select CSV row
-    gbiManualSelectedGeb = gebId;
-    gbiManualSelectedCsv = null;
-    var gebSel = gebaeude.find(function(g) { return g.id === gebId; });
-    document.getElementById('gbi-manual-selected').innerHTML = '🏠 <strong>' + escHtml(gebSel ? gebSel.name : '?') + '</strong> ausgewählt — jetzt Zeile aus der Liste anklicken';
-    gbiRenderManualList();
-    return true;
-  }
-}
-
-// Hook: intercept gebaeude clicks when in manual mode (bidirectional)
-export var _origGebClick = null;
-export function gbiHookGebClicks() {
-  // The hook is checked inside the existing gebaeude click handler
-}
-
-export function gbiFinish() {
-  gbiStopManualMode();
-  gbiClose();
-  renderList();
-  _gbiRefreshAll();
+export function gbiDetachMapDropTargets() {
+  gebaeude.forEach(function(g) {
+    var h = g._gbiDropHandlers;
+    if (!h) return;
+    h.el.removeEventListener('dragover', h.over);
+    h.el.removeEventListener('dragenter', h.enter);
+    h.el.removeEventListener('dragleave', h.leave);
+    h.el.removeEventListener('drop', h.drop);
+    g._gbiDropHandlers = null;
+  });
 }
 
 // ── Interne GL-Variablen ──────────────────────────────────────────────────

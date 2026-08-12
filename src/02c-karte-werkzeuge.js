@@ -1,12 +1,11 @@
 // ── 02c-karte-werkzeuge.js — Zeichenwerkzeuge, Trasse, Fließgewässer, LWWP, Wirtschaftlichkeit ──
-import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, pelletsKessel, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
+import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, pelletsKessel, selectedId, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getEffectiveRMax, getSizeRange, getSizeVal, highlightCard, map, renameGebaeude } from './02b-gebaeude.js';
 import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, redrawVerbindungslinien, windSvg } from './03a-erzeuger.js';
 import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, confirmAutoGenerateNetz, confirmManualWaermeNetzFromTrasse, createStreetOrientedWaermeNetz, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
 import { _rerenderCard, hideHint, renderList, showHint, updateTotals } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, updateLpGebietStatus } from './04a-ui-panels.js';
 import { setNetzSubTab, stromNodeClick } from './05b-stromnetz.js';
-import { gbiManualMode, gbiManualSelectGeb } from './06a-gbi-lastgang.js';
 import { moBeiAktivierung, moBeiDeaktivierung } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
 import { lwWp, setIsDrawingTrasse, setSelectedId, setTrasseCurrentSegStart, setTrasseDetached, setTrasseEditMarkers, setTrassePoints, setTrassePolyline, setTrasseSegments, trasseSegments } from './01-globals-varianten.js';
@@ -424,6 +423,11 @@ export function updateViz(){
       } else {
         if (g.hzLabelMarker) { map.removeLayer(g.hzLabelMarker); g.hzLabelMarker = null; }
       }
+      // Im Eigenschaften-Panel ausgewähltes Gebäude auf der Karte hervorheben
+      if (g.id === selectedId) {
+        g.polygonLayer.setStyle({ color: '#ff1493', weight: 3.5, fillColor: '#ff1493', fillOpacity: 0.3, dashArray: '' });
+        g.polygonLayer.bringToFront();
+      }
     }
 
     // Solaranlagen mit dem Gebäude ausgrauen, wenn abgerissen/geplant.
@@ -490,10 +494,6 @@ export function buildMapLabel(g,center, status){
 }
 
 export function selectFromMap(id){
-  // Gebäudeliste-Import: bidirektionale manuelle Zuordnung
-  if(gbiManualMode && typeof gbiManualSelectGeb === 'function') {
-    if(gbiManualSelectGeb(id)) return;
-  }
   // Stromnetz Kabel-Zeichenmodus: Gebäude als Strom-Knoten
   if(isDrawingStromEdge && typeof stromNodeClick === 'function') {
     if(stromNodeClick(id)) return;
