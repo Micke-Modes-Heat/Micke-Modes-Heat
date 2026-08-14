@@ -2310,6 +2310,17 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
 // ── Panel-Toggle ─────────────────────────────────────────────────────────────
 let _panelOpen = false;
+// Beim Schließen entfernte Overlay-Gruppen, die beim nächsten Öffnen wieder
+// sichtbar gemacht werden (Zustand/Inhalt der Gruppen bleibt dabei erhalten).
+let _hiddenGroupsOnClose = [];
+
+function _allNaGroups() {
+  return [
+    grpHeatmapLoad, grpHeatmapGen, grpHeatmapLegacy, grpKabeltrassen,
+    grpKMeans, grpExistingTrafos, grpErzeugungKMeans, grpBatPlace, grpNsaPlace,
+  ];
+}
+
 export function naTogglePanel() {
   _panelOpen = !_panelOpen;
   const panel    = document.getElementById('netzanalyse-panel');
@@ -2319,7 +2330,15 @@ export function naTogglePanel() {
   btn?.classList.toggle('active', _panelOpen);
   if (_panelOpen) {
     _ensureGroups();
+    // Beim Schließen ausgeblendete Overlays wieder auf die Karte holen
+    _hiddenGroupsOnClose.forEach(g => { if (g && !map.hasLayer(g)) g.addTo(map); });
+    _hiddenGroupsOnClose = [];
     naRenderPanel();
+  } else {
+    // Alle Netzanalyse-Overlays (Heatmap, Kabeltrassen, Cluster/Voronoi,
+    // Trafo-/Speicher-/Notstrom-Vorschläge) zusammen mit dem Fenster ausblenden
+    _hiddenGroupsOnClose = _allNaGroups().filter(g => g && map.hasLayer(g));
+    _hiddenGroupsOnClose.forEach(g => map.removeLayer(g));
   }
 }
 

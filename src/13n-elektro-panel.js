@@ -242,6 +242,11 @@ function _html() { return `
         style="border-color:#4dd0e1;color:#4dd0e1;justify-content:center;"
         title="Ertrag, Abstände, Eignungsfläche &amp; Szenarien-Vergleich aller Windkraftanlagen">🌀 Windanalyse</button>
     </div>
+    <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
+      <button class="lp-tool-btn" id="btn-engpass-panel-toggle" data-click="engpassPanelToggle()"
+        style="border-color:#f9a825;color:#f9a825;justify-content:center;"
+        title="Zeitstrahl der Engpässe, Reserve-Kurve und automatisch abgeleitete Ertüchtigungs-Maßnahmen">⏱ Engpass-Fahrplan</button>
+    </div>
   </div>
 
   <!-- ── Darstellung ──────────────────────────────────────────────────────── -->
@@ -257,6 +262,17 @@ function _html() { return `
       <button class="lp-tool-btn" data-click="setStromColorMode('leistung')"    style="justify-content:center;font-size:9px;" title="Kabel nach übertragener Leistung (kW) einfärben">Leistung</button>
       <button class="lp-tool-btn" data-click="setStromColorMode('richtung')"    style="justify-content:center;font-size:9px;" title="Kabel nach Leistungsflussrichtung einfärben (Bezug vs. Einspeisung)">Richtung</button>
     </div>
+    <button class="lp-tool-btn" id="btn-engpass-analyse" data-click="engpassAnalyseStarten()"
+      style="width:100%;justify-content:center;margin-top:4px;font-size:9px;
+             border-color:#ff7043;color:#ff7043;"
+      title="Rechnet das Netz über die kommenden Jahre durch und färbt die Kabel danach ein, WANN sie zum Engpass werden (Strombelastbarkeit oder kumulierter Spannungsfall).">
+      ⏱ Engpass-Analyse (Zeitverlauf)
+    </button>
+    <div id="lp-engpass-legende" style="display:none;margin-top:4px;"></div>
+    <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
+      <input type="checkbox" id="strom-dynamic-viz" data-change="setStromDynamicViz(this.checked)"/>
+      Dynamische Darstellung (Flussanimation + Richtungspfeile)
+    </label>
     <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
       <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/>
       Stromnetz sichtbar

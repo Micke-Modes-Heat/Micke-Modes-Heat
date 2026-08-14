@@ -73,6 +73,7 @@ import * as kompaktstation from './13m-kompaktstation.js';
 import * as elektroPanel from './13n-elektro-panel.js';
 import * as napAnalyse from './13o-nap-analyse.js';
 import * as knotenAnalyse from './13r-knotenpunkt-analyse.js';
+import * as windAnalyse from './13t-wind-analyse.js';
 import * as kandidaten from './14a-kandidaten.js';
 import * as ertuechtigung from './14b-ertuechtigung.js';
 import * as phasenFahrplan from './14c-phasen.js';
@@ -80,6 +81,8 @@ import * as selektion from './14d-selektion.js';
 import * as ausbauplaner from './14e-ausbauplaner-ui.js';
 import * as clusterCore from './14f-cluster-core.js';
 import * as clusterMap from './14g-cluster-map.js';
+import * as engpassSweep from './14h-engpass-sweep.js';
+import * as engpassPanel from './14i-engpass-panel.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -94,9 +97,9 @@ const modules = [
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
   slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel,
-  napAnalyse, knotenAnalyse,
+  napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
-  clusterCore, clusterMap,
+  clusterCore, clusterMap, engpassSweep, engpassPanel,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});
@@ -116,6 +119,7 @@ for (const [key, value] of Object.entries(globals)) {
     ? 'setGlobalYearValue'
     : key === 'stromNetzVisible' ? 'setStromNetzVisibleState'
     : key === 'stromColorMode' ? 'setStromColorModeState'
+    : key === 'stromDynamicViz' ? 'setStromDynamicVizState'
     : `set${key.charAt(0).toUpperCase()}${key.slice(1)}`;
   const setter = globals[setterName];
   if (typeof setter === 'function') {

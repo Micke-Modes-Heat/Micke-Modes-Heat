@@ -12,3 +12,6 @@ coverage/
 Testlink/
 .staticrypt.json
 geothermiefehler/
+
+# Word-Sperrdateien (~$… beim geöffneten Dokument)
+~$*

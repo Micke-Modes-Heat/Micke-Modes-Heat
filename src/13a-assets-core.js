@@ -146,11 +146,14 @@ export function getAssetStatus(item, year) {
 
 // Effektive Props für ein Jahr: Basis-Props + alle umgesetzten Maßnahmen mit newProps
 // (chronologisch akkumuliert bis zum angegebenen Jahr)
-export function getAssetPropsForYear(asset, year) {
+// opts.inklGeplant: auch NOCH NICHT umgesetzte (geplante) Maßnahmen einrechnen —
+//   für Vorher/Nachher-Vergleiche eines Ausbauplans (s. 14h-engpass-sweep.js).
+export function getAssetPropsForYear(asset, year, opts = {}) {
   const y = year ?? globalYear ?? new Date().getFullYear();
   const props = { ...(asset.props || {}) };
+  const wirkt = m => m.status === 'umgesetzt' || (opts.inklGeplant && m.status === 'geplant');
   const measures = (asset.massnahmen || [])
-    .filter(m => m.status === 'umgesetzt' && m.newProps && Object.keys(m.newProps).length > 0)
+    .filter(m => wirkt(m) && m.newProps && Object.keys(m.newProps).length > 0)
     .filter(m => { const mj = massnahmeJahr(m); return mj === null || mj <= y; })
     .sort((a, b) => (massnahmeJahr(a) ?? 0) - (massnahmeJahr(b) ?? 0));
   for (const m of measures) {

@@ -11,12 +11,12 @@ import { polygonAreaM2, polygonCenter, redrawTrasse } from './02c-karte-werkzeug
 import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
-import { KABEL_TYPEN, TRAFO_GROESSEN } from './config/netz-kosten.js';
+import { KABEL_TYPEN, TRAFO_GROESSEN, MS_I_MAX_A, MS_SECTIONS } from './config/netz-kosten.js';
 import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSpannungsfall, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
-import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus } from './13a-assets-core.js';
+import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear } from './13a-assets-core.js';
 import { collapseAssetSpider, redrawAllAssets } from './13b-assets-render.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
 import { globalYear, stromEdges } from './01-globals-varianten.js';
@@ -848,6 +848,33 @@ export function getStromEdgeStatus(edge, year) {
   return 'active';
 }
 
+// Wirksame Kabeldaten in einem Jahr: Ist-Werte + alle bis dahin umgesetzten
+// Maßnahmen mit newProps (Pendant zu getAssetPropsForYear für Kanten).
+// Unterstützte newProps-Felder: crossSection, nParallel, cableType.
+// opts.inklGeplant: auch geplante (noch nicht umgesetzte) Maßnahmen einrechnen —
+//   für Vorher/Nachher-Vergleiche eines Ausbauplans (s. 14h-engpass-sweep.js).
+export function getStromEdgePropsForYear(edge, year, opts = {}) {
+  const base = {
+    crossSection: edge.crossSection,
+    nParallel:    edge.nParallel || 1,
+    cableType:    edge.cableType,
+  };
+  const wirkt = m => m.status === 'umgesetzt' || (opts.inklGeplant && m.status === 'geplant');
+  const measures = (edge.massnahmen || [])
+    .filter(m => wirkt(m) && m.newProps && Object.keys(m.newProps).length > 0)
+    .filter(m => { const mj = _cableMassnJahr(m); return mj === null || mj <= year; })
+    .sort((a, b) => (_cableMassnJahr(a) ?? 0) - (_cableMassnJahr(b) ?? 0));
+  for (const m of measures) Object.assign(base, m.newProps);
+  return base;
+}
+
+// Jahr einer Kabel-Maßnahme (analog massnahmeJahr für Assets)
+function _cableMassnJahr(m) {
+  if (m.jahr) return parseInt(m.jahr);
+  const p = (window.phasen || []).find(x => x.id === m.phaseId);
+  return p ? parseInt(p.jahrVon) : null;
+}
+
 // ── Kabel-Auswahl & Hervorhebung ────────────────────────────────
 let _selectedEdge = null;
 
@@ -920,15 +947,25 @@ function _findEdgesNearClick(latlng, threshPx) {
   return results;
 }
 
+// Lesbare Textfarbe (schwarz/weiß) je nach Helligkeit einer Hex-Hintergrundfarbe
+function _contrastFg(hex) {
+  const c = (hex || '').replace('#', '');
+  if (c.length !== 6) return '#fff';
+  const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.6 ? '#000' : '#fff';
+}
+
 function _showEdgeSelectPopup(edges, latlng) {
   const rows = edges.map(e => {
     const uName = ASSETS.items.find(a => a.id === e.u)?.name || e.uNode?.label || '?';
     const vName = ASSETS.items.find(a => a.id === e.v)?.name || e.vNode?.label || '?';
-    const col = e.msLevel ? '#ff9800' : '#fdd835';
+    // Badge in der gleichen Farbe wie die Leitung auf der Karte (aktueller Farbmodus)
+    const col = getStromEdgeColor(e);
     const badge = e.msLevel ? 'MS' : 'NS';
     return `<div class="edge-select-row" data-edge-id="${e.id}"
       style="display:flex;align-items:center;gap:7px;padding:5px 10px;cursor:pointer;border-radius:4px;">
-      <span style="background:${col};color:#000;font-size:9px;padding:1px 5px;border-radius:3px;flex-shrink:0;">${badge}</span>
+      <span style="background:${col};color:${_contrastFg(col)};font-size:9px;padding:1px 5px;border-radius:3px;flex-shrink:0;">${badge}</span>
       <span style="font-size:11px;">${uName} → ${vName}</span>
     </div>`;
   }).join('');
@@ -939,12 +976,37 @@ function _showEdgeSelectPopup(edges, latlng) {
     .openOn(map);
 
   setTimeout(() => {
+    const popupEl = popup.getElement();
     document.querySelectorAll('.edge-select-row').forEach(row => {
-      row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.08)'; });
-      row.addEventListener('mouseleave', () => { row.style.background = ''; });
+      const e = (window.stromEdges || []).find(x => x.id === row.dataset.edgeId);
+      row.addEventListener('mouseenter', () => {
+        row.style.background = 'rgba(255,255,255,0.08)';
+        // Tooltip außerhalb des Auswahl-Popups öffnen, statt am Leitungsmittelpunkt —
+        // sonst überschneiden sich beide Boxen. Leafl.-Tooltip mit direction:'auto'
+        // wählt sonst je nach Bildschirmhälfte eigenständig links/rechts und würde
+        // wieder über das Popup rendern — daher direction hier explizit erzwingen.
+        const tt = e?.hitLayer?.getTooltip?.();
+        if (e?.hitLayer && popupEl && tt) {
+          const pr = popupEl.getBoundingClientRect();
+          const mr = map.getContainer().getBoundingClientRect();
+          const spaceRight = mr.right - pr.right;
+          const dir = spaceRight > 260 ? 'right' : 'left';
+          const x = dir === 'right' ? (pr.right - mr.left + 14) : (pr.left - mr.left - 14);
+          const anchor = map.containerPointToLatLng(L.point(x, pr.top - mr.top + pr.height / 2));
+          tt.options.direction = dir;
+          e.hitLayer.openTooltip(anchor);
+        } else {
+          e?.hitLayer?.openTooltip();
+        }
+      });
+      row.addEventListener('mouseleave', () => {
+        row.style.background = '';
+        const tt = e?.hitLayer?.getTooltip?.();
+        if (tt) tt.options.direction = 'auto';
+        e?.hitLayer?.closeTooltip();
+      });
       row.addEventListener('click', () => {
-        const id = row.dataset.edgeId;
-        const e = (window.stromEdges || []).find(x => x.id === id);
+        e?.hitLayer?.closeTooltip();
         if (e) { map.closePopup(popup); selectStromEdge(e); openCableInspector(e); }
       });
     });
@@ -1215,6 +1277,18 @@ export function setStromColorMode(mode) {
     b.style.color = isActive ? '#fdd835' : '';
   });
   recalcStromNetz();
+}
+
+// Dynamische Darstellung (Flussanimation + Richtungspfeile) ein-/ausschalten.
+// Der Farbmodus (Auslastung/ΔU%/Leistung/Richtung) bleibt davon unberührt —
+// im statischen Modus werden die Kabel weiterhin entsprechend eingefärbt,
+// nur ohne wandernde Striche und Pfeilmarker.
+export function setStromDynamicViz(on) {
+  window.stromDynamicViz = !!on;
+  if (!window.stromDynamicViz) {
+    window.stromEdges.forEach(e => { e._flowActive = false; });
+  }
+  updateStromEdgeVisuals();
 }
 
 // ── Marker-Klick für Kabelzeichnen abfangen ─────────────────────
@@ -1866,10 +1940,10 @@ export function _calcStromNetzKosten() {
 export function getStromEdgeColor(e) {
   switch (window.stromColorMode) {
     case 'auslastung':
+      // Ampelschema: grün = unkritisch, gelb = hohe Auslastung, rot = überlastet
       if (e.auslastungPct > 100) return '#e53935';
-      if (e.auslastungPct > 80)  return '#f9a825';
-      if (e.auslastungPct > 30)  return '#4caf50';
-      return '#4fc3f7';
+      if (e.auslastungPct > 80)  return '#fdd835';
+      return '#4caf50';
     case 'spannungsfall':
       if (e.deltaUPct > 3) return '#e53935';
       if (e.deltaUPct > 2) return '#f9a825';
@@ -1882,11 +1956,26 @@ export function getStromEdgeColor(e) {
     }
     case 'richtung':
       return e.flowDirection >= 0 ? '#29b6f6' : '#ef9a9a'; // blau=Bezug, rot=Einspeisung
+    case 'engpassjahr': {
+      // Färbung nach dem ZEITPUNKT des Engpasses (Ergebnis von engpassSweep).
+      // Zugriff über window, da 14h-engpass-sweep seinerseits aus diesem Modul
+      // importiert — ein direkter Import wäre ein Zyklus.
+      const res = window.engpassLetztesErgebnis?.();
+      if (!res) return '#546e7a';                       // noch keine Analyse gelaufen
+      const it = res.index?.get(e.id);
+      if (!it || it.engpassJahr == null) return '#4caf50'; // kein Engpass im Horizont
+      return { akut: '#b71c1c', kurz: '#e53935', mittel: '#fb8c00', lang: '#fdd835' }[it.klasse]
+             || '#4caf50';
+    }
     default: return '#fdd835';
   }
 }
 
 export function updateStromEdgeVisuals() {
+  // Dynamische Darstellung (Standard) = wandernde Striche + Richtungspfeile.
+  // Statisch (abgewählt) = durchgezogene, nach Farbmodus (Auslastung/ΔU%/…)
+  // eingefärbte Linien ohne Animation/Pfeile.
+  const dynamic = window.stromDynamicViz !== false;
   window.stromEdges.forEach(e => {
     if (e._isSelected) return; // Hervorhebung der ausgewählten Leitung beibehalten
     const absKw = Math.abs(e.peakFlowKw);
@@ -1894,10 +1983,16 @@ export function updateStromEdgeVisuals() {
     const color = getStromEdgeColor(e);
     // Strichlinien für Flussrichtung
     if (absKw > 0.1) {
-      e.layer.setStyle({ color: color, weight: w, opacity: 0.95, dashArray: '10,5' });
-      if (e.outlineLayer) e.outlineLayer.setStyle({ weight: w + 3, opacity: 0.4, dashArray: '10,5' });
-      e._flowActive = true;
-      e._flowDir = e.flowDirection >= 0 ? 1 : -1;
+      if (dynamic) {
+        e.layer.setStyle({ color: color, weight: w, opacity: 0.95, dashArray: '10,5' });
+        if (e.outlineLayer) e.outlineLayer.setStyle({ weight: w + 3, opacity: 0.4, dashArray: '10,5' });
+        e._flowActive = true;
+        e._flowDir = e.flowDirection >= 0 ? 1 : -1;
+      } else {
+        e.layer.setStyle({ color: color, weight: w, opacity: 0.95, dashArray: '' });
+        if (e.outlineLayer) e.outlineLayer.setStyle({ weight: w + 3, opacity: 0.4, dashArray: '' });
+        e._flowActive = false;
+      }
       if (e.layer._path) e.layer._path.style.animation = '';
     } else {
       // Kein Lastfluss — Kabel trotzdem sichtbar als durchgezogene Linie
@@ -1910,7 +2005,7 @@ export function updateStromEdgeVisuals() {
     // MS-Kabel: violette Farbe, aber Strichlinie + Animation wie NS wenn Fluss vorhanden
     if (e.msLevel) {
       const msColor = '#7c4dff';
-      if (absKw > 0.1) {
+      if (dynamic && absKw > 0.1) {
         e.layer.setStyle({ color: msColor, weight: 4, opacity: 0.95, dashArray: '10,5' });
         if (e.outlineLayer) e.outlineLayer.setStyle({ color: '#0a0e1a', weight: 7, opacity: 0.4, dashArray: '10,5' });
       } else {
@@ -1940,11 +2035,11 @@ export function updateStromEdgeVisuals() {
       if (e.layer._path) e.layer._path.style.strokeDashoffset = '';
     }
 
-    // Arrow marker for direction — nicht bei geplanten/abgerissenen Kabeln:
-    // die sollen rein statisch ausgegraut sein, kein Flusspfeil in Originalfarbe.
+    // Arrow marker for direction — nicht bei geplanten/abgerissenen Kabeln
+    // und nicht in der statischen Darstellung (dynamic abgewählt).
     const un = window.stromNodes.find(n => n.id === e.u);
     const vn = window.stromNodes.find(n => n.id === e.v);
-    if (est === 'active' && un && vn && absKw > 0.1) {
+    if (dynamic && est === 'active' && un && vn && absKw > 0.1) {
       const pt1 = L.latLng(un.lat, un.lng);
       const pt2 = L.latLng(vn.lat, vn.lng);
       const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2);
@@ -2362,8 +2457,16 @@ export function updateLpStromSummary() {
 // ── Elektroberechnung auf Basis manuell platzierter Assets ──────
 // Portiert von elCalc() aus Energiekarte1.1. Arbeitet auf ASSETS.items +
 // window.stromEdges statt auf Gebäudedaten.
-export function elCalcAssets() {
-  const yr = globalYear ?? new Date().getFullYear();
+// opts.year   — Rechenjahr explizit vorgeben (Standard: globalYear). Erlaubt
+//               Jahres-Sweeps (s. 14h-engpass-sweep.js), ohne den globalen
+//               Jahres-State umzustellen und damit die ganze UI neu zu zeichnen.
+// opts.silent — Karten-/DOM-Aktualisierung überspringen (nur rechnen). Für Sweeps,
+//               die pro Jahr nur Kennzahlen abgreifen und nichts anzeigen wollen.
+// opts.inklGeplant — auch geplante Maßnahmen als wirksam annehmen (Was-wäre-wenn).
+export function elCalcAssets(opts = {}) {
+  const { year = null, silent = false, inklGeplant = false } = opts;
+  const _mOpts = { inklGeplant };
+  const yr = year ?? globalYear ?? new Date().getFullYear();
   const U_N = 400, COS_PHI = 0.9;
   // Zulässiger Spannungsfall – Gesamtbudget vom Trafo (bzw. Einspeisepunkt) bis
   // zum Ende eines Stichs (DIN 18015-1 / VDE-AR-N 4105 Richtwert: max. 3 %).
@@ -2396,11 +2499,16 @@ export function elCalcAssets() {
   const warn = [];
   if (!activeA.find(a => a.type === 'NAP'))   warn.push('⚠ Kein NAP vorhanden.');
   if (!activeA.find(a => a.type === 'Trafo')) warn.push('⚠ Kein Trafo – Berechnung mit 400 V NS.');
-  if (activeA.length === 0) { warn.push('⚠ Keine aktiven Elektro-Assets.'); _showElCalcResult(warn); return; }
+  if (activeA.length === 0) { warn.push('⚠ Keine aktiven Elektro-Assets.'); if (!silent) _showElCalcResult(warn); return; }
   if (activeE.length === 0 && activeA.length > 0) warn.push('ℹ Keine Kabel vorhanden.');
 
+  // Props im Rechenjahr: Basis-Props + alle bis dahin umgesetzten Maßnahmen.
+  // Dadurch wirken Ertüchtigungen (z. B. Trafo 630 → 1000 kVA ab 2032) tatsächlich
+  // in der Berechnung, statt nur dokumentiert zu sein.
+  const _p = a => getAssetPropsForYear(a, yr, _mOpts);
+
   function assetVerbrauch(a) {
-    const p = a.props || {};
+    const p = _p(a);
     switch (a.type) {
       case 'Verbraucher': return parseFloat(p.leistungKW) || 0;
       case 'Lade': {
@@ -2416,7 +2524,7 @@ export function elCalcAssets() {
     }
   }
   function assetErzeugung(a) {
-    const p = a.props || {};
+    const p = _p(a);
     switch (a.type) {
       case 'PV':   return (parseFloat(p.leistungKWp) || 0) * 0.8;
       case 'Wind': return parseFloat(p.leistungKW) || 0;
@@ -2482,7 +2590,7 @@ export function elCalcAssets() {
 
   // MS-Nennspannung aus NAP-Asset (default 20 kV)
   const napAsset = activeA.find(a => a.type === 'NAP');
-  const U_MS = (parseFloat(napAsset?.props?.spannungKV) || 20) * 1000;
+  const U_MS = (parseFloat(napAsset ? _p(napAsset).spannungKV : null) || 20) * 1000;
   const SIN_PHI = Math.sqrt(1 - COS_PHI ** 2);
 
   // Schritt 1: Lastfluss, Richtung & Kabeltyp-Eckdaten je Kante (Reihenfolge-
@@ -2511,12 +2619,30 @@ export function elCalcAssets() {
 
     const srcId = rankA <= rankB ? e.u : e.v;
     const dstId = rankA <= rankB ? e.v : e.u;
-    const calc = { lengthM, I_A, I_A_sign, msLevel: !!e.msLevel };
+    // Wirksame Kabeldaten im Rechenjahr (Ist-Werte + umgesetzte Kabel-Maßnahmen).
+    // Nur LESEN — zurückgeschrieben wird ausschließlich bei autoSized-Kabeln,
+    // damit ein Jahres-Sweep die Basisdimensionierung nicht dauerhaft überschreibt.
+    const ep = getStromEdgePropsForYear(e, yr, _mOpts);
+    const calc = {
+      lengthM, I_A, I_A_sign, msLevel: !!e.msLevel,
+      crossSection: ep.crossSection, nParallel: Math.max(1, ep.nParallel || 1),
+    };
     if (e.msLevel) {
-      // MS-Kabel: keine NS-Kabelauslegung (andere Kabeltypen/Spannung)
+      // MS-Kabel: eigene Querschnitts-Tabelle (Mittelspannung), kein NS-ΔU-Budget.
+      // Läuft für JEDE MS-Kante (auch manuell gezeichnete) — Auto-Dimensionierung
+      // greift, solange e.autoSized (Default bei Neuanlage) oder kein Querschnitt gesetzt ist.
       e.deltaUPct = 0;
+      let csMs = ep.crossSection;
+      if (e.autoSized || !csMs) {
+        csMs = MS_SECTIONS.find(s => MS_I_MAX_A[s] >= I_A) || MS_SECTIONS[MS_SECTIONS.length - 1];
+        e.crossSection = csMs;
+      }
+      const iMaxMs = MS_I_MAX_A[csMs] || MS_I_MAX_A[MS_SECTIONS[MS_SECTIONS.length - 1]];
+      e._effCrossSection = csMs;
+      e.ratedCurrentA = iMaxMs;
+      e.auslastungPct = iMaxMs ? (I_A / iMaxMs) * 100 : 0;
     } else {
-      calc.kt = KABEL_TYPEN[e.cableType] || KABEL_TYPEN.NAYY;
+      calc.kt = KABEL_TYPEN[ep.cableType] || KABEL_TYPEN.NAYY;
       calc.maxSec = calc.kt.sections[calc.kt.sections.length - 1];
     }
     edgeCalc.set(e, calc);
@@ -2530,7 +2656,10 @@ export function elCalcAssets() {
   // zurück, damit der Aufrufer ihn kumulativ weiterreichen kann.
   function _sizeNsCable(e, calc, duBudgetPct) {
     const { kt, maxSec, lengthM, I_A, I_A_sign } = calc;
-    let np = Math.max(1, e.nParallel || 1);
+    // np/cs stammen aus den jahreswirksamen Kabeldaten (inkl. umgesetzter Maßnahmen);
+    // auf die Kante zurückgeschrieben wird nur bei autoSized bzw. fehlendem Querschnitt.
+    let np = Math.max(1, calc.nParallel || 1);
+    let cs = calc.crossSection;
     // Auto-Parallelkabel: Maximalquerschnitt reicht strommäßig nicht → mehr Stränge
     if (e.autoSized && I_A > maxSec.Iz * np) {
       np = Math.ceil(I_A / maxSec.Iz);
@@ -2547,7 +2676,7 @@ export function elCalcAssets() {
       return Math.abs(dU_V / U_N * 100);
     };
 
-    if (!e.crossSection || e.autoSized) {
+    if (!cs || e.autoSized) {
       const I_per_cable = I_A / np;
       // 1) Querschnitte, die strommäßig ausreichen (Iz ≥ I je Strang)
       const okCurrent = kt.sections.filter(s => s.Iz >= I_per_cable);
@@ -2565,17 +2694,19 @@ export function elCalcAssets() {
         e.nParallel = np;
         chosen = maxSec;
       }
-      e.crossSection = chosen.mm2;
+      cs = chosen.mm2;
+      e.crossSection = cs;
     }
+    e._effCrossSection = cs;
     // Auto-Sicherung: größte Normgröße ≤ Iz des Kabels (Kabelschutz nach VDE 0298)
     if (e.autoSized && (!e.fuseA || e.fuseA === 0)) {
-      const sec0 = kt.sections.find(s => s.mm2 === e.crossSection) || maxSec;
+      const sec0 = kt.sections.find(s => s.mm2 === cs) || maxSec;
       const FUSE_NORM = [16, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250];
       const maxFuse = [...FUSE_NORM].reverse().find(f => f <= sec0.Iz * np);
       e.fuseA = maxFuse || 0;
     }
-    const sec   = kt.sections.find(s => s.mm2 === e.crossSection) || maxSec;
-    const R_km  = kt.rhoOhmMm2pM * 1000 / e.crossSection;
+    const sec   = kt.sections.find(s => s.mm2 === cs) || maxSec;
+    const R_km  = kt.rhoOhmMm2pM * 1000 / cs;
     const R_seg = (R_km * lengthM / 1000) / np;
     const X_seg = ((sec?.xMuOhmPerM ?? 80) / 1e6 * lengthM) / np; // µΩ/m → Ω, ÷np
     // DIN VDE 0276: ΔU = √3 · I · (R·cosφ + X·sinφ) — korrekte R+X-Formel, I nicht nochmal ÷np
@@ -2671,7 +2802,7 @@ export function elCalcAssets() {
 
   // Trafo-Auslastung: Gesamtlast aller nachgelagerten Assets per BFS
   for (const trafoAsset of activeA.filter(a => a.type === 'Trafo')) {
-    const ratedKVA = parseFloat(trafoAsset.props?.leistungKVA) || 630;
+    const ratedKVA = parseFloat(_p(trafoAsset).leistungKVA) || 630;
     const trafoRank = TYPE_RANK[trafoAsset.type] ?? 6;
     const visited = new Set([trafoAsset.id]);
     const queue = [];
@@ -2703,6 +2834,10 @@ export function elCalcAssets() {
       trafoSn.peakLoadKw = P_net;
     }
   }
+
+  // Im Sweep-Modus nur rechnen — Karte, Statusringe, SLD und Ergebnisbox
+  // bleiben auf dem Stand des tatsächlich eingestellten Jahres.
+  if (silent) return;
 
   updateStromEdgeVisuals();
 

@@ -2,7 +2,7 @@
 
 import { globalYear } from './01-globals-varianten.js';
 import { showHint } from './03c-gebaeude-io.js';
-import { ASSETS, TYPE_RANK, getAssetStatus, createAsset, deleteAsset } from './13a-assets-core.js';
+import { ASSETS, getAssetStatus, createAsset, deleteAsset } from './13a-assets-core.js';
 import { drawAssetMarker } from './13b-assets-render.js';
 import {
   addStromEdge, removeStromEdge, recalcStromNetz,
@@ -107,8 +107,18 @@ export function showAutoNetzDialog() {
     <div class="ep-modal-title">Auto-Netz generieren</div>
     <div class="ep-modal-body" style="line-height:1.7;">
       <p style="margin:0 0 14px;font-size:11px;color:#aaa;">
-        Bestehende Auto-Kabel werden ersetzt. Manuell gezeichnete Kabel bleiben erhalten.
+        Bestehende Auto-Kabel werden immer ersetzt. Manuell gezeichnete Kabel bleiben erhalten,
+        sofern unten nicht anders gewählt.
       </p>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
+        <input type="checkbox" id="an-overwrite-manual">
+        <span>
+          <b>Manuell gezeichnete Kabel überschreiben</b>
+          <div style="font-size:11px;color:#aaa;margin-top:1px;">
+            Entfernt auch von Hand gezogene Leitungen und ersetzt sie durch das automatisch erzeugte Netz.
+          </div>
+        </span>
+      </label>
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
         <input type="checkbox" id="an-ring">
         <span>
@@ -156,6 +166,7 @@ export function showAutoNetzDialog() {
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   const okBtn = modal.querySelector('#an-ok');
   okBtn.onclick = () => {
+    const overwriteManual = modal.querySelector('#an-overwrite-manual').checked;
     const ring           = modal.querySelector('#an-ring').checked;
     const erzeugungsnetz = modal.querySelector('#an-erzeugung').checked;
     const autoKvs        = modal.querySelector('#an-kvs').checked;
@@ -169,77 +180,25 @@ export function showAutoNetzDialog() {
     showHint('⏳ Auto-Netz wird generiert — das kann einen Moment dauern …');
     setTimeout(() => {
       close();
-      autoNetzAssets({ ring, erzeugungsnetz, autoKvs, kvsMaxConn, kvsMaxDistM });
+      autoNetzAssets({ ring, erzeugungsnetz, autoKvs, kvsMaxConn, kvsMaxDistM, overwriteManual });
     }, 50);
   };
-}
-
-// ── MS-Kabel-Dimensionierung ─────────────────────────────────────────────────
-
-const MS_I_MAX_A   = { 35: 140, 50: 175, 70: 220, 95: 260, 120: 300, 150: 340, 185: 385, 240: 445 };
-const MS_SECTIONS  = [35, 50, 70, 95, 120, 150, 185, 240];
-
-function _sizeMsEdges(autoEdges, nap) {
-  const U_kV    = parseFloat(nap?.props?.spannungKV) || 20;
-  const COS_PHI = 0.9;
-
-  const msEdges = autoEdges.filter(e => e.msLevel);
-  if (!msEdges.length) return;
-
-  // Adjazenz nur über MS-Kanten (für BFS downstream)
-  const msAdj = new Map();
-  for (const e of msEdges) {
-    if (!msAdj.has(e.u)) msAdj.set(e.u, []);
-    if (!msAdj.has(e.v)) msAdj.set(e.v, []);
-    msAdj.get(e.u).push(e.v);
-    msAdj.get(e.v).push(e.u);
-  }
-
-  for (const e of msEdges) {
-    const aAsset = ASSETS.items.find(a => a.id === e.u);
-    const bAsset = ASSETS.items.find(a => a.id === e.v);
-    if (!aAsset || !bAsset) continue;
-
-    const rankA = TYPE_RANK[aAsset.type] ?? 0;
-    const rankB = TYPE_RANK[bAsset.type] ?? 0;
-    const upId   = rankA <= rankB ? e.u : e.v;
-    const downId = rankA <= rankB ? e.v : e.u;
-
-    // BFS downstream (Trennstelle-Kanten werden nicht für die Last-Seite genutzt)
-    const visited = new Set([upId]);
-    const queue   = [downId];
-    let totalKva  = 0;
-    while (queue.length) {
-      const cur = queue.shift();
-      if (visited.has(cur)) continue;
-      visited.add(cur);
-      const a = ASSETS.items.find(x => x.id === cur);
-      if (a?.type === 'Trafo') totalKva += parseFloat(a.props?.leistungKVA) || 630;
-      for (const nb of (msAdj.get(cur) || [])) {
-        if (!visited.has(nb)) queue.push(nb);
-      }
-    }
-
-    if (totalKva <= 0) totalKva = 630; // Fallback
-    const I_MS = (totalKva * 1000) / (Math.sqrt(3) * U_kV * 1000 * COS_PHI);
-    const qs   = MS_SECTIONS.find(s => MS_I_MAX_A[s] >= I_MS) || 240;
-    e.crossSection = qs;
-    e.autoSized    = true;
-  }
 }
 
 // ── Hauptfunktion ─────────────────────────────────────────────────────────────
 
 export function autoNetzAssets(opts = {}) {
-  const { ring = false, erzeugungsnetz = false, autoKvs = true, kvsMaxConn = 4, kvsMaxDistM = 80 } = opts;
+  const { ring = false, erzeugungsnetz = false, autoKvs = true, kvsMaxConn = 4, kvsMaxDistM = 80, overwriteManual = false } = opts;
   const yr = window.globalYear ?? new Date().getFullYear();
 
   // Graph einmalig bauen, Distanz-Cache leeren
   _trasseCtx = buildTrasseGraph();
   _distCache.clear();
 
-  // 0. Auto-Kanten und auto-generierte KVS-Assets löschen
-  const toRemove = (window.stromEdges || []).filter(e => e.autoGenerated);
+  // 0. Auto-Kanten löschen (immer) — bei overwriteManual zusätzlich auch
+  // manuell gezeichnete Kabel, damit das Netz komplett neu aufgebaut wird.
+  // Auto-generierte KVS-Assets werden unabhängig davon immer entfernt.
+  const toRemove = (window.stromEdges || []).filter(e => e.autoGenerated || overwriteManual);
   toRemove.forEach(e => removeStromEdge(e));
   ASSETS.items.filter(a => a.autoGenerated && a.type === 'KVS').forEach(a => {
     if (window.stromNodes) {
@@ -399,11 +358,7 @@ export function autoNetzAssets(opts = {}) {
     });
   }
 
-  // MS-Kabel dimensionieren (vor NS-Berechnung)
-  const autoEdges = (window.stromEdges || []).filter(e => e.autoGenerated);
-  _sizeMsEdges(autoEdges, nap);
-
-  // Berechnung anstoßen
+  // Berechnung anstoßen (dimensioniert dabei auch die MS-Kabel, siehe elCalcAssets)
   recalcStromNetz();
   if (typeof window.elCalcAssets === 'function') window.elCalcAssets();
 

@@ -77,6 +77,8 @@ export let stromNetzVisible = true;
 export function setStromNetzVisibleState(v) { stromNetzVisible = !!v; }
 export let stromColorMode = 'auslastung'; // auslastung | spannungsfall | leistung | richtung
 export function setStromColorModeState(v) { stromColorMode = v; }
+export let stromDynamicViz = false; // Animation (wandernde Striche) + Richtungspfeile; Farbmodus bleibt davon unabhängig aktiv — Default: aus (statische Auslastungs-Einfärbung)
+export function setStromDynamicVizState(v) { stromDynamicViz = !!v; }
 export let stromNetzSubTab = 'waerme'; // 'waerme' | 'strom'
 
 // Kabeltypen (VDE 0298-4, Verlegeart D — Erdverlegung, 4-adrig)

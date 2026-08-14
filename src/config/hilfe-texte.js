@@ -186,6 +186,9 @@ export const HILFE_TEXTE = {
   'strom-k-nap': 'Pauschale Kosten für den Netzanschlusspunkt (€).',
   'strom-k-trafo': 'Transformator-Kosten pro kVA Nennleistung (€/kVA).',
   'strom-k-nd': 'Nutzungsdauer des Stromnetzes für die Annuitätsberechnung (Jahre).',
+  'btn-engpass-panel-toggle': 'Öffnet den Engpass-Fahrplan: Zeitstrahl mit dem Eintrittsjahr je Betriebsmittel, Kurve der überlasteten Betriebsmittel über die Jahre (ohne/mit Ausbau) und automatisch abgeleitete Ertüchtigungs-Maßnahmen mit Jahr und Kosten. Die Maßnahmen werden als „geplant" auf Kabel bzw. Trafo geschrieben und erscheinen dadurch im Ausbauplaner und im Investitionsplan.',
+  'btn-engpass-analyse': 'Rechnet das Stromnetz über die kommenden 25 Jahre durch (nur an den Jahren, in denen sich etwas ändert) und färbt jedes Kabel danach ein, WANN es zum Engpass wird: dunkelrot = schon heute, rot = in unter 5 Jahren, orange = 5–15 Jahre, gelb = später, grün = kein Engpass. Kriterien: Strombelastbarkeit über 100 % oder kumulierter Spannungsfall über 3 %. Die Auto-Dimensionierung wird dafür eingefroren, sonst würden Kabel einfach mitwachsen.',
+  'strom-dynamic-viz': 'Wandernde Striche und Richtungspfeile ein-/ausschalten. Abgewählt: Kabel werden statisch als durchgezogene Linie dargestellt, weiterhin eingefärbt nach dem gewählten Farbmodus (Auslastung/ΔU%/Leistung/Richtung).',
   'strom-netz-visible': 'Stromnetz auf der Karte ein-/ausblenden.',
 
   // Sichtbarkeit Wärmenetz (Tab Netz)
