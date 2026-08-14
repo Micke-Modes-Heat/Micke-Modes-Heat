@@ -2,7 +2,7 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
   --bg:#12110e;--surface:#1c1a15;--surface2:#24221b;--border:#3a3528;
-  --text:#ece8df;--muted:#9a9080;--accent:#d4a855;
+  --text:#ece8df;--muted:#aca496;--accent:#d4a855;
 }
 /* ── Globale Scrollbars im Design-Stil ───────────────────────────────
    Gilt überall; spezifischere Regeln (versteckte/schmale Leisten) überschreiben. */
@@ -260,11 +260,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .hint.hidden{opacity:0;}
 .skalier-hint{position:absolute;bottom:48px;left:50%;transform:translateX(-50%);background:rgba(15,17,23,.82);border:1px solid var(--border);border-radius:6px;padding:4px 12px;font-size:10px;color:#9fa8da;z-index:1999;pointer-events:none;white-space:nowrap;}
 
-.float-panel{position:absolute;top:90px;left:50%;transform:translateX(-50%);background:var(--surface);border-radius:10px;padding:15px 18px;z-index:3000;min-width:300px;min-height:140px;box-shadow:0 8px 32px rgba(0,0,0,.7);display:none;max-height:85vh;overflow:auto;resize:both;overflow:auto;}
+.float-panel{position:absolute;top:90px;left:50%;transform:translateX(-50%);background:var(--surface);border-radius:10px;padding:0 18px 15px;z-index:3000;min-width:300px;min-height:140px;box-shadow:0 8px 32px rgba(0,0,0,.7);display:none;max-height:85vh;overflow:auto;resize:both;overflow:auto;}
 .float-panel::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:10px 10px 0 0;background:var(--panel-accent,var(--border));mask-image:linear-gradient(90deg,#000 30%,transparent);-webkit-mask-image:linear-gradient(90deg,#000 30%,transparent);pointer-events:none;opacity:.85;}
 .float-panel.accent-gradient::after{background:linear-gradient(90deg,#42a5f5,#66bb6a,#ff9800);}
 .float-panel.dragging{transform:none;user-select:none;}
-.panel-drag-handle{display:flex;align-items:center;justify-content:space-between;margin:-15px -18px 12px;padding:8px 14px;border-bottom:1px solid var(--border);cursor:grab;border-radius:10px 10px 0 0;background:var(--surface2);}
+.panel-drag-handle{display:flex;align-items:center;justify-content:space-between;margin:0 -18px 12px;padding:8px 14px;border-bottom:1px solid var(--border);cursor:grab;border-radius:10px 10px 0 0;background:var(--surface2);position:sticky;top:0;z-index:2;}
 .panel-drag-handle:active{cursor:grabbing;}
 .panel-drag-handle .drag-dots{color:var(--muted);font-size:13px;letter-spacing:2px;opacity:.5;}
 .float-panel::-webkit-scrollbar{width:4px;}
@@ -940,9 +940,14 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .ci-select:focus{border-color:var(--accent);}
 .ci-select:disabled{opacity:0.4;cursor:not-allowed;}
 
-/* Asset Selektions-Ring (Bulk-Auswahl via Shift+Click / Checkbox) */
-.asset-marker.asset-selected { box-shadow: 0 0 0 3px #2196F3, 0 0 8px 2px rgba(33,150,243,0.35); }
+/* Asset Selektions-Ring (Bulk-Auswahl via Shift+Click / Checkbox, oder im Inspector geöffnetes Asset) —
+   gleicher Farbton wie die Gebäude-Hervorhebung auf der Karte (siehe #ff1493 in 02c-karte-werkzeuge.js). */
+.asset-marker.asset-selected { box-shadow: 0 0 0 4px #ff1493, 0 0 10px 3px rgba(255,20,147,0.5); }
 .sb-asset-row.asset-bulk-selected { background:rgba(33,150,243,.12); outline:1px solid rgba(33,150,243,.3); }
+/* Gebäude-Chip-Cluster: einzelnen Typ-Chip hervorheben, wenn das im Inspector
+   geöffnete Asset zu diesem Typ gehört (Chips sind pro Typ gruppiert, nicht pro Instanz). */
+.asset-chip.asset-chip-selected,
+.asset-chip-more.asset-chip-selected { box-shadow: 0 0 0 3px #ff1493, 0 0 8px 3px rgba(255,20,147,0.55); }
 
 /* Bulk-Modus: nicht-selektierte Marker ausgrauen (wie „abgerissen") — weiterhin
    sichtbar und anklickbar, aber blass/grau, damit selektierte hervorstechen.
@@ -1157,7 +1162,7 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
   .left-panel,.sidebar{width:min(360px,90vw);}
   .lp-tabs{overflow-x:auto;}
   .lp-tab{min-width:58px;padding-inline:4px;}
-  .float-panel.visible{inset:48px 4px 4px!important;padding:12px!important;}
+  .float-panel.visible{inset:48px 4px 4px!important;padding:0 12px 12px!important;}
   #map-interaction-status{bottom:8px!important;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;text-align:center;}
 }
 /* ── Ebenen-Panel ──────────────────────────────────── */

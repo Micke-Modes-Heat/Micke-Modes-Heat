@@ -267,13 +267,18 @@ function drawBuildingGroup(buildingId) {
   const shown  = groups.slice(0, MAX_TYPE_CHIPS);
   const rest   = groups.length - shown.length;
 
+  // Im Inspector geöffnetes Asset am zugehörigen Typ-Chip hervorheben — Chips sind
+  // pro Typ gruppiert, daher kann bei mehreren Assets desselben Typs nur der Chip
+  // (nicht die einzelne Instanz) markiert werden.
   const chipsHtml = shown.map(grp => {
     const status  = grp.assets.some(a => getAssetStatus(a, globalYear) === 'active') ? 'active' : 'planned';
     const opacity = status === 'active' ? 1 : 0.45;
     const cntSub  = grp.count > 1 ? `<span class="asset-chip-n">${grp.count}</span>` : '';
-    return `<span class="asset-chip" style="background:${grp.cfg.color};opacity:${opacity};width:${chip}px;height:${chip}px;font-size:${fs}px;">${grp.cfg.icon}${cntSub}</span>`;
+    const selChipClass = grp.assets.some(a => a.id === ASSETS.selectedId) ? ' asset-chip-selected' : '';
+    return `<span class="asset-chip${selChipClass}" style="background:${grp.cfg.color};opacity:${opacity};width:${chip}px;height:${chip}px;font-size:${fs}px;">${grp.cfg.icon}${cntSub}</span>`;
   }).join('');
-  const moreChip = rest > 0 ? `<span class="asset-chip-more" style="font-size:${fs}px;">+${rest}</span>` : '';
+  const restSelected = rest > 0 && groups.slice(MAX_TYPE_CHIPS).some(grp => grp.assets.some(a => a.id === ASSETS.selectedId));
+  const moreChip = rest > 0 ? `<span class="asset-chip-more${restSelected ? ' asset-chip-selected' : ''}" style="font-size:${fs}px;">+${rest}</span>` : '';
   const pendingBadge = assets.some(hasPendingMassnahmen) ? `<span class="asset-massn-badge"></span>` : '';
 
   const html = `<div class="asset-chips">${chipsHtml}${moreChip}${pendingBadge}</div>`;
@@ -701,7 +706,7 @@ function drawSingleMarker(asset) {
   const pendingBadge = hasPendingMassnahmen(asset)
     ? `<span class="asset-massn-badge"></span>`
     : '';
-  const selClass = window.assetSelection?.has(asset.id) ? ' asset-selected' : '';
+  const selClass = (window.assetSelection?.has(asset.id) || ASSETS.selectedId === asset.id) ? ' asset-selected' : '';
   // Bulk-Modus: nicht-selektierte Marker ausgegraut — direkt beim Zeichnen setzen,
   // damit ein Neuzeichnen (Auswahl/Inspector) das Dimming nicht verliert.
   const dimClass = (window.isBulkModeActive?.() && !window.assetSelection?.has(asset.id)) ? ' asset-bulk-dimmed' : '';

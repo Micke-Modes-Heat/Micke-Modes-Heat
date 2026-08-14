@@ -64,3 +64,7 @@ export const KABEL_TYPEN = {
 
 // Standard-Trafogrößen (kVA)
 export const TRAFO_GROESSEN = [250, 400, 630, 1000, 1600, 2500];
+
+// MS-Kabel-Stromtragfähigkeit (A) nach Querschnitt (mm²), 20 kV Erdkabel Richtwerte
+export const MS_I_MAX_A  = { 35: 140, 50: 175, 70: 220, 95: 260, 120: 300, 150: 340, 185: 385, 240: 445 };
+export const MS_SECTIONS = [35, 50, 70, 95, 120, 150, 185, 240];

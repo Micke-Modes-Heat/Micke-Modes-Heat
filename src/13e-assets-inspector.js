@@ -40,6 +40,7 @@ function getPanel() { return document.getElementById('sb-asset-inspector-slot');
 export function openAssetInspector(asset) {
   if (!asset) return;
   ASSETS.selectedId = asset.id;
+  redrawAllAssets();
   const panel = getPanel();
   if (!panel) return;
   // Rechte Sidebar: zum Elektro-Tab wechseln
@@ -55,6 +56,7 @@ export function closeAssetInspector() {
   const panel = getPanel();
   if (panel) panel.style.display = 'none';
   ASSETS.selectedId = null;
+  redrawAllAssets();
   // Asset-Liste wieder einblenden und aktualisieren
   const listEl = document.getElementById('sb-asset-list');
   if (listEl) listEl.style.display = '';
@@ -1474,6 +1476,7 @@ export function renderAssetSidebar(filterText) {
     hdr.addEventListener('click', () => {
       const id = hdr.dataset.asid;
       ASSETS.selectedId = ASSETS.selectedId === id ? null : id;
+      redrawAllAssets();
       renderAssetSidebar();
       if (ASSETS.selectedId) {
         const card = document.getElementById(`asb-card-${ASSETS.selectedId}`);

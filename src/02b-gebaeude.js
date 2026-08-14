@@ -9,6 +9,7 @@ import { glBerechnenDebounced } from './06b-gl-berechnen.js';
 import { updateAllDeckungen } from './06c-dispatch-core.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { _batchImporting } from './01-globals-varianten.js';
+import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { R_MAX } from './01-globals-varianten.js';
 
@@ -53,16 +54,16 @@ export function ensureSatellite(){
 
 // ── Farbschemata ──────────────────────────────────────────────────────────
 export const THEMES = [
-  { name: 'Ocker & Salbei',   bg:'#12110e', surface:'#1c1a15', surface2:'#24221b', border:'#3a3528', text:'#ece8df', muted:'#9a9080', accent:'#d4a855' },
-  { name: 'Ozean',            bg:'#0f1117', surface:'#181c27', surface2:'#1f2435', border:'#2a3050', text:'#e8eaf0', muted:'#7a8099', accent:'#4fc3f7' },
-  { name: 'Wald',             bg:'#0e1210', surface:'#161e19', surface2:'#1c2820', border:'#2a3e2f', text:'#e4ebe6', muted:'#7a9480', accent:'#81c784' },
-  { name: 'Terrakotta',       bg:'#120f0e', surface:'#1e1916', surface2:'#28211d', border:'#3e332c', text:'#ebe5e0', muted:'#998880', accent:'#c47a5a' },
-  { name: 'Lavendel',         bg:'#100f14', surface:'#1a1821', surface2:'#22202c', border:'#332e45', text:'#e8e6f0', muted:'#8580a0', accent:'#b39ddb' },
-  { name: 'Magenta',          bg:'#130e12', surface:'#1e1620', surface2:'#281e2a', border:'#40303e', text:'#f0e6ee', muted:'#a07898', accent:'#e91e90' },
-  { name: 'Ros\u00e9gold',    bg:'#13100e', surface:'#1e1915', surface2:'#28211c', border:'#3e3330', text:'#ede6e2', muted:'#a08e85', accent:'#e8a090' },
-  { name: 'Bernstein',        bg:'#111008', surface:'#1c1a10', surface2:'#252218', border:'#3a3520', text:'#ede8d8', muted:'#98906a', accent:'#f5a623' },
-  { name: 'Nordlicht',        bg:'#0c1210', surface:'#141e1c', surface2:'#1a2826', border:'#283e38', text:'#e2ebe8', muted:'#70a090', accent:'#4dd0b8' },
-  { name: 'Mitternacht',      bg:'#0a0c14', surface:'#121520', surface2:'#181c2c', border:'#252a42', text:'#e0e4f0', muted:'#6a7099', accent:'#7c8cf0' },
+  { name: 'Ocker & Salbei',   bg:'#12110e', surface:'#1c1a15', surface2:'#24221b', border:'#3a3528', text:'#ece8df', muted:'#aca496', accent:'#d4a855' },
+  { name: 'Ozean',            bg:'#0f1117', surface:'#181c27', surface2:'#1f2435', border:'#2a3050', text:'#e8eaf0', muted:'#a2a6b7', accent:'#4fc3f7' },
+  { name: 'Wald',             bg:'#0e1210', surface:'#161e19', surface2:'#1c2820', border:'#2a3e2f', text:'#e4ebe6', muted:'#97ab9c', accent:'#81c784' },
+  { name: 'Terrakotta',       bg:'#120f0e', surface:'#1e1916', surface2:'#28211d', border:'#3e332c', text:'#ebe5e0', muted:'#afa29b', accent:'#c47a5a' },
+  { name: 'Lavendel',         bg:'#100f14', surface:'#1a1821', surface2:'#22202c', border:'#332e45', text:'#e8e6f0', muted:'#a5a1b9', accent:'#b39ddb' },
+  { name: 'Magenta',          bg:'#130e12', surface:'#1e1620', surface2:'#281e2a', border:'#40303e', text:'#f0e6ee', muted:'#b89ab2', accent:'#e91e90' },
+  { name: 'Ros\u00e9gold',    bg:'#13100e', surface:'#1e1915', surface2:'#28211c', border:'#3e3330', text:'#ede6e2', muted:'#b0a19a', accent:'#e8a090' },
+  { name: 'Bernstein',        bg:'#111008', surface:'#1c1a10', surface2:'#252218', border:'#3a3520', text:'#ede8d8', muted:'#aba586', accent:'#f5a623' },
+  { name: 'Nordlicht',        bg:'#0c1210', surface:'#141e1c', surface2:'#1a2826', border:'#283e38', text:'#e2ebe8', muted:'#86afa1', accent:'#4dd0b8' },
+  { name: 'Mitternacht',      bg:'#0a0c14', surface:'#121520', surface2:'#181c2c', border:'#252a42', text:'#e0e4f0', muted:'#9b9fbb', accent:'#7c8cf0' },
 ];
 export let currentThemeIdx = 0;
 
@@ -488,6 +489,10 @@ export async function removeGebaeude(id){
   if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
   if(g.pvFlaechen) g.pvFlaechen.forEach(f=>{ if(f.layer) map.removeLayer(f.layer); if(f.svgLayer) map.removeLayer(f.svgLayer); });
   if(g._pvModuleLayer){ map.removeLayer(g._pvModuleLayer); g._pvModuleLayer=null; }
+  // Elektro-Assets des Gebäudes (z.B. Standardgebäude-Ausstattung: Trafo, NSHV, ...)
+  // mitsamt ihrem gemeinsamen Gruppen-Marker entfernen — sonst bleibt der kleine
+  // Chip-Marker verwaist auf der Karte stehen.
+  getAssetsForBuilding(id).forEach(a => deleteAsset(a.id, true));
   setGebaeude(window.gebaeude.filter(x=>x.id!==id));
   setNetzEdges(window.netzEdges.filter(e => {
     if(e.u === id || e.v === id){
@@ -528,6 +533,7 @@ export function clearOsmBuildings(){
     if(g.hzLabelMarker) map.removeLayer(g.hzLabelMarker);
   });
   const osmIds = new Set(osmGeb.map(g=>g.id));
+  osmIds.forEach(id => getAssetsForBuilding(id).forEach(a => deleteAsset(a.id, true)));
   setNetzEdges(window.netzEdges.filter(e => {
     if(osmIds.has(e.u) || osmIds.has(e.v)){
       if(e.layer) map.removeLayer(e.layer);

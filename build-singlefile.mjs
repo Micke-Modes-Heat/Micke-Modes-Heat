@@ -116,11 +116,25 @@ const inlineVendor = [
   {pattern:/<link rel="stylesheet" href="https:\/\/unpkg\.com\/leaflet-toolbar[^>]*>/, path:'node_modules/leaflet-toolbar/dist/leaflet.toolbar.css', kind:'css'},
   {pattern:/<script src="https:\/\/unpkg\.com\/leaflet-toolbar[^>]*><\/script>/, path:'node_modules/leaflet-toolbar/dist/leaflet.toolbar.js', kind:'js'},
   {pattern:/<link rel="stylesheet" href="https:\/\/unpkg\.com\/leaflet-distortableimage[^>]*>/, path:'node_modules/leaflet-distortableimage/dist/leaflet.distortableimage.css', kind:'css'},
-  {pattern:/<script src="https:\/\/unpkg\.com\/leaflet-distortableimage[^>]*><\/script>/, path:'node_modules/leaflet-distortableimage/dist/leaflet.distortableimage.js', kind:'js'},
+  {pattern:/<script src="https:\/\/unpkg\.com\/leaflet-distortableimage[^>]*><\/script>/, path:'node_modules/leaflet-distortableimage/dist/leaflet.distortableimage.js', kind:'js',
+   // Das npm-Paket liefert in dist/ irrtümlich seinen Webpack-DEV-Build aus
+   // (nicht production-gebaut). Zwei Folgen davon werden hier bereinigt:
+   fix: code => code
+     // 1) Der Bundle-Entry startet ungefragt einen Webpack-Dev-Server-Client,
+     //    der dauerhaft (erfolglos) ws://localhost:8081/ws verbinden will —
+     //    im Offline-/file://-Einzeldatei-Build gibt es dafür nie einen Server.
+     .replace(/__webpack_require__\("\.\/node_modules\/webpack-dev-server\/client\/index\.js\?[^"]*"\);\s*/, '')
+     .replace(/__webpack_require__\("\.\/node_modules\/webpack\/hot\/dev-server\.js"\);\s*/, '')
+     // 2) Der Doppelklick-Handler liest oe.sourceCapabilities.firesTouchEvents
+     //    ungeprüft; Firefox implementiert UIEvent.sourceCapabilities nicht
+     //    (undefined) → "can't access property 'firesTouchEvents'"-Absturz.
+     .replaceAll('oe.sourceCapabilities.firesTouchEvents', 'oe.sourceCapabilities && oe.sourceCapabilities.firesTouchEvents')
+  },
 ];
 for (const vendor of inlineVendor) {
   if (!existsSync(resolve(vendor.path))) throw new Error(`Vendor-Datei fehlt: ${vendor.path}`);
-  const code = readFileSync(resolve(vendor.path), 'utf8');
+  let code = readFileSync(resolve(vendor.path), 'utf8');
+  if (vendor.fix) code = vendor.fix(code);
   html = html.replace(vendor.pattern, () => vendor.kind === 'css' ? `<style>${code}</style>` : `<script>${code}</script>`);
 }
 // PDF.js ist bereits Teil des kanonischen main.js-Bundles.

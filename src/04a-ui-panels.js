@@ -4,7 +4,7 @@
 import { _getEtaMap, activeVariantId, areaPolygon, currentMode, gasEmF, gebaeude, globalYear, netzEdges, networkLocked, variantResults } from './01-globals-varianten.js';
 import { getWLD } from './02a-netz-physik.js';
 import { _invalidateStats, getComputedStats, getNutzungstypen, map } from './02b-gebaeude.js';
-import { setMode, updateViz } from './02c-karte-werkzeuge.js';
+import { setGebVisible, setMode, setSchallVisible, updateViz } from './02c-karte-werkzeuge.js';
 import { hidePanels, recalcNetz, setNetzVisible } from './03b-netz.js';
 import { renderList, updateTotals } from './03c-gebaeude-io.js';
 import { _renderEmissionenTab, refreshVergleichView, renderAnalyseDispatch } from './04b-emissionen-3d.js';
@@ -1148,6 +1148,9 @@ export function toggleSection(id) {
   if (arrow) arrow.textContent = hidden ? '▼' : '▶';
 }
 
+let _prevGebVisible = null;
+let _prevSchallVisible = null;
+
 export function setLeftTab(tabId) {
   document.querySelectorAll('#lp-tabs .lp-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('#left-panel .lp-content').forEach(c => c.classList.toggle('active', c.id === 'lp-' + tabId));
@@ -1170,6 +1173,16 @@ export function setLeftTab(tabId) {
       if (n.type === 'geb' && n.marker) n.marker.setOpacity(0);
     });
     setAssetLayerVisible(true);
+    // Gebäude-Symbole (Kreise/Balken) und Schallringe der Wärmepumpen ausblenden —
+    // im Elektro-Arbeitsbereich lenken sie nur ab, ersetzt durch die Asset-Marker.
+    if (_prevGebVisible === null) _prevGebVisible = window.gebVisible !== false;
+    if (_prevSchallVisible === null) _prevSchallVisible = window.lwWpSchallVisible !== false;
+    setGebVisible(false);
+    setSchallVisible(false);
+    const cbGeb = document.getElementById('el-geb-visible');
+    if (cbGeb) cbGeb.checked = false;
+    const cbSchall = document.getElementById('lwwp-schall-visible');
+    if (cbSchall) cbSchall.checked = false;
     // Karten-Modus mitführen: Elektro-Arbeitsbereich = Strom-Ansicht
     if (window.currentMode !== 'strom') setMode('strom');
   } else {
@@ -1180,6 +1193,19 @@ export function setLeftTab(tabId) {
     setStromNetzVisible(false);
     setNetzVisible(true);
     setAssetLayerVisible(false);
+    // Gebäude-Symbole und Schallringe auf den vorherigen Zustand zurücksetzen
+    if (_prevGebVisible !== null) {
+      setGebVisible(_prevGebVisible);
+      const cbGeb = document.getElementById('el-geb-visible');
+      if (cbGeb) cbGeb.checked = _prevGebVisible;
+      _prevGebVisible = null;
+    }
+    if (_prevSchallVisible !== null) {
+      setSchallVisible(_prevSchallVisible);
+      const cbSchall = document.getElementById('lwwp-schall-visible');
+      if (cbSchall) cbSchall.checked = _prevSchallVisible;
+      _prevSchallVisible = null;
+    }
     // Wärme-Arbeitsbereiche merken (für Rücksprung aus dem Strom-Modus)
     if (tabId !== 'ergebnis') window._lastWaermeTab = tabId;
     // Karten-Modus mitführen: zurück im Wärme-Bereich → Wärme-Einfärbung
