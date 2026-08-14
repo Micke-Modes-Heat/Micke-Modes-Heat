@@ -14812,9 +14812,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-08-12';
+  var d = '2026-08-14';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'a630976';
+  var c = 'bf7ac0f';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -111606,6 +111606,14 @@ ${massTbl}
       const created = await confirmManualWaermeNetzFromTrasse();
       if (created) {
         window._manualWaermeNetzDrawing = false;
+        // Nach erfolgreicher Übernahme bleibt nur das fertige Wärmenetz auf der
+        // Karte. Zeichnung, gelbe Hilfslinie und Erzeugen-Schaltfläche gehören
+        // zum Bearbeitungsmodus und werden gemeinsam geschlossen.
+        window.trasseVisible = false;
+        const trasseCheckbox = document.getElementById('el-trasse-visible');
+        if (trasseCheckbox) trasseCheckbox.checked = false;
+        redrawTrasse();
+        hideTrasseFinishBtn();
       } else if (!window.isDrawingTrasse) {
         // Bei fehlenden Anschlüssen unmittelbar im Zeichenmodus bleiben. So
         // kann der Nutzer die offenen Gebäude direkt weiter andocken.
@@ -111620,6 +111628,13 @@ ${massTbl}
     confirmAutoGenerateNetz({
       strategy: 'trasse',
       trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 80,
+    }).then(created => {
+      if (!created) return;
+      window.trasseVisible = false;
+      const trasseCheckbox = document.getElementById('el-trasse-visible');
+      if (trasseCheckbox) trasseCheckbox.checked = false;
+      redrawTrasse();
+      hideTrasseFinishBtn();
     });
   }
 
@@ -115279,11 +115294,21 @@ out body;>;out skel qt;`;
       return false;
     }
 
+    const centralBuilding = gebaeude.find(g => g.id === zId && g.polygon);
+    if (!centralBuilding) {
+      showHint('⚠ Die gewählte Heizzentrale ist keinem vorhandenen Gebäude mehr zugeordnet. Bitte Heizzentrale neu auswählen.',7000);
+      populateZentraleSelect();
+      return false;
+    }
+
     clearNetz();
 
     const planningYears = _netzPlanningYears();
     const nodes = gebaeude.filter(g => {
       if (!g.polygon) return false;
+      // Die Zentrale ist der hydraulische Startknoten und muss auch dann Teil des
+      // Graphen sein, wenn das Zentralengebäude selbst keinen Wärmebedarf hat.
+      if (g.id === zId) return true;
       return networkLocked
         ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
         : _maxBuildingLoad(g,planningYears) > 0;
@@ -115822,12 +115847,18 @@ out body;>;out skel qt;`;
     const zId = Number.parseInt(document.getElementById('netz-zentrale')?.value, 10);
     if (!Number.isFinite(zId)) return {error:'Bitte zuerst eine Heizzentrale auswählen.'};
 
+    const centralBuilding = gebaeude.find(g => g.id === zId && g.polygon);
+    if (!centralBuilding) {
+      return {error:'Die gewählte Heizzentrale ist keinem vorhandenen Gebäude mehr zugeordnet. Bitte Heizzentrale neu auswählen.'};
+    }
+
     const planningYears = _netzPlanningYears();
     const buildings = gebaeude
       .filter(g => g.polygon && (
-        networkLocked
+        g.id === zId ||
+        (networkLocked
           ? getComputedStats(g,WAERME_NETZ_BASISJAHR).heizlast > 0
-          : _maxBuildingLoad(g,planningYears) > 0
+          : _maxBuildingLoad(g,planningYears) > 0)
       ))
       .map(g => ({
         id:g.id,
@@ -115838,10 +115869,6 @@ out body;>;out skel qt;`;
           : _maxBuildingLoad(g,planningYears),
         building:g,
       }));
-    if (!buildings.some(node => node.id === zId)) {
-      return {error:'Die gewählte Heizzentrale ist im aktuellen Planungsjahr nicht aktiv.'};
-    }
-
     const manualSegmentsExist = trasseSegments.some(seg => seg.manualNetwork === true);
     const heatSegments = trasseSegments.filter(seg =>
       (!manualSegmentsExist || seg.manualNetwork === true) &&

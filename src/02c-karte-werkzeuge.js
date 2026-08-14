@@ -1348,6 +1348,14 @@ export async function finishTrasseAndGenerateNetz() {
     const created = await confirmManualWaermeNetzFromTrasse();
     if (created) {
       window._manualWaermeNetzDrawing = false;
+      // Nach erfolgreicher Übernahme bleibt nur das fertige Wärmenetz auf der
+      // Karte. Zeichnung, gelbe Hilfslinie und Erzeugen-Schaltfläche gehören
+      // zum Bearbeitungsmodus und werden gemeinsam geschlossen.
+      window.trasseVisible = false;
+      const trasseCheckbox = document.getElementById('el-trasse-visible');
+      if (trasseCheckbox) trasseCheckbox.checked = false;
+      redrawTrasse();
+      hideTrasseFinishBtn();
     } else if (!window.isDrawingTrasse) {
       // Bei fehlenden Anschlüssen unmittelbar im Zeichenmodus bleiben. So
       // kann der Nutzer die offenen Gebäude direkt weiter andocken.
@@ -1362,6 +1370,13 @@ export async function finishTrasseAndGenerateNetz() {
   confirmAutoGenerateNetz({
     strategy: 'trasse',
     trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 80,
+  }).then(created => {
+    if (!created) return;
+    window.trasseVisible = false;
+    const trasseCheckbox = document.getElementById('el-trasse-visible');
+    if (trasseCheckbox) trasseCheckbox.checked = false;
+    redrawTrasse();
+    hideTrasseFinishBtn();
   });
 }
 
