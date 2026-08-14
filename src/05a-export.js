@@ -1,5 +1,5 @@
-// â”€â”€ 05a-export.js â€” CSV-Export, PDF-Report, Druckansicht â”€â”€
-// â”€â”€ Export: Dispatch CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── 05a-export.js — CSV-Export, PDF-Report, Druckansicht ──
+// ── Export: Dispatch CSV ──────────────────────────────────────────────────
 import { activeVariantId, baseStromNetzSnapshot, gebaeude, globalYear, netzEdges, varianten } from './01-globals-varianten.js';
 import { getComputedStats } from './02b-gebaeude.js';
 import { updateLpMeritOrder, updateLpNetzSummary } from './04a-ui-panels.js';
@@ -22,7 +22,7 @@ import { appLifecycle } from './lib/lifecycle.js';
 const ASSET_LABELS = {
   NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
   NSHV: 'NSHV', UV: 'Unterverteilung', KVS: 'KVS', Verbraucher: 'Verbraucher',
-  WP: 'WÃ¤rmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
+  WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
   Lade: 'Ladeinfrastruktur', Nsa: 'Notstromaggregat', KWK: 'KWK-Anlage',
   Wind: 'Windkraftanlage', Reserve: 'Reserve',
 };
@@ -41,7 +41,7 @@ export function exportDispatchCSV() {
   if (window.elPvH) csv += ';PV-Erzeugung (kWh)';
   csv += '\n';
 
-  const monthNames = ['Jan','Feb','MÃ¤r','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const monthNames = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
   const mStarts = [0,744,1416,2160,2880,3624,4344,5088,5832,6552,7296,8016];
   for (let t = 0; t < 8760; t++) {
     let m = 0; for (let mi = 11; mi >= 0; mi--) { if (t >= mStarts[mi]) { m = mi; break; } }
@@ -60,7 +60,7 @@ export function exportDispatchCSV() {
 
   // Summary rows
   csv += '\n;ZUSAMMENFASSUNG\n';
-  csv += 'Erzeuger;WÃ¤rme (MWh/a);Strom (MWh/a);Anteil (%)\n';
+  csv += 'Erzeuger;Wärme (MWh/a);Strom (MWh/a);Anteil (%)\n';
   const totalMwh = keys.reduce((s, k) => s + ((en[k]||{}).waermeMwh || 0), 0);
   keys.forEach(k => {
     const e = en[k] || {};
@@ -74,10 +74,10 @@ export function exportDispatchCSV() {
   a.click();
 }
 
-// â”€â”€ Export: GebÃ¤ude CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Export: Gebäude CSV ──────────────────────────────────────────────────
 export function exportGebaeudeCSV() {
-  if (!gebaeude.length) { alert('Keine GebÃ¤ude vorhanden.'); return; }
-  let csv = 'ID;Name;Nutzung;FlÃ¤che (mÂ²);Baujahr;Zustand;WÃ¤rmebedarf (MWh/a);Heizlast (kW);Spez. WÃ¤rme (kWh/mÂ²a);Spez. Heizlast (W/mÂ²);Strom (MWh/a);PV aktiv;PV Dachanteil (%);Am Netz;Netzverluste (MWh/a)\n';
+  if (!gebaeude.length) { alert('Keine Gebäude vorhanden.'); return; }
+  let csv = 'ID;Name;Nutzung;Fläche (m²);Baujahr;Zustand;Wärmebedarf (MWh/a);Heizlast (kW);Spez. Wärme (kWh/m²a);Spez. Heizlast (W/m²);Strom (MWh/a);PV aktiv;PV Dachanteil (%);Am Netz;Netzverluste (MWh/a)\n';
   const connectedIds = new Set(netzEdges.filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
   gebaeude.forEach(g => {
     const st = typeof getComputedStats === 'function' ? getComputedStats(g, globalYear) : {};
@@ -371,7 +371,7 @@ export function exportGutachtenDigest() {
   a.click();
 }
 
-// â”€â”€ Export: PDF Bericht (Transformationsplan-Stil) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Export: PDF Bericht (Transformationsplan-Stil) ──────────────────────
 async function exportPDFReport() {
   const keys = window._dispatchActiveKeys || [];
   const en   = window._dispatchEnergy || {};
@@ -382,7 +382,7 @@ async function exportPDFReport() {
   const fig = caption => '<div class="fig-caption">Abbildung ' + (++figNr) + ': ' + caption + '</div>';
   const tab = caption => '<div class="tab-caption">Tabelle ' + (++tabNr) + ': ' + caption + '</div>';
 
-  // â”€â”€ Daten sammeln â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Daten sammeln ─────────────────────────────────────────────
   const totalMwh = keys.reduce((s, k) => s + ((en[k]||{}).waermeMwh || 0), 0);
   const connectedIds = new Set((Array.isArray(netzEdges) ? netzEdges : []).filter(e => !e.pruned).flatMap(e => [e.u, e.v]));
   const nGeb = gebaeude.length;
@@ -403,7 +403,7 @@ async function exportPDFReport() {
   const zeit = new Date().toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
   const varName = activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || 'Variante') : 'Basisdaten';
 
-  // â”€â”€ Canvas-Bilder exportieren â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Canvas-Bilder exportieren ─────────────────────────────────
   let mapImg = '';
   try {
     if (typeof html2canvas !== 'undefined') {
@@ -422,26 +422,26 @@ async function exportPDFReport() {
     try { const c = document.getElementById(id); if (c && c.width > 0) cImg[id] = c.toDataURL('image/png'); } catch(e) {}
   });
 
-  // â”€â”€ Wirtschaftlichkeit-Tabelle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Wirtschaftlichkeit-Tabelle ────────────────────────────────
   const wirtEl = document.getElementById('wirt-table-wrap');
   const wirtHtml = wirtEl ? wirtEl.innerHTML : '';
   const investGes = window._lastInvestGes || 0;
   const jkGes = window._lastJkGes || 0;
 
-  // â”€â”€ Stromnetz-Daten â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Stromnetz-Daten ───────────────────────────────────────────
   const stromKpis = window._stromNetzKpis || {};
   const stromTrasseLaenge = stromEdges ? Math.round(stromEdges.reduce((s, e) => s + (e.lengthM || 0), 0)) : 0;
   const hatStromNetz = stromEdges && stromEdges.length > 0;
   const hatStromBilanz = sd.pvMwh > 0 || sd.bhkwStromMwh > 0 || (sd.netzbezugMwh||0) > 0;
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ══════════════════════════════════════════════════════════════
   // HTML aufbauen
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ══════════════════════════════════════════════════════════════
   var h = '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">';
   h += '<title>Transformationsplan \u2014 ' + varName + '</title>';
   h += '<s' + 'tyle>';
 
-  // â”€â”€ CSS: GERTEC-inspiriertes Styling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── CSS: GERTEC-inspiriertes Styling ──────────────────────────
   h += '@page{margin:20mm 18mm;size:A4}';
   h += '@media print{.page-break{page-break-before:always}.no-print{display:none!important}.toc a{color:#1a1a2e!important}}';
   h += ':root{--blue:#0055a0;--blue-light:#e8f0fa;--blue-dark:#003366;--red:#c0392b;--gray:#5a6a7a;--gray-light:#95a5b5;--border:#d5dde5}';
@@ -508,9 +508,9 @@ async function exportPDFReport() {
 
   h += '</s' + 'tyle></head><body>';
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // DECKBLATT
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   h += '<div class="deckblatt">';
   h += '<div class="deck-logo">Energetisches Quartierskonzept</div>';
   h += '<div class="deck-title">Transformationsplan</div>';
@@ -527,9 +527,9 @@ async function exportPDFReport() {
   h += '<strong>W\u00e4rmebedarf:</strong> ' + fmt(totalMwh) + ' MWh/a \u00b7 <strong>Heizlast:</strong> ' + fmt(gesamtHeizlast) + ' kW';
   h += '</div></div>';
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // INHALTSVERZEICHNIS
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   h += '<div class="page-break"></div>';
   h += '<h2>Inhaltsverzeichnis</h2>';
   h += '<div class="toc">';
@@ -548,9 +548,9 @@ async function exportPDFReport() {
   tocItems.forEach(t => { h += '<div class="toc-item"><span>' + t[0] + '. ' + t[1] + '</span></div>'; });
   h += '</div>';
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // 1. QUARTIERSÃœBERSICHT
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
+  // 1. QUARTIERSÜBERSICHT
+  // ════════════════════════════════════════════════════════════════
   h += '<div class="page-break"></div>';
   h += '<h2>1. Quartier\u00fcbersicht und Geb\u00e4udedaten</h2>';
   h += '<div class="intro">Das Planungsgebiet umfasst ' + nGeb + ' Geb\u00e4ude mit einer Gesamtfl\u00e4che von ' +
@@ -564,7 +564,7 @@ async function exportPDFReport() {
   h += '<div class="kpi"><div class="kpi-val">' + fmt(gesamtHeizlast) + '<span class="kpi-unit"> kW</span></div><div class="kpi-label">Heizlast</div></div>';
   h += '</div>';
 
-  // GebÃ¤udeliste
+  // Gebäudeliste
   h += '<h3>1.1 Geb\u00e4udeliste</h3>';
   h += tab('Geb\u00e4ude im Planungsgebiet');
   h += '<table><thead><tr><th>Nr.</th><th>Geb\u00e4ude</th><th>Nutzung</th><th>Baujahr</th><th class="r">Fl\u00e4che m\u00b2</th><th class="r">W\u00e4rme MWh/a</th><th class="r">kWh/m\u00b2a</th><th class="c">Netz</th></tr></thead><tbody>';
@@ -604,9 +604,9 @@ async function exportPDFReport() {
     h += '</tbody></table>';
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // 2. ERZEUGERPARK
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   h += '<div class="page-break"></div>';
   h += '<h2>2. Erzeugerpark und Anlagenkonzept</h2>';
   h += '<div class="intro">Das Versorgungskonzept setzt ' + keys.length + ' Erzeuger' + (keys.length !== 1 ? ' ' : '') +
@@ -628,7 +628,7 @@ async function exportPDFReport() {
   });
   h += '</tbody></table>';
 
-  // Erzeuger-DetailblÃ¤tter
+  // Erzeuger-Detailblätter
   h += '<h3>2.2 Anlagenparameter</h3>';
   keys.forEach(k => {
     const e = en[k] || {};
@@ -681,9 +681,9 @@ async function exportPDFReport() {
     }
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // 3. DISPATCH-SIMULATION
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   h += '<div class="page-break"></div>';
   h += '<h2>3. Dispatch-Simulation und Lastgang</h2>';
   h += '<div class="intro">Die st\u00fcndliche Einsatzsimulation (Dispatch) ordnet die Erzeuger nach der Merit-Order zu ' +
@@ -721,16 +721,16 @@ async function exportPDFReport() {
     h += fig('Lastprofil der Auslegungswoche (168 h)');
   }
 
-  // MonatsÃ¼bersicht
+  // Monatsübersicht
   if (cImg['ep-monthly-canvas']) {
     h += '<h3>3.4 Monatliche Erzeugung</h3>';
     h += '<img class="chart-img" src="' + cImg['ep-monthly-canvas'] + '"/>';
     h += fig('Monatliche W\u00e4rmeerzeugung nach Erzeuger');
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // 4. WÃ„RMENETZ
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
+  // 4. WÄRMENETZ
+  // ════════════════════════════════════════════════════════════════
   if (activeNetz.length > 0) {
     h += '<div class="page-break"></div>';
     h += '<h2>4. W\u00e4rmenetz</h2>';
@@ -763,9 +763,9 @@ async function exportPDFReport() {
     h += '</tbody></table>';
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // 5. STROMNETZ
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   if (hatStromNetz) {
     h += '<div class="page-break"></div>';
     h += '<h2>5. Stromnetz</h2>';
@@ -823,9 +823,9 @@ async function exportPDFReport() {
     }
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // 6. STROMBILANZ
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   if (hatStromBilanz) {
     h += '<div class="page-break"></div>';
     h += '<h2>6. Strombilanz und Eigenversorgung</h2>';
@@ -864,9 +864,9 @@ async function exportPDFReport() {
     }
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // 7. WIRTSCHAFTLICHKEIT
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   h += '<div class="page-break"></div>';
   h += '<h2>7. Wirtschaftlichkeit</h2>';
   h += '<div class="intro">Die Wirtschaftlichkeitsberechnung erfolgt nach VDI 2067 (Annuit\u00e4tenmethode). ' +
@@ -883,9 +883,9 @@ async function exportPDFReport() {
     h += '<div style="font-size:9pt;">' + wirtHtml + '</div>';
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // 8. Ã–KOLOGIE / COâ‚‚
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
+  // 8. ÖKOLOGIE / CO₂
+  // ════════════════════════════════════════════════════════════════
   h += '<div class="page-break"></div>';
   h += '<h2>8. \u00d6kologie und CO\u2082-Bilanz</h2>';
   const co2BiEl = document.getElementById('co2-bilanz-wrap');
@@ -907,9 +907,9 @@ async function exportPDFReport() {
     h += fig('Monatliche CO\u2082-Emissionen nach Erzeuger');
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // 9. SANKEY
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   if (cImg['sankey-canvas']) {
     h += '<div class="page-break"></div>';
     h += '<h2>9. Energieflussdiagramm</h2>';
@@ -918,9 +918,9 @@ async function exportPDFReport() {
     h += fig('Sankey-Diagramm der Energiefl\u00fcsse');
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // 10. VARIANTENVERGLEICH
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   const vrKeys = Object.keys(variantResults);
   if (vrKeys.length > 1) {
     h += '<div class="page-break"></div>';
@@ -965,9 +965,9 @@ async function exportPDFReport() {
     });
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   // IMPRESSUM & FOOTER
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ════════════════════════════════════════════════════════════════
   h += '<div class="page-break"></div>';
   h += '<div class="impressum">';
   h += '<h2 style="border-bottom-color:var(--gray-light);">Impressum</h2>';
@@ -1002,7 +1002,7 @@ async function exportPDFReport() {
 
   h += '</body></html>';
 
-  // â”€â”€ Ausgabe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Ausgabe ───────────────────────────────────────────────────
   var printWin = window.open('', '_blank');
   if (!printWin) { alert('Pop-up blockiert \u2014 bitte Pop-ups f\u00fcr diese Seite erlauben.'); return; }
   printWin.document.write(h);
@@ -1010,7 +1010,7 @@ async function exportPDFReport() {
   setTimeout(function() { printWin.print(); }, 800);
 }
 
-// â”€â”€ Export: MaÃŸnahmenbericht PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Export: Maßnahmenbericht PDF ──────────────────────────────────────────
 export function exportMassnahmenPDF() {
   const yr = globalYear ?? new Date().getFullYear();
   const allAssets = ASSETS.items || [];
@@ -1020,14 +1020,14 @@ export function exportMassnahmenPDF() {
   const ASSET_LABELS = {
     NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
     NSHV: 'Niederspannungshauptverteilung', UV: 'Unterverteilung',
-    Verbraucher: 'Verbraucher', WP: 'WÃ¤rmepumpe', PV: 'PV-Anlage',
+    Verbraucher: 'Verbraucher', WP: 'Wärmepumpe', PV: 'PV-Anlage',
     Batterie: 'Batteriespeicher', Lade: 'Ladeinfrastruktur', Nsa: 'Nsa',
     KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
   };
 
   const MASSN_STATUS_LABEL = { geplant: 'Geplant', beauftragt: 'Beauftragt', umgesetzt: 'Umgesetzt' };
 
-  // Groupierung MaÃŸnahmen nach Jahr
+  // Groupierung Maßnahmen nach Jahr
   const byYear = {};
   let grandTotal = 0;
   allAssets.forEach(a => {
@@ -1040,7 +1040,7 @@ export function exportMassnahmenPDF() {
   });
 
   let h = '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">';
-  h += '<title>MaÃŸnahmenbericht â€” ' + datum + '</title>';
+  h += '<title>Maßnahmenbericht — ' + datum + '</title>';
   h += '<style>';
   h += '@page{margin:18mm 16mm;size:A4}';
   h += '@media print{.no-print{display:none}}';
@@ -1068,22 +1068,22 @@ export function exportMassnahmenPDF() {
   h += '.asset-spec{font-size:8pt;color:#546e7a}';
   h += '</style></head><body>';
 
-  h += '<h1>MaÃŸnahmenbericht Elektro</h1>';
-  h += '<div class="subtitle">Stand: ' + datum + '  Â·  Planungsjahr: ' + yr + '</div>';
+  h += '<h1>Maßnahmenbericht Elektro</h1>';
+  h += '<div class="subtitle">Stand: ' + datum + '  ·  Planungsjahr: ' + yr + '</div>';
 
   // KPI-Zeile
   const assetsWithMassn = allAssets.filter(a => (a.massnahmen || []).length > 0);
   const allMassn = allAssets.flatMap(a => a.massnahmen || []);
   h += '<div class="kpi-row">';
   h += '<div class="kpi"><div class="kpi-val">' + allAssets.length + '</div><div class="kpi-label">Assets gesamt</div></div>';
-  h += '<div class="kpi"><div class="kpi-val">' + assetsWithMassn.length + '</div><div class="kpi-label">Assets mit MaÃŸnahmen</div></div>';
-  h += '<div class="kpi"><div class="kpi-val">' + allMassn.length + '</div><div class="kpi-label">MaÃŸnahmen gesamt</div></div>';
-  h += '<div class="kpi"><div class="kpi-val" style="font-size:13pt">' + fmt2(grandTotal) + ' â‚¬</div><div class="kpi-label">Gesamtkosten</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + assetsWithMassn.length + '</div><div class="kpi-label">Assets mit Maßnahmen</div></div>';
+  h += '<div class="kpi"><div class="kpi-val">' + allMassn.length + '</div><div class="kpi-label">Maßnahmen gesamt</div></div>';
+  h += '<div class="kpi"><div class="kpi-val" style="font-size:13pt">' + fmt2(grandTotal) + ' €</div><div class="kpi-label">Gesamtkosten</div></div>';
   h += '</div>';
 
   // 1. Komponentenliste
   h += '<h2>1. Komponentenliste</h2>';
-  h += '<table><thead><tr><th>Name</th><th>Typ</th><th>Baujahr</th><th>Status ' + yr + '</th><th class="r">MaÃŸnahmen</th></tr></thead><tbody>';
+  h += '<table><thead><tr><th>Name</th><th>Typ</th><th>Baujahr</th><th>Status ' + yr + '</th><th class="r">Maßnahmen</th></tr></thead><tbody>';
   for (const a of allAssets) {
     const status = getAssetStatus(a, yr);
     const statusTxt = status === 'active' ? 'Aktiv' : status === 'planned' ? 'Geplant' : 'Abgerissen';
@@ -1093,31 +1093,31 @@ export function exportMassnahmenPDF() {
     if (a.type === 'Trafo') specParts.push((p.leistungKVA || 630) + ' kVA');
     if (a.type === 'Verbraucher' || a.type === 'WP') specParts.push((p.leistungKW || 10) + ' kW');
     if (a.type === 'PV') specParts.push((p.leistungKWp || 10) + ' kWp');
-    if (a.type === 'Lade') specParts.push((p.anzahlPunkte || 4) + 'Ã—' + (p.leistungProPunktKW || 22) + ' kW');
+    if (a.type === 'Lade') specParts.push((p.anzahlPunkte || 4) + '×' + (p.leistungProPunktKW || 22) + ' kW');
     if (a.type === 'NSHV' || a.type === 'UV') specParts.push((p.nennstromA || 400) + ' A');
     const specStr = specParts.length ? ' <span class="asset-spec">(' + specParts.join(', ') + ')</span>' : '';
     h += '<tr><td>' + (a.name || a.id) + '</td><td>' + (ASSET_LABELS[a.type] || a.type) + specStr + '</td>';
-    h += '<td>' + (a.baujahr || 'â€”') + '</td>';
+    h += '<td>' + (a.baujahr || '—') + '</td>';
     h += '<td style="color:' + statusCol + '">' + statusTxt + '</td>';
     h += '<td class="r">' + (a.massnahmen?.length || 0) + '</td></tr>';
   }
   h += '</tbody></table>';
 
-  // 2. MaÃŸnahmen nach Asset
-  h += '<h2>2. MaÃŸnahmen je Asset</h2>';
+  // 2. Maßnahmen nach Asset
+  h += '<h2>2. Maßnahmen je Asset</h2>';
   const assetsWithAny = allAssets.filter(a => (a.massnahmen || []).length > 0);
   if (assetsWithAny.length === 0) {
-    h += '<p class="no-massn">Keine MaÃŸnahmen erfasst.</p>';
+    h += '<p class="no-massn">Keine Maßnahmen erfasst.</p>';
   } else {
     for (const a of assetsWithAny) {
-      h += '<h3>' + (a.name || a.id) + ' <span style="font-size:9pt;color:#546e7a;font-weight:400">â€” ' + (ASSET_LABELS[a.type] || a.type) + '</span></h3>';
-      h += '<table><thead><tr><th>Titel</th><th>Beschreibung</th><th>Jahr</th><th>Status</th><th class="r">Kosten â‚¬</th></tr></thead><tbody>';
+      h += '<h3>' + (a.name || a.id) + ' <span style="font-size:9pt;color:#546e7a;font-weight:400">— ' + (ASSET_LABELS[a.type] || a.type) + '</span></h3>';
+      h += '<table><thead><tr><th>Titel</th><th>Beschreibung</th><th>Jahr</th><th>Status</th><th class="r">Kosten €</th></tr></thead><tbody>';
       for (const m of a.massnahmen) {
         const sc = 'status-' + (m.status || 'geplant');
-        h += '<tr><td>' + (m.titel || 'â€”') + '</td><td>' + (m.beschreibung || '') + '</td>';
-        h += '<td>' + (m.jahr || 'â€”') + '</td>';
+        h += '<tr><td>' + (m.titel || '—') + '</td><td>' + (m.beschreibung || '') + '</td>';
+        h += '<td>' + (m.jahr || '—') + '</td>';
         h += '<td class="' + sc + '">' + (MASSN_STATUS_LABEL[m.status] || m.status || 'Geplant') + '</td>';
-        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : 'â€”') + '</td></tr>';
+        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : '—') + '</td></tr>';
       }
       h += '</tbody></table>';
     }
@@ -1131,9 +1131,9 @@ export function exportMassnahmenPDF() {
     return parseInt(a) - parseInt(b);
   });
   if (sortedYears.length === 0) {
-    h += '<p class="no-massn">Keine MaÃŸnahmen fÃ¼r den Investitionsplan vorhanden.</p>';
+    h += '<p class="no-massn">Keine Maßnahmen für den Investitionsplan vorhanden.</p>';
   } else {
-    h += '<table><thead><tr><th>Jahr</th><th>Asset</th><th>MaÃŸnahme</th><th>Status</th><th class="r">Kosten â‚¬</th></tr></thead><tbody>';
+    h += '<table><thead><tr><th>Jahr</th><th>Asset</th><th>Maßnahme</th><th>Status</th><th class="r">Kosten €</th></tr></thead><tbody>';
     for (const yr2 of sortedYears) {
       let yearSum = 0;
       const rows = byYear[yr2];
@@ -1141,20 +1141,20 @@ export function exportMassnahmenPDF() {
       for (const { asset, m } of rows) {
         yearSum += parseFloat(m.kosten) || 0;
         const sc = 'status-' + (m.status || 'geplant');
-        h += '<tr><td></td><td>' + (asset.name || asset.id) + '</td><td>' + (m.titel || 'â€”') + '</td>';
+        h += '<tr><td></td><td>' + (asset.name || asset.id) + '</td><td>' + (m.titel || '—') + '</td>';
         h += '<td class="' + sc + '">' + (MASSN_STATUS_LABEL[m.status] || 'Geplant') + '</td>';
-        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : 'â€”') + '</td></tr>';
+        h += '<td class="r">' + (m.kosten ? fmt2(m.kosten) : '—') + '</td></tr>';
       }
-      h += '<tr class="year-total"><td></td><td colspan="3">Summe ' + yr2 + '</td><td class="r">' + fmt2(yearSum) + ' â‚¬</td></tr>';
+      h += '<tr class="year-total"><td></td><td colspan="3">Summe ' + yr2 + '</td><td class="r">' + fmt2(yearSum) + ' €</td></tr>';
     }
-    h += '<tr class="grand-total"><td colspan="4">Gesamtinvestition</td><td class="r">' + fmt2(grandTotal) + ' â‚¬</td></tr>';
+    h += '<tr class="grand-total"><td colspan="4">Gesamtinvestition</td><td class="r">' + fmt2(grandTotal) + ' €</td></tr>';
     h += '</tbody></table>';
   }
 
   h += '</body></html>';
 
   const printWin = window.open('', '_blank');
-  if (!printWin) { alert('Pop-up blockiert â€” bitte Pop-ups fÃ¼r diese Seite erlauben.'); return; }
+  if (!printWin) { alert('Pop-up blockiert — bitte Pop-ups für diese Seite erlauben.'); return; }
   printWin.document.write(h);
   printWin.document.close();
   setTimeout(() => printWin.print(), 800);
@@ -1234,7 +1234,7 @@ function _variantMembershipLabel(membership, id) {
   return [...set].join(', ');
 }
 
-// ── Export: Elektro XLSX (Komponenten + Kabel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Export: Elektro XLSX (Komponenten + Kabel) ──────────────────────────────
 export async function exportElektroXLSX() {
   // SheetJS dynamisch laden falls noch nicht vorhanden
   if (typeof window.XLSX === 'undefined') {
@@ -1254,7 +1254,7 @@ export async function exportElektroXLSX() {
   const ASSET_LABELS = {
     NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
     NSHV: 'NSHV', UV: 'Unterverteilung', Verbraucher: 'Verbraucher',
-    WP: 'WÃ¤rmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
+    WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
     Lade: 'Ladeinfrastruktur', Nsa: 'Nsa', KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
   };
 
@@ -1262,7 +1262,7 @@ export async function exportElektroXLSX() {
   const variantMembership = _buildVariantMembershipMap();
 
   // Sheet 1: Komponenten
-  const kompRows = [['Name', 'Typ', 'Baujahr', 'Abrissjahr', 'Status ' + yr, 'Leistung kW/kVA', 'MaÃŸnahmen (Anzahl)', 'Investition (â‚¬)', 'Varianten']];
+  const kompRows = [['Name', 'Typ', 'Baujahr', 'Abrissjahr', 'Status ' + yr, 'Leistung kW/kVA', 'Maßnahmen (Anzahl)', 'Investition (€)', 'Varianten']];
   for (const a of allAssets) {
     const p = a.props || {};
     const status = getAssetStatus(a, yr);
@@ -1278,7 +1278,7 @@ export async function exportElektroXLSX() {
   }
 
   // Sheet 2: Kabel
-  const kabelRows = [['Von', 'Nach', 'Typ', 'Querschnitt mmÂ²', 'LÃ¤nge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW', 'Varianten']];
+  const kabelRows = [['Von', 'Nach', 'Typ', 'Querschnitt mm²', 'Länge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW', 'Varianten']];
   const assetMap = new Map(allAssets.map(a => [a.id, a]));
   for (const e of allEdges) {
     const uName = assetMap.get(e.u)?.name || e.u;
@@ -1295,8 +1295,8 @@ export async function exportElektroXLSX() {
     ]);
   }
 
-  // Sheet 3: MaÃŸnahmen
-  const massnRows = [['Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten â‚¬']];
+  // Sheet 3: Maßnahmen
+  const massnRows = [['Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten €']];
   for (const a of allAssets) {
     for (const m of (a.massnahmen || [])) {
       massnRows.push([a.name || a.id, ASSET_LABELS[a.type] || a.type, m.titel || '', m.beschreibung || '', m.jahr || '', m.status || 'geplant', parseFloat(m.kosten) || 0]);
@@ -1319,7 +1319,7 @@ export async function exportElektroXLSX() {
   XLSXLib.writeFile(wb, fname);
 }
 
-// â”€â”€ Export: VollstÃ¤ndiger XLSX (GebÃ¤ude + Assets + Kabel + MaÃŸnahmen + Beziehungen) â”€â”€
+// ── Export: Vollständiger XLSX (Gebäude + Assets + Kabel + Maßnahmen + Beziehungen) ──
 export async function exportVollstaendigXLSX() {
   if (typeof window.XLSX === 'undefined') {
     await new Promise((resolve, reject) => {
@@ -1338,9 +1338,9 @@ export async function exportVollstaendigXLSX() {
 
   const gebMap = new Map(allGebaeude.map(g => [g.id, g]));
 
-  // Sheet 1: GebÃ¤ude
-  const gebRows = [['ID', 'Name', 'Nutzung', 'FlÃ¤che (mÂ²)', 'Baujahr', 'Abrissjahr', 'Zustand',
-    'WÃ¤rmebedarf (MWh/a)', 'Heizlast (kW)', 'Spez. WÃ¤rme (kWh/mÂ²a)',
+  // Sheet 1: Gebäude
+  const gebRows = [['ID', 'Name', 'Nutzung', 'Fläche (m²)', 'Baujahr', 'Abrissjahr', 'Zustand',
+    'Wärmebedarf (MWh/a)', 'Heizlast (kW)', 'Spez. Wärme (kWh/m²a)',
     'Strom (MWh/a)', 'PV aktiv', 'PV Dachanteil (%)', 'Gebäudenummer']];
   for (const g of allGebaeude) {
     gebRows.push([
@@ -1358,8 +1358,8 @@ export async function exportVollstaendigXLSX() {
   }
 
   // Sheet 2: Assets
-  const assetsRows = [['ID', 'Name', 'Typ', 'GebÃ¤ude', 'Baujahr', 'Abrissjahr',
-    'Status ' + yr, 'Leistung kW/kVA', 'MaÃŸnahmen (Anzahl)', 'Investition (â‚¬)']];
+  const assetsRows = [['ID', 'Name', 'Typ', 'Gebäude', 'Baujahr', 'Abrissjahr',
+    'Status ' + yr, 'Leistung kW/kVA', 'Maßnahmen (Anzahl)', 'Investition (€)']];
   const assetMap = new Map(allAssets.map(a => [a.id, a]));
   for (const a of allAssets) {
     const p = a.props || {};
@@ -1379,8 +1379,8 @@ export async function exportVollstaendigXLSX() {
   }
 
   // Sheet 3: Kabel
-  const kabelRows = [['Von-ID', 'Nach-ID', 'Von', 'Nach', 'Typ', 'Querschnitt mmÂ²',
-    'LÃ¤nge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
+  const kabelRows = [['Von-ID', 'Nach-ID', 'Von', 'Nach', 'Typ', 'Querschnitt mm²',
+    'Länge m', 'Parallelkabel', 'Sicherung A', 'Strom A', 'Auslastung %', 'Spannungsfall %', 'Fluss kW']];
   for (const e of allEdges) {
     const uName = assetMap.get(e.u)?.name || e.u;
     const vName = assetMap.get(e.v)?.name || e.v;
@@ -1395,8 +1395,8 @@ export async function exportVollstaendigXLSX() {
     ]);
   }
 
-  // Sheet 4: MaÃŸnahmen
-  const massnRows = [['Asset-ID', 'Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten â‚¬']];
+  // Sheet 4: Maßnahmen
+  const massnRows = [['Asset-ID', 'Asset', 'Typ', 'Titel', 'Beschreibung', 'Jahr', 'Status', 'Kosten €']];
   for (const a of allAssets) {
     for (const m of (a.massnahmen || [])) {
       massnRows.push([a.id, a.name || a.id, ASSET_LABELS[a.type] || a.type,
@@ -1404,8 +1404,8 @@ export async function exportVollstaendigXLSX() {
     }
   }
 
-  // Sheet 5: Beziehungen (Ãœbersicht, nur Referenz)
-  const bezRows = [['Asset-ID', 'Asset-Name', 'Typ', 'GebÃ¤ude-ID', 'GebÃ¤ude-Name', 'Verbunden mit (IDs)']];
+  // Sheet 5: Beziehungen (Übersicht, nur Referenz)
+  const bezRows = [['Asset-ID', 'Asset-Name', 'Typ', 'Gebäude-ID', 'Gebäude-Name', 'Verbunden mit (IDs)']];
   for (const a of allAssets) {
     const connectedIds = allEdges
       .filter(e => e.u === a.id || e.v === a.id)
@@ -1416,7 +1416,7 @@ export async function exportVollstaendigXLSX() {
       a.buildingId || '', gebName, connectedIds]);
   }
 
-  // â”€â”€ Ãœbersichtsblatt: Kennzahlen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Übersichtsblatt: Kennzahlen ──────────────────────────────────────────
   const totalFlaeche  = allGebaeude.reduce((s, g) => s + (parseFloat(g.flaeche)  || 0), 0);
   const totalWaerme   = allGebaeude.reduce((s, g) => s + (parseFloat(g.waerme)   || 0), 0);
   const totalHeizlast = allGebaeude.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0);
@@ -1431,7 +1431,7 @@ export async function exportVollstaendigXLSX() {
     typStats[a.type].invest += (a.massnahmen || []).reduce((s, m) => s + (parseFloat(m.kosten) || 0), 0);
   }
 
-  // MaÃŸnahmen: je Status Anzahl + Kosten
+  // Maßnahmen: je Status Anzahl + Kosten
   const massnStats = { geplant: { n: 0, k: 0 }, beauftragt: { n: 0, k: 0 }, umgesetzt: { n: 0, k: 0 } };
   for (const a of allAssets) {
     for (const m of (a.massnahmen || [])) {
@@ -1447,31 +1447,31 @@ export async function exportVollstaendigXLSX() {
   const fmt0 = v => Math.round(v);
 
   const ueRows = [
-    ['Energieplanung â€“ Ãœbersicht'],
+    ['Energieplanung – Übersicht'],
     [],
     ['Exportiert am', new Date().toLocaleDateString('de-DE')],
     ['Planungsjahr',  yr],
     [],
-    ['GEBÃ„UDE', '', ''],
-    ['KenngrÃ¶ÃŸe', 'Wert', 'Einheit'],
-    ['Anzahl GebÃ¤ude',           allGebaeude.length,       ''],
-    ['GesamtflÃ¤che',             fmt0(totalFlaeche),        'mÂ²'],
-    ['WÃ¤rmebedarf gesamt',       fmt1(totalWaerme),         'MWh/a'],
+    ['GEBÄUDE', '', ''],
+    ['Kenngröße', 'Wert', 'Einheit'],
+    ['Anzahl Gebäude',           allGebaeude.length,       ''],
+    ['Gesamtfläche',             fmt0(totalFlaeche),        'm²'],
+    ['Wärmebedarf gesamt',       fmt1(totalWaerme),         'MWh/a'],
     ['Heizlast gesamt',          fmt1(totalHeizlast),       'kW'],
     ['Strombedarf gesamt',       fmt1(totalStrom),          'MWh/a'],
     [],
     ['ELEKTRISCHE ANLAGEN', '', ''],
-    ['Typ', 'Anzahl', 'Investition (â‚¬)'],
+    ['Typ', 'Anzahl', 'Investition (€)'],
     ...Object.entries(typStats).map(([t, s]) => [ASSET_LABELS[t] || t, s.count, fmt0(s.invest)]),
     ['Gesamt', allAssets.length, fmt0(Object.values(typStats).reduce((s, x) => s + x.invest, 0))],
     [],
     ['KABEL / LEITUNGEN', '', ''],
-    ['KenngrÃ¶ÃŸe', 'Wert', 'Einheit'],
+    ['Kenngröße', 'Wert', 'Einheit'],
     ['Anzahl Kabel',   allEdges.length,         ''],
-    ['GesamtlÃ¤nge',    fmt0(totalKabelLaenge),   'm'],
+    ['Gesamtlänge',    fmt0(totalKabelLaenge),   'm'],
     [],
     ['MASSNAHMEN', '', ''],
-    ['Status', 'Anzahl', 'Kosten (â‚¬)'],
+    ['Status', 'Anzahl', 'Kosten (€)'],
     ['Geplant',     massnStats.geplant.n,     fmt0(massnStats.geplant.k)],
     ['Beauftragt',  massnStats.beauftragt.n,  fmt0(massnStats.beauftragt.k)],
     ['Umgesetzt',   massnStats.umgesetzt.n,   fmt0(massnStats.umgesetzt.k)],
@@ -1479,11 +1479,11 @@ export async function exportVollstaendigXLSX() {
   ];
 
   const wb = XLSXLib.utils.book_new();
-  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(ueRows),     'Ãœbersicht');
-  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(gebRows),    'GebÃ¤ude');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(ueRows),     'Übersicht');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(gebRows),    'Gebäude');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(assetsRows), 'Assets');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(kabelRows),  'Kabel');
-  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows),  'MaÃŸnahmen');
+  XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(massnRows),  'Maßnahmen');
   XLSXLib.utils.book_append_sheet(wb, XLSXLib.utils.aoa_to_sheet(bezRows),    'Beziehungen');
 
   // ── Verbindungen-Sheet (Dropdown-Auswahl für Import) ──────────────────────
@@ -1495,13 +1495,13 @@ export async function exportVollstaendigXLSX() {
     wb.Workbook.Sheets[wb.SheetNames.indexOf('AssetListe')].Hidden = 1;
   }
 
-  // â”€â”€ Typ-spezifische Reiter (nur wenn Assets dieses Typs vorhanden) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Typ-spezifische Reiter (nur wenn Assets dieses Typs vorhanden) ──────────
   for (const [type, schemaDefs] of Object.entries(ASSET_PROPS_SCHEMA)) {
     const typeAssets = allAssets.filter(a => a.type === type);
     if (!typeAssets.length || !schemaDefs.length) continue;
     const propKeys   = schemaDefs.map(d => d.key);
     const propLabels = schemaDefs.map(d => d.label);
-    const header = ['ID', 'Name', 'GebÃ¤ude', 'Baujahr', 'Abrissjahr', 'Status ' + yr, ...propLabels];
+    const header = ['ID', 'Name', 'Gebäude', 'Baujahr', 'Abrissjahr', 'Status ' + yr, ...propLabels];
     const rows = [header];
     for (const a of typeAssets) {
       const p = a.props || {};
@@ -1522,7 +1522,7 @@ export async function exportVollstaendigXLSX() {
   XLSXLib.writeFile(wb, fname);
 }
 
-// â”€â”€ Import: VollstÃ¤ndiger XLSX â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Import: Vollständiger XLSX ──────────────────────────────────────────────
 export function importVollstaendigXLSX() {
   let inp = document.getElementById('_xlsxImportInput');
   if (!inp) {
@@ -1557,8 +1557,8 @@ async function _handleXlsxImport(event) {
       const wb = XLSXLib.read(e.target.result, { type: 'array' });
       let updGeb = 0, updAssets = 0, updKabel = 0, updMassn = 0;
 
-      // â”€â”€ Sheet "GebÃ¤ude": Namen + Felder Ã¼berschreiben â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      const gebSheet = wb.Sheets['GebÃ¤ude'];
+      // ── Sheet "Gebäude": Namen + Felder überschreiben ──────────────
+      const gebSheet = wb.Sheets['Gebäude'];
       if (gebSheet) {
         const rows = XLSXLib.utils.sheet_to_json(gebSheet, { header: 1 });
         for (let r = 1; r < rows.length; r++) {
@@ -1579,7 +1579,7 @@ async function _handleXlsxImport(event) {
           if (row[2] != null && String(row[2]).trim() && String(row[2]).trim() !== g.nutzung) {
             g.nutzung = String(row[2]).trim(); changed = true;
           }
-          // FlÃ¤che
+          // Fläche
           if (row[3] != null && !isNaN(parseFloat(row[3])) && parseFloat(row[3]) > 0) {
             g.flaeche = parseFloat(row[3]); changed = true;
           }
@@ -1595,7 +1595,7 @@ async function _handleXlsxImport(event) {
           if (row[6] != null && String(row[6]).trim()) {
             g.zustand = String(row[6]).trim(); changed = true;
           }
-          // WÃ¤rmebedarf
+          // Wärmebedarf
           if (row[7] != null && !isNaN(parseFloat(row[7]))) {
             g.waerme = parseFloat(row[7]); g.waermeManual = true; changed = true;
           }
@@ -1629,7 +1629,7 @@ async function _handleXlsxImport(event) {
         if (typeof window.renderList === 'function') window.renderList();
       }
 
-      // â”€â”€ Sheet "Assets": Name, Baujahr, Abrissjahr Ã¼berschreiben â”€â”€â”€â”€
+      // ── Sheet "Assets": Name, Baujahr, Abrissjahr überschreiben ────
       const assetsSheet = wb.Sheets['Assets'];
       if (assetsSheet) {
         const rows = XLSXLib.utils.sheet_to_json(assetsSheet, { header: 1 });
@@ -1654,7 +1654,7 @@ async function _handleXlsxImport(event) {
         if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
       }
 
-      // â”€â”€ Sheet "Kabel": Kabeltyp, Querschnitt, Parallel, Sicherung â”€â”€
+      // ── Sheet "Kabel": Kabeltyp, Querschnitt, Parallel, Sicherung ──
       const kabelSheet = wb.Sheets['Kabel'];
       if (kabelSheet) {
         const rows = XLSXLib.utils.sheet_to_json(kabelSheet, { header: 1 });
@@ -1676,8 +1676,8 @@ async function _handleXlsxImport(event) {
         }
       }
 
-      // â”€â”€ Sheet "MaÃŸnahmen": Status, Kosten Ã¼berschreiben â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      const massnSheet = wb.Sheets['MaÃŸnahmen'];
+      // ── Sheet "Maßnahmen": Status, Kosten überschreiben ────────────
+      const massnSheet = wb.Sheets['Maßnahmen'];
       if (massnSheet) {
         const rows = XLSXLib.utils.sheet_to_json(massnSheet, { header: 1 });
         for (let r = 1; r < rows.length; r++) {
@@ -1698,7 +1698,7 @@ async function _handleXlsxImport(event) {
         }
       }
 
-      // â”€â”€ Typ-spezifische Reiter: Props Ã¼berschreiben â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Typ-spezifische Reiter: Props überschreiben ─────────────────
       const updAssetIds = new Set();
       for (const [type, schemaDefs] of Object.entries(ASSET_PROPS_SCHEMA)) {
         if (!schemaDefs.length) continue;
@@ -1707,7 +1707,7 @@ async function _handleXlsxImport(event) {
         if (!typeSheet) continue;
         const rows = XLSXLib.utils.sheet_to_json(typeSheet, { header: 1 });
         if (rows.length < 2) continue;
-        // Spalten 6+ â†’ prop keys aus Schema (per Label-Abgleich mit Header)
+        // Spalten 6+ → prop keys aus Schema (per Label-Abgleich mit Header)
         const header = rows[0] || [];
         const labelToKey = Object.fromEntries(schemaDefs.map(d => [d.label, d.key]));
         const colToProp = {};
@@ -1751,13 +1751,13 @@ async function _handleXlsxImport(event) {
       if (updAssetIds.size && typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
 
       const lines = [];
-      if (updGeb) lines.push(`${updGeb} GebÃ¤ude`);
+      if (updGeb) lines.push(`${updGeb} Gebäude`);
       if (updAssets) lines.push(`${updAssets} Assets`);
       if (updKabel) lines.push(`${updKabel} Kabel`);
-      if (updMassn) lines.push(`${updMassn} MaÃŸnahmen`);
+      if (updMassn) lines.push(`${updMassn} Maßnahmen`);
       const msg = lines.length
         ? 'Import abgeschlossen: ' + lines.join(', ') + ' aktualisiert.'
-        : 'Import abgeschlossen â€“ keine Ã„nderungen erkannt.';
+        : 'Import abgeschlossen – keine Änderungen erkannt.';
       alert(msg);
 
       if (typeof window.glBerechnen === 'function') window.glBerechnen();
@@ -1873,7 +1873,7 @@ export async function importVerbindungenXLSX(event) {
   event.target.value = '';
 }
 
-// â”€â”€ Hook into existing recalc to update left panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Hook into existing recalc to update left panel ───────────────
 export const _origRecalcNetz = typeof recalcNetz !== 'undefined' ? recalcNetz : null;
 // We'll hook updateLpNetzSummary after recalcNetz calls via a periodic check instead
 appLifecycle.interval(() => {
