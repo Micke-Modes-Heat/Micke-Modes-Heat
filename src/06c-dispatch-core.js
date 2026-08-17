@@ -128,7 +128,7 @@ export function _quelleTemp(key, tAussen, t) {
 }
 
 // ── Render-Hilfsfunktion für Deckung-Wrap ────────────────────────────────
-export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hinweis, vbh, allDeckungen, heizlastInfo) {
+export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hinweis, vbh, allDeckungen, heizlastInfo, systemSummary) {
   const w = document.getElementById(cfg.wrapId);
   if (!w) return;
   w.style.display = 'block';
@@ -207,6 +207,23 @@ export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hi
     heizlastHtml = _stackedBar(allDeckungen, 'hlPct', myHlPct, 'Anteil Netz-Spitzenlast', leistungLabel);
   }
 
+  let requirementHtml='';
+  if(heizlastInfo&&systemSummary){
+    const {heizlastKw,nennKw,spitzenlastKw}=heizlastInfo;
+    const designFactor=nennKw>0?heizlastKw/nennKw:1;
+    const requiredNennKw=designFactor>0?spitzenlastKw/designFactor:spitzenlastKw;
+    const fmt=value=>Math.round(Math.max(0,value)).toLocaleString('de-DE');
+    requirementHtml=`
+      <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:7px;font-size:9px;line-height:1.45;">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:2px 8px;">
+          <span style="color:var(--muted);">Gesamtsystem benötigt</span><strong>${fmt(systemSummary.totalMwh)} MWh/a · ${fmt(spitzenlastKw)} kW</strong>
+          <span style="color:var(--muted);">Dieser Erzeuger allein für 100 % Leistung</span><strong style="color:${cfg.color}">${fmt(requiredNennKw)} kW Nennleistung</strong>
+          <span style="color:var(--muted);">Aktuell durch diesen Erzeuger</span><strong>${deckungPct.toFixed(1)} % Energie · ${(spitzenlastKw>0?heizlastKw/spitzenlastKw*100:0).toFixed(1)} % Leistung</strong>
+          <span style="color:var(--muted);">Rest nach allen gewählten Erzeugern</span><strong style="color:${systemSummary.restMwh>0.1||systemSummary.restPeakKw>0.1?'#ffcc80':'#81c784'}">${fmt(systemSummary.restMwh)} MWh/a · ${fmt(systemSummary.restPeakKw)} kW</strong>
+        </div>
+      </div>`;
+  }
+
   w.innerHTML = `${legendHtml}
     <div style="display:grid;grid-template-columns:${heizlastHtml ? '1fr 1fr' : '1fr'};gap:8px;margin-bottom:6px;">
       ${energieHtml}${heizlastHtml}
@@ -214,7 +231,8 @@ export function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hi
     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);">
       <span>Prio ${prio}${deckungPct > 100 ? ' · ⚠ > Last' : ''} · ${hinweis}</span>
     </div>
-    ${vbh != null ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;">${Math.round(vbh).toLocaleString('de-DE')} h/a Vollbenutzung</div>` : ''}`;
+    ${vbh != null ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;">${Math.round(vbh).toLocaleString('de-DE')} h/a Vollbenutzung</div>` : ''}
+    ${requirementHtml}`;
 }
 
 // ── Deckungsanteil mit Merit-Order ────────────────────────────────────────
@@ -701,6 +719,11 @@ export function _deckungen8760(ss) {
     prioCnt++;
     allDeckungen.push({ key: '_autoGk', label: 'Spitzenlast-Kessel (auto)', color: '#78909c', pct: gesamtKwh > 0 ? autoGkKwh / gesamtKwh * 100 : 0, mwh: autoGkKwh / 1000, hlPct: gesamtKwh > 0 ? autoGkPeakKw / _spitzenlastKw * 100 : 0, prio: prioCnt });
   }
+  const systemSummary={
+    totalMwh:gesamtKwh/1000,
+    restMwh:autoGkKwh/1000,
+    restPeakKw:autoGkPeakKw,
+  };
 
   activeKeys.forEach((key, i) => {
     const cfg = ERZEUGER_CFG[key];
@@ -723,7 +746,7 @@ export function _deckungen8760(ss) {
     } else {
       _updateErzeugerWaerme(key, thKwh[key] / 1000);
     }
-    _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, i + 1, 'stundenscharf · ' + leistungen[key].toFixed(0) + ' kW', vbh, allDeckungen, heizlastInfos[key]);
+    _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, i + 1, 'stundenscharf · ' + leistungen[key].toFixed(0) + ' kW', vbh, allDeckungen, heizlastInfos[key],systemSummary);
     processed.add(key);
   });
 
