@@ -14828,7 +14828,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-08-17';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'fb7c800';
+  var c = '9c1172d';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -86181,7 +86181,7 @@ window._isSingleFileBuild = true;
   }
 
   // ── Render-Hilfsfunktion für Deckung-Wrap ────────────────────────────────
-  function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hinweis, vbh, allDeckungen, heizlastInfo, systemSummary) {
+  function _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, prio, hinweis, vbh, allDeckungen, heizlastInfo, systemSummary, requirements) {
     const w = document.getElementById(cfg.wrapId);
     if (!w) return;
     w.style.display = 'block';
@@ -86243,6 +86243,9 @@ window._isSingleFileBuild = true;
         return `<span style="font-weight:${fw};color:${col};white-space:nowrap;"><span style="display:inline-block;width:6px;height:6px;border-radius:1px;background:${d.color};margin-right:2px;${isCurrent ? 'box-shadow:0 0 3px '+d.color : ''}"></span>${d.label}</span>`;
       }).join(' ');
       legendHtml = `<div style="display:flex;flex-wrap:wrap;gap:4px 8px;font-size:8px;margin-bottom:6px;">${legendItems}</div>`;
+      const covered=allDeckungen.reduce((sum,item)=>sum+(item.pct||0),0);
+      if (covered < 99.95) legendHtml = legendHtml.replace('</div>',
+        `<span title="Vom automatischen Reservekessel gedeckt; nicht als installierter Erzeuger gewertet" style="color:var(--muted);white-space:nowrap;"><span style="display:inline-block;width:6px;height:6px;border-radius:1px;background:rgba(255,255,255,.12);margin-right:2px;"></span>Ungedeckte Restlast</span></div>`);
     }
 
     // 1) Energetische Abdeckung — gestapelter Balken
@@ -86260,19 +86263,23 @@ window._isSingleFileBuild = true;
       heizlastHtml = _stackedBar(allDeckungen, 'hlPct', myHlPct, 'Anteil Netz-Spitzenlast', leistungLabel);
     }
 
-    let requirementHtml='';
-    if(heizlastInfo&&systemSummary){
-      const {heizlastKw,nennKw,spitzenlastKw}=heizlastInfo;
-      const designFactor=nennKw>0?heizlastKw/nennKw:1;
-      const requiredNennKw=designFactor>0?spitzenlastKw/designFactor:spitzenlastKw;
-      const fmt=value=>Math.round(Math.max(0,value)).toLocaleString('de-DE');
+    let requirementHtml = '';
+    if (heizlastInfo && systemSummary) {
+      const { heizlastKw, nennKw, spitzenlastKw } = heizlastInfo;
+      const fmt = value => Math.round(Math.max(0, value)).toLocaleString('de-DE');
+      const energyTarget = requirements?.energyTargetKw;
+      const powerTarget = requirements?.powerTargetKw;
+      const targetRow = (label, target) => Number.isFinite(target)
+        ? `<span style="color:var(--muted);">${label}</span><strong style="color:${cfg.color}">${fmt(target)} kW gesamt${target > nennKw + .5 ? ` · noch +${fmt(target - nennKw)} kW` : ' · ausreichend'}</strong>`
+        : `<span style="color:var(--muted);">${label}</span><strong style="color:#ef9a9a">mit Betriebsgrenze nicht vollständig erreichbar</strong>`;
       requirementHtml=`
       <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:7px;font-size:9px;line-height:1.45;">
         <div style="display:grid;grid-template-columns:1fr auto;gap:2px 8px;">
           <span style="color:var(--muted);">Gesamtsystem benötigt</span><strong>${fmt(systemSummary.totalMwh)} MWh/a · ${fmt(spitzenlastKw)} kW</strong>
-          <span style="color:var(--muted);">Dieser Erzeuger allein für 100 % Leistung</span><strong style="color:${cfg.color}">${fmt(requiredNennKw)} kW Nennleistung</strong>
           <span style="color:var(--muted);">Aktuell durch diesen Erzeuger</span><strong>${deckungPct.toFixed(1)} % Energie · ${(spitzenlastKw>0?heizlastKw/spitzenlastKw*100:0).toFixed(1)} % Leistung</strong>
-          <span style="color:var(--muted);">Rest nach allen gewählten Erzeugern</span><strong style="color:${systemSummary.restMwh>0.1||systemSummary.restPeakKw>0.1?'#ffcc80':'#81c784'}">${fmt(systemSummary.restMwh)} MWh/a · ${fmt(systemSummary.restPeakKw)} kW</strong>
+          ${targetRow('Für 100 % Jahresenergie', energyTarget)}
+          ${targetRow('Für 100 % Heizleistung', powerTarget)}
+          <span style="color:var(--muted);">Derzeit ungedeckt nach allen gewählten</span><strong style="color:${systemSummary.restMwh>0.1||systemSummary.restPeakKw>0.1?'#ffcc80':'#81c784'}">${fmt(systemSummary.restMwh)} MWh/a · ${fmt(systemSummary.restPeakKw)} kW</strong>
         </div>
       </div>`;
     }
@@ -86720,12 +86727,14 @@ window._isSingleFileBuild = true;
     } : null;
 
     // ── Heizlastfall-Leistung berechnen ──
-    const _normAt = parseFloat(document.getElementById('gl-norm-at')?.value) || -12;
-    const _vl5    = parseFloat(document.getElementById('gl-vl5')?.value) || 90;   // = HTML-Default
-    const _vl15   = parseFloat(document.getElementById('gl-vl15')?.value) || 60;  // = HTML-Default
-    const _vlDesign = Math.max(_vl5, _vl15);
     let _spitzenlastKw = 0;
-    for (let i = 0; i < lastgangKw.length; i++) { if (lastgangKw[i] > _spitzenlastKw) _spitzenlastKw = lastgangKw[i]; }
+    let _spitzenlastStunde = 0;
+    for (let i = 0; i < lastgangKw.length; i++) {
+      if (lastgangKw[i] > _spitzenlastKw) {
+        _spitzenlastKw = lastgangKw[i];
+        _spitzenlastStunde = i;
+      }
+    }
     // copRef nachberechnen (für Heizlastfall-Dimensionierung)
     const copRef = {};
     activeKeys.filter(k => ERZEUGER_CFG[k].typ === 'wp').forEach(k => {
@@ -86737,12 +86746,14 @@ window._isSingleFileBuild = true;
       const isWp = ERZEUGER_CFG[key].typ === 'wp';
       let heizlastKw = nennKw;
       if (isWp && copRef[key] > 0) {
-        const tQ = _quelleTemp(key, _normAt, 0);
-        const tVLK = _vlDesign + 273.15;
+        const tQ = _quelleTemp(key, tempH[_spitzenlastStunde], _spitzenlastStunde);
+        const tVLK = vlH[_spitzenlastStunde] + 273.15;
         const tQK  = tQ + 273.15;
         const hub  = Math.max(tVLK - tQK, 0.1);
         const copDesign = (tVLK / hub) * _guetegrad(key);
-        heizlastKw = nennKw * (copDesign / copRef[key]);
+        const nichtVerfuegbar = (key === 'fg' && tQ < 2)
+          || (key === 'lwwp' && lwwpMinCop > 0 && copDesign < lwwpMinCop);
+        heizlastKw = nichtVerfuegbar ? 0 : nennKw * (copDesign / copRef[key]);
       }
       heizlastInfos[key] = { nennKw, heizlastKw, spitzenlastKw: _spitzenlastKw, isWp };
     });
@@ -86768,15 +86779,53 @@ window._isSingleFileBuild = true;
       prioCnt++;
       allDeckungen.push({ key: '_thermSpeicher', label: 'Wärmespeicher', color: '#26a69a', pct: gesamtKwh > 0 ? thKwh['_thermSpeicher'] / gesamtKwh * 100 : 0, mwh: thKwh['_thermSpeicher'] / 1000, hlPct: 0, prio: prioCnt });
     }
-    if (autoGkKwh > 0.1) {
-      prioCnt++;
-      allDeckungen.push({ key: '_autoGk', label: 'Spitzenlast-Kessel (auto)', color: '#78909c', pct: gesamtKwh > 0 ? autoGkKwh / gesamtKwh * 100 : 0, mwh: autoGkKwh / 1000, hlPct: gesamtKwh > 0 ? autoGkPeakKw / _spitzenlastKw * 100 : 0, prio: prioCnt });
-    }
     const systemSummary={
       totalMwh:gesamtKwh/1000,
       restMwh:autoGkKwh/1000,
       restPeakKw:autoGkPeakKw,
     };
+
+    // Zielgrößen je Erzeuger unter Berücksichtigung aller ANDEREN tatsächlich
+    // gewählten Erzeuger. Der automatische Restkessel ist kein Kandidat.
+    const requirementsByKey = {};
+    activeKeys.forEach(key => {
+      const currentIndex = erzList.findIndex(erzeuger => erzeuger.key === key);
+      const current = erzList[currentIndex];
+      const simulationCache = new Map();
+      const simulateCandidate = capacity => {
+        const cacheKey = capacity.toFixed(6);
+        if (simulationCache.has(cacheKey)) return simulationCache.get(cacheKey);
+        const trial = erzList.filter(erzeuger => erzeuger.key !== key).map(erzeuger => ({ ...erzeuger }));
+        trial.splice(currentIndex, 0, { ...current, leistKw: capacity });
+        const result = _dispatchCore({
+          lastgangKw, tempH, vlH, erzList: trial, speicherParams: thSp, stProfile, stExcessH: null,
+          bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false,
+        });
+        simulationCache.set(cacheKey, result);
+        return result;
+      };
+      const findRequiredCapacity = (resultKey, tolerance) => {
+        let upper = Math.max(1, current.leistKw || 0);
+        const hardLimit = Math.max(upper, _spitzenlastKw * 20);
+        while (simulateCandidate(upper)[resultKey] > tolerance && upper < hardLimit) {
+          upper = Math.min(hardLimit, upper * 2);
+        }
+        if (simulateCandidate(upper)[resultKey] > tolerance) return null;
+        let lower = 0;
+        for (let iteration = 0; iteration < 14; iteration++) {
+          const middle = (lower + upper) / 2;
+          if (simulateCandidate(middle)[resultKey] <= tolerance) upper = middle;
+          else lower = middle;
+        }
+        return upper;
+      };
+      // Beide Ziele werden gegen den echten Stundenverlauf gerechnet. Dadurch
+      // zählen nur die übrigen gewählten Erzeuger; der Auto-Gaskessel bleibt Rest.
+      // Bei WPs wirken Leistungsabfall, Quelltemperatur und Mindest-COP mit.
+      const energyTargetKw = findRequiredCapacity('autoGkKwh', Math.max(1, gesamtKwh * .0001));
+      const powerTargetKw = findRequiredCapacity('autoGkPeakKw', Math.max(.1, _spitzenlastKw * .0001));
+      requirementsByKey[key] = { energyTargetKw, powerTargetKw };
+    });
 
     activeKeys.forEach((key, i) => {
       const cfg = ERZEUGER_CFG[key];
@@ -86799,7 +86848,7 @@ window._isSingleFileBuild = true;
       } else {
         _updateErzeugerWaerme(key, thKwh[key] / 1000);
       }
-      _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, i + 1, 'stundenscharf · ' + leistungen[key].toFixed(0) + ' kW', vbh, allDeckungen, heizlastInfos[key],systemSummary);
+      _renderDeckungWrap(key, cfg, deckungPct, wpMwh, jazStr, i + 1, 'stundenscharf · ' + leistungen[key].toFixed(0) + ' kW', vbh, allDeckungen, heizlastInfos[key],systemSummary,requirementsByKey[key]);
       processed.add(key);
     });
 
