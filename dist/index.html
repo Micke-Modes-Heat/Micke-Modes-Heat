@@ -14436,6 +14436,20 @@ if (typeof L !== 'undefined') {
       <div id="bat-aging-hint" style="font-size:9px;color:#ce93d8;margin-top:6px;">Alterung wird nach der Strombilanz aus Kalender- und Vollzyklen geschätzt.</div>
     </div>
 
+    <div id="bat-recommendation" style="background:rgba(179,157,219,.08);border:1px solid rgba(179,157,219,.3);border-radius:6px;padding:9px 10px;margin-bottom:9px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;">
+        <strong style="font-size:10px;color:#d1c4e9;flex:1;">Speicher-Schnellcheck für vorhandene PV</strong>
+        <span id="bat-rec-status" style="font-size:8px;color:var(--muted);">PV und Lastgang erforderlich</span>
+      </div>
+      <label style="display:block;font-size:9px;color:var(--muted);margin-bottom:6px;">
+        Nutzbare Kapazität: <strong id="bat-rec-cap-label" style="color:var(--text);">0 kWh</strong>
+        <input type="range" id="bat-rec-cap" min="0" max="100" value="0" step="5" style="width:100%;margin-top:5px;accent-color:#b39ddb;" data-input="updateBatteryRecommendation(this.value)"/>
+      </label>
+      <div id="bat-rec-kpis" style="font-size:9px;color:var(--muted);line-height:1.5;">Nach dem Anlegen einer PV-Fläche wird hier eine stundenscharfe Empfehlung berechnet.</div>
+      <button id="bat-rec-apply" class="btn-secondary" style="width:100%;margin-top:7px;font-size:9px;" data-click="applyBatteryRecommendation()" disabled>Kapazität und Leistung übernehmen</button>
+      <div style="font-size:8px;color:var(--muted);margin-top:5px;line-height:1.35;">Screening mit vorhandenem PV- und Stromlastgang, 90 % Round-trip-Wirkungsgrad und 0,5 C. Keine Angebots- oder Finanzierungszusage.</div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:7px;">
       <div style="display:flex;flex-direction:column;gap:2px;">
         <span style="font-size:9px;color:var(--muted);">Bat-Invest</span>
@@ -14812,9 +14826,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-08-14';
+  var d = '2026-08-17';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'bf7ac0f';
+  var c = '7c7b137';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -72508,7 +72522,7 @@ window._isSingleFileBuild = true;
 
   /**
    * Ein kanonischer Stunden-Schritt für PV/BHKW, Batterie und Netz.
-   * @param {{demand:number,pvGen:number,bhkwGen:number,socKwh:number,capacityKwh:number,powerKw:number,etaCharge?:number,etaDischarge?:number}} input
+   * @param {{demand:number,pvGen:number,bhkwGen:number,socKwh:number,socPvKwh?:number,socBhkwKwh?:number,capacityKwh:number,powerKw:number,etaCharge?:number,etaDischarge?:number}} input
    */
   function pvBatteryStep(input) {
     const demand = Math.max(0, Number(input.demand) || 0);
@@ -72519,6 +72533,19 @@ window._isSingleFileBuild = true;
     const etaCharge = Math.max(0.0001, Math.min(1, Number(input.etaCharge) || 1));
     const etaDischarge = Math.max(0.0001, Math.min(1, Number(input.etaDischarge) || 0.9));
     let soc = Math.max(0, Math.min(capacity, Number(input.socKwh) || 0));
+    let socPv = Math.max(0,Number(input.socPvKwh) || 0);
+    let socBhkw = Math.max(0,Number(input.socBhkwKwh) || 0);
+    const attributedSoc = socPv + socBhkw;
+    if (attributedSoc > soc && attributedSoc > 0) {
+      socPv *= soc / attributedSoc;
+      socBhkw *= soc / attributedSoc;
+    } else if (attributedSoc < soc) {
+      // Rückwärtskompatibilität für Aufrufer ohne Quellenzustand: unbekannte
+      // gespeicherte Energie proportional der aktuellen Erzeugung zuordnen.
+      const initialPvFraction = pvGen + bhkwGen > 0 ? pvGen / (pvGen + bhkwGen) : 1;
+      socPv += (soc - attributedSoc) * initialPvFraction;
+      socBhkw += (soc - attributedSoc) * (1 - initialPvFraction);
+    }
     const gen = pvGen + bhkwGen;
     const direct = Math.min(gen, demand);
     const pvFraction = gen > 0 ? pvGen / gen : 0;
@@ -72526,21 +72553,36 @@ window._isSingleFileBuild = true;
     let residualGeneration = gen - direct;
     let losses = 0;
     let chargedKwh = 0, dischargedKwh = 0;
+    let pvDischargedKwh = 0, bhkwDischargedKwh = 0;
     if (capacity > 0 && power > 0 && residualGeneration > 0) {
       const chargeInput = Math.min(residualGeneration, power, (capacity - soc) / etaCharge);
       soc += chargeInput * etaCharge;
+      socPv += chargeInput * etaCharge * pvFraction;
+      socBhkw += chargeInput * etaCharge * (1 - pvFraction);
       chargedKwh = chargeInput;
       residualGeneration -= chargeInput;
       losses += chargeInput * (1 - etaCharge);
     }
     if (capacity > 0 && power > 0 && residualDemand > 0) {
+      const sourceSoc = socPv + socBhkw;
+      const storedPvFraction = sourceSoc > 0 ? socPv / sourceSoc : 1;
       const delivered = Math.min(residualDemand, power, soc * etaDischarge);
-      soc -= delivered / etaDischarge;
+      const withdrawn = delivered / etaDischarge;
+      soc -= withdrawn;
+      socPv = Math.max(0,socPv - withdrawn * storedPvFraction);
+      socBhkw = Math.max(0,socBhkw - withdrawn * (1 - storedPvFraction));
       dischargedKwh = delivered;
+      pvDischargedKwh = delivered * storedPvFraction;
+      bhkwDischargedKwh = delivered * (1 - storedPvFraction);
       residualDemand -= delivered;
       losses += delivered / etaDischarge - delivered;
     }
-    return {demand, pvGen, bhkwGen, gen, direct, pvFraction, residualDemand, residualGeneration, socKwh:soc, lossesKwh:losses, chargedKwh, dischargedKwh};
+    return {
+      demand,pvGen,bhkwGen,gen,direct,pvFraction,residualDemand,residualGeneration,
+      socKwh:soc,socPvKwh:socPv,socBhkwKwh:socBhkw,lossesKwh:losses,chargedKwh,dischargedKwh,
+      pvDirectKwh:direct * pvFraction,bhkwDirectKwh:direct * (1 - pvFraction),
+      pvDischargedKwh,bhkwDischargedKwh,
+    };
   }
 
   var pvBatteryCore = /*#__PURE__*/Object.freeze({
@@ -81516,6 +81558,8 @@ window._isSingleFileBuild = true;
     if (p.classList.contains('visible')) { hidePanels(); return; }
     hidePanels();
     p.classList.add('visible');
+    calcStromPanel();
+    requestAnimationFrame(()=>window.updateBatteryRecommendation?.());
   }
 
   function getBatParams() {
@@ -82759,7 +82803,7 @@ window._isSingleFileBuild = true;
       for (let t = 0; t < 8760; t++) {
         const gen = pvProfile[t] * annKwh;
         const dem = demand[t];
-        const step = pvBatteryStep({demand:dem,pvGen:gen,bhkwGen:0,socKwh:soc,capacityKwh:batKwh,powerKw:batKwh,etaCharge:1,etaDischarge:ETA_BAT});
+        const step = pvBatteryStep({demand:dem,pvGen:gen,bhkwGen:0,socKwh:soc,capacityKwh:batKwh,powerKw:batKwh/2,etaCharge:1,etaDischarge:ETA_BAT});
         const dsc = step.direct;
         const rDem = step.residualDemand;
         const rGen = step.residualGeneration;
@@ -82783,7 +82827,7 @@ window._isSingleFileBuild = true;
       const rendite    = invest > 0 ? (netBenefit / invest * 100) : 0; // % p.a.
       return { netBenefit, saving, annualCost, invest, payback, autarkie, rendite,
                eigenverbrauchMwh: sv/1000, einspeisungMwh: ins/1000, netzbezugMwh: bez/1000,
-               kwp, batKwh, batteryAging:aging };
+               kwp, batKwh, batPowerKw:batKwh/2, batteryAging:aging };
     }
 
     // Bewertungsfunktion je nach gewähltem Kriterium
@@ -82874,7 +82918,8 @@ window._isSingleFileBuild = true;
       const amBold = bewertung === 'amortisation';
       const rows = [
         ['PV-Anlage',      fmt(r.kwp) + ' kWp'],
-        addBat ? ['Batteriespeicher', fmt(r.batKwh) + ' kWh'] : null,
+        addBat ? ['Batteriespeicher', fmt(r.batKwh) + ' kWh / ' + fmt(r.batPowerKw) + ' kW'] : null,
+        addBat ? ['Vollzyklen', fmt(r.batteryAging?.cyclesPerYear || 0) + ' /a'] : null,
         ['Investition',    fmt(r.invest) + ' €'],
         ['Jahreskosten',   fmt(r.annualCost) + ' €/a'],
         ['Ersparnis/Erlös',fmt(r.saving) + ' €/a', '#a5d6a7'],
@@ -83606,7 +83651,7 @@ window._isSingleFileBuild = true;
     const gesamtMwh = wpMwh + skMwh + quartierMwh + kaelteMwh;
     const batSocArr = bat ? new Float32Array(8760) : null;
     if (pvH || bat || bhkwMwh > 0) {
-      let soc = 0; // Batterieladezustand [kWh]
+      let soc = 0, socPv = 0, socBhkw = 0; // Ladezustand gesamt und nach Quelle [kWh]
       for (let t = 0; t < 8760; t++) {
         // Nachfrage: WP + Stromkessel + Quartier
         let demand = (window._wpElHourly ? window._wpElHourly[t] : 0);
@@ -83617,7 +83662,7 @@ window._isSingleFileBuild = true;
         // Lokale Erzeugung: PV + BHKW (getrennt)
         const pvGen   = pvH ? pvH[t] : 0;
         const bhkwGen = bhkwElHourly ? bhkwElHourly[t] : (bhkwMwh > 0 ? bhkwMwh * 1000 / 8760 : 0);
-        const step = pvBatteryStep({demand,pvGen,bhkwGen,socKwh:soc,
+        const step = pvBatteryStep({demand,pvGen,bhkwGen,socKwh:soc,socPvKwh:socPv,socBhkwKwh:socBhkw,
           capacityKwh:bat?.kapKwh || 0,powerKw:bat?.leistKw || 0,etaCharge:1,etaDischarge:bat?.eta || .9});
         step.gen;
         const dsc = step.direct;
@@ -83625,6 +83670,7 @@ window._isSingleFileBuild = true;
         let rDem = step.residualDemand;
         let rGen = step.residualGeneration;
         soc = step.socKwh;
+        socPv = step.socPvKwh; socBhkw = step.socBhkwKwh;
         batLadeVerlustMwh += step.lossesKwh / 1000;
         batDischargeKwh += step.dischargedKwh;
 
@@ -83651,6 +83697,8 @@ window._isSingleFileBuild = true;
                 restLade -= thLade;
                 rGen -= elActual;
                 eigenverbrauchMwh += elActual / 1000;
+                pvEigenMwh += elActual / 1000 * pvFrac;
+                bhkwEigenMwh += elActual / 1000 * (1 - pvFrac);
                 wpUsed = true;
               }
             }
@@ -83666,6 +83714,8 @@ window._isSingleFileBuild = true;
                   tss.geladenGes += skLoad;
                   rGen -= skLoad;
                   eigenverbrauchMwh += skLoad / 1000;
+                  pvEigenMwh += skLoad / 1000 * pvFrac;
+                  bhkwEigenMwh += skLoad / 1000 * (1 - pvFrac);
                 }
               }
             }
@@ -83677,8 +83727,12 @@ window._isSingleFileBuild = true;
         einspeisungMwh    += rGen / 1000;
         netzbezugMwh      += rDem / 1000;
         // Aufschlüsselung PV vs BHKW (proportional)
-        pvEigenMwh   += evThisH * pvFrac;
-        bhkwEigenMwh += evThisH * (1 - pvFrac);
+        const pvLocalKwh = step.pvDirectKwh + step.pvDischargedKwh;
+        const bhkwLocalKwh = step.bhkwDirectKwh + step.bhkwDischargedKwh;
+        const localSourceSum = pvLocalKwh + bhkwLocalKwh;
+        const pvLocalFrac = localSourceSum > 0 ? pvLocalKwh / localSourceSum : 0;
+        pvEigenMwh   += pvLocalKwh / 1000;
+        bhkwEigenMwh += bhkwLocalKwh / 1000;
         pvEinspMwh   += (rGen / 1000) * pvFrac;
         bhkwEinspMwh += (rGen / 1000) * (1 - pvFrac);
         // Aufschlüsselung: Wieviel Eigen-/Netzstrom geht an WP, SK, Quartier
@@ -83688,17 +83742,17 @@ window._isSingleFileBuild = true;
         const kD   = kaelteH ? (kaelteH[t] || 0) : 0;
         const evKw = demand - rDem; // gedeckt durch Eigen (PV+BHKW+Bat)
         const evFrac = demand > 0 ? evKw / demand : 0;
-        pvToWp       += wpD * evFrac * pvFrac / 1000;
-        pvToSk       += skD * evFrac * pvFrac / 1000;
-        pvToQuartier += qD  * evFrac * pvFrac / 1000;
-        bhkwToWp       += wpD * evFrac * (1 - pvFrac) / 1000;
-        bhkwToSk       += skD * evFrac * (1 - pvFrac) / 1000;
-        bhkwToQuartier += qD  * evFrac * (1 - pvFrac) / 1000;
+        pvToWp       += wpD * evFrac * pvLocalFrac / 1000;
+        pvToSk       += skD * evFrac * pvLocalFrac / 1000;
+        pvToQuartier += qD  * evFrac * pvLocalFrac / 1000;
+        bhkwToWp       += wpD * evFrac * (1 - pvLocalFrac) / 1000;
+        bhkwToSk       += skD * evFrac * (1 - pvLocalFrac) / 1000;
+        bhkwToQuartier += qD  * evFrac * (1 - pvLocalFrac) / 1000;
         netzToWp       += wpD * (1 - evFrac) / 1000;
         netzToSk       += skD * (1 - evFrac) / 1000;
         netzToQuartier += qD  * (1 - evFrac) / 1000;
-        pvToKaelte      += kD * evFrac * pvFrac / 1000;
-        bhkwToKaelte    += kD * evFrac * (1 - pvFrac) / 1000;
+        pvToKaelte      += kD * evFrac * pvLocalFrac / 1000;
+        bhkwToKaelte    += kD * evFrac * (1 - pvLocalFrac) / 1000;
         netzToKaelte    += kD * (1 - evFrac) / 1000;
         if (batSocArr) batSocArr[t] = soc;
       }
@@ -83744,8 +83798,6 @@ window._isSingleFileBuild = true;
     const bhkwEinspeisungserloes = bhkwEinspMwh * 1000 * (bhkwPreisE + bhkwKwkE);  // €/a
     // BHKW-Eigenverbrauch: vermiedene Bezugskosten + KWK-Zuschlag
     const bhkwEigenverbrauchErloes = bhkwEigenMwh * 1000 * (preisB + bhkwKwkEig);  // €/a
-    // Gesamt-Erlös für Kompatibilität
-    const einspeisungserloes = pvEinspeisungserloes + bhkwEinspeisungserloes;  // €/a
     // Globale Referenz für BHKW-Wirtschaftlichkeit
     window._bhkwStromErloes = bhkwEinspeisungserloes + bhkwEigenverbrauchErloes;
     window._pvStromErloes = pvEinspeisungserloes + pvEigenverbrauchErloes;
@@ -83793,7 +83845,7 @@ window._isSingleFileBuild = true;
       leistungskosten = avgKw * 3 * preisLP * 12;
     }
     const bhkwGesamtErloes = bhkwEinspeisungserloes + bhkwEigenverbrauchErloes;
-    const stromkostenJahr  = bezugskosten + leistungskosten - einspeisungserloes - bhkwGesamtErloes;  // €/a Netto
+    const stromkostenJahr  = bezugskosten + leistungskosten - pvEinspeisungserloes - bhkwGesamtErloes;  // €/a Netto
 
     // Strombedarf proportional zur Fläche auf Gebäude verteilen
     const gesamtFlaeche = gebaeude.reduce((s, g) => s + (parseFloat(g.flaeche) || 0), 0);
@@ -83910,15 +83962,137 @@ window._isSingleFileBuild = true;
       wpMwh, skMwh, quartierMwh, kaelteMwh, bhkwStromMwh: bhkwMwh,
       pvEigenMwh, pvEinspMwh, bhkwEigenMwh, bhkwEinspMwh
     };
+    const totalKwpForBattery = (parseFloat(document.getElementById('pv-kwp')?.value) || 0) + gebaeudeKwp + ffKwp;
+    const batteryDemandH = new Float32Array(8760);
+    const quartierH = window.elQuartierH || window._elQuartierFromGeb;
+    for (let t=0;t<8760;t++) {
+      batteryDemandH[t] = (window._wpElHourly?.[t] || 0)
+        + (window._skElHourly?.[t] ?? (skMwh * 1000 / 8760))
+        + (quartierH?.[t] ?? (quartierMwh * 1000 / 8760))
+        + (kaelteH?.[t] || 0);
+    }
+    window._batteryRecommendationContext = {
+      pvH:pvH ? new Float32Array(pvH) : null,
+      demandH:batteryDemandH,
+      pvMwh,totalDemandMwh:gesamtMwh,totalKwp:totalKwpForBattery,
+    };
+    if (document.getElementById('batterie-panel')?.classList.contains('visible')) {
+      updateBatteryRecommendation();
+    }
     if (_stromCurrentTab === 'sankey')   drawSankeyStrom();
     if (_stromCurrentTab === 'lastgang') _stromRenderLastgang();
+  }
+
+  function _batteryScreening(capacityKwh,powerKw,context) {
+    let soc=0,gridKwh=0,exportKwh=0,pvOwnKwh=0,dischargeKwh=0,lossKwh=0;
+    for(let t=0;t<8760;t++){
+      const step=pvBatteryStep({
+        demand:context.demandH[t]||0,pvGen:context.pvH?.[t]||0,bhkwGen:0,
+        socKwh:soc,socPvKwh:soc,socBhkwKwh:0,capacityKwh,powerKw,
+        etaCharge:1,etaDischarge:.9,
+      });
+      soc=step.socKwh;
+      gridKwh+=step.residualDemand;
+      exportKwh+=step.residualGeneration;
+      pvOwnKwh+=step.pvDirectKwh+step.pvDischargedKwh;
+      dischargeKwh+=step.dischargedKwh;
+      lossKwh+=step.lossesKwh;
+    }
+    return {gridKwh,exportKwh,pvOwnKwh,dischargeKwh,lossKwh,socEndKwh:soc};
+  }
+
+  function updateBatteryRecommendation(requestedCapacity) {
+    const context=window._batteryRecommendationContext;
+    const status=document.getElementById('bat-rec-status');
+    const slider=document.getElementById('bat-rec-cap');
+    const capLabel=document.getElementById('bat-rec-cap-label');
+    const kpis=document.getElementById('bat-rec-kpis');
+    const apply=document.getElementById('bat-rec-apply');
+    if(!status||!slider||!capLabel||!kpis||!apply) return null;
+    if(!context?.pvH||context.pvMwh<=0||context.totalDemandMwh<=0){
+      status.textContent='PV und Lastgang erforderlich';
+      kpis.textContent='Nach dem Anlegen einer PV-Fläche wird hier eine stundenscharfe Empfehlung berechnet.';
+      apply.disabled=true;
+      return null;
+    }
+    const dailyDemandKwh=context.totalDemandMwh*1000/365;
+    const maxCapacity=Math.max(20,Math.min(10000,Math.max(50,Math.min(context.totalKwp*2,dailyDemandKwh*1.5))));
+    const stepSize=Math.max(5,Math.round(maxCapacity/40/5)*5);
+    slider.max=String(Math.ceil(maxCapacity/stepSize)*stepSize);
+    slider.step=String(stepSize);
+    const buy=(parseFloat(document.getElementById('strom-preis-bezug')?.value)||35)/100;
+    const feed=(parseFloat(document.getElementById('strom-preis-einsp')?.value)||8)/100;
+    const investPerKwh=parseFloat(document.getElementById('opt-bat-invest')?.value)||400;
+    const life=parseFloat(document.getElementById('opt-bat-life')?.value)||15;
+    const interest=(parseFloat(document.getElementById('opt-zinssatz')?.value)||3.5)/100;
+    const omPct=(parseFloat(document.getElementById('opt-om')?.value)||1)/100;
+    const annuity=(n=>interest>0?interest*Math.pow(1+interest,n)/(Math.pow(1+interest,n)-1):1/n)(life);
+    const baseline=_batteryScreening(0,0,context);
+    const evaluate=capacity=>{
+      const power=capacity>0?capacity/2:0;
+      const sim=_batteryScreening(capacity,power,context);
+      const invest=capacity*investPerKwh;
+      const gross=(baseline.gridKwh-sim.gridKwh)*buy-(baseline.exportKwh-sim.exportKwh)*feed;
+      const annualCapital=invest*(annuity+omPct);
+      const annualCash=gross-invest*omPct;
+      const net=gross-annualCapital;
+      const payback=annualCash>0?invest/annualCash:Infinity;
+      const roi=invest>0?annualCash/invest*100:0;
+      return {capacity,power,sim,invest,gross,net,payback,roi};
+    };
+    let recommendation=evaluate(0);
+    for(let capacity=stepSize;capacity<=Number(slider.max);capacity+=stepSize){
+      const candidate=evaluate(capacity);
+      if(candidate.net>recommendation.net) recommendation=candidate;
+    }
+    let selected;
+    if(requestedCapacity!==undefined&&requestedCapacity!==null&&requestedCapacity!==''){
+      selected=evaluate(Math.max(0,Number(requestedCapacity)||0));
+    }else {
+      selected=recommendation;
+      slider.value=String(recommendation.capacity);
+    }
+    window._batteryRecommendation=selected;
+    const pvQuote0=context.pvMwh>0?baseline.pvOwnKwh/1000/context.pvMwh*100:0;
+    const pvQuote=context.pvMwh>0?selected.sim.pvOwnKwh/1000/context.pvMwh*100:0;
+    const autarky0=context.totalDemandMwh>0?(1-baseline.gridKwh/1000/context.totalDemandMwh)*100:0;
+    const autarky=context.totalDemandMwh>0?(1-selected.sim.gridKwh/1000/context.totalDemandMwh)*100:0;
+    const cycles=selected.capacity>0?selected.sim.dischargeKwh/selected.capacity:0;
+    capLabel.textContent=`${Math.round(selected.capacity).toLocaleString('de-DE')} kWh · ${Math.round(selected.power).toLocaleString('de-DE')} kW`;
+    status.textContent=recommendation.capacity>0
+      ? `wirtschaftliche Empfehlung: ${Math.round(recommendation.capacity).toLocaleString('de-DE')} kWh / ${Math.round(recommendation.power).toLocaleString('de-DE')} kW`
+      : 'wirtschaftlich derzeit kein Speicher empfohlen';
+    const fmt=value=>Number(value).toLocaleString('de-DE',{maximumFractionDigits:1});
+    kpis.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;">
+    <span>PV-Eigenverbrauch</span><strong style="text-align:right;color:#d1c4e9">${fmt(pvQuote)} % <small>(+${fmt(pvQuote-pvQuote0)} Pp.)</small></strong>
+    <span>Strom-Autarkie</span><strong style="text-align:right">${fmt(autarky)} % <small>(+${fmt(autarky-autarky0)} Pp.)</small></strong>
+    <span>Vollzyklen</span><strong style="text-align:right">${fmt(cycles)} /a</strong>
+    <span>Mehrerlös brutto</span><strong style="text-align:right">${Math.round(selected.gross).toLocaleString('de-DE')} €/a</strong>
+    <span>Amortisation</span><strong style="text-align:right;color:${selected.payback<=life?'#81c784':'#ef9a9a'}">${Number.isFinite(selected.payback)?fmt(selected.payback)+' a':'—'}</strong>
+    <span>Einfache Rendite</span><strong style="text-align:right">${fmt(selected.roi)} %/a</strong>
+  </div>`;
+    apply.disabled=selected.capacity<=0;
+    return selected;
+  }
+
+  function applyBatteryRecommendation(){
+    const recommendation=window._batteryRecommendation;
+    if(!recommendation||recommendation.capacity<=0) return false;
+    const capacity=document.getElementById('bat-kapazitaet');
+    const power=document.getElementById('bat-leistung');
+    if(capacity) capacity.value=String(Math.round(recommendation.capacity));
+    if(power) power.value=String(Math.round(recommendation.power));
+    calcStromPanel();
+    return true;
   }
 
   var pvCalc = /*#__PURE__*/Object.freeze({
     __proto__: null,
     get _calcStromTimer () { return _calcStromTimer; },
+    applyBatteryRecommendation: applyBatteryRecommendation,
     calcStromPanel: calcStromPanel,
-    calcStromPanelDebounced: calcStromPanelDebounced
+    calcStromPanelDebounced: calcStromPanelDebounced,
+    updateBatteryRecommendation: updateBatteryRecommendation
   });
 
   // ── 10b-hourly-live.js — Stündliche Live-Ansicht: Dispatch-Canvas, Strom-Bilanz, Flow-SVG, SOC, Zoom, Timeline, Play ──
@@ -93073,7 +93247,7 @@ window._isSingleFileBuild = true;
     const ETA_BAT = 0.90;
     const batLeistKw = batKwh > 0 ? batKwh / 2 : 0; // C/2 Rate
 
-    let sv = 0, ins = 0, bez = 0, soc = 0;
+    let sv = 0, ins = 0, bez = 0, soc = 0, socPv = 0, socBhkw = 0;
     let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
     let tsSoc = 0, pvWpSpeicherGes = 0; // Thermischer Speicher SOC + PV→WP→Speicher kumulativ
     let batDischargeKwh = 0;
@@ -93082,12 +93256,13 @@ window._isSingleFileBuild = true;
       const dem = demandH[t];
       const pvGen = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
       const bhkwGen = bhkwElH ? bhkwElH[t] : 0;
-      const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:ETA_BAT});
+      const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,socPvKwh:socPv,socBhkwKwh:socBhkw,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:ETA_BAT});
       const dsc = step.direct;
       const pvFrac = step.pvFraction;
       let rDem = step.residualDemand;
       let rGen = step.residualGeneration;
       soc = step.socKwh;
+      socPv = step.socPvKwh; socBhkw = step.socBhkwKwh;
       batDischargeKwh += step.dischargedKwh;
 
       // PV-Überschuss → WP → thermischer Speicher
@@ -93114,12 +93289,11 @@ window._isSingleFileBuild = true;
       }
 
       pvWpSpeicherGes += pvWpSpeicher;
-      const evThisH = (dsc + (dem - dsc - rDem)) / 1000;
       sv += dsc + (dem - dsc - rDem);
       ins += rGen;
       bez += rDem;
-      pvEig += evThisH * pvFrac + pvWpSpeicher;  // PV→WP→Speicher zählt als PV-Eigenverbrauch
-      bhkwEig += evThisH * (1 - pvFrac);
+      pvEig += (step.pvDirectKwh + step.pvDischargedKwh) / 1000 + pvWpSpeicher;
+      bhkwEig += (step.bhkwDirectKwh + step.bhkwDischargedKwh) / 1000;
       pvEinsp += (rGen / 1000) * pvFrac;
       bhkwEinsp += (rGen / 1000) * (1 - pvFrac);
     }
@@ -93277,8 +93451,6 @@ window._isSingleFileBuild = true;
       if (chk?.checked && typeof CalcEngine !== 'undefined') return CalcEngine.getPvInvestPerKwp(kwp);
       return parseFloat(document.getElementById('opt-pv-invest')?.value) || OPT_INVEST_DEFAULT.pv;
     }
-    const batInvPerKwh = parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat;
-
     let bestPv = 0, bestBat = 0, bestScore = Infinity, bestKw = null;
 
     // PV=0 immer testen
@@ -93289,8 +93461,6 @@ window._isSingleFileBuild = true;
 
     for (const batK of batSteps) {
       let prevEigen = 0, prevEinsp = 0, prevPvK = 0;
-      const batInvest = batK * batInvPerKwh;
-
       for (let pi = 0; pi < pvSteps.length; pi++) {
         const pvK = pvSteps[pi];
         if (pvK <= 0) continue;
@@ -93299,11 +93469,11 @@ window._isSingleFileBuild = true;
         const curEigen = pvBat.pvEigenMwh || 0;
         const curEinsp = pvBat.pvEinspMwh || 0;
 
-        const deltaPvInvest = (pvK - prevPvK) * pvInvPerKwp(pvK);
-        const deltaInvest = deltaPvInvest + (pi === 0 ? batInvest : 0);
+        const deltaInvest = pvK * pvInvPerKwp(pvK) - prevPvK * pvInvPerKwp(prevPvK);
         const deltaEigen = curEigen - prevEigen;
-        const deltaEinsp = curEinsp - prevEinsp;
-        const deltaSavings = deltaEigen * pStrom * 10 + deltaEinsp * einspeiseCtKwh(pvK) * 10;
+        const deltaFeedRevenue = curEinsp * einspeiseCtKwh(pvK) * 10
+          - prevEinsp * einspeiseCtKwh(prevPvK) * 10;
+        const deltaSavings = deltaEigen * pStrom * 10 + deltaFeedRevenue;
 
         if (deltaSavings <= 0 || deltaInvest / deltaSavings > maxAmortJ) break;
 
@@ -160546,18 +160716,19 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
   }
   const spez = D.pvSpez;
   const batLeistKw = batKwh > 0 ? batKwh / 2 : 0;
-  let sv = 0, ins = 0, bez = 0, soc = 0;
+  let sv = 0, ins = 0, bez = 0, soc = 0, socPv = 0, socBhkw = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
   let tsSoc = 0, pvWpSpGes = 0, batDischargeKwh = 0;
   for (let t = 0; t < 8760; t++) {
     const dem = demandH[t];
     const pvGen = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
     const bhkwGen = bhkwElH ? bhkwElH[t] : 0;
-    const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:.9});
+    const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,socPvKwh:socPv,socBhkwKwh:socBhkw,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:.9});
     const dsc = step.direct;
     const pvFrac = step.pvFraction;
     let rDem = step.residualDemand, rGen = step.residualGeneration;
     soc = step.socKwh;
+    socPv = step.socPvKwh; socBhkw = step.socBhkwKwh;
     batDischargeKwh += step.dischargedKwh;
 
     // PV-Überschuss → WP → thermischer Speicher
@@ -160585,10 +160756,9 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
       }
     }
 
-    const evThisH = (dsc + (dem - dsc - rDem)) / 1000;
     sv += dsc + (dem - dsc - rDem); ins += rGen; bez += rDem;
-    pvEig += evThisH * pvFrac + pvWpSp;
-    bhkwEig += evThisH * (1 - pvFrac);
+    pvEig += (step.pvDirectKwh + step.pvDischargedKwh) / 1000 + pvWpSp;
+    bhkwEig += (step.bhkwDirectKwh + step.bhkwDischargedKwh) / 1000;
     pvEinsp += (rGen / 1000) * pvFrac;
     bhkwEinsp += (rGen / 1000) * (1 - pvFrac);
   }
@@ -160742,8 +160912,6 @@ function _findOptPvBat(pvSteps, batSteps, demandH, bhkwElH, pvProfile, disp,
   for (const batK of batSteps) {
     // Cache: PV-Ergebnisse für diese Bat-Stufe, aufsteigend nach PV-Größe
     let prevEigen = 0, prevEinsp = 0, prevPvK = 0;
-    const batInvest = batK * (D.batInvest || 400);
-
     for (let pi = 0; pi < pvSteps.length; pi++) {
       const pvK = pvSteps[pi];
       if (pvK <= 0) continue;
@@ -160753,14 +160921,15 @@ function _findOptPvBat(pvSteps, batSteps, demandH, bhkwElH, pvProfile, disp,
       const curEinsp = pvBat.pvEinspMwh || 0;  // MWh
 
       // Marginale Amortisation dieses PV-Inkrements
-      const deltaPvInvest = (pvK - prevPvK) * pvInvPerKwp(pvK);
-      // Beim ersten PV-Schritt: Batterie-Invest mit einrechnen
-      const deltaInvest = deltaPvInvest + (pi === 0 ? batInvest : 0);
+      const deltaInvest = pvK * pvInvPerKwp(pvK) - prevPvK * pvInvPerKwp(prevPvK);
 
       const deltaEigen = curEigen - prevEigen;  // MWh zusätzlicher Eigenverbrauch
-      const deltaEinsp = curEinsp - prevEinsp;  // MWh zusätzliche Einspeisung
-      // Jährliche Ersparnis: Eigenverbrauch spart Netzbezug, Einspeisung bringt Vergütung
-      const deltaSavings = deltaEigen * pStrom * 10 + deltaEinsp * einspeiseCtKwh(pvK) * 10;
+      // Jährliche Ersparnis: Eigenverbrauch spart Netzbezug. Bei gestaffelter
+      // Vergütung zählt die Differenz der gesamten Einspeiseerlöse, nicht der
+      // neue Durchschnittssatz multipliziert mit dem marginalen Ertrag.
+      const deltaFeedRevenue = curEinsp * einspeiseCtKwh(pvK) * 10
+        - prevEinsp * einspeiseCtKwh(prevPvK) * 10;
+      const deltaSavings = deltaEigen * pStrom * 10 + deltaFeedRevenue;
 
       if (deltaSavings <= 0 || deltaInvest / deltaSavings > maxAmortJ) {
         // Dieses Inkrement lohnt sich nicht mehr → Stopp für diese Bat-Stufe

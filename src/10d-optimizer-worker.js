@@ -144,18 +144,19 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
   }
   const spez = D.pvSpez;
   const batLeistKw = batKwh > 0 ? batKwh / 2 : 0;
-  let sv = 0, ins = 0, bez = 0, soc = 0;
+  let sv = 0, ins = 0, bez = 0, soc = 0, socPv = 0, socBhkw = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
   let tsSoc = 0, pvWpSpGes = 0, batDischargeKwh = 0;
   for (let t = 0; t < 8760; t++) {
     const dem = demandH[t];
     const pvGen = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
     const bhkwGen = bhkwElH ? bhkwElH[t] : 0;
-    const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:.9});
+    const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,socPvKwh:socPv,socBhkwKwh:socBhkw,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:.9});
     const dsc = step.direct;
     const pvFrac = step.pvFraction;
     let rDem = step.residualDemand, rGen = step.residualGeneration;
     soc = step.socKwh;
+    socPv = step.socPvKwh; socBhkw = step.socBhkwKwh;
     batDischargeKwh += step.dischargedKwh;
 
     // PV-Überschuss → WP → thermischer Speicher
@@ -183,10 +184,9 @@ function pvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, pvProfile, dispResult) {
       }
     }
 
-    const evThisH = (dsc + (dem - dsc - rDem)) / 1000;
     sv += dsc + (dem - dsc - rDem); ins += rGen; bez += rDem;
-    pvEig += evThisH * pvFrac + pvWpSp;
-    bhkwEig += evThisH * (1 - pvFrac);
+    pvEig += (step.pvDirectKwh + step.pvDischargedKwh) / 1000 + pvWpSp;
+    bhkwEig += (step.bhkwDirectKwh + step.bhkwDischargedKwh) / 1000;
     pvEinsp += (rGen / 1000) * pvFrac;
     bhkwEinsp += (rGen / 1000) * (1 - pvFrac);
   }
@@ -340,8 +340,6 @@ function _findOptPvBat(pvSteps, batSteps, demandH, bhkwElH, pvProfile, disp,
   for (const batK of batSteps) {
     // Cache: PV-Ergebnisse für diese Bat-Stufe, aufsteigend nach PV-Größe
     let prevEigen = 0, prevEinsp = 0, prevPvK = 0;
-    const batInvest = batK * (D.batInvest || 400);
-
     for (let pi = 0; pi < pvSteps.length; pi++) {
       const pvK = pvSteps[pi];
       if (pvK <= 0) continue;
@@ -351,14 +349,15 @@ function _findOptPvBat(pvSteps, batSteps, demandH, bhkwElH, pvProfile, disp,
       const curEinsp = pvBat.pvEinspMwh || 0;  // MWh
 
       // Marginale Amortisation dieses PV-Inkrements
-      const deltaPvInvest = (pvK - prevPvK) * pvInvPerKwp(pvK);
-      // Beim ersten PV-Schritt: Batterie-Invest mit einrechnen
-      const deltaInvest = deltaPvInvest + (pi === 0 ? batInvest : 0);
+      const deltaInvest = pvK * pvInvPerKwp(pvK) - prevPvK * pvInvPerKwp(prevPvK);
 
       const deltaEigen = curEigen - prevEigen;  // MWh zusätzlicher Eigenverbrauch
-      const deltaEinsp = curEinsp - prevEinsp;  // MWh zusätzliche Einspeisung
-      // Jährliche Ersparnis: Eigenverbrauch spart Netzbezug, Einspeisung bringt Vergütung
-      const deltaSavings = deltaEigen * pStrom * 10 + deltaEinsp * einspeiseCtKwh(pvK) * 10;
+      // Jährliche Ersparnis: Eigenverbrauch spart Netzbezug. Bei gestaffelter
+      // Vergütung zählt die Differenz der gesamten Einspeiseerlöse, nicht der
+      // neue Durchschnittssatz multipliziert mit dem marginalen Ertrag.
+      const deltaFeedRevenue = curEinsp * einspeiseCtKwh(pvK) * 10
+        - prevEinsp * einspeiseCtKwh(prevPvK) * 10;
+      const deltaSavings = deltaEigen * pStrom * 10 + deltaFeedRevenue;
 
       if (deltaSavings <= 0 || deltaInvest / deltaSavings > maxAmortJ) {
         // Dieses Inkrement lohnt sich nicht mehr → Stopp für diese Bat-Stufe

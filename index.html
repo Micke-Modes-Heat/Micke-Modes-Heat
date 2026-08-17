@@ -3510,6 +3510,20 @@
       <div id="bat-aging-hint" style="font-size:9px;color:#ce93d8;margin-top:6px;">Alterung wird nach der Strombilanz aus Kalender- und Vollzyklen geschätzt.</div>
     </div>
 
+    <div id="bat-recommendation" style="background:rgba(179,157,219,.08);border:1px solid rgba(179,157,219,.3);border-radius:6px;padding:9px 10px;margin-bottom:9px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;">
+        <strong style="font-size:10px;color:#d1c4e9;flex:1;">Speicher-Schnellcheck für vorhandene PV</strong>
+        <span id="bat-rec-status" style="font-size:8px;color:var(--muted);">PV und Lastgang erforderlich</span>
+      </div>
+      <label style="display:block;font-size:9px;color:var(--muted);margin-bottom:6px;">
+        Nutzbare Kapazität: <strong id="bat-rec-cap-label" style="color:var(--text);">0 kWh</strong>
+        <input type="range" id="bat-rec-cap" min="0" max="100" value="0" step="5" style="width:100%;margin-top:5px;accent-color:#b39ddb;" data-input="updateBatteryRecommendation(this.value)"/>
+      </label>
+      <div id="bat-rec-kpis" style="font-size:9px;color:var(--muted);line-height:1.5;">Nach dem Anlegen einer PV-Fläche wird hier eine stundenscharfe Empfehlung berechnet.</div>
+      <button id="bat-rec-apply" class="btn-secondary" style="width:100%;margin-top:7px;font-size:9px;" data-click="applyBatteryRecommendation()" disabled>Kapazität und Leistung übernehmen</button>
+      <div style="font-size:8px;color:var(--muted);margin-top:5px;line-height:1.35;">Screening mit vorhandenem PV- und Stromlastgang, 90 % Round-trip-Wirkungsgrad und 0,5 C. Keine Angebots- oder Finanzierungszusage.</div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:7px;">
       <div style="display:flex;flex-direction:column;gap:2px;">
         <span style="font-size:9px;color:var(--muted);">Bat-Invest</span>

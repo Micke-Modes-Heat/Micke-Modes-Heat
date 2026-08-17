@@ -16,4 +16,19 @@ describe('kanonischer PV-/Batterie-Stundenschritt', () => {
     expect(r.pvFraction).toBe(.75);
     expect(r.residualDemand).toBe(2);
   });
+
+  it('merkt sich die Quelle über Laden am Tag und Entladen in der Nacht',()=>{
+    const charged=pvBatteryStep({demand:0,pvGen:10,bhkwGen:0,socKwh:0,socPvKwh:0,socBhkwKwh:0,capacityKwh:10,powerKw:10,etaCharge:1,etaDischarge:.9});
+    const discharged=pvBatteryStep({demand:9,pvGen:0,bhkwGen:0,socKwh:charged.socKwh,socPvKwh:charged.socPvKwh,socBhkwKwh:charged.socBhkwKwh,capacityKwh:10,powerKw:10,etaCharge:1,etaDischarge:.9});
+    expect(discharged.pvDischargedKwh).toBeCloseTo(9,10);
+    expect(discharged.bhkwDischargedKwh).toBeCloseTo(0,10);
+    expect(discharged.socPvKwh).toBeCloseTo(0,10);
+  });
+
+  it('führt gemischte PV- und BHKW-Ladung quellenscharf fort',()=>{
+    const charged=pvBatteryStep({demand:0,pvGen:6,bhkwGen:4,socKwh:0,socPvKwh:0,socBhkwKwh:0,capacityKwh:10,powerKw:10,etaCharge:1,etaDischarge:1});
+    const discharged=pvBatteryStep({demand:5,pvGen:0,bhkwGen:0,socKwh:charged.socKwh,socPvKwh:charged.socPvKwh,socBhkwKwh:charged.socBhkwKwh,capacityKwh:10,powerKw:10,etaCharge:1,etaDischarge:1});
+    expect(discharged.pvDischargedKwh).toBeCloseTo(3,10);
+    expect(discharged.bhkwDischargedKwh).toBeCloseTo(2,10);
+  });
 });

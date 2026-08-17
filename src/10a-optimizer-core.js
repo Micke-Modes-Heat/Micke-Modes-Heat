@@ -145,7 +145,7 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
   const ETA_BAT = 0.90;
   const batLeistKw = batKwh > 0 ? batKwh / 2 : 0; // C/2 Rate
 
-  let sv = 0, ins = 0, bez = 0, soc = 0;
+  let sv = 0, ins = 0, bez = 0, soc = 0, socPv = 0, socBhkw = 0;
   let pvEig = 0, pvEinsp = 0, bhkwEig = 0, bhkwEinsp = 0;
   let tsSoc = 0, pvWpSpeicherGes = 0; // Thermischer Speicher SOC + PV→WP→Speicher kumulativ
   let batDischargeKwh = 0;
@@ -154,12 +154,13 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
     const dem = demandH[t];
     const pvGen = pvProfile ? pvProfile[t] * pvKwp * spez : 0;
     const bhkwGen = bhkwElH ? bhkwElH[t] : 0;
-    const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:ETA_BAT});
+    const step = pvBatteryStep({demand:dem,pvGen,bhkwGen,socKwh:soc,socPvKwh:socPv,socBhkwKwh:socBhkw,capacityKwh:batKwh,powerKw:batLeistKw,etaCharge:1,etaDischarge:ETA_BAT});
     const dsc = step.direct;
     const pvFrac = step.pvFraction;
     let rDem = step.residualDemand;
     let rGen = step.residualGeneration;
     soc = step.socKwh;
+    socPv = step.socPvKwh; socBhkw = step.socBhkwKwh;
     batDischargeKwh += step.dischargedKwh;
 
     // PV-Überschuss → WP → thermischer Speicher
@@ -186,12 +187,11 @@ export function _optPvBatSim8760(pvKwp, batKwh, demandH, bhkwElH, dispResult) {
     }
 
     pvWpSpeicherGes += pvWpSpeicher;
-    const evThisH = (dsc + (dem - dsc - rDem)) / 1000;
     sv += dsc + (dem - dsc - rDem);
     ins += rGen;
     bez += rDem;
-    pvEig += evThisH * pvFrac + pvWpSpeicher;  // PV→WP→Speicher zählt als PV-Eigenverbrauch
-    bhkwEig += evThisH * (1 - pvFrac);
+    pvEig += (step.pvDirectKwh + step.pvDischargedKwh) / 1000 + pvWpSpeicher;
+    bhkwEig += (step.bhkwDirectKwh + step.bhkwDischargedKwh) / 1000;
     pvEinsp += (rGen / 1000) * pvFrac;
     bhkwEinsp += (rGen / 1000) * (1 - pvFrac);
   }
@@ -349,8 +349,6 @@ export function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
     if (chk?.checked && typeof CalcEngine !== 'undefined') return CalcEngine.getPvInvestPerKwp(kwp);
     return parseFloat(document.getElementById('opt-pv-invest')?.value) || OPT_INVEST_DEFAULT.pv;
   }
-  const batInvPerKwh = parseFloat(document.getElementById('opt-bat-invest')?.value) || OPT_INVEST_DEFAULT.bat;
-
   let bestPv = 0, bestBat = 0, bestScore = Infinity, bestKw = null;
 
   // PV=0 immer testen
@@ -361,8 +359,6 @@ export function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
 
   for (const batK of batSteps) {
     let prevEigen = 0, prevEinsp = 0, prevPvK = 0;
-    const batInvest = batK * batInvPerKwh;
-
     for (let pi = 0; pi < pvSteps.length; pi++) {
       const pvK = pvSteps[pi];
       if (pvK <= 0) continue;
@@ -371,11 +367,11 @@ export function _findOptPvBatMain(pvSteps, batSteps, demandH, bhkwElH, disp,
       const curEigen = pvBat.pvEigenMwh || 0;
       const curEinsp = pvBat.pvEinspMwh || 0;
 
-      const deltaPvInvest = (pvK - prevPvK) * pvInvPerKwp(pvK);
-      const deltaInvest = deltaPvInvest + (pi === 0 ? batInvest : 0);
+      const deltaInvest = pvK * pvInvPerKwp(pvK) - prevPvK * pvInvPerKwp(prevPvK);
       const deltaEigen = curEigen - prevEigen;
-      const deltaEinsp = curEinsp - prevEinsp;
-      const deltaSavings = deltaEigen * pStrom * 10 + deltaEinsp * einspeiseCtKwh(pvK) * 10;
+      const deltaFeedRevenue = curEinsp * einspeiseCtKwh(pvK) * 10
+        - prevEinsp * einspeiseCtKwh(prevPvK) * 10;
+      const deltaSavings = deltaEigen * pStrom * 10 + deltaFeedRevenue;
 
       if (deltaSavings <= 0 || deltaInvest / deltaSavings > maxAmortJ) break;
 

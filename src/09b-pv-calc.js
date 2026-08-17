@@ -174,7 +174,7 @@ export function calcStromPanel() {
   const gesamtMwh = wpMwh + skMwh + quartierMwh + kaelteMwh;
   const batSocArr = bat ? new Float32Array(8760) : null;
   if (pvH || bat || bhkwMwh > 0) {
-    let soc = 0; // Batterieladezustand [kWh]
+    let soc = 0, socPv = 0, socBhkw = 0; // Ladezustand gesamt und nach Quelle [kWh]
     for (let t = 0; t < 8760; t++) {
       // Nachfrage: WP + Stromkessel + Quartier
       let demand = (window._wpElHourly ? window._wpElHourly[t] : 0);
@@ -185,7 +185,7 @@ export function calcStromPanel() {
       // Lokale Erzeugung: PV + BHKW (getrennt)
       const pvGen   = pvH ? pvH[t] : 0;
       const bhkwGen = bhkwElHourly ? bhkwElHourly[t] : (bhkwMwh > 0 ? bhkwMwh * 1000 / 8760 : 0);
-      const step = pvBatteryStep({demand,pvGen,bhkwGen,socKwh:soc,
+      const step = pvBatteryStep({demand,pvGen,bhkwGen,socKwh:soc,socPvKwh:socPv,socBhkwKwh:socBhkw,
         capacityKwh:bat?.kapKwh || 0,powerKw:bat?.leistKw || 0,etaCharge:1,etaDischarge:bat?.eta || .9});
       const gen = step.gen;
       const dsc = step.direct;
@@ -193,6 +193,7 @@ export function calcStromPanel() {
       let rDem = step.residualDemand;
       let rGen = step.residualGeneration;
       soc = step.socKwh;
+      socPv = step.socPvKwh; socBhkw = step.socBhkwKwh;
       batLadeVerlustMwh += step.lossesKwh / 1000;
       batDischargeKwh += step.dischargedKwh;
 
@@ -219,6 +220,8 @@ export function calcStromPanel() {
               restLade -= thLade;
               rGen -= elActual;
               eigenverbrauchMwh += elActual / 1000;
+              pvEigenMwh += elActual / 1000 * pvFrac;
+              bhkwEigenMwh += elActual / 1000 * (1 - pvFrac);
               wpUsed = true;
             }
           }
@@ -234,6 +237,8 @@ export function calcStromPanel() {
                 tss.geladenGes += skLoad;
                 rGen -= skLoad;
                 eigenverbrauchMwh += skLoad / 1000;
+                pvEigenMwh += skLoad / 1000 * pvFrac;
+                bhkwEigenMwh += skLoad / 1000 * (1 - pvFrac);
               }
             }
           }
@@ -245,8 +250,12 @@ export function calcStromPanel() {
       einspeisungMwh    += rGen / 1000;
       netzbezugMwh      += rDem / 1000;
       // Aufschlüsselung PV vs BHKW (proportional)
-      pvEigenMwh   += evThisH * pvFrac;
-      bhkwEigenMwh += evThisH * (1 - pvFrac);
+      const pvLocalKwh = step.pvDirectKwh + step.pvDischargedKwh;
+      const bhkwLocalKwh = step.bhkwDirectKwh + step.bhkwDischargedKwh;
+      const localSourceSum = pvLocalKwh + bhkwLocalKwh;
+      const pvLocalFrac = localSourceSum > 0 ? pvLocalKwh / localSourceSum : 0;
+      pvEigenMwh   += pvLocalKwh / 1000;
+      bhkwEigenMwh += bhkwLocalKwh / 1000;
       pvEinspMwh   += (rGen / 1000) * pvFrac;
       bhkwEinspMwh += (rGen / 1000) * (1 - pvFrac);
       // Aufschlüsselung: Wieviel Eigen-/Netzstrom geht an WP, SK, Quartier
@@ -256,17 +265,17 @@ export function calcStromPanel() {
       const kD   = kaelteH ? (kaelteH[t] || 0) : 0;
       const evKw = demand - rDem; // gedeckt durch Eigen (PV+BHKW+Bat)
       const evFrac = demand > 0 ? evKw / demand : 0;
-      pvToWp       += wpD * evFrac * pvFrac / 1000;
-      pvToSk       += skD * evFrac * pvFrac / 1000;
-      pvToQuartier += qD  * evFrac * pvFrac / 1000;
-      bhkwToWp       += wpD * evFrac * (1 - pvFrac) / 1000;
-      bhkwToSk       += skD * evFrac * (1 - pvFrac) / 1000;
-      bhkwToQuartier += qD  * evFrac * (1 - pvFrac) / 1000;
+      pvToWp       += wpD * evFrac * pvLocalFrac / 1000;
+      pvToSk       += skD * evFrac * pvLocalFrac / 1000;
+      pvToQuartier += qD  * evFrac * pvLocalFrac / 1000;
+      bhkwToWp       += wpD * evFrac * (1 - pvLocalFrac) / 1000;
+      bhkwToSk       += skD * evFrac * (1 - pvLocalFrac) / 1000;
+      bhkwToQuartier += qD  * evFrac * (1 - pvLocalFrac) / 1000;
       netzToWp       += wpD * (1 - evFrac) / 1000;
       netzToSk       += skD * (1 - evFrac) / 1000;
       netzToQuartier += qD  * (1 - evFrac) / 1000;
-      pvToKaelte      += kD * evFrac * pvFrac / 1000;
-      bhkwToKaelte    += kD * evFrac * (1 - pvFrac) / 1000;
+      pvToKaelte      += kD * evFrac * pvLocalFrac / 1000;
+      bhkwToKaelte    += kD * evFrac * (1 - pvLocalFrac) / 1000;
       netzToKaelte    += kD * (1 - evFrac) / 1000;
       if (batSocArr) batSocArr[t] = soc;
     }
@@ -312,8 +321,6 @@ export function calcStromPanel() {
   const bhkwEinspeisungserloes = bhkwEinspMwh * 1000 * (bhkwPreisE + bhkwKwkE);  // €/a
   // BHKW-Eigenverbrauch: vermiedene Bezugskosten + KWK-Zuschlag
   const bhkwEigenverbrauchErloes = bhkwEigenMwh * 1000 * (preisB + bhkwKwkEig);  // €/a
-  // Gesamt-Erlös für Kompatibilität
-  const einspeisungserloes = pvEinspeisungserloes + bhkwEinspeisungserloes;  // €/a
   // Globale Referenz für BHKW-Wirtschaftlichkeit
   window._bhkwStromErloes = bhkwEinspeisungserloes + bhkwEigenverbrauchErloes;
   window._pvStromErloes = pvEinspeisungserloes + pvEigenverbrauchErloes;
@@ -361,7 +368,7 @@ export function calcStromPanel() {
     leistungskosten = avgKw * 3 * preisLP * 12;
   }
   const bhkwGesamtErloes = bhkwEinspeisungserloes + bhkwEigenverbrauchErloes;
-  const stromkostenJahr  = bezugskosten + leistungskosten - einspeisungserloes - bhkwGesamtErloes;  // €/a Netto
+  const stromkostenJahr  = bezugskosten + leistungskosten - pvEinspeisungserloes - bhkwGesamtErloes;  // €/a Netto
 
   // Strombedarf proportional zur Fläche auf Gebäude verteilen
   const gesamtFlaeche = gebaeude.reduce((s, g) => s + (parseFloat(g.flaeche) || 0), 0);
@@ -482,6 +489,126 @@ export function calcStromPanel() {
     wpMwh, skMwh, quartierMwh, kaelteMwh, bhkwStromMwh: bhkwMwh,
     pvEigenMwh, pvEinspMwh, bhkwEigenMwh, bhkwEinspMwh
   };
+  const totalKwpForBattery = (parseFloat(document.getElementById('pv-kwp')?.value) || 0) + gebaeudeKwp + ffKwp;
+  const batteryDemandH = new Float32Array(8760);
+  const quartierH = window.elQuartierH || window._elQuartierFromGeb;
+  for (let t=0;t<8760;t++) {
+    batteryDemandH[t] = (window._wpElHourly?.[t] || 0)
+      + (window._skElHourly?.[t] ?? (skMwh * 1000 / 8760))
+      + (quartierH?.[t] ?? (quartierMwh * 1000 / 8760))
+      + (kaelteH?.[t] || 0);
+  }
+  window._batteryRecommendationContext = {
+    pvH:pvH ? new Float32Array(pvH) : null,
+    demandH:batteryDemandH,
+    pvMwh,totalDemandMwh:gesamtMwh,totalKwp:totalKwpForBattery,
+  };
+  if (document.getElementById('batterie-panel')?.classList.contains('visible')) {
+    updateBatteryRecommendation();
+  }
   if (_stromCurrentTab === 'sankey')   drawSankeyStrom();
   if (_stromCurrentTab === 'lastgang') _stromRenderLastgang();
+}
+
+function _batteryScreening(capacityKwh,powerKw,context) {
+  let soc=0,gridKwh=0,exportKwh=0,pvOwnKwh=0,dischargeKwh=0,lossKwh=0;
+  for(let t=0;t<8760;t++){
+    const step=pvBatteryStep({
+      demand:context.demandH[t]||0,pvGen:context.pvH?.[t]||0,bhkwGen:0,
+      socKwh:soc,socPvKwh:soc,socBhkwKwh:0,capacityKwh,powerKw,
+      etaCharge:1,etaDischarge:.9,
+    });
+    soc=step.socKwh;
+    gridKwh+=step.residualDemand;
+    exportKwh+=step.residualGeneration;
+    pvOwnKwh+=step.pvDirectKwh+step.pvDischargedKwh;
+    dischargeKwh+=step.dischargedKwh;
+    lossKwh+=step.lossesKwh;
+  }
+  return {gridKwh,exportKwh,pvOwnKwh,dischargeKwh,lossKwh,socEndKwh:soc};
+}
+
+export function updateBatteryRecommendation(requestedCapacity) {
+  const context=window._batteryRecommendationContext;
+  const status=document.getElementById('bat-rec-status');
+  const slider=document.getElementById('bat-rec-cap');
+  const capLabel=document.getElementById('bat-rec-cap-label');
+  const kpis=document.getElementById('bat-rec-kpis');
+  const apply=document.getElementById('bat-rec-apply');
+  if(!status||!slider||!capLabel||!kpis||!apply) return null;
+  if(!context?.pvH||context.pvMwh<=0||context.totalDemandMwh<=0){
+    status.textContent='PV und Lastgang erforderlich';
+    kpis.textContent='Nach dem Anlegen einer PV-Fläche wird hier eine stundenscharfe Empfehlung berechnet.';
+    apply.disabled=true;
+    return null;
+  }
+  const dailyDemandKwh=context.totalDemandMwh*1000/365;
+  const maxCapacity=Math.max(20,Math.min(10000,Math.max(50,Math.min(context.totalKwp*2,dailyDemandKwh*1.5))));
+  const stepSize=Math.max(5,Math.round(maxCapacity/40/5)*5);
+  slider.max=String(Math.ceil(maxCapacity/stepSize)*stepSize);
+  slider.step=String(stepSize);
+  const buy=(parseFloat(document.getElementById('strom-preis-bezug')?.value)||35)/100;
+  const feed=(parseFloat(document.getElementById('strom-preis-einsp')?.value)||8)/100;
+  const investPerKwh=parseFloat(document.getElementById('opt-bat-invest')?.value)||400;
+  const life=parseFloat(document.getElementById('opt-bat-life')?.value)||15;
+  const interest=(parseFloat(document.getElementById('opt-zinssatz')?.value)||3.5)/100;
+  const omPct=(parseFloat(document.getElementById('opt-om')?.value)||1)/100;
+  const annuity=(n=>interest>0?interest*Math.pow(1+interest,n)/(Math.pow(1+interest,n)-1):1/n)(life);
+  const baseline=_batteryScreening(0,0,context);
+  const evaluate=capacity=>{
+    const power=capacity>0?capacity/2:0;
+    const sim=_batteryScreening(capacity,power,context);
+    const invest=capacity*investPerKwh;
+    const gross=(baseline.gridKwh-sim.gridKwh)*buy-(baseline.exportKwh-sim.exportKwh)*feed;
+    const annualCapital=invest*(annuity+omPct);
+    const annualCash=gross-invest*omPct;
+    const net=gross-annualCapital;
+    const payback=annualCash>0?invest/annualCash:Infinity;
+    const roi=invest>0?annualCash/invest*100:0;
+    return {capacity,power,sim,invest,gross,net,payback,roi};
+  };
+  let recommendation=evaluate(0);
+  for(let capacity=stepSize;capacity<=Number(slider.max);capacity+=stepSize){
+    const candidate=evaluate(capacity);
+    if(candidate.net>recommendation.net) recommendation=candidate;
+  }
+  let selected;
+  if(requestedCapacity!==undefined&&requestedCapacity!==null&&requestedCapacity!==''){
+    selected=evaluate(Math.max(0,Number(requestedCapacity)||0));
+  }else{
+    selected=recommendation;
+    slider.value=String(recommendation.capacity);
+  }
+  window._batteryRecommendation=selected;
+  const pvQuote0=context.pvMwh>0?baseline.pvOwnKwh/1000/context.pvMwh*100:0;
+  const pvQuote=context.pvMwh>0?selected.sim.pvOwnKwh/1000/context.pvMwh*100:0;
+  const autarky0=context.totalDemandMwh>0?(1-baseline.gridKwh/1000/context.totalDemandMwh)*100:0;
+  const autarky=context.totalDemandMwh>0?(1-selected.sim.gridKwh/1000/context.totalDemandMwh)*100:0;
+  const cycles=selected.capacity>0?selected.sim.dischargeKwh/selected.capacity:0;
+  capLabel.textContent=`${Math.round(selected.capacity).toLocaleString('de-DE')} kWh · ${Math.round(selected.power).toLocaleString('de-DE')} kW`;
+  status.textContent=recommendation.capacity>0
+    ? `wirtschaftliche Empfehlung: ${Math.round(recommendation.capacity).toLocaleString('de-DE')} kWh / ${Math.round(recommendation.power).toLocaleString('de-DE')} kW`
+    : 'wirtschaftlich derzeit kein Speicher empfohlen';
+  const fmt=value=>Number(value).toLocaleString('de-DE',{maximumFractionDigits:1});
+  kpis.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;">
+    <span>PV-Eigenverbrauch</span><strong style="text-align:right;color:#d1c4e9">${fmt(pvQuote)} % <small>(+${fmt(pvQuote-pvQuote0)} Pp.)</small></strong>
+    <span>Strom-Autarkie</span><strong style="text-align:right">${fmt(autarky)} % <small>(+${fmt(autarky-autarky0)} Pp.)</small></strong>
+    <span>Vollzyklen</span><strong style="text-align:right">${fmt(cycles)} /a</strong>
+    <span>Mehrerlös brutto</span><strong style="text-align:right">${Math.round(selected.gross).toLocaleString('de-DE')} €/a</strong>
+    <span>Amortisation</span><strong style="text-align:right;color:${selected.payback<=life?'#81c784':'#ef9a9a'}">${Number.isFinite(selected.payback)?fmt(selected.payback)+' a':'—'}</strong>
+    <span>Einfache Rendite</span><strong style="text-align:right">${fmt(selected.roi)} %/a</strong>
+  </div>`;
+  apply.disabled=selected.capacity<=0;
+  return selected;
+}
+
+export function applyBatteryRecommendation(){
+  const recommendation=window._batteryRecommendation;
+  if(!recommendation||recommendation.capacity<=0) return false;
+  const capacity=document.getElementById('bat-kapazitaet');
+  const power=document.getElementById('bat-leistung');
+  if(capacity) capacity.value=String(Math.round(recommendation.capacity));
+  if(power) power.value=String(Math.round(recommendation.power));
+  calcStromPanel();
+  return true;
 }

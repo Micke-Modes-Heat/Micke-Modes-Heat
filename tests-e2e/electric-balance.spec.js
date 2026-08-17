@@ -56,3 +56,54 @@ test('Oberfläche, Optimierer und Worker teilen denselben PV-/Batteriekern', asy
   expect(result.optimized.netzbezugMwh).toBeCloseTo(result.reference.netzbezugMwh, 10);
   expect(result.exactCore).toBe(true);
 });
+
+test('Optimierer ordnet nachts entladenen Solarstrom weiterhin der PV zu',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window._optPvBatSim8760==='function');
+  const result=await page.evaluate(()=>{
+    const demand=new Float32Array(8760);
+    const profile=new Float32Array(8760);
+    for(let t=0;t<8760;t++){
+      const hour=t%24;
+      demand[t]=hour>=18?1:0;
+      profile[t]=hour===12?1:0;
+    }
+    window._optCachedPvProfile=profile;
+    document.getElementById('pv-spez').value='1';
+    return _optPvBatSim8760(2,6,demand,new Float32Array(8760),null);
+  });
+  expect(result.pvEigenMwh).toBeCloseTo(result.eigenMwh,8);
+  expect(result.bhkwEigenMwh).toBeCloseTo(0,8);
+});
+
+test('Batteriepanel zeigt für vorhandene PV einen interaktiven Schnellcheck',async({page})=>{
+  await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
+  await page.goto('/');
+  await page.waitForFunction(()=>typeof window.updateBatteryRecommendation==='function');
+  const result=await page.evaluate(()=>{
+    window._dispatchEnergy={};
+    window._wpElHourly=new Float32Array(8760);
+    window._skElHourly=new Float32Array(8760);
+    window._bhkwElHourly=new Float32Array(8760);
+    window.elQuartierH=new Float32Array(8760).fill(10);
+    window.elPvH=new Float32Array(8760);
+    for(let t=0;t<8760;t++) if(t%24>=9&&t%24<=15) window.elPvH[t]=20;
+    calcStromPanel();
+    toggleBatteriePanel();
+    const screening=updateBatteryRecommendation(50);
+    const applied=applyBatteryRecommendation();
+    return {
+      screening:{capacity:screening?.capacity,power:screening?.power},applied,
+      capacity:document.getElementById('bat-kapazitaet').value,
+      power:document.getElementById('bat-leistung').value,
+      kpis:document.getElementById('bat-rec-kpis').textContent,
+    };
+  });
+  expect(result.screening).toEqual({capacity:50,power:25});
+  expect(result.applied).toBe(true);
+  expect(result.capacity).toBe('50');
+  expect(result.power).toBe('25');
+  expect(result.kpis).toContain('Vollzyklen');
+  expect(result.kpis).toContain('Amortisation');
+});

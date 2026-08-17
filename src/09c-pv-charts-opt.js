@@ -837,7 +837,7 @@ export function _runPvBatOpt(resultDiv) {
     for (let t = 0; t < 8760; t++) {
       const gen = pvProfile[t] * annKwh;
       const dem = demand[t];
-      const step = pvBatteryStep({demand:dem,pvGen:gen,bhkwGen:0,socKwh:soc,capacityKwh:batKwh,powerKw:batKwh,etaCharge:1,etaDischarge:ETA_BAT});
+      const step = pvBatteryStep({demand:dem,pvGen:gen,bhkwGen:0,socKwh:soc,capacityKwh:batKwh,powerKw:batKwh/2,etaCharge:1,etaDischarge:ETA_BAT});
       const dsc = step.direct;
       const rDem = step.residualDemand;
       const rGen = step.residualGeneration;
@@ -861,7 +861,7 @@ export function _runPvBatOpt(resultDiv) {
     const rendite    = invest > 0 ? (netBenefit / invest * 100) : 0; // % p.a.
     return { netBenefit, saving, annualCost, invest, payback, autarkie, rendite,
              eigenverbrauchMwh: sv/1000, einspeisungMwh: ins/1000, netzbezugMwh: bez/1000,
-             kwp, batKwh, batteryAging:aging };
+             kwp, batKwh, batPowerKw:batKwh/2, batteryAging:aging };
   }
 
   // Bewertungsfunktion je nach gewähltem Kriterium
@@ -954,7 +954,8 @@ export function _runPvBatOpt(resultDiv) {
     const amBold = bewertung === 'amortisation';
     const rows = [
       ['PV-Anlage',      fmt(r.kwp) + ' kWp'],
-      addBat ? ['Batteriespeicher', fmt(r.batKwh) + ' kWh'] : null,
+      addBat ? ['Batteriespeicher', fmt(r.batKwh) + ' kWh / ' + fmt(r.batPowerKw) + ' kW'] : null,
+      addBat ? ['Vollzyklen', fmt(r.batteryAging?.cyclesPerYear || 0) + ' /a'] : null,
       ['Investition',    fmt(r.invest) + ' €'],
       ['Jahreskosten',   fmt(r.annualCost) + ' €/a'],
       ['Ersparnis/Erlös',fmt(r.saving) + ' €/a', '#a5d6a7'],

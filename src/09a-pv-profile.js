@@ -198,6 +198,8 @@ export function toggleBatteriePanel() {
   if (p.classList.contains('visible')) { hidePanels(); return; }
   hidePanels();
   p.classList.add('visible');
+  calcStromPanel();
+  requestAnimationFrame(()=>window.updateBatteryRecommendation?.());
 }
 
 export function getBatParams() {
