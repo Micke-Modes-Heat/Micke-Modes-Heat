@@ -142,8 +142,11 @@ export function migriereZuDelta({ live, varianten } = {}) {
 
     for (const i of (snap.items || [])) {
       if (!gemeinsameItemIds.has(i.id)) {
-        // Nur in dieser Variante vorhanden → echte Planungsentscheidung
-        eigeneItems.push({ ...i, schicht: SCHICHT.ENTSCHEIDUNG, variante: v.id });
+        // Nur in dieser Variante vorhanden → echte Planungsentscheidung.
+        // Ein eigenes `variante`-Feld braucht es NICHT: Die Zugehörigkeit ergibt
+        // sich daraus, in welchem Delta das Objekt liegt. Ein zusätzliches Feld
+        // müsste bei jedem Anlegen mitgepflegt werden und liefe sonst auseinander.
+        eigeneItems.push({ ...i, schicht: SCHICHT.ENTSCHEIDUNG });
         bericht.befoerdert.push({ variante: v.id, id: i.id, name: i.name });
       } else if (_weichtAb(i, gemeinsam.items.find(g => g.id === i.id))) {
         bericht.abweichungen.push({ variante: v.id, id: i.id, name: i.name });
@@ -158,6 +161,87 @@ export function migriereZuDelta({ live, varianten } = {}) {
   }
 
   return { gemeinsam, deltas, bericht };
+}
+
+// ── Variantenvergleich ───────────────────────────────────────────────────────
+
+/**
+ * Kennwert eines geplanten Objekts — das, was bei diesem Typ die Größe ausmacht.
+ * Gibt { wert, einheit } oder null (dann zählt nur die Stückzahl).
+ */
+function _kennwert(item) {
+  const p = item?.props || {};
+  const z = k => { const v = parseFloat(p[k]); return Number.isFinite(v) ? v : null; };
+  switch (item?.type) {
+    case 'PV':       return z('leistungKWp')   != null ? { wert: z('leistungKWp'),   einheit: 'kWp' } : null;
+    case 'Batterie': return z('kapazitaetKWh') != null ? { wert: z('kapazitaetKWh'), einheit: 'kWh' } : null;
+    case 'Trafo':    return z('leistungKVA')   != null ? { wert: z('leistungKVA'),   einheit: 'kVA' } : null;
+    case 'Wind':
+    case 'Nsa':      return z('leistungKW')    != null ? { wert: z('leistungKW'),    einheit: 'kW' }  : null;
+    case 'KWK':      return z('leistungElKW')  != null ? { wert: z('leistungElKW'),  einheit: 'kW' }  : null;
+    default:         return null;
+  }
+}
+
+/**
+ * Verdichtet ein Delta zu einer Zusammenfassung je Anlagentyp.
+ * Rückgabe: [{ type, anzahl, summe, einheit }] — nach Stückzahl absteigend.
+ */
+export function fasseDeltaZusammen(delta) {
+  const proTyp = new Map();
+  for (const i of (delta?.items || [])) {
+    if (!proTyp.has(i.type)) proTyp.set(i.type, { type: i.type, anzahl: 0, summe: 0, einheit: null });
+    const g = proTyp.get(i.type);
+    g.anzahl++;
+    const kw = _kennwert(i);
+    if (kw) { g.summe += kw.wert; g.einheit = kw.einheit; }
+  }
+  return [...proTyp.values()].sort((a, b) => b.anzahl - a.anzahl || a.type.localeCompare(b.type));
+}
+
+/**
+ * Vergleich aller Varianten OHNE Umschalten.
+ *
+ * Erst durch das Delta-Modell möglich: Die Planungsentscheidungen jeder
+ * Variante liegen als eigene, kleine Liste vor und lassen sich direkt lesen.
+ * Vorher hätte man jede Variante aktivieren und dabei das ganze Netz neu
+ * aufbauen müssen, nur um zu sehen, was darin geplant ist.
+ *
+ * eingabe: { basisDelta, varianten, aktiveVarianteId, gemeinsam, liveDelta }
+ *   liveDelta — Delta des GERADE bearbeiteten Zustands. Nötig, weil das
+ *     gespeicherte Delta einer Variante erst beim Wechsel geschrieben wird:
+ *     ohne diesen Wert zeigte die aktive Spalte den Stand vom letzten Wechsel
+ *     und unterschlüge alles, was seither angelegt wurde.
+ * Rückgabe: {
+ *   gemeinsam: { items, edges },        // Kennzahlen der geteilten Grundlage
+ *   spalten: [{ id, name, aktiv, anzahl, kabel, zusammenfassung, items }]
+ * }
+ * Die Basisdaten erscheinen als erste Spalte mit id === null.
+ */
+export function variantenVergleich({ basisDelta, varianten, aktiveVarianteId, gemeinsam, liveDelta } = {}) {
+  const aktivId = aktiveVarianteId ?? null;
+  const spalte = (id, name, delta) => {
+    const aktiv = aktivId === id;
+    const d = (aktiv && liveDelta) ? liveDelta : delta;
+    return {
+      id, name, aktiv,
+      anzahl: (d?.items || []).length,
+      kabel: (d?.edges || []).length,
+      zusammenfassung: fasseDeltaZusammen(d),
+      items: [...(d?.items || [])],
+    };
+  };
+
+  return {
+    gemeinsam: {
+      items: (gemeinsam?.items || []).length,
+      edges: (gemeinsam?.edges || []).length,
+    },
+    spalten: [
+      spalte(null, 'Basisdaten', basisDelta),
+      ...(varianten || []).map(v => spalte(v.id, v.name, v.stromnetz)),
+    ],
+  };
 }
 
 // Vergleicht die planungsrelevanten Eigenschaften zweier Assets.

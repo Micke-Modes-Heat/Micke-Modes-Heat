@@ -14838,9 +14838,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-08-17';
+  var d = '2026-08-25';
   if (d.indexOf('__') === 0) d = '';
-  var c = '8112207';
+  var c = '50c764f';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -75319,9 +75319,17 @@ window._isSingleFileBuild = true;
     }
     const rows = assets.map(a => {
       const cfg = ASSET_CFG[a.type];
+      // Schicht mit anzeigen: Bestand und Entwicklung sind variantenübergreifend
+      // gemeinsam — was hier gelöscht wird, ist in ALLEN Varianten weg. Nur
+      // Planungsobjekte betreffen ausschließlich die aktive Variante.
+      const sch = normSchicht(a.schicht);
+      const sm  = SCHICHT_META[sch];
+      const geteilt = sch !== SCHICHT.ENTSCHEIDUNG;
       return `<div class="asset-del-row" data-id="${a.id}" style="display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:4px;">` +
         `<span style="background:${cfg.color};width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${cfg.icon}</span>` +
         `<span style="flex:1;font-size:11px;">${a.name}</span>` +
+        `<span title="${sm.label}${geteilt ? ' — in allen Varianten' : ' — nur in dieser Variante'}"` +
+        ` style="font-size:10px;opacity:.85;flex-shrink:0;">${sm.icon}</span>` +
         `<span style="color:#ef5350;font-size:12px;font-weight:700;">✕</span>` +
         `</div>`;
     }).join('');
@@ -77519,8 +77527,11 @@ window._isSingleFileBuild = true;
     // Find NAP (root)
     const nap = window.stromNodes.find(n => n.type === 'nap');
     if (!nap) {
-      // No NAP — just update visuals without calculation
+      // No (legacy) NAP-Knoten — Asset-basierte Netze (elCalcAssets) laufen
+      // über diesen Pfad, ohne die weiter unten stehende Berechnung zu erreichen.
+      // Trotzdem müssen Karte UND Einlinienschema die aktuelle Einfärbung zeigen.
       updateStromEdgeVisuals();
+      if (typeof window.sldRefresh === 'function') window.sldRefresh();
       return;
     }
     const napId = nap.id;
@@ -77913,6 +77924,7 @@ window._isSingleFileBuild = true;
 
     updateStromEdgeVisuals();
     updateLpStromSummary();
+    if (typeof window.sldRefresh === 'function') window.sldRefresh();
   }
 
   function _calcStromNetzKosten() {
@@ -93253,6 +93265,11 @@ window._isSingleFileBuild = true;
       <button class="lp-tool-btn" id="btn-windanalyse-toggle" data-click="windaTogglePanel()"
         style="border-color:#4dd0e1;color:#4dd0e1;justify-content:center;"
         title="Ertrag, Abstände, Eignungsfläche &amp; Szenarien-Vergleich aller Windkraftanlagen">🌀 Windanalyse</button>
+    </div>
+    <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
+      <button class="lp-tool-btn" id="btn-varianten-vergleich-toggle" data-click="variantenVergleichToggle()"
+        style="border-color:#ce93d8;color:#ce93d8;justify-content:center;"
+        title="Zeigt die Planungsentscheidungen aller Varianten nebeneinander — ohne die Variante zu wechseln">🔀 Varianten vergleichen</button>
     </div>
     <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
       <button class="lp-tool-btn" id="btn-bestand-panel-toggle" data-click="bestandPanelToggle()"
@@ -120541,8 +120558,11 @@ out body;>;out skel qt;`;
 
       for (const i of (snap.items || [])) {
         if (!gemeinsameItemIds.has(i.id)) {
-          // Nur in dieser Variante vorhanden → echte Planungsentscheidung
-          eigeneItems.push({ ...i, schicht: SCHICHT.ENTSCHEIDUNG, variante: v.id });
+          // Nur in dieser Variante vorhanden → echte Planungsentscheidung.
+          // Ein eigenes `variante`-Feld braucht es NICHT: Die Zugehörigkeit ergibt
+          // sich daraus, in welchem Delta das Objekt liegt. Ein zusätzliches Feld
+          // müsste bei jedem Anlegen mitgepflegt werden und liefe sonst auseinander.
+          eigeneItems.push({ ...i, schicht: SCHICHT.ENTSCHEIDUNG });
           bericht.befoerdert.push({ variante: v.id, id: i.id, name: i.name });
         } else if (_weichtAb(i, gemeinsam.items.find(g => g.id === i.id))) {
           bericht.abweichungen.push({ variante: v.id, id: i.id, name: i.name });
@@ -120557,6 +120577,87 @@ out body;>;out skel qt;`;
     }
 
     return { gemeinsam, deltas, bericht };
+  }
+
+  // ── Variantenvergleich ───────────────────────────────────────────────────────
+
+  /**
+   * Kennwert eines geplanten Objekts — das, was bei diesem Typ die Größe ausmacht.
+   * Gibt { wert, einheit } oder null (dann zählt nur die Stückzahl).
+   */
+  function _kennwert(item) {
+    const p = item?.props || {};
+    const z = k => { const v = parseFloat(p[k]); return Number.isFinite(v) ? v : null; };
+    switch (item?.type) {
+      case 'PV':       return z('leistungKWp')   != null ? { wert: z('leistungKWp'),   einheit: 'kWp' } : null;
+      case 'Batterie': return z('kapazitaetKWh') != null ? { wert: z('kapazitaetKWh'), einheit: 'kWh' } : null;
+      case 'Trafo':    return z('leistungKVA')   != null ? { wert: z('leistungKVA'),   einheit: 'kVA' } : null;
+      case 'Wind':
+      case 'Nsa':      return z('leistungKW')    != null ? { wert: z('leistungKW'),    einheit: 'kW' }  : null;
+      case 'KWK':      return z('leistungElKW')  != null ? { wert: z('leistungElKW'),  einheit: 'kW' }  : null;
+      default:         return null;
+    }
+  }
+
+  /**
+   * Verdichtet ein Delta zu einer Zusammenfassung je Anlagentyp.
+   * Rückgabe: [{ type, anzahl, summe, einheit }] — nach Stückzahl absteigend.
+   */
+  function fasseDeltaZusammen(delta) {
+    const proTyp = new Map();
+    for (const i of (delta?.items || [])) {
+      if (!proTyp.has(i.type)) proTyp.set(i.type, { type: i.type, anzahl: 0, summe: 0, einheit: null });
+      const g = proTyp.get(i.type);
+      g.anzahl++;
+      const kw = _kennwert(i);
+      if (kw) { g.summe += kw.wert; g.einheit = kw.einheit; }
+    }
+    return [...proTyp.values()].sort((a, b) => b.anzahl - a.anzahl || a.type.localeCompare(b.type));
+  }
+
+  /**
+   * Vergleich aller Varianten OHNE Umschalten.
+   *
+   * Erst durch das Delta-Modell möglich: Die Planungsentscheidungen jeder
+   * Variante liegen als eigene, kleine Liste vor und lassen sich direkt lesen.
+   * Vorher hätte man jede Variante aktivieren und dabei das ganze Netz neu
+   * aufbauen müssen, nur um zu sehen, was darin geplant ist.
+   *
+   * eingabe: { basisDelta, varianten, aktiveVarianteId, gemeinsam, liveDelta }
+   *   liveDelta — Delta des GERADE bearbeiteten Zustands. Nötig, weil das
+   *     gespeicherte Delta einer Variante erst beim Wechsel geschrieben wird:
+   *     ohne diesen Wert zeigte die aktive Spalte den Stand vom letzten Wechsel
+   *     und unterschlüge alles, was seither angelegt wurde.
+   * Rückgabe: {
+   *   gemeinsam: { items, edges },        // Kennzahlen der geteilten Grundlage
+   *   spalten: [{ id, name, aktiv, anzahl, kabel, zusammenfassung, items }]
+   * }
+   * Die Basisdaten erscheinen als erste Spalte mit id === null.
+   */
+  function variantenVergleich({ basisDelta, varianten, aktiveVarianteId, gemeinsam, liveDelta } = {}) {
+    const aktivId = aktiveVarianteId ?? null;
+    const spalte = (id, name, delta) => {
+      const aktiv = aktivId === id;
+      const d = (aktiv && liveDelta) ? liveDelta : delta;
+      return {
+        id, name, aktiv,
+        anzahl: (d?.items || []).length,
+        kabel: (d?.edges || []).length,
+        zusammenfassung: fasseDeltaZusammen(d),
+        items: [...(d?.items || [])],
+      };
+    };
+
+    return {
+      gemeinsam: {
+        items: (gemeinsam?.items || []).length,
+        edges: (gemeinsam?.edges || []).length,
+      },
+      spalten: [
+        spalte(null, 'Basisdaten', basisDelta),
+        ...(varianten || []).map(v => spalte(v.id, v.name, v.stromnetz)),
+      ],
+    };
   }
 
   // Vergleicht die planungsrelevanten Eigenschaften zweier Assets.
@@ -121659,6 +121760,9 @@ out body;>;out skel qt;`;
     variantResults = {};
     renderVariantenBar();
     updateVariantBanner();
+    // Der Schicht-Umschalter zeigt im Planungsmodus die aktive Variante an —
+    // nach einem Wechsel muss er nachziehen (defensiv, 13v lädt eigenständig).
+    if (typeof window.schichtBarRender === 'function') window.schichtBarRender();
     updateAllDeckungen();
   }
 
@@ -160918,7 +161022,7 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
   // DOM-Orchestrierung (Panel „Kälteversorgung")
   // ════════════════════════════════════════════════════════════════════════
 
-  function _num(id, def = 0) {
+  function _num$1(id, def = 0) {
     const el = document.getElementById(id);
     if (!el) return def;
     const v = parseFloat(el.value);
@@ -160954,9 +161058,9 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
 
   // Reversible WP an Wärme-WP gekoppelt → Nennleistung der Wärme-WP übernehmen
   function _waermeWpLeistung(quelleKey) {
-    if (quelleKey === 'luft') return _num('lwwp-leistung', 0);
-    if (quelleKey === 'fg')   return _num('fg-leistung', 0);
-    if (quelleKey === 'geo')  return _num('geo-leistung-eff', 0) || _num('geo-leistung', 0);
+    if (quelleKey === 'luft') return _num$1('lwwp-leistung', 0);
+    if (quelleKey === 'fg')   return _num$1('fg-leistung', 0);
+    if (quelleKey === 'geo')  return _num$1('geo-leistung-eff', 0) || _num$1('geo-leistung', 0);
     return 0;
   }
 
@@ -160964,11 +161068,11 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
   function _kaelteJahresMwh() {
     const mode = document.getElementById('kaelte-last-mode')?.value || 'direkt';
     if (mode === 'flaeche') {
-      const flaeche = _num('kaelte-flaeche', 0);
-      const spez = _num('kaelte-spez', 0);
+      const flaeche = _num$1('kaelte-flaeche', 0);
+      const spez = _num$1('kaelte-spez', 0);
       return flaeche * spez / 1000; // m² × kWh/m²a → MWh/a
     }
-    return _num('kaelte-mwh', 0);
+    return _num$1('kaelte-mwh', 0);
   }
 
   // Erzeuger-Liste aus den UI-Slots aufbauen
@@ -160981,15 +161085,15 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
     if (_checked('kaelte-revwp-on')) {
       const quelle = document.getElementById('kaelte-revwp-quelle')?.value || 'luft';
       const auto = _checked('kaelte-revwp-auto');
-      const leistKw = auto ? _waermeWpLeistung(quelle) : _num('kaelte-revwp-kw', 0);
+      const leistKw = auto ? _waermeWpLeistung(quelle) : _num$1('kaelte-revwp-kw', 0);
       list.push({
         key: 'revwp', art: 'reversibel', label: 'Reversible WP',
-        leistKw, guetegradK: _num('kaelte-revwp-gg', 0.38), color: '#4dd0e1',
+        leistKw, guetegradK: _num$1('kaelte-revwp-gg', 0.38), color: '#4dd0e1',
         ...mkQuelle(quelle),
-        approachLuft: quelle === 'luft' ? _num('kaelte-revwp-approach', 5) : 0,
+        approachLuft: quelle === 'luft' ? _num$1('kaelte-revwp-approach', 5) : 0,
         freecool: quelle !== 'luft' && _checked('kaelte-revwp-freecool'),
-        freecoolDtMin: _num('kaelte-freecool-dt', 2),
-        eerFreecool: _num('kaelte-freecool-eer', 20),
+        freecoolDtMin: _num$1('kaelte-freecool-dt', 2),
+        eerFreecool: _num$1('kaelte-freecool-eer', 20),
         auto,
       });
     }
@@ -160997,12 +161101,12 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
       const quelle = document.getElementById('kaelte-chiller-quelle')?.value || 'luft';
       list.push({
         key: 'chiller', art: 'chiller', label: 'Kältemaschine',
-        leistKw: _num('kaelte-chiller-kw', 0), guetegradK: _num('kaelte-chiller-gg', 0.40), color: '#0288d1',
+        leistKw: _num$1('kaelte-chiller-kw', 0), guetegradK: _num$1('kaelte-chiller-gg', 0.40), color: '#0288d1',
         ...mkQuelle(quelle),
-        approachLuft: quelle === 'luft' ? _num('kaelte-chiller-approach', 5) : 0,
+        approachLuft: quelle === 'luft' ? _num$1('kaelte-chiller-approach', 5) : 0,
         freecool: quelle !== 'luft' && _checked('kaelte-chiller-freecool'),
-        freecoolDtMin: _num('kaelte-freecool-dt', 2),
-        eerFreecool: _num('kaelte-freecool-eer', 20),
+        freecoolDtMin: _num$1('kaelte-freecool-dt', 2),
+        eerFreecool: _num$1('kaelte-freecool-eer', 20),
       });
     }
     return list;
@@ -161023,8 +161127,8 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
     if (hint) hint.style.display = 'none';
 
     const jahresMwh = _kaelteJahresMwh();
-    const kuehlgrenze = _num('kaelte-kuehlgrenze', 12);
-    const tKwC = _num('kaelte-kw-vl', 7);
+    const kuehlgrenze = _num$1('kaelte-kuehlgrenze', 12);
+    const tKwC = _num$1('kaelte-kw-vl', 7);
     const erzList = _kaelteReadErzList();
 
     const lastKw = synthKaelteLastgang(ss.tempH, kuehlgrenze, jahresMwh);
@@ -161068,11 +161172,11 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
   // Reversible WP: nur Reversibilitäts-Aufschlag (€/kW) — die Maschine selbst steckt
   // bereits in der Wärme-Investition. Dedizierte Kältemaschine: Vollinvest (€/kW).
   function _kaelteEconomics(ks, erzList) {
-    const preisCt = _num('strom-preis-bezug', 35);          // ct/kWh
-    const zins = _num('kaelte-zins', 4) / 100;
+    const preisCt = _num$1('strom-preis-bezug', 35);          // ct/kWh
+    const zins = _num$1('kaelte-zins', 4) / 100;
     const emfStrom = (typeof window.stromEmF === 'number') ? window.stromEmF : 363; // g/kWh
-    const chillerEurKw = _num('kaelte-invest-chiller', 400);
-    const revwpEurKw = _num('kaelte-invest-revwp', 80);
+    const chillerEurKw = _num$1('kaelte-invest-chiller', 400);
+    const revwpEurKw = _num$1('kaelte-invest-revwp', 80);
 
     let invest = 0;
     for (const e of erzList) {
@@ -169932,18 +170036,32 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   const BAR_ID = 'schicht-bar';
 
+  // Im Planungsmodus landen neue Objekte im Delta der AKTIVEN Variante. Welche das
+  // ist, muss am Umschalter stehen — sonst plant man in der falschen und merkt es
+  // nicht, weil auf der Karte kein Unterschied sichtbar ist.
+  function _aktiveVariantenName() {
+    if (activeVariantId == null) return 'Basisdaten';
+    return varianten.find(v => v.id === activeVariantId)?.name || 'Variante';
+  }
+
   function _html() {
     const aktiv = getAktiveSchicht();
 
     const knoepfe = SCHICHT_REIHENFOLGE.map(s => {
       const m = SCHICHT_META[s];
       const an = s === aktiv;
-      return `<button data-click="schichtSetModus('${s}')" title="${m.hinweis}"
+      const beschriftung = an
+        ? ' ' + (s === SCHICHT.ENTSCHEIDUNG ? _aktiveVariantenName() : m.label)
+        : '';
+      const titel = s === SCHICHT.ENTSCHEIDUNG
+        ? `${m.hinweis} — aktuell: ${_aktiveVariantenName()}`
+        : m.hinweis;
+      return `<button data-click="schichtSetModus('${s}')" title="${titel}"
       style="padding:2px 7px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px;
              border:1px solid ${an ? m.farbe : 'var(--border)'};
              color:${an ? m.farbe : 'var(--muted)'};
              background:${an ? m.farbe + '22' : 'transparent'};
-             font-weight:${an ? '600' : '400'};">${m.icon}${an ? ' ' + m.label : ''}</button>`;
+             font-weight:${an ? '600' : '400'};">${m.icon}${beschriftung}</button>`;
     }).join('');
 
     const augen = SCHICHT_REIHENFOLGE.map(s => {
@@ -170276,7 +170394,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // Das Panel wird beim ersten Öffnen dynamisch erzeugt (vgl. Engpass-Panel).
 
 
-  const PANEL_ID$1 = 'bestand-panel';
+  const PANEL_ID$2 = 'bestand-panel';
   let _ergebnis = null;
 
   const SCHWERE_META = {
@@ -170287,15 +170405,15 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   // ── Panel-Gerüst ─────────────────────────────────────────────────────────────
 
-  function _ensurePanel$1() {
-    let panel = document.getElementById(PANEL_ID$1);
+  function _ensurePanel$2() {
+    let panel = document.getElementById(PANEL_ID$2);
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.id = PANEL_ID$1;
+    panel.id = PANEL_ID$2;
     panel.className = 'float-panel amber-border';
     panel.style.cssText = 'top:70px;min-width:520px;max-width:760px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
     panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$1}')">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$2}')">
       <span style="color:#4fc3f7;font-size:12px;font-weight:600;">🏛 Bestand prüfen</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
@@ -170309,7 +170427,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   function _body$1() { return document.getElementById('bestand-panel-body'); }
 
   function bestandPanelToggle() {
-    const panel = _ensurePanel$1();
+    const panel = _ensurePanel$2();
     const sichtbar = panel.style.display === 'block';
     panel.style.display = sichtbar ? 'none' : 'block';
     if (!sichtbar) bestandPruefenUndZeigen();
@@ -170317,7 +170435,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   /** Netz für das Basisjahr rechnen und alle Prüfungen ausführen. */
   function bestandPruefenUndZeigen() {
-    _ensurePanel$1().style.display = 'block';
+    _ensurePanel$2().style.display = 'block';
     _body$1().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:11px;">⏳ Bestand wird geprüft …</div>';
     setTimeout(() => {
       try {
@@ -170466,6 +170584,147 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     bestandPanelToggle: bestandPanelToggle,
     bestandPruefenUndZeigen: bestandPruefenUndZeigen,
     bestandSpringeZu: bestandSpringeZu
+  });
+
+  // ── 13x-varianten-vergleich.js — Was plant welche Variante? ──────────────────
+  //
+  // Zeigt die Planungsentscheidungen ALLER Varianten nebeneinander, ohne die
+  // Variante zu wechseln. Erst durch das Delta-Modell möglich
+  // (lib/varianten-delta.js): Die Entscheidungen jeder Variante liegen als eigene,
+  // kleine Liste vor. Vorher hätte man jede Variante aktivieren müssen — und dabei
+  // jedes Mal das komplette Stromnetz abgerissen und neu aufgebaut.
+
+
+  const PANEL_ID$1 = 'varianten-vergleich-panel';
+
+  function _ensurePanel$1() {
+    let panel = document.getElementById(PANEL_ID$1);
+    if (panel) return panel;
+    panel = document.createElement('div');
+    panel.id = PANEL_ID$1;
+    panel.className = 'float-panel amber-border';
+    panel.style.cssText = 'top:70px;min-width:540px;max-width:820px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
+    panel.innerHTML = `
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$1}')">
+      <span style="color:#ce93d8;font-size:12px;font-weight:600;">🔀 Varianten vergleichen</span>
+      <span class="drag-dots">⠿</span>
+      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
+            data-click="variantenVergleichToggle()">✕</span>
+    </div>
+    <div id="varianten-vergleich-body"></div>`;
+    document.body.appendChild(panel);
+    return panel;
+  }
+
+  function variantenVergleichToggle() {
+    const panel = _ensurePanel$1();
+    const sichtbar = panel.style.display === 'block';
+    panel.style.display = sichtbar ? 'none' : 'block';
+    if (!sichtbar) variantenVergleichRender();
+  }
+
+  /** Zu einer Variante wechseln und die Ansicht aktualisieren. */
+  function variantenVergleichAktivieren(id) {
+    activateVariant(id === '' ? null : id);
+    variantenVergleichRender();
+  }
+
+  function variantenVergleichRender() {
+    const el = document.getElementById('varianten-vergleich-body');
+    if (!el) return;
+
+    // Das gespeicherte Delta der aktiven Variante wird erst beim Wechsel
+    // geschrieben — für die aktive Spalte deshalb den Live-Zustand auswerten,
+    // sonst fehlt alles seit dem letzten Wechsel Angelegte.
+    let liveDelta = null;
+    try {
+      const live = typeof window.captureStromNetzState === 'function' ? window.captureStromNetzState() : null;
+      if (live) liveDelta = splitStromNetzState(live).delta;
+    } catch (e) { console.warn('Variantenvergleich: Live-Zustand nicht lesbar', e); }
+
+    const v = variantenVergleich({
+      basisDelta: baseStromNetzSnapshot,
+      varianten,
+      aktiveVarianteId: activeVariantId,
+      gemeinsam: stromNetzGemeinsam,
+      liveDelta,
+    });
+
+    el.innerHTML = `${_grundlage(v)}${_spalten(v)}${_fussnote()}`;
+  }
+
+  // Die geteilte Grundlage — sie ist der Grund, warum der Vergleich überhaupt
+  // aussagekräftig ist: alle Varianten rechnen gegen dasselbe Netz.
+  function _grundlage(v) {
+    return `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:2px 0 3px;">
+    Gemeinsame Grundlage
+  </div>
+  <div style="background:var(--surface2);border-radius:6px;padding:7px 9px;margin-bottom:12px;
+              display:flex;align-items:center;gap:14px;font-size:10px;">
+    <span style="color:#4fc3f7;">🏛 Bestand + 📈 Entwicklung</span>
+    <span style="color:var(--text);font-family:'DM Mono',monospace;">${v.gemeinsam.items} Anlagen · ${v.gemeinsam.edges} Kabel</span>
+    <span style="margin-left:auto;color:var(--muted);font-size:9px;">
+      gilt in allen Varianten gleich
+    </span>
+  </div>`;
+  }
+
+  function _spalten(v) {
+    const zeilen = v.spalten.map(s => {
+      const kennwerte = s.zusammenfassung.length
+        ? s.zusammenfassung.map(g => {
+            const cfg = ASSET_CFG[g.type];
+            const wert = g.einheit ? ` ${_num(g.summe)} ${g.einheit}` : '';
+            return `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:9px;white-space:nowrap;">
+            <span style="background:${cfg?.color || '#546e7a'};border-radius:3px;padding:0 4px;font-size:10px;">${cfg?.icon || '•'}</span>
+            <span style="color:var(--text);">${g.anzahl}×${wert}</span></span>`;
+          }).join('')
+        : '<span style="color:var(--muted);font-size:9px;">keine Planungsentscheidungen</span>';
+
+      const aktivBadge = s.aktiv
+        ? '<span style="background:#66bb6a22;color:#66bb6a;border-radius:3px;padding:0 5px;font-size:9px;">aktiv</span>'
+        : `<span style="font-size:9px;color:#7c4dff;cursor:pointer;"
+              data-click="variantenVergleichAktivieren('${s.id ?? ''}')"
+              title="Zu dieser Variante wechseln">→ wechseln</span>`;
+
+      return `
+    <div style="border-left:3px solid ${s.aktiv ? '#66bb6a' : 'var(--border)'};
+                background:var(--surface2);border-radius:0 6px 6px 0;padding:6px 9px;margin-bottom:5px;">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;">
+        <b style="font-size:10.5px;color:var(--text);">${s.name}</b>
+        ${aktivBadge}
+        <span style="margin-left:auto;font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;">
+          ${s.anzahl} Anlage${s.anzahl === 1 ? '' : 'n'} · ${s.kabel} Kabel
+        </span>
+      </div>
+      <div style="line-height:1.9;">${kennwerte}</div>
+    </div>`;
+    }).join('');
+
+    return `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
+    Planungsentscheidungen je Variante
+  </div>
+  ${zeilen}`;
+  }
+
+  function _fussnote() {
+    return `
+  <div style="font-size:8.5px;color:var(--muted);padding:4px 6px 0;line-height:1.7;">
+    Gezeigt wird nur, was die jeweilige Variante zusätzlich plant. Bestand und
+    Entwicklung sind gemeinsam — eine Korrektur daran wirkt sofort in allen
+    Varianten, und ein gelöschtes Bestandsobjekt ist überall weg.
+  </div>`;
+  }
+
+  const _num = n => (Math.abs(n) >= 1000 ? Math.round(n).toLocaleString('de-DE') : String(Math.round(n * 10) / 10));
+
+  var variantenVergleichPanel = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    variantenVergleichAktivieren: variantenVergleichAktivieren,
+    variantenVergleichRender: variantenVergleichRender,
+    variantenVergleichToggle: variantenVergleichToggle
   });
 
   // DOM-freie Anlagenklassen für Wind-Platzierung und Restriktionsabstände.
@@ -175014,7 +175273,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     optimizerCore, hourlyLive, optimizerRun, optimizerWorker, optimizerSession,
     hilfeLeitfaden,
     assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
-    slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel,
+    slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel, variantenVergleichPanel,
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,

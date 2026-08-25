@@ -73,6 +73,7 @@ import * as kompaktstation from './13m-kompaktstation.js';
 import * as elektroPanel from './13n-elektro-panel.js';
 import * as schichtBar from './13v-schicht-bar.js';
 import * as bestandPanel from './13w-bestand-panel.js';
+import * as variantenVergleichPanel from './13x-varianten-vergleich.js';
 import * as napAnalyse from './13o-nap-analyse.js';
 import * as knotenAnalyse from './13r-knotenpunkt-analyse.js';
 import * as windAnalyse from './13t-wind-analyse.js';
@@ -98,7 +99,7 @@ const modules = [
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker, optimizerSession,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
-  slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel,
+  slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel, variantenVergleichPanel,
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,

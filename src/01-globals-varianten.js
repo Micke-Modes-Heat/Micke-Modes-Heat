@@ -1102,6 +1102,9 @@ export function activateVariant(id, _transactionActive = false) {
   variantResults = {};
   renderVariantenBar();
   updateVariantBanner();
+  // Der Schicht-Umschalter zeigt im Planungsmodus die aktive Variante an —
+  // nach einem Wechsel muss er nachziehen (defensiv, 13v lädt eigenständig).
+  if (typeof window.schichtBarRender === 'function') window.schichtBarRender();
   updateAllDeckungen();
 }
 

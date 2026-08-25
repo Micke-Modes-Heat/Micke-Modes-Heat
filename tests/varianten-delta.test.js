@@ -141,7 +141,12 @@ describe('migriereZuDelta', () => {
   it('befördert nur in einer Variante vorhandene Objekte zur Entscheidung', () => {
     const { deltas } = migriereZuDelta({ live: live(), varianten: varianten() });
     expect(deltas.v2.items).toHaveLength(1);
-    expect(deltas.v2.items[0]).toMatchObject({ id: 'tr2', schicht: SCHICHT.ENTSCHEIDUNG, variante: 'v2' });
+    expect(deltas.v2.items[0]).toMatchObject({ id: 'tr2', schicht: SCHICHT.ENTSCHEIDUNG });
+  });
+
+  it('vergibt kein eigenes variante-Feld — die Zugehörigkeit steckt im Delta', () => {
+    const { deltas } = migriereZuDelta({ live: live(), varianten: varianten() });
+    expect(deltas.v2.items[0]).not.toHaveProperty('variante');
   });
 
   it('nimmt die zugehörigen Kanten ins Delta mit', () => {
@@ -177,5 +182,136 @@ describe('migriereZuDelta', () => {
     const r = migriereZuDelta({});
     expect(r.gemeinsam.items).toEqual([]);
     expect(r.bericht.befoerdert).toEqual([]);
+  });
+});
+
+// ── Variantenvergleich ───────────────────────────────────────────────────────
+import { fasseDeltaZusammen, variantenVergleich } from '../src/lib/varianten-delta.js';
+
+describe('fasseDeltaZusammen', () => {
+  it('zählt je Anlagentyp und summiert den passenden Kennwert', () => {
+    const d = { items: [
+      { id: '1', type: 'PV', props: { leistungKWp: 30 } },
+      { id: '2', type: 'PV', props: { leistungKWp: 70 } },
+      { id: '3', type: 'Batterie', props: { kapazitaetKWh: 200 } },
+    ] };
+    expect(fasseDeltaZusammen(d)).toEqual([
+      { type: 'PV', anzahl: 2, summe: 100, einheit: 'kWp' },
+      { type: 'Batterie', anzahl: 1, summe: 200, einheit: 'kWh' },
+    ]);
+  });
+
+  it('lässt die Einheit weg, wenn der Typ keinen Kennwert hat', () => {
+    const [g] = fasseDeltaZusammen({ items: [{ id: '1', type: 'KVS', props: {} }] });
+    expect(g).toMatchObject({ type: 'KVS', anzahl: 1, einheit: null });
+  });
+
+  it('nutzt je Typ den richtigen Kennwert', () => {
+    const d = { items: [
+      { id: '1', type: 'Trafo', props: { leistungKVA: 630 } },
+      { id: '2', type: 'KWK',   props: { leistungElKW: 50 } },
+    ] };
+    const nach = t => fasseDeltaZusammen(d).find(g => g.type === t);
+    expect(nach('Trafo')).toMatchObject({ summe: 630, einheit: 'kVA' });
+    expect(nach('KWK')).toMatchObject({ summe: 50, einheit: 'kW' });
+  });
+
+  it('verträgt fehlende oder unlesbare Kennwerte', () => {
+    const [g] = fasseDeltaZusammen({ items: [{ id: '1', type: 'PV', props: { leistungKWp: 'x' } }] });
+    expect(g).toMatchObject({ anzahl: 1, summe: 0, einheit: null });
+  });
+
+  it('verträgt leere Eingaben', () => {
+    expect(fasseDeltaZusammen(null)).toEqual([]);
+  });
+});
+
+describe('variantenVergleich', () => {
+  const eingabe = () => ({
+    gemeinsam: { items: [{ id: 'nap' }, { id: 'tr' }], edges: [{ id: 'e1' }] },
+    basisDelta: { items: [], edges: [] },
+    varianten: [
+      { id: 'v1', name: 'Bestandsnetz', stromnetz: {
+        items: [{ id: 'pv1', type: 'PV', props: { leistungKWp: 100 } }], edges: [{ id: 'e2' }] } },
+      { id: 'v2', name: 'Erzeugungsnetz', stromnetz: {
+        items: [
+          { id: 'pv2', type: 'PV', props: { leistungKWp: 400 } },
+          { id: 'tr2', type: 'Trafo', props: { leistungKVA: 1000 } },
+        ], edges: [] } },
+    ],
+    aktiveVarianteId: 'v2',
+  });
+
+  it('stellt die Basisdaten als erste Spalte voran', () => {
+    const { spalten } = variantenVergleich(eingabe());
+    expect(spalten[0]).toMatchObject({ id: null, name: 'Basisdaten', anzahl: 0 });
+  });
+
+  it('markiert die aktive Variante', () => {
+    const { spalten } = variantenVergleich(eingabe());
+    expect(spalten.filter(s => s.aktiv).map(s => s.id)).toEqual(['v2']);
+  });
+
+  it('behandelt die Basisdaten als aktiv, wenn keine Variante gewählt ist', () => {
+    const { spalten } = variantenVergleich({ ...eingabe(), aktiveVarianteId: null });
+    expect(spalten[0].aktiv).toBe(true);
+  });
+
+  it('zählt geplante Anlagen und Kabel je Variante', () => {
+    const { spalten } = variantenVergleich(eingabe());
+    expect(spalten.find(s => s.id === 'v1')).toMatchObject({ anzahl: 1, kabel: 1 });
+    expect(spalten.find(s => s.id === 'v2')).toMatchObject({ anzahl: 2, kabel: 0 });
+  });
+
+  it('fasst je Spalte nach Anlagentyp zusammen', () => {
+    const { spalten } = variantenVergleich(eingabe());
+    const v2 = spalten.find(s => s.id === 'v2');
+    expect(v2.zusammenfassung.map(g => g.type).sort()).toEqual(['PV', 'Trafo']);
+    expect(v2.zusammenfassung.find(g => g.type === 'PV').summe).toBe(400);
+  });
+
+  it('weist die gemeinsame Grundlage separat aus', () => {
+    expect(variantenVergleich(eingabe()).gemeinsam).toEqual({ items: 2, edges: 1 });
+  });
+
+  it('verträgt ein Projekt ohne Varianten', () => {
+    const { spalten } = variantenVergleich({});
+    expect(spalten).toHaveLength(1);
+    expect(spalten[0].id).toBeNull();
+  });
+});
+
+describe('variantenVergleich · Live-Delta der aktiven Variante', () => {
+  const basis = () => ({
+    gemeinsam: { items: [], edges: [] },
+    basisDelta: { items: [], edges: [] },
+    varianten: [{ id: 'v1', name: 'V1', stromnetz: { items: [{ id: 'alt', type: 'PV', props: {} }], edges: [] } }],
+    aktiveVarianteId: 'v1',
+  });
+
+  it('bevorzugt für die aktive Spalte den Live-Zustand vor dem Schnappschuss', () => {
+    // Der gespeicherte Schnappschuss kennt nur "alt" — live sind es zwei Anlagen.
+    const live = { items: [{ id: 'alt', type: 'PV', props: {} }, { id: 'neu', type: 'PV', props: {} }], edges: [] };
+    const { spalten } = variantenVergleich({ ...basis(), liveDelta: live });
+    expect(spalten.find(s => s.id === 'v1').anzahl).toBe(2);
+  });
+
+  it('lässt inaktive Spalten unberührt vom Live-Zustand', () => {
+    const eingabe = basis();
+    eingabe.varianten.push({ id: 'v2', name: 'V2', stromnetz: { items: [], edges: [] } });
+    const live = { items: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], edges: [] };
+    const { spalten } = variantenVergleich({ ...eingabe, liveDelta: live });
+    expect(spalten.find(s => s.id === 'v2').anzahl).toBe(0);
+  });
+
+  it('nutzt den Live-Zustand auch für die Basisdaten-Spalte', () => {
+    const live = { items: [{ id: 'x', type: 'PV', props: {} }], edges: [] };
+    const { spalten } = variantenVergleich({ ...basis(), aktiveVarianteId: null, liveDelta: live });
+    expect(spalten[0]).toMatchObject({ id: null, aktiv: true, anzahl: 1 });
+  });
+
+  it('fällt ohne Live-Zustand auf den Schnappschuss zurück', () => {
+    const { spalten } = variantenVergleich(basis());
+    expect(spalten.find(s => s.id === 'v1').anzahl).toBe(1);
   });
 });

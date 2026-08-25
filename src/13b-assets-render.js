@@ -371,9 +371,17 @@ function _showAssetDeletePopup(buildingId, latlng) {
   }
   const rows = assets.map(a => {
     const cfg = ASSET_CFG[a.type];
+    // Schicht mit anzeigen: Bestand und Entwicklung sind variantenübergreifend
+    // gemeinsam — was hier gelöscht wird, ist in ALLEN Varianten weg. Nur
+    // Planungsobjekte betreffen ausschließlich die aktive Variante.
+    const sch = normSchicht(a.schicht);
+    const sm  = SCHICHT_META[sch];
+    const geteilt = sch !== SCHICHT.ENTSCHEIDUNG;
     return `<div class="asset-del-row" data-id="${a.id}" style="display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:4px;">` +
       `<span style="background:${cfg.color};width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${cfg.icon}</span>` +
       `<span style="flex:1;font-size:11px;">${a.name}</span>` +
+      `<span title="${sm.label}${geteilt ? ' — in allen Varianten' : ' — nur in dieser Variante'}"` +
+      ` style="font-size:10px;opacity:.85;flex-shrink:0;">${sm.icon}</span>` +
       `<span style="color:#ef5350;font-size:12px;font-weight:700;">✕</span>` +
       `</div>`;
   }).join('');

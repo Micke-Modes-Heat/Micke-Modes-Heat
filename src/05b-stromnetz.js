@@ -1514,8 +1514,11 @@ export function _recalcStromNetzInner() {
   // Find NAP (root)
   const nap = window.stromNodes.find(n => n.type === 'nap');
   if (!nap) {
-    // No NAP — just update visuals without calculation
+    // No (legacy) NAP-Knoten — Asset-basierte Netze (elCalcAssets) laufen
+    // über diesen Pfad, ohne die weiter unten stehende Berechnung zu erreichen.
+    // Trotzdem müssen Karte UND Einlinienschema die aktuelle Einfärbung zeigen.
     updateStromEdgeVisuals();
+    if (typeof window.sldRefresh === 'function') window.sldRefresh();
     return;
   }
   const napId = nap.id;
@@ -1909,6 +1912,7 @@ export function _recalcStromNetzInner() {
 
   updateStromEdgeVisuals();
   updateLpStromSummary();
+  if (typeof window.sldRefresh === 'function') window.sldRefresh();
 }
 
 export function _calcStromNetzKosten() {

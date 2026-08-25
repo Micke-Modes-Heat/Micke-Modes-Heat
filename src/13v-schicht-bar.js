@@ -12,8 +12,17 @@ import {
   SCHICHT, SCHICHT_META, SCHICHT_REIHENFOLGE,
   getAktiveSchicht, setAktiveSchicht, schichtSichtbar, setSchichtSichtbar,
 } from './lib/schichten.js';
+import { varianten, activeVariantId } from './01-globals-varianten.js';
 
 const BAR_ID = 'schicht-bar';
+
+// Im Planungsmodus landen neue Objekte im Delta der AKTIVEN Variante. Welche das
+// ist, muss am Umschalter stehen — sonst plant man in der falschen und merkt es
+// nicht, weil auf der Karte kein Unterschied sichtbar ist.
+function _aktiveVariantenName() {
+  if (activeVariantId == null) return 'Basisdaten';
+  return varianten.find(v => v.id === activeVariantId)?.name || 'Variante';
+}
 
 function _html() {
   const aktiv = getAktiveSchicht();
@@ -21,12 +30,18 @@ function _html() {
   const knoepfe = SCHICHT_REIHENFOLGE.map(s => {
     const m = SCHICHT_META[s];
     const an = s === aktiv;
-    return `<button data-click="schichtSetModus('${s}')" title="${m.hinweis}"
+    const beschriftung = an
+      ? ' ' + (s === SCHICHT.ENTSCHEIDUNG ? _aktiveVariantenName() : m.label)
+      : '';
+    const titel = s === SCHICHT.ENTSCHEIDUNG
+      ? `${m.hinweis} — aktuell: ${_aktiveVariantenName()}`
+      : m.hinweis;
+    return `<button data-click="schichtSetModus('${s}')" title="${titel}"
       style="padding:2px 7px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px;
              border:1px solid ${an ? m.farbe : 'var(--border)'};
              color:${an ? m.farbe : 'var(--muted)'};
              background:${an ? m.farbe + '22' : 'transparent'};
-             font-weight:${an ? '600' : '400'};">${m.icon}${an ? ' ' + m.label : ''}</button>`;
+             font-weight:${an ? '600' : '400'};">${m.icon}${beschriftung}</button>`;
   }).join('');
 
   const augen = SCHICHT_REIHENFOLGE.map(s => {

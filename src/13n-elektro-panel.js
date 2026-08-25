@@ -243,6 +243,11 @@ function _html() { return `
         title="Ertrag, Abstände, Eignungsfläche &amp; Szenarien-Vergleich aller Windkraftanlagen">🌀 Windanalyse</button>
     </div>
     <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
+      <button class="lp-tool-btn" id="btn-varianten-vergleich-toggle" data-click="variantenVergleichToggle()"
+        style="border-color:#ce93d8;color:#ce93d8;justify-content:center;"
+        title="Zeigt die Planungsentscheidungen aller Varianten nebeneinander — ohne die Variante zu wechseln">🔀 Varianten vergleichen</button>
+    </div>
+    <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
       <button class="lp-tool-btn" id="btn-bestand-panel-toggle" data-click="bestandPanelToggle()"
         style="border-color:#4fc3f7;color:#4fc3f7;justify-content:center;"
         title="Plausibilität des Bestands prüfen: Kabellängen, Querschnitte, Topologie, Lebenszyklus — und welche Analyse der aktuelle Datenstand trägt">🏛 Bestand prüfen</button>
