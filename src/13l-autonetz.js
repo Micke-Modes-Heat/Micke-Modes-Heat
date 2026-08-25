@@ -247,32 +247,44 @@ export function autoNetzAssets(opts = {}) {
   }
 
   const nap = naps[0];
-  const sa  = sas[0];
 
   // ── 1. NAP → Schaltanlage(n) ────────────────────────────────────────────
   sas.forEach(s => _addAutoEdge(nap, s, { ms: true }));
 
-  // ── 2. Schaltanlage → Trafos ────────────────────────────────────────────
-  if (ring && trafos.length >= 2) {
-    // Nearest-Neighbor-Tour: SA → T1 → T2 → ... → Tn → SA(Trennstelle)
-    const remaining = [...trafos];
-    const tour = [];
-    let current = sa;
-    while (remaining.length) {
-      const next = _nearest(current, remaining);
-      tour.push(next);
-      remaining.splice(remaining.indexOf(next), 1);
-      current = next;
+  // ── 2. Schaltanlage → Trafos (Zonen nach nächstgelegener SA) ────────────
+  // Jeder Trafo wird der nächstgelegenen Schaltanlage zugeordnet — bei nur
+  // einer Schaltanlage entspricht das exakt dem bisherigen Verhalten. Bei
+  // mehreren SAs verhindert das, dass alle Trafos an sas[0] hängen und die
+  // übrigen Schaltanlagen ohne Anbindung nach unten bleiben.
+  const saZones = new Map(sas.map(s => [s.id, { sa: s, trafos: [] }]));
+  trafos.forEach(t => {
+    const nearestSa = _nearest(t, sas);
+    saZones.get(nearestSa.id).trafos.push(t);
+  });
+
+  for (const { sa: zoneSa, trafos: zoneTrafos } of saZones.values()) {
+    if (!zoneTrafos.length) continue;
+    if (ring && zoneTrafos.length >= 2) {
+      // Nearest-Neighbor-Tour: SA → T1 → T2 → ... → Tn → SA(Trennstelle)
+      const remaining = [...zoneTrafos];
+      const tour = [];
+      let current = zoneSa;
+      while (remaining.length) {
+        const next = _nearest(current, remaining);
+        tour.push(next);
+        remaining.splice(remaining.indexOf(next), 1);
+        current = next;
+      }
+      _addAutoEdge(zoneSa, tour[0], { ms: true });
+      for (let i = 0; i < tour.length - 1; i++) {
+        _addAutoEdge(tour[i], tour[i + 1], { ms: true });
+      }
+      // Ringschluss mit Trennstelle
+      _addAutoEdge(tour[tour.length - 1], zoneSa, { ms: true, trennstelle: true });
+    } else {
+      // Stern: SA → jeden Trafo der Zone
+      zoneTrafos.forEach(t => _addAutoEdge(zoneSa, t, { ms: true }));
     }
-    _addAutoEdge(sa, tour[0], { ms: true });
-    for (let i = 0; i < tour.length - 1; i++) {
-      _addAutoEdge(tour[i], tour[i + 1], { ms: true });
-    }
-    // Ringschluss mit Trennstelle
-    _addAutoEdge(tour[tour.length - 1], sa, { ms: true, trennstelle: true });
-  } else {
-    // Stern: SA → jeden Trafo
-    trafos.forEach(t => _addAutoEdge(sa, t, { ms: true }));
   }
 
   // ── 3. Trafo → NSHV (netzart-getrennt) ──────────────────────────────────

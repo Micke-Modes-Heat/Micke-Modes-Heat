@@ -3,6 +3,8 @@
 import { ASSETS, ASSET_CFG, TYPE_RANK, getAssetStatus, getAsset } from './13a-assets-core.js';
 import { globalYear } from './01-globals-varianten.js';
 import { map } from './02b-gebaeude.js';
+import { getStromEdgeColor, buildStromEdgeTooltip } from './05b-stromnetz.js';
+import { _buildAssetTooltip } from './13b-assets-render.js';
 
 const SLD_LH = 120;   // px per rank level (vertical)
 const SLD_CW = 110;   // min column width per node
@@ -20,7 +22,7 @@ export function sldToggle() {
   const vis = panel.classList.toggle('visible');
   btn?.classList.toggle('active', vis);
   try { map.invalidateSize(); } catch(e) {}
-  if (vis) { sldRender(); sldInitResize(); }
+  if (vis) { sldRender(); sldInitResize(); } else { _sldHideTooltip(); }
 }
 
 export function sldToggleFullscreen() {
@@ -201,6 +203,7 @@ export function sldRender() {
   if (activeA.length === 0) {
     canvas.className = 'sld-empty';
     canvas.innerHTML = '<span style="font-size:20px;">⚡</span><span>Keine aktiven Elektroobjekte</span>';
+    _sldHideTooltip();
     return;
   }
   canvas.className = '';
@@ -214,6 +217,8 @@ export function sldRender() {
     xmlns="http://www.w3.org/2000/svg" style="display:block;font-family:DM Sans,sans-serif;">${inner}</svg>`;
   canvas.innerHTML = `<div onclick="sldClick(event)" style="line-height:0;min-width:${sw}px;min-height:${sh}px;">${svg}</div>`;
   sldInitPan();
+  _sldBindHover(canvas);
+  _sldStartFlowAnim();
 }
 
 export function sldRefresh() {
@@ -395,10 +400,12 @@ function _buildSvgRaw(nodes, edges, W, H, layoutExtra, yr) {
 
 // ── Edge ──────────────────────────────────────────────────────────────────────
 function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
-  const overload  = e.auslastungPct > 100;
-  const warnDU    = !overload && e.deltaUPct > 5;
-  const noteDU    = !overload && !warnDU && e.deltaUPct > 3;
-  const strokeCol = overload ? '#ef5350' : warnDU ? '#ef5350' : noteDU ? '#f9a825' : isRing ? '#546e7a' : '#37474f';
+  // Gleiche Einfärbung wie auf der Karte (Auslastung/ΔU%/Leistung/Richtung),
+  // MS-Kabel immer violett — analog zu updateStromEdgeVisuals() in 05b-stromnetz.js.
+  const strokeCol = e.msLevel ? '#7c4dff' : getStromEdgeColor(e);
+  const dynamic   = window.stromDynamicViz !== false;
+  const flowing   = Math.abs(e.peakFlowKw || 0) > 0.1;
+  const flowAnim  = !isRing && dynamic && flowing;
 
   let path;
   const sameX = Math.abs(x1 - x2) < 4;
@@ -416,11 +423,11 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
     path = `M${x1.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${x1.toFixed(1)},${midY.toFixed(1)} L${x2.toFixed(1)},${midY.toFixed(1)} L${x2.toFixed(1)},${(y2-SLD_NH/2).toFixed(1)}`;
   }
 
-  const titleTxt = _edgeTitle(e).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  let s = `<g data-edgeid="${e.id}" style="cursor:pointer;"><title>${titleTxt}</title>`;
+  let s = `<g data-edgeid="${e.id}" style="cursor:pointer;">`;
   // Wide hit area
   s += `<path d="${path}" stroke="transparent" stroke-width="12" fill="none"/>`;
-  s += `<path d="${path}" stroke="${strokeCol}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" ${isRing ? 'stroke-dasharray="10,5"' : ''} opacity="${isRing?0.55:0.9}"/>`;
+  const flowAttrs = flowAnim ? `class="sld-flow-path" data-flowdir="${e.flowDirection >= 0 ? 1 : -1}" stroke-dasharray="10,5"` : '';
+  s += `<path d="${path}" stroke="${strokeCol}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" ${isRing ? 'stroke-dasharray="10,5"' : flowAttrs} opacity="${isRing?0.55:0.9}"/>`;
 
   if (isRing) {
     const loopOff = 34 + Math.abs(x1 - x2) * 0.18;
@@ -440,6 +447,16 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
   const lenM   = Math.round(e.lengthM || 0);
   const lTxt   = lenM > 0 ? `${qs} mm² · ${lenM} m` : `${qs} mm²`;
   s += `<text x="${labelX}" y="${labelY}" text-anchor="middle" font-size="7.5" fill="${strokeCol}" opacity="0.8" pointer-events="none">${lTxt}</text>`;
+
+  // Richtungspfeil (Lastfluss) — analog zum Pfeil-Marker auf der Karte:
+  // ▲ zeigt standardmäßig von u nach v, bei flowDirection<0 umgekehrt.
+  if (flowAnim) {
+    const dx  = x2 - x1, dy = y2 - y1;
+    const rot = (Math.atan2(dx, -dy) * 180 / Math.PI) + (e.flowDirection >= 0 ? 0 : 180);
+    const ax  = (parseFloat(labelX) - 20).toFixed(1);
+    const ay  = labelY;
+    s += `<text x="${ax}" y="${ay}" text-anchor="middle" font-size="9" fill="${strokeCol}" transform="rotate(${rot.toFixed(1)} ${ax} ${ay})" pointer-events="none">▲</text>`;
+  }
 
   // Auslastungs-Pill
   if (e.auslastungPct >= 1) {
@@ -464,7 +481,6 @@ function _drawNode(n, selected) {
   const rx = (x - SLD_NW/2).toFixed(1), ry = (y - SLD_NH/2).toFixed(1);
 
   let s = `<g data-assetid="${n.id}" style="cursor:pointer;">`;
-  s += `<title>${_nodeTitle(n).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</title>`;
   // Wide hit area
   s += `<rect x="${(parseFloat(rx)-4).toFixed(1)}" y="${(parseFloat(ry)-4).toFixed(1)}" width="${SLD_NW+8}" height="${SLD_NH+8}" rx="9" fill="transparent"/>`;
 
@@ -510,7 +526,6 @@ function _drawBusbar(n, selected) {
   const bw = Math.max(SLD_NW, SLD_CW - 8), bh = 14;
 
   let s = `<g data-assetid="${n.id}" style="cursor:pointer;">`;
-  s += `<title>${_nodeTitle(n).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</title>`;
   s += `<rect x="${(x-bw/2-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${bw+8}" height="${bh+8}" rx="5" fill="transparent"/>`;
   if (selected) s += `<rect x="${(x-bw/2-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${bw+8}" height="${bh+8}" rx="5" fill="${col}" opacity="0.15"/>`;
   s += `<rect x="${(x-bw/2).toFixed(1)}" y="${(y-bh/2).toFixed(1)}" width="${bw}" height="${bh}" rx="3" fill="${selected?col+'30':'#182435'}" stroke="${col}" stroke-width="${selected?2:1.8}"/>`;
@@ -618,42 +633,82 @@ function _voltDrop(id) {
   return sn?._voltDropV ?? null;
 }
 
-// ── Tooltip text ──────────────────────────────────────────────────────────────
-function _nodeTitle(n) {
-  const p = n.props || {};
-  const lines = [`${n.name}  [${ASSET_CFG[n.type]?.label || n.type}]`];
-  switch (n.type) {
-    case 'Trafo': {
-      lines.push(`Leistung: ${p.leistungKVA||630} kVA  ·  UK: ${p.ukProzent||4} %`);
-      if (n._calcPeakLoadKw != null) lines.push(`Last: ${n._calcPeakLoadKw.toFixed(1)} kW  ·  Auslastung: ${n._calcPeakLoadPct.toFixed(0)} %`);
-      break;
-    }
-    case 'Schaltanlage': lines.push(`${p.felder||6} Felder  ·  ${p.nennstromA||630} A${p.trennstelle?'  ·  Trennstelle':''}`); break;
-    case 'NSHV': case 'UV': lines.push(`${p.nennstromA||400} A  ·  ${p.abgaenge||4} Abgänge`); break;
-    case 'Verbraucher': case 'WP': case 'Nsa': lines.push(`Leistung: ${p.leistungKW||10} kW`); break;
-    case 'PV':      lines.push(`Leistung: ${p.leistungKWp||10} kWp`); break;
-    case 'Lade':    lines.push(`${p.anzahlPunkte||4} × ${p.leistungProPunktKW||22} kW = ${(p.anzahlPunkte||4)*(p.leistungProPunktKW||22)} kW`); break;
-    case 'Batterie': lines.push(`${p.leistungKW||25} kW  ·  ${p.kapazitaetKWh||50} kWh  ·  ${p.betriebsmodus||'einspeisung'}`); break;
-    case 'KWK':     lines.push(`El: ${p.leistungElKW||100} kW  ·  Th: ${p.leistungThKW||160} kW  ·  ${p.brennstoff||'Erdgas'}`); break;
-    case 'Wind':    lines.push(`${p.leistungKW||500} kW  ·  Nabenhöhe: ${p.nabenhoheM||100} m`); break;
+// ── Hover-Tooltip (gleiche Popup-Optik wie auf der Karte) ────────────────────
+// Die SVG ist statisches innerHTML ohne Leaflet — Tooltips werden daher als
+// eigenes, mausverfolgtes .geb-tooltip-Div gebaut, mit denselben Bau-Funktionen
+// (_buildAssetTooltip / buildStromEdgeTooltip), die auch die Kartenmarker nutzen.
+// .geb-tooltip selbst ist bereits global gestylt (s. 03c-gebaeude-io.js).
+let _sldTooltipEl = null;
+function _sldTooltip() {
+  if (_sldTooltipEl) return _sldTooltipEl;
+  const el = document.createElement('div');
+  el.className = 'geb-tooltip';
+  el.style.cssText = 'position:fixed;z-index:100000;pointer-events:none;display:none;max-width:260px;';
+  document.body.appendChild(el);
+  _sldTooltipEl = el;
+  return el;
+}
+function _sldMoveTooltip(cx, cy) {
+  const el = _sldTooltipEl;
+  if (!el || el.style.display === 'none') return;
+  el.style.left = (cx + 16) + 'px';
+  el.style.top  = (cy + 16) + 'px';
+}
+function _sldHideTooltip() {
+  if (_sldTooltipEl) _sldTooltipEl.style.display = 'none';
+}
+function _sldOnHover(ev) {
+  const gA = ev.target.closest('[data-assetid]');
+  if (gA) {
+    const asset = getAsset(gA.dataset.assetid);
+    if (!asset) return;
+    const el = _sldTooltip();
+    el.innerHTML = _buildAssetTooltip(asset);
+    el.style.display = 'block';
+    _sldMoveTooltip(ev.clientX, ev.clientY);
+    return;
   }
-  const dU_V = _voltDrop(n.id);
-  if (dU_V != null && n.type !== 'NAP') {
-    const pct = (dU_V / 400) * 100;
-    lines.push(`Spannung: ${(400-dU_V).toFixed(1)} V  (kum. ΔU ${pct.toFixed(2)} %)`);
+  const gE = ev.target.closest('[data-edgeid]');
+  if (gE) {
+    const edge = (window.stromEdges || []).find(e => e.id === gE.dataset.edgeid);
+    if (!edge) return;
+    const el = _sldTooltip();
+    el.innerHTML = buildStromEdgeTooltip(edge);
+    el.style.display = 'block';
+    _sldMoveTooltip(ev.clientX, ev.clientY);
   }
-  return lines.join('\n');
+}
+function _sldOnHoverOut(ev) {
+  const related = ev.relatedTarget;
+  if (related?.closest?.('[data-assetid]') || related?.closest?.('[data-edgeid]')) return;
+  _sldHideTooltip();
+}
+function _sldBindHover(canvas) {
+  if (canvas.dataset.hoverBound) return;
+  canvas.dataset.hoverBound = '1';
+  canvas.addEventListener('mouseover', _sldOnHover);
+  canvas.addEventListener('mousemove', ev => _sldMoveTooltip(ev.clientX, ev.clientY));
+  canvas.addEventListener('mouseout', _sldOnHoverOut);
 }
 
-function _edgeTitle(e) {
-  const uA = ASSETS.items.find(a => a.id === e.u), vA = ASSETS.items.find(a => a.id === e.v);
-  const lines = [`${uA?.name||e.u} → ${vA?.name||e.v}`];
-  lines.push(`${e.crossSection||50} mm²  ·  ${e.cableType||'NAYY'}  ·  ${Math.round(e.lengthM||0)} m`);
-  if (e.peakCurrentA)  lines.push(`Strom: ${e.peakCurrentA.toFixed(1)} A  /  Imax: ${e.ratedCurrentA.toFixed(0)} A`);
-  if (e.auslastungPct) lines.push(`Auslastung: ${e.auslastungPct.toFixed(0)} %`);
-  if (e.deltaUPct)     lines.push(`ΔU (Segment): ${e.deltaUPct.toFixed(2)} %`);
-  if (e.peakFlowKw)    lines.push(`Leistungsfluss: ${e.peakFlowKw.toFixed(1)} kW  (${e.flowDirection >= 0 ? '↓ Last' : '↑ Einspeisung'})`);
-  return lines.join('\n');
+// ── Dynamische Lastfluss-Animation (wie auf der Karte, s. animateStromPipes) ──
+let _sldFlowAnimRunning = false;
+let _sldDashOffset = 0;
+function _sldAnimateFlow() {
+  const panel  = document.getElementById('sld-panel');
+  const active = panel?.classList.contains('visible') && window.stromDynamicViz !== false;
+  if (!active) { _sldFlowAnimRunning = false; return; }
+  _sldDashOffset -= 0.6;
+  document.getElementById('sld-svg')?.querySelectorAll('.sld-flow-path').forEach(path => {
+    const dir = parseFloat(path.dataset.flowdir) || 1;
+    path.style.strokeDashoffset = (_sldDashOffset * dir) + 'px';
+  });
+  requestAnimationFrame(_sldAnimateFlow);
+}
+function _sldStartFlowAnim() {
+  if (_sldFlowAnimRunning) return;
+  _sldFlowAnimRunning = true;
+  requestAnimationFrame(_sldAnimateFlow);
 }
 
 // ── Click → info bar ──────────────────────────────────────────────────────────
