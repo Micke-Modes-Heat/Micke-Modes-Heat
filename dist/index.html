@@ -14840,7 +14840,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-08-25';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'b65fc1b';
+  var c = 'c46a4ef';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -93267,6 +93267,11 @@ window._isSingleFileBuild = true;
         title="Ertrag, Abstände, Eignungsfläche &amp; Szenarien-Vergleich aller Windkraftanlagen">🌀 Windanalyse</button>
     </div>
     <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
+      <button class="lp-tool-btn" id="btn-schwellen-panel-toggle" data-click="schwellenPanelToggle()"
+        style="border-color:#4dd0e1;color:#4dd0e1;justify-content:center;"
+        title="Screening je Variante: trägt das Bestandsnetz die geplante Erzeugung, oder lohnt ein eigenes Erzeugungsnetz?">🪜 Schwellentreppe</button>
+    </div>
+    <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
       <button class="lp-tool-btn" id="btn-varianten-vergleich-toggle" data-click="variantenVergleichToggle()"
         style="border-color:#ce93d8;color:#ce93d8;justify-content:center;"
         title="Zeigt die Planungsentscheidungen aller Varianten nebeneinander — ohne die Variante zu wechseln">🔀 Varianten vergleichen</button>
@@ -170394,7 +170399,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // Das Panel wird beim ersten Öffnen dynamisch erzeugt (vgl. Engpass-Panel).
 
 
-  const PANEL_ID$2 = 'bestand-panel';
+  const PANEL_ID$3 = 'bestand-panel';
   let _ergebnis = null;
 
   const SCHWERE_META = {
@@ -170405,15 +170410,15 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   // ── Panel-Gerüst ─────────────────────────────────────────────────────────────
 
-  function _ensurePanel$2() {
-    let panel = document.getElementById(PANEL_ID$2);
+  function _ensurePanel$3() {
+    let panel = document.getElementById(PANEL_ID$3);
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.id = PANEL_ID$2;
+    panel.id = PANEL_ID$3;
     panel.className = 'float-panel amber-border';
     panel.style.cssText = 'top:70px;min-width:520px;max-width:760px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
     panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$2}')">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$3}')">
       <span style="color:#4fc3f7;font-size:12px;font-weight:600;">🏛 Bestand prüfen</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
@@ -170427,7 +170432,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   function _body$1() { return document.getElementById('bestand-panel-body'); }
 
   function bestandPanelToggle() {
-    const panel = _ensurePanel$2();
+    const panel = _ensurePanel$3();
     const sichtbar = panel.style.display === 'block';
     panel.style.display = sichtbar ? 'none' : 'block';
     if (!sichtbar) bestandPruefenUndZeigen();
@@ -170435,7 +170440,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   /** Netz für das Basisjahr rechnen und alle Prüfungen ausführen. */
   function bestandPruefenUndZeigen() {
-    _ensurePanel$2().style.display = 'block';
+    _ensurePanel$3().style.display = 'block';
     _body$1().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:11px;">⏳ Bestand wird geprüft …</div>';
     setTimeout(() => {
       try {
@@ -170488,12 +170493,12 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const el = _body$1();
     if (!el || !_ergebnis) return;
     el.innerHTML = `
-    ${_kopf()}
+    ${_kopf$1()}
     ${_reifegrad()}
     ${_befunde()}`;
   }
 
-  function _kopf() {
+  function _kopf$1() {
     const { zaehler } = _ergebnis;
     const btn = 'padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;';
     const chip = (n, meta) => n
@@ -170822,17 +170827,17 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // jedes Mal das komplette Stromnetz abgerissen und neu aufgebaut.
 
 
-  const PANEL_ID$1 = 'varianten-vergleich-panel';
+  const PANEL_ID$2 = 'varianten-vergleich-panel';
 
-  function _ensurePanel$1() {
-    let panel = document.getElementById(PANEL_ID$1);
+  function _ensurePanel$2() {
+    let panel = document.getElementById(PANEL_ID$2);
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.id = PANEL_ID$1;
+    panel.id = PANEL_ID$2;
     panel.className = 'float-panel amber-border';
     panel.style.cssText = 'top:70px;min-width:540px;max-width:820px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
     panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$1}')">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$2}')">
       <span style="color:#ce93d8;font-size:12px;font-weight:600;">🔀 Varianten vergleichen</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
@@ -170844,7 +170849,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   }
 
   function variantenVergleichToggle() {
-    const panel = _ensurePanel$1();
+    const panel = _ensurePanel$2();
     const sichtbar = panel.style.display === 'block';
     panel.style.display = sichtbar ? 'none' : 'block';
     if (!sichtbar) variantenVergleichRender();
@@ -170877,7 +170882,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       liveDelta,
     });
 
-    el.innerHTML = `${_grundlage(v)}${_spalten(v)}${_netzwirkung()}${_fussnote()}`;
+    el.innerHTML = `${_grundlage(v)}${_spalten(v)}${_netzwirkung()}${_fussnote$1()}`;
   }
 
   /**
@@ -171024,7 +171029,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   </div>`;
   }
 
-  function _fussnote() {
+  function _fussnote$1() {
     return `
   <div style="font-size:8.5px;color:var(--muted);padding:4px 6px 0;line-height:1.7;">
     Gezeigt wird nur, was die jeweilige Variante zusätzlich plant. Bestand und
@@ -171041,6 +171046,494 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     variantenVergleichNetzwirkung: variantenVergleichNetzwirkung,
     variantenVergleichRender: variantenVergleichRender,
     variantenVergleichToggle: variantenVergleichToggle
+  });
+
+  // ── lib/netz-schwellen.js — Schwellentreppe: Bestand ertüchtigen oder Erzeugungsnetz? ──
+  //
+  // Beantwortet die Portfoliofrage über der Einzelanlage: Bis wohin trägt das
+  // bestehende Netz die geplante Erzeugung, wo reißt es, und was kostet die
+  // Auflösung — Bestand ertüchtigen, eigenes Erzeugungsnetz, oder eine Mischung.
+  //
+  // ── Zwei Ebenen, zwei Topologien ────────────────────────────────────────────
+  // Die Liegenschaft betreibt ein eigenes Netz mit 20-kV-Einspeisung. Entscheidend
+  // ist, dass die beiden Ebenen NICHT gleich aufgebaut sind:
+  //
+  //   MS-Ebene:  Ring. Die Trafos hängen im Ring am NAP. Wer hier radial von
+  //              jedem NAP abwärts sucht, zählt Trafos MEHRFACH — Auslastungen
+  //              jenseits 150 % sind das typische Symptom. Deshalb: Cluster =
+  //              zusammenhängende Netzkomponente, Kapazität am 20-kV-Punkt.
+  //   NS-Ebene:  radial. Jede Erzeugungsanlage hängt über NSHV/UV/KVS an genau
+  //              EINEM Trafo. Diese Zuordnung ist eindeutig, solange man beim
+  //              Aufwärtslaufen den Ring nicht überquert.
+  //
+  // ── Die Treppe ──────────────────────────────────────────────────────────────
+  // Die Grenzen greifen kumulativ, nicht alternativ:
+  //   1. Trafo-Rückspeisegrenze  (je Trafo, NS-Ebene)
+  //   2. 20-kV-NAP-Limit         (je Komponente, MS-Ebene)
+  // Der Spannungsfall auf den Strängen ist die dritte Stufe; die deckt der
+  // zeitliche Engpass-Sweep (14h) ab und wird hier bewusst nicht verdoppelt.
+  //
+  // Ein Erzeugungsnetz ist ein Sprungkostenblock: Es lohnt erst, wenn genug
+  // Erzeugung dahintersteht. Deshalb ist die eigentliche Entscheidung je Cluster
+  // nicht "welche von drei Optionen", sondern: unter der Schwelle bleiben und
+  // stückeln — oder die Schwelle bewusst auslösen und bündeln.
+  //
+  // Die ZAHLEN (Rückspeisung je Knoten) kommen aus lib/lastgang-schnappschuss.js;
+  // dieses Modul liefert Struktur und Kaskade. Importfrei und DOM-frei.
+
+  /** Verteilebenen, die beim Aufwärtslaufen durchquert werden dürfen. */
+  const LV_PASS = new Set(['NSHV', 'UV', 'KVS']);
+
+  /** Kostenannahmen — grob, bewusst injizierbar. */
+  const SCHWELLEN_KOSTEN = {
+    trafoEurProKVA:          150,
+    napEurProKW:             200,
+    erzeugungsnetzEurProKW:  400,
+  };
+
+  /** Anteil der Trafo-Scheinleistung, der rückwärts nutzbar ist. */
+  const TRAFO_RUECK_FAKTOR = 0.9;
+
+  // ── Struktur ─────────────────────────────────────────────────────────────────
+
+  function _assetMap(assets) { return new Map((assets || []).map(a => [a.id, a])); }
+
+  function _nachbarn(edges, { ohneMs = false } = {}) {
+    const m = new Map();
+    for (const e of (edges || [])) {
+      if (ohneMs && e.msLevel) continue;
+      if (!m.has(e.u)) m.set(e.u, []);
+      if (!m.has(e.v)) m.set(e.v, []);
+      m.get(e.u).push(e.v);
+      m.get(e.v).push(e.u);
+    }
+    return m;
+  }
+
+  /**
+   * Zusammenhängende Netzkomponenten ("Cluster").
+   *
+   * Bewusst ungerichtet und über ALLE Kanten inklusive Ring: Ein Ring ist genau
+   * eine Komponente, egal von welchem Knoten aus man startet. Das ist die
+   * Korrektur gegen den radialen Ansatz, der Ring-Trafos doppelt zählt.
+   *
+   * Rückgabe: [{ id, assetIds, napIds, trafoIds, blattIds }]
+   */
+  function netzKomponenten(assets, edges) {
+    const map = _assetMap(assets);
+    const nb = _nachbarn(edges);
+    const gesehen = new Set();
+    const komponenten = [];
+
+    for (const a of (assets || [])) {
+      if (gesehen.has(a.id)) continue;
+      const mitglieder = [];
+      const queue = [a.id];
+      gesehen.add(a.id);
+      while (queue.length) {
+        const cur = queue.shift();
+        if (map.has(cur)) mitglieder.push(cur);
+        for (const n of (nb.get(cur) || [])) {
+          if (gesehen.has(n)) continue;
+          gesehen.add(n);
+          queue.push(n);
+        }
+      }
+      const typVon = id => map.get(id)?.type;
+      komponenten.push({
+        id: `k_${mitglieder[0]}`,
+        assetIds: mitglieder,
+        napIds:   mitglieder.filter(id => typVon(id) === 'NAP'),
+        trafoIds: mitglieder.filter(id => typVon(id) === 'Trafo'),
+        blattIds: mitglieder.filter(id => { const t = typVon(id); return t && t !== 'NAP' && t !== 'Trafo' && !LV_PASS.has(t) && t !== 'Schaltanlage'; }),
+      });
+    }
+    return komponenten;
+  }
+
+  /**
+   * Kapazität einer Komponente am Einspeisepunkt.
+   *
+   * Das NAP-Limit gewinnt, wenn es bekannt ist: Es ist die harte Zusage des
+   * vorgelagerten Netzbetreibers und liegt regelmäßig UNTER der Summe der
+   * Trafoleistungen. Fehlt es, bleibt nur die Summe der Trafos als Näherung —
+   * dann ist das Ergebnis eine Obergrenze, keine Zusage.
+   */
+  function komponenteKapazitaetKW(komponente, assets, opts = {}) {
+    const napLimitKw = Number(opts.napLimitKw);
+    if (Number.isFinite(napLimitKw) && napLimitKw > 0) {
+      return { kW: napLimitKw, quelle: 'nap' };
+    }
+    const map = _assetMap(assets);
+    const summe = (komponente?.trafoIds || []).reduce((s, id) => {
+      const kva = parseFloat(map.get(id)?.props?.leistungKVA);
+      return s + (Number.isFinite(kva) ? kva : 0);
+    }, 0);
+    return { kW: summe * 0.95, quelle: 'trafos' };
+  }
+
+  // ── Treppe ───────────────────────────────────────────────────────────────────
+
+  /**
+   * Prüft eine Komponente gegen beide Stufen der Treppe.
+   *
+   * rueckJeKnoten: { [assetId]: rueckspeisungKW }  — aus dem Lastgang-Schnappschuss
+   * Rückgabe: {
+   *   rueckKW, kapazitaetKW, quelle, ausgeschoepftPct,
+   *   trafoVerletzungen: [{ id, name, kvA, grenzeKW, rueckKW, ueberKW }],
+   *   napVerletzung: { grenzeKW, rueckKW, ueberKW } | null,
+   *   stufe: 'frei' | 'trafo' | 'nap'
+   * }
+   */
+  function pruefeSchwellen(komponente, assets, rueckJeKnoten, opts = {}) {
+    const map = _assetMap(assets);
+    const rueck = id => Math.max(0, Number(rueckJeKnoten?.[id]) || 0);
+    const faktor = opts.trafoRueckFaktor ?? TRAFO_RUECK_FAKTOR;
+
+    const trafoVerletzungen = [];
+    for (const id of (komponente?.trafoIds || [])) {
+      const a = map.get(id);
+      const kvA = parseFloat(a?.props?.leistungKVA) || 0;
+      const grenzeKW = kvA * faktor;
+      const r = rueck(id);
+      if (grenzeKW > 0 && r > grenzeKW) {
+        trafoVerletzungen.push({ id, name: a?.name || id, kvA, grenzeKW, rueckKW: r, ueberKW: r - grenzeKW });
+      }
+    }
+
+    // Rückspeisung der Komponente: am NAP gemessen, sonst Summe der Trafos.
+    // NICHT beides addieren — im Ring wäre das eine Doppelzählung.
+    const napIds = komponente?.napIds || [];
+    const rueckKW = napIds.length
+      ? napIds.reduce((s, id) => s + rueck(id), 0)
+      : (komponente?.trafoIds || []).reduce((s, id) => s + rueck(id), 0);
+
+    const { kW: kapazitaetKW, quelle } = komponenteKapazitaetKW(komponente, assets, opts);
+    const napVerletzung = (kapazitaetKW > 0 && rueckKW > kapazitaetKW)
+      ? { grenzeKW: kapazitaetKW, rueckKW, ueberKW: rueckKW - kapazitaetKW }
+      : null;
+
+    return {
+      rueckKW, kapazitaetKW, quelle,
+      ausgeschoepftPct: kapazitaetKW > 0 ? (rueckKW / kapazitaetKW) * 100 : null,
+      trafoVerletzungen,
+      napVerletzung,
+      stufe: napVerletzung ? 'nap' : (trafoVerletzungen.length ? 'trafo' : 'frei'),
+    };
+  }
+
+  // ── Auflösung: drei Wege ─────────────────────────────────────────────────────
+
+  const _eur$2 = n => Math.round(n);
+
+  /**
+   * Kosten, den Bestand so zu ertüchtigen, dass die geplante Erzeugung passt.
+   *
+   * Reihenfolge nach Bindungswirkung: erst der NAP, wenn er die bindende Grenze
+   * ist — eine Trafoertüchtigung darunter bringt nichts, solange der
+   * Einspeisepunkt dichtmacht. Danach die verletzten Trafos.
+   */
+  function bestandErtuechtigen(befund, kosten = SCHWELLEN_KOSTEN) {
+    const schritte = [];
+    if (befund?.napVerletzung) {
+      const kw = befund.napVerletzung.ueberKW;
+      schritte.push({
+        art: 'nap', titel: `NAP-Einspeiseleistung +${_eur$2(kw)} kW`,
+        kostenEUR: _eur$2(kw * kosten.napEurProKW),
+        hinweis: 'Zusage des vorgelagerten Netzbetreibers nötig — nicht allein planbar.',
+      });
+    }
+    for (const t of (befund?.trafoVerletzungen || [])) {
+      const noetigKVA = t.rueckKW / TRAFO_RUECK_FAKTOR;
+      const zusatzKVA = Math.max(0, noetigKVA - t.kvA);
+      schritte.push({
+        art: 'trafo', id: t.id,
+        titel: `${t.name}: ${_eur$2(t.kvA)} → ${_eur$2(noetigKVA)} kVA`,
+        kostenEUR: _eur$2(zusatzKVA * kosten.trafoEurProKVA),
+      });
+    }
+    return { schritte, kostenEUR: schritte.reduce((s, x) => s + x.kostenEUR, 0) };
+  }
+
+  /**
+   * Die drei Wege im Vergleich.
+   *
+   * bestand      — alles im vorhandenen Netz ertüchtigen
+   * erzeugungsnetz — eigener Abgang am NAP für die Erzeugung; das Bestandsnetz
+   *                bleibt unangetastet, dafür ein Sprungkostenblock
+   * hybrid       — so viel Erzeugung im Bestand lassen, wie ohne Ertüchtigung
+   *                passt; nur der Überschuss geht aufs Erzeugungsnetz
+   *
+   * Die günstigste wird markiert. „Günstigste" heißt hier ausschließlich
+   * Investition — Betrieb, Redundanz und Genehmigungsaufwand stehen nicht drin.
+   */
+  function schwellenVarianten(befund, kosten = SCHWELLEN_KOSTEN) {
+    const rueckKW = befund?.rueckKW || 0;
+    const kapKW = befund?.kapazitaetKW || 0;
+
+    const b = bestandErtuechtigen(befund, kosten);
+    const varianten = [
+      { id: 'bestand', label: 'Bestand ertüchtigen',
+        kostenEUR: b.kostenEUR, schritte: b.schritte,
+        moeglich: true },
+      { id: 'erzeugungsnetz', label: 'Eigenes Erzeugungsnetz',
+        kostenEUR: _eur$2(rueckKW * kosten.erzeugungsnetzEurProKW),
+        schritte: [{ art: 'erzeugungsnetz', titel: `Eigener MS-Abgang für ${_eur$2(rueckKW)} kW`,
+                     kostenEUR: _eur$2(rueckKW * kosten.erzeugungsnetzEurProKW) }],
+        moeglich: rueckKW > 0 },
+    ];
+
+    // Hybrid lohnt nur, wenn im Bestand überhaupt Reserve steckt
+    const freiKW = Math.max(0, kapKW - 0);
+    const ueberschussKW = Math.max(0, rueckKW - freiKW);
+    if (ueberschussKW > 0 && ueberschussKW < rueckKW) {
+      varianten.push({
+        id: 'hybrid', label: 'Bestand ausnutzen + Rest auf Erzeugungsnetz',
+        kostenEUR: _eur$2(ueberschussKW * kosten.erzeugungsnetzEurProKW),
+        schritte: [
+          { art: 'hinweis', titel: `${_eur$2(freiKW)} kW bleiben im Bestandsnetz`, kostenEUR: 0 },
+          { art: 'erzeugungsnetz', titel: `Erzeugungsnetz für ${_eur$2(ueberschussKW)} kW`,
+            kostenEUR: _eur$2(ueberschussKW * kosten.erzeugungsnetzEurProKW) },
+        ],
+        moeglich: true,
+      });
+    }
+
+    const moegliche = varianten.filter(v => v.moeglich);
+    const guenstigste = moegliche.reduce((min, v) => (min == null || v.kostenEUR < min.kostenEUR ? v : min), null);
+    return varianten.map(v => ({ ...v, guenstigste: v === guenstigste }));
+  }
+
+  /**
+   * Gesamtlauf über alle Komponenten.
+   *
+   * eingabe: { assets, edges, rueckJeKnoten, napLimitKw, kosten }
+   * Rückgabe: [{ komponente, befund, varianten }] — kritische zuerst.
+   */
+  function schwellenAnalyse({ assets, edges, rueckJeKnoten, napLimitKw, kosten } = {}) {
+    const komponenten = netzKomponenten(assets, edges);
+    const k = kosten || SCHWELLEN_KOSTEN;
+
+    return komponenten
+      .filter(komp => komp.trafoIds.length || komp.napIds.length)   // reine Blattinseln sind hier ohne Aussage
+      .map(komponente => {
+        const befund = pruefeSchwellen(komponente, assets, rueckJeKnoten, { napLimitKw });
+        return {
+          komponente, befund,
+          varianten: befund.stufe === 'frei' ? [] : schwellenVarianten(befund, k),
+        };
+      })
+      .sort((a, b) => (b.befund.ausgeschoepftPct ?? 0) - (a.befund.ausgeschoepftPct ?? 0));
+  }
+
+  // ── 13z-schwellen-panel.js — Schwellentreppe je Variante ─────────────────────
+  //
+  // App-seitige Schicht zu lib/netz-schwellen.js. Setzt die beiden Vorarbeiten
+  // zusammen:
+  //   • Struktur (Komponenten/Ring, Trafo-Zuordnung, Kapazität)  → netz-schwellen
+  //   • Zahlen (Rückspeisung je Knoten, je Variante eingefroren) → 13y/D
+  //
+  // Das ist das Screening der zweistufigen Bewertung: billig, über alle Varianten,
+  // und es beantwortet die Portfoliofrage "Bestand ertüchtigen oder eigenes
+  // Erzeugungsnetz". Die Vertiefung (zeitlicher Verlauf, konkrete Kabel) macht
+  // danach der Engpass-Sweep in 14h — aber nur noch für die Varianten, die hier
+  // überleben.
+
+
+  const PANEL_ID$1 = 'schwellen-panel';
+
+  /**
+   * Zugesagte Einspeiseleistung am Netzanknüpfungspunkt.
+   *
+   * Kommt aus der PV-/Strom-Analyse, NICHT aus einer Asset-Eigenschaft — dort ist
+   * das Feld gepflegt (09d). Ohne diesen Wert fällt die Kapazität auf die Summe
+   * der Trafoleistungen zurück, was regelmäßig ZU GROSSZÜGIG ist: das NAP-Limit
+   * liegt fast immer darunter.
+   */
+  function _napLimitKw() {
+    const ausDom = id => {
+      const v = parseFloat(document.getElementById(id)?.value);
+      return Number.isFinite(v) && v > 0 ? v : null;
+    };
+    return ausDom('strom-nap-einsp-kw')
+        ?? ausDom('pva-nap-einsp')
+        ?? (Number.isFinite(window.elNapMaxEinspKw) ? window.elNapMaxEinspKw : null);
+  }
+
+  /** Rückspeisung je Knoten aus einem Schnappschuss: Betrag des negativen Minimums. */
+  function _rueckJeKnoten(schnappschuss) {
+    const out = {};
+    for (const k of (schnappschuss?.knoten || [])) {
+      out[k.id] = Math.abs(Math.min(0, k.minV || 0));
+    }
+    return out;
+  }
+
+  // ── Panel ────────────────────────────────────────────────────────────────────
+
+  function _ensurePanel$1() {
+    let panel = document.getElementById(PANEL_ID$1);
+    if (panel) return panel;
+    panel = document.createElement('div');
+    panel.id = PANEL_ID$1;
+    panel.className = 'float-panel amber-border';
+    panel.style.cssText = 'top:70px;min-width:600px;max-width:860px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
+    panel.innerHTML = `
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$1}')">
+      <span style="color:#4dd0e1;font-size:12px;font-weight:600;">🪜 Schwellentreppe</span>
+      <span class="drag-dots">⠿</span>
+      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
+            data-click="schwellenPanelToggle()">✕</span>
+    </div>
+    <div id="schwellen-panel-body"></div>`;
+    document.body.appendChild(panel);
+    return panel;
+  }
+
+  function schwellenPanelToggle() {
+    const panel = _ensurePanel$1();
+    const sichtbar = panel.style.display === 'block';
+    panel.style.display = sichtbar ? 'none' : 'block';
+    if (!sichtbar) schwellenPanelRender();
+  }
+
+  /** Schnappschüsse aller Varianten holen und danach neu zeichnen. */
+  function schwellenAnalyseStarten() {
+    showHint('🪜 Schwellenanalyse: Varianten werden durchgerechnet …');
+    setTimeout(() => {
+      try {
+        lastgangSchnappschuesseAlleVarianten();
+      } catch (err) {
+        console.error('Schwellenanalyse:', err);
+        showHint('⚠ Schwellenanalyse fehlgeschlagen — Details in der Konsole.');
+        return;
+      }
+      schwellenPanelRender();
+      if (typeof window.hideHint === 'function') window.hideHint();
+    }, 50);
+  }
+
+  function schwellenPanelRender() {
+    const el = document.getElementById('schwellen-panel-body');
+    if (!el) return;
+
+    const schnapp = lastgangSchnappschuesse();
+    const napLimit = _napLimitKw();
+
+    if (!schnapp.size) {
+      el.innerHTML = `${_kopf(napLimit)}
+      <div style="background:var(--surface2);border-radius:6px;padding:10px;font-size:9.5px;color:var(--muted);line-height:1.7;">
+        Noch keine Lastgänge eingefroren. Jede Variante muss dafür kurz aktiviert
+        werden — das baut das Stromnetz jedes Mal neu auf.
+        <div style="margin-top:7px;">
+          <button data-click="schwellenAnalyseStarten()"
+            style="padding:4px 10px;border-radius:5px;border:1px solid #4dd0e1;background:transparent;
+                   color:#4dd0e1;font-family:inherit;font-size:10px;cursor:pointer;">
+            🪜 Analyse starten</button>
+        </div>
+      </div>`;
+      return;
+    }
+
+    const bloecke = [...schnapp.values()].map(s => {
+      const analyse = schwellenAnalyse({
+        assets: ASSETS.items || [],
+        edges: window.stromEdges || [],
+        rueckJeKnoten: _rueckJeKnoten(s),
+        napLimitKw: napLimit,
+      });
+      return _variantenBlock(s, analyse);
+    }).join('');
+
+    el.innerHTML = `${_kopf(napLimit)}${bloecke}${_fussnote()}`;
+  }
+
+  function _kopf(napLimit) {
+    return `
+  <div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px;">
+    <button data-click="schwellenAnalyseStarten()"
+      style="padding:5px 10px;border-radius:5px;border:1px solid #4dd0e1;background:transparent;
+             color:#4dd0e1;font-family:inherit;font-size:10px;cursor:pointer;">↻ Neu rechnen</button>
+    <span style="margin-left:auto;font-size:10px;color:${napLimit ? 'var(--muted)' : '#f9a825'};">
+      ${napLimit
+        ? `NAP-Limit ${Math.round(napLimit)} kW`
+        : '⚠ kein NAP-Limit gepflegt — Kapazität aus Trafosumme (zu großzügig)'}
+    </span>
+  </div>`;
+  }
+
+  function _variantenBlock(schnappschuss, analyse) {
+    const STUFE = {
+      frei:  { col: '#4caf50', txt: 'im Rahmen' },
+      trafo: { col: '#f9a825', txt: 'Trafo-Grenze gerissen' },
+      nap:   { col: '#e53935', txt: 'NAP-Limit gerissen' },
+    };
+
+    const komponenten = analyse.map(({ komponente, befund, varianten }) => {
+      const st = STUFE[befund.stufe];
+      const kopfZeile = `
+      <div style="display:flex;align-items:center;gap:8px;font-size:9.5px;padding:2px 0;">
+        <span style="flex:0 0 110px;color:var(--text);">
+          ${komponente.napIds.length ? 'NAP-Cluster' : 'Cluster'} · ${komponente.trafoIds.length} Trafo${komponente.trafoIds.length === 1 ? '' : 's'}
+        </span>
+        <span style="flex:0 0 128px;font-family:'DM Mono',monospace;color:var(--muted);">
+          ${Math.round(befund.rueckKW)} / ${Math.round(befund.kapazitaetKW)} kW
+          ${befund.quelle === 'trafos' ? '<span title="aus Trafosumme geschätzt">*</span>' : ''}
+        </span>
+        <span style="flex:0 0 46px;text-align:right;font-family:'DM Mono',monospace;color:${st.col};">
+          ${befund.ausgeschoepftPct == null ? '—' : Math.round(befund.ausgeschoepftPct) + ' %'}
+        </span>
+        <span style="flex:1;color:${st.col};font-size:9px;">${st.txt}</span>
+      </div>`;
+
+      if (!varianten.length) return kopfZeile;
+
+      const wege = varianten.filter(w => w.moeglich).map(w => `
+      <div style="display:flex;align-items:center;gap:8px;font-size:9px;padding:1px 0 1px 18px;
+                  color:${w.guenstigste ? '#66bb6a' : 'var(--muted)'};">
+        <span style="flex:0 0 240px;">${w.guenstigste ? '✓ ' : '· '}${w.label}</span>
+        <span style="font-family:'DM Mono',monospace;">${_eur$1(w.kostenEUR)}</span>
+      </div>`).join('');
+
+      return kopfZeile + wege;
+    }).join('');
+
+    return `
+  <div style="margin-bottom:10px;">
+    <div style="font-size:10px;color:var(--text);font-weight:600;margin-bottom:3px;">
+      ${schnappschuss.varianteName}
+      <span style="font-weight:400;color:var(--muted);font-size:9px;">· Jahr ${schnappschuss.jahr}</span>
+    </div>
+    <div style="background:var(--surface2);border-radius:6px;padding:6px 9px;">
+      ${komponenten || '<span style="font-size:9px;color:var(--muted);">keine auswertbare Netzkomponente</span>'}
+    </div>
+  </div>`;
+  }
+
+  function _fussnote() {
+    return `
+  <div style="font-size:8.5px;color:var(--muted);padding:2px 6px;line-height:1.7;">
+    Rückspeisung gegen die Kapazität am Einspeisepunkt. Ein Erzeugungsnetz ist ein
+    Sprungkostenblock — es lohnt erst, wenn genug Erzeugung dahintersteht; die
+    Alternative ist, unter der Schwelle zu bleiben und zu stückeln.
+    <br>„Günstigste" heißt allein Investition — Betrieb, Redundanz und
+    Genehmigungsaufwand stehen hier nicht drin. Der Spannungsfall auf den
+    Strängen ist die dritte Stufe und steckt im Engpass-Fahrplan (14h).
+    <br>Kostenannahmen: Trafo ${SCHWELLEN_KOSTEN.trafoEurProKVA} €/kVA ·
+    NAP ${SCHWELLEN_KOSTEN.napEurProKW} €/kW ·
+    Erzeugungsnetz ${SCHWELLEN_KOSTEN.erzeugungsnetzEurProKW} €/kW — grobe Richtwerte.
+  </div>`;
+  }
+
+  const _eur$1 = v => v >= 1e6 ? (v / 1e6).toFixed(2) + ' M€'
+                 : v >= 1000 ? (v / 1000).toFixed(0) + ' T€'
+                 : Math.round(v) + ' €';
+
+  var schwellenPanel = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    schwellenAnalyseStarten: schwellenAnalyseStarten,
+    schwellenPanelRender: schwellenPanelRender,
+    schwellenPanelToggle: schwellenPanelToggle
   });
 
   // DOM-freie Anlagenklassen für Wind-Platzierung und Restriktionsabstände.
@@ -175589,7 +176082,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     optimizerCore, hourlyLive, optimizerRun, optimizerWorker, optimizerSession,
     hilfeLeitfaden,
     assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
-    slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel, variantenVergleichPanel, lastgangSchnappschuss,
+    slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel, variantenVergleichPanel, lastgangSchnappschuss, schwellenPanel,
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,

@@ -243,6 +243,11 @@ function _html() { return `
         title="Ertrag, Abstände, Eignungsfläche &amp; Szenarien-Vergleich aller Windkraftanlagen">🌀 Windanalyse</button>
     </div>
     <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
+      <button class="lp-tool-btn" id="btn-schwellen-panel-toggle" data-click="schwellenPanelToggle()"
+        style="border-color:#4dd0e1;color:#4dd0e1;justify-content:center;"
+        title="Screening je Variante: trägt das Bestandsnetz die geplante Erzeugung, oder lohnt ein eigenes Erzeugungsnetz?">🪜 Schwellentreppe</button>
+    </div>
+    <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
       <button class="lp-tool-btn" id="btn-varianten-vergleich-toggle" data-click="variantenVergleichToggle()"
         style="border-color:#ce93d8;color:#ce93d8;justify-content:center;"
         title="Zeigt die Planungsentscheidungen aller Varianten nebeneinander — ohne die Variante zu wechseln">🔀 Varianten vergleichen</button>
