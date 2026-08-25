@@ -2599,6 +2599,10 @@ export function _buildProjectData() {
     windStandortDaten: (typeof window.windSiteSerialize === 'function' ? window.windSiteSerialize() : null),
     // Plan-Overlays (Hintergrundpläne) mit Bilddaten, Passlage, Deckkraft, Sichtbarkeit
     overlays: (typeof window.serializeOverlays === 'function' ? window.serializeOverlays() : []),
+    // Digitalisierter Bestands-Einlinienplan (Bild + Knoten-/Kabelmarkierungen).
+    // Bleibt als Checkliste erhalten: was bereits in Karte/Stromnetz übernommen wurde,
+    // erkennt der Digitalisierer an assetId/edgeId — siehe 15-plan-digitalisierer.js.
+    schemaPlan: (typeof window.pdSerialize === 'function' ? window.pdSerialize() : null),
     // Liegenschafts-Cluster (Klimafahrplan/Ausbaustufen, variantenübergreifend)
     cluster: (typeof window.clusterSerialize === 'function' ? window.clusterSerialize() : []),
   };
@@ -3556,6 +3560,9 @@ function _applyProjectData(project) {
 
       // Plan-Overlays (Hintergrundpläne) wiederherstellen bzw. leeren
       if (typeof window.loadOverlays === 'function') window.loadOverlays(project.overlays || []);
+
+      // Digitalisierter Bestandsplan wiederherstellen bzw. leeren
+      if (typeof window.pdDeserialize === 'function') window.pdDeserialize(project.schemaPlan || null);
 
       // Liegenschafts-Cluster (Ausbaustufen) wiederherstellen bzw. leeren
       if (typeof window.clusterDeserialize === 'function') window.clusterDeserialize(project.cluster || []);

@@ -742,7 +742,7 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 /* Print */
 @media print{
   body{background:#fff!important;color:#111!important;}
-  header,#print-hide,.sidebar,.hint,.float-panel,.timeline-bar,.context-bar{display:none!important;}
+  header,#print-hide,.sidebar,.hint,.float-panel,.pd-panel,.timeline-bar,.context-bar{display:none!important;}
   #map{width:100vw!important;height:calc(100vh - 60px)!important;}
   #print-legend{display:block!important;}
 }
@@ -1609,3 +1609,108 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Plan-Digitalisierer (15-plan-digitalisierer.js) ─────────────────────── */
+/* Standard: Vollbild-Arbeitsflaeche. .pd-panel ohne .pd-fullscreen = Fenstermodus. */
+.pd-panel{position:fixed;inset:0;z-index:900;background:var(--bg);display:none;flex-direction:column;overflow:hidden;}
+.pd-panel.visible{display:flex;}
+.pd-panel:not(.pd-fullscreen){
+  inset:auto;top:60px;left:50%;transform:translateX(-50%);
+  width:1060px;height:680px;max-width:96vw;max-height:88vh;min-width:640px;min-height:380px;
+  z-index:3000;border:1px solid #ce93d8;border-radius:10px;
+  box-shadow:0 8px 32px rgba(0,0,0,.7);resize:both;
+}
+.pd-panel:not(.pd-fullscreen).dragging{transform:none;}
+.pd-head{display:flex;align-items:center;gap:12px;padding:8px 14px;flex-shrink:0;
+  background:var(--surface);border-bottom:1px solid var(--border);}
+.pd-panel:not(.pd-fullscreen) .pd-head{cursor:grab;border-radius:10px 10px 0 0;}
+.pd-title{color:#ce93d8;font-size:12px;font-weight:600;white-space:nowrap;}
+.pd-head-btn{background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);
+  cursor:pointer;font-size:10px;padding:3px 9px;font-family:inherit;transition:.12s;white-space:nowrap;}
+.pd-head-btn:hover{border-color:var(--accent);color:var(--accent);}
+.pd-head-close:hover{border-color:#ef9a9a;color:#ef9a9a;}
+.pd-modehint{font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pd-toolbar{display:flex;align-items:center;gap:10px;padding:7px 14px;flex-shrink:0;flex-wrap:wrap;
+  background:var(--surface2);border-bottom:1px solid var(--border);}
+.pd-file-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;font-size:10px;cursor:pointer;
+  background:var(--surface2);border:1px solid #ce93d8;color:#ce93d8;border-radius:5px;}
+.pd-file-btn:hover{background:rgba(206,147,216,.15);}
+.pd-modes{display:inline-flex;gap:3px;}
+.pd-mode{padding:5px 9px;font-size:10px;cursor:pointer;background:var(--surface2);
+  border:1px solid var(--border);color:var(--muted);border-radius:5px;font-family:inherit;}
+.pd-mode:hover{color:var(--text);}
+.pd-mode.active{border-color:#4fc3f7;color:#4fc3f7;background:rgba(79,195,247,.14);font-weight:600;}
+.pd-progress{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap;}
+.pd-body{display:flex;gap:10px;flex:1;min-height:0;padding:10px 14px 12px;}
+.pd-map{flex:1;min-width:280px;background:#101318;border:1px solid var(--border);border-radius:6px;}
+.pd-side{width:300px;flex:0 0 300px;display:flex;flex-direction:column;gap:8px;min-height:0;}
+.pd-panel.pd-fullscreen .pd-side{width:340px;flex-basis:340px;}
+@media (max-width:1100px){.pd-panel.pd-fullscreen .pd-side{width:280px;flex-basis:280px;}}
+.pd-form{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 9px;flex:0 0 auto;}
+.pd-form-head{font-size:10px;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.pd-lbl{display:block;font-size:9px;color:var(--muted);margin:6px 0 2px;}
+.pd-in{width:100%;padding:4px 6px;background:var(--surface);color:var(--text);
+  border:1px solid var(--border);border-radius:4px;font-size:10px;font-family:inherit;}
+.pd-route{font-size:10px;color:var(--text);margin-bottom:2px;}
+.pd-parsed{margin-top:5px;font-size:9px;color:#81c784;font-family:'DM Mono',monospace;}
+.pd-warn{margin-top:5px;font-size:9px;color:#f9a825;line-height:1.35;}
+.pd-ok{margin-top:6px;font-size:9px;color:#81c784;line-height:1.4;}
+.pd-hint{font-size:9.5px;color:var(--muted);line-height:1.5;}
+.pd-mini{margin-top:6px;padding:3px 7px;font-size:9px;cursor:pointer;background:var(--surface);
+  border:1px solid var(--border);color:var(--muted);border-radius:4px;font-family:inherit;}
+.pd-mini:hover{color:var(--text);}
+.pd-mini.pd-del{display:block;width:100%;border-color:#ef9a9a;color:#ef9a9a;}
+.pd-list{flex:1;overflow:auto;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px;}
+.pd-list-head{font-size:8.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:4px 0 3px 3px;}
+.pd-row{display:flex;align-items:center;gap:6px;padding:3px 5px;border-radius:4px;cursor:pointer;font-size:9.5px;}
+.pd-row:hover{background:var(--surface);}
+.pd-row.sel{background:rgba(79,195,247,.16);}
+.pd-row-txt{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pd-row-sub{color:var(--muted);font-size:8.5px;white-space:nowrap;}
+.pd-empty{font-size:9px;color:var(--muted);padding:2px 6px;}
+.pd-dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px;}
+.pd-actions{display:flex;flex-direction:column;gap:4px;flex:0 0 auto;}
+.pd-node-icon{background:none;border:none;}
+.pd-node{width:22px;height:22px;border-radius:50%;border:2px solid rgba(0,0,0,.6);
+  display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1;color:#101318;}
+.pd-node-lbl{position:absolute;left:26px;top:3px;white-space:nowrap;font-size:9px;
+  color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;pointer-events:none;}
+
+/* Gebaeudesuche in der Werkzeugleiste */
+.pd-suche-wrap{position:relative;}
+.pd-suche{width:230px;padding:5px 8px;background:var(--surface);color:var(--text);
+  border:1px solid var(--border);border-radius:5px;font-size:10px;font-family:inherit;}
+.pd-suche:focus{border-color:#4fc3f7;outline:none;}
+.pd-suche-res{display:none;position:absolute;top:calc(100% + 4px);left:0;width:330px;z-index:20;
+  background:var(--surface);border:1px solid var(--border);border-radius:7px;
+  box-shadow:0 8px 24px rgba(0,0,0,.6);max-height:260px;overflow-y:auto;}
+.pd-suche-row{display:flex;align-items:center;gap:8px;padding:5px 9px;cursor:pointer;font-size:10px;}
+.pd-suche-row:hover{background:var(--surface2);}
+.pd-suche-row.drin{opacity:.55;}
+.pd-suche-nr{min-width:34px;font-family:'DM Mono',monospace;color:#4fc3f7;font-weight:600;}
+.pd-suche-name{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pd-suche-meta{color:var(--muted);font-size:8.5px;white-space:nowrap;}
+.pd-suche-leer{padding:7px 9px;font-size:10px;color:var(--muted);}
+
+/* Ganzes Gebaeude als Kasten auf dem Plan */
+.pd-geb-icon{background:none;border:none;}
+.pd-geb{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;
+  display:flex;flex-direction:column;align-items:center;gap:1px;
+  padding:3px 8px 2px;border:2px solid #90a4ae;border-radius:4px;
+  background:rgba(20,25,31,.9);box-shadow:0 2px 8px rgba(0,0,0,.55);cursor:pointer;}
+.pd-geb.sel{box-shadow:0 0 0 3px rgba(255,255,255,.35),0 2px 8px rgba(0,0,0,.55);}
+.pd-geb-name{font-size:10px;color:#fff;font-weight:600;line-height:1.2;}
+.pd-chips{display:flex;gap:2px;align-items:center;line-height:1;}
+.pd-chip{font-size:9px;opacity:.55;}
+.pd-chip.an{opacity:1;text-shadow:0 0 5px currentColor;}
+.pd-chip-mehr{color:var(--muted);font-size:8px;opacity:.8;}
+.pd-chips-leer{font-size:8px;color:var(--muted);}
+
+/* Anschlusspunkt-Auswahl im Formular */
+.pd-anschluss-liste{display:flex;flex-direction:column;gap:2px;margin-top:2px;}
+.pd-anschluss{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;
+  cursor:pointer;font-size:9.5px;border:1px solid transparent;background:var(--surface);}
+.pd-anschluss:hover{border-color:var(--border);}
+.pd-anschluss.an{border-color:#4fc3f7;background:rgba(79,195,247,.12);}
+.pd-anschluss-name{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pd-anschluss-typ{color:var(--muted);font-size:8.5px;white-space:nowrap;}

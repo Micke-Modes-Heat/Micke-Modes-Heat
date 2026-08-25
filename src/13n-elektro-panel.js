@@ -97,6 +97,13 @@ function _html() { return `
         Standardgebäude
       </button>
     </div>
+    <div style="margin-top:3px;">
+      <button class="lp-tool-btn" id="btn-pd-toggle" data-click="pdTogglePanel()"
+        style="width:100%;border-color:#ce93d8;color:#ce93d8;"
+        title="Bestands-Einlinienplan (Bild/PDF) laden und darauf klickend digitalisieren: Knoten mit Gebäuden verknüpfen, Kabel nachziehen — Geometrie und Länge kommen aus dem Trassenrouting">
+        📐 Bestandsplan digitalisieren
+      </button>
+    </div>
 
     ${_sep}
     ${_sub('Trassen &amp; Kabel')}

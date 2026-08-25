@@ -88,6 +88,7 @@ import * as clusterCore from './14f-cluster-core.js';
 import * as clusterMap from './14g-cluster-map.js';
 import * as engpassSweep from './14h-engpass-sweep.js';
 import * as engpassPanel from './14i-engpass-panel.js';
+import * as planDigitalisierer from './15-plan-digitalisierer.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -105,6 +106,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
+  planDigitalisierer,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});

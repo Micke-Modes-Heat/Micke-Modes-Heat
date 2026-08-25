@@ -59,6 +59,23 @@ export const KABEL_TYPEN = {
       { mm2: 185, Iz: 274, eurM: 48, xMuOhmPerM: 77 },
       { mm2: 240, Iz: 314, eurM: 60, xMuOhmPerM: 75 },
     ]
+  },
+  // Mittelspannungs-Erdkabel (12/20 kV). Auf Bestandsplänen die Regel zwischen
+  // Übergabe und Trafostationen ("3x NA2XS2Y 1x185"). Die Auslastungsrechnung
+  // für msLevel-Kanten läuft über MS_I_MAX_A/MS_SECTIONS — diese Tabelle liefert
+  // Bezeichnung, Widerstandsbelag und Kostenansatz (elCalcAssets/Investitionsplan).
+  NA2XS2Y: {
+    label: 'NA2XS2Y (MS-Erdkabel, Aluminium)', material: 'Al', rhoOhmMm2pM: 0.0286, alphaK: 0.00403, msKabel: true,
+    sections: [
+      { mm2: 35,  Iz: 140, eurM: 32,  xMuOhmPerM: 130 },
+      { mm2: 50,  Iz: 175, eurM: 38,  xMuOhmPerM: 125 },
+      { mm2: 70,  Iz: 220, eurM: 45,  xMuOhmPerM: 120 },
+      { mm2: 95,  Iz: 260, eurM: 54,  xMuOhmPerM: 117 },
+      { mm2: 120, Iz: 300, eurM: 63,  xMuOhmPerM: 114 },
+      { mm2: 150, Iz: 340, eurM: 74,  xMuOhmPerM: 112 },
+      { mm2: 185, Iz: 385, eurM: 88,  xMuOhmPerM: 110 },
+      { mm2: 240, Iz: 445, eurM: 108, xMuOhmPerM: 107 },
+    ]
   }
 };
 
