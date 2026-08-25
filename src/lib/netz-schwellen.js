@@ -282,6 +282,37 @@ export function schwellenVarianten(befund, kosten = SCHWELLEN_KOSTEN) {
 }
 
 /**
+ * Verdichtet einen Analyselauf zu einer Aussage über die ganze Variante.
+ *
+ * WICHTIG für die Lesart: Ein Fazit „frei" heißt NUR, dass Trafos und
+ * Einspeisepunkt tragen. Strombelastbarkeit und Spannungsfall der einzelnen
+ * Kabel sind hier NICHT geprüft — die findet erst der zeitliche Engpass-Sweep.
+ * Eine im Screening unauffällige Variante kann also trotzdem Kabelengpässe
+ * haben; deshalb lohnt die Vertiefung auch dann.
+ *
+ * Rückgabe: { stufe, kritisch, gesamt, guenstigsteSummeEUR, text }
+ */
+export function schwellenFazit(analyse) {
+  const eintraege = analyse || [];
+  const kritisch = eintraege.filter(e => e.befund.stufe !== 'frei');
+  const hatNap = kritisch.some(e => e.befund.stufe === 'nap');
+
+  const guenstigsteSummeEUR = kritisch.reduce((s, e) => {
+    const g = (e.varianten || []).find(v => v.guenstigste);
+    return s + (g?.kostenEUR || 0);
+  }, 0);
+
+  const stufe = hatNap ? 'nap' : (kritisch.length ? 'trafo' : 'frei');
+  const text = stufe === 'frei'
+    ? 'Einspeisepunkt und Trafos tragen'
+    : stufe === 'trafo'
+      ? `${kritisch.length} Cluster über der Trafo-Grenze`
+      : `${kritisch.length} Cluster über dem NAP-Limit`;
+
+  return { stufe, kritisch: kritisch.length, gesamt: eintraege.length, guenstigsteSummeEUR, text };
+}
+
+/**
  * Gesamtlauf über alle Komponenten.
  *
  * eingabe: { assets, edges, rueckJeKnoten, napLimitKw, kosten }

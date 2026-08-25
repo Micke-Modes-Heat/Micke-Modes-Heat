@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   netzKomponenten, blattZuTrafo, komponenteKapazitaetKW, pruefeSchwellen,
-  bestandErtuechtigen, schwellenVarianten, schwellenAnalyse,
+  bestandErtuechtigen, schwellenVarianten, schwellenAnalyse, schwellenFazit,
   SCHWELLEN_KOSTEN, TRAFO_RUECK_FAKTOR,
 } from '../src/lib/netz-schwellen.js';
 
@@ -278,5 +278,43 @@ describe('schwellenAnalyse', () => {
 
   it('verträgt leere Eingaben', () => {
     expect(schwellenAnalyse({})).toEqual([]);
+  });
+});
+
+describe('schwellenFazit', () => {
+  const eintrag = (stufe, kostenGuenstigste) => ({
+    komponente: {}, befund: { stufe },
+    varianten: kostenGuenstigste == null ? [] : [
+      { id: 'a', kostenEUR: kostenGuenstigste, guenstigste: true },
+      { id: 'b', kostenEUR: kostenGuenstigste * 5, guenstigste: false },
+    ],
+  });
+
+  it('meldet frei, wenn keine Komponente reißt', () => {
+    const f = schwellenFazit([eintrag('frei'), eintrag('frei')]);
+    expect(f).toMatchObject({ stufe: 'frei', kritisch: 0, gesamt: 2, guenstigsteSummeEUR: 0 });
+  });
+
+  it('meldet die Trafo-Stufe, solange kein NAP-Limit reißt', () => {
+    expect(schwellenFazit([eintrag('trafo', 1000), eintrag('frei')]).stufe).toBe('trafo');
+  });
+
+  it('lässt die NAP-Stufe gewinnen — sie ist die höhere', () => {
+    expect(schwellenFazit([eintrag('trafo', 1000), eintrag('nap', 5000)]).stufe).toBe('nap');
+  });
+
+  it('summiert nur die jeweils günstigste Auflösung je Cluster', () => {
+    const f = schwellenFazit([eintrag('nap', 5000), eintrag('trafo', 1000)]);
+    expect(f.guenstigsteSummeEUR).toBe(6000);
+  });
+
+  it('zählt kritische und gesamte Cluster getrennt', () => {
+    const f = schwellenFazit([eintrag('nap', 100), eintrag('frei'), eintrag('frei')]);
+    expect(f).toMatchObject({ kritisch: 1, gesamt: 3 });
+  });
+
+  it('verträgt einen leeren Lauf', () => {
+    expect(schwellenFazit([])).toMatchObject({ stufe: 'frei', kritisch: 0, gesamt: 0 });
+    expect(schwellenFazit(null).stufe).toBe('frei');
   });
 });

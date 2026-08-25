@@ -11,10 +11,12 @@
 // danach der Engpass-Sweep in 14h — aber nur noch für die Varianten, die hier
 // überleben.
 
-import { schwellenAnalyse, SCHWELLEN_KOSTEN } from './lib/netz-schwellen.js';
+import { schwellenAnalyse, schwellenFazit, SCHWELLEN_KOSTEN } from './lib/netz-schwellen.js';
 import { ASSETS } from './13a-assets-core.js';
 import { lastgangSchnappschuesse, lastgangSchnappschuesseAlleVarianten } from './13y-lastgang-schnappschuss.js';
 import { showHint } from './03c-gebaeude-io.js';
+import { activateVariant, activeVariantId } from './01-globals-varianten.js';
+import { engpassPanelAktualisieren } from './14i-engpass-panel.js';
 
 const PANEL_ID = 'schwellen-panel';
 
@@ -86,6 +88,31 @@ export function schwellenAnalyseStarten() {
     }
     schwellenPanelRender();
     if (typeof window.hideHint === 'function') window.hideHint();
+  }, 50);
+}
+
+/**
+ * Vertiefung: von der Screening-Stufe in die Tiefenanalyse wechseln.
+ *
+ * Der Engpass-Sweep rechnet auf dem globalen Zustand, die Variante muss also
+ * aktiv sein. Deshalb wird hier umgeschaltet — anders als beim Screening, das
+ * bewusst ohne Wechsel auskommt.
+ *
+ * varianteId: '' bzw. null = Basisdaten
+ */
+export function schwellenVertiefen(varianteId) {
+  const id = (varianteId === '' || varianteId === 'null') ? null : varianteId;
+  if ((activeVariantId ?? null) !== id) activateVariant(id);
+  showHint('🔬 Vertiefung: zeitlicher Engpass-Verlauf wird gerechnet …');
+  setTimeout(() => {
+    try {
+      engpassPanelAktualisieren();
+    } catch (err) {
+      console.error('Vertiefung:', err);
+      showHint('⚠ Engpass-Analyse fehlgeschlagen — Details in der Konsole.');
+      return;
+    }
+    schwellenPanelRender();   // aktive Variante hat gewechselt
   }, 50);
 }
 
@@ -174,11 +201,25 @@ function _variantenBlock(schnappschuss, analyse) {
     return kopfZeile + wege;
   }).join('');
 
+  const fazit = schwellenFazit(analyse);
+  const fCol = STUFE[fazit.stufe].col;
+  const aktiv = (activeVariantId ?? null) === (schnappschuss.varianteId ?? null);
+
   return `
   <div style="margin-bottom:10px;">
-    <div style="font-size:10px;color:var(--text);font-weight:600;margin-bottom:3px;">
-      ${schnappschuss.varianteName}
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;">
+      <span style="font-size:10px;color:var(--text);font-weight:600;">${schnappschuss.varianteName}</span>
       <span style="font-weight:400;color:var(--muted);font-size:9px;">· Jahr ${schnappschuss.jahr}</span>
+      <span style="color:${fCol};font-size:9px;">${fazit.text}</span>
+      ${fazit.guenstigsteSummeEUR > 0
+        ? `<span style="color:var(--muted);font-size:9px;font-family:'DM Mono',monospace;">ab ${_eur(fazit.guenstigsteSummeEUR)}</span>`
+        : ''}
+      <button data-click="schwellenVertiefen('${schnappschuss.varianteId ?? ''}')"
+        title="Wechselt zu dieser Variante und rechnet den zeitlichen Engpass-Verlauf — inklusive Kabel, die das Screening nicht prüft."
+        style="margin-left:auto;padding:2px 8px;border-radius:4px;font-family:inherit;font-size:9px;cursor:pointer;
+               border:1px solid ${aktiv ? '#f9a825' : 'var(--border)'};background:transparent;
+               color:${aktiv ? '#f9a825' : 'var(--muted)'};white-space:nowrap;">
+        🔬 vertiefen${aktiv ? '' : ' →'}</button>
     </div>
     <div style="background:var(--surface2);border-radius:6px;padding:6px 9px;">
       ${komponenten || '<span style="font-size:9px;color:var(--muted);">keine auswertbare Netzkomponente</span>'}
@@ -193,8 +234,11 @@ function _fussnote() {
     Sprungkostenblock — es lohnt erst, wenn genug Erzeugung dahintersteht; die
     Alternative ist, unter der Schwelle zu bleiben und zu stückeln.
     <br>„Günstigste" heißt allein Investition — Betrieb, Redundanz und
-    Genehmigungsaufwand stehen hier nicht drin. Der Spannungsfall auf den
-    Strängen ist die dritte Stufe und steckt im Engpass-Fahrplan (14h).
+    Genehmigungsaufwand stehen hier nicht drin.
+    <br><b style="color:#f9a825;">„Im Rahmen" heißt nicht „nichts zu tun":</b>
+    geprüft sind hier nur Trafos und Einspeisepunkt. Strombelastbarkeit und
+    Spannungsfall der einzelnen Kabel findet erst die Vertiefung (🔬) über den
+    zeitlichen Engpass-Verlauf.
     <br>Kostenannahmen: Trafo ${SCHWELLEN_KOSTEN.trafoEurProKVA} €/kVA ·
     NAP ${SCHWELLEN_KOSTEN.napEurProKW} €/kW ·
     Erzeugungsnetz ${SCHWELLEN_KOSTEN.erzeugungsnetzEurProKW} €/kW — grobe Richtwerte.
