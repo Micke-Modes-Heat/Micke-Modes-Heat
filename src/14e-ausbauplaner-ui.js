@@ -6,6 +6,7 @@
 import { ASSETS } from './13a-assets-core.js';
 import { phasen, setPhasen } from './01-globals-varianten.js';
 import { fahrplanTopoSort, fahrplanValidiereReihenfolge } from './14c-phasen.js';
+import { phaseJahrSetzen } from './lib/phasen-core.js';
 import { MASSN_VORLAGEN, MASSN_VORLAGEN_REIHENFOLGE } from './config/massnahmen-vorlagen.js';
 import { clusters, clusterFuerGebaeude } from './14f-cluster-core.js';
 
@@ -395,7 +396,14 @@ export function ausbauNeuePhase() {
 
 export function ausbauEditPhaseJahr(phaseId, field, value) {
   const p = phasen.find(x => x.id === phaseId);
-  if (p) { _planningChange('Phasenzeitraum ändern', () => { p[field] = value; }); ausbauRender(); }
+  if (!p) return;
+  // Rohwert aus dem Zahlenfeld nicht ungeprüft übernehmen: ein leeres Feld
+  // ergibt sonst jahrBis = '' → Number('') = 0 → die Phase gilt als „Start nach
+  // Ende" und blockiert danach jede Planungstransaktion (s. lib/phasen-core.js).
+  const next = phaseJahrSetzen(p, field, value);
+  if (!next) { ausbauRender(); return; }   // unbrauchbare Eingabe → Feld zurücksetzen
+  _planningChange('Phasenzeitraum ändern', () => Object.assign(p, next));
+  ausbauRender();
 }
 
 export function ausbauPhaseLoeschen(phaseId) {

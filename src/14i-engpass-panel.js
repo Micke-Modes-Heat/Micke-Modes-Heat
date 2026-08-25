@@ -11,14 +11,23 @@
 import {
   engpassLetztesErgebnis, engpassGeneriereMassnahmen,
   engpassMassnahmenVerwerfen, engpassVergleich,
+  engpassAusloeserFuer, engpassZusammenhaengende, engpassAufloesung,
+  engpassBestandsmaengel, engpassKorrekturenUebernehmen, engpassKorrekturenVerwerfen,
 } from './14h-engpass-sweep.js';
-import { setStromColorMode } from './05b-stromnetz.js';
+import { setStromColorMode, openCableInspector } from './05b-stromnetz.js';
 import { showHint } from './03c-gebaeude-io.js';
+import { ASSETS, ASSET_CFG } from './13a-assets-core.js';
+import { openAssetInspector } from './13e-assets-inspector.js';
+import { map } from './02b-gebaeude.js';
 
 const PANEL_ID = 'engpass-panel';
 let _vergleich = null;   // Ergebnis von engpassVergleich (für die Reserve-Kurve)
 let _massnahmen = null;  // Ergebnis von engpassGeneriereMassnahmen
 let _horizont = null;    // { von, bis } aus der Toolbar; null = Standard (ab heute)
+// Bestandsmängel (von Anfang an zu klein, ohne Auslöser) aus Zeitstrahl und
+// Ausbau-Ableitung heraushalten — sie stehen in ihrer eigenen Sektion und
+// verzerren sonst sowohl den Fahrplan als auch die Ursache-Wirkungs-Kette.
+let _ohneBestand = true;
 
 // Ampelfarbe nach BEIDEN Kriterien — Strombelastbarkeit UND kumuliertem
 // Spannungsfall. Nur die Auslastung zu färben wäre irreführend: ein Kabel kann
@@ -40,6 +49,24 @@ function _wertBei(reihe, jahr) {
   let treffer = null;
   for (const r of reihe) { if (r.jahr <= jahr) treffer = r; else break; }
   return treffer;
+}
+
+// Zeile im Zeitstrahl angeklickt: zum Betriebsmittel auf der Karte springen
+// und rechts den Inspector öffnen (Trafo → Asset-Inspector, Kabel → Kabel-Inspector).
+export function engpassSpringeZu(id, art) {
+  if (art === 'trafo') {
+    const asset = (ASSETS.items || []).find(a => a.id === id);
+    if (!asset) { showHint('⚠ Betriebsmittel nicht mehr vorhanden.'); return; }
+    if (asset.lat != null && asset.lng != null) {
+      map.flyTo([asset.lat, asset.lng], Math.max(map.getZoom(), 18), { duration: 1 });
+    }
+    openAssetInspector(asset);
+  } else {
+    const edge = (window.stromEdges || []).find(e => e.id === id);
+    if (!edge) { showHint('⚠ Kabel nicht mehr vorhanden.'); return; }
+    if (edge.layer) map.flyToBounds(edge.layer.getBounds(), { padding: [60, 60], maxZoom: 19, duration: 1 });
+    openCableInspector(edge);
+  }
 }
 
 // ── Panel-Gerüst ─────────────────────────────────────────────────────────────
@@ -109,7 +136,7 @@ export function engpassPanelAktualisieren() {
 
 /** Maßnahmen automatisch ableiten und Panel neu zeichnen. */
 export function engpassMassnahmenVorschlagen() {
-  _massnahmen = engpassGeneriereMassnahmen();
+  _massnahmen = engpassGeneriereMassnahmen({ ohneBestandsmaengel: _ohneBestand });
   if (!_massnahmen) { showHint('⚠ Erst die Engpass-Analyse ausführen.'); return; }
   _vergleich = engpassVergleich(_horizont || {});   // Wirksamkeit nachrechnen
   _render();
@@ -117,6 +144,33 @@ export function engpassMassnahmenVorschlagen() {
   showHint(`✓ ${_massnahmen.items.length} Maßnahmen vorgeschlagen · ${_eur(_massnahmen.investGesamt)}`
     + (offen ? ` — ⚠ ${offen} Engpass/Engpässe nicht durch Kabeltausch lösbar.` : ' — im Ausbauplaner sichtbar.'));
   setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 5000);
+}
+
+/** Bestandsmängel aus Zeitstrahl und Ausbau-Ableitung ein-/ausblenden. */
+export function engpassBestandFilter(aus) {
+  _ohneBestand = !!aus;
+  _render();
+}
+
+/**
+ * Korrekturvorschläge für die Bestandsmängel in die Bestandsdaten übernehmen
+ * (Querschnitt/Stränge bzw. Trafo-kVA direkt, nicht als geplante Maßnahme)
+ * und anschließend neu rechnen — die Sektion sollte danach leer sein.
+ */
+export function engpassKorrekturenAnwenden() {
+  const n = engpassKorrekturenUebernehmen();
+  if (!n) { showHint('⚠ Keine übernehmbaren Korrekturen — die verbleibenden Fälle brauchen eine Strukturänderung.'); return; }
+  showHint(`✓ ${n} Bestandsdimensionierung(en) korrigiert — Netz wird neu gerechnet …`);
+  engpassPanelAktualisieren();
+  setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 5000);
+}
+
+/** Übernommene Bestandskorrekturen wieder zurücknehmen. */
+export function engpassKorrekturenZuruecknehmen() {
+  const n = engpassKorrekturenVerwerfen();
+  showHint(`${n} Bestandskorrektur(en) zurückgenommen.`);
+  engpassPanelAktualisieren();
+  setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 4000);
 }
 
 /** Automatisch erzeugte Maßnahmen wieder entfernen. */
@@ -146,14 +200,20 @@ function _render() {
   const kritisch  = alle.filter(x => x.engpassJahr != null);
   const okAnzahl  = alle.length - kritisch.length;
 
+  const bestand   = engpassBestandsmaengel(res);
+  const bestandIds = new Set(bestand.map(b => b.item.id));
+  const gezeigt   = _ohneBestand ? kritisch.filter(x => !bestandIds.has(x.id)) : kritisch;
+
   el.innerHTML = `
-    ${_toolbar(res, kritisch.length, okAnzahl)}
+    ${_toolbar(res, kritisch.length, okAnzahl, bestand.length)}
     ${_reserveKurve()}
-    ${_zeitstrahl(res, kritisch)}
-    ${_massnahmenListe()}`;
+    ${_zeitstrahl(res, gezeigt)}
+    ${_bestandsmaengel(bestand)}
+    ${_massnahmenListe()}
+    ${_aufloesung(res)}`;
 }
 
-function _toolbar(res, nKrit, nOk) {
+function _toolbar(res, nKrit, nOk, nBestand = 0) {
   const btn = 'padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;';
   return `
   <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:2px 0 10px;">
@@ -175,6 +235,13 @@ function _toolbar(res, nKrit, nOk) {
         style="width:78px;accent-color:#f9a825;cursor:pointer;"
         data-input="engpassHorizontVorschau()" data-change="engpassPanelAktualisieren()">
     </span>
+    ${nBestand ? `
+    <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer;"
+      title="Betriebsmittel, die schon im Startjahr überlastet sind, ohne dass ein Zubau die Ursache wäre — Bestandsdaten, kein Ausbaubedarf. Ausgeblendet erscheinen sie nur in der eigenen Sektion und werden auch nicht als Maßnahme eingeplant.">
+      <input type="checkbox" id="engpass-ohne-bestand" ${_ohneBestand ? 'checked' : ''}
+        style="accent-color:#f9a825;cursor:pointer;" data-change="engpassBestandFilter(this.checked)">
+      Bestandsmängel ausblenden
+    </label>` : ''}
     <span style="margin-left:auto;font-size:10px;color:var(--muted);">
       ${res.jahre.length} Stützjahre ·
       <b style="color:#e53935;">${nKrit}</b> kritisch · <b style="color:#4caf50;">${nOk}</b> ohne Engpass
@@ -252,9 +319,20 @@ function _zeitstrahl(res, kritisch) {
     // Maßgebender Wert: bei Spannungs-Engpässen ist die Auslastung irrelevant
     const spannung = (it.ursache || '').includes('spannung');
     const massgeb  = spannung ? `ΔU ${it.maxDuPct.toFixed(1)} %` : `${it.maxAuslPct.toFixed(0)} %`;
-    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+    // Auslöser (welcher Verbraucher/Erzeuger hat den Engpass verursacht) +
+    // welche anderen Engpässe an derselben Ursache hängen — siehe „🔗 Ursache
+    // → Maßnahme" weiter unten für die ausführliche Ansicht; hier nur der Hover.
+    const ausl = engpassAusloeserFuer(it);
+    const zush = engpassZusammenhaengende(it, kritisch);
+    const auslTxt = ausl.length
+      ? `\nAuslöser: ${ausl.map(a => a.name).join(', ')} (${it.engpassJahr})`
+      : '\nAuslöser: nicht eindeutig (mehrere gleichzeitige Änderungen oder bereits ab Horizontbeginn kritisch)';
+    const zushTxt = zush.length ? `\nBetrifft auch: ${zush.map(z => z.label).join(', ')}` : '';
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;cursor:pointer;"
+      data-click="engpassSpringeZu('${it.id}','${it.art}')"
+      title="Auf der Karte anzeigen und Eigenschaften öffnen">
       ${nameSpalte(`${icon} ${it.label}`, 'font-size:9.5px;color:var(--text);',
-                   `${it.label} — Engpass ab ${it.engpassJahr}, Ursache: ${it.ursache}`)}
+                   `${it.label} — Engpass ab ${it.engpassJahr}, Ursache: ${it.ursache}${auslTxt}${zushTxt}`)}
       <div style="flex:0 0 34px;font-size:9px;font-weight:700;color:#e53935;text-align:right;">${it.engpassJahr}</div>
       <div style="flex:0 0 26px;font-size:8px;color:${spannung ? '#ce93d8' : '#ffab91'};text-align:center;"
            title="${spannung ? 'Spannungsfall' : 'Strombelastbarkeit'}">${spannung ? 'ΔU' : 'I'}</div>
@@ -324,4 +402,110 @@ function _massnahmenListe() {
   </div>` : '';
 
   return ausbauBlock + ungeloestBlock;
+}
+
+// Bestandsmängel: schon im Startjahr überlastet, ohne dass ein Zubau die
+// Ursache wäre. Kein Ausbaubedarf, sondern eine zu korrigierende Erfassung —
+// deshalb Korrektur der Basisdaten statt Maßnahme mit Jahr und Investition.
+function _bestandsmaengel(bestand) {
+  if (!bestand.length) return '';
+
+  const btn = 'padding:4px 9px;border-radius:5px;border:1px solid var(--border);background:transparent;font-family:inherit;font-size:10px;cursor:pointer;';
+  const loesbar = bestand.filter(b => b.vorschlag);
+
+  const zeilen = bestand.map(({ item, vorschlag }) => {
+    const icon = item.art === 'trafo' ? '⏚' : '⚡';
+    const spannung = (item.ursache || '').includes('spannung');
+    const massgeb  = spannung ? `ΔU ${item.maxDuPct.toFixed(1)} %` : `${item.maxAuslPct.toFixed(0)} %`;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:3px 6px;cursor:pointer;"
+      data-click="engpassSpringeZu('${item.id}','${item.art}')"
+      title="Auf der Karte anzeigen und Eigenschaften öffnen">
+      <span style="flex:0 0 190px;font-size:9px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            title="${item.label}">${icon} ${item.label}</span>
+      <span style="flex:0 0 52px;font-size:8.5px;color:#ef9a9a;text-align:right;">${massgeb}</span>
+      <span style="flex:1;font-size:9.5px;color:${vorschlag ? '#66bb6a' : '#ef9a9a'};">
+        ${vorschlag ? '→ ' + vorschlag.label : '→ kein Standardquerschnitt reicht — Netzstruktur ändern'}</span>
+    </div>`;
+  }).join('');
+
+  return `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#f9a825;margin:10px 0 3px;">
+    🔧 Bestandsmängel · ${bestand.length} von Anfang an unterdimensioniert
+  </div>
+  <div style="background:rgba(249,168,37,0.07);border:1px solid rgba(249,168,37,0.3);border-radius:6px;padding:6px 4px;margin-bottom:12px;">
+    <div style="font-size:8.5px;color:var(--muted);padding:0 6px 5px;line-height:1.6;">
+      Schon im Startjahr ${_horizontVon()} überlastet, ohne dass ein Zubau die Ursache wäre —
+      also keine Folge der Entwicklung, sondern eine zu klein erfasste Bestandsdimensionierung.
+      Die Korrektur ändert Querschnitt/Stränge bzw. Trafo-Leistung direkt in den Stammdaten,
+      <b>nicht</b> als geplante Maßnahme mit Investition.
+    </div>
+    ${zeilen}
+    <div style="display:flex;gap:6px;padding:7px 6px 1px;">
+      <button style="${btn}border-color:#66bb6a;color:#66bb6a;" data-click="engpassKorrekturenAnwenden()"
+        title="Schreibt die Vorschläge in die Bestandsdaten und rechnet neu.">
+        ✓ ${loesbar.length} Korrektur(en) übernehmen</button>
+      <button style="${btn}border-color:#e57373;color:#e57373;" data-click="engpassKorrekturenZuruecknehmen()"
+        title="Stellt die ursprünglichen Bestandswerte wieder her.">↩ Zurücknehmen</button>
+    </div>
+  </div>`;
+}
+
+function _horizontVon() {
+  return engpassLetztesErgebnis()?.von ?? '';
+}
+
+// Icon für den Auslöser: Gebäude-Symbol für einen reinen Gebäude-Anschluss,
+// sonst das Asset-Icon aus dem Katalog (☀ PV, 🏠 Verbraucher, …).
+function _ausloeserIcon(t) {
+  return t.kind === 'gebaeude' ? '🏠' : (ASSET_CFG[t.typ]?.icon || '⚡');
+}
+function _ausloeserGrund(t) {
+  if (t.grund === 'ausbau') return 'Kapazitätserweiterung';
+  return t.kind === 'gebaeude' ? 'Neubau' : 'Zubau';
+}
+
+// Ursache → Wirkung: je Auslöser (neuer/erweiterter Verbraucher oder Erzeuger)
+// alle davon betroffenen Engpässe mit der jeweils daraus abgeleiteten
+// Ausbau-Maßnahme — beantwortet "welcher Zubau führt zu welcher Infra-Maßnahme".
+function _aufloesung(res) {
+  // Bestandsmängel bleiben hier außen vor — sie haben per Definition keinen
+  // Auslöser und stehen mit ihrer Korrektur in der eigenen Sektion.
+  const { gruppen, ohneAusloeser } = engpassAufloesung(res, _massnahmen?.items);
+  if (!gruppen.length && !ohneAusloeser.length) return '';
+
+  const zeilen = gruppen.map(g => {
+    const betroffen = g.betroffene.map(b => {
+      const it = b.item, m = b.massnahme;
+      const mIcon = it.art === 'trafo' ? '⏚' : '⚡';
+      const mTxt  = m ? `${m.titel} · ${_eur(m.kosten)}` : 'noch keine Maßnahme abgeleitet';
+      return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0 2px 20px;font-size:9px;">
+        <span style="color:var(--muted);">↳</span>
+        <span style="flex:0 0 190px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="${it.label}">${mIcon} ${it.label} <span style="color:var(--muted);">(${it.engpassJahr})</span></span>
+        <span style="flex:1;text-align:right;color:${m ? '#66bb6a' : '#f9a825'};white-space:nowrap;">${mTxt}</span>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text);">
+        <span>${_ausloeserIcon(g.trigger)}</span>
+        <b>${g.trigger.name}</b>
+        <span style="font-size:8.5px;color:var(--muted);">${_ausloeserGrund(g.trigger)} · ${g.jahr}</span>
+      </div>
+      ${betroffen}
+    </div>`;
+  }).join('');
+
+  const ohneBlock = ohneAusloeser.length ? `
+    <div style="font-size:9px;color:var(--muted);padding:4px 6px 0;">
+      ${ohneAusloeser.length} Engpass/Engpässe ohne eindeutig identifizierbaren Auslöser
+      (mehrere gleichzeitige Änderungen, oder bereits ab Horizontbeginn kritisch).
+    </div>` : '';
+
+  return `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 3px;">
+    🔗 Ursache → Maßnahme · ${gruppen.length} Auslöser
+  </div>
+  <div style="background:var(--surface2);border-radius:6px;padding:8px 6px;">
+    ${zeilen}${ohneBlock}
+  </div>`;
 }

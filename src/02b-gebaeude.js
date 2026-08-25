@@ -10,6 +10,7 @@ import { updateAllDeckungen } from './06c-dispatch-core.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { _batchImporting } from './01-globals-varianten.js';
 import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
+import { istSchicht, getAktiveSchicht } from './lib/schichten.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { R_MAX } from './01-globals-varianten.js';
 
@@ -417,6 +418,9 @@ export function addGebaeude(opts={}){
            fromOsm:opts.fromOsm||false,fromWfs:opts.fromWfs||false,osmId:opts.osmId||null,
            baujahr: opts.baujahr!=null?opts.baujahr:null, baujährQuelle: opts.baujährQuelle||null,
            abrissjahr: null, sanierungen: [], selected: false,
+           // Planungsschicht: explizit (Projekt-/Variantenladen) sonst aktueller Eingabemodus.
+           // Das Gebäude ist der primäre Träger — Elektroassets erben sie (createAsset/_syncSchichtToAssets).
+           schicht: istSchicht(opts.schicht) ? opts.schicht : getAktiveSchicht(),
            pvAktiv: false, pvDachanteil: opts.pvDachanteil ?? 30,
            pvModus: 'pauschal', pvFlaechen: [], pvFlGcr: null, pvFlAusrichtung: 'sued', pvFlBelegung: null,
            strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || '',
@@ -961,6 +965,19 @@ function _syncYearToAssets(gebId, field, year) {
 function _syncAbrissToAssets(gebId, abrissjahr) { _syncYearToAssets(gebId, 'abrissjahr', abrissjahr); }
 function _syncBaujahrToAssets(gebId, baujahr)   { _syncYearToAssets(gebId, 'baujahr',    baujahr); }
 
+/**
+ * Planungsschicht des Gebäudes auf seine Elektroassets durchreichen — analog zu
+ * den Jahren. Wird ein Gebäude nachträglich zum geplanten Neubau erklärt, sind
+ * seine Hausanschlüsse/PV automatisch ebenfalls Entwicklung.
+ */
+export function setGebaeudeSchicht(gebId, schicht) {
+  const g = (window.gebaeude || []).find(x => x.id === gebId);
+  if (!g || !istSchicht(schicht)) return false;
+  g.schicht = schicht;
+  _syncYearToAssets(gebId, 'schicht', schicht);
+  return true;
+}
+
 export function updateField(id, field, val, {defer = false} = {}) {
   const g = window.gebaeude.find(x => x.id === id);
   if (!g) return;
@@ -974,6 +991,12 @@ export function updateField(id, field, val, {defer = false} = {}) {
     g[field] = (Number.isInteger(v) && v >= 1800 && v <= 2100) ? v : null;
     if (field === 'abrissjahr') _syncAbrissToAssets(g.id, g.abrissjahr);
     if (field === 'baujahr')    _syncBaujahrToAssets(g.id, g.baujahr);
+  } else if (field === 'schicht') {
+    // Zieht die Schicht auf alle Assets des Gebäudes mit — das Gebäude ist der
+    // primäre Träger, seine Hausanschlüsse/PV gehören zur selben Schicht.
+    if (setGebaeudeSchicht(g.id, val) && typeof window.redrawAllAssets === 'function') {
+      window.redrawAllAssets();
+    }
   } else if (field === 'stockwerke') {
     const v = parseInt(val);
     g.stockwerke = (Number.isInteger(v) && v >= 1) ? Math.min(50, v) : 1;

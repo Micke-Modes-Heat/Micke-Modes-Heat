@@ -7,6 +7,7 @@ import { phasen, massnahmeJahr, setPhasen } from './01-globals-varianten.js';
 import { MASSN_VORLAGEN, MASSN_VORLAGEN_REIHENFOLGE } from './config/massnahmen-vorlagen.js';
 import { redrawAllAssets } from './13b-assets-render.js';
 import { createId } from './lib/util.js';
+import { istSchicht } from './lib/schichten.js';
 function _selectionChange(label, mutate) {
   try { return typeof window.runPlanningTransaction === 'function' ? window.runPlanningTransaction(label, mutate) : mutate(); }
   catch (error) { console.error(error); alert(error.message); return null; }
@@ -564,6 +565,7 @@ export function selBulkApplyAll() {
   const status    = document.getElementById('asset-bulk-status')?.value || '';
   const bauJahr   = parseInt(document.getElementById('asset-bulk-bau-jahr')?.value || '');
   const abrissJahr = parseInt(document.getElementById('asset-bulk-abriss-jahr')?.value || '');
+  const schicht   = document.getElementById('asset-bulk-schicht')?.value || '';
 
   let changed = 0;
 
@@ -582,11 +584,17 @@ export function selBulkApplyAll() {
       for (const a of selGetAssets()) { a.abrissjahr = abrissJahr; if (abrissJahr > curYear) _ensureMassnahmeJahr(a, 'Abriss', abrissJahr); }
       changed++;
     }
+    // Nachträgliche Korrektur der Planungsschicht — der Rückweg aus einem
+    // falsch gewählten Eingabemodus. Reine Zuordnung, keine Berechnung.
+    if (istSchicht(schicht)) {
+      for (const a of selGetAssets()) a.schicht = schicht;
+      changed++;
+    }
   });
   if (committed === null) changed = 0;
 
   // Felder zurücksetzen
-  const ids = ['asset-bulk-phase','asset-bulk-massn','asset-bulk-status'];
+  const ids = ['asset-bulk-phase','asset-bulk-massn','asset-bulk-status','asset-bulk-schicht'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const numIds = ['asset-bulk-bau-jahr','asset-bulk-abriss-jahr'];
   numIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });

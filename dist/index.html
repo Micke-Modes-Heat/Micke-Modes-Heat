@@ -10964,6 +10964,9 @@ if (typeof L !== 'undefined') {
     <span class="timeline-label" id="year-display" style="font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:32px;">2026</span>
   </div>
   <div class="ctx-sep"></div>
+  <!-- Planungsschicht-Umschalter — Inhalt wird aus src/13v-schicht-bar.js gerendert -->
+  <div class="ctx-group" id="schicht-bar"></div>
+  <div class="ctx-sep"></div>
   <div class="ctx-group" id="varianten-bar">
     <span class="ctx-label">Varianten</span>
     <div class="var-pills" id="var-pills" style="display:flex;gap:3px;">
@@ -12489,6 +12492,15 @@ if (typeof L !== 'undefined') {
             <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;">Abriss-Jahr</span>
             <input id="asset-bulk-abriss-jahr" type="number" placeholder="z. B. 2040" min="2020" max="2080"
               style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--muted);width:58px;flex-shrink:0;text-align:right;" title="Korrigiert die Planungsschicht der ausgewählten Anlagen — z. B. wenn sie im falschen Eingabemodus angelegt wurden.">Schicht</span>
+            <select id="asset-bulk-schicht" style="flex:1;min-width:0;font-size:10px;padding:2px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;">
+              <option value="">— keine Änderung —</option>
+              <option value="bestand">🏛 Bestand</option>
+              <option value="entwicklung">📈 Entwicklung</option>
+              <option value="entscheidung">🎯 Planung</option>
+            </select>
           </div>
         </div>
         <!-- Übernehmen-Button + Bestätigung -->
@@ -14828,7 +14840,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-08-17';
   if (d.indexOf('__') === 0) d = '';
-  var c = '9c1172d';
+  var c = '8112207';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -74347,6 +74359,123 @@ window._isSingleFileBuild = true;
     return {elements:[...elements.values()]};
   }
 
+  // ── lib/schichten.js — Planungsschichten (Bestand / Entwicklung / Entscheidung) ──
+  //
+  // Trennt die drei fachlich verschiedenen Gründe, aus denen ein Objekt im Modell
+  // existiert. Bisher waren sie über `baujahr` vermischt und mussten für die
+  // Ursachenanalyse aus Jahreszahlen zurückgerechnet werden:
+  //
+  //   bestand       — ist heute da, unabhängig von jeder Planung
+  //   entwicklung   — kommt ohnehin (Neubau, Abriss, Nutzungsänderung, E-Flotte);
+  //                   gilt für alle Varianten gleich, ist also die faire
+  //                   Vergleichsbasis zwischen ihnen
+  //   entscheidung  — habe ich in DIESER Variante so geplant
+  //
+  // `schicht` ERSETZT nichts: baujahr/abrissjahr/massnahmen und damit auch
+  // getAssetStatus/getAssetPropsForYear bleiben unverändert. Die Schicht sagt nur,
+  // WARUM ein Objekt da ist — nicht, ab wann.
+  //
+  // Importfrei und DOM-frei → direkt in Unit-Tests nutzbar. Der Modus- und
+  // Sichtbarkeitszustand am Dateiende ist bewusst über Funktionen zugänglich
+  // (nicht als `export let`), damit Importeure keine veralteten Bindings lesen.
+
+  const SCHICHT = {
+    BESTAND:      'bestand',
+    ENTWICKLUNG:  'entwicklung',
+    ENTSCHEIDUNG: 'entscheidung',
+  };
+
+  const SCHICHT_META = {
+    [SCHICHT.BESTAND]: {
+      label: 'Bestand', icon: '🏛', farbe: '#4fc3f7',
+      hinweis: 'Was heute da ist. Kein Planungsjahr, keine Variante.',
+    },
+    [SCHICHT.ENTWICKLUNG]: {
+      label: 'Entwicklung', icon: '📈', farbe: '#f9a825',
+      hinweis: 'Was ohnehin kommt — Neubau, Abriss, Nutzungsänderung. Gilt in allen Varianten gleich.',
+    },
+    [SCHICHT.ENTSCHEIDUNG]: {
+      label: 'Planung', icon: '🎯', farbe: '#66bb6a',
+      hinweis: 'Was in dieser Variante geplant ist.',
+    },
+  };
+
+  // Rangfolge für die Kantenvererbung: höher = später/planerischer
+  const _RANG = {
+    [SCHICHT.BESTAND]:      0,
+    [SCHICHT.ENTWICKLUNG]:  1,
+    [SCHICHT.ENTSCHEIDUNG]: 2,
+  };
+
+  const SCHICHT_REIHENFOLGE = [SCHICHT.BESTAND, SCHICHT.ENTWICKLUNG, SCHICHT.ENTSCHEIDUNG];
+
+  function istSchicht(s) {
+    return Object.prototype.hasOwnProperty.call(_RANG, s);
+  }
+
+  /** Unbekannte/fehlende Werte gelten als Bestand — der neutrale Ausgangszustand. */
+  function normSchicht(s) {
+    return istSchicht(s) ? s : SCHICHT.BESTAND;
+  }
+
+  function schichtRang(s) {
+    return _RANG[normSchicht(s)];
+  }
+
+  /**
+   * Schicht einer Leitung aus ihren Endpunkten: die "späteste" gewinnt.
+   * Ein Kabel zu einem Neubau ist Entwicklung, auch wenn es an einem
+   * Bestandsverteiler beginnt — es existiert ja nur wegen des Neubaus.
+   * Bewusst abgeleitet statt gespeichert: so kann die Zuordnung nicht
+   * auseinanderlaufen, wenn sich ein Endpunkt später ändert.
+   */
+  function schichtAusEndpunkten(schichtU, schichtV) {
+    return schichtRang(schichtU) >= schichtRang(schichtV) ? normSchicht(schichtU) : normSchicht(schichtV);
+  }
+
+  /**
+   * Rückfüllung für Projekte, die noch ohne Schicht gespeichert wurden.
+   *
+   * Bewusst konservativ: alles, was heute schon existiert, ist Bestand; alles mit
+   * Baujahr in der Zukunft ist Entwicklung. Als Entscheidung wird NICHTS
+   * automatisch eingestuft — die Zuordnung zu einer Variante lässt sich aus den
+   * Altdaten nicht erschließen, und falsch zugeordnete Entscheidungen wären
+   * schwerer zu bemerken als eine zu neutrale Einstufung.
+   */
+  function schichtBackfill(obj, heute) {
+    if (istSchicht(obj?.schicht)) return obj.schicht;
+    const bj = parseInt(obj?.baujahr);
+    const h  = new Date().getFullYear();
+    return (Number.isFinite(bj) && bj > h) ? SCHICHT.ENTWICKLUNG : SCHICHT.BESTAND;
+  }
+
+  // ── Aktiver Eingabemodus ─────────────────────────────────────────────────────
+  // Der Modus ist reine Eingabedisziplin: er bestimmt, welche Schicht neu
+  // angelegte Objekte bekommen. Er wird NICHT gespeichert — beim Öffnen eines
+  // Projekts startet man immer im Bestandsmodus.
+
+  let _aktiv = SCHICHT.BESTAND;
+
+  function getAktiveSchicht() { return _aktiv; }
+
+  function setAktiveSchicht(s) {
+    _aktiv = normSchicht(s);
+    return _aktiv;
+  }
+
+  // ── Sichtbarkeit ─────────────────────────────────────────────────────────────
+  // Welche Schichten auf der Karte gezeigt werden. Default: alle.
+
+  const _sichtbar$1 = new Set(SCHICHT_REIHENFOLGE);
+
+  function schichtSichtbar(s) { return _sichtbar$1.has(normSchicht(s)); }
+
+  function setSchichtSichtbar(s, an) {
+    const k = normSchicht(s);
+    if (an) _sichtbar$1.add(k); else _sichtbar$1.delete(k);
+    return schichtSichtbar(k);
+  }
+
   // ── 13q-wind-ertrag.js — Windertrags-Schätzung (Weibull-Windverteilung × generische Leistungskurve) ──
   // Vereinfachtes Modell ohne Herstellerkennlinie: kubischer Anstieg zwischen Einschalt- und Nennwind,
   // Nennleistung dazwischen, 0 unter Einschalt-/über Abschaltwind. Für Genehmigungsunterlagen ist die
@@ -75081,9 +75210,14 @@ window._isSingleFileBuild = true;
     const c = firstMoved ? { lat: firstMoved.lat, lng: firstMoved.lng } : polygonC;
 
     // ── Typ-Chip-Container: pro Asset-Typ ein farbiges Icon-Chip ──
+    // Schichtfilter wirkt hier auf die CHIPS, nicht auf den Marker: das Marker-
+    // Objekt selbst bleibt bestehen, weil weiter unten alle Assets der Gruppe
+    // darüber als Stromnetz-Knoten registriert werden (_registerStromNode).
+    // Ist nichts sichtbar, wird der Container unsichtbar gemacht — nicht entfernt.
+    const sichtbareAssets = assets.filter(a => schichtSichtbar(normSchicht(a.schicht)));
     const chip   = chipSizeAtZoom(map.getZoom());
     const fs     = Math.round(chip * 0.6);
-    const groups = _groupByType(assets);
+    const groups = _groupByType(sichtbareAssets);
     const shown  = groups.slice(0, MAX_TYPE_CHIPS);
     const rest   = groups.length - shown.length;
 
@@ -75095,13 +75229,18 @@ window._isSingleFileBuild = true;
       const opacity = status === 'active' ? 1 : 0.45;
       const cntSub  = grp.count > 1 ? `<span class="asset-chip-n">${grp.count}</span>` : '';
       const selChipClass = grp.assets.some(a => a.id === ASSETS.selectedId) ? ' asset-chip-selected' : '';
-      return `<span class="asset-chip${selChipClass}" style="background:${grp.cfg.color};opacity:${opacity};width:${chip}px;height:${chip}px;font-size:${fs}px;">${grp.cfg.icon}${cntSub}</span>`;
+      // Bei gemischten Schichten im Chip gewinnt die späteste — sichtbar bleibt
+      // damit, dass hier etwas Geplantes steckt, statt es unter Bestand zu verbergen.
+      const grpSchicht = grp.assets.reduce(
+        (acc, a) => (schichtRang(a.schicht) > schichtRang(acc) ? normSchicht(a.schicht) : acc), SCHICHT.BESTAND);
+      const ring = grpSchicht === SCHICHT.BESTAND ? '' : `box-shadow:0 0 0 2px ${SCHICHT_META[grpSchicht].farbe};`;
+      return `<span class="asset-chip${selChipClass}" style="background:${grp.cfg.color};opacity:${opacity};width:${chip}px;height:${chip}px;font-size:${fs}px;${ring}">${grp.cfg.icon}${cntSub}</span>`;
     }).join('');
     const restSelected = rest > 0 && groups.slice(MAX_TYPE_CHIPS).some(grp => grp.assets.some(a => a.id === ASSETS.selectedId));
     const moreChip = rest > 0 ? `<span class="asset-chip-more${restSelected ? ' asset-chip-selected' : ''}" style="font-size:${fs}px;">+${rest}</span>` : '';
-    const pendingBadge = assets.some(hasPendingMassnahmen) ? `<span class="asset-massn-badge"></span>` : '';
+    const pendingBadge = sichtbareAssets.some(hasPendingMassnahmen) ? `<span class="asset-massn-badge"></span>` : '';
 
-    const html = `<div class="asset-chips">${chipsHtml}${moreChip}${pendingBadge}</div>`;
+    const html = `<div class="asset-chips"${sichtbareAssets.length === 0 ? ' style="display:none;"' : ''}>${chipsHtml}${moreChip}${pendingBadge}</div>`;
 
     // iconSize abschätzen (Chips + Gaps + Padding) für korrekte Zentrierung
     const nSlots = shown.length + (rest > 0 ? 1 : 0);
@@ -75254,7 +75393,10 @@ window._isSingleFileBuild = true;
 
   function spiderfyBuilding(buildingId, centerLatLng) {
     collapseAssetSpider();
-    const assets = getAssetsForBuilding(buildingId);
+    // Nur sichtbare Schichten auffächern — sonst kämen ausgeblendete Assets beim
+    // Aufklappen der Gruppe wieder zum Vorschein.
+    const assets = getAssetsForBuilding(buildingId)
+      .filter(a => schichtSichtbar(normSchicht(a.schicht)));
     if (assets.length === 0) return;
 
     // Einzelnes Asset → direkt als Endpunkt wählen, kein Fächer nötig
@@ -75530,10 +75672,19 @@ window._isSingleFileBuild = true;
     // Bulk-Modus: nicht-selektierte Marker ausgegraut — direkt beim Zeichnen setzen,
     // damit ein Neuzeichnen (Auswahl/Inspector) das Dimming nicht verliert.
     const dimClass = (window.isBulkModeActive?.() && !window.assetSelection?.has(asset.id)) ? ' asset-bulk-dimmed' : '';
+    // Planungsschicht: farbiger Rand für Entwicklung/Planung, Bestand behält das
+    // Standardaussehen. Ausgeblendete Schichten werden nur unsichtbar gemacht,
+    // NICHT übersprungen — der Marker registriert den Stromnetz-Knoten
+    // (_registerStromNode), ein Auslassen würde den elektrischen Graphen zerreißen.
+    const schicht    = normSchicht(asset.schicht);
+    const schichtCol = schicht === SCHICHT.BESTAND ? null : SCHICHT_META[schicht].farbe;
+    const versteckt  = !schichtSichtbar(schicht);
     const icon = L.divIcon({
       className: 'asset-divicon' + dimClass,
       html: `<div class="asset-marker asset-marker-${status}${selClass}"
-              style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;">
+              style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;${
+                schichtCol ? `border-color:${schichtCol};border-width:2px;` : ''}${
+                versteckt ? 'display:none;' : ''}">
              <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
              ${pendingBadge}
            </div>`,
@@ -75701,6 +75852,7 @@ window._isSingleFileBuild = true;
 
   var assetsRender = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    _buildAssetTooltip: _buildAssetTooltip,
     collapseAssetSpider: collapseAssetSpider,
     drawAssetMarker: drawAssetMarker,
     isAssetLayerVisible: isAssetLayerVisible,
@@ -76621,6 +76773,11 @@ window._isSingleFileBuild = true;
       layer: layer, outlineLayer: outlineLayer, hitLayer: hitLayer, arrowMarker: null,
       cableType: defaultType, crossSection: 0, autoSized: true, fuseA: 0, nParallel: 1,
       lengthM: lengthM,
+      // Beide Enden im selben Gebäude (Trafo↔NSHV in einer Kompaktstation o.ä.):
+      // reale Sammelschienen-/Stationsverkabelung, auf Trafo-Nennleistung ausgelegt.
+      // Länge ≈ 0 ist hier korrekt, kein Bestandsmangel — siehe pruefeKabellaengen
+      // (bestand-check.js) und die msLevel-artige Sonderbehandlung im Engpass-Sweep.
+      stationsintern: !!sameBuildingDirect,
       peakCurrentA: 0, ratedCurrentA: 0, auslastungPct: 0,
       deltaUPct: 0, peakFlowKw: 0, flowDirection: 1,
       // Lebenszyklus: von den Endpunkten geerbt (siehe refreshStromEdgeYears) + eigene Maßnahmen
@@ -76727,6 +76884,22 @@ window._isSingleFileBuild = true;
     if (m.jahr) return parseInt(m.jahr);
     const p = (window.phasen || []).find(x => x.id === m.phaseId);
     return p ? parseInt(p.jahrVon) : null;
+  }
+
+  /**
+   * Planungsschicht einer Leitung — ABGELEITET aus ihren Endpunkten, nicht
+   * gespeichert (s. lib/schichten.js). Ein Kabel zum Neubau ist Entwicklung,
+   * auch wenn es an einem Bestandsverteiler beginnt. Knoten ohne Asset
+   * (Gebäude-Anschlusspunkte) liefern die Schicht des Gebäudes.
+   */
+  function getStromEdgeSchicht(edge) {
+    const schichtVon = id => {
+      const a = (ASSETS.items || []).find(x => x.id === id);
+      if (a) return a.schicht;
+      const g = (window.gebaeude || []).find(gb => gb.id === id);
+      return g ? g.schicht : undefined;
+    };
+    return schichtAusEndpunkten(schichtVon(edge?.u), schichtVon(edge?.v));
   }
 
   // ── Kabel-Auswahl & Hervorhebung ────────────────────────────────
@@ -77143,6 +77316,7 @@ window._isSingleFileBuild = true;
       window.stromEdges.forEach(e => { e._flowActive = false; });
     }
     updateStromEdgeVisuals();
+    if (typeof window.sldRefresh === 'function') window.sldRefresh();
   }
 
   // ── Marker-Klick für Kabelzeichnen abfangen ─────────────────────
@@ -78315,9 +78489,16 @@ window._isSingleFileBuild = true;
   // opts.silent — Karten-/DOM-Aktualisierung überspringen (nur rechnen). Für Sweeps,
   //               die pro Jahr nur Kennzahlen abgreifen und nichts anzeigen wollen.
   // opts.inklGeplant — auch geplante Maßnahmen als wirksam annehmen (Was-wäre-wenn).
+  // opts.schichten — nur Assets dieser Planungsschichten rechnen (Array/Set, s.
+  //               lib/schichten.js). Für die Bestandsprüfung: `['bestand']` rechnet
+  //               das Netz so, wie es heute WIRKLICH steht — ohne Entwicklung und
+  //               ohne Planung. Der Jahresfilter allein leistet das nicht: ein
+  //               Entwicklungsobjekt mit bereits vergangenem Baujahr zählt dort mit
+  //               und würde einen Bestandsmangel vortäuschen (oder verdecken).
   function elCalcAssets(opts = {}) {
-    const { year = null, silent = false, inklGeplant = false } = opts;
+    const { year = null, silent = false, inklGeplant = false, schichten = null } = opts;
     const _mOpts = { inklGeplant };
+    const _schichtFilter = schichten ? new Set(schichten) : null;
     const yr = year ?? globalYear ?? new Date().getFullYear();
     const U_N = 400, COS_PHI = 0.9;
     // Zulässiger Spannungsfall – Gesamtbudget vom Trafo (bzw. Einspeisepunkt) bis
@@ -78330,7 +78511,8 @@ window._isSingleFileBuild = true;
 
     const activeA = ASSETS.items.filter(a =>
       (a.domain === 'strom' || a.domain === 'hybrid') &&
-      getAssetStatus(a, yr) === 'active'
+      getAssetStatus(a, yr) === 'active' &&
+      (!_schichtFilter || _schichtFilter.has(normSchicht(a.schicht)))
     );
     const activeIds = new Set(activeA.map(a => a.id));
     // Alle Leitungen die mindestens einen Asset-Endpunkt haben (inkl. Asset→Gebäude)
@@ -79124,6 +79306,7 @@ window._isSingleFileBuild = true;
         buildingId: a.buildingId, _movedByUser: a._movedByUser || false,
         linkedErzeuger: a.linkedErzeuger || null, linkedFF: a.linkedFF || null,
         props: a.props ? { ...a.props } : {}, baujahr: a.baujahr, abrissjahr: a.abrissjahr,
+        schicht: a.schicht,
         massnahmen: (a.massnahmen || []).map(m => ({ ...m }))
       })),
       nodes: infraNodes.map(n => ({
@@ -79133,7 +79316,12 @@ window._isSingleFileBuild = true;
       edges: (window.stromEdges || []).map(e => ({
         id: e.id, u: e.u, v: e.v, cableType: e.cableType, crossSection: e.crossSection,
         autoSized: e.autoSized, lengthM: e.lengthM, fuseA: e.fuseA || 0, nParallel: e.nParallel || 1,
-        autoGenerated: e.autoGenerated || false, msLevel: e.msLevel || false, trennstelle: e.trennstelle || false
+        autoGenerated: e.autoGenerated || false, msLevel: e.msLevel || false, trennstelle: e.trennstelle || false,
+        // Kabel-Maßnahmen gehören zum Variantenzustand — die Projektdatei sichert
+        // sie längst (03c), hier fehlten sie: geplante Kabelertüchtigungen gingen
+        // beim Variantenwechsel verloren. Bau-/Abrissjahr bleiben abgeleitet
+        // (refreshStromEdgeYears aus den Endpunkten), die Schicht ebenso.
+        massnahmen: (e.massnahmen || []).map(m => ({ ...m }))
       })),
       kabelTyp: document.getElementById('strom-kabel-typ')?.value || null
     };
@@ -79161,7 +79349,8 @@ window._isSingleFileBuild = true;
         id: data.id, name: data.name, buildingId: data.buildingId,
         _movedByUser: data._movedByUser || false,
         props: data.props || {}, baujahr: data.baujahr,
-        abrissjahr: data.abrissjahr, massnahmen: data.massnahmen || []
+        abrissjahr: data.abrissjahr, schicht: data.schicht,
+        massnahmen: data.massnahmen || []
       });
       if (loaded && data.linkedErzeuger) loaded.linkedErzeuger = data.linkedErzeuger;
       if (loaded && data.linkedFF)       loaded.linkedFF       = data.linkedFF;
@@ -79194,6 +79383,7 @@ window._isSingleFileBuild = true;
         edge.autoGenerated = eData.autoGenerated || false;
         edge.msLevel = eData.msLevel || edge.msLevel || false;
         edge.trennstelle = eData.trennstelle || false;
+        edge.massnahmen = (eData.massnahmen || []).map(m => ({ ...m }));
         if (edge.msLevel) edge.layer?.setStyle({ color: '#7c4dff', weight: 4, dashArray: null });
         if (edge.trennstelle) edge.layer?.setStyle({ dashArray: '10,8', opacity: 0.5 });
       }
@@ -79240,6 +79430,7 @@ window._isSingleFileBuild = true;
     epPrompt: epPrompt,
     getStromEdgeColor: getStromEdgeColor,
     getStromEdgePropsForYear: getStromEdgePropsForYear,
+    getStromEdgeSchicht: getStromEdgeSchicht,
     getStromEdgeStatus: getStromEdgeStatus,
     hookStromNodeClicks: hookStromNodeClicks,
     loadAndAdoptOsmStrassen: loadAndAdoptOsmStrassen,
@@ -92853,7 +93044,7 @@ window._isSingleFileBuild = true;
 
   // ── Panel-HTML ────────────────────────────────────────────────────────────────
 
-  function _html() { return `
+  function _html$1() { return `
 
   <!-- Kopf -->
   <div class="lp-step" style="margin-bottom:10px;">
@@ -93064,6 +93255,11 @@ window._isSingleFileBuild = true;
         title="Ertrag, Abstände, Eignungsfläche &amp; Szenarien-Vergleich aller Windkraftanlagen">🌀 Windanalyse</button>
     </div>
     <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
+      <button class="lp-tool-btn" id="btn-bestand-panel-toggle" data-click="bestandPanelToggle()"
+        style="border-color:#4fc3f7;color:#4fc3f7;justify-content:center;"
+        title="Plausibilität des Bestands prüfen: Kabellängen, Querschnitte, Topologie, Lebenszyklus — und welche Analyse der aktuelle Datenstand trägt">🏛 Bestand prüfen</button>
+    </div>
+    <div class="lp-tool-grid" style="grid-template-columns:1fr;margin-top:4px;">
       <button class="lp-tool-btn" id="btn-engpass-panel-toggle" data-click="engpassPanelToggle()"
         style="border-color:#f9a825;color:#f9a825;justify-content:center;"
         title="Zeitstrahl der Engpässe, Reserve-Kurve und automatisch abgeleitete Ertüchtigungs-Maßnahmen">⏱ Engpass-Fahrplan</button>
@@ -93179,7 +93375,7 @@ window._isSingleFileBuild = true;
   function buildElektroPanel() {
     const el = document.getElementById('lp-elektro');
     if (!el || el.dataset.built === '1') return;
-    el.innerHTML = _html();
+    el.innerHTML = _html$1();
     el.dataset.built = '1';
     // Palette-Guard zurücksetzen, damit buildPalette() das neue #asset-palette befüllt
     const palette = document.getElementById('asset-palette');
@@ -96892,13 +97088,13 @@ ${massTbl}
 
   function openSlpEditor(type) {
     _st.type = (BASE[type] || _custom[type]) ? type : 'H0';
-    if (_el) { _render$1(); return; }
+    if (_el) { _render$2(); return; }
     _el = document.createElement('div');
     _el.id = 'slp-editor-overlay';
     _el.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;';
     _el.addEventListener('click', e => { if (e.target === _el) closeSlpEditor(); });
     document.body.appendChild(_el);
-    _render$1();
+    _render$2();
   }
 
   function closeSlpEditor() {
@@ -96906,7 +97102,7 @@ ${massTbl}
   }
 
   // ── Panel komplett rendern ────────────────────────────────────────────────────
-  function _render$1() {
+  function _render$2() {
     const { type, season, daytype, editMode } = _st;
     const isCustom = !!_custom[type];
     const isEdited = !isCustom && !!_edited[type]?.[season]?.[daytype];
@@ -97007,25 +97203,25 @@ ${massTbl}
     q('#slpe-x').onclick    = closeSlpEditor;
     q('#slpe-close2').onclick = closeSlpEditor;
 
-    q('#slpe-type').onchange = e => { _st.type = e.target.value; _st.editMode = false; _render$1(); };
+    q('#slpe-type').onchange = e => { _st.type = e.target.value; _st.editMode = false; _render$2(); };
 
     _el.querySelectorAll('[data-slpe-s]').forEach(b =>
-      b.onclick = () => { _st.season  = b.dataset.slpeS; _render$1(); });
+      b.onclick = () => { _st.season  = b.dataset.slpeS; _render$2(); });
     _el.querySelectorAll('[data-slpe-d]').forEach(b =>
-      b.onclick = () => { _st.daytype = b.dataset.slpeD; _render$1(); });
+      b.onclick = () => { _st.daytype = b.dataset.slpeD; _render$2(); });
 
-    q('#slpe-edit-tog')?.addEventListener('click', () => { _st.editMode = !_st.editMode; _render$1(); });
+    q('#slpe-edit-tog')?.addEventListener('click', () => { _st.editMode = !_st.editMode; _render$2(); });
 
     q('#slpe-reset')?.addEventListener('click', () => {
       const { type, season, daytype } = _st;
       if (_edited[type]?.[season]) delete _edited[type][season][daytype];
       _slpCache[type] = buildSlpProfile8760(type);
-      _render$1();
+      _render$2();
     });
 
     q('#slpe-del')?.addEventListener('click', () => {
       delete _custom[_st.type]; _saveCustom();
-      _st.type = 'H0'; _render$1();
+      _st.type = 'H0'; _render$2();
     });
 
     q('#slpe-save-tpl')?.addEventListener('click', () => {
@@ -97064,7 +97260,7 @@ ${massTbl}
     _saveCustom();
     _slpCache[name] = buildSlpProfile8760(name);   // cache sofort befüllen
     _st.type = name; _st.editMode = false;
-    _render$1();
+    _render$2();
   }
 
   // ── 15-min CSV Import ─────────────────────────────────────────────────────────
@@ -97121,7 +97317,7 @@ ${massTbl}
     _saveCustom();
     _slpCache[name] = buildSlpProfile8760(name);
     _st.type = name; _st.editMode = false;
-    _render$1();
+    _render$2();
   }
 
   // ── SVG-Chart ─────────────────────────────────────────────────────────────────
@@ -102789,6 +102985,53 @@ ${massTbl}
     fahrplanValidiereReihenfolge: fahrplanValidiereReihenfolge
   });
 
+  // ── lib/phasen-core.js — Pure Logik für Phasen-Zeiträume ─────────────────────
+  // Importfrei und DOM-frei → direkt in Unit-Tests nutzbar.
+  // Phase = { id, name, jahrVon, jahrBis, variantId, reihenfolge }
+
+  /**
+   * Repariert Phasen-Zeiträume, damit sie validatePlanningState passieren.
+   *
+   * Hintergrund (echter Fehlerfall): `validatePlanningState` wirft bei
+   * `Number(jahrVon) > Number(jahrBis)`. Ein leeres Endjahr ergibt dabei
+   * `Number('') === 0`, die Phase gilt also als „Start nach Ende". Da die
+   * Validierung bei JEDER Planungstransaktion läuft, blockiert eine einzige
+   * solche Phase danach auch völlig unbeteiligte Aktionen — etwa das Löschen
+   * eines Assets — und die Meldung verrät nicht, wo man es geradezieht.
+   * Aus einer Projektdatei geladen macht das ein Projekt praktisch unbenutzbar.
+   * Deshalb wird beim Laden repariert statt abgelehnt.
+   *
+   * Regeln: nicht lesbares/fehlendes Startjahr → Bezugsjahr; Endjahr fehlend
+   * oder vor dem Startjahr → gleich dem Startjahr (einjährige Phase). Die Jahre
+   * bleiben Strings, wie sie überall sonst angelegt werden.
+   *
+   * Gibt ein neues Array zurück; die Eingabe bleibt unverändert.
+   */
+  function repairPhasen(phasenArr, bezugsjahr) {
+    const jahr0 = new Date().getFullYear();
+    return (phasenArr || []).map(p => {
+      const von = parseInt(p?.jahrVon);
+      const bis = parseInt(p?.jahrBis);
+      const vonOk = Number.isFinite(von) ? von : jahr0;
+      const bisOk = Number.isFinite(bis) && bis >= vonOk ? bis : vonOk;
+      return { ...p, jahrVon: String(vonOk), jahrBis: String(bisOk) };
+    });
+  }
+
+  /**
+   * Ein einzelnes Jahresfeld einer Phase setzen, ohne einen ungültigen Zeitraum
+   * entstehen zu lassen: der jeweils andere Wert wird mitgezogen.
+   * Gibt die geänderten Felder zurück oder null, wenn die Eingabe unbrauchbar war.
+   */
+  function phaseJahrSetzen(phase, feld, wert) {
+    const jahr = parseInt(wert);
+    if (!Number.isFinite(jahr)) return null;
+    const next = { jahrVon: phase?.jahrVon, jahrBis: phase?.jahrBis, [feld]: String(jahr) };
+    if (feld === 'jahrVon' && parseInt(next.jahrBis) < jahr) next.jahrBis = String(jahr);
+    if (feld === 'jahrBis' && parseInt(next.jahrVon) > jahr) next.jahrVon = String(jahr);
+    return next;
+  }
+
   // @ts-check
   // ── Maßnahmen-Vorlagen-Katalog ───────────────────────────────────────────────
   // Standard-Vorlagen für Maßnahmen-Typen: Kosten-Richtwerte, newProps-Schemas
@@ -103563,7 +103806,14 @@ ${massTbl}
 
   function ausbauEditPhaseJahr(phaseId, field, value) {
     const p = phasen.find(x => x.id === phaseId);
-    if (p) { _planningChange('Phasenzeitraum ändern', () => { p[field] = value; }); ausbauRender(); }
+    if (!p) return;
+    // Rohwert aus dem Zahlenfeld nicht ungeprüft übernehmen: ein leeres Feld
+    // ergibt sonst jahrBis = '' → Number('') = 0 → die Phase gilt als „Start nach
+    // Ende" und blockiert danach jede Planungstransaktion (s. lib/phasen-core.js).
+    const next = phaseJahrSetzen(p, field, value);
+    if (!next) { ausbauRender(); return; }   // unbrauchbare Eingabe → Feld zurücksetzen
+    _planningChange('Phasenzeitraum ändern', () => Object.assign(p, next));
+    ausbauRender();
   }
 
   function ausbauPhaseLoeschen(phaseId) {
@@ -107270,6 +107520,13 @@ ${massTbl}
         <input class="inp-field" type="number" placeholder="1" value="${g.stockwerke || 1}"
           data-input="updateField(${g.id},'stockwerke',this.value)"/>
       </div>
+      <div class="inp-group">
+        <div class="inp-label" title="${SCHICHT_META[normSchicht(g.schicht)].hinweis}">Planungsschicht</div>
+        <select class="inp-field" style="border-left:3px solid ${SCHICHT_META[normSchicht(g.schicht)].farbe};"
+          data-change="updateField(${g.id},'schicht',this.value)">
+          ${SCHICHT_REIHENFOLGE.map(s => `<option value="${s}"${normSchicht(g.schicht) === s ? ' selected' : ''}>${SCHICHT_META[s].icon} ${SCHICHT_META[s].label}</option>`).join('')}
+        </select>
+      </div>
       ${g.zustand ? `<div class="inp-group">
         <div class="inp-label">Zustand</div>
         <select class="inp-field" data-change="updateField(${g.id},'zustand',this.value)">
@@ -107753,6 +108010,7 @@ ${massTbl}
         id: g.id, name: g.name, gebaeudenummer: g.gebaeudenummer || '', waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
         flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
         baujahr: g.baujahr, baujährQuelle: g.baujährQuelle || null, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen,
+        schicht: g.schicht,
         stockwerke: g.stockwerke ?? 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
         pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil ?? 30, zustand: g.zustand || '',
         strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',
@@ -107852,6 +108110,7 @@ ${massTbl}
             linkedFF:       a.linkedFF       || null,
             props: { ...a.props },
             baujahr: a.baujahr, abrissjahr: a.abrissjahr,
+            schicht: a.schicht,
             massnahmen: a.massnahmen || []
           })),
           edges: stromEdges
@@ -108293,6 +108552,8 @@ ${massTbl}
               newG.abrissjahr = g.abrissjahr;
               newG.sanierungen = g.sanierungen || [];
               newG.massnahmen = g.massnahmen || [];
+              // Altprojekte ohne Schicht: aus dem Baujahr ableiten (Zukunft → Entwicklung)
+              newG.schicht = schichtBackfill(g);
               newG.importSourceId = g.importSourceId || null;
               newG.importSourceName = g.importSourceName || null;
               newG.importSourceColor = g.importSourceColor || null;
@@ -108640,7 +108901,14 @@ ${massTbl}
           baseNetzSnapshot: project.baseNetzSnapshot || null,
           baseErzeugerSnapshot: project.baseErzeugerSnapshot || null,
           baseStromNetzSnapshot: project.baseStromNetzSnapshot || null,
-          phasen: project.phasen || [],
+          // Fehlt in Projekten aus der Vollkopie-Zeit — wird nach dem Aufbau des
+          // Netzes von migriereVariantenFallsNoetig() nachgezogen.
+          stromNetzGemeinsam: project.stromNetzGemeinsam || null,
+          // Unstimmige Phasen-Zeiträume hier geradeziehen: sonst lässt eine einzige
+          // kaputte Phase aus der Datei später JEDE Planungstransaktion scheitern
+          // (auch das Löschen eines Assets) — mit einer Meldung, die nicht verrät,
+          // wo man es reparieren müsste.
+          phasen: repairPhasen(project.phasen),
         });
         renderVariantenBar();
         updateVariantBanner();
@@ -108655,7 +108923,8 @@ ${massTbl}
               id: data.id, name: data.name, buildingId: data.buildingId,
               _movedByUser: data._movedByUser || false,
               props: data.props || {}, baujahr: data.baujahr,
-              abrissjahr: data.abrissjahr, massnahmen: data.massnahmen || []
+              abrissjahr: data.abrissjahr, schicht: schichtBackfill(data),
+              massnahmen: data.massnahmen || []
             });
             if (loaded && data.linkedErzeuger) loaded.linkedErzeuger = data.linkedErzeuger;
             if (loaded && data.linkedFF)       loaded.linkedFF       = data.linkedFF;
@@ -108781,6 +109050,20 @@ ${massTbl}
           recalcStromNetz();
         }
 
+        // Delta-Modell: Projekte aus der Vollkopie-Zeit hier einmalig überführen.
+        // Muss NACH dem Aufbau des Netzes laufen — die Migration liest den
+        // aufgebauten Live-Zustand, um daraus den gemeinsamen Teil zu gewinnen.
+        try {
+          const migBericht = migriereVariantenFallsNoetig();
+          if (migBericht && (migBericht.befoerdert.length || migBericht.abweichungen.length)) {
+            console.info('[Varianten] Auf Delta-Modell migriert:', migBericht);
+            if (migBericht.abweichungen.length) {
+              showHint(`ℹ ${migBericht.abweichungen.length} variantenspezifische Änderung(en) am Bestand `
+                + 'konnten nicht übernommen werden — Details in der Konsole.');
+            }
+          }
+        } catch (e) { console.warn('Varianten-Migration übersprungen:', e); }
+
         // Custom Nutzungstypen wiederherstellen
         if (Array.isArray(project.customNutzungstypen)) {
           NUTZUNGSTYPEN_CUSTOM.length = 0;
@@ -108859,6 +109142,8 @@ ${massTbl}
       newG.abrissjahr = g.abrissjahr;
       newG.sanierungen = g.sanierungen || [];
       newG.nutzung = g.nutzung || '';
+      // Altprojekte ohne Schicht: aus dem Baujahr ableiten (Zukunft → Entwicklung)
+      newG.schicht = schichtBackfill(g);
       if (g.id >= idCounter) setIdCounter(g.id + 1);
     });
     _initYearSliderFromBaujahr();
@@ -119289,6 +119574,9 @@ out body;>;out skel qt;`;
              fromOsm:opts.fromOsm||false,fromWfs:opts.fromWfs||false,osmId:opts.osmId||null,
              baujahr: opts.baujahr!=null?opts.baujahr:null, baujährQuelle: opts.baujährQuelle||null,
              abrissjahr: null, sanierungen: [], selected: false,
+             // Planungsschicht: explizit (Projekt-/Variantenladen) sonst aktueller Eingabemodus.
+             // Das Gebäude ist der primäre Träger — Elektroassets erben sie (createAsset/_syncSchichtToAssets).
+             schicht: istSchicht(opts.schicht) ? opts.schicht : getAktiveSchicht(),
              pvAktiv: false, pvDachanteil: opts.pvDachanteil ?? 30,
              pvModus: 'pauschal', pvFlaechen: [], pvFlGcr: null, pvFlAusrichtung: 'sued', pvFlBelegung: null,
              strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || '',
@@ -119833,6 +120121,19 @@ out body;>;out skel qt;`;
   function _syncAbrissToAssets(gebId, abrissjahr) { _syncYearToAssets(gebId, 'abrissjahr', abrissjahr); }
   function _syncBaujahrToAssets(gebId, baujahr)   { _syncYearToAssets(gebId, 'baujahr',    baujahr); }
 
+  /**
+   * Planungsschicht des Gebäudes auf seine Elektroassets durchreichen — analog zu
+   * den Jahren. Wird ein Gebäude nachträglich zum geplanten Neubau erklärt, sind
+   * seine Hausanschlüsse/PV automatisch ebenfalls Entwicklung.
+   */
+  function setGebaeudeSchicht(gebId, schicht) {
+    const g = (window.gebaeude || []).find(x => x.id === gebId);
+    if (!g || !istSchicht(schicht)) return false;
+    g.schicht = schicht;
+    _syncYearToAssets(gebId, 'schicht', schicht);
+    return true;
+  }
+
   function updateField(id, field, val, {defer = false} = {}) {
     const g = window.gebaeude.find(x => x.id === id);
     if (!g) return;
@@ -119845,6 +120146,12 @@ out body;>;out skel qt;`;
       g[field] = (Number.isInteger(v) && v >= 1800 && v <= 2100) ? v : null;
       if (field === 'abrissjahr') _syncAbrissToAssets(g.id, g.abrissjahr);
       if (field === 'baujahr')    _syncBaujahrToAssets(g.id, g.baujahr);
+    } else if (field === 'schicht') {
+      // Zieht die Schicht auf alle Assets des Gebäudes mit — das Gebäude ist der
+      // primäre Träger, seine Hausanschlüsse/PV gehören zur selben Schicht.
+      if (setGebaeudeSchicht(g.id, val) && typeof window.redrawAllAssets === 'function') {
+        window.redrawAllAssets();
+      }
     } else if (field === 'stockwerke') {
       const v = parseInt(val);
       g.stockwerke = (Number.isInteger(v) && v >= 1) ? Math.min(50, v) : 1;
@@ -120083,6 +120390,7 @@ out body;>;out skel qt;`;
     renameGebaeude: renameGebaeude,
     rgbToHex: rgbToHex,
     savePlan: savePlan,
+    setGebaeudeSchicht: setGebaeudeSchicht,
     setGebaeudenummer: setGebaeudenummer,
     setGlobalYear: setGlobalYear,
     setWaermeNetzType: setWaermeNetzType,
@@ -120092,6 +120400,173 @@ out body;>;out skel qt;`;
     toggleTile: toggleTile,
     updateField: updateField
   });
+
+  // ── lib/varianten-delta.js — Varianten als Delta statt als Vollkopie ─────────
+  //
+  // Bisher besaß JEDE Variante ein vollständiges eigenes Stromnetz
+  // (captureStromNetzState/applyStromNetzState in 05b). Der Bestand existierte
+  // damit n+1 mal, mit zwei Folgen:
+  //   • Eine Bestandskorrektur (z. B. eine nachgetragene Kabellänge) galt nur in
+  //     der aktiven Variante — in allen anderen blieb der Fehler stehen, lautlos.
+  //   • Ein Neubau, den man in Variante 1 anlegt, fehlt in Variante 2. Der
+  //     Vergleich läuft dann gegen zwei verschiedene Zukünfte, sieht aber sauber aus.
+  //
+  // Mit den Planungsschichten (lib/schichten.js) lässt sich das auftrennen:
+  //   Bestand + Entwicklung  → GEMEINSAM, existiert genau einmal
+  //   Entscheidung           → DELTA je Variante
+  //
+  // Beim Variantenwechsel wird aus gemeinsam + delta zusammengesetzt. Die
+  // bestehende Teardown/Rebuild-Mechanik in 05b bleibt dadurch unverändert —
+  // sie bekommt nur einen anderen Zustand vorgesetzt.
+  //
+  // Importfrei und DOM-frei → direkt in Unit-Tests nutzbar.
+
+
+  const _istGeteilt = s => normSchicht(s) !== SCHICHT.ENTSCHEIDUNG;
+
+  const _leer = () => ({ items: [], nodes: [], edges: [] });
+
+  /**
+   * Schicht einer Kante innerhalb eines Snapshots.
+   *
+   * Knoten ohne eigenes Asset (Gebäude-Anschlusspunkte, reine Infrastruktur-
+   * knoten) gelten als Bestand: Gebäude sind ohnehin variantenübergreifend, und
+   * für die Delta-Entscheidung zählt allein, ob ENTSCHEIDUNG beteiligt ist.
+   */
+  function _kantenSchicht(edge, schichtVonId) {
+    const a = schichtVonId(edge?.u);
+    const b = schichtVonId(edge?.v);
+    return schichtRang(a) >= schichtRang(b) ? normSchicht(a) : normSchicht(b);
+  }
+
+  /**
+   * Zerlegt einen Stromnetz-Snapshot in gemeinsamen Teil und Varianten-Delta.
+   *
+   * state: { items, nodes, edges } wie von captureStromNetzState geliefert
+   * Rückgabe: { gemeinsam, delta } — beide in derselben Form.
+   */
+  function splitStromNetzState(state) {
+    const items = state?.items || [];
+    const nodes = state?.nodes || [];
+    const edges = state?.edges || [];
+
+    const schichtJeId = new Map(items.map(i => [i.id, normSchicht(i.schicht)]));
+    const schichtVonId = id => schichtJeId.get(id) ?? SCHICHT.BESTAND;
+
+    const gemeinsam = _leer();
+    const delta = _leer();
+
+    for (const i of items) (_istGeteilt(i.schicht) ? gemeinsam : delta).items.push(i);
+    for (const e of edges) (_istGeteilt(_kantenSchicht(e, schichtVonId)) ? gemeinsam : delta).edges.push(e);
+    // Reine Infrastrukturknoten tragen keine Schicht → immer gemeinsam.
+    gemeinsam.nodes = [...nodes];
+
+    // Kabeltyp-Vorgabe ist eine Einstellung, kein Objekt — sie gehört zum
+    // gemeinsamen Teil, damit sie beim Variantenwechsel nicht verlorengeht.
+    if (state?.kabelTyp != null) gemeinsam.kabelTyp = state.kabelTyp;
+
+    return { gemeinsam, delta };
+  }
+
+  /**
+   * Setzt gemeinsamen Teil und Delta wieder zu einem vollständigen Snapshot
+   * zusammen. Bei ID-Kollisionen gewinnt der gemeinsame Teil — er ist die
+   * einzige Wahrheit über Bestand und Entwicklung.
+   */
+  function mergeStromNetzState(gemeinsam, delta) {
+    const g = gemeinsam || _leer();
+    const d = delta || _leer();
+
+    const vereinen = (a, b) => {
+      const out = [];
+      const gesehen = new Set();
+      for (const x of [...(a || []), ...(b || [])]) {
+        const key = x?.id ?? `${x?.u}|${x?.v}`;
+        if (gesehen.has(key)) continue;
+        gesehen.add(key);
+        out.push(x);
+      }
+      return out;
+    };
+
+    return {
+      items: vereinen(g.items, d.items),
+      nodes: vereinen(g.nodes, d.nodes),
+      edges: vereinen(g.edges, d.edges),
+      kabelTyp: g.kabelTyp ?? d.kabelTyp ?? null,
+    };
+  }
+
+  /** Ist ein Snapshot bereits migriert (enthält also kein Gemeinsames mehr)? */
+  function istDelta(state) {
+    return (state?.items || []).every(i => !_istGeteilt(i.schicht));
+  }
+
+  /**
+   * Überführt Altprojekte vom Vollkopie- ins Delta-Modell.
+   *
+   * Altprojekte enthalten in JEDER Variante ein komplettes Netz, dessen Objekte
+   * durch die Schicht-Rückfüllung sämtlich als Bestand/Entwicklung gelten. Würde
+   * man einfach nur nach Schicht aufteilen, wären alle Deltas leer und die
+   * Varianten damit ununterscheidbar — vorhandene Variantenarbeit ginge still
+   * verloren.
+   *
+   * Deshalb wird zusätzlich verglichen: Objekte, die es NUR in einer Variante
+   * gibt, sind offensichtlich variantenspezifisch und werden zur Entscheidung
+   * befördert. Objekte, die überall vorkommen, werden gemeinsam.
+   *
+   * Abweichende Eigenschaften desselben Objekts lassen sich im Delta-Modell nicht
+   * abbilden (der Bestand ist gemeinsam) — solche Fälle werden im Bericht
+   * ausgewiesen statt stillschweigend übergangen.
+   *
+   * eingabe: { live, varianten: [{ id, name, stromnetz }] }
+   *   live — der aktuell geladene Zustand; er bestimmt den gemeinsamen Teil.
+   *
+   * Rückgabe: { gemeinsam, deltas: { [variantId]: delta }, bericht }
+   */
+  function migriereZuDelta({ live, varianten } = {}) {
+    const basis = live || _leer();
+    const { gemeinsam } = splitStromNetzState(basis);
+
+    const gemeinsameItemIds = new Set(gemeinsam.items.map(i => i.id));
+    const gemeinsameKantenIds = new Set(gemeinsam.edges.map(e => e.id ?? `${e.u}|${e.v}`));
+
+    const deltas = {};
+    const bericht = { befoerdert: [], abweichungen: [] };
+
+    for (const v of (varianten || [])) {
+      const snap = v?.stromnetz || _leer();
+      const eigeneItems = [];
+      const eigeneKanten = [];
+
+      for (const i of (snap.items || [])) {
+        if (!gemeinsameItemIds.has(i.id)) {
+          // Nur in dieser Variante vorhanden → echte Planungsentscheidung
+          eigeneItems.push({ ...i, schicht: SCHICHT.ENTSCHEIDUNG, variante: v.id });
+          bericht.befoerdert.push({ variante: v.id, id: i.id, name: i.name });
+        } else if (_weichtAb(i, gemeinsam.items.find(g => g.id === i.id))) {
+          bericht.abweichungen.push({ variante: v.id, id: i.id, name: i.name });
+        }
+      }
+      for (const e of (snap.edges || [])) {
+        const key = e.id ?? `${e.u}|${e.v}`;
+        if (!gemeinsameKantenIds.has(key)) eigeneKanten.push({ ...e });
+      }
+
+      deltas[v.id] = { items: eigeneItems, nodes: [], edges: eigeneKanten };
+    }
+
+    return { gemeinsam, deltas, bericht };
+  }
+
+  // Vergleicht die planungsrelevanten Eigenschaften zweier Assets.
+  function _weichtAb(a, b) {
+    if (!a || !b) return false;
+    if (a.type !== b.type) return true;
+    if (String(a.baujahr ?? '') !== String(b.baujahr ?? '')) return true;
+    if (String(a.abrissjahr ?? '') !== String(b.abrissjahr ?? '')) return true;
+    return JSON.stringify(a.props || {}) !== JSON.stringify(b.props || {});
+  }
 
   let gebaeude = [];
   function setGebaeude(v) { gebaeude = v; }
@@ -120752,10 +121227,19 @@ out body;>;out skel qt;`;
   function setActiveVariantId(v) { activeVariantId = v; }
   let baseNetzSnapshot = null;
   let baseErzeugerSnapshot = null;
+  // ACHTUNG — geänderte Bedeutung seit dem Delta-Modell: baseStromNetzSnapshot
+  // enthält NICHT mehr das ganze Stromnetz der Basisdaten, sondern nur noch deren
+  // Entscheidungsschicht (das "Delta"). Bestand und Entwicklung liegen einmalig in
+  // stromNetzGemeinsam. Der Schlüsselname bleibt, weil er so in Projektdateien
+  // steht. Siehe lib/varianten-delta.js.
   let baseStromNetzSnapshot = null;
+  // Gemeinsamer Teil des Stromnetzes (Bestand + Entwicklung) — existiert genau
+  // einmal und überlebt jeden Variantenwechsel.
+  let stromNetzGemeinsam = null;
   function setBaseNetzSnapshot(v) { baseNetzSnapshot = v; }
   function setBaseErzeugerSnapshot(v) { baseErzeugerSnapshot = v; }
   function setBaseStromNetzSnapshot(v) { baseStromNetzSnapshot = v; }
+  function setStromNetzGemeinsam(v) { stromNetzGemeinsam = v; }
 
   // ── Phasen (Ausbaustufen) ─────────────────────────────────────────────────────
   // Phase = { id, name, jahrVon, jahrBis, variantId, reihenfolge }
@@ -120784,14 +121268,17 @@ out body;>;out skel qt;`;
   // Binding) und spätere Reassignments hier sonst dort nicht ankämen (stale).
   // Stattdessen über diese Helfer lesen/schreiben:
   function _captureVariantenKernzustand() {
-    return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, ..._capturePhasenZustand() };
+    return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, stromNetzGemeinsam, ..._capturePhasenZustand() };
   }
-  function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, phasen: ps } = {}) {
+  function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, stromNetzGemeinsam: sg, phasen: ps } = {}) {
     varianten = v || [];
     activeVariantId = (aid === undefined) ? null : aid;
     baseNetzSnapshot = bn || null;
     baseErzeugerSnapshot = be || null;
     baseStromNetzSnapshot = bs || null;
+    // Fehlt der gemeinsame Pool, stammt das Projekt aus der Vollkopie-Zeit —
+    // migriereVariantenFallsNoetig() zieht das nach, sobald das Netz steht.
+    stromNetzGemeinsam = sg || null;
     phasen = ps || [];
   }
 
@@ -120806,6 +121293,52 @@ out body;>;out skel qt;`;
   }
   function _applyStromNetzState(state) {
     if (typeof window.applyStromNetzState === 'function') window.applyStromNetzState(state);
+  }
+
+  // ── Delta-Modell: gemeinsamer Bestand, variantenspezifische Entscheidungen ───
+  // Beim Sichern wandert der geteilte Teil (Bestand + Entwicklung) in den
+  // gemeinsamen Pool, nur die Entscheidungsschicht in die Variante. Beim Laden
+  // wird beides wieder zusammengesetzt — die Teardown/Rebuild-Mechanik in 05b
+  // bekommt also weiterhin einen vollständigen Zustand vorgesetzt und bleibt
+  // unverändert. Siehe lib/varianten-delta.js.
+
+  /** Sichert den Zustand; gibt das Varianten-Delta zurück. */
+  function _sichereStromNetzDelta() {
+    const state = _captureStromNetzState();
+    if (!state) return null;
+    const { gemeinsam, delta } = splitStromNetzState(state);
+    stromNetzGemeinsam = gemeinsam;
+    return delta;
+  }
+
+  /** Setzt gemeinsamen Teil + Delta zusammen und spielt sie ein. */
+  function _ladeStromNetzDelta(delta) {
+    _applyStromNetzState(mergeStromNetzState(stromNetzGemeinsam, delta));
+  }
+
+  /**
+   * Überführt ein noch nicht migriertes Projekt ins Delta-Modell.
+   * Idempotent: liegt bereits ein gemeinsamer Pool vor und sind alle
+   * Varianten-Snapshots reine Deltas, passiert nichts.
+   *
+   * Gibt den Migrationsbericht zurück (oder null, wenn nichts zu tun war).
+   */
+  function migriereVariantenFallsNoetig() {
+    const schonMigriert = stromNetzGemeinsam
+      && varianten.every(v => istDelta(v.stromnetz))
+      && istDelta(baseStromNetzSnapshot);
+    if (schonMigriert) return null;
+
+    const live = _captureStromNetzState();
+    if (!live) return null;
+
+    const { gemeinsam, deltas, bericht } = migriereZuDelta({ live, varianten });
+    stromNetzGemeinsam = gemeinsam;
+    for (const v of varianten) v.stromnetz = deltas[v.id] || { items: [], nodes: [], edges: [] };
+    // Die Basisdaten sind der Zustand, aus dem der gemeinsame Teil gewonnen wurde
+    // — ihr eigenes Delta ist genau dessen Entscheidungsschicht.
+    baseStromNetzSnapshot = splitStromNetzState(live).delta;
+    return bericht;
   }
 
   function captureNetzState() {
@@ -121097,27 +121630,28 @@ out body;>;out skel qt;`;
     if (!_transactionActive && typeof window.runPlanningTransaction === 'function') {
       return window.runPlanningTransaction('Variante wechseln', () => activateVariant(id, true));
     }
-    // Aktuellen Zustand sichern
+    // Aktuellen Zustand sichern — Bestand/Entwicklung gehen in den gemeinsamen
+    // Pool, nur die Entscheidungsschicht in die Variante.
     if (activeVariantId === null) {
       baseNetzSnapshot = captureNetzState();
       baseErzeugerSnapshot = captureErzeugerState();
-      baseStromNetzSnapshot = _captureStromNetzState();
+      baseStromNetzSnapshot = _sichereStromNetzDelta();
     } else {
       const cur = varianten.find(v => v.id === activeVariantId);
-      if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); cur.stromnetz = _captureStromNetzState(); }
+      if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); cur.stromnetz = _sichereStromNetzDelta(); }
     }
     // Neuen Zustand anwenden
     activeVariantId = id;
     if (id === null) {
       applyNetzState(baseNetzSnapshot);
       applyErzeugerState(baseErzeugerSnapshot);
-      _applyStromNetzState(baseStromNetzSnapshot);
+      _ladeStromNetzDelta(baseStromNetzSnapshot);
     } else {
       const target = varianten.find(v => v.id === id);
       if (!target) return;
       applyNetzState(target.netz);
       applyErzeugerState(target.erzeuger);
-      _applyStromNetzState(target.stromnetz);
+      _ladeStromNetzDelta(target.stromnetz);
     }
     // Variantenwechsel ist eine synchrone Transaktion: erst alle Teilzustände
     // anwenden, dann genau einmal den Wärmegraphen und die Ergebnis-Caches erneuern.
@@ -121141,16 +121675,18 @@ out body;>;out skel qt;`;
     if (activeVariantId === null) {
       baseNetzSnapshot = captureNetzState();
       baseErzeugerSnapshot = captureErzeugerState();
-      baseStromNetzSnapshot = _captureStromNetzState();
+      baseStromNetzSnapshot = _sichereStromNetzDelta();
     }
     const id = 'v_' + Date.now();
-    // Neue Variante = Ast vom AKTUELL aktiven Zustand (inkl. Stromnetz/Elektroassets) —
-    // so lassen sich z.B. eigene Erzeugungstrafos mit einer bestehenden Integration vergleichen
+    // Neue Variante = Ast vom AKTUELL aktiven Zustand. Kopiert werden dabei nur
+    // die PLANUNGSENTSCHEIDUNGEN — Bestand und Entwicklung bleiben gemeinsam, die
+    // Variante startet also zwangsläufig auf derselben Grundlage. Genau das macht
+    // den späteren Vergleich überhaupt aussagekräftig.
     varianten.push({
       id, name,
       netz: captureNetzState(),
       erzeuger: captureErzeugerState(),
-      stromnetz: _captureStromNetzState(),
+      stromnetz: _sichereStromNetzDelta(),
       gebaeudeAusschlüsse: []
     });
     activeVariantId = id;
@@ -121336,6 +121872,7 @@ out body;>;out skel qt;`;
     lwWpSchallVisible: lwWpSchallVisible,
     get lwWpVisible () { return lwWpVisible; },
     massnahmeJahr: massnahmeJahr,
+    migriereVariantenFallsNoetig: migriereVariantenFallsNoetig,
     get networkLocked () { return networkLocked; },
     get netzEdges () { return netzEdges; },
     get netzPruningMode () { return netzPruningMode; },
@@ -121426,6 +121963,7 @@ out body;>;out skel qt;`;
     setStromEdges: setStromEdges,
     setStromEmF: setStromEmF,
     setStromEmFLZ: setStromEmFLZ,
+    setStromNetzGemeinsam: setStromNetzGemeinsam,
     setStromNetzVisibleState: setStromNetzVisibleState,
     setStromNextId: setStromNextId,
     setStromNodes: setStromNodes,
@@ -121445,6 +121983,7 @@ out body;>;out skel qt;`;
     get stromEdges () { return stromEdges; },
     get stromEmF () { return stromEmF; },
     get stromEmFLZ () { return stromEmFLZ; },
+    get stromNetzGemeinsam () { return stromNetzGemeinsam; },
     stromNetzSubTab: stromNetzSubTab,
     get stromNetzVisible () { return stromNetzVisible; },
     get stromNextId () { return stromNextId; },
@@ -121640,14 +122179,19 @@ out body;>;out skel qt;`;
     // Baujahr/Abrissjahr aus verknüpftem Gebäude übernehmen, falls nicht explizit
     let baujahr    = opts.baujahr    ?? null;
     let abrissjahr = opts.abrissjahr ?? null;
-    if (opts.buildingId && (!baujahr || !abrissjahr)) {
+    // Planungsschicht ebenso: explizit (Wiederherstellung) > Gebäude > Eingabemodus.
+    // Ein Asset an einem geplanten Neubau gehört zur selben Schicht wie das Gebäude.
+    let schicht    = istSchicht(opts.schicht) ? opts.schicht : null;
+    if (opts.buildingId && (!baujahr || !abrissjahr || !schicht)) {
       const geb = (typeof window !== 'undefined' && window.gebaeude)
         ? window.gebaeude.find(g => g.id === opts.buildingId) : null;
       if (geb) {
         if (!baujahr    && geb.baujahr)    baujahr    = geb.baujahr;
         if (!abrissjahr && geb.abrissjahr) abrissjahr = geb.abrissjahr;
+        if (!schicht    && istSchicht(geb.schicht)) schicht = geb.schicht;
       }
     }
+    if (!schicht) schicht = getAktiveSchicht();
 
     const asset = {
       id:         opts.id         || assetUid(),
@@ -121659,6 +122203,7 @@ out body;>;out skel qt;`;
       props:      opts.props      || {},
       baujahr,
       abrissjahr,
+      schicht,
       massnahmen: opts.massnahmen || [],
       _marker:    null,
     };
@@ -155938,6 +156483,21 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   // ── Hilfsfunktionen für Formular-Felder ─────────────────────────────────────
   function esc$2(s) { return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
+  // Planungsschicht nachträglich korrigierbar machen — im falschen Eingabemodus
+  // angelegte Objekte sollen billig zu berichtigen sein, sonst arbeitet man
+  // gegen den Modus statt mit ihm.
+  function buildSchichtSelect(asset) {
+    const cur = normSchicht(asset.schicht);
+    const opts = SCHICHT_REIHENFOLGE.map(s =>
+      `<option value="${s}"${s === cur ? ' selected' : ''}>${SCHICHT_META[s].icon} ${SCHICHT_META[s].label}</option>`
+    ).join('');
+    return `<div class="ins-field-group">
+    <label class="ins-field-label" title="${SCHICHT_META[cur].hinweis}">Planungsschicht</label>
+    <select class="ins-field-input" data-field="schicht"
+      style="border-left:3px solid ${SCHICHT_META[cur].farbe};">${opts}</select>
+  </div>`;
+  }
+
   function numField(id, key, label, dflt, opts = {}) {
     const p = opts.props || {};
     const val = p[key] !== undefined ? p[key] : dflt;
@@ -157108,6 +157668,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             value="${asset.abrissjahr ?? ''}" placeholder="—">
         </div>
       </div>
+      ${buildSchichtSelect(asset)}
       <div class="ins-section-header" data-target="ins-sec-eigenschaften">
         <span class="asset-ins-section-title">Eigenschaften</span>
         <span class="ins-section-chevron">▾</span>
@@ -157257,6 +157818,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           drawAssetMarker(asset);
         } else if (f === 'buildingId') {
           asset.buildingId = inp.value || null;
+          redrawAllAssets();
+        } else if (f === 'schicht') {
+          asset.schicht = normSchicht(inp.value);
+          renderInspector(asset);   // Farbmarkierung des Feldes mitziehen
           redrawAllAssets();
         }
       });
@@ -163937,7 +164502,7 @@ self.onmessage = function(e) {
     const vis = panel.classList.toggle('visible');
     btn?.classList.toggle('active', vis);
     try { map.invalidateSize(); } catch(e) {}
-    if (vis) { sldRender(); sldInitResize(); }
+    if (vis) { sldRender(); sldInitResize(); } else { _sldHideTooltip(); }
   }
 
   function sldToggleFullscreen() {
@@ -164118,6 +164683,7 @@ self.onmessage = function(e) {
     if (activeA.length === 0) {
       canvas.className = 'sld-empty';
       canvas.innerHTML = '<span style="font-size:20px;">⚡</span><span>Keine aktiven Elektroobjekte</span>';
+      _sldHideTooltip();
       return;
     }
     canvas.className = '';
@@ -164131,6 +164697,8 @@ self.onmessage = function(e) {
     xmlns="http://www.w3.org/2000/svg" style="display:block;font-family:DM Sans,sans-serif;">${inner}</svg>`;
     canvas.innerHTML = `<div onclick="sldClick(event)" style="line-height:0;min-width:${sw}px;min-height:${sh}px;">${svg}</div>`;
     sldInitPan();
+    _sldBindHover(canvas);
+    _sldStartFlowAnim();
   }
 
   function sldRefresh() {
@@ -164312,10 +164880,12 @@ self.onmessage = function(e) {
 
   // ── Edge ──────────────────────────────────────────────────────────────────────
   function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
-    const overload  = e.auslastungPct > 100;
-    const warnDU    = !overload && e.deltaUPct > 5;
-    const noteDU    = !overload && !warnDU && e.deltaUPct > 3;
-    const strokeCol = overload ? '#ef5350' : warnDU ? '#ef5350' : noteDU ? '#f9a825' : isRing ? '#546e7a' : '#37474f';
+    // Gleiche Einfärbung wie auf der Karte (Auslastung/ΔU%/Leistung/Richtung),
+    // MS-Kabel immer violett — analog zu updateStromEdgeVisuals() in 05b-stromnetz.js.
+    const strokeCol = e.msLevel ? '#7c4dff' : getStromEdgeColor(e);
+    const dynamic   = window.stromDynamicViz !== false;
+    const flowing   = Math.abs(e.peakFlowKw || 0) > 0.1;
+    const flowAnim  = !isRing && dynamic && flowing;
 
     let path;
     const sameX = Math.abs(x1 - x2) < 4;
@@ -164333,11 +164903,11 @@ self.onmessage = function(e) {
       path = `M${x1.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${x1.toFixed(1)},${midY.toFixed(1)} L${x2.toFixed(1)},${midY.toFixed(1)} L${x2.toFixed(1)},${(y2-SLD_NH/2).toFixed(1)}`;
     }
 
-    const titleTxt = _edgeTitle(e).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    let s = `<g data-edgeid="${e.id}" style="cursor:pointer;"><title>${titleTxt}</title>`;
+    let s = `<g data-edgeid="${e.id}" style="cursor:pointer;">`;
     // Wide hit area
     s += `<path d="${path}" stroke="transparent" stroke-width="12" fill="none"/>`;
-    s += `<path d="${path}" stroke="${strokeCol}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" ${isRing ? 'stroke-dasharray="10,5"' : ''} opacity="${isRing?0.55:0.9}"/>`;
+    const flowAttrs = flowAnim ? `class="sld-flow-path" data-flowdir="${e.flowDirection >= 0 ? 1 : -1}" stroke-dasharray="10,5"` : '';
+    s += `<path d="${path}" stroke="${strokeCol}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" ${isRing ? 'stroke-dasharray="10,5"' : flowAttrs} opacity="${isRing?0.55:0.9}"/>`;
 
     if (isRing) {
       const loopOff = 34 + Math.abs(x1 - x2) * 0.18;
@@ -164357,6 +164927,16 @@ self.onmessage = function(e) {
     const lenM   = Math.round(e.lengthM || 0);
     const lTxt   = lenM > 0 ? `${qs} mm² · ${lenM} m` : `${qs} mm²`;
     s += `<text x="${labelX}" y="${labelY}" text-anchor="middle" font-size="7.5" fill="${strokeCol}" opacity="0.8" pointer-events="none">${lTxt}</text>`;
+
+    // Richtungspfeil (Lastfluss) — analog zum Pfeil-Marker auf der Karte:
+    // ▲ zeigt standardmäßig von u nach v, bei flowDirection<0 umgekehrt.
+    if (flowAnim) {
+      const dx  = x2 - x1, dy = y2 - y1;
+      const rot = (Math.atan2(dx, -dy) * 180 / Math.PI) + (e.flowDirection >= 0 ? 0 : 180);
+      const ax  = (parseFloat(labelX) - 20).toFixed(1);
+      const ay  = labelY;
+      s += `<text x="${ax}" y="${ay}" text-anchor="middle" font-size="9" fill="${strokeCol}" transform="rotate(${rot.toFixed(1)} ${ax} ${ay})" pointer-events="none">▲</text>`;
+    }
 
     // Auslastungs-Pill
     if (e.auslastungPct >= 1) {
@@ -164381,7 +164961,6 @@ self.onmessage = function(e) {
     const rx = (x - SLD_NW/2).toFixed(1), ry = (y - SLD_NH/2).toFixed(1);
 
     let s = `<g data-assetid="${n.id}" style="cursor:pointer;">`;
-    s += `<title>${_nodeTitle(n).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</title>`;
     // Wide hit area
     s += `<rect x="${(parseFloat(rx)-4).toFixed(1)}" y="${(parseFloat(ry)-4).toFixed(1)}" width="${SLD_NW+8}" height="${SLD_NH+8}" rx="9" fill="transparent"/>`;
 
@@ -164427,7 +165006,6 @@ self.onmessage = function(e) {
     const bw = Math.max(SLD_NW, SLD_CW - 8), bh = 14;
 
     let s = `<g data-assetid="${n.id}" style="cursor:pointer;">`;
-    s += `<title>${_nodeTitle(n).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</title>`;
     s += `<rect x="${(x-bw/2-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${bw+8}" height="${bh+8}" rx="5" fill="transparent"/>`;
     if (selected) s += `<rect x="${(x-bw/2-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${bw+8}" height="${bh+8}" rx="5" fill="${col}" opacity="0.15"/>`;
     s += `<rect x="${(x-bw/2).toFixed(1)}" y="${(y-bh/2).toFixed(1)}" width="${bw}" height="${bh}" rx="3" fill="${selected?col+'30':'#182435'}" stroke="${col}" stroke-width="${selected?2:1.8}"/>`;
@@ -164535,42 +165113,82 @@ self.onmessage = function(e) {
     return sn?._voltDropV ?? null;
   }
 
-  // ── Tooltip text ──────────────────────────────────────────────────────────────
-  function _nodeTitle(n) {
-    const p = n.props || {};
-    const lines = [`${n.name}  [${ASSET_CFG[n.type]?.label || n.type}]`];
-    switch (n.type) {
-      case 'Trafo': {
-        lines.push(`Leistung: ${p.leistungKVA||630} kVA  ·  UK: ${p.ukProzent||4} %`);
-        if (n._calcPeakLoadKw != null) lines.push(`Last: ${n._calcPeakLoadKw.toFixed(1)} kW  ·  Auslastung: ${n._calcPeakLoadPct.toFixed(0)} %`);
-        break;
-      }
-      case 'Schaltanlage': lines.push(`${p.felder||6} Felder  ·  ${p.nennstromA||630} A${p.trennstelle?'  ·  Trennstelle':''}`); break;
-      case 'NSHV': case 'UV': lines.push(`${p.nennstromA||400} A  ·  ${p.abgaenge||4} Abgänge`); break;
-      case 'Verbraucher': case 'WP': case 'Nsa': lines.push(`Leistung: ${p.leistungKW||10} kW`); break;
-      case 'PV':      lines.push(`Leistung: ${p.leistungKWp||10} kWp`); break;
-      case 'Lade':    lines.push(`${p.anzahlPunkte||4} × ${p.leistungProPunktKW||22} kW = ${(p.anzahlPunkte||4)*(p.leistungProPunktKW||22)} kW`); break;
-      case 'Batterie': lines.push(`${p.leistungKW||25} kW  ·  ${p.kapazitaetKWh||50} kWh  ·  ${p.betriebsmodus||'einspeisung'}`); break;
-      case 'KWK':     lines.push(`El: ${p.leistungElKW||100} kW  ·  Th: ${p.leistungThKW||160} kW  ·  ${p.brennstoff||'Erdgas'}`); break;
-      case 'Wind':    lines.push(`${p.leistungKW||500} kW  ·  Nabenhöhe: ${p.nabenhoheM||100} m`); break;
+  // ── Hover-Tooltip (gleiche Popup-Optik wie auf der Karte) ────────────────────
+  // Die SVG ist statisches innerHTML ohne Leaflet — Tooltips werden daher als
+  // eigenes, mausverfolgtes .geb-tooltip-Div gebaut, mit denselben Bau-Funktionen
+  // (_buildAssetTooltip / buildStromEdgeTooltip), die auch die Kartenmarker nutzen.
+  // .geb-tooltip selbst ist bereits global gestylt (s. 03c-gebaeude-io.js).
+  let _sldTooltipEl = null;
+  function _sldTooltip() {
+    if (_sldTooltipEl) return _sldTooltipEl;
+    const el = document.createElement('div');
+    el.className = 'geb-tooltip';
+    el.style.cssText = 'position:fixed;z-index:100000;pointer-events:none;display:none;max-width:260px;';
+    document.body.appendChild(el);
+    _sldTooltipEl = el;
+    return el;
+  }
+  function _sldMoveTooltip(cx, cy) {
+    const el = _sldTooltipEl;
+    if (!el || el.style.display === 'none') return;
+    el.style.left = (cx + 16) + 'px';
+    el.style.top  = (cy + 16) + 'px';
+  }
+  function _sldHideTooltip() {
+    if (_sldTooltipEl) _sldTooltipEl.style.display = 'none';
+  }
+  function _sldOnHover(ev) {
+    const gA = ev.target.closest('[data-assetid]');
+    if (gA) {
+      const asset = getAsset(gA.dataset.assetid);
+      if (!asset) return;
+      const el = _sldTooltip();
+      el.innerHTML = _buildAssetTooltip(asset);
+      el.style.display = 'block';
+      _sldMoveTooltip(ev.clientX, ev.clientY);
+      return;
     }
-    const dU_V = _voltDrop(n.id);
-    if (dU_V != null && n.type !== 'NAP') {
-      const pct = (dU_V / 400) * 100;
-      lines.push(`Spannung: ${(400-dU_V).toFixed(1)} V  (kum. ΔU ${pct.toFixed(2)} %)`);
+    const gE = ev.target.closest('[data-edgeid]');
+    if (gE) {
+      const edge = (window.stromEdges || []).find(e => e.id === gE.dataset.edgeid);
+      if (!edge) return;
+      const el = _sldTooltip();
+      el.innerHTML = buildStromEdgeTooltip(edge);
+      el.style.display = 'block';
+      _sldMoveTooltip(ev.clientX, ev.clientY);
     }
-    return lines.join('\n');
+  }
+  function _sldOnHoverOut(ev) {
+    const related = ev.relatedTarget;
+    if (related?.closest?.('[data-assetid]') || related?.closest?.('[data-edgeid]')) return;
+    _sldHideTooltip();
+  }
+  function _sldBindHover(canvas) {
+    if (canvas.dataset.hoverBound) return;
+    canvas.dataset.hoverBound = '1';
+    canvas.addEventListener('mouseover', _sldOnHover);
+    canvas.addEventListener('mousemove', ev => _sldMoveTooltip(ev.clientX, ev.clientY));
+    canvas.addEventListener('mouseout', _sldOnHoverOut);
   }
 
-  function _edgeTitle(e) {
-    const uA = ASSETS.items.find(a => a.id === e.u), vA = ASSETS.items.find(a => a.id === e.v);
-    const lines = [`${uA?.name||e.u} → ${vA?.name||e.v}`];
-    lines.push(`${e.crossSection||50} mm²  ·  ${e.cableType||'NAYY'}  ·  ${Math.round(e.lengthM||0)} m`);
-    if (e.peakCurrentA)  lines.push(`Strom: ${e.peakCurrentA.toFixed(1)} A  /  Imax: ${e.ratedCurrentA.toFixed(0)} A`);
-    if (e.auslastungPct) lines.push(`Auslastung: ${e.auslastungPct.toFixed(0)} %`);
-    if (e.deltaUPct)     lines.push(`ΔU (Segment): ${e.deltaUPct.toFixed(2)} %`);
-    if (e.peakFlowKw)    lines.push(`Leistungsfluss: ${e.peakFlowKw.toFixed(1)} kW  (${e.flowDirection >= 0 ? '↓ Last' : '↑ Einspeisung'})`);
-    return lines.join('\n');
+  // ── Dynamische Lastfluss-Animation (wie auf der Karte, s. animateStromPipes) ──
+  let _sldFlowAnimRunning = false;
+  let _sldDashOffset = 0;
+  function _sldAnimateFlow() {
+    const panel  = document.getElementById('sld-panel');
+    const active = panel?.classList.contains('visible') && window.stromDynamicViz !== false;
+    if (!active) { _sldFlowAnimRunning = false; return; }
+    _sldDashOffset -= 0.6;
+    document.getElementById('sld-svg')?.querySelectorAll('.sld-flow-path').forEach(path => {
+      const dir = parseFloat(path.dataset.flowdir) || 1;
+      path.style.strokeDashoffset = (_sldDashOffset * dir) + 'px';
+    });
+    requestAnimationFrame(_sldAnimateFlow);
+  }
+  function _sldStartFlowAnim() {
+    if (_sldFlowAnimRunning) return;
+    _sldFlowAnimRunning = true;
+    requestAnimationFrame(_sldAnimateFlow);
   }
 
   // ── Click → info bar ──────────────────────────────────────────────────────────
@@ -168625,32 +169243,44 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     }
 
     const nap = naps[0];
-    const sa  = sas[0];
 
     // ── 1. NAP → Schaltanlage(n) ────────────────────────────────────────────
     sas.forEach(s => _addAutoEdge(nap, s, { ms: true }));
 
-    // ── 2. Schaltanlage → Trafos ────────────────────────────────────────────
-    if (ring && trafos.length >= 2) {
-      // Nearest-Neighbor-Tour: SA → T1 → T2 → ... → Tn → SA(Trennstelle)
-      const remaining = [...trafos];
-      const tour = [];
-      let current = sa;
-      while (remaining.length) {
-        const next = _nearest(current, remaining);
-        tour.push(next);
-        remaining.splice(remaining.indexOf(next), 1);
-        current = next;
+    // ── 2. Schaltanlage → Trafos (Zonen nach nächstgelegener SA) ────────────
+    // Jeder Trafo wird der nächstgelegenen Schaltanlage zugeordnet — bei nur
+    // einer Schaltanlage entspricht das exakt dem bisherigen Verhalten. Bei
+    // mehreren SAs verhindert das, dass alle Trafos an sas[0] hängen und die
+    // übrigen Schaltanlagen ohne Anbindung nach unten bleiben.
+    const saZones = new Map(sas.map(s => [s.id, { sa: s, trafos: [] }]));
+    trafos.forEach(t => {
+      const nearestSa = _nearest(t, sas);
+      saZones.get(nearestSa.id).trafos.push(t);
+    });
+
+    for (const { sa: zoneSa, trafos: zoneTrafos } of saZones.values()) {
+      if (!zoneTrafos.length) continue;
+      if (ring && zoneTrafos.length >= 2) {
+        // Nearest-Neighbor-Tour: SA → T1 → T2 → ... → Tn → SA(Trennstelle)
+        const remaining = [...zoneTrafos];
+        const tour = [];
+        let current = zoneSa;
+        while (remaining.length) {
+          const next = _nearest(current, remaining);
+          tour.push(next);
+          remaining.splice(remaining.indexOf(next), 1);
+          current = next;
+        }
+        _addAutoEdge(zoneSa, tour[0], { ms: true });
+        for (let i = 0; i < tour.length - 1; i++) {
+          _addAutoEdge(tour[i], tour[i + 1], { ms: true });
+        }
+        // Ringschluss mit Trennstelle
+        _addAutoEdge(tour[tour.length - 1], zoneSa, { ms: true, trennstelle: true });
+      } else {
+        // Stern: SA → jeden Trafo der Zone
+        zoneTrafos.forEach(t => _addAutoEdge(zoneSa, t, { ms: true }));
       }
-      _addAutoEdge(sa, tour[0], { ms: true });
-      for (let i = 0; i < tour.length - 1; i++) {
-        _addAutoEdge(tour[i], tour[i + 1], { ms: true });
-      }
-      // Ringschluss mit Trennstelle
-      _addAutoEdge(tour[tour.length - 1], sa, { ms: true, trennstelle: true });
-    } else {
-      // Stern: SA → jeden Trafo
-      trafos.forEach(t => _addAutoEdge(sa, t, { ms: true }));
     }
 
     // ── 3. Trafo → NSHV (netzart-getrennt) ──────────────────────────────────
@@ -169287,6 +169917,555 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   var kompaktstation = /*#__PURE__*/Object.freeze({
     __proto__: null,
     showKompaktstationDialog: showKompaktstationDialog
+  });
+
+  // ── 13v-schicht-bar.js — Planungsschicht-Umschalter in der Kopfleiste ────────
+  //
+  // Der Eingabemodus bestimmt, welche Schicht neu angelegte Gebäude und Assets
+  // bekommen (s. lib/schichten.js). Er sitzt bewusst in der Kopfleiste neben dem
+  // Jahres-Slider und NICHT in einem Tab-Panel: Gebäude entstehen im Gebäude-Tab,
+  // Elektroassets im Elektro-Tab — ein tab-gebundener Umschalter wäre jeweils aus
+  // der Hälfte der Anlagesituationen nicht erreichbar.
+  //
+  // Der Modus verändert nichts Bestehendes und keine Berechnung.
+
+
+  const BAR_ID = 'schicht-bar';
+
+  function _html() {
+    const aktiv = getAktiveSchicht();
+
+    const knoepfe = SCHICHT_REIHENFOLGE.map(s => {
+      const m = SCHICHT_META[s];
+      const an = s === aktiv;
+      return `<button data-click="schichtSetModus('${s}')" title="${m.hinweis}"
+      style="padding:2px 7px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px;
+             border:1px solid ${an ? m.farbe : 'var(--border)'};
+             color:${an ? m.farbe : 'var(--muted)'};
+             background:${an ? m.farbe + '22' : 'transparent'};
+             font-weight:${an ? '600' : '400'};">${m.icon}${an ? ' ' + m.label : ''}</button>`;
+    }).join('');
+
+    const augen = SCHICHT_REIHENFOLGE.map(s => {
+      const m = SCHICHT_META[s];
+      const sichtbar = schichtSichtbar(s);
+      return `<label title="${m.label} auf der Karte ein-/ausblenden"
+      style="display:inline-flex;align-items:center;cursor:pointer;opacity:${sichtbar ? 1 : 0.35};font-size:11px;">
+      <input type="checkbox" ${sichtbar ? 'checked' : ''}
+        style="accent-color:${m.farbe};cursor:pointer;width:11px;height:11px;margin:0 1px 0 0;"
+        data-change="schichtSetSichtbar('${s}', this.checked)">${m.icon}</label>`;
+    }).join('');
+
+    return `<span class="ctx-label">Schicht</span>
+    <div style="display:flex;gap:3px;">${knoepfe}</div>
+    <div style="display:flex;gap:3px;margin-left:5px;" title="Sichtbarkeit auf der Karte">${augen}</div>`;
+  }
+
+  function schichtBarRender() {
+    const el = document.getElementById(BAR_ID);
+    if (el) el.innerHTML = _html();
+    _markiereKarte();
+  }
+
+  /** Eingabemodus wechseln — wirkt nur auf künftig angelegte Objekte. */
+  function schichtSetModus(s) {
+    setAktiveSchicht(s);
+    schichtBarRender();
+  }
+
+  /** Eine Schicht auf der Karte ein-/ausblenden. */
+  function schichtSetSichtbar(s, an) {
+    setSchichtSichtbar(s, an);
+    schichtBarRender();
+    if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+  }
+
+  // Farbrahmen an der Karte, solange NICHT im Bestandsmodus gearbeitet wird —
+  // den Modus zu vergessen ist sonst der wahrscheinlichste Bedienfehler.
+  function _markiereKarte() {
+    const el = document.getElementById('map');
+    if (!el) return;
+    const s = getAktiveSchicht();
+    el.style.boxShadow = s === SCHICHT.BESTAND ? '' : `inset 0 0 0 3px ${SCHICHT_META[s].farbe}`;
+  }
+
+  // Selbst initialisieren: im Single-File-Build liegt das Skript am Body-Ende,
+  // im Dev-Modus kann das DOM noch fehlen.
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', schichtBarRender);
+    } else {
+      setTimeout(schichtBarRender, 0);
+    }
+  }
+
+  var schichtBar = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    schichtBarRender: schichtBarRender,
+    schichtSetModus: schichtSetModus,
+    schichtSetSichtbar: schichtSetSichtbar
+  });
+
+  // ── lib/bestand-check.js — Plausibilitätsprüfung des Bestands ────────────────
+  //
+  // Das Tor vor jeder Planungsanalyse: Solange der Bestand nicht stimmt, ist alles
+  // Nachgelagerte wertlos — und zwar auf die gefährliche Art, weil ein Fahrplan
+  // aus falschen Bestandsdaten plausibel AUSSIEHT. Konkrete Fälle aus dem Projekt:
+  //   • Kabel ohne Länge → Ertüchtigungskosten kommen als 0 € heraus
+  //   • Betriebsmittel schon heute überlastet → landet als „Maßnahme im Startjahr"
+  //     im Fahrplan, obwohl es nie ausreichend dimensioniert war
+  //
+  // Die Prüfungen sind bewusst NICHT blockierend: in echten Projekten sind die
+  // Daten immer unvollständig. Stattdessen sagt der Reifegrad, welche Analyse mit
+  // dem aktuellen Datenstand trägt und welche noch Kaffeesatz ist.
+  //
+  // Importfrei und DOM-frei → direkt in Unit-Tests nutzbar. Die app-seitige
+  // Schicht (elCalcAssets, Panel) liegt in 13w-bestand-panel.js.
+
+  const SCHWERE = { FEHLER: 'fehler', WARNUNG: 'warnung', HINWEIS: 'hinweis' };
+
+  const _SCHWERE_RANG = { fehler: 0, warnung: 1, hinweis: 2 };
+
+  function befund(id, schwere, titel, detail, betroffene) {
+    return { id, schwere, titel, detail, betroffene: betroffene || [] };
+  }
+
+  const _label = (o, fallback) => o?.name || o?.label || fallback;
+
+  // ── Einzelprüfungen ──────────────────────────────────────────────────────────
+
+  /**
+   * Kabellängen. Eine Länge von 0 ist kein Schönheitsfehler: Kabel- UND
+   * Tiefbaukosten werden mit der Länge multipliziert, jede Ertüchtigung dieses
+   * Kabels kostet damit 0 €. Der Fahrplan wirkt vollständig und ist es nicht.
+   */
+  function pruefeKabellaengen(edges) {
+    const ohne = [];
+    const winzig = [];
+    for (const e of (edges || [])) {
+      // Stationsinterne Verbindungen (beide Enden im selben Gebäude, z.B.
+      // Trafo↔NSHV in einer Kompaktstation): Länge ≈ 0 ist real, kein Mangel.
+      if (e?.stationsintern) continue;
+      const l = Number(e?.lengthM);
+      if (!Number.isFinite(l) || l <= 0) ohne.push({ id: e.id, art: 'kabel', label: _label(e, e.id) });
+      else if (l < 1) winzig.push({ id: e.id, art: 'kabel', label: `${_label(e, e.id)} (${l.toFixed(2)} m)` });
+    }
+    const out = [];
+    if (ohne.length) out.push(befund('laenge-null', SCHWERE.FEHLER,
+      'Kabel ohne Länge',
+      'Kosten werden mit der Länge multipliziert — jede Ertüchtigung dieser Kabel ergibt 0 €.',
+      ohne));
+    if (winzig.length) out.push(befund('laenge-winzig', SCHWERE.WARNUNG,
+      'Kabel unter 1 m',
+      'Vermutlich übereinanderliegende Endpunkte. Spannungsfall und Kosten werden dadurch zu klein.',
+      winzig));
+    return out;
+  }
+
+  /**
+   * Querschnitte. Fehlt der Querschnitt bei einem NICHT auto-dimensionierten
+   * Kabel, hat die Berechnung keine Grundlage. Auto-dimensionierte Kabel sind
+   * unkritisch — sie bekommen ihren Querschnitt bei jeder Rechnung neu.
+   */
+  function pruefeQuerschnitte(edges) {
+    const fehlend = (edges || [])
+      .filter(e => !e?.autoSized && !(Number(e?.crossSection) > 0))
+      .map(e => ({ id: e.id, art: 'kabel', label: _label(e, e.id) }));
+    return fehlend.length
+      ? [befund('querschnitt-fehlt', SCHWERE.FEHLER,
+          'Kabel ohne Querschnitt',
+          'Ohne Querschnitt gibt es weder Strombelastbarkeit noch Spannungsfall — diese Kabel fehlen faktisch in der Netzberechnung.',
+          fehlend)]
+      : [];
+  }
+
+  /**
+   * Topologie. Geprüft wird, ob überhaupt eine Quelle existiert und ob jedes
+   * Betriebsmittel von ihr aus erreichbar ist. Nicht erreichbare Assets tragen
+   * nichts zur Lastflussrechnung bei und fallen aus jeder Auswertung heraus,
+   * ohne dass es irgendwo auffällt.
+   */
+  function pruefeTopologie(assets, edges, quellTypen) {
+    const quellen = new Set(quellTypen || ['NAP']);
+    const items = assets || [];
+    const kanten = edges || [];
+    const out = [];
+
+    const wurzeln = items.filter(a => quellen.has(a.type));
+    if (!wurzeln.length) {
+      out.push(befund('keine-quelle', SCHWERE.FEHLER,
+        'Kein Netzanknüpfungspunkt',
+        'Ohne NAP gibt es keine Einspeisequelle — Lastfluss und Spannungsfall haben keinen Bezugspunkt.',
+        []));
+      return out;   // ohne Wurzel ist die Erreichbarkeitsprüfung sinnlos
+    }
+
+    // Erreichbarkeit ungerichtet ab allen Quellen
+    const nachbarn = new Map();
+    for (const e of kanten) {
+      if (!nachbarn.has(e.u)) nachbarn.set(e.u, []);
+      if (!nachbarn.has(e.v)) nachbarn.set(e.v, []);
+      nachbarn.get(e.u).push(e.v);
+      nachbarn.get(e.v).push(e.u);
+    }
+    const erreicht = new Set(wurzeln.map(a => a.id));
+    const queue = [...erreicht];
+    while (queue.length) {
+      for (const nb of (nachbarn.get(queue.shift()) || [])) {
+        if (erreicht.has(nb)) continue;
+        erreicht.add(nb);
+        queue.push(nb);
+      }
+    }
+
+    const ohneKante = [];
+    const unerreichbar = [];
+    for (const a of items) {
+      if (quellen.has(a.type)) continue;
+      if (!nachbarn.has(a.id)) ohneKante.push({ id: a.id, art: 'asset', label: _label(a, a.id) });
+      else if (!erreicht.has(a.id)) unerreichbar.push({ id: a.id, art: 'asset', label: _label(a, a.id) });
+    }
+
+    if (ohneKante.length) out.push(befund('ohne-kante', SCHWERE.WARNUNG,
+      'Anlagen ohne Leitung',
+      'Nicht verkabelt — sie erscheinen in keiner Lastfluss- oder Engpassauswertung.',
+      ohneKante));
+    if (unerreichbar.length) out.push(befund('unerreichbar', SCHWERE.WARNUNG,
+      'Anlagen ohne Verbindung zur Quelle',
+      'Verkabelt, aber kein Pfad zum NAP — ihre Last taucht in keiner Auswertung auf.',
+      unerreichbar));
+    return out;
+  }
+
+  /**
+   * Widersprüche zwischen Lebenszyklus und Planungsschicht.
+   *
+   * Erst durch die Schichten (lib/schichten.js) überhaupt prüfbar: Ein Objekt der
+   * Schicht „Bestand" mit Baujahr in der Zukunft behauptet zwei Dinge gleichzeitig
+   * — es existiert heute und wird erst gebaut. Vorher war das nicht erkennbar,
+   * weil Bestand und Planung nicht unterscheidbar waren.
+   */
+  function pruefeLebenszyklus(objekte, heute) {
+    const jahr = heute ?? new Date().getFullYear();
+    const verdreht = [];
+    const bestandZukunft = [];
+    for (const o of (objekte || [])) {
+      const bj = parseInt(o?.baujahr);
+      const aj = parseInt(o?.abrissjahr);
+      if (Number.isFinite(bj) && Number.isFinite(aj) && bj > aj) {
+        verdreht.push({ id: o.id, art: o._art || 'asset', label: `${_label(o, o.id)} (${bj} → ${aj})` });
+      }
+      if (o?.schicht === 'bestand' && Number.isFinite(bj) && bj > jahr) {
+        bestandZukunft.push({ id: o.id, art: o._art || 'asset', label: `${_label(o, o.id)} (${bj})` });
+      }
+    }
+    const out = [];
+    if (verdreht.length) out.push(befund('lebenszyklus-verdreht', SCHWERE.FEHLER,
+      'Abriss vor Baujahr',
+      'Das Objekt existiert in keinem Jahr — es fällt aus jeder jahresbezogenen Auswertung heraus.',
+      verdreht));
+    if (bestandZukunft.length) out.push(befund('bestand-zukunft', SCHWERE.WARNUNG,
+      'Bestand mit Baujahr in der Zukunft',
+      'Als Bestand eingestuft, aber erst später gebaut. Entweder gehört es in die Entwicklungsschicht, oder das Baujahr stimmt nicht.',
+      bestandZukunft));
+    return out;
+  }
+
+  /**
+   * Überlastung im Basisjahr. Was heute schon über der Grenze liegt, ist kein
+   * Ausbaubedarf, sondern eine zu klein erfasste Bestandsdimensionierung.
+   * Erwartet Kanten NACH einer Netzberechnung für das Basisjahr.
+   */
+  function pruefeAuslastungHeute(edges, grenzAuslastungPct) {
+    const grenze = grenzAuslastungPct ?? 100;
+    const ueber = (edges || [])
+      .filter(e => Number(e?.auslastungPct) > grenze)
+      .map(e => ({ id: e.id, art: 'kabel', label: `${_label(e, e.id)} (${Number(e.auslastungPct).toFixed(0)} %)` }));
+    return ueber.length
+      ? [befund('ueberlast-heute', SCHWERE.WARNUNG,
+          'Schon heute überlastet',
+          'Kein Ausbaubedarf, sondern vermutlich eine zu klein erfasste Bestandsdimensionierung — sonst erscheint der erste Zubau als Auslöser einer längst überfälligen Ertüchtigung.',
+          ueber)]
+      : [];
+  }
+
+  // ── Reifegrad ────────────────────────────────────────────────────────────────
+
+  /**
+   * Welche Analyse trägt mit dem aktuellen Datenstand?
+   *
+   * Bewusst als Stufenleiter statt als Ja/Nein: In echten Projekten kommen die
+   * Daten schrittweise herein (Feldapp!), und die Frage lautet nie „ist der
+   * Bestand fertig", sondern „was kann ich jetzt schon belastbar auswerten".
+   *
+   * daten: { gebaeude, assets, edges }
+   * Rückgabe: [{ id, label, erfuellt, fehlt }] in aufsteigender Anspruchshöhe.
+   */
+  function bestandReifegrad(daten) {
+    const geb  = daten?.gebaeude || [];
+    const ass  = daten?.assets   || [];
+    const edg  = daten?.edges    || [];
+
+    const mitFlaeche = geb.filter(g => Number(g?.flaeche) > 0 && g?.nutzung).length;
+    const hatQuelle  = ass.some(a => a.type === 'NAP');
+    const mitLaenge  = edg.filter(e => Number(e?.lengthM) > 0).length;
+    const mitQs      = edg.filter(e => e?.autoSized || Number(e?.crossSection) > 0).length;
+    const mitJahr    = ass.filter(a => a?.baujahr).length;
+
+    const stufe = (id, label, erfuellt, fehlt) => ({ id, label, erfuellt, fehlt: erfuellt ? '' : fehlt });
+
+    return [
+      stufe('bedarf', 'Bedarfsabschätzung',
+        geb.length > 0 && mitFlaeche === geb.length,
+        geb.length === 0 ? 'keine Gebäude erfasst' : `${geb.length - mitFlaeche} Gebäude ohne Fläche oder Nutzung`),
+      stufe('topologie', 'Netzstruktur & Cluster',
+        hatQuelle && edg.length > 0,
+        !hatQuelle ? 'kein NAP' : 'keine Leitungen'),
+      stufe('lastfluss', 'Lastfluss & Spannungsfall',
+        edg.length > 0 && mitLaenge === edg.length && mitQs === edg.length,
+        edg.length === 0 ? 'keine Leitungen'
+          : [mitLaenge < edg.length ? `${edg.length - mitLaenge} ohne Länge` : '',
+             mitQs < edg.length ? `${edg.length - mitQs} ohne Querschnitt` : ''].filter(Boolean).join(', ')),
+      stufe('engpass', 'Engpass-Fahrplan',
+        ass.length > 0 && mitJahr > 0 && edg.length > 0 && mitLaenge === edg.length,
+        mitJahr === 0 ? 'keine Lebenszyklusjahre gepflegt' : 'setzt einen belastbaren Lastfluss voraus'),
+    ];
+  }
+
+  // ── Gesamtprüfung ────────────────────────────────────────────────────────────
+
+  /**
+   * Alle Prüfungen, nach Schwere sortiert.
+   *
+   * daten: { assets, edges, gebaeude, heute, quellTypen, grenzAuslastungPct }
+   * Rückgabe: { befunde, reifegrad, zaehler: { fehler, warnung, hinweis } }
+   */
+  function bestandPruefen(daten) {
+    const { assets = [], edges = [], gebaeude = [], heute, quellTypen, grenzAuslastungPct } = daten || {};
+
+    // Gebäude für die Lebenszyklusprüfung markieren, damit der Sprung auf der
+    // Karte später weiß, worum es sich handelt.
+    const lebenszyklusObjekte = [
+      ...assets,
+      ...gebaeude.map(g => ({ ...g, _art: 'gebaeude' })),
+    ];
+
+    const befunde = [
+      ...pruefeKabellaengen(edges),
+      ...pruefeQuerschnitte(edges),
+      ...pruefeTopologie(assets, edges, quellTypen),
+      ...pruefeLebenszyklus(lebenszyklusObjekte, heute),
+      ...pruefeAuslastungHeute(edges, grenzAuslastungPct),
+    ].sort((a, b) => _SCHWERE_RANG[a.schwere] - _SCHWERE_RANG[b.schwere]);
+
+    const zaehler = { fehler: 0, warnung: 0, hinweis: 0 };
+    for (const b of befunde) zaehler[b.schwere]++;
+
+    return { befunde, reifegrad: bestandReifegrad({ assets, edges, gebaeude }), zaehler };
+  }
+
+  // ── 13w-bestand-panel.js — Bestands-Tor: Plausibilitätsprüfung vor der Planung ──
+  //
+  // Zeigt das Ergebnis von lib/bestand-check.js:
+  //   • Reifegrad  — welche Analyse trägt mit dem aktuellen Datenstand
+  //   • Befunde    — was am Bestand nicht stimmt, nach Schwere sortiert
+  //
+  // Bewusst nicht blockierend: In echten Projekten sind Bestandsdaten immer
+  // unvollständig. Das Panel sagt, was belastbar ist — es verhindert nichts.
+  //
+  // Das Panel wird beim ersten Öffnen dynamisch erzeugt (vgl. Engpass-Panel).
+
+
+  const PANEL_ID$1 = 'bestand-panel';
+  let _ergebnis = null;
+
+  const SCHWERE_META = {
+    [SCHWERE.FEHLER]:  { farbe: '#e53935', icon: '✕', label: 'Fehler' },
+    [SCHWERE.WARNUNG]: { farbe: '#f9a825', icon: '!', label: 'Warnung' },
+    [SCHWERE.HINWEIS]: { farbe: '#4fc3f7', icon: 'i', label: 'Hinweis' },
+  };
+
+  // ── Panel-Gerüst ─────────────────────────────────────────────────────────────
+
+  function _ensurePanel$1() {
+    let panel = document.getElementById(PANEL_ID$1);
+    if (panel) return panel;
+    panel = document.createElement('div');
+    panel.id = PANEL_ID$1;
+    panel.className = 'float-panel amber-border';
+    panel.style.cssText = 'top:70px;min-width:520px;max-width:760px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
+    panel.innerHTML = `
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$1}')">
+      <span style="color:#4fc3f7;font-size:12px;font-weight:600;">🏛 Bestand prüfen</span>
+      <span class="drag-dots">⠿</span>
+      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
+            data-click="bestandPanelToggle()">✕</span>
+    </div>
+    <div id="bestand-panel-body"></div>`;
+    document.body.appendChild(panel);
+    return panel;
+  }
+
+  function _body$1() { return document.getElementById('bestand-panel-body'); }
+
+  function bestandPanelToggle() {
+    const panel = _ensurePanel$1();
+    const sichtbar = panel.style.display === 'block';
+    panel.style.display = sichtbar ? 'none' : 'block';
+    if (!sichtbar) bestandPruefenUndZeigen();
+  }
+
+  /** Netz für das Basisjahr rechnen und alle Prüfungen ausführen. */
+  function bestandPruefenUndZeigen() {
+    _ensurePanel$1().style.display = 'block';
+    _body$1().innerHTML = '<div style="padding:22px;color:var(--muted);font-size:11px;">⏳ Bestand wird geprüft …</div>';
+    setTimeout(() => {
+      try {
+        const heute = new Date().getFullYear();
+        // NUR die Bestandsschicht rechnen — pruefeAuslastungHeute liest die Werte,
+        // die elCalcAssets auf die Kanten schreibt. Der Jahresfilter allein würde
+        // hier nicht reichen: ein Entwicklungsobjekt mit bereits vergangenem
+        // Baujahr zählte sonst mit und täuschte einen Bestandsmangel vor.
+        elCalcAssets({ year: heute, silent: true, schichten: [SCHICHT.BESTAND] });
+        _ergebnis = bestandPruefen({
+          assets:   ASSETS.items || [],
+          edges:    window.stromEdges || [],
+          gebaeude: window.gebaeude || [],
+          heute,
+        });
+        _render$1();
+        // Live-Zustand wiederherstellen: die Prüfrechnung hat Auslastungen und
+        // auto-dimensionierte Querschnitte auf den Bestand allein bezogen.
+        elCalcAssets();
+      } catch (err) {
+        console.error('Bestandsprüfung:', err);
+        _body$1().innerHTML = '<div style="padding:18px;color:#e53935;font-size:11px;">Prüfung fehlgeschlagen — Details in der Konsole.</div>';
+      }
+    }, 50);
+  }
+
+  /** Von einem Befund aus zum betroffenen Objekt springen. */
+  function bestandSpringeZu(id, art) {
+    if (art === 'kabel') {
+      const edge = (window.stromEdges || []).find(e => e.id === id);
+      if (!edge) { showHint('⚠ Kabel nicht mehr vorhanden.'); return; }
+      if (edge.layer) map.flyToBounds(edge.layer.getBounds(), { padding: [60, 60], maxZoom: 19, duration: 1 });
+      openCableInspector(edge);
+    } else if (art === 'gebaeude') {
+      // Gebäude-IDs sind Zahlen; aus dem data-Attribut kommen sie als Text zurück.
+      flyTo(Number(id));
+    } else {
+      const asset = (ASSETS.items || []).find(a => a.id === id);
+      if (!asset) { showHint('⚠ Anlage nicht mehr vorhanden.'); return; }
+      if (asset.lat != null && asset.lng != null) {
+        map.flyTo([asset.lat, asset.lng], Math.max(map.getZoom(), 18), { duration: 1 });
+      }
+      openAssetInspector(asset);
+    }
+  }
+
+  // ── Rendering ────────────────────────────────────────────────────────────────
+
+  function _render$1() {
+    const el = _body$1();
+    if (!el || !_ergebnis) return;
+    el.innerHTML = `
+    ${_kopf()}
+    ${_reifegrad()}
+    ${_befunde()}`;
+  }
+
+  function _kopf() {
+    const { zaehler } = _ergebnis;
+    const btn = 'padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;';
+    const chip = (n, meta) => n
+      ? `<span style="color:${meta.farbe};font-weight:600;">${n} ${meta.label}${n > 1 ? 'e' : ''}</span>`
+      : '';
+    const chips = [
+      chip(zaehler.fehler,  SCHWERE_META[SCHWERE.FEHLER]),
+      chip(zaehler.warnung, SCHWERE_META[SCHWERE.WARNUNG]),
+      chip(zaehler.hinweis, SCHWERE_META[SCHWERE.HINWEIS]),
+    ].filter(Boolean).join(' · ');
+
+    return `
+  <div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px;">
+    <button style="${btn}border-color:#4fc3f7;color:#4fc3f7;" data-click="bestandPruefenUndZeigen()">↻ Neu prüfen</button>
+    <span style="margin-left:auto;font-size:10px;">
+      ${chips || '<span style="color:#4caf50;">✓ keine Befunde</span>'}
+    </span>
+  </div>`;
+  }
+
+  // Reifegrad: welche Analyse trägt mit dem aktuellen Datenstand
+  function _reifegrad() {
+    const zeilen = _ergebnis.reifegrad.map(s => `
+    <div style="display:flex;align-items:center;gap:8px;padding:3px 6px;font-size:10px;">
+      <span style="flex:0 0 14px;color:${s.erfuellt ? '#4caf50' : '#546e7a'};">${s.erfuellt ? '✓' : '○'}</span>
+      <span style="flex:0 0 180px;color:${s.erfuellt ? 'var(--text)' : 'var(--muted)'};">${s.label}</span>
+      <span style="flex:1;color:var(--muted);font-size:9px;">${s.fehlt}</span>
+    </div>`).join('');
+
+    return `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
+    Belastbar auswertbar
+  </div>
+  <div style="background:var(--surface2);border-radius:6px;padding:6px 4px;margin-bottom:12px;">
+    ${zeilen}
+    <div style="font-size:8.5px;color:var(--muted);padding:5px 6px 0;line-height:1.6;">
+      Kein Tor, das etwas verbietet — eine Aussage darüber, welche Analyse der aktuelle
+      Datenstand trägt. Alles darüber lässt sich rechnen, ist aber nicht belastbar.
+    </div>
+  </div>`;
+  }
+
+  function _befunde() {
+    const { befunde } = _ergebnis;
+    if (!befunde.length) {
+      return `<div style="padding:14px;background:var(--surface2);border-radius:6px;font-size:11px;color:#4caf50;">
+      ✓ Keine Auffälligkeiten im Bestand gefunden.</div>`;
+    }
+
+    const MAX = 12;   // lange Listen würden das Panel sprengen
+    const bloecke = befunde.map(b => {
+      const meta = SCHWERE_META[b.schwere];
+      const gezeigt = b.betroffene.slice(0, MAX);
+      const rest = b.betroffene.length - gezeigt.length;
+      const items = gezeigt.map(t => `
+      <span style="display:inline-block;font-size:9px;padding:1px 6px;margin:1px 2px 1px 0;border-radius:3px;
+                   background:var(--surface);border:1px solid var(--border);color:var(--text);cursor:pointer;"
+            data-click="bestandSpringeZu('${t.id}','${t.art}')"
+            title="Auf der Karte anzeigen und Eigenschaften öffnen">${t.label}</span>`).join('');
+      const restTxt = rest > 0 ? `<span style="font-size:9px;color:var(--muted);"> +${rest} weitere</span>` : '';
+
+      return `
+    <div style="border-left:3px solid ${meta.farbe};background:var(--surface2);border-radius:0 6px 6px 0;
+                padding:6px 8px;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text);">
+        <span style="color:${meta.farbe};font-weight:700;">${meta.icon}</span>
+        <b>${b.titel}</b>
+        ${b.betroffene.length ? `<span style="color:var(--muted);font-size:9px;">${b.betroffene.length}×</span>` : ''}
+      </div>
+      <div style="font-size:9px;color:var(--muted);line-height:1.6;margin:3px 0 4px;">${b.detail}</div>
+      ${items}${restTxt}
+    </div>`;
+    }).join('');
+
+    return `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;">
+    Befunde · ${befunde.length}
+  </div>
+  ${bloecke}
+  <div style="font-size:8.5px;color:var(--muted);padding:2px 6px;line-height:1.6;">
+    Für schon heute überlastete Betriebsmittel schlägt der Engpass-Fahrplan unter
+    „🔧 Bestandsmängel" konkrete Korrekturen der Dimensionierung vor.
+  </div>`;
+  }
+
+  var bestandPanel = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    bestandPanelToggle: bestandPanelToggle,
+    bestandPruefenUndZeigen: bestandPruefenUndZeigen,
+    bestandSpringeZu: bestandSpringeZu
   });
 
   // DOM-freie Anlagenklassen für Wind-Platzierung und Restriktionsabstände.
@@ -171604,6 +172783,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const status    = document.getElementById('asset-bulk-status')?.value || '';
     const bauJahr   = parseInt(document.getElementById('asset-bulk-bau-jahr')?.value || '');
     const abrissJahr = parseInt(document.getElementById('asset-bulk-abriss-jahr')?.value || '');
+    const schicht   = document.getElementById('asset-bulk-schicht')?.value || '';
 
     let changed = 0;
 
@@ -171622,11 +172802,17 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         for (const a of selGetAssets()) { a.abrissjahr = abrissJahr; if (abrissJahr > curYear) _ensureMassnahmeJahr(a, 'Abriss', abrissJahr); }
         changed++;
       }
+      // Nachträgliche Korrektur der Planungsschicht — der Rückweg aus einem
+      // falsch gewählten Eingabemodus. Reine Zuordnung, keine Berechnung.
+      if (istSchicht(schicht)) {
+        for (const a of selGetAssets()) a.schicht = schicht;
+        changed++;
+      }
     });
     if (committed === null) changed = 0;
 
     // Felder zurücksetzen
-    const ids = ['asset-bulk-phase','asset-bulk-massn','asset-bulk-status'];
+    const ids = ['asset-bulk-phase','asset-bulk-massn','asset-bulk-status','asset-bulk-schicht'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     const numIds = ['asset-bulk-bau-jahr','asset-bulk-abriss-jahr'];
     numIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -172574,6 +173760,130 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     return Math.max(bezugsjahr, engpassJahr - v);
   }
 
+  // ── Auslöser & Zusammenhänge ─────────────────────────────────────────────────
+  //
+  // Beantwortet: "WARUM wird dieses Betriebsmittel zum Engpass — welcher neue
+  // Verbraucher/Erzeuger hat das ausgelöst?" Nutzt dieselbe Rang-Logik wie die
+  // Lastfluss-Berechnung in 05b-stromnetz.js (_recalcStromNetzInner.bfsDownstream):
+  // downstream = der Endpunkt mit dem höheren typeRank; es wird nie stromaufwärts
+  // gelaufen (Rang sinkt niemals entlang des Pfads).
+
+  const ENGPASS_INFRA_TYPES = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS']);
+
+  /**
+   * Alle Verbraucher-/Erzeuger-Assets UND Gebäude-Knoten (ohne eigenes Asset),
+   * die stromabwärts eines Betriebsmittels (Kabel oder Trafo) hängen — Kandidaten
+   * für dessen Auslöser. Infra-Knoten (NAP…KVS) werden nur durchquert, nie gemeldet.
+   *
+   * item: { id, art: 'kabel'|'trafo' }
+   * assets: [{ id, type, name, baujahr, massnahmen }, ...]  (ASSETS.items-artig)
+   * edges:  [{ id, u, v }, ...]                              (stromEdges-artig)
+   * gebaeudeArr: [{ id, name, baujahr }, ...]
+   * typeRank: { [type]: number }  (TYPE_RANK — niedriger = versorgungsseitig)
+   *
+   * Rückgabe: [{ kind:'asset', asset } | { kind:'gebaeude', gebaeude }]
+   */
+  function engpassDownstreamLeaves(item, assets, edges, gebaeudeArr, typeRank) {
+    const assetMap = new Map((assets || []).map(a => [a.id, a]));
+    const edgeArr  = edges || [];
+    const rankOf   = a => a ? (typeRank[a.type] ?? 5) : 5;
+
+    let rootId, visited;
+    if (item.art === 'trafo') {
+      rootId = item.id;
+      visited = new Set([rootId]);
+    } else {
+      const edge = edgeArr.find(e => e.id === item.id);
+      if (!edge) return [];
+      const rankA = rankOf(assetMap.get(edge.u)), rankB = rankOf(assetMap.get(edge.v));
+      const sourceId = rankA <= rankB ? edge.u : edge.v;
+      rootId = rankA <= rankB ? edge.v : edge.u;
+      visited = new Set([sourceId, rootId]); // beide Enden sperren gegen Rückwärtslauf bei Gleichrang
+    }
+
+    const out = [];
+    const queue = [rootId];
+    while (queue.length) {
+      const cur = queue.shift();
+      const curAsset = assetMap.get(cur);
+      const curRank = rankOf(curAsset);
+      if (curAsset && !ENGPASS_INFRA_TYPES.has(curAsset.type)) {
+        out.push({ kind: 'asset', asset: curAsset });
+      } else if (!curAsset) {
+        const g = (gebaeudeArr || []).find(gb => gb.id === cur);
+        if (g) out.push({ kind: 'gebaeude', gebaeude: g });
+      }
+      const neighbors = [...new Set(edgeArr
+        .filter(e => e.u === cur || e.v === cur)
+        .map(e => (e.u === cur ? e.v : e.u)))];
+      for (const nb of neighbors) {
+        if (visited.has(nb)) continue;
+        if (rankOf(assetMap.get(nb)) < curRank) continue; // nie stromaufwärts
+        visited.add(nb);
+        queue.push(nb);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Ermittelt, welcher neu hinzugekommene Verbraucher/Erzeuger (oder welche
+   * Kapazitätserweiterung) den Engpass in `item.engpassJahr` ausgelöst hat:
+   * alle stromabwärtigen Leaf-Knoten, deren Baujahr ODER umgesetzte
+   * Kapazitäts-Maßnahme GENAU in diesem Jahr wirksam wurde (= derselbe Grund,
+   * der das Jahr in engpassStuetzjahre überhaupt erst zum Stützjahr gemacht hat).
+   *
+   * leaves: Ergebnis von engpassDownstreamLeaves
+   * jahrFn: (massnahme) => number|null — wie bei engpassStuetzjahre injizierbar
+   *
+   * Gibt [] zurück, wenn der Engpass schon zu Horizontbeginn bestand oder aus
+   * mehreren gleichzeitigen Ereignissen ohne eindeutige Einzelursache entstand.
+   */
+  /**
+   * Bestandsmangel = das Betriebsmittel ist schon im ERSTEN Jahr des Horizonts
+   * überlastet, ohne dass ein Zubau in genau diesem Jahr die Ursache wäre. Es
+   * wurde also von vornherein zu klein dimensioniert (oder zu klein gezeichnet) —
+   * ein Fehler im Bestandsmodell, keine Folge der geplanten Entwicklung.
+   *
+   * Solche Fälle gehören NICHT in den Ausbaufahrplan: eine „Maßnahme im Startjahr"
+   * für etwas, das nie ausreichend war, verfälscht sowohl den Investitionsverlauf
+   * als auch die Ursache-Wirkungs-Kette (der Zubau erscheint dann als Auslöser
+   * einer Ertüchtigung, die längst überfällig war). Sie werden deshalb getrennt
+   * ausgewiesen und als Korrektur der Bestandsdaten behandelt.
+   *
+   * ausloeser: Ergebnis von engpassAusloeser für dasselbe Betriebsmittel
+   */
+  function engpassIstBestandsmangel(item, von, ausloeser) {
+    if (item?.engpassJahr == null) return false;
+    if (item.engpassJahr > von) return false;      // erst später kritisch → echte Entwicklung
+    return !(ausloeser && ausloeser.length);        // im Startjahr zugebaut → echter Auslöser
+  }
+
+  function engpassAusloeser(item, leaves, jahrFn) {
+    if (item?.engpassJahr == null) return [];
+    const jahr = item.engpassJahr;
+    const jf = jahrFn || (m => (m?.jahr ? parseInt(m.jahr) : null));
+    const treffer = [];
+    for (const l of (leaves || [])) {
+      if (l.kind === 'asset') {
+        const a = l.asset;
+        if (parseInt(a.baujahr) === jahr) {
+          treffer.push({ kind: 'asset', id: a.id, name: a.name, typ: a.type, grund: 'baujahr' });
+          continue;
+        }
+        const m = (a.massnahmen || []).find(mm =>
+          mm.status === 'umgesetzt' && mm.newProps && Object.keys(mm.newProps).length && jf(mm) === jahr);
+        if (m) treffer.push({ kind: 'asset', id: a.id, name: a.name, typ: a.type, grund: 'ausbau', massnahmeTitel: m.titel });
+      } else {
+        const g = l.gebaeude;
+        if (g && parseInt(g.baujahr) === jahr) {
+          treffer.push({ kind: 'gebaeude', id: g.id, name: g.name || `Gebäude ${g.id}`, typ: 'Gebäude', grund: 'baujahr' });
+        }
+      }
+    }
+    return treffer;
+  }
+
   // ── 14h-engpass-sweep.js — Zeitlicher Engpass-Sweep über Kabel & Betriebsmittel ──
   //
   // Beantwortet: "Wann wird welches Betriebsmittel zum Engpass?"
@@ -172716,7 +174026,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const e = edges.find(x => x.id === id);
       const b = engpassBewerte(reihe);
       return {
-        id, art: 'kabel', msLevel: !!e?.msLevel,
+        id, art: 'kabel', msLevel: !!e?.msLevel, stationsintern: !!e?.stationsintern,
         label: `${nameOf(e?.u)} → ${nameOf(e?.v)}`,
         ...b, klasse: engpassKlassifiziere(b.engpassJahr, start), reihe,
         // Für den Maßnahmen-Generator: Ist-Zustand + höchster Strom im Horizont
@@ -172754,6 +174064,74 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     // (inklGeplant) darf die Engpassjahr-Färbung nicht überschreiben.
     if (!inklGeplant) _letztesErgebnis = ergebnis;
     return ergebnis;
+  }
+
+  // ── Auslöser & Zusammenhänge ─────────────────────────────────────────────────
+  //
+  // Beantwortet: "WARUM wird dieses Betriebsmittel zum Engpass — welcher neue
+  // Verbraucher/Erzeuger hat das ausgelöst, und welche anderen Engpässe hängen
+  // an derselben Ursache?" Graph-Logik liegt PURE in lib/engpass-core.js
+  // (engpassDownstreamLeaves/engpassAusloeser); hier nur das Verdrahten mit
+  // ASSETS.items / window.stromEdges / window.gebaeude, analog zu engpassSweep.
+
+  function _leavesFuer(item) {
+    return engpassDownstreamLeaves(item, ASSETS.items || [], window.stromEdges || [], window.gebaeude || [], TYPE_RANK);
+  }
+
+  /** Auslöser eines Engpasses — siehe engpassAusloeser (lib/engpass-core.js) für die Regel. */
+  function engpassAusloeserFuer(item) {
+    return engpassAusloeser(item, _leavesFuer(item), massnahmeJahr);
+  }
+
+  /** Andere kritische Betriebsmittel, die denselben Auslöser haben (gleicher Verbraucher/Erzeuger stromabwärts). */
+  function engpassZusammenhaengende(item, alleKritisch) {
+    const eigene = new Set(engpassAusloeserFuer(item).map(t => `${t.kind}_${t.id}`));
+    if (!eigene.size) return [];
+    return (alleKritisch || []).filter(other => other !== item && other.engpassJahr != null
+      && engpassAusloeserFuer(other).some(t => eigene.has(`${t.kind}_${t.id}`)));
+  }
+
+  /**
+   * Gruppiert alle kritischen Betriebsmittel nach ihrem Auslöser (Verbraucher/
+   * Erzeuger-Zubau) und hängt — falls vorhanden — die daraus abgeleitete
+   * Ausbau-Maßnahme (aus engpassGeneriereMassnahmen) je Betriebsmittel an.
+   *
+   * Rückgabe: {
+   *   gruppen: [{ trigger, jahr, betroffene: [{ item, massnahme|null }] }],
+   *   ohneAusloeser: [item, ...],   // später kritisch, aber ohne eindeutiges Einzelereignis
+   *   bestandsmaengel: [item, ...]  // schon im Startjahr kritisch → Datenkorrektur
+   * }
+   */
+  function engpassAufloesung(res, massnahmenItems) {
+    if (!res) return { gruppen: [], ohneAusloeser: [], bestandsmaengel: [] };
+    const kritisch = [...res.kabel, ...res.trafos].filter(x => x.engpassJahr != null);
+    const massnByItemId = new Map((massnahmenItems || []).map(m => [m.id.replace(/^auto_/, ''), m]));
+
+    const gruppen = new Map(); // key → { trigger, betroffene: [{item, massnahme}] }
+    const ohneAusloeser = [];
+    const bestandsmaengel = [];
+    for (const it of kritisch) {
+      const ausl = engpassAusloeserFuer(it);
+      if (!ausl.length) {
+        // Bestandsmängel gehören in ihre eigene Kategorie — sie hier als
+        // "Ursache unklar" mitzuzählen würde den echten Rest verwässern.
+        (engpassIstBestandsmangel(it, res.von, ausl) ? bestandsmaengel : ohneAusloeser).push(it);
+        continue;
+      }
+      for (const t of ausl) {
+        const key = `${t.kind}_${t.id}`;
+        if (!gruppen.has(key)) gruppen.set(key, { trigger: t, betroffene: [] });
+        const g = gruppen.get(key);
+        if (!g.betroffene.some(b => b.item === it)) g.betroffene.push({ item: it, massnahme: massnByItemId.get(it.id) || null });
+      }
+    }
+
+    const ergebnis = [...gruppen.values()].map(g => ({
+      ...g,
+      jahr: Math.min(...g.betroffene.map(b => b.item.engpassJahr)),
+    })).sort((a, b) => a.jahr - b.jahr);
+
+    return { gruppen: ergebnis, ohneAusloeser };
   }
 
   // ── Bedienung: Analyse starten + Karte umschalten ────────────────────────────
@@ -172835,6 +174213,29 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     return n;
   }
 
+  // Dimensionierungs-Parameter für die Kabelwahl. Alle bekannten Kabeltypen
+  // übergeben — dimensioniert wird primär im Typ des Bestandskabels, die übrigen
+  // erscheinen als Materialalternative.
+  function _kabelParams() {
+    return {
+      typen:      KABEL_TYPEN,
+      tiefbauEurM: parseFloat(document.getElementById('strom-k-tiefbau')?.value) || 100,
+      grenzDuPct: ENGPASS_GRENZEN.deltaUKumPct,
+    };
+  }
+
+  // Nächstgrößere Trafostufe für ein überlastetes Trafo-Item (oder null).
+  function _trafoStufe(t) {
+    const istKva      = t.ist?.leistungKVA || 630;
+    const benoetigtKw = istKva * 0.9 * (t.maxAuslPct / 100); // Auslastung war auf kVA·cosφ bezogen
+    const stufe       = ertNaechsteTrafoStufe(benoetigtKw, ERT_TRAFO_STUFEN);
+    if (!stufe || stufe.bisKvA <= istKva) return null;
+    return {
+      istKva, stufe,
+      label: `Trafo ${istKva} → ${stufe.bisKvA < Infinity ? stufe.bisKvA + ' kVA' : 'Übergabestation'}`,
+    };
+  }
+
   /**
    * Leitet aus dem letzten Sweep konkrete Ertüchtigungs-Maßnahmen ab und schreibt
    * sie als `massnahmen` (status 'geplant') auf Kabel bzw. Trafo-Assets.
@@ -172842,20 +174243,20 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
    *
    * Dimensioniert auf das Maximum des GESAMTEN Horizonts (nicht nur auf das erste
    * Engpassjahr), damit nicht zweimal gebaut werden muss.
+   *
+   * opts.ohneBestandsmaengel: Betriebsmittel, die schon im Startjahr ohne Auslöser
+   *   überlastet sind, übergehen — die sind kein Ausbaubedarf, sondern eine zu
+   *   korrigierende Bestandsdimensionierung (s. engpassBestandsmaengel).
    */
   function engpassGeneriereMassnahmen(opts = {}) {
     const res = opts.ergebnis || _letztesErgebnis;
     if (!res) return null;
 
-    const vorlaufJ    = opts.vorlaufJ ?? ENGPASS_VORLAUF_J;
-    const tiefbauEurM = parseFloat(document.getElementById('strom-k-tiefbau')?.value) || 100;
-    // Alle bekannten Kabeltypen übergeben — dimensioniert wird primär im Typ des
-    // Bestandskabels, die übrigen erscheinen als Materialalternative.
-    const params = {
-      typen:      KABEL_TYPEN,
-      tiefbauEurM,
-      grenzDuPct: ENGPASS_GRENZEN.deltaUKumPct,
-    };
+    const vorlaufJ = opts.vorlaufJ ?? ENGPASS_VORLAUF_J;
+    const params   = _kabelParams();
+    const uebergehen = opts.ohneBestandsmaengel
+      ? new Set(engpassBestandsmaengel(res).map(b => b.item.id))
+      : null;
 
     engpassMassnahmenVerwerfen();
     const items = [];
@@ -172867,6 +174268,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     // ── Kabel ────────────────────────────────────────────────────────────────
     for (const k of res.kabel) {
       if (k.engpassJahr == null || k.msLevel) continue; // MS-Kabel: eigene Systematik
+      if (k.stationsintern) continue; // auf Trafo-Nennleistung ausgelegt, nie Engpass
+      if (uebergehen?.has(k.id)) continue;
       const edge = (window.stromEdges || []).find(e => e.id === k.id);
       if (!edge) continue;
 
@@ -172899,16 +174302,15 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     // ── Trafos (Stufen aus 14b-ertuechtigung) ────────────────────────────────
     for (const t of res.trafos) {
       if (t.engpassJahr == null) continue;
+      if (uebergehen?.has(t.id)) continue;
       const asset = (ASSETS.items || []).find(a => a.id === t.id);
       if (!asset) continue;
 
-      const istKva      = t.ist?.leistungKVA || 630;
-      const benoetigtKw = istKva * 0.9 * (t.maxAuslPct / 100); // Auslastung war auf kVA·cosφ bezogen
-      const stufe       = ertNaechsteTrafoStufe(benoetigtKw, ERT_TRAFO_STUFEN);
-      if (!stufe || stufe.bisKvA <= istKva) continue;
+      const kand = _trafoStufe(t);
+      if (!kand) continue;
+      const { stufe, label } = kand;
 
       const jahr = engpassMassnahmeJahr(t.engpassJahr, res.von, vorlaufJ);
-      const label = `Trafo ${istKva} → ${stufe.bisKvA < Infinity ? stufe.bisKvA + ' kVA' : 'Übergabestation'}`;
       const m = {
         id: `auto_${t.id}`, [AUTO_TAG]: true,
         titel: label, typ: 'Ertuechtigung', jahr, kosten: stufe.investEUR,
@@ -172923,6 +174325,117 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     items.sort((a, b) => (a.jahr ?? 0) - (b.jahr ?? 0));
     ungeloest.sort((a, b) => (a.engpassJahr ?? 0) - (b.engpassJahr ?? 0));
     return { items, ungeloest, investGesamt: items.reduce((s, i) => s + (i.kosten || 0), 0) };
+  }
+
+  // ── Bestandsmängel: von vornherein zu klein dimensioniert ────────────────────
+  //
+  // Abgrenzung siehe engpassIstBestandsmangel (lib/engpass-core.js): schon im
+  // Startjahr überlastet UND kein Zubau in diesem Jahr als Auslöser. Das ist kein
+  // Ausbaubedarf, sondern eine falsch erfasste Bestandsdimensionierung — deshalb
+  // wird sie als Korrektur der Basisdaten angeboten, nicht als geplante Maßnahme.
+
+  // Sicherungskopie der Originalwerte, damit eine Korrektur rücknehmbar bleibt
+  // (gleiche Idee wie _fpOrigBaujahr im Ausbaufahrplan).
+  const KORR_ORIG = '_engpassKorrOrig';
+
+  /**
+   * Alle Bestandsmängel des letzten Sweeps mit Korrekturvorschlag.
+   *
+   * Rückgabe: [{ item, vorschlag }] — vorschlag ist null, wenn keine
+   * Standard-Ertüchtigung ausreicht (dann hilft nur eine Strukturänderung).
+   * vorschlag: { label, newProps, investEUR, art }
+   */
+  function engpassBestandsmaengel(res) {
+    const r = res || _letztesErgebnis;
+    if (!r) return [];
+    const params = _kabelParams();
+    const out = [];
+
+    for (const k of r.kabel) {
+      if (k.msLevel) continue; // MS-Kabel: eigene Systematik
+      if (k.stationsintern) continue; // auf Trafo-Nennleistung ausgelegt, nie Engpass
+      if (!engpassIstBestandsmangel(k, r.von, engpassAusloeserFuer(k))) continue;
+      const wahl = engpassWaehleAlternative(engpassKabelAlternativen(
+        k.ist, { benoetigtA: k.maxStromA, maxDuPct: k.maxDuPct }, params));
+      out.push({
+        item: k,
+        vorschlag: wahl ? { art: 'kabel', label: wahl.label, newProps: wahl.newProps, investEUR: wahl.investEUR } : null,
+      });
+    }
+
+    for (const t of r.trafos) {
+      if (!engpassIstBestandsmangel(t, r.von, engpassAusloeserFuer(t))) continue;
+      const kand = _trafoStufe(t);
+      out.push({
+        item: t,
+        vorschlag: kand
+          ? { art: 'trafo', label: kand.label, newProps: { leistungKVA: kand.stufe.bisKvA }, investEUR: kand.stufe.investEUR }
+          : null,
+      });
+    }
+
+    return out.sort((a, b) => b.item.maxAuslPct - a.item.maxAuslPct);
+  }
+
+  /**
+   * Übernimmt die Korrekturvorschläge direkt in die Bestandsdaten — also in
+   * `crossSection`/`nParallel`/`cableType` der Kante bzw. `props.leistungKVA` des
+   * Trafos, NICHT als Maßnahme mit Jahr und Investition.
+   *
+   * Bei Kabeln wird dabei `autoSized` abgeschaltet: der korrigierte Querschnitt
+   * ist eine bewusste Festlegung und soll nicht bei der nächsten Berechnung
+   * wieder überschrieben werden.
+   *
+   * nurIds: optionales Set/Array von Betriebsmittel-IDs (Default: alle).
+   * Gibt die Anzahl übernommener Korrekturen zurück.
+   */
+  function engpassKorrekturenUebernehmen(nurIds) {
+    const filter = nurIds ? new Set(nurIds) : null;
+    let n = 0;
+
+    for (const { item, vorschlag } of engpassBestandsmaengel()) {
+      if (!vorschlag) continue;                       // nicht lösbar → unangetastet lassen
+      if (filter && !filter.has(item.id)) continue;
+
+      if (vorschlag.art === 'kabel') {
+        const edge = (window.stromEdges || []).find(e => e.id === item.id);
+        if (!edge) continue;
+        if (!edge[KORR_ORIG]) edge[KORR_ORIG] = {
+          crossSection: edge.crossSection, nParallel: edge.nParallel,
+          cableType:    edge.cableType,    autoSized: edge.autoSized,
+        };
+        Object.assign(edge, vorschlag.newProps);
+        edge.autoSized = false;
+      } else {
+        const asset = (ASSETS.items || []).find(a => a.id === item.id);
+        if (!asset) continue;
+        if (!asset[KORR_ORIG]) asset[KORR_ORIG] = { ...(asset.props || {}) };
+        asset.props = { ...(asset.props || {}), ...vorschlag.newProps };
+      }
+      n++;
+    }
+
+    if (n) elCalcAssets();  // Live-Zustand mit den korrigierten Daten neu rechnen
+    return n;
+  }
+
+  /** Nimmt alle übernommenen Bestandskorrekturen wieder zurück. */
+  function engpassKorrekturenVerwerfen() {
+    let n = 0;
+    for (const edge of (window.stromEdges || [])) {
+      if (!edge[KORR_ORIG]) continue;
+      Object.assign(edge, edge[KORR_ORIG]);
+      delete edge[KORR_ORIG];
+      n++;
+    }
+    for (const asset of (ASSETS.items || [])) {
+      if (!asset[KORR_ORIG]) continue;
+      asset.props = asset[KORR_ORIG];
+      delete asset[KORR_ORIG];
+      n++;
+    }
+    if (n) elCalcAssets();
+    return n;
   }
 
   /**
@@ -172952,17 +174465,23 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     ENGPASS_GRENZEN: ENGPASS_GRENZEN,
     ENGPASS_VORLAUF_J: ENGPASS_VORLAUF_J,
     engpassAnalyseStarten: engpassAnalyseStarten,
+    engpassAufloesung: engpassAufloesung,
+    engpassAusloeserFuer: engpassAusloeserFuer,
+    engpassBestandsmaengel: engpassBestandsmaengel,
     engpassBewerte: engpassBewerte,
     engpassGeneriereMassnahmen: engpassGeneriereMassnahmen,
     engpassKabelAlternativen: engpassKabelAlternativen,
     engpassKlassifiziere: engpassKlassifiziere,
+    engpassKorrekturenUebernehmen: engpassKorrekturenUebernehmen,
+    engpassKorrekturenVerwerfen: engpassKorrekturenVerwerfen,
     engpassLetztesErgebnis: engpassLetztesErgebnis,
     engpassMassnahmeJahr: engpassMassnahmeJahr,
     engpassMassnahmenVerwerfen: engpassMassnahmenVerwerfen,
     engpassStuetzjahre: engpassStuetzjahre,
     engpassSweep: engpassSweep,
     engpassVergleich: engpassVergleich,
-    engpassWaehleAlternative: engpassWaehleAlternative
+    engpassWaehleAlternative: engpassWaehleAlternative,
+    engpassZusammenhaengende: engpassZusammenhaengende
   });
 
   // ── 14i-engpass-panel.js — Engpass-Zeitstrahl, Reserve-Kurve, Maßnahmen-Board ──
@@ -172980,6 +174499,10 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   let _vergleich = null;   // Ergebnis von engpassVergleich (für die Reserve-Kurve)
   let _massnahmen = null;  // Ergebnis von engpassGeneriereMassnahmen
   let _horizont = null;    // { von, bis } aus der Toolbar; null = Standard (ab heute)
+  // Bestandsmängel (von Anfang an zu klein, ohne Auslöser) aus Zeitstrahl und
+  // Ausbau-Ableitung heraushalten — sie stehen in ihrer eigenen Sektion und
+  // verzerren sonst sowohl den Fahrplan als auch die Ursache-Wirkungs-Kette.
+  let _ohneBestand = true;
 
   // Ampelfarbe nach BEIDEN Kriterien — Strombelastbarkeit UND kumuliertem
   // Spannungsfall. Nur die Auslastung zu färben wäre irreführend: ein Kabel kann
@@ -173001,6 +174524,24 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     let treffer = null;
     for (const r of reihe) { if (r.jahr <= jahr) treffer = r; else break; }
     return treffer;
+  }
+
+  // Zeile im Zeitstrahl angeklickt: zum Betriebsmittel auf der Karte springen
+  // und rechts den Inspector öffnen (Trafo → Asset-Inspector, Kabel → Kabel-Inspector).
+  function engpassSpringeZu(id, art) {
+    if (art === 'trafo') {
+      const asset = (ASSETS.items || []).find(a => a.id === id);
+      if (!asset) { showHint('⚠ Betriebsmittel nicht mehr vorhanden.'); return; }
+      if (asset.lat != null && asset.lng != null) {
+        map.flyTo([asset.lat, asset.lng], Math.max(map.getZoom(), 18), { duration: 1 });
+      }
+      openAssetInspector(asset);
+    } else {
+      const edge = (window.stromEdges || []).find(e => e.id === id);
+      if (!edge) { showHint('⚠ Kabel nicht mehr vorhanden.'); return; }
+      if (edge.layer) map.flyToBounds(edge.layer.getBounds(), { padding: [60, 60], maxZoom: 19, duration: 1 });
+      openCableInspector(edge);
+    }
   }
 
   // ── Panel-Gerüst ─────────────────────────────────────────────────────────────
@@ -173070,7 +174611,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   /** Maßnahmen automatisch ableiten und Panel neu zeichnen. */
   function engpassMassnahmenVorschlagen() {
-    _massnahmen = engpassGeneriereMassnahmen();
+    _massnahmen = engpassGeneriereMassnahmen({ ohneBestandsmaengel: _ohneBestand });
     if (!_massnahmen) { showHint('⚠ Erst die Engpass-Analyse ausführen.'); return; }
     _vergleich = engpassVergleich(_horizont || {});   // Wirksamkeit nachrechnen
     _render();
@@ -173078,6 +174619,33 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     showHint(`✓ ${_massnahmen.items.length} Maßnahmen vorgeschlagen · ${_eur(_massnahmen.investGesamt)}`
       + (offen ? ` — ⚠ ${offen} Engpass/Engpässe nicht durch Kabeltausch lösbar.` : ' — im Ausbauplaner sichtbar.'));
     setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 5000);
+  }
+
+  /** Bestandsmängel aus Zeitstrahl und Ausbau-Ableitung ein-/ausblenden. */
+  function engpassBestandFilter(aus) {
+    _ohneBestand = !!aus;
+    _render();
+  }
+
+  /**
+   * Korrekturvorschläge für die Bestandsmängel in die Bestandsdaten übernehmen
+   * (Querschnitt/Stränge bzw. Trafo-kVA direkt, nicht als geplante Maßnahme)
+   * und anschließend neu rechnen — die Sektion sollte danach leer sein.
+   */
+  function engpassKorrekturenAnwenden() {
+    const n = engpassKorrekturenUebernehmen();
+    if (!n) { showHint('⚠ Keine übernehmbaren Korrekturen — die verbleibenden Fälle brauchen eine Strukturänderung.'); return; }
+    showHint(`✓ ${n} Bestandsdimensionierung(en) korrigiert — Netz wird neu gerechnet …`);
+    engpassPanelAktualisieren();
+    setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 5000);
+  }
+
+  /** Übernommene Bestandskorrekturen wieder zurücknehmen. */
+  function engpassKorrekturenZuruecknehmen() {
+    const n = engpassKorrekturenVerwerfen();
+    showHint(`${n} Bestandskorrektur(en) zurückgenommen.`);
+    engpassPanelAktualisieren();
+    setTimeout(() => { if (typeof window.hideHint === 'function') window.hideHint(); }, 4000);
   }
 
   /** Automatisch erzeugte Maßnahmen wieder entfernen. */
@@ -173107,14 +174675,20 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const kritisch  = alle.filter(x => x.engpassJahr != null);
     const okAnzahl  = alle.length - kritisch.length;
 
+    const bestand   = engpassBestandsmaengel(res);
+    const bestandIds = new Set(bestand.map(b => b.item.id));
+    const gezeigt   = _ohneBestand ? kritisch.filter(x => !bestandIds.has(x.id)) : kritisch;
+
     el.innerHTML = `
-    ${_toolbar(res, kritisch.length, okAnzahl)}
+    ${_toolbar(res, kritisch.length, okAnzahl, bestand.length)}
     ${_reserveKurve()}
-    ${_zeitstrahl(res, kritisch)}
-    ${_massnahmenListe()}`;
+    ${_zeitstrahl(res, gezeigt)}
+    ${_bestandsmaengel(bestand)}
+    ${_massnahmenListe()}
+    ${_aufloesung(res)}`;
   }
 
-  function _toolbar(res, nKrit, nOk) {
+  function _toolbar(res, nKrit, nOk, nBestand = 0) {
     const btn = 'padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;';
     return `
   <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:2px 0 10px;">
@@ -173136,6 +174710,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         style="width:78px;accent-color:#f9a825;cursor:pointer;"
         data-input="engpassHorizontVorschau()" data-change="engpassPanelAktualisieren()">
     </span>
+    ${nBestand ? `
+    <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);cursor:pointer;"
+      title="Betriebsmittel, die schon im Startjahr überlastet sind, ohne dass ein Zubau die Ursache wäre — Bestandsdaten, kein Ausbaubedarf. Ausgeblendet erscheinen sie nur in der eigenen Sektion und werden auch nicht als Maßnahme eingeplant.">
+      <input type="checkbox" id="engpass-ohne-bestand" ${_ohneBestand ? 'checked' : ''}
+        style="accent-color:#f9a825;cursor:pointer;" data-change="engpassBestandFilter(this.checked)">
+      Bestandsmängel ausblenden
+    </label>` : ''}
     <span style="margin-left:auto;font-size:10px;color:var(--muted);">
       ${res.jahre.length} Stützjahre ·
       <b style="color:#e53935;">${nKrit}</b> kritisch · <b style="color:#4caf50;">${nOk}</b> ohne Engpass
@@ -173213,9 +174794,20 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       // Maßgebender Wert: bei Spannungs-Engpässen ist die Auslastung irrelevant
       const spannung = (it.ursache || '').includes('spannung');
       const massgeb  = spannung ? `ΔU ${it.maxDuPct.toFixed(1)} %` : `${it.maxAuslPct.toFixed(0)} %`;
-      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+      // Auslöser (welcher Verbraucher/Erzeuger hat den Engpass verursacht) +
+      // welche anderen Engpässe an derselben Ursache hängen — siehe „🔗 Ursache
+      // → Maßnahme" weiter unten für die ausführliche Ansicht; hier nur der Hover.
+      const ausl = engpassAusloeserFuer(it);
+      const zush = engpassZusammenhaengende(it, kritisch);
+      const auslTxt = ausl.length
+        ? `\nAuslöser: ${ausl.map(a => a.name).join(', ')} (${it.engpassJahr})`
+        : '\nAuslöser: nicht eindeutig (mehrere gleichzeitige Änderungen oder bereits ab Horizontbeginn kritisch)';
+      const zushTxt = zush.length ? `\nBetrifft auch: ${zush.map(z => z.label).join(', ')}` : '';
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;cursor:pointer;"
+      data-click="engpassSpringeZu('${it.id}','${it.art}')"
+      title="Auf der Karte anzeigen und Eigenschaften öffnen">
       ${nameSpalte(`${icon} ${it.label}`, 'font-size:9.5px;color:var(--text);',
-                   `${it.label} — Engpass ab ${it.engpassJahr}, Ursache: ${it.ursache}`)}
+                   `${it.label} — Engpass ab ${it.engpassJahr}, Ursache: ${it.ursache}${auslTxt}${zushTxt}`)}
       <div style="flex:0 0 34px;font-size:9px;font-weight:700;color:#e53935;text-align:right;">${it.engpassJahr}</div>
       <div style="flex:0 0 26px;font-size:8px;color:${spannung ? '#ce93d8' : '#ffab91'};text-align:center;"
            title="${spannung ? 'Spannungsfall' : 'Strombelastbarkeit'}">${spannung ? 'ΔU' : 'I'}</div>
@@ -173287,13 +174879,123 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     return ausbauBlock + ungeloestBlock;
   }
 
+  // Bestandsmängel: schon im Startjahr überlastet, ohne dass ein Zubau die
+  // Ursache wäre. Kein Ausbaubedarf, sondern eine zu korrigierende Erfassung —
+  // deshalb Korrektur der Basisdaten statt Maßnahme mit Jahr und Investition.
+  function _bestandsmaengel(bestand) {
+    if (!bestand.length) return '';
+
+    const btn = 'padding:4px 9px;border-radius:5px;border:1px solid var(--border);background:transparent;font-family:inherit;font-size:10px;cursor:pointer;';
+    const loesbar = bestand.filter(b => b.vorschlag);
+
+    const zeilen = bestand.map(({ item, vorschlag }) => {
+      const icon = item.art === 'trafo' ? '⏚' : '⚡';
+      const spannung = (item.ursache || '').includes('spannung');
+      const massgeb  = spannung ? `ΔU ${item.maxDuPct.toFixed(1)} %` : `${item.maxAuslPct.toFixed(0)} %`;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 6px;cursor:pointer;"
+      data-click="engpassSpringeZu('${item.id}','${item.art}')"
+      title="Auf der Karte anzeigen und Eigenschaften öffnen">
+      <span style="flex:0 0 190px;font-size:9px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            title="${item.label}">${icon} ${item.label}</span>
+      <span style="flex:0 0 52px;font-size:8.5px;color:#ef9a9a;text-align:right;">${massgeb}</span>
+      <span style="flex:1;font-size:9.5px;color:${vorschlag ? '#66bb6a' : '#ef9a9a'};">
+        ${vorschlag ? '→ ' + vorschlag.label : '→ kein Standardquerschnitt reicht — Netzstruktur ändern'}</span>
+    </div>`;
+    }).join('');
+
+    return `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#f9a825;margin:10px 0 3px;">
+    🔧 Bestandsmängel · ${bestand.length} von Anfang an unterdimensioniert
+  </div>
+  <div style="background:rgba(249,168,37,0.07);border:1px solid rgba(249,168,37,0.3);border-radius:6px;padding:6px 4px;margin-bottom:12px;">
+    <div style="font-size:8.5px;color:var(--muted);padding:0 6px 5px;line-height:1.6;">
+      Schon im Startjahr ${_horizontVon()} überlastet, ohne dass ein Zubau die Ursache wäre —
+      also keine Folge der Entwicklung, sondern eine zu klein erfasste Bestandsdimensionierung.
+      Die Korrektur ändert Querschnitt/Stränge bzw. Trafo-Leistung direkt in den Stammdaten,
+      <b>nicht</b> als geplante Maßnahme mit Investition.
+    </div>
+    ${zeilen}
+    <div style="display:flex;gap:6px;padding:7px 6px 1px;">
+      <button style="${btn}border-color:#66bb6a;color:#66bb6a;" data-click="engpassKorrekturenAnwenden()"
+        title="Schreibt die Vorschläge in die Bestandsdaten und rechnet neu.">
+        ✓ ${loesbar.length} Korrektur(en) übernehmen</button>
+      <button style="${btn}border-color:#e57373;color:#e57373;" data-click="engpassKorrekturenZuruecknehmen()"
+        title="Stellt die ursprünglichen Bestandswerte wieder her.">↩ Zurücknehmen</button>
+    </div>
+  </div>`;
+  }
+
+  function _horizontVon() {
+    return engpassLetztesErgebnis()?.von ?? '';
+  }
+
+  // Icon für den Auslöser: Gebäude-Symbol für einen reinen Gebäude-Anschluss,
+  // sonst das Asset-Icon aus dem Katalog (☀ PV, 🏠 Verbraucher, …).
+  function _ausloeserIcon(t) {
+    return t.kind === 'gebaeude' ? '🏠' : (ASSET_CFG[t.typ]?.icon || '⚡');
+  }
+  function _ausloeserGrund(t) {
+    if (t.grund === 'ausbau') return 'Kapazitätserweiterung';
+    return t.kind === 'gebaeude' ? 'Neubau' : 'Zubau';
+  }
+
+  // Ursache → Wirkung: je Auslöser (neuer/erweiterter Verbraucher oder Erzeuger)
+  // alle davon betroffenen Engpässe mit der jeweils daraus abgeleiteten
+  // Ausbau-Maßnahme — beantwortet "welcher Zubau führt zu welcher Infra-Maßnahme".
+  function _aufloesung(res) {
+    // Bestandsmängel bleiben hier außen vor — sie haben per Definition keinen
+    // Auslöser und stehen mit ihrer Korrektur in der eigenen Sektion.
+    const { gruppen, ohneAusloeser } = engpassAufloesung(res, _massnahmen?.items);
+    if (!gruppen.length && !ohneAusloeser.length) return '';
+
+    const zeilen = gruppen.map(g => {
+      const betroffen = g.betroffene.map(b => {
+        const it = b.item, m = b.massnahme;
+        const mIcon = it.art === 'trafo' ? '⏚' : '⚡';
+        const mTxt  = m ? `${m.titel} · ${_eur(m.kosten)}` : 'noch keine Maßnahme abgeleitet';
+        return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0 2px 20px;font-size:9px;">
+        <span style="color:var(--muted);">↳</span>
+        <span style="flex:0 0 190px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="${it.label}">${mIcon} ${it.label} <span style="color:var(--muted);">(${it.engpassJahr})</span></span>
+        <span style="flex:1;text-align:right;color:${m ? '#66bb6a' : '#f9a825'};white-space:nowrap;">${mTxt}</span>
+      </div>`;
+      }).join('');
+      return `<div style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text);">
+        <span>${_ausloeserIcon(g.trigger)}</span>
+        <b>${g.trigger.name}</b>
+        <span style="font-size:8.5px;color:var(--muted);">${_ausloeserGrund(g.trigger)} · ${g.jahr}</span>
+      </div>
+      ${betroffen}
+    </div>`;
+    }).join('');
+
+    const ohneBlock = ohneAusloeser.length ? `
+    <div style="font-size:9px;color:var(--muted);padding:4px 6px 0;">
+      ${ohneAusloeser.length} Engpass/Engpässe ohne eindeutig identifizierbaren Auslöser
+      (mehrere gleichzeitige Änderungen, oder bereits ab Horizontbeginn kritisch).
+    </div>` : '';
+
+    return `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 3px;">
+    🔗 Ursache → Maßnahme · ${gruppen.length} Auslöser
+  </div>
+  <div style="background:var(--surface2);border-radius:6px;padding:8px 6px;">
+    ${zeilen}${ohneBlock}
+  </div>`;
+  }
+
   var engpassPanel = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    engpassBestandFilter: engpassBestandFilter,
     engpassHorizontVorschau: engpassHorizontVorschau,
+    engpassKorrekturenAnwenden: engpassKorrekturenAnwenden,
+    engpassKorrekturenZuruecknehmen: engpassKorrekturenZuruecknehmen,
     engpassMassnahmenVorschlagen: engpassMassnahmenVorschlagen,
     engpassMassnahmenZuruecksetzen: engpassMassnahmenZuruecksetzen,
     engpassPanelAktualisieren: engpassPanelAktualisieren,
-    engpassPanelToggle: engpassPanelToggle
+    engpassPanelToggle: engpassPanelToggle,
+    engpassSpringeZu: engpassSpringeZu
   });
 
   // ── main.js — ES Module entry point ────────────────────────────────────────
@@ -173312,7 +175014,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     optimizerCore, hourlyLive, optimizerRun, optimizerWorker, optimizerSession,
     hilfeLeitfaden,
     assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
-    slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel,
+    slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel,
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,

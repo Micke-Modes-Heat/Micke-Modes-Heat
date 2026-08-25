@@ -6,6 +6,7 @@ import { map } from './02b-gebaeude.js';
 import { globalYear } from './01-globals-varianten.js';
 import { ASSETS, ASSET_CFG, ASSET_PROPS_SCHEMA, TYPE_RANK, getAssetStatus, getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 import { selectFromMap, lwWpSchallRadiusM } from './02c-karte-werkzeuge.js';
+import { SCHICHT, SCHICHT_META, normSchicht, schichtRang, schichtSichtbar } from './lib/schichten.js';
 import { calcWindLwaAuto } from './13q-wind-ertrag.js';
 import { computeSuitabilityGrid } from './13s-wind-flaeche.js';
 
@@ -61,7 +62,7 @@ function _assetKosten(asset) {
     default:             return null;
   }
 }
-function _buildAssetTooltip(asset) {
+export function _buildAssetTooltip(asset) {
   const cfg    = ASSET_CFG[asset.type];
   if (!cfg) return asset.name;
   const status = getAssetStatus(asset, globalYear);
@@ -261,9 +262,14 @@ function drawBuildingGroup(buildingId) {
   const c = firstMoved ? { lat: firstMoved.lat, lng: firstMoved.lng } : polygonC;
 
   // ── Typ-Chip-Container: pro Asset-Typ ein farbiges Icon-Chip ──
+  // Schichtfilter wirkt hier auf die CHIPS, nicht auf den Marker: das Marker-
+  // Objekt selbst bleibt bestehen, weil weiter unten alle Assets der Gruppe
+  // darüber als Stromnetz-Knoten registriert werden (_registerStromNode).
+  // Ist nichts sichtbar, wird der Container unsichtbar gemacht — nicht entfernt.
+  const sichtbareAssets = assets.filter(a => schichtSichtbar(normSchicht(a.schicht)));
   const chip   = chipSizeAtZoom(map.getZoom());
   const fs     = Math.round(chip * 0.6);
-  const groups = _groupByType(assets);
+  const groups = _groupByType(sichtbareAssets);
   const shown  = groups.slice(0, MAX_TYPE_CHIPS);
   const rest   = groups.length - shown.length;
 
@@ -275,13 +281,18 @@ function drawBuildingGroup(buildingId) {
     const opacity = status === 'active' ? 1 : 0.45;
     const cntSub  = grp.count > 1 ? `<span class="asset-chip-n">${grp.count}</span>` : '';
     const selChipClass = grp.assets.some(a => a.id === ASSETS.selectedId) ? ' asset-chip-selected' : '';
-    return `<span class="asset-chip${selChipClass}" style="background:${grp.cfg.color};opacity:${opacity};width:${chip}px;height:${chip}px;font-size:${fs}px;">${grp.cfg.icon}${cntSub}</span>`;
+    // Bei gemischten Schichten im Chip gewinnt die späteste — sichtbar bleibt
+    // damit, dass hier etwas Geplantes steckt, statt es unter Bestand zu verbergen.
+    const grpSchicht = grp.assets.reduce(
+      (acc, a) => (schichtRang(a.schicht) > schichtRang(acc) ? normSchicht(a.schicht) : acc), SCHICHT.BESTAND);
+    const ring = grpSchicht === SCHICHT.BESTAND ? '' : `box-shadow:0 0 0 2px ${SCHICHT_META[grpSchicht].farbe};`;
+    return `<span class="asset-chip${selChipClass}" style="background:${grp.cfg.color};opacity:${opacity};width:${chip}px;height:${chip}px;font-size:${fs}px;${ring}">${grp.cfg.icon}${cntSub}</span>`;
   }).join('');
   const restSelected = rest > 0 && groups.slice(MAX_TYPE_CHIPS).some(grp => grp.assets.some(a => a.id === ASSETS.selectedId));
   const moreChip = rest > 0 ? `<span class="asset-chip-more${restSelected ? ' asset-chip-selected' : ''}" style="font-size:${fs}px;">+${rest}</span>` : '';
-  const pendingBadge = assets.some(hasPendingMassnahmen) ? `<span class="asset-massn-badge"></span>` : '';
+  const pendingBadge = sichtbareAssets.some(hasPendingMassnahmen) ? `<span class="asset-massn-badge"></span>` : '';
 
-  const html = `<div class="asset-chips">${chipsHtml}${moreChip}${pendingBadge}</div>`;
+  const html = `<div class="asset-chips"${sichtbareAssets.length === 0 ? ' style="display:none;"' : ''}>${chipsHtml}${moreChip}${pendingBadge}</div>`;
 
   // iconSize abschätzen (Chips + Gaps + Padding) für korrekte Zentrierung
   const nSlots = shown.length + (rest > 0 ? 1 : 0);
@@ -434,7 +445,10 @@ export function collapseAssetSpider() {
 
 function spiderfyBuilding(buildingId, centerLatLng) {
   collapseAssetSpider();
-  const assets = getAssetsForBuilding(buildingId);
+  // Nur sichtbare Schichten auffächern — sonst kämen ausgeblendete Assets beim
+  // Aufklappen der Gruppe wieder zum Vorschein.
+  const assets = getAssetsForBuilding(buildingId)
+    .filter(a => schichtSichtbar(normSchicht(a.schicht)));
   if (assets.length === 0) return;
 
   // Einzelnes Asset → direkt als Endpunkt wählen, kein Fächer nötig
@@ -710,10 +724,19 @@ function drawSingleMarker(asset) {
   // Bulk-Modus: nicht-selektierte Marker ausgegraut — direkt beim Zeichnen setzen,
   // damit ein Neuzeichnen (Auswahl/Inspector) das Dimming nicht verliert.
   const dimClass = (window.isBulkModeActive?.() && !window.assetSelection?.has(asset.id)) ? ' asset-bulk-dimmed' : '';
+  // Planungsschicht: farbiger Rand für Entwicklung/Planung, Bestand behält das
+  // Standardaussehen. Ausgeblendete Schichten werden nur unsichtbar gemacht,
+  // NICHT übersprungen — der Marker registriert den Stromnetz-Knoten
+  // (_registerStromNode), ein Auslassen würde den elektrischen Graphen zerreißen.
+  const schicht    = normSchicht(asset.schicht);
+  const schichtCol = schicht === SCHICHT.BESTAND ? null : SCHICHT_META[schicht].farbe;
+  const versteckt  = !schichtSichtbar(schicht);
   const icon = L.divIcon({
     className: 'asset-divicon' + dimClass,
     html: `<div class="asset-marker asset-marker-${status}${selClass}"
-              style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;">
+              style="background:${cfg.color};border-style:${border};border-width:${borderW}px;opacity:${opacity};width:${size}px;height:${size}px;${
+                schichtCol ? `border-color:${schichtCol};border-width:2px;` : ''}${
+                versteckt ? 'display:none;' : ''}">
              <span class="asset-marker-icon" style="font-size:${fontSize}px;">${cfg.icon}</span>
              ${pendingBadge}
            </div>`,

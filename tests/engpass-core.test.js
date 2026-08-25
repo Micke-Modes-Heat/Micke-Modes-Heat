@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ENGPASS_GRENZEN, engpassStuetzjahre, engpassBewerte, engpassKlassifiziere,
+  engpassDownstreamLeaves, engpassAusloeser, engpassIstBestandsmangel,
 } from '../src/lib/engpass-core.js';
 
 describe('engpassStuetzjahre', () => {
@@ -323,5 +324,150 @@ describe('engpassKabelAlternativen — Eskalationsreihe (Nutzerregel)', () => {
   it('formuliert den Plural korrekt', () => {
     expect(wahl(900).label).toContain('+2 Stränge');
     expect(wahl(900).label).not.toContain('Strangstränge');
+  });
+});
+
+// ── engpassDownstreamLeaves / engpassAusloeser ───────────────────────────────
+// Topologie für die folgenden Tests:
+//   NAP(0) ─e1─ Trafo(2) ─e2─ NSHV(3) ─e3─ KVS1(4) ─e4─ KVS2(4) ─e5─ Verbraucher(5)
+//                                        └─e6─ PV(6)              └─e7─ Gebäude X (kein Asset)
+const RANK = { NAP: 0, Trafo: 2, NSHV: 3, KVS: 4, Verbraucher: 5, PV: 6 };
+
+function bauTopologie() {
+  const assets = [
+    { id: 'nap',   type: 'NAP',   name: 'NAP 1' },
+    { id: 'trafo', type: 'Trafo', name: 'Trafo 1' },
+    { id: 'nshv',  type: 'NSHV',  name: 'NSHV 1' },
+    { id: 'kvs1',  type: 'KVS',   name: 'KVS 1' },
+    { id: 'kvs2',  type: 'KVS',   name: 'KVS 2' },
+    { id: 'verb',  type: 'Verbraucher', name: 'Halle 7', baujahr: 2030 },
+    { id: 'pv',    type: 'PV',    name: 'PV Dach C', baujahr: 2028 },
+  ];
+  const edges = [
+    { id: 'e1', u: 'nap',  v: 'trafo' },
+    { id: 'e2', u: 'trafo', v: 'nshv' },
+    { id: 'e3', u: 'nshv', v: 'kvs1' },
+    { id: 'e4', u: 'kvs1', v: 'kvs2' },
+    { id: 'e5', u: 'kvs2', v: 'verb' },
+    { id: 'e6', u: 'kvs1', v: 'pv' },
+    { id: 'e7', u: 'kvs2', v: 'gebX' }, // Gebäude ohne eigenes Asset
+  ];
+  const gebaeude = [{ id: 'gebX', name: 'Gebäude X', baujahr: 2032 }];
+  return { assets, edges, gebaeude };
+}
+
+describe('engpassDownstreamLeaves', () => {
+  it('findet für ein Kabel mitten im Strang alle Leaves dahinter (Assets + Gebäude)', () => {
+    const { assets, edges, gebaeude } = bauTopologie();
+    const leaves = engpassDownstreamLeaves({ id: 'e2', art: 'kabel' }, assets, edges, gebaeude, RANK);
+    const kinds = leaves.map(l => l.kind === 'asset' ? l.asset.id : l.gebaeude.id).sort();
+    expect(kinds).toEqual(['gebX', 'pv', 'verb']);
+  });
+
+  it('liefert für einen Trafo dieselben Leaves wie für das Kabel direkt davor', () => {
+    const { assets, edges, gebaeude } = bauTopologie();
+    const viaTrafo = engpassDownstreamLeaves({ id: 'trafo', art: 'trafo' }, assets, edges, gebaeude, RANK);
+    const viaKabel = engpassDownstreamLeaves({ id: 'e2', art: 'kabel' }, assets, edges, gebaeude, RANK);
+    const ids = arr => arr.map(l => l.kind === 'asset' ? l.asset.id : l.gebaeude.id).sort();
+    expect(ids(viaTrafo)).toEqual(ids(viaKabel));
+  });
+
+  it('läuft bei Kabeln zwischen gleichrangigen Knoten (KVS↔KVS) nicht rückwärts', () => {
+    const { assets, edges, gebaeude } = bauTopologie();
+    // e4 = kvs1 → kvs2: downstream darf NUR das sein, was hinter kvs2 hängt (verb, gebX),
+    // NICHT pv (das hängt an kvs1, also stromaufwärts von e4).
+    const leaves = engpassDownstreamLeaves({ id: 'e4', art: 'kabel' }, assets, edges, gebaeude, RANK);
+    const ids = leaves.map(l => l.kind === 'asset' ? l.asset.id : l.gebaeude.id).sort();
+    expect(ids).toEqual(['gebX', 'verb']);
+  });
+
+  it('meldet Infra-Knoten (NSHV/KVS) nie selbst als Leaf', () => {
+    const { assets, edges, gebaeude } = bauTopologie();
+    const leaves = engpassDownstreamLeaves({ id: 'e1', art: 'kabel' }, assets, edges, gebaeude, RANK);
+    expect(leaves.some(l => l.kind === 'asset' && ['trafo', 'nshv', 'kvs1', 'kvs2'].includes(l.asset.id))).toBe(false);
+  });
+
+  it('gibt [] zurück, wenn die Kabel-ID unbekannt ist', () => {
+    const { assets, edges, gebaeude } = bauTopologie();
+    expect(engpassDownstreamLeaves({ id: 'nix', art: 'kabel' }, assets, edges, gebaeude, RANK)).toEqual([]);
+  });
+});
+
+describe('engpassAusloeser', () => {
+  it('identifiziert das Asset, dessen Baujahr genau im Engpassjahr liegt', () => {
+    const { assets, edges, gebaeude } = bauTopologie();
+    const item = { id: 'e2', art: 'kabel', engpassJahr: 2030 };
+    const leaves = engpassDownstreamLeaves(item, assets, edges, gebaeude, RANK);
+    const ausl = engpassAusloeser(item, leaves);
+    expect(ausl).toEqual([{ kind: 'asset', id: 'verb', name: 'Halle 7', typ: 'Verbraucher', grund: 'baujahr' }]);
+  });
+
+  it('identifiziert ein Gebäude ohne eigenes Asset ebenso über sein Baujahr', () => {
+    const { assets, edges, gebaeude } = bauTopologie();
+    const item = { id: 'e2', art: 'kabel', engpassJahr: 2032 };
+    const leaves = engpassDownstreamLeaves(item, assets, edges, gebaeude, RANK);
+    const ausl = engpassAusloeser(item, leaves);
+    expect(ausl).toEqual([{ kind: 'gebaeude', id: 'gebX', name: 'Gebäude X', typ: 'Gebäude', grund: 'baujahr' }]);
+  });
+
+  it('erkennt eine umgesetzte Kapazitäts-Maßnahme als Auslöser, auch ohne Baujahr-Treffer', () => {
+    const assets = [
+      { id: 'verb', type: 'Verbraucher', name: 'Halle 7', baujahr: 2020, massnahmen: [
+        { status: 'umgesetzt', jahr: 2034, newProps: { leistungKW: 500 } },
+      ] },
+    ];
+    const edges = [{ id: 'e1', u: 'nshv', v: 'verb' }];
+    const item = { id: 'e1', art: 'kabel', engpassJahr: 2034 };
+    const leaves = engpassDownstreamLeaves(item, assets, edges, [], RANK);
+    expect(engpassAusloeser(item, leaves)[0]).toMatchObject({ id: 'verb', grund: 'ausbau' });
+  });
+
+  it('ignoriert nur geplante (noch nicht umgesetzte) Maßnahmen', () => {
+    const assets = [
+      { id: 'verb', type: 'Verbraucher', name: 'Halle 7', baujahr: 2020, massnahmen: [
+        { status: 'geplant', jahr: 2034, newProps: { leistungKW: 500 } },
+      ] },
+    ];
+    const edges = [{ id: 'e1', u: 'nshv', v: 'verb' }];
+    const item = { id: 'e1', art: 'kabel', engpassJahr: 2034 };
+    const leaves = engpassDownstreamLeaves(item, assets, edges, [], RANK);
+    expect(engpassAusloeser(item, leaves)).toEqual([]);
+  });
+
+  it('gibt [] zurück, wenn kein Leaf im Engpassjahr aktiv wurde (Ursache nicht eindeutig)', () => {
+    const { assets, edges, gebaeude } = bauTopologie();
+    const item = { id: 'e2', art: 'kabel', engpassJahr: 2026 };
+    const leaves = engpassDownstreamLeaves(item, assets, edges, gebaeude, RANK);
+    expect(engpassAusloeser(item, leaves)).toEqual([]);
+  });
+
+  it('gibt [] zurück, wenn engpassJahr fehlt', () => {
+    expect(engpassAusloeser({ id: 'e1', art: 'kabel', engpassJahr: null }, [])).toEqual([]);
+  });
+});
+
+describe('engpassIstBestandsmangel', () => {
+  const ohne = [];                                    // kein Auslöser gefunden
+  const mit  = [{ kind: 'asset', id: 'verb', name: 'Halle 7', typ: 'Verbraucher', grund: 'baujahr' }];
+
+  it('erkennt ein schon im Startjahr überlastetes Betriebsmittel ohne Auslöser', () => {
+    expect(engpassIstBestandsmangel({ engpassJahr: 2026 }, 2026, ohne)).toBe(true);
+  });
+
+  it('wertet einen Zubau IM Startjahr als echten Auslöser, nicht als Bestandsmangel', () => {
+    expect(engpassIstBestandsmangel({ engpassJahr: 2026 }, 2026, mit)).toBe(false);
+  });
+
+  it('ist kein Bestandsmangel, wenn der Engpass erst später eintritt', () => {
+    expect(engpassIstBestandsmangel({ engpassJahr: 2031 }, 2026, ohne)).toBe(false);
+  });
+
+  it('erfasst auch Betriebsmittel, die vor dem Horizont schon kritisch waren', () => {
+    expect(engpassIstBestandsmangel({ engpassJahr: 2020 }, 2026, ohne)).toBe(true);
+  });
+
+  it('gilt nie für Betriebsmittel ohne Engpass', () => {
+    expect(engpassIstBestandsmangel({ engpassJahr: null }, 2026, ohne)).toBe(false);
+    expect(engpassIstBestandsmangel(null, 2026, ohne)).toBe(false);
   });
 });

@@ -227,3 +227,127 @@ export function engpassMassnahmeJahr(engpassJahr, bezugsjahr, vorlaufJ) {
   const v = vorlaufJ != null ? vorlaufJ : ENGPASS_VORLAUF_J;
   return Math.max(bezugsjahr, engpassJahr - v);
 }
+
+// ── Auslöser & Zusammenhänge ─────────────────────────────────────────────────
+//
+// Beantwortet: "WARUM wird dieses Betriebsmittel zum Engpass — welcher neue
+// Verbraucher/Erzeuger hat das ausgelöst?" Nutzt dieselbe Rang-Logik wie die
+// Lastfluss-Berechnung in 05b-stromnetz.js (_recalcStromNetzInner.bfsDownstream):
+// downstream = der Endpunkt mit dem höheren typeRank; es wird nie stromaufwärts
+// gelaufen (Rang sinkt niemals entlang des Pfads).
+
+const ENGPASS_INFRA_TYPES = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS']);
+
+/**
+ * Alle Verbraucher-/Erzeuger-Assets UND Gebäude-Knoten (ohne eigenes Asset),
+ * die stromabwärts eines Betriebsmittels (Kabel oder Trafo) hängen — Kandidaten
+ * für dessen Auslöser. Infra-Knoten (NAP…KVS) werden nur durchquert, nie gemeldet.
+ *
+ * item: { id, art: 'kabel'|'trafo' }
+ * assets: [{ id, type, name, baujahr, massnahmen }, ...]  (ASSETS.items-artig)
+ * edges:  [{ id, u, v }, ...]                              (stromEdges-artig)
+ * gebaeudeArr: [{ id, name, baujahr }, ...]
+ * typeRank: { [type]: number }  (TYPE_RANK — niedriger = versorgungsseitig)
+ *
+ * Rückgabe: [{ kind:'asset', asset } | { kind:'gebaeude', gebaeude }]
+ */
+export function engpassDownstreamLeaves(item, assets, edges, gebaeudeArr, typeRank) {
+  const assetMap = new Map((assets || []).map(a => [a.id, a]));
+  const edgeArr  = edges || [];
+  const rankOf   = a => a ? (typeRank[a.type] ?? 5) : 5;
+
+  let rootId, visited;
+  if (item.art === 'trafo') {
+    rootId = item.id;
+    visited = new Set([rootId]);
+  } else {
+    const edge = edgeArr.find(e => e.id === item.id);
+    if (!edge) return [];
+    const rankA = rankOf(assetMap.get(edge.u)), rankB = rankOf(assetMap.get(edge.v));
+    const sourceId = rankA <= rankB ? edge.u : edge.v;
+    rootId = rankA <= rankB ? edge.v : edge.u;
+    visited = new Set([sourceId, rootId]); // beide Enden sperren gegen Rückwärtslauf bei Gleichrang
+  }
+
+  const out = [];
+  const queue = [rootId];
+  while (queue.length) {
+    const cur = queue.shift();
+    const curAsset = assetMap.get(cur);
+    const curRank = rankOf(curAsset);
+    if (curAsset && !ENGPASS_INFRA_TYPES.has(curAsset.type)) {
+      out.push({ kind: 'asset', asset: curAsset });
+    } else if (!curAsset) {
+      const g = (gebaeudeArr || []).find(gb => gb.id === cur);
+      if (g) out.push({ kind: 'gebaeude', gebaeude: g });
+    }
+    const neighbors = [...new Set(edgeArr
+      .filter(e => e.u === cur || e.v === cur)
+      .map(e => (e.u === cur ? e.v : e.u)))];
+    for (const nb of neighbors) {
+      if (visited.has(nb)) continue;
+      if (rankOf(assetMap.get(nb)) < curRank) continue; // nie stromaufwärts
+      visited.add(nb);
+      queue.push(nb);
+    }
+  }
+  return out;
+}
+
+/**
+ * Ermittelt, welcher neu hinzugekommene Verbraucher/Erzeuger (oder welche
+ * Kapazitätserweiterung) den Engpass in `item.engpassJahr` ausgelöst hat:
+ * alle stromabwärtigen Leaf-Knoten, deren Baujahr ODER umgesetzte
+ * Kapazitäts-Maßnahme GENAU in diesem Jahr wirksam wurde (= derselbe Grund,
+ * der das Jahr in engpassStuetzjahre überhaupt erst zum Stützjahr gemacht hat).
+ *
+ * leaves: Ergebnis von engpassDownstreamLeaves
+ * jahrFn: (massnahme) => number|null — wie bei engpassStuetzjahre injizierbar
+ *
+ * Gibt [] zurück, wenn der Engpass schon zu Horizontbeginn bestand oder aus
+ * mehreren gleichzeitigen Ereignissen ohne eindeutige Einzelursache entstand.
+ */
+/**
+ * Bestandsmangel = das Betriebsmittel ist schon im ERSTEN Jahr des Horizonts
+ * überlastet, ohne dass ein Zubau in genau diesem Jahr die Ursache wäre. Es
+ * wurde also von vornherein zu klein dimensioniert (oder zu klein gezeichnet) —
+ * ein Fehler im Bestandsmodell, keine Folge der geplanten Entwicklung.
+ *
+ * Solche Fälle gehören NICHT in den Ausbaufahrplan: eine „Maßnahme im Startjahr"
+ * für etwas, das nie ausreichend war, verfälscht sowohl den Investitionsverlauf
+ * als auch die Ursache-Wirkungs-Kette (der Zubau erscheint dann als Auslöser
+ * einer Ertüchtigung, die längst überfällig war). Sie werden deshalb getrennt
+ * ausgewiesen und als Korrektur der Bestandsdaten behandelt.
+ *
+ * ausloeser: Ergebnis von engpassAusloeser für dasselbe Betriebsmittel
+ */
+export function engpassIstBestandsmangel(item, von, ausloeser) {
+  if (item?.engpassJahr == null) return false;
+  if (item.engpassJahr > von) return false;      // erst später kritisch → echte Entwicklung
+  return !(ausloeser && ausloeser.length);        // im Startjahr zugebaut → echter Auslöser
+}
+
+export function engpassAusloeser(item, leaves, jahrFn) {
+  if (item?.engpassJahr == null) return [];
+  const jahr = item.engpassJahr;
+  const jf = jahrFn || (m => (m?.jahr ? parseInt(m.jahr) : null));
+  const treffer = [];
+  for (const l of (leaves || [])) {
+    if (l.kind === 'asset') {
+      const a = l.asset;
+      if (parseInt(a.baujahr) === jahr) {
+        treffer.push({ kind: 'asset', id: a.id, name: a.name, typ: a.type, grund: 'baujahr' });
+        continue;
+      }
+      const m = (a.massnahmen || []).find(mm =>
+        mm.status === 'umgesetzt' && mm.newProps && Object.keys(mm.newProps).length && jf(mm) === jahr);
+      if (m) treffer.push({ kind: 'asset', id: a.id, name: a.name, typ: a.type, grund: 'ausbau', massnahmeTitel: m.titel });
+    } else {
+      const g = l.gebaeude;
+      if (g && parseInt(g.baujahr) === jahr) {
+        treffer.push({ kind: 'gebaeude', id: g.id, name: g.name || `Gebäude ${g.id}`, typ: 'Gebäude', grund: 'baujahr' });
+      }
+    }
+  }
+  return treffer;
+}

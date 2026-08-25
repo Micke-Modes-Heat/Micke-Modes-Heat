@@ -19,6 +19,7 @@ import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox
 import { ASSETS, TYPE_RANK, createAsset, deleteAsset, getAssetStatus, getAssetPropsForYear } from './13a-assets-core.js';
 import { collapseAssetSpider, redrawAllAssets } from './13b-assets-render.js';
 import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
+import { schichtAusEndpunkten, normSchicht, SCHICHT } from './lib/schichten.js';
 import { globalYear, stromEdges } from './01-globals-varianten.js';
 
 export function epConfirm(title, message, opts) {
@@ -767,6 +768,11 @@ export function addStromEdge(uId, vId) {
     layer: layer, outlineLayer: outlineLayer, hitLayer: hitLayer, arrowMarker: null,
     cableType: defaultType, crossSection: 0, autoSized: true, fuseA: 0, nParallel: 1,
     lengthM: lengthM,
+    // Beide Enden im selben Gebäude (Trafo↔NSHV in einer Kompaktstation o.ä.):
+    // reale Sammelschienen-/Stationsverkabelung, auf Trafo-Nennleistung ausgelegt.
+    // Länge ≈ 0 ist hier korrekt, kein Bestandsmangel — siehe pruefeKabellaengen
+    // (bestand-check.js) und die msLevel-artige Sonderbehandlung im Engpass-Sweep.
+    stationsintern: !!sameBuildingDirect,
     peakCurrentA: 0, ratedCurrentA: 0, auslastungPct: 0,
     deltaUPct: 0, peakFlowKw: 0, flowDirection: 1,
     // Lebenszyklus: von den Endpunkten geerbt (siehe refreshStromEdgeYears) + eigene Maßnahmen
@@ -873,6 +879,22 @@ function _cableMassnJahr(m) {
   if (m.jahr) return parseInt(m.jahr);
   const p = (window.phasen || []).find(x => x.id === m.phaseId);
   return p ? parseInt(p.jahrVon) : null;
+}
+
+/**
+ * Planungsschicht einer Leitung — ABGELEITET aus ihren Endpunkten, nicht
+ * gespeichert (s. lib/schichten.js). Ein Kabel zum Neubau ist Entwicklung,
+ * auch wenn es an einem Bestandsverteiler beginnt. Knoten ohne Asset
+ * (Gebäude-Anschlusspunkte) liefern die Schicht des Gebäudes.
+ */
+export function getStromEdgeSchicht(edge) {
+  const schichtVon = id => {
+    const a = (ASSETS.items || []).find(x => x.id === id);
+    if (a) return a.schicht;
+    const g = (window.gebaeude || []).find(gb => gb.id === id);
+    return g ? g.schicht : undefined;
+  };
+  return schichtAusEndpunkten(schichtVon(edge?.u), schichtVon(edge?.v));
 }
 
 // ── Kabel-Auswahl & Hervorhebung ────────────────────────────────
@@ -1289,6 +1311,7 @@ export function setStromDynamicViz(on) {
     window.stromEdges.forEach(e => { e._flowActive = false; });
   }
   updateStromEdgeVisuals();
+  if (typeof window.sldRefresh === 'function') window.sldRefresh();
 }
 
 // ── Marker-Klick für Kabelzeichnen abfangen ─────────────────────
@@ -2463,9 +2486,16 @@ export function updateLpStromSummary() {
 // opts.silent — Karten-/DOM-Aktualisierung überspringen (nur rechnen). Für Sweeps,
 //               die pro Jahr nur Kennzahlen abgreifen und nichts anzeigen wollen.
 // opts.inklGeplant — auch geplante Maßnahmen als wirksam annehmen (Was-wäre-wenn).
+// opts.schichten — nur Assets dieser Planungsschichten rechnen (Array/Set, s.
+//               lib/schichten.js). Für die Bestandsprüfung: `['bestand']` rechnet
+//               das Netz so, wie es heute WIRKLICH steht — ohne Entwicklung und
+//               ohne Planung. Der Jahresfilter allein leistet das nicht: ein
+//               Entwicklungsobjekt mit bereits vergangenem Baujahr zählt dort mit
+//               und würde einen Bestandsmangel vortäuschen (oder verdecken).
 export function elCalcAssets(opts = {}) {
-  const { year = null, silent = false, inklGeplant = false } = opts;
+  const { year = null, silent = false, inklGeplant = false, schichten = null } = opts;
   const _mOpts = { inklGeplant };
+  const _schichtFilter = schichten ? new Set(schichten) : null;
   const yr = year ?? globalYear ?? new Date().getFullYear();
   const U_N = 400, COS_PHI = 0.9;
   // Zulässiger Spannungsfall – Gesamtbudget vom Trafo (bzw. Einspeisepunkt) bis
@@ -2478,7 +2508,8 @@ export function elCalcAssets(opts = {}) {
 
   const activeA = ASSETS.items.filter(a =>
     (a.domain === 'strom' || a.domain === 'hybrid') &&
-    getAssetStatus(a, yr) === 'active'
+    getAssetStatus(a, yr) === 'active' &&
+    (!_schichtFilter || _schichtFilter.has(normSchicht(a.schicht)))
   );
   const activeIds = new Set(activeA.map(a => a.id));
   // Alle Leitungen die mindestens einen Asset-Endpunkt haben (inkl. Asset→Gebäude)
@@ -3272,6 +3303,7 @@ export function captureStromNetzState() {
       buildingId: a.buildingId, _movedByUser: a._movedByUser || false,
       linkedErzeuger: a.linkedErzeuger || null, linkedFF: a.linkedFF || null,
       props: a.props ? { ...a.props } : {}, baujahr: a.baujahr, abrissjahr: a.abrissjahr,
+      schicht: a.schicht,
       massnahmen: (a.massnahmen || []).map(m => ({ ...m }))
     })),
     nodes: infraNodes.map(n => ({
@@ -3281,7 +3313,12 @@ export function captureStromNetzState() {
     edges: (window.stromEdges || []).map(e => ({
       id: e.id, u: e.u, v: e.v, cableType: e.cableType, crossSection: e.crossSection,
       autoSized: e.autoSized, lengthM: e.lengthM, fuseA: e.fuseA || 0, nParallel: e.nParallel || 1,
-      autoGenerated: e.autoGenerated || false, msLevel: e.msLevel || false, trennstelle: e.trennstelle || false
+      autoGenerated: e.autoGenerated || false, msLevel: e.msLevel || false, trennstelle: e.trennstelle || false,
+      // Kabel-Maßnahmen gehören zum Variantenzustand — die Projektdatei sichert
+      // sie längst (03c), hier fehlten sie: geplante Kabelertüchtigungen gingen
+      // beim Variantenwechsel verloren. Bau-/Abrissjahr bleiben abgeleitet
+      // (refreshStromEdgeYears aus den Endpunkten), die Schicht ebenso.
+      massnahmen: (e.massnahmen || []).map(m => ({ ...m }))
     })),
     kabelTyp: document.getElementById('strom-kabel-typ')?.value || null
   };
@@ -3309,7 +3346,8 @@ export function applyStromNetzState(state) {
       id: data.id, name: data.name, buildingId: data.buildingId,
       _movedByUser: data._movedByUser || false,
       props: data.props || {}, baujahr: data.baujahr,
-      abrissjahr: data.abrissjahr, massnahmen: data.massnahmen || []
+      abrissjahr: data.abrissjahr, schicht: data.schicht,
+      massnahmen: data.massnahmen || []
     });
     if (loaded && data.linkedErzeuger) loaded.linkedErzeuger = data.linkedErzeuger;
     if (loaded && data.linkedFF)       loaded.linkedFF       = data.linkedFF;
@@ -3342,6 +3380,7 @@ export function applyStromNetzState(state) {
       edge.autoGenerated = eData.autoGenerated || false;
       edge.msLevel = eData.msLevel || edge.msLevel || false;
       edge.trennstelle = eData.trennstelle || false;
+      edge.massnahmen = (eData.massnahmen || []).map(m => ({ ...m }));
       if (edge.msLevel) edge.layer?.setStyle({ color: '#7c4dff', weight: 4, dashArray: null });
       if (edge.trennstelle) edge.layer?.setStyle({ dashArray: '10,8', opacity: 0.5 });
     }

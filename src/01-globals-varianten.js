@@ -7,6 +7,7 @@ import { currentViewMode, setViewMode } from './04a-ui-panels.js';
 import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, updateSolarthermieDisplay, updateThermSpeicherDisplay } from './06b-gl-berechnen.js';
 import { autoGkResult, isErzeugerAktiv, meritOrderKeys, setAutoGkResult, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { splitStromNetzState, mergeStromNetzState, istDelta, migriereZuDelta } from './lib/varianten-delta.js';
 
 export let gebaeude = [];
 export function setGebaeude(v) { gebaeude = v; }
@@ -668,10 +669,19 @@ export let activeVariantId = null;
 export function setActiveVariantId(v) { activeVariantId = v; }
 export let baseNetzSnapshot = null;
 export let baseErzeugerSnapshot = null;
+// ACHTUNG — geänderte Bedeutung seit dem Delta-Modell: baseStromNetzSnapshot
+// enthält NICHT mehr das ganze Stromnetz der Basisdaten, sondern nur noch deren
+// Entscheidungsschicht (das "Delta"). Bestand und Entwicklung liegen einmalig in
+// stromNetzGemeinsam. Der Schlüsselname bleibt, weil er so in Projektdateien
+// steht. Siehe lib/varianten-delta.js.
 export let baseStromNetzSnapshot = null;
+// Gemeinsamer Teil des Stromnetzes (Bestand + Entwicklung) — existiert genau
+// einmal und überlebt jeden Variantenwechsel.
+export let stromNetzGemeinsam = null;
 export function setBaseNetzSnapshot(v) { baseNetzSnapshot = v; }
 export function setBaseErzeugerSnapshot(v) { baseErzeugerSnapshot = v; }
 export function setBaseStromNetzSnapshot(v) { baseStromNetzSnapshot = v; }
+export function setStromNetzGemeinsam(v) { stromNetzGemeinsam = v; }
 
 // ── Phasen (Ausbaustufen) ─────────────────────────────────────────────────────
 // Phase = { id, name, jahrVon, jahrBis, variantId, reihenfolge }
@@ -700,14 +710,17 @@ export function massnahmeJahr(m) {
 // Binding) und spätere Reassignments hier sonst dort nicht ankämen (stale).
 // Stattdessen über diese Helfer lesen/schreiben:
 export function _captureVariantenKernzustand() {
-  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, ..._capturePhasenZustand() };
+  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, stromNetzGemeinsam, ..._capturePhasenZustand() };
 }
-export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, phasen: ps } = {}) {
+export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, stromNetzGemeinsam: sg, phasen: ps } = {}) {
   varianten = v || [];
   activeVariantId = (aid === undefined) ? null : aid;
   baseNetzSnapshot = bn || null;
   baseErzeugerSnapshot = be || null;
   baseStromNetzSnapshot = bs || null;
+  // Fehlt der gemeinsame Pool, stammt das Projekt aus der Vollkopie-Zeit —
+  // migriereVariantenFallsNoetig() zieht das nach, sobald das Netz steht.
+  stromNetzGemeinsam = sg || null;
   phasen = ps || [];
 }
 
@@ -722,6 +735,52 @@ function _captureStromNetzState() {
 }
 function _applyStromNetzState(state) {
   if (typeof window.applyStromNetzState === 'function') window.applyStromNetzState(state);
+}
+
+// ── Delta-Modell: gemeinsamer Bestand, variantenspezifische Entscheidungen ───
+// Beim Sichern wandert der geteilte Teil (Bestand + Entwicklung) in den
+// gemeinsamen Pool, nur die Entscheidungsschicht in die Variante. Beim Laden
+// wird beides wieder zusammengesetzt — die Teardown/Rebuild-Mechanik in 05b
+// bekommt also weiterhin einen vollständigen Zustand vorgesetzt und bleibt
+// unverändert. Siehe lib/varianten-delta.js.
+
+/** Sichert den Zustand; gibt das Varianten-Delta zurück. */
+function _sichereStromNetzDelta() {
+  const state = _captureStromNetzState();
+  if (!state) return null;
+  const { gemeinsam, delta } = splitStromNetzState(state);
+  stromNetzGemeinsam = gemeinsam;
+  return delta;
+}
+
+/** Setzt gemeinsamen Teil + Delta zusammen und spielt sie ein. */
+function _ladeStromNetzDelta(delta) {
+  _applyStromNetzState(mergeStromNetzState(stromNetzGemeinsam, delta));
+}
+
+/**
+ * Überführt ein noch nicht migriertes Projekt ins Delta-Modell.
+ * Idempotent: liegt bereits ein gemeinsamer Pool vor und sind alle
+ * Varianten-Snapshots reine Deltas, passiert nichts.
+ *
+ * Gibt den Migrationsbericht zurück (oder null, wenn nichts zu tun war).
+ */
+export function migriereVariantenFallsNoetig() {
+  const schonMigriert = stromNetzGemeinsam
+    && varianten.every(v => istDelta(v.stromnetz))
+    && istDelta(baseStromNetzSnapshot);
+  if (schonMigriert) return null;
+
+  const live = _captureStromNetzState();
+  if (!live) return null;
+
+  const { gemeinsam, deltas, bericht } = migriereZuDelta({ live, varianten });
+  stromNetzGemeinsam = gemeinsam;
+  for (const v of varianten) v.stromnetz = deltas[v.id] || { items: [], nodes: [], edges: [] };
+  // Die Basisdaten sind der Zustand, aus dem der gemeinsame Teil gewonnen wurde
+  // — ihr eigenes Delta ist genau dessen Entscheidungsschicht.
+  baseStromNetzSnapshot = splitStromNetzState(live).delta;
+  return bericht;
 }
 
 export function captureNetzState() {
@@ -1014,27 +1073,28 @@ export function activateVariant(id, _transactionActive = false) {
   if (!_transactionActive && typeof window.runPlanningTransaction === 'function') {
     return window.runPlanningTransaction('Variante wechseln', () => activateVariant(id, true));
   }
-  // Aktuellen Zustand sichern
+  // Aktuellen Zustand sichern — Bestand/Entwicklung gehen in den gemeinsamen
+  // Pool, nur die Entscheidungsschicht in die Variante.
   if (activeVariantId === null) {
     baseNetzSnapshot = captureNetzState();
     baseErzeugerSnapshot = captureErzeugerState();
-    baseStromNetzSnapshot = _captureStromNetzState();
+    baseStromNetzSnapshot = _sichereStromNetzDelta();
   } else {
     const cur = varianten.find(v => v.id === activeVariantId);
-    if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); cur.stromnetz = _captureStromNetzState(); }
+    if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); cur.stromnetz = _sichereStromNetzDelta(); }
   }
   // Neuen Zustand anwenden
   activeVariantId = id;
   if (id === null) {
     applyNetzState(baseNetzSnapshot);
     applyErzeugerState(baseErzeugerSnapshot);
-    _applyStromNetzState(baseStromNetzSnapshot);
+    _ladeStromNetzDelta(baseStromNetzSnapshot);
   } else {
     const target = varianten.find(v => v.id === id);
     if (!target) return;
     applyNetzState(target.netz);
     applyErzeugerState(target.erzeuger);
-    _applyStromNetzState(target.stromnetz);
+    _ladeStromNetzDelta(target.stromnetz);
   }
   // Variantenwechsel ist eine synchrone Transaktion: erst alle Teilzustände
   // anwenden, dann genau einmal den Wärmegraphen und die Ergebnis-Caches erneuern.
@@ -1058,16 +1118,18 @@ function _addVarianteWithName(name) {
   if (activeVariantId === null) {
     baseNetzSnapshot = captureNetzState();
     baseErzeugerSnapshot = captureErzeugerState();
-    baseStromNetzSnapshot = _captureStromNetzState();
+    baseStromNetzSnapshot = _sichereStromNetzDelta();
   }
   const id = 'v_' + Date.now();
-  // Neue Variante = Ast vom AKTUELL aktiven Zustand (inkl. Stromnetz/Elektroassets) —
-  // so lassen sich z.B. eigene Erzeugungstrafos mit einer bestehenden Integration vergleichen
+  // Neue Variante = Ast vom AKTUELL aktiven Zustand. Kopiert werden dabei nur
+  // die PLANUNGSENTSCHEIDUNGEN — Bestand und Entwicklung bleiben gemeinsam, die
+  // Variante startet also zwangsläufig auf derselben Grundlage. Genau das macht
+  // den späteren Vergleich überhaupt aussagekräftig.
   varianten.push({
     id, name,
     netz: captureNetzState(),
     erzeuger: captureErzeugerState(),
-    stromnetz: _captureStromNetzState(),
+    stromnetz: _sichereStromNetzDelta(),
     gebaeudeAusschlüsse: []
   });
   activeVariantId = id;

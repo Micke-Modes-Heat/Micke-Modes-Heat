@@ -1,5 +1,5 @@
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
-import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustand, globalYear, isExcluded, selectedId, stromEdges } from './01-globals-varianten.js';
+import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustand, globalYear, isExcluded, selectedId, stromEdges, migriereVariantenFallsNoetig } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh, highlightCard, map,
          getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
@@ -25,6 +25,8 @@ import { bhkw, edgeWaypoints, fernwaerme, fernwaermeEmF, ffCounter, fliessgewaes
 import { kostenSzenario, setKostenSzenario } from './02a-netz-physik.js';
 import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
+import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
+import { repairPhasen } from './lib/phasen-core.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
@@ -1985,6 +1987,13 @@ export function _renderExpandedPanel(g, stats) {
         <input class="inp-field" type="number" placeholder="1" value="${g.stockwerke || 1}"
           data-input="updateField(${g.id},'stockwerke',this.value)"/>
       </div>
+      <div class="inp-group">
+        <div class="inp-label" title="${SCHICHT_META[normSchicht(g.schicht)].hinweis}">Planungsschicht</div>
+        <select class="inp-field" style="border-left:3px solid ${SCHICHT_META[normSchicht(g.schicht)].farbe};"
+          data-change="updateField(${g.id},'schicht',this.value)">
+          ${SCHICHT_REIHENFOLGE.map(s => `<option value="${s}"${normSchicht(g.schicht) === s ? ' selected' : ''}>${SCHICHT_META[s].icon} ${SCHICHT_META[s].label}</option>`).join('')}
+        </select>
+      </div>
       ${g.zustand ? `<div class="inp-group">
         <div class="inp-label">Zustand</div>
         <select class="inp-field" data-change="updateField(${g.id},'zustand',this.value)">
@@ -2468,6 +2477,7 @@ export function _buildProjectData() {
       id: g.id, name: g.name, gebaeudenummer: g.gebaeudenummer || '', waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
       flaeche: g.flaeche, nutzung: g.nutzung, fromOsm: g.fromOsm, osmId: g.osmId, polygon: g.polygon,
       baujahr: g.baujahr, baujährQuelle: g.baujährQuelle || null, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen,
+      schicht: g.schicht,
       stockwerke: g.stockwerke ?? 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
       pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil ?? 30, zustand: g.zustand || '',
       strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',
@@ -2567,6 +2577,7 @@ export function _buildProjectData() {
           linkedFF:       a.linkedFF       || null,
           props: { ...a.props },
           baujahr: a.baujahr, abrissjahr: a.abrissjahr,
+          schicht: a.schicht,
           massnahmen: a.massnahmen || []
         })),
         edges: stromEdges
@@ -3008,6 +3019,8 @@ function _applyProjectData(project) {
             newG.abrissjahr = g.abrissjahr;
             newG.sanierungen = g.sanierungen || [];
             newG.massnahmen = g.massnahmen || [];
+            // Altprojekte ohne Schicht: aus dem Baujahr ableiten (Zukunft → Entwicklung)
+            newG.schicht = schichtBackfill(g);
             newG.importSourceId = g.importSourceId || null;
             newG.importSourceName = g.importSourceName || null;
             newG.importSourceColor = g.importSourceColor || null;
@@ -3356,7 +3369,14 @@ function _applyProjectData(project) {
         baseNetzSnapshot: project.baseNetzSnapshot || null,
         baseErzeugerSnapshot: project.baseErzeugerSnapshot || null,
         baseStromNetzSnapshot: project.baseStromNetzSnapshot || null,
-        phasen: project.phasen || [],
+        // Fehlt in Projekten aus der Vollkopie-Zeit — wird nach dem Aufbau des
+        // Netzes von migriereVariantenFallsNoetig() nachgezogen.
+        stromNetzGemeinsam: project.stromNetzGemeinsam || null,
+        // Unstimmige Phasen-Zeiträume hier geradeziehen: sonst lässt eine einzige
+        // kaputte Phase aus der Datei später JEDE Planungstransaktion scheitern
+        // (auch das Löschen eines Assets) — mit einer Meldung, die nicht verrät,
+        // wo man es reparieren müsste.
+        phasen: repairPhasen(project.phasen),
       });
       renderVariantenBar();
       updateVariantBanner();
@@ -3371,7 +3391,8 @@ function _applyProjectData(project) {
             id: data.id, name: data.name, buildingId: data.buildingId,
             _movedByUser: data._movedByUser || false,
             props: data.props || {}, baujahr: data.baujahr,
-            abrissjahr: data.abrissjahr, massnahmen: data.massnahmen || []
+            abrissjahr: data.abrissjahr, schicht: schichtBackfill(data),
+            massnahmen: data.massnahmen || []
           });
           if (loaded && data.linkedErzeuger) loaded.linkedErzeuger = data.linkedErzeuger;
           if (loaded && data.linkedFF)       loaded.linkedFF       = data.linkedFF;
@@ -3497,6 +3518,20 @@ function _applyProjectData(project) {
         recalcStromNetz();
       }
 
+      // Delta-Modell: Projekte aus der Vollkopie-Zeit hier einmalig überführen.
+      // Muss NACH dem Aufbau des Netzes laufen — die Migration liest den
+      // aufgebauten Live-Zustand, um daraus den gemeinsamen Teil zu gewinnen.
+      try {
+        const migBericht = migriereVariantenFallsNoetig();
+        if (migBericht && (migBericht.befoerdert.length || migBericht.abweichungen.length)) {
+          console.info('[Varianten] Auf Delta-Modell migriert:', migBericht);
+          if (migBericht.abweichungen.length) {
+            showHint(`ℹ ${migBericht.abweichungen.length} variantenspezifische Änderung(en) am Bestand `
+              + 'konnten nicht übernommen werden — Details in der Konsole.');
+          }
+        }
+      } catch (e) { console.warn('Varianten-Migration übersprungen:', e); }
+
       // Custom Nutzungstypen wiederherstellen
       if (Array.isArray(project.customNutzungstypen)) {
         NUTZUNGSTYPEN_CUSTOM.length = 0;
@@ -3576,6 +3611,8 @@ export function loadGebaeudeFromParent(gebaeudeArray) {
     newG.abrissjahr = g.abrissjahr;
     newG.sanierungen = g.sanierungen || [];
     newG.nutzung = g.nutzung || '';
+    // Altprojekte ohne Schicht: aus dem Baujahr ableiten (Zukunft → Entwicklung)
+    newG.schicht = schichtBackfill(g);
     if (g.id >= idCounter) setIdCounter(g.id + 1);
   });
   _initYearSliderFromBaujahr();

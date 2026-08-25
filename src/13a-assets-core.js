@@ -4,6 +4,7 @@
 
 import { globalYear, massnahmeJahr } from './01-globals-varianten.js';
 import { createId } from './lib/util.js';
+import { istSchicht, getAktiveSchicht } from './lib/schichten.js';
 
 // ── Asset-Typ-Katalog ──────────────────────────────────────────────────────
 // domain: 'strom' | 'waerme' | 'hybrid' (z.B. WP, BHKW später)
@@ -173,14 +174,19 @@ export function createAsset(type, lat, lng, opts = {}) {
   // Baujahr/Abrissjahr aus verknüpftem Gebäude übernehmen, falls nicht explizit
   let baujahr    = opts.baujahr    ?? null;
   let abrissjahr = opts.abrissjahr ?? null;
-  if (opts.buildingId && (!baujahr || !abrissjahr)) {
+  // Planungsschicht ebenso: explizit (Wiederherstellung) > Gebäude > Eingabemodus.
+  // Ein Asset an einem geplanten Neubau gehört zur selben Schicht wie das Gebäude.
+  let schicht    = istSchicht(opts.schicht) ? opts.schicht : null;
+  if (opts.buildingId && (!baujahr || !abrissjahr || !schicht)) {
     const geb = (typeof window !== 'undefined' && window.gebaeude)
       ? window.gebaeude.find(g => g.id === opts.buildingId) : null;
     if (geb) {
       if (!baujahr    && geb.baujahr)    baujahr    = geb.baujahr;
       if (!abrissjahr && geb.abrissjahr) abrissjahr = geb.abrissjahr;
+      if (!schicht    && istSchicht(geb.schicht)) schicht = geb.schicht;
     }
   }
+  if (!schicht) schicht = getAktiveSchicht();
 
   const asset = {
     id:         opts.id         || assetUid(),
@@ -192,6 +198,7 @@ export function createAsset(type, lat, lng, opts = {}) {
     props:      opts.props      || {},
     baujahr,
     abrissjahr,
+    schicht,
     massnahmen: opts.massnahmen || [],
     _marker:    null,
   };

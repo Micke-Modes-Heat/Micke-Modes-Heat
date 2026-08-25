@@ -33,6 +33,7 @@ import { makePvProfile8760, _PV_SPEZ_DEFAULT } from './09a-pv-profile.js';
 import { getElSlpProfiles, getElSlpGruppen } from './13k-elslp-registry.js';
 import { computeWindYield, calcWindLwaAuto, computeWindScenarios, windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 import { toggleDrawWindGebiet, clearWindGebiet } from './02c-karte-werkzeuge.js';
+import { SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 
 // Inspector-Slot sitzt im Elektro-Tab der rechten Sidebar
 function getPanel() { return document.getElementById('sb-asset-inspector-slot'); }
@@ -192,6 +193,21 @@ export function renderSidebarAssetList() {
 
 // ── Hilfsfunktionen für Formular-Felder ─────────────────────────────────────
 function esc(s) { return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+// Planungsschicht nachträglich korrigierbar machen — im falschen Eingabemodus
+// angelegte Objekte sollen billig zu berichtigen sein, sonst arbeitet man
+// gegen den Modus statt mit ihm.
+function buildSchichtSelect(asset) {
+  const cur = normSchicht(asset.schicht);
+  const opts = SCHICHT_REIHENFOLGE.map(s =>
+    `<option value="${s}"${s === cur ? ' selected' : ''}>${SCHICHT_META[s].icon} ${SCHICHT_META[s].label}</option>`
+  ).join('');
+  return `<div class="ins-field-group">
+    <label class="ins-field-label" title="${SCHICHT_META[cur].hinweis}">Planungsschicht</label>
+    <select class="ins-field-input" data-field="schicht"
+      style="border-left:3px solid ${SCHICHT_META[cur].farbe};">${opts}</select>
+  </div>`;
+}
 
 function numField(id, key, label, dflt, opts = {}) {
   const p = opts.props || {};
@@ -1367,6 +1383,7 @@ function renderInspector(asset) {
             value="${asset.abrissjahr ?? ''}" placeholder="—">
         </div>
       </div>
+      ${buildSchichtSelect(asset)}
       <div class="ins-section-header" data-target="ins-sec-eigenschaften">
         <span class="asset-ins-section-title">Eigenschaften</span>
         <span class="ins-section-chevron">▾</span>
@@ -1516,6 +1533,10 @@ function wireEvents(panel, asset) {
         drawAssetMarker(asset);
       } else if (f === 'buildingId') {
         asset.buildingId = inp.value || null;
+        redrawAllAssets();
+      } else if (f === 'schicht') {
+        asset.schicht = normSchicht(inp.value);
+        renderInspector(asset);   // Farbmarkierung des Feldes mitziehen
         redrawAllAssets();
       }
     });

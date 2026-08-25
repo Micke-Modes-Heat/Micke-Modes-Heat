@@ -19,14 +19,15 @@
 //   APP-SIDE (liest/schreibt window.stromEdges + ASSETS):
 //     engpassSweep, engpassLetztesErgebnis
 
-import { ASSETS, getAssetStatus } from './13a-assets-core.js';
+import { ASSETS, getAssetStatus, TYPE_RANK } from './13a-assets-core.js';
 import { elCalcAssets, getStromEdgeStatus, setStromColorMode } from './05b-stromnetz.js';
 import { globalYear, massnahmeJahr } from './01-globals-varianten.js';
 import { showHint } from './03c-gebaeude-io.js';
 import {
   ENGPASS_GRENZEN, ENGPASS_VORLAUF_J, engpassStuetzjahre, engpassBewerte,
   engpassKlassifiziere, engpassKabelAlternativen, engpassWaehleAlternative,
-  engpassMassnahmeJahr,
+  engpassMassnahmeJahr, engpassDownstreamLeaves, engpassAusloeser,
+  engpassIstBestandsmangel,
 } from './lib/engpass-core.js';
 import { KABEL_TYPEN } from './config/netz-kosten.js';
 import { ERT_TRAFO_STUFEN, ertNaechsteTrafoStufe } from './14b-ertuechtigung.js';
@@ -158,7 +159,7 @@ export function engpassSweep(opts = {}) {
     const e = edges.find(x => x.id === id);
     const b = engpassBewerte(reihe);
     return {
-      id, art: 'kabel', msLevel: !!e?.msLevel,
+      id, art: 'kabel', msLevel: !!e?.msLevel, stationsintern: !!e?.stationsintern,
       label: `${nameOf(e?.u)} → ${nameOf(e?.v)}`,
       ...b, klasse: engpassKlassifiziere(b.engpassJahr, start), reihe,
       // Für den Maßnahmen-Generator: Ist-Zustand + höchster Strom im Horizont
@@ -196,6 +197,74 @@ export function engpassSweep(opts = {}) {
   // (inklGeplant) darf die Engpassjahr-Färbung nicht überschreiben.
   if (!inklGeplant) _letztesErgebnis = ergebnis;
   return ergebnis;
+}
+
+// ── Auslöser & Zusammenhänge ─────────────────────────────────────────────────
+//
+// Beantwortet: "WARUM wird dieses Betriebsmittel zum Engpass — welcher neue
+// Verbraucher/Erzeuger hat das ausgelöst, und welche anderen Engpässe hängen
+// an derselben Ursache?" Graph-Logik liegt PURE in lib/engpass-core.js
+// (engpassDownstreamLeaves/engpassAusloeser); hier nur das Verdrahten mit
+// ASSETS.items / window.stromEdges / window.gebaeude, analog zu engpassSweep.
+
+function _leavesFuer(item) {
+  return engpassDownstreamLeaves(item, ASSETS.items || [], window.stromEdges || [], window.gebaeude || [], TYPE_RANK);
+}
+
+/** Auslöser eines Engpasses — siehe engpassAusloeser (lib/engpass-core.js) für die Regel. */
+export function engpassAusloeserFuer(item) {
+  return engpassAusloeser(item, _leavesFuer(item), massnahmeJahr);
+}
+
+/** Andere kritische Betriebsmittel, die denselben Auslöser haben (gleicher Verbraucher/Erzeuger stromabwärts). */
+export function engpassZusammenhaengende(item, alleKritisch) {
+  const eigene = new Set(engpassAusloeserFuer(item).map(t => `${t.kind}_${t.id}`));
+  if (!eigene.size) return [];
+  return (alleKritisch || []).filter(other => other !== item && other.engpassJahr != null
+    && engpassAusloeserFuer(other).some(t => eigene.has(`${t.kind}_${t.id}`)));
+}
+
+/**
+ * Gruppiert alle kritischen Betriebsmittel nach ihrem Auslöser (Verbraucher/
+ * Erzeuger-Zubau) und hängt — falls vorhanden — die daraus abgeleitete
+ * Ausbau-Maßnahme (aus engpassGeneriereMassnahmen) je Betriebsmittel an.
+ *
+ * Rückgabe: {
+ *   gruppen: [{ trigger, jahr, betroffene: [{ item, massnahme|null }] }],
+ *   ohneAusloeser: [item, ...],   // später kritisch, aber ohne eindeutiges Einzelereignis
+ *   bestandsmaengel: [item, ...]  // schon im Startjahr kritisch → Datenkorrektur
+ * }
+ */
+export function engpassAufloesung(res, massnahmenItems) {
+  if (!res) return { gruppen: [], ohneAusloeser: [], bestandsmaengel: [] };
+  const kritisch = [...res.kabel, ...res.trafos].filter(x => x.engpassJahr != null);
+  const massnByItemId = new Map((massnahmenItems || []).map(m => [m.id.replace(/^auto_/, ''), m]));
+
+  const gruppen = new Map(); // key → { trigger, betroffene: [{item, massnahme}] }
+  const ohneAusloeser = [];
+  const bestandsmaengel = [];
+  for (const it of kritisch) {
+    const ausl = engpassAusloeserFuer(it);
+    if (!ausl.length) {
+      // Bestandsmängel gehören in ihre eigene Kategorie — sie hier als
+      // "Ursache unklar" mitzuzählen würde den echten Rest verwässern.
+      (engpassIstBestandsmangel(it, res.von, ausl) ? bestandsmaengel : ohneAusloeser).push(it);
+      continue;
+    }
+    for (const t of ausl) {
+      const key = `${t.kind}_${t.id}`;
+      if (!gruppen.has(key)) gruppen.set(key, { trigger: t, betroffene: [] });
+      const g = gruppen.get(key);
+      if (!g.betroffene.some(b => b.item === it)) g.betroffene.push({ item: it, massnahme: massnByItemId.get(it.id) || null });
+    }
+  }
+
+  const ergebnis = [...gruppen.values()].map(g => ({
+    ...g,
+    jahr: Math.min(...g.betroffene.map(b => b.item.engpassJahr)),
+  })).sort((a, b) => a.jahr - b.jahr);
+
+  return { gruppen: ergebnis, ohneAusloeser };
 }
 
 // ── Bedienung: Analyse starten + Karte umschalten ────────────────────────────
@@ -277,6 +346,29 @@ export function engpassMassnahmenVerwerfen() {
   return n;
 }
 
+// Dimensionierungs-Parameter für die Kabelwahl. Alle bekannten Kabeltypen
+// übergeben — dimensioniert wird primär im Typ des Bestandskabels, die übrigen
+// erscheinen als Materialalternative.
+function _kabelParams() {
+  return {
+    typen:      KABEL_TYPEN,
+    tiefbauEurM: parseFloat(document.getElementById('strom-k-tiefbau')?.value) || 100,
+    grenzDuPct: ENGPASS_GRENZEN.deltaUKumPct,
+  };
+}
+
+// Nächstgrößere Trafostufe für ein überlastetes Trafo-Item (oder null).
+function _trafoStufe(t) {
+  const istKva      = t.ist?.leistungKVA || 630;
+  const benoetigtKw = istKva * 0.9 * (t.maxAuslPct / 100); // Auslastung war auf kVA·cosφ bezogen
+  const stufe       = ertNaechsteTrafoStufe(benoetigtKw, ERT_TRAFO_STUFEN);
+  if (!stufe || stufe.bisKvA <= istKva) return null;
+  return {
+    istKva, stufe,
+    label: `Trafo ${istKva} → ${stufe.bisKvA < Infinity ? stufe.bisKvA + ' kVA' : 'Übergabestation'}`,
+  };
+}
+
 /**
  * Leitet aus dem letzten Sweep konkrete Ertüchtigungs-Maßnahmen ab und schreibt
  * sie als `massnahmen` (status 'geplant') auf Kabel bzw. Trafo-Assets.
@@ -284,20 +376,20 @@ export function engpassMassnahmenVerwerfen() {
  *
  * Dimensioniert auf das Maximum des GESAMTEN Horizonts (nicht nur auf das erste
  * Engpassjahr), damit nicht zweimal gebaut werden muss.
+ *
+ * opts.ohneBestandsmaengel: Betriebsmittel, die schon im Startjahr ohne Auslöser
+ *   überlastet sind, übergehen — die sind kein Ausbaubedarf, sondern eine zu
+ *   korrigierende Bestandsdimensionierung (s. engpassBestandsmaengel).
  */
 export function engpassGeneriereMassnahmen(opts = {}) {
   const res = opts.ergebnis || _letztesErgebnis;
   if (!res) return null;
 
-  const vorlaufJ    = opts.vorlaufJ ?? ENGPASS_VORLAUF_J;
-  const tiefbauEurM = parseFloat(document.getElementById('strom-k-tiefbau')?.value) || 100;
-  // Alle bekannten Kabeltypen übergeben — dimensioniert wird primär im Typ des
-  // Bestandskabels, die übrigen erscheinen als Materialalternative.
-  const params = {
-    typen:      KABEL_TYPEN,
-    tiefbauEurM,
-    grenzDuPct: ENGPASS_GRENZEN.deltaUKumPct,
-  };
+  const vorlaufJ = opts.vorlaufJ ?? ENGPASS_VORLAUF_J;
+  const params   = _kabelParams();
+  const uebergehen = opts.ohneBestandsmaengel
+    ? new Set(engpassBestandsmaengel(res).map(b => b.item.id))
+    : null;
 
   engpassMassnahmenVerwerfen();
   const items = [];
@@ -309,6 +401,8 @@ export function engpassGeneriereMassnahmen(opts = {}) {
   // ── Kabel ────────────────────────────────────────────────────────────────
   for (const k of res.kabel) {
     if (k.engpassJahr == null || k.msLevel) continue; // MS-Kabel: eigene Systematik
+    if (k.stationsintern) continue; // auf Trafo-Nennleistung ausgelegt, nie Engpass
+    if (uebergehen?.has(k.id)) continue;
     const edge = (window.stromEdges || []).find(e => e.id === k.id);
     if (!edge) continue;
 
@@ -341,16 +435,15 @@ export function engpassGeneriereMassnahmen(opts = {}) {
   // ── Trafos (Stufen aus 14b-ertuechtigung) ────────────────────────────────
   for (const t of res.trafos) {
     if (t.engpassJahr == null) continue;
+    if (uebergehen?.has(t.id)) continue;
     const asset = (ASSETS.items || []).find(a => a.id === t.id);
     if (!asset) continue;
 
-    const istKva      = t.ist?.leistungKVA || 630;
-    const benoetigtKw = istKva * 0.9 * (t.maxAuslPct / 100); // Auslastung war auf kVA·cosφ bezogen
-    const stufe       = ertNaechsteTrafoStufe(benoetigtKw, ERT_TRAFO_STUFEN);
-    if (!stufe || stufe.bisKvA <= istKva) continue;
+    const kand = _trafoStufe(t);
+    if (!kand) continue;
+    const { stufe, label } = kand;
 
     const jahr = engpassMassnahmeJahr(t.engpassJahr, res.von, vorlaufJ);
-    const label = `Trafo ${istKva} → ${stufe.bisKvA < Infinity ? stufe.bisKvA + ' kVA' : 'Übergabestation'}`;
     const m = {
       id: `auto_${t.id}`, [AUTO_TAG]: true,
       titel: label, typ: 'Ertuechtigung', jahr, kosten: stufe.investEUR,
@@ -365,6 +458,117 @@ export function engpassGeneriereMassnahmen(opts = {}) {
   items.sort((a, b) => (a.jahr ?? 0) - (b.jahr ?? 0));
   ungeloest.sort((a, b) => (a.engpassJahr ?? 0) - (b.engpassJahr ?? 0));
   return { items, ungeloest, investGesamt: items.reduce((s, i) => s + (i.kosten || 0), 0) };
+}
+
+// ── Bestandsmängel: von vornherein zu klein dimensioniert ────────────────────
+//
+// Abgrenzung siehe engpassIstBestandsmangel (lib/engpass-core.js): schon im
+// Startjahr überlastet UND kein Zubau in diesem Jahr als Auslöser. Das ist kein
+// Ausbaubedarf, sondern eine falsch erfasste Bestandsdimensionierung — deshalb
+// wird sie als Korrektur der Basisdaten angeboten, nicht als geplante Maßnahme.
+
+// Sicherungskopie der Originalwerte, damit eine Korrektur rücknehmbar bleibt
+// (gleiche Idee wie _fpOrigBaujahr im Ausbaufahrplan).
+const KORR_ORIG = '_engpassKorrOrig';
+
+/**
+ * Alle Bestandsmängel des letzten Sweeps mit Korrekturvorschlag.
+ *
+ * Rückgabe: [{ item, vorschlag }] — vorschlag ist null, wenn keine
+ * Standard-Ertüchtigung ausreicht (dann hilft nur eine Strukturänderung).
+ * vorschlag: { label, newProps, investEUR, art }
+ */
+export function engpassBestandsmaengel(res) {
+  const r = res || _letztesErgebnis;
+  if (!r) return [];
+  const params = _kabelParams();
+  const out = [];
+
+  for (const k of r.kabel) {
+    if (k.msLevel) continue; // MS-Kabel: eigene Systematik
+    if (k.stationsintern) continue; // auf Trafo-Nennleistung ausgelegt, nie Engpass
+    if (!engpassIstBestandsmangel(k, r.von, engpassAusloeserFuer(k))) continue;
+    const wahl = engpassWaehleAlternative(engpassKabelAlternativen(
+      k.ist, { benoetigtA: k.maxStromA, maxDuPct: k.maxDuPct }, params));
+    out.push({
+      item: k,
+      vorschlag: wahl ? { art: 'kabel', label: wahl.label, newProps: wahl.newProps, investEUR: wahl.investEUR } : null,
+    });
+  }
+
+  for (const t of r.trafos) {
+    if (!engpassIstBestandsmangel(t, r.von, engpassAusloeserFuer(t))) continue;
+    const kand = _trafoStufe(t);
+    out.push({
+      item: t,
+      vorschlag: kand
+        ? { art: 'trafo', label: kand.label, newProps: { leistungKVA: kand.stufe.bisKvA }, investEUR: kand.stufe.investEUR }
+        : null,
+    });
+  }
+
+  return out.sort((a, b) => b.item.maxAuslPct - a.item.maxAuslPct);
+}
+
+/**
+ * Übernimmt die Korrekturvorschläge direkt in die Bestandsdaten — also in
+ * `crossSection`/`nParallel`/`cableType` der Kante bzw. `props.leistungKVA` des
+ * Trafos, NICHT als Maßnahme mit Jahr und Investition.
+ *
+ * Bei Kabeln wird dabei `autoSized` abgeschaltet: der korrigierte Querschnitt
+ * ist eine bewusste Festlegung und soll nicht bei der nächsten Berechnung
+ * wieder überschrieben werden.
+ *
+ * nurIds: optionales Set/Array von Betriebsmittel-IDs (Default: alle).
+ * Gibt die Anzahl übernommener Korrekturen zurück.
+ */
+export function engpassKorrekturenUebernehmen(nurIds) {
+  const filter = nurIds ? new Set(nurIds) : null;
+  let n = 0;
+
+  for (const { item, vorschlag } of engpassBestandsmaengel()) {
+    if (!vorschlag) continue;                       // nicht lösbar → unangetastet lassen
+    if (filter && !filter.has(item.id)) continue;
+
+    if (vorschlag.art === 'kabel') {
+      const edge = (window.stromEdges || []).find(e => e.id === item.id);
+      if (!edge) continue;
+      if (!edge[KORR_ORIG]) edge[KORR_ORIG] = {
+        crossSection: edge.crossSection, nParallel: edge.nParallel,
+        cableType:    edge.cableType,    autoSized: edge.autoSized,
+      };
+      Object.assign(edge, vorschlag.newProps);
+      edge.autoSized = false;
+    } else {
+      const asset = (ASSETS.items || []).find(a => a.id === item.id);
+      if (!asset) continue;
+      if (!asset[KORR_ORIG]) asset[KORR_ORIG] = { ...(asset.props || {}) };
+      asset.props = { ...(asset.props || {}), ...vorschlag.newProps };
+    }
+    n++;
+  }
+
+  if (n) elCalcAssets();  // Live-Zustand mit den korrigierten Daten neu rechnen
+  return n;
+}
+
+/** Nimmt alle übernommenen Bestandskorrekturen wieder zurück. */
+export function engpassKorrekturenVerwerfen() {
+  let n = 0;
+  for (const edge of (window.stromEdges || [])) {
+    if (!edge[KORR_ORIG]) continue;
+    Object.assign(edge, edge[KORR_ORIG]);
+    delete edge[KORR_ORIG];
+    n++;
+  }
+  for (const asset of (ASSETS.items || [])) {
+    if (!asset[KORR_ORIG]) continue;
+    asset.props = asset[KORR_ORIG];
+    delete asset[KORR_ORIG];
+    n++;
+  }
+  if (n) elCalcAssets();
+  return n;
 }
 
 /**
