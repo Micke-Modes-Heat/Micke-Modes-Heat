@@ -38,6 +38,11 @@ const NODE_TYPES = ['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS', 'Verbra
 
 const STATUS_COL = { ok: '#4caf50', bereit: '#f9a825', offen: '#90a4ae' };
 
+// Auswahlfarbe: Weiß war auf weißem Planpapier unsichtbar. Magenta kommt auf
+// Bestandsplänen praktisch nie vor (dort dominieren Rot, Grün, Cyan, Schwarz)
+// und steht mit dunklem Unterzug auf hellem wie auf dunklem Untergrund.
+const SEL_COL = '#e91e63';
+
 // ── Zustand ─────────────────────────────────────────────────────────────────
 // plan:  { name, url, w, h }            — Bilddaten + Pixelmaße
 // nodes: { id, x, y, art, label, assetType, linkKind:'a'|'g'|null, linkId, assetId }
@@ -52,6 +57,7 @@ let _map = null, _imgLayer = null, _marks = null;
 let _mode = 'ansehen';
 let _sel = null;        // { kind:'node'|'link', id }
 let _pendingA = null;   // erster Knoten im Kabel-Modus
+let _pendingPts = [];   // Stützpunkte der laufenden Kabelzeichnung (Bildpixel)
 let _pendingGeb = null; // aus der Suche gewähltes Gebäude, wartet auf den Platzierungsklick
 let _ro = null;
 
@@ -108,6 +114,7 @@ function _ensurePanel() {
         <button class="pd-mode" data-mode="ansehen"  data-click="pdSetMode('ansehen')"  title="Nur ansehen: zoomen, verschieben, Einträge auswählen">🖱 Ansehen</button>
         <button class="pd-mode" data-mode="knoten"   data-click="pdSetMode('knoten')"   title="Klick auf ein Kästchen im Plan legt ein einzelnes Betriebsmittel an">⊕ Knoten</button>
         <button class="pd-mode" data-mode="kabel"    data-click="pdSetMode('kabel')"    title="Zwei Einträge nacheinander anklicken → Kabel">⟋ Kabel</button>
+        <button class="pd-mode" data-mode="text"     data-click="pdSetMode('text')"     title="Beschriftungen aus dem PDF anzeigen und per Klick übernehmen">Aa Text</button>
         <button class="pd-mode" data-mode="loeschen" data-click="pdSetMode('loeschen')" title="Eintrag oder Kabel im Plan anklicken → entfernen">✕ Löschen</button>
       </span>
       <span class="pd-modehint" id="pd-modehint"></span>
@@ -185,6 +192,9 @@ function _ensureMap() {
   _map.setView([0, 0], 0);
   _marks = L.layerGroup().addTo(_map);
   _map.on('click', _onMapClick);
+  // Die Textebene wird nur fuer den sichtbaren Ausschnitt gezeichnet und muss
+  // deshalb nach jedem Verschieben/Zoomen neu bestimmt werden.
+  _map.on('moveend zoomend', () => { if (_mode === 'text') _renderMarks(); });
 
   // Fenstermodus ist in der Größe ziehbar, Vollbild folgt dem Viewport —
   // Leaflet muss beides mitbekommen
@@ -255,18 +265,66 @@ async function _loadPdf(file, name) {
     const viewport = page.getViewport({ scale: 2.5 });
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width; canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    // Zeitgrenze: pdf.js bleibt beim Rendern endlos haengen, wenn ein PDF eine
+    // Standardschrift (Helvetica, Times) nur referenziert statt einzubetten --
+    // die Schriftdaten liegen im Offline-Build nicht bereit, und das Promise
+    // wird nie erfuellt. Ohne Grenze bliebe nur eine stumm haengende Ladeanzeige.
+    const fertig = await Promise.race([
+      page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise.then(() => true),
+      new Promise(r => setTimeout(() => r(false), 25000)),
+    ]);
+    if (!fertig) {
+      showHint('⚠ PDF konnte nicht gezeichnet werden: ' + name
+        + ' — vermutlich sind die Schriften nicht eingebettet. Plan als PNG/JPG exportieren oder mit eingebetteten Schriften neu ausgeben.');
+      return;
+    }
     _setPlan(canvas.toDataURL('image/png'), canvas.width, canvas.height,
-      pdf.numPages > 1 ? `${name} (S. ${pageNr})` : name);
+      pdf.numPages > 1 ? `${name} (S. ${pageNr})` : name,
+      await _leseTextebene(page, viewport));
   } catch (e) {
     console.error('Plan-PDF fehlgeschlagen:', e);
     showHint('⚠ PDF konnte nicht geladen werden: ' + name);
   }
 }
 
-function _setPlan(url, w, h, name) {
+// Beschriftungen eines PDFs mit ihrer Position im gerenderten Bild. Anders als
+// bei einem Scan steht der Text hier als echte Zeichenkette im Dokument — kein
+// OCR nötig. Gespeichert wird nur der Ankerpunkt (Grundlinienanfang), nicht die
+// Textbox: Kabelbeschriftungen stehen oft schräg an der Leitung, und ein
+// achsenparalleles Rechteck wäre dafür die falsche Näherung.
+async function _leseTextebene(page, viewport) {
+  try {
+    const tc = await page.getTextContent();
+    const roh = (tc.items || [])
+      .filter(it => typeof it.str === 'string' && it.str.trim())
+      .map(it => {
+        const m = window.pdfjsLib.Util.transform(viewport.transform, it.transform);
+        return { x: Math.round(m[4]), y: Math.round(m[5]), str: it.str.trim() };
+      });
+    // pdf.js zerlegt eine Beschriftung gern in mehrere Fragmente ("NYY-J ",
+    // "5x70"). Was auf derselben Grundlinie dicht beieinander steht, wieder
+    // zusammensetzen — sonst parst keine einzige Kabelangabe.
+    roh.sort((p, q) => (p.y - q.y) || (p.x - q.x));
+    const zusammen = [];
+    for (const t of roh) {
+      const letzt = zusammen[zusammen.length - 1];
+      if (letzt && Math.abs(letzt.y - t.y) <= 2 && t.x - letzt.xEnde <= 14) {
+        letzt.str += (t.x - letzt.xEnde > 2 ? ' ' : '') + t.str;
+        letzt.xEnde = t.x + t.str.length * 5;
+        continue;
+      }
+      zusammen.push({ x: t.x, y: t.y, str: t.str, xEnde: t.x + t.str.length * 5 });
+    }
+    return zusammen.map(t => ({ x: t.x, y: t.y, str: t.str }));
+  } catch (e) {
+    console.warn('Textebene des PDFs nicht lesbar:', e);
+    return [];
+  }
+}
+
+function _setPlan(url, w, h, name, texts) {
   const hatMarken = PD.nodes.length > 0 || PD.links.length > 0;
-  PD.plan = { name, url, w, h };
+  PD.plan = { name, url, w, h, texts: Array.isArray(texts) ? texts : [] };
   if (!hatMarken) { PD.nodes = []; PD.links = []; PD.seq = 1; }
   _sel = null; _pendingA = null; _pendingGeb = null;
   _ensureMap();
@@ -274,7 +332,7 @@ function _setPlan(url, w, h, name) {
   _renderAll();
   showHint(hatMarken
     ? `Plan „${name}" ersetzt — vorhandene Markierungen bleiben erhalten.`
-    : `Plan „${name}" geladen. Gebäude über das Suchfeld auf den Plan setzen oder im Modus „⊕ Knoten" einzelne Betriebsmittel anlegen.`);
+    : `Plan „${name}" geladen${PD.plan.texts.length ? ` — ${PD.plan.texts.length} Beschriftungen aus dem PDF gelesen, Kabelangaben werden automatisch übernommen` : ''}.`);
 }
 
 export function pdClear() {
@@ -289,20 +347,28 @@ export function pdClear() {
 const MODE_HINWEIS = {
   ansehen:  'Ziehen verschiebt den Plan, Mausrad zoomt. Einträge lassen sich an die richtige Stelle ziehen.',
   knoten:   'Klick auf ein Kästchen legt ein einzelnes Betriebsmittel an — ganze Gebäude besser über das Suchfeld.',
-  kabel:    'Ersten Eintrag anklicken, dann den zweiten. Esc bricht eine begonnene Verbindung ab.',
+  kabel:    'Ersten Eintrag anklicken, dann den zweiten. Klicks dazwischen setzen Stützpunkte entlang der Planlinie.',
+  text:     'Beschriftungen aus dem PDF: Klick übernimmt den Text in den ausgewählten Eintrag bzw. das Kabel.',
   loeschen: 'Klick auf Eintrag oder Kabel entfernt ihn aus dem Plan (nicht von der Karte).',
 };
 
 export function pdSetMode(m) {
   _mode = m;
   _pendingA = null;
+  _pendingPts = [];
   _pendingGeb = null;   // ein Moduswechsel verwirft eine offene Gebäude-Platzierung
   document.querySelectorAll('#' + PANEL_ID + ' .pd-mode')
     .forEach(b => b.classList.toggle('active', b.dataset.mode === m));
   const div = document.getElementById(MAP_ID);
   if (div) div.style.cursor = (m === 'ansehen') ? '' : 'crosshair';
   const hint = document.getElementById('pd-modehint');
-  if (hint) hint.textContent = MODE_HINWEIS[m] || '';
+  if (hint) {
+    // Bildplaene (Scans, PNG/JPG) bringen keine Textebene mit -- das gehoert
+    // gesagt, statt einen leeren Modus anzubieten.
+    hint.textContent = (m === 'text' && PD.plan && !(PD.plan.texts || []).length)
+      ? 'Dieser Plan enthaelt keine Textebene (nur PDF-Plaene bringen eine mit; Scans nicht).'
+      : (MODE_HINWEIS[m] || '');
+  }
   _renderMarks();
 }
 
@@ -314,6 +380,7 @@ document.addEventListener('keydown', ev => {
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
   if (_pendingGeb) { _pendingGeb = null; pdSetMode(_mode); return; }
+  if (_pendingPts.length) { _pendingPts.pop(); _renderAll(); return; }
   if (_pendingA) { _pendingA = null; _renderAll(); return; }
   if (_mode !== 'ansehen') pdSetMode('ansehen');
 });
@@ -322,11 +389,17 @@ function _onMapClick(e) {
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
   const p = _xy(e.latlng);
   if (_pendingGeb) { _setzeGebaeudeKnoten(_pendingGeb, p); return; }
-  if (_mode !== 'knoten') { if (_mode === 'kabel') _pendingA = null; _renderAll(); return; }
+  if (_mode === 'kabel') {
+    // Zwischen den beiden Einträgen gesetzte Klicks folgen der Linie im Plan.
+    // Rein zeichnerisch — die Trasse auf der Karte kommt weiter aus dem Routing.
+    if (_pendingA) { _pendingPts.push({ x: Math.round(p.x), y: Math.round(p.y) }); _renderAll(); }
+    return;
+  }
+  if (_mode !== 'knoten') { _renderAll(); return; }
   const node = {
     id: 'pn' + (PD.seq++), x: Math.round(p.x), y: Math.round(p.y),
     art: 'komponente',
-    label: '', assetType: 'Verbraucher', linkKind: null, linkId: null, assetId: null,
+    label: _textNah(p, 60)?.str || '', assetType: 'Verbraucher', linkKind: null, linkId: null, assetId: null,
   };
   PD.nodes.push(node);
   _sel = { kind: 'node', id: node.id };
@@ -460,6 +533,83 @@ function _setzeGebaeudeKnoten(g, p) {
   if (feld) { feld.value = ''; feld.focus(); }
 }
 
+// ── Beschriftungen aus dem Plan finden ───────────────────────────
+function _dist2(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; }
+
+// Abstand eines Punktes zur Strecke a–b (quadriert, spart die Wurzel)
+function _dist2Segment(p, a, b) {
+  const vx = b.x - a.x, vy = b.y - a.y;
+  const len2 = vx * vx + vy * vy;
+  if (len2 === 0) return _dist2(p.x, p.y, a.x, a.y);
+  let t = ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return _dist2(p.x, p.y, a.x + t * vx, a.y + t * vy);
+}
+
+/** Nächste Beschriftung zu einem Punkt, innerhalb von radius Bildpixeln. */
+function _textNah(p, radius, pruef) {
+  const texts = PD.plan?.texts || [];
+  let best = null, bestD = radius * radius;
+  for (const t of texts) {
+    if (pruef && !pruef(t.str)) continue;
+    const d = _dist2(p.x, p.y, t.x, t.y);
+    if (d < bestD) { bestD = d; best = t; }
+  }
+  return best;
+}
+
+/** Nächste Beschriftung zu einem Linienzug — Kabelangaben stehen an der Leitung. */
+function _textNahLinie(pts, radius, pruef) {
+  const texts = PD.plan?.texts || [];
+  let best = null, bestD = radius * radius;
+  for (const t of texts) {
+    if (pruef && !pruef(t.str)) continue;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const d = _dist2Segment(t, pts[i], pts[i + 1]);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+  }
+  return best;
+}
+
+/** Linienzug eines Kabels im Plan: Anfang, gesetzte Stützpunkte, Ende. */
+function _linkPunkte(l, a, b) {
+  return [{ x: a.x, y: a.y }, ...(l.points || []), { x: b.x, y: b.y }];
+}
+
+// Kabelangabe setzen und gleich auswerten — eine Stelle für Handeingabe und
+// automatische Übernahme aus der Planbeschriftung.
+function _setzeKabelLabel(l, text) {
+  l.label = text;
+  const p = pdParseKabelLabel(text);
+  if (p) {
+    l.cableType = p.cableType;
+    l.crossSection = p.crossSection;
+    l.nParallel = p.nParallel;
+    l.msLevel = p.msLevel;
+  } else {
+    l.cableType = null; l.crossSection = 0; l.nParallel = 1; l.msLevel = false;
+  }
+}
+
+// Angeklickte Beschriftung in den ausgewählten Eintrag übernehmen
+function _textUebernehmen(t) {
+  if (_sel?.kind === 'link') {
+    const l = _link(_sel.id);
+    if (l) { _setzeKabelLabel(l, t.str); showHint(`Kabelangabe „${t.str}" übernommen.`); _renderAll(); return; }
+  }
+  if (_sel?.kind === 'node') {
+    const n = _node(_sel.id);
+    if (n) { n.label = t.str; showHint(`Beschriftung „${t.str}" übernommen.`); _renderAll(); return; }
+  }
+  try {
+    navigator.clipboard?.writeText(t.str);
+    showHint(`„${t.str}" in die Zwischenablage kopiert — für die direkte Übernahme vorher einen Eintrag oder ein Kabel auswählen.`);
+  } catch (e) {
+    showHint(`„${t.str}" — erst einen Eintrag oder ein Kabel auswählen, dann die Beschriftung anklicken.`);
+  }
+}
+
 // ── Markierungen zeichnen ───────────────────────────────────────────────────
 function _statusNode(n) {
   if (n.assetId && ASSETS.items.some(a => a.id === n.assetId)) return 'ok';
@@ -484,9 +634,15 @@ function _renderMarks() {
     if (!a || !b) continue;
     const st = _statusLink(l);
     const aktiv = _sel?.kind === 'link' && _sel.id === l.id;
-    const line = L.polyline([_ll(a.x, a.y), _ll(b.x, b.y)], {
-      color: aktiv ? '#ffffff' : STATUS_COL[st],
-      weight: aktiv ? 5 : 3, opacity: 0.9,
+    const punkte = _linkPunkte(l, a, b).map(p => _ll(p.x, p.y));
+    if (aktiv) {
+      // Dunkler Unterzug: die Auswahl muss auf hellem Planpapier ebenso stehen
+      // wie auf dunklen Scans.
+      _marks.addLayer(L.polyline(punkte, { color: '#10131a', weight: 9, opacity: 0.5, interactive: false }));
+    }
+    const line = L.polyline(punkte, {
+      color: aktiv ? SEL_COL : STATUS_COL[st],
+      weight: aktiv ? 5 : 3, opacity: 0.95,
       dashArray: l.msLevel ? null : '7,5', interactive: true,
     });
     line.bindTooltip(l.label || '(Kabel ohne Angabe)', { sticky: true, className: 'geb-tooltip' });
@@ -497,6 +653,57 @@ function _renderMarks() {
       _renderAll();
     });
     _marks.addLayer(line);
+
+    // Stützpunkte des ausgewählten Kabels: ziehbar, Rechtsklick entfernt
+    if (aktiv && (l.points || []).length) {
+      l.points.forEach((wp, i) => {
+        const h = L.marker(_ll(wp.x, wp.y), {
+          icon: L.divIcon({ className: 'pd-wp-icon', html: '<div class="pd-wp"></div>', iconSize: [11, 11], iconAnchor: [5.5, 5.5] }),
+          draggable: true, keyboard: false, zIndexOffset: 500,
+        });
+        h.on('dragend', () => { const q = _xy(h.getLatLng()); wp.x = Math.round(q.x); wp.y = Math.round(q.y); _renderAll(); });
+        h.on('contextmenu', ev => { L.DomEvent.stop(ev); l.points.splice(i, 1); _renderAll(); });
+        h.on('click', ev => L.DomEvent.stop(ev));
+        _marks.addLayer(h);
+      });
+    }
+  }
+
+  // Laufende Kabelzeichnung: vom ersten Eintrag über die gesetzten Stützpunkte
+  if (_pendingA) {
+    const a = _node(_pendingA);
+    if (a) {
+      const vor = [{ x: a.x, y: a.y }, ..._pendingPts].map(p => _ll(p.x, p.y));
+      if (vor.length > 1) {
+        _marks.addLayer(L.polyline(vor, { color: SEL_COL, weight: 3, opacity: 0.85, dashArray: '4,4', interactive: false }));
+      }
+      _pendingPts.forEach(p => _marks.addLayer(L.marker(_ll(p.x, p.y), {
+        icon: L.divIcon({ className: 'pd-wp-icon', html: '<div class="pd-wp offen"></div>', iconSize: [11, 11], iconAnchor: [5.5, 5.5] }),
+        interactive: false, keyboard: false,
+      })));
+    }
+  }
+
+  // Textebene: nur im Text-Modus und nur im sichtbaren Ausschnitt — ein
+  // Bestandsplan bringt schnell mehrere hundert Beschriftungen mit.
+  if (_mode === 'text' && _map) {
+    const b = _map.getBounds();
+    (PD.plan.texts || [])
+      .filter(t => b.contains(_ll(t.x, t.y)))
+      .slice(0, 400)
+      .forEach(t => {
+        const kabel = !!pdParseKabelLabel(t.str);
+        const mk = L.marker(_ll(t.x, t.y), {
+          icon: L.divIcon({
+            className: 'pd-text-icon',
+            html: `<div class="pd-textmark${kabel ? ' kabel' : ''}">${_esc(t.str)}</div>`,
+            iconSize: null,
+          }),
+          keyboard: false, zIndexOffset: 400,
+        });
+        mk.on('click', ev => { L.DomEvent.stop(ev); _textUebernehmen(t); });
+        _marks.addLayer(mk);
+      });
   }
 
   for (const n of PD.nodes) {
@@ -523,10 +730,10 @@ function _renderMarks() {
 // Einzelnes Betriebsmittel: kleiner farbiger Punkt mit Typ-Symbol
 function _komponentenIcon(n, st, hervor) {
   const cfg = ASSET_CFG[n.assetType] || {};
-  const rand = hervor ? '#ffffff' : 'rgba(0,0,0,.6)';
+  const rand = hervor ? SEL_COL : 'rgba(0,0,0,.6)';
   return L.divIcon({
     className: 'pd-node-icon',
-    html: `<div class="pd-node" style="background:${STATUS_COL[st]};border-color:${rand};${hervor ? 'box-shadow:0 0 0 3px rgba(255,255,255,.35);' : ''}">
+    html: `<div class="pd-node" style="background:${STATUS_COL[st]};border-color:${rand};${hervor ? 'box-shadow:0 0 0 3px rgba(233,30,99,.45);' : ''}">
              <span>${cfg.icon || '◻'}</span>
            </div>
            <div class="pd-node-lbl">${_esc(n.label || '?')}</div>`,
@@ -563,17 +770,26 @@ function _onNodeClick(n) {
     _sel = null; _renderAll(); return;
   }
   if (_mode === 'kabel') {
-    if (!_pendingA) { _pendingA = n.id; _renderAll(); return; }
-    if (_pendingA === n.id) { _pendingA = null; _renderAll(); return; }
+    if (!_pendingA) { _pendingA = n.id; _pendingPts = []; _renderAll(); return; }
+    if (_pendingA === n.id) { _pendingA = null; _pendingPts = []; _renderAll(); return; }
     const schonDa = PD.links.some(l =>
       (l.a === _pendingA && l.b === n.id) || (l.a === n.id && l.b === _pendingA));
-    if (schonDa) { showHint('⚠ Diese beiden Einträge sind im Plan bereits verbunden.'); _pendingA = null; _renderAll(); return; }
+    if (schonDa) { showHint('⚠ Diese beiden Einträge sind im Plan bereits verbunden.'); _pendingA = null; _pendingPts = []; _renderAll(); return; }
     const link = {
       id: 'pl' + (PD.seq++), a: _pendingA, b: n.id, label: '',
+      points: _pendingPts.slice(),
       cableType: null, crossSection: 0, nParallel: 1, lengthM: null, msLevel: false, edgeId: null,
     };
+    // Beschriftung aus dem Plan: die nächste Angabe am gezeichneten Linienzug,
+    // die sich als Kabeltyp lesen lässt. Spart bei PDF-Plänen das Abtippen.
+    const startKnoten = _node(_pendingA);
+    if (startKnoten) {
+      const treffer = _textNahLinie(_linkPunkte(link, startKnoten, n), 90, s => !!pdParseKabelLabel(s));
+      if (treffer) _setzeKabelLabel(link, treffer.str);
+    }
     PD.links.push(link);
     _pendingA = null;
+    _pendingPts = [];
     _sel = { kind: 'link', id: link.id };
     _renderAll();
     setTimeout(() => document.getElementById('pd-f-kabel')?.focus(), 0);
@@ -696,6 +912,14 @@ function _renderForm() {
   if (!l) { _sel = null; return _renderForm(); }
   const a = _node(l.a), b = _node(l.b);
   const st = _statusLink(l);
+  const endA = _zielAsset(a), endB = _zielAsset(b);
+  // Zwei Faelle, die eine Planlinie fast nie meint:
+  //   gleiche Anlage  -- beide Eintraege landen auf demselben Asset; daraus
+  //                      wuerde eine Kante von einem Knoten auf sich selbst
+  //   gleiches Gebaeude -- addStromEdge setzt stationsintern, Laenge 0
+  const gleicheAnlage = !!(endA && endB && endA.id === endB.id);
+  const gleichesGeb = !gleicheAnlage && endA && endB && endA.buildingId != null
+    && String(endA.buildingId) === String(endB.buildingId);
   const p = l.cableType || l.crossSection
     ? `${l.cableType || '?'} · ${l.crossSection || '?'} mm²${l.nParallel > 1 ? ` · ${l.nParallel} Systeme` : ''}${l.msLevel ? ' · MS' : ''}`
     : null;
@@ -703,17 +927,48 @@ function _renderForm() {
   box.innerHTML = `
     <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL[st]}"></span> Kabel</div>
     <div class="pd-route">${_esc(a?.label || '?')} <span style="color:var(--muted)">→</span> ${_esc(b?.label || '?')}</div>
+    <div class="pd-enden">
+      <span>${endA ? _esc(endA.name) + ' <i>' + _esc(ASSET_CFG[endA.type]?.label || endA.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
+      <span class="pd-enden-pfeil">→</span>
+      <span>${endB ? _esc(endB.name) + ' <i>' + _esc(ASSET_CFG[endB.type]?.label || endB.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
+    </div>
+    ${gleicheAnlage ? `<div class="pd-warn">Beide Enden zeigen auf <b>dieselbe Anlage</b> (${_esc(endA.name)}).
+      Dieses Kabel wird nicht übernommen. Oben den Anschlusspunkt eines der beiden
+      Kästen auf eine andere Anlage stellen — oder prüfen, ob beide Einträge
+      versehentlich auf dasselbe Gebäude verortet sind.</div>` : ''}
+    ${gleichesGeb ? `<div class="pd-warn">Beide Enden liegen in <b>${_esc((window.gebaeude || []).find(x => String(x.id) === String(endA.buildingId))?.name || 'demselben Gebäude')}</b>.
+      Das Kabel wird stationsintern mit 0 m angelegt. Falls die Planlinie zwei verschiedene
+      Gebäude verbindet, oben den Anschlusspunkt des jeweiligen Kastens prüfen.</div>` : ''}
     <label class="pd-lbl">Beschriftung aus dem Plan</label>
     <input id="pd-f-kabel" class="pd-in" type="text" value="${_esc(l.label)}"
            placeholder="z. B. NYY-J 5x70 oder 3x NA2XS2Y 1x185"
            data-change="pdUpdateLink('label', this.value)"/>
     ${p ? `<div class="pd-parsed">erkannt: ${_esc(p)}</div>` : `<div class="pd-warn">Noch keine Kabelangabe erkannt.</div>`}
     ${unbekannt ? `<div class="pd-warn">Typ „${_esc(l.cableType)}" ist nicht in der Kabeltabelle — Auslegung fällt auf NAYY zurück.</div>` : ''}
+    <div class="pd-stuetz">
+      <span>${(l.points || []).length} Stützpunkt${(l.points || []).length === 1 ? '' : 'e'} entlang der Planlinie</span>
+      ${(l.points || []).length ? `<button class="pd-mini" data-click="pdUpdateLink('pointsClear','')">gerade ziehen</button>` : ''}
+    </div>
     <label class="pd-lbl">Länge laut Plan (m, optional)</label>
     <input class="pd-in" type="number" min="0" step="1" value="${l.lengthM ?? ''}"
            placeholder="leer = aus Trassenrouting"
            data-change="pdUpdateLink('lengthM', this.value)"/>
     <button class="pd-mini pd-del" data-click="pdDeleteSelected()">✕ Kabel entfernen</button>`;
+}
+
+// An welcher Anlage landet ein Kabel, das an diesem Eintrag endet?
+// Genau die Anlage, die pdApply() spaeter verwendet -- damit das Formular
+// nicht etwas anderes anzeigt, als hinterher auf der Karte entsteht.
+function _zielAsset(n) {
+  if (!n) return null;
+  if (n.assetId) {
+    const a = ASSETS.items.find(x => x.id === n.assetId);
+    if (a) return a;
+  }
+  if (_istGebKnoten(n)) return _anschlussAsset(n);
+  if (n.linkKind === 'a') return ASSETS.items.find(x => x.id === n.linkId) || null;
+  if (n.linkKind === 'g') return getAssetsForBuilding(n.linkId).find(a => a.type === n.assetType) || null;
+  return null;
 }
 
 // Gebäude anhand der Plan-Beschriftung vorschlagen ("Gebäude 13" → Nr. 13)
@@ -763,16 +1018,9 @@ export function pdUpdateLink(feld, wert) {
   const l = _link(_sel?.id);
   if (!l) return;
   if (feld === 'label') {
-    l.label = wert;
-    const p = pdParseKabelLabel(wert);
-    if (p) {
-      l.cableType = p.cableType;
-      l.crossSection = p.crossSection;
-      l.nParallel = p.nParallel;
-      l.msLevel = p.msLevel;
-    } else {
-      l.cableType = null; l.crossSection = 0; l.nParallel = 1; l.msLevel = false;
-    }
+    _setzeKabelLabel(l, wert);
+  } else if (feld === 'pointsClear') {
+    l.points = [];
   } else if (feld === 'lengthM') {
     const v = parseFloat(wert);
     l.lengthM = Number.isFinite(v) && v > 0 ? v : null;
@@ -855,7 +1103,7 @@ export function pdApply() {
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
   if (!PD.nodes.length) { showHint('⚠ Noch keine Einträge im Plan markiert.'); return; }
 
-  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0 };
+  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0 };
 
   const mutate = () => {
     // 1 · Einträge → Assets
@@ -902,6 +1150,10 @@ export function pdApply() {
       if (l.edgeId && (window.stromEdges || []).some(e => e.id === l.edgeId)) continue;
       const a = _node(l.a), b = _node(l.b);
       if (!a?.assetId || !b?.assetId) { bericht.offeneKabel++; continue; }
+      // Beide Eintraege auf derselben Anlage verortet: eine Kante von einem
+      // Knoten auf sich selbst waere kaputte Netzstruktur (Laenge 0, Endlos-
+      // schleife in jeder Baumtraversierung). Lieber offen lassen und melden.
+      if (a.assetId === b.assetId) { bericht.selbstbezug++; continue; }
       const dup = (window.stromEdges || []).find(e =>
         (e.u === a.assetId && e.v === b.assetId) || (e.u === b.assetId && e.v === a.assetId));
       if (dup) { l.edgeId = dup.id; continue; }
@@ -940,6 +1192,7 @@ export function pdApply() {
   const offen = [];
   if (bericht.offeneKnoten) offen.push(`${bericht.offeneKnoten} Eintrag/Einträge ohne Verortung`);
   if (bericht.offeneKabel) offen.push(`${bericht.offeneKabel} Kabel ohne beide Endpunkte`);
+  if (bericht.selbstbezug) offen.push(`${bericht.selbstbezug} Kabel mit identischer Anlage an beiden Enden`);
   showHint(
     (teile.length ? '✔ Übernommen: ' + teile.join(', ') + '.' : 'Nichts Neues zu übernehmen.')
     + (offen.length ? ' Offen: ' + offen.join(', ') + '.' : ''));
