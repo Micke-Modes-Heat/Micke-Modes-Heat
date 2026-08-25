@@ -11,6 +11,9 @@ import { ASSET_CFG } from './13a-assets-core.js';
 import {
   varianten, activeVariantId, baseStromNetzSnapshot, stromNetzGemeinsam, activateVariant,
 } from './01-globals-varianten.js';
+import {
+  lastgangSchnappschuesse, lastgangSchnappschuesseAlleVarianten, schnappschussUeberlast,
+} from './13y-lastgang-schnappschuss.js';
 
 const PANEL_ID = 'varianten-vergleich-panel';
 
@@ -67,7 +70,26 @@ export function variantenVergleichRender() {
     liveDelta,
   });
 
-  el.innerHTML = `${_grundlage(v)}${_spalten(v)}${_fussnote()}`;
+  el.innerHTML = `${_grundlage(v)}${_spalten(v)}${_netzwirkung()}${_fussnote()}`;
+}
+
+/**
+ * Netzwirkung: was die geplanten Anlagen an den Knoten auslösen.
+ *
+ * Läuft nicht automatisch mit — jeder Schnappschuss verlangt, die Variante
+ * kurz zu aktivieren, und das baut das Stromnetz jedes Mal neu auf.
+ */
+export function variantenVergleichNetzwirkung() {
+  const btn = document.getElementById('vv-netz-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ rechnet …'; }
+  setTimeout(() => {
+    try {
+      lastgangSchnappschuesseAlleVarianten();
+    } catch (err) {
+      console.error('Netzwirkung:', err);
+    }
+    variantenVergleichRender();
+  }, 50);
 }
 
 // Die geteilte Grundlage — sie ist der Grund, warum der Vergleich überhaupt
@@ -124,6 +146,75 @@ function _spalten(v) {
     Planungsentscheidungen je Variante
   </div>
   ${zeilen}`;
+}
+
+// Gegenüberstellung der eingefrorenen Knotenlastgänge. Zeigt je Variante die
+// höchstbelasteten Knoten in BEIDEN Richtungen — eine PV-lastige Variante
+// belastet das Netz rückwärts, ohne die Bezugsspitze anzurühren.
+function _netzwirkung() {
+  const kopf = `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 0 3px;">
+    Netzwirkung an den Knoten
+  </div>`;
+
+  const schnapp = lastgangSchnappschuesse();
+  if (!schnapp.size) {
+    return `${kopf}
+    <div style="background:var(--surface2);border-radius:6px;padding:8px 9px;font-size:9.5px;color:var(--muted);line-height:1.7;">
+      Noch nicht berechnet. Jede Variante muss dafür kurz aktiviert werden — das
+      baut das Stromnetz jedes Mal neu auf und dauert entsprechend.
+      <div style="margin-top:6px;">
+        <button id="vv-netz-btn" data-click="variantenVergleichNetzwirkung()"
+          style="padding:4px 10px;border-radius:5px;border:1px solid #ce93d8;background:transparent;
+                 color:#ce93d8;font-family:inherit;font-size:10px;cursor:pointer;">
+          ⚡ Netzwirkung berechnen</button>
+      </div>
+    </div>`;
+  }
+
+  const zeilen = [...schnapp.values()].map(s => {
+    const top = [...s.knoten]
+      .sort((a, b) => Math.max(b.auslastungPct ?? 0, b.rueckspeisungPct ?? 0)
+                    - Math.max(a.auslastungPct ?? 0, a.rueckspeisungPct ?? 0))
+      .slice(0, 3);
+    const ueber = schnappschussUeberlast(s).length;
+
+    const knotenTxt = top.length
+      ? top.map(k => {
+          const a = k.auslastungPct, r = k.rueckspeisungPct;
+          const col = p => p == null ? 'var(--muted)' : p > 100 ? '#e53935' : p > 80 ? '#f9a825' : '#4caf50';
+          return `<div style="display:flex;gap:8px;font-size:9px;padding:1px 0 1px 14px;">
+            <span style="flex:0 0 150px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${k.name}</span>
+            <span style="flex:0 0 78px;color:${col(a)};" title="Bezug">↑ ${a == null ? '—' : a.toFixed(0) + ' %'}</span>
+            <span style="flex:0 0 78px;color:${col(r)};" title="Rückspeisung">↓ ${r == null ? '—' : r.toFixed(0) + ' %'}</span>
+          </div>`;
+        }).join('')
+      : '<div style="font-size:9px;color:var(--muted);padding-left:14px;">keine Infrastrukturknoten</div>';
+
+    return `
+    <div style="margin-bottom:7px;">
+      <div style="display:flex;align-items:center;gap:7px;font-size:10px;">
+        <b style="color:var(--text);">${s.varianteName}</b>
+        <span style="color:var(--muted);font-size:9px;">Jahr ${s.jahr}</span>
+        <span style="margin-left:auto;font-size:9px;color:${ueber ? '#e53935' : '#4caf50'};">
+          ${ueber ? `${ueber} Knoten über Grenze` : '✓ alle im Rahmen'}</span>
+      </div>
+      ${knotenTxt}
+    </div>`;
+  }).join('');
+
+  return `${kopf}
+  <div style="background:var(--surface2);border-radius:6px;padding:8px 9px;">
+    ${zeilen}
+    <div style="display:flex;align-items:center;gap:8px;font-size:8.5px;color:var(--muted);padding-top:4px;line-height:1.6;">
+      ↑ Bezug · ↓ Rückspeisung, jeweils gegen die Knotenkapazität. Die drei
+      höchstbelasteten Knoten je Variante.
+      <button data-click="variantenVergleichNetzwirkung()"
+        style="margin-left:auto;padding:2px 8px;border-radius:4px;border:1px solid var(--border);
+               background:transparent;color:var(--muted);font-family:inherit;font-size:9px;cursor:pointer;
+               white-space:nowrap;">↻ neu</button>
+    </div>
+  </div>`;
 }
 
 function _fussnote() {

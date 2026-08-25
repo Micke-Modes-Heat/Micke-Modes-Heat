@@ -14840,7 +14840,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-08-25';
   if (d.indexOf('__') === 0) d = '';
-  var c = '50c764f';
+  var c = 'b65fc1b';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -170586,6 +170586,233 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     bestandSpringeZu: bestandSpringeZu
   });
 
+  // ── lib/lastgang-schnappschuss.js — Der schmale Schnitt zwischen Erzeugung und Netz ──
+  //
+  // Alles, was die Infrastrukturseite über eine Erzeugervariante wissen muss,
+  // steckt in EINEM signierten Lastgang je Netzknoten: positiv = Bezug,
+  // negativ = Rückspeisung. Kein Wissen über PV-Ausrichtung, BHKW-Fahrweise oder
+  // Wärmepumpen-JAZ muss die Grenze überschreiten.
+  //
+  // Warum ein Schnappschuss und nicht der Live-Zustand: getNodeProfile8760 (13r)
+  // rechnet aus dem globalen Zustand — es gibt also immer nur die Profile der
+  // GERADE aktiven Variante. Für einen Vergleich müssen mehrere Stände zugleich
+  // vorliegen. Eingefroren lassen sich Varianten nebeneinanderlegen, und die
+  // Infrastrukturlogik bekommt ihre Eingabe gereicht, statt sie sich aus
+  // Globals zusammenzusuchen.
+  //
+  // Aufbewahrt werden die KENNWERTE je Knoten (klein, vergleichbar, speicherbar).
+  // Die vollen 8760er-Reihen bleiben optional und nur im Arbeitsspeicher — als
+  // Float32Array je Knoten wären sie für eine Projektdatei zu groß.
+  //
+  // Importfrei und DOM-frei → direkt in Unit-Tests nutzbar.
+
+  /**
+   * Kennwerte einer Lastgangreihe.
+   *
+   * peak  — höchster Bezug (kW)
+   * minV  — niedrigster Wert; negativ bedeutet Rückspeisung, der Betrag ist die
+   *         maximale Einspeiseleistung. Für die Netzdimensionierung ist das der
+   *         zweite maßgebende Wert neben dem Bezugsmaximum.
+   */
+  function knotenKennwerte(profil) {
+    const p = profil || [];
+    const n = p.length;
+    if (!n) return { peak: 0, minV: 0, summe: 0, annualMwh: 0, vbh: 0, grundlast: 0, lastfaktor: 0 };
+
+    let peak = -Infinity, minV = Infinity, summe = 0;
+    for (let t = 0; t < n; t++) {
+      const v = p[t];
+      summe += v;
+      if (v > peak) peak = v;
+      if (v < minV) minV = v;
+    }
+    const annualMwh = summe / 1000;
+    // Grundlast: Wert, der in 90 % der Stunden erreicht wird (absteigend sortiert)
+    const sortiert = Array.from(p).sort((a, b) => b - a);
+    const grundlast = sortiert[Math.floor(n * 0.9)] ?? 0;
+
+    return {
+      peak: peak === -Infinity ? 0 : peak,
+      minV: minV === Infinity ? 0 : minV,
+      summe,
+      annualMwh,
+      vbh: peak > 0 ? (annualMwh * 1000) / peak : 0,
+      grundlast,
+      lastfaktor: peak > 0 ? (summe / n) / peak : 0,
+    };
+  }
+
+  /**
+   * Friert die Knotenprofile eines Standes ein.
+   *
+   * knoten: [{ id, name, type, kapazitaetKW, profil }]
+   * opts.mitProfilen — die vollen Reihen zusätzlich in `profile` (Map) behalten;
+   *   nur für Weiterrechnungen im selben Lauf gedacht, nicht zum Speichern.
+   *
+   * Rückgabe: { jahr, varianteId, varianteName, knoten: [...], profile? }
+   */
+  function erstelleSchnappschuss({ jahr, varianteId = null, varianteName = '', knoten = [] } = {}, opts = {}) {
+    const zeilen = knoten.map(k => {
+      const kw = knotenKennwerte(k.profil);
+      const kap = Number(k.kapazitaetKW) || 0;
+      return {
+        id: k.id,
+        name: k.name ?? k.id,
+        type: k.type ?? null,
+        kapazitaetKW: kap,
+        ...kw,
+        // Auslastung in beide Richtungen — ohne Kapazität bleibt sie unbestimmt
+        // (null statt 0, damit "unbekannt" nicht wie "unkritisch" aussieht).
+        auslastungPct:    kap > 0 ? (kw.peak / kap) * 100 : null,
+        rueckspeisungPct: kap > 0 ? (Math.abs(Math.min(0, kw.minV)) / kap) * 100 : null,
+      };
+    });
+
+    const schnappschuss = { jahr, varianteId, varianteName, knoten: zeilen };
+    if (opts.mitProfilen) {
+      schnappschuss.profile = new Map(knoten.map(k => [k.id, k.profil]));
+    }
+    return schnappschuss;
+  }
+
+  /**
+   * Knoten, die eine Grenze überschreiten — in Bezugs- ODER Rückspeiserichtung.
+   * Beide Richtungen zu prüfen ist nötig: eine PV-lastige Variante belastet das
+   * Netz rückwärts, ohne die Bezugsspitze anzurühren.
+   */
+  function schnappschussUeberlast(schnappschuss, grenzePct = 100) {
+    return (schnappschuss?.knoten || []).filter(k =>
+      (k.auslastungPct != null && k.auslastungPct > grenzePct) ||
+      (k.rueckspeisungPct != null && k.rueckspeisungPct > grenzePct));
+  }
+
+  /**
+   * Stellt zwei Schnappschüsse Knoten für Knoten gegenüber.
+   *
+   * Rückgabe je Knoten: { id, name, a, b, dPeak, dRueck } — a/b sind die
+   * Kennwertzeilen (oder null, wenn der Knoten nur auf einer Seite vorkommt).
+   * Nach der größten Veränderung der Bezugsspitze sortiert.
+   */
+  function vergleicheSchnappschuesse(a, b) {
+    const links  = new Map((a?.knoten || []).map(k => [k.id, k]));
+    const rechts = new Map((b?.knoten || []).map(k => [k.id, k]));
+    const ids = [...new Set([...links.keys(), ...rechts.keys()])];
+
+    return ids.map(id => {
+      const l = links.get(id) || null;
+      const r = rechts.get(id) || null;
+      const rueck = k => Math.abs(Math.min(0, k?.minV ?? 0));
+      return {
+        id,
+        name: l?.name ?? r?.name ?? id,
+        a: l, b: r,
+        dPeak:  (r?.peak ?? 0) - (l?.peak ?? 0),
+        dRueck: rueck(r) - rueck(l),
+      };
+    }).sort((x, y) => Math.abs(y.dPeak) - Math.abs(x.dPeak));
+  }
+
+  // ── 13y-lastgang-schnappschuss.js — Knotenlastgänge einfrieren ───────────────
+  //
+  // App-seitige Schicht zu lib/lastgang-schnappschuss.js: liest die Profile aus
+  // 13r (getNodeProfile8760) und friert sie ein.
+  //
+  // Der Grund für das Einfrieren: getNodeProfile8760 rechnet aus dem globalen
+  // Zustand — es liefert also immer nur die Profile der GERADE aktiven Variante.
+  // Für einen Vergleich müssen mehrere Stände gleichzeitig vorliegen.
+  //
+  // Für nicht-aktive Varianten gibt es keinen Weg daran vorbei, sie kurz zu
+  // aktivieren: Die Profile hängen an Topologie und Anlagen, und beides lebt im
+  // globalen Zustand. Deshalb wird durchgeschaltet und am Ende der Ausgangs-
+  // zustand wiederhergestellt — bewusst sichtbar gemacht, statt es zu verstecken.
+
+
+  // Eingefrorene Stände, je Variante einer (Schlüssel: variantId, null = Basisdaten)
+  const _schnappschuesse = new Map();
+
+  function lastgangSchnappschuesse() { return _schnappschuesse; }
+  function lastgangSchnappschussFuer(variantId) { return _schnappschuesse.get(variantId ?? null) || null; }
+  function lastgangSchnappschuesseLeeren() { _schnappschuesse.clear(); }
+
+  /** Name der Variante für die Beschriftung. */
+  function _variantenName(id) {
+    if (id == null) return 'Basisdaten';
+    return varianten.find(v => v.id === id)?.name || 'Variante';
+  }
+
+  /**
+   * Friert die Knotenprofile des AKTUELLEN Zustands ein.
+   *
+   * Erfasst werden die Infrastrukturknoten (NAP/Trafo/NSHV/UV/KVS) — dort greifen
+   * die Kapazitätsgrenzen, und ihr Profil fasst über die Topologie bereits alles
+   * zusammen, was daran hängt.
+   *
+   * opts.jahr — Bezugsjahr (Standard: globalYear). Nur aktive Assets zählen.
+   */
+  function lastgangSchnappschussErstellen(opts = {}) {
+    const jahr = opts.jahr ?? globalYear ?? new Date().getFullYear();
+    // Der Profil-Cache in 13r ist nicht jahresabhängig — vor einem Lauf für ein
+    // anderes Jahr muss er weg, sonst kämen Profile des vorigen Standes zurück.
+    invalidateKnotenProfileCache();
+
+    const knoten = (ASSETS.items || [])
+      .filter(a => isInfraNode(a) && getAssetStatus(a, jahr) === 'active')
+      .map(a => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        kapazitaetKW: getNodeCapacityKW(a),
+        profil: getNodeProfile8760(a),
+      }));
+
+    const s = erstelleSchnappschuss({
+      jahr,
+      varianteId: activeVariantId ?? null,
+      varianteName: _variantenName(activeVariantId),
+      knoten,
+    }, { mitProfilen: !!opts.mitProfilen });
+
+    _schnappschuesse.set(s.varianteId, s);
+    return s;
+  }
+
+  /**
+   * Friert alle Varianten ein — schaltet dafür nacheinander durch und stellt den
+   * Ausgangszustand am Ende wieder her.
+   *
+   * Teuer (jeder Wechsel baut das Stromnetz neu auf), deshalb nichts, was
+   * nebenbei laufen sollte. Der Aufrufer zeigt das an.
+   *
+   * Gibt die erzeugten Schnappschüsse in Reihenfolge zurück.
+   */
+  function lastgangSchnappschuesseAlleVarianten(opts = {}) {
+    const zurueck = activeVariantId ?? null;
+    const ziele = [null, ...varianten.map(v => v.id)];
+    const out = [];
+
+    try {
+      for (const id of ziele) {
+        if ((activeVariantId ?? null) !== id) activateVariant(id);
+        out.push(lastgangSchnappschussErstellen(opts));
+      }
+    } finally {
+      // Ausgangszustand in jedem Fall wiederherstellen — auch wenn ein Lauf wirft.
+      if ((activeVariantId ?? null) !== zurueck) activateVariant(zurueck);
+    }
+    return out;
+  }
+
+  var lastgangSchnappschuss = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    lastgangSchnappschuesse: lastgangSchnappschuesse,
+    lastgangSchnappschuesseAlleVarianten: lastgangSchnappschuesseAlleVarianten,
+    lastgangSchnappschuesseLeeren: lastgangSchnappschuesseLeeren,
+    lastgangSchnappschussErstellen: lastgangSchnappschussErstellen,
+    lastgangSchnappschussFuer: lastgangSchnappschussFuer,
+    schnappschussUeberlast: schnappschussUeberlast,
+    vergleicheSchnappschuesse: vergleicheSchnappschuesse
+  });
+
   // ── 13x-varianten-vergleich.js — Was plant welche Variante? ──────────────────
   //
   // Zeigt die Planungsentscheidungen ALLER Varianten nebeneinander, ohne die
@@ -170650,7 +170877,26 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       liveDelta,
     });
 
-    el.innerHTML = `${_grundlage(v)}${_spalten(v)}${_fussnote()}`;
+    el.innerHTML = `${_grundlage(v)}${_spalten(v)}${_netzwirkung()}${_fussnote()}`;
+  }
+
+  /**
+   * Netzwirkung: was die geplanten Anlagen an den Knoten auslösen.
+   *
+   * Läuft nicht automatisch mit — jeder Schnappschuss verlangt, die Variante
+   * kurz zu aktivieren, und das baut das Stromnetz jedes Mal neu auf.
+   */
+  function variantenVergleichNetzwirkung() {
+    const btn = document.getElementById('vv-netz-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ rechnet …'; }
+    setTimeout(() => {
+      try {
+        lastgangSchnappschuesseAlleVarianten();
+      } catch (err) {
+        console.error('Netzwirkung:', err);
+      }
+      variantenVergleichRender();
+    }, 50);
   }
 
   // Die geteilte Grundlage — sie ist der Grund, warum der Vergleich überhaupt
@@ -170709,6 +170955,75 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   ${zeilen}`;
   }
 
+  // Gegenüberstellung der eingefrorenen Knotenlastgänge. Zeigt je Variante die
+  // höchstbelasteten Knoten in BEIDEN Richtungen — eine PV-lastige Variante
+  // belastet das Netz rückwärts, ohne die Bezugsspitze anzurühren.
+  function _netzwirkung() {
+    const kopf = `
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 0 3px;">
+    Netzwirkung an den Knoten
+  </div>`;
+
+    const schnapp = lastgangSchnappschuesse();
+    if (!schnapp.size) {
+      return `${kopf}
+    <div style="background:var(--surface2);border-radius:6px;padding:8px 9px;font-size:9.5px;color:var(--muted);line-height:1.7;">
+      Noch nicht berechnet. Jede Variante muss dafür kurz aktiviert werden — das
+      baut das Stromnetz jedes Mal neu auf und dauert entsprechend.
+      <div style="margin-top:6px;">
+        <button id="vv-netz-btn" data-click="variantenVergleichNetzwirkung()"
+          style="padding:4px 10px;border-radius:5px;border:1px solid #ce93d8;background:transparent;
+                 color:#ce93d8;font-family:inherit;font-size:10px;cursor:pointer;">
+          ⚡ Netzwirkung berechnen</button>
+      </div>
+    </div>`;
+    }
+
+    const zeilen = [...schnapp.values()].map(s => {
+      const top = [...s.knoten]
+        .sort((a, b) => Math.max(b.auslastungPct ?? 0, b.rueckspeisungPct ?? 0)
+                      - Math.max(a.auslastungPct ?? 0, a.rueckspeisungPct ?? 0))
+        .slice(0, 3);
+      const ueber = schnappschussUeberlast(s).length;
+
+      const knotenTxt = top.length
+        ? top.map(k => {
+            const a = k.auslastungPct, r = k.rueckspeisungPct;
+            const col = p => p == null ? 'var(--muted)' : p > 100 ? '#e53935' : p > 80 ? '#f9a825' : '#4caf50';
+            return `<div style="display:flex;gap:8px;font-size:9px;padding:1px 0 1px 14px;">
+            <span style="flex:0 0 150px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${k.name}</span>
+            <span style="flex:0 0 78px;color:${col(a)};" title="Bezug">↑ ${a == null ? '—' : a.toFixed(0) + ' %'}</span>
+            <span style="flex:0 0 78px;color:${col(r)};" title="Rückspeisung">↓ ${r == null ? '—' : r.toFixed(0) + ' %'}</span>
+          </div>`;
+          }).join('')
+        : '<div style="font-size:9px;color:var(--muted);padding-left:14px;">keine Infrastrukturknoten</div>';
+
+      return `
+    <div style="margin-bottom:7px;">
+      <div style="display:flex;align-items:center;gap:7px;font-size:10px;">
+        <b style="color:var(--text);">${s.varianteName}</b>
+        <span style="color:var(--muted);font-size:9px;">Jahr ${s.jahr}</span>
+        <span style="margin-left:auto;font-size:9px;color:${ueber ? '#e53935' : '#4caf50'};">
+          ${ueber ? `${ueber} Knoten über Grenze` : '✓ alle im Rahmen'}</span>
+      </div>
+      ${knotenTxt}
+    </div>`;
+    }).join('');
+
+    return `${kopf}
+  <div style="background:var(--surface2);border-radius:6px;padding:8px 9px;">
+    ${zeilen}
+    <div style="display:flex;align-items:center;gap:8px;font-size:8.5px;color:var(--muted);padding-top:4px;line-height:1.6;">
+      ↑ Bezug · ↓ Rückspeisung, jeweils gegen die Knotenkapazität. Die drei
+      höchstbelasteten Knoten je Variante.
+      <button data-click="variantenVergleichNetzwirkung()"
+        style="margin-left:auto;padding:2px 8px;border-radius:4px;border:1px solid var(--border);
+               background:transparent;color:var(--muted);font-family:inherit;font-size:9px;cursor:pointer;
+               white-space:nowrap;">↻ neu</button>
+    </div>
+  </div>`;
+  }
+
   function _fussnote() {
     return `
   <div style="font-size:8.5px;color:var(--muted);padding:4px 6px 0;line-height:1.7;">
@@ -170723,6 +171038,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   var variantenVergleichPanel = /*#__PURE__*/Object.freeze({
     __proto__: null,
     variantenVergleichAktivieren: variantenVergleichAktivieren,
+    variantenVergleichNetzwirkung: variantenVergleichNetzwirkung,
     variantenVergleichRender: variantenVergleichRender,
     variantenVergleichToggle: variantenVergleichToggle
   });
@@ -175273,7 +175589,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     optimizerCore, hourlyLive, optimizerRun, optimizerWorker, optimizerSession,
     hilfeLeitfaden,
     assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
-    slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel, variantenVergleichPanel,
+    slpEditor, autofillWizard, elslpRegistry, autonetz, kompaktstation, elektroPanel, schichtBar, bestandPanel, variantenVergleichPanel, lastgangSchnappschuss,
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,
