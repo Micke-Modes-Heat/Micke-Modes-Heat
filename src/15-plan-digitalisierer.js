@@ -2297,9 +2297,12 @@ export function pdApply() {
       // mit geschätzter Lage anlegen und als vorläufig kennzeichnen.
       if (n.linkKind === 'neu') {
         const pos = _schaetzePosition(n);
-        const asset = createAsset(n.assetType, pos.lat, pos.lng, {
-          name: n.label || `${ASSET_CFG[n.assetType]?.label || n.assetType} (aus Plan)`,
-        });
+        // Ohne Beschriftung KEINEN Namen vorgeben: createAsset nummeriert dann
+        // selbst durch ("KVS 3", "KVS 4"). Ein fester Text wie "KVS (aus Plan)"
+        // erzeugte sonst mehrere gleichnamige Anlagen — im Bestand der
+        // Liegenschaft sieben Stück, in keiner Liste unterscheidbar.
+        const asset = createAsset(n.assetType, pos.lat, pos.lng,
+          n.label ? { name: n.label } : {});
         if (!asset) { bericht.offeneKnoten++; continue; }
         asset.props = { ...(asset.props || {}), posVorlaeufig: true };
         drawAssetMarker(asset);

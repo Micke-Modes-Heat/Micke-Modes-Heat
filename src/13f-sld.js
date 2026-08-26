@@ -524,6 +524,14 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
     return s + '</g>';
   }
 
+  // Stationsinterne Verbindungen tragen keine Beschriftung: sie sind 0 m lang
+  // (beide Enden im selben Gebäude, Sammelschiene statt Kabel) und ihr
+  // Querschnitt ist auto-dimensioniert. Im Bestandsplan der Liegenschaft waren
+  // das 72 von 137 Beschriftungen — mehr als die Hälfte, und alle ohne Aussage.
+  // Ein „35 mm²" zwischen NAP und Schaltanlage legt zudem nahe, dort läge ein
+  // Kabel dieser Größe.
+  if (e.stationsintern) return s + '</g>';
+
   // Cable label
   const midY2  = sameX ? (y1 + y2) / 2 : y1 + (y2 - y1) * 0.42;
   const labelX = ((x1 + x2) / 2).toFixed(1);
