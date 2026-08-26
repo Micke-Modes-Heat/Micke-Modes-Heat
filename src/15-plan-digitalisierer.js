@@ -37,7 +37,10 @@ const MAP_ID   = 'plandigi-map';
 // Typen, die auf einem NS-/MS-Bestandsplan als Kästchen auftauchen
 const NODE_TYPES = ['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS', 'Verbraucher', 'Lade', 'PV', 'Batterie', 'Nsa'];
 
-const STATUS_COL = { ok: '#4caf50', bereit: '#f9a825', offen: '#90a4ae' };
+// 'fehlt' ist kein unfertiger Eintrag, sondern ein BEFUND: der Plan kennt das
+// Objekt, die Karte nicht. Deshalb eigene Farbe — sonst geht die Aussage im
+// Grau der noch nicht bearbeiteten Einträge unter.
+const STATUS_COL = { ok: '#4caf50', bereit: '#f9a825', offen: '#90a4ae', fehlt: '#ef5350' };
 
 // Auswahlfarbe: Weiß war auf weißem Planpapier unsichtbar. Magenta kommt auf
 // Bestandsplänen praktisch nie vor (dort dominieren Rot, Grün, Cyan, Schwarz)
@@ -460,6 +463,7 @@ function _onMapClick(e) {
   const p = _xy(e.latlng);
   if (_pendingSetzen) {
     if (_pendingSetzen.art === 'asset') _setzeAssetKnoten(_pendingSetzen.obj, p);
+    else if (_pendingSetzen.art === 'fehlend') _setzeFehlendesGebaeude(_pendingSetzen.obj, p);
     else _setzeGebaeudeKnoten(_pendingSetzen.obj, p);
     return;
   }
@@ -496,6 +500,9 @@ function _gebFuer(n) {
 // Anschlusspunkte eines Gebäudes, netzseitig zuerst: an einer NSHV/UV/KVS
 // landet ein Kabel eher als am Verbraucher, an einer PV so gut wie nie.
 function _anschlussKandidaten(gebId) {
+  // Ohne Gebäude keine Kandidaten. Ungeprüft läme getAssetsForBuilding(null)
+  // sämtliche freistehenden Anlagen zurück — die gehören hier nicht her.
+  if (gebId == null) return [];
   return getAssetsForBuilding(gebId)
     .filter(a => a.domain === 'strom' || a.domain === 'hybrid')
     .sort((a, b) => (TYPE_RANK[a.type] ?? 9) - (TYPE_RANK[b.type] ?? 9));
@@ -541,7 +548,14 @@ export function pdSuche(q) {
   if (!s) { _sucheSchliessen(); return; }
   const gefunden = _sucheGebaeude(s);
   if (!gefunden.length) {
-    box.innerHTML = '<div class="pd-suche-leer">Kein Gebäude gefunden</div>';
+    // Kein Treffer ist selbst ein Befund: der Plan kennt ein Gebäude, die Karte
+    // nicht. Statt in eine Sackgasse zu laufen, lässt es sich hier erfassen.
+    box.innerHTML = `<div class="pd-suche-leer">Kein Gebäude auf der Karte gefunden</div>
+      <div class="pd-suche-row" data-click="pdFehlendesGebaeude('${_esc(s).replace(/'/g, "\\'")}')">
+        <span class="pd-suche-nr" style="color:#ef5350">+</span>
+        <span class="pd-suche-name">„${_esc(q)}" als <b>fehlend</b> im Plan erfassen</span>
+        <span class="pd-suche-meta">nicht auf der Karte</span>
+      </div>`;
     box.style.display = 'block';
     return;
   }
@@ -583,6 +597,71 @@ export function pdPlatziereGebaeude(id) {
       + (anz ? ` samt ${anz} Anlage${anz === 1 ? '' : 'n'}` : ' (Gebäude hat noch keine Anlagen)')
       + ' — Esc bricht ab.';
   }
+}
+
+/**
+ * Gebäude nur im Plan erfassen — ohne Gegenstück auf der Karte.
+ * Bewusst KEIN Eintrag in window.gebaeude: ein Gebäude ohne Grundriss hätte
+ * keine Fläche, und calcAutoEnergy() rechnet den Wärmebedarf aus genau dieser
+ * Fläche. Ein Platzhalter erzeugte also eine erfundene Wärmemenge, die still
+ * in Netzauslegung und Wirtschaftlichkeit weiterliefe. Der Eintrag hier ist ein
+ * Befund über den Bestand, kein Bestandsobjekt.
+ */
+export function pdFehlendesGebaeude(text) {
+  if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
+  const roh = String(text || '').trim();
+  if (!roh) return;
+  _sucheSchliessen();
+  const nummer = roh.match(/(\d+)\s*$/)?.[1] || '';
+  const name = /^\d+$/.test(roh) ? 'Gebäude ' + roh : roh;
+  pdSetMode('knoten');
+  _pendingSetzen = { art: 'fehlend', obj: { name, nummer } };
+  const hint = document.getElementById('pd-modehint');
+  if (hint) hint.innerHTML = `Klick in den Plan erfasst <b>${_esc(name)}</b> als <b>auf der Karte fehlend</b> — Esc bricht ab.`;
+}
+
+function _setzeFehlendesGebaeude(o, p) {
+  const node = {
+    id: 'pn' + (PD.seq++), x: Math.round(p.x), y: Math.round(p.y),
+    art: 'gebaeude', fehlt: true,
+    label: o.name, gebNummer: o.nummer,
+    assetType: 'Verbraucher',
+    linkKind: null, linkId: null, anschlussAssetId: null, assetId: null,
+  };
+  PD.nodes.push(node);
+  _pendingSetzen = null;
+  _sel = { kind: 'node', id: node.id };
+  pdSetMode(_mode);
+  _renderAll();
+}
+
+// Taucht das vermisste Gebäude inzwischen auf der Karte auf? Nummer zuerst,
+// sonst der Name — dieselbe Logik wie beim Vorschlag aus der Plan-Beschriftung.
+function _kartenTreffer(n) {
+  if (!n.fehlt) return null;
+  const list = window.gebaeude || [];
+  const nr = String(n.gebNummer || '').trim();
+  if (nr) {
+    const t = list.find(g => String(g.gebaeudenummer || '').trim() === nr);
+    if (t) return t;
+  }
+  return _rateGebaeude(n.label);
+}
+
+/** Erfasstes Fehl-Gebäude mit dem inzwischen gezeichneten Kartengebäude verbinden. */
+export function pdVerknuepfeFehlend(nodeId) {
+  const n = _node(nodeId);
+  const g = n && _kartenTreffer(n);
+  if (!g) { showHint('⚠ Auf der Karte gibt es (noch) kein passendes Gebäude.'); return; }
+  const anschluss = _anschlussKandidaten(g.id)[0] || null;
+  n.fehlt = false;
+  n.linkKind = 'g';
+  n.linkId = g.id;
+  n.assetType = anschluss?.type || n.assetType || 'Verbraucher';
+  n.anschlussAssetId = anschluss?.id || null;
+  n.assetId = anschluss?.id || null;
+  showHint(`„${n.label}" ist jetzt mit „${g.name}" auf der Karte verknüpft.`);
+  _renderAll();
 }
 
 function _setzeGebaeudeKnoten(g, p) {
@@ -728,10 +807,36 @@ export function pdAbgleich() {
 
   return {
     beidseitig: PD.nodes.filter(n => _statusNode(n) === 'ok'),
-    nurImPlan:  PD.nodes.filter(n => _statusNode(n) !== 'ok'),
+    // Unfertige Einträge (noch nicht verortet) und Befunde (Gebäude fehlt auf
+    // der Karte) sind zweierlei und gehören getrennt gezählt.
+    nurImPlan:  PD.nodes.filter(n => _statusNode(n) === 'offen'),
+    fehlt:      PD.nodes.filter(n => _statusNode(n) === 'fehlt'),
     nurKarte:   offen,
     abgehakt,
   };
+}
+
+/**
+ * Abgleich als Tabelle in die Zwischenablage — damit sich das Delta außerhalb
+ * des Werkzeugs auswerten lässt (Tabellenkalkulation, Protokoll, Rückfrage an
+ * den Betreiber). Tabulatorgetrennt, damit Einfügen direkt Spalten ergibt.
+ */
+export function pdAbgleichKopieren() {
+  const ab = pdAbgleich();
+  const zeilen = [['Kategorie', 'Bezeichnung', 'Nummer/Typ', 'Hinweis'].join('\t')];
+  ab.fehlt.forEach(n => zeilen.push(['fehlt auf der Karte', n.label || '', n.gebNummer || '', 'nur im Plan erfasst'].join('\t')));
+  ab.nurKarte.forEach(o => zeilen.push(['nur auf der Karte', o.name, o.zusatz, ''].join('\t')));
+  ab.nurImPlan.forEach(n => zeilen.push(['im Plan, noch nicht verortet', n.label || '(ohne Bezeichnung)', '', ''].join('\t')));
+  ab.abgehakt.forEach(o => zeilen.push(['bewusst nicht im Plan', o.name, o.zusatz, o.grund].join('\t')));
+  const text = `Abgleich Plan ↔ Karte — ${PD.plan?.name || 'Plan'}\n`
+    + `beidseitig: ${ab.beidseitig.length}\n\n` + zeilen.join('\n');
+  try {
+    navigator.clipboard?.writeText(text);
+    showHint(`Abgleich kopiert — ${zeilen.length - 1} Zeile(n) in der Zwischenablage.`);
+  } catch (e) {
+    console.warn('Zwischenablage nicht verfügbar:', e);
+    showHint('⚠ Zwischenablage nicht verfügbar.');
+  }
 }
 
 /** Karteneintrag bewusst als „nicht im Plan" ablegen (mit Grund). */
@@ -793,6 +898,7 @@ export function pdSeite(seite) {
 // ── Markierungen zeichnen ───────────────────────────────────────────────────
 function _statusNode(n) {
   if (n.assetId && ASSETS.items.some(a => a.id === n.assetId)) return 'ok';
+  if (n.fehlt) return 'fehlt';
   if (n.linkKind) return 'bereit';
   return 'offen';
 }
@@ -800,7 +906,10 @@ function _statusNode(n) {
 function _statusLink(l) {
   if (l.edgeId && (window.stromEdges || []).some(e => e.id === l.edgeId)) return 'ok';
   const a = _node(l.a), b = _node(l.b);
-  if (a && b && _statusNode(a) !== 'offen' && _statusNode(b) !== 'offen') return 'bereit';
+  // Nur übernehmbar, wenn BEIDE Enden ein Gegenstück auf der Karte haben —
+  // ein als fehlend erfasstes Gebäude zählt ausdrücklich nicht dazu.
+  const tragend = x => _statusNode(x) === 'ok' || _statusNode(x) === 'bereit';
+  if (a && b && tragend(a) && tragend(b)) return 'bereit';
   return 'offen';
 }
 
@@ -974,6 +1083,16 @@ function _komponentenIcon(n, st, hervor) {
 // Symbolreihe. Der gewählte Anschlusspunkt ist hervorgehoben — dort landen die
 // Kabel, die an diesem Kasten enden.
 function _gebaeudeIcon(n, st, hervor) {
+  if (n.fehlt) {
+    return L.divIcon({
+      className: 'pd-geb-icon',
+      html: `<div class="pd-geb fehlt${hervor ? ' sel' : ''}" style="border-color:${STATUS_COL.fehlt};transform:translate(-50%,-50%) scale(${_symbolFaktor(n).toFixed(3)});">
+               <span class="pd-geb-name">${_esc(n.label || 'Gebäude')}</span>
+               <span class="pd-chips"><span class="pd-chips-leer">nicht auf der Karte</span></span>
+             </div>`,
+      iconSize: null,
+    });
+  }
   const kand = _anschlussKandidaten(n.linkId);
   const an = _anschlussAsset(n);
   const chips = kand.slice(0, 6).map(a => {
@@ -1073,6 +1192,30 @@ function _renderForm() {
       Modus <b>⊕ Knoten</b>: einzelne Betriebsmittel (Station, KV) anlegen.<br>
       Modus <b>⟋ Kabel</b>: zwei Einträge nacheinander anklicken.<br>
       Modus <b>🖱 Ansehen</b>: Einträge lassen sich verschieben.</div>`;
+    return;
+  }
+
+  // Nur im Plan erfasstes Gebäude: Befund, kein Bestandsobjekt
+  if (_sel.kind === 'node' && _node(_sel.id)?.fehlt) {
+    const n = _node(_sel.id);
+    const treffer = _kartenTreffer(n);
+    box.innerHTML = `
+      <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL.fehlt}"></span> Fehlt auf der Karte</div>
+      <label class="pd-lbl">Bezeichnung im Plan</label>
+      <input id="pd-f-label" class="pd-in" type="text" value="${_esc(n.label)}"
+             data-change="pdUpdateNode('label', this.value)"/>
+      <label class="pd-lbl">Gebäudenummer</label>
+      <input class="pd-in" type="text" value="${_esc(n.gebNummer || '')}"
+             placeholder="z. B. 135"
+             data-change="pdUpdateNode('gebNummer', this.value)"/>
+      ${treffer
+        ? `<div class="pd-ok">Auf der Karte gibt es jetzt „${_esc(treffer.name)}"
+             <button class="pd-mini" data-click="pdVerknuepfeFehlend('${n.id}')">→ verknüpfen</button></div>`
+        : `<div class="pd-warn">Wird nicht übernommen — der Eintrag hält nur fest, dass der Plan
+             dieses Gebäude kennt und die Karte nicht. Sobald es auf der Karte gezeichnet ist,
+             erscheint hier ein Verknüpfen-Knopf.</div>`}
+      ${_groessenZeile(n)}
+      <button class="pd-mini pd-del" data-click="pdDeleteSelected()">✕ Aus dem Plan entfernen</button>`;
     return;
   }
 
@@ -1235,6 +1378,8 @@ export function pdUpdateNode(feld, wert) {
       const g = _rateGebaeude(wert);
       if (g) { n.linkKind = 'g'; n.linkId = g.id; }
     }
+  } else if (feld === 'gebNummer') {
+    n.gebNummer = String(wert || '').trim();
   } else if (feld === 'assetType') {
     n.assetType = wert;
   } else if (feld === 'anschluss') {
@@ -1359,25 +1504,46 @@ function _renderAbgleich(box, ab) {
     </div>`;
 
   const offenPlan = ab.nurImPlan.length;
+  const fehltZeile = n => {
+    const treffer = _kartenTreffer(n);
+    return `<div class="pd-ab-row">
+      <span class="pd-dot" style="background:${STATUS_COL.fehlt}"></span>
+      <span class="pd-row-txt">${_esc(n.label || '(ohne Bezeichnung)')}</span>
+      <span class="pd-row-sub">${n.gebNummer ? 'Nr. ' + _esc(n.gebNummer) : 'ohne Nummer'}</span>
+      <span class="pd-ab-akt">
+        ${treffer ? `<button class="pd-mini" data-click="pdVerknuepfeFehlend('${n.id}')"
+              title="Auf der Karte gefunden: ${_esc(treffer.name)}">→ verknüpfen</button>` : ''}
+        <button class="pd-mini" data-click="pdSelect('node','${n.id}')">zeigen</button>
+      </span>
+    </div>`;
+  };
   box.innerHTML = `
     <div class="pd-ab-kopf">
       <div><b>${ab.beidseitig.length}</b> beidseitig</div>
-      <div class="${offenPlan ? 'warn' : ''}"><b>${offenPlan}</b> nur im Plan</div>
+      <div class="${ab.fehlt.length ? 'fehl' : ''}"><b>${ab.fehlt.length}</b> fehlt auf der Karte</div>
       <div class="${ab.nurKarte.length ? 'warn' : ''}"><b>${ab.nurKarte.length}</b> nur auf der Karte</div>
+      <div class="${offenPlan ? 'warn' : ''}"><b>${offenPlan}</b> noch nicht verortet</div>
     </div>
-    ${offenPlan ? `<div class="pd-list-head">Nur im Plan — auf der Karte anlegen (${offenPlan})</div>
+    <button class="pd-mini pd-ab-export" data-click="pdAbgleichKopieren()"
+            title="Alle vier Körbe als Tabelle in die Zwischenablage">⧉ Abgleich als Tabelle kopieren</button>
+    ${ab.fehlt.length ? `<div class="pd-list-head">Fehlt auf der Karte (${ab.fehlt.length})</div>
+      ${ab.fehlt.map(fehltZeile).join('')}` : ''}
+    ${offenPlan ? `<div class="pd-list-head">Im Plan, noch nicht verortet (${offenPlan})</div>
       ${ab.nurImPlan.map(n => `<div class="pd-row" data-click="pdSelect('node','${n.id}')">
           <span class="pd-dot" style="background:${STATUS_COL[_statusNode(n)]}"></span>
           <span class="pd-row-txt">${_esc(n.label || '(ohne Bezeichnung)')}</span>
           <span class="pd-row-sub">ohne Gegenstück</span></div>`).join('')}
-      <div class="pd-ab-hinweis">Gebäude brauchen einen Grundriss — die zeichnest du auf der Karte.
-        Danach findet die Suche sie, und der Eintrag rastet ein.</div>` : ''}
+      <div class="pd-ab-hinweis">Noch keiner Karte zugeordnet — über das Suchfeld verknüpfen,
+        oder als <b>fehlend</b> erfassen, wenn es auf der Karte gar nicht existiert.</div>` : ''}
     <div class="pd-list-head">Nur auf der Karte (${ab.nurKarte.length})</div>
     ${ab.nurKarte.length
       ? ab.nurKarte.map(zeile).join('')
       : '<div class="pd-empty">— nichts offen</div>'}
     ${ab.abgehakt.length ? `<div class="pd-list-head">Bewusst nicht im Plan (${ab.abgehakt.length})</div>
       ${ab.abgehakt.map(abgehakt).join('')}` : ''}
+    <div class="pd-ab-hinweis">„Fehlt auf der Karte" sind reine Befunde — sie legen bewusst kein
+      Gebäude an: ohne Grundriss gäbe es keine Fläche, und der Wärmebedarf wird aus der Fläche
+      gerechnet. Sobald das Gebäude auf der Karte gezeichnet ist, taucht hier „verknüpfen" auf.</div>
     <div class="pd-ab-hinweis">Geprüft wird nur die Schicht <b>Bestand</b> — Neubauten und
       Planungsobjekte fehlen auf einem Bestandsplan zu Recht. Anlagen zählen nur mit,
       wenn sie keinem Gebäude zugeordnet sind.</div>`;
@@ -1391,9 +1557,10 @@ function _renderFortschritt() {
   const lOk = PD.links.filter(l => _statusLink(l) === 'ok').length;
   // Die Kartenseite gehört dazu: ohne sie liest sich „12/12" wie „fertig",
   // obwohl vierzig Gebäude nie betrachtet wurden.
-  const offen = pdAbgleich().nurKarte.length;
+  const ab = pdAbgleich();
   el.innerHTML = `<b>${_esc(PD.plan.name)}</b> · Einträge ${nOk}/${PD.nodes.length} · Kabel ${lOk}/${PD.links.length}`
-    + (offen ? ` · <span class="pd-offen">Karte: ${offen} nicht im Plan</span>` : ' · Karte vollständig');
+    + (ab.nurKarte.length ? ` · <span class="pd-offen">Karte: ${ab.nurKarte.length} nicht im Plan</span>` : ' · Karte vollständig')
+    + (ab.fehlt.length ? ` · <span class="pd-fehl">${ab.fehlt.length} fehlt auf der Karte</span>` : '');
 }
 
 function _renderAll() {
@@ -1408,12 +1575,14 @@ export function pdApply() {
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
   if (!PD.nodes.length) { showHint('⚠ Noch keine Einträge im Plan markiert.'); return; }
 
-  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0 };
+  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0, fehlend: 0 };
 
   const mutate = () => {
     // 1 · Einträge → Assets
     for (const n of PD.nodes) {
       if (n.assetId && ASSETS.items.some(a => a.id === n.assetId)) continue;
+      // Als fehlend erfasste Gebäude sind Befunde, keine anzulegenden Objekte.
+      if (n.fehlt) { bericht.fehlend++; continue; }
       if (!n.linkKind) { bericht.offeneKnoten++; continue; }
 
       if (n.linkKind === 'a') {
@@ -1498,6 +1667,7 @@ export function pdApply() {
   if (bericht.offeneKnoten) offen.push(`${bericht.offeneKnoten} Eintrag/Einträge ohne Verortung`);
   if (bericht.offeneKabel) offen.push(`${bericht.offeneKabel} Kabel ohne beide Endpunkte`);
   if (bericht.selbstbezug) offen.push(`${bericht.selbstbezug} Kabel mit identischer Anlage an beiden Enden`);
+  if (bericht.fehlend) offen.push(`${bericht.fehlend} Gebäude fehl${bericht.fehlend === 1 ? 't' : 'en'} auf der Karte`);
   showHint(
     (teile.length ? '✔ Übernommen: ' + teile.join(', ') + '.' : 'Nichts Neues zu übernehmen.')
     + (offen.length ? ' Offen: ' + offen.join(', ') + '.' : ''));

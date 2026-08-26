@@ -1680,11 +1680,15 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-tab-zahl{font-family:'DM Mono',monospace;}
 .pd-tab-zahl.warn{color:#f9a825;font-weight:700;}
 .pd-list{flex:1;overflow:auto;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px;}
-.pd-ab-kopf{display:flex;gap:6px;padding:5px 4px 7px;font-size:9px;color:var(--muted);
-  border-bottom:1px solid var(--border);margin-bottom:3px;}
-.pd-ab-kopf div{flex:1;text-align:center;}
+.pd-ab-kopf{display:grid;grid-template-columns:1fr 1fr;gap:4px 6px;padding:5px 4px 7px;
+  font-size:9px;color:var(--muted);border-bottom:1px solid var(--border);margin-bottom:3px;}
+.pd-ab-kopf div{text-align:center;}
 .pd-ab-kopf b{display:block;font-size:13px;color:var(--text);font-family:'DM Mono',monospace;}
 .pd-ab-kopf .warn b{color:#f9a825;}
+.pd-ab-kopf .fehl b{color:#ef5350;}
+.pd-fehl{color:#ef5350;}
+.pd-geb.fehlt{border-style:dashed;}
+.pd-ab-export{display:block;width:100%;margin:2px 0 4px;}
 .pd-ab-row{display:flex;align-items:center;gap:5px;padding:4px 5px;border-radius:4px;font-size:9.5px;flex-wrap:wrap;}
 .pd-ab-row:hover{background:var(--surface);}
 .pd-ab-row.erledigt{opacity:.6;}
