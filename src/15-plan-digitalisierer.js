@@ -963,6 +963,7 @@ export function pdAbgleich() {
     vorlaeufig: pdVorlaeufige(),
     qsGeschaetzt: pdGeschaetzteKabel(),
     napNs: pdMsAnlagenPruefung(),
+    nsMaschen: pdNsMaschen(),
   };
 }
 
@@ -979,6 +980,13 @@ export function pdAbgleichKopieren() {
   ab.nurImPlan.forEach(n => zeilen.push(['im Plan, noch nicht verortet', n.label || '(ohne Bezeichnung)', '', ''].join('\t')));
   ab.abgehakt.forEach(o => zeilen.push(['bewusst nicht im Plan', o.name, o.zusatz, o.grund].join('\t')));
   ab.vorlaeufig.forEach(a => zeilen.push(['Position vorläufig', a.name, ASSET_CFG[a.type]?.label || a.type, 'aus dem Plan geschätzt'].join('\t')));
+  ab.nsMaschen.forEach(m => {
+    const e = m.kante;
+    const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
+    zeilen.push(['Masche NS-Ebene', `${nm(e.u)} → ${nm(e.v)}`,
+      `${e.cableType || '?'} ${e.crossSection || '?'} mm²`,
+      `Kreis über ${(m.kreis || []).map(nm).join(' → ')}`].join('\t'));
+  });
   ab.napNs.forEach(e => {
     const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
     zeilen.push(['NS-Leitung an MS-Anlage', `${nm(e.u)} → ${nm(e.v)}`,
@@ -1646,14 +1654,16 @@ export function pdZeigeAufKarte(nodeId) {
 function _renderList() {
   const box = document.getElementById('pd-list');
   if (!box) return;
-  const ab = PD.plan ? pdAbgleich() : null;
+  // Die Netzprüfungen (Maschen, NS an MS-Anlagen) betreffen die Karte, nicht
+  // den Plan — sie sollen auch ohne geladenes Blatt sichtbar sein.
+  const ab = pdAbgleich();
   const zahl = document.getElementById('pd-tab-zahl');
   if (zahl) {
     zahl.textContent = ab && ab.nurKarte.length ? ab.nurKarte.length : '';
     zahl.className = 'pd-tab-zahl' + (ab && ab.nurKarte.length ? ' warn' : '');
   }
-  if (!PD.plan) { box.innerHTML = ''; return; }
   if (_seite === 'abgleich') { _renderAbgleich(box, ab); return; }
+  if (!PD.plan) { box.innerHTML = ''; return; }
   const zeile = (kind, id, st, txt, sub) => `
     <div class="pd-row${_sel?.kind === kind && _sel.id === id ? ' sel' : ''}" data-click="pdSelect('${kind}','${id}')">
       <span class="pd-dot" style="background:${STATUS_COL[st]}"></span>
@@ -1732,6 +1742,29 @@ function _renderAbgleich(box, ab) {
     </div>
     <button class="pd-mini pd-ab-export" data-click="pdAbgleichKopieren()"
             title="Alle vier Körbe als Tabelle in die Zwischenablage">⧉ Abgleich als Tabelle kopieren</button>
+    ${ab.nsMaschen.length ? `<div class="pd-list-head">Masche auf der NS-Ebene (${ab.nsMaschen.length})</div>
+      <div class="pd-ab-hinweis">Diese Leitungen schließen einen Kreis. In einer Liegenschaft ist das
+        NS-Netz fast immer radial — meist stammt so etwas aus einer Doppelanbindung. Eine echte
+        Ringversorgung gibt es aber auch, deshalb wird hier <b>einzeln</b> entfernt und nichts
+        stapelweise. Der Plan-Eintrag bleibt erhalten und gilt danach als nicht übernommen.</div>
+      ${ab.nsMaschen.slice(0, 40).map(m => {
+        const e = m.kante;
+        const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
+        const l = PD.links.find(x => x.edgeId === e.id);
+        const kreis = (m.kreis || []).map(nm);
+        return `<div class="pd-ab-row">
+          <span class="pd-dot" style="background:#ffa726"></span>
+          <span class="pd-row-txt">${_esc(`${nm(e.u)} → ${nm(e.v)}`)}</span>
+          <span class="pd-row-sub">${_esc(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${Math.round(e.lengthM || 0)} m`)}</span>
+          ${kreis.length ? `<span class="pd-kreis">Kreis: ${_esc(kreis.join(' → '))}</span>` : ''}
+          <span class="pd-ab-akt">
+            ${l ? `<button class="pd-mini" data-click="pdSelect('link','${l.id}')">im Plan zeigen</button>` : ''}
+            <button class="pd-mini pd-del" data-click="pdMascheEntfernen('${e.id}')"
+                    title="Diese Leitung entfernen. Falls eine andere Leitung des Kreises die überflüssige ist, diese auf der Karte per Rechtsklick entfernen.">entfernen</button>
+          </span>
+        </div>`;
+      }).join('')}
+      ${ab.nsMaschen.length > 40 ? `<div class="pd-empty">… und ${ab.nsMaschen.length - 40} weitere</div>` : ''}` : ''}
     ${ab.napNs.length ? `<div class="pd-list-head">NS-Leitung an MS-Anlage (${ab.napNs.length})</div>
       <div class="pd-ab-hinweis">NAP und Schaltanlage führen nur Mittelspannung — eine NS-Leitung
         dort ist elektrisch unmöglich und führt die ganze NS-Rechnung am Trafo vorbei. Betrifft
@@ -1814,7 +1847,8 @@ function _renderFortschritt() {
     + (ab.fehlt.length ? ` · <span class="pd-fehl">${ab.fehlt.length} fehlt auf der Karte</span>` : '')
     + (ab.vorlaeufig.length ? ` · <span class="pd-vorl">${ab.vorlaeufig.length} Position prüfen</span>` : '')
     + (ab.qsGeschaetzt.length ? ` · <span class="pd-qs">${ab.qsGeschaetzt.length} Querschnitt geschätzt</span>` : '')
-    + (ab.napNs.length ? ` · <span class="pd-fehl">${ab.napNs.length} NS-Leitung(en) an MS-Anlagen</span>` : '');
+    + (ab.napNs.length ? ` · <span class="pd-fehl">${ab.napNs.length} NS-Leitung(en) an MS-Anlagen</span>` : '')
+    + (ab.nsMaschen.length ? ` · <span class="pd-masche">${ab.nsMaschen.length} Masche(n) NS</span>` : '');
 }
 
 function _renderAll() {
@@ -2055,6 +2089,86 @@ export function pdMsAnlagenReparieren() {
   if (doppelt) teile.push(`${doppelt} doppelte Leitung(en) entfernt — dieselbe Verbindung bestand bereits`);
   if (ohneZiel) teile.push(`${ohneZiel} ohne NS-Seite in derselben Station — dort fehlt Trafo/NSHV, von Hand klären`);
   showHint(teile.length ? '✔ ' + teile.join('. ') + '.' : 'Keine NS-Leitung an einer MS-Anlage gefunden.');
+}
+
+// ── Maschen auf der NS-Ebene ──────────────────────────────────
+// Niederspannungsnetze in Liegenschaften sind fast immer radial: jeder
+// Verbraucher hängt über genau einen Weg an seiner Station. Schließt eine Kante
+// einen Kreis, ist das entweder eine echte Ringversorgung — selten, aber es
+// gibt sie — oder eine Doppelanbindung aus mehreren Übernahmeläufen.
+//
+// Unterscheiden kann das nur jemand, der die Liegenschaft kennt. Deshalb wird
+// hier NICHT stapelweise gelöscht: die Liste zeigt jede Masche mit beiden Enden,
+// Querschnitt und Länge, entfernt wird einzeln.
+
+/**
+ * Kanten, die im NS-Netz einen Kreis schließen (Union-Find über einen
+ * aufspannenden Wald). Welche der beiden Kanten einer Masche gemeldet wird,
+ * bestimmt die Reihenfolge: erst das Rückgrat (kleine Typrangsumme, also
+ * Trafo→NSHV→UV), bei Gleichstand die kürzere Leitung. Gemeldet wird damit
+ * die längere, netzferne — typischerweise der Umweg, nicht die Zuleitung.
+ */
+export function pdNsMaschen() {
+  const nsKanten = (window.stromEdges || []).filter(e => !e.msLevel);
+  const eltern = new Map();
+  for (const e of nsKanten) {
+    if (!eltern.has(e.u)) eltern.set(e.u, e.u);
+    if (!eltern.has(e.v)) eltern.set(e.v, e.v);
+  }
+  const finde = x => {
+    while (eltern.get(x) !== x) { eltern.set(x, eltern.get(eltern.get(x))); x = eltern.get(x); }
+    return x;
+  };
+  const rang = id => TYPE_RANK[ASSETS.items.find(a => a.id === id)?.type] ?? 9;
+  const sortiert = [...nsKanten].sort((a, b) =>
+    (rang(a.u) + rang(a.v)) - (rang(b.u) + rang(b.v)) || (a.lengthM || 0) - (b.lengthM || 0));
+
+  // Spannwald mitführen, damit zu jeder schließenden Kante der Kreis
+  // benannt werden kann. Welche der Kanten eines Kreises „dieübrige" ist,
+  // kann der Algorithmus nicht wissen — also zeigt er den ganzen Kreis.
+  const baum = new Map();
+  const nachbarn = id => { if (!baum.has(id)) baum.set(id, []); return baum.get(id); };
+  const maschen = [];
+  for (const e of sortiert) {
+    const wu = finde(e.u), wv = finde(e.v);
+    if (wu === wv) { maschen.push(e); continue; }
+    eltern.set(wu, wv);
+    nachbarn(e.u).push(e.v);
+    nachbarn(e.v).push(e.u);
+  }
+  return maschen.map(e => ({ kante: e, kreis: _baumPfad(baum, e.u, e.v) }));
+}
+
+/** Knotenfolge zwischen zwei Punkten im Spannwald (Breitensuche). */
+function _baumPfad(baum, von, bis) {
+  const vorher = new Map([[von, null]]);
+  const schlange = [von];
+  while (schlange.length) {
+    const id = schlange.shift();
+    if (id === bis) break;
+    for (const n of (baum.get(id) || [])) {
+      if (vorher.has(n)) continue;
+      vorher.set(n, id);
+      schlange.push(n);
+    }
+  }
+  if (!vorher.has(bis)) return [];
+  const pfad = [];
+  for (let id = bis; id != null; id = vorher.get(id)) pfad.push(id);
+  return pfad.reverse();
+}
+
+/** Eine Masche auflösen, indem die schließende Leitung entfernt wird. */
+export function pdMascheEntfernen(edgeId) {
+  const e = (window.stromEdges || []).find(x => x.id === edgeId);
+  if (!e) return;
+  const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
+  const bez = `${nm(e.u)} → ${nm(e.v)}`;
+  const l = PD.links.find(x => x.edgeId === edgeId);
+  if (l) l.edgeId = null;   // Plan-Eintrag bleibt, gilt wieder als nicht übernommen
+  removeStromEdge(e);
+  showHint(`Masche aufgelöst: ${bez} entfernt.`);
+  _renderAll();
 }
 
 /** Kabel mit geschätztem Querschnitt, noch nicht bestätigt. */

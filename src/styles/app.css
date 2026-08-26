@@ -1696,12 +1696,14 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-fehl{color:#ef5350;}
 .pd-vorl{color:#ba68c8;}
 .pd-qs{color:#4dd0e1;}
+.pd-masche{color:#ffa726;}
 .pd-geb.fehlt{border-style:dashed;}
 .pd-ab-export{display:block;width:100%;margin:2px 0 4px;}
 .pd-ab-row{display:flex;align-items:center;gap:5px;padding:4px 5px;border-radius:4px;font-size:9.5px;flex-wrap:wrap;}
 .pd-ab-row:hover{background:var(--surface);}
 .pd-ab-row.erledigt{opacity:.6;}
 .pd-ab-akt{display:flex;gap:3px;width:100%;justify-content:flex-end;}
+.pd-kreis{width:100%;font-size:8.5px;color:#ffa726;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .pd-ab-akt .pd-mini{margin-top:0;padding:2px 6px;}
 .pd-ab-hinweis{font-size:8.5px;color:var(--muted);line-height:1.5;padding:5px 5px 2px;}
 .pd-offen{color:#f9a825;}
