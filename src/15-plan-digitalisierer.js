@@ -25,7 +25,7 @@ import { showHint, flyTo } from './03c-gebaeude-io.js';
 import { ASSETS, ASSET_CFG, TYPE_RANK, createAsset, getAssetsForBuilding } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
 import { renderSidebarAssetList } from './13e-assets-inspector.js';
-import { addStromEdge, recalcStromNetz, epPrompt } from './05b-stromnetz.js';
+import { addStromEdge, removeStromEdge, recalcStromNetz, epPrompt } from './05b-stromnetz.js';
 import { KABEL_TYPEN } from './config/netz-kosten.js';
 import { runPlanningTransaction } from './lib/planning-transaction.js';
 import { parseKabelLabel } from './lib/kabel-label.js';
@@ -537,8 +537,11 @@ const NS_ANSCHLUSS = ['NSHV', 'UV', 'KVS', 'Verbraucher', 'Lade', 'TWW', 'Batter
 function _kabelEnde(n, msLevel) {
   if (!n) return null;
   if (!_istGebKnoten(n)) return n.assetId ? ASSETS.items.find(a => a.id === n.assetId) || null : null;
-  // Ausdrücklich gewählter Anschlusspunkt geht vor
-  if (n.anschlussAssetId) {
+  // Nur eine VON HAND gewählte Vorgabe schlägt die Automatik. Frühere Stände
+  // haben anschlussAssetId auch automatisch gesetzt — damals auf die netz-
+  // seitigste Anlage, also den NAP. Ohne diese Unterscheidung bliebe jede
+  // Gebäudeleitung aus einer alten Projektdatei für immer am NAP hängen.
+  if (n.anschlussManuell && n.anschlussAssetId) {
     const a = ASSETS.items.find(x => x.id === n.anschlussAssetId);
     if (a) return a;
   }
@@ -552,7 +555,7 @@ function _kabelEnde(n, msLevel) {
 }
 
 function _anschlussAsset(n) {
-  if (n.anschlussAssetId) {
+  if (n.anschlussManuell && n.anschlussAssetId) {
     const a = ASSETS.items.find(x => x.id === n.anschlussAssetId);
     if (a) return a;
   }
@@ -703,7 +706,7 @@ export function pdVerknuepfeFehlend(nodeId) {
   n.linkKind = 'g';
   n.linkId = g.id;
   n.assetType = anschluss?.type || n.assetType || 'Verbraucher';
-  n.anschlussAssetId = anschluss?.id || null;
+  n.anschlussAssetId = null;      // Ebene entscheidet, nicht die Reihenfolge
   n.assetId = anschluss?.id || null;
   showHint(`„${n.label}" ist jetzt mit „${g.name}" auf der Karte verknüpft.`);
   _renderAll();
@@ -953,6 +956,7 @@ export function pdAbgleich() {
     abgehakt,
     vorlaeufig: pdVorlaeufige(),
     qsGeschaetzt: pdGeschaetzteKabel(),
+    napNs: pdNapPruefung(),
   };
 }
 
@@ -969,6 +973,11 @@ export function pdAbgleichKopieren() {
   ab.nurImPlan.forEach(n => zeilen.push(['im Plan, noch nicht verortet', n.label || '(ohne Bezeichnung)', '', ''].join('\t')));
   ab.abgehakt.forEach(o => zeilen.push(['bewusst nicht im Plan', o.name, o.zusatz, o.grund].join('\t')));
   ab.vorlaeufig.forEach(a => zeilen.push(['Position vorläufig', a.name, ASSET_CFG[a.type]?.label || a.type, 'aus dem Plan geschätzt'].join('\t')));
+  ab.napNs.forEach(e => {
+    const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
+    zeilen.push(['NS-Leitung am NAP', `${nm(e.u)} → ${nm(e.v)}`,
+      `${e.cableType || '?'} ${e.crossSection || '?'} mm²`, 'elektrisch unmöglich'].join('\t'));
+  });
   ab.qsGeschaetzt.forEach(e => {
     const l = PD.links.find(x => x.edgeId === e.id);
     const a = l && _node(l.a), b = l && _node(l.b);
@@ -1566,6 +1575,7 @@ export function pdUpdateNode(feld, wert) {
     n.assetType = wert;
   } else if (feld === 'anschluss') {
     n.anschlussAssetId = wert || null;
+    n.anschlussManuell = !!wert;
     // Der Anschlusspunkt IST die übernommene Anlage — sonst zeigten Status und
     // später gezogene Kabel auf verschiedene Assets desselben Gebäudes.
     if (wert && ASSETS.items.some(a => a.id === wert)) n.assetId = wert;
@@ -1716,6 +1726,23 @@ function _renderAbgleich(box, ab) {
     </div>
     <button class="pd-mini pd-ab-export" data-click="pdAbgleichKopieren()"
             title="Alle vier Körbe als Tabelle in die Zwischenablage">⧉ Abgleich als Tabelle kopieren</button>
+    ${ab.napNs.length ? `<div class="pd-list-head">NS-Leitung am NAP (${ab.napNs.length})</div>
+      <div class="pd-ab-hinweis">Der NAP ist der Übergabepunkt aus dem Mittelspannungsnetz — eine
+        NS-Leitung dort ist elektrisch unmöglich und führt die ganze NS-Rechnung an der
+        Trafostation vorbei. Betrifft auch Leitungen aus früheren Übernahmen oder aus der
+        automatischen Netzerzeugung.</div>
+      ${ab.napNs.slice(0, 40).map(e => {
+        const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
+        return `<div class="pd-ab-row">
+          <span class="pd-dot" style="background:${STATUS_COL.fehlt}"></span>
+          <span class="pd-row-txt">${_esc(`${nm(e.u)} → ${nm(e.v)}`)}</span>
+          <span class="pd-row-sub">${_esc(`${e.cableType || '?'} ${e.crossSection || '?'} mm²`)}</span>
+        </div>`;
+      }).join('')}
+      ${ab.napNs.length > 40 ? `<div class="pd-empty">… und ${ab.napNs.length - 40} weitere</div>` : ''}
+      <button class="pd-mini pd-ab-export" data-click="pdNapReparieren()"
+              title="Jede dieser Leitungen auf NSHV bzw. UV derselben Station umhängen">
+        ↳ Alle auf die NS-Seite umhängen</button>` : ''}
     ${ab.qsGeschaetzt.length ? `<div class="pd-list-head">Querschnitt prüfen (${ab.qsGeschaetzt.length})</div>
       ${ab.qsGeschaetzt.map(e => {
         const l = PD.links.find(x => x.edgeId === e.id);
@@ -1781,7 +1808,8 @@ function _renderFortschritt() {
     + (ab.nurKarte.length ? ` · <span class="pd-offen">Karte: ${ab.nurKarte.length} nicht im Plan</span>` : ' · Karte vollständig')
     + (ab.fehlt.length ? ` · <span class="pd-fehl">${ab.fehlt.length} fehlt auf der Karte</span>` : '')
     + (ab.vorlaeufig.length ? ` · <span class="pd-vorl">${ab.vorlaeufig.length} Position prüfen</span>` : '')
-    + (ab.qsGeschaetzt.length ? ` · <span class="pd-qs">${ab.qsGeschaetzt.length} Querschnitt geschätzt</span>` : '');
+    + (ab.qsGeschaetzt.length ? ` · <span class="pd-qs">${ab.qsGeschaetzt.length} Querschnitt geschätzt</span>` : '')
+    + (ab.napNs.length ? ` · <span class="pd-fehl">${ab.napNs.length} NS-Leitung(en) am NAP</span>` : '');
 }
 
 function _renderAll() {
@@ -1941,6 +1969,85 @@ function _setzeSchaetzung(edge, l, vorbild) {
   edge.qsQuelle = v ? 'aus dem speisenden Kabel' : 'Erfahrungswert';
 }
 
+// ── NS-Leitungen am NAP ───────────────────────────────────────
+// Der NAP ist der Übergabepunkt aus dem Mittelspannungsnetz. Eine NS-Leitung,
+// die dort endet, ist elektrisch unmöglich — unabhängig davon, wer sie angelegt
+// hat (frühere Übernahme, automatische Netzerzeugung, Handzeichnung). Solche
+// Kanten führen die gesamte NS-Rechnung an der Trafostation vorbei.
+
+/** NAPs, die tatsächlich auf Mittelspannung liegen (Standard 20 kV). */
+function _msNaps() {
+  return ASSETS.items.filter(a => a.type === 'NAP'
+    && (parseFloat(a.props?.spannungKV) || 20) > 1);
+}
+
+export function pdNapPruefung() {
+  const napIds = new Set(_msNaps().map(a => a.id));
+  if (!napIds.size) return [];
+  return (window.stromEdges || []).filter(e => !e.msLevel && (napIds.has(e.u) || napIds.has(e.v)));
+}
+
+// Wohin stattdessen? Die NS-Seite derselben Station: NSHV, ersatzweise UV/KVS.
+function _nsSeiteBei(napId) {
+  const nap = ASSETS.items.find(a => a.id === napId);
+  if (!nap || nap.buildingId == null) return null;
+  const kand = _anschlussKandidaten(nap.buildingId);
+  return ['NSHV', 'UV', 'KVS'].map(t => kand.find(a => a.type === t)).find(Boolean) || null;
+}
+
+// Kante auf einen anderen Endpunkt umhängen. u/v nachträglich zu ändern reicht
+// nicht — Geometrie, Länge und Tooltip hängen an den Endknoten. Deshalb neu
+// anlegen und die Kabeldaten mitnehmen; die Länge kommt frisch aus dem Routing.
+function _umhaengen(edge, altId, neuId) {
+  const anderer = edge.u === altId ? edge.v : edge.u;
+  if (anderer === neuId) return null;
+  const merk = {
+    cableType: edge.cableType, crossSection: edge.crossSection, autoSized: edge.autoSized,
+    nParallel: edge.nParallel, fuseA: edge.fuseA, msLevel: edge.msLevel,
+    qsGeschaetzt: edge.qsGeschaetzt, qsQuelle: edge.qsQuelle,
+    massnahmen: edge.massnahmen, autoGenerated: edge.autoGenerated,
+  };
+  const planLink = PD.links.find(l => l.edgeId === edge.id);
+  removeStromEdge(edge);
+  const neu = addStromEdge(neuId, anderer);
+  if (!neu) return null;
+  Object.assign(neu, merk);
+  if (planLink) planLink.edgeId = neu.id;
+  return neu;
+}
+
+/** Alle NS-Leitungen am NAP auf die NS-Seite derselben Station umhängen. */
+export function pdNapReparieren() {
+  const napIds = new Set(_msNaps().map(a => a.id));
+  const betroffen = pdNapPruefung();
+  let umgehaengt = 0, ohneZiel = 0, doppelt = 0;
+  for (const e of betroffen) {
+    const napId = napIds.has(e.u) ? e.u : e.v;
+    const ziel = _nsSeiteBei(napId);
+    if (!ziel) { ohneZiel++; continue; }
+    const anderer = e.u === napId ? e.v : e.u;
+    // Liegt zwischen den neuen Endpunkten schon eine Leitung, waere das
+    // Umhaengen eine Dopplung. Dann ist die Leitung am NAP der Ueberrest
+    // eines frueheren Standes und kann weg.
+    if (_edgeDa(ziel.id, anderer)) {
+      const planLink = PD.links.find(l => l.edgeId === e.id);
+      if (planLink) planLink.edgeId = null;
+      removeStromEdge(e);
+      doppelt++;
+      continue;
+    }
+    if (_umhaengen(e, napId, ziel.id)) umgehaengt++;
+  }
+  recalcStromNetz();
+  if (typeof window.updateStromEdgeVisuals === 'function') window.updateStromEdgeVisuals();
+  _renderAll();
+  const teile = [];
+  if (umgehaengt) teile.push(`${umgehaengt} Leitung(en) auf die NS-Seite umgehängt`);
+  if (doppelt) teile.push(`${doppelt} doppelte Leitung(en) entfernt — dieselbe Verbindung bestand bereits`);
+  if (ohneZiel) teile.push(`${ohneZiel} ohne NS-Seite am NAP — dort fehlt Trafo/NSHV, von Hand klären`);
+  showHint(teile.length ? '✔ ' + teile.join('. ') + '.' : 'Keine NS-Leitung am NAP gefunden.');
+}
+
 /** Kabel mit geschätztem Querschnitt, noch nicht bestätigt. */
 export function pdGeschaetzteKabel() {
   const ausPlan = new Set(PD.links.map(l => l.edgeId).filter(Boolean));
@@ -2069,7 +2176,8 @@ export function pdApply() {
         : getAssetsForBuilding(g.id).find(a => a.type === n.assetType);
       if (vorhanden) {
         n.assetId = vorhanden.id;
-        if (_istGebKnoten(n)) n.anschlussAssetId = vorhanden.id;
+        // anschlussAssetId bewusst NICHT setzen: das machte aus einer
+        // automatischen Wahl eine dauerhafte Vorgabe.
         bericht.assetsVerknuepft++;
         continue;
       }
@@ -2081,7 +2189,6 @@ export function pdApply() {
       if (!asset) { bericht.offeneKnoten++; continue; }
       drawAssetMarker(asset);
       n.assetId = asset.id;
-      if (_istGebKnoten(n)) n.anschlussAssetId = asset.id;
       bericht.assetsNeu++;
     }
 
