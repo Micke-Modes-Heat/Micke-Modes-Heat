@@ -51,7 +51,7 @@ const SEL_COL = '#e91e63';
 //                           die Gebäude-ID, anschlussAssetId die Anlage, an der
 //                           die Kabel landen (netzseitigste, überschreibbar)
 // links: { id, a, b, label, cableType, crossSection, nParallel, lengthM, msLevel, edgeId }
-export const PD = { plan: null, nodes: [], links: [], seq: 1 };
+export const PD = { plan: null, nodes: [], links: [], seq: 1, gebGroesse: 1 };
 
 let _map = null, _imgLayer = null, _marks = null;
 let _mode = 'ansehen';
@@ -59,6 +59,7 @@ let _sel = null;        // { kind:'node'|'link', id }
 let _pendingA = null;   // erster Knoten im Kabel-Modus
 let _pendingPts = [];   // Stützpunkte der laufenden Kabelzeichnung (Bildpixel)
 let _pendingGeb = null; // aus der Suche gewähltes Gebäude, wartet auf den Platzierungsklick
+let _refZoom = null;    // Zoomstufe der Einpassung: dort entspricht Größe 100 %
 let _ro = null;
 
 const _esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -75,6 +76,34 @@ const _xy = ll => ({ x: ll.lng, y: (PD.plan?.h || 0) - ll.lat });
 // unterstützten Schreibweisen); hier nur als window-Funktion durchgereicht,
 // damit er sich aus der Konsole/aus Tests der UI heraus prüfen lässt.
 export const pdParseKabelLabel = parseKabelLabel;
+
+// ── Symbolgröße: an den Plan gekoppelt ─────────────────────────────
+// Die Kombination aus L.CRS.Simple und einem divIcon hält Marker in Bildschirm-
+// pixeln fest: der Plan zoomt, die Kästen nicht. Auf einem Bestandsplan gehören
+// sie aber über die gezeichneten Kästchen — also werden sie mitskaliert.
+// Bei CRS.Simple entspricht eine Zoomstufe genau Faktor 2; Bezugspunkt ist die
+// Zoomstufe, auf die der Plan beim Laden eingepasst wurde (dort = 100 %).
+function _symbolFaktor() {
+  const g = PD.gebGroesse || 1;
+  if (!_map || _refZoom == null) return g;
+  const k = g * Math.pow(2, _map.getZoom() - _refZoom);
+  // Grenzen, damit ein extremer Zoom die Symbole weder verschwinden lässt
+  // noch den halben Plan zukleistert
+  return Math.max(0.15, Math.min(10, k));
+}
+
+/** Symbolgröße stufenweise ändern (richtung -1/+1) oder mit 0 zurücksetzen. */
+export function pdGroesse(richtung) {
+  const g = PD.gebGroesse || 1;
+  PD.gebGroesse = richtung === 0 ? 1 : Math.max(0.3, Math.min(4, g * Math.pow(1.25, richtung)));
+  _zeigeGroesse();
+  _renderMarks();
+}
+
+function _zeigeGroesse() {
+  const el = document.getElementById('pd-groesse-wert');
+  if (el) el.textContent = Math.round((PD.gebGroesse || 1) * 100) + '\u2009%';
+}
 
 // ── Panel-Gerüst ────────────────────────────────────────────────────────────
 // Standard ist die Vollbild-Arbeitsfläche: Bestandspläne sind großformatig, und
@@ -116,6 +145,11 @@ function _ensurePanel() {
         <button class="pd-mode" data-mode="kabel"    data-click="pdSetMode('kabel')"    title="Zwei Einträge nacheinander anklicken → Kabel">⟋ Kabel</button>
         <button class="pd-mode" data-mode="text"     data-click="pdSetMode('text')"     title="Beschriftungen aus dem PDF anzeigen und per Klick übernehmen">Aa Text</button>
         <button class="pd-mode" data-mode="loeschen" data-click="pdSetMode('loeschen')" title="Eintrag oder Kabel im Plan anklicken → entfernen">✕ Löschen</button>
+      </span>
+      <span class="pd-groesse" title="Größe der Einträge auf dem Plan. Sie zoomen mit dem Plan mit — 100 % entspricht der Einpassung beim Laden.">
+        <button class="pd-head-btn" data-click="pdGroesse(-1)" title="Symbole kleiner">−</button>
+        <span id="pd-groesse-wert" data-click="pdGroesse(0)" title="Auf 100 % zurücksetzen">100\u2009%</span>
+        <button class="pd-head-btn" data-click="pdGroesse(1)" title="Symbole größer">+</button>
       </span>
       <span class="pd-modehint" id="pd-modehint"></span>
     </div>
@@ -194,7 +228,10 @@ function _ensureMap() {
   _map.on('click', _onMapClick);
   // Die Textebene wird nur fuer den sichtbaren Ausschnitt gezeichnet und muss
   // deshalb nach jedem Verschieben/Zoomen neu bestimmt werden.
-  _map.on('moveend zoomend', () => { if (_mode === 'text') _renderMarks(); });
+  // Nach jedem Zoom neu zeichnen: die Symbole hängen an der Zoomstufe, und die
+  // Textebene wird nur für den sichtbaren Ausschnitt aufgebaut.
+  _map.on('zoomend', () => _renderMarks());
+  _map.on('moveend', () => { if (_mode === 'text') _renderMarks(); });
 
   // Fenstermodus ist in der Größe ziehbar, Vollbild folgt dem Viewport —
   // Leaflet muss beides mitbekommen
@@ -215,6 +252,9 @@ function _showPlanLayer() {
   _imgLayer.bringToBack();
   _map.setMaxBounds(L.latLngBounds(bounds).pad(0.5));
   _map.fitBounds(bounds);
+  // Einpassungszoom als 100 %-Bezug merken: unabhängig von der Plangröße
+  // sehen die Symbole beim Laden immer gleich aus.
+  _refZoom = _map.getZoom();
 }
 
 // ── Plan laden (Bild oder PDF-Seite) ────────────────────────────────────────
@@ -336,10 +376,11 @@ function _setPlan(url, w, h, name, texts) {
 }
 
 export function pdClear() {
-  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1;
+  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1;
   _sel = null; _pendingA = null; _pendingGeb = null;
   if (_imgLayer) { _imgLayer.remove(); _imgLayer = null; }
   _marks?.clearLayers();
+  _zeigeGroesse();
   _renderAll();
 }
 
@@ -731,12 +772,15 @@ function _renderMarks() {
 function _komponentenIcon(n, st, hervor) {
   const cfg = ASSET_CFG[n.assetType] || {};
   const rand = hervor ? SEL_COL : 'rgba(0,0,0,.6)';
+  const k = _symbolFaktor();
   return L.divIcon({
     className: 'pd-node-icon',
-    html: `<div class="pd-node" style="background:${STATUS_COL[st]};border-color:${rand};${hervor ? 'box-shadow:0 0 0 3px rgba(233,30,99,.45);' : ''}">
-             <span>${cfg.icon || '◻'}</span>
-           </div>
-           <div class="pd-node-lbl">${_esc(n.label || '?')}</div>`,
+    html: `<div class="pd-node-wrap" style="transform:scale(${k.toFixed(3)});transform-origin:11px 11px;">
+             <div class="pd-node" style="background:${STATUS_COL[st]};border-color:${rand};${hervor ? 'box-shadow:0 0 0 3px rgba(233,30,99,.45);' : ''}">
+               <span>${cfg.icon || '◻'}</span>
+             </div>
+             <div class="pd-node-lbl">${_esc(n.label || '?')}</div>
+           </div>`,
     iconSize: [22, 22], iconAnchor: [11, 11],
   });
 }
@@ -755,7 +799,7 @@ function _gebaeudeIcon(n, st, hervor) {
   const mehr = kand.length > 6 ? `<span class="pd-chip pd-chip-mehr">+${kand.length - 6}</span>` : '';
   return L.divIcon({
     className: 'pd-geb-icon',
-    html: `<div class="pd-geb${hervor ? ' sel' : ''}" style="border-color:${STATUS_COL[st]}">
+    html: `<div class="pd-geb${hervor ? ' sel' : ''}" style="border-color:${STATUS_COL[st]};transform:translate(-50%,-50%) scale(${_symbolFaktor().toFixed(3)});">
              <span class="pd-geb-name">${_esc(n.label || 'Gebäude')}</span>
              <span class="pd-chips">${chips || '<span class="pd-chips-leer">ohne Anlagen</span>'}${mehr}</span>
            </div>`,
@@ -1206,11 +1250,14 @@ export function pdSerialize() {
     nodes: PD.nodes.map(n => ({ ...n })),
     links: PD.links.map(l => ({ ...l })),
     seq: PD.seq,
+    gebGroesse: PD.gebGroesse || 1,
   };
 }
 
 export function pdDeserialize(data) {
-  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1;
+  // Auch die Symbolgroesse zuruecksetzen: ohne das traegt ein Projekt ohne
+  // Bestandsplan die Einstellung der vorigen Liegenschaft weiter.
+  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1;
   _sel = null; _pendingA = null; _pendingGeb = null;
   if (_imgLayer) { _imgLayer.remove(); _imgLayer = null; }
   if (data && data.plan && data.plan.url) {
@@ -1218,9 +1265,10 @@ export function pdDeserialize(data) {
     PD.nodes = Array.isArray(data.nodes) ? data.nodes.map(n => ({ ...n })) : [];
     PD.links = Array.isArray(data.links) ? data.links.map(l => ({ ...l })) : [];
     PD.seq = data.seq || (PD.nodes.length + PD.links.length + 1);
+    PD.gebGroesse = Number.isFinite(data.gebGroesse) ? data.gebGroesse : 1;
     if (_map) _showPlanLayer();
   } else {
     _marks?.clearLayers();
   }
-  if (document.getElementById(PANEL_ID)) _renderAll();
+  if (document.getElementById(PANEL_ID)) { _zeigeGroesse(); _renderAll(); }
 }
