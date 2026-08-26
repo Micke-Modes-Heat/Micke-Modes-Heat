@@ -83,7 +83,7 @@ export const pdParseKabelLabel = parseKabelLabel;
 // sie aber über die gezeichneten Kästchen — also werden sie mitskaliert.
 // Bei CRS.Simple entspricht eine Zoomstufe genau Faktor 2; Bezugspunkt ist die
 // Zoomstufe, auf die der Plan beim Laden eingepasst wurde (dort = 100 %).
-function _symbolFaktor() {
+function _symbolFaktorBasis() {
   const g = PD.gebGroesse || 1;
   if (!_map || _refZoom == null) return g;
   const k = g * Math.pow(2, _map.getZoom() - _refZoom);
@@ -92,12 +92,30 @@ function _symbolFaktor() {
   return Math.max(0.15, Math.min(10, k));
 }
 
+const _begrenzeSkala = s => Math.max(0.25, Math.min(6, Number.isFinite(s) ? s : 1));
+
+// Gesamtfaktor eines Eintrags: gemeinsame Größe mal eigener Anteil. Auf einem
+// Bestandsplan sind die Kästchen unterschiedlich groß — eine Trafostation misst
+// mehr als ein Kabelverteiler —, deshalb lässt sich jeder Eintrag einzeln
+// nachziehen, ohne die gemeinsame Einstellung anzurühren.
+function _symbolFaktor(n) {
+  return _symbolFaktorBasis() * _begrenzeSkala(n?.skala ?? 1);
+}
+
 /** Symbolgröße stufenweise ändern (richtung -1/+1) oder mit 0 zurücksetzen. */
 export function pdGroesse(richtung) {
   const g = PD.gebGroesse || 1;
   PD.gebGroesse = richtung === 0 ? 1 : Math.max(0.3, Math.min(4, g * Math.pow(1.25, richtung)));
   _zeigeGroesse();
   _renderMarks();
+}
+
+/** Größe nur des ausgewählten Eintrags ändern (richtung -1/+1, 0 = zurücksetzen). */
+export function pdNodeGroesse(richtung) {
+  const n = _node(_sel?.id);
+  if (!n) return;
+  n.skala = richtung === 0 ? 1 : _begrenzeSkala((n.skala ?? 1) * Math.pow(1.25, richtung));
+  _renderAll();
 }
 
 function _zeigeGroesse() {
@@ -765,14 +783,60 @@ function _renderMarks() {
       _renderAll();
     });
     _marks.addLayer(mk);
+    if (aktiv) _groessenGriff(n, mk);
   }
+}
+
+// Eckgriff zum Aufziehen des ausgewählten Eintrags — dieselbe Bedienung wie die
+// Eckgriffe des Plan-Overlays auf der Karte. Der Griff sitzt an der unteren
+// rechten Ecke des gezeichneten Kastens; dessen Maße stehen erst nach dem
+// Einfügen fest und werden deshalb am eingefügten Element gemessen.
+function _groessenGriff(n, mk) {
+  if (!_map) return;
+  const el = mk.getElement();
+  const mess = el?.querySelector('.pd-geb') || el?.querySelector('.pd-node');
+  const skalEl = el?.querySelector('.pd-geb') || el?.querySelector('.pd-node-wrap');
+  if (!mess || !skalEl) return;
+  const r = mess.getBoundingClientRect();
+  const pxProPlan = Math.pow(2, _map.getZoom());          // CRS.Simple: 1 Planpixel = 2^zoom Bildschirmpixel
+  const halbB = (r.width / 2) / pxProPlan;
+  const halbH = (r.height / 2) / pxProPlan;
+  if (!(halbB > 0)) return;
+
+  const griff = L.marker(_ll(n.x + halbB, n.y + halbH), {
+    icon: L.divIcon({ className: 'pd-gr-icon', html: '<div class="pd-gr"></div>', iconSize: [12, 12], iconAnchor: [6, 6] }),
+    draggable: true, keyboard: false, zIndexOffset: 700,
+    title: 'Ziehen ändert die Größe dieses Eintrags',
+  });
+  let start = null;
+  const ausZug = () => {
+    const p = _xy(griff.getLatLng());
+    return _begrenzeSkala(start.skala * (Math.abs(p.x - n.x) / start.halbB));
+  };
+  griff.on('dragstart', () => { start = { skala: n.skala ?? 1, halbB }; });
+  griff.on('drag', () => {
+    if (!start) return;
+    // Live-Vorschau direkt am Element: ein Neuaufbau würde den gezogenen Griff
+    // mitlöschen und den Zug abbrechen.
+    const f = (_symbolFaktorBasis() * ausZug()).toFixed(3);
+    skalEl.style.transform = skalEl.classList.contains('pd-geb')
+      ? `translate(-50%,-50%) scale(${f})`
+      : `scale(${f})`;
+  });
+  griff.on('dragend', () => {
+    if (start) n.skala = ausZug();
+    start = null;
+    _renderAll();
+  });
+  griff.on('click', ev => L.DomEvent.stop(ev));
+  _marks.addLayer(griff);
 }
 
 // Einzelnes Betriebsmittel: kleiner farbiger Punkt mit Typ-Symbol
 function _komponentenIcon(n, st, hervor) {
   const cfg = ASSET_CFG[n.assetType] || {};
   const rand = hervor ? SEL_COL : 'rgba(0,0,0,.6)';
-  const k = _symbolFaktor();
+  const k = _symbolFaktor(n);
   return L.divIcon({
     className: 'pd-node-icon',
     html: `<div class="pd-node-wrap" style="transform:scale(${k.toFixed(3)});transform-origin:11px 11px;">
@@ -799,7 +863,7 @@ function _gebaeudeIcon(n, st, hervor) {
   const mehr = kand.length > 6 ? `<span class="pd-chip pd-chip-mehr">+${kand.length - 6}</span>` : '';
   return L.divIcon({
     className: 'pd-geb-icon',
-    html: `<div class="pd-geb${hervor ? ' sel' : ''}" style="border-color:${STATUS_COL[st]};transform:translate(-50%,-50%) scale(${_symbolFaktor().toFixed(3)});">
+    html: `<div class="pd-geb${hervor ? ' sel' : ''}" style="border-color:${STATUS_COL[st]};transform:translate(-50%,-50%) scale(${_symbolFaktor(n).toFixed(3)});">
              <span class="pd-geb-name">${_esc(n.label || 'Gebäude')}</span>
              <span class="pd-chips">${chips || '<span class="pd-chips-leer">ohne Anlagen</span>'}${mehr}</span>
            </div>`,
@@ -922,6 +986,7 @@ function _renderForm() {
         ? `<div class="pd-anschluss-liste">${liste}</div>`
         : `<div class="pd-warn">Dieses Gebäude hat noch keine Anlage. Beim Übernehmen wird eine angelegt:</div>
            <select class="pd-in" data-change="pdUpdateNode('assetType', this.value)">${typen}</select>`}
+      ${_groessenZeile(n)}
       <button class="pd-mini" data-click="pdZeigeAufKarte('${n.id}')">→ auf Karte zeigen</button>
       <button class="pd-mini pd-del" data-click="pdDeleteSelected()">✕ Aus dem Plan entfernen</button>`;
     return;
@@ -948,6 +1013,7 @@ function _renderForm() {
       ${asset ? `<div class="pd-ok">✔ übernommen als „${_esc(asset.name)}"
              <button class="pd-mini" data-click="pdZeigeAufKarte('${n.id}')">→ auf Karte zeigen</button></div>` : ''}
       ${!n.linkKind && !asset ? `<div class="pd-warn">Ohne Verortung wird dieser Eintrag nicht übernommen.</div>` : ''}
+      ${_groessenZeile(n)}
       <button class="pd-mini pd-del" data-click="pdDeleteSelected()">✕ Aus dem Plan entfernen</button>`;
     return;
   }
@@ -1013,6 +1079,19 @@ function _zielAsset(n) {
   if (n.linkKind === 'a') return ASSETS.items.find(x => x.id === n.linkId) || null;
   if (n.linkKind === 'g') return getAssetsForBuilding(n.linkId).find(a => a.type === n.assetType) || null;
   return null;
+}
+
+// Größenzeile im Formular — zum genauen Einstellen, wenn der Eckgriff zu grob ist
+function _groessenZeile(n) {
+  const p = Math.round(_begrenzeSkala(n.skala ?? 1) * 100);
+  return `<div class="pd-stuetz">
+    <span>Größe im Plan <span style="opacity:.7">(Eckgriff ziehen)</span></span>
+    <span class="pd-groesse">
+      <button class="pd-head-btn" data-click="pdNodeGroesse(-1)" title="kleiner">−</button>
+      <span id="pd-node-groesse" data-click="pdNodeGroesse(0)" title="Auf 100 % zurücksetzen">${p}\u2009%</span>
+      <button class="pd-head-btn" data-click="pdNodeGroesse(1)" title="größer">+</button>
+    </span>
+  </div>`;
 }
 
 // Gebäude anhand der Plan-Beschriftung vorschlagen ("Gebäude 13" → Nr. 13)

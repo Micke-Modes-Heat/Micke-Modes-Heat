@@ -1632,9 +1632,9 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-modehint{font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .pd-groesse{display:inline-flex;align-items:center;gap:3px;}
 .pd-groesse .pd-head-btn{padding:2px 7px;line-height:1.2;}
-#pd-groesse-wert{min-width:44px;text-align:center;font-size:9px;color:var(--muted);
+#pd-groesse-wert,#pd-node-groesse{min-width:44px;text-align:center;font-size:9px;color:var(--muted);
   font-family:'DM Mono',monospace;cursor:pointer;}
-#pd-groesse-wert:hover{color:var(--text);}
+#pd-groesse-wert:hover,#pd-node-groesse:hover{color:var(--text);}
 .pd-toolbar{display:flex;align-items:center;gap:10px;padding:7px 14px;flex-shrink:0;flex-wrap:wrap;
   background:var(--surface2);border-bottom:1px solid var(--border);
   /* Eigener Stacking-Kontext ueber den Leaflet-Panes des Plans (z-index 400),
@@ -1694,6 +1694,11 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-wp{width:11px;height:11px;border-radius:50%;background:#e91e63;border:2px solid #10131a;
   box-shadow:0 0 0 1px rgba(255,255,255,.5);cursor:move;}
 .pd-wp.offen{background:#fff;border-color:#e91e63;cursor:default;}
+
+/* Eckgriff zum Aufziehen eines einzelnen Eintrags */
+.pd-gr-icon{background:none;border:none;}
+.pd-gr{width:12px;height:12px;border-radius:2px;background:#e91e63;border:2px solid #10131a;
+  box-shadow:0 0 0 1px rgba(255,255,255,.55);cursor:nwse-resize;}
 
 /* Beschriftungen aus der PDF-Textebene (Text-Modus) */
 .pd-text-icon{background:none;border:none;}
