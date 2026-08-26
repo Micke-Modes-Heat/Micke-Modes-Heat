@@ -526,12 +526,39 @@ function _anschlussKandidaten(gebId) {
     .sort((a, b) => (TYPE_RANK[a.type] ?? 9) - (TYPE_RANK[b.type] ?? 9));
 }
 
+// Wo ein Kabel an einem Gebäude landet, hängt von seiner Spannungsebene ab.
+// Eine Übergabe- oder Trafostation hat BEIDE Seiten im selben Gebäude: MS am
+// NAP und an der Schaltanlage, NS an der NSHV. Ein einziger Anschlusspunkt je
+// Gebäude reicht dafür nicht — sonst hängt jede Gebäudeleitung am NAP.
+const MS_ANSCHLUSS = ['NAP', 'Schaltanlage', 'Trafo'];
+const NS_ANSCHLUSS = ['NSHV', 'UV', 'KVS', 'Verbraucher', 'Lade', 'TWW', 'Batterie', 'PV', 'Nsa'];
+
+/** Anlage, an der ein Kabel der gegebenen Ebene an diesem Eintrag endet. */
+function _kabelEnde(n, msLevel) {
+  if (!n) return null;
+  if (!_istGebKnoten(n)) return n.assetId ? ASSETS.items.find(a => a.id === n.assetId) || null : null;
+  // Ausdrücklich gewählter Anschlusspunkt geht vor
+  if (n.anschlussAssetId) {
+    const a = ASSETS.items.find(x => x.id === n.anschlussAssetId);
+    if (a) return a;
+  }
+  const kand = _anschlussKandidaten(n.linkId);
+  if (!kand.length) return n.assetId ? ASSETS.items.find(a => a.id === n.assetId) || null : null;
+  for (const t of (msLevel ? MS_ANSCHLUSS : NS_ANSCHLUSS)) {
+    const treffer = kand.find(a => a.type === t);
+    if (treffer) return treffer;
+  }
+  return kand[0];
+}
+
 function _anschlussAsset(n) {
   if (n.anschlussAssetId) {
     const a = ASSETS.items.find(x => x.id === n.anschlussAssetId);
     if (a) return a;
   }
-  return _anschlussKandidaten(n.linkId)[0] || null;
+  // Ohne ausdrückliche Wahl gilt die NS-Seite als Standard — die allermeisten
+  // Planlinien sind Niederspannungsabgänge.
+  return _kabelEnde(n, false);
 }
 
 function _sucheGebaeude(s) {
@@ -691,7 +718,9 @@ function _setzeGebaeudeKnoten(g, p) {
     // Nur relevant, wenn das Gebäude noch gar keine Anlage hat — dann wird eine angelegt
     assetType: anschluss?.type || 'Verbraucher',
     linkKind: 'g', linkId: g.id,
-    anschlussAssetId: anschluss?.id || null,
+    // Bewusst leer: ohne Vorgabe entscheidet die Spannungsebene des jeweiligen
+    // Kabels, ob es an NAP/Schaltanlage (MS) oder NSHV/UV (NS) landet.
+    anschlussAssetId: null,
     // Anlage existiert bereits auf der Karte → nichts mehr zu übernehmen
     assetId: anschluss?.id || null,
   };
@@ -1431,7 +1460,8 @@ function _renderForm() {
   if (!l) { _sel = null; return _renderForm(); }
   const a = _node(l.a), b = _node(l.b);
   const st = _statusLink(l);
-  const endA = _zielAsset(a), endB = _zielAsset(b);
+  const endA = _kabelEnde(a, l.msLevel) || _zielAsset(a);
+  const endB = _kabelEnde(b, l.msLevel) || _zielAsset(b);
   // Zwei Faelle, die eine Planlinie fast nie meint:
   //   gleiche Anlage  -- beide Eintraege landen auf demselben Asset; daraus
   //                      wuerde eine Kante von einem Knoten auf sich selbst
@@ -1737,13 +1767,77 @@ function _renderAll() {
   _renderFortschritt();
 }
 
+// ── Standardaufbau innerhalb eines Gebäudes ─────────────────────────
+// Der Plan zeigt nur die Leitungen ZWISCHEN den Kästchen. Was innerhalb einer
+// Übergabe- oder Trafostation verdrahtet ist, steht dort nicht — ist aber immer
+// gleich und dieselbe Kette, die 13m-kompaktstation.js baut:
+//     NAP ─MS→ Schaltanlage ─MS→ Trafo ─NS→ NSHV
+// In einem gewöhnlichen Gebäude entsprechend: der Verteiler (NSHV/UV/KVS)
+// versorgt Verbraucher, PV, Batterie usw.
+
+const _edgeDa = (u, v) => (window.stromEdges || []).some(e =>
+  (e.u === u && e.v === v) || (e.u === v && e.v === u));
+
+function _verbinde(u, v, { ms = false, cableType = null, crossSection = 0 } = {}) {
+  if (!u || !v || u.id === v.id || _edgeDa(u.id, v.id)) return null;
+  const e = addStromEdge(u.id, v.id);
+  if (!e) return null;
+  if (ms) e.msLevel = true;
+  if (cableType && KABEL_TYPEN[cableType]) e.cableType = cableType;
+  if (crossSection > 0) { e.crossSection = crossSection; e.autoSized = false; }
+  return e;
+}
+
+/** NAP → Schaltanlage → Trafo → NSHV innerhalb einer Station herstellen. */
+function _stationsKette(gebId) {
+  const von = t => _anschlussKandidaten(gebId).filter(a => a.type === t);
+  const naps = von('NAP'), sas = von('Schaltanlage'), trafos = von('Trafo'), nshvs = von('NSHV');
+  let neu = 0;
+  // MS-Ebene: jede Schaltanlage an den NAP; ohne Schaltanlage direkt der Trafo
+  // MS-Erdkabeltyp statt des NS-Standards — sonst stuende an einer MS-Verbindung
+  // NYY, was in Tooltip und Kostenansatz irrefuehrt.
+  const msOpt = { ms: true, cableType: 'NA2XS2Y' };
+  if (naps.length && sas.length) sas.forEach(sa => { if (_verbinde(naps[0], sa, msOpt)) neu++; });
+  else if (naps.length && trafos.length) trafos.forEach(t => { if (_verbinde(naps[0], t, msOpt)) neu++; });
+  if (sas.length && trafos.length) trafos.forEach(t => { if (_verbinde(sas[0], t, msOpt)) neu++; });
+  // NS-Ebene: jede NSHV an einen Trafo (der Reihe nach, Rest an den ersten)
+  if (trafos.length && nshvs.length) {
+    nshvs.forEach((h, i) => { if (_verbinde(trafos[Math.min(i, trafos.length - 1)], h)) neu++; });
+  }
+  return neu;
+}
+
+/**
+ * Verteiler → übrige Anlagen des Gebäudes, mit dem Querschnitt der Zuleitung.
+ * Der Plan sagt, womit das Gebäude angeschlossen ist — dieselbe Angabe ist der
+ * sinnvolle Startwert für die Verteilung dahinter.
+ */
+function _gebaeudeIntern(gebId, zuleitung) {
+  const kand = _anschlussKandidaten(gebId);
+  const verteiler = NS_ANSCHLUSS.slice(0, 3).map(t => kand.find(a => a.type === t)).find(Boolean);
+  if (!verteiler) return 0;
+  const station = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV']);
+  // In einer Station bemisst der Trafo die NS-Verteilung, nicht ein einzelner
+  // Abgang. Nur ein reines Verbrauchergebaeude erbt den Querschnitt seiner
+  // Zuleitung -- genau das war gemeint mit "womit das Gebaeude angeschlossen ist".
+  const istStation = kand.some(a => a.type === 'Trafo' || a.type === 'NSHV');
+  const vorgabe = istStation ? null : zuleitung;
+  let neu = 0;
+  for (const a of kand) {
+    if (a.id === verteiler.id || station.has(a.type)) continue;
+    if (_verbinde(verteiler, a, { cableType: vorgabe?.cableType, crossSection: vorgabe?.crossSection || 0 })) neu++;
+  }
+  return neu;
+}
+
 // ── Übernahme in Karte + Stromnetz ──────────────────────────────────────────
 export function pdApply() {
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
   if (!PD.nodes.length) { showHint('⚠ Noch keine Einträge im Plan markiert.'); return; }
 
-  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0, fehlend: 0, vorlaeufig: 0 };
+  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0, fehlend: 0, vorlaeufig: 0, stationsintern: 0 };
   let letzteQuelle = '';
+  const zuleitungen = new Map();   // buildingId → { cableType, crossSection }
 
   const mutate = () => {
     // 1 · Einträge → Assets
@@ -1809,15 +1903,29 @@ export function pdApply() {
       if (l.edgeId && (window.stromEdges || []).some(e => e.id === l.edgeId)) continue;
       const a = _node(l.a), b = _node(l.b);
       if (!a?.assetId || !b?.assetId) { bericht.offeneKabel++; continue; }
+      // Seitenrichtige Enden: ein MS-Kabel landet am NAP bzw. an der
+      // Schaltanlage, ein NS-Kabel an der NSHV bzw. am Gebäudeverteiler.
+      const endA = _kabelEnde(a, l.msLevel), endB = _kabelEnde(b, l.msLevel);
+      if (!endA || !endB) { bericht.offeneKabel++; continue; }
       // Beide Eintraege auf derselben Anlage verortet: eine Kante von einem
       // Knoten auf sich selbst waere kaputte Netzstruktur (Laenge 0, Endlos-
       // schleife in jeder Baumtraversierung). Lieber offen lassen und melden.
-      if (a.assetId === b.assetId) { bericht.selbstbezug++; continue; }
+      if (endA.id === endB.id) { bericht.selbstbezug++; continue; }
+      // Zuleitung je Gebäude merken — sie gibt den Querschnitt für die
+      // Verteilung dahinter vor; bei mehreren gewinnt die größte. NUR NS: ein
+      // MS-Kabel speist eine Station, es bemisst nicht deren NS-Verteilung.
+      for (const [end, gegen] of (l.msLevel ? [] : [[endA, endB], [endB, endA]])) {
+        if (end.buildingId == null || end.buildingId === gegen.buildingId) continue;
+        const bisher = zuleitungen.get(end.buildingId);
+        if (!bisher || (l.crossSection || 0) > (bisher.crossSection || 0)) {
+          zuleitungen.set(end.buildingId, { cableType: l.cableType, crossSection: l.crossSection });
+        }
+      }
       const dup = (window.stromEdges || []).find(e =>
-        (e.u === a.assetId && e.v === b.assetId) || (e.u === b.assetId && e.v === a.assetId));
+        (e.u === endA.id && e.v === endB.id) || (e.u === endB.id && e.v === endA.id));
       if (dup) { l.edgeId = dup.id; continue; }
 
-      const edge = addStromEdge(a.assetId, b.assetId);
+      const edge = addStromEdge(endA.id, endB.id);
       if (!edge) { bericht.offeneKabel++; continue; }
       if (l.cableType && KABEL_TYPEN[l.cableType]) edge.cableType = l.cableType;
       if (l.crossSection > 0) {
@@ -1831,6 +1939,19 @@ export function pdApply() {
       if (l.lengthM != null) edge.lengthM = l.lengthM;
       l.edgeId = edge.id;
       bericht.kabelNeu++;
+    }
+
+    // 3 · Standardaufbau innerhalb der beteiligten Gebäude. Der Plan zeigt ihn
+    //     nicht, aber er ist immer gleich — und ohne ihn hängt die NSHV einer
+    //     Trafostation an nichts und der Verbraucher eines Gebäudes ebenso.
+    const beteiligt = new Set();
+    for (const n of PD.nodes) {
+      const a = n.assetId ? ASSETS.items.find(x => x.id === n.assetId) : null;
+      if (a?.buildingId != null) beteiligt.add(a.buildingId);
+    }
+    for (const gebId of beteiligt) {
+      bericht.stationsintern += _stationsKette(gebId);
+      bericht.stationsintern += _gebaeudeIntern(gebId, zuleitungen.get(gebId));
     }
   };
 
@@ -1848,6 +1969,7 @@ export function pdApply() {
   if (bericht.assetsNeu) teile.push(`${bericht.assetsNeu} Anlage(n) neu`);
   if (bericht.assetsVerknuepft) teile.push(`${bericht.assetsVerknuepft} verknüpft`);
   if (bericht.kabelNeu) teile.push(`${bericht.kabelNeu} Kabel`);
+  if (bericht.stationsintern) teile.push(`${bericht.stationsintern} interne Verbindung(en)`);
   const offen = [];
   if (bericht.offeneKnoten) offen.push(`${bericht.offeneKnoten} Eintrag/Einträge ohne Verortung`);
   if (bericht.offeneKabel) offen.push(`${bericht.offeneKabel} Kabel ohne beide Endpunkte`);
