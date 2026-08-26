@@ -1694,6 +1694,7 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-ab-kopf .warn b{color:#f9a825;}
 .pd-ab-kopf .fehl b{color:#ef5350;}
 .pd-fehl{color:#ef5350;}
+.pd-vorl{color:#ba68c8;}
 .pd-geb.fehlt{border-style:dashed;}
 .pd-ab-export{display:block;width:100%;margin:2px 0 4px;}
 .pd-ab-row{display:flex;align-items:center;gap:5px;padding:4px 5px;border-radius:4px;font-size:9.5px;flex-wrap:wrap;}

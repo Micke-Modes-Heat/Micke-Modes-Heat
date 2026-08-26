@@ -781,6 +781,97 @@ function _textUebernehmen(t) {
   }
 }
 
+// ── Vorläufige Position aus dem Plan ──────────────────────────────
+// Ein Kabelverteiler auf dem Plan ist ein reales Betriebsmittel — Topologie,
+// Kabeltyp und Querschnitt kennst du. Offen ist nur, wo genau er steht. Das ist
+// kein Grund, den Arbeitsfluss abzubrechen: aus bereits verorteten Einträgen
+// desselben Blattes lässt sich eine Abbildung Plan → Karte bilden und daraus
+// eine Startlage ableiten, die man anschließend auf der Karte zurechtzieht.
+//
+// WICHTIG: Eine falsche Position ist gefährlicher als eine fehlende, weil die
+// Kabellänge aus dem Trassenrouting kommt — falsche Lage, falsche Länge, falsche
+// Kosten. Deshalb wird jede geschätzte Lage als vorläufig markiert und bleibt im
+// Abgleich stehen, bis sie auf der Karte verschoben oder bestätigt wurde.
+
+const _proj = (lat, lng) => map.options.crs.project(L.latLng(lat, lng));
+const _unproj = (x, y) => map.options.crs.unproject(L.point(x, y));
+
+// Punktpaare Plan ↔ Karte aus bereits verorteten Einträgen.
+// Plan-y zeigt nach unten, projizierte y nach oben — deshalb gespiegelt.
+function _ankerPaare(nurIds) {
+  const paare = [];
+  for (const n of PD.nodes) {
+    if (nurIds && !nurIds.has(n.id)) continue;
+    const a = _zielAsset(n);
+    if (!a || a.lat == null || a.lng == null) continue;
+    paare.push({ p: { x: n.x, y: -n.y }, m: _proj(a.lat, a.lng) });
+  }
+  return paare;
+}
+
+// Das am weitesten auseinanderliegende Paar trägt die Abbildung am stabilsten.
+function _weitestesPaar(paare) {
+  let best = null, bestD = 0;
+  for (let i = 0; i < paare.length; i++) {
+    for (let j = i + 1; j < paare.length; j++) {
+      const d = Math.hypot(paare[i].p.x - paare[j].p.x, paare[i].p.y - paare[j].p.y);
+      if (d > bestD) { bestD = d; best = [paare[i], paare[j]]; }
+    }
+  }
+  return bestD > 20 ? best : null;
+}
+
+// Ähnlichkeitsabbildung (Drehung, Maßstab, Verschiebung) aus zwei Punktpaaren.
+function _aehnlichkeit(a, b) {
+  const vP = { x: b.p.x - a.p.x, y: b.p.y - a.p.y };
+  const vM = { x: b.m.x - a.m.x, y: b.m.y - a.m.y };
+  const lP = Math.hypot(vP.x, vP.y);
+  if (lP < 1e-6) return null;
+  const s = Math.hypot(vM.x, vM.y) / lP;
+  const th = Math.atan2(vM.y, vM.x) - Math.atan2(vP.y, vP.x);
+  const cos = Math.cos(th), sin = Math.sin(th);
+  return p0 => {
+    const dx = p0.x - a.p.x, dy = p0.y - a.p.y;
+    return { x: a.m.x + s * (cos * dx - sin * dy), y: a.m.y + s * (sin * dx + cos * dy) };
+  };
+}
+
+function _schaetzePosition(n) {
+  const nachbarn = new Set();
+  PD.links.forEach(l => { if (l.a === n.id) nachbarn.add(l.b); if (l.b === n.id) nachbarn.add(l.a); });
+  const p0 = { x: n.x, y: -n.y };
+
+  // Verkabelte Nachbarn zuerst: auf einem schematischen Plan ist die lokale
+  // Umgebung verlässlicher als eine über das ganze Blatt gemittelte Abbildung.
+  let paar = _weitestesPaar(_ankerPaare(nachbarn));
+  let quelle = 'aus den verkabelten Nachbarn';
+  if (!paar) { paar = _weitestesPaar(_ankerPaare(null)); quelle = 'aus dem ganzen Blatt'; }
+  if (paar) {
+    const f = _aehnlichkeit(paar[0], paar[1]);
+    if (f) { const m = f(p0); const ll = _unproj(m.x, m.y); return { lat: ll.lat, lng: ll.lng, quelle }; }
+  }
+  // Nur ein Anker: ohne zweiten Punkt gibt es weder Maßstab noch Drehung —
+  // der Versatz daneben ist ehrlich willkürlich, aber besser als die Kartenmitte.
+  const einer = _ankerPaare(nachbarn)[0] || _ankerPaare(null)[0];
+  if (einer) { const ll = _unproj(einer.m.x + 40, einer.m.y); return { lat: ll.lat, lng: ll.lng, quelle: 'neben den einzigen verorteten Eintrag gelegt' }; }
+  const c = map.getCenter();
+  return { lat: c.lat, lng: c.lng, quelle: 'Kartenmitte, kein verorteter Eintrag vorhanden' };
+}
+
+/** Anlagen, deren Lage geschätzt und noch nicht bestätigt wurde. */
+export function pdVorlaeufige() {
+  return ASSETS.items.filter(a => a.props?.posVorlaeufig && !a._movedByUser);
+}
+
+/** Geschätzte Lage als richtig bestätigen, ohne sie zu verschieben. */
+export function pdPositionBestaetigt(id) {
+  const a = ASSETS.items.find(x => x.id === id);
+  if (!a) return;
+  a._movedByUser = true;
+  showHint(`Position von „${a.name}" bestätigt.`);
+  _renderAll();
+}
+
 // ── Abgleich Plan ↔ Karte ─────────────────────────────────────
 // Der Fortschritt „Einträge 12/12" sagt nur, dass alles Übernommene übernommen
 // ist — nicht, ob der Plan vollständig abgearbeitet wurde. Vierzig nie
@@ -831,6 +922,7 @@ export function pdAbgleich() {
     fehlt:      PD.nodes.filter(n => _statusNode(n) === 'fehlt'),
     nurKarte:   offen,
     abgehakt,
+    vorlaeufig: pdVorlaeufige(),
   };
 }
 
@@ -846,6 +938,7 @@ export function pdAbgleichKopieren() {
   ab.nurKarte.forEach(o => zeilen.push(['nur auf der Karte', o.name, o.zusatz, ''].join('\t')));
   ab.nurImPlan.forEach(n => zeilen.push(['im Plan, noch nicht verortet', n.label || '(ohne Bezeichnung)', '', ''].join('\t')));
   ab.abgehakt.forEach(o => zeilen.push(['bewusst nicht im Plan', o.name, o.zusatz, o.grund].join('\t')));
+  ab.vorlaeufig.forEach(a => zeilen.push(['Position vorläufig', a.name, ASSET_CFG[a.type]?.label || a.type, 'aus dem Plan geschätzt'].join('\t')));
   const text = `Abgleich Plan ↔ Karte — ${PD.plan?.name || 'Plan'}\n`
     + `beidseitig: ${ab.beidseitig.length}\n\n` + zeilen.join('\n');
   try {
@@ -910,7 +1003,10 @@ export function pdSeite(seite) {
   _seite = seite;
   document.querySelectorAll('#' + PANEL_ID + ' .pd-tab')
     .forEach(b => b.classList.toggle('active', b.dataset.tab === seite));
-  _renderList();
+  // Vollstaendig neu zeichnen, nicht nur die Liste: Aenderungen auf der Karte
+  // (verschobene Anlage, neu gezeichnetes Gebaeude) veraendern auch die
+  // Fortschrittszeile und die Farben im Plan. Nur _renderList() liesse sie stehen.
+  _renderAll();
 }
 
 // ── Markierungen zeichnen ───────────────────────────────────────────────────
@@ -1220,6 +1316,7 @@ function _verortungOptions(n) {
     .map(g => `<option value="g:${g.id}"${n.linkKind === 'g' && String(n.linkId) === String(g.id) ? ' selected' : ''}>${_esc(g.name)}${g.gebaeudenummer ? ' (Nr. ' + _esc(g.gebaeudenummer) + ')' : ''}</option>`)
     .join('');
   return `<option value=""${!n.linkKind ? ' selected' : ''}>— offen —</option>
+    <option value="n:"${n.linkKind === 'neu' ? ' selected' : ''}>➕ neu anlegen — Position aus dem Plan geschätzt</option>
     ${assets ? `<optgroup label="Vorhandene Anlage auf der Karte">${assets}</optgroup>` : ''}
     ${geb ? `<optgroup label="Gebäude → neue Anlage anlegen">${geb}</optgroup>` : ''}`;
 }
@@ -1439,6 +1536,7 @@ export function pdUpdateNode(feld, wert) {
     if (!wert) { n.linkKind = null; n.linkId = null; }
     else {
       const [k, id] = [wert.slice(0, 1), wert.slice(2)];
+      if (k === 'n') { n.linkKind = 'neu'; n.linkId = null; _renderAll(); return; }
       n.linkKind = k;
       n.linkId = k === 'g' ? (Number.isNaN(Number(id)) ? id : Number(id)) : id;
       // Bei einer vorhandenen Anlage bestimmt deren Typ den Knotentyp
@@ -1581,6 +1679,18 @@ function _renderAbgleich(box, ab) {
     </div>
     <button class="pd-mini pd-ab-export" data-click="pdAbgleichKopieren()"
             title="Alle vier Körbe als Tabelle in die Zwischenablage">⧉ Abgleich als Tabelle kopieren</button>
+    ${ab.vorlaeufig.length ? `<div class="pd-list-head">Position prüfen (${ab.vorlaeufig.length})</div>
+      ${ab.vorlaeufig.map(a => `<div class="pd-ab-row">
+          <span class="pd-dot" style="background:#ba68c8"></span>
+          <span class="pd-row-txt">${_esc(a.name)}</span>
+          <span class="pd-row-sub">${_esc(ASSET_CFG[a.type]?.label || a.type)}</span>
+          <span class="pd-ab-akt">
+            <button class="pd-mini" data-click="pdZeigeKarte('a','${a.id}')" title="Auf der Karte zeigen und dort zurechtziehen">→ Karte</button>
+            <button class="pd-mini" data-click="pdPositionBestaetigt('${a.id}')" title="Lage stimmt so">passt</button>
+          </span>
+        </div>`).join('')}
+      <div class="pd-ab-hinweis">Aus dem Plan geschätzte Lagen. Auf der Karte verschieben gilt als
+        Bestätigung — solange sie hier stehen, sind auch die daran hängenden Kabellängen vorläufig.</div>` : ''}
     ${ab.fehlt.length ? `<div class="pd-list-head">Fehlt auf der Karte (${ab.fehlt.length})</div>
       ${ab.fehlt.map(fehltZeile).join('')}` : ''}
     ${offenPlan ? `<div class="pd-list-head">Im Plan, noch nicht verortet (${offenPlan})</div>
@@ -1615,7 +1725,8 @@ function _renderFortschritt() {
   const ab = pdAbgleich();
   el.innerHTML = `<b>${_esc(PD.plan.name)}</b> · Einträge ${nOk}/${PD.nodes.length} · Kabel ${lOk}/${PD.links.length}`
     + (ab.nurKarte.length ? ` · <span class="pd-offen">Karte: ${ab.nurKarte.length} nicht im Plan</span>` : ' · Karte vollständig')
-    + (ab.fehlt.length ? ` · <span class="pd-fehl">${ab.fehlt.length} fehlt auf der Karte</span>` : '');
+    + (ab.fehlt.length ? ` · <span class="pd-fehl">${ab.fehlt.length} fehlt auf der Karte</span>` : '')
+    + (ab.vorlaeufig.length ? ` · <span class="pd-vorl">${ab.vorlaeufig.length} Position prüfen</span>` : '');
 }
 
 function _renderAll() {
@@ -1631,7 +1742,8 @@ export function pdApply() {
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
   if (!PD.nodes.length) { showHint('⚠ Noch keine Einträge im Plan markiert.'); return; }
 
-  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0, fehlend: 0 };
+  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0, fehlend: 0, vorlaeufig: 0 };
+  let letzteQuelle = '';
 
   const mutate = () => {
     // 1 · Einträge → Assets
@@ -1640,6 +1752,23 @@ export function pdApply() {
       // Als fehlend erfasste Gebäude sind Befunde, keine anzulegenden Objekte.
       if (n.fehlt) { bericht.fehlend++; continue; }
       if (!n.linkKind) { bericht.offeneKnoten++; continue; }
+
+      // Freistehendes Betriebsmittel, das es auf der Karte noch nicht gibt:
+      // mit geschätzter Lage anlegen und als vorläufig kennzeichnen.
+      if (n.linkKind === 'neu') {
+        const pos = _schaetzePosition(n);
+        const asset = createAsset(n.assetType, pos.lat, pos.lng, {
+          name: n.label || `${ASSET_CFG[n.assetType]?.label || n.assetType} (aus Plan)`,
+        });
+        if (!asset) { bericht.offeneKnoten++; continue; }
+        asset.props = { ...(asset.props || {}), posVorlaeufig: true };
+        drawAssetMarker(asset);
+        n.assetId = asset.id;
+        bericht.assetsNeu++;
+        bericht.vorlaeufig++;
+        letzteQuelle = pos.quelle;
+        continue;
+      }
 
       if (n.linkKind === 'a') {
         const a = ASSETS.items.find(x => x.id === n.linkId);
@@ -1724,6 +1853,7 @@ export function pdApply() {
   if (bericht.offeneKabel) offen.push(`${bericht.offeneKabel} Kabel ohne beide Endpunkte`);
   if (bericht.selbstbezug) offen.push(`${bericht.selbstbezug} Kabel mit identischer Anlage an beiden Enden`);
   if (bericht.fehlend) offen.push(`${bericht.fehlend} Gebäude fehl${bericht.fehlend === 1 ? 't' : 'en'} auf der Karte`);
+  if (bericht.vorlaeufig) offen.push(`${bericht.vorlaeufig} Anlage(n) mit vorläufiger Position (${letzteQuelle}) — auf der Karte zurechtziehen`);
   showHint(
     (teile.length ? '✔ Übernommen: ' + teile.join(', ') + '.' : 'Nichts Neues zu übernehmen.')
     + (offen.length ? ' Offen: ' + offen.join(', ') + '.' : ''));

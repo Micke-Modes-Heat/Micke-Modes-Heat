@@ -796,6 +796,9 @@ function drawSingleMarker(asset) {
     const ll = m.getLatLng();
     asset.lat = ll.lat;
     asset.lng = ll.lng;
+    // Wie beim Gruppenmarker: eine von Hand gesetzte Position ist bestaetigt.
+    // Der Plan-Digitalisierer wertet das als Freigabe einer geschaetzten Lage.
+    asset._movedByUser = true;
     if (asset.type === 'Lade') _drawLadeParkingRects(asset);
     if (asset.type === 'Wind') { _drawWindRings(asset); _drawWindEignungsflaeche(asset); }
     // Strom-Knoten-Position synchron halten
