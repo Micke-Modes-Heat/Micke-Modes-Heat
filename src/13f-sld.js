@@ -245,6 +245,71 @@ export function sldRefresh() {
 }
 
 // ── Active assets & edges ─────────────────────────────────────────────────────
+// ── Gebäude zusammenfassen (Schalter) ─────────────────────────────
+// In einer Liegenschaft mit 77 Gebäuden sind 154 der Knoten schlicht das Paar
+// UV + Verbraucher desselben Hauses. Zusammengefasst halbiert sich die Breite.
+//
+// BEWUSST NICHT der Standard: ein Einlinienschema soll Betriebsmittel zeigen,
+// und die Unterscheidung UV/Verbraucher geht dabei verloren. Wer nach dem
+// Spannungsfall an einer bestimmten Unterverteilung sucht, braucht sie einzeln.
+let SLD_GEB_SAMMELN = false;
+
+export function sldToggleGebaeude() {
+  SLD_GEB_SAMMELN = !SLD_GEB_SAMMELN;
+  document.getElementById('btn-sld-geb')?.classList.toggle('active', SLD_GEB_SAMMELN);
+  sldRender();
+}
+
+/**
+ * Anlagen je Gebäude auf eine stellvertretende Anlage zusammenziehen.
+ * Stellvertreter ist die netzseitigste (kleinster TYPE_RANK) — dort kommt die
+ * Zuleitung an, also bleiben die Kanten von außen sinnvoll. Kanten INNERHALB
+ * des Gebäudes fallen weg, mehrfach gewordene Kanten werden zu einer.
+ */
+function _sammleGebaeude(activeA, activeL) {
+  if (!SLD_GEB_SAMMELN) return { activeA, activeL };
+
+  const proGeb = new Map();
+  for (const a of activeA) {
+    if (a.buildingId == null) continue;
+    if (!proGeb.has(a.buildingId)) proGeb.set(a.buildingId, []);
+    proGeb.get(a.buildingId).push(a);
+  }
+
+  const vertreter = new Map();   // assetId → Stellvertreter-Id
+  const behalten  = new Set(activeA.filter(a => a.buildingId == null).map(a => a.id));
+  const chips     = new Map();
+  const namen     = new Map();
+
+  for (const [gid, liste] of proGeb) {
+    if (liste.length < 2) { liste.forEach(a => behalten.add(a.id)); continue; }
+    const sortiert = [...liste].sort((a, b) => (TYPE_RANK[a.type] ?? 9) - (TYPE_RANK[b.type] ?? 9));
+    const v = sortiert[0];
+    behalten.add(v.id);
+    liste.forEach(a => vertreter.set(a.id, v.id));
+    chips.set(v.id, sortiert);
+    const g = (window.gebaeude || []).find(x => String(x.id) === String(gid));
+    namen.set(v.id, g?.name || v.name);
+  }
+
+  const neueA = activeA.filter(a => behalten.has(a.id)).map(a => chips.has(a.id)
+    ? { ...a, name: namen.get(a.id), _chips: chips.get(a.id), _sammel: true }
+    : a);
+
+  const zu = id => vertreter.get(id) || id;
+  const gesehen = new Set();
+  const neueL = [];
+  for (const e of activeL) {
+    const u = zu(e.u), v = zu(e.v);
+    if (u === v) continue;                                  // gebäudeintern
+    const schl = u < v ? `${u}|${v}` : `${v}|${u}`;
+    if (gesehen.has(schl)) continue;                        // doppelt geworden
+    gesehen.add(schl);
+    neueL.push((u === e.u && v === e.v) ? e : { ...e, u, v });
+  }
+  return { activeA: neueA, activeL: neueL };
+}
+
 function _getActive(yr) {
   const activeA = ASSETS.items.filter(a =>
     (a.domain === 'strom' || a.domain === 'hybrid') &&
@@ -254,7 +319,7 @@ function _getActive(yr) {
   const activeL = (window.stromEdges || []).filter(e =>
     activeIds.has(e.u) && activeIds.has(e.v)
   );
-  return { activeA, activeL };
+  return _sammleGebaeude(activeA, activeL);
 }
 
 // ── Layout engine ─────────────────────────────────────────────────────────────
@@ -629,7 +694,9 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene }, svgW) {
 
 // ── Node ──────────────────────────────────────────────────────────────────────
 function _drawNode(n, selected) {
-  if (n.type === 'NSHV' || n.type === 'UV') return _drawBusbar(n, selected);
+  // Ein zusammengefasstes Gebäude ist ein Kasten, auch wenn sein Stellvertreter
+  // eine UV ist — eine Sammelschiene würde das Gegenteil behaupten.
+  if (!n._sammel && (n.type === 'NSHV' || n.type === 'UV')) return _drawBusbar(n, selected);
   const cfg = ASSET_CFG[n.type] || { color:'#607d8b', icon:'·', label:n.type };
   const col = cfg.color;
   const { x, y } = n;
@@ -647,10 +714,26 @@ function _drawNode(n, selected) {
     stroke="${orphan ? col+'55' : col}" stroke-width="${selected ? 2 : 1.5}"
     ${orphan ? 'stroke-dasharray="5,3"' : ''}/>`;
 
-  s += _symbolShape(n.type, col, x, y);
+  if (n._sammel) {
+    // Anlagen des Gebäudes als Symbolreihe — dieselbe Sprache wie die Kästen
+    // im Plan-Digitalisierer.
+    const symbole = n._chips.slice(0, 6);
+    const breite  = symbole.length * 13;
+    symbole.forEach((c, i) => {
+      const cx = x - breite / 2 + 6.5 + i * 13;
+      s += `<text x="${cx.toFixed(1)}" y="${(y + 2).toFixed(1)}" text-anchor="middle" font-size="11" fill="${ASSET_CFG[c.type]?.color || col}" pointer-events="none">${ASSET_CFG[c.type]?.icon || '·'}</text>`;
+    });
+    if (n._chips.length > 6) {
+      s += `<text x="${(x + breite / 2 + 6).toFixed(1)}" y="${(y + 2).toFixed(1)}" text-anchor="middle" font-size="8" fill="#546e7a" pointer-events="none">+${n._chips.length - 6}</text>`;
+    }
+  } else {
+    s += _symbolShape(n.type, col, x, y);
+  }
   s += `<text x="${x.toFixed(1)}" y="${(y+SLD_NH/2+13).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="500">${_passend(n.name, SLD_CW - 6, 9)}</text>`;
 
-  const spec = _spec(n);
+  const spec = n._sammel
+    ? `${n._chips.length} Anlagen`
+    : _spec(n);
   if (spec) s += `<text x="${x.toFixed(1)}" y="${(y+SLD_NH/2+23).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#546e7a">${_passend(spec, SLD_CW - 6, 7.5)}</text>`;
 
   const badge = _badge(n);
