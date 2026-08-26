@@ -963,7 +963,8 @@ export function pdAbgleich() {
     vorlaeufig: pdVorlaeufige(),
     qsGeschaetzt: pdGeschaetzteKabel(),
     napNs: pdMsAnlagenPruefung(),
-    nsMaschen: pdNsMaschen(),
+    nsMaschen: pdNsMaschen().filter(m => !PD.abgehakt['m:' + m.kante.id]),
+    nsMaschenOk: pdNsMaschen().filter(m => PD.abgehakt['m:' + m.kante.id]),
   };
 }
 
@@ -980,6 +981,11 @@ export function pdAbgleichKopieren() {
   ab.nurImPlan.forEach(n => zeilen.push(['im Plan, noch nicht verortet', n.label || '(ohne Bezeichnung)', '', ''].join('\t')));
   ab.abgehakt.forEach(o => zeilen.push(['bewusst nicht im Plan', o.name, o.zusatz, o.grund].join('\t')));
   ab.vorlaeufig.forEach(a => zeilen.push(['Position vorläufig', a.name, ASSET_CFG[a.type]?.label || a.type, 'aus dem Plan geschätzt'].join('\t')));
+  ab.nsMaschenOk.forEach(m => {
+    const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
+    zeilen.push(['Ringversorgung (bestätigt)', `${nm(m.kante.u)} → ${nm(m.kante.v)}`,
+      `${m.kante.cableType || '?'} ${m.kante.crossSection || '?'} mm²`, 'gewollt'].join('	'));
+  });
   ab.nsMaschen.forEach(m => {
     const e = m.kante;
     const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
@@ -1743,10 +1749,11 @@ function _renderAbgleich(box, ab) {
     <button class="pd-mini pd-ab-export" data-click="pdAbgleichKopieren()"
             title="Alle vier Körbe als Tabelle in die Zwischenablage">⧉ Abgleich als Tabelle kopieren</button>
     ${ab.nsMaschen.length ? `<div class="pd-list-head">Masche auf der NS-Ebene (${ab.nsMaschen.length})</div>
-      <div class="pd-ab-hinweis">Diese Leitungen schließen einen Kreis. In einer Liegenschaft ist das
-        NS-Netz fast immer radial — meist stammt so etwas aus einer Doppelanbindung. Eine echte
-        Ringversorgung gibt es aber auch, deshalb wird hier <b>einzeln</b> entfernt und nichts
-        stapelweise. Der Plan-Eintrag bleibt erhalten und gilt danach als nicht übernommen.</div>
+      <div class="pd-ab-hinweis">Diese Leitungen schließen einen Kreis — entweder eine gewollte
+        <b>Ringversorgung</b> oder eine Doppelanbindung aus mehreren Übernahmeläufen. Unterscheiden
+        kann das nur, wer die Liegenschaft kennt: <b>ist Ring</b> legt den Eintrag ab, <b>entfernen</b>
+        löst ihn auf. Der Plan-Eintrag bleibt beim Entfernen erhalten und gilt wieder als nicht
+        übernommen.</div>
       ${ab.nsMaschen.slice(0, 40).map(m => {
         const e = m.kante;
         const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
@@ -1759,12 +1766,26 @@ function _renderAbgleich(box, ab) {
           ${kreis.length ? `<span class="pd-kreis">Kreis: ${_esc(kreis.join(' → '))}</span>` : ''}
           <span class="pd-ab-akt">
             ${l ? `<button class="pd-mini" data-click="pdSelect('link','${l.id}')">im Plan zeigen</button>` : ''}
+            <button class="pd-mini" data-click="pdRingBestaetigt('${e.id}')"
+                    title="Gewollte Ringversorgung — nicht mehr anzeigen">ist Ring</button>
             <button class="pd-mini pd-del" data-click="pdMascheEntfernen('${e.id}')"
                     title="Diese Leitung entfernen. Falls eine andere Leitung des Kreises die überflüssige ist, diese auf der Karte per Rechtsklick entfernen.">entfernen</button>
           </span>
         </div>`;
       }).join('')}
       ${ab.nsMaschen.length > 40 ? `<div class="pd-empty">… und ${ab.nsMaschen.length - 40} weitere</div>` : ''}` : ''}
+    ${ab.nsMaschenOk.length ? `<div class="pd-list-head">Bestätigte Ringversorgung (${ab.nsMaschenOk.length})</div>
+      ${ab.nsMaschenOk.map(m => {
+        const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
+        return `<div class="pd-ab-row erledigt">
+          <span class="pd-dot" style="background:#546e7a"></span>
+          <span class="pd-row-txt">${_esc(`${nm(m.kante.u)} → ${nm(m.kante.v)}`)}</span>
+          <span class="pd-row-sub">gewollter Ring</span>
+          <span class="pd-ab-akt">
+            <button class="pd-mini" data-click="pdRingBestaetigt('${m.kante.id}')" title="Wieder als offen führen">↺</button>
+          </span>
+        </div>`;
+      }).join('')}` : ''}
     ${ab.napNs.length ? `<div class="pd-list-head">NS-Leitung an MS-Anlage (${ab.napNs.length})</div>
       <div class="pd-ab-hinweis">NAP und Schaltanlage führen nur Mittelspannung — eine NS-Leitung
         dort ist elektrisch unmöglich und führt die ganze NS-Rechnung am Trafo vorbei. Betrifft
@@ -2156,6 +2177,14 @@ function _baumPfad(baum, von, bis) {
   const pfad = [];
   for (let id = bis; id != null; id = vorher.get(id)) pfad.push(id);
   return pfad.reverse();
+}
+
+/** Masche als gewollte Ringversorgung ablegen — bzw. wieder öffnen. */
+export function pdRingBestaetigt(edgeId) {
+  const key = 'm:' + edgeId;
+  if (PD.abgehakt[key]) delete PD.abgehakt[key];
+  else PD.abgehakt[key] = 'gewollte Ringversorgung';
+  _renderAll();
 }
 
 /** Eine Masche auflösen, indem die schließende Leitung entfernt wird. */

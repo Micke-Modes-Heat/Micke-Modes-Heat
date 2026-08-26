@@ -335,6 +335,52 @@ function _sldLayout(activeA, activeL) {
   }
   for (const a of activeA) getEffRank(a.id);
 
+  // Geschwister umsortieren, damit Ringpartner nebeneinander landen.
+  //
+  // Baumkanten kreuzen sich in diesem Layout nie — die Teilbäume belegen
+  // disjunkte x-Bereiche. Was kreuzt, sind die Ringkanten: verbindet ein Ring
+  // zwei UV, die zufällig an den entgegengesetzten Enden einer Reihe von 77
+  // Geschwistern stehen, läuft die Leitung quer durch das ganze Bild.
+  //
+  // Gruppiert statt gemittelt: das Baryzentrum-Verfahren taugt hier nicht, weil
+  // ein Paar dabei nur die Plätze TAUSCHT (Kind A bekommt die Position von B und
+  // umgekehrt) und in jeder Runde erneut. Stattdessen werden die über Ringkanten
+  // zusammenhängenden Geschwister zu einer Gruppe zusammengefasst und
+  // zusammenhängend platziert, verankert an der frühesten Ausgangsposition.
+  const ringNachbarn = new Map();
+  for (const e of activeL) {
+    if (!ringEdges.has(e.id)) continue;
+    if (!ringNachbarn.has(e.u)) ringNachbarn.set(e.u, []);
+    if (!ringNachbarn.has(e.v)) ringNachbarn.set(e.v, []);
+    ringNachbarn.get(e.u).push(e.v);
+    ringNachbarn.get(e.v).push(e.u);
+  }
+  if (ringNachbarn.size) {
+    for (const [, kinder] of children) {
+      if (kinder.length < 3) continue;
+      const platz = new Map(kinder.map((id, i) => [id, i]));
+      const wurzel = new Map(kinder.map(id => [id, id]));
+      const finde = x => {
+        while (wurzel.get(x) !== x) { wurzel.set(x, wurzel.get(wurzel.get(x))); x = wurzel.get(x); }
+        return x;
+      };
+      for (const id of kinder) {
+        for (const partner of (ringNachbarn.get(id) || [])) {
+          if (!platz.has(partner)) continue;
+          const a = finde(id), b = finde(partner);
+          if (a !== b) wurzel.set(a, b);
+        }
+      }
+      const gruppenStart = new Map();
+      for (const id of kinder) {
+        const w = finde(id), i = platz.get(id);
+        if (!gruppenStart.has(w) || i < gruppenStart.get(w)) gruppenStart.set(w, i);
+      }
+      kinder.sort((a, b) =>
+        (gruppenStart.get(finde(a)) - gruppenStart.get(finde(b))) || (platz.get(a) - platz.get(b)));
+    }
+  }
+
   // Subtree width
   const stW = new Map();
   function subtreeWidth(id, vis = new Set()) {
@@ -438,13 +484,24 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
 
   let path;
   const sameX = Math.abs(x1 - x2) < 4;
+  // Gleiche Ebene: Ringschluss zwischen zwei Schaltanlagen, Ringversorgung
+  // zwischen zwei UV. Eine gerade Verbindung liefe quer durch die Kästchen
+  // der Reihe.
+  const gleicheHoehe = Math.abs(y1 - y2) < 4;
 
-  if (isRing) {
-    // Route left or right depending on which side has more space
-    const loopOff = 34 + Math.abs(x1 - x2) * 0.18;
-    const useLeft = x1 < (svgW || 600) / 2 && x2 < (svgW || 600) / 2;
-    const lx = useLeft ? Math.min(x1, x2) - loopOff : Math.max(x1, x2) + loopOff;
-    path = `M${x1.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${lx.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${lx.toFixed(1)},${(y2+SLD_NH/2).toFixed(1)} L${x2.toFixed(1)},${(y2+SLD_NH/2).toFixed(1)}`;
+  // Bogen UNTERHALB beider Enden. Vorher lief jede Ringkante um das gesamte
+  // Diagramm herum (loopOff ab dem linken bzw. rechten Rand) — bei 11 000 px
+  // Breite ein Umweg quer durch alles. Die Tiefe wächst mit der Spannweite,
+  // damit sich mehrere Bögen ineinander schachteln statt sich zu überlagern.
+  const bogen = () => {
+    const unten = Math.max(y1, y2) + SLD_NH / 2;
+    const tiefe = 16 + Math.min(70, Math.abs(x1 - x2) * 0.05);
+    return { yb: unten + tiefe, unten };
+  };
+
+  if (isRing || gleicheHoehe) {
+    const { yb } = bogen();
+    path = `M${x1.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${x1.toFixed(1)},${yb.toFixed(1)} L${x2.toFixed(1)},${yb.toFixed(1)} L${x2.toFixed(1)},${(y2+SLD_NH/2).toFixed(1)}`;
   } else if (sameX) {
     path = `M${x1.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${x2.toFixed(1)},${(y2-SLD_NH/2).toFixed(1)}`;
   } else {
@@ -458,13 +515,12 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
   const flowAttrs = flowAnim ? `class="sld-flow-path" data-flowdir="${e.flowDirection >= 0 ? 1 : -1}" stroke-dasharray="10,5"` : '';
   s += `<path d="${path}" stroke="${strokeCol}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" ${isRing ? 'stroke-dasharray="10,5"' : flowAttrs} opacity="${isRing?0.55:0.9}"/>`;
 
-  if (isRing) {
-    const loopOff = 34 + Math.abs(x1 - x2) * 0.18;
-    const useLeft = x1 < (svgW || 600) / 2 && x2 < (svgW || 600) / 2;
-    const lx = useLeft ? Math.min(x1, x2) - loopOff : Math.max(x1, x2) + loopOff;
-    const ly = (y1 + y2) / 2;
-    s += `<rect x="${(lx-10).toFixed(1)}" y="${(ly-8).toFixed(1)}" width="32" height="13" rx="3" fill="#1a2535" stroke="#546e7a" stroke-width="1" pointer-events="none"/>`;
-    s += `<text x="${(lx+6).toFixed(1)}" y="${(ly+2).toFixed(1)}" text-anchor="middle" font-size="7" fill="#78909c" pointer-events="none">Ring</text>`;
+  if (isRing || gleicheHoehe) {
+    const { yb } = bogen();
+    const lx = (x1 + x2) / 2;
+    const txt = isRing ? 'Ring' : (e.msLevel ? 'MS' : 'NS');
+    s += `<rect x="${(lx-16).toFixed(1)}" y="${(yb-7).toFixed(1)}" width="32" height="13" rx="3" fill="#1a2535" stroke="#546e7a" stroke-width="1" pointer-events="none"/>`;
+    s += `<text x="${lx.toFixed(1)}" y="${(yb+3).toFixed(1)}" text-anchor="middle" font-size="7" fill="#78909c" pointer-events="none">${txt}</text>`;
     return s + '</g>';
   }
 
