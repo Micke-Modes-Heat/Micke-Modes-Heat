@@ -11,6 +11,25 @@ const SLD_CW = 110;   // min column width per node
 const SLD_NW = 86;    // node box width
 const SLD_NH = 54;    // node box height
 
+// SVG-Text muss maskiert werden — ein & oder < in einem Gebäudenamen zerlegt
+// sonst das ganze Diagramm.
+const _esc = s => String(s ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// Namen wie „Verbraucher Gewerbe, Handel, Dienstleistung 28" sind doppelt so
+// breit wie das Kästchen und überdecken die Nachbarn. Gekürzt wird MITTIG:
+// vorne steht, was es ist, hinten die Nummer — und genau die identifiziert das
+// Betriebsmittel. Der vollständige Name steht weiter im Tooltip und im
+// Komponentenverzeichnis des PDF-Exports.
+function _passend(text, breitePx, schriftPx) {
+  const s = String(text ?? '');
+  const maxZeichen = Math.max(6, Math.floor(breitePx / (schriftPx * 0.55)));
+  if (s.length <= maxZeichen) return _esc(s);
+  const kopf = Math.ceil((maxZeichen - 1) * 0.6);
+  const schwanz = maxZeichen - 1 - kopf;
+  return _esc(s.slice(0, kopf).trimEnd() + '…' + (schwanz > 0 ? s.slice(-schwanz) : ''));
+}
+
 const SLD_STATE = { zoom: 1.0, wasDrag: false };
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
@@ -503,10 +522,10 @@ function _drawNode(n, selected) {
     ${orphan ? 'stroke-dasharray="5,3"' : ''}/>`;
 
   s += _symbolShape(n.type, col, x, y);
-  s += `<text x="${x.toFixed(1)}" y="${(y+SLD_NH/2+13).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="500">${n.name}</text>`;
+  s += `<text x="${x.toFixed(1)}" y="${(y+SLD_NH/2+13).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="500">${_passend(n.name, SLD_CW - 6, 9)}</text>`;
 
   const spec = _spec(n);
-  if (spec) s += `<text x="${x.toFixed(1)}" y="${(y+SLD_NH/2+23).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#546e7a">${spec}</text>`;
+  if (spec) s += `<text x="${x.toFixed(1)}" y="${(y+SLD_NH/2+23).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#546e7a">${_passend(spec, SLD_CW - 6, 7.5)}</text>`;
 
   const badge = _badge(n);
   if (badge.txt) {
@@ -539,9 +558,9 @@ function _drawBusbar(n, selected) {
   s += `<rect x="${(x-bw/2-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${bw+8}" height="${bh+8}" rx="5" fill="transparent"/>`;
   if (selected) s += `<rect x="${(x-bw/2-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${bw+8}" height="${bh+8}" rx="5" fill="${col}" opacity="0.15"/>`;
   s += `<rect x="${(x-bw/2).toFixed(1)}" y="${(y-bh/2).toFixed(1)}" width="${bw}" height="${bh}" rx="3" fill="${selected?col+'30':'#182435'}" stroke="${col}" stroke-width="${selected?2:1.8}"/>`;
-  s += `<text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="600">${cfg.icon} ${n.name}</text>`;
+  s += `<text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="600">${cfg.icon} ${_passend(n.name, bw - 14, 9)}</text>`;
   const spec = _spec(n);
-  if (spec) s += `<text x="${x.toFixed(1)}" y="${(y+bh/2+11).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#546e7a">${spec}</text>`;
+  if (spec) s += `<text x="${x.toFixed(1)}" y="${(y+bh/2+11).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#546e7a">${_passend(spec, bw, 7.5)}</text>`;
   return s + '</g>';
 }
 
