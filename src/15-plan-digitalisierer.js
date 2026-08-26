@@ -29,6 +29,7 @@ import { addStromEdge, recalcStromNetz, epPrompt } from './05b-stromnetz.js';
 import { KABEL_TYPEN } from './config/netz-kosten.js';
 import { runPlanningTransaction } from './lib/planning-transaction.js';
 import { parseKabelLabel } from './lib/kabel-label.js';
+import { SCHICHT } from './lib/schichten.js';
 
 const PANEL_ID = 'plandigi-panel';
 const MAP_ID   = 'plandigi-map';
@@ -51,14 +52,18 @@ const SEL_COL = '#e91e63';
 //                           die Gebäude-ID, anschlussAssetId die Anlage, an der
 //                           die Kabel landen (netzseitigste, überschreibbar)
 // links: { id, a, b, label, cableType, crossSection, nParallel, lengthM, msLevel, edgeId }
-export const PD = { plan: null, nodes: [], links: [], seq: 1, gebGroesse: 1 };
+// abgehakt: Karteneinträge, die bewusst nicht im Plan stehen — Schlüssel
+// 'g:<id>' bzw. 'a:<id>', Wert ist der Grund. Ohne dieses Abhaken brächte der
+// Abgleich bei jeder Sitzung dieselben Zeilen und würde irgendwann ignoriert.
+export const PD = { plan: null, nodes: [], links: [], seq: 1, gebGroesse: 1, abgehakt: {} };
 
 let _map = null, _imgLayer = null, _marks = null;
 let _mode = 'ansehen';
 let _sel = null;        // { kind:'node'|'link', id }
 let _pendingA = null;   // erster Knoten im Kabel-Modus
 let _pendingPts = [];   // Stützpunkte der laufenden Kabelzeichnung (Bildpixel)
-let _pendingGeb = null; // aus der Suche gewähltes Gebäude, wartet auf den Platzierungsklick
+let _pendingSetzen = null; // { art:'gebaeude'|'asset', obj } — wartet auf den Platzierungsklick
+let _seite = 'plan';       // Seitenspalte: 'plan' | 'abgleich'
 let _refZoom = null;    // Zoomstufe der Einpassung: dort entspricht Größe 100 %
 let _ro = null;
 
@@ -175,6 +180,12 @@ function _ensurePanel() {
       <div id="${MAP_ID}" class="pd-map"></div>
       <div class="pd-side">
         <div id="pd-form" class="pd-form"></div>
+        <div class="pd-tabs">
+          <button class="pd-tab active" data-tab="plan" data-click="pdSeite('plan')"
+                  title="Was im Plan markiert ist">Plan</button>
+          <button class="pd-tab" data-tab="abgleich" data-click="pdSeite('abgleich')"
+                  title="Was auf der Karte steht, aber noch in keinem Plan-Eintrag vorkommt">Abgleich <span id="pd-tab-zahl" class="pd-tab-zahl"></span></button>
+        </div>
         <div id="pd-list" class="pd-list"></div>
         <div class="pd-actions">
           <button class="lp-tool-btn" data-click="pdApply()"
@@ -384,7 +395,7 @@ function _setPlan(url, w, h, name, texts) {
   const hatMarken = PD.nodes.length > 0 || PD.links.length > 0;
   PD.plan = { name, url, w, h, texts: Array.isArray(texts) ? texts : [] };
   if (!hatMarken) { PD.nodes = []; PD.links = []; PD.seq = 1; }
-  _sel = null; _pendingA = null; _pendingGeb = null;
+  _sel = null; _pendingA = null; _pendingSetzen = null;
   _ensureMap();
   _showPlanLayer();
   _renderAll();
@@ -394,8 +405,8 @@ function _setPlan(url, w, h, name, texts) {
 }
 
 export function pdClear() {
-  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1;
-  _sel = null; _pendingA = null; _pendingGeb = null;
+  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1; PD.abgehakt = {};
+  _sel = null; _pendingA = null; _pendingSetzen = null;
   if (_imgLayer) { _imgLayer.remove(); _imgLayer = null; }
   _marks?.clearLayers();
   _zeigeGroesse();
@@ -415,7 +426,7 @@ export function pdSetMode(m) {
   _mode = m;
   _pendingA = null;
   _pendingPts = [];
-  _pendingGeb = null;   // ein Moduswechsel verwirft eine offene Gebäude-Platzierung
+  _pendingSetzen = null;   // ein Moduswechsel verwirft eine offene Platzierung
   document.querySelectorAll('#' + PANEL_ID + ' .pd-mode')
     .forEach(b => b.classList.toggle('active', b.dataset.mode === m));
   const div = document.getElementById(MAP_ID);
@@ -438,7 +449,7 @@ document.addEventListener('keydown', ev => {
   if (ev.key !== 'Escape' || !_istOffen()) return;
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
-  if (_pendingGeb) { _pendingGeb = null; pdSetMode(_mode); return; }
+  if (_pendingSetzen) { _pendingSetzen = null; pdSetMode(_mode); return; }
   if (_pendingPts.length) { _pendingPts.pop(); _renderAll(); return; }
   if (_pendingA) { _pendingA = null; _renderAll(); return; }
   if (_mode !== 'ansehen') pdSetMode('ansehen');
@@ -447,7 +458,11 @@ document.addEventListener('keydown', ev => {
 function _onMapClick(e) {
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
   const p = _xy(e.latlng);
-  if (_pendingGeb) { _setzeGebaeudeKnoten(_pendingGeb, p); return; }
+  if (_pendingSetzen) {
+    if (_pendingSetzen.art === 'asset') _setzeAssetKnoten(_pendingSetzen.obj, p);
+    else _setzeGebaeudeKnoten(_pendingSetzen.obj, p);
+    return;
+  }
   if (_mode === 'kabel') {
     // Zwischen den beiden Einträgen gesetzte Klicks folgen der Linie im Plan.
     // Rein zeichnerisch — die Trasse auf der Karte kommt weiter aus dem Routing.
@@ -559,8 +574,8 @@ export function pdPlatziereGebaeude(id) {
     return;
   }
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
-  pdSetMode('knoten');   // setzt _pendingGeb zurück …
-  _pendingGeb = g;       // … deshalb erst danach setzen
+  pdSetMode('knoten');                        // setzt _pendingSetzen zurück …
+  _pendingSetzen = { art: 'gebaeude', obj: g }; // … deshalb erst danach setzen
   const anz = _anschlussKandidaten(g.id).length;
   const hint = document.getElementById('pd-modehint');
   if (hint) {
@@ -584,7 +599,7 @@ function _setzeGebaeudeKnoten(g, p) {
     assetId: anschluss?.id || null,
   };
   PD.nodes.push(node);
-  _pendingGeb = null;
+  _pendingSetzen = null;
   _sel = { kind: 'node', id: node.id };
   pdSetMode(_mode);      // Modushinweis zurücksetzen
   _renderAll();
@@ -667,6 +682,112 @@ function _textUebernehmen(t) {
   } catch (e) {
     showHint(`„${t.str}" — erst einen Eintrag oder ein Kabel auswählen, dann die Beschriftung anklicken.`);
   }
+}
+
+// ── Abgleich Plan ↔ Karte ─────────────────────────────────────
+// Der Fortschritt „Einträge 12/12" sagt nur, dass alles Übernommene übernommen
+// ist — nicht, ob der Plan vollständig abgearbeitet wurde. Vierzig nie
+// betrachtete Gebäude tauchen darin nicht auf. Deshalb wird beiden Richtungen
+// nachgegangen.
+//
+// Geprüft wird nur die Schicht BESTAND: ein Bestandsplan KANN nichts anderes
+// zeigen. Neubauten aus „Entwicklung" und alles aus „Planung" fehlen dort völlig
+// zu Recht (siehe lib/schichten.js) — ohne diesen Filter bestünde die Liste
+// größtenteils aus Fehlalarmen.
+//
+// Auf der Anlagenseite zählen nur Assets OHNE Gebäude: freistehende
+// Infrastruktur (NAP, Schaltanlage, Kabelverteiler, Freiflächen-PV) taucht auf
+// dem Plan als eigenes Kästchen auf. Die je Gebäude automatisch angelegten
+// UV/Verbraucher würden die Liste dagegen nur zuschwemmen.
+
+const _istBestand = o => !o?.schicht || o.schicht === SCHICHT.BESTAND;
+const _abKey = (art, id) => `${art}:${id}`;
+
+export function pdAbgleich() {
+  const gebImPlan = new Set(PD.nodes.filter(n => n.linkKind === 'g').map(n => String(n.linkId)));
+  const assetImPlan = new Set();
+  for (const n of PD.nodes) {
+    if (n.assetId) assetImPlan.add(n.assetId);
+    if (n.anschlussAssetId) assetImPlan.add(n.anschlussAssetId);
+    if (n.linkKind === 'a' && n.linkId) assetImPlan.add(n.linkId);
+  }
+
+  const offeneGeb = (window.gebaeude || [])
+    .filter(g => _istBestand(g) && !gebImPlan.has(String(g.id)))
+    .map(g => ({ art: 'g', id: g.id, name: g.name, zusatz: g.gebaeudenummer ? 'Nr. ' + g.gebaeudenummer : 'Gebäude' }));
+
+  const offeneAssets = ASSETS.items
+    .filter(a => (a.domain === 'strom' || a.domain === 'hybrid'))
+    .filter(a => a.buildingId == null && _istBestand(a) && !assetImPlan.has(a.id))
+    .map(a => ({ art: 'a', id: a.id, name: a.name, zusatz: ASSET_CFG[a.type]?.label || a.type }));
+
+  const alle = [...offeneGeb, ...offeneAssets];
+  const offen = alle.filter(o => !PD.abgehakt[_abKey(o.art, o.id)]);
+  const abgehakt = alle.filter(o => PD.abgehakt[_abKey(o.art, o.id)])
+    .map(o => ({ ...o, grund: PD.abgehakt[_abKey(o.art, o.id)] }));
+
+  return {
+    beidseitig: PD.nodes.filter(n => _statusNode(n) === 'ok'),
+    nurImPlan:  PD.nodes.filter(n => _statusNode(n) !== 'ok'),
+    nurKarte:   offen,
+    abgehakt,
+  };
+}
+
+/** Karteneintrag bewusst als „nicht im Plan" ablegen (mit Grund). */
+export function pdAbhaken(art, id) {
+  const key = _abKey(art, id);
+  if (PD.abgehakt[key]) { delete PD.abgehakt[key]; _renderAll(); return; }
+  epPrompt('Nicht im Plan',
+    'Warum steht dieser Eintrag nicht auf dem Bestandsplan?',
+    'nicht im Planausschnitt', { okText: 'Abhaken' }).then(grund => {
+    if (grund == null) return;
+    PD.abgehakt[key] = String(grund).trim() || 'nicht im Plan';
+    _renderAll();
+  });
+}
+
+/** Vorhandene Anlage ohne Gebäude auf den Plan setzen (wie pdPlatziereGebaeude). */
+export function pdPlatziereAsset(id) {
+  const a = ASSETS.items.find(x => x.id === id);
+  if (!a) return;
+  const vorhanden = PD.nodes.find(n => n.assetId === a.id || (n.linkKind === 'a' && n.linkId === a.id));
+  if (vorhanden) { pdSelect('node', vorhanden.id); showHint(`„${a.name}" liegt bereits im Plan.`); return; }
+  if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
+  pdSetMode('knoten');
+  _pendingSetzen = { art: 'asset', obj: a };
+  const hint = document.getElementById('pd-modehint');
+  if (hint) hint.innerHTML = `Klick in den Plan setzt <b>${_esc(a.name)}</b> (${_esc(ASSET_CFG[a.type]?.label || a.type)}) — Esc bricht ab.`;
+}
+
+function _setzeAssetKnoten(a, p) {
+  const node = {
+    id: 'pn' + (PD.seq++), x: Math.round(p.x), y: Math.round(p.y),
+    art: 'komponente',
+    label: a.name, assetType: a.type,
+    linkKind: 'a', linkId: a.id, assetId: a.id,
+  };
+  PD.nodes.push(node);
+  _pendingSetzen = null;
+  _sel = { kind: 'node', id: node.id };
+  pdSetMode(_mode);
+  _renderAll();
+}
+
+/** Auf der Karte zeigen — im Vollbild vorher ins Fenster wechseln, sonst sieht man nichts. */
+export function pdZeigeKarte(art, id) {
+  const panel = document.getElementById(PANEL_ID);
+  if (panel?.classList.contains('pd-fullscreen')) pdToggleFullscreen();
+  if (art === 'g') { flyTo(Number.isNaN(Number(id)) ? id : Number(id)); return; }
+  const a = ASSETS.items.find(x => x.id === id);
+  if (a && a.lat != null) map.flyTo([a.lat, a.lng], Math.max(map.getZoom(), 18), { duration: 0.8 });
+}
+
+export function pdSeite(seite) {
+  _seite = seite;
+  document.querySelectorAll('#' + PANEL_ID + ' .pd-tab')
+    .forEach(b => b.classList.toggle('active', b.dataset.tab === seite));
+  _renderList();
 }
 
 // ── Markierungen zeichnen ───────────────────────────────────────────────────
@@ -1181,7 +1302,14 @@ export function pdZeigeAufKarte(nodeId) {
 function _renderList() {
   const box = document.getElementById('pd-list');
   if (!box) return;
+  const ab = PD.plan ? pdAbgleich() : null;
+  const zahl = document.getElementById('pd-tab-zahl');
+  if (zahl) {
+    zahl.textContent = ab && ab.nurKarte.length ? ab.nurKarte.length : '';
+    zahl.className = 'pd-tab-zahl' + (ab && ab.nurKarte.length ? ' warn' : '');
+  }
   if (!PD.plan) { box.innerHTML = ''; return; }
+  if (_seite === 'abgleich') { _renderAbgleich(box, ab); return; }
   const zeile = (kind, id, st, txt, sub) => `
     <div class="pd-row${_sel?.kind === kind && _sel.id === id ? ' sel' : ''}" data-click="pdSelect('${kind}','${id}')">
       <span class="pd-dot" style="background:${STATUS_COL[st]}"></span>
@@ -1205,13 +1333,67 @@ function _renderList() {
      <div class="pd-list-head">Kabel (${PD.links.length})</div>${links || '<div class="pd-empty">—</div>'}`;
 }
 
+// Zweite Richtung des Abgleichs: was steht auf der Karte, aber in keinem
+// Plan-Eintrag? Diese Liste kann man nicht übersehen, indem man nicht hinschaut.
+function _renderAbgleich(box, ab) {
+  const zeile = o => {
+    const setzen = o.art === 'g' ? `pdPlatziereGebaeude('${o.id}')` : `pdPlatziereAsset('${o.id}')`;
+    return `<div class="pd-ab-row">
+      <span class="pd-dot" style="background:${STATUS_COL.offen}"></span>
+      <span class="pd-row-txt" title="${_esc(o.name)}">${_esc(o.name)}</span>
+      <span class="pd-row-sub">${_esc(o.zusatz)}</span>
+      <span class="pd-ab-akt">
+        <button class="pd-mini" data-click="${setzen}" title="Im Plan gefunden — jetzt setzen">im Plan setzen</button>
+        <button class="pd-mini" data-click="pdZeigeKarte('${o.art}','${o.id}')" title="Auf der Karte zeigen (wechselt ins Fenster)">→ Karte</button>
+        <button class="pd-mini" data-click="pdAbhaken('${o.art}','${o.id}')" title="Steht bewusst nicht auf dem Plan">abhaken</button>
+      </span>
+    </div>`;
+  };
+  const abgehakt = o => `<div class="pd-ab-row erledigt">
+      <span class="pd-dot" style="background:#546e7a"></span>
+      <span class="pd-row-txt">${_esc(o.name)}</span>
+      <span class="pd-row-sub">${_esc(o.grund)}</span>
+      <span class="pd-ab-akt">
+        <button class="pd-mini" data-click="pdAbhaken('${o.art}','${o.id}')" title="Abhaken rückgängig">↺</button>
+      </span>
+    </div>`;
+
+  const offenPlan = ab.nurImPlan.length;
+  box.innerHTML = `
+    <div class="pd-ab-kopf">
+      <div><b>${ab.beidseitig.length}</b> beidseitig</div>
+      <div class="${offenPlan ? 'warn' : ''}"><b>${offenPlan}</b> nur im Plan</div>
+      <div class="${ab.nurKarte.length ? 'warn' : ''}"><b>${ab.nurKarte.length}</b> nur auf der Karte</div>
+    </div>
+    ${offenPlan ? `<div class="pd-list-head">Nur im Plan — auf der Karte anlegen (${offenPlan})</div>
+      ${ab.nurImPlan.map(n => `<div class="pd-row" data-click="pdSelect('node','${n.id}')">
+          <span class="pd-dot" style="background:${STATUS_COL[_statusNode(n)]}"></span>
+          <span class="pd-row-txt">${_esc(n.label || '(ohne Bezeichnung)')}</span>
+          <span class="pd-row-sub">ohne Gegenstück</span></div>`).join('')}
+      <div class="pd-ab-hinweis">Gebäude brauchen einen Grundriss — die zeichnest du auf der Karte.
+        Danach findet die Suche sie, und der Eintrag rastet ein.</div>` : ''}
+    <div class="pd-list-head">Nur auf der Karte (${ab.nurKarte.length})</div>
+    ${ab.nurKarte.length
+      ? ab.nurKarte.map(zeile).join('')
+      : '<div class="pd-empty">— nichts offen</div>'}
+    ${ab.abgehakt.length ? `<div class="pd-list-head">Bewusst nicht im Plan (${ab.abgehakt.length})</div>
+      ${ab.abgehakt.map(abgehakt).join('')}` : ''}
+    <div class="pd-ab-hinweis">Geprüft wird nur die Schicht <b>Bestand</b> — Neubauten und
+      Planungsobjekte fehlen auf einem Bestandsplan zu Recht. Anlagen zählen nur mit,
+      wenn sie keinem Gebäude zugeordnet sind.</div>`;
+}
+
 function _renderFortschritt() {
   const el = document.getElementById('pd-fortschritt');
   if (!el) return;
   if (!PD.plan) { el.textContent = 'kein Plan geladen'; return; }
   const nOk = PD.nodes.filter(n => _statusNode(n) === 'ok').length;
   const lOk = PD.links.filter(l => _statusLink(l) === 'ok').length;
-  el.innerHTML = `<b>${_esc(PD.plan.name)}</b> · Einträge ${nOk}/${PD.nodes.length} · Kabel ${lOk}/${PD.links.length} übernommen`;
+  // Die Kartenseite gehört dazu: ohne sie liest sich „12/12" wie „fertig",
+  // obwohl vierzig Gebäude nie betrachtet wurden.
+  const offen = pdAbgleich().nurKarte.length;
+  el.innerHTML = `<b>${_esc(PD.plan.name)}</b> · Einträge ${nOk}/${PD.nodes.length} · Kabel ${lOk}/${PD.links.length}`
+    + (offen ? ` · <span class="pd-offen">Karte: ${offen} nicht im Plan</span>` : ' · Karte vollständig');
 }
 
 function _renderAll() {
@@ -1330,14 +1512,15 @@ export function pdSerialize() {
     links: PD.links.map(l => ({ ...l })),
     seq: PD.seq,
     gebGroesse: PD.gebGroesse || 1,
+    abgehakt: { ...PD.abgehakt },
   };
 }
 
 export function pdDeserialize(data) {
   // Auch die Symbolgroesse zuruecksetzen: ohne das traegt ein Projekt ohne
   // Bestandsplan die Einstellung der vorigen Liegenschaft weiter.
-  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1;
-  _sel = null; _pendingA = null; _pendingGeb = null;
+  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1; PD.abgehakt = {};
+  _sel = null; _pendingA = null; _pendingSetzen = null;
   if (_imgLayer) { _imgLayer.remove(); _imgLayer = null; }
   if (data && data.plan && data.plan.url) {
     PD.plan = { ...data.plan };
@@ -1345,6 +1528,7 @@ export function pdDeserialize(data) {
     PD.links = Array.isArray(data.links) ? data.links.map(l => ({ ...l })) : [];
     PD.seq = data.seq || (PD.nodes.length + PD.links.length + 1);
     PD.gebGroesse = Number.isFinite(data.gebGroesse) ? data.gebGroesse : 1;
+    PD.abgehakt = (data.abgehakt && typeof data.abgehakt === 'object') ? { ...data.abgehakt } : {};
     if (_map) _showPlanLayer();
   } else {
     _marks?.clearLayers();
