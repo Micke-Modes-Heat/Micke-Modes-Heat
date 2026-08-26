@@ -25,7 +25,8 @@ import { showHint, flyTo } from './03c-gebaeude-io.js';
 import { ASSETS, ASSET_CFG, TYPE_RANK, createAsset, getAssetsForBuilding } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
 import { renderSidebarAssetList } from './13e-assets-inspector.js';
-import { addStromEdge, removeStromEdge, recalcStromNetz, epPrompt } from './05b-stromnetz.js';
+import { addStromEdge, removeStromEdge, recalcStromNetz, epPrompt,
+         getStromEdgeColor, setStromColorMode } from './05b-stromnetz.js';
 import { KABEL_TYPEN } from './config/netz-kosten.js';
 import { runPlanningTransaction } from './lib/planning-transaction.js';
 import { parseKabelLabel } from './lib/kabel-label.js';
@@ -193,6 +194,15 @@ function _ensurePanel() {
                 title="Farbe zeigt, was schon in die Karte übernommen ist">Übernahme</button>
         <button class="pd-farb" data-farbe="beschriftung" data-click="pdFarbmodus('beschriftung')"
                 title="Farbe zeigt, welche Leitungen schon eine Kabelangabe haben">Beschriftung</button>
+        <button class="pd-farb" data-farbe="berechnung" data-click="pdFarbmodus('berechnung')"
+                title="Farbe und Zahl aus der Elektroberechnung — dieselbe Skala wie auf der Karte">Berechnung</button>
+        <select id="pd-rechenmodus" class="pd-rechenmodus" data-change="pdRechenmodus(this.value)"
+                title="Welche Größe eingefärbt wird — gilt auch für die Karte">
+          <option value="auslastung">Auslastung</option>
+          <option value="spannungsfall">Spannungsfall</option>
+          <option value="leistung">Leistung</option>
+          <option value="richtung">Flussrichtung</option>
+        </select>
         <span id="pd-farb-zahl" class="pd-farb-zahl"></span>
       </span>
       <span class="pd-modehint" id="pd-modehint"></span>
@@ -281,7 +291,7 @@ function _ensureMap() {
   // Nach jedem Zoom neu zeichnen: die Symbole hängen an der Zoomstufe, und die
   // Textebene wird nur für den sichtbaren Ausschnitt aufgebaut.
   _map.on('zoomend', () => _renderMarks());
-  _map.on('moveend', () => { if (_mode === 'text') _renderMarks(); });
+  _map.on('moveend', () => { if (_mode === 'text' || _farbe === 'berechnung') _renderMarks(); });
 
   // Fenstermodus ist in der Größe ziehbar, Vollbild folgt dem Viewport —
   // Leaflet muss beides mitbekommen
@@ -1088,28 +1098,92 @@ function _labelStatus(l) {
   return (l.cableType && l.crossSection > 0) ? 'gelesen' : 'unlesbar';
 }
 
+/** Die übernommene Kante zu einem Plan-Kabel, falls es sie gibt. */
+function _kanteVon(l) {
+  return l.edgeId ? (window.stromEdges || []).find(e => e.id === l.edgeId) || null : null;
+}
+
 /** Farbe einer Leitung im Plan, je nach eingestellter Sicht. */
 function _linkFarbe(l) {
-  return _farbe === 'beschriftung' ? LABEL_COL[_labelStatus(l)] : STATUS_COL[_statusLink(l)];
+  if (_farbe === 'beschriftung') return LABEL_COL[_labelStatus(l)];
+  if (_farbe === 'berechnung') {
+    const e = _kanteVon(l);
+    // Nicht übernommen = kein Rechenergebnis. Gedämpft statt grün, sonst läse
+    // sich „noch nicht übernommen" wie „unkritisch".
+    if (!e) return '#37474f';
+    return e.msLevel ? '#7c4dff' : getStromEdgeColor(e);
+  }
+  return STATUS_COL[_statusLink(l)];
+}
+
+/** Zahl an der Leitung — richtet sich nach der eingefärbten Größe. */
+function _rechenText(e) {
+  switch (window.stromColorMode) {
+    case 'spannungsfall': return `${(e.deltaUPct ?? 0).toFixed(1)}\u2009%`;
+    case 'leistung':      return `${Math.round(Math.abs(e.peakFlowKw || 0))}\u2009kW`;
+    case 'richtung':      return e.flowDirection >= 0 ? '→' : '←';
+    default:              return `${Math.round(e.auslastungPct || 0)}\u2009%`;
+  }
+}
+
+/** Eingefärbte Größe umstellen — wirkt zugleich auf die Karte. */
+export function pdRechenmodus(m) {
+  setStromColorMode(m);
+  _renderAll();
 }
 
 export function pdFarbmodus(m) {
   _farbe = m;
   document.querySelectorAll('#' + PANEL_ID + ' .pd-farb')
     .forEach(b => b.classList.toggle('active', b.dataset.farbe === m));
+  const sel = document.getElementById('pd-rechenmodus');
+  if (sel) {
+    // Nicht auf '' zuruecksetzen: die CSS-Regel .pd-rechenmodus{display:none}
+    // wuerde dann wieder greifen und der Waehler bliebe unsichtbar.
+    sel.style.display = m === 'berechnung' ? 'inline-block' : 'none';
+    sel.value = window.stromColorMode || 'auslastung';
+  }
   _renderAll();
 }
 
 function _zeigeFarbZahlen() {
   const el = document.getElementById('pd-farb-zahl');
   if (!el) return;
-  if (_farbe !== 'beschriftung' || !PD.plan || !PD.links.length) { el.innerHTML = ''; return; }
-  const z = { gelesen: 0, unlesbar: 0, ohne: 0 };
-  PD.links.forEach(l => { z[_labelStatus(l)]++; });
-  el.innerHTML = Object.entries(z)
-    .filter(([, n]) => n > 0)
-    .map(([k, n]) => `<span style="color:${LABEL_COL[k]}">●${n}</span>`)
-    .join(' ');
+  if (!PD.plan || !PD.links.length) { el.innerHTML = ''; return; }
+
+  if (_farbe === 'beschriftung') {
+    const z = { gelesen: 0, unlesbar: 0, ohne: 0 };
+    PD.links.forEach(l => { z[_labelStatus(l)]++; });
+    el.innerHTML = Object.entries(z).filter(([, n]) => n > 0)
+      .map(([k, n]) => `<span style="color:${LABEL_COL[k]}">●${n}</span>`).join(' ');
+    return;
+  }
+
+  if (_farbe === 'berechnung') {
+    const z = { ok: 0, hoch: 0, ueber: 0, ohne: 0 };
+    let gerechnet = false;
+    for (const l of PD.links) {
+      const e = _kanteVon(l);
+      if (!e) { z.ohne++; continue; }
+      const a = e.auslastungPct || 0;
+      if (a > 0 || Math.abs(e.peakFlowKw || 0) > 0.1) gerechnet = true;
+      if (a > 100) z.ueber++; else if (a > 80) z.hoch++; else z.ok++;
+    }
+    // Ohne gelaufene Berechnung stehen überall Nullen — das sähe aus wie
+    // „alles unkritisch" und ist das Gegenteil einer Aussage.
+    if (!gerechnet) {
+      el.innerHTML = '<span style="color:#f9a825">⚠ Elektroberechnung noch nicht gelaufen</span>';
+      return;
+    }
+    el.innerHTML = [
+      z.ok    ? `<span style="color:#4caf50">●${z.ok}</span>` : '',
+      z.hoch  ? `<span style="color:#fdd835">●${z.hoch}</span>` : '',
+      z.ueber ? `<span style="color:#e53935">●${z.ueber}</span>` : '',
+      z.ohne  ? `<span style="color:#546e7a">○${z.ohne}</span>` : '',
+    ].filter(Boolean).join(' ');
+    return;
+  }
+  el.innerHTML = '';
 }
 
 function _statusLink(l) {
@@ -1143,7 +1217,11 @@ function _renderMarks() {
       weight: aktiv ? 5 : 3, opacity: 0.95,
       dashArray: l.msLevel ? null : '7,5', interactive: true,
     });
-    line.bindTooltip(l.label || '(Kabel ohne Angabe)', { sticky: true, className: 'geb-tooltip' });
+    const kante = _kanteVon(l);
+    line.bindTooltip(
+      (l.label || '(Kabel ohne Angabe)')
+      + (kante ? `<br><span style="color:#90a4ae">${Math.round(kante.auslastungPct || 0)} % Auslastung · ΔU ${(kante.deltaUPct ?? 0).toFixed(1)} % · ${Math.round(Math.abs(kante.peakFlowKw || 0))} kW · ${Math.round(kante.lengthM || 0)} m</span>` : ''),
+      { sticky: true, className: 'geb-tooltip' });
     line.on('click', ev => {
       L.DomEvent.stop(ev);
       if (_mode === 'loeschen') { PD.links = PD.links.filter(x => x.id !== l.id); _sel = null; }
@@ -1179,6 +1257,37 @@ function _renderMarks() {
         icon: L.divIcon({ className: 'pd-wp-icon', html: '<div class="pd-wp offen"></div>', iconSize: [11, 11], iconAnchor: [5.5, 5.5] }),
         interactive: false, keyboard: false,
       })));
+    }
+  }
+
+  // Rechenwerte an den Leitungen — nur im Berechnungsmodus und nur im
+  // sichtbaren Ausschnitt, sonst kämen bei 150 Leitungen 150 Marken zusammen.
+  if (_farbe === 'berechnung' && _map) {
+    // Auf den Ausschnitt filtern lohnt erst bei sehr vielen Leitungen. Darunter
+    // alle zeichnen: ein knapp verschobener Kartenausschnitt liess sonst
+    // saemtliche Werte verschwinden, was wie ein Fehler aussieht. Mit Rand,
+    // damit Marken am Bildrand nicht flackern.
+    const sicht = PD.links.length > 250 ? _map.getBounds().pad(0.4) : null;
+    for (const l of PD.links) {
+      const e = _kanteVon(l);
+      if (!e) continue;
+      const a = _node(l.a), b = _node(l.b);
+      if (!a || !b) continue;
+      // Echte Mitte des Linienzugs, nicht p[laenge/2] -- das waere bei zwei
+      // Punkten der Endpunkt und die Marke laege auf dem Kaestchen.
+      const p = _linkPunkte(l, a, b);
+      const i = Math.max(0, Math.floor((p.length - 1) / 2));
+      const mitte = { x: (p[i].x + p[i + 1].x) / 2, y: (p[i].y + p[i + 1].y) / 2 };
+      const ll = _ll(mitte.x, mitte.y);
+      if (sicht && !sicht.contains(ll)) continue;
+      _marks.addLayer(L.marker(ll, {
+        icon: L.divIcon({
+          className: 'pd-wert-icon',
+          html: `<div class="pd-wert" style="color:${_linkFarbe(l)}">${_esc(_rechenText(e))}</div>`,
+          iconSize: null,
+        }),
+        interactive: false, keyboard: false, zIndexOffset: 300,
+      }));
     }
   }
 
