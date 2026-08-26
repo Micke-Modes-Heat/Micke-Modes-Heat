@@ -42,6 +42,15 @@ const NODE_TYPES = ['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS', 'Verbra
 // Grau der noch nicht bearbeiteten Einträge unter.
 const STATUS_COL = { ok: '#4caf50', bereit: '#f9a825', offen: '#90a4ae', fehlt: '#ef5350' };
 
+// Zweite Sicht auf die Kabel: nicht „schon übernommen?", sondern „schon
+// beschriftet?". Beim Abarbeiten eines Blattes sind das zwei verschiedene
+// Fragen — die Beschriftung tippt man durch, die Übernahme passiert am Ende.
+//   gelesen  — Angabe da UND als Kabeltyp lesbar
+//   unlesbar — Text steht da, ergibt aber keinen Typ (ohne Querschnitt kann
+//              das Kabel nicht ausgelegt werden, es fällt auf NAYY zurück)
+//   ohne     — gar keine Angabe
+const LABEL_COL = { gelesen: '#4caf50', unlesbar: '#f9a825', ohne: '#ef5350' };
+
 // Auswahlfarbe: Weiß war auf weißem Planpapier unsichtbar. Magenta kommt auf
 // Bestandsplänen praktisch nie vor (dort dominieren Rot, Grün, Cyan, Schwarz)
 // und steht mit dunklem Unterzug auf hellem wie auf dunklem Untergrund.
@@ -67,6 +76,7 @@ let _pendingA = null;   // erster Knoten im Kabel-Modus
 let _pendingPts = [];   // Stützpunkte der laufenden Kabelzeichnung (Bildpixel)
 let _pendingSetzen = null; // { art:'gebaeude'|'asset', obj } — wartet auf den Platzierungsklick
 let _seite = 'plan';       // Seitenspalte: 'plan' | 'abgleich'
+let _farbe = 'uebernahme'; // Kabelfärbung: 'uebernahme' | 'beschriftung'
 let _refZoom = null;    // Zoomstufe der Einpassung: dort entspricht Größe 100 %
 let _ro = null;
 
@@ -176,6 +186,14 @@ function _ensurePanel() {
         <button class="pd-head-btn" data-click="pdGroesse(-1)" title="Symbole kleiner">−</button>
         <span id="pd-groesse-wert" data-click="pdGroesse(0)" title="Auf 100 % zurücksetzen">100\u2009%</span>
         <button class="pd-head-btn" data-click="pdGroesse(1)" title="Symbole größer">+</button>
+      </span>
+      <span class="pd-farben">
+        <span class="pd-farben-lbl">Kabel:</span>
+        <button class="pd-farb active" data-farbe="uebernahme" data-click="pdFarbmodus('uebernahme')"
+                title="Farbe zeigt, was schon in die Karte übernommen ist">Übernahme</button>
+        <button class="pd-farb" data-farbe="beschriftung" data-click="pdFarbmodus('beschriftung')"
+                title="Farbe zeigt, welche Leitungen schon eine Kabelangabe haben">Beschriftung</button>
+        <span id="pd-farb-zahl" class="pd-farb-zahl"></span>
       </span>
       <span class="pd-modehint" id="pd-modehint"></span>
     </div>
@@ -903,6 +921,36 @@ function _statusNode(n) {
   return 'offen';
 }
 
+/** Beschriftungszustand eines Kabels — unabhängig davon, ob es übernommen ist. */
+function _labelStatus(l) {
+  if (!String(l.label || '').trim()) return 'ohne';
+  return (l.cableType && l.crossSection > 0) ? 'gelesen' : 'unlesbar';
+}
+
+/** Farbe einer Leitung im Plan, je nach eingestellter Sicht. */
+function _linkFarbe(l) {
+  return _farbe === 'beschriftung' ? LABEL_COL[_labelStatus(l)] : STATUS_COL[_statusLink(l)];
+}
+
+export function pdFarbmodus(m) {
+  _farbe = m;
+  document.querySelectorAll('#' + PANEL_ID + ' .pd-farb')
+    .forEach(b => b.classList.toggle('active', b.dataset.farbe === m));
+  _renderAll();
+}
+
+function _zeigeFarbZahlen() {
+  const el = document.getElementById('pd-farb-zahl');
+  if (!el) return;
+  if (_farbe !== 'beschriftung' || !PD.plan || !PD.links.length) { el.innerHTML = ''; return; }
+  const z = { gelesen: 0, unlesbar: 0, ohne: 0 };
+  PD.links.forEach(l => { z[_labelStatus(l)]++; });
+  el.innerHTML = Object.entries(z)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `<span style="color:${LABEL_COL[k]}">●${n}</span>`)
+    .join(' ');
+}
+
 function _statusLink(l) {
   if (l.edgeId && (window.stromEdges || []).some(e => e.id === l.edgeId)) return 'ok';
   const a = _node(l.a), b = _node(l.b);
@@ -930,7 +978,7 @@ function _renderMarks() {
       _marks.addLayer(L.polyline(punkte, { color: '#10131a', weight: 9, opacity: 0.5, interactive: false }));
     }
     const line = L.polyline(punkte, {
-      color: aktiv ? SEL_COL : STATUS_COL[st],
+      color: aktiv ? SEL_COL : _linkFarbe(l),
       weight: aktiv ? 5 : 3, opacity: 0.95,
       dashArray: l.msLevel ? null : '7,5', interactive: true,
     });
@@ -1468,10 +1516,17 @@ function _renderList() {
       : (ASSET_CFG[n.assetType]?.label || n.assetType);
     return zeile('node', n.id, _statusNode(n), n.label || '(ohne Bezeichnung)', sub);
   }).join('');
+  // Die Liste zeigt dieselbe Sicht wie der Plan — sonst widersprechen sich
+  // zwei Ansichten desselben Kabels.
   const links = PD.links.map(l => {
     const a = _node(l.a), b = _node(l.b);
-    return zeile('link', l.id, _statusLink(l),
-      `${a?.label || '?'} → ${b?.label || '?'}`, l.label || 'ohne Angabe');
+    const farbe = _linkFarbe(l);
+    return `<div class="pd-row${_sel?.kind === 'link' && _sel.id === l.id ? ' sel' : ''}"
+                 data-click="pdSelect('link','${l.id}')">
+      <span class="pd-dot" style="background:${farbe}"></span>
+      <span class="pd-row-txt">${_esc(`${a?.label || '?'} → ${b?.label || '?'}`)}</span>
+      <span class="pd-row-sub">${_esc(l.label || 'ohne Angabe')}</span>
+    </div>`;
   }).join('');
   box.innerHTML =
     `<div class="pd-list-head">Einträge (${PD.nodes.length})</div>${nodes || '<div class="pd-empty">—</div>'}
@@ -1564,6 +1619,7 @@ function _renderFortschritt() {
 }
 
 function _renderAll() {
+  _zeigeFarbZahlen();
   _renderMarks();
   _renderForm();
   _renderList();
