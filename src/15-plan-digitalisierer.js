@@ -23,10 +23,10 @@ import { map } from './02b-gebaeude.js';
 import { polygonCenter } from './02c-karte-werkzeuge.js';
 import { showHint, flyTo } from './03c-gebaeude-io.js';
 import { ASSETS, ASSET_CFG, TYPE_RANK, createAsset, getAssetsForBuilding } from './13a-assets-core.js';
-import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
+import { drawAssetMarker, redrawAllAssets, _buildAssetTooltip } from './13b-assets-render.js';
 import { renderSidebarAssetList } from './13e-assets-inspector.js';
-import { addStromEdge, removeStromEdge, recalcStromNetz, epPrompt,
-         getStromEdgeColor, setStromColorMode } from './05b-stromnetz.js';
+import { addStromEdge, removeStromEdge, recalcStromNetz, epPrompt, getStromEdgeColor,
+         setStromColorMode, setStromDynamicViz, buildStromEdgeTooltip } from './05b-stromnetz.js';
 import { KABEL_TYPEN } from './config/netz-kosten.js';
 import { runPlanningTransaction } from './lib/planning-transaction.js';
 import { parseKabelLabel } from './lib/kabel-label.js';
@@ -80,6 +80,8 @@ let _seite = 'plan';       // Seitenspalte: 'plan' | 'abgleich'
 let _farbe = 'uebernahme'; // Kabelfärbung: 'uebernahme' | 'beschriftung'
 let _refZoom = null;    // Zoomstufe der Einpassung: dort entspricht Größe 100 %
 let _ro = null;
+let _flussLaeuft = false;   // rAF-Schleife der Lastfluss-Animation
+let _flussOffset = 0;
 
 const _esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const _node = id => PD.nodes.find(n => n.id === id) || null;
@@ -203,6 +205,8 @@ function _ensurePanel() {
           <option value="leistung">Leistung</option>
           <option value="richtung">Flussrichtung</option>
         </select>
+        <button class="pd-farb" id="pd-fluss-btn" data-click="pdFlussUmschalten()"
+                title="Lastfluss als wanderndes Strichmuster — dieselbe Einstellung wie auf der Karte">⇢ Fluss</button>
         <span id="pd-farb-zahl" class="pd-farb-zahl"></span>
       </span>
       <span class="pd-modehint" id="pd-modehint"></span>
@@ -1126,6 +1130,26 @@ function _rechenText(e) {
   }
 }
 
+/**
+ * Lastfluss-Animation an/aus. Sie hängt an derselben globalen Einstellung wie
+ * Karte und Einlinienschema (stromDynamicViz) — sie hier zu übergehen würde
+ * bedeuten, dass dieselbe Frage an drei Stellen verschieden beantwortet wird.
+ * Erreichbar muss sie trotzdem sein, sonst sucht man den Schalter woanders.
+ */
+export function pdFlussUmschalten() {
+  setStromDynamicViz(window.stromDynamicViz === false);
+  _zeigeFlussKnopf();
+  _renderAll();
+}
+
+/** Zustand des Fluss-Knopfes an die globale Einstellung angleichen. */
+function _zeigeFlussKnopf() {
+  const fb = document.getElementById('pd-fluss-btn');
+  if (!fb) return;
+  fb.style.display = _farbe === 'berechnung' ? 'inline-block' : 'none';
+  fb.classList.toggle('active', window.stromDynamicViz !== false);
+}
+
 /** Eingefärbte Größe umstellen — wirkt zugleich auf die Karte. */
 export function pdRechenmodus(m) {
   setStromColorMode(m);
@@ -1143,6 +1167,7 @@ export function pdFarbmodus(m) {
     sel.style.display = m === 'berechnung' ? 'inline-block' : 'none';
     sel.value = window.stromColorMode || 'auslastung';
   }
+  _zeigeFlussKnopf();
   _renderAll();
 }
 
@@ -1217,10 +1242,15 @@ function _renderMarks() {
       weight: aktiv ? 5 : 3, opacity: 0.95,
       dashArray: l.msLevel ? null : '7,5', interactive: true,
     });
+    // Dasselbe Tooltip-Bild wie auf der Karte und im Einlinienschema: sobald das
+    // Kabel übernommen ist, kommt die vollständige Kabelkarte aus 05b — Typ,
+    // Querschnitt, Auslastung, Spannungsfall, Lastfluss, Maßnahmen.
     const kante = _kanteVon(l);
     line.bindTooltip(
-      (l.label || '(Kabel ohne Angabe)')
-      + (kante ? `<br><span style="color:#90a4ae">${Math.round(kante.auslastungPct || 0)} % Auslastung · ΔU ${(kante.deltaUPct ?? 0).toFixed(1)} % · ${Math.round(Math.abs(kante.peakFlowKw || 0))} kW · ${Math.round(kante.lengthM || 0)} m</span>` : ''),
+      () => kante
+        ? buildStromEdgeTooltip(kante)
+        : `<b>${_esc(l.label || '(Kabel ohne Angabe)')}</b><br>
+           <span style="color:#90a4ae">noch nicht in die Karte übernommen</span>`,
       { sticky: true, className: 'geb-tooltip' });
     line.on('click', ev => {
       L.DomEvent.stop(ev);
@@ -1229,6 +1259,16 @@ function _renderMarks() {
       _renderAll();
     });
     _marks.addLayer(line);
+
+    // Lastfluss: bewegtes Strichmuster wie auf der Karte und im Schema. Nur wo
+    // wirklich Leistung fließt — eine animierte Linie ohne Fluss wäre eine
+    // Aussage, die es nicht gibt.
+    if (_farbe === 'berechnung' && kante && window.stromDynamicViz !== false
+        && Math.abs(kante.peakFlowKw || 0) > 0.1 && line._path) {
+      line.setStyle({ dashArray: '10,6' });
+      line._path.classList.add('pd-fluss');
+      line._path.dataset.flussdir = (kante.flowDirection >= 0 ? 1 : -1);
+    }
 
     // Stützpunkte des ausgewählten Kabels: ziehbar, Rechtsklick entfernt
     if (aktiv && (l.points || []).length) {
@@ -1288,6 +1328,24 @@ function _renderMarks() {
         }),
         interactive: false, keyboard: false, zIndexOffset: 300,
       }));
+
+      // Richtungspfeil bei 35 % der Strecke, damit er die Wertmarke in der
+      // Mitte nicht überdeckt. Plan-y zählt nach unten wie CSS-y — der Winkel
+      // überträgt sich direkt.
+      if (Math.abs(e.peakFlowKw || 0) > 0.1) {
+        const von = p[i], bis = p[i + 1];
+        const grad = Math.atan2(bis.y - von.y, bis.x - von.x) * 180 / Math.PI
+                   + (e.flowDirection >= 0 ? 0 : 180);
+        const pfeilLL = _ll(von.x + (bis.x - von.x) * 0.35, von.y + (bis.y - von.y) * 0.35);
+        _marks.addLayer(L.marker(pfeilLL, {
+          icon: L.divIcon({
+            className: 'pd-pfeil-icon',
+            html: `<div class="pd-pfeil" style="color:${_linkFarbe(l)};transform:translate(-50%,-50%) rotate(${grad.toFixed(0)}deg)">▸</div>`,
+            iconSize: null,
+          }),
+          interactive: false, keyboard: false, zIndexOffset: 250,
+        }));
+      }
     }
   }
 
@@ -1321,6 +1379,12 @@ function _renderMarks() {
       ? _gebaeudeIcon(n, st, aktiv || wartet)
       : _komponentenIcon(n, st, aktiv || wartet);
     const mk = L.marker(_ll(n.x, n.y), { icon, draggable: _mode === 'ansehen', keyboard: false });
+    // Anlagenkarte wie auf der Karte: Typ, Kenndaten, Auslastung, Lebenszyklus
+    const zielAsset = _kabelEnde(n, false);
+    if (zielAsset) {
+      mk.bindTooltip(() => _buildAssetTooltip(zielAsset),
+        { sticky: true, className: 'geb-tooltip', offset: [12, 0] });
+    }
     mk.on('click', ev => {
       L.DomEvent.stop(ev);
       _onNodeClick(n);
@@ -1981,9 +2045,31 @@ function _renderFortschritt() {
     + (ab.nsMaschen.length ? ` · <span class="pd-masche">${ab.nsMaschen.length} Masche(n) NS</span>` : '');
 }
 
+// Bewegtes Strichmuster — wie _sldAnimateFlow im Einlinienschema. Die Schleife
+// hält sich selbst an, sobald das Panel zu ist oder der Modus wechselt; ein
+// unsichtbar weiterlaufendes requestAnimationFrame wäre verschenkte Rechenzeit.
+function _flussSchritt() {
+  const aktiv = _istOffen() && _farbe === 'berechnung' && window.stromDynamicViz !== false;
+  if (!aktiv) { _flussLaeuft = false; return; }
+  _flussOffset -= 0.6;
+  document.querySelectorAll('#' + MAP_ID + ' .pd-fluss').forEach(pfad => {
+    const dir = parseFloat(pfad.dataset.flussdir) || 1;
+    pfad.style.strokeDashoffset = (_flussOffset * dir) + 'px';
+  });
+  requestAnimationFrame(_flussSchritt);
+}
+
+function _flussStarten() {
+  if (_flussLaeuft) return;
+  if (!(_istOffen() && _farbe === 'berechnung' && window.stromDynamicViz !== false)) return;
+  _flussLaeuft = true;
+  requestAnimationFrame(_flussSchritt);
+}
+
 function _renderAll() {
   _zeigeFarbZahlen();
   _renderMarks();
+  _flussStarten();
   _renderForm();
   _renderList();
   _renderFortschritt();

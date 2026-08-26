@@ -1637,9 +1637,12 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-farb:hover{color:var(--text);}
 .pd-farb.active{border-color:#4fc3f7;color:#4fc3f7;background:rgba(79,195,247,.14);font-weight:600;}
 .pd-farb-zahl{font-size:9px;font-family:'DM Mono',monospace;display:inline-flex;gap:5px;}
+#pd-fluss-btn{display:none;}
 .pd-rechenmodus{display:none;padding:3px 5px;font-size:9px;font-family:inherit;border-radius:4px;
   background:var(--surface);color:var(--text);border:1px solid var(--border);}
-.pd-wert-icon{background:none;border:none;}
+.pd-wert-icon,.pd-pfeil-icon{background:none;border:none;}
+.pd-pfeil{position:absolute;font-size:15px;line-height:1;pointer-events:none;
+  text-shadow:0 0 3px #0b0e18,0 0 3px #0b0e18;}
 .pd-wert{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:none;
   padding:0 4px;border-radius:3px;font-size:9px;line-height:1.5;font-family:'DM Mono',monospace;
   background:rgba(15,17,23,.86);border:1px solid rgba(255,255,255,.12);}
