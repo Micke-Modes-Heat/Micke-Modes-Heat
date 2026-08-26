@@ -463,7 +463,10 @@ export function attachPolygonLayer(g){
       if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
       return;
     }
-    selectFromMap(g.id);
+    // bubblingMouseEvents:false → das Polygon schluckt den Karten-Klick. Bei
+    // aktivem Kartenwerkzeug (z.B. Neubau über Abriss zeichnen) reicht
+    // selectFromMap den Klick deshalb an die Karte weiter statt auszuwählen.
+    selectFromMap(g.id, event);
   });
   if (!_batchImporting) updateViz();
 }

@@ -11,7 +11,7 @@ import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElekt
 import { lwWp, setIsDrawingTrasse, setSelectedId, setTrasseCurrentSegStart, setTrasseDetached, setTrasseEditMarkers, setTrassePoints, setTrassePolyline, setTrasseSegments, trasseSegments } from './01-globals-varianten.js';
 import { _gebLabelHtml, escHtml } from './03c-gebaeude-io.js';
 import { cancelDrawStromEdge } from './05b-stromnetz.js';
-import { beginInteraction, cancelInteraction, commitInteraction } from './lib/interaction-state.js';
+import { beginInteraction, cancelInteraction, commitInteraction, getActiveInteraction } from './lib/interaction-state.js';
 import { createLifecycleScope } from './lib/lifecycle.js';
 
 /** @type {import('./lib/lifecycle.js').LifecycleScope|null} */
@@ -469,7 +469,8 @@ export function updateViz(){
           const icon=L.divIcon({html:svg,className:'',iconAnchor:[barW/2,svgH],iconSize:[barW,svgH]});
           g.circleMarker=L.marker(center,{icon});
           g.circleMarker.bindTooltip(()=>buildTooltip(g),{sticky:true,className:'geb-tooltip'});
-          g.circleMarker.on('click',()=>{ selectFromMap(g.id); });
+          // Marker unterdrücken das Karten-Click-Event → Event weiterreichen
+          g.circleMarker.on('click',(ev)=>{ selectFromMap(g.id, ev); });
           g.circleMarker.addTo(map);
         }
     }
@@ -484,7 +485,7 @@ export function buildMapLabel(g,center, status){
     className:'geb-label',
     html:`<div class="geb-label-inner" id="lbl-${g.id}"
       style="opacity:${opacity}"
-      data-click="selectFromMap(${g.id})"
+      data-click="selectFromMap(${g.id}, event)"
       ondblclick="startMapRename(${g.id})"
       title="Doppelklick zum Umbenennen"
     >${_gebLabelHtml(g)}</div>`,
@@ -493,12 +494,58 @@ export function buildMapLabel(g,center, status){
   g.labelMarker=L.marker(center,{icon,interactive:true,zIndexOffset:500}).addTo(map);
 }
 
-export function selectFromMap(id){
+// ── Kartenwerkzeug hat Vorrang vor der Gebäudeauswahl ──────────────────────
+// Gebäude-Polygone und -Marker fangen Klicks selbst ab. Solange ein Werkzeug
+// aktiv ist, das einen freien Kartenpunkt erwartet, darf ein Klick auf einem
+// Gebäude nicht als Auswahl enden — sonst lässt sich z.B. kein Neubau über
+// einem abgerissenen Gebäude zeichnen: das alte Polygon schluckt jede Ecke.
+// Ausgenommen sind die Werkzeuge, die den Gebäudeklick selbst brauchen.
+const TOOLS_MIT_GEBAEUDEKLICK = new Set(['draw-heat-edge','draw-strom-edge','draw-trasse','prune-heat-network']);
+
+export function mapToolWantsPoint(){
+  // Dach-PV- und Firstlinien-Zeichnen laufen (noch) ohne Interaktions-Registrierung
+  if(window.gebPvDraw || window.gebFirstDraw) return true;
+  const act = getActiveInteraction();
+  return !!act && !TOOLS_MIT_GEBAEUDEKLICK.has(act.id);
+}
+
+/**
+ * Behandelt einen Klick auf einem Gebäude wie einen Klick auf die freie Karte.
+ * Nur für Layer aufrufen, die das Karten-Click-Event selbst unterdrücken
+ * (bubblingMouseEvents:false) — sonst entstünde ein doppelter Punkt.
+ * @param {any} ev Leaflet-Event (mit latlng) oder DOM-MouseEvent
+ */
+export function forwardClickToMap(ev){
+  // Immer aus dem DOM-Event rechnen: bei Marker-Zielen setzt Leaflet ev.latlng
+  // auf die Marker-Position statt auf den Klickpunkt — als Polygonecke wäre das falsch.
+  const domEv = ev?.originalEvent || (typeof MouseEvent !== 'undefined' && ev instanceof MouseEvent ? ev : null);
+  const latlng = domEv ? map.mouseEventToLatLng(domEv) : (ev?.latlng || null);
+  if(!latlng) return false;
+  map.fire('click',{
+    latlng,
+    layerPoint: map.latLngToLayerPoint(latlng),
+    containerPoint: map.latLngToContainerPoint(latlng),
+    originalEvent: ev?.originalEvent || ev || null,
+  });
+  return true;
+}
+
+/**
+ * @param {number} id
+ * @param {any} [clickEvent] Nur übergeben, wenn der Layer das Karten-Click-Event
+ *   unterdrückt — der Klick wird dann an die Karte weitergereicht.
+ */
+export function selectFromMap(id, clickEvent){
+  if(mapToolWantsPoint()){
+    if(clickEvent) forwardClickToMap(clickEvent);
+    return;
+  }
   // Stromnetz Kabel-Zeichenmodus: Gebäude als Strom-Knoten
-  if(isDrawingStromEdge && typeof stromNodeClick === 'function') {
+  // (window-Flag zuerst: 05b/03b setzen window.* direkt, das Modul-Binding bleibt sonst stale)
+  if((window.isDrawingStromEdge ?? isDrawingStromEdge) && typeof stromNodeClick === 'function') {
     if(stromNodeClick(id)) return;
   }
-  if(isDrawingEdge){
+  if(window.isDrawingEdge ?? isDrawingEdge){
     if(window.edgeStartId === null){ window.edgeStartId = id; showHint('Zweites Gebäude anklicken.'); }
     else { if(window.edgeStartId !== id){ addNetzEdge(window.edgeStartId, id); recalcNetz(); } window.edgeStartId = null; showHint('Nächstes Gebäude anklicken oder Tool beenden.'); }
     return;

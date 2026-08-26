@@ -1225,6 +1225,9 @@ export function attachGebPvLayer(g, fl) {
     dashArray: fl.typ === 'sperr' ? '4 3' : null,
     pane: 'pvPane',
   }).addTo(map);
+  // Ohne bubblingMouseEvents:false — der Klick erreicht die Karte ohnehin, also
+  // KEIN Event weiterreichen (sonst doppelter Punkt beim Zeichnen). selectFromMap
+  // unterdrückt die Auswahl bei aktivem Kartenwerkzeug selbst.
   fl.layer.on('click', () => { if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id); });
   // Sperrflächen initial unsichtbar — updateSperrVisibility zeigt sie beim selektierten Gebäude
   if (fl.typ === 'sperr') {
