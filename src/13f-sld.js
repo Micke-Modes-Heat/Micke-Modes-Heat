@@ -335,6 +335,30 @@ function _sldLayout(activeA, activeL) {
   }
   for (const a of activeA) getEffRank(a.id);
 
+  // Geschwister in der Reihenfolge der Karte anordnen (West → Ost).
+  //
+  // Bisher entschied die Reihenfolge, in der die Kanten zufällig eingelesen
+  // wurden — zwei benachbarte Gebäude konnten im Schema an entgegengesetzten
+  // Enden stehen. Mit der Kartenreihenfolge findet man sich wieder: was auf der
+  // Karte links liegt, steht auch im Schema links.
+  const _kartenX = id => {
+    const a = assetMap.get(id);
+    if (!a || a.lat == null || a.lng == null) return null;
+    try { return map.options.crs.project(L.latLng(a.lat, a.lng)).x; } catch (err) { return null; }
+  };
+  for (const [, kinder] of children) {
+    if (kinder.length < 2) continue;
+    const platz = new Map(kinder.map((id, i) => [id, i]));
+    kinder.sort((a, b) => {
+      const xa = _kartenX(a), xb = _kartenX(b);
+      // Ohne Koordinaten ans Ende, untereinander in der bisherigen Reihenfolge
+      if (xa == null && xb == null) return platz.get(a) - platz.get(b);
+      if (xa == null) return 1;
+      if (xb == null) return -1;
+      return (xa - xb) || (platz.get(a) - platz.get(b));
+    });
+  }
+
   // Geschwister umsortieren, damit Ringpartner nebeneinander landen.
   //
   // Baumkanten kreuzen sich in diesem Layout nie — die Teilbäume belegen
@@ -426,6 +450,27 @@ function _sldLayout(activeA, activeL) {
     }
   });
 
+  // Sammelschienen über die Breite ihrer Abgänge spannen.
+  //
+  // Bisher war eine NSHV ein 102 px breites Kästchen, aus dem sich bis zu
+  // siebzig Leitungen fächerförmig spreizten — deren waagerechte Segmente fielen
+  // alle auf dieselbe Höhe und ergaben ein Knäuel. Im Einlinienschema ist die
+  // Sammelschiene ein BALKEN, von dem die Abgänge senkrecht herunterhängen.
+  const busSpanne = new Map();
+  for (const [pid, kinder] of children) {
+    const typ = assetMap.get(pid)?.type;
+    if (typ !== 'NSHV' && typ !== 'UV') continue;
+    const eigen = pos.get(pid);
+    if (!eigen) continue;
+    const xs = kinder.map(c => pos.get(c)?.x).filter(x => x != null);
+    if (!xs.length) continue;
+    // Der Einspeisepunkt (eigene x-Position) muss auf der Schiene liegen
+    busSpanne.set(pid, {
+      von: Math.min(Math.min(...xs) - SLD_NW / 2, eigen.x - (SLD_CW - 8) / 2),
+      bis: Math.max(Math.max(...xs) + SLD_NW / 2, eigen.x + (SLD_CW - 8) / 2),
+    });
+  }
+
   const treeH    = placed.size > 0 ? Math.max(...[...pos.values()].map(p => p.y)) + SLD_NH : PAD_TOP;
   const ORF_SEP  = 60;
   const orphanY  = treeH + ORF_SEP;
@@ -437,13 +482,20 @@ function _sldLayout(activeA, activeL) {
     x: pos.get(a.id)?.x ?? 60,
     y: pos.get(a.id)?.y ?? orphanY,
     _orphan: !connectedIds.has(a.id),
+    _bus: busSpanne.get(a.id) || null,
   }));
 
   const edges = [];
+  const istSchiene = t => t === 'NSHV' || t === 'UV';
   for (const e of activeL) {
     const pA = pos.get(e.u), pB = pos.get(e.v);
     if (!pA || !pB) continue;
-    edges.push({ e, x1: pA.x, y1: pA.y, x2: pB.x, y2: pB.y, isRing: ringEdges.has(e.id) });
+    // Hängt die Leitung an einer Sammelschiene, wird sie zum senkrechten Stich
+    // am Ort des unteren Knotens — nicht mehr diagonal aus der Schienenmitte.
+    const obenTyp = (pA.y <= pB.y ? assetMap.get(e.u) : assetMap.get(e.v))?.type;
+    const vonSchiene = istSchiene(obenTyp) && Math.abs(pA.y - pB.y) > 4 && !ringEdges.has(e.id);
+    edges.push({ e, x1: pA.x, y1: pA.y, x2: pB.x, y2: pB.y,
+      isRing: ringEdges.has(e.id), vonSchiene });
   }
 
   const xs  = nodes.map(n => n.x), ys = nodes.map(n => n.y);
@@ -474,7 +526,7 @@ function _buildSvgRaw(nodes, edges, W, H, layoutExtra, yr) {
 }
 
 // ── Edge ──────────────────────────────────────────────────────────────────────
-function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
+function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene }, svgW) {
   // Gleiche Einfärbung wie auf der Karte (Auslastung/ΔU%/Leistung/Richtung),
   // MS-Kabel immer violett — analog zu updateStromEdgeVisuals() in 05b-stromnetz.js.
   const strokeCol = e.msLevel ? '#7c4dff' : getStromEdgeColor(e);
@@ -499,7 +551,16 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
     return { yb: unten + tiefe, unten };
   };
 
-  if (isRing || gleicheHoehe) {
+  // Abgang von der Sammelschiene: senkrecht herab an der Stelle des Abgangs.
+  // BUSBAR_H/2 = 7 ist die halbe Höhe des Balkens aus _drawBusbar.
+  const stich = vonSchiene && !isRing && !gleicheHoehe;
+  const stichX = y1 <= y2 ? x2 : x1;
+
+  if (stich) {
+    const oben  = Math.min(y1, y2) + 7;
+    const unten = Math.max(y1, y2) - SLD_NH / 2;
+    path = `M${stichX.toFixed(1)},${oben.toFixed(1)} L${stichX.toFixed(1)},${unten.toFixed(1)}`;
+  } else if (isRing || gleicheHoehe) {
     const { yb } = bogen();
     path = `M${x1.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${x1.toFixed(1)},${yb.toFixed(1)} L${x2.toFixed(1)},${yb.toFixed(1)} L${x2.toFixed(1)},${(y2+SLD_NH/2).toFixed(1)}`;
   } else if (sameX) {
@@ -533,13 +594,14 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing }, svgW) {
   if (e.stationsintern) return s + '</g>';
 
   // Cable label
-  const midY2  = sameX ? (y1 + y2) / 2 : y1 + (y2 - y1) * 0.42;
-  const labelX = ((x1 + x2) / 2).toFixed(1);
+  const midY2  = stich ? (Math.min(y1, y2) + 7 + Math.max(y1, y2) - SLD_NH / 2) / 2
+               : sameX ? (y1 + y2) / 2 : y1 + (y2 - y1) * 0.42;
+  const labelX = stich ? (stichX + 4).toFixed(1) : ((x1 + x2) / 2).toFixed(1);
   const labelY = (midY2 - 5).toFixed(1);
   const qs     = e.crossSection || 50;
   const lenM   = Math.round(e.lengthM || 0);
   const lTxt   = lenM > 0 ? `${qs} mm² · ${lenM} m` : `${qs} mm²`;
-  s += `<text x="${labelX}" y="${labelY}" text-anchor="middle" font-size="7.5" fill="${strokeCol}" opacity="0.8" pointer-events="none">${lTxt}</text>`;
+  s += `<text x="${labelX}" y="${labelY}" text-anchor="${stich ? 'start' : 'middle'}" font-size="7.5" fill="${strokeCol}" opacity="0.8" pointer-events="none">${lTxt}</text>`;
 
   // Richtungspfeil (Lastfluss) — analog zum Pfeil-Marker auf der Karte:
   // ▲ zeigt standardmäßig von u nach v, bei flowDirection<0 umgekehrt.
@@ -616,15 +678,23 @@ function _drawBusbar(n, selected) {
   const cfg = ASSET_CFG[n.type];
   const col = cfg.color;
   const { x, y } = n;
-  const bw = Math.max(SLD_NW, SLD_CW - 8), bh = 14;
+  const bh = 14;
+  // Über die Breite der Abgänge gespannt, sonst als schmaler Balken
+  const von = n._bus ? n._bus.von : x - (SLD_CW - 8) / 2;
+  const bis = n._bus ? n._bus.bis : x + (SLD_CW - 8) / 2;
+  const bw  = Math.max(SLD_NW, bis - von);
+  const mx  = (von + bis) / 2;
 
   let s = `<g data-assetid="${n.id}" style="cursor:pointer;">`;
-  s += `<rect x="${(x-bw/2-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${bw+8}" height="${bh+8}" rx="5" fill="transparent"/>`;
-  if (selected) s += `<rect x="${(x-bw/2-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${bw+8}" height="${bh+8}" rx="5" fill="${col}" opacity="0.15"/>`;
-  s += `<rect x="${(x-bw/2).toFixed(1)}" y="${(y-bh/2).toFixed(1)}" width="${bw}" height="${bh}" rx="3" fill="${selected?col+'30':'#182435'}" stroke="${col}" stroke-width="${selected?2:1.8}"/>`;
-  s += `<text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="600">${cfg.icon} ${_passend(n.name, bw - 14, 9)}</text>`;
+  s += `<rect x="${(von-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${(bw+8).toFixed(1)}" height="${bh+8}" rx="5" fill="transparent"/>`;
+  if (selected) s += `<rect x="${(von-4).toFixed(1)}" y="${(y-bh/2-4).toFixed(1)}" width="${(bw+8).toFixed(1)}" height="${bh+8}" rx="5" fill="${col}" opacity="0.15"/>`;
+  s += `<rect x="${von.toFixed(1)}" y="${(y-bh/2).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh}" rx="3" fill="${selected?col+'30':'#182435'}" stroke="${col}" stroke-width="${selected?2:1.8}"/>`;
+  // Beschriftung am Einspeisepunkt, nicht in der Balkenmitte: dort kommt die
+  // Zuleitung an, dort sucht das Auge den Namen.
+  const beschrX = n._bus ? Math.min(Math.max(x, von + 46), bis - 46) : mx;
+  s += `<text x="${beschrX.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="600">${cfg.icon} ${_passend(n.name, Math.min(bw, SLD_CW) - 14, 9)}</text>`;
   const spec = _spec(n);
-  if (spec) s += `<text x="${x.toFixed(1)}" y="${(y+bh/2+11).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#546e7a">${_passend(spec, bw, 7.5)}</text>`;
+  if (spec) s += `<text x="${beschrX.toFixed(1)}" y="${(y+bh/2+11).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#546e7a">${_passend(spec, Math.min(bw, SLD_CW), 7.5)}</text>`;
   return s + '</g>';
 }
 
