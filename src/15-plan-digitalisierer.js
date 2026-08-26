@@ -952,6 +952,7 @@ export function pdAbgleich() {
     nurKarte:   offen,
     abgehakt,
     vorlaeufig: pdVorlaeufige(),
+    qsGeschaetzt: pdGeschaetzteKabel(),
   };
 }
 
@@ -968,6 +969,12 @@ export function pdAbgleichKopieren() {
   ab.nurImPlan.forEach(n => zeilen.push(['im Plan, noch nicht verortet', n.label || '(ohne Bezeichnung)', '', ''].join('\t')));
   ab.abgehakt.forEach(o => zeilen.push(['bewusst nicht im Plan', o.name, o.zusatz, o.grund].join('\t')));
   ab.vorlaeufig.forEach(a => zeilen.push(['Position vorläufig', a.name, ASSET_CFG[a.type]?.label || a.type, 'aus dem Plan geschätzt'].join('\t')));
+  ab.qsGeschaetzt.forEach(e => {
+    const l = PD.links.find(x => x.edgeId === e.id);
+    const a = l && _node(l.a), b = l && _node(l.b);
+    zeilen.push(['Querschnitt geschätzt', a && b ? `${a.label || '?'} → ${b.label || '?'}` : e.id,
+      `${e.cableType || '?'} ${e.crossSection || '?'} mm²`, e.qsQuelle || 'geschätzt'].join('\t'));
+  });
   const text = `Abgleich Plan ↔ Karte — ${PD.plan?.name || 'Plan'}\n`
     + `beidseitig: ${ab.beidseitig.length}\n\n` + zeilen.join('\n');
   try {
@@ -1709,6 +1716,23 @@ function _renderAbgleich(box, ab) {
     </div>
     <button class="pd-mini pd-ab-export" data-click="pdAbgleichKopieren()"
             title="Alle vier Körbe als Tabelle in die Zwischenablage">⧉ Abgleich als Tabelle kopieren</button>
+    ${ab.qsGeschaetzt.length ? `<div class="pd-list-head">Querschnitt prüfen (${ab.qsGeschaetzt.length})</div>
+      ${ab.qsGeschaetzt.map(e => {
+        const l = PD.links.find(x => x.edgeId === e.id);
+        const a = l && _node(l.a), b = l && _node(l.b);
+        return `<div class="pd-ab-row">
+          <span class="pd-dot" style="background:#4dd0e1"></span>
+          <span class="pd-row-txt">${_esc(a && b ? `${a.label || '?'} → ${b.label || '?'}` : e.id)}</span>
+          <span class="pd-row-sub">${_esc(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${e.qsQuelle || 'geschätzt'}`)}</span>
+          <span class="pd-ab-akt">
+            ${l ? `<button class="pd-mini" data-click="pdSelect('link','${l.id}')">im Plan zeigen</button>` : ''}
+            <button class="pd-mini" data-click="pdQuerschnittBestaetigt('${e.id}')" title="Querschnitt stimmt so">passt</button>
+          </span>
+        </div>`;
+      }).join('')}
+      <div class="pd-ab-hinweis">Aus dem speisenden Kabel bzw. einem Erfahrungswert abgeleitet, nicht
+        abgelesen. Solange sie hier stehen, stehen Auslastung, Spannungsfall und Ertüchtigungskosten
+        dieser Kabel unter Vorbehalt — der Bestands-Check meldet sie ebenfalls.</div>` : ''}
     ${ab.vorlaeufig.length ? `<div class="pd-list-head">Position prüfen (${ab.vorlaeufig.length})</div>
       ${ab.vorlaeufig.map(a => `<div class="pd-ab-row">
           <span class="pd-dot" style="background:#ba68c8"></span>
@@ -1756,7 +1780,8 @@ function _renderFortschritt() {
   el.innerHTML = `<b>${_esc(PD.plan.name)}</b> · Einträge ${nOk}/${PD.nodes.length} · Kabel ${lOk}/${PD.links.length}`
     + (ab.nurKarte.length ? ` · <span class="pd-offen">Karte: ${ab.nurKarte.length} nicht im Plan</span>` : ' · Karte vollständig')
     + (ab.fehlt.length ? ` · <span class="pd-fehl">${ab.fehlt.length} fehlt auf der Karte</span>` : '')
-    + (ab.vorlaeufig.length ? ` · <span class="pd-vorl">${ab.vorlaeufig.length} Position prüfen</span>` : '');
+    + (ab.vorlaeufig.length ? ` · <span class="pd-vorl">${ab.vorlaeufig.length} Position prüfen</span>` : '')
+    + (ab.qsGeschaetzt.length ? ` · <span class="pd-qs">${ab.qsGeschaetzt.length} Querschnitt geschätzt</span>` : '');
 }
 
 function _renderAll() {
@@ -1830,6 +1855,107 @@ function _gebaeudeIntern(gebId, zuleitung) {
   return neu;
 }
 
+// ── Querschnitt schätzen, wenn die Beschriftung fehlt ──────────────────
+// Ohne Angabe bliebe das Kabel auto-dimensioniert — und ein auto-dimensioniertes
+// Kabel trägt die heutige Last per Konstruktion genau, ist also heute NIE
+// überlastet. Es verschwände damit aus der Engpassbetrachtung, während
+// bestand-check.js es als „Querschnitt bekannt" mitzählt. Genau die Sorte
+// Datenlage, die einen Fahrplan belastbar aussehen lässt, ohne es zu sein.
+//
+// Deshalb wird geschätzt, festgesetzt (autoSized = false) und gekennzeichnet.
+
+// Rückfall, wenn stromaufwärts kein Kabel mit Angabe steht. Bewusst grob und
+// erklärbar — typische Bestandsquerschnitte einer Liegenschaft.
+const QS_ERFAHRUNG = {
+  verteilung:    { cableType: 'NAYY', crossSection: 150 },
+  hausanschluss: { cableType: 'NYY',  crossSection: 50  },
+};
+
+/** Eine Normstufe unter dem Vorbild — Querschnitte werden nach außen kleiner. */
+function _stufeRunter(cableType, mm2) {
+  const kt = KABEL_TYPEN[cableType];
+  if (!kt) return mm2;
+  const i = kt.sections.findIndex(s => s.mm2 === mm2);
+  if (i < 0) return mm2;
+  return kt.sections[Math.max(0, i - 1)].mm2;
+}
+
+/** Speiseseitige Plan-Einträge: das netzseitigste vorhandene Betriebsmittel. */
+function _quellKnoten() {
+  for (const t of ['NAP', 'Schaltanlage', 'Trafo', 'NSHV']) {
+    const treffer = PD.nodes.filter(n => _istGebKnoten(n) && n.linkId != null
+      && _anschlussKandidaten(n.linkId).some(a => a.type === t));
+    if (treffer.length) return treffer;
+  }
+  return [];
+}
+
+/**
+ * Je Kabel ohne Angabe das nächste bekannte Kabel stromaufwärts bestimmen.
+ * Breitensuche von den Quellen aus; jeder Zweig trägt den zuletzt abgelesenen
+ * Querschnitt weiter. Bewusst nur ABGELESENE Werte als Vorbild — sähe eine
+ * Schätzung die vorige Schätzung als Vorbild, liefe eine Kette nach wenigen
+ * Schritten auf den kleinsten Querschnitt zu.
+ */
+function _speiseVorbilder() {
+  const adj = new Map(PD.nodes.map(n => [n.id, []]));
+  PD.links.forEach(l => { adj.get(l.a)?.push({ l, to: l.b }); adj.get(l.b)?.push({ l, to: l.a }); });
+  const vorbild = new Map();
+  const besucht = new Set();
+  const schlange = _quellKnoten().map(n => { besucht.add(n.id); return { id: n.id, bekannt: null }; });
+  while (schlange.length) {
+    const { id, bekannt } = schlange.shift();
+    for (const { l, to } of adj.get(id) || []) {
+      const eigen = (l.cableType && l.crossSection > 0)
+        ? { cableType: l.cableType, crossSection: l.crossSection } : null;
+      if (!eigen && bekannt && !vorbild.has(l.id)) vorbild.set(l.id, bekannt);
+      if (!besucht.has(to)) { besucht.add(to); schlange.push({ id: to, bekannt: eigen || bekannt }); }
+    }
+  }
+  return vorbild;
+}
+
+/** Hausanschluss oder Verteilleitung? Entscheidet den Rückfallwert. */
+function _istHausanschluss(l) {
+  for (const id of [l.a, l.b]) {
+    const n = _node(id);
+    if (!n || !_istGebKnoten(n) || n.linkId == null) continue;
+    const typen = _anschlussKandidaten(n.linkId).map(a => a.type);
+    if (!typen.includes('Trafo') && !typen.includes('NSHV')) return true;
+  }
+  return false;
+}
+
+/** Geschätzten Querschnitt auf eine frisch angelegte Kante schreiben. */
+function _setzeSchaetzung(edge, l, vorbild) {
+  const v = vorbild.get(l.id);
+  const wert = v
+    ? { cableType: v.cableType, crossSection: _stufeRunter(v.cableType, v.crossSection) }
+    : QS_ERFAHRUNG[_istHausanschluss(l) ? 'hausanschluss' : 'verteilung'];
+  edge.cableType = wert.cableType;
+  edge.crossSection = wert.crossSection;
+  // Festsetzen, sonst wüchse das Kabel bei jeder Rechnung auf die passende
+  // Größe und könnte nie ein Engpass sein.
+  edge.autoSized = false;
+  edge.qsGeschaetzt = true;
+  edge.qsQuelle = v ? 'aus dem speisenden Kabel' : 'Erfahrungswert';
+}
+
+/** Kabel mit geschätztem Querschnitt, noch nicht bestätigt. */
+export function pdGeschaetzteKabel() {
+  const ausPlan = new Set(PD.links.map(l => l.edgeId).filter(Boolean));
+  return (window.stromEdges || []).filter(e => e.qsGeschaetzt && ausPlan.has(e.id));
+}
+
+/** Geschätzten Querschnitt als richtig bestätigen. */
+export function pdQuerschnittBestaetigt(edgeId) {
+  const e = (window.stromEdges || []).find(x => x.id === edgeId);
+  if (!e) return;
+  e.qsGeschaetzt = false;
+  showHint(`Querschnitt bestätigt: ${e.cableType || '?'} ${e.crossSection || '?'} mm².`);
+  _renderAll();
+}
+
 /**
  * MS-Ring schließen.
  *
@@ -1896,7 +2022,7 @@ export function pdApply() {
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
   if (!PD.nodes.length) { showHint('⚠ Noch keine Einträge im Plan markiert.'); return; }
 
-  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0, fehlend: 0, vorlaeufig: 0, stationsintern: 0, ringNeu: 0, ringMehrdeutig: 0 };
+  const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0, fehlend: 0, vorlaeufig: 0, stationsintern: 0, ringNeu: 0, ringMehrdeutig: 0, qsGeschaetzt: 0 };
   let letzteQuelle = '';
   const zuleitungen = new Map();   // buildingId → { cableType, crossSection }
 
@@ -1960,6 +2086,7 @@ export function pdApply() {
     }
 
     // 2 · Kabel → stromEdges (Geometrie kommt aus dem Trassenrouting)
+    const vorbild = _speiseVorbilder();
     for (const l of PD.links) {
       if (l.edgeId && (window.stromEdges || []).some(e => e.id === l.edgeId)) continue;
       const a = _node(l.a), b = _node(l.b);
@@ -1995,6 +2122,7 @@ export function pdApply() {
         // sonst verschwindet der Engpass, den der Bestand gerade beweist.
         edge.autoSized = false;
       }
+      if (!(l.crossSection > 0)) { _setzeSchaetzung(edge, l, vorbild); bericht.qsGeschaetzt++; }
       edge.nParallel = Math.max(1, l.nParallel || 1);
       if (l.msLevel) edge.msLevel = true;
       if (l.lengthM != null) edge.lengthM = l.lengthM;
@@ -2049,6 +2177,7 @@ export function pdApply() {
   if (bericht.selbstbezug) offen.push(`${bericht.selbstbezug} Kabel mit identischer Anlage an beiden Enden`);
   if (bericht.fehlend) offen.push(`${bericht.fehlend} Gebäude fehl${bericht.fehlend === 1 ? 't' : 'en'} auf der Karte`);
   if (bericht.vorlaeufig) offen.push(`${bericht.vorlaeufig} Anlage(n) mit vorläufiger Position (${letzteQuelle}) — auf der Karte zurechtziehen`);
+  if (bericht.qsGeschaetzt) offen.push(`${bericht.qsGeschaetzt} Kabel ohne Angabe — Querschnitt geschätzt und gekennzeichnet`);
   if (bericht.ringMehrdeutig) offen.push(`${bericht.ringMehrdeutig} MS-Netz(e) verzweigt — Ringschluss nicht eindeutig, von Hand ziehen`);
   if (bericht.ringNeu && _ringOhneTrennstelle()) offen.push('keine Schaltanlage als Trennstelle gekennzeichnet — für die Ringanalyse im Anlagen-Inspektor setzen');
   showHint(

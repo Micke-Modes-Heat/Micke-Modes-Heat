@@ -72,6 +72,26 @@ export function pruefeQuerschnitte(edges) {
 }
 
 /**
+ * Geschätzte Querschnitte. Ein Kabel, dessen Beschriftung auf dem Bestandsplan
+ * unleserlich war, bekommt einen abgeleiteten Querschnitt. Rechnen lässt sich
+ * damit — aber jede Aussage über Auslastung, Spannungsfall und Ertüchtigungs-
+ * kosten dieses Kabels ist eine Annahme. Das gehört sichtbar, sonst liest sich
+ * ein Fahrplan belastbarer, als er ist.
+ */
+export function pruefeGeschaetzteQuerschnitte(edges) {
+  const geschaetzt = (edges || [])
+    .filter(e => e?.qsGeschaetzt)
+    .map(e => ({ id: e.id, art: 'kabel',
+      label: `${_label(e, e.id)} (${e.cableType || '?'} ${e.crossSection || '?'} mm², ${e.qsQuelle || 'geschätzt'})` }));
+  return geschaetzt.length
+    ? [befund('querschnitt-geschaetzt', SCHWERE.WARNUNG,
+        'Kabel mit geschätztem Querschnitt',
+        'Aus dem speisenden Kabel bzw. einem Erfahrungswert abgeleitet, nicht abgelesen. Auslastung, Spannungsfall und Ertüchtigungskosten dieser Kabel stehen damit unter Vorbehalt.',
+        geschaetzt)]
+    : [];
+}
+
+/**
  * Topologie. Geprüft wird, ob überhaupt eine Quelle existiert und ob jedes
  * Betriebsmittel von ihr aus erreichbar ist. Nicht erreichbare Assets tragen
  * nichts zur Lastflussrechnung bei und fallen aus jeder Auswertung heraus,
@@ -245,6 +265,7 @@ export function bestandPruefen(daten) {
   const befunde = [
     ...pruefeKabellaengen(edges),
     ...pruefeQuerschnitte(edges),
+    ...pruefeGeschaetzteQuerschnitte(edges),
     ...pruefeTopologie(assets, edges, quellTypen),
     ...pruefeLebenszyklus(lebenszyklusObjekte, heute),
     ...pruefeAuslastungHeute(edges, grenzAuslastungPct),

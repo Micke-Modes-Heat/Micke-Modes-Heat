@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   SCHWERE, pruefeKabellaengen, pruefeQuerschnitte, pruefeTopologie,
   pruefeLebenszyklus, pruefeAuslastungHeute, bestandReifegrad, bestandPruefen,
+  pruefeGeschaetzteQuerschnitte,
 } from '../src/lib/bestand-check.js';
 
 const idsVon = befunde => befunde.map(b => b.id);
@@ -216,5 +217,24 @@ describe('bestandPruefen', () => {
     const res = bestandPruefen({});
     expect(Array.isArray(res.befunde)).toBe(true);
     expect(res.reifegrad).toHaveLength(4);
+  });
+});
+
+describe('pruefeGeschaetzteQuerschnitte', () => {
+  it('meldet Kabel mit geschaetztem Querschnitt als Warnung', () => {
+    const befunde = pruefeGeschaetzteQuerschnitte([
+      { id: 'e1', crossSection: 50, cableType: 'NYY', qsGeschaetzt: true, qsQuelle: 'aus dem speisenden Kabel' },
+      { id: 'e2', crossSection: 70, cableType: 'NYY' },
+    ]);
+    expect(befunde).toHaveLength(1);
+    expect(befunde[0].schwere).toBe(SCHWERE.WARNUNG);
+    expect(befunde[0].betroffene).toHaveLength(1);
+    // Der Grund gehoert in die Zeile: sonst weiss niemand, worauf die Zahl beruht
+    expect(befunde[0].betroffene[0].label).toContain('aus dem speisenden Kabel');
+  });
+
+  it('schweigt, wenn alle Querschnitte abgelesen sind', () => {
+    expect(pruefeGeschaetzteQuerschnitte([{ id: 'e1', crossSection: 70 }])).toHaveLength(0);
+    expect(pruefeGeschaetzteQuerschnitte([])).toHaveLength(0);
   });
 });
