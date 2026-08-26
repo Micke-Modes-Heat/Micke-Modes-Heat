@@ -292,13 +292,23 @@ function _sldLayout(activeA, activeL) {
     }
   }
 
-  // Effective rank: max(TYPE_RANK, parent_effectiveRank + 1) — handles UV→UV cascades
+  // Ebene im Schema. Für die Netzinfrastruktur ist sie FEST: NAP ganz oben,
+  // darunter alle Schaltanlagen, dann alle Trafos, dann alle NSHV. Das ist die
+  // Spannungsebene, und die hängt nicht davon ab, wie tief ein Betriebsmittel
+  // zufällig im Speisebaum hängt. Ohne diese Ausnahme rutschte eine Schaltanlage,
+  // die an einer anderen Schaltanlage hängt, auf die Trafo-Zeile.
+  //
+  // Erst ab der Verteilebene gilt wieder max(TYPE_RANK, Elternebene + 1) — dort
+  // sind Kaskaden real (UV→UV→Verbraucher) und sollen sich auch so zeigen.
+  const FESTE_EBENE = new Set(['NAP', 'Schaltanlage', 'Trafo', 'NSHV']);
   const effRank = new Map();
   function getEffRank(id, seen = new Set()) {
     if (effRank.has(id)) return effRank.get(id);
     if (seen.has(id))    return TYPE_RANK[assetMap.get(id)?.type] ?? 4;
     seen.add(id);
-    const base = TYPE_RANK[assetMap.get(id)?.type] ?? 4;
+    const typ  = assetMap.get(id)?.type;
+    const base = TYPE_RANK[typ] ?? 4;
+    if (FESTE_EBENE.has(typ)) { effRank.set(id, base); return base; }
     const par  = parentOf.get(id);
     const eff  = par ? Math.max(base, getEffRank(par, seen) + 1) : base;
     effRank.set(id, eff);

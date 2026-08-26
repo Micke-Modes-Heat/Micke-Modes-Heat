@@ -551,6 +551,12 @@ function _kabelEnde(n, msLevel) {
     const treffer = kand.find(a => a.type === t);
     if (treffer) return treffer;
   }
+  // Rückfall: lieber irgendein Betriebsmittel als gar keins — aber für ein
+  // NS-Kabel niemals eine reine MS-Anlage, solange es eine Alternative gibt.
+  if (!msLevel) {
+    const nichtMs = kand.find(a => a.type !== 'NAP' && a.type !== 'Schaltanlage');
+    if (nichtMs) return nichtMs;
+  }
   return kand[0];
 }
 
@@ -956,7 +962,7 @@ export function pdAbgleich() {
     abgehakt,
     vorlaeufig: pdVorlaeufige(),
     qsGeschaetzt: pdGeschaetzteKabel(),
-    napNs: pdNapPruefung(),
+    napNs: pdMsAnlagenPruefung(),
   };
 }
 
@@ -975,7 +981,7 @@ export function pdAbgleichKopieren() {
   ab.vorlaeufig.forEach(a => zeilen.push(['Position vorläufig', a.name, ASSET_CFG[a.type]?.label || a.type, 'aus dem Plan geschätzt'].join('\t')));
   ab.napNs.forEach(e => {
     const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
-    zeilen.push(['NS-Leitung am NAP', `${nm(e.u)} → ${nm(e.v)}`,
+    zeilen.push(['NS-Leitung an MS-Anlage', `${nm(e.u)} → ${nm(e.v)}`,
       `${e.cableType || '?'} ${e.crossSection || '?'} mm²`, 'elektrisch unmöglich'].join('\t'));
   });
   ab.qsGeschaetzt.forEach(e => {
@@ -1726,11 +1732,10 @@ function _renderAbgleich(box, ab) {
     </div>
     <button class="pd-mini pd-ab-export" data-click="pdAbgleichKopieren()"
             title="Alle vier Körbe als Tabelle in die Zwischenablage">⧉ Abgleich als Tabelle kopieren</button>
-    ${ab.napNs.length ? `<div class="pd-list-head">NS-Leitung am NAP (${ab.napNs.length})</div>
-      <div class="pd-ab-hinweis">Der NAP ist der Übergabepunkt aus dem Mittelspannungsnetz — eine
-        NS-Leitung dort ist elektrisch unmöglich und führt die ganze NS-Rechnung an der
-        Trafostation vorbei. Betrifft auch Leitungen aus früheren Übernahmen oder aus der
-        automatischen Netzerzeugung.</div>
+    ${ab.napNs.length ? `<div class="pd-list-head">NS-Leitung an MS-Anlage (${ab.napNs.length})</div>
+      <div class="pd-ab-hinweis">NAP und Schaltanlage führen nur Mittelspannung — eine NS-Leitung
+        dort ist elektrisch unmöglich und führt die ganze NS-Rechnung am Trafo vorbei. Betrifft
+        auch Leitungen aus früheren Übernahmen oder aus der automatischen Netzerzeugung.</div>
       ${ab.napNs.slice(0, 40).map(e => {
         const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
         return `<div class="pd-ab-row">
@@ -1740,7 +1745,7 @@ function _renderAbgleich(box, ab) {
         </div>`;
       }).join('')}
       ${ab.napNs.length > 40 ? `<div class="pd-empty">… und ${ab.napNs.length - 40} weitere</div>` : ''}
-      <button class="pd-mini pd-ab-export" data-click="pdNapReparieren()"
+      <button class="pd-mini pd-ab-export" data-click="pdMsAnlagenReparieren()"
               title="Jede dieser Leitungen auf NSHV bzw. UV derselben Station umhängen">
         ↳ Alle auf die NS-Seite umhängen</button>` : ''}
     ${ab.qsGeschaetzt.length ? `<div class="pd-list-head">Querschnitt prüfen (${ab.qsGeschaetzt.length})</div>
@@ -1809,7 +1814,7 @@ function _renderFortschritt() {
     + (ab.fehlt.length ? ` · <span class="pd-fehl">${ab.fehlt.length} fehlt auf der Karte</span>` : '')
     + (ab.vorlaeufig.length ? ` · <span class="pd-vorl">${ab.vorlaeufig.length} Position prüfen</span>` : '')
     + (ab.qsGeschaetzt.length ? ` · <span class="pd-qs">${ab.qsGeschaetzt.length} Querschnitt geschätzt</span>` : '')
-    + (ab.napNs.length ? ` · <span class="pd-fehl">${ab.napNs.length} NS-Leitung(en) am NAP</span>` : '');
+    + (ab.napNs.length ? ` · <span class="pd-fehl">${ab.napNs.length} NS-Leitung(en) an MS-Anlagen</span>` : '');
 }
 
 function _renderAll() {
@@ -1969,29 +1974,33 @@ function _setzeSchaetzung(edge, l, vorbild) {
   edge.qsQuelle = v ? 'aus dem speisenden Kabel' : 'Erfahrungswert';
 }
 
-// ── NS-Leitungen am NAP ───────────────────────────────────────
-// Der NAP ist der Übergabepunkt aus dem Mittelspannungsnetz. Eine NS-Leitung,
-// die dort endet, ist elektrisch unmöglich — unabhängig davon, wer sie angelegt
-// hat (frühere Übernahme, automatische Netzerzeugung, Handzeichnung). Solche
-// Kanten führen die gesamte NS-Rechnung an der Trafostation vorbei.
+// ── NS-Leitungen an MS-Anlagen ───────────────────────────────
+// NAP und Schaltanlage liegen ausschließlich auf Mittelspannung. Eine
+// NS-Leitung, die dort endet, ist elektrisch unmöglich — unabhängig davon, wer
+// sie angelegt hat (frühere Übernahme, automatische Netzerzeugung, Hand-
+// zeichnung). Solche Kanten führen die gesamte NS-Rechnung am Trafo vorbei.
+//
+// Der Trafo zählt bewusst NICHT dazu: er ist die Grenze zwischen den Ebenen,
+// seine NS-Seite speist die NSHV.
 
-/** NAPs, die tatsächlich auf Mittelspannung liegen (Standard 20 kV). */
-function _msNaps() {
-  return ASSETS.items.filter(a => a.type === 'NAP'
-    && (parseFloat(a.props?.spannungKV) || 20) > 1);
+/** Betriebsmittel, die nur MS führen. NAP nur, wenn er wirklich MS ist. */
+function _msOnlyAssets() {
+  return ASSETS.items.filter(a =>
+    a.type === 'Schaltanlage' ||
+    (a.type === 'NAP' && (parseFloat(a.props?.spannungKV) || 20) > 1));
 }
 
-export function pdNapPruefung() {
-  const napIds = new Set(_msNaps().map(a => a.id));
-  if (!napIds.size) return [];
-  return (window.stromEdges || []).filter(e => !e.msLevel && (napIds.has(e.u) || napIds.has(e.v)));
+export function pdMsAnlagenPruefung() {
+  const msIds = new Set(_msOnlyAssets().map(a => a.id));
+  if (!msIds.size) return [];
+  return (window.stromEdges || []).filter(e => !e.msLevel && (msIds.has(e.u) || msIds.has(e.v)));
 }
 
 // Wohin stattdessen? Die NS-Seite derselben Station: NSHV, ersatzweise UV/KVS.
-function _nsSeiteBei(napId) {
-  const nap = ASSETS.items.find(a => a.id === napId);
-  if (!nap || nap.buildingId == null) return null;
-  const kand = _anschlussKandidaten(nap.buildingId);
+function _nsSeiteBei(msId) {
+  const ms = ASSETS.items.find(a => a.id === msId);
+  if (!ms || ms.buildingId == null) return null;
+  const kand = _anschlussKandidaten(ms.buildingId);
   return ['NSHV', 'UV', 'KVS'].map(t => kand.find(a => a.type === t)).find(Boolean) || null;
 }
 
@@ -2016,10 +2025,10 @@ function _umhaengen(edge, altId, neuId) {
   return neu;
 }
 
-/** Alle NS-Leitungen am NAP auf die NS-Seite derselben Station umhängen. */
-export function pdNapReparieren() {
-  const napIds = new Set(_msNaps().map(a => a.id));
-  const betroffen = pdNapPruefung();
+/** Alle NS-Leitungen an MS-Anlagen auf die NS-Seite derselben Station umhängen. */
+export function pdMsAnlagenReparieren() {
+  const napIds = new Set(_msOnlyAssets().map(a => a.id));
+  const betroffen = pdMsAnlagenPruefung();
   let umgehaengt = 0, ohneZiel = 0, doppelt = 0;
   for (const e of betroffen) {
     const napId = napIds.has(e.u) ? e.u : e.v;
@@ -2044,8 +2053,8 @@ export function pdNapReparieren() {
   const teile = [];
   if (umgehaengt) teile.push(`${umgehaengt} Leitung(en) auf die NS-Seite umgehängt`);
   if (doppelt) teile.push(`${doppelt} doppelte Leitung(en) entfernt — dieselbe Verbindung bestand bereits`);
-  if (ohneZiel) teile.push(`${ohneZiel} ohne NS-Seite am NAP — dort fehlt Trafo/NSHV, von Hand klären`);
-  showHint(teile.length ? '✔ ' + teile.join('. ') + '.' : 'Keine NS-Leitung am NAP gefunden.');
+  if (ohneZiel) teile.push(`${ohneZiel} ohne NS-Seite in derselben Station — dort fehlt Trafo/NSHV, von Hand klären`);
+  showHint(teile.length ? '✔ ' + teile.join('. ') + '.' : 'Keine NS-Leitung an einer MS-Anlage gefunden.');
 }
 
 /** Kabel mit geschätztem Querschnitt, noch nicht bestätigt. */
