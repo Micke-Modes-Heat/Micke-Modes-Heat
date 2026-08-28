@@ -80,6 +80,11 @@ export function engpassSweep(opts = {}) {
   // danach autoSized abschalten, damit die Kabel im Sweep NICHT mitwachsen.
   elCalcAssets({ year: start, silent: true, inklGeplant });
 
+  // ACHTUNG: Hier müssen ALLE Felder stehen, die eine Kabelrechnung schreibt —
+  // auch die abgeleiteten Anzeigefelder. Fehlt eines, bleibt es nach dem Sweep
+  // auf dem Wert des letzten Stützjahres stehen, während der Rest zurückgesetzt
+  // wird; der Tooltip mischt dann Werte aus zwei verschiedenen Läufen (z. B.
+  // Auslastung aus dem Ist-Jahr, Iz_eff aus dem Sweep).
   const snapshot = edges.map(e => ({
     e,
     autoSized:     e.autoSized,
@@ -92,6 +97,13 @@ export function engpassSweep(opts = {}) {
     peakFlowKw:    e.peakFlowKw,
     peakCurrentA:  e.peakCurrentA,
     flowDirection: e.flowDirection,
+    _effCrossSection:    e._effCrossSection,
+    _izEff:              e._izEff,
+    _kIz:                e._kIz,
+    _duBudgetPct:        e._duBudgetPct,
+    _auslegungGedeckelt: e._auslegungGedeckelt,
+    _R_total:            e._R_total,
+    _X_total:            e._X_total,
   }));
   edges.forEach(e => { e.autoSized = false; });
 
@@ -148,6 +160,13 @@ export function engpassSweep(opts = {}) {
       peakFlowKw:    s.peakFlowKw,
       peakCurrentA:  s.peakCurrentA,
       flowDirection: s.flowDirection,
+      _effCrossSection:    s._effCrossSection,
+      _izEff:              s._izEff,
+      _kIz:                s._kIz,
+      _duBudgetPct:        s._duBudgetPct,
+      _auslegungGedeckelt: s._auslegungGedeckelt,
+      _R_total:            s._R_total,
+      _X_total:            s._X_total,
     });
     elCalcAssets(); // Live-Zustand für das tatsächlich eingestellte Jahr
   }

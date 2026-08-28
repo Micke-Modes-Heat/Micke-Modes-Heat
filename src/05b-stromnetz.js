@@ -12,7 +12,8 @@ import { setNetzVisible } from './03b-netz.js';
 import { calcGebKwp, hideHint, showHint, startAnimStrom } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, setLeftTab } from './04a-ui-panels.js';
 import { KABEL_TYPEN, TRAFO_GROESSEN, MS_I_MAX_A, MS_SECTIONS } from './config/netz-kosten.js';
-import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcRhoKorr, calcSpannungsfall, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
+import { KIZ_VERLEGEART, calcIk, calcKizGruppe, calcKizTemp, calcStrom, calcTrafoImpedanz, gzfDIN18015, gzfVDE } from './lib/elektro-formeln.js';
+import { nsKabelAuslegen } from './lib/ns-auslegung.js';
 import { HOURS_PER_YEAR } from './lib/physik-konstanten.js';
 import { createId } from './lib/util.js';
 import { mergeOsmElements, splitOsmBbox, subdivideOsmBbox } from './lib/osm-bbox-tiles.js';
@@ -1165,6 +1166,10 @@ export function buildStromEdgeTooltip(e) {
   } else {
     h += _ttKv('Strom (WC)', e.peakCurrentA.toFixed(1) + ' / ' + izEff.toFixed(0) + ' A' + kIzStr);
     h += _ttKv('Auslastung', e.auslastungPct.toFixed(0) + ' %', _auslCol(e.auslastungPct));
+    // Auch die größte Standardkombination reicht nicht — sonst sähe die Kante
+    // nach einer sauberen Auslegung aus, obwohl sie keine ist.
+    if (e._auslegungGedeckelt)
+      h += _ttKv('Auslegung', 'am Limit (8 Stränge reichen nicht)', '#e53935');
   }
 
   if (isMs) {
@@ -1467,6 +1472,65 @@ export function _hideStromProgress() {
 }
 
 export let _recalcStromBusy = false;
+// ── Gemeinsame Betriebsparameter beider Rechenpfade ─────────────
+//
+// Auslegung und Auslastung dürfen nicht davon abhängen, welcher Rechenpfad
+// zuletzt gelaufen ist. Deshalb lesen _recalcStromNetzInner UND elCalcAssets
+// ihre Betriebsparameter aus denselben Feldern.
+
+// Zulässiger Spannungsfall – Gesamtbudget vom Trafo (bzw. Einspeisepunkt) bis
+// zum Ende eines Stichs (DIN 18015-1 / VDE-AR-N 4105 Richtwert: max. 3 %).
+export const MAX_DELTA_U_PCT = 3;
+
+/**
+ * Existiert ein Gebäude im Rechenjahr? Gleiche Konvention wie getComputedStats
+ * in 02b-gebaeude.js: ohne Baujahr gilt es als immer vorhanden.
+ */
+function _gebAktivImJahr(g, yr) {
+  if (!g) return false;
+  const bj = g.baujahr    ? parseInt(g.baujahr)    : null;
+  const aj = g.abrissjahr ? parseInt(g.abrissjahr) : null;
+  if (bj && yr <  bj) return false;
+  if (aj && yr >= aj) return false;
+  return true;
+}
+
+/**
+ * Darf diese Kante automatisch umdimensioniert werden?
+ *
+ * NEIN für Bestandskabel: die bilden ab, was physisch in der Erde liegt. Würde
+ * die Auslegung sie anfassen, wäre der Bestand kein Festpunkt mehr, sondern ein
+ * Rechenergebnis — Überlastungen im Bestand fielen nicht mehr auf, weil das
+ * Kabel einfach mitwächst, und der Ausbaufahrplan verlöre seinen Nullpunkt.
+ * Eine Ertüchtigung im Bestand gehört als Maßnahme modelliert, nicht als
+ * stillschweigende Umdimensionierung.
+ *
+ * Das gilt unabhängig vom Häkchen „Automatisch dimensionieren" — die Schicht
+ * sticht die Kanteneinstellung.
+ */
+function _darfAuslegen(e) {
+  if (!e?.autoSized) return false;
+  return getStromEdgeSchicht(e) !== SCHICHT.BESTAND;
+}
+
+/** Netz-cos φ (NS) aus der UI. */
+function _nsCosPhi() {
+  return parseFloat(document.getElementById('strom-ns-cosphi')?.value) || 0.95;
+}
+
+/** Leitertemperatur für die Widerstandskorrektur (IEC 60228). */
+function _nsLeiterTemp() {
+  return parseFloat(document.getElementById('strom-leiter-temp')?.value) || 70;
+}
+
+/** Iz-Korrekturfaktor aus Bodentemperatur, Häufung und Verlegeart (IEC 60364-5-52). */
+function _nsKIz() {
+  const tBoden     = parseFloat(document.getElementById('strom-iz-tboden')?.value) ?? 20;
+  const nKabel     = Math.max(1, parseInt(document.getElementById('strom-iz-nkabel')?.value) || 1);
+  const verlegeart = document.getElementById('strom-iz-verlegeart')?.value || 'erde';
+  return calcKizTemp(tBoden) * calcKizGruppe(nKabel) * (KIZ_VERLEGEART[verlegeart] ?? 1.0);
+}
+
 // ── Berechnung: recalcStromNetz() ───────────────────────────────
 export function recalcStromNetz() {
   if (!window.stromEdges.length && !window.stromNodes.length) return;
@@ -1526,6 +1590,12 @@ export function _recalcStromNetzInner() {
   }
   const napId = nap.id;
 
+  // Rechenjahr — dieselbe Quelle wie elCalcAssets. Ohne diesen Filter zählten
+  // ALLE Assets mit, unabhängig von Bau- und Abrissjahr: eine PV-Anlage mit
+  // Baujahr 2040 belastete das Netz auch bei Reglerstellung 1993 und bestimmte
+  // dort sogar den automatisch gewählten Querschnitt.
+  const yr = globalYear ?? new Date().getFullYear();
+
   // Build adjacency from stromEdges
   const nodeMap = {};
   window.stromNodes.forEach(n => {
@@ -1572,7 +1642,9 @@ export function _recalcStromNetzInner() {
     if (!nm) return;
     if (n.type === 'geb') {
       const g = typeof gebaeude !== 'undefined' ? gebaeude.find(gb => gb.id === n.id) : null;
-      if (g) {
+      if (g && !_gebAktivImJahr(g, yr)) {
+        nm.loadKw = 0; n.peakLoadKw = 0; n.annualMwh = 0; n.isProducer = false;
+      } else if (g) {
         const stromMwh = typeof getGebStromMwh === 'function' ? getGebStromMwh(g) : (parseFloat(g.strom) || 0);
         n.annualMwh = stromMwh;
         // Stündlich oder Peak-basiert
@@ -1592,8 +1664,13 @@ export function _recalcStromNetzInner() {
     } else if (n.isAsset) {
       // Strom-Asset-Knoten (Verbraucher, Lade, WP, PV etc.) — Lasten aus Asset-Props
       const asset = (window.assets || (typeof ASSETS !== 'undefined' ? ASSETS.items : []) || []).find(a => a.id === n.id);
-      if (asset) {
-        const p = asset.props || {};
+      if (asset && getAssetStatus(asset, yr) !== 'active') {
+        // Noch nicht gebaut oder bereits abgerissen → keine Last, kein Einfluss
+        nm.loadKw = 0; n.peakLoadKw = 0; n.isProducer = false;
+      } else if (asset) {
+        // Jahreswirksame Props (Basis + umgesetzte Maßnahmen) statt der Rohwerte —
+        // sonst wirkt eine Ertüchtigung hier nicht, im Asset-Pfad aber schon.
+        const p = getAssetPropsForYear(asset, yr) || {};
         switch (asset.type) {
           case 'Verbraucher': nm.loadKw = parseFloat(p.leistungKW) || 0; break;
           case 'Lade': {
@@ -1692,7 +1769,7 @@ export function _recalcStromNetzInner() {
   // PV on buildings (szenario-abhängig)
   if (typeof gebaeude !== 'undefined') {
     gebaeude.forEach(g => {
-      if (g.pvAktiv && nodeMap[g.id]) {
+      if (g.pvAktiv && nodeMap[g.id] && _gebAktivImJahr(g, yr)) {
         const kwp = typeof calcGebKwp === 'function' ? calcGebKwp(g) : 0;
         let pvKw;
         if (hasHourly && pvH) {
@@ -1711,6 +1788,10 @@ export function _recalcStromNetzInner() {
   }
 
   window.stromEdges.forEach(e => {
+    // Im Rechenjahr noch nicht verlegte oder bereits zurückgebaute Kabel
+    // gehören nicht ins Netz — sonst versorgen sie Knoten, die es noch
+    // gar nicht gibt, und tauchen mit Lastfluss und Auslastung auf.
+    if (getStromEdgeStatus(e, yr) !== 'active') return;
     if (nodeMap[e.u]) nodeMap[e.u].adj.push({ to: e.v, edge: e });
     if (nodeMap[e.v]) nodeMap[e.v].adj.push({ to: e.u, edge: e });
   });
@@ -1785,17 +1866,22 @@ export function _recalcStromNetzInner() {
 
   // Cable sizing + voltage drop
   const U = 400; // V (NS Drehstrom)
-  const cosPhi = parseFloat(document.getElementById('strom-ns-cosphi')?.value) || 0.95;
-  // Leitertemperatur für Widerstandskorrektur (IEC 60228): ρ(T) = ρ(20°C) × (1 + α·ΔT)
-  const tLeiter = parseFloat(document.getElementById('strom-leiter-temp')?.value) || 70;
-  // Iz-Korrekturfaktoren (IEC 60364-5-52): Temperatur, Häufung, Verlegeart
-  const tBoden    = parseFloat(document.getElementById('strom-iz-tboden')?.value) ?? 20;
-  const nKabel    = Math.max(1, parseInt(document.getElementById('strom-iz-nkabel')?.value) || 1);
-  const verlegeart = document.getElementById('strom-iz-verlegeart')?.value || 'erde';
-  const kIz = calcKizTemp(tBoden) * calcKizGruppe(nKabel) * (KIZ_VERLEGEART[verlegeart] ?? 1.0);
+  const cosPhi  = _nsCosPhi();
+  const tLeiter = _nsLeiterTemp();
+  const kIz     = _nsKIz();
   const defaultType = document.getElementById('strom-kabel-typ')?.value || 'NAYY';
 
   window.stromEdges.forEach(e => {
+    // Kabel außerhalb ihrer Lebensdauer: keine Auslegung. Ohne diese Sperre
+    // würde ein erst später verlegtes Kabel hier mit 0 A gerechnet und auf den
+    // kleinsten Querschnitt dimensioniert — der dann in seinem Baujahr wieder
+    // hochgesetzt werden müsste.
+    if (getStromEdgeStatus(e, yr) !== 'active') {
+      e.peakCurrentA = 0; e.ratedCurrentA = 0; e.auslastungPct = 0; e.deltaUPct = 0;
+      e._izEff = 0; e._R_total = 0; e._X_total = 0; e._auslegungGedeckelt = false;
+      return;
+    }
+
     const absKw = Math.abs(e.peakFlowKw);
 
     // MS-Kabel: Strom und Auslastung mit MS-Spannung — keine NS-Kabelauslegung
@@ -1815,37 +1901,37 @@ export function _recalcStromNetzInner() {
     e.peakCurrentA = I;
     e.flowDirection = (e.peakFlowKw_V ?? 1) >= (e.peakFlowKw_G ?? 0) ? 1 : -1; // Nettostromrichtung
 
-    // Auto cable sizing — Iz_eff = Iz_table × kIz
+    // Auslegung + Kennwerte über das gemeinsame Modul (lib/ns-auslegung.js) —
+    // identisch zu dem, was _sizeNsCable im Asset-Pfad rechnet. Früher lag hier
+    // eine zweite, abweichende Implementierung ohne Parallelstränge; welches
+    // Ergebnis angezeigt wurde, hing davon ab, welcher Pfad zuletzt lief.
+    const darfAuslegen = _darfAuslegen(e);
+    if (darfAuslegen || e.crossSection === 0) e.cableType = defaultType;
     const kt = KABEL_TYPEN[e.cableType || defaultType] || KABEL_TYPEN.NAYY;
-    if (e.autoSized || e.crossSection === 0) {
-      e.cableType = defaultType;
-      const section = kt.sections.find(s => s.Iz * kIz >= I);
-      if (section) {
-        e.crossSection = section.mm2;
-        e.ratedCurrentA = section.Iz;
-      } else {
-        const last = kt.sections[kt.sections.length - 1];
-        e.crossSection = last.mm2;
-        e.ratedCurrentA = last.Iz;
-      }
-    } else {
-      const sec = kt.sections.find(s => s.mm2 === e.crossSection);
-      e.ratedCurrentA = sec ? sec.Iz : 0;
+    const r = nsKabelAuslegen({
+      kt, I_A: I, crossSection: e.crossSection, nParallel: e.nParallel,
+      autoSized: darfAuslegen, lengthM: e.lengthM,
+      // Budget aus dem letzten Asset-Lauf, sonst das volle Gesamtbudget
+      // (reine Altnetze ohne Assets kennen keine Pfad-Aufteilung).
+      duBudgetPct: e._duBudgetPct || MAX_DELTA_U_PCT,
+      kIz, tLeiter, cosPhi, U_V: U, fuseA: e.fuseA,
+    });
+    if (darfAuslegen || !e.crossSection) {
+      e.crossSection = r.crossSection;
+      e.nParallel    = r.nParallel;
+      if (darfAuslegen) e.fuseA = r.fuseA;
     }
+    e._effCrossSection = r.crossSection;
+    e._auslegungGedeckelt = r.gedeckelt;
+    e.ratedCurrentA = r.ratedCurrentA;
+    e._kIz   = kIz;
+    e._izEff = r.izEffA;
+    e.auslastungPct = r.auslastungPct;
+    e.deltaUPct     = r.deltaUPct;
 
-    e._kIz = kIz;
-    e._izEff = e.ratedCurrentA * kIz; // effektiver Dauerstrom unter Betriebsbedingungen
-    e.auslastungPct = e._izEff > 0 ? (I / e._izEff * 100) : 0;
-
-    // Spannungsfall nach DIN VDE 0276 mit temperaturkorrigiertem Widerstand
-    const R_per_m = calcRhoKorr(kt.rhoOhmMm2pM, kt.alphaK || 0.004, tLeiter) / e.crossSection;
-    const sec = kt.sections.find(s => s.mm2 === e.crossSection);
-    const X_per_m = sec?.xMuOhmPerM ? sec.xMuOhmPerM / 1e6 : 0.00008;
-    e.deltaUPct = calcSpannungsfall(I, e.lengthM, R_per_m, X_per_m, U, cosPhi);
-
-    // Impedanz für Ik''-Berechnung speichern
-    e._R_total = R_per_m * e.lengthM;
-    e._X_total = X_per_m * e.lengthM;
+    // Impedanz für Ik''-Berechnung speichern (Gesamtwerte über alle Stränge)
+    e._R_total = r.R_totalOhm;
+    e._X_total = r.X_totalOhm;
   });
 
   // NAP: akkumulierte Gesamtlast zuweisen
@@ -2504,14 +2590,23 @@ export function elCalcAssets(opts = {}) {
   const _mOpts = { inklGeplant };
   const _schichtFilter = schichten ? new Set(schichten) : null;
   const yr = year ?? globalYear ?? new Date().getFullYear();
-  const U_N = 400, COS_PHI = 0.9;
-  // Zulässiger Spannungsfall – Gesamtbudget vom Trafo (bzw. Einspeisepunkt) bis
-  // zum Ende eines Stichs (DIN 18015-1 / VDE-AR-N 4105 Richtwert: max. 3 %).
-  // Die Auto-Dimensionierung verteilt dieses Budget entlang des Pfades: je mehr
+  const U_N = 400;
+  // Netz-cos φ für Strom und Spannungsfall — DIESELBE Quelle wie im Lastfluss-
+  // pfad (_recalcStromNetzInner), damit beide Rechenwege denselben Strom melden.
+  const COS_PHI = _nsCosPhi();
+  // Leistungsfaktor für die Umrechnung Trafo-Nennleistung kVA → kW. Bewusst
+  // getrennt vom Netz-cos φ und konstant bei 0.9: an dieser Annahme hängen die
+  // Trafo-Stufen in 14b-ertuechtigung (PF_NS) und die PV-Merit-Order.
+  const PF_TRAFO = 0.9;
+  // Betriebsbedingungen wie im Lastflusspfad (Iz-Derating, Leitertemperatur).
+  // Vorher ignorierte die Asset-Rechnung beides und legte dadurch optimistischer
+  // aus als der Altpfad — bei identischem Netz kamen zwei Querschnitte heraus.
+  const _kIz     = _nsKIz();
+  const _tLeiter = _nsLeiterTemp();
+  // Die Auto-Dimensionierung verteilt MAX_DELTA_U_PCT entlang des Pfades: je mehr
   // ΔU bereits auf vorgelagerten Abschnitten "verbraucht" wurde, desto enger ist
   // das Restbudget für nachgelagerte Kabel (→ diese werden bei Bedarf großzügiger
   // dimensioniert, damit die KUMULIERTE Spannung am Stich-Ende eingehalten wird).
-  const MAX_DELTA_U_PCT = 3;
 
   const activeA = ASSETS.items.filter(a =>
     (a.domain === 'strom' || a.domain === 'hybrid') &&
@@ -2629,7 +2724,6 @@ export function elCalcAssets(opts = {}) {
   // MS-Nennspannung aus NAP-Asset (default 20 kV)
   const napAsset = activeA.find(a => a.type === 'NAP');
   const U_MS = (parseFloat(napAsset ? _p(napAsset).spannungKV : null) || 20) * 1000;
-  const SIN_PHI = Math.sqrt(1 - COS_PHI ** 2);
 
   // Schritt 1: Lastfluss, Richtung & Kabeltyp-Eckdaten je Kante (Reihenfolge-
   // unabhängig — bestimmt nur, WAS dimensioniert werden muss, nicht WIE).
@@ -2681,7 +2775,6 @@ export function elCalcAssets(opts = {}) {
       e.auslastungPct = iMaxMs ? (I_A / iMaxMs) * 100 : 0;
     } else {
       calc.kt = KABEL_TYPEN[ep.cableType] || KABEL_TYPEN.NAYY;
-      calc.maxSec = calc.kt.sections[calc.kt.sections.length - 1];
     }
     edgeCalc.set(e, calc);
     dirAdj.get(srcId)?.push({ edge: e, nextId: dstId });
@@ -2693,67 +2786,37 @@ export function elCalcAssets(opts = {}) {
   // ΔU%) auf die Kante. Gibt den (vorzeichenbehafteten) Spannungsfall in Volt
   // zurück, damit der Aufrufer ihn kumulativ weiterreichen kann.
   function _sizeNsCable(e, calc, duBudgetPct) {
-    const { kt, maxSec, lengthM, I_A, I_A_sign } = calc;
-    // np/cs stammen aus den jahreswirksamen Kabeldaten (inkl. umgesetzter Maßnahmen);
-    // auf die Kante zurückgeschrieben wird nur bei autoSized bzw. fehlendem Querschnitt.
-    let np = Math.max(1, calc.nParallel || 1);
-    let cs = calc.crossSection;
-    // Auto-Parallelkabel: Maximalquerschnitt reicht strommäßig nicht → mehr Stränge
-    if (e.autoSized && I_A > maxSec.Iz * np) {
-      np = Math.ceil(I_A / maxSec.Iz);
-      e.nParallel = np;
+    // Auslegung + Kennwerte über das gemeinsame Modul (lib/ns-auslegung.js) —
+    // exakt dieselbe Rechnung wie im Lastflusspfad _recalcStromNetzInner.
+    //
+    // Das ΔU-Restbudget kennt nur dieser Pfad (es folgt aus dem kumulierten
+    // Spannungsfall entlang des Pfades). Es wird an der Kante hinterlegt, damit
+    // der Lastflusspfad mit DEMSELBEN Budget rechnet und ein hier großzügig
+    // dimensioniertes Kabel nicht beim nächsten UI-Klick wieder schrumpft.
+    e._duBudgetPct = duBudgetPct;
+    const darfAuslegen = _darfAuslegen(e);
+    const r = nsKabelAuslegen({
+      kt: calc.kt, I_A: calc.I_A, I_A_sign: calc.I_A_sign,
+      crossSection: calc.crossSection, nParallel: calc.nParallel,
+      autoSized: darfAuslegen, lengthM: calc.lengthM,
+      duBudgetPct, kIz: _kIz, tLeiter: _tLeiter, cosPhi: COS_PHI, U_V: U_N,
+      fuseA: e.fuseA,
+    });
+    // Zurückgeschrieben wird nur bei autoSized bzw. fehlendem Querschnitt —
+    // ein gesetztes Bestandskabel darf ein Jahres-Sweep nicht überschreiben.
+    if (darfAuslegen || !calc.crossSection) {
+      e.crossSection = r.crossSection;
+      e.nParallel    = r.nParallel;
+      if (darfAuslegen) e.fuseA = r.fuseA;
     }
-
-    // ΔU%-Schätzung für einen Kandidaten-Querschnitt bei gegebener Parallelzahl
-    // (für die Auto-Dimensionierung — nutzt denselben Ansatz wie die finale Berechnung unten)
-    const _estDuPct = (sec, nPar) => {
-      const R_km  = kt.rhoOhmMm2pM * 1000 / sec.mm2;
-      const R_seg = (R_km * lengthM / 1000) / nPar;
-      const X_seg = ((sec.xMuOhmPerM ?? 80) / 1e6 * lengthM) / nPar;
-      const dU_V  = Math.sqrt(3) * (R_seg * COS_PHI + X_seg * SIN_PHI) * I_A_sign;
-      return Math.abs(dU_V / U_N * 100);
-    };
-
-    if (!cs || e.autoSized) {
-      const I_per_cable = I_A / np;
-      // 1) Querschnitte, die strommäßig ausreichen (Iz ≥ I je Strang)
-      const okCurrent = kt.sections.filter(s => s.Iz >= I_per_cable);
-      const pool = okCurrent.length ? okCurrent : [maxSec];
-      // 2) kleinster Querschnitt aus dem Pool, der zusätzlich das für DIESEN
-      //    Abschnitt verbleibende ΔU-Budget einhält (= Gesamtlimit abzüglich
-      //    des auf dem Pfad bis hierher bereits kumulierten Spannungsfalls)
-      let chosen = pool.find(s => _estDuPct(s, np) <= duBudgetPct);
-      if (!chosen) {
-        // Auch der größte Querschnitt hält das Budget nicht ein → zusätzliche
-        // Parallelstränge (verringert R/X je Strang und damit ΔU ≈ um Faktor 1/n)
-        let tryNp = np;
-        while (tryNp < 8 && _estDuPct(maxSec, tryNp) > duBudgetPct) tryNp++;
-        np = tryNp;
-        e.nParallel = np;
-        chosen = maxSec;
-      }
-      cs = chosen.mm2;
-      e.crossSection = cs;
-    }
-    e._effCrossSection = cs;
-    // Auto-Sicherung: größte Normgröße ≤ Iz des Kabels (Kabelschutz nach VDE 0298)
-    if (e.autoSized && (!e.fuseA || e.fuseA === 0)) {
-      const sec0 = kt.sections.find(s => s.mm2 === cs) || maxSec;
-      const FUSE_NORM = [16, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250];
-      const maxFuse = [...FUSE_NORM].reverse().find(f => f <= sec0.Iz * np);
-      e.fuseA = maxFuse || 0;
-    }
-    const sec   = kt.sections.find(s => s.mm2 === cs) || maxSec;
-    const R_km  = kt.rhoOhmMm2pM * 1000 / cs;
-    const R_seg = (R_km * lengthM / 1000) / np;
-    const X_seg = ((sec?.xMuOhmPerM ?? 80) / 1e6 * lengthM) / np; // µΩ/m → Ω, ÷np
-    // DIN VDE 0276: ΔU = √3 · I · (R·cosφ + X·sinφ) — korrekte R+X-Formel, I nicht nochmal ÷np
-    const dU_V = Math.sqrt(3) * (R_seg * COS_PHI + X_seg * SIN_PHI) * I_A_sign;
-
-    e.ratedCurrentA = sec.Iz * np;
-    e.auslastungPct = sec.Iz > 0 ? (I_A / (sec.Iz * np)) * 100 : 0;
-    e.deltaUPct    = Math.abs((dU_V / U_N) * 100);
-    return dU_V;
+    e._effCrossSection = r.crossSection;
+    e._auslegungGedeckelt = r.gedeckelt;
+    e._kIz          = _kIz;
+    e._izEff        = r.izEffA;
+    e.ratedCurrentA = r.ratedCurrentA;
+    e.auslastungPct = r.auslastungPct;
+    e.deltaUPct     = r.deltaUPct;
+    return r.dU_V;
   }
 
   // Längste verbleibende NS-Strecke ab einem Knoten bis zu einem Stich-Ende
@@ -2838,7 +2901,12 @@ export function elCalcAssets(opts = {}) {
     }
   });
 
-  // Trafo-Auslastung: Gesamtlast aller nachgelagerten Assets per BFS
+  // Trafo-Auslastung: Gesamtlast aller nachgelagerten Assets UND Gebäude per BFS.
+  // Bewertet wird — wie bei der Kabelauslegung — der WORST CASE aus beiden
+  // Lastflussrichtungen: max(Verbrauch, Erzeugung). Ein Trafo überträgt in beide
+  // Richtungen; 800 kW Rückspeisung belasten ihn genauso wie 800 kW Bezug. Eine
+  // Nettobildung (P_v − P_g) würde reine Einspeise-Stränge auf 0 % klemmen und
+  // damit z. B. eine 1-MWp-PV an einem 630-kVA-Trafo unsichtbar machen.
   for (const trafoAsset of activeA.filter(a => a.type === 'Trafo')) {
     const ratedKVA = parseFloat(_p(trafoAsset).leistungKVA) || 630;
     const trafoRank = TYPE_RANK[trafoAsset.type] ?? 6;
@@ -2853,23 +2921,33 @@ export function elCalcAssets(opts = {}) {
       if (visited.has(cur)) continue;
       visited.add(cur);
       const curAsset = assetMap.get(cur);
-      if (!curAsset) continue;
-      P_v += assetVerbrauch(curAsset);
-      P_g += assetErzeugung(curAsset);
-      const curRank = TYPE_RANK[curAsset.type] ?? 6;
+      if (curAsset) {
+        P_v += assetVerbrauch(curAsset);
+        P_g += assetErzeugung(curAsset);
+      } else {
+        // Gebäude ohne eigenes Verbraucher-Asset — zählt mit und wird durchquert,
+        // sonst fiele alles dahinter aus der Summe (identisch zu bfsDownstream).
+        P_v += gebVerbrauch(cur);
+      }
+      const curRank = TYPE_RANK[curAsset?.type] ?? 6;
       for (const { neighborId } of (adjList.get(cur) || [])) {
-        if (!visited.has(neighborId) && (TYPE_RANK[assetMap.get(neighborId)?.type] ?? 6) >= curRank) {
+        if (visited.has(neighborId)) continue;
+        const neighborAsset = assetMap.get(neighborId);
+        if (!neighborAsset || (TYPE_RANK[neighborAsset.type] ?? 6) >= curRank) {
           queue.push(neighborId);
         }
       }
     }
-    const P_net = Math.max(P_v - P_g, 0);
-    trafoAsset._calcPeakLoadKw = P_net;
-    trafoAsset._calcPeakLoadPct = ratedKVA > 0 ? (P_net / (ratedKVA * COS_PHI)) * 100 : 0;
+    const P_worst = Math.max(P_v, P_g);
+    trafoAsset._calcPeakLoadKw = P_worst;
+    trafoAsset._calcPeakLoadKwV = P_v;
+    trafoAsset._calcPeakLoadKwG = P_g;
+    trafoAsset._calcFlowDirection = P_v >= P_g ? 1 : -1; // -1 = Rückspeisung maßgebend
+    trafoAsset._calcPeakLoadPct = ratedKVA > 0 ? (P_worst / (ratedKVA * PF_TRAFO)) * 100 : 0;
     const trafoSn = (window.stromNodes || []).find(n => n.id === trafoAsset.id);
     if (trafoSn) {
       trafoSn._auslastungPct = trafoAsset._calcPeakLoadPct;
-      trafoSn.peakLoadKw = P_net;
+      trafoSn.peakLoadKw = P_worst;
     }
   }
 
