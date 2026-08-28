@@ -2043,6 +2043,8 @@ function _renderFortschritt() {
     + (ab.qsGeschaetzt.length ? ` · <span class="pd-qs">${ab.qsGeschaetzt.length} Querschnitt geschätzt</span>` : '')
     + (ab.napNs.length ? ` · <span class="pd-fehl">${ab.napNs.length} NS-Leitung(en) an MS-Anlagen</span>` : '')
     + (ab.nsMaschen.length ? ` · <span class="pd-masche">${ab.nsMaschen.length} Masche(n) NS</span>` : '');
+  // Gekürzt wird per CSS-Ellipse — der vollständige Stand bleibt im Tooltip.
+  el.title = el.textContent;
 }
 
 // Bewegtes Strichmuster — wie _sldAnimateFlow im Einlinienschema. Die Schleife

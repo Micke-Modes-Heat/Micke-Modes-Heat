@@ -16,7 +16,7 @@
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-weight:normal;}
 
 header{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;gap:8px;white-space:nowrap;overflow:visible;}
-.logo{font-size:14px;font-weight:normal;letter-spacing:.04em;color:var(--accent);white-space:nowrap;display:flex;align-items:center;gap:8px;}
+.logo{font-size:14px;font-weight:normal;letter-spacing:.04em;color:var(--accent);white-space:nowrap;display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;}
 .logo span{color:var(--muted);font-weight:normal;}
 .logo-bars{display:flex;gap:2px;align-items:flex-end;height:16px;flex-shrink:0;}
 .logo-bars span{display:block;width:3px;border-radius:1px;}
@@ -702,6 +702,13 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
   letter-spacing: .06em; text-transform: uppercase;
   flex-shrink: 0; background: var(--surface);
 }
+/* Der Titel weicht, nicht die Knöpfe: bei schmalem Panel schob er sonst ⛶ und ✕
+   über den rechten Rand hinaus — das Schema ließ sich dann weder auf Vollbild
+   schalten noch schließen. min-width:0 hebt die Mindestbreite auf, die
+   white-space:nowrap sonst erzwingt. */
+.sld-head-titel {
+  white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
 .sld-head-btn {
   background: none; border: 1px solid var(--border); border-radius: 4px;
   color: var(--muted); cursor: pointer; font-size: 11px;
@@ -709,6 +716,37 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 }
 .sld-head-btn:hover  { border-color: var(--accent); color: var(--accent); }
 .sld-head-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+/* Eigene Zeile statt Platz im Kopf: die Knopfleiste füllt das 420-px-Panel
+   bereits aus — ein Suchfeld daneben hätte wieder ⛶ und ✕ hinausgeschoben. */
+.sld-suchleiste {
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+  border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
+}
+.sld-suche-wrap { position: relative; flex: 1 1 auto; min-width: 0; max-width: 340px; }
+.sld-suche {
+  width: 100%; padding: 5px 8px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; font-size: 10px; font-family: inherit;
+}
+.sld-suche:focus { border-color: #4fc3f7; outline: none; }
+.sld-suche-hinweis {
+  font-size: 9.5px; color: var(--muted); font-family: 'DM Mono', monospace;
+  white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+.sld-suche-res {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; width: 330px; z-index: 1200;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6); max-height: 260px; overflow-y: auto;
+}
+.sld-suche-row { display: flex; align-items: center; gap: 8px; padding: 5px 9px; cursor: pointer; font-size: 10px; }
+.sld-suche-row:hover { background: var(--surface2); }
+.sld-suche-nr   { min-width: 34px; font-family: 'DM Mono', monospace; color: #4fc3f7; font-weight: 600; }
+.sld-suche-name { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sld-suche-meta { color: var(--muted); font-size: 8.5px; white-space: nowrap; }
+.sld-suche-leer { padding: 7px 9px; font-size: 10px; color: var(--muted); }
+/* Der angefahrene Treffer blinkt dreimal — in einem 11 000 px breiten Schema
+   findet man die bloße Auswahlfarbe sonst nicht wieder. */
+@keyframes sld-fund-puls { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+#sld-svg g.sld-fund { animation: sld-fund-puls .55s ease-in-out 4; }
 .sld-canvas-wrap {
   flex: 1; overflow: auto; background: #0b0e18; cursor: grab; position: relative;
 }
@@ -1624,9 +1662,13 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-head{display:flex;align-items:center;gap:12px;padding:8px 14px;flex-shrink:0;
   background:var(--surface);border-bottom:1px solid var(--border);}
 .pd-panel:not(.pd-fullscreen) .pd-head{cursor:grab;border-radius:10px 10px 0 0;}
-.pd-title{color:#ce93d8;font-size:12px;font-weight:600;white-space:nowrap;}
+.pd-title{color:#ce93d8;font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0;}
+/* Die Kopfknöpfe dürfen nie weichen: die Fortschrittszeile wächst mit jedem
+   gemeldeten Befund, und ohne flex-shrink:0 schob sie „Schließen" aus dem
+   Fenster — das Panel ließ sich dann gar nicht mehr zumachen. */
 .pd-head-btn{background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);
-  cursor:pointer;font-size:10px;padding:3px 9px;font-family:inherit;transition:.12s;white-space:nowrap;}
+  cursor:pointer;font-size:10px;padding:3px 9px;font-family:inherit;transition:.12s;white-space:nowrap;
+  flex-shrink:0;}
 .pd-head-btn:hover{border-color:var(--accent);color:var(--accent);}
 .pd-head-close:hover{border-color:#ef9a9a;color:#ef9a9a;}
 .pd-modehint{font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -1664,7 +1706,11 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
   border:1px solid var(--border);color:var(--muted);border-radius:5px;font-family:inherit;}
 .pd-mode:hover{color:var(--text);}
 .pd-mode.active{border-color:#4fc3f7;color:#4fc3f7;background:rgba(79,195,247,.14);font-weight:600;}
-.pd-progress{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap;}
+/* min-width:0 hebt die Mindestbreite auf, die white-space:nowrap sonst als
+   Inhaltsbreite erzwingt — erst dadurch kürzt die Zeile, statt zu drängen.
+   Der vollständige Stand steht im title-Tooltip. */
+.pd-progress{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;}
 .pd-body{display:flex;gap:10px;flex:1;min-height:0;padding:10px 14px 12px;}
 .pd-map{flex:1;min-width:280px;background:#101318;border:1px solid var(--border);border-radius:6px;}
 .pd-side{width:300px;flex:0 0 300px;display:flex;flex-direction:column;gap:8px;min-height:0;}
@@ -1795,3 +1841,39 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-anschluss.an{border-color:#4fc3f7;background:rgba(79,195,247,.12);}
 .pd-anschluss-name{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .pd-anschluss-typ{color:var(--muted);font-size:8.5px;white-space:nowrap;}
+
+/* ── Zwei-Bildschirm-Modus (16-dual-screen.js) ──────────────────────────── */
+#dual-splitter{flex:0 0 8px;background:var(--border);cursor:col-resize;position:relative;z-index:3200;transition:background .12s;}
+#dual-splitter::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:46px;border-radius:2px;background:var(--muted);opacity:.6;}
+#dual-splitter:hover{background:var(--accent);}
+#dual-dock{flex:0 0 auto;min-width:0;background:var(--bg);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;z-index:3100;}
+.dd-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;}
+.dd-title{flex:1;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.dd-btn{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:5px;font-size:12px;line-height:1;padding:3px 7px;cursor:pointer;font-family:inherit;}
+.dd-btn:hover{border-color:var(--accent);color:var(--accent);}
+.dd-hint{display:none;padding:8px 10px;font-size:10.5px;line-height:1.5;color:#ffcc80;background:rgba(255,152,0,.09);border-bottom:1px solid var(--border);}
+.dd-hint.visible{display:block;}
+.dd-body{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:10px;display:flex;flex-direction:column;gap:10px;}
+.dd-body:empty::after{content:'Geöffnete Panels erscheinen hier.';display:block;padding:20px 10px;text-align:center;font-size:11px;color:var(--muted);}
+.dd-body::-webkit-scrollbar{width:5px;}
+.dd-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+.float-panel.dock-mode{position:static!important;transform:none!important;top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;width:100%!important;min-width:0!important;max-width:100%!important;max-height:none!important;resize:none!important;box-shadow:none!important;margin:0!important;flex-shrink:0;}
+.float-panel.dock-mode .panel-drag-handle{cursor:default;}
+.float-panel.dock-mode .drag-dots{opacity:.25;}
+.dd-dockbtn{margin-right:6px;font-size:12px;line-height:1;color:var(--muted);cursor:pointer;user-select:none;}
+.dd-dockbtn:hover{color:var(--accent);}
+
+html[data-dual-screen='on'] #map{min-width:0;}
+
+/* ── Topbar bei knapper Fensterbreite ───────────────────────────────────
+   Fast alle Kopfzeilen-Elemente stehen auf flex-shrink:0. Ohne die
+   folgenden Stufen werden „⋯ Mehr“ und die Adresssuche bei weniger als
+   ~1870 CSS-px stillschweigend aus dem Fenster geschoben — sie sind dann
+   nicht mehr erreichbar (tritt z. B. bei 125 % Windows-Skalierung auf). */
+@media (max-width:1900px){
+  .logo-word,.logo-sep,.logo-sub{display:none;}
+}
+@media (max-width:1650px){
+  .view-tab{padding:4px 9px;}
+  .view-tabs{margin:0 4px;}
+}

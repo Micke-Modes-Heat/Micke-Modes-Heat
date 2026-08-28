@@ -22,7 +22,7 @@
 <body>
 
 <header>
-  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span>Energiekonzepte <span>·</span> <span style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
+  <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span><span class="logo-word">Energiekonzepte</span> <span class="logo-sep">·</span> <span class="logo-sub" style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
   <div class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
@@ -55,6 +55,7 @@
     <button class="tool-btn" id="btn-mehr-menu" data-click="toggleMehrMenu()" style="border-color:#607d8b;color:#90a4ae;font-size:11px;padding:0 10px;" title="Weitere Funktionen: Feldapp, Farbschema, Satellit, Hilfe, Leitfaden, Feedback, Berechnungslogik">⋯ Mehr</button>
     <div id="mehr-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:1300;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:190px;box-shadow:0 6px 18px rgba(0,0,0,0.45);flex-direction:column;gap:3px;">
       <button class="tool-btn" id="btn-feldapp-toggle" data-click="toggleFeldappPanel()" style="border-color:#8b5cf6;color:#8b5cf6;justify-content:flex-start;font-size:11px;" title="Feldapp-Funktionen: Felddaten-Filter, Galerie, Begehungsbericht">📱 Feldapp</button>
+      <button class="tool-btn" id="btn-dualscreen-toggle" data-click="toggleDualScreen()" style="border-color:#4dd0e1;color:#4dd0e1;justify-content:flex-start;font-size:11px;" title="Fenster über zwei Monitore aufziehen: Karte links, Panels rechts">🖥 Zwei-Bildschirm-Modus</button>
       <button class="tool-btn" id="btn-cluster-toggle" data-click="clusterTogglePanel()" style="border-color:#90a4ae;color:#b0bec5;justify-content:flex-start;font-size:11px;" title="Liegenschaft in Cluster/Ausbaustufen gliedern (Klimafahrplan)">🗺 Cluster / Ausbaustufen</button>
       <button class="tool-btn" id="btn-theme" data-click="cycleTheme()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;" title="Farbschema wechseln">🎨 Farbschema</button>
       <button class="tool-btn" id="btn-tile" data-click="toggleTile()" style="border-color:#607d8b;color:#90a4ae;justify-content:flex-start;font-size:11px;">🛰 Satellit</button>
@@ -794,7 +795,7 @@
   <div id="sld-panel">
     <div class="sld-resize-handle" id="sld-resize-handle"></div>
     <div class="sld-head">
-      <span style="white-space:nowrap;">⚡ Einlinienschema &nbsp;<span id="sld-yr-label" style="font-size:9px;color:var(--muted);font-weight:normal;letter-spacing:0;text-transform:none;"></span></span>
+      <span class="sld-head-titel" title="Einlinienschema">⚡ Einlinienschema &nbsp;<span id="sld-yr-label" style="font-size:9px;color:var(--muted);font-weight:normal;letter-spacing:0;text-transform:none;"></span></span>
       <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
         <button class="sld-head-btn" data-click="sldZoom(-0.2)" title="Verkleinern">−</button>
         <button class="sld-head-btn" data-click="sldZoom(0)" title="Zoom zurücksetzen" id="sld-zoom-label">100%</button>
@@ -807,6 +808,16 @@
         <button class="sld-head-btn" id="btn-sld-fs" data-click="sldToggleFullscreen()" title="Vollbild">⛶</button>
         <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 3px;line-height:1;" data-click="sldToggle()" title="Schließen">✕</button>
       </div>
+    </div>
+    <div class="sld-suchleiste">
+      <span class="sld-suche-wrap">
+        <input id="sld-suche" class="sld-suche" type="text" autocomplete="off"
+               placeholder="🔎 Objekt suchen (Gebäudenummer, Name, Typ)…"
+               title="Gebäude oder Betriebsmittel im Schema suchen — der Treffer wird ausgewählt, angefahren und blinkt kurz auf"
+               data-input="sldSuche(this.value)" data-keydown="sldSucheTaste(event)"/>
+        <div id="sld-suche-res" class="sld-suche-res"></div>
+      </span>
+      <span id="sld-suche-hinweis" class="sld-suche-hinweis"></span>
     </div>
     <div class="sld-canvas-wrap" id="sld-canvas-wrap">
       <div id="sld-canvas" class="sld-empty">

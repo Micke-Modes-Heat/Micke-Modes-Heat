@@ -30,6 +30,20 @@ function _passend(text, breitePx, schriftPx) {
   return _esc(s.slice(0, kopf).trimEnd() + '…' + (schwanz > 0 ? s.slice(-schwanz) : ''));
 }
 
+// Zwei Gebäude derselben Nutzung heißen gleich („Kfz-Abstellhalle") — erst die
+// Gebäudenummer macht den Knoten im Schema eindeutig. Vorangestellt, weil
+// _passend() MITTIG kürzt: der Kopf mit der Nummer überlebt jede Kürzung.
+function _gebNummer(n) {
+  if (!n || n.buildingId == null) return '';
+  const g = (window.gebaeude || []).find(x => String(x.id) === String(n.buildingId));
+  return g && g.gebaeudenummer ? String(g.gebaeudenummer).trim() : '';
+}
+
+function _knotenName(n) {
+  const nr = _gebNummer(n);
+  return nr ? nr + ' · ' + n.name : n.name;
+}
+
 const SLD_STATE = { zoom: 1.0, wasDrag: false };
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
@@ -90,7 +104,7 @@ export function sldExportPDF() {
   const legendRows = nodes.map(n => {
     const cfg = ASSET_CFG[n.type] || {};
     return `<tr>
-      <td style="padding:3px 8px;border-bottom:.3pt solid #e8ecf0;">${cfg.icon||'·'} ${n.name}</td>
+      <td style="padding:3px 8px;border-bottom:.3pt solid #e8ecf0;">${cfg.icon||'·'} ${_knotenName(n)}</td>
       <td style="padding:3px 8px;border-bottom:.3pt solid #e8ecf0;color:#546e7a;">${cfg.label||n.type}</td>
       <td style="padding:3px 8px;border-bottom:.3pt solid #e8ecf0;color:#546e7a;font-family:monospace;font-size:8pt;">${_spec(n)}</td>
     </tr>`;
@@ -235,13 +249,116 @@ export function sldRender() {
   const svg = `<svg id="sld-svg" viewBox="0 0 ${W} ${H}" width="${sw}" height="${sh}"
     xmlns="http://www.w3.org/2000/svg" style="display:block;font-family:DM Sans,sans-serif;">${inner}</svg>`;
   canvas.innerHTML = `<div onclick="sldClick(event)" style="line-height:0;min-width:${sw}px;min-height:${sh}px;">${svg}</div>`;
+  _letzteKnoten = nodes;
   sldInitPan();
+  _sucheInit();
   _sldBindHover(canvas);
   _sldStartFlowAnim();
 }
 
 export function sldRefresh() {
   if (document.getElementById('sld-panel')?.classList.contains('visible')) sldRender();
+}
+
+// ── Suche ─────────────────────────────────────────────────────────────────────
+// Gesucht wird in den Knoten des ZULETZT GEZEICHNETEN Layouts, nicht im
+// Gesamtbestand: nur was im Schema steht, lässt sich auch anfahren. In der
+// Gebäudeansicht ist das der Sammelknoten — die eingeklappten Anlagen bleiben
+// trotzdem durchsuchbar, sonst fände man „UV Sporthalle" dort nie wieder.
+let _letzteKnoten = [];
+
+function _sucheTreffer(s) {
+  const treffer = [];
+  for (const n of _letzteKnoten) {
+    const nr    = _gebNummer(n);
+    const label = _knotenName(n);
+    const typ   = ASSET_CFG[n.type]?.label || n.type;
+    const chips = n._chips ? n._chips.map(c => c.name).join(' ') : '';
+    if (!`${nr} ${label} ${typ} ${chips}`.toLowerCase().includes(s)) continue;
+    // Wer eine Gebäudenummer eintippt, meint genau dieses Gebäude — nicht das,
+    // in dessen Kabellänge die Ziffernfolge zufällig vorkommt.
+    const rang = nr.toLowerCase() === s ? 0
+      : label.toLowerCase().startsWith(s) ? 1
+      : 2;
+    treffer.push({ n, rang });
+  }
+  treffer.sort((a, b) => (a.rang - b.rang) || (a.n.y - b.n.y) || (a.n.x - b.n.x));
+  return treffer.map(t => t.n);
+}
+
+export function sldSuche(q) {
+  const box = document.getElementById('sld-suche-res');
+  if (!box) return;
+  const s = String(q || '').trim().toLowerCase();
+  if (!s) { _sucheZu(); return; }
+  const gefunden = _sucheTreffer(s);
+  if (!gefunden.length) {
+    box.innerHTML = '<div class="sld-suche-leer">Kein Objekt im Schema — evtl. im gewählten Jahr nicht aktiv</div>';
+    box.style.display = 'block';
+    return;
+  }
+  box.innerHTML = gefunden.slice(0, 25).map(n => {
+    const cfg = ASSET_CFG[n.type] || {};
+    const nr  = _gebNummer(n);
+    const meta = n._chips ? `${n._chips.length} Anlagen` : (cfg.label || n.type);
+    return `<div class="sld-suche-row" data-click="sldSucheWahl('${_esc(String(n.id)).replace(/'/g, "\'")}')">
+      <span class="sld-suche-nr">${_esc(nr || cfg.icon || '·')}</span>
+      <span class="sld-suche-name">${_esc(n.name)}</span>
+      <span class="sld-suche-meta">${_esc(meta)}</span>
+    </div>`;
+  }).join('')
+  + (gefunden.length > 25 ? `<div class="sld-suche-leer">… ${gefunden.length - 25} weitere</div>` : '');
+  box.style.display = 'block';
+}
+
+export function sldSucheTaste(ev) {
+  if (ev.key === 'Escape') { ev.target.value = ''; _sucheZu(); ev.target.blur(); return; }
+  if (ev.key !== 'Enter') return;
+  document.querySelector('#sld-suche-res .sld-suche-row')?.click();
+}
+
+export function sldSucheWahl(id) {
+  _sucheZu();
+  ASSETS.selectedId = id;
+  const asset = getAsset(id);
+  if (asset) _showNodeInfo(asset);
+  sldRender();                                   // zeichnet die Auswahl hervor
+  const n = _letzteKnoten.find(k => String(k.id) === String(id));
+  if (!n) return;
+  _sldZuKnoten(n);
+  const hin = document.getElementById('sld-suche-hinweis');
+  if (hin) hin.textContent = '→ ' + _knotenName(n);
+}
+
+function _sucheZu() {
+  const box = document.getElementById('sld-suche-res');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+}
+
+// Den Treffer in die Mitte der Arbeitsfläche holen und kurz blinken lassen.
+// Ohne das Blinken sucht man die Auswahl in einem 11 000 px breiten Schema
+// genauso lange wie vorher.
+function _sldZuKnoten(n) {
+  const wrap = document.getElementById('sld-canvas-wrap');
+  if (!wrap) return;
+  const z = SLD_STATE.zoom;
+  wrap.scrollTo({
+    left: Math.max(0, n.x * z - wrap.clientWidth  / 2),
+    top:  Math.max(0, n.y * z - wrap.clientHeight / 2),
+    behavior: 'smooth',
+  });
+  const g = wrap.querySelector(`[data-assetid="${String(n.id).replace(/"/g, '\\"')}"]`);
+  if (g) { g.classList.remove('sld-fund'); void g.getBoundingClientRect(); g.classList.add('sld-fund'); }
+}
+
+// Klick neben die Trefferliste schließt sie — data-* kennt kein blur.
+let _sucheGebunden = false;
+function _sucheInit() {
+  if (_sucheGebunden) return;
+  _sucheGebunden = true;
+  document.addEventListener('click', ev => {
+    if (!ev.target.closest('.sld-suche-wrap')) _sucheZu();
+  });
 }
 
 // ── Active assets & edges ─────────────────────────────────────────────────────
@@ -293,7 +410,11 @@ function _sammleGebaeude(activeA, activeL) {
   }
 
   const neueA = activeA.filter(a => behalten.has(a.id)).map(a => chips.has(a.id)
-    ? { ...a, name: namen.get(a.id), _chips: chips.get(a.id), _sammel: true }
+    // Stellvertreter ist nach TYPE_RANK die Schaltanlage oder der Trafo, nie die
+    // NSHV — die Schienen-Eigenschaft hängt deshalb am INHALT des Gebäudes,
+    // nicht am Typ des Stellvertreters.
+    ? { ...a, name: namen.get(a.id), _chips: chips.get(a.id), _sammel: true,
+        _schiene: chips.get(a.id).some(c => c.type === 'NSHV') }
     : a);
 
   const zu = id => vertreter.get(id) || id;
@@ -323,6 +444,13 @@ function _getActive(yr) {
 }
 
 // ── Layout engine ─────────────────────────────────────────────────────────────
+// Was im Schema als Balken gezeichnet wird — und woran die Abgänge als Stiche
+// hängen. In der Gebäudeansicht ist das der Sammelknoten mit einer NSHV im
+// Inneren (_schiene), sonst die NSHV/UV selbst.
+function _istSchiene(a) {
+  return !!a && (a._schiene || (!a._sammel && (a.type === 'NSHV' || a.type === 'UV')));
+}
+
 function _sldLayout(activeA, activeL) {
   const assetMap = new Map(activeA.map(a => [a.id, a]));
   const PAD_TOP  = 50;
@@ -357,23 +485,69 @@ function _sldLayout(activeA, activeL) {
   }
 
   // Pass 2: same-rank edges → use established parenthood as direction guide
-  for (const e of activeL) {
+  //
+  // BIS ZUM FIXPUNKT, nicht in einem Durchlauf. Ein Ring A→B→C→D wird über
+  // gleichrangige Kanten verkettet; kommt die Kante C—D vor B—C dran, hat noch
+  // keiner der beiden einen Elternteil und die Kante galt als Ringschluss. Aus
+  // einem Ring wurden so mehrere Bruchstücke mit je eigenem „Ringschluss" —
+  // im Bild lauter lange gestrichelte Linien und Mitglieder, die im Schema
+  // nicht nebeneinander standen. Jeder Durchlauf hängt an, was inzwischen
+  // entscheidbar ist; erst wenn nichts mehr geht, bleibt der echte Ringschluss.
+  let offen = activeL.filter(e => {
     const a = assetMap.get(e.u), b = assetMap.get(e.v);
-    if (!a || !b) continue;
-    const rA = TYPE_RANK[a.type] ?? 6, rB = TYPE_RANK[b.type] ?? 6;
-    if (rA !== rB) continue;
-    const aHasParent = parentOf.has(e.u);
-    const bHasParent = parentOf.has(e.v);
-    let srcId, snkId;
-    if      ( aHasParent && !bHasParent) { srcId = e.u; snkId = e.v; }
-    else if (!aHasParent &&  bHasParent) { srcId = e.v; snkId = e.u; }
-    else { ringEdges.add(e.id); continue; }
-    if (!parentOf.has(snkId)) {
-      parentOf.set(snkId, srcId);
-      if (!children.get(srcId).includes(snkId)) children.get(srcId).push(snkId);
-    } else {
-      ringEdges.add(e.id);
+    if (!a || !b) return false;
+    return (TYPE_RANK[a.type] ?? 6) === (TYPE_RANK[b.type] ?? 6);
+  });
+  const _anhaengen = (srcId, snkId) => {
+    parentOf.set(snkId, srcId);
+    if (!children.get(srcId).includes(snkId)) children.get(srcId).push(snkId);
+  };
+  while (offen.length) {
+    let fortschritt = false;
+    const rest = [];
+    for (const e of offen) {
+      const aHat = parentOf.has(e.u), bHat = parentOf.has(e.v);
+      if (aHat && bHat)       { ringEdges.add(e.id); continue; }   // echter Ringschluss
+      if (!aHat && !bHat)     { rest.push(e); continue; }          // noch nicht entscheidbar
+      if (aHat) _anhaengen(e.u, e.v); else _anhaengen(e.v, e.u);
+      fortschritt = true;
     }
+    if (!fortschritt) {
+      // Freistehende Kette ohne Anker von oben: eine Richtung setzen und weiter.
+      const e = rest.shift();
+      if (!e) break;
+      _anhaengen(e.u, e.v);
+    }
+    offen = rest;
+  }
+
+  // Welche Baumkanten liegen wirklich auf einem Ring? Nur zwischen ihren Enden
+  // sind zwei gleichrangige Knoten Nachbarn und gehören nebeneinander. Eine
+  // radiale Kaskade UV→UV→Verbraucher ist KEIN Ring — sie soll sich weiter als
+  // Baum nach unten verzweigen. Der Zyklus ist der Weg im Baum zwischen den
+  // Enden einer Ringkante, also von beiden Enden aufwärts bis zum gemeinsamen
+  // Vorfahren.
+  const ringKanten = new Set();                    // "elternId|kindId"
+  const ringPaare  = [];                           // [elternId, kindId] mit echten Ids
+  const _tiefe = new Map();
+  function tiefeVon(id, seen = new Set()) {
+    if (_tiefe.has(id)) return _tiefe.get(id);
+    if (seen.has(id))   return 0;
+    seen.add(id);
+    const p = parentOf.get(id);
+    const t = p != null ? tiefeVon(p, seen) + 1 : 0;
+    _tiefe.set(id, t);
+    return t;
+  }
+  for (const e of activeL) {
+    if (!ringEdges.has(e.id)) continue;
+    if (!assetMap.has(e.u) || !assetMap.has(e.v)) continue;
+    let a = e.u, b = e.v, ta = tiefeVon(a), tb = tiefeVon(b), schutz = 0;
+    while (a !== b && schutz++ < 500) {
+      if (ta >= tb) { const p = parentOf.get(a); if (p == null) break; ringKanten.add(p + '|' + a); ringPaare.push([p, a]); a = p; ta--; }
+      else          { const p = parentOf.get(b); if (p == null) break; ringKanten.add(p + '|' + b); ringPaare.push([p, b]); b = p; tb--; }
+    }
+    ringPaare.push([e.u, e.v]);                    // der Ringschluss selbst
   }
 
   // Ebene im Schema. Für die Netzinfrastruktur ist sie FEST: NAP ganz oben,
@@ -394,11 +568,82 @@ function _sldLayout(activeA, activeL) {
     const base = TYPE_RANK[typ] ?? 4;
     if (FESTE_EBENE.has(typ)) { effRank.set(id, base); return base; }
     const par  = parentOf.get(id);
-    const eff  = par ? Math.max(base, getEffRank(par, seen) + 1) : base;
+    // Ein Ring ist eine KETTE GLEICHRANGIGER Stationen. Als Eltern-Kind-Folge
+    // gelesen, rutschte jede Station eine Ebene tiefer — ein Ring mit zwölf
+    // Stationen wurde zu einer Treppe über zwölf Reihen, und der Ringschluss
+    // lief als Bogen quer durchs ganze Bild. Gleicher Typrang heißt gleiche
+    // Spannungsebene: dann kein Ebenensprung, die Kette bleibt eine Reihe.
+    const parBase  = TYPE_RANK[assetMap.get(par)?.type] ?? 4;
+    const imRing   = par != null && ringKanten.has(par + '|' + id) && parBase === base;
+    const eff  = par ? Math.max(base, getEffRank(par, seen) + (imRing ? 0 : 1)) : base;
     effRank.set(id, eff);
     return eff;
   }
   for (const a of activeA) getEffRank(a.id);
+
+  // Ein Ring liegt auf EINER Spannungsebene — auch wenn ein Mitglied im
+  // Speisebaum tiefer hängt. Genau das passiert bei durchgeschliffenen UV und
+  // bei Ringen, die über KVS laufen: der Baum erreicht so ein Mitglied über
+  // eine Kante, die nicht auf dem Zyklus liegt, es bekommt darüber einen
+  // Ebenensprung und steht am Ende eine Reihe tiefer als der Rest seines Rings.
+  // Die Ringlinie musste es dann quer über die Zwischenreihe hinweg einsammeln.
+  // Nachträglich wird jeder Ring auf die oberste Ebene gezogen, die eines
+  // seiner Mitglieder erreicht hat.
+  const rWurzel = new Map();
+  const findeRK = x => {
+    while (rWurzel.get(x) !== x) { rWurzel.set(x, rWurzel.get(rWurzel.get(x))); x = rWurzel.get(x); }
+    return x;
+  };
+  for (const [u, v] of ringPaare) for (const id of [u, v]) if (!rWurzel.has(id)) rWurzel.set(id, id);
+  for (const [u, v] of ringPaare) { const a = findeRK(u), b = findeRK(v); if (a !== b) rWurzel.set(a, b); }
+  const ringGlieder = new Map();
+  for (const [u, v] of ringPaare) for (const id of [u, v]) {
+    const w = findeRK(id);
+    if (!ringGlieder.has(w)) ringGlieder.set(w, new Set());
+    ringGlieder.get(w).add(id);
+  }
+  const ringFest = new Set();
+  for (const [, glieder] of ringGlieder) {
+    // Die Netzinfrastruktur hat feste Ebenen — ein Ring hebt sie nicht auf.
+    const mitglieder = [...glieder].filter(id => !FESTE_EBENE.has(assetMap.get(id)?.type));
+    if (mitglieder.length < 2) continue;
+    const ziel = Math.min(...mitglieder.map(id => effRank.get(id) ?? 4));
+    for (const id of mitglieder) {
+      if ((TYPE_RANK[assetMap.get(id)?.type] ?? 4) > ziel) continue;   // gehört von Haus aus tiefer
+      const par = parentOf.get(id);
+      // Nie über den eigenen Einspeisepunkt heben — sonst stünde der Abgang
+      // im Bild über seiner Quelle.
+      if (par != null && !glieder.has(par) && (effRank.get(par) ?? 0) >= ziel) continue;
+      effRank.set(id, ziel);
+      ringFest.add(id);
+    }
+  }
+
+  // Was unter einem gehobenen Ringmitglied hängt, rutscht mit — sonst klafft
+  // zwischen Ring und Abgängen eine leere Reihe.
+  if (ringFest.size) {
+    const neuRank = new Map();
+    const nachziehen = (id, seen = new Set()) => {
+      if (neuRank.has(id)) return neuRank.get(id);
+      if (seen.has(id))    return effRank.get(id) ?? 4;
+      seen.add(id);
+      const typ  = assetMap.get(id)?.type;
+      const base = TYPE_RANK[typ] ?? 4;
+      if (FESTE_EBENE.has(typ) || ringFest.has(id)) {
+        const r = effRank.get(id) ?? base;
+        neuRank.set(id, r);
+        return r;
+      }
+      const par     = parentOf.get(id);
+      const parBase = TYPE_RANK[assetMap.get(par)?.type] ?? 4;
+      const imRing  = par != null && ringKanten.has(par + '|' + id) && parBase === base;
+      const r = par != null ? Math.max(base, nachziehen(par, seen) + (imRing ? 0 : 1)) : base;
+      neuRank.set(id, r);
+      return r;
+    };
+    for (const a of activeA) nachziehen(a.id);
+    for (const [id, r] of neuRank) effRank.set(id, r);
+  }
 
   // Geschwister in der Reihenfolge der Karte anordnen (West → Ost).
   //
@@ -470,16 +715,36 @@ function _sldLayout(activeA, activeL) {
     }
   }
 
+  // Kinder auf DERSELBEN Ebene sind Ringnachbarn, keine Abgänge: sie stehen
+  // neben dem Knoten in derselben Reihe, nicht unter ihm. Alle anderen Kinder
+  // hängen wie bisher darunter.
+  const _istNachbar = (id, c) => ringKanten.has(id + '|' + c) && getEffRank(c) === getEffRank(id);
+  const _peer     = id => (children.get(id) || []).filter(c =>  _istNachbar(id, c));
+  const _abgaenge = id => (children.get(id) || []).filter(c => !_istNachbar(id, c));
+
+  // Die Kette in Reihenfolge — sie bestimmt, in welcher Folge die Stationen
+  // des Rings nebeneinander stehen (die Geschwistersortierung oben hat sie
+  // bereits nach der Karte von West nach Ost gebracht).
+  function _kette(id, out = [], seen = new Set()) {
+    if (seen.has(id)) return out;
+    seen.add(id);
+    out.push(id);
+    for (const c of _peer(id)) _kette(c, out, seen);
+    return out;
+  }
+
   // Subtree width
   const stW = new Map();
-  function subtreeWidth(id, vis = new Set()) {
-    if (stW.has(id))  return stW.get(id);
-    if (vis.has(id))  return SLD_CW;
-    vis.add(id);
-    const ch = children.get(id) || [];
-    const w  = ch.length === 0
+  function eigenBreite(id) {
+    const ch = _abgaenge(id);
+    return ch.length === 0
       ? SLD_CW
-      : Math.max(SLD_CW, ch.reduce((s, c) => s + subtreeWidth(c, new Set(vis)), 0));
+      : Math.max(SLD_CW, ch.reduce((s, c) => s + subtreeWidth(c), 0));
+  }
+  function subtreeWidth(id) {            // Breite der ganzen Ringkette ab id
+    if (stW.has(id)) return stW.get(id);
+    stW.set(id, SLD_CW);                 // Zyklusschutz während der Rekursion
+    const w = _kette(id).reduce((sum, m) => sum + eigenBreite(m), 0);
     stW.set(id, w);
     return w;
   }
@@ -488,18 +753,24 @@ function _sldLayout(activeA, activeL) {
   // Place nodes
   const pos    = new Map();
   const placed = new Set();
-  function place(id, cx) {
+  function place(id, cx) {               // cx ist die Mitte der ganzen Kette
     if (placed.has(id)) return;
-    placed.add(id);
-    pos.set(id, { x: cx, y: PAD_TOP + getEffRank(id) * SLD_LH });
-    const ch = (children.get(id) || []).filter(c => !placed.has(c));
-    if (ch.length === 0) return;
-    const total = ch.reduce((s, c) => s + subtreeWidth(c), 0);
-    let x = cx - total / 2;
-    for (const c of ch) {
-      const cw = subtreeWidth(c);
-      place(c, x + cw / 2);
-      x += cw;
+    const glieder = _kette(id).filter(m => !placed.has(m));
+    if (!glieder.length) return;
+    const y      = PAD_TOP + getEffRank(id) * SLD_LH;
+    const gesamt = glieder.reduce((sum, m) => sum + eigenBreite(m), 0);
+    let x = cx - gesamt / 2;
+    for (const m of glieder) {
+      const bw = eigenBreite(m);
+      placed.add(m);
+      pos.set(m, { x: x + bw / 2, y });
+      const ch = _abgaenge(m).filter(c => !placed.has(c));
+      if (ch.length) {
+        const total = ch.reduce((sum, c) => sum + subtreeWidth(c), 0);
+        let cx2 = x + bw / 2 - total / 2;
+        for (const c of ch) { const cw = subtreeWidth(c); place(c, cx2 + cw / 2); cx2 += cw; }
+      }
+      x += bw;
     }
   }
 
@@ -522,18 +793,49 @@ function _sldLayout(activeA, activeL) {
   // alle auf dieselbe Höhe und ergaben ein Knäuel. Im Einlinienschema ist die
   // Sammelschiene ein BALKEN, von dem die Abgänge senkrecht herunterhängen.
   const busSpanne = new Map();
-  for (const [pid, kinder] of children) {
-    const typ = assetMap.get(pid)?.type;
-    if (typ !== 'NSHV' && typ !== 'UV') continue;
+  for (const [pid] of children) {
+    if (!_istSchiene(assetMap.get(pid))) continue;
     const eigen = pos.get(pid);
     if (!eigen) continue;
-    const xs = kinder.map(c => pos.get(c)?.x).filter(x => x != null);
+    // Nur die Abgänge spannen die Schiene. Ein Ringnachbar derselben Ebene
+    // (MS-Kupplung Station↔Station) hängt nicht an ihr, sondern daneben —
+    // sein x würde den Balken über die halbe Liegenschaft ziehen.
+    const xs = _abgaenge(pid).map(c => pos.get(c)?.x).filter(x => x != null);
     if (!xs.length) continue;
     // Der Einspeisepunkt (eigene x-Position) muss auf der Schiene liegen
-    busSpanne.set(pid, {
-      von: Math.min(Math.min(...xs) - SLD_NW / 2, eigen.x - (SLD_CW - 8) / 2),
-      bis: Math.max(Math.max(...xs) + SLD_NW / 2, eigen.x + (SLD_CW - 8) / 2),
-    });
+    const von = Math.min(Math.min(...xs) - SLD_NW / 2, eigen.x - (SLD_CW - 8) / 2);
+    const bis = Math.max(Math.max(...xs) + SLD_NW / 2, eigen.x + (SLD_CW - 8) / 2);
+    // Eine UV mit einem einzigen Abgang ergibt keine breitere Schiene als der
+    // Standardbalken. Sie trotzdem einzutragen hieße, sie in die Spurenrechnung
+    // zu schicken — Reihen gleich breiter UV wurden dort im Zickzack versetzt.
+    if (bis - von <= SLD_CW - 8 + 2) continue;
+    busSpanne.set(pid, { von, bis });
+  }
+
+  // Zwei Schienen auf derselben Ebene können sich überspannen: die eine speist
+  // die andere, oder ihre Abgänge stehen ineinander. Auf gleicher Höhe wären
+  // sie ein einziger Balken mit zwei Beschriftungen (genau das Bild, das eine
+  // überlappende Station macht). Wer sich mit einer schon belegten Spur
+  // überschneidet, rutscht deshalb eine Spur tiefer.
+  const SPUR_H = 46;
+  const spurVersatz = new Map();     // id → px, um die die Schiene tiefer liegt
+  const proEbene = new Map();
+  for (const [id, sp] of busSpanne) {
+    const p = pos.get(id);
+    if (!p) continue;
+    if (!proEbene.has(p.y)) proEbene.set(p.y, []);
+    proEbene.get(p.y).push({ id, von: sp.von, bis: sp.bis });
+  }
+  for (const [, schienen] of proEbene) {
+    if (schienen.length < 2) continue;
+    schienen.sort((a, b) => (a.von - b.von) || (a.bis - b.bis));
+    const spurEnde = [];               // rechtes Ende der letzten Schiene je Spur
+    for (const sch of schienen) {
+      let spur = spurEnde.findIndex(ende => sch.von > ende + 1);
+      if (spur === -1) spur = spurEnde.length;
+      spurEnde[spur] = sch.bis;
+      if (spur > 0) { pos.get(sch.id).y += spur * SPUR_H; spurVersatz.set(sch.id, spur * SPUR_H); }
+    }
   }
 
   const treeH    = placed.size > 0 ? Math.max(...[...pos.values()].map(p => p.y)) + SLD_NH : PAD_TOP;
@@ -551,16 +853,117 @@ function _sldLayout(activeA, activeL) {
   }));
 
   const edges = [];
-  const istSchiene = t => t === 'NSHV' || t === 'UV';
   for (const e of activeL) {
     const pA = pos.get(e.u), pB = pos.get(e.v);
     if (!pA || !pB) continue;
     // Hängt die Leitung an einer Sammelschiene, wird sie zum senkrechten Stich
     // am Ort des unteren Knotens — nicht mehr diagonal aus der Schienenmitte.
-    const obenTyp = (pA.y <= pB.y ? assetMap.get(e.u) : assetMap.get(e.v))?.type;
-    const vonSchiene = istSchiene(obenTyp) && Math.abs(pA.y - pB.y) > 4 && !ringEdges.has(e.id);
+    const obenA  = pA.y <= pB.y ? assetMap.get(e.u) : assetMap.get(e.v);
+    const untenA = pA.y <= pB.y ? assetMap.get(e.v) : assetMap.get(e.u);
+    // Der Spurversatz ist reine Darstellung — fachlich stehen zwei versetzte
+    // Schienen weiter auf DERSELBEN Ebene. Die MS-Verbindung zwischen ihnen
+    // bleibt darum der Bogen mit Plakette und wird nicht zum Stich.
+    const ebeneA = pA.y - (spurVersatz.get(e.u) || 0);
+    const ebeneB = pB.y - (spurVersatz.get(e.v) || 0);
+    const gleicheEbene = Math.abs(ebeneA - ebeneB) < 4;
+    const vonSchiene = _istSchiene(obenA) && !gleicheEbene
+      && Math.abs(pA.y - pB.y) > 4 && !ringEdges.has(e.id);
+    // Nur was auf einem Ring liegt, gehört auf die Ringschiene. Eine beliebige
+    // Verbindung zwischen zwei gleichrangigen Knoten (etwa eine MS-Kupplung)
+    // hätte die Schiene sonst über Knoten gespannt, die gar nicht zum Ring
+    // gehören — im Bild lief die Linie dann über unbeteiligte Nachbarn hinweg.
+    const imRing = ringEdges.has(e.id)
+      || ringKanten.has(e.u + '|' + e.v) || ringKanten.has(e.v + '|' + e.u);
     edges.push({ e, x1: pA.x, y1: pA.y, x2: pB.x, y2: pB.y,
-      isRing: ringEdges.has(e.id), vonSchiene });
+      isRing: ringEdges.has(e.id), vonSchiene, zuSchiene: _istSchiene(untenA), gleicheEbene, imRing });
+  }
+
+  // ── Ringschiene ────────────────────────────────────────────────────────────
+  // Alle Verbindungen INNERHALB einer Reihe gehören zu einem Ring. Bisher bekam
+  // jedes Segment einen eigenen Bogen mit eigener Tiefe — zwölf ineinander
+  // geschachtelte Bögen und zwölf „Ring"-Plaketten. Jetzt liegen alle Segmente
+  // eines Rings auf EINER Linie unter der Reihe, jede Station hängt mit einer
+  // kurzen Senkrechten daran. Jedes Segment bleibt ein eigenes Kabel mit
+  // eigener Farbe, Beschriftung und Tooltip.
+  const wurzelVon = new Map();
+  const findeR = x => {
+    while (wurzelVon.get(x) !== x) { wurzelVon.set(x, wurzelVon.get(wurzelVon.get(x))); x = wurzelVon.get(x); }
+    return x;
+  };
+  for (const ed of edges) {
+    if (!ed.gleicheEbene || !ed.imRing) continue;
+    for (const id of [ed.e.u, ed.e.v]) if (!wurzelVon.has(id)) wurzelVon.set(id, id);
+  }
+  for (const ed of edges) {
+    if (!ed.gleicheEbene || !ed.imRing) continue;
+    const a = findeR(ed.e.u), b = findeR(ed.e.v);
+    if (a !== b) wurzelVon.set(a, b);
+  }
+  const ringGruppen = new Map();
+  for (const ed of edges) {
+    if (!ed.gleicheEbene || !ed.imRing) continue;
+    const w = findeR(ed.e.u);
+    if (!ringGruppen.has(w)) ringGruppen.set(w, { kanten: [], mitglieder: new Set(), xVon: Infinity, xBis: -Infinity, y: -Infinity });
+    const g = ringGruppen.get(w);
+    g.kanten.push(ed);
+    g.mitglieder.add(ed.e.u); g.mitglieder.add(ed.e.v);
+    g.xVon = Math.min(g.xVon, ed.x1, ed.x2);
+    g.xBis = Math.max(g.xBis, ed.x1, ed.x2);
+    g.y    = Math.max(g.y, ed.y1, ed.y2);
+  }
+  // Auf welcher Seite der Reihe ist Platz? Unter einer Station hängen ihre
+  // Abgänge, über ihr die Einspeisung. Eine Ringlinie auf der belegten Seite
+  // wird von jeder dieser Leitungen gekreuzt — genau das machte die Zuordnung
+  // unmöglich. Für einen UV-Ring ist oben frei (nur die beiden Ringenden werden
+  // von der NSHV gespeist), für einen Ring aus Verbrauchern unten (Blätter
+  // haben keine Abgänge). Gewählt wird die Seite mit den wenigsten Kreuzungen.
+  const ringLinien = [];
+  for (const [, g] of ringGruppen) {
+    // Eine einzelne Verbindung ist kein Ring (z. B. die MS-Kupplung zwischen
+    // zwei Stationen) — die bleibt der Bogen mit ihrer eigenen Plakette.
+    if (g.kanten.length < 2) continue;
+    let untenBelegt = 0, obenBelegt = 0;
+    for (const id of g.mitglieder) {
+      if (_abgaenge(id).length) untenBelegt++;
+      const par = parentOf.get(id);
+      if (par != null && !_istNachbar(par, id)) obenBelegt++;
+    }
+    g.oben  = obenBelegt <= untenBelegt;
+    // Unterhalb erst unter die Bildunterschrift (Name +13, Kennwert +23, ΔU +33).
+    g.linie = g.oben ? g.y - SLD_NH / 2 - 18 : g.y + SLD_NH / 2 + 42;
+    ringLinien.push(g);
+  }
+
+  // Zwei Ringe derselben Reihe landen sonst auf derselben Höhe und lesen sich
+  // als ein einziger durchgehender Ring. Überschneiden sie sich in x, bekommt
+  // der zweite eine eigene Spur — weiter weg von der Reihe.
+  const proLinie = new Map();
+  for (const g of ringLinien) {
+    const schl = `${Math.round(g.linie)}|${g.oben ? 'o' : 'u'}`;
+    if (!proLinie.has(schl)) proLinie.set(schl, []);
+    proLinie.get(schl).push(g);
+  }
+  for (const [, gruppe] of proLinie) {
+    if (gruppe.length > 1) {
+      gruppe.sort((a, b) => a.xVon - b.xVon);
+      const spurEnde = [];
+      for (const g of gruppe) {
+        let spur = spurEnde.findIndex(ende => g.xVon > ende + 1);
+        if (spur === -1) spur = spurEnde.length;
+        spurEnde[spur] = g.xBis;
+        g.linie += (g.oben ? -1 : 1) * spur * 30;
+      }
+    }
+  }
+
+  for (const g of ringLinien) {
+    // Der Ringschluss ist die Rückleitung: eine Linie weiter außen, sonst läge
+    // er deckungsgleich auf allen Segmenten der Kette.
+    const zurueck = g.linie + (g.oben ? -13 : 13);
+    for (const ed of g.kanten) ed.ringY = ed.isRing ? zurueck : g.linie;
+    const kopf = g.kanten.filter(ed => !ed.isRing)
+      .sort((a, b) => Math.min(a.x1, a.x2) - Math.min(b.x1, b.x2))[0] || g.kanten[0];
+    kopf.ringKopf = { x: g.xVon, n: g.mitglieder.size };
   }
 
   const xs  = nodes.map(n => n.x), ys = nodes.map(n => n.y);
@@ -584,14 +987,20 @@ function _buildSvgRaw(nodes, edges, W, H, layoutExtra, yr) {
     s += `<line x1="12" y1="${separatorY}" x2="${W-12}" y2="${separatorY}" stroke="#2a3a4a" stroke-width="1" stroke-dasharray="6,4"/>`;
     s += `<text x="${W/2}" y="${separatorY-5}" text-anchor="middle" font-size="8" fill="#2a4a5a" font-family="DM Mono,monospace">nicht verbunden (${orphanCount})</text>`;
   }
-  for (const ed of edges) s += _drawEdge(ed, W);
+  // Die Kabel des ausgewählten Objekts kommen ZULETZT: an einer Sammelschiene
+  // mit siebzig Abgängen läge die hervorgehobene Leitung sonst unter den
+  // dreißig, die nach ihr gezeichnet werden.
+  const amSel = ed => sel != null
+    && (String(ed.e.u) === String(sel) || String(ed.e.v) === String(sel));
+  for (const ed of edges) if (!amSel(ed)) s += _drawEdge(ed, W, false);
+  for (const ed of edges) if ( amSel(ed)) s += _drawEdge(ed, W, true);
   for (const n  of nodes) s += _drawNode(n, n.id === sel);
   s += `<text x="8" y="${H-8}" font-size="8" fill="#1e2d40" font-family="DM Mono,monospace">Einlinienschema · Jahr ${yr ?? globalYear ?? 2024}</text>`;
   return s;
 }
 
 // ── Edge ──────────────────────────────────────────────────────────────────────
-function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene }, svgW) {
+function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene, zuSchiene, gleicheEbene, ringY, ringKopf }, svgW, hervor) {
   // Gleiche Einfärbung wie auf der Karte (Auslastung/ΔU%/Leistung/Richtung),
   // MS-Kabel immer violett — analog zu updateStromEdgeVisuals() in 05b-stromnetz.js.
   const strokeCol = e.msLevel ? '#7c4dff' : getStromEdgeColor(e);
@@ -604,7 +1013,9 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene }, svgW) {
   // Gleiche Ebene: Ringschluss zwischen zwei Schaltanlagen, Ringversorgung
   // zwischen zwei UV. Eine gerade Verbindung liefe quer durch die Kästchen
   // der Reihe.
-  const gleicheHoehe = Math.abs(y1 - y2) < 4;
+  // Nicht die Pixelhöhe entscheidet, sondern die Ebene: zwei Schienen derselben
+  // Ebene sind nur zur Entzerrung gegeneinander versetzt (s. Spuren im Layout).
+  const gleicheHoehe = gleicheEbene != null ? gleicheEbene : Math.abs(y1 - y2) < 4;
 
   // Bogen UNTERHALB beider Enden. Vorher lief jede Ringkante um das gesamte
   // Diagramm herum (loopOff ab dem linken bzw. rechten Rand) — bei 11 000 px
@@ -612,9 +1023,15 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene }, svgW) {
   // damit sich mehrere Bögen ineinander schachteln statt sich zu überlagern.
   const bogen = () => {
     const unten = Math.max(y1, y2) + SLD_NH / 2;
+    // Gehört das Segment zu einer Ringschiene, gilt deren gemeinsame Höhe —
+    // die spannweitenabhängige Tiefe erzeugte die geschachtelten Bögen.
+    if (ringY != null) return { yb: ringY, unten };
     const tiefe = 16 + Math.min(70, Math.abs(x1 - x2) * 0.05);
     return { yb: unten + tiefe, unten };
   };
+  // Die Ringschiene liegt über der Reihe, der freie Bogen darunter — der
+  // Anschluss sitzt entsprechend an der Ober- oder Unterkante des Kästchens.
+  const anschluss = yy => (ringY != null && ringY < yy) ? yy - SLD_NH / 2 : yy + SLD_NH / 2;
 
   // Abgang von der Sammelschiene: senkrecht herab an der Stelle des Abgangs.
   // BUSBAR_H/2 = 7 ist die halbe Höhe des Balkens aus _drawBusbar.
@@ -623,11 +1040,13 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene }, svgW) {
 
   if (stich) {
     const oben  = Math.min(y1, y2) + 7;
-    const unten = Math.max(y1, y2) - SLD_NH / 2;
+    // Endet der Stich auf einer Schiene (Station speist Station), gehört er an
+    // deren Balkenkante — SLD_NH/2 würde ihn 27 px darüber abbrechen lassen.
+    const unten = Math.max(Math.max(y1, y2) - (zuSchiene ? 7 : SLD_NH / 2), oben);
     path = `M${stichX.toFixed(1)},${oben.toFixed(1)} L${stichX.toFixed(1)},${unten.toFixed(1)}`;
   } else if (isRing || gleicheHoehe) {
     const { yb } = bogen();
-    path = `M${x1.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${x1.toFixed(1)},${yb.toFixed(1)} L${x2.toFixed(1)},${yb.toFixed(1)} L${x2.toFixed(1)},${(y2+SLD_NH/2).toFixed(1)}`;
+    path = `M${x1.toFixed(1)},${anschluss(y1).toFixed(1)} L${x1.toFixed(1)},${yb.toFixed(1)} L${x2.toFixed(1)},${yb.toFixed(1)} L${x2.toFixed(1)},${anschluss(y2).toFixed(1)}`;
   } else if (sameX) {
     path = `M${x1.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${x2.toFixed(1)},${(y2-SLD_NH/2).toFixed(1)}`;
   } else {
@@ -635,17 +1054,27 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene }, svgW) {
     path = `M${x1.toFixed(1)},${(y1+SLD_NH/2).toFixed(1)} L${x1.toFixed(1)},${midY.toFixed(1)} L${x2.toFixed(1)},${midY.toFixed(1)} L${x2.toFixed(1)},${(y2-SLD_NH/2).toFixed(1)}`;
   }
 
-  let s = `<g data-edgeid="${e.id}" style="cursor:pointer;">`;
+  let s = `<g data-edgeid="${e.id}"${hervor ? ' class="sld-kabel-sel"' : ''} style="cursor:pointer;">`;
   // Wide hit area
   s += `<path d="${path}" stroke="transparent" stroke-width="12" fill="none"/>`;
+  // Hervorgehoben wird mit einem Schein in der EIGENEN Farbe, nicht mit einer
+  // Signalfarbe: die Linienfarbe trägt die Auslastung bzw. den Spannungsfall —
+  // sie zu überschreiben würde die Aussage des Bildes löschen.
+  if (hervor) {
+    s += `<path d="${path}" stroke="${strokeCol}" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.25" pointer-events="none"/>`;
+  }
   const flowAttrs = flowAnim ? `class="sld-flow-path" data-flowdir="${e.flowDirection >= 0 ? 1 : -1}" stroke-dasharray="10,5"` : '';
-  s += `<path d="${path}" stroke="${strokeCol}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" ${isRing ? 'stroke-dasharray="10,5"' : flowAttrs} opacity="${isRing?0.55:0.9}"/>`;
+  s += `<path d="${path}" stroke="${strokeCol}" stroke-width="${hervor ? 3.2 : 2}" fill="none" stroke-linecap="round" stroke-linejoin="round" ${isRing ? 'stroke-dasharray="10,5"' : flowAttrs} opacity="${isRing ? (hervor ? 0.9 : 0.55) : (hervor ? 1 : 0.9)}"/>`;
 
   if (isRing || gleicheHoehe) {
+    // Der Ring trägt seine Marke EINMAL am linken Ende — nicht je Segment,
+    // sonst stünden zwölf Plaketten auf derselben Linie.
+    if (ringY != null && !ringKopf) return s + '</g>';
     const { yb } = bogen();
-    const lx = (x1 + x2) / 2;
-    const txt = isRing ? 'Ring' : (e.msLevel ? 'MS' : 'NS');
-    s += `<rect x="${(lx-16).toFixed(1)}" y="${(yb-7).toFixed(1)}" width="32" height="13" rx="3" fill="#1a2535" stroke="#546e7a" stroke-width="1" pointer-events="none"/>`;
+    const txt = ringKopf ? `Ring · ${ringKopf.n}` : (isRing ? 'Ring' : (e.msLevel ? 'MS' : 'NS'));
+    const bw  = Math.max(32, 11 + txt.length * 4.4);
+    const lx  = ringKopf ? Math.max(bw / 2 + 2, ringKopf.x - bw / 2 - 8) : (x1 + x2) / 2;
+    s += `<rect x="${(lx-bw/2).toFixed(1)}" y="${(yb-7).toFixed(1)}" width="${bw.toFixed(1)}" height="13" rx="3" fill="#1a2535" stroke="#546e7a" stroke-width="1" pointer-events="none"/>`;
     s += `<text x="${lx.toFixed(1)}" y="${(yb+3).toFixed(1)}" text-anchor="middle" font-size="7" fill="#78909c" pointer-events="none">${txt}</text>`;
     return s + '</g>';
   }
@@ -666,7 +1095,7 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene }, svgW) {
   const qs     = e.crossSection || 50;
   const lenM   = Math.round(e.lengthM || 0);
   const lTxt   = lenM > 0 ? `${qs} mm² · ${lenM} m` : `${qs} mm²`;
-  s += `<text x="${labelX}" y="${labelY}" text-anchor="${stich ? 'start' : 'middle'}" font-size="7.5" fill="${strokeCol}" opacity="0.8" pointer-events="none">${lTxt}</text>`;
+  s += `<text x="${labelX}" y="${labelY}" text-anchor="${stich ? 'start' : 'middle'}" font-size="${hervor ? 8.5 : 7.5}" fill="${strokeCol}" opacity="${hervor ? 1 : 0.8}" ${hervor ? 'font-weight="600"' : ''} pointer-events="none">${lTxt}</text>`;
 
   // Richtungspfeil (Lastfluss) — analog zum Pfeil-Marker auf der Karte:
   // ▲ zeigt standardmäßig von u nach v, bei flowDirection<0 umgekehrt.
@@ -692,11 +1121,30 @@ function _drawEdge({ e, x1, y1, x2, y2, isRing, vonSchiene }, svgW) {
   return s + '</g>';
 }
 
+// Anlagen des Gebäudes als Symbolreihe — dieselbe Sprache wie die Kästen im
+// Plan-Digitalisierer. Wird vom Gebäude-Kasten wie von der Gebäude-Schiene
+// benutzt, damit ein zusammengefasstes Gebäude in beiden Formen gleich liest.
+function _chipReihe(n, cx, cy, col) {
+  const symbole = n._chips.slice(0, 6);
+  const breite  = symbole.length * 13;
+  let s = '';
+  symbole.forEach((c, i) => {
+    const sx = cx - breite / 2 + 6.5 + i * 13;
+    s += `<text x="${sx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" font-size="11" fill="${ASSET_CFG[c.type]?.color || col}" pointer-events="none">${ASSET_CFG[c.type]?.icon || '·'}</text>`;
+  });
+  if (n._chips.length > 6) {
+    s += `<text x="${(cx + breite / 2 + 6).toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" font-size="8" fill="#546e7a" pointer-events="none">+${n._chips.length - 6}</text>`;
+  }
+  return s;
+}
+
 // ── Node ──────────────────────────────────────────────────────────────────────
 function _drawNode(n, selected) {
-  // Ein zusammengefasstes Gebäude ist ein Kasten, auch wenn sein Stellvertreter
-  // eine UV ist — eine Sammelschiene würde das Gegenteil behaupten.
-  if (!n._sammel && (n.type === 'NSHV' || n.type === 'UV')) return _drawBusbar(n, selected);
+  // Ein Gebäude mit NSHV bleibt auch zusammengefasst eine Sammelschiene: es ist
+  // der Verteilpunkt, seine Abgänge sollen als Stiche daran hängen wie in der
+  // Anlagenansicht. Ein Gebäude ohne NSHV ist dagegen ein Kasten — eine Schiene
+  // würde dort das Gegenteil behaupten.
+  if (_istSchiene(n)) return _drawBusbar(n, selected);
   const cfg = ASSET_CFG[n.type] || { color:'#607d8b', icon:'·', label:n.type };
   const col = cfg.color;
   const { x, y } = n;
@@ -715,21 +1163,11 @@ function _drawNode(n, selected) {
     ${orphan ? 'stroke-dasharray="5,3"' : ''}/>`;
 
   if (n._sammel) {
-    // Anlagen des Gebäudes als Symbolreihe — dieselbe Sprache wie die Kästen
-    // im Plan-Digitalisierer.
-    const symbole = n._chips.slice(0, 6);
-    const breite  = symbole.length * 13;
-    symbole.forEach((c, i) => {
-      const cx = x - breite / 2 + 6.5 + i * 13;
-      s += `<text x="${cx.toFixed(1)}" y="${(y + 2).toFixed(1)}" text-anchor="middle" font-size="11" fill="${ASSET_CFG[c.type]?.color || col}" pointer-events="none">${ASSET_CFG[c.type]?.icon || '·'}</text>`;
-    });
-    if (n._chips.length > 6) {
-      s += `<text x="${(x + breite / 2 + 6).toFixed(1)}" y="${(y + 2).toFixed(1)}" text-anchor="middle" font-size="8" fill="#546e7a" pointer-events="none">+${n._chips.length - 6}</text>`;
-    }
+    s += _chipReihe(n, x, y + 2, col);
   } else {
     s += _symbolShape(n.type, col, x, y);
   }
-  s += `<text x="${x.toFixed(1)}" y="${(y+SLD_NH/2+13).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="500">${_passend(n.name, SLD_CW - 6, 9)}</text>`;
+  s += `<text x="${x.toFixed(1)}" y="${(y+SLD_NH/2+13).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="500">${_passend(_knotenName(n), SLD_CW - 6, 9)}</text>`;
 
   const spec = n._sammel
     ? `${n._chips.length} Anlagen`
@@ -758,7 +1196,9 @@ function _drawNode(n, selected) {
 
 // ── Busbar (NSHV / UV) ────────────────────────────────────────────────────────
 function _drawBusbar(n, selected) {
-  const cfg = ASSET_CFG[n.type];
+  // Der Balken IST die NSHV des Gebäudes — er trägt ihre Farbe, nicht die des
+  // Stellvertreters (Schaltanlage/Trafo). Die stehen als Symbol darunter.
+  const cfg = ASSET_CFG[n._schiene && n._sammel ? 'NSHV' : n.type] || { color:'#607d8b', icon:'·', label:n.type };
   const col = cfg.color;
   const { x, y } = n;
   const bh = 14;
@@ -775,7 +1215,14 @@ function _drawBusbar(n, selected) {
   // Beschriftung am Einspeisepunkt, nicht in der Balkenmitte: dort kommt die
   // Zuleitung an, dort sucht das Auge den Namen.
   const beschrX = n._bus ? Math.min(Math.max(x, von + 46), bis - 46) : mx;
-  s += `<text x="${beschrX.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="600">${cfg.icon} ${_passend(n.name, Math.min(bw, SLD_CW) - 14, 9)}</text>`;
+  s += `<text x="${beschrX.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="9" fill="${col}" font-weight="600">${cfg.icon} ${_passend(_knotenName(n), Math.min(bw, SLD_CW) - 14, 9)}</text>`;
+  // Zusammengefasstes Gebäude: die Anlagen hängen als Symbolreihe unter der
+  // Schiene, darunter ihre Anzahl — dieselbe Information wie im Gebäude-Kasten.
+  if (n._sammel) {
+    s += _chipReihe(n, beschrX, y + bh/2 + 14, col);
+    s += `<text x="${beschrX.toFixed(1)}" y="${(y+bh/2+25).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#546e7a">${n._chips.length} Anlagen</text>`;
+    return s + '</g>';
+  }
   const spec = _spec(n);
   if (spec) s += `<text x="${beschrX.toFixed(1)}" y="${(y+bh/2+11).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#546e7a">${_passend(spec, Math.min(bw, SLD_CW), 7.5)}</text>`;
   return s + '</g>';
@@ -995,7 +1442,7 @@ function _showNodeInfo(asset) {
   let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">
     <span style="font-size:20px;line-height:1;">${cfg.icon||'⚡'}</span>
     <div style="flex:1;min-width:0;">
-      <div style="font-weight:600;font-size:12px;">${asset.name}</div>
+      <div style="font-weight:600;font-size:12px;">${_knotenName(asset)}</div>
       <div style="font-size:10px;color:var(--muted);">${cfg.label||asset.type} · ${asset.domain}</div>
     </div>
     <button data-click="sldInfoClose()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 2px;line-height:1;flex-shrink:0;">✕</button>

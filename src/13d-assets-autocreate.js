@@ -1,5 +1,5 @@
 // ── 13d-assets-autocreate.js — Auto-Creation von Assets beim Gebäude-Zeichnen
-// Beim Neuanlegen eines Gebäudes werden automatisch UV + Verbraucher + PV erzeugt.
+// Beim Neuanlegen eines Gebäudes werden automatisch UV + Verbraucher erzeugt.
 // Alle sitzen am Polygon-Schwerpunkt und werden als Gruppen-Marker dargestellt
 // (siehe 13b-assets-render.js).
 
@@ -45,7 +45,7 @@ function _positionsInBuilding(polygon, count) {
   });
 }
 
-const DEFAULT_TYPES = ['UV', 'Verbraucher', 'PV'];
+const DEFAULT_TYPES = ['UV', 'Verbraucher'];
 
 export function autoCreateBuildingAssets(g, opts = {}) {
   if (!g || !g.polygon || g.polygon.length < 3) return [];
