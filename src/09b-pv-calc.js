@@ -173,9 +173,18 @@ export function calcStromPanel() {
 
   const gesamtMwh = wpMwh + skMwh + quartierMwh + kaelteMwh;
   const batSocArr = bat ? new Float32Array(8760) : null;
+
+  // Monatsbilanz [MWh] — dieselben Groessen wie die Jahreszaehler daneben, nur
+  // nach Monat getrennt. Wird von der Gutachten-Grafik "Monatsbilanz Strom"
+  // gelesen; deshalb MUSS jede Stelle, die einen Jahreszaehler hochzaehlt, hier
+  // mitzaehlen — sonst weichen Abbildung und KPI-Leiste voneinander ab.
+  const mNetz = new Float64Array(12), mEigen = new Float64Array(12), mEinsp = new Float64Array(12);
+  let _mIdx = 0;
+
   if (pvH || bat || bhkwMwh > 0) {
     let soc = 0, socPv = 0, socBhkw = 0; // Ladezustand gesamt und nach Quelle [kWh]
     for (let t = 0; t < 8760; t++) {
+      if (_mIdx < 11 && t >= GL_MONTH_START[_mIdx + 1]) _mIdx++;
       // Nachfrage: WP + Stromkessel + Quartier
       let demand = (window._wpElHourly ? window._wpElHourly[t] : 0);
       demand += (window._skElHourly ? window._skElHourly[t] : (skMwh * 1000 / 8760));
@@ -220,6 +229,7 @@ export function calcStromPanel() {
               restLade -= thLade;
               rGen -= elActual;
               eigenverbrauchMwh += elActual / 1000;
+              mEigen[_mIdx]      += elActual / 1000;
               pvEigenMwh += elActual / 1000 * pvFrac;
               bhkwEigenMwh += elActual / 1000 * (1 - pvFrac);
               wpUsed = true;
@@ -237,6 +247,7 @@ export function calcStromPanel() {
                 tss.geladenGes += skLoad;
                 rGen -= skLoad;
                 eigenverbrauchMwh += skLoad / 1000;
+                mEigen[_mIdx]      += skLoad / 1000;
                 pvEigenMwh += skLoad / 1000 * pvFrac;
                 bhkwEigenMwh += skLoad / 1000 * (1 - pvFrac);
               }
@@ -249,6 +260,9 @@ export function calcStromPanel() {
       eigenverbrauchMwh += evThisH;
       einspeisungMwh    += rGen / 1000;
       netzbezugMwh      += rDem / 1000;
+      mEigen[_mIdx]     += evThisH;
+      mEinsp[_mIdx]     += rGen / 1000;
+      mNetz[_mIdx]      += rDem / 1000;
       // Aufschlüsselung PV vs BHKW (proportional)
       const pvLocalKwh = step.pvDirectKwh + step.pvDischargedKwh;
       const bhkwLocalKwh = step.bhkwDirectKwh + step.bhkwDischargedKwh;
@@ -284,7 +298,25 @@ export function calcStromPanel() {
     netzbezugMwh      = gesamtMwh;
     eigenverbrauchMwh = 0;
     einspeisungMwh    = 0;
+    // Monatsbilanz trotzdem fuellen: ohne Eigenerzeugung ist der Netzbezug
+    // gleich dem Bedarf, sonst bliebe die Abbildung im Ist-Zustand leer.
+    const qArrM = window.elQuartierH || window._elQuartierFromGeb;
+    let mi = 0;
+    for (let t = 0; t < 8760; t++) {
+      if (mi < 11 && t >= GL_MONTH_START[mi + 1]) mi++;
+      mNetz[mi] += ((window._wpElHourly ? window._wpElHourly[t] : 0)
+                 + (window._skElHourly ? window._skElHourly[t] : (skMwh * 1000 / 8760))
+                 + (qArrM ? qArrM[t] : (quartierMwh * 1000 / 8760))
+                 + (kaelteH ? (kaelteH[t] || 0) : 0)) / 1000;
+    }
   }
+
+  // Fuer die Gutachten-Grafik bereitgestellt (Modul 17 liest ausschliesslich ueber window).
+  window._stromMonatsBilanz = {
+    netzbezug:      Array.from(mNetz),
+    eigenverbrauch: Array.from(mEigen),
+    einspeisung:    Array.from(mEinsp),
+  };
 
   // Nur-Batterie ohne PV: Batterie allein verschiebt Last, spart kaum (Netz→Bat→Netz mit Verlust)
   // → wird korrekt durch die Simulation abgebildet (rDem bleibt unverändert wenn kein PV-Überschuss)

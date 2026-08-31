@@ -305,30 +305,39 @@ const ggNum = (v, dez = 0) =>
 /** Grobe Textbreite ohne DOM — nur zum Vorbemessen der Legende. */
 const ggEstW = (t, size, mono) => t.length * size * (mono ? 0.6 : 0.53);
 
-export function ggRenderGanglinie(cfg, T = GG_THEME) {
+/**
+ * Geometrie des gerahmten Blatts — haengt nur von T ab, nicht vom Inhalt.
+ * Von allen Sheet-Figuren (Ganglinie, Heatmap, …) gemeinsam genutzt, damit
+ * Kopfzeile/Kennzahlenblock immer exakt gleich sitzen ("im selben Style").
+ */
+function ggSheetGeometry(T) {
   const S = T.sheet, W = T.width;
-  const gruen = T.accents.gruenDunkel;
-
   const plotX = S.padX + S.yTitleW + S.yLabelW;
   const plotW = W - S.padX - plotX;
   const plotY = S.headBand + S.headH + S.plotTop;
   const plotH = S.plotH;
   const plotB = plotY + plotH;
-
   const xLabelY = plotB + S.xLabelDy;
   const xTitleY = plotB + S.xTitleDy;
   const kpiTop  = plotB + S.kpiTopDy;
   const height  = kpiTop + S.kpiPad + 2 * S.kpiRow + S.kpiPad + S.footSpace;
+  return { S, W, plotX, plotW, plotY, plotH, plotB, xLabelY, xTitleY, kpiTop, height };
+}
 
-  const txt = (x, y, s, o = {}) =>
-    `<text x="${gR(x)}" y="${gR(y)}"${o.anchor ? ` text-anchor="${o.anchor}"` : ''}
+function ggTxt(T, S, x, y, s, o = {}) {
+  return `<text x="${gR(x)}" y="${gR(y)}"${o.anchor ? ` text-anchor="${o.anchor}"` : ''}
        font-family="${o.mono ? T.fontMono : T.font}" font-size="${o.size || S.fsBody}"
        ${o.weight ? `font-weight="${o.weight}" ` : ''}${o.tracking ? `letter-spacing="${o.tracking}" ` : ''}
        ${o.transform ? `transform="${o.transform}" ` : ''}fill="${o.fill || T.text.strong}">${gEsc(s)}</text>`;
+}
 
-  let out = `<rect x="0" y="0" width="${W}" height="${gR(height)}" fill="${T.bg}"/>`;
+/** Papierhintergrund, Kopfbalken mit Titel/Metadaten/Wortmarke — für jede Sheet-Figur gleich. */
+function ggSheetHeader(cfg, T, G) {
+  const S = G.S, W = G.W;
+  const gruen = T.accents.gruenDunkel;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
 
-  // ── Kopfbalken und Kopfzeile ──
+  let out = `<rect x="0" y="0" width="${W}" height="${gR(G.height)}" fill="${T.bg}"/>`;
   out += `<rect x="0" y="0" width="${W}" height="${S.headBand}" fill="${gruen}"/>`;
   const hTop = S.headBand, hBot = hTop + S.headH;
   const colMid = W - S.headMetaW - S.headLogoW, colLogo = W - S.headLogoW;
@@ -358,108 +367,28 @@ export function ggRenderGanglinie(cfg, T = GG_THEME) {
   const logoH = S.logoW * (LKEBW_LOGO_H / LKEBW_LOGO_W);
   out += `<image href="${LKEBW_LOGO}" x="${gR(colLogo + (S.headLogoW - S.logoW) / 2)}"
             y="${gR(hTop + (S.headH - logoH) / 2)}" width="${S.logoW}" height="${gR(logoH)}"/>`;
+  return out;
+}
 
-  // ── Achsen bestimmen ──
-  const daten = cfg.daten, N = daten ? daten.length : 0;
-  let yMax = 1, yStep = 1;
-  if (N) {
-    let max = 0;
-    for (let i = 0; i < N; i++) if (daten[i] > max) max = daten[i];
-    yStep = ggNiceStep(max / 8);
-    yMax  = Math.max(yStep, Math.ceil(max / yStep) * yStep);
-  }
-
-  // ── Diagrammfläche ──
-  out += `<rect x="${gR(plotX)}" y="${plotY}" width="${gR(plotW)}" height="${plotH}" fill="${T.neutral.cardBg}"/>`;
-
-  if (!N) {
-    out += txt(plotX + plotW / 2, plotY + plotH / 2, cfg.leer || 'Kein Lastgang vorhanden',
-               { anchor: 'middle', size: 13, fill: T.text.faint });
-  } else {
-    const yOf = v => plotB - (v / yMax) * plotH;
-    const xStep = ggNiceStep(N / 12);
-
-    // Gitter
-    let gitter = '';
-    for (let v = yStep; v < yMax; v += yStep) {
-      const y = Math.round(yOf(v)) + 0.5;
-      gitter += `M${gR(plotX)} ${y}H${gR(plotX + plotW)}`;
-    }
-    for (let k = xStep; k < N; k += xStep) {
-      const x = Math.round(plotX + (k / N) * plotW) + 0.5;
-      gitter += `M${x} ${plotY}V${gR(plotB)}`;
-    }
-    out += `<path d="${gitter}" fill="none" stroke="${T.line}" stroke-width="1"/>`;
-
-    // Ganglinie als Min/Max-Hüllkurve je Pixelspalte — 35.040 Werte lassen sich
-    // nicht sinnvoll als Polygonzug zeichnen, die Spitzen gingen dabei verloren.
-    const spalten = Math.max(1, Math.floor(plotW));
-    let kurve = '';
-    for (let c = 0; c < spalten; c++) {
-      const a = Math.floor((c / spalten) * N);
-      const b = Math.max(a + 1, Math.floor(((c + 1) / spalten) * N));
-      let lo = Infinity, hi = -Infinity;
-      for (let i = a; i < b && i < N; i++) { const v = daten[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
-      if (!isFinite(lo)) continue;
-      const x = gR(plotX + c + 0.5);
-      kurve += `M${x} ${gR(yOf(lo))}V${gR(yOf(hi))}`;
-    }
-    out += `<path d="${kurve}" fill="none" stroke="${cfg.kurveFarbe || T.energy.strom}" stroke-width="1"/>`;
-
-    // Grundlast
-    if (cfg.grundlastKw > 0) {
-      const yb = gR(yOf(cfg.grundlastKw));
-      out += `<line x1="${gR(plotX)}" y1="${yb}" x2="${gR(plotX + plotW)}" y2="${yb}"
-                stroke="${T.accents.gruen}" stroke-width="3" stroke-dasharray="13 9"/>`;
-    }
-
-    // Y-Beschriftung
-    for (let v = 0; v <= yMax + 1e-9; v += yStep) {
-      out += txt(plotX - 8, yOf(v) + S.fsAxis * 0.36, ggNum(v),
-                 { anchor: 'end', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
-    }
-    // X-Beschriftung
-    for (let k = 0; k < N; k += xStep) {
-      out += txt(plotX + (k / N) * plotW, xLabelY, ggNum(k),
-                 { anchor: 'middle', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
-    }
-
-    // Legende im Diagramm, oben rechts
-    const eintraege = [
-      { farbe: cfg.kurveFarbe || T.energy.strom, breit: 1.5, strich: '', text: cfg.reihe || '' },
-      ...(cfg.grundlastKw > 0 ? [{ farbe: T.accents.gruen, breit: 3, strich: '6 4', text: cfg.grundlastLabel || '' }] : []),
-    ];
-    const lw = 12 + 26 + 9 + Math.max(...eintraege.map(e => ggEstW(e.text, S.fsLeg))) + 14;
-    const lh = 8 + eintraege.length * 18 + 2;
-    const lx = plotX + plotW - 12 - lw, ly = plotY + 10;
-    // Deckende Angabe statt rgba(): librsvg und der SVG-Renderer in Word
-    // werten Funktionsschreibweisen in fill nicht zuverlaessig aus.
-    out += `<rect x="${gR(lx)}" y="${ly}" width="${gR(lw)}" height="${gR(lh)}" fill="${T.bg}" fill-opacity="0.92"
-              stroke="${T.line}" stroke-width="1"/>`;
-    eintraege.forEach((e, i) => {
-      const ey = ly + 8 + i * 18 + 5.5;
-      out += `<line x1="${gR(lx + 12)}" y1="${gR(ey)}" x2="${gR(lx + 38)}" y2="${gR(ey)}"
-                stroke="${e.farbe}" stroke-width="${e.breit}"${e.strich ? ` stroke-dasharray="${e.strich}"` : ''}/>`;
-      out += txt(lx + 47, ey + S.fsLeg * 0.36, e.text, { size: S.fsLeg });
-    });
-  }
-
-  // Rahmen der Diagrammfläche, Grundlinie kräftiger
-  out += `<rect x="${gR(plotX) + 0.5}" y="${plotY}.5" width="${gR(plotW) - 1}" height="${plotH - 1}"
-            fill="none" stroke="${T.rule}" stroke-width="1"/>
-          <line x1="${gR(plotX)}" y1="${gR(plotB) - 1}" x2="${gR(plotX + plotW)}" y2="${gR(plotB) - 1}"
-            stroke="${T.text.strong}" stroke-width="2"/>`;
-
-  // Achsentitel
-  const ycx = S.padX + S.yTitleW / 2, ycy = plotY + plotH / 2;
-  out += txt(ycx, ycy, cfg.achseY || '', { anchor: 'middle', size: S.fsAxisTitle, weight: 600,
+/** Rotierter Y-Titel + X-Titel unter der Diagrammfläche — für jede Sheet-Figur gleich. */
+function ggAxisTitles(cfg, T, G) {
+  const S = G.S;
+  const ycx = S.padX + S.yTitleW / 2, ycy = G.plotY + G.plotH / 2;
+  let out = ggTxt(T, S, ycx, ycy, cfg.achseY || '', { anchor: 'middle', size: S.fsAxisTitle, weight: 600,
              tracking: 0.46, fill: T.text.muted, transform: `rotate(-90 ${gR(ycx)} ${gR(ycy)})` });
-  out += txt(plotX + plotW / 2, xTitleY, cfg.achseX || '',
+  out += ggTxt(T, S, G.plotX + G.plotW / 2, G.xTitleY, cfg.achseX || '',
              { anchor: 'middle', size: S.fsAxisTitle, weight: 600, tracking: 0.46, fill: T.text.muted });
+  return out;
+}
 
-  // ── Kennzahlen ──
+/** Kennzahlenblock unterhalb der Diagrammfläche — für jede Sheet-Figur gleich. */
+function ggSheetKpiFooter(cfg, T, G) {
+  const S = G.S, W = G.W, kpiTop = G.kpiTop;
+  const gruen = T.accents.gruenDunkel;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
   const mitte = W / 2;
-  out += `<line x1="${S.padX}" y1="${gR(kpiTop) + 0.5}" x2="${W - S.padX}" y2="${gR(kpiTop) + 0.5}" stroke="${T.line}" stroke-width="1"/>
+
+  let out = `<line x1="${S.padX}" y1="${gR(kpiTop) + 0.5}" x2="${W - S.padX}" y2="${gR(kpiTop) + 0.5}" stroke="${T.line}" stroke-width="1"/>
           <line x1="${mitte}.5" y1="${gR(kpiTop)}" x2="${mitte}.5" y2="${gR(kpiTop + S.kpiPad * 2 + 2 * S.kpiRow)}" stroke="${T.line}" stroke-width="1"/>`;
 
   const zeile = (r, x0, wertX, labelX, i) => {
@@ -475,9 +404,16 @@ export function ggRenderGanglinie(cfg, T = GG_THEME) {
     z += txt(labelX, y, r.label, { size: S.fsKpiLabel });
     return z;
   };
+  // Die rechte Spalte steht ohne Prozentspalte enger. Traegt eine ihrer Zeilen
+  // doch einen Prozentwert, bekommt sie denselben Vorlauf wie die linke — sonst
+  // laeuft der Wert in die Prozentangabe hinein.
+  const rechtsPct = (cfg.kpiRechts || []).slice(0, 2).some(r => r.prozent) ? S.kpiPctW + 12 : 0;
   (cfg.kpiLinks  || []).slice(0, 2).forEach((r, i) => { out += zeile(r, S.padX, S.padX + S.kpiPctW + 12 + S.kpiWertW, S.padX + S.kpiPctW + 24 + S.kpiWertW, i); });
-  (cfg.kpiRechts || []).slice(0, 2).forEach((r, i) => { out += zeile(r, mitte + 24, mitte + 24 + S.kpiWertW2, mitte + 36 + S.kpiWertW2, i); });
+  (cfg.kpiRechts || []).slice(0, 2).forEach((r, i) => { out += zeile(r, mitte + 24, mitte + 24 + rechtsPct + S.kpiWertW2, mitte + 36 + rechtsPct + S.kpiWertW2, i); });
+  return out;
+}
 
+function ggFinishSvg(out, W, height) {
   const svg = document.createElementNS(GG_NS, 'svg');
   svg.setAttribute('xmlns', GG_NS);
   svg.setAttribute('viewBox', `0 0 ${W} ${gR(height)}`);
@@ -485,6 +421,384 @@ export function ggRenderGanglinie(cfg, T = GG_THEME) {
   svg.setAttribute('height', gR(height));
   svg.innerHTML = out;
   return svg;
+}
+
+export function ggRenderGanglinie(cfg, T = GG_THEME) {
+  const G = ggSheetGeometry(T);
+  const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+
+  let out = ggSheetHeader(cfg, T, G);
+
+  // Mehrere Reihen (z.B. Tagesgang: Gesamt/Werktag/Wochenende) oder die
+  // klassische Einzelreihe (Jahresganglinie/-dauerlinie) — gleiche Optik,
+  // unterschiedliche Zeichenstrategie (siehe unten).
+  const serien = cfg.serien && cfg.serien.length ? cfg.serien : (cfg.daten ? [{
+    daten: cfg.daten, farbe: cfg.kurveFarbe || T.energy.strom, breite: 1, label: cfg.reihe || '',
+  }] : []);
+  const N = serien[0]?.daten?.length || 0;
+
+  // Waagerechte Grenzlinien (Anschluss-/Einspeisezusage, Trafoleistung …)
+  const grenzen = (cfg.grenzen || []).filter(g => g && g.wert > 0);
+
+  let yMax = 1, yStep = 1;
+  if (N) {
+    let max = 0;
+    for (const s of serien) for (let i = 0; i < N; i++) if (s.daten[i] > max) max = s.daten[i];
+    // Eine Grenze oberhalb der Kurve muss sichtbar bleiben — sonst laege genau
+    // die Aussage der Abbildung ("noch Reserve") ausserhalb des Bildes.
+    for (const g of grenzen) if (g.wert > max) max = g.wert;
+    yStep = ggNiceStep(max / 8);
+    yMax  = Math.max(yStep, Math.ceil(max / yStep) * yStep);
+  }
+
+  // ── Diagrammfläche ──
+  out += `<rect x="${gR(plotX)}" y="${plotY}" width="${gR(plotW)}" height="${plotH}" fill="${T.neutral.cardBg}"/>`;
+
+  if (!N) {
+    out += txt(plotX + plotW / 2, plotY + plotH / 2, cfg.leer || 'Kein Lastgang vorhanden',
+               { anchor: 'middle', size: 13, fill: T.text.faint });
+  } else {
+    const yOf = v => plotB - (v / yMax) * plotH;
+    const xTicks = cfg.xTicks || null;
+    const xStep = xTicks ? null : ggNiceStep(N / 12);
+    // Bei Reihen mit wenigen Stuetzstellen (Jahresachse) sitzt der letzte Punkt
+    // auf dem rechten Rand — die Ticks muessen derselben Teilung folgen, sonst
+    // steht die Jahreszahl neben ihrem Datenpunkt.
+    const xAt = (cfg.xTickAufSerie && N > 1)
+      ? (pos => plotX + (pos / (N - 1)) * plotW)
+      : (pos => plotX + (pos / N) * plotW);
+
+    // Gitter
+    let gitter = '';
+    for (let v = yStep; v < yMax; v += yStep) {
+      const y = Math.round(yOf(v)) + 0.5;
+      gitter += `M${gR(plotX)} ${y}H${gR(plotX + plotW)}`;
+    }
+    if (xTicks) {
+      for (const t of xTicks) {
+        const x = Math.round(xAt(t.pos)) + 0.5;
+        gitter += `M${x} ${plotY}V${gR(plotB)}`;
+      }
+    } else {
+      for (let k = xStep; k < N; k += xStep) {
+        const x = Math.round(plotX + (k / N) * plotW) + 0.5;
+        gitter += `M${x} ${plotY}V${gR(plotB)}`;
+      }
+    }
+    out += `<path d="${gitter}" fill="none" stroke="${T.line}" stroke-width="1"/>`;
+
+    if (cfg.serien && cfg.serien.length) {
+      // Wenige Stützstellen (Tagesprofil, 24–96 Werte): echter Polygonzug,
+      // die Min/Max-Huellkurve unten wuerde bei so wenig Punkten je Pixelspalte
+      // nur vereinzelte Punkte statt einer Linie zeichnen.
+      for (const s of serien) {
+        let d = '';
+        for (let i = 0; i < N; i++) {
+          const x = gR(plotX + (i / (N - 1)) * plotW), y = gR(yOf(s.daten[i]));
+          d += (i === 0 ? `M${x} ${y}` : `L${x} ${y}`);
+        }
+        if (s.fill) {
+          out += `<path d="${d} L${gR(plotX + plotW)} ${gR(plotB)} L${gR(plotX)} ${gR(plotB)} Z"
+                    fill="${s.farbe}" fill-opacity="0.12" stroke="none"/>`;
+        }
+        out += `<path d="${d}" fill="none" stroke="${s.farbe}" stroke-width="${s.breite || 1.5}"
+                  ${s.strich ? `stroke-dasharray="${s.strich}"` : ''} stroke-linejoin="round"/>`;
+      }
+    } else {
+      // Ganglinie als Min/Max-Hüllkurve je Pixelspalte — 35.040 Werte lassen sich
+      // nicht sinnvoll als Polygonzug zeichnen, die Spitzen gingen dabei verloren.
+      // Aufeinanderfolgende Spalten werden verbunden (statt je eine isolierte
+      // Vertikale zu ziehen) — sonst reisst die Linie bei ruhigen Reihen (z.B.
+      // der sortierten Dauerlinie) in lauter Einzelpunkte auseinander.
+      const daten = serien[0].daten;
+      const spalten = Math.max(1, Math.floor(plotW));
+      let kurve = '';
+      for (let c = 0; c < spalten; c++) {
+        const a = Math.floor((c / spalten) * N);
+        const b = Math.max(a + 1, Math.floor(((c + 1) / spalten) * N));
+        let lo = Infinity, hi = -Infinity;
+        for (let i = a; i < b && i < N; i++) { const v = daten[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+        if (!isFinite(lo)) continue;
+        const x = gR(plotX + c + 0.5), yTop = gR(yOf(hi)), yBot = gR(yOf(lo));
+        kurve += kurve === '' ? `M${x} ${yTop}` : `L${x} ${yTop}`;
+        if (yBot !== yTop) kurve += `L${x} ${yBot}`;
+      }
+      out += `<path d="${kurve}" fill="none" stroke="${serien[0].farbe}" stroke-width="1" stroke-linejoin="round"/>`;
+    }
+
+    // Grenzlinien — kraeftiger als das Gitter, damit sie im Druck als Aussage
+    // und nicht als Hilfslinie gelesen werden.
+    for (const g of grenzen) {
+      const y = gR(yOf(g.wert));
+      out += `<line x1="${gR(plotX)}" y1="${y}" x2="${gR(plotX + plotW)}" y2="${y}"
+                stroke="${g.farbe || T.energy.waerme}" stroke-width="${g.breite || 2}"
+                stroke-dasharray="${g.strich || '10 6'}"/>`;
+    }
+
+    // Senkrechte Marke: das Jahr, in dem eine Grenze erstmals ueberschritten wird
+    if (cfg.marker && cfg.marker.pos != null) {
+      const mx = gR(xAt(cfg.marker.pos));
+      const mf = cfg.marker.farbe || T.energy.waerme;
+      out += `<line x1="${mx}" y1="${plotY}" x2="${mx}" y2="${gR(plotB)}"
+                stroke="${mf}" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+      if (cfg.marker.label) {
+        const mw = ggEstW(cfg.marker.label, S.fsLeg) + 16;
+        // Am rechten Rand nach innen kippen, sonst laeuft die Fahne aus dem Blatt.
+        const links = mx + mw > plotX + plotW - 4;
+        const fx = links ? mx - mw : mx;
+        // Unten statt oben: oben rechts sitzt die Legende, dort wuerde die Fahne
+        // verdeckt. Am Fuss der Marke steht sie ausserdem neben ihrer Jahreszahl.
+        const fy = plotB - 23;
+        out += `<rect x="${gR(fx)}" y="${gR(fy)}" width="${gR(mw)}" height="19" fill="${mf}"/>`
+             + txt(fx + mw / 2, fy + 13, cfg.marker.label,
+                   { anchor: 'middle', size: S.fsLeg, weight: 700, fill: '#FFFFFF' });
+      }
+    }
+
+    // Grundlast
+    if (cfg.grundlastKw > 0) {
+      const yb = gR(yOf(cfg.grundlastKw));
+      out += `<line x1="${gR(plotX)}" y1="${yb}" x2="${gR(plotX + plotW)}" y2="${yb}"
+                stroke="${T.accents.gruen}" stroke-width="3" stroke-dasharray="13 9"/>`;
+    }
+
+    // Y-Beschriftung
+    for (let v = 0; v <= yMax + 1e-9; v += yStep) {
+      out += txt(plotX - 8, yOf(v) + S.fsAxis * 0.36, ggNum(v),
+                 { anchor: 'end', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    }
+    // X-Beschriftung
+    if (xTicks) {
+      for (const t of xTicks) {
+        out += txt(xAt(t.pos), G.xLabelY, t.label,
+                   { anchor: 'middle', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+      }
+    } else {
+      for (let k = 0; k < N; k += xStep) {
+        out += txt(plotX + (k / N) * plotW, G.xLabelY, ggNum(k),
+                   { anchor: 'middle', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+      }
+    }
+
+    // Legende im Diagramm, oben rechts
+    const eintraege = [
+      ...serien.map(s => ({ farbe: s.farbe, breit: s.breite || 1.5, strich: s.strich || '', text: s.label || '' })),
+      ...grenzen.map(g => ({ farbe: g.farbe || T.energy.waerme, breit: g.breite || 2,
+                             strich: g.strich || '10 6', text: g.label || '' })),
+      ...(cfg.grundlastKw > 0 ? [{ farbe: T.accents.gruen, breit: 3, strich: '6 4', text: cfg.grundlastLabel || '' }] : []),
+    ].filter(e => e.text);
+    if (eintraege.length) {
+      const lw = 12 + 26 + 9 + Math.max(...eintraege.map(e => ggEstW(e.text, S.fsLeg))) + 14;
+      const lh = 8 + eintraege.length * 18 + 2;
+      const lx = plotX + plotW - 12 - lw, ly = plotY + 10;
+      // Deckende Angabe statt rgba(): librsvg und der SVG-Renderer in Word
+      // werten Funktionsschreibweisen in fill nicht zuverlaessig aus.
+      out += `<rect x="${gR(lx)}" y="${ly}" width="${gR(lw)}" height="${gR(lh)}" fill="${T.bg}" fill-opacity="0.92"
+                stroke="${T.line}" stroke-width="1"/>`;
+      eintraege.forEach((e, i) => {
+        const ey = ly + 8 + i * 18 + 5.5;
+        out += `<line x1="${gR(lx + 12)}" y1="${gR(ey)}" x2="${gR(lx + 38)}" y2="${gR(ey)}"
+                  stroke="${e.farbe}" stroke-width="${e.breit}"${e.strich ? ` stroke-dasharray="${e.strich}"` : ''}/>`;
+        out += txt(lx + 47, ey + S.fsLeg * 0.36, e.text, { size: S.fsLeg });
+      });
+    }
+  }
+
+  // Rahmen der Diagrammfläche, Grundlinie kräftiger
+  out += `<rect x="${gR(plotX) + 0.5}" y="${plotY}.5" width="${gR(plotW) - 1}" height="${plotH - 1}"
+            fill="none" stroke="${T.rule}" stroke-width="1"/>
+          <line x1="${gR(plotX)}" y1="${gR(plotB) - 1}" x2="${gR(plotX + plotW)}" y2="${gR(plotB) - 1}"
+            stroke="${T.text.strong}" stroke-width="2"/>`;
+
+  out += ggAxisTitles(cfg, T, G);
+  out += ggSheetKpiFooter(cfg, T, G);
+
+  return ggFinishSvg(out, W, G.height);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3c) RENDERER — „Heatmap": Tag/Stunde-Raster im selben Blatt-Stil
+ * ═══════════════════════════════════════════════════════════════════════ */
+const GG_HEAT_STOPS = [[0, [26, 35, 78]], [0.3, [0, 150, 136]], [0.6, [255, 235, 59]], [0.8, [255, 152, 0]], [1, [244, 67, 54]]];
+
+function ggHeatColor(t) {
+  const v = Math.max(0, Math.min(1, t));
+  for (let i = 0; i < GG_HEAT_STOPS.length - 1; i++) {
+    const [t0, c0] = GG_HEAT_STOPS[i], [t1, c1] = GG_HEAT_STOPS[i + 1];
+    if (v >= t0 && v <= t1) {
+      const f = (v - t0) / (t1 - t0);
+      return `rgb(${Math.round(c0[0] + f * (c1[0] - c0[0]))},${Math.round(c0[1] + f * (c1[1] - c0[1]))},${Math.round(c0[2] + f * (c1[2] - c0[2]))})`;
+    }
+  }
+  return 'rgb(244,67,54)';
+}
+
+const GG_MONATE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
+export function ggRenderHeatmap(cfg, T = GG_THEME) {
+  const G = ggSheetGeometry(T);
+  const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+
+  let out = ggSheetHeader(cfg, T, G);
+  out += `<rect x="${gR(plotX)}" y="${plotY}" width="${gR(plotW)}" height="${plotH}" fill="${T.neutral.cardBg}"/>`;
+
+  const grid = cfg.grid, jahr = cfg.jahr || new Date().getFullYear();
+  if (!grid) {
+    out += txt(plotX + plotW / 2, plotY + plotH / 2, cfg.leer || 'Keine Daten vorhanden',
+               { anchor: 'middle', size: 13, fill: T.text.faint });
+  } else {
+    const TAGE = 365, STUNDEN = 24, maxV = cfg.maxV || 1;
+    const cellW = plotW / TAGE, cellH = plotH / STUNDEN;
+
+    let zellen = '';
+    for (let d = 0; d < TAGE; d++) {
+      for (let h = 0; h < STUNDEN; h++) {
+        const v = grid[d * STUNDEN + h];
+        const x = plotX + d * cellW, y = plotY + h * cellH;
+        zellen += `<rect x="${gR(x)}" y="${gR(y)}" width="${gR(cellW) + 0.5}" height="${gR(cellH) + 0.5}" fill="${ggHeatColor(maxV > 0 ? v / maxV : 0)}"/>`;
+      }
+    }
+    out += zellen;
+
+    // Y-Beschriftung: Stunden
+    for (let h = 0; h <= 24; h += 6) {
+      const y = plotY + (h / 24) * plotH;
+      out += txt(plotX - 8, y + (h === 24 ? -2 : S.fsAxis * 0.36), h === 24 ? '24:00' : `${h}:00`,
+                 { anchor: 'end', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    }
+    // X-Beschriftung: Monate, an ihrem Startzeitpunkt im Jahr positioniert
+    const yearStart = +new Date(jahr, 0, 1);
+    for (let m = 0; m < 12; m++) {
+      const d0 = Math.floor((+new Date(jahr, m, 1) - yearStart) / 86400000);
+      const dTage = new Date(jahr, m + 1, 0).getDate();
+      out += txt(plotX + (d0 + dTage / 2) * cellW, G.xLabelY, GG_MONATE[m],
+                 { anchor: 'middle', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    }
+
+    // Farbskala oben rechts: Verlaufsbalken mit Min/Max
+    const lw = 150, lh = 34, lx = plotX + plotW - 12 - lw, ly = plotY + 10;
+    out += `<rect x="${gR(lx)}" y="${ly}" width="${gR(lw)}" height="${gR(lh)}" fill="${T.bg}" fill-opacity="0.92"
+              stroke="${T.line}" stroke-width="1"/>`;
+    out += txt(lx + lw / 2, ly + 13, cfg.legendeLabel || '', { anchor: 'middle', size: S.fsLeg - 1, fill: T.text.muted });
+    const gradId = 'ggHeatGrad';
+    out += `<defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">`
+         + GG_HEAT_STOPS.map(([t, c]) => `<stop offset="${t * 100}%" stop-color="rgb(${c[0]},${c[1]},${c[2]})"/>`).join('')
+         + `</linearGradient></defs>`;
+    const bx = lx + 10, bw = lw - 20, by = ly + 18, bh = 8;
+    out += `<rect x="${gR(bx)}" y="${gR(by)}" width="${gR(bw)}" height="${bh}" fill="url(#${gradId})" stroke="${T.line}" stroke-width="1"/>`;
+    out += txt(bx, by + bh + 10, '0', { size: S.fsLeg - 2, fill: T.text.faint });
+    out += txt(bx + bw, by + bh + 10, ggNum(maxV) + ' kW', { anchor: 'end', size: S.fsLeg - 2, fill: T.text.faint });
+  }
+
+  out += `<rect x="${gR(plotX) + 0.5}" y="${plotY}.5" width="${gR(plotW) - 1}" height="${plotH - 1}"
+            fill="none" stroke="${T.rule}" stroke-width="1"/>
+          <line x1="${gR(plotX)}" y1="${gR(plotB) - 1}" x2="${gR(plotX + plotW)}" y2="${gR(plotB) - 1}"
+            stroke="${T.text.strong}" stroke-width="2"/>`;
+
+  out += ggAxisTitles(cfg, T, G);
+  out += ggSheetKpiFooter(cfg, T, G);
+
+  return ggFinishSvg(out, W, G.height);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3d) RENDERER — „Balken": gestapelte Saeulen je Kategorie, selber Blatt-Stil
+ *
+ * cfg.gruppen = [{ label, segmente: [{ label, farbe, werte: number[] }] }]
+ * Je Kategorie (z. B. Monat) steht pro Gruppe eine gestapelte Saeule; mehrere
+ * Gruppen werden nebeneinander gesetzt (Verbrauch neben Einspeisung).
+ * ═══════════════════════════════════════════════════════════════════════ */
+export function ggRenderBalken(cfg, T = GG_THEME) {
+  const G = ggSheetGeometry(T);
+  const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+
+  let out = ggSheetHeader(cfg, T, G);
+  out += `<rect x="${gR(plotX)}" y="${plotY}" width="${gR(plotW)}" height="${plotH}" fill="${T.neutral.cardBg}"/>`;
+
+  const kat = cfg.kategorien || [];
+  const gruppen = (cfg.gruppen || []).filter(g => g && g.segmente && g.segmente.length);
+  const summeJe = g => kat.map((_, i) => g.segmente.reduce((a, seg) => a + (seg.werte?.[i] || 0), 0));
+  const hatWerte = gruppen.some(g => summeJe(g).some(v => v > 0));
+
+  if (!kat.length || !hatWerte) {
+    out += txt(plotX + plotW / 2, plotY + plotH / 2, cfg.leer || 'Keine Daten vorhanden',
+               { anchor: 'middle', size: 13, fill: T.text.faint });
+  } else {
+    let max = 0;
+    for (const g of gruppen) for (const v of summeJe(g)) if (v > max) max = v;
+    const yStep = ggNiceStep(max / 8);
+    const yMax  = Math.max(yStep, Math.ceil(max / yStep) * yStep);
+    const yOf = v => plotB - (v / yMax) * plotH;
+
+    // Gitter
+    let gitter = '';
+    for (let v = yStep; v < yMax; v += yStep) {
+      const y = Math.round(yOf(v)) + 0.5;
+      gitter += `M${gR(plotX)} ${y}H${gR(plotX + plotW)}`;
+    }
+    out += `<path d="${gitter}" fill="none" stroke="${T.line}" stroke-width="1"/>`;
+
+    // Saeulen: je Kategorie ein Fach, darin die Gruppen nebeneinander
+    const fachW = plotW / kat.length;
+    const innen = fachW * 0.76;                 // Rest bleibt Luft zwischen den Monaten
+    const balkenW = innen / gruppen.length;
+    for (let i = 0; i < kat.length; i++) {
+      const fachX = plotX + i * fachW + (fachW - innen) / 2;
+      gruppen.forEach((g, gi) => {
+        let unten = plotB;
+        for (const seg of g.segmente) {
+          const v = seg.werte?.[i] || 0;
+          if (!(v > 0)) continue;
+          const h = (v / yMax) * plotH;
+          // Unter ~0,4 px zeichnet Word nichts mehr — dann lieber weglassen als
+          // eine Haarlinie, die im Ausdruck wie ein Artefakt aussieht.
+          if (h < 0.4) { unten -= h; continue; }
+          out += `<rect x="${gR(fachX + gi * balkenW)}" y="${gR(unten - h)}"
+                    width="${gR(balkenW - 2)}" height="${gR(h)}" fill="${seg.farbe}"/>`;
+          unten -= h;
+        }
+      });
+      out += txt(plotX + i * fachW + fachW / 2, G.xLabelY, kat[i],
+                 { anchor: 'middle', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    }
+
+    // Y-Beschriftung
+    for (let v = 0; v <= yMax + 1e-9; v += yStep) {
+      out += txt(plotX - 8, yOf(v) + S.fsAxis * 0.36, ggNum(v, yStep < 1 ? 1 : 0),
+                 { anchor: 'end', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    }
+
+    // Legende oben rechts — Kaestchen statt Linien, passend zu Flaechen
+    const eintraege = [];
+    for (const g of gruppen) for (const seg of g.segmente) {
+      if (seg.label) eintraege.push({ farbe: seg.farbe, text: seg.label });
+    }
+    if (eintraege.length) {
+      const lw = 12 + 16 + 9 + Math.max(...eintraege.map(e => ggEstW(e.text, S.fsLeg))) + 14;
+      const lh = 8 + eintraege.length * 18 + 2;
+      const lx = plotX + plotW - 12 - lw, ly = plotY + 10;
+      out += `<rect x="${gR(lx)}" y="${ly}" width="${gR(lw)}" height="${gR(lh)}" fill="${T.bg}" fill-opacity="0.92"
+                stroke="${T.line}" stroke-width="1"/>`;
+      eintraege.forEach((e, i) => {
+        const ey = ly + 8 + i * 18;
+        out += `<rect x="${gR(lx + 12)}" y="${gR(ey)}" width="12" height="11" fill="${e.farbe}"/>`
+             + txt(lx + 37, ey + 9, e.text, { size: S.fsLeg });
+      });
+    }
+  }
+
+  out += `<rect x="${gR(plotX) + 0.5}" y="${plotY}.5" width="${gR(plotW) - 1}" height="${plotH - 1}"
+            fill="none" stroke="${T.rule}" stroke-width="1"/>
+          <line x1="${gR(plotX)}" y1="${gR(plotB) - 1}" x2="${gR(plotX + plotW)}" y2="${gR(plotB) - 1}"
+            stroke="${T.text.strong}" stroke-width="2"/>`;
+
+  out += ggAxisTitles(cfg, T, G);
+  out += ggSheetKpiFooter(cfg, T, G);
+
+  return ggFinishSvg(out, W, G.height);
 }
 
 /** Kennzahlen eines Lastgangs: Summe, Spitze, Grundlast (1-%-Quantil). */
@@ -500,6 +814,58 @@ export function ggLastgangKennzahlen(daten, stundenProWert) {
     grundlastKw: grundlast,
     grundlastKwh: grundlast * n * stundenProWert,
   };
+}
+
+/** Liest den importierten Ist-Stromlastgang aus dem Projekt (Strom-Grundlagen). */
+function ggStromDaten() {
+  const viertel = window.elQuartierH15;
+  const stunden = window.elQuartierH;
+  const daten = viertel && viertel.length ? viertel : (stunden && stunden.length ? stunden : null);
+  if (!daten) return null;
+  const istViertel = daten === viertel;
+  return { daten, istViertel, h: istViertel ? 0.25 : 1 };
+}
+
+/** Viertelstundenwerte auf Stundenmittel verdichten — für Tagesgang/Heatmap reicht das. */
+function ggStundenReihe(daten, istViertel) {
+  if (!istViertel) return daten;
+  const n = Math.floor(daten.length / 4);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = (daten[4 * i] + daten[4 * i + 1] + daten[4 * i + 2] + daten[4 * i + 3]) / 4;
+  return out;
+}
+
+/** Mittlerer Tagesverlauf (24 Stundenwerte) — gesamt, Werktag, Wochenende. */
+function ggTagesgangStats(stundenReihe, startDate) {
+  const sumAll = new Float64Array(24), nAll = new Int32Array(24);
+  const sumWd = new Float64Array(24), nWd = new Int32Array(24);
+  const sumWe = new Float64Array(24), nWe = new Int32Array(24);
+  const startMs = startDate.getTime();
+  for (let i = 0; i < stundenReihe.length; i++) {
+    const ts = new Date(startMs + i * 3600000);
+    const hr = ts.getHours(), v = stundenReihe[i];
+    sumAll[hr] += v; nAll[hr]++;
+    if (ts.getDay() === 0 || ts.getDay() === 6) { sumWe[hr] += v; nWe[hr]++; }
+    else { sumWd[hr] += v; nWd[hr]++; }
+  }
+  const avg = (sum, n) => Array.from(sum).map((s, i) => n[i] ? s / n[i] : 0);
+  return { avgAll: avg(sumAll, nAll), avgWd: avg(sumWd, nWd), avgWe: avg(sumWe, nWe) };
+}
+
+/** Tag/Stunde-Raster (365×24) aus der Stundenreihe für die Jahres-Heatmap. */
+function ggHeatmapGrid(stundenReihe, startDate) {
+  const startMs = startDate.getTime(), jahr = startDate.getFullYear();
+  const yearStart = +new Date(jahr, 0, 1);
+  const grid = new Float32Array(365 * 24), n = new Int16Array(365 * 24);
+  for (let i = 0; i < stundenReihe.length; i++) {
+    const ts = startMs + i * 3600000;
+    const day = Math.floor((ts - yearStart) / 86400000);
+    if (day < 0 || day >= 365) continue;
+    const idx = day * 24 + new Date(ts).getHours();
+    grid[idx] += stundenReihe[i]; n[idx]++;
+  }
+  for (let i = 0; i < grid.length; i++) if (n[i]) grid[i] /= n[i];
+  return { grid, jahr };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -565,6 +931,12 @@ function ggDownload(blob, name) {
   const a = document.createElement('a');
   a.href = url; a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Dateiname mit Projektname-Präfix (WE-Nummer_Kaserne), falls App-Kern verfügbar. */
+function ggDateiname(basis, ext) {
+  if (typeof window.projektExportFilename === 'function') return window.projektExportFilename(basis, ext);
+  return `${basis}.${ext}`;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -658,6 +1030,7 @@ const GG_FIGUREN = [
       cfg.grundlastKw = k.grundlastKw;
       cfg.ort = cfg.ort || ggLiegenschaft();
       cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+      ggMetaDefaults(cfg, 'pdBearbeiterStrom');
       cfg.kpiLinks = [
         { wert: ggNum(k.arbeitKwh) + ' kWh', label: 'Liegenschaftsbezug vom EVU' },
         { prozent: ggNum(k.arbeitKwh ? k.grundlastKwh / k.arbeitKwh * 100 : 0) + ' %',
@@ -713,6 +1086,7 @@ const GG_FIGUREN = [
                                       : 'Wärmeleistung Liegenschaft (berechnet)';
       cfg.ort = cfg.ort || ggLiegenschaft();
       cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+      ggMetaDefaults(cfg, 'pdBearbeiterWaerme');
       cfg.kpiLinks = [
         { wert: ggNum(k.arbeitKwh) + ' kWh', label: 'Wärmebedarf Liegenschaft' },
         { prozent: ggNum(k.arbeitKwh ? k.grundlastKwh / k.arbeitKwh * 100 : 0) + ' %',
@@ -723,6 +1097,338 @@ const GG_FIGUREN = [
         { wert: ggNum(k.grundlastKw) + ' kW', label: 'Wärmegrundlast Leistung', highlight: true },
       ];
       return `✓ ${ggNum(daten.length)} Stundenwerte übernommen (${quelle}).`;
+    },
+  },
+
+  // ── Jahresdauerlinie Strom ──────────────────────────────────────────────
+  {
+    id: 'lastgang-strom-dauerlinie',
+    autoSync: true,
+    titel: 'Jahresdauerlinie Strom',
+    datei: 'jahresdauerlinie-strom',
+    hinweis: 'Derselbe Stromlastgang wie die Jahresganglinie, absteigend nach Leistung sortiert — '
+           + 'zeigt Benutzungsdauer und Ausnutzung der Anschlussleistung.',
+    render: cfg => ggRenderGanglinie(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten',
+      titel: 'Jahresdauerlinie Strom',
+      ort: '',
+      meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+      achseY: 'Leistung in kW',
+      achseX: 'Stunden im Jahr, absteigend sortiert',
+      reihe: 'Liegenschaftsstromverbrauch',
+      grundlastLabel: 'Stromgrundlast Leistung',
+      leer: 'Kein Stromlastgang importiert — unter Strom-Grundlagen eine Lastgangdatei laden.',
+      daten: null, grundlastKw: 0, kpiLinks: [], kpiRechts: [],
+    },
+    ausProjekt(cfg) {
+      cfg.kurveFarbe = GG_THEME.energy.strom;
+      const info = ggStromDaten();
+      if (!info) { cfg.daten = null; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Kein Stromlastgang importiert.'; }
+
+      const { daten, istViertel, h } = info;
+      const sortiert = Array.prototype.slice.call(daten).sort((a, b) => b - a);
+      const k = ggLastgangKennzahlen(daten, h);
+      cfg.daten = sortiert;
+      cfg.achseX = istViertel ? '1/4 Stunden im Jahr, absteigend sortiert' : 'Stunden im Jahr, absteigend sortiert';
+      cfg.grundlastKw = k.grundlastKw;
+      cfg.ort = cfg.ort || ggLiegenschaft();
+      cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+      ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+      cfg.kpiLinks = [
+        { wert: ggNum(k.arbeitKwh) + ' kWh', label: 'Liegenschaftsbezug vom EVU' },
+        { prozent: ggNum(k.arbeitKwh ? k.grundlastKwh / k.arbeitKwh * 100 : 0) + ' %',
+          wert: ggNum(k.grundlastKwh) + ' kWh', label: 'Stromgrundlast Arbeit' },
+      ];
+      cfg.kpiRechts = [
+        { wert: ggNum(k.spitzeKw) + ' kW', label: 'Stromspitzenlast' },
+        { wert: ggNum(k.grundlastKw) + ' kW', label: 'Stromgrundlast Leistung', highlight: true },
+      ];
+      return `✓ ${ggNum(daten.length)} ${istViertel ? 'Viertelstunden' : 'Stunden'} aus `
+           + `${window.elQuartierFilename || 'dem Stromimport'} übernommen.`;
+    },
+  },
+
+  // ── Tagesgang Strom ─────────────────────────────────────────────────────
+  {
+    id: 'lastgang-strom-tagesgang',
+    autoSync: true,
+    titel: 'Tagesgang Strom',
+    datei: 'tagesgang-strom',
+    hinweis: 'Mittlerer Tagesverlauf aus dem Stromlastgang, getrennt nach Werktag und Wochenende '
+           + '(stündliche Mittelwerte über das gesamte Jahr).',
+    render: cfg => ggRenderGanglinie(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten',
+      titel: 'Tagesgang Strom',
+      ort: '',
+      meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+      achseY: 'Leistung in kW',
+      achseX: 'Uhrzeit',
+      leer: 'Kein Stromlastgang importiert — unter Strom-Grundlagen eine Lastgangdatei laden.',
+      serien: null, xTicks: null, grundlastKw: 0, grundlastLabel: '', kpiLinks: [], kpiRechts: [],
+    },
+    ausProjekt(cfg) {
+      const info = ggStromDaten();
+      if (!info) { cfg.serien = null; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Kein Stromlastgang importiert.'; }
+
+      const { daten, istViertel, h } = info;
+      const stundenReihe = ggStundenReihe(daten, istViertel);
+      const start = window.elQuartierStartDate || new Date(new Date().getFullYear(), 0, 1);
+      const { avgAll, avgWd, avgWe } = ggTagesgangStats(stundenReihe, start);
+      cfg.serien = [
+        { daten: avgWe, farbe: '#3F7FBF', breite: 1.5, strich: '5 4', label: 'Wochenende Ø' },
+        { daten: avgWd, farbe: GG_THEME.accents.gruen, breite: 1.5, label: 'Werktag Ø' },
+        { daten: avgAll, farbe: GG_THEME.accents.gruenDunkel, breite: 2, label: 'Gesamt Ø', fill: true },
+      ];
+      cfg.xTicks = [0, 6, 12, 18, 24].map(hr => ({ pos: hr, label: `${hr}h` }));
+
+      const k = ggLastgangKennzahlen(daten, h);
+      cfg.grundlastKw = k.grundlastKw;
+      cfg.grundlastLabel = 'Stromgrundlast Leistung (Jahr)';
+      cfg.ort = cfg.ort || ggLiegenschaft();
+      cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+      ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+      cfg.kpiLinks = [
+        { wert: ggNum(k.arbeitKwh) + ' kWh', label: 'Liegenschaftsbezug vom EVU' },
+        { wert: ggNum(Math.max(...avgAll)) + ' kW', label: 'Mittlere Tagesspitze (Gesamt)' },
+      ];
+      cfg.kpiRechts = [
+        { wert: ggNum(k.spitzeKw) + ' kW', label: 'Stromspitzenlast (Jahr)' },
+        { wert: ggNum(k.grundlastKw) + ' kW', label: 'Stromgrundlast Leistung', highlight: true },
+      ];
+      return `✓ Tagesprofil aus ${ggNum(daten.length)} ${istViertel ? 'Viertelstunden' : 'Stunden'} berechnet.`;
+    },
+  },
+
+  // ── Jahres-Heatmap Strom ────────────────────────────────────────────────
+  {
+    id: 'lastgang-strom-heatmap',
+    autoSync: true,
+    titel: 'Jahres-Heatmap Strom',
+    datei: 'jahres-heatmap-strom',
+    hinweis: 'Stündliche Mittelwerte des Stromlastgangs als Tag/Stunde-Raster — zeigt saisonale und '
+           + 'tageszeitliche Muster auf einen Blick.',
+    render: cfg => ggRenderHeatmap(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten',
+      titel: 'Jahres-Heatmap Strom',
+      ort: '',
+      meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+      achseY: 'Stunde des Tages',
+      achseX: 'Monat',
+      legendeLabel: 'Leistung in kW',
+      leer: 'Kein Stromlastgang importiert — unter Strom-Grundlagen eine Lastgangdatei laden.',
+      grid: null, jahr: null, maxV: 0, kpiLinks: [], kpiRechts: [],
+    },
+    ausProjekt(cfg) {
+      const info = ggStromDaten();
+      if (!info) { cfg.grid = null; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Kein Stromlastgang importiert.'; }
+
+      const { daten, istViertel, h } = info;
+      const stundenReihe = ggStundenReihe(daten, istViertel);
+      const start = window.elQuartierStartDate || new Date(new Date().getFullYear(), 0, 1);
+      const { grid, jahr } = ggHeatmapGrid(stundenReihe, start);
+      let max = 0;
+      for (let i = 0; i < grid.length; i++) if (grid[i] > max) max = grid[i];
+      cfg.grid = grid; cfg.jahr = jahr; cfg.maxV = max;
+
+      const k = ggLastgangKennzahlen(daten, h);
+      cfg.ort = cfg.ort || ggLiegenschaft();
+      cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+      ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+      cfg.kpiLinks = [
+        { wert: ggNum(k.arbeitKwh) + ' kWh', label: 'Liegenschaftsbezug vom EVU' },
+        { prozent: ggNum(k.arbeitKwh ? k.grundlastKwh / k.arbeitKwh * 100 : 0) + ' %',
+          wert: ggNum(k.grundlastKwh) + ' kWh', label: 'Stromgrundlast Arbeit' },
+      ];
+      cfg.kpiRechts = [
+        { wert: ggNum(k.spitzeKw) + ' kW', label: 'Stromspitzenlast' },
+        { wert: ggNum(k.grundlastKw) + ' kW', label: 'Stromgrundlast Leistung', highlight: true },
+      ];
+      return `✓ Heatmap aus ${ggNum(daten.length)} ${istViertel ? 'Viertelstunden' : 'Stunden'} berechnet.`;
+    },
+  },
+
+  // ── Monatsbilanz Strom ────────────────────────
+  {
+    id: 'monatsbilanz-strom',
+    autoSync: true,
+    titel: 'Monatsbilanz Strom',
+    datei: 'monatsbilanz-strom',
+    hinweis: 'Netzbezug, Eigenverbrauch und Einspeisung je Monat. Sobald die Strom-/PV-Berechnung '
+           + 'gelaufen ist, kommen alle drei Anteile aus deren Bilanz; sonst wird ersatzweise der '
+           + 'reine Netzbezug aus dem importierten Lastgang gezeigt.',
+    render: cfg => ggRenderBalken(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten',
+      titel: 'Monatsbilanz Strom',
+      ort: '',
+      meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+      achseY: 'Energie in MWh',
+      achseX: 'Monat',
+      leer: 'Keine Strommengen vorhanden — Lastgang importieren oder die Strom-Berechnung ausführen.',
+      kategorien: GG_MONATE,
+      gruppen: [], kpiLinks: [], kpiRechts: [],
+    },
+    ausProjekt(cfg) {
+      cfg.kategorien = GG_MONATE;
+      cfg.ort = cfg.ort || ggLiegenschaft();
+      cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+      ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+
+      const bil = window._stromMonatsBilanz;
+      const summe = a => (a || []).reduce((x, y) => x + y, 0);
+      let netz, eigen, einsp, quelle;
+
+      if (bil && summe(bil.netzbezug) + summe(bil.eigenverbrauch) > 0) {
+        netz  = bil.netzbezug;
+        eigen = bil.eigenverbrauch;
+        einsp = bil.einspeisung;
+        quelle = 'der Strombilanz';
+      } else {
+        // Ersatzweg: nur der gemessene Bezug. Ohne gelaufene Strom-Berechnung
+        // gibt es keine Aufteilung in Eigenverbrauch/Einspeisung — dann lieber
+        // eine ehrliche Einzelreihe als eine geschaetzte Aufteilung.
+        const info = ggStromDaten();
+        if (!info) { cfg.gruppen = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Keine Strommengen vorhanden.'; }
+        const reihe = ggStundenReihe(info.daten, info.istViertel);
+        const startMs = (window.elQuartierStartDate || new Date(new Date().getFullYear(), 0, 1)).getTime();
+        netz = new Array(12).fill(0);
+        for (let i = 0; i < reihe.length; i++) netz[new Date(startMs + i * 3600000).getMonth()] += reihe[i] / 1000;
+        eigen = new Array(12).fill(0);
+        einsp = new Array(12).fill(0);
+        quelle = 'dem importierten Lastgang (ohne PV-Aufteilung)';
+      }
+
+      const hatEigen = summe(eigen) > 0, hatEinsp = summe(einsp) > 0;
+      cfg.gruppen = [
+        { label: 'Verbrauch', segmente: [
+          { label: 'Netzbezug', farbe: GG_THEME.energy.strom, werte: netz },
+          ...(hatEigen ? [{ label: 'Eigenverbrauch', farbe: GG_THEME.accents.gruen, werte: eigen }] : []),
+        ]},
+        ...(hatEinsp ? [{ label: 'Einspeisung', segmente: [
+          { label: 'Netzeinspeisung', farbe: GG_THEME.accents.gruenDunkel, werte: einsp },
+        ]}] : []),
+      ];
+
+      const gesamt = summe(netz) + summe(eigen);
+      const jeMonat = netz.map((v, i) => v + (eigen[i] || 0));
+      const iMax = jeMonat.indexOf(Math.max(...jeMonat));
+      cfg.kpiLinks = [
+        { wert: ggNum(gesamt, 1) + ' MWh', label: 'Stromverbrauch gesamt' },
+        { prozent: gesamt > 0 ? ggNum(summe(netz) / gesamt * 100) + ' %' : undefined,
+          wert: ggNum(summe(netz), 1) + ' MWh', label: 'Netzbezug' },
+      ];
+      cfg.kpiRechts = [
+        hatEigen
+          ? { prozent: gesamt > 0 ? ggNum(summe(eigen) / gesamt * 100) + ' %' : undefined,
+              wert: ggNum(summe(eigen), 1) + ' MWh', label: 'Eigenverbrauch' }
+          : { wert: ggNum(jeMonat[iMax], 1) + ' MWh', label: 'Höchster Monat (' + GG_MONATE[iMax] + ')' },
+        hatEinsp
+          ? { wert: ggNum(summe(einsp), 1) + ' MWh', label: 'Netzeinspeisung', highlight: true }
+          : { wert: GG_MONATE[iMax], label: 'Verbrauchsstärkster Monat', highlight: true },
+      ];
+      return `✓ Monatswerte aus ${quelle} übernommen.`;
+    },
+  },
+
+  // ── Entwicklung der Anschlussleistung ───────────────
+  {
+    id: 'anschlussleistung-entwicklung',
+    titel: 'Entwicklung der Anschlussleistung',
+    datei: 'anschlussleistung-entwicklung',
+    hinweis: 'Höchstlast am Liegenschaftsanschluss über den Planungshorizont, gegen Anschlusswert und '
+           + 'Einspeisezusage. „Aus Projekt übernehmen“ startet dafür den Engpass-Sweep — das rechnet '
+           + 'das Netz für jedes Stützjahr durch und dauert einen Moment.',
+    render: cfg => ggRenderGanglinie(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten',
+      titel: 'Entwicklung der Anschlussleistung',
+      ort: '',
+      meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+      achseY: 'Leistung in kW',
+      achseX: 'Jahr',
+      leer: 'Noch keine Netzberechnung — im Elektro-Tab den Engpass-Sweep starten.',
+      serien: null, xTicks: null, xTickAufSerie: true, grenzen: [], marker: null,
+      grundlastKw: 0, grundlastLabel: '', kpiLinks: [], kpiRechts: [],
+    },
+    ausProjekt(cfg) {
+      cfg.ort = cfg.ort || ggLiegenschaft();
+      cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+      ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+      cfg.xTickAufSerie = true;
+
+      // Vorhandenen Sweep weiterverwenden, solange er die Leistungswerte kennt —
+      // ein Lauf aus einer aelteren Sitzung hat sie noch nicht.
+      let res = typeof window.engpassLetztesErgebnis === 'function' ? window.engpassLetztesErgebnis() : null;
+      if (!res || !res.proJahr?.length || res.proJahr[0].bezugKw == null) {
+        if (typeof window.engpassSweep !== 'function') { cfg.serien = null; return '⚠ Netzmodul nicht geladen.'; }
+        res = window.engpassSweep();
+      }
+      if (!res || !res.proJahr?.length) {
+        cfg.serien = null; cfg.grenzen = []; cfg.marker = null; cfg.kpiLinks = []; cfg.kpiRechts = [];
+        return '⚠ Kein Stromnetz modelliert — im Elektro-Tab Trafos und Kabel anlegen.';
+      }
+
+      // Der Sweep rechnet nur Stützjahre. Dazwischen ändert sich am Netz nichts,
+      // also wird der letzte Wert gehalten — so bleibt die Zeitachse maßstäblich,
+      // statt ungleiche Abstände gleich breit zu zeichnen.
+      const jahre = [];
+      for (let j = res.von; j <= res.bis; j++) jahre.push(j);
+      const bezug = [], rueck = [];
+      let k = 0;
+      for (const j of jahre) {
+        while (k + 1 < res.proJahr.length && res.proJahr[k + 1].jahr <= j) k++;
+        bezug.push(res.proJahr[k].bezugKw || 0);
+        rueck.push(res.proJahr[k].rueckKw || 0);
+      }
+
+      const hatRueck = rueck.some(v => v > 0);
+      cfg.serien = [
+        ...(hatRueck ? [{ daten: rueck, farbe: GG_THEME.accents.gruen, breite: 1.8, label: 'Rückspeisung (Höchstwert)' }] : []),
+        { daten: bezug, farbe: GG_THEME.energy.strom, breite: 2, label: 'Netzbezug (Höchstlast)' },
+      ];
+      cfg.xTicks = jahre
+        .map((j, i) => ({ pos: i, label: String(j) }))
+        .filter((t, i) => i === 0 || i === jahre.length - 1 || jahre[i] % 5 === 0);
+
+      // Trafoleistung nur zeigen, wenn sie über den Horizont konstant bleibt —
+      // eine waagerechte Linie wäre sonst schlicht falsch.
+      const kvaGleich = res.proJahr.every(r => r.trafoKVA === res.proJahr[0].trafoKVA);
+      const napBezug = Number.isFinite(window.elNapMaxBezugKw) ? window.elNapMaxBezugKw : null;
+      const napEinsp = Number.isFinite(window.elNapMaxEinspKw) ? window.elNapMaxEinspKw : null;
+      cfg.grenzen = [
+        napBezug > 0 ? { wert: napBezug, label: 'Anschlussleistung (Bezug)', farbe: GG_THEME.energy.waerme } : null,
+        (hatRueck && napEinsp > 0) ? { wert: napEinsp, label: 'Einspeisezusage', farbe: GG_THEME.energy.gas } : null,
+        kvaGleich ? { wert: res.proJahr[0].trafoKVA * 0.9, label: 'Installierte Trafoleistung',
+                      farbe: GG_THEME.text.muted, strich: '4 5', breite: 1.5 } : null,
+      ].filter(Boolean);
+
+      // Erste Grenzüberschreitung markieren
+      let idx = -1, grund = '';
+      for (let i = 0; i < jahre.length; i++) {
+        if (napBezug > 0 && bezug[i] > napBezug) { idx = i; grund = 'Bezug'; break; }
+        if (hatRueck && napEinsp > 0 && rueck[i] > napEinsp) { idx = i; grund = 'Einspeisung'; break; }
+      }
+      cfg.marker = idx >= 0 ? { pos: idx, label: `${jahre[idx]} · ${grund} über Grenzwert` } : null;
+
+      const letzte = bezug[bezug.length - 1];
+      const reserve = napBezug > 0 ? napBezug - letzte : null;
+      cfg.kpiLinks = [
+        { wert: ggNum(bezug[0]) + ' kW', label: `Höchstlast Bezug ${res.von}` },
+        { prozent: napBezug > 0 ? ggNum(letzte / napBezug * 100) + ' %' : undefined,
+          wert: ggNum(letzte) + ' kW', label: `Höchstlast Bezug ${res.bis}` },
+      ];
+      cfg.kpiRechts = [
+        hatRueck
+          ? { wert: ggNum(Math.max(...rueck)) + ' kW', label: 'Höchste Rückspeisung im Horizont' }
+          : { wert: kvaGleich ? ggNum(res.proJahr[0].trafoKVA) + ' kVA' : 'wechselnd', label: 'Installierte Trafoleistung' },
+        idx >= 0
+          ? { wert: String(jahre[idx]), label: 'Grenzwert erstmals überschritten', highlight: true }
+          : { wert: reserve != null ? ggNum(reserve) + ' kW' : '—', label: `Reserve ${res.bis}`, highlight: true },
+      ];
+      return `✓ ${jahre.length} Jahre aus ${res.proJahr.length} Stützjahren (${res.von}–${res.bis}) übernommen.`;
     },
   },
 ];
@@ -740,6 +1446,12 @@ function ggLiegenschaft() {
 }
 
 const ggHeute = () => new Date().toLocaleDateString('de-DE');
+
+/** Bearbeiter/WE-Nr. aus den Projekt-Stammdaten vorbelegen, falls in der Grafik noch leer. */
+function ggMetaDefaults(cfg, bearbeiterVar) {
+  cfg.meta['Bearbeiter'] = cfg.meta['Bearbeiter'] || (window[bearbeiterVar] || '');
+  cfg.meta['WE-Nr.'] = cfg.meta['WE-Nr.'] || (window.pdWeNummer || '');
+}
 
 const _gg = { figurId: GG_FIGUREN[0].id, scale: 3, svg: null };
 
@@ -952,13 +1664,13 @@ export async function ggCopy() {
 export async function ggSavePng() {
   if (!_gg.svg) return;
   try {
-    ggDownload(await ggSvgToPngBlob(_gg.svg, _gg.scale), ggFigur().datei + '.png');
+    ggDownload(await ggSvgToPngBlob(_gg.svg, _gg.scale), ggDateiname(ggFigur().datei, 'png'));
     ggSay('✓ PNG gespeichert.');
   } catch (e) { ggSay('⚠ ' + e.message, true); }
 }
 
 export function ggSaveSvg() {
   if (!_gg.svg) return;
-  ggDownload(new Blob([ggSvgSource(_gg.svg)], { type: 'image/svg+xml' }), ggFigur().datei + '.svg');
+  ggDownload(new Blob([ggSvgSource(_gg.svg)], { type: 'image/svg+xml' }), ggDateiname(ggFigur().datei, 'svg'));
   ggSay('✓ SVG gespeichert — in Word über Einfügen › Bilder einbetten (bleibt Vektor).');
 }

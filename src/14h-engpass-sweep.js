@@ -137,15 +137,23 @@ export function engpassSweep(opts = {}) {
         if (ausl > maxAusl) maxAusl = ausl;
       }
 
+      // Liegenschaftsebene: Hoechstlast beider Flussrichtungen ueber alle aktiven
+      // Trafos aufsummiert. NICHT saldieren — Bezug und Rueckspeisung treten zu
+      // verschiedenen Stunden auf und werden am Netzanschluss getrennt bewertet.
+      let bezugKw = 0, rueckKw = 0, trafoKVA = 0;
+
       for (const a of (ASSETS.items || [])) {
         if (a.type !== 'Trafo' || getAssetStatus(a, jahr) !== 'active') continue;
         const pct = a._calcPeakLoadPct || 0;
         if (!reihenTrafo.has(a.id)) reihenTrafo.set(a.id, []);
         reihenTrafo.get(a.id).push({ jahr, auslastungPct: pct, deltaUKumPct: 0 });
         if (pct > ENGPASS_GRENZEN.trafoPct) nUeberlast++;
+        bezugKw  += a._calcPeakLoadKwV || 0;
+        rueckKw  += a._calcPeakLoadKwG || 0;
+        trafoKVA += parseFloat(a.props?.leistungKVA) || 630;
       }
 
-      proJahr.push({ jahr, nUeberlast, maxAuslPct: maxAusl });
+      proJahr.push({ jahr, nUeberlast, maxAuslPct: maxAusl, bezugKw, rueckKw, trafoKVA });
     }
   } finally {
     // ── 3. Zustand vollständig wiederherstellen ─────────────────────────────
