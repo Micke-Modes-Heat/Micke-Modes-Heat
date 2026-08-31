@@ -11,6 +11,17 @@ import { splitStromNetzState, mergeStromNetzState, istDelta, migriereZuDelta } f
 
 export let gebaeude = [];
 export function setGebaeude(v) { gebaeude = v; }
+
+// ── Projekt-Stammdaten (Bearbeiter, Kaserne, WE-Nummer) ──
+// Ergeben zusammen den Projektnamen für Export-Dateinamen und Berichts-/Grafik-Köpfe.
+export let pdBearbeiterStrom = '';
+export function setPdBearbeiterStrom(v) { pdBearbeiterStrom = v || ''; }
+export let pdBearbeiterWaerme = '';
+export function setPdBearbeiterWaerme(v) { pdBearbeiterWaerme = v || ''; }
+export let pdKaserneName = '';
+export function setPdKaserneName(v) { pdKaserneName = v || ''; }
+export let pdWeNummer = '';
+export function setPdWeNummer(v) { pdWeNummer = v || ''; }
 export const _expandedIds = new Set(); // tracks which building cards are expanded
 export let _vizTimer = null;
 export function updateVizDebounced() { clearTimeout(_vizTimer); _vizTimer = setTimeout(updateViz, 80); }

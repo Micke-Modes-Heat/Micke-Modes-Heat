@@ -1,5 +1,7 @@
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
-import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustand, globalYear, isExcluded, selectedId, stromEdges, migriereVariantenFallsNoetig } from './01-globals-varianten.js';
+import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustand, globalYear, isExcluded, selectedId, stromEdges, migriereVariantenFallsNoetig,
+         pdBearbeiterStrom, pdBearbeiterWaerme, pdKaserneName, pdWeNummer,
+         setPdBearbeiterStrom, setPdBearbeiterWaerme, setPdKaserneName, setPdWeNummer } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh, highlightCard, map,
          getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
@@ -2468,6 +2470,50 @@ function _captureEconomicScenario() {
   };
 }
 
+// ── Projekt-Stammdaten (Bearbeiter, Kaserne, WE-Nummer) ─────────────────────
+function _fileToken(s) {
+  return String(s || '').trim().replace(/[\\/:*?"<>|]/g, '');
+}
+
+/** Projektname = WE-Nummer_Kasernenname, für Berichts-/Grafik-Köpfe und Export-Dateinamen. */
+export function getProjektName() {
+  return [_fileToken(pdWeNummer), _fileToken(pdKaserneName)].filter(Boolean).join('_');
+}
+
+/** Dateiname für einen Export: [Projektname_]base_Datum.ext (base optional). */
+export function projektExportFilename(base, ext) {
+  const datum = new Date().toISOString().slice(0, 10);
+  const teile = [getProjektName(), base, datum].filter(Boolean);
+  return `${teile.join('_')}.${ext}`;
+}
+
+/** Spiegelt den Projektnamen in Kopfzeile und Sidebar-Vorschau. Nach jeder Änderung an den Stammdaten aufrufen. */
+export function syncProjektname() {
+  const name = getProjektName();
+  const header = document.getElementById('header-projekt-name');
+  if (header) { header.textContent = name; header.title = name; header.style.display = name ? '' : 'none'; }
+  const preview = document.getElementById('pd-projektname-preview');
+  if (preview) preview.textContent = name ? `Projektname: ${name}` : '';
+}
+
+export function _captureProjektStammdaten() {
+  return { bearbeiterStrom: pdBearbeiterStrom, bearbeiterWaerme: pdBearbeiterWaerme, kaserneName: pdKaserneName, weNummer: pdWeNummer };
+}
+
+function _restoreProjektStammdaten(daten) {
+  const d = daten || {};
+  setPdBearbeiterStrom(d.bearbeiterStrom || '');
+  setPdBearbeiterWaerme(d.bearbeiterWaerme || '');
+  setPdKaserneName(d.kaserneName || '');
+  setPdWeNummer(d.weNummer || '');
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('pd-bearbeiter-strom', pdBearbeiterStrom);
+  set('pd-bearbeiter-waerme', pdBearbeiterWaerme);
+  set('pd-kaserne-name', pdKaserneName);
+  set('pd-we-nummer', pdWeNummer);
+  syncProjektname();
+}
+
 export function _buildProjectData() {
   const economicScenario = _captureEconomicScenario();
   return {
@@ -2475,6 +2521,7 @@ export function _buildProjectData() {
     calculationManifest: createCalculationManifest({timeSeriesMeta: glTimeSeriesMeta, pvProfileMeta: window.elPvMeta || syntheticPvProfileMeta(), tariffMeta: getPvTariffProvenance(document.getElementById('pv-tarif-szenario')?.value), economicMeta: economicScenario.provenance}),
     economicScenario,
     projectReportDraft: window._projectReportDraft ? structuredClone(window._projectReportDraft) : null,
+    projektStammdaten: _captureProjektStammdaten(),
     waermeGrundlagen:captureWaermeGrundlagen(),
     gebaeude: window.gebaeude.map(g => ({
       id: g.id, name: g.name, gebaeudenummer: g.gebaeudenummer || '', waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
@@ -2624,7 +2671,7 @@ function _setProjectFileStatus(name = null) {
   if (status) status.textContent = name ? `Datei: ${name}` : 'Noch keine Projektdatei geöffnet';
 }
 
-function _downloadProjectJson(filename = 'liegenschaft_projekt.json') {
+function _downloadProjectJson(filename = projektExportFilename('projekt', 'json')) {
   const url = URL.createObjectURL(_projectJsonBlob());
   const a=document.createElement('a');
   a.href=url; a.download=filename; a.click();
@@ -2649,7 +2696,7 @@ export async function saveProjectAs() {
   }
   try {
     const handle = await window.showSaveFilePicker({
-      suggestedName:_projectFileHandle?.name || 'liegenschaft_projekt.json',
+      suggestedName:_projectFileHandle?.name || projektExportFilename('projekt', 'json'),
       types:[{description:'Micke-Heat Projekt',accept:{'application/json':['.json']}}],
     });
     return await _writeProjectHandle(handle);
@@ -2987,6 +3034,7 @@ export function _loadProject(project) {
 // oder für den bereits validierten In-Memory-Rollback aufrufen.
 function _applyProjectData(project) {
       window._projectReportDraft = project.projectReportDraft ? structuredClone(project.projectReportDraft) : null;
+      _restoreProjektStammdaten(project.projektStammdaten || null);
       // Immer vor dem Gebäudetausch zurücksetzen/wiederherstellen. Alte Projekte
       // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die
       // Monatswerte oder Lastgänge der zuvor geöffneten Liegenschaft.

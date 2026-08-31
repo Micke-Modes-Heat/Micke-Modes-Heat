@@ -23,6 +23,7 @@
 
 <header>
   <div class="logo"><span class="logo-bars"><span style="background:#ff9800"></span><span style="background:#42a5f5"></span><span style="background:#66bb6a"></span><span style="background:#ab47bc"></span><span style="background:#e53935"></span></span><span class="logo-word">Energiekonzepte</span> <span class="logo-sep">·</span> <span class="logo-sub" style="color:var(--muted);font-weight:400;letter-spacing:.03em;font-style:italic;font-size:12px;">Micke-Heat</span><span class="app-version" id="app-version" title="Stand der ausgelieferten Anwendung" style="margin-left:6px;font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:1px 6px;font-family:'DM Mono',monospace;"></span></div>
+  <div class="header-projekt-name" id="header-projekt-name" style="display:none;margin-left:14px;font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title=""></div>
   <div class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-mode="karte" data-click="setViewMode('karte')">Karte</button>
     <button class="view-tab" data-mode="live" id="view-tab-live" data-click="setViewMode('live')" style="display:none;">Live</button>
@@ -243,6 +244,25 @@
         </button>
         <div id="lp-gebiet-status" style="font-size:9px;color:var(--muted);margin-bottom:10px;padding:2px 0;min-height:14px;"></div>
         <div class="lp-section-title">Projektdaten</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;">
+          <div>
+            <label for="pd-bearbeiter-waerme" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">Bearbeiter Wärme</label>
+            <input class="inp-field" id="pd-bearbeiter-waerme" type="text" placeholder="Name" style="width:100%;" data-input="setPdBearbeiterWaerme(this.value)">
+          </div>
+          <div>
+            <label for="pd-bearbeiter-strom" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">Bearbeiter Strom</label>
+            <input class="inp-field" id="pd-bearbeiter-strom" type="text" placeholder="Name" style="width:100%;" data-input="setPdBearbeiterStrom(this.value)">
+          </div>
+          <div>
+            <label for="pd-kaserne-name" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">Name Kaserne</label>
+            <input class="inp-field" id="pd-kaserne-name" type="text" placeholder="z. B. Kaserne Musterstadt" style="width:100%;" data-input="setPdKaserneName(this.value); syncProjektname()">
+          </div>
+          <div>
+            <label for="pd-we-nummer" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">WE-Nummer</label>
+            <input class="inp-field" id="pd-we-nummer" type="text" placeholder="z. B. 12345" style="width:100%;" data-input="setPdWeNummer(this.value); syncProjektname()">
+          </div>
+        </div>
+        <div id="pd-projektname-preview" style="font-size:9px;color:var(--muted);margin-bottom:8px;min-height:12px;"></div>
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" id="btn-grundlagen" data-click="toggleGrundlagenPanel()" style="border-color:#81c784;color:#81c784;">🔥 Wärme-Grundlagen</button>
           <button class="lp-tool-btn" id="btn-strom-grundlagen" data-click="toggleStromPanel()" style="border-color:#ffd54f;color:#ffd54f;">⚡ Strom-Grundlagen</button>

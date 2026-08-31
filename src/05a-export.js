@@ -9,7 +9,7 @@ import { ASSETS, getAssetStatus, ASSET_PROPS_SCHEMA } from './13a-assets-core.js
 import { stromEdges, stromNodes, variantResults } from './01-globals-varianten.js';
 import { getGebStromMwh } from './02b-gebaeude.js';
 import { recalcNetz } from './03b-netz.js';
-import { escHtml, renderList } from './03c-gebaeude-io.js';
+import { escHtml, renderList, projektExportFilename, getProjektName } from './03c-gebaeude-io.js';
 import { renderSidebarAssetList } from './13e-assets-inspector.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
@@ -70,7 +70,7 @@ export function exportDispatchCSV() {
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'dispatch_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.download = projektExportFilename('dispatch', 'csv');
   a.click();
 }
 
@@ -103,7 +103,7 @@ export function exportGebaeudeCSV() {
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'gebaeude_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.download = projektExportFilename('gebaeude', 'csv');
   a.click();
 }
 
@@ -1909,7 +1909,7 @@ export function exportFeldapp() {
   const payload = {
     _feldappVersion: 1,
     exportedAt: new Date().toISOString(),
-    projektName: document.getElementById('projektName')?.value || 'Energieplanung',
+    projektName: getProjektName() || 'Energieplanung',
     gebaeude: (gebaeude || []).map(g => ({
       ...g,
       polygon: (g.polygon || []).map(p =>
@@ -1936,7 +1936,7 @@ export function exportFeldapp() {
     const blob = new Blob([json], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `feldapp_${new Date().toISOString().slice(0,10)}.json`;
+    a.download = projektExportFilename('feldapp', 'json');
     a.click();
     URL.revokeObjectURL(a.href);
   } catch (err) {

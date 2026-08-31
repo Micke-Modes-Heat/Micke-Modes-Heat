@@ -13,6 +13,7 @@ import { _glIsRunning, glBerechnenDebounced } from './06b-gl-berechnen.js';
 import { DA_COLORS_FALLBACK } from './07a-analysis-charts.js';
 import { _renderWirtCo2Chart } from './07b-analysis-economics.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { projektExportFilename } from './03c-gebaeude-io.js';
 
 export let _emCurrentTab = 'em-stunden';
 export let _emZoom = { startH: 0, endH: 8760 };
@@ -1453,7 +1454,7 @@ export function exportVergleichCSV() {
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'variantenvergleich_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.download = projektExportFilename('variantenvergleich', 'csv');
   a.click();
 }
 
