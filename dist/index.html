@@ -15142,7 +15142,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-09-01';
   if (d.indexOf('__') === 0) d = '';
-  var c = '8f23c93';
+  var c = 'f5ae9fb';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -119543,7 +119543,7 @@ ${massTbl}
     bw: { url: 'https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_LGL-BW_ALKIS', layer: 'nora:v_al_gebaeude' },
     be: { url: 'https://gdi.berlin.de/services/wfs/alkis_gebaeude', layer: 'alkis_gebaeude:gebaeude' },
     bb: { url: 'https://isk.geobasis-bb.de/ows/alkis_vereinf_wfs', layer: 'ave:GebaeudeBauwerk' },
-    sh: { url: 'https://service.gdi-sh.de/WFS_SH_ALKIS_vereinf_OpenGBD', layer: 'ave:GebaeudeBauwerk' },
+    // SH: kein Eintrag hier — der Dienst erlaubt keine freie BBOX-Abfrage, siehe _wfsFetchBuildingsSH()
     th: { url: 'https://www.geoproxy.geoportal-th.de/geoproxy/services/adv_alkis_wfs', layer: 'ave:GebaeudeBauwerk' },
     sn: { url: 'https://geodienste.sachsen.de/aaa/public_alkis/vereinf/wfs', layer: 'ave:GebaeudeBauwerk' },
     rp: { url: 'https://geo5.service24.rlp.de/wfs/alkis_rp.fcgi', layer: 'ave:GebaeudeBauwerk' },
@@ -119601,9 +119601,74 @@ ${massTbl}
     return cfg.url + '?' + params.join('&');
   }
 
+  // ── SH-Sonderfall ─────────────────────────────────────────────────────────
+  // WFS_SH_ALKIS_vereinf_OpenGBD erlaubt laut Dienstbeschreibung keine freie BBOX-Abfrage,
+  // sondern nur StoredQueries auf Gemeindeebene (bestätigt: GetFeature mit typeNames+bbox
+  // liefert 400 "FeatureType ... not available for the WFS-Query-Operation"). Der
+  // Gemeindeschlüssel wird daher per Reverse-Geocoding (Nominatim, liefert
+  // de:amtlicher_gemeindeschluessel in extratags) ermittelt und die StoredQuery
+  // GetGebByGemeinde verwendet — die dann aber die ganze Gemeinde liefert, nicht nur
+  // den Kartenausschnitt.
+  var _shAgsCache = new Map();
+
+  function _shGemeindeschluessel(lat, lon) {
+    var key = lat.toFixed(2) + ',' + lon.toFixed(2);
+    if (_shAgsCache.has(key)) return Promise.resolve(_shAgsCache.get(key));
+    var url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lon + '&zoom=10&extratags=1';
+    return fetch(url, { headers: { 'Accept-Language': 'de' }, signal: AbortSignal.timeout(10000) })
+      .then(function(r) { if (!r.ok) throw new Error('Nominatim HTTP ' + r.status); return r.json(); })
+      .then(function(d) {
+        var ags = (d && d.extratags && d.extratags['de:amtlicher_gemeindeschluessel']) || null;
+        _shAgsCache.set(key, ags);
+        return ags;
+      });
+  }
+
+  function _wfsFetchBuildingsSH(bbox4326) {
+    var center = [(bbox4326[0] + bbox4326[2]) / 2, (bbox4326[1] + bbox4326[3]) / 2];
+    showHint('⏳ Ermittle Gemeinde (SH)…');
+    return _shGemeindeschluessel(center[0], center[1])
+      .catch(function(err) { console.warn('SH-Gemeindeermittlung fehlgeschlagen:', err.message); return null; })
+      .then(function(ags) {
+        if (!ags) return null;
+        showHint('⏳ Lade Gebäude vom Katasteramt (SH)…');
+        var ctrl = new AbortController();
+        var timer = setTimeout(function() { ctrl.abort(); }, 30000);
+        var url = 'https://service.gdi-sh.de/WFS_SH_ALKIS_vereinf_OpenGBD?service=WFS&version=2.0.0'
+          + '&request=GetFeature&storedQuery_id=GetGebByGemeinde&gemeindeschluessel=' + encodeURIComponent(ags);
+        return fetch(url, { signal: ctrl.signal })
+          .then(function(resp) {
+            clearTimeout(timer);
+            if (!resp.ok) throw new Error('WFS HTTP ' + resp.status);
+            return resp.text();
+          })
+          .then(function(txt) {
+            var geojson = _parseWfsGml(txt);
+            // StoredQuery liefert immer die ganze Gemeinde — auf den angefragten
+            // Kartenausschnitt eingrenzen (sonst ggf. tausende Gebäude weit außerhalb).
+            geojson.features = geojson.features.filter(function(feat) {
+              var ring = feat.geometry.coordinates[0];
+              var sumLat = 0, sumLng = 0;
+              ring.forEach(function(c) { sumLng += c[0]; sumLat += c[1]; });
+              var lat = sumLat / ring.length, lng = sumLng / ring.length;
+              return lat >= bbox4326[0] && lat <= bbox4326[2] && lng >= bbox4326[1] && lng <= bbox4326[3];
+            });
+            if (!geojson.features.length) return null;
+            showHint('✓ ' + geojson.features.length + ' Gebäude vom Katasteramt (SH)');
+            return geojson;
+          })
+          .catch(function(err) {
+            clearTimeout(timer);
+            console.warn('WFS-Fehler (SH):', err.message);
+            return null;
+          });
+      });
+  }
+
   function _wfsFetchBuildings(bbox4326) {
     var center = [(bbox4326[0] + bbox4326[2]) / 2, (bbox4326[1] + bbox4326[3]) / 2];
     var blId = _detectBundesland(center[0], center[1]);
+    if (blId === 'sh') return _wfsFetchBuildingsSH(bbox4326);
     if (!blId || !WFS_CONFIG[blId]) return Promise.resolve(null); // Bayern oder Ausland
 
     var cfg = WFS_CONFIG[blId];
@@ -119647,11 +119712,50 @@ ${massTbl}
       });
   }
 
+  // UTM → WGS84 (invers, WGS84-Ellipsoid). Grundlage für Landes-WFS, die das angeforderte
+  // srsName=EPSG:4326 ignorieren und immer im nativen UTM-System antworten (z.B. SH: EPSG:25832).
+  function _utmToWgs84(easting, northing, centralMeridianDeg) {
+    var a = 6378137, f = 1 / 298.257223563, k0 = 0.9996;
+    var e2 = f * (2 - f);
+    var e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+    var x = easting - 500000;
+    var M = northing / k0;
+    var mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
+    var phi1 = mu
+      + (3 * e1 / 2 - 27 * Math.pow(e1, 3) / 32) * Math.sin(2 * mu)
+      + (21 * e1 * e1 / 16 - 55 * Math.pow(e1, 4) / 32) * Math.sin(4 * mu)
+      + (151 * Math.pow(e1, 3) / 96) * Math.sin(6 * mu)
+      + (1097 * Math.pow(e1, 4) / 512) * Math.sin(8 * mu);
+    var ep2 = e2 / (1 - e2);
+    var C1 = ep2 * Math.cos(phi1) * Math.cos(phi1);
+    var T1 = Math.tan(phi1) * Math.tan(phi1);
+    var N1 = a / Math.sqrt(1 - e2 * Math.sin(phi1) * Math.sin(phi1));
+    var R1 = a * (1 - e2) / Math.pow(1 - e2 * Math.sin(phi1) * Math.sin(phi1), 1.5);
+    var D = x / (N1 * k0);
+    var lat = phi1 - (N1 * Math.tan(phi1) / R1) * (
+      D * D / 2
+      - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * Math.pow(D, 4) / 24
+      + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * Math.pow(D, 6) / 720
+    );
+    var lon = (D
+      - (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6
+      + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * Math.pow(D, 5) / 120
+    ) / Math.cos(phi1);
+    return { lat: lat * 180 / Math.PI, lng: centralMeridianDeg + lon * 180 / Math.PI };
+  }
+
   function _parseWfsGml(xml) {
     // GML-Parser für ALKIS-vereinfacht WFS-Antworten
     var features = [];
     var parser = new DOMParser();
     var doc = parser.parseFromString(xml, 'text/xml');
+
+    // srsName aus der Antwort lesen statt blind EPSG:4326 anzunehmen — manche Dienste
+    // (z.B. SH) liefern immer UTM-Meter, egal was angefragt wurde.
+    var srsEl = doc.documentElement.querySelector('[srsName]');
+    var srsName = srsEl ? srsEl.getAttribute('srsName') : '';
+    var utmMeridian = /25832/.test(srsName) ? 9 : /25833/.test(srsName) ? 15 : null;
+
     var members = doc.querySelectorAll('member, featureMember');
     members.forEach(function(member) {
       var posLists = member.querySelectorAll('posList');
@@ -119663,9 +119767,14 @@ ${massTbl}
         var text = pl.textContent.trim();
         var nums = text.split(/\s+/).map(Number);
         var ring = [];
-        // EPSG:4326 axis order: lat lon lat lon ...
         for (var i = 0; i + 1 < nums.length; i += 2) {
-          ring.push([nums[i + 1], nums[i]]); // [lon, lat] für GeoJSON
+          if (utmMeridian !== null) {
+            var ll = _utmToWgs84(nums[i], nums[i + 1], utmMeridian);
+            ring.push([ll.lng, ll.lat]);
+          } else {
+            // EPSG:4326 axis order: lat lon lat lon ...
+            ring.push([nums[i + 1], nums[i]]); // [lon, lat] für GeoJSON
+          }
         }
         if (ring.length >= 3) rings.push(ring);
       });
