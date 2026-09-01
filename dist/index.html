@@ -15140,9 +15140,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-08-31';
+  var d = '2026-09-01';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'c23b572';
+  var c = '8f23c93';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -106174,6 +106174,17 @@ ${massTbl}
   let _lpAnnotations = []; // { id, type:'text'|'line', x,y (Text) | x1,y1,x2,y2 (Linie), text }
   let _lpAnnoNextId = 1;
   let _lpPlacing = null;   // null | { type:'text'|'line', text, x1?, y1? }
+
+  // Einzeln markierte Objekte (Gebäude/Assets) — Klick auf ein Objekt im Plan wählt es aus und
+  // zeigt einen kleinen Inline-Editor im Panel (Text/Hervorheben/Sichtbarkeit), UNABHÄNGIG vom
+  // globalen "Beschriftungen"-Schalter und von den freien Text-/Linien-Annotationen oben (die an
+  // Plan-Pixel-Koordinaten hängen, nicht an einem konkreten Objekt — verschiebt/filtert man den
+  // Plan, bleiben Markierungen am richtigen Gebäude/Asset, während freie Texte an ihrer Stelle
+  // "kleben"). `offset` ist die Verschiebung der Beschriftung GEGENÜBER der Standardposition
+  // (per Ziehen an der Beschriftung selbst gesetzt, s. lpWireNachjustieren).
+  const LP_MARK_FARBE = '#E91E63';
+  let _lpMarkierungen = new Map(); // key `${kind}:${id}` -> { kind, id, text, sichtbar, hervorheben, offset:{dx,dy} }
+  let _lpSelected = null; // Key der aktuell im Panel geöffneten Markierung, oder null
   let _lpScale = 3;
   let _lpSvg = null;
   // Zuletzt gezeichnete Plot-Rechtecke + ihr Transform + der davon sichtbare Geo-Ausschnitt —
@@ -106384,6 +106395,7 @@ ${massTbl}
     const gebaeudeListe = _lpState.gebaeude
       ? (window.gebaeude || [])
           .filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3)
+          .filter(g => _lpMarkierungen.get(`geb:${g.id}`)?.sichtbar !== false)
           .map(g => ({ g, poly: g.polygon, horizont: lpHorizontStatus(lpGebStatus(g, referenz), lpGebStatus(g, ziel)) }))
           .filter(x => lpSichtbarNachHorizont(x.horizont))
       : [];
@@ -106420,6 +106432,7 @@ ${massTbl}
     if (typeof window.listAssets === 'function') {
       assetListe = (window.listAssets() || [])
         .filter(a => _lpAssetTypes[a.type])
+        .filter(a => _lpMarkierungen.get(`asset:${a.id}`)?.sichtbar !== false)
         .map(a => {
           let lat = a.lat, lng = a.lng;
           if ((lat == null || lng == null) && a.buildingId) {
@@ -106709,7 +106722,7 @@ ${massTbl}
     // Kreis = Kennwert).
     for (const { g, poly, horizont } of gebaeudeListe) {
       const farbe = _lpState.einfaerben === 'energie' ? null : lpGebFarbe(g, horizont, gebFarbCache);
-      out += `<polygon points="${pathOf(poly)}" fill="${farbe ? lpAufhellen(farbe) : T.tint}" stroke="${farbe || T.accents.gruenDunkel}" stroke-width="1" opacity="0.92"/>`;
+      out += `<polygon points="${pathOf(poly)}" fill="${farbe ? lpAufhellen(farbe) : T.tint}" stroke="${farbe || T.accents.gruenDunkel}" stroke-width="1" opacity="0.92" data-lp-mark="geb:${lbEsc(String(g.id))}"/>`;
     }
     // Energiekennwert-Kreise — 1:1 wie auf der Karte: Farbe + Fläche ∝ Kennwert
     if (energieInfo) {
@@ -106719,7 +106732,10 @@ ${massTbl}
         const s = tr.toSvg(c.lat, c.lng);
         const farbe = lpEnergieFarbe(_lpState.energieModus, w.farbwert, energieInfo.farbMin, energieInfo.farbMax);
         const radius = lpEnergieRadius(w.groessenwert, energieInfo.groessenMax);
-        out += `<circle cx="${lbR(s.x)}" cy="${lbR(s.y)}" r="${lbR(radius)}" fill="${farbe}" fill-opacity="0.88" stroke="#fff" stroke-width="1"/>`;
+        // Eigenes data-lp-mark (nicht nur auf dem darunterliegenden Polygon): der Kreis liegt
+        // im Energiekennwert-Modus optisch darüber und würde Klicks sonst abfangen, ohne dass
+        // .closest() das Polygon findet (Geschwister-Elemente, kein Vorfahre).
+        out += `<circle cx="${lbR(s.x)}" cy="${lbR(s.y)}" r="${lbR(radius)}" fill="${farbe}" fill-opacity="0.88" stroke="#fff" stroke-width="1" data-lp-mark="geb:${lbEsc(String(w.g.id))}"/>`;
       }
     }
     // Wärmenetz
@@ -106738,7 +106754,7 @@ ${massTbl}
     for (const { asset, lat, lng } of assetListe) {
       const s = tr.toSvg(lat, lng);
       const cfg = window.ASSET_CFG?.[asset.type] || {};
-      out += `<circle cx="${lbR(s.x)}" cy="${lbR(s.y)}" r="8.5" fill="${cfg.color || '#607d8b'}" stroke="#fff" stroke-width="1.5"/>`;
+      out += `<circle cx="${lbR(s.x)}" cy="${lbR(s.y)}" r="8.5" fill="${cfg.color || '#607d8b'}" stroke="#fff" stroke-width="1.5" data-lp-mark="asset:${lbEsc(String(asset.id))}"/>`;
       if (cfg.icon) out += `<text x="${lbR(s.x)}" y="${lbR(s.y) + 3.5}" text-anchor="middle" font-size="9">${lbEsc(cfg.icon)}</text>`;
     }
 
@@ -106754,6 +106770,41 @@ ${massTbl}
         const s = tr.toSvg(lat, lng);
         out += txt(s.x, s.y + 19, asset.name || window.ASSET_CFG?.[asset.type]?.label || asset.type,
           { anchor: 'middle', size: 8, fill: T.text.muted });
+      }
+    }
+
+    // Einzeln markierte Objekte — Hervorhebungsring (nur wenn "Hervorheben" an), gestrichelter
+    // Auswahlring (nur für das gerade im Panel geöffnete Objekt) und optionale eigene, per Ziehen
+    // verschiebbare Beschriftung. Ausgeblendete Objekte (sichtbar:false) tauchen in gebaeudeListe/
+    // assetListe gar nicht mehr auf (Filter in lpSammleGeometrie) — hier ist daher nur zu klären,
+    // WIE ein sichtbares, markiertes Objekt zusätzlich gekennzeichnet wird.
+    if (_lpMarkierungen.size) {
+      for (const [key, m] of _lpMarkierungen.entries()) {
+        let anchor = null;
+        if (m.kind === 'geb') {
+          const item = gebaeudeListe.find(x => String(x.g.id) === m.id);
+          if (!item) continue;
+          const c = lpPolyCentroid(item.poly);
+          if (!c) continue;
+          anchor = tr.toSvg(c.lat, c.lng);
+          if (m.hervorheben) out += `<polygon points="${pathOf(item.poly)}" fill="none" stroke="${LP_MARK_FARBE}" stroke-width="3"/>`;
+          if (key === _lpSelected) out += `<polygon points="${pathOf(item.poly)}" fill="none" stroke="#2196F3" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+        } else if (m.kind === 'asset') {
+          const item = assetListe.find(x => String(x.asset.id) === m.id);
+          if (!item) continue;
+          anchor = tr.toSvg(item.lat, item.lng);
+          if (m.hervorheben) out += `<circle cx="${lbR(anchor.x)}" cy="${lbR(anchor.y)}" r="12.5" fill="none" stroke="${LP_MARK_FARBE}" stroke-width="2.5"/>`;
+          if (key === _lpSelected) out += `<circle cx="${lbR(anchor.x)}" cy="${lbR(anchor.y)}" r="16" fill="none" stroke="#2196F3" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+        }
+        if (anchor && m.text) {
+          // offset=0/0 → Standardposition knapp über dem Objekt; per Ziehen an der Beschriftung
+          // (data-lp-label-drag, siehe lpWireNachjustieren) verschiebt sich NUR der Offset, die
+          // Bezugsposition bleibt am Objekt hängen (überlebt also Pan/Zoom/Filterwechsel).
+          const off = m.offset || { dx: 0, dy: 0 };
+          const baseDy = m.kind === 'geb' ? -9 : -14;
+          const lx = anchor.x + off.dx, ly = anchor.y + baseDy + off.dy;
+          out += `<text x="${lbR(lx)}" y="${lbR(ly)}" text-anchor="middle" font-family="${T.font}" font-size="10" font-weight="700" fill="${LP_MARK_FARBE}" data-lp-label-drag="${lbEsc(key)}" style="cursor:move;">${lbEsc(m.text)}</text>`;
+        }
       }
     }
 
@@ -107011,8 +107062,10 @@ ${massTbl}
     return [name, [plz, ort].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
   }
 
+  const LP_INP_STYLE = 'padding:5px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);font-family:inherit;font-size:11px;';
+
   function lpPanelHtml() {
-    const inp = 'padding:5px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);font-family:inherit;font-size:11px;';
+    const inp = LP_INP_STYLE;
     const jahrFeld = (key, label, title) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);" title="${lbEsc(title || '')}">${lbEsc(label)}
     <input type="number" value="${_lpState[key]}" data-change="lpSetJahr('${key}',this.value)" style="${inp}width:76px;"></label>`;
     const anzeigeBtn = (id, label) => `<button data-click="lpSetAnzeige('${id}')" style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.anzeige===id?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.anzeige===id?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.anzeige===id?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
@@ -107121,6 +107174,18 @@ ${massTbl}
     </div>` : ''}`}
   </div>
 
+  <div style="margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Hervorgehobene / einzeln beschriftete Objekte</div>
+    ${_lpSelected ? lpMarkEditorHtml() : ''}
+    ${_lpMarkierungen.size ? `<div style="display:flex;flex-direction:column;gap:4px;">
+      ${[..._lpMarkierungen.entries()].filter(([key]) => key !== _lpSelected).map(([key, m]) => `<div style="display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted);">
+        <span style="color:${LP_MARK_FARBE};opacity:${m.sichtbar === false ? 0.4 : 1};">●</span>
+        <button data-click="lpSelectMarkierung('${lbEsc(key)}')" style="flex:1;text-align:left;background:transparent;border:none;color:var(--muted);cursor:pointer;padding:0;font:inherit;">${lbEsc(lpMarkObjName(m.kind, m.id))}${m.text ? ` — „${lbEsc(m.text)}“` : ''}${m.sichtbar === false ? ' (ausgeblendet)' : ''}</button>
+        <button data-click="lpRemoveMarkierung('${lbEsc(key)}')" title="Entfernen" style="background:transparent;border:none;color:#ef5350;cursor:pointer;font-size:12px;">✕</button>
+      </div>`).join('')}
+    </div>` : (_lpSelected ? '' : `<div style="font-size:10.5px;color:var(--muted);">Auf ein Gebäude oder Asset im Plan klicken, um es hervorzuheben, auszublenden oder individuell zu beschriften.</div>`)}
+  </div>
+
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
     <button data-click="lpCopy()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;font-family:inherit;font-size:11px;cursor:pointer;">⧉ Für Word kopieren</button>
     <button data-click="lpSavePng()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ PNG</button>
@@ -107198,7 +107263,9 @@ ${massTbl}
   }
 
   let _lpNachjustierenWired = false;
-  let _lpDrag = null; // { startPt, sichtbar (Basis-Ausschnitt bei Drag-Start), tr, raf }
+  // mode 'pan': {mode,startPt,tr,sichtbar,raf,moved,markTarget} — verschiebt den Kartenausschnitt.
+  // mode 'label': {mode,startPt,key,startOffset,raf,moved} — verschiebt NUR den Text-Offset einer Markierung.
+  let _lpDrag = null;
 
   /**
    * Ziehen (verschieben) und Mausrad (zoomen) direkt auf dem gerenderten Plan — ergänzt das
@@ -107221,12 +107288,32 @@ ${massTbl}
       const startPt = lpSvgPunkt(svg, evt);
       const plot = lpPlotUnter(startPt);
       if (!plot) return;
+      // Ziehen an einer individuellen Beschriftung verschiebt NUR deren Offset, nicht den
+      // ganzen Plan — deshalb VOR der allgemeinen Pan-Logik geprüft (die Beschriftung liegt
+      // optisch über allem anderen).
+      const labelEl = evt.target.closest('[data-lp-label-drag]');
+      if (labelEl) {
+        const key = labelEl.getAttribute('data-lp-label-drag');
+        const m = _lpMarkierungen.get(key);
+        if (m) {
+          _lpDrag = { mode: 'label', startPt, key, startOffset: { ...(m.offset || { dx: 0, dy: 0 }) }, raf: null, moved: false };
+          svg.style.cursor = 'move';
+          evt.preventDefault();
+          return;
+        }
+      }
       // Sichtbarer Geo-Ausschnitt DIESES Plots als Basis — via fromSvg an den Plot-Ecken
       // bestimmt, nicht aus _lpState.kartenausschnitt gelesen: die Ecken geben den TATSÄCHLICH
       // sichtbaren (bereits mit Rand-Padding versehenen) Rahmen, egal ob automatisch angepasst
       // oder fest — kein Sprung beim ersten Ziehen.
       const nw = plot.tr.fromSvg(plot.plotX, plot.plotY), se = plot.tr.fromSvg(plot.plotX + plot.plotW, plot.plotY + plot.plotH);
-      _lpDrag = { startPt, tr: plot.tr, sichtbar: { north: nw.lat, west: nw.lng, south: se.lat, east: se.lng }, raf: null };
+      // markTarget wird schon beim Mousedown eingefroren (nicht erst beim Mouseup gesucht):
+      // damit bleibt eindeutig, WELCHES Objekt gemeint war, selbst wenn der Klick durch das
+      // spätere Neu-Rendern (Drag/Zoom) unter dem Cursor durch ein anderes Element ersetzt wird.
+      _lpDrag = {
+        mode: 'pan', startPt, tr: plot.tr, sichtbar: { north: nw.lat, west: nw.lng, south: se.lat, east: se.lng },
+        raf: null, moved: false, markTarget: evt.target.closest('[data-lp-mark]'),
+      };
       svg.style.cursor = 'grabbing';
       evt.preventDefault();
     });
@@ -107235,10 +107322,18 @@ ${massTbl}
       if (!_lpDrag || !_lpSvg) return;
       const p = lpSvgPunkt(_lpSvg, evt);
       const dx = p.x - _lpDrag.startPt.x, dy = p.y - _lpDrag.startPt.y;
+      // Kleine Zitterbewegungen (Trackpad, Klick-Ungenauigkeit) sollen noch als "Klick" zählen,
+      // nicht schon als Ziehen — Schwelle in SVG-Nutzeinheiten (Blattbreite 1000 = grob 1000px).
+      if (Math.hypot(dx, dy) > 4) _lpDrag.moved = true;
       if (_lpDrag.raf) return;
       _lpDrag.raf = requestAnimationFrame(() => {
         if (!_lpDrag) return;
         _lpDrag.raf = null;
+        if (_lpDrag.mode === 'label') {
+          const m = _lpMarkierungen.get(_lpDrag.key);
+          if (m) { m.offset = { dx: _lpDrag.startOffset.dx + dx, dy: _lpDrag.startOffset.dy + dy }; lpRenderPanel(); }
+          return;
+        }
         const { tr, sichtbar } = _lpDrag;
         // Verschiebung ist translationsinvariant — braucht nur scale/cosRef, kein Zentrum.
         const dlng = (dx / tr.scale) / (LP_R * tr.cosRef) * (180 / Math.PI);
@@ -107253,7 +107348,16 @@ ${massTbl}
     });
 
     window.addEventListener('mouseup', () => {
-      if (_lpDrag && _lpSvg) _lpSvg.style.cursor = 'grab';
+      if (!_lpDrag) return;
+      if (_lpSvg) _lpSvg.style.cursor = _lpDrag.mode === 'label' ? 'move' : 'grab';
+      if (!_lpDrag.moved) {
+        // Kein Ziehen (Maus quasi nicht bewegt) → als Klick werten: auf einer Beschriftung oder
+        // einem Objekt öffnet/schließt das den Inline-Editor, auf leerer Fläche im Plot wählt
+        // eine offene Markierung wieder ab.
+        if (_lpDrag.mode === 'label') window.lpSelectMarkierung(_lpDrag.key);
+        else if (_lpDrag.markTarget) window.lpSelectMarkierung(_lpDrag.markTarget.getAttribute('data-lp-mark'));
+        else if (_lpSelected) window.lpDeselectMarkierung();
+      }
       _lpDrag = null;
     });
 
@@ -107276,6 +107380,73 @@ ${massTbl}
       _lpState.satBild = null;
       lpRenderPanel();
     }, { passive: false });
+  }
+
+  /** Anzeigename eines Gebäudes/Assets für den Inline-Editor und die Panel-Liste. */
+  function lpMarkObjName(kind, id) {
+    if (kind === 'geb') {
+      const g = (window.gebaeude || []).find(x => String(x.id) === id);
+      return g ? lpGebLabel(g) : id;
+    }
+    const a = typeof window.listAssets === 'function' ? window.listAssets().find(x => String(x.id) === id) : null;
+    return a?.name || window.ASSET_CFG?.[a?.type]?.label || id;
+  }
+
+  /** Eine Markierung gilt als "leer", wenn sie nichts vom Standard abweicht — wird beim Abwählen automatisch entfernt, statt als Karteileiche liegen zu bleiben. */
+  function lpMarkIstLeer(m) {
+    return !m.text && m.sichtbar !== false && !m.hervorheben && (!m.offset || (!m.offset.dx && !m.offset.dy));
+  }
+  function lpMarkAuswahlAufraeumen() {
+    if (_lpSelected && _lpMarkierungen.has(_lpSelected) && lpMarkIstLeer(_lpMarkierungen.get(_lpSelected))) {
+      _lpMarkierungen.delete(_lpSelected);
+    }
+  }
+
+  /**
+   * Klick auf ein Gebäude/Asset im Plan (kein Ziehen) — wählt es aus und öffnet den Inline-
+   * Editor im Panel (Text/Hervorheben/Sichtbarkeit statt eines prompt()-Dialogs). Erneuter Klick
+   * auf dasselbe Objekt wählt ab. Eine unveränderte (leere) vorherige Auswahl wird beim Wechsel
+   * automatisch aufgeräumt, damit bloßes Anklicken zum Ansehen keine Karteileichen hinterlässt.
+   */
+  window.lpSelectMarkierung = (key) => {
+    if (_lpSelected === key) { window.lpDeselectMarkierung(); return; }
+    lpMarkAuswahlAufraeumen();
+    _lpSelected = key;
+    if (!_lpMarkierungen.has(key)) {
+      const sep = key.indexOf(':');
+      _lpMarkierungen.set(key, { kind: key.slice(0, sep), id: key.slice(sep + 1), text: '', sichtbar: true, hervorheben: false, offset: { dx: 0, dy: 0 } });
+    }
+    lpRenderPanel();
+  };
+  window.lpDeselectMarkierung = () => { lpMarkAuswahlAufraeumen(); _lpSelected = null; lpRenderPanel(); };
+  window.lpSetMarkText = (key, val) => { const m = _lpMarkierungen.get(key); if (m) { m.text = val.trim(); lpRenderPanel(); } };
+  window.lpSetMarkFlag = (key, flag, val) => { const m = _lpMarkierungen.get(key); if (m) { m[flag] = !!val; lpRenderPanel(); } };
+  window.lpResetMarkOffset = (key) => { const m = _lpMarkierungen.get(key); if (m) { m.offset = { dx: 0, dy: 0 }; lpRenderPanel(); } };
+  window.lpRemoveMarkierung = (key) => { _lpMarkierungen.delete(key); if (_lpSelected === key) _lpSelected = null; lpRenderPanel(); };
+
+  /** Inline-Editor für die aktuell ausgewählte Markierung — Text, Hervorheben, Sichtbarkeit. */
+  function lpMarkEditorHtml() {
+    const m = _lpMarkierungen.get(_lpSelected);
+    if (!m) return '';
+    const name = lpMarkObjName(m.kind, m.id);
+    const verschoben = m.offset && (m.offset.dx || m.offset.dy);
+    return `
+  <div style="padding:8px;border:1px solid rgba(233,30,99,.35);border-radius:6px;background:rgba(233,30,99,.06);margin-bottom:8px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <span style="font-size:11px;font-weight:600;color:#e8eaed;flex:1;">${lbEsc(name)}</span>
+      <button data-click="lpDeselectMarkierung()" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">Fertig</button>
+    </div>
+    <input type="text" placeholder="Individuelle Beschriftung (leer = keine)" value="${lbEsc(m.text)}"
+      data-change="lpSetMarkText('${lbEsc(_lpSelected)}', this.value)" style="${LP_INP_STYLE}width:100%;margin-bottom:8px;box-sizing:border-box;">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;">
+        <input type="checkbox" ${m.hervorheben ? 'checked' : ''} data-change="lpSetMarkFlag('${lbEsc(_lpSelected)}','hervorheben',this.checked)">Hervorheben (Rahmen)</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;">
+        <input type="checkbox" ${m.sichtbar !== false ? 'checked' : ''} data-change="lpSetMarkFlag('${lbEsc(_lpSelected)}','sichtbar',this.checked)">Im Plan anzeigen</label>
+      ${verschoben ? `<button data-click="lpResetMarkOffset('${lbEsc(_lpSelected)}')" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">Textposition zurücksetzen</button>` : ''}
+    </div>
+    ${m.text ? `<div style="font-size:10px;color:var(--muted);margin-top:6px;">🖱 Beschriftung im Plan direkt anfassen und verschieben.</div>` : ''}
+  </div>`;
   }
 
   /** Zoomt symmetrisch um die Mitte des aktuell sichtbaren Ausschnitts — für die +/- Buttons im Panel. */
@@ -107345,7 +107516,7 @@ ${massTbl}
   /* ══════════════════════════════════════════════════════════════════════════
    * 3) PANEL — Analyse-Sektion „Liegenschaftsbilder" (zwei Unter-Reiter)
    * ═══════════════════════════════════════════════════════════════════════ */
-  let _lbTab = 'karte'; // 'karte' | 'lageplan'
+  let _lbTab = 'lageplan'; // 'karte' | 'lageplan'
 
   function lbSetTab(tab) {
     _lbTab = tab === 'lageplan' ? 'lageplan' : 'karte';
