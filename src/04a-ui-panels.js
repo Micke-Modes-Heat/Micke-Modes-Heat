@@ -22,8 +22,9 @@ import { ERZEUGER_CFG, NUTZUNG_DEFAULTS } from './config/erzeuger-cfg.js';
 import { KMR_KOSTEN } from './config/netz-kosten.js';
 import { napBuildAnalyseSection, napShowSection } from './13o-nap-analyse.js';
 import { knaBuildAnalyseSection, knaShowSection } from './13r-knotenpunkt-analyse.js';
-import { pvaBuildAnalyseSection, pvaShowSection } from './09d-pv-analyse.js';
+import { pvaBuildAnalyseSection, pvaShowSection, resBuildAnalyseSection, resShowSection } from './09d-pv-analyse.js';
 import { ggBuildAnalyseSection, ggShowSection } from './17-gutachten-grafik.js';
+import { lbBuildAnalyseSection, lbShowSection } from './18-liegenschaftsbilder.js';
 import { ausbauShow } from './14e-ausbauplaner-ui.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-globals-varianten.js';
 import { getWLDColor } from './02a-netz-physik.js';
@@ -1530,7 +1531,9 @@ export function refreshAnalyseView() {
   napBuildAnalyseSection();
   knaBuildAnalyseSection();
   pvaBuildAnalyseSection();
+  resBuildAnalyseSection();
   ggBuildAnalyseSection();
+  lbBuildAnalyseSection();
 
   // Alle inline-eingebetteten Panels zurücksetzen
   _restoreInlinePanels();
@@ -1546,10 +1549,14 @@ export function refreshAnalyseView() {
   if (knaWrap) knaWrap.style.display = 'none';
   const pvaWrap = document.getElementById('analyse-pva-wrap');
   if (pvaWrap) pvaWrap.style.display = 'none';
+  const resWrap = document.getElementById('analyse-resilienz-wrap');
+  if (resWrap) resWrap.style.display = 'none';
   const ausbWrap = document.getElementById('ausbauplaner-wrap');
   if (ausbWrap) ausbWrap.style.display = 'none';
   const ggWrap = document.getElementById('analyse-ggrafik-wrap');
   if (ggWrap) ggWrap.style.display = 'none';
+  const lbWrap = document.getElementById('analyse-liegenschaftsbilder-wrap');
+  if (lbWrap) lbWrap.style.display = 'none';
 
   if (analyseCurrentSection === 'uebersicht') {
     grid.style.display = 'grid';
@@ -1578,8 +1585,12 @@ export function refreshAnalyseView() {
     knaShowSection(true);
   } else if (analyseCurrentSection === 'pva') {
     pvaShowSection(true);
+  } else if (analyseCurrentSection === 'resilienz') {
+    resShowSection(true);
   } else if (analyseCurrentSection === 'ggrafik') {
     ggShowSection(true);
+  } else if (analyseCurrentSection === 'liegenschaftsbilder') {
+    lbShowSection(true);
   } else if (analyseCurrentSection === 'ausbauplaner') {
     if (typeof ausbauShow === 'function') ausbauShow(true);
   }

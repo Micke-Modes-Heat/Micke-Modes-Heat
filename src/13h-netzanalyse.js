@@ -2259,7 +2259,7 @@ ${hasAnyResult ? `
   const nsaRes = NA.nsaResult;
   const recoTxt = reco && reco.genKw > 0
     ? `Resilienz-Empfehlung: <b>${Math.ceil(reco.genKw)} kW</b> · ${reco.durH} h · ${reco.kraftstoff}`
-    : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (Abb. 10) — Fallback: Karten-Spitzenlast</span>`;
+    : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (Analyse ▸ 🛡 Resilienz) — Fallback: Karten-Spitzenlast</span>`;
   const _srcBtn = (val, lbl) => {
     const on = NA.nsaSource === val;
     return `<button onclick="naSetNsaSource('${val}')"

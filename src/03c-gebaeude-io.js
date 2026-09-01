@@ -2582,6 +2582,13 @@ export function _buildProjectData() {
     pvModul: { breite: document.getElementById('pv-modul-breite')?.value, laenge: document.getElementById('pv-modul-laenge')?.value, wp: document.getElementById('pv-modul-wp')?.value },
     pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value, vergModell: document.getElementById('pv-verg-modell')?.value, tarifSzenario: document.getElementById('pv-tarif-szenario')?.value },
     pvProfile: window.elPvH ? {values:Array.from(window.elPvH), meta:window.elPvMeta || {quality:'uploaded_unverified',source:'Legacy PV upload'}} : null,
+    quartierProfile: window.elQuartierH ? {
+      values: Array.from(window.elQuartierH),
+      values15: window.elQuartierH15 ? Array.from(window.elQuartierH15) : null,
+      resolution: window.elQuartierResolution || 60,
+      startDate: window.elQuartierStartDate ? window.elQuartierStartDate.toISOString() : null,
+      filename: window.elQuartierFilename || null,
+    } : null,
     battery: {capacityKwh:_finiteNumberOr(document.getElementById('bat-kapazitaet')?.value,0),powerKw:_finiteNumberOr(document.getElementById('bat-leistung')?.value,0),
       investEurKwh:_finiteNumberOr(document.getElementById('opt-bat-invest')?.value,400),studyLifeYears:_finiteNumberOr(document.getElementById('opt-bat-life')?.value,15),
       calendarFadePctPerYear:_finiteNumberOr(document.getElementById('bat-calendar-fade')?.value,1.5),cycleLife:_finiteNumberOr(document.getElementById('bat-cycle-life')?.value,6000),
@@ -3353,6 +3360,27 @@ function _applyProjectData(project) {
         const info = document.getElementById('pv-upload-info'); if (info) info.textContent = `${window.elPvMeta.filename || 'Gespeichertes PV-Profil'} · ${window.elPvMeta.quality || 'Qualität unbekannt'}`;
         const clear = document.getElementById('pv-clear-btn'); if (clear) clear.style.display = '';
       } else { window.elPvH = null; window.elPvMeta = null; }
+      if (project.quartierProfile?.values) {
+        if (project.quartierProfile.values.length !== 8760) throw new Error('Gespeicherter Stromlastgang muss genau 8.760 Stunden enthalten.');
+        window.elQuartierH          = Float32Array.from(project.quartierProfile.values);
+        window.elQuartierH15        = project.quartierProfile.values15 ? Float32Array.from(project.quartierProfile.values15) : null;
+        window.elQuartierResolution = project.quartierProfile.resolution || 60;
+        window.elQuartierStartDate  = project.quartierProfile.startDate ? new Date(project.quartierProfile.startDate) : null;
+        window.elQuartierFilename   = project.quartierProfile.filename || null;
+        const sumKwh = window.elQuartierH.reduce((s,v) => s+v, 0);
+        const pMax   = window.elQuartierH.reduce((m,v) => v>m?v:m, 0);
+        const resLbl = window.elQuartierResolution === 15
+          ? `15-min · ${window.elQuartierH15.length.toLocaleString('de-DE')} Werte`
+          : `stündlich · ${window.elQuartierH.length.toLocaleString('de-DE')} Werte`;
+        const info = document.getElementById('strom-upload-info');
+        if (info) info.textContent = `${window.elQuartierFilename || 'Gespeicherter Lastgang'} · ${Math.round(sumKwh/1000).toLocaleString('de-DE')} MWh/a · max ${Math.round(pMax).toLocaleString('de-DE')} kW · ${resLbl}`;
+        const clear = document.getElementById('strom-clear-btn'); if (clear) clear.style.display = '';
+      } else {
+        window.elQuartierH = null; window.elQuartierH15 = null; window.elQuartierResolution = null;
+        window.elQuartierStartDate = null; window.elQuartierFilename = null;
+        const info = document.getElementById('strom-upload-info'); if (info) info.textContent = '';
+        const clear = document.getElementById('strom-clear-btn'); if (clear) clear.style.display = 'none';
+      }
       if (project.battery) {
         const ids = {capacityKwh:'bat-kapazitaet',powerKw:'bat-leistung',investEurKwh:'opt-bat-invest',studyLifeYears:'opt-bat-life',calendarFadePctPerYear:'bat-calendar-fade',cycleLife:'bat-cycle-life',eolCapacityPct:'bat-eol-pct'};
         for (const [key,id] of Object.entries(ids)) { const el=document.getElementById(id); if(el && project.battery[key] != null) el.value=project.battery[key]; }

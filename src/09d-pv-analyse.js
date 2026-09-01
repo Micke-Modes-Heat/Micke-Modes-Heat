@@ -2,9 +2,11 @@
 // Eigenständiges Modul — kein Eingriff in bestehende 09a–09c, 10a–10d.
 // Nutzt window.elQuartierH15 (15-min nativ) wenn vorhanden, sonst window.elQuartierH (8760h).
 
-import { freiflaechen, gebaeude, globalYear } from './01-globals-varianten.js';
+import { freiflaechen, gebaeude, globalYear, isExcluded, thermSpeicherAktiv } from './01-globals-varianten.js';
 import { calcFFKwp } from './03a-erzeuger.js';
-import { calcGebKwp } from './03c-gebaeude-io.js';
+import { calcGebKwp, escHtml } from './03c-gebaeude-io.js';
+import { getComputedStats, getNutzungstypById } from './02b-gebaeude.js';
+import { getThermSpeicherParams } from './06b-gl-berechnen.js';
 import { CalcEngine } from './08-calc-engine.js';
 import { makePvProfile8760, makePvProfileEffective, pvGetEffectiveSpez } from './09a-pv-profile.js';
 import { OPT_INVEST_DEFAULT, OPT_IH, OPT_NUTZUNG } from './config/optimizer-defaults.js';
@@ -1107,6 +1109,68 @@ export function initPvAnalyse() {
   pvaShowSection(true);
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// EIGENES ANALYSE-KAPITEL „🛡 Resilienz" — identisches Muster zu pvaBuildAnalyseSection.
+// Die Blackout-/Inselbetrieb-Analyse (früher „Abb. 10" am Ende der PV-Analyse) bekommt
+// so eigenen Platz für die genauere Betrachtung, statt am Ende der PV-Abbildungen
+// unterzugehen. Rechnet auf den bereits in der PV-Analyse berechneten Varianten
+// (window._pvAnalyse.ergebnisse) — dort zuerst „Varianten berechnen" nötig.
+// ══════════════════════════════════════════════════════════════════════════════
+
+export function resBuildAnalyseSection() {
+  const tabBar = document.getElementById('analyse-view-tabs');
+  if (tabBar && !tabBar.querySelector('[data-section="resilienz"]')) {
+    const btn = document.createElement('button');
+    btn.className    = 'analyse-section-tab';
+    btn.dataset.section = 'resilienz';
+    btn.textContent  = '🛡 Resilienz';
+    btn.title = 'Resilienz-Analyse: Autarkie bei Stromausfall (Inselbetrieb aus PV, Batterie und Notstrom) sowie Ausfallsicherheit bei Totalausfall der Wärmezentrale.';
+    btn.addEventListener('click', () => {
+      if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('resilienz');
+    });
+    tabBar.appendChild(btn);
+  }
+
+  if (document.getElementById('analyse-resilienz-wrap')) return;
+  const analyseView = document.getElementById('center-analyse-view');
+  if (!analyseView) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'analyse-resilienz-wrap';
+  wrap.style.display = 'none';
+  analyseView.appendChild(wrap);
+}
+
+export function resShowSection(show) {
+  const wrap = document.getElementById('analyse-resilienz-wrap');
+  if (!wrap) return;
+  wrap.style.display = show ? 'block' : 'none';
+  if (!show) return;
+
+  const ergebnisse = window._pvAnalyse?.ergebnisse;
+  const kanon = (ergebnisse || []).filter(v => v.info && v.info.frage);
+  if (!kanon.length) {
+    wrap.innerHTML = `
+    <div style="padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid #ff8f00;border-radius:7px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:10px;">
+      <span style="font-size:16px;">🛡</span>
+      <span>Noch keine PV-Varianten berechnet — bitte erst in
+        <button data-click="setAnalyseSection('pva')" style="background:transparent;border:1px solid #ff8f00;color:#ff8f00;border-radius:10px;padding:1px 8px;font-size:10px;cursor:pointer;">☀ PV-Analyse</button>
+        auf „Varianten berechnen" klicken. Die Resilienz-Analyse rechnet auf diesen Varianten (PV/Batterie je Auslegung).
+      </span>
+    </div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+  <div style="margin-bottom:10px;">
+    <div style="font-size:13px;font-weight:700;color:var(--text);">🛡 Resilienz — Ausfallsicherheit Strom &amp; Wärme</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:2px;">Strom: wie lange trägt die Anlage einen Blackout zum ungünstigsten Zeitpunkt (Grundlage: die Varianten aus der ☀ PV-Analyse)? Wärme: wie lange bis ein Totalausfall der Wärmezentrale kritisch wird?</div>
+  </div>
+  <div id="pva-chart-resilienz" style="overflow:hidden;"></div>`;
+
+  renderResilienz(ergebnisse);
+}
+
 // Wird nach Upload/Löschen des Strom-Lastgangs (auch über den Upload-Button hier im
 // PVA-Panel) aufgerufen, damit Status-Zeilen, Buttons usw. aktualisiert werden.
 window._pvaRefreshIfVisible = function _pvaRefreshIfVisible() {
@@ -1524,8 +1588,13 @@ function _pvBuildPanelHtml() {
     <!-- Abb. 9 — Sensitivitätsanalyse (Tornado) -->
     <div id="pva-chart-sensitivitaet" style="margin-bottom:22px;overflow:hidden;"></div>
 
-    <!-- Abb. 10 — Resilienz / Blackout-Analyse -->
-    <div id="pva-chart-resilienz" style="margin-bottom:8px;overflow:hidden;"></div>
+    <!-- Resilienz / Blackout-Analyse: jetzt eigenes Analyse-Kapitel -->
+    <div style="margin-bottom:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid #ff8f00;border-radius:7px;font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:14px;">🛡</span>
+      <span>Die Resilienz-/Blackout-Analyse (Autarkie bei Netzausfall) ist jetzt ein eigenes Kapitel — siehe
+        <button data-click="setAnalyseSection('resilienz')" style="background:transparent;border:1px solid #ff8f00;color:#ff8f00;border-radius:10px;padding:1px 8px;font-size:10px;cursor:pointer;">Analyse ▸ 🛡 Resilienz</button>
+      </span>
+    </div>
 
   </div>
 </div>`;
@@ -3364,6 +3433,19 @@ const _PV_RES_COST = {
   meldeschwelleL: 1000,  // ab ~1000 l oberirdischer Diesellagerung: AwSV-Anzeige-/Auflagen
 };
 
+// Bauschwere-Klassen für die Auskühlzeit-Abschätzung (wirksame Wärmespeicherfähigkeit
+// der Gebäudemasse je m² Nutzfläche) — Anhaltswerte nach DIN EN ISO 13786, grob
+// klassifiziert. "mittel" als Default für Mischbestand ohne bekannte Bauweise.
+const _PV_RES_BAUSCHWERE = {
+  leicht: { label: 'Leicht (Holz-/Trockenbau)',   whM2K: 40  },
+  mittel: { label: 'Mittel (Massivbau üblich)',   whM2K: 90  },
+  schwer: { label: 'Schwer (Beton/Stein massiv)', whM2K: 150 },
+};
+// Nutzungstyp-Gruppen (s. 02b-gebaeude.js), deren Gebäude bei Wärmeausfall als
+// besonders kritisch gelten (Pflege, Gesundheit, Betreuung) — für die Hervorhebung
+// in der Gebäudeliste.
+const _PV_RES_KRIT_GRUPPEN = new Set(['Unterkunft und Pflege', 'Gesundheit', 'Bildung und Betreuung']);
+
 let _pvResVarId = null, _pvResPvKwp = null, _pvResBatKwh = null;
 let _pvResDurH = null, _pvResFuel = null, _pvResLoadFrac = null;
 // Betriebsweise (welche Erzeuger im Inselbetrieb verfügbar sind):
@@ -3374,6 +3456,13 @@ let _pvResDurH = null, _pvResFuel = null, _pvResLoadFrac = null;
 let _pvResMode = null;
 let _pvResUsable = null;    // nutzbare Batteriekapazität in % (Entladetiefe + Kälte-Derating)
 let _pvResSelStart = null;  // per Heatmap-Klick gewählter Ausfall-Start (null = Worst-Case)
+
+// Betrachtete Versorgung im Resilienz-Kapitel: 'strom' (Blackout, s.o.) oder
+// 'waerme' (Totalausfall der Wärmezentrale, s.u.) — gemeinsamer Reiter, siehe Aufgabe.
+let _pvResEnergy      = 'strom';
+let _pvResBauschwere  = 'mittel'; // Bauschwere-Annahme für die Auskühlzeit-Abschätzung
+let _pvResTcrit       = 15;       // kritische Innenraumtemperatur (°C)
+let _pvResSelStartW   = null;     // per Heatmap-Klick gewählter Ausfall-Start (Wärme, unabhängig von Strom)
 
 // 15-min → stündlich mitteln (Leistungsgrößen)
 function _pvResHourly(arr, dt) {
@@ -3463,17 +3552,53 @@ function _pvResMinGen(loadEff, pvH, batKwh, start, durH, nHours, initSoc, fuel, 
   return hi;
 }
 
+function _pvResEnergyHeader(overrideEl) {
+  const opts = [['strom', '⚡ Strom'], ['waerme', '🔥 Wärme']];
+  const btns = opts.map(([k, lbl]) =>
+    `<button data-pvres-energy="${k}" style="padding:2px 10px;border:1px solid ${k===_pvResEnergy?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${k===_pvResEnergy?'#ff8f00':'transparent'};color:${k===_pvResEnergy?'#0a0e16':'#cfd8dc'};font-size:9px;cursor:pointer;font-weight:${k===_pvResEnergy?'700':'400'};">${lbl}</button>`).join('');
+  const fsBtn = overrideEl ? '' : '<button data-pva-fs="resilienz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;margin-left:auto;">⤢</button>';
+  return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+    <span style="font-size:9px;color:var(--muted);">Betrachtete Versorgung</span>${btns}${fsBtn}
+  </div>`;
+}
+function _pvResWireEnergyHeader(el, varianten, overrideEl) {
+  el.querySelectorAll('[data-pvres-energy]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.pvresEnergy === _pvResEnergy) return;
+    _pvResEnergy = b.dataset.pvresEnergy;
+    renderResilienz(varianten, overrideEl);
+  }));
+  const fsBtn = el.querySelector('[data-pva-fs="resilienz"]');
+  if (fsBtn) fsBtn.addEventListener('click', () => {
+    const titel = _pvResEnergy === 'waerme' ? 'Resilienz: Ausfall der Wärmeversorgung' : 'Resilienz: Autarkie bei Netzausfall';
+    _pvOpenFs(titel, cnt => renderResilienz(window._pvAnalyse.ergebnisse, cnt));
+  });
+}
+
 function renderResilienz(varianten, overrideEl) {
   const el = overrideEl || document.getElementById('pva-chart-resilienz');
-  if (!el || !varianten?.length) return;
+  if (!el) return;
+  const energyHeader = _pvResEnergyHeader(overrideEl);
+
+  if (_pvResEnergy === 'waerme') {
+    el.innerHTML = energyHeader + '<div id="pva-pvres-body"></div>';
+    _pvResWireEnergyHeader(el, varianten, overrideEl);
+    renderResilienzWaerme(el.querySelector('#pva-pvres-body'), overrideEl);
+    return;
+  }
+
+  const hinweisKeineVarianten = () => {
+    el.innerHTML = energyHeader + '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst „Varianten berechnen" nutzen, um die elektrische Resilienz zu betrachten.</div>';
+    _pvResWireEnergyHeader(el, varianten, overrideEl);
+  };
+  if (!varianten?.length) { hinweisKeineVarianten(); return; }
 
   const demandH   = _pvFsArgs?.demandH;
   const pvProfile = _pvFsArgs?.pvProfile;
   const napParams = _pvFsArgs?.napParams || {};
-  if (!demandH || !pvProfile) { el.innerHTML = ''; return; }
+  if (!demandH || !pvProfile) { hinweisKeineVarianten(); return; }
   const spotH = window.elSpotPreiseH || window._pvAnalyse?.spotPreise || null;
   const kanon = varianten.filter(v => v.info && v.info.frage);
-  if (!kanon.length) { el.innerHTML = ''; return; }
+  if (!kanon.length) { hinweisKeineVarianten(); return; }
 
   const spez = pvGetSpez();
   const dt   = demandH.length > 8784 ? 0.25 : 1.0;
@@ -3527,13 +3652,12 @@ function renderResilienz(varianten, overrideEl) {
   const W   = Math.max(440, elW - 4);
   const fmtEUR = n => Math.round(n).toLocaleString('de-DE');
 
-  el.innerHTML = `
+  el.innerHTML = energyHeader + `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
-    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 10 — Resilienz: Autarkie bei Netzausfall zum schlechtesten Zeitpunkt
-      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Inselbetrieb simuliert — Batterie startet mit realem Ladestand (Jahressim.), Generator deckt die Restlast</span>
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Inselbetrieb-Simulation
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Batterie startet mit realem Ladestand (Jahressim.), Generator deckt die Restlast</span>
       <span id="pva-pvres-sub" style="display:block;font-size:8px;color:#ffcc80;margin-top:2px;"></span>
     </span>
-    ${overrideEl ? '' : '<button data-pva-fs="resilienz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
   </div>
 
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
@@ -3698,10 +3822,15 @@ function renderResilienz(varianten, overrideEl) {
       + (!genActive && eUnmet > 0.5 ? ` · ⚠ ${(eUnmet/1000).toFixed(2)} MWh nicht gedeckt — Fenster nicht durchgehend autark` : '')
       + (hasGenset ? ` · Annahmen: Aggregat ${_PV_RES_COST.gensetEurPerKw} €/kW · ${fuel.label} ${fuel.price.toFixed(2)} €/l · Tank ${_PV_RES_COST.tankEurPerL.toFixed(2)} €/l` : '');
 
-    // Handoff an die Netzanalyse (Notstrom-Platzierung): empfohlene Auslegung
+    // Handoff an die Netzanalyse (Notstrom-Platzierung) + Gutachten-Grafik (Resilienz-
+    // Zusammenfassung, src/17-gutachten-grafik.js): jeweils die zuletzt gezeichnete
+    // Auslegung/Ergebnisse dieses Kapitels.
     window._pvResReco = {
       genKw: hasGenset ? recGenKw : 0, peakKW: Math.ceil(peakLoad),
       durH, kraftstoff: fuel.label, fuelId: _pvResFuel, mode: _pvResMode, ts: Date.now(),
+      pvKwp, batKwh, bridgeH, isWorst, selStart, worstStart, nHours,
+      liters, covered, eUnmet, eLoadMwh: eLoad / 1000,
+      gensetCost, tankCost, tankL, fuelCost, capexCost,
     };
 
     drawHeatmap(bridgeArr, durH, worstStart, selStart, isWorst);
@@ -3939,11 +4068,276 @@ function renderResilienz(varianten, overrideEl) {
     pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
   }));
   draw();
+  _pvResWireEnergyHeader(el, varianten, overrideEl);
+}
 
-  const fsBtn = el.querySelector('[data-pva-fs="resilienz"]');
-  if (fsBtn) fsBtn.addEventListener('click', () =>
-    _pvOpenFs('Resilienz: Autarkie bei Netzausfall', cnt =>
-      renderResilienz(window._pvAnalyse.ergebnisse, cnt)));
+// ── Abb. 10b — Resilienz Wärme: Totalausfall der Wärmezentrale ─────────────
+// Frage: Fallen ALLE Wärmeerzeuger gleichzeitig aus (Totalausfall der Heizzentrale),
+// wie lange überbrückt allein der Pufferspeicher die Netzlast (Energiebilanz), und
+// wie lange dauert es danach, bis die angeschlossenen Gebäude unter eine kritische
+// Innentemperatur fallen (Auskühlzeit)?
+//
+// Auskühlzeit als vereinfachtes RC-Modell je Gebäude: τ = C / UA.
+//   UA [kW/K]  = Normheizlast / (20 °C − Normaußentemperatur)   — aus der DIN-12831-Auslegung
+//   C  [Wh/K]  = Bauschwere-Annahme [Wh/(m²K)] × Nutzfläche      — s. _PV_RES_BAUSCHWERE
+// Nach Ablauf der Pufferstandzeit kühlt der Raum stündlich mit der realen Außen-
+// temperatur (T_neu = T_außen + (T_alt − T_außen)·e^(−1/τ)) bis zur Schwelle _pvResTcrit.
+function renderResilienzWaerme(el, overrideEl) {
+  if (!el) return;
+  const ss = window.systemState;
+  if (!ss || !ss.lastgangKw?.length || !ss.tempH?.length) {
+    el.innerHTML = '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst den Wärme-Lastgang berechnen, um die Ausfallsicherheit der Wärmeversorgung zu betrachten.</div>';
+    return;
+  }
+  const loadH  = ss.lastgangKw;                 // kW, Netzlast inkl. Verluste
+  const tempH  = ss.tempH;                      // °C, stündliche Außentemperatur
+  const normAt = ss.normAussentemp ?? -12;      // Normaußentemperatur (DIN 12831)
+  const nHours = Math.min(loadH.length, tempH.length);
+  const nDays  = Math.floor(nHours / 24);
+
+  const thSp        = thermSpeicherAktiv ? getThermSpeicherParams() : null;
+  const hasSpeicher  = !!(thSp && thSp.kapKwh > 0);
+  const socArr       = window._thermSpeicherState?.socH || null;
+
+  // Gebäude im Bestand mit gültiger Heizlast/Fläche — bei Totalausfall der
+  // Zentrale sind ALLE Gebäude am Netz betroffen (kein Teilnetz-Ausfall hier).
+  const bList = gebaeude.map(g => {
+    if (isExcluded(g.id)) return null;
+    const st = getComputedStats(g, globalYear);
+    if (st.status !== 'bestand' && st.status !== 'saniert') return null;
+    const heizlast = st.heizlast, flaeche = parseFloat(g.flaeche) || 0;
+    if (heizlast <= 0 || flaeche <= 0) return null;
+    const nt = getNutzungstypById(g.nutzung);
+    return {
+      id: g.id, name: g.name || g.gebaeudenummer || `Gebäude ${g.id}`,
+      heizlast, flaeche, nutzungLabel: nt?.label || '—',
+      kritisch: !!(nt && _PV_RES_KRIT_GRUPPEN.has(nt.gruppe)),
+    };
+  }).filter(Boolean);
+
+  const spezWk = _PV_RES_BAUSCHWERE[_pvResBauschwere].whM2K;
+  bList.forEach(b => {
+    const uaKw = b.heizlast / (20 - normAt);          // kW/K
+    const cWh  = spezWk * b.flaeche;                  // Wh/K
+    b.tau = uaKw > 0 ? cWh / (uaKw * 1000) : Infinity; // h
+  });
+
+  if (_pvResDurH == null) _pvResDurH = 24;
+  const DURS_W = [ [6,'6 h'], [12,'12 h'], [24,'24 h'], [48,'2 Tage'], [72,'3 Tage'], [168,'7 Tage'], [336,'14 Tage'] ];
+  const COOL_CAP_H = 720; // Auskühl-Horizont: max. 30 Tage weitersuchen
+
+  // Pufferbilanz ab Startstunde über durH Stunden — Erzeuger liefern 0 (Totalausfall).
+  function simBuffer(start, durH) {
+    let soc = hasSpeicher ? Math.min(thSp.kapKwh, socArr ? (socArr[start % socArr.length] ?? thSp.kapKwh) : thSp.kapKwh) : 0;
+    let total = 0, covered = 0, bridge = durH, hit = false;
+    for (let k = 0; k < durH; k++) {
+      const t = (start + k) % nHours, need = loadH[t];
+      total += need;
+      if (hasSpeicher && soc > 0) soc = Math.max(0, soc - soc * thSp.verlustRate);
+      const avail = hasSpeicher ? Math.min(soc, thSp.entladeKw) : 0;
+      const delivered = Math.min(need, avail);
+      covered += delivered; soc -= delivered;
+      if (delivered < need - 1e-6 && !hit) { bridge = k; hit = true; }
+    }
+    return { bridge, covered, total, unmet: total - covered };
+  }
+
+  // Auskühlzeit ab absoluter Stunde fromT (= Ausfallbeginn + Pufferstandzeit).
+  function coolHours(tau, fromT) {
+    if (!isFinite(tau) || tau <= 0) return 0;
+    let T = 20;
+    for (let k = 0; k < COOL_CAP_H; k++) {
+      const Ta = tempH[(fromT + k) % nHours];
+      T = Ta + (T - Ta) * Math.exp(-1 / tau);
+      if (T <= _pvResTcrit) return k + 1;
+    }
+    return null; // nicht erreicht im Horizont
+  }
+
+  const elW = el.getBoundingClientRect().width || 700;
+  const W   = Math.max(440, elW - 4);
+
+  const bauBtns = Object.entries(_PV_RES_BAUSCHWERE).map(([k, b]) =>
+    `<button data-pvresw-bau="${k}" style="padding:2px 9px;border:1px solid ${k===_pvResBauschwere?'#8d6e63':'rgba(255,255,255,0.22)'};border-radius:10px;background:${k===_pvResBauschwere?'#8d6e63':'transparent'};color:${k===_pvResBauschwere?'#0a0e16':'#cfd8dc'};font-size:9px;cursor:pointer;font-weight:${k===_pvResBauschwere?'700':'400'};white-space:nowrap;">${b.label}</button>`).join('');
+  const durBtns = DURS_W.map(([h,lbl]) =>
+    `<button data-pvresw-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:9px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
+
+  el.innerHTML = `
+  <div style="margin-bottom:8px;">
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Totalausfall der Wärmezentrale
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Alle Erzeuger fallen aus — nur der Pufferspeicher überbrückt, danach kühlen die Gebäude aus</span>
+    </span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+    <span style="font-size:9px;color:var(--muted);">Angenommene Ausfalldauer</span>${durBtns}
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+    <span style="font-size:9px;color:var(--muted);">Bauschwere (Auskühlzeit)</span>${bauBtns}
+    <label style="font-size:9px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-left:6px;">Kritische Innentemp.
+      <input id="pva-pvresw-tcrit" type="range" min="5" max="18" step="1" value="${_pvResTcrit}" style="width:80px;accent-color:#ef9a9a;">
+      <span id="pva-pvresw-tcrit-val" style="color:#ef9a9a;font-family:'DM Mono',monospace;">${_pvResTcrit} °C</span>
+    </label>
+  </div>
+  <div id="pva-pvresw-kpi" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+  <div id="pva-pvresw-heat"></div>
+  <div id="pva-pvresw-table" style="margin-top:10px;"></div>`;
+
+  const kpiEl   = el.querySelector('#pva-pvresw-kpi');
+  const heatEl  = el.querySelector('#pva-pvresw-heat');
+  const tableEl = el.querySelector('#pva-pvresw-table');
+
+  function kpiCard(label, value, color) {
+    return `<div style="flex:1;min-width:120px;background:#11151d;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:6px 9px;">
+      <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">${label}</div>
+      <div style="font-size:14px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${value}</div></div>`;
+  }
+
+  function draw() {
+    const durH = _pvResDurH;
+
+    const bridgeArr = new Float32Array(nDays * 24);
+    let worstStart = 0, worstBridge = Infinity, worstUnmet = -1;
+    for (let s = 0; s < nDays * 24; s++) {
+      const r = simBuffer(s, durH);
+      bridgeArr[s] = r.bridge;
+      if (r.bridge < worstBridge || (r.bridge === worstBridge && r.unmet > worstUnmet)) {
+        worstBridge = r.bridge; worstUnmet = r.unmet; worstStart = s;
+      }
+    }
+    const selStart = (_pvResSelStartW != null && _pvResSelStartW < nDays * 24) ? _pvResSelStartW : worstStart;
+    const isWorst  = selStart === worstStart;
+    const rSel = simBuffer(selStart, durH);
+
+    const buildings = bList.map(b => {
+      const cool = coolHours(b.tau, selStart + rSel.bridge);
+      return { ...b, totalH: cool == null ? null : rSel.bridge + cool };
+    }).sort((a, b) => (a.totalH ?? Infinity) - (b.totalH ?? Infinity));
+    const unterSchwelleInFenster = buildings.filter(b => b.totalH != null && b.totalH <= durH).length;
+    const kritischBetroffen = buildings.filter(b => b.kritisch && b.totalH != null && b.totalH <= durH).length;
+
+    const selDay = Math.floor(selStart / 24), selHr = selStart % 24;
+    const wDay = Math.floor(worstStart / 24), wHr = worstStart % 24;
+    const bridgeLabel = rSel.bridge >= durH ? `> ${durH} h` : `${rSel.bridge} h`;
+
+    kpiEl.innerHTML =
+      kpiCard('Gewählter Ausfall-Start' + (isWorst ? ' (Worst-Case)' : ''), `${_pvahDayToDate(selDay)}, ${selHr}:00`, isWorst ? '#ffcc80' : '#4fc3f7') +
+      kpiCard('Worst-Case-Start', `${_pvahDayToDate(wDay)}, ${wHr}:00`, '#ffcc80') +
+      kpiCard('Pufferstandzeit', hasSpeicher ? bridgeLabel : 'kein Puffer · 0 h', hasSpeicher ? '#80cbc4' : '#ef5350') +
+      kpiCard('Energiebedarf im Fenster', `${(rSel.total/1000).toFixed(2)} MWh`, '#cfd8dc') +
+      kpiCard('Davon durch Puffer gedeckt', `${(rSel.covered/1000).toFixed(2)} MWh`, '#80cbc4') +
+      kpiCard('Ungedeckt', rSel.unmet > 0.5 ? `${(rSel.unmet/1000).toFixed(2)} MWh` : 'keine ✓', rSel.unmet > 0.5 ? '#ef5350' : '#66bb6a') +
+      kpiCard('Betroffene Gebäude (Netz gesamt)', `${bList.length}`, '#cfd8dc') +
+      kpiCard('Unter kritischer Temp. binnen Ausfalldauer', `${unterSchwelleInFenster}` + (kritischBetroffen > 0 ? ` (⚠ ${kritischBetroffen} kritisch)` : ''), unterSchwelleInFenster > 0 ? '#ef5350' : '#66bb6a');
+
+    // Heatmap: Pufferstandzeit je möglichem Ausfall-Start im Jahr (wie Strom-Pendant)
+    const H = overrideEl ? 230 : 170;
+    const PL = 30, PT = 22, PR = 16, PB = 26;
+    const cW = W - PL - PR, cH = H - PT - PB;
+    const cellW = cW / nDays, cellH = cH / 24;
+    let cells = '';
+    for (let d = 0; d < nDays; d++) for (let h = 0; h < 24; h++) {
+      const s = d * 24 + h, b = bridgeArr[s] ?? durH;
+      const x = PL + d * cellW, y = PT + h * cellH;
+      cells += `<rect data-pvresw-day="${d}" data-pvresw-hour="${h}" data-pvresw-b="${b}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(cellW+0.3).toFixed(2)}" height="${(cellH+0.3).toFixed(2)}" fill="${_pvahColor(b/durH)}"/>`;
+    }
+    let monthMarks = '', cum = 0;
+    for (let m = 0; m < 12; m++) {
+      const x = PL + cum * cellW, wM = _PVAH_MONTH_DAYS[m] * cellW;
+      monthMarks += `<text x="${(x+wM/2).toFixed(1)}" y="${(PT-6).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8">${_PVAH_MONTH_NAMES[m]}</text>`;
+      if (m > 0) monthMarks += `<line x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${(PT+cH).toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+      cum += _PVAH_MONTH_DAYS[m];
+    }
+    const hourMarks = [0,6,12,18].map(h =>
+      `<text x="${(PL-5).toFixed(1)}" y="${(PT+h*cellH+cellH/2+3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="8">${h}</text>`).join('');
+    const cellMark = (startIdx, stroke, label, dash) => {
+      const md = Math.floor(startIdx/24), mh = startIdx % 24;
+      const mx = PL + md*cellW, my = PT + mh*cellH;
+      const labelX = Math.min(mx + 4, W - PR - 90), labelY = (my < PT + cH/2 ? my + cellH + 10 : my - 3);
+      return `<rect x="${(mx-1).toFixed(1)}" y="${(my-1).toFixed(1)}" width="${(cellW+2).toFixed(1)}" height="${(cellH+2).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="1.6"${dash?` stroke-dasharray="${dash}"`:''}/>`
+        + `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" fill="${stroke}" font-size="8" font-weight="700">${label}</text>`;
+    };
+    const marker = cellMark(worstStart, '#fff', '◀ Worst-Case') + (isWorst ? '' : cellMark(selStart, '#4fc3f7', '◀ gewählt', '2,1.5'));
+    const legW = 130, legH = 8, legX = PL, legY = PT + cH + 14;
+    const gradId = 'pvresw-grad-' + (overrideEl ? 'fs' : 'm');
+    heatEl.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;gap:8px;">
+      <span style="font-size:8px;color:var(--muted);">Pufferstandzeit je Ausfall-Start — <b style="color:#4fc3f7;">Zelle anklicken</b> verschiebt den Ausfall-Start</span>
+      ${isWorst ? '' : '<button data-pvresw-reset style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.22);border-radius:4px;color:#ffcc80;font-size:8px;padding:1px 7px;white-space:nowrap;">↺ Worst-Case</button>'}
+    </div>
+    <svg width="${W}" height="${H+18}" style="display:block;overflow:hidden;cursor:pointer;">
+      <defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="${_pvahColor(0)}"/><stop offset="50%" stop-color="${_pvahColor(0.5)}"/><stop offset="100%" stop-color="${_pvahColor(1)}"/></linearGradient></defs>
+      ${monthMarks}${hourMarks}${cells}
+      <rect x="${PL}" y="${(PT+cH+1).toFixed(1)}" width="${cW.toFixed(1)}" height="${cH.toFixed(1)}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      ${marker}
+      <rect x="${legX}" y="${legY}" width="${legW}" height="${legH}" fill="url(#${gradId})" rx="2"/>
+      <text x="${legX}" y="${(legY+legH+9)}" fill="#90a4ae" font-size="8">sofort am Limit</text>
+      <text x="${(legX+legW).toFixed(1)}" y="${(legY+legH+9)}" text-anchor="end" fill="#90a4ae" font-size="8">≥ ${durH} h überbrückt</text>
+    </svg>`;
+    const svg = heatEl.querySelector('svg');
+    svg.addEventListener('mousemove', ev => {
+      const tg = ev.target;
+      if (!(tg instanceof SVGRectElement) || tg.dataset.pvreswDay === undefined) { _pvHideTT(); return; }
+      const d = +tg.dataset.pvreswDay, h = +tg.dataset.pvreswHour, b = +tg.dataset.pvreswB;
+      _pvShowTT(ev, `Ausfall-Start: ${_pvahDayToDate(d)}, ${h}:00 Uhr<br>Pufferstandzeit: <strong>${b >= durH ? '≥ '+durH : b} h</strong><br><span style="color:#4fc3f7">Klicken, um dieses Fenster zu zeigen</span>`);
+    });
+    svg.addEventListener('mouseleave', _pvHideTT);
+    svg.addEventListener('click', ev => {
+      const tg = ev.target;
+      if (!(tg instanceof SVGRectElement) || tg.dataset.pvreswDay === undefined) return;
+      _pvResSelStartW = (+tg.dataset.pvreswDay) * 24 + (+tg.dataset.pvreswHour);
+      _pvHideTT(); draw();
+    });
+    const resetBtn = heatEl.querySelector('[data-pvresw-reset]');
+    if (resetBtn) resetBtn.addEventListener('click', () => { _pvResSelStartW = null; draw(); });
+
+    // Gebäudeliste — nach Zeit bis kritischer Temperatur sortiert (kritischstes zuerst)
+    const rows = buildings.map(b => {
+      const warn = b.totalH != null && b.totalH <= durH;
+      const timeLabel = b.totalH == null ? `> ${COOL_CAP_H} h` : `${b.totalH} h`;
+      return `<tr style="${b.kritisch ? 'background:rgba(239,83,80,0.08);' : ''}">
+        <td style="padding:3px 6px;">${b.kritisch ? '⚠ ' : ''}${escHtml(b.name)}</td>
+        <td style="padding:3px 6px;color:var(--muted);">${escHtml(b.nutzungLabel)}</td>
+        <td style="padding:3px 6px;text-align:right;">${Math.round(b.heizlast)} kW</td>
+        <td style="padding:3px 6px;text-align:right;">${isFinite(b.tau) ? Math.round(b.tau) : '—'} h</td>
+        <td style="padding:3px 6px;text-align:right;color:${warn?'#ef5350':'#66bb6a'};font-weight:${warn?700:400};">${timeLabel}</td>
+      </tr>`;
+    }).join('');
+    tableEl.innerHTML = bList.length ? `
+      <div style="font-size:8px;color:var(--muted);margin-bottom:4px;">Zeit bis kritische Temperatur = Pufferstandzeit + Auskühlzeit (τ = C/UA, Bauschwere „${_PV_RES_BAUSCHWERE[_pvResBauschwere].label}“, kritisch ab ${_pvResTcrit} °C) — rot markiert: Nutzungstyp Pflege/Gesundheit/Bildung.</div>
+      <div style="max-height:260px;overflow-y:auto;border:1px solid rgba(255,255,255,0.08);border-radius:6px;">
+        <table style="width:100%;border-collapse:collapse;font-size:9px;color:var(--text);">
+          <thead style="position:sticky;top:0;background:#11151d;"><tr style="text-align:left;color:var(--muted);">
+            <th style="padding:3px 6px;">Gebäude</th><th style="padding:3px 6px;">Nutzung</th>
+            <th style="padding:3px 6px;text-align:right;">Heizlast</th><th style="padding:3px 6px;text-align:right;">τ</th>
+            <th style="padding:3px 6px;text-align:right;">bis kritisch</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>` : '<div style="font-size:9px;color:var(--muted);">Keine Gebäude mit Heizlast/Fläche im Bestand gefunden.</div>';
+
+    window._pvResRecoWaerme = {
+      hasSpeicher, bridgeH: rSel.bridge, durH, isWorst, selStart, worstStart, nHours,
+      totalMwh: rSel.total/1000, coveredMwh: rSel.covered/1000, unmetMwh: rSel.unmet/1000,
+      bauschwere: _pvResBauschwere, tcrit: _pvResTcrit, gebaeudeAnzahl: bList.length,
+      unterSchwelleInFenster, kritischBetroffen, ts: Date.now(),
+    };
+  }
+
+  el.querySelector('#pva-pvresw-tcrit').addEventListener('input', e => {
+    _pvResTcrit = parseFloat(e.target.value) || 15;
+    el.querySelector('#pva-pvresw-tcrit-val').textContent = _pvResTcrit + ' °C';
+    draw();
+  });
+  el.querySelectorAll('[data-pvresw-bau]').forEach(b => b.addEventListener('click', () => {
+    _pvResBauschwere = b.dataset.pvreswBau;
+    renderResilienzWaerme(el, overrideEl);
+  }));
+  el.querySelectorAll('[data-pvresw-dur]').forEach(b => b.addEventListener('click', () => {
+    _pvResDurH = +b.dataset.pvreswDur; _pvResSelStartW = null;
+    renderResilienzWaerme(el, overrideEl);
+  }));
+  draw();
 }
 
 // ── Abb. 9 — Sensitivitätsanalyse (Tornado) ─────────────────────────────────

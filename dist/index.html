@@ -15140,9 +15140,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-08-28';
+  var d = '2026-08-31';
   if (d.indexOf('__') === 0) d = '';
-  var c = '6840dd0';
+  var c = 'c23b572';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -100386,6 +100386,68 @@ ${massTbl}
     pvaShowSection(true);
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════
+  // EIGENES ANALYSE-KAPITEL „🛡 Resilienz" — identisches Muster zu pvaBuildAnalyseSection.
+  // Die Blackout-/Inselbetrieb-Analyse (früher „Abb. 10" am Ende der PV-Analyse) bekommt
+  // so eigenen Platz für die genauere Betrachtung, statt am Ende der PV-Abbildungen
+  // unterzugehen. Rechnet auf den bereits in der PV-Analyse berechneten Varianten
+  // (window._pvAnalyse.ergebnisse) — dort zuerst „Varianten berechnen" nötig.
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  function resBuildAnalyseSection() {
+    const tabBar = document.getElementById('analyse-view-tabs');
+    if (tabBar && !tabBar.querySelector('[data-section="resilienz"]')) {
+      const btn = document.createElement('button');
+      btn.className    = 'analyse-section-tab';
+      btn.dataset.section = 'resilienz';
+      btn.textContent  = '🛡 Resilienz';
+      btn.title = 'Resilienz-Analyse: Autarkie bei Stromausfall (Inselbetrieb aus PV, Batterie und Notstrom) sowie Ausfallsicherheit bei Totalausfall der Wärmezentrale.';
+      btn.addEventListener('click', () => {
+        if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('resilienz');
+      });
+      tabBar.appendChild(btn);
+    }
+
+    if (document.getElementById('analyse-resilienz-wrap')) return;
+    const analyseView = document.getElementById('center-analyse-view');
+    if (!analyseView) return;
+
+    const wrap = document.createElement('div');
+    wrap.id = 'analyse-resilienz-wrap';
+    wrap.style.display = 'none';
+    analyseView.appendChild(wrap);
+  }
+
+  function resShowSection(show) {
+    const wrap = document.getElementById('analyse-resilienz-wrap');
+    if (!wrap) return;
+    wrap.style.display = show ? 'block' : 'none';
+    if (!show) return;
+
+    const ergebnisse = window._pvAnalyse?.ergebnisse;
+    const kanon = (ergebnisse || []).filter(v => v.info && v.info.frage);
+    if (!kanon.length) {
+      wrap.innerHTML = `
+    <div style="padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid #ff8f00;border-radius:7px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:10px;">
+      <span style="font-size:16px;">🛡</span>
+      <span>Noch keine PV-Varianten berechnet — bitte erst in
+        <button data-click="setAnalyseSection('pva')" style="background:transparent;border:1px solid #ff8f00;color:#ff8f00;border-radius:10px;padding:1px 8px;font-size:10px;cursor:pointer;">☀ PV-Analyse</button>
+        auf „Varianten berechnen" klicken. Die Resilienz-Analyse rechnet auf diesen Varianten (PV/Batterie je Auslegung).
+      </span>
+    </div>`;
+      return;
+    }
+
+    wrap.innerHTML = `
+  <div style="margin-bottom:10px;">
+    <div style="font-size:13px;font-weight:700;color:var(--text);">🛡 Resilienz — Ausfallsicherheit Strom &amp; Wärme</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:2px;">Strom: wie lange trägt die Anlage einen Blackout zum ungünstigsten Zeitpunkt (Grundlage: die Varianten aus der ☀ PV-Analyse)? Wärme: wie lange bis ein Totalausfall der Wärmezentrale kritisch wird?</div>
+  </div>
+  <div id="pva-chart-resilienz" style="overflow:hidden;"></div>`;
+
+    renderResilienz(ergebnisse);
+  }
+
   // Wird nach Upload/Löschen des Strom-Lastgangs (auch über den Upload-Button hier im
   // PVA-Panel) aufgerufen, damit Status-Zeilen, Buttons usw. aktualisiert werden.
   window._pvaRefreshIfVisible = function _pvaRefreshIfVisible() {
@@ -100803,8 +100865,13 @@ ${massTbl}
     <!-- Abb. 9 — Sensitivitätsanalyse (Tornado) -->
     <div id="pva-chart-sensitivitaet" style="margin-bottom:22px;overflow:hidden;"></div>
 
-    <!-- Abb. 10 — Resilienz / Blackout-Analyse -->
-    <div id="pva-chart-resilienz" style="margin-bottom:8px;overflow:hidden;"></div>
+    <!-- Resilienz / Blackout-Analyse: jetzt eigenes Analyse-Kapitel -->
+    <div style="margin-bottom:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid #ff8f00;border-radius:7px;font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:14px;">🛡</span>
+      <span>Die Resilienz-/Blackout-Analyse (Autarkie bei Netzausfall) ist jetzt ein eigenes Kapitel — siehe
+        <button data-click="setAnalyseSection('resilienz')" style="background:transparent;border:1px solid #ff8f00;color:#ff8f00;border-radius:10px;padding:1px 8px;font-size:10px;cursor:pointer;">Analyse ▸ 🛡 Resilienz</button>
+      </span>
+    </div>
 
   </div>
 </div>`;
@@ -102522,6 +102589,19 @@ ${massTbl}
     meldeschwelleL: 1000,  // ab ~1000 l oberirdischer Diesellagerung: AwSV-Anzeige-/Auflagen
   };
 
+  // Bauschwere-Klassen für die Auskühlzeit-Abschätzung (wirksame Wärmespeicherfähigkeit
+  // der Gebäudemasse je m² Nutzfläche) — Anhaltswerte nach DIN EN ISO 13786, grob
+  // klassifiziert. "mittel" als Default für Mischbestand ohne bekannte Bauweise.
+  const _PV_RES_BAUSCHWERE = {
+    leicht: { label: 'Leicht (Holz-/Trockenbau)',   whM2K: 40  },
+    mittel: { label: 'Mittel (Massivbau üblich)',   whM2K: 90  },
+    schwer: { label: 'Schwer (Beton/Stein massiv)', whM2K: 150 },
+  };
+  // Nutzungstyp-Gruppen (s. 02b-gebaeude.js), deren Gebäude bei Wärmeausfall als
+  // besonders kritisch gelten (Pflege, Gesundheit, Betreuung) — für die Hervorhebung
+  // in der Gebäudeliste.
+  const _PV_RES_KRIT_GRUPPEN = new Set(['Unterkunft und Pflege', 'Gesundheit', 'Bildung und Betreuung']);
+
   let _pvResVarId = null, _pvResPvKwp = null, _pvResBatKwh = null;
   let _pvResDurH = null, _pvResFuel = null, _pvResLoadFrac = null;
   // Betriebsweise (welche Erzeuger im Inselbetrieb verfügbar sind):
@@ -102532,6 +102612,13 @@ ${massTbl}
   let _pvResMode = null;
   let _pvResUsable = null;    // nutzbare Batteriekapazität in % (Entladetiefe + Kälte-Derating)
   let _pvResSelStart = null;  // per Heatmap-Klick gewählter Ausfall-Start (null = Worst-Case)
+
+  // Betrachtete Versorgung im Resilienz-Kapitel: 'strom' (Blackout, s.o.) oder
+  // 'waerme' (Totalausfall der Wärmezentrale, s.u.) — gemeinsamer Reiter, siehe Aufgabe.
+  let _pvResEnergy      = 'strom';
+  let _pvResBauschwere  = 'mittel'; // Bauschwere-Annahme für die Auskühlzeit-Abschätzung
+  let _pvResTcrit       = 15;       // kritische Innenraumtemperatur (°C)
+  let _pvResSelStartW   = null;     // per Heatmap-Klick gewählter Ausfall-Start (Wärme, unabhängig von Strom)
 
   // 15-min → stündlich mitteln (Leistungsgrößen)
   function _pvResHourly(arr, dt) {
@@ -102621,17 +102708,53 @@ ${massTbl}
     return hi;
   }
 
+  function _pvResEnergyHeader(overrideEl) {
+    const opts = [['strom', '⚡ Strom'], ['waerme', '🔥 Wärme']];
+    const btns = opts.map(([k, lbl]) =>
+      `<button data-pvres-energy="${k}" style="padding:2px 10px;border:1px solid ${k===_pvResEnergy?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${k===_pvResEnergy?'#ff8f00':'transparent'};color:${k===_pvResEnergy?'#0a0e16':'#cfd8dc'};font-size:9px;cursor:pointer;font-weight:${k===_pvResEnergy?'700':'400'};">${lbl}</button>`).join('');
+    const fsBtn = overrideEl ? '' : '<button data-pva-fs="resilienz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;margin-left:auto;">⤢</button>';
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+    <span style="font-size:9px;color:var(--muted);">Betrachtete Versorgung</span>${btns}${fsBtn}
+  </div>`;
+  }
+  function _pvResWireEnergyHeader(el, varianten, overrideEl) {
+    el.querySelectorAll('[data-pvres-energy]').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.pvresEnergy === _pvResEnergy) return;
+      _pvResEnergy = b.dataset.pvresEnergy;
+      renderResilienz(varianten, overrideEl);
+    }));
+    const fsBtn = el.querySelector('[data-pva-fs="resilienz"]');
+    if (fsBtn) fsBtn.addEventListener('click', () => {
+      const titel = _pvResEnergy === 'waerme' ? 'Resilienz: Ausfall der Wärmeversorgung' : 'Resilienz: Autarkie bei Netzausfall';
+      _pvOpenFs(titel, cnt => renderResilienz(window._pvAnalyse.ergebnisse, cnt));
+    });
+  }
+
   function renderResilienz(varianten, overrideEl) {
     const el = overrideEl || document.getElementById('pva-chart-resilienz');
-    if (!el || !varianten?.length) return;
+    if (!el) return;
+    const energyHeader = _pvResEnergyHeader(overrideEl);
+
+    if (_pvResEnergy === 'waerme') {
+      el.innerHTML = energyHeader + '<div id="pva-pvres-body"></div>';
+      _pvResWireEnergyHeader(el, varianten, overrideEl);
+      renderResilienzWaerme(el.querySelector('#pva-pvres-body'), overrideEl);
+      return;
+    }
+
+    const hinweisKeineVarianten = () => {
+      el.innerHTML = energyHeader + '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst „Varianten berechnen" nutzen, um die elektrische Resilienz zu betrachten.</div>';
+      _pvResWireEnergyHeader(el, varianten, overrideEl);
+    };
+    if (!varianten?.length) { hinweisKeineVarianten(); return; }
 
     const demandH   = _pvFsArgs?.demandH;
     const pvProfile = _pvFsArgs?.pvProfile;
     const napParams = _pvFsArgs?.napParams || {};
-    if (!demandH || !pvProfile) { el.innerHTML = ''; return; }
+    if (!demandH || !pvProfile) { hinweisKeineVarianten(); return; }
     const spotH = window.elSpotPreiseH || window._pvAnalyse?.spotPreise || null;
     const kanon = varianten.filter(v => v.info && v.info.frage);
-    if (!kanon.length) { el.innerHTML = ''; return; }
+    if (!kanon.length) { hinweisKeineVarianten(); return; }
 
     const spez = pvGetSpez();
     const dt   = demandH.length > 8784 ? 0.25 : 1.0;
@@ -102684,13 +102807,12 @@ ${massTbl}
     const elW = el.getBoundingClientRect().width || 700;
     const W   = Math.max(440, elW - 4);
 
-    el.innerHTML = `
+    el.innerHTML = energyHeader + `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
-    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 10 — Resilienz: Autarkie bei Netzausfall zum schlechtesten Zeitpunkt
-      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Inselbetrieb simuliert — Batterie startet mit realem Ladestand (Jahressim.), Generator deckt die Restlast</span>
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Inselbetrieb-Simulation
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Batterie startet mit realem Ladestand (Jahressim.), Generator deckt die Restlast</span>
       <span id="pva-pvres-sub" style="display:block;font-size:8px;color:#ffcc80;margin-top:2px;"></span>
     </span>
-    ${overrideEl ? '' : '<button data-pva-fs="resilienz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
   </div>
 
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
@@ -102854,10 +102976,15 @@ ${massTbl}
         + (!genActive && eUnmet > 0.5 ? ` · ⚠ ${(eUnmet/1000).toFixed(2)} MWh nicht gedeckt — Fenster nicht durchgehend autark` : '')
         + (hasGenset ? ` · Annahmen: Aggregat ${_PV_RES_COST.gensetEurPerKw} €/kW · ${fuel.label} ${fuel.price.toFixed(2)} €/l · Tank ${_PV_RES_COST.tankEurPerL.toFixed(2)} €/l` : '');
 
-      // Handoff an die Netzanalyse (Notstrom-Platzierung): empfohlene Auslegung
+      // Handoff an die Netzanalyse (Notstrom-Platzierung) + Gutachten-Grafik (Resilienz-
+      // Zusammenfassung, src/17-gutachten-grafik.js): jeweils die zuletzt gezeichnete
+      // Auslegung/Ergebnisse dieses Kapitels.
       window._pvResReco = {
         genKw: hasGenset ? recGenKw : 0, peakKW: Math.ceil(peakLoad),
         durH, kraftstoff: fuel.label, fuelId: _pvResFuel, mode: _pvResMode, ts: Date.now(),
+        pvKwp, batKwh, bridgeH, isWorst, selStart, worstStart, nHours,
+        liters, covered, eUnmet, eLoadMwh: eLoad / 1000,
+        gensetCost, tankCost, tankL, fuelCost, capexCost,
       };
 
       drawHeatmap(bridgeArr, durH, worstStart, selStart, isWorst);
@@ -103095,11 +103222,276 @@ ${massTbl}
       pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
     }));
     draw();
+    _pvResWireEnergyHeader(el, varianten, overrideEl);
+  }
 
-    const fsBtn = el.querySelector('[data-pva-fs="resilienz"]');
-    if (fsBtn) fsBtn.addEventListener('click', () =>
-      _pvOpenFs('Resilienz: Autarkie bei Netzausfall', cnt =>
-        renderResilienz(window._pvAnalyse.ergebnisse, cnt)));
+  // ── Abb. 10b — Resilienz Wärme: Totalausfall der Wärmezentrale ─────────────
+  // Frage: Fallen ALLE Wärmeerzeuger gleichzeitig aus (Totalausfall der Heizzentrale),
+  // wie lange überbrückt allein der Pufferspeicher die Netzlast (Energiebilanz), und
+  // wie lange dauert es danach, bis die angeschlossenen Gebäude unter eine kritische
+  // Innentemperatur fallen (Auskühlzeit)?
+  //
+  // Auskühlzeit als vereinfachtes RC-Modell je Gebäude: τ = C / UA.
+  //   UA [kW/K]  = Normheizlast / (20 °C − Normaußentemperatur)   — aus der DIN-12831-Auslegung
+  //   C  [Wh/K]  = Bauschwere-Annahme [Wh/(m²K)] × Nutzfläche      — s. _PV_RES_BAUSCHWERE
+  // Nach Ablauf der Pufferstandzeit kühlt der Raum stündlich mit der realen Außen-
+  // temperatur (T_neu = T_außen + (T_alt − T_außen)·e^(−1/τ)) bis zur Schwelle _pvResTcrit.
+  function renderResilienzWaerme(el, overrideEl) {
+    if (!el) return;
+    const ss = window.systemState;
+    if (!ss || !ss.lastgangKw?.length || !ss.tempH?.length) {
+      el.innerHTML = '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst den Wärme-Lastgang berechnen, um die Ausfallsicherheit der Wärmeversorgung zu betrachten.</div>';
+      return;
+    }
+    const loadH  = ss.lastgangKw;                 // kW, Netzlast inkl. Verluste
+    const tempH  = ss.tempH;                      // °C, stündliche Außentemperatur
+    const normAt = ss.normAussentemp ?? -12;      // Normaußentemperatur (DIN 12831)
+    const nHours = Math.min(loadH.length, tempH.length);
+    const nDays  = Math.floor(nHours / 24);
+
+    const thSp        = thermSpeicherAktiv ? getThermSpeicherParams() : null;
+    const hasSpeicher  = !!(thSp && thSp.kapKwh > 0);
+    const socArr       = window._thermSpeicherState?.socH || null;
+
+    // Gebäude im Bestand mit gültiger Heizlast/Fläche — bei Totalausfall der
+    // Zentrale sind ALLE Gebäude am Netz betroffen (kein Teilnetz-Ausfall hier).
+    const bList = gebaeude.map(g => {
+      if (isExcluded(g.id)) return null;
+      const st = getComputedStats(g, globalYear);
+      if (st.status !== 'bestand' && st.status !== 'saniert') return null;
+      const heizlast = st.heizlast, flaeche = parseFloat(g.flaeche) || 0;
+      if (heizlast <= 0 || flaeche <= 0) return null;
+      const nt = getNutzungstypById(g.nutzung);
+      return {
+        id: g.id, name: g.name || g.gebaeudenummer || `Gebäude ${g.id}`,
+        heizlast, flaeche, nutzungLabel: nt?.label || '—',
+        kritisch: !!(nt && _PV_RES_KRIT_GRUPPEN.has(nt.gruppe)),
+      };
+    }).filter(Boolean);
+
+    const spezWk = _PV_RES_BAUSCHWERE[_pvResBauschwere].whM2K;
+    bList.forEach(b => {
+      const uaKw = b.heizlast / (20 - normAt);          // kW/K
+      const cWh  = spezWk * b.flaeche;                  // Wh/K
+      b.tau = uaKw > 0 ? cWh / (uaKw * 1000) : Infinity; // h
+    });
+
+    if (_pvResDurH == null) _pvResDurH = 24;
+    const DURS_W = [ [6,'6 h'], [12,'12 h'], [24,'24 h'], [48,'2 Tage'], [72,'3 Tage'], [168,'7 Tage'], [336,'14 Tage'] ];
+    const COOL_CAP_H = 720; // Auskühl-Horizont: max. 30 Tage weitersuchen
+
+    // Pufferbilanz ab Startstunde über durH Stunden — Erzeuger liefern 0 (Totalausfall).
+    function simBuffer(start, durH) {
+      let soc = hasSpeicher ? Math.min(thSp.kapKwh, socArr ? (socArr[start % socArr.length] ?? thSp.kapKwh) : thSp.kapKwh) : 0;
+      let total = 0, covered = 0, bridge = durH, hit = false;
+      for (let k = 0; k < durH; k++) {
+        const t = (start + k) % nHours, need = loadH[t];
+        total += need;
+        if (hasSpeicher && soc > 0) soc = Math.max(0, soc - soc * thSp.verlustRate);
+        const avail = hasSpeicher ? Math.min(soc, thSp.entladeKw) : 0;
+        const delivered = Math.min(need, avail);
+        covered += delivered; soc -= delivered;
+        if (delivered < need - 1e-6 && !hit) { bridge = k; hit = true; }
+      }
+      return { bridge, covered, total, unmet: total - covered };
+    }
+
+    // Auskühlzeit ab absoluter Stunde fromT (= Ausfallbeginn + Pufferstandzeit).
+    function coolHours(tau, fromT) {
+      if (!isFinite(tau) || tau <= 0) return 0;
+      let T = 20;
+      for (let k = 0; k < COOL_CAP_H; k++) {
+        const Ta = tempH[(fromT + k) % nHours];
+        T = Ta + (T - Ta) * Math.exp(-1 / tau);
+        if (T <= _pvResTcrit) return k + 1;
+      }
+      return null; // nicht erreicht im Horizont
+    }
+
+    const elW = el.getBoundingClientRect().width || 700;
+    const W   = Math.max(440, elW - 4);
+
+    const bauBtns = Object.entries(_PV_RES_BAUSCHWERE).map(([k, b]) =>
+      `<button data-pvresw-bau="${k}" style="padding:2px 9px;border:1px solid ${k===_pvResBauschwere?'#8d6e63':'rgba(255,255,255,0.22)'};border-radius:10px;background:${k===_pvResBauschwere?'#8d6e63':'transparent'};color:${k===_pvResBauschwere?'#0a0e16':'#cfd8dc'};font-size:9px;cursor:pointer;font-weight:${k===_pvResBauschwere?'700':'400'};white-space:nowrap;">${b.label}</button>`).join('');
+    const durBtns = DURS_W.map(([h,lbl]) =>
+      `<button data-pvresw-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:9px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
+
+    el.innerHTML = `
+  <div style="margin-bottom:8px;">
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Totalausfall der Wärmezentrale
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Alle Erzeuger fallen aus — nur der Pufferspeicher überbrückt, danach kühlen die Gebäude aus</span>
+    </span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+    <span style="font-size:9px;color:var(--muted);">Angenommene Ausfalldauer</span>${durBtns}
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+    <span style="font-size:9px;color:var(--muted);">Bauschwere (Auskühlzeit)</span>${bauBtns}
+    <label style="font-size:9px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-left:6px;">Kritische Innentemp.
+      <input id="pva-pvresw-tcrit" type="range" min="5" max="18" step="1" value="${_pvResTcrit}" style="width:80px;accent-color:#ef9a9a;">
+      <span id="pva-pvresw-tcrit-val" style="color:#ef9a9a;font-family:'DM Mono',monospace;">${_pvResTcrit} °C</span>
+    </label>
+  </div>
+  <div id="pva-pvresw-kpi" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+  <div id="pva-pvresw-heat"></div>
+  <div id="pva-pvresw-table" style="margin-top:10px;"></div>`;
+
+    const kpiEl   = el.querySelector('#pva-pvresw-kpi');
+    const heatEl  = el.querySelector('#pva-pvresw-heat');
+    const tableEl = el.querySelector('#pva-pvresw-table');
+
+    function kpiCard(label, value, color) {
+      return `<div style="flex:1;min-width:120px;background:#11151d;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:6px 9px;">
+      <div style="font-size:8px;color:var(--muted);margin-bottom:2px;">${label}</div>
+      <div style="font-size:14px;font-weight:700;color:${color};font-family:'DM Mono',monospace;">${value}</div></div>`;
+    }
+
+    function draw() {
+      const durH = _pvResDurH;
+
+      const bridgeArr = new Float32Array(nDays * 24);
+      let worstStart = 0, worstBridge = Infinity, worstUnmet = -1;
+      for (let s = 0; s < nDays * 24; s++) {
+        const r = simBuffer(s, durH);
+        bridgeArr[s] = r.bridge;
+        if (r.bridge < worstBridge || (r.bridge === worstBridge && r.unmet > worstUnmet)) {
+          worstBridge = r.bridge; worstUnmet = r.unmet; worstStart = s;
+        }
+      }
+      const selStart = (_pvResSelStartW != null && _pvResSelStartW < nDays * 24) ? _pvResSelStartW : worstStart;
+      const isWorst  = selStart === worstStart;
+      const rSel = simBuffer(selStart, durH);
+
+      const buildings = bList.map(b => {
+        const cool = coolHours(b.tau, selStart + rSel.bridge);
+        return { ...b, totalH: cool == null ? null : rSel.bridge + cool };
+      }).sort((a, b) => (a.totalH ?? Infinity) - (b.totalH ?? Infinity));
+      const unterSchwelleInFenster = buildings.filter(b => b.totalH != null && b.totalH <= durH).length;
+      const kritischBetroffen = buildings.filter(b => b.kritisch && b.totalH != null && b.totalH <= durH).length;
+
+      const selDay = Math.floor(selStart / 24), selHr = selStart % 24;
+      const wDay = Math.floor(worstStart / 24), wHr = worstStart % 24;
+      const bridgeLabel = rSel.bridge >= durH ? `> ${durH} h` : `${rSel.bridge} h`;
+
+      kpiEl.innerHTML =
+        kpiCard('Gewählter Ausfall-Start' + (isWorst ? ' (Worst-Case)' : ''), `${_pvahDayToDate(selDay)}, ${selHr}:00`, isWorst ? '#ffcc80' : '#4fc3f7') +
+        kpiCard('Worst-Case-Start', `${_pvahDayToDate(wDay)}, ${wHr}:00`, '#ffcc80') +
+        kpiCard('Pufferstandzeit', hasSpeicher ? bridgeLabel : 'kein Puffer · 0 h', hasSpeicher ? '#80cbc4' : '#ef5350') +
+        kpiCard('Energiebedarf im Fenster', `${(rSel.total/1000).toFixed(2)} MWh`, '#cfd8dc') +
+        kpiCard('Davon durch Puffer gedeckt', `${(rSel.covered/1000).toFixed(2)} MWh`, '#80cbc4') +
+        kpiCard('Ungedeckt', rSel.unmet > 0.5 ? `${(rSel.unmet/1000).toFixed(2)} MWh` : 'keine ✓', rSel.unmet > 0.5 ? '#ef5350' : '#66bb6a') +
+        kpiCard('Betroffene Gebäude (Netz gesamt)', `${bList.length}`, '#cfd8dc') +
+        kpiCard('Unter kritischer Temp. binnen Ausfalldauer', `${unterSchwelleInFenster}` + (kritischBetroffen > 0 ? ` (⚠ ${kritischBetroffen} kritisch)` : ''), unterSchwelleInFenster > 0 ? '#ef5350' : '#66bb6a');
+
+      // Heatmap: Pufferstandzeit je möglichem Ausfall-Start im Jahr (wie Strom-Pendant)
+      const H = overrideEl ? 230 : 170;
+      const PL = 30, PT = 22, PR = 16, PB = 26;
+      const cW = W - PL - PR, cH = H - PT - PB;
+      const cellW = cW / nDays, cellH = cH / 24;
+      let cells = '';
+      for (let d = 0; d < nDays; d++) for (let h = 0; h < 24; h++) {
+        const s = d * 24 + h, b = bridgeArr[s] ?? durH;
+        const x = PL + d * cellW, y = PT + h * cellH;
+        cells += `<rect data-pvresw-day="${d}" data-pvresw-hour="${h}" data-pvresw-b="${b}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(cellW+0.3).toFixed(2)}" height="${(cellH+0.3).toFixed(2)}" fill="${_pvahColor(b/durH)}"/>`;
+      }
+      let monthMarks = '', cum = 0;
+      for (let m = 0; m < 12; m++) {
+        const x = PL + cum * cellW, wM = _PVAH_MONTH_DAYS[m] * cellW;
+        monthMarks += `<text x="${(x+wM/2).toFixed(1)}" y="${(PT-6).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8">${_PVAH_MONTH_NAMES[m]}</text>`;
+        if (m > 0) monthMarks += `<line x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${(PT+cH).toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+        cum += _PVAH_MONTH_DAYS[m];
+      }
+      const hourMarks = [0,6,12,18].map(h =>
+        `<text x="${(PL-5).toFixed(1)}" y="${(PT+h*cellH+cellH/2+3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="8">${h}</text>`).join('');
+      const cellMark = (startIdx, stroke, label, dash) => {
+        const md = Math.floor(startIdx/24), mh = startIdx % 24;
+        const mx = PL + md*cellW, my = PT + mh*cellH;
+        const labelX = Math.min(mx + 4, W - PR - 90), labelY = (my < PT + cH/2 ? my + cellH + 10 : my - 3);
+        return `<rect x="${(mx-1).toFixed(1)}" y="${(my-1).toFixed(1)}" width="${(cellW+2).toFixed(1)}" height="${(cellH+2).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="1.6"${dash?` stroke-dasharray="${dash}"`:''}/>`
+          + `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" fill="${stroke}" font-size="8" font-weight="700">${label}</text>`;
+      };
+      const marker = cellMark(worstStart, '#fff', '◀ Worst-Case') + (isWorst ? '' : cellMark(selStart, '#4fc3f7', '◀ gewählt', '2,1.5'));
+      const legW = 130, legH = 8, legX = PL, legY = PT + cH + 14;
+      const gradId = 'pvresw-grad-' + (overrideEl ? 'fs' : 'm');
+      heatEl.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;gap:8px;">
+      <span style="font-size:8px;color:var(--muted);">Pufferstandzeit je Ausfall-Start — <b style="color:#4fc3f7;">Zelle anklicken</b> verschiebt den Ausfall-Start</span>
+      ${isWorst ? '' : '<button data-pvresw-reset style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.22);border-radius:4px;color:#ffcc80;font-size:8px;padding:1px 7px;white-space:nowrap;">↺ Worst-Case</button>'}
+    </div>
+    <svg width="${W}" height="${H+18}" style="display:block;overflow:hidden;cursor:pointer;">
+      <defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="${_pvahColor(0)}"/><stop offset="50%" stop-color="${_pvahColor(0.5)}"/><stop offset="100%" stop-color="${_pvahColor(1)}"/></linearGradient></defs>
+      ${monthMarks}${hourMarks}${cells}
+      <rect x="${PL}" y="${(PT+cH+1).toFixed(1)}" width="${cW.toFixed(1)}" height="${cH.toFixed(1)}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      ${marker}
+      <rect x="${legX}" y="${legY}" width="${legW}" height="${legH}" fill="url(#${gradId})" rx="2"/>
+      <text x="${legX}" y="${(legY+legH+9)}" fill="#90a4ae" font-size="8">sofort am Limit</text>
+      <text x="${(legX+legW).toFixed(1)}" y="${(legY+legH+9)}" text-anchor="end" fill="#90a4ae" font-size="8">≥ ${durH} h überbrückt</text>
+    </svg>`;
+      const svg = heatEl.querySelector('svg');
+      svg.addEventListener('mousemove', ev => {
+        const tg = ev.target;
+        if (!(tg instanceof SVGRectElement) || tg.dataset.pvreswDay === undefined) { _pvHideTT(); return; }
+        const d = +tg.dataset.pvreswDay, h = +tg.dataset.pvreswHour, b = +tg.dataset.pvreswB;
+        _pvShowTT(ev, `Ausfall-Start: ${_pvahDayToDate(d)}, ${h}:00 Uhr<br>Pufferstandzeit: <strong>${b >= durH ? '≥ '+durH : b} h</strong><br><span style="color:#4fc3f7">Klicken, um dieses Fenster zu zeigen</span>`);
+      });
+      svg.addEventListener('mouseleave', _pvHideTT);
+      svg.addEventListener('click', ev => {
+        const tg = ev.target;
+        if (!(tg instanceof SVGRectElement) || tg.dataset.pvreswDay === undefined) return;
+        _pvResSelStartW = (+tg.dataset.pvreswDay) * 24 + (+tg.dataset.pvreswHour);
+        _pvHideTT(); draw();
+      });
+      const resetBtn = heatEl.querySelector('[data-pvresw-reset]');
+      if (resetBtn) resetBtn.addEventListener('click', () => { _pvResSelStartW = null; draw(); });
+
+      // Gebäudeliste — nach Zeit bis kritischer Temperatur sortiert (kritischstes zuerst)
+      const rows = buildings.map(b => {
+        const warn = b.totalH != null && b.totalH <= durH;
+        const timeLabel = b.totalH == null ? `> ${COOL_CAP_H} h` : `${b.totalH} h`;
+        return `<tr style="${b.kritisch ? 'background:rgba(239,83,80,0.08);' : ''}">
+        <td style="padding:3px 6px;">${b.kritisch ? '⚠ ' : ''}${escHtml(b.name)}</td>
+        <td style="padding:3px 6px;color:var(--muted);">${escHtml(b.nutzungLabel)}</td>
+        <td style="padding:3px 6px;text-align:right;">${Math.round(b.heizlast)} kW</td>
+        <td style="padding:3px 6px;text-align:right;">${isFinite(b.tau) ? Math.round(b.tau) : '—'} h</td>
+        <td style="padding:3px 6px;text-align:right;color:${warn?'#ef5350':'#66bb6a'};font-weight:${warn?700:400};">${timeLabel}</td>
+      </tr>`;
+      }).join('');
+      tableEl.innerHTML = bList.length ? `
+      <div style="font-size:8px;color:var(--muted);margin-bottom:4px;">Zeit bis kritische Temperatur = Pufferstandzeit + Auskühlzeit (τ = C/UA, Bauschwere „${_PV_RES_BAUSCHWERE[_pvResBauschwere].label}“, kritisch ab ${_pvResTcrit} °C) — rot markiert: Nutzungstyp Pflege/Gesundheit/Bildung.</div>
+      <div style="max-height:260px;overflow-y:auto;border:1px solid rgba(255,255,255,0.08);border-radius:6px;">
+        <table style="width:100%;border-collapse:collapse;font-size:9px;color:var(--text);">
+          <thead style="position:sticky;top:0;background:#11151d;"><tr style="text-align:left;color:var(--muted);">
+            <th style="padding:3px 6px;">Gebäude</th><th style="padding:3px 6px;">Nutzung</th>
+            <th style="padding:3px 6px;text-align:right;">Heizlast</th><th style="padding:3px 6px;text-align:right;">τ</th>
+            <th style="padding:3px 6px;text-align:right;">bis kritisch</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>` : '<div style="font-size:9px;color:var(--muted);">Keine Gebäude mit Heizlast/Fläche im Bestand gefunden.</div>';
+
+      window._pvResRecoWaerme = {
+        hasSpeicher, bridgeH: rSel.bridge, durH, isWorst, selStart, worstStart, nHours,
+        totalMwh: rSel.total/1000, coveredMwh: rSel.covered/1000, unmetMwh: rSel.unmet/1000,
+        bauschwere: _pvResBauschwere, tcrit: _pvResTcrit, gebaeudeAnzahl: bList.length,
+        unterSchwelleInFenster, kritischBetroffen, ts: Date.now(),
+      };
+    }
+
+    el.querySelector('#pva-pvresw-tcrit').addEventListener('input', e => {
+      _pvResTcrit = parseFloat(e.target.value) || 15;
+      el.querySelector('#pva-pvresw-tcrit-val').textContent = _pvResTcrit + ' °C';
+      draw();
+    });
+    el.querySelectorAll('[data-pvresw-bau]').forEach(b => b.addEventListener('click', () => {
+      _pvResBauschwere = b.dataset.pvreswBau;
+      renderResilienzWaerme(el, overrideEl);
+    }));
+    el.querySelectorAll('[data-pvresw-dur]').forEach(b => b.addEventListener('click', () => {
+      _pvResDurH = +b.dataset.pvreswDur; _pvResSelStartW = null;
+      renderResilienzWaerme(el, overrideEl);
+    }));
+    draw();
   }
 
   // ── Abb. 9 — Sensitivitätsanalyse (Tornado) ─────────────────────────────────
@@ -103279,7 +103671,9 @@ ${massTbl}
     pvBerechneAlle: pvBerechneAlle,
     pvLadeSpotPreise: pvLadeSpotPreise,
     pvaBuildAnalyseSection: pvaBuildAnalyseSection,
-    pvaShowSection: pvaShowSection
+    pvaShowSection: pvaShowSection,
+    resBuildAnalyseSection: resBuildAnalyseSection,
+    resShowSection: resShowSection
   });
 
   // ── config/lkebw-logo.js — Wortmarke LKEBw für die Gutachten-Grafiken ──
@@ -103327,6 +103721,14 @@ ${massTbl}
       xLabelDy: 18, xTitleDy: 46, kpiTopDy: 66,
       kpiPad: 16, kpiRow: 22, kpiPctW: 42, kpiWertW: 128, kpiWertW2: 104,
       fsKpi: 13, fsKpiPct: 12, fsKpiLabel: 12.5, footSpace: 16,
+
+      // Version 2 („reduziertes Blatt"): Kopf ohne Liegenschaft und Metadaten,
+      // die Kennzahlen stehen nicht mehr unter der Kurve, sondern auf einem
+      // eigenen Tabellenblatt (ggRenderKennzahlen).
+      headHSchmal: 70,
+      tabTop: 30, tabHeadH: 32, tabRow: 30, tabPadX: 12,
+      tabWertW: 180, tabEinheitW: 86, tabPctW: 92,
+      fsTabHead: 10.5, trackTabHead: 1.1, fsTabWert: 13.5, fsTab: 12.5,
     },
 
     line: '#E2E4DF',                   // Rahmen von Gruppen, Kacheln, Kopfzeilen
@@ -103597,22 +103999,29 @@ ${massTbl}
   const ggEstW = (t, size, mono) => t.length * size * (mono ? 0.6 : 0.53);
 
   /**
-   * Geometrie des gerahmten Blatts — haengt nur von T ab, nicht vom Inhalt.
-   * Von allen Sheet-Figuren (Ganglinie, Heatmap, …) gemeinsam genutzt, damit
-   * Kopfzeile/Kennzahlenblock immer exakt gleich sitzen ("im selben Style").
+   * Geometrie des gerahmten Blatts — haengt nur von T und der Blattversion ab,
+   * nicht vom Inhalt. Von allen Sheet-Figuren (Ganglinie, Heatmap, …) gemeinsam
+   * genutzt, damit Kopfzeile/Kennzahlenblock immer exakt gleich sitzen.
+   *
+   * cfg.layout === 'reduziert' ist Version 2: schmalerer Kopf (ohne Untertitel
+   * und Metadatenspalte) und kein Kennzahlenblock — das Blatt endet unter dem
+   * Achsentitel, die Werte stehen auf dem Kennzahlenblatt daneben.
    */
-  function ggSheetGeometry(T) {
+  function ggSheetGeometry(T, cfg = {}) {
     const S = T.sheet, W = T.width;
+    const reduziert = cfg.layout === 'reduziert';
+    const headH = reduziert ? S.headHSchmal : S.headH;
     const plotX = S.padX + S.yTitleW + S.yLabelW;
     const plotW = W - S.padX - plotX;
-    const plotY = S.headBand + S.headH + S.plotTop;
+    const plotY = S.headBand + headH + S.plotTop;
     const plotH = S.plotH;
     const plotB = plotY + plotH;
     const xLabelY = plotB + S.xLabelDy;
     const xTitleY = plotB + S.xTitleDy;
     const kpiTop  = plotB + S.kpiTopDy;
-    const height  = kpiTop + S.kpiPad + 2 * S.kpiRow + S.kpiPad + S.footSpace;
-    return { S, W, plotX, plotW, plotY, plotH, plotB, xLabelY, xTitleY, kpiTop, height };
+    const height  = reduziert ? xTitleY + S.footSpace + 10
+                              : kpiTop + S.kpiPad + 2 * S.kpiRow + S.kpiPad + S.footSpace;
+    return { S, W, headH, reduziert, plotX, plotW, plotY, plotH, plotB, xLabelY, xTitleY, kpiTop, height };
   }
 
   function ggTxt(T, S, x, y, s, o = {}) {
@@ -103624,30 +104033,36 @@ ${massTbl}
 
   /** Papierhintergrund, Kopfbalken mit Titel/Metadaten/Wortmarke — für jede Sheet-Figur gleich. */
   function ggSheetHeader(cfg, T, G) {
-    const S = G.S, W = G.W;
+    const S = G.S, W = G.W, headH = G.headH || S.headH;
     const gruen = T.accents.gruenDunkel;
     const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
 
     let out = `<rect x="0" y="0" width="${W}" height="${gR(G.height)}" fill="${T.bg}"/>`;
     out += `<rect x="0" y="0" width="${W}" height="${S.headBand}" fill="${gruen}"/>`;
-    const hTop = S.headBand, hBot = hTop + S.headH;
+    const hTop = S.headBand, hBot = hTop + headH;
     const colMid = W - S.headMetaW - S.headLogoW, colLogo = W - S.headLogoW;
     out += `<line x1="0" y1="${gR(hBot) + 0.5}" x2="${W}" y2="${gR(hBot) + 0.5}" stroke="${T.line}" stroke-width="1"/>
-          <line x1="${colMid}.5" y1="${hTop}" x2="${colMid}.5" y2="${gR(hBot)}" stroke="${T.line}" stroke-width="1"/>
           <line x1="${colLogo}.5" y1="${hTop}" x2="${colLogo}.5" y2="${gR(hBot)}" stroke="${T.line}" stroke-width="1"/>`;
+    // Die mittlere Trennlinie gehoert zur Metadatenspalte — in Version 2 waere
+    // sie nur noch ein Strich im Leeren.
+    if (!G.reduziert) {
+      out += `<line x1="${colMid}.5" y1="${hTop}" x2="${colMid}.5" y2="${gR(hBot)}" stroke="${T.line}" stroke-width="1"/>`;
+    }
 
-    const blockH = S.fsEyebrow + 6 + S.fsTitle * 1.25 + 6 + S.fsSub * 1.25;
-    let ty = hTop + (S.headH - blockH) / 2;
+    const blockH = S.fsEyebrow + 6 + S.fsTitle * 1.25 + (G.reduziert ? 0 : 6 + S.fsSub * 1.25);
+    let ty = hTop + (headH - blockH) / 2;
     out += txt(S.padX, ty + S.fsEyebrow, (cfg.eyebrow || '').toUpperCase(),
                { mono: true, size: S.fsEyebrow, weight: 500, tracking: S.trackEyebrow, fill: T.accents.gruen });
     ty += S.fsEyebrow + 6;
     out += txt(S.padX, ty + S.fsTitle, cfg.titel || '', { size: S.fsTitle, weight: 700, tracking: -0.21 });
-    ty += S.fsTitle * 1.25 + 6;
-    out += txt(S.padX, ty + S.fsSub, cfg.ort || '', { size: S.fsSub, fill: T.text.muted });
+    if (!G.reduziert) {
+      ty += S.fsTitle * 1.25 + 6;
+      out += txt(S.padX, ty + S.fsSub, cfg.ort || '', { size: S.fsSub, fill: T.text.muted });
+    }
 
     // Metadaten — Beschriftung grau, Wert schwarz, beides dieselbe Mono
-    const meta = Object.entries(cfg.meta || {});
-    let my = hTop + (S.headH - (meta.length * S.metaRow - (S.metaRow - S.fsMeta))) / 2 + S.fsMeta;
+    const meta = G.reduziert ? [] : Object.entries(cfg.meta || {});
+    let my = hTop + (headH - (meta.length * S.metaRow - (S.metaRow - S.fsMeta))) / 2 + S.fsMeta;
     for (const [k, v] of meta) {
       out += txt(colMid + 20, my, k, { mono: true, size: S.fsMeta, weight: 500, fill: T.text.faint });
       out += txt(colMid + 20 + S.metaKeyW, my, v || '—', { mono: true, size: S.fsMeta, weight: 500 });
@@ -103657,7 +104072,7 @@ ${massTbl}
     // Wortmarke
     const logoH = S.logoW * (LKEBW_LOGO_H / LKEBW_LOGO_W);
     out += `<image href="${LKEBW_LOGO}" x="${gR(colLogo + (S.headLogoW - S.logoW) / 2)}"
-            y="${gR(hTop + (S.headH - logoH) / 2)}" width="${S.logoW}" height="${gR(logoH)}"/>`;
+            y="${gR(hTop + (headH - logoH) / 2)}" width="${S.logoW}" height="${gR(logoH)}"/>`;
     return out;
   }
 
@@ -103674,6 +104089,7 @@ ${massTbl}
 
   /** Kennzahlenblock unterhalb der Diagrammfläche — für jede Sheet-Figur gleich. */
   function ggSheetKpiFooter(cfg, T, G) {
+    if (G.reduziert) return '';        // Version 2: die Werte stehen auf dem Kennzahlenblatt
     const S = G.S, W = G.W, kpiTop = G.kpiTop;
     const gruen = T.accents.gruenDunkel;
     const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
@@ -103704,6 +104120,155 @@ ${massTbl}
     return out;
   }
 
+  /** Zahl und Einheit trennen ("2.341.289 kWh" → zwei Spalten). */
+  function ggSplitWert(wert) {
+    const s = String(wert == null ? '' : wert).trim();
+    const m = s.match(/^(.*\S)\s+(\S+)$/);
+    // Nur ein Nachsatz ohne Ziffern ist eine Einheit — "2035" oder "wechselnd"
+    // bleiben ungeteilt in der Wertspalte stehen.
+    return m && !/\d/.test(m[2]) ? { zahl: m[1], einheit: m[2] } : { zahl: s, einheit: '' };
+  }
+
+  /** Kennzahlen eines Blatts in Lesereihenfolge: erst die linke, dann die rechte Spalte. */
+  function ggKpiZeilen(cfg) {
+    return [...(cfg.kpiLinks || []).slice(0, 2), ...(cfg.kpiRechts || []).slice(0, 2)]
+      .filter(r => r && r.wert != null && r.wert !== '');
+  }
+
+  /**
+   * Kennzahlenblatt — Gegenstueck zum reduzierten Blatt (Version 2): unter der
+   * Kurve steht dort nichts mehr, die Werte wandern hierher in eine eigene
+   * Tabelle. Gespeist aus denselben kpiLinks/kpiRechts wie der Fussblock, damit
+   * beide Versionen nie auseinanderlaufen.
+   */
+  function ggRenderKennzahlen(cfg, T = GG_THEME) {
+    const S = T.sheet, W = T.width;
+    const gruen = T.accents.gruenDunkel;
+    const zeilen = ggKpiZeilen(cfg);
+    const headH = S.headHSchmal;
+    const tabTop = S.headBand + headH + S.tabTop;
+    const height = tabTop + S.tabHeadH + Math.max(zeilen.length, 1) * S.tabRow + S.footSpace + 10;
+    // Kopf wie beim reduzierten Blatt, nur mit eigenem Titel — dieselbe Funktion,
+    // damit Eyebrow, Wortmarke und Balken auf beiden Blaettern gleich sitzen.
+    const G = { S, W, headH, reduziert: true, height };
+    const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+    let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.tabelleTitel || 'Kennzahlen' }, T, G);
+
+    const x0 = S.padX, x1 = W - S.padX, P = S.tabPadX;
+    // Spaltenkanten von rechts her: Anteil | Einheit | Wert (rechtsbuendig) | Kennzahl
+    const einhX = x1 - S.tabPctW - S.tabEinheitW;
+
+    // Kopfzeile der Tabelle
+    out += `<rect x="${x0}" y="${gR(tabTop)}" width="${gR(x1 - x0)}" height="${S.tabHeadH}" fill="${T.tint}"/>`;
+    const hy = tabTop + S.tabHeadH / 2 + S.fsTabHead * 0.36;
+    const kopf = (x, s, anchor) => txt(x, hy, s.toUpperCase(), { mono: true, size: S.fsTabHead, weight: 600,
+                   tracking: S.trackTabHead, fill: gruen, anchor });
+    out += kopf(x0 + P, 'Kennzahl') + kopf(einhX - P, 'Wert', 'end')
+         + kopf(einhX + P, 'Einheit') + kopf(x1 - P, 'Anteil', 'end');
+
+    // Zeilen — eine je Kennzahl, hervorgehobene wie im Fussblock im Gruenton
+    let y = tabTop + S.tabHeadH;
+    if (!zeilen.length) {
+      out += txt(x0 + P, y + S.tabRow / 2 + S.fsTab * 0.36, cfg.leer || 'Keine Kennzahlen vorhanden.',
+                 { size: S.fsTab, fill: T.text.faint });
+      y += S.tabRow;
+    }
+    for (const r of zeilen) {
+      if (r.highlight) out += `<rect x="${x0}" y="${gR(y)}" width="${gR(x1 - x0)}" height="${S.tabRow}" fill="${T.tint}"/>`;
+      const ty = y + S.tabRow / 2 + S.fsTab * 0.36;
+      const { zahl, einheit } = ggSplitWert(r.wert);
+      out += txt(x0 + P, ty, r.label || '', { size: S.fsTab });
+      out += txt(einhX - P, ty, zahl, { anchor: 'end', mono: true, size: S.fsTabWert,
+                 weight: r.highlight ? 600 : 500, fill: r.highlight ? gruen : T.text.strong });
+      if (einheit) out += txt(einhX + P, ty, einheit, { mono: true, size: S.fsTab, weight: 500, fill: T.text.muted });
+      if (r.prozent) out += txt(x1 - P, ty, r.prozent, { anchor: 'end', mono: true, size: S.fsTab, weight: 500, fill: T.text.faint });
+      y += S.tabRow;
+      out += `<line x1="${x0}" y1="${gR(y) + 0.5}" x2="${x1}" y2="${gR(y) + 0.5}" stroke="${T.line}" stroke-width="1"/>`;
+    }
+
+    // Rahmen: aussen duenn, unter der Kopfzeile kraeftig im Akzent
+    const kopfLinie = gR(tabTop + S.tabHeadH) + 0.5;
+    out += `<line x1="${x0}" y1="${kopfLinie}" x2="${x1}" y2="${kopfLinie}" stroke="${gruen}" stroke-width="1.5"/>`;
+    out += `<rect x="${x0}.5" y="${gR(tabTop) + 0.5}" width="${gR(x1 - x0) - 1}" height="${gR(y - tabTop) - 1}"
+            fill="none" stroke="${T.line}" stroke-width="1"/>`;
+    return ggFinishSvg(out, W, height);
+  }
+
+  /**
+   * Dieselbe Kennzahlentabelle als HTML-Markup mit Inline-Styles — nicht fuer
+   * die Bildschirmvorschau gedacht, sondern als Kopiervorlage: Word erkennt
+   * ein <table>-Element in der Zwischenablage und legt eine echte, editierbare
+   * Tabelle an (Zellen, Spalten, selektierbarer Text), statt eines Bildes.
+   */
+  function ggKennzahlenHtmlTable(cfg, T = GG_THEME) {
+    const zeilen = ggKpiZeilen(cfg);
+    const gruen = T.accents.gruenDunkel;
+    const border = `1px solid ${T.line}`;
+    const td = (inhalt, o = {}) => `<td style="padding:7px 12px;border-bottom:${border};
+      font-family:${o.mono ? T.fontMono : T.font};font-size:${o.size || 12.5}px;font-weight:${o.weight || 400};
+      color:${o.color || T.text.strong};text-align:${o.align || 'left'};white-space:nowrap;
+      ${o.bg ? `background:${o.bg};` : ''}">${gEsc(inhalt)}</td>`;
+    const th = (s, align) => `<th style="padding:8px 12px;border-bottom:2px solid ${gruen};background:${T.tint};
+      font-family:${T.fontMono};font-size:10.5px;font-weight:600;letter-spacing:.05em;color:${gruen};
+      text-transform:uppercase;text-align:${align || 'left'};">${gEsc(s)}</th>`;
+
+    const rows = zeilen.length ? zeilen.map(r => {
+      const { zahl, einheit } = ggSplitWert(r.wert);
+      const bg = r.highlight ? T.tint : undefined;
+      return `<tr>${td(r.label || '', { bg })}`
+        + td(zahl, { mono: true, align: 'right', weight: r.highlight ? 600 : 500, color: r.highlight ? gruen : T.text.strong, bg })
+        + td(einheit, { mono: true, color: T.text.muted, bg })
+        + td(r.prozent || '', { mono: true, align: 'right', color: T.text.faint, bg }) + `</tr>`;
+    }).join('') : `<tr><td colspan="4" style="padding:10px 12px;font-family:${T.font};color:${T.text.faint};">
+                   ${gEsc(cfg.leer || 'Keine Kennzahlen vorhanden.')}</td></tr>`;
+
+    return `<table style="border-collapse:collapse;border:${border};min-width:420px;">
+    <thead><tr>${th('Kennzahl')}${th('Wert', 'right')}${th('Einheit')}${th('Anteil', 'right')}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  }
+
+  /** Kennzahlen als Tab-getrennter Text — Fallback-Inhalt neben dem HTML in der Zwischenablage. */
+  function ggKennzahlenPlainText(cfg) {
+    const zeilen = ggKpiZeilen(cfg);
+    const zeile = r => {
+      const { zahl, einheit } = ggSplitWert(r.wert);
+      return [r.label || '', zahl, einheit, r.prozent || ''].join('\t');
+    };
+    return ['Kennzahl\tWert\tEinheit\tAnteil', ...zeilen.map(zeile)].join('\n');
+  }
+
+  /**
+   * Kopiert die Kennzahlentabelle als echte Word-Tabelle in die Zwischenablage
+   * (HTML- statt Bild-Payload) — Gegenstueck zu ggCopyForWord, das die
+   * Abbildungen als PNG kopiert.
+   */
+  async function ggCopyTableForWord(cfg) {
+    const tabelle = ggKennzahlenHtmlTable(cfg);
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${tabelle}</body></html>`;
+    const text = ggKennzahlenPlainText(cfg);
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        await navigator.clipboard.write([new window.ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        })]);
+        return 'Zwischenablage';
+      } catch (e) { /* Fallback unten */ }
+    }
+    const holder = document.createElement('div');
+    holder.contentEditable = 'true';
+    holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    holder.innerHTML = tabelle;
+    document.body.appendChild(holder);
+    const rng = document.createRange(); rng.selectNodeContents(holder);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges(); holder.remove();
+    if (!ok) throw new Error('Zwischenablage nicht verfügbar');
+    return 'Zwischenablage (Fallback)';
+  }
+
   function ggFinishSvg(out, W, height) {
     const svg = document.createElementNS(GG_NS, 'svg');
     svg.setAttribute('xmlns', GG_NS);
@@ -103715,7 +104280,7 @@ ${massTbl}
   }
 
   function ggRenderGanglinie(cfg, T = GG_THEME) {
-    const G = ggSheetGeometry(T);
+    const G = ggSheetGeometry(T, cfg);
     const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
     const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
 
@@ -103928,7 +104493,7 @@ ${massTbl}
   const GG_MONATE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
   function ggRenderHeatmap(cfg, T = GG_THEME) {
-    const G = ggSheetGeometry(T);
+    const G = ggSheetGeometry(T, cfg);
     const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
     const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
 
@@ -104002,7 +104567,7 @@ ${massTbl}
    * Gruppen werden nebeneinander gesetzt (Verbrauch neben Einspeisung).
    * ═══════════════════════════════════════════════════════════════════════ */
   function ggRenderBalken(cfg, T = GG_THEME) {
-    const G = ggSheetGeometry(T);
+    const G = ggSheetGeometry(T, cfg);
     const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
     const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
 
@@ -104090,6 +104655,85 @@ ${massTbl}
     out += ggSheetKpiFooter(cfg, T, G);
 
     return ggFinishSvg(out, W, G.height);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+   * 3e) RENDERER — „Tabelle": mehrspaltige Datentabelle, selber Blatt-Stil
+   *
+   * Verallgemeinerung von ggRenderKennzahlen (dort fest auf Kennzahl/Wert/
+   * Einheit/Anteil), fuer Vergleiche mit beliebig vielen Spalten und Zeilen
+   * (z. B. die PV-Varianten nebeneinander).
+   * cfg.spalten = [{ label, align?: 'left'|'right' (Default: erste Spalte
+   *   links, Rest rechts), mono?: bool (Default: true außer 1. Spalte),
+   *   weight?: number (Breitenanteil, Default 1) }]
+   * cfg.zeilen  = [{ werte: string[] (parallel zu spalten), highlight?: bool,
+   *   akzent?: farbe (schmaler Balken am Zeilenanfang, z. B. Variantenfarbe) }]
+   * ═══════════════════════════════════════════════════════════════════════ */
+  function ggRenderTabelle(cfg, T = GG_THEME) {
+    const S = T.sheet, W = T.width;
+    const gruen = T.accents.gruenDunkel;
+    const spalten = cfg.spalten || [];
+    const zeilen  = cfg.zeilen  || [];
+    const headH = S.headHSchmal;
+    const tabTop = S.headBand + headH + S.tabTop;
+    const rowN  = Math.max(zeilen.length, 1);
+    const fussH = cfg.fussnote ? 20 : 0;
+    const height = tabTop + S.tabHeadH + rowN * S.tabRow + fussH + S.footSpace + 10;
+    const G = { S, W, headH, reduziert: true, height };
+    const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+    let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.tabelleTitel || cfg.titel }, T, G);
+
+    const x0 = S.padX, x1 = W - S.padX, P = S.tabPadX, totalW = x1 - x0;
+    const totalWeight = spalten.reduce((s, c) => s + (c.weight || 1), 0) || 1;
+    let cx = x0;
+    const cols = spalten.map((c, i) => {
+      const w = totalW * (c.weight || 1) / totalWeight;
+      const col = { ...c, x: cx, w, align: c.align || (i === 0 ? 'left' : 'right'), mono: c.mono !== false && i > 0 };
+      cx += w;
+      return col;
+    });
+
+    // Kopfzeile
+    out += `<rect x="${x0}" y="${gR(tabTop)}" width="${gR(totalW)}" height="${S.tabHeadH}" fill="${T.tint}"/>`;
+    const hy = tabTop + S.tabHeadH / 2 + S.fsTabHead * 0.36;
+    cols.forEach(c => {
+      const tx = c.align === 'right' ? c.x + c.w - P : c.x + P;
+      out += txt(tx, hy, (c.label || '').toUpperCase(), { mono: true, size: S.fsTabHead, weight: 600,
+                 tracking: S.trackTabHead, fill: gruen, anchor: c.align === 'right' ? 'end' : 'start' });
+    });
+
+    // Zeilen — eine je Variante/Kandidat, hervorgehobene wie im Kennzahlenblock im Gruenton
+    let y = tabTop + S.tabHeadH;
+    if (!zeilen.length) {
+      out += txt(x0 + P, y + S.tabRow / 2 + S.fsTab * 0.36, cfg.leer || 'Keine Daten vorhanden.',
+                 { size: S.fsTab, fill: T.text.faint });
+      y += S.tabRow;
+    }
+    for (const r of zeilen) {
+      if (r.highlight) out += `<rect x="${x0}" y="${gR(y)}" width="${gR(totalW)}" height="${S.tabRow}" fill="${T.tint}"/>`;
+      if (r.akzent) out += `<rect x="${x0}" y="${gR(y)}" width="4" height="${S.tabRow}" fill="${r.akzent}"/>`;
+      const ty = y + S.tabRow / 2 + S.fsTab * 0.36;
+      cols.forEach((c, i) => {
+        const val = r.werte?.[i];
+        const s = (val == null || val === '') ? '—' : String(val);
+        const tx = c.align === 'right' ? c.x + c.w - P : c.x + P + (r.akzent && i === 0 ? 8 : 0);
+        out += txt(tx, ty, s, { mono: c.mono, size: i === 0 ? S.fsTab : S.fsTabWert,
+                   weight: r.highlight && i > 0 ? 600 : 500, fill: r.highlight && i > 0 ? gruen : T.text.strong,
+                   anchor: c.align === 'right' ? 'end' : 'start' });
+      });
+      y += S.tabRow;
+      out += `<line x1="${x0}" y1="${gR(y) + 0.5}" x2="${x1}" y2="${gR(y) + 0.5}" stroke="${T.line}" stroke-width="1"/>`;
+    }
+
+    // Rahmen: aussen duenn, unter der Kopfzeile kraeftig im Akzent
+    const kopfLinie = gR(tabTop + S.tabHeadH) + 0.5;
+    out += `<line x1="${x0}" y1="${kopfLinie}" x2="${x1}" y2="${kopfLinie}" stroke="${gruen}" stroke-width="1.5"/>`;
+    out += `<rect x="${x0}.5" y="${gR(tabTop) + 0.5}" width="${gR(totalW) - 1}" height="${gR(y - tabTop) - 1}"
+            fill="none" stroke="${T.line}" stroke-width="1"/>`;
+
+    if (cfg.fussnote) out += txt(x0, y + 15, cfg.fussnote, { size: S.fsTab - 2, fill: T.text.faint });
+
+    return ggFinishSvg(out, W, height);
   }
 
   /** Kennzahlen eines Lastgangs: Summe, Spitze, Grundlast (1-%-Quantil). */
@@ -104236,6 +104880,7 @@ ${massTbl}
   const GG_FIGUREN = [
     {
       id: 'traeger-quellen',
+      kapitel: '1.2 Liegenschaftsinformationen',
       titel: 'Energieträger / Energiequellen',
       datei: 'energietraeger-quellen',
       hinweis: 'Welche Energieträger und -quellen im Quartier zum Einsatz kommen. „Aus Projekt übernehmen" leitet die Haken aus Erzeugern und Assets ab.',
@@ -104289,6 +104934,7 @@ ${massTbl}
     {
       id: 'lastgang-strom',
       autoSync: true,   // Daten kommen komplett aus dem Projekt — nichts zum Anhaken
+      kapitel: '3.1.5 Stromdaten',
       titel: 'Ist-Lastgang Strom',
       datei: 'ist-lastgang-strom',
       hinweis: 'Gemessener Jahreslastgang aus dem Stromimport (15-Minuten-Werte, sonst Stundenwerte). '
@@ -104340,6 +104986,7 @@ ${massTbl}
     {
       id: 'lastgang-waerme',
       autoSync: true,   // Daten kommen komplett aus dem Projekt — nichts zum Anhaken
+      kapitel: '2.1 Ist-Zustand Wärme',
       titel: 'Ist-Lastgang Wärme',
       datei: 'ist-lastgang-waerme',
       hinweis: 'Bevorzugt der importierte Wärmelastgang aus den Wärme-Grundlagen. Ist keiner vorhanden, '
@@ -104395,6 +105042,7 @@ ${massTbl}
     {
       id: 'lastgang-strom-dauerlinie',
       autoSync: true,
+      kapitel: '3.1.5 Stromdaten',
       titel: 'Jahresdauerlinie Strom',
       datei: 'jahresdauerlinie-strom',
       hinweis: 'Derselbe Stromlastgang wie die Jahresganglinie, absteigend nach Leistung sortiert — '
@@ -104444,6 +105092,7 @@ ${massTbl}
     {
       id: 'lastgang-strom-tagesgang',
       autoSync: true,
+      kapitel: '3.1.5 Stromdaten',
       titel: 'Tagesgang Strom',
       datei: 'tagesgang-strom',
       hinweis: 'Mittlerer Tagesverlauf aus dem Stromlastgang, getrennt nach Werktag und Wochenende '
@@ -104496,6 +105145,7 @@ ${massTbl}
     {
       id: 'lastgang-strom-heatmap',
       autoSync: true,
+      kapitel: '3.1.5 Stromdaten',
       titel: 'Jahres-Heatmap Strom',
       datei: 'jahres-heatmap-strom',
       hinweis: 'Stündliche Mittelwerte des Stromlastgangs als Tag/Stunde-Raster — zeigt saisonale und '
@@ -104545,6 +105195,7 @@ ${massTbl}
     {
       id: 'monatsbilanz-strom',
       autoSync: true,
+      kapitel: '3.1.5 Stromdaten',
       titel: 'Monatsbilanz Strom',
       datei: 'monatsbilanz-strom',
       hinweis: 'Netzbezug, Eigenverbrauch und Einspeisung je Monat. Sobald die Strom-/PV-Berechnung '
@@ -104627,6 +105278,7 @@ ${massTbl}
     // ── Entwicklung der Anschlussleistung ───────────────
     {
       id: 'anschlussleistung-entwicklung',
+      kapitel: '3.2.2 Liegenschaftsstromnetzanschluss',
       titel: 'Entwicklung der Anschlussleistung',
       datei: 'anschlussleistung-entwicklung',
       hinweis: 'Höchstlast am Liegenschaftsanschluss über den Planungshorizont, gegen Anschlusswert und '
@@ -104722,7 +105374,227 @@ ${massTbl}
         return `✓ ${jahre.length} Jahre aus ${res.proJahr.length} Stützjahren (${res.von}–${res.bis}) übernommen.`;
       },
     },
+
   ];
+
+  // ── PV-Analyse: Varianten, Energiebilanz, Wirtschaftlichkeit, Resilienz ───────
+  // Quelle: window._pvAnalyse.ergebnisse (gefüllt in src/09d-pv-analyse.js über
+  // „Varianten berechnen") bzw. window._pvResReco (Kapitel 🛡 Resilienz). Ohne
+  // gelaufene Berechnung liefert ausProjekt eine Hinweismeldung statt Zahlen.
+  // Als eigene Funktion statt direkt im Array-Literal: die Helfer/Konstanten
+  // darunter (GG_PV_KURZ etc.) sind sonst beim Auswerten von GG_FIGUREN noch
+  // nicht initialisiert (TDZ) — der Push erfolgt erst, nachdem alles definiert ist.
+
+  /** Kanonische Varianten (mit Lesehilfe-Info) aus der PV-Analyse, sonst leer. */
+  function ggPvKanon() {
+    return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage);
+  }
+  /** Kurzform der Variantenlabel für Achsen/Kategorien (voller Name steht in Tabellen). */
+  const GG_PV_KURZ = { 'minimal': 'Minimal', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
+                        'autarkie': 'Autarkie', 'max-pv': 'Max. PV-Ausbau' };
+  const GG_RES_MODE_LBL = { 'gen': 'Nur Notstrom', 'bat-gen': 'Speicher + Notstrom',
+                             'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'Nur PV + Speicher' };
+  const GG_PVAH_MONAT_TAGE = [31,28,31,30,31,30,31,31,30,31,30,31];
+  const GG_PVAH_MONAT_NAMEN = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  /** Tag-im-Jahr (0-basiert, aus einem Stunden-Index) → "12. Jul" — dieselbe Logik wie
+   * _pvahDayToDate in 09d-pv-analyse.js; hier dupliziert, damit dieses Modul frei von
+   * App-Kern-Importen bleibt (siehe Kommentar am Dateianfang). */
+  function ggPvTagLabel(stundenIdx) {
+    let m = 0, d = Math.max(0, Math.min(364, Math.floor(stundenIdx / 24)));
+    while (m < 11 && d >= GG_PVAH_MONAT_TAGE[m]) { d -= GG_PVAH_MONAT_TAGE[m]; m++; }
+    return `${d + 1}. ${GG_PVAH_MONAT_NAMEN[m]}, ${stundenIdx % 24}:00`;
+  }
+
+  function ggPvFiguren() {
+    return [
+      // ── Variantenvergleich ───────────────────────────────────────────────
+      {
+        id: 'pv-variantenvergleich',
+        autoSync: true,
+        kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+        titel: 'PV-Varianten im Vergleich',
+        datei: 'pv-variantenvergleich',
+        hinweis: 'Die 5 kanonischen PV-Varianten aus der ☀ PV-Analyse nebeneinander — jede beantwortet '
+               + 'genau eine Stakeholder-Frage (Minimal, Eigenverbrauch, Wirtschaftlichkeit, Autarkie, '
+               + 'maximaler Ausbau). Grundlage: „Varianten berechnen" in der PV-Analyse.',
+        render: cfg => ggRenderTabelle(cfg),
+        config: {
+          eyebrow: 'Elektrotechnisches Gutachten', titel: 'PV-Varianten im Vergleich',
+          leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
+          spalten: [
+            { label: 'Variante', weight: 2.6 },
+            { label: 'PV-Leistung', weight: 1.25 },
+            { label: 'Batterie', weight: 1.15 },
+            { label: 'Eigenverbrauch', weight: 1.3 },
+            { label: 'Autarkie', weight: 1.1 },
+            { label: 'Amortisation', weight: 1.25 },
+          ],
+          zeilen: [], fussnote: '',
+        },
+        ausProjekt(cfg) {
+          const kanon = ggPvKanon();
+          if (!kanon.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine PV-Varianten berechnet.'; }
+          cfg.zeilen = kanon.map(v => ({
+            werte: [v.label, ggNum(v.pvKwp) + ' kWp', v.batKwh > 0 ? ggNum(v.batKwh) + ' kWh' : '—',
+                    ggNum(v.wirt.pvEigenQuote) + ' %', ggNum(v.wirt.autarkie) + ' %',
+                    isFinite(v.wirt.amort) ? ggNum(v.wirt.amort, 1) + ' a' : '> 20 a'],
+            highlight: v.id === 'wirt-opt', akzent: v.farbe,
+          }));
+          cfg.fussnote = 'Hervorgehoben: wirtschaftlich optimierte Variante (höchster Jahres-Netto-Überschuss, statische Amortisation).';
+          return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
+        },
+      },
+
+      // ── Energiebilanz je Variante (B/D/P — Bedarf/Deckung/PV-Verbleib) ───
+      {
+        id: 'pv-energiebilanz',
+        autoSync: true,
+        kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+        titel: 'Energiebilanz je PV-Variante',
+        datei: 'pv-energiebilanz',
+        hinweis: 'Drei Balken je Variante: Bedarf (gesamter Strombedarf), Deckung (Eigenverbrauch + '
+               + 'Netzbezug, deckt den Bedarf) und PV-Verbleib (Einspeisung + Abregelung des '
+               + 'PV-Überschusses). Entspricht der Energiebilanz-Abbildung der PV-Analyse.',
+        render: cfg => ggRenderBalken(cfg),
+        config: {
+          eyebrow: 'Elektrotechnisches Gutachten', titel: 'Energiebilanz je PV-Variante', ort: '',
+          meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+          achseY: 'Energie in MWh/a', achseX: 'Variante · B = Bedarf · D = Deckung · P = PV-Verbleib',
+          leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
+          kategorien: [], gruppen: [], kpiLinks: [], kpiRechts: [],
+        },
+        ausProjekt(cfg) {
+          cfg.ort = cfg.ort || ggLiegenschaft();
+          cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+          ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+
+          const kanon = ggPvKanon();
+          if (!kanon.length) { cfg.kategorien = []; cfg.gruppen = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Noch keine PV-Varianten berechnet.'; }
+
+          const rows = kanon.map(v => {
+            const ev = v.sim.eigenMwh, nb = v.sim.netzbezugMwh, es = v.sim.einspeiseMwh, ct = v.sim.curtailMwh || 0;
+            const wEv = Math.min(ev, v.sim.windEigenMwh || 0), wEs = Math.min(es, v.sim.windEinspMwh || 0);
+            return { v, ev, nb, es, ct, wEv, wEs, bedarf: ev + nb };
+          });
+          const windAktiv = rows.some(r => r.wEv + r.wEs > 0.01);
+          const kat = kanon.map(v => `${v.icon} ${GG_PV_KURZ[v.id] || v.label}`);
+
+          cfg.kategorien = kat;
+          cfg.gruppen = [
+            { label: 'Bedarf', segmente: [
+              { label: 'Bedarf gesamt', farbe: GG_THEME.text.muted, werte: rows.map(r => r.bedarf) },
+            ]},
+            { label: 'Deckung', segmente: [
+              { label: 'Eigenverbrauch PV', farbe: GG_THEME.accents.gruen, werte: rows.map(r => r.ev - r.wEv) },
+              ...(windAktiv ? [{ label: 'Eigenverbrauch Wind', farbe: '#4dd0e1', werte: rows.map(r => r.wEv) }] : []),
+              { label: 'Netzbezug', farbe: GG_THEME.energy.strom, werte: rows.map(r => r.nb) },
+            ]},
+            { label: 'PV-Verbleib', segmente: [
+              { label: 'Einspeisung PV', farbe: GG_THEME.accents.gruenDunkel, werte: rows.map(r => r.es - r.wEs) },
+              ...(windAktiv ? [{ label: 'Einspeisung Wind', farbe: '#4dd0e1', werte: rows.map(r => r.wEs) }] : []),
+              { label: 'Abregelung', farbe: GG_THEME.energy.gas, werte: rows.map(r => r.ct) },
+            ]},
+          ];
+          const vEv = kanon.reduce((a, b) => b.wirt.pvEigenQuote > a.wirt.pvEigenQuote ? b : a);
+          const vAut = kanon.reduce((a, b) => b.wirt.autarkie > a.wirt.autarkie ? b : a);
+          cfg.kpiLinks = [
+            { wert: ggNum(vEv.wirt.pvEigenQuote) + ' %', label: `Höchste Eigenverbrauchsquote (${vEv.label})` },
+            { wert: ggNum(vAut.wirt.autarkie) + ' %', label: `Höchste Autarkie (${vAut.label})` },
+          ];
+          const vEinsp = kanon.reduce((a, b) => b.sim.einspeiseMwh > a.sim.einspeiseMwh ? b : a);
+          const vErtrag = kanon.reduce((a, b) => b.ertragMwh > a.ertragMwh ? b : a);
+          cfg.kpiRechts = [
+            { wert: ggNum(vEinsp.sim.einspeiseMwh, 1) + ' MWh', label: `Höchste Netzeinspeisung (${vEinsp.label})` },
+            { wert: ggNum(vErtrag.ertragMwh, 1) + ' MWh', label: `Größter PV-Jahresertrag (${vErtrag.label})`, highlight: true },
+          ];
+          return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
+        },
+      },
+
+      // ── Wirtschaftlichkeit je Variante ───────────────────────────────────
+      {
+        id: 'pv-wirtschaftlichkeit',
+        autoSync: true,
+        kapitel: '3.2.6 Wirtschaftlichkeit und Investitionskosten',
+        titel: 'Wirtschaftlichkeit je PV-Variante',
+        datei: 'pv-wirtschaftlichkeit',
+        hinweis: 'Investition, jährlicher Netto-Überschuss und statische Amortisation je Variante — '
+               + 'die für den Gutachten-Adressaten meist entscheidenden Kennzahlen.',
+        render: cfg => ggRenderTabelle(cfg),
+        config: {
+          eyebrow: 'Elektrotechnisches Gutachten', titel: 'Wirtschaftlichkeit je PV-Variante',
+          leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
+          spalten: [
+            { label: 'Variante', weight: 2.4 },
+            { label: 'Investition', weight: 1.4 },
+            { label: 'Jahresüberschuss', weight: 1.6 },
+            { label: 'Amortisation', weight: 1.3 },
+          ],
+          zeilen: [], fussnote: '',
+        },
+        ausProjekt(cfg) {
+          const kanon = ggPvKanon();
+          if (!kanon.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine PV-Varianten berechnet.'; }
+          cfg.zeilen = kanon.map(v => {
+            const ueberschuss = -v.wirt.nettoJk;
+            return {
+              werte: [v.label, ggNum(v.wirt.investGes) + ' €',
+                      (ueberschuss >= 0 ? '+' : '−') + ggNum(Math.abs(ueberschuss)) + ' €/a',
+                      isFinite(v.wirt.amort) ? ggNum(v.wirt.amort, 1) + ' a' : '> 20 a'],
+              highlight: v.id === 'wirt-opt', akzent: v.farbe,
+            };
+          });
+          cfg.fussnote = 'Investition inkl. Netzanschluss-Infrastruktur. Jahresüberschuss = Erlöse (Eigenverbrauchsersparnis '
+                        + '+ Einspeisung) minus Jahreskosten (Kapitaldienst + Betrieb). Amortisation statisch (Investition / Erlöse).';
+          return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
+        },
+      },
+
+      // ── Resilienz-Zusammenfassung ─────────────────────────────────────────
+      {
+        id: 'pv-resilienz',
+        autoSync: true,
+        kapitel: '5.2 Bewertung Resilienz',
+        titel: 'Resilienz — Autarkie bei Netzausfall',
+        datei: 'pv-resilienz-zusammenfassung',
+        hinweis: 'Zusammenfassung der zuletzt im Kapitel 🛡 Resilienz betrachteten Inselbetrieb-Auslegung: '
+               + 'wie lange trägt PV/Batterie/Notstrom einen Blackout zum ungünstigsten Zeitpunkt im Jahr. '
+               + 'Erst im Kapitel 🛡 Resilienz öffnen/berechnen, dann hierher „Aus Projekt übernehmen".',
+        render: cfg => ggRenderTabelle(cfg),
+        config: {
+          eyebrow: 'Elektrotechnisches Gutachten', titel: 'Resilienz — Autarkie bei Netzausfall',
+          leer: 'Noch keine Resilienz-Berechnung — Kapitel 🛡 Resilienz öffnen (rechnet automatisch auf den PV-Varianten).',
+          spalten: [{ label: 'Kennzahl', weight: 2.2 }, { label: 'Wert', weight: 1.4, mono: true }],
+          zeilen: [], fussnote: '',
+        },
+        ausProjekt(cfg) {
+          const r = window._pvResReco;
+          if (!r) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine Resilienz-Berechnung vorhanden.'; }
+          const fmtK = v => v >= 10000 ? `${ggNum(v / 1000)} k€` : `${ggNum(v)} €`;
+          const zeile = (label, wert) => ({ werte: [label, wert] });
+          cfg.zeilen = [
+            zeile('Betriebsweise', GG_RES_MODE_LBL[r.mode] || r.mode),
+            zeile('PV-Leistung / Batterie', `${ggNum(r.pvKwp)} kWp / ${r.batKwh > 0 ? ggNum(r.batKwh) + ' kWh' : '—'}`),
+            zeile('Betrachtetes Ausfallfenster', `${r.durH} h`),
+            { werte: ['Ausfall-Zeitpunkt', r.nHours ? ggPvTagLabel(r.isWorst ? r.worstStart : r.selStart) : '—'],
+              highlight: r.isWorst },
+            { werte: ['Überbrückung ohne Notstrom', r.bridgeH >= r.durH ? `> ${r.durH} h` : `${r.bridgeH} h`] },
+            zeile('Empfohlene Notstromleistung', r.genKw > 0 ? `${Math.ceil(r.genKw)} kW` : 'keine nötig'),
+            zeile('Kraftstoffbedarf im Ereignis', r.genKw > 0 ? `${r.kraftstoff}, ${ggNum(Math.ceil(r.liters))} l` : '–'),
+            { werte: ['Versorgungslücke im Fenster', r.eUnmet > 0.5 ? `${ggNum(r.eUnmet / 1000, 2)} MWh` : 'keine'],
+              highlight: r.eUnmet > 0.5 },
+            zeile('Energiebedarf im Fenster', `${ggNum(r.eLoadMwh, 2)} MWh`),
+            zeile('Resilienz-Investition (Aggregat + Tank)', r.genKw > 0 ? fmtK(r.capexCost) : '0 €'),
+            zeile('Spritkosten je Ereignis', r.genKw > 0 ? fmtK(r.fuelCost) : '0 €'),
+          ];
+          cfg.fussnote = 'Inselbetrieb-Simulation zum ungünstigsten Zeitpunkt im Jahr: Batterie startet mit dem realen '
+                        + 'Ladestand aus der Jahressimulation, das Notstromaggregat deckt die Restlast. Stand aus dem Kapitel 🛡 Resilienz.';
+          return '✓ Resilienz-Kennzahlen aus dem Kapitel 🛡 Resilienz übernommen.';
+        },
+      },
+    ];
+  }
+  GG_FIGUREN.push(...ggPvFiguren());
 
   /* ══════════════════════════════════════════════════════════════════════════
    * 6) PANEL — Analyse-Sektion „Gutachten-Grafiken"
@@ -104744,9 +105616,45 @@ ${massTbl}
     cfg.meta['WE-Nr.'] = cfg.meta['WE-Nr.'] || (window.pdWeNummer || '');
   }
 
-  const _gg = { figurId: GG_FIGUREN[0].id, scale: 3, svg: null };
+  const _gg = { figurId: GG_FIGUREN[0].id, scale: 3, svg: null, svgTabelle: null,
+                layout: 'reduziert', ziel: 'figur' };
 
   const ggFigur = () => GG_FIGUREN.find(f => f.id === _gg.figurId) || GG_FIGUREN[0];
+
+  /** Natürlicher Vergleich zweier Gliederungsnummern ("3.2" vor "3.10", "Sonstige" immer zuletzt). */
+  function ggKapitelCmp(a, b) {
+    if (a === b) return 0;
+    if (a === 'Sonstige') return 1;
+    if (b === 'Sonstige') return -1;
+    const pa = (a.match(/^\d+(\.\d+)*/) || [''])[0].split('.').map(Number);
+    const pb = (b.match(/^\d+(\.\d+)*/) || [''])[0].split('.').map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const d = (pa[i] || 0) - (pb[i] || 0);
+      if (d) return d;
+    }
+    return 0;
+  }
+
+  /** GG_FIGUREN nach Gutachten-Kapitel (cfg.kapitel) gruppiert, in Gliederungsreihenfolge. */
+  function ggFigurenNachKapitel() {
+    const gruppen = [];
+    for (const f of GG_FIGUREN) {
+      const kap = f.kapitel || 'Sonstige';
+      let g = gruppen.find(g => g.kapitel === kap);
+      if (!g) { g = { kapitel: kap, figuren: [] }; gruppen.push(g); }
+      g.figuren.push(f);
+    }
+    gruppen.sort((a, b) => ggKapitelCmp(a.kapitel, b.kapitel));
+    return gruppen;
+  }
+
+  /** Blatt-Figuren (Ganglinien, Heatmap, …) tragen eine Kopfzeile mit Metadaten. */
+  const ggIstBlatt = figur => !!figur.config.meta;
+  /** In Version 2 steht neben der Abbildung ein zweites Blatt mit den Kennzahlen. */
+  const ggZeigtTabelle = figur => ggIstBlatt(figur) && _gg.layout === 'reduziert';
+  /** Was Kopieren/PNG/SVG gerade betrifft — Abbildung oder Kennzahlenblatt. */
+  const ggAktivesSvg = () => (_gg.ziel === 'tabelle' && _gg.svgTabelle) ? _gg.svgTabelle : _gg.svg;
+  const ggAktiveDatei = () => ggFigur().datei + (_gg.ziel === 'tabelle' && _gg.svgTabelle ? '-kennzahlen' : '');
 
   function ggBuildAnalyseSection() {
     const tabBar = document.getElementById('analyse-view-tabs');
@@ -104804,18 +105712,25 @@ ${massTbl}
 
   function ggRenderPanel() {
     const figur = ggFigur();
+    // Die Blattversion gilt fuer alle Blatt-Figuren gemeinsam; die Status-Matrix
+    // kennt kein Layout und bleibt unberuehrt.
+    if (ggIstBlatt(figur)) figur.config.layout = _gg.layout;
+    if (!ggZeigtTabelle(figur)) _gg.ziel = 'figur';
 
-    // ── Sidebar: Figurenliste ──
+    // ── Sidebar: Figurenliste, nach Gutachten-Kapitel gruppiert ──
     const side = document.getElementById('gg-sidebar');
     if (side) {
-      side.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Abbildungen</div>`
-        + GG_FIGUREN.map(f => {
-            const aktiv = f.id === _gg.figurId;
-            return `<button data-click="ggSelectFigur('${f.id}')" style="display:block;width:100%;text-align:left;margin-bottom:4px;padding:7px 9px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:11px;line-height:1.35;
-            border:1px solid ${aktiv ? 'rgba(38,166,154,.5)' : 'rgba(255,255,255,.08)'};
-            background:${aktiv ? 'rgba(38,166,154,.14)' : 'rgba(255,255,255,.03)'};
-            color:${aktiv ? '#26a69a' : 'var(--muted)'};">${gEsc(f.titel)}</button>`;
-          }).join('')
+      const btnHtml = f => {
+        const aktiv = f.id === _gg.figurId;
+        return `<button data-click="ggSelectFigur('${f.id}')" style="display:block;width:100%;text-align:left;margin-bottom:4px;padding:7px 9px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:11px;line-height:1.35;
+        border:1px solid ${aktiv ? 'rgba(38,166,154,.5)' : 'rgba(255,255,255,.08)'};
+        background:${aktiv ? 'rgba(38,166,154,.14)' : 'rgba(255,255,255,.03)'};
+        color:${aktiv ? '#26a69a' : 'var(--muted)'};">${gEsc(f.titel)}</button>`;
+      };
+      side.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Abbildungen · nach Gutachten-Kapitel</div>`
+        + ggFigurenNachKapitel().map((g, gi) => `
+        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#26a69a;opacity:.8;margin:${gi ? 14 : 0}px 0 5px;">${gEsc(g.kapitel)}</div>`
+          + g.figuren.map(btnHtml).join('')).join('')
         + `<div style="margin-top:12px;font-size:10px;color:var(--muted);line-height:1.5;">${gEsc(figur.hinweis || '')}</div>`;
     }
 
@@ -104826,24 +105741,49 @@ ${massTbl}
       border:1px solid ${primary ? 'rgba(38,166,154,.6)' : 'rgba(255,255,255,.12)'};
       background:${primary ? 'rgba(38,166,154,.18)' : 'rgba(255,255,255,.04)'};
       color:${primary ? '#26a69a' : 'var(--muted)'};">${label}</button>`;
-      bar.innerHTML = btn('⧉ Für Word kopieren', 'ggCopy()', true)
+      const sel = (click, optionen, wert) => `<select data-change="${click}" style="font-family:inherit;font-size:11px;padding:5px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">
+           ${optionen.map(([v, l]) => `<option value="${v}"${String(wert) === String(v) ? ' selected' : ''}>${l}</option>`).join('')}
+         </select>`;
+      const zielTabelle = ggZielIstTabelle();
+      bar.innerHTML = btn(zielTabelle ? '⊞ Als Tabelle kopieren' : '⧉ Für Word kopieren', 'ggCopy()', true)
         + btn('⤓ PNG', 'ggSavePng()') + btn('⤓ SVG', 'ggSaveSvg()')
-        + `<select data-change="ggSetScale(this.value)" style="font-family:inherit;font-size:11px;padding:5px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">
-           ${[[2, '2× · ~300 dpi'], [3, '3× · ~450 dpi'], [4, '4× · ~600 dpi']]
-             .map(([v, l]) => `<option value="${v}"${_gg.scale === v ? ' selected' : ''}>${l}</option>`).join('')}
-         </select>`
-        + `<span style="margin-left:auto;font-size:10px;color:var(--muted);">In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.</span>`;
+        + sel('ggSetScale(this.value)', [[2, '2× · ~300 dpi'], [3, '3× · ~450 dpi'], [4, '4× · ~600 dpi']], _gg.scale)
+        + (ggIstBlatt(figur)
+            ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
+                                              ['reduziert', 'Blatt: reduziert + Kennzahlentabelle']], _gg.layout)
+            : '')
+        + (ggZeigtTabelle(figur)
+            ? sel('ggSetZiel(this.value)', [['figur', 'Export: Abbildung'], ['tabelle', 'Export: Kennzahlen']], _gg.ziel)
+            : '')
+        + `<span style="margin-left:auto;font-size:10px;color:var(--muted);">${zielTabelle
+          ? '„Als Tabelle kopieren" + Strg+V ergibt eine echte, editierbare Word-Tabelle — PNG/SVG legen die Tabelle stattdessen als Bild ab.'
+          : 'In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.'}</span>`;
     }
 
     // ── Figur zeichnen ──
     const paper = document.getElementById('gg-paper');
     if (paper) {
       _gg.svg = figur.render(figur.config);
-      _gg.svg.style.width = '100%';
-      _gg.svg.style.maxWidth = GG_THEME.width + 'px';   // nie groesser als 1:1
-      _gg.svg.style.height = 'auto';
-      _gg.svg.style.display = 'block';
-      paper.replaceChildren(_gg.svg);
+      _gg.svgTabelle = ggZeigtTabelle(figur) ? ggRenderKennzahlen(figur.config) : null;
+      const blatt = (svg, name, aktiv) => {
+        svg.style.width = '100%';
+        svg.style.maxWidth = GG_THEME.width + 'px';   // nie groesser als 1:1
+        svg.style.height = 'auto';
+        svg.style.display = 'block';
+        // Ohne zweites Blatt gibt es nichts zu unterscheiden — dann bleibt die
+        // Vorschau so schlicht wie bisher.
+        if (!_gg.svgTabelle) { paper.appendChild(svg); return; }
+        const box = document.createElement('div');
+        box.style.cssText = `border:2px solid ${aktiv ? '#26a69a' : 'transparent'};padding:4px;margin-bottom:10px;`;
+        const cap = document.createElement('div');
+        cap.style.cssText = 'font-size:10px;color:#5A5F5A;margin:0 0 4px 2px;';
+        cap.textContent = aktiv ? `${name} · wird exportiert` : name;
+        box.append(cap, svg);
+        paper.appendChild(box);
+      };
+      paper.replaceChildren();
+      blatt(_gg.svg, 'Abbildung', _gg.ziel === 'figur');
+      if (_gg.svgTabelle) blatt(_gg.svgTabelle, 'Kennzahlen (eigene Abbildung)', _gg.ziel === 'tabelle');
       ggFitLabels(_gg.svg);   // erst im Dokument laesst sich die Textbreite messen
     }
 
@@ -104874,13 +105814,21 @@ ${massTbl}
           ${gEsc(label)}
           <input type="text" value="${gEsc(wert || '')}" data-change="${click}" style="font-family:inherit;font-size:11px;padding:4px 6px;border-radius:4px;
             border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);min-width:150px;"></label>`;
+        // Version 2 zeigt Liegenschaft und Metadaten nicht — die Felder dafuer
+        // stehen zu lassen waere eine Eingabe ohne Wirkung.
+        const reduziert = _gg.layout === 'reduziert';
         html += `<div style="display:flex;flex-wrap:wrap;gap:8px 12px;">`
           + feld('Kopfzeile', figur.config.eyebrow, "ggSetKopf('eyebrow',this.value)")
           + feld('Titel', figur.config.titel, "ggSetKopf('titel',this.value)")
-          + feld('Liegenschaft', figur.config.ort, "ggSetKopf('ort',this.value)")
-          + Object.keys(figur.config.meta).map(k =>
-              feld(k, figur.config.meta[k], `ggSetMeta('${k}',this.value)`)).join('')
+          + (reduziert
+              ? feld('Titel Kennzahlenblatt', figur.config.tabelleTitel || 'Kennzahlen', "ggSetKopf('tabelleTitel',this.value)")
+              : feld('Liegenschaft', figur.config.ort, "ggSetKopf('ort',this.value)")
+                + Object.keys(figur.config.meta).map(k =>
+                    feld(k, figur.config.meta[k], `ggSetMeta('${k}',this.value)`)).join(''))
           + `</div>`;
+        if (reduziert) {
+          html += `<div style="margin-top:6px;font-size:10px;color:var(--muted);">Reduziertes Blatt: Datum, Bearbeiter, WE-Nr. und Liegenschaft entfallen; die Kennzahlen stehen auf dem zweiten Blatt.</div>`;
+        }
       }
       opt.innerHTML = html;
     }
@@ -104902,6 +105850,19 @@ ${massTbl}
 
   function ggSetScale(v) {
     _gg.scale = parseInt(v, 10) || 3;
+  }
+
+  /** Blattversion: 'voll' (mit Kopfdaten und Kennzahlenblock) oder 'reduziert'. */
+  function ggSetLayout(v) {
+    _gg.layout = v === 'reduziert' ? 'reduziert' : 'voll';
+    if (_gg.layout === 'voll') _gg.ziel = 'figur';
+    ggRenderPanel();
+  }
+
+  /** Exportziel in Version 2: die Abbildung oder das Kennzahlenblatt. */
+  function ggSetZiel(v) {
+    _gg.ziel = v === 'tabelle' ? 'tabelle' : 'figur';
+    ggRenderPanel();
   }
 
   function ggToggleItem(gi, ii, on) {
@@ -104943,26 +105904,40 @@ ${massTbl}
     ggRenderPanel();
   }
 
+  /** Aktuelles Kopierziel ist das Kennzahlenblatt — dann als echte Tabelle statt als Bild. */
+  const ggZielIstTabelle = () => _gg.ziel === 'tabelle' && ggZeigtTabelle(ggFigur());
+
   async function ggCopy() {
-    if (!_gg.svg) return;
+    if (ggZielIstTabelle()) {
+      ggSay('Wird vorbereitet …');
+      try {
+        const wohin = await ggCopyTableForWord(ggFigur().config);
+        ggSay(`✓ Tabelle in die ${wohin} kopiert — in Word mit Strg+V einfügen (editierbare Tabelle).`);
+      } catch (e) { ggSay('⚠ ' + e.message, true); }
+      return;
+    }
+    const svg = ggAktivesSvg();
+    if (!svg) return;
     ggSay('Wird gerendert …');
     try {
-      const wohin = await ggCopyForWord(_gg.svg, _gg.scale);
+      const wohin = await ggCopyForWord(svg, _gg.scale);
       ggSay(`✓ In die ${wohin} kopiert — jetzt in Word mit Strg+V einfügen.`);
     } catch (e) { ggSay('⚠ ' + e.message, true); }
   }
 
   async function ggSavePng() {
-    if (!_gg.svg) return;
+    const svg = ggAktivesSvg();
+    if (!svg) return;
     try {
-      ggDownload(await ggSvgToPngBlob(_gg.svg, _gg.scale), ggDateiname(ggFigur().datei, 'png'));
+      ggDownload(await ggSvgToPngBlob(svg, _gg.scale), ggDateiname(ggAktiveDatei(), 'png'));
       ggSay('✓ PNG gespeichert.');
     } catch (e) { ggSay('⚠ ' + e.message, true); }
   }
 
   function ggSaveSvg() {
-    if (!_gg.svg) return;
-    ggDownload(new Blob([ggSvgSource(_gg.svg)], { type: 'image/svg+xml' }), ggDateiname(ggFigur().datei, 'svg'));
+    const svg = ggAktivesSvg();
+    if (!svg) return;
+    ggDownload(new Blob([ggSvgSource(svg)], { type: 'image/svg+xml' }), ggDateiname(ggAktiveDatei(), 'svg'));
     ggSay('✓ SVG gespeichert — in Word über Einfügen › Bilder einbetten (bleibt Vektor).');
   }
 
@@ -104973,24 +105948,1465 @@ ${massTbl}
     ggBuildAnalyseSection: ggBuildAnalyseSection,
     ggCopy: ggCopy,
     ggCopyForWord: ggCopyForWord,
+    ggCopyTableForWord: ggCopyTableForWord,
     ggFitLabels: ggFitLabels,
+    ggKennzahlenHtmlTable: ggKennzahlenHtmlTable,
     ggLastgangKennzahlen: ggLastgangKennzahlen,
     ggRenderBalken: ggRenderBalken,
     ggRenderGanglinie: ggRenderGanglinie,
     ggRenderHeatmap: ggRenderHeatmap,
+    ggRenderKennzahlen: ggRenderKennzahlen,
     ggRenderPanel: ggRenderPanel,
     ggRenderStatusMatrix: ggRenderStatusMatrix,
+    ggRenderTabelle: ggRenderTabelle,
     ggSavePng: ggSavePng,
     ggSaveSvg: ggSaveSvg,
     ggSelectFigur: ggSelectFigur,
     ggSetKopf: ggSetKopf,
+    ggSetLayout: ggSetLayout,
     ggSetMeta: ggSetMeta,
     ggSetScale: ggSetScale,
+    ggSetZiel: ggSetZiel,
+    ggSheetHeader: ggSheetHeader,
     ggShowSection: ggShowSection,
     ggSvgSource: ggSvgSource,
     ggSvgToPngBlob: ggSvgToPngBlob,
     ggSyncFromProject: ggSyncFromProject,
-    ggToggleItem: ggToggleItem
+    ggToggleItem: ggToggleItem,
+    ggTxt: ggTxt
+  });
+
+  // ── 18-liegenschaftsbilder.js — Bilder der Liegenschaft: Kartenscreenshot + Vektor-Lageplan ──
+  // Im Unterschied zu den Datengrafiken in 17-gutachten-grafik.js geht es hier NICHT um
+  // Diagramme, sondern um echte geometrische Darstellungen der Liegenschaft (Gebäude,
+  // Wärme-/Stromnetz), analog zu einem Lageplan im Gutachten. Zwei Wege dahin:
+  //   • Kartenscreenshot — die reale Leaflet-Karte hochauflösend + ohne UI-Chrome rastern
+  //     (html2canvas, wie bereits in 05e-projektbericht.js für den Projektbericht genutzt).
+  //   • Vektor-Lageplan — Gebäude-Polygone + Netzkanten aus den Roh-Koordinaten neu
+  //     gezeichnet, im selben Papier-Stil wie die Gutachten-Grafiken (Kopfzeile aus
+  //     17-gutachten-grafik.js wiederverwendet: ggSheetHeader/ggTxt).
+
+
+  /* ══════════════════════════════════════════════════════════════════════════
+   * 0) GEMEINSAME HELFER
+   * ═══════════════════════════════════════════════════════════════════════ */
+  const lbEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const lbR = n => Math.round(n * 100) / 100;
+
+  function lbDateiname(basis, ext) {
+    if (typeof window.projektExportFilename === 'function') return window.projektExportFilename(basis, ext);
+    return `${basis}.${ext}`;
+  }
+
+  function lbDownloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+   * 1) KARTENSCREENSHOT — echte Leaflet-Karte hochauflösend + „sauber" rastern
+   * ═══════════════════════════════════════════════════════════════════════ */
+  const LB_CAP_PRESETS = {
+    alle:     { label: 'Alle Ebenen',        gebaeude: true, labels: false, waerme: true,  strom: true,  assets: true  },
+    gebaeude: { label: 'Nur Gebäude',        gebaeude: true, labels: true,  waerme: false, strom: false, assets: false },
+    waerme:   { label: 'Nur Wärmenetz',      gebaeude: true, labels: false, waerme: true,  strom: false, assets: false },
+    strom:    { label: 'Nur Stromnetz + PV', gebaeude: true, labels: false, waerme: false, strom: true,  assets: true  },
+  };
+
+  let _lbCapLayers = { ...LB_CAP_PRESETS.alle };
+  let _lbCapScale = 3;
+  let _lbCapBlob = null, _lbCapUrl = null;
+  let _lbBusy = false;
+
+  function lbCapApplyPreset(id) {
+    const p = LB_CAP_PRESETS[id];
+    if (!p) return;
+    _lbCapLayers = { gebaeude: p.gebaeude, labels: p.labels, waerme: p.waerme, strom: p.strom, assets: p.assets };
+    lbRenderCapturePanel();
+  }
+
+  async function lbCaptureMap() {
+    if (_lbBusy) return;
+    if (typeof window.html2canvas !== 'function') { lbCapSay('html2canvas nicht verfügbar.', true); return; }
+    const mapEl = document.getElementById('map');
+    if (!mapEl) { lbCapSay('Karte nicht gefunden.', true); return; }
+    _lbBusy = true;
+    lbCapSay('Bild wird erzeugt …');
+
+    // Ebenen gemäß Auswahl setzen — bleibt danach so stehen (wie ein manuelles
+    // Umschalten der Werkzeugleiste), damit sich nichts "unsichtbar" im Hintergrund ändert.
+    window.setGebVisible(_lbCapLayers.gebaeude);
+    window.setLabelsVisible(_lbCapLayers.labels);
+    window.setNetzVisible(_lbCapLayers.waerme);
+    window.setStromNetzVisible(_lbCapLayers.strom);
+    window.setAssetLayerVisible(_lbCapLayers.assets);
+
+    // UI-Chrome nur für den Moment der Aufnahme ausblenden (reine Darstellung, kein State)
+    const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-popup')];
+    const prevDisplay = chrome.map(el => el.style.display);
+    chrome.forEach(el => { el.style.display = 'none'; });
+
+    // Zwei Frames abwarten, damit Leaflet die geänderte Ebenen-Sichtbarkeit fertig gezeichnet hat
+    await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+
+    try {
+      const canvas = await window.html2canvas(mapEl, {
+        useCORS: true, allowTaint: true, scale: _lbCapScale, logging: false, backgroundColor: '#eef2f5',
+      });
+      chrome.forEach((el, i) => { el.style.display = prevDisplay[i]; });
+      canvas.toBlob(blob => {
+        _lbBusy = false;
+        if (!blob) { lbCapSay('Bild konnte nicht erzeugt werden.', true); return; }
+        _lbCapBlob = blob;
+        if (_lbCapUrl) URL.revokeObjectURL(_lbCapUrl);
+        _lbCapUrl = URL.createObjectURL(blob);
+        lbCapSay(`✓ Kartenbild erzeugt (${canvas.width}×${canvas.height} px).`);
+        lbRenderCapturePanel();
+      }, 'image/png');
+    } catch (err) {
+      chrome.forEach((el, i) => { el.style.display = prevDisplay[i]; });
+      _lbBusy = false;
+      lbCapSay('Kartenbild konnte nicht erzeugt werden: ' + (err?.message || err), true);
+    }
+  }
+
+  function lbCapDownload() {
+    if (!_lbCapBlob) return;
+    lbDownloadBlob(_lbCapBlob, lbDateiname('liegenschaft-karte', 'png'));
+  }
+
+  function lbCapSay(msg, err) {
+    const el = document.getElementById('lb-cap-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = err ? '#ef5350' : '#26a69a';
+  }
+
+  function lbCapPanelHtml() {
+    const chk = (key, label, title) => `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;" title="${lbEsc(title || '')}">
+    <input type="checkbox" ${_lbCapLayers[key] ? 'checked' : ''} data-change="lbCapSetLayer('${key}',this.checked)">${lbEsc(label)}</label>`;
+    const presetBtn = (id) => `<button data-click="lbCapApplyPreset('${id}')" style="padding:5px 11px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;">${lbEsc(LB_CAP_PRESETS[id].label)}</button>`;
+    const scaleBtn = (v) => `<button data-click="lbCapSetScale(${v})" style="padding:4px 10px;border-radius:12px;border:1px solid ${_lbCapScale===v?'#26a69a':'rgba(255,255,255,.14)'};background:${_lbCapScale===v?'rgba(38,166,154,.16)':'transparent'};color:${_lbCapScale===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;">${v}× · ~${v*96} dpi</button>`;
+
+    return `
+  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Karten-Voreinstellung</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">${Object.keys(LB_CAP_PRESETS).map(presetBtn).join('')}</div>
+
+  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Ebenen im Bild</div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px 18px;margin-bottom:14px;">
+    ${chk('gebaeude', 'Gebäude')}
+    ${chk('labels', 'Beschriftungen', 'Gebäude-Namen/Nummern als Text auf der Karte')}
+    ${chk('waerme', 'Wärmenetz')}
+    ${chk('strom', 'Stromnetz')}
+    ${chk('assets', 'PV/Assets', 'PV-Module, Batterien, sonstige Erzeuger-Icons')}
+  </div>
+
+  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Auflösung</div>
+  <div style="display:flex;gap:6px;margin-bottom:14px;">${[2,3,4].map(scaleBtn).join('')}</div>
+
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+    <button data-click="lbCaptureMap()" style="padding:8px 16px;border-radius:6px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">📷 Bild aus aktuellem Kartenausschnitt erzeugen</button>
+    ${_lbCapBlob ? `<button data-click="lbCapDownload()" style="padding:8px 14px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:12px;cursor:pointer;">⤓ PNG herunterladen</button>` : ''}
+  </div>
+  <div id="lb-cap-status" style="font-size:11px;color:#26a69a;min-height:16px;margin-bottom:10px;"></div>
+  <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
+    Nutzt den aktuellen Kartenausschnitt (Zoom/Ausschnitt vorher auf der Karte einstellen). Zoom-Regler und Copyright-Zeile werden für die Aufnahme automatisch ausgeblendet. Die Ebenen-Auswahl schaltet die echten Kartenebenen um — bleibt danach so stehen wie auf der Karte selbst.
+  </div>
+  <div id="lb-cap-preview" style="border:1px solid rgba(255,255,255,.1);border-radius:6px;overflow:hidden;background:#11151d;min-height:80px;display:flex;align-items:center;justify-content:center;">
+    ${_lbCapUrl ? `<img src="${_lbCapUrl}" style="max-width:100%;display:block;">` : `<span style="font-size:11px;color:var(--muted);padding:20px;">Noch kein Bild erzeugt.</span>`}
+  </div>`;
+  }
+
+  function lbRenderCapturePanel() {
+    const el = document.getElementById('lb-cap-panel');
+    if (el) el.innerHTML = lbCapPanelHtml();
+  }
+
+  window.lbCapApplyPreset = lbCapApplyPreset;
+  window.lbCapSetLayer = (key, on) => { _lbCapLayers[key] = !!on; lbRenderCapturePanel(); };
+  window.lbCapSetScale = (v) => { _lbCapScale = v; lbRenderCapturePanel(); };
+  window.lbCaptureMap = lbCaptureMap;
+  window.lbCapDownload = lbCapDownload;
+
+  /* ══════════════════════════════════════════════════════════════════════════
+   * 2) VEKTOR-LAGEPLAN — Gebäude/Netz/Assets aus den Roh-Koordinaten als SVG
+   *
+   * Flexibel in vier unabhängigen Dimensionen:
+   *   • Zeithorizont  — Referenzjahr (heute/Bestand) + Zieljahr (Ausbauziel),
+   *     Anzeige-Filter Alle/Nur Bestand/Nur Neubau/Nur Rückbau (vereinheitlicht
+   *     getComputedStats() für Gebäude, getAssetStatus() für Assets/Stromkanten,
+   *     visibleFromYear/visibleUntilYear für Wärmenetzkanten).
+   *   • Ebenen        — Gebäude/Wärmenetz/Stromnetz/MS-Ring einzeln ein-/ausblendbar.
+   *   • Assets        — je Asset-Typ (Trafo, PV, Batterie, …) ein eigener Schalter,
+   *     Liste ergibt sich dynamisch aus dem, was im Projekt tatsächlich existiert.
+   *   • Einfärben nach — Keine (einheitlich) / Nutzungstyp / Status, mit dynamisch
+   *     erzeugter Legende (Farbpalette, kein Feldname hart codiert).
+   * ═══════════════════════════════════════════════════════════════════════ */
+  const LP_R = 6371000; // Erdradius (m), äquirektangulare Näherung — für Liegenschaftsgröße ausreichend
+  const LP_STATUS_LABEL = { bestand: 'Bestand', neu: 'Neubau', abriss: 'Rückbau' };
+  const LP_STATUS_FARBE = { bestand: '#266426', neu: '#1E88E5', abriss: '#C62828' };
+  const LP_PALETTE = ['#8D6E63', '#7986CB', '#4DB6AC', '#F06292', '#AED581', '#FFB74D',
+                       '#A1887F', '#90A4AE', '#BA68C8', '#4DD0E1', '#DCE775', '#F48FB1'];
+
+  let _lpState = {
+    referenzjahr: null, zieljahr: null,   // lazy: beim ersten Rendern gesetzt
+    anzeige: 'alle',                      // 'alle' | 'bestand' | 'neubau' | 'abriss'
+    einfaerben: 'keine',                  // 'keine' | 'nutzung' | 'status'
+    gebaeude: true, waerme: true, strom: true, msring: false,
+    beschriftung: false,                  // Namen/Nummern von Gebäuden + Assets zeigen
+    energieModus: 'spez',                 // nur relevant wenn einfaerben==='energie': 'spez'|'heizlast'|'verlust'
+    kartenausschnitt: null,               // null = automatisch an Inhalt anpassen; sonst {south,west,north,east}
+    satBild: null,                        // {dataUrl, bounds} — eingefangenes Satellitenbild, oder null
+    satBildAn: true,                      // ob das eingefangene Bild angezeigt wird (unabhängig vom Einfangen selbst)
+    vergleich: false,                     // Vorher/Nachher: referenzjahr + zieljahr als zwei Momentaufnahmen nebeneinander
+  };
+  let _lpAssetTypes = {};   // { [ASSET_CFG-Typ]: boolean } — welche Asset-Ebenen aktiv sind
+  let _lpAssetCounts = {};  // { [Typ]: Anzahl im Projekt } — für die Panel-Liste
+  let _lpSatBusy = false;
+
+  // Freie Beschriftungen (Text/Linie) — in SVG-Koordinaten des Plans (nicht Lat/Lng), weil
+  // sie eine feste Anmerkung auf dem AKTUELL gezeichneten Blatt sind, kein weiteres
+  // geografisches Objekt. Einfacher als eine echte Zeichen-Werkzeugleiste: Text eintippen,
+  // Position per Klick auf die Vorschau setzen (siehe lpAttachPlacingHandler).
+  const LP_ANNO_FARBE = '#6A1B9A';
+  let _lpAnnotations = []; // { id, type:'text'|'line', x,y (Text) | x1,y1,x2,y2 (Linie), text }
+  let _lpAnnoNextId = 1;
+  let _lpPlacing = null;   // null | { type:'text'|'line', text, x1?, y1? }
+  let _lpScale = 3;
+  let _lpSvg = null;
+  // Zuletzt gezeichnete Plot-Rechtecke + ihr Transform + der davon sichtbare Geo-Ausschnitt —
+  // füllt sich in lpRenderSvg()/lpRenderSvgVergleich() neu, wird von lpWireNachjustieren()
+  // (Ziehen/Zoomen direkt im Plan) gelesen, um Bildschirm- in Geo-Koordinaten umzurechnen.
+  let _lpLastPlots = [];
+
+  /** Rendergeometrie eines Netzkanten-Layers (Leaflet-Polyline) auslesen, mit Fallback auf die Knotenpunkte. */
+  function lpNetzPunkte(edge) {
+    try {
+      const ll = edge?.layer?.getLatLngs?.();
+      if (Array.isArray(ll) && ll.length >= 2 && typeof ll[0]?.lat === 'number') {
+        return ll.map(p => ({ lat: p.lat, lng: p.lng }));
+      }
+    } catch (e) { }
+    const u = edge?.uNode?.pt, v = edge?.vNode?.pt;
+    return (u && v) ? [u, v] : null;
+  }
+  function lpStromPunkte(edge) {
+    if (Array.isArray(edge?.route) && edge.route.length >= 2 && typeof edge.route[0]?.lat === 'number') {
+      return edge.route.map(p => ({ lat: p.lat, lng: p.lng }));
+    }
+    try {
+      const ll = edge?.layer?.getLatLngs?.();
+      if (Array.isArray(ll) && ll.length >= 2 && typeof ll[0]?.lat === 'number') {
+        return ll.map(p => ({ lat: p.lat, lng: p.lng }));
+      }
+    } catch (e) { }
+    const un = (window.stromNodes || []).find(n => n.id === edge.u), vn = (window.stromNodes || []).find(n => n.id === edge.v);
+    return (un && vn) ? [{ lat: un.lat, lng: un.lng }, { lat: vn.lat, lng: vn.lng }] : null;
+  }
+  /** Kombiniertes Label "Nummer · Name" — dieselbe Konvention wie _gebCompactName() in 02b-gebaeude.js. */
+  function lpGebLabel(g) {
+    return g.gebaeudenummer ? `${g.gebaeudenummer} · ${g.name || g.id}` : (g.name || g.id);
+  }
+  function lpPolyCentroid(poly) {
+    if (!Array.isArray(poly) || !poly.length) return null;
+    let lat = 0, lng = 0;
+    for (const p of poly) { lat += p.lat; lng += p.lng; }
+    return { lat: lat / poly.length, lng: lng / poly.length };
+  }
+
+  // ── Status "bestand/neu/abriss" zu einem Jahr — vereinheitlicht die drei
+  // verschiedenen App-Konzepte (Gebäude/Assets+Stromkanten/Wärmekanten). ──
+  function lpGebStatus(g, jahr) {
+    const st = typeof window.getComputedStats === 'function' ? window.getComputedStats(g, jahr)?.status : null;
+    return st === 'geplant' ? 'neu' : st === 'abgerissen' ? 'abriss' : 'bestand';
+  }
+  function lpAssetStatus(item, jahr) {
+    const st = typeof window.getAssetStatus === 'function' ? window.getAssetStatus(item, jahr) : null;
+    return st === 'planned' ? 'neu' : st === 'demolished' ? 'abriss' : 'bestand';
+  }
+  function lpNetzStatus(edge, jahr) {
+    if (edge.visibleFromYear != null && jahr < edge.visibleFromYear) return 'neu';
+    if (edge.visibleUntilYear != null && jahr >= edge.visibleUntilYear) return 'abriss';
+    return 'bestand';
+  }
+  /**
+   * Verdichtet Referenz-/Ziel-Status zu EINEM Horizont-Wert — Grundlage für Filter UND
+   * Einfärbung zugleich. Ohne diese Verdichtung wäre "Einfärben nach Status" unter der
+   * Anzeige "Alle bis Zieljahr" wirkungslos: dort haben ohnehin alle sichtbaren Objekte
+   * denselben Status-am-Zieljahr ('bestand') — erst der Vergleich mit dem Referenzjahr
+   * unterscheidet "war schon immer da" (bestand) von "neu seit Referenzjahr" (neu).
+   * @returns {'bestand'|'neu'|'abriss'|null} null = jenseits des Zeithorizonts, ausblenden
+   */
+  function lpHorizontStatus(statusReferenz, statusZiel) {
+    if (statusZiel === 'bestand') return statusReferenz === 'bestand' ? 'bestand' : 'neu';
+    if (statusZiel === 'abriss') return statusReferenz === 'bestand' ? 'abriss' : null;
+    return null; // am Zieljahr noch nicht gebaut ('neu' über den Zielhorizont hinaus) — irrelevant
+  }
+  /** Anzeige-Filter aus dem Panel auf den Horizont-Status anwenden. */
+  function lpSichtbarNachHorizont(horizont) {
+    if (horizont == null) return false;
+    switch (_lpState.anzeige) {
+      case 'bestand': return horizont === 'bestand';
+      case 'neubau':  return horizont === 'neu';
+      case 'abriss':  return horizont === 'abriss';
+      default:        return horizont !== 'abriss'; // 'alle' — Bestand + Neubau bis Zieljahr
+    }
+  }
+  function lpFarbeFuer(key, cache) {
+    if (!cache.has(key)) cache.set(key, LP_PALETTE[cache.size % LP_PALETTE.length]);
+    return cache.get(key);
+  }
+  /** Füllfarbe eines Gebäudes gemäß "Einfärben nach" — null = Standard-Grünton. */
+  function lpGebFarbe(g, horizont, cache) {
+    if (_lpState.einfaerben === 'status') return LP_STATUS_FARBE[horizont] || LP_STATUS_FARBE.bestand;
+    if (_lpState.einfaerben === 'nutzung') {
+      const nt = typeof window.getNutzungstypById === 'function' ? window.getNutzungstypById(g.nutzung) : null;
+      return lpFarbeFuer(nt?.gruppe || g.nutzung || 'Unbekannt', cache);
+    }
+    return null;
+  }
+  function lpAufhellen(hex, amt = 0.75) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return hex;
+    const n = parseInt(m[1], 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const mix = c => Math.round(c + (255 - c) * amt);
+    return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+  }
+
+  /* ── "Energiekennwert" (Kreise) — 1:1 nachgebaut aus getColor()/getSpezColor()/
+   * getColorVal()/getModeVal() in 02b-gebaeude.js. Dort ist die Farblogik an das
+   * globale window.currentMode gebunden (verändert die echte Karte); hier bewusst
+   * parametrisiert, damit der Lageplan einen EIGENEN Modus unabhängig von der Karte
+   * hat, ohne window.currentMode anzufassen. Farbskalen sind exakt die echten
+   * CSS-Legendenverläufe der Karte (02c-karte-werkzeuge.js updateViz()). ─────── */
+  const LP_ENERGIE_LABEL = { spez: 'Spez. Wärmebedarf', heizlast: 'Heizlast', verlust: 'Zugerechneter Netzverlust' };
+  const LP_ENERGIE_EINHEIT = { spez: 'kWh/m²a', heizlast: 'kW', verlust: '%' };
+  const LP_ENERGIE_GRADIENT = {
+    spez:     ['#4caf50', '#f9a825', '#f44336', '#640000'],
+    heizlast: ['#2e7d32', '#8bc34a', '#f9a825', '#e65100', '#b71c1c'],
+    verlust:  ['#4caf50', '#f9a825', '#e53935'],
+  };
+  const LP_R_MIN = 4, LP_R_MAX = 20; // eigene, SVG-taugliche Radien statt der zoomabhängigen R_MIN/R_MAX der Karte
+
+  function lpRgbHex(r, g, b) {
+    return '#' + [r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')).join('');
+  }
+  function lpLerp(c1, c2, t) {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return lpRgbHex(r1 + t * (r2 - r1), g1 + t * (g2 - g1), b1 + t * (b2 - b1));
+  }
+  /** Entspricht getSpezColor() — feste Schwellen 20/250 kWh/m²a, unabhängig von Min/Max im Projekt. */
+  function lpSpezFarbe(val) {
+    const n = Number(val);
+    if (val == null || isNaN(n)) return '#4a7a8a';
+    if (n <= 20) return '#4caf50';
+    if (n >= 250) {
+      const over = Math.min(1, Math.max(0, (n - 250) / 250));
+      return lpRgbHex(249 - 149 * over, 67 - 67 * over, 54 - 54 * over);
+    }
+    const t = (n - 20) / 230;
+    if (t < 0.5) { const f = t * 2; return lpRgbHex(76 + 173 * f, 175 - 7 * f, 80 - 43 * f); }
+    const f = (t - 0.5) * 2; return lpRgbHex(249, 168 - 101 * f, 37 + 17 * f);
+  }
+  /** Entspricht dem 'verlust'-Zweig von getColor() — feste Skala 0–20 % zugerechneter Verlust. */
+  function lpVerlustFarbe(val) {
+    if (val == null) return '#4a7a8a';
+    const t = Math.max(0, Math.min(1, val / 20));
+    return t < 0.5 ? lpLerp('#4caf50', '#f9a825', t * 2) : lpLerp('#f9a825', '#e53935', (t - 0.5) * 2);
+  }
+  /** Entspricht dem 'heizlast'-Zweig (5-Stufen-Regenbogen) von getColor() — projektbezogen Min/Max-normiert. */
+  function lpHeizlastFarbe(val, min, max) {
+    if (val == null || max === min) return '#4a7a8a';
+    const t = Math.max(0, Math.min(1, (val - min) / (max - min)));
+    const stops = [[46, 125, 50], [139, 195, 74], [249, 168, 37], [230, 81, 0], [183, 28, 28]];
+    const seg = t * (stops.length - 1), i = Math.floor(seg), f = seg - i;
+    const a = stops[Math.min(i, 4)], b = stops[Math.min(i + 1, 4)];
+    return lpRgbHex(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f);
+  }
+  function lpEnergieFarbe(modus, val, min, max) {
+    if (modus === 'spez') return lpSpezFarbe(val);
+    if (modus === 'verlust') return lpVerlustFarbe(val);
+    return lpHeizlastFarbe(val, min, max);
+  }
+  /** Entspricht der Kreisradius-Formel aus updateViz() in 02c-karte-werkzeuge.js: Fläche ∝ Wert. */
+  function lpEnergieRadius(val, max) {
+    if (!val || !max || max <= 0) return LP_R_MIN;
+    return Math.max(LP_R_MIN, LP_R_MAX * Math.sqrt(Math.max(0, val) / max));
+  }
+  /**
+   * Farb-/Größenwert EINES Gebäudes für den gewählten Energiemodus — entspricht
+   * getColorVal()/getModeVal(), aber mit explizitem Jahr statt window.globalYear
+   * und ohne die Bindung an window.currentMode. Von lpEnergieSkala() getrennt,
+   * damit der Vorher/Nachher-Vergleich Werte zweier Jahre VOR der Min/Max-Bildung
+   * zusammenführen kann (siehe lpRenderSvgVergleich) — sonst hätten beide Seiten
+   * unterschiedliche Farbskalen und wären nicht mehr vergleichbar.
+   */
+  function lpEnergieWert(g, modus, jahr) {
+    const stats = typeof window.getComputedStats === 'function' ? window.getComputedStats(g, jahr) : null;
+    let farbwert = null, groessenwert = null;
+    if (stats) {
+      if (modus === 'spez') { farbwert = stats.spez || null; groessenwert = stats.spez || null; }
+      else if (modus === 'heizlast') { farbwert = stats.heizlast || null; groessenwert = stats.heizlast || null; }
+      else if (modus === 'verlust') { farbwert = g.netzVerlustRatioPct ?? null; groessenwert = g.netzVerlustKW || null; }
+    }
+    return { farbwert, groessenwert };
+  }
+  /** Min/Max-Skala aus einer Liste von {farbwert,groessenwert}-Paaren — s. lpEnergieWert(). */
+  function lpEnergieSkala(paare) {
+    const groessenMax = Math.max(1, ...paare.map(w => w.groessenwert || 0));
+    const farbwerte = paare.map(w => w.farbwert).filter(v => v != null);
+    const farbMin = farbwerte.length ? Math.min(...farbwerte) : 0;
+    const farbMax = farbwerte.length ? Math.max(...farbwerte) : 1;
+    return { groessenMax, farbMin, farbMax };
+  }
+  function lpEnergieDaten(gebaeudeListe, modus, jahr) {
+    const werte = gebaeudeListe.map(({ g }) => ({ g, ...lpEnergieWert(g, modus, jahr) }));
+    return { werte, ...lpEnergieSkala(werte) };
+  }
+
+  /** Zählt alle im Projekt vorhandenen Asset-Typen (unabhängig von der aktuellen Filterauswahl). */
+  function lpAssetTypenAktualisieren() {
+    const counts = {};
+    if (typeof window.listAssets === 'function') {
+      for (const a of (window.listAssets() || [])) counts[a.type] = (counts[a.type] || 0) + 1;
+    }
+    _lpAssetCounts = counts;
+    for (const t of Object.keys(counts)) { if (!(t in _lpAssetTypes)) _lpAssetTypes[t] = false; }
+  }
+
+  /** Sammelt die zu zeichnende Geometrie gemäß Zeithorizont, Ebenen- und Asset-Auswahl. */
+  function lpSammleGeometrie() {
+    const referenz = _lpState.referenzjahr, ziel = _lpState.zieljahr;
+
+    const gebaeudeListe = _lpState.gebaeude
+      ? (window.gebaeude || [])
+          .filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3)
+          .map(g => ({ g, poly: g.polygon, horizont: lpHorizontStatus(lpGebStatus(g, referenz), lpGebStatus(g, ziel)) }))
+          .filter(x => lpSichtbarNachHorizont(x.horizont))
+      : [];
+
+    const waermeListe = _lpState.waerme
+      ? (window.netzEdges || []).filter(e => !e.pruned).map(e => {
+          const pts = lpNetzPunkte(e);
+          if (!pts || pts.length < 2) return null;
+          return { pts, horizont: lpHorizontStatus(lpNetzStatus(e, referenz), lpNetzStatus(e, ziel)) };
+        }).filter(x => x && lpSichtbarNachHorizont(x.horizont))
+      : [];
+
+    const stromListe = _lpState.strom
+      ? (window.stromEdges || []).map(e => {
+          const pts = lpStromPunkte(e);
+          if (!pts || pts.length < 2) return null;
+          return { pts, horizont: lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel)) };
+        }).filter(x => x && lpSichtbarNachHorizont(x.horizont))
+      : [];
+
+    let msRingListe = [];
+    if (_lpState.msring && typeof window.elDetectMSRings === 'function') {
+      try {
+        for (const ring of (window.elDetectMSRings() || [])) {
+          for (const e of (ring.edges || [])) {
+            const pts = lpStromPunkte(e);
+            if (pts && pts.length >= 2) msRingListe.push(pts);
+          }
+        }
+      } catch (err) { }
+    }
+
+    let assetListe = [];
+    if (typeof window.listAssets === 'function') {
+      assetListe = (window.listAssets() || [])
+        .filter(a => _lpAssetTypes[a.type])
+        .map(a => {
+          let lat = a.lat, lng = a.lng;
+          if ((lat == null || lng == null) && a.buildingId) {
+            const geb = (window.gebaeude || []).find(g => g.id === a.buildingId);
+            const c = geb && lpPolyCentroid(geb.polygon);
+            if (c) { lat = c.lat; lng = c.lng; }
+          }
+          return { asset: a, lat, lng, horizont: lpHorizontStatus(lpAssetStatus(a, referenz), lpAssetStatus(a, ziel)) };
+        })
+        .filter(x => x.lat != null && x.lng != null && lpSichtbarNachHorizont(x.horizont));
+    }
+
+    return { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe };
+  }
+
+  /**
+   * Geometrie als reine Momentaufnahme EINES Jahres (Referenz- und Zieljahr auf denselben
+   * Wert gesetzt) — für den Vorher/Nachher-Vergleich. lpHorizontStatus(x,x) liefert dann
+   * immer 'bestand' für zu diesem Jahr existierende Objekte bzw. null für noch nicht
+   * gebaute/bereits abgerissene, unabhängig vom Anzeige-Filter — genau die Semantik
+   * "was steht zum Jahr J tatsächlich". _lpState wird nur kurz umgebogen (synchron, ohne
+   * Await dazwischen) und danach zuverlässig zurückgesetzt.
+   */
+  function lpSammleGeometrieJahr(jahr) {
+    const savedRef = _lpState.referenzjahr, savedZiel = _lpState.zieljahr;
+    _lpState.referenzjahr = jahr; _lpState.zieljahr = jahr;
+    const col = lpSammleGeometrie();
+    _lpState.referenzjahr = savedRef; _lpState.zieljahr = savedZiel;
+    return col;
+  }
+
+  /**
+   * Geografische Bounding Box roher Punkte — für den gemeinsamen Kartenausschnitt beider
+   * Seiten im Vergleich. `padFrac` bläht die Box zusätzlich um etwas Rand auf: anders als beim
+   * normalen Einzelplan (dort sorgt lpBuildTransform() selbst per Scale-Reduktion für Randluft
+   * um automatisch angepasste Inhaltspunkte) ist das Ergebnis hier IMMER ein fester `ausschnitt`
+   * — und der wird seit dem Nachjustieren-Fix bewusst OHNE weiteres Padding gerendert (exakte
+   * 1:1-Abbildung, sonst bläht jeder Zoom-/Drag-Schritt den sichtbaren Bereich zusätzlich auf).
+   * Ohne diesen Parameter würde der automatische Vergleichs-Ausschnitt die Gebäude daher bis an
+   * den Bildrand quetschen.
+   */
+  function lpAutoBounds(punkte, padFrac = 0.08) {
+    if (!punkte.length) return null;
+    let south = 90, north = -90, west = 180, east = -180;
+    for (const p of punkte) {
+      if (p.lat < south) south = p.lat;
+      if (p.lat > north) north = p.lat;
+      if (p.lng < west) west = p.lng;
+      if (p.lng > east) east = p.lng;
+    }
+    const dLat = (north - south) * padFrac || 0.0005, dLng = (east - west) * padFrac || 0.0005;
+    return { south: south - dLat, north: north + dLat, west: west - dLng, east: east + dLng };
+  }
+
+  /** Zusammenfassungszeile "N Gebäude · M m Wärmenetz · …" für eine gesammelte Geometrie. */
+  function lpZusammenfassung(col) {
+    const wLen = col.waermeListe.reduce((s, x) => s + lpLaengeM(x.pts), 0);
+    const sLen = col.stromListe.reduce((s, x) => s + lpLaengeM(x.pts), 0);
+    return [
+      col.gebaeudeListe.length ? `${col.gebaeudeListe.length} Gebäude` : null,
+      col.waermeListe.length ? `${Math.round(wLen)} m Wärmenetz` : null,
+      col.stromListe.length ? `${Math.round(sLen)} m Stromnetz` : null,
+      col.assetListe.length ? `${col.assetListe.length} Assets` : null,
+    ].filter(Boolean).join(' · ') || '—';
+  }
+
+  /** Legende als {label,farbe,art,dash}[] — unabhängig von der Zeichenreihenfolge, gleiche Farblogik wie beim Zeichnen. */
+  function lpBuildLegendItems(col) {
+    const items = [], seen = new Set();
+    const add = (label, farbe, art, dash) => { if (!seen.has(label)) { seen.add(label); items.push({ label, farbe, art, dash }); } };
+    if (col.gebaeudeListe.length) {
+      if (_lpState.einfaerben === 'nutzung') {
+        const cache = new Map();
+        for (const { g } of col.gebaeudeListe) {
+          const nt = window.getNutzungstypById?.(g.nutzung);
+          const key = nt?.gruppe || g.nutzung || 'Unbekannt';
+          add(key, lpFarbeFuer(key, cache), 'flaeche');
+        }
+      } else if (_lpState.einfaerben === 'status') {
+        for (const { horizont } of col.gebaeudeListe) add(LP_STATUS_LABEL[horizont], LP_STATUS_FARBE[horizont], 'flaeche');
+      } else {
+        add('Gebäude', GG_THEME.accents.gruenDunkel, 'flaeche');
+      }
+    }
+    if (col.waermeListe.length) add('Wärmenetz', GG_THEME.energy.waerme, 'linie');
+    if (col.stromListe.length) add('Stromnetz', GG_THEME.energy.strom, 'linie', true);
+    if (col.msRingListe.length) add('MS-Ring', '#FB8C00', 'linie');
+    for (const { asset } of col.assetListe) {
+      const cfg = window.ASSET_CFG?.[asset.type];
+      add(cfg?.label || asset.type, cfg?.color || '#607d8b', 'punkt');
+    }
+    return items;
+  }
+  /** Packt Legenden-Einträge zeilenweise in eine Breite — liefert Positionen + Zeilenanzahl. */
+  function lpPackLegend(items, x0, width, rowH = 20) {
+    const laid = [];
+    let x = x0, row = 0;
+    for (const it of items) {
+      const w = 22 + it.label.length * 6.3 + 20;
+      if (x + w > x0 + width && x > x0) { row++; x = x0; }
+      laid.push({ ...it, x, y: row * rowH });
+      x += w;
+    }
+    return { laid, rows: row + 1 };
+  }
+
+  /**
+   * Äquirektangulare Projektion + Einpassung in eine Ziel-Fläche (px), Nord = oben.
+   * @param {{south,west,north,east}|null} ausschnitt — fester Kartenausschnitt statt
+   *   automatisch an `allePunkte` angepasst (siehe "Aktuellen Kartenausschnitt übernehmen").
+   */
+  function lpBuildTransform(allePunkte, plotX, plotY, plotW, plotH, padFrac = 0.07, ausschnitt = null) {
+    const latRef = ausschnitt ? (ausschnitt.south + ausschnitt.north) / 2
+      : allePunkte.reduce((s, p) => s + p.lat, 0) / allePunkte.length;
+    const cosRef = Math.cos(latRef * Math.PI / 180);
+    const toXY = (lat, lng) => ({
+      x: (lng * Math.PI / 180) * LP_R * cosRef,
+      y: (lat * Math.PI / 180) * LP_R,
+    });
+    let minX, maxX, minY, maxY;
+    if (ausschnitt) {
+      const a = toXY(ausschnitt.south, ausschnitt.west), b = toXY(ausschnitt.north, ausschnitt.east);
+      minX = Math.min(a.x, b.x); maxX = Math.max(a.x, b.x);
+      minY = Math.min(a.y, b.y); maxY = Math.max(a.y, b.y);
+    } else {
+      const pts = allePunkte.map(p => toXY(p.lat, p.lng));
+      minX = Math.min(...pts.map(p => p.x)); maxX = Math.max(...pts.map(p => p.x));
+      minY = Math.min(...pts.map(p => p.y)); maxY = Math.max(...pts.map(p => p.y));
+    }
+    const spanX = Math.max(1, maxX - minX), spanY = Math.max(1, maxY - minY);
+    // Rand-Padding nur beim automatischen Zuschnitt auf rohe Inhaltspunkte sinnvoll (Luft um
+    // Gebäude/Netz). Bei einem FESTEN ausschnitt ist die Fläche bereits "der gewünschte
+    // Bildausschnitt" (von der echten Karte übernommen, oder von lpZoomSchritt/dem Ziehen
+    // berechnet) — nochmals padden würde ihn bei jedem Aufruf zusätzlich vergrößern. Das fiel
+    // beim interaktiven Nachjustieren auf: ein einzelner Zoomschritt kam nur zu ~93% statt 100%
+    // des angeforderten Faktors an, weil jeder Render den vorherigen (bereits gepaddeten)
+    // sichtbaren Ausschnitt erneut um denselben Faktor aufblies.
+    const pad = ausschnitt ? 1 : 1 - padFrac * 2;
+    const scale = Math.min(plotW * pad / spanX, plotH * pad / spanY);
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const svgCx = plotX + plotW / 2, svgCy = plotY + plotH / 2;
+    return {
+      toSvg: (lat, lng) => {
+        const { x, y } = toXY(lat, lng);
+        return { x: svgCx + (x - cx) * scale, y: svgCy - (y - cy) * scale }; // y gespiegelt: Norden = oben
+      },
+      // Umkehrung von toSvg — für das Nachjustieren (Ziehen/Zoomen) direkt im Plan: dort muss
+      // aus einer Bildschirmposition der zugehörige Geo-Punkt bestimmt werden (Zoom-Zentrum,
+      // Fixieren des Punkts unter dem Cursor beim Draggen). Rein affine Abbildung (keine
+      // Rotation), daher exakt umkehrbar.
+      fromSvg: (x, y) => {
+        const X = (x - svgCx) / scale + cx, Y = cy + (svgCy - y) / scale;
+        return { lat: Y / LP_R * (180 / Math.PI), lng: X / (LP_R * cosRef) * (180 / Math.PI) };
+      },
+      scale, cosRef, // für die Drag-Delta-Formel in lpWireNachjustieren (Verschiebung ist translationsinvariant, braucht kein Zentrum)
+      metersPerPx: 1 / scale,
+    };
+  }
+
+  /** Runde, "hübsche" Maßstabslänge (m) nahe der Ziel-Pixelbreite. */
+  function lpNiceScale(targetPx, metersPerPx) {
+    const targetM = targetPx * metersPerPx;
+    const steps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000];
+    let best = steps[0];
+    for (const s of steps) { if (s <= targetM) best = s; else break; }
+    return best;
+  }
+
+  const LP_W = GG_THEME.width;      // 1000 px, wie alle Gutachten-Grafiken
+  const LP_PLOT_H = 640;
+  const LP_PLOT_H_VERGLEICH = 460;  // etwas niedriger als LP_PLOT_H — zwei Pläne nebeneinander statt einer voller Breite
+
+  /** Vergleicht zwei Kartenausschnitte auf (annähernde) Gleichheit — Schutz gegen veraltete Satellitenbilder. */
+  function lpBoundsGleich(a, b) {
+    if (!a || !b) return false;
+    const eps = 1e-7;
+    return Math.abs(a.south - b.south) < eps && Math.abs(a.west - b.west) < eps
+        && Math.abs(a.north - b.north) < eps && Math.abs(a.east - b.east) < eps;
+  }
+
+  /**
+   * Fängt die aktuell sichtbaren Kartenkacheln (idealerweise Luftbild) als Hintergrundbild
+   * für den Vektor-Lageplan ein. Legt dabei IMMER auch den Kartenausschnitt exakt auf die
+   * eingefangenen Bounds fest (`_lpState.kartenausschnitt`) — nur so bleiben Bild und
+   * Vektor-Overlay in `lpRenderSvg()` pixelgenau deckungsgleich (beide nutzen dieselbe
+   * `lpBuildTransform(..., ausschnitt)`-Projektion für dieselben Bounds).
+   */
+  async function lpCaptureSatellite() {
+    if (_lpSatBusy) return;
+    if (typeof window.html2canvas !== 'function') { lpSay('html2canvas nicht verfügbar.', true); return; }
+    if (!window.map || typeof window.map.getBounds !== 'function') { lpSay('Karte nicht verfügbar.', true); return; }
+    const mapEl = document.getElementById('map');
+    if (!mapEl) { lpSay('Karte nicht gefunden.', true); return; }
+    _lpSatBusy = true;
+    lpSay('Satellitenbild wird eingefangen …');
+
+    const b = window.map.getBounds();
+    const bounds = { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
+
+    // Luftbild sicherstellen (bleibt danach als Kartenhintergrund aktiv — wie bei den
+    // Ebenen-Voreinstellungen des Kartenscreenshots ist das eine bewusste, sichtbare
+    // Nebenwirkung statt eines unsichtbar zurückgesetzten Zustands).
+    // ⚠ window.currentTile ist ein primitiver Wert aus einem Nicht-Globals-Modul — main.js
+    // kopiert den beim Laden nur EINMAL nach window (kein Live-Getter wie bei 01-globals-
+    // varianten.js), bliebe also für immer 'osm' hängen. map/esriTile sind echte Objekte
+    // und bleiben live — deshalb den tatsächlichen Layer-Zustand direkt prüfen.
+    if (!window.map.hasLayer(window.esriTile) && typeof window.toggleTile === 'function') {
+      window.toggleTile();
+      await new Promise(res => setTimeout(res, 150)); // Tile-Layer-Wechsel anstoßen lassen
+    }
+    if (window.esriTile?.isLoading?.()) {
+      await new Promise(res => { window.esriTile.once('load', res); setTimeout(res, 3000); });
+    }
+
+    // Alle Overlay-Panes (Gebäude, Netz, Assets, Marker, Popups, Tooltips) ausblenden —
+    // rein per DOM/CSS über die Leaflet-Panes, ohne App-Sichtbarkeits-State anzufassen
+    // (der ist über mehrere Module verstreut und nicht überall zuverlässig lesbar).
+    const panes = typeof window.map.getPanes === 'function' ? window.map.getPanes() : {};
+    const versteckt = [];
+    for (const [name, el] of Object.entries(panes)) {
+      if (name === 'tilePane' || name === 'mapPane' || !el || el.style.display === 'none') continue;
+      versteckt.push(el);
+      el.style.display = 'none';
+    }
+    const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-popup')];
+    const prevChromeDisplay = chrome.map(el => el.style.display);
+    chrome.forEach(el => { el.style.display = 'none'; });
+
+    await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+
+    const restore = () => {
+      versteckt.forEach(el => { el.style.display = ''; });
+      chrome.forEach((el, i) => { el.style.display = prevChromeDisplay[i]; });
+    };
+
+    try {
+      const canvas = await window.html2canvas(mapEl, {
+        useCORS: true, allowTaint: true, scale: 2, logging: false, backgroundColor: '#eef2f5',
+      });
+      restore();
+      _lpState.satBild = { dataUrl: canvas.toDataURL('image/jpeg', 0.85), bounds };
+      _lpState.satBildAn = true;
+      _lpState.kartenausschnitt = bounds; // Bild + Vektor-Overlay müssen denselben Ausschnitt nutzen
+      _lpSatBusy = false;
+      lpSay('✓ Satellitenbild eingefangen und als Kartenausschnitt übernommen.');
+      lpRenderPanel();
+    } catch (err) {
+      restore();
+      _lpSatBusy = false;
+      lpSay('Satellitenbild konnte nicht erzeugt werden: ' + (err?.message || err), true);
+    }
+  }
+
+  /**
+   * Zeichnet EINEN Karten-Ausschnitt (Gebäude/Kreise/Netz/Assets/Beschriftungen +
+   * Maßstab + Nordpfeil) in ein gegebenes Plot-Rechteck. Von lpRenderSvg() extrahiert,
+   * damit lpRenderSvgVergleich() denselben Code für zwei nebeneinanderliegende Pläne
+   * wiederverwenden kann, statt ihn zu duplizieren. `tr` ist der fertige Transform
+   * (null = keine Geodaten UND kein fester Kartenausschnitt → nur Platzhaltertext).
+   */
+  function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, plotH, clipId, txt, T }) {
+    const { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe } = col;
+    let out = `<rect x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}" fill="${T.neutral.cardBg}" stroke="${T.line}" stroke-width="1"/>`;
+    out += `<clipPath id="${clipId}"><rect x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}"/></clipPath>`;
+
+    if (!tr) {
+      out += txt(plotX + plotW / 2, plotY + plotH / 2, 'Keine Geodaten für diese Auswahl — Zeithorizont/Ebenen/Assets oben anpassen.',
+        { anchor: 'middle', size: 13, fill: T.text.faint });
+      return out;
+    }
+
+    const pathOf = pts => pts.map(p => { const s = tr.toSvg(p.lat, p.lng); return `${lbR(s.x)},${lbR(s.y)}`; }).join(' ');
+    const gebFarbCache = new Map();
+    // Bei festem Kartenausschnitt kann Geometrie über den Rand hinausragen — dann sauber
+    // am Rahmen abschneiden (bei automatischem Zuschnitt ohnehin wirkungslos).
+    out += `<g clip-path="url(#${clipId})">`;
+
+    // Satellitenbild-Hintergrund — nur gültig, wenn er zum aktuellen Kartenausschnitt passt
+    // (siehe lpCaptureSatellite: setzt beide gemeinsam, damit sie nie auseinanderlaufen).
+    if (_lpState.satBildAn && _lpState.satBild && lpBoundsGleich(_lpState.satBild.bounds, ausschnitt)) {
+      const tl = tr.toSvg(ausschnitt.north, ausschnitt.west), br = tr.toSvg(ausschnitt.south, ausschnitt.east);
+      out += `<image href="${_lpState.satBild.dataUrl}" x="${lbR(tl.x)}" y="${lbR(tl.y)}" width="${lbR(br.x - tl.x)}" height="${lbR(br.y - tl.y)}" preserveAspectRatio="none"/>`;
+    }
+
+    // Gebäude — bei "Energiekennwert" bleibt die Fläche neutral (T.tint), die Farbe
+    // trägt dann der Kreis darüber, genau wie auf der echten Karte (Fläche = Umriss,
+    // Kreis = Kennwert).
+    for (const { g, poly, horizont } of gebaeudeListe) {
+      const farbe = _lpState.einfaerben === 'energie' ? null : lpGebFarbe(g, horizont, gebFarbCache);
+      out += `<polygon points="${pathOf(poly)}" fill="${farbe ? lpAufhellen(farbe) : T.tint}" stroke="${farbe || T.accents.gruenDunkel}" stroke-width="1" opacity="0.92"/>`;
+    }
+    // Energiekennwert-Kreise — 1:1 wie auf der Karte: Farbe + Fläche ∝ Kennwert
+    if (energieInfo) {
+      for (const w of energieInfo.werte) {
+        const c = lpPolyCentroid(w.g.polygon);
+        if (!c) continue;
+        const s = tr.toSvg(c.lat, c.lng);
+        const farbe = lpEnergieFarbe(_lpState.energieModus, w.farbwert, energieInfo.farbMin, energieInfo.farbMax);
+        const radius = lpEnergieRadius(w.groessenwert, energieInfo.groessenMax);
+        out += `<circle cx="${lbR(s.x)}" cy="${lbR(s.y)}" r="${lbR(radius)}" fill="${farbe}" fill-opacity="0.88" stroke="#fff" stroke-width="1"/>`;
+      }
+    }
+    // Wärmenetz
+    for (const { pts } of waermeListe) {
+      out += `<polyline points="${pathOf(pts)}" fill="none" stroke="${T.energy.waerme}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
+    // Stromnetz
+    for (const { pts } of stromListe) {
+      out += `<polyline points="${pathOf(pts)}" fill="none" stroke="${T.energy.strom}" stroke-width="2" stroke-dasharray="7 3" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
+    // MS-Ring — dick, orange, oberhalb des normalen Stromnetzes
+    for (const pts of msRingListe) {
+      out += `<polyline points="${pathOf(pts)}" fill="none" stroke="#FB8C00" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
+    }
+    // Assets — kleine Marker mit Typ-Icon/-Farbe aus ASSET_CFG
+    for (const { asset, lat, lng } of assetListe) {
+      const s = tr.toSvg(lat, lng);
+      const cfg = window.ASSET_CFG?.[asset.type] || {};
+      out += `<circle cx="${lbR(s.x)}" cy="${lbR(s.y)}" r="8.5" fill="${cfg.color || '#607d8b'}" stroke="#fff" stroke-width="1.5"/>`;
+      if (cfg.icon) out += `<text x="${lbR(s.x)}" y="${lbR(s.y) + 3.5}" text-anchor="middle" font-size="9">${lbEsc(cfg.icon)}</text>`;
+    }
+
+    // Beschriftungen — Name/Nummer von Gebäuden + Assets, dezent unter/neben dem Symbol
+    if (_lpState.beschriftung) {
+      for (const { g, poly } of gebaeudeListe) {
+        const c = lpPolyCentroid(poly);
+        if (!c) continue;
+        const s = tr.toSvg(c.lat, c.lng);
+        out += txt(s.x, s.y + 3.5, lpGebLabel(g), { anchor: 'middle', size: 8.5, fill: T.text.strong, weight: 600 });
+      }
+      for (const { asset, lat, lng } of assetListe) {
+        const s = tr.toSvg(lat, lng);
+        out += txt(s.x, s.y + 19, asset.name || window.ASSET_CFG?.[asset.type]?.label || asset.type,
+          { anchor: 'middle', size: 8, fill: T.text.muted });
+      }
+    }
+
+    out += `</g>`; // /clipPath-Gruppe
+
+    // Maßstabsbalken unten links im Kartenfeld
+    const balkenM = lpNiceScale(130, tr.metersPerPx);
+    const balkenPx = balkenM / tr.metersPerPx;
+    const bx = plotX + 14, by = plotY + plotH - 16;
+    out += `<line x1="${bx}" y1="${by}" x2="${lbR(bx + balkenPx)}" y2="${by}" stroke="${T.text.strong}" stroke-width="2"/>`;
+    out += `<line x1="${bx}" y1="${by - 4}" x2="${bx}" y2="${by + 4}" stroke="${T.text.strong}" stroke-width="1.5"/>`;
+    out += `<line x1="${lbR(bx + balkenPx)}" y1="${by - 4}" x2="${lbR(bx + balkenPx)}" y2="${by + 4}" stroke="${T.text.strong}" stroke-width="1.5"/>`;
+    out += txt(bx + balkenPx / 2, by - 7, balkenM >= 1000 ? `${balkenM / 1000} km` : `${balkenM} m`,
+      { anchor: 'middle', size: 10, weight: 600, mono: true });
+    // Absichtlich gegen _lpState.kartenausschnitt geprüft, nicht gegen den lokalen `ausschnitt`-
+    // Parameter: im Vorher/Nachher-Vergleich ist `ausschnitt` auch bei automatischer Anpassung
+    // gesetzt (gemeinsame Bounding Box beider Jahre, s. lpRenderSvgVergleich) — der Hinweis soll
+    // aber nur erscheinen, wenn der Nutzer den Ausschnitt tatsächlich manuell fixiert hat.
+    if (_lpState.kartenausschnitt) out += txt(bx, by + 15, 'Fester Kartenausschnitt', { size: 8, fill: T.text.faint });
+
+    // Nordpfeil oben rechts im Kartenfeld
+    const nx = plotX + plotW - 30, ny = plotY + 34;
+    out += `<polygon points="${nx},${ny - 16} ${nx - 6},${ny + 8} ${nx},${ny + 3} ${nx + 6},${ny + 8}" fill="${T.text.strong}"/>`;
+    out += txt(nx, ny + 22, 'N', { anchor: 'middle', size: 12, weight: 700 });
+
+    return out;
+  }
+
+  function lpRenderSvg() {
+    const T = GG_THEME, S = T.sheet;
+    const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+    const col = lpSammleGeometrie();
+    const { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe } = col;
+    const legendItems = lpBuildLegendItems(col);
+    // Früh berechnet (nicht erst beim Zeichnen), weil sowohl die Kreise als auch die
+    // Gradienten-Legende dieselben Min/Max brauchen und die Legende die Blatthöhe mitbestimmt.
+    const energieInfo = _lpState.einfaerben === 'energie' && gebaeudeListe.length
+      ? lpEnergieDaten(gebaeudeListe, _lpState.energieModus, _lpState.zieljahr) : null;
+
+    const headH = S.headH;
+    const plotX = 40, plotY = S.headBand + headH + 24, plotW = LP_W - 2 * plotX, plotH = LP_PLOT_H;
+    const legendPack = lpPackLegend(legendItems, plotX, plotW);
+    const legendY = plotY + plotH + 22;
+    const energieLegendY = legendY + legendPack.rows * 20 + 6;
+    const energieLegendH = energieInfo ? 34 : 0;
+    const summaryY = energieLegendY + energieLegendH + 4;
+    const height = summaryY + 20 + S.footSpace;
+
+    const G = { S, W: LP_W, headH, reduziert: false, height };
+    const zielLabel = _lpState.anzeige === 'alle' ? ` — Stand ${_lpState.zieljahr}`
+      : ` — ${{bestand:'Bestand', neubau:'Neubau', abriss:'Rückbau'}[_lpState.anzeige]} ${_lpState.referenzjahr}–${_lpState.zieljahr}`;
+    let out = ggSheetHeader({
+      eyebrow: 'Elektrotechnisches Gutachten', titel: 'Lageplan der Liegenschaft' + zielLabel,
+      ort: lpLiegenschaft(),
+      meta: { 'Datum': new Date().toLocaleDateString('de-DE'), 'Bearbeiter': window.pdBearbeiterStrom || window.pdBearbeiterWaerme || '', 'WE-Nr.': window.pdWeNummer || '' },
+    }, T, G);
+
+    const allePunkte = [
+      ...gebaeudeListe.flatMap(x => x.poly),
+      ...waermeListe.flatMap(x => x.pts),
+      ...stromListe.flatMap(x => x.pts),
+      ...msRingListe.flat(),
+      ...assetListe.map(x => ({ lat: x.lat, lng: x.lng })),
+    ];
+    const ausschnitt = _lpState.kartenausschnitt;
+    const tr = (allePunkte.length || ausschnitt) ? lpBuildTransform(allePunkte, plotX, plotY, plotW, plotH, 0.07, ausschnitt) : null;
+    _lpLastPlots = tr ? [{ tr, plotX, plotY, plotW, plotH }] : [];
+    out += lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, plotH, clipId: 'lpPlotClip', txt, T });
+
+    // Freie Beschriftungen (Text/Linie) — schon in Plan-Koordinaten, unabhängig vom obigen
+    // Zweig zeichenbar; eigene Clip-Gruppe, weil sie außerhalb von dessen <g> liegen können.
+    if (_lpAnnotations.length) {
+      out += `<g clip-path="url(#lpPlotClip)">`;
+      for (const a of _lpAnnotations) {
+        if (a.type === 'text') {
+          out += txt(a.x, a.y, a.text, { size: 11.5, weight: 600, fill: LP_ANNO_FARBE });
+        } else {
+          out += `<line x1="${lbR(a.x1)}" y1="${lbR(a.y1)}" x2="${lbR(a.x2)}" y2="${lbR(a.y2)}" stroke="${LP_ANNO_FARBE}" stroke-width="2" stroke-dasharray="5 3" stroke-linecap="round"/>`;
+          out += `<circle cx="${lbR(a.x1)}" cy="${lbR(a.y1)}" r="2.5" fill="${LP_ANNO_FARBE}"/><circle cx="${lbR(a.x2)}" cy="${lbR(a.y2)}" r="2.5" fill="${LP_ANNO_FARBE}"/>`;
+          if (a.text) out += txt((a.x1 + a.x2) / 2, (a.y1 + a.y2) / 2 - 6, a.text, { anchor: 'middle', size: 10, weight: 600, fill: LP_ANNO_FARBE });
+        }
+      }
+      out += `</g>`;
+    }
+
+    // Legende (dynamisch, mehrzeilig)
+    for (const it of legendPack.laid) {
+      const ly = legendY + it.y;
+      if (it.art === 'flaeche') out += `<rect x="${it.x}" y="${ly - 9}" width="16" height="11" fill="${lpAufhellen(it.farbe)}" stroke="${it.farbe}" stroke-width="1"/>`;
+      else if (it.art === 'punkt') out += `<circle cx="${it.x + 8}" cy="${ly - 4}" r="6.5" fill="${it.farbe}" stroke="#fff" stroke-width="1"/>`;
+      else out += `<line x1="${it.x}" y1="${ly - 4}" x2="${it.x + 16}" y2="${ly - 4}" stroke="${it.farbe}" stroke-width="2.4" ${it.dash ? 'stroke-dasharray="7 3"' : ''}/>`;
+      out += txt(it.x + 22, ly, it.label, { size: 11 });
+    }
+
+    // Gradienten-Legende für den Energiekennwert — Farbverlauf entspricht exakt dem
+    // CSS-Verlauf der echten Karte (updateViz() in 02c-karte-werkzeuge.js).
+    if (energieInfo) {
+      const modus = _lpState.energieModus, gradId = 'lpEnergieGrad';
+      const stops = LP_ENERGIE_GRADIENT[modus];
+      out += `<defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">`
+        + stops.map((c, i) => `<stop offset="${i / (stops.length - 1) * 100}%" stop-color="${c}"/>`).join('')
+        + `</linearGradient></defs>`;
+      const gx = plotX, gy = energieLegendY, gw = 160, gh = 9;
+      out += `<rect x="${gx}" y="${gy}" width="${gw}" height="${gh}" fill="url(#${gradId})" stroke="${T.line}" stroke-width="1"/>`;
+      const einheit = LP_ENERGIE_EINHEIT[modus];
+      const minLabel = modus === 'spez' ? '≤ 20' : modus === 'verlust' ? '0' : (isFinite(energieInfo.farbMin) ? Math.round(energieInfo.farbMin).toLocaleString('de-DE') : '—');
+      const maxLabel = modus === 'spez' ? '≥ 250' : modus === 'verlust' ? '≥ 20' : (isFinite(energieInfo.farbMax) ? Math.round(energieInfo.farbMax).toLocaleString('de-DE') : '—');
+      out += txt(gx, gy + gh + 11, `${minLabel} ${einheit}`, { size: 8.5, fill: T.text.faint });
+      out += txt(gx + gw, gy + gh + 11, `${maxLabel} ${einheit}`, { anchor: 'end', size: 8.5, fill: T.text.faint });
+      out += txt(gx + gw + 14, gy + gh - 1, `Farbe/Kreisgröße = ${LP_ENERGIE_LABEL[modus]}`, { size: 10.5, fill: T.text.muted });
+    }
+
+    // Zusammenfassung
+    out += txt(plotX, summaryY, lpZusammenfassung(col), { size: 10.5, fill: T.text.muted });
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    svg.setAttribute('viewBox', `0 0 ${LP_W} ${lbR(height)}`);
+    svg.setAttribute('width', LP_W);
+    svg.setAttribute('height', lbR(height));
+    svg.innerHTML = out;
+    return svg;
+  }
+
+  /**
+   * Vorher/Nachher-Doppellageplan: Referenzjahr (Bestand) und Zieljahr (Ausbauziel) als
+   * zwei Momentaufnahmen nebeneinander, mit GEMEINSAMEM Kartenausschnitt/Maßstab (sonst
+   * wären die beiden Pläne nicht direkt vergleichbar) und — bei aktivem Energiekennwert —
+   * gemeinsamer Farb-/Größenskala (siehe lpEnergieSkala). Ebenen-/Einfärbe-/Asset-Auswahl
+   * gelten identisch für beide Seiten; nur der Zeitpunkt unterscheidet sich.
+   */
+  function lpRenderSvgVergleich() {
+    const T = GG_THEME, S = T.sheet;
+    const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+
+    const jahrA = _lpState.referenzjahr, jahrB = _lpState.zieljahr;
+    const colA = lpSammleGeometrieJahr(jahrA);
+    const colB = lpSammleGeometrieJahr(jahrB);
+
+    const legendItems = lpBuildLegendItems({
+      gebaeudeListe: [...colA.gebaeudeListe, ...colB.gebaeudeListe],
+      waermeListe: [...colA.waermeListe, ...colB.waermeListe],
+      stromListe: [...colA.stromListe, ...colB.stromListe],
+      msRingListe: [...colA.msRingListe, ...colB.msRingListe],
+      assetListe: [...colA.assetListe, ...colB.assetListe],
+    });
+
+    let energieInfoA = null, energieInfoB = null;
+    if (_lpState.einfaerben === 'energie') {
+      const werteA = colA.gebaeudeListe.map(({ g }) => ({ g, ...lpEnergieWert(g, _lpState.energieModus, jahrA) }));
+      const werteB = colB.gebaeudeListe.map(({ g }) => ({ g, ...lpEnergieWert(g, _lpState.energieModus, jahrB) }));
+      const skala = lpEnergieSkala([...werteA, ...werteB]);
+      energieInfoA = { werte: werteA, ...skala };
+      energieInfoB = { werte: werteB, ...skala };
+    }
+
+    const headH = S.headH, subH = 22, gap = 24;
+    const plotX = 40, plotY = S.headBand + headH + 24 + subH;
+    const plotWHalf = (LP_W - 2 * plotX - gap) / 2, plotH = LP_PLOT_H_VERGLEICH;
+    const plotXA = plotX, plotXB = plotX + plotWHalf + gap;
+
+    const legendPack = lpPackLegend(legendItems, plotX, LP_W - 2 * plotX);
+    const legendY = plotY + plotH + 22;
+    const energieLegendY = legendY + legendPack.rows * 20 + 6;
+    const energieLegendH = energieInfoA ? 34 : 0;
+    const summaryY = energieLegendY + energieLegendH + 4;
+    const height = summaryY + 20 + S.footSpace;
+
+    const G = { S, W: LP_W, headH, reduziert: false, height };
+    let out = ggSheetHeader({
+      eyebrow: 'Elektrotechnisches Gutachten', titel: 'Lageplan der Liegenschaft — Vorher/Nachher-Vergleich',
+      ort: lpLiegenschaft(),
+      meta: { 'Datum': new Date().toLocaleDateString('de-DE'), 'Bearbeiter': window.pdBearbeiterStrom || window.pdBearbeiterWaerme || '', 'WE-Nr.': window.pdWeNummer || '' },
+    }, T, G);
+
+    const allePunkte = [
+      ...colA.gebaeudeListe.flatMap(x => x.poly), ...colB.gebaeudeListe.flatMap(x => x.poly),
+      ...colA.waermeListe.flatMap(x => x.pts), ...colB.waermeListe.flatMap(x => x.pts),
+      ...colA.stromListe.flatMap(x => x.pts), ...colB.stromListe.flatMap(x => x.pts),
+      ...colA.msRingListe.flat(), ...colB.msRingListe.flat(),
+      ...colA.assetListe.map(x => ({ lat: x.lat, lng: x.lng })), ...colB.assetListe.map(x => ({ lat: x.lat, lng: x.lng })),
+    ];
+    // Gemeinsamer Ausschnitt für beide Seiten: fester Kartenausschnitt, falls gesetzt,
+    // sonst Bounding Box über BEIDE Jahre (nicht je Seite einzeln — sonst unterschiedlicher
+    // Maßstab/Framing und die beiden Pläne wären nicht mehr direkt vergleichbar).
+    const ausschnitt = _lpState.kartenausschnitt || lpAutoBounds(allePunkte);
+    const trA = ausschnitt ? lpBuildTransform([], plotXA, plotY, plotWHalf, plotH, 0.07, ausschnitt) : null;
+    const trB = ausschnitt ? lpBuildTransform([], plotXB, plotY, plotWHalf, plotH, 0.07, ausschnitt) : null;
+    _lpLastPlots = [
+      ...(trA ? [{ tr: trA, plotX: plotXA, plotY, plotW: plotWHalf, plotH }] : []),
+      ...(trB ? [{ tr: trB, plotX: plotXB, plotY, plotW: plotWHalf, plotH }] : []),
+    ];
+
+    out += txt(plotXA + plotWHalf / 2, plotY - 9, `Bestand · ${jahrA}`, { anchor: 'middle', size: 12, weight: 700, fill: T.text.strong });
+    out += txt(plotXB + plotWHalf / 2, plotY - 9, `Ausbauziel · ${jahrB}`, { anchor: 'middle', size: 12, weight: 700, fill: T.text.strong });
+
+    out += lpZeichnePlot({ col: colA, energieInfo: energieInfoA, tr: trA, ausschnitt, plotX: plotXA, plotY, plotW: plotWHalf, plotH, clipId: 'lpPlotClipA', txt, T });
+    out += lpZeichnePlot({ col: colB, energieInfo: energieInfoB, tr: trB, ausschnitt, plotX: plotXB, plotY, plotW: plotWHalf, plotH, clipId: 'lpPlotClipB', txt, T });
+
+    // Legende (dynamisch, mehrzeilig, für beide Seiten gemeinsam)
+    for (const it of legendPack.laid) {
+      const ly = legendY + it.y;
+      if (it.art === 'flaeche') out += `<rect x="${it.x}" y="${ly - 9}" width="16" height="11" fill="${lpAufhellen(it.farbe)}" stroke="${it.farbe}" stroke-width="1"/>`;
+      else if (it.art === 'punkt') out += `<circle cx="${it.x + 8}" cy="${ly - 4}" r="6.5" fill="${it.farbe}" stroke="#fff" stroke-width="1"/>`;
+      else out += `<line x1="${it.x}" y1="${ly - 4}" x2="${it.x + 16}" y2="${ly - 4}" stroke="${it.farbe}" stroke-width="2.4" ${it.dash ? 'stroke-dasharray="7 3"' : ''}/>`;
+      out += txt(it.x + 22, ly, it.label, { size: 11 });
+    }
+
+    // Gradienten-Legende — gemeinsame Skala beider Seiten (energieInfoA.farbMin/farbMax === energieInfoB.*)
+    if (energieInfoA) {
+      const modus = _lpState.energieModus, gradId = 'lpEnergieGrad';
+      const stops = LP_ENERGIE_GRADIENT[modus];
+      out += `<defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">`
+        + stops.map((c, i) => `<stop offset="${i / (stops.length - 1) * 100}%" stop-color="${c}"/>`).join('')
+        + `</linearGradient></defs>`;
+      const gx = plotX, gy = energieLegendY, gw = 160, gh = 9;
+      out += `<rect x="${gx}" y="${gy}" width="${gw}" height="${gh}" fill="url(#${gradId})" stroke="${T.line}" stroke-width="1"/>`;
+      const einheit = LP_ENERGIE_EINHEIT[modus];
+      const minLabel = modus === 'spez' ? '≤ 20' : modus === 'verlust' ? '0' : (isFinite(energieInfoA.farbMin) ? Math.round(energieInfoA.farbMin).toLocaleString('de-DE') : '—');
+      const maxLabel = modus === 'spez' ? '≥ 250' : modus === 'verlust' ? '≥ 20' : (isFinite(energieInfoA.farbMax) ? Math.round(energieInfoA.farbMax).toLocaleString('de-DE') : '—');
+      out += txt(gx, gy + gh + 11, `${minLabel} ${einheit}`, { size: 8.5, fill: T.text.faint });
+      out += txt(gx + gw, gy + gh + 11, `${maxLabel} ${einheit}`, { anchor: 'end', size: 8.5, fill: T.text.faint });
+      out += txt(gx + gw + 14, gy + gh - 1, `Farbe/Kreisgröße = ${LP_ENERGIE_LABEL[modus]} (beide Seiten gleiche Skala)`, { size: 10.5, fill: T.text.muted });
+    }
+
+    // Zusammenfassung — je Seite eine Zeile
+    out += txt(plotXA, summaryY, `${jahrA}: ${lpZusammenfassung(colA)}`, { size: 10.5, fill: T.text.muted });
+    out += txt(plotXB, summaryY, `${jahrB}: ${lpZusammenfassung(colB)}`, { size: 10.5, fill: T.text.muted });
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    svg.setAttribute('viewBox', `0 0 ${LP_W} ${lbR(height)}`);
+    svg.setAttribute('width', LP_W);
+    svg.setAttribute('height', lbR(height));
+    svg.innerHTML = out;
+    return svg;
+  }
+
+  function lpLaengeM(punkte) {
+    let s = 0;
+    for (let i = 1; i < punkte.length; i++) {
+      const a = punkte[i - 1], b = punkte[i];
+      const dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180;
+      const latRef = (a.lat + b.lat) / 2 * Math.PI / 180;
+      const dx = dLng * LP_R * Math.cos(latRef), dy = dLat * LP_R;
+      s += Math.hypot(dx, dy);
+    }
+    return s;
+  }
+
+  function lpLiegenschaft() {
+    const name = document.querySelector('.header-projekt-name')?.textContent?.trim() || '';
+    const plz = document.getElementById('gl-plz')?.value?.trim() || '';
+    const ort = document.getElementById('gl-stadt')?.value?.trim() || '';
+    return [name, [plz, ort].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+  }
+
+  function lpPanelHtml() {
+    const inp = 'padding:5px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);font-family:inherit;font-size:11px;';
+    const jahrFeld = (key, label, title) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);" title="${lbEsc(title || '')}">${lbEsc(label)}
+    <input type="number" value="${_lpState[key]}" data-change="lpSetJahr('${key}',this.value)" style="${inp}width:76px;"></label>`;
+    const anzeigeBtn = (id, label) => `<button data-click="lpSetAnzeige('${id}')" style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.anzeige===id?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.anzeige===id?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.anzeige===id?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
+    const chk = (checked, label, onClick, title) => `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;" title="${lbEsc(title || '')}">
+    <input type="checkbox" ${checked ? 'checked' : ''} data-change="${onClick}">${lbEsc(label)}</label>`;
+    const scaleBtn = (v) => `<button data-click="lpSetScale(${v})" style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpScale===v?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpScale===v?'rgba(38,166,154,.16)':'transparent'};color:${_lpScale===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;">${v}×</button>`;
+    const vergleichBtn = `<button data-click="lpToggleVergleich()" title="Zeigt Referenzjahr (Bestand) und Zieljahr (Ausbauziel) als zwei Lagepläne nebeneinander — gleicher Maßstab und Kartenausschnitt für beide Seiten"
+    style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.vergleich?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.vergleich?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.vergleich?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">🔀 Vorher/Nachher-Vergleich</button>`;
+
+    const assetTypen = Object.keys(_lpAssetCounts).sort((a, b) =>
+      (window.ASSET_CFG?.[a]?.label || a).localeCompare(window.ASSET_CFG?.[b]?.label || b));
+    const assetChecks = assetTypen.map(t => {
+      const cfg = window.ASSET_CFG?.[t] || {};
+      return chk(!!_lpAssetTypes[t], `${cfg.icon ? cfg.icon + ' ' : ''}${cfg.label || t} (${_lpAssetCounts[t]})`, `lpSetAssetType('${t}',this.checked)`, cfg.beschreibung);
+    }).join('');
+
+    return `
+  <div style="display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end;margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
+    ${jahrFeld('referenzjahr', 'Referenzjahr', 'Baseline für "Bestand" — was zu diesem Jahr schon existiert')}
+    ${jahrFeld('zieljahr', 'Zieljahr (Ausbauziel)', 'Stichjahr, auf das der Plan sich bezieht')}
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <span style="font-size:10px;color:var(--muted);">Anzeige</span>
+      ${_lpState.vergleich
+        ? `<span style="font-size:10px;color:var(--muted);max-width:230px;">Vorher/Nachher zeigt Referenz- und Zieljahr automatisch als zwei Bestands-Zeitpunkte.</span>`
+        : `<div style="display:flex;gap:6px;flex-wrap:wrap;">${anzeigeBtn('alle', 'Alle bis Zieljahr')}${anzeigeBtn('bestand', 'Nur Bestand')}${anzeigeBtn('neubau', 'Nur Neubau')}${anzeigeBtn('abriss', 'Nur Rückbau')}</div>`}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <span style="font-size:10px;color:var(--muted);">&nbsp;</span>
+      ${vergleichBtn}
+    </div>
+    <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);">Gebäude einfärben nach
+      <select data-change="lpSetEinfaerben(this.value)" style="${inp}">
+        <option value="keine" ${_lpState.einfaerben==='keine'?'selected':''}>Keine (einheitlich)</option>
+        <option value="nutzung" ${_lpState.einfaerben==='nutzung'?'selected':''}>Nutzungstyp</option>
+        <option value="status" ${_lpState.einfaerben==='status'?'selected':''}>Status (Bestand/Neubau/Rückbau)</option>
+        <option value="energie" ${_lpState.einfaerben==='energie'?'selected':''}>Energiekennwert (Kreise, wie auf der Karte)</option>
+      </select></label>
+    ${_lpState.einfaerben === 'energie' ? `<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);">Kennwert
+      <select data-change="lpSetEnergieModus(this.value)" style="${inp}">
+        <option value="spez" ${_lpState.energieModus==='spez'?'selected':''}>Spez. Wärmebedarf</option>
+        <option value="heizlast" ${_lpState.energieModus==='heizlast'?'selected':''}>Heizlast</option>
+        <option value="verlust" ${_lpState.energieModus==='verlust'?'selected':''}>Netzverlust</option>
+      </select></label>` : ''}
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:10px;">
+    <div style="display:flex;flex-wrap:wrap;gap:10px 16px;">
+      ${chk(_lpState.gebaeude, 'Gebäude', "lpSetLayer('gebaeude',this.checked)")}
+      ${chk(_lpState.waerme, 'Wärmenetz', "lpSetLayer('waerme',this.checked)")}
+      ${chk(_lpState.strom, 'Stromnetz', "lpSetLayer('strom',this.checked)")}
+      ${chk(_lpState.msring, 'MS-Ring hervorheben', "lpSetLayer('msring',this.checked)", 'Erkennt Mittelspannungs-Ringe aus NAP/Trafo/Schaltanlage + Stromnetz und hebt sie dick orange hervor')}
+      ${chk(_lpState.beschriftung, 'Beschriftungen', "lpSetLayer('beschriftung',this.checked)", 'Name/Nummer von Gebäuden und Assets im Plan anzeigen')}
+    </div>
+    <div style="display:flex;gap:6px;margin-left:auto;">${[2,3,4].map(scaleBtn).join('')}</div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
+    <button data-click="lpUebernehmeKartenausschnitt()" title="Übernimmt den aktuell auf der Karte sichtbaren Zoom/Ausschnitt statt automatisch an die gezeichneten Objekte anzupassen"
+      style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">📍 Aktuellen Kartenausschnitt übernehmen</button>
+    <div style="display:flex;gap:4px;">
+      <button data-click="lpZoomSchritt(0.8)" title="Im Plan hineinzoomen (oder Mausrad über dem Plan)"
+        style="padding:5px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">🔍+</button>
+      <button data-click="lpZoomSchritt(1.25)" title="Im Plan herauszoomen (oder Mausrad über dem Plan)"
+        style="padding:5px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">🔍−</button>
+    </div>
+    ${_lpState.kartenausschnitt
+      ? `<button data-click="lpKartenausschnittZuruecksetzen()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">↺ Automatisch an Inhalt anpassen</button>
+         <span style="font-size:10px;color:#26a69a;">Fester Ausschnitt aktiv</span>`
+      : `<span style="font-size:10px;color:var(--muted);">Automatisch an die gezeichneten Objekte angepasst</span>`}
+    <span style="font-size:10px;color:var(--muted);width:100%;">🖱 Im Plan direkt ziehen zum Verschieben, Mausrad zum Zoomen — feines Nachjustieren ohne zur Karte zu wechseln.</span>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
+    <button data-click="lpCaptureSatellite()" ${_lpSatBusy ? 'disabled' : ''}
+      title="Fängt die aktuell sichtbaren Kartenkacheln (Luftbild, falls aktiv) als Hintergrund ein und legt den Kartenausschnitt exakt darauf fest"
+      style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:${_lpSatBusy?'var(--muted)':'#26a69a'};font-family:inherit;font-size:10.5px;cursor:${_lpSatBusy?'default':'pointer'};">🛰 Satellitenbild einfangen</button>
+    ${_lpState.satBild ? chk(_lpState.satBildAn, 'als Hintergrund zeigen', 'lpSetSatBildAn(this.checked)') : ''}
+    <span style="font-size:10px;color:var(--muted);">${window.map?.hasLayer?.(window.esriTile) ? 'Kartenhintergrund: Luftbild' : 'Kartenhintergrund: Straßenkarte — beim Einfangen automatisch auf Luftbild umgeschaltet'}</span>
+  </div>
+
+  ${assetTypen.length ? `
+  <div style="margin-bottom:12px;">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Assets im Plan</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px 18px;">${assetChecks}</div>
+  </div>` : ''}
+
+  <div style="margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Freie Beschriftungen</div>
+    ${_lpState.vergleich ? `<div style="font-size:10.5px;color:var(--muted);">Im Vorher/Nachher-Vergleich nicht verfügbar (zwei unterschiedlich große Planflächen) — dafür bitte die Einzelansicht nutzen.</div>` : `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;${_lpAnnotations.length ? 'margin-bottom:8px;' : ''}">
+      <input id="lp-anno-text" type="text" placeholder="Text (z. B. „geplante Erweiterung“) — bei Linie optional"
+        value="${lbEsc(_lpPlacing?.text || '')}" ${_lpPlacing ? 'disabled' : ''} style="${inp}flex:1;min-width:200px;">
+      <button data-click="lpStartPlacing('text')" ${_lpPlacing ? 'disabled' : ''}
+        style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:${_lpPlacing?'var(--muted)':'#e8eaed'};font-family:inherit;font-size:10.5px;cursor:${_lpPlacing?'default':'pointer'};">✎ Text platzieren</button>
+      <button data-click="lpStartPlacing('line')" ${_lpPlacing ? 'disabled' : ''}
+        style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:${_lpPlacing?'var(--muted)':'#e8eaed'};font-family:inherit;font-size:10.5px;cursor:${_lpPlacing?'default':'pointer'};">📏 Linie platzieren</button>
+      ${_lpPlacing ? `<span style="font-size:10px;color:#ffcc80;">🖱 Auf den Plan klicken${_lpPlacing.type === 'line' ? (_lpPlacing.x1 == null ? ' — Startpunkt' : ' — Endpunkt') : ''} …</span>
+        <button data-click="lpCancelPlacing()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:#ef5350;font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>` : ''}
+    </div>
+    ${_lpAnnotations.length ? `<div style="display:flex;flex-direction:column;gap:4px;">
+      ${_lpAnnotations.map(a => `<div style="display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted);">
+        <span>${a.type === 'text' ? '✎' : '📏'}</span>
+        <span style="flex:1;">${lbEsc(a.text || (a.type === 'line' ? 'Linie ohne Beschriftung' : ''))}</span>
+        <button data-click="lpRemoveAnnotation(${a.id})" title="Entfernen" style="background:transparent;border:none;color:#ef5350;cursor:pointer;font-size:12px;">✕</button>
+      </div>`).join('')}
+    </div>` : ''}`}
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+    <button data-click="lpCopy()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;font-family:inherit;font-size:11px;cursor:pointer;">⧉ Für Word kopieren</button>
+    <button data-click="lpSavePng()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ PNG</button>
+    <button data-click="lpSaveSvg()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ SVG</button>
+    <span style="margin-left:auto;font-size:10px;color:var(--muted);align-self:center;">In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.</span>
+  </div>
+  <div id="lp-status" style="font-size:11px;color:#26a69a;min-height:16px;margin-bottom:8px;"></div>
+  <div id="lp-paper" style="background:#fff;border-radius:6px;padding:10px;overflow-x:auto;"></div>`;
+  }
+
+  function lpRenderPanel() {
+    const el = document.getElementById('lb-lp-panel');
+    if (!el) return;
+    if (_lpState.referenzjahr == null) _lpState.referenzjahr = new Date().getFullYear();
+    if (_lpState.zieljahr == null) _lpState.zieljahr = window.globalYear || _lpState.referenzjahr;
+    lpAssetTypenAktualisieren();
+    el.innerHTML = lpPanelHtml();
+    _lpSvg = _lpState.vergleich ? lpRenderSvgVergleich() : lpRenderSvg();
+    _lpSvg.style.width = '100%';
+    _lpSvg.style.maxWidth = LP_W + 'px';
+    _lpSvg.style.height = 'auto';
+    _lpSvg.style.display = 'block';
+    document.getElementById('lp-paper')?.appendChild(_lpSvg);
+    if (_lpLastPlots.length && !_lpPlacing) _lpSvg.style.cursor = 'grab';
+    lpAttachPlacingHandler();
+    lpWireNachjustieren();
+  }
+
+  function lpSay(msg, err) {
+    const el = document.getElementById('lp-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = err ? '#ef5350' : '#26a69a';
+  }
+
+  /**
+   * Solange `_lpPlacing` aktiv ist, wandelt ein Klick auf die SVG-Vorschau die Bildschirm-
+   * Koordinaten über die Screen-CTM in SVG-Nutzkoordinaten um (robust gegenüber der
+   * Skalierung durch `width:100%`) und legt Text sofort bzw. eine Linie nach zwei Klicks an.
+   */
+  function lpAttachPlacingHandler() {
+    if (!_lpPlacing || !_lpSvg) return;
+    _lpSvg.style.cursor = 'crosshair';
+    const onClick = (evt) => {
+      const pt = _lpSvg.createSVGPoint();
+      pt.x = evt.clientX; pt.y = evt.clientY;
+      const p = pt.matrixTransform(_lpSvg.getScreenCTM().inverse());
+      if (_lpPlacing.type === 'text') {
+        _lpAnnotations.push({ id: _lpAnnoNextId++, type: 'text', x: p.x, y: p.y, text: _lpPlacing.text });
+        _lpPlacing = null;
+        _lpSvg.removeEventListener('click', onClick);
+        lpRenderPanel();
+      } else if (_lpPlacing.x1 == null) {
+        _lpPlacing.x1 = p.x; _lpPlacing.y1 = p.y;
+        lpSay('Startpunkt gesetzt — jetzt den Endpunkt anklicken.');
+      } else {
+        _lpAnnotations.push({ id: _lpAnnoNextId++, type: 'line', x1: _lpPlacing.x1, y1: _lpPlacing.y1, x2: p.x, y2: p.y, text: _lpPlacing.text });
+        _lpPlacing = null;
+        _lpSvg.removeEventListener('click', onClick);
+        lpRenderPanel();
+      }
+    };
+    _lpSvg.addEventListener('click', onClick);
+  }
+
+  /** Bildschirm- → SVG-Nutzkoordinaten der übergebenen SVG-Wurzel (Skalierungs-robust). */
+  function lpSvgPunkt(svg, evt) {
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  /** Findet aus _lpLastPlots den Plot, dessen Rechteck den gegebenen SVG-Punkt enthält (oder null). */
+  function lpPlotUnter(p) {
+    return _lpLastPlots.find(pl => p.x >= pl.plotX && p.x <= pl.plotX + pl.plotW && p.y >= pl.plotY && p.y <= pl.plotY + pl.plotH) || null;
+  }
+
+  let _lpNachjustierenWired = false;
+  let _lpDrag = null; // { startPt, sichtbar (Basis-Ausschnitt bei Drag-Start), tr, raf }
+
+  /**
+   * Ziehen (verschieben) und Mausrad (zoomen) direkt auf dem gerenderten Plan — ergänzt das
+   * bisherige "Aktuellen Kartenausschnitt übernehmen" (das nur den kompletten Sichtbereich der
+   * ECHTEN Karte 1:1 kopiert) um ein Nachjustieren ohne zur Karte zurückzuwechseln. Wird EINMAL
+   * dauerhaft verdrahtet (Delegation auf das stabile #lb-lp-panel-Element, das über Re-Renders
+   * hinweg bestehen bleibt — im Gegensatz zu #lp-paper/der SVG selbst, die lpRenderPanel() bei
+   * JEDEM Aufruf neu erzeugt) statt bei jedem Re-Render neue Listener anzuhäufen.
+   */
+  function lpWireNachjustieren() {
+    if (_lpNachjustierenWired) return;
+    const panel = document.getElementById('lb-lp-panel');
+    if (!panel) return; // Panel noch nicht im DOM — beim nächsten lpRenderPanel() erneut versuchen
+    _lpNachjustierenWired = true;
+
+    panel.addEventListener('mousedown', (evt) => {
+      if (_lpPlacing || evt.button !== 0 || !_lpSvg) return;
+      const svg = evt.target.closest('svg');
+      if (!svg || svg !== _lpSvg) return;
+      const startPt = lpSvgPunkt(svg, evt);
+      const plot = lpPlotUnter(startPt);
+      if (!plot) return;
+      // Sichtbarer Geo-Ausschnitt DIESES Plots als Basis — via fromSvg an den Plot-Ecken
+      // bestimmt, nicht aus _lpState.kartenausschnitt gelesen: die Ecken geben den TATSÄCHLICH
+      // sichtbaren (bereits mit Rand-Padding versehenen) Rahmen, egal ob automatisch angepasst
+      // oder fest — kein Sprung beim ersten Ziehen.
+      const nw = plot.tr.fromSvg(plot.plotX, plot.plotY), se = plot.tr.fromSvg(plot.plotX + plot.plotW, plot.plotY + plot.plotH);
+      _lpDrag = { startPt, tr: plot.tr, sichtbar: { north: nw.lat, west: nw.lng, south: se.lat, east: se.lng }, raf: null };
+      svg.style.cursor = 'grabbing';
+      evt.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (evt) => {
+      if (!_lpDrag || !_lpSvg) return;
+      const p = lpSvgPunkt(_lpSvg, evt);
+      const dx = p.x - _lpDrag.startPt.x, dy = p.y - _lpDrag.startPt.y;
+      if (_lpDrag.raf) return;
+      _lpDrag.raf = requestAnimationFrame(() => {
+        if (!_lpDrag) return;
+        _lpDrag.raf = null;
+        const { tr, sichtbar } = _lpDrag;
+        // Verschiebung ist translationsinvariant — braucht nur scale/cosRef, kein Zentrum.
+        const dlng = (dx / tr.scale) / (LP_R * tr.cosRef) * (180 / Math.PI);
+        const dlat = (-dy / tr.scale) / LP_R * (180 / Math.PI);
+        _lpState.kartenausschnitt = {
+          south: sichtbar.south - dlat, north: sichtbar.north - dlat,
+          west: sichtbar.west - dlng, east: sichtbar.east - dlng,
+        };
+        _lpState.satBild = null; // Ausschnitt geändert — ein evtl. eingefangenes Satellitenbild passt nicht mehr
+        lpRenderPanel();
+      });
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (_lpDrag && _lpSvg) _lpSvg.style.cursor = 'grab';
+      _lpDrag = null;
+    });
+
+    panel.addEventListener('wheel', (evt) => {
+      if (_lpPlacing || !_lpSvg) return;
+      const svg = evt.target.closest('svg');
+      if (!svg || svg !== _lpSvg) return;
+      const p = lpSvgPunkt(svg, evt);
+      const plot = lpPlotUnter(p);
+      if (!plot) return;
+      evt.preventDefault();
+      const nw = plot.tr.fromSvg(plot.plotX, plot.plotY), se = plot.tr.fromSvg(plot.plotX + plot.plotW, plot.plotY + plot.plotH);
+      const basis = { north: nw.lat, west: nw.lng, south: se.lat, east: se.lng };
+      const ziel = plot.tr.fromSvg(p.x, p.y); // Geo-Punkt unter dem Cursor — bleibt beim Zoomen fix
+      const faktor = evt.deltaY > 0 ? 1.15 : 1 / 1.15; // runter = raus (größerer Ausschnitt), hoch = rein
+      _lpState.kartenausschnitt = {
+        south: ziel.lat - (ziel.lat - basis.south) * faktor, north: ziel.lat + (basis.north - ziel.lat) * faktor,
+        west: ziel.lng - (ziel.lng - basis.west) * faktor, east: ziel.lng + (basis.east - ziel.lng) * faktor,
+      };
+      _lpState.satBild = null;
+      lpRenderPanel();
+    }, { passive: false });
+  }
+
+  /** Zoomt symmetrisch um die Mitte des aktuell sichtbaren Ausschnitts — für die +/- Buttons im Panel. */
+  window.lpZoomSchritt = (faktor) => {
+    const plot = _lpLastPlots[0];
+    if (!plot) return;
+    const nw = plot.tr.fromSvg(plot.plotX, plot.plotY), se = plot.tr.fromSvg(plot.plotX + plot.plotW, plot.plotY + plot.plotH);
+    const mitteLat = (nw.lat + se.lat) / 2, mitteLng = (nw.lng + se.lng) / 2;
+    _lpState.kartenausschnitt = {
+      south: mitteLat - (mitteLat - se.lat) * faktor, north: mitteLat + (nw.lat - mitteLat) * faktor,
+      west: mitteLng - (mitteLng - nw.lng) * faktor, east: mitteLng + (se.lng - mitteLng) * faktor,
+    };
+    _lpState.satBild = null;
+    lpRenderPanel();
+  };
+
+  window.lpSetLayer = (key, on) => { _lpState[key] = !!on; lpRenderPanel(); };
+  window.lpSetJahr = (key, val) => { const n = parseInt(val, 10); if (isFinite(n)) _lpState[key] = n; lpRenderPanel(); };
+  window.lpSetAnzeige = (id) => { _lpState.anzeige = id; lpRenderPanel(); };
+  window.lpSetEinfaerben = (v) => { _lpState.einfaerben = v; lpRenderPanel(); };
+  window.lpToggleVergleich = () => { _lpState.vergleich = !_lpState.vergleich; lpRenderPanel(); };
+  window.lpSetEnergieModus = (v) => { _lpState.energieModus = v; lpRenderPanel(); };
+  window.lpSetAssetType = (t, on) => { _lpAssetTypes[t] = !!on; lpRenderPanel(); };
+  window.lpSetScale = (v) => { _lpScale = v; };
+  window.lpUebernehmeKartenausschnitt = () => {
+    if (!window.map || typeof window.map.getBounds !== 'function') { lpSay('Karte nicht verfügbar.', true); return; }
+    const b = window.map.getBounds();
+    const neu = { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
+    // Ein Satellitenbild gehört zu genau einem Ausschnitt — bei abweichendem neuen Ausschnitt
+    // verwaist es sonst (Checkbox bliebe an, ohne dass sichtbar etwas passiert).
+    if (_lpState.satBild && !lpBoundsGleich(_lpState.satBild.bounds, neu)) _lpState.satBild = null;
+    _lpState.kartenausschnitt = neu;
+    lpRenderPanel();
+  };
+  window.lpKartenausschnittZuruecksetzen = () => { _lpState.kartenausschnitt = null; _lpState.satBild = null; lpRenderPanel(); };
+  window.lpCaptureSatellite = lpCaptureSatellite;
+  window.lpSetSatBildAn = (on) => { _lpState.satBildAn = !!on; lpRenderPanel(); };
+  window.lpStartPlacing = (type) => {
+    const text = document.getElementById('lp-anno-text')?.value?.trim() || '';
+    if (type === 'text' && !text) { lpSay('Bitte zuerst einen Text eingeben.', true); return; }
+    _lpPlacing = { type, text };
+    lpRenderPanel();
+    lpSay(type === 'line' ? 'Startpunkt der Linie auf dem Plan anklicken.' : 'Position des Texts auf dem Plan anklicken.');
+  };
+  window.lpCancelPlacing = () => { _lpPlacing = null; lpRenderPanel(); };
+  window.lpRemoveAnnotation = (id) => { _lpAnnotations = _lpAnnotations.filter(a => a.id !== id); lpRenderPanel(); };
+  window.lpCopy = async () => {
+    if (!_lpSvg) return;
+    try { lpSay('Kopiere … ' + await ggCopyForWord(_lpSvg, _lpScale)); }
+    catch (e) { lpSay('Kopieren fehlgeschlagen: ' + e.message, true); }
+  };
+  window.lpSavePng = async () => {
+    if (!_lpSvg) return;
+    try {
+      const blob = await ggSvgToPngBlob(_lpSvg, _lpScale);
+      lbDownloadBlob(blob, lbDateiname('lageplan-liegenschaft', 'png'));
+      lpSay('✓ PNG heruntergeladen.');
+    } catch (e) { lpSay('PNG fehlgeschlagen: ' + e.message, true); }
+  };
+  window.lpSaveSvg = () => {
+    if (!_lpSvg) return;
+    const blob = new Blob([ggSvgSource(_lpSvg)], { type: 'image/svg+xml;charset=utf-8' });
+    lbDownloadBlob(blob, lbDateiname('lageplan-liegenschaft', 'svg'));
+    lpSay('✓ SVG heruntergeladen.');
+  };
+
+  /* ══════════════════════════════════════════════════════════════════════════
+   * 3) PANEL — Analyse-Sektion „Liegenschaftsbilder" (zwei Unter-Reiter)
+   * ═══════════════════════════════════════════════════════════════════════ */
+  let _lbTab = 'karte'; // 'karte' | 'lageplan'
+
+  function lbSetTab(tab) {
+    _lbTab = tab === 'lageplan' ? 'lageplan' : 'karte';
+    lbRenderTabs();
+  }
+  window.lbSetTab = lbSetTab;
+
+  function lbRenderTabs() {
+    const tabBar = document.getElementById('lb-subtabs');
+    if (tabBar) {
+      const tabBtn = (id, label) => `<button data-click="lbSetTab('${id}')" style="padding:6px 14px;border-radius:14px;border:1px solid ${_lbTab===id?'#26a69a':'var(--border)'};background:${_lbTab===id?'rgba(38,166,154,.16)':'transparent'};color:${_lbTab===id?'#26a69a':'var(--muted)'};font-family:inherit;font-size:11px;cursor:pointer;">${label}</button>`;
+      tabBar.innerHTML = tabBtn('karte', '📷 Kartenscreenshot') + tabBtn('lageplan', '📐 Vektor-Lageplan');
+    }
+    const capWrap = document.getElementById('lb-cap-wrap');
+    const lpWrap = document.getElementById('lb-lp-wrap');
+    if (capWrap) capWrap.style.display = _lbTab === 'karte' ? 'block' : 'none';
+    if (lpWrap) lpWrap.style.display = _lbTab === 'lageplan' ? 'block' : 'none';
+    if (_lbTab === 'karte') lbRenderCapturePanel();
+    else lpRenderPanel();
+  }
+
+  function lbBuildAnalyseSection() {
+    const tabBar = document.getElementById('analyse-view-tabs');
+    if (tabBar && !tabBar.querySelector('[data-section="liegenschaftsbilder"]')) {
+      const btn = document.createElement('button');
+      btn.className = 'analyse-section-tab';
+      btn.dataset.section = 'liegenschaftsbilder';
+      btn.textContent = '🗺️ Liegenschaftsbilder';
+      btn.title = 'Echte Bilder der Liegenschaft fürs Gutachten — hochauflösender Kartenscreenshot oder ein aus den Geodaten neu gezeichneter Vektor-Lageplan (Gebäude, Wärme-/Stromnetz).';
+      btn.addEventListener('click', () => {
+        if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('liegenschaftsbilder');
+      });
+      tabBar.appendChild(btn);
+    }
+
+    if (document.getElementById('analyse-liegenschaftsbilder-wrap')) return;
+    const analyseView = document.getElementById('center-analyse-view');
+    if (!analyseView) return;
+
+    const wrap = document.createElement('div');
+    wrap.id = 'analyse-liegenschaftsbilder-wrap';
+    wrap.style.display = 'none';
+    wrap.innerHTML = `
+  <div id="lb-subtabs" style="display:flex;gap:6px;margin-bottom:16px;"></div>
+  <div id="lb-cap-wrap"><div id="lb-cap-panel"></div></div>
+  <div id="lb-lp-wrap" style="display:none;"><div id="lb-lp-panel"></div></div>`;
+    analyseView.appendChild(wrap);
+  }
+
+  function lbShowSection(show) {
+    const wrap = document.getElementById('analyse-liegenschaftsbilder-wrap');
+    if (!wrap) return;
+    wrap.style.display = show ? 'block' : 'none';
+    if (show) lbRenderTabs();
+  }
+
+  var liegenschaftsbilder = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    lbBuildAnalyseSection: lbBuildAnalyseSection,
+    lbSetTab: lbSetTab,
+    lbShowSection: lbShowSection
   });
 
   // ── 14c-phasen.js — Fahrplan-Logik: Topo-Sort, Phasen-Schnitt, Validierung ──
@@ -107675,7 +110091,9 @@ ${massTbl}
     napBuildAnalyseSection();
     knaBuildAnalyseSection();
     pvaBuildAnalyseSection();
+    resBuildAnalyseSection();
     ggBuildAnalyseSection();
+    lbBuildAnalyseSection();
 
     // Alle inline-eingebetteten Panels zurücksetzen
     _restoreInlinePanels();
@@ -107691,10 +110109,14 @@ ${massTbl}
     if (knaWrap) knaWrap.style.display = 'none';
     const pvaWrap = document.getElementById('analyse-pva-wrap');
     if (pvaWrap) pvaWrap.style.display = 'none';
+    const resWrap = document.getElementById('analyse-resilienz-wrap');
+    if (resWrap) resWrap.style.display = 'none';
     const ausbWrap = document.getElementById('ausbauplaner-wrap');
     if (ausbWrap) ausbWrap.style.display = 'none';
     const ggWrap = document.getElementById('analyse-ggrafik-wrap');
     if (ggWrap) ggWrap.style.display = 'none';
+    const lbWrap = document.getElementById('analyse-liegenschaftsbilder-wrap');
+    if (lbWrap) lbWrap.style.display = 'none';
 
     if (analyseCurrentSection === 'uebersicht') {
       grid.style.display = 'grid';
@@ -107723,8 +110145,12 @@ ${massTbl}
       knaShowSection(true);
     } else if (analyseCurrentSection === 'pva') {
       pvaShowSection(true);
+    } else if (analyseCurrentSection === 'resilienz') {
+      resShowSection(true);
     } else if (analyseCurrentSection === 'ggrafik') {
       ggShowSection(true);
+    } else if (analyseCurrentSection === 'liegenschaftsbilder') {
+      lbShowSection(true);
     } else if (analyseCurrentSection === 'ausbauplaner') {
       if (typeof ausbauShow === 'function') ausbauShow(true);
     }
@@ -110432,6 +112858,13 @@ ${massTbl}
       pvModul: { breite: document.getElementById('pv-modul-breite')?.value, laenge: document.getElementById('pv-modul-laenge')?.value, wp: document.getElementById('pv-modul-wp')?.value },
       pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value, vergModell: document.getElementById('pv-verg-modell')?.value, tarifSzenario: document.getElementById('pv-tarif-szenario')?.value },
       pvProfile: window.elPvH ? {values:Array.from(window.elPvH), meta:window.elPvMeta || {quality:'uploaded_unverified',source:'Legacy PV upload'}} : null,
+      quartierProfile: window.elQuartierH ? {
+        values: Array.from(window.elQuartierH),
+        values15: window.elQuartierH15 ? Array.from(window.elQuartierH15) : null,
+        resolution: window.elQuartierResolution || 60,
+        startDate: window.elQuartierStartDate ? window.elQuartierStartDate.toISOString() : null,
+        filename: window.elQuartierFilename || null,
+      } : null,
       battery: {capacityKwh:_finiteNumberOr(document.getElementById('bat-kapazitaet')?.value,0),powerKw:_finiteNumberOr(document.getElementById('bat-leistung')?.value,0),
         investEurKwh:_finiteNumberOr(document.getElementById('opt-bat-invest')?.value,400),studyLifeYears:_finiteNumberOr(document.getElementById('opt-bat-life')?.value,15),
         calendarFadePctPerYear:_finiteNumberOr(document.getElementById('bat-calendar-fade')?.value,1.5),cycleLife:_finiteNumberOr(document.getElementById('bat-cycle-life')?.value,6000),
@@ -111202,6 +113635,27 @@ ${massTbl}
           const info = document.getElementById('pv-upload-info'); if (info) info.textContent = `${window.elPvMeta.filename || 'Gespeichertes PV-Profil'} · ${window.elPvMeta.quality || 'Qualität unbekannt'}`;
           const clear = document.getElementById('pv-clear-btn'); if (clear) clear.style.display = '';
         } else { window.elPvH = null; window.elPvMeta = null; }
+        if (project.quartierProfile?.values) {
+          if (project.quartierProfile.values.length !== 8760) throw new Error('Gespeicherter Stromlastgang muss genau 8.760 Stunden enthalten.');
+          window.elQuartierH          = Float32Array.from(project.quartierProfile.values);
+          window.elQuartierH15        = project.quartierProfile.values15 ? Float32Array.from(project.quartierProfile.values15) : null;
+          window.elQuartierResolution = project.quartierProfile.resolution || 60;
+          window.elQuartierStartDate  = project.quartierProfile.startDate ? new Date(project.quartierProfile.startDate) : null;
+          window.elQuartierFilename   = project.quartierProfile.filename || null;
+          const sumKwh = window.elQuartierH.reduce((s,v) => s+v, 0);
+          const pMax   = window.elQuartierH.reduce((m,v) => v>m?v:m, 0);
+          const resLbl = window.elQuartierResolution === 15
+            ? `15-min · ${window.elQuartierH15.length.toLocaleString('de-DE')} Werte`
+            : `stündlich · ${window.elQuartierH.length.toLocaleString('de-DE')} Werte`;
+          const info = document.getElementById('strom-upload-info');
+          if (info) info.textContent = `${window.elQuartierFilename || 'Gespeicherter Lastgang'} · ${Math.round(sumKwh/1000).toLocaleString('de-DE')} MWh/a · max ${Math.round(pMax).toLocaleString('de-DE')} kW · ${resLbl}`;
+          const clear = document.getElementById('strom-clear-btn'); if (clear) clear.style.display = '';
+        } else {
+          window.elQuartierH = null; window.elQuartierH15 = null; window.elQuartierResolution = null;
+          window.elQuartierStartDate = null; window.elQuartierFilename = null;
+          const info = document.getElementById('strom-upload-info'); if (info) info.textContent = '';
+          const clear = document.getElementById('strom-clear-btn'); if (clear) clear.style.display = 'none';
+        }
         if (project.battery) {
           const ids = {capacityKwh:'bat-kapazitaet',powerKw:'bat-leistung',investEurKwh:'opt-bat-invest',studyLifeYears:'opt-bat-life',calendarFadePctPerYear:'bat-calendar-fade',cycleLife:'bat-cycle-life',eolCapacityPct:'bat-eol-pct'};
           for (const [key,id] of Object.entries(ids)) { const el=document.getElementById(id); if(el && project.battery[key] != null) el.value=project.battery[key]; }
@@ -171453,7 +173907,7 @@ ${hasAnyResult ? `
     const nsaRes = NA.nsaResult;
     const recoTxt = reco && reco.genKw > 0
       ? `Resilienz-Empfehlung: <b>${Math.ceil(reco.genKw)} kW</b> · ${reco.durH} h · ${reco.kraftstoff}`
-      : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (Abb. 10) — Fallback: Karten-Spitzenlast</span>`;
+      : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (Analyse ▸ 🛡 Resilienz) — Fallback: Karten-Spitzenlast</span>`;
     const _srcBtn = (val, lbl) => {
       const on = NA.nsaSource === val;
       return `<button onclick="naSetNsaSource('${val}')"
@@ -182483,7 +184937,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,
-    planDigitalisierer, dualScreen, gutachtenGrafik,
+    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder,
   ];
   window.pdfjsLib = pdfjsLib;
   appLifecycle.listen(window,'pagehide',()=>appLifecycle.dispose(),{once:true});

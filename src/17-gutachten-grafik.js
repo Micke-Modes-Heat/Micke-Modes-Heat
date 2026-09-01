@@ -36,6 +36,14 @@ export const GG_THEME = {
     xLabelDy: 18, xTitleDy: 46, kpiTopDy: 66,
     kpiPad: 16, kpiRow: 22, kpiPctW: 42, kpiWertW: 128, kpiWertW2: 104,
     fsKpi: 13, fsKpiPct: 12, fsKpiLabel: 12.5, footSpace: 16,
+
+    // Version 2 („reduziertes Blatt"): Kopf ohne Liegenschaft und Metadaten,
+    // die Kennzahlen stehen nicht mehr unter der Kurve, sondern auf einem
+    // eigenen Tabellenblatt (ggRenderKennzahlen).
+    headHSchmal: 70,
+    tabTop: 30, tabHeadH: 32, tabRow: 30, tabPadX: 12,
+    tabWertW: 180, tabEinheitW: 86, tabPctW: 92,
+    fsTabHead: 10.5, trackTabHead: 1.1, fsTabWert: 13.5, fsTab: 12.5,
   },
 
   line: '#E2E4DF',                   // Rahmen von Gruppen, Kacheln, Kopfzeilen
@@ -306,25 +314,32 @@ const ggNum = (v, dez = 0) =>
 const ggEstW = (t, size, mono) => t.length * size * (mono ? 0.6 : 0.53);
 
 /**
- * Geometrie des gerahmten Blatts — haengt nur von T ab, nicht vom Inhalt.
- * Von allen Sheet-Figuren (Ganglinie, Heatmap, …) gemeinsam genutzt, damit
- * Kopfzeile/Kennzahlenblock immer exakt gleich sitzen ("im selben Style").
+ * Geometrie des gerahmten Blatts — haengt nur von T und der Blattversion ab,
+ * nicht vom Inhalt. Von allen Sheet-Figuren (Ganglinie, Heatmap, …) gemeinsam
+ * genutzt, damit Kopfzeile/Kennzahlenblock immer exakt gleich sitzen.
+ *
+ * cfg.layout === 'reduziert' ist Version 2: schmalerer Kopf (ohne Untertitel
+ * und Metadatenspalte) und kein Kennzahlenblock — das Blatt endet unter dem
+ * Achsentitel, die Werte stehen auf dem Kennzahlenblatt daneben.
  */
-function ggSheetGeometry(T) {
+function ggSheetGeometry(T, cfg = {}) {
   const S = T.sheet, W = T.width;
+  const reduziert = cfg.layout === 'reduziert';
+  const headH = reduziert ? S.headHSchmal : S.headH;
   const plotX = S.padX + S.yTitleW + S.yLabelW;
   const plotW = W - S.padX - plotX;
-  const plotY = S.headBand + S.headH + S.plotTop;
+  const plotY = S.headBand + headH + S.plotTop;
   const plotH = S.plotH;
   const plotB = plotY + plotH;
   const xLabelY = plotB + S.xLabelDy;
   const xTitleY = plotB + S.xTitleDy;
   const kpiTop  = plotB + S.kpiTopDy;
-  const height  = kpiTop + S.kpiPad + 2 * S.kpiRow + S.kpiPad + S.footSpace;
-  return { S, W, plotX, plotW, plotY, plotH, plotB, xLabelY, xTitleY, kpiTop, height };
+  const height  = reduziert ? xTitleY + S.footSpace + 10
+                            : kpiTop + S.kpiPad + 2 * S.kpiRow + S.kpiPad + S.footSpace;
+  return { S, W, headH, reduziert, plotX, plotW, plotY, plotH, plotB, xLabelY, xTitleY, kpiTop, height };
 }
 
-function ggTxt(T, S, x, y, s, o = {}) {
+export function ggTxt(T, S, x, y, s, o = {}) {
   return `<text x="${gR(x)}" y="${gR(y)}"${o.anchor ? ` text-anchor="${o.anchor}"` : ''}
        font-family="${o.mono ? T.fontMono : T.font}" font-size="${o.size || S.fsBody}"
        ${o.weight ? `font-weight="${o.weight}" ` : ''}${o.tracking ? `letter-spacing="${o.tracking}" ` : ''}
@@ -332,31 +347,37 @@ function ggTxt(T, S, x, y, s, o = {}) {
 }
 
 /** Papierhintergrund, Kopfbalken mit Titel/Metadaten/Wortmarke — für jede Sheet-Figur gleich. */
-function ggSheetHeader(cfg, T, G) {
-  const S = G.S, W = G.W;
+export function ggSheetHeader(cfg, T, G) {
+  const S = G.S, W = G.W, headH = G.headH || S.headH;
   const gruen = T.accents.gruenDunkel;
   const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
 
   let out = `<rect x="0" y="0" width="${W}" height="${gR(G.height)}" fill="${T.bg}"/>`;
   out += `<rect x="0" y="0" width="${W}" height="${S.headBand}" fill="${gruen}"/>`;
-  const hTop = S.headBand, hBot = hTop + S.headH;
+  const hTop = S.headBand, hBot = hTop + headH;
   const colMid = W - S.headMetaW - S.headLogoW, colLogo = W - S.headLogoW;
   out += `<line x1="0" y1="${gR(hBot) + 0.5}" x2="${W}" y2="${gR(hBot) + 0.5}" stroke="${T.line}" stroke-width="1"/>
-          <line x1="${colMid}.5" y1="${hTop}" x2="${colMid}.5" y2="${gR(hBot)}" stroke="${T.line}" stroke-width="1"/>
           <line x1="${colLogo}.5" y1="${hTop}" x2="${colLogo}.5" y2="${gR(hBot)}" stroke="${T.line}" stroke-width="1"/>`;
+  // Die mittlere Trennlinie gehoert zur Metadatenspalte — in Version 2 waere
+  // sie nur noch ein Strich im Leeren.
+  if (!G.reduziert) {
+    out += `<line x1="${colMid}.5" y1="${hTop}" x2="${colMid}.5" y2="${gR(hBot)}" stroke="${T.line}" stroke-width="1"/>`;
+  }
 
-  const blockH = S.fsEyebrow + 6 + S.fsTitle * 1.25 + 6 + S.fsSub * 1.25;
-  let ty = hTop + (S.headH - blockH) / 2;
+  const blockH = S.fsEyebrow + 6 + S.fsTitle * 1.25 + (G.reduziert ? 0 : 6 + S.fsSub * 1.25);
+  let ty = hTop + (headH - blockH) / 2;
   out += txt(S.padX, ty + S.fsEyebrow, (cfg.eyebrow || '').toUpperCase(),
              { mono: true, size: S.fsEyebrow, weight: 500, tracking: S.trackEyebrow, fill: T.accents.gruen });
   ty += S.fsEyebrow + 6;
   out += txt(S.padX, ty + S.fsTitle, cfg.titel || '', { size: S.fsTitle, weight: 700, tracking: -0.21 });
-  ty += S.fsTitle * 1.25 + 6;
-  out += txt(S.padX, ty + S.fsSub, cfg.ort || '', { size: S.fsSub, fill: T.text.muted });
+  if (!G.reduziert) {
+    ty += S.fsTitle * 1.25 + 6;
+    out += txt(S.padX, ty + S.fsSub, cfg.ort || '', { size: S.fsSub, fill: T.text.muted });
+  }
 
   // Metadaten — Beschriftung grau, Wert schwarz, beides dieselbe Mono
-  const meta = Object.entries(cfg.meta || {});
-  let my = hTop + (S.headH - (meta.length * S.metaRow - (S.metaRow - S.fsMeta))) / 2 + S.fsMeta;
+  const meta = G.reduziert ? [] : Object.entries(cfg.meta || {});
+  let my = hTop + (headH - (meta.length * S.metaRow - (S.metaRow - S.fsMeta))) / 2 + S.fsMeta;
   for (const [k, v] of meta) {
     out += txt(colMid + 20, my, k, { mono: true, size: S.fsMeta, weight: 500, fill: T.text.faint });
     out += txt(colMid + 20 + S.metaKeyW, my, v || '—', { mono: true, size: S.fsMeta, weight: 500 });
@@ -366,7 +387,7 @@ function ggSheetHeader(cfg, T, G) {
   // Wortmarke
   const logoH = S.logoW * (LKEBW_LOGO_H / LKEBW_LOGO_W);
   out += `<image href="${LKEBW_LOGO}" x="${gR(colLogo + (S.headLogoW - S.logoW) / 2)}"
-            y="${gR(hTop + (S.headH - logoH) / 2)}" width="${S.logoW}" height="${gR(logoH)}"/>`;
+            y="${gR(hTop + (headH - logoH) / 2)}" width="${S.logoW}" height="${gR(logoH)}"/>`;
   return out;
 }
 
@@ -383,6 +404,7 @@ function ggAxisTitles(cfg, T, G) {
 
 /** Kennzahlenblock unterhalb der Diagrammfläche — für jede Sheet-Figur gleich. */
 function ggSheetKpiFooter(cfg, T, G) {
+  if (G.reduziert) return '';        // Version 2: die Werte stehen auf dem Kennzahlenblatt
   const S = G.S, W = G.W, kpiTop = G.kpiTop;
   const gruen = T.accents.gruenDunkel;
   const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
@@ -413,6 +435,155 @@ function ggSheetKpiFooter(cfg, T, G) {
   return out;
 }
 
+/** Zahl und Einheit trennen ("2.341.289 kWh" → zwei Spalten). */
+function ggSplitWert(wert) {
+  const s = String(wert == null ? '' : wert).trim();
+  const m = s.match(/^(.*\S)\s+(\S+)$/);
+  // Nur ein Nachsatz ohne Ziffern ist eine Einheit — "2035" oder "wechselnd"
+  // bleiben ungeteilt in der Wertspalte stehen.
+  return m && !/\d/.test(m[2]) ? { zahl: m[1], einheit: m[2] } : { zahl: s, einheit: '' };
+}
+
+/** Kennzahlen eines Blatts in Lesereihenfolge: erst die linke, dann die rechte Spalte. */
+function ggKpiZeilen(cfg) {
+  return [...(cfg.kpiLinks || []).slice(0, 2), ...(cfg.kpiRechts || []).slice(0, 2)]
+    .filter(r => r && r.wert != null && r.wert !== '');
+}
+
+/**
+ * Kennzahlenblatt — Gegenstueck zum reduzierten Blatt (Version 2): unter der
+ * Kurve steht dort nichts mehr, die Werte wandern hierher in eine eigene
+ * Tabelle. Gespeist aus denselben kpiLinks/kpiRechts wie der Fussblock, damit
+ * beide Versionen nie auseinanderlaufen.
+ */
+export function ggRenderKennzahlen(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel;
+  const zeilen = ggKpiZeilen(cfg);
+  const headH = S.headHSchmal;
+  const tabTop = S.headBand + headH + S.tabTop;
+  const height = tabTop + S.tabHeadH + Math.max(zeilen.length, 1) * S.tabRow + S.footSpace + 10;
+  // Kopf wie beim reduzierten Blatt, nur mit eigenem Titel — dieselbe Funktion,
+  // damit Eyebrow, Wortmarke und Balken auf beiden Blaettern gleich sitzen.
+  const G = { S, W, headH, reduziert: true, height };
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.tabelleTitel || 'Kennzahlen' }, T, G);
+
+  const x0 = S.padX, x1 = W - S.padX, P = S.tabPadX;
+  // Spaltenkanten von rechts her: Anteil | Einheit | Wert (rechtsbuendig) | Kennzahl
+  const einhX = x1 - S.tabPctW - S.tabEinheitW;
+
+  // Kopfzeile der Tabelle
+  out += `<rect x="${x0}" y="${gR(tabTop)}" width="${gR(x1 - x0)}" height="${S.tabHeadH}" fill="${T.tint}"/>`;
+  const hy = tabTop + S.tabHeadH / 2 + S.fsTabHead * 0.36;
+  const kopf = (x, s, anchor) => txt(x, hy, s.toUpperCase(), { mono: true, size: S.fsTabHead, weight: 600,
+                 tracking: S.trackTabHead, fill: gruen, anchor });
+  out += kopf(x0 + P, 'Kennzahl') + kopf(einhX - P, 'Wert', 'end')
+       + kopf(einhX + P, 'Einheit') + kopf(x1 - P, 'Anteil', 'end');
+
+  // Zeilen — eine je Kennzahl, hervorgehobene wie im Fussblock im Gruenton
+  let y = tabTop + S.tabHeadH;
+  if (!zeilen.length) {
+    out += txt(x0 + P, y + S.tabRow / 2 + S.fsTab * 0.36, cfg.leer || 'Keine Kennzahlen vorhanden.',
+               { size: S.fsTab, fill: T.text.faint });
+    y += S.tabRow;
+  }
+  for (const r of zeilen) {
+    if (r.highlight) out += `<rect x="${x0}" y="${gR(y)}" width="${gR(x1 - x0)}" height="${S.tabRow}" fill="${T.tint}"/>`;
+    const ty = y + S.tabRow / 2 + S.fsTab * 0.36;
+    const { zahl, einheit } = ggSplitWert(r.wert);
+    out += txt(x0 + P, ty, r.label || '', { size: S.fsTab });
+    out += txt(einhX - P, ty, zahl, { anchor: 'end', mono: true, size: S.fsTabWert,
+               weight: r.highlight ? 600 : 500, fill: r.highlight ? gruen : T.text.strong });
+    if (einheit) out += txt(einhX + P, ty, einheit, { mono: true, size: S.fsTab, weight: 500, fill: T.text.muted });
+    if (r.prozent) out += txt(x1 - P, ty, r.prozent, { anchor: 'end', mono: true, size: S.fsTab, weight: 500, fill: T.text.faint });
+    y += S.tabRow;
+    out += `<line x1="${x0}" y1="${gR(y) + 0.5}" x2="${x1}" y2="${gR(y) + 0.5}" stroke="${T.line}" stroke-width="1"/>`;
+  }
+
+  // Rahmen: aussen duenn, unter der Kopfzeile kraeftig im Akzent
+  const kopfLinie = gR(tabTop + S.tabHeadH) + 0.5;
+  out += `<line x1="${x0}" y1="${kopfLinie}" x2="${x1}" y2="${kopfLinie}" stroke="${gruen}" stroke-width="1.5"/>`;
+  out += `<rect x="${x0}.5" y="${gR(tabTop) + 0.5}" width="${gR(x1 - x0) - 1}" height="${gR(y - tabTop) - 1}"
+            fill="none" stroke="${T.line}" stroke-width="1"/>`;
+  return ggFinishSvg(out, W, height);
+}
+
+/**
+ * Dieselbe Kennzahlentabelle als HTML-Markup mit Inline-Styles — nicht fuer
+ * die Bildschirmvorschau gedacht, sondern als Kopiervorlage: Word erkennt
+ * ein <table>-Element in der Zwischenablage und legt eine echte, editierbare
+ * Tabelle an (Zellen, Spalten, selektierbarer Text), statt eines Bildes.
+ */
+export function ggKennzahlenHtmlTable(cfg, T = GG_THEME) {
+  const zeilen = ggKpiZeilen(cfg);
+  const gruen = T.accents.gruenDunkel;
+  const border = `1px solid ${T.line}`;
+  const td = (inhalt, o = {}) => `<td style="padding:7px 12px;border-bottom:${border};
+      font-family:${o.mono ? T.fontMono : T.font};font-size:${o.size || 12.5}px;font-weight:${o.weight || 400};
+      color:${o.color || T.text.strong};text-align:${o.align || 'left'};white-space:nowrap;
+      ${o.bg ? `background:${o.bg};` : ''}">${gEsc(inhalt)}</td>`;
+  const th = (s, align) => `<th style="padding:8px 12px;border-bottom:2px solid ${gruen};background:${T.tint};
+      font-family:${T.fontMono};font-size:10.5px;font-weight:600;letter-spacing:.05em;color:${gruen};
+      text-transform:uppercase;text-align:${align || 'left'};">${gEsc(s)}</th>`;
+
+  const rows = zeilen.length ? zeilen.map(r => {
+    const { zahl, einheit } = ggSplitWert(r.wert);
+    const bg = r.highlight ? T.tint : undefined;
+    return `<tr>${td(r.label || '', { bg })}`
+      + td(zahl, { mono: true, align: 'right', weight: r.highlight ? 600 : 500, color: r.highlight ? gruen : T.text.strong, bg })
+      + td(einheit, { mono: true, color: T.text.muted, bg })
+      + td(r.prozent || '', { mono: true, align: 'right', color: T.text.faint, bg }) + `</tr>`;
+  }).join('') : `<tr><td colspan="4" style="padding:10px 12px;font-family:${T.font};color:${T.text.faint};">
+                   ${gEsc(cfg.leer || 'Keine Kennzahlen vorhanden.')}</td></tr>`;
+
+  return `<table style="border-collapse:collapse;border:${border};min-width:420px;">
+    <thead><tr>${th('Kennzahl')}${th('Wert', 'right')}${th('Einheit')}${th('Anteil', 'right')}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+/** Kennzahlen als Tab-getrennter Text — Fallback-Inhalt neben dem HTML in der Zwischenablage. */
+function ggKennzahlenPlainText(cfg) {
+  const zeilen = ggKpiZeilen(cfg);
+  const zeile = r => {
+    const { zahl, einheit } = ggSplitWert(r.wert);
+    return [r.label || '', zahl, einheit, r.prozent || ''].join('\t');
+  };
+  return ['Kennzahl\tWert\tEinheit\tAnteil', ...zeilen.map(zeile)].join('\n');
+}
+
+/**
+ * Kopiert die Kennzahlentabelle als echte Word-Tabelle in die Zwischenablage
+ * (HTML- statt Bild-Payload) — Gegenstueck zu ggCopyForWord, das die
+ * Abbildungen als PNG kopiert.
+ */
+export async function ggCopyTableForWord(cfg) {
+  const tabelle = ggKennzahlenHtmlTable(cfg);
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${tabelle}</body></html>`;
+  const text = ggKennzahlenPlainText(cfg);
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([new window.ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      })]);
+      return 'Zwischenablage';
+    } catch (e) { void e; /* Fallback unten */ }
+  }
+  const holder = document.createElement('div');
+  holder.contentEditable = 'true';
+  holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  holder.innerHTML = tabelle;
+  document.body.appendChild(holder);
+  const rng = document.createRange(); rng.selectNodeContents(holder);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng);
+  const ok = document.execCommand('copy');
+  sel.removeAllRanges(); holder.remove();
+  if (!ok) throw new Error('Zwischenablage nicht verfügbar');
+  return 'Zwischenablage (Fallback)';
+}
+
 function ggFinishSvg(out, W, height) {
   const svg = document.createElementNS(GG_NS, 'svg');
   svg.setAttribute('xmlns', GG_NS);
@@ -424,7 +595,7 @@ function ggFinishSvg(out, W, height) {
 }
 
 export function ggRenderGanglinie(cfg, T = GG_THEME) {
-  const G = ggSheetGeometry(T);
+  const G = ggSheetGeometry(T, cfg);
   const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
   const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
 
@@ -637,7 +808,7 @@ function ggHeatColor(t) {
 const GG_MONATE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
 export function ggRenderHeatmap(cfg, T = GG_THEME) {
-  const G = ggSheetGeometry(T);
+  const G = ggSheetGeometry(T, cfg);
   const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
   const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
 
@@ -711,7 +882,7 @@ export function ggRenderHeatmap(cfg, T = GG_THEME) {
  * Gruppen werden nebeneinander gesetzt (Verbrauch neben Einspeisung).
  * ═══════════════════════════════════════════════════════════════════════ */
 export function ggRenderBalken(cfg, T = GG_THEME) {
-  const G = ggSheetGeometry(T);
+  const G = ggSheetGeometry(T, cfg);
   const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
   const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
 
@@ -799,6 +970,85 @@ export function ggRenderBalken(cfg, T = GG_THEME) {
   out += ggSheetKpiFooter(cfg, T, G);
 
   return ggFinishSvg(out, W, G.height);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3e) RENDERER — „Tabelle": mehrspaltige Datentabelle, selber Blatt-Stil
+ *
+ * Verallgemeinerung von ggRenderKennzahlen (dort fest auf Kennzahl/Wert/
+ * Einheit/Anteil), fuer Vergleiche mit beliebig vielen Spalten und Zeilen
+ * (z. B. die PV-Varianten nebeneinander).
+ * cfg.spalten = [{ label, align?: 'left'|'right' (Default: erste Spalte
+ *   links, Rest rechts), mono?: bool (Default: true außer 1. Spalte),
+ *   weight?: number (Breitenanteil, Default 1) }]
+ * cfg.zeilen  = [{ werte: string[] (parallel zu spalten), highlight?: bool,
+ *   akzent?: farbe (schmaler Balken am Zeilenanfang, z. B. Variantenfarbe) }]
+ * ═══════════════════════════════════════════════════════════════════════ */
+export function ggRenderTabelle(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel;
+  const spalten = cfg.spalten || [];
+  const zeilen  = cfg.zeilen  || [];
+  const headH = S.headHSchmal;
+  const tabTop = S.headBand + headH + S.tabTop;
+  const rowN  = Math.max(zeilen.length, 1);
+  const fussH = cfg.fussnote ? 20 : 0;
+  const height = tabTop + S.tabHeadH + rowN * S.tabRow + fussH + S.footSpace + 10;
+  const G = { S, W, headH, reduziert: true, height };
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.tabelleTitel || cfg.titel }, T, G);
+
+  const x0 = S.padX, x1 = W - S.padX, P = S.tabPadX, totalW = x1 - x0;
+  const totalWeight = spalten.reduce((s, c) => s + (c.weight || 1), 0) || 1;
+  let cx = x0;
+  const cols = spalten.map((c, i) => {
+    const w = totalW * (c.weight || 1) / totalWeight;
+    const col = { ...c, x: cx, w, align: c.align || (i === 0 ? 'left' : 'right'), mono: c.mono !== false && i > 0 };
+    cx += w;
+    return col;
+  });
+
+  // Kopfzeile
+  out += `<rect x="${x0}" y="${gR(tabTop)}" width="${gR(totalW)}" height="${S.tabHeadH}" fill="${T.tint}"/>`;
+  const hy = tabTop + S.tabHeadH / 2 + S.fsTabHead * 0.36;
+  cols.forEach(c => {
+    const tx = c.align === 'right' ? c.x + c.w - P : c.x + P;
+    out += txt(tx, hy, (c.label || '').toUpperCase(), { mono: true, size: S.fsTabHead, weight: 600,
+               tracking: S.trackTabHead, fill: gruen, anchor: c.align === 'right' ? 'end' : 'start' });
+  });
+
+  // Zeilen — eine je Variante/Kandidat, hervorgehobene wie im Kennzahlenblock im Gruenton
+  let y = tabTop + S.tabHeadH;
+  if (!zeilen.length) {
+    out += txt(x0 + P, y + S.tabRow / 2 + S.fsTab * 0.36, cfg.leer || 'Keine Daten vorhanden.',
+               { size: S.fsTab, fill: T.text.faint });
+    y += S.tabRow;
+  }
+  for (const r of zeilen) {
+    if (r.highlight) out += `<rect x="${x0}" y="${gR(y)}" width="${gR(totalW)}" height="${S.tabRow}" fill="${T.tint}"/>`;
+    if (r.akzent) out += `<rect x="${x0}" y="${gR(y)}" width="4" height="${S.tabRow}" fill="${r.akzent}"/>`;
+    const ty = y + S.tabRow / 2 + S.fsTab * 0.36;
+    cols.forEach((c, i) => {
+      const val = r.werte?.[i];
+      const s = (val == null || val === '') ? '—' : String(val);
+      const tx = c.align === 'right' ? c.x + c.w - P : c.x + P + (r.akzent && i === 0 ? 8 : 0);
+      out += txt(tx, ty, s, { mono: c.mono, size: i === 0 ? S.fsTab : S.fsTabWert,
+                 weight: r.highlight && i > 0 ? 600 : 500, fill: r.highlight && i > 0 ? gruen : T.text.strong,
+                 anchor: c.align === 'right' ? 'end' : 'start' });
+    });
+    y += S.tabRow;
+    out += `<line x1="${x0}" y1="${gR(y) + 0.5}" x2="${x1}" y2="${gR(y) + 0.5}" stroke="${T.line}" stroke-width="1"/>`;
+  }
+
+  // Rahmen: aussen duenn, unter der Kopfzeile kraeftig im Akzent
+  const kopfLinie = gR(tabTop + S.tabHeadH) + 0.5;
+  out += `<line x1="${x0}" y1="${kopfLinie}" x2="${x1}" y2="${kopfLinie}" stroke="${gruen}" stroke-width="1.5"/>`;
+  out += `<rect x="${x0}.5" y="${gR(tabTop) + 0.5}" width="${gR(totalW) - 1}" height="${gR(y - tabTop) - 1}"
+            fill="none" stroke="${T.line}" stroke-width="1"/>`;
+
+  if (cfg.fussnote) out += txt(x0, y + 15, cfg.fussnote, { size: S.fsTab - 2, fill: T.text.faint });
+
+  return ggFinishSvg(out, W, height);
 }
 
 /** Kennzahlen eines Lastgangs: Summe, Spitze, Grundlast (1-%-Quantil). */
@@ -945,6 +1195,7 @@ function ggDateiname(basis, ext) {
 const GG_FIGUREN = [
   {
     id: 'traeger-quellen',
+    kapitel: '1.2 Liegenschaftsinformationen',
     titel: 'Energieträger / Energiequellen',
     datei: 'energietraeger-quellen',
     hinweis: 'Welche Energieträger und -quellen im Quartier zum Einsatz kommen. „Aus Projekt übernehmen" leitet die Haken aus Erzeugern und Assets ab.',
@@ -998,6 +1249,7 @@ const GG_FIGUREN = [
   {
     id: 'lastgang-strom',
     autoSync: true,   // Daten kommen komplett aus dem Projekt — nichts zum Anhaken
+    kapitel: '3.1.5 Stromdaten',
     titel: 'Ist-Lastgang Strom',
     datei: 'ist-lastgang-strom',
     hinweis: 'Gemessener Jahreslastgang aus dem Stromimport (15-Minuten-Werte, sonst Stundenwerte). '
@@ -1049,6 +1301,7 @@ const GG_FIGUREN = [
   {
     id: 'lastgang-waerme',
     autoSync: true,   // Daten kommen komplett aus dem Projekt — nichts zum Anhaken
+    kapitel: '2.1 Ist-Zustand Wärme',
     titel: 'Ist-Lastgang Wärme',
     datei: 'ist-lastgang-waerme',
     hinweis: 'Bevorzugt der importierte Wärmelastgang aus den Wärme-Grundlagen. Ist keiner vorhanden, '
@@ -1104,6 +1357,7 @@ const GG_FIGUREN = [
   {
     id: 'lastgang-strom-dauerlinie',
     autoSync: true,
+    kapitel: '3.1.5 Stromdaten',
     titel: 'Jahresdauerlinie Strom',
     datei: 'jahresdauerlinie-strom',
     hinweis: 'Derselbe Stromlastgang wie die Jahresganglinie, absteigend nach Leistung sortiert — '
@@ -1153,6 +1407,7 @@ const GG_FIGUREN = [
   {
     id: 'lastgang-strom-tagesgang',
     autoSync: true,
+    kapitel: '3.1.5 Stromdaten',
     titel: 'Tagesgang Strom',
     datei: 'tagesgang-strom',
     hinweis: 'Mittlerer Tagesverlauf aus dem Stromlastgang, getrennt nach Werktag und Wochenende '
@@ -1205,6 +1460,7 @@ const GG_FIGUREN = [
   {
     id: 'lastgang-strom-heatmap',
     autoSync: true,
+    kapitel: '3.1.5 Stromdaten',
     titel: 'Jahres-Heatmap Strom',
     datei: 'jahres-heatmap-strom',
     hinweis: 'Stündliche Mittelwerte des Stromlastgangs als Tag/Stunde-Raster — zeigt saisonale und '
@@ -1254,6 +1510,7 @@ const GG_FIGUREN = [
   {
     id: 'monatsbilanz-strom',
     autoSync: true,
+    kapitel: '3.1.5 Stromdaten',
     titel: 'Monatsbilanz Strom',
     datei: 'monatsbilanz-strom',
     hinweis: 'Netzbezug, Eigenverbrauch und Einspeisung je Monat. Sobald die Strom-/PV-Berechnung '
@@ -1336,6 +1593,7 @@ const GG_FIGUREN = [
   // ── Entwicklung der Anschlussleistung ───────────────
   {
     id: 'anschlussleistung-entwicklung',
+    kapitel: '3.2.2 Liegenschaftsstromnetzanschluss',
     titel: 'Entwicklung der Anschlussleistung',
     datei: 'anschlussleistung-entwicklung',
     hinweis: 'Höchstlast am Liegenschaftsanschluss über den Planungshorizont, gegen Anschlusswert und '
@@ -1431,7 +1689,227 @@ const GG_FIGUREN = [
       return `✓ ${jahre.length} Jahre aus ${res.proJahr.length} Stützjahren (${res.von}–${res.bis}) übernommen.`;
     },
   },
+
 ];
+
+// ── PV-Analyse: Varianten, Energiebilanz, Wirtschaftlichkeit, Resilienz ───────
+// Quelle: window._pvAnalyse.ergebnisse (gefüllt in src/09d-pv-analyse.js über
+// „Varianten berechnen") bzw. window._pvResReco (Kapitel 🛡 Resilienz). Ohne
+// gelaufene Berechnung liefert ausProjekt eine Hinweismeldung statt Zahlen.
+// Als eigene Funktion statt direkt im Array-Literal: die Helfer/Konstanten
+// darunter (GG_PV_KURZ etc.) sind sonst beim Auswerten von GG_FIGUREN noch
+// nicht initialisiert (TDZ) — der Push erfolgt erst, nachdem alles definiert ist.
+
+/** Kanonische Varianten (mit Lesehilfe-Info) aus der PV-Analyse, sonst leer. */
+function ggPvKanon() {
+  return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage);
+}
+/** Kurzform der Variantenlabel für Achsen/Kategorien (voller Name steht in Tabellen). */
+const GG_PV_KURZ = { 'minimal': 'Minimal', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
+                      'autarkie': 'Autarkie', 'max-pv': 'Max. PV-Ausbau' };
+const GG_RES_MODE_LBL = { 'gen': 'Nur Notstrom', 'bat-gen': 'Speicher + Notstrom',
+                           'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'Nur PV + Speicher' };
+const GG_PVAH_MONAT_TAGE = [31,28,31,30,31,30,31,31,30,31,30,31];
+const GG_PVAH_MONAT_NAMEN = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+/** Tag-im-Jahr (0-basiert, aus einem Stunden-Index) → "12. Jul" — dieselbe Logik wie
+ * _pvahDayToDate in 09d-pv-analyse.js; hier dupliziert, damit dieses Modul frei von
+ * App-Kern-Importen bleibt (siehe Kommentar am Dateianfang). */
+function ggPvTagLabel(stundenIdx) {
+  let m = 0, d = Math.max(0, Math.min(364, Math.floor(stundenIdx / 24)));
+  while (m < 11 && d >= GG_PVAH_MONAT_TAGE[m]) { d -= GG_PVAH_MONAT_TAGE[m]; m++; }
+  return `${d + 1}. ${GG_PVAH_MONAT_NAMEN[m]}, ${stundenIdx % 24}:00`;
+}
+
+function ggPvFiguren() {
+  return [
+    // ── Variantenvergleich ───────────────────────────────────────────────
+    {
+      id: 'pv-variantenvergleich',
+      autoSync: true,
+      kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+      titel: 'PV-Varianten im Vergleich',
+      datei: 'pv-variantenvergleich',
+      hinweis: 'Die 5 kanonischen PV-Varianten aus der ☀ PV-Analyse nebeneinander — jede beantwortet '
+             + 'genau eine Stakeholder-Frage (Minimal, Eigenverbrauch, Wirtschaftlichkeit, Autarkie, '
+             + 'maximaler Ausbau). Grundlage: „Varianten berechnen" in der PV-Analyse.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'PV-Varianten im Vergleich',
+        leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
+        spalten: [
+          { label: 'Variante', weight: 2.6 },
+          { label: 'PV-Leistung', weight: 1.25 },
+          { label: 'Batterie', weight: 1.15 },
+          { label: 'Eigenverbrauch', weight: 1.3 },
+          { label: 'Autarkie', weight: 1.1 },
+          { label: 'Amortisation', weight: 1.25 },
+        ],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const kanon = ggPvKanon();
+        if (!kanon.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine PV-Varianten berechnet.'; }
+        cfg.zeilen = kanon.map(v => ({
+          werte: [v.label, ggNum(v.pvKwp) + ' kWp', v.batKwh > 0 ? ggNum(v.batKwh) + ' kWh' : '—',
+                  ggNum(v.wirt.pvEigenQuote) + ' %', ggNum(v.wirt.autarkie) + ' %',
+                  isFinite(v.wirt.amort) ? ggNum(v.wirt.amort, 1) + ' a' : '> 20 a'],
+          highlight: v.id === 'wirt-opt', akzent: v.farbe,
+        }));
+        cfg.fussnote = 'Hervorgehoben: wirtschaftlich optimierte Variante (höchster Jahres-Netto-Überschuss, statische Amortisation).';
+        return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
+      },
+    },
+
+    // ── Energiebilanz je Variante (B/D/P — Bedarf/Deckung/PV-Verbleib) ───
+    {
+      id: 'pv-energiebilanz',
+      autoSync: true,
+      kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+      titel: 'Energiebilanz je PV-Variante',
+      datei: 'pv-energiebilanz',
+      hinweis: 'Drei Balken je Variante: Bedarf (gesamter Strombedarf), Deckung (Eigenverbrauch + '
+             + 'Netzbezug, deckt den Bedarf) und PV-Verbleib (Einspeisung + Abregelung des '
+             + 'PV-Überschusses). Entspricht der Energiebilanz-Abbildung der PV-Analyse.',
+      render: cfg => ggRenderBalken(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Energiebilanz je PV-Variante', ort: '',
+        meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+        achseY: 'Energie in MWh/a', achseX: 'Variante · B = Bedarf · D = Deckung · P = PV-Verbleib',
+        leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
+        kategorien: [], gruppen: [], kpiLinks: [], kpiRechts: [],
+      },
+      ausProjekt(cfg) {
+        cfg.ort = cfg.ort || ggLiegenschaft();
+        cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+        ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+
+        const kanon = ggPvKanon();
+        if (!kanon.length) { cfg.kategorien = []; cfg.gruppen = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Noch keine PV-Varianten berechnet.'; }
+
+        const rows = kanon.map(v => {
+          const ev = v.sim.eigenMwh, nb = v.sim.netzbezugMwh, es = v.sim.einspeiseMwh, ct = v.sim.curtailMwh || 0;
+          const wEv = Math.min(ev, v.sim.windEigenMwh || 0), wEs = Math.min(es, v.sim.windEinspMwh || 0);
+          return { v, ev, nb, es, ct, wEv, wEs, bedarf: ev + nb };
+        });
+        const windAktiv = rows.some(r => r.wEv + r.wEs > 0.01);
+        const kat = kanon.map(v => `${v.icon} ${GG_PV_KURZ[v.id] || v.label}`);
+
+        cfg.kategorien = kat;
+        cfg.gruppen = [
+          { label: 'Bedarf', segmente: [
+            { label: 'Bedarf gesamt', farbe: GG_THEME.text.muted, werte: rows.map(r => r.bedarf) },
+          ]},
+          { label: 'Deckung', segmente: [
+            { label: 'Eigenverbrauch PV', farbe: GG_THEME.accents.gruen, werte: rows.map(r => r.ev - r.wEv) },
+            ...(windAktiv ? [{ label: 'Eigenverbrauch Wind', farbe: '#4dd0e1', werte: rows.map(r => r.wEv) }] : []),
+            { label: 'Netzbezug', farbe: GG_THEME.energy.strom, werte: rows.map(r => r.nb) },
+          ]},
+          { label: 'PV-Verbleib', segmente: [
+            { label: 'Einspeisung PV', farbe: GG_THEME.accents.gruenDunkel, werte: rows.map(r => r.es - r.wEs) },
+            ...(windAktiv ? [{ label: 'Einspeisung Wind', farbe: '#4dd0e1', werte: rows.map(r => r.wEs) }] : []),
+            { label: 'Abregelung', farbe: GG_THEME.energy.gas, werte: rows.map(r => r.ct) },
+          ]},
+        ];
+        const vEv = kanon.reduce((a, b) => b.wirt.pvEigenQuote > a.wirt.pvEigenQuote ? b : a);
+        const vAut = kanon.reduce((a, b) => b.wirt.autarkie > a.wirt.autarkie ? b : a);
+        cfg.kpiLinks = [
+          { wert: ggNum(vEv.wirt.pvEigenQuote) + ' %', label: `Höchste Eigenverbrauchsquote (${vEv.label})` },
+          { wert: ggNum(vAut.wirt.autarkie) + ' %', label: `Höchste Autarkie (${vAut.label})` },
+        ];
+        const vEinsp = kanon.reduce((a, b) => b.sim.einspeiseMwh > a.sim.einspeiseMwh ? b : a);
+        const vErtrag = kanon.reduce((a, b) => b.ertragMwh > a.ertragMwh ? b : a);
+        cfg.kpiRechts = [
+          { wert: ggNum(vEinsp.sim.einspeiseMwh, 1) + ' MWh', label: `Höchste Netzeinspeisung (${vEinsp.label})` },
+          { wert: ggNum(vErtrag.ertragMwh, 1) + ' MWh', label: `Größter PV-Jahresertrag (${vErtrag.label})`, highlight: true },
+        ];
+        return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
+      },
+    },
+
+    // ── Wirtschaftlichkeit je Variante ───────────────────────────────────
+    {
+      id: 'pv-wirtschaftlichkeit',
+      autoSync: true,
+      kapitel: '3.2.6 Wirtschaftlichkeit und Investitionskosten',
+      titel: 'Wirtschaftlichkeit je PV-Variante',
+      datei: 'pv-wirtschaftlichkeit',
+      hinweis: 'Investition, jährlicher Netto-Überschuss und statische Amortisation je Variante — '
+             + 'die für den Gutachten-Adressaten meist entscheidenden Kennzahlen.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Wirtschaftlichkeit je PV-Variante',
+        leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
+        spalten: [
+          { label: 'Variante', weight: 2.4 },
+          { label: 'Investition', weight: 1.4 },
+          { label: 'Jahresüberschuss', weight: 1.6 },
+          { label: 'Amortisation', weight: 1.3 },
+        ],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const kanon = ggPvKanon();
+        if (!kanon.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine PV-Varianten berechnet.'; }
+        cfg.zeilen = kanon.map(v => {
+          const ueberschuss = -v.wirt.nettoJk;
+          return {
+            werte: [v.label, ggNum(v.wirt.investGes) + ' €',
+                    (ueberschuss >= 0 ? '+' : '−') + ggNum(Math.abs(ueberschuss)) + ' €/a',
+                    isFinite(v.wirt.amort) ? ggNum(v.wirt.amort, 1) + ' a' : '> 20 a'],
+            highlight: v.id === 'wirt-opt', akzent: v.farbe,
+          };
+        });
+        cfg.fussnote = 'Investition inkl. Netzanschluss-Infrastruktur. Jahresüberschuss = Erlöse (Eigenverbrauchsersparnis '
+                      + '+ Einspeisung) minus Jahreskosten (Kapitaldienst + Betrieb). Amortisation statisch (Investition / Erlöse).';
+        return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
+      },
+    },
+
+    // ── Resilienz-Zusammenfassung ─────────────────────────────────────────
+    {
+      id: 'pv-resilienz',
+      autoSync: true,
+      kapitel: '5.2 Bewertung Resilienz',
+      titel: 'Resilienz — Autarkie bei Netzausfall',
+      datei: 'pv-resilienz-zusammenfassung',
+      hinweis: 'Zusammenfassung der zuletzt im Kapitel 🛡 Resilienz betrachteten Inselbetrieb-Auslegung: '
+             + 'wie lange trägt PV/Batterie/Notstrom einen Blackout zum ungünstigsten Zeitpunkt im Jahr. '
+             + 'Erst im Kapitel 🛡 Resilienz öffnen/berechnen, dann hierher „Aus Projekt übernehmen".',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Resilienz — Autarkie bei Netzausfall',
+        leer: 'Noch keine Resilienz-Berechnung — Kapitel 🛡 Resilienz öffnen (rechnet automatisch auf den PV-Varianten).',
+        spalten: [{ label: 'Kennzahl', weight: 2.2 }, { label: 'Wert', weight: 1.4, mono: true }],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const r = window._pvResReco;
+        if (!r) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine Resilienz-Berechnung vorhanden.'; }
+        const fmtK = v => v >= 10000 ? `${ggNum(v / 1000)} k€` : `${ggNum(v)} €`;
+        const zeile = (label, wert) => ({ werte: [label, wert] });
+        cfg.zeilen = [
+          zeile('Betriebsweise', GG_RES_MODE_LBL[r.mode] || r.mode),
+          zeile('PV-Leistung / Batterie', `${ggNum(r.pvKwp)} kWp / ${r.batKwh > 0 ? ggNum(r.batKwh) + ' kWh' : '—'}`),
+          zeile('Betrachtetes Ausfallfenster', `${r.durH} h`),
+          { werte: ['Ausfall-Zeitpunkt', r.nHours ? ggPvTagLabel(r.isWorst ? r.worstStart : r.selStart) : '—'],
+            highlight: r.isWorst },
+          { werte: ['Überbrückung ohne Notstrom', r.bridgeH >= r.durH ? `> ${r.durH} h` : `${r.bridgeH} h`] },
+          zeile('Empfohlene Notstromleistung', r.genKw > 0 ? `${Math.ceil(r.genKw)} kW` : 'keine nötig'),
+          zeile('Kraftstoffbedarf im Ereignis', r.genKw > 0 ? `${r.kraftstoff}, ${ggNum(Math.ceil(r.liters))} l` : '–'),
+          { werte: ['Versorgungslücke im Fenster', r.eUnmet > 0.5 ? `${ggNum(r.eUnmet / 1000, 2)} MWh` : 'keine'],
+            highlight: r.eUnmet > 0.5 },
+          zeile('Energiebedarf im Fenster', `${ggNum(r.eLoadMwh, 2)} MWh`),
+          zeile('Resilienz-Investition (Aggregat + Tank)', r.genKw > 0 ? fmtK(r.capexCost) : '0 €'),
+          zeile('Spritkosten je Ereignis', r.genKw > 0 ? fmtK(r.fuelCost) : '0 €'),
+        ];
+        cfg.fussnote = 'Inselbetrieb-Simulation zum ungünstigsten Zeitpunkt im Jahr: Batterie startet mit dem realen '
+                      + 'Ladestand aus der Jahressimulation, das Notstromaggregat deckt die Restlast. Stand aus dem Kapitel 🛡 Resilienz.';
+        return '✓ Resilienz-Kennzahlen aus dem Kapitel 🛡 Resilienz übernommen.';
+      },
+    },
+  ];
+}
+GG_FIGUREN.push(...ggPvFiguren());
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 6) PANEL — Analyse-Sektion „Gutachten-Grafiken"
@@ -1453,9 +1931,45 @@ function ggMetaDefaults(cfg, bearbeiterVar) {
   cfg.meta['WE-Nr.'] = cfg.meta['WE-Nr.'] || (window.pdWeNummer || '');
 }
 
-const _gg = { figurId: GG_FIGUREN[0].id, scale: 3, svg: null };
+const _gg = { figurId: GG_FIGUREN[0].id, scale: 3, svg: null, svgTabelle: null,
+              layout: 'reduziert', ziel: 'figur' };
 
 const ggFigur = () => GG_FIGUREN.find(f => f.id === _gg.figurId) || GG_FIGUREN[0];
+
+/** Natürlicher Vergleich zweier Gliederungsnummern ("3.2" vor "3.10", "Sonstige" immer zuletzt). */
+function ggKapitelCmp(a, b) {
+  if (a === b) return 0;
+  if (a === 'Sonstige') return 1;
+  if (b === 'Sonstige') return -1;
+  const pa = (a.match(/^\d+(\.\d+)*/) || [''])[0].split('.').map(Number);
+  const pb = (b.match(/^\d+(\.\d+)*/) || [''])[0].split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
+/** GG_FIGUREN nach Gutachten-Kapitel (cfg.kapitel) gruppiert, in Gliederungsreihenfolge. */
+function ggFigurenNachKapitel() {
+  const gruppen = [];
+  for (const f of GG_FIGUREN) {
+    const kap = f.kapitel || 'Sonstige';
+    let g = gruppen.find(g => g.kapitel === kap);
+    if (!g) { g = { kapitel: kap, figuren: [] }; gruppen.push(g); }
+    g.figuren.push(f);
+  }
+  gruppen.sort((a, b) => ggKapitelCmp(a.kapitel, b.kapitel));
+  return gruppen;
+}
+
+/** Blatt-Figuren (Ganglinien, Heatmap, …) tragen eine Kopfzeile mit Metadaten. */
+const ggIstBlatt = figur => !!figur.config.meta;
+/** In Version 2 steht neben der Abbildung ein zweites Blatt mit den Kennzahlen. */
+const ggZeigtTabelle = figur => ggIstBlatt(figur) && _gg.layout === 'reduziert';
+/** Was Kopieren/PNG/SVG gerade betrifft — Abbildung oder Kennzahlenblatt. */
+const ggAktivesSvg = () => (_gg.ziel === 'tabelle' && _gg.svgTabelle) ? _gg.svgTabelle : _gg.svg;
+const ggAktiveDatei = () => ggFigur().datei + (_gg.ziel === 'tabelle' && _gg.svgTabelle ? '-kennzahlen' : '');
 
 export function ggBuildAnalyseSection() {
   const tabBar = document.getElementById('analyse-view-tabs');
@@ -1513,18 +2027,25 @@ export function ggShowSection(visible) {
 
 export function ggRenderPanel() {
   const figur = ggFigur();
+  // Die Blattversion gilt fuer alle Blatt-Figuren gemeinsam; die Status-Matrix
+  // kennt kein Layout und bleibt unberuehrt.
+  if (ggIstBlatt(figur)) figur.config.layout = _gg.layout;
+  if (!ggZeigtTabelle(figur)) _gg.ziel = 'figur';
 
-  // ── Sidebar: Figurenliste ──
+  // ── Sidebar: Figurenliste, nach Gutachten-Kapitel gruppiert ──
   const side = document.getElementById('gg-sidebar');
   if (side) {
-    side.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Abbildungen</div>`
-      + GG_FIGUREN.map(f => {
-          const aktiv = f.id === _gg.figurId;
-          return `<button data-click="ggSelectFigur('${f.id}')" style="display:block;width:100%;text-align:left;margin-bottom:4px;padding:7px 9px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:11px;line-height:1.35;
-            border:1px solid ${aktiv ? 'rgba(38,166,154,.5)' : 'rgba(255,255,255,.08)'};
-            background:${aktiv ? 'rgba(38,166,154,.14)' : 'rgba(255,255,255,.03)'};
-            color:${aktiv ? '#26a69a' : 'var(--muted)'};">${gEsc(f.titel)}</button>`;
-        }).join('')
+    const btnHtml = f => {
+      const aktiv = f.id === _gg.figurId;
+      return `<button data-click="ggSelectFigur('${f.id}')" style="display:block;width:100%;text-align:left;margin-bottom:4px;padding:7px 9px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:11px;line-height:1.35;
+        border:1px solid ${aktiv ? 'rgba(38,166,154,.5)' : 'rgba(255,255,255,.08)'};
+        background:${aktiv ? 'rgba(38,166,154,.14)' : 'rgba(255,255,255,.03)'};
+        color:${aktiv ? '#26a69a' : 'var(--muted)'};">${gEsc(f.titel)}</button>`;
+    };
+    side.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Abbildungen · nach Gutachten-Kapitel</div>`
+      + ggFigurenNachKapitel().map((g, gi) => `
+        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#26a69a;opacity:.8;margin:${gi ? 14 : 0}px 0 5px;">${gEsc(g.kapitel)}</div>`
+        + g.figuren.map(btnHtml).join('')).join('')
       + `<div style="margin-top:12px;font-size:10px;color:var(--muted);line-height:1.5;">${gEsc(figur.hinweis || '')}</div>`;
   }
 
@@ -1535,24 +2056,49 @@ export function ggRenderPanel() {
       border:1px solid ${primary ? 'rgba(38,166,154,.6)' : 'rgba(255,255,255,.12)'};
       background:${primary ? 'rgba(38,166,154,.18)' : 'rgba(255,255,255,.04)'};
       color:${primary ? '#26a69a' : 'var(--muted)'};">${label}</button>`;
-    bar.innerHTML = btn('⧉ Für Word kopieren', 'ggCopy()', true)
+    const sel = (click, optionen, wert) => `<select data-change="${click}" style="font-family:inherit;font-size:11px;padding:5px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">
+           ${optionen.map(([v, l]) => `<option value="${v}"${String(wert) === String(v) ? ' selected' : ''}>${l}</option>`).join('')}
+         </select>`;
+    const zielTabelle = ggZielIstTabelle();
+    bar.innerHTML = btn(zielTabelle ? '⊞ Als Tabelle kopieren' : '⧉ Für Word kopieren', 'ggCopy()', true)
       + btn('⤓ PNG', 'ggSavePng()') + btn('⤓ SVG', 'ggSaveSvg()')
-      + `<select data-change="ggSetScale(this.value)" style="font-family:inherit;font-size:11px;padding:5px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">
-           ${[[2, '2× · ~300 dpi'], [3, '3× · ~450 dpi'], [4, '4× · ~600 dpi']]
-             .map(([v, l]) => `<option value="${v}"${_gg.scale === v ? ' selected' : ''}>${l}</option>`).join('')}
-         </select>`
-      + `<span style="margin-left:auto;font-size:10px;color:var(--muted);">In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.</span>`;
+      + sel('ggSetScale(this.value)', [[2, '2× · ~300 dpi'], [3, '3× · ~450 dpi'], [4, '4× · ~600 dpi']], _gg.scale)
+      + (ggIstBlatt(figur)
+          ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
+                                            ['reduziert', 'Blatt: reduziert + Kennzahlentabelle']], _gg.layout)
+          : '')
+      + (ggZeigtTabelle(figur)
+          ? sel('ggSetZiel(this.value)', [['figur', 'Export: Abbildung'], ['tabelle', 'Export: Kennzahlen']], _gg.ziel)
+          : '')
+      + `<span style="margin-left:auto;font-size:10px;color:var(--muted);">${zielTabelle
+          ? '„Als Tabelle kopieren" + Strg+V ergibt eine echte, editierbare Word-Tabelle — PNG/SVG legen die Tabelle stattdessen als Bild ab.'
+          : 'In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.'}</span>`;
   }
 
   // ── Figur zeichnen ──
   const paper = document.getElementById('gg-paper');
   if (paper) {
     _gg.svg = figur.render(figur.config);
-    _gg.svg.style.width = '100%';
-    _gg.svg.style.maxWidth = GG_THEME.width + 'px';   // nie groesser als 1:1
-    _gg.svg.style.height = 'auto';
-    _gg.svg.style.display = 'block';
-    paper.replaceChildren(_gg.svg);
+    _gg.svgTabelle = ggZeigtTabelle(figur) ? ggRenderKennzahlen(figur.config) : null;
+    const blatt = (svg, name, aktiv) => {
+      svg.style.width = '100%';
+      svg.style.maxWidth = GG_THEME.width + 'px';   // nie groesser als 1:1
+      svg.style.height = 'auto';
+      svg.style.display = 'block';
+      // Ohne zweites Blatt gibt es nichts zu unterscheiden — dann bleibt die
+      // Vorschau so schlicht wie bisher.
+      if (!_gg.svgTabelle) { paper.appendChild(svg); return; }
+      const box = document.createElement('div');
+      box.style.cssText = `border:2px solid ${aktiv ? '#26a69a' : 'transparent'};padding:4px;margin-bottom:10px;`;
+      const cap = document.createElement('div');
+      cap.style.cssText = 'font-size:10px;color:#5A5F5A;margin:0 0 4px 2px;';
+      cap.textContent = aktiv ? `${name} · wird exportiert` : name;
+      box.append(cap, svg);
+      paper.appendChild(box);
+    };
+    paper.replaceChildren();
+    blatt(_gg.svg, 'Abbildung', _gg.ziel === 'figur');
+    if (_gg.svgTabelle) blatt(_gg.svgTabelle, 'Kennzahlen (eigene Abbildung)', _gg.ziel === 'tabelle');
     ggFitLabels(_gg.svg);   // erst im Dokument laesst sich die Textbreite messen
   }
 
@@ -1583,13 +2129,21 @@ export function ggRenderPanel() {
           ${gEsc(label)}
           <input type="text" value="${gEsc(wert || '')}" data-change="${click}" style="font-family:inherit;font-size:11px;padding:4px 6px;border-radius:4px;
             border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);min-width:150px;"></label>`;
+      // Version 2 zeigt Liegenschaft und Metadaten nicht — die Felder dafuer
+      // stehen zu lassen waere eine Eingabe ohne Wirkung.
+      const reduziert = _gg.layout === 'reduziert';
       html += `<div style="display:flex;flex-wrap:wrap;gap:8px 12px;">`
         + feld('Kopfzeile', figur.config.eyebrow, "ggSetKopf('eyebrow',this.value)")
         + feld('Titel', figur.config.titel, "ggSetKopf('titel',this.value)")
-        + feld('Liegenschaft', figur.config.ort, "ggSetKopf('ort',this.value)")
-        + Object.keys(figur.config.meta).map(k =>
-            feld(k, figur.config.meta[k], `ggSetMeta('${k}',this.value)`)).join('')
+        + (reduziert
+            ? feld('Titel Kennzahlenblatt', figur.config.tabelleTitel || 'Kennzahlen', "ggSetKopf('tabelleTitel',this.value)")
+            : feld('Liegenschaft', figur.config.ort, "ggSetKopf('ort',this.value)")
+              + Object.keys(figur.config.meta).map(k =>
+                  feld(k, figur.config.meta[k], `ggSetMeta('${k}',this.value)`)).join(''))
         + `</div>`;
+      if (reduziert) {
+        html += `<div style="margin-top:6px;font-size:10px;color:var(--muted);">Reduziertes Blatt: Datum, Bearbeiter, WE-Nr. und Liegenschaft entfallen; die Kennzahlen stehen auf dem zweiten Blatt.</div>`;
+      }
     }
     opt.innerHTML = html;
   }
@@ -1611,6 +2165,19 @@ export function ggSelectFigur(id) {
 
 export function ggSetScale(v) {
   _gg.scale = parseInt(v, 10) || 3;
+}
+
+/** Blattversion: 'voll' (mit Kopfdaten und Kennzahlenblock) oder 'reduziert'. */
+export function ggSetLayout(v) {
+  _gg.layout = v === 'reduziert' ? 'reduziert' : 'voll';
+  if (_gg.layout === 'voll') _gg.ziel = 'figur';
+  ggRenderPanel();
+}
+
+/** Exportziel in Version 2: die Abbildung oder das Kennzahlenblatt. */
+export function ggSetZiel(v) {
+  _gg.ziel = v === 'tabelle' ? 'tabelle' : 'figur';
+  ggRenderPanel();
 }
 
 export function ggToggleItem(gi, ii, on) {
@@ -1652,25 +2219,39 @@ export function ggSetMeta(key, wert) {
   ggRenderPanel();
 }
 
+/** Aktuelles Kopierziel ist das Kennzahlenblatt — dann als echte Tabelle statt als Bild. */
+const ggZielIstTabelle = () => _gg.ziel === 'tabelle' && ggZeigtTabelle(ggFigur());
+
 export async function ggCopy() {
-  if (!_gg.svg) return;
+  if (ggZielIstTabelle()) {
+    ggSay('Wird vorbereitet …');
+    try {
+      const wohin = await ggCopyTableForWord(ggFigur().config);
+      ggSay(`✓ Tabelle in die ${wohin} kopiert — in Word mit Strg+V einfügen (editierbare Tabelle).`);
+    } catch (e) { ggSay('⚠ ' + e.message, true); }
+    return;
+  }
+  const svg = ggAktivesSvg();
+  if (!svg) return;
   ggSay('Wird gerendert …');
   try {
-    const wohin = await ggCopyForWord(_gg.svg, _gg.scale);
+    const wohin = await ggCopyForWord(svg, _gg.scale);
     ggSay(`✓ In die ${wohin} kopiert — jetzt in Word mit Strg+V einfügen.`);
   } catch (e) { ggSay('⚠ ' + e.message, true); }
 }
 
 export async function ggSavePng() {
-  if (!_gg.svg) return;
+  const svg = ggAktivesSvg();
+  if (!svg) return;
   try {
-    ggDownload(await ggSvgToPngBlob(_gg.svg, _gg.scale), ggDateiname(ggFigur().datei, 'png'));
+    ggDownload(await ggSvgToPngBlob(svg, _gg.scale), ggDateiname(ggAktiveDatei(), 'png'));
     ggSay('✓ PNG gespeichert.');
   } catch (e) { ggSay('⚠ ' + e.message, true); }
 }
 
 export function ggSaveSvg() {
-  if (!_gg.svg) return;
-  ggDownload(new Blob([ggSvgSource(_gg.svg)], { type: 'image/svg+xml' }), ggDateiname(ggFigur().datei, 'svg'));
+  const svg = ggAktivesSvg();
+  if (!svg) return;
+  ggDownload(new Blob([ggSvgSource(svg)], { type: 'image/svg+xml' }), ggDateiname(ggAktiveDatei(), 'svg'));
   ggSay('✓ SVG gespeichert — in Word über Einfügen › Bilder einbetten (bleibt Vektor).');
 }
