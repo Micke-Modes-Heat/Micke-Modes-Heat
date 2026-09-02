@@ -519,13 +519,8 @@ export function ggKennzahlenHtmlTable(cfg, T = GG_THEME) {
   const zeilen = ggKpiZeilen(cfg);
   const gruen = T.accents.gruenDunkel;
   const border = `1px solid ${T.line}`;
-  const td = (inhalt, o = {}) => `<td style="padding:7px 12px;border-bottom:${border};
-      font-family:${o.mono ? T.fontMono : T.font};font-size:${o.size || 12.5}px;font-weight:${o.weight || 400};
-      color:${o.color || T.text.strong};text-align:${o.align || 'left'};white-space:nowrap;
-      ${o.bg ? `background:${o.bg};` : ''}">${gEsc(inhalt)}</td>`;
-  const th = (s, align) => `<th style="padding:8px 12px;border-bottom:2px solid ${gruen};background:${T.tint};
-      font-family:${T.fontMono};font-size:10.5px;font-weight:600;letter-spacing:.05em;color:${gruen};
-      text-transform:uppercase;text-align:${align || 'left'};">${gEsc(s)}</th>`;
+  const td = (inhalt, o = {}) => ggHtmlZelle(T, inhalt, o);
+  const th = (s, align) => ggHtmlKopf(T, s, align);
 
   const rows = zeilen.length ? zeilen.map(r => {
     const { zahl, einheit } = ggSplitWert(r.wert);
@@ -553,15 +548,100 @@ function ggKennzahlenPlainText(cfg) {
   return ['Kennzahl\tWert\tEinheit\tAnteil', ...zeilen.map(zeile)].join('\n');
 }
 
+/* ── Word-Kopiervorlage: Zellen-Markup, von beiden Tabellenexporten genutzt ── */
+function ggHtmlZelle(T, inhalt, o = {}) {
+  return `<td style="padding:7px 12px;border-bottom:1px solid ${T.line};
+      font-family:${o.mono ? T.fontMono : T.font};font-size:${o.size || 12.5}px;font-weight:${o.weight || 400};
+      color:${o.color || T.text.strong};text-align:${o.align || 'left'};white-space:nowrap;
+      ${o.bg ? `background:${o.bg};` : ''}">${gEsc(inhalt)}</td>`;
+}
+
+function ggHtmlKopf(T, s, align) {
+  const gruen = T.accents.gruenDunkel;
+  return `<th style="padding:8px 12px;border-bottom:2px solid ${gruen};background:${T.tint};
+      font-family:${T.fontMono};font-size:10.5px;font-weight:600;letter-spacing:.05em;color:${gruen};
+      text-transform:uppercase;text-align:${align || 'left'};">${gEsc(s)}</th>`;
+}
+
+// ── Word-Kopiervorlage für spalten/zeilen-Tabellen: klassische Berichtstabelle
+// (weißer Kopf, fett, mittig; einheitlich hellblau unterlegter Rumpf; durch-
+// gehendes Gitternetz) statt des LKEBw-Blattstils — Vorbild ist die Tabelle,
+// wie sie schon im bisherigen Word-Gutachten stand (Tabelle 11 „Übersicht
+// Trafostationen"). Bewusst eigene Zellen-Helfer statt ggHtmlZelle/ggHtmlKopf:
+// die Kennzahlentabelle (ggKennzahlenHtmlTable) bleibt im Blatt-Grünton, weil
+// sie neben der Grafik auf demselben Kennzahlenblatt sitzt.
+const GG_WORD = { border: '#000000', bandBg: '#DCE6F1', highlightBg: '#BDD7EE', font: 'Calibri, Arial, sans-serif' };
+
+function ggWordKopf(s) {
+  return `<th style="padding:6px 10px;border:1px solid ${GG_WORD.border};background:#FFFFFF;
+      font-family:${GG_WORD.font};font-size:11px;font-weight:700;color:#000000;text-align:center;">${gEsc(s)}</th>`;
+}
+
+function ggWordZelle(inhalt, o = {}) {
+  return `<td style="padding:5px 10px;border:1px solid ${GG_WORD.border};background:${o.bg || GG_WORD.bandBg};
+      ${o.akzent ? `border-left:4px solid ${o.akzent};` : ''}
+      font-family:${GG_WORD.font};font-size:10.5px;font-weight:${o.bold ? 700 : 400};
+      color:#000000;text-align:center;">${gEsc(inhalt)}</td>`;
+}
+
 /**
- * Kopiert die Kennzahlentabelle als echte Word-Tabelle in die Zwischenablage
+ * Beliebige Tabellenfigur (spalten/zeilen wie in ggRenderTabelle) als HTML —
+ * dasselbe Kopierziel wie ggKennzahlenHtmlTable, nur ohne das feste
+ * Kennzahl/Wert/Einheit/Anteil-Schema. Damit landet jede Tabellen-Abbildung
+ * als echte, editierbare Word-Tabelle in der Zwischenablage statt als Bild.
+ */
+export function ggTabelleHtmlTable(cfg) {
+  const cols = cfg.spalten || [];
+  const zeilen = cfg.zeilen || [];
+  const spann = Math.max(cols.length, 1);
+  const kopf = cols.map(c => ggWordKopf(c.label || '')).join('');
+
+  const rows = zeilen.length ? zeilen.map(r => '<tr>' + cols.map((c, i) => {
+    const val = r.werte?.[i];
+    const s = (val == null || val === '') ? '—' : String(val);
+    return ggWordZelle(s, {
+      bg: r.highlight ? GG_WORD.highlightBg : undefined,
+      bold: !!r.highlight,
+      akzent: i === 0 ? r.akzent : undefined,
+    });
+  }).join('') + '</tr>').join('')
+    : `<tr><td colspan="${spann}" style="padding:10px 12px;border:1px solid ${GG_WORD.border};font-family:${GG_WORD.font};text-align:center;">
+         ${gEsc(cfg.leer || 'Keine Daten vorhanden.')}</td></tr>`;
+
+  const fuss = cfg.fussnote
+    ? `<tr><td colspan="${spann}" style="padding:6px 10px;border:1px solid ${GG_WORD.border};background:#FFFFFF;
+         font-family:${GG_WORD.font};font-size:9.5px;font-style:italic;color:#000000;text-align:left;">
+         ${gEsc(cfg.fussnote)}</td></tr>`
+    : '';
+
+  return `<table style="border-collapse:collapse;border:1px solid ${GG_WORD.border};min-width:420px;">
+    <thead><tr>${kopf}</tr></thead>
+    <tbody>${rows}${fuss}</tbody>
+  </table>`;
+}
+
+/** Dieselbe Tabelle als Tab-getrennter Text — Fallback-Inhalt neben dem HTML. */
+function ggTabellePlainText(cfg) {
+  const cols = cfg.spalten || [];
+  const wert = (r, i) => {
+    const v = r.werte?.[i];
+    return (v == null || v === '') ? '' : String(v);
+  };
+  return [cols.map(c => c.label || '').join('\t'),
+          ...(cfg.zeilen || []).map(r => cols.map((c, i) => wert(r, i)).join('\t'))].join('\n');
+}
+
+/**
+ * Kopiert die Tabelle der aktuellen Figur als echte Word-Tabelle in die
+ * Zwischenablage — das Kennzahlenblatt oder eine spalten/zeilen-Tabelle
  * (HTML- statt Bild-Payload) — Gegenstueck zu ggCopyForWord, das die
  * Abbildungen als PNG kopiert.
  */
 export async function ggCopyTableForWord(cfg) {
-  const tabelle = ggKennzahlenHtmlTable(cfg);
+  const spaltig = Array.isArray(cfg.spalten);
+  const tabelle = spaltig ? ggTabelleHtmlTable(cfg) : ggKennzahlenHtmlTable(cfg);
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${tabelle}</body></html>`;
-  const text = ggKennzahlenPlainText(cfg);
+  const text = spaltig ? ggTabellePlainText(cfg) : ggKennzahlenPlainText(cfg);
   if (navigator.clipboard && window.ClipboardItem) {
     try {
       await navigator.clipboard.write([new window.ClipboardItem({
@@ -984,6 +1064,15 @@ export function ggRenderBalken(cfg, T = GG_THEME) {
  * cfg.zeilen  = [{ werte: string[] (parallel zu spalten), highlight?: bool,
  *   akzent?: farbe (schmaler Balken am Zeilenanfang, z. B. Variantenfarbe) }]
  * ═══════════════════════════════════════════════════════════════════════ */
+/**
+ * Ausrichtung und Schriftart je Spalte: die erste Spalte ist die Beschriftung
+ * (links, Fließtext), alle weiteren tragen Werte (rechts, monospace). Beides
+ * laesst sich je Spalte ueberschreiben — der Word-Export nutzt dieselbe Regel.
+ */
+function ggSpaltenDefaults(c, i) {
+  return { align: c.align || (i === 0 ? 'left' : 'right'), mono: c.mono !== false && i > 0 };
+}
+
 export function ggRenderTabelle(cfg, T = GG_THEME) {
   const S = T.sheet, W = T.width;
   const gruen = T.accents.gruenDunkel;
@@ -1003,7 +1092,7 @@ export function ggRenderTabelle(cfg, T = GG_THEME) {
   let cx = x0;
   const cols = spalten.map((c, i) => {
     const w = totalW * (c.weight || 1) / totalWeight;
-    const col = { ...c, x: cx, w, align: c.align || (i === 0 ? 'left' : 'right'), mono: c.mono !== false && i > 0 };
+    const col = { ...c, x: cx, w, ...ggSpaltenDefaults(c, i) };
     cx += w;
     return col;
   });
@@ -1690,6 +1779,95 @@ const GG_FIGUREN = [
     },
   },
 
+  // ── Übersicht Trafostationen ────────────────────────────────────────────
+  {
+    id: 'trafostationen',
+    autoSync: true,
+    kapitel: '3.2.3 Stromnetz intern',
+    titel: 'Übersicht Trafostationen',
+    datei: 'trafostationen',
+    hinweis: 'Alle Transformatoren des Liegenschaftsnetzes mit Standortgebäude, Station, '
+           + 'Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. '
+           + 'Trafos einer Planungsschicht oder mit Baujahr in der Zukunft stehen als „geplant“.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten',
+      titel: 'Übersicht Trafostationen',
+      leer: 'Keine Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.',
+      spalten: [
+        { label: 'Gebäude',       weight: 1.4, align: 'left', mono: false },
+        { label: 'Nr.',           weight: 1.6, align: 'left', mono: false },
+        { label: 'Trafo',         weight: 1.2, align: 'left', mono: false },
+        { label: 'Trafoleistung', weight: 1.3 },
+        { label: 'Baujahr',       weight: 1.1 },
+      ],
+      zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      let trafos = [];
+      try { trafos = window.listAssets?.({ type: 'Trafo' }) || []; } catch (e) { void e; }
+      if (!trafos.length) {
+        cfg.zeilen = []; cfg.fussnote = '';
+        return '⚠ Keine Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
+      }
+
+      const gebListe = window.gebaeude || [];
+      const geb = id => gebListe.find(g => g.id === id) || null;
+      const heute = new Date().getFullYear();
+
+      // Geplant ist ein Trafo, der zu einer Planungsschicht gehört oder dessen
+      // Baujahr noch in der Zukunft liegt — beides Gründe, in der Spalte Baujahr
+      // „geplant“ statt einer Jahreszahl zu zeigen (wie in der Gutachtenvorlage).
+      const zeilen = trafos.map(t => {
+        const g = geb(t.buildingId);
+        const bj = parseInt(t.baujahr ?? g?.baujahr);
+        const geplant = t.schicht === 'entwicklung' || t.schicht === 'entscheidung'
+                     || (Number.isFinite(bj) && bj > heute);
+        return {
+          gebIdx:      g ? gebListe.indexOf(g) : 1e9,
+          gebLabel:    String(g?.gebaeudenummer || g?.name || '—').trim(),
+          stationKey:  t.buildingId || 'einzeln:' + t.id,
+          // Heißt das Standortgebäude schon „Trafostation 3“, gewinnt dieser
+          // Name — sonst wird unten in Tabellenreihenfolge durchnummeriert. Steht
+          // derselbe Name schon in der Gebäudespalte, wird ebenfalls nummeriert,
+          // damit die Zeile ihn nicht doppelt zeigt.
+          stationName: /station/i.test(g?.name || '') ? String(g.name).trim() : '',
+          trafo:       t.name || 'Trafo',
+          kva:         Number(t.props?.leistungKVA) || 0,
+          bj:          Number.isFinite(bj) ? bj : null,
+          geplant,
+        };
+      });
+
+      // Bestand zuerst, danach die geplanten Stationen; innerhalb der Gruppe in
+      // der Reihenfolge der Gebäudeliste, damit die Nummerierung stabil bleibt.
+      zeilen.sort((a, b) => ((a.geplant ? 1 : 0) - (b.geplant ? 1 : 0))
+                         || (a.gebIdx - b.gebIdx)
+                         || a.trafo.localeCompare(b.trafo, 'de', { numeric: true }));
+
+      const nr = new Map();
+      for (const z of zeilen) if (!nr.has(z.stationKey)) nr.set(z.stationKey, nr.size + 1);
+
+      cfg.zeilen = zeilen.map(z => ({
+        werte: [z.gebLabel,
+                (z.stationName && z.stationName !== z.gebLabel)
+                  ? z.stationName : 'Trafostation ' + nr.get(z.stationKey),
+                z.trafo,
+                z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—',
+                z.geplant ? 'geplant' : (z.bj || '—')],
+        akzent: z.geplant ? GG_THEME.accents.gruen : undefined,
+      }));
+
+      const summe = zeilen.reduce((s, z) => s + z.kva, 0);
+      const nGeplant = zeilen.filter(z => z.geplant).length;
+      cfg.fussnote = `${zeilen.length} Transformatoren in ${nr.size} Stationen · installierte Leistung `
+                   + `${ggNum(summe)} kVA`
+                   + (nGeplant ? ` · davon ${nGeplant} geplant (grün markiert)` : '');
+      return `✓ ${zeilen.length} Trafos aus dem Elektromodell übernommen`
+           + (nGeplant ? `, davon ${nGeplant} geplant.` : '.');
+    },
+  },
+
 ];
 
 // ── PV-Analyse: Varianten, Energiebilanz, Wirtschaftlichkeit, Resilienz ───────
@@ -1967,6 +2145,8 @@ function ggFigurenNachKapitel() {
 const ggIstBlatt = figur => !!figur.config.meta;
 /** In Version 2 steht neben der Abbildung ein zweites Blatt mit den Kennzahlen. */
 const ggZeigtTabelle = figur => ggIstBlatt(figur) && _gg.layout === 'reduziert';
+/** Figuren, die selbst schon eine Tabelle SIND (ggRenderTabelle) — auch sie koennen als Word-Tabelle raus. */
+const ggIstTabellenFigur = figur => Array.isArray(figur.config.spalten);
 /** Was Kopieren/PNG/SVG gerade betrifft — Abbildung oder Kennzahlenblatt. */
 const ggAktivesSvg = () => (_gg.ziel === 'tabelle' && _gg.svgTabelle) ? _gg.svgTabelle : _gg.svg;
 const ggAktiveDatei = () => ggFigur().datei + (_gg.ziel === 'tabelle' && _gg.svgTabelle ? '-kennzahlen' : '');
@@ -2030,7 +2210,7 @@ export function ggRenderPanel() {
   // Die Blattversion gilt fuer alle Blatt-Figuren gemeinsam; die Status-Matrix
   // kennt kein Layout und bleibt unberuehrt.
   if (ggIstBlatt(figur)) figur.config.layout = _gg.layout;
-  if (!ggZeigtTabelle(figur)) _gg.ziel = 'figur';
+  if (!ggZeigtTabelle(figur) && !ggIstTabellenFigur(figur)) _gg.ziel = 'figur';
 
   // ── Sidebar: Figurenliste, nach Gutachten-Kapitel gruppiert ──
   const side = document.getElementById('gg-sidebar');
@@ -2067,8 +2247,9 @@ export function ggRenderPanel() {
           ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
                                             ['reduziert', 'Blatt: reduziert + Kennzahlentabelle']], _gg.layout)
           : '')
-      + (ggZeigtTabelle(figur)
-          ? sel('ggSetZiel(this.value)', [['figur', 'Export: Abbildung'], ['tabelle', 'Export: Kennzahlen']], _gg.ziel)
+      + ((ggZeigtTabelle(figur) || ggIstTabellenFigur(figur))
+          ? sel('ggSetZiel(this.value)', [['figur', 'Export: Abbildung'],
+                ['tabelle', ggIstTabellenFigur(figur) ? 'Export: Word-Tabelle' : 'Export: Kennzahlen']], _gg.ziel)
           : '')
       + `<span style="margin-left:auto;font-size:10px;color:var(--muted);">${zielTabelle
           ? '„Als Tabelle kopieren" + Strg+V ergibt eine echte, editierbare Word-Tabelle — PNG/SVG legen die Tabelle stattdessen als Bild ab.'
@@ -2220,7 +2401,7 @@ export function ggSetMeta(key, wert) {
 }
 
 /** Aktuelles Kopierziel ist das Kennzahlenblatt — dann als echte Tabelle statt als Bild. */
-const ggZielIstTabelle = () => _gg.ziel === 'tabelle' && ggZeigtTabelle(ggFigur());
+const ggZielIstTabelle = () => _gg.ziel === 'tabelle' && (ggZeigtTabelle(ggFigur()) || ggIstTabellenFigur(ggFigur()));
 
 export async function ggCopy() {
   if (ggZielIstTabelle()) {

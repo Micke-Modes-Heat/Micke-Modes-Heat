@@ -113,6 +113,7 @@ const inlineVendor = [
   {pattern:/<link rel="stylesheet" href="https:\/\/unpkg\.com\/leaflet@1\.9\.4\/dist\/leaflet\.css"[\s\S]*?\/>/, path:'node_modules/leaflet/dist/leaflet.css', kind:'css'},
   {pattern:/<script src="https:\/\/unpkg\.com\/leaflet@1\.9\.4\/dist\/leaflet\.js"[\s\S]*?<\/script>/, path:'node_modules/leaflet/dist/leaflet.js', kind:'js'},
   {pattern:/<script src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/jszip\/3\.10\.1\/jszip\.min\.js"[\s\S]*?<\/script>/, path:'node_modules/jszip/dist/jszip.min.js', kind:'js'},
+  {pattern:/<script src="https:\/\/unpkg\.com\/leaflet-rotate[^>]*><\/script>/, path:'node_modules/leaflet-rotate/dist/leaflet-rotate.js', kind:'js'},
   {pattern:/<link rel="stylesheet" href="https:\/\/unpkg\.com\/leaflet-toolbar[^>]*>/, path:'node_modules/leaflet-toolbar/dist/leaflet.toolbar.css', kind:'css'},
   {pattern:/<script src="https:\/\/unpkg\.com\/leaflet-toolbar[^>]*><\/script>/, path:'node_modules/leaflet-toolbar/dist/leaflet.toolbar.js', kind:'js'},
   {pattern:/<link rel="stylesheet" href="https:\/\/unpkg\.com\/leaflet-distortableimage[^>]*>/, path:'node_modules/leaflet-distortableimage/dist/leaflet.distortableimage.css', kind:'css'},

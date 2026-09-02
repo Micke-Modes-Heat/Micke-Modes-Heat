@@ -1141,13 +1141,40 @@ export function initResponsiveLayout() {
   document.documentElement.dataset.viewportClass = width <= 760 ? 'tablet-portrait' : width <= 1100 ? 'compact' : 'desktop';
 }
 
+// Auf-/Zugeklappte Abschnitte ueberleben den Reload. Geschrieben wird fuer
+// JEDEN Abschnitt; angewendet nur dort, wo ein Panel getSectionState() beim
+// Aufbau abfragt (aktuell das Elektro-Panel).
+const _SECTION_STORE = 'micke.lp.sections';
+
+function _readSectionStore() {
+  try { return JSON.parse(localStorage.getItem(_SECTION_STORE) || '{}'); }
+  catch (e) { return {}; }
+}
+
+// true = offen, false = zu, undefined = nie angefasst (Panel-Default gilt)
+export function getSectionState(id) {
+  const v = _readSectionStore()[id];
+  return v === undefined ? undefined : !!v;
+}
+
+export function setSectionOpen(id, open) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = open ? '' : 'none';
+  const arrow = document.getElementById(id + '-arrow');
+  if (arrow) arrow.textContent = open ? '▼' : '▶';
+}
+
 export function toggleSection(id) {
   const el = document.getElementById(id);
   if (!el) return;
   const hidden = el.style.display === 'none';
-  el.style.display = hidden ? '' : 'none';
-  const arrow = document.getElementById(id + '-arrow');
-  if (arrow) arrow.textContent = hidden ? '▼' : '▶';
+  setSectionOpen(id, hidden);
+  try {
+    const store = _readSectionStore();
+    store[id] = hidden ? 1 : 0;
+    localStorage.setItem(_SECTION_STORE, JSON.stringify(store));
+  } catch (e) { /* privater Modus o.ae. — Persistenz ist optional */ }
 }
 
 let _prevGebVisible = null;
@@ -1163,6 +1190,7 @@ export function setLeftTab(tabId) {
     setStromNetzVisible(true);
     buildElektroPanel();
     renderGekoppelteStatus(); // Status der gekoppelten Anlagen bei jedem Öffnen aktualisieren
+    window.elPanelRefreshStatus?.(); // Netz / Rechnung / Zustand neu bewerten
     buildPalette();
     // Assets für alle Gebäude nacherstellen, die noch keines haben (Migration alter Projekte)
     if (typeof window.autoCreateBuildingAssets === 'function' && Array.isArray(window.gebaeude)) {

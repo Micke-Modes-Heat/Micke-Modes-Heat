@@ -92,6 +92,8 @@ import * as planDigitalisierer from './15-plan-digitalisierer.js';
 import * as dualScreen from './16-dual-screen.js';
 import * as gutachtenGrafik from './17-gutachten-grafik.js';
 import * as liegenschaftsbilder from './18-liegenschaftsbilder.js';
+import * as elErgebnisblatt from './19-el-ergebnisblatt.js';
+import * as kartendrehung from './20-kartendrehung.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -109,7 +111,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder,
+  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});

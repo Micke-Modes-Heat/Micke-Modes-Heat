@@ -1300,11 +1300,12 @@ export function _getStromSzenarioHour() {
 
 export function setStromColorMode(mode) {
   window.stromColorMode = mode;
+  // Segmented Control: aktiver Modus wird ueber .active markiert statt ueber
+  // Inline-Styles. data-colormode statt data-click-Parsing, damit auch die
+  // Engpass-Analyse (data-click="engpassAnalyseStarten()") getroffen wird.
   document.querySelectorAll('#lp-strom-viz .lp-tool-btn').forEach(b => {
-    const isActive = b.getAttribute('data-click')?.includes("'" + mode + "'");
-    b.style.background = isActive ? 'rgba(253,216,53,0.15)' : '';
-    b.style.borderColor = isActive ? '#fdd835' : '';
-    b.style.color = isActive ? '#fdd835' : '';
+    const btnMode = b.dataset.colormode || b.getAttribute('data-click')?.match(/'([^']+)'/)?.[1];
+    b.classList.toggle('active', btnMode === mode);
   });
   recalcStromNetz();
 }
@@ -2495,6 +2496,7 @@ export function updateLpStromSummary() {
     setVal('lp-strom-delta-u', '—');
     setVal('lp-strom-kabel-len', '—');
     setVal('lp-strom-komp', '—');
+    window.elPanelRefreshStatus?.();
     return;
   }
   if (hint) hint.style.display = 'none';
@@ -2568,6 +2570,7 @@ export function updateLpStromSummary() {
   const nTrafo = window.stromNodes.filter(n => n.type === 'trafo').length;
   const nNshv = window.stromNodes.filter(n => n.type === 'nshv').length;
   setVal('lp-strom-komp', nNap + ' NAP · ' + nTrafo + ' Trafo · ' + nNshv + ' NSHV');
+  window.elPanelRefreshStatus?.();
 }
 
 // ── Elektroberechnung auf Basis manuell platzierter Assets ──────
@@ -2962,11 +2965,35 @@ export function elCalcAssets(opts = {}) {
   // Ergebniszusammenfassung
   const totalVerbrauch = activeA.reduce((s, a) => s + assetVerbrauch(a), 0);
   const totalErzeugung = activeA.reduce((s, a) => s + assetErzeugung(a), 0);
+
+  // ── Ergebnis-Stempel für das Ergebnisblatt (19-el-ergebnisblatt.js) ──
+  // Welche Assets und Kabel in DIESER Rechnung steckten, und mit welcher
+  // Einzellast. Ohne diesen Stempel müsste das Ergebnisblatt assetVerbrauch/
+  // assetErzeugung nachbauen — eine zweite Implementierung derselben Regeln,
+  // die früher oder später von dieser hier abweicht. Nur im sichtbaren Lauf
+  // gesetzt: ein Jahres-Sweep (silent) kehrt vorher zurück und überschreibt
+  // den Stand des tatsächlich eingestellten Jahres damit nicht.
+  for (const a of ASSETS.items) { delete a._calcVerbrauchKw; delete a._calcErzeugungKw; }
+  for (const a of activeA) {
+    a._calcVerbrauchKw = assetVerbrauch(a);
+    a._calcErzeugungKw = assetErzeugung(a);
+  }
+  for (const e of (window.stromEdges || [])) delete e._calcJahr;
+  for (const e of activeE) e._calcJahr = yr;
+  window._elErgebnisStand = {
+    jahr: yr, zeit: Date.now(),
+    nAssets: activeA.length, nKabel: activeE.length,
+    verbrauchKw: totalVerbrauch, erzeugungKw: totalErzeugung,
+    warnungen: [...warn],
+  };
+
   const summary = [
     `Verbraucher: ${totalVerbrauch.toFixed(1)} kW · Einspeisung: ${totalErzeugung.toFixed(1)} kW`,
     `Kabel: ${activeE.length} · Assets: ${activeA.length}`,
   ];
   _showElCalcResult([...warn, ...summary]);
+  // Statusleiste im Elektro-Panel: ab hier gilt das Ergebnis als aktuell.
+  window.elMarkCalcDone?.();
   if (typeof window.sldRefresh === 'function') window.sldRefresh();
 }
 

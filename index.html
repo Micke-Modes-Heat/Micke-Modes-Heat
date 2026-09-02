@@ -12,6 +12,10 @@
         integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"
         integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+<!-- Versuch: drehbare Arbeitskarte (src/20-kartendrehung.js). Muss NACH leaflet.js
+     geladen werden — das Plugin erweitert L.Map — und vor dem Anlegen der Karte.
+     Ohne map-Option `rotate` fällt jede Überschreibung auf das Original zurück. -->
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet-toolbar@0.4.0-alpha.2/dist/leaflet.toolbar.css"/>
 <script src="https://unpkg.com/leaflet-toolbar@0.4.0-alpha.2/dist/leaflet.toolbar.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet-distortableimage@0.21.9/dist/leaflet.distortableimage.css"/>
@@ -148,6 +152,12 @@
   <div class="ebp-cat">
     <div class="ebp-cat-label" style="--ebp-c:#ffd54f;">☀ PV</div>
     <label class="ebp-row"><input type="checkbox" class="ebp-cb" id="el-pv-visible" checked data-change="setPvVisible(this.checked)">PV-Anlagen</label>
+  </div>
+
+  <div class="ebp-cat">
+    <div class="ebp-cat-label" style="--ebp-c:#ba68c8;">🧭 Kartendrehung <span style="opacity:.55;font-weight:400;">Versuch</span></div>
+    <!-- Inhalt wird von src/20-kartendrehung.js gerendert (kdRenderPanel) -->
+    <div id="kd-panel"></div>
   </div>
 
   <div class="ebp-cat">

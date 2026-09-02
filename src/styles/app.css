@@ -892,7 +892,7 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .lp-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .lp-content{display:none;}
 .lp-content.active{display:block;}
-.lp-section-title{font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:8px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--border);}
+.lp-section-title{font-size:9px;color:var(--text);letter-spacing:.06em;text-transform:uppercase;margin:8px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--border);}
 .lp-section-title:first-child{margin-top:0;}
 .lp-section-collapsible{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;}
 .lp-section-collapsible:hover{color:var(--text);}
@@ -917,7 +917,7 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 /* Netz-Zusammenfassung im Left Panel */
 .lp-netz-summary{font-size:10px;}
 .lp-netz-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);}
-.lp-netz-row .lbl{color:var(--muted);}
+.lp-netz-row .lbl{color:var(--text);}
 .lp-netz-row .val{font-family:'DM Mono',monospace;color:var(--text);}
 
 /* Netz Sub-Tabs (Wärme | Strom) */
@@ -1063,9 +1063,45 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 
 /* Werkzeuge-Grid */
 .lp-tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;}
-.lp-tool-btn{display:flex;align-items:center;gap:4px;padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:9px;cursor:pointer;transition:.15s;white-space:nowrap;}
+.lp-tool-btn{display:flex;align-items:center;gap:4px;padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:9px;cursor:pointer;transition:.15s;white-space:nowrap;}
 .lp-tool-btn:hover{background:rgba(255,255,255,.04);color:var(--text);}
 .lp-tool-btn.active{background:rgba(79,195,247,.08);border-color:var(--accent);color:var(--accent);}
+
+/* Button-Hierarchie im Elektro-Panel ─────────────────────────────────
+   Genau eine Primaeraktion pro Panel; alles andere neutral.
+   Farbe traegt nur noch Bedeutung: primaer, gefaehrlich, Kartenfarbe. */
+.lp-btn-primary{width:100%;justify-content:center;padding:7px 8px;font-size:11px;font-weight:600;background:rgba(212,168,85,.10);border:1.5px solid var(--accent);color:var(--accent);letter-spacing:.02em;}
+.lp-btn-primary:hover{background:rgba(212,168,85,.18);color:var(--accent);}
+.lp-btn-danger{border-color:rgba(229,115,115,.45);color:#e57373;}
+.lp-btn-danger:hover{background:rgba(229,115,115,.08);color:#ef9a9a;}
+/* Kachel: zentriert und zweizeilig umbrechend — volle Labels statt Kuerzel */
+.lp-btn-tile{justify-content:center;text-align:center;white-space:normal;line-height:1.2;min-height:28px;}
+/* Farbtupfer = Farbe, in der das Werkzeug auf der Karte zeichnet */
+.lp-btn-swatch{width:7px;height:7px;border-radius:50%;background:var(--sw,var(--muted));flex-shrink:0;}
+/* Gruppenueberschrift innerhalb eines Panel-Abschnitts */
+.lp-group-label{font-size:8px;color:var(--text);text-transform:uppercase;letter-spacing:.06em;margin:7px 0 3px;}
+.lp-group-label:first-child{margin-top:2px;}
+
+/* Statusleiste des Elektro-Panels: Netz / Rechnung / Zustand ───────────
+   Beantwortet ohne Klick, ob das Ergebnis auf der Karte noch zum
+   aktuellen Netz gehoert. */
+.el-status-strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin:0 0 10px;}
+.el-status-chip{background:var(--surface);border:1px solid var(--border);border-left:2px solid var(--border);border-radius:0 4px 4px 0;padding:4px 6px;overflow:hidden;}
+.el-status-chip .el-chip-label{display:block;font-size:8px;color:var(--text);text-transform:uppercase;letter-spacing:.05em;}
+.el-status-chip .el-chip-value{display:block;font-size:9px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.el-status-chip.is-ok{border-left-color:#4caf50;}
+.el-status-chip.is-ok .el-chip-value{color:#81c784;}
+.el-status-chip.is-warn{border-left-color:#f9a825;}
+.el-status-chip.is-warn .el-chip-value{color:#f9a825;}
+.el-status-chip.is-bad{border-left-color:#e53935;}
+.el-status-chip.is-bad .el-chip-value{color:#ef9a9a;}
+.el-status-chip.is-idle .el-chip-value{color:var(--muted);}
+
+/* Ergebnis-Kacheln direkt unter der Elektroberechnung */
+.el-kpi-tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:6px;}
+.el-kpi{background:var(--surface);border-radius:4px;padding:4px 6px;overflow:hidden;}
+.el-kpi .el-kpi-label{display:block;font-size:8px;color:var(--text);text-transform:uppercase;letter-spacing:.05em;}
+.el-kpi .el-kpi-value{display:block;font-size:12px;font-family:'DM Mono',monospace;color:var(--text);white-space:nowrap;}
 
 /* ── Center Views ─────────────────────────────────── */
 #center-analyse-view{position:absolute;top:0;left:0;right:0;bottom:0;z-index:600;background:var(--bg);overflow-y:auto;padding:20px 24px;display:none;}
@@ -1701,6 +1737,29 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-file-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;font-size:10px;cursor:pointer;
   background:var(--surface2);border:1px solid #ce93d8;color:#ce93d8;border-radius:5px;}
 .pd-file-btn:hover{background:rgba(206,147,216,.15);}
+/* Neuer Stand ist der seltenere, folgenreichere Weg (das bisherige Blatt wandert
+   ins Archiv) — deshalb ruhiger gesetzt als „Blatt laden". */
+.pd-stand-btn{border-color:var(--border);color:var(--muted);}
+.pd-stand-btn:hover{background:var(--surface);color:var(--text);}
+/* Blattleiste: eigene Zeile unter der Werkzeugleiste. Ein Planwerk hat wenige
+   Blätter — Chips statt Auswahlliste, damit der Stand ohne Klick sichtbar ist. */
+.pd-blaetter{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:5px 14px;flex-shrink:0;
+  background:var(--surface2);border-bottom:1px solid var(--border);position:relative;z-index:999;}
+.pd-blatt{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;font-size:9.5px;cursor:pointer;
+  background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:5px;font-family:inherit;}
+.pd-blatt:hover{color:var(--text);}
+.pd-blatt.active{border-color:#ce93d8;color:#ce93d8;background:rgba(206,147,216,.14);font-weight:600;}
+.pd-blatt.archiv{opacity:.55;font-style:italic;}
+.pd-blatt i{font-style:normal;color:var(--muted);font-family:'DM Mono',monospace;}
+.pd-blatt-zahl{font-family:'DM Mono',monospace;opacity:.75;}
+.pd-blatt-akt{display:inline-flex;gap:2px;margin-left:4px;}
+.pd-blatt-btn{padding:3px 6px;font-size:9.5px;cursor:pointer;background:var(--surface);
+  border:1px solid var(--border);color:var(--muted);border-radius:4px;font-family:inherit;}
+.pd-blatt-btn:hover{color:var(--text);}
+.pd-blatt-btn.del{border-color:#ef9a9a;color:#ef9a9a;}
+.pd-blatt-mb{margin-left:auto;font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;}
+.pd-gesamt{color:#ce93d8;}
+.pd-archiv-tag{font-size:8.5px;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,.09);color:var(--muted);}
 .pd-modes{display:inline-flex;gap:3px;}
 .pd-mode{padding:5px 9px;font-size:10px;cursor:pointer;background:var(--surface2);
   border:1px solid var(--border);color:var(--muted);border-radius:5px;font-family:inherit;}
@@ -1753,6 +1812,11 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
 .pd-qs{color:#4dd0e1;}
 .pd-masche{color:#ffa726;}
 .pd-geb.fehlt{border-style:dashed;}
+/* Aus einem abgelösten Stand übertragen: die Lage stammt vom Vorgängerblatt und
+   ist noch von niemandem geprüft. Gepunktet, damit sie sich vom gestrichelten
+   Befund „fehlt auf der Karte" unterscheidet. */
+.pd-geb.uebertragen{border-style:dotted;}
+.pd-node.uebertragen{border-style:dotted;border-color:#fff;}
 .pd-ab-export{display:block;width:100%;margin:2px 0 4px;}
 .pd-ab-row{display:flex;align-items:center;gap:5px;padding:4px 5px;border-radius:4px;font-size:9.5px;flex-wrap:wrap;}
 .pd-ab-row:hover{background:var(--surface);}
@@ -1877,3 +1941,61 @@ html[data-dual-screen='on'] #map{min-width:0;}
   .view-tab{padding:4px 9px;}
   .view-tabs{margin:0 4px;}
 }
+
+/* ── Ergebnisblatt Elektro (19-el-ergebnisblatt.js) ────────────────────────
+   Eigene, dichte Tabellenoptik: das Blatt zeigt Dutzende Zeilen mit Zahlen,
+   die Panel-Standardabstände wären hier reine Scrollarbeit. Klassennamen sind
+   mit der Druckfassung identisch — dort liegt ein zweites, helles Stylesheet. */
+#el-ergebnisblatt .eb-kopf{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between;margin:2px 0 8px;}
+#el-ergebnisblatt .eb-kopf-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:10px;color:var(--muted);}
+#el-ergebnisblatt .eb-kopf-meta b{color:var(--text);font-size:11px;}
+#el-ergebnisblatt .eb-kopf-aktionen{display:flex;gap:5px;}
+.eb-btn{padding:4px 9px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:10px;cursor:pointer;}
+.eb-btn:hover{border-color:var(--accent);color:var(--accent);}
+.eb-btn-primary{border-color:var(--accent);color:var(--accent);}
+.eb-badge{display:inline-block;padding:0 5px;border-radius:3px;font-size:8.5px;border:1px solid currentColor;}
+#el-ergebnisblatt .eb-tabbody{font-size:10px;}
+#el-ergebnisblatt .eb-tabs{display:flex;flex-wrap:wrap;gap:3px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.eb-tab{padding:5px 11px;border:none;background:transparent;color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+.eb-tab:hover{color:var(--text);}
+.eb-tab.is-active{color:var(--accent);border-bottom-color:var(--accent);}
+.eb-sec{margin-bottom:14px;}
+.eb-sec-titel{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;}
+.eb-kacheln{display:flex;flex-wrap:wrap;gap:5px;}
+.eb-kachel{flex:1 1 132px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;}
+.eb-kachel.is-warn{border-color:#f9a825;}
+.eb-kachel.is-bad{border-color:#e53935;}
+.eb-kachel-label{font-size:8px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px;}
+.eb-kachel-wert{font-size:15px;font-weight:600;color:var(--text);}
+.eb-kachel-einheit{font-size:9px;font-weight:400;color:var(--muted);}
+table.eb-tab{width:100%;border-collapse:collapse;font-size:10px;}
+table.eb-tab th,table.eb-tab td{padding:3px 6px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;}
+table.eb-tab th{font-size:8.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--surface);z-index:1;}
+table.eb-tab tfoot td{font-weight:600;border-top:1px solid var(--border);border-bottom:none;}
+table.eb-tab-kompakt th,table.eb-tab-kompakt td{padding:2px 5px;font-size:9.5px;}
+table.eb-tab-schmal td:first-child{width:60%;white-space:normal;}
+table.eb-tab tr.eb-gruppe td{color:var(--muted);font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;padding-top:7px;}
+.eb-num{text-align:right;font-variant-numeric:tabular-nums;}
+.eb-mut{color:var(--muted);}
+.eb-ok{color:#4caf50;}
+.eb-warn{color:#f9a825;}
+.eb-bad{color:#e53935;font-weight:600;}
+.eb-klick{cursor:pointer;}
+.eb-klick:hover td{background:rgba(255,255,255,.04);}
+.eb-sortierbar{cursor:pointer;user-select:none;}
+.eb-sortierbar:hover{color:var(--text);}
+.eb-sortierbar.is-sort{color:var(--accent);}
+.eb-scroll{max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:6px;}
+.eb-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:4px;font-size:9.5px;}
+.eb-filter{display:flex;align-items:center;gap:4px;color:var(--muted);cursor:pointer;}
+.eb-hinweis{font-size:8.5px;color:var(--muted);line-height:1.6;margin-top:5px;}
+.eb-befund{border-left:3px solid var(--border);background:var(--surface2);border-radius:0 6px 6px 0;padding:5px 8px;margin-bottom:5px;}
+.eb-befund.is-bad{border-left-color:#e53935;}
+.eb-befund.is-warn{border-left-color:#f9a825;}
+.eb-befund-kopf{font-size:10.5px;color:var(--text);font-weight:600;}
+.eb-befund .eb-mut{font-size:9px;line-height:1.6;}
+.eb-chip{display:inline-block;font-size:9px;padding:1px 6px;margin:1px 2px 1px 0;border-radius:3px;background:var(--surface);border:1px solid var(--border);color:var(--text);cursor:pointer;}
+.eb-chip:hover{border-color:var(--accent);color:var(--accent);}
+.eb-liste{margin:0;padding-left:16px;font-size:10px;line-height:1.65;color:var(--text);}
+.eb-liste li{margin-bottom:3px;}
+.eb-leer{padding:26px 18px;text-align:center;color:var(--muted);font-size:11px;}

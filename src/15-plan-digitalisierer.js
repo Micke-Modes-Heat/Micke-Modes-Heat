@@ -25,12 +25,13 @@ import { showHint, flyTo } from './03c-gebaeude-io.js';
 import { ASSETS, ASSET_CFG, TYPE_RANK, createAsset, getAssetsForBuilding } from './13a-assets-core.js';
 import { drawAssetMarker, redrawAllAssets, _buildAssetTooltip } from './13b-assets-render.js';
 import { renderSidebarAssetList } from './13e-assets-inspector.js';
-import { addStromEdge, removeStromEdge, recalcStromNetz, epPrompt, getStromEdgeColor,
+import { addStromEdge, removeStromEdge, recalcStromNetz, epPrompt, epConfirm, getStromEdgeColor,
          setStromColorMode, setStromDynamicViz, buildStromEdgeTooltip } from './05b-stromnetz.js';
 import { KABEL_TYPEN } from './config/netz-kosten.js';
 import { runPlanningTransaction } from './lib/planning-transaction.js';
 import { parseKabelLabel } from './lib/kabel-label.js';
 import { SCHICHT } from './lib/schichten.js';
+import { aktiveBlattIds, aufBlatt, aufAktiven, ladePlanwerk } from './lib/planblaetter.js';
 
 const PANEL_ID = 'plandigi-panel';
 const MAP_ID   = 'plandigi-map';
@@ -58,17 +59,51 @@ const LABEL_COL = { gelesen: '#4caf50', unlesbar: '#f9a825', ohne: '#ef5350' };
 const SEL_COL = '#e91e63';
 
 // ── Zustand ─────────────────────────────────────────────────────────────────
-// plan:  { name, url, w, h }            — Bilddaten + Pixelmaße
-// nodes: { id, x, y, art, label, assetType, linkKind:'a'|'g'|null, linkId, assetId }
+// plaene: [{ id, name, stand, rolle:'aktiv'|'archiv', url, w, h, texts }]
+//        Ein Planwerk besteht aus BLÄTTERN (Netzbereich A/B, Bauabschnitte),
+//        die sich ergänzen — und liegt in STÄNDEN vor (2015, 2026), die
+//        einander ablösen. Beides ist dasselbe Objekt, unterschieden durch
+//        die Rolle: 'archiv' ist ein überholter Stand. Siehe §1 in
+//        docs/planblaetter-konzept.md — die Unterscheidung ist Pflicht, weil
+//        sich Blätter im Abgleich VEREINIGEN, Stände sich aber ABLÖSEN.
+// nodes: { id, planId, x, y, art, label, assetType, linkKind:'a'|'g'|null, linkId, assetId }
 //        art 'komponente' — ein einzelnes Betriebsmittel (Station, KV, Trafo …)
 //        art 'gebaeude'   — ein ganzes Gebäude samt seiner Anlagen; linkId ist
 //                           die Gebäude-ID, anschlussAssetId die Anlage, an der
 //                           die Kabel landen (netzseitigste, überschreibbar)
-// links: { id, a, b, label, cableType, crossSection, nParallel, lengthM, msLevel, edgeId }
+//        x/y sind BILDPIXEL ihres Blattes und gelten nur relativ zu dessen Bild.
+// links: { id, planId, a, b, label, cableType, crossSection, nParallel, lengthM, msLevel, edgeId }
 // abgehakt: Karteneinträge, die bewusst nicht im Plan stehen — Schlüssel
 // 'g:<id>' bzw. 'a:<id>', Wert ist der Grund. Ohne dieses Abhaken brächte der
 // Abgleich bei jeder Sitzung dieselben Zeilen und würde irgendwann ignoriert.
-export const PD = { plan: null, nodes: [], links: [], seq: 1, gebGroesse: 1, abgehakt: {} };
+// Bewusst projektweit und nicht je Blatt: die Aussage lautet „steht auf KEINEM
+// Blatt" — je Blatt geführt wäre sie auf jedem Blatt einzeln zu wiederholen.
+//
+// nodes/links bleiben je EINE Liste über alle Blätter. Getrennte Listen je Blatt
+// hätten jede der rund vierzig Lesestellen im Modul angefasst, ohne fachlich
+// etwas zu gewinnen — die Zugehörigkeit steckt in planId, gefiltert wird an den
+// wenigen Stellen, wo es darauf ankommt (_sichtNodes vs. _fachNodes).
+export const PD = {
+  plaene: [], aktivId: null, planSeq: 1,
+  nodes: [], links: [], seq: 1, gebGroesse: 1, abgehakt: {},
+  // Das aktive Blatt hieß früher PD.plan und wird an ~15 Stellen als Wache
+  // („erst einen Plan laden") und als Bildquelle gelesen. Als Getter bleiben
+  // die alle unverändert gültig. Kein Setter: PD.plan = … wäre nach dem Umbau
+  // eine stille Lüge (welches Blatt?) und soll in strict mode auffliegen.
+  get plan() { return this.plaene.find(p => p.id === this.aktivId) || null; },
+};
+
+// ── Die drei Sichten auf Knoten und Kabel ───────────────────────────────────
+// Zeichnen/Bedienen → nur das SICHTBARE Blatt: unter der Leaflet-Karte liegt
+//   genau ein Bild, und Pixelkoordinaten gelten nur relativ zu diesem Bild.
+// Fachliche Wahrheit → alle AKTIVEN Blätter: das Planwerk ist die Vereinigung
+//   seiner Blätter. Archivblätter sind Beleg, keine Aussage über heute.
+const _blatt = id => PD.plaene.find(p => p.id === id) || null;
+
+const _sichtNodes = () => aufBlatt(PD.nodes, PD.aktivId);
+const _sichtLinks = () => aufBlatt(PD.links, PD.aktivId);
+const _fachNodes = () => aufAktiven(PD.nodes, PD.plaene);
+const _fachLinks = () => aufAktiven(PD.links, PD.plaene);
 
 let _map = null, _imgLayer = null, _marks = null;
 let _mode = 'ansehen';
@@ -78,7 +113,6 @@ let _pendingPts = [];   // Stützpunkte der laufenden Kabelzeichnung (Bildpixel)
 let _pendingSetzen = null; // { art:'gebaeude'|'asset', obj } — wartet auf den Platzierungsklick
 let _seite = 'plan';       // Seitenspalte: 'plan' | 'abgleich'
 let _farbe = 'uebernahme'; // Kabelfärbung: 'uebernahme' | 'beschriftung'
-let _refZoom = null;    // Zoomstufe der Einpassung: dort entspricht Größe 100 %
 let _ro = null;
 let _flussLaeuft = false;   // rAF-Schleife der Lastfluss-Animation
 let _flussOffset = 0;
@@ -102,12 +136,26 @@ export const pdParseKabelLabel = parseKabelLabel;
 // Die Kombination aus L.CRS.Simple und einem divIcon hält Marker in Bildschirm-
 // pixeln fest: der Plan zoomt, die Kästen nicht. Auf einem Bestandsplan gehören
 // sie aber über die gezeichneten Kästchen — also werden sie mitskaliert.
-// Bei CRS.Simple entspricht eine Zoomstufe genau Faktor 2; Bezugspunkt ist die
-// Zoomstufe, auf die der Plan beim Laden eingepasst wurde (dort = 100 %).
+// Bei CRS.Simple entspricht eine Zoomstufe genau Faktor 2.
+//
+// Bezugspunkt ist die Zoomstufe, bei der das Blatt PLAN_REF_PX Bildpixel breit
+// dargestellt wird — eine Eigenschaft des BLATTES, nicht der Panelgröße.
+// Vorher war es die Zoomstufe der Einpassung beim Laden, also die Panelbreite
+// zum Ladezeitpunkt. Damit hatten die GESPEICHERTEN Größen (PD.gebGroesse und
+// n.skala) keinen reproduzierbaren Bezug mehr: dasselbe Projekt auf einem
+// anderen Bildschirm, in einem anderen Panelzustand oder auf einem Blatt anderer
+// Auflösung kam in anderer Größe zurück. Genau das ließ die Symbole springen.
+const PLAN_REF_PX = 1000;
+
+function _refZoomFuer(blatt) {
+  const groesste = Math.max(blatt?.w || 0, blatt?.h || 0);
+  return groesste > 0 ? Math.log2(PLAN_REF_PX / groesste) : 0;
+}
+
 function _symbolFaktorBasis() {
   const g = PD.gebGroesse || 1;
-  if (!_map || _refZoom == null) return g;
-  const k = g * Math.pow(2, _map.getZoom() - _refZoom);
+  if (!_map || !PD.plan) return g;
+  const k = g * Math.pow(2, _map.getZoom() - _refZoomFuer(PD.plan));
   // Grenzen, damit ein extremer Zoom die Symbole weder verschwinden lässt
   // noch den halben Plan zukleistert
   return Math.max(0.15, Math.min(10, k));
@@ -166,10 +214,16 @@ function _ensurePanel() {
               title="Schließen — Plan und Markierungen bleiben erhalten">✕ Schließen</button>
     </div>
     <div class="pd-toolbar">
-      <label class="pd-file-btn" title="Bild (PNG/JPG) oder PDF-Seite des Bestandsplans laden">
-        📂 Plan laden
+      <label class="pd-file-btn" title="Weiteres Blatt desselben Planwerks laden (Bild oder PDF-Seite) — Blätter ergänzen sich und zählen im Abgleich gemeinsam">
+        📂 Blatt laden
         <input type="file" accept="image/png,image/jpeg,application/pdf"
-               data-change="pdLoadPlan(this)" hidden/>
+               data-change="pdLoadPlan(this,'blatt')" hidden/>
+      </label>
+      <label class="pd-file-btn pd-stand-btn" id="pd-stand-btn"
+             title="Neuere Ausgabe DIESES Blattes laden — das bisherige wandert ins Archiv und zählt im Abgleich nicht mehr mit">
+        ⟳ Neuer Stand
+        <input type="file" accept="image/png,image/jpeg,application/pdf"
+               data-change="pdLoadPlan(this,'stand')" hidden/>
       </label>
       <span class="pd-suche-wrap">
         <input id="pd-suche" class="pd-suche" type="text" autocomplete="off"
@@ -211,6 +265,7 @@ function _ensurePanel() {
       </span>
       <span class="pd-modehint" id="pd-modehint"></span>
     </div>
+    <div class="pd-blaetter" id="pd-blaetter"></div>
     <div class="pd-body">
       <div id="${MAP_ID}" class="pd-map"></div>
       <div class="pd-side">
@@ -228,7 +283,7 @@ function _ensurePanel() {
                   title="Verknüpfte Einträge und fertige Kabel auf der Karte anlegen">▶ In Karte übernehmen</button>
           <button class="lp-tool-btn" data-click="pdClear()"
                   style="border-color:#e57373;color:#e57373;justify-content:center;"
-                  title="Plan samt aller Markierungen verwerfen (angelegte Assets bleiben)">✕ Plan verwerfen</button>
+                  title="Alle Blätter samt Markierungen verwerfen (angelegte Assets bleiben)">✕ Alles verwerfen</button>
         </div>
       </div>
     </div>`;
@@ -286,6 +341,13 @@ function _ensureMap() {
   _map = L.map(div, {
     crs: L.CRS.Simple, minZoom: -6, maxZoom: 6, zoomSnap: 0.25,
     attributionControl: false, zoomControl: true,
+    // Die Symbolgröße hängt an der Zoomstufe und wird erst bei 'zoomend' neu
+    // gerechnet. Mit animierter Markerebene skaliert Leaflet die divIcons
+    // währenddessen per CSS mit — Beschriftungen laufen verzerrt und unscharf
+    // mit und schnappen am Ende auf die richtige Größe zurück. Ohne die
+    // Markeranimation blendet Leaflet sie für die Dauer des Zooms aus und setzt
+    // sie fertig gerechnet wieder ein; der Plan selbst zoomt weiter weich.
+    markerZoomAnimation: false,
   });
   _map.setView([0, 0], 0);
   _marks = L.layerGroup().addTo(_map);
@@ -312,30 +374,34 @@ function _showPlanLayer() {
   if (!_map || !PD.plan) return;
   if (_imgLayer) { _imgLayer.remove(); _imgLayer = null; }
   const bounds = [[0, 0], [PD.plan.h, PD.plan.w]];
-  _imgLayer = L.imageOverlay(PD.plan.url, bounds, { interactive: false }).addTo(_map);
-  _imgLayer.bringToBack();
+  // Blatt ohne Bild (Archiv, Bild verworfen): Ausdehnung bleibt, damit die
+  // Marken an ihrer Stelle liegen — nur der Untergrund fehlt.
+  if (PD.plan.url) {
+    _imgLayer = L.imageOverlay(PD.plan.url, bounds, { interactive: false }).addTo(_map);
+    _imgLayer.bringToBack();
+  }
   _map.setMaxBounds(L.latLngBounds(bounds).pad(0.5));
   _map.fitBounds(bounds);
-  // Einpassungszoom als 100 %-Bezug merken: unabhängig von der Plangröße
-  // sehen die Symbole beim Laden immer gleich aus.
-  _refZoom = _map.getZoom();
 }
 
 // ── Plan laden (Bild oder PDF-Seite) ────────────────────────────────────────
-export function pdLoadPlan(input) {
+// modus 'blatt' — weiteres Blatt desselben Planwerks
+// modus 'stand' — neuere Ausgabe des aktiven Blattes; das bisherige wird Archiv
+export function pdLoadPlan(input, modus) {
   const file = input?.files?.[0];
   input.value = '';
   if (!file) return;
+  const m = (modus === 'stand' && PD.plan) ? 'stand' : 'blatt';
   const name = file.name.replace(/\.[^.]+$/, '');
-  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) _loadPdf(file, name);
-  else _loadImage(file, name);
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) _loadPdf(file, name, m);
+  else _loadImage(file, name, m);
 }
 
-function _loadImage(file, name) {
+function _loadImage(file, name, modus) {
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
-    img.onload = () => _setPlan(e.target.result, img.width, img.height, name);
+    img.onload = () => _setPlan(e.target.result, img.width, img.height, name, [], modus);
     img.onerror = () => showHint('⚠ Bild konnte nicht gelesen werden: ' + name);
     img.src = e.target.result;
   };
@@ -343,7 +409,7 @@ function _loadImage(file, name) {
   reader.readAsDataURL(file);
 }
 
-async function _loadPdf(file, name) {
+async function _loadPdf(file, name, modus) {
   try {
     if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
       if (window.__PDF_WORKER_CODE__) {
@@ -384,7 +450,7 @@ async function _loadPdf(file, name) {
     }
     _setPlan(canvas.toDataURL('image/png'), canvas.width, canvas.height,
       pdf.numPages > 1 ? `${name} (S. ${pageNr})` : name,
-      await _leseTextebene(page, viewport));
+      await _leseTextebene(page, viewport), modus);
   } catch (e) {
     console.error('Plan-PDF fehlgeschlagen:', e);
     showHint('⚠ PDF konnte nicht geladen werden: ' + name);
@@ -426,26 +492,250 @@ async function _leseTextebene(page, viewport) {
   }
 }
 
-function _setPlan(url, w, h, name, texts) {
-  const hatMarken = PD.nodes.length > 0 || PD.links.length > 0;
-  PD.plan = { name, url, w, h, texts: Array.isArray(texts) ? texts : [] };
-  if (!hatMarken) { PD.nodes = []; PD.links = []; PD.seq = 1; }
-  _sel = null; _pendingA = null; _pendingSetzen = null;
+function _setPlan(url, w, h, name, texts, modus) {
+  // 'stand' ersetzt das aktive Blatt: das bisherige wandert ins Archiv und
+  // zählt ab sofort nirgends mehr mit — bleibt aber als Beleg ansehbar. Genau
+  // hier steckt der Unterschied zu 'blatt', das schlicht anhängt.
+  const alt = (modus === 'stand') ? PD.plan : null;
+  const blatt = {
+    id: 'pb' + (PD.planSeq++),
+    name, stand: '', rolle: 'aktiv',
+    url, w, h, texts: Array.isArray(texts) ? texts : [],
+  };
+  if (alt) {
+    alt.rolle = 'archiv';
+    // Direkt hinter dem abgelösten Stand einsortieren, damit die Blattleiste
+    // die Reihenfolge des Planwerks behält und nicht die des Ladens.
+    PD.plaene.splice(PD.plaene.indexOf(alt) + 1, 0, blatt);
+  } else {
+    PD.plaene.push(blatt);
+  }
+  PD.aktivId = blatt.id;
+  _sel = null; _pendingA = null; _pendingPts = []; _pendingSetzen = null;
   _ensureMap();
   _showPlanLayer();
   _renderAll();
-  showHint(hatMarken
-    ? `Plan „${name}" ersetzt — vorhandene Markierungen bleiben erhalten.`
-    : `Plan „${name}" geladen${PD.plan.texts.length ? ` — ${PD.plan.texts.length} Beschriftungen aus dem PDF gelesen, Kabelangaben werden automatisch übernommen` : ''}.`);
+
+  const marken = alt ? PD.nodes.filter(n => n.planId === alt.id).length : 0;
+  if (marken) {
+    epConfirm('Markierungen übernehmen?',
+      `„${_esc(alt.name)}" trägt ${marken} Eintrag/Einträge samt Kabeln und deren Verknüpfungen `
+      + `zur Karte. Sie lassen sich auf den neuen Stand übertragen — sinnvoll, solange es `
+      + `dieselbe Zeichnung im selben Ausschnitt ist. Wurde der Plan neu gesetzt, besser leer beginnen.`,
+      { okText: 'Übertragen', cancelText: 'Leer beginnen' })
+      .then(ja => {
+        if (ja) _uebertrageMarken(alt, blatt);
+        else showHint(`Neuer Stand „${name}" — leer begonnen, „${alt.name}" liegt im Archiv.`);
+        _renderAll();
+      });
+    return;
+  }
+  showHint(alt
+    ? `Neuer Stand „${name}" — „${alt.name}" liegt im Archiv.`
+    : `Blatt „${name}" geladen${blatt.texts.length ? ` — ${blatt.texts.length} Beschriftungen aus dem PDF gelesen, Kabelangaben werden automatisch übernommen` : ''}.`);
+}
+
+// Marken eines abgelösten Standes auf den neuen übertragen. Die Verknüpfungen
+// (assetId, edgeId, linkId) wandern mit — deshalb muss nichts neu verortet und
+// nichts erneut übernommen werden. Übertragene Marken bleiben als solche
+// gekennzeichnet, bis sie jemand angefasst oder bestätigt hat: eine falsche
+// Position ist gefährlicher als eine fehlende (siehe _schaetzePosition).
+function _uebertrageMarken(alt, neu) {
+  // EIN Faktor für beide Achsen. x und y getrennt zu skalieren zöge die Lage
+  // schief, sobald die Seitenverhältnisse nicht genau übereinstimmen — und das
+  // tun sie bei einer neuen PDF-Ausgabe fast nie exakt. Eine geschobene Marke
+  // ist ärgerlich, eine über das Blatt hinweg schief gezogene Anordnung ist
+  // nicht mehr als „dieselbe Zeichnung" erkennbar.
+  const s = Math.max(alt.w, alt.h) > 0 ? Math.max(neu.w, neu.h) / Math.max(alt.w, alt.h) : 1;
+  const neueId = new Map();
+  for (const n of PD.nodes.filter(x => x.planId === alt.id)) {
+    const kopie = {
+      ...n, id: 'pn' + (PD.seq++), planId: neu.id,
+      x: Math.round(n.x * s), y: Math.round(n.y * s),
+      uebertragen: true,
+    };
+    neueId.set(n.id, kopie.id);
+    PD.nodes.push(kopie);
+  }
+  let kabel = 0;
+  for (const l of PD.links.filter(x => x.planId === alt.id)) {
+    const a = neueId.get(l.a), b = neueId.get(l.b);
+    if (!a || !b) continue;
+    PD.links.push({
+      ...l, id: 'pl' + (PD.seq++), planId: neu.id, a, b,
+      points: (l.points || []).map(p => ({ x: Math.round(p.x * s), y: Math.round(p.y * s) })),
+    });
+    kabel++;
+  }
+  // Abweichende Seitenverhältnisse heißen: anderer Ausschnitt oder anderes
+  // Format. Dann trifft KEINE lineare Abbildung, und das gehört gesagt, statt
+  // es hinter „skaliert" zu verstecken.
+  const seiten = (alt.w * neu.h) ? Math.abs((neu.w / neu.h) / (alt.w / alt.h) - 1) : 0;
+  showHint(`${neueId.size} Eintrag/Einträge und ${kabel} Kabel übertragen`
+    + (Math.abs(s - 1) > 0.001 ? ` (Faktor ${s.toFixed(2)} auf die neue Auflösung)` : '')
+    + (seiten > 0.02
+      ? ` — ⚠ die Blätter haben unterschiedliche Seitenverhältnisse (${Math.round(seiten * 100)} %), der Ausschnitt ist also nicht derselbe: die Lage stimmt nur grob.`
+      : ' — gepunktet gezeichnet, bis die Lage geprüft ist.'));
+}
+
+// ── Blätter verwalten ───────────────────────────────────────────────────────
+
+export function pdBlattWechseln(id) {
+  const b = _blatt(id);
+  if (!b || b.id === PD.aktivId) return;
+  PD.aktivId = id;
+  // Auswahl und angefangene Kabelzeichnung gehören zum verlassenen Blatt —
+  // stehengelassen zeigten sie auf Knoten, die hier gar nicht gezeichnet werden.
+  _sel = null; _pendingA = null; _pendingPts = []; _pendingSetzen = null;
+  _showPlanLayer();
+  _renderAll();
+}
+
+/** Blattname und Stand ändern (Stand ist frei — „2026-05", „Rev. C", leer). */
+export function pdBlattName(id) {
+  const b = _blatt(id);
+  if (!b) return;
+  epPrompt('Blatt benennen', 'Name des Blattes:', b.name, { okText: 'Übernehmen' }).then(name => {
+    if (name == null) return;
+    b.name = String(name).trim() || b.name;
+    epPrompt('Stand', 'Stand des Blattes (frei, z. B. „2026-05" oder „Rev. C"):', b.stand || '',
+      { okText: 'Übernehmen' }).then(stand => {
+      if (stand != null) b.stand = String(stand).trim();
+      _renderAll();
+    });
+  });
+}
+
+/**
+ * Rolle umschalten: aktiv ↔ archiv.
+ * Ein Archivblatt zählt in Abgleich, Übernahme und allen Netzprüfungen nicht
+ * mehr mit. Das letzte aktive Blatt lässt sich nicht archivieren — ein Planwerk
+ * ohne gültigen Stand wäre keine Aussage, sondern nur noch Historie.
+ */
+export function pdBlattRolle(id) {
+  const b = _blatt(id);
+  if (!b) return;
+  if (b.rolle !== 'archiv' && PD.plaene.filter(p => p.rolle !== 'archiv').length <= 1) {
+    showHint('⚠ Das letzte aktive Blatt kann nicht ins Archiv — sonst hätte das Planwerk keinen gültigen Stand mehr.');
+    return;
+  }
+  b.rolle = b.rolle === 'archiv' ? 'aktiv' : 'archiv';
+  showHint(b.rolle === 'archiv'
+    ? `„${b.name}" ist jetzt Archiv — zählt im Abgleich nicht mehr mit.`
+    : `„${b.name}" zählt wieder als gültiger Stand.`);
+  _renderAll();
+}
+
+/**
+ * Bild eines Archivblattes verwerfen, Marken behalten.
+ * Ein gerastertes Blatt liegt als Data-URL in der Projektdatei und wiegt
+ * schnell einige MB. Wer die Historie als Beleg braucht, aber nicht als Bild,
+ * wird sie hier los, ohne den Nachweis zu verlieren, was damals erfasst war.
+ */
+export function pdBlattBildVerwerfen(id) {
+  const b = _blatt(id);
+  if (!b || !b.url) return;
+  epConfirm('Bild verwerfen?',
+    `Das Planbild von „${_esc(b.name)}" wird aus dem Projekt entfernt (${_blattGroesse(b)}). `
+    + `Die ${PD.nodes.filter(n => n.planId === b.id).length} Marken bleiben als Nachweis erhalten, `
+    + `sind ohne Bild aber nicht mehr sinnvoll zu betrachten. Nicht umkehrbar.`,
+    { okText: 'Bild verwerfen', cancelText: 'Behalten', danger: true }).then(ja => {
+    if (!ja) return;
+    b.url = null; b.texts = [];
+    if (b.id === PD.aktivId && _imgLayer) { _imgLayer.remove(); _imgLayer = null; }
+    showHint(`Bild von „${b.name}" verworfen — Marken bleiben erhalten.`);
+    _renderAll();
+  });
+}
+
+/** Blatt samt seiner Marken entfernen (angelegte Assets und Kanten bleiben). */
+export function pdBlattLoeschen(id) {
+  const b = _blatt(id);
+  if (!b) return;
+  const anz = PD.nodes.filter(n => n.planId === id).length;
+  epConfirm('Blatt entfernen?',
+    `„${_esc(b.name)}" wird samt ${anz} Eintrag/Einträgen und deren Kabeln aus dem Plan entfernt. `
+    + `Bereits in die Karte übernommene Anlagen und Leitungen bleiben bestehen.`,
+    { okText: 'Entfernen', cancelText: 'Abbrechen', danger: true }).then(ja => {
+    if (!ja) return;
+    PD.nodes = PD.nodes.filter(n => n.planId !== id);
+    PD.links = PD.links.filter(l => l.planId !== id);
+    PD.plaene = PD.plaene.filter(p => p.id !== id);
+    if (PD.aktivId === id) {
+      PD.aktivId = (PD.plaene.find(p => p.rolle !== 'archiv') || PD.plaene[0] || {}).id || null;
+      _sel = null; _pendingA = null; _pendingPts = []; _pendingSetzen = null;
+      if (_imgLayer) { _imgLayer.remove(); _imgLayer = null; }
+      if (PD.plan) _showPlanLayer();
+    }
+    showHint(`Blatt „${b.name}" entfernt.`);
+    _renderAll();
+  });
+}
+
+// Platzbedarf eines Blattes in der Projektdatei. Data-URLs sind Base64 —
+// vier Zeichen tragen drei Bytes.
+function _blattGroesse(b) {
+  const mb = ((b?.url?.length || 0) * 0.75) / (1024 * 1024);
+  return mb >= 0.05 ? mb.toFixed(1) + ' MB' : '<0,1 MB';
+}
+
+function _renderBlaetter() {
+  const box = document.getElementById('pd-blaetter');
+  if (!box) return;
+  const standBtn = document.getElementById('pd-stand-btn');
+  if (standBtn) standBtn.style.display = PD.plan ? '' : 'none';
+  if (!PD.plaene.length) { box.innerHTML = ''; box.style.display = 'none'; return; }
+  box.style.display = '';
+
+  const chips = PD.plaene.map(b => {
+    const archiv = b.rolle === 'archiv';
+    const anz = PD.nodes.filter(n => n.planId === b.id).length;
+    // Maße mit im Tooltip: sie entscheiden, ob sich Marken zwischen zwei
+    // Ständen überhaupt sinnvoll übertragen lassen (gleiches Seitenverhältnis
+    // = gleicher Ausschnitt) — und sie sind der Bezug der Symbolgröße.
+    const titel = `${b.name}${b.stand ? ' · Stand ' + b.stand : ''} — ${anz} Eintrag/Einträge, `
+      + `${b.w}×${b.h} px (Seitenverhältnis ${(b.h ? b.w / b.h : 0).toFixed(3)}), ${_blattGroesse(b)}`
+      + (archiv ? ' · Archiv: zählt im Abgleich nicht mit' : '');
+    return `<button class="pd-blatt${b.id === PD.aktivId ? ' active' : ''}${archiv ? ' archiv' : ''}"
+      data-click="pdBlattWechseln('${b.id}')" title="${_esc(titel)}">
+      ${archiv ? '🗄 ' : ''}${_esc(b.name)}${b.stand ? ` <i>${_esc(b.stand)}</i>` : ''}
+      <span class="pd-blatt-zahl">${anz}</span>
+    </button>`;
+  }).join('');
+
+  const akt = PD.plan;
+  const gesamt = PD.plaene.reduce((s, b) => s + (b.url?.length || 0), 0) * 0.75 / (1024 * 1024);
+  const werkzeuge = akt ? `
+    <span class="pd-blatt-akt">
+      <button class="pd-blatt-btn" data-click="pdBlattName('${akt.id}')" title="Blatt benennen und Stand setzen">✎</button>
+      <button class="pd-blatt-btn" data-click="pdBlattRolle('${akt.id}')"
+              title="${akt.rolle === 'archiv' ? 'Wieder als gültigen Stand führen' : 'Ins Archiv legen — zählt im Abgleich nicht mehr mit'}">${akt.rolle === 'archiv' ? '↩' : '🗄'}</button>
+      ${akt.rolle === 'archiv' && akt.url ? `<button class="pd-blatt-btn" data-click="pdBlattBildVerwerfen('${akt.id}')"
+              title="Bild verwerfen, Marken behalten — spart Platz in der Projektdatei">🖼✕</button>` : ''}
+      <button class="pd-blatt-btn del" data-click="pdBlattLoeschen('${akt.id}')" title="Blatt samt Marken entfernen">✕</button>
+    </span>` : '';
+
+  box.innerHTML = chips + werkzeuge
+    + `<span class="pd-blatt-mb" title="Platzbedarf aller Planbilder in der Projektdatei">${gesamt.toFixed(1)} MB</span>`;
 }
 
 export function pdClear() {
-  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1; PD.abgehakt = {};
-  _sel = null; _pendingA = null; _pendingSetzen = null;
-  if (_imgLayer) { _imgLayer.remove(); _imgLayer = null; }
-  _marks?.clearLayers();
-  _zeigeGroesse();
-  _renderAll();
+  const leeren = () => {
+    PD.plaene = []; PD.aktivId = null; PD.planSeq = 1;
+    PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1; PD.abgehakt = {};
+    _sel = null; _pendingA = null; _pendingPts = []; _pendingSetzen = null;
+    if (_imgLayer) { _imgLayer.remove(); _imgLayer = null; }
+    _marks?.clearLayers();
+    _zeigeGroesse();
+    _renderAll();
+  };
+  if (!PD.plaene.length) { leeren(); return; }
+  epConfirm('Alle Blätter verwerfen?',
+    `${PD.plaene.length} Blatt/Blätter samt ${PD.nodes.length} Eintrag/Einträgen und `
+    + `${PD.links.length} Kabel werden verworfen. Bereits in die Karte übernommene Anlagen `
+    + `und Leitungen bleiben bestehen.`,
+    { okText: 'Alles verwerfen', cancelText: 'Abbrechen', danger: true })
+    .then(ja => { if (ja) leeren(); });
 }
 
 // ── Modi ────────────────────────────────────────────────────────────────────
@@ -507,7 +797,7 @@ function _onMapClick(e) {
   }
   if (_mode !== 'knoten') { _renderAll(); return; }
   const node = {
-    id: 'pn' + (PD.seq++), x: Math.round(p.x), y: Math.round(p.y),
+    id: 'pn' + (PD.seq++), planId: PD.aktivId, x: Math.round(p.x), y: Math.round(p.y),
     art: 'komponente',
     label: _textNah(p, 60)?.str || '', assetType: 'Verbraucher', linkKind: null, linkId: null, assetId: null,
   };
@@ -629,11 +919,15 @@ export function pdSuche(q) {
   }
   box.innerHTML = gefunden.map(g => {
     const n = _anschlussKandidaten(g.id).length;
-    const drin = PD.nodes.some(x => _istGebKnoten(x) && String(x.linkId) === String(g.id));
-    return `<div class="pd-suche-row${drin ? ' drin' : ''}" data-click="pdPlatziereGebaeude('${g.id}')">
+    // „Schon im Plan" heißt: auf irgendeinem aktiven Blatt — ein Gebäude gehört
+    // ins Planwerk, nicht auf ein bestimmtes Blatt.
+    const drinNode = _fachNodes().find(x => _istGebKnoten(x) && String(x.linkId) === String(g.id));
+    const fremd = drinNode && drinNode.planId !== PD.aktivId;
+    const wo = fremd ? `auf „${_blatt(drinNode.planId)?.name || '?'}"` : 'schon im Plan';
+    return `<div class="pd-suche-row${drinNode ? ' drin' : ''}" data-click="pdPlatziereGebaeude('${g.id}')">
       <span class="pd-suche-nr">${_esc(g.gebaeudenummer || '–')}</span>
       <span class="pd-suche-name">${_esc(g.name)}</span>
-      <span class="pd-suche-meta">${drin ? 'schon im Plan' : (n ? n + ' Anlage' + (n === 1 ? '' : 'n') : 'ohne Anlagen')}</span>
+      <span class="pd-suche-meta">${drinNode ? _esc(wo) : (n ? n + ' Anlage' + (n === 1 ? '' : 'n') : 'ohne Anlagen')}</span>
     </div>`;
   }).join('');
   box.style.display = 'block';
@@ -649,10 +943,13 @@ export function pdPlatziereGebaeude(id) {
   const g = (window.gebaeude || []).find(x => String(x.id) === String(id));
   if (!g) return;
   _sucheSchliessen();
-  const vorhanden = PD.nodes.find(n => _istGebKnoten(n) && String(n.linkId) === String(g.id));
+  const vorhanden = _fachNodes().find(n => _istGebKnoten(n) && String(n.linkId) === String(g.id));
   if (vorhanden) {
+    const fremd = vorhanden.planId !== PD.aktivId;
     pdSelect('node', vorhanden.id);
-    showHint(`„${g.name}" liegt bereits im Plan — der Eintrag ist jetzt ausgewählt.`);
+    showHint(fremd
+      ? `„${g.name}" liegt auf Blatt „${_blatt(vorhanden.planId)?.name || '?'}" — dorthin gewechselt.`
+      : `„${g.name}" liegt bereits im Plan — der Eintrag ist jetzt ausgewählt.`);
     return;
   }
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
@@ -690,7 +987,7 @@ export function pdFehlendesGebaeude(text) {
 
 function _setzeFehlendesGebaeude(o, p) {
   const node = {
-    id: 'pn' + (PD.seq++), x: Math.round(p.x), y: Math.round(p.y),
+    id: 'pn' + (PD.seq++), planId: PD.aktivId, x: Math.round(p.x), y: Math.round(p.y),
     art: 'gebaeude', fehlt: true,
     label: o.name, gebNummer: o.nummer,
     assetType: 'Verbraucher',
@@ -735,7 +1032,7 @@ export function pdVerknuepfeFehlend(nodeId) {
 function _setzeGebaeudeKnoten(g, p) {
   const anschluss = _anschlussKandidaten(g.id)[0] || null;
   const node = {
-    id: 'pn' + (PD.seq++), x: Math.round(p.x), y: Math.round(p.y),
+    id: 'pn' + (PD.seq++), planId: PD.aktivId, x: Math.round(p.x), y: Math.round(p.y),
     art: 'gebaeude',
     label: g.name,
     // Nur relevant, wenn das Gebäude noch gar keine Anlage hat — dann wird eine angelegt
@@ -850,9 +1147,13 @@ const _unproj = (x, y) => map.options.crs.unproject(L.point(x, y));
 
 // Punktpaare Plan ↔ Karte aus bereits verorteten Einträgen.
 // Plan-y zeigt nach unten, projizierte y nach oben — deshalb gespiegelt.
-function _ankerPaare(nurIds) {
+// blattId begrenzt die Anker auf EIN Blatt. Blätter sind einzeln gezeichnet:
+// Maßstab, Drehung und Ausschnitt unterscheiden sich. Eine über zwei Blätter
+// gemittelte Ähnlichkeitsabbildung wäre nicht ungenau, sondern falsch.
+function _ankerPaare(nurIds, blattId) {
   const paare = [];
   for (const n of PD.nodes) {
+    if (blattId && n.planId !== blattId) continue;
     if (nurIds && !nurIds.has(n.id)) continue;
     const a = _zielAsset(n);
     if (!a || a.lat == null || a.lng == null) continue;
@@ -895,16 +1196,17 @@ function _schaetzePosition(n) {
 
   // Verkabelte Nachbarn zuerst: auf einem schematischen Plan ist die lokale
   // Umgebung verlässlicher als eine über das ganze Blatt gemittelte Abbildung.
-  let paar = _weitestesPaar(_ankerPaare(nachbarn));
+  const blattId = n.planId;
+  let paar = _weitestesPaar(_ankerPaare(nachbarn, blattId));
   let quelle = 'aus den verkabelten Nachbarn';
-  if (!paar) { paar = _weitestesPaar(_ankerPaare(null)); quelle = 'aus dem ganzen Blatt'; }
+  if (!paar) { paar = _weitestesPaar(_ankerPaare(null, blattId)); quelle = 'aus dem ganzen Blatt'; }
   if (paar) {
     const f = _aehnlichkeit(paar[0], paar[1]);
     if (f) { const m = f(p0); const ll = _unproj(m.x, m.y); return { lat: ll.lat, lng: ll.lng, quelle }; }
   }
   // Nur ein Anker: ohne zweiten Punkt gibt es weder Maßstab noch Drehung —
   // der Versatz daneben ist ehrlich willkürlich, aber besser als die Kartenmitte.
-  const einer = _ankerPaare(nachbarn)[0] || _ankerPaare(null)[0];
+  const einer = _ankerPaare(nachbarn, blattId)[0] || _ankerPaare(null, blattId)[0];
   if (einer) { const ll = _unproj(einer.m.x + 40, einer.m.y); return { lat: ll.lat, lng: ll.lng, quelle: 'neben den einzigen verorteten Eintrag gelegt' }; }
   const c = map.getCenter();
   return { lat: c.lat, lng: c.lng, quelle: 'Kartenmitte, kein verorteter Eintrag vorhanden' };
@@ -944,9 +1246,15 @@ const _istBestand = o => !o?.schicht || o.schicht === SCHICHT.BESTAND;
 const _abKey = (art, id) => `${art}:${id}`;
 
 export function pdAbgleich() {
-  const gebImPlan = new Set(PD.nodes.filter(n => n.linkKind === 'g').map(n => String(n.linkId)));
+  // Über ALLE aktiven Blätter: das Planwerk ist die Vereinigung seiner Blätter.
+  // Ohne das erschiene jedes Gebäude des Nachbarblatts als „nur auf der Karte" —
+  // man hakte ein halbes Planwerk ab und schaltete damit genau den Befund aus,
+  // den diese Liste liefern soll. Archivblätter bleiben draußen: über einen
+  // abgelösten Stand gälte ein längst abgerissenes Gebäude weiter als erfasst.
+  const fachNodes = _fachNodes();
+  const gebImPlan = new Set(fachNodes.filter(n => n.linkKind === 'g').map(n => String(n.linkId)));
   const assetImPlan = new Set();
-  for (const n of PD.nodes) {
+  for (const n of fachNodes) {
     if (n.assetId) assetImPlan.add(n.assetId);
     if (n.anschlussAssetId) assetImPlan.add(n.anschlussAssetId);
     if (n.linkKind === 'a' && n.linkId) assetImPlan.add(n.linkId);
@@ -967,11 +1275,12 @@ export function pdAbgleich() {
     .map(o => ({ ...o, grund: PD.abgehakt[_abKey(o.art, o.id)] }));
 
   return {
-    beidseitig: PD.nodes.filter(n => _statusNode(n) === 'ok'),
+    beidseitig: fachNodes.filter(n => _statusNode(n) === 'ok'),
     // Unfertige Einträge (noch nicht verortet) und Befunde (Gebäude fehlt auf
     // der Karte) sind zweierlei und gehören getrennt gezählt.
-    nurImPlan:  PD.nodes.filter(n => _statusNode(n) === 'offen'),
-    fehlt:      PD.nodes.filter(n => _statusNode(n) === 'fehlt'),
+    nurImPlan:  fachNodes.filter(n => _statusNode(n) === 'offen'),
+    fehlt:      fachNodes.filter(n => _statusNode(n) === 'fehlt'),
+    uebertragen: fachNodes.filter(n => n.uebertragen),
     nurKarte:   offen,
     abgehakt,
     vorlaeufig: pdVorlaeufige(),
@@ -995,6 +1304,8 @@ export function pdAbgleichKopieren() {
   ab.nurImPlan.forEach(n => zeilen.push(['im Plan, noch nicht verortet', n.label || '(ohne Bezeichnung)', '', ''].join('\t')));
   ab.abgehakt.forEach(o => zeilen.push(['bewusst nicht im Plan', o.name, o.zusatz, o.grund].join('\t')));
   ab.vorlaeufig.forEach(a => zeilen.push(['Position vorläufig', a.name, ASSET_CFG[a.type]?.label || a.type, 'aus dem Plan geschätzt'].join('\t')));
+  ab.uebertragen.forEach(n => zeilen.push(['aus Vorgängerstand übertragen', n.label || '(ohne Bezeichnung)',
+    _blatt(n.planId)?.name || '', 'Lage auf dem neuen Blatt noch nicht geprüft'].join('\t')));
   ab.nsMaschenOk.forEach(m => {
     const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
     zeilen.push(['Ringversorgung (bestätigt)', `${nm(m.kante.u)} → ${nm(m.kante.v)}`,
@@ -1013,12 +1324,16 @@ export function pdAbgleichKopieren() {
       `${e.cableType || '?'} ${e.crossSection || '?'} mm²`, 'elektrisch unmöglich'].join('\t'));
   });
   ab.qsGeschaetzt.forEach(e => {
-    const l = PD.links.find(x => x.edgeId === e.id);
+    const l = _fachLinks().find(x => x.edgeId === e.id);
     const a = l && _node(l.a), b = l && _node(l.b);
     zeilen.push(['Querschnitt geschätzt', a && b ? `${a.label || '?'} → ${b.label || '?'}` : e.id,
       `${e.cableType || '?'} ${e.crossSection || '?'} mm²`, e.qsQuelle || 'geschätzt'].join('\t'));
   });
-  const text = `Abgleich Plan ↔ Karte — ${PD.plan?.name || 'Plan'}\n`
+  // Der Kopf nennt die Blätter, gegen die abgeglichen wurde — ohne das ist im
+  // Protokoll später nicht mehr erkennbar, welcher Stand gemeint war.
+  const aktive = PD.plaene.filter(p => p.rolle !== 'archiv')
+    .map(p => p.name + (p.stand ? ` (${p.stand})` : '')).join(', ');
+  const text = `Abgleich Plan ↔ Karte — ${aktive || 'Plan'}\n`
     + `beidseitig: ${ab.beidseitig.length}\n\n` + zeilen.join('\n');
   try {
     navigator.clipboard?.writeText(text);
@@ -1046,8 +1361,15 @@ export function pdAbhaken(art, id) {
 export function pdPlatziereAsset(id) {
   const a = ASSETS.items.find(x => x.id === id);
   if (!a) return;
-  const vorhanden = PD.nodes.find(n => n.assetId === a.id || (n.linkKind === 'a' && n.linkId === a.id));
-  if (vorhanden) { pdSelect('node', vorhanden.id); showHint(`„${a.name}" liegt bereits im Plan.`); return; }
+  const vorhanden = _fachNodes().find(n => n.assetId === a.id || (n.linkKind === 'a' && n.linkId === a.id));
+  if (vorhanden) {
+    const fremd = vorhanden.planId !== PD.aktivId;
+    pdSelect('node', vorhanden.id);
+    showHint(fremd
+      ? `„${a.name}" liegt auf Blatt „${_blatt(vorhanden.planId)?.name || '?'}" — dorthin gewechselt.`
+      : `„${a.name}" liegt bereits im Plan.`);
+    return;
+  }
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
   pdSetMode('knoten');
   _pendingSetzen = { art: 'asset', obj: a };
@@ -1057,7 +1379,7 @@ export function pdPlatziereAsset(id) {
 
 function _setzeAssetKnoten(a, p) {
   const node = {
-    id: 'pn' + (PD.seq++), x: Math.round(p.x), y: Math.round(p.y),
+    id: 'pn' + (PD.seq++), planId: PD.aktivId, x: Math.round(p.x), y: Math.round(p.y),
     art: 'komponente',
     label: a.name, assetType: a.type,
     linkKind: 'a', linkId: a.id, assetId: a.id,
@@ -1174,11 +1496,14 @@ export function pdFarbmodus(m) {
 function _zeigeFarbZahlen() {
   const el = document.getElementById('pd-farb-zahl');
   if (!el) return;
-  if (!PD.plan || !PD.links.length) { el.innerHTML = ''; return; }
+  // Die Zahlen gehoeren zur Legende neben dem Plan und zaehlen deshalb das
+  // sichtbare Blatt — die Gesamtsicht steht in der Fortschrittszeile.
+  const zaehlLinks = _sichtLinks();
+  if (!PD.plan || !zaehlLinks.length) { el.innerHTML = ''; return; }
 
   if (_farbe === 'beschriftung') {
     const z = { gelesen: 0, unlesbar: 0, ohne: 0 };
-    PD.links.forEach(l => { z[_labelStatus(l)]++; });
+    zaehlLinks.forEach(l => { z[_labelStatus(l)]++; });
     el.innerHTML = Object.entries(z).filter(([, n]) => n > 0)
       .map(([k, n]) => `<span style="color:${LABEL_COL[k]}">●${n}</span>`).join(' ');
     return;
@@ -1187,7 +1512,7 @@ function _zeigeFarbZahlen() {
   if (_farbe === 'berechnung') {
     const z = { ok: 0, hoch: 0, ueber: 0, ohne: 0 };
     let gerechnet = false;
-    for (const l of PD.links) {
+    for (const l of zaehlLinks) {
       const e = _kanteVon(l);
       if (!e) { z.ohne++; continue; }
       const a = e.auslastungPct || 0;
@@ -1225,8 +1550,13 @@ function _renderMarks() {
   if (!_marks) return;
   _marks.clearLayers();
   if (!PD.plan) return;
+  // Gezeichnet wird ausschließlich das sichtbare Blatt: x/y sind Bildpixel und
+  // gelten nur relativ zu dessen Bild — Marken eines anderen Blattes lägen hier
+  // an willkürlicher Stelle.
+  const sichtLinks = _sichtLinks();
+  const sichtNodes = _sichtNodes();
 
-  for (const l of PD.links) {
+  for (const l of sichtLinks) {
     const a = _node(l.a), b = _node(l.b);
     if (!a || !b) continue;
     const st = _statusLink(l);
@@ -1307,8 +1637,8 @@ function _renderMarks() {
     // alle zeichnen: ein knapp verschobener Kartenausschnitt liess sonst
     // saemtliche Werte verschwinden, was wie ein Fehler aussieht. Mit Rand,
     // damit Marken am Bildrand nicht flackern.
-    const sicht = PD.links.length > 250 ? _map.getBounds().pad(0.4) : null;
-    for (const l of PD.links) {
+    const sicht = sichtLinks.length > 250 ? _map.getBounds().pad(0.4) : null;
+    for (const l of sichtLinks) {
       const e = _kanteVon(l);
       if (!e) continue;
       const a = _node(l.a), b = _node(l.b);
@@ -1371,7 +1701,7 @@ function _renderMarks() {
       });
   }
 
-  for (const n of PD.nodes) {
+  for (const n of sichtNodes) {
     const st = _statusNode(n);
     const aktiv = _sel?.kind === 'node' && _sel.id === n.id;
     const wartet = _pendingA === n.id;
@@ -1392,6 +1722,9 @@ function _renderMarks() {
     mk.on('dragend', () => {
       const p = _xy(mk.getLatLng());
       n.x = Math.round(p.x); n.y = Math.round(p.y);
+      // Wer die Marke zurechtzieht, hat ihre Lage geprüft — damit ist sie
+      // keine übertragene Vermutung aus dem Vorgängerstand mehr.
+      delete n.uebertragen;
       _renderAll();
     });
     _marks.addLayer(mk);
@@ -1452,7 +1785,7 @@ function _komponentenIcon(n, st, hervor) {
   return L.divIcon({
     className: 'pd-node-icon',
     html: `<div class="pd-node-wrap" style="transform:scale(${k.toFixed(3)});transform-origin:11px 11px;">
-             <div class="pd-node" style="background:${STATUS_COL[st]};border-color:${rand};${hervor ? 'box-shadow:0 0 0 3px rgba(233,30,99,.45);' : ''}">
+             <div class="pd-node${n.uebertragen ? ' uebertragen' : ''}" style="background:${STATUS_COL[st]};border-color:${rand};${hervor ? 'box-shadow:0 0 0 3px rgba(233,30,99,.45);' : ''}">
                <span>${cfg.icon || '◻'}</span>
              </div>
              <div class="pd-node-lbl">${_esc(n.label || '?')}</div>
@@ -1485,7 +1818,7 @@ function _gebaeudeIcon(n, st, hervor) {
   const mehr = kand.length > 6 ? `<span class="pd-chip pd-chip-mehr">+${kand.length - 6}</span>` : '';
   return L.divIcon({
     className: 'pd-geb-icon',
-    html: `<div class="pd-geb${hervor ? ' sel' : ''}" style="border-color:${STATUS_COL[st]};transform:translate(-50%,-50%) scale(${_symbolFaktor(n).toFixed(3)});">
+    html: `<div class="pd-geb${hervor ? ' sel' : ''}${n.uebertragen ? ' uebertragen' : ''}" style="border-color:${STATUS_COL[st]};transform:translate(-50%,-50%) scale(${_symbolFaktor(n).toFixed(3)});">
              <span class="pd-geb-name">${_esc(n.label || 'Gebäude')}</span>
              <span class="pd-chips">${chips || '<span class="pd-chips-leer">ohne Anlagen</span>'}${mehr}</span>
            </div>`,
@@ -1506,7 +1839,7 @@ function _onNodeClick(n) {
       (l.a === _pendingA && l.b === n.id) || (l.a === n.id && l.b === _pendingA));
     if (schonDa) { showHint('⚠ Diese beiden Einträge sind im Plan bereits verbunden.'); _pendingA = null; _pendingPts = []; _renderAll(); return; }
     const link = {
-      id: 'pl' + (PD.seq++), a: _pendingA, b: n.id, label: '',
+      id: 'pl' + (PD.seq++), planId: PD.aktivId, a: _pendingA, b: n.id, label: '',
       points: _pendingPts.slice(),
       cableType: null, crossSection: 0, nParallel: 1, lengthM: null, msLevel: false, edgeId: null,
     };
@@ -1530,8 +1863,15 @@ function _onNodeClick(n) {
 }
 
 export function pdSelect(kind, id) {
-  _sel = { kind, id };
   const it = kind === 'node' ? _node(id) : _link(id);
+  // Auswahl über Blattgrenzen: der Eintrag wird nur auf seinem eigenen Blatt
+  // gezeichnet — also erst dorthin wechseln, sonst wählt man etwas Unsichtbares.
+  if (it && it.planId && it.planId !== PD.aktivId) {
+    PD.aktivId = it.planId;
+    _pendingA = null; _pendingPts = []; _pendingSetzen = null;
+    _showPlanLayer();
+  }
+  _sel = { kind, id };
   if (it && _map) {
     const ziel = kind === 'node' ? _ll(it.x, it.y) : (() => {
       const a = _node(it.a), b = _node(it.b);
@@ -1544,7 +1884,9 @@ export function pdSelect(kind, id) {
 
 // ── Formular für die Auswahl ────────────────────────────────────────────────
 function _verortungOptions(n) {
-  const belegt = new Set(PD.nodes.filter(x => x.id !== n.id && x.linkKind === 'a').map(x => x.linkId));
+  // Belegt ist eine Anlage, wenn ein Eintrag eines AKTIVEN Blattes sie führt —
+  // ein Archivblatt darf sie nicht blockieren, es beschreibt einen alten Stand.
+  const belegt = new Set(_fachNodes().filter(x => x.id !== n.id && x.linkKind === 'a').map(x => x.linkId));
   const assets = ASSETS.items
     .filter(a => a.domain === 'strom' || a.domain === 'hybrid')
     .filter(a => !belegt.has(a.id))
@@ -1849,7 +2191,10 @@ function _renderList() {
       <span class="pd-row-txt">${_esc(txt)}</span>
       <span class="pd-row-sub">${_esc(sub)}</span>
     </div>`;
-  const nodes = PD.nodes.map(n => {
+  // Die Liste zeigt das sichtbare Blatt — dieselbe Sicht wie der Plan daneben.
+  const sichtNodes = _sichtNodes();
+  const sichtLinks = _sichtLinks();
+  const nodes = sichtNodes.map(n => {
     const anz = _istGebKnoten(n) ? _anschlussKandidaten(n.linkId).length : 0;
     const sub = _istGebKnoten(n)
       ? (anz ? `${anz} Anlage${anz === 1 ? '' : 'n'}` : 'ohne Anlagen')
@@ -1858,7 +2203,7 @@ function _renderList() {
   }).join('');
   // Die Liste zeigt dieselbe Sicht wie der Plan — sonst widersprechen sich
   // zwei Ansichten desselben Kabels.
-  const links = PD.links.map(l => {
+  const links = sichtLinks.map(l => {
     const a = _node(l.a), b = _node(l.b);
     const farbe = _linkFarbe(l);
     return `<div class="pd-row${_sel?.kind === 'link' && _sel.id === l.id ? ' sel' : ''}"
@@ -1868,9 +2213,12 @@ function _renderList() {
       <span class="pd-row-sub">${_esc(l.label || 'ohne Angabe')}</span>
     </div>`;
   }).join('');
+  // Bei mehreren Blättern muss der Kopf sagen, wovon die Zahl handelt —
+  // sonst liest man die Einträge eines Blattes als die des ganzen Planwerks.
+  const mehr = PD.plaene.length > 1 ? ` · Blatt „${_esc(PD.plan.name)}"` : '';
   box.innerHTML =
-    `<div class="pd-list-head">Einträge (${PD.nodes.length})</div>${nodes || '<div class="pd-empty">—</div>'}
-     <div class="pd-list-head">Kabel (${PD.links.length})</div>${links || '<div class="pd-empty">—</div>'}`;
+    `<div class="pd-list-head">Einträge (${sichtNodes.length})${mehr}</div>${nodes || '<div class="pd-empty">—</div>'}
+     <div class="pd-list-head">Kabel (${sichtLinks.length})</div>${links || '<div class="pd-empty">—</div>'}`;
 }
 
 // Zweite Richtung des Abgleichs: was steht auf der Karte, aber in keinem
@@ -1930,7 +2278,7 @@ function _renderAbgleich(box, ab) {
       ${ab.nsMaschen.slice(0, 40).map(m => {
         const e = m.kante;
         const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
-        const l = PD.links.find(x => x.edgeId === e.id);
+        const l = _fachLinks().find(x => x.edgeId === e.id);
         const kreis = (m.kreis || []).map(nm);
         return `<div class="pd-ab-row">
           <span class="pd-dot" style="background:#ffa726"></span>
@@ -1977,7 +2325,7 @@ function _renderAbgleich(box, ab) {
         ↳ Alle auf die NS-Seite umhängen</button>` : ''}
     ${ab.qsGeschaetzt.length ? `<div class="pd-list-head">Querschnitt prüfen (${ab.qsGeschaetzt.length})</div>
       ${ab.qsGeschaetzt.map(e => {
-        const l = PD.links.find(x => x.edgeId === e.id);
+        const l = _fachLinks().find(x => x.edgeId === e.id);
         const a = l && _node(l.a), b = l && _node(l.b);
         return `<div class="pd-ab-row">
           <span class="pd-dot" style="background:#4dd0e1"></span>
@@ -2031,12 +2379,21 @@ function _renderFortschritt() {
   const el = document.getElementById('pd-fortschritt');
   if (!el) return;
   if (!PD.plan) { el.textContent = 'kein Plan geladen'; return; }
-  const nOk = PD.nodes.filter(n => _statusNode(n) === 'ok').length;
-  const lOk = PD.links.filter(l => _statusLink(l) === 'ok').length;
+  // Zwei Ebenen, weil beide gebraucht werden: der Fortschritt auf dem Blatt,
+  // an dem gerade gearbeitet wird, und der des ganzen Planwerks.
+  const sn = _sichtNodes(), sl = _sichtLinks();
+  const fn = _fachNodes(), fl = _fachLinks();
+  const nOk = sn.filter(n => _statusNode(n) === 'ok').length;
+  const lOk = sl.filter(l => _statusLink(l) === 'ok').length;
+  const gesamt = PD.plaene.length > 1
+    ? ` · <span class="pd-gesamt">Planwerk ${fn.filter(n => _statusNode(n) === 'ok').length}/${fn.length} · ${fl.filter(l => _statusLink(l) === 'ok').length}/${fl.length}</span>`
+    : '';
   // Die Kartenseite gehört dazu: ohne sie liest sich „12/12" wie „fertig",
   // obwohl vierzig Gebäude nie betrachtet wurden.
   const ab = pdAbgleich();
-  el.innerHTML = `<b>${_esc(PD.plan.name)}</b> · Einträge ${nOk}/${PD.nodes.length} · Kabel ${lOk}/${PD.links.length}`
+  el.innerHTML = `<b>${_esc(PD.plan.name)}</b>${PD.plan.rolle === 'archiv' ? ' <span class="pd-archiv-tag">Archiv</span>' : ''}`
+    + ` · Einträge ${nOk}/${sn.length} · Kabel ${lOk}/${sl.length}${gesamt}`
+    + (ab.uebertragen.length ? ` · <span class="pd-vorl">${ab.uebertragen.length} übertragen, Lage prüfen</span>` : '')
     + (ab.nurKarte.length ? ` · <span class="pd-offen">Karte: ${ab.nurKarte.length} nicht im Plan</span>` : ' · Karte vollständig')
     + (ab.fehlt.length ? ` · <span class="pd-fehl">${ab.fehlt.length} fehlt auf der Karte</span>` : '')
     + (ab.vorlaeufig.length ? ` · <span class="pd-vorl">${ab.vorlaeufig.length} Position prüfen</span>` : '')
@@ -2070,6 +2427,7 @@ function _flussStarten() {
 
 function _renderAll() {
   _zeigeFarbZahlen();
+  _renderBlaetter();
   _renderMarks();
   _flussStarten();
   _renderForm();
@@ -2167,8 +2525,9 @@ function _stufeRunter(cableType, mm2) {
 
 /** Speiseseitige Plan-Einträge: das netzseitigste vorhandene Betriebsmittel. */
 function _quellKnoten() {
+  const fach = _fachNodes();
   for (const t of ['NAP', 'Schaltanlage', 'Trafo', 'NSHV']) {
-    const treffer = PD.nodes.filter(n => _istGebKnoten(n) && n.linkId != null
+    const treffer = fach.filter(n => _istGebKnoten(n) && n.linkId != null
       && _anschlussKandidaten(n.linkId).some(a => a.type === t));
     if (treffer.length) return treffer;
   }
@@ -2183,8 +2542,8 @@ function _quellKnoten() {
  * Schritten auf den kleinsten Querschnitt zu.
  */
 function _speiseVorbilder() {
-  const adj = new Map(PD.nodes.map(n => [n.id, []]));
-  PD.links.forEach(l => { adj.get(l.a)?.push({ l, to: l.b }); adj.get(l.b)?.push({ l, to: l.a }); });
+  const adj = new Map(_fachNodes().map(n => [n.id, []]));
+  _fachLinks().forEach(l => { adj.get(l.a)?.push({ l, to: l.b }); adj.get(l.b)?.push({ l, to: l.a }); });
   const vorbild = new Map();
   const besucht = new Set();
   const schlange = _quellKnoten().map(n => { besucht.add(n.id); return { id: n.id, bekannt: null }; });
@@ -2268,7 +2627,7 @@ function _umhaengen(edge, altId, neuId) {
     qsGeschaetzt: edge.qsGeschaetzt, qsQuelle: edge.qsQuelle,
     massnahmen: edge.massnahmen, autoGenerated: edge.autoGenerated,
   };
-  const planLink = PD.links.find(l => l.edgeId === edge.id);
+  const planLink = _fachLinks().find(l => l.edgeId === edge.id);
   removeStromEdge(edge);
   const neu = addStromEdge(neuId, anderer);
   if (!neu) return null;
@@ -2291,7 +2650,7 @@ export function pdMsAnlagenReparieren() {
     // Umhaengen eine Dopplung. Dann ist die Leitung am NAP der Ueberrest
     // eines frueheren Standes und kann weg.
     if (_edgeDa(ziel.id, anderer)) {
-      const planLink = PD.links.find(l => l.edgeId === e.id);
+      const planLink = _fachLinks().find(l => l.edgeId === e.id);
       if (planLink) planLink.edgeId = null;
       removeStromEdge(e);
       doppelt++;
@@ -2390,7 +2749,7 @@ export function pdMascheEntfernen(edgeId) {
   if (!e) return;
   const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
   const bez = `${nm(e.u)} → ${nm(e.v)}`;
-  const l = PD.links.find(x => x.edgeId === edgeId);
+  const l = _fachLinks().find(x => x.edgeId === edgeId);
   if (l) l.edgeId = null;   // Plan-Eintrag bleibt, gilt wieder als nicht übernommen
   removeStromEdge(e);
   showHint(`Masche aufgelöst: ${bez} entfernt.`);
@@ -2399,7 +2758,7 @@ export function pdMascheEntfernen(edgeId) {
 
 /** Kabel mit geschätztem Querschnitt, noch nicht bestätigt. */
 export function pdGeschaetzteKabel() {
-  const ausPlan = new Set(PD.links.map(l => l.edgeId).filter(Boolean));
+  const ausPlan = new Set(_fachLinks().map(l => l.edgeId).filter(Boolean));
   return (window.stromEdges || []).filter(e => e.qsGeschaetzt && ausPlan.has(e.id));
 }
 
@@ -2476,7 +2835,12 @@ function _ringOhneTrennstelle() {
 // ── Übernahme in Karte + Stromnetz ──────────────────────────────────────────
 export function pdApply() {
   if (!PD.plan) { showHint('⚠ Erst einen Plan laden.'); return; }
-  if (!PD.nodes.length) { showHint('⚠ Noch keine Einträge im Plan markiert.'); return; }
+  // Übernommen wird das ganze Planwerk, nicht nur das sichtbare Blatt: sonst
+  // müsste man je Blatt einmal übernehmen, und der stationsinterne Standard-
+  // aufbau (Schritt 3) liefe bei jedem Durchgang erneut an.
+  const fachNodes = _fachNodes();
+  const fachLinks = _fachLinks();
+  if (!fachNodes.length) { showHint('⚠ Noch keine Einträge im Plan markiert.'); return; }
 
   const bericht = { assetsNeu: 0, assetsVerknuepft: 0, kabelNeu: 0, offeneKnoten: 0, offeneKabel: 0, selbstbezug: 0, fehlend: 0, vorlaeufig: 0, stationsintern: 0, ringNeu: 0, ringMehrdeutig: 0, qsGeschaetzt: 0 };
   let letzteQuelle = '';
@@ -2484,7 +2848,7 @@ export function pdApply() {
 
   const mutate = () => {
     // 1 · Einträge → Assets
-    for (const n of PD.nodes) {
+    for (const n of fachNodes) {
       if (n.assetId && ASSETS.items.some(a => a.id === n.assetId)) continue;
       // Als fehlend erfasste Gebäude sind Befunde, keine anzulegenden Objekte.
       if (n.fehlt) { bericht.fehlend++; continue; }
@@ -2546,7 +2910,7 @@ export function pdApply() {
 
     // 2 · Kabel → stromEdges (Geometrie kommt aus dem Trassenrouting)
     const vorbild = _speiseVorbilder();
-    for (const l of PD.links) {
+    for (const l of fachLinks) {
       if (l.edgeId && (window.stromEdges || []).some(e => e.id === l.edgeId)) continue;
       const a = _node(l.a), b = _node(l.b);
       if (!a?.assetId || !b?.assetId) { bericht.offeneKabel++; continue; }
@@ -2593,7 +2957,7 @@ export function pdApply() {
     //     nicht, aber er ist immer gleich — und ohne ihn hängt die NSHV einer
     //     Trafostation an nichts und der Verbraucher eines Gebäudes ebenso.
     const beteiligt = new Set();
-    for (const n of PD.nodes) {
+    for (const n of fachNodes) {
       const a = n.assetId ? ASSETS.items.find(x => x.id === n.assetId) : null;
       if (a?.buildingId != null) beteiligt.add(a.buildingId);
     }
@@ -2602,9 +2966,9 @@ export function pdApply() {
       bericht.stationsintern += _gebaeudeIntern(gebId, zuleitungen.get(gebId));
     }
 
-    // 4 · MS-Ring schließen — nur über Assets, die dieses Blatt berührt hat
+    // 4 · MS-Ring schließen — nur über Assets, die das Planwerk berührt hat
     const beteiligteAssets = new Set();
-    for (const n of PD.nodes) {
+    for (const n of fachNodes) {
       if (n.assetId) beteiligteAssets.add(n.assetId);
       const geb = _istGebKnoten(n) && n.linkId != null ? n.linkId : null;
       if (geb != null) _anschlussKandidaten(geb).forEach(a => beteiligteAssets.add(a.id));
@@ -2639,16 +3003,22 @@ export function pdApply() {
   if (bericht.qsGeschaetzt) offen.push(`${bericht.qsGeschaetzt} Kabel ohne Angabe — Querschnitt geschätzt und gekennzeichnet`);
   if (bericht.ringMehrdeutig) offen.push(`${bericht.ringMehrdeutig} MS-Netz(e) verzweigt — Ringschluss nicht eindeutig, von Hand ziehen`);
   if (bericht.ringNeu && _ringOhneTrennstelle()) offen.push('keine Schaltanlage als Trennstelle gekennzeichnet — für die Ringanalyse im Anlagen-Inspektor setzen');
+  // Wieviele Blätter dahinterstecken, gehört in die Meldung: sonst liest sich
+  // „3 Kabel" so, als sei nur das sichtbare Blatt abgearbeitet worden.
+  const blattAnz = aktiveBlattIds(PD.plaene).size;
   showHint(
     (teile.length ? '✔ Übernommen: ' + teile.join(', ') + '.' : 'Nichts Neues zu übernehmen.')
+    + (blattAnz > 1 ? ` (über ${blattAnz} aktive Blätter)` : '')
     + (offen.length ? ' Offen: ' + offen.join(', ') + '.' : ''));
 }
 
 // ── Persistenz (Projektdatei) ───────────────────────────────────────────────
 export function pdSerialize() {
-  if (!PD.plan) return null;
+  if (!PD.plaene.length) return null;
   return {
-    plan: { ...PD.plan },
+    plaene: PD.plaene.map(b => ({ ...b })),
+    aktivId: PD.aktivId,
+    planSeq: PD.planSeq,
     nodes: PD.nodes.map(n => ({ ...n })),
     links: PD.links.map(l => ({ ...l })),
     seq: PD.seq,
@@ -2660,16 +3030,16 @@ export function pdSerialize() {
 export function pdDeserialize(data) {
   // Auch die Symbolgroesse zuruecksetzen: ohne das traegt ein Projekt ohne
   // Bestandsplan die Einstellung der vorigen Liegenschaft weiter.
-  PD.plan = null; PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1; PD.abgehakt = {};
-  _sel = null; _pendingA = null; _pendingSetzen = null;
+  PD.plaene = []; PD.aktivId = null; PD.planSeq = 1;
+  PD.nodes = []; PD.links = []; PD.seq = 1; PD.gebGroesse = 1; PD.abgehakt = {};
+  _sel = null; _pendingA = null; _pendingPts = []; _pendingSetzen = null;
   if (_imgLayer) { _imgLayer.remove(); _imgLayer = null; }
-  if (data && data.plan && data.plan.url) {
-    PD.plan = { ...data.plan };
-    PD.nodes = Array.isArray(data.nodes) ? data.nodes.map(n => ({ ...n })) : [];
-    PD.links = Array.isArray(data.links) ? data.links.map(l => ({ ...l })) : [];
-    PD.seq = data.seq || (PD.nodes.length + PD.links.length + 1);
-    PD.gebGroesse = Number.isFinite(data.gebGroesse) ? data.gebGroesse : 1;
-    PD.abgehakt = (data.abgehakt && typeof data.abgehakt === 'object') ? { ...data.abgehakt } : {};
+
+  // Nimmt beide Formate an — altes Einzelplan-Feld wie neue Blätterliste.
+  // Die Migration steht DOM-frei in lib/planblaetter.js und ist dort geprüft.
+  const geladen = ladePlanwerk(data);
+  if (geladen) {
+    Object.assign(PD, geladen);
     if (_map) _showPlanLayer();
   } else {
     _marks?.clearLayers();

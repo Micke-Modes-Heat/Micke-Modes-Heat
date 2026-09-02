@@ -11,12 +11,15 @@ import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { _batchImporting } from './01-globals-varianten.js';
 import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 import { istSchicht, getAktiveSchicht } from './lib/schichten.js';
+import { kdMapOptionen } from './20-kartendrehung.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { R_MAX } from './01-globals-varianten.js';
 
 // Guard against HMR re-init: reuse cached instance if container is already initialized
 export const map = window._appLeafletMap || (() => {
-  const m = L.map('map',{zoomControl:true}).setView([52.0816,8.0034],15);
+  // kdMapOptionen() liefert ohne eingeschalteten Versuch {rotate:false, bearing:0}
+  // — dann verhält sich leaflet-rotate wie gar nicht vorhanden (s. 20-kartendrehung.js).
+  const m = L.map('map',{zoomControl:true, ...kdMapOptionen()}).setView([52.0816,8.0034],15);
   window._appLeafletMap = m;
   return m;
 })();
@@ -422,7 +425,11 @@ export function addGebaeude(opts={}){
            // Das Gebäude ist der primäre Träger — Elektroassets erben sie (createAsset/_syncSchichtToAssets).
            schicht: istSchicht(opts.schicht) ? opts.schicht : getAktiveSchicht(),
            pvAktiv: false, pvDachanteil: opts.pvDachanteil ?? 30,
-           pvModus: 'pauschal', pvFlaechen: [], pvFlGcr: null, pvFlAusrichtung: 'sued', pvFlBelegung: null,
+           // Default ist der Flaechen-Modus: gezeichnete Belegungsflaechen sind der
+           // Regelfall, die Dachanteil-Pauschale nur noch der Schnellschaetzer.
+           // Ohne gezeichnete Belegung rechnet calcGebKwp() ohnehin pauschal weiter.
+           pvModus: 'flaechen', pvFlaechen: [], pvFlGcr: null, pvFlAusrichtung: 'sued', pvFlBelegung: null,
+           pvBaujahr: null,
            strom: opts.strom || '', stromProfil: opts.stromProfil || 'auto', spezStrom: opts.spezStrom || '',
            dachform:      opts.dachform      || 'sattel',
            dachAzimut:    opts.dachAzimut    ?? null,
@@ -961,9 +968,14 @@ export function aggregateGebStrom() {
 // die Elektro-Assets denselben Lebenszyklus (geplant/aktiv/abgerissen) haben.
 function _syncYearToAssets(gebId, field, year) {
   if (!window.ASSETS?.items) return;
+  // Ein eigener Bautermin der Dach-PV (g.pvBaujahr) haelt gegen: die Anlage wird
+  // typischerweise spaeter gebaut als das Gebäude, ihr Baujahr darf das
+  // Gebaeude-Baujahr also nicht ueberschreiben.
+  const geb = (window.gebaeude || []).find(g => g.id === gebId);
+  const pvFest = field === 'baujahr' && geb && geb.pvBaujahr != null;
   window.ASSETS.items
     .filter(a => a.buildingId === gebId)
-    .forEach(a => { a[field] = year; });
+    .forEach(a => { if (pvFest && a.type === 'PV') return; a[field] = year; });
 }
 function _syncAbrissToAssets(gebId, abrissjahr) { _syncYearToAssets(gebId, 'abrissjahr', abrissjahr); }
 function _syncBaujahrToAssets(gebId, baujahr)   { _syncYearToAssets(gebId, 'baujahr',    baujahr); }

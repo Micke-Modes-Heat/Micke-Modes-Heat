@@ -609,6 +609,48 @@ window.overwritePvAsset = function(gId) {
   _rerenderCard(gId);
 };
 
+// Dach-PV → PV-Asset: legt beim ersten gezeichneten Belegungspolygon automatisch
+// ein PV-Asset an und übernimmt kWp/Ausrichtung. Ohne Asset zählt die gezeichnete
+// Anlage in keiner Analyse mit (siehe PV-Übersicht, Status „fehlt").
+function _autoCreatePvAssetFromDraw(g) {
+  if (!g || !_hasBelegung(g)) return null;
+  if (getAssetsForBuilding(g.id).some(a => a.type === 'PV')) return null;
+  const pv = _pvuEnsurePvAsset(g);
+  if (!pv) return null;
+  if (g.pvBaujahr != null) pv.baujahr = g.pvBaujahr;
+  window.overwritePvAsset(g.id);
+  if (typeof recalcStromNetz === 'function') recalcStromNetz();
+  if (typeof redrawAllAssets === 'function') redrawAllAssets();
+  return pv;
+}
+
+// kWp im PV-Asset mitziehen, solange es mit der zuvor gezeichneten Leistung
+// übereinstimmte (prevKwp). Ein manuell abweichend gesetztes Asset bleibt
+// unangetastet — dafür gibt es weiterhin den Überschreiben-Button.
+function _syncPvAssetIfInSync(g, prevKwp) {
+  if (!g || g.pvModus !== 'flaechen' || !_hasBelegung(g)) return;
+  const pv = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
+  if (!pv) return;
+  const cur = parseFloat(pv.props?.leistungKWp);
+  if (!isFinite(cur) || Math.abs(cur - prevKwp) > 0.05) return;
+  window.overwritePvAsset(g.id);
+}
+
+// Bautermin der Dach-PV. Liegt am Gebäude (g.pvBaujahr) und wird auf das PV-Asset
+// gespiegelt; leeres Feld → die Anlage erbt wieder das Gebäude-Baujahr.
+window.updateGebPvBaujahr = function(gId, val) {
+  const g = window.gebaeude?.find(x => x.id === gId);
+  if (!g) return;
+  const v = parseInt(val, 10);
+  g.pvBaujahr = (Number.isInteger(v) && v >= 1800 && v <= 2100) ? v : null;
+  getAssetsForBuilding(gId).filter(a => a.type === 'PV').forEach(a => {
+    a.baujahr = g.pvBaujahr != null ? g.pvBaujahr : (g.baujahr ?? null);
+    drawAssetMarker(a);
+  });
+  if (typeof recalcStromNetz === 'function') recalcStromNetz();
+  _rerenderCard(gId);
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // PV-ÜBERSICHT — Abgleich „gezeichnete Fläche" ↔ „kWp im PV-Asset"
 // Fängt den häufigen Bruch ab: Belegungsfläche gezeichnet (Module platziert), aber
@@ -985,7 +1027,22 @@ function buildDachSection(g, opts = {}) {
       ☀ ${kwpKorr.toFixed(1)} kWp → PV-Asset überschreiben
     </button>` : '';
 
-  const modus = g.pvModus || 'pauschal';
+  const modus = g.pvModus || 'flaechen';
+
+  // ── Bautermin der Dachanlage (= Baujahr des PV-Assets) ───────────────────
+  // Bestimmt, ab welchem Jahr die Anlage im Jahres-Slider/Fahrplan aktiv ist.
+  // Ohne Eintrag erbt das Asset das Gebäude-Baujahr.
+  const pvAssetBj = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
+  const pvBjRow = `
+    <div class="inp-group" style="margin-top:6px;">
+      <div class="inp-label" title="Jahr der Inbetriebnahme der Dachanlage — steuert ab wann sie im Jahres-Slider und im Fahrplan zählt. Leer = wie Gebäude.">Bautermin PV (Jahr)</div>
+      <input class="inp-field" type="number" min="1800" max="2100" step="1"
+        value="${escVal(g.pvBaujahr)}" placeholder="${g.baujahr || 'wie Gebäude'}"
+        data-change="updateGebPvBaujahr(${g.id},this.value)"/>
+      ${pvAssetBj
+        ? ''
+        : '<div style="font-size:8px;color:var(--muted);margin-top:2px;">↳ wird beim automatischen Anlegen des PV-Assets übernommen</div>'}
+    </div>`;
 
   // ── Modus-Umschalter: Pauschal (Dachanteil) vs. Flächen zeichnen ──────────
   const modeToggle = `
@@ -1151,6 +1208,7 @@ function buildDachSection(g, opts = {}) {
         </div>
         ${modeToggle}
         ${modus === 'flaechen' ? flaechenUI : pauschalUI}
+        ${pvBjRow}
       </div>
     </div>`;
 }
@@ -1167,6 +1225,7 @@ window.toggleGebDach = function(gId) {
 window.updateGebDach = function(gId, field, value) {
   const g = window.gebaeude?.find(x => x.id === gId);
   if (!g) return;
+  const prevKwp = calcGebKwpKorr(g);
   if (field === 'dachform') {
     g.dachform = value;
     g.dachAutoAzimut = false; // Manuelle Änderung löscht Auto-Flag
@@ -1178,7 +1237,10 @@ window.updateGebDach = function(gId, field, value) {
     g.dachNeigung = value === '' ? null : parseFloat(value);
   }
   // Im Flächen-Modus beeinflussen Dachform/Neigung/Azimut Platzierung, kWp UND Profil
-  if (g.pvModus === 'flaechen' && _hasBelegung(g)) { redrawGebPvModules(g); calcStromPanel(); }
+  if (g.pvModus === 'flaechen' && _hasBelegung(g)) {
+    redrawGebPvModules(g); calcStromPanel();
+    _syncPvAssetIfInSync(g, prevKwp);
+  }
   _rerenderCard(gId);
 };
 
@@ -1187,10 +1249,14 @@ window.ermittleAzimut = function(gId) {
   if (!g?.polygon) return;
   const az = detectRoofAzimutFromPolygon(g.polygon);
   if (az === null) return;
+  const prevKwp = calcGebKwpKorr(g);
   g.dachAzimut     = az;
   g.dachAutoAzimut = true;
   delete g.pvRidgeOverride; // zurück auf automatische Firstlage (Schwerpunkt)
-  if (g.pvModus === 'flaechen' && _hasBelegung(g)) { redrawGebPvModules(g); calcStromPanel(); }
+  if (g.pvModus === 'flaechen' && _hasBelegung(g)) {
+    redrawGebPvModules(g); calcStromPanel();
+    _syncPvAssetIfInSync(g, prevKwp);
+  }
   _rerenderCard(gId);
 };
 
@@ -1708,6 +1774,7 @@ window.finishGebFirstDraw = function() {
   const g = window.gebaeude?.find(x => x.id === st.gId);
   window.cancelGebFirstDraw();
   if (!g) return;
+  const prevKwp = calcGebKwpKorr(g);
   const cosL  = Math.cos(((p1.lat + p2.lat) / 2) * Math.PI / 180);
   const dLat  = (p2.lat - p1.lat) * 111320;
   const dLng  = (p2.lng - p1.lng) * 111320 * cosL;
@@ -1722,6 +1789,7 @@ window.finishGebFirstDraw = function() {
   g.dachAutoAzimut = false;
   g.pvRidgeOverride = { lat: (p1.lat + p2.lat) / 2, lng: (p1.lng + p2.lng) / 2 };
   redrawGebPvModules(g);
+  _syncPvAssetIfInSync(g, prevKwp);
   _rerenderCard(g.id);
   _updateGebLabelPv(g.id);
   calcStromPanel();
@@ -1731,8 +1799,10 @@ window.finishGebFirstDraw = function() {
 window.resetGebFirst = function(gId) {
   const g = window.gebaeude?.find(x => x.id === gId);
   if (!g || !g.pvRidgeOverride) return;
+  const prevKwp = calcGebKwpKorr(g);
   delete g.pvRidgeOverride;
   redrawGebPvModules(g);
+  _syncPvAssetIfInSync(g, prevKwp);
   _rerenderCard(gId);
   calcStromPanel();
   renderGebPvPanel();
@@ -1754,6 +1824,8 @@ window.finishGebPvDraw = function() {
   redrawGebPvModules(g);   // Module neu platzieren (Belegung erweitert / Sperrfläche schneidet aus)
   g.pvModus = 'flaechen';
   if (_hasBelegung(g)) g.pvAktiv = true;
+  // Erste Belegungsfläche an einem Gebäude ohne PV-Asset → Asset automatisch anlegen
+  _autoCreatePvAssetFromDraw(g);
   _rerenderCard(g.id);
   _updateGebLabelPv(g.id);
   calcStromPanel();
@@ -1763,11 +1835,13 @@ window.finishGebPvDraw = function() {
 window.removeGebPvFlaeche = function(gId, flId) {
   const g = window.gebaeude?.find(x => x.id === gId);
   if (!g || !g.pvFlaechen) return;
+  const prevKwp = calcGebKwpKorr(g);
   const fl = g.pvFlaechen.find(f => f.id === flId);
   if (fl) { if (fl.layer) map.removeLayer(fl.layer); if (fl.svgLayer) map.removeLayer(fl.svgLayer); }
   g.pvFlaechen = g.pvFlaechen.filter(f => f.id !== flId);
   redrawGebPvModules(g);   // Module neu platzieren (Sperrfläche entfernt → Fläche wieder frei)
   if (!_hasBelegung(g)) g.pvAktiv = false;
+  _syncPvAssetIfInSync(g, prevKwp);
   _rerenderCard(gId);
   _updateGebLabelPv(gId);
   calcStromPanel();
@@ -1777,6 +1851,7 @@ window.removeGebPvFlaeche = function(gId, flId) {
 window.updateGebPvFl = function(gId, field, val) {
   const g = window.gebaeude?.find(x => x.id === gId);
   if (!g) return;
+  const prevKwp = calcGebKwpKorr(g);
   if (field === 'gcr') { g.pvFlGcr = parseFloat(val) || 35; g._pvFlGcrManual = true; }
   else if (field === 'belegung') { g.pvFlBelegung = Math.min(100, parseFloat(val) || 90); }
   else if (field === 'ausrichtung') {
@@ -1784,6 +1859,7 @@ window.updateGebPvFl = function(gId, field, val) {
     if (!g._pvFlGcrManual) g.pvFlGcr = val === 'ostwest' ? 85 : 40;
   }
   redrawGebPvFlaechen(g);   // Modulmuster an neue Ausrichtung/GCR anpassen
+  _syncPvAssetIfInSync(g, prevKwp);
   _rerenderCard(gId);
   calcStromPanel();
   renderGebPvPanel();
@@ -2534,8 +2610,8 @@ export function _buildProjectData() {
       dachform: g.dachform || 'sattel', dachAzimut: g.dachAzimut ?? null,
       dachNeigung: g.dachNeigung ?? null, dachAutoAzimut: g.dachAutoAzimut || false,
       pvRidgeOverride: g.pvRidgeOverride || null,
-      pvModus: g.pvModus || 'pauschal', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
-      pvFlBelegung: g.pvFlBelegung ?? null,
+      pvModus: g.pvModus || 'flaechen', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
+      pvFlBelegung: g.pvFlBelegung ?? null, pvBaujahr: g.pvBaujahr ?? null,
       pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche })),
       massnahmen: g.massnahmen || [],
       importSourceId: g.importSourceId || null,
@@ -2851,7 +2927,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     'abrissjahr','stockwerke','waermeManual','heizlastManual','strom','spezStrom',
     'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
     'dachNeigung','dachAutoAzimut','pvRidgeOverride','pvModus','pvFlGcr',
-    'pvFlAusrichtung','pvFlBelegung',
+    'pvFlAusrichtung','pvFlBelegung','pvBaujahr',
   ];
   fields.forEach(field => {
     if (source[field] !== undefined) target[field] = structuredClone(source[field]);
@@ -3105,7 +3181,12 @@ function _applyProjectData(project) {
             newG.dachAutoAzimut = g.dachAutoAzimut || false;
             newG.pvRidgeOverride = g.pvRidgeOverride || null;
             // PV-Flächenzeichnung (Belegungs-/Sperrflächen) wiederherstellen
-            newG.pvModus        = g.pvModus || 'pauschal';
+            // Default ist „Flächen zeichnen". Alte Projekte, in denen die Pauschale gar
+            // nicht genutzt wurde (kein pvAktiv, keine gezeichnete Fläche), ziehen mit —
+            // rechnerisch identisch, da calcGebKwp ohne Belegung pauschal weiterrechnet.
+            newG.pvModus        = g.pvModus || 'flaechen';
+            if (newG.pvModus === 'pauschal' && !newG.pvAktiv && !(g.pvFlaechen || []).length) newG.pvModus = 'flaechen';
+            newG.pvBaujahr      = g.pvBaujahr ?? null;
             newG.pvFlGcr        = g.pvFlGcr ?? null;
             newG.pvFlAusrichtung = g.pvFlAusrichtung || 'sued';
             newG.pvFlBelegung   = g.pvFlBelegung ?? null;

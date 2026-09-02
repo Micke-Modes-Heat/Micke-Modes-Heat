@@ -54,6 +54,29 @@ function lbCapApplyPreset(id) {
   lbRenderCapturePanel();
 }
 
+/**
+ * html2canvas kann die CSS-Drehung der Kartenebene NICHT abbilden (leaflet-rotate
+ * dreht `.leaflet-rotate-pane` per transform; im Rasterbild landet die Karte
+ * trotzdem nord-oben, während einzelne Overlays ihre eigene Transformation
+ * behalten — das Ergebnis ist in sich widersprüchlich). Im Browser nachgemessen:
+ * eine Aufnahme bei 0° und bei 90° zeigt dieselbe Nordausrichtung.
+ *
+ * Deshalb wird für die Dauer der Aufnahme auf Nord-oben zurückgedreht und danach
+ * der vorherige Winkel wiederhergestellt. Für ein GEDREHTES Bild ist ohnehin der
+ * Vektor-Lageplan der richtige Weg — der dreht sauber (siehe lpBuildTransform).
+ *
+ * @returns {Promise<{winkel:number, zurueck:function}>} winkel = 0, wenn nichts zu tun war
+ */
+async function lbDrehungPausieren() {
+  const winkel = (typeof window.kdAktiv === 'function' && window.kdAktiv()) ? window.kdWinkel() : 0;
+  if (!winkel) return { winkel: 0, zurueck: () => {} };
+  window.map.setBearing(0);
+  // Kurz warten: der nord-oben-Ausschnitt zeigt an den Rändern Kacheln, die im
+  // gedrehten Zustand außerhalb lagen und erst nachgeladen werden müssen.
+  await new Promise(res => setTimeout(res, 600));
+  return { winkel, zurueck: () => { try { window.map.setBearing(winkel); } catch (e) { void e; } } };
+}
+
 async function lbCaptureMap() {
   if (_lbBusy) return;
   if (typeof window.html2canvas !== 'function') { lbCapSay('html2canvas nicht verfügbar.', true); return; }
@@ -71,9 +94,11 @@ async function lbCaptureMap() {
   window.setAssetLayerVisible(_lbCapLayers.assets);
 
   // UI-Chrome nur für den Moment der Aufnahme ausblenden (reine Darstellung, kein State)
-  const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-popup')];
+  const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-control-rotate, .leaflet-popup')];
   const prevDisplay = chrome.map(el => el.style.display);
   chrome.forEach(el => { el.style.display = 'none'; });
+
+  const dreh = await lbDrehungPausieren();
 
   // Zwei Frames abwarten, damit Leaflet die geänderte Ebenen-Sichtbarkeit fertig gezeichnet hat
   await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
@@ -82,6 +107,7 @@ async function lbCaptureMap() {
     const canvas = await window.html2canvas(mapEl, {
       useCORS: true, allowTaint: true, scale: _lbCapScale, logging: false, backgroundColor: '#eef2f5',
     });
+    dreh.zurueck();
     chrome.forEach((el, i) => { el.style.display = prevDisplay[i]; });
     canvas.toBlob(blob => {
       _lbBusy = false;
@@ -89,10 +115,12 @@ async function lbCaptureMap() {
       _lbCapBlob = blob;
       if (_lbCapUrl) URL.revokeObjectURL(_lbCapUrl);
       _lbCapUrl = URL.createObjectURL(blob);
-      lbCapSay(`✓ Kartenbild erzeugt (${canvas.width}×${canvas.height} px).`);
+      lbCapSay(`✓ Kartenbild erzeugt (${canvas.width}×${canvas.height} px).`
+        + (dreh.winkel ? ' Für die Aufnahme kurz auf Nord-oben gedreht — ein gedrehtes Bild liefert der Vektor-Lageplan.' : ''));
       lbRenderCapturePanel();
     }, 'image/png');
   } catch (err) {
+    dreh.zurueck();
     chrome.forEach((el, i) => { el.style.display = prevDisplay[i]; });
     _lbBusy = false;
     lbCapSay('Kartenbild konnte nicht erzeugt werden: ' + (err?.message || err), true);
@@ -170,6 +198,10 @@ window.lbCapDownload = lbCapDownload;
  *     Liste ergibt sich dynamisch aus dem, was im Projekt tatsächlich existiert.
  *   • Einfärben nach — Keine (einheitlich) / Nutzungstyp / Status, mit dynamisch
  *     erzeugter Legende (Farbpalette, kein Feldname hart codiert).
+ *   • Beschriftungen — eigener Master-Schalter plus Auswahl, WAS benannt wird
+ *     (Gebäude + je Asset-Typ, z. B. ein Plan mit ausschließlich Trafo-Namen);
+ *     jede Beschriftung ist im Plan mit der Maus frei verschiebbar, bleibt dabei
+ *     aber an ihrem Objekt hängen (_lpLabelOffsets).
  * ═══════════════════════════════════════════════════════════════════════ */
 const LP_R = 6371000; // Erdradius (m), äquirektangulare Näherung — für Liegenschaftsgröße ausreichend
 const LP_STATUS_LABEL = { bestand: 'Bestand', neu: 'Neubau', abriss: 'Rückbau' };
@@ -182,15 +214,28 @@ let _lpState = {
   anzeige: 'alle',                      // 'alle' | 'bestand' | 'neubau' | 'abriss'
   einfaerben: 'keine',                  // 'keine' | 'nutzung' | 'status'
   gebaeude: true, waerme: true, strom: true, msring: false,
-  beschriftung: false,                  // Namen/Nummern von Gebäuden + Assets zeigen
+  beschriftung: false,                  // Master-Schalter: Namen/Nummern von Gebäuden + Assets zeigen
+  labelGeb: true,                       // Teil der Beschriftungs-Auswahl: Gebäude benennen (Assets je Typ, s. _lpLabelTypes)
   energieModus: 'spez',                 // nur relevant wenn einfaerben==='energie': 'spez'|'heizlast'|'verlust'
   kartenausschnitt: null,               // null = automatisch an Inhalt anpassen; sonst {south,west,north,east}
+  drehung: 0,                           // Drehwinkel des Plans in Grad (im Uhrzeigersinn, 0 = Norden oben)
   satBild: null,                        // {dataUrl, bounds} — eingefangenes Satellitenbild, oder null
   satBildAn: true,                      // ob das eingefangene Bild angezeigt wird (unabhängig vom Einfangen selbst)
   vergleich: false,                     // Vorher/Nachher: referenzjahr + zieljahr als zwei Momentaufnahmen nebeneinander
 };
 let _lpAssetTypes = {};   // { [ASSET_CFG-Typ]: boolean } — welche Asset-Ebenen aktiv sind
 let _lpAssetCounts = {};  // { [Typ]: Anzahl im Projekt } — für die Panel-Liste
+// Beschriftungs-Auswahl — bewusst getrennt von _lpAssetTypes: das steuert, WAS gezeichnet wird,
+// dies steuert, WAS davon einen Namen bekommt (z. B. nur die Trafos beschriften, während
+// Gebäude und übrige Assets stumm bleiben). Default true, damit der Master-Schalter
+// "Beschriftungen" wie bisher zunächst alles Sichtbare benennt.
+let _lpLabelTypes = {};   // { [Typ]: boolean } — je Asset-Typ: Beschriftung an/aus
+// Von Hand verschobene Standard-Beschriftungen: key `geb:<id>` / `asset:<id>` -> {dx,dy} in
+// SVG-Einheiten RELATIV zur Standardposition am Objekt (nicht Lat/Lng) — die Beschriftung bleibt
+// dadurch am richtigen Objekt hängen und überlebt Pan/Zoom/Filter-/Jahreswechsel. Gleiche Idee wie
+// `offset` bei den individuellen Markierungen (s. _lpMarkierungen), aber eigene Liste: hier hängt
+// kein Text/Hervorheben dran, es ist nur die Position einer ohnehin gezeichneten Beschriftung.
+let _lpLabelOffsets = new Map();
 let _lpSatBusy = false;
 
 // Freie Beschriftungen (Text/Linie) — in SVG-Koordinaten des Plans (nicht Lat/Lng), weil
@@ -201,6 +246,12 @@ const LP_ANNO_FARBE = '#6A1B9A';
 let _lpAnnotations = []; // { id, type:'text'|'line', x,y (Text) | x1,y1,x2,y2 (Linie), text }
 let _lpAnnoNextId = 1;
 let _lpPlacing = null;   // null | { type:'text'|'line', text, x1?, y1? }
+
+// "An Achse ausrichten": zwei Klicks in den Plan legen eine Achse fest (z. B. Anfang/Ende
+// der Hauptstraße), aus deren Richtung sich der Drehwinkel ergibt. Bewusst NICHT über
+// _lpPlacing gelöst — das steuert die freien Text-/Linien-Annotationen und blendet dafür
+// eigene Panel-Hinweise ein.
+let _lpAchse = null;     // null | { p1: {lat,lng}|null }
 
 // Einzeln markierte Objekte (Gebäude/Assets) — Klick auf ein Objekt im Plan wählt es aus und
 // zeigt einen kleinen Inline-Editor im Panel (Text/Hervorheben/Sichtbarkeit), UNABHÄNGIG vom
@@ -412,7 +463,10 @@ function lpAssetTypenAktualisieren() {
     for (const a of (window.listAssets() || [])) counts[a.type] = (counts[a.type] || 0) + 1;
   }
   _lpAssetCounts = counts;
-  for (const t of Object.keys(counts)) { if (!(t in _lpAssetTypes)) _lpAssetTypes[t] = false; }
+  for (const t of Object.keys(counts)) {
+    if (!(t in _lpAssetTypes)) _lpAssetTypes[t] = false;
+    if (!(t in _lpLabelTypes)) _lpLabelTypes[t] = true; // Beschriftung folgt standardmäßig der Ebene
+  }
 }
 
 /** Sammelt die zu zeichnende Geometrie gemäß Zeithorizont, Ebenen- und Asset-Auswahl. */
@@ -501,17 +555,55 @@ function lpSammleGeometrieJahr(jahr) {
  * Ohne diesen Parameter würde der automatische Vergleichs-Ausschnitt die Gebäude daher bis an
  * den Bildrand quetschen.
  */
+/**
+ * Aktuelle Plandrehung als Sinus/Cosinus. Der Winkel dreht den INHALT im fertigen Bild im
+ * Uhrzeigersinn (gleiche Konvention wie SVG `rotate(+deg)`, y zeigt nach unten). 0 = Norden oben.
+ */
+function lpDreh() {
+  const deg = _lpState.drehung || 0;
+  const rad = deg * Math.PI / 180;
+  return { deg, rad, cos: Math.cos(rad), sin: Math.sin(rad) };
+}
+
+/**
+ * Drehwinkel (Grad), der die Achse A→B im Bild senkrecht stellt. Auf ±90° normiert, damit
+ * der Plan nicht auf dem Kopf landet (senkrecht ist senkrecht, egal in welche Richtung).
+ */
+function lpAchsenWinkel(a, b) {
+  const latRef = (a.lat + b.lat) / 2 * Math.PI / 180;
+  const du = (b.lng - a.lng) * Math.PI / 180 * LP_R * Math.cos(latRef);  // nach Osten
+  const dv = -(b.lat - a.lat) * Math.PI / 180 * LP_R;                    // nach Süden (wie SVG-y)
+  if (Math.hypot(du, dv) < 1) return null; // < 1 m — kein sinnvoller Richtungsvektor
+  let deg = Math.atan2(du, dv) * 180 / Math.PI;   // löst du·cos − dv·sin = 0
+  if (deg > 90) deg -= 180; else if (deg < -90) deg += 180;
+  return Math.round(deg);
+}
+
 function lpAutoBounds(punkte, padFrac = 0.08) {
   if (!punkte.length) return null;
-  let south = 90, north = -90, west = 180, east = -180;
+  // Einpassung im GEDREHTEN Bezugssystem (u = im Bild nach rechts, v = nach unten): bei
+  // schräg liegender Liegenschaft wäre das Nord-oben-Hüllrechteck sonst deutlich zu groß.
+  // Rückgabeformat bleibt eine Lat/Lng-Box — sie beschreibt Mitte + Spannweiten der
+  // gedrehten Fläche, genau wie lpBuildTransform sie wieder interpretiert.
+  const { cos, sin } = lpDreh();
+  const latRef = punkte.reduce((sum, p) => sum + p.lat, 0) / punkte.length;
+  const cosRef = Math.cos(latRef * Math.PI / 180);
+  let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
   for (const p of punkte) {
-    if (p.lat < south) south = p.lat;
-    if (p.lat > north) north = p.lat;
-    if (p.lng < west) west = p.lng;
-    if (p.lng > east) east = p.lng;
+    const u0 = (p.lng * Math.PI / 180) * LP_R * cosRef, v0 = -(p.lat * Math.PI / 180) * LP_R;
+    const u = u0 * cos - v0 * sin, v = u0 * sin + v0 * cos;
+    if (u < minU) minU = u;
+    if (u > maxU) maxU = u;
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
   }
-  const dLat = (north - south) * padFrac || 0.0005, dLng = (east - west) * padFrac || 0.0005;
-  return { south: south - dLat, north: north + dLat, west: west - dLng, east: east + dLng };
+  const halbU = (maxU - minU) / 2 + ((maxU - minU) * padFrac || 30);
+  const halbV = (maxV - minV) / 2 + ((maxV - minV) * padFrac || 30);
+  const mu = (minU + maxU) / 2, mv = (minV + maxV) / 2;
+  const cu = mu * cos + mv * sin, cv = -mu * sin + mv * cos;   // Mitte zurückdrehen
+  const mitteLng = cu / (LP_R * cosRef) * (180 / Math.PI), mitteLat = -cv / LP_R * (180 / Math.PI);
+  const dLng = halbU / (LP_R * cosRef) * (180 / Math.PI), dLat = halbV / LP_R * (180 / Math.PI);
+  return { south: mitteLat - dLat, north: mitteLat + dLat, west: mitteLng - dLng, east: mitteLng + dLng };
 }
 
 /** Zusammenfassungszeile "N Gebäude · M m Wärmenetz · …" für eine gesammelte Geometrie. */
@@ -567,29 +659,46 @@ function lpPackLegend(items, x0, width, rowH = 20) {
 }
 
 /**
- * Äquirektangulare Projektion + Einpassung in eine Ziel-Fläche (px), Nord = oben.
+ * Äquirektangulare Projektion + Einpassung in eine Ziel-Fläche (px). Ohne Drehung ist
+ * Nord = oben; `_lpState.drehung` dreht den kompletten Planinhalt im Uhrzeigersinn (für
+ * Liegenschaften, deren Hauptachse schräg zur Nordrichtung liegt).
+ *
+ * Gerechnet wird in "Planmetern" u/v (u = nach Osten, v = nach Süden — v zeigt wie die
+ * SVG-y-Achse nach unten), anschließend gedreht und in die Plotfläche skaliert.
+ *
  * @param {{south,west,north,east}|null} ausschnitt — fester Kartenausschnitt statt
  *   automatisch an `allePunkte` angepasst (siehe "Aktuellen Kartenausschnitt übernehmen").
+ *   Bei gedrehtem Plan beschreibt die Box Mitte + Spannweiten der GEDREHTEN Fläche, nicht
+ *   deren Nord-oben-Hüllrechteck — nur so bleiben Ziehen/Zoomen im Plan verlustfrei
+ *   umkehrbar (sichtbarerAusschnitt() liefert genau wieder so eine Box).
  */
 function lpBuildTransform(allePunkte, plotX, plotY, plotW, plotH, padFrac = 0.07, ausschnitt = null) {
+  const { deg, cos, sin } = lpDreh();
   const latRef = ausschnitt ? (ausschnitt.south + ausschnitt.north) / 2
     : allePunkte.reduce((s, p) => s + p.lat, 0) / allePunkte.length;
   const cosRef = Math.cos(latRef * Math.PI / 180);
-  const toXY = (lat, lng) => ({
-    x: (lng * Math.PI / 180) * LP_R * cosRef,
-    y: (lat * Math.PI / 180) * LP_R,
+  const toUV = (lat, lng) => ({
+    u: (lng * Math.PI / 180) * LP_R * cosRef,
+    v: -(lat * Math.PI / 180) * LP_R,
   });
-  let minX, maxX, minY, maxY;
+  const dreh  = (u, v) => ({ u: u * cos - v * sin, v: u * sin + v * cos });   // wie SVG rotate(+deg)
+  const rueck = (u, v) => ({ u: u * cos + v * sin, v: -u * sin + v * cos });
+  const zuLatLng = (u, v) => ({ lat: -v / LP_R * (180 / Math.PI), lng: u / (LP_R * cosRef) * (180 / Math.PI) });
+
+  let cu, cv, spanX, spanY;   // Mitte im gedrehten System + einzupassende Spannweiten
   if (ausschnitt) {
-    const a = toXY(ausschnitt.south, ausschnitt.west), b = toXY(ausschnitt.north, ausschnitt.east);
-    minX = Math.min(a.x, b.x); maxX = Math.max(a.x, b.x);
-    minY = Math.min(a.y, b.y); maxY = Math.max(a.y, b.y);
+    const a = toUV(ausschnitt.south, ausschnitt.west), b = toUV(ausschnitt.north, ausschnitt.east);
+    const m = dreh((a.u + b.u) / 2, (a.v + b.v) / 2);
+    cu = m.u; cv = m.v;
+    spanX = Math.abs(b.u - a.u); spanY = Math.abs(b.v - a.v);
   } else {
-    const pts = allePunkte.map(p => toXY(p.lat, p.lng));
-    minX = Math.min(...pts.map(p => p.x)); maxX = Math.max(...pts.map(p => p.x));
-    minY = Math.min(...pts.map(p => p.y)); maxY = Math.max(...pts.map(p => p.y));
+    const pts = allePunkte.map(p => { const q = toUV(p.lat, p.lng); return dreh(q.u, q.v); });
+    const minU = Math.min(...pts.map(p => p.u)), maxU = Math.max(...pts.map(p => p.u));
+    const minV = Math.min(...pts.map(p => p.v)), maxV = Math.max(...pts.map(p => p.v));
+    cu = (minU + maxU) / 2; cv = (minV + maxV) / 2;
+    spanX = maxU - minU; spanY = maxV - minV;
   }
-  const spanX = Math.max(1, maxX - minX), spanY = Math.max(1, maxY - minY);
+  spanX = Math.max(1, spanX); spanY = Math.max(1, spanY);
   // Rand-Padding nur beim automatischen Zuschnitt auf rohe Inhaltspunkte sinnvoll (Luft um
   // Gebäude/Netz). Bei einem FESTEN ausschnitt ist die Fläche bereits "der gewünschte
   // Bildausschnitt" (von der echten Karte übernommen, oder von lpZoomSchritt/dem Ziehen
@@ -599,22 +708,48 @@ function lpBuildTransform(allePunkte, plotX, plotY, plotW, plotH, padFrac = 0.07
   // sichtbaren Ausschnitt erneut um denselben Faktor aufblies.
   const pad = ausschnitt ? 1 : 1 - padFrac * 2;
   const scale = Math.min(plotW * pad / spanX, plotH * pad / spanY);
-  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   const svgCx = plotX + plotW / 2, svgCy = plotY + plotH / 2;
+  const mitte = rueck(cu, cv);   // Mitte in UNGEDREHTEN Planmetern
   return {
     toSvg: (lat, lng) => {
-      const { x, y } = toXY(lat, lng);
-      return { x: svgCx + (x - cx) * scale, y: svgCy - (y - cy) * scale }; // y gespiegelt: Norden = oben
+      const q = toUV(lat, lng);
+      const d = dreh(q.u - mitte.u, q.v - mitte.v);
+      return { x: svgCx + d.u * scale, y: svgCy + d.v * scale };
     },
     // Umkehrung von toSvg — für das Nachjustieren (Ziehen/Zoomen) direkt im Plan: dort muss
     // aus einer Bildschirmposition der zugehörige Geo-Punkt bestimmt werden (Zoom-Zentrum,
-    // Fixieren des Punkts unter dem Cursor beim Draggen). Rein affine Abbildung (keine
-    // Rotation), daher exakt umkehrbar.
+    // Fixieren des Punkts unter dem Cursor beim Draggen). Affine Abbildung (Drehung +
+    // gleichmäßige Skalierung), daher exakt umkehrbar.
     fromSvg: (x, y) => {
-      const X = (x - svgCx) / scale + cx, Y = cy + (svgCy - y) / scale;
-      return { lat: Y / LP_R * (180 / Math.PI), lng: X / (LP_R * cosRef) * (180 / Math.PI) };
+      const d = rueck((x - svgCx) / scale, (y - svgCy) / scale);
+      return zuLatLng(mitte.u + d.u, mitte.v + d.v);
     },
-    scale, cosRef, // für die Drag-Delta-Formel in lpWireNachjustieren (Verschiebung ist translationsinvariant, braucht kein Zentrum)
+    // Platzierung OHNE Drehung (Nord oben) — für das Satellitenbild: das eingefangene
+    // Kachelbild ist nord-oben orientiert und wird als achsenparalleles <image> gezeichnet,
+    // das per SVG-transform um dieselbe Bildmitte mitgedreht wird.
+    toSvgUnrot: (lat, lng) => {
+      const q = toUV(lat, lng);
+      return { x: svgCx + (q.u - mitte.u) * scale, y: svgCy + (q.v - mitte.v) * scale };
+    },
+    /**
+     * Geo-Box, die die aktuell sichtbare Planfläche beschreibt (Mitte + Spannweiten im
+     * gedrehten System). Ersetzt das frühere Auslesen der vier Plot-Ecken via fromSvg —
+     * das lieferte bei gedrehtem Plan das Hüllrechteck statt der Fläche selbst. Ist direkt
+     * wieder als `ausschnitt` einsetzbar (verlustfreier Rundlauf).
+     */
+    sichtbarerAusschnitt: (w, h) => {
+      const c = zuLatLng(mitte.u, mitte.v);
+      const dLng = (w / 2 / scale) / (LP_R * cosRef) * (180 / Math.PI);
+      const dLat = (h / 2 / scale) / LP_R * (180 / Math.PI);
+      return { south: c.lat - dLat, north: c.lat + dLat, west: c.lng - dLng, east: c.lng + dLng };
+    },
+    /** Verschiebung in Blattpixeln → Geo-Delta. Translationsinvariant, aber drehungsabhängig. */
+    planDelta: (dx, dy) => {
+      const d = rueck(dx / scale, dy / scale);
+      return { dlng: d.u / (LP_R * cosRef) * (180 / Math.PI), dlat: -d.v / LP_R * (180 / Math.PI) };
+    },
+    drehDeg: deg, svgCx, svgCy,
+    scale, cosRef,
     metersPerPx: 1 / scale,
   };
 }
@@ -656,6 +791,10 @@ async function lpCaptureSatellite() {
   _lpSatBusy = true;
   lpSay('Satellitenbild wird eingefangen …');
 
+  // ERST zurückdrehen, DANN die Bounds lesen: bei gedrehter Karte liefert
+  // getBounds() die Hülle der vier gedrehten Ecken — die passt nicht zu dem
+  // nord-oben aufgenommenen Bild (s. lbDrehungPausieren).
+  const dreh = await lbDrehungPausieren();
   const b = window.map.getBounds();
   const bounds = { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
 
@@ -684,13 +823,14 @@ async function lpCaptureSatellite() {
     versteckt.push(el);
     el.style.display = 'none';
   }
-  const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-popup')];
+  const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-control-rotate, .leaflet-popup')];
   const prevChromeDisplay = chrome.map(el => el.style.display);
   chrome.forEach(el => { el.style.display = 'none'; });
 
   await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
 
   const restore = () => {
+    dreh.zurueck();
     versteckt.forEach(el => { el.style.display = ''; });
     chrome.forEach((el, i) => { el.style.display = prevChromeDisplay[i]; });
   };
@@ -703,9 +843,15 @@ async function lpCaptureSatellite() {
     _lpState.satBild = { dataUrl: canvas.toDataURL('image/jpeg', 0.85), bounds };
     _lpState.satBildAn = true;
     _lpState.kartenausschnitt = bounds; // Bild + Vektor-Overlay müssen denselben Ausschnitt nutzen
+    // Stand die Arbeitskarte gedreht, übernimmt der Plan diesen Winkel — das Bild
+    // selbst ist nord-oben und wird im Plan mitgedreht (Blattecken bleiben dann leer).
+    if (dreh.winkel) _lpState.drehung = dreh.winkel;
     _lpSatBusy = false;
-    lpSay('✓ Satellitenbild eingefangen und als Kartenausschnitt übernommen.');
+    // Reihenfolge: erst neu rendern, DANN melden — lpRenderPanel() baut das Panel-HTML
+    // komplett neu auf und würde eine vorher gesetzte Statusmeldung sofort wegwerfen.
     lpRenderPanel();
+    lpSay('✓ Satellitenbild eingefangen und als Kartenausschnitt übernommen.'
+      + (dreh.winkel ? ` Plandrehung auf ${dreh.winkel > 0 ? '+' : ''}${dreh.winkel}° gesetzt — an den Blattecken fehlt dann Bildmaterial.` : ''));
   } catch (err) {
     restore();
     _lpSatBusy = false;
@@ -740,8 +886,13 @@ function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, 
   // Satellitenbild-Hintergrund — nur gültig, wenn er zum aktuellen Kartenausschnitt passt
   // (siehe lpCaptureSatellite: setzt beide gemeinsam, damit sie nie auseinanderlaufen).
   if (_lpState.satBildAn && _lpState.satBild && lpBoundsGleich(_lpState.satBild.bounds, ausschnitt)) {
-    const tl = tr.toSvg(ausschnitt.north, ausschnitt.west), br = tr.toSvg(ausschnitt.south, ausschnitt.east);
-    out += `<image href="${_lpState.satBild.dataUrl}" x="${lbR(tl.x)}" y="${lbR(tl.y)}" width="${lbR(br.x - tl.x)}" height="${lbR(br.y - tl.y)}" preserveAspectRatio="none"/>`;
+    // Das Kachelbild ist nord-oben orientiert: erst achsenparallel platzieren (toSvgUnrot),
+    // dann per SVG-transform um dieselbe Bildmitte mitdrehen wie der Rest des Plans. Bei
+    // gedrehtem Plan bleiben dadurch die Blattecken bildlos — dort lag im nord-oben
+    // eingefangenen Ausschnitt schlicht kein Bildmaterial.
+    const tl = tr.toSvgUnrot(ausschnitt.north, ausschnitt.west), br = tr.toSvgUnrot(ausschnitt.south, ausschnitt.east);
+    const satDreh = tr.drehDeg ? ` transform="rotate(${lbR(tr.drehDeg)} ${lbR(tr.svgCx)} ${lbR(tr.svgCy)})"` : '';
+    out += `<image href="${_lpState.satBild.dataUrl}" x="${lbR(tl.x)}" y="${lbR(tl.y)}" width="${lbR(br.x - tl.x)}" height="${lbR(br.y - tl.y)}"${satDreh} preserveAspectRatio="none"/>`;
   }
 
   // Gebäude — bei "Energiekennwert" bleibt die Fläche neutral (T.tint), die Farbe
@@ -785,18 +936,34 @@ function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, 
     if (cfg.icon) out += `<text x="${lbR(s.x)}" y="${lbR(s.y) + 3.5}" text-anchor="middle" font-size="9">${lbEsc(cfg.icon)}</text>`;
   }
 
-  // Beschriftungen — Name/Nummer von Gebäuden + Assets, dezent unter/neben dem Symbol
+  // Beschriftungen — Name/Nummer von Gebäuden + Assets, dezent unter/neben dem Symbol.
+  // WELCHE Gruppen benannt werden, steuert die Auswahl im Panel (Gebäude + je Asset-Typ),
+  // damit sich z. B. ein Plan bauen lässt, der nur die Trafo-Namen zeigt. Jede Beschriftung
+  // trägt `data-lp-stdlabel-drag` und lässt sich im Plan mit der Maus an eine freie Stelle
+  // ziehen (Offset in _lpLabelOffsets) — nötig, weil sich die Namen bei dicht stehenden
+  // Gebäuden sonst gegenseitig überdecken. Bewusst kein Auto-Layout: der Nutzer soll das
+  // Blatt für das Gutachten selbst aufräumen können.
   if (_lpState.beschriftung) {
-    for (const { g, poly } of gebaeudeListe) {
-      const c = lpPolyCentroid(poly);
-      if (!c) continue;
-      const s = tr.toSvg(c.lat, c.lng);
-      out += txt(s.x, s.y + 3.5, lpGebLabel(g), { anchor: 'middle', size: 8.5, fill: T.text.strong, weight: 600 });
+    const stdLabel = (key, x, y, text, o) => {
+      const off = _lpLabelOffsets.get(key) || { dx: 0, dy: 0 };
+      return `<text x="${lbR(x + off.dx)}" y="${lbR(y + off.dy)}" text-anchor="middle" font-family="${T.font}"`
+        + ` font-size="${o.size}" font-weight="${o.weight}" fill="${o.fill}"`
+        + ` data-lp-stdlabel-drag="${lbEsc(key)}" style="cursor:move;">${lbEsc(text)}</text>`;
+    };
+    if (_lpState.labelGeb) {
+      for (const { g, poly } of gebaeudeListe) {
+        const c = lpPolyCentroid(poly);
+        if (!c) continue;
+        const s = tr.toSvg(c.lat, c.lng);
+        out += stdLabel(`geb:${g.id}`, s.x, s.y + 3.5, lpGebLabel(g), { size: 8.5, weight: 600, fill: T.text.strong });
+      }
     }
     for (const { asset, lat, lng } of assetListe) {
+      if (_lpLabelTypes[asset.type] === false) continue;
       const s = tr.toSvg(lat, lng);
-      out += txt(s.x, s.y + 19, asset.name || window.ASSET_CFG?.[asset.type]?.label || asset.type,
-        { anchor: 'middle', size: 8, fill: T.text.muted });
+      out += stdLabel(`asset:${asset.id}`, s.x, s.y + 19,
+        asset.name || window.ASSET_CFG?.[asset.type]?.label || asset.type,
+        { size: 8, weight: 400, fill: T.text.muted });
     }
   }
 
@@ -852,10 +1019,20 @@ function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, 
   // aber nur erscheinen, wenn der Nutzer den Ausschnitt tatsächlich manuell fixiert hat.
   if (_lpState.kartenausschnitt) out += txt(bx, by + 15, 'Fester Kartenausschnitt', { size: 8, fill: T.text.faint });
 
-  // Nordpfeil oben rechts im Kartenfeld
+  // Nordpfeil oben rechts im Kartenfeld — dreht mit dem Plan mit. Das "N" sitzt weiterhin
+  // am Pfeilfuß (mitgedreht), wird aber gegengedreht gezeichnet und bleibt so lesbar.
   const nx = plotX + plotW - 30, ny = plotY + 34;
+  const nDeg = tr.drehDeg || 0;
+  const nOpen = nDeg ? `<g transform="rotate(${lbR(nDeg)} ${nx} ${ny})">` : '';
+  const nClose = nDeg ? '</g>' : '';
+  out += nOpen;
   out += `<polygon points="${nx},${ny - 16} ${nx - 6},${ny + 8} ${nx},${ny + 3} ${nx + 6},${ny + 8}" fill="${T.text.strong}"/>`;
+  out += nDeg ? `<g transform="rotate(${lbR(-nDeg)} ${nx} ${ny + 22})">` : '';
   out += txt(nx, ny + 22, 'N', { anchor: 'middle', size: 12, weight: 700 });
+  out += nDeg ? '</g>' : '';
+  out += nClose;
+  if (nDeg) out += txt(plotX + plotW - 14, plotY + plotH - 8, `Plan gedreht: ${nDeg > 0 ? '+' : ''}${nDeg}°`,
+    { anchor: 'end', size: 8, fill: T.text.faint });
 
   return out;
 }
@@ -1098,6 +1275,9 @@ function lpPanelHtml() {
   const anzeigeBtn = (id, label) => `<button data-click="lpSetAnzeige('${id}')" style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.anzeige===id?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.anzeige===id?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.anzeige===id?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
   const chk = (checked, label, onClick, title) => `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;" title="${lbEsc(title || '')}">
     <input type="checkbox" ${checked ? 'checked' : ''} data-change="${onClick}">${lbEsc(label)}</label>`;
+  const d = _lpState.drehung || 0;
+  const drehBtn = (v, label) => `<button data-click="lpSetDrehung(${v})" title="Plan auf ${v}° drehen"
+    style="padding:4px 9px;border-radius:12px;border:1px solid ${d===v?'#26a69a':'rgba(255,255,255,.14)'};background:${d===v?'rgba(38,166,154,.16)':'transparent'};color:${d===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
   const scaleBtn = (v) => `<button data-click="lpSetScale(${v})" style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpScale===v?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpScale===v?'rgba(38,166,154,.16)':'transparent'};color:${_lpScale===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;">${v}×</button>`;
   const vergleichBtn = `<button data-click="lpToggleVergleich()" title="Zeigt Referenzjahr (Bestand) und Zieljahr (Ausbauziel) als zwei Lagepläne nebeneinander — gleicher Maßstab und Kartenausschnitt für beide Seiten"
     style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.vergleich?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.vergleich?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.vergleich?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">🔀 Vorher/Nachher-Vergleich</button>`;
@@ -1108,6 +1288,19 @@ function lpPanelHtml() {
     const cfg = window.ASSET_CFG?.[t] || {};
     return chk(!!_lpAssetTypes[t], `${cfg.icon ? cfg.icon + ' ' : ''}${cfg.label || t} (${_lpAssetCounts[t]})`, `lpSetAssetType('${t}',this.checked)`, cfg.beschreibung);
   }).join('');
+  // Beschriftungs-Auswahl: dieselbe Typenliste, aber die Frage ist "wird benannt?" statt
+  // "wird gezeichnet?". Ist die zugehörige Ebene aus, kann nichts beschriftet werden — das
+  // steht am Eintrag dran, statt ihn zu verstecken (sonst sucht man den Trafo-Haken vergeblich).
+  const labelChecks = assetTypen.map(t => {
+    const cfg = window.ASSET_CFG?.[t] || {};
+    const ebeneAus = !_lpAssetTypes[t];
+    return chk(_lpLabelTypes[t] !== false,
+      `${cfg.icon ? cfg.icon + ' ' : ''}${cfg.label || t}${ebeneAus ? ' — Ebene aus' : ''}`,
+      `lpSetLabelType('${t}',this.checked)`,
+      ebeneAus ? 'Diese Asset-Ebene wird gerade nicht gezeichnet — oben unter "Assets im Plan" einschalten, dann erscheinen auch die Namen.' : (cfg.beschreibung || ''));
+  }).join('');
+  const kleinBtn = (onClick, label, title) => `<button data-click="${onClick}" title="${lbEsc(title || '')}"
+    style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">${label}</button>`;
 
   return `
   <div style="display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end;margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
@@ -1144,7 +1337,7 @@ function lpPanelHtml() {
       ${chk(_lpState.waerme, 'Wärmenetz', "lpSetLayer('waerme',this.checked)")}
       ${chk(_lpState.strom, 'Stromnetz', "lpSetLayer('strom',this.checked)")}
       ${chk(_lpState.msring, 'MS-Ring hervorheben', "lpSetLayer('msring',this.checked)", 'Erkennt Mittelspannungs-Ringe aus NAP/Trafo/Schaltanlage + Stromnetz und hebt sie dick orange hervor')}
-      ${chk(_lpState.beschriftung, 'Beschriftungen', "lpSetLayer('beschriftung',this.checked)", 'Name/Nummer von Gebäuden und Assets im Plan anzeigen')}
+      ${chk(_lpState.beschriftung, 'Beschriftungen', "lpSetLayer('beschriftung',this.checked)", 'Namen im Plan anzeigen — welche Gruppen benannt werden (z. B. nur die Trafos), steht darunter in der Auswahl')}
     </div>
     <div style="display:flex;gap:6px;margin-left:auto;">${[2,3,4].map(scaleBtn).join('')}</div>
   </div>
@@ -1166,6 +1359,23 @@ function lpPanelHtml() {
   </div>
 
   <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
+    <span style="font-size:10px;color:var(--muted);white-space:nowrap;">Ausrichtung des Plans</span>
+    <input type="range" min="-180" max="180" step="1" value="${d}"
+      title="Dreht den kompletten Plan — Geometrie, Satellitenbild und Nordpfeil. 0° = Norden oben."
+      data-input="lpDrehungVorschau(this.value)" data-change="lpSetDrehung(this.value)" style="width:170px;">
+    <input id="lp-dreh-zahl" type="number" min="-180" max="180" step="1" value="${d}"
+      data-change="lpSetDrehung(this.value)" style="${inp}width:62px;">
+    <span style="font-size:10px;color:var(--muted);">°</span>
+    <div style="display:flex;gap:4px;">${drehBtn(0, 'Nord oben')}${drehBtn(-45, '−45°')}${drehBtn(-90, '−90°')}${drehBtn(45, '+45°')}${drehBtn(90, '+90°')}</div>
+    ${_lpAchse
+      ? `<span style="font-size:10px;color:#ffcc80;">🖱 ${_lpAchse.p1 ? 'Zweiten' : 'Ersten'} Punkt der Achse im Plan anklicken …</span>
+         <button data-click="lpAbbrechenAchse()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:#ef5350;font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>`
+      : `<button data-click="lpStartAchse()" title="Zwei Punkte im Plan anklicken (z. B. Anfang und Ende der Hauptstraße) — der Plan wird so gedreht, dass diese Achse senkrecht steht"
+           style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">📐 An Achse ausrichten</button>`}
+    <span style="font-size:10px;color:var(--muted);width:100%;">Für Liegenschaften, deren Hauptachse schräg zur Nordrichtung liegt. Nordpfeil und Satellitenbild drehen mit — an den Blattecken kann das Bild dann fehlen (auf der Karte weiter herauszoomen und neu einfangen). Freie Beschriftungen hängen an Blattkoordinaten und drehen NICHT mit.</span>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
     <button data-click="lpCaptureSatellite()" ${_lpSatBusy ? 'disabled' : ''}
       title="Fängt die aktuell sichtbaren Kartenkacheln (Luftbild, falls aktiv) als Hintergrund ein und legt den Kartenausschnitt exakt darauf fest"
       style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:${_lpSatBusy?'var(--muted)':'#26a69a'};font-family:inherit;font-size:10.5px;cursor:${_lpSatBusy?'default':'pointer'};">🛰 Satellitenbild einfangen</button>
@@ -1177,6 +1387,21 @@ function lpPanelHtml() {
   <div style="margin-bottom:12px;">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Assets im Plan</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px 18px;">${assetChecks}</div>
+  </div>` : ''}
+
+  ${_lpState.beschriftung ? `
+  <div style="margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Beschriftungen — was benannt wird</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px 18px;">
+      ${chk(_lpState.labelGeb, `Gebäude${_lpState.gebaeude ? '' : ' — Ebene aus'}`, "lpSetLayer('labelGeb',this.checked)", 'Nummer und Name jedes gezeichneten Gebäudes')}
+      ${labelChecks}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;">
+      ${kleinBtn('lpLabelAuswahl(true)', 'Alle', 'Alle Gruppen beschriften')}
+      ${kleinBtn('lpLabelAuswahl(false)', 'Keine', 'Keine Gruppe beschriften — dann gezielt einzelne wieder anhaken')}
+      ${_lpLabelOffsets.size ? kleinBtn('lpResetLabelOffsets()', `↺ ${_lpLabelOffsets.size} verschobene zurücksetzen`, 'Setzt alle von Hand verschobenen Beschriftungen auf ihre Standardposition am Objekt zurück') : ''}
+    </div>
+    <span style="display:block;margin-top:6px;font-size:10px;color:var(--muted);">🖱 Einzelne Beschriftung im Plan anfassen und ziehen, wenn sich Namen überdecken — sie bleibt an ihrem Objekt hängen (Verschieben/Zoomen/Jahreswechsel ändern daran nichts). Ein Klick ohne Ziehen öffnet den Objekt-Editor unten.</span>
   </div>` : ''}
 
   <div style="margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
@@ -1223,6 +1448,25 @@ function lpPanelHtml() {
   <div id="lp-paper" style="background:#fff;border-radius:6px;padding:10px;overflow-x:auto;"></div>`;
 }
 
+/**
+ * Nur das Planblatt neu zeichnen, ohne das Panel-HTML anzufassen. Nötig für das flüssige
+ * Ziehen am Drehregler: ein kompletter innerHTML-Neuaufbau würde dem Regler mitten in der
+ * Mausbewegung den Fokus entziehen und das Ziehen nach dem ersten Schritt abbrechen.
+ */
+function lpRenderPaper() {
+  const paper = document.getElementById('lp-paper');
+  if (!paper) return;
+  _lpSvg = _lpState.vergleich ? lpRenderSvgVergleich() : lpRenderSvg();
+  _lpSvg.style.width = '100%';
+  _lpSvg.style.maxWidth = LP_W + 'px';
+  _lpSvg.style.height = 'auto';
+  _lpSvg.style.display = 'block';
+  paper.replaceChildren(_lpSvg);
+  if (_lpLastPlots.length && !_lpPlacing && !_lpAchse) _lpSvg.style.cursor = 'grab';
+  lpAttachPlacingHandler();
+  lpAttachAchseHandler();
+}
+
 function lpRenderPanel() {
   const el = document.getElementById('lb-lp-panel');
   if (!el) return;
@@ -1230,14 +1474,7 @@ function lpRenderPanel() {
   if (_lpState.zieljahr == null) _lpState.zieljahr = window.globalYear || _lpState.referenzjahr;
   lpAssetTypenAktualisieren();
   el.innerHTML = lpPanelHtml();
-  _lpSvg = _lpState.vergleich ? lpRenderSvgVergleich() : lpRenderSvg();
-  _lpSvg.style.width = '100%';
-  _lpSvg.style.maxWidth = LP_W + 'px';
-  _lpSvg.style.height = 'auto';
-  _lpSvg.style.display = 'block';
-  document.getElementById('lp-paper')?.appendChild(_lpSvg);
-  if (_lpLastPlots.length && !_lpPlacing) _lpSvg.style.cursor = 'grab';
-  lpAttachPlacingHandler();
+  lpRenderPaper();
   lpWireNachjustieren();
 }
 
@@ -1278,6 +1515,35 @@ function lpAttachPlacingHandler() {
   _lpSvg.addEventListener('click', onClick);
 }
 
+/**
+ * Zwei Klicks in den Plan → Drehwinkel. Läuft über dieselbe Umkehrprojektion wie das
+ * Ziehen/Zoomen (tr.fromSvg), damit die Achse geografisch gemeint ist und nicht in
+ * Blattpixeln — der Winkel bleibt also korrekt, egal wie der Plan gerade steht.
+ */
+function lpAttachAchseHandler() {
+  if (!_lpAchse || !_lpSvg) return;
+  _lpSvg.style.cursor = 'crosshair';
+  const onClick = (evt) => {
+    const p = lpSvgPunkt(_lpSvg, evt);
+    const plot = lpPlotUnter(p);
+    if (!plot) { lpSay('Bitte innerhalb der Planfläche klicken.', true); return; }
+    const geo = plot.tr.fromSvg(p.x, p.y);
+    if (!_lpAchse.p1) {
+      _lpAchse.p1 = geo;
+      lpSay('Erster Punkt gesetzt — jetzt den zweiten Punkt der Achse anklicken.');
+      return;
+    }
+    _lpSvg.removeEventListener('click', onClick);
+    const winkel = lpAchsenWinkel(_lpAchse.p1, geo);
+    _lpAchse = null;
+    if (winkel == null) { lpRenderPanel(); lpSay('Die beiden Punkte liegen zu dicht beieinander.', true); return; }
+    _lpState.drehung = winkel;
+    lpRenderPanel();
+    lpSay(`Plan an der gewählten Achse ausgerichtet — Drehung ${winkel > 0 ? '+' : ''}${winkel}°.`);
+  };
+  _lpSvg.addEventListener('click', onClick);
+}
+
 /** Bildschirm- → SVG-Nutzkoordinaten der übergebenen SVG-Wurzel (Skalierungs-robust). */
 function lpSvgPunkt(svg, evt) {
   const pt = svg.createSVGPoint();
@@ -1292,6 +1558,7 @@ function lpPlotUnter(p) {
 let _lpNachjustierenWired = false;
 // mode 'pan': {mode,startPt,tr,sichtbar,raf,moved,markTarget} — verschiebt den Kartenausschnitt.
 // mode 'label': {mode,startPt,key,startOffset,raf,moved} — verschiebt NUR den Text-Offset einer Markierung.
+// mode 'stdlabel': wie 'label', aber für eine normale Objekt-Beschriftung (_lpLabelOffsets).
 let _lpDrag = null;
 
 /**
@@ -1309,7 +1576,7 @@ function lpWireNachjustieren() {
   _lpNachjustierenWired = true;
 
   panel.addEventListener('mousedown', (evt) => {
-    if (_lpPlacing || evt.button !== 0 || !_lpSvg) return;
+    if (_lpPlacing || _lpAchse || evt.button !== 0 || !_lpSvg) return;
     const svg = evt.target.closest('svg');
     if (!svg || svg !== _lpSvg) return;
     const startPt = lpSvgPunkt(svg, evt);
@@ -1318,6 +1585,14 @@ function lpWireNachjustieren() {
     // Ziehen an einer individuellen Beschriftung verschiebt NUR deren Offset, nicht den
     // ganzen Plan — deshalb VOR der allgemeinen Pan-Logik geprüft (die Beschriftung liegt
     // optisch über allem anderen).
+    const stdLabelEl = evt.target.closest('[data-lp-stdlabel-drag]');
+    if (stdLabelEl) {
+      const key = stdLabelEl.getAttribute('data-lp-stdlabel-drag');
+      _lpDrag = { mode: 'stdlabel', startPt, key, startOffset: { ...(_lpLabelOffsets.get(key) || { dx: 0, dy: 0 }) }, raf: null, moved: false };
+      svg.style.cursor = 'move';
+      evt.preventDefault();
+      return;
+    }
     const labelEl = evt.target.closest('[data-lp-label-drag]');
     if (labelEl) {
       const key = labelEl.getAttribute('data-lp-label-drag');
@@ -1329,16 +1604,15 @@ function lpWireNachjustieren() {
         return;
       }
     }
-    // Sichtbarer Geo-Ausschnitt DIESES Plots als Basis — via fromSvg an den Plot-Ecken
-    // bestimmt, nicht aus _lpState.kartenausschnitt gelesen: die Ecken geben den TATSÄCHLICH
-    // sichtbaren (bereits mit Rand-Padding versehenen) Rahmen, egal ob automatisch angepasst
-    // oder fest — kein Sprung beim ersten Ziehen.
-    const nw = plot.tr.fromSvg(plot.plotX, plot.plotY), se = plot.tr.fromSvg(plot.plotX + plot.plotW, plot.plotY + plot.plotH);
+    // Sichtbarer Geo-Ausschnitt DIESES Plots als Basis — aus dem Transform abgeleitet, nicht
+    // aus _lpState.kartenausschnitt gelesen: so ist es der TATSÄCHLICH sichtbare (bereits mit
+    // Rand-Padding versehene) Rahmen, egal ob automatisch angepasst oder fest — kein Sprung
+    // beim ersten Ziehen.
     // markTarget wird schon beim Mousedown eingefroren (nicht erst beim Mouseup gesucht):
     // damit bleibt eindeutig, WELCHES Objekt gemeint war, selbst wenn der Klick durch das
     // spätere Neu-Rendern (Drag/Zoom) unter dem Cursor durch ein anderes Element ersetzt wird.
     _lpDrag = {
-      mode: 'pan', startPt, tr: plot.tr, sichtbar: { north: nw.lat, west: nw.lng, south: se.lat, east: se.lng },
+      mode: 'pan', startPt, tr: plot.tr, sichtbar: plot.tr.sichtbarerAusschnitt(plot.plotW, plot.plotH),
       raf: null, moved: false, markTarget: evt.target.closest('[data-lp-mark]'),
     };
     svg.style.cursor = 'grabbing';
@@ -1356,15 +1630,20 @@ function lpWireNachjustieren() {
     _lpDrag.raf = requestAnimationFrame(() => {
       if (!_lpDrag) return;
       _lpDrag.raf = null;
+      if (_lpDrag.mode === 'stdlabel') {
+        _lpLabelOffsets.set(_lpDrag.key, { dx: _lpDrag.startOffset.dx + dx, dy: _lpDrag.startOffset.dy + dy });
+        lpRenderPanel();
+        return;
+      }
       if (_lpDrag.mode === 'label') {
         const m = _lpMarkierungen.get(_lpDrag.key);
         if (m) { m.offset = { dx: _lpDrag.startOffset.dx + dx, dy: _lpDrag.startOffset.dy + dy }; lpRenderPanel(); }
         return;
       }
       const { tr, sichtbar } = _lpDrag;
-      // Verschiebung ist translationsinvariant — braucht nur scale/cosRef, kein Zentrum.
-      const dlng = (dx / tr.scale) / (LP_R * tr.cosRef) * (180 / Math.PI);
-      const dlat = (-dy / tr.scale) / LP_R * (180 / Math.PI);
+      // Verschiebung ist translationsinvariant (braucht kein Zentrum), aber drehungsabhängig:
+      // bei gedrehtem Plan zeigen Bildschirm-dx/dy nicht mehr nach Osten/Norden.
+      const { dlat, dlng } = tr.planDelta(dx, dy);
       _lpState.kartenausschnitt = {
         south: sichtbar.south - dlat, north: sichtbar.north - dlat,
         west: sichtbar.west - dlng, east: sichtbar.east - dlng,
@@ -1376,12 +1655,14 @@ function lpWireNachjustieren() {
 
   window.addEventListener('mouseup', () => {
     if (!_lpDrag) return;
-    if (_lpSvg) _lpSvg.style.cursor = _lpDrag.mode === 'label' ? 'move' : 'grab';
+    if (_lpSvg) _lpSvg.style.cursor = _lpDrag.mode === 'pan' ? 'grab' : 'move';
     if (!_lpDrag.moved) {
       // Kein Ziehen (Maus quasi nicht bewegt) → als Klick werten: auf einer Beschriftung oder
       // einem Objekt öffnet/schließt das den Inline-Editor, auf leerer Fläche im Plot wählt
       // eine offene Markierung wieder ab.
-      if (_lpDrag.mode === 'label') window.lpSelectMarkierung(_lpDrag.key);
+      // Klick (ohne Ziehen) auf eine Beschriftung meint dasselbe wie ein Klick auf das Objekt
+      // selbst — der Schlüssel hat in beiden Fällen die Form `geb:<id>` / `asset:<id>`.
+      if (_lpDrag.mode === 'label' || _lpDrag.mode === 'stdlabel') window.lpSelectMarkierung(_lpDrag.key);
       else if (_lpDrag.markTarget) window.lpSelectMarkierung(_lpDrag.markTarget.getAttribute('data-lp-mark'));
       else if (_lpSelected) window.lpDeselectMarkierung();
     }
@@ -1389,15 +1670,14 @@ function lpWireNachjustieren() {
   });
 
   panel.addEventListener('wheel', (evt) => {
-    if (_lpPlacing || !_lpSvg) return;
+    if (_lpPlacing || _lpAchse || !_lpSvg) return;
     const svg = evt.target.closest('svg');
     if (!svg || svg !== _lpSvg) return;
     const p = lpSvgPunkt(svg, evt);
     const plot = lpPlotUnter(p);
     if (!plot) return;
     evt.preventDefault();
-    const nw = plot.tr.fromSvg(plot.plotX, plot.plotY), se = plot.tr.fromSvg(plot.plotX + plot.plotW, plot.plotY + plot.plotH);
-    const basis = { north: nw.lat, west: nw.lng, south: se.lat, east: se.lng };
+    const basis = plot.tr.sichtbarerAusschnitt(plot.plotW, plot.plotH);
     const ziel = plot.tr.fromSvg(p.x, p.y); // Geo-Punkt unter dem Cursor — bleibt beim Zoomen fix
     const faktor = evt.deltaY > 0 ? 1.15 : 1 / 1.15; // runter = raus (größerer Ausschnitt), hoch = rein
     _lpState.kartenausschnitt = {
@@ -1480,11 +1760,11 @@ function lpMarkEditorHtml() {
 window.lpZoomSchritt = (faktor) => {
   const plot = _lpLastPlots[0];
   if (!plot) return;
-  const nw = plot.tr.fromSvg(plot.plotX, plot.plotY), se = plot.tr.fromSvg(plot.plotX + plot.plotW, plot.plotY + plot.plotH);
-  const mitteLat = (nw.lat + se.lat) / 2, mitteLng = (nw.lng + se.lng) / 2;
+  const b = plot.tr.sichtbarerAusschnitt(plot.plotW, plot.plotH);
+  const mitteLat = (b.south + b.north) / 2, mitteLng = (b.west + b.east) / 2;
   _lpState.kartenausschnitt = {
-    south: mitteLat - (mitteLat - se.lat) * faktor, north: mitteLat + (nw.lat - mitteLat) * faktor,
-    west: mitteLng - (mitteLng - nw.lng) * faktor, east: mitteLng + (se.lng - mitteLng) * faktor,
+    south: mitteLat - (mitteLat - b.south) * faktor, north: mitteLat + (b.north - mitteLat) * faktor,
+    west: mitteLng - (mitteLng - b.west) * faktor, east: mitteLng + (b.east - mitteLng) * faktor,
   };
   _lpState.satBild = null;
   lpRenderPanel();
@@ -1497,23 +1777,67 @@ window.lpSetEinfaerben = (v) => { _lpState.einfaerben = v; lpRenderPanel(); };
 window.lpToggleVergleich = () => { _lpState.vergleich = !_lpState.vergleich; lpRenderPanel(); };
 window.lpSetEnergieModus = (v) => { _lpState.energieModus = v; lpRenderPanel(); };
 window.lpSetAssetType = (t, on) => { _lpAssetTypes[t] = !!on; lpRenderPanel(); };
+window.lpSetLabelType = (t, on) => { _lpLabelTypes[t] = !!on; lpRenderPanel(); };
+window.lpLabelAuswahl = (on) => {
+  _lpState.labelGeb = !!on;
+  for (const t of Object.keys(_lpAssetCounts)) _lpLabelTypes[t] = !!on;
+  lpRenderPanel();
+};
+window.lpResetLabelOffsets = () => { _lpLabelOffsets.clear(); lpRenderPanel(); };
 window.lpSetScale = (v) => { _lpScale = v; };
 window.lpUebernehmeKartenausschnitt = () => {
   if (!window.map || typeof window.map.getBounds !== 'function') { lpSay('Karte nicht verfügbar.', true); return; }
-  const b = window.map.getBounds();
-  const neu = { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
+  // Ist der Kartendrehungs-Versuch aktiv (20-kartendrehung.js), wird der Winkel
+  // gleich mit übernommen — und der Ausschnitt aus Mitte/Zoom/Fenstergröße
+  // gerechnet statt aus getBounds(): leaflet-rotate liefert dort die Hülle der
+  // vier gedrehten Ecken, was den Plan bei schräger Karte stark aufblähen würde.
+  let neu = null;
+  if (typeof window.kdAktiv === 'function' && window.kdAktiv()) {
+    _lpState.drehung = window.kdWinkel();
+    neu = window.kdSichtAusschnitt();
+  }
+  if (!neu) {
+    const b = window.map.getBounds();
+    neu = { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
+  }
   // Ein Satellitenbild gehört zu genau einem Ausschnitt — bei abweichendem neuen Ausschnitt
   // verwaist es sonst (Checkbox bliebe an, ohne dass sichtbar etwas passiert).
   if (_lpState.satBild && !lpBoundsGleich(_lpState.satBild.bounds, neu)) _lpState.satBild = null;
   _lpState.kartenausschnitt = neu;
   lpRenderPanel();
 };
+/** Drehwinkel auf einen gültigen ganzzahligen Grad-Wert in [-180,180] bringen. */
+function lpDrehWert(val) {
+  const n = Math.round(parseFloat(val));
+  return isFinite(n) ? Math.max(-180, Math.min(180, n)) : null;
+}
+window.lpSetDrehung = (val) => { const w = lpDrehWert(val); if (w != null) _lpState.drehung = w; lpRenderPanel(); };
+/** Aktuelle Plandrehung — von 20-kartendrehung.js für „↔ Wie Lageplan" gelesen. */
+window.lpAktuelleDrehung = () => _lpState.drehung || 0;
+/** Live-Vorschau beim Ziehen am Regler — zeichnet nur das Blatt neu (s. lpRenderPaper). */
+window.lpDrehungVorschau = (val) => {
+  const w = lpDrehWert(val);
+  if (w == null || w === _lpState.drehung) return;
+  _lpState.drehung = w;
+  const zahl = document.getElementById('lp-dreh-zahl');
+  if (zahl) zahl.value = w;
+  lpRenderPaper();
+};
+window.lpStartAchse = () => {
+  _lpPlacing = null;   // Achsenwahl und Annotations-Platzierung schließen sich aus
+  _lpAchse = { p1: null };
+  lpRenderPanel();
+  lpSay('🖱 Ersten Punkt der Achse im Plan anklicken (z. B. Anfang der Hauptstraße).');
+};
+window.lpAbbrechenAchse = () => { _lpAchse = null; lpRenderPanel(); };
+
 window.lpKartenausschnittZuruecksetzen = () => { _lpState.kartenausschnitt = null; _lpState.satBild = null; lpRenderPanel(); };
 window.lpCaptureSatellite = lpCaptureSatellite;
 window.lpSetSatBildAn = (on) => { _lpState.satBildAn = !!on; lpRenderPanel(); };
 window.lpStartPlacing = (type) => {
   const text = document.getElementById('lp-anno-text')?.value?.trim() || '';
   if (type === 'text' && !text) { lpSay('Bitte zuerst einen Text eingeben.', true); return; }
+  _lpAchse = null;   // s. lpStartAchse — nur ein Klick-Modus zur Zeit
   _lpPlacing = { type, text };
   lpRenderPanel();
   lpSay(type === 'line' ? 'Startpunkt der Linie auf dem Plan anklicken.' : 'Position des Texts auf dem Plan anklicken.');

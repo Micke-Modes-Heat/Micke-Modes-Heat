@@ -38,6 +38,7 @@
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "leaflet-distortableimage": "^0.21.9",
+    "leaflet-rotate": "^0.2.8",
     "leaflet-toolbar": "^0.4.0-alpha.2",
     "pdfjs-dist": "^5.6.205"
   }
