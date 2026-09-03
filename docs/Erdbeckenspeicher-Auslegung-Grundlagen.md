@@ -260,6 +260,91 @@ den Speicher beim ersten Kälteeinbruch im Herbst entleert.
 
 ---
 
+## B0b. Wo gehört der Speicher im Tool hin? (PV-Analyse oder Wärmepfad?)
+
+Naheliegende Überlegung: Der Saisonalspeicher gehört unter **PV-Analyse**, weil der
+PV-Überschuss darüber entscheidet, ob er sinnvoll ist. Daran ist etwas Richtiges — aber
+die Rollen sind andere:
+
+> **Der Wärmebedarf bemisst das Volumen. Der PV-Überschuss bemisst die Ladeleistung.**
+
+### Warum der PV-Überschuss nicht die Auslegungsgröße ist
+
+1. **PV-Überschuss ist ein Tagesphänomen, kein saisonales.** Ihn einzusammeln kann eine
+   Batterie oder ein Tagespuffer zu einem Bruchteil der Kosten. Was einen Saisonalspeicher
+   rechtfertigt, ist ein Ungleichgewicht über *Monate* — und das entsteht aus dem
+   Winterdefizit der Wärmeversorgung, nicht aus der PV-Kurve.
+2. **PV ist eine von fünf Ladequellen** (Solarthermie-Überschuss, sommerliche WP mit
+   COP 4–5, PV-Überschuss, BHKW-Mindestlast, Abwärme). In vielen Konzepten ist das
+   Solarthermie-Feld die größere. Ein Modell, das unter PV-Analyse hängt, kann die
+   anderen vier strukturell nicht sauber abbilden.
+3. **Die Auslegungsrechnung selbst (A2) braucht die Winter-Residuallast** — die entsteht
+   im Wärme-Dispatch, nicht in der PV-Rechnung.
+
+### Was der PV-Überschuss dagegen sehr wohl bestimmt
+
+Beispielrechnung, 5.000 MWh/a Wärmebedarf, Speicher = 15 % davon (750 MWh nutzbar),
+1,3 Zyklen, 14 % Verlust → 1.134 MWh/a einzulagern, bei COP 4,5 rund **252 MWh/a Strom**:
+
+| PV-Anlage | Überschuss/a | davon Mai–Sep | deckt Speicherbedarf |
+|---|---|---|---|
+| 500 kWp | 101 MWh | 63 MWh | 25 % |
+| 1.000 kWp | 261 MWh | 162 MWh | 64 % |
+| 2.000 kWp | 760 MWh | 471 MWh | 187 % |
+
+Energetisch ist es also machbar — ab etwa 2 MWp. Entscheidend ist aber die **Leistung**:
+
+| nutzbare Überschussstunden/a | Ladeleistung |
+|---|---|
+| 600 h | 1.890 kW_th |
+| 1.200 h | 945 kW_th |
+| Solarthermie zum Vergleich (~2.500 h) | 453 kW_th |
+
+**PV-geladene Saisonalspeicher sind leistungs-, nicht energiebegrenzt** — genau umgekehrt
+zur solarthermischen Beladung. Der PV-Überschussgang bemisst damit Wärmetauscher,
+Entlade-/Ladepumpen und die Lade-WP, also einen erheblichen Teil der Investition.
+
+### Der strukturelle Befund: der Speicher hat heute drei Besitzer
+
+Die Kopplung, auf die die Überlegung zielt, existiert bereits — aber in drei
+unabhängigen Rechnungen für **denselben physischen Speicher**:
+
+| Ort | Was dort passiert |
+|---|---|
+| `06c:670` `_dispatchCore` | rechnet die vollständige SOC-Kurve über 8.760 h |
+| `09b:210` PV-Analyse | schreibt PV-Überschuss **nachträglich** in `tss.socH[t]` — nur in diese eine Stunde |
+| `10a:150` Optimierer | führt mit `tsSoc` einen **komplett eigenen** Speicherstand |
+
+Der mittlere Punkt ist der kritische: Die PV-Analyse läuft **nach** dem Wärme-Dispatch und
+korrigiert dessen fertige SOC-Kurve punktuell, **ohne Vorwärtspropagation**. Die per PV
+eingelagerte Wärme erhöht den angezeigten Füllstand in Stunde *t* und wird als
+Eigenverbrauch gutgeschrieben — sie verändert aber weder die Folgestunden noch die
+Entladung noch die Verluste. **Sie kommt nie wieder heraus.**
+
+Für einen Tagespuffer mit 50–200 Zyklen ist das eine begrenzte Verzerrung (sie schönt den
+PV-Eigenverbrauch). Für einen Saisonalspeicher ist es tödlich: Er würde den ganzen Sommer
+PV-Überschuss aufnehmen, und im Januar käme davon nichts an. Genau die Kopplung, die den
+Saisonalspeicher tragen soll, ist die, die heute nicht trägt.
+
+### Konsequenz für die Verortung
+
+- **Das Modell bleibt im Wärmepfad.** Der Speicher bekommt **einen** Besitzer und **eine**
+  SOC-Kurve — den Dispatch. Dort liegt die Auslegungsrechnung (A2), dort das Panel, dort
+  die Fahrweise.
+- **Die PV-Analyse liefert eine Eingangsreihe, keine zweite Rechnung.** Heute läuft PV
+  *nach* Wärme; für den Saisonalspeicher muss die Überschussinformation *vorher* vorliegen.
+  Also eine gemeinsame Vorstufe, die den stündlichen „billige-Stunde"-Vektor bildet
+  (PV-Überschuss, COP-Schwelle, Strompreis) und ihn dem Dispatch übergibt (B5).
+- **Die PV-Analyse bekommt eine Ergebnissicht**, keine Modellhoheit: Wie viel Überschuss
+  ging in den Speicher, was hat das für Eigenverbrauch und Einspeisung bedeutet.
+- Die **Entscheidungsdarstellung** („lohnt sich das?") gehört sinnvollerweise in den
+  Variantenvergleich, weil sie Wärme, Strom und Fläche zugleich betrifft.
+
+Damit ist die ursprüngliche Intuition eingelöst — der PV-Überschuss geht voll in die
+Bewertung ein —, ohne den Speicher an der falschen Stelle aufzuhängen.
+
+---
+
 ## B1. Neues Modul `src/lib/langzeitspeicher.js`
 
 Reine Funktionen, ohne DOM, ohne Closures — testbar und im Worker verwendbar:
@@ -374,13 +459,16 @@ Verlustanteil, mittlere Verweildauer, Flächenbedarf, sommerlicher Deckungsantei
 
 | Stufe | Inhalt | Nutzen |
 |---|---|---|
+| **0** | B0b: eine SOC-Kurve, ein Besitzer — PV-Überschuss als Eingangsreihe statt Nachkorrektur | Vorbedingung für alles Weitere; korrigiert nebenbei den zu hoch ausgewiesenen PV-Eigenverbrauch |
 | **1** | B1 + B2 + B8: Modul, Typtrennung, Kostenmodell | Der 40er-Fehler ist weg; Wirtschaftlichkeit wird belastbar — kein Eingriff in den Dispatch |
 | **2** | B3 + B4: Verlustmodell + Ziel-SOC-Band | Der Speicher verhält sich saisonal; Skaleneffekt wirkt |
 | **3** | B7 + B9: Auslegungsassistent + Flächenprüfung | Aus dem Modell wird ein Auslegungswerkzeug |
 | **4** | B5 + B6 + B10 + B11: Beladekriterium, Entlade-WP, Optimierer, Kennzahlen | Feinschliff, Variantenvergleich |
 
-Stufe 1 ist in sich abgeschlossen und ohne Risiko für den bestehenden Puffer-Pfad —
-ein guter erster Schnitt.
+Stufe 1 ist in sich abgeschlossen und ohne Risiko für den bestehenden Puffer-Pfad und
+damit der bequemste Einstieg. Stufe 0 ist die fachliche Vorbedingung: Ohne eine
+durchgängige SOC-Führung bleibt jede Saisonalspeicher-Rechnung wertlos, egal wie gut
+Volumen, Verlust und Kosten stimmen. Beide sind unabhängig voneinander machbar.
 
 ---
 
