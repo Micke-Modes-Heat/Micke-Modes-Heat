@@ -1376,14 +1376,22 @@ export function showTrasseFinishBtn() {
     bar.querySelector('#trasse-cancel-btn').onclick = () => cancelInteraction('draw-trasse');
   }
   const manualHeat = !!window._manualWaermeNetzDrawing;
+  const isStrom = trasseDrawDomain === 'strom';
+  bar.setAttribute('aria-label', isStrom ? 'Elektro-Korridor bearbeiten' : 'Wärme-Haupttrasse bearbeiten');
   const title = bar.querySelector('.trasse-editor-title strong');
   const subtitle = bar.querySelector('.trasse-editor-title span');
   const generate = bar.querySelector('#trasse-generate-btn');
-  if (title) title.textContent = manualHeat ? 'Wärmenetz manuell' : 'Wärme-Haupttrasse';
+  if (title) title.textContent = isStrom ? 'Elektro-Korridor' : manualHeat ? 'Wärmenetz manuell' : 'Wärme-Haupttrasse';
   if (subtitle) subtitle.textContent = manualHeat
     ? 'Vom Einspeisepunkt bis zu jedem Gebäude zeichnen · Gebäude rasten ein'
     : 'Stützpunkte ziehen · + zwischen Punkten fügt einen Knick ein';
-  if (generate) generate.textContent = manualHeat ? '✓ Zeichnung als Netz übernehmen' : '⚙ Fertig & Netz erzeugen';
+  // Elektro-Korridore werden nicht per Klick zum Netz — dafür gibt es im
+  // Elektro-Panel „Netz automatisch erzeugen“. Der Generate-Button gehört
+  // ausschließlich zum Wärmenetz-Workflow.
+  if (generate) {
+    generate.style.display = isStrom ? 'none' : '';
+    generate.textContent = manualHeat ? '✓ Zeichnung als Netz übernehmen' : '⚙ Fertig & Netz erzeugen';
+  }
   bar.style.display = 'flex';
   updateTrasseHistoryButtons();
 }

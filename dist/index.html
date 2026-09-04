@@ -11740,287 +11740,6 @@ if (typeof L !== 'undefined') {
 
       <!-- ══ Tab 4: Elektro ════════════════════════════════════ -->
       <div class="lp-content" id="lp-elektro">
-        <div class="lp-step">
-          <div class="lp-step-num" data-num="4">⚡</div>
-          <div class="lp-step-text">Stromnetz planen<span>Schritt für Schritt zum fertigen Netz</span></div>
-        </div>
-
-        <!-- ── 1. Komponenten platzieren ── -->
-        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-komp')">
-          <span>1 · Komponenten platzieren</span><span id="el-sec-komp-arrow">▼</span>
-        </div>
-        <div id="el-sec-komp">
-          <div id="asset-palette" class="asset-palette-inline"></div>
-          <div class="lp-tool-grid" style="margin-top:6px;">
-            <button class="lp-tool-btn" data-click="showKompaktstationDialog()" style="border-color:#cf6679;color:#cf6679;grid-column:1/-1;" title="Kompaktstation (Schaltanlage + Trafo + NSHV als Einheit) per Klick auf der Karte platzieren">🏗 Kompaktstation platzieren</button>
-          </div>
-        </div>
-
-        <!-- ── 2. Elektrotrassen zeichnen ── -->
-        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-trasse')">
-          <span>2 · Elektrotrassen zeichnen</span><span id="el-sec-trasse-arrow">▼</span>
-        </div>
-        <div id="el-sec-trasse">
-          <div class="lp-tool-grid">
-            <button class="lp-tool-btn trasse-draw-btn" id="btn-draw-trasse-strom" data-click="toggleDrawTrasse('strom')" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;">✏ Elektro-Korridor zeichnen</button>
-          </div>
-          <div class="lp-tool-grid" style="margin-top:6px;">
-            <button class="lp-tool-btn" id="btn-osm-strassen" data-click="loadOsmStrassen()" style="grid-column:1/-1;border-color:#90a4ae;color:#90a4ae;" title="Straßenverläufe aus OpenStreetMap im aktuellen Kartenausschnitt laden — als Vorlage für Trassenführung">↓ Straßen aus OSM laden</button>
-          </div>
-          <div class="lp-tool-grid" style="margin-top:4px;">
-            <button class="lp-tool-btn" data-click="adoptAllOsmStrassen()" style="grid-column:1/-1;font-size:11px;border-color:#ff9800;color:#ff9800;" title="Alle geladenen OSM-Straßen auf einmal als Elektrotrassen übernehmen">✓ Alle übernehmen</button>
-          </div>
-          <div class="lp-tool-grid" style="margin-top:4px;">
-            <button class="lp-tool-btn" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()" style="font-size:11px;" title="Eingeblendete OSM-Straßen auf der Karte ein-/ausblenden">👁 Ausblenden</button>
-            <button class="lp-tool-btn" data-click="clearOsmStrassen()" style="font-size:11px;border-color:#e57373;color:#e57373;" title="Alle geladenen OSM-Straßen wieder von der Karte entfernen">✕ Löschen</button>
-          </div>
-        </div>
-
-        <!-- ── 3. Leitungen zeichnen ── -->
-        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-leit')">
-          <span>3 · Leitungen zeichnen</span><span id="el-sec-leit-arrow">▼</span>
-        </div>
-        <div id="el-sec-leit">
-          <div class="lp-tool-grid">
-            <button class="lp-tool-btn" data-click="startDrawStromEdge()" id="btn-draw-strom-edge" style="grid-column:1/-1;">— Kabel zeichnen</button>
-          </div>
-          <div class="lp-tool-grid" style="margin-top:6px;">
-            <button class="lp-tool-btn" data-click="showAutoNetzDialog()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;" title="Stromnetz automatisch erzeugen: verbindet Komponenten anhand von Korridoren und Entfernungen">🔌 Netz automatisch erzeugen</button>
-          </div>
-        </div>
-
-        <!-- ── 4. Berechnen ── -->
-        <div class="lp-section-title lp-section-collapsible" data-click="toggleSection('el-sec-calc')">
-          <span>4 · Berechnen</span><span id="el-sec-calc-arrow">▼</span>
-        </div>
-        <div id="el-sec-calc">
-          <div class="lp-tool-grid" style="margin-bottom:8px;">
-            <button class="lp-tool-btn" data-click="elCalcAssets()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Elektrische Auslastungsberechnung für alle Stromnetz-Komponenten durchführen">⚡ Elektroberechnung</button>
-            <div style="grid-column:1/-1;padding:7px;border:1px solid rgba(255,152,0,.35);border-radius:5px;color:#ffb74d;font-size:9px;line-height:1.4;">Überschlägige Vorprüfung: symmetrisches 3-Phasen-Ersatzmodell mit pauschalem cos φ. Spannungsfall, Kurzschluss und Selektivität ersetzen keine prüffähige Netz-/Schutzstudie nach IEC/VDE. Die automatische Dimensionierung ist eine lokale Vorauswahl, keine global optimierte Netzlösung.</div>
-            <button class="lp-tool-btn" id="btn-sld-toggle" data-click="sldToggle()" style="grid-column:1/-1;border-color:#80cbc4;color:#80cbc4;" title="Einlinienschema (schematische Netzdarstellung) ein-/ausblenden">🔌 Einlinienschema</button>
-            <button class="lp-tool-btn" data-click="showInvestitionsplan()" style="grid-column:1/-1;border-color:#ce93d8;color:#ce93d8;" title="Investitionsplan für das Stromnetz anzeigen: Kosten der geplanten Komponenten und Maßnahmen über die Jahre">📋 Investitionsplan</button>
-            <button class="lp-tool-btn" id="btn-netzanalyse-toggle" data-click="naTogglePanel()" style="grid-column:1/-1;border-color:#b39ddb;color:#ce93d8;" title="Netzanalyse öffnen: Lastübersicht, automatische Trafo-Platzierung und MS-Netz-Analyse">🗺️ Netzanalyse</button>
-            <button class="lp-tool-btn" data-click="exportMassnahmenPDF()" style="grid-column:1/-1;border-color:#ef9a9a;color:#ef9a9a;" title="Maßnahmenbericht für das Stromnetz als PDF exportieren">📄 Maßnahmenbericht PDF</button>
-            <button class="lp-tool-btn" data-click="exportVollstaendigXLSX()" style="grid-column:1/-1;border-color:#a5d6a7;color:#a5d6a7;" title="Alle Stromnetz-Daten (Komponenten, Kabel, Maßnahmen) als Excel-Datei exportieren">📊 Export Excel (vollständig)</button>
-            <button class="lp-tool-btn" data-click="importVollstaendigXLSX()" style="grid-column:1/-1;border-color:#81d4fa;color:#81d4fa;" title="Stromnetz-Daten aus einer zuvor exportierten Excel-Datei importieren">📥 Import Excel</button>
-            <button class="lp-tool-btn" data-click="schnellberechnungStrom()" style="grid-column:1/-1;border-color:#ff9800;color:#ff9800;font-size:9px;" title="Stromnetz automatisch aus den hinterlegten Gebäudedaten ableiten und berechnen — schneller Einstieg ohne manuelle Platzierung">⚙ Netz aus Gebäudedaten erzeugen</button>
-            <button class="lp-tool-btn" data-click="showAutofillWizard()" style="grid-column:1/-1;border-color:#4fc3f7;color:#4fc3f7;" title="Verbrauchs- und PV-Werte automatisch ermitteln">✦ Auto-Befüllen (Verbrauch & PV)</button>
-          </div>
-          <div id="lp-el-calc-result" style="display:none;margin-bottom:8px;font-size:9px;color:var(--text);background:var(--surface);border-radius:4px;padding:4px 6px;border:1px solid var(--border);"></div>
-          <div style="font-size:9px;color:var(--muted);margin:4px 0 2px;text-transform:uppercase;letter-spacing:.04em;">Kabeltyp</div>
-          <select id="strom-kabel-typ" style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;">
-            <option value="NAYY">NAYY (Aluminium) — Standard</option>
-            <option value="NYY">NYY (Kupfer)</option>
-          </select>
-
-          <!-- Berechnungsparameter (eingeklappt) -->
-          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-param')">
-            Parameter <span id="lp-strom-param-arrow">▶</span>
-          </div>
-          <div id="lp-strom-param" style="display:none;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NS cos φ</div>
-                <input id="strom-ns-cosphi" type="number" value="0.95" min="0.70" max="1.00" step="0.01"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()" title="Leistungsfaktor NS-Netz (typ. 0,95 für WP-Quartier)"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">MS cos φ</div>
-                <input id="strom-ms-cosphi" type="number" value="0.90" min="0.70" max="1.00" step="0.01"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()" title="Leistungsfaktor MS-Ring (typ. 0,90)"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Leitertemp. (°C)</div>
-                <input id="strom-leiter-temp" type="number" value="70" min="20" max="90" step="5"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()" title="Betriebstemperatur des Leiters für Widerstandskorrektur (NAYY/NYY max. 70 °C)"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">GZF-Methode</div>
-                <select id="strom-gzf-methode"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="document.getElementById('strom-gzf-manuell-wrap').style.display=this.value==='manuell'?'':'none'; recalcStromNetz()">
-                  <option value="din18015">DIN 18015-1 (Tabelle)</option>
-                  <option value="vde">VDE (1/n^0.4)</option>
-                  <option value="manuell">Manuell</option>
-                  <option value="keine">Keine (Σ-Last)</option>
-                </select>
-              </div>
-              <div id="strom-gzf-manuell-wrap" style="display:none;grid-column:1/-1;">
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">GZF manuell</div>
-                <input id="strom-gzf-manuell" type="number" value="0.6" min="0.1" max="1.0" step="0.05"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()"/>
-              </div>
-              <!-- Iz-Korrekturfaktoren -->
-              <div style="grid-column:1/-1;border-top:1px solid var(--border);margin:4px 0 2px;"></div>
-              <div style="grid-column:1/-1;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Iz-Korrekturfaktoren (IEC 60364-5-52)</div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Bodentemp. (°C)</div>
-                <input id="strom-iz-tboden" type="number" value="20" min="-5" max="50" step="5"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()" title="Bodentemperatur für Iz-Temperaturkorrektur (kT). Referenz: 20 °C"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Häufung (Kabel)</div>
-                <input id="strom-iz-nkabel" type="number" value="1" min="1" max="20" step="1"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()" title="Anzahl parallel verlegter Kabel (Häufungsfaktor kG, IEC 60364-5-52 Tabelle B.52.17)"/>
-              </div>
-              <div style="grid-column:1/-1;">
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Verlegeart</div>
-                <select id="strom-iz-verlegeart"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()">
-                  <option value="erde">Erdverlegung direkt (D1) — Standard</option>
-                  <option value="luft">Freiluft, freie Luft (E/F) ×1.20</option>
-                  <option value="kanal">Kabelkanal in Erde (D2) ×0.87</option>
-                  <option value="rohr">Rohr in Wand/Beton (B1) ×0.77</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <!-- Kennwerte (standardmäßig eingeklappt) -->
-          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-info')">
-            Kennwerte <span id="lp-strom-info-arrow">▶</span>
-          </div>
-          <div id="lp-strom-info" class="lp-netz-summary" style="display:none;">
-            <div class="lp-netz-row" style="border-bottom:1px solid var(--border);padding-bottom:4px;margin-bottom:4px;"><span class="lbl">Szenario-Stunde</span><span class="val" id="lp-strom-sz-hour" style="color:var(--accent);">—</span></div>
-            <div class="lp-netz-row"><span class="lbl">Gesamtlast</span><span class="val" id="lp-strom-last">—</span></div>
-            <div class="lp-netz-row"><span class="lbl">Einspeisung</span><span class="val" id="lp-strom-einsp">—</span></div>
-            <div class="lp-netz-row"><span class="lbl">Trafo-Auslastung</span><span class="val" id="lp-strom-trafo-ausl">—</span></div>
-            <div class="lp-netz-row"><span class="lbl">Krit. Spannungsfall</span><span class="val" id="lp-strom-delta-u">—</span></div>
-            <div class="lp-netz-row"><span class="lbl" title="Minimaler Anfangs-Kurzschlusswechselstrom im Netz (IEC 60909, c=0.95). Maßgeblich für Schutzselektivität.">Min. Ik''</span><span class="val" id="lp-strom-ik-min">—</span></div>
-            <div class="lp-netz-row"><span class="lbl" title="Kombinierter Iz-Korrekturfaktor aus Temperatur, Häufung und Verlegeart (IEC 60364-5-52).">Iz-Korrekturfaktor</span><span class="val" id="lp-strom-kiz">—</span></div>
-            <div class="lp-netz-row"><span class="lbl">Kabellänge</span><span class="val" id="lp-strom-kabel-len">—</span></div>
-            <div class="lp-netz-row"><span class="lbl">Komponenten</span><span class="val" id="lp-strom-komp">—</span></div>
-          </div>
-
-          <!-- Kosten-Parameter -->
-          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-kosten')">
-            Kosten <span id="lp-strom-kosten-arrow">▼</span>
-          </div>
-          <div id="lp-strom-kosten">
-            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Netzinfrastruktur</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-tiefbau">Tiefbau (€/m)</div>
-                <input id="strom-k-tiefbau" type="number" value="100" min="0" step="10"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-nap">NAP-Pauschale (€)</div>
-                <input id="strom-k-nap" type="number" value="3000" min="0" step="500"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-trafo">Trafo (€/kVA)</div>
-                <input id="strom-k-trafo" type="number" value="60" min="0" step="10"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;" data-help="strom-k-nd">Nutzungsdauer (a)</div>
-                <input id="strom-k-nd" type="number" value="40" min="1" max="60" step="5"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"
-                  data-change="recalcStromNetz()"/>
-              </div>
-            </div>
-            <div style="border-top:1px solid var(--border);margin:4px 0 6px;"></div>
-            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Anlagen-Kostenfaktoren (Richtwerte)</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">PV (€/kWp)</div>
-                <input id="ak-pv-kwp" type="number" value="1200" min="0" step="100"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Transformator (€/kVA)</div>
-                <input id="ak-trafo-kva" type="number" value="80" min="0" step="10"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Batterie (€/kWh)</div>
-                <input id="ak-bat-kwh" type="number" value="600" min="0" step="50"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">WP (€/kW)</div>
-                <input id="ak-wp-kw" type="number" value="700" min="0" step="50"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Ladestation (€/Pkt.)</div>
-                <input id="ak-lade-pkt" type="number" value="1500" min="0" step="100"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">KWK (€/kWel)</div>
-                <input id="ak-kwk-kwel" type="number" value="3500" min="0" step="100"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Wind (€/kW)</div>
-                <input id="ak-wind-kw" type="number" value="1500" min="0" step="100"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NAP (€ pauschal)</div>
-                <input id="ak-nap" type="number" value="8000" min="0" step="500"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">NSHV (€/Abgang)</div>
-                <input id="ak-nshv-abg" type="number" value="500" min="0" step="50"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">UV (€/Abgang)</div>
-                <input id="ak-uv-abg" type="number" value="200" min="0" step="50"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-              <div>
-                <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">KVS (€/Abgang)</div>
-                <input id="ak-kvs-abg" type="number" value="150" min="0" step="25"
-                  style="width:100%;padding:4px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:10px;"/>
-              </div>
-            </div>
-            <!-- KPI-Anzeige Gesamtkosten -->
-            <div style="border-top:1px solid var(--border);margin:4px 0 6px;"></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-              <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
-                <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-invest">—</div>
-                <div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Investition</div>
-              </div>
-              <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;">
-                <div style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;" id="strom-kpi-annuitaet">—</div>
-                <div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Annuität/a</div>
-              </div>
-              <div style="grid-column:1/-1;font-size:9px;color:var(--muted);padding:2px 0;" id="strom-kpi-detail"></div>
-            </div>
-          </div>
-
-          <!-- Einfärbung -->
-          <div class="lp-section-title lp-section-collapsible" style="margin-top:12px;" data-click="toggleSection('lp-strom-viz')">
-            Einfärbung <span id="lp-strom-viz-arrow">▼</span>
-          </div>
-          <div id="lp-strom-viz" class="lp-tool-grid" style="grid-template-columns:1fr 1fr;">
-            <button class="lp-tool-btn" data-click="setStromColorMode('auslastung')" style="justify-content:center;font-size:9px;">Auslastung</button>
-            <button class="lp-tool-btn" data-click="setStromColorMode('spannungsfall')" style="justify-content:center;font-size:9px;">ΔU%</button>
-            <button class="lp-tool-btn" data-click="setStromColorMode('leistung')" style="justify-content:center;font-size:9px;">Leistung</button>
-            <button class="lp-tool-btn" data-click="setStromColorMode('richtung')" style="justify-content:center;font-size:9px;">Richtung</button>
-          </div>
-
-          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:10px;">
-            <input type="checkbox" id="strom-netz-visible" checked data-change="setStromNetzVisible(this.checked)"/> Stromnetz sichtbar
-          </label>
-        </div>
-
       </div>
 
       <!-- ══ Tab 5: Ergebnis ════════════════════════════════════ -->
@@ -15274,9 +14993,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-09-01';
+  var d = '2026-09-02';
   if (d.indexOf('__') === 0) d = '';
-  var c = '69b6713';
+  var c = '98f0e96';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -77401,7 +77120,10 @@ window._isSingleFileBuild = true;
 
     // Left-click: bei Überlappung Auswahl-Popup, sonst direkt öffnen
     function onCableClick(ev) {
-      if (window.isDrawingStromEdge) return;
+      // Während Kabel- oder Trassenzeichnen soll der Klick zur Karte durchgereicht
+      // werden (z.B. zum Andocken an eine bestehende Trasse), statt den Kabel-
+      // Inspector zu öffnen.
+      if (window.isDrawingStromEdge || window.isDrawingTrasse) return;
       L.DomEvent.stop(ev);
       const nearby = _findEdgesNearClick(ev.latlng, 10);
       if (nearby.length > 1) {
@@ -77416,6 +77138,9 @@ window._isSingleFileBuild = true;
 
     // Right-click to delete
     hitLayer.on('contextmenu', function(ev) {
+      // Während des Trassenzeichnens bedeutet Rechtsklick „zurück" — der Klick
+      // muss zur Karte durchgereicht werden statt ein Kabel-Löschen anzubieten.
+      if (window.isDrawingTrasse) return;
       L.DomEvent.stop(ev);
       epConfirm('Kabel entfernen', 'Dieses Kabel (' + (edge.cableType || 'NAYY') + ' ' + (edge.crossSection || '?') + ' mm²) entfernen?', { danger: true, okText: 'Entfernen' }).then(function(ok) {
         if (ok) removeStromEdge(edge);
@@ -77835,6 +77560,21 @@ window._isSingleFileBuild = true;
       e.hitLayer.setLatLngs(pts);
       e.lengthM = routed ? polylineLength(routed) : pt1.distanceTo(pt2);
     });
+  }
+
+  // Alle Bestandskabel einmalig neu entlang der aktuellen Trassen ausrichten —
+  // z.B. nachdem Trassen nachträglich gezeichnet, verschoben oder korrigiert
+  // wurden. Ändert nur die Geometrie (Verlauf, Länge), keine Topologie.
+  function realignAllStromKabel() {
+    const count = window.stromEdges?.length || 0;
+    if (!count) {
+      showHint('Es sind noch keine Kabel vorhanden.', 4000);
+      return 0;
+    }
+    updateStromEdgeGeometry();
+    recalcStromNetz();
+    showHint(`✓ ${count} Kabel entlang der aktuellen Trassen neu ausgerichtet.`, 5000);
+    return count;
   }
 
   // ── Stromnetz sichtbar/unsichtbar ───────────────────────────────
@@ -79980,6 +79720,48 @@ window._isSingleFileBuild = true;
     if (btn) { btn.textContent = '↓ Straßen aus OSM laden'; btn.disabled = false; }
   }
 
+  // Alle Elektro-Trassenabschnitte auf einmal entfernen (gezeichnet oder aus OSM
+  // übernommen). Wärmetrassen bleiben unangetastet. Kabel/Komponenten bleiben
+  // erhalten, verlieren aber ihre Ausrichtung entlang der Trasse — anschließend
+  // ggf. mit realignAllStromKabel() bzw. "Netz automatisch erzeugen" neu ordnen.
+  async function clearAllStromTrassen() {
+    const removeCount = trasseSegments.filter(seg => seg.domains?.includes('strom')).length;
+    if (!removeCount) {
+      showHint('Es sind keine Elektro-Trassen vorhanden.', 4000);
+      return 0;
+    }
+    const ok = typeof window.epConfirm === 'function'
+      ? await window.epConfirm(
+          'Elektro-Trassen löschen',
+          `Alle ${removeCount} Elektro-Trassenabschnitte werden entfernt.` +
+            '<br><br><span style="color:var(--muted);font-size:10px">Wärmetrassen bleiben unangetastet. Kabel und Komponenten bleiben erhalten, verlieren aber ihre Ausrichtung entlang der Trasse.</span>',
+          { okText: 'Alle löschen', cancelText: 'Abbrechen', danger: true },
+        )
+      : window.confirm(`${removeCount} Elektro-Trassenabschnitte wirklich löschen?`);
+    if (!ok) return 0;
+
+    const keptPoints = [];
+    const keptSegments = [];
+    for (const segment of trasseSegments) {
+      if (segment.domains?.includes('strom')) continue;
+      const points = trassePoints.slice(segment.start, segment.end + 1);
+      if (points.length < 2) continue;
+      const start = keptPoints.length;
+      keptPoints.push(...points);
+      keptSegments.push({ ...segment, start, end: keptPoints.length - 1 });
+    }
+    setTrassePoints(keptPoints);
+    setTrasseSegments(keptSegments);
+    setTrasseCurrentSegStart(keptPoints.length);
+    [..._osmStrassenAdopted].filter(key => key.startsWith('strom:')).forEach(key => _osmStrassenAdopted.delete(key));
+
+    redrawTrasse();
+    updateStromEdgeGeometry();
+    recalcStromNetz();
+    showHint(`✓ ${removeCount} Elektro-Trassenabschnitt${removeCount === 1 ? '' : 'e'} gelöscht.`, 5000);
+    return removeCount;
+  }
+
   // ── Stromnetz komplett löschen ──────────────────────────────────
   function clearStromNetz() {
     if (typeof window.stopAnimStrom === 'function') window.stopAnimStrom();
@@ -80136,6 +79918,7 @@ window._isSingleFileBuild = true;
     cancelDrawStromEdge: cancelDrawStromEdge,
     cancelPlaceStromNode: cancelPlaceStromNode,
     captureStromNetzState: captureStromNetzState,
+    clearAllStromTrassen: clearAllStromTrassen,
     clearAssetStatusRings: clearAssetStatusRings,
     clearOsmStrassen: clearOsmStrassen,
     clearStromNetz: clearStromNetz,
@@ -80152,6 +79935,7 @@ window._isSingleFileBuild = true;
     loadOsmStrassen: loadOsmStrassen,
     openCableInspector: openCableInspector,
     polylineLength: polylineLength,
+    realignAllStromKabel: realignAllStromKabel,
     recalcStromNetz: recalcStromNetz,
     refreshStromEdgeYears: refreshStromEdgeYears,
     removeStromEdge: removeStromEdge,
@@ -93882,7 +93666,7 @@ window._isSingleFileBuild = true;
     ${_sep}
     ${_sub('Trassen &amp; Kabel')}
     <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:2px;">
-      <button class="lp-tool-btn lp-btn-tile" id="btn-draw-trasse" data-click="toggleDrawTrasse()"
+      <button class="lp-tool-btn lp-btn-tile" id="btn-draw-trasse" data-click="toggleDrawTrasse('strom')"
         title="Trassenverlauf auf der Karte zeichnen">${_sw('#ff9800')} Trasse</button>
       <button class="lp-tool-btn lp-btn-tile" id="btn-schnellstart-osm" data-click="loadAndAdoptOsmStrassen()"
         title="Straßen aus OpenStreetMap laden und direkt als Trassen übernehmen">↓ OSM laden</button>
@@ -93893,6 +93677,12 @@ window._isSingleFileBuild = true;
       <button class="lp-tool-btn lp-btn-tile" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()">OSM ein-/aus</button>
       <button class="lp-tool-btn lp-btn-tile lp-btn-danger" data-click="clearOsmStrassen()">✕ OSM löschen</button>
     </div>
+    <button class="lp-tool-btn lp-btn-tile lp-btn-danger" style="width:100%;margin-bottom:2px;"
+      data-click="clearAllStromTrassen()"
+      title="Alle gezeichneten und aus OSM übernommenen Elektro-Trassenabschnitte auf einmal entfernen — Wärmetrassen bleiben erhalten">✕ Alle Elektro-Trassen löschen</button>
+    <button class="lp-tool-btn lp-btn-tile" style="width:100%;margin-bottom:2px;"
+      data-click="realignAllStromKabel()"
+      title="Verlauf und Länge aller bestehenden Kabel neu entlang der aktuellen Trassen berechnen — z.B. nach nachträglich gezeichneten oder korrigierten Trassen">↻ Kabel neu ausrichten</button>
     <button class="lp-tool-btn lp-btn-tile" style="width:100%;"
       data-click="showAutoNetzDialog()"
       title="Stromnetz automatisch erzeugen">Netz automatisch erzeugen</button>
@@ -118173,14 +117963,22 @@ ${massTbl}
       bar.querySelector('#trasse-cancel-btn').onclick = () => cancelInteraction('draw-trasse');
     }
     const manualHeat = !!window._manualWaermeNetzDrawing;
+    const isStrom = trasseDrawDomain === 'strom';
+    bar.setAttribute('aria-label', isStrom ? 'Elektro-Korridor bearbeiten' : 'Wärme-Haupttrasse bearbeiten');
     const title = bar.querySelector('.trasse-editor-title strong');
     const subtitle = bar.querySelector('.trasse-editor-title span');
     const generate = bar.querySelector('#trasse-generate-btn');
-    if (title) title.textContent = manualHeat ? 'Wärmenetz manuell' : 'Wärme-Haupttrasse';
+    if (title) title.textContent = isStrom ? 'Elektro-Korridor' : manualHeat ? 'Wärmenetz manuell' : 'Wärme-Haupttrasse';
     if (subtitle) subtitle.textContent = manualHeat
       ? 'Vom Einspeisepunkt bis zu jedem Gebäude zeichnen · Gebäude rasten ein'
       : 'Stützpunkte ziehen · + zwischen Punkten fügt einen Knick ein';
-    if (generate) generate.textContent = manualHeat ? '✓ Zeichnung als Netz übernehmen' : '⚙ Fertig & Netz erzeugen';
+    // Elektro-Korridore werden nicht per Klick zum Netz — dafür gibt es im
+    // Elektro-Panel „Netz automatisch erzeugen“. Der Generate-Button gehört
+    // ausschließlich zum Wärmenetz-Workflow.
+    if (generate) {
+      generate.style.display = isStrom ? 'none' : '';
+      generate.textContent = manualHeat ? '✓ Zeichnung als Netz übernehmen' : '⚙ Fertig & Netz erzeugen';
+    }
     bar.style.display = 'flex';
     updateTrasseHistoryButtons();
   }

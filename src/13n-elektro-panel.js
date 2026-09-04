@@ -123,7 +123,7 @@ function _html() { return `
     ${_sep}
     ${_sub('Trassen &amp; Kabel')}
     <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:2px;">
-      <button class="lp-tool-btn lp-btn-tile" id="btn-draw-trasse" data-click="toggleDrawTrasse()"
+      <button class="lp-tool-btn lp-btn-tile" id="btn-draw-trasse" data-click="toggleDrawTrasse('strom')"
         title="Trassenverlauf auf der Karte zeichnen">${_sw('#ff9800')} Trasse</button>
       <button class="lp-tool-btn lp-btn-tile" id="btn-schnellstart-osm" data-click="loadAndAdoptOsmStrassen()"
         title="Straßen aus OpenStreetMap laden und direkt als Trassen übernehmen">↓ OSM laden</button>
@@ -134,6 +134,12 @@ function _html() { return `
       <button class="lp-tool-btn lp-btn-tile" id="btn-osm-strassen-toggle" data-click="toggleOsmStrassenVisible()">OSM ein-/aus</button>
       <button class="lp-tool-btn lp-btn-tile lp-btn-danger" data-click="clearOsmStrassen()">✕ OSM löschen</button>
     </div>
+    <button class="lp-tool-btn lp-btn-tile lp-btn-danger" style="width:100%;margin-bottom:2px;"
+      data-click="clearAllStromTrassen()"
+      title="Alle gezeichneten und aus OSM übernommenen Elektro-Trassenabschnitte auf einmal entfernen — Wärmetrassen bleiben erhalten">✕ Alle Elektro-Trassen löschen</button>
+    <button class="lp-tool-btn lp-btn-tile" style="width:100%;margin-bottom:2px;"
+      data-click="realignAllStromKabel()"
+      title="Verlauf und Länge aller bestehenden Kabel neu entlang der aktuellen Trassen berechnen — z.B. nach nachträglich gezeichneten oder korrigierten Trassen">↻ Kabel neu ausrichten</button>
     <button class="lp-tool-btn lp-btn-tile" style="width:100%;"
       data-click="showAutoNetzDialog()"
       title="Stromnetz automatisch erzeugen">Netz automatisch erzeugen</button>

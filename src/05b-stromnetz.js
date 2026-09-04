@@ -799,7 +799,10 @@ export function addStromEdge(uId, vId) {
 
   // Left-click: bei Überlappung Auswahl-Popup, sonst direkt öffnen
   function onCableClick(ev) {
-    if (window.isDrawingStromEdge) return;
+    // Während Kabel- oder Trassenzeichnen soll der Klick zur Karte durchgereicht
+    // werden (z.B. zum Andocken an eine bestehende Trasse), statt den Kabel-
+    // Inspector zu öffnen.
+    if (window.isDrawingStromEdge || window.isDrawingTrasse) return;
     L.DomEvent.stop(ev);
     const nearby = _findEdgesNearClick(ev.latlng, 10);
     if (nearby.length > 1) {
@@ -814,6 +817,9 @@ export function addStromEdge(uId, vId) {
 
   // Right-click to delete
   hitLayer.on('contextmenu', function(ev) {
+    // Während des Trassenzeichnens bedeutet Rechtsklick „zurück" — der Klick
+    // muss zur Karte durchgereicht werden statt ein Kabel-Löschen anzubieten.
+    if (window.isDrawingTrasse) return;
     L.DomEvent.stop(ev);
     epConfirm('Kabel entfernen', 'Dieses Kabel (' + (edge.cableType || 'NAYY') + ' ' + (edge.crossSection || '?') + ' mm²) entfernen?', { danger: true, okText: 'Entfernen' }).then(function(ok) {
       if (ok) removeStromEdge(edge);
@@ -1233,6 +1239,21 @@ export function updateStromEdgeGeometry() {
     e.hitLayer.setLatLngs(pts);
     e.lengthM = routed ? polylineLength(routed) : pt1.distanceTo(pt2);
   });
+}
+
+// Alle Bestandskabel einmalig neu entlang der aktuellen Trassen ausrichten —
+// z.B. nachdem Trassen nachträglich gezeichnet, verschoben oder korrigiert
+// wurden. Ändert nur die Geometrie (Verlauf, Länge), keine Topologie.
+export function realignAllStromKabel() {
+  const count = window.stromEdges?.length || 0;
+  if (!count) {
+    showHint('Es sind noch keine Kabel vorhanden.', 4000);
+    return 0;
+  }
+  updateStromEdgeGeometry();
+  recalcStromNetz();
+  showHint(`✓ ${count} Kabel entlang der aktuellen Trassen neu ausgerichtet.`, 5000);
+  return count;
 }
 
 // ── Stromnetz sichtbar/unsichtbar ───────────────────────────────
@@ -3378,6 +3399,48 @@ export function clearOsmStrassen() {
   _osmStrassenAdopted.clear();
   const btn = document.getElementById('btn-osm-strassen');
   if (btn) { btn.textContent = '↓ Straßen aus OSM laden'; btn.disabled = false; }
+}
+
+// Alle Elektro-Trassenabschnitte auf einmal entfernen (gezeichnet oder aus OSM
+// übernommen). Wärmetrassen bleiben unangetastet. Kabel/Komponenten bleiben
+// erhalten, verlieren aber ihre Ausrichtung entlang der Trasse — anschließend
+// ggf. mit realignAllStromKabel() bzw. "Netz automatisch erzeugen" neu ordnen.
+export async function clearAllStromTrassen() {
+  const removeCount = trasseSegments.filter(seg => seg.domains?.includes('strom')).length;
+  if (!removeCount) {
+    showHint('Es sind keine Elektro-Trassen vorhanden.', 4000);
+    return 0;
+  }
+  const ok = typeof window.epConfirm === 'function'
+    ? await window.epConfirm(
+        'Elektro-Trassen löschen',
+        `Alle ${removeCount} Elektro-Trassenabschnitte werden entfernt.` +
+          '<br><br><span style="color:var(--muted);font-size:10px">Wärmetrassen bleiben unangetastet. Kabel und Komponenten bleiben erhalten, verlieren aber ihre Ausrichtung entlang der Trasse.</span>',
+        { okText: 'Alle löschen', cancelText: 'Abbrechen', danger: true },
+      )
+    : window.confirm(`${removeCount} Elektro-Trassenabschnitte wirklich löschen?`);
+  if (!ok) return 0;
+
+  const keptPoints = [];
+  const keptSegments = [];
+  for (const segment of trasseSegments) {
+    if (segment.domains?.includes('strom')) continue;
+    const points = trassePoints.slice(segment.start, segment.end + 1);
+    if (points.length < 2) continue;
+    const start = keptPoints.length;
+    keptPoints.push(...points);
+    keptSegments.push({ ...segment, start, end: keptPoints.length - 1 });
+  }
+  setTrassePoints(keptPoints);
+  setTrasseSegments(keptSegments);
+  setTrasseCurrentSegStart(keptPoints.length);
+  [..._osmStrassenAdopted].filter(key => key.startsWith('strom:')).forEach(key => _osmStrassenAdopted.delete(key));
+
+  redrawTrasse();
+  updateStromEdgeGeometry();
+  recalcStromNetz();
+  showHint(`✓ ${removeCount} Elektro-Trassenabschnitt${removeCount === 1 ? '' : 'e'} gelöscht.`, 5000);
+  return removeCount;
 }
 
 // ── Stromnetz komplett löschen ──────────────────────────────────
