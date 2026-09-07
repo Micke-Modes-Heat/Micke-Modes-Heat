@@ -1219,7 +1219,11 @@ export function ggSvgSource(svg) {
   return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(rein);
 }
 
-export function ggSvgToPngBlob(svg, scale) {
+/**
+ * @param {{transparent?:boolean}} [opts] — `transparent: true` laesst den weissen Grund weg
+ *   (fuer Wasserzeichen/Hintergrundbilder, die in Word HINTER den Text gelegt werden).
+ */
+export function ggSvgToPngBlob(svg, scale, opts = {}) {
   return new Promise((resolve, reject) => {
     const w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
     const url = URL.createObjectURL(new Blob([ggSvgSource(svg)], { type: 'image/svg+xml;charset=utf-8' }));
@@ -1228,8 +1232,10 @@ export function ggSvgToPngBlob(svg, scale) {
       const cv = document.createElement('canvas');
       cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
       const ctx = cv.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, cv.width, cv.height);
+      if (!opts.transparent) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, cv.width, cv.height);
+      }
       ctx.drawImage(img, 0, 0, cv.width, cv.height);
       URL.revokeObjectURL(url);
       cv.toBlob(b => b ? resolve(b) : reject(new Error('PNG konnte nicht erzeugt werden')), 'image/png');
@@ -1239,8 +1245,8 @@ export function ggSvgToPngBlob(svg, scale) {
   });
 }
 
-export async function ggCopyForWord(svg, scale) {
-  const blob = await ggSvgToPngBlob(svg, scale);
+export async function ggCopyForWord(svg, scale, opts = {}) {
+  const blob = await ggSvgToPngBlob(svg, scale, opts);
   // Weg 1: Clipboard-API (Chrome, Edge)
   if (navigator.clipboard && window.ClipboardItem) {
     try {
