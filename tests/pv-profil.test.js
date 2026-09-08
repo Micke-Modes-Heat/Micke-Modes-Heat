@@ -146,3 +146,154 @@ describe('_PV_SUN Konstanten', () => {
     expect(setJun - riseJun).toBeGreaterThan(setJan - riseJan);
   });
 });
+
+// ── Neu 09/2026: Klarhimmel-Geometrie + Wetterstreuung ─────────────────────
+// Diese Tests sichern genau die Eigenschaften ab, wegen derer das alte
+// Sinus-Profil ersetzt wurde (siehe Kopfkommentar in 09a-pv-profile.js).
+
+describe('makePvProfile8760 — realistische Spitzenleistung', () => {
+  const peakKwPerKwp = (aus, spez) => {
+    const p = makePvProfile8760(aus);
+    let max = 0, sum = 0;
+    for (let i = 0; i < 8760; i++) { sum += p[i]; if (p[i] > max) max = p[i]; }
+    return max / sum * spez;
+  };
+
+  it('Süd erreicht 0,78–0,92 kW/kWp (Stundenmittel)', () => {
+    // Das alte Profil lag bei 0,465 kW/kWp — Faktor ~1,8 zu niedrig. Dadurch
+    // erzeugte jede Einspeisegrenze oberhalb ~47 % der kWp rechnerisch null
+    // Abregelung und die Rückspeise-Ampel war systematisch zu grün.
+    const peak = peakKwPerKwp('sued', 1050);
+    expect(peak).toBeGreaterThan(0.78);
+    expect(peak).toBeLessThan(0.92);
+  });
+
+  it('Ost-West flacher als Süd, aber über 0,65 kW/kWp', () => {
+    const peakOw = peakKwPerKwp('ostwest', 950);
+    expect(peakOw).toBeGreaterThan(0.65);
+    expect(peakOw).toBeLessThan(peakKwPerKwp('sued', 1050));
+  });
+
+  it('nennenswerter Energieanteil oberhalb 70 % der Nennleistung', () => {
+    // Physikalisch liegen ~10–20 % des Jahresertrags über 0,7 kW/kWp.
+    // Das alte Profil kam nie über 0,47 → exakt 0 %.
+    const p = makePvProfile8760('sued');
+    let sum = 0, hoch = 0;
+    for (let i = 0; i < 8760; i++) { sum += p[i]; if (p[i] * 1050 > 0.7) hoch += p[i]; }
+    const anteil = hoch / sum * 100;
+    expect(anteil).toBeGreaterThan(8);
+    expect(anteil).toBeLessThan(25);
+  });
+});
+
+describe('makePvProfile8760 — Kalibrierung bleibt erhalten', () => {
+  it('Monatsanteile entsprechen exakt _PV_MONTH', () => {
+    const p = makePvProfile8760('sued');
+    const monatsStunden = [744, 672, 744, 720, 744, 720, 744, 744, 720, 744, 720, 744];
+    let ptr = 0;
+    for (let m = 0; m < 12; m++) {
+      let s = 0;
+      for (let i = 0; i < monatsStunden[m]; i++) s += p[ptr++];
+      expect(s).toBeCloseTo(_PV_MONTH.sued[m], 4);
+    }
+  });
+});
+
+describe('makePvProfile8760 — Wetterstreuung', () => {
+  const tagesSummen = (p) => {
+    const t = [];
+    for (let d = 0; d < 365; d++) {
+      let s = 0;
+      for (let h = 0; h < 24; h++) s += p[d * 24 + h];
+      t.push(s);
+    }
+    return t;
+  };
+
+  it('Tage eines Monats sind nicht mehr identisch', () => {
+    const tage = tagesSummen(makePvProfile8760('sued')).slice(151, 181); // Juni
+    const min = Math.min(...tage), max = Math.max(...tage);
+    expect(max / min).toBeGreaterThan(2); // trüber vs. klarer Junitag
+  });
+
+  it('deterministisch — gleicher Seed liefert identische Werte', () => {
+    const a = makePvProfile8760('sued', 4242);
+    const b = makePvProfile8760('sued', 4242);
+    for (let i = 0; i < 8760; i += 97) expect(b[i]).toBe(a[i]);
+  });
+
+  it('anderer Seed liefert ein anderes Wetterjahr bei gleicher Jahressumme', () => {
+    const a = makePvProfile8760('sued', 1);
+    const b = makePvProfile8760('sued', 2);
+    let diff = 0, sumA = 0, sumB = 0;
+    for (let i = 0; i < 8760; i++) { diff += Math.abs(a[i] - b[i]); sumA += a[i]; sumB += b[i]; }
+    expect(diff).toBeGreaterThan(0.05);
+    expect(sumA).toBeCloseTo(sumB, 4);
+  });
+
+  it('Schönwetter-/Trübphasen halten mehrere Tage an (Persistenz)', () => {
+    // Ohne Persistenz wäre die Autokorrelation aufeinanderfolgender Tage ~0.
+    // Für die Speicherauslegung ist genau diese Persistenz entscheidend.
+    const t = tagesSummen(makePvProfile8760('sued')).slice(120, 240); // Mai–Aug
+    const mean = t.reduce((a, b) => a + b, 0) / t.length;
+    let cov = 0, varr = 0;
+    for (let i = 0; i < t.length - 1; i++) cov += (t[i] - mean) * (t[i + 1] - mean);
+    for (let i = 0; i < t.length; i++) varr += (t[i] - mean) ** 2;
+    expect(cov / varr).toBeGreaterThan(0.15);
+  });
+});
+
+describe('makePvProfile8760 — Tagesform', () => {
+  it('Sommer-Mittagsspitze liegt wegen Sommerzeit bei 13:00–14:00 Ortszeit', () => {
+    const p = makePvProfile8760('sued');
+    // klarsten Junitag suchen, dann dessen Spitzenstunde
+    let bestTag = 151, bestSum = -1;
+    for (let d = 151; d < 181; d++) {
+      let s = 0;
+      for (let h = 0; h < 24; h++) s += p[d * 24 + h];
+      if (s > bestSum) { bestSum = s; bestTag = d; }
+    }
+    let peakH = 0, peakV = -1;
+    for (let h = 0; h < 24; h++) {
+      const v = p[bestTag * 24 + h];
+      if (v > peakV) { peakV = v; peakH = h; }
+    }
+    expect(peakH).toBeGreaterThanOrEqual(12);
+    expect(peakH).toBeLessThanOrEqual(14);
+  });
+
+  it('Ost-West hat mittags einen kleineren Anteil am Tagesertrag als Süd', () => {
+    const anteilMittag = (aus) => {
+      const p = makePvProfile8760(aus);
+      let tag = 0, mittag = 0;
+      for (let d = 151; d < 181; d++) {
+        for (let h = 0; h < 24; h++) {
+          const v = p[d * 24 + h];
+          tag += v;
+          if (h >= 12 && h <= 14) mittag += v;
+        }
+      }
+      return mittag / tag;
+    };
+    expect(anteilMittag('ostwest')).toBeLessThan(anteilMittag('sued'));
+  });
+});
+
+describe('pvProfilKennwerte', () => {
+  it('rechnet die Spitzenleistung aus einem normierten Profil zurück', () => {
+    const p = makePvProfile8760('sued');
+    const k = pvProfilKennwerte(p, 1050);
+    let max = 0;
+    for (let i = 0; i < 8760; i++) if (p[i] > max) max = p[i];
+    expect(k.peakKwPerKwp).toBeCloseTo(max * 1050, 3);
+    expect(k.vollLastStunden).toBeCloseTo(1050 / k.peakKwPerKwp, 1);
+    expect(k.stundenMitErtrag).toBeGreaterThan(3800);
+    expect(k.stundenMitErtrag).toBeLessThan(4800);
+  });
+
+  it('leeres Profil ergibt Nullwerte statt NaN', () => {
+    const k = pvProfilKennwerte(null, 1050);
+    expect(k.peakKwPerKwp).toBe(0);
+    expect(k.vollLastStunden).toBe(0);
+  });
+});

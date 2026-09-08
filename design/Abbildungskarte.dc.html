@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; }
+    a { color: #d4a855; text-decoration: none; }
+    a:hover { color: #ece8df; }
+    .chip { padding:3px 11px; border-radius:13px; font-size:10.5px; cursor:pointer; user-select:none;
+            display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+    .btn  { padding:4px 10px; border-radius:13px; border:1px solid #3a3528; color:#aca496; font-size:10.5px;
+            cursor:pointer; user-select:none; display:flex; align-items:center; gap:5px; }
+    .btn:hover { border-color:#d4a855; color:#d4a855; }
+  </style>
+</helmet>
+
+<div style="width:1440px;height:640px;background:#12110e;color:#ece8df;padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:11px;overflow:hidden;">
+
+  <div style="font-size:11px;color:#78909c;">Wiederverwendbares Muster für alle neun Abbildungen — hier an der netzkritischen Abb. 6. Chips filtern, das Profil rechnet neu.</div>
+
+  <div style="background:#1c1a15;border:1px solid #3a3528;border-radius:7px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex-grow:1;min-height:0;">
+
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;">
+      <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+        <div style="display:flex;align-items:baseline;gap:9px;">
+          <span style="font-family:'DM Mono',monospace;font-size:12px;color:#d4a855;">Abb. 6</span>
+          <span style="font-size:13px;font-weight:600;">Rückspeisung &amp; Netzverträglichkeit</span>
+        </div>
+        <div style="font-size:11px;color:#aca496;">Gleichzeitige Rückspeiseleistung am Netzanschlusspunkt gegen Spannungsband und Anschlusskapazität</div>
+      </div>
+      <div style="display:flex;gap:5px;flex-shrink:0;">
+        <div class="btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          Vollbild
+        </div>
+        <div class="btn">PNG</div>
+        <div class="btn">Daten als CSV</div>
+        <div class="btn" style="border-color:#66bb6a;color:#66bb6a;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          Im Gutachten
+        </div>
+      </div>
+    </div>
+
+    <!-- Steuerzeile -->
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <span style="font-size:10.5px;color:#78909c;margin-right:2px;">Varianten</span>
+      <sc-for list="{{chips}}" as="c" hint-placeholder-count="5">
+        <div class="chip" onClick="{{c.pick}}" style="{{c.style}}">
+          <span style="width:8px;height:8px;border-radius:2px;background:{{c.punkt}};display:inline-block;flex-shrink:0;"></span>{{c.label}}
+        </div>
+      </sc-for>
+      <div style="width:1px;height:16px;background:#3a3528;margin:0 4px;"></div>
+      <span style="font-size:10.5px;color:#78909c;margin-right:2px;">Profil</span>
+      <sc-for list="{{profilChips}}" as="p" hint-placeholder-count="2">
+        <div class="chip" onClick="{{p.pick}}" style="{{p.style}}">{{p.label}}</div>
+      </sc-for>
+      <div class="chip" onClick="{{toggleGrenzen}}" style="{{grenzenStyle}}">Grenzlinien</div>
+    </div>
+
+    <!-- Plotfläche -->
+    <div style="flex-grow:1;min-height:0;background:#12110e;border:1px solid #3a3528;border-radius:6px;padding:14px 16px;display:flex;flex-direction:column;gap:9px;">
+
+      <div style="display:flex;gap:20px;font-size:10.5px;color:#aca496;">
+        <span style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:3px;background:#d4a855;display:inline-block;"></span>Rückspeisespitze P_rück</span>
+        <span style="display:flex;align-items:center;gap:6px;{{grenzenSichtbar}}"><span style="width:14px;height:0;border-top:2px dashed #ef5350;display:inline-block;"></span>Anschlussgrenze 2.000 kW</span>
+        <span style="display:flex;align-items:center;gap:6px;{{grenzenSichtbar}}"><span style="width:14px;height:0;border-top:2px dashed #ffa726;display:inline-block;"></span>Spannungsband 2,0 % ≙ 2.400 kW</span>
+        <span style="margin-left:auto;color:#78909c;">{{profilNote}}</span>
+      </div>
+
+      <div style="flex-grow:1;min-height:0;position:relative;display:flex;align-items:flex-end;gap:26px;padding:0 8px 0 58px;">
+        <sc-for list="{{linien}}" as="l" hint-placeholder-count="2">
+          <div style="{{l.style}}"></div>
+          <span style="{{l.labelStyle}}">{{l.label}}</span>
+        </sc-for>
+        <sc-for list="{{saeulen}}" as="s" hint-placeholder-count="5">
+          <div onClick="{{s.pick}}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end;position:relative;z-index:1;cursor:pointer;">
+            <span style="font-family:'DM Mono',monospace;font-size:11px;color:{{s.textFarbe}};">{{s.wert}}</span>
+            <div style="{{s.balken}}"></div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;padding:0 8px 0 58px;gap:26px;">
+        <sc-for list="{{saeulen}}" as="s" hint-placeholder-count="5">
+          <div onClick="{{s.pick}}" style="flex:1;text-align:center;font-size:10.5px;color:{{s.textFarbe}};cursor:pointer;">{{s.label}}</div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start;">
+      <div style="font-size:11px;color:#aca496;line-height:1.6;">
+        <b style="color:#ece8df;">So lesen:</b> {{lesen}}
+      </div>
+      <div style="background:#24221b;border:1px solid #3a3528;border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;">
+        <div style="font-size:10px;color:#aca496;letter-spacing:.08em;text-transform:uppercase;">Bildunterschrift fürs Gutachten</div>
+        <div style="font-size:10.5px;color:#ece8df;line-height:1.5;">{{caption}}</div>
+        <div style="font-size:10px;color:#78909c;">wird beim Übernehmen mitgegeben</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { pick: 'wirt', profil: 'synth', grenzen: true };
+  }
+
+  n(v, d) { return Number(v).toLocaleString('de-DE', { minimumFractionDigits:d, maximumFractionDigits:d }); }
+
+  renderVals() {
+    const s = this.state;
+    const NAP = 2000, UBAND = 2400, MAX = 2800;
+
+    const basis = [
+      { id:'minimal',  label:'Minimal',        farbe:'#78909c', synth:78,   pvgis:95 },
+      { id:'ev',       label:'Eigenverbrauch', farbe:'#42a5f5', synth:237,  pvgis:289 },
+      { id:'wirt',     label:'Wirtschaftlich', farbe:'#66bb6a', synth:1641, pvgis:2003 },
+      { id:'autarkie', label:'Autarkie',       farbe:'#4fc3f7', synth:2052, pvgis:2504 },
+      { id:'maxpv',    label:'Max PV',         farbe:'#fdd835', synth:2052, pvgis:2504 },
+    ];
+
+    const ampelFarbe = (kw) => {
+      const cap = kw / NAP, du = kw / UBAND;
+      return (cap > 1 || du > 1) ? '#ef5350' : (cap > 0.7 || du > 0.667) ? '#ffa726' : '#66bb6a';
+    };
+
+    const werte = basis.map(b => ({ ...b, kw: b[s.profil], ampel: ampelFarbe(b[s.profil]) }));
+    const gewaehlt = werte.find(w => w.id === s.pick) || werte[2];
+
+    const chips = werte.map(w => ({
+      label:w.label, punkt:w.ampel,
+      pick:() => this.setState({ pick:w.id }),
+      style: w.id === s.pick
+        ? 'border:1px solid ' + w.farbe + ';background:' + w.farbe + ';color:#12110e;font-weight:500;'
+        : 'border:1px solid ' + w.farbe + ';background:transparent;color:' + w.farbe + ';',
+    }));
+
+    const profile = [{ k:'synth', label:'synthetisch 0,86 kW/kWp' }, { k:'pvgis', label:'PVGIS 1,05 kW/kWp' }];
+    const profilChips = profile.map(p => ({
+      label:p.label, pick:() => this.setState({ profil:p.k }),
+      style: p.k === s.profil
+        ? 'border:1px solid #d4a855;background:#d4a855;color:#12110e;font-weight:500;'
+        : 'border:1px solid #3a3528;background:transparent;color:#aca496;',
+    }));
+
+    const linie = (kw, farbe, label) => ({
+      style:'position:absolute;left:58px;right:8px;bottom:' + (kw / MAX * 100).toFixed(1) +
+            '%;height:0;border-top:2px dashed ' + farbe + ';opacity:.85;',
+      labelStyle:'position:absolute;left:0;bottom:' + (kw / MAX * 100).toFixed(1) +
+                 '%;transform:translateY(50%);font-size:10px;color:' + farbe + ';white-space:nowrap;',
+      label,
+    });
+
+    const saeulen = werte.map(w => {
+      const dim = w.id !== s.pick;
+      return {
+        label:w.label, wert:this.n(w.kw, 0),
+        textFarbe: dim ? '#78909c' : '#ece8df',
+        pick:() => this.setState({ pick:w.id }),
+        balken:'width:100%;height:' + (w.kw / MAX * 100).toFixed(1) + '%;background:' + w.ampel +
+               ';opacity:' + (dim ? .35 : 1) + ';border-radius:2px 2px 0 0;transition:height .2s;',
+      };
+    });
+
+    const kippt = gewaehlt.id === 'wirt' && s.profil === 'pvgis';
+    const lesen = 'Die Säule ist die höchste gleichzeitige Rückspeiseleistung des Jahres — Erzeugung minus Last am Netzanschlusspunkt, ungekappt gerechnet. ' +
+      'Über der roten Linie reicht die Anschlusskapazität nicht, über der orangen wird das Spannungsband nach VDE-AR-N 4110 gerissen. ' +
+      (kippt
+        ? 'Mit dem PVGIS-Profil überschreitet auch die wirtschaftliche Variante die Anschlussgrenze — die Netzaussage hängt damit direkt am Erzeugungsprofil.'
+        : 'Der Wechsel auf das PVGIS-Profil hebt alle Säulen um rund ein Fünftel — probeweise umschalten.');
+
+    return {
+      chips, profilChips, saeulen,
+      linien: s.grenzen ? [linie(NAP, '#ef5350', '2.000'), linie(UBAND, '#ffa726', '2.400')] : [],
+      grenzenSichtbar: s.grenzen ? '' : 'opacity:.25;',
+      grenzenStyle: s.grenzen
+        ? 'border:1px solid #aca496;background:#aca496;color:#12110e;'
+        : 'border:1px solid #3a3528;color:#78909c;',
+      toggleGrenzen: () => this.setState({ grenzen: !s.grenzen }),
+      profilNote: 'Profil: ' + (s.profil === 'synth' ? 'synthetisch' : 'PVGIS') + ' · Spitze ' +
+                  this.n(gewaehlt.kw, 0) + ' kW bei ' + gewaehlt.label,
+      lesen,
+      caption: 'Abb. 6: Rückspeisespitze je Ausbauvariante gegenüber Anschlusskapazität und zulässiger Spannungsanhebung am Netzanschlusspunkt.',
+    };
+  }
+}
+</script>
+</body>
+</html>

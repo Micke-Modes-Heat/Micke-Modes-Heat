@@ -1884,6 +1884,201 @@ const GG_FIGUREN = [
 // darunter (GG_PV_KURZ etc.) sind sonst beim Auswerten von GG_FIGUREN noch
 // nicht initialisiert (TDZ) — der Push erfolgt erst, nachdem alles definiert ist.
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3g) RENDERER — „Herleitung": mehrere kleine Kriterien-Diagramme nebeneinander
+ *
+ * Für Kapitel 3.2.5: belegt, WARUM eine Auslegung die gewählte ist. Je Panel
+ * eine Kurve, die Kriteriumslinie und der gewählte Punkt; wo eine Suche
+ * abgebrochen hat, zusätzlich der auslösende Punkt.
+ * cfg.panels = [{ titel, kriterium, farbe, punkte:[{x,y}], xMax, yMin, yMax,
+ *   xEinheit, schwelle?:{y,label}, marker:{x,y,label}, brk?:{x,y,label} }]
+ * ═══════════════════════════════════════════════════════════════════════ */
+export function ggRenderHerleitung(cfg, T = GG_THEME) {
+  const G = ggSheetGeometry(T, cfg);
+  const S = G.S, W = G.W;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+
+  let out = ggSheetHeader(cfg, T, G);
+
+  const panels = (cfg.panels || []).filter(p => p && p.punkte && p.punkte.length > 1);
+  if (!panels.length) {
+    out += `<rect x="${gR(G.plotX)}" y="${G.plotY}" width="${gR(G.plotW)}" height="${G.plotH}" fill="${T.neutral.cardBg}"/>`;
+    out += txt(G.plotX + G.plotW / 2, G.plotY + G.plotH / 2, cfg.leer || 'Keine Daten vorhanden',
+               { anchor: 'middle', size: 13, fill: T.text.faint });
+    out += ggAxisTitles(cfg, T, G);
+    out += ggSheetKpiFooter(cfg, T, G);
+    return ggFinishSvg(out, W, G.height);
+  }
+
+  const luft = 18;
+  const pW = (G.plotW - luft * (panels.length - 1)) / panels.length;
+
+  panels.forEach((p, idx) => {
+    const pX = G.plotX + idx * (pW + luft);
+    out += `<rect x="${gR(pX)}" y="${G.plotY}" width="${gR(pW)}" height="${G.plotH}" fill="${T.neutral.cardBg}"/>`;
+
+    // Überschrift des Panels: Variante + Kriterium
+    out += txt(pX + 12, G.plotY + 20, p.titel || '', { size: S.fsBody, weight: 700 });
+    out += txt(pX + 12, G.plotY + 36, p.kriterium || '', { size: S.fsLeg, fill: T.text.muted });
+
+    // Zeichenfläche des Panels
+    const cX = pX + 42, cY = G.plotY + 48;
+    const cW = pW - 42 - 14, cH = G.plotH - 48 - 30;
+    const cB = cY + cH;
+    const xMax = p.xMax || 1;
+    const yMin = p.yMin, yMax = p.yMax > p.yMin ? p.yMax : p.yMin + 1;
+    const xOf = v => cX + Math.min(1, Math.max(0, v / xMax)) * cW;
+    const yOf = v => cB - Math.min(1, Math.max(0, (v - yMin) / (yMax - yMin))) * cH;
+
+    // Gitter (drei waagerechte Hilfslinien)
+    let gitter = '';
+    for (let i = 0; i <= 2; i++) {
+      const y = Math.round(cB - (i / 2) * cH) + 0.5;
+      gitter += `M${gR(cX)} ${y}H${gR(cX + cW)}`;
+    }
+    out += `<path d="${gitter}" fill="none" stroke="${T.line}" stroke-width="1"/>`;
+
+    // Kriteriumslinie
+    if (p.schwelle && p.schwelle.y >= yMin && p.schwelle.y <= yMax) {
+      const sy = yOf(p.schwelle.y);
+      out += `<line x1="${gR(cX)}" y1="${gR(sy)}" x2="${gR(cX + cW)}" y2="${gR(sy)}"
+                stroke="${T.energy.gas}" stroke-width="1.6" stroke-dasharray="5 3"/>`;
+      out += txt(cX + 5, sy - 5, p.schwelle.label || '', { size: S.fsLeg, fill: T.energy.gas });
+    }
+
+    // Kurve
+    const d = p.punkte.map((q, i) => (i ? 'L' : 'M') + gR(xOf(q.x)) + ' ' + gR(yOf(q.y))).join(' ');
+    out += `<path d="${d}" fill="none" stroke="${p.farbe || T.accents.gruen}" stroke-width="2.2"/>`;
+
+    // Abbruchpunkt (Kriterium gerissen)
+    if (p.brk) {
+      out += `<circle cx="${gR(xOf(p.brk.x))}" cy="${gR(yOf(p.brk.y))}" r="4" fill="none"
+                stroke="${T.energy.waerme}" stroke-width="2"/>`;
+      out += txt(xOf(p.brk.x) - 7, yOf(p.brk.y) + 15, p.brk.label || '',
+                 { anchor: 'end', size: S.fsLeg, fill: T.energy.waerme });
+    }
+
+    // Gewählter Punkt
+    if (p.marker) {
+      out += `<circle cx="${gR(xOf(p.marker.x))}" cy="${gR(yOf(p.marker.y))}" r="5"
+                fill="${p.farbe || T.accents.gruen}" stroke="${T.neutral.cardBg}" stroke-width="2"/>`;
+      out += txt(xOf(p.marker.x) - 8, yOf(p.marker.y) - 10, p.marker.label || '',
+                 { anchor: 'end', mono: true, size: S.fsLeg, weight: 500, fill: T.text.strong });
+    }
+
+    // Achsenbeschriftung
+    for (let i = 0; i <= 2; i++) {
+      const wert = yMin + (i / 2) * (yMax - yMin);
+      out += txt(cX - 6, cB - (i / 2) * cH + S.fsAxis * 0.36, ggNum(wert, (yMax - yMin) < 12 ? 1 : 0),
+                 { anchor: 'end', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    }
+    out += txt(cX, cB + 14, '0', { mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    out += txt(cX + cW, cB + 14, ggNum(xMax) + ' ' + (p.xEinheit || ''),
+               { anchor: 'end', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+
+    out += `<rect x="${gR(pX) + 0.5}" y="${G.plotY}.5" width="${gR(pW) - 1}" height="${G.plotH - 1}"
+              fill="none" stroke="${T.rule}" stroke-width="1"/>`;
+  });
+
+  out += ggAxisTitles(cfg, T, G);
+  out += ggSheetKpiFooter(cfg, T, G);
+  return ggFinishSvg(out, W, G.height);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3h) RENDERER — „Rückspeise-Ampel": Säule je Variante gegen Grenzlinien
+ *
+ * Für Kapitel 3.2.5: die gleichzeitige Rückspeiseleistung am Netzanschluss-
+ * punkt gegen Anschlusskapazität und Spannungsband. Die Säulenfarbe ist die
+ * Ampelbewertung, die Grenzen sind waagerechte Linien.
+ * cfg.kategorien = string[] · cfg.balken = [{ wert, farbe }]
+ * cfg.grenzen    = [{ wert, farbe, label }]
+ * ═══════════════════════════════════════════════════════════════════════ */
+export function ggRenderRueckAmpel(cfg, T = GG_THEME) {
+  const G = ggSheetGeometry(T, cfg);
+  const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+
+  let out = ggSheetHeader(cfg, T, G);
+  out += `<rect x="${gR(plotX)}" y="${plotY}" width="${gR(plotW)}" height="${plotH}" fill="${T.neutral.cardBg}"/>`;
+
+  const kat = cfg.kategorien || [];
+  const balken = cfg.balken || [];
+  const grenzen = (cfg.grenzen || []).filter(g => g && g.wert > 0);
+
+  if (!kat.length || !balken.some(b => b.wert > 0)) {
+    out += txt(plotX + plotW / 2, plotY + plotH / 2, cfg.leer || 'Keine Daten vorhanden',
+               { anchor: 'middle', size: 13, fill: T.text.faint });
+  } else {
+    const roh = Math.max(...balken.map(b => b.wert), ...grenzen.map(g => g.wert));
+    const yStep = ggNiceStep(roh / 7);
+    const yMax  = Math.max(yStep, Math.ceil(roh * 1.12 / yStep) * yStep);
+    const yOf = v => plotB - (v / yMax) * plotH;
+
+    let gitter = '';
+    for (let v = yStep; v < yMax; v += yStep) {
+      const y = Math.round(yOf(v)) + 0.5;
+      gitter += `M${gR(plotX)} ${y}H${gR(plotX + plotW)}`;
+    }
+    out += `<path d="${gitter}" fill="none" stroke="${T.line}" stroke-width="1"/>`;
+
+    // Säulen
+    const fachW = plotW / kat.length, innen = fachW * 0.5;
+    balken.forEach((b, i) => {
+      const h = Math.max(0, (b.wert / yMax) * plotH);
+      const x = plotX + i * fachW + (fachW - innen) / 2;
+      out += `<rect x="${gR(x)}" y="${gR(plotB - h)}" width="${gR(innen)}" height="${gR(h)}" fill="${b.farbe}"/>`;
+      out += txt(x + innen / 2, plotB - h - 7, ggNum(b.wert),
+                 { anchor: 'middle', mono: true, size: S.fsAxis, weight: 500, fill: T.text.strong });
+    });
+
+    // Grenzlinien über den Säulen
+    for (const g of grenzen) {
+      if (g.wert > yMax) continue;
+      const y = yOf(g.wert);
+      out += `<line x1="${gR(plotX)}" y1="${gR(y)}" x2="${gR(plotX + plotW)}" y2="${gR(y)}"
+                stroke="${g.farbe}" stroke-width="1.8" stroke-dasharray="6 4"/>`;
+      out += txt(plotX + plotW - 8, y - 6, g.label || '', { anchor: 'end', size: S.fsLeg, fill: g.farbe });
+    }
+
+    // Achsen
+    kat.forEach((k, i) => {
+      out += txt(plotX + i * fachW + fachW / 2, G.xLabelY, k,
+                 { anchor: 'middle', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    });
+    for (let v = 0; v <= yMax + 1e-9; v += yStep) {
+      out += txt(plotX - 8, yOf(v) + S.fsAxis * 0.36, ggNum(v),
+                 { anchor: 'end', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    }
+
+    // Ampel-Legende
+    const leg = [
+      { farbe: T.accents.gruen,  text: 'netzverträglich' },
+      { farbe: T.energy.gas,     text: 'Prüfung durch den Netzbetreiber' },
+      { farbe: T.energy.waerme,  text: 'Erzeugungsnetz / MS-Anschluss nötig' },
+    ];
+    const lw = 12 + 16 + 9 + Math.max(...leg.map(e => ggEstW(e.text, S.fsLeg))) + 14;
+    const lh = 8 + leg.length * 18 + 2;
+    const lx = plotX + 12, ly = plotY + 10;
+    out += `<rect x="${gR(lx)}" y="${ly}" width="${gR(lw)}" height="${gR(lh)}" fill="${T.bg}" fill-opacity="0.92"
+              stroke="${T.line}" stroke-width="1"/>`;
+    leg.forEach((e, i) => {
+      const ey = ly + 8 + i * 18;
+      out += `<rect x="${gR(lx + 12)}" y="${gR(ey)}" width="12" height="11" fill="${e.farbe}"/>`
+           + txt(lx + 37, ey + 9, e.text, { size: S.fsLeg });
+    });
+  }
+
+  out += `<rect x="${gR(plotX) + 0.5}" y="${plotY}.5" width="${gR(plotW) - 1}" height="${plotH - 1}"
+            fill="none" stroke="${T.rule}" stroke-width="1"/>
+          <line x1="${gR(plotX)}" y1="${gR(plotB) - 1}" x2="${gR(plotX + plotW)}" y2="${gR(plotB) - 1}"
+            stroke="${T.text.strong}" stroke-width="2"/>`;
+
+  out += ggAxisTitles(cfg, T, G);
+  out += ggSheetKpiFooter(cfg, T, G);
+  return ggFinishSvg(out, W, G.height);
+}
+
 /** Kanonische Varianten (mit Lesehilfe-Info) aus der PV-Analyse, sonst leer. */
 function ggPvKanon() {
   return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage);
@@ -1915,31 +2110,42 @@ function ggPvFiguren() {
       datei: 'pv-variantenvergleich',
       hinweis: 'Die 5 kanonischen PV-Varianten aus der ☀ PV-Analyse nebeneinander — jede beantwortet '
              + 'genau eine Stakeholder-Frage (Minimal, Eigenverbrauch, Wirtschaftlichkeit, Autarkie, '
-             + 'maximaler Ausbau). Grundlage: „Varianten berechnen" in der PV-Analyse.',
+             + 'maximaler Ausbau). Bewusst OHNE Wirtschaftlichkeitskennzahlen: Kapitel 3.2.5 beschreibt '
+             + 'die Auslegungen, bewertet wird in 3.2.6. Grundlage: „Varianten berechnen" in der PV-Analyse.',
       render: cfg => ggRenderTabelle(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten', titel: 'PV-Varianten im Vergleich',
         leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
         spalten: [
-          { label: 'Variante', weight: 2.6 },
-          { label: 'PV-Leistung', weight: 1.25 },
-          { label: 'Batterie', weight: 1.15 },
-          { label: 'Eigenverbrauch', weight: 1.3 },
-          { label: 'Autarkie', weight: 1.1 },
-          { label: 'Amortisation', weight: 1.25 },
+          { label: 'Variante', weight: 2.5 },
+          { label: 'PV-Leistung', weight: 1.15 },
+          { label: 'Batterie', weight: 1.05 },
+          { label: 'Jahresertrag', weight: 1.2 },
+          { label: 'Eigenverbrauch', weight: 1.25 },
+          { label: 'Autarkie', weight: 1.0 },
+          { label: 'Abregelung', weight: 1.1 },
         ],
         zeilen: [], fussnote: '',
       },
       ausProjekt(cfg) {
         const kanon = ggPvKanon();
         if (!kanon.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine PV-Varianten berechnet.'; }
+        // Kapitel 3.2.5 beschreibt die Auslegungen — deshalb keine Hervorhebung
+        // einer „besten" Variante und keine Euro-Kennzahlen; beides gehört in 3.2.6.
+        const napAktiv = kanon.some(v => (v.sim.curtailMwh || 0) > 0);
         cfg.zeilen = kanon.map(v => ({
           werte: [v.label, ggNum(v.pvKwp) + ' kWp', v.batKwh > 0 ? ggNum(v.batKwh) + ' kWh' : '—',
-                  ggNum(v.wirt.pvEigenQuote) + ' %', ggNum(v.wirt.autarkie) + ' %',
-                  isFinite(v.wirt.amort) ? ggNum(v.wirt.amort, 1) + ' a' : '> 20 a'],
-          highlight: v.id === 'wirt-opt', akzent: v.farbe,
+                  ggNum(v.ertragMwh, 1) + ' MWh', ggNum(v.wirt.pvEigenQuote) + ' %',
+                  ggNum(v.wirt.autarkie) + ' %',
+                  napAktiv ? ggNum(v.sim.curtailMwh || 0, 1) + ' MWh' : '—'],
+          akzent: v.farbe,
         }));
-        cfg.fussnote = 'Hervorgehoben: wirtschaftlich optimierte Variante (höchster Jahres-Netto-Überschuss, statische Amortisation).';
+        cfg.fussnote = 'Eigenverbrauch = Anteil der PV-Erzeugung, der vor Ort verbraucht wird. '
+                     + 'Autarkie = Anteil des Strombedarfs aus eigener Erzeugung. '
+                     + (napAktiv
+                        ? 'Abregelung = am Einspeiselimit des Netzanschlusspunktes nicht nutzbare Energie. '
+                        : 'Ohne gesetzte Einspeisegrenze wird keine Abregelung ausgewiesen. ')
+                     + 'Wirtschaftliche Bewertung siehe Kapitel 3.2.6.';
         return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
       },
     },
@@ -2017,35 +2223,201 @@ function ggPvFiguren() {
       kapitel: '3.2.6 Wirtschaftlichkeit und Investitionskosten',
       titel: 'Wirtschaftlichkeit je PV-Variante',
       datei: 'pv-wirtschaftlichkeit',
-      hinweis: 'Investition, jährlicher Netto-Überschuss und statische Amortisation je Variante — '
-             + 'die für den Gutachten-Adressaten meist entscheidenden Kennzahlen.',
+      hinweis: 'Investition, jährlicher Netto-Überschuss, Amortisation, Kapitalwert und '
+             + 'Stromgestehungskosten je Variante — die für den Gutachten-Adressaten entscheidenden '
+             + 'Kennzahlen. Der Kapitalwert ist die von § 7 BHO erwartete Größe.',
       render: cfg => ggRenderTabelle(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten', titel: 'Wirtschaftlichkeit je PV-Variante',
         leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
         spalten: [
-          { label: 'Variante', weight: 2.4 },
-          { label: 'Investition', weight: 1.4 },
-          { label: 'Jahresüberschuss', weight: 1.6 },
-          { label: 'Amortisation', weight: 1.3 },
+          { label: 'Variante', weight: 2.3 },
+          { label: 'Investition', weight: 1.25 },
+          { label: 'Jahresüberschuss', weight: 1.4 },
+          { label: 'Amortisation', weight: 1.1 },
+          { label: 'Kapitalwert', weight: 1.3 },
+          { label: 'Stromgestehung', weight: 1.2 },
         ],
         zeilen: [], fussnote: '',
       },
       ausProjekt(cfg) {
         const kanon = ggPvKanon();
         if (!kanon.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine PV-Varianten berechnet.'; }
+        const p = window._pvAnalyse?.lastParams;
+        const nutz = p?.pvLife || 20;
         cfg.zeilen = kanon.map(v => {
           const ueberschuss = -v.wirt.nettoJk;
+          const kw = v.wirt.kapitalwert;
           return {
             werte: [v.label, ggNum(v.wirt.investGes) + ' €',
                     (ueberschuss >= 0 ? '+' : '−') + ggNum(Math.abs(ueberschuss)) + ' €/a',
-                    isFinite(v.wirt.amort) ? ggNum(v.wirt.amort, 1) + ' a' : '> 20 a'],
+                    isFinite(v.wirt.amort) ? ggNum(v.wirt.amort, 1) + ' a' : '> ' + ggNum(nutz) + ' a',
+                    kw != null ? (kw >= 0 ? '+' : '−') + ggNum(Math.abs(kw)) + ' €' : '—',
+                    v.wirt.lcoeCt != null ? ggNum(v.wirt.lcoeCt, 1) + ' ct/kWh' : '—'],
             highlight: v.id === 'wirt-opt', akzent: v.farbe,
           };
         });
-        cfg.fussnote = 'Investition inkl. Netzanschluss-Infrastruktur. Jahresüberschuss = Erlöse (Eigenverbrauchsersparnis '
-                      + '+ Einspeisung) minus Jahreskosten (Kapitaldienst + Betrieb). Amortisation statisch (Investition / Erlöse).';
+        cfg.fussnote = 'Investition inkl. Netzanschluss-Infrastruktur. Jahresüberschuss = Erlöse (Eigenverbrauchs'
+                      + 'ersparnis + Einspeisung) minus alle Jahreskosten (Kapitaldienst, Betrieb, Infrastruktur). '
+                      + 'Amortisation statisch: Investition ÷ jährlicher Rückfluss (Erlöse − laufende Betriebskosten). '
+                      + 'Kapitalwert: Barwert des Jahresüberschusses über ' + ggNum(nutz) + ' Jahre bei '
+                      + ggNum((p?.zins || 0.035) * 100, 1) + ' % Zins. Stromgestehungskosten: Jahreskosten ÷ genutzter '
+                      + 'Energie (Eigenverbrauch + Einspeisung). Hervorgehoben: höchster Jahres-Netto-Überschuss.';
         return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
+      },
+    },
+
+    // ── Herleitung der Varianten (Kapitel 3.2.5) ─────────────────────────
+    {
+      id: 'pv-herleitung',
+      autoSync: true,
+      kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+      titel: 'Herleitung der Auslegungsvarianten',
+      datei: 'pv-herleitung',
+      hinweis: 'Belegt, warum die gewählten Auslegungen die jeweiligen Optima sind: gezeichnet wird die '
+             + 'tatsächliche Suchspur der Optimierung mit dem Punkt, an dem das Kriterium reißt. '
+             + 'Grundlage: „Varianten berechnen" in der ☀ PV-Analyse.',
+      render: cfg => ggRenderHerleitung(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Herleitung der Auslegungsvarianten', ort: '',
+        meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+        achseY: '', achseX: 'Je Variante das Kriterium, aus dem sich die Auslegung ergibt',
+        leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
+        panels: [], kpiLinks: [], kpiRechts: [],
+      },
+      ausProjekt(cfg) {
+        cfg.ort = cfg.ort || ggLiegenschaft();
+        cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+        ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+
+        const H = window._pvAnalyse?.herleitung;
+        const kanon = ggPvKanon();
+        if (!H || !kanon.length) { cfg.panels = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Noch keine PV-Varianten berechnet.'; }
+        const vOf = (id) => kanon.find(v => v.id === id);
+        const panels = [];
+
+        // 1 · Eigenverbrauchs-Optimum: Quotenschwelle
+        const vEv = vOf('ev-opt');
+        if (vEv && H.evOpt?.punkte?.length > 1) {
+          const pts = H.evOpt.punkte;
+          const gew = pts.find(q => q.kwp === H.evOpt.gewaehlt) || pts[0];
+          const brk = pts.find(q => q.quote < H.evOpt.schwelle);
+          const yMin = Math.max(0, Math.floor(Math.min(H.evOpt.schwelle, ...pts.map(q => q.quote)) - 3));
+          panels.push({
+            titel: 'Eigenverbrauchs-optimiert', kriterium: `größte Anlage mit Quote ≥ ${ggNum(H.evOpt.schwelle)} %`,
+            farbe: vEv.farbe, xEinheit: 'kWp',
+            punkte: pts.map(q => ({ x: q.kwp, y: q.quote })),
+            xMax: pts[pts.length - 1].kwp, yMin, yMax: 100,
+            schwelle: { y: H.evOpt.schwelle, label: `Kriterium ${ggNum(H.evOpt.schwelle)} %` },
+            marker: { x: gew.kwp, y: gew.quote, label: `${ggNum(gew.kwp)} kWp` },
+            brk: brk ? { x: brk.kwp, y: brk.quote, label: `${ggNum(brk.quote, 1)} %` } : null,
+          });
+        }
+
+        // 2 · Wirtschaftliches Optimum: Maximum des Jahresüberschusses
+        const vWirt = vOf('wirt-opt');
+        if (vWirt && H.wirtOpt?.punkte?.length > 1) {
+          const pts = H.wirtOpt.punkte;
+          const best = pts.reduce((a, b) => (b.ueber > a.ueber ? b : a), pts[0]);
+          const uMin = Math.min(0, ...pts.map(q => q.ueber));
+          panels.push({
+            titel: 'Wirtschaftlich optimiert', kriterium: 'höchster Jahres-Netto-Überschuss',
+            farbe: vWirt.farbe, xEinheit: 'kWp',
+            punkte: pts.map(q => ({ x: q.kwp, y: q.ueber / 1000 })),
+            xMax: pts[pts.length - 1].kwp,
+            yMin: Math.floor(uMin / 1000), yMax: Math.ceil(Math.max(...pts.map(q => q.ueber)) / 1000),
+            marker: { x: best.kwp, y: best.ueber / 1000, label: `${ggNum(best.kwp)} kWp` },
+          });
+        }
+
+        // 3 · Autarkie-Optimum: Sättigung des Speicherzubaus
+        const vAut = vOf('autarkie');
+        if (vAut && H.autarkie?.punkte?.length > 1) {
+          const pts = H.autarkie.punkte;
+          const gew = pts.find(q => q.bat === H.autarkie.gewaehlt) || pts[pts.length - 1];
+          const stopp = pts.find(q => q.marg != null && q.marg < H.autarkie.schwelle);
+          panels.push({
+            titel: 'Autarkie-optimiert', kriterium: `Speicher bis zur Sättigung (< ${ggNum(H.autarkie.schwelle, 1)} %-Pkt./MWh)`,
+            farbe: vAut.farbe, xEinheit: 'MWh',
+            punkte: pts.map(q => ({ x: q.bat / 1000, y: q.aut })),
+            xMax: pts[pts.length - 1].bat / 1000,
+            yMin: Math.floor(Math.min(...pts.map(q => q.aut))), yMax: Math.ceil(Math.max(...pts.map(q => q.aut))),
+            marker: { x: gew.bat / 1000, y: gew.aut, label: `${ggNum(gew.bat / 1000, 1)} MWh` },
+            brk: stopp ? { x: stopp.bat / 1000, y: stopp.aut, label: 'Sättigung' } : null,
+          });
+        }
+
+        cfg.panels = panels;
+        cfg.kpiLinks = [
+          { wert: vEv ? ggNum(vEv.pvKwp) + ' kWp' : '—', label: 'Eigenverbrauchs-Optimum' },
+          { wert: vWirt ? ggNum(vWirt.pvKwp) + ' kWp' : '—', label: 'Wirtschaftliches Optimum (PV)' },
+        ];
+        cfg.kpiRechts = [
+          { wert: vWirt && vWirt.batKwh > 0 ? ggNum(vWirt.batKwh) + ' kWh' : '—', label: 'Speicher im wirtschaftlichen Optimum' },
+          { wert: vAut ? ggNum(vAut.wirt.autarkie, 1) + ' %' : '—', label: 'Technisch maximale Autarkie', highlight: true },
+        ];
+        return `✓ ${panels.length} Herleitungen aus der PV-Analyse übernommen.`;
+      },
+    },
+
+    // ── Rückspeisung & Netzverträglichkeit (Kapitel 3.2.5) ────────────────
+    {
+      id: 'pv-rueckspeisung',
+      autoSync: true,
+      kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+      titel: 'Rückspeisung und Netzverträglichkeit',
+      datei: 'pv-rueckspeisung',
+      hinweis: 'Die gleichzeitige Rückspeiseleistung am Netzanschlusspunkt je Variante, gemessen an der '
+             + 'Anschlusskapazität und am zulässigen Spannungsband. Ungekappt gerechnet — zeigt die '
+             + 'tatsächlich benötigte Anschlussleistung, nicht die künstlich begrenzte.',
+      render: cfg => ggRenderRueckAmpel(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Rückspeisung und Netzverträglichkeit', ort: '',
+        meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+        achseY: 'Rückspeiseleistung in kW', achseX: 'Ausbauvariante',
+        leer: 'Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen" klicken.',
+        kategorien: [], balken: [], grenzen: [], kpiLinks: [], kpiRechts: [],
+      },
+      ausProjekt(cfg) {
+        cfg.ort = cfg.ort || ggLiegenschaft();
+        cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+        ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+
+        const kanon = ggPvKanon().filter(v => v.rueck);
+        if (!kanon.length) { cfg.kategorien = []; cfg.balken = []; cfg.grenzen = []; return '⚠ Noch keine Rückspeise-Bewertung vorhanden.'; }
+
+        const T = GG_THEME;
+        const ampelFarbe = { gruen: T.accents.gruen, gelb: T.energy.gas, rot: T.energy.waerme, na: T.text.faint };
+        cfg.kategorien = kanon.map(v => `${v.icon} ${GG_PV_KURZ[v.id] || v.label}`);
+        cfg.balken = kanon.map(v => ({ wert: v.rueck.maxKw, farbe: ampelFarbe[v.rueck.ampel] || T.text.faint }));
+
+        const r0 = kanon[0].rueck;
+        const grenzen = [];
+        if (r0.anschlussKw > 0) {
+          grenzen.push({ wert: r0.anschlussKw, farbe: T.energy.waerme,
+                         label: `Anschlusskapazität ${ggNum(r0.anschlussKw)} kW` });
+        }
+        if (r0.skKVA > 0 && r0.uBudgetPct > 0) {
+          // Δu = 100 · P / S_k″  ⇒  die Leistung, bei der das Spannungsband ausgeschöpft ist
+          grenzen.push({ wert: r0.skKVA * r0.uBudgetPct / 100, farbe: T.energy.gas,
+                         label: `Spannungsband ${ggNum(r0.uBudgetPct, 1)} % ≙ ${ggNum(r0.skKVA * r0.uBudgetPct / 100)} kW` });
+        }
+        cfg.grenzen = grenzen;
+
+        const schaerfste = kanon.reduce((a, b) =>
+          (['gruen', 'gelb', 'rot'].indexOf(b.rueck.ampel) > ['gruen', 'gelb', 'rot'].indexOf(a.rueck.ampel) ? b : a));
+        const groesste = kanon.reduce((a, b) => (b.rueck.maxKw > a.rueck.maxKw ? b : a));
+        const kritisch = kanon.filter(v => v.rueck.ampel === 'rot').length;
+        cfg.kpiLinks = [
+          { wert: ggNum(groesste.rueck.maxKw) + ' kW', label: `Höchste Rückspeisespitze (${groesste.label})` },
+          { wert: groesste.rueck.deltaU != null ? ggNum(groesste.rueck.deltaU, 2) + ' %' : '—', label: 'Zugehörige Spannungsanhebung Δu' },
+        ];
+        cfg.kpiRechts = [
+          { wert: r0.anschlussKw > 0 ? ggNum(r0.anschlussKw) + ' kW' : 'unbegrenzt', label: 'Vorhandene Einspeise-Anschlussleistung' },
+          { wert: String(kritisch), label: kritisch === 1 ? 'Variante erfordert Netzausbau' : 'Varianten erfordern Netzausbau',
+            highlight: kritisch > 0 },
+        ];
+        return `✓ ${kanon.length} Varianten bewertet · schärfste Einstufung: ${schaerfste.rueck.ampel}.`;
       },
     },
 

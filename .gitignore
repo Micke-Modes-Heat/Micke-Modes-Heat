@@ -15,3 +15,9 @@ geothermiefehler/
 
 # Word-Sperrdateien (~$… beim geöffneten Dokument)
 ~$*
+
+# Netlify-CLI-Zustand (Site-ID, lokale Einstellungen)
+.netlify/
+
+# Ausgelieferte Design-Canvas-Datei (aus design/*.dc.html neu erzeugbar, ~2,6 MB)
+design/pv-analyse-redesign.html

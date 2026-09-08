@@ -1,0 +1,886 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; }
+    a { color: #d4a855; text-decoration: none; }
+    a:hover { color: #ece8df; }
+    .nav      { display:flex; align-items:center; gap:9px; padding:6px 14px; border-left:2px solid transparent;
+                color:#aca496; font-size:11px; cursor:pointer; user-select:none; }
+    .nav:hover{ background:rgba(255,255,255,.03); color:#ece8df; }
+    .navOn    { border-left-color:#d4a855; background:rgba(212,168,85,.09); color:#ece8df; font-weight:500; }
+    .num      { font-family:'DM Mono',monospace; color:#78909c; width:26px; flex-shrink:0; }
+    .cell     { padding:8px 0; border-bottom:1px solid rgba(255,255,255,.045); text-align:right; font-family:'DM Mono',monospace; }
+    .head     { font-size:10px; color:#aca496; text-align:right; padding-bottom:7px; border-bottom:1px solid #3a3528; }
+    .chip     { padding:3px 11px; border-radius:13px; font-size:10.5px; cursor:pointer; user-select:none;
+                display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+    .btn      { padding:4px 11px; border-radius:13px; border:1px solid #3a3528; color:#aca496; font-size:10.5px;
+                cursor:pointer; user-select:none; }
+    .btn:hover{ border-color:#d4a855; color:#d4a855; }
+    .step     { width:20px; height:20px; border-radius:4px; border:1px solid #3a3528; color:#aca496; cursor:pointer;
+                display:flex; align-items:center; justify-content:center; font-size:13px; line-height:1; user-select:none; }
+    .step:hover{ border-color:#d4a855; color:#d4a855; }
+  </style>
+</helmet>
+
+<div style="width:1440px;height:1000px;background:#12110e;color:#ece8df;font-size:11px;position:relative;overflow:hidden;">
+
+  <!-- App-Header -->
+  <div style="height:34px;background:#1c1a15;border-bottom:1px solid #3a3528;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;letter-spacing:.04em;color:#d4a855;">
+      <div style="display:flex;gap:2px;align-items:flex-end;height:15px;">
+        <span style="display:block;width:3px;height:60%;border-radius:1px;background:#d4a855;"></span>
+        <span style="display:block;width:3px;height:100%;border-radius:1px;background:#d4a855;"></span>
+        <span style="display:block;width:3px;height:75%;border-radius:1px;background:#d4a855;"></span>
+        <span style="display:block;width:3px;height:45%;border-radius:1px;background:#d4a855;"></span>
+      </div>
+      Liegenschaftsrechner <span style="color:#aca496;">Energiekarte</span>
+    </div>
+    <div style="display:flex;gap:4px;">
+      <div style="padding:3px 10px;border-radius:20px;border:1px solid #3a3528;color:#aca496;">Karte</div>
+      <div style="padding:3px 10px;border-radius:20px;border:1px solid #3a3528;color:#aca496;">Gebäude</div>
+      <div style="padding:3px 10px;border-radius:20px;border:1px solid #d4a855;background:#d4a855;color:#000;">Analyse</div>
+      <div style="padding:3px 10px;border-radius:20px;border:1px solid #3a3528;color:#aca496;">Optimierung</div>
+      <div style="padding:3px 10px;border-radius:20px;border:1px solid #3a3528;color:#aca496;">Vergleich</div>
+    </div>
+    <div style="display:flex;gap:4px;align-items:center;">
+      <div style="padding:3px 9px;border-radius:18px;border:1.5px solid #66bb6a;color:#66bb6a;font-size:10.5px;">Bestand</div>
+      <div style="padding:3px 9px;border-radius:18px;border:1.5px solid #3a3528;color:#aca496;font-size:10.5px;">Varianten</div>
+    </div>
+  </div>
+
+  <div style="padding:16px 24px 0 24px;display:flex;flex-direction:column;gap:13px;height:966px;box-sizing:border-box;">
+
+    <!-- Kapitel-Tabs -->
+    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+      <div style="padding:4px 12px;border-radius:14px;border:1px solid #3a3528;color:#aca496;">Übersicht</div>
+      <div style="padding:4px 12px;border-radius:14px;border:1px solid #3a3528;color:#aca496;">Wärme</div>
+      <div style="padding:4px 12px;border-radius:14px;border:1px solid #3a3528;color:#aca496;">Strom</div>
+      <div style="padding:4px 12px;border-radius:14px;border:1px solid #3a3528;color:#aca496;">Netzanschluss</div>
+      <div style="padding:4px 12px;border-radius:14px;border:1px solid #d4a855;background:#d4a855;color:#000;font-weight:500;">PV-Analyse</div>
+      <div style="padding:4px 12px;border-radius:14px;border:1px solid #3a3528;color:#aca496;">Resilienz</div>
+      <div style="padding:4px 12px;border-radius:14px;border:1px solid #3a3528;color:#aca496;">Gutachten-Grafiken</div>
+    </div>
+
+    <!-- Titelzeile -->
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid #3a3528;padding-bottom:9px;">
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        <div style="font-size:15px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;">PV-Ausbauanalyse</div>
+        <div style="font-size:11px;color:#aca496;">Variantenstudie · Wirtschaftlichkeit · Netzintegration &nbsp;·&nbsp; Kapitel 3.2.5 / 3.2.6</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <div class="btn" style="border-radius:5px;padding:5px 12px;font-size:11px;display:flex;align-items:center;gap:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+          Annahmenblatt
+        </div>
+        <div class="btn" style="border-radius:5px;padding:5px 12px;font-size:11px;display:flex;align-items:center;gap:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+          Export
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ DATENBASIS ══ -->
+    <div style="display:grid;grid-template-columns:repeat(4, minmax(0,1fr));gap:10px;">
+
+      <div style="background:#24221b;border:1px solid #3a3528;border-radius:7px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:#66bb6a;flex-shrink:0;"></span>
+          <span style="font-size:10px;color:#aca496;letter-spacing:.06em;text-transform:uppercase;">Stromlastgang</span>
+        </div>
+        <div style="font-family:'DM Mono',monospace;font-size:14px;">974 MWh/a</div>
+        <div style="font-size:10px;color:#78909c;line-height:1.45;">quartier-2025.csv · stündlich · 8.760 Werte<br>Nur Strom — ohne Wärmepumpen</div>
+      </div>
+
+      <!-- Erzeugungsprofil: umschaltbar -->
+      <div style="background:#24221b;border:1px solid #3a3528;border-left:2px solid #d4a855;border-radius:7px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:#d4a855;flex-shrink:0;"></span>
+          <span style="font-size:10px;color:#aca496;letter-spacing:.06em;text-transform:uppercase;">Erzeugungsprofil</span>
+        </div>
+        <div style="font-family:'DM Mono',monospace;font-size:14px;">{{peakTxt}} <span style="font-size:10px;color:#aca496;">Spitze</span></div>
+        <div style="display:flex;gap:4px;">
+          <div class="chip" onClick="{{setSynth}}" style="{{synthStyle}}">synthetisch</div>
+          <div class="chip" onClick="{{setPvgis}}" style="{{pvgisStyle}}">PVGIS</div>
+        </div>
+      </div>
+
+      <div style="background:#24221b;border:1px solid #3a3528;border-radius:7px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:#ab47bc;flex-shrink:0;"></span>
+          <span style="font-size:10px;color:#aca496;letter-spacing:.06em;text-transform:uppercase;">Börsenpreise</span>
+        </div>
+        <div style="font-family:'DM Mono',monospace;font-size:14px;">Ø 7,4 ct/kWh</div>
+        <div style="font-size:10px;color:#78909c;line-height:1.45;">SMARD_2025.csv · stündlich · 8.760 Werte<br>Auflösung passt zum Lastgang</div>
+      </div>
+
+      <!-- Preisbasis: editierbar -->
+      <div style="background:#24221b;border:1px solid #3a3528;border-radius:7px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:{{preisDot}};flex-shrink:0;"></span>
+          <span style="font-size:10px;color:#aca496;letter-spacing:.06em;text-transform:uppercase;">Strombezugspreis</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-family:'DM Mono',monospace;font-size:14px;">{{pStromTxt}} ct/kWh</span>
+          <div style="display:flex;gap:4px;margin-left:auto;">
+            <div class="step" onClick="{{minus}}">−</div>
+            <div class="step" onClick="{{plus}}">+</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:{{preisFarbe}};line-height:1.45;">{{preisHinweis}}</div>
+      </div>
+    </div>
+
+    <!-- ══ Rail + Inhalt ══ -->
+    <div style="display:grid;grid-template-columns:224px minmax(0,1fr);gap:20px;flex-grow:1;min-height:0;">
+
+      <!-- Navigation -->
+      <div style="background:#1c1a15;border:1px solid #3a3528;border-radius:7px;padding:12px 0;display:flex;flex-direction:column;gap:1px;overflow:hidden;">
+        <div style="font-size:10px;color:#aca496;letter-spacing:.08em;text-transform:uppercase;padding:0 14px 8px 14px;">Ergebnisse</div>
+
+        <sc-for list="{{navOben}}" as="n" hint-placeholder-count="3">
+          <div class="{{n.cls}}" onClick="{{n.go}}">
+            <span style="width:14px;height:14px;flex-shrink:0;"></span>{{n.label}}
+          </div>
+        </sc-for>
+
+        <div style="font-size:10px;color:#aca496;letter-spacing:.08em;text-transform:uppercase;padding:13px 14px 5px 14px;border-top:1px solid #3a3528;margin-top:8px;">Abbildungen</div>
+
+        <sc-for list="{{navAbb}}" as="n" hint-placeholder-count="9">
+          <div class="{{n.cls}}" onClick="{{n.go}}">
+            <span class="num">{{n.nr}}</span>{{n.label}}
+            <span style="width:6px;height:6px;border-radius:50%;background:{{n.dot}};margin-left:auto;flex-shrink:0;"></span>
+          </div>
+        </sc-for>
+
+        <div style="margin-top:auto;padding:10px 14px 0 14px;border-top:1px solid #3a3528;">
+          <div style="font-size:10px;color:#78909c;line-height:1.5;">Nummerierung entspricht der<br>Abbildungsfolge im Gutachten.</div>
+        </div>
+      </div>
+
+      <!-- Inhalt -->
+      <div style="display:flex;flex-direction:column;min-height:0;overflow:hidden;opacity:{{inhaltOpacity}};">
+
+        <!-- Variantentabelle -->
+        <sc-if value="{{istTabelle}}" hint-placeholder-val="{{true}}">
+          <div style="background:#1c1a15;border:1px solid #3a3528;border-radius:7px;padding:14px 16px;display:flex;flex-direction:column;gap:11px;box-sizing:border-box;">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;">
+              <div style="font-size:12px;font-weight:600;">Varianten-Vergleich</div>
+              <div style="font-size:10px;color:#78909c;">Auswahl über den höchsten Jahresüberschuss · Zeile anklicken für Details</div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:2.1fr .7fr .75fr .65fr .65fr .8fr .95fr 1fr .95fr .8fr .95fr;gap:0 10px;font-size:11.5px;">
+              <div class="head" style="text-align:left;">Variante</div>
+              <div class="head">kWp</div>
+              <div class="head">Bat kWh</div>
+              <div class="head">EV %</div>
+              <div class="head">Aut %</div>
+              <div class="head">Abr MWh</div>
+              <div class="head">Investition</div>
+              <div class="head">Überschuss/a</div>
+              <div class="head">Kapitalwert</div>
+              <div class="head">LCOE</div>
+              <div class="head" style="text-align:center;">CO₂ · Netz</div>
+
+              <sc-for list="{{zeilen}}" as="z" hint-placeholder-count="5">
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgLeft}}">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="width:9px;height:9px;border-radius:2px;background:{{z.farbe}};flex-shrink:0;"></span>
+                    <span style="{{z.labelStyle}}">{{z.label}}</span>
+                    <span style="{{z.bestStyle}}">BEST</span>
+                  </div>
+                </div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgKwp}}">{{z.kwp}}</div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgBat}}">{{z.bat}}</div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgEv}}">{{z.ev}}</div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgAut}}">{{z.aut}}</div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgAbr}}">{{z.abr}}</div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgInv}}">{{z.invest}}</div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgUeber}}">{{z.ueber}}</div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgNpv}}">{{z.npv}}</div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bg}}">{{z.lcoe}}</div>
+                <div class="cell" onClick="{{z.pick}}" style="{{z.bgAmpel}}">
+                  <div style="display:flex;align-items:center;justify-content:center;gap:9px;">
+                    <span style="color:#a5d6a7;">{{z.co2}}</span>
+                    <span style="width:9px;height:9px;border-radius:50%;background:{{z.ampelFarbe}};"></span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <!-- Detailzeile der gewählten Variante -->
+            <div style="background:#24221b;border:1px solid #3a3528;border-left:3px solid {{detail.farbe}};border-radius:6px;padding:11px 13px;display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;align-items:baseline;gap:9px;">
+                <span style="font-size:11.5px;font-weight:600;color:{{detail.farbe}};">{{detail.label}}</span>
+                <span style="font-size:11px;color:#aca496;">{{detail.frage}}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;">
+                <sc-for list="{{detail.kpis}}" as="k" hint-placeholder-count="6">
+                  <div style="display:flex;flex-direction:column;gap:2px;">
+                    <span style="font-size:10px;color:#78909c;">{{k.k}}</span>
+                    <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:{{k.farbe}};">{{k.v}}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="font-size:10.5px;color:#aca496;line-height:1.5;">{{detail.text}}</div>
+            </div>
+
+            <div style="display:flex;gap:16px;font-size:10px;color:#78909c;">
+              <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#66bb6a;margin-right:4px;"></span>Rückspeisung netzverträglich</span>
+              <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ffa726;margin-right:4px;"></span>Prüfung durch VNB nötig</span>
+              <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ef5350;margin-right:4px;"></span>Erzeugungsnetz / MS-Anschluss erforderlich</span>
+              <span style="margin-left:auto;">Amortisation, Kapitalwert und LCOE bei {{pStromTxt}} ct/kWh und 3,5 % Zins</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- Lesehilfe -->
+        <sc-if value="{{istLesehilfe}}" hint-placeholder-val="{{true}}">
+          <div style="background:#1c1a15;border:1px solid #3a3528;border-radius:7px;padding:14px 16px;display:flex;flex-direction:column;gap:11px;height:100%;box-sizing:border-box;">
+            <div style="font-size:12px;font-weight:600;">Lesehilfe — wofür steht jede Variante</div>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex-grow:1;min-height:0;">
+              <sc-for list="{{lesehilfe}}" as="l" hint-placeholder-count="5">
+                <div style="background:#24221b;border:1px solid #3a3528;border-left:3px solid {{l.farbe}};border-radius:6px;padding:11px 13px;display:flex;flex-direction:column;gap:7px;">
+                  <div style="font-size:11.5px;font-weight:600;color:{{l.farbe}};">{{l.label}}</div>
+                  <div style="font-size:10.5px;color:#ece8df;line-height:1.5;">{{l.frage}}</div>
+                  <div style="font-size:10.5px;color:#aca496;line-height:1.55;">{{l.text}}</div>
+                  <div style="display:flex;gap:10px;margin-top:auto;padding-top:7px;border-top:1px solid #3a3528;font-size:10.5px;">
+                    <span style="color:#78909c;">kWp <b style="color:#fdd835;font-weight:500;">{{l.kwp}}</b></span>
+                    <span style="color:#78909c;">EV <b style="color:#a5d6a7;font-weight:500;">{{l.ev}}</b></span>
+                    <span style="color:#78909c;">Aut <b style="color:#4fc3f7;font-weight:500;">{{l.aut}}</b></span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- Rechenweg -->
+        <sc-if value="{{istRechenweg}}" hint-placeholder-val="{{true}}">
+          <div style="background:#1c1a15;border:1px solid #3a3528;border-radius:7px;padding:14px 16px;display:flex;flex-direction:column;gap:11px;height:100%;box-sizing:border-box;">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;">
+              <div style="font-size:12px;font-weight:600;">Rechenweg — {{detail.label}}</div>
+              <div style="display:flex;gap:5px;">
+                <sc-for list="{{varChips}}" as="c" hint-placeholder-count="5">
+                  <div class="chip" onClick="{{c.pick}}" style="{{c.style}}">{{c.label}}</div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1.6fr .9fr;gap:0 14px;font-size:11.5px;">
+              <div class="head" style="text-align:left;">Position</div>
+              <div class="head" style="text-align:left;">Herleitung</div>
+              <div class="head">Wert</div>
+              <sc-for list="{{rechenweg}}" as="r" hint-placeholder-count="9">
+                <div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.045);color:{{r.farbe}};font-weight:{{r.weight}};">{{r.pos}}</div>
+                <div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.045);color:#607d8b;font-family:'DM Mono',monospace;font-size:10.5px;">{{r.formel}}</div>
+                <div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.045);text-align:right;font-family:'DM Mono',monospace;color:{{r.farbe}};font-weight:{{r.weight}};">{{r.wert}}</div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ══ Abbildungs-Karte (ein Muster für alle neun) ══ -->
+        <sc-if value="{{istChart}}" hint-placeholder-val="{{true}}">
+          <div style="background:#1c1a15;border:1px solid #3a3528;border-radius:7px;padding:14px 16px;display:flex;flex-direction:column;gap:11px;height:100%;box-sizing:border-box;">
+
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;">
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+                <div style="display:flex;align-items:baseline;gap:9px;">
+                  <span style="font-family:'DM Mono',monospace;font-size:12px;color:#d4a855;">Abb. {{fig.nr}}</span>
+                  <span style="font-size:12.5px;font-weight:600;">{{fig.titel}}</span>
+                </div>
+                <div style="font-size:11px;color:#aca496;">{{fig.unter}}</div>
+              </div>
+              <div style="display:flex;gap:5px;flex-shrink:0;">
+                <div class="btn">Vollbild</div>
+                <div class="btn">PNG</div>
+                <div class="btn" style="border-color:#66bb6a;color:#66bb6a;">Im Gutachten</div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span style="font-size:10.5px;color:#78909c;margin-right:3px;">Variante</span>
+              <sc-for list="{{varChips}}" as="c" hint-placeholder-count="5">
+                <div class="chip" onClick="{{c.pick}}" style="{{c.style}}">{{c.label}}</div>
+              </sc-for>
+            </div>
+
+            <!-- Plotfläche -->
+            <div style="flex-grow:1;min-height:0;background:#12110e;border:1px solid #3a3528;border-radius:6px;padding:13px 15px;display:flex;flex-direction:column;gap:9px;">
+
+              <div style="display:flex;gap:18px;font-size:10.5px;color:#aca496;flex-wrap:wrap;">
+                <sc-for list="{{fig.legende}}" as="g" hint-placeholder-count="3">
+                  <span style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:3px;background:{{g.farbe}};display:inline-block;"></span>{{g.label}}</span>
+                </sc-for>
+              </div>
+
+              <!-- Linien / Flächen -->
+              <sc-if value="{{fig.istPfad}}" hint-placeholder-val="{{true}}">
+                <div style="flex-grow:1;min-height:0;position:relative;">
+                  <svg width="100%" height="100%" viewBox="0 0 1000 240" preserveAspectRatio="none">
+                    <path d="{{fig.flaeche}}" fill="{{fig.fill}}" opacity=".35"/>
+                    <path d="{{fig.pfadA}}" fill="none" stroke="{{fig.strokeA}}" stroke-width="2"/>
+                    <path d="{{fig.pfadB}}" fill="none" stroke="{{fig.strokeB}}" stroke-width="1.6" stroke-dasharray="{{fig.dashB}}"/>
+                  </svg>
+                  <sc-for list="{{fig.marker}}" as="m" hint-placeholder-count="5">
+                    <div style="{{m.style}}"></div>
+                  </sc-for>
+                  <sc-for list="{{fig.labels}}" as="l" hint-placeholder-count="3">
+                    <div style="{{l.style}}">{{l.text}}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <!-- Säulen (Balken nach oben) -->
+              <sc-if value="{{fig.istSaeulen}}" hint-placeholder-val="{{true}}">
+                <div style="flex-grow:1;min-height:0;position:relative;display:flex;align-items:flex-end;gap:{{fig.gap}};padding:0 6px 0 54px;">
+                  <sc-for list="{{fig.linien}}" as="t" hint-placeholder-count="2">
+                    <div style="{{t.style}}"></div>
+                  </sc-for>
+                  <sc-for list="{{fig.saeulen}}" as="s" hint-placeholder-count="5">
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;position:relative;z-index:1;">
+                      <span style="font-family:'DM Mono',monospace;font-size:10.5px;color:{{s.textFarbe}};">{{s.wert}}</span>
+                      <div style="width:100%;display:flex;gap:3px;align-items:flex-end;justify-content:center;height:{{s.hoehe}};">
+                        <sc-for list="{{s.teile}}" as="p" hint-placeholder-count="1">
+                          <div style="{{p.style}}"></div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <!-- Punktwolke -->
+              <sc-if value="{{fig.istScatter}}" hint-placeholder-val="{{true}}">
+                <div style="flex-grow:1;min-height:0;position:relative;border-left:1px solid #3a3528;border-bottom:1px solid #3a3528;margin:4px 6px 4px 48px;">
+                  <sc-for list="{{fig.punkte}}" as="p" hint-placeholder-count="5">
+                    <div style="{{p.style}}"></div>
+                  </sc-for>
+                  <sc-for list="{{fig.labels}}" as="l" hint-placeholder-count="5">
+                    <div style="{{l.style}}">{{l.text}}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <!-- Wärmebild -->
+              <sc-if value="{{fig.istHeatmap}}" hint-placeholder-val="{{true}}">
+                <div style="flex-grow:1;min-height:0;display:flex;flex-direction:column;gap:3px;padding-left:34px;">
+                  <sc-for list="{{fig.reihen}}" as="r" hint-placeholder-count="7">
+                    <div style="display:flex;gap:2px;flex:1;align-items:stretch;position:relative;">
+                      <span style="position:absolute;left:-34px;top:50%;transform:translateY(-50%);font-size:9.5px;color:#78909c;">{{r.label}}</span>
+                      <sc-for list="{{r.zellen}}" as="z" hint-placeholder-count="52">
+                        <div style="{{z.style}}"></div>
+                      </sc-for>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <!-- Tornado -->
+              <sc-if value="{{fig.istTornado}}" hint-placeholder-val="{{true}}">
+                <div style="flex-grow:1;min-height:0;display:flex;flex-direction:column;gap:7px;justify-content:center;">
+                  <sc-for list="{{fig.balken}}" as="b" hint-placeholder-count="6">
+                    <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px;align-items:center;">
+                      <span style="font-size:10.5px;color:#aca496;text-align:right;">{{b.label}}</span>
+                      <div style="position:relative;height:20px;">
+                        <div style="{{b.mitte}}"></div>
+                        <div style="{{b.links}}"></div>
+                        <div style="{{b.rechts}}"></div>
+                        <span style="{{b.loStyle}}">{{b.lo}}</span>
+                        <span style="{{b.hiStyle}}">{{b.hi}}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <!-- Achsenbeschriftung -->
+              <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#78909c;">
+                <span>{{fig.xLinks}}</span>
+                <span>{{fig.xMitte}}</span>
+                <span>{{fig.xRechts}}</span>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start;">
+              <div style="font-size:11px;color:#aca496;line-height:1.55;"><b style="color:#ece8df;">So lesen:</b> {{fig.lesen}}</div>
+              <div style="background:#24221b;border:1px solid #3a3528;border-radius:6px;padding:9px 11px;display:flex;flex-direction:column;gap:4px;">
+                <div style="font-size:10px;color:#aca496;letter-spacing:.08em;text-transform:uppercase;">Bildunterschrift</div>
+                <div style="font-size:10.5px;line-height:1.5;">{{fig.caption}}</div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- ══ Aktionsleiste ══ -->
+    <div style="{{barStyle}}">
+      <sc-if value="{{stale}}" hint-placeholder-val="{{true}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffa726" stroke-width="1.8" stroke-linecap="round" style="flex-shrink:0;"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      </sc-if>
+      <sc-if value="{{aktuell}}" hint-placeholder-val="{{true}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#66bb6a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M20 6 9 17l-5-5"/></svg>
+      </sc-if>
+      <div style="flex-grow:1;font-size:11px;color:{{barTextFarbe}};line-height:1.5;">{{barText}}</div>
+      <div style="font-size:10px;color:#78909c;text-align:right;line-height:1.45;flex-shrink:0;white-space:pre-line;">{{standText}}</div>
+      <div onClick="{{rechnen}}" style="{{knopfStyle}}">{{knopfText}}</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      view: 'tabelle',
+      pick: 'wirt',
+      profilAngewandt: 'synth',
+      profilEntwurf: 'synth',
+      pStromAngewandt: 35,
+      pStromEntwurf: 35,
+      stand: '09:14',
+    };
+  }
+
+  // ── Stammdaten ──────────────────────────────────────────────────────────
+  stamm() {
+    return [
+      { id:'minimal',  label:'Minimal',                    farbe:'#78909c', kwp:99,   bat:0,    ertrag:104,  invest:123,  jk:9.7,   betrieb:1.2,  pEinsp:6.1,
+        frage:'Was ist der günstigste Einstieg?',
+        text:'PV knapp unter 100 kWp — bleibt unter der Direktvermarktungs- und EZA-Reglerpflicht und damit in der günstigsten Netzanschlussstufe. Referenzpunkt mit der niedrigsten Investition; lässt den Großteil des Dachpotenzials ungenutzt.' },
+      { id:'ev',       label:'Eigenverbrauchs-optimiert',  farbe:'#42a5f5', kwp:300,  bat:0,    ertrag:315,  invest:372,  jk:26.5,  betrieb:3.7,  pEinsp:5.9,
+        frage:'Welche Größe verbraucht das Quartier selbst?',
+        text:'PV so groß, dass fast die gesamte Erzeugung vor Ort verbraucht wird. Geringstes Netz- und Marktrisiko, aber bewusst kleine Anlage mit geringem Gesamtertrag.' },
+      { id:'wirt',     label:'Wirtschaftlich optimiert',   farbe:'#66bb6a', kwp:2000, bat:750,  ertrag:2100, invest:2797, jk:210.5, betrieb:28.0, pEinsp:5.9,
+        frage:'Was bringt den höchsten Jahresüberschuss?',
+        text:'PV- und Batteriegröße gemeinsam variiert; gewählt wird die Kombination mit dem höchsten Netto-Überschuss. Etwas Abregelung wird bewusst hingenommen, weil ihre Vermeidung teurer wäre als der entgangene Erlös.' },
+      { id:'autarkie', label:'Autarkie-optimiert',         farbe:'#4fc3f7', kwp:2500, bat:5000, ertrag:2625, invest:5168, jk:540.9, betrieb:51.7, pEinsp:5.9,
+        frage:'Wie unabhängig vom Netz geht es maximal?',
+        text:'Volle PV-Leistung plus Batterie bis zur technischen Sättigung des Autarkiegrads. Höchste Versorgungssicherheit, aber die große Batterie trägt sich nicht.' },
+      { id:'maxpv',    label:'Maximaler PV-Ausbau',        farbe:'#fdd835', kwp:2500, bat:0,    ertrag:2625, invest:3168, jk:194.2, betrieb:31.7, pEinsp:5.9,
+        frage:'Wie viel PV passt maximal auf die Flächen?',
+        text:'Gesamtes verfügbares Potenzial, bewusst ohne Speicher. Maximaler Klimabeitrag, erfordert aber die höchste Netzanschluss-Infrastruktur.' },
+    ];
+  }
+
+  profile() {
+    return {
+      synth: { peak:0.86, kurz:'synthetisch',
+        sim:[ {eigen:104,einsp:0,   curt:0,   rueck:78},
+              {eigen:287,einsp:28,  curt:0,   rueck:237},
+              {eigen:769,einsp:1331,curt:0.3, rueck:1641},
+              {eigen:903,einsp:1710,curt:12,  rueck:2052},
+              {eigen:591,einsp:2022,curt:12,  rueck:2052} ] },
+      pvgis: { peak:1.05, kurz:'PVGIS',
+        sim:[ {eigen:104,einsp:0,   curt:0,   rueck:95},
+              {eigen:281,einsp:34,  curt:0,   rueck:289},
+              {eigen:742,einsp:1340,curt:18,  rueck:2003},
+              {eigen:878,einsp:1673,curt:74,  rueck:2504},
+              {eigen:568,einsp:1983,curt:74,  rueck:2504} ] },
+    };
+  }
+
+  // ── Rechenkern ──────────────────────────────────────────────────────────
+  rechne() {
+    const NAP = 2000, SK = 120000, UB = 2.0, BEDARF = 974, RBF = 14.212, CO2 = 0.38;
+    const p = this.profile()[this.state.profilAngewandt];
+    const ps = this.state.pStromAngewandt;
+    return this.stamm().map((s, i) => {
+      const sim = p.sim[i];
+      const genutzt = sim.eigen + sim.einsp;
+      const erloes  = sim.eigen * ps / 100 + sim.einsp * s.pEinsp / 100;   // k€/a
+      const ueber   = erloes - s.jk;
+      const cap     = sim.rueck / NAP;
+      const du      = 100 * sim.rueck / SK;
+      const lvl     = (cap > 1 || du > UB) ? 2 : (cap > 0.7 || du > UB * 2 / 3) ? 1 : 0;
+      return {
+        ...s, ...sim, genutzt, erloes, ueber,
+        ev:    s.ertrag > 0 ? sim.eigen / s.ertrag * 100 : 0,
+        aut:   (1 - (BEDARF - sim.eigen) / BEDARF) * 100,
+        npv:   ueber * RBF,
+        amort: (erloes - s.betrieb) > 0 ? s.invest / (erloes - s.betrieb) : Infinity,
+        lcoe:  genutzt > 0 ? s.jk / genutzt * 100 : 0,
+        co2:   genutzt * CO2,
+        cap, du, ampel: ['#66bb6a', '#ffa726', '#ef5350'][lvl], ampelLvl: lvl,
+      };
+    });
+  }
+
+  // ── Formatierung ────────────────────────────────────────────────────────
+  n(v, d) { return Number(v).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  k(v)    { return (v >= 0 ? '+' : '−') + this.n(Math.abs(v), 0) + ' k€'; }
+
+  istStale() {
+    return this.state.profilEntwurf !== this.state.profilAngewandt
+        || this.state.pStromEntwurf !== this.state.pStromAngewandt;
+  }
+
+  // ── Abbildungs-Definitionen ─────────────────────────────────────────────
+  figuren() {
+    return [
+      { nr:1, titel:'Optimierungsfläche PV × Batterie', unter:'Jahresüberschuss über beide Auslegungsgrößen', kind:'pfad' },
+      { nr:2, titel:'Ausbau-Grenznutzen',               unter:'Jahresüberschuss je PV-Größe gegen die Infrastruktur-Stufen', kind:'pfad' },
+      { nr:3, titel:'Eigenverbrauchsquote & Abregelung', unter:'Beide Kurven über die PV-Leistung', kind:'pfad' },
+      { nr:4, titel:'Energiebilanz je Variante',         unter:'Eigenverbrauch, Einspeisung und Abregelung nebeneinander', kind:'saeulen' },
+      { nr:5, titel:'Investition und Amortisation',      unter:'Jede Variante als Punkt — links unten ist besser', kind:'scatter' },
+      { nr:6, titel:'Rückspeisung & Netzverträglichkeit', unter:'Gleichzeitige Rückspeiseleistung gegen Anschluss und Spannungsband', kind:'saeulen' },
+      { nr:7, titel:'Energiefluss',                      unter:'Wohin die erzeugte Energie geht', kind:'saeulen' },
+      { nr:8, titel:'Autarkie im Jahresverlauf',         unter:'Deckungsgrad je Tag über das Jahr', kind:'heatmap' },
+      { nr:9, titel:'Sensitivität',                      unter:'Wirkung einzelner Annahmen auf den Jahresüberschuss', kind:'tornado' },
+    ];
+  }
+
+  // ── Diagrammdaten ───────────────────────────────────────────────────────
+  baueFigur(nr, erg, sel) {
+    const F = this.figuren().find(f => f.nr === nr);
+    const f = { nr, titel:F.titel, unter:F.unter, legende:[], marker:[], labels:[], linien:[], saeulen:[],
+                punkte:[], reihen:[], balken:[], gap:'22px',
+                istPfad:false, istSaeulen:false, istScatter:false, istHeatmap:false, istTornado:false,
+                flaeche:'', pfadA:'', pfadB:'', fill:'#d4a855', strokeA:'#d4a855', strokeB:'#ef5350', dashB:'6 4',
+                xLinks:'', xMitte:'', xRechts:'', lesen:'', caption:'' };
+    const W = 1000, H = 240;
+    const pkt = (xs, ys) => xs.map((x, i) => (i ? 'L' : 'M') + x.toFixed(0) + ' ' + ys[i].toFixed(0)).join(' ');
+
+    if (nr === 1) {
+      f.istPfad = true;
+      const xs = [], ys = [], best = 2000, maxK = 2500;
+      for (let i = 0; i <= 40; i++) {
+        const kwp = maxK * i / 40;
+        const rel = 1 - Math.pow((kwp - best) / 2100, 2);
+        xs.push(60 + (W - 90) * i / 40);
+        ys.push(H - 30 - Math.max(0, rel) * (H - 60));
+      }
+      f.pfadA = pkt(xs, ys);
+      f.flaeche = f.pfadA + ' L ' + xs[xs.length - 1].toFixed(0) + ' ' + (H - 30) + ' L 60 ' + (H - 30) + ' Z';
+      f.legende = [{ farbe:'#d4a855', label:'Jahresüberschuss bei optimaler Batterie' }];
+      const bx = 60 + (W - 90) * (best / maxK);
+      f.marker = [{ style:'position:absolute;left:' + (bx / W * 100).toFixed(1) + '%;top:' + ((H - 30 - (H - 60)) / H * 100).toFixed(1) + '%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#66bb6a;border:2px solid #12110e;' }];
+      f.labels = [{ text:'Optimum 2.000 kWp / 750 kWh', style:'position:absolute;left:' + (bx / W * 100 + 1).toFixed(1) + '%;top:2%;font-size:10.5px;color:#66bb6a;' }];
+      f.xLinks = '0 kWp'; f.xMitte = '1.250 kWp'; f.xRechts = '2.500 kWp';
+      f.lesen = 'Die Kuppe ist flach — rund um das Optimum kostet eine deutlich kleinere Anlage nur wenig Überschuss. Das ist der Spielraum für nicht-wirtschaftliche Argumente wie Flächenschonung oder Bauabschnitte.';
+      f.caption = 'Abb. 1: Jährlicher Netto-Überschuss über der PV-Leistung bei jeweils wirtschaftlich optimaler Batteriegröße.';
+    }
+
+    if (nr === 2) {
+      f.istPfad = true;
+      const xs = [], ys = [];
+      for (let i = 0; i <= 40; i++) {
+        const t = i / 40;
+        xs.push(60 + (W - 90) * t);
+        ys.push(H - 30 - (1 - Math.pow(t - 0.8, 2) * 1.6) * (H - 70));
+      }
+      f.pfadA = pkt(xs, ys);
+      f.legende = [{ farbe:'#d4a855', label:'Jahresüberschuss ohne Speicher' }, { farbe:'#ff8a65', label:'Infrastruktur-Stufe' }];
+      f.linien = [];
+      [0.04, 0.2, 0.8].forEach((t, i) => {
+        f.marker.push({ style:'position:absolute;left:' + (6 + t * 88).toFixed(1) + '%;top:6%;bottom:14%;width:1px;background:#ff8a65;opacity:.45;' });
+        f.labels.push({ text:['100 kWp', '500 kWp', '2.000 kWp'][i], style:'position:absolute;left:' + (6 + t * 88 + 0.6).toFixed(1) + '%;top:3%;font-size:10px;color:#ff8a65;' });
+      });
+      f.xLinks = '0 kWp'; f.xMitte = '1.250 kWp'; f.xRechts = '2.500 kWp';
+      f.lesen = 'An jeder senkrechten Linie springt die Netzanschluss-Stufe. Wo die Kurve direkt nach einem Sprung abknickt, trägt der nächste Ausbauschritt seine eigene Infrastruktur nicht.';
+      f.caption = 'Abb. 2: Jahresüberschuss über der PV-Leistung mit den Schwellen der Netzanschluss-Infrastruktur.';
+    }
+
+    if (nr === 3) {
+      f.istPfad = true;
+      const xs = [], ev = [], ab = [];
+      for (let i = 0; i <= 40; i++) {
+        const t = i / 40;
+        xs.push(60 + (W - 90) * t);
+        ev.push(H - 30 - Math.exp(-3.1 * t) * (H - 60));
+        ab.push(H - 30 - Math.max(0, (t - 0.62)) * 1.9 * (H - 60));
+      }
+      f.pfadA = pkt(xs, ev); f.strokeA = '#a5d6a7';
+      f.pfadB = pkt(xs, ab); f.strokeB = '#ef9a9a'; f.dashB = '0';
+      f.fill = 'transparent';
+      f.legende = [{ farbe:'#a5d6a7', label:'Eigenverbrauchsquote' }, { farbe:'#ef9a9a', label:'Abregelung' }];
+      f.xLinks = '0 kWp'; f.xMitte = '1.250 kWp'; f.xRechts = '2.500 kWp';
+      f.lesen = 'Die Eigenverbrauchsquote fällt sofort, die Abregelung setzt erst ein, wenn die Erzeugungsspitze die Einspeisegrenze überschreitet. Der Knick wandert mit dem Erzeugungsprofil — mit dem PVGIS-Profil deutlich nach links.';
+      f.caption = 'Abb. 3: Eigenverbrauchsquote und Abregelung über der installierten PV-Leistung.';
+    }
+
+    if (nr === 4) {
+      f.istSaeulen = true;
+      const max = Math.max(...erg.map(e => e.ertrag));
+      f.legende = [{ farbe:'#a5d6a7', label:'Eigenverbrauch' }, { farbe:'#42a5f5', label:'Einspeisung' }, { farbe:'#ef5350', label:'Abregelung' }];
+      f.saeulen = erg.map(e => {
+        const dim = sel && sel !== e.id;
+        const a = (e.eigen / e.ertrag * 100).toFixed(1);            // Eigenverbrauch
+        const b = ((e.eigen + e.einsp) / e.ertrag * 100).toFixed(1); // + Einspeisung
+        return { wert: this.n(e.ertrag, 0), textFarbe: dim ? '#607d8b' : '#ece8df',
+                 hoehe: (e.ertrag / max * 100).toFixed(1) + '%',
+                 teile: [{ style:'width:100%;height:100%;border-radius:1px;opacity:' + (dim ? .28 : 1) +
+                                 ';background:linear-gradient(to top,#a5d6a7 0%,#a5d6a7 ' + a + '%,' +
+                                 '#42a5f5 ' + a + '%,#42a5f5 ' + b + '%,#ef5350 ' + b + '%,#ef5350 100%);' }] };
+      });
+      f.xLinks = 'Minimal'; f.xMitte = 'Wirtschaftlich'; f.xRechts = 'Max PV';
+      f.lesen = 'Die Säulenhöhe ist der Jahresertrag, die Farbe sein Verbleib. Bei den großen Varianten wandert der Löwenanteil ins Netz — dort entscheidet die Einspeisevergütung über die Wirtschaftlichkeit, nicht der Strompreis.';
+      f.caption = 'Abb. 4: Verbleib der erzeugten Energie je Ausbauvariante.';
+    }
+
+    if (nr === 6) {
+      f.istSaeulen = true;
+      const NAP = 2000, SKgrenze = 2400, max = 2800;
+      f.legende = [{ farbe:'#d4a855', label:'Rückspeisespitze' }, { farbe:'#ef5350', label:'Anschlussgrenze 2.000 kW' }, { farbe:'#ffa726', label:'Spannungsband 2,0 % ≙ 2.400 kW' }];
+      f.linien = [
+        { style:'position:absolute;left:54px;right:6px;bottom:' + (NAP / max * 100).toFixed(1) + '%;height:0;border-top:2px dashed #ef5350;opacity:.85;' },
+        { style:'position:absolute;left:54px;right:6px;bottom:' + (SKgrenze / max * 100).toFixed(1) + '%;height:0;border-top:2px dashed #ffa726;opacity:.85;' },
+      ];
+      f.saeulen = erg.map(e => {
+        const dim = sel && sel !== e.id;
+        return { wert: this.n(e.rueck, 0), textFarbe: dim ? '#607d8b' : '#ece8df',
+                 hoehe: (e.rueck / max * 100).toFixed(1) + '%',
+                 teile: [{ style:'width:100%;height:100%;background:' + e.ampel + ';opacity:' + (dim ? .28 : 1) + ';border-radius:1px;' }] };
+      });
+      f.xLinks = 'Minimal'; f.xMitte = 'Wirtschaftlich'; f.xRechts = 'Max PV';
+      f.lesen = 'Die Säule ist die höchste gleichzeitige Rückspeiseleistung des Jahres, ungekappt gerechnet. Über der roten Linie reicht die Anschlusskapazität nicht, über der orangen wird das Spannungsband gerissen. Das Erzeugungsprofil verschiebt alle Säulen — der Wechsel auf PVGIS kippt die wirtschaftliche Variante von Gelb auf Rot.';
+      f.caption = 'Abb. 6: Rückspeisespitze je Ausbauvariante gegenüber Anschlusskapazität und zulässiger Spannungsanhebung.';
+    }
+
+    if (nr === 7) {
+      f.istSaeulen = true; f.gap = '34px';
+      const e = erg.find(x => x.id === (sel || 'wirt')) || erg[2];
+      const max = e.ertrag;
+      f.legende = [{ farbe:'#a5d6a7', label:'Eigenverbrauch' }, { farbe:'#42a5f5', label:'Einspeisung' }, { farbe:'#ef5350', label:'Abregelung' }];
+      f.saeulen = [
+        { wert:this.n(e.ertrag, 0), textFarbe:'#fdd835', hoehe:'100%', teile:[{ style:'width:100%;height:100%;background:#fdd835;opacity:.85;border-radius:1px;' }] },
+        { wert:this.n(e.eigen, 0),  textFarbe:'#a5d6a7', hoehe:(e.eigen / max * 100).toFixed(1) + '%', teile:[{ style:'width:100%;height:100%;background:#a5d6a7;border-radius:1px;' }] },
+        { wert:this.n(e.einsp, 0),  textFarbe:'#42a5f5', hoehe:(e.einsp / max * 100).toFixed(1) + '%', teile:[{ style:'width:100%;height:100%;background:#42a5f5;border-radius:1px;' }] },
+        { wert:this.n(e.curt, 1),   textFarbe:'#ef5350', hoehe:(Math.max(e.curt, max * 0.004) / max * 100).toFixed(1) + '%', teile:[{ style:'width:100%;height:100%;background:#ef5350;border-radius:1px;' }] },
+      ];
+      f.xLinks = 'Erzeugung'; f.xMitte = 'Eigenverbrauch · Einspeisung'; f.xRechts = 'Abregelung';
+      f.lesen = 'Vier Töpfe für die gewählte Variante: was erzeugt wird, was davon vor Ort bleibt, was ins Netz geht und was am Einspeiselimit verloren geht. Über die Variantenchips oben umschaltbar.';
+      f.caption = 'Abb. 7: Energiefluss der wirtschaftlich optimierten Variante in MWh/a.';
+    }
+
+    if (nr === 5) {
+      f.istScatter = true;
+      const maxI = 5600, maxA = 14;
+      f.legende = [{ farbe:'#aca496', label:'je Punkt eine Variante' }];
+      erg.forEach(e => {
+        const dim = sel && sel !== e.id;
+        const a = isFinite(e.amort) ? Math.min(e.amort, maxA) : maxA;
+        const x = (e.invest / maxI * 100).toFixed(1), y = (100 - a / maxA * 100).toFixed(1);
+        f.punkte.push({ style:'position:absolute;left:' + x + '%;bottom:' + y + '%;width:13px;height:13px;margin:0 0 -6.5px -6.5px;border-radius:50%;background:' + e.farbe + ';opacity:' + (dim ? .3 : 1) + ';border:2px solid #12110e;' });
+        f.labels.push({ text:e.label, style:'position:absolute;left:' + x + '%;bottom:' + y + '%;margin:0 0 6px 10px;font-size:10px;color:' + (dim ? '#607d8b' : '#aca496') + ';white-space:nowrap;' });
+      });
+      f.xLinks = '0 €'; f.xMitte = 'Investition →'; f.xRechts = '5,6 Mio €';
+      f.lesen = 'Waagerecht die Investition, senkrecht die Amortisation (oben = schneller). Die Punktwolke bewegt sich mit dem Strombezugspreis — bei niedrigem Preis rutschen alle nach unten.';
+      f.caption = 'Abb. 5: Investition und statische Amortisation je Ausbauvariante.';
+    }
+
+    if (nr === 8) {
+      f.istHeatmap = true;
+      const e = erg.find(x => x.id === (sel || 'wirt')) || erg[2];
+      const basis = e.aut / 100;
+      const namen = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+      f.legende = [{ farbe:'#1b3a2a', label:'geringe Deckung' }, { farbe:'#66bb6a', label:'hohe Deckung' }];
+      for (let d = 0; d < 7; d++) {
+        const zellen = [];
+        for (let w = 0; w < 52; w++) {
+          const sais = 0.35 + 0.65 * Math.sin(Math.PI * Math.min(1, Math.max(0, (w - 3) / 46)));
+          const wochenende = d >= 5 ? 1.25 : 1;
+          const rausch = ((w * 7 + d) % 11) / 11 * 0.3 - 0.15;
+          const v = Math.max(0.02, Math.min(1, basis * sais * wochenende + rausch));
+          const c = 'rgb(' + Math.round(20 + v * 82) + ',' + Math.round(40 + v * 147) + ',' + Math.round(30 + v * 76) + ')';
+          zellen.push({ style:'flex:1;background:' + c + ';border-radius:1px;' });
+        }
+        f.reihen.push({ label:namen[d], zellen });
+      }
+      f.xLinks = 'Januar'; f.xMitte = 'Juli'; f.xRechts = 'Dezember';
+      f.lesen = 'Jede Zelle ist ein Tag, die Farbe der Anteil des Bedarfs aus eigener Erzeugung. Die dunklen Winterbänder zeigen, dass Autarkie ein Sommerphänomen bleibt — für die Versorgungssicherheit zählt der November, nicht der Jahresmittelwert.';
+      f.caption = 'Abb. 8: Täglicher Deckungsgrad im Jahresverlauf für die gewählte Variante.';
+    }
+
+    if (nr === 9) {
+      f.istTornado = true;
+      const e = erg.find(x => x.id === (sel || 'wirt')) || erg[2];
+      const zeilen = [
+        { label:'Strombezugspreis', lo:'−30 %', hi:'+30 %', s:0.52 },
+        { label:'Einspeisevergütung', lo:'−50 %', hi:'+60 %', s:0.34 },
+        { label:'PV-Investition', lo:'−25 %', hi:'+25 %', s:0.26 },
+        { label:'Spez. Ertrag / Wetterjahr', lo:'−8 %', hi:'+8 %', s:0.19 },
+        { label:'Batterie-Investition', lo:'−30 %', hi:'+30 %', s:0.11 },
+        { label:'Kalkulationszins', lo:'1,5 %', hi:'5,5 %', s:0.08 },
+      ];
+      f.legende = [{ farbe:'#ef5350', label:'ungünstig' }, { farbe:'#66bb6a', label:'günstig' }];
+      f.balken = zeilen.map(z => ({
+        label:z.label, lo:z.lo, hi:z.hi,
+        mitte:'position:absolute;left:50%;top:0;bottom:0;width:1px;background:#3a3528;',
+        links: 'position:absolute;right:50%;top:3px;bottom:3px;width:' + (z.s * 46).toFixed(1) + '%;background:#ef5350;opacity:.8;border-radius:2px 0 0 2px;',
+        rechts:'position:absolute;left:50%;top:3px;bottom:3px;width:' + (z.s * 46).toFixed(1) + '%;background:#66bb6a;opacity:.8;border-radius:0 2px 2px 0;',
+        loStyle:'position:absolute;right:' + (50 + z.s * 46 + 1).toFixed(1) + '%;top:50%;transform:translateY(-50%);font-size:10px;color:#78909c;white-space:nowrap;',
+        hiStyle:'position:absolute;left:'  + (50 + z.s * 46 + 1).toFixed(1) + '%;top:50%;transform:translateY(-50%);font-size:10px;color:#78909c;white-space:nowrap;',
+      }));
+      f.xLinks = '−'; f.xMitte = this.k(e.ueber) + '/a  (' + e.label + ')'; f.xRechts = '+';
+      f.lesen = 'Der längste Balken oben ist der größte Hebel. Das Wetterjahr steht hier bewusst mit drin — es ist eine technische Unsicherheit, die eine reine Preis-Sensitivität übersieht.';
+      f.caption = 'Abb. 9: Sensitivität des Jahresüberschusses gegenüber den wesentlichen Annahmen.';
+    }
+
+    return f;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const erg = this.rechne();
+    const sel = s.pick;
+    const gewaehlt = erg.find(e => e.id === sel) || erg[2];
+    const stale = this.istStale();
+    const prof = this.profile()[s.profilEntwurf];
+
+    const setView = (v) => () => this.setState({ view: v });
+    const navRow = (id, label) => ({
+      label, cls: 'nav' + (s.view === id ? ' navOn' : ''), go: setView(id), nr: '', dot: 'transparent',
+    });
+
+    const navOben = [navRow('tabelle', 'Varianten-Vergleich'), navRow('lesehilfe', 'Lesehilfe'), navRow('rechenweg', 'Rechenweg')];
+
+    const navAbb = this.figuren().map(fg => {
+      const id = 'abb' + fg.nr;
+      const kurz = { 1:'Optimierungsfläche', 2:'Ausbau-Grenznutzen', 3:'Eigenverbrauchsquote', 4:'Energiebilanz',
+                     5:'Invest / Amortisation', 6:'Rückspeisung & Netz', 7:'Energiefluss',
+                     8:'Autarkie-Jahresgang', 9:'Sensitivität' }[fg.nr];
+      const schlimmste = erg.reduce((a, b) => (b.ampelLvl > a.ampelLvl ? b : a), erg[0]);
+      return { label:kurz, nr:String(fg.nr), cls:'nav' + (s.view === id ? ' navOn' : ''), go:setView(id),
+               dot: fg.nr === 6 ? schlimmste.ampel : 'transparent' };
+    });
+
+    const chipStyle = (an, farbe) => an
+      ? 'border:1px solid ' + farbe + ';background:' + farbe + ';color:#12110e;font-weight:500;'
+      : 'border:1px solid ' + farbe + ';background:transparent;color:' + farbe + ';';
+
+    const varChips = erg.map(e => ({
+      label: e.id === 'ev' ? 'Eigenverbrauch' : e.id === 'wirt' ? 'Wirtschaftlich' : e.id === 'maxpv' ? 'Max PV' : e.label,
+      pick: () => this.setState({ pick: e.id }),
+      style: chipStyle(e.id === sel, e.farbe),
+    }));
+
+    const bg = (e) => e.id === sel ? 'background:rgba(102,187,106,.08);cursor:pointer;' : 'cursor:pointer;';
+
+    const zeilen = erg.map(e => {
+      const b = bg(e);
+      return {
+        farbe: e.farbe, label: e.label, pick: () => this.setState({ pick: e.id }),
+        labelStyle: 'font-family:\'DM Sans\',sans-serif;font-weight:' + (e.id === sel ? '600' : '400') + ';',
+        bestStyle: e.id === 'wirt'
+          ? 'background:#66bb6a;color:#000;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;font-family:\'DM Sans\',sans-serif;'
+          : 'display:none;',
+        kwp: this.n(e.kwp, 0), bat: e.bat > 0 ? this.n(e.bat, 0) : '—',
+        ev: this.n(e.ev, 1), aut: this.n(e.aut, 1), abr: e.curt > 0 ? this.n(e.curt, 1) : '0,0',
+        invest: this.n(e.invest, 0) + ' k€', ueber: this.k(e.ueber), npv: this.k(e.npv),
+        lcoe: this.n(e.lcoe, 1) + ' ct', co2: this.n(e.co2, 0) + ' t', ampelFarbe: e.ampel,
+        bg: b + 'text-align:left;',
+        bgLeft: b + 'text-align:left;', bgKwp: b + 'color:#fdd835;', bgBat: b + 'color:' + (e.bat > 0 ? '#80deea' : '#78909c') + ';',
+        bgEv: b + 'color:#a5d6a7;', bgAut: b + 'color:#4fc3f7;',
+        bgAbr: b + 'color:' + (e.curt > 5 ? '#ef9a9a' : e.curt > 0 ? '#ffd54f' : '#78909c') + ';',
+        bgInv: b + 'color:#ce93d8;',
+        bgUeber: b + 'color:' + (e.ueber >= 0 ? '#66bb6a' : '#ef5350') + ';font-weight:' + (e.id === 'wirt' ? '600' : '400') + ';',
+        bgNpv: b + 'color:' + (e.npv >= 0 ? '#66bb6a' : '#ef5350') + ';',
+        bgAmpel: b + 'text-align:center;',
+      };
+    });
+
+    const detail = {
+      farbe: gewaehlt.farbe, label: gewaehlt.label, frage: gewaehlt.frage, text: gewaehlt.text,
+      kpis: [
+        { k:'Erlöse',            v:this.n(gewaehlt.erloes, 0) + ' k€/a', farbe:'#a5d6a7' },
+        { k:'Jahreskosten',      v:this.n(gewaehlt.jk, 0) + ' k€/a',     farbe:'#ce93d8' },
+        { k:'Amortisation',      v:isFinite(gewaehlt.amort) ? this.n(gewaehlt.amort, 1) + ' a' : '> 20 a', farbe:'#ece8df' },
+        { k:'Rückspeisespitze',  v:this.n(gewaehlt.rueck, 0) + ' kW',    farbe:gewaehlt.ampel },
+        { k:'Spannungsanhebung', v:this.n(gewaehlt.du, 2) + ' %',        farbe:gewaehlt.ampel },
+        { k:'CO₂-Minderung',     v:this.n(gewaehlt.co2, 0) + ' t/a',     farbe:'#a5d6a7' },
+      ],
+    };
+
+    const lesehilfe = erg.map(e => ({
+      farbe:e.farbe, label:e.label, frage:e.frage, text:e.text,
+      kwp:this.n(e.kwp, 0), ev:this.n(e.ev, 0) + ' %', aut:this.n(e.aut, 0) + ' %',
+    }));
+
+    const g = gewaehlt;
+    const rechenweg = [
+      { pos:'PV-Ertrag',        formel:this.n(g.kwp, 0) + ' kWp × 1.050 kWh/kWp',            wert:this.n(g.ertrag, 0) + ' MWh', farbe:'#aca496', weight:'400' },
+      { pos:'Eigenverbrauch',   formel:'aus der Stundensimulation',                          wert:this.n(g.eigen, 0) + ' MWh',  farbe:'#a5d6a7', weight:'400' },
+      { pos:'Einspeisung',      formel:'Ertrag − Eigenverbrauch − Abregelung',               wert:this.n(g.einsp, 0) + ' MWh',  farbe:'#42a5f5', weight:'400' },
+      { pos:'Abregelung',       formel:'Überschuss über 2.000 kW Einspeisegrenze',           wert:this.n(g.curt, 1) + ' MWh',   farbe:'#ef9a9a', weight:'400' },
+      { pos:'Ersparnis Bezug',  formel:this.n(g.eigen, 0) + ' MWh × ' + this.n(s.pStromAngewandt, 1) + ' ct/kWh', wert:this.n(g.eigen * s.pStromAngewandt / 100, 0) + ' k€/a', farbe:'#a5d6a7', weight:'400' },
+      { pos:'Einspeiseerlös',   formel:this.n(g.einsp, 0) + ' MWh × ' + this.n(g.pEinsp, 1) + ' ct/kWh', wert:this.n(g.einsp * g.pEinsp / 100, 0) + ' k€/a', farbe:'#42a5f5', weight:'400' },
+      { pos:'Erlöse gesamt',    formel:'Ersparnis + Einspeiseerlös',                         wert:this.n(g.erloes, 0) + ' k€/a', farbe:'#ece8df', weight:'600' },
+      { pos:'Jahreskosten',     formel:'Kapitaldienst + Betrieb + Infrastruktur',            wert:this.n(g.jk, 0) + ' k€/a',    farbe:'#ce93d8', weight:'400' },
+      { pos:'Netto-Überschuss', formel:'Erlöse − Jahreskosten',                              wert:this.k(g.ueber) + '/a',       farbe:g.ueber >= 0 ? '#66bb6a' : '#ef5350', weight:'600' },
+      { pos:'Kapitalwert',      formel:'Überschuss × Rentenbarwertfaktor 14,21 (3,5 %, 20 a)', wert:this.k(g.npv),             farbe:g.npv >= 0 ? '#66bb6a' : '#ef5350', weight:'600' },
+      { pos:'Amortisation',     formel:'Investition ÷ (Erlöse − Betriebskosten)',            wert:isFinite(g.amort) ? this.n(g.amort, 1) + ' a' : '> 20 a', farbe:'#ece8df', weight:'400' },
+      { pos:'Stromgestehung',   formel:'Jahreskosten ÷ genutzte Energie',                    wert:this.n(g.lcoe, 1) + ' ct/kWh', farbe:'#ece8df', weight:'400' },
+    ];
+
+    const chartNr = s.view.startsWith('abb') ? parseInt(s.view.slice(3), 10) : 0;
+    const fig = chartNr ? this.baueFigur(chartNr, erg, sel) : this.baueFigur(1, erg, sel);
+
+    const preisAbweichung = s.pStromEntwurf !== 35;
+
+    return {
+      // Datenbasis
+      peakTxt: this.n(prof.peak, 2) + ' kW/kWp',
+      setSynth: () => this.setState({ profilEntwurf: 'synth' }),
+      setPvgis: () => this.setState({ profilEntwurf: 'pvgis' }),
+      synthStyle: chipStyle(s.profilEntwurf === 'synth', '#d4a855'),
+      pvgisStyle: chipStyle(s.profilEntwurf === 'pvgis', '#66bb6a'),
+      pStromTxt: this.n(s.pStromEntwurf, 1),
+      minus: () => this.setState({ pStromEntwurf: Math.max(10, s.pStromEntwurf - 1) }),
+      plus:  () => this.setState({ pStromEntwurf: Math.min(70, s.pStromEntwurf + 1) }),
+      preisDot: preisAbweichung ? '#ffa726' : '#66bb6a',
+      preisFarbe: preisAbweichung ? '#ffa726' : '#78909c',
+      preisHinweis: preisAbweichung ? 'überschrieben — Szenario 35,0 ct/kWh' : 'Projektbasis 07/2026 · v1',
+
+      // Navigation
+      navOben, navAbb,
+
+      // Ansichten
+      istTabelle: s.view === 'tabelle',
+      istLesehilfe: s.view === 'lesehilfe',
+      istRechenweg: s.view === 'rechenweg',
+      istChart: chartNr > 0,
+      zeilen, detail, lesehilfe, rechenweg, varChips, fig,
+      inhaltOpacity: stale ? '0.4' : '1',
+
+      // Aktionsleiste
+      stale, aktuell: !stale,
+      barStyle: 'display:flex;align-items:center;gap:14px;background:#1c1a15;border:1px solid ' +
+        (stale ? '#ffa726' : '#3a3528') + ';border-left:3px solid ' + (stale ? '#ffa726' : '#66bb6a') +
+        ';border-radius:7px;padding:10px 14px;margin-bottom:14px;flex-shrink:0;',
+      barTextFarbe: stale ? '#ffb74d' : '#aca496',
+      barText: stale
+        ? 'Eingaben geändert — die Ergebnisse unten stammen noch aus der Berechnung mit ' +
+          this.n(s.pStromAngewandt, 1) + ' ct/kWh und dem ' + this.profile()[s.profilAngewandt].kurz + 'en Profil. Neu berechnen, bevor Zahlen ins Gutachten übernommen werden.'
+        : 'Ergebnisse aktuell — gerechnet mit ' + this.n(s.pStromAngewandt, 1) + ' ct/kWh und dem ' +
+          this.profile()[s.profilAngewandt].kurz + 'en Erzeugungsprofil.',
+      standText: 'Letzte Berechnung\nheute, ' + s.stand + ' · 1,8 s',
+      knopfStyle: 'padding:8px 20px;border-radius:5px;background:' + (stale ? '#f9a825' : '#2a2820') +
+        ';color:' + (stale ? '#000' : '#78909c') + ';font-size:12px;font-weight:500;flex-shrink:0;cursor:pointer;user-select:none;',
+      knopfText: stale ? 'Varianten neu berechnen' : 'Varianten berechnen',
+      rechnen: () => {
+        if (!this.istStale()) return;
+        const d = new Date();
+        this.setState({
+          profilAngewandt: s.profilEntwurf,
+          pStromAngewandt: s.pStromEntwurf,
+          stand: String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'),
+        });
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

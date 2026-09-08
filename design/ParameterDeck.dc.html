@@ -1,0 +1,452 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; }
+    a { color: #d4a855; text-decoration: none; }
+    a:hover { color: #ece8df; }
+    .karte  { background:#1c1a15; border:1px solid #3a3528; border-radius:7px; padding:14px 16px;
+              display:flex; flex-direction:column; gap:11px; }
+    .kopf   { display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
+    .kopf:hover .titel { color:#d4a855; }
+    .nr     { font-family:'DM Mono',monospace; font-size:11px; color:#d4a855; }
+    .titel  { font-size:12px; font-weight:600; }
+    .feld   { display:flex; flex-direction:column; gap:4px; }
+    .lab    { font-size:10.5px; color:#aca496; }
+    .box    { display:flex; align-items:center; background:#24221b; border-radius:5px; padding:5px 8px; gap:6px; }
+    .wert   { font-family:'DM Mono',monospace; font-size:13px; flex-grow:1; }
+    .ein    { font-size:10px; color:#78909c; }
+    .step   { width:19px; height:19px; border-radius:4px; border:1px solid #3a3528; color:#aca496; cursor:pointer;
+              display:flex; align-items:center; justify-content:center; font-size:13px; line-height:1; user-select:none; flex-shrink:0; }
+    .step:hover { border-color:#d4a855; color:#d4a855; }
+    .chip   { padding:3px 10px; border-radius:12px; font-size:10px; cursor:pointer; user-select:none; }
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;background:#12110e;color:#ece8df;font-size:11px;padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:13px;overflow:hidden;">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid #3a3528;padding-bottom:10px;">
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <div style="font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;">Parameter-Deck</div>
+      <div style="font-size:11px;color:#aca496;">Sortiert nach Änderungshäufigkeit · jede Gruppe trägt ihre Herkunft · Kopfzeile klicken zum Ein- und Ausklappen</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <div class="chip" onClick="{{zuruecksetzen}}" style="border:1px solid #3a3528;color:#aca496;">Auf Szenario zurücksetzen</div>
+      <div class="chip" style="{{abwStyle}}">{{abwText}}</div>
+    </div>
+  </div>
+
+  <!-- 01 Wirtschaft -->
+  <div class="karte">
+    <div class="kopf" onClick="{{toggleWirt}}">
+      <span class="nr">01</span><div class="titel">Wirtschaftliche Annahmen</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+        <span style="font-size:10px;color:#78909c;">Grundlage</span>
+        <div style="padding:2px 9px;border-radius:11px;border:1px solid #3a3528;background:#24221b;color:#aca496;font-size:10px;font-family:'DM Mono',monospace;">Projektbasis 07/2026 · v1</div>
+        <span style="color:#78909c;font-size:11px;">{{pfeilWirt}}</span>
+      </div>
+    </div>
+
+    <sc-if value="{{offenWirt}}" hint-placeholder-val="{{true}}">
+      <div style="display:grid;grid-template-columns:repeat(6, minmax(0,1fr));gap:10px 12px;">
+        <sc-for list="{{felder}}" as="f" hint-placeholder-count="12">
+          <div class="feld">
+            <div class="lab" style="color:{{f.labFarbe}};">{{f.label}}</div>
+            <div class="box" style="border:1px solid {{f.rand}};">
+              <span class="wert">{{f.wert}}</span>
+              <span class="ein">{{f.einheit}}</span>
+              <div style="display:flex;gap:3px;">
+                <div class="step" onClick="{{f.minus}}">−</div>
+                <div class="step" onClick="{{f.plus}}">+</div>
+              </div>
+            </div>
+            <div style="font-size:9.5px;color:{{f.hinweisFarbe}};">{{f.hinweis}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- 02 / 03 -->
+  <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:12px;">
+    <div class="karte">
+      <div class="kopf" onClick="{{toggleLast}}">
+        <span class="nr">02</span><div class="titel">Lastgang</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:10px;color:#78909c;font-family:'DM Mono',monospace;">quartier-2025.csv · {{lastMwh}} MWh/a</span>
+          <span style="color:#78909c;font-size:11px;">{{pfeilLast}}</span>
+        </div>
+      </div>
+      <sc-if value="{{offenLast}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex;flex-direction:column;gap:11px;">
+          <div style="display:flex;gap:5px;">
+            <sc-for list="{{lastModi}}" as="m" hint-placeholder-count="3">
+              <div onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</div>
+            </sc-for>
+          </div>
+          <div style="height:70px;background:#12110e;border:1px solid #3a3528;border-radius:5px;overflow:hidden;">
+            <svg width="100%" height="100%" viewBox="0 0 600 70" preserveAspectRatio="none">
+              <path d="{{lastFlaeche}}" fill="#3a3528" opacity=".55"/>
+              <path d="{{lastPfad}}" fill="none" stroke="#aca496" stroke-width="1"/>
+            </svg>
+          </div>
+          <div style="font-size:10px;color:#78909c;line-height:1.5;">{{lastHinweis}}</div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div class="karte">
+      <div class="kopf" onClick="{{toggleNap}}">
+        <span class="nr">03</span><div class="titel">Netzanschlusspunkt</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:10px;color:#78909c;">VNB-Netzauskunft 04/2026</span>
+          <span style="color:#78909c;font-size:11px;">{{pfeilNap}}</span>
+        </div>
+      </div>
+      <sc-if value="{{offenNap}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex;flex-direction:column;gap:11px;">
+          <div style="display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:10px;">
+            <sc-for list="{{napFelder}}" as="f" hint-placeholder-count="4">
+              <div class="feld">
+                <div class="lab">{{f.label}}</div>
+                <div class="box" style="border:1px solid #3a3528;">
+                  <span class="wert">{{f.wert}}</span><span class="ein">{{f.einheit}}</span>
+                  <div style="display:flex;gap:3px;">
+                    <div class="step" onClick="{{f.minus}}">−</div>
+                    <div class="step" onClick="{{f.plus}}">+</div>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:10px;color:#78909c;line-height:1.5;background:#24221b;border-radius:5px;padding:8px 10px;">
+            Bei {{napEinsp}} kW Einspeisegrenze und S_k″ {{napSk}} kVA liegt das Spannungsband-Äquivalent bei
+            <b style="color:#ece8df;">{{uAequivalent}} kW</b>. Maßgeblich ist das schärfere der beiden Kriterien —
+            aktuell <b style="color:{{schaerferFarbe}};">{{schaerfer}}</b>.
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- 04 / 05 -->
+  <div style="display:grid;grid-template-columns:1fr 1.35fr;gap:12px;">
+    <div class="karte">
+      <div class="kopf" onClick="{{toggleAnlage}}">
+        <span class="nr">04</span><div class="titel">Anlagenpotenzial</div>
+        <span style="margin-left:auto;color:#78909c;font-size:11px;">{{pfeilAnlage}}</span>
+      </div>
+      <sc-if value="{{offenAnlage}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex;flex-direction:column;gap:9px;">
+          <div style="display:flex;align-items:baseline;gap:9px;">
+            <span style="font-family:'DM Mono',monospace;font-size:22px;color:#fdd835;">{{kwpGesamt}}</span>
+            <span style="font-size:11px;color:#aca496;">kWp maximal</span>
+          </div>
+          <sc-for list="{{quellen}}" as="q" hint-placeholder-count="4">
+            <div onClick="{{q.toggle}}" style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;cursor:pointer;padding:2px 0;">
+              <span style="display:flex;align-items:center;gap:7px;color:{{q.farbe}};">
+                <span style="width:11px;height:11px;border-radius:3px;border:1px solid {{q.rand}};background:{{q.fuell}};display:inline-block;flex-shrink:0;"></span>
+                {{q.label}}
+              </span>
+              <span style="font-family:'DM Mono',monospace;color:{{q.farbe}};">{{q.wert}}</span>
+            </div>
+          </sc-for>
+          <div style="font-size:10px;color:#78909c;line-height:1.5;">Eine einzige Quelle je Dachfläche — Assets schließen die Pauschale des Gebäudes aus. Zum Ausprobieren abwählbar.</div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div class="karte">
+      <div class="kopf" onClick="{{toggleProfil}}">
+        <span class="nr">05</span><div class="titel">Erzeugungsprofil</div>
+        <span style="margin-left:auto;color:#78909c;font-size:11px;">{{pfeilProfil}}</span>
+      </div>
+      <sc-if value="{{offenProfil}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex;flex-direction:column;gap:11px;">
+          <div style="display:flex;gap:5px;">
+            <sc-for list="{{profilModi}}" as="m" hint-placeholder-count="2">
+              <div onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</div>
+            </sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:10px;">
+            <sc-for list="{{profilKpi}}" as="k" hint-placeholder-count="3">
+              <div style="background:#24221b;border-radius:5px;padding:9px 11px;display:flex;flex-direction:column;gap:3px;">
+                <div style="font-size:10px;color:#aca496;">{{k.k}}</div>
+                <div style="font-family:'DM Mono',monospace;font-size:15px;color:{{k.farbe}};">{{k.v}}</div>
+                <div style="font-size:9.5px;color:#78909c;">{{k.sub}}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="height:64px;background:#12110e;border:1px solid #3a3528;border-radius:5px;overflow:hidden;position:relative;">
+            <svg width="100%" height="100%" viewBox="0 0 600 64" preserveAspectRatio="none">
+              <line x1="0" y1="{{grenzY}}" x2="600" y2="{{grenzY}}" stroke="#ef5350" stroke-width="1" stroke-dasharray="3 3" opacity=".9"/>
+              <path d="{{pvPfad}}" fill="#fdd835" opacity=".65"/>
+            </svg>
+            <div style="position:absolute;right:8px;top:2px;font-size:9.5px;color:#ef5350;">Einspeisegrenze {{napEinsp}} kW</div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- 06 Infrastruktur -->
+  <div class="karte">
+    <div class="kopf" onClick="{{toggleInfra}}">
+      <span class="nr">06</span><div class="titel">Netzanschluss-Infrastruktur</div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:10px;color:#78909c;">Stufe folgt der PV-Leistung — Variante wählen zum Hervorheben</span>
+        <span style="color:#78909c;font-size:11px;">{{pfeilInfra}}</span>
+      </div>
+    </div>
+    <sc-if value="{{offenInfra}}" hint-placeholder-val="{{true}}">
+      <div style="display:flex;flex-direction:column;gap:11px;">
+        <div style="display:flex;gap:5px;">
+          <sc-for list="{{varChips}}" as="c" hint-placeholder-count="5">
+            <div class="chip" onClick="{{c.pick}}" style="{{c.style}}">{{c.label}}</div>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5, minmax(0,1fr));gap:10px;">
+          <sc-for list="{{stufen}}" as="s" hint-placeholder-count="5">
+            <div style="background:#24221b;border:1px solid {{s.rand}};border-radius:5px;padding:10px 11px;display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:10.5px;color:{{s.textFarbe}};">{{s.bereich}}</span>
+                <span style="width:9px;height:9px;border-radius:2px;background:{{s.marke}};display:inline-block;"></span>
+              </div>
+              <div style="font-family:'DM Mono',monospace;font-size:14px;color:{{s.textFarbe}};">{{s.kosten}}</div>
+              <div style="font-size:9.5px;color:#78909c;">{{s.sub}}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size:10.5px;color:#aca496;background:#24221b;border-radius:5px;padding:9px 12px;">
+          <b style="color:#ece8df;">{{infraAktiv.label}}</b> mit {{infraAktiv.kwp}} kWp fällt in die Stufe
+          <b style="color:#ece8df;">{{infraAktiv.stufe}}</b> — <b style="color:#ff8a65;">{{infraAktiv.kosten}}</b> Netzanschlusskosten,
+          bereits in der Investitionssumme der Variante enthalten.
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      pStrom: 35, pEinsp: 5.9, zins: 3.5, steig: 2.0, pvInv: 900, batInv: 450,
+      lebenPv: 20, lebenBat: 15, degr: 0.5, co2: 380, leistPreis: 98, ih: 1.0,
+      napEinsp: 2000, napBezug: 0, sk: 120000, uBudget: 2.0,
+      lastModus: 'strom', profil: 'synth', pick: 'wirt',
+      quellen: { assets:true, geb:true, ff:true, manuell:false },
+      offen: { wirt:true, last:true, nap:true, anlage:true, profil:true, infra:true },
+    };
+  }
+
+  szenario() { return { pStrom:35, pEinsp:5.9, zins:3.5, steig:2.0, pvInv:900, batInv:450,
+                        lebenPv:20, lebenBat:15, degr:0.5, co2:380, leistPreis:98, ih:1.0 }; }
+
+  n(v, d) { return Number(v).toLocaleString('de-DE', { minimumFractionDigits:d, maximumFractionDigits:d }); }
+
+  renderVals() {
+    const s = this.state, sz = this.szenario();
+    const setz = (k, v) => this.setState({ [k]: v });
+    const klemm = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(v * 100) / 100));
+
+    // ── Wirtschaftsfelder ────────────────────────────────────────────────
+    const defs = [
+      { k:'pStrom',     label:'Strombezugspreis',      einheit:'ct/kWh', d:1, schritt:1,   lo:10,  hi:70 },
+      { k:'pEinsp',     label:'Einspeisevergütung',    einheit:'ct/kWh', d:1, schritt:0.1, lo:0,   hi:20 },
+      { k:'zins',       label:'Kalkulationszins',      einheit:'%',      d:1, schritt:0.5, lo:0,   hi:10 },
+      { k:'steig',      label:'Preissteigerung Strom', einheit:'%/a',    d:1, schritt:0.5, lo:0,   hi:8 },
+      { k:'pvInv',      label:'PV-Investition',        einheit:'€/kWp',  d:0, schritt:25,  lo:400, hi:2000 },
+      { k:'batInv',     label:'Batterie-Investition',  einheit:'€/kWh',  d:0, schritt:25,  lo:150, hi:1200 },
+      { k:'lebenPv',    label:'Nutzungsdauer PV',      einheit:'a',      d:0, schritt:1,   lo:10,  hi:30 },
+      { k:'lebenBat',   label:'Nutzungsdauer Batterie',einheit:'a',      d:0, schritt:1,   lo:5,   hi:25 },
+      { k:'degr',       label:'PV-Degradation',        einheit:'%/a',    d:2, schritt:0.05,lo:0,   hi:1.5 },
+      { k:'co2',        label:'CO₂-Verdrängung',       einheit:'g/kWh',  d:0, schritt:10,  lo:0,   hi:800 },
+      { k:'leistPreis', label:'Leistungspreis Netz',   einheit:'€/kW·a', d:0, schritt:2,   lo:0,   hi:250 },
+      { k:'ih',         label:'Instandhaltung',        einheit:'%/a',    d:1, schritt:0.1, lo:0,   hi:5 },
+    ];
+    let abw = 0;
+    const felder = defs.map(d => {
+      const wert = s[d.k], anders = Math.abs(wert - sz[d.k]) > 1e-9;
+      if (anders) abw++;
+      return {
+        label:d.label, einheit:d.einheit, wert:this.n(wert, d.d),
+        labFarbe: anders ? '#ffa726' : '#aca496',
+        rand: anders ? '#ffa726' : '#3a3528',
+        hinweis: anders ? 'Szenario ' + this.n(sz[d.k], d.d) : 'aus Szenario',
+        hinweisFarbe: anders ? '#ffa726' : '#78909c',
+        minus: () => setz(d.k, klemm(wert - d.schritt, d.lo, d.hi)),
+        plus:  () => setz(d.k, klemm(wert + d.schritt, d.lo, d.hi)),
+      };
+    });
+
+    // ── Lastgang ─────────────────────────────────────────────────────────
+    const lastDefs = [
+      { id:'strom',     label:'Nur Strom',      mwh:974,  hin:'Gemessener Quartierlastgang, stündlich, 8.760 Werte.' },
+      { id:'wp',        label:'+ Wärmepumpen',  mwh:1486, hin:'Zzgl. Wärmepumpen- und Stromkesselstrom aus der Wärmesimulation — verschiebt die Last in den Winter.' },
+      { id:'endausbau', label:'Endausbau 2041', mwh:1812, hin:'NAP-Messung plus Neubau- und Abrissmaßnahmen bis zum Planungsjahr.' },
+    ];
+    const lastAkt = lastDefs.find(l => l.id === s.lastModus);
+    const lastModi = lastDefs.map(l => ({
+      label:l.label, pick:() => setz('lastModus', l.id),
+      style:'flex:1;padding:6px;border-radius:5px;text-align:center;font-size:11px;cursor:pointer;user-select:none;' +
+        (l.id === s.lastModus ? 'border:1px solid #d4a855;background:#d4a855;color:#000;font-weight:500;'
+                              : 'border:1px solid #3a3528;color:#aca496;'),
+    }));
+    const winter = s.lastModus === 'strom' ? 0 : s.lastModus === 'wp' ? 0.55 : 0.85;
+    const lx = [], ly = [];
+    for (let i = 0; i <= 60; i++) {
+      const t = i / 60;
+      const tag = 0.5 + 0.5 * Math.sin(2 * Math.PI * (i / 5));
+      const sais = 1 + winter * Math.cos(2 * Math.PI * t);
+      lx.push(i * 10);
+      ly.push(64 - Math.min(58, 20 * tag * sais + 8));
+    }
+    const lastPfad = lx.map((x, i) => (i ? 'L' : 'M') + x + ' ' + ly[i].toFixed(1)).join(' ');
+
+    // ── NAP ──────────────────────────────────────────────────────────────
+    const napDefs = [
+      { k:'napEinsp', label:'Max. Einspeisung',      einheit:'kW',  d:0, schritt:100,   lo:0, hi:6000 },
+      { k:'napBezug', label:'Max. Bezug',            einheit:'kW',  d:0, schritt:100,   lo:0, hi:6000 },
+      { k:'sk',       label:'Kurzschlussleistung',   einheit:'kVA', d:0, schritt:10000, lo:0, hi:400000 },
+      { k:'uBudget',  label:'Δu-Budget',             einheit:'%',   d:1, schritt:0.5,   lo:0.5, hi:6 },
+    ];
+    const napFelder = napDefs.map(d => ({
+      label:d.label, einheit:d.einheit, wert:this.n(s[d.k], d.d),
+      minus: () => setz(d.k, klemm(s[d.k] - d.schritt, d.lo, d.hi)),
+      plus:  () => setz(d.k, klemm(s[d.k] + d.schritt, d.lo, d.hi)),
+    }));
+    const uAeq = s.sk * s.uBudget / 100;
+    const schaerferIstU = uAeq < s.napEinsp;
+
+    // ── Anlagenpotenzial ─────────────────────────────────────────────────
+    const qDefs = [
+      { k:'assets',  label:'Elektro-Assets (12×)',      kwp:1840 },
+      { k:'geb',     label:'Gebäude-PV ohne Asset',     kwp:420 },
+      { k:'ff',      label:'Freifläche',                kwp:240 },
+      { k:'manuell', label:'Strom-Panel (manuell)',     kwp:150 },
+    ];
+    let kwpGes = 0;
+    const quellen = qDefs.map(q => {
+      const an = s.quellen[q.k];
+      if (an) kwpGes += q.kwp;
+      const warn = q.k === 'manuell' && an;
+      return {
+        label:q.label, wert:this.n(q.kwp, 0) + ' kWp',
+        farbe: warn ? '#ef9a9a' : an ? '#ece8df' : '#607d8b',
+        rand:  warn ? '#ef9a9a' : an ? '#fdd835' : '#3a3528',
+        fuell: an ? (warn ? '#ef9a9a' : '#fdd835') : 'transparent',
+        toggle: () => this.setState({ quellen: { ...s.quellen, [q.k]: !an } }),
+      };
+    });
+
+    // ── Profil ───────────────────────────────────────────────────────────
+    const profDefs = {
+      synth: { label:'Synthetisch', peak:0.86, spez:1050, wetter:'Saat 20260101', sub:'reproduzierbar, für Sensitivität variierbar', quelle:'Klarhimmel-Geometrie 51° N + Wetterstreuung' },
+      pvgis: { label:'PVGIS-Upload', peak:1.05, spez:1105, wetter:'TMY 2005–2023', sub:'gemessenes Wetterjahr-Mittel', quelle:'JRC PVGIS · PVGIS_Musterstadt.csv' },
+    };
+    const pr = profDefs[s.profil];
+    const profilModi = Object.keys(profDefs).map(k => ({
+      label:profDefs[k].label, pick:() => setz('profil', k),
+      style:'flex:1;padding:6px;border-radius:5px;text-align:center;font-size:11px;cursor:pointer;user-select:none;' +
+        (k === s.profil ? 'border:1px solid #d4a855;background:#d4a855;color:#000;font-weight:500;'
+                        : 'border:1px solid #3a3528;color:#aca496;'),
+    }));
+    const spitzeKw = pr.peak * kwpGes;
+    const profilKpi = [
+      { k:'Spitzenleistung', v:this.n(pr.peak, 2) + ' kW/kWp', farbe:'#fdd835', sub:'= ' + this.n(spitzeKw, 0) + ' kW bei ' + this.n(kwpGes, 0) + ' kWp' },
+      { k:'Spez. Ertrag',    v:this.n(pr.spez, 0) + ' kWh/kWp', farbe:'#ece8df', sub:'Süd 30°, Ausrichtungs-Mix' },
+      { k:'Wetterjahr',      v:pr.wetter,                       farbe:'#ece8df', sub:pr.sub },
+    ];
+    // Spitzenzacken, an der Einspeisegrenze sichtbar gekappt
+    const grenzAnteil = spitzeKw > 0 ? Math.min(1, s.napEinsp / spitzeKw) : 1;
+    const grenzY = (64 - grenzAnteil * 56).toFixed(1);
+    let d = '';
+    for (let i = 0; i < 32; i++) {
+      const x = 4 + i * 18.6;
+      const h = (0.25 + 0.75 * Math.abs(Math.sin(i * 1.9))) * 56;
+      d += 'M' + x.toFixed(1) + ' 64 L' + (x + 3).toFixed(1) + ' ' + (64 - h).toFixed(1) +
+           ' L' + (x + 6).toFixed(1) + ' 64 Z ';
+    }
+
+    // ── Infrastruktur ────────────────────────────────────────────────────
+    const varianten = [
+      { id:'minimal',  label:'Minimal',           kwp:99,   farbe:'#78909c' },
+      { id:'ev',       label:'Eigenverbrauch',    kwp:300,  farbe:'#42a5f5' },
+      { id:'wirt',     label:'Wirtschaftlich',    kwp:2000, farbe:'#66bb6a' },
+      { id:'autarkie', label:'Autarkie',          kwp:2500, farbe:'#4fc3f7' },
+      { id:'maxpv',    label:'Max PV',            kwp:2500, farbe:'#fdd835' },
+    ];
+    const aktiv = varianten.find(v => v.id === s.pick) || varianten[2];
+    const stufenDefs = [
+      { bis:30,    bereich:'< 30 kWp',            kosten:0.6,   sub:'1 Position aktiv' },
+      { bis:100,   bereich:'30–100 kWp',          kosten:4.6,   sub:'3 Positionen aktiv' },
+      { bis:500,   bereich:'100–500 kWp',         kosten:16.0,  sub:'+ 0,3 ct/kWh laufend' },
+      { bis:2000,  bereich:'500–2.000 kWp',       kosten:97.0,  sub:'MS-Anschluss, Trafo, Kabel' },
+      { bis:1e9,   bereich:'> 2.000 kWp',         kosten:168.0, sub:'Übergabestation komplett' },
+    ];
+    const stufeVon = (kwp) => stufenDefs.findIndex(st => kwp <= st.bis);
+    const aktIdx = stufeVon(aktiv.kwp);
+    const stufen = stufenDefs.map((st, i) => {
+      const treffer = varianten.filter(v => stufeVon(v.kwp) === i);
+      const drin = i === aktIdx;
+      return {
+        bereich:st.bereich, kosten:this.n(st.kosten, 1) + ' k€', sub:st.sub,
+        rand: drin ? aktiv.farbe : '#3a3528',
+        textFarbe: drin ? '#ece8df' : '#aca496',
+        marke: treffer.length ? treffer[0].farbe : 'transparent',
+      };
+    });
+    const varChips = varianten.map(v => ({
+      label:v.label, pick:() => setz('pick', v.id),
+      style: v.id === s.pick
+        ? 'border:1px solid ' + v.farbe + ';background:' + v.farbe + ';color:#12110e;font-weight:500;'
+        : 'border:1px solid ' + v.farbe + ';background:transparent;color:' + v.farbe + ';',
+    }));
+
+    const pfeil = (k) => s.offen[k] ? '▾' : '▸';
+    const kipp  = (k) => () => this.setState({ offen: { ...s.offen, [k]: !s.offen[k] } });
+
+    return {
+      abwText: abw === 0 ? 'deckungsgleich mit dem Szenario' : abw + (abw === 1 ? ' Abweichung' : ' Abweichungen') + ' vom Szenario',
+      abwStyle: abw === 0 ? 'border:1px solid #66bb6a;color:#66bb6a;' : 'border:1px solid #ffa726;color:#ffa726;',
+      zuruecksetzen: () => this.setState({ ...sz }),
+
+      felder, offenWirt:s.offen.wirt, pfeilWirt:pfeil('wirt'), toggleWirt:kipp('wirt'),
+
+      lastModi, lastMwh:this.n(lastAkt.mwh, 0), lastHinweis:lastAkt.hin,
+      lastPfad, lastFlaeche: lastPfad + ' L600 70 L0 70 Z',
+      offenLast:s.offen.last, pfeilLast:pfeil('last'), toggleLast:kipp('last'),
+
+      napFelder, napEinsp:this.n(s.napEinsp, 0), napSk:this.n(s.sk, 0),
+      uAequivalent:this.n(uAeq, 0),
+      schaerfer: schaerferIstU ? 'das Spannungsband' : 'die Anschlusskapazität',
+      schaerferFarbe: schaerferIstU ? '#ffa726' : '#ef5350',
+      offenNap:s.offen.nap, pfeilNap:pfeil('nap'), toggleNap:kipp('nap'),
+
+      quellen, kwpGesamt:this.n(kwpGes, 0),
+      offenAnlage:s.offen.anlage, pfeilAnlage:pfeil('anlage'), toggleAnlage:kipp('anlage'),
+
+      profilModi, profilKpi, pvPfad:d, grenzY,
+      offenProfil:s.offen.profil, pfeilProfil:pfeil('profil'), toggleProfil:kipp('profil'),
+
+      varChips, stufen,
+      infraAktiv: { label:aktiv.label, kwp:this.n(aktiv.kwp, 0),
+                    stufe:stufenDefs[aktIdx].bereich, kosten:this.n(stufenDefs[aktIdx].kosten, 1) + ' k€' },
+      offenInfra:s.offen.infra, pfeilInfra:pfeil('infra'), toggleInfra:kipp('infra'),
+    };
+  }
+}
+</script>
+</body>
+</html>

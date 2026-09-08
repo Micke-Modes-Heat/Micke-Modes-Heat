@@ -1,0 +1,273 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; }
+    a { color: #d4a855; text-decoration: none; }
+    a:hover { color: #ece8df; }
+    .cell { padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.045); text-align: right;
+            font-family: 'DM Mono', monospace; cursor: pointer; }
+    .head { font-size: 10px; color: #aca496; text-align: right; padding-bottom: 7px;
+            border-bottom: 1px solid #3a3528; cursor: pointer; user-select: none; white-space: nowrap; }
+    .head:hover { color: #d4a855; }
+    .grp  { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; padding-bottom: 5px;
+            cursor: pointer; user-select: none; }
+    .chip { padding: 3px 10px; border-radius: 12px; font-size: 10px; cursor: pointer; user-select: none; }
+  </style>
+</helmet>
+
+<div style="width:1440px;height:680px;background:#12110e;color:#ece8df;font-size:11px;padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid #3a3528;padding-bottom:10px;">
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <div style="font-size:13px;font-weight:600;">Varianten-Vergleich</div>
+      <div style="font-size:11px;color:#aca496;">Spaltenkopf klicken zum Sortieren · Gruppentitel klicken zum Aus- und Einblenden · Zeile für Details</div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <div class="chip" onClick="{{sortReset}}" style="border:1px solid #3a3528;color:#aca496;">{{sortText}}</div>
+      <div class="chip" style="border:1px solid #3a3528;color:#aca496;">CSV</div>
+      <div class="chip" style="border:1px solid #66bb6a;color:#66bb6a;">Ins Gutachten</div>
+    </div>
+  </div>
+
+  <!-- Spaltengruppen -->
+  <div style="display:grid;grid-template-columns:{{gridGruppen}};gap:0 16px;">
+    <div class="grp"></div>
+    <sc-for list="{{gruppen}}" as="g" hint-placeholder-count="4">
+      <div class="grp" onClick="{{g.toggle}}" style="text-align:right;color:{{g.farbe}};">{{g.label}}</div>
+    </sc-for>
+  </div>
+
+  <!-- Tabelle -->
+  <div style="display:grid;grid-template-columns:{{gridSpalten}};gap:0 12px;font-size:11.5px;">
+    <div class="head" style="text-align:left;" onClick="{{sortLabel}}">Variante {{pfeilLabel}}</div>
+    <sc-for list="{{spalten}}" as="c" hint-placeholder-count="10">
+      <div class="head" style="{{c.headStyle}}" onClick="{{c.sort}}">{{c.label}}{{c.pfeil}}</div>
+    </sc-for>
+
+    <sc-for list="{{zeilen}}" as="z" hint-placeholder-count="5">
+      <div class="cell" onClick="{{z.pick}}" style="{{z.bgLabel}}">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="width:9px;height:9px;border-radius:2px;background:{{z.farbe}};flex-shrink:0;"></span>
+          <span style="{{z.labelStyle}}">{{z.label}}</span>
+          <span style="{{z.bestStyle}}">BEST</span>
+        </div>
+      </div>
+      <sc-for list="{{z.werte}}" as="w" hint-placeholder-count="10">
+        <div class="cell" onClick="{{z.pick}}" style="{{w.style}}">{{w.v}}</div>
+      </sc-for>
+    </sc-for>
+  </div>
+
+  <!-- Detail der gewählten Zeile -->
+  <div style="background:#24221b;border:1px solid #3a3528;border-left:3px solid {{detail.farbe}};border-radius:6px;padding:11px 14px;display:flex;flex-direction:column;gap:7px;">
+    <div style="display:flex;align-items:baseline;gap:10px;">
+      <span style="font-size:11.5px;font-weight:600;color:{{detail.farbe}};">{{detail.label}}</span>
+      <span style="font-size:11px;color:#aca496;">{{detail.frage}}</span>
+      <span style="margin-left:auto;font-size:10.5px;color:{{detail.ampelFarbe}};">{{detail.ampelText}}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;">
+      <sc-for list="{{detail.kpis}}" as="k" hint-placeholder-count="7">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-size:10px;color:#78909c;">{{k.k}}</span>
+          <span style="font-family:'DM Mono',monospace;font-size:12.5px;color:{{k.farbe}};">{{k.v}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size:10.5px;color:#aca496;line-height:1.5;">{{detail.text}}</div>
+  </div>
+
+  <!-- Fußnoten -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;font-size:10px;color:#78909c;line-height:1.55;margin-top:auto;">
+    <div><b style="color:#aca496;">Überschuss/a</b> = Erlöse − alle Jahreskosten inkl. Kapitaldienst, Betrieb und Infrastruktur.</div>
+    <div><b style="color:#aca496;">Amortisation</b> = Investition ÷ jährlicher Rückfluss (Erlöse − laufende Betriebskosten), statisch.</div>
+    <div><b style="color:#aca496;">Kapitalwert</b> = Barwert über die PV-Nutzungsdauer bei 3,5 % — die von § 7 BHO erwartete Kenngröße.</div>
+    <div><b style="color:#aca496;">LCOE</b> = Jahreskosten ÷ genutzter Energie (Eigenverbrauch + Einspeisung), nach Abregelung.</div>
+    <div><b style="color:#aca496;">CO₂</b> = vermiedene Emissionen bei 380 g/kWh Verdrängungsfaktor.</div>
+    <div><b style="color:#aca496;">Netz</b> = schärferes Kriterium aus Spannungsband Δu und Anschlusskapazität am NAP.</div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      pick: 'wirt',
+      sortKey: null, sortAb: true,
+      gruppen: { auslegung:true, energie:true, wirtschaft:true, wirkung:true },
+    };
+  }
+
+  daten() {
+    // Gleiches Modell wie im Gesamtlayout (35 ct/kWh, synthetisches Profil)
+    const NAP = 2000, SK = 120000, UB = 2.0, BEDARF = 974, RBF = 14.212, CO2F = 0.38, pStrom = 35;
+    const roh = [
+      { id:'minimal',  label:'Minimal',                   farbe:'#78909c', kwp:99,   bat:0,    ertrag:104,  invest:123,  jk:9.7,   betrieb:1.2,  pEinsp:6.1,
+        eigen:104, einsp:0,    curt:0,   rueck:78,
+        frage:'Was ist der günstigste Einstieg?',
+        text:'PV knapp unter 100 kWp — bleibt unter der Direktvermarktungs- und EZA-Reglerpflicht und damit in der günstigsten Netzanschlussstufe. Referenzpunkt mit der niedrigsten Investition; lässt den Großteil des Dachpotenzials ungenutzt.' },
+      { id:'ev',       label:'Eigenverbrauchs-optimiert', farbe:'#42a5f5', kwp:300,  bat:0,    ertrag:315,  invest:372,  jk:26.5,  betrieb:3.7,  pEinsp:5.9,
+        eigen:287, einsp:28,   curt:0,   rueck:237,
+        frage:'Welche Größe verbraucht das Quartier selbst?',
+        text:'PV so groß, dass fast die gesamte Erzeugung vor Ort verbraucht wird. Geringstes Netz- und Marktrisiko, aber bewusst kleine Anlage mit geringem Gesamtertrag.' },
+      { id:'wirt',     label:'Wirtschaftlich optimiert',  farbe:'#66bb6a', kwp:2000, bat:750,  ertrag:2100, invest:2797, jk:210.5, betrieb:28.0, pEinsp:5.9,
+        eigen:769, einsp:1331, curt:0.3, rueck:1641,
+        frage:'Was bringt den höchsten Jahresüberschuss?',
+        text:'PV- und Batteriegröße gemeinsam variiert; gewählt wird die Kombination mit dem höchsten Netto-Überschuss. Etwas Abregelung wird bewusst hingenommen, weil ihre Vermeidung teurer wäre als der entgangene Erlös.' },
+      { id:'autarkie', label:'Autarkie-optimiert',        farbe:'#4fc3f7', kwp:2500, bat:5000, ertrag:2625, invest:5168, jk:540.9, betrieb:51.7, pEinsp:5.9,
+        eigen:903, einsp:1710, curt:12,  rueck:2052,
+        frage:'Wie unabhängig vom Netz geht es maximal?',
+        text:'Volle PV-Leistung plus Batterie bis zur technischen Sättigung des Autarkiegrads. Höchste Versorgungssicherheit, aber die große Batterie trägt sich nicht.' },
+      { id:'maxpv',    label:'Maximaler PV-Ausbau',       farbe:'#fdd835', kwp:2500, bat:0,    ertrag:2625, invest:3168, jk:194.2, betrieb:31.7, pEinsp:5.9,
+        eigen:591, einsp:2022, curt:12,  rueck:2052,
+        frage:'Wie viel PV passt maximal auf die Flächen?',
+        text:'Gesamtes verfügbares Potenzial, bewusst ohne Speicher. Maximaler Klimabeitrag, erfordert aber die höchste Netzanschluss-Infrastruktur.' },
+    ];
+    return roh.map(e => {
+      const genutzt = e.eigen + e.einsp;
+      const erloes  = e.eigen * pStrom / 100 + e.einsp * e.pEinsp / 100;
+      const ueber   = erloes - e.jk;
+      const cap = e.rueck / NAP, du = 100 * e.rueck / SK;
+      const lvl = (cap > 1 || du > UB) ? 2 : (cap > 0.7 || du > UB * 2 / 3) ? 1 : 0;
+      return { ...e, genutzt, erloes, ueber,
+        ev:  e.eigen / e.ertrag * 100,
+        aut: (1 - (BEDARF - e.eigen) / BEDARF) * 100,
+        npv: ueber * RBF,
+        amort: (erloes - e.betrieb) > 0 ? e.invest / (erloes - e.betrieb) : Infinity,
+        lcoe: e.jk / genutzt * 100,
+        co2: genutzt * CO2F,
+        cap, du, ampelLvl: lvl, ampel: ['#66bb6a', '#ffa726', '#ef5350'][lvl],
+        ampelText: ['Rückspeisung netzverträglich', 'Prüfung durch den VNB nötig', 'Erzeugungsnetz / MS-Anschluss erforderlich'][lvl] };
+    });
+  }
+
+  n(v, d) { return Number(v).toLocaleString('de-DE', { minimumFractionDigits:d, maximumFractionDigits:d }); }
+  k(v)    { return (v >= 0 ? '+' : '−') + this.n(Math.abs(v), 0) + ' k€'; }
+
+  renderVals() {
+    const s = this.state;
+    const erg = this.daten();
+
+    const spaltenDefs = [
+      { key:'kwp',    grp:'auslegung',  label:'kWp',          f:e => this.n(e.kwp, 0),                    farbe:'#fdd835' },
+      { key:'bat',    grp:'auslegung',  label:'Bat kWh',      f:e => e.bat > 0 ? this.n(e.bat, 0) : '—',  farbe:e => e.bat > 0 ? '#80deea' : '#78909c' },
+      { key:'ev',     grp:'energie',    label:'EV %',         f:e => this.n(e.ev, 1),                     farbe:'#a5d6a7' },
+      { key:'aut',    grp:'energie',    label:'Aut %',        f:e => this.n(e.aut, 1),                    farbe:'#4fc3f7' },
+      { key:'curt',   grp:'energie',    label:'Abr MWh',      f:e => this.n(e.curt, 1),
+        farbe:e => e.curt > 5 ? '#ef9a9a' : e.curt > 0 ? '#ffd54f' : '#78909c' },
+      { key:'invest', grp:'wirtschaft', label:'Investition',  f:e => this.n(e.invest, 0) + ' k€',         farbe:'#ce93d8' },
+      { key:'ueber',  grp:'wirtschaft', label:'Überschuss/a', f:e => this.k(e.ueber),
+        farbe:e => e.ueber >= 0 ? '#66bb6a' : '#ef5350' },
+      { key:'amort',  grp:'wirtschaft', label:'Amort.',       f:e => isFinite(e.amort) ? this.n(e.amort, 1) + ' a' : '> 20 a', farbe:'#ece8df' },
+      { key:'npv',    grp:'wirtschaft', label:'Kapitalwert',  f:e => this.k(e.npv),
+        farbe:e => e.npv >= 0 ? '#66bb6a' : '#ef5350' },
+      { key:'lcoe',   grp:'wirtschaft', label:'LCOE',         f:e => this.n(e.lcoe, 1) + ' ct',           farbe:'#ece8df' },
+      { key:'co2',    grp:'wirkung',    label:'CO₂ t/a',      f:e => this.n(e.co2, 0),                    farbe:'#a5d6a7' },
+      { key:'ampelLvl', grp:'wirkung',  label:'Netz',         f:e => '',                                  farbe:'#ece8df', ampel:true },
+    ];
+
+    const gruppenDefs = [
+      { k:'auslegung',  label:'Auslegung' },
+      { k:'energie',    label:'Energie' },
+      { k:'wirtschaft', label:'Wirtschaftlichkeit' },
+      { k:'wirkung',    label:'Wirkung & Netz' },
+    ];
+
+    const sichtbar = spaltenDefs.filter(c => s.gruppen[c.grp]);
+
+    // Sortierung
+    let reihen = erg.slice();
+    if (s.sortKey === '__label') {
+      reihen.sort((a, b) => a.label.localeCompare(b.label, 'de') * (s.sortAb ? 1 : -1));
+    } else if (s.sortKey) {
+      reihen.sort((a, b) => {
+        const av = a[s.sortKey], bv = b[s.sortKey];
+        const an = isFinite(av) ? av : -1e12, bn = isFinite(bv) ? bv : -1e12;
+        return (an - bn) * (s.sortAb ? -1 : 1);
+      });
+    }
+
+    const sortiere = (key) => () => this.setState(
+      s.sortKey === key ? { sortAb: !s.sortAb } : { sortKey: key, sortAb: true });
+    const pfeilFuer = (key) => s.sortKey === key ? (s.sortAb ? ' ▾' : ' ▴') : '';
+
+    const spalten = sichtbar.map(c => ({
+      label:c.label, pfeil:pfeilFuer(c.key), sort:sortiere(c.key),
+      headStyle:'text-align:' + (c.ampel ? 'center' : 'right') + ';' +
+                (s.sortKey === c.key ? 'color:#d4a855;' : ''),
+    }));
+
+    const zeilen = reihen.map(e => {
+      const an = e.id === s.pick;
+      const bg = an ? 'background:rgba(102,187,106,.08);' : '';
+      return {
+        farbe:e.farbe, label:e.label, pick:() => this.setState({ pick:e.id }),
+        bgLabel: bg + 'text-align:left;',
+        labelStyle:'font-family:\'DM Sans\',sans-serif;font-weight:' + (an ? '600' : '400') + ';',
+        bestStyle: e.id === 'wirt'
+          ? 'background:#66bb6a;color:#000;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;font-family:\'DM Sans\',sans-serif;'
+          : 'display:none;',
+        werte: sichtbar.map(c => {
+          if (c.ampel) {
+            return { v:'', style: bg + 'text-align:center;color:transparent;' +
+              'background-image:radial-gradient(circle at 50% 50%, ' + e.ampel + ' 4.5px, transparent 5px);' +
+              (an ? 'background-color:rgba(102,187,106,.08);' : '') };
+          }
+          const farbe = typeof c.farbe === 'function' ? c.farbe(e) : c.farbe;
+          const dick = (c.key === 'ueber' && e.id === 'wirt') ? 'font-weight:600;' : '';
+          return { v:c.f(e), style: bg + 'color:' + farbe + ';' + dick };
+        }),
+      };
+    });
+
+    const g = erg.find(e => e.id === s.pick) || erg[2];
+    const detail = {
+      farbe:g.farbe, label:g.label, frage:g.frage, text:g.text,
+      ampelFarbe:g.ampel, ampelText:g.ampelText,
+      kpis: [
+        { k:'Erzeugung',        v:this.n(g.ertrag, 0) + ' MWh/a', farbe:'#fdd835' },
+        { k:'Eigenverbrauch',   v:this.n(g.eigen, 0) + ' MWh/a',  farbe:'#a5d6a7' },
+        { k:'Einspeisung',      v:this.n(g.einsp, 0) + ' MWh/a',  farbe:'#42a5f5' },
+        { k:'Erlöse',           v:this.n(g.erloes, 0) + ' k€/a',  farbe:'#a5d6a7' },
+        { k:'Jahreskosten',     v:this.n(g.jk, 0) + ' k€/a',      farbe:'#ce93d8' },
+        { k:'Rückspeisespitze', v:this.n(g.rueck, 0) + ' kW',     farbe:g.ampel },
+        { k:'Spannungsanhebung',v:this.n(g.du, 2) + ' %',         farbe:g.ampel },
+      ],
+    };
+
+    const breiten = { kwp:'.75fr', bat:'.85fr', ev:'.7fr', aut:'.7fr', curt:'.85fr', invest:'1fr',
+                      ueber:'1.05fr', amort:'.85fr', npv:'1.05fr', lcoe:'.8fr', co2:'.8fr', ampelLvl:'.7fr' };
+    const gridSpalten = '2.4fr ' + sichtbar.map(c => breiten[c.key]).join(' ');
+
+    const anzahl = (k) => sichtbar.filter(c => c.grp === k).length;
+    const gruppen = gruppenDefs.map(gd => ({
+      label:gd.label + (s.gruppen[gd.k] ? '' : ' (aus)'),
+      farbe:s.gruppen[gd.k] ? '#78909c' : '#4a4636',
+      toggle:() => this.setState({ gruppen: { ...s.gruppen, [gd.k]: !s.gruppen[gd.k] } }),
+    }));
+    const gridGruppen = '2.4fr ' + gruppenDefs.map(gd => {
+      const n = anzahl(gd.k);
+      return n === 0 ? '0fr' : (n * 0.9) + 'fr';
+    }).join(' ');
+
+    return {
+      spalten, zeilen, detail, gridSpalten, gridGruppen, gruppen,
+      sortLabel: sortiere('__label'), pfeilLabel: pfeilFuer('__label'),
+      sortText: s.sortKey ? 'Sortierung aufheben' : 'unsortiert (Reihenfolge des Gutachtens)',
+      sortReset: () => this.setState({ sortKey:null, sortAb:true }),
+    };
+  }
+}
+</script>
+</body>
+</html>

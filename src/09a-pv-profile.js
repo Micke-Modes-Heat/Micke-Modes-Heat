@@ -13,6 +13,8 @@ import { DEFAULT_PV_TARIFF_SCENARIO_ID, getPvTariffResult } from './config/tarif
 import { DEFAULT_ECONOMIC_SCENARIO_ID, getEconomicScenario } from './config/economic-scenarios.js';
 import { parsePvProfileCsv } from './lib/pv-profile-import.js';
 
+// Referenztabelle (Richtwerte MEZ/MESZ). Das PV-Profil leitet Auf-/Untergang
+// seit 09/2026 aus der Sonnengeometrie ab; _PV_SUN nutzt nur noch 06b.
 export const _PV_SUN = [[8,16],[7,17],[6,18],[5,20],[5,21],[4,21],[4,21],[5,20],[6,19],[7,18],[8,16],[8,16]];
 
 // Monatliche Ertragsanteile je Ausrichtung (Deutschland ~51°N)
@@ -33,6 +35,7 @@ export function pvAusrichtungChanged() {
   // Profil-Cache invalidieren (globales + effektives Misch-Profil)
   window._pvProfileCache = null;
   window._pvProfileEffCache = null;
+  window._pvaRefreshProfilInfo?.();   // PV-Analyse: Herkunftsanzeige + Ergebnisse entwerten
   calcStromPanel();
 }
 
@@ -113,44 +116,201 @@ export function makePvProfileEffective() {
   return out;
 }
 
-export function makePvProfile8760(ausrichtung) {
+// ══════════════════════════════════════════════════════════════════════════
+// SYNTHETISCHES PV-PROFIL — Klarhimmel-Geometrie + Tag-zu-Tag-Wetterstreuung
+// ══════════════════════════════════════════════════════════════════════════
+// Bis 09/2026 war jeder Tag eines Monats identisch (eine Sinusglocke über die
+// Tageslänge). Das hielt zwar die Monatssummen, unterschätzte die Spitzen-
+// leistung aber um Faktor ~1,8 (0,47 statt ~0,86 kW/kWp bei Süd) — und damit
+// jede netzseitige Aussage: Rückspeisespitze, Spannungsanhebung Δu, benötigte
+// Anschlusskapazität und die Abregelung an einer Einspeisegrenze. Eine
+// Einspeisegrenze oberhalb ~47 % der installierten kWp erzeugte rechnerisch
+// exakt 0 MWh Abregelung.
+//
+// Jetzt zweistufig:
+//   1. Klarhimmel-Modell aus echter Sonnengeometrie (Deklination, Stundenwinkel,
+//      Zeitgleichung, Sommerzeit, Luftmasse) je Ausrichtung/Neigung, inkl.
+//      Zelltemperatur-Derating → liefert die realistische Tagesform mit steiler
+//      Mittagsspitze statt einer über die ganze Tageslänge verschmierten Glocke.
+//   2. Tag-zu-Tag-Wetterstreuung über einen Markov-Prozess (klare Phasen /
+//      trübe Phasen, Persistenz 0,62) — reproduzierbar über einen festen Seed,
+//      damit ein Gutachten bei gleicher Eingabe immer dieselben Zahlen liefert.
+//
+// Die kalibrierten Monatsanteile aus _PV_MONTH bleiben EXAKT erhalten: nach
+// Schritt 2 wird monatsweise auf den Sollanteil normiert. Die Jahressumme ist
+// weiterhin 1,0, die Saisonalität unverändert — nur die Verteilung innerhalb
+// des Monats und innerhalb des Tages ist jetzt physikalisch.
+//
+// Bewusst NICHT modelliert: Wechselrichter-Kappung (DC/AC-Ratio > 1). Die
+// Spitze ist dadurch eine konservative Obergrenze — für die Netzbeurteilung
+// die sichere Richtung.
+
+const _PV_RAD = Math.PI / 180;
+
+/** Standort-Richtwerte (Deutschland-Mitte). Der Breitengrad wirkt vor allem auf
+ *  die Sommer-/Winterspreizung; zwischen 47,5° und 55° ändert sich die Sommer-
+ *  spitze um wenige Prozent. */
+export const _PV_STANDORT = { latDeg: 51.0, lonDeg: 10.0 };
+
+/** Aufständerung je Ausrichtungsklasse. Azimut: 0 = Süd, −90 = Ost, +90 = West. */
+const _PV_GEOM = {
+  sued:    [{ tilt: 30, azim:   0, anteil: 1.0 }],
+  ostwest: [{ tilt: 15, azim: -90, anteil: 0.5 }, { tilt: 15, azim: 90, anteil: 0.5 }],
+};
+
+/** Wetter-Streuung: Wahrscheinlichkeit eines klaren Tages je Monat + Persistenz
+ *  (Wahrscheinlichkeit, dass der Folgetag denselben Zustand behält). Die
+ *  Persistenz ist für die Speicherauslegung wesentlich — sie erzeugt die realen
+ *  Schönwetter- und Trübphasen über mehrere Tage. */
+const _PV_P_KLAR  = [0.22, 0.27, 0.34, 0.40, 0.44, 0.45, 0.45, 0.44, 0.40, 0.32, 0.22, 0.19];
+const _PV_PERSIST = 0.62;
+/** Fester Seed → reproduzierbare Ergebnisse (Gutachten-Anforderung). */
+export const _PV_WETTER_SEED = 20260101;
+
+/** Deterministischer PRNG (mulberry32) — gleiche Saat, gleiche Zahlenfolge. */
+function _pvRng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const _pvClearCache = new Map();
+
+/**
+ * Klarhimmel-Erzeugung in kW/kWp für 8.760 Stunden (Ortszeit inkl. Sommerzeit).
+ * Ein konstanter Skalenfaktor ist irrelevant — das Ergebnis wird später monats-
+ * weise normiert; nur die FORM (über den Tag und über das Jahr) zählt.
+ */
+function _pvClearSky8760(ausrichtung) {
+  if (_pvClearCache.has(ausrichtung)) return _pvClearCache.get(ausrichtung);
+
+  const felder = _PV_GEOM[ausrichtung] || _PV_GEOM.sued;
+  const lat = _PV_STANDORT.latDeg * _PV_RAD;
+  const out = new Float32Array(8760);
+  let ptr = 0;
+
+  for (let n = 1; n <= 365; n++) {
+    const dekl = 23.45 * Math.sin(2 * Math.PI * (284 + n) / 365) * _PV_RAD;
+    const B    = 2 * Math.PI * (n - 81) / 364;
+    const eotMin = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+    // MEZ = UTC+1, MESZ = UTC+2 (letzter So. März – letzter So. Oktober ≈ Tag 87–303)
+    const tzOffset = 1 + ((n >= 87 && n <= 303) ? 1 : 0);
+    const tAmbTag  = 9.5 - 9.0 * Math.cos(2 * Math.PI * (n - 15) / 365);  // °C Tagesmittel DE
+    const I0 = 1361 * (1 + 0.033 * Math.cos(2 * Math.PI * n / 365));      // W/m² extraterrestrisch
+
+    for (let h = 0; h < 24; h++) {
+      const tClock = h + 0.5;                                   // Stundenmitte
+      const tSolar = tClock - tzOffset + _PV_STANDORT.lonDeg / 15 + eotMin / 60;
+      const omega  = 15 * (tSolar - 12) * _PV_RAD;              // Stundenwinkel
+      const cosZ   = Math.sin(lat) * Math.sin(dekl) + Math.cos(lat) * Math.cos(dekl) * Math.cos(omega);
+      if (cosZ <= 0.02) { out[ptr++] = 0; continue; }           // Nacht / Horizontnähe
+
+      const airMass = Math.min(20, 1 / cosZ);
+      const dni = I0 * Math.pow(0.75, Math.pow(airMass, 0.678)); // Meinel-Ansatz, Trübung 0,75
+      const dhi = 0.12 * dni * cosZ;                             // Klarhimmel-Diffusanteil
+      const ghi = dni * cosZ + dhi;
+      const cosAlt = Math.sqrt(Math.max(0, 1 - cosZ * cosZ));
+      const azSun = Math.atan2(
+        Math.cos(dekl) * Math.sin(omega),
+        Math.cos(dekl) * Math.cos(omega) * Math.sin(lat) - Math.sin(dekl) * Math.cos(lat));
+
+      let poa = 0;
+      for (const f of felder) {
+        const b = f.tilt * _PV_RAD;
+        const cosTheta = Math.max(0, cosZ * Math.cos(b) + cosAlt * Math.sin(b) * Math.cos(azSun - f.azim * _PV_RAD));
+        poa += f.anteil * (dni * cosTheta
+                         + dhi * (1 + Math.cos(b)) / 2
+                         + ghi * 0.2 * (1 - Math.cos(b)) / 2);   // Albedo 0,2
+      }
+      // Zelltemperatur (NOCT-Ansatz) und Leistungs-Temperaturkoeffizient −0,38 %/K
+      const tAmb  = tAmbTag + 5 * Math.sin(2 * Math.PI * (tClock - 9) / 24);
+      const tCell = tAmb + poa / 800 * 25;
+      out[ptr++] = poa / 1000 * Math.max(0.5, 1 - 0.0038 * (tCell - 25));
+    }
+  }
+  _pvClearCache.set(ausrichtung, out);
+  return out;
+}
+
+const _pvProfilCache = new Map();
+
+/**
+ * Normiertes PV-Jahresprofil (Summe = 1,0 über 8.760 Stunden).
+ * @param {string} [ausrichtung] 'sued' | 'ostwest' (Default: Panel-Auswahl)
+ * @param {number} [seed] Wetter-Saat; gleiche Saat ergibt ein identisches Profil.
+ */
+export function makePvProfile8760(ausrichtung, seed) {
   ausrichtung = ausrichtung || document.getElementById('pv-ausrichtung')?.value || 'sued';
-  const monthFrac = _PV_MONTH[ausrichtung] || _PV_MONTH.sued;
+  if (!_PV_MONTH[ausrichtung]) ausrichtung = 'sued';
+  const s = seed != null ? seed : _PV_WETTER_SEED;
+  const cacheKey = ausrichtung + '|' + s;
+  if (_pvProfilCache.has(cacheKey)) return _pvProfilCache.get(cacheKey);
+
+  const clear     = _pvClearSky8760(ausrichtung);
+  const monthFrac = _PV_MONTH[ausrichtung];
+  const rnd       = _pvRng(s);
+
+  // ── 1. Tagesfaktoren: Markov-Wetter, je Monat auf Mittelwert 1 normiert ──
+  //    Mittelwert 1 bedeutet: die Monatsnormierung unten ändert nur den Maßstab,
+  //    nicht die Gewichtung der Tage untereinander.
+  const tagFaktor = new Float64Array(365);
+  let dayIdx = 0, klar = rnd() < 0.4;
+  for (let m = 0; m < 12; m++) {
+    const tage = GL_MONTH_HOURS[m] / 24;
+    const roh = new Array(tage);
+    let summe = 0;
+    for (let d = 0; d < tage; d++) {
+      if (rnd() > _PV_PERSIST) klar = rnd() < _PV_P_KLAR[m];
+      // klarer Tag: 80–100 % der Klarhimmel-Erzeugung · trüber Tag: 12–75 %
+      roh[d] = klar ? 0.80 + 0.20 * rnd() : 0.12 + 0.63 * rnd();
+      summe += roh[d];
+    }
+    const mittel = summe / tage;
+    for (let d = 0; d < tage; d++) tagFaktor[dayIdx++] = mittel > 0 ? roh[d] / mittel : 1;
+  }
+
+  // ── 2. Klarhimmel × Tagesfaktor, danach monatsweise auf _PV_MONTH normieren ──
   const result = new Float32Array(8760);
   let ptr = 0;
   for (let m = 0; m < 12; m++) {
-    const [rise, set] = _PV_SUN[m];
-    const mFrac = monthFrac[m];
-    const daysInMonth = GL_MONTH_HOURS[m] / 24;
-
-    // Tagesprofil: Süd = spitze Sinusglocke, OW/flach = breiteres Plateau
-    const shape = new Array(24).fill(0);
-    let shapeSum = 0;
-    const span = set - rise;
-    for (let h = rise; h < set; h++) {
-      const t = (h - rise) / span;  // 0..1
-      if (ausrichtung === 'sued') {
-        // Klassische Sinusglocke (Mittagsspitze)
-        shape[h] = Math.sin(Math.PI * t);
-      } else {
-        // Ost-West: echter Doppelhöcker — Glockenhülle (0 an den Rändern) mit einer
-        // Gauß-Kerbe bei Mittag (t=0.5). Ergebnis: Spitzen vormittags + nachmittags,
-        // abgesenktes Mittagstal → breiterer, flacherer Tagesertrag.
-        const base = Math.sin(Math.PI * t);
-        const dip  = 1 - 0.45 * Math.exp(-Math.pow((t - 0.5) / 0.16, 2));
-        shape[h] = base * dip;
-      }
-      shapeSum += shape[h];
+    const stunden = GL_MONTH_HOURS[m];
+    let summe = 0;
+    for (let i = 0; i < stunden; i++) {
+      const t = ptr + i;
+      result[t] = clear[t] * tagFaktor[Math.floor(t / 24)];
+      summe += result[t];
     }
-    if (shapeSum > 0) shape.forEach((v, i, a) => { a[i] = v / shapeSum; });
-    const perHour = mFrac / daysInMonth;
-    for (let d = 0; d < daysInMonth; d++) {
-      for (let h = 0; h < 24; h++) {
-        if (ptr < 8760) result[ptr++] = perHour * shape[h];
-      }
-    }
+    const skala = summe > 0 ? monthFrac[m] / summe : 0;
+    for (let i = 0; i < stunden; i++) result[ptr + i] *= skala;
+    ptr += stunden;
   }
+
+  _pvProfilCache.set(cacheKey, result);
   return result;
+}
+
+/**
+ * Kennwerte eines normierten Profils — für die Herkunfts- und Plausibilitäts-
+ * anzeige in der PV-Analyse.
+ * @param {Float32Array} profil normiertes Profil (Summe 1,0)
+ * @param {number} spez spezifischer Jahresertrag kWh/kWp
+ */
+export function pvProfilKennwerte(profil, spez) {
+  if (!profil || !profil.length) return { peakKwPerKwp: 0, vollLastStunden: 0, stundenMitErtrag: 0 };
+  const dt = profil.length > 8784 ? 0.25 : 1;
+  let max = 0, summe = 0, nz = 0;
+  for (let i = 0; i < profil.length; i++) {
+    const v = profil[i];
+    summe += v;
+    if (v > max) max = v;
+    if (v > 1e-9) nz += dt;
+  }
+  const peak = summe > 0 ? max / summe * spez / dt : 0;
+  return { peakKwPerKwp: peak, vollLastStunden: peak > 0 ? spez / peak : 0, stundenMitErtrag: nz };
 }
 
 // ── PV-Upload ─────────────────────────────────────────────────────────────
@@ -170,6 +330,9 @@ export function pvFileSelected(file) {
       `${file.name} · ${(sum/1000).toFixed(0)} MWh/a · max ${Math.round(pMax)} kW · ${parsed.meta.quality === 'modeled_external' ? 'PVGIS-Modell' : 'Upload ungeprüft'}`;
     document.getElementById('pv-clear-btn').style.display = '';
     document.getElementById('pv-file-input').value = '';
+    // Die PV-Analyse rechnet ab jetzt mit der Form dieses Profils statt mit dem
+    // synthetischen — Herkunftsanzeige aktualisieren, Ergebnisse entwerten.
+    window._pvaRefreshProfilInfo?.();
     calcStromPanel();
   };
   reader.readAsText(file);
@@ -181,6 +344,7 @@ export function pvClear() {
   document.getElementById('pv-upload-info').textContent = '';
   document.getElementById('pv-clear-btn').style.display = 'none';
   document.getElementById('pv-file-input').value = '';
+  window._pvaRefreshProfilInfo?.();
   calcStromPanel();
 }
 
