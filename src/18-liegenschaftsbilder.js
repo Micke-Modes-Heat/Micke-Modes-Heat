@@ -13,6 +13,9 @@
 // tests/import-architecture.test.js). Alles Nötige liegt zur Laufzeit auf window, weil
 // main.js alle Modul-Exporte dort ablegt (Karten-/Gebäude-Globals sogar als Live-Getter).
 import { GG_THEME, ggSheetHeader, ggTxt, ggSvgSource, ggSvgToPngBlob, ggCopyForWord } from './17-gutachten-grafik.js';
+// lib/schichten.js ist ein Blatt (import- und DOM-frei) — ein direkter Import wächst den
+// Altkern-Zyklus also nicht, anders als ein Import aus 02b/03b/05b/13b (s. Modulkopf).
+import { SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 0) GEMEINSAME HELFER
@@ -213,7 +216,8 @@ let _lpState = {
   referenzjahr: null, zieljahr: null,   // lazy: beim ersten Rendern gesetzt
   anzeige: 'alle',                      // 'alle' | 'bestand' | 'neubau' | 'abriss'
   einfaerben: 'keine',                  // 'keine' | 'nutzung' | 'status'
-  gebaeude: true, waerme: true, strom: true, msring: false,
+  gebaeude: true, waerme: true, strom: true,
+  msModus: 'aus',                       // 'aus' | 'ring' (nur geschlossene Ringe) | 'alle' (jede MS-Leitung)
   beschriftung: false,                  // Master-Schalter: Namen/Nummern von Gebäuden + Assets zeigen
   labelGeb: true,                       // Teil der Beschriftungs-Auswahl: Gebäude benennen (Assets je Typ, s. _lpLabelTypes)
   energieModus: 'spez',                 // nur relevant wenn einfaerben==='energie': 'spez'|'heizlast'|'verlust'
@@ -368,8 +372,28 @@ function lpFarbeFuer(key, cache) {
   return cache.get(key);
 }
 /** Füllfarbe eines Gebäudes gemäß "Einfärben nach" — null = Standard-Grünton. */
-function lpGebFarbe(g, horizont, cache) {
-  if (_lpState.einfaerben === 'status') return LP_STATUS_FARBE[horizont] || LP_STATUS_FARBE.bestand;
+/**
+ * Farbe für ein beliebiges Planobjekt in den Modi, die nach Zeit bzw. Planungsgrund einfärben —
+ * gilt für Gebäude, Netzkanten UND Assets gleichermaßen, damit sich geplante Elemente überall
+ * absetzen und nicht nur bei den Gebäuden.
+ *
+ * - `status`  — Zeitachse: was zum Zieljahr Bestand, Neubau oder Rückbau ist (aus dem
+ *               Baujahr/Abrissjahr abgeleitet, s. lpHorizontStatus).
+ * - `schicht` — Planungsgrund: Bestand / Entwicklung (kommt ohnehin) / Planung (in DIESER
+ *               Variante entschieden). Farben und Bezeichnungen kommen aus SCHICHT_META,
+ *               damit Plan und App dieselbe Sprache sprechen.
+ *
+ * @returns {string|null} null = dieser Modus färbt nicht ein (Objekt behält seine Standardfarbe)
+ */
+function lpModusFarbe(item) {
+  if (_lpState.einfaerben === 'status') return LP_STATUS_FARBE[item?.horizont] || LP_STATUS_FARBE.bestand;
+  if (_lpState.einfaerben === 'schicht') return SCHICHT_META[normSchicht(item?.schicht)].farbe;
+  return null;
+}
+
+function lpGebFarbe(g, horizont, cache, schicht) {
+  const m = lpModusFarbe({ horizont, schicht });
+  if (m) return m;
   if (_lpState.einfaerben === 'nutzung') {
     const nt = typeof window.getNutzungstypById === 'function' ? window.getNutzungstypById(g.nutzung) : null;
     return lpFarbeFuer(nt?.gruppe || g.nutzung || 'Unbekannt', cache);
@@ -497,7 +521,8 @@ function lpSammleGeometrie() {
     ? (window.gebaeude || [])
         .filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3)
         .filter(g => _lpMarkierungen.get(`geb:${g.id}`)?.sichtbar !== false)
-        .map(g => ({ g, poly: g.polygon, horizont: lpHorizontStatus(lpGebStatus(g, referenz), lpGebStatus(g, ziel)) }))
+        .map(g => ({ g, poly: g.polygon, schicht: normSchicht(g.schicht),
+          horizont: lpHorizontStatus(lpGebStatus(g, referenz), lpGebStatus(g, ziel)) }))
         .filter(x => lpSichtbarNachHorizont(x.horizont))
     : [];
 
@@ -505,7 +530,11 @@ function lpSammleGeometrie() {
     ? (window.netzEdges || []).filter(e => !e.pruned).map(e => {
         const pts = lpNetzPunkte(e);
         if (!pts || pts.length < 2) return null;
-        return { pts, horizont: lpHorizontStatus(lpNetzStatus(e, referenz), lpNetzStatus(e, ziel)) };
+        // Wärmekanten tragen eine Schicht nur, wenn sie beim Anlegen eine bekommen haben —
+        // sonst gelten sie als Bestand (normSchicht). Für die Zeitachse ("status") ist das
+        // egal, dort zählt ohnehin das Baujahr der Kante.
+        return { pts, schicht: normSchicht(e.schicht),
+          horizont: lpHorizontStatus(lpNetzStatus(e, referenz), lpNetzStatus(e, ziel)) };
       }).filter(x => x && lpSichtbarNachHorizont(x.horizont))
     : [];
 
@@ -513,12 +542,20 @@ function lpSammleGeometrie() {
     ? (window.stromEdges || []).map(e => {
         const pts = lpStromPunkte(e);
         if (!pts || pts.length < 2) return null;
-        return { pts, horizont: lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel)) };
+        // Stromkanten haben keine eigene Schicht — sie erben sie aus ihren Endpunkten
+        // (getStromEdgeSchicht in 05b-stromnetz.js, dieselbe Regel wie auf der Karte).
+        return { pts, schicht: normSchicht(window.getStromEdgeSchicht?.(e)),
+          horizont: lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel)) };
       }).filter(x => x && lpSichtbarNachHorizont(x.horizont))
     : [];
 
+  // Mittelspannung hervorheben — entweder nur die geschlossenen Ringe oder JEDE MS-Leitung.
+  // Die Definition einer MS-Leitung ist dieselbe wie in der Ring-Erkennung (13g-ms-ring.js):
+  // eine Kante, deren BEIDE Enden MS-Knoten sind (NAP / Schaltanlage / Trafo). Für "alle"
+  // wird bewusst nicht elDetectMSRings() benutzt — das liefert nur Zyklen, Stichleitungen
+  // zu einem Trafo blieben sonst unsichtbar.
   let msRingListe = [];
-  if (_lpState.msring && typeof window.elDetectMSRings === 'function') {
+  if (_lpState.msModus === 'ring' && typeof window.elDetectMSRings === 'function') {
     try {
       for (const ring of (window.elDetectMSRings() || [])) {
         for (const e of (ring.edges || [])) {
@@ -527,6 +564,19 @@ function lpSammleGeometrie() {
         }
       }
     } catch (err) { void err; }
+  } else if (_lpState.msModus === 'alle') {
+    const msTypen = new Set(['NAP', 'Schaltanlage', 'Trafo']);
+    const typVonId = new Map((typeof window.listAssets === 'function' ? window.listAssets() : [])
+      .map(a => [a.id, a.type]));
+    const istMs = (id) => msTypen.has(typVonId.get(id));
+    for (const e of (window.stromEdges || [])) {
+      if (!istMs(e.u) || !istMs(e.v)) continue;
+      // gleiche Zeitfilterung wie beim übrigen Stromnetz, damit MS-Leitungen im
+      // Zeithorizont nicht anders behandelt werden als die Kabel darunter
+      if (!lpSichtbarNachHorizont(lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel)))) continue;
+      const pts = lpStromPunkte(e);
+      if (pts && pts.length >= 2) msRingListe.push(pts);
+    }
   }
 
   let assetListe = [];
@@ -541,7 +591,8 @@ function lpSammleGeometrie() {
           const c = geb && lpPolyCentroid(geb.polygon);
           if (c) { lat = c.lat; lng = c.lng; }
         }
-        return { asset: a, lat, lng, horizont: lpHorizontStatus(lpAssetStatus(a, referenz), lpAssetStatus(a, ziel)) };
+        return { asset: a, lat, lng, schicht: normSchicht(a.schicht),
+          horizont: lpHorizontStatus(lpAssetStatus(a, referenz), lpAssetStatus(a, ziel)) };
       })
       .filter(x => x.lat != null && x.lng != null && lpSichtbarNachHorizont(x.horizont));
   }
@@ -642,6 +693,23 @@ function lpZusammenfassung(col) {
 function lpBuildLegendItems(col) {
   const items = [], seen = new Set();
   const add = (label, farbe, art, dash) => { if (!seen.has(label)) { seen.add(label); items.push({ label, farbe, art, dash }); } };
+
+  // Status und Planungsschicht färben ALLES ein (Gebäude, Netze, Assets) — dann sagt eine
+  // Legende nach Ebenen nichts mehr aus, gefragt sind die Kategorien selbst. Reihenfolge
+  // fest vorgegeben (Bestand → Neubau/Entwicklung → …), nicht nach Erstauftreten im Datensatz.
+  if (_lpState.einfaerben === 'status' || _lpState.einfaerben === 'schicht') {
+    const alle = [...col.gebaeudeListe, ...col.waermeListe, ...col.stromListe, ...col.assetListe];
+    if (_lpState.einfaerben === 'status') {
+      const da = new Set(alle.map(x => x.horizont));
+      for (const s of ['bestand', 'neu', 'abriss']) if (da.has(s)) add(LP_STATUS_LABEL[s], LP_STATUS_FARBE[s], 'flaeche');
+    } else {
+      const da = new Set(alle.map(x => normSchicht(x.schicht)));
+      for (const s of SCHICHT_REIHENFOLGE) if (da.has(s)) add(SCHICHT_META[s].label, SCHICHT_META[s].farbe, 'flaeche');
+    }
+    if (col.msRingListe.length) add(_lpState.msModus === 'alle' ? 'Mittelspannung' : 'MS-Ring', '#FB8C00', 'linie');
+    return items;
+  }
+
   if (col.gebaeudeListe.length) {
     if (_lpState.einfaerben === 'nutzung') {
       const cache = new Map();
@@ -650,15 +718,13 @@ function lpBuildLegendItems(col) {
         const key = nt?.gruppe || g.nutzung || 'Unbekannt';
         add(key, lpFarbeFuer(key, cache), 'flaeche');
       }
-    } else if (_lpState.einfaerben === 'status') {
-      for (const { horizont } of col.gebaeudeListe) add(LP_STATUS_LABEL[horizont], LP_STATUS_FARBE[horizont], 'flaeche');
     } else {
       add('Gebäude', GG_THEME.accents.gruenDunkel, 'flaeche');
     }
   }
   if (col.waermeListe.length) add('Wärmenetz', GG_THEME.energy.waerme, 'linie');
   if (col.stromListe.length) add('Stromnetz', GG_THEME.energy.strom, 'linie', true);
-  if (col.msRingListe.length) add('MS-Ring', '#FB8C00', 'linie');
+  if (col.msRingListe.length) add(_lpState.msModus === 'alle' ? 'Mittelspannung' : 'MS-Ring', '#FB8C00', 'linie');
   for (const { asset } of col.assetListe) {
     const cfg = window.ASSET_CFG?.[asset.type];
     add(cfg?.label || asset.type, cfg?.color || '#607d8b', 'punkt');
@@ -990,8 +1056,8 @@ function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, 
   // Gebäude — bei "Energiekennwert" bleibt die Fläche neutral (T.tint), die Farbe
   // trägt dann der Kreis darüber, genau wie auf der echten Karte (Fläche = Umriss,
   // Kreis = Kennwert).
-  for (const { g, poly, horizont } of gebaeudeListe) {
-    const farbe = _lpState.einfaerben === 'energie' ? null : lpGebFarbe(g, horizont, gebFarbCache);
+  for (const { g, poly, horizont, schicht } of gebaeudeListe) {
+    const farbe = _lpState.einfaerben === 'energie' ? null : lpGebFarbe(g, horizont, gebFarbCache, schicht);
     out += `<polygon points="${pathOf(poly)}" fill="${farbe ? lpAufhellen(farbe) : T.tint}" stroke="${farbe || T.accents.gruenDunkel}" stroke-width="1" opacity="0.92" data-lp-mark="geb:${lbEsc(String(g.id))}"/>`;
   }
   // Energiekennwert-Kreise — 1:1 wie auf der Karte: Farbe + Fläche ∝ Kennwert
@@ -1008,13 +1074,15 @@ function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, 
       out += `<circle cx="${lbR(s.x)}" cy="${lbR(s.y)}" r="${lbR(radius)}" fill="${farbe}" fill-opacity="0.88" stroke="#fff" stroke-width="1" data-lp-mark="geb:${lbEsc(String(w.g.id))}"/>`;
     }
   }
-  // Wärmenetz
-  for (const { pts } of waermeListe) {
-    out += `<polyline points="${pathOf(pts)}" fill="none" stroke="${T.energy.waerme}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+  // Wärme- und Stromnetz. In den Modi "Status" und "Planungsschicht" übernehmen auch die
+  // Leitungen die Modusfarbe — sonst wäre einer geplanten Trasse nicht anzusehen, dass sie
+  // geplant ist. Die Strichart (durchgezogen/gestrichelt) unterscheidet weiterhin Wärme
+  // von Strom, damit die beiden Netze trotz gleicher Farbe auseinanderzuhalten sind.
+  for (const item of waermeListe) {
+    out += `<polyline points="${pathOf(item.pts)}" fill="none" stroke="${lpModusFarbe(item) || T.energy.waerme}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
-  // Stromnetz
-  for (const { pts } of stromListe) {
-    out += `<polyline points="${pathOf(pts)}" fill="none" stroke="${T.energy.strom}" stroke-width="2" stroke-dasharray="7 3" stroke-linecap="round" stroke-linejoin="round"/>`;
+  for (const item of stromListe) {
+    out += `<polyline points="${pathOf(item.pts)}" fill="none" stroke="${lpModusFarbe(item) || T.energy.strom}" stroke-width="2" stroke-dasharray="7 3" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
   // MS-Ring — dick, orange, oberhalb des normalen Stromnetzes
   for (const pts of msRingListe) {
@@ -1024,10 +1092,11 @@ function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, 
   // (liegt damit über Trafo/anderen Assets, falls sie am selben Punkt sitzen) — stabile
   // Sortierung, damit die sonstige Zeichenreihenfolge unverändert bleibt.
   const assetZeichnListe = [...assetListe].sort((a, b) => (a.asset.type === 'NAP' ? 1 : 0) - (b.asset.type === 'NAP' ? 1 : 0));
-  for (const { asset, lat, lng } of assetZeichnListe) {
+  for (const item of assetZeichnListe) {
+    const { asset, lat, lng } = item;
     const s = tr.toSvg(lat, lng);
     const cfg = window.ASSET_CFG?.[asset.type] || {};
-    out += `<circle cx="${lbR(s.x)}" cy="${lbR(s.y)}" r="8.5" fill="${cfg.color || '#607d8b'}" stroke="#fff" stroke-width="1.5" data-lp-mark="asset:${lbEsc(String(asset.id))}"/>`;
+    out += `<circle cx="${lbR(s.x)}" cy="${lbR(s.y)}" r="8.5" fill="${lpModusFarbe(item) || cfg.color || '#607d8b'}" stroke="#fff" stroke-width="1.5" data-lp-mark="asset:${lbEsc(String(asset.id))}"/>`;
     if (cfg.icon) out += `<text x="${lbR(s.x)}" y="${lbR(s.y) + 3.5}" text-anchor="middle" font-size="9">${lbEsc(cfg.icon)}</text>`;
   }
 
@@ -1430,8 +1499,51 @@ function lpLiegenschaft() {
 
 const LP_INP_STYLE = 'padding:5px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);font-family:inherit;font-size:11px;';
 
-/** Bedienfeld für den Wasserzeichen-Export inkl. Vorschau auf weißem Grund (wie die Word-Seite). */
-function lpWasserzeichenPanelHtml() {
+// Welche Bedien-Gruppen offen sind. Modul-State, nicht DOM-State: lpRenderPanel() baut das
+// Panel-HTML bei jeder Änderung komplett neu auf, ein rein im DOM gemerkter Zustand wäre weg.
+let _lpOffen = { inhalt: true, blatt: false, beschriftung: false, ausgabe: false };
+
+// Das Panel wird als HTML-String gebaut (sonst durchweg Inline-Styles). Für das Zweispalten-
+// Layout braucht es aber eine Media Query und ein paar Hover-/Sticky-Regeln, die inline nicht
+// gehen — deshalb dieser kleine, auf #lb-lp-panel begrenzte Stilblock. Er wird bei jedem
+// Neuaufbau mitgeliefert; identische Regeln erneut einzufügen ist folgenlos.
+const LP_PANEL_CSS = `<style>
+  #lb-lp-panel .lp-grid { display:grid; grid-template-columns:minmax(300px,360px) minmax(0,1fr); gap:14px; align-items:start; }
+  @media (max-width:1100px) { #lb-lp-panel .lp-grid { grid-template-columns:minmax(0,1fr); } }
+  #lb-lp-panel .lp-blattspalte { position:sticky; top:8px; }
+  @media (max-width:1100px) { #lb-lp-panel .lp-blattspalte { position:static; } }
+  #lb-lp-panel .lp-sekt { border:1px solid rgba(255,255,255,.09); border-radius:6px; overflow:hidden; }
+  #lb-lp-panel .lp-sekt + .lp-sekt { margin-top:8px; }
+  #lb-lp-panel .lp-sekt-kopf { width:100%; display:flex; align-items:center; gap:9px; text-align:left;
+    padding:10px 12px; background:rgba(255,255,255,.03); border:0; cursor:pointer; color:var(--text,#e8eaed); font:inherit; }
+  #lb-lp-panel .lp-sekt-kopf:hover { background:rgba(255,255,255,.06); }
+  #lb-lp-panel .lp-sekt-kopf .lp-chev { color:var(--muted); font-size:9px; flex:none; transition:transform .16s ease; }
+  #lb-lp-panel .lp-sekt-kopf[aria-expanded="true"] .lp-chev { transform:rotate(90deg); color:#26a69a; }
+  #lb-lp-panel .lp-sekt-titel { font-size:11.5px; font-weight:600; flex:none; }
+  #lb-lp-panel .lp-sekt-stand { margin-left:auto; font-size:10px; color:var(--muted); text-align:right;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #lb-lp-panel .lp-sekt-koerper { padding:4px 12px 14px; display:flex; flex-direction:column; gap:12px; }
+  #lb-lp-panel .lp-feldname { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  #lb-lp-panel .lp-zeile { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  #lb-lp-panel .lp-wz { display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    padding:8px 10px; border:1px solid rgba(255,255,255,.09); border-radius:6px 6px 0 0; border-bottom:0;
+    background:rgba(255,255,255,.04); }
+  #lb-lp-panel .lp-ikon { min-width:28px; height:26px; display:inline-flex; align-items:center; justify-content:center;
+    padding:0 7px; border:1px solid rgba(255,255,255,.14); border-radius:5px; background:rgba(255,255,255,.04);
+    color:var(--muted); font-family:inherit; font-size:11px; cursor:pointer; }
+  #lb-lp-panel .lp-ikon:hover { color:var(--text,#e8eaed); border-color:rgba(255,255,255,.28); }
+  #lb-lp-panel .lp-wz-trenner { width:1px; height:18px; background:rgba(255,255,255,.12); }
+  #lb-lp-panel .lp-wert { font-size:10.5px; color:var(--muted); min-width:38px; text-align:center; }
+  #lb-lp-panel .lp-hinweis { margin:0; padding:7px 9px; border-left:2px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.03); color:var(--muted); font-size:10px; line-height:1.5; }
+</style>`;
+
+/**
+ * Bedienelemente für den Wasserzeichen-Export inkl. Vorschau auf weißem Grund (wie die
+ * Word-Seite). Ohne eigene Überschrift und ohne eigenen Rahmen — das Stück sitzt in der
+ * Gruppe „Ausgabe" und bekommt seinen Titel von dort.
+ */
+function lpWasserzeichenHtml() {
   const chk = (checked, label, onClick, title) => `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;" title="${lbEsc(title || '')}">
     <input type="checkbox" ${checked ? 'checked' : ''} data-change="${onClick}">${lbEsc(label)}</label>`;
   const pill = (an, label, onClick, title) => `<button data-click="${onClick}" title="${lbEsc(title || '')}"
@@ -1440,38 +1552,36 @@ function lpWasserzeichenPanelHtml() {
 
   const svg = lpRenderWasserzeichenSvg();
   const vorschau = svg
-    ? `<div style="background:#fff;border-radius:4px;padding:6px;width:150px;flex:none;">${svg.outerHTML.replace('<svg ', '<svg style="width:100%;height:auto;display:block;" ')}</div>`
-    : `<div style="font-size:10.5px;color:var(--muted);">Keine Geometrie für die aktuelle Auswahl.</div>`;
+    ? `<div style="background:#fff;border-radius:4px;padding:5px;width:96px;flex:none;">${svg.outerHTML.replace('<svg ', '<svg style="width:100%;height:auto;display:block;" ')}</div>`
+    : `<div style="font-size:10.5px;color:var(--muted);flex:none;width:96px;">Keine Geometrie für die aktuelle Auswahl.</div>`;
 
   return `
-  <div style="margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Wasserzeichen für den Gutachten-Hintergrund</div>
-    <div style="display:flex;gap:12px;align-items:flex-start;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:10.5px;color:var(--muted);margin-bottom:8px;">Blasse Umrisse der Liegenschaft auf transparentem Grund, im Seitenverhältnis DIN A4 — in Word als Bild einfügen und den Textumbruch auf „Hinter den Text" stellen. Übernimmt Drehung und Zeithorizont/Filter des Plans, passt sich aber immer auf die ganze Liegenschaft an (unabhängig vom Planausschnitt).</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:8px;">
-          ${chk(_lpWm.gebaeude, 'Gebäude', "lpWmSet('gebaeude',this.checked)")}
-          ${chk(_lpWm.waerme, 'Wärmenetz', "lpWmSet('waerme',this.checked)")}
-          ${chk(_lpWm.strom, 'Stromnetz', "lpWmSet('strom',this.checked)")}
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;">
-          <span style="font-size:10px;color:var(--muted);">Format</span>
-          ${pill(_lpWm.format === 'hoch', 'A4 hoch', "lpWmSet('format','hoch')")}
-          ${pill(_lpWm.format === 'quer', 'A4 quer', "lpWmSet('format','quer')")}
-          <span style="font-size:10px;color:var(--muted);margin-left:10px;">Deckkraft</span>
-          <input type="range" min="4" max="28" step="1" value="${Math.round(_lpWm.staerke * 100)}"
-            data-change="lpWmSet('staerke',this.value/100)" style="width:110px;"
-            title="Wie kräftig das Wasserzeichen unter dem Text steht">
-          <span style="font-size:10px;color:var(--muted);">${Math.round(_lpWm.staerke * 100)} %</span>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button data-click="lpWmCopy()" style="${btn}border-color:rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;">⧉ Für Word kopieren</button>
-          <button data-click="lpWmPng()" style="${btn}">⤓ PNG (transparent)</button>
-          <button data-click="lpWmSvg()" style="${btn}">⤓ SVG</button>
-        </div>
+  <p class="lp-hinweis">Blasse Umrisse der Liegenschaft auf transparentem Grund, im Seitenverhältnis DIN A4 — in Word als Bild einfügen und den Textumbruch auf „Hinter den Text" stellen. Übernimmt Drehung und Zeithorizont/Filter des Plans, passt sich aber immer auf die ganze Liegenschaft an (unabhängig vom Planausschnitt).</p>
+  <div style="display:flex;gap:10px;align-items:flex-start;">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;">
+      <div class="lp-zeile" style="gap:8px 16px;">
+        ${chk(_lpWm.gebaeude, 'Gebäude', "lpWmSet('gebaeude',this.checked)")}
+        ${chk(_lpWm.waerme, 'Wärmenetz', "lpWmSet('waerme',this.checked)")}
+        ${chk(_lpWm.strom, 'Stromnetz', "lpWmSet('strom',this.checked)")}
       </div>
-      ${vorschau}
+      <div class="lp-zeile" style="gap:6px;">
+        ${pill(_lpWm.format === 'hoch', 'A4 hoch', "lpWmSet('format','hoch')")}
+        ${pill(_lpWm.format === 'quer', 'A4 quer', "lpWmSet('format','quer')")}
+      </div>
+      <div class="lp-zeile" style="gap:6px;">
+        <span style="font-size:10px;color:var(--muted);">Deckkraft</span>
+        <input type="range" min="4" max="28" step="1" value="${Math.round(_lpWm.staerke * 100)}"
+          data-change="lpWmSet('staerke',this.value/100)" style="flex:1;min-width:80px;"
+          title="Wie kräftig das Wasserzeichen unter dem Text steht">
+        <span style="font-size:10px;color:var(--muted);">${Math.round(_lpWm.staerke * 100)} %</span>
+      </div>
+      <div class="lp-zeile">
+        <button data-click="lpWmCopy()" style="${btn}border-color:rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;">⧉ Für Word kopieren</button>
+        <button data-click="lpWmPng()" style="${btn}">⤓ PNG</button>
+        <button data-click="lpWmSvg()" style="${btn}">⤓ SVG</button>
+      </div>
     </div>
+    ${vorschau}
   </div>`;
 }
 
@@ -1485,9 +1595,11 @@ function lpPanelHtml() {
   const d = _lpState.drehung || 0;
   const drehBtn = (v, label) => `<button data-click="lpSetDrehung(${v})" title="Plan auf ${v}° drehen"
     style="padding:4px 9px;border-radius:12px;border:1px solid ${d===v?'#26a69a':'rgba(255,255,255,.14)'};background:${d===v?'rgba(38,166,154,.16)':'transparent'};color:${d===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
-  const scaleBtn = (v) => `<button data-click="lpSetScale(${v})" style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpScale===v?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpScale===v?'rgba(38,166,154,.16)':'transparent'};color:${_lpScale===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;">${v}×</button>`;
+  const scaleBtn = (v) => `<button data-click="lpSetScale(${v})" title="Auflösung für PNG-Export und Zwischenablage" style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpScale===v?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpScale===v?'rgba(38,166,154,.16)':'transparent'};color:${_lpScale===v?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;">${v}×</button>`;
+  const msBtn = (v, label, title) => `<button data-click="lpSetMsModus('${v}')" title="${lbEsc(title)}"
+    style="padding:4px 10px;border-radius:12px;border:1px solid ${_lpState.msModus===v?'#FB8C00':'rgba(255,255,255,.14)'};background:${_lpState.msModus===v?'rgba(251,140,0,.16)':'transparent'};color:${_lpState.msModus===v?'#FB8C00':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">${label}</button>`;
   const vergleichBtn = `<button data-click="lpToggleVergleich()" title="Zeigt Referenzjahr (Bestand) und Zieljahr (Ausbauziel) als zwei Lagepläne nebeneinander — gleicher Maßstab und Kartenausschnitt für beide Seiten"
-    style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.vergleich?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.vergleich?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.vergleich?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">🔀 Vorher/Nachher-Vergleich</button>`;
+    style="padding:5px 11px;border-radius:14px;border:1px solid ${_lpState.vergleich?'#26a69a':'rgba(255,255,255,.14)'};background:${_lpState.vergleich?'rgba(38,166,154,.16)':'transparent'};color:${_lpState.vergleich?'#26a69a':'var(--muted)'};font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;">🔀 Vorher/Nachher</button>`;
 
   const assetTypen = Object.keys(_lpAssetCounts).sort((a, b) =>
     (window.ASSET_CFG?.[a]?.label || a).localeCompare(window.ASSET_CFG?.[b]?.label || b));
@@ -1504,168 +1616,211 @@ function lpPanelHtml() {
     return chk(_lpLabelTypes[t] !== false,
       `${cfg.icon ? cfg.icon + ' ' : ''}${cfg.label || t}${ebeneAus ? ' — Ebene aus' : ''}`,
       `lpSetLabelType('${t}',this.checked)`,
-      ebeneAus ? 'Diese Asset-Ebene wird gerade nicht gezeichnet — oben unter "Assets im Plan" einschalten, dann erscheinen auch die Namen.' : (cfg.beschreibung || ''));
+      ebeneAus ? 'Diese Asset-Ebene wird gerade nicht gezeichnet — unter "Inhalt › Assets" einschalten, dann erscheinen auch die Namen.' : (cfg.beschreibung || ''));
   }).join('');
   const kleinBtn = (onClick, label, title) => `<button data-click="${onClick}" title="${lbEsc(title || '')}"
     style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">${label}</button>`;
+  const knopf = (onClick, label, title, aus) => `<button data-click="${onClick}" title="${lbEsc(title || '')}" ${aus ? 'disabled' : ''}
+    style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:${aus ? 'var(--muted)' : 'var(--text,#e8eaed)'};font-family:inherit;font-size:10.5px;cursor:${aus ? 'default' : 'pointer'};">${label}</button>`;
 
-  return `
-  <div style="display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end;margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
-    ${jahrFeld('referenzjahr', 'Referenzjahr', 'Baseline für "Bestand" — was zu diesem Jahr schon existiert')}
-    ${jahrFeld('zieljahr', 'Zieljahr (Ausbauziel)', 'Stichjahr, auf das der Plan sich bezieht')}
-    <div style="display:flex;flex-direction:column;gap:3px;">
-      <span style="font-size:10px;color:var(--muted);">Anzeige</span>
-      ${_lpState.vergleich
-        ? `<span style="font-size:10px;color:var(--muted);max-width:230px;">Vorher/Nachher zeigt Referenz- und Zieljahr automatisch als zwei Bestands-Zeitpunkte.</span>`
-        : `<div style="display:flex;gap:6px;flex-wrap:wrap;">${anzeigeBtn('alle', 'Alle bis Zieljahr')}${anzeigeBtn('bestand', 'Nur Bestand')}${anzeigeBtn('neubau', 'Nur Neubau')}${anzeigeBtn('abriss', 'Nur Rückbau')}</div>`}
-    </div>
-    <div style="display:flex;flex-direction:column;gap:3px;">
-      <span style="font-size:10px;color:var(--muted);">&nbsp;</span>
+  // Klappbare Gruppe. Der Stand in der Kopfzeile ist der Punkt der Sache: zugeklappt sieht man,
+  // wie der Plan eingestellt ist, ohne ihn aufklappen zu müssen.
+  const sektion = (key, titel, stand, koerper) => {
+    const offen = !!_lpOffen[key];
+    return `<div class="lp-sekt">
+      <button class="lp-sekt-kopf" aria-expanded="${offen}" data-click="lpToggleSektion('${key}')" title="${lbEsc(titel)} auf-/zuklappen">
+        <span class="lp-chev">▶</span>
+        <span class="lp-sekt-titel">${lbEsc(titel)}</span>
+        <span class="lp-sekt-stand">${lbEsc(stand)}</span>
+      </button>
+      ${offen ? `<div class="lp-sekt-koerper">${koerper}</div>` : ''}
+    </div>`;
+  };
+  const feld = (name, inhalt) => `<div style="display:flex;flex-direction:column;gap:7px;">
+    <span class="lp-feldname">${lbEsc(name)}</span>${inhalt}</div>`;
+
+  const anzeigeLabel = { alle: 'alle bis Zieljahr', bestand: 'nur Bestand', neubau: 'nur Neubau', abriss: 'nur Rückbau' };
+  const ebenenAn = [_lpState.gebaeude, _lpState.waerme, _lpState.strom, _lpState.msModus !== 'aus'].filter(Boolean).length;
+  const assetsAn = assetTypen.filter(t => _lpAssetTypes[t]).length;
+  const standInhalt = `${_lpState.vergleich ? `${_lpState.referenzjahr}→${_lpState.zieljahr}` : _lpState.zieljahr}`
+    + ` · ${_lpState.vergleich ? 'Vergleich' : anzeigeLabel[_lpState.anzeige]}`
+    + ` · ${ebenenAn} Ebenen${assetTypen.length ? ` · ${assetsAn}/${assetTypen.length} Assets` : ''}`;
+  const standBlatt = `${_lpState.kartenausschnitt ? 'fester Ausschnitt' : 'automatisch'} · ${d}°`
+    + (_lpState.satBild ? (_lpState.satBildAn ? ' · Luftbild' : ' · Luftbild aus') : '');
+  const benannt = _lpState.beschriftung
+    ? [_lpState.labelGeb ? 'Gebäude' : null, ...assetTypen.filter(t => _lpLabelTypes[t] !== false)
+        .map(t => window.ASSET_CFG?.[t]?.label || t)].filter(Boolean)
+    : [];
+  const standBeschriftung = [
+    _lpState.beschriftung ? (benannt.length ? (benannt.length > 2 ? `${benannt.length} Gruppen` : benannt.join(', ')) : 'keine Gruppe') : 'Namen aus',
+    _lpAnnotations.length ? `${_lpAnnotations.length} frei` : null,
+    _lpMarkierungen.size ? `${_lpMarkierungen.size} markiert` : null,
+  ].filter(Boolean).join(' · ');
+  const standAusgabe = `${_lpScale}× · Wasserzeichen ${_lpWm.format === 'hoch' ? 'A4 hoch' : 'A4 quer'}`;
+
+  /* Gruppe "Inhalt" — was überhaupt auf dem Blatt landet */
+  const koerperInhalt = [
+    feld('Zeithorizont', `<div class="lp-zeile">
+      ${jahrFeld('referenzjahr', 'Referenzjahr', 'Baseline für "Bestand" — was zu diesem Jahr schon existiert')}
+      ${jahrFeld('zieljahr', 'Zieljahr (Ausbauziel)', 'Stichjahr, auf das der Plan sich bezieht')}
       ${vergleichBtn}
-    </div>
-    <label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);">Gebäude einfärben nach
-      <select data-change="lpSetEinfaerben(this.value)" style="${inp}">
-        <option value="keine" ${_lpState.einfaerben==='keine'?'selected':''}>Keine (einheitlich)</option>
-        <option value="nutzung" ${_lpState.einfaerben==='nutzung'?'selected':''}>Nutzungstyp</option>
-        <option value="status" ${_lpState.einfaerben==='status'?'selected':''}>Status (Bestand/Neubau/Rückbau)</option>
-        <option value="energie" ${_lpState.einfaerben==='energie'?'selected':''}>Energiekennwert (Kreise, wie auf der Karte)</option>
-      </select></label>
-    ${_lpState.einfaerben === 'energie' ? `<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);">Kennwert
-      <select data-change="lpSetEnergieModus(this.value)" style="${inp}">
-        <option value="spez" ${_lpState.energieModus==='spez'?'selected':''}>Spez. Wärmebedarf</option>
-        <option value="heizlast" ${_lpState.energieModus==='heizlast'?'selected':''}>Heizlast</option>
-        <option value="verlust" ${_lpState.energieModus==='verlust'?'selected':''}>Netzverlust</option>
-      </select></label>` : ''}
-  </div>
-
-  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:10px;">
-    <div style="display:flex;flex-wrap:wrap;gap:10px 16px;">
+    </div>`),
+    feld('Anzeige', _lpState.vergleich
+      ? `<p class="lp-hinweis">Vorher/Nachher zeigt Referenz- und Zieljahr automatisch als zwei Bestands-Zeitpunkte.</p>`
+      : `<div class="lp-zeile">${anzeigeBtn('alle', 'Alle bis Zieljahr')}${anzeigeBtn('bestand', 'Nur Bestand')}${anzeigeBtn('neubau', 'Nur Neubau')}${anzeigeBtn('abriss', 'Nur Rückbau')}</div>`),
+    feld('Ebenen', `<div class="lp-zeile" style="gap:8px 16px;">
       ${chk(_lpState.gebaeude, 'Gebäude', "lpSetLayer('gebaeude',this.checked)")}
       ${chk(_lpState.waerme, 'Wärmenetz', "lpSetLayer('waerme',this.checked)")}
       ${chk(_lpState.strom, 'Stromnetz', "lpSetLayer('strom',this.checked)")}
-      ${chk(_lpState.msring, 'MS-Ring hervorheben', "lpSetLayer('msring',this.checked)", 'Erkennt Mittelspannungs-Ringe aus NAP/Trafo/Schaltanlage + Stromnetz und hebt sie dick orange hervor')}
-      ${chk(_lpState.beschriftung, 'Beschriftungen', "lpSetLayer('beschriftung',this.checked)", 'Namen im Plan anzeigen — welche Gruppen benannt werden (z. B. nur die Trafos), steht darunter in der Auswahl')}
     </div>
-    <div style="display:flex;gap:6px;margin-left:auto;">${[2,3,4].map(scaleBtn).join('')}</div>
-  </div>
-
-  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
-    <button data-click="lpUebernehmeKartenausschnitt()" title="Übernimmt den aktuell auf der Karte sichtbaren Zoom/Ausschnitt statt automatisch an die gezeichneten Objekte anzupassen"
-      style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">📍 Aktuellen Kartenausschnitt übernehmen</button>
-    <div style="display:flex;gap:4px;">
-      <button data-click="lpZoomSchritt(0.8)" title="Im Plan hineinzoomen (oder Mausrad über dem Plan)"
-        style="padding:5px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">🔍+</button>
-      <button data-click="lpZoomSchritt(1.25)" title="Im Plan herauszoomen (oder Mausrad über dem Plan)"
-        style="padding:5px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">🔍−</button>
+    <div class="lp-zeile" style="gap:6px;">
+      <span style="font-size:10px;color:var(--muted);">Mittelspannung</span>
+      ${msBtn('aus', 'Aus', 'Keine Hervorhebung — MS-Kabel werden wie das übrige Stromnetz gezeichnet')}
+      ${msBtn('ring', 'Nur Ring', 'Nur geschlossene Mittelspannungs-Ringe (aus NAP/Schaltanlage/Trafo + Stromnetz erkannt) dick orange hervorheben')}
+      ${msBtn('alle', 'Alle Leitungen', 'Jede Leitung zwischen zwei MS-Knoten (NAP, Schaltanlage, Trafo) dick orange hervorheben — auch Stichleitungen, die zu keinem Ring gehören')}
+    </div>`),
+    assetTypen.length ? feld('Assets', `<div class="lp-zeile" style="gap:8px 16px;">${assetChecks}</div>`) : '',
+    feld('Einfärben nach', `<div class="lp-zeile">
+      <select data-change="lpSetEinfaerben(this.value)" style="${inp}flex:1;min-width:150px;">
+        <option value="keine" ${_lpState.einfaerben==='keine'?'selected':''}>Keine (einheitlich)</option>
+        <option value="nutzung" ${_lpState.einfaerben==='nutzung'?'selected':''}>Nutzungstyp</option>
+        <option value="status" ${_lpState.einfaerben==='status'?'selected':''}>Status zum Zieljahr (Bestand/Neubau/Rückbau)</option>
+        <option value="schicht" ${_lpState.einfaerben==='schicht'?'selected':''}>Planungsschicht (Bestand/Entwicklung/Planung)</option>
+        <option value="energie" ${_lpState.einfaerben==='energie'?'selected':''}>Energiekennwert (Kreise, wie auf der Karte)</option>
+      </select>
+      ${_lpState.einfaerben === 'energie' ? `<select data-change="lpSetEnergieModus(this.value)" style="${inp}">
+        <option value="spez" ${_lpState.energieModus==='spez'?'selected':''}>Spez. Wärmebedarf</option>
+        <option value="heizlast" ${_lpState.energieModus==='heizlast'?'selected':''}>Heizlast</option>
+        <option value="verlust" ${_lpState.energieModus==='verlust'?'selected':''}>Netzverlust</option>
+      </select>` : ''}
     </div>
-    ${_lpState.kartenausschnitt
-      ? `<button data-click="lpKartenausschnittZuruecksetzen()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">↺ Automatisch an Inhalt anpassen</button>
-         <span style="font-size:10px;color:#26a69a;">Fester Ausschnitt aktiv</span>`
-      : `<span style="font-size:10px;color:var(--muted);">Automatisch an die gezeichneten Objekte angepasst</span>`}
-    <span style="font-size:10px;color:var(--muted);width:100%;">🖱 Im Plan direkt ziehen zum Verschieben, Mausrad zum Zoomen — feines Nachjustieren ohne zur Karte zu wechseln.</span>
-  </div>
+    ${_lpState.einfaerben === 'schicht' ? `<p class="lp-hinweis">Färbt Gebäude, Netze und Assets nach dem Grund, aus dem sie im Modell stehen: <b style="color:${SCHICHT_META.bestand.farbe}">Bestand</b> ist heute da, <b style="color:${SCHICHT_META.entwicklung.farbe}">Entwicklung</b> kommt ohnehin und gilt in allen Varianten gleich, <b style="color:${SCHICHT_META.entscheidung.farbe}">Planung</b> ist in dieser Variante entschieden.</p>` : ''}
+    ${_lpState.einfaerben === 'status' ? `<p class="lp-hinweis">Färbt Gebäude, Netze und Assets danach, was zum Zieljahr Bestand, Neubau oder Rückbau ist — abgeleitet aus Bau- und Abrissjahr.</p>` : ''}`),
+  ].join('');
 
-  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
-    <span style="font-size:10px;color:var(--muted);white-space:nowrap;">Ausrichtung des Plans</span>
-    <input type="range" min="-180" max="180" step="1" value="${d}"
-      title="Dreht den kompletten Plan — Geometrie, Satellitenbild und Nordpfeil. 0° = Norden oben."
-      data-input="lpDrehungVorschau(this.value)" data-change="lpSetDrehung(this.value)" style="width:170px;">
-    <input id="lp-dreh-zahl" type="number" min="-180" max="180" step="1" value="${d}"
-      data-change="lpSetDrehung(this.value)" style="${inp}width:62px;">
-    <span style="font-size:10px;color:var(--muted);">°</span>
-    <div style="display:flex;gap:4px;">${drehBtn(0, 'Nord oben')}${drehBtn(-45, '−45°')}${drehBtn(-90, '−90°')}${drehBtn(45, '+45°')}${drehBtn(90, '+90°')}</div>
-    ${_lpAchse
+  /* Gruppe "Ausschnitt & Ausrichtung" — wie das Blatt steht */
+  const koerperBlatt = [
+    feld('Ausschnitt', `<div class="lp-zeile">
+      ${knopf('lpUebernehmeKartenausschnitt()', '📍 Von der Karte übernehmen', 'Übernimmt den aktuell auf der Karte sichtbaren Zoom/Ausschnitt statt automatisch an die gezeichneten Objekte anzupassen')}
+      ${_lpState.kartenausschnitt ? kleinBtn('lpKartenausschnittZuruecksetzen()', '↺ Automatisch', 'Wieder automatisch an die gezeichneten Objekte anpassen') : ''}
+    </div>
+    <p class="lp-hinweis">🖱 Im Plan ziehen zum Verschieben, Mausrad zum Zoomen — feines Nachjustieren, ohne zur Karte zu wechseln.</p>`),
+    feld('Drehung', `<div class="lp-zeile">
+      <input type="range" min="-180" max="180" step="1" value="${d}"
+        title="Dreht den kompletten Plan — Geometrie, Satellitenbild und Nordpfeil. 0° = Norden oben."
+        data-input="lpDrehungVorschau(this.value)" data-change="lpSetDrehung(this.value)" style="flex:1;min-width:120px;">
+      <input id="lp-dreh-zahl" type="number" min="-180" max="180" step="1" value="${d}"
+        data-change="lpSetDrehung(this.value)" style="${inp}width:62px;">
+      <span style="font-size:10px;color:var(--muted);">°</span>
+    </div>
+    <div class="lp-zeile" style="gap:4px;">${drehBtn(0, 'Nord oben')}${drehBtn(-45, '−45°')}${drehBtn(-90, '−90°')}${drehBtn(45, '+45°')}${drehBtn(90, '+90°')}</div>
+    <div class="lp-zeile">${_lpAchse
       ? `<span style="font-size:10px;color:#ffcc80;">🖱 ${_lpAchse.p1 ? 'Zweiten' : 'Ersten'} Punkt der Achse im Plan anklicken …</span>
          <button data-click="lpAbbrechenAchse()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:#ef5350;font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>`
-      : `<button data-click="lpStartAchse()" title="Zwei Punkte im Plan anklicken (z. B. Anfang und Ende der Hauptstraße) — der Plan wird so gedreht, dass diese Achse senkrecht steht"
-           style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;">📐 An Achse ausrichten</button>`}
-    <span style="font-size:10px;color:var(--muted);width:100%;">Für Liegenschaften, deren Hauptachse schräg zur Nordrichtung liegt. Nordpfeil und Satellitenbild drehen mit. Nach einer Drehung das Satellitenbild neu einfangen — es wird dann passend zum gedrehten Blatt geholt. Freie Beschriftungen hängen an ihrer Stelle der Liegenschaft und drehen mit.</span>
-  </div>
+      : knopf('lpStartAchse()', '📐 An Achse ausrichten', 'Zwei Punkte im Plan anklicken (z. B. Anfang und Ende der Hauptstraße) — der Plan wird so gedreht, dass diese Achse senkrecht steht')}</div>
+    <p class="lp-hinweis">Für Liegenschaften, deren Hauptachse schräg zur Nordrichtung liegt. Nordpfeil, Satellitenbild und freie Beschriftungen drehen mit. Nach einer Drehung das Satellitenbild neu einfangen — es wird dann passend zum gedrehten Blatt geholt.</p>`),
+    feld('Luftbild', `<div class="lp-zeile">
+      ${knopf('lpCaptureSatellite()', '🛰 Neu einfangen', 'Holt das Luftbild für genau den Bereich, den der Plan gerade zeigt — Zoom und Drehung des Plans bleiben unverändert, die Arbeitskarte wird nur kurz ausgeliehen', _lpSatBusy)}
+      ${_lpState.satBild ? chk(_lpState.satBildAn, 'als Hintergrund zeigen', 'lpSetSatBildAn(this.checked)') : ''}
+    </div>
+    <p class="lp-hinweis">${window.map?.hasLayer?.(window.esriTile) ? 'Kartenhintergrund: Luftbild.' : 'Kartenhintergrund ist die Straßenkarte — beim Einfangen wird automatisch auf Luftbild umgeschaltet.'} Das Bild bleibt geografisch verankert, im Plan lässt sich danach frei zoomen und verschieben.</p>`),
+  ].join('');
 
-  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
-    <button data-click="lpCaptureSatellite()" ${_lpSatBusy ? 'disabled' : ''}
-      title="Holt das Luftbild für genau den Bereich, den der Plan gerade zeigt — Zoom und Drehung des Plans bleiben unverändert, die Arbeitskarte wird nur kurz ausgeliehen. Das Bild bleibt geografisch verankert, im Plan lässt sich danach frei zoomen und verschieben"
-      style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:${_lpSatBusy?'var(--muted)':'#26a69a'};font-family:inherit;font-size:10.5px;cursor:${_lpSatBusy?'default':'pointer'};">🛰 Satellitenbild einfangen</button>
-    ${_lpState.satBild ? chk(_lpState.satBildAn, 'als Hintergrund zeigen', 'lpSetSatBildAn(this.checked)') : ''}
-    <span style="font-size:10px;color:var(--muted);">${window.map?.hasLayer?.(window.esriTile) ? 'Kartenhintergrund: Luftbild' : 'Kartenhintergrund: Straßenkarte — beim Einfangen automatisch auf Luftbild umgeschaltet'}</span>
-  </div>
-
-  ${assetTypen.length ? `
-  <div style="margin-bottom:12px;">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Assets im Plan</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px 18px;">${assetChecks}</div>
-  </div>` : ''}
-
-  ${_lpState.beschriftung ? `
-  <div style="margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Beschriftungen — was benannt wird</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px 18px;">
+  /* Gruppe "Beschriftungen" — alle drei Wege an einer Stelle */
+  const koerperBeschriftung = [
+    feld('Namen aus dem Projekt', `<div class="lp-zeile">
+      ${chk(_lpState.beschriftung, 'Namen im Plan anzeigen', "lpSetLayer('beschriftung',this.checked)", 'Master-Schalter — welche Gruppen benannt werden, steht darunter')}
+    </div>
+    ${_lpState.beschriftung ? `<div class="lp-zeile" style="gap:8px 16px;">
       ${chk(_lpState.labelGeb, `Gebäude${_lpState.gebaeude ? '' : ' — Ebene aus'}`, "lpSetLayer('labelGeb',this.checked)", 'Nummer und Name jedes gezeichneten Gebäudes')}
       ${labelChecks}
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;">
+    <div class="lp-zeile" style="gap:6px;">
       ${kleinBtn('lpLabelAuswahl(true)', 'Alle', 'Alle Gruppen beschriften')}
       ${kleinBtn('lpLabelAuswahl(false)', 'Keine', 'Keine Gruppe beschriften — dann gezielt einzelne wieder anhaken')}
       ${_lpLabelOffsets.size ? kleinBtn('lpResetLabelOffsets()', `↺ ${_lpLabelOffsets.size} verschobene zurücksetzen`, 'Setzt alle von Hand verschobenen Beschriftungen auf ihre Standardposition am Objekt zurück') : ''}
     </div>
-    <span style="display:block;margin-top:6px;font-size:10px;color:var(--muted);">🖱 Einzelne Beschriftung im Plan anfassen und ziehen, wenn sich Namen überdecken — sie bleibt an ihrem Objekt hängen (Verschieben/Zoomen/Jahreswechsel ändern daran nichts). Ein Klick ohne Ziehen öffnet den Objekt-Editor unten.</span>
-  </div>` : ''}
+    <p class="lp-hinweis">🖱 Einzelne Beschriftung im Plan anfassen und ziehen, wenn sich Namen überdecken — sie bleibt an ihrem Objekt hängen. Ein Klick ohne Ziehen öffnet den Objekt-Editor unten.</p>` : ''}`),
 
-  <div style="margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Freie Beschriftungen</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;${_lpAnnotations.length ? 'margin-bottom:8px;' : ''}">
+    feld('Eigene Texte & Linien', `<div class="lp-zeile">
       <input id="lp-anno-text" type="text" placeholder="Text (z. B. „geplante Erweiterung“) — bei Linie optional"
         value="${lbEsc(_lpPlacing?.text ?? _lpAnnoEntwurf)}" ${_lpPlacing ? 'disabled' : ''}
-        data-change="lpSetAnnoEntwurf(this.value)" style="${inp}flex:1;min-width:180px;">
+        data-change="lpSetAnnoEntwurf(this.value)" style="${inp}flex:1;min-width:150px;">
       <input type="color" value="${lbEsc(_lpAnnoDefault.farbe)}" data-change="lpSetAnnoDefault('farbe',this.value)"
         title="Farbe für neu platzierte Beschriftungen" style="width:30px;height:26px;padding:1px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;cursor:pointer;">
       <input type="number" min="6" max="48" step="1" value="${_lpAnnoDefault.size}" data-change="lpSetAnnoDefault('size',this.value)"
-        title="Schriftgröße für neu platzierte Beschriftungen" style="${inp}width:56px;">
-      <button data-click="lpStartPlacing('text')" ${_lpPlacing ? 'disabled' : ''}
-        style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:${_lpPlacing?'var(--muted)':'#e8eaed'};font-family:inherit;font-size:10.5px;cursor:${_lpPlacing?'default':'pointer'};">✎ Text platzieren</button>
-      <button data-click="lpStartPlacing('line')" ${_lpPlacing ? 'disabled' : ''}
-        style="padding:5px 11px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:${_lpPlacing?'var(--muted)':'#e8eaed'};font-family:inherit;font-size:10.5px;cursor:${_lpPlacing?'default':'pointer'};">📏 Linie platzieren</button>
+        title="Schriftgröße für neu platzierte Beschriftungen" style="${inp}width:52px;">
+    </div>
+    <div class="lp-zeile">
+      ${knopf("lpStartPlacing('text')", '✎ Text setzen', 'Text eingeben, dann die Stelle im Plan anklicken', !!_lpPlacing)}
+      ${knopf("lpStartPlacing('line')", '📏 Linie setzen', 'Zwei Punkte im Plan anklicken — Text optional', !!_lpPlacing)}
       ${_lpPlacing ? `<span style="font-size:10px;color:#ffcc80;">🖱 Auf den Plan klicken${_lpPlacing.type === 'line' ? (_lpPlacing.lat1 == null ? ' — Startpunkt' : ' — Endpunkt') : ''} …</span>
         <button data-click="lpCancelPlacing()" style="padding:5px 11px;border-radius:5px;border:1px solid rgba(239,83,80,.4);background:transparent;color:#ef5350;font-family:inherit;font-size:10.5px;cursor:pointer;">Abbrechen</button>` : ''}
     </div>
     ${_lpAnnotations.length ? `<div style="display:flex;flex-direction:column;gap:4px;">
-      ${_lpAnnotations.map(a => `<div style="display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted);">
+      ${_lpAnnotations.map(a => `<div style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);">
         <span title="${a.type === 'text' ? 'Text' : 'Linie'}">${a.type === 'text' ? '✎' : '📏'}</span>
         <input type="text" value="${lbEsc(a.text || '')}" placeholder="${a.type === 'line' ? 'Linie ohne Beschriftung' : 'Text'}"
-          data-change="lpSetAnnoText(${a.id}, this.value)" style="${inp}flex:1;min-width:120px;">
+          data-change="lpSetAnnoText(${a.id}, this.value)" style="${inp}flex:1;min-width:90px;">
         <input type="color" value="${lbEsc(a.farbe || LP_ANNO_FARBE)}" data-change="lpSetAnnoStil(${a.id},'farbe',this.value)"
-          title="Farbe" style="width:28px;height:24px;padding:1px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;cursor:pointer;">
+          title="Farbe" style="width:26px;height:24px;padding:1px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:transparent;cursor:pointer;">
         <input type="number" min="6" max="48" step="1" value="${a.size || 12}" data-change="lpSetAnnoStil(${a.id},'size',this.value)"
-          title="${a.type === 'text' ? 'Schriftgröße' : 'Schriftgröße (bestimmt auch die Linienstärke)'}" style="${inp}width:52px;">
+          title="${a.type === 'text' ? 'Schriftgröße' : 'Schriftgröße (bestimmt auch die Linienstärke)'}" style="${inp}width:48px;">
         <button data-click="lpRemoveAnnotation(${a.id})" title="Entfernen" style="background:transparent;border:none;color:#ef5350;cursor:pointer;font-size:12px;">✕</button>
       </div>`).join('')}
     </div>
-    <span style="display:block;margin-top:6px;font-size:10px;color:var(--muted);">🖱 Im Plan anfassen und ziehen zum Verschieben. Die Beschriftungen hängen an ihrer Stelle der Liegenschaft — Verschieben, Zoomen und Drehen des Plans lassen sie dort, wo sie gesetzt wurden.</span>` : ''}
-  </div>
+    <p class="lp-hinweis">🖱 Im Plan anfassen und ziehen zum Verschieben. Sie hängen an ihrer Stelle der Liegenschaft — Verschieben, Zoomen und Drehen lassen sie dort, wo sie gesetzt wurden.</p>` : ''}`),
 
-  <div style="margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Hervorgehobene / einzeln beschriftete Objekte</div>
-    ${_lpSelected ? lpMarkEditorHtml() : ''}
+    feld('Hervorgehobene Objekte', `${_lpSelected ? lpMarkEditorHtml() : ''}
     ${_lpMarkierungen.size ? `<div style="display:flex;flex-direction:column;gap:4px;">
       ${[..._lpMarkierungen.entries()].filter(([key]) => key !== _lpSelected).map(([key, m]) => `<div style="display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted);">
         <span style="color:${LP_MARK_FARBE};opacity:${m.sichtbar === false ? 0.4 : 1};">●</span>
         <button data-click="lpSelectMarkierung('${lbEsc(key)}')" style="flex:1;text-align:left;background:transparent;border:none;color:var(--muted);cursor:pointer;padding:0;font:inherit;">${lbEsc(lpMarkObjName(m.kind, m.id))}${m.text ? ` — „${lbEsc(m.text)}“` : ''}${m.sichtbar === false ? ' (ausgeblendet)' : ''}</button>
         <button data-click="lpRemoveMarkierung('${lbEsc(key)}')" title="Entfernen" style="background:transparent;border:none;color:#ef5350;cursor:pointer;font-size:12px;">✕</button>
       </div>`).join('')}
-    </div>` : (_lpSelected ? '' : `<div style="font-size:10.5px;color:var(--muted);">Auf ein Gebäude oder Asset im Plan klicken, um es hervorzuheben, auszublenden oder individuell zu beschriften.</div>`)}
-  </div>
+    </div>` : (_lpSelected ? '' : `<p class="lp-hinweis">Auf ein Gebäude oder Asset im Plan klicken, um es hervorzuheben, auszublenden oder individuell zu beschriften.</p>`)}`),
+  ].join('');
 
-  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-    <button data-click="lpCopy()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;font-family:inherit;font-size:11px;cursor:pointer;">⧉ Für Word kopieren</button>
-    <button data-click="lpSavePng()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ PNG</button>
-    <button data-click="lpSaveSvg()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ SVG</button>
-    <span style="margin-left:auto;font-size:10px;color:var(--muted);align-self:center;">In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.</span>
-  </div>
+  /* Gruppe "Ausgabe" — Auflösung, Planblatt-Export, Wasserzeichen */
+  const koerperAusgabe = [
+    feld('Planblatt', `<div class="lp-zeile">
+      <span style="font-size:10px;color:var(--muted);">Auflösung</span>${[2,3,4].map(scaleBtn).join('')}
+    </div>
+    <div class="lp-zeile">
+      <button data-click="lpCopy()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.18);color:#26a69a;font-family:inherit;font-size:11px;cursor:pointer;">⧉ Für Word kopieren</button>
+      <button data-click="lpSavePng()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ PNG</button>
+      <button data-click="lpSaveSvg()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ SVG</button>
+    </div>
+    <p class="lp-hinweis">In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.</p>`),
+    feld('Wasserzeichen für den Gutachten-Hintergrund', lpWasserzeichenHtml()),
+  ].join('');
 
-  <div id="lp-status" style="font-size:11px;color:#26a69a;min-height:16px;margin-bottom:8px;"></div>
-  <div id="lp-paper" style="background:#fff;border-radius:6px;padding:10px;overflow-x:auto;margin-bottom:12px;"></div>
+  return `${LP_PANEL_CSS}
+  <div class="lp-grid">
+    <div>
+      ${sektion('inhalt', 'Inhalt', standInhalt, koerperInhalt)}
+      ${sektion('blatt', 'Ausschnitt & Ausrichtung', standBlatt, koerperBlatt)}
+      ${sektion('beschriftung', 'Beschriftungen', standBeschriftung, koerperBeschriftung)}
+      ${sektion('ausgabe', 'Ausgabe', standAusgabe, koerperAusgabe)}
+    </div>
 
-  ${lpWasserzeichenPanelHtml()}`;
+    <div class="lp-blattspalte">
+      <div class="lp-wz">
+        <button class="lp-ikon" data-click="lpZoomSchritt(1.25)" title="Herauszoomen (oder Mausrad über dem Plan)">🔍−</button>
+        <button class="lp-ikon" data-click="lpZoomSchritt(0.8)" title="Hineinzoomen (oder Mausrad über dem Plan)">🔍+</button>
+        <button class="lp-ikon" data-click="lpKartenausschnittZuruecksetzen()" title="Wieder automatisch an die gezeichneten Objekte anpassen">⤢</button>
+        <span class="lp-wz-trenner"></span>
+        <button class="lp-ikon" data-click="lpDrehSchritt(-15)" title="15° gegen den Uhrzeigersinn drehen">↺</button>
+        <span class="lp-wert">${d}°</span>
+        <button class="lp-ikon" data-click="lpDrehSchritt(15)" title="15° im Uhrzeigersinn drehen">↻</button>
+        <span class="lp-wz-trenner"></span>
+        ${knopf('lpCaptureSatellite()', '🛰 Luftbild', 'Holt das Luftbild für genau den Bereich, den der Plan gerade zeigt', _lpSatBusy)}
+        <span style="font-size:10px;color:var(--muted);">${_lpState.kartenausschnitt ? 'fester Ausschnitt' : 'Ausschnitt automatisch'}</span>
+        <div id="lp-status" style="margin-left:auto;font-size:10.5px;color:#26a69a;min-height:14px;"></div>
+      </div>
+      <div id="lp-paper" style="background:#fff;border-radius:0 0 6px 6px;border:1px solid rgba(255,255,255,.09);padding:10px;overflow-x:auto;"></div>
+    </div>
+  </div>`;
 }
 
 /**
@@ -2024,7 +2179,18 @@ window.lpZoomSchritt = (faktor) => {
   lpRenderPanel();
 };
 
+/** Bedien-Gruppe auf-/zuklappen. Mehrere dürfen gleichzeitig offen sein. */
+window.lpToggleSektion = (key) => { _lpOffen[key] = !_lpOffen[key]; lpRenderPanel(); };
+/** Drehung relativ ändern — für die ↺/↻-Knöpfe der Werkzeugleiste am Blatt. */
+window.lpDrehSchritt = (delta) => {
+  const roh = (_lpState.drehung || 0) + delta;
+  // auf ±180 normieren, damit der Zahlenwert nicht aus dem Reglerbereich läuft
+  _lpState.drehung = roh > 180 ? roh - 360 : (roh < -180 ? roh + 360 : roh);
+  lpRenderPanel();
+};
+
 window.lpSetLayer = (key, on) => { _lpState[key] = !!on; lpRenderPanel(); };
+window.lpSetMsModus = (v) => { _lpState.msModus = ['aus', 'ring', 'alle'].includes(v) ? v : 'aus'; lpRenderPanel(); };
 window.lpSetJahr = (key, val) => { const n = parseInt(val, 10); if (isFinite(n)) _lpState[key] = n; lpRenderPanel(); };
 window.lpSetAnzeige = (id) => { _lpState.anzeige = id; lpRenderPanel(); };
 window.lpSetEinfaerben = (v) => { _lpState.einfaerben = v; lpRenderPanel(); };
