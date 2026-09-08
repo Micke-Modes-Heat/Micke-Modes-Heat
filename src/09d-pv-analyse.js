@@ -406,7 +406,7 @@ function pvInfraKosten(pvKwp, pvErtragMwh) {
  * @param {Float32Array|null} spotH - Spot-Preise ct/kWh (nur für 'spot')
  * @returns {object}
  */
-function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, spotH, windScale = 1) {
+function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, spotH, windScale = 1, initSoc = 0) {
   const N    = demandH.length;
   const dt   = N > 8784 ? 0.25 : 1.0;   // Schaltjahr (35.136) und Normaljahr (35.040)
   const spez = pvGetSpez();
@@ -433,7 +433,9 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
     avgSpot = sSum / N;
   }
 
-  let soc = 0;
+  // initSoc: Start-Ladestand. Default 0 wie bisher — nur die Resilienz-Analyse
+  // setzt ihn, um den Jahresanfang nicht mit einer leeren Batterie zu verfälschen.
+  let soc = Math.min(batKwh, Math.max(0, initSoc));
   let eigenMwh = 0, einspeiseMwh = 0, netzbezugMwh = 0, curtailMwh = 0;
   let windEigenMwh = 0, windEinspMwh = 0; // Anteil der Windkraft an Eigenverbrauch/Einspeisung (für getrennten Tarif)
   let batVerlustMwh = 0, spotRevenue = 0;  // spotRevenue in € (ct/kWh × MWh / 10)
@@ -1583,6 +1585,37 @@ function renderAnnahmenblatt(varianten) {
       ${bd.gebKwp   > 0 ? zeile('— Gebäude-PV ohne Asset', num(bd.gebKwp) + ' kWp', 'Flächenmodell aus dem Wärme-Modul') : ''}
       ${bd.ffKwp    > 0 ? zeile('— Freifläche', num(bd.ffKwp) + ' kWp', 'Freiflächen-Abgrenzung') : ''}
       ${bd.manual   > 0 ? zeile('— Manuelle Eingabe', num(bd.manual) + ' kWp', 'Feld „kWp" im Strom-Panel — prüfen, ob gewollt', true) : ''}
+
+      ${(() => {
+        // Resilienz: nur ausweisen, wenn Abb. 10 tatsächlich gerechnet hat —
+        // sonst stünden hier Voreinstellungen, die nie in ein Ergebnis eingingen.
+        const r = window._pvResReco;
+        if (!r) return kapitel('5 · Resilienz') +
+          zeile('Inselbetrieb-Simulation', 'nicht gerechnet', 'Abb. 10 „Resilienz" öffnen, damit die Annahmen hier erscheinen');
+        const MODE = { 'gen':'Nur Notstrom', 'bat-gen':'Speicher + Notstrom',
+                       'pv-bat-gen':'PV + Speicher + Notstrom', 'pv-bat':'Nur PV + Speicher' };
+        const vv = window._pvResVarianten;
+        return kapitel('5 · Resilienz (Inselbetrieb bei Netzausfall)') +
+          zeile('Betriebsweise', MODE[r.mode] || r.mode, 'welche Erzeuger im Inselbetrieb verfügbar sind') +
+          zeile('Bemessungs-Ausfalldauer', num(r.durH) + ' h',
+                'gesetzte Annahme — keine Eintrittswahrscheinlichkeit; im Gutachten zu begründen') +
+          zeile('Notbetriebslast', num(_pvResLoadFrac) + ' % der Normallast',
+                'im Inselbetrieb gedeckter Anteil (nur kritische Verbraucher)') +
+          zeile('Nutzbare Batteriekapazität', num(_pvResUsable) + ' % der Nennkapazität',
+                'Entladetiefe und Kapazitätsverlust bei Kälte (Worst Case Winter)') +
+          zeile('Batterie-Ladestand bei Ausfall', r.batKwh > 0 ? 'realer Jahresverlauf' : '—',
+                'aus der netzgekoppelten Jahressimulation, nicht optimistisch voll angesetzt') +
+          zeile('Kraftstoff', escHtml(r.kraftstoff || '—'),
+                'Verbrauchskennwert und Preis je Kraftstoffart hinterlegt') +
+          zeile('Aggregat-Investition', num(_PV_RES_COST.gensetEurPerKw) + ' €/kW',
+                'Notstromaggregat inkl. Schaltung (Richtwert)') +
+          zeile('Tank-Investition', num(_PV_RES_COST.tankEurPerL, 2) + ' €/l',
+                'aufgefangene Lagerung, Volumen mit ' + num((_PV_RES_COST.tankMargin - 1) * 100) + ' % Zuschlag') +
+          zeile('Leistungsreserve Aggregat', '20 %', 'Aufschlag auf die kleinste ausreichende Leistung') +
+          zeile('Variantenvergleich', vv ? num(vv.zeilen.length) + ' Varianten gerechnet' : 'nicht gerechnet',
+                vv ? 'jede Variante an ihrem eigenen ungünstigsten Zeitpunkt'
+                   : 'in Abb. 10 auf „Varianten vergleichen" klicken');
+      })()}
     </table>
 
     <div style="margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:12px 14px;">
@@ -1596,6 +1629,10 @@ function renderAnnahmenblatt(varianten) {
         <div>Einspeisevergütung als ein Satz für alle Varianten, ohne EEG-Leistungsstaffel.</div>
         <div>Kapitalwert mit konstantem Jahresüberschuss, ohne Preissteigerungspfad.</div>
         <div>Keine PV-Degradation über die Nutzungsdauer.</div>
+        <div>Resilienz: Strom- und Wärmeausfall werden getrennt betrachtet. Dass bei Netzausfall
+             auch die Wärmepumpen stillstehen, ist nicht gekoppelt modelliert.</div>
+        <div>Resilienz: die Bemessungs-Ausfalldauer ist eine Setzung, keine aus Statistik
+             abgeleitete Eintrittswahrscheinlichkeit.</div>
       </div>
     </div>
   </div>`;
@@ -4231,6 +4268,119 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
   );
 }
 
+/**
+ * Batterie-Ladestand über das Jahr, EINGESCHWUNGEN.
+ *
+ * pvNapSim startet mit leerer Batterie. Für die Energiebilanz ist das belanglos,
+ * für die Resilienz nicht: der Scan nach dem ungünstigsten Ausfallzeitpunkt landet
+ * sonst zuverlässig auf dem 1. Januar — nicht weil dort das Wetter am schlechtesten
+ * wäre, sondern weil die Simulation dort mit 0 kWh anfängt. Deshalb ein zweiter
+ * Durchlauf, der mit dem Endstand des ersten beginnt; damit ist der Verlauf
+ * periodisch und der Worst Case eine physikalische Aussage.
+ */
+function _pvResSocJahr(pvKwp, batKwh, demandH, pvProfile, napParams, strat, spotH, dt, nHours) {
+  const vorlauf = pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, strat, spotH);
+  const startSoc = vorlauf.batSocArr?.length ? vorlauf.batSocArr[vorlauf.batSocArr.length - 1] : 0;
+  const jahr = pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, strat, spotH, 1, startSoc);
+  return _pvResHourly(jahr.batSocArr, dt).slice(0, nHours);
+}
+
+/**
+ * Resilienz-Kennwerte EINER Auslegung (PV/Batterie) unter den aktuell
+ * eingestellten Randbedingungen. Jede Auslegung wird an ihrem EIGENEN
+ * ungünstigsten Zeitpunkt bewertet — ein gemeinsamer Stichtag würde die
+ * Varianten ungleich behandeln, weil der Worst Case mit der PV-Größe wandert.
+ *
+ * Bewusst dieselbe Kette wie in der Einzelbetrachtung: realer Batterie-
+ * Ladestand aus der Jahressimulation, Scan über alle Startstunden, kleinste
+ * ausreichende Generatorleistung per Binärsuche, dann eine Simulation des
+ * Fensters mit dieser Leistung.
+ */
+function _pvResBewerte(pvKwp, batKwh, ctx) {
+  const { loadH, pvProfH, nHours, nDays, spez, dt, demandH, pvProfile, napParams, spotH,
+          durH, frac, capFrac, fuel, pvActive, batActive, genActive, mode } = ctx;
+
+  const pvEff  = pvActive  ? pvKwp  : 0;
+  const batEff = batActive ? batKwh : 0;
+
+  const pvH = new Float32Array(nHours);
+  if (pvEff > 0) for (let t = 0; t < nHours; t++) pvH[t] = pvProfH[t] * pvEff * spez;
+  const loadEff = new Float32Array(nHours);
+  for (let t = 0; t < nHours; t++) loadEff[t] = loadH[t] * frac;
+
+  // Ladestand bei Ausfall — mit PV der reale Jahresverlauf, ohne PV netzseitig voll
+  let socStart;
+  if (batEff > 0 && pvEff > 0) {
+    socStart = _pvResSocJahr(pvEff, batEff, demandH, pvProfile, napParams,
+                             spotH ? 'spot-dyn' : 'ev', spotH, dt, nHours);
+  } else if (batEff > 0) {
+    socStart = new Float32Array(nHours).fill(batEff);
+  } else {
+    socStart = new Float32Array(nHours);
+  }
+  const socAt = s => (socStart[s] ?? 0);
+
+  // Ungünstigster Start dieser Auslegung = höchster Generator-Energiebedarf
+  let worstStart = 0, worstEGen = -1;
+  const bridgeArr = new Float32Array(nDays * 24);
+  let bridgeSum = 0, vollGedeckt = 0;
+  for (let s = 0; s < nDays * 24; s++) {
+    const r = _pvResScan(loadEff, pvH, batEff, s, durH, nHours, socAt(s), capFrac);
+    bridgeArr[s] = r.bridge;
+    bridgeSum += r.bridge;
+    if (r.bridge >= durH) vollGedeckt++;
+    if (r.eGen > worstEGen) { worstEGen = r.eGen; worstStart = s; }
+  }
+  // Der Worst Case allein taugt nicht zum Variantenvergleich: dort steht die
+  // Batterie ohnehin leer, alle Auslegungen sehen gleich schlecht aus. Erst der
+  // Blick über ALLE Ausfallzeitpunkte zeigt, was eine größere Anlage wirklich bringt.
+  const nStarts = Math.max(1, nDays * 24);
+  const bridgeMittel = bridgeSum / nStarts;
+  const anteilVoll   = vollGedeckt / nStarts * 100;
+
+  let peakLoad = 0;
+  for (let k = 0; k < durH; k++) peakLoad = Math.max(peakLoad, loadEff[(worstStart + k) % nHours]);
+  const initSoc = Math.min(batEff * capFrac, socAt(worstStart));
+  const genKw = genActive
+    ? _pvResMinGen(loadEff, pvH, batEff, worstStart, durH, nHours, initSoc, fuel, peakLoad, capFrac)
+    : 0;
+  const sim = _pvResSim(loadEff, pvH, batEff, genKw, worstStart, durH, nHours, initSoc, fuel, mode, capFrac);
+
+  const recGenKw   = genActive ? Math.ceil(genKw * 1.2 / 5) * 5 : 0;
+  const gensetCost = recGenKw * _PV_RES_COST.gensetEurPerKw;
+  const tankL      = Math.ceil(sim.liters * _PV_RES_COST.tankMargin / 50) * 50;
+  const capexCost  = genActive ? gensetCost + tankL * _PV_RES_COST.tankEurPerL : 0;
+
+  return {
+    pvKwp: pvEff, batKwh: batEff,
+    worstStart, bridgeH: bridgeArr[worstStart] ?? durH, bridgeMittel, anteilVoll, peakLoad,
+    recGenKw, liters: sim.liters, tankL,
+    eUnmet: sim.eUnmet, eLoadMwh: sim.eLoad / 1000,
+    deckung: sim.eLoad > 0 ? (sim.eLoad - sim.eUnmet) / sim.eLoad : 1,
+    capexCost, fuelCost: sim.liters * fuel.price,
+    ePvMwh: sim.ePv / 1000, eBatMwh: sim.eBat / 1000, eGenMwh: sim.eGen / 1000,
+  };
+}
+
+/**
+ * Alle kanonischen PV-Varianten unter denselben Randbedingungen durchrechnen.
+ * Ergebnis landet in window._pvResVarianten — Grundlage für die Tabelle im
+ * Kapitel und für die Gutachten-Abbildung „Resilienz je Ausbauvariante".
+ * Bewusst auf Knopfdruck statt bei jedem Reglerzug: ein Durchlauf sind fünf
+ * volle Jahres-Scans.
+ */
+function _pvResVariantenRechnen(kanon, ctx, sig) {
+  const zeilen = kanon.map(v => ({
+    id: v.id, label: v.label, icon: v.icon, farbe: v.farbe,
+    ...(_pvResBewerte(v.pvKwp, v.batKwh, ctx)),
+  }));
+  window._pvResVarianten = {
+    sig, durH: ctx.durH, mode: ctx.mode, frac: ctx.frac, capFrac: ctx.capFrac,
+    kraftstoff: ctx.fuel.label, zeilen, ts: Date.now(),
+  };
+  return window._pvResVarianten;
+}
+
 // ── Abb. 10 — Resilienz / Blackout-Analyse ──────────────────────────────────
 // Frage: Wie autark ist die Anlage bei einem Netzausfall zum SCHLECHTESTEN
 // Zeitpunkt? Inselbetrieb wird stündlich simuliert (Batterie startet voll, PV
@@ -4520,6 +4670,7 @@ function renderResilienz(varianten, overrideEl) {
   <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${tabs}</div>
 
   <div id="pva-pvres-kpi" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+  <div id="pva-pvres-varianten" style="margin-bottom:10px;"></div>
   <div id="pva-pvres-heat"></div>
   <div id="pva-pvres-detail" style="margin-top:8px;"></div>
   <div id="pva-pvres-tradeoff" style="margin-top:10px;"></div>`;
@@ -4529,6 +4680,7 @@ function renderResilienz(varianten, overrideEl) {
   const loadIn = el.querySelector('#pva-pvres-load');
   const subEl = el.querySelector('#pva-pvres-sub');
   const kpiEl = el.querySelector('#pva-pvres-kpi');
+  const varEl = el.querySelector('#pva-pvres-varianten');
   const heatEl   = el.querySelector('#pva-pvres-heat');
   const detailEl = el.querySelector('#pva-pvres-detail');
   const tradeEl  = el.querySelector('#pva-pvres-tradeoff');
@@ -4562,9 +4714,8 @@ function renderResilienz(varianten, overrideEl) {
     //  • ohne PV: netzseitig vollgehalten → starte voll (Reserve)
     let socStart;
     if (batKwh > 0 && pvActive) {
-      const strat = spotH ? 'spot-dyn' : 'ev';
-      const yr = pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, strat, spotH);
-      socStart = _pvResHourly(yr.batSocArr, dt);
+      socStart = _pvResSocJahr(pvKwp, batKwh, demandH, pvProfile, napParams,
+                               spotH ? 'spot-dyn' : 'ev', spotH, dt, nHours);
     } else if (batKwh > 0) {
       socStart = new Float32Array(nHours).fill(batKwh);
     } else {
@@ -4659,11 +4810,95 @@ function renderResilienz(varianten, overrideEl) {
       gensetCost, tankCost, tankL, fuelCost, capexCost,
     };
 
+    // Kontext fuer die Variantenbewertung — dieselben Randbedingungen wie oben.
+    const resCtx = {
+      loadH, pvProfH, nHours, nDays, spez, dt, demandH, pvProfile, napParams, spotH,
+      durH, frac, capFrac, fuel, pvActive, batActive, genActive, mode: _pvResMode,
+    };
+    // Signatur der Randbedingungen: aendert sie sich, ist ein frueherer Vergleich
+    // veraltet und wird als solcher gekennzeichnet statt still weiterzugelten.
+    const resSig = [_pvResMode, durH, _pvResLoadFrac, _pvResUsable, _pvResFuel].join('|');
+    drawVarianten(resCtx, resSig);
+
+    // Zusatz fuer die Gutachten-Abbildungen: Jahresraster der Versorgungsluecke
+    // und der Verlauf des betrachteten Fensters.
+    window._pvResReco.luecke = { durH, werte: Array.from(bridgeArr, b => durH - b), nDays };
+    window._pvResReco.fenster = steps.map(st => ({
+      t: st.t, load: st.load, pv: st.pv, bat: st.bat, gen: st.genLoad,
+      luecke: Math.max(0, st.load - st.pv - st.bat - st.genLoad),
+    }));
+
     drawHeatmap(bridgeArr, durH, worstStart, selStart, isWorst);
     drawDetail(steps, peakLoad, batKwh, durH, selStart, isWorst);
     // #6 Trade-off (nur sinnvoll, wenn ein Aggregat gegen Batterie getauscht werden kann)
     if (genActive) drawTradeoff(loadEff, pvH, selStart, durH, peakLoad, batMax, batKwh, socStartPct / 100, fuel, capFrac);
     else tradeEl.innerHTML = '';
+  }
+
+  // ── Variantenvergleich: was leistet jede PV-Auslegung im Blackout? ──────
+  function drawVarianten(ctx, sig) {
+    if (!varEl) return;
+    const vres = window._pvResVarianten;
+    const aktuell = vres && vres.sig === sig && vres.zeilen?.length;
+    const knopf = (txt, farbe) =>
+      `<button data-pvres-varcalc style="padding:3px 12px;border:1px solid ${farbe};border-radius:11px;
+        background:transparent;color:${farbe};font-size:9.5px;cursor:pointer;">${txt}</button>`;
+
+    if (!aktuell) {
+      varEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:9px;background:#11151d;border:1px solid rgba(255,255,255,0.08);
+                  border-radius:6px;padding:8px 11px;">
+        <span style="font-size:9px;color:var(--muted);flex:1;">
+          ${vres ? 'Randbedingungen geändert — der Variantenvergleich ist veraltet.'
+                 : 'Wie schlagen sich die fünf PV-Varianten unter diesen Randbedingungen?'}
+          <span style="color:#607d8b;"> Fünf Jahres-Scans, wenige Sekunden.</span>
+        </span>
+        ${knopf(vres ? 'Neu vergleichen' : 'Varianten vergleichen', '#4fc3f7')}
+      </div>`;
+    } else {
+      const fmtK = v => v >= 10000 ? `${(v/1000).toFixed(0)} k€` : `${Math.round(v).toLocaleString('de-DE')} €`;
+      const rows = vres.zeilen.map(z => {
+        const voll = z.bridgeH >= vres.durH;
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+          <td style="padding:3px 6px;white-space:nowrap;"><span style="color:${z.farbe};">${z.icon}</span> ${escHtml(z.label)}</td>
+          <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:#fdd835;">${Math.round(z.pvKwp).toLocaleString('de-DE')}</td>
+          <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:#42a5f5;">${z.batKwh > 0 ? Math.round(z.batKwh).toLocaleString('de-DE') : '—'}</td>
+          <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:#66bb6a;">${(z.anteilVoll ?? 0).toFixed(0)} %</td>
+          <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:#4fc3f7;">${(z.bridgeMittel ?? 0).toFixed(1)} h</td>
+          <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:${voll ? '#66bb6a' : '#90a4ae'};">${voll ? '> ' + vres.durH : Math.round(z.bridgeH)} h</td>
+          <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:#ff8f00;">${z.recGenKw > 0 ? Math.round(z.recGenKw) + ' kW' : '—'}</td>
+          <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:#ff8f00;">${z.recGenKw > 0 ? Math.round(z.liters).toLocaleString('de-DE') + ' l' : '—'}</td>
+          <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:#a5d6a7;">${z.recGenKw > 0 ? fmtK(z.capexCost) : '0 €'}</td>
+          <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:${z.eUnmet > 0.5 ? '#ef5350' : '#66bb6a'};">${z.eUnmet > 0.5 ? (z.eUnmet/1000).toFixed(2) + ' MWh' : 'keine'}</td>
+        </tr>`;
+      }).join('');
+      varEl.innerHTML = `
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
+        <span style="font-size:9px;color:var(--muted);flex:1;">Resilienz je PV-Variante — jede an ihrem eigenen ungünstigsten Zeitpunkt,
+          ${vres.durH} h Ausfall, ${MODE_LBL[vres.mode] || vres.mode}, ${Math.round(vres.frac*100)} % Notbetriebslast</span>
+        ${knopf('Neu rechnen', 'rgba(255,255,255,0.25)')}
+      </div>
+      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:9px;">
+        <thead><tr style="color:var(--muted);border-bottom:1px solid rgba(255,255,255,0.12);">
+          <th style="text-align:left;padding:3px 6px;">Variante</th>
+          <th style="text-align:right;padding:3px 6px;">kWp</th>
+          <th style="text-align:right;padding:3px 6px;">Bat kWh</th>
+          <th style="text-align:right;padding:3px 6px;" title="Anteil aller Ausfallzeitpunkte im Jahr, die PV und Speicher allein vollständig tragen">Ø gedeckt</th>
+          <th style="text-align:right;padding:3px 6px;" title="Mittlere Überbrückung aus PV und Speicher über alle Ausfallzeitpunkte">Ø Überbrückung</th>
+          <th style="text-align:right;padding:3px 6px;" title="Überbrückung am ungünstigsten Zeitpunkt — dort steht die Batterie meist leer">Worst Case</th>
+          <th style="text-align:right;padding:3px 6px;" title="Kleinste ausreichende Leistung inkl. 20 % Reserve">Notstrom</th>
+          <th style="text-align:right;padding:3px 6px;">Sprit</th>
+          <th style="text-align:right;padding:3px 6px;">Resilienz-Capex</th>
+          <th style="text-align:right;padding:3px 6px;">Lücke</th>
+        </tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    const btn = varEl.querySelector('[data-pvres-varcalc]');
+    if (btn) btn.addEventListener('click', () => {
+      btn.textContent = 'Rechne …'; btn.disabled = true;
+      // Nächster Frame, damit der Knopf-Text noch gezeichnet wird
+      setTimeout(() => { _pvResVariantenRechnen(kanon, ctx, sig); draw(); }, 30);
+    });
   }
 
   function drawHeatmap(bridgeArr, durH, worstStart, selStart, isWorst) {

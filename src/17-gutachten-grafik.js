@@ -940,7 +940,8 @@ export function ggRenderHeatmap(cfg, T = GG_THEME) {
     const bx = lx + 10, bw = lw - 20, by = ly + 18, bh = 8;
     out += `<rect x="${gR(bx)}" y="${gR(by)}" width="${gR(bw)}" height="${bh}" fill="url(#${gradId})" stroke="${T.line}" stroke-width="1"/>`;
     out += txt(bx, by + bh + 10, '0', { size: S.fsLeg - 2, fill: T.text.faint });
-    out += txt(bx + bw, by + bh + 10, ggNum(maxV) + ' kW', { anchor: 'end', size: S.fsLeg - 2, fill: T.text.faint });
+    out += txt(bx + bw, by + bh + 10, ggNum(maxV) + ' ' + (cfg.einheit || 'kW'),
+               { anchor: 'end', size: S.fsLeg - 2, fill: T.text.faint });
   }
 
   out += `<rect x="${gR(plotX) + 0.5}" y="${plotY}.5" width="${gR(plotW) - 1}" height="${plotH - 1}"
@@ -2418,6 +2419,180 @@ function ggPvFiguren() {
             highlight: kritisch > 0 },
         ];
         return `✓ ${kanon.length} Varianten bewertet · schärfste Einstufung: ${schaerfste.rueck.ampel}.`;
+      },
+    },
+
+    // ── Versorgungslücke im Jahresverlauf (Kapitel 5.2) ──────────────────
+    {
+      id: 'res-jahresraster',
+      autoSync: true,
+      kapitel: '5.2 Bewertung Resilienz',
+      titel: 'Versorgungslücke je Ausfallzeitpunkt',
+      datei: 'resilienz-jahresraster',
+      hinweis: 'Für JEDE Stunde des Jahres simuliert: wie viele Stunden des betrachteten Ausfallfensters '
+             + 'könnten PV und Speicher allein nicht decken. Zeigt, dass es keine einzelne '
+             + 'Überbrückungsdauer gibt, sondern eine Verteilung — und wo der ungünstigste Zeitpunkt liegt. '
+             + 'Grundlage: Abb. 10 „Resilienz" in der ☀ PV-Analyse.',
+      render: cfg => ggRenderHeatmap(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Versorgungslücke je Ausfallzeitpunkt', ort: '',
+        meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+        achseY: 'Beginn des Ausfalls (Uhrzeit)', achseX: 'Beginn des Ausfalls (Tag im Jahr)',
+        leer: 'Noch keine Resilienz-Berechnung — Abb. 10 „Resilienz" in der PV-Analyse öffnen.',
+        grid: null, maxV: 1, einheit: 'h', legendeLabel: 'Stunden ohne Deckung aus PV und Speicher',
+        kpiLinks: [], kpiRechts: [],
+      },
+      ausProjekt(cfg) {
+        cfg.ort = cfg.ort || ggLiegenschaft();
+        cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+        ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+
+        const r = window._pvResReco;
+        if (!r?.luecke?.werte?.length) { cfg.grid = null; cfg.kpiLinks = []; cfg.kpiRechts = []; return '⚠ Noch keine Resilienz-Berechnung vorhanden.'; }
+
+        const werte = r.luecke.werte;
+        cfg.grid = werte;
+        cfg.maxV = r.luecke.durH;
+        cfg.titel = `Versorgungslücke je Ausfallzeitpunkt (${r.luecke.durH}-h-Ausfall)`;
+
+        let ohne = 0, summe = 0, max = 0;
+        for (const v of werte) { if (v <= 0.001) ohne++; summe += v; if (v > max) max = v; }
+        const anteilVoll = werte.length > 0 ? ohne / werte.length * 100 : 0;
+        cfg.kpiLinks = [
+          { wert: ggNum(anteilVoll) + ' %', label: 'der Ausfallzeitpunkte vollständig aus PV und Speicher gedeckt' },
+          { wert: ggNum(summe / Math.max(1, werte.length), 1) + ' h', label: 'mittlere Lücke über alle Zeitpunkte' },
+        ];
+        cfg.kpiRechts = [
+          { wert: ggNum(max) + ' h', label: 'größte Lücke (ungünstigster Zeitpunkt)' },
+          { wert: r.nHours ? ggPvTagLabel(r.worstStart) : '—', label: 'Ungünstigster Ausfallbeginn', highlight: true },
+        ];
+        return `✓ Jahresraster aus der Resilienz-Simulation übernommen (${r.luecke.durH}-h-Fenster).`;
+      },
+    },
+
+    // ── Verlauf im Ausfallfenster (Kapitel 5.2) ──────────────────────────
+    {
+      id: 'res-fensterverlauf',
+      autoSync: true,
+      kapitel: '5.2 Bewertung Resilienz',
+      titel: 'Lastdeckung im Ausfallfenster',
+      datei: 'resilienz-fensterverlauf',
+      hinweis: 'Stunde für Stunde durch das betrachtete Ausfallfenster: wer trägt die Last — PV, Speicher '
+             + 'oder Notstromaggregat — und bleibt eine Lücke. Der Beleg für die gewählte Auslegung. '
+             + 'Grundlage: Abb. 10 „Resilienz" in der ☀ PV-Analyse.',
+      render: cfg => ggRenderBalken(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Lastdeckung im Ausfallfenster', ort: '',
+        meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+        achseY: 'Leistung in kW', achseX: 'Stunde des Ausfalls',
+        leer: 'Noch keine Resilienz-Berechnung — Abb. 10 „Resilienz" in der PV-Analyse öffnen.',
+        kategorien: [], gruppen: [], kpiLinks: [], kpiRechts: [],
+      },
+      ausProjekt(cfg) {
+        cfg.ort = cfg.ort || ggLiegenschaft();
+        cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+        ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+
+        const r = window._pvResReco;
+        if (!r?.fenster?.length) { cfg.kategorien = []; cfg.gruppen = []; return '⚠ Noch keine Resilienz-Berechnung vorhanden.'; }
+
+        // Lange Fenster (mehrere Tage) auf höchstens 48 Säulen zusammenfassen —
+        // sonst wird die Abbildung im Word-Satz zum Strichmuster.
+        const roh = r.fenster;
+        const bucket = Math.max(1, Math.ceil(roh.length / 48));
+        const pv = [], bat = [], gen = [], luecke = [], kat = [];
+        for (let i = 0; i < roh.length; i += bucket) {
+          const teil = roh.slice(i, i + bucket);
+          const mit = (f) => teil.reduce((a, x) => a + f(x), 0) / teil.length;
+          pv.push(mit(x => x.pv)); bat.push(mit(x => x.bat));
+          gen.push(mit(x => x.gen)); luecke.push(mit(x => x.luecke));
+          kat.push(bucket === 1 ? String(i) : `${i}–${Math.min(roh.length, i + bucket) - 1}`);
+        }
+
+        cfg.kategorien = kat;
+        cfg.gruppen = [{ label: 'Deckung', segmente: [
+          { label: 'PV',                farbe: GG_THEME.accents.gruen,      werte: pv },
+          { label: 'Speicher',          farbe: GG_THEME.energy.strom,       werte: bat },
+          { label: 'Notstromaggregat',  farbe: GG_THEME.energy.gas,         werte: gen },
+          { label: 'ungedeckt',         farbe: GG_THEME.energy.waerme,      werte: luecke },
+        ]}];
+        cfg.achseX = bucket === 1 ? 'Stunde nach Ausfallbeginn'
+                                  : `Stunde nach Ausfallbeginn (je Säule ${bucket} h gemittelt)`;
+        cfg.titel = `Lastdeckung im ${r.durH}-h-Ausfallfenster`;
+
+        const sum = (a) => a.reduce((x, y) => x + y, 0) * bucket;
+        cfg.kpiLinks = [
+          { wert: r.nHours ? ggPvTagLabel(r.isWorst ? r.worstStart : r.selStart) : '—',
+            label: r.isWorst ? 'Ausfallbeginn (ungünstigster Zeitpunkt)' : 'Ausfallbeginn (gewählt)' },
+          { wert: ggNum(r.eLoadMwh, 2) + ' MWh', label: 'Energiebedarf im Fenster' },
+        ];
+        cfg.kpiRechts = [
+          { wert: r.genKw > 0 ? ggNum(r.genKw) + ' kW' : 'keines', label: 'Empfohlene Notstromleistung' },
+          { wert: sum(luecke) > 0.5 ? ggNum(sum(luecke) / 1000, 2) + ' MWh' : 'keine',
+            label: 'Verbleibende Versorgungslücke', highlight: sum(luecke) > 0.5 },
+        ];
+        return `✓ Verlauf des ${r.durH}-h-Fensters übernommen.`;
+      },
+    },
+
+    // ── Resilienz je Ausbauvariante (Kapitel 5.2) ────────────────────────
+    {
+      id: 'res-varianten',
+      autoSync: true,
+      kapitel: '5.2 Bewertung Resilienz',
+      titel: 'Resilienz je Ausbauvariante',
+      datei: 'resilienz-varianten',
+      hinweis: 'Was die fünf PV-Auslegungen aus Kapitel 3.2.5 im Blackout leisten: wie viel des '
+             + 'Ausfallfensters sie im Mittel über ALLE Ausfallzeitpunkte des Jahres aus PV und Speicher '
+             + 'allein tragen und ab wann das Notstromaggregat einspringen muss. Die Aggregatleistung '
+             + 'ist dagegen am ungünstigsten Zeitpunkt der jeweiligen Variante bemessen. '
+             + 'Grundlage: „Varianten vergleichen" in Abb. 10 „Resilienz".',
+      render: cfg => ggRenderBalken(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel: 'Resilienz je Ausbauvariante', ort: '',
+        meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+        achseY: 'Stunden des Ausfallfensters (Mittel)', achseX: 'Ausbauvariante',
+        leer: 'Noch kein Variantenvergleich — in Abb. 10 „Resilienz" auf „Varianten vergleichen" klicken.',
+        kategorien: [], gruppen: [], kpiLinks: [], kpiRechts: [],
+      },
+      ausProjekt(cfg) {
+        cfg.ort = cfg.ort || ggLiegenschaft();
+        cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+        ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+
+        const v = window._pvResVarianten;
+        if (!v?.zeilen?.length) { cfg.kategorien = []; cfg.gruppen = []; return '⚠ Noch kein Variantenvergleich vorhanden.'; }
+
+        const durH = v.durH;
+        cfg.kategorien = v.zeilen.map(z => `${z.icon} ${GG_PV_KURZ[z.id] || z.label}`);
+        // Bewusst der MITTELWERT über alle Ausfallzeitpunkte, nicht der Worst Case:
+        // dort steht die Batterie ohnehin leer, alle Varianten sähen gleich aus.
+        const mittel = z => Math.min(durH, z.bridgeMittel ?? z.bridgeH ?? 0);
+        cfg.gruppen = [{ label: 'Ausfallfenster', segmente: [
+          { label: 'im Mittel aus PV und Speicher getragen', farbe: GG_THEME.accents.gruen,
+            werte: v.zeilen.map(mittel) },
+          { label: 'im Mittel mit Notstromaggregat zu decken', farbe: GG_THEME.energy.gas,
+            werte: v.zeilen.map(z => Math.max(0, durH - mittel(z))) },
+        ]}];
+        cfg.titel = `Resilienz je Ausbauvariante (${durH}-h-Ausfall)`;
+        cfg.achseX = `Ausbauvariante · ${GG_RES_MODE_LBL[v.mode] || v.mode} · ${ggNum(v.frac * 100)} % Notbetriebslast`;
+
+        const beste = v.zeilen.reduce((a, b) => ((b.anteilVoll ?? 0) > (a.anteilVoll ?? 0) ? b : a));
+        const groesstesAggregat = v.zeilen.reduce((a, b) => (b.recGenKw > a.recGenKw ? b : a));
+        const kleinstesAggregat = v.zeilen.filter(z => z.recGenKw > 0)
+          .reduce((a, b) => (b.recGenKw < a.recGenKw ? b : a), { recGenKw: Infinity, label: '—' });
+        cfg.kpiLinks = [
+          { wert: ggNum(beste.anteilVoll ?? 0) + ' %',
+            label: `Ausfallzeitpunkte ohne Notstrom gedeckt — Bestwert (${beste.label})` },
+          { wert: ggNum(durH) + ' h', label: 'Betrachtete Ausfalldauer' },
+        ];
+        cfg.kpiRechts = [
+          { wert: isFinite(kleinstesAggregat.recGenKw) ? ggNum(kleinstesAggregat.recGenKw) + ' kW' : '—',
+            label: `Kleinstes ausreichendes Aggregat (${kleinstesAggregat.label})` },
+          { wert: groesstesAggregat.recGenKw > 0 ? ggNum(groesstesAggregat.recGenKw) + ' kW' : 'keines',
+            label: `Größtes benötigtes Aggregat (${groesstesAggregat.label})`, highlight: true },
+        ];
+        return `✓ ${v.zeilen.length} Varianten aus dem Resilienz-Vergleich übernommen.`;
       },
     },
 
