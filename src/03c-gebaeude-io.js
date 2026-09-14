@@ -1,7 +1,11 @@
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
 import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustand, globalYear, isExcluded, selectedId, stromEdges, migriereVariantenFallsNoetig,
          pdBearbeiterStrom, pdBearbeiterWaerme, pdKaserneName, pdWeNummer,
-         setPdBearbeiterStrom, setPdBearbeiterWaerme, setPdKaserneName, setPdWeNummer } from './01-globals-varianten.js';
+         setPdBearbeiterStrom, setPdBearbeiterWaerme, setPdKaserneName, setPdWeNummer,
+         naNetzbetreiberName, naNetzbetreiberAdresse, naSpannungsebene, naUebergabepunkt,
+         naVereinbarteScheinleistungKva, naMessverfahren, naEinspeisungen,
+         setNaNetzbetreiberName, setNaNetzbetreiberAdresse, setNaSpannungsebene, setNaUebergabepunkt,
+         setNaVereinbarteScheinleistungKva, setNaMessverfahren, setNaEinspeisungen } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh, highlightCard, map,
          getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
@@ -2573,7 +2577,15 @@ export function syncProjektname() {
 }
 
 export function _captureProjektStammdaten() {
-  return { bearbeiterStrom: pdBearbeiterStrom, bearbeiterWaerme: pdBearbeiterWaerme, kaserneName: pdKaserneName, weNummer: pdWeNummer };
+  return {
+    bearbeiterStrom: pdBearbeiterStrom, bearbeiterWaerme: pdBearbeiterWaerme, kaserneName: pdKaserneName, weNummer: pdWeNummer,
+    netzanschluss: {
+      netzbetreiberName: naNetzbetreiberName, netzbetreiberAdresse: naNetzbetreiberAdresse,
+      spannungsebene: naSpannungsebene, uebergabepunkt: naUebergabepunkt,
+      vereinbarteScheinleistungKva: naVereinbarteScheinleistungKva, messverfahren: naMessverfahren,
+      einspeisungen: naEinspeisungen,
+    },
+  };
 }
 
 function _restoreProjektStammdaten(daten) {
@@ -2582,6 +2594,14 @@ function _restoreProjektStammdaten(daten) {
   setPdBearbeiterWaerme(d.bearbeiterWaerme || '');
   setPdKaserneName(d.kaserneName || '');
   setPdWeNummer(d.weNummer || '');
+  const na = d.netzanschluss || {};
+  setNaNetzbetreiberName(na.netzbetreiberName || '');
+  setNaNetzbetreiberAdresse(na.netzbetreiberAdresse || '');
+  setNaSpannungsebene(na.spannungsebene || '');
+  setNaUebergabepunkt(na.uebergabepunkt || '');
+  setNaVereinbarteScheinleistungKva(na.vereinbarteScheinleistungKva || '');
+  setNaMessverfahren(na.messverfahren || '');
+  setNaEinspeisungen(Array.isArray(na.einspeisungen) ? na.einspeisungen : []);
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('pd-bearbeiter-strom', pdBearbeiterStrom);
   set('pd-bearbeiter-waerme', pdBearbeiterWaerme);
