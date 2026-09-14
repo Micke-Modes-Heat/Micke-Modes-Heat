@@ -1141,6 +1141,89 @@ export function ggRenderTabelle(cfg, T = GG_THEME) {
   return ggFinishSvg(out, W, height);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3c) RENDERER — „Gutachtentext": Standardtext mit Platzhaltern, die aus dem
+ * Projekt vorbelegt oder von Hand ergänzt werden. Anders als die Abbildungen
+ * oben ist das Ergebnis kein SVG, sondern ein HTML-Textblock — reicht aber
+ * denselben Vertrag ({render(cfg) -> Node} mit .style/.querySelectorAll), also
+ * braucht ggRenderPanel dafür keine Sonderbehandlung beim Zeichnen selbst,
+ * nur bei der Export-/Optionenleiste (siehe figur.istText weiter unten).
+ * ═══════════════════════════════════════════════════════════════════════ */
+const GG_TEXT_STIL_AUSGEFUELLT = 'background:#eaf6ea;border-bottom:1.5px solid #3F9C3F;padding:0 2px;border-radius:2px;';
+const GG_TEXT_STIL_OFFEN = 'background:#fff3cd;border-bottom:1.5px solid #e0a126;padding:0 2px;border-radius:2px;color:#7a5b00;';
+
+/** Ein Platzhalter im Fließtext — ausgefüllt grün, offen gelb mit Feldname in Klammern. */
+function ggTextFeld(wert, feldname) {
+  const gefuellt = !!String(wert ?? '').trim();
+  const inhalt = gefuellt ? String(wert).trim() : `[${feldname}]`;
+  return `<span style="${gefuellt ? GG_TEXT_STIL_AUSGEFUELLT : GG_TEXT_STIL_OFFEN}">${gEsc(inhalt)}</span>`;
+}
+
+/** Kapitel 3.2.2 Liegenschaftsstromnetzanschluss — Textbaustein aus den Netzanschluss-Stammdaten. */
+function ggRenderNetzanschlussText(cfg, T = GG_THEME) {
+  void cfg;
+  const einspeisungen = window.naEinspeisungen?.length ? window.naEinspeisungen : [{ station: '', kabeltyp: '' }];
+  const einspeiseSatz = einspeisungen.map((e, i) => {
+    const zaehler = einspeisungen.length > 1 ? ` ${i + 1}` : '';
+    const teil = `${ggTextFeld(e.station, `Station${zaehler}`)} mit einem Kabel des Typs ${ggTextFeld(e.kabeltyp, `Kabeltyp${zaehler}`)}`;
+    return i === 0 ? `über die Station ${teil}` : `sowie zusätzlich über die Station ${teil}`;
+  }).join(' ');
+
+  const p = html => `<p style="margin:0 0 12px;">${html}</p>`;
+  const html = `<div style="background:${T.bg};max-width:${T.width}px;padding:26px 30px;box-sizing:border-box;
+      font-family:${T.font};font-size:13px;line-height:1.65;color:${T.text.strong};border:1px solid ${T.line};">
+    ${p(`Die elektrische Energieversorgung der Liegenschaft erfolgt aus dem Netz der `
+      + `${ggTextFeld(window.naNetzbetreiberName, 'Name Netzbetreiber')}, `
+      + `${ggTextFeld(window.naNetzbetreiberAdresse, 'Adresse Netzbetreiber')}.`)}
+    ${p(`Die Versorgung erfolgt auf der Spannungsebene ${ggTextFeld(window.naSpannungsebene, 'Spannungsebene Netzanschluss')} `
+      + `${einspeiseSatz}.`)}
+    ${p(`Der Übergabepunkt befindet sich im Gebäude ${ggTextFeld(window.naUebergabepunkt, 'Bezeichnung/Lage Übergabepunkt')}.`)}
+    ${p(`Gemäß dem vorliegenden Netzanschlussvertrag beträgt die vereinbarte Anschlussleistung an diesem Übergabepunkt `
+      + `${ggTextFeld(window.naVereinbarteScheinleistungKva, 'Vereinbarte max. Scheinleistung')} kVA.`)}
+    ${p(`Die Messung erfolgt als ${ggTextFeld(window.naMessverfahren, 'Messverfahren')}.`)}
+    ${p(`Der Netzbetreiber erteilt grundsätzlich keine Auskunft über die physikalisch maximal mögliche Anschlussleistung `
+      + `der Liegenschaft. Eine Bewertung der verfügbaren Netzkapazitäten erfolgt ausschließlich auf Basis eines `
+      + `konkreten Netzanschlussantrags. Hierzu ist das vom Netzbetreiber bereitgestellte Antragsformular zur Anmeldung `
+      + `des Netzanschlusses (z. B. „Formular E1 – Anmeldung zum Netzanschluss Strom“) mit Angabe der zukünftig `
+      + `benötigten Anschlussleistung einzureichen. Erst im Anschluss prüft der Netzbetreiber die technische `
+      + `Verfügbarkeit, den erforderlichen Netzausbaubedarf sowie die zeitlichen und wirtschaftlichen Rahmenbedingungen.`)}
+    ${p(`Vor dem Hintergrund der erwarteten Laststeigerungen durch Elektromobilität, Wärmepumpen und den Ausbau `
+      + `erneuerbarer Erzeugungsanlagen wird empfohlen, den Netzanschlussantrag frühzeitig und auf Basis einer `
+      + `realistischen Leistungsannahme einschließlich angemessener Reserve zu stellen, um Planungssicherheit für `
+      + `nachgelagerte Maßnahmen zu schaffen.`)}
+  </div>`;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = html;
+  return wrap.firstElementChild;
+}
+
+/** „Für Word kopieren" bei Textbausteinen — Gegenstueck zu ggCopyForWord/ggCopyTableForWord, nur mit Fließtext statt Bild/Tabelle. */
+export async function ggCopyTextForWord(figur) {
+  const el = figur.render(figur.config);
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${el.outerHTML}</body></html>`;
+  const text = el.textContent.trim();
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([new window.ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      })]);
+      return 'Zwischenablage';
+    } catch (e) { void e; /* Fallback unten */ }
+  }
+  const holder = document.createElement('div');
+  holder.contentEditable = 'true';
+  holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  holder.appendChild(el);
+  document.body.appendChild(holder);
+  const rng = document.createRange(); rng.selectNodeContents(holder);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng);
+  const ok = document.execCommand('copy');
+  sel.removeAllRanges(); holder.remove();
+  if (!ok) throw new Error('Zwischenablage nicht verfügbar');
+  return 'Zwischenablage (Fallback)';
+}
+
 /** Kennzahlen eines Lastgangs: Summe, Spitze, Grundlast (1-%-Quantil). */
 export function ggLastgangKennzahlen(daten, stundenProWert) {
   const n = daten.length;
@@ -1783,6 +1866,47 @@ const GG_FIGUREN = [
           : { wert: reserve != null ? ggNum(reserve) + ' kW' : '—', label: `Reserve ${res.bis}`, highlight: true },
       ];
       return `✓ ${jahre.length} Jahre aus ${res.proJahr.length} Stützjahren (${res.von}–${res.bis}) übernommen.`;
+    },
+  },
+
+  // ── Gutachtentext: Netzanschluss ─────────────────────────────────────
+  {
+    id: 'netzanschluss-text',
+    istText: true,
+    kapitel: '3.2.2 Liegenschaftsstromnetzanschluss',
+    titel: 'Gutachtentext: Netzanschluss',
+    datei: 'netzanschluss-text',
+    hinweis: 'Standardtext für dieses Kapitel. Grün hinterlegte Angaben stammen aus dem Projekt oder wurden bereits '
+           + 'eingetragen, gelb hinterlegte Platzhalter fehlen noch. Ergänzungen hier werden als Netzanschluss-'
+           + 'Stammdaten in der Projektdatei gespeichert. „⟳ Aus Projekt übernehmen“ liest Spannungsebene und '
+           + 'Übergabepunkt-Gebäude aus dem NAP-Asset des Elektro-Tabs, sofern eines platziert ist.',
+    render: cfg => ggRenderNetzanschlussText(cfg),
+    config: {},
+    ausProjekt() {
+      let naps = [];
+      try { naps = window.listAssets?.({ type: 'NAP' }) || []; } catch (e) { void e; }
+      if (!naps.length) return '⚠ Kein NAP-Asset im Modell — Spannungsebene und Übergabepunkt bitte von Hand eintragen.';
+      const nap = naps[0];
+      let n = 0;
+      if (!window.naSpannungsebene && nap.props?.spannungKV) {
+        const kv = Number(nap.props.spannungKV);
+        window.naSpannungsebene = kv > 1 ? `Mittelspannung (${kv} kV)` : `Niederspannung (${kv * 1000} V)`;
+        n++;
+      }
+      if (!window.naUebergabepunkt && nap.buildingId) {
+        const g = (window.gebaeude || []).find(b => b.id === nap.buildingId);
+        const bez = String(g?.gebaeudenummer || g?.name || '').trim();
+        if (bez) { window.naUebergabepunkt = bez; n++; }
+      }
+      if (naps.length > 1) {
+        const vorhandene = window.naEinspeisungen || [];
+        if (vorhandene.length < naps.length) {
+          window.naEinspeisungen = naps.map((_, i) => vorhandene[i] || { station: '', kabeltyp: '' });
+          n++;
+        }
+      }
+      return n ? `✓ ${n} Angabe(n) aus dem NAP-Asset übernommen — bitte prüfen.`
+               : '✓ Keine leeren Felder gefunden, die sich aus dem NAP-Asset ableiten ließen.';
     },
   },
 
@@ -2792,21 +2916,26 @@ export function ggRenderPanel() {
     const sel = (click, optionen, wert) => `<select data-change="${click}" style="font-family:inherit;font-size:11px;padding:5px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">
            ${optionen.map(([v, l]) => `<option value="${v}"${String(wert) === String(v) ? ' selected' : ''}>${l}</option>`).join('')}
          </select>`;
-    const zielTabelle = ggZielIstTabelle();
-    bar.innerHTML = btn(zielTabelle ? '⊞ Als Tabelle kopieren' : '⧉ Für Word kopieren', 'ggCopy()', true)
-      + btn('⤓ PNG', 'ggSavePng()') + btn('⤓ SVG', 'ggSaveSvg()')
-      + sel('ggSetScale(this.value)', [[2, '2× · ~300 dpi'], [3, '3× · ~450 dpi'], [4, '4× · ~600 dpi']], _gg.scale)
-      + (ggIstBlatt(figur)
-          ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
-                                            ['reduziert', 'Blatt: reduziert + Kennzahlentabelle']], _gg.layout)
-          : '')
-      + ((ggZeigtTabelle(figur) || ggIstTabellenFigur(figur))
-          ? sel('ggSetZiel(this.value)', [['figur', 'Export: Abbildung'],
-                ['tabelle', ggIstTabellenFigur(figur) ? 'Export: Word-Tabelle' : 'Export: Kennzahlen']], _gg.ziel)
-          : '')
-      + `<span style="margin-left:auto;font-size:10px;color:var(--muted);">${zielTabelle
-          ? '„Als Tabelle kopieren" + Strg+V ergibt eine echte, editierbare Word-Tabelle — PNG/SVG legen die Tabelle stattdessen als Bild ab.'
-          : 'In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.'}</span>`;
+    if (figur.istText) {
+      bar.innerHTML = btn('⧉ Für Word kopieren', 'ggCopy()', true)
+        + `<span style="margin-left:auto;font-size:10px;color:var(--muted);">In Word mit Strg+V einfügen — offene Platzhalter bleiben gelb hervorgehoben, bis sie ausgefüllt sind.</span>`;
+    } else {
+      const zielTabelle = ggZielIstTabelle();
+      bar.innerHTML = btn(zielTabelle ? '⊞ Als Tabelle kopieren' : '⧉ Für Word kopieren', 'ggCopy()', true)
+        + btn('⤓ PNG', 'ggSavePng()') + btn('⤓ SVG', 'ggSaveSvg()')
+        + sel('ggSetScale(this.value)', [[2, '2× · ~300 dpi'], [3, '3× · ~450 dpi'], [4, '4× · ~600 dpi']], _gg.scale)
+        + (ggIstBlatt(figur)
+            ? sel('ggSetLayout(this.value)', [['voll', 'Blatt: vollständig'],
+                                              ['reduziert', 'Blatt: reduziert + Kennzahlentabelle']], _gg.layout)
+            : '')
+        + ((ggZeigtTabelle(figur) || ggIstTabellenFigur(figur))
+            ? sel('ggSetZiel(this.value)', [['figur', 'Export: Abbildung'],
+                  ['tabelle', ggIstTabellenFigur(figur) ? 'Export: Word-Tabelle' : 'Export: Kennzahlen']], _gg.ziel)
+            : '')
+        + `<span style="margin-left:auto;font-size:10px;color:var(--muted);">${zielTabelle
+            ? '„Als Tabelle kopieren" + Strg+V ergibt eine echte, editierbare Word-Tabelle — PNG/SVG legen die Tabelle stattdessen als Bild ab.'
+            : 'In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.'}</span>`;
+    }
   }
 
   // ── Figur zeichnen ──
@@ -2840,7 +2969,7 @@ export function ggRenderPanel() {
   const opt = document.getElementById('gg-optionen');
   if (opt) {
     let html = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">${figur.config.groups ? 'Zustände' : 'Kopfzeile'}</div>`;
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">${figur.istText ? 'Platzhalter' : figur.config.groups ? 'Zustände' : 'Kopfzeile'}</div>`;
     if (typeof figur.ausProjekt === 'function') {
       html += `<button data-click="ggSyncFromProject()" style="font-family:inherit;font-size:10px;padding:3px 9px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">⟳ Aus Projekt übernehmen</button>`;
     }
@@ -2855,6 +2984,34 @@ export function ggRenderPanel() {
             ${gEsc(Array.isArray(it.label) ? it.label.join(' ') : it.label)}</label>`;
       }));
       html += `</div>`;
+    }
+
+    if (figur.istText) {
+      const naFeld = (label, wert, click, w) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);">
+          ${gEsc(label)}
+          <input type="text" value="${gEsc(wert || '')}" data-change="${click}" style="font-family:inherit;font-size:11px;padding:4px 6px;border-radius:4px;
+            border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);min-width:${w || '170px'};"></label>`;
+      html += `<div style="display:flex;flex-wrap:wrap;gap:8px 12px;">`
+        + naFeld('Name Netzbetreiber', window.naNetzbetreiberName, "ggSetNaFeld('naNetzbetreiberName',this.value)")
+        + naFeld('Adresse Netzbetreiber', window.naNetzbetreiberAdresse, "ggSetNaFeld('naNetzbetreiberAdresse',this.value)")
+        + naFeld('Spannungsebene Netzanschluss', window.naSpannungsebene, "ggSetNaFeld('naSpannungsebene',this.value)", '150px')
+        + naFeld('Gebäude/Lage Übergabepunkt', window.naUebergabepunkt, "ggSetNaFeld('naUebergabepunkt',this.value)")
+        + naFeld('Vereinbarte max. Scheinleistung (kVA)', window.naVereinbarteScheinleistungKva, "ggSetNaFeld('naVereinbarteScheinleistungKva',this.value)", '150px')
+        + naFeld('Messverfahren', window.naMessverfahren, "ggSetNaFeld('naMessverfahren',this.value)", '220px')
+        + `</div>`;
+
+      const einspeisungen = window.naEinspeisungen?.length ? window.naEinspeisungen : [{ station: '', kabeltyp: '' }];
+      html += `<div style="margin-top:12px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Einspeisepunkte (Mittelspannung)</div>`
+        + einspeisungen.map((e, i) => `<div style="display:flex;gap:8px;align-items:flex-end;margin-top:6px;">`
+            + naFeld('Station', e.station, `ggSetEinspeisung(${i},'station',this.value)`)
+            + naFeld('Kabeltyp', e.kabeltyp, `ggSetEinspeisung(${i},'kabeltyp',this.value)`)
+            + (einspeisungen.length > 1
+                ? `<button data-click="ggRemoveEinspeisung(${i})" title="Einspeisepunkt entfernen" style="font-size:11px;padding:5px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">✕</button>`
+                : '')
+            + `</div>`).join('')
+        + `<button data-click="ggAddEinspeisung()" style="margin-top:6px;font-size:10px;padding:4px 9px;border-radius:4px;cursor:pointer;border:1px solid rgba(38,166,154,.4);background:rgba(38,166,154,.08);color:#26a69a;">+ Einspeisepunkt</button>`;
+
+      html += `<div style="margin-top:10px;font-size:10px;color:var(--muted);line-height:1.5;">Diese Angaben werden als Netzanschluss-Stammdaten in der Projektdatei gespeichert und stehen damit im ganzen Tool zur Verfügung.</div>`;
     }
 
     if (figur.config.meta) {
@@ -2953,10 +3110,48 @@ export function ggSetMeta(key, wert) {
   ggRenderPanel();
 }
 
+/** Netzanschluss-Stammdaten setzen — Feldname entspricht dem window-Property (z. B. 'naSpannungsebene'),
+ * dessen Setter über die globale Namenskonvention set<Feld> aufgerufen wird (siehe main.js/ggMetaDefaults). */
+export function ggSetNaFeld(feld, wert) {
+  const setter = window['set' + feld.charAt(0).toUpperCase() + feld.slice(1)];
+  if (typeof setter === 'function') setter(wert);
+  ggRenderPanel();
+}
+
+export function ggSetEinspeisung(i, feld, wert) {
+  const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
+  if (!liste[i]) liste[i] = { station: '', kabeltyp: '' };
+  liste[i][feld] = wert;
+  window.naEinspeisungen = liste;
+  ggRenderPanel();
+}
+
+export function ggAddEinspeisung() {
+  const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
+  liste.push({ station: '', kabeltyp: '' });
+  window.naEinspeisungen = liste;
+  ggRenderPanel();
+}
+
+export function ggRemoveEinspeisung(i) {
+  const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
+  liste.splice(i, 1);
+  window.naEinspeisungen = liste;
+  ggRenderPanel();
+}
+
 /** Aktuelles Kopierziel ist das Kennzahlenblatt — dann als echte Tabelle statt als Bild. */
 const ggZielIstTabelle = () => _gg.ziel === 'tabelle' && (ggZeigtTabelle(ggFigur()) || ggIstTabellenFigur(ggFigur()));
 
 export async function ggCopy() {
+  if (ggFigur().istText) {
+    ggSay('Wird vorbereitet …');
+    try {
+      const wohin = await ggCopyTextForWord(ggFigur());
+      ggSay(`✓ Text in die ${wohin} kopiert — in Word mit Strg+V einfügen.`);
+    } catch (e) { ggSay('⚠ ' + e.message, true); }
+    return;
+  }
   if (ggZielIstTabelle()) {
     ggSay('Wird vorbereitet …');
     try {

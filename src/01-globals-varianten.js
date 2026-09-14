@@ -22,6 +22,26 @@ export let pdKaserneName = '';
 export function setPdKaserneName(v) { pdKaserneName = v || ''; }
 export let pdWeNummer = '';
 export function setPdWeNummer(v) { pdWeNummer = v || ''; }
+
+// ── Netzanschluss-Stammdaten (Gutachtentext Kapitel 3.2.2 Liegenschaftsstromnetzanschluss) ──
+// Manuell erfasste Vertrags-/Netzbetreiberangaben, die das Tool nicht selbst kennt
+// (das Netzmodell beginnt erst am Netzanknüpfungspunkt/NAP) — ergänzen dort, wo im
+// Elektromodell bereits Werte vorliegen (z. B. Spannungsebene aus dem NAP-Asset).
+export let naNetzbetreiberName = '';
+export function setNaNetzbetreiberName(v) { naNetzbetreiberName = v || ''; }
+export let naNetzbetreiberAdresse = '';
+export function setNaNetzbetreiberAdresse(v) { naNetzbetreiberAdresse = v || ''; }
+export let naSpannungsebene = '';
+export function setNaSpannungsebene(v) { naSpannungsebene = v || ''; }
+export let naUebergabepunkt = '';
+export function setNaUebergabepunkt(v) { naUebergabepunkt = v || ''; }
+export let naVereinbarteScheinleistungKva = '';
+export function setNaVereinbarteScheinleistungKva(v) { naVereinbarteScheinleistungKva = v || ''; }
+export let naMessverfahren = '';
+export function setNaMessverfahren(v) { naMessverfahren = v || ''; }
+/** Liste der MS-Einspeisepunkte: [{station, kabeltyp}, …] — je Liegenschaft unterschiedlich viele. */
+export let naEinspeisungen = [];
+export function setNaEinspeisungen(v) { naEinspeisungen = Array.isArray(v) ? v : []; }
 export const _expandedIds = new Set(); // tracks which building cards are expanded
 export let _vizTimer = null;
 export function updateVizDebounced() { clearTimeout(_vizTimer); _vizTimer = setTimeout(updateViz, 80); }
