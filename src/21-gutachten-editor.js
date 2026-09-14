@@ -581,8 +581,10 @@ function neuZeichnen() {
 
 export function gutStandardAnlegen(ersetzen = false) {
   if (_gut.dok && !ersetzen) return;
-  if (_gut.dok && !window.confirm('Das aktuelle Gutachten-Dokument samt aller Freitexte und der Anordnung durch die Standardgliederung ersetzen?')) return;
+  if (_gut.dok && !window.confirm('Das aktuelle Gutachten-Dokument samt aller Freitexte, Lagepläne und der Anordnung durch die '
+      + 'Standardgliederung ersetzen? Das Deckblatt bleibt erhalten.')) return;
   const { dok, nichtZugeordnet } = gdStandardDokument(ggFigurenKatalog());
+  dok.deckblatt = _gut.dok?.deckblatt || dok.deckblatt;   // Projektangaben haben nichts mit der Gliederung zu tun
   _gut.dok = dok;
   _gut.auswahl = null;
   _gut.cache.clear();
