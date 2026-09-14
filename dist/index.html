@@ -11589,6 +11589,10 @@ if (typeof L !== 'undefined') {
             <label for="pd-we-nummer" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">WE-Nummer</label>
             <input class="inp-field" id="pd-we-nummer" type="text" placeholder="z. B. 12345" style="width:100%;" data-input="setPdWeNummer(this.value); syncProjektname()">
           </div>
+          <div style="grid-column:1/-1;">
+            <label for="pd-liegenschaft-adresse" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;" title="Reale Anschrift für Deckblatt &amp; Grafik-Köpfe — unabhängig vom Klimastandort unter Wärme-Grundlagen">Adresse Liegenschaft</label>
+            <input class="inp-field" id="pd-liegenschaft-adresse" type="text" placeholder="z. B. Musterstr. 1, 12345 Musterstadt" style="width:100%;" data-input="setPdLiegenschaftAdresse(this.value)">
+          </div>
         </div>
         <div id="pd-projektname-preview" style="font-size:9px;color:var(--muted);margin-bottom:8px;min-height:12px;"></div>
         <div class="lp-tool-grid">
@@ -14672,25 +14676,31 @@ if (typeof L !== 'undefined') {
     </div>
     <div id="strom-quartier-synth-info" style="font-size:9px;color:var(--muted);margin-bottom:8px;margin-top:-6px;padding-left:2px;font-style:italic;"></div>
 
-    <!-- Spot-Preise Upload (für PV-Analyse) -->
-    <div class="sa-section-title" style="margin-top:4px;">
-      Spot-Preise EPEX DE
-      <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">für PV-Analyse · Vorjahr empfohlen</span>
-      <a href="https://www.smard.de/home/downloadcenter/download-marktdaten/" target="_blank"
-        style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--accent);font-size:9px;margin-left:6px;text-decoration:none;">→ SMARD.de</a>
-    </div>
-    <div id="spot-upload-area" data-click="document.getElementById('spot-file-input').click()"
-      style="border:1px dashed var(--border);border-radius:6px;padding:9px 12px;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:8px;transition:.15s;"
-      onmouseenter="this.style.borderColor='#ab47bc'" onmouseleave="this.style.borderColor='var(--border)'">
-      <span style="font-size:15px;">💹</span>
-      <div style="flex:1;">
-        <div style="font-size:10px;color:var(--muted);">CSV — 15-min oder Stunden · EUR/MWh oder ct/kWh (SMARD, ENTSO-E …)</div>
-        <div id="spot-upload-info" style="font-size:10px;color:#ab47bc;margin-top:2px;"></div>
+    <!-- Spot-Preise Upload (für PV-Analyse) — aufklappbar, standardmäßig eingeklappt -->
+    <details id="spot-preise-details" style="margin-top:4px;margin-bottom:10px;">
+      <summary class="sa-section-title" style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px;">
+        <span style="font-size:9px;transition:transform .2s;flex-shrink:0;" id="spot-preise-arrow">&#9654;</span>
+        Spot-Preise EPEX DE
+        <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">für PV-Analyse · Vorjahr empfohlen</span>
+        <a href="https://www.smard.de/home/downloadcenter/download-marktdaten/" target="_blank"
+          style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--accent);font-size:9px;margin-left:6px;text-decoration:none;" onclick="event.stopPropagation()">→ SMARD.de</a>
+      </summary>
+      <div id="spot-upload-area" data-click="document.getElementById('spot-file-input').click()"
+        style="border:1px dashed var(--border);border-radius:6px;padding:9px 12px;cursor:pointer;margin-top:7px;display:flex;align-items:center;gap:8px;transition:.15s;"
+        onmouseenter="this.style.borderColor='#ab47bc'" onmouseleave="this.style.borderColor='var(--border)'">
+        <span style="font-size:15px;">💹</span>
+        <div style="flex:1;">
+          <div style="font-size:10px;color:var(--muted);">CSV — 15-min oder Stunden · EUR/MWh oder ct/kWh (SMARD, ENTSO-E …)</div>
+          <div id="spot-upload-info" style="font-size:10px;color:#ab47bc;margin-top:2px;"></div>
+        </div>
+        <button id="spot-clear-btn" data-click="event.stopPropagation();spotPreisClear()"
+          style="display:none;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;">✕</button>
       </div>
-      <button id="spot-clear-btn" data-click="event.stopPropagation();spotPreisClear()"
-        style="display:none;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;">✕</button>
-    </div>
-    <input type="file" id="spot-file-input" accept=".csv,.txt" style="display:none;" data-change="spotPreisFileSelected(this.files[0])"/>
+      <input type="file" id="spot-file-input" accept=".csv,.txt" style="display:none;" data-change="spotPreisFileSelected(this.files[0])"/>
+    </details>
+
+    <!-- Netzanschluss-Stammdaten (gerendert von src/22-netzanschluss-panel.js) -->
+    <div id="strom-netzanschluss-wrap"></div>
 
     <!-- NAP-Grenzen -->
     <div class="sa-section-title" style="margin-top:4px;">NAP-Grenzen <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">für PV-Analyse &amp; NAP-Lastgang · leer = unbegrenzt · 0 = kein Strom</span></div>
@@ -14703,114 +14713,14 @@ if (typeof L !== 'undefined') {
         <span style="font-size:10px;color:var(--muted);">kW</span>
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:140px;">
-        <span style="font-size:10px;color:#4fc3f7;flex-shrink:0;">Max. Bezug:</span>
+        <span style="font-size:10px;color:#4fc3f7;flex-shrink:0;" title="= vereinbarte Anschlussleistung laut Netzanschlussvertrag">Max. Bezug:</span>
         <input class="inp-field" type="number" id="strom-nap-bezug-kw" min="0" step="10"
           placeholder="∞" style="width:70px;text-align:right;"
           data-input="window.elNapMaxBezugKw=(this.value===''?null:parseFloat(this.value));window._pvAnalyse&&(window._pvAnalyse.napMaxBezugKw=window.elNapMaxBezugKw??0);(document.getElementById('pva-nap-bezug')||{}).value=window.elNapMaxBezugKw??''"/>
-        <span style="font-size:10px;color:var(--muted);">kW</span>
+        <span style="font-size:10px;color:var(--muted);">kVA</span>
       </div>
     </div>
-
-    <!-- Strompreise -->
-    <div class="sa-section-title" style="margin-top:4px;">Strompreise</div>
-    <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:120px;">
-        <span style="font-size:10px;color:var(--muted);flex-shrink:0;">Bezug:</span>
-        <input class="inp-field" type="number" id="strom-preis-bezug" value="35" min="0" max="100" step="1"
-          style="flex:1;text-align:right;" data-input="_onStrompreisChange('strom-preis-bezug')"/>
-        <span style="font-size:10px;color:var(--muted);">ct/kWh</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:120px;">
-        <span style="font-size:10px;color:var(--muted);flex-shrink:0;">Leistungspreis:</span>
-        <input class="inp-field" type="number" id="strom-leistungspreis" value="0" min="0" max="200" step="1"
-          style="width:70px;text-align:right;" data-input="calcStromPanelDebounced()"/>
-        <span style="font-size:10px;color:var(--muted);">€/kW·Mon</span>
-      </div>
-    </div>
-    <!-- BHKW-Vergütungsstruktur -->
-    <div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:8px;">
-      <span style="font-size:10px;color:#ff8f00;font-weight:600;">BHKW-Vergütung</span>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;">
-        <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
-          <span style="font-size:9px;color:var(--muted);flex-shrink:0;" title="Baseload-Preis für BHKW-Strom-Einspeisung (Marktpreis/EEX + Zuschlag)">Einspeisung:</span>
-          <input class="inp-field" type="number" id="bhkw-preis-einsp" value="8" min="0" max="30" step="0.5"
-            style="flex:1;text-align:right;" data-input="calcStromPanelDebounced();updateBhkwDisplay()"/>
-          <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
-          <span style="font-size:9px;color:var(--muted);flex-shrink:0;" title="Vermiedene Bezugskosten durch BHKW-Eigenverbrauch">Eigenverbr.:</span>
-          <input class="inp-field" type="number" id="bhkw-preis-eigen" value="35" min="0" max="100" step="0.5"
-            style="flex:1;text-align:right;" readonly title="= Strombezugspreis (vermiedene Kosten)"/>
-          <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
-        <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
-          <span style="font-size:9px;color:var(--muted);flex-shrink:0;" title="KWK-Zuschlag nach KWKG §7 auf Einspeisung">KWK Einsp.:</span>
-          <input class="inp-field" type="number" id="bhkw-kwk-einsp" value="8" min="0" max="16" step="0.5"
-            style="flex:1;text-align:right;" data-input="calcStromPanelDebounced();updateBhkwDisplay()"/>
-          <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
-          <span style="font-size:9px;color:var(--muted);flex-shrink:0;" title="KWK-Zuschlag nach KWKG §7 auf Eigenverbrauch">KWK Eigen.:</span>
-          <input class="inp-field" type="number" id="bhkw-kwk-eigen" value="4" min="0" max="16" step="0.5"
-            style="flex:1;text-align:right;" data-input="calcStromPanelDebounced();updateBhkwDisplay()"/>
-          <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
-        </div>
-      </div>
-      <div style="font-size:9px;color:var(--muted);margin-top:4px;">KWKG §7: KWK-Zuschlag 8 ct/kWh Einspeisung, 4 ct/kWh Eigenverbrauch (bis 100 kW<sub>el</sub>)</div>
-    </div>
-
-    <!-- Strom-Optimierung (Zinssatz + Bewertung + Button) -->
-    <div class="sa-section-title" style="margin-top:4px;">Wirtschaftliche Optimierung PV + Speicher</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:7px;">
-      <div style="display:flex;flex-direction:column;gap:2px;">
-        <span style="font-size:9px;color:var(--muted);">Zinssatz</span>
-        <div style="display:flex;align-items:center;gap:3px;">
-          <span class="inp-field" id="opt-zinssatz-sync" style="flex:1;text-align:right;font-size:10px;color:var(--muted);cursor:help;" title="Synchronisiert mit Kapitalzins im Wirtschafts-Panel">3.5 %</span>
-          <input type="hidden" id="opt-zinssatz" value="3.5"/>
-        </div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-      <span style="font-size:9px;color:var(--muted);white-space:nowrap;">Bewertung:</span>
-      <select id="opt-bewertung" style="flex:1;font-size:9px;padding:3px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:inherit;">
-        <option value="nettogewinn">Max. Nettogewinn (€/a)</option>
-        <option value="rendite">Max. Rendite (% p.a.)</option>
-        <option value="amortisation">Min. Amortisation (Jahre)</option>
-      </select>
-    </div>
-    <button class="btn-secondary" data-click="calcPvBatOptimierung()"
-      style="width:100%;margin-bottom:8px;font-size:10px;padding:5px;">
-      ⚡ Optimale PV- &amp; Speicherauslegung berechnen
-    </button>
-    <div id="opt-result" style="margin-bottom:10px;"></div>
-
-    <!-- Kennzahlen -->
-    <div id="strom-kpis" style="margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;"></div>
-    <!-- PV-Wirtschaftlichkeit -->
-    <div id="strom-pv-wirt" style="display:none;background:var(--surface2);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:var(--muted);"></div>
-
-    <!-- Strom-Tabs -->
-    <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:10px;">
-      <button id="strom-tab-monat" data-click="_stromSetTab('monat')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-1px;">Monat</button>
-      <button id="strom-tab-jdl" data-click="_stromSetTab('jdl')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;">Dauerlinie</button>
-      <button id="strom-tab-fluss" data-click="_stromSetTab('fluss')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;">Energiefluss</button>
-      <button id="strom-tab-sankey" data-click="_stromSetTab('sankey')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;">Sankey</button>
-      <button id="strom-tab-lastgang" data-click="_stromSetTab('lastgang')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;">Lastgang</button>
-    </div>
-
-    <!-- Tab: Monat -->
-    <div id="strom-content-monat">
-      <div class="sa-section-title" style="margin-bottom:6px;">Monatlicher Stromverbrauch &amp; PV
-        <span style="float:right;font-size:8px;font-weight:normal;text-transform:none;letter-spacing:0;">
-          <span style="display:inline-block;width:8px;height:8px;background:#78909c;border-radius:1px;margin-right:2px;"></span>Quartier&nbsp;
-          <span style="display:inline-block;width:8px;height:8px;background:#ffd54f;border-radius:1px;margin-right:2px;"></span>WP-Strom&nbsp;
-          <span style="display:inline-block;width:8px;height:8px;background:#66bb6a;border-radius:1px;margin-right:2px;"></span>PV-Ertrag
-        </span>
-      </div>
-      <canvas id="strom-monats-canvas" height="110" style="width:100%;display:block;"></canvas>
-    </div>
+    <div id="strom-nap-bezug-hinweis" style="font-size:9px;color:var(--muted);margin:-4px 0 8px;"></div>
 
     <!-- Tab: Dauerlinie -->
     <div id="strom-content-jdl" style="display:none;">
@@ -14995,7 +14905,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-09-14';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'f7c74ed';
+  var c = '468fa5d';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -90582,6 +90492,7 @@ window._isSingleFileBuild = true;
       p.classList.add('visible');
       btn?.classList.add('active');
       calcStromPanel();
+      if (typeof window.sgNaRender === 'function') window.sgNaRender();
       if (!window.systemState && glKannBerechnen()) glBerechnenDebounced(100);
     }
   }
@@ -95422,7 +95333,7 @@ window._isSingleFileBuild = true;
   // für die automatische kW-Ermittlung aus Gebäudeflächen.
   // Unabhängig von den Wärme-Nutzungstypen (02b-gebaeude.js).
 
-  function esc$5(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function esc$6(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   // ── Built-in BDEW-Profile ────────────────────────────────────────────────────
   const _ELSLP_BUILTIN = [
@@ -95487,18 +95398,18 @@ window._isSingleFileBuild = true;
       const builtinRows = _ELSLP_BUILTIN.map(p => {
         const wpm2 = ELSLP_WPM2[p.id] ?? p.wpm2;
         const changed = ELSLP_WPM2[p.id] != null && ELSLP_WPM2[p.id] !== p.wpm2;
-        return `<tr data-slpid="${esc$5(p.id)}" class="elslp-row">
-        <td><span class="aw-slp-tag">${esc$5(p.id)}</span></td>
-        <td class="elslp-label">${esc$5(p.label)}</td>
-        <td class="elslp-gruppe">${esc$5(p.gruppe)}</td>
+        return `<tr data-slpid="${esc$6(p.id)}" class="elslp-row">
+        <td><span class="aw-slp-tag">${esc$6(p.id)}</span></td>
+        <td class="elslp-label">${esc$6(p.label)}</td>
+        <td class="elslp-gruppe">${esc$6(p.gruppe)}</td>
         <td style="text-align:right;">
           <input class="aw-cfg-input elslp-wpm2" type="number"
-            data-slpid="${esc$5(p.id)}" value="${wpm2}" min="0.1" max="9999" step="0.5"
+            data-slpid="${esc$6(p.id)}" value="${wpm2}" min="0.1" max="9999" step="0.5"
             style="width:60px;${changed?'border-color:#f9a825;':''}"
             title="${changed ? 'Geändert (Standard: '+p.wpm2+' W/m²)' : ''}">
         </td>
         <td style="text-align:center;">
-          ${changed ? `<button class="nt-del-btn" data-reset="${esc$5(p.id)}" title="Auf Standard zurücksetzen">↺</button>` : '<span style="color:var(--muted);font-size:9px;">—</span>'}
+          ${changed ? `<button class="nt-del-btn" data-reset="${esc$6(p.id)}" title="Auf Standard zurücksetzen">↺</button>` : '<span style="color:var(--muted);font-size:9px;">—</span>'}
         </td>
       </tr>`;
       }).join('');
@@ -95508,16 +95419,16 @@ window._isSingleFileBuild = true;
         : ELSLP_CUSTOM.map((p, i) => `<tr data-idx="${i}" class="elslp-row">
           <td>
             <input class="aw-cfg-input elslp-id-inp" type="text"
-              data-idx="${i}" data-field="id" value="${esc$5(p.id)}"
+              data-idx="${i}" data-field="id" value="${esc$6(p.id)}"
               style="width:52px;font-family:'DM Mono',monospace;text-transform:uppercase;">
           </td>
           <td>
             <input class="aw-cfg-input elslp-label-inp" type="text"
-              data-idx="${i}" data-field="label" value="${esc$5(p.label)}" style="width:160px;">
+              data-idx="${i}" data-field="label" value="${esc$6(p.label)}" style="width:160px;">
           </td>
           <td>
             <input class="aw-cfg-input elslp-gruppe-inp" type="text"
-              data-idx="${i}" data-field="gruppe" value="${esc$5(p.gruppe)}" style="width:110px;">
+              data-idx="${i}" data-field="gruppe" value="${esc$6(p.gruppe)}" style="width:110px;">
           </td>
           <td style="text-align:right;">
             <input class="aw-cfg-input elslp-wpm2-custom" type="number"
@@ -101182,7 +101093,7 @@ ${massTbl}
 
       ${kapitel('3 · Netzanschluss')}
       ${zeile('Max. Einspeiseleistung', napE ? num(napE) + ' kW' : 'unbegrenzt', napE ? 'Netzanschluss-Zusage / VNB-Auskunft' : 'keine Begrenzung gesetzt — Abregelung wird nicht ausgewiesen')}
-      ${zeile('Max. Bezugsleistung', napB ? num(napB) + ' kW' : 'unbegrenzt', napB ? 'Netzanschluss-Zusage / VNB-Auskunft' : 'keine Begrenzung gesetzt')}
+      ${zeile('Max. Bezugsleistung', napB ? num(napB) + ' kVA' : 'unbegrenzt', napB ? 'vereinbarte Anschlussleistung laut Netzanschlussvertrag' : 'keine Begrenzung gesetzt')}
       ${zeile('Kurzschlussleistung S_k″', s.skKVA ? num(s.skKVA) + ' kVA' : 'unbekannt', s.skKVA ? 'VNB-Netzauskunft' : 'ohne S_k″ greift nur das Leistungskriterium')}
       ${zeile('Zulässige Spannungsanhebung', num(s.uBudgetPct || 3, 1) + ' %', 'VDE-AR-N 4105 (NS, 3 %) bzw. 4110 (MS, 2 %)')}
 
@@ -101367,7 +101278,7 @@ ${massTbl}
               data-change="window._pvAnalyse.napMaxEinspKw=parseFloat(this.value)||0;window.elNapMaxEinspKw=window._pvAnalyse.napMaxEinspKw||null;(document.getElementById('strom-nap-einsp-kw')||{}).value=this.value"/>
           </div>
           <div>
-            <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Max. Bezug (kW)</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Max. Bezug (kVA)</div>
             <input id="pva-nap-bezug" type="number" value="0" min="0" step="10"
               style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
               data-change="window._pvAnalyse.napMaxBezugKw=parseFloat(this.value)||0;window.elNapMaxBezugKw=window._pvAnalyse.napMaxBezugKw||null;(document.getElementById('strom-nap-bezug-kw')||{}).value=this.value"/>
@@ -105081,6 +104992,54 @@ ${massTbl}
 
   const LKEBW_LOGO = 'data:image/png;base64,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';
 
+  // ── lib/netzanschluss.js — Netzanschluss-Stammdaten: Messverfahren-Vorschlag, kVA → kW ──
+  // DOM- und importfrei, damit es in Vitest direkt prüfbar ist. Die Oberfläche liegt in
+  // 22-netzanschluss-panel.js (⚡ Strom-Grundlagen › Netzanschluss), der Gutachtentext
+  // in 17-gutachten-grafik.js (Kapitel 3.1.1).
+
+  /** Auswahl Messverfahren — `wert` steht so im Gutachtentext („Die Messung erfolgt als …"). */
+  const NA_MESSVERFAHREN = [
+    { kurz: 'RLM', wert: 'registrierende Leistungsmessung (RLM)' },
+    { kurz: 'SLP', wert: 'Arbeitsmessung nach Standardlastprofil (SLP)' },
+  ];
+
+  /** Standardlastprofile gelten nach § 12 StromNZV für Entnahmen bis 100.000 kWh/a. */
+  const NA_SLP_GRENZE_MWH = 100;
+
+  /** Zahleneingabe deutsch oder englisch → Zahl, null bei leer/ungültig („1.250,5" → 1250.5, „1.000" → 1000). */
+  function naZahl(text) {
+    let s = String(text ?? '').trim().replace(/\s/g, '');
+    if (!s) return null;
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** Leistungsangabe für den Fließtext: Zahl deutsch formatiert, sonst der Text wie eingegeben. */
+  function naKvaText(kva) {
+    const n = naZahl(kva);
+    return n == null ? String(kva ?? '').trim() : n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+  }
+
+  /**
+   * Vorschlag fürs Messverfahren aus dem, was das Projekt über den Stromverbrauch weiß.
+   *   lastgangAufloesung: 15 | 60 | null — Auflösung einer importierten Messdatei
+   *   jahresMwh:          Jahresverbrauch, falls kein Lastgang vorliegt
+   * → { kurz, wert, grund } | null
+   */
+  function naMessverfahrenVorschlag({ lastgangAufloesung = null, jahresMwh = null } = {}) {
+    const [rlm, slp] = NA_MESSVERFAHREN;
+    if (lastgangAufloesung === 15) return { ...rlm, grund: 'gemessener 15-min-Lastgang geladen – den liefert nur ein RLM-Zähler' };
+    if (lastgangAufloesung === 60) return { ...rlm, grund: 'gemessener Stundenlastgang geladen – spricht für einen RLM-Zähler' };
+    const mwh = Number(jahresMwh);
+    if (!(mwh > 0)) return null;
+    const text = mwh.toLocaleString('de-DE', { maximumFractionDigits: 0 });
+    return mwh > NA_SLP_GRENZE_MWH
+      ? { ...rlm, grund: `Jahresverbrauch ${text} MWh über 100 MWh – Standardlastprofile gelten nur bis 100.000 kWh/a` }
+      : { ...slp, grund: `Jahresverbrauch ${text} MWh bis 100 MWh – Standardlastprofil ist üblich` };
+  }
+
   // ── 17-gutachten-grafik.js — Gutachten-Grafiken: einheitliche SVG-Figuren + Word-Export ──
   // Alle Abbildungen fürs Gutachten werden hier aus Daten gezeichnet (natives SVG,
   // kein DOM-Screenshot) und lassen sich per Knopfdruck nach Word übernehmen:
@@ -106238,7 +106197,7 @@ ${massTbl}
     return `<span data-gg-feld="${gefuellt ? 'gefuellt' : 'offen'}" style="${gefuellt ? GG_TEXT_STIL_AUSGEFUELLT : GG_TEXT_STIL_OFFEN}">${gEsc(inhalt)}</span>`;
   }
 
-  /** Kapitel 3.2.2 Liegenschaftsstromnetzanschluss — Textbaustein aus den Netzanschluss-Stammdaten. */
+  /** Kapitel 3.1.1 Liegenschaftsstromnetzanschluss (Ist-Zustand) — Textbaustein aus den Netzanschluss-Stammdaten. */
   function ggRenderNetzanschlussText(cfg, T = GG_THEME) {
     const einspeisungen = window.naEinspeisungen?.length ? window.naEinspeisungen : [{ station: '', kabeltyp: '' }];
     const einspeiseSatz = einspeisungen.map((e, i) => {
@@ -106247,31 +106206,42 @@ ${massTbl}
       return i === 0 ? `über die Station ${teil}` : `sowie zusätzlich über die Station ${teil}`;
     }).join(' ');
 
-    const p = html => `<p style="margin:0 0 12px;">${html}</p>`;
-    const html = `<div style="background:${T.bg};max-width:${T.width}px;padding:26px 30px;box-sizing:border-box;
-      font-family:${T.font};font-size:13px;line-height:1.65;color:${T.text.strong};border:1px solid ${T.line};">
-    ${p(`Die elektrische Energieversorgung der Liegenschaft erfolgt aus dem Netz der `
-      + `${ggTextFeld(window.naNetzbetreiberName, 'Name Netzbetreiber')}, `
-      + `${ggTextFeld(window.naNetzbetreiberAdresse, 'Adresse Netzbetreiber')}.`)}
-    ${p(`Die Versorgung erfolgt auf der Spannungsebene ${ggTextFeld(window.naSpannungsebene, 'Spannungsebene Netzanschluss')} `
-      + `${einspeiseSatz}.`)}
-    ${p(`Der Übergabepunkt befindet sich im Gebäude ${ggTextFeld(window.naUebergabepunkt, 'Bezeichnung/Lage Übergabepunkt')}.`)}
-    ${p(`Gemäß dem vorliegenden Netzanschlussvertrag beträgt die vereinbarte Anschlussleistung an diesem Übergabepunkt `
-      + `${ggTextFeld(window.naVereinbarteScheinleistungKva, 'Vereinbarte max. Scheinleistung')} kVA.`)}
-    ${p(`Die Messung erfolgt als ${ggTextFeld(window.naMessverfahren, 'Messverfahren')}.`)}
-    ${p(`Der Netzbetreiber erteilt grundsätzlich keine Auskunft über die physikalisch maximal mögliche Anschlussleistung `
-      + `der Liegenschaft. Eine Bewertung der verfügbaren Netzkapazitäten erfolgt ausschließlich auf Basis eines `
-      + `konkreten Netzanschlussantrags. Hierzu ist das vom Netzbetreiber bereitgestellte Antragsformular zur Anmeldung `
-      + `des Netzanschlusses (z. B. „Formular E1 – Anmeldung zum Netzanschluss Strom“) mit Angabe der zukünftig `
-      + `benötigten Anschlussleistung einzureichen. Erst im Anschluss prüft der Netzbetreiber die technische `
-      + `Verfügbarkeit, den erforderlichen Netzausbaubedarf sowie die zeitlichen und wirtschaftlichen Rahmenbedingungen.`)}
-    ${p(`Vor dem Hintergrund der erwarteten Laststeigerungen durch Elektromobilität, Wärmepumpen und den Ausbau `
-      + `erneuerbarer Erzeugungsanlagen wird empfohlen, den Netzanschlussantrag frühzeitig und auf Basis einer `
-      + `realistischen Leistungsannahme einschließlich angemessener Reserve zu stellen, um Planungssicherheit für `
-      + `nachgelagerte Maßnahmen zu schaffen.`)}
-  </div>`;
+    return ggTextBlatt([
+      `Die elektrische Energieversorgung der Liegenschaft erfolgt aus dem Netz der `
+        + `${ggTextFeld(window.naNetzbetreiberName, 'Name Netzbetreiber')}, `
+        + `${ggTextFeld(window.naNetzbetreiberAdresse, 'Adresse Netzbetreiber')}.`,
+      `Die Versorgung erfolgt auf der Spannungsebene ${ggTextFeld(window.naSpannungsebene, 'Spannungsebene Netzanschluss')} `
+        + `${einspeiseSatz}.`,
+      `Der Übergabepunkt befindet sich im Gebäude ${ggTextFeld(window.naUebergabepunkt, 'Bezeichnung/Lage Übergabepunkt')}.`,
+      `Gemäß dem vorliegenden Netzanschlussvertrag beträgt die vereinbarte Anschlussleistung an diesem Übergabepunkt `
+        + `${ggTextFeld(naKvaText(window.elNapMaxBezugKw), 'Vereinbarte max. Scheinleistung')} kVA.`,
+      `Die Messung erfolgt als ${ggTextFeld(window.naMessverfahren, 'Messverfahren')}.`,
+      `Der Netzbetreiber erteilt grundsätzlich keine Auskunft über die physikalisch maximal mögliche Anschlussleistung `
+        + `der Liegenschaft. Eine Bewertung der verfügbaren Netzkapazitäten erfolgt ausschließlich auf Basis eines `
+        + `konkreten Netzanschlussantrags. Hierzu ist das vom Netzbetreiber bereitgestellte Antragsformular zur Anmeldung `
+        + `des Netzanschlusses (z. B. „Formular E1 – Anmeldung zum Netzanschluss Strom“) mit Angabe der zukünftig `
+        + `benötigten Anschlussleistung einzureichen. Erst im Anschluss prüft der Netzbetreiber die technische `
+        + `Verfügbarkeit, den erforderlichen Netzausbaubedarf sowie die zeitlichen und wirtschaftlichen Rahmenbedingungen.`,
+    ], T);
+  }
+
+  /** Kapitel 3.2.2 Liegenschaftsstromnetzanschluss (Soll-Zustand) — Empfehlung zum Netzanschlussantrag. */
+  function ggRenderNetzanschlussEmpfehlungText(cfg, T = GG_THEME) {
+    return ggTextBlatt([
+      `Vor dem Hintergrund der erwarteten Laststeigerungen durch Elektromobilität, Wärmepumpen und den Ausbau `
+        + `erneuerbarer Erzeugungsanlagen wird empfohlen, den Netzanschlussantrag frühzeitig und auf Basis einer `
+        + `realistischen Leistungsannahme einschließlich angemessener Reserve zu stellen, um Planungssicherheit für `
+        + `nachgelagerte Maßnahmen zu schaffen.`,
+    ], T);
+  }
+
+  /** Textbaustein-Blatt: Absätze (HTML mit ggTextFeld-Platzhaltern) im Stil der Gutachten-Grafiken. */
+  function ggTextBlatt(absaetze, T = GG_THEME) {
     const wrap = document.createElement('div');
-    wrap.innerHTML = html;
+    wrap.innerHTML = `<div style="background:${T.bg};max-width:${T.width}px;padding:26px 30px;box-sizing:border-box;
+      font-family:${T.font};font-size:13px;line-height:1.65;color:${T.text.strong};border:1px solid ${T.line};">
+    ${absaetze.map(a => `<p style="margin:0 0 12px;">${a}</p>`).join('')}
+  </div>`;
     return wrap.firstElementChild;
   }
 
@@ -106951,44 +106921,130 @@ ${massTbl}
     {
       id: 'netzanschluss-text',
       istText: true,
-      kapitel: '3.2.2 Liegenschaftsstromnetzanschluss',
+      kapitel: '3.1.1 Liegenschaftsstromnetzanschluss',
       titel: 'Gutachtentext: Netzanschluss',
       datei: 'netzanschluss-text',
-      hinweis: 'Standardtext für dieses Kapitel. Grün hinterlegte Angaben stammen aus dem Projekt oder wurden bereits '
-             + 'eingetragen, gelb hinterlegte Platzhalter fehlen noch. Ergänzungen hier werden als Netzanschluss-'
-             + 'Stammdaten in der Projektdatei gespeichert. „⟳ Aus Projekt übernehmen“ liest Spannungsebene und '
-             + 'Übergabepunkt-Gebäude aus dem NAP-Asset des Elektro-Tabs, sofern eines platziert ist.',
+      hinweis: 'Standardtext für den Ist-Zustand des Netzanschlusses. Grün hinterlegte Angaben sind eingetragen, gelb '
+             + 'hinterlegte Platzhalter fehlen noch. Eingetragen werden sie unter ⚡ Strom-Grundlagen › Netzanschluss; '
+             + '„⟳ Aus Projekt übernehmen“ liest Spannungsebene und Übergabepunkt-Gebäude aus dem NAP-Asset des '
+             + 'Elektro-Tabs, sofern eines platziert ist. Die Empfehlung zum Netzanschlussantrag steht als eigener '
+             + 'Baustein in 3.2.2.',
       render: cfg => ggRenderNetzanschlussText(),
       config: {},
       ausProjekt() {
-        let naps = [];
-        try { naps = window.listAssets?.({ type: 'NAP' }) || []; } catch (e) { }
-        if (!naps.length) return '⚠ Kein NAP-Asset im Modell — Spannungsebene und Übergabepunkt bitte von Hand eintragen.';
-        const nap = naps[0];
-        let n = 0;
-        if (!window.naSpannungsebene && nap.props?.spannungKV) {
-          const kv = Number(nap.props.spannungKV);
-          window.naSpannungsebene = kv > 1 ? `Mittelspannung (${kv} kV)` : `Niederspannung (${kv * 1000} V)`;
-          n++;
-        }
-        if (!window.naUebergabepunkt && nap.buildingId) {
-          const g = (window.gebaeude || []).find(b => b.id === nap.buildingId);
-          const bez = String(g?.gebaeudenummer || g?.name || '').trim();
-          if (bez) { window.naUebergabepunkt = bez; n++; }
-        }
-        if (naps.length > 1) {
-          const vorhandene = window.naEinspeisungen || [];
-          if (vorhandene.length < naps.length) {
-            window.naEinspeisungen = naps.map((_, i) => vorhandene[i] || { station: '', kabeltyp: '' });
-            n++;
-          }
-        }
-        return n ? `✓ ${n} Angabe(n) aus dem NAP-Asset übernommen — bitte prüfen.`
-                 : '✓ Keine leeren Felder gefunden, die sich aus dem NAP-Asset ableiten ließen.';
+        return typeof window.sgNaAusNapAsset === 'function'
+          ? window.sgNaAusNapAsset()
+          : '⚠ Netzanschluss-Modul nicht geladen.';
       },
     },
 
-    // ── Übersicht Trafostationen ────────────────────────────────────────────
+    // ── Gutachtentext: Empfehlung Netzanschlussantrag ────────────────────
+    {
+      id: 'netzanschluss-empfehlung-text',
+      istText: true,
+      kapitel: '3.2.2 Liegenschaftsstromnetzanschluss',
+      titel: 'Gutachtentext: Empfehlung Netzanschlussantrag',
+      datei: 'netzanschluss-empfehlung-text',
+      hinweis: 'Fester Standardtext für den Soll-Zustand: Empfehlung, den Netzanschlussantrag frühzeitig und mit Reserve zu stellen.',
+      render: cfg => ggRenderNetzanschlussEmpfehlungText(),
+      config: {},
+    },
+
+  ];
+
+  // Baut die Tabellenzeilen für die Trafo-Übersicht: Ist-Zustand (3.1.2) zeigt
+  // nur Bestand, Soll-Zustand (3.2.3) zeigt Bestand + geplante Stationen grün
+  // markiert. Geplant ist ein Trafo, der zu einer Planungsschicht gehört oder
+  // dessen Baujahr noch in der Zukunft liegt.
+  function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
+    const gebListe = window.gebaeude || [];
+    const geb = id => gebListe.find(g => g.id === id) || null;
+    const heute = new Date().getFullYear();
+
+    let zeilen = trafos.map(t => {
+      const g = geb(t.buildingId);
+      const bj = parseInt(t.baujahr ?? g?.baujahr);
+      const geplant = t.schicht === 'entwicklung' || t.schicht === 'entscheidung'
+                   || (Number.isFinite(bj) && bj > heute);
+      return {
+        gebIdx:      g ? gebListe.indexOf(g) : 1e9,
+        gebLabel:    String(g?.gebaeudenummer || g?.name || '—').trim(),
+        stationKey:  t.buildingId || 'einzeln:' + t.id,
+        // Heißt das Standortgebäude schon „Trafostation 3“, gewinnt dieser
+        // Name — sonst wird unten in Tabellenreihenfolge durchnummeriert. Steht
+        // derselbe Name schon in der Gebäudespalte, wird ebenfalls nummeriert,
+        // damit die Zeile ihn nicht doppelt zeigt.
+        stationName: /station/i.test(g?.name || '') ? String(g.name).trim() : '',
+        trafo:       t.name || 'Trafo',
+        kva:         Number(t.props?.leistungKVA) || 0,
+        bj:          Number.isFinite(bj) ? bj : null,
+        geplant,
+      };
+    });
+    if (nurBestand) zeilen = zeilen.filter(z => !z.geplant);
+
+    // Bestand zuerst, danach die geplanten Stationen; innerhalb der Gruppe in
+    // der Reihenfolge der Gebäudeliste, damit die Nummerierung stabil bleibt.
+    zeilen.sort((a, b) => ((a.geplant ? 1 : 0) - (b.geplant ? 1 : 0))
+                       || (a.gebIdx - b.gebIdx)
+                       || a.trafo.localeCompare(b.trafo, 'de', { numeric: true }));
+
+    const nr = new Map();
+    for (const z of zeilen) if (!nr.has(z.stationKey)) nr.set(z.stationKey, nr.size + 1);
+    return { zeilen, nr };
+  }
+
+  GG_FIGUREN.push(
+    // ── Übersicht Trafostationen (Bestand, Ist-Zustand) ─────────────────────
+    {
+      id: 'trafostationen-ist',
+      autoSync: true,
+      kapitel: '3.1.2 Stromnetz intern',
+      titel: 'Übersicht Trafostationen',
+      datei: 'trafostationen-ist',
+      hinweis: 'Alle bestehenden Transformatoren des Liegenschaftsnetzes mit Standortgebäude, Station, '
+             + 'Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. Trafos einer '
+             + 'Planungsschicht oder mit Baujahr in der Zukunft zählen hier nicht zum Bestand; sie stehen '
+             + 'im Soll-Zustand (3.2.3).',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten',
+        titel: 'Übersicht Trafostationen',
+        leer: 'Keine bestehenden Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.',
+        spalten: [
+          { label: 'Gebäude',       weight: 1.4, align: 'left', mono: false },
+          { label: 'Nr.',           weight: 1.6, align: 'left', mono: false },
+          { label: 'Trafo',         weight: 1.2, align: 'left', mono: false },
+          { label: 'Trafoleistung', weight: 1.3 },
+          { label: 'Baujahr',       weight: 1.1 },
+        ],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        let trafos = [];
+        try { trafos = window.listAssets?.({ type: 'Trafo' }) || []; } catch (e) { }
+        const { zeilen, nr } = ggTrafoZeilen(trafos, { nurBestand: true });
+        if (!zeilen.length) {
+          cfg.zeilen = []; cfg.fussnote = '';
+          return '⚠ Keine bestehenden Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
+        }
+
+        cfg.zeilen = zeilen.map(z => ({
+          werte: [z.gebLabel,
+                  (z.stationName && z.stationName !== z.gebLabel)
+                    ? z.stationName : 'Trafostation ' + nr.get(z.stationKey),
+                  z.trafo,
+                  z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—',
+                  z.bj || '—'],
+        }));
+
+        const summe = zeilen.reduce((s, z) => s + z.kva, 0);
+        cfg.fussnote = `${zeilen.length} Transformatoren in ${nr.size} Stationen · installierte Leistung ${ggNum(summe)} kVA`;
+        return `✓ ${zeilen.length} bestehende Trafos aus dem Elektromodell übernommen.`;
+      },
+    },
+
+    // ── Übersicht Trafostationen (Bestand + geplant, Soll-Zustand) ──────────
     {
       id: 'trafostationen',
       autoSync: true,
@@ -107020,42 +107076,7 @@ ${massTbl}
           return '⚠ Keine Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
         }
 
-        const gebListe = window.gebaeude || [];
-        const geb = id => gebListe.find(g => g.id === id) || null;
-        const heute = new Date().getFullYear();
-
-        // Geplant ist ein Trafo, der zu einer Planungsschicht gehört oder dessen
-        // Baujahr noch in der Zukunft liegt — beides Gründe, in der Spalte Baujahr
-        // „geplant“ statt einer Jahreszahl zu zeigen (wie in der Gutachtenvorlage).
-        const zeilen = trafos.map(t => {
-          const g = geb(t.buildingId);
-          const bj = parseInt(t.baujahr ?? g?.baujahr);
-          const geplant = t.schicht === 'entwicklung' || t.schicht === 'entscheidung'
-                       || (Number.isFinite(bj) && bj > heute);
-          return {
-            gebIdx:      g ? gebListe.indexOf(g) : 1e9,
-            gebLabel:    String(g?.gebaeudenummer || g?.name || '—').trim(),
-            stationKey:  t.buildingId || 'einzeln:' + t.id,
-            // Heißt das Standortgebäude schon „Trafostation 3“, gewinnt dieser
-            // Name — sonst wird unten in Tabellenreihenfolge durchnummeriert. Steht
-            // derselbe Name schon in der Gebäudespalte, wird ebenfalls nummeriert,
-            // damit die Zeile ihn nicht doppelt zeigt.
-            stationName: /station/i.test(g?.name || '') ? String(g.name).trim() : '',
-            trafo:       t.name || 'Trafo',
-            kva:         Number(t.props?.leistungKVA) || 0,
-            bj:          Number.isFinite(bj) ? bj : null,
-            geplant,
-          };
-        });
-
-        // Bestand zuerst, danach die geplanten Stationen; innerhalb der Gruppe in
-        // der Reihenfolge der Gebäudeliste, damit die Nummerierung stabil bleibt.
-        zeilen.sort((a, b) => ((a.geplant ? 1 : 0) - (b.geplant ? 1 : 0))
-                           || (a.gebIdx - b.gebIdx)
-                           || a.trafo.localeCompare(b.trafo, 'de', { numeric: true }));
-
-        const nr = new Map();
-        for (const z of zeilen) if (!nr.has(z.stationKey)) nr.set(z.stationKey, nr.size + 1);
+        const { zeilen, nr } = ggTrafoZeilen(trafos);
 
         cfg.zeilen = zeilen.map(z => ({
           werte: [z.gebLabel,
@@ -107077,7 +107098,7 @@ ${massTbl}
       },
     },
 
-  ];
+  );
 
   // ── PV-Analyse: Varianten, Energiebilanz, Wirtschaftlichkeit, Resilienz ───────
   // Quelle: window._pvAnalyse.ergebnisse (gefüllt in src/09d-pv-analyse.js über
@@ -108039,13 +108060,12 @@ ${massTbl}
   /* ══════════════════════════════════════════════════════════════════════════
    * 6) PANEL — Analyse-Sektion „Gutachten-Grafiken"
    * ═══════════════════════════════════════════════════════════════════════ */
-  /** Liegenschaft aus dem Projektkopf bzw. den Waerme-Grundlagen. */
+  /** Liegenschaft aus dem Projektkopf und der Adresse in den Projektdaten (NICHT dem Klimastandort — der
+   * bezeichnet nur die DWD-Referenzstation der Wärmebedarfsrechnung und liegt oft nicht am realen Standort). */
   function ggLiegenschaft() {
     const name = document.querySelector('.header-projekt-name')?.textContent?.trim() || '';
-    const plz  = document.getElementById('gl-plz')?.value?.trim() || '';
-    const ort  = document.getElementById('gl-stadt')?.value?.trim() || '';
-    const rechts = [plz, ort].filter(Boolean).join(' ');
-    return [name, rechts].filter(Boolean).join(' · ');
+    const adresse = String(window.pdLiegenschaftAdresse || '').trim();
+    return [name, adresse].filter(Boolean).join(' · ');
   }
 
   const ggHeute = () => new Date().toLocaleDateString('de-DE');
@@ -108242,32 +108262,30 @@ ${massTbl}
         html += `</div>`;
       }
 
-      if (figur.istText) {
-        const naFeld = (label, wert, click, w) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);">
-          ${gEsc(label)}
-          <input type="text" value="${gEsc(wert || '')}" data-change="${click}" style="font-family:inherit;font-size:11px;padding:4px 6px;border-radius:4px;
-            border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);min-width:${w || '170px'};"></label>`;
-        html += `<div style="display:flex;flex-wrap:wrap;gap:8px 12px;">`
-          + naFeld('Name Netzbetreiber', window.naNetzbetreiberName, "ggSetNaFeld('naNetzbetreiberName',this.value)")
-          + naFeld('Adresse Netzbetreiber', window.naNetzbetreiberAdresse, "ggSetNaFeld('naNetzbetreiberAdresse',this.value)")
-          + naFeld('Spannungsebene Netzanschluss', window.naSpannungsebene, "ggSetNaFeld('naSpannungsebene',this.value)", '150px')
-          + naFeld('Gebäude/Lage Übergabepunkt', window.naUebergabepunkt, "ggSetNaFeld('naUebergabepunkt',this.value)")
-          + naFeld('Vereinbarte max. Scheinleistung (kVA)', window.naVereinbarteScheinleistungKva, "ggSetNaFeld('naVereinbarteScheinleistungKva',this.value)", '150px')
-          + naFeld('Messverfahren', window.naMessverfahren, "ggSetNaFeld('naMessverfahren',this.value)", '220px')
-          + `</div>`;
-
+      if (figur.id === 'netzanschluss-text') {
+        // Nur Anzeige: eingetragen wird unter ⚡ Strom-Grundlagen › Netzanschluss (22-netzanschluss-panel.js)
+        const zeile = (label, wert, quelle) => {
+          const w = String(wert ?? '').trim();
+          return `<div style="display:grid;grid-template-columns:210px 1fr;gap:8px;font-size:11px;line-height:1.6;">
+            <span style="color:var(--muted);">${gEsc(label)}</span>
+            <span style="color:${w ? 'var(--text,#e8eaed)' : '#e0a126'};">${w ? gEsc(w) : 'fehlt'}<span style="color:var(--muted);font-size:10px;"> · ${gEsc(quelle)}</span></span>
+          </div>`;
+        };
         const einspeisungen = window.naEinspeisungen?.length ? window.naEinspeisungen : [{ station: '', kabeltyp: '' }];
-        html += `<div style="margin-top:12px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Einspeisepunkte (Mittelspannung)</div>`
-          + einspeisungen.map((e, i) => `<div style="display:flex;gap:8px;align-items:flex-end;margin-top:6px;">`
-              + naFeld('Station', e.station, `ggSetEinspeisung(${i},'station',this.value)`)
-              + naFeld('Kabeltyp', e.kabeltyp, `ggSetEinspeisung(${i},'kabeltyp',this.value)`)
-              + (einspeisungen.length > 1
-                  ? `<button data-click="ggRemoveEinspeisung(${i})" title="Einspeisepunkt entfernen" style="font-size:11px;padding:5px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">✕</button>`
-                  : '')
-              + `</div>`).join('')
-          + `<button data-click="ggAddEinspeisung()" style="margin-top:6px;font-size:10px;padding:4px 9px;border-radius:4px;cursor:pointer;border:1px solid rgba(38,166,154,.4);background:rgba(38,166,154,.08);color:#26a69a;">+ Einspeisepunkt</button>`;
-
-        html += `<div style="margin-top:10px;font-size:10px;color:var(--muted);line-height:1.5;">Diese Angaben werden als Netzanschluss-Stammdaten in der Projektdatei gespeichert und stehen damit im ganzen Tool zur Verfügung.</div>`;
+        html += zeile('Name Netzbetreiber', window.naNetzbetreiberName, 'Netzanschlussvertrag')
+          + zeile('Adresse Netzbetreiber', window.naNetzbetreiberAdresse, 'Netzanschlussvertrag')
+          + zeile('Spannungsebene', window.naSpannungsebene, 'Vertrag / NAP-Asset')
+          + zeile('Übergabepunkt', window.naUebergabepunkt, 'Vertrag / NAP-Asset')
+          + zeile('Vereinbarte Anschlussleistung (kVA)', window.elNapMaxBezugKw, 'Netzanschlussvertrag')
+          + zeile('Messverfahren', window.naMessverfahren, 'Stromrechnung / Zähler')
+          + einspeisungen.map((e, i) => {
+              const nr = einspeisungen.length > 1 ? ` ${i + 1}` : '';
+              return zeile(`Station${nr}`, e.station, 'Netzbetreiber / Begehung') + zeile(`Kabeltyp${nr}`, e.kabeltyp, 'Netzbetreiber / Bestandsplan');
+            }).join('')
+          + `<button data-click="sgNaOeffnen()" style="margin-top:10px;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,213,79,.45);background:rgba(255,213,79,.08);color:#ffd54f;">⚡ In Strom-Grundlagen bearbeiten</button>`
+          + `<div style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;">Eingetragen werden die Netzanschlussdaten unter ⚡ Strom-Grundlagen › Netzanschluss; die vereinbarte Anschlussleistung im Feld „Max. Bezug" unter NAP-Grenzen (kVA) — beides mit der Projektdatei gespeichert.</div>`;
+      } else if (figur.istText) {
+        html += `<div style="font-size:11px;color:var(--muted);">Fester Text ohne Platzhalter.</div>`;
       }
 
       if (figur.config.meta) {
@@ -108372,36 +108390,6 @@ ${massTbl}
     ggRenderPanel();
   }
 
-  /** Netzanschluss-Stammdaten setzen — Feldname entspricht dem window-Property (z. B. 'naSpannungsebene'),
-   * dessen Setter über die globale Namenskonvention set<Feld> aufgerufen wird (siehe main.js/ggMetaDefaults). */
-  function ggSetNaFeld(feld, wert) {
-    const setter = window['set' + feld.charAt(0).toUpperCase() + feld.slice(1)];
-    if (typeof setter === 'function') setter(wert);
-    ggRenderPanel();
-  }
-
-  function ggSetEinspeisung(i, feld, wert) {
-    const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
-    if (!liste[i]) liste[i] = { station: '', kabeltyp: '' };
-    liste[i][feld] = wert;
-    window.naEinspeisungen = liste;
-    ggRenderPanel();
-  }
-
-  function ggAddEinspeisung() {
-    const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
-    liste.push({ station: '', kabeltyp: '' });
-    window.naEinspeisungen = liste;
-    ggRenderPanel();
-  }
-
-  function ggRemoveEinspeisung(i) {
-    const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
-    liste.splice(i, 1);
-    window.naEinspeisungen = liste;
-    ggRenderPanel();
-  }
-
   /** Aktuelles Kopierziel ist das Kennzahlenblatt — dann als echte Tabelle statt als Bild. */
   const ggZielIstTabelle = () => _gg.ziel === 'tabelle' && (ggZeigtTabelle(ggFigur()) || ggIstTabellenFigur(ggFigur()));
 
@@ -108451,7 +108439,6 @@ ${massTbl}
     __proto__: null,
     GG_ICONS: GG_ICONS,
     GG_THEME: GG_THEME,
-    ggAddEinspeisung: ggAddEinspeisung,
     ggCopy: ggCopy,
     ggCopyDokumentTeil: ggCopyDokumentTeil,
     ggCopyForWord: ggCopyForWord,
@@ -108466,7 +108453,6 @@ ${massTbl}
     ggKennzahlenHtmlTable: ggKennzahlenHtmlTable,
     ggLastgangKennzahlen: ggLastgangKennzahlen,
     ggMountEinzelansicht: ggMountEinzelansicht,
-    ggRemoveEinspeisung: ggRemoveEinspeisung,
     ggRenderBalken: ggRenderBalken,
     ggRenderFigurFuerDokument: ggRenderFigurFuerDokument,
     ggRenderGanglinie: ggRenderGanglinie,
@@ -108480,11 +108466,9 @@ ${massTbl}
     ggSavePng: ggSavePng,
     ggSaveSvg: ggSaveSvg,
     ggSelectFigur: ggSelectFigur,
-    ggSetEinspeisung: ggSetEinspeisung,
     ggSetKopf: ggSetKopf,
     ggSetLayout: ggSetLayout,
     ggSetMeta: ggSetMeta,
-    ggSetNaFeld: ggSetNaFeld,
     ggSetScale: ggSetScale,
     ggSetZiel: ggSetZiel,
     ggSheetHeader: ggSheetHeader,
@@ -109262,7 +109246,7 @@ ${massTbl}
   const EINGABE_STIL = 'font-family:inherit;font-size:11px;padding:5px 7px;border-radius:4px;border:1px solid rgba(255,255,255,.12);'
     + 'background:rgba(255,255,255,.04);color:var(--text,#e8eaed);width:100%;box-sizing:border-box;';
 
-  const esc$4 = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const esc$5 = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   /* ══════════════════════════════════════════════════════════════════════════
    * Bedienelemente (dunkles Seitenpanel, gleicher Stil wie die Einzelansicht)
@@ -109270,7 +109254,7 @@ ${massTbl}
   function knopf(label, click, { primaer = false, gefahr = false, titel = '', klein = false } = {}) {
     const rand = primaer ? 'rgba(38,166,154,.6)' : gefahr ? 'rgba(239,83,80,.4)' : 'rgba(255,255,255,.12)';
     const farbe = primaer ? GUT_AKZENT : gefahr ? '#ef5350' : 'var(--muted)';
-    return `<button data-click="${click}"${titel ? ` title="${esc$4(titel)}"` : ''} style="font-family:inherit;font-size:${klein ? 10 : 11}px;
+    return `<button data-click="${click}"${titel ? ` title="${esc$5(titel)}"` : ''} style="font-family:inherit;font-size:${klein ? 10 : 11}px;
     padding:${klein ? '3px 8px' : '5px 10px'};border-radius:5px;cursor:pointer;text-align:left;border:1px solid ${rand};
     background:${primaer ? 'rgba(38,166,154,.18)' : 'rgba(255,255,255,.04)'};color:${farbe};">${label}</button>`;
   }
@@ -109412,7 +109396,7 @@ ${massTbl}
   function textBlockHtml(text) {
     const absaetze = String(text || '').split(/\n\s*\n/).map(a => a.trim()).filter(Boolean);
     if (!absaetze.length) return '<p style="margin:0;color:#999;font-style:italic;">Leerer Textblock — Text rechts unter „Freitext“ eingeben.</p>';
-    return absaetze.map(a => `<p style="margin:0 0 10px;text-align:justify;">${esc$4(a).replace(/\n/g, '<br>')}</p>`).join('');
+    return absaetze.map(a => `<p style="margin:0 0 10px;text-align:justify;">${esc$5(a).replace(/\n/g, '<br>')}</p>`).join('');
   }
 
   function figurErgebnis(b) {
@@ -109442,7 +109426,7 @@ ${massTbl}
     const erg = figurErgebnis(b);
     if (erg.fehler) {
       box.innerHTML = `<div style="padding:14px;border:1px dashed ${GUT_WARN};color:#7a5b00;background:#fff8e1;font-size:12px;">
-      ⚠ ${esc$4(erg.fehler)} <span style="color:#999;">(${esc$4(b.figurId)})</span></div>`;
+      ⚠ ${esc$5(erg.fehler)} <span style="color:#999;">(${esc$5(b.figurId)})</span></div>`;
       return;
     }
     const titel = b.unterschrift.trim() || erg.titel;
@@ -109488,7 +109472,7 @@ ${massTbl}
       const abstand = ki === 0 ? 0 : k.ebene === 1 ? 28 : 18;
       h.style.cssText = `font-size:${[0, 21, 17, 15][k.ebene]}px;font-weight:bold;margin:${abstand}px 0 8px;padding:2px 4px;border-radius:3px;cursor:pointer;`;
       h.innerHTML = `<span style="display:inline-block;min-width:${k.ebene * 16 + 14}px;color:#266426;">${nummern[ki]}</span>`
-        + (k.titel.trim() ? esc$4(k.titel) : `<span data-gg-feld="offen" style="${PLATZHALTER_STIL}">[Kapiteltitel ergänzen]</span>`);
+        + (k.titel.trim() ? esc$5(k.titel) : `<span data-gg-feld="offen" style="${PLATZHALTER_STIL}">[Kapiteltitel ergänzen]</span>`);
       papier.appendChild(h);
 
       for (const b of k.bloecke) {
@@ -109537,11 +109521,11 @@ ${massTbl}
       + `<span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${text}</span>`;
     if (b.typ === 'text') {
       const t = b.text.trim().replace(/\s+/g, ' ');
-      return zeile('¶', t ? esc$4(t.slice(0, 70)) : '<i>Leerer Freitext</i>');
+      return zeile('¶', t ? esc$5(t.slice(0, 70)) : '<i>Leerer Freitext</i>');
     }
     const f = katalog.get(b.figurId);
     const icon = !f ? '⚠' : f.istText ? '¶' : f.istTabelle ? '▤' : '▨';
-    return zeile(icon, esc$4(b.unterschrift.trim() || f?.titel || b.figurId));
+    return zeile(icon, esc$5(b.unterschrift.trim() || f?.titel || b.figurId));
   }
 
   function renderGliederung() {
@@ -109567,7 +109551,7 @@ ${massTbl}
     let html = kopf;
     _gut.dok.kapitel.forEach((k, ki) => {
       const einr = (k.ebene - 1) * 12;
-      const titel = k.titel.trim() ? esc$4(k.titel) : `<i style="color:${GUT_WARN};">Titel ergänzen</i>`;
+      const titel = k.titel.trim() ? esc$5(k.titel) : `<i style="color:${GUT_WARN};">Titel ergänzen</i>`;
       const n = offen.get(k.id) || 0;
       const zaehler = n
         ? `<span title="${n} offene Platzhalter" style="margin-left:auto;flex-shrink:0;font-size:9px;padding:0 5px;border-radius:8px;background:rgba(224,161,38,.2);color:${GUT_WARN};">${n}</span>`
@@ -109610,8 +109594,8 @@ ${massTbl}
           : `<div style="margin-top:10px;font-size:11px;color:${GUT_AKZENT};">✓ Keine offenen Platzhalter.</div>`)
       + hinweis('Kapitel oder Block links in der Gliederung oder direkt auf der Seite anklicken, um ihn zu bearbeiten.')
       + (fehlend.length
-          ? ueberschrift('Noch nicht im Dokument') + fehlend.map(f => `<div style="font-size:11px;color:var(--muted);margin-bottom:3px;line-height:1.4;">• ${esc$4(f.titel)}
-            <span style="opacity:.65;">(${esc$4(f.kapitel || 'ohne Kapitel')})</span></div>`).join('')
+          ? ueberschrift('Noch nicht im Dokument') + fehlend.map(f => `<div style="font-size:11px;color:var(--muted);margin-bottom:3px;line-height:1.4;">• ${esc$5(f.titel)}
+            <span style="opacity:.65;">(${esc$5(f.kapitel || 'ohne Kapitel')})</span></div>`).join('')
             + hinweis('Einfügen über das jeweilige Kapitel → „Inhalt einfügen“.')
           : '')
       + deckblattPanel()
@@ -109624,7 +109608,7 @@ ${massTbl}
     const id = k.id;
     const katalog = ggFigurenKatalog();
     const imDok = gdFigurIds(_gut.dok);
-    const option = f => `<option value="${esc$4(f.id)}">${imDok.has(f.id) ? '✓ ' : ''}${esc$4(f.titel)}</option>`;
+    const option = f => `<option value="${esc$5(f.id)}">${imDok.has(f.id) ? '✓ ' : ''}${esc$5(f.titel)}</option>`;
     const passend = katalog.filter(f => (f.kapitel.match(/^\d+(\.\d+)*/) || [''])[0] === nr);
     const gruppen = new Map();
     for (const f of katalog) {
@@ -109634,14 +109618,14 @@ ${massTbl}
     }
     const figurAuswahl = `<select data-change="gutAddFigur('${id}',this.value)" style="${EINGABE_STIL}">
       <option value="">Abbildung oder Textbaustein …</option>
-      ${passend.length ? `<optgroup label="Passend zu Kapitel ${esc$4(nr)}">${passend.map(option).join('')}</optgroup>` : ''}
-      ${[...gruppen].map(([g, fs]) => `<optgroup label="${esc$4(g)}">${fs.map(option).join('')}</optgroup>`).join('')}
+      ${passend.length ? `<optgroup label="Passend zu Kapitel ${esc$5(nr)}">${passend.map(option).join('')}</optgroup>` : ''}
+      ${[...gruppen].map(([g, fs]) => `<optgroup label="${esc$5(g)}">${fs.map(option).join('')}</optgroup>`).join('')}
     </select>`;
     const reihe = inhalt => `<div style="display:flex;flex-wrap:wrap;gap:4px;">${inhalt}</div>`;
 
-    return panelKopf(`Kapitel ${esc$4(nr)}`)
+    return panelKopf(`Kapitel ${esc$5(nr)}`)
       + feldLabel('Titel')
-      + `<input type="text" value="${esc$4(k.titel)}" placeholder="Kapiteltitel" data-change="gutSetKapitelTitel('${id}',this.value)"
+      + `<input type="text" value="${esc$5(k.titel)}" placeholder="Kapiteltitel" data-change="gutSetKapitelTitel('${id}',this.value)"
          data-keydown="if(event.key==='Enter')this.blur()" style="${EINGABE_STIL}">`
       + ueberschrift('Anordnung')
       + reihe(knopf('↑', `gutKapitelVerschieben('${id}',-1)`, { titel: 'Mit dem vorigen Kapitel gleicher Ebene tauschen (samt Unterkapiteln)' })
@@ -109662,7 +109646,7 @@ ${massTbl}
     const id = b.id;
     const kap = _gut.dok.kapitel[kapIdx];
     const nr = gdKapitelNummern(_gut.dok.kapitel)[kapIdx];
-    const ort = hinweis(`in Kapitel ${esc$4(nr)} ${esc$4(kap.titel)}`);
+    const ort = hinweis(`in Kapitel ${esc$5(nr)} ${esc$5(kap.titel)}`);
     const anordnung = ueberschrift('Anordnung')
       + `<div style="display:flex;gap:4px;">${knopf('↑ nach oben', `gutBlockVerschieben('${id}',-1)`)}${knopf('↓ nach unten', `gutBlockVerschieben('${id}',1)`)}</div>`
       + hinweis('Am Kapitelanfang bzw. -ende wandert der Block ins vorige bzw. nächste Kapitel.');
@@ -109672,25 +109656,25 @@ ${massTbl}
       return panelKopf('Freitext') + ort
         + feldLabel('Text — eine Leerzeile beginnt einen neuen Absatz')
         + `<textarea rows="14" data-input="gutSetText('${id}',this.value)" data-change="gutTextFertig()"
-           style="${EINGABE_STIL}resize:vertical;line-height:1.5;">${esc$4(b.text)}</textarea>`
+           style="${EINGABE_STIL}resize:vertical;line-height:1.5;">${esc$5(b.text)}</textarea>`
         + anordnung + entfernen;
     }
 
     const f = ggFigurenKatalog().find(x => x.id === b.figurId);
     if (!f) {
       return panelKopf('Abbildung fehlt') + ort
-        + hinweis(`Die Abbildung „${esc$4(b.figurId)}“ gibt es in dieser Programmversion nicht.`) + anordnung + entfernen;
+        + hinweis(`Die Abbildung „${esc$5(b.figurId)}“ gibt es in dieser Programmversion nicht.`) + anordnung + entfernen;
     }
     const erg = _gut.cache.get(id)?.ergebnis;
     const meldung = erg?.meldung || '';
     let html = panelKopf(f.istText ? 'Textbaustein' : f.istTabelle ? 'Tabelle' : 'Abbildung')
-      + `<div style="font-size:12px;color:var(--text,#e8eaed);margin-top:6px;">${esc$4(f.titel)}</div>` + ort;
+      + `<div style="font-size:12px;color:var(--text,#e8eaed);margin-top:6px;">${esc$5(f.titel)}</div>` + ort;
     if (meldung) {
-      html += `<div style="margin-top:8px;font-size:11px;line-height:1.45;color:${meldung.startsWith('⚠') ? GUT_WARN : GUT_AKZENT};">${esc$4(meldung)}</div>`;
+      html += `<div style="margin-top:8px;font-size:11px;line-height:1.45;color:${meldung.startsWith('⚠') ? GUT_WARN : GUT_AKZENT};">${esc$5(meldung)}</div>`;
     }
     if (!f.istText) {
       html += feldLabel('Beschriftung')
-        + `<input type="text" value="${esc$4(b.unterschrift)}" placeholder="${esc$4(erg?.titel || f.titel)}"
+        + `<input type="text" value="${esc$5(b.unterschrift)}" placeholder="${esc$5(erg?.titel || f.titel)}"
            data-change="gutSetFigurOpt('${id}','unterschrift',this.value)" data-keydown="if(event.key==='Enter')this.blur()" style="${EINGABE_STIL}">`
         + hinweis('Leer = Titel der Grafik. Die Nummer vergibt das Dokument automatisch.');
     }
@@ -109709,11 +109693,11 @@ ${massTbl}
     html += ueberschrift('Bearbeiten und kopieren')
       + `<div style="display:flex;flex-direction:column;gap:4px;">`
       + knopf(f.istText ? '✎ Platzhalter ausfüllen' : '✎ In Einzelansicht bearbeiten', `gutInEinzelansicht('${f.id}')`,
-              { titel: f.istText ? 'Angaben zum Netzanschluss eintragen' : 'Kopfzeile, Haken und Datenübernahme wie bisher' })
+              { titel: f.istText ? 'Platzhalter und ihre Datenquelle ansehen' : 'Kopfzeile, Haken und Datenübernahme wie bisher' })
       + knopf(f.istTabelle ? '⊞ Als Word-Tabelle kopieren' : '⧉ Für Word kopieren', `gutCopyTeil('${id}',0)`, { primaer: true })
       + ((erg?.teile?.length || 0) > 1 ? knopf('⊞ Kennzahlen als Word-Tabelle kopieren', `gutCopyTeil('${id}',1)`) : '')
       + `</div>`
-      + (f.hinweis ? hinweis(esc$4(f.hinweis)) : '')
+      + (f.hinweis ? hinweis(esc$5(f.hinweis)) : '')
       + anordnung + entfernen;
     return html;
   }
@@ -109900,16 +109884,20 @@ ${massTbl}
   /* ══════════════════════════════════════════════════════════════════════════
    * Deckblatt und Word-Export (lib/gutachten-docx.js, Layout der Word-Vorlage)
    * ═══════════════════════════════════════════════════════════════════════ */
+  /** Ortsname aus der Liegenschaftsadresse ("Musterstr. 1, 12345 Musterstadt" → "Musterstadt"). */
+  function pdOrtKurz(adresse) {
+    return String(adresse || '').split(',').pop().trim().replace(/^\d{4,5}\s+/, '');
+  }
+
   /** Vorschläge aus den Projekt-Stammdaten — greifen im Export, solange ein Feld leer ist. */
   function deckblattVorgaben() {
-    const plz = document.getElementById('gl-plz')?.value?.trim() || '';
-    const ort = document.getElementById('gl-stadt')?.value?.trim() || '';
+    const adresse = String(window.pdLiegenschaftAdresse || '').trim();
     const liegenschaft = String(window.pdKaserneName || '').trim();
     const personen = [window.pdBearbeiterStrom, window.pdBearbeiterWaerme]
       .map(n => String(n || '').trim()).filter((n, i, alle) => n && alle.indexOf(n) === i);
     return {
-      ...GUTACHTEN_DECKBLATT_VORGABEN, liegenschaft, ort, projekt: liegenschaft,
-      standort: [plz, ort].filter(Boolean).join(' '), stand: new Date().toLocaleDateString('de-DE'), personen,
+      ...GUTACHTEN_DECKBLATT_VORGABEN, liegenschaft, ort: pdOrtKurz(adresse), projekt: liegenschaft,
+      standort: adresse, stand: new Date().toLocaleDateString('de-DE'), personen,
     };
   }
 
@@ -109926,10 +109914,10 @@ ${massTbl}
     const d = _gut.dok.deckblatt || gdNormDeckblatt();
     const v = deckblattVorgaben();
     const feld = (key, label) => feldLabel(label)
-      + `<input type="text" value="${esc$4(d[key])}" placeholder="${esc$4(v[key] || '')}" data-change="gutSetDeckblatt('${key}',this.value)" style="${EINGABE_STIL}">`;
+      + `<input type="text" value="${esc$5(d[key])}" placeholder="${esc$5(v[key] || '')}" data-change="gutSetDeckblatt('${key}',this.value)" style="${EINGABE_STIL}">`;
     const person = i => `<div style="display:flex;gap:4px;margin-top:4px;">`
-      + `<input type="text" value="${esc$4(d.ansprechpersonen[i].name)}" placeholder="${esc$4(v.personen[i] || 'Name')}" data-change="gutSetDeckblattPerson(${i},'name',this.value)" style="${EINGABE_STIL}">`
-      + `<input type="text" value="${esc$4(d.ansprechpersonen[i].telefon)}" placeholder="Telefon" data-change="gutSetDeckblattPerson(${i},'telefon',this.value)" style="${EINGABE_STIL}"></div>`;
+      + `<input type="text" value="${esc$5(d.ansprechpersonen[i].name)}" placeholder="${esc$5(v.personen[i] || 'Name')}" data-change="gutSetDeckblattPerson(${i},'name',this.value)" style="${EINGABE_STIL}">`
+      + `<input type="text" value="${esc$5(d.ansprechpersonen[i].telefon)}" placeholder="Telefon" data-change="gutSetDeckblattPerson(${i},'telefon',this.value)" style="${EINGABE_STIL}"></div>`;
     return ueberschrift('Deckblatt')
       + hinweis('Grau vorgeschlagene Werte kommen aus den Projekt-Stammdaten und gelten, solange das Feld leer bleibt. Was dann noch fehlt, steht im Word-Dokument als [Platzhalter].')
       + feld('liegenschaft', 'Titelzeile „der …“') + feld('ort', 'Titelzeile „in …“') + feld('projekt', 'Projekt')
@@ -111576,9 +111564,8 @@ ${massTbl}
 
   function lpLiegenschaft() {
     const name = document.querySelector('.header-projekt-name')?.textContent?.trim() || '';
-    const plz = document.getElementById('gl-plz')?.value?.trim() || '';
-    const ort = document.getElementById('gl-stadt')?.value?.trim() || '';
-    return [name, [plz, ort].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+    const adresse = String(window.pdLiegenschaftAdresse || '').trim();
+    return [name, adresse].filter(Boolean).join(' · ');
   }
 
   const LP_INP_STYLE = 'padding:5px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);font-family:inherit;font-size:11px;';
@@ -113437,7 +113424,7 @@ ${massTbl}
           const n = _plan.items.filter(it => it.typ === g.key).length;
           return `<div style="font-size:10px;color:var(--muted);line-height:1.9;">
           <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${g.color};margin-right:5px;"></span>
-          ${g.icon} ${esc$3(g.label)}: <span style="color:var(--text);font-weight:600;">${n}</span>
+          ${g.icon} ${esc$4(g.label)}: <span style="color:var(--text);font-weight:600;">${n}</span>
         </div>`;
         }).join('');
 
@@ -113447,7 +113434,7 @@ ${massTbl}
           const invest = _plan.items.filter(it => it.phaseId === p.id).reduce((s, it) => s + (it.kosten || 0), 0);
           return `<div style="margin-bottom:8px;padding:6px;background:var(--surface2);border-radius:5px;border:1px solid var(--border);">
           <div style="font-weight:600;font-size:11px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;">
-            <span>${esc$3(p.name)}${invest > 0 ? `<span style="color:var(--muted);font-size:9px;font-weight:400;"> ${(invest/1000).toFixed(0)} k€</span>` : ''}</span>
+            <span>${esc$4(p.name)}${invest > 0 ? `<span style="color:var(--muted);font-size:9px;font-weight:400;"> ${(invest/1000).toFixed(0)} k€</span>` : ''}</span>
             <span class="ausb-phase-del" title="Phase löschen" onclick="ausbauPhaseLoeschen('${p.id}')" style="cursor:pointer;color:var(--muted);font-size:11px;">✕</span>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
@@ -113467,7 +113454,7 @@ ${massTbl}
       ? `<div style="color:#4caf50;font-size:10px;padding:4px 0;">✓ Keine Konflikte</div>`
       : [..._konflikte].slice(0, 8).map(id => {
           const it = _plan.items.find(x => x.id === id);
-          return `<div style="color:#ef4444;font-size:10px;padding:2px 0;">⚠ ${esc$3(it?.titel || id)}</div>`;
+          return `<div style="color:#ef4444;font-size:10px;padding:2px 0;">⚠ ${esc$4(it?.titel || id)}</div>`;
         }).join('');
 
     const nUngeplant = _plan.items.filter(it => !it.phaseId).length;
@@ -113517,7 +113504,7 @@ ${massTbl}
     for (const p of sortPhasen) {
       html += `<div ondragover="ausbauDragOver(event,'${p.id}')" ondrop="ausbauDrop(event,'${p.id}')"
       style="font-size:10px;font-weight:600;padding:4px 6px;background:var(--surface2);border-radius:4px 4px 0 0;text-align:center;">
-      ${esc$3(p.name)}<br><span style="font-weight:400;color:var(--muted);">${p.jahrVon}–${p.jahrBis}</span>
+      ${esc$4(p.name)}<br><span style="font-weight:400;color:var(--muted);">${p.jahrVon}–${p.jahrBis}</span>
     </div>`;
     }
     html += `<div ondragover="ausbauDragOver(event,null)" ondrop="ausbauDrop(event,null)"
@@ -113525,7 +113512,7 @@ ${massTbl}
 
     for (const lane of aktLanes) {
       const laneItems = _plan.items.filter(lane.match);
-      html += `<div style="font-size:10px;font-weight:600;padding:4px 6px;border-right:1px solid var(--border);border-left:3px solid ${lane.color};">${lane.icon} ${esc$3(lane.label)}</div>`;
+      html += `<div style="font-size:10px;font-weight:600;padding:4px 6px;border-right:1px solid var(--border);border-left:3px solid ${lane.color};">${lane.icon} ${esc$4(lane.label)}</div>`;
       for (const p of sortPhasen) {
         html += _cellHtml(laneItems.filter(it => it.phaseId === p.id), p.id);
       }
@@ -113551,10 +113538,10 @@ ${massTbl}
       const kostenTxt = it.kosten ? ` (${(it.kosten/1000).toFixed(0)} k€)` : '';
       const praefix = _gruppierung === 'cluster' && gwIcon ? gwIcon + ' ' : '';
       return `<div class="ausb-bar" id="ausb-bar-${_cssId(it.id)}"
-      data-item-id="${esc$3(it.id)}" draggable="true" ondragstart="ausbauDragStart(event,'${esc$3(it.id)}')"
-      title="${esc$3(it.titel)} — ${esc$3(gwLabel)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
+      data-item-id="${esc$4(it.id)}" draggable="true" ondragstart="ausbauDragStart(event,'${esc$4(it.id)}')"
+      title="${esc$4(it.titel)} — ${esc$4(gwLabel)}${kostenTxt}${jahrTxt}${err?' ⚠ Reihenfolge verletzt!':''}"
       style="background:${col}22;border:${err?'2px solid #ef4444':'1px solid '+col+'44'};${err?'box-shadow:0 0 0 2px #ef4444;':''}border-radius:4px;padding:3px 6px;font-size:9px;cursor:grab;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
-      ${err?'⚠ ':''}${praefix}${esc$3(it.titel)}${jahrTxt}</div>`;
+      ${err?'⚠ ':''}${praefix}${esc$4(it.titel)}${jahrTxt}</div>`;
     }).join('');
     return `<div ondragover="ausbauDragOver(event,${phAttr})" ondrop="ausbauDrop(event,${phAttr})"
     style="min-height:40px;padding:3px;border:1px solid var(--border);border-radius:2px;">${barsHtml}</div>`;
@@ -113668,7 +113655,7 @@ ${massTbl}
 
   // ── Helfer ────────────────────────────────────────────────────────────────────
   function _cssId(id) { return String(id).replace(/[^a-z0-9]/gi, '_'); }
-  function esc$3(s) {
+  function esc$4(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
@@ -117974,10 +117961,11 @@ ${massTbl}
   function _captureProjektStammdaten() {
     return {
       bearbeiterStrom: pdBearbeiterStrom, bearbeiterWaerme: pdBearbeiterWaerme, kaserneName: pdKaserneName, weNummer: pdWeNummer,
+      liegenschaftAdresse: pdLiegenschaftAdresse,
       netzanschluss: {
         netzbetreiberName: naNetzbetreiberName, netzbetreiberAdresse: naNetzbetreiberAdresse,
         spannungsebene: naSpannungsebene, uebergabepunkt: naUebergabepunkt,
-        vereinbarteScheinleistungKva: naVereinbarteScheinleistungKva, messverfahren: naMessverfahren,
+        messverfahren: naMessverfahren,
         einspeisungen: naEinspeisungen,
       },
     };
@@ -117989,12 +117977,12 @@ ${massTbl}
     setPdBearbeiterWaerme(d.bearbeiterWaerme || '');
     setPdKaserneName(d.kaserneName || '');
     setPdWeNummer(d.weNummer || '');
+    setPdLiegenschaftAdresse(d.liegenschaftAdresse || '');
     const na = d.netzanschluss || {};
     setNaNetzbetreiberName(na.netzbetreiberName || '');
     setNaNetzbetreiberAdresse(na.netzbetreiberAdresse || '');
     setNaSpannungsebene(na.spannungsebene || '');
     setNaUebergabepunkt(na.uebergabepunkt || '');
-    setNaVereinbarteScheinleistungKva(na.vereinbarteScheinleistungKva || '');
     setNaMessverfahren(na.messverfahren || '');
     setNaEinspeisungen(Array.isArray(na.einspeisungen) ? na.einspeisungen : []);
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
@@ -118002,6 +117990,7 @@ ${massTbl}
     set('pd-bearbeiter-waerme', pdBearbeiterWaerme);
     set('pd-kaserne-name', pdKaserneName);
     set('pd-we-nummer', pdWeNummer);
+    set('pd-liegenschaft-adresse', pdLiegenschaftAdresse);
     syncProjektname();
   }
 
@@ -118535,6 +118524,8 @@ ${massTbl}
   function _applyProjectData(project) {
         window._projectReportDraft = project.projectReportDraft ? structuredClone(project.projectReportDraft) : null;
         _restoreProjektStammdaten(project.projektStammdaten || null);
+        // Netzanschluss-Abschnitt neu zeichnen
+        if (typeof window.sgNaRender === 'function') window.sgNaRender();
         if (typeof window.gutRestoreGutachten === 'function') window.gutRestoreGutachten(project.gutachten || null);
         // Immer vor dem Gebäudetausch zurücksetzen/wiederherstellen. Alte Projekte
         // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die
@@ -131270,11 +131261,19 @@ out body;>;out skel qt;`;
   function setPdKaserneName(v) { pdKaserneName = v || ''; }
   let pdWeNummer = '';
   function setPdWeNummer(v) { pdWeNummer = v || ''; }
+  // Reale Anschrift der Liegenschaft (Straße, PLZ, Ort) für Deckblatt und Grafik-Köpfe —
+  // unabhängig vom Klimastandort (gl-stadt), der nur die DWD-Referenzstation für die
+  // Wärmebedarfsrechnung bezeichnet und oft nicht am tatsächlichen Standort liegt.
+  let pdLiegenschaftAdresse = '';
+  function setPdLiegenschaftAdresse(v) { pdLiegenschaftAdresse = v || ''; }
 
-  // ── Netzanschluss-Stammdaten (Gutachtentext Kapitel 3.2.2 Liegenschaftsstromnetzanschluss) ──
+  // ── Netzanschluss-Stammdaten (Gutachtentext Kapitel 3.1.1 Liegenschaftsstromnetzanschluss) ──
   // Manuell erfasste Vertrags-/Netzbetreiberangaben, die das Tool nicht selbst kennt
   // (das Netzmodell beginnt erst am Netzanknüpfungspunkt/NAP) — ergänzen dort, wo im
   // Elektromodell bereits Werte vorliegen (z. B. Spannungsebene aus dem NAP-Asset).
+  // Eingabe nur unter ⚡ Strom-Grundlagen › Netzanschluss (22-netzanschluss-panel.js). Die vereinbarte
+  // Anschlussleistung ist mit der Bezugsgrenze am NAP identisch und wird direkt im Feld
+  // „Max. Bezug" unter NAP-Grenzen gepflegt (window.elNapMaxBezugKw, kVA).
   let naNetzbetreiberName = '';
   function setNaNetzbetreiberName(v) { naNetzbetreiberName = v || ''; }
   let naNetzbetreiberAdresse = '';
@@ -131283,8 +131282,6 @@ out body;>;out skel qt;`;
   function setNaSpannungsebene(v) { naSpannungsebene = v || ''; }
   let naUebergabepunkt = '';
   function setNaUebergabepunkt(v) { naUebergabepunkt = v || ''; }
-  let naVereinbarteScheinleistungKva = '';
-  function setNaVereinbarteScheinleistungKva(v) { naVereinbarteScheinleistungKva = v || ''; }
   let naMessverfahren = '';
   function setNaMessverfahren(v) { naMessverfahren = v || ''; }
   /** Liste der MS-Einspeisepunkte: [{station, kabeltyp}, …] — je Liegenschaft unterschiedlich viele. */
@@ -132602,7 +132599,6 @@ out body;>;out skel qt;`;
     get naNetzbetreiberName () { return naNetzbetreiberName; },
     get naSpannungsebene () { return naSpannungsebene; },
     get naUebergabepunkt () { return naUebergabepunkt; },
-    get naVereinbarteScheinleistungKva () { return naVereinbarteScheinleistungKva; },
     get networkLocked () { return networkLocked; },
     get netzEdges () { return netzEdges; },
     get netzPruningMode () { return netzPruningMode; },
@@ -132610,6 +132606,7 @@ out body;>;out skel qt;`;
     get pdBearbeiterStrom () { return pdBearbeiterStrom; },
     get pdBearbeiterWaerme () { return pdBearbeiterWaerme; },
     get pdKaserneName () { return pdKaserneName; },
+    get pdLiegenschaftAdresse () { return pdLiegenschaftAdresse; },
     get pdWeNummer () { return pdWeNummer; },
     get pefFernwaerme () { return pefFernwaerme; },
     get pefGas () { return pefGas; },
@@ -132680,13 +132677,13 @@ out body;>;out skel qt;`;
     setNaNetzbetreiberName: setNaNetzbetreiberName,
     setNaSpannungsebene: setNaSpannungsebene,
     setNaUebergabepunkt: setNaUebergabepunkt,
-    setNaVereinbarteScheinleistungKva: setNaVereinbarteScheinleistungKva,
     setNetworkLocked: setNetworkLocked,
     setNetzEdges: setNetzEdges,
     setNetzPruningMode: setNetzPruningMode,
     setPdBearbeiterStrom: setPdBearbeiterStrom,
     setPdBearbeiterWaerme: setPdBearbeiterWaerme,
     setPdKaserneName: setPdKaserneName,
+    setPdLiegenschaftAdresse: setPdLiegenschaftAdresse,
     setPdWeNummer: setPdWeNummer,
     setPefFernwaerme: setPefFernwaerme,
     setPefGas: setPefGas,
@@ -167146,7 +167143,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         return `<div class="sb-asset-row${sel}" data-asset-id="${a.id}">
         <input type="checkbox" class="sb-asset-cb"${checked} onclick="event.stopPropagation();selToggle('${a.id}')" title="Auswählen" style="flex-shrink:0;cursor:pointer;accent-color:var(--accent,#2196F3);">
         <span class="sb-asset-row-icon" style="background:${cfg.color};opacity:${opacity};">${cfg.icon}</span>
-        <span class="sb-asset-row-name">${esc$2(a.name)}</span>
+        <span class="sb-asset-row-name">${esc$3(a.name)}</span>
         ${pendingDot}
         <button onclick="event.stopPropagation();toggleVormerkenAsset('${a.id}')" title="${a.feldVorgemerkt ? 'Vorgemerkt' : 'Vormerken'}" style="background:none;border:none;cursor:pointer;font-size:${a.feldVorgemerkt ? 13 : 11}px;color:${a.feldVorgemerkt ? '#f59e0b' : '#666'};padding:0 2px;margin-left:auto;line-height:1;flex-shrink:0;">★</button>
         <span class="sb-asset-row-status sb-asset-row-status-${status}"></span>
@@ -167176,7 +167173,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const dot   = ausl < 80 ? '#4caf50' : ausl < 100 ? '#f9a825' : '#e53935';
         return `<div class="sb-asset-row" data-edge-idx="${idx}">
         <span class="sb-asset-row-icon" style="background:#3a3a3a;color:#fdd835;font-size:11px;">━</span>
-        <span class="sb-asset-row-name">${esc$2(label)}${esc$2(lenStr)}</span>
+        <span class="sb-asset-row-name">${esc$3(label)}${esc$3(lenStr)}</span>
         <span style="width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0;"></span>
       </div>`;
       }).join('');
@@ -167226,7 +167223,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   }
 
   // ── Hilfsfunktionen für Formular-Felder ─────────────────────────────────────
-  function esc$2(s) { return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+  function esc$3(s) { return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
   // Planungsschicht nachträglich korrigierbar machen — im falschen Eingabemodus
   // angelegte Objekte sollen billig zu berichtigen sein, sonst arbeitet man
@@ -167376,7 +167373,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     const gh = s.gesamthoeheM;
     const ghCol = gh <= 50 ? '#4caf50' : '#f9a825';
     return `<div style="display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.06);">
-    <div style="font-size:10px;font-weight:700;color:var(--text);">${esc$2(s.label)}</div>
+    <div style="font-size:10px;font-weight:700;color:var(--text);">${esc$3(s.label)}</div>
     <div style="font-size:10px;color:${ghCol};font-weight:700;">Gesamthöhe ${gh.toFixed(0)} m</div>
     <div style="font-size:9px;color:var(--muted);grid-column:1/3;">
       ${s.ratedKw.toFixed(0)} kW · Ø ${s.rotorDurchmesserM.toFixed(0)} m · Nabenhöhe ${s.nabenhoheM.toFixed(0)} m
@@ -167692,7 +167689,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     return `<div class="ins-massn-row" data-m-id="${m.id}">
     <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
     <div class="ins-massn-info">
-      <div class="ins-massn-titel">${t.icon} ${esc$2(m.titel || '—')}</div>
+      <div class="ins-massn-titel">${t.icon} ${esc$3(m.titel || '—')}</div>
       <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten} · <span class="ins-massn-typ-tag">${t.label}</span></div>
     </div>
     <button class="ins-massn-edit" data-m-id="${m.id}" title="Bearbeiten">✎</button>
@@ -167904,8 +167901,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const s = MASSN_STATUS[r.m.status] || MASSN_STATUS.geplant;
         const t = MASSN_TYP[r.m.typ]       || MASSN_TYP.Sonstiges;
         tableHtml += `<tr>
-        <td><span class="ins-massn-dot" style="background:${s.color};display:inline-block;"></span> ${esc$2(r.asset.name)}</td>
-        <td>${esc$2(r.m.titel || '—')}</td>
+        <td><span class="ins-massn-dot" style="background:${s.color};display:inline-block;"></span> ${esc$3(r.asset.name)}</td>
+        <td>${esc$3(r.m.titel || '—')}</td>
         <td style="font-size:9px;white-space:nowrap;">${t.icon} ${t.label}</td>
         <td class="inv-num">${r.m.kosten ? r.m.kosten.toLocaleString('de-DE') + ' €' : '—'}</td>
         <td><span style="color:${s.color};font-size:9px;">${s.label}</span></td>
@@ -167951,7 +167948,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   function buildBuildingSelect(asset) {
     const buildings = (window.gebaeude || []).slice().sort((a, b) => a.name.localeCompare(b.name));
     const opts = buildings.map(g =>
-      `<option value="${g.id}"${asset.buildingId === g.id ? ' selected' : ''}>${esc$2(g.name)}</option>`
+      `<option value="${g.id}"${asset.buildingId === g.id ? ' selected' : ''}>${esc$3(g.name)}</option>`
     ).join('');
     return `<div class="ins-field-group">
     <label class="ins-field-label">🏢 Gebäude</label>
@@ -168356,7 +168353,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     return `
     <div class="ins-field-group">
       <label class="ins-field-label">Name</label>
-      <input class="ins-field-input" type="text" data-field="name" value="${esc$2(asset.name)}">
+      <input class="ins-field-input" type="text" data-field="name" value="${esc$3(asset.name)}">
     </div>
     ${buildBuildingSelect(asset)}
     <div class="ins-row-2">
@@ -168398,7 +168395,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     <div class="asset-ins-body">
       <div class="ins-field-group">
         <label class="ins-field-label">Name</label>
-        <input class="ins-field-input" type="text" data-field="name" value="${esc$2(asset.name)}">
+        <input class="ins-field-input" type="text" data-field="name" value="${esc$3(asset.name)}">
       </div>
       ${buildBuildingSelect(asset)}
       <div class="ins-row-2">
@@ -168487,7 +168484,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         html += `<div class="asb-card${isOpen ? ' asb-open' : ''}" id="asb-card-${a.id}">
         <div class="asb-card-hdr" data-asid="${a.id}">
           <span class="asb-card-ico">${cfg.icon}</span>
-          <span class="asb-card-name">${esc$2(a.name)}</span>
+          <span class="asb-card-name">${esc$3(a.name)}</span>
           <span class="asb-card-chev">${isOpen ? '▲' : '▼'}</span>
         </div>
         ${isOpen ? `<div class="asb-card-body">
@@ -168675,10 +168672,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     const labels = { offen: '📋 Offen', besucht: '👁 Besucht', erledigt: '✅ Erledigt' };
     const statusLabel = labels[a.feldStatus] || '';
     const notizHtml = a.feldNotizen
-      ? '<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#1a1a2e;white-space:pre-wrap;margin-bottom:6px;">' + esc$2(a.feldNotizen) + '</div>'
+      ? '<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#1a1a2e;white-space:pre-wrap;margin-bottom:6px;">' + esc$3(a.feldNotizen) + '</div>'
       : '';
     const fotoHtml = (a.feldFotos || []).map(foto =>
-      '<img src="' + foto.dataUrl + '" title="' + esc$2(foto.name) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #2a3352;" onclick="openImageLightbox(this.src,this.title)">'
+      '<img src="' + foto.dataUrl + '" title="' + esc$3(foto.name) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #2a3352;" onclick="openImageLightbox(this.src,this.title)">'
     ).join('');
     return '<div style="margin:8px 0;padding:8px 10px;background:var(--surface2,#1e2433);border-radius:8px;border:1px solid #2a3352;">'
       + '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px;">📱 FELDDATEN' + (statusLabel ? ' · ' + statusLabel : '') + '</div>'
@@ -170608,7 +170605,7 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
     werkstatt:'Werkstatt / Instandhaltung', lager:'Lager / Depot', technik:'Technik- / Betriebsgebäude', labor:'Labor / Forschung',
   };
 
-  const esc$1 = value => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const esc$2 = value => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const fmt = (value, digits=0) => Number(value || 0).toLocaleString('de-DE',{minimumFractionDigits:digits,maximumFractionDigits:digits});
   const money = value => Number(value || 0).toLocaleString('de-DE',{style:'currency',currency:'EUR',maximumFractionDigits:0});
 
@@ -170683,33 +170680,33 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
 
   function barChart(items,labelKey,valueKey,unit) {
     const max=Math.max(...items.map(item=>Number(item[valueKey])||0),1);
-    return `<div class="chart">${items.map(item=>`<div class="chart-row"><div>${esc$1(item[labelKey])}</div><div class="chart-track"><div class="chart-bar" style="width:${Math.max(0,(Number(item[valueKey])||0)/max*100)}%"></div></div><div class="chart-val">${fmt(item[valueKey],1)} ${unit}</div></div>`).join('')}</div>`;
+    return `<div class="chart">${items.map(item=>`<div class="chart-row"><div>${esc$2(item[labelKey])}</div><div class="chart-track"><div class="chart-bar" style="width:${Math.max(0,(Number(item[valueKey])||0)/max*100)}%"></div></div><div class="chart-val">${fmt(item[valueKey],1)} ${unit}</div></div>`).join('')}</div>`;
   }
 
   function renderIssues(model) {
     if (!model.quality.issues.length) return '<div class="quality ok"><strong>Datenstatus: plausibel</strong><div>Die automatischen Grundprüfungen haben keine Auffälligkeit erkannt.</div></div>';
     const cls=model.quality.errorCount?'bad':'';
-    return `<div class="quality ${cls}"><strong>Datenstatus: ${esc$1(model.quality.status)}</strong>${model.quality.issues.map(issue=>`<div class="issue">${issue.level==='error'?'⛔':'⚠'} ${esc$1(issue.text)}</div>`).join('')}</div>`;
+    return `<div class="quality ${cls}"><strong>Datenstatus: ${esc$2(model.quality.status)}</strong>${model.quality.issues.map(issue=>`<div class="issue">${issue.level==='error'?'⛔':'⚠'} ${esc$2(issue.text)}</div>`).join('')}</div>`;
   }
 
   function buildReportHtml(model, options, mapImage) {
     const chapters=new Set(options.chapters);
     const section=(id,html)=>chapters.has(id)?html:'';
-    const findings=model.findings.map(text=>`<li>${esc$1(text)}</li>`).join('');
-    const groups=model.buildings.groups.map(group=>`<tr><td>${esc$1(usageLabels[group.key]||group.key)}</td><td class="r">${group.count}</td><td class="r">${fmt(group.areaM2)}</td><td class="r">${fmt(group.heatMwh,1)}</td><td class="r">${fmt(group.peakKw)}</td></tr>`).join('');
-    const generators=model.generation.items.map(item=>`<tr><td>${esc$1(item.label)}</td><td class="r">${fmt(item.heatMwh,1)}</td><td class="r">${model.generation.totalMwh?fmt(item.heatMwh/model.generation.totalMwh*100,1):'—'}</td><td class="r">${item.electricityMwh?fmt(item.electricityMwh,1):'—'}</td></tr>`).join('');
+    const findings=model.findings.map(text=>`<li>${esc$2(text)}</li>`).join('');
+    const groups=model.buildings.groups.map(group=>`<tr><td>${esc$2(usageLabels[group.key]||group.key)}</td><td class="r">${group.count}</td><td class="r">${fmt(group.areaM2)}</td><td class="r">${fmt(group.heatMwh,1)}</td><td class="r">${fmt(group.peakKw)}</td></tr>`).join('');
+    const generators=model.generation.items.map(item=>`<tr><td>${esc$2(item.label)}</td><td class="r">${fmt(item.heatMwh,1)}</td><td class="r">${model.generation.totalMwh?fmt(item.heatMwh/model.generation.totalMwh*100,1):'—'}</td><td class="r">${item.electricityMwh?fmt(item.electricityMwh,1):'—'}</td></tr>`).join('');
     const reportDate=new Date(model.meta.createdAt).toLocaleDateString('de-DE');
     const qualityText=model.quality.status==='plausibel'?'Die Datengrundlage ist für eine erste Ergebnisbewertung plausibel.':model.quality.errorCount?'Vor einer belastbaren fachlichen Freigabe müssen die als kritisch gekennzeichneten Punkte geklärt werden.':'Die Ergebnisse sind nutzbar, die gekennzeichneten Annahmen sollten jedoch fachlich geprüft werden.';
-    const recommendations=model.quality.issues.map(issue=>`<li>${esc$1(issue.text)}</li>`).join('') || '<li>Ergebnisse mit den Projektbeteiligten abstimmen und die gewählte Variante dokumentieren.</li>';
+    const recommendations=model.quality.issues.map(issue=>`<li>${esc$2(issue.text)}</li>`).join('') || '<li>Ergebnisse mit den Projektbeteiligten abstimmen und die gewählte Variante dokumentieren.</li>';
     const customSummary=options.customSummary || qualityText;
     const defaultConclusion=`Aus der automatischen Plausibilitätsprüfung ergeben sich folgende Punkte: ${model.quality.issues.map(issue=>issue.text).join(' ')} Die abschließende Bewertung und Empfehlung ist durch die fachlich verantwortliche Bearbeitung zu ergänzen.`;
     const customConclusion=options.customConclusion || defaultConclusion;
-    const variantRows=model.variants.map(variant=>`<tr><td>${esc$1(variant.label)}</td><td class="r">${fmt(variant.heatMwh,1)}</td><td class="r">${fmt(variant.lossesMwh,1)}</td><td class="r">${variant.investmentEur?money(variant.investmentEur):'—'}</td><td class="r">${variant.annualCostEur?money(variant.annualCostEur):'—'}</td><td class="r">${variant.heatCostCtKwh?fmt(variant.heatCostCtKwh,1):'—'}</td><td class="r">${variant.co2Tons?fmt(variant.co2Tons,1):'—'}</td><td class="r">${variant.renewablePct?fmt(variant.renewablePct,1):'—'}</td></tr>`).join('');
-    return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${esc$1(model.meta.title)}</title><style>${reportStyles()}</style></head><body>
+    const variantRows=model.variants.map(variant=>`<tr><td>${esc$2(variant.label)}</td><td class="r">${fmt(variant.heatMwh,1)}</td><td class="r">${fmt(variant.lossesMwh,1)}</td><td class="r">${variant.investmentEur?money(variant.investmentEur):'—'}</td><td class="r">${variant.annualCostEur?money(variant.annualCostEur):'—'}</td><td class="r">${variant.heatCostCtKwh?fmt(variant.heatCostCtKwh,1):'—'}</td><td class="r">${variant.co2Tons?fmt(variant.co2Tons,1):'—'}</td><td class="r">${variant.renewablePct?fmt(variant.renewablePct,1):'—'}</td></tr>`).join('');
+    return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${esc$2(model.meta.title)}</title><style>${reportStyles()}</style></head><body>
   <div class="toolbar"><button onclick="window.print()">Drucken / PDF</button><button class="secondary" onclick="document.querySelectorAll('[contenteditable]').forEach(e=>e.removeAttribute('contenteditable'));this.parentElement.remove()">Bearbeitung abschließen</button></div>
-  <div class="cover"><span class="tag">Automatisch erzeugter Ergebnisbericht</span><h1>${esc$1(model.meta.title)}</h1><div class="subtitle">${esc$1(model.meta.variantName)} · Betrachtungsjahr ${esc$1(model.meta.year||'—')}</div>${mapImage?`<img class="map" src="${mapImage}" alt="Projektkarte" style="margin-top:25px">`:''}<div class="meta">${model.meta.client?`<strong>Auftraggeber:</strong> ${esc$1(model.meta.client)}<br>`:''}${model.meta.author?`<strong>Bearbeitung:</strong> ${esc$1(model.meta.author)}<br>`:''}<strong>Erstellt:</strong> ${reportDate}<br><strong>Datenstatus:</strong> ${esc$1(model.quality.status)}</div></div>
+  <div class="cover"><span class="tag">Automatisch erzeugter Ergebnisbericht</span><h1>${esc$2(model.meta.title)}</h1><div class="subtitle">${esc$2(model.meta.variantName)} · Betrachtungsjahr ${esc$2(model.meta.year||'—')}</div>${mapImage?`<img class="map" src="${mapImage}" alt="Projektkarte" style="margin-top:25px">`:''}<div class="meta">${model.meta.client?`<strong>Auftraggeber:</strong> ${esc$2(model.meta.client)}<br>`:''}${model.meta.author?`<strong>Bearbeitung:</strong> ${esc$2(model.meta.author)}<br>`:''}<strong>Erstellt:</strong> ${reportDate}<br><strong>Datenstatus:</strong> ${esc$2(model.quality.status)}</div></div>
   <div class="edit-hint note">Gelb hinterlegte Textbereiche können vor dem Drucken direkt bearbeitet werden.</div>
-  ${section('summary',`<div class="page-break"></div><h2>1. Zusammenfassung</h2><div class="kpis"><div class="kpi"><b>${model.buildings.count}</b><span>Gebäude</span></div><div class="kpi"><b>${fmt(model.buildings.totalHeatMwh)}</b><span>MWh/a Wärmebedarf</span></div><div class="kpi"><b>${fmt(model.buildings.totalPeakKw)}</b><span>kW Heizlast</span></div><div class="kpi"><b>${model.network.exists?fmt(model.network.lengthM):'—'}</b><span>m Wärmenetz</span></div></div><ul>${findings}</ul><p id="report-custom-summary" class="editable" contenteditable="true">${esc$1(customSummary)}</p>`)}
+  ${section('summary',`<div class="page-break"></div><h2>1. Zusammenfassung</h2><div class="kpis"><div class="kpi"><b>${model.buildings.count}</b><span>Gebäude</span></div><div class="kpi"><b>${fmt(model.buildings.totalHeatMwh)}</b><span>MWh/a Wärmebedarf</span></div><div class="kpi"><b>${fmt(model.buildings.totalPeakKw)}</b><span>kW Heizlast</span></div><div class="kpi"><b>${model.network.exists?fmt(model.network.lengthM):'—'}</b><span>m Wärmenetz</span></div></div><ul>${findings}</ul><p id="report-custom-summary" class="editable" contenteditable="true">${esc$2(customSummary)}</p>`)}
   ${section('quality',`<h2>2. Datengrundlage und Qualität</h2>${renderIssues(model)}<table><tr><th>Prüfgröße</th><th class="r">Anzahl</th></tr><tr><td>Gebäude ohne Fläche</td><td class="r">${model.buildings.missing.area}</td></tr><tr><td>Gebäude ohne Baujahr</td><td class="r">${model.buildings.missing.year}</td></tr><tr><td>Gebäude ohne eindeutige Nutzung</td><td class="r">${model.buildings.missing.usage}</td></tr><tr><td>Gebäude ohne Wärmebedarf</td><td class="r">${model.buildings.missing.heat}</td></tr></table><p class="note">Die automatische Prüfung ersetzt keine fachliche Plausibilisierung. Berechnungsannahmen und Bilanzgrenzen sind vor einer externen Verwendung zu bestätigen.</p>`)}
   ${section('buildings',`<h2>3. Gebäudebestand</h2><p>Die erfasste Bruttogrundfläche beträgt ${fmt(model.buildings.totalAreaM2)} m². Der summierte Wärmebedarf liegt bei ${fmt(model.buildings.totalHeatMwh,1)} MWh/a.</p>${barChart(model.buildings.groups.map(group=>({...group,label:usageLabels[group.key]||group.key})),'label','heatMwh','MWh/a')}<table><thead><tr><th>Nutzung</th><th class="r">Gebäude</th><th class="r">Fläche m²</th><th class="r">Wärme MWh/a</th><th class="r">Heizlast kW</th></tr></thead><tbody>${groups||'<tr><td colspan="5">Keine Gebäudedaten vorhanden.</td></tr>'}</tbody></table>`)}
   ${section('generation',`<h2>4. Wärmebedarf und Erzeugung</h2><p>Die simulierte Erzeugung beträgt ${fmt(model.generation.totalMwh,1)} MWh/a. Gegenüber dem summierten Gebäudebedarf ergibt sich eine Differenz von ${fmt(model.generation.balanceDeltaMwh,1)} MWh/a (${fmt(model.generation.balanceDeltaPct,1)} %). Diese Differenz kann insbesondere Netzverluste und unterschiedliche Bilanzgrenzen enthalten.</p>${barChart(model.generation.items,'label','heatMwh','MWh/a')}<table><thead><tr><th>Erzeuger</th><th class="r">Wärme MWh/a</th><th class="r">Anteil %</th><th class="r">Strom MWh/a</th></tr></thead><tbody>${generators||'<tr><td colspan="4">Noch keine Dispatch-Ergebnisse vorhanden.</td></tr>'}</tbody></table>`)}
@@ -170717,8 +170714,8 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
   ${section('economics',`<h2>6. Wirtschaftlichkeit</h2><div class="kpis"><div class="kpi"><b>${model.economics.investmentEur?money(model.economics.investmentEur):'—'}</b><span>Investition</span></div><div class="kpi"><b>${model.economics.annualCostEur?money(model.economics.annualCostEur):'—'}</b><span>jährliche Kosten</span></div><div class="kpi"><b>${model.economics.heatCostCtKwh?fmt(model.economics.heatCostCtKwh,1):'—'}</b><span>ct/kWh Wärmegestehung</span></div></div><p class="editable" contenteditable="true">Die Wirtschaftlichkeitswerte beruhen auf den im Projekt hinterlegten Preis-, Investitions- und Finanzierungsannahmen.</p>`)}
   ${section('emissions',`<h2>7. Ökologie und CO₂</h2><div class="kpis"><div class="kpi"><b>${model.emissions.co2Tons?fmt(model.emissions.co2Tons,1):'—'}</b><span>t CO₂/a</span></div><div class="kpi"><b>${model.emissions.renewablePct?fmt(model.emissions.renewablePct,1):'—'}</b><span>% erneuerbare Wärme</span></div></div>`)}
   ${section('variants',`<h2>8. Variantenvergleich</h2>${model.variants.length?`${barChart(model.variants,'label','heatCostCtKwh','ct/kWh')}<table><thead><tr><th>Variante</th><th class="r">Wärme MWh/a</th><th class="r">Verluste MWh/a</th><th class="r">Invest</th><th class="r">Kosten/a</th><th class="r">WGK ct/kWh</th><th class="r">CO₂ t/a</th><th class="r">EE %</th></tr></thead><tbody>${variantRows}</tbody></table>`:'<p>Es wurden noch keine zwischengespeicherten Variantenergebnisse berechnet.</p>'}`)}
-  ${section('recommendations',`<h2>9. Fazit und nächste Schritte</h2><div id="report-custom-conclusion" class="editable" contenteditable="true"><p>${esc$1(customConclusion)}</p>${options.customConclusion?'':`<ul>${recommendations}</ul>`}</div>`)}
-  <hr><p class="note">Automatisch erstellt mit dem Energieplanungs-Tool · Variante ${esc$1(model.meta.variantName)} · Jahr ${esc$1(model.meta.year||'—')} · Datenstatus ${esc$1(model.quality.status)}</p></body></html>`;
+  ${section('recommendations',`<h2>9. Fazit und nächste Schritte</h2><div id="report-custom-conclusion" class="editable" contenteditable="true"><p>${esc$2(customConclusion)}</p>${options.customConclusion?'':`<ul>${recommendations}</ul>`}</div>`)}
+  <hr><p class="note">Automatisch erstellt mit dem Energieplanungs-Tool · Variante ${esc$2(model.meta.variantName)} · Jahr ${esc$2(model.meta.year||'—')} · Datenstatus ${esc$2(model.quality.status)}</p></body></html>`;
   }
 
   function closeProjectReportWizard() {
@@ -170776,7 +170773,7 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
     const overlay=document.createElement('div');
     overlay.id='project-report-wizard';
     overlay.className='ep-modal-overlay project-report-overlay';
-    overlay.innerHTML=`<div class="ep-modal project-report-modal" role="dialog" aria-modal="true" aria-labelledby="project-report-title"><div class="project-report-head"><div><div class="ep-modal-title" id="project-report-title">📄 Automatischen Projektbericht erstellen</div><div class="project-report-sub">Geprüfte Projektdaten, nachvollziehbare Textbausteine und druckbare Vorschau</div></div><button class="project-report-close" data-click="closeProjectReportWizard()" aria-label="Schließen">×</button></div><div class="project-report-grid"><label>Berichtstitel<input class="ep-modal-input" id="pr-title" value="${esc$1(model.meta.title)}"></label><label>Auftraggeber<input class="ep-modal-input" id="pr-client" value="${esc$1(model.meta.client)}" placeholder="optional"></label><label>Bearbeitung<input class="ep-modal-input" id="pr-author" value="${esc$1(model.meta.author)}" placeholder="optional"></label><label class="project-report-map"><input type="checkbox" id="pr-map" ${draft.includeMap===false?'':'checked'}> Aktuellen Kartenausschnitt aufnehmen</label></div><div class="project-report-section-title">Kapitel</div><div class="project-report-chapters">${REPORT_CHAPTERS.map(chapter=>`<label><input type="checkbox" data-report-chapter value="${chapter.id}" ${selectedChapters.has(chapter.id)?'checked':''}> ${esc$1(chapter.label)}</label>`).join('')}</div><div class="project-report-section-title">Automatische Datenprüfung</div>${renderIssues(model)}<div class="project-report-draft-hint">Eigene Texte und Einstellungen werden beim nächsten Speichern in der Projektdatei gesichert.</div><div class="ep-modal-btns"><button class="ep-modal-btn" data-click="closeProjectReportWizard()">Abbrechen</button><button class="ep-modal-btn primary" data-click="generateProjectReport()">Vorschau erstellen</button></div></div>`;
+    overlay.innerHTML=`<div class="ep-modal project-report-modal" role="dialog" aria-modal="true" aria-labelledby="project-report-title"><div class="project-report-head"><div><div class="ep-modal-title" id="project-report-title">📄 Automatischen Projektbericht erstellen</div><div class="project-report-sub">Geprüfte Projektdaten, nachvollziehbare Textbausteine und druckbare Vorschau</div></div><button class="project-report-close" data-click="closeProjectReportWizard()" aria-label="Schließen">×</button></div><div class="project-report-grid"><label>Berichtstitel<input class="ep-modal-input" id="pr-title" value="${esc$2(model.meta.title)}"></label><label>Auftraggeber<input class="ep-modal-input" id="pr-client" value="${esc$2(model.meta.client)}" placeholder="optional"></label><label>Bearbeitung<input class="ep-modal-input" id="pr-author" value="${esc$2(model.meta.author)}" placeholder="optional"></label><label class="project-report-map"><input type="checkbox" id="pr-map" ${draft.includeMap===false?'':'checked'}> Aktuellen Kartenausschnitt aufnehmen</label></div><div class="project-report-section-title">Kapitel</div><div class="project-report-chapters">${REPORT_CHAPTERS.map(chapter=>`<label><input type="checkbox" data-report-chapter value="${chapter.id}" ${selectedChapters.has(chapter.id)?'checked':''}> ${esc$2(chapter.label)}</label>`).join('')}</div><div class="project-report-section-title">Automatische Datenprüfung</div>${renderIssues(model)}<div class="project-report-draft-hint">Eigene Texte und Einstellungen werden beim nächsten Speichern in der Projektdatei gesichert.</div><div class="ep-modal-btns"><button class="ep-modal-btn" data-click="closeProjectReportWizard()">Abbrechen</button><button class="ep-modal-btn primary" data-click="generateProjectReport()">Vorschau erstellen</button></div></div>`;
     overlay.addEventListener('mousedown',event=>{if(event.target===overlay) closeProjectReportWizard();});
     document.body.appendChild(overlay);
     overlay.querySelector('#pr-title')?.focus();
@@ -175141,6 +175138,9 @@ self.onmessage = function(e) {
   document.getElementById('opt-kosten-details').addEventListener('toggle', function() {
     document.getElementById('opt-kosten-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
     if (this.open) _renderOptKostenUebersicht();
+  });
+  document.getElementById('spot-preise-details').addEventListener('toggle', function() {
+    document.getElementById('spot-preise-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
   });
 
   // ── 13d-assets-autocreate.js — Auto-Creation von Assets beim Gebäude-Zeichnen
@@ -179809,7 +179809,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
 
   // ── Hilfsfunktionen ──────────────────────────────────────────────────────────
-  function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function esc$1(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function fmt1(v) { return typeof v === 'number' ? v.toFixed(1) : '—'; }
   function isManual(asset, key) { return asset?.props?.[key] !== undefined && asset?.props?.[key] !== null; }
 
@@ -179934,11 +179934,11 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const wpm2     = sessOver ?? projOver ?? p.wpm2;
       const changed  = wpm2 !== p.wpm2;
       return `<tr>
-      <td><span class="aw-slp-tag">${esc(p.id)}</span></td>
-      <td class="aw-nt-name">${esc(p.label)}</td>
+      <td><span class="aw-slp-tag">${esc$1(p.id)}</span></td>
+      <td class="aw-nt-name">${esc$1(p.label)}</td>
       <td style="text-align:right;">
         <input class="aw-cfg-input aw-slp-wpm2-inp" type="number"
-          data-slpid="${esc(p.id)}" value="${wpm2}" min="0.1" max="9999" step="0.5"
+          data-slpid="${esc$1(p.id)}" value="${wpm2}" min="0.1" max="9999" step="0.5"
           style="width:60px;${changed?'border-color:#f9a825;':''}"
           title="${changed?'Geändert (Projektstandard: '+(projOver??p.wpm2)+' W/m²)':''}">
       </td>
@@ -180060,13 +180060,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
       // SLP dropdown
       const slpCell = skipV
-        ? `<span class="aw-skip-val">${esc(slpVal)}</span>`
+        ? `<span class="aw-skip-val">${esc$1(slpVal)}</span>`
         : `<select class="aw-slp-select" data-gid="${g.id}" data-field="slp" style="max-width:130px;">
            ${gruppen.map(gr => {
              const opts = profs.filter(p => p.gruppe === gr).map(p =>
-               `<option value="${esc(p.id)}"${p.id === slpVal ? ' selected' : ''}>${esc(p.id)} — ${esc(p.label)}</option>`
+               `<option value="${esc$1(p.id)}"${p.id === slpVal ? ' selected' : ''}>${esc$1(p.id)} — ${esc$1(p.label)}</option>`
              ).join('');
-             return `<optgroup label="${esc(gr)}">${opts}</optgroup>`;
+             return `<optgroup label="${esc$1(gr)}">${opts}</optgroup>`;
            }).join('')}
          </select>`;
 
@@ -180085,7 +180085,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       <tr class="aw-dach-subrow">
         <td colspan="${colCount}" style="padding:0;">
           <div class="aw-dach-subrow-inner">
-            <div class="aw-dach-subrow-label">☀ Dach-Parameter: <strong>${esc(g.name)}</strong></div>
+            <div class="aw-dach-subrow-label">☀ Dach-Parameter: <strong>${esc$1(g.name)}</strong></div>
             <div class="aw-dach-subrow-grid">
               <label>Dachform</label>
               <select class="aw-cfg-input aw-dach-inp" data-gid="${g.id}" data-dachfield="dachform">
@@ -180116,7 +180116,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       </tr>` : '';
 
       return `<tr data-gid="${g.id}" class="${isExpanded ? 'aw-row-expanded' : ''}">
-      <td class="aw-col-name" title="${esc(g.name)}">${esc(g.name)}</td>
+      <td class="aw-col-name" title="${esc$1(g.name)}">${esc$1(g.name)}</td>
       ${showV ? `
         <td class="aw-col-verbr">${slpCell}</td>
         <td class="aw-col-verbr" style="text-align:right;">${skipV
@@ -192098,6 +192098,210 @@ ${teile.join('\n')}
     ergebnisblattToggle: ergebnisblattToggle
   });
 
+  // ── 22-netzanschluss-panel.js — Netzanschluss-Stammdaten unter ⚡ Strom-Grundlagen ──
+  // Einzige Eingabestelle für Netzbetreiber, Spannungsebene, Übergabepunkt, Messverfahren
+  // und Einspeisepunkte (Gutachtentext Kapitel 3.1.1).
+  //
+  // Die vereinbarte Anschlussleistung und die Bezugsgrenze am NAP sind ein und derselbe
+  // Wert (kVA, aus dem Netzanschlussvertrag) — er wird direkt im Feld „Max. Bezug" unter
+  // NAP-Grenzen gepflegt (window.elNapMaxBezugKw) und speist von dort PV-Analyse,
+  // NAP-Lastgang und die Gutachten-Grafik „Entwicklung der Anschlussleistung".
+  //
+  // Liest und schreibt die na*-Globals über window (Live-Accessoren aus main.js) und
+  // importiert nur lib/ → Blatt im Importgraph.
+
+
+  const WRAP_ID = 'strom-netzanschluss-wrap';
+  const TEXTFELDER = ['naNetzbetreiberName', 'naNetzbetreiberAdresse', 'naSpannungsebene', 'naUebergabepunkt'];
+  const STIL_EINGABE = 'width:100%;box-sizing:border-box;text-align:left;font-size:10px;';
+  const STIL_KNOPF = 'font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  function vorschlag() {
+    // elQuartierH gibt es nur aus einer hochgeladenen Messdatei (09a stromFileSelected / Projektdatei)
+    const aufloesung = window.elQuartierH ? (window.elQuartierResolution === 15 ? 15 : 60) : null;
+    const eingabe = parseFloat($('strom-quartier-mwh')?.value);
+    return naMessverfahrenVorschlag({ lastgangAufloesung: aufloesung, jahresMwh: eingabe > 0 ? eingabe : null });
+  }
+
+  /* ── Oberfläche ──────────────────────────────────────────────────────────── */
+  function textfeld(label, feld, { einheit = '', platzhalter = '' } = {}) {
+    return `<label style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+      <span style="font-size:9px;color:var(--muted);">${label}</span>
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input class="inp-field" type="text" value="${esc(window[feld])}" placeholder="${esc(platzhalter)}"
+          data-change="sgNaSetFeld('${feld}',this.value)" style="${STIL_EINGABE}"/>
+        ${einheit ? `<span style="font-size:9px;color:var(--muted);">${einheit}</span>` : ''}
+      </span>
+    </label>`;
+  }
+
+  function messverfahrenFeld() {
+    const aktuell = String(window.naMessverfahren || '');
+    const optionen = [['', '— bitte wählen —'], ...NA_MESSVERFAHREN.map(o => [o.wert, o.wert])];
+    if (aktuell && !NA_MESSVERFAHREN.some(o => o.wert === aktuell)) optionen.push([aktuell, `${aktuell} (bisheriger Freitext)`]);
+    return `<label style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+      <span style="font-size:9px;color:var(--muted);">Messverfahren</span>
+      <select class="inp-field" data-change="sgNaSetMessverfahren(this.value)" style="${STIL_EINGABE}">
+        ${optionen.map(([v, l]) => `<option value="${esc(v)}"${v === aktuell ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+      </select>
+    </label>`;
+  }
+
+  function vorschlagHtml() {
+    const v = vorschlag();
+    if (!v) return 'Vorschlag Messverfahren: dafür Stromlastgang hochladen oder Jahressumme eintragen.';
+    if (window.naMessverfahren === v.wert) return `✓ Messverfahren passt zum Vorschlag (${esc(v.grund)}).`;
+    return `Vorschlag: <b style="color:var(--text);">${v.kurz}</b> – ${esc(v.grund)} `
+      + `<button data-click="sgNaVorschlagUebernehmen()" style="${STIL_KNOPF}">übernehmen</button>`;
+  }
+
+  function einspeiseFeld(i, feld, label, wert) {
+    return `<label style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+      <span style="font-size:9px;color:var(--muted);">${label}</span>
+      <input class="inp-field" type="text" value="${esc(wert)}" data-change="sgNaSetEinspeisung(${i},'${feld}',this.value)" style="${STIL_EINGABE}"/>
+    </label>`;
+  }
+
+  function einspeisungenHtml() {
+    const liste = window.naEinspeisungen?.length ? window.naEinspeisungen : [{ station: '', kabeltyp: '' }];
+    const mehrere = liste.length > 1;
+    return liste.map((e, i) => `<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;margin-top:4px;">
+      ${einspeiseFeld(i, 'station', mehrere ? `Station ${i + 1}` : 'Station', e.station)}
+      ${einspeiseFeld(i, 'kabeltyp', mehrere ? `Kabeltyp ${i + 1}` : 'Kabeltyp', e.kabeltyp)}
+      ${mehrere ? `<button data-click="sgNaEinspeisungEntfernen(${i})" title="Einspeisepunkt entfernen" style="${STIL_KNOPF}color:var(--muted);">✕</button>` : '<span></span>'}
+    </div>`).join('');
+  }
+
+  function panelHtml() {
+    return `<div class="sa-section-title" style="margin-top:4px;">Netzanschluss <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">laut Netzanschlussvertrag · Gutachten 3.1.1 · vereinbarte Anschlussleistung = Max. Bezug unter NAP-Grenzen (kVA)</span>
+      <a href="https://www.vnbdigital.de/" target="_blank" rel="noopener"
+        style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--accent);font-size:9px;margin-left:6px;text-decoration:none;" title="Netzbetreiber anhand der Adresse ermitteln">→ Netzbetreiber finden (VNB Digital)</a>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;margin-bottom:6px;">
+      ${textfeld('Netzbetreiber', 'naNetzbetreiberName')}
+      ${textfeld('Adresse Netzbetreiber', 'naNetzbetreiberAdresse')}
+      ${textfeld('Spannungsebene', 'naSpannungsebene', { platzhalter: 'z. B. Mittelspannung (20 kV)' })}
+      ${textfeld('Übergabepunkt (Gebäude/Lage)', 'naUebergabepunkt')}
+      ${messverfahrenFeld()}
+    </div>
+    <div id="strom-na-vorschlag" style="font-size:9px;color:var(--muted);margin-bottom:6px;line-height:1.5;">${vorschlagHtml()}</div>
+    <div style="font-size:9px;color:var(--muted);margin-top:6px;">Einspeisepunkte (Station des Netzbetreibers · Kabel bis zur Übergabe)</div>
+    ${einspeisungenHtml()}
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;">
+      <button data-click="sgNaEinspeisungNeu()" style="${STIL_KNOPF}">+ Einspeisepunkt</button>
+      <button data-click="sgNaAusNapAssetKnopf()" title="Spannungsebene und Übergabepunkt-Gebäude aus dem NAP-Asset des Elektro-Tabs lesen (nur leere Felder)" style="${STIL_KNOPF}">⟳ Aus NAP-Asset übernehmen</button>
+      <span id="strom-na-status" style="font-size:9px;color:var(--muted);"></span>
+    </div>`;
+  }
+
+  /** Abschnitt „Netzanschluss" in ⚡ Strom-Grundlagen neu zeichnen. */
+  function sgNaRender() {
+    const wrap = $(WRAP_ID);
+    if (wrap) wrap.innerHTML = panelHtml();
+  }
+
+  /** ⚡ Strom-Grundlagen öffnen und zum Abschnitt „Netzanschluss" springen (Absprung aus dem Gutachten-Reiter). */
+  function sgNaOeffnen() {
+    const p = $('strom-panel');
+    if (p && !p.classList.contains('visible') && typeof window.toggleStromPanel === 'function') window.toggleStromPanel();
+    $(WRAP_ID)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  /* ── Eingaben ────────────────────────────────────────────────────────────────
+   * Textfelder zeichnen den Abschnitt NICHT neu: change feuert beim Wegklicken, ein
+   * Neuaufbau würde den gerade angeklickten Knopf austauschen und der Klick ginge verloren. */
+  function sgNaSetFeld(feld, wert) {
+    if (!TEXTFELDER.includes(feld)) return;
+    window[feld] = String(wert ?? '').trim();
+  }
+
+  function sgNaSetMessverfahren(wert) {
+    window.naMessverfahren = String(wert ?? '');
+    const el = $('strom-na-vorschlag');
+    if (el) el.innerHTML = vorschlagHtml();
+  }
+
+  function sgNaVorschlagUebernehmen() {
+    const v = vorschlag();
+    if (!v) return;
+    window.naMessverfahren = v.wert;
+    sgNaRender();
+  }
+
+  function sgNaSetEinspeisung(i, feld, wert) {
+    if (feld !== 'station' && feld !== 'kabeltyp') return;
+    const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
+    if (!liste[i]) liste[i] = { station: '', kabeltyp: '' };
+    liste[i][feld] = String(wert ?? '').trim();
+    window.naEinspeisungen = liste;
+  }
+
+  function sgNaEinspeisungNeu() {
+    const liste = (window.naEinspeisungen?.length ? window.naEinspeisungen : [{ station: '', kabeltyp: '' }]).map(e => ({ ...e }));
+    liste.push({ station: '', kabeltyp: '' });
+    window.naEinspeisungen = liste;
+    sgNaRender();
+  }
+
+  function sgNaEinspeisungEntfernen(i) {
+    const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
+    liste.splice(i, 1);
+    window.naEinspeisungen = liste;
+    sgNaRender();
+  }
+
+  /** Spannungsebene und Übergabepunkt aus dem NAP-Asset übernehmen (nur leere Felder). Liefert eine Statusmeldung. */
+  function sgNaAusNapAsset() {
+    let naps = [];
+    try { naps = window.listAssets?.({ type: 'NAP' }) || []; } catch (e) { }
+    if (!naps.length) return '⚠ Kein NAP-Asset im Modell — Spannungsebene und Übergabepunkt bitte von Hand eintragen.';
+    const nap = naps[0];
+    let n = 0;
+    if (!window.naSpannungsebene && nap.props?.spannungKV) {
+      const kv = Number(nap.props.spannungKV);
+      window.naSpannungsebene = kv > 1 ? `Mittelspannung (${kv} kV)` : `Niederspannung (${kv * 1000} V)`;
+      n++;
+    }
+    if (!window.naUebergabepunkt && nap.buildingId) {
+      const g = (window.gebaeude || []).find(b => b.id === nap.buildingId);
+      const bez = String(g?.gebaeudenummer || g?.name || '').trim();
+      if (bez) { window.naUebergabepunkt = bez; n++; }
+    }
+    if (naps.length > 1) {
+      const vorhandene = window.naEinspeisungen || [];
+      if (vorhandene.length < naps.length) {
+        window.naEinspeisungen = naps.map((_, i) => vorhandene[i] || { station: '', kabeltyp: '' });
+        n++;
+      }
+    }
+    if (n) sgNaRender();
+    return n ? `✓ ${n} Angabe(n) aus dem NAP-Asset übernommen — bitte prüfen.`
+             : '✓ Keine leeren Felder gefunden, die sich aus dem NAP-Asset ableiten ließen.';
+  }
+
+  function sgNaAusNapAssetKnopf() {
+    const meldung = sgNaAusNapAsset();
+    const el = $('strom-na-status');
+    if (el) el.textContent = meldung;
+  }
+
+  var netzanschlussPanel = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    sgNaAusNapAsset: sgNaAusNapAsset,
+    sgNaAusNapAssetKnopf: sgNaAusNapAssetKnopf,
+    sgNaEinspeisungEntfernen: sgNaEinspeisungEntfernen,
+    sgNaEinspeisungNeu: sgNaEinspeisungNeu,
+    sgNaOeffnen: sgNaOeffnen,
+    sgNaRender: sgNaRender,
+    sgNaSetEinspeisung: sgNaSetEinspeisung,
+    sgNaSetFeld: sgNaSetFeld,
+    sgNaSetMessverfahren: sgNaSetMessverfahren,
+    sgNaVorschlagUebernehmen: sgNaVorschlagUebernehmen
+  });
+
   // ── main.js — ES Module entry point ────────────────────────────────────────
   // Imports all modules and exposes their exports on window for data-* handlers.
 
@@ -192118,7 +192322,7 @@ ${teile.join('\n')}
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,
-    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor,
+    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel,
   ];
   window.pdfjsLib = pdfjsLib;
   appLifecycle.listen(window,'pagehide',()=>appLifecycle.dispose(),{once:true});

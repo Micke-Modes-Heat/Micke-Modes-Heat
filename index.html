@@ -271,6 +271,10 @@
             <label for="pd-we-nummer" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;">WE-Nummer</label>
             <input class="inp-field" id="pd-we-nummer" type="text" placeholder="z. B. 12345" style="width:100%;" data-input="setPdWeNummer(this.value); syncProjektname()">
           </div>
+          <div style="grid-column:1/-1;">
+            <label for="pd-liegenschaft-adresse" style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px;" title="Reale Anschrift für Deckblatt &amp; Grafik-Köpfe — unabhängig vom Klimastandort unter Wärme-Grundlagen">Adresse Liegenschaft</label>
+            <input class="inp-field" id="pd-liegenschaft-adresse" type="text" placeholder="z. B. Musterstr. 1, 12345 Musterstadt" style="width:100%;" data-input="setPdLiegenschaftAdresse(this.value)">
+          </div>
         </div>
         <div id="pd-projektname-preview" style="font-size:9px;color:var(--muted);margin-bottom:8px;min-height:12px;"></div>
         <div class="lp-tool-grid">
@@ -3354,25 +3358,31 @@
     </div>
     <div id="strom-quartier-synth-info" style="font-size:9px;color:var(--muted);margin-bottom:8px;margin-top:-6px;padding-left:2px;font-style:italic;"></div>
 
-    <!-- Spot-Preise Upload (für PV-Analyse) -->
-    <div class="sa-section-title" style="margin-top:4px;">
-      Spot-Preise EPEX DE
-      <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">für PV-Analyse · Vorjahr empfohlen</span>
-      <a href="https://www.smard.de/home/downloadcenter/download-marktdaten/" target="_blank"
-        style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--accent);font-size:9px;margin-left:6px;text-decoration:none;">→ SMARD.de</a>
-    </div>
-    <div id="spot-upload-area" data-click="document.getElementById('spot-file-input').click()"
-      style="border:1px dashed var(--border);border-radius:6px;padding:9px 12px;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:8px;transition:.15s;"
-      onmouseenter="this.style.borderColor='#ab47bc'" onmouseleave="this.style.borderColor='var(--border)'">
-      <span style="font-size:15px;">💹</span>
-      <div style="flex:1;">
-        <div style="font-size:10px;color:var(--muted);">CSV — 15-min oder Stunden · EUR/MWh oder ct/kWh (SMARD, ENTSO-E …)</div>
-        <div id="spot-upload-info" style="font-size:10px;color:#ab47bc;margin-top:2px;"></div>
+    <!-- Spot-Preise Upload (für PV-Analyse) — aufklappbar, standardmäßig eingeklappt -->
+    <details id="spot-preise-details" style="margin-top:4px;margin-bottom:10px;">
+      <summary class="sa-section-title" style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px;">
+        <span style="font-size:9px;transition:transform .2s;flex-shrink:0;" id="spot-preise-arrow">&#9654;</span>
+        Spot-Preise EPEX DE
+        <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">für PV-Analyse · Vorjahr empfohlen</span>
+        <a href="https://www.smard.de/home/downloadcenter/download-marktdaten/" target="_blank"
+          style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--accent);font-size:9px;margin-left:6px;text-decoration:none;" onclick="event.stopPropagation()">→ SMARD.de</a>
+      </summary>
+      <div id="spot-upload-area" data-click="document.getElementById('spot-file-input').click()"
+        style="border:1px dashed var(--border);border-radius:6px;padding:9px 12px;cursor:pointer;margin-top:7px;display:flex;align-items:center;gap:8px;transition:.15s;"
+        onmouseenter="this.style.borderColor='#ab47bc'" onmouseleave="this.style.borderColor='var(--border)'">
+        <span style="font-size:15px;">💹</span>
+        <div style="flex:1;">
+          <div style="font-size:10px;color:var(--muted);">CSV — 15-min oder Stunden · EUR/MWh oder ct/kWh (SMARD, ENTSO-E …)</div>
+          <div id="spot-upload-info" style="font-size:10px;color:#ab47bc;margin-top:2px;"></div>
+        </div>
+        <button id="spot-clear-btn" data-click="event.stopPropagation();spotPreisClear()"
+          style="display:none;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;">✕</button>
       </div>
-      <button id="spot-clear-btn" data-click="event.stopPropagation();spotPreisClear()"
-        style="display:none;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;">✕</button>
-    </div>
-    <input type="file" id="spot-file-input" accept=".csv,.txt" style="display:none;" data-change="spotPreisFileSelected(this.files[0])"/>
+      <input type="file" id="spot-file-input" accept=".csv,.txt" style="display:none;" data-change="spotPreisFileSelected(this.files[0])"/>
+    </details>
+
+    <!-- Netzanschluss-Stammdaten (gerendert von src/22-netzanschluss-panel.js) -->
+    <div id="strom-netzanschluss-wrap"></div>
 
     <!-- NAP-Grenzen -->
     <div class="sa-section-title" style="margin-top:4px;">NAP-Grenzen <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">für PV-Analyse &amp; NAP-Lastgang · leer = unbegrenzt · 0 = kein Strom</span></div>
@@ -3385,114 +3395,14 @@
         <span style="font-size:10px;color:var(--muted);">kW</span>
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:140px;">
-        <span style="font-size:10px;color:#4fc3f7;flex-shrink:0;">Max. Bezug:</span>
+        <span style="font-size:10px;color:#4fc3f7;flex-shrink:0;" title="= vereinbarte Anschlussleistung laut Netzanschlussvertrag">Max. Bezug:</span>
         <input class="inp-field" type="number" id="strom-nap-bezug-kw" min="0" step="10"
           placeholder="∞" style="width:70px;text-align:right;"
           data-input="window.elNapMaxBezugKw=(this.value===''?null:parseFloat(this.value));window._pvAnalyse&&(window._pvAnalyse.napMaxBezugKw=window.elNapMaxBezugKw??0);(document.getElementById('pva-nap-bezug')||{}).value=window.elNapMaxBezugKw??''"/>
-        <span style="font-size:10px;color:var(--muted);">kW</span>
+        <span style="font-size:10px;color:var(--muted);">kVA</span>
       </div>
     </div>
-
-    <!-- Strompreise -->
-    <div class="sa-section-title" style="margin-top:4px;">Strompreise</div>
-    <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:120px;">
-        <span style="font-size:10px;color:var(--muted);flex-shrink:0;">Bezug:</span>
-        <input class="inp-field" type="number" id="strom-preis-bezug" value="35" min="0" max="100" step="1"
-          style="flex:1;text-align:right;" data-input="_onStrompreisChange('strom-preis-bezug')"/>
-        <span style="font-size:10px;color:var(--muted);">ct/kWh</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:120px;">
-        <span style="font-size:10px;color:var(--muted);flex-shrink:0;">Leistungspreis:</span>
-        <input class="inp-field" type="number" id="strom-leistungspreis" value="0" min="0" max="200" step="1"
-          style="width:70px;text-align:right;" data-input="calcStromPanelDebounced()"/>
-        <span style="font-size:10px;color:var(--muted);">€/kW·Mon</span>
-      </div>
-    </div>
-    <!-- BHKW-Vergütungsstruktur -->
-    <div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:8px;">
-      <span style="font-size:10px;color:#ff8f00;font-weight:600;">BHKW-Vergütung</span>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;">
-        <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
-          <span style="font-size:9px;color:var(--muted);flex-shrink:0;" title="Baseload-Preis für BHKW-Strom-Einspeisung (Marktpreis/EEX + Zuschlag)">Einspeisung:</span>
-          <input class="inp-field" type="number" id="bhkw-preis-einsp" value="8" min="0" max="30" step="0.5"
-            style="flex:1;text-align:right;" data-input="calcStromPanelDebounced();updateBhkwDisplay()"/>
-          <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
-          <span style="font-size:9px;color:var(--muted);flex-shrink:0;" title="Vermiedene Bezugskosten durch BHKW-Eigenverbrauch">Eigenverbr.:</span>
-          <input class="inp-field" type="number" id="bhkw-preis-eigen" value="35" min="0" max="100" step="0.5"
-            style="flex:1;text-align:right;" readonly title="= Strombezugspreis (vermiedene Kosten)"/>
-          <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
-        <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
-          <span style="font-size:9px;color:var(--muted);flex-shrink:0;" title="KWK-Zuschlag nach KWKG §7 auf Einspeisung">KWK Einsp.:</span>
-          <input class="inp-field" type="number" id="bhkw-kwk-einsp" value="8" min="0" max="16" step="0.5"
-            style="flex:1;text-align:right;" data-input="calcStromPanelDebounced();updateBhkwDisplay()"/>
-          <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:100px;">
-          <span style="font-size:9px;color:var(--muted);flex-shrink:0;" title="KWK-Zuschlag nach KWKG §7 auf Eigenverbrauch">KWK Eigen.:</span>
-          <input class="inp-field" type="number" id="bhkw-kwk-eigen" value="4" min="0" max="16" step="0.5"
-            style="flex:1;text-align:right;" data-input="calcStromPanelDebounced();updateBhkwDisplay()"/>
-          <span style="font-size:9px;color:var(--muted);">ct/kWh</span>
-        </div>
-      </div>
-      <div style="font-size:9px;color:var(--muted);margin-top:4px;">KWKG §7: KWK-Zuschlag 8 ct/kWh Einspeisung, 4 ct/kWh Eigenverbrauch (bis 100 kW<sub>el</sub>)</div>
-    </div>
-
-    <!-- Strom-Optimierung (Zinssatz + Bewertung + Button) -->
-    <div class="sa-section-title" style="margin-top:4px;">Wirtschaftliche Optimierung PV + Speicher</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:7px;">
-      <div style="display:flex;flex-direction:column;gap:2px;">
-        <span style="font-size:9px;color:var(--muted);">Zinssatz</span>
-        <div style="display:flex;align-items:center;gap:3px;">
-          <span class="inp-field" id="opt-zinssatz-sync" style="flex:1;text-align:right;font-size:10px;color:var(--muted);cursor:help;" title="Synchronisiert mit Kapitalzins im Wirtschafts-Panel">3.5 %</span>
-          <input type="hidden" id="opt-zinssatz" value="3.5"/>
-        </div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-      <span style="font-size:9px;color:var(--muted);white-space:nowrap;">Bewertung:</span>
-      <select id="opt-bewertung" style="flex:1;font-size:9px;padding:3px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:inherit;">
-        <option value="nettogewinn">Max. Nettogewinn (€/a)</option>
-        <option value="rendite">Max. Rendite (% p.a.)</option>
-        <option value="amortisation">Min. Amortisation (Jahre)</option>
-      </select>
-    </div>
-    <button class="btn-secondary" data-click="calcPvBatOptimierung()"
-      style="width:100%;margin-bottom:8px;font-size:10px;padding:5px;">
-      ⚡ Optimale PV- &amp; Speicherauslegung berechnen
-    </button>
-    <div id="opt-result" style="margin-bottom:10px;"></div>
-
-    <!-- Kennzahlen -->
-    <div id="strom-kpis" style="margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;"></div>
-    <!-- PV-Wirtschaftlichkeit -->
-    <div id="strom-pv-wirt" style="display:none;background:var(--surface2);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:var(--muted);"></div>
-
-    <!-- Strom-Tabs -->
-    <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:10px;">
-      <button id="strom-tab-monat" data-click="_stromSetTab('monat')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-1px;">Monat</button>
-      <button id="strom-tab-jdl" data-click="_stromSetTab('jdl')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;">Dauerlinie</button>
-      <button id="strom-tab-fluss" data-click="_stromSetTab('fluss')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;">Energiefluss</button>
-      <button id="strom-tab-sankey" data-click="_stromSetTab('sankey')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;">Sankey</button>
-      <button id="strom-tab-lastgang" data-click="_stromSetTab('lastgang')" style="padding:4px 10px;border:none;background:none;font-family:inherit;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;">Lastgang</button>
-    </div>
-
-    <!-- Tab: Monat -->
-    <div id="strom-content-monat">
-      <div class="sa-section-title" style="margin-bottom:6px;">Monatlicher Stromverbrauch &amp; PV
-        <span style="float:right;font-size:8px;font-weight:normal;text-transform:none;letter-spacing:0;">
-          <span style="display:inline-block;width:8px;height:8px;background:#78909c;border-radius:1px;margin-right:2px;"></span>Quartier&nbsp;
-          <span style="display:inline-block;width:8px;height:8px;background:#ffd54f;border-radius:1px;margin-right:2px;"></span>WP-Strom&nbsp;
-          <span style="display:inline-block;width:8px;height:8px;background:#66bb6a;border-radius:1px;margin-right:2px;"></span>PV-Ertrag
-        </span>
-      </div>
-      <canvas id="strom-monats-canvas" height="110" style="width:100%;display:block;"></canvas>
-    </div>
+    <div id="strom-nap-bezug-hinweis" style="font-size:9px;color:var(--muted);margin:-4px 0 8px;"></div>
 
     <!-- Tab: Dauerlinie -->
     <div id="strom-content-jdl" style="display:none;">

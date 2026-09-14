@@ -10,6 +10,7 @@
 // über window gelesen — main.js legt alle Modul-Exporte dort ab.
 
 import { LKEBW_LOGO, LKEBW_LOGO_H, LKEBW_LOGO_W } from './config/lkebw-logo.js';
+import { naKvaText } from './lib/netzanschluss.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1) DESIGN-TOKENS — gelten für ALLE Gutachten-Grafiken
@@ -1160,7 +1161,7 @@ function ggTextFeld(wert, feldname) {
   return `<span data-gg-feld="${gefuellt ? 'gefuellt' : 'offen'}" style="${gefuellt ? GG_TEXT_STIL_AUSGEFUELLT : GG_TEXT_STIL_OFFEN}">${gEsc(inhalt)}</span>`;
 }
 
-/** Kapitel 3.2.2 Liegenschaftsstromnetzanschluss — Textbaustein aus den Netzanschluss-Stammdaten. */
+/** Kapitel 3.1.1 Liegenschaftsstromnetzanschluss (Ist-Zustand) — Textbaustein aus den Netzanschluss-Stammdaten. */
 function ggRenderNetzanschlussText(cfg, T = GG_THEME) {
   void cfg;
   const einspeisungen = window.naEinspeisungen?.length ? window.naEinspeisungen : [{ station: '', kabeltyp: '' }];
@@ -1170,31 +1171,43 @@ function ggRenderNetzanschlussText(cfg, T = GG_THEME) {
     return i === 0 ? `über die Station ${teil}` : `sowie zusätzlich über die Station ${teil}`;
   }).join(' ');
 
-  const p = html => `<p style="margin:0 0 12px;">${html}</p>`;
-  const html = `<div style="background:${T.bg};max-width:${T.width}px;padding:26px 30px;box-sizing:border-box;
-      font-family:${T.font};font-size:13px;line-height:1.65;color:${T.text.strong};border:1px solid ${T.line};">
-    ${p(`Die elektrische Energieversorgung der Liegenschaft erfolgt aus dem Netz der `
+  return ggTextBlatt([
+    `Die elektrische Energieversorgung der Liegenschaft erfolgt aus dem Netz der `
       + `${ggTextFeld(window.naNetzbetreiberName, 'Name Netzbetreiber')}, `
-      + `${ggTextFeld(window.naNetzbetreiberAdresse, 'Adresse Netzbetreiber')}.`)}
-    ${p(`Die Versorgung erfolgt auf der Spannungsebene ${ggTextFeld(window.naSpannungsebene, 'Spannungsebene Netzanschluss')} `
-      + `${einspeiseSatz}.`)}
-    ${p(`Der Übergabepunkt befindet sich im Gebäude ${ggTextFeld(window.naUebergabepunkt, 'Bezeichnung/Lage Übergabepunkt')}.`)}
-    ${p(`Gemäß dem vorliegenden Netzanschlussvertrag beträgt die vereinbarte Anschlussleistung an diesem Übergabepunkt `
-      + `${ggTextFeld(window.naVereinbarteScheinleistungKva, 'Vereinbarte max. Scheinleistung')} kVA.`)}
-    ${p(`Die Messung erfolgt als ${ggTextFeld(window.naMessverfahren, 'Messverfahren')}.`)}
-    ${p(`Der Netzbetreiber erteilt grundsätzlich keine Auskunft über die physikalisch maximal mögliche Anschlussleistung `
+      + `${ggTextFeld(window.naNetzbetreiberAdresse, 'Adresse Netzbetreiber')}.`,
+    `Die Versorgung erfolgt auf der Spannungsebene ${ggTextFeld(window.naSpannungsebene, 'Spannungsebene Netzanschluss')} `
+      + `${einspeiseSatz}.`,
+    `Der Übergabepunkt befindet sich im Gebäude ${ggTextFeld(window.naUebergabepunkt, 'Bezeichnung/Lage Übergabepunkt')}.`,
+    `Gemäß dem vorliegenden Netzanschlussvertrag beträgt die vereinbarte Anschlussleistung an diesem Übergabepunkt `
+      + `${ggTextFeld(naKvaText(window.elNapMaxBezugKw), 'Vereinbarte max. Scheinleistung')} kVA.`,
+    `Die Messung erfolgt als ${ggTextFeld(window.naMessverfahren, 'Messverfahren')}.`,
+    `Der Netzbetreiber erteilt grundsätzlich keine Auskunft über die physikalisch maximal mögliche Anschlussleistung `
       + `der Liegenschaft. Eine Bewertung der verfügbaren Netzkapazitäten erfolgt ausschließlich auf Basis eines `
       + `konkreten Netzanschlussantrags. Hierzu ist das vom Netzbetreiber bereitgestellte Antragsformular zur Anmeldung `
       + `des Netzanschlusses (z. B. „Formular E1 – Anmeldung zum Netzanschluss Strom“) mit Angabe der zukünftig `
       + `benötigten Anschlussleistung einzureichen. Erst im Anschluss prüft der Netzbetreiber die technische `
-      + `Verfügbarkeit, den erforderlichen Netzausbaubedarf sowie die zeitlichen und wirtschaftlichen Rahmenbedingungen.`)}
-    ${p(`Vor dem Hintergrund der erwarteten Laststeigerungen durch Elektromobilität, Wärmepumpen und den Ausbau `
+      + `Verfügbarkeit, den erforderlichen Netzausbaubedarf sowie die zeitlichen und wirtschaftlichen Rahmenbedingungen.`,
+  ], T);
+}
+
+/** Kapitel 3.2.2 Liegenschaftsstromnetzanschluss (Soll-Zustand) — Empfehlung zum Netzanschlussantrag. */
+function ggRenderNetzanschlussEmpfehlungText(cfg, T = GG_THEME) {
+  void cfg;
+  return ggTextBlatt([
+    `Vor dem Hintergrund der erwarteten Laststeigerungen durch Elektromobilität, Wärmepumpen und den Ausbau `
       + `erneuerbarer Erzeugungsanlagen wird empfohlen, den Netzanschlussantrag frühzeitig und auf Basis einer `
       + `realistischen Leistungsannahme einschließlich angemessener Reserve zu stellen, um Planungssicherheit für `
-      + `nachgelagerte Maßnahmen zu schaffen.`)}
-  </div>`;
+      + `nachgelagerte Maßnahmen zu schaffen.`,
+  ], T);
+}
+
+/** Textbaustein-Blatt: Absätze (HTML mit ggTextFeld-Platzhaltern) im Stil der Gutachten-Grafiken. */
+function ggTextBlatt(absaetze, T = GG_THEME) {
   const wrap = document.createElement('div');
-  wrap.innerHTML = html;
+  wrap.innerHTML = `<div style="background:${T.bg};max-width:${T.width}px;padding:26px 30px;box-sizing:border-box;
+      font-family:${T.font};font-size:13px;line-height:1.65;color:${T.text.strong};border:1px solid ${T.line};">
+    ${absaetze.map(a => `<p style="margin:0 0 12px;">${a}</p>`).join('')}
+  </div>`;
   return wrap.firstElementChild;
 }
 
@@ -1874,44 +1887,130 @@ const GG_FIGUREN = [
   {
     id: 'netzanschluss-text',
     istText: true,
-    kapitel: '3.2.2 Liegenschaftsstromnetzanschluss',
+    kapitel: '3.1.1 Liegenschaftsstromnetzanschluss',
     titel: 'Gutachtentext: Netzanschluss',
     datei: 'netzanschluss-text',
-    hinweis: 'Standardtext für dieses Kapitel. Grün hinterlegte Angaben stammen aus dem Projekt oder wurden bereits '
-           + 'eingetragen, gelb hinterlegte Platzhalter fehlen noch. Ergänzungen hier werden als Netzanschluss-'
-           + 'Stammdaten in der Projektdatei gespeichert. „⟳ Aus Projekt übernehmen“ liest Spannungsebene und '
-           + 'Übergabepunkt-Gebäude aus dem NAP-Asset des Elektro-Tabs, sofern eines platziert ist.',
+    hinweis: 'Standardtext für den Ist-Zustand des Netzanschlusses. Grün hinterlegte Angaben sind eingetragen, gelb '
+           + 'hinterlegte Platzhalter fehlen noch. Eingetragen werden sie unter ⚡ Strom-Grundlagen › Netzanschluss; '
+           + '„⟳ Aus Projekt übernehmen“ liest Spannungsebene und Übergabepunkt-Gebäude aus dem NAP-Asset des '
+           + 'Elektro-Tabs, sofern eines platziert ist. Die Empfehlung zum Netzanschlussantrag steht als eigener '
+           + 'Baustein in 3.2.2.',
     render: cfg => ggRenderNetzanschlussText(cfg),
     config: {},
     ausProjekt() {
-      let naps = [];
-      try { naps = window.listAssets?.({ type: 'NAP' }) || []; } catch (e) { void e; }
-      if (!naps.length) return '⚠ Kein NAP-Asset im Modell — Spannungsebene und Übergabepunkt bitte von Hand eintragen.';
-      const nap = naps[0];
-      let n = 0;
-      if (!window.naSpannungsebene && nap.props?.spannungKV) {
-        const kv = Number(nap.props.spannungKV);
-        window.naSpannungsebene = kv > 1 ? `Mittelspannung (${kv} kV)` : `Niederspannung (${kv * 1000} V)`;
-        n++;
-      }
-      if (!window.naUebergabepunkt && nap.buildingId) {
-        const g = (window.gebaeude || []).find(b => b.id === nap.buildingId);
-        const bez = String(g?.gebaeudenummer || g?.name || '').trim();
-        if (bez) { window.naUebergabepunkt = bez; n++; }
-      }
-      if (naps.length > 1) {
-        const vorhandene = window.naEinspeisungen || [];
-        if (vorhandene.length < naps.length) {
-          window.naEinspeisungen = naps.map((_, i) => vorhandene[i] || { station: '', kabeltyp: '' });
-          n++;
-        }
-      }
-      return n ? `✓ ${n} Angabe(n) aus dem NAP-Asset übernommen — bitte prüfen.`
-               : '✓ Keine leeren Felder gefunden, die sich aus dem NAP-Asset ableiten ließen.';
+      return typeof window.sgNaAusNapAsset === 'function'
+        ? window.sgNaAusNapAsset()
+        : '⚠ Netzanschluss-Modul nicht geladen.';
     },
   },
 
-  // ── Übersicht Trafostationen ────────────────────────────────────────────
+  // ── Gutachtentext: Empfehlung Netzanschlussantrag ────────────────────
+  {
+    id: 'netzanschluss-empfehlung-text',
+    istText: true,
+    kapitel: '3.2.2 Liegenschaftsstromnetzanschluss',
+    titel: 'Gutachtentext: Empfehlung Netzanschlussantrag',
+    datei: 'netzanschluss-empfehlung-text',
+    hinweis: 'Fester Standardtext für den Soll-Zustand: Empfehlung, den Netzanschlussantrag frühzeitig und mit Reserve zu stellen.',
+    render: cfg => ggRenderNetzanschlussEmpfehlungText(cfg),
+    config: {},
+  },
+
+];
+
+// Baut die Tabellenzeilen für die Trafo-Übersicht: Ist-Zustand (3.1.2) zeigt
+// nur Bestand, Soll-Zustand (3.2.3) zeigt Bestand + geplante Stationen grün
+// markiert. Geplant ist ein Trafo, der zu einer Planungsschicht gehört oder
+// dessen Baujahr noch in der Zukunft liegt.
+function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
+  const gebListe = window.gebaeude || [];
+  const geb = id => gebListe.find(g => g.id === id) || null;
+  const heute = new Date().getFullYear();
+
+  let zeilen = trafos.map(t => {
+    const g = geb(t.buildingId);
+    const bj = parseInt(t.baujahr ?? g?.baujahr);
+    const geplant = t.schicht === 'entwicklung' || t.schicht === 'entscheidung'
+                 || (Number.isFinite(bj) && bj > heute);
+    return {
+      gebIdx:      g ? gebListe.indexOf(g) : 1e9,
+      gebLabel:    String(g?.gebaeudenummer || g?.name || '—').trim(),
+      stationKey:  t.buildingId || 'einzeln:' + t.id,
+      // Heißt das Standortgebäude schon „Trafostation 3“, gewinnt dieser
+      // Name — sonst wird unten in Tabellenreihenfolge durchnummeriert. Steht
+      // derselbe Name schon in der Gebäudespalte, wird ebenfalls nummeriert,
+      // damit die Zeile ihn nicht doppelt zeigt.
+      stationName: /station/i.test(g?.name || '') ? String(g.name).trim() : '',
+      trafo:       t.name || 'Trafo',
+      kva:         Number(t.props?.leistungKVA) || 0,
+      bj:          Number.isFinite(bj) ? bj : null,
+      geplant,
+    };
+  });
+  if (nurBestand) zeilen = zeilen.filter(z => !z.geplant);
+
+  // Bestand zuerst, danach die geplanten Stationen; innerhalb der Gruppe in
+  // der Reihenfolge der Gebäudeliste, damit die Nummerierung stabil bleibt.
+  zeilen.sort((a, b) => ((a.geplant ? 1 : 0) - (b.geplant ? 1 : 0))
+                     || (a.gebIdx - b.gebIdx)
+                     || a.trafo.localeCompare(b.trafo, 'de', { numeric: true }));
+
+  const nr = new Map();
+  for (const z of zeilen) if (!nr.has(z.stationKey)) nr.set(z.stationKey, nr.size + 1);
+  return { zeilen, nr };
+}
+
+GG_FIGUREN.push(
+  // ── Übersicht Trafostationen (Bestand, Ist-Zustand) ─────────────────────
+  {
+    id: 'trafostationen-ist',
+    autoSync: true,
+    kapitel: '3.1.2 Stromnetz intern',
+    titel: 'Übersicht Trafostationen',
+    datei: 'trafostationen-ist',
+    hinweis: 'Alle bestehenden Transformatoren des Liegenschaftsnetzes mit Standortgebäude, Station, '
+           + 'Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. Trafos einer '
+           + 'Planungsschicht oder mit Baujahr in der Zukunft zählen hier nicht zum Bestand; sie stehen '
+           + 'im Soll-Zustand (3.2.3).',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten',
+      titel: 'Übersicht Trafostationen',
+      leer: 'Keine bestehenden Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.',
+      spalten: [
+        { label: 'Gebäude',       weight: 1.4, align: 'left', mono: false },
+        { label: 'Nr.',           weight: 1.6, align: 'left', mono: false },
+        { label: 'Trafo',         weight: 1.2, align: 'left', mono: false },
+        { label: 'Trafoleistung', weight: 1.3 },
+        { label: 'Baujahr',       weight: 1.1 },
+      ],
+      zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      let trafos = [];
+      try { trafos = window.listAssets?.({ type: 'Trafo' }) || []; } catch (e) { void e; }
+      const { zeilen, nr } = ggTrafoZeilen(trafos, { nurBestand: true });
+      if (!zeilen.length) {
+        cfg.zeilen = []; cfg.fussnote = '';
+        return '⚠ Keine bestehenden Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
+      }
+
+      cfg.zeilen = zeilen.map(z => ({
+        werte: [z.gebLabel,
+                (z.stationName && z.stationName !== z.gebLabel)
+                  ? z.stationName : 'Trafostation ' + nr.get(z.stationKey),
+                z.trafo,
+                z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—',
+                z.bj || '—'],
+      }));
+
+      const summe = zeilen.reduce((s, z) => s + z.kva, 0);
+      cfg.fussnote = `${zeilen.length} Transformatoren in ${nr.size} Stationen · installierte Leistung ${ggNum(summe)} kVA`;
+      return `✓ ${zeilen.length} bestehende Trafos aus dem Elektromodell übernommen.`;
+    },
+  },
+
+  // ── Übersicht Trafostationen (Bestand + geplant, Soll-Zustand) ──────────
   {
     id: 'trafostationen',
     autoSync: true,
@@ -1943,42 +2042,7 @@ const GG_FIGUREN = [
         return '⚠ Keine Trafos im Modell — im Elektro-Tab eine Trafostation platzieren.';
       }
 
-      const gebListe = window.gebaeude || [];
-      const geb = id => gebListe.find(g => g.id === id) || null;
-      const heute = new Date().getFullYear();
-
-      // Geplant ist ein Trafo, der zu einer Planungsschicht gehört oder dessen
-      // Baujahr noch in der Zukunft liegt — beides Gründe, in der Spalte Baujahr
-      // „geplant“ statt einer Jahreszahl zu zeigen (wie in der Gutachtenvorlage).
-      const zeilen = trafos.map(t => {
-        const g = geb(t.buildingId);
-        const bj = parseInt(t.baujahr ?? g?.baujahr);
-        const geplant = t.schicht === 'entwicklung' || t.schicht === 'entscheidung'
-                     || (Number.isFinite(bj) && bj > heute);
-        return {
-          gebIdx:      g ? gebListe.indexOf(g) : 1e9,
-          gebLabel:    String(g?.gebaeudenummer || g?.name || '—').trim(),
-          stationKey:  t.buildingId || 'einzeln:' + t.id,
-          // Heißt das Standortgebäude schon „Trafostation 3“, gewinnt dieser
-          // Name — sonst wird unten in Tabellenreihenfolge durchnummeriert. Steht
-          // derselbe Name schon in der Gebäudespalte, wird ebenfalls nummeriert,
-          // damit die Zeile ihn nicht doppelt zeigt.
-          stationName: /station/i.test(g?.name || '') ? String(g.name).trim() : '',
-          trafo:       t.name || 'Trafo',
-          kva:         Number(t.props?.leistungKVA) || 0,
-          bj:          Number.isFinite(bj) ? bj : null,
-          geplant,
-        };
-      });
-
-      // Bestand zuerst, danach die geplanten Stationen; innerhalb der Gruppe in
-      // der Reihenfolge der Gebäudeliste, damit die Nummerierung stabil bleibt.
-      zeilen.sort((a, b) => ((a.geplant ? 1 : 0) - (b.geplant ? 1 : 0))
-                         || (a.gebIdx - b.gebIdx)
-                         || a.trafo.localeCompare(b.trafo, 'de', { numeric: true }));
-
-      const nr = new Map();
-      for (const z of zeilen) if (!nr.has(z.stationKey)) nr.set(z.stationKey, nr.size + 1);
+      const { zeilen, nr } = ggTrafoZeilen(trafos);
 
       cfg.zeilen = zeilen.map(z => ({
         werte: [z.gebLabel,
@@ -2000,7 +2064,7 @@ const GG_FIGUREN = [
     },
   },
 
-];
+);
 
 // ── PV-Analyse: Varianten, Energiebilanz, Wirtschaftlichkeit, Resilienz ───────
 // Quelle: window._pvAnalyse.ergebnisse (gefüllt in src/09d-pv-analyse.js über
@@ -2962,13 +3026,12 @@ export function ggFigurWordDaten(id, teilIdx = 0) {
 /* ══════════════════════════════════════════════════════════════════════════
  * 6) PANEL — Analyse-Sektion „Gutachten-Grafiken"
  * ═══════════════════════════════════════════════════════════════════════ */
-/** Liegenschaft aus dem Projektkopf bzw. den Waerme-Grundlagen. */
+/** Liegenschaft aus dem Projektkopf und der Adresse in den Projektdaten (NICHT dem Klimastandort — der
+ * bezeichnet nur die DWD-Referenzstation der Wärmebedarfsrechnung und liegt oft nicht am realen Standort). */
 function ggLiegenschaft() {
   const name = document.querySelector('.header-projekt-name')?.textContent?.trim() || '';
-  const plz  = document.getElementById('gl-plz')?.value?.trim() || '';
-  const ort  = document.getElementById('gl-stadt')?.value?.trim() || '';
-  const rechts = [plz, ort].filter(Boolean).join(' ');
-  return [name, rechts].filter(Boolean).join(' · ');
+  const adresse = String(window.pdLiegenschaftAdresse || '').trim();
+  return [name, adresse].filter(Boolean).join(' · ');
 }
 
 const ggHeute = () => new Date().toLocaleDateString('de-DE');
@@ -3165,32 +3228,30 @@ export function ggRenderPanel() {
       html += `</div>`;
     }
 
-    if (figur.istText) {
-      const naFeld = (label, wert, click, w) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);">
-          ${gEsc(label)}
-          <input type="text" value="${gEsc(wert || '')}" data-change="${click}" style="font-family:inherit;font-size:11px;padding:4px 6px;border-radius:4px;
-            border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);min-width:${w || '170px'};"></label>`;
-      html += `<div style="display:flex;flex-wrap:wrap;gap:8px 12px;">`
-        + naFeld('Name Netzbetreiber', window.naNetzbetreiberName, "ggSetNaFeld('naNetzbetreiberName',this.value)")
-        + naFeld('Adresse Netzbetreiber', window.naNetzbetreiberAdresse, "ggSetNaFeld('naNetzbetreiberAdresse',this.value)")
-        + naFeld('Spannungsebene Netzanschluss', window.naSpannungsebene, "ggSetNaFeld('naSpannungsebene',this.value)", '150px')
-        + naFeld('Gebäude/Lage Übergabepunkt', window.naUebergabepunkt, "ggSetNaFeld('naUebergabepunkt',this.value)")
-        + naFeld('Vereinbarte max. Scheinleistung (kVA)', window.naVereinbarteScheinleistungKva, "ggSetNaFeld('naVereinbarteScheinleistungKva',this.value)", '150px')
-        + naFeld('Messverfahren', window.naMessverfahren, "ggSetNaFeld('naMessverfahren',this.value)", '220px')
-        + `</div>`;
-
+    if (figur.id === 'netzanschluss-text') {
+      // Nur Anzeige: eingetragen wird unter ⚡ Strom-Grundlagen › Netzanschluss (22-netzanschluss-panel.js)
+      const zeile = (label, wert, quelle) => {
+        const w = String(wert ?? '').trim();
+        return `<div style="display:grid;grid-template-columns:210px 1fr;gap:8px;font-size:11px;line-height:1.6;">
+            <span style="color:var(--muted);">${gEsc(label)}</span>
+            <span style="color:${w ? 'var(--text,#e8eaed)' : '#e0a126'};">${w ? gEsc(w) : 'fehlt'}<span style="color:var(--muted);font-size:10px;"> · ${gEsc(quelle)}</span></span>
+          </div>`;
+      };
       const einspeisungen = window.naEinspeisungen?.length ? window.naEinspeisungen : [{ station: '', kabeltyp: '' }];
-      html += `<div style="margin-top:12px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Einspeisepunkte (Mittelspannung)</div>`
-        + einspeisungen.map((e, i) => `<div style="display:flex;gap:8px;align-items:flex-end;margin-top:6px;">`
-            + naFeld('Station', e.station, `ggSetEinspeisung(${i},'station',this.value)`)
-            + naFeld('Kabeltyp', e.kabeltyp, `ggSetEinspeisung(${i},'kabeltyp',this.value)`)
-            + (einspeisungen.length > 1
-                ? `<button data-click="ggRemoveEinspeisung(${i})" title="Einspeisepunkt entfernen" style="font-size:11px;padding:5px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);">✕</button>`
-                : '')
-            + `</div>`).join('')
-        + `<button data-click="ggAddEinspeisung()" style="margin-top:6px;font-size:10px;padding:4px 9px;border-radius:4px;cursor:pointer;border:1px solid rgba(38,166,154,.4);background:rgba(38,166,154,.08);color:#26a69a;">+ Einspeisepunkt</button>`;
-
-      html += `<div style="margin-top:10px;font-size:10px;color:var(--muted);line-height:1.5;">Diese Angaben werden als Netzanschluss-Stammdaten in der Projektdatei gespeichert und stehen damit im ganzen Tool zur Verfügung.</div>`;
+      html += zeile('Name Netzbetreiber', window.naNetzbetreiberName, 'Netzanschlussvertrag')
+        + zeile('Adresse Netzbetreiber', window.naNetzbetreiberAdresse, 'Netzanschlussvertrag')
+        + zeile('Spannungsebene', window.naSpannungsebene, 'Vertrag / NAP-Asset')
+        + zeile('Übergabepunkt', window.naUebergabepunkt, 'Vertrag / NAP-Asset')
+        + zeile('Vereinbarte Anschlussleistung (kVA)', window.elNapMaxBezugKw, 'Netzanschlussvertrag')
+        + zeile('Messverfahren', window.naMessverfahren, 'Stromrechnung / Zähler')
+        + einspeisungen.map((e, i) => {
+            const nr = einspeisungen.length > 1 ? ` ${i + 1}` : '';
+            return zeile(`Station${nr}`, e.station, 'Netzbetreiber / Begehung') + zeile(`Kabeltyp${nr}`, e.kabeltyp, 'Netzbetreiber / Bestandsplan');
+          }).join('')
+        + `<button data-click="sgNaOeffnen()" style="margin-top:10px;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,213,79,.45);background:rgba(255,213,79,.08);color:#ffd54f;">⚡ In Strom-Grundlagen bearbeiten</button>`
+        + `<div style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;">Eingetragen werden die Netzanschlussdaten unter ⚡ Strom-Grundlagen › Netzanschluss; die vereinbarte Anschlussleistung im Feld „Max. Bezug" unter NAP-Grenzen (kVA) — beides mit der Projektdatei gespeichert.</div>`;
+    } else if (figur.istText) {
+      html += `<div style="font-size:11px;color:var(--muted);">Fester Text ohne Platzhalter.</div>`;
     }
 
     if (figur.config.meta) {
@@ -3292,36 +3353,6 @@ export function ggSetMeta(key, wert) {
     meta[key] = wert;
     ggMerkeManuell(ggFigur().id, 'meta:' + key);
   }
-  ggRenderPanel();
-}
-
-/** Netzanschluss-Stammdaten setzen — Feldname entspricht dem window-Property (z. B. 'naSpannungsebene'),
- * dessen Setter über die globale Namenskonvention set<Feld> aufgerufen wird (siehe main.js/ggMetaDefaults). */
-export function ggSetNaFeld(feld, wert) {
-  const setter = window['set' + feld.charAt(0).toUpperCase() + feld.slice(1)];
-  if (typeof setter === 'function') setter(wert);
-  ggRenderPanel();
-}
-
-export function ggSetEinspeisung(i, feld, wert) {
-  const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
-  if (!liste[i]) liste[i] = { station: '', kabeltyp: '' };
-  liste[i][feld] = wert;
-  window.naEinspeisungen = liste;
-  ggRenderPanel();
-}
-
-export function ggAddEinspeisung() {
-  const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
-  liste.push({ station: '', kabeltyp: '' });
-  window.naEinspeisungen = liste;
-  ggRenderPanel();
-}
-
-export function ggRemoveEinspeisung(i) {
-  const liste = (window.naEinspeisungen || []).map(e => ({ ...e }));
-  liste.splice(i, 1);
-  window.naEinspeisungen = liste;
   ggRenderPanel();
 }
 

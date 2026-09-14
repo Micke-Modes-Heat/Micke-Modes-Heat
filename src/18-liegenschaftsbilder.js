@@ -1492,9 +1492,8 @@ function lpLaengeM(punkte) {
 
 function lpLiegenschaft() {
   const name = document.querySelector('.header-projekt-name')?.textContent?.trim() || '';
-  const plz = document.getElementById('gl-plz')?.value?.trim() || '';
-  const ort = document.getElementById('gl-stadt')?.value?.trim() || '';
-  return [name, [plz, ort].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+  const adresse = String(window.pdLiegenschaftAdresse || '').trim();
+  return [name, adresse].filter(Boolean).join(' · ');
 }
 
 const LP_INP_STYLE = 'padding:5px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8eaed);font-family:inherit;font-size:11px;';

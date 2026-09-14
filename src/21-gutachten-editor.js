@@ -489,7 +489,7 @@ function blockPanel(b, kapIdx) {
   html += ueberschrift('Bearbeiten und kopieren')
     + `<div style="display:flex;flex-direction:column;gap:4px;">`
     + knopf(f.istText ? '✎ Platzhalter ausfüllen' : '✎ In Einzelansicht bearbeiten', `gutInEinzelansicht('${f.id}')`,
-            { titel: f.istText ? 'Angaben zum Netzanschluss eintragen' : 'Kopfzeile, Haken und Datenübernahme wie bisher' })
+            { titel: f.istText ? 'Platzhalter und ihre Datenquelle ansehen' : 'Kopfzeile, Haken und Datenübernahme wie bisher' })
     + knopf(f.istTabelle ? '⊞ Als Word-Tabelle kopieren' : '⧉ Für Word kopieren', `gutCopyTeil('${id}',0)`, { primaer: true })
     + ((erg?.teile?.length || 0) > 1 ? knopf('⊞ Kennzahlen als Word-Tabelle kopieren', `gutCopyTeil('${id}',1)`) : '')
     + `</div>`
@@ -680,16 +680,20 @@ export async function gutCopyTeil(id, teilIdx) {
 /* ══════════════════════════════════════════════════════════════════════════
  * Deckblatt und Word-Export (lib/gutachten-docx.js, Layout der Word-Vorlage)
  * ═══════════════════════════════════════════════════════════════════════ */
+/** Ortsname aus der Liegenschaftsadresse ("Musterstr. 1, 12345 Musterstadt" → "Musterstadt"). */
+function pdOrtKurz(adresse) {
+  return String(adresse || '').split(',').pop().trim().replace(/^\d{4,5}\s+/, '');
+}
+
 /** Vorschläge aus den Projekt-Stammdaten — greifen im Export, solange ein Feld leer ist. */
 function deckblattVorgaben() {
-  const plz = document.getElementById('gl-plz')?.value?.trim() || '';
-  const ort = document.getElementById('gl-stadt')?.value?.trim() || '';
+  const adresse = String(window.pdLiegenschaftAdresse || '').trim();
   const liegenschaft = String(window.pdKaserneName || '').trim();
   const personen = [window.pdBearbeiterStrom, window.pdBearbeiterWaerme]
     .map(n => String(n || '').trim()).filter((n, i, alle) => n && alle.indexOf(n) === i);
   return {
-    ...GUTACHTEN_DECKBLATT_VORGABEN, liegenschaft, ort, projekt: liegenschaft,
-    standort: [plz, ort].filter(Boolean).join(' '), stand: new Date().toLocaleDateString('de-DE'), personen,
+    ...GUTACHTEN_DECKBLATT_VORGABEN, liegenschaft, ort: pdOrtKurz(adresse), projekt: liegenschaft,
+    standort: adresse, stand: new Date().toLocaleDateString('de-DE'), personen,
   };
 }
 

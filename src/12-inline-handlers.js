@@ -48,3 +48,6 @@ document.getElementById('opt-kosten-details').addEventListener('toggle', functio
   document.getElementById('opt-kosten-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
   if (this.open) _renderOptKostenUebersicht();
 });
+document.getElementById('spot-preise-details').addEventListener('toggle', function() {
+  document.getElementById('spot-preise-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
+});

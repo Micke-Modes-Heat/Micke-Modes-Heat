@@ -1575,7 +1575,7 @@ function renderAnnahmenblatt(varianten) {
 
       ${kapitel('3 · Netzanschluss')}
       ${zeile('Max. Einspeiseleistung', napE ? num(napE) + ' kW' : 'unbegrenzt', napE ? 'Netzanschluss-Zusage / VNB-Auskunft' : 'keine Begrenzung gesetzt — Abregelung wird nicht ausgewiesen')}
-      ${zeile('Max. Bezugsleistung', napB ? num(napB) + ' kW' : 'unbegrenzt', napB ? 'Netzanschluss-Zusage / VNB-Auskunft' : 'keine Begrenzung gesetzt')}
+      ${zeile('Max. Bezugsleistung', napB ? num(napB) + ' kVA' : 'unbegrenzt', napB ? 'vereinbarte Anschlussleistung laut Netzanschlussvertrag' : 'keine Begrenzung gesetzt')}
       ${zeile('Kurzschlussleistung S_k″', s.skKVA ? num(s.skKVA) + ' kVA' : 'unbekannt', s.skKVA ? 'VNB-Netzauskunft' : 'ohne S_k″ greift nur das Leistungskriterium')}
       ${zeile('Zulässige Spannungsanhebung', num(s.uBudgetPct || 3, 1) + ' %', 'VDE-AR-N 4105 (NS, 3 %) bzw. 4110 (MS, 2 %)')}
 
@@ -1760,7 +1760,7 @@ function _pvBuildPanelHtml() {
               data-change="window._pvAnalyse.napMaxEinspKw=parseFloat(this.value)||0;window.elNapMaxEinspKw=window._pvAnalyse.napMaxEinspKw||null;(document.getElementById('strom-nap-einsp-kw')||{}).value=this.value"/>
           </div>
           <div>
-            <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Max. Bezug (kW)</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Max. Bezug (kVA)</div>
             <input id="pva-nap-bezug" type="number" value="0" min="0" step="10"
               style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
               data-change="window._pvAnalyse.napMaxBezugKw=parseFloat(this.value)||0;window.elNapMaxBezugKw=window._pvAnalyse.napMaxBezugKw||null;(document.getElementById('strom-nap-bezug-kw')||{}).value=this.value"/>

@@ -1,11 +1,11 @@
 // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
 import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustand, globalYear, isExcluded, selectedId, stromEdges, migriereVariantenFallsNoetig,
-         pdBearbeiterStrom, pdBearbeiterWaerme, pdKaserneName, pdWeNummer,
-         setPdBearbeiterStrom, setPdBearbeiterWaerme, setPdKaserneName, setPdWeNummer,
+         pdBearbeiterStrom, pdBearbeiterWaerme, pdKaserneName, pdWeNummer, pdLiegenschaftAdresse,
+         setPdBearbeiterStrom, setPdBearbeiterWaerme, setPdKaserneName, setPdWeNummer, setPdLiegenschaftAdresse,
          naNetzbetreiberName, naNetzbetreiberAdresse, naSpannungsebene, naUebergabepunkt,
-         naVereinbarteScheinleistungKva, naMessverfahren, naEinspeisungen,
+         naMessverfahren, naEinspeisungen,
          setNaNetzbetreiberName, setNaNetzbetreiberAdresse, setNaSpannungsebene, setNaUebergabepunkt,
-         setNaVereinbarteScheinleistungKva, setNaMessverfahren, setNaEinspeisungen } from './01-globals-varianten.js';
+         setNaMessverfahren, setNaEinspeisungen } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh, highlightCard, map,
          getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
@@ -2579,10 +2579,11 @@ export function syncProjektname() {
 export function _captureProjektStammdaten() {
   return {
     bearbeiterStrom: pdBearbeiterStrom, bearbeiterWaerme: pdBearbeiterWaerme, kaserneName: pdKaserneName, weNummer: pdWeNummer,
+    liegenschaftAdresse: pdLiegenschaftAdresse,
     netzanschluss: {
       netzbetreiberName: naNetzbetreiberName, netzbetreiberAdresse: naNetzbetreiberAdresse,
       spannungsebene: naSpannungsebene, uebergabepunkt: naUebergabepunkt,
-      vereinbarteScheinleistungKva: naVereinbarteScheinleistungKva, messverfahren: naMessverfahren,
+      messverfahren: naMessverfahren,
       einspeisungen: naEinspeisungen,
     },
   };
@@ -2594,12 +2595,12 @@ function _restoreProjektStammdaten(daten) {
   setPdBearbeiterWaerme(d.bearbeiterWaerme || '');
   setPdKaserneName(d.kaserneName || '');
   setPdWeNummer(d.weNummer || '');
+  setPdLiegenschaftAdresse(d.liegenschaftAdresse || '');
   const na = d.netzanschluss || {};
   setNaNetzbetreiberName(na.netzbetreiberName || '');
   setNaNetzbetreiberAdresse(na.netzbetreiberAdresse || '');
   setNaSpannungsebene(na.spannungsebene || '');
   setNaUebergabepunkt(na.uebergabepunkt || '');
-  setNaVereinbarteScheinleistungKva(na.vereinbarteScheinleistungKva || '');
   setNaMessverfahren(na.messverfahren || '');
   setNaEinspeisungen(Array.isArray(na.einspeisungen) ? na.einspeisungen : []);
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
@@ -2607,6 +2608,7 @@ function _restoreProjektStammdaten(daten) {
   set('pd-bearbeiter-waerme', pdBearbeiterWaerme);
   set('pd-kaserne-name', pdKaserneName);
   set('pd-we-nummer', pdWeNummer);
+  set('pd-liegenschaft-adresse', pdLiegenschaftAdresse);
   syncProjektname();
 }
 
@@ -3140,6 +3142,8 @@ export function _loadProject(project) {
 function _applyProjectData(project) {
       window._projectReportDraft = project.projectReportDraft ? structuredClone(project.projectReportDraft) : null;
       _restoreProjektStammdaten(project.projektStammdaten || null);
+      // Netzanschluss-Abschnitt neu zeichnen
+      if (typeof window.sgNaRender === 'function') window.sgNaRender();
       if (typeof window.gutRestoreGutachten === 'function') window.gutRestoreGutachten(project.gutachten || null);
       // Immer vor dem Gebäudetausch zurücksetzen/wiederherstellen. Alte Projekte
       // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die

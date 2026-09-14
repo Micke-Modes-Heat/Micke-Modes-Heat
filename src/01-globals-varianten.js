@@ -22,11 +22,19 @@ export let pdKaserneName = '';
 export function setPdKaserneName(v) { pdKaserneName = v || ''; }
 export let pdWeNummer = '';
 export function setPdWeNummer(v) { pdWeNummer = v || ''; }
+// Reale Anschrift der Liegenschaft (Straße, PLZ, Ort) für Deckblatt und Grafik-Köpfe —
+// unabhängig vom Klimastandort (gl-stadt), der nur die DWD-Referenzstation für die
+// Wärmebedarfsrechnung bezeichnet und oft nicht am tatsächlichen Standort liegt.
+export let pdLiegenschaftAdresse = '';
+export function setPdLiegenschaftAdresse(v) { pdLiegenschaftAdresse = v || ''; }
 
-// ── Netzanschluss-Stammdaten (Gutachtentext Kapitel 3.2.2 Liegenschaftsstromnetzanschluss) ──
+// ── Netzanschluss-Stammdaten (Gutachtentext Kapitel 3.1.1 Liegenschaftsstromnetzanschluss) ──
 // Manuell erfasste Vertrags-/Netzbetreiberangaben, die das Tool nicht selbst kennt
 // (das Netzmodell beginnt erst am Netzanknüpfungspunkt/NAP) — ergänzen dort, wo im
 // Elektromodell bereits Werte vorliegen (z. B. Spannungsebene aus dem NAP-Asset).
+// Eingabe nur unter ⚡ Strom-Grundlagen › Netzanschluss (22-netzanschluss-panel.js). Die vereinbarte
+// Anschlussleistung ist mit der Bezugsgrenze am NAP identisch und wird direkt im Feld
+// „Max. Bezug" unter NAP-Grenzen gepflegt (window.elNapMaxBezugKw, kVA).
 export let naNetzbetreiberName = '';
 export function setNaNetzbetreiberName(v) { naNetzbetreiberName = v || ''; }
 export let naNetzbetreiberAdresse = '';
@@ -35,8 +43,6 @@ export let naSpannungsebene = '';
 export function setNaSpannungsebene(v) { naSpannungsebene = v || ''; }
 export let naUebergabepunkt = '';
 export function setNaUebergabepunkt(v) { naUebergabepunkt = v || ''; }
-export let naVereinbarteScheinleistungKva = '';
-export function setNaVereinbarteScheinleistungKva(v) { naVereinbarteScheinleistungKva = v || ''; }
 export let naMessverfahren = '';
 export function setNaMessverfahren(v) { naMessverfahren = v || ''; }
 /** Liste der MS-Einspeisepunkte: [{station, kabeltyp}, …] — je Liegenschaft unterschiedlich viele. */
