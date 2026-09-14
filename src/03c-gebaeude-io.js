@@ -2618,6 +2618,8 @@ export function _buildProjectData() {
     economicScenario,
     projectReportDraft: window._projectReportDraft ? structuredClone(window._projectReportDraft) : null,
     projektStammdaten: _captureProjektStammdaten(),
+    // Gutachten-Editor (21-gutachten-editor.js) — über window, damit das Modul ein Blatt im Importgraph bleibt
+    gutachten: typeof window.gutCaptureGutachten === 'function' ? window.gutCaptureGutachten() : null,
     waermeGrundlagen:captureWaermeGrundlagen(),
     gebaeude: window.gebaeude.map(g => ({
       id: g.id, name: g.name, gebaeudenummer: g.gebaeudenummer || '', waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
@@ -3138,6 +3140,7 @@ export function _loadProject(project) {
 function _applyProjectData(project) {
       window._projectReportDraft = project.projectReportDraft ? structuredClone(project.projectReportDraft) : null;
       _restoreProjektStammdaten(project.projektStammdaten || null);
+      if (typeof window.gutRestoreGutachten === 'function') window.gutRestoreGutachten(project.gutachten || null);
       // Immer vor dem Gebäudetausch zurücksetzen/wiederherstellen. Alte Projekte
       // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die
       // Monatswerte oder Lastgänge der zuvor geöffneten Liegenschaft.

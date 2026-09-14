@@ -23,7 +23,7 @@ import { KMR_KOSTEN } from './config/netz-kosten.js';
 import { napBuildAnalyseSection, napShowSection } from './13o-nap-analyse.js';
 import { knaBuildAnalyseSection, knaShowSection } from './13r-knotenpunkt-analyse.js';
 import { pvaBuildAnalyseSection, pvaShowSection, resBuildAnalyseSection, resShowSection } from './09d-pv-analyse.js';
-import { ggBuildAnalyseSection, ggShowSection } from './17-gutachten-grafik.js';
+import { gutBuildAnalyseSection, gutShowSection } from './21-gutachten-editor.js';
 import { lbBuildAnalyseSection, lbShowSection } from './18-liegenschaftsbilder.js';
 import { ausbauShow } from './14e-ausbauplaner-ui.js';
 import { fernwaermeEmF, heizoelEmF, hhsEmF, pelletsEmF, stromEmF } from './01-globals-varianten.js';
@@ -1560,7 +1560,7 @@ export function refreshAnalyseView() {
   knaBuildAnalyseSection();
   pvaBuildAnalyseSection();
   resBuildAnalyseSection();
-  ggBuildAnalyseSection();
+  gutBuildAnalyseSection();
   lbBuildAnalyseSection();
 
   // Alle inline-eingebetteten Panels zurücksetzen
@@ -1616,7 +1616,7 @@ export function refreshAnalyseView() {
   } else if (analyseCurrentSection === 'resilienz') {
     resShowSection(true);
   } else if (analyseCurrentSection === 'ggrafik') {
-    ggShowSection(true);
+    gutShowSection(true);
   } else if (analyseCurrentSection === 'liegenschaftsbilder') {
     lbShowSection(true);
   } else if (analyseCurrentSection === 'ausbauplaner') {

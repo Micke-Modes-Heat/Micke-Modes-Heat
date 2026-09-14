@@ -1156,7 +1156,8 @@ const GG_TEXT_STIL_OFFEN = 'background:#fff3cd;border-bottom:1.5px solid #e0a126
 function ggTextFeld(wert, feldname) {
   const gefuellt = !!String(wert ?? '').trim();
   const inhalt = gefuellt ? String(wert).trim() : `[${feldname}]`;
-  return `<span style="${gefuellt ? GG_TEXT_STIL_AUSGEFUELLT : GG_TEXT_STIL_OFFEN}">${gEsc(inhalt)}</span>`;
+  // data-gg-feld: der Gutachten-Editor zählt darüber die offenen Platzhalter je Kapitel
+  return `<span data-gg-feld="${gefuellt ? 'gefuellt' : 'offen'}" style="${gefuellt ? GG_TEXT_STIL_AUSGEFUELLT : GG_TEXT_STIL_OFFEN}">${gEsc(inhalt)}</span>`;
 }
 
 /** Kapitel 3.2.2 Liegenschaftsstromnetzanschluss — Textbaustein aus den Netzanschluss-Stammdaten. */
@@ -1374,7 +1375,7 @@ function ggDateiname(basis, ext) {
 const GG_FIGUREN = [
   {
     id: 'traeger-quellen',
-    kapitel: '1.2 Liegenschaftsinformationen',
+    kapitel: '2.3 Analyse möglicher Energiequellen und Technologien',   // wie „Abbildung 6" der Word-Vorlage
     titel: 'Energieträger / Energiequellen',
     datei: 'energietraeger-quellen',
     hinweis: 'Welche Energieträger und -quellen im Quartier zum Einsatz kommen. „Aus Projekt übernehmen" leitet die Haken aus Erzeugern und Assets ab.',
@@ -2767,6 +2768,198 @@ function ggPvFiguren() {
 GG_FIGUREN.push(...ggPvFiguren());
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * 5b) SCHNITTSTELLE ZUM GUTACHTEN-EDITOR (21-gutachten-editor.js)
+ *
+ * Der Editor setzt Figuren als Blöcke ins Dokument und teilt sich die Configs
+ * mit der Einzelansicht — was dort eingestellt wird (Haken, Kopfzeile), gilt
+ * auch im Dokument. Die von Hand änderbaren Felder landen in der Projektdatei;
+ * Datenreihen nicht, die kommen beim Zeichnen frisch aus dem Projekt.
+ * ═══════════════════════════════════════════════════════════════════════ */
+const GG_EINSTELLUNG_TEXTFELDER = ['eyebrow', 'titel', 'tabelleTitel', 'ort'];
+
+/** Von Hand änderbare Felder einer Figur-Config (ohne Datenreihen). */
+function ggEinstellungenVon(cfg) {
+  const out = {};
+  for (const f of GG_EINSTELLUNG_TEXTFELDER) if (typeof cfg[f] === 'string') out[f] = cfg[f];
+  if (cfg.meta) out.meta = { ...cfg.meta };
+  if (cfg.groups) out.states = Object.fromEntries(cfg.groups.flatMap(g => g.items.map(it => [it.key, it.state])));
+  return out;
+}
+
+/** Auslieferungszustand je Figur — zum Zurücksetzen beim Projektwechsel. */
+const GG_EINSTELLUNG_DEFAULTS = new Map(GG_FIGUREN.map(f => [f.id, ggEinstellungenVon(f.config)]));
+
+/**
+ * Von Hand gesetzte Felder je Figur ('titel', 'meta:Datum', 'states', …). Nur die
+ * werden gespeichert — was ausProjekt selbst vorbelegt (Datum, Bearbeiter,
+ * Liegenschaft), soll wie bisher bei jedem Öffnen frisch aus dem Projekt kommen.
+ */
+const _ggManuell = new Map();
+function ggMerkeManuell(id, feld) {
+  if (!_ggManuell.has(id)) _ggManuell.set(id, new Set());
+  _ggManuell.get(id).add(feld);
+}
+
+/** Von Hand gesetzte Einstellungen je Figur, für die Projektdatei. */
+export function ggFigurEinstellungenCapture() {
+  const out = {};
+  for (const f of GG_FIGUREN) {
+    const felder = _ggManuell.get(f.id);
+    if (!felder?.size) continue;
+    const ist = ggEinstellungenVon(f.config);
+    const eintrag = {};
+    for (const feld of felder) {
+      if (feld.startsWith('meta:')) {
+        const k = feld.slice(5);
+        if (!ist.meta || !(k in ist.meta)) continue;
+        if (!eintrag.meta) eintrag.meta = {};
+        eintrag.meta[k] = ist.meta[k];
+      } else if (feld in ist) {
+        eintrag[feld] = ist[feld];
+      }
+    }
+    if (Object.keys(eintrag).length) out[f.id] = eintrag;
+  }
+  return out;
+}
+
+/** Gespeicherte Einstellungen anwenden — vorher alles auf Auslieferungszustand, damit nichts vom vorigen Projekt hängen bleibt. */
+export function ggFigurEinstellungenRestore(daten) {
+  const d = daten && typeof daten === 'object' ? daten : {};
+  _ggManuell.clear();
+  for (const f of GG_FIGUREN) {
+    const cfg = f.config, soll = GG_EINSTELLUNG_DEFAULTS.get(f.id) || {};
+    const gespeichert = d[f.id] && typeof d[f.id] === 'object' ? d[f.id] : {};
+    for (const k of GG_EINSTELLUNG_TEXTFELDER) {
+      const vonHand = typeof gespeichert[k] === 'string';
+      const wert = vonHand ? gespeichert[k] : soll[k];
+      if (wert === undefined) delete cfg[k]; else cfg[k] = wert;
+      if (vonHand) ggMerkeManuell(f.id, k);
+    }
+    if (cfg.meta) {
+      const meta = { ...(soll.meta || {}) };
+      for (const [k, v] of Object.entries(gespeichert.meta || {})) {
+        if (typeof v === 'string') { meta[k] = v; ggMerkeManuell(f.id, 'meta:' + k); }
+      }
+      cfg.meta = meta;
+    }
+    if (cfg.groups) {
+      const vonHand = gespeichert.states && typeof gespeichert.states === 'object';
+      const states = { ...(soll.states || {}), ...(vonHand ? gespeichert.states : {}) };
+      cfg.groups.forEach(g => g.items.forEach(it => {
+        if (states[it.key] === 'on' || states[it.key] === 'off') it.state = states[it.key];
+      }));
+      if (vonHand) ggMerkeManuell(f.id, 'states');
+    }
+  }
+}
+
+/** Teile einer Figur im Dokument: Abbildung, Blatt + Kennzahlentabelle, reine Tabelle oder Fließtext (null = keine Beschriftung). */
+function ggTeilArten(figur, { layout = 'reduziert', kennzahlen = true } = {}) {
+  if (figur.istText) return [null];
+  if (ggIstTabellenFigur(figur)) return ['Tabelle'];
+  if (ggIstBlatt(figur) && layout === 'reduziert' && kennzahlen) return ['Abbildung', 'Tabelle'];
+  return ['Abbildung'];
+}
+
+export function ggFigurenKatalog() {
+  return GG_FIGUREN.map(f => ({
+    id: f.id, titel: f.titel, kapitel: f.kapitel || '', hinweis: f.hinweis || '',
+    istText: !!f.istText, istBlatt: ggIstBlatt(f), istTabelle: ggIstTabellenFigur(f),
+  }));
+}
+
+export function ggFigurTeilArten(id, opts) {
+  const figur = GG_FIGUREN.find(f => f.id === id);
+  return figur ? ggTeilArten(figur, opts) : [];
+}
+
+/**
+ * Figur für die Dokumentansicht zeichnen. Figuren, die sich ganz aus dem
+ * Projekt speisen, holen ihre Daten vorher selbst (wie in der Einzelansicht).
+ * Das Blatt-Layout gilt nur für diesen Block — die Einzelansicht behält ihres.
+ */
+export function ggRenderFigurFuerDokument(id, opts = {}) {
+  const figur = GG_FIGUREN.find(f => f.id === id);
+  if (!figur) return null;
+  let meldung = '';
+  if (figur.autoSync && typeof figur.ausProjekt === 'function') {
+    const r = figur.ausProjekt(figur.config);
+    if (typeof r === 'string') meldung = r;
+  }
+  const arten = ggTeilArten(figur, opts);
+  const blatt = ggIstBlatt(figur);
+  const vorher = figur.config.layout;
+  if (blatt) figur.config.layout = opts.layout === 'voll' ? 'voll' : 'reduziert';
+  try {
+    const teile = [{ art: arten[0], el: figur.render(figur.config) }];
+    if (arten[1]) teile.push({ art: arten[1], el: ggRenderKennzahlen(figur.config) });
+    return { teile, meldung, titel: figur.config.titel || figur.titel, tabelleTitel: figur.config.tabelleTitel || 'Kennzahlen' };
+  } finally {
+    if (blatt) figur.config.layout = vorher;
+  }
+}
+
+/** „Für Word kopieren“ aus dem Dokument: Fließtext als Text, Tabellen und Kennzahlen als echte Word-Tabelle, sonst das gezeichnete Bild. */
+export async function ggCopyDokumentTeil(id, teilIdx, el, scale = 3) {
+  const figur = GG_FIGUREN.find(f => f.id === id);
+  if (!figur) throw new Error('Abbildung nicht gefunden.');
+  if (figur.istText) return ggCopyTextForWord(figur);
+  if (ggIstTabellenFigur(figur) || teilIdx > 0) return ggCopyTableForWord(figur.config);
+  return ggCopyForWord(el, scale);
+}
+
+/** Absätze eines Textbausteins als Segmente [{text, offen}] — aus dem gezeichneten HTML, damit Text und Word nie auseinanderlaufen. */
+function ggTextSegmente(el) {
+  return [...el.querySelectorAll('p')].map(p => {
+    const segs = [...p.childNodes].map(n => ({
+      text: (n.textContent || '').replace(/\s+/g, ' '),
+      offen: n.nodeType === 1 && n.dataset?.ggFeld === 'offen',
+    })).filter(s => s.text);
+    if (segs.length) {
+      segs[0].text = segs[0].text.replace(/^\s+/, '');
+      segs[segs.length - 1].text = segs[segs.length - 1].text.replace(/\s+$/, '');
+    }
+    return segs.filter(s => s.text);
+  }).filter(segs => segs.length);
+}
+
+/**
+ * Inhalt eines Figurteils für den Word-Export (lib/gutachten-docx.js):
+ *   {art: 'text', absaetze}  — Textbaustein
+ *   {art: 'tabelle', spalten, zeilen, fussnote, leer} — echte Word-Tabelle (Tabellenfigur oder Kennzahlen)
+ *   {art: 'bild'}            — gezeichnete Abbildung, rastert der Editor selbst
+ * Setzt voraus, dass die Figur gerade gezeichnet wurde (ggRenderFigurFuerDokument) — die Config ist dann aktuell.
+ */
+export function ggFigurWordDaten(id, teilIdx = 0) {
+  const figur = GG_FIGUREN.find(f => f.id === id);
+  if (!figur) return null;
+  const cfg = figur.config;
+  if (figur.istText) return { art: 'text', absaetze: ggTextSegmente(figur.render(cfg)) };
+  if (ggIstTabellenFigur(figur)) {
+    return {
+      art: 'tabelle',
+      spalten: cfg.spalten.map((c, i) => ({ label: c.label || '', gewicht: c.weight || 1, align: ggSpaltenDefaults(c, i).align })),
+      zeilen: (cfg.zeilen || []).map(z => ({ werte: z.werte || [], highlight: !!z.highlight })),
+      fussnote: cfg.fussnote || '', leer: cfg.leer || '',
+    };
+  }
+  if (teilIdx > 0) {
+    return {
+      art: 'tabelle',
+      spalten: [{ label: 'Kennzahl', gewicht: 2.6 }, { label: 'Wert', gewicht: 1.2, align: 'right' },
+                { label: 'Einheit', gewicht: 0.9, align: 'left' }, { label: 'Anteil', gewicht: 0.9, align: 'right' }],
+      zeilen: ggKpiZeilen(cfg).map(r => {
+        const { zahl, einheit } = ggSplitWert(r.wert);
+        return { werte: [r.label || '', zahl, einheit, r.prozent || ''], highlight: !!r.highlight };
+      }),
+      leer: cfg.leer || '',
+    };
+  }
+  return { art: 'bild' };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * 6) PANEL — Analyse-Sektion „Gutachten-Grafiken"
  * ═══════════════════════════════════════════════════════════════════════ */
 /** Liegenschaft aus dem Projektkopf bzw. den Waerme-Grundlagen. */
@@ -2828,25 +3021,15 @@ const ggIstTabellenFigur = figur => Array.isArray(figur.config.spalten);
 const ggAktivesSvg = () => (_gg.ziel === 'tabelle' && _gg.svgTabelle) ? _gg.svgTabelle : _gg.svg;
 const ggAktiveDatei = () => ggFigur().datei + (_gg.ziel === 'tabelle' && _gg.svgTabelle ? '-kennzahlen' : '');
 
-export function ggBuildAnalyseSection() {
-  const tabBar = document.getElementById('analyse-view-tabs');
-  if (tabBar && !tabBar.querySelector('[data-section="ggrafik"]')) {
-    const btn = document.createElement('button');
-    btn.className = 'analyse-section-tab';
-    btn.dataset.section = 'ggrafik';
-    btn.dataset.click = "setAnalyseSection('ggrafik')";
-    btn.textContent = '🖼 Gutachten-Grafiken';
-    btn.title = 'Abbildungen fürs Gutachten in einheitlichem Design — direkt in die Zwischenablage für Word oder als SVG-Datei.';
-    tabBar.appendChild(btn);
-  }
-
-  let wrap = document.getElementById('analyse-ggrafik-wrap');
-  if (!wrap) {
-    wrap = document.createElement('div');
-    wrap.id = 'analyse-ggrafik-wrap';
-    wrap.style.display = 'none';
-    wrap.innerHTML = `
-<div style="display:flex;flex-direction:row;gap:0;height:calc(100vh - 160px);min-height:400px;background:#0f0f1a;border-radius:8px;overflow:hidden;">
+/**
+ * Einzelansicht (eine Figur samt Export-Leiste) in einen Container einhängen — idempotent.
+ * Seit dem Gutachten-Editor ist das die zweite Ansicht des Reiters „📝 Gutachten“;
+ * Reiter und Umschalter baut 21-gutachten-editor.js.
+ */
+export function ggMountEinzelansicht(host) {
+  if (!host || host.querySelector('#gg-sidebar')) return;
+  host.innerHTML = `
+<div style="display:flex;flex-direction:row;gap:0;height:100%;min-height:400px;">
   <div id="gg-sidebar" style="width:250px;flex-shrink:0;overflow-y:auto;border-right:1px solid rgba(38,166,154,.15);padding:10px;"></div>
   <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow-y:auto;padding:12px 14px;">
     <div id="gg-bar" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;"></div>
@@ -2855,8 +3038,6 @@ export function ggBuildAnalyseSection() {
     <div id="gg-optionen" style="margin-top:10px;"></div>
   </div>
 </div>`;
-    document.getElementById('center-analyse-view')?.appendChild(wrap);
-  }
 }
 
 /**
@@ -2872,11 +3053,9 @@ function ggAutoSync() {
   return typeof ergebnis === 'string' ? ergebnis : '';
 }
 
+/** Einzelansicht aufrufen — Sichtbarkeit des Reiters steuert 21-gutachten-editor.js. */
 export function ggShowSection(visible) {
-  const wrap = document.getElementById('analyse-ggrafik-wrap');
-  if (!wrap) return;
-  wrap.style.display = visible ? '' : 'none';
-  if (!visible) return;
+  if (!visible || !document.getElementById('gg-paper')) return;
   const meldung = ggAutoSync();
   ggRenderPanel();
   if (meldung) ggSay(meldung);
@@ -3075,6 +3254,7 @@ export function ggToggleItem(gi, ii, on) {
   const it = ggFigur().config.groups[gi]?.items[ii];
   if (!it) return;
   it.state = on ? 'on' : 'off';
+  ggMerkeManuell(ggFigur().id, 'states');
   ggRenderPanel();
 }
 
@@ -3086,6 +3266,7 @@ export function ggSyncFromProject() {
   const ergebnis = figur.ausProjekt(figur.config);
   let meldung = typeof ergebnis === 'string' ? ergebnis : '';
   if (ergebnis && typeof ergebnis === 'object') {
+    ggMerkeManuell(figur.id, 'states');   // per Knopf übernommene Haken gelten wie von Hand gesetzt
     let n = 0;
     for (const g of figur.config.groups || []) {
       for (const it of g.items) {
@@ -3101,12 +3282,16 @@ export function ggSyncFromProject() {
 
 export function ggSetKopf(feld, wert) {
   ggFigur().config[feld] = wert;
+  ggMerkeManuell(ggFigur().id, feld);
   ggRenderPanel();
 }
 
 export function ggSetMeta(key, wert) {
   const meta = ggFigur().config.meta;
-  if (meta) meta[key] = wert;
+  if (meta) {
+    meta[key] = wert;
+    ggMerkeManuell(ggFigur().id, 'meta:' + key);
+  }
   ggRenderPanel();
 }
 
