@@ -4590,7 +4590,7 @@ function renderResilienz(varianten, overrideEl) {
   }
   if (_pvResPvKwp  == null) _pvResPvKwp  = (kanon.find(v => v.id === _pvResVarId) || kanon[0]).pvKwp;
   if (_pvResBatKwh == null) _pvResBatKwh = (kanon.find(v => v.id === _pvResVarId) || kanon[0]).batKwh;
-  if (_pvResDurH   == null) _pvResDurH = 24;
+  if (_pvResDurH   == null) _pvResDurH = 72;
   if (!_pvResMode) _pvResMode = 'pv-bat-gen';
   if (_pvResLoadFrac == null) _pvResLoadFrac = 100;
   if (_pvResUsable == null) _pvResUsable = 90;
@@ -5183,7 +5183,7 @@ function renderResilienzWaerme(el, overrideEl) {
     b.tau = uaKw > 0 ? cWh / (uaKw * 1000) : Infinity; // h
   });
 
-  if (_pvResDurH == null) _pvResDurH = 24;
+  if (_pvResDurH == null) _pvResDurH = 72;
   const DURS_W = [ [6,'6 h'], [12,'12 h'], [24,'24 h'], [48,'2 Tage'], [72,'3 Tage'], [168,'7 Tage'], [336,'14 Tage'] ];
   const COOL_CAP_H = 720; // Auskühl-Horizont: max. 30 Tage weitersuchen
 
