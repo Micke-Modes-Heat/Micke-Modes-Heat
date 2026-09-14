@@ -8,6 +8,16 @@
 //   kapitel = { id, ebene: 1..3, titel, bloecke: [block, …] }
 //   block   = { id, typ: 'text',  text }
 //           | { id, typ: 'figur', figurId, layout: 'reduziert'|'voll', kennzahlen, unterschrift }
+//           | { id, typ: 'bild',  svg, breite, hoehe, unterschrift, einstellungen }
+//
+// 'bild' ist eine fertig gezeichnete, fremd erzeugte Grafik (z. B. der Vektor-Lageplan aus
+// 18-liegenschaftsbilder.js) — anders als 'figur' liest sie keine Live-Daten über einen
+// Katalogeintrag, sondern trägt ihr SVG-Quelltext-Schnappschuss direkt im Block. `svg` kann
+// leer sein ("noch nicht eingerichtet", direkt nach dem Anlegen). `einstellungen` ist ein
+// beliebiges, für 21 undurchsichtiges Objekt der Quelle (z. B. lpEinstellungenCapture()) —
+// damit lässt sich die Quelle später mit denselben Einstellungen erneut öffnen. Ein erneutes
+// „Übernehmen" ersetzt svg/breite/hoehe/einstellungen; sonst merkt sich das Dokument nichts
+// über die Quelle.
 //
 // Die Gliederung ist eine flache Liste mit Ebenen (wie Überschrift 1–3 in Word).
 // Kapitelnummern entstehen immer automatisch aus Reihenfolge und Ebene — es wird
@@ -19,7 +29,13 @@ export const GUTACHTEN_MAX_EBENE = 3;
 /**
  * Standardgliederung = Inhaltsverzeichnis der Word-Vorlage
  * „Gutachten_Energieversorgung_LKEBw.docx" (Stand 09/2026). Die Kapitelnummern
- * der Gutachten-Grafiken (3.1.5, 3.2.2, …) beziehen sich auf diese Gliederung.
+ * der Gutachten-Grafiken (3.1.2, 3.5.2, …) beziehen sich auf diese Gliederung.
+ *
+ * Elektrotechnik (ab „Elektrotechnik“) folgt seit 09/2026 demselben Aufbau wie die
+ * Wärmeversorgung: EIN Ist-Zustand, EINE Bedarfsprognose (Soll), dann Analyse/
+ * Variantenbildung/Wirtschaftlichkeit/Bewertungsmatrix/Empfehlung — statt wie zuvor
+ * Ist- und Soll-Zustand als zwei parallele Zweige mit je eigenem Netzanschluss/
+ * Stromnetz-intern-Unterkapitel.
  */
 const G = (ebene, titel) => ({ ebene, titel });
 export const GUTACHTEN_STANDARD_GLIEDERUNG = [
@@ -31,11 +47,16 @@ export const GUTACHTEN_STANDARD_GLIEDERUNG = [
   G(2, 'Analyse möglicher Energiequellen und Technologien'), G(3, 'Technologien'),
   G(2, 'Variantenvergleich'), G(2, 'Wirtschaftlichkeit und Investitionskosten'), G(2, 'Bewertungsmatrix'), G(2, 'Empfehlung'),
   G(1, 'Elektrotechnik'),
-  G(2, 'Ist-Zustand Elektrotechnik'), G(3, 'Liegenschaftsstromnetzanschluss'), G(3, 'Stromnetz intern'),
-  G(3, 'Erzeugungsanlagen'), G(3, 'Notstromversorgung'), G(3, 'Stromdaten'),
-  G(2, 'Soll-Zustand Elektrotechnik'), G(3, 'Geplanter Gebäudebestand der Liegenschaft'), G(3, 'Liegenschaftsstromnetzanschluss'),
-  G(3, 'Stromnetz intern'), G(3, 'Notstromversorgung und Lastmanagement'), G(3, 'PV-Anlage und Batteriespeicher'),
-  G(3, 'Wirtschaftlichkeit und Investitionskosten'),
+  G(2, 'Ist-Zustand'), G(3, 'Liegenschaftsstromnetzanschluss'), G(3, 'Stromnetz intern (MS/NS)'),
+  G(3, 'Erzeugungsanlagen'), G(3, 'Notstromversorgung'),
+  G(2, 'Stromverbrauchsdaten'),
+  G(2, 'Bedarfsprognose Strom (Soll)'), G(3, 'Bestandsbedarf und bauliche Entwicklung'),
+  G(3, 'Zusatzbedarf aus Wärmekonzept (Übernahme aus 3.8)'), G(3, 'Zusatzbedarf Ladeinfrastruktur'),
+  G(3, 'Resultierende Anschlussleistung und Lastgang'),
+  G(2, 'Analyse möglicher Technologien'),
+  G(2, 'Variantenbildung und -vergleich'), G(3, 'Netzanschluss und internes Stromnetz'), G(3, 'PV-Anlage und Batteriespeicher'),
+  G(3, 'Notstromversorgung und Lastmanagement'), G(3, 'Ladeinfrastruktur'),
+  G(2, 'Wirtschaftlichkeit und Investitionskosten'), G(2, 'Bewertungsmatrix'), G(2, 'Empfehlung Elektrotechnik'),
   G(1, 'Gebäudeautomation (GA)'),
   G(1, 'Maßnahmen zur Steigerung der Resilienz'), G(2, 'Erläuterung Bewertungstool Resilienz'), G(2, 'Bewertung Resilienz'),
   G(3, 'Ist-Zustand'), G(3, 'Kurzfristige Maßnahmen'), G(3, 'Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)'),
@@ -78,6 +99,21 @@ export function gdNeuerFigurBlock(figurId) {
   return { id: gdId('b'), typ: 'figur', figurId: alsText(figurId), layout: 'reduziert', kennzahlen: true, unterschrift: '' };
 }
 
+/**
+ * bild: {svg, breite, hoehe, einstellungen} — SVG-Quelltext-Schnappschuss samt Einstellungen
+ * der Quelle. Ohne Argument (frisch angelegt, noch nicht eingerichtet): leeres Bild.
+ */
+export function gdNeuerBildBlock(bild) {
+  return {
+    id: gdId('b'), typ: 'bild',
+    svg: alsText(bild?.svg),
+    breite: Number(bild?.breite) || 0,
+    hoehe: Number(bild?.hoehe) || 0,
+    unterschrift: '',
+    einstellungen: (bild?.einstellungen && istObjekt(bild.einstellungen)) ? bild.einstellungen : null,
+  };
+}
+
 /** Ebenen so glätten, dass kein Kapitel mehr als eine Ebene tiefer als sein Vorgänger liegt. */
 function glaetteEbenen(kapitel) {
   let vorher = 0;
@@ -100,6 +136,14 @@ function normBlock(b, ids) {
       layout: b.layout === 'voll' ? 'voll' : 'reduziert',
       kennzahlen: b.kennzahlen !== false,
       unterschrift: alsText(b.unterschrift),
+    };
+  }
+  if (b.typ === 'bild') {
+    return {
+      id, typ: 'bild', svg: alsText(b.svg),
+      breite: Number(b.breite) || 0, hoehe: Number(b.hoehe) || 0,
+      unterschrift: alsText(b.unterschrift),
+      einstellungen: (b.einstellungen && istObjekt(b.einstellungen)) ? b.einstellungen : null,
     };
   }
   return null;
@@ -127,7 +171,7 @@ export function gdNormalisieren(input) {
   return { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(input.deckblatt) };
 }
 
-/** Automatische Kapitelnummern ("1", "1.2", "3.1.5") in Listenreihenfolge. */
+/** Automatische Kapitelnummern ("1", "1.2", "3.1.2") in Listenreihenfolge. */
 export function gdKapitelNummern(kapitel) {
   const zaehler = new Array(GUTACHTEN_MAX_EBENE).fill(0);
   return kapitel.map(k => {
@@ -140,14 +184,17 @@ export function gdKapitelNummern(kapitel) {
 
 /**
  * Neues Dokument aus der Standardgliederung. Figuren aus dem Katalog
- * ({id, kapitel: '3.1.5 Stromdaten', istText}) landen in dem Kapitel mit
- * derselben Nummer — Textbausteine vor den Abbildungen.
+ * ({id, kapitel: '3.2 Stromverbrauchsdaten', istText, reihe}) landen in dem Kapitel mit
+ * derselben Nummer — Textbausteine vor den Abbildungen. Eine optionale `reihe`
+ * (Zahl) legt die Position im Kapitel ausdrücklich fest, damit sich Texte und
+ * Abbildungen abwechseln können; ohne `reihe` zählt ein Text als 0, eine Abbildung als 1000.
  */
 export function gdStandardDokument(katalog = []) {
   const kapitel = GUTACHTEN_STANDARD_GLIEDERUNG.map(k => ({ id: gdId('k'), ebene: k.ebene, titel: k.titel, bloecke: [] }));
   const nummern = gdKapitelNummern(kapitel);
   const nichtZugeordnet = [];
-  const reihenfolge = [...katalog.filter(f => f.istText), ...katalog.filter(f => !f.istText)];
+  const rang = f => (Number.isFinite(f.reihe) ? f.reihe : f.istText ? 0 : 1000);
+  const reihenfolge = [...katalog].sort((a, b) => rang(a) - rang(b));   // stabil: gleicher Rang behält die Katalogreihenfolge
   for (const f of reihenfolge) {
     const nr = (alsText(f.kapitel).match(/^\d+(\.\d+)*/) || [''])[0];
     const idx = nr ? nummern.indexOf(nr) : -1;
@@ -290,14 +337,15 @@ export function gdBlockVerschieben(dok, blockId, richtung) {
 /**
  * Fortlaufende Abbildungs- und Tabellennummern. `artenVon(block)` liefert je
  * Teil eines Blocks 'Abbildung', 'Tabelle' oder null (kein Beschriftungsobjekt,
- * z. B. Fließtext). Ergebnis: Map blockId → [{art, nr} | null, …].
+ * z. B. Fließtext) — gilt nur für 'figur'-Blöcke. 'bild'-Blöcke zählen immer als
+ * eine Abbildung. Ergebnis: Map blockId → [{art, nr} | null, …].
  */
 export function gdBeschriftungen(dok, artenVon) {
   const zaehler = { Abbildung: 0, Tabelle: 0 };
   const out = new Map();
   for (const k of dok.kapitel) {
     for (const b of k.bloecke) {
-      const arten = b.typ === 'figur' ? (artenVon(b) || []) : [];
+      const arten = b.typ === 'figur' ? (artenVon(b) || []) : b.typ === 'bild' ? ['Abbildung'] : [];
       out.set(b.id, arten.map(art => (art in zaehler ? { art, nr: ++zaehler[art] } : null)));
     }
   }

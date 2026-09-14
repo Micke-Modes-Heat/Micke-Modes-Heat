@@ -1782,6 +1782,10 @@ function lpPanelHtml() {
 
   /* Gruppe "Ausgabe" — Auflösung, Planblatt-Export, Wasserzeichen */
   const koerperAusgabe = [
+    _lpGutZiel ? feld('Für den Gutachten-Editor', `<div class="lp-zeile">
+      <button data-click="lpUebernehmenFuerGutachten()" style="padding:7px 14px;border-radius:5px;border:1px solid rgba(38,166,154,.6);background:rgba(38,166,154,.22);color:#26a69a;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;">✓ Für „${lbEsc(_lpGutZiel)}“ übernehmen</button>
+    </div>
+    <p class="lp-hinweis">Schreibt Plan und Einstellungen in genau diesen einen Gutachten-Block und springt zurück.</p>`) : '',
     feld('Planblatt', `<div class="lp-zeile">
       <span style="font-size:10px;color:var(--muted);">Auflösung</span>${[2,3,4].map(scaleBtn).join('')}
     </div>
@@ -1790,7 +1794,9 @@ function lpPanelHtml() {
       <button data-click="lpSavePng()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ PNG</button>
       <button data-click="lpSaveSvg()" style="padding:6px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">⤓ SVG</button>
     </div>
-    <p class="lp-hinweis">In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder.</p>`),
+    <p class="lp-hinweis">In Word mit Strg+V einfügen — SVG bleibt Vektor über Einfügen › Bilder. Oder in einen Gutachten-Block
+      übernehmen: im Gutachten-Editor beim Kapitel unter „Inhalt einfügen" auf „🗺 Lageplan einrichten" — springt hierher, und
+      oben erscheint der Knopf „Für … übernehmen".</p>`),
     feld('Wasserzeichen für den Gutachten-Hintergrund', lpWasserzeichenHtml()),
   ].join('');
 
@@ -2312,6 +2318,62 @@ window.lpSaveSvg = () => {
   const blob = new Blob([ggSvgSource(_lpSvg)], { type: 'image/svg+xml;charset=utf-8' });
   lbDownloadBlob(blob, lbDateiname('lageplan-liegenschaft', 'svg'));
   lpSay('✓ SVG heruntergeladen.');
+};
+/* ── Übernahme in den Gutachten-Editor ─────────────────────────────────────
+ * Der Gutachten-Editor (21-gutachten-editor.js) hat kein eigenes „Bild bearbeiten" — er
+ * schickt den Nutzer hierher: gutEditLageplan() lädt per lpEinstellungenRestore() die zu
+ * einem Block gespeicherten Einstellungen in dieses Modul und setzt per lpSetGutachtenZiel()
+ * ein „Ziel". Solange ein Ziel aktiv ist, zeigt die Ausgabe-Gruppe einen zusätzlichen Knopf,
+ * der SVG + Einstellungen zurück in genau diesen einen Block schreibt (gutUebernehmeLageplanZiel,
+ * per window — s. Modulkopf zu den bewusst fehlenden App-Kern-Importen). Nur EIN Ziel gleichzeitig:
+ * wie der Plan selbst gibt es nur einen „aktuellen" Zustand, kein Mehrfach-Fenster.
+ */
+let _lpGutZiel = null;   // Kapitelbezeichnung, z. B. "3.1.2 Stromnetz intern", oder null
+
+/** Alles, was das Aussehen des Plans bestimmt — reine Daten, geht 1:1 in einen Gutachten-Block. */
+function lpEinstellungenCapture() {
+  return {
+    state: { ..._lpState },
+    scale: _lpScale,
+    assetTypes: { ..._lpAssetTypes },
+    labelTypes: { ..._lpLabelTypes },
+    labelOffsets: [..._lpLabelOffsets.entries()],
+    annotations: _lpAnnotations.map(a => ({ ...a })),
+    markierungen: [..._lpMarkierungen.entries()].map(([k, v]) => [k, { ...v }]),
+  };
+}
+
+/** Kehrseite von lpEinstellungenCapture() — akzeptiert null/fremde Objekte defensiv (Projektdatei). */
+function lpEinstellungenRestore(snap) {
+  const s = snap && typeof snap === 'object' ? snap : {};
+  if (s.state && typeof s.state === 'object') Object.assign(_lpState, s.state);
+  if (Number.isFinite(s.scale)) _lpScale = s.scale;
+  if (s.assetTypes && typeof s.assetTypes === 'object') Object.assign(_lpAssetTypes, s.assetTypes);
+  if (s.labelTypes && typeof s.labelTypes === 'object') Object.assign(_lpLabelTypes, s.labelTypes);
+  _lpLabelOffsets = new Map(Array.isArray(s.labelOffsets) ? s.labelOffsets : []);
+  _lpAnnotations = Array.isArray(s.annotations) ? s.annotations.map(a => ({ ...a })) : [];
+  _lpAnnoNextId = _lpAnnotations.reduce((m, a) => Math.max(m, (Number(a.id) || 0) + 1), 1);
+  _lpMarkierungen = new Map(Array.isArray(s.markierungen) ? s.markierungen.map(([k, v]) => [k, { ...v }]) : []);
+  _lpSelected = null; _lpPlacing = null; _lpAchse = null;
+}
+window.lpEinstellungenRestore = lpEinstellungenRestore;
+
+window.lpSetGutachtenZiel = (aktiv, label) => {
+  _lpGutZiel = aktiv ? String(label || 'Gutachten') : null;
+  lpRenderPanel();
+};
+window.lpUebernehmenFuerGutachten = () => {
+  if (!_lpSvg) { lpSay('Kein Lageplan vorhanden.', true); return; }
+  if (!_lpGutZiel) { lpSay('⚠ Kein Ziel-Kapitel aktiv — über den Gutachten-Editor „✎ In Liegenschaftsbilder einrichten" öffnen.', true); return; }
+  const bild = {
+    svg: ggSvgSource(_lpSvg),
+    breite: +_lpSvg.getAttribute('width') || 0,
+    hoehe: +_lpSvg.getAttribute('height') || 0,
+    einstellungen: lpEinstellungenCapture(),
+  };
+  const ok = typeof window.gutUebernehmeLageplanZiel === 'function' && window.gutUebernehmeLageplanZiel(bild);
+  if (ok) { _lpGutZiel = null; lpRenderPanel(); }
+  else lpSay('⚠ Übernehmen fehlgeschlagen — Ziel-Kapitel gibt es nicht mehr.', true);
 };
 
 /* ── Wasserzeichen-Export (Gutachten-Hintergrund) ─────────────────────────── */

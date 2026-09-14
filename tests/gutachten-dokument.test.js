@@ -25,11 +25,11 @@ describe('Nummerierung', () => {
     const nr = gdKapitelNummern(dok.kapitel);
     const bei = n => dok.kapitel[nr.indexOf(n)]?.titel;
     expect(bei('1.2')).toBe('Liegenschaftsinformationen');
-    expect(bei('3.1.5')).toBe('Stromdaten');
-    expect(bei('3.2.2')).toBe('Liegenschaftsstromnetzanschluss');
-    expect(bei('3.2.3')).toBe('Stromnetz intern');
-    expect(bei('3.2.5')).toBe('PV-Anlage und Batteriespeicher');
-    expect(bei('3.2.6')).toBe('Wirtschaftlichkeit und Investitionskosten');
+    expect(bei('3.1.1')).toBe('Liegenschaftsstromnetzanschluss');
+    expect(bei('3.1.2')).toBe('Stromnetz intern (MS/NS)');
+    expect(bei('3.2')).toBe('Stromverbrauchsdaten');
+    expect(bei('3.5.2')).toBe('PV-Anlage und Batteriespeicher');
+    expect(bei('3.6')).toBe('Wirtschaftlichkeit und Investitionskosten');
     expect(bei('5.2')).toBe('Bewertung Resilienz');
     expect(bei('2.3')).toBe('Analyse möglicher Energiequellen und Technologien');
     expect(bei('6.2')).toBe('Elektrotechnik');
@@ -84,16 +84,30 @@ describe('Normalisieren', () => {
 describe('Standarddokument', () => {
   it('ordnet Figuren nach Kapitelnummer zu, Textbausteine zuerst', () => {
     const { dok, nichtZugeordnet } = gdStandardDokument([
-      { id: 'anschluss', kapitel: '3.2.2 Liegenschaftsstromnetzanschluss' },
-      { id: 'na-text', kapitel: '3.2.2 Liegenschaftsstromnetzanschluss', istText: true },
-      { id: 'lastgang', kapitel: '3.1.5 Stromdaten' },
+      { id: 'anschluss', kapitel: '3.1.1 Liegenschaftsstromnetzanschluss' },
+      { id: 'na-text', kapitel: '3.1.1 Liegenschaftsstromnetzanschluss', istText: true },
+      { id: 'lastgang', kapitel: '3.2 Stromverbrauchsdaten' },
       { id: 'ohne', kapitel: '' },
       { id: 'falsch', kapitel: '9.9 Gibt es nicht' },
     ]);
     const nr = gdKapitelNummern(dok.kapitel);
-    expect(dok.kapitel[nr.indexOf('3.2.2')].bloecke.map(b => b.figurId)).toEqual(['na-text', 'anschluss']);
-    expect(dok.kapitel[nr.indexOf('3.1.5')].bloecke.map(b => b.figurId)).toEqual(['lastgang']);
+    expect(dok.kapitel[nr.indexOf('3.1.1')].bloecke.map(b => b.figurId)).toEqual(['na-text', 'anschluss']);
+    expect(dok.kapitel[nr.indexOf('3.2')].bloecke.map(b => b.figurId)).toEqual(['lastgang']);
     expect(nichtZugeordnet).toEqual(['ohne', 'falsch']);
+  });
+
+  it('wechselt Texte und Abbildungen nach `reihe` ab', () => {
+    const kap = '3.5.2 PV-Anlage und Batteriespeicher';
+    const { dok } = gdStandardDokument([
+      { id: 'tabelle', kapitel: kap, reihe: 40 },
+      { id: 'text-b', kapitel: kap, istText: true, reihe: 30 },
+      { id: 'ohne-reihe', kapitel: kap },
+      { id: 'herleitung', kapitel: kap, reihe: 20 },
+      { id: 'text-a', kapitel: kap, istText: true, reihe: 10 },
+    ]);
+    const nr = gdKapitelNummern(dok.kapitel);
+    expect(dok.kapitel[nr.indexOf('3.5.2')].bloecke.map(b => b.figurId))
+      .toEqual(['text-a', 'herleitung', 'text-b', 'tabelle', 'ohne-reihe']);
   });
 });
 

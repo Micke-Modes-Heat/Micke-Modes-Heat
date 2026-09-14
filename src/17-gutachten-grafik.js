@@ -638,11 +638,14 @@ function ggTabellePlainText(cfg) {
  * (HTML- statt Bild-Payload) — Gegenstueck zu ggCopyForWord, das die
  * Abbildungen als PNG kopiert.
  */
-export async function ggCopyTableForWord(cfg) {
+/** `beschriftung`: {art, nr, titel} — hängt eine Bildunterschrift mit echtem Word-Feld unter die Tabelle (s. ggCopyForWord). */
+export async function ggCopyTableForWord(cfg, beschriftung = null) {
   const spaltig = Array.isArray(cfg.spalten);
   const tabelle = spaltig ? ggTabelleHtmlTable(cfg) : ggKennzahlenHtmlTable(cfg);
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${tabelle}</body></html>`;
-  const text = spaltig ? ggTabellePlainText(cfg) : ggKennzahlenPlainText(cfg);
+  const kapt = beschriftung ? ggBeschriftungHtml(beschriftung) : '';
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${tabelle}${kapt}</body></html>`;
+  const text = (spaltig ? ggTabellePlainText(cfg) : ggKennzahlenPlainText(cfg))
+    + (beschriftung ? `\n${beschriftung.art} ${beschriftung.nr}: ${beschriftung.titel}` : '');
   if (navigator.clipboard && window.ClipboardItem) {
     try {
       await navigator.clipboard.write([new window.ClipboardItem({
@@ -652,17 +655,7 @@ export async function ggCopyTableForWord(cfg) {
       return 'Zwischenablage';
     } catch (e) { void e; /* Fallback unten */ }
   }
-  const holder = document.createElement('div');
-  holder.contentEditable = 'true';
-  holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
-  holder.innerHTML = tabelle;
-  document.body.appendChild(holder);
-  const rng = document.createRange(); rng.selectNodeContents(holder);
-  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng);
-  const ok = document.execCommand('copy');
-  sel.removeAllRanges(); holder.remove();
-  if (!ok) throw new Error('Zwischenablage nicht verfügbar');
-  return 'Zwischenablage (Fallback)';
+  return ggHtmlZwischenablageFallback(tabelle + kapt);
 }
 
 function ggFinishSvg(out, W, height) {
@@ -1190,7 +1183,7 @@ function ggRenderNetzanschlussText(cfg, T = GG_THEME) {
   ], T);
 }
 
-/** Kapitel 3.2.2 Liegenschaftsstromnetzanschluss (Soll-Zustand) — Empfehlung zum Netzanschlussantrag. */
+/** Kapitel 3.5.1 Netzanschluss und internes Stromnetz (Variantenbildung) — Empfehlung zum Netzanschlussantrag. */
 function ggRenderNetzanschlussEmpfehlungText(cfg, T = GG_THEME) {
   void cfg;
   return ggTextBlatt([
@@ -1198,6 +1191,18 @@ function ggRenderNetzanschlussEmpfehlungText(cfg, T = GG_THEME) {
       + `erneuerbarer Erzeugungsanlagen wird empfohlen, den Netzanschlussantrag frühzeitig und auf Basis einer `
       + `realistischen Leistungsannahme einschließlich angemessener Reserve zu stellen, um Planungssicherheit für `
       + `nachgelagerte Maßnahmen zu schaffen.`,
+  ], T);
+}
+
+/** Kapitel 3.1.2 Stromnetz intern (MS/NS), Ist-Zustand — Einleitung vor der Tabelle „Übersicht Trafostationen". */
+function ggRenderTrafostationenText(cfg, T = GG_THEME) {
+  void cfg;
+  const name = document.querySelector('.header-projekt-name')?.textContent?.trim() || '';
+  return ggTextBlatt([
+    `Die Tabelle Übersicht der Trafostationen zeigt eine Übersicht aller Trafostationen der Liegenschaft `
+      + `${ggTextFeld(name, 'Name Liegenschaft')}. Im weiteren Verlauf werden die im Zuge einer Begehung besichtigten `
+      + `Trafostationen näher betrachtet um eventuelle Bedarfe und Empfehlungen zur Anpassung oder Erneuerung von `
+      + `Trafo-Stationen ableiten zu können.`,
   ], T);
 }
 
@@ -1343,8 +1348,67 @@ export function ggSvgToPngBlob(svg, scale, opts = {}) {
   });
 }
 
+function ggBlobZuDataUrl(blob) {
+  return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
+}
+
+/** HTML-Ausschnitt per Markieren + execCommand('copy') in die Zwischenablage — Fallback, wenn die Clipboard-API fehlt. */
+function ggHtmlZwischenablageFallback(html) {
+  const holder = document.createElement('div');
+  holder.contentEditable = 'true';
+  holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  holder.innerHTML = html;
+  document.body.appendChild(holder);
+  const rng = document.createRange(); rng.selectNodeContents(holder);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng);
+  const ok = document.execCommand('copy');
+  sel.removeAllRanges(); holder.remove();
+  if (!ok) throw new Error('Zwischenablage nicht verfügbar');
+  return 'Zwischenablage (Fallback)';
+}
+
+/**
+ * Word-Feld als HTML-Fragment, wie Word es selbst beim Kopieren erzeugt (die
+ * `<!--[if supportFields]>`-Kommentare sieht nur Word/IE — überall sonst bleibt einfach die
+ * Zahl als Text stehen, das Fragment degradiert also nirgends sichtbar). Fügt der Nutzer das
+ * in ein Word-Dokument ein, das schon „SEQ Abbildung"/„SEQ Tabelle"-Felder zählt (z. B. aus
+ * einem per gdxBeschriftung erzeugten Word-Export), reiht Word die Nummer beim Aktualisieren
+ * der Felder automatisch in die bestehende Zählung ein — daher „flexibel", nicht von uns fix
+ * vergeben.
+ */
+function ggWordSeqFeld(art, nr) {
+  return `<!--[if supportFields]><span style='mso-element:field-begin'></span>`
+    + ` SEQ ${art} \\* ARABIC <span style='mso-element:field-separator'></span><![endif]-->`
+    + `<span>${nr}</span>`
+    + `<!--[if supportFields]><span style='mso-element:field-end'></span><![endif]-->`;
+}
+
+/** Beschriftungs-Absatz „Abbildung <Feld>: Titel" fürs Kopieren — dieselbe Optik wie unter der Grafik im Editor. */
+function ggBeschriftungHtml({ art, nr, titel }) {
+  return `<p style="font-family:Tahoma,Verdana,sans-serif;font-size:9.5pt;color:#5A5F5A;margin:5px 0 0;">`
+    + `${gEsc(art)} ${ggWordSeqFeld(art, nr)}: ${gEsc(titel)}</p>`;
+}
+
+/**
+ * @param {{transparent?:boolean, beschriftung?:{art:string, nr:number, titel:string}}} [opts] —
+ *   `transparent: true` lässt den weißen Grund weg (Wasserzeichen); `beschriftung` hängt eine
+ *   Bildunterschrift mit echtem Word-Feld an (nur beim Kopieren aus dem Gutachten-Dokument
+ *   sinnvoll, wo eine tatsächliche Abbildungs-/Tabellennummer feststeht — s. gutCopyTeil).
+ */
 export async function ggCopyForWord(svg, scale, opts = {}) {
   const blob = await ggSvgToPngBlob(svg, scale, opts);
+  if (opts.beschriftung) {
+    const html = `<div><img src="${await ggBlobZuDataUrl(blob)}"></div>` + ggBeschriftungHtml(opts.beschriftung);
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        await navigator.clipboard.write([new window.ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }), 'image/png': blob,
+        })]);
+        return 'Zwischenablage';
+      } catch (e) { void e; /* Fallback unten */ }
+    }
+    return ggHtmlZwischenablageFallback(html);
+  }
   // Weg 1: Clipboard-API (Chrome, Edge)
   if (navigator.clipboard && window.ClipboardItem) {
     try {
@@ -1353,20 +1417,7 @@ export async function ggCopyForWord(svg, scale, opts = {}) {
     } catch (e) { void e; /* Fallback unten */ }
   }
   // Weg 2: HTML-Ausschnitt mit eingebettetem Bild — Word nimmt das als Bild an
-  const dataUrl = await new Promise(res => {
-    const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob);
-  });
-  const holder = document.createElement('div');
-  holder.contentEditable = 'true';
-  holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
-  holder.innerHTML = `<img src="${dataUrl}">`;
-  document.body.appendChild(holder);
-  const rng = document.createRange(); rng.selectNodeContents(holder);
-  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng);
-  const ok = document.execCommand('copy');
-  sel.removeAllRanges(); holder.remove();
-  if (!ok) throw new Error('Zwischenablage nicht verfügbar');
-  return 'Zwischenablage (Fallback)';
+  return ggHtmlZwischenablageFallback(`<img src="${await ggBlobZuDataUrl(blob)}">`);
 }
 
 function ggDownload(blob, name) {
@@ -1442,7 +1493,7 @@ const GG_FIGUREN = [
   {
     id: 'lastgang-strom',
     autoSync: true,   // Daten kommen komplett aus dem Projekt — nichts zum Anhaken
-    kapitel: '3.1.5 Stromdaten',
+    kapitel: '3.2 Stromverbrauchsdaten',
     titel: 'Ist-Lastgang Strom',
     datei: 'ist-lastgang-strom',
     hinweis: 'Gemessener Jahreslastgang aus dem Stromimport (15-Minuten-Werte, sonst Stundenwerte). '
@@ -1550,7 +1601,7 @@ const GG_FIGUREN = [
   {
     id: 'lastgang-strom-dauerlinie',
     autoSync: true,
-    kapitel: '3.1.5 Stromdaten',
+    kapitel: '3.2 Stromverbrauchsdaten',
     titel: 'Jahresdauerlinie Strom',
     datei: 'jahresdauerlinie-strom',
     hinweis: 'Derselbe Stromlastgang wie die Jahresganglinie, absteigend nach Leistung sortiert — '
@@ -1600,7 +1651,7 @@ const GG_FIGUREN = [
   {
     id: 'lastgang-strom-tagesgang',
     autoSync: true,
-    kapitel: '3.1.5 Stromdaten',
+    kapitel: '3.2 Stromverbrauchsdaten',
     titel: 'Tagesgang Strom',
     datei: 'tagesgang-strom',
     hinweis: 'Mittlerer Tagesverlauf aus dem Stromlastgang, getrennt nach Werktag und Wochenende '
@@ -1653,7 +1704,7 @@ const GG_FIGUREN = [
   {
     id: 'lastgang-strom-heatmap',
     autoSync: true,
-    kapitel: '3.1.5 Stromdaten',
+    kapitel: '3.2 Stromverbrauchsdaten',
     titel: 'Jahres-Heatmap Strom',
     datei: 'jahres-heatmap-strom',
     hinweis: 'Stündliche Mittelwerte des Stromlastgangs als Tag/Stunde-Raster — zeigt saisonale und '
@@ -1703,7 +1754,7 @@ const GG_FIGUREN = [
   {
     id: 'monatsbilanz-strom',
     autoSync: true,
-    kapitel: '3.1.5 Stromdaten',
+    kapitel: '3.2 Stromverbrauchsdaten',
     titel: 'Monatsbilanz Strom',
     datei: 'monatsbilanz-strom',
     hinweis: 'Netzbezug, Eigenverbrauch und Einspeisung je Monat. Sobald die Strom-/PV-Berechnung '
@@ -1786,7 +1837,7 @@ const GG_FIGUREN = [
   // ── Entwicklung der Anschlussleistung ───────────────
   {
     id: 'anschlussleistung-entwicklung',
-    kapitel: '3.2.2 Liegenschaftsstromnetzanschluss',
+    kapitel: '3.3.4 Resultierende Anschlussleistung und Lastgang',
     titel: 'Entwicklung der Anschlussleistung',
     datei: 'anschlussleistung-entwicklung',
     hinweis: 'Höchstlast am Liegenschaftsanschluss über den Planungshorizont, gegen Anschlusswert und '
@@ -1894,7 +1945,7 @@ const GG_FIGUREN = [
            + 'hinterlegte Platzhalter fehlen noch. Eingetragen werden sie unter ⚡ Strom-Grundlagen › Netzanschluss; '
            + '„⟳ Aus Projekt übernehmen“ liest Spannungsebene und Übergabepunkt-Gebäude aus dem NAP-Asset des '
            + 'Elektro-Tabs, sofern eines platziert ist. Die Empfehlung zum Netzanschlussantrag steht als eigener '
-           + 'Baustein in 3.2.2.',
+           + 'Baustein in 3.5.1.',
     render: cfg => ggRenderNetzanschlussText(cfg),
     config: {},
     ausProjekt() {
@@ -1908,10 +1959,10 @@ const GG_FIGUREN = [
   {
     id: 'netzanschluss-empfehlung-text',
     istText: true,
-    kapitel: '3.2.2 Liegenschaftsstromnetzanschluss',
+    kapitel: '3.5.1 Netzanschluss und internes Stromnetz',
     titel: 'Gutachtentext: Empfehlung Netzanschlussantrag',
     datei: 'netzanschluss-empfehlung-text',
-    hinweis: 'Fester Standardtext für den Soll-Zustand: Empfehlung, den Netzanschlussantrag frühzeitig und mit Reserve zu stellen.',
+    hinweis: 'Fester Standardtext für die Variantenbildung: Empfehlung, den Netzanschlussantrag frühzeitig und mit Reserve zu stellen.',
     render: cfg => ggRenderNetzanschlussEmpfehlungText(cfg),
     config: {},
   },
@@ -1919,7 +1970,7 @@ const GG_FIGUREN = [
 ];
 
 // Baut die Tabellenzeilen für die Trafo-Übersicht: Ist-Zustand (3.1.2) zeigt
-// nur Bestand, Soll-Zustand (3.2.3) zeigt Bestand + geplante Stationen grün
+// nur Bestand, Variantenbildung (3.5.1) zeigt Bestand + geplante Stationen grün
 // markiert. Geplant ist ein Trafo, der zu einer Planungsschicht gehört oder
 // dessen Baujahr noch in der Zukunft liegt.
 function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
@@ -1960,18 +2011,53 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
   return { zeilen, nr };
 }
 
+/**
+ * Trafostationen des Ist-Bestands, eine je Station (nicht je Trafo) — für den Gutachten-Editor,
+ * der daraus je Station einen Freitext-Platzhalter anlegt (s. gutAddTrafoDummies in 21).
+ * @returns {{label:string, gebLabel:string}[]}
+ */
+export function ggTrafostationenIstListe() {
+  let trafos = [];
+  try { trafos = window.listAssets?.({ type: 'Trafo' }) || []; } catch (e) { void e; }
+  const { zeilen, nr } = ggTrafoZeilen(trafos, { nurBestand: true });
+  const gesehen = new Set();
+  const out = [];
+  for (const z of zeilen) {
+    if (gesehen.has(z.stationKey)) continue;
+    gesehen.add(z.stationKey);
+    out.push({
+      label: (z.stationName && z.stationName !== z.gebLabel) ? z.stationName : 'Trafostation ' + nr.get(z.stationKey),
+      gebLabel: z.gebLabel,
+    });
+  }
+  return out;
+}
+
 GG_FIGUREN.push(
+  // ── Gutachtentext: Trafostationen (Ist-Zustand) ──────────────────────────
+  {
+    id: 'trafostationen-ist-text',
+    istText: true,
+    kapitel: '3.1.2 Stromnetz intern (MS/NS)',
+    titel: 'Gutachtentext: Trafostationen',
+    datei: 'trafostationen-ist-text',
+    hinweis: 'Fester Einleitungstext vor der Tabelle „Übersicht Trafostationen“ — verweist auf die im Zuge einer '
+           + 'Begehung noch näher zu betrachtenden Stationen. Name Liegenschaft kommt aus dem Projektkopf.',
+    render: cfg => ggRenderTrafostationenText(cfg),
+    config: {},
+  },
+
   // ── Übersicht Trafostationen (Bestand, Ist-Zustand) ─────────────────────
   {
     id: 'trafostationen-ist',
     autoSync: true,
-    kapitel: '3.1.2 Stromnetz intern',
+    kapitel: '3.1.2 Stromnetz intern (MS/NS)',
     titel: 'Übersicht Trafostationen',
     datei: 'trafostationen-ist',
     hinweis: 'Alle bestehenden Transformatoren des Liegenschaftsnetzes mit Standortgebäude, Station, '
            + 'Nennleistung und Baujahr — gelesen aus den Trafo-Assets des Elektro-Tabs. Trafos einer '
            + 'Planungsschicht oder mit Baujahr in der Zukunft zählen hier nicht zum Bestand; sie stehen '
-           + 'im Soll-Zustand (3.2.3).',
+           + 'bei der Variantenbildung (3.5.1).',
     render: cfg => ggRenderTabelle(cfg),
     config: {
       eyebrow: 'Elektrotechnisches Gutachten',
@@ -2010,11 +2096,11 @@ GG_FIGUREN.push(
     },
   },
 
-  // ── Übersicht Trafostationen (Bestand + geplant, Soll-Zustand) ──────────
+  // ── Übersicht Trafostationen (Bestand + geplant, Variantenbildung) ──────
   {
     id: 'trafostationen',
     autoSync: true,
-    kapitel: '3.2.3 Stromnetz intern',
+    kapitel: '3.5.1 Netzanschluss und internes Stromnetz',
     titel: 'Übersicht Trafostationen',
     datei: 'trafostationen',
     hinweis: 'Alle Transformatoren des Liegenschaftsnetzes mit Standortgebäude, Station, '
@@ -2077,7 +2163,7 @@ GG_FIGUREN.push(
 /* ══════════════════════════════════════════════════════════════════════════
  * 3g) RENDERER — „Herleitung": mehrere kleine Kriterien-Diagramme nebeneinander
  *
- * Für Kapitel 3.2.5: belegt, WARUM eine Auslegung die gewählte ist. Je Panel
+ * Für Kapitel 3.5.2: belegt, WARUM eine Auslegung die gewählte ist. Je Panel
  * eine Kurve, die Kriteriumslinie und der gewählte Punkt; wo eine Suche
  * abgebrochen hat, zusätzlich der auslösende Punkt.
  * cfg.panels = [{ titel, kriterium, farbe, punkte:[{x,y}], xMax, yMin, yMax,
@@ -2178,7 +2264,7 @@ export function ggRenderHerleitung(cfg, T = GG_THEME) {
 /* ══════════════════════════════════════════════════════════════════════════
  * 3h) RENDERER — „Rückspeise-Ampel": Säule je Variante gegen Grenzlinien
  *
- * Für Kapitel 3.2.5: die gleichzeitige Rückspeiseleistung am Netzanschluss-
+ * Für Kapitel 3.5.2: die gleichzeitige Rückspeiseleistung am Netzanschluss-
  * punkt gegen Anschlusskapazität und Spannungsband. Die Säulenfarbe ist die
  * Ampelbewertung, die Grenzen sind waagerechte Linien.
  * cfg.kategorien = string[] · cfg.balken = [{ wert, farbe }]
@@ -2289,19 +2375,328 @@ function ggPvTagLabel(stundenIdx) {
   return `${d + 1}. ${GG_PVAH_MONAT_NAMEN[m]}, ${stundenIdx % 24}:00`;
 }
 
+/* ── Gutachtentexte Kapitel 3.5.2 PV-Anlage und Batteriespeicher ─────────────
+ * Fünf Textbausteine, die das Standarddokument über `reihe` zwischen die
+ * Abbildungen setzt: Grundlagen → Herleitung → Energiebilanz-Text → Tabelle +
+ * Energiebilanz → Speicher → Netzintegration → Rückspeisung → Abgrenzung.
+ * Werte stammen aus dem letzten „Varianten berechnen" (ergebnisse + basis in
+ * window._pvAnalyse), nie aus den aktuellen Eingabefeldern — sonst zeigten Text
+ * und Abbildungen verschiedene Stände. Wie die Abbildungen bewusst ohne Euro-Werte
+ * und ohne „beste" Variante: bewertet wird in 3.6. */
+const GG_PV_LANG = { 'minimal': 'Minimal', 'ev-opt': 'Eigenverbrauchs-optimiert', 'wirt-opt': 'Wirtschaftlich optimiert',
+                     'autarkie': 'Autarkie-optimiert', 'max-pv': 'Maximaler PV-Ausbau' };
+const GG_PV_KAPITEL = '3.5.2 PV-Anlage und Batteriespeicher';
+const GG_ZAHLWORT = ['keine', 'eine', 'zwei', 'drei', 'vier', 'fünf'];
+
+/** Datenbasis des letzten Rechenlaufs (null = noch nicht berechnet). */
+function ggPvBasis() {
+  const s = window._pvAnalyse;
+  return s?.berechnet && s.basis ? s.basis : null;
+}
+const ggPvVariante = id => (ggPvBasis() && ggPvKanon().find(v => v.id === id)) || null;
+/** Zahl als Platzhalter — bleibt gelb, solange der Wert fehlt. */
+const ggPvFeld = (wert, name, dez = 0) => ggTextFeld(wert != null && isFinite(wert) ? ggNum(wert, dez) : '', name);
+const ggPvName = v => `„${gEsc(v.label)}“`;
+/** „A“, „A und B“, „A, B und C“ */
+function ggAufzaehlung(teile) {
+  return teile.length < 2 ? (teile[0] || '') : `${teile.slice(0, -1).join(', ')} und ${teile[teile.length - 1]}`;
+}
+/** Varianten mit dem kleinsten und dem größten Wert einer Kennzahl. */
+function ggPvSpanne(kanon, wert) {
+  if (!kanon.length) return [null, null];
+  return kanon.reduce(([lo, hi], v) => [wert(v) < wert(lo) ? v : lo, wert(v) > wert(hi) ? v : hi], [kanon[0], kanon[0]]);
+}
+
+/** 3.5.2 Teil 1 — Datenbasis, PV-Potenzial und die fünf Auslegungen. */
+function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
+  void cfg;
+  const b = ggPvBasis();
+  const H = (b && window._pvAnalyse.herleitung) || {};
+  const kanon = b ? ggPvKanon() : [];
+  const name = document.querySelector('.header-projekt-name')?.textContent?.trim() || '';
+  const absaetze = [];
+
+  const lastfall = b?.lastfall === 'gesamt'
+    ? ' Der Lastgang enthält zusätzlich den Strombedarf der elektrischen Wärmeerzeugung (Wärmepumpen und Stromkessel, vgl. Kapitel 2).'
+    : b?.lastfall === 'endausbau'
+      ? ` Der Lastgang bildet den Endausbau bis zum Jahr ${ggTextFeld(b.endausbauJahr, 'Zieljahr')} einschließlich der geplanten Neubau- und Rückbaumaßnahmen ab (vgl. Kapitel 3.3.1).`
+      : '';
+  absaetze.push(`Für die Liegenschaft ${ggTextFeld(name, 'Name Liegenschaft')} wurde untersucht, in welchem Umfang `
+    + `Photovoltaikanlagen zusammen mit Batteriespeichern den Strombezug aus dem öffentlichen Netz verringern können. `
+    + `Grundlage ist der Stromlastgang ${ggTextFeld(b?.lastgangDatei, 'Lastgang-Datei')} mit einem Jahresstrombedarf von `
+    + `${ggPvFeld(b?.bedarfMwh, 'Jahresstrombedarf')} MWh/a in `
+    + `${ggTextFeld(b ? (b.dt === 1 ? 'stündlicher' : 'viertelstündlicher') : '', 'Auflösung')} Auflösung.${lastfall}`);
+
+  const q = b && !b.potenzialOverride ? b.quellen || {} : {};
+  const teile = [
+    q.assetKwp > 0 && `${ggPvFeld(q.assetKwp, 'kWp Einzelanlagen')} kWp auf ${ggPvFeld(q.assetN, 'Anzahl Anlagen')} einzeln erfasste Anlagen`,
+    q.gebKwp > 0 && `${ggPvFeld(q.gebKwp, 'kWp Gebäude-PV')} kWp auf weitere Dachflächen`,
+    q.ffKwp > 0 && `${ggPvFeld(q.ffKwp, 'kWp Freifläche')} kWp auf Freiflächen`,
+    q.manual > 0 && `${ggPvFeld(q.manual, 'kWp pauschal')} kWp auf pauschal angesetzte Flächen`,
+  ].filter(Boolean);
+  const profil = {
+    pvgis: 'des PVGIS-Stundenprofils für den Standort',
+    upload: 'eines hochgeladenen Stundenprofils',
+    synthetisch: 'eines synthetischen Erzeugungsprofils aus Sonnenstand und Wetterstreuung',
+  }[b?.profil?.id];
+  absaetze.push((b?.potenzialOverride
+      ? `Für die Untersuchung wurde ein PV-Potenzial von insgesamt ${ggPvFeld(b.potenzialKwp, 'Gesamtpotenzial')} kWp vorgegeben.`
+      : `Nach den erfassten Dach- und Freiflächen lassen sich auf der Liegenschaft PV-Anlagen mit insgesamt `
+        + `${ggPvFeld(b?.potenzialKwp, 'Gesamtpotenzial')} kWp errichten.`
+        + (teile.length > 1 ? ` Davon entfallen ${ggAufzaehlung(teile)}.` : ''))
+    + ` Bei einem mittleren spezifischen Ertrag von ${ggPvFeld(b?.spezKwhKwp, 'spez. Ertrag')} kWh/kWp·a ergibt das eine `
+    + `mögliche Stromerzeugung von rund ${ggPvFeld(b ? b.potenzialKwp * b.spezKwhKwp / 1000 : null, 'Ertrag Max-PV')} MWh/a. `
+    + `Die Erzeugung wurde auf Basis ${profil || ggTextFeld('', 'Erzeugungsprofil')} für jeden Zeitschritt des Jahres `
+    + `berechnet und dem Lastgang gegenübergestellt. Die statische Eignung der Dachflächen ist im Zuge der weiteren `
+    + `Planung nachzuweisen.`);
+
+  const anzahl = b ? kanon.length : 5;
+  absaetze.push(`Auftraggeber, Nutzer und Betreiber verfolgen unterschiedliche Ziele. Deshalb wurden `
+    + `${GG_ZAHLWORT[anzahl] || anzahl} Auslegungen gebildet, von denen jede genau eine Frage beantwortet:`);
+
+  const zeige = id => !b || !!ggPvVariante(id);
+  const label = id => gEsc(ggPvVariante(id)?.label || GG_PV_LANG[id]);
+  const kwp = (id, feld) => ggPvFeld(ggPvVariante(id)?.pvKwp, feld);
+
+  if (zeige('minimal')) {
+    absaetze.push(`${label('minimal')}: ${kwp('minimal', 'kWp Minimal')} kWp ohne Speicher. Die Anlage bleibt unter `
+      + `100 kWp, ab denen nach EEG die Direktvermarktung und weitergehende technische Anforderungen greifen.`);
+  }
+  if (zeige('ev-opt')) {
+    const ev = ggPvVariante('ev-opt');
+    absaetze.push(`${label('ev-opt')}: die größte Anlage, deren Erzeugung zu mindestens ${ggNum(H.evOpt?.schwelle ?? 90)} % `
+      + `vor Ort verbraucht wird, hier ${kwp('ev-opt', 'kWp EV-optimiert')} kWp.`
+      + (ev?.batKwh > 0
+        ? ` Hinzu kommt ein Speicher mit ${ggPvFeld(ev.batKwh, 'kWh EV-optimiert')} kWh, der Überschüsse der Mittagszeit in die Abendstunden verschiebt.`
+        : ''));
+  }
+  if (zeige('wirt-opt')) {
+    const w = ggPvVariante('wirt-opt');
+    absaetze.push(`${label('wirt-opt')}: PV- und Speichergröße wurden gemeinsam variiert. Gewählt ist die Kombination `
+      + `mit dem höchsten jährlichen Netto-Überschuss: ${kwp('wirt-opt', 'kWp wirtschaftlich')} kWp `
+      + (w && !(w.batKwh > 0) ? 'ohne Speicher.' : `und ${ggPvFeld(w?.batKwh, 'kWh wirtschaftlich')} kWh.`));
+  }
+  if (zeige('autarkie')) {
+    const a = ggPvVariante('autarkie');
+    absaetze.push(`${label('autarkie')}: volles Potenzial von ${kwp('autarkie', 'kWp Autarkie')} kWp. Der Speicher wird `
+      + `vergrößert, bis jede weitere MWh die Autarkie um weniger als ${ggNum(H.autarkie?.schwelle ?? 0.3, 1)} `
+      + `Prozentpunkte erhöht. `
+      + (a && !(a.batKwh > 0)
+        ? 'Ein Speicher erhöht die Autarkie hier nicht nennenswert.'
+        : `Das ergibt ${ggPvFeld(a ? a.batKwh / 1000 : null, 'MWh Autarkie', 1)} MWh.`));
+  }
+  if (zeige('max-pv')) {
+    absaetze.push(`${label('max-pv')}: volles Potenzial von ${kwp('max-pv', 'kWp Max-PV')} kWp, bewusst ohne Speicher.`);
+  }
+  if (!b || H.evOpt || H.wirtOpt || H.autarkie) {
+    absaetze.push('Die folgende Abbildung zeigt für die optimierten Auslegungen, wie sich die jeweilige Größe aus dem '
+      + 'Auswahlkriterium ergibt.');
+  }
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 3.5.2 Teil 2 — Spannweiten der Energiebilanz und Abregelung; steht vor Tabelle und Energiebilanz-Abbildung. */
+function ggRenderPvEnergiebilanzText(cfg, T = GG_THEME) {
+  void cfg;
+  const b = ggPvBasis();
+  const kanon = b ? ggPvKanon() : [];
+  const [ertLo, ertHi] = ggPvSpanne(kanon, v => v.ertragMwh);
+  const [evLo, evHi] = ggPvSpanne(kanon, v => v.wirt.pvEigenQuote);
+  const [autLo, autHi] = ggPvSpanne(kanon, v => v.wirt.autarkie);
+  const variante = (v, feld) => (v ? ggPvName(v) : ggTextFeld('', feld));
+  const absaetze = [];
+
+  absaetze.push(`Die folgende Tabelle und die anschließende Abbildung fassen die Ergebnisse zusammen. Der PV-Jahresertrag `
+    + `reicht von ${ggPvFeld(ertLo?.ertragMwh, 'Ertrag min', 1)} MWh/a bis ${ggPvFeld(ertHi?.ertragMwh, 'Ertrag max', 1)} MWh/a. `
+    + `Die Eigenverbrauchsquote liegt zwischen ${ggPvFeld(evLo?.wirt.pvEigenQuote, 'EV-Quote min')} % `
+    + `(${variante(evLo, 'Variante')}) und ${ggPvFeld(evHi?.wirt.pvEigenQuote, 'EV-Quote max')} % (${variante(evHi, 'Variante')}), `
+    + `der Autarkiegrad zwischen ${ggPvFeld(autLo?.wirt.autarkie, 'Autarkie min')} % und `
+    + `${ggPvFeld(autHi?.wirt.autarkie, 'Autarkie max')} %.`);
+
+  if (!b) return ggTextBlatt(absaetze, T);
+
+  const autMax = ggPvVariante('autarkie') || autHi;
+  const saetze = [];
+  if (autMax && autMax.wirt.autarkie < 99.5) {
+    saetze.push(`Selbst mit großem Speicher ist keine vollständige Eigenversorgung möglich, weil Erzeugung und Verbrauch `
+      + `jahreszeitlich auseinanderfallen. Die technische Obergrenze liegt bei ${ggPvFeld(autMax.wirt.autarkie)} %.`);
+  }
+  if (b.napEinspKw > 0) {
+    const top = kanon.reduce((a, v) => ((v.sim.curtailMwh || 0) > (a ? a.sim.curtailMwh || 0 : 0) ? v : a), null);
+    saetze.push(top && top.sim.curtailMwh >= 0.05
+      ? `Am Netzanschlusspunkt dürfen höchstens ${ggPvFeld(b.napEinspKw, 'max. Einspeiseleistung')} kW eingespeist werden. `
+        + `In der Variante ${ggPvName(top)} werden dadurch rund ${ggPvFeld(top.sim.curtailMwh, 'Abregelung', 1)} MWh/a abgeregelt.`
+      : `Bei der am Netzanschlusspunkt zulässigen Einspeiseleistung von ${ggPvFeld(b.napEinspKw, 'max. Einspeiseleistung')} kW `
+        + `muss in keiner Variante abgeregelt werden.`);
+    const na = ggPvVariante('max-pv')?.nullAbr;
+    if (na) {
+      saetze.push(na.isZero
+        ? `Damit die maximale Ausbauvariante ohne Abregelung betrieben werden könnte, wäre ein Speicher mit rund `
+          + `${ggPvFeld(na.batKwh / 1000, 'MWh Null-Abregelung', 1)} MWh nötig. Das ist wirtschaftlich nicht darstellbar.`
+        : `Selbst ein Speicher mit ${ggPvFeld(na.batKwh / 1000, 'MWh Speicher')} MWh würde die Abregelung der maximalen `
+          + `Ausbauvariante nur auf rund ${ggPvFeld(na.curtailMwh, 'Rest-Abregelung')} MWh/a senken; ein Betrieb ohne `
+          + `Abregelung ist damit nicht erreichbar.`);
+    }
+  } else {
+    saetze.push('Eine Begrenzung der Einspeiseleistung wurde nicht angesetzt, deshalb werden keine Abregelungsverluste ausgewiesen.');
+  }
+  absaetze.push(saetze.join(' '));
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 3.5.2 Teil 3 — Speichermodell, Betriebsweise, Aufstellort. */
+function ggRenderPvSpeicherText(cfg, T = GG_THEME) {
+  void cfg;
+  const b = ggPvBasis();
+  const kanon = b ? ggPvKanon() : [];
+  if (b && !kanon.some(v => v.batKwh > 0)) {
+    return ggTextBlatt(['In keiner der untersuchten Auslegungen ist ein Batteriespeicher vorgesehen.'], T);
+  }
+  const eta = b?.batEta, crate = b?.batCRate;
+  const absaetze = [];
+  absaetze.push(`Für die Batteriespeicher wurde ein ${ggTextFeld('', 'Speichertechnologie')}-System angesetzt. Beim Laden `
+    + `und beim Entladen gehen jeweils ${ggPvFeld(eta != null ? (1 - eta) * 100 : null, 'Verlust je Vorgang')} % verloren `
+    + `(Gesamtwirkungsgrad rund ${ggPvFeld(eta != null ? eta * eta * 100 : null, 'Gesamtwirkungsgrad')} %). Die maximale `
+    + `Lade- und Entladeleistung in kW entspricht ${ggPvFeld(crate != null ? crate * 100 : null, 'Leistung in % der Kapazität')} % `
+    + `der Nennkapazität in kWh (${ggPvFeld(crate, 'C-Rate', 1)} C). Die Speicher laufen vorrangig auf Eigenverbrauch: `
+    + `PV-Überschüsse werden eingespeichert und bei Bedarf in die Liegenschaft abgegeben.`);
+
+  const spot = b && b.spotDatei !== null ? kanon.filter(v => v.strategie === 'spot-dyn') : [];
+  if (spot.length) {
+    const jahr = (String(b.spotDatei).match(/(?:19|20)\d{2}/) || [''])[0];
+    absaetze.push(`${spot.length === 1 ? 'In der Variante' : 'In den Varianten'} ${ggAufzaehlung(spot.map(ggPvName))} `
+      + `wurde der Speicher zusätzlich anhand der Börsenstrompreise des Jahres ${ggTextFeld(jahr, 'Jahr Börsenpreise')} `
+      + `gesteuert; bei negativen Preisen wird dabei nicht eingespeist.`);
+  }
+  absaetze.push(`Als Aufstellort ist ${ggTextFeld('', 'Aufstellort Batteriespeicher')} vorgesehen. Die Brandschutzanforderungen `
+    + `sind in der Planung abzustimmen. Wie gut die Speicher Netzausfälle überbrücken, wird in Kapitel 5.2 bewertet. `
+    + `Die Notstromversorgung beschreibt Kapitel 3.5.3.`);
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 3.5.2 Teil 4 — Rückspeisespitze und Netzverträglichkeit; steht vor der Rückspeise-Abbildung. */
+function ggRenderPvNetzText(cfg, T = GG_THEME) {
+  void cfg;
+  const b = ggPvBasis();
+  const kanon = b ? ggPvKanon().filter(v => v.rueck) : [];
+  const [lo, hi] = ggPvSpanne(kanon, v => v.rueck.maxKw);
+  const variante = (v, feld) => (v ? ggPvName(v) : ggTextFeld('', feld));
+  const absaetze = [];
+
+  absaetze.push(`Für die Netzintegration zählt neben der Jahresenergie vor allem, wie viel Leistung gleichzeitig ins Netz `
+    + `zurückgespeist wird. Diese Rückspeiseleistung wurde je Variante ohne Begrenzung berechnet. Sie liegt zwischen `
+    + `${ggPvFeld(lo?.rueck.maxKw, 'Rückspeisung min')} kW (${variante(lo, 'Variante')}) und `
+    + `${ggPvFeld(hi?.rueck.maxKw, 'Rückspeisung max')} kW (${variante(hi, 'Variante')}), siehe folgende Abbildung.`);
+
+  const r0 = kanon[0]?.rueck || {};
+  const anschluss = r0.anschlussKw > 0 ? r0.anschlussKw : null;
+  const sk = r0.skKVA > 0 ? r0.skKVA : null;
+  const budget = r0.uBudgetPct || 3;
+  const regelwerk = budget <= 2 ? 'VDE-AR-N 4110' : 'VDE-AR-N 4105';
+  const spannung = `bei einer Kurzschlussleistung von Sk″ = ${ggPvFeld(sk, 'Sk″')} kVA geprüft, ob die zulässige `
+    + `Spannungsanhebung von ${ggPvFeld(b ? budget : null, 'Δu-Grenze', 1)} % nach `
+    + `${b ? regelwerk : ggTextFeld('', 'Regelwerk VDE-AR-N 4105/4110')} eingehalten wird`;
+  if (!b || (anschluss && sk)) {
+    absaetze.push(`Verglichen wurde sie mit der zulässigen Einspeiseleistung von ${ggPvFeld(anschluss, 'max. Einspeiseleistung')} kW. `
+      + `Außerdem wurde ${spannung}.`);
+  } else if (anschluss) {
+    absaetze.push(`Verglichen wurde sie mit der zulässigen Einspeiseleistung von ${ggPvFeld(anschluss, 'max. Einspeiseleistung')} kW. `
+      + `Die Kurzschlussleistung am Netzanschlusspunkt liegt nicht vor, deshalb wurde nur die Anschlusskapazität geprüft.`);
+  } else if (sk) {
+    absaetze.push(`Es wurde ${spannung}. Eine zulässige Einspeiseleistung am Netzanschlusspunkt ist nicht angegeben, `
+      + `deshalb wurde nur das Spannungsband geprüft.`);
+  } else {
+    absaetze.push(`Weder die zulässige Einspeiseleistung (${ggTextFeld('', 'max. Einspeiseleistung')} kW) noch die `
+      + `Kurzschlussleistung am Netzanschlusspunkt (Sk″ = ${ggTextFeld('', 'Sk″')} kVA) liegen vor; die Netzverträglichkeit `
+      + `konnte daher nicht bewertet werden. Beide Angaben sind beim Netzbetreiber anzufragen.`);
+  }
+
+  const gruppe = ampel => kanon.filter(v => v.rueck.ampel === ampel);
+  const namen = liste => ggAufzaehlung(liste.map(ggPvName));
+  const einzahl = liste => liste.length === 1;
+  const gruen = gruppe('gruen'), gelb = gruppe('gelb'), rot = gruppe('rot');
+  const ergebnis = [];
+  if (gruen.length) {
+    ergebnis.push(`${einzahl(gruen) ? 'Die Variante' : 'Die Varianten'} ${namen(gruen)} `
+      + `${einzahl(gruen) ? 'lässt' : 'lassen'} sich ohne weitere Maßnahmen am bestehenden Netzanschluss betreiben.`);
+  }
+  if (gelb.length) {
+    const gruende = [
+      gelb.some(v => v.rueck.capRatio > 0.7) && 'mehr als 70 % der Anschlusskapazität',
+      gelb.some(v => v.rueck.deltaU != null && v.rueck.deltaU > budget * 2 / 3) && 'mehr als zwei Drittel der zulässigen Spannungsanhebung',
+    ].filter(Boolean);
+    ergebnis.push(`Bei ${einzahl(gelb) ? 'der Variante' : 'den Varianten'} ${namen(gelb)} erreicht die Rückspeisung `
+      + `${gruende.join(' bzw. ')}. ${einzahl(gelb) ? 'Sie ist' : 'Sie sind'} im Netzanschlussverfahren gesondert zu prüfen.`);
+  }
+  if (rot.length) {
+    const kap = rot.some(v => v.rueck.capRatio > 1);
+    const du = rot.some(v => v.rueck.deltaU != null && v.rueck.deltaU > budget);
+    const massnahmen = [
+      kap && 'eine Erhöhung der Einspeiseleistung am Netzanschlusspunkt',
+      'ein eigenes Erzeugungsnetz',
+      du && 'ein Anschluss auf höherer Spannungsebene',
+    ].filter(Boolean);
+    ergebnis.push(`Bei ${einzahl(rot) ? 'der Variante' : 'den Varianten'} ${namen(rot)} überschreitet die Rückspeisung `
+      + `${ggAufzaehlung([kap && 'die Anschlusskapazität', du && 'die zulässige Spannungsanhebung'].filter(Boolean))}. `
+      + `${einzahl(rot) ? 'Für diese Auslegung ist' : 'Für diese Auslegungen ist'} `
+      + `${massnahmen.slice(0, -1).join(', ')} oder ${massnahmen[massnahmen.length - 1]} erforderlich; dies ist mit dem `
+      + `Netzbetreiber abzustimmen (vgl. Kapitel 3.5.1).`);
+  }
+  ergebnis.push('Diese Abschätzung ersetzt keine Netzverträglichkeitsprüfung durch den Netzbetreiber.');
+  absaetze.push(ergebnis.join(' '));
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 3.5.2 Teil 5 — Abgrenzung zu 3.6 und Modellgrenzen. */
+function ggRenderPvAbgrenzungText(cfg, T = GG_THEME) {
+  void cfg;
+  return ggTextBlatt([
+    `Die wirtschaftliche Bewertung folgt in Kapitel 3.6. Die Berechnung beruht auf einem einzigen Wetterjahr und `
+      + `berücksichtigt keine Alterung von Modulen und Speichern. Die Leistungsbegrenzung der Wechselrichter ist nicht `
+      + `abgebildet, die Rückspeiseleistungen sind deshalb eher zu hoch als zu niedrig angesetzt. Alle `
+      + `Berechnungsannahmen stehen in Anlage ${ggTextFeld('', 'Nr. Anlage Berechnungsannahmen')}.`,
+  ], T);
+}
+
 function ggPvFiguren() {
+  const pvText = (id, reihe, titel, hinweis, render) => ({
+    id, istText: true, pvText: true, reihe, kapitel: GG_PV_KAPITEL, titel, datei: id, hinweis, render, config: {},
+  });
   return [
+    // ── Gutachtentexte 3.5.2 — `reihe` verzahnt sie im Standarddokument mit den Abbildungen ──
+    pvText('pv-grundlagen-text', 10, 'Gutachtentext: PV-Datenbasis und Auslegungen',
+      'Einleitung zu 3.5.2: Lastgang, Erzeugungsprofil, PV-Potenzial und die fünf Auslegungen mit ihren Größen. '
+      + 'Steht vor der Herleitungs-Abbildung. Der Satz zur 100-kWp-Schwelle gibt einen EEG-Stand wieder — vor Abgabe prüfen.',
+      cfg => ggRenderPvGrundlagenText(cfg)),
+    pvText('pv-energiebilanz-text', 30, 'Gutachtentext: PV-Energiebilanz',
+      'Spannweiten von Jahresertrag, Eigenverbrauchsquote und Autarkie sowie die Abregelung am Einspeiselimit. '
+      + 'Steht vor Variantentabelle und Energiebilanz-Abbildung.',
+      cfg => ggRenderPvEnergiebilanzText(cfg)),
+    pvText('pv-speicher-text', 60, 'Gutachtentext: Batteriespeicher',
+      'Speichermodell der Simulation (Wirkungsgrad, Leistung), Betriebsweise und Aufstellort. Speichertechnologie und '
+      + 'Aufstellort erfasst das Tool nicht — sie bleiben als Platzhalter offen und werden in Word ergänzt.',
+      cfg => ggRenderPvSpeicherText(cfg)),
+    pvText('pv-netz-text', 70, 'Gutachtentext: Netzintegration PV',
+      'Rückspeisespitze je Variante und ihre Bewertung gegen Anschlusskapazität und Spannungsband. Einspeisegrenze und '
+      + 'Sk″ werden in der PV-Analyse bei den NAP-Grenzen eingetragen. Steht vor der Abbildung „Rückspeisung und Netzverträglichkeit“.',
+      cfg => ggRenderPvNetzText(cfg)),
+    pvText('pv-abgrenzung-text', 90, 'Gutachtentext: Abgrenzung und Modellgrenzen PV',
+      'Schlussabsatz zu 3.5.2: Verweis auf 3.6 und die Modellgrenzen. Die Anlagennummer der Berechnungsannahmen bleibt '
+      + 'offen, bis der Anlagenteil im Editor abgebildet ist.',
+      cfg => ggRenderPvAbgrenzungText(cfg)),
+
     // ── Variantenvergleich ───────────────────────────────────────────────
     {
       id: 'pv-variantenvergleich',
       autoSync: true,
-      kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+      reihe: 40,
+      kapitel: '3.5.2 PV-Anlage und Batteriespeicher',
       titel: 'PV-Varianten im Vergleich',
       datei: 'pv-variantenvergleich',
       hinweis: 'Die 5 kanonischen PV-Varianten aus der ☀ PV-Analyse nebeneinander — jede beantwortet '
              + 'genau eine Stakeholder-Frage (Minimal, Eigenverbrauch, Wirtschaftlichkeit, Autarkie, '
-             + 'maximaler Ausbau). Bewusst OHNE Wirtschaftlichkeitskennzahlen: Kapitel 3.2.5 beschreibt '
-             + 'die Auslegungen, bewertet wird in 3.2.6. Grundlage: „Varianten berechnen" in der PV-Analyse.',
+             + 'maximaler Ausbau). Bewusst OHNE Wirtschaftlichkeitskennzahlen: Kapitel 3.5.2 beschreibt '
+             + 'die Auslegungen, bewertet wird in 3.6. Grundlage: „Varianten berechnen" in der PV-Analyse.',
       render: cfg => ggRenderTabelle(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten', titel: 'PV-Varianten im Vergleich',
@@ -2320,8 +2715,8 @@ function ggPvFiguren() {
       ausProjekt(cfg) {
         const kanon = ggPvKanon();
         if (!kanon.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Noch keine PV-Varianten berechnet.'; }
-        // Kapitel 3.2.5 beschreibt die Auslegungen — deshalb keine Hervorhebung
-        // einer „besten" Variante und keine Euro-Kennzahlen; beides gehört in 3.2.6.
+        // Kapitel 3.5.2 beschreibt die Auslegungen — deshalb keine Hervorhebung
+        // einer „besten" Variante und keine Euro-Kennzahlen; beides gehört in 3.6.
         const napAktiv = kanon.some(v => (v.sim.curtailMwh || 0) > 0);
         cfg.zeilen = kanon.map(v => ({
           werte: [v.label, ggNum(v.pvKwp) + ' kWp', v.batKwh > 0 ? ggNum(v.batKwh) + ' kWh' : '—',
@@ -2335,7 +2730,7 @@ function ggPvFiguren() {
                      + (napAktiv
                         ? 'Abregelung = am Einspeiselimit des Netzanschlusspunktes nicht nutzbare Energie. '
                         : 'Ohne gesetzte Einspeisegrenze wird keine Abregelung ausgewiesen. ')
-                     + 'Wirtschaftliche Bewertung siehe Kapitel 3.2.6.';
+                     + 'Wirtschaftliche Bewertung siehe Kapitel 3.6.';
         return `✓ ${kanon.length} PV-Varianten aus der PV-Analyse übernommen.`;
       },
     },
@@ -2344,7 +2739,8 @@ function ggPvFiguren() {
     {
       id: 'pv-energiebilanz',
       autoSync: true,
-      kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+      reihe: 50,
+      kapitel: '3.5.2 PV-Anlage und Batteriespeicher',
       titel: 'Energiebilanz je PV-Variante',
       datei: 'pv-energiebilanz',
       hinweis: 'Drei Balken je Variante: Bedarf (gesamter Strombedarf), Deckung (Eigenverbrauch + '
@@ -2410,7 +2806,7 @@ function ggPvFiguren() {
     {
       id: 'pv-wirtschaftlichkeit',
       autoSync: true,
-      kapitel: '3.2.6 Wirtschaftlichkeit und Investitionskosten',
+      kapitel: '3.6 Wirtschaftlichkeit und Investitionskosten',
       titel: 'Wirtschaftlichkeit je PV-Variante',
       datei: 'pv-wirtschaftlichkeit',
       hinweis: 'Investition, jährlicher Netto-Überschuss, Amortisation, Kapitalwert und '
@@ -2457,11 +2853,12 @@ function ggPvFiguren() {
       },
     },
 
-    // ── Herleitung der Varianten (Kapitel 3.2.5) ─────────────────────────
+    // ── Herleitung der Varianten (Kapitel 3.5.2) ─────────────────────────
     {
       id: 'pv-herleitung',
       autoSync: true,
-      kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+      reihe: 20,
+      kapitel: '3.5.2 PV-Anlage und Batteriespeicher',
       titel: 'Herleitung der Auslegungsvarianten',
       datei: 'pv-herleitung',
       hinweis: 'Belegt, warum die gewählten Auslegungen die jeweiligen Optima sind: gezeichnet wird die '
@@ -2550,11 +2947,12 @@ function ggPvFiguren() {
       },
     },
 
-    // ── Rückspeisung & Netzverträglichkeit (Kapitel 3.2.5) ────────────────
+    // ── Rückspeisung & Netzverträglichkeit (Kapitel 3.5.2) ────────────────
     {
       id: 'pv-rueckspeisung',
       autoSync: true,
-      kapitel: '3.2.5 PV-Anlage und Batteriespeicher',
+      reihe: 80,
+      kapitel: '3.5.2 PV-Anlage und Batteriespeicher',
       titel: 'Rückspeisung und Netzverträglichkeit',
       datei: 'pv-rueckspeisung',
       hinweis: 'Die gleichzeitige Rückspeiseleistung am Netzanschlusspunkt je Variante, gemessen an der '
@@ -2731,7 +3129,7 @@ function ggPvFiguren() {
       kapitel: '5.2 Bewertung Resilienz',
       titel: 'Resilienz je Ausbauvariante',
       datei: 'resilienz-varianten',
-      hinweis: 'Was die fünf PV-Auslegungen aus Kapitel 3.2.5 im Blackout leisten: wie viel des '
+      hinweis: 'Was die fünf PV-Auslegungen aus Kapitel 3.5.2 im Blackout leisten: wie viel des '
              + 'Ausfallfensters sie im Mittel über ALLE Ausfallzeitpunkte des Jahres aus PV und Speicher '
              + 'allein tragen und ab wann das Notstromaggregat einspringen muss. Die Aggregatleistung '
              + 'ist dagegen am ungünstigsten Zeitpunkt der jeweiligen Variante bemessen. '
@@ -2930,6 +3328,7 @@ export function ggFigurenKatalog() {
   return GG_FIGUREN.map(f => ({
     id: f.id, titel: f.titel, kapitel: f.kapitel || '', hinweis: f.hinweis || '',
     istText: !!f.istText, istBlatt: ggIstBlatt(f), istTabelle: ggIstTabellenFigur(f),
+    reihe: Number.isFinite(f.reihe) ? f.reihe : null,
   }));
 }
 
@@ -2964,13 +3363,19 @@ export function ggRenderFigurFuerDokument(id, opts = {}) {
   }
 }
 
-/** „Für Word kopieren“ aus dem Dokument: Fließtext als Text, Tabellen und Kennzahlen als echte Word-Tabelle, sonst das gezeichnete Bild. */
-export async function ggCopyDokumentTeil(id, teilIdx, el, scale = 3) {
+/**
+ * „Für Word kopieren“ aus dem Dokument: Fließtext als Text, Tabellen und Kennzahlen als echte
+ * Word-Tabelle, sonst das gezeichnete Bild. `beschriftung`: {art, nr, titel} des Dokument-Blocks
+ * (s. gutCopyTeil in 21) — Fließtext-Bausteine bekommen nie eine Nummer, für die anderen hängt
+ * sie als Word-Feld an (ggWordSeqFeld), das Word beim Einfügen in ein anderes Dokument flexibel
+ * in dessen eigene Zählung einordnet.
+ */
+export async function ggCopyDokumentTeil(id, teilIdx, el, beschriftung = null, scale = 3) {
   const figur = GG_FIGUREN.find(f => f.id === id);
   if (!figur) throw new Error('Abbildung nicht gefunden.');
   if (figur.istText) return ggCopyTextForWord(figur);
-  if (ggIstTabellenFigur(figur) || teilIdx > 0) return ggCopyTableForWord(figur.config);
-  return ggCopyForWord(el, scale);
+  if (ggIstTabellenFigur(figur) || teilIdx > 0) return ggCopyTableForWord(figur.config, beschriftung);
+  return ggCopyForWord(el, scale, { beschriftung });
 }
 
 /** Absätze eines Textbausteins als Segmente [{text, offen}] — aus dem gezeichneten HTML, damit Text und Word nie auseinanderlaufen. */
@@ -3250,6 +3655,14 @@ export function ggRenderPanel() {
           }).join('')
         + `<button data-click="sgNaOeffnen()" style="margin-top:10px;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,213,79,.45);background:rgba(255,213,79,.08);color:#ffd54f;">⚡ In Strom-Grundlagen bearbeiten</button>`
         + `<div style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;">Eingetragen werden die Netzanschlussdaten unter ⚡ Strom-Grundlagen › Netzanschluss; die vereinbarte Anschlussleistung im Feld „Max. Bezug" unter NAP-Grenzen (kVA) — beides mit der Projektdatei gespeichert.</div>`;
+    } else if (figur.pvText) {
+      // Nur Anzeige: die Werte kommen aus dem letzten „Varianten berechnen“ der PV-Analyse
+      const s = window._pvAnalyse;
+      html += s?.berechnet
+        ? `<div style="font-size:11px;color:var(--muted);line-height:1.6;">Werte aus ☀ PV-Analyse · Berechnungsstand ${gEsc(s.standText || '—')}`
+          + (s.stale ? ` · <span style="color:#e0a126;">Eingaben seither geändert — dort „Varianten neu berechnen“.</span>` : '')
+          + `</div><div style="font-size:10px;color:var(--muted);margin-top:4px;">Gelbe Platzhalter erfasst das Tool nicht (z. B. Speichertechnologie, Aufstellort) — in Word ergänzen.</div>`
+        : `<div style="font-size:11px;color:#e0a126;">Noch keine PV-Varianten berechnet — in ☀ PV-Analyse auf „Varianten berechnen“ klicken.</div>`;
     } else if (figur.istText) {
       html += `<div style="font-size:11px;color:var(--muted);">Fester Text ohne Platzhalter.</div>`;
     }

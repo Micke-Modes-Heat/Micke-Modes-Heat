@@ -394,6 +394,10 @@ function pvInfraKosten(pvKwp, pvErtragMwh) {
 // KERN-SIMULATION (NAP-aware, dt-generic)
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Speichermodell — gilt für Netzbetrieb und Resilienz; der Gutachtentext 3.5.2 nennt diese Werte.
+const PV_BAT_ETA    = 0.90;   // Wirkungsgrad je Lade- bzw. Entladevorgang
+const PV_BAT_C_RATE = 0.5;    // Lade-/Entladeleistung in kW = 0,5 × Kapazität in kWh
+
 /**
  * Stündliche / 15-min PV-NAP-Simulation mit Batterie und optionaler Spot-Strategie.
  *
@@ -422,8 +426,8 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
   // null = kein Limit; 0 = tatsächlich 0 kW; positiv = Limit in kW
   const maxEinsp  = (napParams.maxEinspeisKw != null) ? napParams.maxEinspeisKw : Infinity;
   const maxBezug  = (napParams.maxBezugKw    != null) ? napParams.maxBezugKw    : Infinity;
-  const ETA       = 0.90;
-  const batLeistKw = batKwh > 0 ? batKwh / 2 : 0; // C/2-Rate
+  const ETA       = PV_BAT_ETA;
+  const batLeistKw = batKwh > 0 ? batKwh * PV_BAT_C_RATE : 0;
 
   // Spot: Tagesdurchschnitt als Schwelle (nur wenn Spot-Strategie aktiv)
   let avgSpot = 0;
@@ -1107,11 +1111,13 @@ export function pvBerechneAlle() {
   //     der Lesehilfe gezeigt. Die Abregelung selbst erscheint als KPI.
   if (maxKwp > 0) {
     let nullAbrHinweis = '';
+    let nullAbr = null;
     if (napParams.maxEinspeisKw != null && napParams.maxEinspeisKw > 0) {
       const simNoBat = pvNapSim(maxKwp, 0, demandH, pvProfile, napParams, 'none', null);
       if (simNoBat.curtailMwh > 1) {
         const techAbr = pvFindNullAbrBat(maxKwp, demandH, pvProfile, napParams, spotH);
         if (techAbr.batKwh > 0) {
+          nullAbr = { batKwh: techAbr.batKwh, isZero: techAbr.isZero, curtailMwh: techAbr.curtailMwh };
           nullAbrHinweis = techAbr.isZero
             ? `Für ~0 Abregelung wären ≈ ${(techAbr.batKwh / 1000).toFixed(1)} MWh Speicher nötig — wirtschaftlich nicht darstellbar.`
             : `Selbst ${(techAbr.batKwh / 1000).toFixed(0)} MWh Speicher senken die Abregelung nur auf ${techAbr.curtailMwh.toFixed(0)} MWh/a — Vollnutzung physikalisch nicht erreichbar.`;
@@ -1121,6 +1127,7 @@ export function pvBerechneAlle() {
     berechne('max-pv', maxKwp, 0, 'none');
     const eMaxPv = ergebnisse[ergebnisse.length - 1];
     if (eMaxPv && nullAbrHinweis) eMaxPv.hinweis = nullAbrHinweis;
+    if (eMaxPv && nullAbr) eMaxPv.nullAbr = nullAbr;   // Zahlen für den Gutachtentext 3.5.2
   }
 
   // ── Rückspeise- & Erzeugungsnetz-Beurteilung je Variante ──
@@ -1180,6 +1187,17 @@ export function pvBerechneAlle() {
   state.stale      = false;
   state.lastParams = params;
   state.lastProfilQuelle = pvGetProfilQuelle();   // Herkunft mitprotokollieren
+  // Datenbasis dieses Laufs für den Gutachtentext 3.5.2 (17) — damit der Text denselben
+  // Stand zeigt wie Tabelle und Abbildungen, nicht zwischenzeitlich geänderte Eingaben.
+  state.basis = {
+    bedarfMwh: pvGesamtBedarfMwh(), dt: pvGetDt(), lastgangDatei: window.elQuartierFilename || '',
+    lastfall: state.demandMode || 'basis', endausbauJahr: state.endausbauJahr,
+    spezKwhKwp: spez, profil: state.lastProfilQuelle,
+    potenzialKwp: maxKwp, potenzialOverride: state.pvMaxKwpOverride > 0, quellen: bd,
+    napEinspKw: _napEinsp, skKVA, uBudgetPct,
+    spotDatei: spotH ? (window.elSpotPreiseFilename || '') : null,
+    batEta: PV_BAT_ETA, batCRate: PV_BAT_C_RATE,
+  };
   state.standText = new Date().toLocaleString('de-DE', { day:'2-digit', month:'2-digit',
                      year:'numeric', hour:'2-digit', minute:'2-digit' });
   _pvApplyStaleUi();
@@ -1655,7 +1673,7 @@ function _pvBuildPanelHtml() {
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
     <div>
       <div style="font-size:15px;font-weight:600;color:var(--text);letter-spacing:.06em;text-transform:uppercase;">PV-Ausbauanalyse</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;">Variantenstudie · Wirtschaftlichkeit · Netzintegration &nbsp;·&nbsp; Kapitel 3.2.5 / 3.2.6</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">Variantenstudie · Wirtschaftlichkeit · Netzintegration &nbsp;·&nbsp; Kapitel 3.5.2 / 3.6</div>
     </div>
     <div style="display:flex;gap:6px;">
       <button class="btn-secondary" data-click="pvaSetView('annahmen')" style="font-size:11px;">Annahmenblatt</button>
@@ -4454,7 +4472,7 @@ function _pvResHourly(arr, dt) {
 // unbegrenzt. Liefert Überbrückungsdauer (Stunden bis Batterie+PV erstmals nicht
 // reichen) und die Generator-Energie (kWh) zum Decken der Restlast.
 function _pvResScan(loadH, pvH, batKwh, start, durH, nHours, initSoc, capFrac) {
-  const ETA = 0.90, rate = batKwh > 0 ? batKwh / 2 : 0;
+  const ETA = PV_BAT_ETA, rate = batKwh > 0 ? batKwh * PV_BAT_C_RATE : 0;
   const cap = batKwh * (capFrac ?? 1);            // nutzbare Kapazität (#5)
   let soc = Math.min(cap, initSoc), eGen = 0, bridge = durH, hit = false;
   for (let k = 0; k < durH; k++) {
@@ -4483,7 +4501,7 @@ function _pvResScan(loadH, pvH, batKwh, start, durH, nHours, initSoc, capFrac) {
 // Monoton in genKw: mehr Leistung → nie mehr ungedeckte Last.
 // gen = Gesamtabgabe (Last + Laden, für Sprit); genLoad = nur last-deckend (Stapel).
 function _pvResSim(loadEff, pvH, batKwh, genKw, start, durH, nHours, initSoc, fuel, mode, capFrac) {
-  const ETA = 0.90, rate = batKwh > 0 ? batKwh / 2 : 0, cap = batKwh * (capFrac ?? 1);
+  const ETA = PV_BAT_ETA, rate = batKwh > 0 ? batKwh * PV_BAT_C_RATE : 0, cap = batKwh * (capFrac ?? 1);
   const Ff = fuel.sfc * genKw, idleRate = fuel.idle * Ff;   // l/h Voll-/Leerlauf
   let soc = Math.min(cap, initSoc);
   let eLoad = 0, ePv = 0, eBat = 0, eGen = 0, eUnmet = 0, liters = 0, genRunH = 0;

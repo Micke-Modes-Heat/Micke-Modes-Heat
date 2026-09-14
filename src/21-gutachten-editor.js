@@ -10,14 +10,14 @@
 // (tests/import-architecture.test.js). Importiert wird nur aus 17 und der lib.
 
 import {
-  ggFigurenKatalog, ggFigurTeilArten, ggRenderFigurFuerDokument, ggCopyDokumentTeil, ggFitLabels,
+  ggFigurenKatalog, ggFigurTeilArten, ggRenderFigurFuerDokument, ggCopyDokumentTeil, ggCopyForWord, ggFitLabels,
   ggMountEinzelansicht, ggShowSection, ggSelectFigur, ggFigurEinstellungenCapture, ggFigurEinstellungenRestore,
-  ggFigurWordDaten, ggSvgToPngBlob,
+  ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe,
 } from './17-gutachten-grafik.js';
 import {
   GUTACHTEN_DOK_VERSION, GUTACHTEN_MAX_EBENE, gdNormalisieren, gdKapitelNummern, gdStandardDokument, gdLeeresDokument,
   gdKapitelEinfuegen, gdKapitelLoeschen, gdKapitelVerschieben, gdKapitelEbene,
-  gdNeuerTextBlock, gdNeuerFigurBlock, gdBlockEinfuegen, gdBlockLoeschen, gdBlockVerschieben,
+  gdNeuerTextBlock, gdNeuerFigurBlock, gdNeuerBildBlock, gdBlockEinfuegen, gdBlockLoeschen, gdBlockVerschieben,
   gdFindeBlock, gdBeschriftungen, gdFigurIds, gdNormDeckblatt, GUTACHTEN_DECKBLATT_VORGABEN,
 } from './lib/gutachten-dokument.js';
 import {
@@ -31,6 +31,7 @@ const _gut = {
   modus: 'dokument',    // 'dokument' | 'einzel'
   auswahl: null,        // { art: 'kapitel' | 'block', id }
   cache: new Map(),     // blockId → { schluessel, ergebnis } — gezeichnete Figuren, damit Auswahl/Verschieben nicht alles neu rechnet
+  lpZiel: null,          // blockId eines 'bild'-Blocks, der gerade in 🗺️ Liegenschaftsbilder eingerichtet wird, oder null
 };
 
 const GUT_AKZENT = '#26a69a';
@@ -211,6 +212,14 @@ function figurErgebnis(b) {
   return ergebnis;
 }
 
+/** 'bild'-Block → frisches <svg>-Element aus dem gespeicherten Quelltext (oder null bei Parsefehler). */
+function bildSvgElement(b) {
+  try {
+    const el = new DOMParser().parseFromString(b.svg, 'image/svg+xml').documentElement;
+    return el?.tagName?.toLowerCase() === 'svg' ? el : null;
+  } catch (e) { void e; return null; }
+}
+
 function beschriftungEl(nr, text) {
   const d = document.createElement('div');
   d.style.cssText = 'font-size:11.5px;color:#5A5F5A;margin:5px 0 0;';
@@ -247,6 +256,26 @@ function figurBlockInhalt(box, b, nummern, zuEinpassen) {
   });
 }
 
+function bildBlockInhalt(box, b, nr) {
+  if (!b.svg) {
+    box.innerHTML = `<div style="padding:14px;border:1px dashed ${GUT_WARN};color:#7a5b00;background:#fff8e1;font-size:12px;">
+      ⚠ Noch nicht eingerichtet — rechts „✎ In Liegenschaftsbilder einrichten“ anklicken.</div>`;
+    return;
+  }
+  const svg = bildSvgElement(b);
+  if (!svg) {
+    box.innerHTML = `<div style="padding:14px;border:1px dashed ${GUT_WARN};color:#7a5b00;background:#fff8e1;font-size:12px;">
+      ⚠ Grafik konnte nicht angezeigt werden — noch einmal übernehmen.</div>`;
+    return;
+  }
+  Object.assign(svg.style, { width: '100%', height: 'auto', display: 'block' });
+  const titel = b.unterschrift.trim() || 'Lageplan der Liegenschaft';
+  const halter = document.createElement('div');
+  halter.appendChild(svg);
+  box.appendChild(halter);
+  if (nr) box.appendChild(beschriftungEl(nr, titel));
+}
+
 function renderSeite() {
   const host = document.getElementById('gut-seite');
   if (!host) return;
@@ -277,6 +306,7 @@ function renderSeite() {
       box.dataset.click = `gutWaehle('block','${b.id}')`;
       box.style.cssText = 'margin:8px 0;padding:4px 6px;border-radius:3px;cursor:pointer;';
       if (b.typ === 'text') box.innerHTML = textBlockHtml(b.text);
+      else if (b.typ === 'bild') bildBlockInhalt(box, b, (beschriftungen.get(b.id) || [])[0]);
       else figurBlockInhalt(box, b, beschriftungen.get(b.id) || [], zuEinpassen);
       papier.appendChild(box);
     }
@@ -318,6 +348,9 @@ function blockLabel(b, katalog) {
   if (b.typ === 'text') {
     const t = b.text.trim().replace(/\s+/g, ' ');
     return zeile('¶', t ? esc(t.slice(0, 70)) : '<i>Leerer Freitext</i>');
+  }
+  if (b.typ === 'bild') {
+    return zeile(b.svg ? '🗺' : '⚠', esc(b.unterschrift.trim() || (b.svg ? 'Lageplan der Liegenschaft' : 'Lageplan — noch nicht eingerichtet')));
   }
   const f = katalog.get(b.figurId);
   const icon = !f ? '⚠' : f.istText ? '¶' : f.istTabelle ? '▤' : '▨';
@@ -432,7 +465,10 @@ function kapitelPanel(k, idx) {
     + reihe(knopf('+ Kapitel danach', `gutAddKapitel('${id}',false)`)
           + (k.ebene < GUTACHTEN_MAX_EBENE ? knopf('+ Unterkapitel', `gutAddKapitel('${id}',true)`) : ''))
     + ueberschrift('Inhalt einfügen')
-    + `<div style="display:flex;flex-direction:column;gap:6px;">${knopf('¶ Freitext', `gutAddText('${id}')`)}${figurAuswahl}</div>`
+    + `<div style="display:flex;flex-direction:column;gap:6px;">${knopf('¶ Freitext', `gutAddText('${id}')`)}`
+    + `${knopf('🗺 Lageplan einrichten', `gutAddLageplan('${id}')`, { titel: 'Legt einen leeren Lageplan-Block an und öffnet den Reiter 🗺️ Liegenschaftsbilder, um ihn einzurichten (Ausschnitt, Ebenen, MS-Ring, Beschriftungen).' })}`
+    + `${knopf('+ Platzhalter je Trafostation', `gutAddTrafoDummies('${id}')`, { titel: 'Legt für jede bestehende Trafostation (aus dem Elektro-Tab, eine je Gebäude/Station, nicht je Trafo) einen eigenen Freitext-Platzhalter an — zum Eintragen der Begehungsergebnisse.' })}`
+    + `${figurAuswahl}</div>`
     + hinweis('Neuer Inhalt kommt ans Ende des Kapitels. ✓ = steht schon im Dokument.')
     + ueberschrift('Entfernen')
     + knopf('🗑 Kapitel löschen', `gutKapitelLoeschen('${id}')`, { gefahr: true, titel: 'Unterkapitel rücken eine Ebene hoch' });
@@ -453,6 +489,22 @@ function blockPanel(b, kapIdx) {
       + feldLabel('Text — eine Leerzeile beginnt einen neuen Absatz')
       + `<textarea rows="14" data-input="gutSetText('${id}',this.value)" data-change="gutTextFertig()"
            style="${EINGABE_STIL}resize:vertical;line-height:1.5;">${esc(b.text)}</textarea>`
+      + anordnung + entfernen;
+  }
+
+  if (b.typ === 'bild') {
+    return panelKopf('Lageplan') + ort
+      + feldLabel('Beschriftung')
+      + `<input type="text" value="${esc(b.unterschrift)}" placeholder="Lageplan der Liegenschaft"
+           data-change="gutSetFigurOpt('${id}','unterschrift',this.value)" data-keydown="if(event.key==='Enter')this.blur()" style="${EINGABE_STIL}">`
+      + hinweis('Leer = „Lageplan der Liegenschaft". Die Nummer vergibt das Dokument automatisch.')
+      + ueberschrift('Einrichten')
+      + knopf(b.svg ? '✎ In Liegenschaftsbilder einrichten' : '✎ Jetzt einrichten', `gutEditLageplan('${id}')`,
+              { primaer: !b.svg, titel: 'Öffnet den Reiter 🗺️ Liegenschaftsbilder mit genau den Einstellungen, mit denen dieser Plan zuletzt gebaut wurde (bzw. leer, wenn noch keine gespeichert sind).' })
+      + (b.svg ? ueberschrift('Bearbeiten und kopieren')
+          + knopf('⧉ Für Word kopieren', `gutCopyTeil('${id}',0)`,
+                  { primaer: true, titel: 'Bild + Beschriftung mit Nummer in die Zwischenablage — die Nummer steckt als Word-Feld drin, Word ordnet sie beim Einfügen selbst in seine Zählung ein.' })
+        : '')
       + anordnung + entfernen;
   }
 
@@ -618,6 +670,77 @@ export function gutAddFigur(kapId, figurId) {
   scrollZu('block', b.id);
 }
 
+/** Je bestehende Trafostation (aus dem Elektro-Tab, eine je Gebäude/Station) einen Freitext-Platzhalter anlegen. */
+export function gutAddTrafoDummies(kapId) {
+  if (!findeKapitel(kapId)) return;
+  const stationen = ggTrafostationenIstListe();
+  if (!stationen.length) {
+    gutSay('⚠ Keine Trafostationen im Modell — im Elektro-Tab zuerst welche platzieren.', true);
+    return;
+  }
+  let letzte = null;
+  for (const s of stationen) {
+    const text = `${s.label} – Gebäude ${s.gebLabel}\n`
+      + `Zustand: [Zustand bei der Begehung ergänzen]\n`
+      + `Bedarf: [Bedarf ergänzen]\n`
+      + `Empfehlung: [Empfehlung ergänzen]`;
+    letzte = gdNeuerTextBlock(text);
+    gdBlockEinfuegen(_gut.dok, kapId, letzte);
+  }
+  neuZeichnen();
+  if (letzte) scrollZu('block', letzte.id);
+  gutSay(`✓ ${stationen.length} Trafostation(en) als Platzhalter eingefügt.`);
+}
+
+/** Neuen, leeren Lageplan-Block anlegen und gleich zum Einrichten nach 🗺️ Liegenschaftsbilder springen. */
+export function gutAddLageplan(kapId) {
+  if (!findeKapitel(kapId)) return;
+  const b = gdNeuerBildBlock(null);
+  gdBlockEinfuegen(_gut.dok, kapId, b);
+  gutEditLageplan(b.id);
+}
+
+/** Kapitelbezeichnung ("3.1.2 Stromnetz intern") — Label für den Übernehmen-Knopf drüben in 18. */
+function lpZielLabel(blockId) {
+  const pos = gdFindeBlock(_gut.dok, blockId);
+  if (!pos) return 'Gutachten';
+  return `${gdKapitelNummern(_gut.dok.kapitel)[pos.kapIdx]} ${_gut.dok.kapitel[pos.kapIdx].titel}`.trim();
+}
+
+/**
+ * Reiter 🗺️ Liegenschaftsbilder öffnen, dort die zu diesem Block gespeicherten Einstellungen
+ * laden (oder — bei einem frischen Block — einfach den dort gerade aktuellen Stand stehen
+ * lassen) und den Block als Ziel für „Für … übernehmen" markieren. lpEinstellungenRestore()/
+ * lpSetGutachtenZiel() liegen auf window statt als Import (s. Modulkopf: 21 importiert bewusst
+ * nur aus 17 und der lib) — main.js legt jeden Modul-Export dort ab.
+ */
+export function gutEditLageplan(blockId) {
+  const b = findeBlock(blockId);
+  if (!b || b.typ !== 'bild') return;
+  _gut.lpZiel = blockId;
+  if (typeof window.lpEinstellungenRestore === 'function') window.lpEinstellungenRestore(b.einstellungen || null);
+  if (typeof window.lpSetGutachtenZiel === 'function') window.lpSetGutachtenZiel(true, lpZielLabel(blockId));
+  if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('liegenschaftsbilder');
+}
+
+/**
+ * Rückruf aus 18 (per window aufgerufen, s. o.): schreibt SVG + Einstellungen in den zuletzt per
+ * gutEditLageplan() markierten Block und springt zurück in den Gutachten-Editor.
+ * @returns {boolean} false, wenn kein Ziel (mehr) aktiv ist — 18 zeigt dann eine Fehlermeldung.
+ */
+export function gutUebernehmeLageplanZiel(bild) {
+  const blockId = _gut.lpZiel;
+  const b = blockId ? findeBlock(blockId) : null;
+  if (!b || b.typ !== 'bild') { _gut.lpZiel = null; return false; }
+  b.svg = bild.svg; b.breite = bild.breite; b.hoehe = bild.hoehe; b.einstellungen = bild.einstellungen || null;
+  _gut.lpZiel = null;
+  if (typeof window.setAnalyseSection === 'function') window.setAnalyseSection('ggrafik');
+  else neuZeichnen();
+  gutWaehle('block', blockId, true);
+  gutSay('✓ Lageplan übernommen.');
+  return true;
+}
+
 /** Tippen im Freitext: nur den Block auf der Seite auffrischen, damit das Textfeld den Fokus behält. */
 export function gutSetText(id, wert) {
   const b = findeBlock(id);
@@ -651,7 +774,7 @@ export function gutBlockLoeschen(id) {
 
 export function gutSetFigurOpt(id, feld, wert) {
   const b = findeBlock(id);
-  if (!b || b.typ !== 'figur') return;
+  if (!b || (b.typ !== 'figur' && b.typ !== 'bild')) return;
   if (feld === 'unterschrift') {
     b.unterschrift = String(wert ?? '').trim();
     renderSeite();       // Eigenschaften nicht neu aufbauen — siehe gutSetKapitelTitel
@@ -664,13 +787,37 @@ export function gutSetFigurOpt(id, feld, wert) {
   neuZeichnen();
 }
 
+/**
+ * Beschriftung {art, nr, titel} eines Blocks — dieselbe Nummer, die auch unter der Grafik in
+ * der Seitenansicht und im Word-Export steht (s. gdBeschriftungen). null, wenn der Block keine
+ * bekommt (Fließtext) oder das Dokument noch nicht existiert.
+ */
+function beschriftungVon(blockId, titel) {
+  if (!_gut.dok) return null;
+  const nr = (gdBeschriftungen(_gut.dok, teilArten).get(blockId) || [])[0];
+  return nr ? { art: nr.art, nr: nr.nr, titel } : null;
+}
+
 export async function gutCopyTeil(id, teilIdx) {
   const b = findeBlock(id);
-  if (!b || b.typ !== 'figur') return;
-  const el = seitenElement('block', id)?.querySelector(`[data-gut-teil="${teilIdx}"]`)?.firstElementChild || null;
+  if (!b || (b.typ !== 'figur' && b.typ !== 'bild')) return;
   gutSay('Wird vorbereitet …');
   try {
-    const wohin = await ggCopyDokumentTeil(b.figurId, teilIdx, el);
+    let wohin;
+    if (b.typ === 'bild') {
+      const svg = bildSvgElement(b);
+      if (!svg) throw new Error('Grafik konnte nicht vorbereitet werden — noch einmal übernehmen.');
+      const titel = b.unterschrift.trim() || 'Lageplan der Liegenschaft';
+      wohin = await ggCopyForWord(svg, 3, { beschriftung: beschriftungVon(id, titel) });
+    } else {
+      const el = seitenElement('block', id)?.querySelector(`[data-gut-teil="${teilIdx}"]`)?.firstElementChild || null;
+      const erg = figurErgebnis(b);
+      const titel = b.unterschrift.trim() || erg.titel;
+      const text = teilIdx === 0 ? titel : `${erg.tabelleTitel}: ${titel}`;
+      const nrListe = _gut.dok ? gdBeschriftungen(_gut.dok, teilArten).get(id) || [] : [];
+      const nr = nrListe[teilIdx];
+      wohin = await ggCopyDokumentTeil(b.figurId, teilIdx, el, nr ? { art: nr.art, nr: nr.nr, titel: text } : null);
+    }
     gutSay(`✓ In die ${wohin} kopiert — in Word mit Strg+V einfügen.`);
   } catch (e) {
     gutSay('⚠ ' + e.message, true);
@@ -766,6 +913,17 @@ export async function gutWordPaket() {
     koerper += gdxUeberschrift(k.ebene, nummern[ki], k.titel);
     for (const b of k.bloecke) {
       if (b.typ === 'text') { koerper += gdxFreitext(b.text); continue; }
+      if (b.typ === 'bild') {
+        const titel = b.unterschrift.trim() || 'Lageplan der Liegenschaft';
+        if (!b.svg) { warnungen.push(`${titel}: noch nicht eingerichtet — übersprungen.`); continue; }
+        const svg = bildSvgElement(b);
+        if (!svg) { warnungen.push(`${titel}: Grafik konnte nicht eingefügt werden.`); continue; }
+        const rId = ctx.bild(await pngDaten(svg), titel);
+        koerper += gdxAbbildung(ctx, rId, +svg.getAttribute('width') || b.breite || 1, +svg.getAttribute('height') || b.hoehe || 1, titel);
+        const nr = (beschriftungen.get(b.id) || [])[0];
+        if (nr) koerper += gdxBeschriftung(nr.art, nr.nr, titel);
+        continue;
+      }
       const erg = figurErgebnis(b);
       if (erg.fehler) { warnungen.push(`${b.figurId}: ${erg.fehler}`); continue; }
       const titel = b.unterschrift.trim() || erg.titel;
