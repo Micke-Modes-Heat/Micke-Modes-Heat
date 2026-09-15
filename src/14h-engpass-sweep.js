@@ -397,6 +397,40 @@ function _trafoStufe(t) {
 }
 
 /**
+ * Ertüchtigungsvorschlag für ein Engpass-Item, OHNE etwas zu schreiben — dieselbe Wahl, die
+ * engpassGeneriereMassnahmen als Maßnahme anlegt. Gutachten 3.4.1 (17) zeigt ihn nur an.
+ *
+ * Rückgabe: { art: 'kabel'|'trafo', label, typ, jahr, newProps, investEUR, alternativen? }
+ *         | { ungeloest: true, jahr, grund }   — keine Standard-Ertüchtigung reicht
+ *         | null                              — kein Engpass, MS-Kabel oder stationsintern
+ */
+export function engpassVorschlag(item, res, opts = {}) {
+  if (!item || item.engpassJahr == null) return null;
+  const von = (res || _letztesErgebnis)?.von ?? item.engpassJahr;
+  const jahr = engpassMassnahmeJahr(item.engpassJahr, von, opts.vorlaufJ ?? ENGPASS_VORLAUF_J);
+
+  if (item.art === 'kabel') {
+    if (item.msLevel || item.stationsintern) return null;   // MS: eigene Systematik; stationsintern: nie Engpass
+    const alternativen = engpassKabelAlternativen(
+      item.ist, { benoetigtA: item.maxStromA, maxDuPct: item.maxDuPct }, _kabelParams());
+    const wahl = engpassWaehleAlternative(alternativen);
+    if (!wahl) {
+      // Kein Standardkabel (auch nicht 8 Parallelstränge) trägt den Strom bzw. hält den Spannungsfall
+      return { ungeloest: true, jahr, grund: 'Kein Standardquerschnitt reicht — Netzstruktur ändern '
+                                           + '(Trafo/NSHV näher an die Last, Strang aufteilen oder MS-Anbindung).' };
+    }
+    return { art: 'kabel', label: wahl.label, typ: wahl.typ, jahr, newProps: wahl.newProps, investEUR: wahl.investEUR, alternativen };
+  }
+
+  const kand = _trafoStufe(item);
+  if (!kand) {
+    return { ungeloest: true, jahr, grund: 'Keine größere Standard-Trafostufe — zusätzliche Station oder Übergabestation erforderlich.' };
+  }
+  return { art: 'trafo', label: kand.label, typ: 'Ertuechtigung', jahr,
+           newProps: { leistungKVA: kand.stufe.bisKvA }, investEUR: kand.stufe.investEUR };
+}
+
+/**
  * Leitet aus dem letzten Sweep konkrete Ertüchtigungs-Maßnahmen ab und schreibt
  * sie als `massnahmen` (status 'geplant') auf Kabel bzw. Trafo-Assets.
  * Dadurch erscheinen sie automatisch im Ausbauplaner-Gantt und im Investitionsplan.
@@ -413,7 +447,6 @@ export function engpassGeneriereMassnahmen(opts = {}) {
   if (!res) return null;
 
   const vorlaufJ = opts.vorlaufJ ?? ENGPASS_VORLAUF_J;
-  const params   = _kabelParams();
   const uebergehen = opts.ohneBestandsmaengel
     ? new Set(engpassBestandsmaengel(res).map(b => b.item.id))
     : null;
@@ -433,30 +466,26 @@ export function engpassGeneriereMassnahmen(opts = {}) {
     const edge = (window.stromEdges || []).find(e => e.id === k.id);
     if (!edge) continue;
 
-    const alternativen = engpassKabelAlternativen(
-      k.ist, { benoetigtA: k.maxStromA, maxDuPct: k.maxDuPct }, params);
-    const wahl = engpassWaehleAlternative(alternativen);
-    if (!wahl) {
-      // Kein Standardkabel (auch nicht 8 Parallelstränge) trägt den Strom bzw.
-      // hält den Spannungsfall — hier hilft nur eine Strukturänderung.
+    // Wahl der Ertüchtigung liegt in engpassVorschlag — dieselbe, die das Gutachten anzeigt
+    const v = engpassVorschlag(k, res, { vorlaufJ });
+    if (!v) continue;
+    if (v.ungeloest) {
+      // Hier hilft nur eine Strukturänderung
       ungeloest.push({
         id: k.id, art: 'kabel', label: k.label, engpassJahr: k.engpassJahr,
-        maxStromA: k.maxStromA, maxAuslPct: k.maxAuslPct,
-        grund: 'Kein Standardquerschnitt reicht — Netzstruktur ändern '
-             + '(Trafo/NSHV näher an die Last, Strang aufteilen oder MS-Anbindung).',
+        maxStromA: k.maxStromA, maxAuslPct: k.maxAuslPct, grund: v.grund,
       });
       continue;
     }
 
-    const jahr = engpassMassnahmeJahr(k.engpassJahr, res.von, vorlaufJ);
     const m = {
       id: `auto_${k.id}`, [AUTO_TAG]: true,
-      titel: wahl.label, typ: wahl.typ, jahr, kosten: wahl.investEUR,
-      status: 'geplant', newProps: wahl.newProps, dependsOn: [], phaseId: null,
+      titel: v.label, typ: v.typ, jahr: v.jahr, kosten: v.investEUR,
+      status: 'geplant', newProps: v.newProps, dependsOn: [], phaseId: null,
     };
     if (!edge.massnahmen) edge.massnahmen = [];
     edge.massnahmen.push(m);
-    items.push({ ...m, art: 'kabel', label: k.label, engpassJahr: k.engpassJahr, alternativen });
+    items.push({ ...m, art: 'kabel', label: k.label, engpassJahr: k.engpassJahr, alternativen: v.alternativen });
   }
 
   // ── Trafos (Stufen aus 14b-ertuechtigung) ────────────────────────────────
@@ -466,15 +495,13 @@ export function engpassGeneriereMassnahmen(opts = {}) {
     const asset = (ASSETS.items || []).find(a => a.id === t.id);
     if (!asset) continue;
 
-    const kand = _trafoStufe(t);
-    if (!kand) continue;
-    const { stufe, label } = kand;
+    const v = engpassVorschlag(t, res, { vorlaufJ });
+    if (!v || v.ungeloest) continue;   // wie bisher: ohne größere Trafostufe keine Maßnahme
 
-    const jahr = engpassMassnahmeJahr(t.engpassJahr, res.von, vorlaufJ);
     const m = {
       id: `auto_${t.id}`, [AUTO_TAG]: true,
-      titel: label, typ: 'Ertuechtigung', jahr, kosten: stufe.investEUR,
-      status: 'geplant', newProps: { leistungKVA: stufe.bisKvA },
+      titel: v.label, typ: v.typ, jahr: v.jahr, kosten: v.investEUR,
+      status: 'geplant', newProps: v.newProps,
       dependsOn: [], phaseId: null,
     };
     if (!asset.massnahmen) asset.massnahmen = [];

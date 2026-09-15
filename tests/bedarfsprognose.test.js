@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   BP_STUFEN, bpStufeVonTyp, bpAssetLeistung, bpMassnahmen, bpWirkungImJahr,
-  bpLastJahr, bpZieljahr, bpStufen, bpNormGzf, bpLadeLeistung,
+  bpLastJahr, bpZieljahr, bpStufen, bpNormGzf, bpLadeLeistung, bpJahresreihe,
 } from '../src/lib/bedarfsprognose.js';
 
 describe('bpLadeLeistung', () => {
@@ -53,6 +53,10 @@ describe('bpAssetLeistung', () => {
     expect(bpAssetLeistung(asset('b2', 'Batterie', { leistungKW: 30 }))).toEqual({ loadKW: 0, genKW: 30 });
   });
 
+  it('zählt Notstromaggregate nicht — sie laufen nur bei Netzausfall', () => {
+    expect(bpAssetLeistung(asset('n', 'Nsa', { leistungKW: 400 }))).toEqual({ loadKW: 0, genKW: 0 });
+  });
+
   it('nimmt die Profilspitze nur in Wirkrichtung', () => {
     const profil = { werte: [10, 40, 25] };
     expect(bpAssetLeistung(asset('v', 'Verbraucher', { leistungKW: 50 }, { profil }))).toEqual({ loadKW: 40, genKW: 0 });
@@ -69,6 +73,7 @@ describe('bpMassnahmen', () => {
     asset('bleibt', 'Verbraucher', { leistungKW: 70 }, { baujahr: 1990 }),
     asset('abrissOhneLast', 'Verbraucher', {}, { abrissjahr: 2027 }),
     asset('trafo', 'Trafo', { leistungKVA: 630 }, { baujahr: 2031 }),
+    asset('nea', 'Nsa', { leistungKW: 400 }, { baujahr: 2029 }),
   ];
 
   it('findet Neubau und Rückbau nach dem Messjahr, sortiert nach Jahr', () => {
@@ -98,8 +103,13 @@ describe('bpWirkungImJahr / bpLastJahr / bpZieljahr', () => {
     expect(bpWirkungImJahr({ ...neu, abrissjahr: 2040 }, 2040)).toBe(0);
   });
 
-  it('summiert mit Gleichzeitigkeitsfaktor', () => {
+  it('summiert den Bezug mit Gleichzeitigkeitsfaktor', () => {
     expect(bpLastJahr([neu, weg], 2035, 0.5)).toEqual({ addLoad: 30, addGen: 0 });
+  });
+
+  it('nimmt die Einspeisung mit voller Nennleistung, ohne Gleichzeitigkeitsfaktor', () => {
+    const pv = { loadKW: 0, genKW: 200, baujahr: 2030, abrissjahr: null, isAbbruch: false, checked: true };
+    expect(bpLastJahr([neu, pv], 2035, 0.5)).toEqual({ addLoad: 50, addGen: 200 });
   });
 
   it('nimmt das späteste angehakte Jahr als Zieljahr', () => {
@@ -138,8 +148,11 @@ describe('bpStufen', () => {
     expect(geb).toMatchObject({ startKw: 1000, rueckbauKw: -160, zubauKw: 300, endKw: 1140 });
     expect(waerme).toMatchObject({ startKw: 1140, zubauKw: 180, endKw: 1320 });
     expect(lade).toMatchObject({ startKw: 1320, zubauKw: 220, endKw: 1540 });
-    expect(r.sonstige.kw).toBe(-150);
-    expect(r.endKw).toBe(1390);
+    // Erzeugung mindert den Bezug nicht, sie steht getrennt als Einspeisung
+    expect(r.sonstige.kw).toBe(0);
+    expect(r.endKw).toBe(1540);
+    expect(r.einspeisung.kw).toBe(150);
+    expect(r.einspeisung.eintraege.map(e => e.m.id)).toEqual(['pv']);
     expect(r.abgewaehlt).toBe(1);
   });
 
@@ -147,7 +160,18 @@ describe('bpStufen', () => {
     const gzf = 0.8;
     const r = bpStufen({ basisKw: 1000, gzf, massnahmen: liste });
     const { addLoad, addGen } = bpLastJahr(liste.filter(x => x.checked), r.zieljahr, gzf);
-    expect(r.endKw).toBeCloseTo(1000 + addLoad - addGen, 9);
+    expect(r.endKw).toBeCloseTo(1000 + addLoad, 9);
+    expect(r.einspeisung.kw).toBeCloseTo(addGen, 9);
+    expect(r.einspeisung.kw).toBe(150);   // PV voll, obwohl GZF 0,8
+  });
+
+  it('liefert die Jahresreihe bis zum Zieljahr mit derselben Endleistung', () => {
+    const reihe = bpJahresreihe({ basisKw: 1000, gzf: 1, massnahmen: liste, von: 2026, bis: 2033 });
+    expect(reihe.map(z => z.jahr)).toEqual([2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033]);
+    expect(reihe[0]).toEqual({ jahr: 2026, bezugKw: 1000, einspeisungKw: 0 });
+    expect(reihe.find(z => z.jahr === 2027).bezugKw).toBe(840);
+    expect(reihe[reihe.length - 1].bezugKw).toBe(bpStufen({ basisKw: 1000, gzf: 1, massnahmen: liste }).endKw);
+    expect(reihe[reihe.length - 1].einspeisungKw).toBe(150);
   });
 
   it('lässt Maßnahmen nach einem festen Zieljahr weg', () => {

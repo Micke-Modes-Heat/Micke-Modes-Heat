@@ -3335,19 +3335,8 @@
   </div>
   <div style="padding:12px 14px 4px;">
 
-    <!-- Stromlastgang Upload -->
-    <div class="sa-section-title">Stromlastgang Quartier <span style="font-weight:normal;text-transform:none;letter-spacing:0;">(ohne Wärmepumpen)</span></div>
-    <div id="strom-upload-area" data-click="document.getElementById('strom-file-input').click()"
-      style="border:1px dashed var(--border);border-radius:6px;padding:9px 12px;cursor:pointer;margin-bottom:7px;display:flex;align-items:center;gap:8px;transition:.15s;"
-      onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
-      <span style="font-size:15px;">📂</span>
-      <div style="flex:1;">
-        <div style="font-size:10px;color:var(--muted);">CSV hochladen — 15-min (35.040 Werte) oder Stunden (8.760 Werte) · kW · eine Zahl pro Zeile</div>
-        <div id="strom-upload-info" style="font-size:10px;color:var(--accent);margin-top:2px;"></div>
-      </div>
-      <button id="strom-clear-btn" data-click="event.stopPropagation();stromClear()" style="display:none;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;">✕ Löschen</button>
-    </div>
-    <input type="file" id="strom-file-input" accept=".csv,.txt" style="display:none;" data-change="stromFileSelected(this.files[0])"/>
+    <!-- Strom-Messjahre: Lastgänge Bezug + BHKW, Referenzjahr (gerendert von src/23-messjahre-panel.js) -->
+    <div id="strom-messjahre-wrap"></div>
 
     <!-- Manuelle Jahressumme -->
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">

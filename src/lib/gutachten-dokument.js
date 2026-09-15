@@ -29,13 +29,15 @@ export const GUTACHTEN_MAX_EBENE = 3;
 /**
  * Standardgliederung = Inhaltsverzeichnis der Word-Vorlage
  * „Gutachten_Energieversorgung_LKEBw.docx" (Stand 09/2026). Die Kapitelnummern
- * der Gutachten-Grafiken (3.1.2, 3.5.2, …) beziehen sich auf diese Gliederung.
+ * der Gutachten-Grafiken (3.1.2, 3.4.2, …) beziehen sich auf diese Gliederung.
  *
  * Elektrotechnik (ab „Elektrotechnik“) folgt seit 09/2026 demselben Aufbau wie die
- * Wärmeversorgung: EIN Ist-Zustand, EINE Bedarfsprognose (Soll), dann Analyse/
- * Variantenbildung/Wirtschaftlichkeit/Bewertungsmatrix/Empfehlung — statt wie zuvor
- * Ist- und Soll-Zustand als zwei parallele Zweige mit je eigenem Netzanschluss/
- * Stromnetz-intern-Unterkapitel.
+ * Wärmeversorgung: EIN Ist-Zustand, EINE Bedarfsprognose (Soll), dann Variantenbildung/
+ * Wirtschaftlichkeit/Bewertungsmatrix/Empfehlung — statt wie zuvor Ist- und Soll-Zustand
+ * als zwei parallele Zweige mit je eigenem Netzanschluss/Stromnetz-intern-Unterkapitel.
+ * Ein Kapitel „Analyse möglicher Technologien“ wie in der Wärme gibt es bewusst nicht
+ * (Entscheidung 09/2026): im Strom sind Netzanschluss, PV, Speicher, NEA und Ladeinfrastruktur
+ * Bausteine, keine Alternativen — entschieden wird über ihre Dimensionierung in der Variantenbildung.
  */
 const G = (ebene, titel) => ({ ebene, titel });
 export const GUTACHTEN_STANDARD_GLIEDERUNG = [
@@ -51,9 +53,8 @@ export const GUTACHTEN_STANDARD_GLIEDERUNG = [
   G(3, 'Erzeugungsanlagen'), G(3, 'Notstromversorgung'),
   G(2, 'Stromverbrauchsdaten'),
   G(2, 'Bedarfsprognose Strom (Soll)'), G(3, 'Bestandsbedarf und bauliche Entwicklung'),
-  G(3, 'Zusatzbedarf aus Wärmekonzept (Übernahme aus 3.8)'), G(3, 'Zusatzbedarf Ladeinfrastruktur'),
+  G(3, 'Zusatzbedarf aus Wärmekonzept'), G(3, 'Zusatzbedarf Ladeinfrastruktur'),
   G(3, 'Resultierende Anschlussleistung und Lastgang'),
-  G(2, 'Analyse möglicher Technologien'),
   G(2, 'Variantenbildung und -vergleich'), G(3, 'Netzanschluss und internes Stromnetz'), G(3, 'PV-Anlage und Batteriespeicher'),
   G(3, 'Notstromversorgung und Lastmanagement'), G(3, 'Ladeinfrastruktur'),
   G(2, 'Wirtschaftlichkeit und Investitionskosten'), G(2, 'Bewertungsmatrix'), G(2, 'Empfehlung Elektrotechnik'),
@@ -184,8 +185,12 @@ export function gdKapitelNummern(kapitel) {
 
 /** Position eines Katalogeintrags im Kapitel: `reihe`, sonst Text vor Abbildung. */
 const katalogRang = f => (Number.isFinite(f.reihe) ? f.reihe : f.istText ? 0 : 1000);
-/** Kapiteltitel vergleichbar machen: Groß-/Kleinschreibung und Leerzeichen zählen nicht. */
-const titelSchluessel = t => alsText(t).toLowerCase().replace(/\s+/g, ' ').trim();
+/**
+ * Kapiteltitel vergleichbar machen: Groß-/Kleinschreibung, Leerzeichen und ein angehängter
+ * Klammerzusatz zählen nicht — „Zusatzbedarf aus Wärmekonzept (Übernahme aus 3.8)“ in einem
+ * älteren Dokument trifft so weiter „Zusatzbedarf aus Wärmekonzept“ der Standardgliederung.
+ */
+const titelSchluessel = t => alsText(t).replace(/\s*\([^()]*\)\s*$/, '').toLowerCase().replace(/\s+/g, ' ').trim();
 /** Kapitelnummer vorn im Katalog-Kapitel ("3.3.1 Bestandsbedarf …" → "3.3.1"). */
 const katalogNummer = f => (alsText(f.kapitel).match(/^\d+(\.\d+)*/) || [''])[0];
 

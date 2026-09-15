@@ -327,6 +327,38 @@ export function engpassIstBestandsmangel(item, von, ausloeser) {
   return !(ausloeser && ausloeser.length);        // im Startjahr zugebaut → echter Auslöser
 }
 
+/**
+ * Versorgende Betriebsmittel eines Verbrauchers/Erzeugers (z. B. Ladepark, Gutachten 3.4.4): Breitensuche vom
+ * Asset stromaufwärts — nur zu Knoten mit gleichem oder niedrigerem typeRank — bis zum ersten Trafo. Die
+ * zuerst erreichte Verteilung (NSHV/UV/KVS) ist die nächstgelegene.
+ * Rückgabe: { verteilung: asset|null, trafo: asset|null }
+ */
+export function engpassVersorgung(startId, assets, edges, typeRank) {
+  const assetMap = new Map((assets || []).map(a => [a.id, a]));
+  const rankOf   = id => { const a = assetMap.get(id); return a ? (typeRank?.[a.type] ?? 5) : 5; };
+  const edgeArr  = edges || [];
+  let verteilung = null, trafo = null;
+  const visited = new Set([startId]);
+  const queue = [startId];
+  while (queue.length) {
+    const cur = queue.shift();
+    const a = assetMap.get(cur);
+    if (a && cur !== startId) {
+      if (a.type === 'Trafo') { trafo = a; break; }
+      if (!verteilung && (a.type === 'NSHV' || a.type === 'UV' || a.type === 'KVS')) verteilung = a;
+    }
+    const curRank = rankOf(cur);
+    for (const e of edgeArr) {
+      if (e.u !== cur && e.v !== cur) continue;
+      const nb = e.u === cur ? e.v : e.u;
+      if (visited.has(nb) || rankOf(nb) > curRank) continue;   // nie stromabwärts
+      visited.add(nb);
+      queue.push(nb);
+    }
+  }
+  return { verteilung, trafo };
+}
+
 export function engpassAusloeser(item, leaves, jahrFn) {
   if (item?.engpassJahr == null) return [];
   const jahr = item.engpassJahr;

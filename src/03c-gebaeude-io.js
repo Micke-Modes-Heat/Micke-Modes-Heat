@@ -2684,6 +2684,8 @@ export function _buildProjectData() {
     pvModul: { breite: document.getElementById('pv-modul-breite')?.value, laenge: document.getElementById('pv-modul-laenge')?.value, wp: document.getElementById('pv-modul-wp')?.value },
     pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value, vergModell: document.getElementById('pv-verg-modell')?.value, tarifSzenario: document.getElementById('pv-tarif-szenario')?.value },
     pvProfile: window.elPvH ? {values:Array.from(window.elPvH), meta:window.elPvMeta || {quality:'uploaded_unverified',source:'Legacy PV upload'}} : null,
+    stromMessjahre: typeof window.sgMjCapture === 'function' ? window.sgMjCapture() : null,
+    // Referenzjahr als Einzel-Lastgang — bleibt für ältere Programmstände lesbar
     quartierProfile: window.elQuartierH ? {
       values: Array.from(window.elQuartierH),
       values15: window.elQuartierH15 ? Array.from(window.elQuartierH15) : null,
@@ -3479,20 +3481,13 @@ function _applyProjectData(project) {
         window.elQuartierResolution = project.quartierProfile.resolution || 60;
         window.elQuartierStartDate  = project.quartierProfile.startDate ? new Date(project.quartierProfile.startDate) : null;
         window.elQuartierFilename   = project.quartierProfile.filename || null;
-        const sumKwh = window.elQuartierH.reduce((s,v) => s+v, 0);
-        const pMax   = window.elQuartierH.reduce((m,v) => v>m?v:m, 0);
-        const resLbl = window.elQuartierResolution === 15
-          ? `15-min · ${window.elQuartierH15.length.toLocaleString('de-DE')} Werte`
-          : `stündlich · ${window.elQuartierH.length.toLocaleString('de-DE')} Werte`;
-        const info = document.getElementById('strom-upload-info');
-        if (info) info.textContent = `${window.elQuartierFilename || 'Gespeicherter Lastgang'} · ${Math.round(sumKwh/1000).toLocaleString('de-DE')} MWh/a · max ${Math.round(pMax).toLocaleString('de-DE')} kW · ${resLbl}`;
-        const clear = document.getElementById('strom-clear-btn'); if (clear) clear.style.display = '';
       } else {
         window.elQuartierH = null; window.elQuartierH15 = null; window.elQuartierResolution = null;
         window.elQuartierStartDate = null; window.elQuartierFilename = null;
-        const info = document.getElementById('strom-upload-info'); if (info) info.textContent = '';
-        const clear = document.getElementById('strom-clear-btn'); if (clear) clear.style.display = 'none';
       }
+      // Messjahre (23-messjahre-panel.js): gespeicherte Liste, sonst der Einzel-Lastgang oben als
+      // einziges Messjahr. Setzt elQuartier* auf das Referenzjahr (ohne Referenz: null).
+      if (typeof window.sgMjRestore === 'function') window.sgMjRestore(project.stromMessjahre || null, project.quartierProfile || null);
       if (project.battery) {
         const ids = {capacityKwh:'bat-kapazitaet',powerKw:'bat-leistung',investEurKwh:'opt-bat-invest',studyLifeYears:'opt-bat-life',calendarFadePctPerYear:'bat-calendar-fade',cycleLife:'bat-cycle-life',eolCapacityPct:'bat-eol-pct'};
         for (const [key,id] of Object.entries(ids)) { const el=document.getElementById(id); if(el && project.battery[key] != null) el.value=project.battery[key]; }

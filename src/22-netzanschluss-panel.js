@@ -21,7 +21,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function vorschlag() {
-  // elQuartierH gibt es nur aus einer hochgeladenen Messdatei (09a stromFileSelected / Projektdatei)
+  // elQuartierH gibt es nur aus dem Referenz-Messjahr (23-messjahre-panel.js)
   const aufloesung = window.elQuartierH ? (window.elQuartierResolution === 15 ? 15 : 60) : null;
   const eingabe = parseFloat($('strom-quartier-mwh')?.value);
   return naMessverfahrenVorschlag({ lastgangAufloesung: aufloesung, jahresMwh: eingabe > 0 ? eingabe : null });

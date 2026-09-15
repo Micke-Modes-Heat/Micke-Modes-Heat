@@ -102,8 +102,8 @@ describe('Nummerierung', () => {
     expect(bei('3.1.1')).toBe('Liegenschaftsstromnetzanschluss');
     expect(bei('3.1.2')).toBe('Stromnetz intern (MS/NS)');
     expect(bei('3.2')).toBe('Stromverbrauchsdaten');
-    expect(bei('3.5.2')).toBe('PV-Anlage und Batteriespeicher');
-    expect(bei('3.6')).toBe('Wirtschaftlichkeit und Investitionskosten');
+    expect(bei('3.4.2')).toBe('PV-Anlage und Batteriespeicher');
+    expect(bei('3.5')).toBe('Wirtschaftlichkeit und Investitionskosten');
     expect(bei('5.2')).toBe('Bewertung Resilienz');
     expect(bei('2.3')).toBe('Analyse möglicher Energiequellen und Technologien');
     expect(bei('6.2')).toBe('Elektrotechnik');
@@ -171,7 +171,7 @@ describe('Standarddokument', () => {
   });
 
   it('wechselt Texte und Abbildungen nach `reihe` ab', () => {
-    const kap = '3.5.2 PV-Anlage und Batteriespeicher';
+    const kap = '3.4.2 PV-Anlage und Batteriespeicher';
     const { dok } = gdStandardDokument([
       { id: 'tabelle', kapitel: kap, reihe: 40 },
       { id: 'text-b', kapitel: kap, istText: true, reihe: 30 },
@@ -180,8 +180,21 @@ describe('Standarddokument', () => {
       { id: 'text-a', kapitel: kap, istText: true, reihe: 10 },
     ]);
     const nr = gdKapitelNummern(dok.kapitel);
-    expect(dok.kapitel[nr.indexOf('3.5.2')].bloecke.map(b => b.figurId))
+    expect(dok.kapitel[nr.indexOf('3.4.2')].bloecke.map(b => b.figurId))
       .toEqual(['text-a', 'herleitung', 'text-b', 'tabelle', 'ohne-reihe']);
+  });
+
+  it('ordnet beim Abgleich Kapitel trotz abweichendem Klammerzusatz zu', () => {
+    const standard = [{ ebene: 1, titel: 'Elektrotechnik' }, { ebene: 2, titel: 'Bedarfsprognose' },
+                      { ebene: 3, titel: 'Zusatzbedarf aus Wärmekonzept' }];
+    const alt = { kapitel: [
+      { id: 'e', ebene: 1, titel: 'Elektrotechnik', bloecke: [] },
+      { id: 'b', ebene: 2, titel: 'Bedarfsprognose (Soll)', bloecke: [] },
+      { id: 'w', ebene: 3, titel: 'Zusatzbedarf aus Wärmekonzept (Übernahme aus 3.8)', bloecke: [] },
+    ] };
+    const r = gdMitStandardAbgleichen(alt, [], standard);
+    expect(r.neueKapitel).toHaveLength(0);
+    expect(r.dok.kapitel.map(k => k.titel)).toEqual(['Elektrotechnik', 'Bedarfsprognose (Soll)', 'Zusatzbedarf aus Wärmekonzept (Übernahme aus 3.8)']);
   });
 });
 

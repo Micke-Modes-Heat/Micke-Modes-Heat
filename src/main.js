@@ -96,6 +96,7 @@ import * as elErgebnisblatt from './19-el-ergebnisblatt.js';
 import * as kartendrehung from './20-kartendrehung.js';
 import * as gutachtenEditor from './21-gutachten-editor.js';
 import * as netzanschlussPanel from './22-netzanschluss-panel.js';
+import * as messjahrePanel from './23-messjahre-panel.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -113,7 +114,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel,
+  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});

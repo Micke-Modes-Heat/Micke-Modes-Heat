@@ -11,17 +11,23 @@
 // Rückbau später anteilig an der Messung ausgerichtet wird, ist noch offen —
 // eine Änderung gehört dann hierher und gilt für beide Stellen zugleich.
 //
+// Erzeugung (Entscheidung 09/2026, dimensionierungssicher): PV, KWK, Wind und Batterien im
+// Einspeisebetrieb mindern die Bezugsleistung NICHT — zum Zeitpunkt der Höchstlast ist ihre
+// Leistung nicht gesichert. Ihre Einspeiseleistung wird getrennt ausgewiesen (Gutachten 3.3.4) —
+// mit voller Nennleistung ohne Gleichzeitigkeitsfaktor, weil z. B. PV-Anlagen zeitgleich einspeisen.
+// Notstromaggregate laufen nur bei Netzausfall und zählen weder als Last noch als Erzeugung.
+//
 // Importfrei und DOM-frei → direkt in Unit-Tests nutzbar.
 
 /** Asset-Typen mit Leistungsbeitrag am Netzanschlusspunkt. */
-export const BP_LEISTUNGS_TYPEN = ['Verbraucher', 'Lade', 'TWW', 'WP', 'Geo', 'FG', 'Stromkessel', 'Nsa', 'PV', 'KWK', 'Wind', 'Batterie'];
+export const BP_LEISTUNGS_TYPEN = ['Verbraucher', 'Lade', 'TWW', 'WP', 'Geo', 'FG', 'Stromkessel', 'PV', 'KWK', 'Wind', 'Batterie'];
 
 const ERZEUGER_TYPEN    = ['PV', 'Wind', 'KWK'];
-const VERBRAUCHER_TYPEN = ['Verbraucher', 'Lade', 'TWW', 'WP', 'Geo', 'FG', 'Stromkessel', 'Nsa'];
+const VERBRAUCHER_TYPEN = ['Verbraucher', 'Lade', 'TWW', 'WP', 'Geo', 'FG', 'Stromkessel'];
 
 /**
  * Stufen der Bedarfsprognose in Gutachten-Reihenfolge. Jede Stufe baut auf der
- * vorigen auf. Typen ohne Stufe (Erzeugung, Batterie, Notstrom) laufen unter
+ * vorigen auf. Übrige Verbraucher (z. B. Batterie im Ladebetrieb) laufen unter
  * „sonstige" und gehen erst in die resultierende Anschlussleistung (3.3.4) ein.
  */
 export const BP_STUFEN = [
@@ -79,7 +85,6 @@ export function bpAssetLeistung(a) {
     case 'Geo':
     case 'FG':          loadKW = zahl(ep.leistungElKW) || zahl(ep.leistungKW); break;
     case 'Stromkessel': loadKW = zahl(ep.leistungKW); break;
-    case 'Nsa':         loadKW = zahl(ep.leistungKW); break;
     case 'PV':          genKW  = zahl(ep.leistungKWp); break;
     case 'KWK':         genKW  = zahl(ep.leistungElKW); break;
     case 'Wind':        genKW  = zahl(ep.leistungKW); break;
@@ -150,14 +155,14 @@ export function bpWirkungImJahr(m, jahr) {
   return (jahr < bj || jahr >= aj) ? 0 : 1;
 }
 
-/** Zusätzliche Bezugs-/Einspeiseleistung aller übergebenen Maßnahmen in einem Jahr, mal GZF. */
+/** Zusätzliche Bezugsleistung (mal GZF) und Einspeiseleistung (volle Nennleistung) aller übergebenen Maßnahmen in einem Jahr. */
 export function bpLastJahr(massnahmen, jahr, gzf) {
   let addLoad = 0, addGen = 0;
   for (const m of massnahmen || []) {
     const s = bpWirkungImJahr(m, jahr);
     if (!s) continue;
     addLoad += s * m.loadKW * gzf;
-    addGen  += s * m.genKW  * gzf;
+    addGen  += s * m.genKW;
   }
   return { addLoad, addGen };
 }
@@ -175,22 +180,36 @@ export function bpZieljahr(massnahmen) {
 
 const summe = arr => arr.reduce((s, v) => s + v, 0);
 
+/** Bezugsleistung (mal GZF) und Einspeiseleistung (ohne GZF) je Jahr von `von` bis `bis` — nur angehakte Maßnahmen. */
+export function bpJahresreihe({ basisKw = 0, gzf = 1, massnahmen = [], von, bis } = {}) {
+  const aktiv = (massnahmen || []).filter(m => m.checked);
+  const out = [];
+  for (let jahr = von; jahr <= bis; jahr++) {
+    const { addLoad, addGen } = bpLastJahr(aktiv, jahr, gzf);
+    out.push({ jahr, bezugKw: basisKw + addLoad, einspeisungKw: addGen });
+  }
+  return out;
+}
+
 /**
  * Leistungsstufen bis zum Zieljahr: Bestand → Gebäude → Wärmekonzept →
  * Ladeinfrastruktur (→ sonstige). Nur angehakte Maßnahmen zählen.
- * Jeder Eintrag trägt seine vorzeichenbehaftete Wirkung `kw` (mal GZF).
- * Die Summe aller Stufen entspricht exakt bpLastJahr im Zieljahr.
+ * Jeder Eintrag trägt seine vorzeichenbehaftete Bezugswirkung `kw` (mal GZF); Erzeugung
+ * mindert den Bezug nicht und steht getrennt unter `einspeisung`.
+ * endKw entspricht exakt Basis + bpLastJahr(...).addLoad im Zieljahr, einspeisung.kw dessen addGen.
  */
 export function bpStufen({ basisKw = 0, gzf = 1, massnahmen = [], zieljahr = null } = {}) {
   const alle  = massnahmen || [];
   const aktiv = alle.filter(m => m.checked);
   const zj = Number.isFinite(zieljahr) ? zieljahr : bpZieljahr(aktiv);
 
-  const eintraege = [];
+  const eintraege = [], einspeiseEintraege = [];
   if (zj != null) {
     for (const m of aktiv) {
       const s = bpWirkungImJahr(m, zj);
-      if (s) eintraege.push({ m, kw: s * (m.loadKW - m.genKW) * gzf });
+      if (!s) continue;
+      if (m.loadKW > 0) eintraege.push({ m, kw: s * m.loadKW * gzf });
+      if (m.genKW > 0)  einspeiseEintraege.push({ m, kw: s * m.genKW });   // Einspeisung ohne GZF
     }
   }
 
@@ -210,6 +229,7 @@ export function bpStufen({ basisKw = 0, gzf = 1, massnahmen = [], zieljahr = nul
     zieljahr: zj, basisKw, gzf, stufen,
     sonstige: { kw: sonstigeKw, eintraege: sonst },
     endKw: stand + sonstigeKw,
+    einspeisung: { kw: summe(einspeiseEintraege.map(x => x.kw)), eintraege: einspeiseEintraege },
     abgewaehlt: alle.length - aktiv.length,
   };
 }

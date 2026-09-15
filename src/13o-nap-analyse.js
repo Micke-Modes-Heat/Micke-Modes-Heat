@@ -13,7 +13,7 @@ import { makePvProfile8760 } from './09a-pv-profile.js';
 import { getElSlpProfiles } from './13k-elslp-registry.js';
 import { windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 import { escHtml } from './03c-gebaeude-io.js';
-import { BP_LEISTUNGS_TYPEN, bpAssetLeistung, bpMassnahmen, bpLastJahr, bpNormGzf, bpLadeLeistung } from './lib/bedarfsprognose.js';
+import { BP_LEISTUNGS_TYPEN, bpAssetLeistung, bpMassnahmen, bpLastJahr, bpNormGzf, bpLadeLeistung, bpZieljahr } from './lib/bedarfsprognose.js';
 
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 const _N = {
@@ -149,7 +149,7 @@ function _napBuildProfileDescriptor(asset, gzf) {
       // P_h = pvProf[hoy] / pvProf_peak * kWp  →  P_max = kWp
       let pvPeak = 0;
       for (let i = 0; i < pvProf.length; i++) if (pvProf[i] > pvPeak) pvPeak = pvProf[i];
-      if (pvPeak > 0) return { mode: 'pv', pvProf, scale: (kWp / pvPeak) * gzf };
+      if (pvPeak > 0) return { mode: 'pv', pvProf, scale: kWp / pvPeak };   // Einspeisung ohne GZF (lib/bedarfsprognose.js)
     }
   }
 
@@ -167,7 +167,7 @@ function _napBuildProfileDescriptor(asset, gzf) {
     };
     const windProf = _getWindProfile(asset, cfg);
     // windProf liefert bereits reale kW-Werte (kein Peak-Rescaling wie bei PV nötig)
-    return { mode: 'wind', windProf, gzf };
+    return { mode: 'wind', windProf, gzf: 1 };   // Einspeisung ohne GZF
   }
 
   return null; // kein Profil → statisch im Aufrufer
@@ -182,7 +182,7 @@ function _napEvalDescriptor(desc, tsMs) {
   const hoy = _tsToHoy(tsMs);
 
   if (desc.mode === 'custom') {
-    const val = profilAt(desc.asset.profil, tsMs) * desc.gzf;
+    const val = profilAt(desc.asset.profil, tsMs) * (desc.dir === 'bezug' ? desc.gzf : 1);   // Einspeisung ohne GZF
     const mag = Math.abs(val);
     return desc.dir === 'bezug'
       ? { bezugKW: mag, einspKW: 0 }
@@ -254,7 +254,7 @@ export function napShowSection(visible) {
   wrap.style.display = visible ? '' : 'none';
   if (visible) {
     // Auto-Feed aus Strom-Grundlagen wenn kein eigener Upload vorhanden
-    if (!_N.data && !_N.manuallyRemoved && window.elQuartierH15) {
+    if (!_N.data && !_N.manuallyRemoved && (window.elQuartierH15 || window.elQuartierH)) {
       napLoadFromStromGrundlagen();
       return; // napRenderPanel wird intern aufgerufen
     }
@@ -321,12 +321,13 @@ function _napUebernehmeStromGrundlagen() {
   return true;
 }
 
-// Wird von stromFileSelected / stromClear aufgerufen (kein direkter Import nötig)
+// Wird vom Messjahre-Panel (23) aufgerufen, sobald das Referenzjahr wechselt (kein direkter Import nötig)
 window.napOnStromGrundlagenChanged = function() {
-  if (!_N.manuallyRemoved || window.elQuartierH15) {
-    // Bei neuem Upload immer aktualisieren; bei Löschen nur wenn Daten aus SG kamen
+  const hatLastgang = !!(window.elQuartierH15 || window.elQuartierH);
+  if (!_N.manuallyRemoved || hatLastgang) {
+    // Neues Referenzjahr immer übernehmen; ohne Referenzjahr nur zurücksetzen, wenn die Daten aus SG kamen
     if (_N.data?.fromStromGrundlagen || !_N.data) {
-      if (window.elQuartierH15) {
+      if (hatLastgang) {
         napLoadFromStromGrundlagen();
       } else if (_N.data?.fromStromGrundlagen) {
         // Strom-Grundlagen gelöscht → NAP-Daten zurücksetzen
@@ -424,7 +425,8 @@ function _napCalcYearlyLoads() {
   for (let yr = minY; yr <= endY; yr++) {
     // Neubau wirkt zwischen Bau- und Abrissjahr, Abriss ab Abrissjahr negativ
     const { addLoad, addGen } = bpLastJahr(list, yr, gzf);
-    rows.push({ year: yr, basePeak, addLoad, addGen, addNet: addLoad - addGen, total: basePeak + addLoad - addGen });
+    // Erzeugung mindert den Bezug nicht (dimensionierungssicher, wie Gutachten 3.3.4) — Einspeisung bleibt getrennt in addGen
+    rows.push({ year: yr, basePeak, addLoad, addGen, total: basePeak + addLoad });
   }
   return rows;
 }
@@ -558,7 +560,7 @@ export function napComputeSynthetic(napId, forceBFS = false) {
       if (!desc) {
         const sign = m.isAbbruch ? -1 : 1;
         staticBezug += (m.loadKW || 0) * gzf * sign;
-        staticEinsp += (m.genKW  || 0) * gzf * sign;
+        staticEinsp += (m.genKW  || 0) * sign;   // Einspeisung ohne GZF
       }
     }
     const dynEntries = entries.filter(e => !!e.desc);
@@ -691,9 +693,10 @@ export function napHasMeasuredData() {
 // ── Endausbau-Lastgang für PV-Analyse ────────────────────────────────────────
 // Überlagert den gemessenen Bestands-Lastgang additiv mit allen Neubau-/Abriss-
 // Maßnahmen, deren Bau- bzw. Abrissjahr bis (inkl.) bisJahr liegt.
-// Unabhängig vom Checkbox-Status in der NAP-Maßnahmenliste (UI-State).
+// Standardmäßig unabhängig vom Checkbox-Status der Maßnahmenliste (PV-Analyse); mit nurAngehakt
+// nur die angehakten Einträge — dieselbe Auswahl wie die Stufenrechnung (Gutachten 3.3.4).
 // Gibt null zurück wenn keine Messung oder keine relevanten Maßnahmen vorhanden.
-export function napGetEndausbauLastgang(bisJahr) {
+export function napGetEndausbauLastgang(bisJahr, { nurAngehakt = false } = {}) {
   const baseMeasured = _N.baseMeasuredData || _N.data;
   if (!baseMeasured?.raw?.length) return null;
 
@@ -701,6 +704,7 @@ export function napGetEndausbauLastgang(bisJahr) {
   const allA     = _allAssets();
   const dataYear = baseMeasured.year || _yr();
   const zielJahr = bisJahr || dataYear;
+  const angehakt = nurAngehakt ? new Set((_N.massnahmen || []).filter(m => m.checked).map(m => m.id)) : null;
 
   const entries = [];
   for (const a of allA) {
@@ -709,14 +713,14 @@ export function napGetEndausbauLastgang(bisJahr) {
     const aj = parseInt(a.abrissjahr) || null;
 
     // Neubau: realisiert zwischen Datenjahr und Zieljahr
-    if (bj && bj > dataYear && bj <= zielJahr) {
+    if (bj && bj > dataYear && bj <= zielJahr && (!angehakt || angehakt.has(a.id))) {
       const { loadKW, genKW } = _assetPower(a);
       const desc = _napBuildProfileDescriptor(a, gzf);
       entries.push({ asset: a, desc, isAbbruch: false, loadKW, genKW });
     }
 
     // Abriss: Asset heute noch vorhanden, Abriss bis Zieljahr durchgeführt
-    if (aj && aj > dataYear && aj <= zielJahr && (!bj || bj <= dataYear)) {
+    if (aj && aj > dataYear && aj <= zielJahr && (!bj || bj <= dataYear) && (!angehakt || angehakt.has(a.id + '__abr'))) {
       const { loadKW, genKW } = _assetPower(a);
       if (loadKW > 0 || genKW > 0) {
         const desc = _napBuildProfileDescriptor(a, gzf);
@@ -733,7 +737,7 @@ export function napGetEndausbauLastgang(bisJahr) {
     if (e.desc) continue;
     const sign = e.isAbbruch ? -1 : 1;
     staticBezug += (e.loadKW || 0) * gzf * sign;
-    staticEinsp += (e.genKW  || 0) * gzf * sign;
+    staticEinsp += (e.genKW  || 0) * sign;   // Einspeisung ohne GZF
   }
   const dynEntries = entries.filter(e => !!e.desc);
 
@@ -763,84 +767,20 @@ export function napGetEndausbauLastgang(bisJahr) {
   };
 }
 
-// ── CSV-Import ───────────────────────────────────────────────────────────────
-export function napDropFile(evt) {
-  const file = evt.dataTransfer?.files?.[0];
-  if (file) _napReadFile(file);
-}
-export function napLoadFile(input) {
-  const file = input.files?.[0];
-  if (file) _napReadFile(file);
-}
-function _napReadFile(file) {
-  const reader = new FileReader();
-  reader.onerror = () => alert('Fehler beim Lesen der Datei.');
-  reader.onload  = e => {
-    const result = napParseCSV(e.target.result, file.name);
-    if (!result) {
-      alert('CSV konnte nicht gelesen werden.\nFormat: Semikolon · Datum/Zeit + kW · mind. 10 Messwerte');
-      return;
-    }
-    result.stats       = napCalcStats(result.raw);
-    _N.data            = result;
-    _N.baseMeasuredData= result;
-    _N.topSeriesMode   = 'gemessen';
-    _N.chartMode       = 'zeitreihe';
-    _N.zeitMonth       = null;
-    napBuildMassnahmen();
-    napRenderPanel();
-    _napShowImportPopup(result, file.name);
-  };
-  reader.readAsText(file, 'windows-1252');
-}
-
-export function napParseCSV(text, filename) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 3) return null;
-  const hdr  = lines[0].split(';').map(h => h.trim().replace(/['"]/g,''));
-  const hdrl = hdr.map(h => h.toLowerCase().replace(/\s+/g,''));
-  let dateCol=-1, timeCol=-1, tsCol=-1, valCol=-1;
-  for (let i=0; i<hdrl.length; i++) {
-    const h = hdrl[i];
-    if (tsCol  <0 && (h.includes('timestamp')||h.includes('zeitstempel')||h==='ts'||h==='datetime')) tsCol=i;
-    if (dateCol<0 && (h.includes('datum')||h==='date'||h==='dat'))                                    dateCol=i;
-    if (timeCol<0 && (h==='zeit'||h==='time'||h==='uhrzeit') && !h.includes('datum'))                timeCol=i;
-    if (valCol <0 && (h.includes('kw')||h.includes('leistung')||h.includes('wirkleistung')||
-                      h==='p'||h==='wert'||h.includes('power')||h.includes('last')||h.includes('bezug')))
-      valCol=i;
-  }
-  if (valCol<0) {
-    const fd=lines[1].split(';');
-    for (let i=fd.length-1;i>=0;i--) { if (!isNaN(parseFloat(fd[i].trim().replace(',','.')))) { valCol=i; break; } }
-  }
-  if (valCol<0) return null;
-  const multiplier=(hdrl[valCol]||'').includes('mw')&&!(hdrl[valCol]||'').includes('kw')?1000:1;
-  function parseTS(row) {
-    let s='';
-    if      (tsCol  >=0)                  s=(row[tsCol]||'').trim();
-    else if (dateCol>=0&&timeCol>=0)      s=((row[dateCol]||'')+' '+(row[timeCol]||'')).trim();
-    else if (dateCol>=0)                  s=(row[dateCol]||'').trim();
-    else                                  s=((row[0]||'')+' '+(row[1]||'')).trim();
-    s=s.replace(/['"]/g,'');
-    let m=s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
-    if (m) return new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0));
-    m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s]+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
-    if (m) return new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0));
-    return null;
-  }
-  const raw=[];
-  for (let i=1;i<lines.length;i++) {
-    const row=lines[i].split(';');
-    if (row.length<=valCol) continue;
-    const ts=parseTS(row);
-    if (!ts||isNaN(ts.getTime())) continue;
-    const kw=parseFloat((row[valCol]||'').trim().replace(/['"]/g,'').replace(',','.'))*multiplier;
-    if (isNaN(kw)) continue;
-    raw.push({ts,kw});
-  }
-  if (raw.length<10) return null;
-  raw.sort((a,b)=>a.ts-b.ts);
-  return {raw,filename,year:raw[0].ts.getFullYear()};
+/**
+ * Vergleichswert für Gutachten 3.3.4: Höchstlast des zeitgleich überlagerten Endausbau-Lastgangs
+ * (Referenzjahr + Profile der angehakten Maßnahmen bis zum Zieljahr, Erzeugung zeitgleich gegengerechnet).
+ * Maßgeblich bleibt die statische Stufenrechnung. null ohne Messung oder ohne Maßnahmen.
+ */
+export function napEndausbauKennzahlen() {
+  napBedarfsStand();   // Messung übernehmen und Maßnahmenliste aufbauen, wie die übrigen Gutachten-Abbildungen
+  const zieljahr = bpZieljahr(_N.massnahmen || []);
+  if (zieljahr == null) return null;
+  const lg = napGetEndausbauLastgang(zieljahr, { nurAngehakt: true });
+  if (!lg) return null;
+  let max = -Infinity, min = Infinity;
+  for (const v of lg.arr) { if (v > max) max = v; if (v < min) min = v; }
+  return { zieljahr, dataYear: lg.dataYear, bezugMaxKw: Math.max(0, max), rueckMaxKw: Math.max(0, -min), nMassnahmen: lg.nMassnahmen };
 }
 
 export function napCalcStats(raw) {
@@ -901,53 +841,6 @@ export function napCalcStats(raw) {
           ueberschreitungsstunden80,datenvollstaendigkeit,fehlendSlots};
 }
 
-// ── Import-Popup ─────────────────────────────────────────────────────────────
-function _napShowImportPopup(result, filename) {
-  const s=result.stats;
-  const vollst=s.datenvollstaendigkeit;
-  const qualCol=vollst>95?'#66bb6a':vollst>80?'#f9a825':'#ef5350';
-  const qualText=vollst>95?'Sehr gut':vollst>80?'Gut':'Lückenhaft';
-  const fmt=v=>v>=1000?`${(v/1000).toFixed(2)} MW`:`${v.toFixed(0)} kW`;
-  const fmtE=v=>v>=1e6?`${(v/1e6).toFixed(2)} GWh`:`${(v/1e3).toFixed(1)} MWh`;
-  const overlay=document.createElement('div');
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML=`
-<div style="background:#1a1a2e;border:1px solid #2a3a5a;border-radius:10px;padding:0;width:500px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.8);font-family:sans-serif;overflow:hidden;">
-  <div style="background:#0f1020;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2a2a40;">
-    <div><div style="font-size:14px;font-weight:700;color:#80cbc4;">📂 Import abgeschlossen</div>
-    <div style="font-size:10px;color:#555;margin-top:2px;">${filename}</div></div>
-    <button onclick="this.closest('[style*=fixed]').remove()"
-      style="background:transparent;border:1px solid #333;border-radius:4px;color:#aaa;cursor:pointer;font-size:14px;padding:2px 8px;">✕</button>
-  </div>
-  <div style="padding:14px 18px;border-bottom:1px solid #2a2a40;">
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:8px;">Datenqualität</div>
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
-      <div style="flex:1;height:8px;background:#1e1e30;border-radius:4px;overflow:hidden;">
-        <div style="width:${vollst.toFixed(1)}%;height:100%;background:${qualCol};border-radius:4px;"></div></div>
-      <span style="font-weight:700;color:${qualCol};">${vollst.toFixed(1)} % – ${qualText}</span>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:10px;">
-      <div style="background:#1e1e30;border-radius:4px;padding:6px 8px;"><div style="color:#666;margin-bottom:2px;">Messwerte</div><div style="font-weight:700;color:#ccc;">${s.n.toLocaleString('de-DE')}</div></div>
-      <div style="background:#1e1e30;border-radius:4px;padding:6px 8px;"><div style="color:#666;margin-bottom:2px;">Lücken</div><div style="font-weight:700;color:${s.fehlendSlots>0?'#f9a825':'#66bb6a'};">${s.fehlendSlots.toLocaleString('de-DE')} Slots</div></div>
-      <div style="background:#1e1e30;border-radius:4px;padding:6px 8px;"><div style="color:#666;margin-bottom:2px;">Vollständigkeit</div><div style="font-weight:700;color:${qualCol};">${vollst.toFixed(1)} %</div></div>
-    </div>
-  </div>
-  <div style="padding:14px 18px;border-bottom:1px solid #2a2a40;">
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:8px;">Kennzahlen</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;">
-      ${[['Messjahr',`${s.year}`,'#aaa'],['Jahreshöchstlast',fmt(s.peak),'#ef5350'],['Grundlast',fmt(s.grundlast),'#80cbc4'],['Mittellast',fmt(s.mean),'#64b5f6'],['Lastfaktor',`${(s.lastfaktor*100).toFixed(1)} %`,'#ce93d8'],['Benutzungsdauer',`${Math.round(s.benutzungsdauer)} h`,'#ffa726'],['Jahresenergie',fmtE(s.jahresenergie),'#ffa726'],['>80%-Stunden',`${s.ueberschreitungsstunden80.toFixed(0)} h`,'#ef9a9a']]
-      .map(([l,v,c])=>`<div style="background:#1e1e30;border-radius:4px;padding:6px 8px;display:flex;justify-content:space-between;"><span style="color:#555">${l}</span><span style="font-weight:700;color:${c}">${v}</span></div>`).join('')}
-    </div>
-  </div>
-  <div style="padding:10px 18px;display:flex;justify-content:flex-end;">
-    <button onclick="this.closest('[style*=fixed]').remove()"
-      style="background:#1e4a3a;border:1px solid #26a69a;border-radius:5px;color:#80cbc4;cursor:pointer;font-size:11px;padding:6px 20px;font-weight:600;">OK</button>
-  </div>
-</div>`;
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
-}
-
 // ── Haupt-Render ─────────────────────────────────────────────────────────────
 export function napRenderPanel() {
   // Maßnahmen immer neu aufbauen (erhält checked-States, reagiert auf Asset-Änderungen)
@@ -980,8 +873,8 @@ function _napRenderSidebar() {
   const chk       = list.filter(m => m.checked);
   // Abriss-Einträge zählen negativ (reduzieren Last/Einspeisung)
   const totalAddLoad = chk.reduce((a,m) => a + (m.isAbbruch ? -m.loadKW : m.loadKW), 0) * gzf;
-  const totalAddGen  = chk.reduce((a,m) => a + (m.isAbbruch ? -m.genKW  : m.genKW),  0) * gzf;
-  const totalNet     = totalAddLoad - totalAddGen;
+  const totalAddGen  = chk.reduce((a,m) => a + (m.isAbbruch ? -m.genKW  : m.genKW),  0);   // ohne GZF
+  // Erzeugung mindert den Bezug nicht (lib/bedarfsprognose.js) — keine Netto-Verrechnung
 
   // NAP-Selektor / Overlay-Info
   let napBlock = '';
@@ -1032,41 +925,35 @@ function _napRenderSidebar() {
 </div>` : '';
   }
 
-  // CSV-Import
+  // Messdaten: nur das Referenzjahr aus ⚡ Strom-Grundlagen › Messjahre (23-messjahre-panel.js)
+  const hatReferenz = !!(window.elQuartierH15 || window.elQuartierH);
   const importBlock = `
 <div style="margin-bottom:10px;">
-  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:5px;">Gemessene Daten (CSV)</div>
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:5px;">Gemessene Daten (Referenzjahr)</div>
   ${csvData?`
   <div style="background:#1e1e30;border-radius:5px;padding:7px 8px;font-size:10px;color:#aaa;">
-    ${csvData.fromStromGrundlagen
-      ? `<span style="color:#ffd54f;font-size:9px;font-weight:600;">⚡ Aus Strom-Grundlagen</span><br>`
-      : `📄 `}${csvData.filename}<br>
+    <span style="color:#ffd54f;font-size:9px;font-weight:600;">⚡ Aus Strom-Grundlagen</span><br>
+    ${escHtml(csvData.filename)}<br>
     <span style="color:#666;">${csvData.year} · ${csvData.raw.length.toLocaleString('de')} Werte</span>
   </div>
   <button onclick="napRemoveMeasuredData()"
     style="margin-top:5px;width:100%;padding:4px;border:1px solid #ef535055;border-radius:4px;background:transparent;color:#ef5350;cursor:pointer;font-size:10px;">
-    ${csvData.fromStromGrundlagen ? '↩ Strom-Grundlagen-Daten ausblenden' : '✕ Datei entfernen'}
+    ↩ Messdaten ausblenden
   </button>
-  `:`
-  ${window.elQuartierH15 ? `
+  `: hatReferenz ? `
   <div style="background:#1e2030;border:1px solid #26a69a44;border-radius:5px;padding:7px 8px;font-size:10px;color:#aaa;margin-bottom:6px;">
-    <span style="color:#ffd54f;font-size:9px;font-weight:600;">⚡ Strom-Grundlagen verfügbar</span><br>
-    <span style="color:#666;">${window.elQuartierFilename || ''} · ${window.elQuartierH15.length.toLocaleString('de')} Werte</span>
+    <span style="color:#ffd54f;font-size:9px;font-weight:600;">⚡ Referenzjahr verfügbar</span><br>
+    <span style="color:#666;">${escHtml(window.elQuartierFilename || '')}</span>
   </div>
   <button onclick="napLoadFromStromGrundlagen()"
     style="width:100%;padding:6px;border:1px solid #26a69a55;border-radius:4px;background:#26a69a11;color:#26a69a;cursor:pointer;font-size:10px;margin-bottom:6px;">
     ↓ Jetzt laden
-  </button>` : ''}
-  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 8px;
-    border:1.5px dashed #2a3a3a;border-radius:6px;background:#141420;"
-    ondragover="event.preventDefault();this.style.borderColor='#26a69a'"
-    ondragleave="this.style.borderColor=''"
-    ondrop="event.preventDefault();napDropFile(event)">
-    <span style="font-size:18px;">📂</span>
-    <span><div style="font-size:10px;color:#ccc;font-weight:600;">Eigene CSV laden</div>
-    <div style="font-size:9px;color:#666;">Semikolon · Datum/Zeit + kW</div></span>
-    <input type="file" accept=".csv,.txt" style="display:none" onchange="napLoadFile(this)">
-  </label>`}
+  </button>` : `
+  <div style="font-size:9px;color:#888;line-height:1.5;margin-bottom:6px;">Keine Messdaten. Lastgänge werden unter ⚡ Strom-Grundlagen › Messjahre geladen; die NAP-Analyse rechnet mit dem dort gewählten Referenzjahr.</div>`}
+  <button onclick="sgMjOeffnen()"
+    style="margin-top:5px;width:100%;padding:4px;border:1px solid #ffd54f55;border-radius:4px;background:transparent;color:#ffd54f;cursor:pointer;font-size:10px;">
+    ⚡ Messjahre verwalten
+  </button>
 </div>`;
 
   // KPIs
@@ -1121,7 +1008,7 @@ function _napRenderSidebar() {
       ? `<span style="color:${isAbr?'#a5d6a7':'#ef9a9a'};font-weight:600;">${isAbr?'−':'+'}${(m.loadKW*gzf).toFixed(0)}</span>`
       : `<span style="color:#333">–</span>`;
     const genCell  = m.genKW  > 0
-      ? `<span style="color:${isAbr?'#ef9a9a':'#a5d6a7'};font-weight:600;">${isAbr?'−':'−'}${(m.genKW*gzf).toFixed(0)}</span>`
+      ? `<span style="color:${isAbr?'#ef9a9a':'#a5d6a7'};font-weight:600;">${isAbr?'−':'−'}${m.genKW.toFixed(0)}</span>`
       : `<span style="color:#333">–</span>`;
     const abrTag = isAbr
       ? `<span style="font-size:8px;background:#ef535022;color:#ef7373;border-radius:2px;padding:0 3px;margin-right:2px;">Abriss</span>`
@@ -1161,17 +1048,14 @@ function _napRenderSidebar() {
     </table></div>
     <div style="margin-top:5px;background:#1e1e30;border-radius:4px;padding:5px 7px;font-size:10px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
-        <span style="color:#777;">⬆ Verbrauch (GZF ${gzf.toFixed(2)})</span>
-        <span style="color:#ef9a9a;font-weight:600;">+${totalAddLoad.toFixed(0)} kW</span>
+        <span style="color:#aaa;font-weight:600;">⬆ Bezug Zubau (GZF ${gzf.toFixed(2)}, ${chk.length} aktiv)</span>
+        <span style="color:${totalAddLoad>0?'#ef5350':'#66bb6a'};font-weight:700;">${totalAddLoad>0?'+':''}${totalAddLoad.toFixed(0)} kW</span>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-        <span style="color:#777;">⬇ Einspeisung</span>
-        <span style="color:#a5d6a7;font-weight:600;">-${totalAddGen.toFixed(0)} kW</span>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:#777;">⬇ Einspeisung Zubau (Nennleistung, ohne GZF)</span>
+        <span style="color:#a5d6a7;font-weight:600;">${totalAddGen.toFixed(0)} kW</span>
       </div>
-      <div style="display:flex;justify-content:space-between;border-top:1px solid #2a2a3e;padding-top:3px;">
-        <span style="color:#aaa;font-weight:600;">Netto NAP (${chk.length} aktiv)</span>
-        <span style="color:${totalNet>0?'#ef5350':'#66bb6a'};font-weight:700;">${totalNet>0?'+':''}${totalNet.toFixed(0)} kW</span>
-      </div>
+      <div style="font-size:9px;color:#666;margin-top:3px;">Erzeugung mindert den Bezug nicht (dimensionierungssicher, wie Gutachten 3.3.4).</div>
     </div>`}
 </div>`;
 
@@ -1725,7 +1609,7 @@ export function napExportPDF() {
   ${chk.map((m,i)=>`<tr style="background:${i%2?'#f9f9f9':'#fff'};">
     <td style="padding:3px 6px;border:1px solid #ddd;">${m.name}</td>
     <td style="padding:3px 6px;text-align:right;border:1px solid #ddd;">${m.loadKW>0?(m.loadKW*gzf).toFixed(0):'–'}</td>
-    <td style="padding:3px 6px;text-align:right;border:1px solid #ddd;">${m.genKW>0?(m.genKW*gzf).toFixed(0):'–'}</td>
+    <td style="padding:3px 6px;text-align:right;border:1px solid #ddd;">${m.genKW>0?m.genKW.toFixed(0):'–'}</td>
     <td style="padding:3px 6px;text-align:center;border:1px solid #ddd;">${m.baujahr||'–'}</td>
   </tr>`).join('')}
   </tbody></table>`;
@@ -2130,8 +2014,6 @@ window.napSetSelectedNap        = napSetSelectedNap;
 window.napRemoveMeasuredData    = napRemoveMeasuredData;
 window.napToggleMassnahme       = napToggleMassnahme;
 window.napToggleAllMassnahmen   = napToggleAllMassnahmen;
-window.napDropFile                  = napDropFile;
-window.napLoadFile                  = napLoadFile;
 window.napLoadFromStromGrundlagen   = napLoadFromStromGrundlagen;
 window.napComputeSyntheticAndShow = napComputeSyntheticAndShow;
 window.napExportPDF             = napExportPDF;

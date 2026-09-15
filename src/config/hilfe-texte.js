@@ -145,8 +145,6 @@ export const HILFE_TEXTE = {
   'netz-sanierung-toggle': 'Netz-Sanierung: Simuliert Wärmedämmverbesserung des Bestandsnetzes.',
   'pv-clear-btn': 'PV-Lastgang löschen und zum berechneten Standardprofil zurückkehren.',
   'pv-file-input': 'PV-Lastgang als CSV hochladen (8760 Stundenwerte in kW).',
-  'strom-clear-btn': 'Strom-Lastgang löschen und zum SLP-Standardprofil zurückkehren.',
-  'strom-file-input': 'Strom-Lastgang als CSV hochladen (Smart-Meter-Daten, 8760 Stundenwerte).',
   'strom-szenario': 'Strom-Netz Szenario: Spitzenlast, PV-Maximum, Rückspeisung oder Jahresmittel.',
   'bhkw-co2-gutschrift-toggle': 'CO₂-Gutschrift für BHKW-Strom: Vermiedene Emissionen aus dem Stromnetz werden dem BHKW gutgeschrieben.',
   'pv-co2-gutschrift-toggle': 'CO₂-Gutschrift für PV-Eigenverbrauch: Vermiedene Netzstrom-Emissionen werden der PV gutgeschrieben.',

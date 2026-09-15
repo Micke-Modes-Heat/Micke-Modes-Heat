@@ -394,7 +394,7 @@ function pvInfraKosten(pvKwp, pvErtragMwh) {
 // KERN-SIMULATION (NAP-aware, dt-generic)
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Speichermodell — gilt für Netzbetrieb und Resilienz; der Gutachtentext 3.5.2 nennt diese Werte.
+// Speichermodell — gilt für Netzbetrieb und Resilienz; der Gutachtentext 3.4.2 nennt diese Werte.
 const PV_BAT_ETA    = 0.90;   // Wirkungsgrad je Lade- bzw. Entladevorgang
 const PV_BAT_C_RATE = 0.5;    // Lade-/Entladeleistung in kW = 0,5 × Kapazität in kWh
 
@@ -1127,7 +1127,7 @@ export function pvBerechneAlle() {
     berechne('max-pv', maxKwp, 0, 'none');
     const eMaxPv = ergebnisse[ergebnisse.length - 1];
     if (eMaxPv && nullAbrHinweis) eMaxPv.hinweis = nullAbrHinweis;
-    if (eMaxPv && nullAbr) eMaxPv.nullAbr = nullAbr;   // Zahlen für den Gutachtentext 3.5.2
+    if (eMaxPv && nullAbr) eMaxPv.nullAbr = nullAbr;   // Zahlen für den Gutachtentext 3.4.2
   }
 
   // ── Rückspeise- & Erzeugungsnetz-Beurteilung je Variante ──
@@ -1187,7 +1187,7 @@ export function pvBerechneAlle() {
   state.stale      = false;
   state.lastParams = params;
   state.lastProfilQuelle = pvGetProfilQuelle();   // Herkunft mitprotokollieren
-  // Datenbasis dieses Laufs für den Gutachtentext 3.5.2 (17) — damit der Text denselben
+  // Datenbasis dieses Laufs für den Gutachtentext 3.4.2 (17) — damit der Text denselben
   // Stand zeigt wie Tabelle und Abbildungen, nicht zwischenzeitlich geänderte Eingaben.
   state.basis = {
     bedarfMwh: pvGesamtBedarfMwh(), dt: pvGetDt(), lastgangDatei: window.elQuartierFilename || '',
@@ -1673,7 +1673,7 @@ function _pvBuildPanelHtml() {
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
     <div>
       <div style="font-size:15px;font-weight:600;color:var(--text);letter-spacing:.06em;text-transform:uppercase;">PV-Ausbauanalyse</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;">Variantenstudie · Wirtschaftlichkeit · Netzintegration &nbsp;·&nbsp; Kapitel 3.5.2 / 3.6</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">Variantenstudie · Wirtschaftlichkeit · Netzintegration &nbsp;·&nbsp; Kapitel 3.4.2 / 3.5</div>
     </div>
     <div style="display:flex;gap:6px;">
       <button class="btn-secondary" data-click="pvaSetView('annahmen')" style="font-size:11px;">Annahmenblatt</button>
@@ -4823,6 +4823,7 @@ function renderResilienz(varianten, overrideEl) {
     window._pvResReco = {
       genKw: hasGenset ? recGenKw : 0, peakKW: Math.ceil(peakLoad),
       durH, kraftstoff: fuel.label, fuelId: _pvResFuel, mode: _pvResMode, ts: Date.now(),
+      loadFracPct: _pvResLoadFrac, usablePct: _pvResUsable,   // Notbetriebslast / nutzbare Kapazität (Gutachten 3.4.3)
       pvKwp, batKwh, bridgeH, isWorst, selStart, worstStart, nHours,
       liters, covered, eUnmet, eLoadMwh: eLoad / 1000,
       gensetCost, tankCost, tankL, fuelCost, capexCost,
