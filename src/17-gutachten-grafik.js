@@ -11,6 +11,7 @@
 
 import { LKEBW_LOGO, LKEBW_LOGO_H, LKEBW_LOGO_W } from './config/lkebw-logo.js';
 import { naKvaText } from './lib/netzanschluss.js';
+import { BP_STUFEN, bpStufen, bpLadeLeistung } from './lib/bedarfsprognose.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1) DESIGN-TOKENS — gelten für ALLE Gutachten-Grafiken
@@ -320,12 +321,17 @@ const ggEstW = (t, size, mono) => t.length * size * (mono ? 0.6 : 0.53);
  * genutzt, damit Kopfzeile/Kennzahlenblock immer exakt gleich sitzen.
  *
  * cfg.layout === 'reduziert' ist Version 2: schmalerer Kopf (ohne Untertitel
- * und Metadatenspalte) und kein Kennzahlenblock — das Blatt endet unter dem
- * Achsentitel, die Werte stehen auf dem Kennzahlenblatt daneben.
+ * und Metadatenspalte) — das Blatt endet unter dem Achsentitel.
+ *
+ * Kopfdaten (cfg.layout) und Kennzahlenblock (cfg.kennzahlen) stehen unabhängig
+ * voneinander: der Block erscheint nur im vollständigen Kopf und nur, wenn
+ * cfg.kennzahlen nicht ausdrücklich auf false steht — so ergeben sich alle vier
+ * Kombinationen (reduziert/voll × ohne/mit Kennzahlen).
  */
 function ggSheetGeometry(T, cfg = {}) {
   const S = T.sheet, W = T.width;
   const reduziert = cfg.layout === 'reduziert';
+  const kennzahlenInline = !reduziert && cfg.kennzahlen !== false;
   const headH = reduziert ? S.headHSchmal : S.headH;
   const plotX = S.padX + S.yTitleW + S.yLabelW;
   const plotW = W - S.padX - plotX;
@@ -335,9 +341,9 @@ function ggSheetGeometry(T, cfg = {}) {
   const xLabelY = plotB + S.xLabelDy;
   const xTitleY = plotB + S.xTitleDy;
   const kpiTop  = plotB + S.kpiTopDy;
-  const height  = reduziert ? xTitleY + S.footSpace + 10
-                            : kpiTop + S.kpiPad + 2 * S.kpiRow + S.kpiPad + S.footSpace;
-  return { S, W, headH, reduziert, plotX, plotW, plotY, plotH, plotB, xLabelY, xTitleY, kpiTop, height };
+  const height  = kennzahlenInline ? kpiTop + S.kpiPad + 2 * S.kpiRow + S.kpiPad + S.footSpace
+                                    : xTitleY + S.footSpace + 10;
+  return { S, W, headH, reduziert, kennzahlenInline, plotX, plotW, plotY, plotH, plotB, xLabelY, xTitleY, kpiTop, height };
 }
 
 export function ggTxt(T, S, x, y, s, o = {}) {
@@ -405,7 +411,7 @@ function ggAxisTitles(cfg, T, G) {
 
 /** Kennzahlenblock unterhalb der Diagrammfläche — für jede Sheet-Figur gleich. */
 function ggSheetKpiFooter(cfg, T, G) {
-  if (G.reduziert) return '';        // Version 2: die Werte stehen auf dem Kennzahlenblatt
+  if (!G.kennzahlenInline) return '';   // ohne Kennzahlen bzw. Version 2: die Werte stehen auf dem Kennzahlenblatt
   const S = G.S, W = G.W, kpiTop = G.kpiTop;
   const gruen = T.accents.gruenDunkel;
   const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
@@ -636,16 +642,13 @@ function ggTabellePlainText(cfg) {
  * Kopiert die Tabelle der aktuellen Figur als echte Word-Tabelle in die
  * Zwischenablage — das Kennzahlenblatt oder eine spalten/zeilen-Tabelle
  * (HTML- statt Bild-Payload) — Gegenstueck zu ggCopyForWord, das die
- * Abbildungen als PNG kopiert.
+ * Abbildungen als PNG kopiert. Ohne Bildunterschrift oder Nummer.
  */
-/** `beschriftung`: {art, nr, titel} — hängt eine Bildunterschrift mit echtem Word-Feld unter die Tabelle (s. ggCopyForWord). */
-export async function ggCopyTableForWord(cfg, beschriftung = null) {
+export async function ggCopyTableForWord(cfg) {
   const spaltig = Array.isArray(cfg.spalten);
   const tabelle = spaltig ? ggTabelleHtmlTable(cfg) : ggKennzahlenHtmlTable(cfg);
-  const kapt = beschriftung ? ggBeschriftungHtml(beschriftung) : '';
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${tabelle}${kapt}</body></html>`;
-  const text = (spaltig ? ggTabellePlainText(cfg) : ggKennzahlenPlainText(cfg))
-    + (beschriftung ? `\n${beschriftung.art} ${beschriftung.nr}: ${beschriftung.titel}` : '');
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${tabelle}</body></html>`;
+  const text = spaltig ? ggTabellePlainText(cfg) : ggKennzahlenPlainText(cfg);
   if (navigator.clipboard && window.ClipboardItem) {
     try {
       await navigator.clipboard.write([new window.ClipboardItem({
@@ -655,7 +658,7 @@ export async function ggCopyTableForWord(cfg, beschriftung = null) {
       return 'Zwischenablage';
     } catch (e) { void e; /* Fallback unten */ }
   }
-  return ggHtmlZwischenablageFallback(tabelle + kapt);
+  return ggHtmlZwischenablageFallback(tabelle);
 }
 
 function ggFinishSvg(out, W, height) {
@@ -1368,47 +1371,12 @@ function ggHtmlZwischenablageFallback(html) {
 }
 
 /**
- * Word-Feld als HTML-Fragment, wie Word es selbst beim Kopieren erzeugt (die
- * `<!--[if supportFields]>`-Kommentare sieht nur Word/IE — überall sonst bleibt einfach die
- * Zahl als Text stehen, das Fragment degradiert also nirgends sichtbar). Fügt der Nutzer das
- * in ein Word-Dokument ein, das schon „SEQ Abbildung"/„SEQ Tabelle"-Felder zählt (z. B. aus
- * einem per gdxBeschriftung erzeugten Word-Export), reiht Word die Nummer beim Aktualisieren
- * der Felder automatisch in die bestehende Zählung ein — daher „flexibel", nicht von uns fix
- * vergeben.
- */
-function ggWordSeqFeld(art, nr) {
-  return `<!--[if supportFields]><span style='mso-element:field-begin'></span>`
-    + ` SEQ ${art} \\* ARABIC <span style='mso-element:field-separator'></span><![endif]-->`
-    + `<span>${nr}</span>`
-    + `<!--[if supportFields]><span style='mso-element:field-end'></span><![endif]-->`;
-}
-
-/** Beschriftungs-Absatz „Abbildung <Feld>: Titel" fürs Kopieren — dieselbe Optik wie unter der Grafik im Editor. */
-function ggBeschriftungHtml({ art, nr, titel }) {
-  return `<p style="font-family:Tahoma,Verdana,sans-serif;font-size:9.5pt;color:#5A5F5A;margin:5px 0 0;">`
-    + `${gEsc(art)} ${ggWordSeqFeld(art, nr)}: ${gEsc(titel)}</p>`;
-}
-
-/**
- * @param {{transparent?:boolean, beschriftung?:{art:string, nr:number, titel:string}}} [opts] —
- *   `transparent: true` lässt den weißen Grund weg (Wasserzeichen); `beschriftung` hängt eine
- *   Bildunterschrift mit echtem Word-Feld an (nur beim Kopieren aus dem Gutachten-Dokument
- *   sinnvoll, wo eine tatsächliche Abbildungs-/Tabellennummer feststeht — s. gutCopyTeil).
+ * @param {{transparent?:boolean}} [opts] — `transparent: true` lässt den weißen Grund weg
+ *   (Wasserzeichen). Kopiert nur das Bild, ohne Bildunterschrift oder Nummer — die kollidiert
+ *   sonst mit der Beschriftung/Nummerierung des Zieldokuments (s. gutCopyTeil in 21).
  */
 export async function ggCopyForWord(svg, scale, opts = {}) {
   const blob = await ggSvgToPngBlob(svg, scale, opts);
-  if (opts.beschriftung) {
-    const html = `<div><img src="${await ggBlobZuDataUrl(blob)}"></div>` + ggBeschriftungHtml(opts.beschriftung);
-    if (navigator.clipboard && window.ClipboardItem) {
-      try {
-        await navigator.clipboard.write([new window.ClipboardItem({
-          'text/html': new Blob([html], { type: 'text/html' }), 'image/png': blob,
-        })]);
-        return 'Zwischenablage';
-      } catch (e) { void e; /* Fallback unten */ }
-    }
-    return ggHtmlZwischenablageFallback(html);
-  }
   // Weg 1: Clipboard-API (Chrome, Edge)
   if (navigator.clipboard && window.ClipboardItem) {
     try {
@@ -2151,6 +2119,574 @@ GG_FIGUREN.push(
   },
 
 );
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3f) RENDERER — „Wasserfall": Leistungsbilanz in Stufen
+ *
+ * Für die Bedarfsprognose Strom (3.3.1–3.3.3): Ausgangswert, Rückbau, Zubau,
+ * Summe — jede Säule setzt dort an, wo die vorige endet.
+ * cfg.balken = [{ label, sub?, wert, art }] mit art
+ *   'basis'    steht auf der Nulllinie, Höhe = wert
+ *   'delta'    verschiebt den laufenden Stand um wert (grün hoch, rot runter)
+ *   'summe'    steht auf der Nulllinie, Höhe = laufender Stand (wert wird ignoriert)
+ *   'ausblick' wie delta, nur gestrichelt — Zusatzbedarf späterer Kapitel
+ * ═══════════════════════════════════════════════════════════════════════ */
+export function ggRenderWasserfall(cfg, T = GG_THEME) {
+  // Flacher als die Ganglinie: sechs Säulen brauchen keine 470 px Höhe
+  const G = ggSheetGeometry({ ...T, sheet: { ...T.sheet, plotH: 360 } }, cfg);
+  const S = G.S, W = G.W, plotX = G.plotX, plotW = G.plotW, plotY = G.plotY, plotH = G.plotH, plotB = G.plotB;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+
+  let out = ggSheetHeader(cfg, T, G);
+  out += `<rect x="${gR(plotX)}" y="${plotY}" width="${gR(plotW)}" height="${plotH}" fill="${T.neutral.cardBg}"/>`;
+
+  const balken = (cfg.balken || []).filter(b => b && Number.isFinite(b.wert));
+  if (!balken.length) {
+    out += txt(plotX + plotW / 2, plotY + plotH / 2, cfg.leer || 'Keine Daten vorhanden',
+               { anchor: 'middle', size: 13, fill: T.text.faint });
+  } else {
+    let stand = 0;
+    const saeulen = balken.map(b => {
+      const aufNull = b.art === 'basis' || b.art === 'summe';
+      const von = aufNull ? 0 : stand;
+      const bis = b.art === 'basis' ? b.wert : b.art === 'summe' ? stand : stand + b.wert;
+      stand = bis;
+      return { ...b, von, bis };
+    });
+
+    const max = Math.max(0, ...saeulen.map(s => Math.max(s.von, s.bis)));
+    const yStep = ggNiceStep(max / 6);
+    // etwas Luft über der höchsten Säule für ihre Wertbeschriftung
+    const yMax  = Math.max(yStep, Math.ceil(max * 1.08 / yStep) * yStep);
+    const yOf = v => plotB - (Math.max(0, v) / yMax) * plotH;
+
+    let gitter = '';
+    for (let v = yStep; v < yMax; v += yStep) {
+      const y = Math.round(yOf(v)) + 0.5;
+      gitter += `M${gR(plotX)} ${y}H${gR(plotX + plotW)}`;
+    }
+    out += `<path d="${gitter}" fill="none" stroke="${T.line}" stroke-width="1"/>`;
+
+    const fachW = plotW / saeulen.length;
+    const bw = Math.min(fachW * 0.62, 120);
+    saeulen.forEach((s, i) => {
+      const cx = plotX + i * fachW + fachW / 2, x = cx - bw / 2;
+      const oben = yOf(Math.max(s.von, s.bis)), unten = yOf(Math.min(s.von, s.bis));
+      const h = Math.max(unten - oben, 0.8);
+      const ausblick = s.art === 'ausblick';
+      const aufNull  = s.art === 'basis' || s.art === 'summe';
+      const runter   = s.bis < s.von;
+
+      if (ausblick) {
+        out += `<rect x="${gR(x + 0.75)}" y="${gR(oben + 0.75)}" width="${gR(bw - 1.5)}" height="${gR(Math.max(h - 1.5, 0.8))}"
+                  fill="none" stroke="${T.text.faint}" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+      } else {
+        const farbe = aufNull ? T.accents.gruenDunkel : runter ? T.energy.waerme : T.accents.gruen;
+        out += `<rect x="${gR(x)}" y="${gR(oben)}" width="${gR(bw)}" height="${gR(h)}" fill="${farbe}"/>`;
+      }
+
+      // Verbinder auf Höhe des Stands bis zur nächsten Säule
+      if (i < saeulen.length - 1) {
+        const y = Math.round(yOf(s.bis)) + 0.5;
+        out += `<line x1="${gR(x + bw)}" y1="${y}" x2="${gR(cx + fachW - bw / 2)}" y2="${y}"
+                  stroke="${T.text.faint}" stroke-width="1" stroke-dasharray="3 3"/>`;
+      }
+
+      const d = s.bis - s.von;
+      const wertTxt = aufNull ? ggNum(s.bis) : (d < 0 ? '−' : '+') + ggNum(Math.abs(d));
+      const wertFarbe = ausblick ? T.text.faint : aufNull ? T.text.strong : runter ? T.energy.waerme : T.accents.gruenDunkel;
+      // Rote Säulen hängen vom Stand herab — ihr Wert steht darunter, sonst darüber
+      out += txt(cx, (runter && !aufNull) ? unten + 17 : oben - 8, wertTxt,
+                 { anchor: 'middle', mono: true, size: 13, weight: ausblick ? 500 : 600, fill: wertFarbe });
+
+      out += txt(cx, G.xLabelY, s.label || '', { anchor: 'middle', size: S.fsAxis + 0.5,
+                 weight: s.art === 'summe' ? 700 : 600, fill: ausblick ? T.text.faint : T.text.strong });
+      if (s.sub) out += txt(cx, G.xLabelY + 15, s.sub, { anchor: 'middle', size: S.fsAxis, fill: T.text.faint });
+    });
+
+    for (let v = 0; v <= yMax + 1e-9; v += yStep) {
+      out += txt(plotX - 8, yOf(v) + S.fsAxis * 0.36, ggNum(v, yStep < 1 ? 1 : 0),
+                 { anchor: 'end', mono: true, size: S.fsAxis, weight: 500, fill: T.text.muted });
+    }
+  }
+
+  out += `<rect x="${gR(plotX) + 0.5}" y="${plotY}.5" width="${gR(plotW) - 1}" height="${plotH - 1}"
+            fill="none" stroke="${T.rule}" stroke-width="1"/>
+          <line x1="${gR(plotX)}" y1="${gR(plotB) - 1}" x2="${gR(plotX + plotW)}" y2="${gR(plotB) - 1}"
+            stroke="${T.text.strong}" stroke-width="2"/>`;
+
+  out += ggAxisTitles(cfg, T, G);
+  out += ggSheetKpiFooter(cfg, T, G);
+  return ggFinishSvg(out, W, G.height);
+}
+
+// ── Bedarfsprognose Strom (3.3.1–3.3.3) ──────────────────────────────────────
+// Quelle: window.napBedarfsStand() aus der NAP-Analyse (13o) — Messbasis,
+// Gleichzeitigkeitsfaktor und Maßnahmen-Haken werden dort eingestellt. Gerechnet
+// wird mit lib/bedarfsprognose.js, derselben Rechnung wie die Lastentwicklung im
+// NAP-Panel; die drei Kapitel sind Stufen einer Kaskade (Übertrag von Kapitel zu Kapitel).
+const GG_BEDARF_TEXTE = {
+  gebaeude: {
+    kapitel: '3.3.1 Bestandsbedarf und bauliche Entwicklung',
+    titel: 'Bestandsbedarf und bauliche Entwicklung', tabTitel: 'Bauliche Veränderungen',
+    zubau: 'Neubau', summe: 'Gebäudebedarf', einheit: ['Gebäude', 'Gebäude'],
+    herkunft: 'Verbraucher-Assets der Gebäude mit Baujahr bzw. Abrissjahr nach dem Messjahr (gepflegt im Gebäude-Tab). '
+            + 'Ausgangspunkt ist die gemessene Höchstlast; Neubau addiert, Rückbau subtrahiert die Anschlussleistung.',
+    leer: 'Keine baulichen Veränderungen erfasst — Neubau und Rückbau entstehen über Baujahr bzw. Abrissjahr im Gebäude-Tab.',
+  },
+  waerme: {
+    kapitel: '3.3.2 Zusatzbedarf aus Wärmekonzept',
+    titel: 'Zusatzbedarf aus dem Wärmekonzept', tabTitel: 'Elektrische Wärmeerzeuger',
+    zubau: 'Zubau', summe: 'inkl. Wärmekonzept', einheit: ['Anlage', 'Anlagen'],
+    herkunft: 'Wärmepumpen (Luft, Erdwärme, Fließgewässer), Elektrokessel und elektrische Warmwasserbereitung mit Baujahr '
+            + 'nach dem Messjahr; gezählt wird die elektrische Leistungsaufnahme, nicht die Heizleistung.',
+    leer: 'Keine elektrischen Wärmeerzeuger geplant — Wärmepumpen im Elektro-Tab mit Baujahr nach dem Messjahr anlegen.',
+  },
+  lade: {
+    kapitel: '3.3.3 Zusatzbedarf Ladeinfrastruktur',
+    titel: 'Zusatzbedarf Ladeinfrastruktur', tabTitel: 'Ladeinfrastruktur',
+    zubau: 'Zubau', summe: 'inkl. Ladeinfrastruktur', einheit: ['Standort', 'Standorte'],
+    herkunft: 'Ladepunkte (Assets Lade) mit Baujahr nach dem Messjahr: Normalladepunkte × Leistung je Punkt × '
+            + 'Gleichzeitigkeitsfaktor des Ladeparks, Schnellladepunkte mit voller Leistung.',
+    leer: 'Keine Ladeinfrastruktur geplant — Ladepunkte im Elektro-Tab mit Baujahr nach dem Messjahr anlegen.',
+  },
+};
+
+const GG_BEDARF_TYP = {
+  WP: 'Luft-Wärmepumpe', Geo: 'Erdwärmepumpe', FG: 'Fließgewässer-Wärmepumpe', Stromkessel: 'Elektrokessel',
+  TWW: 'Warmwasserbereitung', Lade: 'Ladepunkte', Verbraucher: 'Verbraucher',
+};
+
+/** Stand aus der NAP-Analyse holen und in Stufen rechnen. */
+function ggBedarfRechnung() {
+  if (typeof window.napBedarfsStand !== 'function') return { fehler: '⚠ NAP-Analyse nicht geladen.' };
+  const st = window.napBedarfsStand();
+  return { st, r: bpStufen({ basisKw: st.basisKw, gzf: st.gzf, massnahmen: st.massnahmen }) };
+}
+
+const ggKwDelta = kw => (kw < 0 ? '−' : '+') + ggNum(Math.abs(kw)) + ' kW';
+const ggMassnahmeJahr = m => (m.isAbbruch ? m.abrissjahr : m.baujahr);
+
+/** Anzahl betroffener Objekte: Gebäude zählen je Gebäude, Anlagen je Asset. */
+function ggBedarfZahl(stufeKey, eintraege) {
+  return stufeKey === 'gebaeude'
+    ? new Set(eintraege.map(e => e.m.buildingId ?? 'asset:' + (e.m.assetId || e.m.id))).size
+    : eintraege.length;
+}
+function ggBedarfAnzahl(stufeKey, eintraege) {
+  const [eins, viele] = GG_BEDARF_TEXTE[stufeKey].einheit;
+  const n = ggBedarfZahl(stufeKey, eintraege);
+  return `${n} ${n === 1 ? eins : viele}`;
+}
+
+const ggGebLabel   = g => String(g?.gebaeudenummer || g?.name || '').trim();
+const ggGebNutzung = g => (g ? window.getNutzungstypById?.(g.nutzung)?.label || '' : '');
+const ggBedarfAsset = m => (window.ASSETS?.items || []).find(a => a.id === (m.assetId || m.id)) || null;
+/** Zahl als Platzhalter — bleibt gelb, solange der Wert fehlt. */
+const ggBedarfFeld = (wert, name, dez = 0) => ggTextFeld(wert != null && isFinite(wert) ? ggNum(wert, dez) : '', name);
+
+/**
+ * Einträge einer Stufe als Zeilen für Tabelle und Text: mehrere Verbraucher eines Gebäudes mit
+ * gleicher Maßnahme und gleichem Jahr werden eine Zeile, Anlagen bleiben einzeln.
+ * Rückbau vor Zubau, darin nach Jahr und Name.
+ */
+function ggBedarfGruppen(key, stufe) {
+  const gebListe = window.gebaeude || [];
+  const gruppen = new Map();
+  for (const e of stufe.eintraege) {
+    const m = e.m, jahr = ggMassnahmeJahr(m);
+    const k = (key === 'gebaeude' && m.buildingId != null) ? `g:${m.buildingId}|${m.isAbbruch}|${jahr}` : `a:${m.id}`;
+    const z = gruppen.get(k)
+      || { m, jahr, kw: 0, g: m.buildingId == null ? null : gebListe.find(g => g.id === m.buildingId) || null };
+    z.kw += e.kw;
+    gruppen.set(k, z);
+  }
+  return [...gruppen.values()].sort((a, b) =>
+    ((b.m.isAbbruch ? 1 : 0) - (a.m.isAbbruch ? 1 : 0)) || ((a.jahr || 0) - (b.jahr || 0))
+    || String(a.m.name).localeCompare(String(b.m.name), 'de', { numeric: true }));
+}
+
+/** Aufzählung im Fließtext — ab sieben Einträgen nur die ersten fünf, der Rest steht in der Tabelle. */
+function ggBedarfListe(teile) {
+  return ggAufzaehlung(teile.length <= 6 ? teile : [...teile.slice(0, 5), `${teile.length - 5} weitere (vgl. Tabelle)`]);
+}
+
+/** „um 145 kW beziehungsweise 14 %“ — Veränderung einer Stufe gegenüber ihrem Ausgangswert. */
+function ggBedarfDelta(s) {
+  const d = s.endKw - s.startKw;
+  return `um ${ggBedarfFeld(Math.abs(d), 'Veränderung kW')} kW`
+    + (s.startKw > 0 ? ` beziehungsweise ${ggBedarfFeld(Math.abs(d) / s.startKw * 100, 'Veränderung %')} %` : '');
+}
+
+/* ── Gutachtentexte 3.3.1–3.3.3 ─────────────────────────────────────────────
+ * Zahlen aus derselben Rechnung wie Wasserfall und Tabelle (ggBedarfRechnung). Gelbe
+ * Platzhalter sind Angaben, die das Tool nicht erfasst — sie werden in Word ergänzt.
+ * Verweise relativ („folgende Abbildung“), weil Textbausteine keine Abbildungsnummern kennen. */
+
+/** 3.3.1 — Messbasis, Planungsgrundlage, Rückbau und Neubau. */
+function ggRenderBedarfGebaeudeText(cfg, T = GG_THEME) {
+  void cfg;
+  const { st, r } = ggBedarfRechnung();
+  const s = r?.stufen[0];
+  const zj = r?.zieljahr ?? null;
+  const zeilen = s ? ggBedarfGruppen('gebaeude', s) : [];
+  const rueck = zeilen.filter(z => z.m.isAbbruch), neu = zeilen.filter(z => !z.m.isAbbruch);
+  const basis = st?.basisKw > 0 ? st.basisKw : null;
+  const planung = ggTextFeld('', 'Planungsgrundlage bauliche Entwicklung, z. B. Liegenschaftsentwicklungsplan mit Stand');
+  const gebTeil = z => {
+    const nr = String(z.g?.gebaeudenummer || '').trim();
+    const details = [ggGebNutzung(z.g), z.jahr].filter(Boolean).join(', ');
+    return gEsc(nr ? `Gebäude ${nr}` : (z.g?.name || z.m.name)) + (details ? ` (${gEsc(details)})` : '');
+  };
+  const absaetze = [];
+
+  absaetze.push(`Ausgangspunkt der Bedarfsprognose ist der ${st && !st.gemessen && basis ? 'synthetisch ermittelte' : 'gemessene'} `
+    + `Leistungsbedarf der Liegenschaft. Die Höchstlast im Jahr ${ggTextFeld(st?.dataYear, 'Messjahr')} beträgt `
+    + `${ggBedarfFeld(basis, 'Höchstlast Bestand')} kW (vgl. Kapitel 3.2). Sie enthält den heutigen Gebäudebestand `
+    + `mit allen tatsächlich auftretenden Gleichzeitigkeiten.`);
+
+  if (!zeilen.length) {
+    absaetze.push(`Nach ${planung} sind keine Neu- oder Rückbauten mit Einfluss auf den Strombedarf vorgesehen. `
+      + `Der Leistungsbedarf der Gebäude entspricht damit dem Bestand von ${ggBedarfFeld(basis, 'Höchstlast Bestand')} kW.`);
+  } else {
+    absaetze.push(`Darauf aufbauend wird die bauliche Entwicklung bis zum Jahr ${ggTextFeld(zj, 'Zieljahr')} berücksichtigt. `
+      + `Grundlage ist ${planung}. Neubauten erhöhen und Rückbauten verringern den Leistungsbedarf jeweils um die `
+      + `Anschlussleistung der betroffenen Gebäude, bewertet mit einem Gleichzeitigkeitsfaktor von `
+      + `${ggBedarfFeld(st?.gzf, 'Gleichzeitigkeitsfaktor', 2)}.`);
+
+    const rueckE = s.eintraege.filter(e => e.m.isAbbruch), neuE = s.eintraege.filter(e => !e.m.isAbbruch);
+    absaetze.push(rueck.length
+      ? `Zurückgebaut ${ggBedarfZahl('gebaeude', rueckE) === 1 ? 'wird' : 'werden'} ${ggBedarfAnzahl('gebaeude', rueckE)}: `
+        + `${ggBedarfListe(rueck.map(gebTeil))}. Dadurch verringert sich der Leistungsbedarf um `
+        + `${ggBedarfFeld(-s.rueckbauKw, 'Rückbau kW')} kW.`
+      : 'Ein Rückbau von Gebäuden ist nicht vorgesehen.');
+    absaetze.push(neu.length
+      ? `Neu errichtet ${ggBedarfZahl('gebaeude', neuE) === 1 ? 'wird' : 'werden'} ${ggBedarfAnzahl('gebaeude', neuE)}: `
+        + `${ggBedarfListe(neu.map(gebTeil))}. Damit steigt der Leistungsbedarf um ${ggBedarfFeld(s.zubauKw, 'Neubau kW')} kW. `
+        + `Die Anschlussleistungen der Neubauten beruhen auf `
+        + `${ggTextFeld('', 'Herkunft der Neubau-Leistungen, z. B. ES-Bau oder Kennwertansatz')}.`
+      : 'Neubauten sind nicht vorgesehen.');
+
+    const d = s.endKw - s.startKw;
+    absaetze.push(`Für das Jahr ${ggTextFeld(zj, 'Zieljahr')} ergibt sich ein Leistungsbedarf der Gebäude von `
+      + `${ggBedarfFeld(s.endKw, 'Gebäudebedarf')} kW. `
+      + (Math.abs(d) < 0.5
+        ? 'Gegenüber dem Bestand bleibt er damit praktisch unverändert. '
+        : `Gegenüber dem Bestand ${d > 0 ? 'steigt' : 'sinkt'} er ${ggBedarfDelta(s)}. `)
+      + 'Die folgende Abbildung zeigt die Leistungsbilanz, die anschließende Tabelle die einzelnen Maßnahmen.');
+  }
+
+  absaetze.push('Der zusätzliche Strombedarf aus dem Wärmekonzept und aus der Ladeinfrastruktur wird in den Kapiteln '
+    + '3.3.2 und 3.3.3 gesondert ausgewiesen und in Kapitel 3.3.4 zur resultierenden Anschlussleistung zusammengeführt.');
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 3.3.2 — elektrische Wärmeerzeuger der aktiven Variante. */
+function ggRenderBedarfWaermeText(cfg, T = GG_THEME) {
+  void cfg;
+  const { st, r } = ggBedarfRechnung();
+  const s = r?.stufen[1];
+  const zj = r?.zieljahr ?? null;
+  const zeilen = s ? ggBedarfGruppen('waerme', s) : [];
+  const rueck = zeilen.filter(z => z.m.isAbbruch), neu = zeilen.filter(z => !z.m.isAbbruch);
+  const vid = window.activeVariantId;
+  const variante = ggTextFeld(vid ? (window.varianten || []).find(v => v.id === vid)?.name || '' : '', 'Variante Wärmekonzept');
+  const teil = z => `${gEsc(z.m.name)} (${gEsc(GG_BEDARF_TYP[z.m.type] || z.m.type)}, `
+    + `${ggBedarfFeld(z.m.loadKW, 'el. Leistung')} kW elektrisch, ${z.jahr})`;
+  const absaetze = [];
+
+  if (!zeilen.length) {
+    absaetze.push(`Das Wärmekonzept (vgl. Kapitel 2) sieht in der Variante ${variante} keine zusätzlichen elektrischen `
+      + `Wärmeerzeuger vor. Ein Zusatzbedarf entsteht nicht; der Leistungsbedarf bleibt bei `
+      + `${ggBedarfFeld(s?.startKw, 'Übertrag aus 3.3.1')} kW.`);
+  } else {
+    absaetze.push(`Mit der Umstellung der Wärmeversorgung (vgl. Kapitel 2) kommen elektrische Wärmeerzeuger hinzu. `
+      + `Zugrunde gelegt ist die Variante ${variante}. Maßgeblich für den Strombedarf ist die elektrische `
+      + `Leistungsaufnahme der Anlagen, nicht ihre Heizleistung.`);
+
+    const saetze = [];
+    if (neu.length) {
+      saetze.push(`Bis zum Jahr ${ggTextFeld(zj, 'Zieljahr')} ${neu.length === 1 ? 'wird' : 'werden'} `
+        + `${ggBedarfAnzahl('waerme', s.eintraege.filter(e => !e.m.isAbbruch))} errichtet: ${ggBedarfListe(neu.map(teil))}.`);
+    }
+    if (rueck.length) {
+      saetze.push(`Außer Betrieb ${rueck.length === 1 ? 'geht' : 'gehen'} ${ggBedarfListe(rueck.map(teil))}.`);
+    }
+    absaetze.push(saetze.join(' '));
+
+    const d = s.endKw - s.startKw;
+    absaetze.push(`Unter Berücksichtigung des Gleichzeitigkeitsfaktors von ${ggBedarfFeld(st?.gzf, 'Gleichzeitigkeitsfaktor', 2)} `
+      + `${d >= 0 ? 'steigt' : 'sinkt'} der Leistungsbedarf dadurch ${ggBedarfDelta(s)}, von `
+      + `${ggBedarfFeld(s.startKw, 'Übertrag aus 3.3.1')} kW auf ${ggBedarfFeld(s.endKw, 'Leistung inkl. Wärmekonzept')} kW. `
+      + 'Die folgende Abbildung zeigt die Leistungsbilanz, die anschließende Tabelle die einzelnen Anlagen.');
+  }
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 3.3.3 — Ladepunkte, installierte Leistung, Gleichzeitigkeit. */
+function ggRenderBedarfLadeText(cfg, T = GG_THEME) {
+  void cfg;
+  const { st, r } = ggBedarfRechnung();
+  const s = r?.stufen[2];
+  const zj = r?.zieljahr ?? null;
+  const zeilen = s ? ggBedarfGruppen('lade', s) : [];
+  const rueck = zeilen.filter(z => z.m.isAbbruch);
+  const parks = zeilen.filter(z => !z.m.isAbbruch).map(z => ({ z, l: bpLadeLeistung(ggBedarfAsset(z.m)?.props) }));
+  const grundlage = ggTextFeld('', 'Grundlage der Bedarfsermittlung, z. B. Fuhrparkkonzept oder Stellplatzplanung');
+  const absaetze = [];
+
+  if (!zeilen.length) {
+    absaetze.push(`Nach ${grundlage} ist kein Aufbau von Ladeinfrastruktur vorgesehen. Ein Zusatzbedarf entsteht nicht; `
+      + `der Leistungsbedarf bleibt bei ${ggBedarfFeld(s?.startKw, 'Übertrag aus 3.3.2')} kW.`);
+  } else {
+    absaetze.push(`Für die Elektromobilität auf der Liegenschaft ist der Aufbau von Ladeinfrastruktur vorgesehen. `
+      + `Grundlage der Bedarfsermittlung ist ${grundlage}.`);
+
+    const saetze = [];
+    if (parks.length) {
+      const punkte  = parks.reduce((a, p) => a + p.l.punkte, 0);
+      const schnell = parks.reduce((a, p) => a + p.l.schnell, 0);
+      const installiert = parks.reduce((a, p) => a + p.l.punkte * p.l.kwProPunkt + p.l.schnell * p.l.kwSchnell, 0);
+      const teil = ({ z, l }) => `${gEsc(z.m.name)} (${l.punkte} × ${ggNum(l.kwProPunkt)} kW`
+        + (l.schnell ? ` und ${l.schnell} × ${ggNum(l.kwSchnell)} kW` : '') + `, ${z.jahr})`;
+      saetze.push(`Bis zum Jahr ${ggTextFeld(zj, 'Zieljahr')} ${parks.length === 1 ? 'ist' : 'sind'} `
+        + `${ggBedarfAnzahl('lade', parks.map(p => ({ m: p.z.m })))} mit insgesamt `
+        + `${ggBedarfFeld(punkte, 'Normalladepunkte')} ${punkte === 1 ? 'Normalladepunkt' : 'Normalladepunkten'}`
+        + (schnell ? ` und ${ggBedarfFeld(schnell, 'Schnellladepunkte')} ${schnell === 1 ? 'Schnellladepunkt' : 'Schnellladepunkten'}` : '')
+        + ` geplant: ${ggBedarfListe(parks.map(teil))}. Die installierte Ladeleistung beträgt `
+        + `${ggBedarfFeld(installiert, 'installierte Ladeleistung')} kW.`);
+
+      const gzfs = parks.map(p => p.l.gzf);
+      const lo = Math.min(...gzfs), hi = Math.max(...gzfs);
+      const spanne = lo === hi ? ggNum(lo, 2) : `${ggNum(lo, 2)} bis ${ggNum(hi, 2)}`;
+      saetze.push(`Da nicht alle Fahrzeuge gleichzeitig mit voller Leistung laden, wird die Leistung der `
+        + `Normalladepunkte je Standort mit einem Gleichzeitigkeitsfaktor von ${ggTextFeld(spanne, 'GZF Ladepark')} bewertet`
+        + (schnell ? '; Schnellladepunkte gehen mit voller Leistung ein.' : '.'));
+    }
+    if (rueck.length) {
+      saetze.push(`Zurückgebaut ${rueck.length === 1 ? 'wird' : 'werden'} `
+        + `${ggBedarfListe(rueck.map(z => `${gEsc(z.m.name)} (${z.jahr})`))}.`);
+    }
+    absaetze.push(saetze.join(' '));
+
+    const d = s.endKw - s.startKw;
+    absaetze.push(`Zusammen mit dem Gleichzeitigkeitsfaktor der Liegenschaft von `
+      + `${ggBedarfFeld(st?.gzf, 'Gleichzeitigkeitsfaktor', 2)} ${d >= 0 ? 'steigt' : 'sinkt'} der Leistungsbedarf `
+      + `${ggBedarfDelta(s)}, von ${ggBedarfFeld(s.startKw, 'Übertrag aus 3.3.2')} kW auf `
+      + `${ggBedarfFeld(s.endKw, 'Leistung inkl. Ladeinfrastruktur')} kW. Ein gesteuertes Laden kann die gleichzeitig `
+      + 'abgerufene Leistung weiter begrenzen; es wird bei der Variantenbildung betrachtet. Die folgende Abbildung zeigt '
+      + 'die Leistungsbilanz, die anschließende Tabelle die einzelnen Standorte.');
+  }
+
+  absaetze.push('Die resultierende Anschlussleistung einschließlich der Erzeugungsanlagen wird in Kapitel 3.3.4 zusammengeführt.');
+  return ggTextBlatt(absaetze, T);
+}
+
+/** Einzelansicht der Textbausteine: woher die Zahlen kommen und was noch fehlt. */
+function ggBedarfStandHtml(key) {
+  const { fehler, st, r } = ggBedarfRechnung();
+  if (fehler) return `<div style="font-size:11px;color:#e0a126;">${gEsc(fehler)}</div>`;
+  const stufe = r.stufen.find(s => s.key === key);
+  const typen = BP_STUFEN.find(s => s.key === key)?.typen || [];
+  // Geplante Anlagen ohne Baujahr nach dem Messjahr zählen weder in der NAP-Analyse noch hier
+  const ungezaehlt = (window.ASSETS?.items || []).filter(a => typen.includes(a.type)
+    && (a.schicht === 'entwicklung' || a.schicht === 'entscheidung') && !(parseInt(a.baujahr) > st.dataYear)).length;
+  const zeile = (label, wert) => `<div style="display:grid;grid-template-columns:170px 1fr;gap:8px;font-size:11px;line-height:1.6;">
+      <span style="color:var(--muted);">${gEsc(label)}</span><span>${wert}</span></div>`;
+
+  let html = zeile('Bestand (Höchstlast)', st.basisKw > 0
+      ? `${ggNum(st.basisKw)} kW · ${st.gemessen ? 'Messung' : 'synthetisch'} ${st.dataYear}`
+      : '<span style="color:#e0a126;">keine Strommessung — ⚡ Strom-Grundlagen</span>')
+    + zeile('Gleichzeitigkeitsfaktor', ggNum(st.gzf, 2))
+    + zeile('Zieljahr', r.zieljahr ?? '—')
+    + zeile('Maßnahmen dieser Stufe', `${stufe.eintraege.length}`
+      + (r.abgewaehlt ? ` · ${r.abgewaehlt} in der NAP-Analyse abgewählt` : ''));
+  if (ungezaehlt) {
+    html += `<div style="font-size:10px;color:#e0a126;margin-top:6px;line-height:1.5;">⚠ ${ungezaehlt} geplante `
+      + `${ungezaehlt === 1 ? 'Anlage' : 'Anlagen'} dieser Stufe ohne Baujahr nach dem Messjahr — zählen nicht als Zubau. `
+      + `Baujahr im Elektro-Tab bzw. Gebäude-Tab setzen.</div>`;
+  }
+  return html
+    + `<button data-click="ggBedarfNapOeffnen()" style="margin-top:10px;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(38,166,154,.45);background:rgba(38,166,154,.08);color:#80cbc4;">⚡ NAP-Analyse öffnen</button>`
+    + `<div style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;">Zahlen wie Abbildung und Tabelle `
+    + `dieses Kapitels. Gelbe Platzhalter (Planungsgrundlagen) erfasst das Tool nicht — in Word ergänzen.</div>`;
+}
+
+export function ggBedarfNapOeffnen() {
+  if (typeof window.setViewMode === 'function') window.setViewMode('analyse');
+  setTimeout(() => window.setAnalyseSection?.('nap'), 60);
+}
+
+const GG_BEDARF_TEXT_RENDER = {
+  gebaeude: ggRenderBedarfGebaeudeText, waerme: ggRenderBedarfWaermeText, lade: ggRenderBedarfLadeText,
+};
+const GG_BEDARF_TEXT_HINWEIS = {
+  gebaeude: 'Einleitung zu 3.3.1: Messbasis, Planungsgrundlage, Rückbau und Neubau mit ihrer Wirkung auf die Leistung. '
+          + 'Planungsgrundlage und Herkunft der Neubau-Leistungen erfasst das Tool nicht — sie bleiben als Platzhalter offen.',
+  waerme:   'Einleitung zu 3.3.2: elektrische Wärmeerzeuger der aktiven Variante und ihr Zusatzbedarf. Der Variantenname '
+          + 'kommt aus der Kopfleiste; in den Basisdaten bleibt er als Platzhalter offen.',
+  lade:     'Einleitung zu 3.3.3: Standorte, Ladepunkte, installierte Leistung, Gleichzeitigkeit und Zusatzbedarf. '
+          + 'Die Grundlage der Bedarfsermittlung erfasst das Tool nicht — sie bleibt als Platzhalter offen.',
+};
+
+function ggBedarfFiguren() {
+  return Object.keys(GG_BEDARF_TEXTE).flatMap((key, idx) => {
+    const K = GG_BEDARF_TEXTE[key];
+    const quelleHinweis = ' Rechnet exakt wie die Lastentwicklung der NAP-Analyse: Auswahl der Maßnahmen und '
+                        + 'Gleichzeitigkeitsfaktor werden dort eingestellt, Zieljahr ist das späteste angehakte Maßnahmenjahr.';
+    return [
+      {
+        id: `bedarf-${key}-text`,
+        istText: true,
+        bedarfText: key,
+        reihe: 5,
+        kapitel: K.kapitel,
+        titel: `Gutachtentext: ${K.titel}`,
+        datei: `bedarf-${key}-text`,
+        hinweis: GG_BEDARF_TEXT_HINWEIS[key],
+        render: cfg => GG_BEDARF_TEXT_RENDER[key](cfg),
+        config: {},
+      },
+      {
+        id: `bedarf-${key}-wasserfall`,
+        autoSync: true,
+        reihe: 10,
+        kapitel: K.kapitel,
+        titel: `Leistungsbilanz: ${K.titel}`,
+        datei: `bedarf-${key}-wasserfall`,
+        hinweis: K.herkunft + quelleHinweis
+               + (idx < 2 ? ' Grau gestrichelt: Zusatzbedarf der folgenden Kapitel.' : ''),
+        render: cfg => ggRenderWasserfall(cfg),
+        config: {
+          eyebrow: 'Elektrotechnisches Gutachten',
+          titel: K.titel,
+          ort: '',
+          meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+          achseY: 'Leistung in kW',
+          achseX: '',
+          leer: 'Keine Leistungsdaten — Strommessung unter ⚡ Strom-Grundlagen laden.',
+          balken: [], kpiLinks: [], kpiRechts: [],
+        },
+        ausProjekt(cfg) {
+          cfg.ort = cfg.ort || ggLiegenschaft();
+          cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+          ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+
+          const { fehler, st, r } = ggBedarfRechnung();
+          if (fehler) { cfg.balken = []; cfg.kpiLinks = []; cfg.kpiRechts = []; return fehler; }
+
+          const stufe = r.stufen[idx];
+          const vorige = r.stufen[idx - 1];
+          const zj = r.zieljahr;
+          const rueck = stufe.eintraege.filter(e => e.m.isAbbruch);
+          const zu    = stufe.eintraege.filter(e => !e.m.isAbbruch);
+
+          const b = [idx === 0
+            ? { label: 'Bestand', sub: `${st.gemessen ? 'Messung' : 'synthetisch'} ${st.dataYear}`, wert: st.basisKw, art: 'basis' }
+            : { label: 'Übertrag', sub: `aus ${vorige.kapitel}`, wert: stufe.startKw, art: 'basis' }];
+          if (rueck.length) b.push({ label: 'Rückbau', sub: ggBedarfAnzahl(key, rueck), wert: stufe.rueckbauKw, art: 'delta' });
+          if (zu.length)    b.push({ label: K.zubau,   sub: ggBedarfAnzahl(key, zu),    wert: stufe.zubauKw,    art: 'delta' });
+          b.push({ label: K.summe, sub: zj ? `Stand ${zj}` : 'ohne Maßnahmen', wert: stufe.endKw, art: 'summe' });
+          for (const spaeter of r.stufen.slice(idx + 1)) {
+            if (!spaeter.eintraege.length) continue;
+            b.push({ label: spaeter.label, sub: `→ ${spaeter.kapitel}`, wert: spaeter.rueckbauKw + spaeter.zubauKw, art: 'ausblick' });
+          }
+          cfg.balken = b;
+
+          const delta = stufe.endKw - stufe.startKw;
+          cfg.kpiLinks = [
+            { wert: ggNum(stufe.startKw) + ' kW',
+              label: idx === 0 ? `Höchstlast Bestand ${st.dataYear}` : `Übertrag aus ${vorige.kapitel}` },
+            { prozent: stufe.startKw > 0 ? (delta > 0 ? '+' : '') + ggNum(delta / stufe.startKw * 100) + ' %' : undefined,
+              wert: ggKwDelta(delta), label: zj ? `Veränderung bis ${zj}` : 'Veränderung' },
+          ];
+          cfg.kpiRechts = [
+            { wert: ggNum(st.gzf, 2), label: 'Gleichzeitigkeitsfaktor' },
+            { wert: ggNum(stufe.endKw) + ' kW', label: `${K.summe}${zj ? ' ' + zj : ''}`, highlight: true },
+          ];
+
+          if (idx === 0 && !(st.basisKw > 0)) {
+            return '⚠ Keine Strommessung geladen (⚡ Strom-Grundlagen) — der Bestand steht auf 0 kW.';
+          }
+          return stufe.eintraege.length
+            ? `✓ ${stufe.eintraege.length} Maßnahmen bis ${zj} aus der NAP-Analyse übernommen (GZF ${ggNum(st.gzf, 2)}).`
+            : '✓ In dieser Stufe sind keine Maßnahmen erfasst.';
+        },
+      },
+      {
+        id: `bedarf-${key}-tabelle`,
+        autoSync: true,
+        reihe: 20,
+        kapitel: K.kapitel,
+        titel: K.tabTitel,
+        datei: `bedarf-${key}-tabelle`,
+        hinweis: 'Einzelaufstellung zur Leistungsbilanz darüber. ' + K.herkunft + quelleHinweis,
+        render: cfg => ggRenderTabelle(cfg),
+        config: {
+          eyebrow: 'Elektrotechnisches Gutachten',
+          titel: K.tabTitel,
+          leer: K.leer,
+          spalten: key === 'gebaeude'
+            ? [{ label: 'Gebäude', weight: 1.6, align: 'left', mono: false },
+               { label: 'Nutzung', weight: 1.8, align: 'left', mono: false },
+               { label: 'Maßnahme', weight: 1.1, align: 'left', mono: false },
+               { label: 'Jahr', weight: 0.8 },
+               { label: 'Leistung', weight: 1.1 }]
+            : [{ label: 'Anlage', weight: 1.6, align: 'left', mono: false },
+               { label: 'Art', weight: 1.5, align: 'left', mono: false },
+               { label: 'Gebäude', weight: 1.3, align: 'left', mono: false },
+               { label: 'Maßnahme', weight: 1.1, align: 'left', mono: false },
+               { label: 'Jahr', weight: 0.8 },
+               { label: 'Leistung', weight: 1.1 }],
+          zeilen: [], fussnote: '',
+        },
+        ausProjekt(cfg) {
+          const { fehler, st, r } = ggBedarfRechnung();
+          if (fehler) { cfg.zeilen = []; cfg.fussnote = ''; return fehler; }
+          const stufe = r.stufen[idx];
+          const nSp = cfg.spalten.length;
+
+          // Gleiche Gruppierung wie im Gutachtentext des Kapitels
+          const zeilen = ggBedarfGruppen(key, stufe);
+          if (!zeilen.length) { cfg.zeilen = []; cfg.fussnote = ''; return '✓ ' + K.leer; }
+
+          const massnahme = m => (m.isAbbruch ? 'Rückbau' : K.zubau);
+          cfg.zeilen = zeilen.map(z => {
+            const g = z.g;
+            let werte;
+            if (key === 'gebaeude') {
+              werte = [ggGebLabel(g) || z.m.name, ggGebNutzung(g) || '—', massnahme(z.m), z.jahr || '—', ggKwDelta(z.kw)];
+            } else {
+              let art = GG_BEDARF_TYP[z.m.type] || z.m.type;
+              if (z.m.type === 'Lade') {
+                const l = bpLadeLeistung(ggBedarfAsset(z.m)?.props);
+                art = `${l.punkte} × ${ggNum(l.kwProPunkt)} kW · GZF ${ggNum(l.gzf, 2)}`
+                    + (l.schnell ? ` + ${l.schnell} × ${ggNum(l.kwSchnell)} kW` : '');
+              }
+              werte = [z.m.name, art, ggGebLabel(g) || '—', massnahme(z.m), z.jahr || '—', ggKwDelta(z.kw)];
+            }
+            return { werte, akzent: z.kw < 0 ? GG_THEME.energy.waerme : GG_THEME.accents.gruen };
+          });
+
+          // Summenzeilen: leere Zwischenspalten als Leerzeichen, sonst zeichnet die Tabelle „—"
+          const summenZeile = (label, kw) => ({ werte: [label, ...Array(nSp - 2).fill(' '), ggKwDelta(kw)], highlight: true });
+          const hatRueck = stufe.eintraege.some(e => e.m.isAbbruch);
+          const hatZu    = stufe.eintraege.some(e => !e.m.isAbbruch);
+          if (hatRueck && hatZu) {
+            cfg.zeilen.push(summenZeile('Summe Rückbau', stufe.rueckbauKw), summenZeile(`Summe ${K.zubau}`, stufe.zubauKw));
+          }
+          cfg.zeilen.push(summenZeile(`Veränderung bis ${r.zieljahr}`, stufe.rueckbauKw + stufe.zubauKw));
+
+          cfg.fussnote = (key === 'lade' ? 'Leistung = Ladeleistung inkl. GZF des Ladeparks' : 'Leistung = Anschlussleistung')
+                       + ` × Gleichzeitigkeitsfaktor ${ggNum(st.gzf, 2)} · Maßnahmenauswahl wie in der NAP-Analyse`
+                       + (r.abgewaehlt ? ` · dort ${r.abgewaehlt} Maßnahmen abgewählt` : '');
+          return `✓ ${zeilen.length} Einträge bis ${r.zieljahr} aus der NAP-Analyse übernommen.`;
+        },
+      },
+    ];
+  });
+}
+GG_FIGUREN.push(...ggBedarfFiguren());
 
 // ── PV-Analyse: Varianten, Energiebilanz, Wirtschaftlichkeit, Resilienz ───────
 // Quelle: window._pvAnalyse.ergebnisse (gefüllt in src/09d-pv-analyse.js über
@@ -3352,30 +3888,31 @@ export function ggRenderFigurFuerDokument(id, opts = {}) {
   }
   const arten = ggTeilArten(figur, opts);
   const blatt = ggIstBlatt(figur);
-  const vorher = figur.config.layout;
-  if (blatt) figur.config.layout = opts.layout === 'voll' ? 'voll' : 'reduziert';
+  const vorherLayout = figur.config.layout, vorherKennzahlen = figur.config.kennzahlen;
+  if (blatt) {
+    figur.config.layout = opts.layout === 'voll' ? 'voll' : 'reduziert';
+    figur.config.kennzahlen = opts.kennzahlen !== false;
+  }
   try {
     const teile = [{ art: arten[0], el: figur.render(figur.config) }];
     if (arten[1]) teile.push({ art: arten[1], el: ggRenderKennzahlen(figur.config) });
     return { teile, meldung, titel: figur.config.titel || figur.titel, tabelleTitel: figur.config.tabelleTitel || 'Kennzahlen' };
   } finally {
-    if (blatt) figur.config.layout = vorher;
+    if (blatt) { figur.config.layout = vorherLayout; figur.config.kennzahlen = vorherKennzahlen; }
   }
 }
 
 /**
  * „Für Word kopieren“ aus dem Dokument: Fließtext als Text, Tabellen und Kennzahlen als echte
- * Word-Tabelle, sonst das gezeichnete Bild. `beschriftung`: {art, nr, titel} des Dokument-Blocks
- * (s. gutCopyTeil in 21) — Fließtext-Bausteine bekommen nie eine Nummer, für die anderen hängt
- * sie als Word-Feld an (ggWordSeqFeld), das Word beim Einfügen in ein anderes Dokument flexibel
- * in dessen eigene Zählung einordnet.
+ * Word-Tabelle, sonst das gezeichnete Bild — ohne Bildunterschrift oder Nummer (s. gutCopyTeil
+ * in 21), damit nichts mit der Beschriftung/Nummerierung des Zieldokuments kollidiert.
  */
-export async function ggCopyDokumentTeil(id, teilIdx, el, beschriftung = null, scale = 3) {
+export async function ggCopyDokumentTeil(id, teilIdx, el, scale = 3) {
   const figur = GG_FIGUREN.find(f => f.id === id);
   if (!figur) throw new Error('Abbildung nicht gefunden.');
   if (figur.istText) return ggCopyTextForWord(figur);
-  if (ggIstTabellenFigur(figur) || teilIdx > 0) return ggCopyTableForWord(figur.config, beschriftung);
-  return ggCopyForWord(el, scale, { beschriftung });
+  if (ggIstTabellenFigur(figur) || teilIdx > 0) return ggCopyTableForWord(figur.config);
+  return ggCopyForWord(el, scale);
 }
 
 /** Absätze eines Textbausteins als Segmente [{text, offen}] — aus dem gezeichneten HTML, damit Text und Word nie auseinanderlaufen. */
@@ -3655,6 +4192,9 @@ export function ggRenderPanel() {
           }).join('')
         + `<button data-click="sgNaOeffnen()" style="margin-top:10px;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,213,79,.45);background:rgba(255,213,79,.08);color:#ffd54f;">⚡ In Strom-Grundlagen bearbeiten</button>`
         + `<div style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;">Eingetragen werden die Netzanschlussdaten unter ⚡ Strom-Grundlagen › Netzanschluss; die vereinbarte Anschlussleistung im Feld „Max. Bezug" unter NAP-Grenzen (kVA) — beides mit der Projektdatei gespeichert.</div>`;
+    } else if (figur.bedarfText) {
+      // Nur Anzeige: Messbasis, GZF und Maßnahmen-Haken werden in der NAP-Analyse gepflegt
+      html += ggBedarfStandHtml(figur.bedarfText);
     } else if (figur.pvText) {
       // Nur Anzeige: die Werte kommen aus dem letzten „Varianten berechnen“ der PV-Analyse
       const s = window._pvAnalyse;

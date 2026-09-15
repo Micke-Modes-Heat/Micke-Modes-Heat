@@ -2,7 +2,28 @@
 // Regression: eine einzige Phase mit unstimmigem Zeitraum ließ jede
 // Planungstransaktion scheitern — auch das Löschen eines Assets.
 import { describe, it, expect } from 'vitest';
-import { repairPhasen, phaseJahrSetzen } from '../src/lib/phasen-core.js';
+import { repairPhasen, phaseJahrSetzen, fruehestesPhasenJahr } from '../src/lib/phasen-core.js';
+
+describe('fruehestesPhasenJahr', () => {
+  const phasen = [
+    { id: 'p1', jahrVon: '2031', jahrBis: '2033', variantId: null },
+    { id: 'p2', jahrVon: '2028', jahrBis: '2029', variantId: 'v2' },
+    { id: 'p3', jahrVon: '2030', jahrBis: '2030', variantId: null },
+  ];
+
+  it('nimmt projektweite Phasen und die der Variante', () => {
+    expect(fruehestesPhasenJahr(phasen, null)).toBe(2030);
+    expect(fruehestesPhasenJahr(phasen, 'v2')).toBe(2028);
+    expect(fruehestesPhasenJahr(phasen, 'v1')).toBe(2030);
+  });
+
+  it('liefert null ohne passende oder lesbare Phase', () => {
+    expect(fruehestesPhasenJahr([], null)).toBeNull();
+    expect(fruehestesPhasenJahr(undefined)).toBeNull();
+    expect(fruehestesPhasenJahr([{ id: 'x', jahrVon: '', variantId: null }])).toBeNull();
+    expect(fruehestesPhasenJahr([{ id: 'y', jahrVon: '2030', variantId: 'v9' }], 'v1')).toBeNull();
+  });
+});
 
 describe('repairPhasen', () => {
   it('lässt gültige Zeiträume unverändert', () => {

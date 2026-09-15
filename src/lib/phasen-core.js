@@ -32,6 +32,21 @@ export function repairPhasen(phasenArr, bezugsjahr) {
 }
 
 /**
+ * Frühestes Startjahr der Ausbaustufen, die für eine Variante gelten — projektweite
+ * Phasen (variantId null) und die der Variante selbst. null ohne passende Phase.
+ * Dient als automatisches Baujahr geplanter Anlagen (z. B. Wärmepumpen aus dem Erzeuger-Tab).
+ */
+export function fruehestesPhasenJahr(phasenArr, variantId = null) {
+  let min = null;
+  for (const p of phasenArr || []) {
+    if (p?.variantId != null && p.variantId !== variantId) continue;
+    const jahr = parseInt(p?.jahrVon);
+    if (Number.isFinite(jahr) && (min == null || jahr < min)) min = jahr;
+  }
+  return min;
+}
+
+/**
  * Ein einzelnes Jahresfeld einer Phase setzen, ohne einen ungültigen Zeitraum
  * entstehen zu lassen: der jeweils andere Wert wird mitgezogen.
  * Gibt die geänderten Felder zurück oder null, wenn die Eingabe unbrauchbar war.

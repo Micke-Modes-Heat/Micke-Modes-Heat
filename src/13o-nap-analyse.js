@@ -13,6 +13,7 @@ import { makePvProfile8760 } from './09a-pv-profile.js';
 import { getElSlpProfiles } from './13k-elslp-registry.js';
 import { windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 import { escHtml } from './03c-gebaeude-io.js';
+import { BP_LEISTUNGS_TYPEN, bpAssetLeistung, bpMassnahmen, bpLastJahr, bpNormGzf, bpLadeLeistung } from './lib/bedarfsprognose.js';
 
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 const _N = {
@@ -24,7 +25,6 @@ const _N = {
   zeitMonth:       null,   // null = ganzes Jahr, 0-11 = Monat
   massnahmen:      null,   // Array von Maßnahmen
   selectedNapId:   null,   // ausgewählter NAP für synthetische Analyse
-  capacityKW:      null,   // NAP-Anschlussleistung kW
   gzf:             1.0,    // Gleichzeitigkeitsfaktor
   kalibrierFactors: null,  // Nutzungstyp-Faktoren für Kalibrierung (null = Defaults)
 };
@@ -267,6 +267,35 @@ export function napShowSection(visible) {
  * NAP-Datenformat {raw: [{ts: Date, kw: number}]} und lädt es in die Analyse.
  */
 export function napLoadFromStromGrundlagen() {
+  if (!_napUebernehmeStromGrundlagen()) return false;
+  napBuildMassnahmen();
+  napRenderPanel();
+  return true;
+}
+
+/**
+ * Stand der Bedarfsprognose für die Gutachten-Abbildungen 3.3.1–3.3.3 (17):
+ * Basis-Höchstlast, Gleichzeitigkeit und Maßnahmenliste samt Haken — genau das,
+ * womit die Lastentwicklung unten im NAP-Panel rechnet. War die NAP-Analyse
+ * noch nie offen, wird die Messung aus den Strom-Grundlagen übernommen wie beim
+ * ersten Öffnen. Zeichnet nichts.
+ */
+export function napBedarfsStand() {
+  if (!_N.data && !_N.manuallyRemoved) _napUebernehmeStromGrundlagen();
+  napBuildMassnahmen();
+  const basis = _activeBottomBaseData();
+  return {
+    dataYear:   _N.baseMeasuredData?.year || _N.data?.year || _yr(),
+    basisKw:    basis?.stats?.peak || 0,
+    quelle:     basis?.filename || '',
+    gemessen:   !!basis && !basis.isSynthetic,
+    gzf:        _N.gzf,
+    massnahmen: (_N.massnahmen || []).map(m => ({ ...m })),
+  };
+}
+
+/** Messung aus den Strom-Grundlagen in den NAP-Zustand übernehmen (ohne Zeichnen). */
+function _napUebernehmeStromGrundlagen() {
   const arr = window.elQuartierH15 || window.elQuartierH;
   if (!arr || arr.length < 100) return false;
 
@@ -289,8 +318,6 @@ export function napLoadFromStromGrundlagen() {
   _N.topSeriesMode    = 'gemessen';
   _N.chartMode        = 'zeitreihe';
   _N.zeitMonth        = null;
-  napBuildMassnahmen();
-  napRenderPanel();
   return true;
 }
 
@@ -351,82 +378,17 @@ function _activeBottomBaseData() {
 }
 function _activeData() { return _activeTopData(); }
 
-// ── Leistung eines Assets extrahieren (Hilfsfunktion) ───────────────────────
-function _assetPower(a) {
-  const ep = a.props || {};
-  let loadKW = 0, genKW = 0;
-  switch (a.type) {
-    case 'Verbraucher': loadKW = parseFloat(ep.leistungKW)  || 0; break;
-    case 'TWW':         loadKW = parseFloat(ep.leistungKW)  || 0; break;
-    case 'Lade':        loadKW = (parseInt(ep.anzahlPunkte)||1)*(parseFloat(ep.leistungProPunktKW)||11); break;
-    case 'WP':          loadKW = parseFloat(ep.leistungKW)  || 0; break;
-    case 'Nsa':         loadKW = parseFloat(ep.leistungKW)  || 0; break;
-    case 'PV':          genKW  = parseFloat(ep.leistungKWp) || 0; break;
-    case 'KWK':         genKW  = parseFloat(ep.leistungElKW)|| 0; break;
-    case 'Wind':        genKW  = parseFloat(ep.leistungKW)  || 0; break;
-    case 'Batterie':
-      if ((ep.betriebsmodus||'einspeisung') === 'verbraucher')
-        loadKW = parseFloat(ep.leistungKW)||0;
-      else genKW = parseFloat(ep.leistungKW)||0;
-      break;
-  }
-  if (a.profil?.werte?.length > 0) {
-    const vals = a.profil.werte.map(v => a.profil.invertSign ? -v : v);
-    const peak = Math.max(...vals);
-    if (peak > 0) {
-      if (loadKW > 0 || (genKW === 0 && ['PV','Wind','KWK'].includes(a.type)))         genKW  = peak;
-      if (genKW  > 0 || (loadKW === 0 && ['Verbraucher','Lade','TWW','WP','Nsa'].includes(a.type))) loadKW = peak;
-    }
-  }
-  return { loadKW, genKW };
-}
+// ── Leistung eines Assets ────────────────────────────────────────────────────
+// Liegt in lib/bedarfsprognose.js, weil die Gutachten-Abbildungen 3.3.1–3.3.3
+// exakt dieselben Leistungen zeigen müssen wie die Lastentwicklung hier.
+const _assetPower = bpAssetLeistung;
 
 // ── Maßnahmen aufbauen ───────────────────────────────────────────────────────
 export function napBuildMassnahmen() {
   const dataYear = _N.baseMeasuredData?.year || _N.data?.year || _yr();
-  const list = [];
-  const CONSUMER_TYPES = ['Verbraucher','Lade','TWW','WP','Nsa','PV','KWK','Wind','Batterie'];
-
-  for (const a of _allAssets()) {
-    if (!CONSUMER_TYPES.includes(a.type)) continue;
-    const bj = parseInt(a.baujahr)    || null;
-    const aj = parseInt(a.abrissjahr) || null;
-    const { loadKW, genKW } = _assetPower(a);
-
-    // ── Neubau: Baujahr nach Datenjahr ──────────────────────────────────────
-    if (bj && bj > dataYear) {
-      list.push({
-        id: a.id, name: a.name||a.type, type: a.type,
-        loadKW, genKW, netKW: loadKW - genKW,
-        baujahr: bj, abrissjahr: aj,
-        isAbbruch: false,
-        checked: (_N.massnahmen?.find(m => m.id === a.id && !m.isAbbruch)?.checked ?? true),
-      });
-    }
-
-    // ── Abriss: Abrissjahr nach Datenjahr, Asset heute bereits vorhanden ────
-    // → ab Abrissjahr reduziert es die Last am NAP (negativ)
-    if (aj && aj > dataYear && (!bj || bj <= dataYear)) {
-      if (loadKW > 0 || genKW > 0) {
-        list.push({
-          id: a.id + '__abr', assetId: a.id,
-          name: a.name||a.type, type: a.type,
-          loadKW, genKW, netKW: loadKW - genKW,
-          baujahr: bj, abrissjahr: aj,
-          isAbbruch: true,
-          checked: (_N.massnahmen?.find(m => m.id === a.id + '__abr')?.checked ?? true),
-        });
-      }
-    }
-  }
-
-  // Sortierung: Neubau nach Baujahr, Abriss nach Abrissjahr
-  list.sort((a, b) => {
-    const ya = a.isAbbruch ? (a.abrissjahr||9999) : (a.baujahr||9999);
-    const yb = b.isAbbruch ? (b.abrissjahr||9999) : (b.baujahr||9999);
-    return ya - yb;
-  });
-  _N.massnahmen = list;
+  // Neubau/Abriss gegenüber dem Datenjahr, Haken bleiben erhalten — dieselbe
+  // Liste speist die Gutachten-Abbildungen 3.3.1–3.3.3 (napBedarfsStand).
+  _N.massnahmen = bpMassnahmen(_allAssets(), dataYear, _N.massnahmen);
 }
 
 export function napToggleMassnahme(id) {
@@ -460,23 +422,8 @@ function _napCalcYearlyLoads() {
 
   const rows = [];
   for (let yr = minY; yr <= endY; yr++) {
-    let addLoad = 0, addGen = 0;
-    for (const m of list) {
-      if (m.isAbbruch) {
-        // Ab Abrissjahr entfällt der Beitrag aus dem Bestand → negative Veränderung
-        if (yr >= (m.abrissjahr || 9999)) {
-          addLoad -= m.loadKW * gzf;
-          addGen  -= m.genKW  * gzf;
-        }
-      } else {
-        // Neubau: aktiv zwischen Baujahr und Abrissjahr
-        const bj = m.baujahr    || 0;
-        const aj = m.abrissjahr || 9999;
-        if (yr < bj || yr >= aj) continue;
-        addLoad += m.loadKW * gzf;
-        addGen  += m.genKW  * gzf;
-      }
-    }
+    // Neubau wirkt zwischen Bau- und Abrissjahr, Abriss ab Abrissjahr negativ
+    const { addLoad, addGen } = bpLastJahr(list, yr, gzf);
     rows.push({ year: yr, basePeak, addLoad, addGen, addNet: addLoad - addGen, total: basePeak + addLoad - addGen });
   }
   return rows;
@@ -494,7 +441,7 @@ export function napSetTopSeriesMode(mode) {
   napRenderPanel();
 }
 export function napSetGzf(value) {
-  _N.gzf = parseFloat(value) || 1.0;
+  _N.gzf = bpNormGzf(value);
   if (_napRefreshOverlayIfNeeded()) { napRenderPanel(); return; }
   _napRedrawBottom(); _napRenderSidebar();
 }
@@ -502,9 +449,33 @@ export function napSetSelectedNap(id) {
   _N.selectedNapId = id;
   _napRenderSidebar();
 }
-export function napSetCapacity(v) {
-  _N.capacityKW = parseFloat(v) || null;
-  _napRedrawBottom();
+/**
+ * Anschlussleistung am NAP = „Max. Bezug" der Strom-Grundlagen (window.elNapMaxBezugKw,
+ * aus kVA × cos φ unter ⚡ Strom-Grundlagen › Netzanschluss). Hier nur gelesen, nie
+ * gepflegt — sonst liefen PV-Analyse, Gutachten und NAP-Analyse auseinander.
+ */
+function _napKapazitaetKw() {
+  const v = Number(window.elNapMaxBezugKw);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+// Max. Bezug geändert (⚡ Strom-Grundlagen oder PV-Analyse) → sichtbares NAP-Panel nachziehen
+window.napOnNapGrenzenGeaendert = function() {
+  if (document.getElementById('analyse-nap-wrap')?.style.display === '') napRenderPanel();
+};
+
+// ── Projektdatei ─────────────────────────────────────────────────────────────
+// 03c ruft beides über window (13o importiert selbst aus 03c). Gespeichert wird
+// nur, was von Hand eingestellt wird und die Gutachten-Abbildungen 3.3.x
+// mitbestimmt — Messdaten kommen beim Öffnen frisch aus den Strom-Grundlagen.
+export function napCaptureState() {
+  return { gzf: _N.gzf };
+}
+
+/** Stand aus der Projektdatei anwenden; alte Projekte ohne Eintrag starten mit GZF 1,0. */
+export function napRestoreState(daten) {
+  _N.gzf = bpNormGzf(daten?.gzf);
+  if (document.getElementById('analyse-nap-wrap')?.style.display === '') napRenderPanel();
 }
 export function napRemoveMeasuredData() {
   // Wenn Daten aus Strom-Grundlagen kamen: Auto-Reload verhindern bis neuer Upload
@@ -639,8 +610,8 @@ export function napComputeSynthetic(napId, forceBFS = false) {
     for (const { a, desc } of entries) {
       if (desc) continue;
       const p = a.props || {};
-      if (['WP','Verbraucher'].includes(a.type)) staticBezug += parseFloat(p.leistungKW)||0;
-      else if (a.type === 'Lade')     staticBezug += (parseFloat(p.anzahlPunkte)||1)*(parseFloat(p.leistungProPunktKW)||0);
+      if (['WP','Verbraucher'].includes(a.type)) staticBezug += bpAssetLeistung(a).loadKW;
+      else if (a.type === 'Lade')     staticBezug += bpLadeLeistung(p).kw;
       else if (a.type === 'Batterie') {
         if ((p.betriebsmodus||'einspeisung') === 'verbraucher') staticBezug += parseFloat(p.leistungKW)||0;
         else staticEinsp += parseFloat(p.leistungKW)||0;
@@ -731,10 +702,9 @@ export function napGetEndausbauLastgang(bisJahr) {
   const dataYear = baseMeasured.year || _yr();
   const zielJahr = bisJahr || dataYear;
 
-  const CONSUMER_TYPES = ['Verbraucher','Lade','TWW','WP','Nsa','PV','KWK','Wind','Batterie'];
   const entries = [];
   for (const a of allA) {
-    if (!CONSUMER_TYPES.includes(a.type)) continue;
+    if (!BP_LEISTUNGS_TYPEN.includes(a.type)) continue;
     const bj = parseInt(a.baujahr)    || null;
     const aj = parseInt(a.abrissjahr) || null;
 
@@ -1004,7 +974,7 @@ function _napRenderSidebar() {
   const topMode   = _napGetTopSeriesMode();
   const data      = _activeTopData();
   const s         = data?.stats;
-  const cap       = _N.capacityKW || '';
+  const cap       = _napKapazitaetKw();
   const gzf       = _N.gzf;
   const list      = _N.massnahmen || [];
   const chk       = list.filter(m => m.checked);
@@ -1122,11 +1092,11 @@ function _napRenderSidebar() {
   <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555;margin-bottom:5px;">NAP-Anschlussleistung</div>
   <div style="background:#1e1e30;border-radius:5px;padding:7px 8px;">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-      <span style="font-size:10px;color:#aaa;">Aktuelle Kapazität:</span>
-      <input type="number" value="${cap}" placeholder="kW" min="0" step="10"
-        style="flex:1;background:#0f0f1a;border:1px solid #2a3a3a;border-radius:3px;color:#ccc;padding:3px 6px;font-size:10px;"
-        oninput="napSetCapacity(this.value)">
-      <span style="font-size:10px;color:#666;">kW</span>
+      <span style="font-size:10px;color:#aaa;">Max. Bezug:</span>
+      <span style="flex:1;font-size:10px;font-weight:600;color:${cap != null ? '#ccc' : '#666'};"
+        title="Vereinbarte Anschlussleistung — Feld „Max. Bezug“ unter ⚡ Strom-Grundlagen › NAP-Grenzen">${cap != null ? Math.round(cap).toLocaleString('de-DE') + ' kVA' : 'nicht hinterlegt'}</span>
+      <button onclick="sgNaOeffnen()" title="In ⚡ Strom-Grundlagen › Netzanschluss bearbeiten"
+        style="padding:1px 6px;border:1px solid #2a3a3a;border-radius:3px;background:transparent;color:#80cbc4;font-size:9px;cursor:pointer;">✎ Netzanschluss</button>
     </div>
     <div style="display:flex;align-items:center;gap:6px;">
       <span style="font-size:10px;color:#aaa;">Gleichzeitigkeit:</span>
@@ -1138,7 +1108,7 @@ function _napRenderSidebar() {
 </div>`;
 
   // Maßnahmen
-  const typeIcon = {Verbraucher:'⚡',Lade:'🔌',WP:'♨',Nsa:'🏭',PV:'☀',Batterie:'🔋',KWK:'🔥',Wind:'🌀'};
+  const typeIcon = {Verbraucher:'⚡',Lade:'🔌',WP:'♨',Geo:'♨',FG:'∼',Stromkessel:'🌡',TWW:'🚿',Nsa:'🏭',PV:'☀',Batterie:'🔋',KWK:'🔥',Wind:'🌀'};
   const massRows = list.map(m => {
     const isAbr  = !!m.isAbbruch;
     // Jahr-Spalte: Neubau → Baujahr, Abriss → Abrissjahr (rot)
@@ -1556,7 +1526,7 @@ function _napHeatColor(t) {
 
 // ── Lastentwicklung ───────────────────────────────────────────────────────────
 function _napDrawLastentwicklung(ctx,w,h) {
-  const rows=_napCalcYearlyLoads(); const cap=_N.capacityKW||null;
+  const rows=_napCalcYearlyLoads(); const cap=_napKapazitaetKw();
   const m={l:58,r:20,t:30,b:28};
   ctx.fillStyle='#1a1a2e'; ctx.fillRect(0,0,w,h);
   if (!rows.length) {
@@ -1608,7 +1578,7 @@ function _napDrawLastentwicklung(ctx,w,h) {
     ctx.setLineDash([6,4]); ctx.strokeStyle='#ef5350'; ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.moveTo(m.l,yCap); ctx.lineTo(m.l+cw,yCap); ctx.stroke();
     ctx.setLineDash([]); ctx.font='9px sans-serif'; ctx.fillStyle='#ef5350'; ctx.textAlign='right';
-    ctx.fillText(`Kapazität ${cap} kW`,m.l+cw-2,yCap-3);
+    ctx.fillText(`Max. Bezug ${Math.round(cap)} kVA`,m.l+cw-2,yCap-3);
   }
   // Legende
   ctx.font='9px sans-serif'; ctx.textAlign='left';
@@ -1709,7 +1679,7 @@ function _napBindDevHover(canvas) {
     if (mx<ML||mx>ML+cw||my<MT||my>MT+ch){tt.style.display='none';return;}
     const idx=Math.floor((mx-ML)/cw*rows.length);
     if (idx<0||idx>=rows.length){tt.style.display='none';return;}
-    const r=rows[idx],cap=_N.capacityKW||null,gzf=_N.gzf;
+    const r=rows[idx],cap=_napKapazitaetKw(),gzf=_N.gzf;
     const bezugGes=r.basePeak+r.addLoad,overCap=cap&&bezugGes>cap;
     const fmt=v=>v>=1000?`${(v/1000).toFixed(2)} MW`:`${v.toFixed(0)} kW`;
     const row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0;"><span style="color:#666">${l}</span><span style="font-weight:600;color:${c}">${v}</span></div>`;
@@ -1718,7 +1688,7 @@ function _napBindDevHover(canvas) {
     if (r.addLoad>0) html+=row(`+ Zubau (GZF ${gzf.toFixed(2)})`,fmt(r.addLoad),'#ff8a3c');
     html+=`<div style="display:flex;justify-content:space-between;gap:16px;margin:3px 0;border-top:1px solid #2a2a40;padding-top:3px;"><span style="color:#aaa;font-weight:600;">Bezug gesamt</span><span style="font-weight:700;color:${overCap?'#ef5350':'rgba(130,200,255,.95)'};">${fmt(bezugGes)}${overCap?' ⚠':''}</span></div>`;
     if (r.addGen>0) html+=row('Einspeisung Zubau',fmt(r.addGen),'rgba(100,230,140,.95)');
-    if (cap) { html+=row('NAP-Kapazität',fmt(cap),'#ef5350'); if (overCap) html+=`<div style="margin-top:4px;color:#ef5350;font-size:10px;">⚠ Überschreitung um ${fmt(bezugGes-cap)}</div>`; }
+    if (cap) { html+=row('Max. Bezug (NAP)',`${Math.round(cap).toLocaleString('de-DE')} kVA`,'#ef5350'); if (overCap) html+=`<div style="margin-top:4px;color:#ef5350;font-size:10px;">⚠ Überschreitung um ${fmt(bezugGes-cap)}</div>`; }
     tt.innerHTML=html; tt.style.display='block';
     const ttW=tt.offsetWidth||200,ttH=tt.offsetHeight||120;
     const rawX=e.clientX-rect.left+14,rawY=e.clientY-rect.top-ttH/2;
@@ -1732,7 +1702,7 @@ function _napBindDevHover(canvas) {
 export function napExportPDF() {
   const data=_activeData();
   if (!data?.stats){_hint('Keine Daten geladen.');return;}
-  const s=data.stats,gzf=_N.gzf,cap=_N.capacityKW||null;
+  const s=data.stats,gzf=_N.gzf,cap=_napKapazitaetKw();
   const rows=_napCalcYearlyLoads(),chk=(_N.massnahmen||[]).filter(m=>m.checked);
   const CW=1200,CH=340,CH_HEAT=480,CH_DEV=220;
   function mc(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
@@ -1785,7 +1755,7 @@ img{width:100%;border:1px solid #ddd;border-radius:4px;margin-top:6px;}
   <div class="kpi"><div class="v" style="color:#e65100">${fmtE(s.jahresenergie)}</div><div class="l">Jahresenergie</div></div>
   <div class="kpi"><div class="v" style="color:#c62828">${s.ueberschreitungsstunden80.toFixed(0)} h</div><div class="l">&gt; 80 % Peak</div></div>
 </div>
-${cap?`<div style="background:#fff3cd;border:1px solid #f9a825;border-radius:4px;padding:6px 10px;font-size:11px;margin-bottom:12px;">NAP-Kapazität: <strong>${cap} kW</strong> · GZF: <strong>${gzf.toFixed(2)}</strong></div>`:''}
+${cap?`<div style="background:#fff3cd;border:1px solid #f9a825;border-radius:4px;padding:6px 10px;font-size:11px;margin-bottom:12px;">Max. Bezug NAP: <strong>${Math.round(cap)} kVA</strong> · GZF: <strong>${gzf.toFixed(2)}</strong></div>`:''}
 <h2>Jahresgang</h2><img src="${cZ.toDataURL()}" alt="Jahresgang">
 <h2>Jahresdauerlinie</h2><img src="${cD.toDataURL()}" alt="Dauerlinie">
 <div class="pb"></div>
@@ -2157,7 +2127,6 @@ window.napSetChartMode          = napSetChartMode;
 window.napSetTopSeriesMode      = napSetTopSeriesMode;
 window.napSetGzf                = napSetGzf;
 window.napSetSelectedNap        = napSetSelectedNap;
-window.napSetCapacity           = napSetCapacity;
 window.napRemoveMeasuredData    = napRemoveMeasuredData;
 window.napToggleMassnahme       = napToggleMassnahme;
 window.napToggleAllMassnahmen   = napToggleAllMassnahmen;
@@ -2173,3 +2142,6 @@ window.napApplyKalibrierungMitProfil = napApplyKalibrierungMitProfil;
 window.napKalUpdateFactor           = napKalUpdateFactor;
 window.napGetEndausbauLastgang      = napGetEndausbauLastgang;
 window.napHasMeasuredData           = napHasMeasuredData;
+window.napBedarfsStand              = napBedarfsStand;
+window.napCaptureState              = napCaptureState;
+window.napRestoreState              = napRestoreState;

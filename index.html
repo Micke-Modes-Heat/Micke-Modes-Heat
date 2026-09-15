@@ -3398,7 +3398,7 @@
         <span style="font-size:10px;color:#4fc3f7;flex-shrink:0;" title="= vereinbarte Anschlussleistung laut Netzanschlussvertrag">Max. Bezug:</span>
         <input class="inp-field" type="number" id="strom-nap-bezug-kw" min="0" step="10"
           placeholder="∞" style="width:70px;text-align:right;"
-          data-input="window.elNapMaxBezugKw=(this.value===''?null:parseFloat(this.value));window._pvAnalyse&&(window._pvAnalyse.napMaxBezugKw=window.elNapMaxBezugKw??0);(document.getElementById('pva-nap-bezug')||{}).value=window.elNapMaxBezugKw??''"/>
+          data-input="window.elNapMaxBezugKw=(this.value===''?null:parseFloat(this.value));window._pvAnalyse&&(window._pvAnalyse.napMaxBezugKw=window.elNapMaxBezugKw??0);(document.getElementById('pva-nap-bezug')||{}).value=window.elNapMaxBezugKw??'';window.napOnNapGrenzenGeaendert&&window.napOnNapGrenzenGeaendert()"/>
         <span style="font-size:10px;color:var(--muted);">kVA</span>
       </div>
     </div>

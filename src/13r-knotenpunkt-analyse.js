@@ -13,6 +13,7 @@ import { makePvProfile8760, _PV_SPEZ_DEFAULT } from './09a-pv-profile.js';
 import { globalYear } from './01-globals-varianten.js';
 import { buildSlpProfile8760 } from './13i-slp-editor.js';
 import { windProfileForAsset } from './13q-wind-ertrag.js';
+import { bpLadeLeistung } from './lib/bedarfsprognose.js';
 
 // ── Modulzustand ──────────────────────────────────────────────────────────────
 const _K = {
@@ -163,10 +164,8 @@ const _LADE_ZP_DEFAULT = {
 // Quelle der Wahrheit für das Lastverhalten von Lade-Assets.
 export function ladeProfil8760(asset) {
   const p   = asset.props || {};
-  const gzf = Math.min(1, Math.max(0, parseFloat(p.gleichzeitigFaktor) || 0.3));
-  const pStd = (parseInt(p.anzahlPunkte)||8)  * (parseFloat(p.leistungProPunktKW)||11) * gzf;
-  const pSch = (parseInt(p.anzahlSchnell)||0) * (parseFloat(p.leistungSchnellKW)||150);
-  const peak = pStd + pSch;
+  // Normalladepunkte × kW × GZF des Ladeparks + Schnelllader voll — gemeinsam mit NAP-Analyse/Gutachten
+  const peak = bpLadeLeistung(p).kw;
   if (peak <= 0) return new Float32Array(8760);
 
   const zp   = p.zeitprofil || _LADE_ZP_DEFAULT;

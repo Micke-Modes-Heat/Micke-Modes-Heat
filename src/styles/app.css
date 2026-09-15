@@ -15,6 +15,13 @@
 
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-weight:normal;}
 
+/* Native <select>-Aufklappliste: rendert mit weißem Hintergrund, unabhängig vom
+   dunklen App-Theme. Ohne diese Regel erbt sie color:var(--text) (fast weiß) von
+   body und ist dadurch praktisch unlesbar – außer bei der aktuell gewählten
+   Option, die der Browser selbst kontrastreich hervorhebt. */
+select option{color:#1a1a1a;background:#fff;}
+select option:checked{background:#d5d5d5;color:#1a1a1a;}
+
 header{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;gap:8px;white-space:nowrap;overflow:visible;}
 .logo{font-size:14px;font-weight:normal;letter-spacing:.04em;color:var(--accent);white-space:nowrap;display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;}
 .logo span{color:var(--muted);font-weight:normal;}

@@ -7,6 +7,7 @@
 import { ASSETS, createAsset, deleteAsset } from './13a-assets-core.js';
 import { redrawAllAssets, isAssetLayerVisible } from './13b-assets-render.js';
 import { map } from './02b-gebaeude.js';
+import { fruehestesPhasenJahr } from './lib/phasen-core.js';
 
 // Mapping erzeuger-key → Asset-Typ + Name
 const ERZEUGER_ASSET_CFG = {
@@ -113,6 +114,32 @@ function _findLinked(key) {
   return ASSETS.items.find(a => a.linkedErzeuger === key) || null;
 }
 
+// ── Automatisches Baujahr ─────────────────────────────────────────────────────
+// Elektrische Wärmeerzeuger gehören zum Wärmekonzept und sind damit geplant. Ohne
+// eigenes Baujahr erbten sie das der Heizzentrale (createAsset) und zählten als
+// Bestand — in der NAP-Analyse und im Gutachten 3.3.2 fehlte ihr Strombedarf.
+const AUTO_BAUJAHR_KEYS = ['lwwp', 'geo', 'fg', 'stromkessel'];
+
+/** Startjahr der ersten Ausbaustufe (projektweit oder aktive Variante), sonst das nächste Kalenderjahr. */
+function _autoBaujahr() {
+  return fruehestesPhasenJahr(window.phasen, window.activeVariantId ?? null) ?? new Date().getFullYear() + 1;
+}
+
+/**
+ * Baujahr setzen, solange es nicht von Hand vergeben wurde. Ohne Merkmal (älteres
+ * Projekt) gilt ein leeres oder vom Gebäude geerbtes Baujahr als automatisch;
+ * jedes andere bleibt stehen.
+ */
+function _baujahrAutomatisch(key, asset) {
+  if (!AUTO_BAUJAHR_KEYS.includes(key) || asset.baujahrAuto === false) return;
+  if (asset.baujahrAuto !== true && asset.baujahr != null) {
+    const geb = window.gebaeude?.find(g => g.id === asset.buildingId);
+    if (!geb || String(geb.baujahr ?? '') !== String(asset.baujahr)) return;
+  }
+  asset.baujahr = _autoBaujahr();
+  asset.baujahrAuto = true;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -137,13 +164,19 @@ export function syncErzeugerElektroAsset(key) {
     if (existing._marker?.setLatLng) existing._marker.setLatLng([coords.lat, coords.lng]);
     if (!existing.buildingId && buildingId) existing.buildingId = buildingId;
     Object.assign(existing.props, props);
+    _baujahrAutomatisch(key, existing);
   } else {
     const asset = createAsset(cfg.assetType, coords.lat, coords.lng, {
       name: cfg.name,
       props,
       buildingId,
     });
-    if (asset) asset.linkedErzeuger = key;
+    if (asset) {
+      asset.linkedErzeuger = key;
+      // createAsset hat das Baujahr der Heizzentrale geerbt — für eine geplante Anlage falsch
+      asset.baujahr = null;
+      _baujahrAutomatisch(key, asset);
+    }
   }
 
   if (isAssetLayerVisible()) redrawAllAssets();
@@ -157,6 +190,8 @@ export function updateErzeugerAssetProps(key) {
   const existing = _findLinked(key);
   if (!existing) return;
   Object.assign(existing.props, _props(key));
+  // Folgt geänderten Ausbaustufen und erfasst Anlagen aus älteren Projekten
+  _baujahrAutomatisch(key, existing);
 }
 
 /**

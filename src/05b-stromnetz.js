@@ -3478,6 +3478,7 @@ export function captureStromNetzState() {
       buildingId: a.buildingId, _movedByUser: a._movedByUser || false,
       linkedErzeuger: a.linkedErzeuger || null, linkedFF: a.linkedFF || null,
       props: a.props ? { ...a.props } : {}, baujahr: a.baujahr, abrissjahr: a.abrissjahr,
+      baujahrAuto: a.baujahrAuto ?? null,
       schicht: a.schicht,
       massnahmen: (a.massnahmen || []).map(m => ({ ...m }))
     })),
@@ -3529,6 +3530,7 @@ export function applyStromNetzState(state) {
     });
     if (loaded && data.linkedErzeuger) loaded.linkedErzeuger = data.linkedErzeuger;
     if (loaded && data.linkedFF)       loaded.linkedFF       = data.linkedFF;
+    if (loaded && typeof data.baujahrAuto === 'boolean') loaded.baujahrAuto = data.baujahrAuto;
   });
   redrawAllAssets();
 

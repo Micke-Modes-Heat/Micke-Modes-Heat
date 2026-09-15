@@ -1331,7 +1331,7 @@ function buildBodyHtml(asset) {
     ${buildBuildingSelect(asset)}
     <div class="ins-row-2">
       <div class="ins-field-group">
-        <label class="ins-field-label">Baujahr</label>
+        <label class="ins-field-label">Baujahr${asset.baujahrAuto ? ' <span style="color:var(--muted);font-weight:normal;" title="Automatisch: Startjahr der ersten Ausbaustufe, sonst nächstes Jahr. Eine Eingabe hier ersetzt es dauerhaft.">(auto)</span>' : ''}</label>
         <input class="ins-field-input" type="number" data-field="baujahr"
           value="${asset.baujahr ?? ''}" placeholder="—">
       </div>
@@ -1373,7 +1373,7 @@ function renderInspector(asset) {
       ${buildBuildingSelect(asset)}
       <div class="ins-row-2">
         <div class="ins-field-group">
-          <label class="ins-field-label">Baujahr</label>
+          <label class="ins-field-label">Baujahr${asset.baujahrAuto ? ' <span style="color:var(--muted);font-weight:normal;" title="Automatisch: Startjahr der ersten Ausbaustufe, sonst nächstes Jahr. Eine Eingabe hier ersetzt es dauerhaft.">(auto)</span>' : ''}</label>
           <input class="ins-field-input" type="number" data-field="baujahr"
             value="${asset.baujahr ?? ''}" placeholder="—">
         </div>
@@ -1530,6 +1530,8 @@ function wireEvents(panel, asset) {
         asset.name = inp.value;
       } else if (f === 'baujahr' || f === 'abrissjahr') {
         asset[f] = inp.value === '' ? null : parseInt(inp.value);
+        // Von Hand gesetzt: das automatische Baujahr der Erzeuger-Kopplung (13p) fasst es nicht mehr an
+        if (f === 'baujahr' && asset.linkedErzeuger) asset.baujahrAuto = false;
         drawAssetMarker(asset);
       } else if (f === 'buildingId') {
         asset.buildingId = inp.value || null;

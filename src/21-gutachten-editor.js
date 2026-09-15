@@ -503,7 +503,7 @@ function blockPanel(b, kapIdx) {
               { primaer: !b.svg, titel: 'Öffnet den Reiter 🗺️ Liegenschaftsbilder mit genau den Einstellungen, mit denen dieser Plan zuletzt gebaut wurde (bzw. leer, wenn noch keine gespeichert sind).' })
       + (b.svg ? ueberschrift('Bearbeiten und kopieren')
           + knopf('⧉ Für Word kopieren', `gutCopyTeil('${id}',0)`,
-                  { primaer: true, titel: 'Bild + Beschriftung mit Nummer in die Zwischenablage — die Nummer steckt als Word-Feld drin, Word ordnet sie beim Einfügen selbst in seine Zählung ein.' })
+                  { primaer: true, titel: 'Nur das Bild in die Zwischenablage — ohne Beschriftung oder Nummer, die tragen Sie in Word selbst ein (z. B. über „Beschriftung einfügen").' })
         : '')
       + anordnung + entfernen;
   }
@@ -527,16 +527,15 @@ function blockPanel(b, kapIdx) {
       + hinweis('Leer = Titel der Grafik. Die Nummer vergibt das Dokument automatisch.');
   }
   if (f.istBlatt) {
+    const variante = `${b.layout === 'voll' ? 'voll' : 'reduziert'}|${b.kennzahlen ? '1' : '0'}`;
+    const varOption = (v, label) => `<option value="${v}"${variante === v ? ' selected' : ''}>${label}</option>`;
     html += feldLabel('Blatt')
-      + `<select data-change="gutSetFigurOpt('${id}','layout',this.value)" style="${EINGABE_STIL}">
-           <option value="reduziert"${b.layout === 'reduziert' ? ' selected' : ''}>reduziert — ohne Kopfdaten</option>
-           <option value="voll"${b.layout === 'voll' ? ' selected' : ''}>vollständig — mit Kopfdaten und Kennzahlen</option>
+      + `<select data-change="gutSetFigurOpt('${id}','blattvariante',this.value)" style="${EINGABE_STIL}">
+           ${varOption('reduziert|0', 'reduziert — ohne Kopfdaten')}
+           ${varOption('reduziert|1', 'reduziert — ohne Kopfdaten, mit Kennzahlentabelle')}
+           ${varOption('voll|0', 'vollständig — mit Kopfdaten, ohne Kennzahlen')}
+           ${varOption('voll|1', 'vollständig — mit Kopfdaten und Kennzahlen')}
          </select>`;
-    if (b.layout === 'reduziert') {
-      html += `<label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11px;color:var(--muted);cursor:pointer;">
-          <input type="checkbox"${b.kennzahlen ? ' checked' : ''} data-change="gutSetFigurOpt('${id}','kennzahlen',this.checked)">
-          Kennzahlentabelle darunter</label>`;
-    }
   }
   html += ueberschrift('Bearbeiten und kopieren')
     + `<div style="display:flex;flex-direction:column;gap:4px;">`
@@ -783,23 +782,21 @@ export function gutSetFigurOpt(id, feld, wert) {
     renderGliederung();
     return;
   }
-  if (feld === 'layout') b.layout = wert === 'voll' ? 'voll' : 'reduziert';
-  else if (feld === 'kennzahlen') b.kennzahlen = !!wert;
+  if (feld === 'blattvariante') {
+    const [layout, kennzahlen] = String(wert ?? '').split('|');
+    b.layout = layout === 'voll' ? 'voll' : 'reduziert';
+    b.kennzahlen = kennzahlen === '1';
+  }
   else return;
   neuZeichnen();
 }
 
 /**
- * Beschriftung {art, nr, titel} eines Blocks — dieselbe Nummer, die auch unter der Grafik in
- * der Seitenansicht und im Word-Export steht (s. gdBeschriftungen). null, wenn der Block keine
- * bekommt (Fließtext) oder das Dokument noch nicht existiert.
+ * Kopiert Bild oder Tabelle eines Blocks in die Zwischenablage — ohne Bildunterschrift
+ * oder Nummer, damit beim Einfügen in ein anderes Word-Dokument nichts mit dessen eigener
+ * Beschriftung/Nummerierung kollidiert. Die Nummer steht nur in der Seitenansicht hier im
+ * Tool (s. gdBeschriftungen) und im vollständigen Word-Export (gutachten-docx.js).
  */
-function beschriftungVon(blockId, titel) {
-  if (!_gut.dok) return null;
-  const nr = (gdBeschriftungen(_gut.dok, teilArten).get(blockId) || [])[0];
-  return nr ? { art: nr.art, nr: nr.nr, titel } : null;
-}
-
 export async function gutCopyTeil(id, teilIdx) {
   const b = findeBlock(id);
   if (!b || (b.typ !== 'figur' && b.typ !== 'bild')) return;
@@ -809,16 +806,10 @@ export async function gutCopyTeil(id, teilIdx) {
     if (b.typ === 'bild') {
       const svg = bildSvgElement(b);
       if (!svg) throw new Error('Grafik konnte nicht vorbereitet werden — noch einmal übernehmen.');
-      const titel = b.unterschrift.trim() || 'Lageplan der Liegenschaft';
-      wohin = await ggCopyForWord(svg, 3, { beschriftung: beschriftungVon(id, titel) });
+      wohin = await ggCopyForWord(svg, 3);
     } else {
       const el = seitenElement('block', id)?.querySelector(`[data-gut-teil="${teilIdx}"]`)?.firstElementChild || null;
-      const erg = figurErgebnis(b);
-      const titel = b.unterschrift.trim() || erg.titel;
-      const text = teilIdx === 0 ? titel : `${erg.tabelleTitel}: ${titel}`;
-      const nrListe = _gut.dok ? gdBeschriftungen(_gut.dok, teilArten).get(id) || [] : [];
-      const nr = nrListe[teilIdx];
-      wohin = await ggCopyDokumentTeil(b.figurId, teilIdx, el, nr ? { art: nr.art, nr: nr.nr, titel: text } : null);
+      wohin = await ggCopyDokumentTeil(b.figurId, teilIdx, el);
     }
     gutSay(`✓ In die ${wohin} kopiert — in Word mit Strg+V einfügen.`);
   } catch (e) {

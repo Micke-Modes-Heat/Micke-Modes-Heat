@@ -2622,6 +2622,8 @@ export function _buildProjectData() {
     projektStammdaten: _captureProjektStammdaten(),
     // Gutachten-Editor (21-gutachten-editor.js) — über window, damit das Modul ein Blatt im Importgraph bleibt
     gutachten: typeof window.gutCaptureGutachten === 'function' ? window.gutCaptureGutachten() : null,
+    // NAP-Analyse (13o): Gleichzeitigkeitsfaktor — über window, weil 13o aus diesem Modul importiert
+    napAnalyse: typeof window.napCaptureState === 'function' ? window.napCaptureState() : null,
     waermeGrundlagen:captureWaermeGrundlagen(),
     gebaeude: window.gebaeude.map(g => ({
       id: g.id, name: g.name, gebaeudenummer: g.gebaeudenummer || '', waerme: g.waerme, heizlast: g.heizlast, spez: g.spez, spezHeizlast: g.spezHeizlast,
@@ -2734,6 +2736,7 @@ export function _buildProjectData() {
           linkedFF:       a.linkedFF       || null,
           props: { ...a.props },
           baujahr: a.baujahr, abrissjahr: a.abrissjahr,
+          baujahrAuto: a.baujahrAuto ?? null,
           schicht: a.schicht,
           massnahmen: a.massnahmen || []
         })),
@@ -3145,6 +3148,7 @@ function _applyProjectData(project) {
       // Netzanschluss-Abschnitt neu zeichnen
       if (typeof window.sgNaRender === 'function') window.sgNaRender();
       if (typeof window.gutRestoreGutachten === 'function') window.gutRestoreGutachten(project.gutachten || null);
+      if (typeof window.napRestoreState === 'function') window.napRestoreState(project.napAnalyse || null);
       // Immer vor dem Gebäudetausch zurücksetzen/wiederherstellen. Alte Projekte
       // besitzen dieses Feld noch nicht und starten deshalb bewusst ohne die
       // Monatswerte oder Lastgänge der zuvor geöffneten Liegenschaft.
@@ -3587,6 +3591,7 @@ function _applyProjectData(project) {
             massnahmen: data.massnahmen || []
           });
           if (loaded && data.linkedErzeuger) loaded.linkedErzeuger = data.linkedErzeuger;
+          if (loaded && typeof data.baujahrAuto === 'boolean') loaded.baujahrAuto = data.baujahrAuto;
           if (loaded && data.linkedFF)       loaded.linkedFF       = data.linkedFF;
         });
       } else if (typeof window.autoCreateBuildingAssets === 'function' && Array.isArray(window.gebaeude)) {

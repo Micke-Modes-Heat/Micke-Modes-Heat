@@ -1781,7 +1781,7 @@ function _pvBuildPanelHtml() {
             <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Max. Bezug (kVA)</div>
             <input id="pva-nap-bezug" type="number" value="0" min="0" step="10"
               style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
-              data-change="window._pvAnalyse.napMaxBezugKw=parseFloat(this.value)||0;window.elNapMaxBezugKw=window._pvAnalyse.napMaxBezugKw||null;(document.getElementById('strom-nap-bezug-kw')||{}).value=this.value"/>
+              data-change="window._pvAnalyse.napMaxBezugKw=parseFloat(this.value)||0;window.elNapMaxBezugKw=window._pvAnalyse.napMaxBezugKw||null;(document.getElementById('strom-nap-bezug-kw')||{}).value=this.value;window.napOnNapGrenzenGeaendert&&window.napOnNapGrenzenGeaendert()"/>
           </div>
           <div style="grid-column:1/-1;">
             <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Spannungsebene (Richtwert für S_k″)</div>
