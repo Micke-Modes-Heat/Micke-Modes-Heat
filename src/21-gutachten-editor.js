@@ -15,7 +15,7 @@ import {
   ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe,
 } from './17-gutachten-grafik.js';
 import {
-  GUTACHTEN_DOK_VERSION, GUTACHTEN_MAX_EBENE, gdNormalisieren, gdKapitelNummern, gdStandardDokument, gdLeeresDokument,
+  GUTACHTEN_DOK_VERSION, GUTACHTEN_MAX_EBENE, gdNormalisieren, gdKapitelNummern, gdStandardDokument, gdMitStandardAbgleichen, gdLeeresDokument,
   gdKapitelEinfuegen, gdKapitelLoeschen, gdKapitelVerschieben, gdKapitelEbene,
   gdNeuerTextBlock, gdNeuerFigurBlock, gdNeuerBildBlock, gdBlockEinfuegen, gdBlockLoeschen, gdBlockVerschieben,
   gdFindeBlock, gdBeschriftungen, gdFigurIds, gdNormDeckblatt, GUTACHTEN_DECKBLATT_VORGABEN,
@@ -414,6 +414,11 @@ function dokumentPanel() {
   const offen = [...offeneProKapitel().values()].reduce((s, n) => s + n, 0);
   const imDok = gdFigurIds(dok);
   const fehlend = ggFigurenKatalog().filter(f => !imDok.has(f.id));
+  // Vorschau des Abgleichs — ändert nichts; alte Kapitel mit ihrer heutigen Nummer nennen
+  const abgleich = gdMitStandardAbgleichen(dok, ggFigurenKatalog());
+  const nummernJetzt = gdKapitelNummern(dok.kapitel);
+  const nrJetzt = new Map(dok.kapitel.map((k, i) => [k.id, nummernJetzt[i]]));
+  const nFehlendK = abgleich.neueKapitel.length, nFehlendB = abgleich.neueBloecke.length;
   const kachel = (wert, label) => `<div style="background:rgba(255,255,255,.04);border-radius:5px;padding:7px 9px;">
       <div style="font-size:15px;color:var(--text,#e8eaed);">${wert}</div><div style="font-size:10px;color:var(--muted);">${label}</div></div>`;
   return `<div style="font-size:12px;font-weight:600;color:var(--text,#e8eaed);margin-bottom:8px;">Dokument</div>`
@@ -425,7 +430,21 @@ function dokumentPanel() {
     + (fehlend.length
         ? ueberschrift('Noch nicht im Dokument') + fehlend.map(f => `<div style="font-size:11px;color:var(--muted);margin-bottom:3px;line-height:1.4;">• ${esc(f.titel)}
             <span style="opacity:.65;">(${esc(f.kapitel || 'ohne Kapitel')})</span></div>`).join('')
-          + hinweis('Einfügen über das jeweilige Kapitel → „Inhalt einfügen“.')
+          + hinweis('Einfügen über das jeweilige Kapitel → „Inhalt einfügen“ oder alles auf einmal über „Mit Standardgliederung abgleichen“.')
+        : '')
+    + ueberschrift('Standardgliederung')
+    + (nFehlendK || nFehlendB
+        ? `<div style="font-size:11px;color:${GUT_WARN};line-height:1.45;margin-bottom:6px;">Gegenüber der aktuellen Vorlage fehlen `
+          + [nFehlendK && `${nFehlendK} Kapitel`, nFehlendB && `${nFehlendB} Abbildungen/Textbausteine`].filter(Boolean).join(' und ')
+          + '.</div>'
+          + knopf('⇄ Mit Standardgliederung abgleichen', 'gutMitStandardAbgleichen()', { primaer: true,
+              titel: 'Ergänzt fehlende Kapitel und Bausteine an der passenden Stelle. Vorhandene Kapitel, Texte und Einstellungen bleiben unverändert.' })
+        : `<div style="font-size:11px;color:${GUT_AKZENT};">✓ Alle Kapitel und Bausteine der Standardgliederung sind vorhanden.</div>`)
+    + (abgleich.fremdeKapitel.length
+        ? hinweis(`${abgleich.fremdeKapitel.length} Kapitel ohne Gegenstück in der Standardgliederung, z. B. aus einer älteren Vorlage: `
+            + abgleich.fremdeKapitel.slice(0, 6).map(k => esc(`${nrJetzt.get(k.id) || k.nr} ${k.titel.trim() || '[ohne Titel]'}`)).join(' · ')
+            + (abgleich.fremdeKapitel.length > 6 ? ' · …' : '')
+            + '. Inhalte bei Bedarf in die passenden Kapitel verschieben, leere Kapitel löschen.')
         : '')
     + deckblattPanel()
     + ueberschrift('Zurücksetzen')
@@ -591,6 +610,32 @@ export function gutStandardAnlegen(ersetzen = false) {
   const n = dok.kapitel.reduce((s, k) => s + k.bloecke.length, 0);
   gutSay(`✓ Standardgliederung angelegt — ${n} Abbildungen und Textbausteine eingesetzt.`
     + (nichtZugeordnet.length ? ` ${nichtZugeordnet.length} ohne passendes Kapitel.` : ''));
+}
+
+/**
+ * Älteres Dokument auf den Stand der Standardgliederung bringen: fehlende Kapitel und Bausteine
+ * ergänzen, alles Vorhandene (Kapitel, Freitexte, Lagepläne, Block-Einstellungen) unverändert lassen.
+ */
+export function gutMitStandardAbgleichen() {
+  if (!_gut.dok) return;
+  const erg = gdMitStandardAbgleichen(_gut.dok, ggFigurenKatalog());
+  const nK = erg.neueKapitel.length, nB = erg.neueBloecke.length;
+  if (!nK && !nB) {
+    gutSay('✓ Das Dokument enthält bereits alle Kapitel und Bausteine der Standardgliederung.');
+    return;
+  }
+  const liste = erg.neueKapitel.slice(0, 10).map(k => `  • ${k.nr} ${k.titel}`).join('\n')
+    + (nK > 10 ? `\n  • … und ${nK - 10} weitere` : '');
+  if (!window.confirm('Mit der Standardgliederung abgleichen?\n\n'
+      + (nK ? `Neue Kapitel (${nK}):\n${liste}\n\n` : '')
+      + (nB ? `${nB} Abbildungen und Textbausteine kommen in ihre Kapitel — auch solche, die früher bewusst entfernt wurden.\n\n` : '')
+      + 'Vorhandene Kapitel, Texte und Einstellungen bleiben unverändert.')) return;
+  _gut.dok = erg.dok;
+  _gut.cache.clear();
+  gutRender();
+  gutSay(`✓ Abgeglichen — ${nK} Kapitel und ${nB} Abbildungen/Textbausteine ergänzt.`
+    + (erg.nichtZugeordnet.length ? ` ${erg.nichtZugeordnet.length} ohne passendes Kapitel.` : '')
+    + (erg.fremdeKapitel.length ? ` ${erg.fremdeKapitel.length} ältere Kapitel ohne Gegenstück — rechts unter „Standardgliederung“ aufgeführt.` : ''));
 }
 
 export function gutLeeresAnlegen() {

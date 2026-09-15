@@ -14910,9 +14910,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-09-14';
+  var d = '2026-09-15';
   if (d.indexOf('__') === 0) d = '';
-  var c = '7d09cd6';
+  var c = 'e714be9';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -109825,6 +109825,26 @@ ${massTbl}
     });
   }
 
+  /** Position eines Katalogeintrags im Kapitel: `reihe`, sonst Text vor Abbildung. */
+  const katalogRang = f => (Number.isFinite(f.reihe) ? f.reihe : f.istText ? 0 : 1000);
+  /** Kapiteltitel vergleichbar machen: Groß-/Kleinschreibung und Leerzeichen zählen nicht. */
+  const titelSchluessel = t => alsText(t).toLowerCase().replace(/\s+/g, ' ').trim();
+  /** Kapitelnummer vorn im Katalog-Kapitel ("3.3.1 Bestandsbedarf …" → "3.3.1"). */
+  const katalogNummer = f => (alsText(f.kapitel).match(/^\d+(\.\d+)*/) || [''])[0];
+
+  /** Flache Kapitelliste als Baum { kinder: [{ k, kinder }] } — die Liste selbst bleibt unverändert. */
+  function kapitelBaum(kapitel) {
+    const wurzel = { kinder: [] };
+    const stapel = [{ ebene: 0, knoten: wurzel }];
+    for (const k of kapitel) {
+      while (stapel[stapel.length - 1].ebene >= k.ebene) stapel.pop();
+      const knoten = { k, kinder: [] };
+      stapel[stapel.length - 1].knoten.kinder.push(knoten);
+      stapel.push({ ebene: k.ebene, knoten });
+    }
+    return wurzel;
+  }
+
   /**
    * Neues Dokument aus der Standardgliederung. Figuren aus dem Katalog
    * ({id, kapitel: '3.2 Stromverbrauchsdaten', istText, reihe}) landen in dem Kapitel mit
@@ -109836,15 +109856,101 @@ ${massTbl}
     const kapitel = GUTACHTEN_STANDARD_GLIEDERUNG.map(k => ({ id: gdId('k'), ebene: k.ebene, titel: k.titel, bloecke: [] }));
     const nummern = gdKapitelNummern(kapitel);
     const nichtZugeordnet = [];
-    const rang = f => (Number.isFinite(f.reihe) ? f.reihe : f.istText ? 0 : 1000);
-    const reihenfolge = [...katalog].sort((a, b) => rang(a) - rang(b));   // stabil: gleicher Rang behält die Katalogreihenfolge
+    const reihenfolge = [...katalog].sort((a, b) => katalogRang(a) - katalogRang(b));   // stabil: gleicher Rang behält die Katalogreihenfolge
     for (const f of reihenfolge) {
-      const nr = (alsText(f.kapitel).match(/^\d+(\.\d+)*/) || [''])[0];
+      const nr = katalogNummer(f);
       const idx = nr ? nummern.indexOf(nr) : -1;
       if (idx < 0) { nichtZugeordnet.push(f.id); continue; }
       kapitel[idx].bloecke.push(gdNeuerFigurBlock(f.id));
     }
     return { dok: { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt() }, nichtZugeordnet };
+  }
+
+  /**
+   * Bestehendes Dokument mit der aktuellen Standardgliederung abgleichen — nur ergänzen, nie ändern.
+   *
+   * Kapitel werden über ihren Titel zugeordnet, und zwar nur unter demselben Oberkapitel: so
+   * bleiben gleichnamige Kapitel verschiedener Teile („Wirtschaftlichkeit …“ bei Wärme und Strom)
+   * auseinander. Ein fehlendes Kapitel kommt samt Unterkapiteln hinter das zuletzt zugeordnete
+   * Geschwister — bestehende Kapitel werden dabei nie umgehängt, umbenannt oder gelöscht.
+   * Katalogeinträge, die noch nirgends im Dokument stehen, landen in dem Kapitel, das ihrer
+   * Standard-Kapitelnummer entspricht, vor der ersten Abbildung mit höherem Rang (`reihe`).
+   *
+   * Ergebnis: { dok, neueKapitel: [{id, nr, titel}], neueBloecke: [{figurId, kapitelId, nr}],
+   *   nichtZugeordnet: [figurId], fremdeKapitel: [{id, nr, titel}] } — fremdeKapitel sind die
+   * obersten Kapitel ohne Gegenstück in der Standardgliederung (z. B. aus einer älteren Vorlage).
+   * Die Eingabe bleibt unverändert.
+   */
+  function gdMitStandardAbgleichen(dok, katalog = [], standard = GUTACHTEN_STANDARD_GLIEDERUNG) {
+    const basis = gdNormalisieren(dok) || { version: GUTACHTEN_DOK_VERSION, kapitel: [], deckblatt: gdNormDeckblatt() };
+    const std = standard.map((s, idx) => ({ ebene: s.ebene, titel: s.titel, idx }));
+    const stdNummern = gdKapitelNummern(std);
+    const dokBaum = kapitelBaum(basis.kapitel);
+    const zuordnung = new Map();   // Standard-Index → Kapitel im Ergebnis
+    const getroffen = new Set();   // Kapitel mit Gegenstück (auch die neu angelegten)
+    const neuIds = new Set();
+
+    const abgleichen = (sKnoten, dKnoten, ebene) => {
+      let pos = 0;   // hinter dem zuletzt zugeordneten Geschwister einfügen
+      for (const sk of sKnoten.kinder) {
+        const schluessel = titelSchluessel(sk.k.titel);
+        const idx = schluessel
+          ? dKnoten.kinder.findIndex(dk => !getroffen.has(dk.k) && titelSchluessel(dk.k.titel) === schluessel)
+          : -1;
+        let ziel;
+        if (idx >= 0) {
+          ziel = dKnoten.kinder[idx];
+          pos = Math.max(pos, idx + 1);
+        } else {
+          ziel = { k: { id: gdId('k'), ebene, titel: sk.k.titel, bloecke: [] }, kinder: [] };
+          dKnoten.kinder.splice(pos++, 0, ziel);
+          neuIds.add(ziel.k.id);
+        }
+        getroffen.add(ziel.k);
+        zuordnung.set(sk.k.idx, ziel.k);
+        abgleichen(sk, ziel, ebene + 1);
+      }
+    };
+    abgleichen(kapitelBaum(std), dokBaum, 1);
+
+    const kapitel = [];
+    const fremdOben = [];
+    const flach = (knoten, ebene, elternGetroffen) => {
+      for (const c of knoten.kinder) {
+        c.k.ebene = ebene;
+        kapitel.push(c.k);
+        const hat = getroffen.has(c.k);
+        if (!hat && elternGetroffen) fremdOben.push(c.k);
+        flach(c, ebene + 1, hat);
+      }
+    };
+    flach(dokBaum, 1, true);
+
+    const nummern = gdKapitelNummern(kapitel);
+    const nrVon = new Map(kapitel.map((k, i) => [k.id, nummern[i]]));
+    const rangVon = new Map(katalog.map(f => [f.id, katalogRang(f)]));
+    const imDok = gdFigurIds({ kapitel });
+    const neueBloecke = [], nichtZugeordnet = [];
+    for (const f of [...katalog].sort((a, b) => katalogRang(a) - katalogRang(b))) {
+      if (imDok.has(f.id)) continue;
+      const nr = katalogNummer(f);
+      const kap = nr ? zuordnung.get(stdNummern.indexOf(nr)) : null;
+      if (!kap) { nichtZugeordnet.push(f.id); continue; }
+      const rang = katalogRang(f);
+      const pos = kap.bloecke.findIndex(b => b.typ === 'figur' && rangVon.has(b.figurId) && rangVon.get(b.figurId) > rang);
+      const block = gdNeuerFigurBlock(f.id);
+      if (pos < 0) kap.bloecke.push(block); else kap.bloecke.splice(pos, 0, block);
+      neueBloecke.push({ figurId: f.id, kapitelId: kap.id, nr: nrVon.get(kap.id) });
+    }
+
+    const eintrag = k => ({ id: k.id, nr: nrVon.get(k.id), titel: k.titel });
+    return {
+      dok: { ...basis, kapitel },
+      neueKapitel: kapitel.filter(k => neuIds.has(k.id)).map(eintrag),
+      neueBloecke,
+      nichtZugeordnet,
+      fremdeKapitel: fremdOben.map(eintrag),
+    };
   }
 
   function gdLeeresDokument() {
@@ -110826,6 +110932,11 @@ ${massTbl}
     const offen = [...offeneProKapitel().values()].reduce((s, n) => s + n, 0);
     const imDok = gdFigurIds(dok);
     const fehlend = ggFigurenKatalog().filter(f => !imDok.has(f.id));
+    // Vorschau des Abgleichs — ändert nichts; alte Kapitel mit ihrer heutigen Nummer nennen
+    const abgleich = gdMitStandardAbgleichen(dok, ggFigurenKatalog());
+    const nummernJetzt = gdKapitelNummern(dok.kapitel);
+    const nrJetzt = new Map(dok.kapitel.map((k, i) => [k.id, nummernJetzt[i]]));
+    const nFehlendK = abgleich.neueKapitel.length, nFehlendB = abgleich.neueBloecke.length;
     const kachel = (wert, label) => `<div style="background:rgba(255,255,255,.04);border-radius:5px;padding:7px 9px;">
       <div style="font-size:15px;color:var(--text,#e8eaed);">${wert}</div><div style="font-size:10px;color:var(--muted);">${label}</div></div>`;
     return `<div style="font-size:12px;font-weight:600;color:var(--text,#e8eaed);margin-bottom:8px;">Dokument</div>`
@@ -110837,7 +110948,21 @@ ${massTbl}
       + (fehlend.length
           ? ueberschrift('Noch nicht im Dokument') + fehlend.map(f => `<div style="font-size:11px;color:var(--muted);margin-bottom:3px;line-height:1.4;">• ${esc$5(f.titel)}
             <span style="opacity:.65;">(${esc$5(f.kapitel || 'ohne Kapitel')})</span></div>`).join('')
-            + hinweis('Einfügen über das jeweilige Kapitel → „Inhalt einfügen“.')
+            + hinweis('Einfügen über das jeweilige Kapitel → „Inhalt einfügen“ oder alles auf einmal über „Mit Standardgliederung abgleichen“.')
+          : '')
+      + ueberschrift('Standardgliederung')
+      + (nFehlendK || nFehlendB
+          ? `<div style="font-size:11px;color:${GUT_WARN};line-height:1.45;margin-bottom:6px;">Gegenüber der aktuellen Vorlage fehlen `
+            + [nFehlendK && `${nFehlendK} Kapitel`, nFehlendB && `${nFehlendB} Abbildungen/Textbausteine`].filter(Boolean).join(' und ')
+            + '.</div>'
+            + knopf('⇄ Mit Standardgliederung abgleichen', 'gutMitStandardAbgleichen()', { primaer: true,
+                titel: 'Ergänzt fehlende Kapitel und Bausteine an der passenden Stelle. Vorhandene Kapitel, Texte und Einstellungen bleiben unverändert.' })
+          : `<div style="font-size:11px;color:${GUT_AKZENT};">✓ Alle Kapitel und Bausteine der Standardgliederung sind vorhanden.</div>`)
+      + (abgleich.fremdeKapitel.length
+          ? hinweis(`${abgleich.fremdeKapitel.length} Kapitel ohne Gegenstück in der Standardgliederung, z. B. aus einer älteren Vorlage: `
+              + abgleich.fremdeKapitel.slice(0, 6).map(k => esc$5(`${nrJetzt.get(k.id) || k.nr} ${k.titel.trim() || '[ohne Titel]'}`)).join(' · ')
+              + (abgleich.fremdeKapitel.length > 6 ? ' · …' : '')
+              + '. Inhalte bei Bedarf in die passenden Kapitel verschieben, leere Kapitel löschen.')
           : '')
       + deckblattPanel()
       + ueberschrift('Zurücksetzen')
@@ -111003,6 +111128,32 @@ ${massTbl}
     const n = dok.kapitel.reduce((s, k) => s + k.bloecke.length, 0);
     gutSay(`✓ Standardgliederung angelegt — ${n} Abbildungen und Textbausteine eingesetzt.`
       + (nichtZugeordnet.length ? ` ${nichtZugeordnet.length} ohne passendes Kapitel.` : ''));
+  }
+
+  /**
+   * Älteres Dokument auf den Stand der Standardgliederung bringen: fehlende Kapitel und Bausteine
+   * ergänzen, alles Vorhandene (Kapitel, Freitexte, Lagepläne, Block-Einstellungen) unverändert lassen.
+   */
+  function gutMitStandardAbgleichen() {
+    if (!_gut.dok) return;
+    const erg = gdMitStandardAbgleichen(_gut.dok, ggFigurenKatalog());
+    const nK = erg.neueKapitel.length, nB = erg.neueBloecke.length;
+    if (!nK && !nB) {
+      gutSay('✓ Das Dokument enthält bereits alle Kapitel und Bausteine der Standardgliederung.');
+      return;
+    }
+    const liste = erg.neueKapitel.slice(0, 10).map(k => `  • ${k.nr} ${k.titel}`).join('\n')
+      + (nK > 10 ? `\n  • … und ${nK - 10} weitere` : '');
+    if (!window.confirm('Mit der Standardgliederung abgleichen?\n\n'
+        + (nK ? `Neue Kapitel (${nK}):\n${liste}\n\n` : '')
+        + (nB ? `${nB} Abbildungen und Textbausteine kommen in ihre Kapitel — auch solche, die früher bewusst entfernt wurden.\n\n` : '')
+        + 'Vorhandene Kapitel, Texte und Einstellungen bleiben unverändert.')) return;
+    _gut.dok = erg.dok;
+    _gut.cache.clear();
+    gutRender();
+    gutSay(`✓ Abgeglichen — ${nK} Kapitel und ${nB} Abbildungen/Textbausteine ergänzt.`
+      + (erg.nichtZugeordnet.length ? ` ${erg.nichtZugeordnet.length} ohne passendes Kapitel.` : '')
+      + (erg.fremdeKapitel.length ? ` ${erg.fremdeKapitel.length} ältere Kapitel ohne Gegenstück — rechts unter „Standardgliederung“ aufgeführt.` : ''));
   }
 
   function gutLeeresAnlegen() {
@@ -111424,6 +111575,7 @@ ${massTbl}
     gutKapitelLoeschen: gutKapitelLoeschen,
     gutKapitelVerschieben: gutKapitelVerschieben,
     gutLeeresAnlegen: gutLeeresAnlegen,
+    gutMitStandardAbgleichen: gutMitStandardAbgleichen,
     gutRender: gutRender,
     gutRestoreGutachten: gutRestoreGutachten,
     gutSetDeckblatt: gutSetDeckblatt,

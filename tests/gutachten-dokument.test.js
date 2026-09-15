@@ -4,7 +4,7 @@ import {
   GUTACHTEN_STANDARD_GLIEDERUNG, gdNormalisieren, gdKapitelNummern, gdStandardDokument,
   gdKapitelEinfuegen, gdKapitelLoeschen, gdKapitelVerschieben, gdKapitelEbene,
   gdNeuerTextBlock, gdNeuerFigurBlock, gdBlockEinfuegen, gdBlockVerschieben, gdBlockLoeschen,
-  gdBeschriftungen, gdFindeBlock, gdFigurIds, gdNormDeckblatt,
+  gdBeschriftungen, gdFindeBlock, gdFigurIds, gdNormDeckblatt, gdMitStandardAbgleichen,
 } from '../src/lib/gutachten-dokument.js';
 
 /** Kleines Dokument aus [ebene, titel]-Paaren. */
@@ -13,6 +13,80 @@ function dokAus(paare) {
 }
 const titel = dok => dok.kapitel.map(k => k.titel);
 const ebenen = dok => dok.kapitel.map(k => k.ebene);
+
+describe('Abgleich mit der Standardgliederung', () => {
+  const std = paare => paare.map(([ebene, titel]) => ({ ebene, titel }));
+
+  it('meldet bei einem aktuellen Standarddokument nichts', () => {
+    const katalog = [
+      { id: 'f-text', kapitel: '3.3.1 Bestandsbedarf und bauliche Entwicklung', istText: true, reihe: 5 },
+      { id: 'f-abb', kapitel: '3.3.1 Bestandsbedarf und bauliche Entwicklung', reihe: 10 },
+    ];
+    const { dok } = gdStandardDokument(katalog);
+    const r = gdMitStandardAbgleichen(dok, katalog);
+    expect(r.neueKapitel).toEqual([]);
+    expect(r.neueBloecke).toEqual([]);
+    expect(r.fremdeKapitel).toEqual([]);
+    expect(titel(r.dok)).toEqual(titel(dok));
+  });
+
+  it('ergänzt fehlende Kapitel und Bausteine, ohne Vorhandenes anzufassen', () => {
+    const vorlage = std([[1, 'A'], [2, 'A1'], [2, 'A2'], [1, 'B'], [2, 'B1']]);
+    const alt = dokAus([[1, 'A'], [2, ' a1 '], [2, 'Eigenes Kapitel'], [1, 'B']]);
+    alt.kapitel[1].bloecke.push(gdNeuerTextBlock('Mein Text'));
+    const vorher = JSON.stringify(alt);
+    const katalog = [
+      { id: 'fa2', kapitel: '1.2 A2' }, { id: 'fb1', kapitel: '2.1 B1' },
+      { id: 'fx', kapitel: '9.9 Gibt es nicht' }, { id: 'ohne' },
+    ];
+
+    const r = gdMitStandardAbgleichen(alt, katalog, vorlage);
+    expect(titel(r.dok)).toEqual(['A', ' a1 ', 'A2', 'Eigenes Kapitel', 'B', 'B1']);
+    expect(ebenen(r.dok)).toEqual([1, 2, 2, 2, 1, 2]);
+    expect(r.neueKapitel.map(k => `${k.nr} ${k.titel}`)).toEqual(['1.2 A2', '2.1 B1']);
+    expect(r.fremdeKapitel.map(k => `${k.nr} ${k.titel}`)).toEqual(['1.3 Eigenes Kapitel']);
+    expect(r.neueBloecke.map(b => `${b.nr}:${b.figurId}`)).toEqual(['1.2:fa2', '2.1:fb1']);
+    expect(r.nichtZugeordnet).toEqual(['fx', 'ohne']);
+    expect(r.dok.kapitel[1].bloecke.map(b => b.text)).toEqual(['Mein Text']);
+    expect(r.dok.kapitel.map(k => k.id).slice(0, 2)).toEqual(['k0', 'k1']);
+    expect(JSON.stringify(alt)).toBe(vorher);
+  });
+
+  it('ordnet gleichnamige Kapitel nur unter demselben Oberkapitel zu', () => {
+    const vorlage = std([[1, 'Wärme'], [2, 'Wirtschaftlichkeit'], [1, 'Strom'], [2, 'Wirtschaftlichkeit']]);
+    const alt = dokAus([[1, 'Wärme'], [2, 'Wirtschaftlichkeit'], [1, 'Strom']]);
+    const r = gdMitStandardAbgleichen(alt, [], vorlage);
+    expect(r.neueKapitel.map(k => k.nr)).toEqual(['2.1']);
+    expect(titel(r.dok)).toEqual(['Wärme', 'Wirtschaftlichkeit', 'Strom', 'Wirtschaftlichkeit']);
+  });
+
+  it('legt fehlende Oberkapitel samt Unterkapiteln an und listet alte Zweige einmal', () => {
+    const vorlage = std([[1, 'Strom'], [2, 'Varianten'], [3, 'PV']]);
+    const alt = dokAus([[1, 'Strom'], [2, 'Soll-Zustand'], [3, 'PV']]);
+    const r = gdMitStandardAbgleichen(alt, [], vorlage);
+    expect(titel(r.dok)).toEqual(['Strom', 'Varianten', 'PV', 'Soll-Zustand', 'PV']);
+    expect(r.neueKapitel.map(k => `${k.nr} ${k.titel}`)).toEqual(['1.1 Varianten', '1.1.1 PV']);
+    expect(r.fremdeKapitel.map(k => `${k.nr} ${k.titel}`)).toEqual(['1.2 Soll-Zustand']);
+  });
+
+  it('setzt neue Bausteine nach ihrer Reihe zwischen vorhandene Abbildungen', () => {
+    const vorlage = std([[1, 'A']]);
+    const alt = dokAus([[1, 'A']]);
+    alt.kapitel[0].bloecke.push(gdNeuerFigurBlock('f10'), gdNeuerFigurBlock('f30'));
+    const katalog = [
+      { id: 'f10', kapitel: '1 A', reihe: 10 }, { id: 'f20', kapitel: '1 A', reihe: 20 },
+      { id: 'f30', kapitel: '1 A', reihe: 30 }, { id: 'f5', kapitel: '1 A', istText: true, reihe: 5 },
+    ];
+    const r = gdMitStandardAbgleichen(alt, katalog, vorlage);
+    expect(r.dok.kapitel[0].bloecke.map(b => b.figurId)).toEqual(['f5', 'f10', 'f20', 'f30']);
+  });
+
+  it('baut ohne Dokument die ganze Gliederung auf', () => {
+    const r = gdMitStandardAbgleichen(null, [], std([[1, 'A'], [2, 'A1']]));
+    expect(titel(r.dok)).toEqual(['A', 'A1']);
+    expect(r.neueKapitel).toHaveLength(2);
+  });
+});
 
 describe('Nummerierung', () => {
   it('zählt je Ebene fortlaufend und setzt tiefere Ebenen zurück', () => {
