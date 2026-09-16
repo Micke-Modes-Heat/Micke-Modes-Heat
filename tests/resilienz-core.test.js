@@ -4,9 +4,10 @@ import {
   NOTSTROM_KLASSEN, normalisiereNotstrom, notstromLastPct,
   anschlussKwJeGebaeude, notstromBilanz, NOTSTROM_B_VORGABE_PCT,
   NEA_KOSTEN, neaEmpfehlungKw, neaKosten, notstromNetzBaum,
-  notstromPlatzierung, notstromPlatzierungVergleich,
+  notstromPlatzierung, notstromPlatzierungVergleich, neaKostenMitBestand,
   inselAggregate, maxFensterEnergie, inselZuschaltstufen, inselMsKennwerte, liegenschaftsInsel,
   maxFensterStart, waermeErzeugerStatus, waermeBlackout,
+  ZIEL_VORGABEN, normalisiereZiele, zielGebaeude, zielKraftstoffL, bewerteZiel, resilienzZielMatrix,
 } from '../src/lib/resilienz-core.js';
 
 describe('normalisiereNotstrom', () => {
@@ -440,5 +441,128 @@ describe('waermeBlackout', () => {
     const b = basis();
     b.hilfsKw = 22;
     expect(waermeBlackout(b).neaKw).toBe(30);
+  });
+});
+
+// ── Aufräumen: vorhandene Aggregate anrechnen ───────────────────────────────
+describe('Bestandsaggregate in der Platzierung', () => {
+  it('neaKostenMitBestand: nichts, Erweiterung oder Neubau', () => {
+    expect(neaKostenMitBestand(100, 'knoten', 150)).toBe(0);
+    expect(neaKostenMitBestand(100, 'knoten', 60)).toBe(NEA_KOSTEN.fixEur + 40 * NEA_KOSTEN.eurProKw);
+    expect(neaKostenMitBestand(100, 'knoten', 0)).toBe(neaKosten(100, 'knoten'));
+  });
+
+  it('rechnet Aggregate am Knoten und am Gebäude an', () => {
+    const n = netz();
+    n.assets.push({ id: 'nsa1', type: 'Nsa', name: 'NEA Bestand T1', neaKw: 300 },
+                  { id: 'nsa5', type: 'Nsa', name: 'NEA G5', buildingId: 5, neaKw: 10 },
+                  { id: 'nsaX', type: 'Nsa', name: 'irgendwo', neaKw: 50 });
+    n.kanten.push({ id: 'x1', u: 't1', v: 'nsa1' });
+    const r = notstromPlatzierung({ ...n, strategie: 'trafo' });
+    const t1 = r.aggregate.find(a => a.id === 't1');
+    expect(t1).toMatchObject({ bestandKw: 300, zusatzKw: 0, kosten: 2 * NEA_KOSTEN.abgangEur });
+    const g5 = r.aggregate.find(a => a.id === 't2');
+    expect(g5).toMatchObject({ empfKw: 25, bestandKw: 0 });   // G5-Aggregat hängt am Gebäude, nicht am Trafo
+    const optimal = notstromPlatzierung({ ...n, strategie: 'optimal' });
+    expect(optimal.aggregate.find(a => a.id === 5)).toMatchObject({ bestandKw: 10, zusatzKw: 15,
+      kosten: NEA_KOSTEN.fixEur + 15 * NEA_KOSTEN.eurProKw });
+    expect(r.bestandOhneOrt.map(b => b.id)).toEqual(['nsaX']);
+  });
+
+  it('das Aggregat am Knoten macht die Knotenlösung zur günstigsten', () => {
+    const n = netz();
+    n.assets.push({ id: 'nsa1', type: 'Nsa', neaKw: 300 });
+    n.kanten.push({ id: 'x1', u: 'k1', v: 'nsa1' });
+    const r = notstromPlatzierung({ ...n, strategie: 'optimal' });
+    // KVS 1 trägt G1+G2 (70 kW → 85 kW) aus dem Bestand; G4 bleibt eigenständig
+    expect(r.aggregate.find(a => a.id === 'k1')).toMatchObject({ bestandKw: 300, zusatzKw: 0 });
+  });
+});
+
+// ── Schritt 5: Schutzziele ──────────────────────────────────────────────────
+describe('normalisiereZiele', () => {
+  it('liefert ohne Liste die Vorgaben', () => {
+    expect(normalisiereZiele(undefined).map(z => z.id)).toEqual(ZIEL_VORGABEN.map(z => z.id));
+  });
+  it('begrenzt Werte und macht Kennungen eindeutig', () => {
+    const z = normalisiereZiele([{ id: 'a', strom: 'x', anteilPct: 300, dauerH: -1, waerme: false }, { id: 'a', name: ' ' }]);
+    expect(z[0]).toMatchObject({ id: 'a', strom: 'A', anteilPct: 100, dauerH: 1, waerme: false });
+    expect(z[1]).toMatchObject({ id: 'a_', name: 'Schutzziel 2', waerme: true });
+    expect(normalisiereZiele([])).toEqual([]);
+  });
+});
+
+describe('zielGebaeude / zielKraftstoffL', () => {
+  const geb = [{ id: 1, notstrom: { klasse: 'A' } }, { id: 2, notstrom: { klasse: 'B' } }, { id: 3, notstrom: { klasse: 'C' } }];
+  it('Stufe A lässt die B-Gebäude weg, AB behält alle', () => {
+    expect(zielGebaeude(geb, 'A').map(g => g.notstrom?.klasse ?? null)).toEqual(['A', null, 'C']);
+    expect(zielGebaeude(geb, 'AB').map(g => g.notstrom.klasse)).toEqual(['A', 'B', 'C']);
+  });
+  it('Kraftstoff: Spitze × Dauer × Auslastung × Verbrauch × Zuschlag', () => {
+    expect(zielKraftstoffL(100, 72)).toBe(1400);   // 1.391 l aufgerundet
+    expect(zielKraftstoffL(0, 72)).toBe(0);
+  });
+});
+
+describe('bewerteZiel / resilienzZielMatrix', () => {
+  const waerme = voll => waermeBlackout({
+    last: [100, 100], dauerH: 2, szenario: 'total', mitNea: true,
+    erzeuger: [{ key: 'pellets', label: 'Pellets', kw: voll ? 150 : 50 }],
+  });
+
+  it('Stufe A: Platzierung ohne die B-Gebäude, Kraftstoff dazu', () => {
+    const n = netz();
+    const platz = notstromPlatzierungVergleich({ ...n, gebaeude: zielGebaeude(n.gebaeude, 'A') });
+    const ziel = normalisiereZiele([{ id: 'z', strom: 'A', dauerH: 72, waerme: false }])[0];
+    const b = bewerteZiel({ ziel, platz });
+    expect(b.status).toBe('erfuellt');
+    expect(b.strom.art).toBe('gebaeude');
+    const alle = platz.varianten[platz.empfohlen].aggregate.flatMap(a => a.gebaeude);
+    expect(alle).not.toContain(4);
+    expect(b.kosten).toBe(platz.varianten[platz.empfohlen].summe.kosten + b.strom.liter * 1.5);
+  });
+
+  it('ohne eingestufte Gebäude fehlen Daten', () => {
+    const n = netz();
+    const platz = notstromPlatzierungVergleich({ ...n, gebaeude: zielGebaeude(n.gebaeude, 'keine') });
+    const b = bewerteZiel({ ziel: normalisiereZiele([{ strom: 'AB', waerme: false }])[0], platz });
+    expect(b.status).toBe('offen');
+    expect(b.gruende[0]).toMatch(/keine Gebäude/);
+  });
+
+  it('Wärme unter Vollversorgung macht das Ziel teilweise', () => {
+    const ziel = normalisiereZiele([{ strom: 'keine', waerme: true }])[0];
+    expect(bewerteZiel({ ziel, waerme: waerme(true) }).status).toBe('erfuellt');
+    const b = bewerteZiel({ ziel, waerme: waerme(false) });
+    expect(b.status).toBe('teilweise');
+    expect(b.gruende).toContain('Wärme nur zu 50 % gedeckt');
+    expect(bewerteZiel({ ziel }).status).toBe('offen');
+  });
+
+  it('Insel-Ziel übernimmt Aggregat, Maschinentrafo und Kosten', () => {
+    const insel = liegenschaftsInsel({
+      profil: [400, 800], anteilPct: 50, dauerH: 2, jahr: 2026,
+      trafos: [{ id: 't', name: 'T', kva: 400, spitzeKw: 300, abKw: 0 }], netz: {},
+    });
+    const b = bewerteZiel({ ziel: normalisiereZiele([{ strom: 'insel', anteilPct: 50, waerme: false }])[0], insel });
+    expect(b.strom).toMatchObject({ art: 'insel', anzahl: 1, kvaJe: 630, mtKva: 630 });
+    expect(b.kosten).toBe(insel.kosten);
+  });
+
+  it('die Matrix stellt die Ziele nebeneinander', () => {
+    const n = netz();
+    const zA = normalisiereZiele([{ name: 'Kritisch', strom: 'A', dauerH: 72 }])[0];
+    const zW = normalisiereZiele([{ name: 'Nur Wärme', strom: 'keine', dauerH: 24 }])[0];
+    const m = resilienzZielMatrix([
+      bewerteZiel({ ziel: zA, platz: notstromPlatzierungVergleich({ ...n, gebaeude: zielGebaeude(n.gebaeude, 'A') }), waerme: waerme(true) }),
+      bewerteZiel({ ziel: zW, waerme: waerme(false) }),
+    ]);
+    expect(m.spalten).toEqual(['Kritisch', 'Nur Wärme']);
+    const zeile = l => m.zeilen.find(z => z.label === l).werte;
+    expect(zeile('Dauer')).toEqual(['3 Tage', '24 h']);
+    expect(zeile('Notstromaggregate')[1]).toBe('—');
+    expect(zeile('Wärmedeckung')).toEqual(['100 %', '50 %']);
+    expect(m.zeilen.find(z => z.label === 'Investition (Richtwert)').highlight).toBe(true);
+    expect(zeile('Bewertung')[1]).toMatch(/^teilweise — Wärme nur zu 50 %/);
   });
 });

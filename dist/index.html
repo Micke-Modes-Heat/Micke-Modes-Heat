@@ -11419,8 +11419,8 @@ body.gm-fokus #view-tabs{display:none;}
 #blackout-modus-panel .bom-head .btn-xs{border-color:#ef5350;color:#ef5350;}
 #blackout-modus-panel .bom-body{padding:8px 9px 10px;overflow-y:auto;}
 #blackout-modus-panel .bom-tabs{display:flex;gap:2px;padding:4px 6px 0;border-bottom:1px solid var(--border);flex-shrink:0;}
-#blackout-modus-panel .bom-tab{flex:1;padding:4px 2px;border:none;border-bottom:2px solid transparent;background:transparent;
-  color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;}
+#blackout-modus-panel .bom-tab{flex:1 1 auto;min-width:0;padding:4px 1px;border:none;border-bottom:2px solid transparent;background:transparent;white-space:nowrap;
+  color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;}
 #blackout-modus-panel .bom-tab:hover{color:var(--text);}
 #blackout-modus-panel .bom-tab.aktiv{color:#ef5350;border-bottom-color:#ef5350;font-weight:600;}
 #blackout-modus-panel summary::-webkit-details-marker{display:none;}
@@ -14996,7 +14996,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-09-16';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'c591f9d';
+  var c = 'b9c5d5b';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -104017,26 +104017,34 @@ ${massTbl}
     return hi;
   }
 
+  // Seit Schritt 4 des Blackout-Modus (26-blackout-modus.js) steht hier nur noch der
+  // Beitrag von PV und Speicher. Gebäude-Einstufung, Aggregat-Platzierung,
+  // Liegenschafts-Insel und Wärme liegen im Blackout-Modus; die Auskühlrechnung
+  // öffnet er über pvResWaermeVollbild().
   function _pvResEnergyHeader(overrideEl) {
-    const opts = [['strom', '⚡ Strom'], ['waerme', '🔥 Wärme']];
-    const btns = opts.map(([k, lbl]) =>
-      `<button data-pvres-energy="${k}" style="padding:2px 10px;border:1px solid ${k===_pvResEnergy?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${k===_pvResEnergy?'#ff8f00':'transparent'};color:${k===_pvResEnergy?'#0a0e16':'#cfd8dc'};font-size:9px;cursor:pointer;font-weight:${k===_pvResEnergy?'700':'400'};">${lbl}</button>`).join('');
     const fsBtn = overrideEl ? '' : '<button data-pva-fs="resilienz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;margin-left:auto;">⤢</button>';
-    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-    <span style="font-size:9px;color:var(--muted);">Betrachtete Versorgung</span>${btns}${fsBtn}
+    const blackout = overrideEl ? '' : `<button data-pvres-blackout style="padding:2px 10px;border:1px solid #ef5350;border-radius:10px;background:transparent;color:#ef9a9a;font-size:9px;cursor:pointer;"
+      title="Gebäude einstufen, Aggregate am Netz platzieren, Liegenschafts-Insel und Wärmeversorgung">🛡 Blackout-Modus öffnen</button>`;
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+    <span style="font-size:9px;color:var(--muted);">Beitrag von PV und Speicher im Blackout · Gebäude, Netz, Liegenschaft und Wärme im</span>${blackout}${fsBtn}
   </div>`;
   }
-  function _pvResWireEnergyHeader(el, varianten, overrideEl) {
-    el.querySelectorAll('[data-pvres-energy]').forEach(b => b.addEventListener('click', () => {
-      if (b.dataset.pvresEnergy === _pvResEnergy) return;
-      _pvResEnergy = b.dataset.pvresEnergy;
-      renderResilienz(varianten, overrideEl);
-    }));
+  function _pvResWireEnergyHeader(el) {
+    const bo = el.querySelector('[data-pvres-blackout]');
+    if (bo) bo.addEventListener('click', () => {
+      window.setViewMode?.('karte');
+      window.setLeftTab?.('elektro');
+      if (!window.blackoutModusAktiv) window.blackoutModusStart?.();
+    });
     const fsBtn = el.querySelector('[data-pva-fs="resilienz"]');
     if (fsBtn) fsBtn.addEventListener('click', () => {
-      const titel = _pvResEnergy === 'waerme' ? 'Resilienz: Ausfall der Wärmeversorgung' : 'Resilienz: Autarkie bei Netzausfall';
-      _pvOpenFs(titel, cnt => renderResilienz(window._pvAnalyse.ergebnisse, cnt));
+      _pvOpenFs('Resilienz: Autarkie bei Netzausfall', cnt => renderResilienz(window._pvAnalyse.ergebnisse, cnt));
     });
+  }
+
+  /** Auskühlrechnung ohne Wärmeversorgung (Puffer, dann Auskühlzeit je Gebäude) als Vollbild — Aufruf aus dem Blackout-Modus. */
+  function pvResWaermeVollbild() {
+    _pvOpenFs('Ausfall der Wärmeversorgung: Pufferspeicher und Auskühlzeiten', cnt => renderResilienzWaerme(cnt, cnt));
   }
 
   function renderResilienz(varianten, overrideEl) {
@@ -104044,16 +104052,10 @@ ${massTbl}
     if (!el) return;
     const energyHeader = _pvResEnergyHeader(overrideEl);
 
-    if (_pvResEnergy === 'waerme') {
-      el.innerHTML = energyHeader + '<div id="pva-pvres-body"></div>';
-      _pvResWireEnergyHeader(el, varianten, overrideEl);
-      renderResilienzWaerme(el.querySelector('#pva-pvres-body'), overrideEl);
-      return;
-    }
 
     const hinweisKeineVarianten = () => {
       el.innerHTML = energyHeader + '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst „Varianten berechnen" nutzen, um die elektrische Resilienz zu betrachten.</div>';
-      _pvResWireEnergyHeader(el, varianten, overrideEl);
+      _pvResWireEnergyHeader(el);
     };
     if (!varianten?.length) { hinweisKeineVarianten(); return; }
 
@@ -104617,7 +104619,7 @@ ${massTbl}
       pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
     }));
     draw();
-    _pvResWireEnergyHeader(el, varianten, overrideEl);
+    _pvResWireEnergyHeader(el);
   }
 
   // ── Abb. 10b — Resilienz Wärme: Totalausfall der Wärmezentrale ─────────────
@@ -105146,6 +105148,7 @@ ${massTbl}
     pvBerechneAlle: pvBerechneAlle,
     pvCaptureState: pvCaptureState,
     pvLadeSpotPreise: pvLadeSpotPreise,
+    pvResWaermeVollbild: pvResWaermeVollbild,
     pvRestoreState: pvRestoreState,
     pvaBuildAnalyseSection: pvaBuildAnalyseSection,
     pvaShowSection: pvaShowSection,
@@ -109927,7 +109930,7 @@ ${massTbl}
 
   // ── PV-Analyse: Varianten, Energiebilanz, Wirtschaftlichkeit, Resilienz ───────
   // Quelle: window._pvAnalyse.ergebnisse (gefüllt in src/09d-pv-analyse.js über
-  // „Varianten berechnen") bzw. window._pvResReco (Kapitel 🛡 Resilienz). Ohne
+  // „Varianten berechnen") bzw. window._pvResReco (PV-Analyse › Abb. 10). Ohne
   // gelaufene Berechnung liefert ausProjekt eine Hinweismeldung statt Zahlen.
   // Als eigene Funktion statt direkt im Array-Literal: die Helfer/Konstanten
   // darunter (GG_PV_KURZ etc.) sind sonst beim Auswerten von GG_FIGUREN noch
@@ -110960,13 +110963,13 @@ ${massTbl}
         kapitel: '5.2 Bewertung Resilienz',
         titel: 'Resilienz — Autarkie bei Netzausfall',
         datei: 'pv-resilienz-zusammenfassung',
-        hinweis: 'Zusammenfassung der zuletzt im Kapitel 🛡 Resilienz betrachteten Inselbetrieb-Auslegung: '
+        hinweis: 'Zusammenfassung der zuletzt in ☀ PV-Analyse › Abb. 10 „Resilienz“ betrachteten Inselbetrieb-Auslegung: '
                + 'wie lange trägt PV/Batterie/Notstrom einen Blackout zum ungünstigsten Zeitpunkt im Jahr. '
-               + 'Erst im Kapitel 🛡 Resilienz öffnen/berechnen, dann hierher „Aus Projekt übernehmen".',
+               + 'Erst Abb. 10 in der PV-Analyse öffnen, dann hierher „Aus Projekt übernehmen“. Gebäude, Netz und Schutzziele: 🛡 Blackout-Modus.',
         render: cfg => ggRenderTabelle(cfg),
         config: {
           eyebrow: 'Elektrotechnisches Gutachten', titel: 'Resilienz — Autarkie bei Netzausfall',
-          leer: 'Noch keine Resilienz-Berechnung — Kapitel 🛡 Resilienz öffnen (rechnet automatisch auf den PV-Varianten).',
+          leer: 'Noch keine Resilienz-Berechnung — in der ☀ PV-Analyse Abb. 10 „Resilienz“ öffnen (rechnet automatisch auf den PV-Varianten).',
           spalten: [{ label: 'Kennzahl', weight: 2.2 }, { label: 'Wert', weight: 1.4, mono: true }],
           zeilen: [], fussnote: '',
         },
@@ -110991,13 +110994,327 @@ ${massTbl}
             zeile('Spritkosten je Ereignis', r.genKw > 0 ? fmtK(r.fuelCost) : '0 €'),
           ];
           cfg.fussnote = 'Inselbetrieb-Simulation zum ungünstigsten Zeitpunkt im Jahr: Batterie startet mit dem realen '
-                        + 'Ladestand aus der Jahressimulation, das Notstromaggregat deckt die Restlast. Stand aus dem Kapitel 🛡 Resilienz.';
-          return '✓ Resilienz-Kennzahlen aus dem Kapitel 🛡 Resilienz übernommen.';
+                        + 'Ladestand aus der Jahressimulation, das Notstromaggregat deckt die Restlast. Stand aus der PV-Analyse, Abb. 10.';
+          return '✓ Resilienz-Kennzahlen aus der PV-Analyse (Abb. 10) übernommen.';
+        },
+      },
+
+      // ── Blackout-Modus (26): Werkzeug, Schutzziele, Maßnahmen ───────────
+      {
+        id: 'res-bewertungstool-text',
+        istText: true,
+        kapitel: '5.1 Erläuterung Bewertungstool Resilienz',
+        titel: 'Gutachtentext: Bewertungswerkzeug Resilienz',
+        datei: 'resilienz-bewertungstool-text',
+        hinweis: 'Standardtext zur Vorgehensweise des 🛡 Blackout-Modus (Elektro › Auswerten › Resilienz): '
+               + 'Notstromklassen, Platzierung am Netz, Liegenschafts-Insel, Wärme und Schutzziele.',
+        render: cfg => ggRenderResWerkzeugText(),
+        config: {},
+      },
+      {
+        id: 'res-ziele-text',
+        istText: true,
+        kapitel: '5.2 Bewertung Resilienz',
+        titel: 'Gutachtentext: Bewertung der Schutzziele',
+        datei: 'resilienz-schutzziele-text',
+        hinweis: 'Bewertung der Schutzziele aus dem Reiter „Ziele" des 🛡 Blackout-Modus. Ändern sich Klassen, Netz, '
+               + 'Einstellungen oder Ziele, rechnet der Text beim Zeichnen neu.',
+        render: cfg => ggRenderResZieleText(),
+        config: {},
+      },
+      {
+        id: 'res-ist-text',
+        istText: true,
+        kapitel: '5.2.1 Ist-Zustand',
+        titel: 'Gutachtentext: Resilienz Ist-Zustand',
+        datei: 'resilienz-ist-zustand-text',
+        hinweis: 'Bestand an Netzersatzanlagen, Notstromklassen der Gebäude und Wärmeversorgung ohne Notstrom — aus dem 🛡 Blackout-Modus.',
+        render: cfg => ggRenderResIstText(),
+        config: {},
+      },
+      {
+        id: 'res-kurz-text',
+        istText: true,
+        kapitel: '5.2.2 Kurzfristige Maßnahmen',
+        titel: 'Gutachtentext: Kurzfristige Maßnahmen Resilienz',
+        datei: 'resilienz-kurzfristig-text',
+        hinweis: 'Organisatorische und kleine Maßnahmen: Einspeisepunkte Klasse C, Schaltanweisungen, Notstrom der Heizzentrale, '
+               + 'Heizölbevorratung, Probeläufe, Notfallplan — aus dem 🛡 Blackout-Modus.',
+        render: cfg => ggRenderResKurzText(),
+        config: {},
+      },
+      {
+        id: 'res-lang-text',
+        istText: true,
+        kapitel: '5.2.3 Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)',
+        titel: 'Gutachtentext: Langfristige Maßnahmen Resilienz',
+        datei: 'resilienz-langfristig-text',
+        hinweis: 'Umsetzung des empfohlenen Schutzziels — im 🛡 Blackout-Modus unter „Ziele" mit ☆ markieren.',
+        render: cfg => ggRenderResLangText(),
+        config: {},
+      },
+      {
+        id: 'res-ziele-matrix',
+        autoSync: true,
+        reihe: 1,
+        kapitel: '5.2 Bewertung Resilienz',
+        titel: 'Maßnahmen je Schutzziel',
+        datei: 'resilienz-massnahmen-je-schutzziel',
+        hinweis: 'Maßnahmen und Richtkosten je Schutzziel aus dem Reiter „Ziele" des 🛡 Blackout-Modus.',
+        render: cfg => ggRenderTabelle(cfg),
+        config: {
+          eyebrow: 'Resilienz', titel: 'Maßnahmen je Schutzziel', tabelleTitel: 'Maßnahmen je Schutzziel',
+          leer: 'Noch keine Schutzziele — im 🛡 Blackout-Modus den Reiter „Ziele" öffnen.',
+          spalten: [{ label: 'Maßnahme', weight: 1.6 }], zeilen: [], fussnote: '',
+        },
+        ausProjekt(cfg) {
+          const erg = ggResZiele();
+          if (!erg?.bewertungen?.length) {
+            cfg.spalten = [{ label: 'Maßnahme', weight: 1.6 }];
+            cfg.zeilen = [];
+            cfg.fussnote = '';
+            return '⚠ Noch keine Schutzziele bewertet.';
+          }
+          const m = erg.matrix;
+          cfg.spalten = [{ label: 'Maßnahme', weight: 1.6 }, ...m.spalten.map(t => ({ label: t, weight: 1.4 }))];
+          cfg.zeilen = m.zeilen.map(z => ({ werte: [z.label, ...z.werte], highlight: !!z.highlight }));
+          cfg.fussnote = 'Richtwerte netto. Stromstufen A und A + B: günstigste Platzierung am Bestandsnetz, vorhandene '
+            + 'Netzersatzanlagen angerechnet; Liegenschaft: Inselbetrieb am Netzanschlusspunkt. Wärme mit Notstrom für die Heizzentrale.';
+          return `✓ ${m.spalten.length} Schutzziele aus dem Blackout-Modus übernommen.`;
         },
       },
     ];
   }
   GG_FIGUREN.push(...ggPvFiguren());
+
+  /* ── Kapitel 5: Bewertungswerkzeug und Schutzziele (26-blackout-modus.js) ─────
+   * Die Daten kommen über window.blackoutZieleErgebnis() — das Modul bleibt ein Blatt. */
+  const ggResZiele = () => (typeof window.blackoutZieleErgebnis === 'function' ? window.blackoutZieleErgebnis() : null);
+  const ggResDauer = h => (h >= 48 && h % 24 === 0 ? `${ggNum(h / 24)} Tage` : `${ggNum(h)} Stunden`);
+  const ggResEur = v => (v >= 10000 ? `${ggNum(v / 1000)} T€` : `${ggNum(v)} €`);
+  const GG_RES_STUFE = { A: 'der Notstromklasse A', AB: 'der Notstromklassen A und B' };
+
+  function ggRenderResWerkzeugText(cfg, T = GG_THEME) {
+    return ggTextBlatt([
+      'Die Resilienz der Liegenschaft wird mit dem Bewertungswerkzeug „Blackout-Modus“ des Planungstools betrachtet. '
+        + 'Untersucht wird der Ausfall der äußeren Versorgung – Stromnetz, Gasversorgung und Fernwärme – über eine festgelegte Dauer.',
+      'Die Gebäude werden nach ihrer Bedeutung in drei Notstromklassen eingeteilt: Klasse A (kritisch, vollständige Versorgung, '
+        + 'bei Bedarf mit eigenem Aggregat), Klasse B (eingeschränkter Betrieb mit reduzierter Last) und Klasse C (keine Versorgung, '
+        + 'jedoch ein Einspeisepunkt für ein mobiles Aggregat). Die Last der Gebäude ergibt sich aus den erfassten Verbrauchern und deren Lastgängen.',
+      'Für die Gebäude der Klassen A und B wird anhand des Bestandsnetzes ermittelt, ob Netzersatzanlagen wirtschaftlicher an den '
+        + 'Gebäuden oder an Kabelverteilern, Niederspannungshauptverteilungen und Transformatorstationen angeordnet werden. Eine Anlage '
+        + 'an einem Netzknoten versorgt alle nachgelagerten Abgänge; Abgänge ohne Versorgungsauftrag sind im Ereignisfall abzuschalten '
+        + 'und werden ausgewiesen. Vorhandene Netzersatzanlagen werden angerechnet. Bemessen wird auf die gleichzeitige Spitzenlast '
+        + 'zuzüglich 20 % Reserve.',
+      'Ergänzend wird die Versorgung eines Anteils der gesamten Liegenschaft über eine zentrale Netzersatzanlage am Netzanschlusspunkt '
+        + 'betrachtet (Inselbetrieb). Dazu gehören ein Maschinentransformator, die Sternpunktbehandlung des Mittelspannungsnetzes, '
+        + 'eine Netztrennung mit Synchronisierung, eine an den Inselbetrieb angepasste Schutztechnik sowie das gestufte Zu- und '
+        + 'Abschalten der Transformatorstationen.',
+      'Für die Wärmeversorgung wird pauschal geprüft, welcher Anteil der Netzlast bei einem Ausfall gedeckt werden kann, wenn die '
+        + 'Heizzentrale eine Netzersatzanlage für Pumpen, Brenner und Regelung erhält und Gaskessel als Zweistoffbrenner mit Heizöl '
+        + 'aus dem Lager betrieben werden.',
+      'Aus Schutzzielen – was soll wie lange versorgt werden – werden die erforderlichen Maßnahmen und ihre Investitionskosten als '
+        + 'Richtwerte abgeleitet. Die Ergebnisse sind Planungsabschätzungen; Kurzschluss-, Schutz- und Erdungsberechnungen sind in '
+        + 'der weiteren Planung nachzuweisen.',
+    ], T);
+  }
+
+  function ggRenderResZieleText(cfg, T = GG_THEME) {
+    const erg = ggResZiele();
+    const liste = erg?.bewertungen || [];
+    if (!liste.length) {
+      return ggTextBlatt([
+        'Für die Liegenschaft wurden folgende Schutzziele betrachtet: '
+          + `${ggTextFeld('', 'Schutzziele aus dem Blackout-Modus (Reiter „Ziele“)')}.`,
+      ], T);
+    }
+    const umfang = z => (z.strom === 'insel' ? `${ggNum(z.anteilPct)} % der Liegenschaft`
+      : z.strom === 'keine' ? 'ohne Stromversorgung' : `Gebäude ${GG_RES_STUFE[z.strom]}`);
+    const absaetze = [
+      `Für die Liegenschaft wurden ${liste.length === 1 ? 'ein Schutzziel' : `${ggNum(liste.length)} Schutzziele`} betrachtet: `
+        + ggAufzaehlung(liste.map(b => `„${gEsc(b.ziel.name)}“ (${umfang(b.ziel)}, ${ggResDauer(b.ziel.dauerH)}`
+          + `${b.ziel.waerme ? ', mit Wärme' : ''})`)) + '.',
+    ];
+    for (const b of liste) absaetze.push(`Schutzziel „${gEsc(b.ziel.name)}“: ${ggResZielText(b)}`);
+    if (liste.length > 1) {
+      const sort = [...liste].sort((a, b) => a.kosten - b.kosten);
+      absaetze.push(`Die Investitionen reichen von ${ggResEur(sort[0].kosten)} („${gEsc(sort[0].ziel.name)}“) bis `
+        + `${ggResEur(sort[sort.length - 1].kosten)} („${gEsc(sort[sort.length - 1].ziel.name)}“). Die Maßnahmen bauen `
+        + 'aufeinander auf und lassen sich stufenweise umsetzen. '
+        + (erg.empfehlung
+          ? `Empfohlen wird das Schutzziel „${gEsc(erg.empfehlung.ziel.name)}“ (vgl. Kapitel 5.2.3).`
+          : `Welches Schutzziel umgesetzt wird, ist mit dem Nutzer festzulegen: ${ggTextFeld('', 'Empfohlenes Schutzziel')}.`));
+    }
+    return ggTextBlatt(absaetze, T);
+  }
+
+  /** Maßnahmen und Bewertung eines Schutzziels als Fließtext (5.2 und 5.2.3). */
+  function ggResZielText(b) {
+    const z = b.ziel, s = b.strom, w = b.waerme;
+    const teile = [];
+    if (s?.art === 'gebaeude') {
+      teile.push(`Für ${s.gebaeude === 1 ? 'das Gebäude' : `die ${ggNum(s.gebaeude)} Gebäude`} ${GG_RES_STUFE[z.strom]} `
+        + `${s.anzahl === 1 ? 'ist eine Netzersatzanlage' : `sind ${ggNum(s.anzahl)} Netzersatzanlagen`} mit zusammen ${ggNum(s.kw)} kW erforderlich`
+        + (s.zusatzKw < s.kw ? `, davon ${ggNum(s.zusatzKw)} kW neu` : '')
+        + (s.abgaenge ? `; im Ereignisfall ${s.abgaenge === 1 ? 'ist ein Abgang' : `sind ${ggNum(s.abgaenge)} Abgänge`} abzuschalten` : '')
+        + `. Der Kraftstoffbedarf über ${ggResDauer(z.dauerH)} liegt bei rund ${ggNum(s.liter)} l.`);
+    } else if (s?.art === 'insel') {
+      teile.push(`Die Versorgung von ${ggNum(z.anteilPct)} % der Liegenschaft erfordert ${ggNum(s.anzahl)} × ${ggNum(s.kvaJe)} kVA `
+        + `am Netzanschlusspunkt mit einem Maschinentransformator von ${ggNum(s.mtKva)} kVA`
+        + (s.stationenAus ? `; ${ggNum(s.stationenAus)} Transformatorstation${s.stationenAus === 1 ? ' wird' : 'en werden'} im Inselbetrieb abgeschaltet` : '')
+        + (s.nsAbwurf ? `${s.stationenAus ? ', in den versorgten Stationen' : '; in den versorgten Stationen'} `
+          + `${s.nsAbwurf === 1 ? 'wird ein Niederspannungsabgang' : `werden ${ggNum(s.nsAbwurf)} Niederspannungsabgänge`} abgeworfen` : '')
+        + `. Das Kraftstofflager ist mit rund ${ggNum(s.liter)} l zu bemessen`
+        + (s.pruefen ? `; ${ggNum(s.pruefen)} Punkte der Infrastruktur sind zu prüfen oder zu erneuern.` : '.'));
+    }
+    if (w) {
+      const massnahmen = [
+        w.neaKw && `ein Aggregat für die Hilfsenergie mit ${ggNum(w.neaKw)} kW`,
+        w.zweistoffKw && `Zweistoffbrenner mit ${ggNum(w.zweistoffKw)} kW`,
+        w.tankL && `ein Heizöllager von ${ggNum(w.tankL)} l`,
+      ].filter(Boolean);
+      teile.push(`Die Wärmeversorgung ist mit Notstrom für die Heizzentrale zu ${ggNum(w.deckungPct)} % gedeckt`
+        + (massnahmen.length
+          ? `; dafür ${massnahmen.length === 1 && !w.zweistoffKw ? 'ist' : 'sind'} ${ggAufzaehlung(massnahmen)} vorzusehen.`
+          : '.'));
+    }
+    const bewertung = { erfuellt: 'Das Ziel ist mit diesen Maßnahmen erfüllbar.',
+      teilweise: 'Das Ziel ist nur teilweise erfüllbar', offen: 'Für eine Bewertung fehlen Angaben' }[b.status];
+    return `${teile.join(' ')} Die Investition beträgt überschlägig ${ggResEur(b.kosten)}. `
+      + bewertung + (b.status !== 'erfuellt' && b.gruende.length ? ` (${gEsc(b.gruende.join('; '))}).` : b.status !== 'erfuellt' ? '.' : '');
+  }
+
+  const ggResStand = () => (typeof window.blackoutGutachtenStand === 'function' ? window.blackoutGutachtenStand() : null);
+  /** Standort eines Aggregats: „KVS 1“ statt „KVS KVS 1“, Gebäude in Anführungszeichen. */
+  const ggResOrt = a => (a.ort === 'knoten'
+    ? (String(a.name).startsWith(a.typ) ? gEsc(a.name) : `${gEsc(a.typ)} ${gEsc(a.name)}`)
+    : `Gebäude „${gEsc(a.name)}“`);
+  const ggResNamen = (liste, max = 6) => (liste.length > max
+    ? `${liste.slice(0, max).map(gEsc).join(', ')} und ${liste.length - max} weitere`
+    : ggAufzaehlung(liste.map(gEsc)));
+
+  /** 5.2.1 Ist-Zustand: Bestand an Netzersatzanlagen, Einstufung der Gebäude, Wärme ohne Maßnahme. */
+  function ggRenderResIstText(cfg, T = GG_THEME) {
+    const st = ggResStand();
+    if (!st) return ggTextBlatt([`${ggTextFeld('', 'Ist-Zustand der Notstromversorgung')}.`], T);
+    const { bilanz: bi, bestand, bestandDeckt: bd, heizzentrale: hz, waerme: w } = st;
+    const absaetze = [];
+    absaetze.push(bestand.anzahl
+      ? `In der Liegenschaft ${bestand.anzahl === 1 ? `ist eine Netzersatzanlage mit ${ggNum(bestand.kw)} kW`
+      : `sind ${ggNum(bestand.anzahl)} Netzersatzanlagen mit zusammen ${ggNum(bestand.kw)} kW`} vorhanden (vgl. Kapitel 3.1.4).`
+      : 'In der Liegenschaft ist derzeit keine Netzersatzanlage vorhanden (vgl. Kapitel 3.1.4). Bei einem Ausfall des öffentlichen '
+        + 'Stromnetzes ist die Liegenschaft damit ohne elektrische Versorgung.');
+    if (bi.summe.anzahl) {
+      const kl = [
+        bi.klassen.A.anzahl && `${ggNum(bi.klassen.A.anzahl)} der Klasse A (kritisch: ${ggResNamen(st.namen.A)})`,
+        bi.klassen.B.anzahl && `${ggNum(bi.klassen.B.anzahl)} der Klasse B (eingeschränkter Betrieb: ${ggResNamen(st.namen.B)})`,
+        bi.klassen.C.anzahl && `${ggNum(bi.klassen.C.anzahl)} der Klasse C (Einspeisepunkt: ${ggResNamen(st.namen.C)})`,
+      ].filter(Boolean);
+      absaetze.push(`Nach ihrer Bedeutung für den Betrieb wurden die Gebäude den Notstromklassen zugeordnet: ${ggAufzaehlung(kl)}. `
+        + `Die im Ereignisfall zu versorgende Last beträgt ${ggNum(bi.summe.notstromKw)} kW (Summe der Anschlussleistungen).`
+        + (bi.summe.ohneLast ? ` Für ${ggNum(bi.summe.ohneLast)} eingestufte Gebäude liegen noch keine Verbrauchsdaten vor.` : ''));
+      if (bd && bd.gesamt) {
+        absaetze.push(bd.gebaeude >= bd.gesamt
+          ? 'Die vorhandenen Netzersatzanlagen decken alle Gebäude der Klassen A und B.'
+          : bd.gebaeude > 0
+            ? `Die vorhandenen Netzersatzanlagen decken ${ggNum(bd.gebaeude)} von ${ggNum(bd.gesamt)} Gebäuden der Klassen A und B vollständig.`
+            : bd.genutztKw > 0
+              ? `Die vorhandenen Netzersatzanlagen tragen rund ${ggNum(bd.genutztKw)} kW der für die Klassen A und B erforderlichen `
+                + `${ggNum(bd.bedarfKw)} kW; vollständig gedeckt ist keines der Gebäude.`
+              : 'Keines der Gebäude der Klassen A und B ist durch eine vorhandene Netzersatzanlage gedeckt.');
+      }
+    } else {
+      absaetze.push(`Notstromberechtigte Gebäude sind bislang nicht festgelegt: ${ggTextFeld('', 'notstromberechtigte Gebäude')}.`);
+    }
+    if (hz) {
+      absaetze.push(`Die Wärmeversorgung erfolgt über die Heizzentrale im Gebäude „${gEsc(hz.name)}“. `
+        + (hz.nea
+          ? `Die Heizzentrale verfügt über eine eigene Netzersatzanlage mit ${ggNum(hz.neaKw)} kW.`
+          : 'Eine Netzersatzanlage für die Heizzentrale ist nicht vorhanden: Bei einem Stromausfall fallen Umwälzpumpen, Brenner '
+            + 'und Regelung aus, die Wärmeversorgung der angeschlossenen Gebäude ist unterbrochen'
+            + (w?.puffer ? ', auch der Pufferspeicher lässt sich ohne Pumpen nicht nutzen.' : '.'))
+        + (w?.tankL ? ` Es ist ein Heizöllager von ${ggNum(w.tankL)} l vorhanden.` : ''));
+    } else {
+      absaetze.push(`Die Wärmeversorgung bei Stromausfall: ${ggTextFeld('', 'Heizzentrale und deren Notstromversorgung')}.`);
+    }
+    return ggTextBlatt(absaetze, T);
+  }
+
+  /** 5.2.2 Kurzfristige Maßnahmen: organisatorisch oder mit geringem Aufwand umsetzbar. */
+  function ggRenderResKurzText(cfg, T = GG_THEME) {
+    const st = ggResStand();
+    if (!st) return ggTextBlatt([`${ggTextFeld('', 'Kurzfristige Maßnahmen')}.`], T);
+    const { bilanz: bi, bestand, heizzentrale: hz, waerme: w } = st;
+    const punkte = [];
+    if (!bi.summe.anzahl || bi.summe.ohneLast) {
+      punkte.push('Festlegung der notstromberechtigten Gebäude und Lasten mit dem Nutzer'
+        + (bi.summe.ohneLast ? ` sowie Erfassung der Anschlussleistungen der ${ggNum(bi.summe.ohneLast)} Gebäude ohne Verbrauchsdaten` : ''));
+    }
+    if (bi.klassen.C.anzahl) {
+      punkte.push(`Einspeisepunkte für mobile Netzersatzanlagen an ${bi.klassen.C.anzahl === 1 ? 'dem Gebäude' : `den ${ggNum(bi.klassen.C.anzahl)} Gebäuden`} `
+        + `der Klasse C (${ggResNamen(st.namen.C)}) einschließlich einer Rahmenvereinbarung zur Bereitstellung mobiler Aggregate`);
+    }
+    const ab = st.empfehlung?.variante?.abgaenge || st.bestandDeckt?.abgaenge || [];
+    if (ab.length) {
+      punkte.push(`Schaltanweisung und Kennzeichnung ${ab.length === 1 ? 'des im Ereignisfall abzuschaltenden Abgangs' : `der ${ggNum(ab.length)} im Ereignisfall abzuschaltenden Abgänge`} `
+        + `(${ggResNamen(ab.map(a => (a.lokal ? `an ${a.vonName}` : `${a.vonName} → ${a.zuName}`)), 4)})`);
+    }
+    if (hz && !hz.nea && w?.neaKw) {
+      punkte.push(`Notstromversorgung der Heizzentrale (Gebäude „${gEsc(hz.name)}“) für Pumpen, Brenner und Regelung mit rund ${ggNum(w.neaKw)} kW, `
+        + 'zunächst auch als Einspeisepunkt für ein mobiles Aggregat');
+    }
+    if (w && w.tankFehltL > 0) {
+      punkte.push(`Bevorratung von Heizöl: ${w.tankL
+      ? `Lager um rund ${ggNum(w.tankFehltL)} l auf ${ggNum(w.tankEmpfehlungL)} l erweitern`
+      : `Heizöllager von rund ${ggNum(w.tankEmpfehlungL)} l vorsehen`} `
+        + `oder eine gesicherte Nachbelieferung für ${ggResDauer(w.dauerH)} vereinbaren`);
+    }
+    if (bestand.anzahl) {
+      punkte.push('regelmäßige Probeläufe der vorhandenen Netzersatzanlagen unter Last sowie Prüfung der Kraftstoffvorräte');
+    }
+    punkte.push('Notfallplan mit Zuständigkeiten, Schaltreihenfolge und Kommunikationswegen für einen länger andauernden Ausfall');
+    return ggTextBlatt([
+      'Kurzfristig lassen sich folgende Maßnahmen mit geringem Aufwand umsetzen:',
+      ...punkte.map(t => `– ${t}.`),
+    ], T);
+  }
+
+  /** 5.2.3 Langfristige Maßnahmen: Umsetzung des empfohlenen Schutzziels. */
+  function ggRenderResLangText(cfg, T = GG_THEME) {
+    const st = ggResStand();
+    const b = st?.empfehlung;
+    if (!b) {
+      return ggTextBlatt([
+        `Empfohlen wird die Umsetzung des Schutzziels ${ggTextFeld('', 'Empfohlenes Schutzziel (Blackout-Modus › Ziele › ☆)')}. `
+          + `${ggTextFeld('', 'Maßnahmen und Investition')}.`,
+      ], T);
+    }
+    const absaetze = [
+      `Empfohlen wird die Umsetzung des Schutzziels „${gEsc(b.ziel.name)}“ (vgl. Kapitel 5.2). ${ggResZielText(b)}`,
+    ];
+    const v = b.variante;
+    if (v) {
+      const orte = v.aggregate.filter(a => a.zusatzKw > 0)
+        .map(a => `${ggResOrt(a)} (${a.bestandKw > 0 ? `+${ggNum(a.zusatzKw)} kW zum Bestand` : `${ggNum(a.zusatzKw)} kW`})`);
+      if (orte.length) {
+        absaetze.push(`Die Netzersatzanlagen werden an folgenden Standorten neu errichtet oder erweitert: ${ggAufzaehlung(orte)}. `
+          + 'Anlaufströme großer Verbraucher und die Abschaltbedingungen bei dem geringeren Kurzschlussstrom der Aggregate '
+          + 'sind in der Ausführungsplanung nachzuweisen.');
+      }
+    }
+    const ins = b.insel;
+    if (ins) {
+      const titel = st => ins.checkliste.filter(c => c.status === st).map(c => c.titel);
+      const neu = titel('neu'), ern = titel('erneuern'), pr = titel('pruefen');
+      if (neu.length) absaetze.push(`Neu zu errichten sind: ${ggAufzaehlung(neu.map(gEsc))}.`);
+      if (ern.length) absaetze.push(`Zu erneuern sind: ${ggAufzaehlung(ern.map(gEsc))}.`);
+      if (pr.length) absaetze.push(`In der weiteren Planung zu prüfen sind: ${ggAufzaehlung(pr.map(gEsc))}.`);
+    }
+    absaetze.push('Die Umsetzung kann stufenweise erfolgen: Zuerst werden die kurzfristigen Maßnahmen (Kapitel 5.2.2) umgesetzt, '
+      + 'anschließend die Netzersatzanlagen der kritischen Gebäude und die Notstromversorgung der Heizzentrale, zuletzt '
+      + 'die weiteren Ausbaustufen.');
+    return ggTextBlatt(absaetze, T);
+  }
 
   /* ── 3.4.3 Notstromversorgung und Lastmanagement (Variantenbildung) ────────────
    * Auslegung aus der Inselbetrieb-Simulation der PV-Analyse (window._pvResReco, Abb. 10 „Resilienz“),
@@ -111032,7 +111349,11 @@ ${massTbl}
     const erf = s.erforderlichKw;
     const absaetze = [];
 
-    if (!r) {
+    if (!r && ggResAuslegungSatz()) {
+      absaetze.push('Die Auslegung der Notstromversorgung erfolgt mit dem Bewertungswerkzeug Resilienz auf Grundlage der '
+        + 'Gebäudelastgänge und des Bestandsnetzes (vgl. Kapitel 5.1); bemessen wird auf die gleichzeitige Spitzenlast '
+        + 'zuzüglich 20 % Reserve.');
+    } else if (!r) {
       absaetze.push('Die Auslegung der Notstromversorgung erfolgt auf Grundlage einer Inselbetrieb-Simulation der Liegenschaft. '
         + `${ggTextFeld('', 'Ergebnis der Auslegung: Leistung, Überbrückungsdauer, Kraftstoff')}.`);
     } else {
@@ -111101,6 +111422,8 @@ ${massTbl}
             ? ` ${bezug} ist die erforderliche Leistung gedeckt.`
             : ` ${bezug} fehlen gegenüber der erforderlichen Leistung noch ${ggNum(erf - verfuegbar)} kW.`)
           : ''));
+    } else if (ggResAuslegungSatz()) {
+      absaetze.push(ggResAuslegungSatz());
     } else if (erf && !(s.bestandKw >= erf)) {
       absaetze.push('Standort und Aufteilung der Aggregate sind noch festzulegen: '
         + `${ggTextFeld('', 'Standort/Aufteilung, z. B. zentral an der NSHV Gebäude xx')}.`);
@@ -111112,12 +111435,34 @@ ${massTbl}
     return ggTextBlatt(absaetze, T);
   }
 
+  /** Standorte aus dem empfohlenen Schutzziel des Blackout-Modus (3.4.3), sonst null. */
+  function ggResAuslegungSatz() {
+    const b = ggResStand()?.empfehlung;
+    if (!b?.strom) return null;
+    if (b.strom.art === 'insel') {
+      return `Nach der Bewertung am Bestandsnetz (Schutzziel „${gEsc(b.ziel.name)}“, vgl. Kapitel 5.2) wird die Notstromversorgung `
+        + `zentral am Netzanschlusspunkt mit ${ggNum(b.strom.anzahl)} × ${ggNum(b.strom.kvaJe)} kVA und einem Maschinentransformator `
+        + `von ${ggNum(b.strom.mtKva)} kVA vorgesehen.`;
+    }
+    const orte = (b.variante?.aggregate || []).filter(a => a.empfKw > 0)
+      .map(a => `${ggResOrt(a)} (${ggNum(a.empfKw)} kW`
+        + `${a.bestandKw > 0 ? (a.zusatzKw > 0 ? `, davon ${ggNum(a.bestandKw)} kW vorhanden` : ', vorhanden') : ''})`);
+    if (!orte.length) return null;
+    return `Nach der Bewertung am Bestandsnetz (Schutzziel „${gEsc(b.ziel.name)}“, vgl. Kapitel 5.2) werden die Netzersatzanlagen `
+      + `dezentral an folgenden Standorten angeordnet: ${ggAufzaehlung(orte)}.`;
+  }
+
   function ggRenderNotstromLastabwurfText(cfg, T = GG_THEME) {
     const r = window._pvResReco || null;
     const pct = r ? ggNotbetriebPct(r) : null;
     const absaetze = [];
+    const rb = !r ? ggResStand()?.bilanz : null;
 
-    if (pct == null) {
+    if (pct == null && rb?.summe.anzahl) {
+      absaetze.push('Im Notbetrieb werden nur die notstromberechtigten Gebäude versorgt; ihre Last beträgt zusammen '
+        + `${ggNum(rb.summe.notstromKw)} kW (Summe der Anschlussleistungen, Klasse B mit reduzierter Last). Alle übrigen `
+        + 'Verbraucher werden bei Netzausfall abgeworfen.');
+    } else if (pct == null) {
       absaetze.push('Im Notbetrieb wird nur ein Teil der Last der Liegenschaft versorgt. Die Notbetriebslast beträgt '
         + `${ggTextFeld('', 'Notbetriebslast %')} % der Normallast; nicht notstromberechtigte Verbraucher werden bei Netzausfall abgeworfen.`);
     } else if (pct < 100) {
@@ -111129,8 +111474,24 @@ ${massTbl}
         + 'Werden nicht notstromberechtigte Verbraucher bei Netzausfall abgeworfen, verringern sich die erforderliche '
         + 'Aggregatleistung und der Kraftstoffbedarf entsprechend.');
     }
-    absaetze.push(`Notstromberechtigt sind ${ggTextFeld('', 'Verbraucher, z. B. Stabsgebäude, IT, Wärmeerzeugung, Sicherheitsbeleuchtung')}. `
-      + `Die Priorisierung und der Lastabwurf erfolgen ${ggTextFeld('', 'Umsetzung, z. B. über abschaltbare Abgänge an der NSHV oder die Gebäudeautomation')}. `
+    const rs = ggResStand();
+    const berechtigt = rs?.bilanz.summe.anzahl
+      ? ggAufzaehlung([
+        rs.namen.A.length && `die Gebäude der Klasse A (${ggResNamen(rs.namen.A)})`,
+        rs.namen.B.length && `mit reduzierter Last die Gebäude der Klasse B (${ggResNamen(rs.namen.B)})`,
+      ].filter(Boolean))
+      : '';
+    const abg = rs?.empfehlung?.variante?.abgaenge || [];
+    const ins = rs?.empfehlung?.insel;
+    const umsetzung = abg.length
+      ? `über das Abschalten von ${abg.length === 1 ? 'einem Abgang' : `${ggNum(abg.length)} Abgängen`} (${ggResNamen(abg.map(a => (a.lokal ? `an ${a.vonName}` : `${a.vonName} → ${a.zuName}`)), 4)})`
+      : ins
+        ? `über das MS-seitige Abschalten von ${ggNum(ins.lastabwurf.abschalten.length)} Transformatorstationen`
+          + (ins.lastabwurf.nsAbwurf.length ? ` und ${ggNum(ins.lastabwurf.nsAbwurf.length)} Niederspannungsabgängen` : '')
+          + ` sowie das Zuschalten der versorgten Stationen in ${ggNum(ins.zuschaltung.stufen.length)} Stufen`
+        : '';
+    absaetze.push(`Notstromberechtigt sind ${berechtigt || ggTextFeld('', 'Verbraucher, z. B. Stabsgebäude, IT, Wärmeerzeugung, Sicherheitsbeleuchtung')}. `
+      + `Die Priorisierung und der Lastabwurf erfolgen ${umsetzung || ggTextFeld('', 'Umsetzung, z. B. über abschaltbare Abgänge an der NSHV oder die Gebäudeautomation')}. `
       + 'Der Umfang der notstromberechtigten Verbraucher ist mit dem Nutzer abzustimmen, da jeder weitere Verbraucher '
       + 'Aggregatleistung und Kraftstoffbedarf erhöht.');
     if (r) {
@@ -120210,6 +120571,17 @@ ${massTbl}
   }
 
   /**
+   * Kosten unter Anrechnung vorhandener Aggregate am selben Standort: reicht der
+   * Bestand, entsteht nichts; sonst eine Erweiterung um die fehlende Leistung —
+   * die Einspeisung ist dann schon vorhanden.
+   */
+  function neaKostenMitBestand(kw, ort, bestandKw = 0, k = NEA_KOSTEN) {
+    if (!(kw > 0) || bestandKw >= kw) return 0;
+    if (bestandKw > 0) return k.fixEur + (kw - bestandKw) * k.eurProKw;
+    return neaKosten(kw, ort, k);
+  }
+
+  /**
    * Netzbaum ab den versorgungsseitigen Knoten.
    * @param {Array<{id:any,type:string}>} assets  aktive Strom-Assets
    * @param {Array<{id:any,u:any,v:any}>} kanten  aktive Kabel
@@ -120249,7 +120621,9 @@ ${massTbl}
   /**
    * Aggregat-Platzierung für eine Strategie.
    * @param {object} p
-   * @param {Array<{id:any,type:string,name?:string,lat?:number,lng?:number,buildingId?:any,lastKw?:number}>} p.assets
+   * @param {Array<{id:any,type:string,name?:string,lat?:number,lng?:number,buildingId?:any,lastKw?:number,neaKw?:number}>} p.assets
+   *        Notstromaggregate (type 'Nsa') mit neaKw werden als Bestand angerechnet: am NS-Knoten, an dem sie
+   *        per Kabel hängen, sonst am Gebäude ihrer buildingId.
    * @param {Array<{id:any,u:any,v:any}>} p.kanten
    * @param {Array<{id:any,name?:string,lat?:number,lng?:number,notstrom?:object}>} p.gebaeude
    * @param {Map<any,number>} [p.kwJeGebaeude]         Anschlussleistung (Verbraucher-Assets)
@@ -120304,6 +120678,18 @@ ${massTbl}
       if (!(a.lastKw > 0) || _INFRA.has(a.type) || !baum.tiefe.has(a.id)) continue;
       if (a.buildingId != null && gebMap.has(a.buildingId)) continue;   // zählt beim Gebäude
       push(eigenLast, a.id, { name: a.name || a.type, kw: a.lastKw, einspeisepunkt: false });
+    }
+
+    // Vorhandene Aggregate je Standort
+    const bestand = new Map();
+    const bestandOhneOrt = [];
+    for (const a of p.assets || []) {
+      if (a.type !== 'Nsa' || !(a.neaKw > 0)) continue;
+      const vater = baum.parent.get(a.id);
+      const ort = vater != null && NEA_KNOTEN_TYPEN.includes(assetMap.get(vater)?.type) ? vater
+        : a.buildingId != null && gebMap.has(a.buildingId) ? a.buildingId : null;
+      if (ort == null) { bestandOhneOrt.push({ id: a.id, name: a.name, kw: a.neaKw }); continue; }
+      bestand.set(ort, (bestand.get(ort) || 0) + a.neaKw);
     }
 
     // Von den Blättern zur Wurzel aufsammeln
@@ -120408,9 +120794,11 @@ ${massTbl}
     const gebAggregat = (gId, extra = {}) => {
       const peakKw = spitzeVon(gebSumme(gId));
       const empfKw = neaEmpfehlungKw(peakKw, k);
+      const bestandKw = bestand.get(gId) || 0;
       return {
         ort: 'gebaeude', id: gId, typ: 'Gebäude', name: name(gId), ...pos(gId),
-        gebaeude: [gId], peakKw, empfKw, kosten: neaKosten(empfKw, 'gebaeude', k), abgaenge: [], ...extra,
+        gebaeude: [gId], peakKw, empfKw, bestandKw, zusatzKw: Math.max(0, empfKw - bestandKw),
+        kosten: neaKostenMitBestand(empfKw, 'gebaeude', bestandKw, k), abgaenge: [], ...extra,
       };
     };
 
@@ -120439,10 +120827,11 @@ ${massTbl}
       const peakKw = spitzeVon(knotenSumme(X));
       const empfKw = neaEmpfehlungKw(peakKw, k);
       const abgaenge = abgaengeUnter(X);
+      const bestandKw = bestand.get(X) || 0;
       const agg = {
         ort: 'knoten', id: X, typ: assetMap.get(X).type, name: name(X), ...pos(X),
-        gebaeude: gIds, peakKw, empfKw, abgaenge,
-        kosten: neaKosten(empfKw, 'knoten', k) + abgaenge.length * k.abgangEur,
+        gebaeude: gIds, peakKw, empfKw, abgaenge, bestandKw, zusatzKw: Math.max(0, empfKw - bestandKw),
+        kosten: neaKostenMitBestand(empfKw, 'knoten', bestandKw, k) + abgaenge.length * k.abgangEur,
       };
       if (strategie === 'trafo' || agg.kosten <= unten.kosten) return { kosten: agg.kosten, aggregate: [agg] };
       return unten;
@@ -120457,7 +120846,10 @@ ${massTbl}
     const abgaenge = aggregate.flatMap(a => a.abgaenge.map(x => ({ ...x, aggregatId: a.id })));
     return {
       strategie, aggregate, abgaenge, nichtAmNetz, fest, wurzeln: baum.wurzeln,
+      bestandOhneOrt,
+      bestandGenutztKw: aggregate.reduce((s, a) => s + Math.min(a.bestandKw || 0, a.empfKw), 0),
       summe: {
+        zusatzKw: aggregate.reduce((s, a) => s + (a.zusatzKw || 0), 0),
         anzahl: aggregate.filter(a => a.empfKw > 0).length,
         kw: aggregate.reduce((s, a) => s + a.empfKw, 0),
         kosten: aggregate.reduce((s, a) => s + a.kosten, 0),
@@ -120954,6 +121346,206 @@ ${massTbl}
       awsv: Math.max(p.tankL || 0, tankEmpfehlungL) > par.awsvSchwelleL,
       hilfsKw, neaKw, kosten, kostenSumme: kosten.nea + kosten.zweistoff + kosten.tank,
     };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Schritt 5: Schutzziele → Maßnahmen → Kosten
+  // ══════════════════════════════════════════════════════════════════════════
+  //
+  // Ein Schutzziel legt fest, WAS WIE LANGE versorgt werden soll: Strom für die
+  // Gebäude der Klasse A, der Klassen A + B oder einen Anteil der ganzen
+  // Liegenschaft (Insel am NAP), dazu optional die Wärme. Jedes Ziel wird mit den
+  // Rechnungen der Schritte 2–4 bewertet; die Matrix stellt Maßnahmen und
+  // Richtkosten der Ziele nebeneinander (Gutachten Kapitel 5.2).
+
+  const ZIEL_STROM_STUFEN = Object.freeze({
+    keine: 'keine Stromversorgung',
+    A: 'Gebäude Klasse A',
+    AB: 'Gebäude Klassen A + B',
+    insel: 'Liegenschaft (Insel am NAP)',
+  });
+
+  const ZIEL_VORGABEN = Object.freeze([
+    Object.freeze({ id: 'z1', name: 'Kritische Funktionen',    strom: 'A',     anteilPct: 100, dauerH: 72,  waerme: true }),
+    Object.freeze({ id: 'z2', name: 'Eingeschränkter Betrieb', strom: 'AB',    anteilPct: 100, dauerH: 72,  waerme: true }),
+    Object.freeze({ id: 'z3', name: 'Liegenschaftsbetrieb',    strom: 'insel', anteilPct: 50,  dauerH: 168, waerme: true }),
+  ]);
+
+  const ZIEL_PARAMETER = Object.freeze({
+    lastfaktor: 0.6,       // mittlere Auslastung der Gebäudeaggregate über das Ereignis
+    sfcLproKwh: 0.28,
+    tankZuschlag: 1.15,
+    tankEurProL: 1.5,
+    waermeErfuelltPct: 99.5,
+  });
+
+  const ZIEL_STATUS = Object.freeze({
+    erfuellt:  Object.freeze({ label: 'erfüllbar',    farbe: '#66bb6a' }),
+    teilweise: Object.freeze({ label: 'teilweise',    farbe: '#ffa726' }),
+    offen:     Object.freeze({ label: 'Daten fehlen', farbe: '#90a4ae' }),
+  });
+
+  const _zahl = (v, def, min, max) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+  };
+
+  /** Ziele aus der Projektdatei; ohne gespeicherte Liste die Vorgaben. */
+  function normalisiereZiele(liste) {
+    if (!Array.isArray(liste)) return ZIEL_VORGABEN.map(z => ({ ...z }));
+    const ids = new Set();
+    return liste.filter(z => z && typeof z === 'object').map((z, i) => {
+      let id = String(z.id || `z${i + 1}`);
+      while (ids.has(id)) id += '_';
+      ids.add(id);
+      return {
+        id,
+        name: String(z.name ?? '').trim() || `Schutzziel ${i + 1}`,
+        strom: ZIEL_STROM_STUFEN[z.strom] ? z.strom : 'A',
+        anteilPct: _zahl(z.anteilPct, 100, 5, 100),
+        dauerH: _zahl(z.dauerH, 72, 1, 720),
+        waerme: z.waerme !== false,
+      };
+    });
+  }
+
+  /** Gebäudeliste mit den Klassen, die für die Stromstufe zählen (Stufe A: B-Gebäude fallen heraus). */
+  function zielGebaeude(gebaeude, stufe) {
+    return (gebaeude || []).map(g => {
+      const n = normalisiereNotstrom(g.notstrom);
+      if (stufe === 'AB' || !n) return g;
+      if (stufe === 'A') return n.klasse === 'B' ? { ...g, notstrom: null } : g;
+      return { ...g, notstrom: null };
+    });
+  }
+
+  function zielKraftstoffL(spitzeKw, dauerH, par = ZIEL_PARAMETER) {
+    if (!(spitzeKw > 0) || !(dauerH > 0)) return 0;
+    return Math.ceil(spitzeKw * dauerH * par.lastfaktor * par.sfcLproKwh * par.tankZuschlag / 100) * 100;
+  }
+
+  /**
+   * Ein Schutzziel bewerten.
+   * @param {object} p
+   * @param {object} p.ziel        normalisiertes Ziel
+   * @param {object} [p.platz]     notstromPlatzierungVergleich für die Stufe A/AB
+   * @param {object} [p.insel]     liegenschaftsInsel für die Stufe insel
+   * @param {object} [p.waerme]    waermeBlackout mit Notstrom an der Heizzentrale
+   */
+  function bewerteZiel(p) {
+    const par = p.parameter || ZIEL_PARAMETER;
+    const z = p.ziel;
+    const gruende = [];
+    let offen = false, teilweise = false;
+    let strom = null;
+
+    if (z.strom === 'A' || z.strom === 'AB') {
+      const v = p.platz?.varianten?.[p.platz.empfohlen];
+      const aggregate = v ? v.aggregate.filter(a => a.gebaeude.length) : [];
+      if (!v || !aggregate.length) {
+        offen = true;
+        gruende.push(`keine Gebäude der Stufe „${ZIEL_STROM_STUFEN[z.strom]}“ eingestuft`);
+      } else {
+        const spitze = aggregate.reduce((s, a) => s + a.peakKw, 0);
+        const liter = zielKraftstoffL(spitze, z.dauerH, par);
+        strom = {
+          art: 'gebaeude', strategie: v.strategie,
+          anzahl: v.summe.anzahl, kw: v.summe.kw, zusatzKw: v.summe.zusatzKw ?? v.summe.kw,
+          abgaenge: v.summe.abgaenge, liter,
+          kosten: v.summe.kosten + liter * par.tankEurProL,
+          gebaeude: aggregate.reduce((s, a) => s + a.gebaeude.length, 0),
+        };
+        if (v.summe.ohneLast) {
+          teilweise = true;
+          gruende.push(`${v.summe.ohneLast} Aggregat(e) ohne Last — Verbraucher-Assets fehlen`);
+        }
+        if (v.nichtAmNetz?.length) gruende.push(`${v.nichtAmNetz.length} Gebäude ohne Netzanschluss im Modell`);
+      }
+    } else if (z.strom === 'insel') {
+      const r = p.insel;
+      if (!r || !(r.spitzeKw > 0)) {
+        offen = true;
+        gruende.push('keine Liegenschaftslast — Lastgang oder Trafos fehlen');
+      } else {
+        strom = {
+          art: 'insel', anzahl: r.aggregate.anzahl, kvaJe: r.aggregate.kvaJe, kw: r.aggregate.pAggKw,
+          mtKva: r.maschinentrafoKva, liter: r.liter, kosten: r.kosten,
+          stationenAn: r.lastabwurf.versorgt.length, stationenAus: r.lastabwurf.abschalten.length,
+          nsAbwurf: r.lastabwurf.nsAbwurf.length,
+          pruefen: r.checkliste.filter(c => c.status === 'pruefen' || c.status === 'erneuern').length,
+        };
+        if (r.abReichtNicht) {
+          teilweise = true;
+          gruende.push('A/B-Last übersteigt den gewählten Anteil — Bemessung angehoben');
+        }
+      }
+    }
+
+    let waerme = null;
+    if (z.waerme) {
+      const w = p.waerme;
+      if (!w) {
+        offen = true;
+        gruende.push('kein Wärme-Lastgang');
+      } else {
+        waerme = {
+          deckungPct: w.deckungEnergiePct, leistungPct: w.deckungLeistungPct, neaKw: w.neaKw,
+          zweistoffKw: w.kwJeTraeger?.oel || 0, tankL: w.tankEmpfehlungL, tankFehltL: w.tankFehltL,
+          kosten: w.kostenSumme,
+        };
+        if (w.deckungEnergiePct < par.waermeErfuelltPct) {
+          teilweise = true;
+          gruende.push(`Wärme nur zu ${Math.round(w.deckungEnergiePct)} % gedeckt`);
+        }
+      }
+    }
+
+    const kosten = (strom?.kosten || 0) + (waerme?.kosten || 0);
+    const status = offen ? 'offen' : teilweise ? 'teilweise' : 'erfuellt';
+    return { ziel: z, strom, waerme, kosten, status, gruende };
+  }
+
+  /** Maßnahmen-Matrix: Zeilen = Maßnahmen, Spalten = Schutzziele. */
+  function resilienzZielMatrix(bewertungen) {
+    const fmt = v => Math.round(v || 0).toLocaleString('de-DE');
+    const eur = v => (v >= 10000 ? `${fmt(v / 1000)} T€` : `${fmt(v)} €`);
+    const dauer = h => (h >= 48 && h % 24 === 0 ? `${h / 24} Tage` : `${h} h`);
+    const spalte = fn => bewertungen.map(b => fn(b) ?? '—');
+    const zeilen = [
+      { label: 'Umfang Strom', werte: spalte(b => (b.ziel.strom === 'insel'
+        ? `${fmt(b.ziel.anteilPct)} % der Liegenschaft` : ZIEL_STROM_STUFEN[b.ziel.strom])) },
+      { label: 'Dauer', werte: spalte(b => dauer(b.ziel.dauerH)) },
+      { label: 'Notstromaggregate', werte: spalte(b => {
+        const s = b.strom;
+        if (!s) return null;
+        if (s.art === 'insel') return `${s.anzahl} × ${fmt(s.kvaJe)} kVA am NAP`;
+        return `${s.anzahl} Stück, ${fmt(s.kw)} kW` + (s.zusatzKw < s.kw ? ` (neu ${fmt(s.zusatzKw)} kW)` : '');
+      }) },
+      { label: 'MS-Technik', werte: spalte(b => (b.strom?.art === 'insel'
+        ? `Maschinentrafo ${fmt(b.strom.mtKva)} kVA, Sternpunkt, Netztrennung` : null)) },
+      { label: 'Lastabwurf', werte: spalte(b => {
+        const s = b.strom;
+        if (!s) return null;
+        if (s.art === 'insel') {
+          const teile = [
+            s.stationenAus && `${s.stationenAus} ${s.stationenAus === 1 ? 'Station' : 'Stationen'} aus`,
+            s.nsAbwurf && `${s.nsAbwurf} ${s.nsAbwurf === 1 ? 'NS-Abgang' : 'NS-Abgänge'} abwerfen`,
+          ].filter(Boolean);
+          return teile.join(', ') || 'keiner';
+        }
+        return s.abgaenge ? `${s.abgaenge} ${s.abgaenge === 1 ? 'Abgang' : 'Abgänge'} abschalten` : 'keiner';
+      }) },
+      { label: 'Kraftstofflager Strom', werte: spalte(b => (b.strom?.liter ? `${fmt(b.strom.liter)} l` : null)) },
+      { label: 'Wärmedeckung', werte: spalte(b => (b.waerme ? `${fmt(b.waerme.deckungPct)} %` : null)) },
+      { label: 'Notstrom Heizzentrale', werte: spalte(b => (b.waerme?.neaKw ? `${fmt(b.waerme.neaKw)} kW` : null)) },
+      { label: 'Zweistoffbrenner / Heizöl', werte: spalte(b => (b.waerme
+        ? [b.waerme.zweistoffKw ? `${fmt(b.waerme.zweistoffKw)} kW` : null,
+           b.waerme.tankL ? `${fmt(b.waerme.tankL)} l Lager` : null].filter(Boolean).join(', ') || null
+        : null)) },
+      { label: 'Investition (Richtwert)', werte: spalte(b => eur(b.kosten)), highlight: true },
+      { label: 'Bewertung', werte: spalte(b => ZIEL_STATUS[b.status].label + (b.gruende.length ? ` — ${b.gruende.join('; ')}` : '')) },
+    ];
+    return { spalten: bewertungen.map(b => b.ziel.name), zeilen };
   }
 
   // ── 03c-gebaeude-io.js — Gebäude-UI, Totals, Chart, Gebäude-PV, Rendering, Projekt-Import/Export, Animation ──
@@ -185286,7 +185878,7 @@ ${hasAnyResult ? `
     const nsaRes = NA.nsaResult;
     const recoTxt = reco && reco.genKw > 0
       ? `Resilienz-Empfehlung: <b>${Math.ceil(reco.genKw)} kW</b> · ${reco.durH} h · ${reco.kraftstoff}`
-      : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (Analyse ▸ 🛡 Resilienz) — Fallback: Karten-Spitzenlast</span>`;
+      : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (☀ PV-Analyse ▸ Abb. 10) — Fallback: Karten-Spitzenlast</span>`;
     const _srcBtn = (val, lbl) => {
       const on = NA.nsaSource === val;
       return `<button onclick="naSetNsaSource('${val}')"
@@ -185294,10 +185886,17 @@ ${hasAnyResult ? `
              border:1px solid ${on ? COL_NSA : '#555'};color:${on ? COL_NSA : '#999'};background:${on ? 'rgba(255,112,67,.1)' : 'transparent'};">${lbl}</button>`;
     };
     const tabNsaHtml = `
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Notstromaggregat platzieren</div>
+<div style="background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.45);border-radius:6px;padding:8px;margin-bottom:10px;">
+  <div style="font-size:10px;color:#cfd8dc;line-height:1.45;margin-bottom:6px;">
+    <b>Platzierung am Bestandsnetz:</b> Der 🛡 Blackout-Modus stuft Gebäude ein, vergleicht Aggregate an Gebäuden,
+    Kabelverteilern, NSHV und Trafos, rechnet vorhandene Aggregate an und vermerkt die abzuschaltenden Abgänge.
+  </div>
+  <button onclick="blackoutModusStart(); blackoutSetTab('netz')" style="${_runBtn(COL_NSA)}">🛡 Blackout-Modus › Am Netz öffnen</button>
+</div>
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Schnellschätzung nach Lage</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
   <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
-    Schlägt Aggregat-Standorte vor. Gesamtleistung aus der Resilienz-Analyse oder der Karten-Spitzenlast, auf die Zonen verteilt.
+    Verteilt eine Gesamtleistung (Resilienz-Analyse oder Karten-Spitzenlast) nach der Lage der Lasten auf Zonen — ohne Netztopologie und Gebäudeklassen.
   </div>
   <div style="font-size:10px;margin-bottom:6px;padding:5px;border-radius:4px;background:rgba(255,112,67,.08);border:1px solid rgba(255,112,67,.3);color:#cfd8dc;">${recoTxt}</div>
   <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Dimensionierung</div>
@@ -199791,6 +200390,8 @@ ${teile.join('\n')}
     }
     window.blackoutVorgabe.insel = _inselNormalisieren(window.blackoutVorgabe.insel);
     window.blackoutVorgabe.waerme = _waermeNormalisieren(window.blackoutVorgabe.waerme);
+    window.blackoutVorgabe.ziele = normalisiereZiele(window.blackoutVorgabe.ziele);
+    if (!window.blackoutVorgabe.ziele.some(z => z.id === window.blackoutVorgabe.empfehlung)) window.blackoutVorgabe.empfehlung = null;
     return window.blackoutVorgabe;
   }
 
@@ -199831,7 +200432,11 @@ ${teile.join('\n')}
   /** Projektdatei: Einstellungen sichern (die Klassen selbst liegen an den Gebäuden). */
   function blackoutCaptureState() {
     const e = blackoutEinstellungen();
-    return { bLastPct: e.bLastPct, insel: { ...e.insel, bewertung: { ...e.insel.bewertung } }, waerme: { ...e.waerme } };
+    return {
+      bLastPct: e.bLastPct, insel: { ...e.insel, bewertung: { ...e.insel.bewertung } }, waerme: { ...e.waerme },
+      ziele: e.ziele.map(z => ({ ...z })),
+      empfehlung: e.empfehlung,
+    };
   }
 
   function blackoutRestoreState(d) {
@@ -199840,7 +200445,10 @@ ${teile.join('\n')}
       bLastPct: Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : NOTSTROM_B_VORGABE_PCT,
       insel: _inselNormalisieren(d?.insel),
       waerme: _waermeNormalisieren(d?.waerme),
+      ziele: normalisiereZiele(d?.ziele),
+      empfehlung: typeof d?.empfehlung === 'string' ? d.empfehlung : null,
     };
+    window.blackoutZiele = null;
     window.blackoutPlatz = null;
     window.blackoutInsel = null;
     if (window.blackoutModusAktiv) { blackoutModusMarkiereKarte(); blackoutModusRender(); }
@@ -200081,8 +200689,9 @@ ${teile.join('\n')}
   function _platzSig() {
     const klassen = _alle().filter(g => g.notstrom)
       .map(g => `${g.id}:${g.notstrom.klasse}:${g.notstrom.lastPct ?? ''}:${g.notstrom.eigeneNea ? 1 : 0}`).join(',');
+    const neaKw = ASSETS.items.filter(a => a.type === 'Nsa').reduce((s, a) => s + _num(a.props?.leistungKW), 0);
     return [globalYear, blackoutEinstellungen().bLastPct, ASSETS.items.length,
-            (window.stromEdges || []).length, klassen].join('|');
+            (window.stromEdges || []).length, neaKw, klassen].join('|');
   }
 
   function _aktuelleVariante() {
@@ -200097,7 +200706,8 @@ ${teile.join('\n')}
     const assets = ASSETS.items
       .filter(a => (a.domain === 'strom' || a.domain === 'hybrid') && getAssetStatus(a, jahr) === 'active')
       .map(a => ({ id: a.id, type: a.type, name: a.name, lat: a.lat, lng: a.lng, buildingId: a.buildingId,
-                   lastKw: _lastKw(a, getAssetPropsForYear(a, jahr)) }));
+                   lastKw: _lastKw(a, getAssetPropsForYear(a, jahr)),
+                   neaKw: a.type === 'Nsa' ? _num(getAssetPropsForYear(a, jahr).leistungKW) : 0 }));
     const kanten = (window.stromEdges || [])
       .filter(e => getStromEdgeStatus(e, jahr) === 'active')
       .map(e => ({ id: e.id, u: e.u, v: e.v }));
@@ -200195,6 +200805,7 @@ ${teile.join('\n')}
       const farbe = a.ort === 'knoten' ? KNOTEN_FARBE : a.fest ? '#90a4ae' : NOTSTROM_KLASSEN.A.farbe;
       const text = `<b>⚙ NEA ${escHtml(a.name)}</b> (${a.ort === 'knoten' ? escHtml(a.typ) : 'am Gebäude'})<br>`
         + `Empfehlung <b>${_fmtKw(a.empfKw)}</b> · gleichz. Spitze ${_fmtKw(a.peakKw)}<br>`
+        + (a.bestandKw ? `vorhanden ${_fmtKw(a.bestandKw)}${a.zusatzKw ? ` · fehlen ${_fmtKw(a.zusatzKw)}` : ' ✓'}<br>` : '')
         + `versorgt ${a.gebaeude.length} Gebäude · ${_fmtEur(a.kosten)}`
         + (a.abgaenge.length ? `<br>${a.abgaenge.length} Abgänge abschalten` : '')
         + (a.fest ? '<br><i>eigenes Aggregat (Vorgabe)</i>' : '')
@@ -200210,34 +200821,35 @@ ${teile.join('\n')}
   function blackoutPlatzierungUebernehmen() {
     const r = _aktuelleVariante();
     if (!r) return;
-    const liste = r.aggregate.filter(a => a.empfKw > 0 && Number.isFinite(a.lat));
-    // Schon übernommene Aggregate nicht doppelt anlegen — nur die Leistung angleichen
-    const vorhanden = a => ASSETS.items.find(x => x.type === 'Nsa' && x.props?.blackoutZiel === `${a.ort}:${a.id}`);
-    const neu = liste.filter(a => !vorhanden(a));
-    const anpassen = liste.filter(a => {
-      const x = vorhanden(a);
-      return x && _num(x.props.leistungKW) !== a.empfKw;
-    });
-    if (!neu.length && !anpassen.length) {
-      window.showHint?.('Alle Aggregate dieser Strategie sind schon als Assets angelegt.', 4000);
+    // Vorhandene Aggregate sind schon angerechnet — ergänzt wird nur die fehlende Leistung:
+    // ein früher übernommenes Aggregat wird vergrößert, sonst kommt ein neues dazu.
+    const liste = r.aggregate.filter(a => a.zusatzKw > 0 && Number.isFinite(a.lat));
+    const frueher = a => ASSETS.items.find(x => x.type === 'Nsa' && x.props?.blackoutZiel === `${a.ort}:${a.id}`);
+    const anpassen = liste.filter(a => frueher(a));
+    const neu = liste.filter(a => !frueher(a));
+    if (!liste.length) {
+      window.showHint?.('Die vorhandenen Aggregate decken diese Strategie bereits.', 4000);
       return;
     }
     const frage = [
-      neu.length && `${neu.length} Notstromaggregat(e) als Assets anlegen.`,
-      anpassen.length && `${anpassen.length} bereits angelegte(s) Aggregat(e) auf die neue Leistung setzen `
-        + `(${anpassen.map(a => `${a.name}: ${_num(vorhanden(a).props.leistungKW)} → ${a.empfKw} kW`).join(', ')}).`,
+      neu.length && `${neu.length} Notstromaggregat(e) anlegen (${neu.map(a => `${a.name}: ${a.zusatzKw} kW`).join(', ')}).`,
+      anpassen.length && `${anpassen.length} übernommene(s) Aggregat(e) vergrößern `
+        + `(${anpassen.map(a => { const x = _num(frueher(a).props.leistungKW); return `${a.name}: ${x} → ${x + a.zusatzKw} kW`; }).join(', ')}).`,
     ].filter(Boolean).join('\n');
     if (!confirm(`${frage}\n\nAggregate an Knoten werden per Kabel an den Knoten angeschlossen, Aggregate am Gebäude `
-      + 'dem Gebäude zugeordnet. Die abzuschaltenden Abgänge bleiben ein Vermerk.')) return;
-    for (const a of anpassen) vorhanden(a).props.leistungKW = String(a.empfKw);
+      + 'dem Gebäude zugeordnet. Vorhandene Aggregate bleiben unverändert; die abzuschaltenden Abgänge bleiben ein Vermerk.')) return;
+    for (const a of anpassen) {
+      const x = frueher(a);
+      x.props.leistungKW = String(_num(x.props.leistungKW) + a.zusatzKw);
+    }
     const autonomieH = window._pvResReco?.durH || 72;
     const angelegt = [];
     for (const a of neu) {
       const knoten = a.ort === 'knoten' ? ASSETS.items.find(x => x.id === a.id) : null;
       const nsa = createAsset('Nsa', a.lat + 0.00006, a.lng + 0.00006, {
-        name: `NEA ${a.name}`,
+        name: a.bestandKw > 0 ? `NEA ${a.name} (Ergänzung)` : `NEA ${a.name}`,
         buildingId: a.ort === 'gebaeude' ? a.id : (knoten?.buildingId ?? null),
-        props: { leistungKW: String(a.empfKw), autonomieH: String(autonomieH), kraftstoff: 'Diesel',
+        props: { leistungKW: String(a.zusatzKw), autonomieH: String(autonomieH), kraftstoff: 'Diesel',
                  blackoutZiel: `${a.ort}:${a.id}` },
       });
       if (!nsa) continue;
@@ -200248,9 +200860,12 @@ ${teile.join('\n')}
     recalcStromNetz();
     window.showHint?.([
       angelegt.length && `${angelegt.length} Notstromaggregat(e) angelegt · Autonomie ${autonomieH} h`,
-      anpassen.length && `${anpassen.length} angepasst`,
+      anpassen.length && `${anpassen.length} vergrößert`,
     ].filter(Boolean).join(' · '), 5000);
-    blackoutModusRender();
+    // Neu rechnen, damit die Anlagen als Bestand erscheinen — gewählte Strategie behalten
+    const strategie = window.blackoutStrategie;
+    blackoutPlatzierungRechnen();
+    blackoutSetStrategie(strategie);
   }
 
   function _platzBlock() {
@@ -200275,7 +200890,7 @@ ${teile.join('\n')}
         style="cursor:pointer;${aktiv ? `background:${KNOTEN_FARBE}26;` : ''}">
         <td style="padding:2px 4px;${aktiv ? `color:${KNOTEN_FARBE};font-weight:600;` : ''}">${aktiv ? '●' : '○'} ${s.label}${key === pl.empfohlen ? ' ★' : ''}</td>
         <td style="padding:2px 4px;text-align:right;">${v.anzahl}</td>
-        <td style="padding:2px 4px;text-align:right;">${_fmtKw(v.kw)}</td>
+        <td style="padding:2px 4px;text-align:right;" title="davon neu bzw. zusätzlich: ${_fmtKw(v.zusatzKw)}">${_fmtKw(v.kw)}</td>
         <td style="padding:2px 4px;text-align:right;">${v.abgaenge}</td>
         <td style="padding:2px 4px;text-align:right;">${_fmtEur(v.kosten)}</td></tr>`;
     }).join('');
@@ -200289,7 +200904,8 @@ ${teile.join('\n')}
           data-click="blackoutZeigeOrt(${a.lat},${a.lng})" title="${escHtml(a.gebaeude.length + ' Gebäude versorgt')}">${escHtml(a.name)}
           <span style="color:var(--muted);font-size:9px;">${escHtml(art)}</span></span>
         <span style="font-size:9.5px;white-space:nowrap;${a.empfKw > 0 ? '' : 'color:#ffa726;'}"
-          title="Gleichzeitige Spitze ${_fmtKw(a.peakKw)} + ${Math.round((NEA_KOSTEN.reserve - 1) * 100)} % Reserve">${a.empfKw > 0 ? _fmtKw(a.empfKw) : '⚠ 0 kW'}</span>
+          title="Gleichzeitige Spitze ${_fmtKw(a.peakKw)} + ${Math.round((NEA_KOSTEN.reserve - 1) * 100)} % Reserve${a.bestandKw ? ` · vorhanden ${_fmtKw(a.bestandKw)}` : ''}">${a.empfKw > 0 ? _fmtKw(a.empfKw) : '⚠ 0 kW'}${
+            a.bestandKw > 0 ? `<span style="color:${a.zusatzKw > 0 ? '#ffa726' : '#66bb6a'};"> · ${a.zusatzKw > 0 ? `+${_fmtKw(a.zusatzKw)}` : 'Bestand ✓'}</span>` : ''}</span>
       </div>`;
     }).join('');
 
@@ -200307,7 +200923,8 @@ ${teile.join('\n')}
       veraltet && 'Klassen, Netz oder Jahr haben sich geändert — Ergebnis neu berechnen.',
       r.nichtAmNetz.length && `${r.nichtAmNetz.length} A/B-Gebäude hängen nicht am Netz und bekommen ein eigenes Aggregat.`,
       r.summe.ohneLast && `${r.summe.ohneLast} Aggregat(e) ohne Last — Gebäude ohne Verbraucher-Asset.`,
-      pl.bestand.anzahl && `Bestand: ${pl.bestand.anzahl} Notstromaggregat(e) mit ${_fmtKw(pl.bestand.kw)} — in der Platzierung noch nicht angerechnet.`,
+      r.bestandOhneOrt.length && `${r.bestandOhneOrt.length} vorhandene(s) Aggregat(e) ohne Kabel zu einem NS-Knoten und ohne Gebäude `
+        + `(${escHtml(r.bestandOhneOrt.map(b => b.name || b.id).join(', '))}) — nicht angerechnet.`,
     ].filter(Boolean).map(t => `<div style="font-size:9px;color:#ffa726;margin-top:4px;line-height:1.4;">⚠ ${t}</div>`).join('');
 
     return titel + `
@@ -200326,7 +200943,8 @@ ${teile.join('\n')}
     ${abgZeilen || '<div style="font-size:9.5px;color:var(--muted);">Nichts abzuschalten.</div>'}
     <button class="btn-xs" style="width:100%;margin-top:8px;border-color:${KNOTEN_FARBE};color:${KNOTEN_FARBE};"
       data-click="blackoutPlatzierungUebernehmen()" ${veraltet ? 'disabled' : ''}
-      title="Aggregate dieser Strategie als Notstromaggregat-Assets anlegen">⬆ Als Assets übernehmen</button>
+      title="Fehlende Aggregatleistung dieser Strategie als Notstromaggregat-Assets anlegen bzw. ergänzen">${
+        r.summe.zusatzKw > 0 ? `⬆ ${_fmtKw(r.summe.zusatzKw)} als Assets übernehmen` : '✓ Vom Bestand gedeckt'}</button>
     <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">
       Bemessung: gleichzeitige Spitze der Gebäudelastgänge × Lastanteil + ${Math.round((NEA_KOSTEN.reserve - 1) * 100)} % Reserve.
       Kosten (Richtwerte): ${_fmtEur(NEA_KOSTEN.fixEur)} je Aggregat + ${NEA_KOSTEN.eurProKw} €/kW,
@@ -200346,7 +200964,7 @@ ${teile.join('\n')}
   /** @type {any} */
   let _inselLayer = null;
 
-  const REITER = ['klassen', 'netz', 'insel', 'waerme'];
+  const REITER = ['klassen', 'netz', 'insel', 'waerme', 'ziele'];
   const _tab = () => (REITER.includes(window.blackoutTab) ? window.blackoutTab : 'klassen');
 
   function blackoutSetTab(t) {
@@ -200381,10 +200999,10 @@ ${teile.join('\n')}
     return { profil: null, quelle: 'Summe der Trafo-Spitzen' };
   }
 
-  function blackoutInselRechnen() {
+  /** Insel für Anteil und Dauer rechnen (Reiter „Liegenschaft" und Schutzziele). */
+  function _inselErgebnis(anteilPct, dauerH, eingaben = _platzEingaben(globalYear)) {
     const jahr = globalYear;
     const e = blackoutEinstellungen().insel;
-    const eingaben = _platzEingaben(jahr);
     const platz = notstromPlatzierung({ ...eingaben, strategie: 'trafo' });
     const aktiv = t => ASSETS.items.filter(a => a.type === t && getAssetStatus(a, jahr) === 'active');
     const nap = aktiv('NAP')[0] || null;
@@ -200410,7 +201028,7 @@ ${teile.join('\n')}
 
     const ergebnis = liegenschaftsInsel({
       profil, spitzeKw: trafos.reduce((s, t) => s + t.spitzeKw, 0),
-      anteilPct: e.anteilPct, dauerH: e.dauerH, redundanz: e.redundanz,
+      anteilPct, dauerH, redundanz: e.redundanz,
       abSpitzeKw, trafos, jahr, bewertung: e.bewertung,
       netz: {
         spannungKV: _num(napProps.spannungKV) || 20, msKabelM,
@@ -200418,11 +201036,16 @@ ${teile.join('\n')}
           .map(a => ({ id: a.id, name: a.name, type: a.type, baujahr: a.baujahr })),
       },
     });
-    window.blackoutInsel = {
-      ergebnis, quelle, jahr, sig: _inselSig(), ts: Date.now(),
+    return {
+      ergebnis, quelle, jahr,
       nap: nap ? { lat: nap.lat, lng: nap.lng, name: nap.name } : null,
       ohneNap: !nap, ohneTrafo: !trafos.length, msKabelM,
     };
+  }
+
+  function blackoutInselRechnen() {
+    const e = blackoutEinstellungen().insel;
+    window.blackoutInsel = { ..._inselErgebnis(e.anteilPct, e.dauerH), sig: _inselSig(), ts: Date.now() };
     _inselZeichnen();
     blackoutModusRender();
   }
@@ -200480,6 +201103,19 @@ ${teile.join('\n')}
         .bindTooltip(`<b>${escHtml(t.name)}</b> — im Inselbetrieb MS-seitig abschalten<br>${_fmtKw(t.spitzeKw)}`, { className: 'geb-tooltip' })
         .addTo(_inselLayer);
     }
+  }
+
+  /** Gegenüberstellung mit der Inselbetrieb-Simulation der PV-Analyse (Abb. 10), falls gerechnet. */
+  function _pvVergleich(r) {
+    const pv = window._pvResReco;
+    if (!pv) return '';
+    const MODUS = { gen: 'nur Notstrom', 'bat-gen': 'Speicher + Notstrom', 'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'nur PV + Speicher' };
+    return `<div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.4;"
+      title="Die PV-Analyse rechnet ohne Netztopologie, dafür mit PV und Batteriespeicher im Inselbetrieb">
+      PV-Analyse (Abb. 10, ${escHtml(MODUS[pv.mode] || pv.mode)}): ${pv.genKw > 0 ? `Aggregat ${_fmtKw(pv.genKw)}` : 'kein Aggregat'}
+      für ${Math.round(pv.loadFracPct ?? 100)} % Last über ${pv.durH} h — hier ${Math.round(r.aggregate.pAggKw).toLocaleString('de-DE')} kW
+      Wirkleistung für ${Math.round(r.anteilPct)} %${pv.batKwh > 0 ? `; der Speicher (${Math.round(pv.batKwh).toLocaleString('de-DE')} kWh) kann Lastsprünge abfangen` : ''}.
+    </div>`;
   }
 
   function _inselBlock() {
@@ -200573,6 +201209,7 @@ ${teile.join('\n')}
 
     return steuerung + kacheln + hinweise + `
     <div style="font-size:9px;color:var(--muted);margin-top:4px;">Lastgang: ${escHtml(ins.quelle)}</div>
+    ${_pvVergleich(r)}
     <div style="font-size:9px;color:var(--muted);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.05em;">Zuschaltstufen</div>
     ${stufen || '<div style="font-size:9.5px;color:var(--muted);">Keine Stationen erfasst.</div>'}
     ${aus ? `<div style="font-size:9px;color:var(--muted);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.05em;">MS-seitig abschalten</div>${aus}` : ''}
@@ -200620,10 +201257,11 @@ ${teile.join('\n')}
   }
 
   /** Wärme-Ergebnis mit und ohne Maßnahme; null ohne Wärme-Lastgang. */
-  function blackoutWaermeRechnen() {
+  function blackoutWaermeRechnen(dauerH = null) {
     const ss = window.systemState;
     if (!ss?.lastgangKw?.length) return null;
-    const e = blackoutEinstellungen().waerme;
+    const e = { ...blackoutEinstellungen().waerme };
+    if (dauerH) e.dauerH = dauerH;
     const erzeuger = _waermeErzeuger();
     const gasKw = erzeuger.filter(x => WAERME_ENERGIETRAEGER[x.key] === 'gas').reduce((s, x) => s + x.kw, 0);
     const zweistoffKw = e.zweistoffKw ?? gasKw;
@@ -200646,6 +201284,12 @@ ${teile.join('\n')}
     blackoutEinstellungen();                       // normalisieren
     _waermeZeichnen();
     blackoutModusRender();
+  }
+
+  /** Auskühlrechnung der PV-Analyse (09d) als Vollbild — dort liegt das RC-Modell je Gebäude. */
+  function blackoutAuskuehlung() {
+    if (typeof window.pvResWaermeVollbild === 'function') window.pvResWaermeVollbild();
+    else window.showHint?.('Die Auskühlrechnung ist nicht geladen.', 4000);
   }
 
   /** Heizzentrale als kritisch mit eigenem Aggregat einstufen — dann zählt sie in der Strom-Bilanz. */
@@ -200788,12 +201432,236 @@ ${teile.join('\n')}
     ${erzeugerZeilen || '<div style="font-size:9.5px;color:var(--muted);">Keine Wärmeerzeuger aktiv.</div>'}
     ${w.puffer ? `<div style="font-size:9.5px;padding:2px;color:var(--muted);">Pufferspeicher ${fmt(w.puffer.kapKwh)} kWh ${e.mitNea ? 'überbrückt Spitzen' : '— ohne Pumpen nicht nutzbar'}</div>` : ''}
     ${hzZeile}
+    <button class="btn-xs" style="width:100%;margin-top:4px;" data-click="blackoutAuskuehlung()"
+      title="Ohne Wärmeversorgung: wie lange der Pufferspeicher trägt und wann die Gebäude unter die kritische Innentemperatur fallen">
+      ❄ Auskühlzeiten ohne Wärmeversorgung</button>
     ${kostenBlock}
     <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">
       Pauschale Betrachtung über die Netzlast der Heizzentrale. Heizöl ${WAERME_PARAMETER.heizwertKwhProL} kWh/l, Kesselwirkungsgrad
       ${Math.round(WAERME_PARAMETER.kesselEta * 100)} %, Lagerzuschlag ${Math.round((WAERME_PARAMETER.tankZuschlag - 1) * 100)} %.
       Festbrennstoffe gelten als ausreichend bevorratet. Wärmepumpen und Stromkessel laufen nicht, weil das Aggregat nur die Hilfsenergie deckt.
     </div>`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCHUTZZIELE (Schritt 5)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Jedes Ziel wird mit den Rechnungen der anderen Reiter bewertet. Das Ergebnis
+  // liegt in window.blackoutZiele; die Gutachten-Grafik (17) holt es über
+  // blackoutZieleErgebnis(), das bei geänderten Eingaben selbst neu rechnet.
+
+  const ZIEL_FARBE = '#7e57c2';
+  const ZIEL_DAUERN = [[24, '24 h'], [72, '3 Tage'], [168, '7 Tage'], [336, '14 Tage']];
+
+  function _zieleSig() {
+    const e = blackoutEinstellungen();
+    const empfehlung = e.empfehlung || '';
+    const ss = window.systemState;
+    return [_platzSig(), JSON.stringify(e.insel), JSON.stringify(e.waerme), JSON.stringify(e.ziele),
+            ss?.lastgangKw?.length || 0, ss?.pMaxKw || 0,
+            _waermeErzeuger().map(x => `${x.key}:${x.kw}`).join(','), _heizzentrale()?.id ?? '', empfehlung].join('#');
+  }
+
+  function blackoutZieleRechnen() {
+    const jahr = globalYear;
+    const e = blackoutEinstellungen();
+    const eingaben = _platzEingaben(jahr);
+    const cache = new Map();
+    const bewertungen = e.ziele.map(ziel => {
+      let platz = null, insel = null;
+      if (ziel.strom === 'A' || ziel.strom === 'AB') {
+        if (!cache.has(ziel.strom)) {
+          cache.set(ziel.strom, notstromPlatzierungVergleich({ ...eingaben, gebaeude: zielGebaeude(eingaben.gebaeude, ziel.strom) }));
+        }
+        platz = cache.get(ziel.strom);
+      } else if (ziel.strom === 'insel') {
+        insel = _inselErgebnis(ziel.anteilPct, ziel.dauerH, eingaben).ergebnis;
+      }
+      const w = ziel.waerme ? blackoutWaermeRechnen(ziel.dauerH) : null;
+      // Bewertet wird die Wärme mit Notstrom an der Heizzentrale — ohne ist die Deckung null
+      const b = bewerteZiel({ ziel, platz, insel, waerme: w?.mit.mitNea ? w.mit : null });
+      // Für die Gutachtentexte: Standorte, Abgänge und Checkliste des Ziels
+      b.variante = platz ? platz.varianten[platz.empfohlen] : null;
+      b.insel = insel;
+      if (ziel.waerme && w && !w.mit.mitNea) {
+        b.gruende = b.gruende.filter(g => g !== 'kein Wärme-Lastgang');
+        b.gruende.push('Wärme-Reiter ohne Notstrom an der Heizzentrale — dort einschalten');
+      }
+      return b;
+    });
+    window.blackoutZiele = {
+      jahr, sig: _zieleSig(), ts: Date.now(), bewertungen,
+      empfehlung: bewertungen.find(b => b.ziel.id === e.empfehlung) || null,
+      matrix: resilienzZielMatrix(bewertungen),
+      heizzentrale: _heizzentrale()?.name || '',
+    };
+    return window.blackoutZiele;
+  }
+
+  /** Aktuelles Ergebnis — rechnet neu, wenn sich Eingaben geändert haben (für die Gutachten-Grafik). */
+  function blackoutZieleErgebnis() {
+    const z = window.blackoutZiele;
+    if (z && z.sig === _zieleSig()) return z;
+    try { return blackoutZieleRechnen(); } catch (err) { console.warn('Schutzziele:', err); return null; }
+  }
+
+  /**
+   * Stand für die Gutachtentexte 5.2.1–5.2.3 und 3.4.3 (17-gutachten-grafik.js liest ihn über window).
+   * Rechnet die Schutzziele bei Bedarf neu.
+   */
+  function blackoutGutachtenStand() {
+    const jahr = globalYear;
+    const bilanz = blackoutBilanz();
+    const nsa = ASSETS.items.filter(a => a.type === 'Nsa' && getAssetStatus(a, jahr) === 'active');
+    const hz = _heizzentrale();
+    const hzNsa = hz ? nsa.filter(a => a.buildingId === hz.id) : [];
+    const ziele = blackoutZieleErgebnis();
+    // Deckung der A/B-Gebäude durch den Bestand (Platzierung mit Anrechnung)
+    let bestandDeckt = null;
+    if (bilanz.summe.anzahl) {
+      const platz = notstromPlatzierungVergleich(_platzEingaben(jahr));
+      const v = platz.varianten[platz.empfohlen];
+      const gedeckt = v.aggregate.filter(a => a.empfKw > 0 && a.bestandKw >= a.empfKw);
+      bestandDeckt = {
+        gebaeude: gedeckt.reduce((n, a) => n + a.gebaeude.length, 0),
+        gesamt: v.aggregate.reduce((n, a) => n + a.gebaeude.length, 0),
+        bedarfKw: v.summe.kw,
+        genutztKw: v.bestandGenutztKw,
+        abgaenge: v.abgaenge,
+      };
+    }
+    const w = blackoutWaermeRechnen();
+    const e = blackoutEinstellungen();
+    const namen = k => bilanz.zeilen.filter(z => z.klasse === k).map(z => z.name);
+    return {
+      jahr, bilanz, namen: { A: namen('A'), B: namen('B'), C: namen('C') },
+      bestand: { anzahl: nsa.length, kw: nsa.reduce((s, a) => s + _num(a.props?.leistungKW), 0) },
+      bestandDeckt,
+      heizzentrale: hz ? { name: hz.name || 'Heizzentrale', nea: hzNsa.length > 0,
+        neaKw: hzNsa.reduce((s, a) => s + _num(a.props?.leistungKW), 0) } : null,
+      waerme: w ? {
+        szenario: WAERME_SZENARIEN[e.waerme.szenario].label, dauerH: w.mit.dauerH,
+        ohnePct: w.ohne.deckungEnergiePct, mitPct: w.mit.deckungEnergiePct,
+        neaKw: w.mit.neaKw, tankL: e.waerme.tankL, tankEmpfehlungL: w.mit.tankEmpfehlungL, tankFehltL: w.mit.tankFehltL,
+        reichweiteH: w.mit.reichweiteH, zweistoffKw: w.mit.kwJeTraeger.oel, puffer: !!w.puffer, pufferKwh: w.puffer?.kapKwh || 0,
+        ausgefallen: w.mit.erzeuger.filter(x => !x.verfuegbar).map(x => x.label),
+      } : null,
+      ziele,
+      empfehlung: ziele?.empfehlung || null,
+    };
+  }
+
+  function _zieleNachAenderung() {
+    blackoutEinstellungen();
+    if (window.blackoutZiele) blackoutZieleRechnen();
+    blackoutModusRender();
+  }
+
+  function blackoutZielSet(id, feld, wert) {
+    const z = blackoutEinstellungen().ziele.find(x => x.id === id);
+    if (!z) return;
+    z[feld] = feld === 'waerme' ? !!wert : wert;
+    _zieleNachAenderung();
+  }
+
+  /** Ziel als Empfehlung des Gutachtens markieren (erneut klicken = keine Empfehlung). */
+  function blackoutZielEmpfehlen(id) {
+    const e = blackoutEinstellungen();
+    e.empfehlung = e.empfehlung === id ? null : id;
+    _zieleNachAenderung();
+  }
+
+  function blackoutZielNeu() {
+    const liste = blackoutEinstellungen().ziele;
+    let n = liste.length + 1;
+    while (liste.some(z => z.id === `z${n}`)) n++;
+    liste.push({ id: `z${n}`, name: `Schutzziel ${n}`, strom: 'A', anteilPct: 100, dauerH: 72, waerme: true });
+    _zieleNachAenderung();
+  }
+
+  function blackoutZielWeg(id) {
+    const e = blackoutEinstellungen();
+    e.ziele = e.ziele.filter(z => z.id !== id);
+    _zieleNachAenderung();
+  }
+
+  function blackoutZieleVorgaben() {
+    if (!confirm('Schutzziele auf die drei Vorgaben zurücksetzen?')) return;
+    blackoutEinstellungen().ziele = normalisiereZiele(undefined);
+    _zieleNachAenderung();
+  }
+
+  function _zieleBlock() {
+    const e = blackoutEinstellungen();
+    const erg = window.blackoutZiele;
+    const veraltet = !!erg && erg.sig !== _zieleSig();
+    const eingabe = 'font-size:10px;padding:1px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;';
+    const karten = e.ziele.map(z => {
+      const b = erg && !veraltet ? erg.bewertungen.find(x => x.ziel.id === z.id) : null;
+      const st = b ? ZIEL_STATUS[b.status] : null;
+      const dauern = ZIEL_DAUERN.some(([h]) => h === z.dauerH) ? ZIEL_DAUERN : [...ZIEL_DAUERN, [z.dauerH, `${z.dauerH} h`]];
+      return `<div style="border:1px solid var(--border);border-left:3px solid ${st?.farbe || ZIEL_FARBE};border-radius:5px;padding:5px 6px;margin-top:5px;">
+      <div style="display:flex;gap:4px;align-items:center;">
+        <input type="text" value="${escHtml(z.name)}" style="flex:1;min-width:0;${eingabe}font-weight:600;"
+          data-change="blackoutZielSet('${z.id}','name',this.value)"/>
+        ${st ? `<span style="font-size:9px;color:${st.farbe};white-space:nowrap;">${st.label}</span>` : ''}
+        <button class="btn-xs" style="padding:0 5px;${e.empfehlung === z.id ? `border-color:#ffd54f;color:#ffd54f;background:#ffd54f26;` : ''}"
+          data-click="blackoutZielEmpfehlen('${z.id}')"
+          title="${e.empfehlung === z.id ? 'Empfehlung des Gutachtens (Kapitel 5.2.3) — erneut klicken zum Entfernen' : 'Als Empfehlung des Gutachtens markieren (Kapitel 5.2.3)'}">${e.empfehlung === z.id ? '★' : '☆'}</button>
+        <button class="btn-xs" style="padding:0 5px;" data-click="blackoutZielWeg('${z.id}')" title="Ziel entfernen">✕</button>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:4px;align-items:center;font-size:9.5px;">
+        <select style="flex:1;min-width:0;${eingabe}" data-change="blackoutZielSet('${z.id}','strom',this.value)">
+          ${Object.entries(ZIEL_STROM_STUFEN).map(([k, t]) => `<option value="${k}" ${k === z.strom ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+        ${z.strom === 'insel' ? `<input type="number" min="5" max="100" step="5" value="${z.anteilPct}" style="width:44px;${eingabe}"
+          title="Abgesicherter Anteil der Spitzenlast" data-change="blackoutZielSet('${z.id}','anteilPct',this.value)"/> %` : ''}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:center;font-size:9.5px;">
+        <select style="${eingabe}" data-change="blackoutZielSet('${z.id}','dauerH',this.value)">
+          ${dauern.map(([h, t]) => `<option value="${h}" ${h === z.dauerH ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+        <label style="display:flex;align-items:center;gap:3px;cursor:pointer;">
+          <input type="checkbox" ${z.waerme ? 'checked' : ''} data-change="blackoutZielSet('${z.id}','waerme',this.checked)"/> mit Wärme</label>
+        <span style="flex:1;text-align:right;font-weight:600;color:${ZIEL_FARBE};">${b ? _fmtEur(b.kosten) : ''}</span>
+      </div>
+      ${b?.gruende.length ? `<div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.35;">${escHtml(b.gruende.join(' · '))}</div>` : ''}
+    </div>`;
+    }).join('');
+
+    let matrix = '';
+    if (erg && !veraltet && erg.bewertungen.length) {
+      const m = erg.matrix;
+      const kopf = m.spalten.map(t => `<th style="text-align:right;padding:2px 3px;font-weight:600;color:var(--text);">${escHtml(t)}</th>`).join('');
+      const zeilen = m.zeilen.filter(z => z.label !== 'Bewertung').map(z => `<tr style="${z.highlight ? `color:${ZIEL_FARBE};font-weight:700;` : ''}">
+        <td style="padding:2px 3px;color:${z.highlight ? ZIEL_FARBE : 'var(--muted)'};">${escHtml(z.label)}</td>
+        ${z.werte.map(w => `<td style="padding:2px 3px;text-align:right;">${escHtml(w)}</td>`).join('')}</tr>`).join('');
+      matrix = `<div style="font-size:9px;color:var(--muted);margin:10px 0 2px;text-transform:uppercase;letter-spacing:.05em;">Maßnahmen je Ziel</div>
+      <div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:9px;min-width:100%;">
+        <thead><tr><th></th>${kopf}</tr></thead><tbody>${zeilen}</tbody></table></div>
+      <div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">
+        Tabelle und Text für Kapitel 5.2 stehen unter Analyse › Gutachten-Grafiken und im Gutachten-Editor.</div>`;
+    }
+
+    return `
+    <div style="display:flex;align-items:center;gap:4px;">
+      <span style="flex:1;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Schutzziele</span>
+      <button class="btn-xs" style="border-color:${ZIEL_FARBE};color:${ZIEL_FARBE};" data-click="blackoutZieleRechnen(); blackoutModusRender()"
+        title="Alle Ziele mit den Rechnungen der übrigen Reiter bewerten">${erg ? '↻ Neu bewerten' : '⚙ Bewerten'}</button>
+    </div>
+    <div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.45;">
+      Was soll wie lange versorgt werden? Die Stufen A und A + B nutzen die Platzierung am Netz (günstigste Strategie),
+      die Liegenschaft die Insel am NAP, die Wärme die Einstellungen des Wärme-Reiters.</div>
+    ${veraltet ? '<div style="font-size:9px;color:#ffa726;margin-top:4px;">⚠ Eingaben geändert — neu bewerten.</div>' : ''}
+    ${karten || '<div style="font-size:9.5px;color:var(--muted);margin-top:6px;">Keine Ziele.</div>'}
+    <div style="display:flex;gap:4px;margin-top:6px;">
+      <button class="btn-xs" style="flex:1;" data-click="blackoutZielNeu()">+ Ziel</button>
+      <button class="btn-xs" data-click="blackoutZieleVorgaben()" title="Die drei Vorgaben wiederherstellen">Vorgaben</button>
+    </div>
+    ${matrix}
+    <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">
+      Kraftstoff der Gebäudeaggregate: gleichzeitige Spitze × Dauer × ${Math.round(ZIEL_PARAMETER.lastfaktor * 100)} % Auslastung
+      × ${ZIEL_PARAMETER.sfcLproKwh} l/kWh. Kosten sind die Richtwerte der jeweiligen Reiter.</div>`;
   }
 
   /** Gebäude nach Klasse einfärben; nicht eingestufte blass und gestrichelt. */
@@ -200920,7 +201788,7 @@ ${teile.join('\n')}
     const vorgabe = blackoutEinstellungen().bLastPct;
     const auswahl = _alle().filter(g => g.selected).length;
     const tab = _tab();
-    const reiter = [['klassen', 'Klassen'], ['netz', 'Am Netz'], ['insel', 'Liegenschaft'], ['waerme', 'Wärme']].map(([k, t]) =>
+    const reiter = [['klassen', 'Klassen'], ['netz', 'Am Netz'], ['insel', 'Liegenschaft'], ['waerme', 'Wärme'], ['ziele', 'Ziele']].map(([k, t]) =>
       `<button class="bom-tab${k === tab ? ' aktiv' : ''}" data-click="blackoutSetTab('${k}')">${t}</button>`).join('');
     const kopf = `
     <div class="bom-head">
@@ -200932,6 +201800,7 @@ ${teile.join('\n')}
     if (tab === 'netz') return kopf + `<div class="bom-body">${_platzBlock()}</div>`;
     if (tab === 'insel') return kopf + `<div class="bom-body">${_inselBlock()}</div>`;
     if (tab === 'waerme') return kopf + `<div class="bom-body">${_waermeBlock()}</div>`;
+    if (tab === 'ziele') return kopf + `<div class="bom-body">${_zieleBlock()}</div>`;
     return kopf + `
     <div class="bom-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
@@ -200961,10 +201830,12 @@ ${teile.join('\n')}
     __proto__: null,
     blackoutAlleEntfernen: blackoutAlleEntfernen,
     blackoutAufAuswahl: blackoutAufAuswahl,
+    blackoutAuskuehlung: blackoutAuskuehlung,
     blackoutBilanz: blackoutBilanz,
     blackoutCaptureState: blackoutCaptureState,
     blackoutEinstellungen: blackoutEinstellungen,
     blackoutEntfernen: blackoutEntfernen,
+    blackoutGutachtenStand: blackoutGutachtenStand,
     blackoutHeizzentraleEinstufen: blackoutHeizzentraleEinstufen,
     blackoutInselBewertung: blackoutInselBewertung,
     blackoutInselRechnen: blackoutInselRechnen,
@@ -200989,7 +201860,14 @@ ${teile.join('\n')}
     blackoutWaermeRechnen: blackoutWaermeRechnen,
     blackoutWaermeSet: blackoutWaermeSet,
     blackoutZeige: blackoutZeige,
-    blackoutZeigeOrt: blackoutZeigeOrt
+    blackoutZeigeOrt: blackoutZeigeOrt,
+    blackoutZielEmpfehlen: blackoutZielEmpfehlen,
+    blackoutZielNeu: blackoutZielNeu,
+    blackoutZielSet: blackoutZielSet,
+    blackoutZielWeg: blackoutZielWeg,
+    blackoutZieleErgebnis: blackoutZieleErgebnis,
+    blackoutZieleRechnen: blackoutZieleRechnen,
+    blackoutZieleVorgaben: blackoutZieleVorgaben
   });
 
   // ── main.js — ES Module entry point ────────────────────────────────────────

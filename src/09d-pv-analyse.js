@@ -4561,26 +4561,34 @@ function _pvResMinGen(loadEff, pvH, batKwh, start, durH, nHours, initSoc, fuel, 
   return hi;
 }
 
+// Seit Schritt 4 des Blackout-Modus (26-blackout-modus.js) steht hier nur noch der
+// Beitrag von PV und Speicher. Gebäude-Einstufung, Aggregat-Platzierung,
+// Liegenschafts-Insel und Wärme liegen im Blackout-Modus; die Auskühlrechnung
+// öffnet er über pvResWaermeVollbild().
 function _pvResEnergyHeader(overrideEl) {
-  const opts = [['strom', '⚡ Strom'], ['waerme', '🔥 Wärme']];
-  const btns = opts.map(([k, lbl]) =>
-    `<button data-pvres-energy="${k}" style="padding:2px 10px;border:1px solid ${k===_pvResEnergy?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${k===_pvResEnergy?'#ff8f00':'transparent'};color:${k===_pvResEnergy?'#0a0e16':'#cfd8dc'};font-size:9px;cursor:pointer;font-weight:${k===_pvResEnergy?'700':'400'};">${lbl}</button>`).join('');
   const fsBtn = overrideEl ? '' : '<button data-pva-fs="resilienz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;margin-left:auto;">⤢</button>';
-  return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-    <span style="font-size:9px;color:var(--muted);">Betrachtete Versorgung</span>${btns}${fsBtn}
+  const blackout = overrideEl ? '' : `<button data-pvres-blackout style="padding:2px 10px;border:1px solid #ef5350;border-radius:10px;background:transparent;color:#ef9a9a;font-size:9px;cursor:pointer;"
+      title="Gebäude einstufen, Aggregate am Netz platzieren, Liegenschafts-Insel und Wärmeversorgung">🛡 Blackout-Modus öffnen</button>`;
+  return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+    <span style="font-size:9px;color:var(--muted);">Beitrag von PV und Speicher im Blackout · Gebäude, Netz, Liegenschaft und Wärme im</span>${blackout}${fsBtn}
   </div>`;
 }
-function _pvResWireEnergyHeader(el, varianten, overrideEl) {
-  el.querySelectorAll('[data-pvres-energy]').forEach(b => b.addEventListener('click', () => {
-    if (b.dataset.pvresEnergy === _pvResEnergy) return;
-    _pvResEnergy = b.dataset.pvresEnergy;
-    renderResilienz(varianten, overrideEl);
-  }));
+function _pvResWireEnergyHeader(el) {
+  const bo = el.querySelector('[data-pvres-blackout]');
+  if (bo) bo.addEventListener('click', () => {
+    window.setViewMode?.('karte');
+    window.setLeftTab?.('elektro');
+    if (!window.blackoutModusAktiv) window.blackoutModusStart?.();
+  });
   const fsBtn = el.querySelector('[data-pva-fs="resilienz"]');
   if (fsBtn) fsBtn.addEventListener('click', () => {
-    const titel = _pvResEnergy === 'waerme' ? 'Resilienz: Ausfall der Wärmeversorgung' : 'Resilienz: Autarkie bei Netzausfall';
-    _pvOpenFs(titel, cnt => renderResilienz(window._pvAnalyse.ergebnisse, cnt));
+    _pvOpenFs('Resilienz: Autarkie bei Netzausfall', cnt => renderResilienz(window._pvAnalyse.ergebnisse, cnt));
   });
+}
+
+/** Auskühlrechnung ohne Wärmeversorgung (Puffer, dann Auskühlzeit je Gebäude) als Vollbild — Aufruf aus dem Blackout-Modus. */
+export function pvResWaermeVollbild() {
+  _pvOpenFs('Ausfall der Wärmeversorgung: Pufferspeicher und Auskühlzeiten', cnt => renderResilienzWaerme(cnt, cnt));
 }
 
 function renderResilienz(varianten, overrideEl) {
@@ -4588,16 +4596,10 @@ function renderResilienz(varianten, overrideEl) {
   if (!el) return;
   const energyHeader = _pvResEnergyHeader(overrideEl);
 
-  if (_pvResEnergy === 'waerme') {
-    el.innerHTML = energyHeader + '<div id="pva-pvres-body"></div>';
-    _pvResWireEnergyHeader(el, varianten, overrideEl);
-    renderResilienzWaerme(el.querySelector('#pva-pvres-body'), overrideEl);
-    return;
-  }
 
   const hinweisKeineVarianten = () => {
     el.innerHTML = energyHeader + '<div style="font-size:10px;color:var(--muted);padding:8px 0;">Erst „Varianten berechnen" nutzen, um die elektrische Resilienz zu betrachten.</div>';
-    _pvResWireEnergyHeader(el, varianten, overrideEl);
+    _pvResWireEnergyHeader(el);
   };
   if (!varianten?.length) { hinweisKeineVarianten(); return; }
 
@@ -5163,7 +5165,7 @@ function renderResilienz(varianten, overrideEl) {
     pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
   }));
   draw();
-  _pvResWireEnergyHeader(el, varianten, overrideEl);
+  _pvResWireEnergyHeader(el);
 }
 
 // ── Abb. 10b — Resilienz Wärme: Totalausfall der Wärmezentrale ─────────────

@@ -2091,8 +2091,8 @@ body.gm-fokus #view-tabs{display:none;}
 #blackout-modus-panel .bom-head .btn-xs{border-color:#ef5350;color:#ef5350;}
 #blackout-modus-panel .bom-body{padding:8px 9px 10px;overflow-y:auto;}
 #blackout-modus-panel .bom-tabs{display:flex;gap:2px;padding:4px 6px 0;border-bottom:1px solid var(--border);flex-shrink:0;}
-#blackout-modus-panel .bom-tab{flex:1;padding:4px 2px;border:none;border-bottom:2px solid transparent;background:transparent;
-  color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;}
+#blackout-modus-panel .bom-tab{flex:1 1 auto;min-width:0;padding:4px 1px;border:none;border-bottom:2px solid transparent;background:transparent;white-space:nowrap;
+  color:var(--muted);font-family:inherit;font-size:10px;cursor:pointer;}
 #blackout-modus-panel .bom-tab:hover{color:var(--text);}
 #blackout-modus-panel .bom-tab.aktiv{color:#ef5350;border-bottom-color:#ef5350;font-weight:600;}
 #blackout-modus-panel summary::-webkit-details-marker{display:none;}

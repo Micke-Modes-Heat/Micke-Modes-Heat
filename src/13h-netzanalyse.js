@@ -2259,7 +2259,7 @@ ${hasAnyResult ? `
   const nsaRes = NA.nsaResult;
   const recoTxt = reco && reco.genKw > 0
     ? `Resilienz-Empfehlung: <b>${Math.ceil(reco.genKw)} kW</b> · ${reco.durH} h · ${reco.kraftstoff}`
-    : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (Analyse ▸ 🛡 Resilienz) — Fallback: Karten-Spitzenlast</span>`;
+    : `<span style="color:#ffa726">Noch keine Resilienz-Rechnung (☀ PV-Analyse ▸ Abb. 10) — Fallback: Karten-Spitzenlast</span>`;
   const _srcBtn = (val, lbl) => {
     const on = NA.nsaSource === val;
     return `<button onclick="naSetNsaSource('${val}')"
@@ -2267,10 +2267,17 @@ ${hasAnyResult ? `
              border:1px solid ${on ? COL_NSA : '#555'};color:${on ? COL_NSA : '#999'};background:${on ? 'rgba(255,112,67,.1)' : 'transparent'};">${lbl}</button>`;
   };
   const tabNsaHtml = `
-<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Notstromaggregat platzieren</div>
+<div style="background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.45);border-radius:6px;padding:8px;margin-bottom:10px;">
+  <div style="font-size:10px;color:#cfd8dc;line-height:1.45;margin-bottom:6px;">
+    <b>Platzierung am Bestandsnetz:</b> Der 🛡 Blackout-Modus stuft Gebäude ein, vergleicht Aggregate an Gebäuden,
+    Kabelverteilern, NSHV und Trafos, rechnet vorhandene Aggregate an und vermerkt die abzuschaltenden Abgänge.
+  </div>
+  <button onclick="blackoutModusStart(); blackoutSetTab('netz')" style="${_runBtn(COL_NSA)}">🛡 Blackout-Modus › Am Netz öffnen</button>
+</div>
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Schnellschätzung nach Lage</div>
 <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:10px;">
   <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">
-    Schlägt Aggregat-Standorte vor. Gesamtleistung aus der Resilienz-Analyse oder der Karten-Spitzenlast, auf die Zonen verteilt.
+    Verteilt eine Gesamtleistung (Resilienz-Analyse oder Karten-Spitzenlast) nach der Lage der Lasten auf Zonen — ohne Netztopologie und Gebäudeklassen.
   </div>
   <div style="font-size:10px;margin-bottom:6px;padding:5px;border-radius:4px;background:rgba(255,112,67,.08);border:1px solid rgba(255,112,67,.3);color:#cfd8dc;">${recoTxt}</div>
   <div style="font-size:9px;color:var(--muted);margin-bottom:2px;">Dimensionierung</div>

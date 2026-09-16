@@ -3941,7 +3941,7 @@ GG_FIGUREN.push(
 
 // ── PV-Analyse: Varianten, Energiebilanz, Wirtschaftlichkeit, Resilienz ───────
 // Quelle: window._pvAnalyse.ergebnisse (gefüllt in src/09d-pv-analyse.js über
-// „Varianten berechnen") bzw. window._pvResReco (Kapitel 🛡 Resilienz). Ohne
+// „Varianten berechnen") bzw. window._pvResReco (PV-Analyse › Abb. 10). Ohne
 // gelaufene Berechnung liefert ausProjekt eine Hinweismeldung statt Zahlen.
 // Als eigene Funktion statt direkt im Array-Literal: die Helfer/Konstanten
 // darunter (GG_PV_KURZ etc.) sind sonst beim Auswerten von GG_FIGUREN noch
@@ -4979,13 +4979,13 @@ function ggPvFiguren() {
       kapitel: '5.2 Bewertung Resilienz',
       titel: 'Resilienz — Autarkie bei Netzausfall',
       datei: 'pv-resilienz-zusammenfassung',
-      hinweis: 'Zusammenfassung der zuletzt im Kapitel 🛡 Resilienz betrachteten Inselbetrieb-Auslegung: '
+      hinweis: 'Zusammenfassung der zuletzt in ☀ PV-Analyse › Abb. 10 „Resilienz“ betrachteten Inselbetrieb-Auslegung: '
              + 'wie lange trägt PV/Batterie/Notstrom einen Blackout zum ungünstigsten Zeitpunkt im Jahr. '
-             + 'Erst im Kapitel 🛡 Resilienz öffnen/berechnen, dann hierher „Aus Projekt übernehmen".',
+             + 'Erst Abb. 10 in der PV-Analyse öffnen, dann hierher „Aus Projekt übernehmen“. Gebäude, Netz und Schutzziele: 🛡 Blackout-Modus.',
       render: cfg => ggRenderTabelle(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten', titel: 'Resilienz — Autarkie bei Netzausfall',
-        leer: 'Noch keine Resilienz-Berechnung — Kapitel 🛡 Resilienz öffnen (rechnet automatisch auf den PV-Varianten).',
+        leer: 'Noch keine Resilienz-Berechnung — in der ☀ PV-Analyse Abb. 10 „Resilienz“ öffnen (rechnet automatisch auf den PV-Varianten).',
         spalten: [{ label: 'Kennzahl', weight: 2.2 }, { label: 'Wert', weight: 1.4, mono: true }],
         zeilen: [], fussnote: '',
       },
@@ -5010,13 +5010,332 @@ function ggPvFiguren() {
           zeile('Spritkosten je Ereignis', r.genKw > 0 ? fmtK(r.fuelCost) : '0 €'),
         ];
         cfg.fussnote = 'Inselbetrieb-Simulation zum ungünstigsten Zeitpunkt im Jahr: Batterie startet mit dem realen '
-                      + 'Ladestand aus der Jahressimulation, das Notstromaggregat deckt die Restlast. Stand aus dem Kapitel 🛡 Resilienz.';
-        return '✓ Resilienz-Kennzahlen aus dem Kapitel 🛡 Resilienz übernommen.';
+                      + 'Ladestand aus der Jahressimulation, das Notstromaggregat deckt die Restlast. Stand aus der PV-Analyse, Abb. 10.';
+        return '✓ Resilienz-Kennzahlen aus der PV-Analyse (Abb. 10) übernommen.';
+      },
+    },
+
+    // ── Blackout-Modus (26): Werkzeug, Schutzziele, Maßnahmen ───────────
+    {
+      id: 'res-bewertungstool-text',
+      istText: true,
+      kapitel: '5.1 Erläuterung Bewertungstool Resilienz',
+      titel: 'Gutachtentext: Bewertungswerkzeug Resilienz',
+      datei: 'resilienz-bewertungstool-text',
+      hinweis: 'Standardtext zur Vorgehensweise des 🛡 Blackout-Modus (Elektro › Auswerten › Resilienz): '
+             + 'Notstromklassen, Platzierung am Netz, Liegenschafts-Insel, Wärme und Schutzziele.',
+      render: cfg => ggRenderResWerkzeugText(cfg),
+      config: {},
+    },
+    {
+      id: 'res-ziele-text',
+      istText: true,
+      kapitel: '5.2 Bewertung Resilienz',
+      titel: 'Gutachtentext: Bewertung der Schutzziele',
+      datei: 'resilienz-schutzziele-text',
+      hinweis: 'Bewertung der Schutzziele aus dem Reiter „Ziele" des 🛡 Blackout-Modus. Ändern sich Klassen, Netz, '
+             + 'Einstellungen oder Ziele, rechnet der Text beim Zeichnen neu.',
+      render: cfg => ggRenderResZieleText(cfg),
+      config: {},
+    },
+    {
+      id: 'res-ist-text',
+      istText: true,
+      kapitel: '5.2.1 Ist-Zustand',
+      titel: 'Gutachtentext: Resilienz Ist-Zustand',
+      datei: 'resilienz-ist-zustand-text',
+      hinweis: 'Bestand an Netzersatzanlagen, Notstromklassen der Gebäude und Wärmeversorgung ohne Notstrom — aus dem 🛡 Blackout-Modus.',
+      render: cfg => ggRenderResIstText(cfg),
+      config: {},
+    },
+    {
+      id: 'res-kurz-text',
+      istText: true,
+      kapitel: '5.2.2 Kurzfristige Maßnahmen',
+      titel: 'Gutachtentext: Kurzfristige Maßnahmen Resilienz',
+      datei: 'resilienz-kurzfristig-text',
+      hinweis: 'Organisatorische und kleine Maßnahmen: Einspeisepunkte Klasse C, Schaltanweisungen, Notstrom der Heizzentrale, '
+             + 'Heizölbevorratung, Probeläufe, Notfallplan — aus dem 🛡 Blackout-Modus.',
+      render: cfg => ggRenderResKurzText(cfg),
+      config: {},
+    },
+    {
+      id: 'res-lang-text',
+      istText: true,
+      kapitel: '5.2.3 Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)',
+      titel: 'Gutachtentext: Langfristige Maßnahmen Resilienz',
+      datei: 'resilienz-langfristig-text',
+      hinweis: 'Umsetzung des empfohlenen Schutzziels — im 🛡 Blackout-Modus unter „Ziele" mit ☆ markieren.',
+      render: cfg => ggRenderResLangText(cfg),
+      config: {},
+    },
+    {
+      id: 'res-ziele-matrix',
+      autoSync: true,
+      reihe: 1,
+      kapitel: '5.2 Bewertung Resilienz',
+      titel: 'Maßnahmen je Schutzziel',
+      datei: 'resilienz-massnahmen-je-schutzziel',
+      hinweis: 'Maßnahmen und Richtkosten je Schutzziel aus dem Reiter „Ziele" des 🛡 Blackout-Modus.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Resilienz', titel: 'Maßnahmen je Schutzziel', tabelleTitel: 'Maßnahmen je Schutzziel',
+        leer: 'Noch keine Schutzziele — im 🛡 Blackout-Modus den Reiter „Ziele" öffnen.',
+        spalten: [{ label: 'Maßnahme', weight: 1.6 }], zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const erg = ggResZiele();
+        if (!erg?.bewertungen?.length) {
+          cfg.spalten = [{ label: 'Maßnahme', weight: 1.6 }];
+          cfg.zeilen = [];
+          cfg.fussnote = '';
+          return '⚠ Noch keine Schutzziele bewertet.';
+        }
+        const m = erg.matrix;
+        cfg.spalten = [{ label: 'Maßnahme', weight: 1.6 }, ...m.spalten.map(t => ({ label: t, weight: 1.4 }))];
+        cfg.zeilen = m.zeilen.map(z => ({ werte: [z.label, ...z.werte], highlight: !!z.highlight }));
+        cfg.fussnote = 'Richtwerte netto. Stromstufen A und A + B: günstigste Platzierung am Bestandsnetz, vorhandene '
+          + 'Netzersatzanlagen angerechnet; Liegenschaft: Inselbetrieb am Netzanschlusspunkt. Wärme mit Notstrom für die Heizzentrale.';
+        return `✓ ${m.spalten.length} Schutzziele aus dem Blackout-Modus übernommen.`;
       },
     },
   ];
 }
 GG_FIGUREN.push(...ggPvFiguren());
+
+/* ── Kapitel 5: Bewertungswerkzeug und Schutzziele (26-blackout-modus.js) ─────
+ * Die Daten kommen über window.blackoutZieleErgebnis() — das Modul bleibt ein Blatt. */
+const ggResZiele = () => (typeof window.blackoutZieleErgebnis === 'function' ? window.blackoutZieleErgebnis() : null);
+const ggResDauer = h => (h >= 48 && h % 24 === 0 ? `${ggNum(h / 24)} Tage` : `${ggNum(h)} Stunden`);
+const ggResEur = v => (v >= 10000 ? `${ggNum(v / 1000)} T€` : `${ggNum(v)} €`);
+const GG_RES_STUFE = { A: 'der Notstromklasse A', AB: 'der Notstromklassen A und B' };
+
+function ggRenderResWerkzeugText(cfg, T = GG_THEME) {
+  void cfg;
+  return ggTextBlatt([
+    'Die Resilienz der Liegenschaft wird mit dem Bewertungswerkzeug „Blackout-Modus“ des Planungstools betrachtet. '
+      + 'Untersucht wird der Ausfall der äußeren Versorgung – Stromnetz, Gasversorgung und Fernwärme – über eine festgelegte Dauer.',
+    'Die Gebäude werden nach ihrer Bedeutung in drei Notstromklassen eingeteilt: Klasse A (kritisch, vollständige Versorgung, '
+      + 'bei Bedarf mit eigenem Aggregat), Klasse B (eingeschränkter Betrieb mit reduzierter Last) und Klasse C (keine Versorgung, '
+      + 'jedoch ein Einspeisepunkt für ein mobiles Aggregat). Die Last der Gebäude ergibt sich aus den erfassten Verbrauchern und deren Lastgängen.',
+    'Für die Gebäude der Klassen A und B wird anhand des Bestandsnetzes ermittelt, ob Netzersatzanlagen wirtschaftlicher an den '
+      + 'Gebäuden oder an Kabelverteilern, Niederspannungshauptverteilungen und Transformatorstationen angeordnet werden. Eine Anlage '
+      + 'an einem Netzknoten versorgt alle nachgelagerten Abgänge; Abgänge ohne Versorgungsauftrag sind im Ereignisfall abzuschalten '
+      + 'und werden ausgewiesen. Vorhandene Netzersatzanlagen werden angerechnet. Bemessen wird auf die gleichzeitige Spitzenlast '
+      + 'zuzüglich 20 % Reserve.',
+    'Ergänzend wird die Versorgung eines Anteils der gesamten Liegenschaft über eine zentrale Netzersatzanlage am Netzanschlusspunkt '
+      + 'betrachtet (Inselbetrieb). Dazu gehören ein Maschinentransformator, die Sternpunktbehandlung des Mittelspannungsnetzes, '
+      + 'eine Netztrennung mit Synchronisierung, eine an den Inselbetrieb angepasste Schutztechnik sowie das gestufte Zu- und '
+      + 'Abschalten der Transformatorstationen.',
+    'Für die Wärmeversorgung wird pauschal geprüft, welcher Anteil der Netzlast bei einem Ausfall gedeckt werden kann, wenn die '
+      + 'Heizzentrale eine Netzersatzanlage für Pumpen, Brenner und Regelung erhält und Gaskessel als Zweistoffbrenner mit Heizöl '
+      + 'aus dem Lager betrieben werden.',
+    'Aus Schutzzielen – was soll wie lange versorgt werden – werden die erforderlichen Maßnahmen und ihre Investitionskosten als '
+      + 'Richtwerte abgeleitet. Die Ergebnisse sind Planungsabschätzungen; Kurzschluss-, Schutz- und Erdungsberechnungen sind in '
+      + 'der weiteren Planung nachzuweisen.',
+  ], T);
+}
+
+function ggRenderResZieleText(cfg, T = GG_THEME) {
+  void cfg;
+  const erg = ggResZiele();
+  const liste = erg?.bewertungen || [];
+  if (!liste.length) {
+    return ggTextBlatt([
+      'Für die Liegenschaft wurden folgende Schutzziele betrachtet: '
+        + `${ggTextFeld('', 'Schutzziele aus dem Blackout-Modus (Reiter „Ziele“)')}.`,
+    ], T);
+  }
+  const umfang = z => (z.strom === 'insel' ? `${ggNum(z.anteilPct)} % der Liegenschaft`
+    : z.strom === 'keine' ? 'ohne Stromversorgung' : `Gebäude ${GG_RES_STUFE[z.strom]}`);
+  const absaetze = [
+    `Für die Liegenschaft wurden ${liste.length === 1 ? 'ein Schutzziel' : `${ggNum(liste.length)} Schutzziele`} betrachtet: `
+      + ggAufzaehlung(liste.map(b => `„${gEsc(b.ziel.name)}“ (${umfang(b.ziel)}, ${ggResDauer(b.ziel.dauerH)}`
+        + `${b.ziel.waerme ? ', mit Wärme' : ''})`)) + '.',
+  ];
+  for (const b of liste) absaetze.push(`Schutzziel „${gEsc(b.ziel.name)}“: ${ggResZielText(b)}`);
+  if (liste.length > 1) {
+    const sort = [...liste].sort((a, b) => a.kosten - b.kosten);
+    absaetze.push(`Die Investitionen reichen von ${ggResEur(sort[0].kosten)} („${gEsc(sort[0].ziel.name)}“) bis `
+      + `${ggResEur(sort[sort.length - 1].kosten)} („${gEsc(sort[sort.length - 1].ziel.name)}“). Die Maßnahmen bauen `
+      + 'aufeinander auf und lassen sich stufenweise umsetzen. '
+      + (erg.empfehlung
+        ? `Empfohlen wird das Schutzziel „${gEsc(erg.empfehlung.ziel.name)}“ (vgl. Kapitel 5.2.3).`
+        : `Welches Schutzziel umgesetzt wird, ist mit dem Nutzer festzulegen: ${ggTextFeld('', 'Empfohlenes Schutzziel')}.`));
+  }
+  return ggTextBlatt(absaetze, T);
+}
+
+/** Maßnahmen und Bewertung eines Schutzziels als Fließtext (5.2 und 5.2.3). */
+function ggResZielText(b) {
+  const z = b.ziel, s = b.strom, w = b.waerme;
+  const teile = [];
+  if (s?.art === 'gebaeude') {
+    teile.push(`Für ${s.gebaeude === 1 ? 'das Gebäude' : `die ${ggNum(s.gebaeude)} Gebäude`} ${GG_RES_STUFE[z.strom]} `
+      + `${s.anzahl === 1 ? 'ist eine Netzersatzanlage' : `sind ${ggNum(s.anzahl)} Netzersatzanlagen`} mit zusammen ${ggNum(s.kw)} kW erforderlich`
+      + (s.zusatzKw < s.kw ? `, davon ${ggNum(s.zusatzKw)} kW neu` : '')
+      + (s.abgaenge ? `; im Ereignisfall ${s.abgaenge === 1 ? 'ist ein Abgang' : `sind ${ggNum(s.abgaenge)} Abgänge`} abzuschalten` : '')
+      + `. Der Kraftstoffbedarf über ${ggResDauer(z.dauerH)} liegt bei rund ${ggNum(s.liter)} l.`);
+  } else if (s?.art === 'insel') {
+    teile.push(`Die Versorgung von ${ggNum(z.anteilPct)} % der Liegenschaft erfordert ${ggNum(s.anzahl)} × ${ggNum(s.kvaJe)} kVA `
+      + `am Netzanschlusspunkt mit einem Maschinentransformator von ${ggNum(s.mtKva)} kVA`
+      + (s.stationenAus ? `; ${ggNum(s.stationenAus)} Transformatorstation${s.stationenAus === 1 ? ' wird' : 'en werden'} im Inselbetrieb abgeschaltet` : '')
+      + (s.nsAbwurf ? `${s.stationenAus ? ', in den versorgten Stationen' : '; in den versorgten Stationen'} `
+        + `${s.nsAbwurf === 1 ? 'wird ein Niederspannungsabgang' : `werden ${ggNum(s.nsAbwurf)} Niederspannungsabgänge`} abgeworfen` : '')
+      + `. Das Kraftstofflager ist mit rund ${ggNum(s.liter)} l zu bemessen`
+      + (s.pruefen ? `; ${ggNum(s.pruefen)} Punkte der Infrastruktur sind zu prüfen oder zu erneuern.` : '.'));
+  }
+  if (w) {
+    const massnahmen = [
+      w.neaKw && `ein Aggregat für die Hilfsenergie mit ${ggNum(w.neaKw)} kW`,
+      w.zweistoffKw && `Zweistoffbrenner mit ${ggNum(w.zweistoffKw)} kW`,
+      w.tankL && `ein Heizöllager von ${ggNum(w.tankL)} l`,
+    ].filter(Boolean);
+    teile.push(`Die Wärmeversorgung ist mit Notstrom für die Heizzentrale zu ${ggNum(w.deckungPct)} % gedeckt`
+      + (massnahmen.length
+        ? `; dafür ${massnahmen.length === 1 && !w.zweistoffKw ? 'ist' : 'sind'} ${ggAufzaehlung(massnahmen)} vorzusehen.`
+        : '.'));
+  }
+  const bewertung = { erfuellt: 'Das Ziel ist mit diesen Maßnahmen erfüllbar.',
+    teilweise: 'Das Ziel ist nur teilweise erfüllbar', offen: 'Für eine Bewertung fehlen Angaben' }[b.status];
+  return `${teile.join(' ')} Die Investition beträgt überschlägig ${ggResEur(b.kosten)}. `
+    + bewertung + (b.status !== 'erfuellt' && b.gruende.length ? ` (${gEsc(b.gruende.join('; '))}).` : b.status !== 'erfuellt' ? '.' : '');
+}
+
+const ggResStand = () => (typeof window.blackoutGutachtenStand === 'function' ? window.blackoutGutachtenStand() : null);
+/** Standort eines Aggregats: „KVS 1“ statt „KVS KVS 1“, Gebäude in Anführungszeichen. */
+const ggResOrt = a => (a.ort === 'knoten'
+  ? (String(a.name).startsWith(a.typ) ? gEsc(a.name) : `${gEsc(a.typ)} ${gEsc(a.name)}`)
+  : `Gebäude „${gEsc(a.name)}“`);
+const ggResNamen = (liste, max = 6) => (liste.length > max
+  ? `${liste.slice(0, max).map(gEsc).join(', ')} und ${liste.length - max} weitere`
+  : ggAufzaehlung(liste.map(gEsc)));
+
+/** 5.2.1 Ist-Zustand: Bestand an Netzersatzanlagen, Einstufung der Gebäude, Wärme ohne Maßnahme. */
+function ggRenderResIstText(cfg, T = GG_THEME) {
+  void cfg;
+  const st = ggResStand();
+  if (!st) return ggTextBlatt([`${ggTextFeld('', 'Ist-Zustand der Notstromversorgung')}.`], T);
+  const { bilanz: bi, bestand, bestandDeckt: bd, heizzentrale: hz, waerme: w } = st;
+  const absaetze = [];
+  absaetze.push(bestand.anzahl
+    ? `In der Liegenschaft ${bestand.anzahl === 1 ? `ist eine Netzersatzanlage mit ${ggNum(bestand.kw)} kW`
+      : `sind ${ggNum(bestand.anzahl)} Netzersatzanlagen mit zusammen ${ggNum(bestand.kw)} kW`} vorhanden (vgl. Kapitel 3.1.4).`
+    : 'In der Liegenschaft ist derzeit keine Netzersatzanlage vorhanden (vgl. Kapitel 3.1.4). Bei einem Ausfall des öffentlichen '
+      + 'Stromnetzes ist die Liegenschaft damit ohne elektrische Versorgung.');
+  if (bi.summe.anzahl) {
+    const kl = [
+      bi.klassen.A.anzahl && `${ggNum(bi.klassen.A.anzahl)} der Klasse A (kritisch: ${ggResNamen(st.namen.A)})`,
+      bi.klassen.B.anzahl && `${ggNum(bi.klassen.B.anzahl)} der Klasse B (eingeschränkter Betrieb: ${ggResNamen(st.namen.B)})`,
+      bi.klassen.C.anzahl && `${ggNum(bi.klassen.C.anzahl)} der Klasse C (Einspeisepunkt: ${ggResNamen(st.namen.C)})`,
+    ].filter(Boolean);
+    absaetze.push(`Nach ihrer Bedeutung für den Betrieb wurden die Gebäude den Notstromklassen zugeordnet: ${ggAufzaehlung(kl)}. `
+      + `Die im Ereignisfall zu versorgende Last beträgt ${ggNum(bi.summe.notstromKw)} kW (Summe der Anschlussleistungen).`
+      + (bi.summe.ohneLast ? ` Für ${ggNum(bi.summe.ohneLast)} eingestufte Gebäude liegen noch keine Verbrauchsdaten vor.` : ''));
+    if (bd && bd.gesamt) {
+      absaetze.push(bd.gebaeude >= bd.gesamt
+        ? 'Die vorhandenen Netzersatzanlagen decken alle Gebäude der Klassen A und B.'
+        : bd.gebaeude > 0
+          ? `Die vorhandenen Netzersatzanlagen decken ${ggNum(bd.gebaeude)} von ${ggNum(bd.gesamt)} Gebäuden der Klassen A und B vollständig.`
+          : bd.genutztKw > 0
+            ? `Die vorhandenen Netzersatzanlagen tragen rund ${ggNum(bd.genutztKw)} kW der für die Klassen A und B erforderlichen `
+              + `${ggNum(bd.bedarfKw)} kW; vollständig gedeckt ist keines der Gebäude.`
+            : 'Keines der Gebäude der Klassen A und B ist durch eine vorhandene Netzersatzanlage gedeckt.');
+    }
+  } else {
+    absaetze.push(`Notstromberechtigte Gebäude sind bislang nicht festgelegt: ${ggTextFeld('', 'notstromberechtigte Gebäude')}.`);
+  }
+  if (hz) {
+    absaetze.push(`Die Wärmeversorgung erfolgt über die Heizzentrale im Gebäude „${gEsc(hz.name)}“. `
+      + (hz.nea
+        ? `Die Heizzentrale verfügt über eine eigene Netzersatzanlage mit ${ggNum(hz.neaKw)} kW.`
+        : 'Eine Netzersatzanlage für die Heizzentrale ist nicht vorhanden: Bei einem Stromausfall fallen Umwälzpumpen, Brenner '
+          + 'und Regelung aus, die Wärmeversorgung der angeschlossenen Gebäude ist unterbrochen'
+          + (w?.puffer ? ', auch der Pufferspeicher lässt sich ohne Pumpen nicht nutzen.' : '.'))
+      + (w?.tankL ? ` Es ist ein Heizöllager von ${ggNum(w.tankL)} l vorhanden.` : ''));
+  } else {
+    absaetze.push(`Die Wärmeversorgung bei Stromausfall: ${ggTextFeld('', 'Heizzentrale und deren Notstromversorgung')}.`);
+  }
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 5.2.2 Kurzfristige Maßnahmen: organisatorisch oder mit geringem Aufwand umsetzbar. */
+function ggRenderResKurzText(cfg, T = GG_THEME) {
+  void cfg;
+  const st = ggResStand();
+  if (!st) return ggTextBlatt([`${ggTextFeld('', 'Kurzfristige Maßnahmen')}.`], T);
+  const { bilanz: bi, bestand, heizzentrale: hz, waerme: w } = st;
+  const punkte = [];
+  if (!bi.summe.anzahl || bi.summe.ohneLast) {
+    punkte.push('Festlegung der notstromberechtigten Gebäude und Lasten mit dem Nutzer'
+      + (bi.summe.ohneLast ? ` sowie Erfassung der Anschlussleistungen der ${ggNum(bi.summe.ohneLast)} Gebäude ohne Verbrauchsdaten` : ''));
+  }
+  if (bi.klassen.C.anzahl) {
+    punkte.push(`Einspeisepunkte für mobile Netzersatzanlagen an ${bi.klassen.C.anzahl === 1 ? 'dem Gebäude' : `den ${ggNum(bi.klassen.C.anzahl)} Gebäuden`} `
+      + `der Klasse C (${ggResNamen(st.namen.C)}) einschließlich einer Rahmenvereinbarung zur Bereitstellung mobiler Aggregate`);
+  }
+  const ab = st.empfehlung?.variante?.abgaenge || st.bestandDeckt?.abgaenge || [];
+  if (ab.length) {
+    punkte.push(`Schaltanweisung und Kennzeichnung ${ab.length === 1 ? 'des im Ereignisfall abzuschaltenden Abgangs' : `der ${ggNum(ab.length)} im Ereignisfall abzuschaltenden Abgänge`} `
+      + `(${ggResNamen(ab.map(a => (a.lokal ? `an ${a.vonName}` : `${a.vonName} → ${a.zuName}`)), 4)})`);
+  }
+  if (hz && !hz.nea && w?.neaKw) {
+    punkte.push(`Notstromversorgung der Heizzentrale (Gebäude „${gEsc(hz.name)}“) für Pumpen, Brenner und Regelung mit rund ${ggNum(w.neaKw)} kW, `
+      + 'zunächst auch als Einspeisepunkt für ein mobiles Aggregat');
+  }
+  if (w && w.tankFehltL > 0) {
+    punkte.push(`Bevorratung von Heizöl: ${w.tankL
+      ? `Lager um rund ${ggNum(w.tankFehltL)} l auf ${ggNum(w.tankEmpfehlungL)} l erweitern`
+      : `Heizöllager von rund ${ggNum(w.tankEmpfehlungL)} l vorsehen`} `
+      + `oder eine gesicherte Nachbelieferung für ${ggResDauer(w.dauerH)} vereinbaren`);
+  }
+  if (bestand.anzahl) {
+    punkte.push('regelmäßige Probeläufe der vorhandenen Netzersatzanlagen unter Last sowie Prüfung der Kraftstoffvorräte');
+  }
+  punkte.push('Notfallplan mit Zuständigkeiten, Schaltreihenfolge und Kommunikationswegen für einen länger andauernden Ausfall');
+  return ggTextBlatt([
+    'Kurzfristig lassen sich folgende Maßnahmen mit geringem Aufwand umsetzen:',
+    ...punkte.map(t => `– ${t}.`),
+  ], T);
+}
+
+/** 5.2.3 Langfristige Maßnahmen: Umsetzung des empfohlenen Schutzziels. */
+function ggRenderResLangText(cfg, T = GG_THEME) {
+  void cfg;
+  const st = ggResStand();
+  const b = st?.empfehlung;
+  if (!b) {
+    return ggTextBlatt([
+      `Empfohlen wird die Umsetzung des Schutzziels ${ggTextFeld('', 'Empfohlenes Schutzziel (Blackout-Modus › Ziele › ☆)')}. `
+        + `${ggTextFeld('', 'Maßnahmen und Investition')}.`,
+    ], T);
+  }
+  const absaetze = [
+    `Empfohlen wird die Umsetzung des Schutzziels „${gEsc(b.ziel.name)}“ (vgl. Kapitel 5.2). ${ggResZielText(b)}`,
+  ];
+  const v = b.variante;
+  if (v) {
+    const orte = v.aggregate.filter(a => a.zusatzKw > 0)
+      .map(a => `${ggResOrt(a)} (${a.bestandKw > 0 ? `+${ggNum(a.zusatzKw)} kW zum Bestand` : `${ggNum(a.zusatzKw)} kW`})`);
+    if (orte.length) {
+      absaetze.push(`Die Netzersatzanlagen werden an folgenden Standorten neu errichtet oder erweitert: ${ggAufzaehlung(orte)}. `
+        + 'Anlaufströme großer Verbraucher und die Abschaltbedingungen bei dem geringeren Kurzschlussstrom der Aggregate '
+        + 'sind in der Ausführungsplanung nachzuweisen.');
+    }
+  }
+  const ins = b.insel;
+  if (ins) {
+    const titel = st => ins.checkliste.filter(c => c.status === st).map(c => c.titel);
+    const neu = titel('neu'), ern = titel('erneuern'), pr = titel('pruefen');
+    if (neu.length) absaetze.push(`Neu zu errichten sind: ${ggAufzaehlung(neu.map(gEsc))}.`);
+    if (ern.length) absaetze.push(`Zu erneuern sind: ${ggAufzaehlung(ern.map(gEsc))}.`);
+    if (pr.length) absaetze.push(`In der weiteren Planung zu prüfen sind: ${ggAufzaehlung(pr.map(gEsc))}.`);
+  }
+  absaetze.push('Die Umsetzung kann stufenweise erfolgen: Zuerst werden die kurzfristigen Maßnahmen (Kapitel 5.2.2) umgesetzt, '
+    + 'anschließend die Netzersatzanlagen der kritischen Gebäude und die Notstromversorgung der Heizzentrale, zuletzt '
+    + 'die weiteren Ausbaustufen.');
+  return ggTextBlatt(absaetze, T);
+}
 
 /* ── 3.4.3 Notstromversorgung und Lastmanagement (Variantenbildung) ────────────
  * Auslegung aus der Inselbetrieb-Simulation der PV-Analyse (window._pvResReco, Abb. 10 „Resilienz“),
@@ -5052,7 +5371,11 @@ function ggRenderNotstromAuslegungText(cfg, T = GG_THEME) {
   const erf = s.erforderlichKw;
   const absaetze = [];
 
-  if (!r) {
+  if (!r && ggResAuslegungSatz()) {
+    absaetze.push('Die Auslegung der Notstromversorgung erfolgt mit dem Bewertungswerkzeug Resilienz auf Grundlage der '
+      + 'Gebäudelastgänge und des Bestandsnetzes (vgl. Kapitel 5.1); bemessen wird auf die gleichzeitige Spitzenlast '
+      + 'zuzüglich 20 % Reserve.');
+  } else if (!r) {
     absaetze.push('Die Auslegung der Notstromversorgung erfolgt auf Grundlage einer Inselbetrieb-Simulation der Liegenschaft. '
       + `${ggTextFeld('', 'Ergebnis der Auslegung: Leistung, Überbrückungsdauer, Kraftstoff')}.`);
   } else {
@@ -5121,6 +5444,8 @@ function ggRenderNotstromAuslegungText(cfg, T = GG_THEME) {
           ? ` ${bezug} ist die erforderliche Leistung gedeckt.`
           : ` ${bezug} fehlen gegenüber der erforderlichen Leistung noch ${ggNum(erf - verfuegbar)} kW.`)
         : ''));
+  } else if (ggResAuslegungSatz()) {
+    absaetze.push(ggResAuslegungSatz());
   } else if (erf && !(s.bestandKw >= erf)) {
     absaetze.push('Standort und Aufteilung der Aggregate sind noch festzulegen: '
       + `${ggTextFeld('', 'Standort/Aufteilung, z. B. zentral an der NSHV Gebäude xx')}.`);
@@ -5132,13 +5457,35 @@ function ggRenderNotstromAuslegungText(cfg, T = GG_THEME) {
   return ggTextBlatt(absaetze, T);
 }
 
+/** Standorte aus dem empfohlenen Schutzziel des Blackout-Modus (3.4.3), sonst null. */
+function ggResAuslegungSatz() {
+  const b = ggResStand()?.empfehlung;
+  if (!b?.strom) return null;
+  if (b.strom.art === 'insel') {
+    return `Nach der Bewertung am Bestandsnetz (Schutzziel „${gEsc(b.ziel.name)}“, vgl. Kapitel 5.2) wird die Notstromversorgung `
+      + `zentral am Netzanschlusspunkt mit ${ggNum(b.strom.anzahl)} × ${ggNum(b.strom.kvaJe)} kVA und einem Maschinentransformator `
+      + `von ${ggNum(b.strom.mtKva)} kVA vorgesehen.`;
+  }
+  const orte = (b.variante?.aggregate || []).filter(a => a.empfKw > 0)
+    .map(a => `${ggResOrt(a)} (${ggNum(a.empfKw)} kW`
+      + `${a.bestandKw > 0 ? (a.zusatzKw > 0 ? `, davon ${ggNum(a.bestandKw)} kW vorhanden` : ', vorhanden') : ''})`);
+  if (!orte.length) return null;
+  return `Nach der Bewertung am Bestandsnetz (Schutzziel „${gEsc(b.ziel.name)}“, vgl. Kapitel 5.2) werden die Netzersatzanlagen `
+    + `dezentral an folgenden Standorten angeordnet: ${ggAufzaehlung(orte)}.`;
+}
+
 function ggRenderNotstromLastabwurfText(cfg, T = GG_THEME) {
   void cfg;
   const r = window._pvResReco || null;
   const pct = r ? ggNotbetriebPct(r) : null;
   const absaetze = [];
+  const rb = !r ? ggResStand()?.bilanz : null;
 
-  if (pct == null) {
+  if (pct == null && rb?.summe.anzahl) {
+    absaetze.push('Im Notbetrieb werden nur die notstromberechtigten Gebäude versorgt; ihre Last beträgt zusammen '
+      + `${ggNum(rb.summe.notstromKw)} kW (Summe der Anschlussleistungen, Klasse B mit reduzierter Last). Alle übrigen `
+      + 'Verbraucher werden bei Netzausfall abgeworfen.');
+  } else if (pct == null) {
     absaetze.push('Im Notbetrieb wird nur ein Teil der Last der Liegenschaft versorgt. Die Notbetriebslast beträgt '
       + `${ggTextFeld('', 'Notbetriebslast %')} % der Normallast; nicht notstromberechtigte Verbraucher werden bei Netzausfall abgeworfen.`);
   } else if (pct < 100) {
@@ -5150,8 +5497,24 @@ function ggRenderNotstromLastabwurfText(cfg, T = GG_THEME) {
       + 'Werden nicht notstromberechtigte Verbraucher bei Netzausfall abgeworfen, verringern sich die erforderliche '
       + 'Aggregatleistung und der Kraftstoffbedarf entsprechend.');
   }
-  absaetze.push(`Notstromberechtigt sind ${ggTextFeld('', 'Verbraucher, z. B. Stabsgebäude, IT, Wärmeerzeugung, Sicherheitsbeleuchtung')}. `
-    + `Die Priorisierung und der Lastabwurf erfolgen ${ggTextFeld('', 'Umsetzung, z. B. über abschaltbare Abgänge an der NSHV oder die Gebäudeautomation')}. `
+  const rs = ggResStand();
+  const berechtigt = rs?.bilanz.summe.anzahl
+    ? ggAufzaehlung([
+      rs.namen.A.length && `die Gebäude der Klasse A (${ggResNamen(rs.namen.A)})`,
+      rs.namen.B.length && `mit reduzierter Last die Gebäude der Klasse B (${ggResNamen(rs.namen.B)})`,
+    ].filter(Boolean))
+    : '';
+  const abg = rs?.empfehlung?.variante?.abgaenge || [];
+  const ins = rs?.empfehlung?.insel;
+  const umsetzung = abg.length
+    ? `über das Abschalten von ${abg.length === 1 ? 'einem Abgang' : `${ggNum(abg.length)} Abgängen`} (${ggResNamen(abg.map(a => (a.lokal ? `an ${a.vonName}` : `${a.vonName} → ${a.zuName}`)), 4)})`
+    : ins
+      ? `über das MS-seitige Abschalten von ${ggNum(ins.lastabwurf.abschalten.length)} Transformatorstationen`
+        + (ins.lastabwurf.nsAbwurf.length ? ` und ${ggNum(ins.lastabwurf.nsAbwurf.length)} Niederspannungsabgängen` : '')
+        + ` sowie das Zuschalten der versorgten Stationen in ${ggNum(ins.zuschaltung.stufen.length)} Stufen`
+      : '';
+  absaetze.push(`Notstromberechtigt sind ${berechtigt || ggTextFeld('', 'Verbraucher, z. B. Stabsgebäude, IT, Wärmeerzeugung, Sicherheitsbeleuchtung')}. `
+    + `Die Priorisierung und der Lastabwurf erfolgen ${umsetzung || ggTextFeld('', 'Umsetzung, z. B. über abschaltbare Abgänge an der NSHV oder die Gebäudeautomation')}. `
     + 'Der Umfang der notstromberechtigten Verbraucher ist mit dem Nutzer abzustimmen, da jeder weitere Verbraucher '
     + 'Aggregatleistung und Kraftstoffbedarf erhöht.');
   if (r) {

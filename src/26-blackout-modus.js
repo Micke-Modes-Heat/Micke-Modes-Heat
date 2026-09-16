@@ -21,6 +21,7 @@ import {
   NEA_KOSTEN, NEA_STRATEGIEN, notstromPlatzierung, notstromPlatzierungVergleich,
   INSEL_PARAMETER, INSEL_STATUS, liegenschaftsInsel,
   WAERME_SZENARIEN, WAERME_PARAMETER, WAERME_ENERGIETRAEGER, waermeBlackout,
+  ZIEL_STROM_STUFEN, ZIEL_STATUS, ZIEL_PARAMETER, normalisiereZiele, zielGebaeude, bewerteZiel, resilienzZielMatrix,
 } from './lib/resilienz-core.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { globalYear, thermSpeicherAktiv } from './01-globals-varianten.js';
@@ -54,6 +55,8 @@ export function blackoutEinstellungen() {
   }
   window.blackoutVorgabe.insel = _inselNormalisieren(window.blackoutVorgabe.insel);
   window.blackoutVorgabe.waerme = _waermeNormalisieren(window.blackoutVorgabe.waerme);
+  window.blackoutVorgabe.ziele = normalisiereZiele(window.blackoutVorgabe.ziele);
+  if (!window.blackoutVorgabe.ziele.some(z => z.id === window.blackoutVorgabe.empfehlung)) window.blackoutVorgabe.empfehlung = null;
   return window.blackoutVorgabe;
 }
 
@@ -94,7 +97,11 @@ function _inselNormalisieren(d) {
 /** Projektdatei: Einstellungen sichern (die Klassen selbst liegen an den Gebäuden). */
 export function blackoutCaptureState() {
   const e = blackoutEinstellungen();
-  return { bLastPct: e.bLastPct, insel: { ...e.insel, bewertung: { ...e.insel.bewertung } }, waerme: { ...e.waerme } };
+  return {
+    bLastPct: e.bLastPct, insel: { ...e.insel, bewertung: { ...e.insel.bewertung } }, waerme: { ...e.waerme },
+    ziele: e.ziele.map(z => ({ ...z })),
+    empfehlung: e.empfehlung,
+  };
 }
 
 export function blackoutRestoreState(d) {
@@ -103,7 +110,10 @@ export function blackoutRestoreState(d) {
     bLastPct: Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : NOTSTROM_B_VORGABE_PCT,
     insel: _inselNormalisieren(d?.insel),
     waerme: _waermeNormalisieren(d?.waerme),
+    ziele: normalisiereZiele(d?.ziele),
+    empfehlung: typeof d?.empfehlung === 'string' ? d.empfehlung : null,
   };
+  window.blackoutZiele = null;
   window.blackoutPlatz = null;
   window.blackoutInsel = null;
   if (window.blackoutModusAktiv) { blackoutModusMarkiereKarte(); blackoutModusRender(); }
@@ -344,8 +354,9 @@ function _gebProfil(gId, jahr) {
 function _platzSig() {
   const klassen = _alle().filter(g => g.notstrom)
     .map(g => `${g.id}:${g.notstrom.klasse}:${g.notstrom.lastPct ?? ''}:${g.notstrom.eigeneNea ? 1 : 0}`).join(',');
+  const neaKw = ASSETS.items.filter(a => a.type === 'Nsa').reduce((s, a) => s + _num(a.props?.leistungKW), 0);
   return [globalYear, blackoutEinstellungen().bLastPct, ASSETS.items.length,
-          (window.stromEdges || []).length, klassen].join('|');
+          (window.stromEdges || []).length, neaKw, klassen].join('|');
 }
 
 function _aktuelleVariante() {
@@ -360,7 +371,8 @@ function _platzEingaben(jahr) {
   const assets = ASSETS.items
     .filter(a => (a.domain === 'strom' || a.domain === 'hybrid') && getAssetStatus(a, jahr) === 'active')
     .map(a => ({ id: a.id, type: a.type, name: a.name, lat: a.lat, lng: a.lng, buildingId: a.buildingId,
-                 lastKw: _lastKw(a, getAssetPropsForYear(a, jahr)) }));
+                 lastKw: _lastKw(a, getAssetPropsForYear(a, jahr)),
+                 neaKw: a.type === 'Nsa' ? _num(getAssetPropsForYear(a, jahr).leistungKW) : 0 }));
   const kanten = (window.stromEdges || [])
     .filter(e => getStromEdgeStatus(e, jahr) === 'active')
     .map(e => ({ id: e.id, u: e.u, v: e.v }));
@@ -458,6 +470,7 @@ function _platzZeichnen() {
     const farbe = a.ort === 'knoten' ? KNOTEN_FARBE : a.fest ? '#90a4ae' : NOTSTROM_KLASSEN.A.farbe;
     const text = `<b>⚙ NEA ${escHtml(a.name)}</b> (${a.ort === 'knoten' ? escHtml(a.typ) : 'am Gebäude'})<br>`
       + `Empfehlung <b>${_fmtKw(a.empfKw)}</b> · gleichz. Spitze ${_fmtKw(a.peakKw)}<br>`
+      + (a.bestandKw ? `vorhanden ${_fmtKw(a.bestandKw)}${a.zusatzKw ? ` · fehlen ${_fmtKw(a.zusatzKw)}` : ' ✓'}<br>` : '')
       + `versorgt ${a.gebaeude.length} Gebäude · ${_fmtEur(a.kosten)}`
       + (a.abgaenge.length ? `<br>${a.abgaenge.length} Abgänge abschalten` : '')
       + (a.fest ? '<br><i>eigenes Aggregat (Vorgabe)</i>' : '')
@@ -473,34 +486,35 @@ const _fmtEur = v => v >= 10000 ? `${Math.round(v / 1000).toLocaleString('de-DE'
 export function blackoutPlatzierungUebernehmen() {
   const r = _aktuelleVariante();
   if (!r) return;
-  const liste = r.aggregate.filter(a => a.empfKw > 0 && Number.isFinite(a.lat));
-  // Schon übernommene Aggregate nicht doppelt anlegen — nur die Leistung angleichen
-  const vorhanden = a => ASSETS.items.find(x => x.type === 'Nsa' && x.props?.blackoutZiel === `${a.ort}:${a.id}`);
-  const neu = liste.filter(a => !vorhanden(a));
-  const anpassen = liste.filter(a => {
-    const x = vorhanden(a);
-    return x && _num(x.props.leistungKW) !== a.empfKw;
-  });
-  if (!neu.length && !anpassen.length) {
-    window.showHint?.('Alle Aggregate dieser Strategie sind schon als Assets angelegt.', 4000);
+  // Vorhandene Aggregate sind schon angerechnet — ergänzt wird nur die fehlende Leistung:
+  // ein früher übernommenes Aggregat wird vergrößert, sonst kommt ein neues dazu.
+  const liste = r.aggregate.filter(a => a.zusatzKw > 0 && Number.isFinite(a.lat));
+  const frueher = a => ASSETS.items.find(x => x.type === 'Nsa' && x.props?.blackoutZiel === `${a.ort}:${a.id}`);
+  const anpassen = liste.filter(a => frueher(a));
+  const neu = liste.filter(a => !frueher(a));
+  if (!liste.length) {
+    window.showHint?.('Die vorhandenen Aggregate decken diese Strategie bereits.', 4000);
     return;
   }
   const frage = [
-    neu.length && `${neu.length} Notstromaggregat(e) als Assets anlegen.`,
-    anpassen.length && `${anpassen.length} bereits angelegte(s) Aggregat(e) auf die neue Leistung setzen `
-      + `(${anpassen.map(a => `${a.name}: ${_num(vorhanden(a).props.leistungKW)} → ${a.empfKw} kW`).join(', ')}).`,
+    neu.length && `${neu.length} Notstromaggregat(e) anlegen (${neu.map(a => `${a.name}: ${a.zusatzKw} kW`).join(', ')}).`,
+    anpassen.length && `${anpassen.length} übernommene(s) Aggregat(e) vergrößern `
+      + `(${anpassen.map(a => { const x = _num(frueher(a).props.leistungKW); return `${a.name}: ${x} → ${x + a.zusatzKw} kW`; }).join(', ')}).`,
   ].filter(Boolean).join('\n');
   if (!confirm(`${frage}\n\nAggregate an Knoten werden per Kabel an den Knoten angeschlossen, Aggregate am Gebäude `
-    + 'dem Gebäude zugeordnet. Die abzuschaltenden Abgänge bleiben ein Vermerk.')) return;
-  for (const a of anpassen) vorhanden(a).props.leistungKW = String(a.empfKw);
+    + 'dem Gebäude zugeordnet. Vorhandene Aggregate bleiben unverändert; die abzuschaltenden Abgänge bleiben ein Vermerk.')) return;
+  for (const a of anpassen) {
+    const x = frueher(a);
+    x.props.leistungKW = String(_num(x.props.leistungKW) + a.zusatzKw);
+  }
   const autonomieH = window._pvResReco?.durH || 72;
   const angelegt = [];
   for (const a of neu) {
     const knoten = a.ort === 'knoten' ? ASSETS.items.find(x => x.id === a.id) : null;
     const nsa = createAsset('Nsa', a.lat + 0.00006, a.lng + 0.00006, {
-      name: `NEA ${a.name}`,
+      name: a.bestandKw > 0 ? `NEA ${a.name} (Ergänzung)` : `NEA ${a.name}`,
       buildingId: a.ort === 'gebaeude' ? a.id : (knoten?.buildingId ?? null),
-      props: { leistungKW: String(a.empfKw), autonomieH: String(autonomieH), kraftstoff: 'Diesel',
+      props: { leistungKW: String(a.zusatzKw), autonomieH: String(autonomieH), kraftstoff: 'Diesel',
                blackoutZiel: `${a.ort}:${a.id}` },
     });
     if (!nsa) continue;
@@ -511,9 +525,12 @@ export function blackoutPlatzierungUebernehmen() {
   recalcStromNetz();
   window.showHint?.([
     angelegt.length && `${angelegt.length} Notstromaggregat(e) angelegt · Autonomie ${autonomieH} h`,
-    anpassen.length && `${anpassen.length} angepasst`,
+    anpassen.length && `${anpassen.length} vergrößert`,
   ].filter(Boolean).join(' · '), 5000);
-  blackoutModusRender();
+  // Neu rechnen, damit die Anlagen als Bestand erscheinen — gewählte Strategie behalten
+  const strategie = window.blackoutStrategie;
+  blackoutPlatzierungRechnen();
+  blackoutSetStrategie(strategie);
 }
 
 function _platzBlock() {
@@ -538,7 +555,7 @@ function _platzBlock() {
         style="cursor:pointer;${aktiv ? `background:${KNOTEN_FARBE}26;` : ''}">
         <td style="padding:2px 4px;${aktiv ? `color:${KNOTEN_FARBE};font-weight:600;` : ''}">${aktiv ? '●' : '○'} ${s.label}${key === pl.empfohlen ? ' ★' : ''}</td>
         <td style="padding:2px 4px;text-align:right;">${v.anzahl}</td>
-        <td style="padding:2px 4px;text-align:right;">${_fmtKw(v.kw)}</td>
+        <td style="padding:2px 4px;text-align:right;" title="davon neu bzw. zusätzlich: ${_fmtKw(v.zusatzKw)}">${_fmtKw(v.kw)}</td>
         <td style="padding:2px 4px;text-align:right;">${v.abgaenge}</td>
         <td style="padding:2px 4px;text-align:right;">${_fmtEur(v.kosten)}</td></tr>`;
   }).join('');
@@ -552,7 +569,8 @@ function _platzBlock() {
           data-click="blackoutZeigeOrt(${a.lat},${a.lng})" title="${escHtml(a.gebaeude.length + ' Gebäude versorgt')}">${escHtml(a.name)}
           <span style="color:var(--muted);font-size:9px;">${escHtml(art)}</span></span>
         <span style="font-size:9.5px;white-space:nowrap;${a.empfKw > 0 ? '' : 'color:#ffa726;'}"
-          title="Gleichzeitige Spitze ${_fmtKw(a.peakKw)} + ${Math.round((NEA_KOSTEN.reserve - 1) * 100)} % Reserve">${a.empfKw > 0 ? _fmtKw(a.empfKw) : '⚠ 0 kW'}</span>
+          title="Gleichzeitige Spitze ${_fmtKw(a.peakKw)} + ${Math.round((NEA_KOSTEN.reserve - 1) * 100)} % Reserve${a.bestandKw ? ` · vorhanden ${_fmtKw(a.bestandKw)}` : ''}">${a.empfKw > 0 ? _fmtKw(a.empfKw) : '⚠ 0 kW'}${
+            a.bestandKw > 0 ? `<span style="color:${a.zusatzKw > 0 ? '#ffa726' : '#66bb6a'};"> · ${a.zusatzKw > 0 ? `+${_fmtKw(a.zusatzKw)}` : 'Bestand ✓'}</span>` : ''}</span>
       </div>`;
   }).join('');
 
@@ -570,7 +588,8 @@ function _platzBlock() {
     veraltet && 'Klassen, Netz oder Jahr haben sich geändert — Ergebnis neu berechnen.',
     r.nichtAmNetz.length && `${r.nichtAmNetz.length} A/B-Gebäude hängen nicht am Netz und bekommen ein eigenes Aggregat.`,
     r.summe.ohneLast && `${r.summe.ohneLast} Aggregat(e) ohne Last — Gebäude ohne Verbraucher-Asset.`,
-    pl.bestand.anzahl && `Bestand: ${pl.bestand.anzahl} Notstromaggregat(e) mit ${_fmtKw(pl.bestand.kw)} — in der Platzierung noch nicht angerechnet.`,
+    r.bestandOhneOrt.length && `${r.bestandOhneOrt.length} vorhandene(s) Aggregat(e) ohne Kabel zu einem NS-Knoten und ohne Gebäude `
+      + `(${escHtml(r.bestandOhneOrt.map(b => b.name || b.id).join(', '))}) — nicht angerechnet.`,
   ].filter(Boolean).map(t => `<div style="font-size:9px;color:#ffa726;margin-top:4px;line-height:1.4;">⚠ ${t}</div>`).join('');
 
   return titel + `
@@ -589,7 +608,8 @@ function _platzBlock() {
     ${abgZeilen || '<div style="font-size:9.5px;color:var(--muted);">Nichts abzuschalten.</div>'}
     <button class="btn-xs" style="width:100%;margin-top:8px;border-color:${KNOTEN_FARBE};color:${KNOTEN_FARBE};"
       data-click="blackoutPlatzierungUebernehmen()" ${veraltet ? 'disabled' : ''}
-      title="Aggregate dieser Strategie als Notstromaggregat-Assets anlegen">⬆ Als Assets übernehmen</button>
+      title="Fehlende Aggregatleistung dieser Strategie als Notstromaggregat-Assets anlegen bzw. ergänzen">${
+        r.summe.zusatzKw > 0 ? `⬆ ${_fmtKw(r.summe.zusatzKw)} als Assets übernehmen` : '✓ Vom Bestand gedeckt'}</button>
     <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">
       Bemessung: gleichzeitige Spitze der Gebäudelastgänge × Lastanteil + ${Math.round((NEA_KOSTEN.reserve - 1) * 100)} % Reserve.
       Kosten (Richtwerte): ${_fmtEur(NEA_KOSTEN.fixEur)} je Aggregat + ${NEA_KOSTEN.eurProKw} €/kW,
@@ -609,7 +629,7 @@ const INSEL_FARBE = '#ab47bc';
 /** @type {any} */
 let _inselLayer = null;
 
-const REITER = ['klassen', 'netz', 'insel', 'waerme'];
+const REITER = ['klassen', 'netz', 'insel', 'waerme', 'ziele'];
 const _tab = () => (REITER.includes(window.blackoutTab) ? window.blackoutTab : 'klassen');
 
 export function blackoutSetTab(t) {
@@ -644,10 +664,10 @@ function _liegenschaftsProfil(nap) {
   return { profil: null, quelle: 'Summe der Trafo-Spitzen' };
 }
 
-export function blackoutInselRechnen() {
+/** Insel für Anteil und Dauer rechnen (Reiter „Liegenschaft" und Schutzziele). */
+function _inselErgebnis(anteilPct, dauerH, eingaben = _platzEingaben(globalYear)) {
   const jahr = globalYear;
   const e = blackoutEinstellungen().insel;
-  const eingaben = _platzEingaben(jahr);
   const platz = notstromPlatzierung({ ...eingaben, strategie: 'trafo' });
   const aktiv = t => ASSETS.items.filter(a => a.type === t && getAssetStatus(a, jahr) === 'active');
   const nap = aktiv('NAP')[0] || null;
@@ -673,7 +693,7 @@ export function blackoutInselRechnen() {
 
   const ergebnis = liegenschaftsInsel({
     profil, spitzeKw: trafos.reduce((s, t) => s + t.spitzeKw, 0),
-    anteilPct: e.anteilPct, dauerH: e.dauerH, redundanz: e.redundanz,
+    anteilPct, dauerH, redundanz: e.redundanz,
     abSpitzeKw, trafos, jahr, bewertung: e.bewertung,
     netz: {
       spannungKV: _num(napProps.spannungKV) || 20, msKabelM,
@@ -681,11 +701,16 @@ export function blackoutInselRechnen() {
         .map(a => ({ id: a.id, name: a.name, type: a.type, baujahr: a.baujahr })),
     },
   });
-  window.blackoutInsel = {
-    ergebnis, quelle, jahr, sig: _inselSig(), ts: Date.now(),
+  return {
+    ergebnis, quelle, jahr,
     nap: nap ? { lat: nap.lat, lng: nap.lng, name: nap.name } : null,
     ohneNap: !nap, ohneTrafo: !trafos.length, msKabelM,
   };
+}
+
+export function blackoutInselRechnen() {
+  const e = blackoutEinstellungen().insel;
+  window.blackoutInsel = { ..._inselErgebnis(e.anteilPct, e.dauerH), sig: _inselSig(), ts: Date.now() };
   _inselZeichnen();
   blackoutModusRender();
 }
@@ -743,6 +768,19 @@ function _inselZeichnen() {
       .bindTooltip(`<b>${escHtml(t.name)}</b> — im Inselbetrieb MS-seitig abschalten<br>${_fmtKw(t.spitzeKw)}`, { className: 'geb-tooltip' })
       .addTo(_inselLayer);
   }
+}
+
+/** Gegenüberstellung mit der Inselbetrieb-Simulation der PV-Analyse (Abb. 10), falls gerechnet. */
+function _pvVergleich(r) {
+  const pv = window._pvResReco;
+  if (!pv) return '';
+  const MODUS = { gen: 'nur Notstrom', 'bat-gen': 'Speicher + Notstrom', 'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'nur PV + Speicher' };
+  return `<div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.4;"
+      title="Die PV-Analyse rechnet ohne Netztopologie, dafür mit PV und Batteriespeicher im Inselbetrieb">
+      PV-Analyse (Abb. 10, ${escHtml(MODUS[pv.mode] || pv.mode)}): ${pv.genKw > 0 ? `Aggregat ${_fmtKw(pv.genKw)}` : 'kein Aggregat'}
+      für ${Math.round(pv.loadFracPct ?? 100)} % Last über ${pv.durH} h — hier ${Math.round(r.aggregate.pAggKw).toLocaleString('de-DE')} kW
+      Wirkleistung für ${Math.round(r.anteilPct)} %${pv.batKwh > 0 ? `; der Speicher (${Math.round(pv.batKwh).toLocaleString('de-DE')} kWh) kann Lastsprünge abfangen` : ''}.
+    </div>`;
 }
 
 function _inselBlock() {
@@ -836,6 +874,7 @@ function _inselBlock() {
 
   return steuerung + kacheln + hinweise + `
     <div style="font-size:9px;color:var(--muted);margin-top:4px;">Lastgang: ${escHtml(ins.quelle)}</div>
+    ${_pvVergleich(r)}
     <div style="font-size:9px;color:var(--muted);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.05em;">Zuschaltstufen</div>
     ${stufen || '<div style="font-size:9.5px;color:var(--muted);">Keine Stationen erfasst.</div>'}
     ${aus ? `<div style="font-size:9px;color:var(--muted);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.05em;">MS-seitig abschalten</div>${aus}` : ''}
@@ -883,10 +922,11 @@ function _heizzentrale() {
 }
 
 /** Wärme-Ergebnis mit und ohne Maßnahme; null ohne Wärme-Lastgang. */
-export function blackoutWaermeRechnen() {
+export function blackoutWaermeRechnen(dauerH = null) {
   const ss = window.systemState;
   if (!ss?.lastgangKw?.length) return null;
-  const e = blackoutEinstellungen().waerme;
+  const e = { ...blackoutEinstellungen().waerme };
+  if (dauerH) e.dauerH = dauerH;
   const erzeuger = _waermeErzeuger();
   const gasKw = erzeuger.filter(x => WAERME_ENERGIETRAEGER[x.key] === 'gas').reduce((s, x) => s + x.kw, 0);
   const zweistoffKw = e.zweistoffKw ?? gasKw;
@@ -909,6 +949,12 @@ export function blackoutWaermeSet(feld, wert) {
   blackoutEinstellungen();                       // normalisieren
   _waermeZeichnen();
   blackoutModusRender();
+}
+
+/** Auskühlrechnung der PV-Analyse (09d) als Vollbild — dort liegt das RC-Modell je Gebäude. */
+export function blackoutAuskuehlung() {
+  if (typeof window.pvResWaermeVollbild === 'function') window.pvResWaermeVollbild();
+  else window.showHint?.('Die Auskühlrechnung ist nicht geladen.', 4000);
 }
 
 /** Heizzentrale als kritisch mit eigenem Aggregat einstufen — dann zählt sie in der Strom-Bilanz. */
@@ -1051,12 +1097,236 @@ function _waermeBlock() {
     ${erzeugerZeilen || '<div style="font-size:9.5px;color:var(--muted);">Keine Wärmeerzeuger aktiv.</div>'}
     ${w.puffer ? `<div style="font-size:9.5px;padding:2px;color:var(--muted);">Pufferspeicher ${fmt(w.puffer.kapKwh)} kWh ${e.mitNea ? 'überbrückt Spitzen' : '— ohne Pumpen nicht nutzbar'}</div>` : ''}
     ${hzZeile}
+    <button class="btn-xs" style="width:100%;margin-top:4px;" data-click="blackoutAuskuehlung()"
+      title="Ohne Wärmeversorgung: wie lange der Pufferspeicher trägt und wann die Gebäude unter die kritische Innentemperatur fallen">
+      ❄ Auskühlzeiten ohne Wärmeversorgung</button>
     ${kostenBlock}
     <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">
       Pauschale Betrachtung über die Netzlast der Heizzentrale. Heizöl ${WAERME_PARAMETER.heizwertKwhProL} kWh/l, Kesselwirkungsgrad
       ${Math.round(WAERME_PARAMETER.kesselEta * 100)} %, Lagerzuschlag ${Math.round((WAERME_PARAMETER.tankZuschlag - 1) * 100)} %.
       Festbrennstoffe gelten als ausreichend bevorratet. Wärmepumpen und Stromkessel laufen nicht, weil das Aggregat nur die Hilfsenergie deckt.
     </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SCHUTZZIELE (Schritt 5)
+// ══════════════════════════════════════════════════════════════════════════
+// Jedes Ziel wird mit den Rechnungen der anderen Reiter bewertet. Das Ergebnis
+// liegt in window.blackoutZiele; die Gutachten-Grafik (17) holt es über
+// blackoutZieleErgebnis(), das bei geänderten Eingaben selbst neu rechnet.
+
+const ZIEL_FARBE = '#7e57c2';
+const ZIEL_DAUERN = [[24, '24 h'], [72, '3 Tage'], [168, '7 Tage'], [336, '14 Tage']];
+
+function _zieleSig() {
+  const e = blackoutEinstellungen();
+  const empfehlung = e.empfehlung || '';
+  const ss = window.systemState;
+  return [_platzSig(), JSON.stringify(e.insel), JSON.stringify(e.waerme), JSON.stringify(e.ziele),
+          ss?.lastgangKw?.length || 0, ss?.pMaxKw || 0,
+          _waermeErzeuger().map(x => `${x.key}:${x.kw}`).join(','), _heizzentrale()?.id ?? '', empfehlung].join('#');
+}
+
+export function blackoutZieleRechnen() {
+  const jahr = globalYear;
+  const e = blackoutEinstellungen();
+  const eingaben = _platzEingaben(jahr);
+  const cache = new Map();
+  const bewertungen = e.ziele.map(ziel => {
+    let platz = null, insel = null;
+    if (ziel.strom === 'A' || ziel.strom === 'AB') {
+      if (!cache.has(ziel.strom)) {
+        cache.set(ziel.strom, notstromPlatzierungVergleich({ ...eingaben, gebaeude: zielGebaeude(eingaben.gebaeude, ziel.strom) }));
+      }
+      platz = cache.get(ziel.strom);
+    } else if (ziel.strom === 'insel') {
+      insel = _inselErgebnis(ziel.anteilPct, ziel.dauerH, eingaben).ergebnis;
+    }
+    const w = ziel.waerme ? blackoutWaermeRechnen(ziel.dauerH) : null;
+    // Bewertet wird die Wärme mit Notstrom an der Heizzentrale — ohne ist die Deckung null
+    const b = bewerteZiel({ ziel, platz, insel, waerme: w?.mit.mitNea ? w.mit : null });
+    // Für die Gutachtentexte: Standorte, Abgänge und Checkliste des Ziels
+    b.variante = platz ? platz.varianten[platz.empfohlen] : null;
+    b.insel = insel;
+    if (ziel.waerme && w && !w.mit.mitNea) {
+      b.gruende = b.gruende.filter(g => g !== 'kein Wärme-Lastgang');
+      b.gruende.push('Wärme-Reiter ohne Notstrom an der Heizzentrale — dort einschalten');
+    }
+    return b;
+  });
+  window.blackoutZiele = {
+    jahr, sig: _zieleSig(), ts: Date.now(), bewertungen,
+    empfehlung: bewertungen.find(b => b.ziel.id === e.empfehlung) || null,
+    matrix: resilienzZielMatrix(bewertungen),
+    heizzentrale: _heizzentrale()?.name || '',
+  };
+  return window.blackoutZiele;
+}
+
+/** Aktuelles Ergebnis — rechnet neu, wenn sich Eingaben geändert haben (für die Gutachten-Grafik). */
+export function blackoutZieleErgebnis() {
+  const z = window.blackoutZiele;
+  if (z && z.sig === _zieleSig()) return z;
+  try { return blackoutZieleRechnen(); } catch (err) { console.warn('Schutzziele:', err); return null; }
+}
+
+/**
+ * Stand für die Gutachtentexte 5.2.1–5.2.3 und 3.4.3 (17-gutachten-grafik.js liest ihn über window).
+ * Rechnet die Schutzziele bei Bedarf neu.
+ */
+export function blackoutGutachtenStand() {
+  const jahr = globalYear;
+  const bilanz = blackoutBilanz();
+  const nsa = ASSETS.items.filter(a => a.type === 'Nsa' && getAssetStatus(a, jahr) === 'active');
+  const hz = _heizzentrale();
+  const hzNsa = hz ? nsa.filter(a => a.buildingId === hz.id) : [];
+  const ziele = blackoutZieleErgebnis();
+  // Deckung der A/B-Gebäude durch den Bestand (Platzierung mit Anrechnung)
+  let bestandDeckt = null;
+  if (bilanz.summe.anzahl) {
+    const platz = notstromPlatzierungVergleich(_platzEingaben(jahr));
+    const v = platz.varianten[platz.empfohlen];
+    const gedeckt = v.aggregate.filter(a => a.empfKw > 0 && a.bestandKw >= a.empfKw);
+    bestandDeckt = {
+      gebaeude: gedeckt.reduce((n, a) => n + a.gebaeude.length, 0),
+      gesamt: v.aggregate.reduce((n, a) => n + a.gebaeude.length, 0),
+      bedarfKw: v.summe.kw,
+      genutztKw: v.bestandGenutztKw,
+      abgaenge: v.abgaenge,
+    };
+  }
+  const w = blackoutWaermeRechnen();
+  const e = blackoutEinstellungen();
+  const namen = k => bilanz.zeilen.filter(z => z.klasse === k).map(z => z.name);
+  return {
+    jahr, bilanz, namen: { A: namen('A'), B: namen('B'), C: namen('C') },
+    bestand: { anzahl: nsa.length, kw: nsa.reduce((s, a) => s + _num(a.props?.leistungKW), 0) },
+    bestandDeckt,
+    heizzentrale: hz ? { name: hz.name || 'Heizzentrale', nea: hzNsa.length > 0,
+      neaKw: hzNsa.reduce((s, a) => s + _num(a.props?.leistungKW), 0) } : null,
+    waerme: w ? {
+      szenario: WAERME_SZENARIEN[e.waerme.szenario].label, dauerH: w.mit.dauerH,
+      ohnePct: w.ohne.deckungEnergiePct, mitPct: w.mit.deckungEnergiePct,
+      neaKw: w.mit.neaKw, tankL: e.waerme.tankL, tankEmpfehlungL: w.mit.tankEmpfehlungL, tankFehltL: w.mit.tankFehltL,
+      reichweiteH: w.mit.reichweiteH, zweistoffKw: w.mit.kwJeTraeger.oel, puffer: !!w.puffer, pufferKwh: w.puffer?.kapKwh || 0,
+      ausgefallen: w.mit.erzeuger.filter(x => !x.verfuegbar).map(x => x.label),
+    } : null,
+    ziele,
+    empfehlung: ziele?.empfehlung || null,
+  };
+}
+
+function _zieleNachAenderung() {
+  blackoutEinstellungen();
+  if (window.blackoutZiele) blackoutZieleRechnen();
+  blackoutModusRender();
+}
+
+export function blackoutZielSet(id, feld, wert) {
+  const z = blackoutEinstellungen().ziele.find(x => x.id === id);
+  if (!z) return;
+  z[feld] = feld === 'waerme' ? !!wert : wert;
+  _zieleNachAenderung();
+}
+
+/** Ziel als Empfehlung des Gutachtens markieren (erneut klicken = keine Empfehlung). */
+export function blackoutZielEmpfehlen(id) {
+  const e = blackoutEinstellungen();
+  e.empfehlung = e.empfehlung === id ? null : id;
+  _zieleNachAenderung();
+}
+
+export function blackoutZielNeu() {
+  const liste = blackoutEinstellungen().ziele;
+  let n = liste.length + 1;
+  while (liste.some(z => z.id === `z${n}`)) n++;
+  liste.push({ id: `z${n}`, name: `Schutzziel ${n}`, strom: 'A', anteilPct: 100, dauerH: 72, waerme: true });
+  _zieleNachAenderung();
+}
+
+export function blackoutZielWeg(id) {
+  const e = blackoutEinstellungen();
+  e.ziele = e.ziele.filter(z => z.id !== id);
+  _zieleNachAenderung();
+}
+
+export function blackoutZieleVorgaben() {
+  if (!confirm('Schutzziele auf die drei Vorgaben zurücksetzen?')) return;
+  blackoutEinstellungen().ziele = normalisiereZiele(undefined);
+  _zieleNachAenderung();
+}
+
+function _zieleBlock() {
+  const e = blackoutEinstellungen();
+  const erg = window.blackoutZiele;
+  const veraltet = !!erg && erg.sig !== _zieleSig();
+  const eingabe = 'font-size:10px;padding:1px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;';
+  const karten = e.ziele.map(z => {
+    const b = erg && !veraltet ? erg.bewertungen.find(x => x.ziel.id === z.id) : null;
+    const st = b ? ZIEL_STATUS[b.status] : null;
+    const dauern = ZIEL_DAUERN.some(([h]) => h === z.dauerH) ? ZIEL_DAUERN : [...ZIEL_DAUERN, [z.dauerH, `${z.dauerH} h`]];
+    return `<div style="border:1px solid var(--border);border-left:3px solid ${st?.farbe || ZIEL_FARBE};border-radius:5px;padding:5px 6px;margin-top:5px;">
+      <div style="display:flex;gap:4px;align-items:center;">
+        <input type="text" value="${escHtml(z.name)}" style="flex:1;min-width:0;${eingabe}font-weight:600;"
+          data-change="blackoutZielSet('${z.id}','name',this.value)"/>
+        ${st ? `<span style="font-size:9px;color:${st.farbe};white-space:nowrap;">${st.label}</span>` : ''}
+        <button class="btn-xs" style="padding:0 5px;${e.empfehlung === z.id ? `border-color:#ffd54f;color:#ffd54f;background:#ffd54f26;` : ''}"
+          data-click="blackoutZielEmpfehlen('${z.id}')"
+          title="${e.empfehlung === z.id ? 'Empfehlung des Gutachtens (Kapitel 5.2.3) — erneut klicken zum Entfernen' : 'Als Empfehlung des Gutachtens markieren (Kapitel 5.2.3)'}">${e.empfehlung === z.id ? '★' : '☆'}</button>
+        <button class="btn-xs" style="padding:0 5px;" data-click="blackoutZielWeg('${z.id}')" title="Ziel entfernen">✕</button>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:4px;align-items:center;font-size:9.5px;">
+        <select style="flex:1;min-width:0;${eingabe}" data-change="blackoutZielSet('${z.id}','strom',this.value)">
+          ${Object.entries(ZIEL_STROM_STUFEN).map(([k, t]) => `<option value="${k}" ${k === z.strom ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+        ${z.strom === 'insel' ? `<input type="number" min="5" max="100" step="5" value="${z.anteilPct}" style="width:44px;${eingabe}"
+          title="Abgesicherter Anteil der Spitzenlast" data-change="blackoutZielSet('${z.id}','anteilPct',this.value)"/> %` : ''}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:center;font-size:9.5px;">
+        <select style="${eingabe}" data-change="blackoutZielSet('${z.id}','dauerH',this.value)">
+          ${dauern.map(([h, t]) => `<option value="${h}" ${h === z.dauerH ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+        <label style="display:flex;align-items:center;gap:3px;cursor:pointer;">
+          <input type="checkbox" ${z.waerme ? 'checked' : ''} data-change="blackoutZielSet('${z.id}','waerme',this.checked)"/> mit Wärme</label>
+        <span style="flex:1;text-align:right;font-weight:600;color:${ZIEL_FARBE};">${b ? _fmtEur(b.kosten) : ''}</span>
+      </div>
+      ${b?.gruende.length ? `<div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.35;">${escHtml(b.gruende.join(' · '))}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  let matrix = '';
+  if (erg && !veraltet && erg.bewertungen.length) {
+    const m = erg.matrix;
+    const kopf = m.spalten.map(t => `<th style="text-align:right;padding:2px 3px;font-weight:600;color:var(--text);">${escHtml(t)}</th>`).join('');
+    const zeilen = m.zeilen.filter(z => z.label !== 'Bewertung').map(z => `<tr style="${z.highlight ? `color:${ZIEL_FARBE};font-weight:700;` : ''}">
+        <td style="padding:2px 3px;color:${z.highlight ? ZIEL_FARBE : 'var(--muted)'};">${escHtml(z.label)}</td>
+        ${z.werte.map(w => `<td style="padding:2px 3px;text-align:right;">${escHtml(w)}</td>`).join('')}</tr>`).join('');
+    matrix = `<div style="font-size:9px;color:var(--muted);margin:10px 0 2px;text-transform:uppercase;letter-spacing:.05em;">Maßnahmen je Ziel</div>
+      <div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:9px;min-width:100%;">
+        <thead><tr><th></th>${kopf}</tr></thead><tbody>${zeilen}</tbody></table></div>
+      <div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">
+        Tabelle und Text für Kapitel 5.2 stehen unter Analyse › Gutachten-Grafiken und im Gutachten-Editor.</div>`;
+  }
+
+  return `
+    <div style="display:flex;align-items:center;gap:4px;">
+      <span style="flex:1;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Schutzziele</span>
+      <button class="btn-xs" style="border-color:${ZIEL_FARBE};color:${ZIEL_FARBE};" data-click="blackoutZieleRechnen(); blackoutModusRender()"
+        title="Alle Ziele mit den Rechnungen der übrigen Reiter bewerten">${erg ? '↻ Neu bewerten' : '⚙ Bewerten'}</button>
+    </div>
+    <div style="font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.45;">
+      Was soll wie lange versorgt werden? Die Stufen A und A + B nutzen die Platzierung am Netz (günstigste Strategie),
+      die Liegenschaft die Insel am NAP, die Wärme die Einstellungen des Wärme-Reiters.</div>
+    ${veraltet ? '<div style="font-size:9px;color:#ffa726;margin-top:4px;">⚠ Eingaben geändert — neu bewerten.</div>' : ''}
+    ${karten || '<div style="font-size:9.5px;color:var(--muted);margin-top:6px;">Keine Ziele.</div>'}
+    <div style="display:flex;gap:4px;margin-top:6px;">
+      <button class="btn-xs" style="flex:1;" data-click="blackoutZielNeu()">+ Ziel</button>
+      <button class="btn-xs" data-click="blackoutZieleVorgaben()" title="Die drei Vorgaben wiederherstellen">Vorgaben</button>
+    </div>
+    ${matrix}
+    <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">
+      Kraftstoff der Gebäudeaggregate: gleichzeitige Spitze × Dauer × ${Math.round(ZIEL_PARAMETER.lastfaktor * 100)} % Auslastung
+      × ${ZIEL_PARAMETER.sfcLproKwh} l/kWh. Kosten sind die Richtwerte der jeweiligen Reiter.</div>`;
 }
 
 /** Gebäude nach Klasse einfärben; nicht eingestufte blass und gestrichelt. */
@@ -1183,7 +1453,7 @@ function _html() {
   const vorgabe = blackoutEinstellungen().bLastPct;
   const auswahl = _alle().filter(g => g.selected).length;
   const tab = _tab();
-  const reiter = [['klassen', 'Klassen'], ['netz', 'Am Netz'], ['insel', 'Liegenschaft'], ['waerme', 'Wärme']].map(([k, t]) =>
+  const reiter = [['klassen', 'Klassen'], ['netz', 'Am Netz'], ['insel', 'Liegenschaft'], ['waerme', 'Wärme'], ['ziele', 'Ziele']].map(([k, t]) =>
     `<button class="bom-tab${k === tab ? ' aktiv' : ''}" data-click="blackoutSetTab('${k}')">${t}</button>`).join('');
   const kopf = `
     <div class="bom-head">
@@ -1195,6 +1465,7 @@ function _html() {
   if (tab === 'netz') return kopf + `<div class="bom-body">${_platzBlock()}</div>`;
   if (tab === 'insel') return kopf + `<div class="bom-body">${_inselBlock()}</div>`;
   if (tab === 'waerme') return kopf + `<div class="bom-body">${_waermeBlock()}</div>`;
+  if (tab === 'ziele') return kopf + `<div class="bom-body">${_zieleBlock()}</div>`;
   return kopf + `
     <div class="bom-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
