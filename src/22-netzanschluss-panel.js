@@ -188,3 +188,32 @@ export function sgNaAusNapAssetKnopf() {
   const el = $('strom-na-status');
   if (el) el.textContent = meldung;
 }
+
+/* ── NAP-Grenzen in der Projektdatei ─────────────────────────────────────── */
+// „Max. Bezug" (= vereinbarte Anschlussleistung, kVA) und „Max. Einspeisung" (= Einspeisezusage, kW)
+// stehen im statischen Strom-Panel und gespiegelt in der PV-Analyse. Maßgeblich sind die Globals
+// window.elNapMaxBezugKw / elNapMaxEinspKw (null = unbegrenzt).
+
+const grenzwert = v => (v == null || v === '' || !Number.isFinite(Number(v)) || Number(v) < 0 ? null : Number(v));
+
+export function sgNaCaptureNapGrenzen() {
+  return { maxBezugKw: grenzwert(window.elNapMaxBezugKw), maxEinspKw: grenzwert(window.elNapMaxEinspKw) };
+}
+
+/** Beim Laden: Globals, beide Eingabefelder und den PV-Analyse-Zustand gleichziehen. Ohne Eintrag (ältere Projekte) = unbegrenzt. */
+export function sgNaRestoreNapGrenzen(daten) {
+  const bezug = grenzwert(daten?.maxBezugKw);
+  const einsp = grenzwert(daten?.maxEinspKw);
+  window.elNapMaxBezugKw = bezug;
+  window.elNapMaxEinspKw = einsp;
+  const setze = (id, v, leer) => { const el = $(id); if (el) el.value = v ?? leer; };
+  setze('strom-nap-bezug-kw', bezug, '');
+  setze('strom-nap-einsp-kw', einsp, '');
+  setze('pva-nap-bezug', bezug, 0);   // in der PV-Analyse bedeutet 0 = unbegrenzt
+  setze('pva-nap-einsp', einsp, 0);
+  if (window._pvAnalyse) {
+    window._pvAnalyse.napMaxBezugKw = bezug ?? 0;
+    window._pvAnalyse.napMaxEinspKw = einsp ?? 0;
+  }
+  if (typeof window.napOnNapGrenzenGeaendert === 'function') window.napOnNapGrenzenGeaendert();
+}

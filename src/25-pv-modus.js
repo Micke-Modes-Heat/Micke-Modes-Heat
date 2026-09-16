@@ -29,7 +29,7 @@ import { polygonCenter, polygonAreaM2, forwardClickToMap, updateViz } from './02
 import {
   _hasBelegung, calcGebKwp, calcGebKwpKorr, getGebPvModules, pvNettoFlaeche,
   getDachDefaultNeigung, detectRoofAzimutFromPolygon, setPvVisible, escHtml, flyTo,
-  attachGebPvLayer, redrawGebPvModules,
+  attachGebPvLayer, redrawGebPvModules, _clipPolyHalfPlane, _polyCentroidLL,
 } from './03c-gebaeude-io.js';
 import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
 
@@ -69,7 +69,15 @@ const _geb  = gId => (window.gebaeude || []).find(x => x.id === gId) || null;
 const _mitPolygon = () => (window.gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3);
 
 function _vorgabe() {
-  if (!window.pvModusVorgabe) window.pvModusVorgabe = { dachform: 'sattel', belegung: 90, neigung: null };
+  if (!window.pvModusVorgabe) {
+    window.pvModusVorgabe = {
+      dachform: 'sattel', belegung: 90, neigung: null,
+      // Nordseiten belegt man nicht: bei ±45° um Nord (Nordost über Nord bis
+      // Nordwest) liegt der Ertragsfaktor unter 70 %. Beim Satteldach wird die
+      // betroffene Hälfte automatisch als Sperrfläche ausgespart.
+      nordSperr: true, nordSektor: 45,
+    };
+  }
   return window.pvModusVorgabe;
 }
 
@@ -236,15 +244,28 @@ export function pvModusBuildingClick(gId, event) {
 }
 
 /**
- * Klick auf eine bereits gezeichnete Fläche (aus attachGebPvLayer). Ohne das
- * liefe der Klick ins Leere: die PV-Flächen liegen in einer eigenen Pane über
- * den Gebäuden und fangen den Klick ab, bevor er das Dach erreicht.
- * @returns {boolean} true = Klick verbraucht
+ * Klick auf eine bereits gezeichnete Fläche (aus attachGebPvLayer). Die
+ * PV-Flächen liegen in einer eigenen Pane über den Gebäuden und fangen den
+ * Klick ab, bevor er das Dach erreicht — seit „Grundriss als Fläche" deckt die
+ * Belegung meist das ganze Dach, dieser Fall ist also der Normalfall:
+ *   • Sperrflächen-Modus → hier beginnt die neue Fläche (Kamine, Gauben und
+ *     Verschattung liegen naturgemäß INNERHALB der Belegung),
+ *   • sonst → Dach nur ins Panel holen.
+ * Der Klick blubbert anschließend zur Karte weiter und setzt dort die erste
+ * Ecke; deshalb wird er hier NICHT zusätzlich weitergereicht.
+ * @returns {boolean} true = Klick verbraucht (keine Gebäudeauswahl)
  */
 export function pvModusFlaecheClick(gId) {
   if (!window.pvModusAktiv) return false;
   if (window.gebPvDraw || window.gebFirstDraw || window.pvRechteck) return false;  // Zeichnung läuft
+  if (window.pvModusForm === 'rechteck') return false;                             // macht der Kartenklick
+  const g = _geb(gId);
+  if (!g) return false;
   window.pvModusGeb = gId;
+  if (window.pvModusTyp === 'sperr') {
+    _assetStandErfassen();
+    window.startGebPvDraw?.(gId, 'sperr', { keepView: true });
+  }
   pvModusRender();
   pvModusMarkiereKarte();
   return true;
@@ -456,8 +477,8 @@ function _flaecheAnlegen(punkte, typ) {
   if (!g) return null;
   const fl = _flaecheAnhaengen(g, punkte, typ);
   const vorher = _assetVorher(g.id);
-  _erstbelegung(g);
-  _verlaufMerken([{ gId: g.id, flId: fl.id, assetVorher: vorher }]);
+  const nordIds = _erstbelegung(g);
+  _verlaufMerken(_schritt(g.id, fl.id, nordIds, vorher));
   window.pvModusGeb = g.id;
   window._rerenderCard?.(g.id);
   window._updateGebLabelPv?.(g.id);
@@ -478,21 +499,113 @@ export function pvModusNachFlaeche(g) {
   if (!g) return;
   window.pvModusGeb = g.id;
   const vorher = _assetVorher(g.id);
-  _erstbelegung(g);
-  const letzte = (g.pvFlaechen || []).at(-1);
-  if (letzte) _verlaufMerken([{ gId: g.id, flId: letzte.id, assetVorher: vorher }]);
+  // Vor _erstbelegung merken: danach kann die letzte Fläche die automatisch
+  // angelegte Nord-Sperrfläche sein, nicht mehr die gerade gezeichnete.
+  const gezeichnet = (g.pvFlaechen || []).at(-1);
+  const nordIds = _erstbelegung(g);
+  if (gezeichnet) _verlaufMerken(_schritt(g.id, gezeichnet.id, nordIds, vorher));
   window.calcStromPanel?.();
   window.pvModusHilfe = false;
   pvModusMarkiereKarte();
   pvModusRender();
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// NORDSEITE AUSSPAREN
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Welche Satteldachhälfte zeigt nach Norden?
+ * @returns {boolean|null} true = Vorderseite (Azimut A) · false = Rückseite
+ *   (A+180) · null = keine der beiden liegt im Nordsektor
+ */
+function _nordSeite(g) {
+  if (!g || g.dachform !== 'sattel') return null;   // nur hier gibt es zwei Seiten
+  const sektor = _vorgabe().nordSektor ?? 45;
+  const abstandNord = a => { const x = ((a % 360) + 360) % 360; return Math.min(x, 360 - x); };
+  const A = g.dachAzimut ?? 180;
+  if (abstandNord(A) <= sektor) return true;
+  if (abstandNord(A + 180) <= sektor) return false;
+  return null;
+}
+
+function _autoNordFlaechen(g) {
+  return (g.pvFlaechen || []).filter(f => f.typ === 'sperr' && f.auto === 'nord');
+}
+
+function _autoNordEntfernen(g) {
+  const weg = _autoNordFlaechen(g);
+  for (const fl of weg) {
+    if (fl.layer) map.removeLayer(fl.layer);
+    if (fl.svgLayer) map.removeLayer(fl.svgLayer);
+  }
+  if (weg.length) g.pvFlaechen = g.pvFlaechen.filter(f => !(f.typ === 'sperr' && f.auto === 'nord'));
+  return weg.length;
+}
+
+/**
+ * Nordhälfte der Belegung als Sperrfläche anlegen — exakt an derselben
+ * Firstlinie, an der die Berechnung das Dach teilt (_clipPolyHalfPlane mit
+ * pvRidgeOverride bzw. Schwerpunkt). Nur so bleibt auf der Südseite kein
+ * Modul-Streifen der Nordseite stehen.
+ * @returns {number[]} ids der angelegten Sperrflächen
+ */
+function _nordAnwenden(g) {
+  _autoNordEntfernen(g);
+  const nordVorne = _nordSeite(g);
+  if (nordVorne === null) return [];
+  const bel = (g.pvFlaechen || []).filter(f => f.typ !== 'sperr' && f.polygon && f.polygon.length >= 3);
+  if (!bel.length) return [];
+  const alle   = bel.flatMap(f => f.polygon);
+  const maxLat = Math.max(...alle.map(p => p.lat)), minLat = Math.min(...alle.map(p => p.lat));
+  const cosL   = Math.cos((maxLat + minLat) / 2 * Math.PI / 180);
+  const C      = g.pvRidgeOverride || _polyCentroidLL(alle);
+  const A      = g.dachAzimut ?? 180;
+  const ids = [];
+  for (const f of bel) {
+    const haelfte = _clipPolyHalfPlane(f.polygon, C, A, cosL, nordVorne);
+    if (haelfte.length < 3) continue;
+    const fl = _flaecheAnhaengen(g, haelfte, 'sperr');
+    fl.auto = 'nord';
+    ids.push(fl.id);
+  }
+  redrawGebPvModules(g);
+  return ids;
+}
+
+/** Nordseite aussparen bzw. die automatische Sperrfläche wieder freigeben. */
+export function pvmNordAussparen(gId) {
+  const g = _geb(gId);
+  if (!g) return;
+  if (_autoNordFlaechen(g).length) {
+    _autoNordEntfernen(g);
+    g._pvNordFrei = true;                  // bewusste Entscheidung — beim Drehen nicht zurückholen
+    redrawGebPvModules(g);
+  } else {
+    delete g._pvNordFrei;
+    if (_nordSeite(g) === null) {
+      alert(`Keine Dachhälfte von „${_name(g)}" liegt im Nordsektor (±${_vorgabe().nordSektor}° um Nord).\n\nDer Sektor lässt sich unter „Vorgaben für neue Dächer" ändern.`);
+      return;
+    }
+    const ids = _nordAnwenden(g);
+    if (ids.length) _verlaufMerken(ids.map(flId => ({ gId: g.id, flId })));
+  }
+  _uebernehmen(g);
+  window._rerenderCard?.(gId);
+  window._updateGebLabelPv?.(gId);
+  window.calcStromPanel?.();
+  pvModusRender();
+  pvModusMarkiereKarte();
+}
+
 // Erstbelegung eines Dachs: Vorgabewerte und Azimut aus dem Grundriss setzen,
-// danach kWp ins Asset. Liefert true, wenn dabei ein PV-Asset entstanden ist.
+// Nordseite aussparen, danach kWp ins Asset.
+// @returns {number[]} ids automatisch angelegter Sperrflächen (für Strg+Z)
 function _erstbelegung(g) {
-  if (!g || !_hasBelegung(g)) return;
+  if (!g || !_hasBelegung(g)) return [];
   const v = _vorgabe();
   const erste = (g.pvFlaechen || []).filter(f => f.typ !== 'sperr').length <= 1;
+  let nordIds = [];
   if (erste) {
     if (v.dachform && !g._pvDachformManuell) g.dachform = v.dachform;
     if (v.belegung != null) g.pvFlBelegung = v.belegung;
@@ -502,10 +615,19 @@ function _erstbelegung(g) {
       if (az !== null) { g.dachAzimut = az; g.dachAutoAzimut = true; }
     }
     redrawGebPvModules(g);
+    if (v.nordSperr) nordIds = _nordAnwenden(g);
   }
   _uebernehmen(g);
   window._rerenderCard?.(g.id);
   window._updateGebLabelPv?.(g.id);
+  return nordIds;
+}
+
+// Verlaufseintrag für eine neue Belegung samt automatischer Nord-Sperrfläche.
+// Die Sperrflächen stehen vorn: Strg+Z arbeitet die Liste der Reihe nach ab und
+// die Assetfrage hängt daran, dass die Belegung zuletzt verschwindet.
+function _schritt(gId, belId, nordIds, assetVorher) {
+  return [...nordIds.map(flId => ({ gId, flId })), { gId, flId: belId, assetVorher }];
 }
 
 // kWp ins PV-Asset schreiben; legt es an, wenn es noch keins gibt (pvuFixOne
@@ -579,8 +701,8 @@ export function pvmGrundriss(gId) {
   const fl = _grundriss(g);
   if (!fl) { alert('Dieses Gebäude hat keinen Grundriss.'); return; }
   const vorher = _assetVorher(g.id);
-  _erstbelegung(g);
-  _verlaufMerken([{ gId: g.id, flId: fl.id, assetVorher: vorher }]);
+  const nordIds = _erstbelegung(g);
+  _verlaufMerken(_schritt(g.id, fl.id, nordIds, vorher));
   window.pvModusGeb = g.id;
   window.calcStromPanel?.();
   window.renderGebPvPanel?.();
@@ -616,8 +738,8 @@ export function pvmGrundrissAuswahl() {
     const vorher = _assetVorher(g.id);
     const fl = _grundriss(g);
     if (!fl) continue;
-    _erstbelegung(g);
-    schritt.push({ gId: g.id, flId: fl.id, assetVorher: vorher });
+    const nordIds = _erstbelegung(g);
+    schritt.push(..._schritt(g.id, fl.id, nordIds, vorher));
     summe += calcGebKwpKorr(g) || 0;
   }
   if (schritt.length) _verlaufMerken(schritt);
@@ -758,12 +880,14 @@ function _aktivBlock(g) {
   const netto   = pvNettoFlaeche(g);
   const fakFarbe = faktor >= 0.9 ? '#4caf50' : faktor >= 0.75 ? '#f9a825' : ROT;
   const schraeg = !!(g.dachform && g.dachform !== 'flach');
+  const nordDa  = _autoNordFlaechen(g).length > 0;
 
   const flaechen = (g.pvFlaechen || []).map(fl => {
     const bel = fl.typ !== 'sperr';
+    const beschriftung = bel ? 'Belegung' : (fl.auto === 'nord' ? 'Sperr · Nordseite' : 'Sperrfläche');
     return `<div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:1px 0;">
       <span style="color:${bel ? GELB : ROT};">${bel ? '☀' : '⛔'}</span>
-      <span style="flex:1;">${bel ? 'Belegung' : 'Sperrfläche'}</span>
+      <span style="flex:1;">${beschriftung}</span>
       <span style="font-family:'DM Mono',monospace;color:var(--muted);">${(fl.flaeche || 0).toFixed(0)} m²</span>
       <button class="btn-xs red" data-click="pvmFlaecheWeg(${g.id},${fl.id})" title="Fläche entfernen">✕</button>
     </div>`;
@@ -778,6 +902,13 @@ function _aktivBlock(g) {
     <button class="btn-xs" style="width:100%;border-color:${GELB};color:${GELB};"
       data-click="pvmGrundriss(${g.id})"
       title="Den Gebäudegrundriss als Belegungsfläche übernehmen — bei Schrägdächern ist er die Dachfläche (Projektion und Firstteilung macht die Berechnung)">⊞ Grundriss als Fläche</button>
+    ${g.dachform === 'sattel' ? `
+    <button class="btn-xs" style="width:100%;margin-top:4px;${nordDa ? `border-color:${ROT};color:${ROT};` : ''}"
+      data-click="pvmNordAussparen(${g.id})"
+      title="${nordDa
+        ? 'Die automatische Sperrfläche auf der Nordseite wieder entfernen'
+        : `Die nach Norden zeigende Dachhälfte als Sperrfläche aussparen (Sektor ±${_vorgabe().nordSektor}° um Nord)`}">
+      ${nordDa ? '↺ Nordseite wieder freigeben' : '⛔ Nordseite aussparen'}</button>` : ''}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px;">
       <div class="inp-group">
         <div class="inp-label">Dachform</div>
@@ -816,7 +947,7 @@ function _vorgabeBlock() {
     return `<div style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);margin-top:8px;cursor:pointer;"
         data-click="pvmVorgabeToggle()" title="Werte, die jedes neu belegte Dach erbt">
       <span style="text-transform:uppercase;letter-spacing:.06em;flex:1;">Vorgaben für neue Dächer</span>
-      <span>${DACHFORMEN[v.dachform] || v.dachform} · ${v.belegung} %${v.neigung != null ? ' · ' + v.neigung + '°' : ''}</span>
+      <span>${DACHFORMEN[v.dachform] || v.dachform} · ${v.belegung} %${v.neigung != null ? ' · ' + v.neigung + '°' : ''}${v.nordSperr ? ` · Nord ±${v.nordSektor}° aus` : ''}</span>
       <span>▸</span>
     </div>`;
   }
@@ -843,6 +974,17 @@ function _vorgabeBlock() {
       </div>
       ${_regler({ label:'Belegungsgrad (%)', titel:'Vorgabe für neu belegte Dächer', min:40, max:100, step:5,
                   wert: v.belegung, farbe:GELB, einheit:'%', handler:`pvmVorgabe('belegung',this.value)` })}
+      <div style="display:flex;align-items:center;gap:5px;margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:4px;flex:1;font-size:10px;cursor:pointer;"
+          title="Beim Satteldach die nach Norden zeigende Hälfte automatisch als Sperrfläche aussparen">
+          <input type="checkbox" ${v.nordSperr ? 'checked' : ''} style="accent-color:${ROT};cursor:pointer;"
+            data-change="pvmVorgabe('nordSperr',this.checked)"/>Nordseiten aussparen
+        </label>
+        <span style="font-size:9px;color:var(--muted);" title="Halber Öffnungswinkel um Nord: 45° reicht von Nordost über Nord bis Nordwest">±</span>
+        <input class="inp-field" type="number" min="5" max="90" step="5" value="${v.nordSektor}"
+          style="width:52px;padding:2px 4px;" data-change="pvmVorgabe('nordSektor',this.value)"/>
+        <span style="font-size:9px;color:var(--muted);">°</span>
+      </div>
       <button class="btn-xs" style="width:100%;margin-top:4px;" data-click="pvmVorgabeAufAlle()"
         title="Dachform, Neigung und Belegungsgrad auf alle Dächer mit Fläche übertragen">↧ Auf alle belegten Dächer übertragen</button>
     </div>`;
@@ -942,8 +1084,23 @@ function _html() {
 // ══════════════════════════════════════════════════════════════════════════
 
 export function pvmDach(gId, feld, wert) {
-  if (feld === 'dachform') { const g = _geb(gId); if (g) g._pvDachformManuell = true; }
+  const g = _geb(gId);
+  if (feld === 'dachform' && g) g._pvDachformManuell = true;
+  const hatteNord = !!g && _autoNordFlaechen(g).length > 0;
   window.updateGebDach?.(gId, feld, wert);
+  // Dreht sich der First (Azimut) oder wechselt die Dachform, liegt eine
+  // automatisch ausgesparte Nordseite nicht mehr an der Firstlinie — neu
+  // ableiten statt eine schiefe Sperrfläche stehen zu lassen. Das gilt auch,
+  // wenn sie zwischendurch nur deshalb verschwunden war, weil keine Seite im
+  // Nordsektor lag; nur ein bewusstes „freigeben" schaltet sie für das Dach ab.
+  const nachziehen = hatteNord || (_vorgabe().nordSperr && !g?._pvNordFrei);
+  if (g && nachziehen && _hasBelegung(g) && (feld === 'dachAzimut' || feld === 'dachform')) {
+    _nordAnwenden(g);
+    _uebernehmen(g);
+    window._rerenderCard?.(gId);
+    window._updateGebLabelPv?.(gId);
+    window.calcStromPanel?.();
+  }
   pvModusRender();
   pvModusMarkiereKarte();
 }
@@ -968,8 +1125,10 @@ export function pvmFirstReset(gId) {
 }
 
 export function pvmFlaecheWeg(gId, flId) {
-  window.removeGebPvFlaeche?.(gId, flId);
   const g = _geb(gId);
+  // Wer die automatische Nord-Sperrfläche löscht, will die Nordseite belegen.
+  if (g && (g.pvFlaechen || []).some(f => f.id === flId && f.auto === 'nord')) g._pvNordFrei = true;
+  window.removeGebPvFlaeche?.(gId, flId);
   if (g && _hasBelegung(g)) _uebernehmen(g);
   pvModusRender();
   pvModusMarkiereKarte();
@@ -999,9 +1158,11 @@ export function pvmVorgabeToggle() {
 
 export function pvmVorgabe(feld, wert) {
   const v = _vorgabe();
-  if (feld === 'dachform')      v.dachform = wert;
-  else if (feld === 'belegung') v.belegung = Math.min(100, parseFloat(wert) || 90);
-  else if (feld === 'neigung')  v.neigung  = wert === '' ? null : parseFloat(wert);
+  if (feld === 'dachform')        v.dachform = wert;
+  else if (feld === 'belegung')   v.belegung = Math.min(100, parseFloat(wert) || 90);
+  else if (feld === 'neigung')    v.neigung  = wert === '' ? null : parseFloat(wert);
+  else if (feld === 'nordSperr')  v.nordSperr = !!wert;
+  else if (feld === 'nordSektor') v.nordSektor = Math.max(5, Math.min(90, parseFloat(wert) || 45));
   pvModusRender();
 }
 

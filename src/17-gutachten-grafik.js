@@ -5022,7 +5022,7 @@ GG_FIGUREN.push(...ggPvFiguren());
  * Auslegung aus der Inselbetrieb-Simulation der PV-Analyse (window._pvResReco, Abb. 10 „Resilienz“),
  * Anzahl und Standorte aus den geplanten Notstromaggregaten des Elektro-Tabs, Bestand wie in 3.1.4.
  * Lastmanagement heißt hier Lastabwurf auf die Notbetriebslast. Die Resilienzbewertung bleibt in 5.2.
- * Achtung: _pvResReco wird nicht gespeichert — nach dem Laden einmal Abb. 10 öffnen. */
+ * _pvResReco wird mit der PV-Analyse im Projekt gespeichert (09d pvCaptureState). */
 const GG_KAP_NOTSTROM = '3.4.3 Notstromversorgung und Lastmanagement';
 
 /** Resilienz-Empfehlung, Bestand und geplante Notstromaggregate mit Summen (Leistung null = unvollständig). */
@@ -5172,7 +5172,7 @@ function ggNotstromStandHtml() {
   let html = zeile('Resilienz-Rechnung', r
       ? gEsc(`${GG_RES_MODE_LBL[r.mode] || r.mode} · ${r.durH} h · Aggregat ${r.genKw > 0 ? ggNum(r.genKw) + ' kW' : 'keines'} · `
         + `Notbetrieb ${ggNum(ggNotbetriebPct(r))} %`)
-      : gelb('fehlt — ☀ PV-Analyse › Abb. 10 „Resilienz“ öffnen (wird nicht mit dem Projekt gespeichert)'))
+      : gelb('fehlt — ☀ PV-Analyse › Abb. 10 „Resilienz“ öffnen'))
     + zeile('Bestand (3.1.4)', s.bestand.length ? anlagen(s.bestand, s.bestandKw) : 'keine NEA')
     + zeile('Geplant (Elektro-Tab)', s.geplant.length ? anlagen(s.geplant, s.geplantKw) : 'keine geplanten Notstromaggregate');
   const erf = s.erforderlichKw;

@@ -1307,11 +1307,13 @@ export function attachGebPvLayer(g, fl) {
     // Im PV-Modus holt der Klick auf eine fertige Flaeche ihr Dach ins Panel.
     // Ohne das liefe er ins Leere: die PV-Pane liegt ueber den Gebaeuden und
     // faengt den Klick ab, bevor er das Dach erreicht.
-    if (typeof window.pvModusFlaecheClick === 'function' && window.pvModusFlaecheClick(g.id)) return;
+    if (typeof window.pvModusFlaecheClick === 'function' && window.pvModusFlaecheClick(g.id, fl)) return;
     if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id);
   });
-  // Sperrflächen initial unsichtbar — updateSperrVisibility zeigt sie beim selektierten Gebäude
-  if (fl.typ === 'sperr') {
+  // Sperrflächen nur beim selektierten Gebäude sichtbar (updateSperrVisibility) —
+  // im PV-Modus immer. Die Regel muss schon beim Anlegen greifen: sonst
+  // verschwindet eine im Modus gerade gezeichnete Sperrfläche sofort wieder.
+  if (fl.typ === 'sperr' && !window.pvModusAktiv && g.id !== window.selectedId) {
     fl.layer.setStyle({ opacity: 0, fillOpacity: 0 });
   }
   applyGebPvDimming(g);   // Belegungsfläche bei abgerissenem/geplantem Gebäude ausgrauen
@@ -1406,7 +1408,7 @@ function _pip(pt, poly) {
 }
 
 /** Schwerpunkt eines lat/lng-Polygons (arithmetisches Mittel der Ecken). */
-function _polyCentroidLL(poly) {
+export function _polyCentroidLL(poly) {
   let lat = 0, lng = 0;
   for (const p of poly) { lat += p.lat; lng += p.lng; }
   return { lat: lat / poly.length, lng: lng / poly.length };
@@ -1419,7 +1421,7 @@ function _polyCentroidLL(poly) {
  *   f(p) = sin(A)·(lng−Clng)·cosL + cos(A)·(lat−Clat)   (>0 ⇒ Vorderseite)
  * Sutherland-Hodgman-Halbebenen-Clip. Liefert [] wenn die Hälfte leer ist.
  */
-function _clipPolyHalfPlane(poly, C, azimutDeg, cosL, keepFront) {
+export function _clipPolyHalfPlane(poly, C, azimutDeg, cosL, keepFront) {
   const A  = azimutDeg * Math.PI / 180;
   const sgn = keepFront ? 1 : -1;
   const f  = p => sgn * (Math.sin(A) * (p.lng - C.lng) * cosL + Math.cos(A) * (p.lat - C.lat));
@@ -2662,7 +2664,7 @@ export function _buildProjectData() {
       pvRidgeOverride: g.pvRidgeOverride || null,
       pvModus: g.pvModus || 'flaechen', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null, pvBaujahr: g.pvBaujahr ?? null,
-      pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche })),
+      pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}) })),
       massnahmen: g.massnahmen || [],
       importSourceId: g.importSourceId || null,
       importSourceName: g.importSourceName || null,
@@ -2709,6 +2711,10 @@ export function _buildProjectData() {
     pvPanel: { kwp: document.getElementById('pv-kwp')?.value, spez: document.getElementById('pv-spez')?.value, ausrichtung: document.getElementById('pv-ausrichtung')?.value, quartierMwh: document.getElementById('strom-quartier-mwh')?.value, strompreis: document.getElementById('strom-preis-bezug')?.value, einspeisung: document.getElementById('strom-preis-einsp')?.value, leistungspreis: document.getElementById('strom-leistungspreis')?.value, vergModell: document.getElementById('pv-verg-modell')?.value, tarifSzenario: document.getElementById('pv-tarif-szenario')?.value },
     pvProfile: window.elPvH ? {values:Array.from(window.elPvH), meta:window.elPvMeta || {quality:'uploaded_unverified',source:'Legacy PV upload'}} : null,
     stromMessjahre: typeof window.sgMjCapture === 'function' ? window.sgMjCapture() : null,
+    // NAP-Grenzen (22-netzanschluss-panel.js): vereinbarte Anschlussleistung und Einspeisezusage
+    napGrenzen: typeof window.sgNaCaptureNapGrenzen === 'function' ? window.sgNaCaptureNapGrenzen() : null,
+    // PV-Analyse (09d): Eingaben, letzter Berechnungsstand und Resilienz-Auslegung (Gutachten 3.4.2–3.5, 5.2)
+    pvAnalyse: typeof window.pvCaptureState === 'function' ? window.pvCaptureState() : null,
     // Referenzjahr als Einzel-Lastgang — bleibt für ältere Programmstände lesbar
     quartierProfile: window.elQuartierH ? {
       values: Array.from(window.elQuartierH),
@@ -2999,6 +3005,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     typ:surface.typ,
     polygon:structuredClone(surface.polygon),
     flaeche:surface.flaeche,
+    ...(surface.auto ? {auto:surface.auto} : {}),
     layer:null,
     svgLayer:null,
   }));
@@ -3247,7 +3254,7 @@ function _applyProjectData(project) {
             newG.pvFlGcr        = g.pvFlGcr ?? null;
             newG.pvFlAusrichtung = g.pvFlAusrichtung || 'sued';
             newG.pvFlBelegung   = g.pvFlBelegung ?? null;
-            newG.pvFlaechen     = (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, layer: null, svgLayer: null }));
+            newG.pvFlaechen     = (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}), layer: null, svgLayer: null }));
             newG.pvFlaechen.forEach(f => {
               attachGebPvLayer(newG, f);
               if (f.id >= (window._gebPvFlCounter || 0)) window._gebPvFlCounter = f.id + 1;
@@ -3512,6 +3519,9 @@ function _applyProjectData(project) {
       // Messjahre (23-messjahre-panel.js): gespeicherte Liste, sonst der Einzel-Lastgang oben als
       // einziges Messjahr. Setzt elQuartier* auf das Referenzjahr (ohne Referenz: null).
       if (typeof window.sgMjRestore === 'function') window.sgMjRestore(project.stromMessjahre || null, project.quartierProfile || null);
+      // NAP-Grenzen vor der PV-Analyse — sie übernimmt die Grenzen in ihren Zustand
+      if (typeof window.sgNaRestoreNapGrenzen === 'function') window.sgNaRestoreNapGrenzen(project.napGrenzen || null);
+      if (typeof window.pvRestoreState === 'function') window.pvRestoreState(project.pvAnalyse || null);
       if (project.battery) {
         const ids = {capacityKwh:'bat-kapazitaet',powerKw:'bat-leistung',investEurKwh:'opt-bat-invest',studyLifeYears:'opt-bat-life',calendarFadePctPerYear:'bat-calendar-fade',cycleLife:'bat-cycle-life',eolCapacityPct:'bat-eol-pct'};
         for (const [key,id] of Object.entries(ids)) { const el=document.getElementById(id); if(el && project.battery[key] != null) el.value=project.battery[key]; }

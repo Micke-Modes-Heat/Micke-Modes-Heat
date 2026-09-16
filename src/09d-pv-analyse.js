@@ -90,24 +90,35 @@ const PV_VARIANTEN_INFO = {
 // ══════════════════════════════════════════════════════════════════════════════
 // MODUL-STATE
 // ══════════════════════════════════════════════════════════════════════════════
+/** Eingaben und Berechnungsstand ohne Projekt — Grundlage beim Start und beim Laden (pvRestoreState). */
+function _pvStandardZustand() {
+  return {
+    infraKonfig: null,          // überschriebene Infra-Kosten (null = Defaults)
+    mehrkosten: { investEUR: 0, label: '', jaehrlichEUR: 0 }, // Mehrkostenprinzip
+    erzNetzAktiv: false,
+    erzNetz: { laengeM: 0, preisPrM: 250, typKabel: 'NS', schutzEUR: 5000 },
+    skKVA: 0,            // Kurzschlussleistung S_k″ am NAP (kVA); 0 = unbekannt → nur Leistungskriterium
+    uBudgetPct: 3,       // zulässige Spannungsanhebung durch Einspeisung (VDE-AR-N 4105: 3 % NS, 4110: 2 % MS)
+    uBudgetManuell: false, // false = uBudgetPct aus der Spannungsebene des Netzanschlusses (_pvUBudget)
+    pvMaxKwpOverride: 0,        // 0 = aus Assets berechnen
+    deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
+    demandMode: 'basis',        // 'basis' = nur Strom-Lastgang | 'gesamt' = + WP + SK | 'endausbau' = NAP-Endausbau-Lastgang
+    endausbauJahr: new Date().getFullYear() + 15, // Zieljahr für Endausbau-Lastgang
+    feldWerte: {},              // gemerkte Eingabefelder (_pvMerkeFeld)
+    ergebnisse: [],             // berechnete Varianten-Ergebnisse
+    berechnet: false,
+    stale: false,
+    herleitung: null, lastParams: null, lastProfilQuelle: null, basis: null, standText: '',
+  };
+}
+
 window._pvAnalyse = window._pvAnalyse || {
-  infraKonfig: null,          // überschriebene Infra-Kosten (null = Defaults)
-  mehrkosten: { investEUR: 0, label: '', jaehrlichEUR: 0 }, // Mehrkostenprinzip
-  erzNetzAktiv: false,
-  erzNetz: { laengeM: 0, preisPrM: 250, typKabel: 'NS', schutzEUR: 5000 },
-  skKVA: 0,            // Kurzschlussleistung S_k″ am NAP (kVA); 0 = unbekannt → nur Leistungskriterium
-  uBudgetPct: 3,       // zulässige Spannungsanhebung durch Einspeisung (VDE-AR-N 4105: 3 % NS, 4110: 2 % MS)
+  ..._pvStandardZustand(),
   spotPreise: null,           // Float32Array[N] in ct/kWh (null = nicht geladen)
   spotJahr: null,
   spotStatus: 'nicht geladen',
   napMaxEinspKw: 0,           // 0 = unbegrenzt
   napMaxBezugKw: 0,           // 0 = unbegrenzt
-  pvMaxKwpOverride: 0,        // 0 = aus Assets berechnen
-  deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
-  demandMode: 'basis',        // 'basis' = nur Strom-Lastgang | 'gesamt' = + WP + SK | 'endausbau' = NAP-Endausbau-Lastgang
-  endausbauJahr: new Date().getFullYear() + 15, // Zieljahr für Endausbau-Lastgang
-  ergebnisse: [],             // berechnete Varianten-Ergebnisse
-  berechnet: false,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1132,7 +1143,7 @@ export function pvBerechneAlle() {
 
   // ── Rückspeise- & Erzeugungsnetz-Beurteilung je Variante ──
   const skKVA      = parseFloat(document.getElementById('pva-sk')?.value) || state.skKVA || 0;
-  const uBudgetPct = state.uBudgetPct || 3;
+  const uBudgetPct = _pvUBudget();
   state.skKVA = skKVA;
   for (const e of ergebnisse) {
     const r   = pvRueckAnalyse(e.pvKwp, e.batKwh, demandH, pvProfile);
@@ -1595,7 +1606,8 @@ function renderAnnahmenblatt(varianten) {
       ${zeile('Max. Einspeiseleistung', napE ? num(napE) + ' kW' : 'unbegrenzt', napE ? 'Netzanschluss-Zusage / VNB-Auskunft' : 'keine Begrenzung gesetzt — Abregelung wird nicht ausgewiesen')}
       ${zeile('Max. Bezugsleistung', napB ? num(napB) + ' kVA' : 'unbegrenzt', napB ? 'vereinbarte Anschlussleistung laut Netzanschlussvertrag' : 'keine Begrenzung gesetzt')}
       ${zeile('Kurzschlussleistung S_k″', s.skKVA ? num(s.skKVA) + ' kVA' : 'unbekannt', s.skKVA ? 'VNB-Netzauskunft' : 'ohne S_k″ greift nur das Leistungskriterium')}
-      ${zeile('Zulässige Spannungsanhebung', num(s.uBudgetPct || 3, 1) + ' %', 'VDE-AR-N 4105 (NS, 3 %) bzw. 4110 (MS, 2 %)')}
+      ${zeile('Zulässige Spannungsanhebung', num(s.basis?.uBudgetPct ?? _pvUBudget(), 1) + ' %',
+              (s.uBudgetManuell ? 'manuell vorgegeben — ' : 'aus der Spannungsebene des Netzanschlusses — ') + 'VDE-AR-N 4105 (NS, 3 %) bzw. 4110 (MS, 2 %)')}
 
       ${kapitel('4 · Anlagenpotenzial')}
       ${zeile('Gesamtpotenzial', num(pvGetMaxKwpFromAssets()) + ' kWp', 'Summe aller Quellen, doppelte Erfassung ausgeschlossen')}
@@ -1800,9 +1812,10 @@ function _pvBuildPanelHtml() {
           </div>
           <div>
             <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">Δu-Budget (%)</div>
-            <input id="pva-ubudget" type="number" value="3" min="1" max="10" step="0.5"
+            <input id="pva-ubudget" type="number" value="" min="1" max="10" step="0.5" placeholder="auto"
+              title="Leer = aus der Spannungsebene des Netzanschlusses (Niederspannung 3 %, Mittelspannung 2 %)"
               style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
-              data-change="window._pvAnalyse.uBudgetPct=parseFloat(this.value)||3"/>
+              data-change="window._pvAnalyse.uBudgetManuell=parseFloat(this.value)>0;window._pvAnalyse.uBudgetPct=parseFloat(this.value)>0?parseFloat(this.value):3"/>
           </div>
         </div>
       </div>
@@ -3215,15 +3228,17 @@ function _pvBindEvents() {
 
 function _pvSyncFromState() {
   const s = window._pvAnalyse;
-  // Globale NAP-Grenzen aus Strom-Grundlagen übernehmen (wenn lokal noch 0)
-  if (!s.napMaxEinspKw && window.elNapMaxEinspKw) s.napMaxEinspKw = window.elNapMaxEinspKw;
-  if (!s.napMaxBezugKw && window.elNapMaxBezugKw) s.napMaxBezugKw = window.elNapMaxBezugKw;
+  // Maßgeblich sind die NAP-Grenzen der Strom-Grundlagen (null = unbegrenzt, hier 0)
+  s.napMaxEinspKw = window.elNapMaxEinspKw ?? 0;
+  s.napMaxBezugKw = window.elNapMaxBezugKw ?? 0;
   const set  = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
   const setC = (id, v) => { const e = document.getElementById(id); if (e) e.checked = v; };
   set('pva-nap-einsp',          s.napMaxEinspKw  || 0);
   set('pva-nap-bezug',          s.napMaxBezugKw  || 0);
   set('pva-sk',                 s.skKVA || 0);
-  set('pva-ubudget',            s.uBudgetPct || 3);
+  set('pva-ubudget',            s.uBudgetManuell ? s.uBudgetPct : '');
+  const ub = document.getElementById('pva-ubudget');
+  if (ub) ub.placeholder = `auto ${String(_pvUBudget()).replace('.', ',')}`;
   set('pva-max-kwp',            s.pvMaxKwpOverride || 0);
   set('pva-endausbau-jahr',     s.endausbauJahr || ((globalYear || new Date().getFullYear()) + 15));
   const jahrVal = document.getElementById('pva-endausbau-jahr-val');
@@ -5588,6 +5603,84 @@ function _pvUpdateBerechnenBtn(loading) {
     ? 'Varianten neu berechnen'
     : 'Varianten berechnen';
   btn.disabled = false;
+}
+
+/** Zulässige Spannungsanhebung: Handeingabe, sonst aus der Spannungsebene des Netzanschlusses (MS 2 %, NS 3 %). */
+function _pvUBudget() {
+  const s = window._pvAnalyse;
+  if (s.uBudgetManuell && s.uBudgetPct > 0) return s.uBudgetPct;
+  return /mittel|\bMS\b/i.test(String(window.naSpannungsebene || '')) ? 2 : 3;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PROJEKTDATEI — Eingaben, letzter Berechnungsstand und Resilienz-Auslegung
+// ══════════════════════════════════════════════════════════════════════════════
+// Die Gutachtenkapitel 3.4.2, 3.4.3, 3.5 und 5.2 lesen diese Ergebnisse; ohne Speicherung
+// müsste nach jedem Laden neu gerechnet und Abb. 10 geöffnet werden.
+
+const _PV_SPEICHER_FELDER = Object.keys(_pvStandardZustand()).filter(k => k !== 'ergebnisse');
+
+// JSON kennt weder Infinity (oberste Infrastruktur-Stufe) noch NaN. Jahresreihen der Simulation
+// (Float32Array) entfallen — die Ansichten rechnen sie bei Bedarf neu.
+const _pvKodiere = (k, v) => (ArrayBuffer.isView(v) ? undefined
+  : typeof v === 'number' && !Number.isFinite(v) ? `__zahl:${v}` : v);
+const _pvDekodiere = (k, v) => (typeof v === 'string' && v.startsWith('__zahl:') ? Number(v.slice(7)) : v);
+
+export function pvCaptureState() {
+  const s = window._pvAnalyse;
+  const daten = { version: 1 };
+  for (const k of _PV_SPEICHER_FELDER) daten[k] = s[k];
+  daten.ergebnisse = (s.ergebnisse || []).map(e => {
+    const kopie = { ...e };
+    delete kopie.info;   // Variantenbeschreibung kommt beim Laden aus PV_VARIANTEN_INFO
+    return kopie;
+  });
+  daten.resilienz = {
+    eingaben: {
+      varId: _pvResVarId, pvKwp: _pvResPvKwp, batKwh: _pvResBatKwh, durH: _pvResDurH, fuel: _pvResFuel,
+      loadFrac: _pvResLoadFrac, mode: _pvResMode, usable: _pvResUsable, selStart: _pvResSelStart,
+      energy: _pvResEnergy, bauschwere: _pvResBauschwere, tcrit: _pvResTcrit, selStartW: _pvResSelStartW,
+    },
+    reco: window._pvResReco || null,
+    varianten: window._pvResVarianten || null,
+  };
+  return JSON.parse(JSON.stringify(daten, _pvKodiere));
+}
+
+/** Projekt laden: ohne Eintrag (ältere Projekte) gilt der Grundzustand. NAP-Grenzen vorher laden. */
+export function pvRestoreState(daten) {
+  const d = daten ? JSON.parse(JSON.stringify(daten), _pvDekodiere) : {};
+  const s = window._pvAnalyse;
+  Object.assign(s, _pvStandardZustand());
+  for (const k of _PV_SPEICHER_FELDER) if (d[k] != null) s[k] = d[k];
+  s.ergebnisse = (d.ergebnisse || [])
+    .filter(e => PV_VARIANTEN_INFO[e.id])
+    .map(e => ({ ...e, info: PV_VARIANTEN_INFO[e.id] }));
+  if (!s.ergebnisse.length) { s.berechnet = false; s.stale = false; }
+  s.napMaxEinspKw = window.elNapMaxEinspKw ?? 0;
+  s.napMaxBezugKw = window.elNapMaxBezugKw ?? 0;
+  _pvFsArgs = null;
+
+  const r = d.resilienz || {};
+  const e = r.eingaben || {};
+  _pvResVarId     = e.varId ?? null;
+  _pvResPvKwp     = e.pvKwp ?? null;
+  _pvResBatKwh    = e.batKwh ?? null;
+  _pvResDurH      = e.durH ?? null;
+  _pvResFuel      = e.fuel ?? null;
+  _pvResLoadFrac  = e.loadFrac ?? null;
+  _pvResMode      = e.mode ?? null;
+  _pvResUsable    = e.usable ?? null;
+  _pvResSelStart  = e.selStart ?? null;
+  _pvResEnergy    = e.energy || 'strom';
+  _pvResBauschwere = e.bauschwere || 'mittel';
+  _pvResTcrit     = Number.isFinite(e.tcrit) ? e.tcrit : 15;
+  _pvResSelStartW = e.selStartW ?? null;
+  window._pvResReco = r.reco || null;
+  window._pvResVarianten = r.varianten || null;
+
+  // Offenes Panel nachziehen
+  if (document.getElementById('pva-ergebnisse')) _pvSyncFromState();
 }
 
 // Globale Exports für inline data-click/data-change Handler und setViewMode
