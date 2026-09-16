@@ -481,6 +481,8 @@ export function updateViz(){
   // Im PV-Modus zeigt die Karte, welche Dächer schon eine Fläche haben. Die
   // Einfärbung oben würde das überschreiben — deshalb hier wieder drüberlegen.
   if (window.pvModusAktiv && typeof window.pvModusMarkiereKarte === 'function') window.pvModusMarkiereKarte();
+  // Ebenso im Blackout-Modus: Notstromklassen (26-blackout-modus.js)
+  if (window.blackoutModusAktiv && typeof window.blackoutModusMarkiereKarte === 'function') window.blackoutModusMarkiereKarte();
 }
 
 export function buildMapLabel(g,center, status){

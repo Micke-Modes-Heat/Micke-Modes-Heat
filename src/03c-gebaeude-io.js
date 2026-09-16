@@ -37,6 +37,7 @@ import { createCalculationManifest } from './lib/calculation-manifest.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
 import { syntheticPvProfileMeta } from './lib/pv-profile-import.js';
+import { normalisiereNotstrom } from './lib/resilienz-core.js';
 
 export function updateTotals(){
   let tw=0, th=0;
@@ -2664,6 +2665,7 @@ export function _buildProjectData() {
       pvRidgeOverride: g.pvRidgeOverride || null,
       pvModus: g.pvModus || 'flaechen', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null, pvBaujahr: g.pvBaujahr ?? null,
+      notstrom: g.notstrom || null,
       pvFlaechen: (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}) })),
       massnahmen: g.massnahmen || [],
       importSourceId: g.importSourceId || null,
@@ -2715,6 +2717,8 @@ export function _buildProjectData() {
     napGrenzen: typeof window.sgNaCaptureNapGrenzen === 'function' ? window.sgNaCaptureNapGrenzen() : null,
     // PV-Analyse (09d): Eingaben, letzter Berechnungsstand und Resilienz-Auslegung (Gutachten 3.4.2–3.5, 5.2)
     pvAnalyse: typeof window.pvCaptureState === 'function' ? window.pvCaptureState() : null,
+    // Blackout-Modus (26): Projekteinstellungen; die Notstromklassen liegen an den Gebäuden
+    blackout: typeof window.blackoutCaptureState === 'function' ? window.blackoutCaptureState() : null,
     // Referenzjahr als Einzel-Lastgang — bleibt für ältere Programmstände lesbar
     quartierProfile: window.elQuartierH ? {
       values: Array.from(window.elQuartierH),
@@ -2986,7 +2990,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     'abrissjahr','stockwerke','waermeManual','heizlastManual','strom','spezStrom',
     'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
     'dachNeigung','dachAutoAzimut','pvRidgeOverride','pvModus','pvFlGcr',
-    'pvFlAusrichtung','pvFlBelegung','pvBaujahr',
+    'pvFlAusrichtung','pvFlBelegung','pvBaujahr','notstrom',
   ];
   fields.forEach(field => {
     if (source[field] !== undefined) target[field] = structuredClone(source[field]);
@@ -3254,6 +3258,8 @@ function _applyProjectData(project) {
             newG.pvFlGcr        = g.pvFlGcr ?? null;
             newG.pvFlAusrichtung = g.pvFlAusrichtung || 'sued';
             newG.pvFlBelegung   = g.pvFlBelegung ?? null;
+            // Notstromklasse (26-blackout-modus.js)
+            if (g.notstrom) newG.notstrom = normalisiereNotstrom(g.notstrom);
             newG.pvFlaechen     = (g.pvFlaechen || []).map(f => ({ id: f.id, typ: f.typ, polygon: f.polygon, flaeche: f.flaeche, ...(f.auto ? { auto: f.auto } : {}), layer: null, svgLayer: null }));
             newG.pvFlaechen.forEach(f => {
               attachGebPvLayer(newG, f);
@@ -3522,6 +3528,7 @@ function _applyProjectData(project) {
       // NAP-Grenzen vor der PV-Analyse — sie übernimmt die Grenzen in ihren Zustand
       if (typeof window.sgNaRestoreNapGrenzen === 'function') window.sgNaRestoreNapGrenzen(project.napGrenzen || null);
       if (typeof window.pvRestoreState === 'function') window.pvRestoreState(project.pvAnalyse || null);
+      if (typeof window.blackoutRestoreState === 'function') window.blackoutRestoreState(project.blackout || null);
       if (project.battery) {
         const ids = {capacityKwh:'bat-kapazitaet',powerKw:'bat-leistung',investEurKwh:'opt-bat-invest',studyLifeYears:'opt-bat-life',calendarFadePctPerYear:'bat-calendar-fade',cycleLife:'bat-cycle-life',eolCapacityPct:'bat-eol-pct'};
         for (const [key,id] of Object.entries(ids)) { const el=document.getElementById(id); if(el && project.battery[key] != null) el.value=project.battery[key]; }

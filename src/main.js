@@ -99,6 +99,7 @@ import * as netzanschlussPanel from './22-netzanschluss-panel.js';
 import * as messjahrePanel from './23-messjahre-panel.js';
 import * as gefuehrterModus from './24-gefuehrter-modus.js';
 import * as pvModus from './25-pv-modus.js';
+import * as blackoutModus from './26-blackout-modus.js';
 
 // Expose all exports on window for data-* event handlers in HTML
 const modules = [
@@ -116,7 +117,7 @@ const modules = [
   napAnalyse, knotenAnalyse, windAnalyse,
   kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
   clusterCore, clusterMap, engpassSweep, engpassPanel,
-  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus,
+  planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus,
 ];
 window.pdfjsLib = pdfjsLib;
 lifecycle.appLifecycle.listen(window,'pagehide',()=>lifecycle.appLifecycle.dispose(),{once:true});

@@ -271,6 +271,12 @@ function _html() { return `
         title:'Ertrag, Abstände, Eignungsfläche und Szenarien-Vergleich aller Windkraftanlagen' })}
     </div>
 
+    ${_sub('Resilienz')}
+    <div class="lp-tool-grid">
+      ${_tile('🛡 Blackout-Modus', 'blackoutModusToggle()', { id:'btn-blackout-modus-toggle',
+        title:'Gebäude auf der Karte als notstromberechtigt einstufen (kritisch / eingeschränkt / einspeisefähig) und die Notstromlast bilanzieren' })}
+    </div>
+
     ${_sub('Prüfen &amp; vergleichen')}
     <div class="lp-tool-grid" style="grid-template-columns:1fr 1fr 1fr;">
       ${_tile('Bestand prüfen', 'bestandPanelToggle()', { id:'btn-bestand-panel-toggle',

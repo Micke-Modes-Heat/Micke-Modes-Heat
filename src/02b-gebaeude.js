@@ -477,6 +477,12 @@ export function attachPolygonLayer(g){
       if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
       return;
     }
+    // Blackout-Modus: Klick weist die Notstromklasse zu (26-blackout-modus.js)
+    if (typeof window.blackoutModusBuildingClick === 'function' &&
+        window.blackoutModusBuildingClick(g.id)) {
+      if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+      return;
+    }
     // bubblingMouseEvents:false → das Polygon schluckt den Karten-Klick. Bei
     // aktivem Kartenwerkzeug (z.B. Neubau über Abriss zeichnen) reicht
     // selectFromMap den Klick deshalb an die Karte weiter statt auszuwählen.

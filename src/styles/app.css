@@ -2078,3 +2078,24 @@ body.gm-fokus #view-tabs{display:none;}
 #btn-pv-modus-toggle.active{background:rgba(255,213,79,.14)!important;border-color:#ffd54f!important;color:#ffd54f!important;font-weight:600;}
 @media(max-width:1100px){#pv-modus-panel{right:12px;}}
 @media(max-width:760px){#pv-modus-panel{top:auto;bottom:70px;right:8px;left:8px;width:auto;max-height:46vh;}}
+
+/* ── Blackout-Modus (26-blackout-modus.js) ─────────────────────────────────
+   Gleiches Muster wie der PV-Modus: bleibt offen, gehört nicht zu hidePanels(). */
+#blackout-modus-panel{position:fixed;top:76px;right:352px;width:330px;z-index:10035;
+  background:rgba(26,20,22,.97);border:1px solid #ef5350;border-radius:10px;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);color:var(--text);font-size:11px;
+  max-height:calc(100vh - 150px);display:flex;flex-direction:column;}
+#blackout-modus-panel .bom-head{display:flex;align-items:center;gap:6px;padding:7px 9px;
+  border-bottom:1px solid var(--border);flex-shrink:0;}
+#blackout-modus-panel .bom-head-title{flex:1;color:#ef5350;font-weight:600;font-size:11.5px;letter-spacing:.02em;}
+#blackout-modus-panel .bom-head .btn-xs{border-color:#ef5350;color:#ef5350;}
+#blackout-modus-panel .bom-body{padding:8px 9px 10px;overflow-y:auto;}
+#blackout-modus-panel .bom-tabs{display:flex;gap:2px;padding:4px 6px 0;border-bottom:1px solid var(--border);flex-shrink:0;}
+#blackout-modus-panel .bom-tab{flex:1;padding:4px 2px;border:none;border-bottom:2px solid transparent;background:transparent;
+  color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;}
+#blackout-modus-panel .bom-tab:hover{color:var(--text);}
+#blackout-modus-panel .bom-tab.aktiv{color:#ef5350;border-bottom-color:#ef5350;font-weight:600;}
+#blackout-modus-panel summary::-webkit-details-marker{display:none;}
+#btn-blackout-modus-toggle.active{background:rgba(239,83,80,.14)!important;border-color:#ef5350!important;color:#ef9a9a!important;font-weight:600;}
+@media(max-width:1100px){#blackout-modus-panel{right:12px;}}
+@media(max-width:760px){#blackout-modus-panel{top:auto;bottom:70px;right:8px;left:8px;width:auto;max-height:46vh;}}
