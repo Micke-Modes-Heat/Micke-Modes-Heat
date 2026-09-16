@@ -11334,6 +11334,78 @@ table.eb-tab tr.eb-gruppe td{color:var(--muted);font-size:8.5px;text-transform:u
 .eb-liste{margin:0;padding-left:16px;font-size:10px;line-height:1.65;color:var(--text);}
 .eb-liste li{margin-bottom:3px;}
 .eb-leer{padding:26px 18px;text-align:center;color:var(--muted);font-size:11px;}
+
+/* ── Geführter Modus (24-gefuehrter-modus.js) ───────────────────────────── */
+/* Nur Sichtbarkeit: Die Schrittleiste liegt als eigene Zeile unter der
+   Kopfleiste, die Schrittkarte an der Stelle der Tab-Leiste im linken Panel. */
+.gm-bar{display:flex;align-items:center;gap:10px;padding:5px 12px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;position:relative;z-index:1200;}
+.gm-steps{display:flex;align-items:center;gap:3px;flex:1;min-width:0;}
+.gm-st{display:flex;align-items:center;gap:6px;padding:3px 9px 3px 4px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:11px;white-space:nowrap;cursor:pointer;transition:.15s;}
+.gm-st:hover{border-color:var(--accent);color:var(--text);}
+.gm-st .gm-d{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-family:'DM Mono',monospace;font-size:10px;border:1px solid var(--border);}
+.gm-st.done{color:var(--text);border-color:color-mix(in srgb,var(--accent) 35%,transparent);}
+.gm-st.done .gm-d{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);border-color:transparent;}
+.gm-st.on{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600;}
+.gm-st.on .gm-d{background:var(--bg);color:var(--accent);border-color:transparent;}
+.gm-st.fut{opacity:.7;}
+.gm-line{width:7px;height:1px;background:var(--border);flex:none;}
+.gm-expert{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;white-space:nowrap;cursor:pointer;}
+.gm-exit{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0 2px;}
+.gm-exit:hover{color:var(--text);}
+
+.gm-card{padding:11px 12px 12px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;gap:9px;flex:0 0 auto;max-height:62vh;overflow-y:auto;}
+.gm-card.gm-float{position:fixed;right:12px;top:58px;width:298px;max-height:calc(100vh - 78px);overflow-y:auto;z-index:1150;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,0.5);}
+.gm-kicker{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);}
+.gm-titel{margin:1px 0 0;font-size:14.5px;font-weight:600;color:var(--text);}
+.gm-text{margin:0;font-size:11px;line-height:1.5;color:var(--muted);}
+.gm-layer{align-self:flex-start;font-family:'DM Mono',monospace;font-size:10px;padding:2px 7px;border-radius:4px;border:1px dashed var(--accent);color:var(--accent);}
+.gm-group{display:grid;gap:4px;}
+.gm-glabel{font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);}
+.gm-tool{width:100%;text-align:left;padding:7px 9px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:11.5px;cursor:pointer;transition:.15s;}
+.gm-tool:hover{border-color:var(--accent);color:var(--accent);}
+.gm-tool.pri{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent);}
+.gm-ghint{font-size:10px;line-height:1.5;color:#ffd479;background:rgba(249,168,37,0.08);border:1px solid rgba(249,168,37,0.35);border-radius:5px;padding:5px 7px;}
+.gm-gate{border:1px solid var(--border);background:var(--surface2);border-radius:7px;padding:8px 10px;display:grid;gap:5px;}
+.gm-gate-t{font-size:10.5px;font-weight:600;color:var(--text);}
+.gm-row{display:flex;align-items:baseline;gap:6px;font-size:10.5px;color:var(--muted);line-height:1.45;}
+.gm-row .gm-ic{font-family:'DM Mono',monospace;width:11px;flex:none;text-align:center;}
+.gm-row.is-ok .gm-ic{color:#66bb6a;}
+.gm-row.is-warn .gm-ic{color:#ffb74d;}
+.gm-row.is-offen .gm-ic{color:var(--muted);}
+.gm-mini{margin-left:auto;background:none;border:none;color:var(--accent);font-family:inherit;font-size:10px;cursor:pointer;text-decoration:underline;padding:0;}
+.gm-check{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text);cursor:pointer;}
+.gm-hint{font-size:9.5px;line-height:1.55;color:var(--muted);border-top:1px solid var(--border);padding-top:5px;}
+.gm-foot{display:grid;gap:5px;}
+.gm-nav{display:grid;grid-template-columns:auto 1fr;gap:5px;}
+.gm-back{padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;}
+.gm-back[disabled]{opacity:.4;cursor:default;}
+.gm-next{padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:11.5px;cursor:pointer;transition:.15s;}
+.gm-next.bereit{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600;}
+.gm-skip{background:none;border:none;color:var(--muted);font-size:10px;cursor:pointer;text-decoration:underline;padding:2px 0 0;}
+
+/* Fokus: im geführten Modus führt die Schrittleiste, nicht die Tab-Leisten. */
+body.gm-fokus #lp-tabs{display:none;}
+body.gm-fokus #view-tabs{display:none;}
+
+/* ── PV-Modus (25-pv-modus.js) ──────────────────────────────────────────────
+   Schwebendes Panel neben der Karte: es bleibt offen, während über mehrere
+   Dächer hinweg gezeichnet wird, und gehört deshalb bewusst NICHT zu den
+   .panel-Elementen, die hidePanels() wegschaltet. */
+#pv-modus-panel{position:fixed;top:76px;right:352px;width:264px;z-index:10035;
+  background:rgba(28,26,21,.97);border:1px solid #ffd54f;border-radius:10px;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);color:var(--text);font-size:11px;
+  max-height:calc(100vh - 150px);display:flex;flex-direction:column;}
+#pv-modus-panel .pvm-head{display:flex;align-items:center;gap:6px;padding:7px 9px;
+  border-bottom:1px solid var(--border);flex-shrink:0;}
+#pv-modus-panel .pvm-head-title{flex:1;color:#ffd54f;font-weight:600;font-size:11.5px;letter-spacing:.02em;}
+#pv-modus-panel .pvm-head .btn-xs{border-color:#ffd54f;color:#ffd54f;}
+#pv-modus-panel .pvm-head .btn-xs:hover{background:rgba(255,213,79,.12);border-color:#ffd54f;color:#ffd54f;}
+#pv-modus-panel .pvm-body{padding:8px 9px 10px;overflow-y:auto;}
+/* Aktiver Modus: der Knopf im linken Panel trägt sein eigenes Gelb, die
+   allgemeine .active-Regel färbt sonst auf Akzentblau um. */
+#btn-pv-modus-toggle.active{background:rgba(255,213,79,.14)!important;border-color:#ffd54f!important;color:#ffd54f!important;font-weight:600;}
+@media(max-width:1100px){#pv-modus-panel{right:12px;}}
+@media(max-width:760px){#pv-modus-panel{top:auto;bottom:70px;right:8px;left:8px;width:auto;max-height:46vh;}}
 </style>
 
 <script>
@@ -11379,6 +11451,7 @@ if (typeof L !== 'undefined') {
     <button class="var-add-btn" data-click="addVariante()" style="font-size:10px;">+ Variante</button>
   </div>
   <div class="header-spacer" style="flex:1;"></div>
+  <button class="tool-btn" id="btn-gefuehrt" data-click="guideToggle()" style="border-color:#ff9800;color:#ffb74d;font-size:11px;padding:0 10px;gap:5px;" title="Geführter Modus: Schritt für Schritt durch ein Stromgutachten — blendet aus, was im aktuellen Schritt nicht gebraucht wird">🧭 Geführt</button>
   <button class="tool-btn" id="btn-ebenen" data-click="toggleEbenenPanel()" style="border-color:#546e7a;color:#90a4ae;font-size:11px;padding:0 10px;gap:5px;" title="Ansicht: Einfärbung, Gebäude-Symbole und Karten­ebenen">⊞ Ansicht</button>
   <button class="tool-btn" id="btn-feedback-main" data-click="sendAppFeedback()" style="background:#e65100;border-color:#e65100;color:#fff;font-size:11px;padding:0 14px;font-weight:600;letter-spacing:0.2px;" title="Testversion: Feedback oder Fehler melden">✉ Feedback geben</button>
   <div style="position:relative;display:inline-block;">
@@ -11731,6 +11804,7 @@ if (typeof L !== 'undefined') {
         <div class="lp-section-title" style="margin-top:12px;">Stromerzeugung <span class="htip" data-tip="Dieselben Anlagen wie im Elektro-Tab — nur ein zweiter Zugang. Eine hier angelegte PV-Anlage erscheint automatisch auch im Stromteil (gleiche Liegenschaft, ein Objekt).">?</span></div>
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" data-click="togglePvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="Zentrale PV-Anlage (kWp pauschal oder PVGIS-Lastgang) — identisch mit der PV im Stromteil">☀ PV-Anlage</button>
+          <button class="lp-tool-btn" id="btn-pv-modus-toggle" data-click="pvModusToggle()" style="border-color:#ffd54f;color:#ffd54f;" title="Dachflächen direkt auf der Karte zeichnen: Dach anklicken = erste Ecke, Modus bleibt an, nächstes Dach. Die Fläche gehört dem Dach, auf dem sie liegt.">🗺 PV-Modus (Karte)</button>
           <button class="lp-tool-btn" data-click="toggleGebPvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="PV auf Gebäudedächern aktivieren — fließt in dieselbe Strombilanz">☀ Gebäude-PV</button>
           <button class="lp-tool-btn" data-click="toggleFFPvPanel()" style="border-color:#ffd54f;color:#ffd54f;" title="Freiflächen-PV zeichnen — öffnet die Freiflächen-Sektion im Elektro-Tab (gleiche Anlagen)">☀ Freifläche-PV</button>
         </div>
@@ -14901,7 +14975,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-09-15';
   if (d.indexOf('__') === 0) d = '';
-  var c = '51799bb';
+  var c = '684c5cc';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -77757,6 +77831,16 @@ window._isSingleFileBuild = true;
    * Das gilt unabhängig vom Häkchen „Automatisch dimensionieren" — die Schicht
    * sticht die Kanteneinstellung.
    */
+  /**
+   * Kabel, das mangels Bestandswert automatisch ausgelegt wurde. Die
+   * Bestandsprüfung weist es als „Kabel mit geschätztem Querschnitt" aus —
+   * Auslastung und Ertüchtigungskosten stehen damit unter Vorbehalt.
+   */
+  function _merkeSchaetzung(e) {
+    e.qsGeschaetzt = true;
+    e.qsQuelle = e.qsQuelle || 'automatisch ausgelegt — kein Bestandswert erfasst';
+  }
+
   function _darfAuslegen(e) {
     if (!e?.autoSized) return false;
     return getStromEdgeSchicht(e) !== SCHICHT.BESTAND;
@@ -78154,20 +78238,27 @@ window._isSingleFileBuild = true;
       // eine zweite, abweichende Implementierung ohne Parallelstränge; welches
       // Ergebnis angezeigt wurde, hing davon ab, welcher Pfad zuletzt lief.
       const darfAuslegen = _darfAuslegen(e);
-      if (darfAuslegen || e.crossSection === 0) e.cableType = defaultType;
+      // Ein Bestandskabel OHNE erfassten Querschnitt hat nichts zu bewahren. Es auf
+      // den kleinsten Querschnitt fallen zu lassen erzeugt eine Scheinüberlastung —
+      // genau das passierte bei automatisch erzeugten Netzen in der Bestandsschicht.
+      // Also einmalig auslegen und als geschätzt markieren (siehe _merkeSchaetzung).
+      const ohneErfassung = !e.crossSection;
+      const legeAus = darfAuslegen || ohneErfassung;
+      if (legeAus) e.cableType = defaultType;
       const kt = KABEL_TYPEN[e.cableType || defaultType] || KABEL_TYPEN.NAYY;
       const r = nsKabelAuslegen({
         kt, I_A: I, crossSection: e.crossSection, nParallel: e.nParallel,
-        autoSized: darfAuslegen, lengthM: e.lengthM,
+        autoSized: legeAus, lengthM: e.lengthM,
         // Budget aus dem letzten Asset-Lauf, sonst das volle Gesamtbudget
         // (reine Altnetze ohne Assets kennen keine Pfad-Aufteilung).
         duBudgetPct: e._duBudgetPct || MAX_DELTA_U_PCT,
         kIz, tLeiter, cosPhi, U_V: U, fuseA: e.fuseA,
       });
-      if (darfAuslegen || !e.crossSection) {
+      if (legeAus) {
         e.crossSection = r.crossSection;
         e.nParallel    = r.nParallel;
-        if (darfAuslegen) e.fuseA = r.fuseA;
+        e.fuseA        = r.fuseA;
+        if (!darfAuslegen) _merkeSchaetzung(e);
       }
       e._effCrossSection = r.crossSection;
       e._auslegungGedeckelt = r.gedeckelt;
@@ -79044,19 +79135,23 @@ window._isSingleFileBuild = true;
       // dimensioniertes Kabel nicht beim nächsten UI-Klick wieder schrumpft.
       e._duBudgetPct = duBudgetPct;
       const darfAuslegen = _darfAuslegen(e);
+      // Siehe _recalcStromNetzInner: ohne erfassten Querschnitt wird einmalig
+      // ausgelegt, statt auf den kleinsten Querschnitt zu fallen.
+      const legeAus = darfAuslegen || !calc.crossSection;
       const r = nsKabelAuslegen({
         kt: calc.kt, I_A: calc.I_A, I_A_sign: calc.I_A_sign,
         crossSection: calc.crossSection, nParallel: calc.nParallel,
-        autoSized: darfAuslegen, lengthM: calc.lengthM,
+        autoSized: legeAus, lengthM: calc.lengthM,
         duBudgetPct, kIz: _kIz, tLeiter: _tLeiter, cosPhi: COS_PHI, U_V: U_N,
         fuseA: e.fuseA,
       });
       // Zurückgeschrieben wird nur bei autoSized bzw. fehlendem Querschnitt —
       // ein gesetztes Bestandskabel darf ein Jahres-Sweep nicht überschreiben.
-      if (darfAuslegen || !calc.crossSection) {
+      if (legeAus) {
         e.crossSection = r.crossSection;
         e.nParallel    = r.nParallel;
-        if (darfAuslegen) e.fuseA = r.fuseA;
+        e.fuseA        = r.fuseA;
+        if (!darfAuslegen) _merkeSchaetzung(e);
       }
       e._effCrossSection = r.crossSection;
       e._auslegungGedeckelt = r.gedeckelt;
@@ -93518,7 +93613,7 @@ window._isSingleFileBuild = true;
 
   // ── Panel-HTML ────────────────────────────────────────────────────────────────
 
-  function _html$1() { return `
+  function _html$2() { return `
 
   <!-- Kopf -->
   <div class="lp-step" style="margin-bottom:10px;">
@@ -94073,7 +94168,7 @@ window._isSingleFileBuild = true;
   function buildElektroPanel() {
     const el = document.getElementById('lp-elektro');
     if (!el || el.dataset.built === '1') return;
-    el.innerHTML = _html$1();
+    el.innerHTML = _html$2();
     el.dataset.built = '1';
     // Palette-Guard zurücksetzen, damit buildPalette() das neue #asset-palette befüllt
     const palette = document.getElementById('asset-palette');
@@ -120968,6 +121063,9 @@ ${massTbl}
       <button class="btn-xs" style="flex:1;border-color:#ffd54f;color:#ffd54f;" data-click="startGebPvDraw(${g.id},'belegung')">☀ + Belegungsfläche</button>
       <button class="btn-xs red" style="flex:1;" data-click="startGebPvDraw(${g.id},'sperr')">⛔ + Sperrfläche</button>
     </div>
+    <button class="btn-xs" style="width:100%;margin-top:4px;border-color:#ffd54f;color:#ffd54f;"
+      data-click="pvModusStartFuer(${g.id})"
+      title="PV-Modus auf der Karte: Dach anklicken = erste Ecke, der Modus bleibt an — auch für die übrigen Gebäude">🗺 Im PV-Modus zeichnen</button>
     ${flList ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${flList}</div>` : '<div style="font-size:9px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche gezeichnet.</div>'}
     ${flResult}`;
 
@@ -121080,7 +121178,13 @@ ${massTbl}
     // Ohne bubblingMouseEvents:false — der Klick erreicht die Karte ohnehin, also
     // KEIN Event weiterreichen (sonst doppelter Punkt beim Zeichnen). selectFromMap
     // unterdrückt die Auswahl bei aktivem Kartenwerkzeug selbst.
-    fl.layer.on('click', () => { if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id); });
+    fl.layer.on('click', () => {
+      // Im PV-Modus holt der Klick auf eine fertige Flaeche ihr Dach ins Panel.
+      // Ohne das liefe er ins Leere: die PV-Pane liegt ueber den Gebaeuden und
+      // faengt den Klick ab, bevor er das Dach erreicht.
+      if (typeof window.pvModusFlaecheClick === 'function' && window.pvModusFlaecheClick(g.id)) return;
+      if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id);
+    });
     // Sperrflächen initial unsichtbar — updateSperrVisibility zeigt sie beim selektierten Gebäude
     if (fl.typ === 'sperr') {
       fl.layer.setStyle({ opacity: 0, fillOpacity: 0 });
@@ -121089,10 +121193,13 @@ ${massTbl}
   }
 
   // Sperrflächen je nach aktuellem window.selectedId ein-/ausblenden.
+  // Im PV-Modus sind alle sichtbar: dort wird über mehrere Dächer hinweg
+  // gezeichnet, und eine unsichtbare Sperrfläche zeichnet man versehentlich nach.
   window.updateSperrVisibility = function() {
     const selId = window.selectedId;
+    const alle  = !!window.pvModusAktiv;
     (window.gebaeude || []).forEach(g => {
-      const isSel = g.id === selId;
+      const isSel = alle || g.id === selId;
       (g.pvFlaechen || []).forEach(fl => {
         if (fl.typ === 'sperr' && fl.layer) {
           fl.layer.setStyle(isSel
@@ -121164,7 +121271,7 @@ ${massTbl}
   }
 
   // ── Punkt-in-Polygon (Ray-Casting) im metrischen XY-Raum ────────────────────
-  function _pip(pt, poly) {
+  function _pip$1(pt, poly) {
     let inside = false;
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
       const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
@@ -121298,9 +121405,9 @@ ${massTbl}
         const corners = [{ x, y }, { x: x + cellW, y }, { x: x + cellW, y: y + cellD }, { x, y: y + cellD }];
         const center  = { x: x + cellW / 2, y: y + cellD / 2 };
         // muss komplett in EINEM Belegungspolygon liegen
-        if (!belR.some(poly => _pip(center, poly) && corners.every(c => _pip(c, poly)))) continue;
+        if (!belR.some(poly => _pip$1(center, poly) && corners.every(c => _pip$1(c, poly)))) continue;
         // darf kein Sperrpolygon berühren
-        if (sperrR.some(poly => _pip(center, poly) || corners.some(c => _pip(c, poly)))) continue;
+        if (sperrR.some(poly => _pip$1(center, poly) || corners.some(c => _pip$1(c, poly)))) continue;
         const pts  = corners.map(unrot);          // zurück in metrischen (nicht-rotierten) Frame
         // Shimmer-Kante: Süd = obere Kante; Ost-West = abwechselnd ober/unter (Paare)
         const edge = flipEdge ? [pts[3], pts[2]] : [pts[0], pts[1]];
@@ -121502,13 +121609,16 @@ ${massTbl}
     renderGebPvPanel();
   };
 
-  window.startGebPvDraw = function(gId, typ) {
+  // @param {{keepView?:boolean}} [opts] keepView: Kartenausschnitt lassen. Im
+  //   PV-Modus (25-pv-modus.js) beginnt die Zeichnung mit dem Klick aufs Dach —
+  //   ein Sprung der Karte würde die gerade gesetzte erste Ecke verschieben.
+  window.startGebPvDraw = function(gId, typ, opts = {}) {
     const g = window.gebaeude?.find(x => x.id === gId);
     if (!g) return;
     window.cancelGebPvDraw();
     // Aufs Gebäude zoomen + Satellitenansicht einschalten
     ensureSatellite();
-    if (g.polygonLayer) { try { map.fitBounds(g.polygonLayer.getBounds(), { padding: [60, 60], maxZoom: 21 }); } catch(e) {} }
+    if (!opts.keepView && g.polygonLayer) { try { map.fitBounds(g.polygonLayer.getBounds(), { padding: [60, 60], maxZoom: 21 }); } catch(e) {} }
     window.gebPvDraw = { gId, typ, points: [], polyline: null, startMarker: null };
     map.getContainer().style.cursor = 'crosshair';
     showHint(typ === 'sperr'
@@ -121595,10 +121705,17 @@ ${massTbl}
   window.finishGebPvDraw = function() {
     const st = window.gebPvDraw;
     if (!st || st.points.length < 3) return;
-    const g   = window.gebaeude?.find(x => x.id === st.gId);
+    let g     = window.gebaeude?.find(x => x.id === st.gId);
     const pts = st.points.map(p => ({ lat: p.lat, lng: p.lng }));
     const typ = st.typ;
     window.cancelGebPvDraw();
+    // Im PV-Modus entscheidet die Geometrie über die Zuordnung, nicht das
+    // Gebäude, mit dem die Zeichnung begonnen wurde. Ohne das landet eine auf dem
+    // Nachbardach gezeichnete Fläche still beim zuletzt angeklickten Gebäude.
+    if (window.pvModusAktiv && typeof window.pvModusZuordnen === 'function') {
+      g = window.pvModusZuordnen(pts);
+      if (!g) return;                       // Rückfrage abgelehnt → Fläche verwerfen
+    }
     if (!g) return;
     if (!g.pvFlaechen) g.pvFlaechen = [];
     window._gebPvFlCounter = (window._gebPvFlCounter || 0) + 1;
@@ -121614,6 +121731,8 @@ ${massTbl}
     _updateGebLabelPv(g.id);
     calcStromPanel();
     renderGebPvPanel();
+    // Im Modus: Azimut vorbelegen, kWp sofort ins Asset, Panel + Karte nachziehen
+    if (window.pvModusAktiv) window.pvModusNachFlaeche?.(g);
   };
 
   window.removeGebPvFlaeche = function(gId, flId) {
@@ -125750,6 +125869,10 @@ ${massTbl}
 
       if(window.labelsVisible && map.getZoom() >= labelZoom) buildMapLabel(g,center, stats.status);
     });
+
+    // Im PV-Modus zeigt die Karte, welche Dächer schon eine Fläche haben. Die
+    // Einfärbung oben würde das überschreiben — deshalb hier wieder drüberlegen.
+    if (window.pvModusAktiv && typeof window.pvModusMarkiereKarte === 'function') window.pvModusMarkiereKarte();
   }
 
   function buildMapLabel(g,center, status){
@@ -134636,6 +134759,13 @@ out body;>;out skel qt;`;
     g.polygonLayer.on('click',(event)=>{
       if (typeof window.manualWaermeNetzBuildingClick === 'function' &&
           window.manualWaermeNetzBuildingClick(g.id)) {
+        if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+        return;
+      }
+      // PV-Modus: der Klick aufs Dach startet die Fläche (25-pv-modus.js) und ist
+      // zugleich deren erste Ecke — keine Gebäudeauswahl.
+      if (typeof window.pvModusBuildingClick === 'function' &&
+          window.pvModusBuildingClick(g.id, event)) {
         if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
         return;
       }
@@ -179670,7 +179800,7 @@ self.onmessage = function(e) {
 
   // SVG-Text muss maskiert werden — ein & oder < in einem Gebäudenamen zerlegt
   // sonst das ganze Diagramm.
-  const _esc$3 = s => String(s ?? '')
+  const _esc$4 = s => String(s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   // Namen wie „Verbraucher Gewerbe, Handel, Dienstleistung 28" sind doppelt so
@@ -179681,10 +179811,10 @@ self.onmessage = function(e) {
   function _passend(text, breitePx, schriftPx) {
     const s = String(text ?? '');
     const maxZeichen = Math.max(6, Math.floor(breitePx / (schriftPx * 0.55)));
-    if (s.length <= maxZeichen) return _esc$3(s);
+    if (s.length <= maxZeichen) return _esc$4(s);
     const kopf = Math.ceil((maxZeichen - 1) * 0.6);
     const schwanz = maxZeichen - 1 - kopf;
-    return _esc$3(s.slice(0, kopf).trimEnd() + '…' + (schwanz > 0 ? s.slice(-schwanz) : ''));
+    return _esc$4(s.slice(0, kopf).trimEnd() + '…' + (schwanz > 0 ? s.slice(-schwanz) : ''));
   }
 
   // Zwei Gebäude derselben Nutzung heißen gleich („Kfz-Abstellhalle") — erst die
@@ -179958,10 +180088,10 @@ self.onmessage = function(e) {
       const cfg = ASSET_CFG[n.type] || {};
       const nr  = _gebNummer(n);
       const meta = n._chips ? `${n._chips.length} Anlagen` : (cfg.label || n.type);
-      return `<div class="sld-suche-row" data-click="sldSucheWahl('${_esc$3(String(n.id)).replace(/'/g, "\'")}')">
-      <span class="sld-suche-nr">${_esc$3(nr || cfg.icon || '·')}</span>
-      <span class="sld-suche-name">${_esc$3(n.name)}</span>
-      <span class="sld-suche-meta">${_esc$3(meta)}</span>
+      return `<div class="sld-suche-row" data-click="sldSucheWahl('${_esc$4(String(n.id)).replace(/'/g, "\'")}')">
+      <span class="sld-suche-nr">${_esc$4(nr || cfg.icon || '·')}</span>
+      <span class="sld-suche-name">${_esc$4(n.name)}</span>
+      <span class="sld-suche-meta">${_esc$4(meta)}</span>
     </div>`;
     }).join('')
     + (gefunden.length > 25 ? `<div class="sld-suche-leer">… ${gefunden.length - 25} weitere</div>` : '');
@@ -184880,6 +185010,30 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // ── 13l-autonetz.js — Automatische Netz-Generierung auf Asset-System-Basis ──
 
 
+  // ── Voraussetzungen ──────────────────────────────────────────────────────────
+  // Das Auto-Netz braucht die Kette NAP → Schaltanlage → Trafo. Fehlt ein Glied,
+  // kann es nichts verdrahten. Die Prüfung steht separat, damit Dialog und
+  // geführter Modus sie VOR dem Start zeigen können — früher fiel das erst beim
+  // Generieren auf, nachdem die alten Auto-Kabel bereits gelöscht waren.
+  const AUTONETZ_BEDARF = [
+    { type: 'NAP',          label: 'ein Netzanschlusspunkt (NAP)' },
+    { type: 'Schaltanlage', label: 'eine Schaltanlage' },
+    { type: 'Trafo',        label: 'ein Trafo' },
+  ];
+
+  /** @returns {{ok: boolean, fehlt: string[], fehltKurz: string[]}} */
+  function autoNetzVoraussetzungen() {
+    const yr = window.globalYear ?? globalYear ?? new Date().getFullYear();
+    const aktiv = (ASSETS.items || []).filter(a =>
+      (a.domain === 'strom' || a.domain === 'hybrid') && getAssetStatus(a, yr) === 'active');
+    const fehlend = AUTONETZ_BEDARF.filter(b => !aktiv.some(a => a.type === b.type));
+    return {
+      ok: fehlend.length === 0,
+      fehlt: fehlend.map(b => b.label),
+      fehltKurz: fehlend.map(b => b.type),
+    };
+  }
+
   // ── Hilfsfunktionen ──────────────────────────────────────────────────────────
 
   // Einmalig pro autoNetzAssets-Lauf gesetzt; Cache leert sich mit jedem Lauf
@@ -184970,6 +185124,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // ── Dialog ───────────────────────────────────────────────────────────────────
 
   function showAutoNetzDialog() {
+    const vor = autoNetzVoraussetzungen();
     const overlay = document.createElement('div');
     overlay.className = 'ep-modal-overlay';
     const modal = document.createElement('div');
@@ -184977,6 +185132,11 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     modal.innerHTML = `
     <div class="ep-modal-title">Auto-Netz generieren</div>
     <div class="ep-modal-body" style="line-height:1.7;">
+      ${vor.ok ? '' : `<div style="margin:0 0 14px;padding:9px 11px;border:1px solid #f9a825;border-radius:6px;background:rgba(249,168,37,0.09);font-size:11.5px;color:#ffd479;line-height:1.55;">
+        <b>So kann noch kein Netz erzeugt werden.</b><br>
+        Es fehlt: ${vor.fehlt.join(', ')}.<br>
+        <span style="color:#aaa;">Setz die fehlende Komponente über die Palette auf die Karte — das Auto-Netz verbindet NAP → Schaltanlage → Trafo → Verbraucher.</span>
+      </div>`}
       <p style="margin:0 0 14px;font-size:11px;color:#aaa;">
         Bestehende Auto-Kabel werden immer ersetzt. Manuell gezeichnete Kabel bleiben erhalten,
         sofern unten nicht anders gewählt.
@@ -185027,7 +185187,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     </div>
     <div class="ep-modal-btns">
       <button class="ep-modal-btn" id="an-cancel">Abbrechen</button>
-      <button class="ep-modal-btn primary" id="an-ok">Generieren</button>
+      <button class="ep-modal-btn primary" id="an-ok"${vor.ok ? '' : ' disabled style="opacity:.45;cursor:not-allowed;"'}>Generieren</button>
     </div>`;
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -185037,6 +185197,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
     const okBtn = modal.querySelector('#an-ok');
     okBtn.onclick = () => {
+      if (!autoNetzVoraussetzungen().ok) return;
       const overwriteManual = modal.querySelector('#an-overwrite-manual').checked;
       const ring           = modal.querySelector('#an-ring').checked;
       const erzeugungsnetz = modal.querySelector('#an-erzeugung').checked;
@@ -185065,6 +185226,14 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     // Graph einmalig bauen, Distanz-Cache leeren
     _trasseCtx = buildTrasseGraph();
     _distCache.clear();
+
+    // Erst prüfen, dann löschen: sonst stünde das Netz nach einem Fehlversuch
+    // ohne seine bisherigen Auto-Kabel da.
+    const vorauss = autoNetzVoraussetzungen();
+    if (!vorauss.ok) {
+      showHint('⚠ Auto-Netz nicht möglich — es fehlt: ' + vorauss.fehlt.join(', ') + '.');
+      return;
+    }
 
     // 0. Auto-Kanten löschen (immer) — bei overwriteManual zusätzlich auch
     // manuell gezeichnete Kabel, damit das Netz komplett neu aufgebaut wird.
@@ -185105,16 +185274,6 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
     // Wenn Erzeugungstrafos vorhanden: auto. Erzeugungsnetz-Modus aktiv
     const hasErzTrafos = erzTrafos.length > 0;
-
-    // Validierung
-    const errors = [];
-    if (!naps.length)   errors.push('Kein NAP vorhanden.');
-    if (!sas.length)    errors.push('Keine Schaltanlage vorhanden.');
-    if (!trafos.length) errors.push('Kein Trafo vorhanden.');
-    if (errors.length) {
-      showHint('⚠ Auto-Netz: ' + errors.join(' '));
-      return;
-    }
 
     const nap = naps[0];
 
@@ -185253,6 +185412,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   var autonetz = /*#__PURE__*/Object.freeze({
     __proto__: null,
     autoNetzAssets: autoNetzAssets,
+    autoNetzVoraussetzungen: autoNetzVoraussetzungen,
     showAutoNetzDialog: showAutoNetzDialog
   });
 
@@ -185804,7 +185964,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // Der Modus verändert nichts Bestehendes und keine Berechnung.
 
 
-  const BAR_ID = 'schicht-bar';
+  const BAR_ID$1 = 'schicht-bar';
 
   // Im Planungsmodus landen neue Objekte im Delta der AKTIVEN Variante. Welche das
   // ist, muss am Umschalter stehen — sonst plant man in der falschen und merkt es
@@ -185814,7 +185974,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     return varianten.find(v => v.id === activeVariantId)?.name || 'Variante';
   }
 
-  function _html() {
+  function _html$1() {
     const aktiv = getAktiveSchicht();
 
     const knoepfe = SCHICHT_REIHENFOLGE.map(s => {
@@ -185850,8 +186010,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   }
 
   function schichtBarRender() {
-    const el = document.getElementById(BAR_ID);
-    if (el) el.innerHTML = _html();
+    const el = document.getElementById(BAR_ID$1);
+    if (el) el.innerHTML = _html$1();
     _markiereKarte();
   }
 
@@ -186116,8 +186276,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
     const mitFlaeche = geb.filter(g => Number(g?.flaeche) > 0 && g?.nutzung).length;
     const hatQuelle  = ass.some(a => a.type === 'NAP');
-    const mitLaenge  = edg.filter(e => Number(e?.lengthM) > 0).length;
-    const mitQs      = edg.filter(e => e?.autoSized || Number(e?.crossSection) > 0).length;
+    // Stationsinterne Verbindungen (beide Enden im selben Gebäude, z. B. UV →
+    // Verbraucher im Hausanschlussraum) haben real keine Trassenlänge. Sie dürfen
+    // den Lastfluss-Reifegrad nicht blockieren — siehe pruefeKabellaengen, die sie
+    // aus demselben Grund überspringt.
+    const trassen    = edg.filter(e => !e?.stationsintern);
+    const mitLaenge  = trassen.filter(e => Number(e?.lengthM) > 0).length;
+    const mitQs      = trassen.filter(e => e?.autoSized || Number(e?.crossSection) > 0).length;
     const mitJahr    = ass.filter(a => a?.baujahr).length;
 
     const stufe = (id, label, erfuellt, fehlt) => ({ id, label, erfuellt, fehlt: erfuellt ? '' : fehlt });
@@ -186130,12 +186295,12 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         hatQuelle && edg.length > 0,
         !hatQuelle ? 'kein NAP' : 'keine Leitungen'),
       stufe('lastfluss', 'Lastfluss & Spannungsfall',
-        edg.length > 0 && mitLaenge === edg.length && mitQs === edg.length,
-        edg.length === 0 ? 'keine Leitungen'
-          : [mitLaenge < edg.length ? `${edg.length - mitLaenge} ohne Länge` : '',
-             mitQs < edg.length ? `${edg.length - mitQs} ohne Querschnitt` : ''].filter(Boolean).join(', ')),
+        trassen.length > 0 && mitLaenge === trassen.length && mitQs === trassen.length,
+        trassen.length === 0 ? 'keine Leitungen'
+          : [mitLaenge < trassen.length ? `${trassen.length - mitLaenge} ohne Länge` : '',
+             mitQs < trassen.length ? `${trassen.length - mitQs} ohne Querschnitt` : ''].filter(Boolean).join(', ')),
       stufe('engpass', 'Engpass-Fahrplan',
-        ass.length > 0 && mitJahr > 0 && edg.length > 0 && mitLaenge === edg.length,
+        ass.length > 0 && mitJahr > 0 && trassen.length > 0 && mitLaenge === trassen.length,
         mitJahr === 0 ? 'keine Lebenszyklusjahre gepflegt' : 'setzt einen belastbaren Lastfluss voraus'),
     ];
   }
@@ -186185,7 +186350,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // Das Panel wird beim ersten Öffnen dynamisch erzeugt (vgl. Engpass-Panel).
 
 
-  const PANEL_ID$5 = 'bestand-panel';
+  const PANEL_ID$6 = 'bestand-panel';
   let _ergebnis = null;
 
   const SCHWERE_META = {
@@ -186197,14 +186362,14 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // ── Panel-Gerüst ─────────────────────────────────────────────────────────────
 
   function _ensurePanel$5() {
-    let panel = document.getElementById(PANEL_ID$5);
+    let panel = document.getElementById(PANEL_ID$6);
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.id = PANEL_ID$5;
+    panel.id = PANEL_ID$6;
     panel.className = 'float-panel amber-border';
     panel.style.cssText = 'top:70px;min-width:520px;max-width:760px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
     panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$5}')">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$6}')">
       <span style="color:#4fc3f7;font-size:12px;font-weight:600;">🏛 Bestand prüfen</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
@@ -186613,17 +186778,17 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // jedes Mal das komplette Stromnetz abgerissen und neu aufgebaut.
 
 
-  const PANEL_ID$4 = 'varianten-vergleich-panel';
+  const PANEL_ID$5 = 'varianten-vergleich-panel';
 
   function _ensurePanel$4() {
-    let panel = document.getElementById(PANEL_ID$4);
+    let panel = document.getElementById(PANEL_ID$5);
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.id = PANEL_ID$4;
+    panel.id = PANEL_ID$5;
     panel.className = 'float-panel amber-border';
     panel.style.cssText = 'top:70px;min-width:540px;max-width:820px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
     panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$4}')">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$5}')">
       <span style="color:#ce93d8;font-size:12px;font-weight:600;">🔀 Varianten vergleichen</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
@@ -188618,7 +188783,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // in index.html, vgl. Elektro-Panel) und nutzt die vorhandenen float-panel-Stile.
 
 
-  const PANEL_ID$3 = 'engpass-panel';
+  const PANEL_ID$4 = 'engpass-panel';
   let _vergleich = null;   // Ergebnis von engpassVergleich (für die Reserve-Kurve)
   let _massnahmen = null;  // Ergebnis von engpassGeneriereMassnahmen
   let _horizont = null;    // { von, bis } aus der Toolbar; null = Standard (ab heute)
@@ -188670,14 +188835,14 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // ── Panel-Gerüst ─────────────────────────────────────────────────────────────
 
   function _ensurePanel$3() {
-    let panel = document.getElementById(PANEL_ID$3);
+    let panel = document.getElementById(PANEL_ID$4);
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.id = PANEL_ID$3;
+    panel.id = PANEL_ID$4;
     panel.className = 'float-panel amber-border';
     panel.style.cssText = 'top:70px;min-width:660px;max-width:900px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
     panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$3}')">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$4}')">
       <span style="color:#f9a825;font-size:12px;font-weight:600;">⏱ Engpass-Fahrplan</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
@@ -189135,7 +189300,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // überleben.
 
 
-  const PANEL_ID$2 = 'schwellen-panel';
+  const PANEL_ID$3 = 'schwellen-panel';
 
   /**
    * Zugesagte Einspeiseleistung am Netzanknüpfungspunkt.
@@ -189167,14 +189332,14 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // ── Panel ────────────────────────────────────────────────────────────────────
 
   function _ensurePanel$2() {
-    let panel = document.getElementById(PANEL_ID$2);
+    let panel = document.getElementById(PANEL_ID$3);
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.id = PANEL_ID$2;
+    panel.id = PANEL_ID$3;
     panel.className = 'float-panel amber-border';
     panel.style.cssText = 'top:70px;min-width:600px;max-width:860px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
     panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$2}')">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$3}')">
       <span style="color:#4dd0e1;font-size:12px;font-weight:600;">🪜 Schwellentreppe</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
@@ -191161,7 +191326,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   }
 
   // ── Panel-Inhalt ────────────────────────────────────────────────────────────────────────
-  function _esc$2(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+  function _esc$3(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
 
   function clusterRenderPanel() {
     const el = document.getElementById('cluster-content');
@@ -191201,7 +191366,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
           <input type="color" value="${c.farbe}" title="Farbe"
                  onchange="clusterEditFeld('${c.id}','farbe',this.value)"
                  style="width:22px;height:22px;padding:0;border:none;background:none;cursor:pointer;flex-shrink:0;">
-          <input type="text" value="${_esc$2(c.name)}" title="Name"
+          <input type="text" value="${_esc$3(c.name)}" title="Name"
                  onchange="clusterEditFeld('${c.id}','name',this.value)"
                  style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);padding:2px 6px;font-size:12px;font-weight:600;">
           <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${n} Geb.</span>
@@ -191285,7 +191450,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         interactive: false,
         icon: L.divIcon({
           className: 'cluster-badge',
-          html: `<div style="background:${c.farbe};color:#fff;border-radius:14px;padding:2px 9px;font-weight:700;font-size:12px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;line-height:1.15;opacity:${geplant ? 0.55 : 1};">${check}${_esc$2(c.name)}${sub}</div>`,
+          html: `<div style="background:${c.farbe};color:#fff;border-radius:14px;padding:2px 9px;font-weight:700;font-size:12px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;line-height:1.15;opacity:${geplant ? 0.55 : 1};">${check}${_esc$3(c.name)}${sub}</div>`,
           iconSize: [0, 0],
         }),
         zIndexOffset: 1500,
@@ -191826,7 +191991,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // dahinter läge nach dem nächsten sldRefresh() woanders.
 
 
-  const PANEL_ID$1 = 'plandigi-panel';
+  const PANEL_ID$2 = 'plandigi-panel';
   const MAP_ID   = 'plandigi-map';
 
   // Typen, die auf einem NS-/MS-Bestandsplan als Kästchen auftauchen
@@ -191910,7 +192075,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   let _flussLaeuft = false;   // rAF-Schleife der Lastfluss-Animation
   let _flussOffset = 0;
 
-  const _esc$1 = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const _esc$2 = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const _node = id => PD.nodes.find(n => n.id === id) || null;
   const _link = id => PD.links.find(l => l.id === id) || null;
 
@@ -191991,10 +192156,10 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // den Fall, dass man den Plan neben der Karte braucht — er ist verschiebbar und
   // in der Größe ziehbar wie die übrigen Panels.
   function _ensurePanel$1() {
-    let panel = document.getElementById(PANEL_ID$1);
+    let panel = document.getElementById(PANEL_ID$2);
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.id = PANEL_ID$1;
+    panel.id = PANEL_ID$2;
     panel.className = 'pd-panel pd-fullscreen';
     panel.innerHTML = `
     <div class="pd-head" onmousedown="pdHeadDrag(event)">
@@ -192085,7 +192250,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   }
 
   function _istOffen() {
-    return !!document.getElementById(PANEL_ID$1)?.classList.contains('visible');
+    return !!document.getElementById(PANEL_ID$2)?.classList.contains('visible');
   }
 
   function pdTogglePanel() {
@@ -192120,10 +192285,10 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   // Kopfzeile zieht das Fenster — im Vollbild gibt es nichts zu verschieben.
   function pdHeadDrag(ev) {
-    const panel = document.getElementById(PANEL_ID$1);
+    const panel = document.getElementById(PANEL_ID$2);
     if (!panel || panel.classList.contains('pd-fullscreen')) return;
     if (ev.target.closest('button')) return;
-    if (typeof window.startDrag === 'function') window.startDrag(ev, PANEL_ID$1);
+    if (typeof window.startDrag === 'function') window.startDrag(ev, PANEL_ID$2);
   }
 
   // ── Leaflet auf Bildkoordinaten (CRS.Simple) ────────────────────────────────
@@ -192154,7 +192319,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
     // Fenstermodus ist in der Größe ziehbar, Vollbild folgt dem Viewport —
     // Leaflet muss beides mitbekommen
-    const panel = document.getElementById(PANEL_ID$1);
+    const panel = document.getElementById(PANEL_ID$2);
     if (panel && typeof ResizeObserver === 'function') {
       _ro = new ResizeObserver(() => _map && _map.invalidateSize());
       _ro.observe(panel);
@@ -192312,7 +192477,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const marken = alt ? PD.nodes.filter(n => n.planId === alt.id).length : 0;
     if (marken) {
       epConfirm('Markierungen übernehmen?',
-        `„${_esc$1(alt.name)}" trägt ${marken} Eintrag/Einträge samt Kabeln und deren Verknüpfungen `
+        `„${_esc$2(alt.name)}" trägt ${marken} Eintrag/Einträge samt Kabeln und deren Verknüpfungen `
         + `zur Karte. Sie lassen sich auf den neuen Stand übertragen — sinnvoll, solange es `
         + `dieselbe Zeichnung im selben Ausschnitt ist. Wurde der Plan neu gesetzt, besser leer beginnen.`,
         { okText: 'Übertragen', cancelText: 'Leer beginnen' })
@@ -192429,7 +192594,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const b = _blatt(id);
     if (!b || !b.url) return;
     epConfirm('Bild verwerfen?',
-      `Das Planbild von „${_esc$1(b.name)}" wird aus dem Projekt entfernt (${_blattGroesse(b)}). `
+      `Das Planbild von „${_esc$2(b.name)}" wird aus dem Projekt entfernt (${_blattGroesse(b)}). `
       + `Die ${PD.nodes.filter(n => n.planId === b.id).length} Marken bleiben als Nachweis erhalten, `
       + `sind ohne Bild aber nicht mehr sinnvoll zu betrachten. Nicht umkehrbar.`,
       { okText: 'Bild verwerfen', cancelText: 'Behalten', danger: true }).then(ja => {
@@ -192447,7 +192612,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     if (!b) return;
     const anz = PD.nodes.filter(n => n.planId === id).length;
     epConfirm('Blatt entfernen?',
-      `„${_esc$1(b.name)}" wird samt ${anz} Eintrag/Einträgen und deren Kabeln aus dem Plan entfernt. `
+      `„${_esc$2(b.name)}" wird samt ${anz} Eintrag/Einträgen und deren Kabeln aus dem Plan entfernt. `
       + `Bereits in die Karte übernommene Anlagen und Leitungen bleiben bestehen.`,
       { okText: 'Entfernen', cancelText: 'Abbrechen', danger: true }).then(ja => {
       if (!ja) return;
@@ -192490,8 +192655,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         + `${b.w}×${b.h} px (Seitenverhältnis ${(b.h ? b.w / b.h : 0).toFixed(3)}), ${_blattGroesse(b)}`
         + (archiv ? ' · Archiv: zählt im Abgleich nicht mit' : '');
       return `<button class="pd-blatt${b.id === PD.aktivId ? ' active' : ''}${archiv ? ' archiv' : ''}"
-      data-click="pdBlattWechseln('${b.id}')" title="${_esc$1(titel)}">
-      ${archiv ? '🗄 ' : ''}${_esc$1(b.name)}${b.stand ? ` <i>${_esc$1(b.stand)}</i>` : ''}
+      data-click="pdBlattWechseln('${b.id}')" title="${_esc$2(titel)}">
+      ${archiv ? '🗄 ' : ''}${_esc$2(b.name)}${b.stand ? ` <i>${_esc$2(b.stand)}</i>` : ''}
       <span class="pd-blatt-zahl">${anz}</span>
     </button>`;
     }).join('');
@@ -192545,7 +192710,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     _pendingA = null;
     _pendingPts = [];
     _pendingSetzen = null;   // ein Moduswechsel verwirft eine offene Platzierung
-    document.querySelectorAll('#' + PANEL_ID$1 + ' .pd-mode')
+    document.querySelectorAll('#' + PANEL_ID$2 + ' .pd-mode')
       .forEach(b => b.classList.toggle('active', b.dataset.mode === m));
     const div = document.getElementById(MAP_ID);
     if (div) div.style.cursor = (m === 'ansehen') ? '' : 'crosshair';
@@ -192702,9 +192867,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       // Kein Treffer ist selbst ein Befund: der Plan kennt ein Gebäude, die Karte
       // nicht. Statt in eine Sackgasse zu laufen, lässt es sich hier erfassen.
       box.innerHTML = `<div class="pd-suche-leer">Kein Gebäude auf der Karte gefunden</div>
-      <div class="pd-suche-row" data-click="pdFehlendesGebaeude('${_esc$1(s).replace(/'/g, "\\'")}')">
+      <div class="pd-suche-row" data-click="pdFehlendesGebaeude('${_esc$2(s).replace(/'/g, "\\'")}')">
         <span class="pd-suche-nr" style="color:#ef5350">+</span>
-        <span class="pd-suche-name">„${_esc$1(q)}" als <b>fehlend</b> im Plan erfassen</span>
+        <span class="pd-suche-name">„${_esc$2(q)}" als <b>fehlend</b> im Plan erfassen</span>
         <span class="pd-suche-meta">nicht auf der Karte</span>
       </div>`;
       box.style.display = 'block';
@@ -192718,9 +192883,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const fremd = drinNode && drinNode.planId !== PD.aktivId;
       const wo = fremd ? `auf „${_blatt(drinNode.planId)?.name || '?'}"` : 'schon im Plan';
       return `<div class="pd-suche-row${drinNode ? ' drin' : ''}" data-click="pdPlatziereGebaeude('${g.id}')">
-      <span class="pd-suche-nr">${_esc$1(g.gebaeudenummer || '–')}</span>
-      <span class="pd-suche-name">${_esc$1(g.name)}</span>
-      <span class="pd-suche-meta">${drinNode ? _esc$1(wo) : (n ? n + ' Anlage' + (n === 1 ? '' : 'n') : 'ohne Anlagen')}</span>
+      <span class="pd-suche-nr">${_esc$2(g.gebaeudenummer || '–')}</span>
+      <span class="pd-suche-name">${_esc$2(g.name)}</span>
+      <span class="pd-suche-meta">${drinNode ? _esc$2(wo) : (n ? n + ' Anlage' + (n === 1 ? '' : 'n') : 'ohne Anlagen')}</span>
     </div>`;
     }).join('');
     box.style.display = 'block';
@@ -192751,7 +192916,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const anz = _anschlussKandidaten(g.id).length;
     const hint = document.getElementById('pd-modehint');
     if (hint) {
-      hint.innerHTML = `Klick in den Plan setzt <b>${_esc$1(g.name)}</b>`
+      hint.innerHTML = `Klick in den Plan setzt <b>${_esc$2(g.name)}</b>`
         + (anz ? ` samt ${anz} Anlage${anz === 1 ? '' : 'n'}` : ' (Gebäude hat noch keine Anlagen)')
         + ' — Esc bricht ab.';
     }
@@ -192775,7 +192940,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     pdSetMode('knoten');
     _pendingSetzen = { art: 'fehlend', obj: { name, nummer } };
     const hint = document.getElementById('pd-modehint');
-    if (hint) hint.innerHTML = `Klick in den Plan erfasst <b>${_esc$1(name)}</b> als <b>auf der Karte fehlend</b> — Esc bricht ab.`;
+    if (hint) hint.innerHTML = `Klick in den Plan erfasst <b>${_esc$2(name)}</b> als <b>auf der Karte fehlend</b> — Esc bricht ab.`;
   }
 
   function _setzeFehlendesGebaeude(o, p) {
@@ -193166,7 +193331,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     pdSetMode('knoten');
     _pendingSetzen = { art: 'asset', obj: a };
     const hint = document.getElementById('pd-modehint');
-    if (hint) hint.innerHTML = `Klick in den Plan setzt <b>${_esc$1(a.name)}</b> (${_esc$1(ASSET_CFG[a.type]?.label || a.type)}) — Esc bricht ab.`;
+    if (hint) hint.innerHTML = `Klick in den Plan setzt <b>${_esc$2(a.name)}</b> (${_esc$2(ASSET_CFG[a.type]?.label || a.type)}) — Esc bricht ab.`;
   }
 
   function _setzeAssetKnoten(a, p) {
@@ -193185,7 +193350,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   /** Auf der Karte zeigen — im Vollbild vorher ins Fenster wechseln, sonst sieht man nichts. */
   function pdZeigeKarte(art, id) {
-    const panel = document.getElementById(PANEL_ID$1);
+    const panel = document.getElementById(PANEL_ID$2);
     if (panel?.classList.contains('pd-fullscreen')) pdToggleFullscreen();
     if (art === 'g') { flyTo(Number.isNaN(Number(id)) ? id : Number(id)); return; }
     const a = ASSETS.items.find(x => x.id === id);
@@ -193194,7 +193359,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   function pdSeite(seite) {
     _seite = seite;
-    document.querySelectorAll('#' + PANEL_ID$1 + ' .pd-tab')
+    document.querySelectorAll('#' + PANEL_ID$2 + ' .pd-tab')
       .forEach(b => b.classList.toggle('active', b.dataset.tab === seite));
     // Vollstaendig neu zeichnen, nicht nur die Liste: Aenderungen auf der Karte
     // (verschobene Anlage, neu gezeichnetes Gebaeude) veraendern auch die
@@ -193272,7 +193437,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   function pdFarbmodus(m) {
     _farbe = m;
-    document.querySelectorAll('#' + PANEL_ID$1 + ' .pd-farb')
+    document.querySelectorAll('#' + PANEL_ID$2 + ' .pd-farb')
       .forEach(b => b.classList.toggle('active', b.dataset.farbe === m));
     const sel = document.getElementById('pd-rechenmodus');
     if (sel) {
@@ -193371,7 +193536,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       line.bindTooltip(
         () => kante
           ? buildStromEdgeTooltip(kante)
-          : `<b>${_esc$1(l.label || '(Kabel ohne Angabe)')}</b><br>
+          : `<b>${_esc$2(l.label || '(Kabel ohne Angabe)')}</b><br>
            <span style="color:#90a4ae">noch nicht in die Karte übernommen</span>`,
         { sticky: true, className: 'geb-tooltip' });
       line.on('click', ev => {
@@ -193445,7 +193610,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         _marks.addLayer(L.marker(ll, {
           icon: L.divIcon({
             className: 'pd-wert-icon',
-            html: `<div class="pd-wert" style="color:${_linkFarbe(l)}">${_esc$1(_rechenText(e))}</div>`,
+            html: `<div class="pd-wert" style="color:${_linkFarbe(l)}">${_esc$2(_rechenText(e))}</div>`,
             iconSize: null,
           }),
           interactive: false, keyboard: false, zIndexOffset: 300,
@@ -193483,7 +193648,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
           const mk = L.marker(_ll(t.x, t.y), {
             icon: L.divIcon({
               className: 'pd-text-icon',
-              html: `<div class="pd-textmark${kabel ? ' kabel' : ''}">${_esc$1(t.str)}</div>`,
+              html: `<div class="pd-textmark${kabel ? ' kabel' : ''}">${_esc$2(t.str)}</div>`,
               iconSize: null,
             }),
             keyboard: false, zIndexOffset: 400,
@@ -193580,7 +193745,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
              <div class="pd-node${n.uebertragen ? ' uebertragen' : ''}" style="background:${STATUS_COL[st]};border-color:${rand};${hervor ? 'box-shadow:0 0 0 3px rgba(233,30,99,.45);' : ''}">
                <span>${cfg.icon || '◻'}</span>
              </div>
-             <div class="pd-node-lbl">${_esc$1(n.label || '?')}</div>
+             <div class="pd-node-lbl">${_esc$2(n.label || '?')}</div>
            </div>`,
       iconSize: [22, 22], iconAnchor: [11, 11],
     });
@@ -193594,7 +193759,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       return L.divIcon({
         className: 'pd-geb-icon',
         html: `<div class="pd-geb fehlt${hervor ? ' sel' : ''}" style="border-color:${STATUS_COL.fehlt};transform:translate(-50%,-50%) scale(${_symbolFaktor(n).toFixed(3)});">
-               <span class="pd-geb-name">${_esc$1(n.label || 'Gebäude')}</span>
+               <span class="pd-geb-name">${_esc$2(n.label || 'Gebäude')}</span>
                <span class="pd-chips"><span class="pd-chips-leer">nicht auf der Karte</span></span>
              </div>`,
         iconSize: null,
@@ -193605,13 +193770,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const chips = kand.slice(0, 6).map(a => {
       const c = ASSET_CFG[a.type] || {};
       return `<span class="pd-chip${a.id === an?.id ? ' an' : ''}" style="color:${c.color || '#90a4ae'}"
-             title="${_esc$1(a.name)}">${c.icon || '◻'}</span>`;
+             title="${_esc$2(a.name)}">${c.icon || '◻'}</span>`;
     }).join('');
     const mehr = kand.length > 6 ? `<span class="pd-chip pd-chip-mehr">+${kand.length - 6}</span>` : '';
     return L.divIcon({
       className: 'pd-geb-icon',
       html: `<div class="pd-geb${hervor ? ' sel' : ''}${n.uebertragen ? ' uebertragen' : ''}" style="border-color:${STATUS_COL[st]};transform:translate(-50%,-50%) scale(${_symbolFaktor(n).toFixed(3)});">
-             <span class="pd-geb-name">${_esc$1(n.label || 'Gebäude')}</span>
+             <span class="pd-geb-name">${_esc$2(n.label || 'Gebäude')}</span>
              <span class="pd-chips">${chips || '<span class="pd-chips-leer">ohne Anlagen</span>'}${mehr}</span>
            </div>`,
       iconSize: null,
@@ -193682,10 +193847,10 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const assets = ASSETS.items
       .filter(a => a.domain === 'strom' || a.domain === 'hybrid')
       .filter(a => !belegt.has(a.id))
-      .map(a => `<option value="a:${a.id}"${n.linkKind === 'a' && n.linkId === a.id ? ' selected' : ''}>${_esc$1(a.name)} · ${_esc$1(ASSET_CFG[a.type]?.label || a.type)}</option>`)
+      .map(a => `<option value="a:${a.id}"${n.linkKind === 'a' && n.linkId === a.id ? ' selected' : ''}>${_esc$2(a.name)} · ${_esc$2(ASSET_CFG[a.type]?.label || a.type)}</option>`)
       .join('');
     const geb = (window.gebaeude || [])
-      .map(g => `<option value="g:${g.id}"${n.linkKind === 'g' && String(n.linkId) === String(g.id) ? ' selected' : ''}>${_esc$1(g.name)}${g.gebaeudenummer ? ' (Nr. ' + _esc$1(g.gebaeudenummer) + ')' : ''}</option>`)
+      .map(g => `<option value="g:${g.id}"${n.linkKind === 'g' && String(n.linkId) === String(g.id) ? ' selected' : ''}>${_esc$2(g.name)}${g.gebaeudenummer ? ' (Nr. ' + _esc$2(g.gebaeudenummer) + ')' : ''}</option>`)
       .join('');
     return `<option value=""${!n.linkKind ? ' selected' : ''}>— offen —</option>
     <option value="n:"${n.linkKind === 'neu' ? ' selected' : ''}>➕ neu anlegen — Position aus dem Plan geschätzt</option>
@@ -193719,14 +193884,14 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       box.innerHTML = `
       <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL.fehlt}"></span> Fehlt auf der Karte</div>
       <label class="pd-lbl">Bezeichnung im Plan</label>
-      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$1(n.label)}"
+      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$2(n.label)}"
              data-change="pdUpdateNode('label', this.value)"/>
       <label class="pd-lbl">Gebäudenummer</label>
-      <input class="pd-in" type="text" value="${_esc$1(n.gebNummer || '')}"
+      <input class="pd-in" type="text" value="${_esc$2(n.gebNummer || '')}"
              placeholder="z. B. 135"
              data-change="pdUpdateNode('gebNummer', this.value)"/>
       ${treffer
-        ? `<div class="pd-ok">Auf der Karte gibt es jetzt „${_esc$1(treffer.name)}"
+        ? `<div class="pd-ok">Auf der Karte gibt es jetzt „${_esc$2(treffer.name)}"
              <button class="pd-mini" data-click="pdVerknuepfeFehlend('${n.id}')">→ verknüpfen</button></div>`
         : `<div class="pd-warn">Wird nicht übernommen — der Eintrag hält nur fest, dass der Plan
              dieses Gebäude kennt und die Karte nicht. Sobald es auf der Karte gezeichnet ist,
@@ -193744,7 +193909,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const kand = _anschlussKandidaten(n.linkId);
       const an = _anschlussAsset(n);
       const typen = NODE_TYPES
-        .map(t => `<option value="${t}"${t === n.assetType ? ' selected' : ''}>${_esc$1(ASSET_CFG[t]?.label || t)}</option>`)
+        .map(t => `<option value="${t}"${t === n.assetType ? ' selected' : ''}>${_esc$2(ASSET_CFG[t]?.label || t)}</option>`)
         .join('');
       const liste = kand.map(a => {
         const c = ASSET_CFG[a.type] || {};
@@ -193752,15 +193917,15 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
                    data-click="pdUpdateNode('anschluss','${a.id}')"
                    title="Kabel an diesem Kasten enden an dieser Anlage">
                 <span style="color:${c.color || '#90a4ae'}">${c.icon || '◻'}</span>
-                <span class="pd-anschluss-name">${_esc$1(a.name)}</span>
-                <span class="pd-anschluss-typ">${_esc$1(c.label || a.type)}</span>
+                <span class="pd-anschluss-name">${_esc$2(a.name)}</span>
+                <span class="pd-anschluss-typ">${_esc$2(c.label || a.type)}</span>
               </div>`;
       }).join('');
       box.innerHTML = `
       <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL[st]}"></span> Gebäude</div>
-      <div class="pd-route">${_esc$1(g?.name || '(Gebäude gelöscht)')}${g?.gebaeudenummer ? ` <span style="color:var(--muted)">· Nr. ${_esc$1(g.gebaeudenummer)}</span>` : ''}</div>
+      <div class="pd-route">${_esc$2(g?.name || '(Gebäude gelöscht)')}${g?.gebaeudenummer ? ` <span style="color:var(--muted)">· Nr. ${_esc$2(g.gebaeudenummer)}</span>` : ''}</div>
       <label class="pd-lbl">Beschriftung im Plan</label>
-      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$1(n.label)}"
+      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$2(n.label)}"
              data-change="pdUpdateNode('label', this.value)"/>
       <label class="pd-lbl">Anschlusspunkt — hier enden die Kabel</label>
       ${kand.length
@@ -193777,21 +193942,21 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const n = _node(_sel.id);
       if (!n) { _sel = null; return _renderForm(); }
       const typen = NODE_TYPES
-        .map(t => `<option value="${t}"${t === n.assetType ? ' selected' : ''}>${_esc$1(ASSET_CFG[t]?.label || t)}</option>`)
+        .map(t => `<option value="${t}"${t === n.assetType ? ' selected' : ''}>${_esc$2(ASSET_CFG[t]?.label || t)}</option>`)
         .join('');
       const st = _statusNode(n);
       const asset = n.assetId ? ASSETS.items.find(a => a.id === n.assetId) : null;
       box.innerHTML = `
       <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL[st]}"></span> Betriebsmittel</div>
       <label class="pd-lbl">Bezeichnung im Plan</label>
-      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$1(n.label)}"
+      <input id="pd-f-label" class="pd-in" type="text" value="${_esc$2(n.label)}"
              placeholder="z. B. Station IV, KV 50"
              data-change="pdUpdateNode('label', this.value)"/>
       <label class="pd-lbl">Komponententyp</label>
       <select class="pd-in" data-change="pdUpdateNode('assetType', this.value)">${typen}</select>
       <label class="pd-lbl">Verortung auf der Karte</label>
       <select class="pd-in" data-change="pdUpdateNode('verortung', this.value)">${_verortungOptions(n)}</select>
-      ${asset ? `<div class="pd-ok">✔ übernommen als „${_esc$1(asset.name)}"
+      ${asset ? `<div class="pd-ok">✔ übernommen als „${_esc$2(asset.name)}"
              <button class="pd-mini" data-click="pdZeigeAufKarte('${n.id}')">→ auf Karte zeigen</button></div>` : ''}
       ${!n.linkKind && !asset ? `<div class="pd-warn">Ohne Verortung wird dieser Eintrag nicht übernommen.</div>` : ''}
       ${_groessenZeile(n)}
@@ -193818,25 +193983,25 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const unbekannt = l.cableType && !KABEL_TYPEN[l.cableType];
     box.innerHTML = `
     <div class="pd-form-head"><span class="pd-dot" style="background:${STATUS_COL[st]}"></span> Kabel</div>
-    <div class="pd-route">${_esc$1(a?.label || '?')} <span style="color:var(--muted)">→</span> ${_esc$1(b?.label || '?')}</div>
+    <div class="pd-route">${_esc$2(a?.label || '?')} <span style="color:var(--muted)">→</span> ${_esc$2(b?.label || '?')}</div>
     <div class="pd-enden">
-      <span>${endA ? _esc$1(endA.name) + ' <i>' + _esc$1(ASSET_CFG[endA.type]?.label || endA.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
+      <span>${endA ? _esc$2(endA.name) + ' <i>' + _esc$2(ASSET_CFG[endA.type]?.label || endA.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
       <span class="pd-enden-pfeil">→</span>
-      <span>${endB ? _esc$1(endB.name) + ' <i>' + _esc$1(ASSET_CFG[endB.type]?.label || endB.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
+      <span>${endB ? _esc$2(endB.name) + ' <i>' + _esc$2(ASSET_CFG[endB.type]?.label || endB.type) + '</i>' : '<i>noch keine Anlage</i>'}</span>
     </div>
-    ${gleicheAnlage ? `<div class="pd-warn">Beide Enden zeigen auf <b>dieselbe Anlage</b> (${_esc$1(endA.name)}).
+    ${gleicheAnlage ? `<div class="pd-warn">Beide Enden zeigen auf <b>dieselbe Anlage</b> (${_esc$2(endA.name)}).
       Dieses Kabel wird nicht übernommen. Oben den Anschlusspunkt eines der beiden
       Kästen auf eine andere Anlage stellen — oder prüfen, ob beide Einträge
       versehentlich auf dasselbe Gebäude verortet sind.</div>` : ''}
-    ${gleichesGeb ? `<div class="pd-warn">Beide Enden liegen in <b>${_esc$1((window.gebaeude || []).find(x => String(x.id) === String(endA.buildingId))?.name || 'demselben Gebäude')}</b>.
+    ${gleichesGeb ? `<div class="pd-warn">Beide Enden liegen in <b>${_esc$2((window.gebaeude || []).find(x => String(x.id) === String(endA.buildingId))?.name || 'demselben Gebäude')}</b>.
       Das Kabel wird stationsintern mit 0 m angelegt. Falls die Planlinie zwei verschiedene
       Gebäude verbindet, oben den Anschlusspunkt des jeweiligen Kastens prüfen.</div>` : ''}
     <label class="pd-lbl">Beschriftung aus dem Plan</label>
-    <input id="pd-f-kabel" class="pd-in" type="text" value="${_esc$1(l.label)}"
+    <input id="pd-f-kabel" class="pd-in" type="text" value="${_esc$2(l.label)}"
            placeholder="z. B. NYY-J 5x70 oder 3x NA2XS2Y 1x185"
            data-change="pdUpdateLink('label', this.value)"/>
-    ${p ? `<div class="pd-parsed">erkannt: ${_esc$1(p)}</div>` : `<div class="pd-warn">Noch keine Kabelangabe erkannt.</div>`}
-    ${unbekannt ? `<div class="pd-warn">Typ „${_esc$1(l.cableType)}" ist nicht in der Kabeltabelle — Auslegung fällt auf NAYY zurück.</div>` : ''}
+    ${p ? `<div class="pd-parsed">erkannt: ${_esc$2(p)}</div>` : `<div class="pd-warn">Noch keine Kabelangabe erkannt.</div>`}
+    ${unbekannt ? `<div class="pd-warn">Typ „${_esc$2(l.cableType)}" ist nicht in der Kabeltabelle — Auslegung fällt auf NAYY zurück.</div>` : ''}
     <div class="pd-stuetz">
       <span>${(l.points || []).length} Stützpunkt${(l.points || []).length === 1 ? '' : 'e'} entlang der Planlinie</span>
       ${(l.points || []).length ? `<button class="pd-mini" data-click="pdUpdateLink('pointsClear','')">gerade ziehen</button>` : ''}
@@ -193980,8 +194145,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const zeile = (kind, id, st, txt, sub) => `
     <div class="pd-row${_sel?.kind === kind && _sel.id === id ? ' sel' : ''}" data-click="pdSelect('${kind}','${id}')">
       <span class="pd-dot" style="background:${STATUS_COL[st]}"></span>
-      <span class="pd-row-txt">${_esc$1(txt)}</span>
-      <span class="pd-row-sub">${_esc$1(sub)}</span>
+      <span class="pd-row-txt">${_esc$2(txt)}</span>
+      <span class="pd-row-sub">${_esc$2(sub)}</span>
     </div>`;
     // Die Liste zeigt das sichtbare Blatt — dieselbe Sicht wie der Plan daneben.
     const sichtNodes = _sichtNodes();
@@ -194001,13 +194166,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       return `<div class="pd-row${_sel?.kind === 'link' && _sel.id === l.id ? ' sel' : ''}"
                  data-click="pdSelect('link','${l.id}')">
       <span class="pd-dot" style="background:${farbe}"></span>
-      <span class="pd-row-txt">${_esc$1(`${a?.label || '?'} → ${b?.label || '?'}`)}</span>
-      <span class="pd-row-sub">${_esc$1(l.label || 'ohne Angabe')}</span>
+      <span class="pd-row-txt">${_esc$2(`${a?.label || '?'} → ${b?.label || '?'}`)}</span>
+      <span class="pd-row-sub">${_esc$2(l.label || 'ohne Angabe')}</span>
     </div>`;
     }).join('');
     // Bei mehreren Blättern muss der Kopf sagen, wovon die Zahl handelt —
     // sonst liest man die Einträge eines Blattes als die des ganzen Planwerks.
-    const mehr = PD.plaene.length > 1 ? ` · Blatt „${_esc$1(PD.plan.name)}"` : '';
+    const mehr = PD.plaene.length > 1 ? ` · Blatt „${_esc$2(PD.plan.name)}"` : '';
     box.innerHTML =
       `<div class="pd-list-head">Einträge (${sichtNodes.length})${mehr}</div>${nodes || '<div class="pd-empty">—</div>'}
      <div class="pd-list-head">Kabel (${sichtLinks.length})</div>${links || '<div class="pd-empty">—</div>'}`;
@@ -194020,8 +194185,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const setzen = o.art === 'g' ? `pdPlatziereGebaeude('${o.id}')` : `pdPlatziereAsset('${o.id}')`;
       return `<div class="pd-ab-row">
       <span class="pd-dot" style="background:${STATUS_COL.offen}"></span>
-      <span class="pd-row-txt" title="${_esc$1(o.name)}">${_esc$1(o.name)}</span>
-      <span class="pd-row-sub">${_esc$1(o.zusatz)}</span>
+      <span class="pd-row-txt" title="${_esc$2(o.name)}">${_esc$2(o.name)}</span>
+      <span class="pd-row-sub">${_esc$2(o.zusatz)}</span>
       <span class="pd-ab-akt">
         <button class="pd-mini" data-click="${setzen}" title="Im Plan gefunden — jetzt setzen">im Plan setzen</button>
         <button class="pd-mini" data-click="pdZeigeKarte('${o.art}','${o.id}')" title="Auf der Karte zeigen (wechselt ins Fenster)">→ Karte</button>
@@ -194031,8 +194196,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     };
     const abgehakt = o => `<div class="pd-ab-row erledigt">
       <span class="pd-dot" style="background:#546e7a"></span>
-      <span class="pd-row-txt">${_esc$1(o.name)}</span>
-      <span class="pd-row-sub">${_esc$1(o.grund)}</span>
+      <span class="pd-row-txt">${_esc$2(o.name)}</span>
+      <span class="pd-row-sub">${_esc$2(o.grund)}</span>
       <span class="pd-ab-akt">
         <button class="pd-mini" data-click="pdAbhaken('${o.art}','${o.id}')" title="Abhaken rückgängig">↺</button>
       </span>
@@ -194043,11 +194208,11 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const treffer = _kartenTreffer(n);
       return `<div class="pd-ab-row">
       <span class="pd-dot" style="background:${STATUS_COL.fehlt}"></span>
-      <span class="pd-row-txt">${_esc$1(n.label || '(ohne Bezeichnung)')}</span>
-      <span class="pd-row-sub">${n.gebNummer ? 'Nr. ' + _esc$1(n.gebNummer) : 'ohne Nummer'}</span>
+      <span class="pd-row-txt">${_esc$2(n.label || '(ohne Bezeichnung)')}</span>
+      <span class="pd-row-sub">${n.gebNummer ? 'Nr. ' + _esc$2(n.gebNummer) : 'ohne Nummer'}</span>
       <span class="pd-ab-akt">
         ${treffer ? `<button class="pd-mini" data-click="pdVerknuepfeFehlend('${n.id}')"
-              title="Auf der Karte gefunden: ${_esc$1(treffer.name)}">→ verknüpfen</button>` : ''}
+              title="Auf der Karte gefunden: ${_esc$2(treffer.name)}">→ verknüpfen</button>` : ''}
         <button class="pd-mini" data-click="pdSelect('node','${n.id}')">zeigen</button>
       </span>
     </div>`;
@@ -194074,9 +194239,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         const kreis = (m.kreis || []).map(nm);
         return `<div class="pd-ab-row">
           <span class="pd-dot" style="background:#ffa726"></span>
-          <span class="pd-row-txt">${_esc$1(`${nm(e.u)} → ${nm(e.v)}`)}</span>
-          <span class="pd-row-sub">${_esc$1(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${Math.round(e.lengthM || 0)} m`)}</span>
-          ${kreis.length ? `<span class="pd-kreis">Kreis: ${_esc$1(kreis.join(' → '))}</span>` : ''}
+          <span class="pd-row-txt">${_esc$2(`${nm(e.u)} → ${nm(e.v)}`)}</span>
+          <span class="pd-row-sub">${_esc$2(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${Math.round(e.lengthM || 0)} m`)}</span>
+          ${kreis.length ? `<span class="pd-kreis">Kreis: ${_esc$2(kreis.join(' → '))}</span>` : ''}
           <span class="pd-ab-akt">
             ${l ? `<button class="pd-mini" data-click="pdSelect('link','${l.id}')">im Plan zeigen</button>` : ''}
             <button class="pd-mini" data-click="pdRingBestaetigt('${e.id}')"
@@ -194092,7 +194257,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
         return `<div class="pd-ab-row erledigt">
           <span class="pd-dot" style="background:#546e7a"></span>
-          <span class="pd-row-txt">${_esc$1(`${nm(m.kante.u)} → ${nm(m.kante.v)}`)}</span>
+          <span class="pd-row-txt">${_esc$2(`${nm(m.kante.u)} → ${nm(m.kante.v)}`)}</span>
           <span class="pd-row-sub">gewollter Ring</span>
           <span class="pd-ab-akt">
             <button class="pd-mini" data-click="pdRingBestaetigt('${m.kante.id}')" title="Wieder als offen führen">↺</button>
@@ -194107,8 +194272,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         const nm = id => ASSETS.items.find(a => a.id === id)?.name || id;
         return `<div class="pd-ab-row">
           <span class="pd-dot" style="background:${STATUS_COL.fehlt}"></span>
-          <span class="pd-row-txt">${_esc$1(`${nm(e.u)} → ${nm(e.v)}`)}</span>
-          <span class="pd-row-sub">${_esc$1(`${e.cableType || '?'} ${e.crossSection || '?'} mm²`)}</span>
+          <span class="pd-row-txt">${_esc$2(`${nm(e.u)} → ${nm(e.v)}`)}</span>
+          <span class="pd-row-sub">${_esc$2(`${e.cableType || '?'} ${e.crossSection || '?'} mm²`)}</span>
         </div>`;
       }).join('')}
       ${ab.napNs.length > 40 ? `<div class="pd-empty">… und ${ab.napNs.length - 40} weitere</div>` : ''}
@@ -194121,8 +194286,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         const a = l && _node(l.a), b = l && _node(l.b);
         return `<div class="pd-ab-row">
           <span class="pd-dot" style="background:#4dd0e1"></span>
-          <span class="pd-row-txt">${_esc$1(a && b ? `${a.label || '?'} → ${b.label || '?'}` : e.id)}</span>
-          <span class="pd-row-sub">${_esc$1(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${e.qsQuelle || 'geschätzt'}`)}</span>
+          <span class="pd-row-txt">${_esc$2(a && b ? `${a.label || '?'} → ${b.label || '?'}` : e.id)}</span>
+          <span class="pd-row-sub">${_esc$2(`${e.cableType || '?'} ${e.crossSection || '?'} mm² · ${e.qsQuelle || 'geschätzt'}`)}</span>
           <span class="pd-ab-akt">
             ${l ? `<button class="pd-mini" data-click="pdSelect('link','${l.id}')">im Plan zeigen</button>` : ''}
             <button class="pd-mini" data-click="pdQuerschnittBestaetigt('${e.id}')" title="Querschnitt stimmt so">passt</button>
@@ -194135,8 +194300,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     ${ab.vorlaeufig.length ? `<div class="pd-list-head">Position prüfen (${ab.vorlaeufig.length})</div>
       ${ab.vorlaeufig.map(a => `<div class="pd-ab-row">
           <span class="pd-dot" style="background:#ba68c8"></span>
-          <span class="pd-row-txt">${_esc$1(a.name)}</span>
-          <span class="pd-row-sub">${_esc$1(ASSET_CFG[a.type]?.label || a.type)}</span>
+          <span class="pd-row-txt">${_esc$2(a.name)}</span>
+          <span class="pd-row-sub">${_esc$2(ASSET_CFG[a.type]?.label || a.type)}</span>
           <span class="pd-ab-akt">
             <button class="pd-mini" data-click="pdZeigeKarte('a','${a.id}')" title="Auf der Karte zeigen und dort zurechtziehen">→ Karte</button>
             <button class="pd-mini" data-click="pdPositionBestaetigt('${a.id}')" title="Lage stimmt so">passt</button>
@@ -194149,7 +194314,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     ${offenPlan ? `<div class="pd-list-head">Im Plan, noch nicht verortet (${offenPlan})</div>
       ${ab.nurImPlan.map(n => `<div class="pd-row" data-click="pdSelect('node','${n.id}')">
           <span class="pd-dot" style="background:${STATUS_COL[_statusNode(n)]}"></span>
-          <span class="pd-row-txt">${_esc$1(n.label || '(ohne Bezeichnung)')}</span>
+          <span class="pd-row-txt">${_esc$2(n.label || '(ohne Bezeichnung)')}</span>
           <span class="pd-row-sub">ohne Gegenstück</span></div>`).join('')}
       <div class="pd-ab-hinweis">Noch keiner Karte zugeordnet — über das Suchfeld verknüpfen,
         oder als <b>fehlend</b> erfassen, wenn es auf der Karte gar nicht existiert.</div>` : ''}
@@ -194183,7 +194348,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     // Die Kartenseite gehört dazu: ohne sie liest sich „12/12" wie „fertig",
     // obwohl vierzig Gebäude nie betrachtet wurden.
     const ab = pdAbgleich();
-    el.innerHTML = `<b>${_esc$1(PD.plan.name)}</b>${PD.plan.rolle === 'archiv' ? ' <span class="pd-archiv-tag">Archiv</span>' : ''}`
+    el.innerHTML = `<b>${_esc$2(PD.plan.name)}</b>${PD.plan.rolle === 'archiv' ? ' <span class="pd-archiv-tag">Archiv</span>' : ''}`
       + ` · Einträge ${nOk}/${sn.length} · Kabel ${lOk}/${sl.length}${gesamt}`
       + (ab.uebertragen.length ? ` · <span class="pd-vorl">${ab.uebertragen.length} übertragen, Lage prüfen</span>` : '')
       + (ab.nurKarte.length ? ` · <span class="pd-offen">Karte: ${ab.nurKarte.length} nicht im Plan</span>` : ' · Karte vollständig')
@@ -194836,7 +195001,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     } else {
       _marks?.clearLayers();
     }
-    if (document.getElementById(PANEL_ID$1)) { _zeigeGroesse(); _renderAll(); }
+    if (document.getElementById(PANEL_ID$2)) { _zeigeGroesse(); _renderAll(); }
   }
 
   var planDigitalisierer = /*#__PURE__*/Object.freeze({
@@ -195261,7 +195426,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // aktualisiert. Die Funktion liest nur Kanten, Knoten und Kostenfelder.
 
 
-  const PANEL_ID = 'el-ergebnisblatt';
+  const PANEL_ID$1 = 'el-ergebnisblatt';
 
   const TABS = [
     ['uebersicht',    'Übersicht'],
@@ -195294,7 +195459,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   const _laenge = m => m >= 1000 ? _num(m / 1000, 2) + ' km' : _num(m, 0) + ' m';
 
-  const _esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  const _esc$1 = s => String(s ?? '').replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   // Ampel: 0 = ok, 1 = Warnung, 2 = kritisch. Der Grenzwert selbst gilt noch als
@@ -195548,14 +195713,14 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // ── Panel-Gerüst ─────────────────────────────────────────────────────────────
 
   function _ensurePanel() {
-    let panel = document.getElementById(PANEL_ID);
+    let panel = document.getElementById(PANEL_ID$1);
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.id = PANEL_ID;
+    panel.id = PANEL_ID$1;
     panel.className = 'float-panel amber-border';
     panel.style.cssText = 'top:60px;min-width:760px;max-width:1080px;max-height:88vh;padding:0 18px 14px;overflow:auto;';
     panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
+    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID$1}')">
       <span style="color:#f9a825;font-size:12px;font-weight:600;">📄 Ergebnisblatt Elektro</span>
       <span class="drag-dots">⠿</span>
       <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
@@ -195645,8 +195810,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     return `
   <div class="eb-kopf">
     <div class="eb-kopf-meta">
-      <b>${_esc(k.projekt)}</b>
-      <span>Variante: ${_esc(k.variante)}</span>
+      <b>${_esc$1(k.projekt)}</b>
+      <span>Variante: ${_esc$1(k.variante)}</span>
       <span>Betrachtungsjahr: ${k.jahr}</span>
       <span>gerechnet ${zeit} ${stand}</span>
     </div>
@@ -195678,7 +195843,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   // ── Übersicht ────────────────────────────────────────────────────────────────
 
   const _kachel = (label, wert, einheit, stufe = null, tip = '') => `
-  <div class="eb-kachel${stufe != null ? ' is-' + AMPEL[stufe] : ''}"${tip ? ` title="${_esc(tip)}"` : ''}>
+  <div class="eb-kachel${stufe != null ? ' is-' + AMPEL[stufe] : ''}"${tip ? ` title="${_esc$1(tip)}"` : ''}>
     <div class="eb-kachel-label">${label}</div>
     <div class="eb-kachel-wert">${wert}<span class="eb-kachel-einheit">${einheit}</span></div>
   </div>`;
@@ -195744,11 +195909,11 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const rest = f.treffer.length - gezeigt.length;
       const chips = gezeigt.map(t =>
         `<span class="eb-chip" data-click="ebSpringeZu('${t.id}','${t.art}')"
-             title="Auf der Karte zeigen und Eigenschaften öffnen">${_esc(t.label)}</span>`).join('');
+             title="Auf der Karte zeigen und Eigenschaften öffnen">${_esc$1(t.label)}</span>`).join('');
       return `
     <div class="eb-befund is-${AMPEL[f.stufe]}">
-      <div class="eb-befund-kopf">${_esc(f.titel)} <span class="eb-mut">${f.treffer.length}×</span></div>
-      <div class="eb-mut" style="margin:2px 0 5px;">${_esc(f.detail)}</div>
+      <div class="eb-befund-kopf">${_esc$1(f.titel)} <span class="eb-mut">${f.treffer.length}×</span></div>
+      <div class="eb-mut" style="margin:2px 0 5px;">${_esc$1(f.detail)}</div>
       ${chips}${rest > 0 ? `<span class="eb-mut"> +${rest} weitere</span>` : ''}
     </div>`;
     }).join('');
@@ -195769,7 +195934,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
         </tr></thead>
         <tbody>${t.map(r => `
           <tr class="eb-klick" data-click="ebSpringeZu('${r.id}','asset')">
-            <td>${_esc(r.name)}</td>
+            <td>${_esc$1(r.name)}</td>
             <td class="eb-num">${_num(r.kva, 0)}</td>
             <td class="eb-num">${r.ukPct != null ? _num(r.ukPct, 1) : '—'}</td>
             <td class="eb-num">${_num(r.bezugKw, 0)}</td>
@@ -195785,7 +195950,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     const kat = { infrastruktur: 'Infrastruktur', verbraucher: 'Verbraucher', erzeuger: 'Erzeuger', speicher: 'Speicher' };
     const anlagenRows = _modell.anlagen.map(a => `
     <tr>
-      <td>${a.icon} ${_esc(a.label)}</td>
+      <td>${a.icon} ${_esc$1(a.label)}</td>
       <td class="eb-mut">${kat[a.kategorie] || a.kategorie}</td>
       <td class="eb-num">${a.n}</td>
       <td class="eb-num">${a.verbrauchKw > 0 ? _num(a.verbrauchKw, 1) : '—'}</td>
@@ -195838,9 +196003,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
     const body = rows.map(k => `
     <tr class="eb-klick" data-click="ebSpringeZu('${k.id}','kabel')">
-      <td>${_esc(k.von)} → ${_esc(k.nach)}</td>
+      <td>${_esc$1(k.von)} → ${_esc$1(k.nach)}</td>
       <td class="eb-mut">${k.ebene}</td>
-      <td>${k.nParallel > 1 ? k.nParallel + '× ' : ''}${_esc(k.typ)} ${k.querschnitt || '—'} mm²${k.gedeckelt ? ' <span class="eb-warn" title="Am Katalogende gedeckelt">⚠</span>' : ''}</td>
+      <td>${k.nParallel > 1 ? k.nParallel + '× ' : ''}${_esc$1(k.typ)} ${k.querschnitt || '—'} mm²${k.gedeckelt ? ' <span class="eb-warn" title="Am Katalogende gedeckelt">⚠</span>' : ''}</td>
       <td class="eb-num">${_num(k.laengeM, 0)}</td>
       <td class="eb-num">${_num(k.bezugKw, 1)}</td>
       <td class="eb-num">${k.einspKw > 0 ? _num(k.einspKw, 1) : '—'}</td>
@@ -195883,8 +196048,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
     const body = rows.map(n => `
     <tr class="eb-klick" data-click="ebSpringeZu('${n.id}','asset')">
-      <td>${_esc(n.name)}</td>
-      <td class="eb-mut">${_esc(n.typ)}</td>
+      <td>${_esc$1(n.name)}</td>
+      <td class="eb-mut">${_esc$1(n.typ)}</td>
       <td class="eb-num">${n.verbrauchKw > 0 ? _num(n.verbrauchKw, 1) : '—'}</td>
       <td class="eb-num">${n.erzeugungKw > 0 ? _num(n.erzeugungKw, 1) : '—'}</td>
       <td class="eb-num eb-${AMPEL[n.stufe]}">${n.duKum == null ? '—' : _num(n.duKum, 2) + ' %'}</td>
@@ -195923,7 +196088,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       const kabelM   = z.laengeM * z.nParallel;   // Parallelstränge liegen in derselben Trasse
       const material = z.eurM != null ? kabelM * z.eurM : null;
       return `<tr>
-      <td>${z.nParallel > 1 ? z.nParallel + '× ' : ''}${_esc(z.typ)} ${z.querschnitt || '—'} mm²</td>
+      <td>${z.nParallel > 1 ? z.nParallel + '× ' : ''}${_esc$1(z.typ)} ${z.querschnitt || '—'} mm²</td>
       <td class="eb-num">${z.n}</td>
       <td class="eb-num">${_num(z.laengeM, 0)}</td>
       <td class="eb-num">${_num(kabelM, 0)}</td>
@@ -195983,13 +196148,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     let letzteGruppe = '';
     const rows = _modell.annahmen.map(([gruppe, was, wert]) => {
       const kopf = gruppe !== letzteGruppe
-        ? `<tr class="eb-gruppe"><td colspan="2">${_esc(gruppe)}</td></tr>` : '';
+        ? `<tr class="eb-gruppe"><td colspan="2">${_esc$1(gruppe)}</td></tr>` : '';
       letzteGruppe = gruppe;
-      return kopf + `<tr><td>${_esc(was)}</td><td class="eb-num">${_esc(wert)}</td></tr>`;
+      return kopf + `<tr><td>${_esc$1(was)}</td><td class="eb-num">${_esc$1(wert)}</td></tr>`;
     }).join('');
 
     const warnungen = _modell.kopf.warnungen.length
-      ? `<div class="eb-hinweis">${_modell.kopf.warnungen.map(_esc).join('<br/>')}</div>` : '';
+      ? `<div class="eb-hinweis">${_modell.kopf.warnungen.map(_esc$1).join('<br/>')}</div>` : '';
 
     return `
   ${_abschnitt('Rechenparameter', `<table class="eb-tab eb-tab-schmal"><tbody>${rows}</tbody></table>`)}
@@ -196043,7 +196208,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
     const k = _modell.kopf;
     const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
-<title>Ergebnisblatt Elektro — ${_esc(k.projekt)}</title>
+<title>Ergebnisblatt Elektro — ${_esc$1(k.projekt)}</title>
 <style>
   @page { size: A4 landscape; margin: 14mm; }
   body { font-family: "Segoe UI", Arial, sans-serif; font-size: 9pt; color: #1a1a1a; margin: 0; }
@@ -196082,8 +196247,8 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 <div class="druckleiste"><button onclick="window.print()">🖨 Drucken / Als PDF speichern</button></div>
 <h1>Ergebnisblatt Elektroberechnung</h1>
 <div class="meta">
-  <span><b>${_esc(k.projekt)}</b></span>
-  <span>Variante: ${_esc(k.variante)}</span>
+  <span><b>${_esc$1(k.projekt)}</b></span>
+  <span>Variante: ${_esc$1(k.variante)}</span>
   <span>Betrachtungsjahr: ${k.jahr}</span>
   <span>Rechenstand: ${k.gerechnetAm.toLocaleString('de-DE')}</span>
 </div>
@@ -196423,7 +196588,7 @@ ${teile.join('\n')}
   const WRAP_ID = 'strom-messjahre-wrap';
   const INPUT_ID = 'sgmj-datei';
   const STIL_KNOPF = 'font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--accent);cursor:pointer;';
-  const GELB = '#e0a126';
+  const GELB$1 = '#e0a126';
 
   let _daten = { jahre: [], referenzId: null };
   let _ziel = { art: 'bezug', id: '' };
@@ -196489,7 +196654,7 @@ ${teile.join('\n')}
       <div style="min-width:0;">${bhkw}</div>
       <button data-click="sgMjEntfernen('${mj.id}')" title="Messjahr entfernen" style="${STIL_KNOPF}color:var(--muted);padding:1px 4px;">✕</button>
       ${a.reihe.abweichungWerte > toleranz
-        ? `<div style="grid-column:1/-1;font-size:9px;color:${GELB};">⚠ Bezugs- und BHKW-Lastgang sind unterschiedlich lang (${zahl(a.reihe.abweichungWerte)} Werte) — Zeiträume prüfen.</div>`
+        ? `<div style="grid-column:1/-1;font-size:9px;color:${GELB$1};">⚠ Bezugs- und BHKW-Lastgang sind unterschiedlich lang (${zahl(a.reihe.abweichungWerte)} Werte) — Zeiträume prüfen.</div>`
         : ''}
     </div>`;
   }
@@ -196500,12 +196665,12 @@ ${teile.join('\n')}
     const ref = jahre.find(j => j.id === _daten.referenzId);
     let status = '';
     if (jahre.length && !ref) {
-      status = `<span style="color:${GELB};">⚠ Kein Referenzjahr gewählt (●) — PV-Analyse, NAP-Analyse und Bedarfsprognose rechnen erst danach mit Messdaten.</span>`;
+      status = `<span style="color:${GELB$1};">⚠ Kein Referenzjahr gewählt (●) — PV-Analyse, NAP-Analyse und Bedarfsprognose rechnen erst danach mit Messdaten.</span>`;
     } else if (ref) {
       status = `✓ Referenzjahr ${ref.jahr}${ref.bhkw ? ' (Bezug + BHKW)' : ''} speist PV-Analyse, NAP-Analyse und Bedarfsprognose.`;
     }
     if (doppelt.length) {
-      status += `<br><span style="color:${GELB};">⚠ Messjahr ${doppelt.join(', ')} mehrfach vorhanden — Jahr korrigieren oder Eintrag entfernen.</span>`;
+      status += `<br><span style="color:${GELB$1};">⚠ Messjahr ${doppelt.join(', ')} mehrfach vorhanden — Jahr korrigieren oder Eintrag entfernen.</span>`;
     }
 
     return `<div class="sa-section-title">Stromlastgänge · Messjahre <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:var(--muted);font-size:9px;">(ohne Wärmepumpen) · Bezug EVU + BHKW · Gutachten 3.2 · ● = Referenzjahr</span></div>
@@ -196662,6 +196827,1669 @@ ${teile.join('\n')}
     sgMjSetReferenz: sgMjSetReferenz
   });
 
+  // ── 24-gefuehrter-modus.js — Geführter Modus (Strompfad) ────────────────────
+  //
+  // Erstanwender sehen heute im Elektro-Tab rund 96 Bedienelemente gleichzeitig.
+  // Der geführte Modus zeigt stattdessen je Schritt nur die Werkzeuge, die dort
+  // gebraucht werden, und prüft am Ende jedes Schritts, ob der Datenstand den
+  // nächsten trägt.
+  //
+  // Grundsätze:
+  //   • Der Modus ändert NUR die Sichtbarkeit — keine Daten, keine Rechnung.
+  //     Alles, was ein Schritt anbietet, ruft dieselben Funktionen auf wie der
+  //     Expertenmodus. Projektdateien bleiben unberührt.
+  //   • Der Zustand (Schritt, an/aus) liegt in localStorage, NICHT im Projekt:
+  //     sonst müsste er in die Feldlisten von captureStromNetzState und
+  //     _buildProjectData eingetragen werden und verschwände dort still.
+  //   • Die Tore sind weich: „Trotzdem weiter" ist immer möglich. Die Prüfungen
+  //     in Schritt 3 und 6 sind noch nie an echten Projektdaten gelaufen.
+  //
+  // Aufbau: Schrittleiste unter der Kopfleiste + Schrittkarte über dem linken
+  // Panel. Den Fokus macht _fokusAnwenden(): im linken Panel bleiben nur die
+  // Abschnitte stehen, die der Schritt in `zeigen` nennt.
+
+
+  const LS_KEY  = 'mmh-guide-v1';
+  const BAR_ID  = 'gm-bar';
+  const CARD_ID = 'gm-card';
+
+  let _an      = false;     // geführter Modus aktiv
+  let _idx     = 0;         // aktueller Schritt
+  let _expert  = false;     // Expertenmodus: Führung sichtbar, nichts ausgeblendet
+  let _manuell = new Set(); // Schritt-IDs, die der Anwender selbst bestätigt hat
+
+  // ── Hilfen für die Prüfungen ────────────────────────────────────────────────
+
+  const _geb$1    = () => window.gebaeude || [];
+  const _assets = () => ASSETS.items || [];
+  const _edges  = () => window.stromEdges || [];
+  const _feld   = (id) => (document.getElementById(id)?.value || '').trim();
+
+  /** Verbraucher-Asset eines Gebäudes mit hinterlegter Leistung. */
+  function _hatLast(g) {
+    return _assets().some(a => a.type === 'Verbraucher' && a.buildingId === g.id
+      && (Number(a.props?.leistungKW) > 0 || Number(a.leistungKW) > 0));
+  }
+
+  /**
+   * Referenzjahr aus den Messjahren (23-messjahre-panel.js). Der Lastgang steht
+   * als Float32Array in window.elQuartierH — Array.isArray() ist dafuer blind.
+   */
+  function _hatReferenzjahr() { return Number(window.elQuartierH?.length) > 0; }
+
+  function _zeile(status, text, aktion = null) { return { status, text, aktion }; }
+
+  // ── Die Schritte ────────────────────────────────────────────────────────────
+  // tab/view/schicht werden beim Betreten gesetzt, `zeigen` filtert das Panel.
+
+  const GUIDE_STEPS = [
+    {
+      id: 'liegenschaft', titel: 'Liegenschaft anlegen', kurz: 'Liegenschaft',
+      ziel: 'Wo und was ist das Projekt?',
+      text: 'Suche die Liegenschaft, zieh das Plangebiet auf und lade die Gebäude. Die Projektdaten tragen später das Deckblatt des Gutachtens.',
+      tab: 'gebiet', view: 'karte',
+      gruppen: [
+        { label: 'Gebiet', aktionen: [
+          { label: '⬡ Plangebiet zeichnen', click: 'toggleDrawArea()', pri: true },
+          { label: '↓ Gebäude aus OSM laden', click: 'showOsmPanel()' },
+          { label: '🛰 Satellit', click: 'toggleTile()' },
+        ] },
+      ],
+      pruefe() {
+        const n = _geb$1().length;
+        const name = _feld('pd-kaserne-name');
+        const we   = _feld('pd-we-nummer');
+        return {
+          ok: n > 0 && !!name && !!we,
+          zeilen: [
+            _zeile(n > 0 ? 'ok' : 'offen', n > 0 ? `${n} Gebäude geladen` : 'Noch keine Gebäude'),
+            _zeile(name ? 'ok' : 'offen', name ? `Liegenschaft: ${name}` : 'Name der Kaserne fehlt'),
+            _zeile(we ? 'ok' : 'offen', we ? `WE-Nummer: ${we}` : 'WE-Nummer fehlt'),
+          ],
+        };
+      },
+    },
+    {
+      id: 'verbrauch', titel: 'Gebäude & Verbrauch', kurz: 'Verbrauch',
+      ziel: 'Welche Last hängt am Netz, und stimmt jeder Grundriss?',
+      text: 'Prüfe die importierten Gebäude am Grundriss, benenne sie und setze den Nutzungstyp. Das Auto-Befüllen liefert danach einen Schätzwert je Gebäude; der Abgleich gegen den gemessenen Lastgang folgt in Schritt 4.',
+      tab: 'gebiet', view: 'karte',
+      gruppen: [
+        { label: 'Gebäude prüfen', aktionen: [
+          { label: '🏢 Gebäudeliste öffnen', click: "setViewMode('gebaeude')", pri: true },
+          { label: '📋 Gebäudeliste importieren (CSV)', click: 'openGebListImport()' },
+        ] },
+        { label: 'Verbrauch', aktionen: [
+          { label: '✦ Auto-Befüllen (Verbrauch & PV)', click: 'showAutofillWizard()' },
+          { label: '⚡ Strom-Grundlagen: Messjahre', click: 'toggleStromPanel()' },
+        ] },
+      ],
+      pruefe() {
+        const g = _geb$1();
+        const ohneName = g.filter(x => !String(x.name || '').trim()).length;
+        const ohneLast = g.filter(x => !_hatLast(x)).length;
+        const ref = _hatReferenzjahr();
+        return {
+          ok: g.length > 0 && ohneName === 0 && ohneLast === 0 && ref,
+          zeilen: g.length === 0 ? [
+            _zeile('offen', 'Noch keine Gebäude geladen — zurück zu Schritt 1'),
+            _zeile(ref ? 'ok' : 'offen', ref ? 'Referenzjahr gewählt' : 'Kein Referenz-Lastgang gewählt'),
+          ] : [
+            _zeile(ohneName === 0 ? 'ok' : 'warn',
+              ohneName === 0 ? `Alle ${g.length} Gebäude benannt` : `${ohneName} von ${g.length} Gebäuden ohne Namen`),
+            _zeile(ohneLast === 0 ? 'ok' : 'warn',
+              ohneLast === 0 ? 'Alle Gebäude mit Verbrauchswert' : `${ohneLast} von ${g.length} Gebäuden ohne Verbraucher`),
+            _zeile(ref ? 'ok' : 'offen', ref ? 'Referenzjahr gewählt' : 'Kein Referenz-Lastgang gewählt'),
+          ],
+          hinweis: 'Ob ein Grundriss wirklich gesichtet wurde, kann das Tool nicht sehen — das bleibt dein Urteil.',
+        };
+      },
+    },
+    {
+      id: 'bestand', titel: 'Bestandsnetz erfassen', kurz: 'Bestandsnetz',
+      ziel: 'Wie ist das Netz heute gebaut?',
+      text: 'Zwei Wege führen zum Ziel: den Bestandsplan digitalisieren oder das Netz automatisch erzeugen — dafür zuerst die Trassen aus den OSM-Straßen laden. Oder beides: erst automatisch erzeugen, dann am Plan nachziehen. Alles, was du hier anlegst, landet in der Schicht Bestand.',
+      tab: 'elektro', view: 'karte', schicht: SCHICHT.BESTAND,
+      zeigen: ['el-sec-netz'],
+      gruppen: [
+        { label: 'Weg wählen',
+          // Ohne NAP, Schaltanlage und Trafo kann das Auto-Netz nichts verdrahten.
+          // Das soll man sehen, bevor man den Dialog öffnet.
+          hinweis: () => {
+            const v = autoNetzVoraussetzungen();
+            return v.ok ? null : `Automatisch erzeugen geht erst, wenn auf der Karte liegt: ${v.fehlt.join(', ')}. Über die Komponenten-Palette unten setzen.`;
+          },
+          aktionen: [
+          { label: '📐 Bestandsplan digitalisieren', click: 'pdTogglePanel()', pri: true },
+          { label: '↓ Trassen aus OSM-Straßen laden', click: 'loadAndAdoptOsmStrassen()' },
+          { label: '⚡ Netz automatisch erzeugen', click: 'showAutoNetzDialog()' },
+        ] },
+        { label: 'Trassen & Kabel', aktionen: [
+          { label: 'Trasse zeichnen', click: "toggleDrawTrasse('strom')" },
+          { label: 'Kabel ziehen', click: 'startDrawStromEdge()' },
+          { label: 'Einlinienschema', click: 'sldToggle()' },
+        ] },
+        { label: 'Prüfen', aktionen: [
+          { label: '🔍 Bestand prüfen (Details)', click: 'bestandPruefenUndZeigen()' },
+        ] },
+      ],
+      pruefe() {
+        const r = bestandPruefen({
+          assets: _assets(), edges: _edges(), gebaeude: _geb$1(),
+          heute: new Date().getFullYear(),
+        });
+        const topo = r.reifegrad.find(s => s.id === 'topologie');
+        const lauf = r.reifegrad.find(s => s.id === 'lastfluss');
+        return {
+          ok: r.zaehler.fehler === 0 && !!topo?.erfuellt,
+          zeilen: [
+            _zeile(r.zaehler.fehler === 0 ? 'ok' : 'offen',
+              r.zaehler.fehler === 0 ? 'Keine Fehler in der Bestandsprüfung' : `${r.zaehler.fehler} Fehler`,
+              r.zaehler.fehler ? { label: 'zeigen', click: 'bestandPruefenUndZeigen()' } : null),
+            _zeile(r.zaehler.warnung === 0 ? 'ok' : 'warn',
+              `${r.zaehler.warnung} Warnungen, ${r.zaehler.hinweis} Hinweise`),
+            _zeile(topo?.erfuellt ? 'ok' : 'offen',
+              topo?.erfuellt ? 'Netzstruktur trägt das Screening' : `Netzstruktur: ${topo?.fehlt || 'unvollständig'}`),
+            _zeile(lauf?.erfuellt ? 'ok' : 'warn',
+              lauf?.erfuellt ? 'Lastfluss & Spannungsfall belastbar'
+                             : `Engpass-Analyse noch nicht belastbar: ${lauf?.fehlt || ''}`),
+          ],
+        };
+      },
+    },
+    {
+      id: 'anschluss', titel: 'Netzanschluss & Abgleich', kurz: 'Anschluss',
+      ziel: 'Was darf der Anschlusspunkt, und stimmen die geschätzten Lasten?',
+      text: 'Drei Dinge, der Reihe nach: 1. Den gemessenen Lastgang ansehen — Peak und Grundlast plausibel? 2. Die Grenzen am Netzanschluss eintragen (Max. Bezug und Einspeisung laut Netzanschlussvertrag). 3. Die Bestandskalibrierung starten: Sie verteilt den gemessenen Peak nach Nutzfläche mal Nutzungstyp-Faktor auf die Verbraucher und ersetzt damit die Schätzwerte aus Schritt 2.',
+      tab: 'elektro', view: 'analyse', analyse: 'nap',
+      zeigen: [],
+      gruppen: [
+        { label: '1 · Messung ansehen', aktionen: [
+          { label: '📈 NAP-Lastgang', click: "setAnalyseSection('nap')", pri: true },
+        ] },
+        { label: '2 · Grenzen eintragen', aktionen: [
+          { label: '🔌 Netzanschluss-Angaben', click: 'sgNaOeffnen()' },
+        ] },
+        { label: '3 · Lasten abgleichen', aktionen: [
+          { label: '🔧 Bestandskalibrierung starten', click: 'napShowKalibrierungDialog()' },
+        ] },
+      ],
+      pruefe() {
+        const ref   = _hatReferenzjahr();
+        const limit = Number(window.elNapMaxEinspKw) > 0 || Number(_feld('strom-nap-einsp-kw')) > 0;
+        const bezug = Number(window.elNapMaxBezugKw) > 0 || Number(_feld('strom-nap-bezug-kw')) > 0;
+        const nap   = _assets().some(a => a.type === 'NAP');
+        return {
+          ok: ref && limit,
+          zeilen: [
+            _zeile(ref ? 'ok' : 'offen', ref ? 'Referenzjahr liegt vor' : 'Kein Referenz-Lastgang'),
+            _zeile(nap ? 'ok' : 'warn', nap ? 'NAP im Netz vorhanden' : 'Kein NAP gesetzt — ohne ihn keine Kalibrierung'),
+            _zeile(bezug ? 'ok' : 'warn', bezug ? 'Max. Bezug hinterlegt' : 'Max. Bezug am NAP nicht hinterlegt'),
+            _zeile(limit ? 'ok' : 'offen', limit ? 'Einspeiselimit gesetzt' : 'Einspeiselimit fehlt'),
+          ],
+        };
+      },
+    },
+    {
+      id: 'varianten', titel: 'Entwicklung & Varianten', kurz: 'Varianten',
+      ziel: 'Was kommt ohnehin, und was wird in dieser Variante entschieden?',
+      text: 'Neue Anlagen landen jetzt in der Entscheidungsschicht der aktiven Variante. Für PV gibt es zwei Wege: am Gebäude über „Dach & PV" (Dachform, Belegungs- und Sperrflächen — daraus kommt die kWp) oder als eigenes PV-Asset auf der Karte, das du selbst befüllst oder per Auto-Befüllen zuweist.',
+      tab: 'elektro', view: 'karte', schicht: SCHICHT.ENTSCHEIDUNG,
+      zeigen: ['el-sec-anlagen'],
+      gruppen: [
+        { label: 'Variante', aktionen: [
+          { label: '+ Variante anlegen', click: 'addVariante()' },
+        ] },
+        { label: 'PV am Gebäude',
+          hinweis: 'Der übliche Weg: Gebäude in der Liste anklicken → Elektro-Assets → Dach & PV. Dachform, Belegungs- und Sperrflächen ergeben die kWp.',
+          aktionen: [
+            { label: '🏢 Gebäudeliste öffnen', click: 'guideSeitenleisteOeffnen()', pri: true },
+            { label: '✦ Auto-Befüllen (Verbrauch & PV)', click: 'showAutofillWizard()' },
+          ] },
+        { label: 'Einzelne Anlagen setzen', aktionen: [
+          { label: '☀ PV-Asset auf die Karte', click: "setPendingType('PV')" },
+          { label: '☀ Freifläche zeichnen', click: 'startDrawFF()' },
+          { label: '🔋 Batterie-Asset auf die Karte', click: "setPendingType('Batterie')" },
+        ] },
+        { label: 'Auslegung', aktionen: [
+          { label: '📊 PV-Analyse', click: "setAnalyseSection('pva')" },
+          { label: '☀ PV-Übersicht', click: 'pvuTogglePanel()' },
+        ] },
+      ],
+      pruefe() {
+        const n = [..._assets(), ..._edges()].filter(o => o?.schicht === SCHICHT.ENTSCHEIDUNG).length;
+        return {
+          ok: n > 0,
+          zeilen: [
+            _zeile(n > 0 ? 'ok' : 'offen',
+              n > 0 ? `${n} geplante Objekte in der Entscheidungsschicht` : 'Noch nichts in der Entscheidungsschicht'),
+          ],
+          hinweis: 'Die PV-Analyse rechnet live und speichert ihr Ergebnis nicht im Projekt — die gewählte Auslegung von Hand als Anlage eintragen.',
+        };
+      },
+    },
+    {
+      id: 'pruefen', titel: 'Netz rechnen & prüfen', kurz: 'Netz prüfen',
+      ziel: 'Trägt das Netz die Varianten?',
+      text: 'Erst rechnen, dann screenen: Die Schwellentreppe prüft Trafos und Einspeisepunkt. „Im Rahmen" heißt dort nicht „nichts zu tun" — die Kabel prüft erst der Engpass-Fahrplan.',
+      tab: 'elektro', view: 'karte',
+      zeigen: ['el-sec-calc'],
+      gruppen: [
+        { label: 'Rechnen', aktionen: [
+          { label: '⚡ Elektroberechnung starten', click: 'elCalcAssets()', pri: true },
+        ] },
+        { label: 'Screening', aktionen: [
+          { label: '📶 Schwellentreppe', click: 'schwellenPanelToggle()' },
+          { label: '⏱ Engpass-Fahrplan', click: 'engpassPanelToggle()' },
+          { label: '🔍 Netzanalyse', click: 'naTogglePanel()' },
+        ] },
+      ],
+      pruefe() {
+        const stand = window._elErgebnisStand;
+        const gerechnet = _edges().some(e => e._calcJahr != null);
+        return {
+          ok: !!stand || gerechnet,
+          zeilen: [
+            _zeile(stand || gerechnet ? 'ok' : 'offen',
+              stand || gerechnet ? 'Elektroberechnung liegt vor' : 'Noch nicht gerechnet'),
+            _zeile('warn', 'Screening je Variante durchsehen — das Fazit steht im Panel der Schwellentreppe',
+              { label: 'öffnen', click: 'schwellenPanelToggle()' }),
+          ],
+        };
+      },
+    },
+    {
+      id: 'ergebnisse', titel: 'Ergebnisse & Vergleich', kurz: 'Ergebnisse',
+      ziel: 'Was folgt daraus?',
+      text: 'Drei Blickwinkel: das Ergebnis je Variante, die Planungsvarianten nebeneinander und die PV-Auslegung mit ihren fünf festen Varianten.',
+      tab: 'elektro', view: 'karte',
+      zeigen: ['el-sec-auswerten'],
+      manuell: 'Ergebnisse gesichtet',
+      gruppen: [
+        { label: 'Je Variante', aktionen: [
+          { label: '📄 Ergebnisblatt', click: 'ergebnisblattToggle()', pri: true },
+          { label: '💶 Investitionsplan', click: 'showInvestitionsplan()' },
+        ] },
+        { label: 'Nebeneinander', aktionen: [
+          { label: '⇄ Varianten vergleichen', click: 'variantenVergleichToggle()' },
+          { label: '📊 PV-Analyse', click: "setAnalyseSection('pva')" },
+          { label: '⚡ Analyse: Strom', click: "setAnalyseSection('strom')" },
+        ] },
+      ],
+    },
+    {
+      id: 'gutachten', titel: 'Gutachten', kurz: 'Gutachten',
+      ziel: 'Ins Dokument bringen',
+      text: 'Abbildungen und Text stehen im Gutachten-Reiter, die Bilder der Liegenschaft daneben. Am Ende das Projekt sichern.',
+      tab: 'elektro', view: 'analyse', analyse: 'ggrafik',
+      zeigen: [],
+      manuell: 'Gutachten exportiert',
+      gruppen: [
+        { label: 'Dokument', aktionen: [
+          { label: '📝 Gutachten', click: "setAnalyseSection('ggrafik')", pri: true },
+          { label: '🗺️ Liegenschaftsbilder', click: "setAnalyseSection('liegenschaftsbilder')" },
+          { label: '📝 Kennzahlen-Digest', click: 'exportGutachtenDigest()' },
+        ] },
+        { label: 'Sichern', aktionen: [
+          { label: '💾 Projekt speichern', click: 'saveProject()' },
+        ] },
+      ],
+    },
+  ];
+
+  // ── Zustand ─────────────────────────────────────────────────────────────────
+
+  function _laden() {
+    try {
+      const s = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+      _an      = !!s.an;
+      _idx     = Math.min(Math.max(0, s.idx | 0), GUIDE_STEPS.length - 1);
+      _expert  = !!s.expert;
+      _manuell = new Set(Array.isArray(s.manuell) ? s.manuell : []);
+    } catch { /* localStorage gesperrt — Standardwerte behalten */ }
+  }
+
+  function _sichern() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        an: _an, idx: _idx, expert: _expert, manuell: [..._manuell],
+      }));
+    } catch { /* nicht schlimm: der Modus ist dann nur nicht dauerhaft */ }
+  }
+
+  /** Prüfergebnis eines Schritts — inklusive manueller Bestätigung. */
+  function guideStatus(i) {
+    const step = GUIDE_STEPS[i];
+    if (!step) return { ok: false, zeilen: [] };
+    if (step.manuell) {
+      const ok = _manuell.has(step.id);
+      return { ok, zeilen: [_zeile(ok ? 'ok' : 'offen', ok ? step.manuell : 'Noch nicht bestätigt')], manuell: true };
+    }
+    try { return step.pruefe(); }
+    catch (e) {
+      console.warn('[Geführter Modus] Prüfung fehlgeschlagen:', step.id, e);
+      return { ok: false, zeilen: [_zeile('warn', 'Prüfung nicht möglich')] };
+    }
+  }
+
+  // ── Steuerung ───────────────────────────────────────────────────────────────
+
+  function guideToggle() { if (_an) guideStop(); else guideStart(); }
+
+  /** Das linke Panel traegt die Schrittkarte — eingeklappt waere die Fuehrung unsichtbar. */
+  function _panelOeffnen() {
+    const lp = document.getElementById('left-panel');
+    if (!lp || !lp.classList.contains('collapsed')) return;
+    // toggleLeftPanel() kippt einen Modulzustand, der dem DOM entgegenstehen
+    // kann (initResponsiveLayout klappt beim Start zu). Darum bis zu zweimal.
+    for (let i = 0; i < 2 && lp.classList.contains('collapsed'); i++) {
+      try { window.toggleLeftPanel?.(); } catch { break; }
+    }
+  }
+
+  /**
+   * Rechte Seitenleiste öffnen: „Dach & PV" steht je Gebäude unter
+   * Elektro-Assets in der Gebäudeliste, nicht in einem eigenen Panel.
+   */
+  function guideSeitenleisteOeffnen() {
+    const sb = document.getElementById('sidebar');
+    if (sb?.classList.contains('collapsed')) window.toggleSidebar?.();
+    window.showHint?.('Gebäude in der Liste anklicken → Elektro-Assets → Dach & PV');
+  }
+
+  function guideStart() {
+    _an = true; _sichern();
+    document.body.classList.add('gm-an');
+    _panelOeffnen();
+    guideGoTo(_idx, true);
+  }
+
+  function guideStop() {
+    _an = false; _sichern();
+    document.body.classList.remove('gm-an', 'gm-fokus');
+    _fokusLoesen();
+    document.getElementById(BAR_ID)?.remove();
+    document.getElementById(CARD_ID)?.remove();
+  }
+
+  /** Expertenmodus: Schrittleiste bleibt, aber nichts wird ausgeblendet. */
+  function guideSetExpert(an) {
+    _expert = an === undefined ? !_expert : !!an;
+    _sichern();
+    guideRender();
+  }
+
+  function guideGoTo(i, sanft = false) {
+    _idx = Math.min(Math.max(0, Number(i) || 0), GUIDE_STEPS.length - 1);
+    _sichern();
+    const step = GUIDE_STEPS[_idx];
+
+    // Der Schritt stellt die Umgebung selbst ein — das ist der halbe Zweck.
+    try {
+      if (step.view && typeof window.setViewMode === 'function') window.setViewMode(step.view);
+      if (step.analyse && typeof window.setAnalyseSection === 'function') window.setAnalyseSection(step.analyse);
+      if (step.tab && typeof window.setLeftTab === 'function') window.setLeftTab(step.tab);
+      if (step.schicht) { setAktiveSchicht(step.schicht); window.schichtBarRender?.(); }
+    } catch (e) { console.warn('[Geführter Modus] Schrittwechsel:', e); }
+
+    guideRender();
+    // Ansichtswechsel und Panel-Animation brauchen einen Moment; danach steht
+    // erst fest, ob die Karte andocken kann oder schweben muss.
+    setTimeout(guideRender, 350);
+    if (!sanft) document.getElementById(CARD_ID)?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function guideNext() {
+    if (_idx >= GUIDE_STEPS.length - 1) { guideRender(); return; }
+    guideGoTo(_idx + 1);
+  }
+
+  function guideBack() { if (_idx > 0) guideGoTo(_idx - 1); }
+
+  /** Manuelles Häkchen für Schritte ohne automatische Prüfung. */
+  function guideBestaetigen(id) {
+    if (_manuell.has(id)) _manuell.delete(id); else _manuell.add(id);
+    _sichern();
+    guideRender();
+  }
+
+  // ── Fokus: im linken Panel nur die Abschnitte des Schritts ──────────────────
+
+  function _fokusLoesen() {
+    document.querySelectorAll('.gm-aus').forEach(el => {
+      el.classList.remove('gm-aus');
+      el.style.display = el.dataset.gmDisplay || '';
+      delete el.dataset.gmDisplay;
+    });
+  }
+
+  function _fokusAnwenden() {
+    _fokusLoesen();
+    if (!_an || _expert) return;
+    const step = GUIDE_STEPS[_idx];
+    if (!Array.isArray(step.zeigen)) return;   // kein Filter: Tab bleibt vollständig
+
+    const panel = document.querySelector('.lp-content.active');
+    if (!panel) return;
+    const erlaubt = new Set(step.zeigen);
+
+    [...panel.children].forEach(el => {
+      // Eine Abschnitts-Überschrift gehört zu dem Block, den sie auf- und zuklappt.
+      const ziel = el.dataset?.click?.match(/toggleSection\('([^']+)'\)/)?.[1];
+      const sichtbar = (el.id && erlaubt.has(el.id)) || (ziel && erlaubt.has(ziel));
+      if (sichtbar) return;
+      el.dataset.gmDisplay = el.style.display || '';
+      el.style.display = 'none';
+      el.classList.add('gm-aus');
+    });
+  }
+
+  // ── Darstellung ─────────────────────────────────────────────────────────────
+
+  function _esc(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function _barHtml() {
+    const knoepfe = GUIDE_STEPS.map((s, i) => {
+      const st = guideStatus(i);
+      const klasse = i === _idx ? 'on' : (st.ok ? 'done' : 'fut');
+      const marke  = st.ok && i !== _idx ? '✓' : String(i + 1);
+      return `<button class="gm-st ${klasse}" data-click="guideGoTo(${i})" title="${_esc(s.ziel)}">
+      <span class="gm-d">${marke}</span>${_esc(s.kurz || s.titel)}</button>`;
+    }).join('<span class="gm-line"></span>');
+
+    return `<div class="gm-steps">${knoepfe}</div>
+    <label class="gm-expert" title="Alles einblenden — die Schrittleiste bleibt">
+      <input type="checkbox" ${_expert ? 'checked' : ''} data-change="guideSetExpert(this.checked)"> Expertenmodus
+    </label>
+    <button class="gm-exit" data-click="guideStop()" title="Führung beenden">✕</button>`;
+  }
+
+  function _kartenHtml() {
+    const step = GUIDE_STEPS[_idx];
+    const st   = guideStatus(_idx);
+
+    const gruppen = (step.gruppen || []).map(g => {
+      const hinweis = typeof g.hinweis === 'function' ? g.hinweis() : g.hinweis;
+      return `
+    <div class="gm-group">
+      <div class="gm-glabel">${_esc(g.label)}</div>
+      ${g.aktionen.map(a => `<button class="gm-tool${a.pri ? ' pri' : ''}" data-click="${_esc(a.click)}">${_esc(a.label)}</button>`).join('')}
+      ${hinweis ? `<div class="gm-ghint">${_esc(hinweis)}</div>` : ''}
+    </div>`;
+    }).join('');
+
+    const zeilen = (st.zeilen || []).map(z => {
+      const ic = z.status === 'ok' ? '✓' : z.status === 'warn' ? '!' : '○';
+      const aktion = z.aktion
+        ? `<button class="gm-mini" data-click="${_esc(z.aktion.click)}">${_esc(z.aktion.label)}</button>` : '';
+      return `<div class="gm-row is-${z.status}"><span class="gm-ic">${ic}</span><span>${_esc(z.text)}</span>${aktion}</div>`;
+    }).join('');
+
+    const manuell = step.manuell ? `
+    <label class="gm-check"><input type="checkbox" ${_manuell.has(step.id) ? 'checked' : ''}
+      data-change="guideBestaetigen('${step.id}')"> ${_esc(step.manuell)}</label>` : '';
+
+    const letzter = _idx === GUIDE_STEPS.length - 1;
+    const weiter  = letzter ? 'Führung beenden' : `Weiter: ${_esc(GUIDE_STEPS[_idx + 1].titel)} →`;
+    const klick   = letzter ? 'guideStop()' : 'guideNext()';
+
+    return `
+    <div class="gm-kicker">Schritt ${_idx + 1} von ${GUIDE_STEPS.length}</div>
+    <h4 class="gm-titel">${_esc(step.titel)}</h4>
+    <p class="gm-text">${_esc(step.text)}</p>
+    ${step.schicht ? `<span class="gm-layer">Schicht: ${step.schicht === SCHICHT.BESTAND ? 'Bestand' : 'Entscheidung'} · automatisch</span>` : ''}
+    ${gruppen}
+    <div class="gm-gate">
+      <div class="gm-gate-t">Prüfung vor dem nächsten Schritt</div>
+      ${zeilen}
+      ${manuell}
+      ${st.hinweis ? `<div class="gm-hint">${_esc(st.hinweis)}</div>` : ''}
+    </div>
+    <div class="gm-foot">
+      <div class="gm-nav">
+        <button class="gm-back" data-click="guideBack()" ${_idx === 0 ? 'disabled' : ''}>← Zurück</button>
+        <button class="gm-next${st.ok ? ' bereit' : ''}" data-click="${klick}">${weiter}</button>
+      </div>
+      ${st.ok || letzter ? '' : '<button class="gm-skip" data-click="guideNext()">Offene Punkte später klären und trotzdem weiter</button>'}
+    </div>`;
+  }
+
+  function guideRender() {
+    if (!_an) return;
+
+    // Schrittleiste: eigene Zeile unter der Kopfleiste, damit sie nicht mit den
+    // Ansichts-Reitern um den Platz streitet.
+    let bar = document.getElementById(BAR_ID);
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = BAR_ID;
+      bar.className = 'gm-bar';
+      document.querySelector('header')?.insertAdjacentElement('afterend', bar);
+    }
+    bar.innerHTML = _barHtml();
+
+    // Schrittkarte über dem linken Panel, an der Stelle der Tab-Leiste.
+    let card = document.getElementById(CARD_ID);
+    if (!card) {
+      card = document.createElement('div');
+      card.id = CARD_ID;
+      card.className = 'gm-card';
+    }
+    card.innerHTML = _kartenHtml();
+
+    // In der Analyse-Ansicht gibt es kein linkes Panel — dort würde die Führung
+    // sonst genau da verschwinden, wo gearbeitet wird. Also schwebt die Karte.
+    const lp    = document.getElementById('left-panel');
+    // Nicht die Panelbreite messen: die Schrittkarte steckt selbst im Panel und
+    // beeinflusst dessen Breite — das schaukelt sich auf. Stattdessen die
+    // Kartenansicht prüfen; in Analyse, Gebäudeliste & Co. gibt es kein Panel.
+    const karte = document.getElementById('map');
+    const kartenAnsicht = !!karte && !!karte.offsetParent && karte.offsetWidth > 0;
+    const lpDa  = kartenAnsicht && !!lp && !lp.classList.contains('collapsed');
+    const ziel  = lpDa ? (document.getElementById('lp-tabs') || lp) : document.body;
+    card.classList.toggle('gm-float', !lpDa);
+    if (card.parentElement !== ziel) {
+      if (!lpDa) document.body.appendChild(card);
+      else if (ziel.id === 'lp-tabs') ziel.insertAdjacentElement('afterend', card);
+      else ziel.prepend(card);
+    }
+
+    document.body.classList.toggle('gm-fokus', !_expert);
+    _fokusAnwenden();
+  }
+
+  // ── Start ───────────────────────────────────────────────────────────────────
+
+  function guideInit() {
+    _laden();
+    if (!_an) return;
+    guideStart();
+    // initResponsiveLayout() laeuft ebenfalls beim Start und kann das linke
+    // Panel danach zuklappen — dann waere die Schrittkarte unsichtbar.
+    setTimeout(_panelOeffnen, 600);
+  }
+
+  // Tore und Schrittleiste aktuell halten, solange die Führung läuft.
+  appLifecycle.interval(() => { if (_an && document.getElementById(CARD_ID)) guideRender(); }, 4000);
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', guideInit);
+    else setTimeout(guideInit, 0);
+  }
+
+  var gefuehrterModus = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    GUIDE_STEPS: GUIDE_STEPS,
+    guideBack: guideBack,
+    guideBestaetigen: guideBestaetigen,
+    guideGoTo: guideGoTo,
+    guideInit: guideInit,
+    guideNext: guideNext,
+    guideRender: guideRender,
+    guideSeitenleisteOeffnen: guideSeitenleisteOeffnen,
+    guideSetExpert: guideSetExpert,
+    guideStart: guideStart,
+    guideStatus: guideStatus,
+    guideStop: guideStop,
+    guideToggle: guideToggle
+  });
+
+  // ── 25-pv-modus.js — PV-Modus: Dachflächen direkt auf der Karte planen ──────
+  //
+  // Der Weg zu einer Dachfläche führte bisher über fünf Ebenen: Gebäudeliste →
+  // Karte aufklappen → Elektro-Assets → Dach & PV → „Flächen zeichnen" →
+  // „+ Belegungsfläche" (03c-gebaeude-io.js). Nach jeder Fläche endete der
+  // Zeichenmodus und man begann von vorn — bei 50 Gebäuden der Zeitfresser.
+  //
+  // Der PV-Modus dreht das um: ein Werkzeug, das anbleibt. Klick auf ein Dach =
+  // erste Ecke der Fläche, Startpunkt erneut klicken = fertig, nächstes Dach.
+  // Die fertige Fläche gehört dem Gebäude, auf dem sie LIEGT (pvModusZuordnen),
+  // nicht dem, das vorher ausgewählt war.
+  //
+  // Für die Masse gibt es zwei Abkürzungen, die das Zeichnen ganz ersetzen:
+  //   • „Grundriss übernehmen" — bei Schrägdächern ist die Dachfläche der
+  //     Grundriss (das Tool projiziert ihn mit 1/cos(Neigung) und teilt ihn am
+  //     First). Einzeln oder als Stapel für die in der Gebäudeliste ausgewählten
+  //     Gebäude; die Auswahl ist bewusst die Grenze, sonst bekämen Garagen und
+  //     Schuppen ungefragt eine Anlage.
+  //   • Rechteck-Werkzeug — zwei Klicks, am First ausgerichtet. Freihändige
+  //     Vierecke sind nie rechtwinklig, darin geht das Modulraster schlechter auf.
+  //
+  // Der Modus rechnet nichts selbst. Modulplatzierung, kWp, Profile und Assets
+  // bleiben in 03c-gebaeude-io.js; hier stehen Bedienung und Zuordnung. Was das
+  // Panel anfasst, ruft dieselben Handler wie die Gebäudekarte.
+
+
+  const PANEL_ID    = 'pv-modus-panel';
+  const INTERAKTION = 'pv-modus';
+  const DACHFORMEN  = { flach: 'Flachdach', sattel: 'Satteldach', walm: 'Walmdach', pult: 'Pultdach' };
+  const GELB = '#ffd54f';
+  const ROT  = '#e53935';
+
+  let _stoppt = false;
+  /** @type {((e:KeyboardEvent)=>void)|null} */
+  let _tastenHandler = null;
+  /** Rückgängig-Stapel: je Eintrag die in einem Schritt entstandenen Flächen. */
+  let _verlauf = [];
+  /**
+   * kWp der PV-Assets VOR dem laufenden Schritt (null = es gab keins). Muss vor
+   * dem Zeichnen erfasst werden: `finishGebPvDraw` legt über
+   * `_autoCreatePvAssetFromDraw` selbst ein Asset an, danach ist nicht mehr
+   * erkennbar, ob es zum Schritt gehört — und Strg+Z ließe es stehen.
+   * @type {Map<number, number|null>}
+   */
+  let _assetStand = new Map();
+
+  function _assetStandErfassen() {
+    _assetStand = new Map();
+    for (const g of (window.gebaeude || [])) {
+      const pv = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
+      _assetStand.set(g.id, pv ? (parseFloat(pv.props?.leistungKWp) || 0) : null);
+    }
+  }
+
+  /** @returns {number|null|undefined} undefined = unbekannt (Asset unangetastet lassen) */
+  const _assetVorher = gId => (_assetStand.has(gId) ? _assetStand.get(gId) : undefined);
+
+  const _name = g => g?.name || ('Gebäude ' + g?.id);
+  const _geb  = gId => (window.gebaeude || []).find(x => x.id === gId) || null;
+  const _mitPolygon = () => (window.gebaeude || []).filter(g => Array.isArray(g.polygon) && g.polygon.length >= 3);
+
+  function _vorgabe() {
+    if (!window.pvModusVorgabe) window.pvModusVorgabe = { dachform: 'sattel', belegung: 90, neigung: null };
+    return window.pvModusVorgabe;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MODUS AN/AUS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function pvModusToggle() {
+    if (window.pvModusAktiv) pvModusStop(); else pvModusStart();
+  }
+
+  function pvModusStart() {
+    if (window.pvModusAktiv) return;
+    // Über die Interaktionsregistrierung, damit ein anderes Kartenwerkzeug den
+    // Modus sauber beendet (und umgekehrt) statt zwei Werkzeuge gleichzeitig
+    // auf denselben Kartenklick hören zu lassen.
+    beginInteraction({
+      id: INTERAKTION,
+      label: '☀ PV-Modus',
+      hint: 'Dach anklicken = Fläche zeichnen · B/S = Belegung/Sperrfläche · N = nächstes offenes Dach',
+      cancel: () => pvModusStop(),
+    });
+    window.pvModusAktiv = true;
+    if (!window.pvModusTyp)   window.pvModusTyp   = 'belegung';
+    if (!window.pvModusForm)  window.pvModusForm  = 'polygon';
+    if (!window.pvModusListe) window.pvModusListe = 'mit';
+    if (window.pvModusHilfe === undefined) window.pvModusHilfe = true;
+    _vorgabe();
+    _verlauf = [];
+    _assetStandErfassen();
+    ensureSatellite();
+    setPvVisible(true);
+    const cb = document.getElementById('el-pv-visible');
+    if (cb) cb.checked = true;
+    window.updateSperrVisibility?.();            // im Modus: Sperrflächen aller Gebäude
+    _tastenHandler = _taste;
+    document.addEventListener('keydown', _tastenHandler, true);
+    map.on('click', _rechteckKartenklick);
+    document.getElementById('btn-pv-modus-toggle')?.classList.add('active');
+    pvModusRender();
+    pvModusMarkiereKarte();
+  }
+
+  /**
+   * Einstieg aus der „Dach & PV"-Sektion eines Gebäudes: Modus starten und
+   * dieses Dach ins Panel holen. Von dort geht es ohne Rückweg in die Liste
+   * mit den übrigen Dächern weiter.
+   */
+  function pvModusStartFuer(gId) {
+    window.pvModusGeb = gId;
+    if (!window.pvModusAktiv) pvModusStart();
+    flyTo(gId);
+    pvModusRender();
+    pvModusMarkiereKarte();
+  }
+
+  function pvModusStop() {
+    if (!window.pvModusAktiv || _stoppt) return;
+    _stoppt = true;
+    try {
+      window.cancelGebPvDraw?.();
+      window.cancelGebFirstDraw?.();
+      _rechteckAbbruch();
+      window.pvModusAktiv = false;
+      if (_tastenHandler) { document.removeEventListener('keydown', _tastenHandler, true); _tastenHandler = null; }
+      map.off('click', _rechteckKartenklick);
+      _verlauf = [];
+      document.getElementById(PANEL_ID)?.remove();
+      document.getElementById('btn-pv-modus-toggle')?.classList.remove('active');
+      cancelInteraction(INTERAKTION);            // no-op, wenn der Stopp von dort kam
+      window.updateSperrVisibility?.();
+      updateViz();                               // Gebäudestile zurück auf die normale Darstellung
+    } finally { _stoppt = false; }
+  }
+
+  /** Belegung/Sperrfläche umschalten — wirkt auch mitten in einer laufenden Zeichnung. */
+  function pvModusSetTyp(typ) {
+    window.pvModusTyp = typ === 'sperr' ? 'sperr' : 'belegung';
+    const st = window.gebPvDraw;
+    if (st) {
+      st.typ = window.pvModusTyp;
+      st.polyline?.setStyle({ color: st.typ === 'sperr' ? ROT : GELB });
+    }
+    if (window.pvRechteck) {
+      window.pvRechteck.typ = window.pvModusTyp;
+      window.pvRechteck.layer?.setStyle({ color: window.pvModusTyp === 'sperr' ? ROT : GELB });
+    }
+    pvModusRender();
+  }
+
+  /** Zeichenart: freies Polygon oder Rechteck aus zwei Klicks. */
+  function pvmSetForm(form) {
+    window.pvModusForm = form === 'rechteck' ? 'rechteck' : 'polygon';
+    window.cancelGebPvDraw?.();
+    _rechteckAbbruch();
+    pvModusRender();
+  }
+
+  function _taste(event) {
+    const ziel = event.target;
+    const tippt = !!ziel && (ziel.tagName === 'INPUT' || ziel.tagName === 'TEXTAREA' ||
+                             ziel.tagName === 'SELECT' || ziel.isContentEditable);
+    if (event.key === 'Escape') {
+      if (tippt) { ziel.blur(); return; }
+      // Esc beendet erst die laufende Zeichnung, erst beim zweiten Mal den Modus.
+      // Ohne stopPropagation würden zusätzlich der Esc-Handler in 02c und der der
+      // Interaktionsregistrierung feuern — der Modus fiele mit der Fläche zusammen.
+      event.preventDefault();
+      event.stopPropagation();
+      if (window.gebPvDraw || window.gebFirstDraw || window.pvRechteck) {
+        window.cancelGebPvDraw?.();
+        window.cancelGebFirstDraw?.();
+        _rechteckAbbruch();
+        pvModusRender();
+        return;
+      }
+      pvModusStop();
+      return;
+    }
+    if (tippt) return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      event.stopPropagation();
+      pvmUndo();
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const k = event.key.toLowerCase();
+    if (k === 'b' || k === 's') { pvModusSetTyp(k === 'b' ? 'belegung' : 'sperr'); event.preventDefault(); }
+    else if (k === 'n')         { pvmNaechstesOffenes(); event.preventDefault(); }
+    else if (k === 'r')         { pvmSetForm(window.pvModusForm === 'rechteck' ? 'polygon' : 'rechteck'); event.preventDefault(); }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // KARTENKLICK — aus attachPolygonLayer (02b-gebaeude.js)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Klick auf ein Gebäudepolygon im PV-Modus. Der Klick ist zugleich die erste
+   * Ecke der neuen Fläche: das Polygon schluckt den Kartenklick
+   * (bubblingMouseEvents:false), deshalb wird er über forwardClickToMap an die
+   * Karte weitergereicht, wo der normale Zeichenpfad ihn aufnimmt.
+   * @returns {boolean} true = Klick verbraucht (keine Gebäudeauswahl)
+   */
+  function pvModusBuildingClick(gId, event) {
+    if (!window.pvModusAktiv) return false;
+    // Läuft bereits eine Polygonzeichnung, ist der Klick eine weitere Ecke — der
+    // reguläre Weg (selectFromMap → forwardClickToMap) erledigt das.
+    if (window.gebPvDraw || window.gebFirstDraw) return false;
+    const g = _geb(gId);
+    if (!g) return false;
+    const latlng = _klickLatLng(event);
+    if (window.pvModusForm === 'rechteck') {
+      if (latlng) _rechteckKlick(latlng, gId);
+      return true;
+    }
+    window.pvModusGeb = gId;
+    _assetStandErfassen();
+    window.startGebPvDraw?.(gId, window.pvModusTyp || 'belegung', { keepView: true });
+    forwardClickToMap(event);
+    pvModusRender();
+    pvModusMarkiereKarte();
+    return true;
+  }
+
+  /**
+   * Klick auf eine bereits gezeichnete Fläche (aus attachGebPvLayer). Ohne das
+   * liefe der Klick ins Leere: die PV-Flächen liegen in einer eigenen Pane über
+   * den Gebäuden und fangen den Klick ab, bevor er das Dach erreicht.
+   * @returns {boolean} true = Klick verbraucht
+   */
+  function pvModusFlaecheClick(gId) {
+    if (!window.pvModusAktiv) return false;
+    if (window.gebPvDraw || window.gebFirstDraw || window.pvRechteck) return false;  // Zeichnung läuft
+    window.pvModusGeb = gId;
+    pvModusRender();
+    pvModusMarkiereKarte();
+    return true;
+  }
+
+  function _klickLatLng(event) {
+    const domEv = event?.originalEvent;
+    if (domEv && typeof map.mouseEventToLatLng === 'function') {
+      try { return map.mouseEventToLatLng(domEv); } catch { /* Fallback unten */ }
+    }
+    return event?.latlng || null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // RECHTECK — zwei Klicks, am First ausgerichtet
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // Ecken eines Rechtecks von p1 nach p2 in einem um `winkelDeg` gedrehten
+  // Raster (0° = Nord). Für Schrägdächer ist das die Firstrichtung, damit die
+  // Fläche parallel zu First und Traufe liegt.
+  function _rechteckPunkte(p1, p2, winkelDeg) {
+    const cosL = Math.cos(p1.lat * Math.PI / 180);
+    const th = winkelDeg * Math.PI / 180;
+    const e1 = { n: Math.cos(th),  e: Math.sin(th) };      // entlang First
+    const e2 = { n: -Math.sin(th), e: Math.cos(th) };      // senkrecht dazu
+    const dn = (p2.lat - p1.lat) * 111320;
+    const de = (p2.lng - p1.lng) * 111320 * cosL;
+    const a = dn * e1.n + de * e1.e;
+    const b = dn * e2.n + de * e2.e;
+    const punkt = (x, y) => ({
+      lat: p1.lat + (x * e1.n + y * e2.n) / 111320,
+      lng: p1.lng + (x * e1.e + y * e2.e) / (111320 * cosL),
+    });
+    return [punkt(0, 0), punkt(a, 0), punkt(a, b), punkt(0, b)];
+  }
+
+  function _rechteckWinkel(g) {
+    if (!g || g.dachform === 'flach') return (g?.dachAzimut ?? 180) + 90;
+    return (g.dachAzimut ?? 180) + 90;                     // First steht senkrecht zur Falllinie
+  }
+
+  function _rechteckKartenklick(e) {
+    if (!window.pvModusAktiv || window.pvModusForm !== 'rechteck') return;
+    if (window.gebPvDraw) return;
+    _rechteckKlick(e.latlng, null);
+  }
+
+  function _rechteckKlick(latlng, gId) {
+    const st = window.pvRechteck;
+    if (!st) {
+      const g = gId != null ? _geb(gId) : _gebaeudeUnter(latlng);
+      if (!g) { window.showHint?.('Rechteck: mit dem ersten Klick auf ein Dach beginnen.', 4000); return; }
+      window.pvModusGeb = g.id;
+      _assetStandErfassen();
+      window.pvRechteck = {
+        gId: g.id, typ: window.pvModusTyp || 'belegung',
+        p1: { lat: latlng.lat, lng: latlng.lng },
+        winkel: _rechteckWinkel(g), layer: null,
+      };
+      map.on('mousemove', _rechteckBewegung);
+      map.getContainer().style.cursor = 'crosshair';
+      window.showHint?.('▭ Rechteck: zweite Ecke anklicken · Esc = abbrechen', 6000);
+      pvModusRender();
+      return;
+    }
+    const punkte = _rechteckPunkte(st.p1, latlng, st.winkel);
+    const typ = st.typ;
+    _rechteckAbbruch();
+    _flaecheAnlegen(punkte, typ);
+  }
+
+  function _rechteckBewegung(e) {
+    const st = window.pvRechteck;
+    if (!st) return;
+    const punkte = _rechteckPunkte(st.p1, e.latlng, st.winkel);
+    const col = st.typ === 'sperr' ? ROT : GELB;
+    if (st.layer) st.layer.setLatLngs(punkte);
+    else st.layer = L.polygon(punkte, { color: col, weight: 2, dashArray: '6 4', fillOpacity: 0.15 }).addTo(map);
+  }
+
+  function _rechteckAbbruch() {
+    const st = window.pvRechteck;
+    if (!st) return;
+    if (st.layer) map.removeLayer(st.layer);
+    map.off('mousemove', _rechteckBewegung);
+    window.pvRechteck = null;
+    if (typeof map !== 'undefined') map.getContainer().style.cursor = '';
+    window.hideHint?.();
+  }
+
+  function _gebaeudeUnter(latlng) {
+    const treffer = _mitPolygon().filter(g => _pip(latlng, g.polygon));
+    return treffer.length ? _kleinstes(treffer) : null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ZUORDNUNG — die Geometrie entscheidet, nicht die Vorauswahl
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function _pip(pt, poly) {
+    const x = pt.lng, y = pt.lat;
+    let innen = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      const xi = a.lng ?? a[1], yi = a.lat ?? a[0];
+      const xj = b.lng ?? b[1], yj = b.lat ?? b[0];
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi + 1e-15) + xi)) innen = !innen;
+    }
+    return innen;
+  }
+
+  function _meter(a, b) {
+    const dLat = (b.lat - a.lat) * 111320;
+    const dLng = (b.lng - a.lng) * 111320 * Math.cos(a.lat * Math.PI / 180);
+    return Math.sqrt(dLat * dLat + dLng * dLng);
+  }
+
+  // Liegt der Schwerpunkt in mehreren Polygonen (Innenhof, verschachtelte
+  // Grundrisse), gewinnt das kleinste — es ist das speziellere.
+  function _kleinstes(liste) {
+    return liste.reduce((a, b) => ((+a.flaeche || Infinity) <= (+b.flaeche || Infinity) ? a : b));
+  }
+
+  // Flächenanteil per Rasterstichprobe: ohne Polygonverschnitt ist das die
+  // ehrlichste billige Näherung — Punkte innerhalb der gezeichneten Fläche
+  // werden gegen jedes Gebäude gezählt.
+  function _groessteUeberlappung(punkte, kandidaten) {
+    const lats = punkte.map(p => p.lat), lngs = punkte.map(p => p.lng);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    const N = 12;
+    const proben = [];
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const pt = {
+          lat: minLat + (maxLat - minLat) * (i + 0.5) / N,
+          lng: minLng + (maxLng - minLng) * (j + 0.5) / N,
+        };
+        if (_pip(pt, punkte)) proben.push(pt);
+      }
+    }
+    if (!proben.length) return null;
+    let bester = null, meiste = 0;
+    for (const g of kandidaten) {
+      let n = 0;
+      for (const pt of proben) if (_pip(pt, g.polygon)) n++;
+      if (n > meiste) { meiste = n; bester = g; }
+    }
+    return meiste >= proben.length * 0.2 ? bester : null;
+  }
+
+  /**
+   * Gebäude zu einer fertig gezeichneten Fläche bestimmen.
+   * 1. Schwerpunkt im Gebäude · 2. größte Überlappung · 3. Rückfrage.
+   * @returns {any|null} null = Fläche verwerfen
+   */
+  function pvModusZuordnen(punkte) {
+    const kandidaten = _mitPolygon();
+    if (!kandidaten.length) {
+      alert('Es gibt kein Gebäude, dem die Fläche zugeordnet werden könnte.\nDie Fläche wurde verworfen.');
+      return null;
+    }
+    const c = polygonCenter(punkte);
+    const treffer = kandidaten.filter(g => _pip(c, g.polygon));
+    if (treffer.length) return _kleinstes(treffer);
+
+    const ueberlappt = _groessteUeberlappung(punkte, kandidaten);
+    if (ueberlappt) {
+      window.showHint?.(`Fläche „${_name(ueberlappt)}" zugeordnet (Schwerpunkt lag außerhalb des Grundrisses).`, 5000);
+      return ueberlappt;
+    }
+
+    let nah = null, dist = Infinity;
+    for (const g of kandidaten) {
+      const d = _meter(c, polygonCenter(g.polygon));
+      if (d < dist) { dist = d; nah = g; }
+    }
+    const ok = confirm(
+      `Die Fläche liegt auf keinem Gebäude.\n\n` +
+      `Stattdessen „${_name(nah)}" zuordnen? (${Math.round(dist)} m entfernt)\n\n` +
+      `Abbrechen verwirft die Fläche.`);
+    return ok ? nah : null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FLÄCHEN ANLEGEN (Rechteck, Grundriss) + Nachlauf des Zeichnens
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // Fläche aus fertigen Punkten anlegen — gemeinsamer Weg für Rechteck und
+  // Grundrissübernahme. Das freie Polygon geht weiter über finishGebPvDraw.
+  function _flaecheAnhaengen(g, punkte, typ) {
+    if (!g.pvFlaechen) g.pvFlaechen = [];
+    window._gebPvFlCounter = (window._gebPvFlCounter || 0) + 1;
+    const fl = {
+      id: window._gebPvFlCounter, typ,
+      polygon: punkte.map(p => ({ lat: p.lat, lng: p.lng })),
+      flaeche: polygonAreaM2(punkte) || 0, layer: null, svgLayer: null,
+    };
+    g.pvFlaechen.push(fl);
+    g.pvModus = 'flaechen';
+    if (typ !== 'sperr') g.pvAktiv = true;
+    attachGebPvLayer(g, fl);
+    redrawGebPvModules(g);
+    return fl;
+  }
+
+  function _flaecheAnlegen(punkte, typ) {
+    const g = pvModusZuordnen(punkte);
+    if (!g) return null;
+    const fl = _flaecheAnhaengen(g, punkte, typ);
+    const vorher = _assetVorher(g.id);
+    _erstbelegung(g);
+    _verlaufMerken([{ gId: g.id, flId: fl.id, assetVorher: vorher }]);
+    window.pvModusGeb = g.id;
+    window._rerenderCard?.(g.id);
+    window._updateGebLabelPv?.(g.id);
+    window.calcStromPanel?.();
+    window.renderGebPvPanel?.();
+    window.pvModusHilfe = false;
+    pvModusMarkiereKarte();
+    pvModusRender();
+    return fl;
+  }
+
+  /**
+   * Nachlauf einer im Modus fertig gezeichneten Fläche (aus finishGebPvDraw):
+   * Vorgaben und Azimut setzen, kWp sofort ins PV-Asset. Ohne diese Übernahme
+   * entstünde der Zustand „abweichend", den die PV-Übersicht hinterher repariert.
+   */
+  function pvModusNachFlaeche(g) {
+    if (!g) return;
+    window.pvModusGeb = g.id;
+    const vorher = _assetVorher(g.id);
+    _erstbelegung(g);
+    const letzte = (g.pvFlaechen || []).at(-1);
+    if (letzte) _verlaufMerken([{ gId: g.id, flId: letzte.id, assetVorher: vorher }]);
+    window.calcStromPanel?.();
+    window.pvModusHilfe = false;
+    pvModusMarkiereKarte();
+    pvModusRender();
+  }
+
+  // Erstbelegung eines Dachs: Vorgabewerte und Azimut aus dem Grundriss setzen,
+  // danach kWp ins Asset. Liefert true, wenn dabei ein PV-Asset entstanden ist.
+  function _erstbelegung(g) {
+    if (!g || !_hasBelegung(g)) return;
+    const v = _vorgabe();
+    const erste = (g.pvFlaechen || []).filter(f => f.typ !== 'sperr').length <= 1;
+    if (erste) {
+      if (v.dachform && !g._pvDachformManuell) g.dachform = v.dachform;
+      if (v.belegung != null) g.pvFlBelegung = v.belegung;
+      if (v.neigung  != null) g.dachNeigung  = v.neigung;
+      if (g.dachAzimut == null && Array.isArray(g.polygon) && g.polygon.length >= 3) {
+        const az = detectRoofAzimutFromPolygon(g.polygon);
+        if (az !== null) { g.dachAzimut = az; g.dachAutoAzimut = true; }
+      }
+      redrawGebPvModules(g);
+    }
+    _uebernehmen(g);
+    window._rerenderCard?.(g.id);
+    window._updateGebLabelPv?.(g.id);
+  }
+
+  // kWp ins PV-Asset schreiben; legt es an, wenn es noch keins gibt (pvuFixOne
+  // aus 03c macht beides und rechnet das Stromnetz nach).
+  function _uebernehmen(g) {
+    if (!g || !_hasBelegung(g)) return;
+    window.pvuFixOne?.(g.id);
+  }
+
+  function _verlaufMerken(eintraege) {
+    _verlauf.push(eintraege);
+    if (_verlauf.length > 50) _verlauf.shift();
+  }
+
+  /** Letzten Schritt zurücknehmen (Strg+Z) — auch einen ganzen Grundriss-Stapel. */
+  function pvmUndo() {
+    const schritt = _verlauf.pop();
+    if (!schritt) { window.showHint?.('Nichts mehr zurückzunehmen.', 3000); return; }
+    for (const { gId, flId, assetVorher } of schritt) {
+      const g = _geb(gId);
+      if (!g) continue;
+      const fl = (g.pvFlaechen || []).find(f => f.id === flId);
+      if (fl) {
+        if (fl.layer) map.removeLayer(fl.layer);
+        if (fl.svgLayer) map.removeLayer(fl.svgLayer);
+        g.pvFlaechen = g.pvFlaechen.filter(f => f.id !== flId);
+      }
+      redrawGebPvModules(g);
+      if (!_hasBelegung(g)) {
+        g.pvAktiv = false;
+        // Ein in diesem Schritt entstandenes PV-Asset gehört zur Fläche und geht
+        // mit ihr — sonst bliebe eine Anlage ohne Dachfläche im Projekt zurück.
+        // Ein vorher vorhandenes Asset bekommt sein altes kWp zurück.
+        const pv = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
+        if (pv && assetVorher === null) deleteAsset(pv.id, true);
+        else if (pv && typeof assetVorher === 'number') {
+          if (!pv.props) pv.props = {};
+          pv.props.leistungKWp = assetVorher;
+        }
+      } else {
+        _uebernehmen(g);
+      }
+      window._rerenderCard?.(gId);
+      window._updateGebLabelPv?.(gId);
+    }
+    if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+    if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+    window.calcStromPanel?.();
+    window.renderGebPvPanel?.();
+    window.showHint?.(`↶ ${schritt.length} Fläche(n) zurückgenommen.`, 3000);
+    pvModusMarkiereKarte();
+    pvModusRender();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GRUNDRISS ÜBERNEHMEN
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function _grundriss(g) {
+    if (!g || !Array.isArray(g.polygon) || g.polygon.length < 3) return null;
+    return _flaecheAnhaengen(g, g.polygon, 'belegung');
+  }
+
+  /** Grundriss eines Gebäudes als Belegungsfläche übernehmen. */
+  function pvmGrundriss(gId) {
+    const g = _geb(gId);
+    if (!g) return;
+    if (_hasBelegung(g) &&
+        !confirm(`„${_name(g)}" hat bereits eine Belegungsfläche.\nGrundriss zusätzlich übernehmen?`)) return;
+    _assetStandErfassen();
+    const fl = _grundriss(g);
+    if (!fl) { alert('Dieses Gebäude hat keinen Grundriss.'); return; }
+    const vorher = _assetVorher(g.id);
+    _erstbelegung(g);
+    _verlaufMerken([{ gId: g.id, flId: fl.id, assetVorher: vorher }]);
+    window.pvModusGeb = g.id;
+    window.calcStromPanel?.();
+    window.renderGebPvPanel?.();
+    window.showHint?.(`Grundriss übernommen: ${calcGebKwpKorr(g).toFixed(1)} kWp.`, 4000);
+    pvModusMarkiereKarte();
+    pvModusRender();
+  }
+
+  // Gebäude, die die Stapelaktion trifft: ausgewählt (Haken in Gebäudeliste oder
+  // -tabelle), mit Grundriss, noch ohne Belegungsfläche.
+  function _stapelZiele() {
+    return _mitPolygon().filter(g => g.selected && !_hasBelegung(g));
+  }
+
+  /**
+   * Grundriss für alle ausgewählten Gebäude übernehmen. Die Auswahl ist bewusst
+   * die Grenze — „alle offenen Dächer" würde Garagen und Schuppen mitbelegen.
+   */
+  function pvmGrundrissAuswahl() {
+    const ziele = _stapelZiele();
+    if (!ziele.length) {
+      alert('Keine passenden Gebäude ausgewählt.\n\nGebäude in der Gebäudeliste oder in der Gebäudetabelle ankreuzen (dort lässt sich filtern und „alle sichtbaren" auswählen). Gebäude, die schon eine Belegungsfläche haben, bleiben unberührt.');
+      return;
+    }
+    if (!confirm(`${ziele.length} ausgewählte Dächer mit ihrem Grundriss belegen?\n\n` +
+                 `Für jedes Dach entsteht eine Belegungsfläche in Grundrissgröße, die kWp gehen direkt ins PV-Asset. ` +
+                 `Mit Strg+Z lässt sich der ganze Schritt zurücknehmen.`)) return;
+
+    _assetStandErfassen();
+    const schritt = [];
+    let summe = 0;
+    for (const g of ziele) {
+      const vorher = _assetVorher(g.id);
+      const fl = _grundriss(g);
+      if (!fl) continue;
+      _erstbelegung(g);
+      schritt.push({ gId: g.id, flId: fl.id, assetVorher: vorher });
+      summe += calcGebKwpKorr(g) || 0;
+    }
+    if (schritt.length) _verlaufMerken(schritt);
+    window.pvModusHilfe = false;
+    window.calcStromPanel?.();
+    window.renderList?.();
+    window.renderGebPvPanel?.();
+    window.showHint?.(`${schritt.length} Dächer belegt · Σ ${summe.toFixed(0)} kWp. Strg+Z nimmt den Schritt zurück.`, 7000);
+    pvModusMarkiereKarte();
+    pvModusRender();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // NAVIGATION: NÄCHSTES OFFENES DACH
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function _offeneDaecher() {
+    return _mitPolygon().filter(g => !_hasBelegung(g));
+  }
+
+  /** Zum nächstgelegenen Dach ohne Belegungsfläche springen (Taste N). */
+  function pvmNaechstesOffenes() {
+    const offen = _offeneDaecher();
+    if (!offen.length) { window.showHint?.('✓ Alle Dächer haben eine Fläche.', 4000); return; }
+    const aktiv = _geb(window.pvModusGeb);
+    const von = aktiv?.polygon ? polygonCenter(aktiv.polygon) : map.getCenter();
+    let ziel = null, dist = Infinity;
+    for (const g of offen) {
+      if (aktiv && g.id === aktiv.id) continue;
+      const d = _meter(von, polygonCenter(g.polygon));
+      if (d < dist) { dist = d; ziel = g; }
+    }
+    if (!ziel) ziel = offen[0];
+    window.pvModusGeb = ziel.id;
+    flyTo(ziel.id);
+    window.showHint?.(`→ „${_name(ziel)}" · noch ${offen.length} offen`, 4000);
+    pvModusMarkiereKarte();
+    pvModusRender();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // KARTENDARSTELLUNG
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Dächer mit Fläche warm, Dächer ohne Fläche gestrichelt — offene Arbeit sichtbar. */
+  function pvModusMarkiereKarte() {
+    if (!window.pvModusAktiv) return;
+    const aktiv = window.pvModusGeb;
+    (window.gebaeude || []).forEach(g => {
+      if (!g.polygonLayer) return;
+      const hat = _hasBelegung(g);
+      const ist = g.id === aktiv;
+      g.polygonLayer.setStyle({
+        color: ist ? GELB : hat ? '#ffb300' : 'rgba(255,255,255,.55)',
+        weight: ist ? 3 : hat ? 2 : 1.4,
+        dashArray: hat ? '' : '4 4',
+        fillColor: hat ? GELB : '#ffffff',
+        fillOpacity: hat ? 0.10 : 0.04,
+      });
+      if (ist) g.polygonLayer.bringToFront();
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PANEL
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function pvModusRender() {
+    if (!window.pvModusAktiv) return;
+    let el = document.getElementById(PANEL_ID);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = PANEL_ID;
+      el.setAttribute('role', 'region');
+      el.setAttribute('aria-label', 'PV-Modus');
+      document.body.appendChild(el);
+    }
+    el.innerHTML = _html();
+  }
+
+  function _regler({ label, titel, min, max, step, wert, farbe, einheit, handler }) {
+    return `<div class="inp-group">
+      <div class="inp-label" title="${titel}">${label}</div>
+      <div style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+        <input type="range" min="${min}" max="${max}" step="${step}" value="${wert}"
+          style="flex:1;cursor:pointer;accent-color:${farbe};height:4px;"
+          oninput="this.nextElementSibling.textContent=this.value+'${einheit}'"
+          data-change="${handler}"/>
+        <span style="min-width:32px;text-align:right;font-size:11px;color:${farbe};font-weight:600;">${wert}${einheit}</span>
+      </div>
+    </div>`;
+  }
+
+  // Steuerelemente je Dachform — dieselbe Aufteilung wie in buildDachSection:
+  // Schrägdach über Belegungsgrad/Neigung/Azimut, Flachdach über GCR/Aufständerung.
+  function _dachRegler(g) {
+    const schraeg = !!(g.dachform && g.dachform !== 'flach');
+    if (schraeg) {
+      const nei = g.dachNeigung != null ? g.dachNeigung : getDachDefaultNeigung(g.dachform);
+      return _regler({ label:'Belegungsgrad (%)', titel:'Anteil der Dachfläche, der mit Modulen belegt wird', min:40, max:100, step:5,
+                       wert: g.pvFlBelegung != null ? g.pvFlBelegung : 90, farbe:GELB, einheit:'%', handler:`pvmFl(${g.id},'belegung',this.value)` })
+        + _regler({ label:'Neigung (°)', titel:'Neigung der Dachfläche', min:5, max:75, step:5,
+                    wert: nei, farbe:'#80deea', einheit:'°', handler:`pvmDach(${g.id},'dachNeigung',this.value)` })
+        + _regler({ label:'Azimut (°)', titel:'0=Nord · 90=Ost · 180=Süd · 270=West', min:0, max:355, step:5,
+                    wert: g.dachAzimut ?? 180, farbe:'#ef9a9a', einheit:'°', handler:`pvmDach(${g.id},'dachAzimut',this.value)` })
+        + (g.dachform === 'sattel' ? `
+        <div style="display:flex;gap:4px;margin-top:2px;">
+          <button class="btn-xs" style="flex:1;" data-click="pvmFirst(${g.id})"
+            title="Firstlinie auf dem Satellitenbild nachzeichnen (2 Klicks)">📐 First zeichnen</button>
+          ${g.pvRidgeOverride ? `<button class="btn-xs" data-click="pvmFirstReset(${g.id})" title="First zurück auf automatische Mitte">↺</button>` : ''}
+        </div>` : '');
+    }
+    const gcr = g.pvFlGcr != null ? g.pvFlGcr : (g.pvFlAusrichtung === 'ostwest' ? 85 : 40);
+    return _regler({ label:'GCR (% Belegung)', titel:'Anteil Modulfläche an der gezeichneten Fläche', min:5, max:95, step:5,
+                     wert: gcr, farbe:GELB, einheit:'%', handler:`pvmFl(${g.id},'gcr',this.value)` })
+      + `<div class="inp-group">
+        <div class="inp-label">Aufständerung</div>
+        <select class="inp-field" data-change="pvmFl(${g.id},'ausrichtung',this.value)">
+          <option value="sued"${g.pvFlAusrichtung !== 'ostwest' ? ' selected' : ''}>Süd</option>
+          <option value="ostwest"${g.pvFlAusrichtung === 'ostwest' ? ' selected' : ''}>Ost-West</option>
+        </select>
+      </div>`;
+  }
+
+  function _aktivBlock(g) {
+    if (!g) {
+      return `<div style="padding:8px 2px;font-size:10px;color:var(--muted);line-height:1.5;text-align:center;">
+      Noch kein Dach gewählt — eines anklicken oder „→ nächstes offenes".
+    </div>`;
+    }
+    const kwp     = calcGebKwpKorr(g);
+    const basis   = calcGebKwp(g);
+    const faktor  = basis > 0 ? kwp / basis : 1;
+    const modRes  = _hasBelegung(g) ? getGebPvModules(g) : null;
+    const mod     = modRes ? modRes.count : 0;
+    const split   = (g.dachform === 'sattel' && modRes && modRes.frontCount != null)
+      ? ` · 2-seitig ${modRes.frontCount}/${modRes.backCount}` : '';
+    const netto   = pvNettoFlaeche(g);
+    const fakFarbe = faktor >= 0.9 ? '#4caf50' : faktor >= 0.75 ? '#f9a825' : ROT;
+    const schraeg = !!(g.dachform && g.dachform !== 'flach');
+
+    const flaechen = (g.pvFlaechen || []).map(fl => {
+      const bel = fl.typ !== 'sperr';
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:1px 0;">
+      <span style="color:${bel ? GELB : ROT};">${bel ? '☀' : '⛔'}</span>
+      <span style="flex:1;">${bel ? 'Belegung' : 'Sperrfläche'}</span>
+      <span style="font-family:'DM Mono',monospace;color:var(--muted);">${(fl.flaeche || 0).toFixed(0)} m²</span>
+      <button class="btn-xs red" data-click="pvmFlaecheWeg(${g.id},${fl.id})" title="Fläche entfernen">✕</button>
+    </div>`;
+    }).join('');
+
+    return `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+      <span style="color:${GELB};">☀</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">${escHtml(_name(g))}</span>
+      <span style="font-family:'DM Mono',monospace;color:${GELB};font-size:11px;">${kwp.toFixed(1)} kWp</span>
+    </div>
+    <button class="btn-xs" style="width:100%;border-color:${GELB};color:${GELB};"
+      data-click="pvmGrundriss(${g.id})"
+      title="Den Gebäudegrundriss als Belegungsfläche übernehmen — bei Schrägdächern ist er die Dachfläche (Projektion und Firstteilung macht die Berechnung)">⊞ Grundriss als Fläche</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px;">
+      <div class="inp-group">
+        <div class="inp-label">Dachform</div>
+        <select class="inp-field" data-change="pvmDach(${g.id},'dachform',this.value)">
+          ${Object.entries(DACHFORMEN).map(([v, l]) =>
+            `<option value="${v}"${(g.dachform || 'sattel') === v ? ' selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div class="inp-group">
+        <div class="inp-label" title="0=Nord · 90=Ost · 180=Süd · 270=West">Ausrichtung (°)</div>
+        <div style="display:flex;gap:4px;">
+          <input class="inp-field" type="number" min="0" max="359" style="flex:1;"
+            value="${g.dachAzimut ?? ''}" placeholder="${g.dachAutoAzimut ? 'auto' : '180'}"
+            data-change="pvmDach(${g.id},'dachAzimut',this.value)"/>
+          <button class="btn-xs" title="Aus der Polygon-Längsachse ermitteln" data-click="pvmAzimutAuto(${g.id})">🔄</button>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-top:5px;">${_dachRegler(g)}</div>
+    ${flaechen
+      ? `<div style="margin-top:6px;padding:4px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${flaechen}</div>`
+      : '<div style="font-size:9px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche an diesem Gebäude.</div>'}
+    ${netto > 0 ? `
+    <div class="geb-dach-kwp-row" style="margin-top:6px;">
+      <span>${mod} Mod.${split}</span><span>${netto.toFixed(0)} m²</span>
+      ${schraeg
+        ? `<span>Faktor</span><span style="color:${fakFarbe};font-weight:600;">${(faktor * 100).toFixed(0)} %</span>`
+        : `<span>Fläche</span><span style="font-weight:600;">${basis.toFixed(1)} kWp</span>`}
+      <span style="font-weight:600;">= PV</span><span style="color:${GELB};font-weight:600;">${kwp.toFixed(1)} kWp</span>
+    </div>` : ''}`;
+  }
+
+  function _vorgabeBlock() {
+    if (!window.pvModusVorgabeOffen) {
+      const v = _vorgabe();
+      return `<div style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);margin-top:8px;cursor:pointer;"
+        data-click="pvmVorgabeToggle()" title="Werte, die jedes neu belegte Dach erbt">
+      <span style="text-transform:uppercase;letter-spacing:.06em;flex:1;">Vorgaben für neue Dächer</span>
+      <span>${DACHFORMEN[v.dachform] || v.dachform} · ${v.belegung} %${v.neigung != null ? ' · ' + v.neigung + '°' : ''}</span>
+      <span>▸</span>
+    </div>`;
+    }
+    const v = _vorgabe();
+    return `
+    <div style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);margin-top:8px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;"
+      data-click="pvmVorgabeToggle()">
+      <span style="flex:1;">Vorgaben für neue Dächer</span><span>▾</span>
+    </div>
+    <div style="padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);margin-top:3px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+        <div class="inp-group">
+          <div class="inp-label">Dachform</div>
+          <select class="inp-field" data-change="pvmVorgabe('dachform',this.value)">
+            ${Object.entries(DACHFORMEN).map(([w, l]) =>
+              `<option value="${w}"${v.dachform === w ? ' selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="inp-group">
+          <div class="inp-label" title="Leer = Standard der Dachform">Neigung (°)</div>
+          <input class="inp-field" type="number" min="0" max="75" step="5" value="${v.neigung ?? ''}"
+            placeholder="${getDachDefaultNeigung(v.dachform)}" data-change="pvmVorgabe('neigung',this.value)"/>
+        </div>
+      </div>
+      ${_regler({ label:'Belegungsgrad (%)', titel:'Vorgabe für neu belegte Dächer', min:40, max:100, step:5,
+                  wert: v.belegung, farbe:GELB, einheit:'%', handler:`pvmVorgabe('belegung',this.value)` })}
+      <button class="btn-xs" style="width:100%;margin-top:4px;" data-click="pvmVorgabeAufAlle()"
+        title="Dachform, Neigung und Belegungsgrad auf alle Dächer mit Fläche übertragen">↧ Auf alle belegten Dächer übertragen</button>
+    </div>`;
+  }
+
+  function _listenBlock() {
+    const alle  = _mitPolygon();
+    const mitPv = alle.filter(_hasBelegung);
+    const offen = alle.filter(g => !_hasBelegung(g));
+    const summe = mitPv.reduce((s, g) => s + (calcGebKwpKorr(g) || 0), 0);
+    const aktiv = window.pvModusGeb;
+    const zeigeOffen = window.pvModusListe === 'offen';
+    const liste = zeigeOffen ? offen : mitPv;
+
+    const zeilen = liste.map(g => `
+    <div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:2px 0;cursor:pointer;
+         ${g.id === aktiv ? 'color:' + GELB + ';' : 'color:var(--text);'}"
+         data-click="pvmWaehle(${g.id})" title="Auf der Karte zeigen und hier bearbeiten">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(_name(g))}</span>
+      ${zeigeOffen
+        ? `<span style="font-family:'DM Mono',monospace;color:var(--muted);">${(+g.flaeche || 0).toFixed(0)} m²</span>`
+        : `<span style="font-family:'DM Mono',monospace;">${(calcGebKwpKorr(g) || 0).toFixed(1)}</span>`}
+    </div>`).join('');
+
+    const tab = (wert, text, an) => `<button class="btn-xs" style="flex:1;${an ? `border-color:${GELB};color:${GELB};` : ''}"
+      data-click="pvmListe('${wert}')">${text}</button>`;
+
+    return `
+    <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;">
+      <div style="display:flex;gap:4px;margin-bottom:4px;">
+        ${tab('mit',   `mit Fläche (${mitPv.length})`, !zeigeOffen)}
+        ${tab('offen', `offen (${offen.length})`,      zeigeOffen)}
+      </div>
+      <div style="max-height:150px;overflow-y:auto;">
+        ${zeilen || `<div style="font-size:10px;color:var(--muted);padding:2px 0;">${zeigeOffen ? '✓ Kein Dach mehr offen.' : 'Noch nichts gezeichnet.'}</div>`}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:5px;padding-top:4px;border-top:1px solid var(--border);">
+        <span style="color:var(--muted);">Σ ${mitPv.length} Dächer${offen.length ? ` · ${offen.length} offen` : ''}</span>
+        <span style="color:${GELB};font-weight:600;font-family:'DM Mono',monospace;">${summe.toFixed(0)} kWp</span>
+      </div>
+    </div>`;
+  }
+
+  function _html() {
+    const g     = _geb(window.pvModusGeb);
+    const typ   = window.pvModusTyp || 'belegung';
+    const form  = window.pvModusForm || 'polygon';
+    const sperr = typ === 'sperr';
+    const ziele = _stapelZiele().length;
+    const offen = _offeneDaecher().length;
+
+    const knopf = (aktiv, farbe, handler, text, titel) =>
+      `<button class="btn-xs" style="flex:1;${aktiv ? `border-color:${farbe};color:${farbe};background:${farbe}1f;` : ''}"
+      data-click="${handler}" title="${titel}">${text}</button>`;
+
+    return `
+    <div class="pvm-head"${sperr ? ` style="border-bottom-color:${ROT};"` : ''}>
+      <span class="pvm-head-title"${sperr ? ` style="color:${ROT};"` : ''}>${sperr ? '⛔ Sperrflächen' : '☀ PV-Modus'}</span>
+      <button class="btn-xs" data-click="pvmHilfeToggle()" title="Kurzanleitung ein-/ausblenden">?</button>
+      <button class="btn-xs" data-click="pvModusStop()" title="Modus beenden (Esc)">✓ Fertig</button>
+    </div>
+    <div class="pvm-body">
+      <div style="display:flex;gap:4px;">
+        ${knopf(!sperr, GELB, "pvModusSetTyp('belegung')", '☀ Belegung', 'Taste B')}
+        ${knopf(sperr,  ROT,  "pvModusSetTyp('sperr')",    '⛔ Sperrfläche', 'Taste S')}
+      </div>
+      <div style="display:flex;gap:4px;margin-top:4px;">
+        ${knopf(form === 'polygon',  '#80deea', "pvmSetForm('polygon')",  '✎ Polygon',  'Ecken einzeln klicken · Taste R wechselt')}
+        ${knopf(form === 'rechteck', '#80deea', "pvmSetForm('rechteck')", '▭ Rechteck', 'Zwei Klicks, am First ausgerichtet · Taste R wechselt')}
+      </div>
+      <div style="display:flex;gap:4px;margin-top:6px;">
+        <button class="btn-xs" style="flex:1;" data-click="pvmNaechstesOffenes()"
+          title="Zum nächstgelegenen Dach ohne Fläche springen (Taste N)">→ Nächstes offenes${offen ? ` (${offen})` : ''}</button>
+        <button class="btn-xs" data-click="pvmUndo()" title="Letzten Schritt zurücknehmen (Strg+Z)">↶</button>
+      </div>
+      ${ziele
+        ? `<button class="btn-xs" style="width:100%;margin-top:4px;border-color:${GELB};color:${GELB};"
+             data-click="pvmGrundrissAuswahl()"
+             title="Für jedes ausgewählte Dach ohne Fläche den Grundriss als Belegungsfläche übernehmen">⊞ Grundriss für ${ziele} ausgewählte Dächer</button>`
+        : `<div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.4;">
+             Stapelweise: Gebäude in der Liste oder Gebäudetabelle ankreuzen (dort filtern) — dann erscheint hier „Grundriss für die Auswahl".
+           </div>`}
+      <div style="margin-top:8px;">${_aktivBlock(g)}</div>
+      ${_vorgabeBlock()}
+      ${_listenBlock()}
+      ${window.pvModusHilfe ? `
+      <div style="font-size:9px;color:var(--muted);margin-top:8px;line-height:1.45;">
+        Dach anklicken = erste Ecke · roter Startpunkt = abschließen · Rechtsklick = Ecke zurück ·
+        Esc = Zeichnung abbrechen, nochmal = Modus beenden · Strg+Z = Schritt zurück.
+        Die Fläche gehört dem Dach, auf dem sie liegt; das kWp geht sofort ins PV-Asset.
+      </div>` : ''}
+    </div>`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PANEL-HANDLER — rufen die bestehenden Handler und rendern danach neu
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function pvmDach(gId, feld, wert) {
+    if (feld === 'dachform') { const g = _geb(gId); if (g) g._pvDachformManuell = true; }
+    window.updateGebDach?.(gId, feld, wert);
+    pvModusRender();
+    pvModusMarkiereKarte();
+  }
+
+  function pvmFl(gId, feld, wert) {
+    window.updateGebPvFl?.(gId, feld, wert);
+    pvModusRender();
+  }
+
+  function pvmAzimutAuto(gId) {
+    window.ermittleAzimut?.(gId);
+    pvModusRender();
+  }
+
+  function pvmFirst(gId) {
+    window.startGebFirstDraw?.(gId);
+  }
+
+  function pvmFirstReset(gId) {
+    window.resetGebFirst?.(gId);
+    pvModusRender();
+  }
+
+  function pvmFlaecheWeg(gId, flId) {
+    window.removeGebPvFlaeche?.(gId, flId);
+    const g = _geb(gId);
+    if (g && _hasBelegung(g)) _uebernehmen(g);
+    pvModusRender();
+    pvModusMarkiereKarte();
+  }
+
+  function pvmWaehle(gId) {
+    window.pvModusGeb = gId;
+    flyTo(gId);
+    pvModusRender();
+    pvModusMarkiereKarte();
+  }
+
+  function pvmListe(wert) {
+    window.pvModusListe = wert === 'offen' ? 'offen' : 'mit';
+    pvModusRender();
+  }
+
+  function pvmHilfeToggle() {
+    window.pvModusHilfe = !window.pvModusHilfe;
+    pvModusRender();
+  }
+
+  function pvmVorgabeToggle() {
+    window.pvModusVorgabeOffen = !window.pvModusVorgabeOffen;
+    pvModusRender();
+  }
+
+  function pvmVorgabe(feld, wert) {
+    const v = _vorgabe();
+    if (feld === 'dachform')      v.dachform = wert;
+    else if (feld === 'belegung') v.belegung = Math.min(100, parseFloat(wert) || 90);
+    else if (feld === 'neigung')  v.neigung  = wert === '' ? null : parseFloat(wert);
+    pvModusRender();
+  }
+
+  /** Vorgaben auf alle Dächer mit Fläche übertragen (Sammelkorrektur). */
+  function pvmVorgabeAufAlle() {
+    const v = _vorgabe();
+    const ziele = _mitPolygon().filter(_hasBelegung);
+    if (!ziele.length) { alert('Es gibt noch kein Dach mit Belegungsfläche.'); return; }
+    if (!confirm(`Dachform „${DACHFORMEN[v.dachform]}"${v.neigung != null ? `, Neigung ${v.neigung}°` : ''} und Belegungsgrad ${v.belegung} % ` +
+                 `auf ${ziele.length} Dächer mit Fläche übertragen?\n\nAzimut und gezeichnete Flächen bleiben unverändert.`)) return;
+    for (const g of ziele) {
+      g.dachform = v.dachform;
+      g.pvFlBelegung = v.belegung;
+      if (v.neigung != null) g.dachNeigung = v.neigung;
+      redrawGebPvModules(g);
+      _uebernehmen(g);
+      window._rerenderCard?.(g.id);
+      window._updateGebLabelPv?.(g.id);
+    }
+    window.calcStromPanel?.();
+    window.renderGebPvPanel?.();
+    window.showHint?.(`${ziele.length} Dächer angeglichen.`, 5000);
+    pvModusMarkiereKarte();
+    pvModusRender();
+  }
+
+  var pvModus = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    pvModusBuildingClick: pvModusBuildingClick,
+    pvModusFlaecheClick: pvModusFlaecheClick,
+    pvModusMarkiereKarte: pvModusMarkiereKarte,
+    pvModusNachFlaeche: pvModusNachFlaeche,
+    pvModusRender: pvModusRender,
+    pvModusSetTyp: pvModusSetTyp,
+    pvModusStart: pvModusStart,
+    pvModusStartFuer: pvModusStartFuer,
+    pvModusStop: pvModusStop,
+    pvModusToggle: pvModusToggle,
+    pvModusZuordnen: pvModusZuordnen,
+    pvmAzimutAuto: pvmAzimutAuto,
+    pvmDach: pvmDach,
+    pvmFirst: pvmFirst,
+    pvmFirstReset: pvmFirstReset,
+    pvmFl: pvmFl,
+    pvmFlaecheWeg: pvmFlaecheWeg,
+    pvmGrundriss: pvmGrundriss,
+    pvmGrundrissAuswahl: pvmGrundrissAuswahl,
+    pvmHilfeToggle: pvmHilfeToggle,
+    pvmListe: pvmListe,
+    pvmNaechstesOffenes: pvmNaechstesOffenes,
+    pvmSetForm: pvmSetForm,
+    pvmUndo: pvmUndo,
+    pvmVorgabe: pvmVorgabe,
+    pvmVorgabeAufAlle: pvmVorgabeAufAlle,
+    pvmVorgabeToggle: pvmVorgabeToggle,
+    pvmWaehle: pvmWaehle
+  });
+
   // ── main.js — ES Module entry point ────────────────────────────────────────
   // Imports all modules and exposes their exports on window for data-* handlers.
 
@@ -196682,7 +198510,7 @@ ${teile.join('\n')}
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,
-    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel,
+    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus,
   ];
   window.pdfjsLib = pdfjsLib;
   appLifecycle.listen(window,'pagehide',()=>appLifecycle.dispose(),{once:true});

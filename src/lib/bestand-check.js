@@ -220,8 +220,13 @@ export function bestandReifegrad(daten) {
 
   const mitFlaeche = geb.filter(g => Number(g?.flaeche) > 0 && g?.nutzung).length;
   const hatQuelle  = ass.some(a => a.type === 'NAP');
-  const mitLaenge  = edg.filter(e => Number(e?.lengthM) > 0).length;
-  const mitQs      = edg.filter(e => e?.autoSized || Number(e?.crossSection) > 0).length;
+  // Stationsinterne Verbindungen (beide Enden im selben Gebäude, z. B. UV →
+  // Verbraucher im Hausanschlussraum) haben real keine Trassenlänge. Sie dürfen
+  // den Lastfluss-Reifegrad nicht blockieren — siehe pruefeKabellaengen, die sie
+  // aus demselben Grund überspringt.
+  const trassen    = edg.filter(e => !e?.stationsintern);
+  const mitLaenge  = trassen.filter(e => Number(e?.lengthM) > 0).length;
+  const mitQs      = trassen.filter(e => e?.autoSized || Number(e?.crossSection) > 0).length;
   const mitJahr    = ass.filter(a => a?.baujahr).length;
 
   const stufe = (id, label, erfuellt, fehlt) => ({ id, label, erfuellt, fehlt: erfuellt ? '' : fehlt });
@@ -234,12 +239,12 @@ export function bestandReifegrad(daten) {
       hatQuelle && edg.length > 0,
       !hatQuelle ? 'kein NAP' : 'keine Leitungen'),
     stufe('lastfluss', 'Lastfluss & Spannungsfall',
-      edg.length > 0 && mitLaenge === edg.length && mitQs === edg.length,
-      edg.length === 0 ? 'keine Leitungen'
-        : [mitLaenge < edg.length ? `${edg.length - mitLaenge} ohne Länge` : '',
-           mitQs < edg.length ? `${edg.length - mitQs} ohne Querschnitt` : ''].filter(Boolean).join(', ')),
+      trassen.length > 0 && mitLaenge === trassen.length && mitQs === trassen.length,
+      trassen.length === 0 ? 'keine Leitungen'
+        : [mitLaenge < trassen.length ? `${trassen.length - mitLaenge} ohne Länge` : '',
+           mitQs < trassen.length ? `${trassen.length - mitQs} ohne Querschnitt` : ''].filter(Boolean).join(', ')),
     stufe('engpass', 'Engpass-Fahrplan',
-      ass.length > 0 && mitJahr > 0 && edg.length > 0 && mitLaenge === edg.length,
+      ass.length > 0 && mitJahr > 0 && trassen.length > 0 && mitLaenge === trassen.length,
       mitJahr === 0 ? 'keine Lebenszyklusjahre gepflegt' : 'setzt einen belastbaren Lastfluss voraus'),
   ];
 }

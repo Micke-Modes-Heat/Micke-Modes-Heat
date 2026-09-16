@@ -2006,3 +2006,75 @@ table.eb-tab tr.eb-gruppe td{color:var(--muted);font-size:8.5px;text-transform:u
 .eb-liste{margin:0;padding-left:16px;font-size:10px;line-height:1.65;color:var(--text);}
 .eb-liste li{margin-bottom:3px;}
 .eb-leer{padding:26px 18px;text-align:center;color:var(--muted);font-size:11px;}
+
+/* ── Geführter Modus (24-gefuehrter-modus.js) ───────────────────────────── */
+/* Nur Sichtbarkeit: Die Schrittleiste liegt als eigene Zeile unter der
+   Kopfleiste, die Schrittkarte an der Stelle der Tab-Leiste im linken Panel. */
+.gm-bar{display:flex;align-items:center;gap:10px;padding:5px 12px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;position:relative;z-index:1200;}
+.gm-steps{display:flex;align-items:center;gap:3px;flex:1;min-width:0;}
+.gm-st{display:flex;align-items:center;gap:6px;padding:3px 9px 3px 4px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:11px;white-space:nowrap;cursor:pointer;transition:.15s;}
+.gm-st:hover{border-color:var(--accent);color:var(--text);}
+.gm-st .gm-d{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-family:'DM Mono',monospace;font-size:10px;border:1px solid var(--border);}
+.gm-st.done{color:var(--text);border-color:color-mix(in srgb,var(--accent) 35%,transparent);}
+.gm-st.done .gm-d{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);border-color:transparent;}
+.gm-st.on{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600;}
+.gm-st.on .gm-d{background:var(--bg);color:var(--accent);border-color:transparent;}
+.gm-st.fut{opacity:.7;}
+.gm-line{width:7px;height:1px;background:var(--border);flex:none;}
+.gm-expert{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;white-space:nowrap;cursor:pointer;}
+.gm-exit{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0 2px;}
+.gm-exit:hover{color:var(--text);}
+
+.gm-card{padding:11px 12px 12px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;gap:9px;flex:0 0 auto;max-height:62vh;overflow-y:auto;}
+.gm-card.gm-float{position:fixed;right:12px;top:58px;width:298px;max-height:calc(100vh - 78px);overflow-y:auto;z-index:1150;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,0.5);}
+.gm-kicker{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);}
+.gm-titel{margin:1px 0 0;font-size:14.5px;font-weight:600;color:var(--text);}
+.gm-text{margin:0;font-size:11px;line-height:1.5;color:var(--muted);}
+.gm-layer{align-self:flex-start;font-family:'DM Mono',monospace;font-size:10px;padding:2px 7px;border-radius:4px;border:1px dashed var(--accent);color:var(--accent);}
+.gm-group{display:grid;gap:4px;}
+.gm-glabel{font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);}
+.gm-tool{width:100%;text-align:left;padding:7px 9px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:11.5px;cursor:pointer;transition:.15s;}
+.gm-tool:hover{border-color:var(--accent);color:var(--accent);}
+.gm-tool.pri{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent);}
+.gm-ghint{font-size:10px;line-height:1.5;color:#ffd479;background:rgba(249,168,37,0.08);border:1px solid rgba(249,168,37,0.35);border-radius:5px;padding:5px 7px;}
+.gm-gate{border:1px solid var(--border);background:var(--surface2);border-radius:7px;padding:8px 10px;display:grid;gap:5px;}
+.gm-gate-t{font-size:10.5px;font-weight:600;color:var(--text);}
+.gm-row{display:flex;align-items:baseline;gap:6px;font-size:10.5px;color:var(--muted);line-height:1.45;}
+.gm-row .gm-ic{font-family:'DM Mono',monospace;width:11px;flex:none;text-align:center;}
+.gm-row.is-ok .gm-ic{color:#66bb6a;}
+.gm-row.is-warn .gm-ic{color:#ffb74d;}
+.gm-row.is-offen .gm-ic{color:var(--muted);}
+.gm-mini{margin-left:auto;background:none;border:none;color:var(--accent);font-family:inherit;font-size:10px;cursor:pointer;text-decoration:underline;padding:0;}
+.gm-check{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text);cursor:pointer;}
+.gm-hint{font-size:9.5px;line-height:1.55;color:var(--muted);border-top:1px solid var(--border);padding-top:5px;}
+.gm-foot{display:grid;gap:5px;}
+.gm-nav{display:grid;grid-template-columns:auto 1fr;gap:5px;}
+.gm-back{padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;}
+.gm-back[disabled]{opacity:.4;cursor:default;}
+.gm-next{padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:inherit;font-size:11.5px;cursor:pointer;transition:.15s;}
+.gm-next.bereit{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600;}
+.gm-skip{background:none;border:none;color:var(--muted);font-size:10px;cursor:pointer;text-decoration:underline;padding:2px 0 0;}
+
+/* Fokus: im geführten Modus führt die Schrittleiste, nicht die Tab-Leisten. */
+body.gm-fokus #lp-tabs{display:none;}
+body.gm-fokus #view-tabs{display:none;}
+
+/* ── PV-Modus (25-pv-modus.js) ──────────────────────────────────────────────
+   Schwebendes Panel neben der Karte: es bleibt offen, während über mehrere
+   Dächer hinweg gezeichnet wird, und gehört deshalb bewusst NICHT zu den
+   .panel-Elementen, die hidePanels() wegschaltet. */
+#pv-modus-panel{position:fixed;top:76px;right:352px;width:264px;z-index:10035;
+  background:rgba(28,26,21,.97);border:1px solid #ffd54f;border-radius:10px;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);color:var(--text);font-size:11px;
+  max-height:calc(100vh - 150px);display:flex;flex-direction:column;}
+#pv-modus-panel .pvm-head{display:flex;align-items:center;gap:6px;padding:7px 9px;
+  border-bottom:1px solid var(--border);flex-shrink:0;}
+#pv-modus-panel .pvm-head-title{flex:1;color:#ffd54f;font-weight:600;font-size:11.5px;letter-spacing:.02em;}
+#pv-modus-panel .pvm-head .btn-xs{border-color:#ffd54f;color:#ffd54f;}
+#pv-modus-panel .pvm-head .btn-xs:hover{background:rgba(255,213,79,.12);border-color:#ffd54f;color:#ffd54f;}
+#pv-modus-panel .pvm-body{padding:8px 9px 10px;overflow-y:auto;}
+/* Aktiver Modus: der Knopf im linken Panel trägt sein eigenes Gelb, die
+   allgemeine .active-Regel färbt sonst auf Akzentblau um. */
+#btn-pv-modus-toggle.active{background:rgba(255,213,79,.14)!important;border-color:#ffd54f!important;color:#ffd54f!important;font-weight:600;}
+@media(max-width:1100px){#pv-modus-panel{right:12px;}}
+@media(max-width:760px){#pv-modus-panel{top:auto;bottom:70px;right:8px;left:8px;width:auto;max-height:46vh;}}

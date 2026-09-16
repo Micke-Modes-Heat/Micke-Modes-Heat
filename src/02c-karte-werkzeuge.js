@@ -477,6 +477,10 @@ export function updateViz(){
 
     if(window.labelsVisible && map.getZoom() >= labelZoom) buildMapLabel(g,center, stats.status);
   });
+
+  // Im PV-Modus zeigt die Karte, welche Dächer schon eine Fläche haben. Die
+  // Einfärbung oben würde das überschreiben — deshalb hier wieder drüberlegen.
+  if (window.pvModusAktiv && typeof window.pvModusMarkiereKarte === 'function') window.pvModusMarkiereKarte();
 }
 
 export function buildMapLabel(g,center, status){

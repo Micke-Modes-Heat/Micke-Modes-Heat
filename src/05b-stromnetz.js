@@ -1530,6 +1530,16 @@ function _gebAktivImJahr(g, yr) {
  * Das gilt unabhängig vom Häkchen „Automatisch dimensionieren" — die Schicht
  * sticht die Kanteneinstellung.
  */
+/**
+ * Kabel, das mangels Bestandswert automatisch ausgelegt wurde. Die
+ * Bestandsprüfung weist es als „Kabel mit geschätztem Querschnitt" aus —
+ * Auslastung und Ertüchtigungskosten stehen damit unter Vorbehalt.
+ */
+function _merkeSchaetzung(e) {
+  e.qsGeschaetzt = true;
+  e.qsQuelle = e.qsQuelle || 'automatisch ausgelegt — kein Bestandswert erfasst';
+}
+
 function _darfAuslegen(e) {
   if (!e?.autoSized) return false;
   return getStromEdgeSchicht(e) !== SCHICHT.BESTAND;
@@ -1928,20 +1938,27 @@ export function _recalcStromNetzInner() {
     // eine zweite, abweichende Implementierung ohne Parallelstränge; welches
     // Ergebnis angezeigt wurde, hing davon ab, welcher Pfad zuletzt lief.
     const darfAuslegen = _darfAuslegen(e);
-    if (darfAuslegen || e.crossSection === 0) e.cableType = defaultType;
+    // Ein Bestandskabel OHNE erfassten Querschnitt hat nichts zu bewahren. Es auf
+    // den kleinsten Querschnitt fallen zu lassen erzeugt eine Scheinüberlastung —
+    // genau das passierte bei automatisch erzeugten Netzen in der Bestandsschicht.
+    // Also einmalig auslegen und als geschätzt markieren (siehe _merkeSchaetzung).
+    const ohneErfassung = !e.crossSection;
+    const legeAus = darfAuslegen || ohneErfassung;
+    if (legeAus) e.cableType = defaultType;
     const kt = KABEL_TYPEN[e.cableType || defaultType] || KABEL_TYPEN.NAYY;
     const r = nsKabelAuslegen({
       kt, I_A: I, crossSection: e.crossSection, nParallel: e.nParallel,
-      autoSized: darfAuslegen, lengthM: e.lengthM,
+      autoSized: legeAus, lengthM: e.lengthM,
       // Budget aus dem letzten Asset-Lauf, sonst das volle Gesamtbudget
       // (reine Altnetze ohne Assets kennen keine Pfad-Aufteilung).
       duBudgetPct: e._duBudgetPct || MAX_DELTA_U_PCT,
       kIz, tLeiter, cosPhi, U_V: U, fuseA: e.fuseA,
     });
-    if (darfAuslegen || !e.crossSection) {
+    if (legeAus) {
       e.crossSection = r.crossSection;
       e.nParallel    = r.nParallel;
-      if (darfAuslegen) e.fuseA = r.fuseA;
+      e.fuseA        = r.fuseA;
+      if (!darfAuslegen) _merkeSchaetzung(e);
     }
     e._effCrossSection = r.crossSection;
     e._auslegungGedeckelt = r.gedeckelt;
@@ -2819,19 +2836,23 @@ export function elCalcAssets(opts = {}) {
     // dimensioniertes Kabel nicht beim nächsten UI-Klick wieder schrumpft.
     e._duBudgetPct = duBudgetPct;
     const darfAuslegen = _darfAuslegen(e);
+    // Siehe _recalcStromNetzInner: ohne erfassten Querschnitt wird einmalig
+    // ausgelegt, statt auf den kleinsten Querschnitt zu fallen.
+    const legeAus = darfAuslegen || !calc.crossSection;
     const r = nsKabelAuslegen({
       kt: calc.kt, I_A: calc.I_A, I_A_sign: calc.I_A_sign,
       crossSection: calc.crossSection, nParallel: calc.nParallel,
-      autoSized: darfAuslegen, lengthM: calc.lengthM,
+      autoSized: legeAus, lengthM: calc.lengthM,
       duBudgetPct, kIz: _kIz, tLeiter: _tLeiter, cosPhi: COS_PHI, U_V: U_N,
       fuseA: e.fuseA,
     });
     // Zurückgeschrieben wird nur bei autoSized bzw. fehlendem Querschnitt —
     // ein gesetztes Bestandskabel darf ein Jahres-Sweep nicht überschreiben.
-    if (darfAuslegen || !calc.crossSection) {
+    if (legeAus) {
       e.crossSection = r.crossSection;
       e.nParallel    = r.nParallel;
-      if (darfAuslegen) e.fuseA = r.fuseA;
+      e.fuseA        = r.fuseA;
+      if (!darfAuslegen) _merkeSchaetzung(e);
     }
     e._effCrossSection = r.crossSection;
     e._auslegungGedeckelt = r.gedeckelt;

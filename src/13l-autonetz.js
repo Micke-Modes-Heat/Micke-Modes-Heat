@@ -9,6 +9,30 @@ import {
   buildTrasseGraph, routeAlongTrasseWithGraph, polylineLength,
 } from './05b-stromnetz.js';
 
+// ── Voraussetzungen ──────────────────────────────────────────────────────────
+// Das Auto-Netz braucht die Kette NAP → Schaltanlage → Trafo. Fehlt ein Glied,
+// kann es nichts verdrahten. Die Prüfung steht separat, damit Dialog und
+// geführter Modus sie VOR dem Start zeigen können — früher fiel das erst beim
+// Generieren auf, nachdem die alten Auto-Kabel bereits gelöscht waren.
+const AUTONETZ_BEDARF = [
+  { type: 'NAP',          label: 'ein Netzanschlusspunkt (NAP)' },
+  { type: 'Schaltanlage', label: 'eine Schaltanlage' },
+  { type: 'Trafo',        label: 'ein Trafo' },
+];
+
+/** @returns {{ok: boolean, fehlt: string[], fehltKurz: string[]}} */
+export function autoNetzVoraussetzungen() {
+  const yr = window.globalYear ?? globalYear ?? new Date().getFullYear();
+  const aktiv = (ASSETS.items || []).filter(a =>
+    (a.domain === 'strom' || a.domain === 'hybrid') && getAssetStatus(a, yr) === 'active');
+  const fehlend = AUTONETZ_BEDARF.filter(b => !aktiv.some(a => a.type === b.type));
+  return {
+    ok: fehlend.length === 0,
+    fehlt: fehlend.map(b => b.label),
+    fehltKurz: fehlend.map(b => b.type),
+  };
+}
+
 // ── Hilfsfunktionen ──────────────────────────────────────────────────────────
 
 // Einmalig pro autoNetzAssets-Lauf gesetzt; Cache leert sich mit jedem Lauf
@@ -99,6 +123,7 @@ function _addAutoEdge(a, b, opts = {}) {
 // ── Dialog ───────────────────────────────────────────────────────────────────
 
 export function showAutoNetzDialog() {
+  const vor = autoNetzVoraussetzungen();
   const overlay = document.createElement('div');
   overlay.className = 'ep-modal-overlay';
   const modal = document.createElement('div');
@@ -106,6 +131,11 @@ export function showAutoNetzDialog() {
   modal.innerHTML = `
     <div class="ep-modal-title">Auto-Netz generieren</div>
     <div class="ep-modal-body" style="line-height:1.7;">
+      ${vor.ok ? '' : `<div style="margin:0 0 14px;padding:9px 11px;border:1px solid #f9a825;border-radius:6px;background:rgba(249,168,37,0.09);font-size:11.5px;color:#ffd479;line-height:1.55;">
+        <b>So kann noch kein Netz erzeugt werden.</b><br>
+        Es fehlt: ${vor.fehlt.join(', ')}.<br>
+        <span style="color:#aaa;">Setz die fehlende Komponente über die Palette auf die Karte — das Auto-Netz verbindet NAP → Schaltanlage → Trafo → Verbraucher.</span>
+      </div>`}
       <p style="margin:0 0 14px;font-size:11px;color:#aaa;">
         Bestehende Auto-Kabel werden immer ersetzt. Manuell gezeichnete Kabel bleiben erhalten,
         sofern unten nicht anders gewählt.
@@ -156,7 +186,7 @@ export function showAutoNetzDialog() {
     </div>
     <div class="ep-modal-btns">
       <button class="ep-modal-btn" id="an-cancel">Abbrechen</button>
-      <button class="ep-modal-btn primary" id="an-ok">Generieren</button>
+      <button class="ep-modal-btn primary" id="an-ok"${vor.ok ? '' : ' disabled style="opacity:.45;cursor:not-allowed;"'}>Generieren</button>
     </div>`;
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
@@ -166,6 +196,7 @@ export function showAutoNetzDialog() {
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   const okBtn = modal.querySelector('#an-ok');
   okBtn.onclick = () => {
+    if (!autoNetzVoraussetzungen().ok) return;
     const overwriteManual = modal.querySelector('#an-overwrite-manual').checked;
     const ring           = modal.querySelector('#an-ring').checked;
     const erzeugungsnetz = modal.querySelector('#an-erzeugung').checked;
@@ -194,6 +225,14 @@ export function autoNetzAssets(opts = {}) {
   // Graph einmalig bauen, Distanz-Cache leeren
   _trasseCtx = buildTrasseGraph();
   _distCache.clear();
+
+  // Erst prüfen, dann löschen: sonst stünde das Netz nach einem Fehlversuch
+  // ohne seine bisherigen Auto-Kabel da.
+  const vorauss = autoNetzVoraussetzungen();
+  if (!vorauss.ok) {
+    showHint('⚠ Auto-Netz nicht möglich — es fehlt: ' + vorauss.fehlt.join(', ') + '.');
+    return;
+  }
 
   // 0. Auto-Kanten löschen (immer) — bei overwriteManual zusätzlich auch
   // manuell gezeichnete Kabel, damit das Netz komplett neu aufgebaut wird.
@@ -235,16 +274,6 @@ export function autoNetzAssets(opts = {}) {
 
   // Wenn Erzeugungstrafos vorhanden: auto. Erzeugungsnetz-Modus aktiv
   const hasErzTrafos = erzTrafos.length > 0;
-
-  // Validierung
-  const errors = [];
-  if (!naps.length)   errors.push('Kein NAP vorhanden.');
-  if (!sas.length)    errors.push('Keine Schaltanlage vorhanden.');
-  if (!trafos.length) errors.push('Kein Trafo vorhanden.');
-  if (errors.length) {
-    showHint('⚠ Auto-Netz: ' + errors.join(' '));
-    return;
-  }
 
   const nap = naps[0];
 

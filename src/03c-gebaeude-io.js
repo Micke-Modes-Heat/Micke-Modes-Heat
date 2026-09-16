@@ -1188,6 +1188,9 @@ function buildDachSection(g, opts = {}) {
       <button class="btn-xs" style="flex:1;border-color:#ffd54f;color:#ffd54f;" data-click="startGebPvDraw(${g.id},'belegung')">☀ + Belegungsfläche</button>
       <button class="btn-xs red" style="flex:1;" data-click="startGebPvDraw(${g.id},'sperr')">⛔ + Sperrfläche</button>
     </div>
+    <button class="btn-xs" style="width:100%;margin-top:4px;border-color:#ffd54f;color:#ffd54f;"
+      data-click="pvModusStartFuer(${g.id})"
+      title="PV-Modus auf der Karte: Dach anklicken = erste Ecke, der Modus bleibt an — auch für die übrigen Gebäude">🗺 Im PV-Modus zeichnen</button>
     ${flList ? `<div style="margin-top:6px;padding:5px 7px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">${flList}</div>` : '<div style="font-size:9px;color:var(--muted);margin-top:6px;text-align:center;">Noch keine Fläche gezeichnet.</div>'}
     ${flResult}`;
 
@@ -1300,7 +1303,13 @@ export function attachGebPvLayer(g, fl) {
   // Ohne bubblingMouseEvents:false — der Klick erreicht die Karte ohnehin, also
   // KEIN Event weiterreichen (sonst doppelter Punkt beim Zeichnen). selectFromMap
   // unterdrückt die Auswahl bei aktivem Kartenwerkzeug selbst.
-  fl.layer.on('click', () => { if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id); });
+  fl.layer.on('click', () => {
+    // Im PV-Modus holt der Klick auf eine fertige Flaeche ihr Dach ins Panel.
+    // Ohne das liefe er ins Leere: die PV-Pane liegt ueber den Gebaeuden und
+    // faengt den Klick ab, bevor er das Dach erreicht.
+    if (typeof window.pvModusFlaecheClick === 'function' && window.pvModusFlaecheClick(g.id)) return;
+    if (typeof window.selectFromMap === 'function') window.selectFromMap(g.id);
+  });
   // Sperrflächen initial unsichtbar — updateSperrVisibility zeigt sie beim selektierten Gebäude
   if (fl.typ === 'sperr') {
     fl.layer.setStyle({ opacity: 0, fillOpacity: 0 });
@@ -1309,10 +1318,13 @@ export function attachGebPvLayer(g, fl) {
 }
 
 // Sperrflächen je nach aktuellem window.selectedId ein-/ausblenden.
+// Im PV-Modus sind alle sichtbar: dort wird über mehrere Dächer hinweg
+// gezeichnet, und eine unsichtbare Sperrfläche zeichnet man versehentlich nach.
 window.updateSperrVisibility = function() {
   const selId = window.selectedId;
+  const alle  = !!window.pvModusAktiv;
   (window.gebaeude || []).forEach(g => {
-    const isSel = g.id === selId;
+    const isSel = alle || g.id === selId;
     (g.pvFlaechen || []).forEach(fl => {
       if (fl.typ === 'sperr' && fl.layer) {
         fl.layer.setStyle(isSel
@@ -1722,13 +1734,16 @@ window.setGebPvModus = function(gId, modus) {
   renderGebPvPanel();
 };
 
-window.startGebPvDraw = function(gId, typ) {
+// @param {{keepView?:boolean}} [opts] keepView: Kartenausschnitt lassen. Im
+//   PV-Modus (25-pv-modus.js) beginnt die Zeichnung mit dem Klick aufs Dach —
+//   ein Sprung der Karte würde die gerade gesetzte erste Ecke verschieben.
+window.startGebPvDraw = function(gId, typ, opts = {}) {
   const g = window.gebaeude?.find(x => x.id === gId);
   if (!g) return;
   window.cancelGebPvDraw();
   // Aufs Gebäude zoomen + Satellitenansicht einschalten
   ensureSatellite();
-  if (g.polygonLayer) { try { map.fitBounds(g.polygonLayer.getBounds(), { padding: [60, 60], maxZoom: 21 }); } catch(e) {} }
+  if (!opts.keepView && g.polygonLayer) { try { map.fitBounds(g.polygonLayer.getBounds(), { padding: [60, 60], maxZoom: 21 }); } catch(e) {} }
   window.gebPvDraw = { gId, typ, points: [], polyline: null, startMarker: null };
   map.getContainer().style.cursor = 'crosshair';
   showHint(typ === 'sperr'
@@ -1815,10 +1830,17 @@ window.resetGebFirst = function(gId) {
 window.finishGebPvDraw = function() {
   const st = window.gebPvDraw;
   if (!st || st.points.length < 3) return;
-  const g   = window.gebaeude?.find(x => x.id === st.gId);
+  let g     = window.gebaeude?.find(x => x.id === st.gId);
   const pts = st.points.map(p => ({ lat: p.lat, lng: p.lng }));
   const typ = st.typ;
   window.cancelGebPvDraw();
+  // Im PV-Modus entscheidet die Geometrie über die Zuordnung, nicht das
+  // Gebäude, mit dem die Zeichnung begonnen wurde. Ohne das landet eine auf dem
+  // Nachbardach gezeichnete Fläche still beim zuletzt angeklickten Gebäude.
+  if (window.pvModusAktiv && typeof window.pvModusZuordnen === 'function') {
+    g = window.pvModusZuordnen(pts);
+    if (!g) return;                       // Rückfrage abgelehnt → Fläche verwerfen
+  }
   if (!g) return;
   if (!g.pvFlaechen) g.pvFlaechen = [];
   window._gebPvFlCounter = (window._gebPvFlCounter || 0) + 1;
@@ -1834,6 +1856,8 @@ window.finishGebPvDraw = function() {
   _updateGebLabelPv(g.id);
   calcStromPanel();
   renderGebPvPanel();
+  // Im Modus: Azimut vorbelegen, kWp sofort ins Asset, Panel + Karte nachziehen
+  if (window.pvModusAktiv) window.pvModusNachFlaeche?.(g);
 };
 
 window.removeGebPvFlaeche = function(gId, flId) {

@@ -470,6 +470,13 @@ export function attachPolygonLayer(g){
       if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
       return;
     }
+    // PV-Modus: der Klick aufs Dach startet die Fläche (25-pv-modus.js) und ist
+    // zugleich deren erste Ecke — keine Gebäudeauswahl.
+    if (typeof window.pvModusBuildingClick === 'function' &&
+        window.pvModusBuildingClick(g.id, event)) {
+      if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+      return;
+    }
     // bubblingMouseEvents:false → das Polygon schluckt den Karten-Klick. Bei
     // aktivem Kartenwerkzeug (z.B. Neubau über Abriss zeichnen) reicht
     // selectFromMap den Klick deshalb an die Karte weiter statt auszuwählen.
