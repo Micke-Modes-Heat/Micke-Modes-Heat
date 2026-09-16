@@ -20,8 +20,10 @@ import {
   normalisiereNotstrom, anschlussKwJeGebaeude, notstromBilanz,
   NEA_KOSTEN, NEA_STRATEGIEN, notstromPlatzierung, notstromPlatzierungVergleich,
   INSEL_PARAMETER, INSEL_STATUS, liegenschaftsInsel,
+  WAERME_SZENARIEN, WAERME_PARAMETER, WAERME_ENERGIETRAEGER, waermeBlackout,
 } from './lib/resilienz-core.js';
-import { globalYear } from './01-globals-varianten.js';
+import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { globalYear, thermSpeicherAktiv } from './01-globals-varianten.js';
 import { map } from './02b-gebaeude.js';
 import { updateViz, polygonCenter } from './02c-karte-werkzeuge.js';
 import { flyTo, escHtml } from './03c-gebaeude-io.js';
@@ -29,6 +31,8 @@ import { getStromEdgeStatus, addStromEdge, recalcStromNetz } from './05b-stromne
 import { ASSETS, getAssetStatus, getAssetPropsForYear, createAsset } from './13a-assets-core.js';
 import { redrawAllAssets } from './13b-assets-render.js';
 import { getNodeProfile8760 } from './13r-knotenpunkt-analyse.js';
+import { getThermSpeicherParams } from './06b-gl-berechnen.js';
+import { isErzeugerAktiv, autoGkResult } from './06c-dispatch-core.js';
 
 const PANEL_ID    = 'blackout-modus-panel';
 const INTERAKTION = 'blackout-modus';
@@ -49,10 +53,28 @@ export function blackoutEinstellungen() {
     window.blackoutVorgabe = { bLastPct: NOTSTROM_B_VORGABE_PCT };
   }
   window.blackoutVorgabe.insel = _inselNormalisieren(window.blackoutVorgabe.insel);
+  window.blackoutVorgabe.waerme = _waermeNormalisieren(window.blackoutVorgabe.waerme);
   return window.blackoutVorgabe;
 }
 
 const INSEL_DAUERN = [[24, '24 h'], [72, '3 Tage'], [168, '7 Tage'], [336, '14 Tage']];
+
+function _waermeNormalisieren(d) {
+  const zahl = (v, def, min, max) => {
+    if (v == null || v === '') return def;
+    const n = parseFloat(String(v).replace(',', '.'));
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+  };
+  return {
+    szenario: WAERME_SZENARIEN[d?.szenario] ? d.szenario : 'total',
+    dauerH: zahl(d?.dauerH, 72, 1, 720),
+    mitNea: d?.mitNea !== false,
+    zweistoffKw: zahl(d?.zweistoffKw, null, 0, 1e6),   // null = Gaskessel-Leistung übernehmen
+    tankL: zahl(d?.tankL, 0, 0, 1e7),
+    hilfsPct: zahl(d?.hilfsPct, WAERME_PARAMETER.hilfsPctVorgabe, 0, 20),
+    hilfsKw: zahl(d?.hilfsKw, 0, 0, 1e5),               // 0 = Prozentansatz
+  };
+}
 
 function _inselNormalisieren(d) {
   const zahl = (v, def, min, max) => {
@@ -72,7 +94,7 @@ function _inselNormalisieren(d) {
 /** Projektdatei: Einstellungen sichern (die Klassen selbst liegen an den Gebäuden). */
 export function blackoutCaptureState() {
   const e = blackoutEinstellungen();
-  return { bLastPct: e.bLastPct, insel: { ...e.insel, bewertung: { ...e.insel.bewertung } } };
+  return { bLastPct: e.bLastPct, insel: { ...e.insel, bewertung: { ...e.insel.bewertung } }, waerme: { ...e.waerme } };
 }
 
 export function blackoutRestoreState(d) {
@@ -80,6 +102,7 @@ export function blackoutRestoreState(d) {
   window.blackoutVorgabe = {
     bLastPct: Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : NOTSTROM_B_VORGABE_PCT,
     insel: _inselNormalisieren(d?.insel),
+    waerme: _waermeNormalisieren(d?.waerme),
   };
   window.blackoutPlatz = null;
   window.blackoutInsel = null;
@@ -131,6 +154,7 @@ export function blackoutModusStart() {
   blackoutModusMarkiereKarte();
   _platzZeichnen();
   _inselZeichnen();
+  _waermeZeichnen();
 }
 
 export function blackoutModusStop() {
@@ -142,6 +166,7 @@ export function blackoutModusStop() {
     document.getElementById(PANEL_ID)?.remove();
     _platzLayerEntfernen();
     _inselLayerEntfernen();
+    _waermeLayerEntfernen();
     _knopfAktiv(false);
     cancelInteraction(INTERAKTION);            // no-op, wenn der Stopp von dort kam
     updateViz();                               // Gebäudestile zurück auf die normale Darstellung
@@ -584,12 +609,14 @@ const INSEL_FARBE = '#ab47bc';
 /** @type {any} */
 let _inselLayer = null;
 
-const _tab = () => (['klassen', 'netz', 'insel'].includes(window.blackoutTab) ? window.blackoutTab : 'klassen');
+const REITER = ['klassen', 'netz', 'insel', 'waerme'];
+const _tab = () => (REITER.includes(window.blackoutTab) ? window.blackoutTab : 'klassen');
 
 export function blackoutSetTab(t) {
-  window.blackoutTab = ['klassen', 'netz', 'insel'].includes(t) ? t : 'klassen';
+  window.blackoutTab = REITER.includes(t) ? t : 'klassen';
   _platzZeichnen();
   _inselZeichnen();
+  _waermeZeichnen();
   blackoutModusRender();
 }
 
@@ -825,6 +852,213 @@ function _inselBlock() {
     </div>`;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// WÄRME (Schritt 4)
+// ══════════════════════════════════════════════════════════════════════════
+// Pauschal über die Netzlast der Heizzentrale (Wärme-Lastgang aus „Grundlagen
+// berechnen") und die Leistungen der Erzeuger-Panels. Rechnet bei jedem
+// Zeichnen neu — ein Jahr stündlich ist schnell.
+
+const WAERME_FARBE = '#ff8a65';
+/** @type {any} */
+let _waermeLayer = null;
+
+/** Aktive Wärmeerzeuger mit Leistung; der automatische Spitzenlastkessel läuft mit Gas. */
+function _waermeErzeuger() {
+  const liste = [];
+  for (const [key, cfg] of Object.entries(ERZEUGER_CFG)) {
+    if (!isErzeugerAktiv(key)) continue;
+    const kw = _num(document.getElementById(cfg.leistungId)?.value);
+    liste.push({ key, label: cfg.label, kw });
+  }
+  if (autoGkResult && autoGkResult.leistungKw > 0) {
+    liste.push({ key: 'autogk', label: 'Spitzenlastkessel (automatisch)', kw: autoGkResult.leistungKw });
+  }
+  return liste;
+}
+
+function _heizzentrale() {
+  const id = Number.parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  return Number.isFinite(id) ? _geb(id) : null;
+}
+
+/** Wärme-Ergebnis mit und ohne Maßnahme; null ohne Wärme-Lastgang. */
+export function blackoutWaermeRechnen() {
+  const ss = window.systemState;
+  if (!ss?.lastgangKw?.length) return null;
+  const e = blackoutEinstellungen().waerme;
+  const erzeuger = _waermeErzeuger();
+  const gasKw = erzeuger.filter(x => WAERME_ENERGIETRAEGER[x.key] === 'gas').reduce((s, x) => s + x.kw, 0);
+  const zweistoffKw = e.zweistoffKw ?? gasKw;
+  const sp = thermSpeicherAktiv ? getThermSpeicherParams() : null;
+  const puffer = sp?.kapKwh > 0 ? { kapKwh: sp.kapKwh, entladeKw: sp.entladeKw } : null;
+  const gemeinsam = {
+    last: ss.lastgangKw, erzeuger, szenario: e.szenario, dauerH: e.dauerH, tankL: e.tankL,
+    puffer, hilfsPct: e.hilfsPct, hilfsKw: e.hilfsKw,
+  };
+  const mit = waermeBlackout({ ...gemeinsam, mitNea: e.mitNea, zweistoffKw });
+  const ohne = waermeBlackout({ ...gemeinsam, mitNea: false, zweistoffKw: 0 });
+  return { mit, ohne, gasKw, zweistoffKw, zweistoffAuto: e.zweistoffKw == null, puffer, heizzentrale: _heizzentrale() };
+}
+
+export function blackoutWaermeSet(feld, wert) {
+  const e = blackoutEinstellungen().waerme;
+  if (feld === 'mitNea') e.mitNea = !!wert;
+  else if (feld === 'zweistoffKw') e.zweistoffKw = wert === '' ? null : wert;
+  else e[feld] = wert;
+  blackoutEinstellungen();                       // normalisieren
+  _waermeZeichnen();
+  blackoutModusRender();
+}
+
+/** Heizzentrale als kritisch mit eigenem Aggregat einstufen — dann zählt sie in der Strom-Bilanz. */
+export function blackoutHeizzentraleEinstufen() {
+  const g = _heizzentrale();
+  if (!g) return;
+  g.notstrom = normalisiereNotstrom({ klasse: 'A', eigeneNea: true });
+  blackoutModusMarkiereKarte();
+  blackoutModusRender();
+  window.showHint?.(`„${g.name || 'Heizzentrale'}" ist jetzt Klasse A mit eigenem Aggregat.`, 4000);
+}
+
+function _waermeLayerEntfernen() {
+  if (_waermeLayer) { _waermeLayer.remove(); _waermeLayer = null; }
+}
+
+function _waermeZeichnen() {
+  _waermeLayerEntfernen();
+  if (!window.blackoutModusAktiv || _tab() !== 'waerme') return;
+  const g = _heizzentrale();
+  if (!g?.polygon?.length) return;
+  const w = blackoutWaermeRechnen();
+  const c = polygonCenter(g.polygon);
+  _waermeLayer = L.layerGroup().addTo(map);
+  const text = w
+    ? `<b>🔥 Heizzentrale ${escHtml(g.name || '')}</b><br>Deckung im Ausfall: <b>${Math.round(w.mit.deckungEnergiePct)} %</b>`
+      + ` (ohne Maßnahme ${Math.round(w.ohne.deckungEnergiePct)} %)`
+      + (w.mit.neaKw ? `<br>Notstrom Hilfsenergie ${_fmtKw(w.mit.neaKw)}` : '')
+    : `<b>🔥 Heizzentrale ${escHtml(g.name || '')}</b><br>Wärme-Lastgang fehlt`;
+  L.marker([c.lat, c.lng], { icon: _divIcon('🔥', WAERME_FARBE, 30), zIndexOffset: 720 })
+    .bindTooltip(text, { className: 'geb-tooltip' }).addTo(_waermeLayer);
+}
+
+function _waermeBlock() {
+  const e = blackoutEinstellungen().waerme;
+  const w = blackoutWaermeRechnen();
+  const fmt = v => Math.round(v).toLocaleString('de-DE');
+  const knopf = (aktiv, handler, text, titel = '') =>
+    `<button class="btn-xs" style="flex:1;${aktiv ? `border-color:${WAERME_FARBE};color:${WAERME_FARBE};background:${WAERME_FARBE}26;` : ''}"
+      data-click="${handler}" title="${titel}">${text}</button>`;
+  const feld = (label, feldName, wert, einheit, titel, platzhalter = '') => `
+    <label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:9.5px;" title="${titel}">
+      <span style="flex:1;color:var(--muted);">${label}</span>
+      <input type="number" min="0" step="any" value="${wert ?? ''}" placeholder="${platzhalter}"
+        style="width:74px;font-size:10px;padding:1px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;text-align:right;"
+        data-change="blackoutWaermeSet('${feldName}',this.value)"/>
+      <span style="width:18px;color:var(--muted);">${einheit}</span>
+    </label>`;
+
+  const szenarien = Object.entries(WAERME_SZENARIEN)
+    .map(([k, sz]) => knopf(k === e.szenario, `blackoutWaermeSet('szenario','${k}')`, sz.label, sz.kurz)).join('');
+  const dauern = INSEL_DAUERN
+    .map(([h, t]) => knopf(h === e.dauerH, `blackoutWaermeSet('dauerH',${h})`, t)).join('');
+
+  const eingaben = `
+    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Ausfall</div>
+    <div style="display:flex;gap:3px;margin-top:3px;">${szenarien}</div>
+    <div style="display:flex;gap:3px;margin-top:3px;">${dauern}</div>
+    <label style="display:flex;align-items:center;gap:4px;margin-top:6px;font-size:9.5px;cursor:pointer;"
+      title="Kleines Notstromaggregat für Pumpen, Brenner und Regelung der Heizzentrale">
+      <input type="checkbox" ${e.mitNea ? 'checked' : ''} data-change="blackoutWaermeSet('mitNea',this.checked)"/> Notstromaggregat an der Heizzentrale</label>
+    ${feld('Zweistoffbrenner (Heizöl)', 'zweistoffKw', e.zweistoffKw,
+      'kW', 'Heizölleistung der Zweistoffbrenner — leer = Leistung der Gaskessel', w ? fmt(w.gasKw) : '')}
+    ${feld('Heizöllager', 'tankL', e.tankL || '', 'l', 'Vorhandenes Lager für Zweistoffbrenner und Heizölkessel — leer = nicht erfasst', 'nicht erfasst')}
+    ${feld('Hilfsenergie', 'hilfsPct', e.hilfsPct, '%', 'Pumpen, Brenner, Regelung in % der laufenden Kesselleistung')}
+    ${feld('… oder fest', 'hilfsKw', e.hilfsKw || '', 'kW', 'Fester Wert statt Prozentansatz — leer = Prozentansatz', '—')}`;
+
+  if (!w) {
+    return eingaben + `<div style="font-size:9.5px;color:#ffa726;margin-top:8px;line-height:1.45;">
+      ⚠ Kein Wärme-Lastgang — erst „Grundlagen berechnen" (Wärmenetz), dann erscheint hier die Deckung im Ausfall.</div>`;
+  }
+  const { mit, ohne } = w;
+  const karte = (label, wert, farbe, titel = '') =>
+    `<div title="${titel}" style="background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:4px 6px;min-width:0;">
+       <div style="font-size:8.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</div>
+       <div style="font-size:11.5px;font-weight:700;color:${farbe};white-space:nowrap;">${wert}</div></div>`;
+  const ampel = pct => (pct >= 99.5 ? '#66bb6a' : pct >= 60 ? '#ffa726' : '#ef5350');
+  const reichweite = mit.reichweiteH == null ? (e.tankL ? '—' : 'Lager fehlt')
+    : mit.reichweiteH === Infinity ? '> 30 Tage'
+    : mit.reichweiteH >= 48 ? `${(mit.reichweiteH / 24).toFixed(1)} Tage` : `${mit.reichweiteH} h`;
+  const kacheln = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:8px;">
+      ${karte('Deckung Energie', `${Math.round(mit.deckungEnergiePct)} %`, ampel(mit.deckungEnergiePct),
+        `Im ungünstigsten ${mit.dauerH}-h-Fenster · ohne Maßnahme ${Math.round(ohne.deckungEnergiePct)} %`)}
+      ${karte('Deckung Leistung', `${Math.round(mit.deckungLeistungPct)} %`, ampel(mit.deckungLeistungPct),
+        `${_fmtKw(mit.kapazitaetKw)} verfügbar gegen ${_fmtKw(mit.spitzeKw)} Spitze`)}
+      ${karte('Ungedeckt', mit.stundenUngedeckt ? `${mit.stundenUngedeckt} h` : 'keine', mit.stundenUngedeckt ? '#ef5350' : '#66bb6a',
+        `${fmt(mit.ungedecktKwh)} kWh fehlen im Fenster`)}
+      ${karte('Heizöl im Fenster', `${fmt(mit.oelLiterFenster)} l`, WAERME_FARBE, `Lagerempfehlung ${fmt(mit.tankEmpfehlungL)} l inkl. Zuschlag`)}
+      ${karte('Lager reicht', reichweite, mit.reichweiteH != null && mit.reichweiteH < mit.dauerH ? '#ef5350' : WAERME_FARBE,
+        'Ab dem ungünstigsten Zeitpunkt, bis das erfasste Lager leer ist')}
+      ${karte('Notstrom HZ', mit.neaKw ? _fmtKw(mit.neaKw) : '—', WAERME_FARBE,
+        `Hilfsenergie ${mit.hilfsKw.toFixed(1)} kW + Reserve`)}
+    </div>`;
+
+  const erzeugerZeilen = mit.erzeuger.map(x => `
+      <div style="display:flex;gap:4px;padding:2px;font-size:9.5px;border-bottom:1px solid rgba(255,255,255,.05);"
+        title="${escHtml(x.grund || 'läuft im Ausfall')}">
+        <span style="width:12px;color:${x.verfuegbar ? '#66bb6a' : '#ef5350'};">${x.verfuegbar ? '✓' : '✕'}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.label)}
+          ${x.grund ? `<span style="color:var(--muted);">— ${escHtml(x.grund)}</span>` : ''}</span>
+        <span style="white-space:nowrap;color:var(--muted);">${_fmtKw(x.kw)}</span>
+      </div>`).join('');
+
+  const hz = w.heizzentrale;
+  const hzKlasse = normalisiereNotstrom(hz?.notstrom);
+  const hzOhneAsset = !!hz && !(anschlussKwJeGebaeude(_aktiveVerbraucher(globalYear)).get(hz.id) > 0);
+  const hzZeile = !hz
+    ? `<div style="font-size:9px;color:#ffa726;margin-top:6px;">⚠ Keine Heizzentrale im Wärmenetz gewählt — sie wird in der Strom-Bilanz nicht berücksichtigt.</div>`
+    : hzKlasse?.klasse === 'A' && hzKlasse.eigeneNea
+      ? `<div style="font-size:9.5px;color:#66bb6a;margin-top:6px;">✓ Heizzentrale „${escHtml(hz.name || '')}" ist Klasse A mit eigenem Aggregat.</div>`
+        + (hzOhneAsset && mit.neaKw
+          ? `<div style="font-size:9px;color:#ffa726;margin-top:3px;line-height:1.4;">⚠ Die Heizzentrale hat kein Verbraucher-Asset — im Strom-Teil zählt ihr Aggregat mit 0 kW statt ${_fmtKw(mit.neaKw)}.</div>`
+          : '')
+      : `<button class="btn-xs" style="width:100%;margin-top:6px;border-color:${WAERME_FARBE};color:${WAERME_FARBE};"
+          data-click="blackoutHeizzentraleEinstufen()"
+          title="Setzt die Notstromklasse der Heizzentrale auf A mit eigenem Aggregat">Heizzentrale „${escHtml(hz.name || '')}" als Klasse A mit eigener NEA einstufen</button>`;
+
+  const hinweise = [
+    !e.mitNea && 'Ohne Notstrom laufen weder Pumpen noch Brenner — die Gebäude kühlen ab Ausfallbeginn aus (Auskühlzeiten: PV-Analyse › Abb. 10 › Wärme).',
+    mit.kwJeTraeger.oel > 0 && !e.tankL && 'Heizöllager nicht erfasst — die Reichweite ist unbekannt, die Deckung rechnet mit unbegrenztem Öl.',
+    mit.reichweiteH != null && mit.reichweiteH < mit.dauerH && `Das Lager ist nach ${mit.reichweiteH} h leer — für ${mit.dauerH} h fehlen ${fmt(mit.tankFehltL)} l.`,
+    mit.awsv && `Heizöllager über ${fmt(WAERME_PARAMETER.awsvSchwelleL)} l: AwSV-Anzeige und Auflagen beachten.`,
+    w.zweistoffAuto && w.gasKw > 0 && WAERME_SZENARIEN[e.szenario].gas === false && 'Zweistoffbrenner-Leistung = Leistung der Gaskessel (Vorgabe).',
+    mit.erzeuger.some(x => x.key === 'zweistoff') && w.zweistoffKw > w.gasKw + 0.5 && 'Zweistoffleistung größer als die Gaskessel — setzt zusätzliche Kessel voraus.',
+  ].filter(Boolean).map(t => `<div style="font-size:9px;color:#ffa726;margin-top:4px;line-height:1.4;">⚠ ${t}</div>`).join('');
+
+  const kosten = [
+    mit.kosten.nea && ['Notstromaggregat Heizzentrale', mit.kosten.nea],
+    mit.kosten.zweistoff && ['Zweistoffbrenner', mit.kosten.zweistoff],
+    mit.kosten.tank && [`Heizöllager +${fmt(mit.tankFehltL)} l`, mit.kosten.tank],
+  ].filter(Boolean);
+  const kostenBlock = kosten.length ? `
+    <div style="font-size:9px;color:var(--muted);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.05em;">Maßnahmen (Richtwerte)</div>
+    ${kosten.map(([t, v]) => `<div style="display:flex;font-size:9.5px;padding:1px 2px;"><span style="flex:1;">${t}</span><span>${_fmtEur(v)}</span></div>`).join('')}
+    <div style="display:flex;font-size:10px;padding:2px;border-top:1px solid var(--border);margin-top:2px;font-weight:600;">
+      <span style="flex:1;">Summe</span><span style="color:${WAERME_FARBE};">${_fmtEur(mit.kostenSumme)}</span></div>` : '';
+
+  return eingaben + kacheln + hinweise + `
+    <div style="font-size:9px;color:var(--muted);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.05em;">Erzeuger im Ausfall</div>
+    ${erzeugerZeilen || '<div style="font-size:9.5px;color:var(--muted);">Keine Wärmeerzeuger aktiv.</div>'}
+    ${w.puffer ? `<div style="font-size:9.5px;padding:2px;color:var(--muted);">Pufferspeicher ${fmt(w.puffer.kapKwh)} kWh ${e.mitNea ? 'überbrückt Spitzen' : '— ohne Pumpen nicht nutzbar'}</div>` : ''}
+    ${hzZeile}
+    ${kostenBlock}
+    <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.45;">
+      Pauschale Betrachtung über die Netzlast der Heizzentrale. Heizöl ${WAERME_PARAMETER.heizwertKwhProL} kWh/l, Kesselwirkungsgrad
+      ${Math.round(WAERME_PARAMETER.kesselEta * 100)} %, Lagerzuschlag ${Math.round((WAERME_PARAMETER.tankZuschlag - 1) * 100)} %.
+      Festbrennstoffe gelten als ausreichend bevorratet. Wärmepumpen und Stromkessel laufen nicht, weil das Aggregat nur die Hilfsenergie deckt.
+    </div>`;
+}
+
 /** Gebäude nach Klasse einfärben; nicht eingestufte blass und gestrichelt. */
 export function blackoutModusMarkiereKarte() {
   if (!window.blackoutModusAktiv) return;
@@ -949,7 +1183,7 @@ function _html() {
   const vorgabe = blackoutEinstellungen().bLastPct;
   const auswahl = _alle().filter(g => g.selected).length;
   const tab = _tab();
-  const reiter = [['klassen', 'Klassen'], ['netz', 'Am Netz'], ['insel', 'Liegenschaft']].map(([k, t]) =>
+  const reiter = [['klassen', 'Klassen'], ['netz', 'Am Netz'], ['insel', 'Liegenschaft'], ['waerme', 'Wärme']].map(([k, t]) =>
     `<button class="bom-tab${k === tab ? ' aktiv' : ''}" data-click="blackoutSetTab('${k}')">${t}</button>`).join('');
   const kopf = `
     <div class="bom-head">
@@ -960,6 +1194,7 @@ function _html() {
     <div class="bom-tabs">${reiter}</div>`;
   if (tab === 'netz') return kopf + `<div class="bom-body">${_platzBlock()}</div>`;
   if (tab === 'insel') return kopf + `<div class="bom-body">${_inselBlock()}</div>`;
+  if (tab === 'waerme') return kopf + `<div class="bom-body">${_waermeBlock()}</div>`;
   return kopf + `
     <div class="bom-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">

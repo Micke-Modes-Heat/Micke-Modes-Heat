@@ -6,6 +6,7 @@ import {
   NEA_KOSTEN, neaEmpfehlungKw, neaKosten, notstromNetzBaum,
   notstromPlatzierung, notstromPlatzierungVergleich,
   inselAggregate, maxFensterEnergie, inselZuschaltstufen, inselMsKennwerte, liegenschaftsInsel,
+  maxFensterStart, waermeErzeugerStatus, waermeBlackout,
 } from '../src/lib/resilienz-core.js';
 
 describe('normalisiereNotstrom', () => {
@@ -351,5 +352,93 @@ describe('liegenschaftsInsel', () => {
     const r = liegenschaftsInsel(b);
     expect(r.zielKw).toBe(500);
     expect(r.energieKwh).toBe(1000);
+  });
+});
+
+// ── Schritt 4: Wärme ────────────────────────────────────────────────────────
+describe('maxFensterStart', () => {
+  it('liefert den Beginn des energiereichsten Fensters, auch über den Jahreswechsel', () => {
+    expect(maxFensterStart([100, 300, 300, 100], 2)).toBe(1);
+    expect(maxFensterStart([300, 100, 100, 300], 2)).toBe(3);
+  });
+});
+
+describe('waermeErzeugerStatus', () => {
+  const erz = [{ key: 'gaskessel', label: 'Gas', kw: 200 }, { key: 'lwwp', label: 'WP', kw: 100 },
+               { key: 'fernwaerme', label: 'FW', kw: 80 }, { key: 'pellets', label: 'Pellets', kw: 50 }];
+  it('ohne Notstrom fällt alles aus', () => {
+    expect(waermeErzeugerStatus(erz, 'strom', false).every(e => !e.verfuegbar)).toBe(true);
+  });
+  it('mit Notstrom hängt es am Energieträger', () => {
+    const v = s => waermeErzeugerStatus(erz, s, true).filter(e => e.verfuegbar).map(e => e.key);
+    expect(v('strom')).toEqual(['gaskessel', 'fernwaerme', 'pellets']);
+    expect(v('strom-gas')).toEqual(['fernwaerme', 'pellets']);
+    expect(v('total')).toEqual(['pellets']);
+  });
+});
+
+describe('waermeBlackout', () => {
+  const basis = () => ({
+    last: [100, 300, 300, 100], dauerH: 2, szenario: 'total', mitNea: true,
+    erzeuger: [{ key: 'pellets', label: 'Pellets', kw: 50 }, { key: 'gaskessel', label: 'Gas', kw: 200 },
+               { key: 'lwwp', label: 'WP', kw: 100 }],
+    zweistoffKw: 200, tankL: 20,
+  });
+
+  it('rechnet Leistungs- und Energiedeckung mit begrenztem Heizöllager', () => {
+    const r = waermeBlackout(basis());
+    expect(r.kwJeTraeger).toMatchObject({ fest: 50, gas: 0, oel: 200 });
+    expect(r.kapazitaetKw).toBe(250);
+    expect(r.deckungLeistungPct).toBeCloseTo(250 / 3, 5);
+    // Stunde 1: 50 + 180 (Lager leer) · Stunde 2: nur 50 → 280 von 600 kWh
+    expect(r.deckungEnergiePct).toBeCloseTo(280 / 6, 5);
+    expect(r.stundenUngedeckt).toBe(2);
+    expect(r.reichweiteH).toBe(1);
+  });
+
+  it('empfiehlt das Lager für die volle Dauer und bemisst das Aggregat der Heizzentrale', () => {
+    const r = waermeBlackout(basis());
+    // 400 kWh / 0,9 / 10 = 44,4 l × 1,15 → 100 l
+    expect(r.tankEmpfehlungL).toBe(100);
+    expect(r.tankFehltL).toBe(80);
+    // 2 % von 250 kW = 5 kW → × 1,2 → 10 kW
+    expect(r.hilfsKw).toBe(5);
+    expect(r.neaKw).toBe(10);
+    expect(r.kosten).toEqual({ nea: 24500, zweistoff: 19000, tank: 120 });
+  });
+
+  it('ohne Notstromaggregat ist die Deckung null — auch der Puffer steht', () => {
+    const b = basis();
+    b.mitNea = false;
+    b.puffer = { kapKwh: 1000, entladeKw: 500 };
+    const r = waermeBlackout(b);
+    expect(r.kapazitaetKw).toBe(0);
+    expect(r.deckungEnergiePct).toBe(0);
+    expect(r.neaKw).toBe(0);
+  });
+
+  it('bei reinem Stromausfall läuft der Gaskessel, der Zweistoffbrenner zählt nicht doppelt', () => {
+    const b = basis();
+    b.szenario = 'strom';
+    const r = waermeBlackout(b);
+    expect(r.kwJeTraeger).toMatchObject({ fest: 50, gas: 200, oel: 0 });
+    expect(r.erzeuger.some(e => e.key === 'zweistoff')).toBe(false);
+    expect(r.deckungEnergiePct).toBeCloseTo(500 / 6, 5);
+    expect(r.reichweiteH).toBeNull();
+  });
+
+  it('der Puffer deckt Spitzen, wenn das Aggregat läuft', () => {
+    const b = basis();
+    b.tankL = 0;                                         // Lager unbekannt → unbegrenzt
+    b.puffer = { kapKwh: 100, entladeKw: 50 };
+    const r = waermeBlackout(b);
+    expect(r.deckungEnergiePct).toBeCloseTo(600 / 6, 5);  // 250 + 50 Puffer, 250 + 50 Puffer
+    expect(r.reichweiteH).toBeNull();
+  });
+
+  it('nimmt einen festen Hilfsenergiewert statt des Prozentansatzes', () => {
+    const b = basis();
+    b.hilfsKw = 22;
+    expect(waermeBlackout(b).neaKw).toBe(30);
   });
 });

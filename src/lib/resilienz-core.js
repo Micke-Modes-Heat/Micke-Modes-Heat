@@ -734,3 +734,189 @@ export function liegenschaftsInsel(p) {
     checkliste: punkte, kosten: kostenSumme,
   };
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// Schritt 4: Wärmeversorgung bei Ausfall der äußeren Versorgung
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Bewusst pauschal: Netzlast der Heizzentrale gegen die im Szenario noch
+// verfügbare Erzeugerleistung, stündlich über das ungünstigste Fenster.
+//   • Ohne Strom laufen weder Pumpen noch Brenner — ohne Notstromaggregat an
+//     der Heizzentrale ist die Deckung null (auch der Pufferspeicher ist ohne
+//     Umwälzung nicht nutzbar).
+//   • Mit Aggregat laufen die Erzeuger, deren Energieträger noch da ist.
+//     Wärmepumpen und Stromkessel bleiben aus: das Aggregat ist nur für die
+//     Hilfsenergie bemessen.
+//   • Fällt Gas aus, übernimmt der Zweistoffbrenner mit Heizöl aus dem Lager.
+// Reihenfolge der Deckung: Festbrennstoff → Gas → Fernwärme → Heizöl → Puffer.
+
+export const WAERME_SZENARIEN = Object.freeze({
+  strom:       Object.freeze({ label: 'Strom',             kurz: 'nur das Stromnetz fällt aus',       gas: true,  fw: true }),
+  'strom-gas': Object.freeze({ label: 'Strom + Gas',       kurz: 'Strom- und Gasversorgung fallen aus', gas: false, fw: true }),
+  total:       Object.freeze({ label: 'Totalausfall',      kurz: 'Strom, Gas und Fernwärme fallen aus', gas: false, fw: false }),
+});
+
+/** Energieträger je Erzeuger-Schlüssel (config/erzeuger-cfg.js). */
+export const WAERME_ENERGIETRAEGER = Object.freeze({
+  lwwp: 'strom', fg: 'strom', geo: 'strom', stromkessel: 'strom',
+  gaskessel: 'gas', bhkw: 'gas', autogk: 'gas',
+  fernwaerme: 'fw', heizoel: 'oel', zweistoff: 'oel',
+  pellets: 'fest', hhs: 'fest',
+});
+
+export const WAERME_PARAMETER = Object.freeze({
+  heizwertKwhProL: 10,          // Heizöl EL
+  kesselEta: 0.9,
+  tankZuschlag: 1.15,
+  hilfsPctVorgabe: 2,           // Pumpen, Brenner, Regelung in % der laufenden Kesselleistung
+  horizontH: 720,               // Reichweite des Heizöllagers höchstens 30 Tage suchen
+  awsvSchwelleL: 1000,
+});
+
+export const WAERME_KOSTEN = Object.freeze({
+  zweistoffFixEur: 15000,       // Brennerumbau, Ölversorgung, Regelung je Anlage
+  zweistoffEurProKw: 20,
+  tankEurProL: 1.5,             // zusätzliches Lagervolumen, doppelwandig
+});
+
+/** Startstunde des energiereichsten Fensters (zyklisch). */
+export function maxFensterStart(profil, dauerH) {
+  const n = profil?.length || 0;
+  if (!n || !(dauerH > 0)) return 0;
+  const d = Math.min(dauerH, n);
+  let s = 0;
+  for (let t = 0; t < d; t++) s += profil[t];
+  let max = s, start = 0;
+  for (let t = 1; t < n; t++) {
+    s += profil[(t + d - 1) % n] - profil[t - 1];
+    if (s > max) { max = s; start = t; }
+  }
+  return start;
+}
+
+const _REIHENFOLGE = ['fest', 'gas', 'fw', 'oel'];
+
+/**
+ * Status der Erzeuger im Szenario.
+ * @param {Array<{key:string,label:string,kw:number}>} erzeuger
+ */
+export function waermeErzeugerStatus(erzeuger, szenario, mitNea) {
+  const sz = WAERME_SZENARIEN[szenario] || WAERME_SZENARIEN.total;
+  return (erzeuger || []).map(e => {
+    const traeger = WAERME_ENERGIETRAEGER[e.key] || 'strom';
+    let grund = null;
+    if (traeger === 'strom') grund = 'braucht Strom — das Aggregat deckt nur die Hilfsenergie';
+    else if (!mitNea) grund = 'ohne Notstrom keine Pumpen und Brenner';
+    else if (traeger === 'gas' && !sz.gas) grund = 'Gasversorgung fällt aus';
+    else if (traeger === 'fw' && !sz.fw) grund = 'Fernwärme fällt aus';
+    return { ...e, traeger, verfuegbar: !grund && e.kw > 0, grund };
+  });
+}
+
+/**
+ * Wärmeversorgung im Ausfall.
+ * @param {object} p
+ * @param {ArrayLike<number>} p.last               Netzlast der Heizzentrale (kW, stündlich)
+ * @param {Array<{key:string,label:string,kw:number}>} p.erzeuger
+ * @param {string} p.szenario                      'strom' | 'strom-gas' | 'total'
+ * @param {number} p.dauerH
+ * @param {boolean} p.mitNea                       Notstromaggregat an der Heizzentrale
+ * @param {number} [p.zweistoffKw]                 Heizölleistung der Zweistoffbrenner
+ * @param {number} [p.tankL]                       Heizöllager (0 = nicht angegeben)
+ * @param {{kapKwh:number, entladeKw:number}|null} [p.puffer]
+ * @param {number} [p.hilfsPct]
+ * @param {number} [p.hilfsKw]                     fester Wert statt Prozentansatz
+ */
+export function waermeBlackout(p) {
+  const par = p.parameter || WAERME_PARAMETER;
+  const k = p.kosten || WAERME_KOSTEN;
+  const last = p.last || [];
+  const n = last.length;
+  const sz = WAERME_SZENARIEN[p.szenario] ? p.szenario : 'total';
+  const mitNea = !!p.mitNea;
+  const zweistoffKw = Math.max(0, p.zweistoffKw || 0);
+  const liste = [...(p.erzeuger || [])];
+  // Der Zweistoffbrenner ersetzt den Gasbetrieb — nur zählen, wenn Gas fehlt
+  if (zweistoffKw > 0 && !WAERME_SZENARIEN[sz].gas) liste.push({ key: 'zweistoff', label: 'Zweistoffbrenner (Heizöl)', kw: zweistoffKw });
+  const status = waermeErzeugerStatus(liste, sz, mitNea);
+
+  const kwJe = Object.fromEntries(_REIHENFOLGE.map(t => [t, 0]));
+  for (const e of status) if (e.verfuegbar) kwJe[e.traeger] += e.kw;
+  const kapazitaetKw = _REIHENFOLGE.reduce((s, t) => s + kwJe[t], 0);
+  const puffer = mitNea && p.puffer?.kapKwh > 0 ? p.puffer : null;
+  let spitzeKw = 0;
+  for (let t = 0; t < n; t++) if (last[t] > spitzeKw) spitzeKw = last[t];
+
+  const tankKwh = (p.tankL || 0) * par.heizwertKwhProL * par.kesselEta;
+  const start = maxFensterStart(last, p.dauerH);
+
+  // Stündliche Deckung ab dem ungünstigsten Start
+  const simuliere = (stunden, tankBegrenzt) => {
+    let soc = puffer ? puffer.kapKwh : 0;
+    let oelRest = tankKwh;
+    let bedarf = 0, gedeckt = 0, oelKwh = 0, stundenUngedeckt = 0, leerNachH = null, fensterSpitze = 0;
+    for (let h = 0; h < stunden; h++) {
+      const need = last[(start + h) % n] || 0;
+      if (need > fensterSpitze) fensterSpitze = need;
+      let rest = need;
+      for (const tr of _REIHENFOLGE) {
+        if (rest <= 0) break;
+        let lieferbar = kwJe[tr];
+        if (tr === 'oel' && tankBegrenzt && tankKwh > 0) lieferbar = Math.min(lieferbar, oelRest);
+        const d = Math.min(rest, lieferbar);
+        rest -= d;
+        if (tr === 'oel') {
+          oelKwh += d;
+          if (tankBegrenzt && tankKwh > 0) {
+            oelRest -= d;
+            if (oelRest <= 1e-6 && leerNachH == null && kwJe.oel > 0) leerNachH = h + 1;
+          }
+        }
+      }
+      if (rest > 0 && soc > 0) {
+        const d = Math.min(rest, soc, puffer.entladeKw);
+        soc -= d; rest -= d;
+      }
+      bedarf += need;
+      gedeckt += need - rest;
+      if (rest > 1e-6) stundenUngedeckt++;
+    }
+    return { bedarf, gedeckt, oelKwh, stundenUngedeckt, leerNachH, fensterSpitze };
+  };
+
+  const dauer = Math.max(1, Math.min(p.dauerH || 72, n || 1));
+  const fenster = n ? simuliere(dauer, true) : { bedarf: 0, gedeckt: 0, oelKwh: 0, stundenUngedeckt: 0, leerNachH: null, fensterSpitze: 0 };
+  // Ölbedarf ohne Lagergrenze → Lagerempfehlung für die gewählte Dauer
+  const ohneGrenze = n ? simuliere(dauer, false) : fenster;
+  const oelLiterFenster = ohneGrenze.oelKwh / par.kesselEta / par.heizwertKwhProL;
+  const tankEmpfehlungL = Math.ceil(oelLiterFenster * par.tankZuschlag / 100) * 100;
+  let reichweiteH = null;
+  if (tankKwh > 0 && kwJe.oel > 0 && n) {
+    const lang = simuliere(par.horizontH, true);
+    reichweiteH = lang.leerNachH ?? Infinity;
+  }
+
+  const laufendKw = kwJe.fest + kwJe.gas + kwJe.fw + kwJe.oel;
+  const hilfsKw = p.hilfsKw > 0 ? p.hilfsKw : laufendKw * (p.hilfsPct ?? par.hilfsPctVorgabe) / 100;
+  const neaKw = mitNea ? neaEmpfehlungKw(hilfsKw) : 0;
+
+  const tankFehlt = Math.max(0, tankEmpfehlungL - (p.tankL || 0));
+  const kosten = {
+    nea: neaKosten(neaKw, 'gebaeude'),
+    zweistoff: zweistoffKw > 0 ? k.zweistoffFixEur + zweistoffKw * k.zweistoffEurProKw : 0,
+    tank: tankFehlt * k.tankEurProL,
+  };
+
+  return {
+    szenario: sz, mitNea, start, dauerH: dauer,
+    erzeuger: status, kwJeTraeger: kwJe, kapazitaetKw, spitzeKw,
+    fensterSpitzeKw: fenster.fensterSpitze,
+    deckungLeistungPct: spitzeKw > 0 ? Math.min(100, kapazitaetKw / spitzeKw * 100) : 100,
+    deckungEnergiePct: fenster.bedarf > 0 ? fenster.gedeckt / fenster.bedarf * 100 : 100,
+    bedarfKwh: fenster.bedarf, ungedecktKwh: fenster.bedarf - fenster.gedeckt,
+    stundenUngedeckt: fenster.stundenUngedeckt,
+    oelLiterFenster, tankEmpfehlungL, tankFehltL: tankFehlt, reichweiteH,
+    awsv: Math.max(p.tankL || 0, tankEmpfehlungL) > par.awsvSchwelleL,
+    hilfsKw, neaKw, kosten, kostenSumme: kosten.nea + kosten.zweistoff + kosten.tank,
+  };
+}
