@@ -23,7 +23,7 @@ import { calcFFKwp } from './03a-erzeuger.js';
 import { ASSETS, getAssetsForBuilding } from './13a-assets-core.js';
 import { EIGNUNG_PAUSCHAL_PCT, PV_PFLICHT_LISTE, PV_PFLICHT_META } from './config/pv-pflicht-laender.js';
 import { detectBundesland } from './lib/bundeslaender.js';
-import { bezugFlaechenName, bezugFlaechenNameDekliniert, pvPflichtSumme } from './lib/pv-pflicht.js';
+import { bezugFlaechenName, bezugFlaechenNameDekliniert, projiziereAufDachflaeche, pvPflichtSumme } from './lib/pv-pflicht.js';
 
 const LILA = '#9575cd';
 const LILA_HELL = '#b39ddb';
@@ -143,13 +143,17 @@ export function pvPflichtGebaeudeliste() {
     if (g.abrissjahr && g.abrissjahr <= heute) continue;   // heute schon abgerissen
     const typ = getNutzungstypById(g.nutzungstyp);
     const dachSan = (g.sanierungen || []).find(sa => sa?.dach === true);
+    const neigung = g.dachNeigung ?? getDachDefaultNeigung(g.dachform || 'sattel');
+    // pvNettoFlaeche summiert die im PV-Modus GEZEICHNETEN Flächen, und die sind
+    // auf der Karte gemessen — also Grundriss. Für die Länder, die auf die
+    // „geeignete Dachfläche" abstellen, zählt die Dachhaut: erst projizieren.
     liste.push({
       id: g.id,
       name: g.name || g.gebaeudenummer || `Gebäude ${g.id}`,
       grundflaecheM2: parseFloat(g.flaeche) || 0,
-      dachNeigung:    g.dachNeigung ?? getDachDefaultNeigung(g.dachform || 'sattel'),
+      dachNeigung:    neigung,
       wohnen:         typ?.gruppe === 'Wohnen',
-      geeignetM2:     pvNettoFlaeche(g),
+      geeignetM2:     projiziereAufDachflaeche(pvNettoFlaeche(g), neigung),
       nutzflaecheM2:  (parseFloat(g.flaeche) || 0) * (parseInt(g.stockwerke) || typ?.stockwerke || 1),
       neubau:         Number.isFinite(g.baujahr) && g.baujahr > heute,
       dachsanierung:  !!dachSan,
@@ -361,9 +365,19 @@ function _uebersichtHtml() {
       im PV-Panel abweichen; wo das vorkommt, steht es in der Zeile.
     </div>
     <div style="color:var(--muted);">
-      Bruttodachfläche = Grundfläche ÷ cos(Dachneigung)${r.bezug === 'geeignet'
-        ? ` · geeignete Fläche = gezeichnete Belegung − Sperrflächen, ohne Zeichnung pauschal ${EIGNUNG_PAUSCHAL_PCT} % der Bruttodachfläche`
-        : ''}
+      <b style="color:var(--text);">Woher die Bezugsfläche kommt:</b>
+      Bruttodachfläche = Gebäude-Grundfläche (Grundriss von der Karte) ÷ cos(Dachneigung).
+      Dachform und Neigung kommen aus der Gebäudekarte bzw. dem PV-Modus; ohne eigene
+      Eingabe gilt die Vorgabe der Dachform (flach 5°, Pult 15°, Walm 30°, Sattel 35°).${
+        r.bezug === 'geeignet'
+        ? ` Die geeignete Fläche ist die im PV-Modus gezeichnete Belegung minus Sperrflächen
+            (inkl. ausgesparter Nordseite), ebenfalls auf die Dachhaut projiziert — gezeichnet
+            wird im Grundriss. Ohne Zeichnung: pauschal ${EIGNUNG_PAUSCHAL_PCT} % der Bruttodachfläche.`
+        : ' Gezeichnete Belegungs- und Sperrflächen ändern sie NICHT — dieses Land stellt auf die gesamte Dachfläche ab.'}
+    </div>
+    <div style="color:var(--muted);">
+      Belegungsgrad, GCR, Aufständerung und Azimut gehen <b style="color:var(--text);">nicht</b> in die
+      Bezugsfläche ein — sie bestimmen die Modulplatzierung und damit die Spalte „geplant".
     </div>
     <div style="color:#607d8b;margin-top:3px;">
       Der auslösende Fall wird gegen das laufende Kalenderjahr geprüft, nicht gegen den Jahres-Regler —
