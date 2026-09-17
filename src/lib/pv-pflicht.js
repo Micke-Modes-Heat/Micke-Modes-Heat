@@ -75,18 +75,34 @@ export const PFLICHT_TOLERANZ_PCT = 0.5;
 const NEIGUNG_RUECKFALL_GRAD = 35;
 
 /**
- * Bruttodachfläche aus Grundfläche und Dachneigung.
+ * Eine im GRUNDRISS gemessene Fläche auf die geneigte Dachhaut projizieren.
+ *
+ * Alle Flächen im Tool werden auf der Karte gemessen, sind also Grundriss-
+ * projektionen: die Gebäude-Grundfläche ebenso wie die im PV-Modus gezeichneten
+ * Belegungs- und Sperrflächen. Die echte Dachfläche ist um 1/cos(Neigung) größer.
+ * Die Modulplatzierung rechnet dieselbe Projektion (03c: cellD = ml·cos(tilt)).
+ *
+ * @param {number} grundrissM2
+ * @param {number|null|undefined} neigungGrad
+ * @returns {number} m² Dachhaut
+ */
+export function projiziereAufDachflaeche(grundrissM2, neigungGrad) {
+  const fl = Number(grundrissM2) || 0;
+  if (fl <= 0) return 0;
+  const n = Number.isFinite(Number(neigungGrad)) ? Number(neigungGrad) : NEIGUNG_RUECKFALL_GRAD;
+  const clamped = Math.max(0, Math.min(75, n));   // >75° trägt kein Modulfeld mehr
+  return fl / Math.cos(clamped * Math.PI / 180);
+}
+
+/**
+ * Bruttodachfläche aus Gebäude-Grundfläche und Dachneigung.
  * Flachdach = Grundfläche; geneigtes Dach = Grundfläche / cos(Neigung).
  * @param {number} grundflaecheM2
  * @param {number|null|undefined} neigungGrad
  * @returns {number} m²
  */
 export function dachflaecheBruttoM2(grundflaecheM2, neigungGrad) {
-  const fl = Number(grundflaecheM2) || 0;
-  if (fl <= 0) return 0;
-  const n = Number.isFinite(Number(neigungGrad)) ? Number(neigungGrad) : NEIGUNG_RUECKFALL_GRAD;
-  const clamped = Math.max(0, Math.min(75, n));   // >75° trägt kein Modulfeld mehr
-  return fl / Math.cos(clamped * Math.PI / 180);
+  return projiziereAufDachflaeche(grundflaecheM2, neigungGrad);
 }
 
 /**

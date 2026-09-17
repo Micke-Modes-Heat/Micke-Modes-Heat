@@ -8,7 +8,8 @@ import {
   EIGNUNG_PAUSCHAL_PCT, PV_PFLICHT, PV_PFLICHT_LISTE, PV_PFLICHT_META,
 } from '../src/config/pv-pflicht-laender.js';
 import {
-  bezugFlaechenName, dachflaecheBruttoM2, pflichtCheck, pflichtGebaeude, pflichtRegel, pvPflichtSumme,
+  bezugFlaechenName, dachflaecheBruttoM2, pflichtCheck, pflichtGebaeude, pflichtRegel,
+  projiziereAufDachflaeche, pvPflichtSumme,
 } from '../src/lib/pv-pflicht.js';
 import { BUNDESLAND_BBOX, detectBundesland } from '../src/lib/bundeslaender.js';
 
@@ -81,6 +82,23 @@ describe('Bruttodachfläche', () => {
   });
 });
 
+describe('Projektion Grundriss → Dachhaut', () => {
+  // Alle Flächen im Tool sind auf der Karte gemessen, also Grundriss. Für die
+  // Länder mit Bezug „geeignete Dachfläche" zählt aber die Dachhaut.
+  it('lässt eine waagerechte Fläche unverändert', () => {
+    expect(projiziereAufDachflaeche(500, 0)).toBeCloseTo(500, 6);
+  });
+
+  it('vergrößert eine geneigte Fläche um 1/cos(Neigung)', () => {
+    expect(projiziereAufDachflaeche(500, 35)).toBeCloseTo(500 / Math.cos(35 * Math.PI / 180), 6);
+    expect(projiziereAufDachflaeche(500, 15)).toBeCloseTo(500 / Math.cos(15 * Math.PI / 180), 6);
+  });
+
+  it('ist dieselbe Rechnung wie die Bruttodachfläche', () => {
+    expect(dachflaecheBruttoM2(1000, 35)).toBeCloseTo(projiziereAufDachflaeche(1000, 35), 6);
+  });
+});
+
 describe('Bezugsfläche je Landesformulierung', () => {
   it('Brandenburg rechnet 50 % der Dachfläche', () => {
     const r = pflichtGebaeude(neubau(), pflichtRegel('bb'), { wpProM2: WP_PRO_M2 });
@@ -96,6 +114,7 @@ describe('Bezugsfläche je Landesformulierung', () => {
   });
 
   it('Bayern rechnet ein Drittel der GEEIGNETEN Fläche, nicht der Dachfläche', () => {
+    // geeignetM2 wird bereits als Dachhaut übergeben (09e projiziert den Grundriss)
     const r = pflichtGebaeude(neubau({ geeignetM2: 600 }), pflichtRegel('by'), { wpProM2: WP_PRO_M2 });
     expect(r.bezugsM2).toBe(600);
     expect(r.sollM2).toBeCloseTo(200, 6);
