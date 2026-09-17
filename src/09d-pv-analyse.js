@@ -4,7 +4,7 @@
 
 import { freiflaechen, gebaeude, globalYear, isExcluded, thermSpeicherAktiv } from './01-globals-varianten.js';
 import { calcFFKwp } from './03a-erzeuger.js';
-import { _pvWpM2Global, calcGebKwp, escHtml, getDachDefaultNeigung, pvNettoFlaeche } from './03c-gebaeude-io.js';
+import { calcGebKwp, escHtml } from './03c-gebaeude-io.js';
 import { getComputedStats, getNutzungstypById } from './02b-gebaeude.js';
 import { getThermSpeicherParams } from './06b-gl-berechnen.js';
 import { CalcEngine } from './08-calc-engine.js';
@@ -13,9 +13,17 @@ import { OPT_INVEST_DEFAULT, OPT_IH, OPT_NUTZUNG } from './config/optimizer-defa
 import { getEconomicScenario } from './config/economic-scenarios.js';
 import { ASSETS } from './13a-assets-core.js';
 import { computeWindElHourly, getWindAssetsSummary } from './13q-wind-ertrag.js';
-import { EIGNUNG_PAUSCHAL_PCT, PV_PFLICHT_LISTE, PV_PFLICHT_META } from './config/pv-pflicht-laender.js';
-import { detectBundesland } from './lib/bundeslaender.js';
-import { pflichtCheck, pvPflichtSumme } from './lib/pv-pflicht.js';
+import { PV_PFLICHT_LISTE, PV_PFLICHT_META } from './config/pv-pflicht-laender.js';
+import { pflichtCheck } from './lib/pv-pflicht.js';
+
+// Die App-Schicht der PV-Pflicht (09e-pv-pflicht.js) wird bewusst NICHT importiert:
+// sie hängt an 03c/02b/13a und würde über diesen Import in den Altkern-Zyklus
+// gezogen (tests/import-architecture.js wacht über dessen Größe). Der Zugriff läuft
+// deshalb über die window-Bridge, die 09e beim Laden setzt — dasselbe Muster wie
+// bei napGetEndausbauLastgang. Die Rückfallwerte greifen nur, falls 09e fehlt.
+const _pflichtLeer = { aktiv: false, bezifferbar: false, kwp: 0, istKwp: 0, faelle: [], ohneFall: [], annahmen: [], regel: null, landId: null, grund: '' };
+const _pvPflicht     = () => window.pvPflichtAktuell?.() ?? _pflichtLeer;
+const _pvPflichtInfo = () => window.pvPflichtInfoHtml?.() ?? '';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // KONSTANTEN
@@ -364,111 +372,6 @@ function pvGetAssetBreakdown() {
 /** Spezifischer Ertrag (kWh/kWp/a) — effektiv aus dem Ausrichtungs-Mix gewichtet. */
 function pvGetSpez() {
   return pvGetEffectiveSpez();
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// LANDESRECHTLICHE PV-PFLICHT
-// ══════════════════════════════════════════════════════════════════════════════
-// Gerechnet wird in lib/pv-pflicht.js (DOM-frei, getestet); hier steht nur die
-// Aufbereitung aus dem Gebäudemodell und die Bestimmung des Bundeslandes.
-
-/** Bundesland: Handauswahl im Panel hat Vorrang, sonst aus dem Schwerpunkt der Gebäude. */
-export function pvPflichtLandId() {
-  const gewaehlt = window._pvAnalyse?.pflichtLand;
-  if (gewaehlt) return gewaehlt;
-  let lat = 0, lon = 0, n = 0;
-  for (const g of (gebaeude || [])) {
-    const la = Number.isFinite(g.lat) ? g.lat : g.polygon?.[0]?.[0];
-    const lo = Number.isFinite(g.lng) ? g.lng : g.polygon?.[0]?.[1];
-    if (Number.isFinite(la) && Number.isFinite(lo)) { lat += la; lon += lo; n++; }
-  }
-  return n > 0 ? detectBundesland(lat / n, lon / n) : null;
-}
-
-/**
- * Gebäude für den Pflicht-Rechenkern aufbereiten.
- *
- * Die auslösenden Fälle kommen aus der Planungsschicht des Gebäudes:
- *   Neubau         — baujahr liegt hinter dem Betrachtungsjahr (savePlan 'neubau');
- *                    ein Bestandsbaujahr liegt davor und löst damit nichts aus.
- *   Dachsanierung  — Sanierungseintrag, der ausdrücklich das Dach betrifft
- *                    (s.dach). Ohne dieses Merkmal ist eine energetische
- *                    Sanierung nicht von einer Dachsanierung unterscheidbar —
- *                    dann löst sie bewusst nichts aus.
- */
-function pvPflichtGebaeudeliste() {
-  const jahr = globalYear || new Date().getFullYear();
-  const liste = [];
-  for (const g of (gebaeude || [])) {
-    if (isExcluded(g.id)) continue;
-    if (g.abrissjahr && g.abrissjahr <= jahr) continue;
-    const typ = getNutzungstypById(g.nutzungstyp);
-    const dachSan = (g.sanierungen || []).find(sa => sa?.dach === true);
-    liste.push({
-      id: g.id,
-      name: g.name || g.gebaeudenummer || `Gebäude ${g.id}`,
-      grundflaecheM2: parseFloat(g.flaeche) || 0,
-      dachNeigung:    g.dachNeigung ?? getDachDefaultNeigung(g.dachform || 'sattel'),
-      wohnen:         typ?.gruppe === 'Wohnen',
-      geeignetM2:     pvNettoFlaeche(g),
-      nutzflaecheM2:  (parseFloat(g.flaeche) || 0) * (parseInt(g.stockwerke) || typ?.stockwerke || 1),
-      neubau:         Number.isFinite(g.baujahr) && g.baujahr > jahr,
-      dachsanierung:  !!dachSan,
-      sanAnteilPct:   dachSan?.dachAnteilPct ?? null,
-    });
-  }
-  return liste;
-}
-
-/** Aktuelle Pflichtleistung des Projekts — Ergebnis von pvPflichtSumme. */
-export function pvPflichtAktuell() {
-  const s = window._pvAnalyse || {};
-  return pvPflichtSumme(pvPflichtGebaeudeliste(), pvPflichtLandId(), {
-    wpProM2: _pvWpM2Global(),
-    annahme: s.pflichtAnnahme || 'auto',
-    eignungPauschalPct: EIGNUNG_PAUSCHAL_PCT,
-  });
-}
-
-/** Infozeile unter der Länderauswahl — zeigt Sollleistung oder den Grund, warum es keine gibt. */
-function _pvPflichtInfoHtml() {
-  const pf = pvPflichtAktuell();
-  const rahmen = (farbe, inhalt) =>
-    `<div style="font-size:10px;line-height:1.55;color:${farbe};">${inhalt}</div>`;
-
-  if (!pf.aktiv || !pf.regel) return rahmen('#78909c', escHtml(pf.grund || 'Kein Bundesland bestimmt.'));
-  if (!pf.regel.pflicht)      return rahmen('#78909c', escHtml(pf.grund));
-  if (!pf.faelle.length) {
-    return rahmen('#78909c', `${escHtml(pf.regel.land)} · ${escHtml(pf.regel.norm)}<br>${escHtml(pf.grund)}`);
-  }
-  if (!pf.bezifferbar) {
-    return rahmen('#ffb74d', `${escHtml(pf.regel.norm)}: ${pf.faelle.length} pflichtige Gebäude, aber kein Flächenanteil im Landesrecht beziffert — die Variante liefert keine Leistung.`);
-  }
-
-  const faelleTxt = [
-    pf.faelle.filter(f => f.fall === 'neubau').length        ? `${pf.faelle.filter(f => f.fall === 'neubau').length}× Neubau` : '',
-    pf.faelle.filter(f => f.fall === 'dachsanierung').length ? `${pf.faelle.filter(f => f.fall === 'dachsanierung').length}× Dachsanierung` : '',
-    pf.faelle.filter(f => f.fall === 'angenommen').length    ? `${pf.faelle.filter(f => f.fall === 'angenommen').length}× angenommen` : '',
-  ].filter(Boolean).join(' · ');
-
-  return `
-    <div style="display:flex;align-items:baseline;gap:7px;">
-      <span style="font-family:'DM Mono',monospace;font-size:15px;color:#b39ddb;">${pf.kwp.toFixed(0)}</span>
-      <span style="font-size:10px;color:var(--muted);">kWp Pflicht · ${escHtml(pf.regel.kurz)} ${escHtml(pf.regel.norm)}</span>
-    </div>
-    <div style="font-size:10px;color:#78909c;line-height:1.55;margin-top:2px;">
-      ${escHtml(faelleTxt)} · ${pf.regel.anteilPct.toFixed(0)} % der ${
-        pf.regel.bezug === 'geeignet' ? 'geeigneten Fläche' : pf.regel.bezug === 'brutto' ? 'Bruttodachfläche' : 'Dachfläche'}
-      ${pf.regel.anteilHerkunft === 'verordnung' ? '<br><span style="color:#ffb74d;">Anteil aus der Rechtsverordnung — vor Nutzung prüfen.</span>' : ''}
-      ${pf.annahmen.length ? `<br>${escHtml(pf.annahmen[0])}` : ''}
-      <br>Stand ${escHtml(PV_PFLICHT_META.stand)} · keine Rechtsberatung
-    </div>`;
-}
-
-/** Infozeile nach Änderung von Land oder Annahme neu zeichnen. */
-export function pvPflichtRefresh() {
-  const el = document.getElementById('pva-pflicht-info');
-  if (el) el.innerHTML = _pvPflichtInfoHtml();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1217,7 +1120,7 @@ export function pvBerechneAlle() {
   //     Keine Optimierung, sondern eine Nebenbedingung: was darunter liegt, ist
   //     nicht genehmigungsfähig. Erscheint nur, wenn das Land einen Flächenanteil
   //     nennt UND im Projekt ein Gebäude die Pflicht auslöst.
-  const pflicht = pvPflichtAktuell();
+  const pflicht = _pvPflicht();
   if (pflicht.bezifferbar && pflicht.kwp > 0) {
     berechne('gesetzlich', pflicht.kwp, 0, 'none', ` (${pflicht.regel.kurz})`);
     const ePf = ergebnisse[ergebnisse.length - 1];
@@ -1297,6 +1200,8 @@ export function pvBerechneAlle() {
     aktiv:  pflicht.aktiv,
     bezifferbar: pflicht.bezifferbar,
     kwp:    pflicht.kwp,
+    istKwp: pflicht.istKwp,
+    unterdeckt: pflicht.faelle.filter(f => !f.erfuellt).length,
     grund:  pflicht.grund,
     annahmen: pflicht.annahmen,
     hinweise: pflicht.regel?.hinweise || [],
@@ -2027,7 +1932,7 @@ function _pvBuildPanelHtml() {
                 <option value="aus">Pflicht nicht prüfen</option>
               </select>
             </div>
-            <div id="pva-pflicht-info" style="margin-top:6px;">${_pvPflichtInfoHtml()}</div>
+            <div id="pva-pflicht-info" style="margin-top:6px;">${_pvPflichtInfo()}</div>
           </div>`;
         })()}
       </div>
@@ -3455,7 +3360,7 @@ function _pvSyncFromState() {
   });
   // Eingaben des Nutzers zurueckschreiben (das Panel-Markup traegt nur Defaults)
   _pvFelderWiederherstellen();
-  pvPflichtRefresh();   // erst nach dem Zurueckschreiben — sonst zeigt die Zeile den Default
+  window.pvPflichtRefresh?.();   // erst nach dem Zurueckschreiben — sonst zeigt die Zeile den Default
   _pvApplyStaleUi();
 
   // Ergebnisse wieder anzeigen wenn bereits berechnet
@@ -5923,4 +5828,3 @@ window.pvBerechneAlle         = pvBerechneAlle;
 window.pvMarkStale            = pvMarkStale;
 // pvLadeSpotPreise nicht mehr nötig (Upload über Strom-Grundlagen)
 window.pvGetMaxKwpFromAssets  = pvGetMaxKwpFromAssets;
-window.pvPflichtRefresh       = pvPflichtRefresh;

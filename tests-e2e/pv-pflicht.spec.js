@@ -65,5 +65,46 @@ test('dist: PV-Pflicht bestimmt Land, erzeugt die Variante und prüft die übrig
   expect(lauf.tabelle).toContain('nicht genehmigungsfähig');
   expect(lauf.tabelle).toContain('KlimaSchG BW');
 
+  // Gebäudeübersicht: Soll/Ist je Gebäude, Rechenweg, Handeingabe des Pflichtfalls
+  const uebersicht = await page.evaluate(() => {
+    window.pvPflichtUebersichtOeffnen();
+    const txt = () => document.getElementById('pv-pflicht-body')?.textContent?.replace(/\s+/g, ' ') || '';
+    const vorher = window.pvPflichtAktuell();
+    // Bestandsgebäude von Hand zum Pflichtfall erklären
+    window.pvPflichtFallSetzen(902, 'neubau');
+    const nachher = window.pvPflichtAktuell();
+    // und wieder herausnehmen
+    window.pvPflichtFallSetzen(902, 'keine');
+    const raus = window.pvPflichtAktuell();
+    window.pvPflichtFallSetzen(902, '');
+    return {
+      body: txt(),
+      hatRechenweg: /m² (geeignete Fläche|Dachfläche|Bruttodachfläche) × \d+ % × \d+ W\/m² = /.test(txt()),
+      faelleVorher: vorher.faelle.length,
+      faelleNachher: nachher.faelle.length,
+      faelleRaus: raus.faelle.length,
+      istGesamt: vorher.istKwp,
+    };
+  });
+
+  expect(uebersicht.faelleVorher).toBe(1);
+  expect(uebersicht.faelleNachher).toBe(2);   // Handeingabe zieht das Bestandsgebäude hinein
+  expect(uebersicht.faelleRaus).toBe(1);      // „nicht pflichtig" nimmt es wieder heraus
+  expect(uebersicht.hatRechenweg).toBe(true);
+  expect(uebersicht.body).toContain('Soll');
+
+  // Der Jahres-Regler darf die Pflicht NICHT verändern
+  const sliderTest = await page.evaluate(() => {
+    const vorher = window.pvPflichtAktuell().kwp;
+    const werte = [];
+    for (const jahr of [2026, 2035, 2045]) {
+      window.setGlobalYear?.(jahr);
+      werte.push(window.pvPflichtAktuell().kwp);
+    }
+    return { vorher, werte };
+  });
+  expect(new Set(sliderTest.werte).size).toBe(1);
+  expect(sliderTest.werte[0]).toBeCloseTo(sliderTest.vorher, 6);
+
   expect(pageErrors, pageErrors.join('\n')).toHaveLength(0);
 });

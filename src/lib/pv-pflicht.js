@@ -29,6 +29,8 @@ import { EIGNUNG_PAUSCHAL_PCT, PV_PFLICHT } from '../config/pv-pflicht-laender.j
  * @property {boolean} [neubau]
  * @property {boolean} [dachsanierung]
  * @property {number|null} [sanAnteilPct]  Anteil der sanierten Dachfläche in %
+ * @property {number} [istKwp]        geplante PV-Leistung an diesem Gebäude
+ * @property {''|'auto'|'neubau'|'dachsanierung'|'keine'} [pflichtFall]  Handeingabe am Gebäude
  *
  * @typedef {object} PflichtFall  Ergebnis je Gebäude
  * @property {number|string} id
@@ -39,7 +41,12 @@ import { EIGNUNG_PAUSCHAL_PCT, PV_PFLICHT } from '../config/pv-pflicht-laender.j
  * @property {number} dachM2
  * @property {number} bezugsM2
  * @property {number} sollM2
- * @property {number} kwp
+ * @property {number} kwp          Sollleistung nach Landesrecht
+ * @property {number} istKwp       geplante Leistung am Gebäude
+ * @property {number} deltaKwp     istKwp − kwp (negativ = Unterdeckung)
+ * @property {boolean} erfuellt
+ * @property {boolean} manuell     true = Fall per Hand gesetzt, nicht erkannt
+ * @property {string} rechenweg    nachvollziehbare Ableitung der Sollleistung
  * @property {string[]} annahmen
  *
  * @typedef {object} PflichtOptionen
@@ -53,6 +60,7 @@ import { EIGNUNG_PAUSCHAL_PCT, PV_PFLICHT } from '../config/pv-pflicht-laender.j
  * @property {boolean} aktiv         false = keine Prüfung (kein Land / ausgeschaltet)
  * @property {boolean} bezifferbar   false = Landesrecht nennt keinen Flächenanteil
  * @property {number} kwp
+ * @property {number} istKwp       Summe der geplanten Leistung der Pflichtgebäude
  * @property {PflichtFall[]} faelle
  * @property {PflichtFall[]} ohneFall
  * @property {string[]} annahmen
@@ -106,10 +114,12 @@ export function pflichtGebaeude(geb, regel, opt = {}) {
   const annahmen = [];
 
   const dachM2 = dachflaecheBruttoM2(geb.grundflaecheM2, geb.dachNeigung);
+  const istKwp = Number(geb.istKwp) > 0 ? Number(geb.istKwp) : 0;
   /** @param {string} grund @returns {PflichtFall} */
   const leer = (grund) => ({
     id: geb.id, name: geb.name, pflichtig: false, fall: null, grund,
-    dachM2, bezugsM2: 0, sollM2: 0, kwp: 0, annahmen,
+    dachM2, bezugsM2: 0, sollM2: 0, kwp: 0, istKwp, deltaKwp: istKwp,
+    erfuellt: true, manuell: false, rechenweg: '', annahmen,
   });
 
   if (!regel || !regel.pflicht) return leer('Land ohne PV-Pflicht');
@@ -122,8 +132,17 @@ export function pflichtGebaeude(geb, regel, opt = {}) {
   }
 
   // ── 2) Auslösender Fall ───────────────────────────────────────────────────
+  // Die Handeingabe am Gebäude schlägt alles andere — auch die Projekt-Einstellung
+  // „alle Gebäude". Wer den Fall am Gebäude gesetzt hat, meint genau das.
+  const handFall = geb.pflichtFall && geb.pflichtFall !== 'auto' ? geb.pflichtFall : null;
+  if (handFall === 'keine') return leer('am Gebäude als nicht pflichtig gesetzt');
+
   let fall = null;
-  if (annahme === 'alle') {
+  let manuell = false;
+  if (handFall) {
+    fall = handFall;
+    manuell = true;
+  } else if (annahme === 'alle') {
     fall = 'angenommen';
     annahmen.push('Pflichtfall pauschal angenommen (Einstellung „alle Gebäude").');
   } else if (geb.neubau && regel.neubau) {
@@ -175,15 +194,47 @@ export function pflichtGebaeude(geb, regel, opt = {}) {
   if (regel.anteilPct == null) {
     return {
       id: geb.id, name: geb.name, pflichtig: true, fall, grund: 'Flächenanteil im Landesrecht nicht beziffert',
-      dachM2, bezugsM2, sollM2: 0, kwp: 0, annahmen,
+      dachM2, bezugsM2, sollM2: 0, kwp: 0, istKwp, deltaKwp: istKwp,
+      erfuellt: true, manuell, rechenweg: '', annahmen,
     };
   }
 
   const sollM2 = bezugsM2 * regel.anteilPct / 100;
+  const kwp    = sollM2 * wpProM2 / 1000;
+  /** @param {number} v @param {number} [d] */
+  const nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const rechenweg = `${nf(bezugsM2)} m² ${bezugFlaechenName(regel)} × ${nf(regel.anteilPct)} % `
+                  + `× ${nf(wpProM2)} W/m² = ${nf(kwp, 1)} kWp`;
+
   return {
     id: geb.id, name: geb.name, pflichtig: true, fall, grund: '',
-    dachM2, bezugsM2, sollM2, kwp: sollM2 * wpProM2 / 1000, annahmen,
+    dachM2, bezugsM2, sollM2, kwp, istKwp,
+    deltaKwp: istKwp - kwp,
+    erfuellt: istKwp >= kwp * (1 - PFLICHT_TOLERANZ_PCT / 100),
+    manuell, rechenweg, annahmen,
   };
+}
+
+/**
+ * Klartextname der Bezugsfläche eines Landes — die unterschiedliche Bezugsfläche
+ * ist der häufigste Grund für Abweichungen zwischen Soll und Auslegung.
+ * @param {PflichtRegel|null} regel
+ * @returns {string}
+ */
+export function bezugFlaechenName(regel) {
+  if (regel?.bezug === 'geeignet') return 'geeignete Fläche';
+  if (regel?.bezug === 'brutto')   return 'Bruttodachfläche';
+  return 'Dachfläche';
+}
+
+/**
+ * Dieselbe Bezeichnung nach Artikel („… % der …"), damit die Sätze in der
+ * Oberfläche grammatisch aufgehen.
+ * @param {PflichtRegel|null} regel
+ * @returns {string}
+ */
+export function bezugFlaechenNameDekliniert(regel) {
+  return regel?.bezug === 'geeignet' ? 'geeigneten Fläche' : bezugFlaechenName(regel);
 }
 
 /**
@@ -197,7 +248,7 @@ export function pflichtGebaeude(geb, regel, opt = {}) {
 export function pvPflichtSumme(gebs, landId, opt = {}) {
   const regel = pflichtRegel(landId);
   /** @type {PflichtSumme} */
-  const basis = { landId: landId || null, regel, aktiv: false, bezifferbar: false, kwp: 0, faelle: [], ohneFall: [], annahmen: [], grund: '' };
+  const basis = { landId: landId || null, regel, aktiv: false, bezifferbar: false, kwp: 0, istKwp: 0, faelle: [], ohneFall: [], annahmen: [], grund: '' };
 
   if (opt.annahme === 'aus') return { ...basis, grund: 'Pflichtprüfung ausgeschaltet' };
   if (!landId)        return { ...basis, grund: 'Kein Bundesland bestimmt' };
@@ -206,10 +257,10 @@ export function pvPflichtSumme(gebs, landId, opt = {}) {
 
   /** @type {PflichtFall[]} */ const faelle = [];
   /** @type {PflichtFall[]} */ const ohneFall = [];
-  let kwp = 0;
+  let kwp = 0, istKwp = 0;
   for (const g of (gebs || [])) {
     const r = pflichtGebaeude(g, regel, opt);
-    if (r.pflichtig) { faelle.push(r); kwp += r.kwp; } else { ohneFall.push(r); }
+    if (r.pflichtig) { faelle.push(r); kwp += r.kwp; istKwp += r.istKwp; } else { ohneFall.push(r); }
   }
 
   // Annahmen einmalig, nicht je Gebäude — sonst steht dieselbe Zeile 40-mal im Bericht.
@@ -224,7 +275,7 @@ export function pvPflichtSumme(gebs, landId, opt = {}) {
           + `${regel.norm} nennt aber keinen Flächenanteil — keine Leistung berechenbar.`;
   }
 
-  return { landId: landId || null, regel, aktiv: true, bezifferbar, kwp, faelle, ohneFall, annahmen, grund };
+  return { landId: landId || null, regel, aktiv: true, bezifferbar, kwp, istKwp, faelle, ohneFall, annahmen, grund };
 }
 
 /**

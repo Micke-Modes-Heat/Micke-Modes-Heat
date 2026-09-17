@@ -8,7 +8,7 @@ import {
   EIGNUNG_PAUSCHAL_PCT, PV_PFLICHT, PV_PFLICHT_LISTE, PV_PFLICHT_META,
 } from '../src/config/pv-pflicht-laender.js';
 import {
-  dachflaecheBruttoM2, pflichtCheck, pflichtGebaeude, pflichtRegel, pvPflichtSumme,
+  bezugFlaechenName, dachflaecheBruttoM2, pflichtCheck, pflichtGebaeude, pflichtRegel, pvPflichtSumme,
 } from '../src/lib/pv-pflicht.js';
 import { BUNDESLAND_BBOX, detectBundesland } from '../src/lib/bundeslaender.js';
 
@@ -217,6 +217,73 @@ describe('Prüfung der übrigen Varianten', () => {
       expect(c.relevant).toBe(false);
       expect(c.erfuellt).toBe(true);
     }
+  });
+});
+
+describe('Soll und Ist je Gebäude', () => {
+  it('stellt der Sollleistung die geplante Leistung gegenüber', () => {
+    // 1.000 m² Flachdach in BB: 50 % × 1.000 m² × 240 W/m² = 120 kWp Soll
+    const r = pflichtGebaeude(neubau({ istKwp: 90 }), pflichtRegel('bb'), { wpProM2: WP_PRO_M2 });
+    expect(r.kwp).toBeCloseTo(120, 6);
+    expect(r.istKwp).toBe(90);
+    expect(r.deltaKwp).toBeCloseTo(-30, 6);
+    expect(r.erfuellt).toBe(false);
+  });
+
+  it('gilt als erfüllt, sobald die geplante Leistung das Soll erreicht', () => {
+    expect(pflichtGebaeude(neubau({ istKwp: 120 }), pflichtRegel('bb'), { wpProM2: WP_PRO_M2 }).erfuellt).toBe(true);
+    // Rundung im Anzeigepfad darf nicht zur Verletzung werden
+    expect(pflichtGebaeude(neubau({ istKwp: 119.5 }), pflichtRegel('bb'), { wpProM2: WP_PRO_M2 }).erfuellt).toBe(true);
+  });
+
+  it('legt den Rechenweg offen — Fläche, Anteil, Modulleistung, Ergebnis', () => {
+    const r = pflichtGebaeude(neubau(), pflichtRegel('bb'), { wpProM2: WP_PRO_M2 });
+    expect(r.rechenweg).toContain('Dachfläche');
+    expect(r.rechenweg).toContain('50 %');
+    expect(r.rechenweg).toContain('240 W/m²');
+    expect(r.rechenweg).toContain('kWp');
+  });
+
+  it('benennt die Bezugsfläche je Landesformulierung', () => {
+    expect(bezugFlaechenName(pflichtRegel('bb'))).toBe('Dachfläche');
+    expect(bezugFlaechenName(pflichtRegel('be'))).toBe('Bruttodachfläche');
+    expect(bezugFlaechenName(pflichtRegel('by'))).toBe('geeignete Fläche');
+  });
+
+  it('summiert die geplante Leistung nur über die pflichtigen Gebäude', () => {
+    const pf = pvPflichtSumme([
+      neubau({ id: 1, istKwp: 100 }),
+      neubau({ id: 2, istKwp: 50, neubau: false }),   // kein Pflichtfall
+    ], 'bb', { wpProM2: WP_PRO_M2 });
+    expect(pf.faelle).toHaveLength(1);
+    expect(pf.istKwp).toBe(100);
+  });
+});
+
+describe('Pflichtfall von Hand am Gebäude', () => {
+  it('erklärt ein Bestandsgebäude zum Pflichtfall', () => {
+    const r = pflichtGebaeude(neubau({ neubau: false, pflichtFall: 'neubau' }), pflichtRegel('bb'), { wpProM2: WP_PRO_M2 });
+    expect(r.pflichtig).toBe(true);
+    expect(r.fall).toBe('neubau');
+    expect(r.manuell).toBe(true);
+  });
+
+  it('nimmt ein erkanntes Gebäude wieder heraus', () => {
+    const r = pflichtGebaeude(neubau({ pflichtFall: 'keine' }), pflichtRegel('bb'), { wpProM2: WP_PRO_M2 });
+    expect(r.pflichtig).toBe(false);
+    expect(r.kwp).toBe(0);
+    expect(r.grund).toMatch(/nicht pflichtig/);
+  });
+
+  it('schlägt auch die Projekteinstellung „alle Gebäude"', () => {
+    const r = pflichtGebaeude(neubau({ pflichtFall: 'keine' }), pflichtRegel('bb'), { wpProM2: WP_PRO_M2, annahme: 'alle' });
+    expect(r.pflichtig).toBe(false);
+  });
+
+  it('lässt bei „automatisch" die Erkennung arbeiten', () => {
+    const auto = pflichtGebaeude(neubau({ pflichtFall: '' }), pflichtRegel('bb'), { wpProM2: WP_PRO_M2 });
+    expect(auto.pflichtig).toBe(true);
+    expect(auto.manuell).toBe(false);
   });
 });
 
