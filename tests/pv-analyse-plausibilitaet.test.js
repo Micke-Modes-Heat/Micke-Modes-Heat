@@ -130,6 +130,45 @@ describe('pvNapSim — physikalische Bilanzen', () => {
     expect(mit.batEntlBedarfMwh).toBeGreaterThan(0);
   });
 
+  // Abb. 7b zeichnet die Ø Lade-/Entladeleistung je Tagesstunde als Balken. Sie wird
+  // nicht zusätzlich mitgeführt, sondern aus der SOC-Reihe zurückgerechnet — das ist
+  // nur zulässig, solange sich Laden und Entladen je Zeitschritt ausschließen und die
+  // Rückrechnung auf die AC-Klemmen den Wirkungsgrad sauber umkehrt.
+  it('Leistung lässt sich verlustfrei aus der SOC-Änderung rekonstruieren', () => {
+    const ETA = 0.90;                                   // PV_BAT_ETA
+    const np  = { maxEinspeisKw: 150, maxBezugKw: null };
+    const sim = pvNapSim(1000, 1200, demandH, pvProfile, np, 'ev', null);
+    const dt  = demandH.length > 8784 ? 0.25 : 1.0;
+
+    let ladMwh = 0, entMwh = 0;
+    let vor = 0;                                        // pvNapSim startet mit initSoc = 0
+    for (let t = 0; t < sim.batSocArr.length; t++) {
+      const delta = sim.batSocArr[t] - vor; vor = sim.batSocArr[t];
+      // kW × dt / 1000 → MWh; die kW-Umrechnung ist exakt die der Abbildung
+      if (delta > 0) ladMwh += (delta / ETA / dt) * dt / 1000;
+      else           entMwh += (-delta * ETA / dt) * dt / 1000;
+    }
+    expect(ladMwh).toBeCloseTo(sim.batLadCurtMwh + sim.batLadEvMwh, 6);
+    expect(entMwh).toBeCloseTo(sim.batEntlBedarfMwh + sim.batEntlNetzMwh, 6);
+  });
+
+  it('Laden und Entladen schließen sich je Zeitschritt aus (Vorzeichen ist eindeutig)', () => {
+    // Nach Schritt 1 der Simulation ist entweder der Erzeugungs- oder der Bedarfsrest
+    // null, daher kann ein Zeitschritt nie gleichzeitig laden und entladen. Wäre das
+    // verletzt, würde die Vorzeichen-Zerlegung oben beide Richtungen gegeneinander
+    // verrechnen und die Balken zu klein zeichnen. Gegenprobe über die Gesamtmengen:
+    // die rekonstruierte Ladung darf die gebuchte nicht unterschreiten.
+    const np  = { maxEinspeisKw: 150, maxBezugKw: null };
+    const sim = pvNapSim(1000, 1200, demandH, pvProfile, np, 'spot-dyn', null);
+    const gebucht = sim.batLadCurtMwh + sim.batLadEvMwh;
+    let rekon = 0, vor = 0;
+    for (let t = 0; t < sim.batSocArr.length; t++) {
+      const delta = sim.batSocArr[t] - vor; vor = sim.batSocArr[t];
+      if (delta > 0) rekon += delta / 0.90 / 1000;
+    }
+    expect(rekon).toBeCloseTo(gebucht, 6);
+  });
+
   it('Einspeiselimit erzeugt erzwungene Ladung und senkt die Abregelung', () => {
     const np   = { maxEinspeisKw: 60, maxBezugKw: null };
     const ohne = pvNapSim(800, 0,    demandH, pvProfile, np, 'none', null);

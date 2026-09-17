@@ -4272,6 +4272,10 @@ const _PVSF_COL = {
   wd:      '#4dd0e1',
 };
 
+// Rasterung der Leistungsachse im Tagesgang. Fein genug, dass ein Spitzenwert von
+// 2,8 nicht auf 5 aufgerundet wird und die halbe Balkenhöhe ungenutzt bleibt.
+const _PVSF_STUFEN = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+
 /** Ladestand-Farbe (0..1): leer = dunkel, voll = helles Violett. */
 function _pvsfSocColor(v) {
   v = Math.max(0, Math.min(1, v));
@@ -4520,10 +4524,16 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
       <text x="${PL+134}" y="${(HPT+hcH+22).toFixed(1)}" fill="#78909c" font-size="8">Ladestand · Tag (x) × Stunde (y)</text>`;
 
     // ── 3. SOC-Dauerlinie und Ø-Tagesgang ────────────────────────────────────
-    const DH = overrideEl ? 150 : 118;
+    const DH = overrideEl ? 196 : 164;
     const panelW = (W - 18) / 2;
-    const DPL = 34, DPT = 18, DPR = 10, DPB = 20;
+    const DPL = 38, DPT = 18, DPR = 10, DPB = 22;
     const dcW = panelW - DPL - DPR, dcH = DH - DPT - DPB;
+    // Der Tagesgang teilt seine Fläche: oben der Ladestand (%), unten die Leistung (kW).
+    // Zwei Größen mit verschiedenen Einheiten übereinander statt in einer Doppelachse —
+    // die gemeinsame Zeitachse stellt den Zusammenhang her (steigender Ladestand oben =
+    // gelbe Ladebalken unten), ohne dass zwei Skalen im selben Feld verwechselt werden.
+    const socH = Math.round(dcH * 0.54);
+    const barH = dcH - socH - 13;
 
     // Dauerlinie: Ladestand absteigend sortiert über die Jahresstunden
     const sorted = Array.from(hSoc, v => Math.max(0, Math.min(1, v / bat))).sort((a, b) => b - a);
@@ -4566,18 +4576,72 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
       for (let h = 0; h < 24; h++) { winSum[h] += hSoc[d*24+h] / bat; winCnt[h]++; }
     }
     const winMean = Array.from(winSum, (v, h) => winCnt[h] ? v / winCnt[h] : 0);
+
+    // Ø Lade-/Entladeleistung je Tagesstunde, aus der SOC-Änderung rekonstruiert.
+    // Das ist exakt und braucht keine zusätzlichen Jahresreihen in der Simulation:
+    // innerhalb eines Zeitschritts schließen sich Laden und Entladen gegenseitig aus
+    // (nach Schritt 1 von pvNapSim ist entweder der Erzeugungs- oder der Bedarfsrest
+    // null), die Zerlegung nach dem Vorzeichen von Δsoc ist also eindeutig. Die
+    // Rückrechnung auf die AC-Klemmen macht den Wirkungsgrad rückgängig — geladen wird
+    // soc += c·η, entladen soc −= d/η, gemessen wird aber c bzw. d.
+    const stepsPerHour = Math.round(1 / dt);
+    const ladS = new Float64Array(24), entS = new Float64Array(24), cntS = new Float64Array(24);
+    const ladW = new Float64Array(24), entW = new Float64Array(24), cntW = new Float64Array(24);
+    let vorSoc = 0;   // pvNapSim startet mit initSoc = 0
+    for (let t = 0; t < socArr.length; t++) {
+      const hAbs  = Math.floor(t / stepsPerHour);
+      const tag   = Math.floor(hAbs / 24), std = hAbs % 24;
+      const delta = socArr[t] - vorSoc; vorSoc = socArr[t];
+      const ladKw = delta > 0 ?  delta / PV_BAT_ETA / dt : 0;
+      const entKw = delta < 0 ? -delta * PV_BAT_ETA / dt : 0;
+      if (tag >= somS && tag < somE) { ladS[std] += ladKw; entS[std] += entKw; cntS[std]++; }
+      else                           { ladW[std] += ladKw; entW[std] += entKw; cntW[std]++; }
+    }
+    const mw = (arr, cnt) => Array.from(arr, (v, h) => cnt[h] ? v / cnt[h] : 0);
+    const ladSom = mw(ladS, cntS), entSom = mw(entS, cntS);
+    const ladWin = mw(ladW, cntW), entWin = mw(entW, cntW);
+
+    // Symmetrische Leistungsachse, auf 1/2/5er-Stufen gerastet
+    const pRoh = Math.max(...ladSom, ...entSom, ...ladWin, ...entWin, 0.1);
+    const pExp = Math.pow(10, Math.floor(Math.log10(pRoh)));
+    const pMax = (pExp === 0 ? 1 : (_PVSF_STUFEN.find(st => pRoh / pExp <= st) || 10) * pExp);
+    const kwTxt = v => v >= 1000 ? (v / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MW'
+                                 : Math.round(v).toLocaleString('de-DE') + ' kW';
+
     const ox = panelW + 18;
+    // Jeder Stundenmittelwert steht für die ganze Stunde → auf die Slotmitte gesetzt,
+    // damit Linie und zugehöriger Balken exakt übereinander liegen.
+    const slot = dcW / 24;
+    const hx   = h => ox + DPL + (h + 0.5) * slot;
     const line = (arr) => arr.map((v, h) =>
-      `${h ? 'L' : 'M'}${(ox + DPL + h/23*dcW).toFixed(1)},${(DPT + (1-Math.max(0,Math.min(yMax,v))/yMax)*dcH).toFixed(1)}`).join('');
+      `${h ? 'L' : 'M'}${hx(h).toFixed(1)},${(DPT + (1-Math.max(0,Math.min(yMax,v))/yMax)*socH).toFixed(1)}`).join('');
+
+    // Balken: Laden nach oben, Entladen nach unten, je Stunde Sommer links / Winter rechts
+    const barTop = DPT + socH + 13, baseY = barTop + barH / 2, hh = barH / 2 - 1;
+    const bw = slot * 0.3;
+    const saeule = (lad, ent, dx, op) => Array.from({ length: 24 }, (_, h) => {
+      const x = hx(h) + dx - bw / 2;
+      const hL = Math.min(1, lad[h] / pMax) * hh, hE = Math.min(1, ent[h] / pMax) * hh;
+      return (hL > 0.4 ? `<rect x="${x.toFixed(1)}" y="${(baseY-hL).toFixed(1)}" width="${bw.toFixed(1)}" height="${hL.toFixed(1)}" fill="${_PVSF_COL.ladEv}" opacity="${op}"/>` : '')
+           + (hE > 0.4 ? `<rect x="${x.toFixed(1)}" y="${baseY.toFixed(1)}" width="${bw.toFixed(1)}" height="${hE.toFixed(1)}" fill="${_PVSF_COL.entlBed}" opacity="${op}"/>` : '');
+    }).join('');
     const tagesgang = `
-      <rect x="${(ox+DPL).toFixed(1)}" y="${DPT}" width="${dcW.toFixed(1)}" height="${dcH.toFixed(1)}" fill="rgba(149,117,205,0.06)"/>
-      ${ticks.map(f => `<line x1="${(ox+DPL).toFixed(1)}" y1="${(DPT+(1-f/yMax)*dcH).toFixed(1)}" x2="${(ox+DPL+dcW).toFixed(1)}" y2="${(DPT+(1-f/yMax)*dcH).toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
-        <text x="${(ox+DPL-5).toFixed(1)}" y="${(DPT+(1-f/yMax)*dcH+3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${(f*100).toFixed(0)}%</text>`).join('')}
+      <rect x="${(ox+DPL).toFixed(1)}" y="${DPT}" width="${dcW.toFixed(1)}" height="${socH.toFixed(1)}" fill="rgba(149,117,205,0.06)"/>
+      <rect x="${(ox+DPL).toFixed(1)}" y="${barTop.toFixed(1)}" width="${dcW.toFixed(1)}" height="${barH.toFixed(1)}" fill="rgba(149,117,205,0.06)"/>
+      ${ticks.map(f => `<line x1="${(ox+DPL).toFixed(1)}" y1="${(DPT+(1-f/yMax)*socH).toFixed(1)}" x2="${(ox+DPL+dcW).toFixed(1)}" y2="${(DPT+(1-f/yMax)*socH).toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+        <text x="${(ox+DPL-5).toFixed(1)}" y="${(DPT+(1-f/yMax)*socH+3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${(f*100).toFixed(0)}%</text>`).join('')}
       <path d="${line(somMean)}" fill="none" stroke="#ffb74d" stroke-width="1.6"/>
       <path d="${line(winMean)}" fill="none" stroke="#4fc3f7" stroke-width="1.6" stroke-dasharray="3 2"/>
-      <text x="${(ox+DPL).toFixed(1)}" y="${(DPT-6)}" fill="#b0bec5" font-size="8.5" font-weight="600">Ø Tagesgang des Ladestands</text>
+      ${saeule(ladSom, entSom, -bw * 0.62, 0.92)}
+      ${saeule(ladWin, entWin,  bw * 0.62, 0.40)}
+      <line x1="${(ox+DPL).toFixed(1)}" y1="${baseY.toFixed(1)}" x2="${(ox+DPL+dcW).toFixed(1)}" y2="${baseY.toFixed(1)}" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+      <text x="${(ox+DPL-5).toFixed(1)}" y="${(barTop+8).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${kwTxt(pMax)}</text>
+      <text x="${(ox+DPL-5).toFixed(1)}" y="${(baseY+3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">0</text>
+      <text x="${(ox+DPL-5).toFixed(1)}" y="${(barTop+barH-1).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${Math.round(pMax).toLocaleString('de-DE')}</text>
+      <text x="${(ox+DPL).toFixed(1)}" y="${(barTop-4).toFixed(1)}" font-size="8"><tspan fill="${_PVSF_COL.ladEv}">▲ laden</tspan><tspan fill="#78909c"> · </tspan><tspan fill="${_PVSF_COL.entlBed}">▼ entladen</tspan><tspan fill="#78909c"> (Stundenmittel)</tspan></text>
+      <text x="${(ox+DPL).toFixed(1)}" y="${(DPT-6)}" fill="#b0bec5" font-size="8.5" font-weight="600">Ø Tagesgang: Ladestand und Leistung</text>
       <text x="${(ox+DPL+dcW).toFixed(1)}" y="${(DPT-6)}" text-anchor="end" font-size="8"><tspan fill="#ffb74d">Apr–Sep</tspan><tspan fill="#78909c"> · </tspan><tspan fill="#4fc3f7">Okt–Mär</tspan></text>
-      ${[0, 6, 12, 18].map(h => `<text x="${(ox+DPL+h/23*dcW).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="middle" fill="#78909c" font-size="8">${h}</text>`).join('')}
+      ${[0, 6, 12, 18].map(h => `<text x="${hx(h).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="middle" fill="#78909c" font-size="8">${h}</text>`).join('')}
       <text x="${(ox+DPL+dcW).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">Uhrzeit</text>`;
 
     svgWrap.innerHTML = `
@@ -4585,7 +4649,9 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
       <svg width="${W}" height="${HH}" style="display:block;overflow:visible;margin-top:4px;">${cells}${monthMarks}${hourMarks}${legend}</svg>
       <svg width="${W}" height="${DH}" style="display:block;overflow:visible;margin-top:6px;">${dauer}${tagesgang}</svg>
       <div style="font-size:8px;color:var(--muted);margin-top:5px;line-height:1.6;">
-        Alle Mengen an den AC-Klemmen des Speichers (η = ${(PV_BAT_ETA*100).toFixed(0)} % je Wandlung, C-Rate ${PV_BAT_C_RATE}).
+        Alle Mengen und Leistungen an den AC-Klemmen des Speichers (η = ${(PV_BAT_ETA*100).toFixed(0)} % je Wandlung,
+        C-Rate ${PV_BAT_C_RATE} → max. ${Math.round(bat * PV_BAT_C_RATE).toLocaleString('de-DE')} kW Lade-/Entladeleistung).
+        Die Balken sind Stundenmittel über alle Tage des jeweiligen Halbjahres und liegen daher deutlich unter dieser Grenze.
         Bilanz: Ladung − Entladung − Wandlungsverluste = Restladung am Jahresende.
         Vollzyklen = entladene Energie ÷ Nennkapazität. „Vermiedene Abregelung" und „zusätzlicher Eigenverbrauch"
         gegen denselben PV-Ausbau ohne Speicher gerechnet.
