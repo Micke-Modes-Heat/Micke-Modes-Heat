@@ -93,6 +93,26 @@ test('dist: PV-Pflicht bestimmt Land, erzeugt die Variante und prüft die übrig
   expect(uebersicht.hatRechenweg).toBe(true);
   expect(uebersicht.body).toContain('Soll');
 
+  // Die Pflichtspalte muss der Modul-NENNLEISTUNG folgen, nicht dem
+  // ausrichtungskorrigierten Wert im PV-Asset (Gesetz fordert Modulfläche).
+  const nennleistung = await page.evaluate(() => {
+    const g = window.gebaeude.find(x => x.id === 901);
+    g.pvAktiv = true; g.pvModus = 'pauschal'; g.pvDachanteil = 50;
+    const nenn = window.calcGebKwp(g);
+    // PV-Asset mit bewusst abweichendem (korrigiertem) Wert anlegen
+    window.createAsset('PV', g.lat, g.lng, {
+      buildingId: g.id, name: 'PV Test', props: { leistungKWp: nenn * 0.6 },
+    });
+    const det = window.pvGeplantDetail(g);
+    const f = window.pvPflichtAktuell().faelle.find(x => x.id === 901);
+    return { nenn, quelle: det.quelle, detKwp: det.kwp, assetKwp: det.assetKwp, istKwp: f?.istKwp };
+  });
+  expect(nennleistung.quelle).toBe('dach');
+  expect(nennleistung.detKwp).toBeCloseTo(nennleistung.nenn, 6);
+  expect(nennleistung.istKwp).toBeCloseTo(nennleistung.nenn, 6);
+  // der Asset-Wert darf die Pflichtspalte nicht bestimmen
+  expect(Math.abs(nennleistung.istKwp - nennleistung.assetKwp)).toBeGreaterThan(1);
+
   // Der Jahres-Regler darf die Pflicht NICHT verändern
   const sliderTest = await page.evaluate(() => {
     const vorher = window.pvPflichtAktuell().kwp;

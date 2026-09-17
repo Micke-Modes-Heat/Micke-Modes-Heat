@@ -53,15 +53,34 @@ export function pvPflichtLandId() {
 }
 
 /**
- * Geplante PV-Leistung eines Gebäudes — dieselbe Quelle und Rangfolge wie das
- * Anlagenpotenzial in der PV-Analyse (PV-Asset schlägt gezeichnete Fläche), damit
- * die Übersicht auf dieselbe Gesamtzahl kommt wie das Panel.
+ * Geplante Leistung eines Gebäudes für die PFLICHTPRÜFUNG — die Modul-Nennleistung.
+ *
+ * Das Landesrecht verlangt Modulfläche bzw. installierte Leistung, nicht Ertrag.
+ * Das PV-Asset trägt dagegen die ausrichtungskorrigierte Leistung: overwritePvAsset
+ * schreibt calcGebKwpKorr, also Nennleistung × Ausrichtungsfaktor. Ein Ost-West-
+ * oder Norddach stünde damit bei der Pflichtprüfung schlechter da, als es rechtlich
+ * ist. Deshalb hat das Dachmodell (calcGebKwp = platzierte Module × Modul-Wp)
+ * Vorrang; das Asset zählt nur, wenn es die einzige Quelle ist.
+ *
+ * Folge: Die Summe hier kann vom „Anlagenpotenzial" im PVA-Panel abweichen — das
+ * rechnet bewusst mit den korrigierten Asset-Werten weiter, weil daraus Ertrag und
+ * Wirtschaftlichkeit folgen. Die Übersicht weist die Differenz je Gebäude aus.
+ *
  * @param {any} g
+ * @returns {{ kwp: number, quelle: 'dach'|'asset'|'keine', dachKwp: number, assetKwp: number|null }}
  */
-export function pvGeplanteKwp(g) {
+export function pvGeplantDetail(g) {
   const pv = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
-  if (pv) return parseFloat(pv.props?.leistungKWp) || 0;
-  return g.pvAktiv ? (calcGebKwp(g) || 0) : 0;
+  const assetKwp = pv ? (parseFloat(pv.props?.leistungKWp) || 0) : null;
+  const dachKwp  = g.pvAktiv ? (calcGebKwp(g) || 0) : 0;
+  if (dachKwp > 0)        return { kwp: dachKwp, quelle: 'dach', dachKwp, assetKwp };
+  if (assetKwp != null)   return { kwp: assetKwp, quelle: 'asset', dachKwp: 0, assetKwp };
+  return { kwp: 0, quelle: 'keine', dachKwp: 0, assetKwp: null };
+}
+
+/** Nennleistung eines Gebäudes für die Pflichtprüfung. @param {any} g */
+export function pvGeplanteKwp(g) {
+  return pvGeplantDetail(g).kwp;
 }
 
 /**
@@ -159,7 +178,7 @@ export function pvPflichtBadgeHtml(gebId) {
     title="${escHtml(f.rechenweg)}">
     <span style="color:${LILA_HELL};">§ ${norm}</span>
     <span style="color:var(--muted);"> · Soll </span><span style="color:${LILA_HELL};font-weight:600;">${f.kwp.toFixed(1)} kWp</span>
-    <span style="color:var(--muted);"> · geplant </span><span style="color:#ffd54f;">${f.istKwp.toFixed(1)} kWp</span>
+    <span style="color:var(--muted);"> · geplant </span><span style="color:#ffd54f;" title="Modul-Nennleistung — für die Pflicht zählt die Modulfläche, nicht der Ertrag">${f.istKwp.toFixed(1)} kWp<span style="color:var(--muted);font-size:8px;"> Nennl.</span></span>
     <br><span style="color:${farbe};font-weight:600;">${text}</span>
     <span style="color:#607d8b;"> — ${escHtml(f.rechenweg)}</span>
   </div>`;
@@ -294,6 +313,12 @@ function _uebersichtHtml() {
       ${r.gilt === 'nichtwohn' ? ' · nur Nichtwohngebäude' : ''}
     </div>
     <div style="color:var(--muted);">
+      Verglichen wird mit der <b style="color:var(--text);">Modul-Nennleistung</b> aus dem Dachmodell
+      (platzierte Module × Modul-Wp), nicht mit der ausrichtungskorrigierten Leistung im PV-Asset —
+      das Gesetz fordert Modulfläche, nicht Ertrag. Die Spalte kann deshalb vom Anlagenpotenzial
+      im PV-Panel abweichen; wo das vorkommt, steht es in der Zeile.
+    </div>
+    <div style="color:var(--muted);">
       Bruttodachfläche = Grundfläche ÷ cos(Dachneigung)${r.bezug === 'geeignet'
         ? ` · geeignete Fläche = gezeichnete Belegung − Sperrflächen, ohne Zeichnung pauschal ${EIGNUNG_PAUSCHAL_PCT} % der Bruttodachfläche`
         : ''}
@@ -311,7 +336,7 @@ function _uebersichtHtml() {
        background:var(--surface2);border:1px solid var(--border);font-size:11px;">
     <span style="color:var(--muted);">Pflichtige Gebäude <b style="color:var(--text);font-family:'DM Mono',monospace;">${pf.faelle.length}</b></span>
     <span style="color:var(--muted);">Soll gesamt <b style="color:${LILA_HELL};font-family:'DM Mono',monospace;">${nf(pf.kwp, 1)} kWp</b></span>
-    <span style="color:var(--muted);">geplant gesamt <b style="color:#ffd54f;font-family:'DM Mono',monospace;">${nf(pf.istKwp, 1)} kWp</b></span>
+    <span style="color:var(--muted);" title="Summe der Modul-Nennleistung der pflichtigen Gebäude">geplant gesamt (Nennleistung) <b style="color:#ffd54f;font-family:'DM Mono',monospace;">${nf(pf.istKwp, 1)} kWp</b></span>
     <span style="color:var(--muted);">Bilanz <b style="color:${pf.istKwp >= pf.kwp ? '#66bb6a' : '#ef5350'};font-family:'DM Mono',monospace;">${
       (pf.istKwp - pf.kwp >= 0 ? '+' : '−') + nf(Math.abs(pf.istKwp - pf.kwp), 1)} kWp</b></span>
     ${unterdeckt.length
@@ -335,7 +360,7 @@ function _uebersichtHtml() {
         ${th('Dachfläche', 'Bruttodachfläche = Grundfläche ÷ cos(Neigung)', true)}
         ${th('Bezugsfläche', bezugFlaechenName(r) + ' — Grundlage der Pflichtrechnung', true)}
         ${th('Soll', 'Pflichtleistung dieses Gebäudes', true)}
-        ${th('geplant', 'PV-Asset, sonst gezeichnete Belegung', true)}
+        ${th('geplant', 'Modul-Nennleistung aus dem Dachmodell — ohne Ausrichtungskorrektur, weil das Gesetz Modulfläche fordert und nicht Ertrag', true)}
         ${th('Δ', 'geplant − Soll', true)}
         ${th('Rechenweg / Grund')}
       </tr>
@@ -345,6 +370,17 @@ function _uebersichtHtml() {
   for (const f of alle) {
     const pflichtig = f.pflichtig;
     const ok = f.erfuellt;
+    const geb = (gebaeude || []).find(x => x.id === f.id);
+    const det = geb ? pvGeplantDetail(geb) : { quelle: 'keine', assetKwp: null, dachKwp: 0 };
+    // Das PV-Asset trägt die ausrichtungskorrigierte Leistung; hier zählt die
+    // Nennleistung. Weicht beides ab, gehört das in die Zeile — sonst wirkt die
+    // Summe gegenüber dem Anlagenpotenzial im Panel wie ein Rechenfehler.
+    const assetAbweichung = det.quelle === 'dach' && det.assetKwp != null
+      && Math.abs(det.assetKwp - det.dachKwp) > 0.5
+      ? `PV-Asset trägt ${nf(det.assetKwp, 1)} kWp (ausrichtungskorrigiert) — für die Pflicht zählt die Nennleistung`
+      : det.quelle === 'asset'
+        ? 'nur PV-Asset vorhanden, kein Dachmodell — Wert ist ausrichtungskorrigiert'
+        : '';
     const zeilenBg = !pflichtig ? 'transparent' : ok ? 'rgba(102,187,106,0.05)' : 'rgba(239,83,80,0.07)';
     const td = (inhalt, farbe, rechts) =>
       `<td style="padding:5px 7px;${rechts ? "text-align:right;font-family:'DM Mono',monospace;" : ''}white-space:nowrap;${farbe ? `color:${farbe};` : ''}">${inhalt}</td>`;
@@ -376,7 +412,8 @@ function _uebersichtHtml() {
              pflichtig && pf.bezifferbar ? (ok ? '#66bb6a' : '#ef5350') : '#546e7a', true)}
         <td style="padding:5px 7px;color:#78909c;font-size:10px;">${
           escHtml(pflichtig ? (f.rechenweg || f.grund) : f.grund)}${
-          f.annahmen.length ? `<br><span style="color:#ffb74d;">${escHtml(f.annahmen.join(' · '))}</span>` : ''}</td>
+          f.annahmen.length ? `<br><span style="color:#ffb74d;">${escHtml(f.annahmen.join(' · '))}</span>` : ''}${
+          assetAbweichung ? `<br><span style="color:#4fc3f7;">${escHtml(assetAbweichung)}</span>` : ''}</td>
       </tr>`;
   }
 
@@ -394,7 +431,8 @@ function _uebersichtHtml() {
             ${r.bezug !== 'geeignet'
               ? 'Das ist die GESAMTE Dachfläche, auch die Nordseite und alles, was als Sperrfläche ausgespart ist.'
               : 'Sperrflächen mindern sie also, eine fehlende Zeichnung wird pauschal geschätzt.'}</li>
-        <li>PV-Asset trägt einen anderen Wert als die gezeichnete Fläche — die Spalte „geplant" folgt dem Asset.</li>
+        <li>Dachmodell und PV-Asset laufen auseinander — die Zeile weist das aus. Für die Pflicht
+            zählt die Nennleistung aus dem Dachmodell, für Ertrag und Wirtschaftlichkeit das Asset.</li>
       </ol>
     </div>`;
   }
