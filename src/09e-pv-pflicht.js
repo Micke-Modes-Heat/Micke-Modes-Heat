@@ -16,10 +16,11 @@
 // daran, wohin der Betrachtungsjahr-Regler gerade geschoben ist — ein Gebäude ist
 // aber ein geplanter Neubau, egal welches Jahr man gerade ansieht.
 
-import { gebaeude, isExcluded } from './01-globals-varianten.js';
+import { freiflaechen, gebaeude, isExcluded } from './01-globals-varianten.js';
 import { getNutzungstypById } from './02b-gebaeude.js';
 import { _pvWpM2Global, calcGebKwp, escHtml, getDachDefaultNeigung, pvNettoFlaeche } from './03c-gebaeude-io.js';
-import { getAssetsForBuilding } from './13a-assets-core.js';
+import { calcFFKwp } from './03a-erzeuger.js';
+import { ASSETS, getAssetsForBuilding } from './13a-assets-core.js';
 import { EIGNUNG_PAUSCHAL_PCT, PV_PFLICHT_LISTE, PV_PFLICHT_META } from './config/pv-pflicht-laender.js';
 import { detectBundesland } from './lib/bundeslaender.js';
 import { bezugFlaechenName, bezugFlaechenNameDekliniert, pvPflichtSumme } from './lib/pv-pflicht.js';
@@ -81,6 +82,47 @@ export function pvGeplantDetail(g) {
 /** Nennleistung eines Gebäudes für die Pflichtprüfung. @param {any} g */
 export function pvGeplanteKwp(g) {
   return pvGeplantDetail(g).kwp;
+}
+
+/**
+ * Anlagenpotenzial des Projekts in MODUL-NENNLEISTUNG — dieselbe Zusammensetzung
+ * wie pvGetMaxKwpFromAssets (09d), nur mit dem Dachmodell statt der ausrichtungs-
+ * korrigierten Asset-Leistung. Grundlage für die Umrechnung der Varianten auf die
+ * Basis, auf der die Pflicht formuliert ist.
+ *
+ * Freiflächen (calcFFKwp) und die manuelle Eingabe sind bereits Nennleistung und
+ * gehen unverändert ein; korrigiert wird nur der Gebäudeteil.
+ */
+export function pvPotenzialNennKwp() {
+  // Bei manuell vorgegebener Gesamtleistung ist die Basis nicht bestimmbar —
+  // dann bleibt der Wert wie er ist (Umrechnungsfaktor 1).
+  const override = window._pvAnalyse?.pvMaxKwpOverride || 0;
+  if (override > 0) return override;
+
+  const gebNenn = (gebaeude || []).reduce((sum, g) => sum + pvGeplantDetail(g).kwp, 0);
+
+  // PV-Assets ohne Gebäudebezug (Freistehendes, Carports) haben kein Dachmodell
+  const assetOhneGeb = (ASSETS?.items || [])
+    .filter(a => a.type === 'PV' && a.buildingId == null)
+    .reduce((sum, a) => sum + (parseFloat(a.props?.leistungKWp) || 0), 0);
+
+  const ffKwp  = (freiflaechen || []).reduce((sum, ff) => sum + calcFFKwp(ff), 0);
+  const manual = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+
+  return gebNenn + assetOhneGeb + ffKwp + manual;
+}
+
+/**
+ * Umrechnungsfaktor „Anlagenpotenzial → Nennleistung".
+ * Die Varianten werden aus dem Potenzial abgeleitet, das die korrigierten
+ * Asset-Werte enthält; die Pflicht ist in Nennleistung formuliert. Ohne diesen
+ * Faktor verglichen man zwei verschiedene Größen.
+ * @param {number} potenzialKwp Ergebnis von pvGetMaxKwpFromAssets
+ */
+export function pvNennFaktor(potenzialKwp) {
+  const nenn = pvPotenzialNennKwp();
+  if (!(potenzialKwp > 0) || !(nenn > 0)) return 1;
+  return nenn / potenzialKwp;
 }
 
 /**
@@ -448,6 +490,9 @@ function _uebersichtHtml() {
 // ── window-Bridge für data-click/data-change und für Module, die keinen Import
 //    auf dieses Modul haben dürfen (03c und 25 würden sonst einen Zyklus bilden) ──
 window.pvPflichtAktuell           = pvPflichtAktuell;
+window.pvPotenzialNennKwp         = pvPotenzialNennKwp;
+window.pvNennFaktor               = pvNennFaktor;
+window.pvGeplantDetail            = pvGeplantDetail;
 window.pvPflichtLandId            = pvPflichtLandId;
 window.pvPflichtInfoHtml          = pvPflichtInfoHtml;
 window.pvPflichtUebersichtOeffnen = pvPflichtUebersichtOeffnen;

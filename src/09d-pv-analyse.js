@@ -24,6 +24,8 @@ import { pflichtCheck } from './lib/pv-pflicht.js';
 const _pflichtLeer = { aktiv: false, bezifferbar: false, kwp: 0, istKwp: 0, faelle: [], ohneFall: [], annahmen: [], regel: null, landId: null, grund: '' };
 const _pvPflicht     = () => window.pvPflichtAktuell?.() ?? _pflichtLeer;
 const _pvPflichtInfo = () => window.pvPflichtInfoHtml?.() ?? '';
+/** Faktor „Anlagenpotenzial → Modul-Nennleistung" (1, solange 09e fehlt). */
+const _pvNennFaktor  = (potenzialKwp) => window.pvNennFaktor?.(potenzialKwp) ?? 1;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // KONSTANTEN
@@ -1116,6 +1118,9 @@ export function pvBerechneAlle() {
     });
   }
 
+  // Umrechnung der Varianten auf die Basis, auf der die Pflicht formuliert ist
+  const nennFaktor = _pvNennFaktor(maxKwp);
+
   // ═══ 0) GESETZLICHE PFLICHT — Untergrenze aus dem Landesrecht ════════════════
   //     Keine Optimierung, sondern eine Nebenbedingung: was darunter liegt, ist
   //     nicht genehmigungsfähig. Erscheint nur, wenn das Land einen Flächenanteil
@@ -1188,7 +1193,14 @@ export function pvBerechneAlle() {
     e.rueck = { ...r, ...bew, anschlussKw: _napEinsp, skKVA, uBudgetPct };
     // Nebenbedingung statt Kennzahl: eine Variante unter der Pflichtleistung ist
     // nicht baubar, egal wie gut ihre Wirtschaftlichkeit aussieht.
-    e.pflicht = pflichtCheck(e.pvKwp, pflicht);
+    //
+    // Verglichen wird auf Basis der MODUL-NENNLEISTUNG, weil das Landesrecht
+    // Modulfläche fordert und nicht Ertrag. Die Variantenleistung stammt aus dem
+    // Anlagenpotenzial und enthält dort, wo ein PV-Asset existiert, die
+    // ausrichtungskorrigierte Leistung — deshalb der Faktor. Die Variante
+    // „Gesetzliche Pflicht" ist bereits Nennleistung und wird nicht umgerechnet.
+    e.nennKwp = e.id === 'gesetzlich' ? e.pvKwp : e.pvKwp * nennFaktor;
+    e.pflicht = pflichtCheck(e.nennKwp, pflicht);
   }
 
   // Pflicht-Kontext für Tabelle, Charts und Gutachten mitschreiben
@@ -1201,6 +1213,7 @@ export function pvBerechneAlle() {
     bezifferbar: pflicht.bezifferbar,
     kwp:    pflicht.kwp,
     istKwp: pflicht.istKwp,
+    nennFaktor,
     unterdeckt: pflicht.faelle.filter(f => !f.erfuellt).length,
     grund:  pflicht.grund,
     annahmen: pflicht.annahmen,
@@ -3519,9 +3532,10 @@ function renderVariantenTabelle(varianten) {
         ${pfAktiv ? (() => {
           const c = v.pflicht;
           if (!c?.relevant) return td('—', '#546e7a');
+          const basis = `${fmt(v.nennKwp, 1)} kWp Nennleistung gegen ${fmt(c.sollKwp, 1)} kWp Soll`;
           return c.erfuellt
-            ? `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#66bb6a;" title="Erfüllt die Pflichtleistung von ${fmt(c.sollKwp)} kWp">✓</td>`
-            : `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#ef5350;font-weight:600;" title="Unterschreitet die Pflichtleistung von ${fmt(c.sollKwp)} kWp — so nicht genehmigungsfähig">−${fmt(Math.abs(c.deltaKwp))}</td>`;
+            ? `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#66bb6a;" title="Erfüllt die Pflichtleistung — ${basis}">✓</td>`
+            : `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#ef5350;font-weight:600;" title="Unterschreitet die Pflichtleistung, so nicht genehmigungsfähig — ${basis}">−${fmt(Math.abs(c.deltaKwp))}</td>`;
         })() : ''}
       </tr>`;
   }
@@ -3545,7 +3559,10 @@ function renderVariantenTabelle(varianten) {
     <div><b style="color:var(--muted);">LCOE</b> = Jahreskosten ÷ genutzter Energie (Eigenverbrauch + Einspeisung).</div>
     <div><b style="color:var(--muted);">CO₂</b> = vermiedene Emissionen bei ${fmt(p?.co2Faktor || 380)} g/kWh Verdrängungsfaktor.</div>
     <div><b style="color:var(--muted);">Netz</b> = schärferes Kriterium aus Spannungsband Δu und Anschlusskapazität am NAP.</div>
-    ${pfAktiv ? `<div><b style="color:var(--muted);">§</b> = Abstand zur landesrechtlichen Pflichtleistung; „−x" bedeutet Unterschreitung um x kWp.</div>` : ''}
+    ${pfAktiv ? `<div><b style="color:var(--muted);">§</b> = Abstand zur landesrechtlichen Pflichtleistung; „−x" bedeutet Unterschreitung um x kWp.
+      Geprüft wird die Modul-Nennleistung${Math.abs((pf?.nennFaktor ?? 1) - 1) > 0.01
+        ? ` (kWp-Spalte × ${fmt(pf.nennFaktor, 2)}, weil die PV-Assets die ausrichtungskorrigierte Leistung tragen)` : ''},
+      weil das Gesetz Modulfläche fordert und nicht Ertrag.</div>` : ''}
   </div>`;
 
   // Unterschreitet eine Variante die Pflicht, ist das kein Detail in einer Spalte,

@@ -14996,7 +14996,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-09-17';
   if (d.indexOf('__') === 0) d = '';
-  var c = '9641332';
+  var c = '08cbe50';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -100187,6 +100187,8 @@ ${massTbl}
   const _pflichtLeer = { aktiv: false, bezifferbar: false, kwp: 0, istKwp: 0, faelle: [], ohneFall: [], annahmen: [], regel: null, landId: null, grund: '' };
   const _pvPflicht     = () => window.pvPflichtAktuell?.() ?? _pflichtLeer;
   const _pvPflichtInfo = () => window.pvPflichtInfoHtml?.() ?? '';
+  /** Faktor „Anlagenpotenzial → Modul-Nennleistung" (1, solange 09e fehlt). */
+  const _pvNennFaktor  = (potenzialKwp) => window.pvNennFaktor?.(potenzialKwp) ?? 1;
 
   // ══════════════════════════════════════════════════════════════════════════════
   // KONSTANTEN
@@ -101235,6 +101237,9 @@ ${massTbl}
       });
     }
 
+    // Umrechnung der Varianten auf die Basis, auf der die Pflicht formuliert ist
+    const nennFaktor = _pvNennFaktor(maxKwp);
+
     // ═══ 0) GESETZLICHE PFLICHT — Untergrenze aus dem Landesrecht ════════════════
     //     Keine Optimierung, sondern eine Nebenbedingung: was darunter liegt, ist
     //     nicht genehmigungsfähig. Erscheint nur, wenn das Land einen Flächenanteil
@@ -101307,7 +101312,14 @@ ${massTbl}
       e.rueck = { ...r, ...bew, anschlussKw: _napEinsp, skKVA, uBudgetPct };
       // Nebenbedingung statt Kennzahl: eine Variante unter der Pflichtleistung ist
       // nicht baubar, egal wie gut ihre Wirtschaftlichkeit aussieht.
-      e.pflicht = pflichtCheck(e.pvKwp, pflicht);
+      //
+      // Verglichen wird auf Basis der MODUL-NENNLEISTUNG, weil das Landesrecht
+      // Modulfläche fordert und nicht Ertrag. Die Variantenleistung stammt aus dem
+      // Anlagenpotenzial und enthält dort, wo ein PV-Asset existiert, die
+      // ausrichtungskorrigierte Leistung — deshalb der Faktor. Die Variante
+      // „Gesetzliche Pflicht" ist bereits Nennleistung und wird nicht umgerechnet.
+      e.nennKwp = e.id === 'gesetzlich' ? e.pvKwp : e.pvKwp * nennFaktor;
+      e.pflicht = pflichtCheck(e.nennKwp, pflicht);
     }
 
     // Pflicht-Kontext für Tabelle, Charts und Gutachten mitschreiben
@@ -101320,6 +101332,7 @@ ${massTbl}
       bezifferbar: pflicht.bezifferbar,
       kwp:    pflicht.kwp,
       istKwp: pflicht.istKwp,
+      nennFaktor,
       unterdeckt: pflicht.faelle.filter(f => !f.erfuellt).length,
       grund:  pflicht.grund,
       annahmen: pflicht.annahmen,
@@ -103517,9 +103530,10 @@ ${massTbl}
         ${pfAktiv ? (() => {
           const c = v.pflicht;
           if (!c?.relevant) return td('—', '#546e7a');
+          const basis = `${fmt(v.nennKwp, 1)} kWp Nennleistung gegen ${fmt(c.sollKwp, 1)} kWp Soll`;
           return c.erfuellt
-            ? `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#66bb6a;" title="Erfüllt die Pflichtleistung von ${fmt(c.sollKwp)} kWp">✓</td>`
-            : `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#ef5350;font-weight:600;" title="Unterschreitet die Pflichtleistung von ${fmt(c.sollKwp)} kWp — so nicht genehmigungsfähig">−${fmt(Math.abs(c.deltaKwp))}</td>`;
+            ? `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#66bb6a;" title="Erfüllt die Pflichtleistung — ${basis}">✓</td>`
+            : `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#ef5350;font-weight:600;" title="Unterschreitet die Pflichtleistung, so nicht genehmigungsfähig — ${basis}">−${fmt(Math.abs(c.deltaKwp))}</td>`;
         })() : ''}
       </tr>`;
     }
@@ -103543,7 +103557,10 @@ ${massTbl}
     <div><b style="color:var(--muted);">LCOE</b> = Jahreskosten ÷ genutzter Energie (Eigenverbrauch + Einspeisung).</div>
     <div><b style="color:var(--muted);">CO₂</b> = vermiedene Emissionen bei ${fmt(p?.co2Faktor || 380)} g/kWh Verdrängungsfaktor.</div>
     <div><b style="color:var(--muted);">Netz</b> = schärferes Kriterium aus Spannungsband Δu und Anschlusskapazität am NAP.</div>
-    ${pfAktiv ? `<div><b style="color:var(--muted);">§</b> = Abstand zur landesrechtlichen Pflichtleistung; „−x" bedeutet Unterschreitung um x kWp.</div>` : ''}
+    ${pfAktiv ? `<div><b style="color:var(--muted);">§</b> = Abstand zur landesrechtlichen Pflichtleistung; „−x" bedeutet Unterschreitung um x kWp.
+      Geprüft wird die Modul-Nennleistung${Math.abs((pf?.nennFaktor ?? 1) - 1) > 0.01
+        ? ` (kWp-Spalte × ${fmt(pf.nennFaktor, 2)}, weil die PV-Assets die ausrichtungskorrigierte Leistung tragen)` : ''},
+      weil das Gesetz Modulfläche fordert und nicht Ertrag.</div>` : ''}
   </div>`;
 
     // Unterschreitet eine Variante die Pflicht, ist das kein Detail in einer Spalte,
@@ -178951,6 +178968,47 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
   }
 
   /**
+   * Anlagenpotenzial des Projekts in MODUL-NENNLEISTUNG — dieselbe Zusammensetzung
+   * wie pvGetMaxKwpFromAssets (09d), nur mit dem Dachmodell statt der ausrichtungs-
+   * korrigierten Asset-Leistung. Grundlage für die Umrechnung der Varianten auf die
+   * Basis, auf der die Pflicht formuliert ist.
+   *
+   * Freiflächen (calcFFKwp) und die manuelle Eingabe sind bereits Nennleistung und
+   * gehen unverändert ein; korrigiert wird nur der Gebäudeteil.
+   */
+  function pvPotenzialNennKwp() {
+    // Bei manuell vorgegebener Gesamtleistung ist die Basis nicht bestimmbar —
+    // dann bleibt der Wert wie er ist (Umrechnungsfaktor 1).
+    const override = window._pvAnalyse?.pvMaxKwpOverride || 0;
+    if (override > 0) return override;
+
+    const gebNenn = (gebaeude || []).reduce((sum, g) => sum + pvGeplantDetail(g).kwp, 0);
+
+    // PV-Assets ohne Gebäudebezug (Freistehendes, Carports) haben kein Dachmodell
+    const assetOhneGeb = (ASSETS?.items || [])
+      .filter(a => a.type === 'PV' && a.buildingId == null)
+      .reduce((sum, a) => sum + (parseFloat(a.props?.leistungKWp) || 0), 0);
+
+    const ffKwp  = (freiflaechen || []).reduce((sum, ff) => sum + calcFFKwp(ff), 0);
+    const manual = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+
+    return gebNenn + assetOhneGeb + ffKwp + manual;
+  }
+
+  /**
+   * Umrechnungsfaktor „Anlagenpotenzial → Nennleistung".
+   * Die Varianten werden aus dem Potenzial abgeleitet, das die korrigierten
+   * Asset-Werte enthält; die Pflicht ist in Nennleistung formuliert. Ohne diesen
+   * Faktor verglichen man zwei verschiedene Größen.
+   * @param {number} potenzialKwp Ergebnis von pvGetMaxKwpFromAssets
+   */
+  function pvNennFaktor(potenzialKwp) {
+    const nenn = pvPotenzialNennKwp();
+    if (!(potenzialKwp > 0) || !(nenn > 0)) return 1;
+    return nenn / potenzialKwp;
+  }
+
+  /**
    * Gebäude für den Pflicht-Rechenkern aufbereiten.
    *
    * Auslösender Fall, in dieser Reihenfolge:
@@ -179315,6 +179373,9 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
   // ── window-Bridge für data-click/data-change und für Module, die keinen Import
   //    auf dieses Modul haben dürfen (03c und 25 würden sonst einen Zyklus bilden) ──
   window.pvPflichtAktuell           = pvPflichtAktuell;
+  window.pvPotenzialNennKwp         = pvPotenzialNennKwp;
+  window.pvNennFaktor               = pvNennFaktor;
+  window.pvGeplantDetail            = pvGeplantDetail;
   window.pvPflichtLandId            = pvPflichtLandId;
   window.pvPflichtInfoHtml          = pvPflichtInfoHtml;
   window.pvPflichtUebersichtOeffnen = pvPflichtUebersichtOeffnen;
@@ -179327,6 +179388,7 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
     PFLICHT_FALL_OPTIONEN: PFLICHT_FALL_OPTIONEN,
     pvGeplantDetail: pvGeplantDetail,
     pvGeplanteKwp: pvGeplanteKwp,
+    pvNennFaktor: pvNennFaktor,
     pvPflichtAktuell: pvPflichtAktuell,
     pvPflichtBadgeHtml: pvPflichtBadgeHtml,
     pvPflichtFallSetzen: pvPflichtFallSetzen,
@@ -179337,7 +179399,8 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
     pvPflichtRefresh: pvPflichtRefresh,
     pvPflichtUebersichtOeffnen: pvPflichtUebersichtOeffnen,
     pvPflichtUebersichtRender: pvPflichtUebersichtRender,
-    pvPflichtUebersichtSchliessen: pvPflichtUebersichtSchliessen
+    pvPflichtUebersichtSchliessen: pvPflichtUebersichtSchliessen,
+    pvPotenzialNennKwp: pvPotenzialNennKwp
   });
 
   // Gemeinsamer Abschluss einer Optimierungslauf-Sitzung. Liegt bewusst zwischen

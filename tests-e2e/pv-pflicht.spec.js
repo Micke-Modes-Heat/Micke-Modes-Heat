@@ -113,6 +113,35 @@ test('dist: PV-Pflicht bestimmt Land, erzeugt die Variante und prüft die übrig
   // der Asset-Wert darf die Pflichtspalte nicht bestimmen
   expect(Math.abs(nennleistung.istKwp - nennleistung.assetKwp)).toBeGreaterThan(1);
 
+  // Auch die Variantenprüfung muss auf Nennleistung rechnen: Varianten stammen aus
+  // dem Anlagenpotenzial (dort stecken korrigierte Asset-Werte), die Pflicht ist in
+  // Nennleistung formuliert — ohne Umrechnung verglichen man zwei Größen.
+  const varianten = await page.evaluate(() => {
+    window._pvAnalyse.pvMaxKwpOverride = 0;        // Override würde den Faktor auf 1 zwingen
+    const faktor = window.pvNennFaktor(window.pvGetMaxKwpFromAssets());
+    window.pvBerechneAlle();
+    const erg = window._pvAnalyse.ergebnisse;
+    return {
+      faktor,
+      potenzial: window.pvGetMaxKwpFromAssets(),
+      nenn: window.pvPotenzialNennKwp(),
+      zeilen: erg.map(e => ({ id: e.id, pvKwp: e.pvKwp, nennKwp: e.nennKwp, erfuellt: e.pflicht?.relevant ? e.pflicht.erfuellt : null })),
+      kontextFaktor: window._pvAnalyse.pflicht?.nennFaktor,
+    };
+  });
+
+  // Das Asset aus dem vorigen Schritt trägt 60 % der Nennleistung → Faktor > 1
+  expect(varianten.faktor).toBeGreaterThan(1);
+  expect(varianten.nenn).toBeGreaterThan(varianten.potenzial);
+  expect(varianten.kontextFaktor).toBeCloseTo(varianten.faktor, 6);
+  for (const z of varianten.zeilen) {
+    if (z.id === 'gesetzlich') {
+      expect(z.nennKwp).toBeCloseTo(z.pvKwp, 6);          // ist bereits Nennleistung
+    } else {
+      expect(z.nennKwp).toBeCloseTo(z.pvKwp * varianten.faktor, 6);
+    }
+  }
+
   // Der Jahres-Regler darf die Pflicht NICHT verändern
   const sliderTest = await page.evaluate(() => {
     const vorher = window.pvPflichtAktuell().kwp;
