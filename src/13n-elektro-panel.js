@@ -275,6 +275,8 @@ function _html() { return `
     <div class="lp-tool-grid">
       ${_tile('🛡 Blackout-Modus', 'blackoutModusToggle()', { id:'btn-blackout-modus-toggle',
         title:'Gebäude auf der Karte als notstromberechtigt einstufen (kritisch / eingeschränkt / einspeisefähig) und die Notstromlast bilanzieren' })}
+      ${_tile('📋 Resilienz-Abfrage', 'raPanelToggle()', { id:'btn-resilienz-abfrage-toggle',
+        title:'Abfragedatei (.xlsx) für die zuständige Stelle erzeugen, ausgefüllt wieder einlesen und in Resilienzanforderungen übersetzen' })}
     </div>
 
     ${_sub('Prüfen &amp; vergleichen')}

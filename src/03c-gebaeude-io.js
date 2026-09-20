@@ -2723,6 +2723,8 @@ export function _buildProjectData() {
     pvAnalyse: typeof window.pvCaptureState === 'function' ? window.pvCaptureState() : null,
     // Blackout-Modus (26): Projekteinstellungen; die Notstromklassen liegen an den Gebäuden
     blackout: typeof window.blackoutCaptureState === 'function' ? window.blackoutCaptureState() : null,
+    // Resilienz-Abfrage (27): Metadaten und die eingelesene, ausgefüllte Abfrage
+    resilienzAbfrage: typeof window.raCaptureState === 'function' ? window.raCaptureState() : null,
     // Referenzjahr als Einzel-Lastgang — bleibt für ältere Programmstände lesbar
     quartierProfile: window.elQuartierH ? {
       values: Array.from(window.elQuartierH),
@@ -3533,6 +3535,7 @@ function _applyProjectData(project) {
       if (typeof window.sgNaRestoreNapGrenzen === 'function') window.sgNaRestoreNapGrenzen(project.napGrenzen || null);
       if (typeof window.pvRestoreState === 'function') window.pvRestoreState(project.pvAnalyse || null);
       if (typeof window.blackoutRestoreState === 'function') window.blackoutRestoreState(project.blackout || null);
+      if (typeof window.raRestoreState === 'function') window.raRestoreState(project.resilienzAbfrage || null);
       if (project.battery) {
         const ids = {capacityKwh:'bat-kapazitaet',powerKw:'bat-leistung',investEurKwh:'opt-bat-invest',studyLifeYears:'opt-bat-life',calendarFadePctPerYear:'bat-calendar-fade',cycleLife:'bat-cycle-life',eolCapacityPct:'bat-eol-pct'};
         for (const [key,id] of Object.entries(ids)) { const el=document.getElementById(id); if(el && project.battery[key] != null) el.value=project.battery[key]; }

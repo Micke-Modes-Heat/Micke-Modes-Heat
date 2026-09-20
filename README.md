@@ -18,9 +18,13 @@ Wirtschaftlichkeit nach VDI 2067, Stromnetz, Optimierer und Variantenvergleich.
 ├── src/
 │   ├── styles/app.css
 │   ├── config/                 ← Kostentabellen, Erzeuger-Defaults, Hilfetexte
-│   ├── lib/                    ← Shared: util.js, physik-konstanten.js, elektro-formeln.js
+│   ├── lib/                    ← Shared: util.js, physik-konstanten.js, elektro-formeln.js,
+│   │                              resilienz-core.js, resilienz-abfrage.js,
+│   │                              xlsx-schreiber.js / xlsx-leser.js (OOXML ohne SheetJS)
 │   ├── 01–12 …                 ← Karte, Netz, Erzeuger, Dispatch, Analyse, PV, Optimizer
 │   ├── 13a–13r …               ← Elektro-Assets, SLD, Netzanalyse, NAP, Knotenpunkte
+│   ├── 26-blackout-modus.js    ← Notstromklassen, Aggregate, Liegenschafts-Insel
+│   ├── 27-resilienz-abfrage.js ← Abfragedatei (.xlsx) für Resilienzanforderungen
 │   └── main.js                 ← ES-Module-Entry (nur Vite-Dev; exponiert Exporte auf window)
 ├── tests/                      ← Vitest (CalcEngine, Dispatch, Netz, WGK, Optimizer …)
 ├── field-app/                  ← PWA für Vor-Ort-Datenaufnahme
