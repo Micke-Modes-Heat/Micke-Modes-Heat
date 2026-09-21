@@ -13,6 +13,19 @@ import { OPT_INVEST_DEFAULT, OPT_IH, OPT_NUTZUNG } from './config/optimizer-defa
 import { getEconomicScenario } from './config/economic-scenarios.js';
 import { ASSETS } from './13a-assets-core.js';
 import { computeWindElHourly, getWindAssetsSummary } from './13q-wind-ertrag.js';
+import { PV_PFLICHT_LISTE, PV_PFLICHT_META } from './config/pv-pflicht-laender.js';
+import { pflichtCheck } from './lib/pv-pflicht.js';
+
+// Die App-Schicht der PV-Pflicht (09e-pv-pflicht.js) wird bewusst NICHT importiert:
+// sie hängt an 03c/02b/13a und würde über diesen Import in den Altkern-Zyklus
+// gezogen (tests/import-architecture.js wacht über dessen Größe). Der Zugriff läuft
+// deshalb über die window-Bridge, die 09e beim Laden setzt — dasselbe Muster wie
+// bei napGetEndausbauLastgang. Die Rückfallwerte greifen nur, falls 09e fehlt.
+const _pflichtLeer = { aktiv: false, bezifferbar: false, kwp: 0, istKwp: 0, faelle: [], ohneFall: [], annahmen: [], regel: null, landId: null, grund: '' };
+const _pvPflicht     = () => window.pvPflichtAktuell?.() ?? _pflichtLeer;
+const _pvPflichtInfo = () => window.pvPflichtInfoHtml?.() ?? '';
+/** Faktor „Anlagenpotenzial → Modul-Nennleistung" (1, solange 09e fehlt). */
+const _pvNennFaktor  = (potenzialKwp) => window.pvNennFaktor?.(potenzialKwp) ?? 1;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // KONSTANTEN
@@ -50,6 +63,13 @@ export const PV_INFRA_STUFEN = [
 // Jede Variante beantwortet GENAU EINE Stakeholder-Frage. Die Texte werden im Tool
 // als "Lesehilfe" angezeigt, damit Herleitung und Bewertung selbsterklärend sind.
 const PV_VARIANTEN_INFO = {
+  'gesetzlich': {
+    label: 'Gesetzliche Pflicht',  farbe: '#9575cd', icon: '§',
+    frage:     'Was muss mindestens gebaut werden?',
+    ziel:      'Landesrechtliche PV-Pflicht gerade erfüllen',
+    herleitung:'Summe der Mindestbelegung aus der Bauordnung bzw. dem Solar-/Klimaschutzgesetz des Bundeslandes, gebäudescharf über die auslösenden Fälle (Neubau, grundlegende Dachsanierung).',
+    bewertung: 'Untergrenze, kein Optimum: keine Variante darunter ist genehmigungsfähig. Wirtschaftlich liegt das Optimum meist deutlich darüber.',
+  },
   'minimal': {
     label: 'Minimal',            farbe: '#78909c', icon: '▽',
     frage:     'Was ist der günstigste Einstieg?',
@@ -101,6 +121,8 @@ function _pvStandardZustand() {
     uBudgetPct: 3,       // zulässige Spannungsanhebung durch Einspeisung (VDE-AR-N 4105: 3 % NS, 4110: 2 % MS)
     uBudgetManuell: false, // false = uBudgetPct aus der Spannungsebene des Netzanschlusses (_pvUBudget)
     pvMaxKwpOverride: 0,        // 0 = aus Assets berechnen
+    pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
+    pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
     deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
     demandMode: 'basis',        // 'basis' = nur Strom-Lastgang | 'gesamt' = + WP + SK | 'endausbau' = NAP-Endausbau-Lastgang
     endausbauJahr: new Date().getFullYear() + 15, // Zieljahr für Endausbau-Lastgang
@@ -109,6 +131,7 @@ function _pvStandardZustand() {
     berechnet: false,
     stale: false,
     herleitung: null, lastParams: null, lastProfilQuelle: null, basis: null, standText: '',
+    pflicht: null,              // Pflicht-Kontext des letzten Laufs (Land, Norm, Sollleistung, Fälle)
   };
 }
 
@@ -454,6 +477,15 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
   let eigenMwh = 0, einspeiseMwh = 0, netzbezugMwh = 0, curtailMwh = 0;
   let windEigenMwh = 0, windEinspMwh = 0; // Anteil der Windkraft an Eigenverbrauch/Einspeisung (für getrennten Tarif)
   let batVerlustMwh = 0, spotRevenue = 0;  // spotRevenue in € (ct/kWh × MWh / 10)
+  // Speicher-Flüsse, gemessen an den AC-Klemmen (vor/nach Wandlung) — Datenbasis für
+  // Abb. 7b. Ladung und Entladung werden getrennt nach Anlass gebucht, weil genau
+  // dieser Split die Frage beantwortet, wofür der Speicher arbeitet:
+  //   Lad(Abregelung) = erzwungenes Laden am Einspeiselimit (Schritt 2)
+  //   Lad(Eigenverbrauch) = freiwilliges Laden aus Restüberschuss (Schritt 3)
+  //   Entl(Bedarf) = Entladung in die Last (Schritt 4)
+  //   Entl(Netz)   = Arbitrage-/Platzschaffungs-Entladung ins Netz (Schritt 5a/5b)
+  // Es gilt exakt: Lad − Entl − Verlust = SOC(Ende) − SOC(Start).
+  let batLadCurtKwh = 0, batLadEvKwh = 0, batEntlBedarfKwh = 0, batEntlNetzKwh = 0;
   let maxEinspeiseKw = 0, einspeiseStunden = 0;  // Rückspeise-Spitze & -Dauer am NAP
   const batSocArr = new Float32Array(N);
   const deckungArr = new Float32Array(N);  // Anteil des Bedarfs gedeckt durch PV+Batterie (0..1), je Zeitschritt
@@ -482,6 +514,7 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
       const cPow  = Math.min(mustStore, batLeistKw);
       const cEkwh = Math.min(cPow * dt, (batKwh - soc) / ETA);
       soc += cEkwh * ETA; batVerlustMwh += cEkwh * (1 - ETA);
+      batLadCurtKwh += cEkwh;
       rGen -= cEkwh / dt;
     }
     // Abregelung: was über effektives Limit bleibt → Curtailment
@@ -499,6 +532,7 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
       const cPow  = Math.min(rGen, batLeistKw);
       const cEkwh = Math.min(cPow * dt, (batKwh - soc) / ETA);
       soc  += cEkwh * ETA; batVerlustMwh += cEkwh * (1 - ETA);
+      batLadEvKwh += cEkwh;
       rGen -= cEkwh / dt;
     }
 
@@ -508,6 +542,7 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
       const dPow  = Math.min(rDem, batLeistKw);
       const dEkwh = Math.min(dPow * dt, soc * ETA);
       soc  -= dEkwh / ETA; batVerlustMwh += (dEkwh / ETA - dEkwh);
+      batEntlBedarfKwh += dEkwh;
       rDem -= dEkwh / dt;
     }
 
@@ -523,7 +558,10 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
         const dPow  = Math.min(batLeistKw, maxEinsp - rGen);
         if (dPow > 0) {
           const dEkwh = Math.min(dPow * dt, (soc - reserve) * ETA);
-          soc  -= dEkwh / ETA;
+          // Entladeverlust wie in Schritt 4/5b buchen — sonst ist die Energiebilanz
+          // der Strategie 'spot' nicht geschlossen (Lad − Entl − Verlust ≠ ΔSOC).
+          soc  -= dEkwh / ETA; batVerlustMwh += (dEkwh / ETA - dEkwh);
+          batEntlNetzKwh += dEkwh;
           rGen += dEkwh / dt;
         }
       }
@@ -541,6 +579,7 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
         const dEkwh = Math.min(dPow * dt, (soc - reserve) * ETA);
         if (dEkwh > 0) {
           soc  -= dEkwh / ETA; batVerlustMwh += (dEkwh / ETA - dEkwh);
+          batEntlNetzKwh += dEkwh;
           rGen += dEkwh / dt;
         }
       }
@@ -568,7 +607,11 @@ function pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, batStrategie, sp
   // batVerlustMwh wird oben in kWh akkumuliert → hier auf MWh normieren (Konsistenz)
   return { eigenMwh, einspeiseMwh, netzbezugMwh, curtailMwh, batVerlustMwh: batVerlustMwh / 1000,
            maxEinspeiseKw, einspeiseStunden, batSocArr, deckungArr, spotRevenue,
-           windEigenMwh, windEinspMwh };
+           windEigenMwh, windEinspMwh,
+           batLadCurtMwh:    batLadCurtKwh    / 1000,
+           batLadEvMwh:      batLadEvKwh      / 1000,
+           batEntlBedarfMwh: batEntlBedarfKwh / 1000,
+           batEntlNetzMwh:   batEntlNetzKwh   / 1000 };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1095,6 +1138,25 @@ export function pvBerechneAlle() {
     });
   }
 
+  // Umrechnung der Varianten auf die Basis, auf der die Pflicht formuliert ist
+  const nennFaktor = _pvNennFaktor(maxKwp);
+
+  // ═══ 0) GESETZLICHE PFLICHT — Untergrenze aus dem Landesrecht ════════════════
+  //     Keine Optimierung, sondern eine Nebenbedingung: was darunter liegt, ist
+  //     nicht genehmigungsfähig. Erscheint nur, wenn das Land einen Flächenanteil
+  //     nennt UND im Projekt ein Gebäude die Pflicht auslöst.
+  const pflicht = _pvPflicht();
+  if (pflicht.bezifferbar && pflicht.kwp > 0) {
+    berechne('gesetzlich', pflicht.kwp, 0, 'none', ` (${pflicht.regel.kurz})`);
+    const ePf = ergebnisse[ergebnisse.length - 1];
+    if (ePf) {
+      ePf.pflichtQuelle = `${pflicht.regel.norm} · ${pflicht.faelle.length} pflichtige Gebäude`;
+      if (pflicht.regel.anteilHerkunft === 'verordnung') {
+        ePf.hinweis = `Flächenanteil stammt aus der Rechtsverordnung, nicht aus ${pflicht.regel.norm} — vor Nutzung prüfen.`;
+      }
+    }
+  }
+
   // ═══ 1) MINIMAL — schwellen-optimiert, knapp unter 100 kWp ═══════════════════
   berechne('minimal', Math.min(99, maxKwp || 99), 0, 'none');
 
@@ -1149,7 +1211,39 @@ export function pvBerechneAlle() {
     const r   = pvRueckAnalyse(e.pvKwp, e.batKwh, demandH, pvProfile);
     const bew = pvRueckBewertung(r.maxKw, skKVA, _napEinsp, uBudgetPct);
     e.rueck = { ...r, ...bew, anschlussKw: _napEinsp, skKVA, uBudgetPct };
+    // Nebenbedingung statt Kennzahl: eine Variante unter der Pflichtleistung ist
+    // nicht baubar, egal wie gut ihre Wirtschaftlichkeit aussieht.
+    //
+    // Verglichen wird auf Basis der MODUL-NENNLEISTUNG, weil das Landesrecht
+    // Modulfläche fordert und nicht Ertrag. Die Variantenleistung stammt aus dem
+    // Anlagenpotenzial und enthält dort, wo ein PV-Asset existiert, die
+    // ausrichtungskorrigierte Leistung — deshalb der Faktor. Die Variante
+    // „Gesetzliche Pflicht" ist bereits Nennleistung und wird nicht umgerechnet.
+    e.nennKwp = e.id === 'gesetzlich' ? e.pvKwp : e.pvKwp * nennFaktor;
+    e.pflicht = pflichtCheck(e.nennKwp, pflicht);
   }
+
+  // Pflicht-Kontext für Tabelle, Charts und Gutachten mitschreiben
+  state.pflicht = {
+    landId: pflicht.landId,
+    land:   pflicht.regel?.land || '',
+    kurz:   pflicht.regel?.kurz || '',
+    norm:   pflicht.regel?.norm || '',
+    aktiv:  pflicht.aktiv,
+    bezifferbar: pflicht.bezifferbar,
+    kwp:    pflicht.kwp,
+    istKwp: pflicht.istKwp,
+    nennFaktor,
+    unterdeckt: pflicht.faelle.filter(f => !f.erfuellt).length,
+    grund:  pflicht.grund,
+    annahmen: pflicht.annahmen,
+    hinweise: pflicht.regel?.hinweise || [],
+    anteilHerkunft: pflicht.regel?.anteilHerkunft || '',
+    stand:  PV_PFLICHT_META.stand,
+    faelle: pflicht.faelle.map(f => ({
+      name: f.name, fall: f.fall, dachM2: f.dachM2, bezugsM2: f.bezugsM2, kwp: f.kwp,
+    })),
+  };
 
   // ── Herleitung je Variante: Kriterium + Suchspur für die Grafik ─────────
   const eMin = ergebnisse.find(e => e.id === 'minimal');
@@ -1358,6 +1452,11 @@ const PVA_VIEWS = [
     render:(v) => renderRueckAmpel(v) },
   { id:'abb7',  gruppe:'abb', nr:7,  label:'Energiefluss',         el:'pva-chart-fluss',
     render:(v, a) => renderEnergieFluss(a.demandH, a.pvProfile, a.napParams, a.params, v) },
+  // 7b statt einer Neunummerierung: Abb. 7b zoomt in den Speicheranteil von Abb. 7
+  // hinein und gehört inhaltlich daneben — die Folge Abb. 8/9/10 (und damit das
+  // Gutachten) bleibt dadurch unverändert.
+  { id:'abb7b', gruppe:'abb', nr:'7b', label:'Speicherfluss',      el:'pva-chart-speicherfluss',
+    render:(v, a) => renderSpeicherFluss(a.demandH, a.pvProfile, a.napParams, a.params, v) },
   { id:'abb8',  gruppe:'abb', nr:8,  label:'Autarkie-Jahresgang',  el:'pva-chart-autarkie-heatmap',
     render:(v) => renderAutarkieHeatmap(v) },
   { id:'abb9',  gruppe:'abb', nr:9,  label:'Sensitivität',         el:'pva-chart-sensitivitaet',
@@ -1849,7 +1948,30 @@ function _pvBuildPanelHtml() {
           <div style="font-size:10.5px;color:var(--muted);margin:8px 0 3px 0;">Manuell überschreiben (0 = aus Projekt)</div>
           <input id="pva-max-kwp" type="number" value="${window._pvAnalyse.pvMaxKwpOverride || 0}" min="0" step="10"
             style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
-            data-change="window._pvAnalyse.pvMaxKwpOverride=parseFloat(this.value)||0"/>`;
+            data-change="window._pvAnalyse.pvMaxKwpOverride=parseFloat(this.value)||0"/>
+
+          <div style="margin-top:11px;padding-top:9px;border-top:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
+              <span style="color:#9575cd;font-size:12px;">§</span>
+              <span style="font-size:11px;font-weight:600;color:var(--text);">Landesrechtliche PV-Pflicht</span>
+              <span class="htip" data-tip="Mindestbelegung nach Bauordnung bzw. Solar-/Klimaschutzgesetz des Bundeslandes. Ergibt eine eigene Variante und prüft alle anderen Varianten gegen diese Untergrenze. Orientierungswert, keine Rechtsberatung.">?</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+              <select id="pva-pflicht-land" data-change="window._pvAnalyse.pflichtLand=this.value;window.pvPflichtRefresh&&window.pvPflichtRefresh()"
+                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;">
+                <option value="">aus der Karte bestimmen</option>
+                ${PV_PFLICHT_LISTE.map(l => `<option value="${l.id}">${escHtml(l.land)}${l.pflicht ? '' : ' — ohne Pflicht'}</option>`).join('')}
+              </select>
+              <select id="pva-pflicht-annahme" data-change="window._pvAnalyse.pflichtAnnahme=this.value;window.pvPflichtRefresh&&window.pvPflichtRefresh()"
+                title="Welche Gebäude als Pflichtfall gelten: nur geplante Fälle nimmt Gebäude mit Neubaujahr oder markierter Dachsanierung, alle Gebäude rechnet den Vollausbau als Worst Case."
+                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;">
+                <option value="auto">nur geplante Fälle</option>
+                <option value="alle">alle Gebäude (Worst Case)</option>
+                <option value="aus">Pflicht nicht prüfen</option>
+              </select>
+            </div>
+            <div id="pva-pflicht-info" style="margin-top:6px;">${_pvPflichtInfo()}</div>
+          </div>`;
         })()}
       </div>
 
@@ -2004,6 +2126,7 @@ function _pvBuildPanelHtml() {
       <div id="pva-chart-scatter"           style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-rueck"             style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-fluss"             style="display:none;overflow:hidden;"></div>
+      <div id="pva-chart-speicherfluss"     style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-autarkie-heatmap"  style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-sensitivitaet"     style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-resilienz"         style="display:none;overflow:hidden;"></div>
@@ -2842,6 +2965,12 @@ function renderOptSurface3D(demandH, pvProfile, napParams, params, varianten, ov
 // als Funktion der PV-Größe (ohne Batterie). Wo die Kurve kippt, kostet weiterer
 // PV-Ausbau mehr als er bringt; Infrastrukturstufen erzeugen sichtbare Sprünge.
 
+/** Pflichtleistung für die Chart-Marker — 0, wenn keine oder außerhalb der Achse. */
+function _pvPflichtKwpFuerChart(maxKwp) {
+  const kwp = window._pvAnalyse?.pflicht?.bezifferbar ? (window._pvAnalyse.pflicht.kwp || 0) : 0;
+  return kwp > 0 && kwp <= maxKwp ? kwp : 0;
+}
+
 function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten, overrideEl) {
   const el = overrideEl || document.getElementById('pva-chart-grenznutzen');
   if (!el) return;
@@ -2884,6 +3013,7 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
   const infraGrenzen = PV_INFRA_STUFEN.filter(s => isFinite(s.bisKwp) && s.bisKwp < maxKwp).map(s => s.bisKwp);
 
   const yZero = yS(0).toFixed(1);
+  const pfKwp = _pvPflichtKwpFuerChart(maxKwp);
 
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -2910,6 +3040,10 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
     <text x="${PL + cW / 2}" y="${H - 3}" text-anchor="middle" fill="#607d8b" font-size="9">PV-Leistung (kWp)</text>
     <text x="11" y="${PT + cH / 2}" text-anchor="middle" fill="#607d8b" font-size="9" transform="rotate(-90,11,${PT + cH / 2})">Netto-Überschuss (€/a)</text>
     <path d="${nettoPath}" fill="none" stroke="#66bb6a" stroke-width="2.5"/>
+    ${pfKwp > 0 ? `
+      <rect x="${PL}" y="${PT}" width="${Math.max(0, xS(pfKwp) - PL).toFixed(1)}" height="${cH}" fill="#9575cd" opacity="0.07"/>
+      <line x1="${xS(pfKwp).toFixed(1)}" y1="${PT}" x2="${xS(pfKwp).toFixed(1)}" y2="${PT + cH}" stroke="#9575cd" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="${Math.min(xS(pfKwp) + 4, W - 90)}" y="${PT + cH - 6}" fill="#b39ddb" font-size="9">§ Pflicht ${Math.round(pfKwp).toLocaleString('de-DE')} kWp</text>` : ''}
     <line x1="${xS(optKwp).toFixed(1)}" y1="${PT}" x2="${xS(optKwp).toFixed(1)}" y2="${PT + cH}" stroke="#66bb6a" stroke-width="1" stroke-dasharray="3,2" opacity="0.8"/>
     <text x="${Math.min(xS(optKwp) + 4, W - 80)}" y="${PT + 20}" fill="#66bb6a" font-size="9" font-weight="600">Optimum ≈ ${optKwp.toLocaleString('de-DE')} kWp</text>
     ${(varianten || []).filter(v => v.info && v.info.frage).map(v => {
@@ -3240,6 +3374,8 @@ function _pvSyncFromState() {
   const ub = document.getElementById('pva-ubudget');
   if (ub) ub.placeholder = `auto ${String(_pvUBudget()).replace('.', ',')}`;
   set('pva-max-kwp',            s.pvMaxKwpOverride || 0);
+  set('pva-pflicht-land',       s.pflichtLand || '');
+  set('pva-pflicht-annahme',    s.pflichtAnnahme || 'auto');
   set('pva-endausbau-jahr',     s.endausbauJahr || ((globalYear || new Date().getFullYear()) + 15));
   const jahrVal = document.getElementById('pva-endausbau-jahr-val');
   if (jahrVal) jahrVal.textContent = s.endausbauJahr || ((globalYear || new Date().getFullYear()) + 15);
@@ -3263,6 +3399,7 @@ function _pvSyncFromState() {
   });
   // Eingaben des Nutzers zurueckschreiben (das Panel-Markup traegt nur Defaults)
   _pvFelderWiederherstellen();
+  window.pvPflichtRefresh?.();   // erst nach dem Zurueckschreiben — sonst zeigt die Zeile den Default
   _pvApplyStaleUi();
 
   // Ergebnisse wieder anzeigen wenn bereits berechnet
@@ -3344,6 +3481,8 @@ function renderVariantenTabelle(varianten) {
   const bestAmort  = Math.min(...varianten.map(v => v.wirt.amort).filter(a => isFinite(a)));
   const windAktiv  = varianten.some(v => (v.wirt.windKw || 0) > 0);
   const p          = window._pvAnalyse.lastParams;
+  const pf         = window._pvAnalyse.pflicht;
+  const pfAktiv    = varianten.some(v => v.pflicht?.relevant);
 
   const th = (label, tip, farbe) =>
     `<th style="padding:4px 6px;text-align:right;white-space:nowrap;${farbe ? 'color:' + farbe + ';' : ''}"${tip ? ` title="${tip}"` : ''}>${label}</th>`;
@@ -3371,6 +3510,7 @@ function renderVariantenTabelle(varianten) {
         ${th('LCOE', 'Stromgestehungskosten: Jahreskosten ÷ genutzter Energie (nach Abregelung)')}
         ${th('CO₂&nbsp;t/a', 'Vermiedene Emissionen bei dem eingestellten Verdrängungsfaktor')}
         ${th('Netz', 'Rückspeise-Ampel: schärferes Kriterium aus Spannungsband und Anschlusskapazität')}
+        ${pfAktiv ? th('§', `Landesrechtliche PV-Pflicht: mindestens ${fmt(pf?.kwp)} kWp nach ${escHtml(pf?.norm || '')}`, '#9575cd') : ''}
       </tr>
     </thead>
     <tbody>`;
@@ -3415,6 +3555,14 @@ function renderVariantenTabelle(varianten) {
         <td style="text-align:center;padding:6px;" title="${ampelTip}">
           <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${ampelFarbe};"></span>
         </td>
+        ${pfAktiv ? (() => {
+          const c = v.pflicht;
+          if (!c?.relevant) return td('—', '#546e7a');
+          const basis = `${fmt(v.nennKwp, 1)} kWp Nennleistung gegen ${fmt(c.sollKwp, 1)} kWp Soll`;
+          return c.erfuellt
+            ? `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#66bb6a;" title="Erfüllt die Pflichtleistung — ${basis}">✓</td>`
+            : `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#ef5350;font-weight:600;" title="Unterschreitet die Pflichtleistung, so nicht genehmigungsfähig — ${basis}">−${fmt(Math.abs(c.deltaKwp))}</td>`;
+        })() : ''}
       </tr>`;
   }
 
@@ -3426,6 +3574,7 @@ function renderVariantenTabelle(varianten) {
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#66bb6a;margin-right:5px;"></span>Rückspeisung netzverträglich</span>
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffa726;margin-right:5px;"></span>Prüfung durch den VNB nötig</span>
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef5350;margin-right:5px;"></span>Erzeugungsnetz / MS-Anschluss erforderlich</span>
+    ${pfAktiv ? `<span style="color:#9575cd;">§ = landesrechtliche PV-Pflicht: <b>${fmt(pf?.kwp)} kWp</b> (${escHtml(pf?.kurz || '')}, ${escHtml(pf?.norm || '')})</span>` : ''}
     ${!napAktiv ? '<span style="color:#546e7a;">Abregelung: keine Einspeisegrenze gesetzt</span>' : ''}
     ${windAktiv ? '<span style="color:#4dd0e1;">Wind ist ein fester Sockel — in EV/Aut, Erlösen und Überschuss enthalten</span>' : ''}
   </div>
@@ -3436,7 +3585,31 @@ function renderVariantenTabelle(varianten) {
     <div><b style="color:var(--muted);">LCOE</b> = Jahreskosten ÷ genutzter Energie (Eigenverbrauch + Einspeisung).</div>
     <div><b style="color:var(--muted);">CO₂</b> = vermiedene Emissionen bei ${fmt(p?.co2Faktor || 380)} g/kWh Verdrängungsfaktor.</div>
     <div><b style="color:var(--muted);">Netz</b> = schärferes Kriterium aus Spannungsband Δu und Anschlusskapazität am NAP.</div>
+    ${pfAktiv ? `<div><b style="color:var(--muted);">§</b> = Abstand zur landesrechtlichen Pflichtleistung; „−x" bedeutet Unterschreitung um x kWp.
+      Geprüft wird die Modul-Nennleistung${Math.abs((pf?.nennFaktor ?? 1) - 1) > 0.01
+        ? ` (kWp-Spalte × ${fmt(pf.nennFaktor, 2)}, weil die PV-Assets die ausrichtungskorrigierte Leistung tragen)` : ''},
+      weil das Gesetz Modulfläche fordert und nicht Ertrag.</div>` : ''}
   </div>`;
+
+  // Unterschreitet eine Variante die Pflicht, ist das kein Detail in einer Spalte,
+  // sondern ein Ausschlusskriterium — deshalb zusätzlich als Warnzeile.
+  if (pfAktiv) {
+    const verletzt = varianten.filter(v => v.pflicht?.relevant && !v.pflicht.erfuellt);
+    html += `
+    <div style="margin-top:9px;padding:8px 11px;border-radius:6px;font-size:10.5px;line-height:1.6;
+         background:${verletzt.length ? 'rgba(239,83,80,0.10)' : 'rgba(149,117,205,0.08)'};
+         border:1px solid ${verletzt.length ? 'rgba(239,83,80,0.35)' : 'rgba(149,117,205,0.3)'};">
+      <b style="color:${verletzt.length ? '#ef5350' : '#b39ddb'};">§ ${escHtml(pf?.land || '')} — ${escHtml(pf?.norm || '')}</b>
+      <span style="color:var(--muted);"> · Pflichtleistung ${fmt(pf?.kwp)} kWp · Stand ${escHtml(pf?.stand || '')}</span>
+      ${verletzt.length
+        ? `<div style="color:#ef9a9a;margin-top:3px;">Unter der Pflichtleistung und damit nicht genehmigungsfähig: ${
+            verletzt.map(v => `${escHtml(v.label)} (−${fmt(Math.abs(v.pflicht.deltaKwp))} kWp)`).join(', ')}</div>`
+        : '<div style="color:#a5d6a7;margin-top:3px;">Alle Varianten erfüllen die Pflichtleistung.</div>'}
+      ${(pf?.annahmen || []).length
+        ? `<div style="color:#78909c;margin-top:3px;">Annahmen: ${pf.annahmen.map(a => escHtml(a)).join(' · ')}</div>` : ''}
+      <div style="color:#607d8b;margin-top:3px;">${escHtml(PV_PFLICHT_META.disclaimer)}</div>
+    </div>`;
+  }
 
   // Infra-Detail je Variante
   const detail = varianten.filter(v => v.wirt.infDetail?.length);
@@ -3520,6 +3693,9 @@ function renderEvKurve(demandH, pvProfile, napParams, params, varianten, overrid
   const xS = v => PL + (v / maxKwp) * cW;
   const yS = v => PT + cH - (v / 100) * cH;
 
+  // Pflichtleistung als senkrechte Grenze — links davon ist keine Auslegung baubar
+  const pfKwp = _pvPflichtKwpFuerChart(maxKwp);
+
   const evPath = evData.map((d, i) => `${i===0?'M':'L'}${xS(d.kwp).toFixed(1)},${yS(d.evQ).toFixed(1)}`).join(' ');
   const curtailPath = evData.filter(d => d.curtailQ > 0)
     .map((d, i) => `${i===0?'M':'L'}${xS(d.kwp).toFixed(1)},${yS(d.curtailQ).toFixed(1)}`).join(' ');
@@ -3544,6 +3720,10 @@ function renderEvKurve(demandH, pvProfile, napParams, params, varianten, overrid
     <path d="${evPath}" fill="none" stroke="#42a5f5" stroke-width="2.5"/>
     <line x1="${xMax}" y1="${PT}" x2="${xMax}" y2="${(PT+cH).toFixed(1)}" stroke="#fdd835" stroke-width="1" stroke-dasharray="3,2" opacity="0.7"/>
     <text x="${Math.min(parseFloat(xMax)+4, W-60)}" y="${PT+11}" fill="#fdd835" font-size="9">Max PV</text>
+    ${pfKwp > 0 ? `
+      <rect x="${PL}" y="${PT}" width="${Math.max(0, xS(pfKwp) - PL).toFixed(1)}" height="${cH}" fill="#9575cd" opacity="0.07"/>
+      <line x1="${xS(pfKwp).toFixed(1)}" y1="${PT}" x2="${xS(pfKwp).toFixed(1)}" y2="${(PT+cH).toFixed(1)}" stroke="#9575cd" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="${Math.min(xS(pfKwp)+4, W-70)}" y="${PT+cH-4}" fill="#b39ddb" font-size="9">§ Pflicht</text>` : ''}
     <rect x="${PL+4}" y="${PT+2}" width="96" height="32" rx="3" fill="rgba(0,0,0,0.5)"/>
     <line x1="${PL+8}" y1="${PT+12}" x2="${PL+18}" y2="${PT+12}" stroke="#42a5f5" stroke-width="2.5"/>
     <text x="${PL+22}" y="${PT+15}" fill="#90a4ae" font-size="9">Eigenverbrauch</text>
@@ -4059,6 +4239,448 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
   if (fsBtn) fsBtn.addEventListener('click', () =>
     _pvOpenFs('Energiefluss bei frei wählbarer Auslegung', cnt =>
       renderEnergieFluss(_pvFsArgs.demandH, _pvFsArgs.pvProfile, _pvFsArgs.napParams, _pvFsArgs.params, window._pvAnalyse.ergebnisse, cnt)
+    )
+  );
+}
+
+// ── Abb. 7b — Speicherfluss: wofür der Batteriespeicher arbeitet ──────────────
+// Abb. 7 zeigt, wohin die Energie des Quartiers fließt — der Speicher steckt dort
+// unsichtbar im grünen Eigenverbrauchsband. Diese Abbildung dreht die Perspektive
+// um und stellt den Speicher selbst in die Mitte: woher seine Ladung kommt, wohin
+// sie geht, wie viel Wandlung kostet — und wie er sich über das Jahr verhält.
+//
+// Drei Ebenen, bewusst übereinander statt nebeneinander:
+//   1. Speicher-Sankey  — die Jahresbilanz an den AC-Klemmen (Bilanz schließt exakt)
+//   2. SOC-Jahres-Heatmap — Tag × Stunde, Farbe = Ladestand; zeigt sofort, ob der
+//      Speicher im Sommer täglich zyklisiert und im Winter leer steht
+//   3. SOC-Dauerlinie + Ø-Tagesgang — beantwortet die Auslegungsfrage: Wie oft ist
+//      er voll (zu groß), wie oft leer (zu klein), und wann lädt/entlädt er
+//
+// Farben sind absichtlich dieselben wie in Abb. 7: Abregelung orange, PV-Überschuss
+// gelb, Eigenverbrauch grün, Einspeisung blau, Verlust grau — so liest sich Abb. 7b
+// als Vergrößerung des Speicher-Anteils von Abb. 7.
+
+const _PVSF_COL = {
+  ladCurt: '#ff9800',   // Ladung, die sonst abgeregelt worden wäre
+  ladEv:   '#fdd835',   // Ladung aus PV-Überschuss für den späteren Eigenverbrauch
+  entlBed: '#66bb6a',   // Entladung in die Last
+  entlNet: '#42a5f5',   // Entladung ins Netz (Arbitrage / Platz schaffen)
+  verlust: '#78909c',   // Wandlungsverluste
+  rest:    '#9575cd',   // Restladung am Jahresende
+  bat:     '#9575cd',   // Speicher-Knoten
+  pv:      '#fdd835',
+  wd:      '#4dd0e1',
+};
+
+// Rasterung der Leistungsachse im Tagesgang. Fein genug, dass ein Spitzenwert von
+// 2,8 nicht auf 5 aufgerundet wird und die halbe Balkenhöhe ungenutzt bleibt.
+const _PVSF_STUFEN = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+
+/** Ladestand-Farbe (0..1): leer = dunkel, voll = helles Violett. */
+function _pvsfSocColor(v) {
+  v = Math.max(0, Math.min(1, v));
+  const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+  // dunkles Blaugrau (leer) → Violett (halb) → helles Lila (voll)
+  if (v < 0.5) {
+    const t = v / 0.5;
+    return `rgb(${lerp(38,92,t)},${lerp(45,71,t)},${lerp(56,148,t)})`;
+  }
+  const t = (v - 0.5) / 0.5;
+  return `rgb(${lerp(92,209,t)},${lerp(71,180,t)},${lerp(148,236,t)})`;
+}
+
+/** SOC-Reihe (kWh, dt-Auflösung) → stündlicher Mittelwert in kWh. */
+function _pvsfHourlySoc(socArr, dt) {
+  if (dt === 1) return socArr;
+  const k = Math.round(1 / dt);
+  const n = Math.floor(socArr.length / k);
+  const out = new Float32Array(n);
+  for (let h = 0; h < n; h++) {
+    let s = 0;
+    for (let j = 0; j < k; j++) s += socArr[h * k + j];
+    out[h] = s / k;
+  }
+  return out;
+}
+
+function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, overrideEl) {
+  const el = overrideEl || document.getElementById('pva-chart-speicherfluss');
+  if (!el) return;
+
+  const maxKwp = pvGetMaxKwpFromAssets() || 500;
+  const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
+  const kanon  = (varianten || []).filter(v => v.info && v.info.frage);
+  const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
+  const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
+
+  // Startwert: die größte kanonische Batterie — ohne Speicher hat diese Abbildung
+  // nichts zu zeigen, also startet sie bewusst nicht auf der wirtschaftlichen Variante.
+  const start = kanon.find(v => v.batKwh === varBat && varBat > 0)
+             || kanon.find(v => v.id === 'wirt-opt') || kanon[0]
+             || { pvKwp: Math.round(maxKwp / 2), batKwh: 0 };
+
+  const windKwInst = (window._windElHourly && params.windKwInstalled > 0) ? params.windKwInstalled : 0;
+  const windMax    = windKwInst > 0 ? Math.round(windKwInst * 2) : 0;
+
+  const chips = kanon.map(v =>
+    `<button data-sf-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
+      style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border:1px solid ${v.farbe};border-radius:10px;background:transparent;color:${v.farbe};font-size:9px;cursor:pointer;white-space:nowrap;${v.batKwh > 0 ? '' : 'opacity:.45;'}">
+      ${v.icon} ${Math.round(v.pvKwp)} kWp${v.batKwh > 0 ? ` · ${(v.batKwh/1000).toFixed(v.batKwh < 1000 ? 2 : 1)} MWh` : ' · ohne Speicher'}</button>`).join('');
+
+  el.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 7b — Speicherfluss: wofür der Batteriespeicher arbeitet
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Herkunft und Verwendung jeder gespeicherten kWh · Ladestand über das Jahr</span>
+    </span>
+    ${overrideEl ? '' : '<button data-pva-fs="speicherfluss" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:8px;align-items:center;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">PV-Leistung</span>
+      <input id="pva-sf-pv" type="range" min="0" max="${Math.round(maxKwp)}" step="1" value="${Math.round(start.pvKwp)}" style="flex:1;accent-color:${_PVSF_COL.pv};">
+      <span id="pva-sf-pv-val" style="font-size:9px;color:${_PVSF_COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(start.pvKwp)} kWp</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Batterie</span>
+      <input id="pva-sf-bat" type="range" min="0" max="${Math.round(batMax)}" step="5" value="${Math.round(start.batKwh)}" style="flex:1;accent-color:${_PVSF_COL.bat};">
+      <span id="pva-sf-bat-val" style="font-size:9px;color:${_PVSF_COL.bat};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(start.batKwh/1000).toFixed(2)} MWh</span>
+    </div>
+    ${windKwInst > 0 ? `
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Wind</span>
+      <input id="pva-sf-wind" type="range" min="0" max="${windMax}" step="10" value="${Math.round(windKwInst)}" style="flex:1;accent-color:${_PVSF_COL.wd};">
+      <span id="pva-sf-wind-val" style="font-size:9px;color:${_PVSF_COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(windKwInst)} kW</span>
+    </div>` : ''}
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${chips}</div>
+  <div id="pva-sf-kpi" style="font-size:9px;color:var(--muted);margin-bottom:6px;line-height:1.7;"></div>
+  <div id="pva-sf-svg" style="overflow:hidden;"></div>`;
+
+  const svgWrap = el.querySelector('#pva-sf-svg');
+  const kpiEl   = el.querySelector('#pva-sf-kpi');
+  const pvIn    = el.querySelector('#pva-sf-pv');
+  const batIn   = el.querySelector('#pva-sf-bat');
+  const windIn  = el.querySelector('#pva-sf-wind');
+
+  const dt = demandH.length > 8784 ? 0.25 : 1.0;
+  const fmt1 = n => n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  function draw(pv, bat, windKw) {
+    const W = Math.max(440, (svgWrap.getBoundingClientRect().width || 700) - 4);
+
+    if (bat <= 0) {
+      kpiEl.innerHTML = '';
+      svgWrap.innerHTML = `<div style="color:var(--muted);font-size:10px;text-align:center;padding:38px 0;line-height:1.7;">
+        Diese Auslegung hat keinen Speicher — es gibt keinen Speicherfluss darzustellen.<br>
+        <span style="color:#78909c;">Batterie-Slider aufziehen oder oben eine Variante mit Speicher wählen.</span></div>`;
+      return;
+    }
+
+    const strat = spotH ? 'spot-dyn' : 'ev';
+    const windScale = windKwInst > 0 ? (windKw / windKwInst) : 1;
+    const sim = pvNapSim(pv, bat, demandH, pvProfile, napParams, strat, spotH, windScale);
+    // Referenzlauf ohne Speicher — nur so lässt sich beziffern, was der Speicher
+    // tatsächlich bewirkt (vermiedene Abregelung, zusätzlicher Eigenverbrauch).
+    const ref = pvNapSim(pv, 0, demandH, pvProfile, napParams, 'none', spotH, windScale);
+
+    const ladCurt = sim.batLadCurtMwh    || 0;
+    const ladEv   = sim.batLadEvMwh      || 0;
+    const entBed  = sim.batEntlBedarfMwh || 0;
+    const entNet  = sim.batEntlNetzMwh   || 0;
+    const verl    = sim.batVerlustMwh    || 0;
+    const socArr  = sim.batSocArr;
+    const restMwh = Math.max(0, socArr[socArr.length - 1] / 1000);
+    const lad     = ladCurt + ladEv;
+    const entl    = entBed + entNet;
+
+    if (lad < 0.01) {
+      kpiEl.innerHTML = '';
+      svgWrap.innerHTML = `<div style="color:var(--muted);font-size:10px;text-align:center;padding:38px 0;line-height:1.7;">
+        Der Speicher bleibt bei dieser Auslegung ungenutzt — die Erzeugung deckt den Bedarf nie mit Überschuss.<br>
+        <span style="color:#78909c;">PV-Leistung erhöhen, um Ladeenergie zu erzeugen.</span></div>`;
+      return;
+    }
+
+    // ── Kennzahlen ───────────────────────────────────────────────────────────
+    const capMwh   = bat / 1000;
+    const zyklen   = entl / capMwh;                       // Vollzyklen/a (AC-seitig entladen)
+    let socSum = 0, tVoll = 0, tLeer = 0;
+    for (let i = 0; i < socArr.length; i++) {
+      const f = socArr[i] / bat;
+      socSum += f;
+      if (f > 0.95) tVoll += dt;
+      if (f < 0.05) tLeer += dt;
+    }
+    const socMittel = socSum / socArr.length;
+    const dCurt  = Math.max(0, ref.curtailMwh  - sim.curtailMwh);   // vermiedene Abregelung
+    const dEigen = Math.max(0, sim.eigenMwh    - ref.eigenMwh);     // zusätzlicher Eigenverbrauch
+    const nutzen = dEigen * (params.pStrom || 0) * 10 + dCurt * (params.pEinsp || 0) * 10; // €/a
+    const annBat = annF(params.zins || 0.035, params.batLife || 15) + (typeof OPT_IH === 'object' ? (OPT_IH.bat || 0.01) : 0.01);
+    const kostA  = bat * (params.batInvestPerKwh || 0) * annBat;    // €/a Kapital + IH
+    const ctProKwh = entl > 0 ? kostA / (entl * 1000) * 100 : Infinity;  // ct je zwischengespeicherter kWh
+
+    kpiEl.innerHTML =
+      `<span style="color:${_PVSF_COL.bat}">Durchsatz ${fmt1(entl)} MWh/a</span> · ` +
+      `<span style="color:${_PVSF_COL.bat}">${fmt1(zyklen)} Vollzyklen/a</span> · ` +
+      `Ø Ladestand ${(socMittel * 100).toFixed(0)} % · ` +
+      `voll ${Math.round(tVoll)} h · leer ${Math.round(tLeer)} h · ` +
+      `<span style="color:${_PVSF_COL.verlust}">Wandlungsverlust ${fmt1(verl)} MWh</span> ` +
+      `(${(lad > 0 ? verl / lad * 100 : 0).toFixed(0)} % der Ladung)<br>` +
+      `<span style="color:${_PVSF_COL.ladCurt}">vermiedene Abregelung ${fmt1(dCurt)} MWh</span> · ` +
+      `<span style="color:${_PVSF_COL.entlBed}">zusätzlicher Eigenverbrauch ${fmt1(dEigen)} MWh</span> · ` +
+      `Nutzen ≈ ${Math.round(nutzen / 1000).toLocaleString('de-DE')} k€/a gegen ` +
+      `${Math.round(kostA / 1000).toLocaleString('de-DE')} k€/a Speicherkosten · ` +
+      `<span style="color:${isFinite(ctProKwh) && ctProKwh < (params.pStrom || 30) ? '#66bb6a' : '#ef9a9a'}">` +
+      `${isFinite(ctProKwh) ? ctProKwh.toFixed(1) : '—'} ct je zwischengespeicherter kWh</span>`;
+
+    // ── 1. Speicher-Sankey ───────────────────────────────────────────────────
+    const SH = overrideEl ? 240 : 186;
+    const barW = 14, PT = 16;
+    const cH = SH - PT - 14;
+    const xA = 158, xB = Math.round(W * 0.5) - barW / 2, xC = W - 196;
+
+    const sinks = [
+      { v: entBed,  c: _PVSF_COL.entlBed, t: 'Entladung → Bedarf' },
+      { v: entNet,  c: _PVSF_COL.entlNet, t: 'Entladung → Netz' },
+      { v: verl,    c: _PVSF_COL.verlust, t: 'Wandlungsverluste' },
+      { v: restMwh, c: _PVSF_COL.rest,    t: 'Restladung 31.12.' },
+    ].filter(s => s.v > lad * 0.004);
+    const sources = [
+      { v: ladCurt, c: _PVSF_COL.ladCurt, t: 'Ladung statt Abregelung' },
+      { v: ladEv,   c: _PVSF_COL.ladEv,   t: 'Ladung aus PV-Überschuss' },
+    ].filter(s => s.v > lad * 0.004);
+
+    const gap = 9;
+    const gapSum = Math.max((sources.length - 1) * gap, (sinks.length - 1) * gap);
+    const scale = (cH - gapSum) / lad;
+    const bodyH = lad * scale;
+
+    // Quell- und Senkenstapel jeweils vertikal zentriert
+    let y = PT + (cH - (bodyH + (sources.length - 1) * gap)) / 2;
+    for (const s of sources) { s.y = y; s.h = s.v * scale; y += s.h + gap; }
+    y = PT + (cH - (bodyH + (sinks.length - 1) * gap)) / 2;
+    for (const s of sinks) { s.y = y; s.h = s.v * scale; y += s.h + gap; }
+    const batY = PT + (cH - bodyH) / 2;
+
+    // Anschlusspunkte am Speicherknoten: Quellen von oben, Senken von oben
+    let yIn = batY;  for (const s of sources) { s.by = yIn; yIn += s.h; }
+    let yOut = batY; for (const s of sinks)   { s.by = yOut; yOut += s.h; }
+
+    const ribbon = (x0, y0, h0, x1, y1, h1, color) => {
+      if (h0 < 0.3 && h1 < 0.3) return '';
+      const mx = (x0 + x1) / 2;
+      return `<path d="M${x0},${y0.toFixed(1)} C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1},${y1.toFixed(1)}`
+           + ` L${x1},${(y1+h1).toFixed(1)} C${mx},${(y1+h1).toFixed(1)} ${mx},${(y0+h0).toFixed(1)} ${x0},${(y0+h0).toFixed(1)} Z"`
+           + ` fill="${color}" opacity="0.42"/>`;
+    };
+    const lbl = (x, y0, h, txt, val, color, anchor) => h > 9
+      ? `<text x="${x}" y="${(y0+h/2-2).toFixed(1)}" text-anchor="${anchor}" fill="${color}" font-size="9" font-weight="600">${txt}</text>`
+        + `<text x="${x}" y="${(y0+h/2+9).toFixed(1)}" text-anchor="${anchor}" fill="#90a4ae" font-size="8">${fmt1(val)} MWh · ${(val/lad*100).toFixed(0)} %</text>`
+      : '';
+
+    const sankey = `
+      ${sources.map(s => ribbon(xA + barW, s.y, s.h, xB, s.by, s.h, s.c)).join('')}
+      ${sinks.map(s => ribbon(xB + barW, s.by, s.h, xC, s.y, s.h, s.c)).join('')}
+      ${sources.map(s => `<rect x="${xA}" y="${s.y.toFixed(1)}" width="${barW}" height="${Math.max(1,s.h).toFixed(1)}" fill="${s.c}" rx="1.5"/>`).join('')}
+      ${sinks.map(s => `<rect x="${xC}" y="${s.y.toFixed(1)}" width="${barW}" height="${Math.max(1,s.h).toFixed(1)}" fill="${s.c}" rx="1.5"/>`).join('')}
+      <rect x="${xB}" y="${batY.toFixed(1)}" width="${barW}" height="${bodyH.toFixed(1)}" fill="${_PVSF_COL.bat}" rx="1.5"/>
+      ${sources.map(s => lbl(xA - 6, s.y, s.h, s.t, s.v, s.c, 'end')).join('')}
+      ${sinks.map(s => lbl(xC + barW + 6, s.y, s.h, s.t, s.v, s.c, 'start')).join('')}
+      <text x="${(xB + barW/2).toFixed(1)}" y="${(batY - 6).toFixed(1)}" text-anchor="middle" fill="${_PVSF_COL.bat}" font-size="9" font-weight="600">Speicher ${capMwh.toFixed(2)} MWh</text>
+      <text x="${(xB + barW/2).toFixed(1)}" y="${(batY + bodyH + 12).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8">${fmt1(lad)} MWh Ladung · ${fmt1(zyklen)} Vollzyklen</text>`;
+
+    // ── 2. SOC-Jahres-Heatmap ────────────────────────────────────────────────
+    const hSoc  = _pvsfHourlySoc(socArr, dt);
+    const nDays = Math.floor(hSoc.length / 24);
+    const HH = overrideEl ? 210 : 148;
+    const PL = 30, HPT = 22, PR = 16, HPB = 30;
+    const hcW = W - PL - PR, hcH = HH - HPT - HPB;
+    const cellW = hcW / nDays, cellH = hcH / 24;
+
+    let cells = '';
+    for (let d = 0; d < nDays; d++) {
+      for (let h = 0; h < 24; h++) {
+        const f = Math.max(0, Math.min(1, hSoc[d * 24 + h] / bat));
+        cells += `<rect x="${(PL + d*cellW).toFixed(2)}" y="${(HPT + h*cellH).toFixed(2)}" width="${(cellW+0.3).toFixed(2)}" height="${(cellH+0.3).toFixed(2)}" fill="${_pvsfSocColor(f)}"/>`;
+      }
+    }
+    let monthMarks = '', cum = 0;
+    for (let m = 0; m < 12; m++) {
+      const x = PL + cum * cellW, wM = _PVAH_MONTH_DAYS[m] * cellW;
+      monthMarks += `<text x="${(x + wM/2).toFixed(1)}" y="${(HPT - 7).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8">${_PVAH_MONTH_NAMES[m]}</text>`;
+      if (m > 0) monthMarks += `<line x1="${x.toFixed(1)}" y1="${HPT}" x2="${x.toFixed(1)}" y2="${(HPT+hcH).toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>`;
+      cum += _PVAH_MONTH_DAYS[m];
+    }
+    const hourMarks = [0, 6, 12, 18].map(h =>
+      `<text x="${(PL-5).toFixed(1)}" y="${(HPT + h*cellH + cellH/2 + 3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="8">${h}</text>`).join('');
+    const gradId = 'pvsf-grad-' + (overrideEl ? 'fs' : 'm');
+    const legend = `
+      <defs><linearGradient id="${gradId}" x1="0" x2="1">
+        <stop offset="0%" stop-color="${_pvsfSocColor(0)}"/><stop offset="50%" stop-color="${_pvsfSocColor(0.5)}"/><stop offset="100%" stop-color="${_pvsfSocColor(1)}"/>
+      </linearGradient></defs>
+      <rect x="${PL}" y="${(HPT+hcH+14).toFixed(1)}" width="120" height="8" fill="url(#${gradId})" rx="1"/>
+      <text x="${PL}" y="${(HPT+hcH+31).toFixed(1)}" fill="#78909c" font-size="8">leer</text>
+      <text x="${PL+120}" y="${(HPT+hcH+31).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">voll</text>
+      <text x="${PL+134}" y="${(HPT+hcH+22).toFixed(1)}" fill="#78909c" font-size="8">Ladestand · Tag (x) × Stunde (y)</text>`;
+
+    // ── 3. SOC-Dauerlinie und Ø-Tagesgang ────────────────────────────────────
+    const DH = overrideEl ? 196 : 164;
+    const panelW = (W - 18) / 2;
+    const DPL = 38, DPT = 18, DPR = 10, DPB = 22;
+    const dcW = panelW - DPL - DPR, dcH = DH - DPT - DPB;
+    // Der Tagesgang teilt seine Fläche: oben der Ladestand (%), unten die Leistung (kW).
+    // Zwei Größen mit verschiedenen Einheiten übereinander statt in einer Doppelachse —
+    // die gemeinsame Zeitachse stellt den Zusammenhang her (steigender Ladestand oben =
+    // gelbe Ladebalken unten), ohne dass zwei Skalen im selben Feld verwechselt werden.
+    const socH = Math.round(dcH * 0.54);
+    const barH = dcH - socH - 13;
+
+    // Dauerlinie: Ladestand absteigend sortiert über die Jahresstunden
+    const sorted = Array.from(hSoc, v => Math.max(0, Math.min(1, v / bat))).sort((a, b) => b - a);
+    // Gemeinsame y-Skala beider Panels: ein Speicher, der nie über 20 % kommt, wäre auf
+    // einer starren 0–100-%-Achse eine Linie auf der Nulllinie — und genau die Aussage
+    // „er wird kaum genutzt" ginge dabei verloren statt sichtbar zu werden. Die Achse
+    // rastet deshalb auf 25/50/100 % und bleibt beschriftet, damit der Bezug zur
+    // Nennkapazität erhalten bleibt.
+    const peak  = Math.max(sorted[0] || 0, 0.02);
+    const yMax  = peak <= 0.25 ? 0.25 : peak <= 0.5 ? 0.5 : 1;
+    const ticks = [0, yMax / 2, yMax];
+    const nPts = 160;
+    let dl = '';
+    for (let i = 0; i <= nPts; i++) {
+      const idx = Math.min(sorted.length - 1, Math.round(i / nPts * (sorted.length - 1)));
+      const x = DPL + i / nPts * dcW, yy = DPT + (1 - sorted[idx] / yMax) * dcH;
+      dl += `${i ? 'L' : 'M'}${x.toFixed(1)},${yy.toFixed(1)}`;
+    }
+    const dauer = `
+      <rect x="${DPL}" y="${DPT}" width="${dcW.toFixed(1)}" height="${dcH.toFixed(1)}" fill="rgba(149,117,205,0.06)"/>
+      ${ticks.map(f => `<line x1="${DPL}" y1="${(DPT+(1-f/yMax)*dcH).toFixed(1)}" x2="${(DPL+dcW).toFixed(1)}" y2="${(DPT+(1-f/yMax)*dcH).toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+        <text x="${DPL-5}" y="${(DPT+(1-f/yMax)*dcH+3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${(f*100).toFixed(0)}%</text>`).join('')}
+      <path d="${dl}" fill="none" stroke="${_PVSF_COL.bat}" stroke-width="1.6"/>
+      <text x="${DPL}" y="${(DPT-6)}" fill="#b0bec5" font-size="8.5" font-weight="600">Dauerlinie des Ladestands</text>
+      <text x="${(DPL+dcW).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">8.760 h →</text>
+      <text x="${DPL}" y="${(DPT+dcH+13).toFixed(1)}" fill="#78909c" font-size="8">voll ${Math.round(tVoll)} h · leer ${Math.round(tLeer)} h</text>`;
+
+    // Ø-Tagesgang, getrennt nach Sommer- und Winterhalbjahr
+    const somS = 90, somE = 273;  // Tag 90..272 ≈ April–September
+    const tg = (von, bis) => {
+      const sum = new Float64Array(24), cnt = new Float64Array(24);
+      for (let d = von; d < Math.min(bis, nDays); d++)
+        for (let h = 0; h < 24; h++) { sum[h] += hSoc[d*24+h] / bat; cnt[h]++; }
+      return Array.from(sum, (v, h) => cnt[h] ? v / cnt[h] : 0);
+    };
+    const somMean = tg(somS, somE);
+    const winSum = new Float64Array(24), winCnt = new Float64Array(24);
+    for (let d = 0; d < nDays; d++) {
+      if (d >= somS && d < somE) continue;
+      for (let h = 0; h < 24; h++) { winSum[h] += hSoc[d*24+h] / bat; winCnt[h]++; }
+    }
+    const winMean = Array.from(winSum, (v, h) => winCnt[h] ? v / winCnt[h] : 0);
+
+    // Ø Lade-/Entladeleistung je Tagesstunde, aus der SOC-Änderung rekonstruiert.
+    // Das ist exakt und braucht keine zusätzlichen Jahresreihen in der Simulation:
+    // innerhalb eines Zeitschritts schließen sich Laden und Entladen gegenseitig aus
+    // (nach Schritt 1 von pvNapSim ist entweder der Erzeugungs- oder der Bedarfsrest
+    // null), die Zerlegung nach dem Vorzeichen von Δsoc ist also eindeutig. Die
+    // Rückrechnung auf die AC-Klemmen macht den Wirkungsgrad rückgängig — geladen wird
+    // soc += c·η, entladen soc −= d/η, gemessen wird aber c bzw. d.
+    const stepsPerHour = Math.round(1 / dt);
+    const ladS = new Float64Array(24), entS = new Float64Array(24), cntS = new Float64Array(24);
+    const ladW = new Float64Array(24), entW = new Float64Array(24), cntW = new Float64Array(24);
+    let vorSoc = 0;   // pvNapSim startet mit initSoc = 0
+    for (let t = 0; t < socArr.length; t++) {
+      const hAbs  = Math.floor(t / stepsPerHour);
+      const tag   = Math.floor(hAbs / 24), std = hAbs % 24;
+      const delta = socArr[t] - vorSoc; vorSoc = socArr[t];
+      const ladKw = delta > 0 ?  delta / PV_BAT_ETA / dt : 0;
+      const entKw = delta < 0 ? -delta * PV_BAT_ETA / dt : 0;
+      if (tag >= somS && tag < somE) { ladS[std] += ladKw; entS[std] += entKw; cntS[std]++; }
+      else                           { ladW[std] += ladKw; entW[std] += entKw; cntW[std]++; }
+    }
+    const mw = (arr, cnt) => Array.from(arr, (v, h) => cnt[h] ? v / cnt[h] : 0);
+    const ladSom = mw(ladS, cntS), entSom = mw(entS, cntS);
+    const ladWin = mw(ladW, cntW), entWin = mw(entW, cntW);
+
+    // Symmetrische Leistungsachse, auf 1/2/5er-Stufen gerastet
+    const pRoh = Math.max(...ladSom, ...entSom, ...ladWin, ...entWin, 0.1);
+    const pExp = Math.pow(10, Math.floor(Math.log10(pRoh)));
+    const pMax = (pExp === 0 ? 1 : (_PVSF_STUFEN.find(st => pRoh / pExp <= st) || 10) * pExp);
+    const kwTxt = v => v >= 1000 ? (v / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MW'
+                                 : Math.round(v).toLocaleString('de-DE') + ' kW';
+
+    const ox = panelW + 18;
+    // Jeder Stundenmittelwert steht für die ganze Stunde → auf die Slotmitte gesetzt,
+    // damit Linie und zugehöriger Balken exakt übereinander liegen.
+    const slot = dcW / 24;
+    const hx   = h => ox + DPL + (h + 0.5) * slot;
+    const line = (arr) => arr.map((v, h) =>
+      `${h ? 'L' : 'M'}${hx(h).toFixed(1)},${(DPT + (1-Math.max(0,Math.min(yMax,v))/yMax)*socH).toFixed(1)}`).join('');
+
+    // Balken: Laden nach oben, Entladen nach unten, je Stunde Sommer links / Winter rechts
+    const barTop = DPT + socH + 13, baseY = barTop + barH / 2, hh = barH / 2 - 1;
+    const bw = slot * 0.3;
+    const saeule = (lad, ent, dx, op) => Array.from({ length: 24 }, (_, h) => {
+      const x = hx(h) + dx - bw / 2;
+      const hL = Math.min(1, lad[h] / pMax) * hh, hE = Math.min(1, ent[h] / pMax) * hh;
+      return (hL > 0.4 ? `<rect x="${x.toFixed(1)}" y="${(baseY-hL).toFixed(1)}" width="${bw.toFixed(1)}" height="${hL.toFixed(1)}" fill="${_PVSF_COL.ladEv}" opacity="${op}"/>` : '')
+           + (hE > 0.4 ? `<rect x="${x.toFixed(1)}" y="${baseY.toFixed(1)}" width="${bw.toFixed(1)}" height="${hE.toFixed(1)}" fill="${_PVSF_COL.entlBed}" opacity="${op}"/>` : '');
+    }).join('');
+    const tagesgang = `
+      <rect x="${(ox+DPL).toFixed(1)}" y="${DPT}" width="${dcW.toFixed(1)}" height="${socH.toFixed(1)}" fill="rgba(149,117,205,0.06)"/>
+      <rect x="${(ox+DPL).toFixed(1)}" y="${barTop.toFixed(1)}" width="${dcW.toFixed(1)}" height="${barH.toFixed(1)}" fill="rgba(149,117,205,0.06)"/>
+      ${ticks.map(f => `<line x1="${(ox+DPL).toFixed(1)}" y1="${(DPT+(1-f/yMax)*socH).toFixed(1)}" x2="${(ox+DPL+dcW).toFixed(1)}" y2="${(DPT+(1-f/yMax)*socH).toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+        <text x="${(ox+DPL-5).toFixed(1)}" y="${(DPT+(1-f/yMax)*socH+3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${(f*100).toFixed(0)}%</text>`).join('')}
+      <path d="${line(somMean)}" fill="none" stroke="#ffb74d" stroke-width="1.6"/>
+      <path d="${line(winMean)}" fill="none" stroke="#4fc3f7" stroke-width="1.6" stroke-dasharray="3 2"/>
+      ${saeule(ladSom, entSom, -bw * 0.62, 0.92)}
+      ${saeule(ladWin, entWin,  bw * 0.62, 0.40)}
+      <line x1="${(ox+DPL).toFixed(1)}" y1="${baseY.toFixed(1)}" x2="${(ox+DPL+dcW).toFixed(1)}" y2="${baseY.toFixed(1)}" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+      <text x="${(ox+DPL-5).toFixed(1)}" y="${(barTop+8).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${kwTxt(pMax)}</text>
+      <text x="${(ox+DPL-5).toFixed(1)}" y="${(baseY+3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">0</text>
+      <text x="${(ox+DPL-5).toFixed(1)}" y="${(barTop+barH-1).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${Math.round(pMax).toLocaleString('de-DE')}</text>
+      <text x="${(ox+DPL).toFixed(1)}" y="${(barTop-4).toFixed(1)}" font-size="8"><tspan fill="${_PVSF_COL.ladEv}">▲ laden</tspan><tspan fill="#78909c"> · </tspan><tspan fill="${_PVSF_COL.entlBed}">▼ entladen</tspan><tspan fill="#78909c"> (Stundenmittel)</tspan></text>
+      <text x="${(ox+DPL).toFixed(1)}" y="${(DPT-6)}" fill="#b0bec5" font-size="8.5" font-weight="600">Ø Tagesgang: Ladestand und Leistung</text>
+      <text x="${(ox+DPL+dcW).toFixed(1)}" y="${(DPT-6)}" text-anchor="end" font-size="8"><tspan fill="#ffb74d">Apr–Sep</tspan><tspan fill="#78909c"> · </tspan><tspan fill="#4fc3f7">Okt–Mär</tspan></text>
+      ${[0, 6, 12, 18].map(h => `<text x="${hx(h).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="middle" fill="#78909c" font-size="8">${h}</text>`).join('')}
+      <text x="${(ox+DPL+dcW).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">Uhrzeit</text>`;
+
+    svgWrap.innerHTML = `
+      <svg width="${W}" height="${SH}" style="display:block;overflow:visible;">${sankey}</svg>
+      <svg width="${W}" height="${HH}" style="display:block;overflow:visible;margin-top:4px;">${cells}${monthMarks}${hourMarks}${legend}</svg>
+      <svg width="${W}" height="${DH}" style="display:block;overflow:visible;margin-top:6px;">${dauer}${tagesgang}</svg>
+      <div style="font-size:8px;color:var(--muted);margin-top:5px;line-height:1.6;">
+        Alle Mengen und Leistungen an den AC-Klemmen des Speichers (η = ${(PV_BAT_ETA*100).toFixed(0)} % je Wandlung,
+        C-Rate ${PV_BAT_C_RATE} → max. ${Math.round(bat * PV_BAT_C_RATE).toLocaleString('de-DE')} kW Lade-/Entladeleistung).
+        Die Balken sind Stundenmittel über alle Tage des jeweiligen Halbjahres und liegen daher deutlich unter dieser Grenze.
+        Bilanz: Ladung − Entladung − Wandlungsverluste = Restladung am Jahresende.
+        Vollzyklen = entladene Energie ÷ Nennkapazität. „Vermiedene Abregelung" und „zusätzlicher Eigenverbrauch"
+        gegen denselben PV-Ausbau ohne Speicher gerechnet.
+      </div>`;
+  }
+
+  function sync() {
+    const pv = parseFloat(pvIn.value) || 0, bat = parseFloat(batIn.value) || 0;
+    const windKw = windIn ? (parseFloat(windIn.value) || 0) : windKwInst;
+    el.querySelector('#pva-sf-pv-val').textContent  = Math.round(pv) + ' kWp';
+    el.querySelector('#pva-sf-bat-val').textContent = (bat/1000).toFixed(2) + ' MWh';
+    if (windIn) el.querySelector('#pva-sf-wind-val').textContent = Math.round(windKw) + ' kW';
+    draw(pv, bat, windKw);
+  }
+  pvIn.addEventListener('input', sync);
+  batIn.addEventListener('input', sync);
+  if (windIn) windIn.addEventListener('input', sync);
+  el.querySelectorAll('[data-sf-var]').forEach(b => b.addEventListener('click', () => {
+    const [p, q] = b.dataset.sfVar.split('|').map(parseFloat);
+    pvIn.value = Math.round(p); batIn.value = Math.round(q);
+    if (windIn) windIn.value = Math.round(windKwInst);
+    sync();
+  }));
+  sync();
+
+  const fsBtn = el.querySelector('[data-pva-fs="speicherfluss"]');
+  if (fsBtn) fsBtn.addEventListener('click', () =>
+    _pvOpenFs('Speicherfluss: wofür der Batteriespeicher arbeitet', cnt =>
+      renderSpeicherFluss(_pvFsArgs.demandH, _pvFsArgs.pvProfile, _pvFsArgs.napParams, _pvFsArgs.params, window._pvAnalyse.ergebnisse, cnt)
     )
   );
 }

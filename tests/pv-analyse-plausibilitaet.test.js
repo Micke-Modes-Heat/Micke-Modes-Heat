@@ -101,6 +101,90 @@ describe('pvNapSim — physikalische Bilanzen', () => {
     expect(mit.netzbezugMwh).toBeLessThanOrEqual(ohne.netzbezugMwh + 1e-6);
   });
 
+  // ── Speicher-Flüsse (Datenbasis für Abb. 7b) ───────────────────────────
+  // Abb. 7b stellt die Speicherbilanz als Sankey dar; sie liest sich nur dann
+  // richtig, wenn die vier Teilflüsse zusammen exakt aufgehen.
+  it('Speicherbilanz: Ladung − Entladung − Wandlungsverluste = Rest-SOC', () => {
+    const np  = { maxEinspeisKw: 120, maxBezugKw: null };   // Limit erzwingt beide Ladearten
+    const bat = 1200;
+    const sim = pvNapSim(900, bat, demandH, pvProfile, np, 'ev', null);
+    const lad  = sim.batLadCurtMwh + sim.batLadEvMwh;
+    const entl = sim.batEntlBedarfMwh + sim.batEntlNetzMwh;
+    const rest = sim.batSocArr[sim.batSocArr.length - 1] / 1000;
+    expect(lad - entl - sim.batVerlustMwh).toBeCloseTo(rest, 6);
+  });
+
+  it('Speicher-Teilflüsse sind nie negativ und ohne Batterie durchweg null', () => {
+    const np = { maxEinspeisKw: null, maxBezugKw: null };
+    const ohne = pvNapSim(500, 0, demandH, pvProfile, np, 'none', null);
+    for (const k of ['batLadCurtMwh', 'batLadEvMwh', 'batEntlBedarfMwh', 'batEntlNetzMwh']) {
+      expect(ohne[k]).toBe(0);
+    }
+    const mit = pvNapSim(500, 800, demandH, pvProfile, np, 'ev', null);
+    for (const k of ['batLadCurtMwh', 'batLadEvMwh', 'batEntlBedarfMwh', 'batEntlNetzMwh']) {
+      expect(mit[k]).toBeGreaterThanOrEqual(0);
+    }
+    // Ohne Einspeiselimit gibt es kein erzwungenes Laden, aber Laden für Eigenverbrauch.
+    expect(mit.batLadCurtMwh).toBe(0);
+    expect(mit.batLadEvMwh).toBeGreaterThan(0);
+    expect(mit.batEntlBedarfMwh).toBeGreaterThan(0);
+  });
+
+  // Abb. 7b zeichnet die Ø Lade-/Entladeleistung je Tagesstunde als Balken. Sie wird
+  // nicht zusätzlich mitgeführt, sondern aus der SOC-Reihe zurückgerechnet — das ist
+  // nur zulässig, solange sich Laden und Entladen je Zeitschritt ausschließen und die
+  // Rückrechnung auf die AC-Klemmen den Wirkungsgrad sauber umkehrt.
+  it('Leistung lässt sich verlustfrei aus der SOC-Änderung rekonstruieren', () => {
+    const ETA = 0.90;                                   // PV_BAT_ETA
+    const np  = { maxEinspeisKw: 150, maxBezugKw: null };
+    const sim = pvNapSim(1000, 1200, demandH, pvProfile, np, 'ev', null);
+    const dt  = demandH.length > 8784 ? 0.25 : 1.0;
+
+    let ladMwh = 0, entMwh = 0;
+    let vor = 0;                                        // pvNapSim startet mit initSoc = 0
+    for (let t = 0; t < sim.batSocArr.length; t++) {
+      const delta = sim.batSocArr[t] - vor; vor = sim.batSocArr[t];
+      // kW × dt / 1000 → MWh; die kW-Umrechnung ist exakt die der Abbildung
+      if (delta > 0) ladMwh += (delta / ETA / dt) * dt / 1000;
+      else           entMwh += (-delta * ETA / dt) * dt / 1000;
+    }
+    expect(ladMwh).toBeCloseTo(sim.batLadCurtMwh + sim.batLadEvMwh, 6);
+    expect(entMwh).toBeCloseTo(sim.batEntlBedarfMwh + sim.batEntlNetzMwh, 6);
+  });
+
+  it('Laden und Entladen schließen sich je Zeitschritt aus (Vorzeichen ist eindeutig)', () => {
+    // Nach Schritt 1 der Simulation ist entweder der Erzeugungs- oder der Bedarfsrest
+    // null, daher kann ein Zeitschritt nie gleichzeitig laden und entladen. Wäre das
+    // verletzt, würde die Vorzeichen-Zerlegung oben beide Richtungen gegeneinander
+    // verrechnen und die Balken zu klein zeichnen. Gegenprobe über die Gesamtmengen:
+    // die rekonstruierte Ladung darf die gebuchte nicht unterschreiten.
+    const np  = { maxEinspeisKw: 150, maxBezugKw: null };
+    const sim = pvNapSim(1000, 1200, demandH, pvProfile, np, 'spot-dyn', null);
+    const gebucht = sim.batLadCurtMwh + sim.batLadEvMwh;
+    let rekon = 0, vor = 0;
+    for (let t = 0; t < sim.batSocArr.length; t++) {
+      const delta = sim.batSocArr[t] - vor; vor = sim.batSocArr[t];
+      if (delta > 0) rekon += delta / 0.90 / 1000;
+    }
+    expect(rekon).toBeCloseTo(gebucht, 6);
+  });
+
+  it('Einspeiselimit erzeugt erzwungene Ladung und senkt die Abregelung', () => {
+    const np   = { maxEinspeisKw: 60, maxBezugKw: null };
+    const ohne = pvNapSim(800, 0,    demandH, pvProfile, np, 'none', null);
+    const mit  = pvNapSim(800, 1500, demandH, pvProfile, np, 'ev',   null);
+    expect(mit.batLadCurtMwh).toBeGreaterThan(0);
+    expect(mit.curtailMwh).toBeLessThan(ohne.curtailMwh);
+  });
+
+  it('Entladung an den Bedarf erklärt den Eigenverbrauchs-Zuwachs der Batterie', () => {
+    const np   = { maxEinspeisKw: null, maxBezugKw: null };
+    const ohne = pvNapSim(600, 0,    demandH, pvProfile, np, 'none', null);
+    const mit  = pvNapSim(600, 1000, demandH, pvProfile, np, 'ev',   null);
+    // Der gesamte Zuwachs an Eigenverbrauch kommt aus der Batterie-Entladung.
+    expect(mit.eigenMwh - ohne.eigenMwh).toBeCloseTo(mit.batEntlBedarfMwh, 3);
+  });
+
   it('Einspeisebegrenzung wird eingehalten (Rückspeise-Spitze ≤ Limit)', () => {
     const limit = 50;
     const sim = pvNapSim(800, 0, demandH, pvProfile, { maxEinspeisKw: limit, maxBezugKw: null }, 'none', null);

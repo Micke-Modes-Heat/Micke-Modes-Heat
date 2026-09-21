@@ -938,7 +938,9 @@ function _aktivBlock(g) {
         ? `<span>Faktor</span><span style="color:${fakFarbe};font-weight:600;">${(faktor * 100).toFixed(0)} %</span>`
         : `<span>Fläche</span><span style="font-weight:600;">${basis.toFixed(1)} kWp</span>`}
       <span style="font-weight:600;">= PV</span><span style="color:${GELB};font-weight:600;">${kwp.toFixed(1)} kWp</span>
-    </div>` : ''}`;
+    </div>` : ''}
+    ${/* Landesrechtliche PV-Pflicht dieses Dachs (09e, über window — siehe dort). */ ''}
+    ${window.pvPflichtBadgeHtml?.(g.id) || ''}`;
 }
 
 function _vorgabeBlock() {

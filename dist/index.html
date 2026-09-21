@@ -14994,9 +14994,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-09-16';
+  var d = '2026-09-21';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'beb83d1';
+  var c = 'b4d136a';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -99630,10 +99630,581 @@ ${massTbl}
     openKnotenanalyseFor: openKnotenanalyseFor
   });
 
+  // @ts-check
+  // ── config/pv-pflicht-laender.js — Landesrechtliche PV-Pflichten ─────────────
+  //
+  // Datengrundlage für die Variante „Gesetzliche Pflicht" (09d-pv-analyse.js) und
+  // für die Pflicht-Prüfung aller anderen Varianten. Reine Daten, keine Logik —
+  // gerechnet wird in lib/pv-pflicht.js.
+  //
+  // ⚠ ORIENTIERUNGSWERTE, KEINE RECHTSBERATUNG. Die Länder ändern ihre Regeln
+  //   laufend, mehrere verweisen für die Mindestgröße auf eine Rechtsverordnung.
+  //   Vor der Planung ist das Landesrecht in der geltenden Fassung zu prüfen.
+  //
+  // Drei Bezugsflächen, weil die Länder unterschiedlich formulieren — die
+  // Unterscheidung ist rechnerisch erheblich und darf nicht eingeebnet werden:
+  //   'brutto'   — Prozent der BRUTTOdachfläche (gesamte Dachfläche, BE/HH)
+  //   'dach'     — Prozent der Dachfläche, meist mit Mindestgröße (BB/HB/NI)
+  //   'geeignet' — Prozent der für Solarnutzung GEEIGNETEN Fläche (BY/BW/RP);
+  //                das ist im Tool die belegbare Fläche (Belegung − Sperrflächen)
+  //
+  // Feldbedeutung je Eintrag:
+  //   pflicht           false = Land ohne PV-Pflicht (alle weiteren Felder entfallen)
+  //   bezug             siehe oben
+  //   anteilPct         geforderter Flächenanteil in % (null = nicht bezifferbar)
+  //   anteilHerkunft    'gesetz' | 'verordnung' | 'unbestimmt'
+  //                     'verordnung'  = steht nicht im zitierten §, sondern in der
+  //                                     zugehörigen Rechtsverordnung → nachprüfen
+  //                     'unbestimmt'  = Gesetz nennt nur „geeignete Dachfläche"
+  //                                     ohne Prozentsatz → Variante kann für dieses
+  //                                     Land keine Zahl liefern (kein Default!)
+  //   minDachM2         Dachfläche, ab der die Pflicht greift (0 = keine Schwelle)
+  //   minNutzflaecheM2  Nutzfläche, ab der die Pflicht greift (0 = keine Schwelle)
+  //   gilt              'alle' | 'nichtwohn' | 'landeseigen'
+  //   neubau            Pflicht bei Neubau
+  //   sanierung         { gilt, abDachPct } — Dachsanierung als Auslöser; abDachPct
+  //                     = ab welchem Anteil der Dachfläche sie als „grundlegend" gilt
+  //   parkplatzAbStellplaetze  Stellplatzpflicht (nur Hinweis — Stellplätze sind im
+  //                     Datenmodell nicht erfasst und werden NICHT mitgerechnet)
+  //   hinweise          Freitext für Panel und Gutachten
+
+  /**
+   * @typedef {object} PflichtRegel
+   * @property {string} land                Vollständiger Landesname
+   * @property {string} kurz                Kürzel für Beschriftungen (BW, BY, …)
+   * @property {boolean} pflicht            false = Land ohne PV-Pflicht
+   * @property {string} [gesetz]
+   * @property {string} [norm]
+   * @property {'brutto'|'dach'|'geeignet'} [bezug]
+   * @property {number|null} [anteilPct]
+   * @property {'gesetz'|'verordnung'|'unbestimmt'} [anteilHerkunft]
+   * @property {number} [minDachM2]
+   * @property {number} [minNutzflaecheM2]
+   * @property {'alle'|'nichtwohn'|'landeseigen'} [gilt]
+   * @property {boolean} [neubau]
+   * @property {{ gilt: boolean, abDachPct: number }} [sanierung]
+   * @property {number|null} [parkplatzAbStellplaetze]
+   * @property {string[]} [hinweise]
+   */
+
+  const PV_PFLICHT_META = Object.freeze({
+    stand: '2026-03-30',
+    quelle: 'Übersicht PV-Pflichten der Länder (Bauordnungen, Klima-, Energie- und Solargesetze)',
+    disclaimer: 'Orientierungswert für die Vorplanung, keine Rechtsberatung. '
+              + 'Landesrecht in der geltenden Fassung prüfen; mehrere Länder regeln die '
+              + 'Mindestgröße in einer Rechtsverordnung.',
+  });
+
+  /** Pauschaler Eignungsanteil der Bruttodachfläche, wenn im Projekt keine
+   *  Belegungsfläche gezeichnet ist. Deckt Dachaufbauten, Verschattung, Rand- und
+   *  Wartungsabstände ab. Wird bei Verwendung als Annahme protokolliert. */
+  const EIGNUNG_PAUSCHAL_PCT = 70;
+
+  /** Länderschlüssel identisch zu BUNDESLAND_BBOX in lib/bundeslaender.js.
+   *  @type {Readonly<Record<string, PflichtRegel>>} */
+  const PV_PFLICHT = Object.freeze({
+
+    bw: {
+      land: 'Baden-Württemberg', kurz: 'BW', pflicht: true,
+      gesetz: 'Klimaschutz- und Klimawandelanpassungsgesetz BW', norm: '§ 23 KlimaSchG BW',
+      bezug: 'geeignet', anteilPct: 60, anteilHerkunft: 'verordnung',
+      minDachM2: 0, minNutzflaecheM2: 0, gilt: 'alle',
+      neubau: true, sanierung: { gilt: true, abDachPct: 0 },
+      parkplatzAbStellplaetze: 35,
+      hinweise: [
+        '§ 23 selbst nennt keinen Prozentsatz — die Mindestgröße steht in der PVPf-VO BW. Wert vor Nutzung prüfen.',
+        'Ersatzweise erfüllbar über andere Außenflächen, Solarthermie oder Verpachtung an Dritte (Abs. 4–5).',
+        'Befreiung auf Antrag bei unverhältnismäßig hohem wirtschaftlichem Aufwand (Abs. 3).',
+        'Zusätzlich Pflicht bei neuen offenen Parkplätzen mit mehr als 35 Stellplätzen.',
+      ],
+    },
+
+    by: {
+      land: 'Bayern', kurz: 'BY', pflicht: true,
+      gesetz: 'Bayerische Bauordnung', norm: 'Art. 44a BayBO',
+      bezug: 'geeignet', anteilPct: 100 / 3, anteilHerkunft: 'gesetz',
+      minDachM2: 50, minNutzflaecheM2: 0, gilt: 'nichtwohn',
+      neubau: true, sanierung: { gilt: true, abDachPct: 100 },
+      parkplatzAbStellplaetze: null,
+      hinweise: [
+        'Angemessene Auslegung = Modulfläche mindestens ein Drittel der geeigneten Dachfläche.',
+        'Sanierungsfall nur bei vollständiger Erneuerung der Dachhaut.',
+        'Ausgenommen: Dachflächen bis 50 m² sowie Wohngebäuden dienende Gebäude (Garagen, Nebengebäude).',
+      ],
+    },
+
+    be: {
+      land: 'Berlin', kurz: 'BE', pflicht: true,
+      gesetz: 'Solargesetz Berlin', norm: '§§ 3, 4 SolG Bln',
+      bezug: 'brutto', anteilPct: 30, anteilHerkunft: 'gesetz',
+      minDachM2: 0, minNutzflaecheM2: 50, gilt: 'alle',
+      neubau: true, sanierung: { gilt: true, abDachPct: 30 },
+      parkplatzAbStellplaetze: null,
+      hinweise: [
+        'Neubau: mindestens 30 % der Bruttodachfläche; wesentlicher Dachumbau: 30 % der Nettodachfläche.',
+        'Für Wohngebäude gelten alternativ Mindestleistungen (2/3/6 kW je nach Wohnungszahl).',
+        'Pflicht ab einer Nutzungsfläche von mehr als 50 m².',
+      ],
+    },
+
+    bb: {
+      land: 'Brandenburg', kurz: 'BB', pflicht: true,
+      gesetz: 'Brandenburgische Bauordnung', norm: '§ 32a BbgBO',
+      bezug: 'dach', anteilPct: 50, anteilHerkunft: 'gesetz',
+      minDachM2: 50, minNutzflaecheM2: 0, gilt: 'alle',
+      neubau: true, sanierung: { gilt: true, abDachPct: 50 },
+      parkplatzAbStellplaetze: null,
+      hinweise: ['Pflicht ab einer Dachfläche von 50 m²; mindestens 50 % der Dachfläche sind auszustatten.'],
+    },
+
+    hb: {
+      land: 'Bremen', kurz: 'HB', pflicht: true,
+      gesetz: 'Bremisches Solargesetz', norm: '§ 2 BremSolarG',
+      bezug: 'dach', anteilPct: 50, anteilHerkunft: 'gesetz',
+      minDachM2: 50, minNutzflaecheM2: 0, gilt: 'alle',
+      neubau: true, sanierung: { gilt: true, abDachPct: 80 },
+      parkplatzAbStellplaetze: null,
+      hinweise: [
+        'Modulfläche mindestens 50 % der Dachfläche nach § 3.',
+        'Grundlegende Dachsanierung = Erneuerung bei mindestens 80 % der Dachfläche (die Übersichtstabelle nennt 50 % — maßgeblich ist der Gesetzestext).',
+        'Ausgenommen: Dachflächen unter 50 m², Reet-/Stroh-/Holzdächer, Unterglasanlagen, Kulturbauten.',
+      ],
+    },
+
+    hh: {
+      land: 'Hamburg', kurz: 'HH', pflicht: true,
+      gesetz: 'Hamburgisches Klimaschutzgesetz', norm: '§ 16 HmbKliSchG',
+      bezug: 'brutto', anteilPct: 30, anteilHerkunft: 'gesetz',
+      minDachM2: 0, minNutzflaecheM2: 0, gilt: 'alle',
+      neubau: true, sanierung: { gilt: true, abDachPct: 30 },
+      parkplatzAbStellplaetze: null,
+      hinweise: [
+        'Mindestens 30 v. H. der Bruttodachfläche für Anlagen, die nach dem 1. Januar 2024 errichtet werden.',
+        'Dachbegrünungspflicht bei flach geneigten Dächern beachten — Gründach und PV sind zu kombinieren.',
+        'Zusammenfassung mehrerer Gebäude zulässig, wenn die installierte Leistung insgesamt erreicht wird.',
+      ],
+    },
+
+    he: {
+      land: 'Hessen', kurz: 'HE', pflicht: true,
+      gesetz: 'Hessisches Energiegesetz', norm: '§§ 3, 5 HEG',
+      bezug: 'geeignet', anteilPct: null, anteilHerkunft: 'unbestimmt',
+      minDachM2: 0, minNutzflaecheM2: 0, gilt: 'landeseigen',
+      neubau: true, sanierung: { gilt: true, abDachPct: 0 },
+      parkplatzAbStellplaetze: null,
+      hinweise: [
+        'Pflicht nur für landeseigene Gebäude und Parkplätze — für andere Bauherren besteht keine Pflicht.',
+        'Das Gesetz nennt keinen Flächenanteil; die Variante liefert für Hessen daher keine Leistung.',
+      ],
+    },
+
+    mv: { land: 'Mecklenburg-Vorpommern', kurz: 'MV', pflicht: false, hinweise: ['Keine landesrechtliche PV-Pflicht.'] },
+
+    ni: {
+      land: 'Niedersachsen', kurz: 'NI', pflicht: true,
+      gesetz: 'Niedersächsische Bauordnung', norm: '§ 32a NBauO',
+      bezug: 'dach', anteilPct: 50, anteilHerkunft: 'gesetz',
+      minDachM2: 50, minNutzflaecheM2: 0, gilt: 'alle',
+      neubau: true, sanierung: { gilt: true, abDachPct: 50 },
+      parkplatzAbStellplaetze: null,
+      hinweise: [
+        'Errichtung ab 50 m² Dachfläche: mindestens 50 % der Dachfläche.',
+        'Im Änderungsfall (Erneuerung der Dachhaut bis zur wasserführenden Schicht) zählt die neu errichtete oder erneuerte Dachfläche ab 50 m².',
+        'Zusätzlich Pflicht bei offenen Parkplätzen und Parkdecks.',
+      ],
+    },
+
+    nw: {
+      land: 'Nordrhein-Westfalen', kurz: 'NW', pflicht: true,
+      gesetz: 'Landesbauordnung NRW', norm: '§§ 42a, 48 BauO NRW',
+      bezug: 'geeignet', anteilPct: null, anteilHerkunft: 'unbestimmt',
+      minDachM2: 0, minNutzflaecheM2: 50, gilt: 'alle',
+      neubau: true, sanierung: { gilt: true, abDachPct: 0 },
+      parkplatzAbStellplaetze: 35,
+      hinweise: [
+        'Neubaupflicht seit 2024, Sanierungspflicht ab 2026.',
+        'Die Mindestgröße regelt die Rechtsverordnung nach § 42a Abs. 8 — solange sie hier nicht hinterlegt ist, liefert die Variante keine Leistung.',
+        'Nicht anzuwenden auf Gebäude mit einer Nutzfläche bis 50 m², Behelfsbauten, untergeordnete und fliegende Bauten.',
+        'Zusätzlich Pflicht bei Stellplatzflächen mit mehr als 35 notwendigen Stellplätzen für Nichtwohngebäude.',
+      ],
+    },
+
+    rp: {
+      land: 'Rheinland-Pfalz', kurz: 'RP', pflicht: true,
+      gesetz: 'Landessolargesetz Rheinland-Pfalz', norm: '§ 4 LSolarG RP',
+      bezug: 'geeignet', anteilPct: 60, anteilHerkunft: 'gesetz',
+      minDachM2: 100, minNutzflaecheM2: 100, gilt: 'alle',
+      neubau: true, sanierung: { gilt: true, abDachPct: 0 },
+      parkplatzAbStellplaetze: null,
+      hinweise: [
+        'Mindestgröße 60 v. H. der Solarinstallations-Eignungsfläche.',
+        'Gewerbliche Neubauten ab 100 m² Dachfläche; öffentliche Gebäude ab 100 m² Nutzfläche bei Neubau und grundlegender Dachsanierung.',
+        'Ersatzweise Solarthermie oder Verpachtung an Dritte zulässig (Abs. 6).',
+      ],
+    },
+
+    sl: {
+      land: 'Saarland', kurz: 'SL', pflicht: false,
+      hinweise: ['Derzeit keine generelle PV-Pflicht — nur „PV-ready"; eine Regelung ist angekündigt.'],
+    },
+
+    sn: { land: 'Sachsen',        kurz: 'SN', pflicht: false, hinweise: ['Keine landesrechtliche PV-Pflicht.'] },
+    st: { land: 'Sachsen-Anhalt', kurz: 'ST', pflicht: false, hinweise: ['Keine landesrechtliche PV-Pflicht.'] },
+
+    sh: {
+      land: 'Schleswig-Holstein', kurz: 'SH', pflicht: true,
+      gesetz: 'Energiewende- und Klimaschutzgesetz SH', norm: '§ 26 EWKG SH',
+      bezug: 'geeignet', anteilPct: null, anteilHerkunft: 'unbestimmt',
+      minDachM2: 0, minNutzflaecheM2: 0, gilt: 'nichtwohn',
+      neubau: true, sanierung: { gilt: true, abDachPct: 10 },
+      parkplatzAbStellplaetze: null,
+      hinweise: [
+        'Pflicht bei Neubau und bei Renovierung von mehr als 10 % der Dachfläche von Nichtwohngebäuden.',
+        '§ 26 verlangt die Belegung der „für eine Solarnutzung geeigneten Dachfläche", nennt aber keinen Prozentsatz — die Variante liefert daher keine Leistung.',
+      ],
+    },
+
+    th: { land: 'Thüringen', kurz: 'TH', pflicht: false, hinweise: ['Keine landesrechtliche PV-Pflicht.'] },
+  });
+
+  /** Auswahlliste für das Panel — alphabetisch nach Landesname. */
+  const PV_PFLICHT_LISTE = Object.freeze(
+    Object.entries(PV_PFLICHT)
+      .map(([id, r]) => ({ id, land: r.land, kurz: r.kurz, pflicht: r.pflicht }))
+      .sort((a, b) => a.land.localeCompare(b.land, 'de')),
+  );
+
+  // @ts-check
+  // ── lib/pv-pflicht.js — Rechenkern der landesrechtlichen PV-Pflicht ──────────
+  // DOM-frei; einzige Abhängigkeit ist die Datentabelle in config/pv-pflicht-laender.js.
+  // Die app-seitige Schicht (Variante, Panel, Prüfspalte) liegt in 09d-pv-analyse.js.
+  //
+  // Grundgedanke: Die Pflicht hängt am EINZELNEN Gebäude und an seinem Fall
+  // (Neubau / grundlegende Dachsanierung), nicht am Quartier. Deshalb rechnet
+  // dieser Kern gebäudescharf und liefert die Einzelfälle mit zurück — sie sind
+  // zugleich der Beleg für Panel und Gutachten.
+  //
+  // Was der Kern bewusst NICHT tut: auslegen. Wo ein Land keinen Flächenanteil
+  // nennt (NRW, SH, HE), liefert er keine Leistung und sagt warum. Ein stiller
+  // Default wäre hier der teuerste Fehler — er würde eine Zahl erfinden, auf die
+  // sich eine Baugenehmigung stützt.
+
+
+  /**
+   * @typedef {import('../config/pv-pflicht-laender.js').PflichtRegel} PflichtRegel
+   *
+   * @typedef {object} PflichtGebaeude  Aufbereitetes Gebäude für den Rechenkern
+   * @property {number|string} id
+   * @property {string} [name]
+   * @property {number} grundflaecheM2   Grundfläche (Fußabdruck) in m²
+   * @property {number|null} [dachNeigung]
+   * @property {boolean} [wohnen]        true = Wohngebäude
+   * @property {number} [geeignetM2]     belegbare Fläche (Belegung − Sperrflächen); 0 = nicht gezeichnet
+   * @property {number|null} [nutzflaecheM2]
+   * @property {boolean} [neubau]
+   * @property {boolean} [dachsanierung]
+   * @property {number|null} [sanAnteilPct]  Anteil der sanierten Dachfläche in %
+   * @property {number} [istKwp]        geplante PV-Leistung an diesem Gebäude
+   * @property {''|'auto'|'neubau'|'dachsanierung'|'keine'} [pflichtFall]  Handeingabe am Gebäude
+   *
+   * @typedef {object} PflichtFall  Ergebnis je Gebäude
+   * @property {number|string} id
+   * @property {string} [name]
+   * @property {boolean} pflichtig
+   * @property {string|null} fall      'neubau' | 'dachsanierung' | 'angenommen'
+   * @property {string} grund          Begründung, wenn nicht pflichtig
+   * @property {number} dachM2
+   * @property {number} bezugsM2
+   * @property {number} sollM2
+   * @property {number} kwp          Sollleistung nach Landesrecht
+   * @property {number} istKwp       geplante Leistung am Gebäude
+   * @property {number} deltaKwp     istKwp − kwp (negativ = Unterdeckung)
+   * @property {boolean} erfuellt
+   * @property {boolean} manuell     true = Fall per Hand gesetzt, nicht erkannt
+   * @property {string} rechenweg    nachvollziehbare Ableitung der Sollleistung
+   * @property {string[]} annahmen
+   *
+   * @typedef {object} PflichtOptionen
+   * @property {number} [wpProM2]
+   * @property {'auto'|'alle'|'aus'} [annahme]
+   * @property {number} [eignungPauschalPct]
+   *
+   * @typedef {object} PflichtSumme
+   * @property {string|null} landId
+   * @property {PflichtRegel|null} regel
+   * @property {boolean} aktiv         false = keine Prüfung (kein Land / ausgeschaltet)
+   * @property {boolean} bezifferbar   false = Landesrecht nennt keinen Flächenanteil
+   * @property {number} kwp
+   * @property {number} istKwp       Summe der geplanten Leistung der Pflichtgebäude
+   * @property {PflichtFall[]} faelle
+   * @property {PflichtFall[]} ohneFall
+   * @property {string[]} annahmen
+   * @property {string} grund
+   */
+
+  /** Toleranz der Pflichtprüfung in % — fängt Rundung im Anzeigepfad ab. */
+  const PFLICHT_TOLERANZ_PCT = 0.5;
+
+  /** Rückfall-Dachneigung, wenn der Aufrufer keine übergibt (Vorgabe „Satteldach"
+   *  wie getDachDefaultNeigung in 03c-gebaeude-io.js). */
+  const NEIGUNG_RUECKFALL_GRAD = 35;
+
+  /**
+   * Eine im GRUNDRISS gemessene Fläche auf die geneigte Dachhaut projizieren.
+   *
+   * Alle Flächen im Tool werden auf der Karte gemessen, sind also Grundriss-
+   * projektionen: die Gebäude-Grundfläche ebenso wie die im PV-Modus gezeichneten
+   * Belegungs- und Sperrflächen. Die echte Dachfläche ist um 1/cos(Neigung) größer.
+   * Die Modulplatzierung rechnet dieselbe Projektion (03c: cellD = ml·cos(tilt)).
+   *
+   * @param {number} grundrissM2
+   * @param {number|null|undefined} neigungGrad
+   * @returns {number} m² Dachhaut
+   */
+  function projiziereAufDachflaeche(grundrissM2, neigungGrad) {
+    const fl = Number(grundrissM2) || 0;
+    if (fl <= 0) return 0;
+    const n = Number.isFinite(Number(neigungGrad)) ? Number(neigungGrad) : NEIGUNG_RUECKFALL_GRAD;
+    const clamped = Math.max(0, Math.min(75, n));   // >75° trägt kein Modulfeld mehr
+    return fl / Math.cos(clamped * Math.PI / 180);
+  }
+
+  /**
+   * Bruttodachfläche aus Gebäude-Grundfläche und Dachneigung.
+   * Flachdach = Grundfläche; geneigtes Dach = Grundfläche / cos(Neigung).
+   * @param {number} grundflaecheM2
+   * @param {number|null|undefined} neigungGrad
+   * @returns {number} m²
+   */
+  function dachflaecheBruttoM2(grundflaecheM2, neigungGrad) {
+    return projiziereAufDachflaeche(grundflaecheM2, neigungGrad);
+  }
+
+  /**
+   * Regelsatz eines Bundeslandes.
+   * @param {string|null|undefined} landId Länderschlüssel wie in detectBundesland (z.B. 'bw')
+   * @returns {PflichtRegel|null}
+   */
+  function pflichtRegel(landId) {
+    return (landId && PV_PFLICHT[landId]) || null;
+  }
+
+  /**
+   * Ein Gebäude gegen einen Landesregelsatz prüfen.
+   *
+   * @param {PflichtGebaeude} geb
+   * @param {PflichtRegel|null} regel Eintrag aus PV_PFLICHT
+   * @param {PflichtOptionen} [opt]
+   * @returns {PflichtFall}
+   */
+  function pflichtGebaeude(geb, regel, opt = {}) {
+    const wpProM2  = Number(opt.wpProM2) > 0 ? Number(opt.wpProM2) : 200;   // ~450 Wp auf 1,1 × 1,7 m
+    const annahme  = opt.annahme || 'auto';
+    const eignPct  = Number(opt.eignungPauschalPct) > 0 ? Number(opt.eignungPauschalPct) : EIGNUNG_PAUSCHAL_PCT;
+    /** @type {string[]} */
+    const annahmen = [];
+
+    const dachM2 = dachflaecheBruttoM2(geb.grundflaecheM2, geb.dachNeigung);
+    const istKwp = Number(geb.istKwp) > 0 ? Number(geb.istKwp) : 0;
+    /** @param {string} grund @returns {PflichtFall} */
+    const leer = (grund) => ({
+      id: geb.id, name: geb.name, pflichtig: false, fall: null, grund,
+      dachM2, bezugsM2: 0, sollM2: 0, kwp: 0, istKwp, deltaKwp: istKwp,
+      erfuellt: true, manuell: false, rechenweg: '', annahmen,
+    });
+
+    if (!regel || !regel.pflicht) return leer('Land ohne PV-Pflicht');
+    const sanierung = regel.sanierung || { gilt: false, abDachPct: 0 };
+
+    // ── 1) Geltungsbereich ────────────────────────────────────────────────────
+    if (regel.gilt === 'nichtwohn' && geb.wohnen) return leer('Wohngebäude — von der Pflicht ausgenommen');
+    if (regel.gilt === 'landeseigen') {
+      annahmen.push('Pflicht gilt nur für landeseigene Gebäude — hier als landeseigen angenommen.');
+    }
+
+    // ── 2) Auslösender Fall ───────────────────────────────────────────────────
+    // Die Handeingabe am Gebäude schlägt alles andere — auch die Projekt-Einstellung
+    // „alle Gebäude". Wer den Fall am Gebäude gesetzt hat, meint genau das.
+    const handFall = geb.pflichtFall && geb.pflichtFall !== 'auto' ? geb.pflichtFall : null;
+    if (handFall === 'keine') return leer('am Gebäude als nicht pflichtig gesetzt');
+
+    let fall = null;
+    let manuell = false;
+    if (handFall) {
+      fall = handFall;
+      manuell = true;
+    } else if (annahme === 'alle') {
+      fall = 'angenommen';
+      annahmen.push('Pflichtfall pauschal angenommen (Einstellung „alle Gebäude").');
+    } else if (geb.neubau && regel.neubau) {
+      fall = 'neubau';
+    } else if (geb.dachsanierung && sanierung.gilt) {
+      const schwelle = sanierung.abDachPct || 0;
+      const anteil   = Number(geb.sanAnteilPct);
+      if (!Number.isFinite(anteil)) {
+        fall = 'dachsanierung';
+        if (schwelle > 0) annahmen.push(`Umfang der Dachsanierung unbekannt — Schwelle ${schwelle} % der Dachfläche als erreicht angenommen.`);
+      } else if (anteil >= schwelle) {
+        fall = 'dachsanierung';
+      } else {
+        return leer(`Dachsanierung unter der Schwelle von ${schwelle} % der Dachfläche`);
+      }
+    }
+    if (!fall) return leer('kein Neubau und keine Dachsanierung geplant');
+
+    // ── 3) Schwellenwerte ─────────────────────────────────────────────────────
+    const minDach = regel.minDachM2 || 0;
+    if (minDach > 0 && dachM2 < minDach) {
+      return leer(`Dachfläche ${dachM2.toFixed(0)} m² unter der Schwelle von ${minDach} m²`);
+    }
+    const nutz = Number(geb.nutzflaecheM2);
+    const minNutz = regel.minNutzflaecheM2 || 0;
+    if (minNutz > 0) {
+      if (!Number.isFinite(nutz) || nutz <= 0) {
+        annahmen.push(`Nutzfläche unbekannt — Schwelle von ${minNutz} m² als erreicht angenommen.`);
+      } else if (nutz < minNutz) {
+        return leer(`Nutzfläche ${nutz.toFixed(0)} m² unter der Schwelle von ${minNutz} m²`);
+      }
+    }
+
+    // ── 4) Bezugsfläche nach Landesformulierung ───────────────────────────────
+    let bezugsM2 = dachM2;
+    if (regel.bezug === 'geeignet') {
+      const geeignet = Number(geb.geeignetM2);
+      if (Number.isFinite(geeignet) && geeignet > 0) {
+        bezugsM2 = geeignet;
+      } else {
+        bezugsM2 = dachM2 * eignPct / 100;
+        annahmen.push(`Keine Belegungsfläche gezeichnet — geeignete Fläche pauschal mit ${eignPct} % der Bruttodachfläche angesetzt.`);
+      }
+    }
+
+    // ── 5) Sollfläche und Leistung ────────────────────────────────────────────
+    // Kein Prozentsatz hinterlegt: Fall bleibt pflichtig, Leistung bleibt 0.
+    // Die aufrufende Ebene macht daraus einen sichtbaren Hinweis statt einer Zahl.
+    if (regel.anteilPct == null) {
+      return {
+        id: geb.id, name: geb.name, pflichtig: true, fall, grund: 'Flächenanteil im Landesrecht nicht beziffert',
+        dachM2, bezugsM2, sollM2: 0, kwp: 0, istKwp, deltaKwp: istKwp,
+        erfuellt: true, manuell, rechenweg: '', annahmen,
+      };
+    }
+
+    const sollM2 = bezugsM2 * regel.anteilPct / 100;
+    const kwp    = sollM2 * wpProM2 / 1000;
+    /** @param {number} v @param {number} [d] */
+    const nf = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const rechenweg = `${nf(bezugsM2)} m² ${bezugFlaechenName(regel)} × ${nf(regel.anteilPct)} % `
+                    + `× ${nf(wpProM2)} W/m² = ${nf(kwp, 1)} kWp`;
+
+    return {
+      id: geb.id, name: geb.name, pflichtig: true, fall, grund: '',
+      dachM2, bezugsM2, sollM2, kwp, istKwp,
+      deltaKwp: istKwp - kwp,
+      erfuellt: istKwp >= kwp * (1 - PFLICHT_TOLERANZ_PCT / 100),
+      manuell, rechenweg, annahmen,
+    };
+  }
+
+  /**
+   * Klartextname der Bezugsfläche eines Landes — die unterschiedliche Bezugsfläche
+   * ist der häufigste Grund für Abweichungen zwischen Soll und Auslegung.
+   * @param {PflichtRegel|null} regel
+   * @returns {string}
+   */
+  function bezugFlaechenName(regel) {
+    if (regel?.bezug === 'geeignet') return 'geeignete Fläche';
+    if (regel?.bezug === 'brutto')   return 'Bruttodachfläche';
+    return 'Dachfläche';
+  }
+
+  /**
+   * Dieselbe Bezeichnung nach Artikel („… % der …"), damit die Sätze in der
+   * Oberfläche grammatisch aufgehen.
+   * @param {PflichtRegel|null} regel
+   * @returns {string}
+   */
+  function bezugFlaechenNameDekliniert(regel) {
+    return regel?.bezug === 'geeignet' ? 'geeigneten Fläche' : bezugFlaechenName(regel);
+  }
+
+  /**
+   * Pflichtleistung für eine Gebäudeliste summieren.
+   *
+   * @param {PflichtGebaeude[]} gebs Aufbereitete Gebäude (siehe pflichtGebaeude)
+   * @param {string|null|undefined} landId
+   * @param {PflichtOptionen} [opt]
+   * @returns {PflichtSumme}
+   */
+  function pvPflichtSumme(gebs, landId, opt = {}) {
+    const regel = pflichtRegel(landId);
+    /** @type {PflichtSumme} */
+    const basis = { landId: landId || null, regel, aktiv: false, bezifferbar: false, kwp: 0, istKwp: 0, faelle: [], ohneFall: [], annahmen: [], grund: '' };
+
+    if (opt.annahme === 'aus') return { ...basis, grund: 'Pflichtprüfung ausgeschaltet' };
+    if (!landId)        return { ...basis, grund: 'Kein Bundesland bestimmt' };
+    if (!regel)         return { ...basis, grund: `Unbekanntes Bundesland „${landId}"` };
+    if (!regel.pflicht) return { ...basis, aktiv: true, grund: `${regel.land}: keine landesrechtliche PV-Pflicht` };
+
+    /** @type {PflichtFall[]} */ const faelle = [];
+    /** @type {PflichtFall[]} */ const ohneFall = [];
+    let kwp = 0, istKwp = 0;
+    for (const g of (gebs || [])) {
+      const r = pflichtGebaeude(g, regel, opt);
+      if (r.pflichtig) { faelle.push(r); kwp += r.kwp; istKwp += r.istKwp; } else { ohneFall.push(r); }
+    }
+
+    // Annahmen einmalig, nicht je Gebäude — sonst steht dieselbe Zeile 40-mal im Bericht.
+    const annahmen = [...new Set(faelle.flatMap(f => f.annahmen))];
+
+    const bezifferbar = regel.anteilPct != null;
+    let grund = '';
+    if (!faelle.length) {
+      grund = `${regel.land}: kein Gebäude im Projekt löst die Pflicht aus (Neubau oder grundlegende Dachsanierung).`;
+    } else if (!bezifferbar) {
+      grund = `${regel.land}: ${faelle.length} ${faelle.length === 1 ? 'Gebäude ist' : 'Gebäude sind'} pflichtig, `
+            + `${regel.norm} nennt aber keinen Flächenanteil — keine Leistung berechenbar.`;
+    }
+
+    return { landId: landId || null, regel, aktiv: true, bezifferbar, kwp, istKwp, faelle, ohneFall, annahmen, grund };
+  }
+
+  /**
+   * Eine Auslegung gegen die Pflichtleistung prüfen.
+   * @param {number} pvKwp Leistung der zu prüfenden Variante
+   * @param {{ aktiv?: boolean, bezifferbar?: boolean, kwp?: number }|null} pflicht Ergebnis von pvPflichtSumme
+   * @returns {{ relevant: boolean, erfuellt: boolean, sollKwp: number, deltaKwp: number }}
+   */
+  function pflichtCheck(pvKwp, pflicht) {
+    const soll = pflicht?.bezifferbar ? (pflicht.kwp || 0) : 0;
+    if (!pflicht?.aktiv || !pflicht.bezifferbar || soll <= 0) {
+      return { relevant: false, erfuellt: true, sollKwp: soll, deltaKwp: 0 };
+    }
+    const ist     = Number(pvKwp) || 0;
+    const schwelle = soll * (1 - PFLICHT_TOLERANZ_PCT / 100);
+    return {
+      relevant: true,
+      erfuellt: ist >= schwelle,
+      sollKwp: soll,
+      deltaKwp: ist - soll,
+    };
+  }
+
   // ── 09d-pv-analyse.js — PV-Analyse: Varianten, NAP, Batterieoptimierung, Infrastruktur ──
   // Eigenständiges Modul — kein Eingriff in bestehende 09a–09c, 10a–10d.
   // Nutzt window.elQuartierH15 (15-min nativ) wenn vorhanden, sonst window.elQuartierH (8760h).
 
+
+  // Die App-Schicht der PV-Pflicht (09e-pv-pflicht.js) wird bewusst NICHT importiert:
+  // sie hängt an 03c/02b/13a und würde über diesen Import in den Altkern-Zyklus
+  // gezogen (tests/import-architecture.js wacht über dessen Größe). Der Zugriff läuft
+  // deshalb über die window-Bridge, die 09e beim Laden setzt — dasselbe Muster wie
+  // bei napGetEndausbauLastgang. Die Rückfallwerte greifen nur, falls 09e fehlt.
+  const _pflichtLeer = { aktiv: false, bezifferbar: false, kwp: 0, istKwp: 0, faelle: [], ohneFall: [], annahmen: [], regel: null, landId: null, grund: '' };
+  const _pvPflicht     = () => window.pvPflichtAktuell?.() ?? _pflichtLeer;
+  const _pvPflichtInfo = () => window.pvPflichtInfoHtml?.() ?? '';
+  /** Faktor „Anlagenpotenzial → Modul-Nennleistung" (1, solange 09e fehlt). */
+  const _pvNennFaktor  = (potenzialKwp) => window.pvNennFaktor?.(potenzialKwp) ?? 1;
 
   // ══════════════════════════════════════════════════════════════════════════════
   // KONSTANTEN
@@ -99671,6 +100242,13 @@ ${massTbl}
   // Jede Variante beantwortet GENAU EINE Stakeholder-Frage. Die Texte werden im Tool
   // als "Lesehilfe" angezeigt, damit Herleitung und Bewertung selbsterklärend sind.
   const PV_VARIANTEN_INFO = {
+    'gesetzlich': {
+      label: 'Gesetzliche Pflicht',  farbe: '#9575cd', icon: '§',
+      frage:     'Was muss mindestens gebaut werden?',
+      ziel:      'Landesrechtliche PV-Pflicht gerade erfüllen',
+      herleitung:'Summe der Mindestbelegung aus der Bauordnung bzw. dem Solar-/Klimaschutzgesetz des Bundeslandes, gebäudescharf über die auslösenden Fälle (Neubau, grundlegende Dachsanierung).',
+      bewertung: 'Untergrenze, kein Optimum: keine Variante darunter ist genehmigungsfähig. Wirtschaftlich liegt das Optimum meist deutlich darüber.',
+    },
     'minimal': {
       label: 'Minimal',            farbe: '#78909c', icon: '▽',
       frage:     'Was ist der günstigste Einstieg?',
@@ -99722,6 +100300,8 @@ ${massTbl}
       uBudgetPct: 3,       // zulässige Spannungsanhebung durch Einspeisung (VDE-AR-N 4105: 3 % NS, 4110: 2 % MS)
       uBudgetManuell: false, // false = uBudgetPct aus der Spannungsebene des Netzanschlusses (_pvUBudget)
       pvMaxKwpOverride: 0,        // 0 = aus Assets berechnen
+      pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
+      pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
       deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
       demandMode: 'basis',        // 'basis' = nur Strom-Lastgang | 'gesamt' = + WP + SK | 'endausbau' = NAP-Endausbau-Lastgang
       endausbauJahr: new Date().getFullYear() + 15, // Zieljahr für Endausbau-Lastgang
@@ -99730,6 +100310,7 @@ ${massTbl}
       berechnet: false,
       stale: false,
       herleitung: null, lastParams: null, lastProfilQuelle: null, basis: null, standText: '',
+      pflicht: null,              // Pflicht-Kontext des letzten Laufs (Land, Norm, Sollleistung, Fälle)
     };
   }
 
@@ -100066,6 +100647,15 @@ ${massTbl}
     let eigenMwh = 0, einspeiseMwh = 0, netzbezugMwh = 0, curtailMwh = 0;
     let windEigenMwh = 0, windEinspMwh = 0; // Anteil der Windkraft an Eigenverbrauch/Einspeisung (für getrennten Tarif)
     let batVerlustMwh = 0, spotRevenue = 0;  // spotRevenue in € (ct/kWh × MWh / 10)
+    // Speicher-Flüsse, gemessen an den AC-Klemmen (vor/nach Wandlung) — Datenbasis für
+    // Abb. 7b. Ladung und Entladung werden getrennt nach Anlass gebucht, weil genau
+    // dieser Split die Frage beantwortet, wofür der Speicher arbeitet:
+    //   Lad(Abregelung) = erzwungenes Laden am Einspeiselimit (Schritt 2)
+    //   Lad(Eigenverbrauch) = freiwilliges Laden aus Restüberschuss (Schritt 3)
+    //   Entl(Bedarf) = Entladung in die Last (Schritt 4)
+    //   Entl(Netz)   = Arbitrage-/Platzschaffungs-Entladung ins Netz (Schritt 5a/5b)
+    // Es gilt exakt: Lad − Entl − Verlust = SOC(Ende) − SOC(Start).
+    let batLadCurtKwh = 0, batLadEvKwh = 0, batEntlBedarfKwh = 0, batEntlNetzKwh = 0;
     let maxEinspeiseKw = 0, einspeiseStunden = 0;  // Rückspeise-Spitze & -Dauer am NAP
     const batSocArr = new Float32Array(N);
     const deckungArr = new Float32Array(N);  // Anteil des Bedarfs gedeckt durch PV+Batterie (0..1), je Zeitschritt
@@ -100094,6 +100684,7 @@ ${massTbl}
         const cPow  = Math.min(mustStore, batLeistKw);
         const cEkwh = Math.min(cPow * dt, (batKwh - soc) / ETA);
         soc += cEkwh * ETA; batVerlustMwh += cEkwh * (1 - ETA);
+        batLadCurtKwh += cEkwh;
         rGen -= cEkwh / dt;
       }
       // Abregelung: was über effektives Limit bleibt → Curtailment
@@ -100111,6 +100702,7 @@ ${massTbl}
         const cPow  = Math.min(rGen, batLeistKw);
         const cEkwh = Math.min(cPow * dt, (batKwh - soc) / ETA);
         soc  += cEkwh * ETA; batVerlustMwh += cEkwh * (1 - ETA);
+        batLadEvKwh += cEkwh;
         rGen -= cEkwh / dt;
       }
 
@@ -100120,6 +100712,7 @@ ${massTbl}
         const dPow  = Math.min(rDem, batLeistKw);
         const dEkwh = Math.min(dPow * dt, soc * ETA);
         soc  -= dEkwh / ETA; batVerlustMwh += (dEkwh / ETA - dEkwh);
+        batEntlBedarfKwh += dEkwh;
         rDem -= dEkwh / dt;
       }
 
@@ -100135,7 +100728,10 @@ ${massTbl}
           const dPow  = Math.min(batLeistKw, maxEinsp - rGen);
           if (dPow > 0) {
             const dEkwh = Math.min(dPow * dt, (soc - reserve) * ETA);
-            soc  -= dEkwh / ETA;
+            // Entladeverlust wie in Schritt 4/5b buchen — sonst ist die Energiebilanz
+            // der Strategie 'spot' nicht geschlossen (Lad − Entl − Verlust ≠ ΔSOC).
+            soc  -= dEkwh / ETA; batVerlustMwh += (dEkwh / ETA - dEkwh);
+            batEntlNetzKwh += dEkwh;
             rGen += dEkwh / dt;
           }
         }
@@ -100153,6 +100749,7 @@ ${massTbl}
           const dEkwh = Math.min(dPow * dt, (soc - reserve) * ETA);
           if (dEkwh > 0) {
             soc  -= dEkwh / ETA; batVerlustMwh += (dEkwh / ETA - dEkwh);
+            batEntlNetzKwh += dEkwh;
             rGen += dEkwh / dt;
           }
         }
@@ -100180,7 +100777,11 @@ ${massTbl}
     // batVerlustMwh wird oben in kWh akkumuliert → hier auf MWh normieren (Konsistenz)
     return { eigenMwh, einspeiseMwh, netzbezugMwh, curtailMwh, batVerlustMwh: batVerlustMwh / 1000,
              maxEinspeiseKw, einspeiseStunden, batSocArr, deckungArr, spotRevenue,
-             windEigenMwh, windEinspMwh };
+             windEigenMwh, windEinspMwh,
+             batLadCurtMwh:    batLadCurtKwh    / 1000,
+             batLadEvMwh:      batLadEvKwh      / 1000,
+             batEntlBedarfMwh: batEntlBedarfKwh / 1000,
+             batEntlNetzMwh:   batEntlNetzKwh   / 1000 };
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -100667,9 +101268,28 @@ ${massTbl}
       const sim  = pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, strategie, spotH);
       const wirt = pvWirtschaft(pvKwp, batKwh, sim, ertragMwh, params, strategie);
       ergebnisse.push({
-        id, label: info.label + (''), farbe: info.farbe, icon: info.icon, info,
+        id, label: info.label + (labelSuffix || ''), farbe: info.farbe, icon: info.icon, info,
         pvKwp, batKwh, strategie, ertragMwh, sim, wirt,
       });
+    }
+
+    // Umrechnung der Varianten auf die Basis, auf der die Pflicht formuliert ist
+    const nennFaktor = _pvNennFaktor(maxKwp);
+
+    // ═══ 0) GESETZLICHE PFLICHT — Untergrenze aus dem Landesrecht ════════════════
+    //     Keine Optimierung, sondern eine Nebenbedingung: was darunter liegt, ist
+    //     nicht genehmigungsfähig. Erscheint nur, wenn das Land einen Flächenanteil
+    //     nennt UND im Projekt ein Gebäude die Pflicht auslöst.
+    const pflicht = _pvPflicht();
+    if (pflicht.bezifferbar && pflicht.kwp > 0) {
+      berechne('gesetzlich', pflicht.kwp, 0, 'none', ` (${pflicht.regel.kurz})`);
+      const ePf = ergebnisse[ergebnisse.length - 1];
+      if (ePf) {
+        ePf.pflichtQuelle = `${pflicht.regel.norm} · ${pflicht.faelle.length} pflichtige Gebäude`;
+        if (pflicht.regel.anteilHerkunft === 'verordnung') {
+          ePf.hinweis = `Flächenanteil stammt aus der Rechtsverordnung, nicht aus ${pflicht.regel.norm} — vor Nutzung prüfen.`;
+        }
+      }
     }
 
     // ═══ 1) MINIMAL — schwellen-optimiert, knapp unter 100 kWp ═══════════════════
@@ -100726,7 +101346,39 @@ ${massTbl}
       const r   = pvRueckAnalyse(e.pvKwp, e.batKwh, demandH, pvProfile);
       const bew = pvRueckBewertung(r.maxKw, skKVA, _napEinsp, uBudgetPct);
       e.rueck = { ...r, ...bew, anschlussKw: _napEinsp, skKVA, uBudgetPct };
+      // Nebenbedingung statt Kennzahl: eine Variante unter der Pflichtleistung ist
+      // nicht baubar, egal wie gut ihre Wirtschaftlichkeit aussieht.
+      //
+      // Verglichen wird auf Basis der MODUL-NENNLEISTUNG, weil das Landesrecht
+      // Modulfläche fordert und nicht Ertrag. Die Variantenleistung stammt aus dem
+      // Anlagenpotenzial und enthält dort, wo ein PV-Asset existiert, die
+      // ausrichtungskorrigierte Leistung — deshalb der Faktor. Die Variante
+      // „Gesetzliche Pflicht" ist bereits Nennleistung und wird nicht umgerechnet.
+      e.nennKwp = e.id === 'gesetzlich' ? e.pvKwp : e.pvKwp * nennFaktor;
+      e.pflicht = pflichtCheck(e.nennKwp, pflicht);
     }
+
+    // Pflicht-Kontext für Tabelle, Charts und Gutachten mitschreiben
+    state.pflicht = {
+      landId: pflicht.landId,
+      land:   pflicht.regel?.land || '',
+      kurz:   pflicht.regel?.kurz || '',
+      norm:   pflicht.regel?.norm || '',
+      aktiv:  pflicht.aktiv,
+      bezifferbar: pflicht.bezifferbar,
+      kwp:    pflicht.kwp,
+      istKwp: pflicht.istKwp,
+      nennFaktor,
+      unterdeckt: pflicht.faelle.filter(f => !f.erfuellt).length,
+      grund:  pflicht.grund,
+      annahmen: pflicht.annahmen,
+      hinweise: pflicht.regel?.hinweise || [],
+      anteilHerkunft: pflicht.regel?.anteilHerkunft || '',
+      stand:  PV_PFLICHT_META.stand,
+      faelle: pflicht.faelle.map(f => ({
+        name: f.name, fall: f.fall, dachM2: f.dachM2, bezugsM2: f.bezugsM2, kwp: f.kwp,
+      })),
+    };
 
     // ── Herleitung je Variante: Kriterium + Suchspur für die Grafik ─────────
     const eMin = ergebnisse.find(e => e.id === 'minimal');
@@ -100935,6 +101587,11 @@ ${massTbl}
       render:(v) => renderRueckAmpel(v) },
     { id:'abb7',  gruppe:'abb', nr:7,  label:'Energiefluss',         el:'pva-chart-fluss',
       render:(v, a) => renderEnergieFluss(a.demandH, a.pvProfile, a.napParams, a.params, v) },
+    // 7b statt einer Neunummerierung: Abb. 7b zoomt in den Speicheranteil von Abb. 7
+    // hinein und gehört inhaltlich daneben — die Folge Abb. 8/9/10 (und damit das
+    // Gutachten) bleibt dadurch unverändert.
+    { id:'abb7b', gruppe:'abb', nr:'7b', label:'Speicherfluss',      el:'pva-chart-speicherfluss',
+      render:(v, a) => renderSpeicherFluss(a.demandH, a.pvProfile, a.napParams, a.params, v) },
     { id:'abb8',  gruppe:'abb', nr:8,  label:'Autarkie-Jahresgang',  el:'pva-chart-autarkie-heatmap',
       render:(v) => renderAutarkieHeatmap(v) },
     { id:'abb9',  gruppe:'abb', nr:9,  label:'Sensitivität',         el:'pva-chart-sensitivitaet',
@@ -101426,7 +102083,30 @@ ${massTbl}
           <div style="font-size:10.5px;color:var(--muted);margin:8px 0 3px 0;">Manuell überschreiben (0 = aus Projekt)</div>
           <input id="pva-max-kwp" type="number" value="${window._pvAnalyse.pvMaxKwpOverride || 0}" min="0" step="10"
             style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;"
-            data-change="window._pvAnalyse.pvMaxKwpOverride=parseFloat(this.value)||0"/>`;
+            data-change="window._pvAnalyse.pvMaxKwpOverride=parseFloat(this.value)||0"/>
+
+          <div style="margin-top:11px;padding-top:9px;border-top:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
+              <span style="color:#9575cd;font-size:12px;">§</span>
+              <span style="font-size:11px;font-weight:600;color:var(--text);">Landesrechtliche PV-Pflicht</span>
+              <span class="htip" data-tip="Mindestbelegung nach Bauordnung bzw. Solar-/Klimaschutzgesetz des Bundeslandes. Ergibt eine eigene Variante und prüft alle anderen Varianten gegen diese Untergrenze. Orientierungswert, keine Rechtsberatung.">?</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+              <select id="pva-pflicht-land" data-change="window._pvAnalyse.pflichtLand=this.value;window.pvPflichtRefresh&&window.pvPflichtRefresh()"
+                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;">
+                <option value="">aus der Karte bestimmen</option>
+                ${PV_PFLICHT_LISTE.map(l => `<option value="${l.id}">${escHtml(l.land)}${l.pflicht ? '' : ' — ohne Pflicht'}</option>`).join('')}
+              </select>
+              <select id="pva-pflicht-annahme" data-change="window._pvAnalyse.pflichtAnnahme=this.value;window.pvPflichtRefresh&&window.pvPflichtRefresh()"
+                title="Welche Gebäude als Pflichtfall gelten: nur geplante Fälle nimmt Gebäude mit Neubaujahr oder markierter Dachsanierung, alle Gebäude rechnet den Vollausbau als Worst Case."
+                style="width:100%;padding:5px 7px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;">
+                <option value="auto">nur geplante Fälle</option>
+                <option value="alle">alle Gebäude (Worst Case)</option>
+                <option value="aus">Pflicht nicht prüfen</option>
+              </select>
+            </div>
+            <div id="pva-pflicht-info" style="margin-top:6px;">${_pvPflichtInfo()}</div>
+          </div>`;
         })()}
       </div>
 
@@ -101581,6 +102261,7 @@ ${massTbl}
       <div id="pva-chart-scatter"           style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-rueck"             style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-fluss"             style="display:none;overflow:hidden;"></div>
+      <div id="pva-chart-speicherfluss"     style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-autarkie-heatmap"  style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-sensitivitaet"     style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-resilienz"         style="display:none;overflow:hidden;"></div>
@@ -102298,6 +102979,12 @@ ${massTbl}
   // als Funktion der PV-Größe (ohne Batterie). Wo die Kurve kippt, kostet weiterer
   // PV-Ausbau mehr als er bringt; Infrastrukturstufen erzeugen sichtbare Sprünge.
 
+  /** Pflichtleistung für die Chart-Marker — 0, wenn keine oder außerhalb der Achse. */
+  function _pvPflichtKwpFuerChart(maxKwp) {
+    const kwp = window._pvAnalyse?.pflicht?.bezifferbar ? (window._pvAnalyse.pflicht.kwp || 0) : 0;
+    return kwp > 0 && kwp <= maxKwp ? kwp : 0;
+  }
+
   function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten, overrideEl) {
     const el = overrideEl || document.getElementById('pva-chart-grenznutzen');
     if (!el) return;
@@ -102340,6 +103027,7 @@ ${massTbl}
     const infraGrenzen = PV_INFRA_STUFEN.filter(s => isFinite(s.bisKwp) && s.bisKwp < maxKwp).map(s => s.bisKwp);
 
     const yZero = yS(0).toFixed(1);
+    const pfKwp = _pvPflichtKwpFuerChart(maxKwp);
 
     el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -102366,6 +103054,10 @@ ${massTbl}
     <text x="${PL + cW / 2}" y="${H - 3}" text-anchor="middle" fill="#607d8b" font-size="9">PV-Leistung (kWp)</text>
     <text x="11" y="${PT + cH / 2}" text-anchor="middle" fill="#607d8b" font-size="9" transform="rotate(-90,11,${PT + cH / 2})">Netto-Überschuss (€/a)</text>
     <path d="${nettoPath}" fill="none" stroke="#66bb6a" stroke-width="2.5"/>
+    ${pfKwp > 0 ? `
+      <rect x="${PL}" y="${PT}" width="${Math.max(0, xS(pfKwp) - PL).toFixed(1)}" height="${cH}" fill="#9575cd" opacity="0.07"/>
+      <line x1="${xS(pfKwp).toFixed(1)}" y1="${PT}" x2="${xS(pfKwp).toFixed(1)}" y2="${PT + cH}" stroke="#9575cd" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="${Math.min(xS(pfKwp) + 4, W - 90)}" y="${PT + cH - 6}" fill="#b39ddb" font-size="9">§ Pflicht ${Math.round(pfKwp).toLocaleString('de-DE')} kWp</text>` : ''}
     <line x1="${xS(optKwp).toFixed(1)}" y1="${PT}" x2="${xS(optKwp).toFixed(1)}" y2="${PT + cH}" stroke="#66bb6a" stroke-width="1" stroke-dasharray="3,2" opacity="0.8"/>
     <text x="${Math.min(xS(optKwp) + 4, W - 80)}" y="${PT + 20}" fill="#66bb6a" font-size="9" font-weight="600">Optimum ≈ ${optKwp.toLocaleString('de-DE')} kWp</text>
     ${(varianten || []).filter(v => v.info && v.info.frage).map(v => {
@@ -102696,6 +103388,8 @@ ${massTbl}
     const ub = document.getElementById('pva-ubudget');
     if (ub) ub.placeholder = `auto ${String(_pvUBudget()).replace('.', ',')}`;
     set('pva-max-kwp',            s.pvMaxKwpOverride || 0);
+    set('pva-pflicht-land',       s.pflichtLand || '');
+    set('pva-pflicht-annahme',    s.pflichtAnnahme || 'auto');
     set('pva-endausbau-jahr',     s.endausbauJahr || ((globalYear || new Date().getFullYear()) + 15));
     const jahrVal = document.getElementById('pva-endausbau-jahr-val');
     if (jahrVal) jahrVal.textContent = s.endausbauJahr || ((globalYear || new Date().getFullYear()) + 15);
@@ -102719,6 +103413,7 @@ ${massTbl}
     });
     // Eingaben des Nutzers zurueckschreiben (das Panel-Markup traegt nur Defaults)
     _pvFelderWiederherstellen();
+    window.pvPflichtRefresh?.();   // erst nach dem Zurueckschreiben — sonst zeigt die Zeile den Default
     _pvApplyStaleUi();
 
     // Ergebnisse wieder anzeigen wenn bereits berechnet
@@ -102800,6 +103495,8 @@ ${massTbl}
     const bestAmort  = Math.min(...varianten.map(v => v.wirt.amort).filter(a => isFinite(a)));
     const windAktiv  = varianten.some(v => (v.wirt.windKw || 0) > 0);
     const p          = window._pvAnalyse.lastParams;
+    const pf         = window._pvAnalyse.pflicht;
+    const pfAktiv    = varianten.some(v => v.pflicht?.relevant);
 
     const th = (label, tip, farbe) =>
       `<th style="padding:4px 6px;text-align:right;white-space:nowrap;${farbe ? 'color:' + farbe + ';' : ''}"${tip ? ` title="${tip}"` : ''}>${label}</th>`;
@@ -102827,6 +103524,7 @@ ${massTbl}
         ${th('LCOE', 'Stromgestehungskosten: Jahreskosten ÷ genutzter Energie (nach Abregelung)')}
         ${th('CO₂&nbsp;t/a', 'Vermiedene Emissionen bei dem eingestellten Verdrängungsfaktor')}
         ${th('Netz', 'Rückspeise-Ampel: schärferes Kriterium aus Spannungsband und Anschlusskapazität')}
+        ${pfAktiv ? th('§', `Landesrechtliche PV-Pflicht: mindestens ${fmt(pf?.kwp)} kWp nach ${escHtml(pf?.norm || '')}`, '#9575cd') : ''}
       </tr>
     </thead>
     <tbody>`;
@@ -102871,6 +103569,14 @@ ${massTbl}
         <td style="text-align:center;padding:6px;" title="${ampelTip}">
           <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${ampelFarbe};"></span>
         </td>
+        ${pfAktiv ? (() => {
+          const c = v.pflicht;
+          if (!c?.relevant) return td('—', '#546e7a');
+          const basis = `${fmt(v.nennKwp, 1)} kWp Nennleistung gegen ${fmt(c.sollKwp, 1)} kWp Soll`;
+          return c.erfuellt
+            ? `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#66bb6a;" title="Erfüllt die Pflichtleistung — ${basis}">✓</td>`
+            : `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;color:#ef5350;font-weight:600;" title="Unterschreitet die Pflichtleistung, so nicht genehmigungsfähig — ${basis}">−${fmt(Math.abs(c.deltaKwp))}</td>`;
+        })() : ''}
       </tr>`;
     }
 
@@ -102882,6 +103588,7 @@ ${massTbl}
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#66bb6a;margin-right:5px;"></span>Rückspeisung netzverträglich</span>
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffa726;margin-right:5px;"></span>Prüfung durch den VNB nötig</span>
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef5350;margin-right:5px;"></span>Erzeugungsnetz / MS-Anschluss erforderlich</span>
+    ${pfAktiv ? `<span style="color:#9575cd;">§ = landesrechtliche PV-Pflicht: <b>${fmt(pf?.kwp)} kWp</b> (${escHtml(pf?.kurz || '')}, ${escHtml(pf?.norm || '')})</span>` : ''}
     ${!napAktiv ? '<span style="color:#546e7a;">Abregelung: keine Einspeisegrenze gesetzt</span>' : ''}
     ${windAktiv ? '<span style="color:#4dd0e1;">Wind ist ein fester Sockel — in EV/Aut, Erlösen und Überschuss enthalten</span>' : ''}
   </div>
@@ -102892,7 +103599,31 @@ ${massTbl}
     <div><b style="color:var(--muted);">LCOE</b> = Jahreskosten ÷ genutzter Energie (Eigenverbrauch + Einspeisung).</div>
     <div><b style="color:var(--muted);">CO₂</b> = vermiedene Emissionen bei ${fmt(p?.co2Faktor || 380)} g/kWh Verdrängungsfaktor.</div>
     <div><b style="color:var(--muted);">Netz</b> = schärferes Kriterium aus Spannungsband Δu und Anschlusskapazität am NAP.</div>
+    ${pfAktiv ? `<div><b style="color:var(--muted);">§</b> = Abstand zur landesrechtlichen Pflichtleistung; „−x" bedeutet Unterschreitung um x kWp.
+      Geprüft wird die Modul-Nennleistung${Math.abs((pf?.nennFaktor ?? 1) - 1) > 0.01
+        ? ` (kWp-Spalte × ${fmt(pf.nennFaktor, 2)}, weil die PV-Assets die ausrichtungskorrigierte Leistung tragen)` : ''},
+      weil das Gesetz Modulfläche fordert und nicht Ertrag.</div>` : ''}
   </div>`;
+
+    // Unterschreitet eine Variante die Pflicht, ist das kein Detail in einer Spalte,
+    // sondern ein Ausschlusskriterium — deshalb zusätzlich als Warnzeile.
+    if (pfAktiv) {
+      const verletzt = varianten.filter(v => v.pflicht?.relevant && !v.pflicht.erfuellt);
+      html += `
+    <div style="margin-top:9px;padding:8px 11px;border-radius:6px;font-size:10.5px;line-height:1.6;
+         background:${verletzt.length ? 'rgba(239,83,80,0.10)' : 'rgba(149,117,205,0.08)'};
+         border:1px solid ${verletzt.length ? 'rgba(239,83,80,0.35)' : 'rgba(149,117,205,0.3)'};">
+      <b style="color:${verletzt.length ? '#ef5350' : '#b39ddb'};">§ ${escHtml(pf?.land || '')} — ${escHtml(pf?.norm || '')}</b>
+      <span style="color:var(--muted);"> · Pflichtleistung ${fmt(pf?.kwp)} kWp · Stand ${escHtml(pf?.stand || '')}</span>
+      ${verletzt.length
+        ? `<div style="color:#ef9a9a;margin-top:3px;">Unter der Pflichtleistung und damit nicht genehmigungsfähig: ${
+            verletzt.map(v => `${escHtml(v.label)} (−${fmt(Math.abs(v.pflicht.deltaKwp))} kWp)`).join(', ')}</div>`
+        : '<div style="color:#a5d6a7;margin-top:3px;">Alle Varianten erfüllen die Pflichtleistung.</div>'}
+      ${(pf?.annahmen || []).length
+        ? `<div style="color:#78909c;margin-top:3px;">Annahmen: ${pf.annahmen.map(a => escHtml(a)).join(' · ')}</div>` : ''}
+      <div style="color:#607d8b;margin-top:3px;">${escHtml(PV_PFLICHT_META.disclaimer)}</div>
+    </div>`;
+    }
 
     // Infra-Detail je Variante
     const detail = varianten.filter(v => v.wirt.infDetail?.length);
@@ -102976,6 +103707,9 @@ ${massTbl}
     const xS = v => PL + (v / maxKwp) * cW;
     const yS = v => PT + cH - (v / 100) * cH;
 
+    // Pflichtleistung als senkrechte Grenze — links davon ist keine Auslegung baubar
+    const pfKwp = _pvPflichtKwpFuerChart(maxKwp);
+
     const evPath = evData.map((d, i) => `${i===0?'M':'L'}${xS(d.kwp).toFixed(1)},${yS(d.evQ).toFixed(1)}`).join(' ');
     const curtailPath = evData.filter(d => d.curtailQ > 0)
       .map((d, i) => `${i===0?'M':'L'}${xS(d.kwp).toFixed(1)},${yS(d.curtailQ).toFixed(1)}`).join(' ');
@@ -103000,6 +103734,10 @@ ${massTbl}
     <path d="${evPath}" fill="none" stroke="#42a5f5" stroke-width="2.5"/>
     <line x1="${xMax}" y1="${PT}" x2="${xMax}" y2="${(PT+cH).toFixed(1)}" stroke="#fdd835" stroke-width="1" stroke-dasharray="3,2" opacity="0.7"/>
     <text x="${Math.min(parseFloat(xMax)+4, W-60)}" y="${PT+11}" fill="#fdd835" font-size="9">Max PV</text>
+    ${pfKwp > 0 ? `
+      <rect x="${PL}" y="${PT}" width="${Math.max(0, xS(pfKwp) - PL).toFixed(1)}" height="${cH}" fill="#9575cd" opacity="0.07"/>
+      <line x1="${xS(pfKwp).toFixed(1)}" y1="${PT}" x2="${xS(pfKwp).toFixed(1)}" y2="${(PT+cH).toFixed(1)}" stroke="#9575cd" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="${Math.min(xS(pfKwp)+4, W-70)}" y="${PT+cH-4}" fill="#b39ddb" font-size="9">§ Pflicht</text>` : ''}
     <rect x="${PL+4}" y="${PT+2}" width="96" height="32" rx="3" fill="rgba(0,0,0,0.5)"/>
     <line x1="${PL+8}" y1="${PT+12}" x2="${PL+18}" y2="${PT+12}" stroke="#42a5f5" stroke-width="2.5"/>
     <text x="${PL+22}" y="${PT+15}" fill="#90a4ae" font-size="9">Eigenverbrauch</text>
@@ -103515,6 +104253,448 @@ ${massTbl}
     if (fsBtn) fsBtn.addEventListener('click', () =>
       _pvOpenFs('Energiefluss bei frei wählbarer Auslegung', cnt =>
         renderEnergieFluss(_pvFsArgs.demandH, _pvFsArgs.pvProfile, _pvFsArgs.napParams, _pvFsArgs.params, window._pvAnalyse.ergebnisse, cnt)
+      )
+    );
+  }
+
+  // ── Abb. 7b — Speicherfluss: wofür der Batteriespeicher arbeitet ──────────────
+  // Abb. 7 zeigt, wohin die Energie des Quartiers fließt — der Speicher steckt dort
+  // unsichtbar im grünen Eigenverbrauchsband. Diese Abbildung dreht die Perspektive
+  // um und stellt den Speicher selbst in die Mitte: woher seine Ladung kommt, wohin
+  // sie geht, wie viel Wandlung kostet — und wie er sich über das Jahr verhält.
+  //
+  // Drei Ebenen, bewusst übereinander statt nebeneinander:
+  //   1. Speicher-Sankey  — die Jahresbilanz an den AC-Klemmen (Bilanz schließt exakt)
+  //   2. SOC-Jahres-Heatmap — Tag × Stunde, Farbe = Ladestand; zeigt sofort, ob der
+  //      Speicher im Sommer täglich zyklisiert und im Winter leer steht
+  //   3. SOC-Dauerlinie + Ø-Tagesgang — beantwortet die Auslegungsfrage: Wie oft ist
+  //      er voll (zu groß), wie oft leer (zu klein), und wann lädt/entlädt er
+  //
+  // Farben sind absichtlich dieselben wie in Abb. 7: Abregelung orange, PV-Überschuss
+  // gelb, Eigenverbrauch grün, Einspeisung blau, Verlust grau — so liest sich Abb. 7b
+  // als Vergrößerung des Speicher-Anteils von Abb. 7.
+
+  const _PVSF_COL = {
+    ladCurt: '#ff9800',   // Ladung, die sonst abgeregelt worden wäre
+    ladEv:   '#fdd835',   // Ladung aus PV-Überschuss für den späteren Eigenverbrauch
+    entlBed: '#66bb6a',   // Entladung in die Last
+    entlNet: '#42a5f5',   // Entladung ins Netz (Arbitrage / Platz schaffen)
+    verlust: '#78909c',   // Wandlungsverluste
+    rest:    '#9575cd',   // Restladung am Jahresende
+    bat:     '#9575cd',   // Speicher-Knoten
+    pv:      '#fdd835',
+    wd:      '#4dd0e1',
+  };
+
+  // Rasterung der Leistungsachse im Tagesgang. Fein genug, dass ein Spitzenwert von
+  // 2,8 nicht auf 5 aufgerundet wird und die halbe Balkenhöhe ungenutzt bleibt.
+  const _PVSF_STUFEN = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+
+  /** Ladestand-Farbe (0..1): leer = dunkel, voll = helles Violett. */
+  function _pvsfSocColor(v) {
+    v = Math.max(0, Math.min(1, v));
+    const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+    // dunkles Blaugrau (leer) → Violett (halb) → helles Lila (voll)
+    if (v < 0.5) {
+      const t = v / 0.5;
+      return `rgb(${lerp(38,92,t)},${lerp(45,71,t)},${lerp(56,148,t)})`;
+    }
+    const t = (v - 0.5) / 0.5;
+    return `rgb(${lerp(92,209,t)},${lerp(71,180,t)},${lerp(148,236,t)})`;
+  }
+
+  /** SOC-Reihe (kWh, dt-Auflösung) → stündlicher Mittelwert in kWh. */
+  function _pvsfHourlySoc(socArr, dt) {
+    if (dt === 1) return socArr;
+    const k = Math.round(1 / dt);
+    const n = Math.floor(socArr.length / k);
+    const out = new Float32Array(n);
+    for (let h = 0; h < n; h++) {
+      let s = 0;
+      for (let j = 0; j < k; j++) s += socArr[h * k + j];
+      out[h] = s / k;
+    }
+    return out;
+  }
+
+  function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, overrideEl) {
+    const el = overrideEl || document.getElementById('pva-chart-speicherfluss');
+    if (!el) return;
+
+    const maxKwp = pvGetMaxKwpFromAssets() || 500;
+    const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
+    const kanon  = (varianten || []).filter(v => v.info && v.info.frage);
+    const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
+    const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
+
+    // Startwert: die größte kanonische Batterie — ohne Speicher hat diese Abbildung
+    // nichts zu zeigen, also startet sie bewusst nicht auf der wirtschaftlichen Variante.
+    const start = kanon.find(v => v.batKwh === varBat && varBat > 0)
+               || kanon.find(v => v.id === 'wirt-opt') || kanon[0]
+               || { pvKwp: Math.round(maxKwp / 2), batKwh: 0 };
+
+    const windKwInst = (window._windElHourly && params.windKwInstalled > 0) ? params.windKwInstalled : 0;
+    const windMax    = windKwInst > 0 ? Math.round(windKwInst * 2) : 0;
+
+    const chips = kanon.map(v =>
+      `<button data-sf-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
+      style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border:1px solid ${v.farbe};border-radius:10px;background:transparent;color:${v.farbe};font-size:9px;cursor:pointer;white-space:nowrap;${v.batKwh > 0 ? '' : 'opacity:.45;'}">
+      ${v.icon} ${Math.round(v.pvKwp)} kWp${v.batKwh > 0 ? ` · ${(v.batKwh/1000).toFixed(v.batKwh < 1000 ? 2 : 1)} MWh` : ' · ohne Speicher'}</button>`).join('');
+
+    el.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+    <span style="font-size:10px;font-weight:600;color:var(--text);letter-spacing:.02em;">Abb. 7b — Speicherfluss: wofür der Batteriespeicher arbeitet
+      <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">Herkunft und Verwendung jeder gespeicherten kWh · Ladestand über das Jahr</span>
+    </span>
+    ${overrideEl ? '' : '<button data-pva-fs="speicherfluss" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:8px;align-items:center;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">PV-Leistung</span>
+      <input id="pva-sf-pv" type="range" min="0" max="${Math.round(maxKwp)}" step="1" value="${Math.round(start.pvKwp)}" style="flex:1;accent-color:${_PVSF_COL.pv};">
+      <span id="pva-sf-pv-val" style="font-size:9px;color:${_PVSF_COL.pv};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(start.pvKwp)} kWp</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Batterie</span>
+      <input id="pva-sf-bat" type="range" min="0" max="${Math.round(batMax)}" step="5" value="${Math.round(start.batKwh)}" style="flex:1;accent-color:${_PVSF_COL.bat};">
+      <span id="pva-sf-bat-val" style="font-size:9px;color:${_PVSF_COL.bat};font-family:'DM Mono',monospace;width:62px;text-align:right;">${(start.batKwh/1000).toFixed(2)} MWh</span>
+    </div>
+    ${windKwInst > 0 ? `
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--muted);width:64px;">Wind</span>
+      <input id="pva-sf-wind" type="range" min="0" max="${windMax}" step="10" value="${Math.round(windKwInst)}" style="flex:1;accent-color:${_PVSF_COL.wd};">
+      <span id="pva-sf-wind-val" style="font-size:9px;color:${_PVSF_COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(windKwInst)} kW</span>
+    </div>` : ''}
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${chips}</div>
+  <div id="pva-sf-kpi" style="font-size:9px;color:var(--muted);margin-bottom:6px;line-height:1.7;"></div>
+  <div id="pva-sf-svg" style="overflow:hidden;"></div>`;
+
+    const svgWrap = el.querySelector('#pva-sf-svg');
+    const kpiEl   = el.querySelector('#pva-sf-kpi');
+    const pvIn    = el.querySelector('#pva-sf-pv');
+    const batIn   = el.querySelector('#pva-sf-bat');
+    const windIn  = el.querySelector('#pva-sf-wind');
+
+    const dt = demandH.length > 8784 ? 0.25 : 1.0;
+    const fmt1 = n => n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+    function draw(pv, bat, windKw) {
+      const W = Math.max(440, (svgWrap.getBoundingClientRect().width || 700) - 4);
+
+      if (bat <= 0) {
+        kpiEl.innerHTML = '';
+        svgWrap.innerHTML = `<div style="color:var(--muted);font-size:10px;text-align:center;padding:38px 0;line-height:1.7;">
+        Diese Auslegung hat keinen Speicher — es gibt keinen Speicherfluss darzustellen.<br>
+        <span style="color:#78909c;">Batterie-Slider aufziehen oder oben eine Variante mit Speicher wählen.</span></div>`;
+        return;
+      }
+
+      const strat = spotH ? 'spot-dyn' : 'ev';
+      const windScale = windKwInst > 0 ? (windKw / windKwInst) : 1;
+      const sim = pvNapSim(pv, bat, demandH, pvProfile, napParams, strat, spotH, windScale);
+      // Referenzlauf ohne Speicher — nur so lässt sich beziffern, was der Speicher
+      // tatsächlich bewirkt (vermiedene Abregelung, zusätzlicher Eigenverbrauch).
+      const ref = pvNapSim(pv, 0, demandH, pvProfile, napParams, 'none', spotH, windScale);
+
+      const ladCurt = sim.batLadCurtMwh    || 0;
+      const ladEv   = sim.batLadEvMwh      || 0;
+      const entBed  = sim.batEntlBedarfMwh || 0;
+      const entNet  = sim.batEntlNetzMwh   || 0;
+      const verl    = sim.batVerlustMwh    || 0;
+      const socArr  = sim.batSocArr;
+      const restMwh = Math.max(0, socArr[socArr.length - 1] / 1000);
+      const lad     = ladCurt + ladEv;
+      const entl    = entBed + entNet;
+
+      if (lad < 0.01) {
+        kpiEl.innerHTML = '';
+        svgWrap.innerHTML = `<div style="color:var(--muted);font-size:10px;text-align:center;padding:38px 0;line-height:1.7;">
+        Der Speicher bleibt bei dieser Auslegung ungenutzt — die Erzeugung deckt den Bedarf nie mit Überschuss.<br>
+        <span style="color:#78909c;">PV-Leistung erhöhen, um Ladeenergie zu erzeugen.</span></div>`;
+        return;
+      }
+
+      // ── Kennzahlen ───────────────────────────────────────────────────────────
+      const capMwh   = bat / 1000;
+      const zyklen   = entl / capMwh;                       // Vollzyklen/a (AC-seitig entladen)
+      let socSum = 0, tVoll = 0, tLeer = 0;
+      for (let i = 0; i < socArr.length; i++) {
+        const f = socArr[i] / bat;
+        socSum += f;
+        if (f > 0.95) tVoll += dt;
+        if (f < 0.05) tLeer += dt;
+      }
+      const socMittel = socSum / socArr.length;
+      const dCurt  = Math.max(0, ref.curtailMwh  - sim.curtailMwh);   // vermiedene Abregelung
+      const dEigen = Math.max(0, sim.eigenMwh    - ref.eigenMwh);     // zusätzlicher Eigenverbrauch
+      const nutzen = dEigen * (params.pStrom || 0) * 10 + dCurt * (params.pEinsp || 0) * 10; // €/a
+      const annBat = annF(params.zins || 0.035, params.batLife || 15) + (typeof OPT_IH === 'object' ? (OPT_IH.bat || 0.01) : 0.01);
+      const kostA  = bat * (params.batInvestPerKwh || 0) * annBat;    // €/a Kapital + IH
+      const ctProKwh = entl > 0 ? kostA / (entl * 1000) * 100 : Infinity;  // ct je zwischengespeicherter kWh
+
+      kpiEl.innerHTML =
+        `<span style="color:${_PVSF_COL.bat}">Durchsatz ${fmt1(entl)} MWh/a</span> · ` +
+        `<span style="color:${_PVSF_COL.bat}">${fmt1(zyklen)} Vollzyklen/a</span> · ` +
+        `Ø Ladestand ${(socMittel * 100).toFixed(0)} % · ` +
+        `voll ${Math.round(tVoll)} h · leer ${Math.round(tLeer)} h · ` +
+        `<span style="color:${_PVSF_COL.verlust}">Wandlungsverlust ${fmt1(verl)} MWh</span> ` +
+        `(${(lad > 0 ? verl / lad * 100 : 0).toFixed(0)} % der Ladung)<br>` +
+        `<span style="color:${_PVSF_COL.ladCurt}">vermiedene Abregelung ${fmt1(dCurt)} MWh</span> · ` +
+        `<span style="color:${_PVSF_COL.entlBed}">zusätzlicher Eigenverbrauch ${fmt1(dEigen)} MWh</span> · ` +
+        `Nutzen ≈ ${Math.round(nutzen / 1000).toLocaleString('de-DE')} k€/a gegen ` +
+        `${Math.round(kostA / 1000).toLocaleString('de-DE')} k€/a Speicherkosten · ` +
+        `<span style="color:${isFinite(ctProKwh) && ctProKwh < (params.pStrom || 30) ? '#66bb6a' : '#ef9a9a'}">` +
+        `${isFinite(ctProKwh) ? ctProKwh.toFixed(1) : '—'} ct je zwischengespeicherter kWh</span>`;
+
+      // ── 1. Speicher-Sankey ───────────────────────────────────────────────────
+      const SH = overrideEl ? 240 : 186;
+      const barW = 14, PT = 16;
+      const cH = SH - PT - 14;
+      const xA = 158, xB = Math.round(W * 0.5) - barW / 2, xC = W - 196;
+
+      const sinks = [
+        { v: entBed,  c: _PVSF_COL.entlBed, t: 'Entladung → Bedarf' },
+        { v: entNet,  c: _PVSF_COL.entlNet, t: 'Entladung → Netz' },
+        { v: verl,    c: _PVSF_COL.verlust, t: 'Wandlungsverluste' },
+        { v: restMwh, c: _PVSF_COL.rest,    t: 'Restladung 31.12.' },
+      ].filter(s => s.v > lad * 0.004);
+      const sources = [
+        { v: ladCurt, c: _PVSF_COL.ladCurt, t: 'Ladung statt Abregelung' },
+        { v: ladEv,   c: _PVSF_COL.ladEv,   t: 'Ladung aus PV-Überschuss' },
+      ].filter(s => s.v > lad * 0.004);
+
+      const gap = 9;
+      const gapSum = Math.max((sources.length - 1) * gap, (sinks.length - 1) * gap);
+      const scale = (cH - gapSum) / lad;
+      const bodyH = lad * scale;
+
+      // Quell- und Senkenstapel jeweils vertikal zentriert
+      let y = PT + (cH - (bodyH + (sources.length - 1) * gap)) / 2;
+      for (const s of sources) { s.y = y; s.h = s.v * scale; y += s.h + gap; }
+      y = PT + (cH - (bodyH + (sinks.length - 1) * gap)) / 2;
+      for (const s of sinks) { s.y = y; s.h = s.v * scale; y += s.h + gap; }
+      const batY = PT + (cH - bodyH) / 2;
+
+      // Anschlusspunkte am Speicherknoten: Quellen von oben, Senken von oben
+      let yIn = batY;  for (const s of sources) { s.by = yIn; yIn += s.h; }
+      let yOut = batY; for (const s of sinks)   { s.by = yOut; yOut += s.h; }
+
+      const ribbon = (x0, y0, h0, x1, y1, h1, color) => {
+        if (h0 < 0.3 && h1 < 0.3) return '';
+        const mx = (x0 + x1) / 2;
+        return `<path d="M${x0},${y0.toFixed(1)} C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1},${y1.toFixed(1)}`
+             + ` L${x1},${(y1+h1).toFixed(1)} C${mx},${(y1+h1).toFixed(1)} ${mx},${(y0+h0).toFixed(1)} ${x0},${(y0+h0).toFixed(1)} Z"`
+             + ` fill="${color}" opacity="0.42"/>`;
+      };
+      const lbl = (x, y0, h, txt, val, color, anchor) => h > 9
+        ? `<text x="${x}" y="${(y0+h/2-2).toFixed(1)}" text-anchor="${anchor}" fill="${color}" font-size="9" font-weight="600">${txt}</text>`
+          + `<text x="${x}" y="${(y0+h/2+9).toFixed(1)}" text-anchor="${anchor}" fill="#90a4ae" font-size="8">${fmt1(val)} MWh · ${(val/lad*100).toFixed(0)} %</text>`
+        : '';
+
+      const sankey = `
+      ${sources.map(s => ribbon(xA + barW, s.y, s.h, xB, s.by, s.h, s.c)).join('')}
+      ${sinks.map(s => ribbon(xB + barW, s.by, s.h, xC, s.y, s.h, s.c)).join('')}
+      ${sources.map(s => `<rect x="${xA}" y="${s.y.toFixed(1)}" width="${barW}" height="${Math.max(1,s.h).toFixed(1)}" fill="${s.c}" rx="1.5"/>`).join('')}
+      ${sinks.map(s => `<rect x="${xC}" y="${s.y.toFixed(1)}" width="${barW}" height="${Math.max(1,s.h).toFixed(1)}" fill="${s.c}" rx="1.5"/>`).join('')}
+      <rect x="${xB}" y="${batY.toFixed(1)}" width="${barW}" height="${bodyH.toFixed(1)}" fill="${_PVSF_COL.bat}" rx="1.5"/>
+      ${sources.map(s => lbl(xA - 6, s.y, s.h, s.t, s.v, s.c, 'end')).join('')}
+      ${sinks.map(s => lbl(xC + barW + 6, s.y, s.h, s.t, s.v, s.c, 'start')).join('')}
+      <text x="${(xB + barW/2).toFixed(1)}" y="${(batY - 6).toFixed(1)}" text-anchor="middle" fill="${_PVSF_COL.bat}" font-size="9" font-weight="600">Speicher ${capMwh.toFixed(2)} MWh</text>
+      <text x="${(xB + barW/2).toFixed(1)}" y="${(batY + bodyH + 12).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8">${fmt1(lad)} MWh Ladung · ${fmt1(zyklen)} Vollzyklen</text>`;
+
+      // ── 2. SOC-Jahres-Heatmap ────────────────────────────────────────────────
+      const hSoc  = _pvsfHourlySoc(socArr, dt);
+      const nDays = Math.floor(hSoc.length / 24);
+      const HH = overrideEl ? 210 : 148;
+      const PL = 30, HPT = 22, PR = 16, HPB = 30;
+      const hcW = W - PL - PR, hcH = HH - HPT - HPB;
+      const cellW = hcW / nDays, cellH = hcH / 24;
+
+      let cells = '';
+      for (let d = 0; d < nDays; d++) {
+        for (let h = 0; h < 24; h++) {
+          const f = Math.max(0, Math.min(1, hSoc[d * 24 + h] / bat));
+          cells += `<rect x="${(PL + d*cellW).toFixed(2)}" y="${(HPT + h*cellH).toFixed(2)}" width="${(cellW+0.3).toFixed(2)}" height="${(cellH+0.3).toFixed(2)}" fill="${_pvsfSocColor(f)}"/>`;
+        }
+      }
+      let monthMarks = '', cum = 0;
+      for (let m = 0; m < 12; m++) {
+        const x = PL + cum * cellW, wM = _PVAH_MONTH_DAYS[m] * cellW;
+        monthMarks += `<text x="${(x + wM/2).toFixed(1)}" y="${(HPT - 7).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8">${_PVAH_MONTH_NAMES[m]}</text>`;
+        if (m > 0) monthMarks += `<line x1="${x.toFixed(1)}" y1="${HPT}" x2="${x.toFixed(1)}" y2="${(HPT+hcH).toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>`;
+        cum += _PVAH_MONTH_DAYS[m];
+      }
+      const hourMarks = [0, 6, 12, 18].map(h =>
+        `<text x="${(PL-5).toFixed(1)}" y="${(HPT + h*cellH + cellH/2 + 3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="8">${h}</text>`).join('');
+      const gradId = 'pvsf-grad-' + (overrideEl ? 'fs' : 'm');
+      const legend = `
+      <defs><linearGradient id="${gradId}" x1="0" x2="1">
+        <stop offset="0%" stop-color="${_pvsfSocColor(0)}"/><stop offset="50%" stop-color="${_pvsfSocColor(0.5)}"/><stop offset="100%" stop-color="${_pvsfSocColor(1)}"/>
+      </linearGradient></defs>
+      <rect x="${PL}" y="${(HPT+hcH+14).toFixed(1)}" width="120" height="8" fill="url(#${gradId})" rx="1"/>
+      <text x="${PL}" y="${(HPT+hcH+31).toFixed(1)}" fill="#78909c" font-size="8">leer</text>
+      <text x="${PL+120}" y="${(HPT+hcH+31).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">voll</text>
+      <text x="${PL+134}" y="${(HPT+hcH+22).toFixed(1)}" fill="#78909c" font-size="8">Ladestand · Tag (x) × Stunde (y)</text>`;
+
+      // ── 3. SOC-Dauerlinie und Ø-Tagesgang ────────────────────────────────────
+      const DH = overrideEl ? 196 : 164;
+      const panelW = (W - 18) / 2;
+      const DPL = 38, DPT = 18, DPR = 10, DPB = 22;
+      const dcW = panelW - DPL - DPR, dcH = DH - DPT - DPB;
+      // Der Tagesgang teilt seine Fläche: oben der Ladestand (%), unten die Leistung (kW).
+      // Zwei Größen mit verschiedenen Einheiten übereinander statt in einer Doppelachse —
+      // die gemeinsame Zeitachse stellt den Zusammenhang her (steigender Ladestand oben =
+      // gelbe Ladebalken unten), ohne dass zwei Skalen im selben Feld verwechselt werden.
+      const socH = Math.round(dcH * 0.54);
+      const barH = dcH - socH - 13;
+
+      // Dauerlinie: Ladestand absteigend sortiert über die Jahresstunden
+      const sorted = Array.from(hSoc, v => Math.max(0, Math.min(1, v / bat))).sort((a, b) => b - a);
+      // Gemeinsame y-Skala beider Panels: ein Speicher, der nie über 20 % kommt, wäre auf
+      // einer starren 0–100-%-Achse eine Linie auf der Nulllinie — und genau die Aussage
+      // „er wird kaum genutzt" ginge dabei verloren statt sichtbar zu werden. Die Achse
+      // rastet deshalb auf 25/50/100 % und bleibt beschriftet, damit der Bezug zur
+      // Nennkapazität erhalten bleibt.
+      const peak  = Math.max(sorted[0] || 0, 0.02);
+      const yMax  = peak <= 0.25 ? 0.25 : peak <= 0.5 ? 0.5 : 1;
+      const ticks = [0, yMax / 2, yMax];
+      const nPts = 160;
+      let dl = '';
+      for (let i = 0; i <= nPts; i++) {
+        const idx = Math.min(sorted.length - 1, Math.round(i / nPts * (sorted.length - 1)));
+        const x = DPL + i / nPts * dcW, yy = DPT + (1 - sorted[idx] / yMax) * dcH;
+        dl += `${i ? 'L' : 'M'}${x.toFixed(1)},${yy.toFixed(1)}`;
+      }
+      const dauer = `
+      <rect x="${DPL}" y="${DPT}" width="${dcW.toFixed(1)}" height="${dcH.toFixed(1)}" fill="rgba(149,117,205,0.06)"/>
+      ${ticks.map(f => `<line x1="${DPL}" y1="${(DPT+(1-f/yMax)*dcH).toFixed(1)}" x2="${(DPL+dcW).toFixed(1)}" y2="${(DPT+(1-f/yMax)*dcH).toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+        <text x="${DPL-5}" y="${(DPT+(1-f/yMax)*dcH+3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${(f*100).toFixed(0)}%</text>`).join('')}
+      <path d="${dl}" fill="none" stroke="${_PVSF_COL.bat}" stroke-width="1.6"/>
+      <text x="${DPL}" y="${(DPT-6)}" fill="#b0bec5" font-size="8.5" font-weight="600">Dauerlinie des Ladestands</text>
+      <text x="${(DPL+dcW).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">8.760 h →</text>
+      <text x="${DPL}" y="${(DPT+dcH+13).toFixed(1)}" fill="#78909c" font-size="8">voll ${Math.round(tVoll)} h · leer ${Math.round(tLeer)} h</text>`;
+
+      // Ø-Tagesgang, getrennt nach Sommer- und Winterhalbjahr
+      const somS = 90, somE = 273;  // Tag 90..272 ≈ April–September
+      const tg = (von, bis) => {
+        const sum = new Float64Array(24), cnt = new Float64Array(24);
+        for (let d = von; d < Math.min(bis, nDays); d++)
+          for (let h = 0; h < 24; h++) { sum[h] += hSoc[d*24+h] / bat; cnt[h]++; }
+        return Array.from(sum, (v, h) => cnt[h] ? v / cnt[h] : 0);
+      };
+      const somMean = tg(somS, somE);
+      const winSum = new Float64Array(24), winCnt = new Float64Array(24);
+      for (let d = 0; d < nDays; d++) {
+        if (d >= somS && d < somE) continue;
+        for (let h = 0; h < 24; h++) { winSum[h] += hSoc[d*24+h] / bat; winCnt[h]++; }
+      }
+      const winMean = Array.from(winSum, (v, h) => winCnt[h] ? v / winCnt[h] : 0);
+
+      // Ø Lade-/Entladeleistung je Tagesstunde, aus der SOC-Änderung rekonstruiert.
+      // Das ist exakt und braucht keine zusätzlichen Jahresreihen in der Simulation:
+      // innerhalb eines Zeitschritts schließen sich Laden und Entladen gegenseitig aus
+      // (nach Schritt 1 von pvNapSim ist entweder der Erzeugungs- oder der Bedarfsrest
+      // null), die Zerlegung nach dem Vorzeichen von Δsoc ist also eindeutig. Die
+      // Rückrechnung auf die AC-Klemmen macht den Wirkungsgrad rückgängig — geladen wird
+      // soc += c·η, entladen soc −= d/η, gemessen wird aber c bzw. d.
+      const stepsPerHour = Math.round(1 / dt);
+      const ladS = new Float64Array(24), entS = new Float64Array(24), cntS = new Float64Array(24);
+      const ladW = new Float64Array(24), entW = new Float64Array(24), cntW = new Float64Array(24);
+      let vorSoc = 0;   // pvNapSim startet mit initSoc = 0
+      for (let t = 0; t < socArr.length; t++) {
+        const hAbs  = Math.floor(t / stepsPerHour);
+        const tag   = Math.floor(hAbs / 24), std = hAbs % 24;
+        const delta = socArr[t] - vorSoc; vorSoc = socArr[t];
+        const ladKw = delta > 0 ?  delta / PV_BAT_ETA / dt : 0;
+        const entKw = delta < 0 ? -delta * PV_BAT_ETA / dt : 0;
+        if (tag >= somS && tag < somE) { ladS[std] += ladKw; entS[std] += entKw; cntS[std]++; }
+        else                           { ladW[std] += ladKw; entW[std] += entKw; cntW[std]++; }
+      }
+      const mw = (arr, cnt) => Array.from(arr, (v, h) => cnt[h] ? v / cnt[h] : 0);
+      const ladSom = mw(ladS, cntS), entSom = mw(entS, cntS);
+      const ladWin = mw(ladW, cntW), entWin = mw(entW, cntW);
+
+      // Symmetrische Leistungsachse, auf 1/2/5er-Stufen gerastet
+      const pRoh = Math.max(...ladSom, ...entSom, ...ladWin, ...entWin, 0.1);
+      const pExp = Math.pow(10, Math.floor(Math.log10(pRoh)));
+      const pMax = (pExp === 0 ? 1 : (_PVSF_STUFEN.find(st => pRoh / pExp <= st) || 10) * pExp);
+      const kwTxt = v => v >= 1000 ? (v / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MW'
+                                   : Math.round(v).toLocaleString('de-DE') + ' kW';
+
+      const ox = panelW + 18;
+      // Jeder Stundenmittelwert steht für die ganze Stunde → auf die Slotmitte gesetzt,
+      // damit Linie und zugehöriger Balken exakt übereinander liegen.
+      const slot = dcW / 24;
+      const hx   = h => ox + DPL + (h + 0.5) * slot;
+      const line = (arr) => arr.map((v, h) =>
+        `${h ? 'L' : 'M'}${hx(h).toFixed(1)},${(DPT + (1-Math.max(0,Math.min(yMax,v))/yMax)*socH).toFixed(1)}`).join('');
+
+      // Balken: Laden nach oben, Entladen nach unten, je Stunde Sommer links / Winter rechts
+      const barTop = DPT + socH + 13, baseY = barTop + barH / 2, hh = barH / 2 - 1;
+      const bw = slot * 0.3;
+      const saeule = (lad, ent, dx, op) => Array.from({ length: 24 }, (_, h) => {
+        const x = hx(h) + dx - bw / 2;
+        const hL = Math.min(1, lad[h] / pMax) * hh, hE = Math.min(1, ent[h] / pMax) * hh;
+        return (hL > 0.4 ? `<rect x="${x.toFixed(1)}" y="${(baseY-hL).toFixed(1)}" width="${bw.toFixed(1)}" height="${hL.toFixed(1)}" fill="${_PVSF_COL.ladEv}" opacity="${op}"/>` : '')
+             + (hE > 0.4 ? `<rect x="${x.toFixed(1)}" y="${baseY.toFixed(1)}" width="${bw.toFixed(1)}" height="${hE.toFixed(1)}" fill="${_PVSF_COL.entlBed}" opacity="${op}"/>` : '');
+      }).join('');
+      const tagesgang = `
+      <rect x="${(ox+DPL).toFixed(1)}" y="${DPT}" width="${dcW.toFixed(1)}" height="${socH.toFixed(1)}" fill="rgba(149,117,205,0.06)"/>
+      <rect x="${(ox+DPL).toFixed(1)}" y="${barTop.toFixed(1)}" width="${dcW.toFixed(1)}" height="${barH.toFixed(1)}" fill="rgba(149,117,205,0.06)"/>
+      ${ticks.map(f => `<line x1="${(ox+DPL).toFixed(1)}" y1="${(DPT+(1-f/yMax)*socH).toFixed(1)}" x2="${(ox+DPL+dcW).toFixed(1)}" y2="${(DPT+(1-f/yMax)*socH).toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+        <text x="${(ox+DPL-5).toFixed(1)}" y="${(DPT+(1-f/yMax)*socH+3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${(f*100).toFixed(0)}%</text>`).join('')}
+      <path d="${line(somMean)}" fill="none" stroke="#ffb74d" stroke-width="1.6"/>
+      <path d="${line(winMean)}" fill="none" stroke="#4fc3f7" stroke-width="1.6" stroke-dasharray="3 2"/>
+      ${saeule(ladSom, entSom, -bw * 0.62, 0.92)}
+      ${saeule(ladWin, entWin,  bw * 0.62, 0.40)}
+      <line x1="${(ox+DPL).toFixed(1)}" y1="${baseY.toFixed(1)}" x2="${(ox+DPL+dcW).toFixed(1)}" y2="${baseY.toFixed(1)}" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+      <text x="${(ox+DPL-5).toFixed(1)}" y="${(barTop+8).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${kwTxt(pMax)}</text>
+      <text x="${(ox+DPL-5).toFixed(1)}" y="${(baseY+3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">0</text>
+      <text x="${(ox+DPL-5).toFixed(1)}" y="${(barTop+barH-1).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">${Math.round(pMax).toLocaleString('de-DE')}</text>
+      <text x="${(ox+DPL).toFixed(1)}" y="${(barTop-4).toFixed(1)}" font-size="8"><tspan fill="${_PVSF_COL.ladEv}">▲ laden</tspan><tspan fill="#78909c"> · </tspan><tspan fill="${_PVSF_COL.entlBed}">▼ entladen</tspan><tspan fill="#78909c"> (Stundenmittel)</tspan></text>
+      <text x="${(ox+DPL).toFixed(1)}" y="${(DPT-6)}" fill="#b0bec5" font-size="8.5" font-weight="600">Ø Tagesgang: Ladestand und Leistung</text>
+      <text x="${(ox+DPL+dcW).toFixed(1)}" y="${(DPT-6)}" text-anchor="end" font-size="8"><tspan fill="#ffb74d">Apr–Sep</tspan><tspan fill="#78909c"> · </tspan><tspan fill="#4fc3f7">Okt–Mär</tspan></text>
+      ${[0, 6, 12, 18].map(h => `<text x="${hx(h).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="middle" fill="#78909c" font-size="8">${h}</text>`).join('')}
+      <text x="${(ox+DPL+dcW).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="8">Uhrzeit</text>`;
+
+      svgWrap.innerHTML = `
+      <svg width="${W}" height="${SH}" style="display:block;overflow:visible;">${sankey}</svg>
+      <svg width="${W}" height="${HH}" style="display:block;overflow:visible;margin-top:4px;">${cells}${monthMarks}${hourMarks}${legend}</svg>
+      <svg width="${W}" height="${DH}" style="display:block;overflow:visible;margin-top:6px;">${dauer}${tagesgang}</svg>
+      <div style="font-size:8px;color:var(--muted);margin-top:5px;line-height:1.6;">
+        Alle Mengen und Leistungen an den AC-Klemmen des Speichers (η = ${(PV_BAT_ETA*100).toFixed(0)} % je Wandlung,
+        C-Rate ${PV_BAT_C_RATE} → max. ${Math.round(bat * PV_BAT_C_RATE).toLocaleString('de-DE')} kW Lade-/Entladeleistung).
+        Die Balken sind Stundenmittel über alle Tage des jeweiligen Halbjahres und liegen daher deutlich unter dieser Grenze.
+        Bilanz: Ladung − Entladung − Wandlungsverluste = Restladung am Jahresende.
+        Vollzyklen = entladene Energie ÷ Nennkapazität. „Vermiedene Abregelung" und „zusätzlicher Eigenverbrauch"
+        gegen denselben PV-Ausbau ohne Speicher gerechnet.
+      </div>`;
+    }
+
+    function sync() {
+      const pv = parseFloat(pvIn.value) || 0, bat = parseFloat(batIn.value) || 0;
+      const windKw = windIn ? (parseFloat(windIn.value) || 0) : windKwInst;
+      el.querySelector('#pva-sf-pv-val').textContent  = Math.round(pv) + ' kWp';
+      el.querySelector('#pva-sf-bat-val').textContent = (bat/1000).toFixed(2) + ' MWh';
+      if (windIn) el.querySelector('#pva-sf-wind-val').textContent = Math.round(windKw) + ' kW';
+      draw(pv, bat, windKw);
+    }
+    pvIn.addEventListener('input', sync);
+    batIn.addEventListener('input', sync);
+    if (windIn) windIn.addEventListener('input', sync);
+    el.querySelectorAll('[data-sf-var]').forEach(b => b.addEventListener('click', () => {
+      const [p, q] = b.dataset.sfVar.split('|').map(parseFloat);
+      pvIn.value = Math.round(p); batIn.value = Math.round(q);
+      if (windIn) windIn.value = Math.round(windKwInst);
+      sync();
+    }));
+    sync();
+
+    const fsBtn = el.querySelector('[data-pva-fs="speicherfluss"]');
+    if (fsBtn) fsBtn.addEventListener('click', () =>
+      _pvOpenFs('Speicherfluss: wofür der Batteriespeicher arbeitet', cnt =>
+        renderSpeicherFluss(_pvFsArgs.demandH, _pvFsArgs.pvProfile, _pvFsArgs.napParams, _pvFsArgs.params, window._pvAnalyse.ergebnisse, cnt)
       )
     );
   }
@@ -122933,6 +124113,10 @@ ${massTbl}
         ${modeToggle}
         ${modus === 'flaechen' ? flaechenUI : pauschalUI}
         ${pvBjRow}
+        ${/* §-Zeile der landesrechtlichen PV-Pflicht (09e). Über window, weil ein
+              Import auf 09e diesen Altkern-Zyklus vergrößern würde. Leer, wenn für
+              dieses Gebäude keine Pflicht greift. */ ''}
+        ${window.pvPflichtBadgeHtml?.(g.id) || ''}
       </div>
     </div>`;
   }
@@ -129662,6 +130846,51 @@ ${massTbl}
     updateWirtDisplay: updateWirtDisplay
   });
 
+  // @ts-check
+  // ── lib/bundeslaender.js — Bundesland aus Koordinaten ────────────────────────
+  // Grobe Bounding-Boxes; bei Überlappung gewinnt das erste Match, deshalb stehen
+  // die kleinen Stadtstaaten vorn. Genügt für die beiden Zwecke im Tool:
+  // WFS-Quelle wählen (03b-netz.js) und Landesrecht zuordnen (09d-pv-analyse.js).
+  // In Grenzlagen kann die Zuordnung danebenliegen — beide Aufrufer lassen sie
+  // deshalb überschreiben.
+  //
+  // Lag bis 2026-09 direkt in 03b-netz.js; hierher gezogen, damit die PV-Analyse
+  // sie ohne Import auf das Netz-Modul nutzen kann (und damit sie testbar ist).
+
+  /** [südlat, westlon, nordlat, ostlon] */
+  const BUNDESLAND_BBOX = Object.freeze([
+    { id: 'hb', bbox: [53.01, 8.48, 53.60, 8.99] },
+    { id: 'hh', bbox: [53.39, 9.73, 53.74, 10.33] },
+    { id: 'be', bbox: [52.33, 13.08, 52.68, 13.77] },
+    { id: 'sl', bbox: [49.11, 6.35, 49.64, 7.41] },
+    { id: 'sh', bbox: [53.35, 7.87, 55.06, 11.35] },
+    { id: 'mv', bbox: [53.11, 10.59, 54.69, 14.41] },
+    { id: 'ni', bbox: [51.29, 6.65, 53.89, 11.60] },
+    { id: 'bb', bbox: [51.36, 11.26, 53.56, 14.77] },
+    { id: 'st', bbox: [50.94, 10.56, 53.04, 13.19] },
+    { id: 'nw', bbox: [50.32, 5.87, 52.53, 9.46] },
+    { id: 'he', bbox: [49.39, 7.77, 51.66, 10.24] },
+    { id: 'th', bbox: [50.20, 9.87, 51.65, 12.66] },
+    { id: 'sn', bbox: [50.17, 11.87, 51.69, 15.04] },
+    { id: 'rp', bbox: [48.97, 6.11, 50.94, 8.51] },
+    { id: 'bw', bbox: [47.53, 7.51, 49.79, 10.50] },
+    { id: 'by', bbox: [47.27, 8.98, 50.56, 13.84] },
+  ]);
+
+  /**
+   * @param {number} lat
+   * @param {number} lon
+   * @returns {string|null} Länderschlüssel ('bw', 'by', …) oder null außerhalb DE
+   */
+  function detectBundesland(lat, lon) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    for (const eintrag of BUNDESLAND_BBOX) {
+      const b = eintrag.bbox;
+      if (lat >= b[0] && lat <= b[2] && lon >= b[1] && lon <= b[3]) return eintrag.id;
+    }
+    return null;
+  }
+
   // Geometrie-Hilfen für Wärmenetzleitungen an Gebäudegrundrissen.
   // Für die kleinen Entfernungen eines Quartiers genügt die Rechnung direkt in
   // Breiten-/Längengraden; alle Tests sind invariant gegenüber der Maßeinheit.
@@ -131024,35 +132253,10 @@ ${massTbl}
     by: null
   };
 
-  // Grobe Bounding-Boxes der Bundesländer [südlat, westlon, nordlat, ostlon]
-  // Bei Überlappung wird das erste Match verwendet; Sortierung: kleinere Stadtstaaten zuerst
-  var BUNDESLAND_BBOX = [
-    { id: 'hb', bbox: [53.01, 8.48, 53.60, 8.99] },
-    { id: 'hh', bbox: [53.39, 9.73, 53.74, 10.33] },
-    { id: 'be', bbox: [52.33, 13.08, 52.68, 13.77] },
-    { id: 'sl', bbox: [49.11, 6.35, 49.64, 7.41] },
-    { id: 'sh', bbox: [53.35, 7.87, 55.06, 11.35] },
-    { id: 'mv', bbox: [53.11, 10.59, 54.69, 14.41] },
-    { id: 'ni', bbox: [51.29, 6.65, 53.89, 11.60] },
-    { id: 'bb', bbox: [51.36, 11.26, 53.56, 14.77] },
-    { id: 'st', bbox: [50.94, 10.56, 53.04, 13.19] },
-    { id: 'nw', bbox: [50.32, 5.87, 52.53, 9.46] },
-    { id: 'he', bbox: [49.39, 7.77, 51.66, 10.24] },
-    { id: 'th', bbox: [50.20, 9.87, 51.65, 12.66] },
-    { id: 'sn', bbox: [50.17, 11.87, 51.69, 15.04] },
-    { id: 'rp', bbox: [48.97, 6.11, 50.94, 8.51] },
-    { id: 'bw', bbox: [47.53, 7.51, 49.79, 10.50] },
-    { id: 'by', bbox: [47.27, 8.98, 50.56, 13.84] },
-  ];
-
+  // Bounding-Boxes und Zuordnung liegen in lib/bundeslaender.js — die PV-Analyse
+  // braucht dieselbe Zuordnung fürs Landesrecht, ohne das Netz-Modul zu importieren.
   function _detectBundesland(lat, lon) {
-    for (var i = 0; i < BUNDESLAND_BBOX.length; i++) {
-      var b = BUNDESLAND_BBOX[i].bbox;
-      if (lat >= b[0] && lat <= b[2] && lon >= b[1] && lon <= b[3]) {
-        return BUNDESLAND_BBOX[i].id;
-      }
-    }
-    return null;
+    return detectBundesland(lat, lon);
   }
 
   function _wfsBuildUrl(cfg, bbox4326) {
@@ -178374,6 +179578,534 @@ ${gebMitFeld.length === 0 && assetsMitFeld.length === 0 ? `
     updateKaelte: updateKaelte
   });
 
+  // ── 09e-pv-pflicht.js — Landesrechtliche PV-Pflicht: App-Schicht und Übersicht ──
+  //
+  // Gerechnet wird in lib/pv-pflicht.js (DOM-frei, getestet), die Länderdaten stehen
+  // in config/pv-pflicht-laender.js. Hier steht alles, was das Gebäudemodell und die
+  // Oberfläche betrifft: Aufbereitung der Gebäude, Bestimmung des Bundeslandes, die
+  // Gebäude-Übersicht und die kurze §-Zeile für Gebäudekarte und PV-Modus.
+  //
+  // WARUM DIE PFLICHT GEBÄUDESCHARF BLEIBT: § 32a BbgBO & Co. verpflichten das
+  // einzelne Gebäude, nicht die Liegenschaft. Eine Summe über das Quartier kann
+  // deshalb „erfüllt" aussehen, während einzelne Dächer unterbelegt sind — und
+  // umgekehrt. Die Übersicht (pvPflichtUebersichtOeffnen) ist der Ort, an dem sich
+  // Soll und geplante Auslegung je Gebäude gegenüberstehen.
+  //
+  // UNABHÄNGIG VOM JAHRES-SLIDER: Der auslösende Fall wird gegen das ECHTE
+  // Kalenderjahr geprüft, nicht gegen globalYear. Sonst hinge die Pflichtleistung
+  // daran, wohin der Betrachtungsjahr-Regler gerade geschoben ist — ein Gebäude ist
+  // aber ein geplanter Neubau, egal welches Jahr man gerade ansieht.
+
+
+  const LILA = '#9575cd';
+  const LILA_HELL = '#b39ddb';
+
+  /** Auswahl für den Pflichtfall je Gebäude. '' = automatisch erkennen. */
+  const PFLICHT_FALL_OPTIONEN = Object.freeze([
+    { wert: '',              label: 'automatisch' },
+    { wert: 'neubau',        label: 'Neubau' },
+    { wert: 'dachsanierung', label: 'Dachsanierung' },
+    { wert: 'keine',         label: 'nicht pflichtig' },
+  ]);
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // AUFBEREITUNG
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /** Bundesland: Handauswahl im PVA-Panel hat Vorrang, sonst aus dem Schwerpunkt der Gebäude. */
+  function pvPflichtLandId() {
+    const gewaehlt = window._pvAnalyse?.pflichtLand;
+    if (gewaehlt) return gewaehlt;
+    let lat = 0, lon = 0, n = 0;
+    for (const g of (gebaeude || [])) {
+      const la = Number.isFinite(g.lat) ? g.lat : g.polygon?.[0]?.[0];
+      const lo = Number.isFinite(g.lng) ? g.lng : g.polygon?.[0]?.[1];
+      if (Number.isFinite(la) && Number.isFinite(lo)) { lat += la; lon += lo; n++; }
+    }
+    return n > 0 ? detectBundesland(lat / n, lon / n) : null;
+  }
+
+  /**
+   * Geplante Leistung eines Gebäudes für die PFLICHTPRÜFUNG — die Modul-Nennleistung.
+   *
+   * Das Landesrecht verlangt Modulfläche bzw. installierte Leistung, nicht Ertrag.
+   * Das PV-Asset trägt dagegen die ausrichtungskorrigierte Leistung: overwritePvAsset
+   * schreibt calcGebKwpKorr, also Nennleistung × Ausrichtungsfaktor. Ein Ost-West-
+   * oder Norddach stünde damit bei der Pflichtprüfung schlechter da, als es rechtlich
+   * ist. Deshalb hat das Dachmodell (calcGebKwp = platzierte Module × Modul-Wp)
+   * Vorrang; das Asset zählt nur, wenn es die einzige Quelle ist.
+   *
+   * Folge: Die Summe hier kann vom „Anlagenpotenzial" im PVA-Panel abweichen — das
+   * rechnet bewusst mit den korrigierten Asset-Werten weiter, weil daraus Ertrag und
+   * Wirtschaftlichkeit folgen. Die Übersicht weist die Differenz je Gebäude aus.
+   *
+   * @param {any} g
+   * @returns {{ kwp: number, quelle: 'dach'|'asset'|'keine', dachKwp: number, assetKwp: number|null }}
+   */
+  function pvGeplantDetail(g) {
+    const pv = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
+    const assetKwp = pv ? (parseFloat(pv.props?.leistungKWp) || 0) : null;
+    const dachKwp  = g.pvAktiv ? (calcGebKwp(g) || 0) : 0;
+    if (dachKwp > 0)        return { kwp: dachKwp, quelle: 'dach', dachKwp, assetKwp };
+    if (assetKwp != null)   return { kwp: assetKwp, quelle: 'asset', dachKwp: 0, assetKwp };
+    return { kwp: 0, quelle: 'keine', dachKwp: 0, assetKwp: null };
+  }
+
+  /** Nennleistung eines Gebäudes für die Pflichtprüfung. @param {any} g */
+  function pvGeplanteKwp(g) {
+    return pvGeplantDetail(g).kwp;
+  }
+
+  /**
+   * Anlagenpotenzial des Projekts in MODUL-NENNLEISTUNG — dieselbe Zusammensetzung
+   * wie pvGetMaxKwpFromAssets (09d), nur mit dem Dachmodell statt der ausrichtungs-
+   * korrigierten Asset-Leistung. Grundlage für die Umrechnung der Varianten auf die
+   * Basis, auf der die Pflicht formuliert ist.
+   *
+   * Freiflächen (calcFFKwp) und die manuelle Eingabe sind bereits Nennleistung und
+   * gehen unverändert ein; korrigiert wird nur der Gebäudeteil.
+   */
+  function pvPotenzialNennKwp() {
+    // Bei manuell vorgegebener Gesamtleistung ist die Basis nicht bestimmbar —
+    // dann bleibt der Wert wie er ist (Umrechnungsfaktor 1).
+    const override = window._pvAnalyse?.pvMaxKwpOverride || 0;
+    if (override > 0) return override;
+
+    const gebNenn = (gebaeude || []).reduce((sum, g) => sum + pvGeplantDetail(g).kwp, 0);
+
+    // PV-Assets ohne Gebäudebezug (Freistehendes, Carports) haben kein Dachmodell
+    const assetOhneGeb = (ASSETS?.items || [])
+      .filter(a => a.type === 'PV' && a.buildingId == null)
+      .reduce((sum, a) => sum + (parseFloat(a.props?.leistungKWp) || 0), 0);
+
+    const ffKwp  = (freiflaechen || []).reduce((sum, ff) => sum + calcFFKwp(ff), 0);
+    const manual = parseFloat(document.getElementById('pv-kwp')?.value) || 0;
+
+    return gebNenn + assetOhneGeb + ffKwp + manual;
+  }
+
+  /**
+   * Umrechnungsfaktor „Anlagenpotenzial → Nennleistung".
+   * Die Varianten werden aus dem Potenzial abgeleitet, das die korrigierten
+   * Asset-Werte enthält; die Pflicht ist in Nennleistung formuliert. Ohne diesen
+   * Faktor verglichen man zwei verschiedene Größen.
+   * @param {number} potenzialKwp Ergebnis von pvGetMaxKwpFromAssets
+   */
+  function pvNennFaktor(potenzialKwp) {
+    const nenn = pvPotenzialNennKwp();
+    if (!(potenzialKwp > 0) || !(nenn > 0)) return 1;
+    return nenn / potenzialKwp;
+  }
+
+  /**
+   * Gebäude für den Pflicht-Rechenkern aufbereiten.
+   *
+   * Auslösender Fall, in dieser Reihenfolge:
+   *   1. Handeingabe am Gebäude (g.pvPflichtFall) — schlägt alles
+   *   2. Neubau        — baujahr liegt in der Zukunft (savePlan 'neubau')
+   *   3. Dachsanierung — Sanierungseintrag, der ausdrücklich das Dach betrifft
+   *                      (sa.dach). Ohne dieses Merkmal ist eine energetische
+   *                      Sanierung nicht von einer Dachsanierung unterscheidbar.
+   */
+  function pvPflichtGebaeudeliste() {
+    const heute = new Date().getFullYear();
+    const liste = [];
+    for (const g of (gebaeude || [])) {
+      if (isExcluded(g.id)) continue;
+      if (g.abrissjahr && g.abrissjahr <= heute) continue;   // heute schon abgerissen
+      const typ = getNutzungstypById(g.nutzungstyp);
+      const dachSan = (g.sanierungen || []).find(sa => sa?.dach === true);
+      const neigung = g.dachNeigung ?? getDachDefaultNeigung(g.dachform || 'sattel');
+      // pvNettoFlaeche summiert die im PV-Modus GEZEICHNETEN Flächen, und die sind
+      // auf der Karte gemessen — also Grundriss. Für die Länder, die auf die
+      // „geeignete Dachfläche" abstellen, zählt die Dachhaut: erst projizieren.
+      liste.push({
+        id: g.id,
+        name: g.name || g.gebaeudenummer || `Gebäude ${g.id}`,
+        grundflaecheM2: parseFloat(g.flaeche) || 0,
+        dachNeigung:    neigung,
+        wohnen:         typ?.gruppe === 'Wohnen',
+        geeignetM2:     projiziereAufDachflaeche(pvNettoFlaeche(g), neigung),
+        nutzflaecheM2:  (parseFloat(g.flaeche) || 0) * (parseInt(g.stockwerke) || typ?.stockwerke || 1),
+        neubau:         Number.isFinite(g.baujahr) && g.baujahr > heute,
+        dachsanierung:  !!dachSan,
+        sanAnteilPct:   dachSan?.dachAnteilPct ?? null,
+        istKwp:         pvGeplanteKwp(g),
+        pflichtFall:    g.pvPflichtFall || '',
+      });
+    }
+    return liste;
+  }
+
+  /** Aktuelle Pflichtlage des Projekts — Ergebnis von pvPflichtSumme. */
+  function pvPflichtAktuell() {
+    const s = window._pvAnalyse || {};
+    return pvPflichtSumme(pvPflichtGebaeudeliste(), pvPflichtLandId(), {
+      wpProM2: _pvWpM2Global(),
+      annahme: s.pflichtAnnahme || 'auto',
+      eignungPauschalPct: EIGNUNG_PAUSCHAL_PCT,
+    });
+  }
+
+  /** Pflichtlage eines einzelnen Gebäudes (oder null, wenn es nicht erfasst ist). */
+  function pvPflichtFuerGebaeude(gebId) {
+    const pf = pvPflichtAktuell();
+    return [...pf.faelle, ...pf.ohneFall].find(f => f.id === gebId) || null;
+  }
+
+  /** Pflichtfall am Gebäude setzen — aus der Übersicht heraus. */
+  function pvPflichtFallSetzen(gebId, wert) {
+    const g = (gebaeude || []).find(x => x.id === gebId);
+    if (!g) return;
+    if (wert) g.pvPflichtFall = wert; else delete g.pvPflichtFall;
+    window.pvMarkStale?.();
+    pvPflichtUebersichtRender();
+    window.pvPflichtRefresh?.();
+    window.renderList?.();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // KURZE §-ZEILE — Gebäudekarte (03c) und PV-Modus (25)
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Einzeiler für ein Gebäude: Soll, Ist und Abstand. Leer, wenn für dieses Gebäude
+   * keine Pflicht greift — die Karte soll nicht mit Nicht-Fällen zugestellt werden.
+   * @param {number} gebId
+   * @returns {string} HTML
+   */
+  function pvPflichtBadgeHtml(gebId) {
+    const pf = pvPflichtAktuell();
+    if (!pf.aktiv || !pf.regel?.pflicht) return '';
+    const f = pf.faelle.find(x => x.id === gebId);
+    if (!f) return '';
+
+    const norm = escHtml(pf.regel.norm || '');
+    if (!pf.bezifferbar) {
+      return `<div style="margin-top:6px;padding:4px 7px;border-radius:4px;font-size:9px;line-height:1.5;
+      background:rgba(149,117,205,0.10);border:1px solid rgba(149,117,205,0.3);color:${LILA_HELL};">
+      § pflichtig nach ${norm} — Landesrecht nennt keinen Flächenanteil</div>`;
+    }
+
+    const farbe = f.erfuellt ? '#66bb6a' : '#ef5350';
+    const text  = f.erfuellt
+      ? `erfüllt (+${Math.abs(f.deltaKwp).toFixed(1)} kWp)`
+      : `es fehlen ${Math.abs(f.deltaKwp).toFixed(1)} kWp`;
+    return `<div style="margin-top:6px;padding:4px 7px;border-radius:4px;font-size:9px;line-height:1.5;
+    background:rgba(149,117,205,0.10);border:1px solid rgba(149,117,205,0.3);"
+    title="${escHtml(f.rechenweg)}">
+    <span style="color:${LILA_HELL};">§ ${norm}</span>
+    <span style="color:var(--muted);"> · Soll </span><span style="color:${LILA_HELL};font-weight:600;">${f.kwp.toFixed(1)} kWp</span>
+    <span style="color:var(--muted);"> · geplant </span><span style="color:#ffd54f;" title="Modul-Nennleistung — für die Pflicht zählt die Modulfläche, nicht der Ertrag">${f.istKwp.toFixed(1)} kWp<span style="color:var(--muted);font-size:8px;"> Nennl.</span></span>
+    <br><span style="color:${farbe};font-weight:600;">${text}</span>
+    <span style="color:#607d8b;"> — ${escHtml(f.rechenweg)}</span>
+  </div>`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // INFOZEILE IM PVA-PANEL
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /** Infozeile unter der Länderauswahl — Sollleistung oder der Grund, warum es keine gibt. */
+  function pvPflichtInfoHtml() {
+    const pf = pvPflichtAktuell();
+    const rahmen = (farbe, inhalt) =>
+      `<div style="font-size:10px;line-height:1.55;color:${farbe};">${inhalt}</div>`;
+
+    if (!pf.aktiv || !pf.regel) return rahmen('#78909c', escHtml(pf.grund || 'Kein Bundesland bestimmt.'));
+    if (!pf.regel.pflicht)      return rahmen('#78909c', escHtml(pf.grund));
+    if (!pf.faelle.length) {
+      return rahmen('#78909c', `${escHtml(pf.regel.land)} · ${escHtml(pf.regel.norm)}<br>${escHtml(pf.grund)}`);
+    }
+
+    const knopf = `<button class="btn-xs" style="width:100%;margin-top:6px;border-color:${LILA};color:${LILA_HELL};"
+    data-click="pvPflichtUebersichtOeffnen()"
+    title="Soll und geplante Auslegung je Gebäude — die Pflicht gilt je Gebäude, nicht für die Liegenschaft">▦ Gebäude-Übersicht</button>`;
+
+    if (!pf.bezifferbar) {
+      return rahmen('#ffb74d', `${escHtml(pf.regel.norm)}: ${pf.faelle.length} pflichtige Gebäude, `
+        + 'aber kein Flächenanteil im Landesrecht beziffert — die Variante liefert keine Leistung.') + knopf;
+    }
+
+    const zaehl = (fall) => pf.faelle.filter(f => f.fall === fall).length;
+    const faelleTxt = [
+      zaehl('neubau')        ? `${zaehl('neubau')}× Neubau` : '',
+      zaehl('dachsanierung') ? `${zaehl('dachsanierung')}× Dachsanierung` : '',
+      zaehl('angenommen')    ? `${zaehl('angenommen')}× angenommen` : '',
+    ].filter(Boolean).join(' · ');
+    const unterdeckt = pf.faelle.filter(f => !f.erfuellt).length;
+
+    return `
+    <div style="display:flex;align-items:baseline;gap:7px;">
+      <span style="font-family:'DM Mono',monospace;font-size:15px;color:${LILA_HELL};">${pf.kwp.toFixed(0)}</span>
+      <span style="font-size:10px;color:var(--muted);">kWp Pflicht · ${escHtml(pf.regel.kurz)} ${escHtml(pf.regel.norm)}</span>
+    </div>
+    <div style="font-size:10px;color:#78909c;line-height:1.55;margin-top:2px;">
+      ${escHtml(faelleTxt)} · ${pf.regel.anteilPct.toFixed(0)} % der ${escHtml(bezugFlaechenNameDekliniert(pf.regel))}
+      <br>geplant an diesen Gebäuden: <span style="color:#ffd54f;">${pf.istKwp.toFixed(0)} kWp</span>
+      ${unterdeckt
+        ? ` · <span style="color:#ef5350;font-weight:600;">${unterdeckt} Gebäude unter Soll</span>`
+        : ' · <span style="color:#66bb6a;">alle Gebäude erfüllen ihr Soll</span>'}
+      ${pf.regel.anteilHerkunft === 'verordnung' ? '<br><span style="color:#ffb74d;">Anteil aus der Rechtsverordnung — vor Nutzung prüfen.</span>' : ''}
+      ${pf.annahmen.length ? `<br>${escHtml(pf.annahmen[0])}` : ''}
+      <br>Stand ${escHtml(PV_PFLICHT_META.stand)} · keine Rechtsberatung
+    </div>
+    ${knopf}`;
+  }
+
+  /** Infozeile nach Änderung von Land oder Annahme neu zeichnen. */
+  function pvPflichtRefresh() {
+    const el = document.getElementById('pva-pflicht-info');
+    if (el) el.innerHTML = pvPflichtInfoHtml();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // GEBÄUDE-ÜBERSICHT
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  const MODAL_ID = 'pv-pflicht-modal';
+
+  /** @type {HTMLElement|null} */
+  let _modal = null;
+
+  function pvPflichtUebersichtOeffnen() {
+    if (!_modal) {
+      _modal = document.createElement('div');
+      _modal.id = MODAL_ID;
+      _modal.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(8,12,24,0.97);'
+        + 'display:none;align-items:flex-start;justify-content:center;';
+      _modal.innerHTML =
+        '<div style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;'
+        + 'padding:12px 20px;border-bottom:1px solid rgba(255,255,255,0.08);">'
+        + `<span style="font-size:13px;font-weight:600;color:${LILA_HELL};">§ PV-Pflicht je Gebäude</span>`
+        + '<span id="pv-pflicht-x" style="cursor:pointer;font-size:22px;color:#90a4ae;padding:4px 10px;line-height:1;user-select:none;">✕</span></div>'
+        + '<div id="pv-pflicht-body" style="width:96vw;max-width:1500px;margin-top:56px;max-height:calc(100vh - 70px);overflow:auto;padding:8px 0 40px 0;"></div>';
+      document.body.appendChild(_modal);
+      _modal.querySelector('#pv-pflicht-x')?.addEventListener('click', pvPflichtUebersichtSchliessen);
+      _modal.addEventListener('click', (e) => { if (e.target === _modal) pvPflichtUebersichtSchliessen(); });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && _modal && _modal.style.display !== 'none') pvPflichtUebersichtSchliessen();
+      });
+    }
+    _modal.style.display = 'flex';
+    pvPflichtUebersichtRender();
+  }
+
+  function pvPflichtUebersichtSchliessen() {
+    if (_modal) _modal.style.display = 'none';
+  }
+
+  /** Tabelle neu zeichnen (auch nach Änderung eines Pflichtfalls). */
+  function pvPflichtUebersichtRender() {
+    const body = document.getElementById('pv-pflicht-body');
+    if (!body || _modal?.style.display === 'none') return;
+    body.innerHTML = _uebersichtHtml();
+  }
+
+  function _uebersichtHtml() {
+    const pf  = pvPflichtAktuell();
+    const nf  = (v, d = 0) => (Number.isFinite(v) ? v : 0).toLocaleString('de-DE',
+      { minimumFractionDigits: d, maximumFractionDigits: d });
+
+    if (!pf.aktiv || !pf.regel) {
+      return `<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px;">${escHtml(pf.grund || 'Kein Bundesland bestimmt.')}</div>`;
+    }
+    if (!pf.regel.pflicht) {
+      return `<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px;">${escHtml(pf.grund)}</div>`;
+    }
+
+    const r = pf.regel;
+    const alle = [...pf.faelle, ...pf.ohneFall];
+    const unterdeckt = pf.faelle.filter(f => !f.erfuellt);
+
+    // ── Kopf: die Regel im Klartext, damit der Rechenweg ohne Nachschlagen lesbar ist ──
+    const kopf = `
+  <div style="margin:0 0 12px 0;padding:11px 14px;border-radius:7px;
+       background:rgba(149,117,205,0.08);border:1px solid rgba(149,117,205,0.3);font-size:11px;line-height:1.7;">
+    <div style="font-weight:600;color:${LILA_HELL};font-size:12px;">${escHtml(r.land)} · ${escHtml(r.norm)}</div>
+    <div style="color:var(--muted);">
+      Pflicht je Gebäude: <b style="color:var(--text);">${nf(r.anteilPct)} % der ${escHtml(bezugFlaechenNameDekliniert(r))}</b>
+      als Modulfläche, umgerechnet mit <b style="color:var(--text);">${nf(_pvWpM2Global())} W/m²</b> Modulleistung
+      ${r.minDachM2 ? ` · erst ab ${nf(r.minDachM2)} m² Dachfläche` : ''}
+      ${r.minNutzflaecheM2 ? ` · erst ab ${nf(r.minNutzflaecheM2)} m² Nutzfläche` : ''}
+      ${r.gilt === 'nichtwohn' ? ' · nur Nichtwohngebäude' : ''}
+    </div>
+    <div style="color:var(--muted);">
+      Verglichen wird mit der <b style="color:var(--text);">Modul-Nennleistung</b> aus dem Dachmodell
+      (platzierte Module × Modul-Wp), nicht mit der ausrichtungskorrigierten Leistung im PV-Asset —
+      das Gesetz fordert Modulfläche, nicht Ertrag. Die Spalte kann deshalb vom Anlagenpotenzial
+      im PV-Panel abweichen; wo das vorkommt, steht es in der Zeile.
+    </div>
+    <div style="color:var(--muted);">
+      <b style="color:var(--text);">Woher die Bezugsfläche kommt:</b>
+      Bruttodachfläche = Gebäude-Grundfläche (Grundriss von der Karte) ÷ cos(Dachneigung).
+      Dachform und Neigung kommen aus der Gebäudekarte bzw. dem PV-Modus; ohne eigene
+      Eingabe gilt die Vorgabe der Dachform (flach 5°, Pult 15°, Walm 30°, Sattel 35°).${
+        r.bezug === 'geeignet'
+        ? ` Die geeignete Fläche ist die im PV-Modus gezeichnete Belegung minus Sperrflächen
+            (inkl. ausgesparter Nordseite), ebenfalls auf die Dachhaut projiziert — gezeichnet
+            wird im Grundriss. Ohne Zeichnung: pauschal ${EIGNUNG_PAUSCHAL_PCT} % der Bruttodachfläche.`
+        : ' Gezeichnete Belegungs- und Sperrflächen ändern sie NICHT — dieses Land stellt auf die gesamte Dachfläche ab.'}
+    </div>
+    <div style="color:var(--muted);">
+      Belegungsgrad, GCR, Aufständerung und Azimut gehen <b style="color:var(--text);">nicht</b> in die
+      Bezugsfläche ein — sie bestimmen die Modulplatzierung und damit die Spalte „geplant".
+    </div>
+    <div style="color:#607d8b;margin-top:3px;">
+      Der auslösende Fall wird gegen das laufende Kalenderjahr geprüft, nicht gegen den Jahres-Regler —
+      die Pflicht hängt an der Planung, nicht am Betrachtungsjahr. Je Gebäude überschreibbar.
+    </div>
+    <div style="color:#607d8b;">${escHtml(PV_PFLICHT_META.disclaimer)}</div>
+  </div>`;
+
+    // ── Summenzeile ──
+    const summe = `
+  <div style="display:flex;flex-wrap:wrap;gap:20px;margin-bottom:11px;padding:9px 14px;border-radius:7px;
+       background:var(--surface2);border:1px solid var(--border);font-size:11px;">
+    <span style="color:var(--muted);">Pflichtige Gebäude <b style="color:var(--text);font-family:'DM Mono',monospace;">${pf.faelle.length}</b></span>
+    <span style="color:var(--muted);">Soll gesamt <b style="color:${LILA_HELL};font-family:'DM Mono',monospace;">${nf(pf.kwp, 1)} kWp</b></span>
+    <span style="color:var(--muted);" title="Summe der Modul-Nennleistung der pflichtigen Gebäude">geplant gesamt (Nennleistung) <b style="color:#ffd54f;font-family:'DM Mono',monospace;">${nf(pf.istKwp, 1)} kWp</b></span>
+    <span style="color:var(--muted);">Bilanz <b style="color:${pf.istKwp >= pf.kwp ? '#66bb6a' : '#ef5350'};font-family:'DM Mono',monospace;">${
+      (pf.istKwp - pf.kwp >= 0 ? '+' : '−') + nf(Math.abs(pf.istKwp - pf.kwp), 1)} kWp</b></span>
+    ${unterdeckt.length
+      ? `<span style="color:#ef5350;font-weight:600;">${unterdeckt.length} Gebäude unter ihrem Soll</span>`
+      : '<span style="color:#66bb6a;">jedes Gebäude erfüllt sein Soll</span>'}
+  </div>
+  <div style="font-size:10.5px;color:#78909c;margin-bottom:9px;line-height:1.6;">
+    Die Summe ist nur eine Information: Das Gesetz verpflichtet das einzelne Gebäude.
+    Ein Überschuss auf einem Dach verrechnet sich nicht mit einer Unterdeckung auf einem anderen.
+  </div>`;
+
+    const th = (label, tip, rechts) =>
+      `<th style="padding:5px 7px;text-align:${rechts ? 'right' : 'left'};white-space:nowrap;"${tip ? ` title="${escHtml(tip)}"` : ''}>${label}</th>`;
+
+    let html = kopf + summe + `
+  <table style="width:100%;border-collapse:collapse;font-size:11px;">
+    <thead>
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border);font-size:10px;">
+        ${th('Gebäude')}
+        ${th('Pflichtfall', 'Automatisch erkannt oder am Gebäude gesetzt — die Handeingabe schlägt die Erkennung')}
+        ${th('Dachfläche', 'Bruttodachfläche = Grundfläche ÷ cos(Neigung)', true)}
+        ${th('Bezugsfläche', bezugFlaechenName(r) + ' — Grundlage der Pflichtrechnung', true)}
+        ${th('Soll', 'Pflichtleistung dieses Gebäudes', true)}
+        ${th('geplant', 'Modul-Nennleistung aus dem Dachmodell — ohne Ausrichtungskorrektur, weil das Gesetz Modulfläche fordert und nicht Ertrag', true)}
+        ${th('Δ', 'geplant − Soll', true)}
+        ${th('Rechenweg / Grund')}
+      </tr>
+    </thead>
+    <tbody>`;
+
+    for (const f of alle) {
+      const pflichtig = f.pflichtig;
+      const ok = f.erfuellt;
+      const geb = (gebaeude || []).find(x => x.id === f.id);
+      const det = geb ? pvGeplantDetail(geb) : { quelle: 'keine', assetKwp: null, dachKwp: 0 };
+      // Das PV-Asset trägt die ausrichtungskorrigierte Leistung; hier zählt die
+      // Nennleistung. Weicht beides ab, gehört das in die Zeile — sonst wirkt die
+      // Summe gegenüber dem Anlagenpotenzial im Panel wie ein Rechenfehler.
+      const assetAbweichung = det.quelle === 'dach' && det.assetKwp != null
+        && Math.abs(det.assetKwp - det.dachKwp) > 0.5
+        ? `PV-Asset trägt ${nf(det.assetKwp, 1)} kWp (ausrichtungskorrigiert) — für die Pflicht zählt die Nennleistung`
+        : det.quelle === 'asset'
+          ? 'nur PV-Asset vorhanden, kein Dachmodell — Wert ist ausrichtungskorrigiert'
+          : '';
+      const zeilenBg = !pflichtig ? 'transparent' : ok ? 'rgba(102,187,106,0.05)' : 'rgba(239,83,80,0.07)';
+      const td = (inhalt, farbe, rechts) =>
+        `<td style="padding:5px 7px;${rechts ? "text-align:right;font-family:'DM Mono',monospace;" : ''}white-space:nowrap;${farbe ? `color:${farbe};` : ''}">${inhalt}</td>`;
+
+      const sel = `<select data-change="pvPflichtFallSetzen(${f.id}, this.value)"
+      style="background:var(--surface);color:${f.manuell ? LILA_HELL : 'var(--muted)'};border:1px solid var(--border);
+      border-radius:3px;font-size:10px;padding:2px 4px;max-width:130px;">
+      ${PFLICHT_FALL_OPTIONEN.map(o => {
+        const g = (gebaeude || []).find(x => x.id === f.id);
+        const aktuell = g?.pvPflichtFall || '';
+        const zusatz = o.wert === '' && !f.manuell
+          ? ` (${pflichtig ? (f.fall === 'neubau' ? 'Neubau' : f.fall === 'dachsanierung' ? 'Dachsanierung' : 'angenommen') : 'kein Fall'})`
+          : '';
+        return `<option value="${o.wert}"${aktuell === o.wert ? ' selected' : ''}>${escHtml(o.label + zusatz)}</option>`;
+      }).join('')}
+    </select>`;
+
+      html += `
+      <tr style="border-bottom:1px solid rgba(255,255,255,0.04);background:${zeilenBg};">
+        ${td(`<span style="color:${pflichtig ? LILA_HELL : '#546e7a'};">§</span> ${escHtml(f.name || ('#' + f.id))}`, 'var(--text)')}
+        <td style="padding:5px 7px;">${sel}</td>
+        ${td(nf(f.dachM2), 'var(--muted)', true)}
+        ${td(pflichtig ? nf(f.bezugsM2) : '—', 'var(--muted)', true)}
+        ${td(pflichtig && pf.bezifferbar ? nf(f.kwp, 1) : '—', LILA_HELL, true)}
+        ${td(f.istKwp > 0 ? nf(f.istKwp, 1) : '—', f.istKwp > 0 ? '#ffd54f' : '#546e7a', true)}
+        ${td(pflichtig && pf.bezifferbar
+             ? (f.deltaKwp >= 0 ? '+' : '−') + nf(Math.abs(f.deltaKwp), 1)
+             : '—',
+             pflichtig && pf.bezifferbar ? (ok ? '#66bb6a' : '#ef5350') : '#546e7a', true)}
+        <td style="padding:5px 7px;color:#78909c;font-size:10px;">${
+          escHtml(pflichtig ? (f.rechenweg || f.grund) : f.grund)}${
+          f.annahmen.length ? `<br><span style="color:#ffb74d;">${escHtml(f.annahmen.join(' · '))}</span>` : ''}${
+          assetAbweichung ? `<br><span style="color:#4fc3f7;">${escHtml(assetAbweichung)}</span>` : ''}</td>
+      </tr>`;
+    }
+
+    html += '</tbody></table>';
+
+    if (unterdeckt.length) {
+      html += `
+    <div style="margin-top:12px;padding:9px 13px;border-radius:6px;font-size:10.5px;line-height:1.7;
+         background:rgba(239,83,80,0.10);border:1px solid rgba(239,83,80,0.35);">
+      <b style="color:#ef5350;">${unterdeckt.length} Gebäude unter ihrem Soll.</b>
+      <span style="color:var(--muted);">Häufige Ursachen, in dieser Reihenfolge prüfen:</span>
+      <ol style="margin:4px 0 0 18px;padding:0;color:#90a4ae;">
+        <li>Pflichtiges Gebäude ohne geplante PV — steht hier mit „geplant —".</li>
+        <li>Bezugsfläche: ${escHtml(r.land)} rechnet auf die ${escHtml(bezugFlaechenNameDekliniert(r))}.
+            ${r.bezug !== 'geeignet'
+              ? 'Das ist die GESAMTE Dachfläche, auch die Nordseite und alles, was als Sperrfläche ausgespart ist.'
+              : 'Sperrflächen mindern sie also, eine fehlende Zeichnung wird pauschal geschätzt.'}</li>
+        <li>Dachmodell und PV-Asset laufen auseinander — die Zeile weist das aus. Für die Pflicht
+            zählt die Nennleistung aus dem Dachmodell, für Ertrag und Wirtschaftlichkeit das Asset.</li>
+      </ol>
+    </div>`;
+    }
+
+    (r.hinweise || []).length && (html += `
+    <div style="margin-top:10px;font-size:10px;color:#78909c;line-height:1.7;">
+      ${(r.hinweise || []).map(h => `• ${escHtml(h)}`).join('<br>')}
+    </div>`);
+
+    return html;
+  }
+
+  // ── window-Bridge für data-click/data-change und für Module, die keinen Import
+  //    auf dieses Modul haben dürfen (03c und 25 würden sonst einen Zyklus bilden) ──
+  window.pvPflichtAktuell           = pvPflichtAktuell;
+  window.pvPotenzialNennKwp         = pvPotenzialNennKwp;
+  window.pvNennFaktor               = pvNennFaktor;
+  window.pvGeplantDetail            = pvGeplantDetail;
+  window.pvPflichtLandId            = pvPflichtLandId;
+  window.pvPflichtInfoHtml          = pvPflichtInfoHtml;
+  window.pvPflichtUebersichtOeffnen = pvPflichtUebersichtOeffnen;
+  window.pvPflichtFallSetzen        = pvPflichtFallSetzen;
+  window.pvPflichtBadgeHtml         = pvPflichtBadgeHtml;
+  window.pvPflichtRefresh           = pvPflichtRefresh;
+
+  var pvPflicht = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    PFLICHT_FALL_OPTIONEN: PFLICHT_FALL_OPTIONEN,
+    pvGeplantDetail: pvGeplantDetail,
+    pvGeplanteKwp: pvGeplanteKwp,
+    pvNennFaktor: pvNennFaktor,
+    pvPflichtAktuell: pvPflichtAktuell,
+    pvPflichtBadgeHtml: pvPflichtBadgeHtml,
+    pvPflichtFallSetzen: pvPflichtFallSetzen,
+    pvPflichtFuerGebaeude: pvPflichtFuerGebaeude,
+    pvPflichtGebaeudeliste: pvPflichtGebaeudeliste,
+    pvPflichtInfoHtml: pvPflichtInfoHtml,
+    pvPflichtLandId: pvPflichtLandId,
+    pvPflichtRefresh: pvPflichtRefresh,
+    pvPflichtUebersichtOeffnen: pvPflichtUebersichtOeffnen,
+    pvPflichtUebersichtRender: pvPflichtUebersichtRender,
+    pvPflichtUebersichtSchliessen: pvPflichtUebersichtSchliessen,
+    pvPotenzialNennKwp: pvPotenzialNennKwp
+  });
+
   // Gemeinsamer Abschluss einer Optimierungslauf-Sitzung. Liegt bewusst zwischen
   // Orchestrierung und Worker-Darstellung, damit diese Module sich nicht importieren.
   function _optFinished() {
@@ -200274,7 +202006,9 @@ ${teile.join('\n')}
         ? `<span>Faktor</span><span style="color:${fakFarbe};font-weight:600;">${(faktor * 100).toFixed(0)} %</span>`
         : `<span>Fläche</span><span style="font-weight:600;">${basis.toFixed(1)} kWp</span>`}
       <span style="font-weight:600;">= PV</span><span style="color:${GELB};font-weight:600;">${kwp.toFixed(1)} kWp</span>
-    </div>` : ''}`;
+    </div>` : ''}
+    ${/* Landesrechtliche PV-Pflicht dieses Dachs (09e, über window — siehe dort). */ ''}
+    ${window.pvPflichtBadgeHtml?.(g.id) || ''}`;
   }
 
   function _vorgabeBlock() {
@@ -202087,7 +203821,7 @@ ${teile.join('\n')}
     emissionen3d, exportMod, bericht, projektbericht, stromnetz, sankey,
     gbiLastgang, glBerechnen$1, dispatchCore, kaelteCore,
     analysisCharts, analysisEconomics, calcEngine,
-    pvProfile, pvCalc, pvChartsOpt, pvAnalyse,
+    pvProfile, pvCalc, pvChartsOpt, pvAnalyse, pvPflicht,
     optimizerCore, hourlyLive, optimizerRun, optimizerWorker, optimizerSession,
     hilfeLeitfaden,
     assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,

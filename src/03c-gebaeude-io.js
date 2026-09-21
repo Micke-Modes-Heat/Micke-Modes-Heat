@@ -1217,6 +1217,10 @@ function buildDachSection(g, opts = {}) {
         ${modeToggle}
         ${modus === 'flaechen' ? flaechenUI : pauschalUI}
         ${pvBjRow}
+        ${/* §-Zeile der landesrechtlichen PV-Pflicht (09e). Über window, weil ein
+              Import auf 09e diesen Altkern-Zyklus vergrößern würde. Leer, wenn für
+              dieses Gebäude keine Pflicht greift. */ ''}
+        ${window.pvPflichtBadgeHtml?.(g.id) || ''}
       </div>
     </div>`;
 }

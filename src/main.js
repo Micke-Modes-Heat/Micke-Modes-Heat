@@ -50,6 +50,7 @@ import * as pvProfile from './09a-pv-profile.js';
 import * as pvCalc from './09b-pv-calc.js';
 import * as pvChartsOpt from './09c-pv-charts-opt.js';
 import * as pvAnalyse from './09d-pv-analyse.js';
+import * as pvPflicht from './09e-pv-pflicht.js';
 import * as optimizerCore from './10a-optimizer-core.js';
 import * as hourlyLive from './10b-hourly-live.js';
 import * as optimizerRun from './10c-optimizer-run.js';
@@ -109,7 +110,7 @@ const modules = [
   emissionen3d, exportMod, bericht, projektbericht, stromnetz, sankey,
   gbiLastgang, glBerechnen, dispatchCore, kaelteCore,
   analysisCharts, analysisEconomics, calcEngine,
-  pvProfile, pvCalc, pvChartsOpt, pvAnalyse,
+  pvProfile, pvCalc, pvChartsOpt, pvAnalyse, pvPflicht,
   optimizerCore, hourlyLive, optimizerRun, optimizerWorker, optimizerSession,
   hilfeLeitfaden,
   assetsCore, assetsRender, assetsUi, assetsAuto, assetsInspector, sld, msRing, netzanalyse,
