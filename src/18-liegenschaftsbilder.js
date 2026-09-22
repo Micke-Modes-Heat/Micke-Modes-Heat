@@ -209,6 +209,7 @@ window.lbCapDownload = lbCapDownload;
 const LP_R = 6371000; // Erdradius (m), äquirektangulare Näherung — für Liegenschaftsgröße ausreichend
 const LP_STATUS_LABEL = { bestand: 'Bestand', neu: 'Neubau', abriss: 'Rückbau' };
 const LP_STATUS_FARBE = { bestand: '#266426', neu: '#1E88E5', abriss: '#C62828' };
+const LP_HERVORHEBEN_GRAU = '#9e9e9e'; // "Neubau hervorheben": Bestand/Rückbau einheitlich grau
 const LP_PALETTE = ['#8D6E63', '#7986CB', '#4DB6AC', '#F06292', '#AED581', '#FFB74D',
                      '#A1887F', '#90A4AE', '#BA68C8', '#4DD0E1', '#DCE775', '#F48FB1'];
 
@@ -217,6 +218,7 @@ let _lpState = {
   anzeige: 'alle',                      // 'alle' | 'bestand' | 'neubau' | 'abriss'
   einfaerben: 'keine',                  // 'keine' | 'nutzung' | 'status'
   gebaeude: true, waerme: true, strom: true,
+  strassen: false,                      // Straßenverlauf aus OSM — reiner Kartenkontext, keine Netz-/Zeitlogik
   msModus: 'aus',                       // 'aus' | 'ring' (nur geschlossene Ringe) | 'alle' (jede MS-Leitung)
   beschriftung: false,                  // Master-Schalter: Namen/Nummern von Gebäuden + Assets zeigen
   labelGeb: true,                       // Teil der Beschriftungs-Auswahl: Gebäude benennen (Assets je Typ, s. _lpLabelTypes)
@@ -251,6 +253,13 @@ let _lpLabelTypes = {};   // { [Typ]: boolean } — je Asset-Typ: Beschriftung a
 // kein Text/Hervorheben dran, es ist nur die Position einer ohnehin gezeichneten Beschriftung.
 let _lpLabelOffsets = new Map();
 let _lpSatBusy = false;
+// Straßenlinien für den Vektor-Lageplan — reiner Kartenkontext (keine Zeit-/Statuslogik wie beim
+// Netz). null = noch nicht geladen, [] = geladen aber leer (kein Fund/Fehler). Wird NICHT selbst
+// per Overpass abgefragt: dieses Modul liest nur, was window.loadOsmStrassen() (05b-stromnetz.js,
+// eigentlich für die Kabeltrassierung gedacht) bereits als Ebene auf die echte Karte gelegt hat —
+// gleiche "nur Globals lesen"-Regel wie bei window.gebaeude/window.stromEdges.
+let _lpStrassenLinien = null;
+let _lpStrassenBusy = false;
 
 // Freie Beschriftungen (Text/Linie). Bewusst keine Zeichen-Werkzeugleiste: Text eintippen,
 // Position per Klick auf die Vorschau setzen (siehe lpAttachPlacingHandler), danach im Plan
@@ -388,6 +397,9 @@ function lpFarbeFuer(key, cache) {
 function lpModusFarbe(item) {
   if (_lpState.einfaerben === 'status') return LP_STATUS_FARBE[item?.horizont] || LP_STATUS_FARBE.bestand;
   if (_lpState.einfaerben === 'schicht') return SCHICHT_META[normSchicht(item?.schicht)].farbe;
+  // "Neubau hervorheben": Bestand/Rückbau grau, Neubau behält seine gewohnte Farbe (null =
+  // keine Übersteuerung, s. lpGebFarbe/die Polylinien-Fälle, die dann auf den Standardton fallen).
+  if (_lpState.einfaerben === 'hervorheben') return item?.horizont === 'neu' ? null : LP_HERVORHEBEN_GRAU;
   return null;
 }
 
@@ -560,7 +572,7 @@ function lpSammleGeometrie() {
       for (const ring of (window.elDetectMSRings() || [])) {
         for (const e of (ring.edges || [])) {
           const pts = lpStromPunkte(e);
-          if (pts && pts.length >= 2) msRingListe.push(pts);
+          if (pts && pts.length >= 2) msRingListe.push({ pts, horizont: lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel)) });
         }
       }
     } catch (err) { void err; }
@@ -573,9 +585,10 @@ function lpSammleGeometrie() {
       if (!istMs(e.u) || !istMs(e.v)) continue;
       // gleiche Zeitfilterung wie beim übrigen Stromnetz, damit MS-Leitungen im
       // Zeithorizont nicht anders behandelt werden als die Kabel darunter
-      if (!lpSichtbarNachHorizont(lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel)))) continue;
+      const horizont = lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel));
+      if (!lpSichtbarNachHorizont(horizont)) continue;
       const pts = lpStromPunkte(e);
-      if (pts && pts.length >= 2) msRingListe.push(pts);
+      if (pts && pts.length >= 2) msRingListe.push({ pts, horizont });
     }
   }
 
@@ -597,7 +610,11 @@ function lpSammleGeometrie() {
       .filter(x => x.lat != null && x.lng != null && lpSichtbarNachHorizont(x.horizont));
   }
 
-  return { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe };
+  // Straßen — reiner Kartenkontext, ohne Zeithorizont/Status/Schicht: eine Straße existiert
+  // unabhängig vom gewählten Referenz-/Zieljahr der Liegenschaft.
+  const strassenListe = _lpState.strassen ? (_lpStrassenLinien || []).map(pts => ({ pts })) : [];
+
+  return { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe, strassenListe };
 }
 
 /**
@@ -707,7 +724,16 @@ function lpBuildLegendItems(col) {
       for (const s of SCHICHT_REIHENFOLGE) if (da.has(s)) add(SCHICHT_META[s].label, SCHICHT_META[s].farbe, 'flaeche');
     }
     if (col.msRingListe.length) add(_lpState.msModus === 'alle' ? 'Mittelspannung' : 'MS-Ring', '#FB8C00', 'linie');
+    if (col.strassenListe.length) add('Straßen', '#90a4ae', 'linie');
     return items;
+  }
+
+  // "Neubau hervorheben" färbt nur den Bestand um (grau) — Neubauten behalten ihre normale
+  // Ebenenfarbe, deshalb bekommt nur der graue Bestand einen eigenen Legendeneintrag, der Rest
+  // läuft über die übliche Ebenen-Legende weiter unten.
+  if (_lpState.einfaerben === 'hervorheben') {
+    const alle = [...col.gebaeudeListe, ...col.waermeListe, ...col.stromListe, ...col.assetListe];
+    if (alle.some(x => x.horizont === 'bestand' || x.horizont === 'abriss')) add('Bestand', LP_HERVORHEBEN_GRAU, 'flaeche');
   }
 
   if (col.gebaeudeListe.length) {
@@ -725,6 +751,7 @@ function lpBuildLegendItems(col) {
   if (col.waermeListe.length) add('Wärmenetz', GG_THEME.energy.waerme, 'linie');
   if (col.stromListe.length) add('Stromnetz', GG_THEME.energy.strom, 'linie', true);
   if (col.msRingListe.length) add(_lpState.msModus === 'alle' ? 'Mittelspannung' : 'MS-Ring', '#FB8C00', 'linie');
+  if (col.strassenListe.length) add('Straßen', '#90a4ae', 'linie');
   for (const { asset } of col.assetListe) {
     const cfg = window.ASSET_CFG?.[asset.type];
     add(cfg?.label || asset.type, cfg?.color || '#607d8b', 'punkt');
@@ -1022,7 +1049,7 @@ async function lpCaptureSatellite() {
  * (null = keine Geodaten UND kein fester Kartenausschnitt → nur Platzhaltertext).
  */
 function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, plotH, clipId, txt, T }) {
-  const { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe } = col;
+  const { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe, strassenListe } = col;
   let out = `<rect x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}" fill="${T.neutral.cardBg}" stroke="${T.line}" stroke-width="1"/>`;
   out += `<clipPath id="${clipId}"><rect x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}"/></clipPath>`;
 
@@ -1053,6 +1080,11 @@ function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, 
     out += `<image href="${_lpState.satBild.dataUrl}" x="${lbR(tl.x)}" y="${lbR(tl.y)}" width="${lbR(br.x - tl.x)}" height="${lbR(br.y - tl.y)}"${satDreh} preserveAspectRatio="none"/>`;
   }
 
+  // Straßen — reiner Kartenkontext unter Gebäuden/Netz, deshalb fest grau statt in einer
+  // Modusfarbe (keine Status-/Schicht-/Nutzungslogik wie bei den übrigen Ebenen).
+  for (const item of (strassenListe || [])) {
+    out += `<polyline points="${pathOf(item.pts)}" fill="none" stroke="#90a4ae" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>`;
+  }
   // Gebäude — bei "Energiekennwert" bleibt die Fläche neutral (T.tint), die Farbe
   // trägt dann der Kreis darüber, genau wie auf der echten Karte (Fläche = Umriss,
   // Kreis = Kennwert).
@@ -1084,9 +1116,13 @@ function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, 
   for (const item of stromListe) {
     out += `<polyline points="${pathOf(item.pts)}" fill="none" stroke="${lpModusFarbe(item) || T.energy.strom}" stroke-width="2" stroke-dasharray="7 3" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
-  // MS-Ring — dick, orange, oberhalb des normalen Stromnetzes
-  for (const pts of msRingListe) {
-    out += `<polyline points="${pathOf(pts)}" fill="none" stroke="#FB8C00" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
+  // MS-Ring — dick, orange, oberhalb des normalen Stromnetzes. Bleibt in den Farbmodi
+  // Status/Schicht bewusst einheitlich orange (MS soll dort weiterhin als MS erkennbar
+  // bleiben) — nur "Neubau hervorheben" gräut auch hier den Bestand aus, sonst wäre eine neue
+  // MS-Leitung neben einer bestehenden nicht von ihr zu unterscheiden.
+  for (const item of msRingListe) {
+    const msFarbe = _lpState.einfaerben === 'hervorheben' && item.horizont !== 'neu' ? LP_HERVORHEBEN_GRAU : '#FB8C00';
+    out += `<polyline points="${pathOf(item.pts)}" fill="none" stroke="${msFarbe}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
   }
   // Assets — kleine Marker mit Typ-Icon/-Farbe aus ASSET_CFG. NAP wird zuletzt gezeichnet
   // (liegt damit über Trafo/anderen Assets, falls sie am selben Punkt sitzen) — stabile
@@ -1265,7 +1301,7 @@ function lpRenderSvg() {
     ...gebaeudeListe.flatMap(x => x.poly),
     ...waermeListe.flatMap(x => x.pts),
     ...stromListe.flatMap(x => x.pts),
-    ...msRingListe.flat(),
+    ...msRingListe.flatMap(x => x.pts),
     ...assetListe.map(x => ({ lat: x.lat, lng: x.lng })),
   ];
   const ausschnitt = _lpState.kartenausschnitt;
@@ -1419,7 +1455,7 @@ function lpRenderSvgVergleich() {
     ...colA.gebaeudeListe.flatMap(x => x.poly), ...colB.gebaeudeListe.flatMap(x => x.poly),
     ...colA.waermeListe.flatMap(x => x.pts), ...colB.waermeListe.flatMap(x => x.pts),
     ...colA.stromListe.flatMap(x => x.pts), ...colB.stromListe.flatMap(x => x.pts),
-    ...colA.msRingListe.flat(), ...colB.msRingListe.flat(),
+    ...colA.msRingListe.flatMap(x => x.pts), ...colB.msRingListe.flatMap(x => x.pts),
     ...colA.assetListe.map(x => ({ lat: x.lat, lng: x.lng })), ...colB.assetListe.map(x => ({ lat: x.lat, lng: x.lng })),
   ];
   // Gemeinsamer Ausschnitt für beide Seiten: fester Kartenausschnitt, falls gesetzt,
@@ -1639,7 +1675,7 @@ function lpPanelHtml() {
     <span class="lp-feldname">${lbEsc(name)}</span>${inhalt}</div>`;
 
   const anzeigeLabel = { alle: 'alle bis Zieljahr', bestand: 'nur Bestand', neubau: 'nur Neubau', abriss: 'nur Rückbau' };
-  const ebenenAn = [_lpState.gebaeude, _lpState.waerme, _lpState.strom, _lpState.msModus !== 'aus'].filter(Boolean).length;
+  const ebenenAn = [_lpState.gebaeude, _lpState.waerme, _lpState.strom, _lpState.strassen, _lpState.msModus !== 'aus'].filter(Boolean).length;
   const assetsAn = assetTypen.filter(t => _lpAssetTypes[t]).length;
   const standInhalt = `${_lpState.vergleich ? `${_lpState.referenzjahr}→${_lpState.zieljahr}` : _lpState.zieljahr}`
     + ` · ${_lpState.vergleich ? 'Vergleich' : anzeigeLabel[_lpState.anzeige]}`
@@ -1671,6 +1707,8 @@ function lpPanelHtml() {
       ${chk(_lpState.gebaeude, 'Gebäude', "lpSetLayer('gebaeude',this.checked)")}
       ${chk(_lpState.waerme, 'Wärmenetz', "lpSetLayer('waerme',this.checked)")}
       ${chk(_lpState.strom, 'Stromnetz', "lpSetLayer('strom',this.checked)")}
+      ${chk(_lpState.strassen, _lpStrassenBusy ? 'Straßen (lädt …)' : 'Straßen', 'lpSetStrassen(this.checked)', 'Straßenverlauf aus OpenStreetMap als Kartenkontext — keine eigene Netzebene')}
+      ${_lpState.strassen ? kleinBtn('lpReloadStrassen()', '↻', 'Straßendaten neu von OpenStreetMap laden') : ''}
     </div>
     <div class="lp-zeile" style="gap:6px;">
       <span style="font-size:10px;color:var(--muted);">Mittelspannung</span>
@@ -1684,6 +1722,7 @@ function lpPanelHtml() {
         <option value="keine" ${_lpState.einfaerben==='keine'?'selected':''}>Keine (einheitlich)</option>
         <option value="nutzung" ${_lpState.einfaerben==='nutzung'?'selected':''}>Nutzungstyp</option>
         <option value="status" ${_lpState.einfaerben==='status'?'selected':''}>Status zum Zieljahr (Bestand/Neubau/Rückbau)</option>
+        <option value="hervorheben" ${_lpState.einfaerben==='hervorheben'?'selected':''}>Neubau hervorheben (Bestand grau)</option>
         <option value="schicht" ${_lpState.einfaerben==='schicht'?'selected':''}>Planungsschicht (Bestand/Entwicklung/Planung)</option>
         <option value="energie" ${_lpState.einfaerben==='energie'?'selected':''}>Energiekennwert (Kreise, wie auf der Karte)</option>
       </select>
@@ -1694,7 +1733,8 @@ function lpPanelHtml() {
       </select>` : ''}
     </div>
     ${_lpState.einfaerben === 'schicht' ? `<p class="lp-hinweis">Färbt Gebäude, Netze und Assets nach dem Grund, aus dem sie im Modell stehen: <b style="color:${SCHICHT_META.bestand.farbe}">Bestand</b> ist heute da, <b style="color:${SCHICHT_META.entwicklung.farbe}">Entwicklung</b> kommt ohnehin und gilt in allen Varianten gleich, <b style="color:${SCHICHT_META.entscheidung.farbe}">Planung</b> ist in dieser Variante entschieden.</p>` : ''}
-    ${_lpState.einfaerben === 'status' ? `<p class="lp-hinweis">Färbt Gebäude, Netze und Assets danach, was zum Zieljahr Bestand, Neubau oder Rückbau ist — abgeleitet aus Bau- und Abrissjahr.</p>` : ''}`),
+    ${_lpState.einfaerben === 'status' ? `<p class="lp-hinweis">Färbt Gebäude, Netze und Assets danach, was zum Zieljahr Bestand, Neubau oder Rückbau ist — abgeleitet aus Bau- und Abrissjahr.</p>` : ''}
+    ${_lpState.einfaerben === 'hervorheben' ? `<p class="lp-hinweis">Zeigt Bestand einheitlich grau, Neubauten in ihrer gewohnten Farbe — zusammen mit Anzeige „Alle bis Zieljahr" sieht man so beides gleichzeitig, mit dem Neubau als Blickfang.</p>` : ''}`),
   ].join('');
 
   /* Gruppe "Ausschnitt & Ausrichtung" — wie das Blatt steht */
@@ -2195,6 +2235,54 @@ window.lpDrehSchritt = (delta) => {
 };
 
 window.lpSetLayer = (key, on) => { _lpState[key] = !!on; lpRenderPanel(); };
+/**
+ * Liest bereits auf die echte Karte geladene OSM-Straßenlinien aus — dieses Modul fragt sie
+ * bewusst nicht selbst per Overpass ab (kein Import aus 05b-stromnetz.js), sondern nutzt, was
+ * dessen window.loadOsmStrassen() dort als Ebene ablegt (jede Polyline trägt `_osmPts`, gesetzt
+ * unabhängig davon ob sie schon als Kabeltrasse "übernommen" wurde).
+ */
+function lpOsmStrassenPunkte() {
+  const linien = [];
+  if (!window.map || typeof window.map.eachLayer !== 'function') return linien;
+  const sammeln = (layer) => { if (Array.isArray(layer?._osmPts) && layer._osmPts.length >= 2) linien.push(layer._osmPts); };
+  window.map.eachLayer(layer => {
+    sammeln(layer);
+    if (typeof layer.eachLayer === 'function') layer.eachLayer(sammeln);
+  });
+  return linien;
+}
+window.lpSetStrassen = async (on) => {
+  _lpState.strassen = !!on;
+  if (!on || _lpStrassenBusy) { lpRenderPanel(); return; }
+  if (!_lpStrassenLinien) {
+    const vorhanden = lpOsmStrassenPunkte();
+    if (vorhanden.length) {
+      _lpStrassenLinien = vorhanden;
+    } else if (typeof window.loadOsmStrassen === 'function') {
+      _lpStrassenBusy = true;
+      lpRenderPanel();
+      lpSay('Straßen werden aus OpenStreetMap geladen …');
+      try {
+        await window.loadOsmStrassen();
+        _lpStrassenLinien = lpOsmStrassenPunkte();
+        lpSay(_lpStrassenLinien.length ? `✓ ${_lpStrassenLinien.length} Straßenzüge geladen.` : '⚠ Keine Straßen im Projektgebiet gefunden.', !_lpStrassenLinien.length);
+      } catch (err) {
+        _lpStrassenLinien = [];
+        lpSay('⚠ Straßen konnten nicht geladen werden: ' + (err?.message || err), true);
+      } finally {
+        _lpStrassenBusy = false;
+      }
+    } else {
+      _lpStrassenLinien = [];
+      lpSay('⚠ Straßen-Funktion nicht verfügbar.', true);
+    }
+  }
+  lpRenderPanel();
+};
+window.lpReloadStrassen = async () => {
+  _lpStrassenLinien = null;
+  if (_lpState.strassen) await window.lpSetStrassen(true);
+};
 window.lpSetMsModus = (v) => { _lpState.msModus = ['aus', 'ring', 'alle'].includes(v) ? v : 'aus'; lpRenderPanel(); };
 window.lpSetJahr = (key, val) => { const n = parseInt(val, 10); if (isFinite(n)) _lpState[key] = n; lpRenderPanel(); };
 window.lpSetAnzeige = (id) => { _lpState.anzeige = id; lpRenderPanel(); };

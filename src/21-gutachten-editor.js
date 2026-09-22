@@ -15,7 +15,7 @@ import {
   ggFigurWordDaten, ggSvgToPngBlob, ggTrafostationenIstListe,
 } from './17-gutachten-grafik.js';
 import {
-  GUTACHTEN_DOK_VERSION, GUTACHTEN_MAX_EBENE, gdNormalisieren, gdKapitelNummern, gdStandardDokument, gdMitStandardAbgleichen, gdLeeresDokument,
+  GUTACHTEN_DOK_VERSION, GUTACHTEN_MAX_EBENE, GUTACHTEN_STANDARD_GLIEDERUNG, gdNormalisieren, gdKapitelNummern, gdStandardDokument, gdMitStandardAbgleichen, gdLeeresDokument,
   gdKapitelEinfuegen, gdKapitelLoeschen, gdKapitelVerschieben, gdKapitelEbene,
   gdNeuerTextBlock, gdNeuerFigurBlock, gdNeuerBildBlock, gdBlockEinfuegen, gdBlockLoeschen, gdBlockVerschieben,
   gdFindeBlock, gdBeschriftungen, gdFigurIds, gdNormDeckblatt, GUTACHTEN_DECKBLATT_VORGABEN,
@@ -32,10 +32,16 @@ const _gut = {
   auswahl: null,        // { art: 'kapitel' | 'block', id }
   cache: new Map(),     // blockId → { schluessel, ergebnis } — gezeichnete Figuren, damit Auswahl/Verschieben nicht alles neu rechnet
   lpZiel: null,          // blockId eines 'bild'-Blocks, der gerade in 🗺️ Liegenschaftsbilder eingerichtet wird, oder null
+  figurMenuOffen: null,  // Kapitel-Id, deren „Abbildung oder Textbaustein …“-Menü gerade aufgeklappt ist, oder null
 };
 
 const GUT_AKZENT = '#26a69a';
+const GUT_AKZENT_RGB = '38,166,154';
 const GUT_WARN = '#e0a126';
+const GUT_TEXT_FARBE = '#8ab4f8';    // Freitext-Bausteine im Auswahlmenü
+const GUT_TEXT_RGB = '138,180,248';
+const GUT_TABELLE_FARBE = '#c58af9'; // Tabellen-Bausteine im Auswahlmenü
+const GUT_TABELLE_RGB = '197,138,249';
 // Seitenvorschau im Stil der Word-Vorlage: Tahoma 10,5 pt, fast schwarzer Text
 const PAPIER_STIL = 'background:#fff;color:#1B1F1C;max-width:794px;margin:0 auto;padding:56px 72px 72px;box-sizing:border-box;'
   + 'font-family:Tahoma,Verdana,sans-serif;font-size:14px;line-height:1.5;box-shadow:0 2px 14px rgba(0,0,0,.45);';
@@ -362,7 +368,9 @@ function renderGliederung() {
   if (!el) return;
   const kopf = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Gliederung</div>
-      ${_gut.dok ? knopf('+ Kapitel', 'gutAddKapitel()', { klein: true, titel: 'Neues Hauptkapitel am Ende' }) : ''}</div>`;
+      ${_gut.dok ? `<div style="display:flex;gap:4px;">
+          ${knopf('📄 Dokument', 'gutWaehle(null,null)', { klein: true, titel: 'Eigenschaften des gesamten Dokuments rechts anzeigen (Zähler, Standardabgleich, Deckblatt)' })}
+          ${knopf('+ Kapitel', 'gutAddKapitel()', { klein: true, titel: 'Neues Hauptkapitel am Ende' })}</div>` : ''}</div>`;
   if (!_gut.dok) {
     el.innerHTML = kopf + hinweis('Noch kein Dokument — in der Mitte die Standardgliederung anlegen.');
     return;
@@ -451,24 +459,104 @@ function dokumentPanel() {
     + knopf('↺ Standardgliederung neu anlegen', 'gutStandardAnlegen(true)', { gefahr: true, titel: 'Ersetzt das aktuelle Dokument samt aller Freitexte.' });
 }
 
+/**
+ * Katalog-Bausteine als Baum entlang der Standardgliederung (für das Auswahlmenü „Abbildung oder
+ * Textbaustein …“): Kapitelüberschriften mit ihrer echten Ebene 1–3, damit sich das Menü wie das
+ * Inhaltsverzeichnis links einrücken lässt. Nur Kapitel mit eigenen oder untergeordneten Bausteinen
+ * bleiben stehen; Bausteine ohne erkennbare Kapitelnummer landen unter „Sonstige“. Statisch (Katalog
+ * und Standardgliederung ändern sich nie zur Laufzeit) → einmal berechnet, dauerhaft gecacht.
+ */
+let _ggMenuBaumCache = null;
+function ggMenuBaum() {
+  if (_ggMenuBaumCache) return _ggMenuBaumCache;
+  const nummern = gdKapitelNummern(GUTACHTEN_STANDARD_GLIEDERUNG);
+  const knoten = GUTACHTEN_STANDARD_GLIEDERUNG.map((k, i) => ({ nr: nummern[i], ebene: k.ebene, titel: k.titel, figuren: [], kinder: [] }));
+  const byNr = new Map(knoten.map(n => [n.nr, n]));
+  const sonstige = { nr: 'sonstige', ebene: 1, titel: 'Sonstige', figuren: [], kinder: [] };
+  for (const f of ggFigurenKatalog()) {
+    const nr = (String(f.kapitel).match(/^\d+(\.\d+)*/) || [''])[0];
+    (byNr.get(nr) || sonstige).figuren.push(f);
+  }
+  const stapel = [];
+  knoten.forEach(n => {
+    n.eltern = n.ebene > 1 ? stapel[n.ebene - 2] : null;
+    if (n.eltern) n.eltern.kinder.push(n);
+    stapel[n.ebene - 1] = n;
+    stapel.length = n.ebene;
+  });
+  for (let i = knoten.length - 1; i >= 0; i--) {
+    const n = knoten[i];
+    n.sichtbar = n.figuren.length > 0 || n.kinder.some(c => c.sichtbar);
+  }
+  // Reihenfolge je Kapitel wie im Musterkapitel (gleiche Regel wie gdStandardDokument: reihe, sonst Text vor Abbildung).
+  for (const n of knoten) n.figuren.sort((a, b) => ggBausteinRang(a) - ggBausteinRang(b));
+  const liste = knoten.filter(n => n.sichtbar);
+  if (sonstige.figuren.length) {
+    sonstige.figuren.sort((a, b) => ggBausteinRang(a) - ggBausteinRang(b));
+    sonstige.sichtbar = true; liste.push(sonstige); byNr.set('sonstige', sonstige);
+  }
+  _ggMenuBaumCache = { liste, byNr };
+  return _ggMenuBaumCache;
+}
+/** Position eines Katalogeintrags im Kapitel — wie `katalogRang` in lib/gutachten-dokument.js: `reihe`, sonst Text vor Abbildung/Tabelle. */
+const ggBausteinRang = f => (Number.isFinite(f.reihe) ? f.reihe : f.istText ? 0 : 1000);
+const ggBausteinFarbe = f => (f.istText ? GUT_TEXT_FARBE : f.istTabelle ? GUT_TABELLE_FARBE : GUT_AKZENT);
+const ggBausteinRgb = f => (f.istText ? GUT_TEXT_RGB : f.istTabelle ? GUT_TABELLE_RGB : GUT_AKZENT_RGB);
+const ggBausteinIcon = f => (f.istText ? '¶' : f.istTabelle ? '▤' : '▨');
+
+/** Inhalt des aufgeklappten Auswahlmenüs für Kapitel `kapId` (Standardgliederung `nr`). */
+function figurMenuHtml(kapId, nr) {
+  const katalog = ggFigurenKatalog();
+  const imDok = gdFigurIds(_gut.dok);
+  const passend = katalog.filter(f => (f.kapitel.match(/^\d+(\.\d+)*/) || [''])[0] === nr).sort((a, b) => ggBausteinRang(a) - ggBausteinRang(b));
+  // Farbige Hinterlegung bleibt auch für bereits eingefügte (✓) Bausteine sichtbar — sonst wird ein
+  // fast vollständiges Kapitel (Normalfall nach „Standardgliederung anlegen") wieder komplett grau
+  // und die Typ-Unterscheidung verschwindet genau dort, wo am meisten Zeilen stehen.
+  const itemZeile = (f, einr) => {
+    const drin = imDok.has(f.id);
+    return `<div data-click="gutAddFigur('${kapId}','${esc(f.id)}')" title="${esc(f.titel)}"
+        style="display:flex;align-items:center;gap:6px;padding:3px 6px 3px ${einr}px;border-radius:4px;cursor:pointer;margin:1px 0;
+        font-size:11px;line-height:1.35;color:var(--text,#e8eaed);opacity:${drin ? '.55' : '1'};
+        background:rgba(${ggBausteinRgb(f)},${drin ? '.06' : '.16'});">
+        <span style="flex-shrink:0;width:11px;text-align:center;color:${ggBausteinFarbe(f)};">${drin ? '✓' : ggBausteinIcon(f)}</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.titel)}</span></div>`;
+  };
+  const headerZeile = knoten => {
+    const einr = (knoten.ebene - 1) * 10;
+    const fehlend = knoten.figuren.filter(f => !imDok.has(f.id)).length;
+    const titel = `${knoten.nr !== 'sonstige' ? esc(knoten.nr) + ' ' : ''}${esc(knoten.titel)}`;
+    const ganzesKapitel = knoten.figuren.length
+      ? `<button data-click="gutAddKapitelInhalt('${kapId}','${esc(knoten.nr)}')"
+          title="Alle Bausteine dieses Kapitels ans Ende von Kapitel ${esc(nr)} einfügen"
+          style="flex-shrink:0;font-size:9px;padding:1px 6px;border-radius:8px;cursor:pointer;border:1px solid rgba(38,166,154,.4);
+          background:rgba(38,166,154,.12);color:${GUT_AKZENT};">${fehlend ? `⇩ alle (${fehlend})` : '✓ alle'}</button>`
+      : '';
+    return `<div style="display:flex;align-items:center;gap:6px;padding:5px 4px 3px ${einr}px;">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;
+          font-weight:${knoten.ebene === 1 ? 700 : 600};color:var(--text,#e8eaed);">${titel}</span>${ganzesKapitel}</div>`;
+  };
+  let html = '';
+  if (passend.length) {
+    html += `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:${GUT_AKZENT};padding:4px 4px 2px;">Passend zu Kapitel ${esc(nr)}</div>`
+      + passend.map(f => itemZeile(f, 4)).join('')
+      + `<div style="height:1px;background:rgba(255,255,255,.08);margin:6px 0;"></div>`;
+  }
+  const { liste } = ggMenuBaum();
+  for (const knoten of liste) {
+    html += headerZeile(knoten);
+    html += knoten.figuren.map(f => itemZeile(f, (knoten.ebene - 1) * 10 + 14)).join('');
+  }
+  return `<div style="margin-top:6px;max-height:320px;overflow-y:auto;border:1px solid rgba(255,255,255,.12);
+      border-radius:5px;background:rgba(0,0,0,.25);padding:4px 6px;">${html}</div>`;
+}
+
 function kapitelPanel(k, idx) {
   const nr = gdKapitelNummern(_gut.dok.kapitel)[idx];
   const id = k.id;
-  const katalog = ggFigurenKatalog();
-  const imDok = gdFigurIds(_gut.dok);
-  const option = f => `<option value="${esc(f.id)}">${imDok.has(f.id) ? '✓ ' : ''}${esc(f.titel)}</option>`;
-  const passend = katalog.filter(f => (f.kapitel.match(/^\d+(\.\d+)*/) || [''])[0] === nr);
-  const gruppen = new Map();
-  for (const f of katalog) {
-    const g = f.kapitel || 'Sonstige';
-    if (!gruppen.has(g)) gruppen.set(g, []);
-    gruppen.get(g).push(f);
-  }
-  const figurAuswahl = `<select data-change="gutAddFigur('${id}',this.value)" style="${EINGABE_STIL}">
-      <option value="">Abbildung oder Textbaustein …</option>
-      ${passend.length ? `<optgroup label="Passend zu Kapitel ${esc(nr)}">${passend.map(option).join('')}</optgroup>` : ''}
-      ${[...gruppen].map(([g, fs]) => `<optgroup label="${esc(g)}">${fs.map(option).join('')}</optgroup>`).join('')}
-    </select>`;
+  const figurAuswahl = knopf(
+    _gut.figurMenuOffen === id ? '▴ Abbildung oder Textbaustein schließen' : '▾ Abbildung oder Textbaustein …',
+    `gutToggleFigurMenu('${id}')`)
+    + (_gut.figurMenuOffen === id ? figurMenuHtml(id, nr) : '');
   const reihe = inhalt => `<div style="display:flex;flex-wrap:wrap;gap:4px;">${inhalt}</div>`;
 
   return panelKopf(`Kapitel ${esc(nr)}`)
@@ -708,12 +796,39 @@ export function gutAddText(kapId) {
 }
 
 export function gutAddFigur(kapId, figurId) {
+  _gut.figurMenuOffen = null;
   if (!figurId || !findeKapitel(kapId)) return;
   const b = gdNeuerFigurBlock(figurId);
   gdBlockEinfuegen(_gut.dok, kapId, b);
   _gut.auswahl = { art: 'block', id: b.id };
   neuZeichnen();
   scrollZu('block', b.id);
+}
+
+/** Öffnet/schließt das Auswahlmenü „Abbildung oder Textbaustein …“ für Kapitel `kapId`. */
+export function gutToggleFigurMenu(kapId) {
+  _gut.figurMenuOffen = _gut.figurMenuOffen === kapId ? null : kapId;
+  renderEigenschaften();
+}
+
+/** Alle noch fehlenden Katalog-Bausteine eines Standardgliederungs-Kapitels (`nr`) ans Ende von Kapitel `kapId` einfügen. */
+export function gutAddKapitelInhalt(kapId, nr) {
+  _gut.figurMenuOffen = null;
+  if (!findeKapitel(kapId)) return;
+  const knoten = ggMenuBaum().byNr.get(nr);
+  if (!knoten) return;
+  const imDok = gdFigurIds(_gut.dok);
+  const neue = knoten.figuren.filter(f => !imDok.has(f.id)); // knoten.figuren ist bereits in Musterkapitel-Reihenfolge sortiert
+  if (!neue.length) { gutSay('Alle Bausteine dieses Kapitels stehen schon im Dokument.'); neuZeichnen(); return; }
+  let letzter = null;
+  for (const f of neue) {
+    letzter = gdNeuerFigurBlock(f.id);
+    gdBlockEinfuegen(_gut.dok, kapId, letzter);
+  }
+  _gut.auswahl = { art: 'block', id: letzter.id };
+  neuZeichnen();
+  scrollZu('block', letzter.id);
+  gutSay(`${neue.length} Bausteine aus Kapitel ${nr} eingefügt.`);
 }
 
 /** Je bestehende Trafostation (aus dem Elektro-Tab, eine je Gebäude/Station) einen Freitext-Platzhalter anlegen. */

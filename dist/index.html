@@ -14994,9 +14994,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-09-17';
+  var d = '2026-09-20';
   if (d.indexOf('__') === 0) d = '';
-  var c = '0a851de';
+  var c = '149ff11';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -115116,10 +115116,16 @@ ${massTbl}
     auswahl: null,        // { art: 'kapitel' | 'block', id }
     cache: new Map(),     // blockId → { schluessel, ergebnis } — gezeichnete Figuren, damit Auswahl/Verschieben nicht alles neu rechnet
     lpZiel: null,          // blockId eines 'bild'-Blocks, der gerade in 🗺️ Liegenschaftsbilder eingerichtet wird, oder null
+    figurMenuOffen: null,  // Kapitel-Id, deren „Abbildung oder Textbaustein …“-Menü gerade aufgeklappt ist, oder null
   };
 
   const GUT_AKZENT = '#26a69a';
+  const GUT_AKZENT_RGB = '38,166,154';
   const GUT_WARN = '#e0a126';
+  const GUT_TEXT_FARBE = '#8ab4f8';    // Freitext-Bausteine im Auswahlmenü
+  const GUT_TEXT_RGB = '138,180,248';
+  const GUT_TABELLE_FARBE = '#c58af9'; // Tabellen-Bausteine im Auswahlmenü
+  const GUT_TABELLE_RGB = '197,138,249';
   // Seitenvorschau im Stil der Word-Vorlage: Tahoma 10,5 pt, fast schwarzer Text
   const PAPIER_STIL = 'background:#fff;color:#1B1F1C;max-width:794px;margin:0 auto;padding:56px 72px 72px;box-sizing:border-box;'
     + 'font-family:Tahoma,Verdana,sans-serif;font-size:14px;line-height:1.5;box-shadow:0 2px 14px rgba(0,0,0,.45);';
@@ -115446,7 +115452,9 @@ ${massTbl}
     if (!el) return;
     const kopf = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Gliederung</div>
-      ${_gut.dok ? knopf('+ Kapitel', 'gutAddKapitel()', { klein: true, titel: 'Neues Hauptkapitel am Ende' }) : ''}</div>`;
+      ${_gut.dok ? `<div style="display:flex;gap:4px;">
+          ${knopf('📄 Dokument', 'gutWaehle(null,null)', { klein: true, titel: 'Eigenschaften des gesamten Dokuments rechts anzeigen (Zähler, Standardabgleich, Deckblatt)' })}
+          ${knopf('+ Kapitel', 'gutAddKapitel()', { klein: true, titel: 'Neues Hauptkapitel am Ende' })}</div>` : ''}</div>`;
     if (!_gut.dok) {
       el.innerHTML = kopf + hinweis('Noch kein Dokument — in der Mitte die Standardgliederung anlegen.');
       return;
@@ -115535,24 +115543,104 @@ ${massTbl}
       + knopf('↺ Standardgliederung neu anlegen', 'gutStandardAnlegen(true)', { gefahr: true, titel: 'Ersetzt das aktuelle Dokument samt aller Freitexte.' });
   }
 
+  /**
+   * Katalog-Bausteine als Baum entlang der Standardgliederung (für das Auswahlmenü „Abbildung oder
+   * Textbaustein …“): Kapitelüberschriften mit ihrer echten Ebene 1–3, damit sich das Menü wie das
+   * Inhaltsverzeichnis links einrücken lässt. Nur Kapitel mit eigenen oder untergeordneten Bausteinen
+   * bleiben stehen; Bausteine ohne erkennbare Kapitelnummer landen unter „Sonstige“. Statisch (Katalog
+   * und Standardgliederung ändern sich nie zur Laufzeit) → einmal berechnet, dauerhaft gecacht.
+   */
+  let _ggMenuBaumCache = null;
+  function ggMenuBaum() {
+    if (_ggMenuBaumCache) return _ggMenuBaumCache;
+    const nummern = gdKapitelNummern(GUTACHTEN_STANDARD_GLIEDERUNG);
+    const knoten = GUTACHTEN_STANDARD_GLIEDERUNG.map((k, i) => ({ nr: nummern[i], ebene: k.ebene, titel: k.titel, figuren: [], kinder: [] }));
+    const byNr = new Map(knoten.map(n => [n.nr, n]));
+    const sonstige = { nr: 'sonstige', ebene: 1, titel: 'Sonstige', figuren: [], kinder: [] };
+    for (const f of ggFigurenKatalog()) {
+      const nr = (String(f.kapitel).match(/^\d+(\.\d+)*/) || [''])[0];
+      (byNr.get(nr) || sonstige).figuren.push(f);
+    }
+    const stapel = [];
+    knoten.forEach(n => {
+      n.eltern = n.ebene > 1 ? stapel[n.ebene - 2] : null;
+      if (n.eltern) n.eltern.kinder.push(n);
+      stapel[n.ebene - 1] = n;
+      stapel.length = n.ebene;
+    });
+    for (let i = knoten.length - 1; i >= 0; i--) {
+      const n = knoten[i];
+      n.sichtbar = n.figuren.length > 0 || n.kinder.some(c => c.sichtbar);
+    }
+    // Reihenfolge je Kapitel wie im Musterkapitel (gleiche Regel wie gdStandardDokument: reihe, sonst Text vor Abbildung).
+    for (const n of knoten) n.figuren.sort((a, b) => ggBausteinRang(a) - ggBausteinRang(b));
+    const liste = knoten.filter(n => n.sichtbar);
+    if (sonstige.figuren.length) {
+      sonstige.figuren.sort((a, b) => ggBausteinRang(a) - ggBausteinRang(b));
+      sonstige.sichtbar = true; liste.push(sonstige); byNr.set('sonstige', sonstige);
+    }
+    _ggMenuBaumCache = { liste, byNr };
+    return _ggMenuBaumCache;
+  }
+  /** Position eines Katalogeintrags im Kapitel — wie `katalogRang` in lib/gutachten-dokument.js: `reihe`, sonst Text vor Abbildung/Tabelle. */
+  const ggBausteinRang = f => (Number.isFinite(f.reihe) ? f.reihe : f.istText ? 0 : 1000);
+  const ggBausteinFarbe = f => (f.istText ? GUT_TEXT_FARBE : f.istTabelle ? GUT_TABELLE_FARBE : GUT_AKZENT);
+  const ggBausteinRgb = f => (f.istText ? GUT_TEXT_RGB : f.istTabelle ? GUT_TABELLE_RGB : GUT_AKZENT_RGB);
+  const ggBausteinIcon = f => (f.istText ? '¶' : f.istTabelle ? '▤' : '▨');
+
+  /** Inhalt des aufgeklappten Auswahlmenüs für Kapitel `kapId` (Standardgliederung `nr`). */
+  function figurMenuHtml(kapId, nr) {
+    const katalog = ggFigurenKatalog();
+    const imDok = gdFigurIds(_gut.dok);
+    const passend = katalog.filter(f => (f.kapitel.match(/^\d+(\.\d+)*/) || [''])[0] === nr).sort((a, b) => ggBausteinRang(a) - ggBausteinRang(b));
+    // Farbige Hinterlegung bleibt auch für bereits eingefügte (✓) Bausteine sichtbar — sonst wird ein
+    // fast vollständiges Kapitel (Normalfall nach „Standardgliederung anlegen") wieder komplett grau
+    // und die Typ-Unterscheidung verschwindet genau dort, wo am meisten Zeilen stehen.
+    const itemZeile = (f, einr) => {
+      const drin = imDok.has(f.id);
+      return `<div data-click="gutAddFigur('${kapId}','${esc$6(f.id)}')" title="${esc$6(f.titel)}"
+        style="display:flex;align-items:center;gap:6px;padding:3px 6px 3px ${einr}px;border-radius:4px;cursor:pointer;margin:1px 0;
+        font-size:11px;line-height:1.35;color:var(--text,#e8eaed);opacity:${drin ? '.55' : '1'};
+        background:rgba(${ggBausteinRgb(f)},${drin ? '.06' : '.16'});">
+        <span style="flex-shrink:0;width:11px;text-align:center;color:${ggBausteinFarbe(f)};">${drin ? '✓' : ggBausteinIcon(f)}</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc$6(f.titel)}</span></div>`;
+    };
+    const headerZeile = knoten => {
+      const einr = (knoten.ebene - 1) * 10;
+      const fehlend = knoten.figuren.filter(f => !imDok.has(f.id)).length;
+      const titel = `${knoten.nr !== 'sonstige' ? esc$6(knoten.nr) + ' ' : ''}${esc$6(knoten.titel)}`;
+      const ganzesKapitel = knoten.figuren.length
+        ? `<button data-click="gutAddKapitelInhalt('${kapId}','${esc$6(knoten.nr)}')"
+          title="Alle Bausteine dieses Kapitels ans Ende von Kapitel ${esc$6(nr)} einfügen"
+          style="flex-shrink:0;font-size:9px;padding:1px 6px;border-radius:8px;cursor:pointer;border:1px solid rgba(38,166,154,.4);
+          background:rgba(38,166,154,.12);color:${GUT_AKZENT};">${fehlend ? `⇩ alle (${fehlend})` : '✓ alle'}</button>`
+        : '';
+      return `<div style="display:flex;align-items:center;gap:6px;padding:5px 4px 3px ${einr}px;">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;
+          font-weight:${knoten.ebene === 1 ? 700 : 600};color:var(--text,#e8eaed);">${titel}</span>${ganzesKapitel}</div>`;
+    };
+    let html = '';
+    if (passend.length) {
+      html += `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:${GUT_AKZENT};padding:4px 4px 2px;">Passend zu Kapitel ${esc$6(nr)}</div>`
+        + passend.map(f => itemZeile(f, 4)).join('')
+        + `<div style="height:1px;background:rgba(255,255,255,.08);margin:6px 0;"></div>`;
+    }
+    const { liste } = ggMenuBaum();
+    for (const knoten of liste) {
+      html += headerZeile(knoten);
+      html += knoten.figuren.map(f => itemZeile(f, (knoten.ebene - 1) * 10 + 14)).join('');
+    }
+    return `<div style="margin-top:6px;max-height:320px;overflow-y:auto;border:1px solid rgba(255,255,255,.12);
+      border-radius:5px;background:rgba(0,0,0,.25);padding:4px 6px;">${html}</div>`;
+  }
+
   function kapitelPanel(k, idx) {
     const nr = gdKapitelNummern(_gut.dok.kapitel)[idx];
     const id = k.id;
-    const katalog = ggFigurenKatalog();
-    const imDok = gdFigurIds(_gut.dok);
-    const option = f => `<option value="${esc$6(f.id)}">${imDok.has(f.id) ? '✓ ' : ''}${esc$6(f.titel)}</option>`;
-    const passend = katalog.filter(f => (f.kapitel.match(/^\d+(\.\d+)*/) || [''])[0] === nr);
-    const gruppen = new Map();
-    for (const f of katalog) {
-      const g = f.kapitel || 'Sonstige';
-      if (!gruppen.has(g)) gruppen.set(g, []);
-      gruppen.get(g).push(f);
-    }
-    const figurAuswahl = `<select data-change="gutAddFigur('${id}',this.value)" style="${EINGABE_STIL}">
-      <option value="">Abbildung oder Textbaustein …</option>
-      ${passend.length ? `<optgroup label="Passend zu Kapitel ${esc$6(nr)}">${passend.map(option).join('')}</optgroup>` : ''}
-      ${[...gruppen].map(([g, fs]) => `<optgroup label="${esc$6(g)}">${fs.map(option).join('')}</optgroup>`).join('')}
-    </select>`;
+    const figurAuswahl = knopf(
+      _gut.figurMenuOffen === id ? '▴ Abbildung oder Textbaustein schließen' : '▾ Abbildung oder Textbaustein …',
+      `gutToggleFigurMenu('${id}')`)
+      + (_gut.figurMenuOffen === id ? figurMenuHtml(id, nr) : '');
     const reihe = inhalt => `<div style="display:flex;flex-wrap:wrap;gap:4px;">${inhalt}</div>`;
 
     return panelKopf(`Kapitel ${esc$6(nr)}`)
@@ -115792,12 +115880,39 @@ ${massTbl}
   }
 
   function gutAddFigur(kapId, figurId) {
+    _gut.figurMenuOffen = null;
     if (!figurId || !findeKapitel(kapId)) return;
     const b = gdNeuerFigurBlock(figurId);
     gdBlockEinfuegen(_gut.dok, kapId, b);
     _gut.auswahl = { art: 'block', id: b.id };
     neuZeichnen();
     scrollZu('block', b.id);
+  }
+
+  /** Öffnet/schließt das Auswahlmenü „Abbildung oder Textbaustein …“ für Kapitel `kapId`. */
+  function gutToggleFigurMenu(kapId) {
+    _gut.figurMenuOffen = _gut.figurMenuOffen === kapId ? null : kapId;
+    renderEigenschaften();
+  }
+
+  /** Alle noch fehlenden Katalog-Bausteine eines Standardgliederungs-Kapitels (`nr`) ans Ende von Kapitel `kapId` einfügen. */
+  function gutAddKapitelInhalt(kapId, nr) {
+    _gut.figurMenuOffen = null;
+    if (!findeKapitel(kapId)) return;
+    const knoten = ggMenuBaum().byNr.get(nr);
+    if (!knoten) return;
+    const imDok = gdFigurIds(_gut.dok);
+    const neue = knoten.figuren.filter(f => !imDok.has(f.id)); // knoten.figuren ist bereits in Musterkapitel-Reihenfolge sortiert
+    if (!neue.length) { gutSay('Alle Bausteine dieses Kapitels stehen schon im Dokument.'); neuZeichnen(); return; }
+    let letzter = null;
+    for (const f of neue) {
+      letzter = gdNeuerFigurBlock(f.id);
+      gdBlockEinfuegen(_gut.dok, kapId, letzter);
+    }
+    _gut.auswahl = { art: 'block', id: letzter.id };
+    neuZeichnen();
+    scrollZu('block', letzter.id);
+    gutSay(`${neue.length} Bausteine aus Kapitel ${nr} eingefügt.`);
   }
 
   /** Je bestehende Trafostation (aus dem Elektro-Tab, eine je Gebäude/Station) einen Freitext-Platzhalter anlegen. */
@@ -116126,6 +116241,7 @@ ${massTbl}
     __proto__: null,
     gutAddFigur: gutAddFigur,
     gutAddKapitel: gutAddKapitel,
+    gutAddKapitelInhalt: gutAddKapitelInhalt,
     gutAddLageplan: gutAddLageplan,
     gutAddText: gutAddText,
     gutAddTrafoDummies: gutAddTrafoDummies,
@@ -116153,6 +116269,7 @@ ${massTbl}
     gutShowSection: gutShowSection,
     gutStandardAnlegen: gutStandardAnlegen,
     gutTextFertig: gutTextFertig,
+    gutToggleFigurMenu: gutToggleFigurMenu,
     gutUebernehmeLageplanZiel: gutUebernehmeLageplanZiel,
     gutWaehle: gutWaehle,
     gutWordExport: gutWordExport,
@@ -116362,6 +116479,7 @@ ${massTbl}
   const LP_R = 6371000; // Erdradius (m), äquirektangulare Näherung — für Liegenschaftsgröße ausreichend
   const LP_STATUS_LABEL = { bestand: 'Bestand', neu: 'Neubau', abriss: 'Rückbau' };
   const LP_STATUS_FARBE = { bestand: '#266426', neu: '#1E88E5', abriss: '#C62828' };
+  const LP_HERVORHEBEN_GRAU = '#9e9e9e'; // "Neubau hervorheben": Bestand/Rückbau einheitlich grau
   const LP_PALETTE = ['#8D6E63', '#7986CB', '#4DB6AC', '#F06292', '#AED581', '#FFB74D',
                        '#A1887F', '#90A4AE', '#BA68C8', '#4DD0E1', '#DCE775', '#F48FB1'];
 
@@ -116370,6 +116488,7 @@ ${massTbl}
     anzeige: 'alle',                      // 'alle' | 'bestand' | 'neubau' | 'abriss'
     einfaerben: 'keine',                  // 'keine' | 'nutzung' | 'status'
     gebaeude: true, waerme: true, strom: true,
+    strassen: false,                      // Straßenverlauf aus OSM — reiner Kartenkontext, keine Netz-/Zeitlogik
     msModus: 'aus',                       // 'aus' | 'ring' (nur geschlossene Ringe) | 'alle' (jede MS-Leitung)
     beschriftung: false,                  // Master-Schalter: Namen/Nummern von Gebäuden + Assets zeigen
     labelGeb: true,                       // Teil der Beschriftungs-Auswahl: Gebäude benennen (Assets je Typ, s. _lpLabelTypes)
@@ -116404,6 +116523,13 @@ ${massTbl}
   // kein Text/Hervorheben dran, es ist nur die Position einer ohnehin gezeichneten Beschriftung.
   let _lpLabelOffsets = new Map();
   let _lpSatBusy = false;
+  // Straßenlinien für den Vektor-Lageplan — reiner Kartenkontext (keine Zeit-/Statuslogik wie beim
+  // Netz). null = noch nicht geladen, [] = geladen aber leer (kein Fund/Fehler). Wird NICHT selbst
+  // per Overpass abgefragt: dieses Modul liest nur, was window.loadOsmStrassen() (05b-stromnetz.js,
+  // eigentlich für die Kabeltrassierung gedacht) bereits als Ebene auf die echte Karte gelegt hat —
+  // gleiche "nur Globals lesen"-Regel wie bei window.gebaeude/window.stromEdges.
+  let _lpStrassenLinien = null;
+  let _lpStrassenBusy = false;
 
   // Freie Beschriftungen (Text/Linie). Bewusst keine Zeichen-Werkzeugleiste: Text eintippen,
   // Position per Klick auf die Vorschau setzen (siehe lpAttachPlacingHandler), danach im Plan
@@ -116541,6 +116667,9 @@ ${massTbl}
   function lpModusFarbe(item) {
     if (_lpState.einfaerben === 'status') return LP_STATUS_FARBE[item?.horizont] || LP_STATUS_FARBE.bestand;
     if (_lpState.einfaerben === 'schicht') return SCHICHT_META[normSchicht(item?.schicht)].farbe;
+    // "Neubau hervorheben": Bestand/Rückbau grau, Neubau behält seine gewohnte Farbe (null =
+    // keine Übersteuerung, s. lpGebFarbe/die Polylinien-Fälle, die dann auf den Standardton fallen).
+    if (_lpState.einfaerben === 'hervorheben') return item?.horizont === 'neu' ? null : LP_HERVORHEBEN_GRAU;
     return null;
   }
 
@@ -116713,7 +116842,7 @@ ${massTbl}
         for (const ring of (window.elDetectMSRings() || [])) {
           for (const e of (ring.edges || [])) {
             const pts = lpStromPunkte(e);
-            if (pts && pts.length >= 2) msRingListe.push(pts);
+            if (pts && pts.length >= 2) msRingListe.push({ pts, horizont: lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel)) });
           }
         }
       } catch (err) { }
@@ -116726,9 +116855,10 @@ ${massTbl}
         if (!istMs(e.u) || !istMs(e.v)) continue;
         // gleiche Zeitfilterung wie beim übrigen Stromnetz, damit MS-Leitungen im
         // Zeithorizont nicht anders behandelt werden als die Kabel darunter
-        if (!lpSichtbarNachHorizont(lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel)))) continue;
+        const horizont = lpHorizontStatus(lpAssetStatus(e, referenz), lpAssetStatus(e, ziel));
+        if (!lpSichtbarNachHorizont(horizont)) continue;
         const pts = lpStromPunkte(e);
-        if (pts && pts.length >= 2) msRingListe.push(pts);
+        if (pts && pts.length >= 2) msRingListe.push({ pts, horizont });
       }
     }
 
@@ -116750,7 +116880,11 @@ ${massTbl}
         .filter(x => x.lat != null && x.lng != null && lpSichtbarNachHorizont(x.horizont));
     }
 
-    return { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe };
+    // Straßen — reiner Kartenkontext, ohne Zeithorizont/Status/Schicht: eine Straße existiert
+    // unabhängig vom gewählten Referenz-/Zieljahr der Liegenschaft.
+    const strassenListe = _lpState.strassen ? (_lpStrassenLinien || []).map(pts => ({ pts })) : [];
+
+    return { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe, strassenListe };
   }
 
   /**
@@ -116860,7 +116994,16 @@ ${massTbl}
         for (const s of SCHICHT_REIHENFOLGE) if (da.has(s)) add(SCHICHT_META[s].label, SCHICHT_META[s].farbe, 'flaeche');
       }
       if (col.msRingListe.length) add(_lpState.msModus === 'alle' ? 'Mittelspannung' : 'MS-Ring', '#FB8C00', 'linie');
+      if (col.strassenListe.length) add('Straßen', '#90a4ae', 'linie');
       return items;
+    }
+
+    // "Neubau hervorheben" färbt nur den Bestand um (grau) — Neubauten behalten ihre normale
+    // Ebenenfarbe, deshalb bekommt nur der graue Bestand einen eigenen Legendeneintrag, der Rest
+    // läuft über die übliche Ebenen-Legende weiter unten.
+    if (_lpState.einfaerben === 'hervorheben') {
+      const alle = [...col.gebaeudeListe, ...col.waermeListe, ...col.stromListe, ...col.assetListe];
+      if (alle.some(x => x.horizont === 'bestand' || x.horizont === 'abriss')) add('Bestand', LP_HERVORHEBEN_GRAU, 'flaeche');
     }
 
     if (col.gebaeudeListe.length) {
@@ -116878,6 +117021,7 @@ ${massTbl}
     if (col.waermeListe.length) add('Wärmenetz', GG_THEME.energy.waerme, 'linie');
     if (col.stromListe.length) add('Stromnetz', GG_THEME.energy.strom, 'linie', true);
     if (col.msRingListe.length) add(_lpState.msModus === 'alle' ? 'Mittelspannung' : 'MS-Ring', '#FB8C00', 'linie');
+    if (col.strassenListe.length) add('Straßen', '#90a4ae', 'linie');
     for (const { asset } of col.assetListe) {
       const cfg = window.ASSET_CFG?.[asset.type];
       add(cfg?.label || asset.type, cfg?.color || '#607d8b', 'punkt');
@@ -117175,7 +117319,7 @@ ${massTbl}
    * (null = keine Geodaten UND kein fester Kartenausschnitt → nur Platzhaltertext).
    */
   function lpZeichnePlot({ col, energieInfo, tr, ausschnitt, plotX, plotY, plotW, plotH, clipId, txt, T }) {
-    const { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe } = col;
+    const { gebaeudeListe, waermeListe, stromListe, msRingListe, assetListe, strassenListe } = col;
     let out = `<rect x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}" fill="${T.neutral.cardBg}" stroke="${T.line}" stroke-width="1"/>`;
     out += `<clipPath id="${clipId}"><rect x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}"/></clipPath>`;
 
@@ -117206,6 +117350,11 @@ ${massTbl}
       out += `<image href="${_lpState.satBild.dataUrl}" x="${lbR(tl.x)}" y="${lbR(tl.y)}" width="${lbR(br.x - tl.x)}" height="${lbR(br.y - tl.y)}"${satDreh} preserveAspectRatio="none"/>`;
     }
 
+    // Straßen — reiner Kartenkontext unter Gebäuden/Netz, deshalb fest grau statt in einer
+    // Modusfarbe (keine Status-/Schicht-/Nutzungslogik wie bei den übrigen Ebenen).
+    for (const item of (strassenListe || [])) {
+      out += `<polyline points="${pathOf(item.pts)}" fill="none" stroke="#90a4ae" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>`;
+    }
     // Gebäude — bei "Energiekennwert" bleibt die Fläche neutral (T.tint), die Farbe
     // trägt dann der Kreis darüber, genau wie auf der echten Karte (Fläche = Umriss,
     // Kreis = Kennwert).
@@ -117237,9 +117386,13 @@ ${massTbl}
     for (const item of stromListe) {
       out += `<polyline points="${pathOf(item.pts)}" fill="none" stroke="${lpModusFarbe(item) || T.energy.strom}" stroke-width="2" stroke-dasharray="7 3" stroke-linecap="round" stroke-linejoin="round"/>`;
     }
-    // MS-Ring — dick, orange, oberhalb des normalen Stromnetzes
-    for (const pts of msRingListe) {
-      out += `<polyline points="${pathOf(pts)}" fill="none" stroke="#FB8C00" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
+    // MS-Ring — dick, orange, oberhalb des normalen Stromnetzes. Bleibt in den Farbmodi
+    // Status/Schicht bewusst einheitlich orange (MS soll dort weiterhin als MS erkennbar
+    // bleiben) — nur "Neubau hervorheben" gräut auch hier den Bestand aus, sonst wäre eine neue
+    // MS-Leitung neben einer bestehenden nicht von ihr zu unterscheiden.
+    for (const item of msRingListe) {
+      const msFarbe = _lpState.einfaerben === 'hervorheben' && item.horizont !== 'neu' ? LP_HERVORHEBEN_GRAU : '#FB8C00';
+      out += `<polyline points="${pathOf(item.pts)}" fill="none" stroke="${msFarbe}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
     }
     // Assets — kleine Marker mit Typ-Icon/-Farbe aus ASSET_CFG. NAP wird zuletzt gezeichnet
     // (liegt damit über Trafo/anderen Assets, falls sie am selben Punkt sitzen) — stabile
@@ -117418,7 +117571,7 @@ ${massTbl}
       ...gebaeudeListe.flatMap(x => x.poly),
       ...waermeListe.flatMap(x => x.pts),
       ...stromListe.flatMap(x => x.pts),
-      ...msRingListe.flat(),
+      ...msRingListe.flatMap(x => x.pts),
       ...assetListe.map(x => ({ lat: x.lat, lng: x.lng })),
     ];
     const ausschnitt = _lpState.kartenausschnitt;
@@ -117572,7 +117725,7 @@ ${massTbl}
       ...colA.gebaeudeListe.flatMap(x => x.poly), ...colB.gebaeudeListe.flatMap(x => x.poly),
       ...colA.waermeListe.flatMap(x => x.pts), ...colB.waermeListe.flatMap(x => x.pts),
       ...colA.stromListe.flatMap(x => x.pts), ...colB.stromListe.flatMap(x => x.pts),
-      ...colA.msRingListe.flat(), ...colB.msRingListe.flat(),
+      ...colA.msRingListe.flatMap(x => x.pts), ...colB.msRingListe.flatMap(x => x.pts),
       ...colA.assetListe.map(x => ({ lat: x.lat, lng: x.lng })), ...colB.assetListe.map(x => ({ lat: x.lat, lng: x.lng })),
     ];
     // Gemeinsamer Ausschnitt für beide Seiten: fester Kartenausschnitt, falls gesetzt,
@@ -117792,7 +117945,7 @@ ${massTbl}
     <span class="lp-feldname">${lbEsc(name)}</span>${inhalt}</div>`;
 
     const anzeigeLabel = { alle: 'alle bis Zieljahr', bestand: 'nur Bestand', neubau: 'nur Neubau', abriss: 'nur Rückbau' };
-    const ebenenAn = [_lpState.gebaeude, _lpState.waerme, _lpState.strom, _lpState.msModus !== 'aus'].filter(Boolean).length;
+    const ebenenAn = [_lpState.gebaeude, _lpState.waerme, _lpState.strom, _lpState.strassen, _lpState.msModus !== 'aus'].filter(Boolean).length;
     const assetsAn = assetTypen.filter(t => _lpAssetTypes[t]).length;
     const standInhalt = `${_lpState.vergleich ? `${_lpState.referenzjahr}→${_lpState.zieljahr}` : _lpState.zieljahr}`
       + ` · ${_lpState.vergleich ? 'Vergleich' : anzeigeLabel[_lpState.anzeige]}`
@@ -117824,6 +117977,8 @@ ${massTbl}
       ${chk(_lpState.gebaeude, 'Gebäude', "lpSetLayer('gebaeude',this.checked)")}
       ${chk(_lpState.waerme, 'Wärmenetz', "lpSetLayer('waerme',this.checked)")}
       ${chk(_lpState.strom, 'Stromnetz', "lpSetLayer('strom',this.checked)")}
+      ${chk(_lpState.strassen, _lpStrassenBusy ? 'Straßen (lädt …)' : 'Straßen', 'lpSetStrassen(this.checked)', 'Straßenverlauf aus OpenStreetMap als Kartenkontext — keine eigene Netzebene')}
+      ${_lpState.strassen ? kleinBtn('lpReloadStrassen()', '↻', 'Straßendaten neu von OpenStreetMap laden') : ''}
     </div>
     <div class="lp-zeile" style="gap:6px;">
       <span style="font-size:10px;color:var(--muted);">Mittelspannung</span>
@@ -117837,6 +117992,7 @@ ${massTbl}
         <option value="keine" ${_lpState.einfaerben==='keine'?'selected':''}>Keine (einheitlich)</option>
         <option value="nutzung" ${_lpState.einfaerben==='nutzung'?'selected':''}>Nutzungstyp</option>
         <option value="status" ${_lpState.einfaerben==='status'?'selected':''}>Status zum Zieljahr (Bestand/Neubau/Rückbau)</option>
+        <option value="hervorheben" ${_lpState.einfaerben==='hervorheben'?'selected':''}>Neubau hervorheben (Bestand grau)</option>
         <option value="schicht" ${_lpState.einfaerben==='schicht'?'selected':''}>Planungsschicht (Bestand/Entwicklung/Planung)</option>
         <option value="energie" ${_lpState.einfaerben==='energie'?'selected':''}>Energiekennwert (Kreise, wie auf der Karte)</option>
       </select>
@@ -117847,7 +118003,8 @@ ${massTbl}
       </select>` : ''}
     </div>
     ${_lpState.einfaerben === 'schicht' ? `<p class="lp-hinweis">Färbt Gebäude, Netze und Assets nach dem Grund, aus dem sie im Modell stehen: <b style="color:${SCHICHT_META.bestand.farbe}">Bestand</b> ist heute da, <b style="color:${SCHICHT_META.entwicklung.farbe}">Entwicklung</b> kommt ohnehin und gilt in allen Varianten gleich, <b style="color:${SCHICHT_META.entscheidung.farbe}">Planung</b> ist in dieser Variante entschieden.</p>` : ''}
-    ${_lpState.einfaerben === 'status' ? `<p class="lp-hinweis">Färbt Gebäude, Netze und Assets danach, was zum Zieljahr Bestand, Neubau oder Rückbau ist — abgeleitet aus Bau- und Abrissjahr.</p>` : ''}`),
+    ${_lpState.einfaerben === 'status' ? `<p class="lp-hinweis">Färbt Gebäude, Netze und Assets danach, was zum Zieljahr Bestand, Neubau oder Rückbau ist — abgeleitet aus Bau- und Abrissjahr.</p>` : ''}
+    ${_lpState.einfaerben === 'hervorheben' ? `<p class="lp-hinweis">Zeigt Bestand einheitlich grau, Neubauten in ihrer gewohnten Farbe — zusammen mit Anzeige „Alle bis Zieljahr" sieht man so beides gleichzeitig, mit dem Neubau als Blickfang.</p>` : ''}`),
     ].join('');
 
     /* Gruppe "Ausschnitt & Ausrichtung" — wie das Blatt steht */
@@ -118348,6 +118505,54 @@ ${massTbl}
   };
 
   window.lpSetLayer = (key, on) => { _lpState[key] = !!on; lpRenderPanel(); };
+  /**
+   * Liest bereits auf die echte Karte geladene OSM-Straßenlinien aus — dieses Modul fragt sie
+   * bewusst nicht selbst per Overpass ab (kein Import aus 05b-stromnetz.js), sondern nutzt, was
+   * dessen window.loadOsmStrassen() dort als Ebene ablegt (jede Polyline trägt `_osmPts`, gesetzt
+   * unabhängig davon ob sie schon als Kabeltrasse "übernommen" wurde).
+   */
+  function lpOsmStrassenPunkte() {
+    const linien = [];
+    if (!window.map || typeof window.map.eachLayer !== 'function') return linien;
+    const sammeln = (layer) => { if (Array.isArray(layer?._osmPts) && layer._osmPts.length >= 2) linien.push(layer._osmPts); };
+    window.map.eachLayer(layer => {
+      sammeln(layer);
+      if (typeof layer.eachLayer === 'function') layer.eachLayer(sammeln);
+    });
+    return linien;
+  }
+  window.lpSetStrassen = async (on) => {
+    _lpState.strassen = !!on;
+    if (!on || _lpStrassenBusy) { lpRenderPanel(); return; }
+    if (!_lpStrassenLinien) {
+      const vorhanden = lpOsmStrassenPunkte();
+      if (vorhanden.length) {
+        _lpStrassenLinien = vorhanden;
+      } else if (typeof window.loadOsmStrassen === 'function') {
+        _lpStrassenBusy = true;
+        lpRenderPanel();
+        lpSay('Straßen werden aus OpenStreetMap geladen …');
+        try {
+          await window.loadOsmStrassen();
+          _lpStrassenLinien = lpOsmStrassenPunkte();
+          lpSay(_lpStrassenLinien.length ? `✓ ${_lpStrassenLinien.length} Straßenzüge geladen.` : '⚠ Keine Straßen im Projektgebiet gefunden.', !_lpStrassenLinien.length);
+        } catch (err) {
+          _lpStrassenLinien = [];
+          lpSay('⚠ Straßen konnten nicht geladen werden: ' + (err?.message || err), true);
+        } finally {
+          _lpStrassenBusy = false;
+        }
+      } else {
+        _lpStrassenLinien = [];
+        lpSay('⚠ Straßen-Funktion nicht verfügbar.', true);
+      }
+    }
+    lpRenderPanel();
+  };
+  window.lpReloadStrassen = async () => {
+    _lpStrassenLinien = null;
+    if (_lpState.strassen) await window.lpSetStrassen(true);
+  };
   window.lpSetMsModus = (v) => { _lpState.msModus = ['aus', 'ring', 'alle'].includes(v) ? v : 'aus'; lpRenderPanel(); };
   window.lpSetJahr = (key, val) => { const n = parseInt(val, 10); if (isFinite(n)) _lpState[key] = n; lpRenderPanel(); };
   window.lpSetAnzeige = (id) => { _lpState.anzeige = id; lpRenderPanel(); };
