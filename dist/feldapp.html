@@ -1125,6 +1125,7 @@ if (typeof L !== 'undefined') {
       <summary>Datenschutz &amp; lokale Speicherung</summary>
       <div class="inner">
         <p>Projekt, Notizen, Fotos und Offline-Karten liegen ausschließlich lokal in diesem Browser. Sie können Adressen, GPS-Bezug und personenbezogene Inhalte enthalten. Nichts wird automatisch übertragen – nur dein Export verlässt das Gerät.</p>
+        <p>Ausnahmen, beide nur auf deine Aktion: Die Karte lädt Kartenbilder aus dem Internet, und die Spracheingabe nutzt je nach Browser einen Online-Dienst (die App fragt vorher).</p>
         <p>Gerät mit PIN schützen, nur berechtigte Aufnahmen erstellen und Exporte ausschließlich über dienstliche Wege weitergeben.</p>
         <button class="btn btn-danger" id="btn-privacy-clear">Alle lokalen Feldapp-Daten löschen</button>
       </div>
@@ -2005,6 +2006,10 @@ async function renderExport() {
       `<button data-quali="${k}" class="${k === fotoQualiKey() ? 'on' : ''}" aria-pressed="${k === fotoQualiKey()}">${v.label}<small>${v.maxPx} px</small></button>`).join('')}</div>
     <p style="font-size:12px;color:var(--muted);line-height:1.5">Gilt für neue Fotos auf diesem Gerät. Höhere Stufen zeigen mehr Details (z. B. Typenschilder), brauchen aber mehr Speicher und machen das ZIP größer.</p>
     <div class="group-head">Datenschutz</div>
+    <div class="card info-rows">
+      <div class="r"><span>Spracheingabe über Online-Dienst</span><b id="sprache-info">${spracheCloudErlaubt() ? 'erlaubt' : 'aus'}</b></div>
+    </div>
+    ${spracheCloudErlaubt() ? '<button class="btn btn-quiet" id="btn-sprache-aus">Spracheingabe über Online-Dienst abschalten</button>' : ''}
     <p style="font-size:13px;color:var(--muted);line-height:1.5">Alle Daten liegen nur in diesem Browser und werden nicht automatisch übertragen oder verschlüsselt. Nach erfolgreicher Übergabe ans Büro können sie hier gelöscht werden.</p>
     <button class="btn btn-danger" id="btn-privacy-clear-app">Alle lokalen Feldapp-Daten löschen</button>
     <button class="btn btn-quiet" id="btn-back">${icon('back')}Zum Startbildschirm</button>
@@ -2013,6 +2018,7 @@ async function renderExport() {
   document.getElementById('btn-export').addEventListener('click', () => exportZip(false));
   document.getElementById('btn-export-save').addEventListener('click', () => exportZip(true));
   document.getElementById('btn-privacy-clear-app').addEventListener('click', clearAllPrivateData);
+  document.getElementById('btn-sprache-aus')?.addEventListener('click', () => { setSpracheCloud(false); toast('Spracheingabe über Online-Dienst abgeschaltet'); renderExport(); });
   el.querySelectorAll('[data-quali]').forEach(b => b.addEventListener('click', () => {
     setFotoQuali(b.dataset.quali);
     el.querySelectorAll('[data-quali]').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
@@ -2431,14 +2437,44 @@ function setupSheetDrag() {
 }
 
 // ── Spracheingabe ────────────────────────────────────────
+// Die Spracherkennung des Browsers läuft in Chrome üblicherweise über Server
+// von Google – die Aufnahme verlässt dann das Gerät. Das widerspräche der
+// Zusage „nur der Export verlässt das Gerät". Deshalb:
+//   • Kann der Browser Deutsch auf dem Gerät erkennen (processLocally), wird
+//     das genutzt – ohne Rückfrage.
+//   • Sonst ist die Spracheingabe aus, bis sie nach einem klaren Hinweis
+//     ausdrücklich eingeschaltet wird (Geräteeinstellung, im Export-Reiter
+//     jederzeit widerrufbar).
+const SPRACHE_CLOUD_KEY = 'feldapp-sprache-cloud';
+function spracheCloudErlaubt() { try { return localStorage.getItem(SPRACHE_CLOUD_KEY) === 'ja'; } catch { return false; } }
+function setSpracheCloud(an) {
+  try { if (an) localStorage.setItem(SPRACHE_CLOUD_KEY, 'ja'); else localStorage.removeItem(SPRACHE_CLOUD_KEY); } catch { /* nur Sitzung */ }
+}
+async function spracheLokalVerfuegbar(SR) {
+  try {
+    if (typeof SR.available !== 'function' || !('processLocally' in SR.prototype)) return false;
+    return (await SR.available({ langs: ['de-DE'], processLocally: true })) === 'available';
+  } catch { return false; }
+}
+
 let _recognition = null, _isRecording = false;
-function toggleMic() {
+async function toggleMic() {
   const btn = document.getElementById('btn-mic');
   if (!btn) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { toast('Spracheingabe wird von diesem Browser nicht unterstützt'); return; }
   if (_isRecording) { _recognition?.stop(); return; }
+  const lokal = await spracheLokalVerfuegbar(SR);
+  if (!lokal && !spracheCloudErlaubt()) {
+    const ok = confirm('Spracheingabe nutzt einen Online-Dienst\n\n'
+      + 'Dieser Browser kann Sprache nicht auf dem Gerät erkennen. Die Aufnahme wird dafür an Server des Browser-Herstellers (bei Chrome: Google) geschickt – sie verlässt also das Gerät.\n\n'
+      + 'Nur verwenden, wenn das bei euch erlaubt ist, und keine Namen oder personenbezogenen Angaben diktieren.\n\n'
+      + 'Spracheingabe auf diesem Gerät einschalten? (Im Reiter „Export" wieder abschaltbar.)');
+    if (!ok) return;
+    setSpracheCloud(true);
+  }
   _recognition = new SR();
+  if (lokal) _recognition.processLocally = true;
   _recognition.lang = 'de-DE';
   _recognition.continuous = false;
   _recognition.interimResults = true;
@@ -2759,6 +2795,7 @@ async function clearAllPrivateData() {
   }
   _project = null;
   _meta.clear(); _notes.clear(); _photoInfo.clear(); _lastExportTs = 0;
+  setSpracheCloud(false);
   refreshImportButtons();
   showScreen('screen-import');
   setStatus('Alle lokalen Feldapp-Daten wurden gelöscht.');

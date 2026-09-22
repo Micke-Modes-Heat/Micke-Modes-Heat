@@ -9,7 +9,7 @@
 // Der Service Worker wird mit scope './feldapp' registriert und fasst die
 // Hauptapp (index.html) im selben Ordner deshalb nicht an.
 
-const VERSION = 'e5c1be320ca3';
+const VERSION = '221e07de0896';
 const SHELL = [
   "./feldapp.html",
   "./feldapp.webmanifest",

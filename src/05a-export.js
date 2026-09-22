@@ -13,6 +13,7 @@ import { escHtml, renderList, projektExportFilename, getProjektName } from './03
 import { renderSidebarAssetList } from './13e-assets-inspector.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
+import { planFeldMerge } from './lib/felddaten.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
 import { syntheticPvProfileMeta } from './lib/pv-profile-import.js';
@@ -2019,17 +2020,6 @@ export function importFelddaten() {
   inp.click();
 }
 
-// Vor Ort abgelesene Werte aus der Feldapp: nur bekannte Schlüssel, nur Text.
-const _FELDDATEN_KEYS = ['baujahr', 'heizung', 'verbrauch'];
-function _feldDatenSauber(roh) {
-  const out = {};
-  for (const k of _FELDDATEN_KEYS) {
-    const v = roh[k];
-    if (v != null && String(v).trim()) out[k] = String(v).trim().slice(0, 200);
-  }
-  return out;
-}
-
 async function _handleFelddatenImport(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -2057,7 +2047,8 @@ async function _handleFelddatenImport(e) {
         /\.(jpg|jpeg|png)$/i.test(n) && !zip.files[n].dir
       );
       for (const path of photoFiles) {
-        const blob = await zip.files[path].async('blob');
+        const mime = /\.png$/i.test(path) ? 'image/png' : 'image/jpeg';
+        const blob = new Blob([await zip.files[path].async('arraybuffer')], { type: mime });
         const dataUrl = await new Promise(res => {
           const reader = new FileReader();
           reader.onload = () => res(reader.result);
@@ -2075,74 +2066,62 @@ async function _handleFelddatenImport(e) {
       projektDaten = JSON.parse(await file.text());
     }
 
-    // Felddaten in bestehende Gebäude übernehmen
-    let updGeb = 0, updAssets = 0;
-
+    // Felddaten zusammenführen statt überschreiben (Regeln: lib/felddaten.js).
+    // Erst planen, dann mit Vorschau bestätigen lassen, dann anwenden.
+    const fotosFuer = (ordnerRoh) => {
+      if (!ordnerRoh || !Object.keys(photoMap).length) return [];
+      const norm = s => String(s || '').split('\\').join('/').split('/').filter(Boolean).join('/');
+      const ordner = norm(ordnerRoh);
+      const letzter = ordner.split('/').pop();
+      return Object.values(photoMap)
+        .filter(p => { const f = norm(p.folder); return f === ordner || f.endsWith('/' + letzter); })
+        .sort((a, b) => a.fileName.localeCompare(b.fileName))
+        .map(p => ({ name: p.fileName, dataUrl: p.dataUrl }));
+    };
+    const datum = projektDaten.feldExport?.exportiertAm ? new Date(projektDaten.feldExport.exportiertAm) : new Date();
+    const label = 'Feldapp ' + (isNaN(datum) ? '' : datum.toLocaleDateString('de-DE'));
+    const plaene = [];
+    const planen = (ziel, quelle, name) => {
+      if (!ziel || !quelle) return;
+      const plan = planFeldMerge(ziel, quelle, fotosFuer(quelle.feldFotoOrdner), { label });
+      if (plan.aenderungen) plaene.push({ ziel, name, ...plan });
+    };
     for (const feldGeb of (projektDaten.gebaeude || [])) {
       const g = gebaeude.find(x => x.id === feldGeb.id);
-      if (!g) continue;
-      if (feldGeb.feldNotizen !== undefined) g.feldNotizen = feldGeb.feldNotizen;
-      if (feldGeb.feldStatus  !== undefined) g.feldStatus  = feldGeb.feldStatus;
-      if (feldGeb.feldVorgemerkt !== undefined) g.feldVorgemerkt = feldGeb.feldVorgemerkt;
-      if (feldGeb.feldDaten && typeof feldGeb.feldDaten === 'object') g.feldDaten = _feldDatenSauber(feldGeb.feldDaten);
-
-      // Fotos zuordnen — normalisiert und mit Fallback
-      if (Object.keys(photoMap).length) {
-        const fotoOrdner = (feldGeb.feldFotoOrdner || '').split('\\').join('/').replace(/\/+$/, '');
-        const fotos = Object.values(photoMap).filter(p => {
-          const pFolder = p.folder.split('\\').join('/').replace(/\/+$/, '');
-          // Exakter Match ODER Ordner endet auf den gleichen Namen
-          return pFolder === fotoOrdner ||
-                 pFolder.endsWith('/' + fotoOrdner.split('/').pop());
-        });
-        if (fotos.length > 0) {
-          g.feldFotos = fotos.map(p => ({ name: p.fileName, dataUrl: p.dataUrl }));
-        }
-      }
-      updGeb++;
+      planen(g, feldGeb, g?.name || `Gebäude ${feldGeb.id}`);
     }
-
-    // Felddaten in Elektro-Assets übernehmen
     for (const feldAsset of (projektDaten.elektroAssets?.items || [])) {
       const a = ASSETS.items.find(x => x.id === feldAsset.id);
-      if (!a) continue;
-      if (feldAsset.feldNotizen    !== undefined) a.feldNotizen    = feldAsset.feldNotizen;
-      if (feldAsset.feldStatus     !== undefined) a.feldStatus     = feldAsset.feldStatus;
-      if (feldAsset.feldVorgemerkt !== undefined) a.feldVorgemerkt = feldAsset.feldVorgemerkt;
-      if (feldAsset.feldDaten && typeof feldAsset.feldDaten === 'object') a.feldDaten = _feldDatenSauber(feldAsset.feldDaten);
-      // Fotos zuordnen
-      if (Object.keys(photoMap).length) {
-        const fotoOrdner = (feldAsset.feldFotoOrdner || '').split('\\').join('/').split('/').filter(Boolean).join('/');
-        const fotos = Object.values(photoMap).filter(p => {
-          const pFolder = p.folder.split('\\').join('/').split('/').filter(Boolean).join('/');
-          return pFolder === fotoOrdner ||
-                 pFolder.endsWith('/' + fotoOrdner.split('/').pop());
-        });
-        if (fotos.length > 0) {
-          a.feldFotos = fotos.map(p => ({ name: p.fileName, dataUrl: p.dataUrl }));
-        }
-      }
-      updAssets++;
+      planen(a, feldAsset, a?.name || a?.type || 'Anlage');
+    }
+    for (const key of ['lwWp','geoThermie','pelletsKessel','heizhackschnitzel','fernwaerme']) {
+      planen(window[key], projektDaten[key], key);
     }
 
-    // Erzeuger
-    const erzKeys = ['lwWp','geoThermie','pelletsKessel','heizhackschnitzel','fernwaerme'];
-    for (const key of erzKeys) {
-      if (projektDaten[key] && window[key]) {
-        if (projektDaten[key].feldNotizen !== undefined) window[key].feldNotizen = projektDaten[key].feldNotizen;
-        if (projektDaten[key].feldStatus  !== undefined) window[key].feldStatus  = projektDaten[key].feldStatus;
-        if (projektDaten[key].feldVorgemerkt !== undefined) window[key].feldVorgemerkt = projektDaten[key].feldVorgemerkt;
-      }
+    if (!plaene.length) {
+      alert('Keine neuen Felddaten in dieser Datei – alles ist bereits übernommen.');
+      return;
     }
+    const neueFotos = plaene.reduce((s, p) => s + p.neueFotos, 0);
+    const konflikte = plaene.flatMap(p => p.konflikte.map(k => `• ${p.name}: ${k}`));
+    const text = [
+      `Felddaten übernehmen?`,
+      ``,
+      `${plaene.length} ${plaene.length === 1 ? 'Objekt' : 'Objekte'} mit neuen Daten, ${neueFotos === 1 ? '1 neues Foto' : `${neueFotos} neue Fotos`}.`,
+      konflikte.length ? `\nAbweichungen (${konflikte.length}):\n${konflikte.slice(0, 12).join('\n')}${konflikte.length > 12 ? `\n… und ${konflikte.length - 12} weitere` : ''}` : 'Keine Abweichungen zu vorhandenen Daten.',
+      ``,
+      `Vorhandene Notizen und Fotos bleiben erhalten.`,
+    ].join('\n');
+    if (!confirm(text)) return;
+
+    for (const p of plaene) Object.assign(p.ziel, p.patch);
 
     // UI aktualisieren
     if (typeof renderList === 'function') renderList();
     if (typeof renderSidebarAssetList === 'function') renderSidebarAssetList();
+    if (typeof window.autosave === 'function') window.autosave();
 
-    const fotoCount = Object.values(photoMap).length;
-    const gebMitFotos = (window.gebaeude || []).filter(g => g.feldFotos?.length > 0).length;
-    console.log('Foto-Import Debug:', { fotoCount, gebMitFotos, photoMapKeys: Object.keys(photoMap).slice(0,3) });
-    alert(`✓ Felddaten importiert:\n${updGeb} Gebäude aktualisiert\n${updAssets} Assets aktualisiert\n${fotoCount} Fotos geladen (${gebMitFotos} Gebäude mit Fotos)`);
+    alert(`✓ Felddaten übernommen:\n${plaene.length} ${plaene.length === 1 ? 'Objekt' : 'Objekte'} aktualisiert, ${neueFotos} ${neueFotos === 1 ? 'Foto' : 'Fotos'} ergänzt${konflikte.length ? `, ${konflikte.length} Abweichungen` : ''}.\nSie werden jetzt mit dem Projekt gespeichert.`);
 
   } catch (err) {
     alert('Fehler beim Import: ' + err.message);

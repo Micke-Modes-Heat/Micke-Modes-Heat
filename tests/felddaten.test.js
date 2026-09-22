@@ -1,0 +1,86 @@
+import { describe, it, expect } from 'vitest';
+import { captureFelddaten, applyFelddaten, planFeldMerge, pickFeldwerte, sauberFeldDaten } from '../src/lib/felddaten.js';
+
+const FOTO_A = { name: 'foto_01.jpg', dataUrl: 'data:image/jpeg;base64,AAAA' };
+const FOTO_B = { name: 'foto_02.jpg', dataUrl: 'data:image/jpeg;base64,BBBB' };
+
+describe('Felddaten sichern und wiederherstellen', () => {
+  it('überlebt einen Speichern-/Laden-Zyklus (Gebäude, Assets, Erzeuger)', () => {
+    const gebaeude = [
+      { id: 1, name: 'Rathaus', feldStatus: 'erledigt', feldNotizen: 'Heizraum im Keller', feldDaten: { baujahr: '1971', heizung: 'Gas' }, feldVorgemerkt: true, feldFotos: [FOTO_A] },
+      { id: 2, name: 'Ohne Befund' },
+    ];
+    const assets = [{ id: 'a1', feldStatus: 'besucht' }];
+    const erzeuger = { lwWp: { lat: 1, lng: 2, feldNotizen: 'Aufstellort prüfen' } };
+
+    const gesichert = JSON.parse(JSON.stringify(captureFelddaten({ gebaeude, assets, erzeuger })));
+    expect(Object.keys(gesichert.gebaeude)).toEqual(['1']);
+
+    const neuGeb = [{ id: 1, name: 'Rathaus' }, { id: 2, name: 'Ohne Befund' }];
+    const neuAssets = [{ id: 'a1' }];
+    const neuErz = { lwWp: { lat: 1, lng: 2 } };
+    expect(applyFelddaten(gesichert, { gebaeude: neuGeb, assets: neuAssets, erzeuger: neuErz })).toBe(3);
+    expect(neuGeb[0]).toMatchObject({ feldStatus: 'erledigt', feldNotizen: 'Heizraum im Keller', feldDaten: { baujahr: '1971', heizung: 'Gas' }, feldVorgemerkt: true, feldFotos: [FOTO_A] });
+    expect(neuGeb[1].feldStatus).toBeUndefined();
+    expect(neuAssets[0].feldStatus).toBe('besucht');
+    expect(neuErz.lwWp.feldNotizen).toBe('Aufstellort prüfen');
+  });
+
+  it('ignoriert fehlende oder kaputte Abschnitte (Altprojekte)', () => {
+    const g = [{ id: 1 }];
+    expect(applyFelddaten(undefined, { gebaeude: g })).toBe(0);
+    expect(applyFelddaten({ gebaeude: 'quatsch' }, { gebaeude: g })).toBe(0);
+    expect(g[0]).toEqual({ id: 1 });
+  });
+
+  it('nimmt nur gültige Werte mit', () => {
+    expect(pickFeldwerte({ feldStatus: 'kaputt', feldNotizen: '   ', feldFotos: [{ dataUrl: 'javascript:alert(1)' }] })).toBeNull();
+    expect(sauberFeldDaten({ baujahr: ' 1971 ', fremd: 'x', heizung: 'a'.repeat(500) })).toEqual({ baujahr: '1971', heizung: 'a'.repeat(200) });
+  });
+});
+
+describe('Felddaten zusammenführen', () => {
+  it('leere Werte aus der Feldapp überschreiben nichts', () => {
+    const ziel = { feldNotizen: 'Wichtig', feldStatus: 'besucht', feldDaten: { baujahr: '1971' } };
+    const plan = planFeldMerge(ziel, { feldNotizen: '', feldDaten: {} });
+    expect(plan.aenderungen).toBe(0);
+    expect(plan.patch).toEqual({});
+  });
+
+  it('zwei Kollegen, zwei Notizen: beide bleiben erhalten', () => {
+    const ziel = { feldNotizen: 'Zugang über Hof' };
+    const plan = planFeldMerge(ziel, { feldNotizen: 'Hausmeister ab 7 Uhr' }, [], { label: 'Feldapp 22.09.2026' });
+    expect(plan.patch.feldNotizen).toContain('Zugang über Hof');
+    expect(plan.patch.feldNotizen).toContain('Hausmeister ab 7 Uhr');
+    expect(plan.konflikte).toHaveLength(1);
+  });
+
+  it('erweiterte Notiz ersetzt die alte, gleiche Notiz ändert nichts', () => {
+    expect(planFeldMerge({ feldNotizen: 'Zugang' }, { feldNotizen: 'Zugang über Hof' }).patch.feldNotizen).toBe('Zugang über Hof');
+    expect(planFeldMerge({ feldNotizen: 'Zugang' }, { feldNotizen: 'Zugang' }).aenderungen).toBe(0);
+  });
+
+  it('Status geht nur vorwärts', () => {
+    expect(planFeldMerge({ feldStatus: 'besucht' }, { feldStatus: 'erledigt' }).patch.feldStatus).toBe('erledigt');
+    const zurueck = planFeldMerge({ feldStatus: 'erledigt' }, { feldStatus: 'offen' });
+    expect(zurueck.patch.feldStatus).toBeUndefined();
+    expect(zurueck.konflikte).toHaveLength(1);
+    expect(planFeldMerge({}, { feldStatus: 'besucht' }).patch.feldStatus).toBe('besucht');
+  });
+
+  it('Vor-Ort-Werte werden ergänzt, abweichende gemeldet', () => {
+    const plan = planFeldMerge({ feldDaten: { baujahr: '1970' } }, { feldDaten: { baujahr: '1971', heizung: 'Gas' } });
+    expect(plan.patch.feldDaten).toEqual({ baujahr: '1971', heizung: 'Gas' });
+    expect(plan.konflikte).toEqual(['baujahr: „1970" → „1971"']);
+  });
+
+  it('Fotos werden ergänzt, nicht ersetzt und nicht verdoppelt', () => {
+    const plan = planFeldMerge({ feldFotos: [FOTO_A] }, {}, [FOTO_A, FOTO_B, FOTO_B]);
+    expect(plan.neueFotos).toBe(1);
+    expect(plan.patch.feldFotos.map(f => f.name)).toEqual(['foto_01.jpg', 'foto_02.jpg']);
+  });
+
+  it('die Vormerkung gehört dem Büro', () => {
+    expect(planFeldMerge({ feldVorgemerkt: true }, { feldVorgemerkt: false }).aenderungen).toBe(0);
+  });
+});

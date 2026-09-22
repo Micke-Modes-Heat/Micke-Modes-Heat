@@ -31,6 +31,7 @@ import { bhkw, edgeWaypoints, fernwaerme, fernwaermeEmF, ffCounter, fliessgewaes
 import { kostenSzenario, setKostenSzenario } from './02a-netz-physik.js';
 import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
+import { captureFelddaten, applyFelddaten } from './lib/felddaten.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
@@ -2648,6 +2649,15 @@ function _restoreProjektStammdaten(daten) {
   syncProjektname();
 }
 
+// Erzeuger, die in der Feldapp als eigene Objekte auftauchen (vgl. exportFeldapp)
+function _feldErzeuger() {
+  const out = {};
+  for (const key of ['lwWp', 'geoThermie', 'pelletsKessel', 'heizhackschnitzel', 'fernwaerme']) {
+    if (window[key]) out[key] = window[key];
+  }
+  return out;
+}
+
 export function _buildProjectData() {
   const economicScenario = _captureEconomicScenario();
   return {
@@ -2772,6 +2782,10 @@ export function _buildProjectData() {
       })(),
       kabelTyp: document.getElementById('strom-kabel-typ')?.value || 'NAYY'
     },
+    // Befunde aus der Feldapp (Status, Notizen, Vor-Ort-Werte, Fotos, Vormerkung).
+    // Eigener Abschnitt statt Einzelfelder in den Gebäude-/Asset-Listen, damit
+    // sie beim Speichern nicht still wegfallen.
+    felddaten: captureFelddaten({ gebaeude: window.gebaeude, assets: ASSETS.items, erzeuger: _feldErzeuger() }),
     elektroAssets: (() => {
       const assetIdSet = new Set(ASSETS.items.map(a => a.id));
       return {
@@ -3812,6 +3826,7 @@ function _applyProjectData(project) {
       if (typeof window.clusterRenderLayers === 'function') window.clusterRenderLayers();
 
       redrawErzeugerIcons();
+      applyFelddaten(project.felddaten, { gebaeude: window.gebaeude, assets: ASSETS.items, erzeuger: _feldErzeuger() });
       _initYearSliderFromBaujahr();
       _invalidateStats();
       renderList();
