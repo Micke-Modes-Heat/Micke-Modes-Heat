@@ -4107,6 +4107,24 @@ function _pvStufenInvest(kwp) {
   return { stufe: st, invest: _pvInfraItems(st.id).reduce((s, it) => s + (it.aktiv ? (it.investEUR || 0) : 0), 0) };
 }
 
+/**
+ * Rechenkontext für die Kartenansicht des Ausbaus (28-pv-ausbau-karte.js):
+ * dieselbe Rückspeise-Rechnung und dieselben Grenzen wie Abb. 6.
+ * null, solange in der PV-Analyse noch nicht gerechnet wurde.
+ */
+export function pvAusbauKontext() {
+  const s = window._pvAnalyse;
+  const args = _pvFsArgs;
+  if (!s?.berechnet || !s.ergebnisse?.length || !args?.demandH) return null;
+  const r0 = s.ergebnisse.find(v => v.rueck)?.rueck || {};
+  return {
+    rueckKw: (kwp, bat = 0) => pvRueckAnalyse(kwp, bat, args.demandH, args.pvProfile).maxKw,
+    napKw: r0.anschlussKw ?? null, skKva: r0.skKVA || 0, uBudgetPct: r0.uBudgetPct || 3,
+    trafoKvaOverride: s.bestandTrafoKva || 0,
+    batVorschlagKwh: s.ergebnisse.find(v => v.id === 'wirt-opt')?.batKwh || 0,
+  };
+}
+
 window.pvBestandTrafoKvaSetzen = function pvBestandTrafoKvaSetzen(wert) {
   const v = parseFloat(wert);
   window._pvAnalyse.bestandTrafoKva = Number.isFinite(v) && v > 0 ? v : 0;
@@ -4167,8 +4185,12 @@ function renderBestandAusbau(host, varianten, args, gross) {
         <input data-ausbau="bat" type="range" min="0" max="${batMax}" step="${batMax > 4000 ? 250 : 100}" value="${Math.round(Math.min(start.batKwh, batMax))}" style="flex:1;min-width:0;accent-color:#42a5f5;">
         <span data-ausbau="bat-val" style="font-size:9.5px;color:#42a5f5;font-family:'DM Mono',monospace;width:70px;text-align:right;"></span>
       </label>
-      <button data-ausbau="play" title="Ausbau von heute bis zum vollen Potenzial abspielen"
-        style="cursor:pointer;background:rgba(253,216,53,0.1);border:1px solid rgba(253,216,53,0.45);border-radius:5px;color:#fdd835;font-size:10px;padding:3px 10px;white-space:nowrap;">▶ Ausbau abspielen</button>
+      <div style="display:flex;gap:6px;">
+        <button data-ausbau="play" title="Ausbau von heute bis zum vollen Potenzial abspielen"
+          style="cursor:pointer;background:rgba(253,216,53,0.1);border:1px solid rgba(253,216,53,0.45);border-radius:5px;color:#fdd835;font-size:10px;padding:3px 10px;white-space:nowrap;">▶ Ausbau abspielen</button>
+        <button data-ausbau="karte" title="Anlage für Anlage auf der Karte zuschalten und die Auslastung der Trafos sehen"
+          style="cursor:pointer;background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.45);border-radius:5px;color:#4fc3f7;font-size:10px;padding:3px 10px;white-space:nowrap;">🗺 Auf der Karte</button>
+      </div>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:10px;">
       <span style="font-size:8.5px;color:var(--muted);margin-right:2px;">Springen zu:</span>
@@ -4504,6 +4526,10 @@ function renderBestandAusbau(host, varianten, args, gross) {
     pvIn.value = Math.round(p); batIn.value = Math.round(Math.min(bb, batMax));
     draw();
   }));
+  q('karte').addEventListener('click', () => {
+    if (_pvFsModal) _pvFsModal.style.display = 'none';
+    window.pvAusbauKarteOeffnen?.();
+  });
   q('trafo').addEventListener('change', e => window.pvBestandTrafoKvaSetzen(/** @type {HTMLInputElement} */ (e.target).value));
 
   const ausMaus = (ev) => {

@@ -171,3 +171,66 @@ export function ausbauTreppe(punkte, grenzen) {
     }))
     .sort((a, b) => (a.abKwp ?? Infinity) - (b.abKwp ?? Infinity) || a.kapKw - b.kapKw);
 }
+
+// ── Kartenansicht: Ausbau Anlage für Anlage, Belastung je Trafo ─────────────
+
+const _SCHICHT_RANG = { bestand: 0, entwicklung: 1, entscheidung: 2 };
+
+/**
+ * Reihenfolge, in der die Anlagen zugeschaltet werden. Was heute steht
+ * (Schicht „Bestand"), kommt immer zuerst — es belastet das Netz bereits.
+ *
+ * modus: 'schicht' — Bestand, Entwicklung, Planung; darin große Anlagen zuerst
+ *        'gross'   — nach dem Bestand die größten Anlagen zuerst
+ *        'klein'   — nach dem Bestand die kleinsten zuerst
+ *
+ * @param {Array<{ id:string, kwp:number, schicht?:string }>} anlagen
+ */
+export function ausbauReihenfolge(anlagen, modus = 'schicht') {
+  const rang = a => _SCHICHT_RANG[a.schicht] ?? 0;
+  return [...(anlagen || [])].sort((a, b) => {
+    const ba = rang(a) === 0 ? 0 : 1, bb = rang(b) === 0 ? 0 : 1;
+    if (ba !== bb) return ba - bb;
+    if (modus === 'schicht' && rang(a) !== rang(b)) return rang(a) - rang(b);
+    return modus === 'klein' ? a.kwp - b.kwp : b.kwp - a.kwp;
+  });
+}
+
+/**
+ * Verteilt die Rückspeisespitze am NAP auf die Bestandstrafos.
+ *
+ * Screening, kein Lastfluss: jeder Trafo bekommt den Anteil der Spitze, der
+ * seinem Anteil an der gebauten PV-Leistung entspricht. PV ohne Kabelweg zu
+ * einem Trafo wird nach Trafoleistung aufgeteilt und als geschätzt markiert.
+ * Die Summe über alle Trafos ist damit die Spitze aus Abb. 6.
+ *
+ * @param {Array<{ kwp:number, trafoId:string|null }>} gebaut  zugeschaltete Anlagen
+ * @param {Array<{ id:string, name?:string, kva:number }>} trafos
+ * @param {number} rueckKw  Rückspeisespitze am NAP
+ * @returns {Map<string, { id, name, kva, kwp, rueckKw, geschaetztKw, kapKw, quote, stufe, massnahme }>}
+ */
+export function trafoBelastung(gebaut, trafos, rueckKw, kosten = SCHWELLEN_KOSTEN) {
+  const out = new Map();
+  const liste = (trafos || []).filter(t => t.kva > 0);
+  const kvaSumme = liste.reduce((s, t) => s + t.kva, 0);
+  const kwpGesamt = (gebaut || []).reduce((s, a) => s + (a.kwp || 0), 0);
+  const kwpJe = new Map(liste.map(t => [t.id, 0]));
+  let ohneKwp = 0;
+  for (const a of (gebaut || [])) {
+    if (a.trafoId != null && kwpJe.has(a.trafoId)) kwpJe.set(a.trafoId, kwpJe.get(a.trafoId) + (a.kwp || 0));
+    else ohneKwp += a.kwp || 0;
+  }
+  const kwJeKwp = kwpGesamt > 0 ? rueckKw / kwpGesamt : 0;
+  for (const t of liste) {
+    const eigenKw = kwpJe.get(t.id) * kwJeKwp;
+    const geschaetztKw = kvaSumme > 0 ? ohneKwp * kwJeKwp * t.kva / kvaSumme : 0;
+    const g = { id: 'trafo', kapKw: t.kva * TRAFO_RUECK_FAKTOR, kva: t.kva };
+    const last = eigenKw + geschaetztKw;
+    out.set(t.id, {
+      id: t.id, name: t.name || t.id, kva: t.kva, kwp: kwpJe.get(t.id),
+      rueckKw: last, geschaetztKw, kapKw: g.kapKw,
+      ...auslastung(last, g), massnahme: ertuechtigung(last, g, kosten),
+    });
+  }
+  return out;
+}

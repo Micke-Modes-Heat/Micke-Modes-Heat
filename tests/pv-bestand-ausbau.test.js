@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   bestandsGrenzen, auslastung, ertuechtigung, ausbauStand, kwpBeiRueck, ausbauTreppe, AUSLASTUNG_ENG,
+  ausbauReihenfolge, trafoBelastung,
 } from '../src/lib/pv-bestand-ausbau.js';
 import { SCHWELLEN_KOSTEN, TRAFO_RUECK_FAKTOR } from '../src/lib/netz-schwellen.js';
 
@@ -103,5 +104,31 @@ describe('kwpBeiRueck und ausbauTreppe', () => {
     const t = ausbauTreppe(KURVE, g);
     expect(t[0].id).toBe('nap');
     expect(t[1].abKwp).toBeNull();
+  });
+});
+
+describe('Kartenansicht: Reihenfolge und Trafobelastung', () => {
+  const anlagen = [
+    { id: 'a', kwp: 50,  schicht: 'entscheidung' },
+    { id: 'b', kwp: 200, schicht: 'entwicklung' },
+    { id: 'c', kwp: 30,  schicht: 'bestand' },
+    { id: 'd', kwp: 400, schicht: 'entscheidung' },
+  ];
+
+  it('Bestand zuerst, dann nach Modus', () => {
+    expect(ausbauReihenfolge(anlagen, 'schicht').map(a => a.id)).toEqual(['c', 'b', 'd', 'a']);
+    expect(ausbauReihenfolge(anlagen, 'gross').map(a => a.id)).toEqual(['c', 'd', 'b', 'a']);
+    expect(ausbauReihenfolge(anlagen, 'klein').map(a => a.id)).toEqual(['c', 'a', 'b', 'd']);
+  });
+
+  it('verteilt die Spitze nach kWp, Unverkabeltes nach kVA', () => {
+    const trafos = [{ id: 't1', kva: 400 }, { id: 't2', kva: 400 }];
+    const gebaut = [{ kwp: 300, trafoId: 't1' }, { kwp: 100, trafoId: null }];
+    const m = trafoBelastung(gebaut, trafos, 400);           // 1 kW je kWp
+    expect(m.get('t1').rueckKw).toBeCloseTo(300 + 50);
+    expect(m.get('t2').rueckKw).toBeCloseTo(50);
+    expect(m.get('t2').geschaetztKw).toBeCloseTo(50);
+    expect(m.get('t1').rueckKw + m.get('t2').rueckKw).toBeCloseTo(400);
+    expect(m.get('t1').stufe).toBe('eng');                  // 350 von 360 kW
   });
 });
