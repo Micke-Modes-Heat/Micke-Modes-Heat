@@ -15,6 +15,9 @@ import { ASSETS } from './13a-assets-core.js';
 import { computeWindElHourly, getWindAssetsSummary } from './13q-wind-ertrag.js';
 import { PV_PFLICHT_LISTE, PV_PFLICHT_META } from './config/pv-pflicht-laender.js';
 import { pflichtCheck } from './lib/pv-pflicht.js';
+import { ausbauStand, ausbauTreppe, bestandsGrenzen, AUSLASTUNG_ENG } from './lib/pv-bestand-ausbau.js';
+import { SCHWELLEN_KOSTEN, TRAFO_RUECK_FAKTOR } from './lib/netz-schwellen.js';
+import { normSchicht, SCHICHT } from './lib/schichten.js';
 
 // Die App-Schicht der PV-Pflicht (09e-pv-pflicht.js) wird bewusst NICHT importiert:
 // sie hängt an 03c/02b/13a und würde über diesen Import in den Altkern-Zyklus
@@ -121,6 +124,7 @@ function _pvStandardZustand() {
     uBudgetPct: 3,       // zulässige Spannungsanhebung durch Einspeisung (VDE-AR-N 4105: 3 % NS, 4110: 2 % MS)
     uBudgetManuell: false, // false = uBudgetPct aus der Spannungsebene des Netzanschlusses (_pvUBudget)
     pvMaxKwpOverride: 0,        // 0 = aus Assets berechnen
+    bestandTrafoKva: 0,         // Trafoleistung im Bestand für Abb. 6 (0 = Summe der Bestands-Trafo-Assets)
     pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
     pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
     deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
@@ -1449,7 +1453,7 @@ const PVA_VIEWS = [
   { id:'abb5',  gruppe:'abb', nr:5,  label:'Invest / Amortisation', el:'pva-chart-scatter',
     render:(v) => renderScatterChart(v) },
   { id:'abb6',  gruppe:'abb', nr:6,  label:'Rückspeisung & Netz',  el:'pva-chart-rueck',
-    render:(v) => renderRueckAmpel(v) },
+    render:(v, a) => renderRueckAmpel(v, null, a) },
   { id:'abb7',  gruppe:'abb', nr:7,  label:'Energiefluss',         el:'pva-chart-fluss',
     render:(v, a) => renderEnergieFluss(a.demandH, a.pvProfile, a.napParams, a.params, v) },
   // 7b statt einer Neunummerierung: Abb. 7b zoomt in den Speicheranteil von Abb. 7
@@ -3978,7 +3982,7 @@ function renderScatterChart(varianten, overrideEl) {
 
 const _AMPEL_COL = { gruen:'#66bb6a', gelb:'#ffb74d', rot:'#ef5350', na:'#78909c' };
 
-function renderRueckAmpel(varianten, overrideEl) {
+function renderRueckAmpel(varianten, overrideEl, args = _pvFsArgs) {
   const el = overrideEl || document.getElementById('pva-chart-rueck');
   if (!el || !varianten?.length) return;
 
@@ -4048,6 +4052,9 @@ function renderRueckAmpel(varianten, overrideEl) {
     ${overrideEl ? '' : '<button data-pva-fs="rueck" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
   <div style="margin-bottom:10px;">${banner}</div>
+  <div data-pva-ausbau style="margin-bottom:16px;"></div>
+  <div style="font-size:10px;font-weight:600;color:var(--text);margin:0 0 6px;">Die Varianten im Vergleich
+    <span style="font-size:8px;color:var(--muted);font-weight:400;margin-left:6px;">jede Variante mit ihrer eigenen Batterie</span></div>
   <svg width="${W}" height="${H}" style="display:block;overflow:visible;">
     ${refLine(anschlussKw, '#ef5350', 'Anschluss')}
     ${refLine(sZul, '#ffb74d', 'Δu-Grenze')}
@@ -4060,9 +4067,476 @@ function renderRueckAmpel(varianten, overrideEl) {
     Δu ≈ 100 · P_rück / S_k″ (Screening, cos φ ≈ 1) · Ampel: <span style="color:#66bb6a">grün</span> unkritisch · <span style="color:#ffb74d">gelb</span> Grenzfall · <span style="color:#ef5350">rot</span> Erzeugungsnetz/MS nötig
   </div>`;
 
+  renderBestandAusbau(el.querySelector('[data-pva-ausbau]'), varianten, args, !!overrideEl);
+
   const fsBtn = el.querySelector('[data-pva-fs="rueck"]');
   if (fsBtn) fsBtn.addEventListener('click', () =>
-    _pvOpenFs('Rückspeise- & Erzeugungsnetz-Bewertung', cnt => renderRueckAmpel(window._pvAnalyse.ergebnisse, cnt)));
+    _pvOpenFs('Rückspeise- & Erzeugungsnetz-Bewertung', cnt => renderRueckAmpel(window._pvAnalyse.ergebnisse, cnt, _pvFsArgs)));
+}
+
+// ── Abb. 6 (oben) — PV-Ausbau im Bestand: Belastung und Ertüchtigungs-Treppe ──
+// Die Balken unten sagen je Variante nur „passt / passt nicht". Hier wird der
+// Ausbau als Pfad gezeigt: PV-Schieber von heute bis zum vollen Potenzial, die
+// Rückspeisespitze wächst mit, und an jeder Bestandsgrenze (Trafo, NAP-Zusage,
+// Spannungsband) kippt die Kurve von „trägt" nach „Ertüchtigung nötig". Die
+// Kostenkurve darunter stellt die beiden Lösungswege nebeneinander: Bestand
+// Schritt für Schritt ertüchtigen oder ab der ersten Grenze ein eigenes
+// Erzeugungsnetz. Gerechnet wird wie in der Tabelle (pvRueckAnalyse), also
+// ohne Einspeiselimit — gesucht ist die Leistung, die der Bestand tragen müsste.
+
+const _AUSBAU_GRENZ_COL = { trafo: '#ce93d8', nap: '#ef5350', du: '#ffb74d' };
+const _AUSBAU_STUFE_COL = { frei: '#66bb6a', eng: '#ffb74d', ueber: '#ef5350' };
+const _AUSBAU_PUNKTE = 40;
+
+/** Trafoleistung der Bestands-Trafos (Elektro-Assets, Schicht „Bestand"). */
+function _pvBestandTrafo() {
+  const trafos = (ASSETS?.items || []).filter(a => a.type === 'Trafo' && normSchicht(a.schicht) === SCHICHT.BESTAND);
+  return { kva: trafos.reduce((s, a) => s + (parseFloat(a.props?.leistungKVA) || 0), 0), n: trafos.length };
+}
+
+/** Heute installierte PV (PV-Assets der Schicht „Bestand"). */
+function _pvBestandPvKwp() {
+  return (ASSETS?.items || [])
+    .filter(a => a.type === 'PV' && normSchicht(a.schicht) === SCHICHT.BESTAND)
+    .reduce((s, a) => s + (parseFloat(a.props?.leistungKWp) || 0), 0);
+}
+
+/** Investition der Anschlussstufe, in die eine PV-Leistung fällt (editierbare Infra-Kosten). */
+function _pvStufenInvest(kwp) {
+  const st = pvInfraStufeFuer(kwp);
+  return { stufe: st, invest: _pvInfraItems(st.id).reduce((s, it) => s + (it.aktiv ? (it.investEUR || 0) : 0), 0) };
+}
+
+window.pvBestandTrafoKvaSetzen = function pvBestandTrafoKvaSetzen(wert) {
+  const v = parseFloat(wert);
+  window._pvAnalyse.bestandTrafoKva = Number.isFinite(v) && v > 0 ? v : 0;
+  _pvaDirty.add('abb6');
+  _pvaRenderView();
+};
+
+function renderBestandAusbau(host, varianten, args, gross) {
+  if (!host) return;
+  if (!args?.demandH || !args?.pvProfile) { host.innerHTML = ''; return; }
+  const { demandH, pvProfile, napParams } = args;
+  const state = window._pvAnalyse;
+  const spez  = pvGetSpez();
+  const kanon = (varianten || []).filter(v => v.info && v.info.frage);
+  const r0    = (varianten || []).find(v => v.rueck)?.rueck || {};
+
+  const trafoAsset = _pvBestandTrafo();
+  const trafoKva   = state.bestandTrafoKva > 0 ? state.bestandTrafoKva : trafoAsset.kva;
+  const grenzen    = bestandsGrenzen({ trafoKva, napKw: r0.anschlussKw, skKva: r0.skKVA, uBudgetPct: r0.uBudgetPct });
+
+  const heuteKwp = _pvBestandPvKwp();
+  const xMaxRoh  = Math.max(pvGetMaxKwpFromAssets() || 0, ...kanon.map(v => v.pvKwp), heuteKwp, 10);
+  const xStep    = xMaxRoh > 2000 ? 100 : xMaxRoh > 500 ? 50 : xMaxRoh > 100 ? 10 : 5;
+  const xMax     = Math.ceil(xMaxRoh / xStep) * xStep;
+  const varBat   = Math.max(0, ...kanon.map(v => v.batKwh));
+  const batMax   = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
+  const start    = kanon.find(v => v.id === 'wirt-opt') || kanon[0] || { pvKwp: xMax / 2, batKwh: 0 };
+
+  const fmt  = n => Math.round(n).toLocaleString('de-DE');
+  const fmtE = n => n >= 1e6 ? (n / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 2 }) + ' Mio. €'
+                  : n >= 1e4 ? fmt(n / 1000) + ' T€' : fmt(n) + ' €';
+  const fs   = gross ? 1.15 : 1;
+  const px   = n => (n * fs).toFixed(1);
+
+  const chips = kanon.map(v =>
+    `<button data-ausbau-var="${v.pvKwp}|${v.batKwh}" title="${escHtml(v.label)}"
+      style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border:1px solid ${v.farbe};border-radius:10px;background:transparent;color:${v.farbe};font-size:9px;cursor:pointer;white-space:nowrap;">
+      ${v.icon} ${fmt(v.pvKwp)} kWp${v.batKwh > 0 ? ` · ${(v.batKwh / 1000).toFixed(v.batKwh < 1000 ? 2 : 1)} MWh` : ''}</button>`).join('');
+
+  const trafoQuelle = state.bestandTrafoKva > 0 ? 'Handeingabe'
+    : trafoAsset.n ? `${trafoAsset.n} Bestands-Trafo${trafoAsset.n > 1 ? 's' : ''} aus den Elektro-Assets`
+    : 'keine Bestands-Trafos erfasst';
+
+  host.innerHTML = `
+  <div style="background:var(--surface2, rgba(255,255,255,0.03));border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <span style="font-size:${px(11)}px;font-weight:600;color:var(--text);">PV-Ausbau im Bestand — wann wird welche Ertüchtigung fällig?</span>
+      <span style="font-size:8.5px;color:var(--muted);">Schieber ziehen, in die Kurve klicken oder den Ausbau abspielen</span>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px 16px;align-items:center;margin-bottom:8px;">
+      <label style="display:flex;align-items:center;gap:8px;min-width:0;">
+        <span style="font-size:9px;color:var(--muted);width:62px;flex-shrink:0;">PV-Ausbau</span>
+        <input data-ausbau="pv" type="range" min="0" max="${xMax}" step="1" value="${Math.round(Math.min(start.pvKwp, xMax))}" style="flex:1;min-width:0;accent-color:#fdd835;">
+        <span data-ausbau="pv-val" style="font-size:9.5px;color:#fdd835;font-family:'DM Mono',monospace;width:70px;text-align:right;"></span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;min-width:0;">
+        <span style="font-size:9px;color:var(--muted);width:62px;flex-shrink:0;">Batterie</span>
+        <input data-ausbau="bat" type="range" min="0" max="${batMax}" step="${batMax > 4000 ? 250 : 100}" value="${Math.round(Math.min(start.batKwh, batMax))}" style="flex:1;min-width:0;accent-color:#42a5f5;">
+        <span data-ausbau="bat-val" style="font-size:9.5px;color:#42a5f5;font-family:'DM Mono',monospace;width:70px;text-align:right;"></span>
+      </label>
+      <button data-ausbau="play" title="Ausbau von heute bis zum vollen Potenzial abspielen"
+        style="cursor:pointer;background:rgba(253,216,53,0.1);border:1px solid rgba(253,216,53,0.45);border-radius:5px;color:#fdd835;font-size:10px;padding:3px 10px;white-space:nowrap;">▶ Ausbau abspielen</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:10px;">
+      <span style="font-size:8.5px;color:var(--muted);margin-right:2px;">Springen zu:</span>
+      ${heuteKwp > 0 ? `<button data-ausbau-var="${heuteKwp}|0" style="padding:2px 7px;border:1px solid #90a4ae;border-radius:10px;background:transparent;color:#cfd8dc;font-size:9px;cursor:pointer;">🏛 Heute · ${fmt(heuteKwp)} kWp</button>` : ''}
+      ${chips}
+    </div>
+    <div data-ausbau="satz" style="font-size:${px(10.5)}px;line-height:1.5;color:var(--text);margin-bottom:8px;min-height:32px;"></div>
+    <div data-ausbau="chart" style="position:relative;cursor:crosshair;user-select:none;"></div>
+    <div data-ausbau="kosten" style="margin-top:2px;"></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:10px;">
+      <div>
+        <div style="font-size:9.5px;font-weight:600;color:var(--text);margin-bottom:6px;">Auslastung des Bestands</div>
+        <div data-ausbau="gauges"></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:8.5px;color:var(--muted);flex-wrap:wrap;">
+          Trafo im Bestand
+          <input data-ausbau="trafo" type="number" min="0" step="10" value="${trafoKva > 0 ? Math.round(trafoKva) : ''}" placeholder="kVA"
+            style="width:72px;font-size:9px;padding:2px 4px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+          kVA <span style="opacity:.8;">(${trafoQuelle})</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:9.5px;font-weight:600;color:var(--text);margin-bottom:6px;">Ertüchtigungs-Treppe</div>
+        <div data-ausbau="treppe"></div>
+      </div>
+      <div>
+        <div style="font-size:9.5px;font-weight:600;color:var(--text);margin-bottom:6px;">Lösungswege beim gewählten Ausbau</div>
+        <div data-ausbau="wege"></div>
+      </div>
+    </div>
+    <div style="font-size:8px;color:var(--muted);margin-top:10px;line-height:1.5;">
+      Rückspeisespitze = höchste gleichzeitige Einspeisung am NAP ohne Einspeiselimit (Erzeugung − Last, Batterie im Eigenverbrauchsbetrieb).
+      Trafo: nutzbar ${Math.round(TRAFO_RUECK_FAKTOR * 100)} % der Bemessungsleistung rückwärts · Δu ≈ 100 · P_rück / S_k″ (Screening, cos φ ≈ 1) · „eng“ ab ${Math.round(AUSLASTUNG_ENG * 100)} % Auslastung.
+      Kostensätze grob wie in der Schwellentreppe (Trafo ${SCHWELLEN_KOSTEN.trafoEurProKVA} €/kVA, NAP-Zusage ${SCHWELLEN_KOSTEN.napEurProKW} €/kW, Erzeugungsnetz ${SCHWELLEN_KOSTEN.erzeugungsnetzEurProKW} €/kW) zuzüglich der Anschlussstufe nach PV-Leistung. Ersetzt keine Netzverträglichkeitsprüfung.
+    </div>
+  </div>`;
+
+  const q      = sel => host.querySelector(`[data-ausbau="${sel}"]`);
+  const pvIn   = q('pv'), batIn = q('bat');
+  const chart  = q('chart'), kostenEl = q('kosten');
+
+  // ── Kurven je Batteriegröße (Cache: der PV-Schieber rechnet nur einen Punkt) ──
+  const kurven = new Map();
+  function kurve(bat) {
+    const key = Math.round(bat);
+    if (!kurven.has(key)) {
+      const pts = [];
+      for (let i = 0; i <= _AUSBAU_PUNKTE; i++) {
+        const kwp = xMax * i / _AUSBAU_PUNKTE;
+        pts.push({ kwp, rueckKw: pvRueckAnalyse(kwp, key, demandH, pvProfile).maxKw });
+      }
+      kurven.set(key, pts);
+    }
+    return kurven.get(key);
+  }
+  const stufeVon = rueck => {
+    let s = 'frei';
+    for (const g of grenzen) {
+      const qq = rueck / g.kapKw;
+      if (qq > 1) return 'ueber';
+      if (qq >= AUSLASTUNG_ENG) s = 'eng';
+    }
+    return s;
+  };
+
+  // Anschlussstufen-Grenzen, die im Ausbaubereich liegen
+  const stufenGrenzen = PV_INFRA_STUFEN.filter(s => Number.isFinite(s.bisKwp) && s.bisKwp < xMax);
+
+  let aktuell = null;   // { pv, bat, rueck, stand, treppe, pts }
+  let geo = null;       // Plotbereich des Hauptdiagramms für Klick/Ziehen
+
+  function draw() {
+    const pv  = parseFloat(pvIn.value) || 0;
+    const bat = parseFloat(batIn.value) || 0;
+    q('pv-val').textContent  = fmt(pv) + ' kWp';
+    q('bat-val').textContent = bat > 0 ? (bat / 1000).toFixed(2) + ' MWh' : 'ohne';
+
+    const pts    = kurve(bat);
+    const pts0   = bat > 0 ? kurve(0) : null;
+    const rueck  = pvRueckAnalyse(pv, bat, demandH, pvProfile).maxKw;
+    const stand  = ausbauStand(rueck, grenzen);
+    const treppe = ausbauTreppe(pts, grenzen);
+    aktuell = { pv, bat, rueck, stand, treppe, pts };
+
+    // ── Hauptdiagramm: Rückspeisespitze über dem Ausbau ──
+    const W  = Math.max(440, (chart.getBoundingClientRect().width || host.getBoundingClientRect().width || 700) - 2);
+    const H  = gross ? 330 : 240;
+    const PL = 54, PR = 118, PT = 26, PB = 34;
+    const cW = W - PL - PR, cH = H - PT - PB;
+    const yMax = Math.max(...pts.map(p => p.rueckKw), ...(pts0 || []).map(p => p.rueckKw),
+                          ...grenzen.map(g => g.kapKw), 1) * 1.1;
+    const xS = v => PL + (v / xMax) * cW;
+    const yS = v => PT + cH - (v / yMax) * cH;
+
+    // Hintergrund: Zustand des Bestands entlang des Ausbaus
+    let baender = '';
+    for (let i = 1; i < pts.length; i++) {
+      const st = stufeVon(Math.max(pts[i - 1].rueckKw, pts[i].rueckKw));
+      baender += `<rect x="${xS(pts[i - 1].kwp).toFixed(1)}" y="${PT}" width="${(xS(pts[i].kwp) - xS(pts[i - 1].kwp) + 0.5).toFixed(1)}" height="${cH}" fill="${_AUSBAU_STUFE_COL[st]}" opacity="${st === 'frei' ? 0.05 : 0.09}"/>`;
+    }
+    // Kurve farbig nach Zustand
+    let kurveSvg = '';
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      kurveSvg += `<line x1="${xS(a.kwp).toFixed(1)}" y1="${yS(a.rueckKw).toFixed(1)}" x2="${xS(b.kwp).toFixed(1)}" y2="${yS(b.rueckKw).toFixed(1)}" stroke="${_AUSBAU_STUFE_COL[stufeVon(b.rueckKw)]}" stroke-width="2.6" stroke-linecap="round"/>`;
+    }
+    const kurve0Svg = pts0 ? `<polyline points="${pts0.map(p => `${xS(p.kwp).toFixed(1)},${yS(p.rueckKw).toFixed(1)}`).join(' ')}" fill="none" stroke="#90a4ae" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.7"/>
+      <line x1="${PL + 8}" y1="${PT + 8}" x2="${PL + 26}" y2="${PT + 8}" stroke="#90a4ae" stroke-width="1.2" stroke-dasharray="4,3"/>
+      <text x="${PL + 30}" y="${PT + 11}" fill="#90a4ae" font-size="8">ohne Batterie</text>` : '';
+
+    // Bestandsgrenzen als waagrechte Linien, Kipp-Punkte als senkrechte Marken
+    const grenzSvg = grenzen.map(g => {
+      const y = yS(g.kapKw), col = _AUSBAU_GRENZ_COL[g.id];
+      return `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${(PL + cW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}" stroke-width="1.3" stroke-dasharray="6,3" opacity="0.9"/>
+        <text x="${(PL + cW + 6).toFixed(1)}" y="${(y - 2).toFixed(1)}" fill="${col}" font-size="8.5" font-weight="600">${g.kurz}-Grenze</text>
+        <text x="${(PL + cW + 6).toFixed(1)}" y="${(y + 8).toFixed(1)}" fill="${col}" font-size="8" opacity="0.85">${fmt(g.kapKw)} kW</text>`;
+    }).join('');
+    const kippSvg = treppe.filter(t => t.abKwp != null && t.abKwp <= xMax).map((t, i) => {
+      const x = xS(t.abKwp), col = _AUSBAU_GRENZ_COL[t.id];
+      return `<line x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${(PT + cH).toFixed(1)}" stroke="${col}" stroke-width="1" stroke-dasharray="2,3" opacity="0.8"/>
+        <circle cx="${x.toFixed(1)}" cy="${(PT - 11).toFixed(1)}" r="8" fill="${col}"/>
+        <text x="${x.toFixed(1)}" y="${(PT - 8).toFixed(1)}" text-anchor="middle" fill="#10141f" font-size="9" font-weight="700">${i + 1}</text>
+        <circle cx="${x.toFixed(1)}" cy="${yS(t.kapKw).toFixed(1)}" r="3.5" fill="none" stroke="${col}" stroke-width="1.5"/>`;
+    }).join('');
+
+    // Anschlussstufen (nach kWp) als Band unter der Achse
+    const stufenSvg = stufenGrenzen.map(s => {
+      const x = xS(s.bisKwp);
+      return `<line x1="${x.toFixed(1)}" y1="${(PT + cH).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(PT + cH + 6).toFixed(1)}" stroke="#78909c" stroke-width="1"/>
+        <line x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${(PT + cH).toFixed(1)}" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>`;
+    }).join('');
+
+    // Variantenmarken und „Heute" auf der x-Achse
+    const varSvg = kanon.filter(v => v.pvKwp <= xMax).map(v =>
+      `<text x="${xS(v.pvKwp).toFixed(1)}" y="${(PT + cH - 4).toFixed(1)}" text-anchor="middle" fill="${v.farbe}" font-size="10"><title>${escHtml(v.label)} · ${fmt(v.pvKwp)} kWp</title>${v.icon}</text>`).join('');
+    const heuteSvg = heuteKwp > 0 ? `<line x1="${xS(heuteKwp).toFixed(1)}" y1="${PT}" x2="${xS(heuteKwp).toFixed(1)}" y2="${(PT + cH).toFixed(1)}" stroke="#cfd8dc" stroke-width="1" opacity="0.5"/>
+      <text x="${(xS(heuteKwp) + 3).toFixed(1)}" y="${(PT + 9).toFixed(1)}" fill="#cfd8dc" font-size="8" opacity="0.8">heute</text>` : '';
+
+    // Cursor
+    const cx = xS(pv), cy = yS(rueck), cCol = _AUSBAU_STUFE_COL[stand.stufe];
+    const boxW = 124, boxX = Math.min(Math.max(PL, cx - boxW / 2), PL + cW - boxW);
+    const boxY = cy - 36 < PT ? cy + 10 : cy - 36;
+    const cursorSvg = `
+      <line x1="${cx.toFixed(1)}" y1="${PT}" x2="${cx.toFixed(1)}" y2="${(PT + cH).toFixed(1)}" stroke="#fdd835" stroke-width="1.4"/>
+      <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5.5" fill="${cCol}" stroke="#10141f" stroke-width="2"/>
+      <rect x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxW}" height="24" rx="4" fill="rgba(12,18,32,0.92)" stroke="${cCol}" stroke-width="1"/>
+      <text x="${(boxX + boxW / 2).toFixed(1)}" y="${(boxY + 10).toFixed(1)}" text-anchor="middle" fill="var(--text)" font-size="9" font-weight="600">${fmt(rueck)} kW Rückspeisung</text>
+      <text x="${(boxX + boxW / 2).toFixed(1)}" y="${(boxY + 20).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="8">bei ${fmt(pv)} kWp</text>`;
+
+    const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => {
+      const v = f * yMax, y = yS(v);
+      return `<line x1="${PL - 3}" y1="${y.toFixed(1)}" x2="${PL}" y2="${y.toFixed(1)}" stroke="#607d8b"/>
+        <text x="${PL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" fill="#607d8b" font-size="8">${fmt(v)}</text>`;
+    }).join('');
+    const xTicks = [0, 0.25, 0.5, 0.75, 1].map(f =>
+      `<text x="${xS(f * xMax).toFixed(1)}" y="${(PT + cH + 16).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="8">${fmt(f * xMax)}</text>`).join('');
+
+    chart.innerHTML = `
+    <svg width="${W}" height="${H}" style="display:block;overflow:visible;">
+      ${baender}${stufenSvg}${heuteSvg}${grenzSvg}${kurve0Svg}${kurveSvg}${kippSvg}${varSvg}
+      <line x1="${PL}" y1="${PT}" x2="${PL}" y2="${(PT + cH).toFixed(1)}" stroke="rgba(255,255,255,0.15)"/>
+      <line x1="${PL}" y1="${(PT + cH).toFixed(1)}" x2="${(PL + cW).toFixed(1)}" y2="${(PT + cH).toFixed(1)}" stroke="rgba(255,255,255,0.15)"/>
+      ${yTicks}${xTicks}
+      <text x="12" y="${(PT + cH / 2).toFixed(1)}" transform="rotate(-90 12 ${(PT + cH / 2).toFixed(1)})" text-anchor="middle" fill="#607d8b" font-size="8">Rückspeisespitze (kW)</text>
+      <text x="${(PL + cW / 2).toFixed(1)}" y="${(PT + cH + 29).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="8">PV-Ausbau (kWp)</text>
+      ${cursorSvg}
+    </svg>`;
+    geo = { PL, cW };
+
+    drawKosten(W, PL, PR, xS, pts);
+    drawTexte();
+  }
+
+  // ── Kostenkurve: zwei Lösungswege über dem Ausbau ──
+  function drawKosten(W, PL, PR, xS, pts) {
+    const H = gross ? 150 : 112, PT = 14, PB = 22;
+    const cH = H - PT - PB, cW = W - PL - PR;
+    const reihen = pts.map(p => {
+      const st = ausbauStand(p.rueckKw, grenzen);
+      const basis = p.kwp > 0 ? _pvStufenInvest(p.kwp).invest : 0;
+      return { kwp: p.kwp, basis, bestand: basis + st.wege.bestand.kostenEUR, hybrid: basis + st.wege.hybrid.kostenEUR };
+    });
+    const yMax = Math.max(...reihen.map(r => Math.max(r.bestand, r.hybrid)), 1000) * 1.12;
+    const yS = v => PT + cH - (v / yMax) * cH;
+    const linie = (key, col, dash) => `<polyline points="${reihen.map(r => `${xS(r.kwp).toFixed(1)},${yS(r[key]).toFixed(1)}`).join(' ')}" fill="none" stroke="${col}" stroke-width="${dash ? 1.6 : 2}" ${dash ? 'stroke-dasharray="5,3"' : ''}/>`;
+    const flaeche = `<polygon points="${xS(0).toFixed(1)},${yS(0).toFixed(1)} ${reihen.map(r => `${xS(r.kwp).toFixed(1)},${yS(r.basis).toFixed(1)}`).join(' ')} ${xS(reihen[reihen.length - 1].kwp).toFixed(1)},${yS(0).toFixed(1)}" fill="#78909c" opacity="0.22"/>`;
+    const hatMassnahmen = reihen.some(r => r.bestand > r.basis + 1);
+    const a = aktuell;
+    const basisJetzt = a.pv > 0 ? _pvStufenInvest(a.pv).invest : 0;
+    const cx = xS(a.pv);
+    kostenEl.innerHTML = `
+    <svg width="${W}" height="${H}" style="display:block;overflow:visible;">
+      ${flaeche}
+      ${hatMassnahmen ? linie('hybrid', '#b39ddb', true) : ''}
+      ${linie('bestand', '#ffb74d', false)}
+      <line x1="${PL}" y1="${(PT + cH).toFixed(1)}" x2="${(PL + cW).toFixed(1)}" y2="${(PT + cH).toFixed(1)}" stroke="rgba(255,255,255,0.15)"/>
+      <line x1="${PL}" y1="${PT}" x2="${PL}" y2="${(PT + cH).toFixed(1)}" stroke="rgba(255,255,255,0.15)"/>
+      <text x="${PL - 6}" y="${(PT + 4).toFixed(1)}" text-anchor="end" fill="#607d8b" font-size="8">${fmtE(yMax / 1.12)}</text>
+      <text x="${PL - 6}" y="${(PT + cH).toFixed(1)}" text-anchor="end" fill="#607d8b" font-size="8">0</text>
+      <line x1="${cx.toFixed(1)}" y1="${PT}" x2="${cx.toFixed(1)}" y2="${(PT + cH).toFixed(1)}" stroke="#fdd835" stroke-width="1.2"/>
+      <circle cx="${cx.toFixed(1)}" cy="${yS(basisJetzt + a.stand.wege.bestand.kostenEUR).toFixed(1)}" r="4" fill="#ffb74d"/>
+      ${hatMassnahmen ? `<circle cx="${cx.toFixed(1)}" cy="${yS(basisJetzt + a.stand.wege.hybrid.kostenEUR).toFixed(1)}" r="3.5" fill="#b39ddb"/>` : ''}
+      <text x="${(PL + cW + 6).toFixed(1)}" y="${(PT + 8).toFixed(1)}" fill="#ffb74d" font-size="8">— Bestand ertüchtigen</text>
+      ${hatMassnahmen ? `<text x="${(PL + cW + 6).toFixed(1)}" y="${(PT + 20).toFixed(1)}" fill="#b39ddb" font-size="8">- - Bestand + Erzeugungs-</text><text x="${(PL + cW + 14).toFixed(1)}" y="${(PT + 30).toFixed(1)}" fill="#b39ddb" font-size="8">netz für den Rest</text>` : ''}
+      <text x="${(PL + cW + 6).toFixed(1)}" y="${(PT + cH).toFixed(1)}" fill="#90a4ae" font-size="8">▇ Anschlussstufe</text>
+      <text x="${(PL + cW / 2).toFixed(1)}" y="${(PT + cH + 15).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="8">Infrastruktur-Investition über dem PV-Ausbau</text>
+    </svg>`;
+  }
+
+  // ── Texte: Kernsatz, Auslastung, Treppe, Lösungswege ──
+  function drawTexte() {
+    const { pv, bat, rueck, stand, treppe } = aktuell;
+    const ertrag = pv * spez / 1000;
+
+    // Kernsatz
+    let satz;
+    if (!grenzen.length) {
+      satz = `Bei <b>${fmt(pv)} kWp</b> speist die Liegenschaft in der Spitze <b>${fmt(rueck)} kW</b> zurück. `
+           + `<span style="color:#ffcc80">Für die Bewertung gegen den Bestand fehlen die Grenzen: Trafoleistung (unten), Max. Einspeisung oder S_k″ (oben im Panel).</span>`;
+    } else if (stand.stufe === 'ueber') {
+      const n = stand.komponenten.filter(k => k.stufe === 'ueber');
+      satz = `Bei <b>${fmt(pv)} kWp</b> speist die Liegenschaft in der Spitze <b>${fmt(rueck)} kW</b> zurück — `
+           + `<b style="color:#ef9a9a">der Bestand trägt das nicht mehr</b>: ${n.map(k => `${escHtml(k.label)} um ${fmt(-k.reserveKw)} kW überschritten`).join(', ')}.`;
+    } else {
+      const erste = treppe.find(t => t.abKwp != null);
+      const nk = stand.naechste;
+      satz = `Bei <b>${fmt(pv)} kWp</b> speist die Liegenschaft in der Spitze <b>${fmt(rueck)} kW</b> zurück — `
+           + `<b style="color:${stand.stufe === 'eng' ? '#ffcc80' : '#a5d6a7'}">der Bestand trägt das${stand.stufe === 'eng' ? ', wird aber eng' : ''}</b>. `
+           + (nk ? `Reserve bis zur ${escHtml(nk.label)}: <b>${fmt(nk.reserveKw)} kW</b>` : '')
+           + (erste && erste.abKwp > pv ? ` — das reicht bis etwa <b>${fmt(erste.abKwp)} kWp</b> PV.` : '.');
+    }
+    if (bat > 0) {
+      const ohne = pvRueckAnalyse(pv, 0, demandH, pvProfile).maxKw;
+      if (ohne - rueck > 1) satz += ` <span style="color:#90caf9">Die Batterie senkt die Spitze um ${fmt(ohne - rueck)} kW.</span>`;
+    }
+    q('satz').innerHTML = satz;
+
+    // Auslastung je Grenze
+    q('gauges').innerHTML = stand.komponenten.length ? stand.komponenten.map(k => {
+      const col = _AUSBAU_STUFE_COL[k.stufe];
+      const breite = Math.min(k.quote, 1.5) / 1.5 * 100;
+      return `<div style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px;">
+          <span style="color:${_AUSBAU_GRENZ_COL[k.id]};font-weight:600;">${escHtml(k.label)}</span>
+          <span style="color:${col};font-family:'DM Mono',monospace;">${Math.round(k.quote * 100)} %</span>
+        </div>
+        <div style="position:relative;height:9px;background:rgba(255,255,255,0.06);border-radius:5px;overflow:hidden;">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:${breite.toFixed(1)}%;background:${col};opacity:0.85;border-radius:5px;transition:width .15s;"></div>
+          <div style="position:absolute;left:${(AUSLASTUNG_ENG / 1.5 * 100).toFixed(1)}%;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.35);"></div>
+          <div style="position:absolute;left:${(100 / 1.5).toFixed(1)}%;top:-1px;bottom:-1px;width:2px;background:#fff;opacity:0.7;"></div>
+        </div>
+        <div style="font-size:8.5px;color:var(--muted);margin-top:2px;">${fmt(rueck)} von ${fmt(k.kapKw)} kW · ${k.reserveKw >= 0
+          ? `Reserve ${fmt(k.reserveKw)} kW` : `<span style="color:#ef9a9a">${escHtml(k.massnahme.titel)} · ≈ ${fmtE(k.massnahme.kostenEUR)}</span>`}</div>
+      </div>`;
+    }).join('') : '<div style="font-size:9px;color:var(--muted);">Keine Bestandsgrenze bekannt.</div>';
+
+    // Treppe: Anschlussstufen (nach kWp) und Bestandsgrenzen (nach kW) in Ausbaureihenfolge
+    const schritte = [];
+    for (const s of stufenGrenzen) {
+      const naechste = PV_INFRA_STUFEN[PV_INFRA_STUFEN.indexOf(s) + 1];
+      if (!naechste) continue;
+      const inv = _pvStufenInvest(s.bisKwp + 1);
+      schritte.push({ kwp: s.bisKwp, farbe: '#90a4ae', nr: null, titel: `Anschlussstufe ${escHtml(naechste.label)}`,
+        text: `${_pvInfraItems(naechste.id).filter(i => i.aktiv && (i.investEUR || i.perKwh)).map(i => escHtml(i.label)).join(', ') || '—'} · ${fmtE(inv.invest)}` });
+    }
+    let nr = 0;
+    for (const t of treppe) {
+      if (t.abKwp == null || t.abKwp > xMax) {
+        schritte.push({ kwp: Infinity, farbe: _AUSBAU_GRENZ_COL[t.id], nr: null, titel: escHtml(t.label),
+          text: `trägt den vollen Ausbau (${fmt(t.kapKw)} kW)${t.engAbKwp != null ? ` · eng ab ${fmt(t.engAbKwp)} kWp` : ''}` });
+        continue;
+      }
+      nr++;
+      schritte.push({ kwp: t.abKwp, farbe: _AUSBAU_GRENZ_COL[t.id], nr, titel: `${escHtml(t.label)} reißt`,
+        text: `${escHtml(t.loesung)}${t.engAbKwp != null && t.engAbKwp < t.abKwp ? ` · eng ab ${fmt(t.engAbKwp)} kWp` : ''}` });
+    }
+    schritte.sort((a, b) => a.kwp - b.kwp);
+    q('treppe').innerHTML = schritte.length ? schritte.map(s => {
+      const erreicht = Number.isFinite(s.kwp) && pv >= s.kwp;
+      return `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;opacity:${erreicht || !Number.isFinite(s.kwp) ? 1 : 0.55};">
+        <span style="flex-shrink:0;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;
+          ${s.nr ? `background:${s.farbe};color:#10141f;` : `border:1px solid ${s.farbe};color:${s.farbe};`}">${s.nr || (Number.isFinite(s.kwp) ? '↑' : '✓')}</span>
+        <div style="min-width:0;">
+          <div style="font-size:9px;color:var(--text);"><span style="font-family:'DM Mono',monospace;color:${erreicht ? '#fdd835' : '#78909c'};">${Number.isFinite(s.kwp) ? 'ab ' + fmt(s.kwp) + ' kWp' : 'nie'}</span> · ${s.titel}${erreicht ? ' <span style="color:#ef9a9a;">● fällig</span>' : ''}</div>
+          <div style="font-size:8.5px;color:var(--muted);line-height:1.4;">${s.text}</div>
+        </div>
+      </div>`;
+    }).join('') : '<div style="font-size:9px;color:var(--muted);">Keine Stufen im Ausbaubereich.</div>';
+
+    // Lösungswege
+    const basis = pv > 0 ? _pvStufenInvest(pv) : { invest: 0, stufe: PV_INFRA_STUFEN[0] };
+    const w = stand.wege;
+    let abregel = '';
+    if (napParams?.maxEinspeisKw != null && pv > 0) {
+      const sim = pvNapSim(pv, bat, demandH, pvProfile, napParams, bat > 0 ? 'ev' : 'none', null);
+      if (sim.curtailMwh > 0.05) {
+        const pEinsp = state.lastParams?.pEinsp ?? 8;
+        abregel = `<div style="font-size:8.5px;color:var(--muted);margin-top:6px;line-height:1.5;">
+          Alternative ohne Netzausbau: <b style="color:#ffcc80">auf ${fmt(napParams.maxEinspeisKw)} kW abregeln</b> — kostet ${sim.curtailMwh.toFixed(0)} MWh/a
+          (${ertrag > 0 ? (sim.curtailMwh / ertrag * 100).toFixed(0) : 0} % des Ertrags, ≈ ${fmtE(sim.curtailMwh * pEinsp * 10)}/a entgangene Vergütung).</div>`;
+      }
+    }
+    const karte = (titel, eur, farbe, zeilen, best) => `
+      <div style="border:1px solid ${best ? farbe : 'var(--border)'};border-radius:6px;padding:6px 8px;margin-bottom:6px;${best ? `background:${farbe}14;` : ''}">
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:9px;">
+          <span style="color:${farbe};font-weight:600;">${titel}${best ? ' ★' : ''}</span>
+          <span style="font-family:'DM Mono',monospace;color:var(--text);">${fmtE(eur)}</span>
+        </div>
+        <div style="font-size:8.5px;color:var(--muted);line-height:1.45;margin-top:2px;">${zeilen}</div>
+      </div>`;
+    const basisZeile = `Anschlussstufe ${escHtml(basis.stufe.label)}: ${fmtE(basis.invest)}`;
+    if (!w.bestand.schritte.length) {
+      q('wege').innerHTML = karte('Bestand genügt', basis.invest, '#66bb6a',
+        `${basisZeile}<br>Keine Ertüchtigung im Bestandsnetz nötig.`, true) + abregel;
+    } else {
+      q('wege').innerHTML =
+        karte('Bestand ertüchtigen', basis.invest + w.bestand.kostenEUR, '#ffb74d',
+          `${basisZeile}<br>${w.bestand.schritte.map(s => `${escHtml(s.titel)}: ${fmtE(s.kostenEUR)}`).join('<br>')}`,
+          stand.guenstiger === 'bestand')
+        + karte('Bestand ausnutzen + Erzeugungsnetz', basis.invest + w.hybrid.kostenEUR, '#b39ddb',
+          `${basisZeile}<br>${fmt(w.hybrid.tragKw)} kW bleiben im Bestand, ${fmt(w.hybrid.restKw)} kW über ein eigenes Erzeugungsnetz: ${fmtE(w.hybrid.kostenEUR)}`,
+          stand.guenstiger === 'hybrid')
+        + abregel;
+    }
+  }
+
+  // ── Bedienung ──
+  let rafId = 0, spielt = false;
+  const planen = () => { if (!rafId) rafId = requestAnimationFrame(() => { rafId = 0; if (host.isConnected) draw(); }); };
+  pvIn.addEventListener('input', planen);
+  batIn.addEventListener('input', planen);
+  host.querySelectorAll('[data-ausbau-var]').forEach(b => b.addEventListener('click', () => {
+    const [p, bb] = b.dataset.ausbauVar.split('|').map(parseFloat);
+    pvIn.value = Math.round(p); batIn.value = Math.round(Math.min(bb, batMax));
+    draw();
+  }));
+  q('trafo').addEventListener('change', e => window.pvBestandTrafoKvaSetzen(/** @type {HTMLInputElement} */ (e.target).value));
+
+  const ausMaus = (ev) => {
+    const g = geo; if (!g) return;
+    const r = chart.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (ev.clientX - r.left - g.PL) / g.cW));
+    pvIn.value = Math.round(f * xMax);
+    planen();
+  };
+  let ziehen = false;
+  chart.addEventListener('pointerdown', ev => { ziehen = true; chart.setPointerCapture?.(ev.pointerId); ausMaus(ev); });
+  chart.addEventListener('pointermove', ev => { if (ziehen) ausMaus(ev); });
+  chart.addEventListener('pointerup', () => { ziehen = false; });
+  chart.addEventListener('pointercancel', () => { ziehen = false; });
+
+  const playBtn = q('play');
+  playBtn.addEventListener('click', () => {
+    if (spielt) { spielt = false; playBtn.textContent = '▶ Ausbau abspielen'; return; }
+    spielt = true;
+    playBtn.textContent = '■ Anhalten';
+    const von = Math.min(heuteKwp, xMax), dauer = 6000, t0 = performance.now();
+    const schritt = (t) => {
+      if (!spielt || !host.isConnected) return;
+      const f = Math.min(1, (t - t0) / dauer);
+      pvIn.value = Math.round(von + (xMax - von) * f);
+      draw();
+      if (f < 1) requestAnimationFrame(schritt);
+      else { spielt = false; playBtn.textContent = '▶ Ausbau abspielen'; }
+    };
+    requestAnimationFrame(schritt);
+  });
+
+  draw();
 }
 
 // ── Abb. 7 — Interaktives Energieflussdiagramm (Sankey) mit PV/Batterie-Slidern ─
