@@ -1546,17 +1546,17 @@ function _darfAuslegen(e) {
 }
 
 /** Netz-cos φ (NS) aus der UI. */
-function _nsCosPhi() {
+export function _nsCosPhi() {
   return parseFloat(document.getElementById('strom-ns-cosphi')?.value) || 0.95;
 }
 
 /** Leitertemperatur für die Widerstandskorrektur (IEC 60228). */
-function _nsLeiterTemp() {
+export function _nsLeiterTemp() {
   return parseFloat(document.getElementById('strom-leiter-temp')?.value) || 70;
 }
 
 /** Iz-Korrekturfaktor aus Bodentemperatur, Häufung und Verlegeart (IEC 60364-5-52). */
-function _nsKIz() {
+export function _nsKIz() {
   const tBoden     = parseFloat(document.getElementById('strom-iz-tboden')?.value) ?? 20;
   const nKabel     = Math.max(1, parseInt(document.getElementById('strom-iz-nkabel')?.value) || 1);
   const verlegeart = document.getElementById('strom-iz-verlegeart')?.value || 'erde';

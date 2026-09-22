@@ -77,6 +77,13 @@ const PV_VARIANTEN_INFO = {
     herleitung:'PV knapp unter 100 kWp — bleibt unter der Direktvermarktungs- und EZA-Reglerpflicht und damit in der günstigsten Netzanschlussstufe.',
     bewertung: 'Referenzpunkt mit niedrigster Investition. Lässt den Großteil des Dachpotenzials und der möglichen Erlöse ungenutzt.',
   },
+  'bestandsnetz': {
+    label: 'Bestandsnetz',       farbe: '#26a69a', icon: '⌂',
+    frage:     'Wie viel PV passt ohne Netzausbau?',
+    ziel:      'Größte Anlage ohne neue Trafos oder Kabel',
+    herleitung:'Die Dachflächen werden — ertragsstärkste zuerst — belegt, bis im bestehenden Netz das erste Kabel oder der erste Trafo an seine Belastbarkeit stößt oder die Spannungsanhebung 3 % erreicht. Erlaubt sind nur EZA-Regler und Einspeisemanagement, keine Ertüchtigung.',
+    bewertung: 'Schnell umsetzbar, ohne Tiefbau und Netzplanung. Lässt das Potenzial hinter den Engpässen ungenutzt; welche Ertüchtigung den Rest zu welchen Kosten erschließt, zeigt die Ansicht „Netzaufnahme (Bestand)".',
+  },
   'ev-opt': {
     label: 'Eigenverbrauchs-optimiert', farbe: '#42a5f5', icon: '⊙',
     frage:     'Welche Größe verbraucht das Quartier selbst?',
@@ -391,10 +398,15 @@ function pvInfraStufeFuer(kwp) {
  * @param {number} pvErtragMwh - Jahresertrag für prozentuale Gebühren (DV-Fee etc.)
  * @returns {{ investEUR: number, jaehrlichEUR: number, stufeLabel: string, detail: string[] }}
  */
-function pvInfraKosten(pvKwp, pvErtragMwh) {
+// Positionen, die Netzbau sind (neuer Trafo, MS-Trasse, Übergabestation). Die
+// Variante „Bestandsnetz" ist genau so ausgelegt, dass sie ohne sie auskommt.
+const PV_INFRA_NETZBAU_IDS = new Set(['trafo', 'kabel_ms', 'ues']);
+
+function pvInfraKosten(pvKwp, pvErtragMwh, opts = {}) {
   const stufe = pvInfraStufeFuer(pvKwp);
   const konfig = window._pvAnalyse.infraKonfig;
-  const items = konfig?.[stufe.id] ?? stufe.items;
+  const alleItems = konfig?.[stufe.id] ?? stufe.items;
+  const items = opts.ohneNetzbau ? alleItems.filter(it => !PV_INFRA_NETZBAU_IDS.has(it.id)) : alleItems;
 
   let investEUR = 0, jaehrlichEUR = 0;
   const detail = [];
@@ -408,8 +420,8 @@ function pvInfraKosten(pvKwp, pvErtragMwh) {
     }
   }
 
-  // Erzeugungsnetz (optional)
-  if (window._pvAnalyse.erzNetzAktiv) {
+  // Erzeugungsnetz (optional) — entfällt für die Bestandsnetz-Variante
+  if (window._pvAnalyse.erzNetzAktiv && !opts.ohneNetzbau) {
     const en = window._pvAnalyse.erzNetz;
     const kabelKosten = (en.laengeM || 0) * (en.preisPrM || 250);
     investEUR += kabelKosten + (en.schutzEUR || 5000);
@@ -890,7 +902,7 @@ function pvWirtschaft(pvKwp, batKwh, simResult, pvErtragMwh, params, strategie, 
 
   const pvInvest  = pvKwp  * pvInvestPerKwp;
   const batInvest = batKwh * batInvestPerKwh;
-  const infra     = pvInfraKosten(pvKwp, pvErtragMwh);
+  const infra     = pvInfraKosten(pvKwp, pvErtragMwh, { ohneNetzbau: !!params.ohneNetzbau });
 
   const annPv  = annF(zins, pvLife  || 20);
   const annBat = annF(zins, batLife || 15);
@@ -1126,12 +1138,13 @@ export function pvBerechneAlle() {
   const spez = pvGetSpez();
 
   // ── Hilfsfunktion: eine kanonische Variante berechnen und pushen ──
-  function berechne(id, pvKwp, batKwh, strategie, labelSuffix) {
+  function berechne(id, pvKwp, batKwh, strategie, labelSuffix, paramsExtra) {
     if (pvKwp <= 0) return;
     const info = PV_VARIANTEN_INFO[id];
     const ertragMwh = pvKwp * spez / 1000;
     const sim  = pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, strategie, spotH);
-    const wirt = pvWirtschaft(pvKwp, batKwh, sim, ertragMwh, params, strategie);
+    const wirt = pvWirtschaft(pvKwp, batKwh, sim, ertragMwh,
+      paramsExtra ? { ...params, ...paramsExtra } : params, strategie);
     ergebnisse.push({
       id, label: info.label + (labelSuffix || ''), farbe: info.farbe, icon: info.icon, info,
       pvKwp, batKwh, strategie, ertragMwh, sim, wirt,
@@ -1159,6 +1172,32 @@ export function pvBerechneAlle() {
 
   // ═══ 1) MINIMAL — schwellen-optimiert, knapp unter 100 kWp ═══════════════════
   berechne('minimal', Math.min(99, maxKwp || 99), 0, 'none');
+
+  // ═══ 1b) BESTANDSNETZ — größte PV ohne Kabel-/Trafo-Ertüchtigung ═══════════
+  //     Rechnet über die Netztopologie (28-pv-netzaufnahme.js, per window wegen
+  //     des Importzyklus 28 → 14b → 14a → 09d). Ohne Trafo im Netz entfällt sie.
+  //     Infrastrukturkosten ohne Netzbau-Positionen (Trafo, MS-Trasse, Übergabe).
+  let naBestand = null;
+  try { naBestand = window.pvnaFuerVariante?.() || null; }
+  catch (err) { console.warn('[PV-Analyse] Netzaufnahme fehlgeschlagen:', err); }
+  if (naBestand && naBestand.ohneErtuechtigungKwp > 0) {
+    const kwpBn = maxKwp > 0 ? Math.min(naBestand.ohneErtuechtigungKwp, maxKwp) : naBestand.ohneErtuechtigungKwp;
+    berechne('bestandsnetz', kwpBn, 0, 'none', '', { ohneNetzbau: true });
+    const eBn = ergebnisse[ergebnisse.length - 1];
+    if (eBn?.id === 'bestandsnetz') {
+      eBn.netzaufnahme = naBestand;
+      if (naBestand.restKwp > 0.5 || naBestand.mitErtuechtigungKwp > naBestand.ohneErtuechtigungKwp + 0.5) {
+        eBn.hinweis = `Mit Ertüchtigung (${Math.round(naBestand.investEUR / 1000)} T€) wären ${Math.round(naBestand.mitErtuechtigungKwp)} kWp anschließbar`
+          + (naBestand.restKwp > 0.5 ? `; ${Math.round(naBestand.restKwp)} kWp bleiben auch dann offen.` : '.');
+      }
+      const ab = naBestand.abregelung;
+      if (ab && ab.vollKwp > kwpBn + 0.5) {
+        eBn.hinweis = (eBn.hinweis ? eBn.hinweis + ' ' : '')
+          + `Alternativ ohne Ertüchtigung: ${Math.round(ab.vollKwp)} kWp bauen und die Einspeisung auf die Netzgrenze abregeln — `
+          + `${ab.vollVerlustPct.toFixed(1).replace('.', ',')} % Abregelung, ${Math.round(ab.vollNutzbarMwh - ab.wenigerMwh)} MWh/a Mehrertrag.`;
+      }
+    }
+  }
 
   // ═══ 2) EIGENVERBRAUCHS-OPTIMIERT — größte PV mit ≥90 % Eigenverbrauch + EV-Batterie
   const evKwp = pvCalcEvQuoteKwp(demandH, pvProfile, napParams, 90, spurEv);
@@ -1265,6 +1304,7 @@ export function pvBerechneAlle() {
       naechsterInvest: idxMin >= 0 && infraStufen[idxMin + 1] ? infraStufen[idxMin + 1].invest : 0,
       grenzeKwp: 100,
     } : null,
+    bestandsnetz: naBestand ? { ...naBestand } : null,
     evOpt: spurEv.length ? { punkte: spurEv, schwelle: 90, gewaehlt: evKwp } : null,
     wirtOpt: spurWirt.length ? { punkte: spurWirt } : null,
     autarkie: spurAut.length > 1 ? {
@@ -1436,6 +1476,11 @@ const PVA_VIEWS = [
     render:(v) => renderHerleitung(v) },
   { id:'rechenweg', gruppe:'ergebnis', label:'Rechenweg',           el:'pva-rechenweg',
     render:(v) => renderRechenweg(v) },
+  // Netzaufnahme rechnet unabhängig von den Varianten (Topologie + Dachflächen,
+  // kein Lastgang) → auch vor dem ersten Rechenlauf aufrufbar. Modul 28 wird über
+  // window angesprochen, weil ein Import einen Zyklus 28 → 14b → 14a → 09d schlösse.
+  { id:'netzaufnahme', gruppe:'ergebnis', label:'Netzaufnahme (Bestand)', el:'pva-netzaufnahme',
+    ohneBerechnung:true, render:() => window.pvnaRender?.() },
 
   { id:'abb1',  gruppe:'abb', nr:1,  label:'Optimierungsfläche',   el:'pva-chart-heatmap',
     render:(v, a) => renderOptSurface3D(a.demandH, a.pvProfile, a.napParams, a.params, v) },
@@ -1504,6 +1549,13 @@ function _pvaRenderView() {
   if (windEl) windEl.style.display = _pvaView === 'abb2' ? 'block' : 'none';
   // Aktive Ansicht zeichnen, wenn nötig
   const view = PVA_VIEWS.find(v => v.id === _pvaView);
+  const leer = document.getElementById('pva-leer-hinweis');
+  if (view?.ohneBerechnung) {
+    if (leer) leer.style.display = 'none';
+    view.render();
+    return;
+  }
+  if (leer && !(state?.berechnet && state.ergebnisse?.length)) leer.style.display = '';
   if (!view || !state?.berechnet || !state.ergebnisse?.length) return;
   if (!_pvaDirty.has(view.id)) return;
   const args = _pvFsArgs;
@@ -2118,6 +2170,7 @@ function _pvBuildPanelHtml() {
       <div id="pva-methodik"                style="display:none;"></div>
       <div id="pva-herleitung"              style="display:none;"></div>
       <div id="pva-rechenweg"               style="display:none;"></div>
+      <div id="pva-netzaufnahme"            style="display:none;"></div>
       <div id="pva-chart-heatmap"           style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-grenznutzen"       style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-wind-grenz"        style="overflow:hidden;"></div>
@@ -2450,6 +2503,22 @@ function renderHerleitung(varianten) {
       `Vom Ertrag bleiben ${num(bal.eigen)} MWh vor Ort, ${num(bal.einsp)} MWh gehen ins Netz` +
       (bal.abr > 0.05 ? `, ${num(bal.abr, 1)} MWh gehen an der Einspeisegrenze verloren.` : '.') +
       (d.hinweis ? ` <span style="color:#ffb74d;">${escHtml(d.hinweis)}</span>` : '')));
+  }
+
+  // ── 1b · Bestandsnetz: Ausbautreppe über den Ertüchtigungskosten ────────
+  const vBn = vOf('bestandsnetz');
+  if (vBn && H.bestandsnetz) {
+    const d = H.bestandsnetz;
+    const svg = window.pvnaTreppeSvg?.(d) || '';
+    const grund = Object.entries(d.begrenzer || {}).sort((a, b) => b[1] - a[1])
+      .map(([art, n]) => `${n} × ${escHtml(art)}`).join(' · ');
+    panels.push(_hlPanel(vBn, 'Befüllung des Bestandsnetzes bis zum ersten Engpass (ohne Ertüchtigung)', svg,
+      `Von ${num(d.potenzialKwp)} kWp Flächenpotenzial nimmt das bestehende Netz ` +
+      `<b style="color:var(--text)">${num(d.ohneErtuechtigungKwp)} kWp</b> auf (grüner Punkt).` +
+      (grund ? ` Begrenzt durch: ${grund}.` : '') +
+      (d.schritte?.length
+        ? ` Die Stufen zeigen, was Ertüchtigungen zusätzlich erschließen — bis ${num(d.mitErtuechtigungKwp)} kWp für ${num(d.investEUR / 1000)} T€.`
+        : ' Keine Ertüchtigung nötig oder möglich.')));
   }
 
   el.innerHTML = `
@@ -6268,6 +6337,9 @@ export function pvCaptureState() {
     reco: window._pvResReco || null,
     varianten: window._pvResVarianten || null,
   };
+  // Eingaben der Ansicht „Netzaufnahme (Bestand)" (28-pv-netzaufnahme.js, per window
+  // wegen des Importzyklus). Das Ergebnis steckt bereits in der Variante „Bestandsnetz".
+  daten.netzaufnahme = window.pvnaEinstellungen?.() || null;
   return JSON.parse(JSON.stringify(daten, _pvKodiere));
 }
 
@@ -6302,6 +6374,7 @@ export function pvRestoreState(daten) {
   _pvResSelStartW = e.selStartW ?? null;
   window._pvResReco = r.reco || null;
   window._pvResVarianten = r.varianten || null;
+  window.pvnaEinstellungenSetzen?.(d.netzaufnahme || null);
 
   // Offenes Panel nachziehen
   if (document.getElementById('pva-ergebnisse')) _pvSyncFromState();

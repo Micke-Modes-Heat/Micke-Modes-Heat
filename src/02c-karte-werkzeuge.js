@@ -483,6 +483,8 @@ export function updateViz(){
   if (window.pvModusAktiv && typeof window.pvModusMarkiereKarte === 'function') window.pvModusMarkiereKarte();
   // Ebenso im Blackout-Modus: Notstromklassen (26-blackout-modus.js)
   if (window.blackoutModusAktiv && typeof window.blackoutModusMarkiereKarte === 'function') window.blackoutModusMarkiereKarte();
+  // Ebenso die Netzaufnahme der PV-Analyse: Dächer grün/gelb/rot (28-pv-netzaufnahme.js)
+  if (window.pvnaKarteAktiv && typeof window.pvnaMarkiereKarte === 'function') window.pvnaMarkiereKarte();
 }
 
 export function buildMapLabel(g,center, status){

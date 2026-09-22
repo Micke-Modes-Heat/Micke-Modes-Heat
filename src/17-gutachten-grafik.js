@@ -4147,7 +4147,7 @@ function ggPvKanon() {
   return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage);
 }
 /** Kurzform der Variantenlabel für Achsen/Kategorien (voller Name steht in Tabellen). */
-const GG_PV_KURZ = { 'minimal': 'Minimal', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
+const GG_PV_KURZ = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
                       'autarkie': 'Autarkie', 'max-pv': 'Max. PV-Ausbau' };
 const GG_RES_MODE_LBL = { 'gen': 'Nur Notstrom', 'bat-gen': 'Speicher + Notstrom',
                            'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'Nur PV + Speicher' };
@@ -4170,10 +4170,10 @@ function ggPvTagLabel(stundenIdx) {
  * window._pvAnalyse), nie aus den aktuellen Eingabefeldern — sonst zeigten Text
  * und Abbildungen verschiedene Stände. Wie die Abbildungen bewusst ohne Euro-Werte
  * und ohne „beste" Variante: bewertet wird in 3.5. */
-const GG_PV_LANG = { 'minimal': 'Minimal', 'ev-opt': 'Eigenverbrauchs-optimiert', 'wirt-opt': 'Wirtschaftlich optimiert',
+const GG_PV_LANG = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'ev-opt': 'Eigenverbrauchs-optimiert', 'wirt-opt': 'Wirtschaftlich optimiert',
                      'autarkie': 'Autarkie-optimiert', 'max-pv': 'Maximaler PV-Ausbau' };
 const GG_PV_KAPITEL = '3.4.2 PV-Anlage und Batteriespeicher';
-const GG_ZAHLWORT = ['keine', 'eine', 'zwei', 'drei', 'vier', 'fünf'];
+const GG_ZAHLWORT = ['keine', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht'];
 
 /** Datenbasis des letzten Rechenlaufs (null = noch nicht berechnet). */
 function ggPvBasis() {
@@ -4285,6 +4285,20 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
 /** 3.4.2 Teil 2 — Spannweiten der Energiebilanz und Abregelung; steht vor Tabelle und Energiebilanz-Abbildung. */
 function ggRenderPvEnergiebilanzText(cfg, T = GG_THEME) {
   void cfg;
+  if (zeige('bestandsnetz')) {
+    const bn = ggPvVariante('bestandsnetz');
+    const na = bn?.netzaufnahme || H.bestandsnetz || null;
+    const mehr = na ? na.mitErtuechtigungKwp - na.ohneErtuechtigungKwp : 0;
+    absaetze.push(`${label('bestandsnetz')}: ${kwp('bestandsnetz', 'kWp Bestandsnetz')} kWp ohne Speicher. So viel nimmt `
+      + `das bestehende Stromnetz der Liegenschaft auf, ohne dass Kabel oder Transformatoren ertüchtigt werden müssen. `
+      + `Grundlage sind die Belastbarkeit der erfassten Kabel und Transformatoren bei voller Einspeisung sowie eine `
+      + `zulässige Spannungsanhebung von ${ggPvFeld(na?.eingaben?.duGrenzePct, 'ΔU-Grenze', 1)} %; belegt werden die `
+      + `ertragsstärksten Dachflächen zuerst. Vorausgesetzt sind lediglich Regelungstechnik (EZA-Regler) und `
+      + `Einspeisemanagement.`
+      + (mehr > 0.5
+        ? ` Weitere ${ggPvFeld(mehr, 'kWp nach Ertüchtigung')} kWp ließen sich erst nach einer Ertüchtigung des Netzes anschließen.`
+        : ''));
+  }
   const b = ggPvBasis();
   const kanon = b ? ggPvKanon() : [];
   const [ertLo, ertHi] = ggPvSpanne(kanon, v => v.ertragMwh);
