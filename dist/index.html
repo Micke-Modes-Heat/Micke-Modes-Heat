@@ -14996,7 +14996,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-09-22';
   if (d.indexOf('__') === 0) d = '';
-  var c = '4048059';
+  var c = '822c536';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -121788,11 +121788,21 @@ ${massTbl}
   // Felder am Objekt (Gebäude, Elektro-Asset, Erzeuger):
   //   feldStatus      'offen' | 'besucht' | 'erledigt'
   //   feldNotizen     Freitext
-  //   feldDaten       { baujahr, heizung, verbrauch } – vor Ort abgelesen
+  //   feldDaten       { heizung, heizungBaujahr, leistungKw, baujahr, verbrauch,
+  //                     zaehlerstand, zaehlerDatum } – vor Ort abgelesen
+  //   feldCheckliste  { profil, erfuellt, gesamt, fehlend[] } – Stand laut Feldapp
   //   feldVorgemerkt  im Büro gesetzt: „bei der Begehung ansehen"
-  //   feldFotos       [{ name, dataUrl }]
+  //   feldFotos       [{ name, dataUrl, kategorie? }]
 
-  const FELDDATEN_KEYS = /** @type {const} */ (['baujahr', 'heizung', 'verbrauch']);
+  const FELDDATEN_KEYS = /** @type {const} */ (['heizung', 'heizungBaujahr', 'leistungKw', 'baujahr', 'verbrauch', 'zaehlerstand', 'zaehlerDatum']);
+  /** Beschriftungen für die Anzeige in der Büro-App (gleiche Reihenfolge wie in der Feldapp) */
+  const FELDDATEN_LABELS = {
+    heizung: 'Heizung heute', heizungBaujahr: 'Baujahr Heizung', leistungKw: 'Leistung (Typenschild) kW',
+    baujahr: 'Baujahr Gebäude (vor Ort)', verbrauch: 'Jahresverbrauch kWh/a', zaehlerstand: 'Zählerstand', zaehlerDatum: 'Abgelesen am',
+  };
+  const FOTO_KATEGORIEN = /** @type {Record<string, string>} */ ({
+    fassade: 'Fassade', heizraum: 'Heizraum', typenschild: 'Typenschild', zaehler: 'Zähler', mangel: 'Mangel', sonstiges: 'Sonstiges',
+  });
   const FELD_STATUS = /** @type {const} */ (['offen', 'besucht', 'erledigt']);
   const MAX_FELDWERT = 200;
 
@@ -121811,12 +121821,29 @@ ${massTbl}
     return out;
   }
 
-  /** @param {unknown} fotos @returns {{name: string, dataUrl: string}[]} */
+  /** @param {unknown} fotos @returns {{name: string, dataUrl: string, kategorie?: string}[]} */
   function sauberFotos(fotos) {
     if (!Array.isArray(fotos)) return [];
     return fotos
       .filter(f => isObject(f) && typeof f.dataUrl === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(f.dataUrl))
-      .map(f => ({ name: String(f.name || 'foto.jpg').slice(0, 120), dataUrl: f.dataUrl }));
+      .map(f => ({
+        name: String(f.name || 'foto.jpg').slice(0, 120),
+        dataUrl: f.dataUrl,
+        ...(FOTO_KATEGORIEN[f.kategorie] ? { kategorie: f.kategorie } : {}),
+      }));
+  }
+
+  /** @param {unknown} roh */
+  function sauberCheckliste(roh) {
+    if (!isObject(roh)) return null;
+    const gesamt = Math.trunc(Number(roh.gesamt));
+    const erfuellt = Math.trunc(Number(roh.erfuellt));
+    if (!Number.isFinite(gesamt) || !Number.isFinite(erfuellt) || gesamt <= 0 || gesamt > 50 || erfuellt < 0 || erfuellt > gesamt) return null;
+    return {
+      profil: String(roh.profil || '').slice(0, 40),
+      erfuellt, gesamt,
+      fehlend: Array.isArray(roh.fehlend) ? roh.fehlend.slice(0, 50).map(x => String(x).slice(0, 80)) : [],
+    };
   }
 
   /** Nur die gesetzten Feldwerte eines Objekts (leer → null). @param {Record<string, any>} obj */
@@ -121830,6 +121857,8 @@ ${massTbl}
     if (obj.feldVorgemerkt === true) out.feldVorgemerkt = true;
     const fotos = sauberFotos(obj.feldFotos);
     if (fotos.length) out.feldFotos = fotos;
+    const cl = sauberCheckliste(obj.feldCheckliste);
+    if (cl) out.feldCheckliste = cl;
     return Object.keys(out).length ? out : null;
   }
 
@@ -121905,7 +121934,7 @@ ${massTbl}
    *
    * @param {Record<string, any>} ziel
    * @param {Record<string, any>} quelle
-   * @param {{name: string, dataUrl: string}[]} [fotos]
+   * @param {{name: string, dataUrl: string, kategorie?: string}[]} [fotos]
    * @param {{label?: string}} [opt]
    */
   function planFeldMerge(ziel, quelle, fotos = [], opt = {}) {
@@ -121940,7 +121969,7 @@ ${massTbl}
     let datenGeaendert = false;
     for (const [k, v] of Object.entries(datenNeu)) {
       if (datenAlt[k] === v) continue;
-      if (datenAlt[k]) konflikte.push(`${k}: „${datenAlt[k]}" → „${v}"`);
+      if (datenAlt[k]) konflikte.push(`${FELDDATEN_LABELS[/** @type {keyof typeof FELDDATEN_LABELS} */ (k)] || k}: „${datenAlt[k]}" → „${v}"`);
       datenMerge[k] = v;
       datenGeaendert = true;
     }
@@ -121950,6 +121979,13 @@ ${massTbl}
     const neueFotos = sauberFotos(fotos).filter(f => !vorhanden.has(f.dataUrl) && (vorhanden.add(f.dataUrl), true));
     if (neueFotos.length) {
       patch.feldFotos = [...sauberFotos(ziel.feldFotos), ...neueFotos];
+      aenderungen++;
+    }
+
+    // Checkliste: immer der Stand der jüngsten Begehung
+    const clNeu = sauberCheckliste(quelle.feldCheckliste);
+    if (clNeu && JSON.stringify(clNeu) !== JSON.stringify(sauberCheckliste(ziel.feldCheckliste))) {
+      patch.feldCheckliste = clNeu;
       aenderungen++;
     }
 
@@ -125255,9 +125291,11 @@ ${massTbl}
 
   function _renderFelddatenBlock(g) {
     const feldDaten = g.feldDaten && typeof g.feldDaten === 'object' ? g.feldDaten : {};
-    const feldDatenZeilen = [['baujahr', 'Baujahr (vor Ort)'], ['heizung', 'Heizung heute'], ['verbrauch', 'Verbrauch / Zählerstand']]
+    const feldDatenZeilen = Object.entries(FELDDATEN_LABELS)
       .filter(([k]) => feldDaten[k])
       .map(([k, label]) => `<div><span style="color:var(--muted);">${label}:</span> ${escHtml(feldDaten[k])}</div>`);
+    const cl = g.feldCheckliste;
+    if (cl && cl.gesamt) feldDatenZeilen.push(`<div><span style="color:var(--muted);">Checkliste:</span> ${cl.erfuellt}/${cl.gesamt}${cl.fehlend?.length ? ' – fehlt: ' + escHtml(cl.fehlend.join(', ')) : ' – vollständig'}</div>`);
     if (!g.feldNotizen && !g.feldStatus && !g.feldFotos?.length && !feldDatenZeilen.length) return '';
 
     const statusLabel = { offen:'📋 Offen', besucht:'👁 Besucht', erledigt:'✅ Erledigt' }[g.feldStatus] || '';
@@ -125265,7 +125303,7 @@ ${massTbl}
       ? `<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
       : '';
     const fotoHtml = (g.feldFotos || []).map(foto =>
-      `<img src="${foto.dataUrl}" title="${escHtml(foto.name)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="openImageLightbox(this.src,this.title)">`
+      `<img src="${foto.dataUrl}" title="${escHtml([FOTO_KATEGORIEN[foto.kategorie], foto.name].filter(Boolean).join(' · '))}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="openImageLightbox(this.src,this.title)">`
     ).join('');
 
     return `
@@ -177787,6 +177825,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       exportedAt: new Date().toISOString(),
       projektName: getProjektName() || 'Energieplanung',
       ergebnisse: _feldappErgebnisse(),
+      // Beschriftungen der Nutzungsarten (Schlüssel wie in den Gebäudedaten: efh, oeffentlich, …)
+      nutzungLabels: Object.fromEntries(Object.entries(NUTZUNG_DEFAULTS).map(([k, v]) => [k, v.label])),
       gebaeude: (gebaeude || []).map(g => ({
         ...g,
         polygon: (g.polygon || []).map(p =>
@@ -177943,22 +177983,23 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
 
       // Felddaten zusammenführen statt überschreiben (Regeln: lib/felddaten.js).
       // Erst planen, dann mit Vorschau bestätigen lassen, dann anwenden.
-      const fotosFuer = (ordnerRoh) => {
+      const fotosFuer = (ordnerRoh, infos) => {
         if (!ordnerRoh || !Object.keys(photoMap).length) return [];
+        const katVon = name => (Array.isArray(infos) ? infos.find(i => i && i.datei === name)?.kategorie : undefined);
         const norm = s => String(s || '').split('\\').join('/').split('/').filter(Boolean).join('/');
         const ordner = norm(ordnerRoh);
         const letzter = ordner.split('/').pop();
         return Object.values(photoMap)
           .filter(p => { const f = norm(p.folder); return f === ordner || f.endsWith('/' + letzter); })
           .sort((a, b) => a.fileName.localeCompare(b.fileName))
-          .map(p => ({ name: p.fileName, dataUrl: p.dataUrl }));
+          .map(p => ({ name: p.fileName, dataUrl: p.dataUrl, kategorie: katVon(p.fileName) }));
       };
       const datum = projektDaten.feldExport?.exportiertAm ? new Date(projektDaten.feldExport.exportiertAm) : new Date();
       const label = 'Feldapp ' + (isNaN(datum) ? '' : datum.toLocaleDateString('de-DE'));
       const plaene = [];
       const planen = (ziel, quelle, name) => {
         if (!ziel || !quelle) return;
-        const plan = planFeldMerge(ziel, quelle, fotosFuer(quelle.feldFotoOrdner), { label });
+        const plan = planFeldMerge(ziel, quelle, fotosFuer(quelle.feldFotoOrdner, quelle.feldFotoInfos), { label });
         if (plan.aenderungen) plaene.push({ ziel, name, ...plan });
       };
       for (const feldGeb of (projektDaten.gebaeude || [])) {

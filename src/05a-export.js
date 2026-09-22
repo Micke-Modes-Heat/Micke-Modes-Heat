@@ -11,7 +11,7 @@ import { getGebStromMwh } from './02b-gebaeude.js';
 import { recalcNetz } from './03b-netz.js';
 import { escHtml, renderList, projektExportFilename, getProjektName } from './03c-gebaeude-io.js';
 import { renderSidebarAssetList } from './13e-assets-inspector.js';
-import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { ERZEUGER_CFG, NUTZUNG_DEFAULTS } from './config/erzeuger-cfg.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
 import { planFeldMerge } from './lib/felddaten.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
@@ -1912,6 +1912,8 @@ export function exportFeldapp() {
     exportedAt: new Date().toISOString(),
     projektName: getProjektName() || 'Energieplanung',
     ergebnisse: _feldappErgebnisse(),
+    // Beschriftungen der Nutzungsarten (Schlüssel wie in den Gebäudedaten: efh, oeffentlich, …)
+    nutzungLabels: Object.fromEntries(Object.entries(NUTZUNG_DEFAULTS).map(([k, v]) => [k, v.label])),
     gebaeude: (gebaeude || []).map(g => ({
       ...g,
       polygon: (g.polygon || []).map(p =>
@@ -2068,22 +2070,23 @@ async function _handleFelddatenImport(e) {
 
     // Felddaten zusammenführen statt überschreiben (Regeln: lib/felddaten.js).
     // Erst planen, dann mit Vorschau bestätigen lassen, dann anwenden.
-    const fotosFuer = (ordnerRoh) => {
+    const fotosFuer = (ordnerRoh, infos) => {
       if (!ordnerRoh || !Object.keys(photoMap).length) return [];
+      const katVon = name => (Array.isArray(infos) ? infos.find(i => i && i.datei === name)?.kategorie : undefined);
       const norm = s => String(s || '').split('\\').join('/').split('/').filter(Boolean).join('/');
       const ordner = norm(ordnerRoh);
       const letzter = ordner.split('/').pop();
       return Object.values(photoMap)
         .filter(p => { const f = norm(p.folder); return f === ordner || f.endsWith('/' + letzter); })
         .sort((a, b) => a.fileName.localeCompare(b.fileName))
-        .map(p => ({ name: p.fileName, dataUrl: p.dataUrl }));
+        .map(p => ({ name: p.fileName, dataUrl: p.dataUrl, kategorie: katVon(p.fileName) }));
     };
     const datum = projektDaten.feldExport?.exportiertAm ? new Date(projektDaten.feldExport.exportiertAm) : new Date();
     const label = 'Feldapp ' + (isNaN(datum) ? '' : datum.toLocaleDateString('de-DE'));
     const plaene = [];
     const planen = (ziel, quelle, name) => {
       if (!ziel || !quelle) return;
-      const plan = planFeldMerge(ziel, quelle, fotosFuer(quelle.feldFotoOrdner), { label });
+      const plan = planFeldMerge(ziel, quelle, fotosFuer(quelle.feldFotoOrdner, quelle.feldFotoInfos), { label });
       if (plan.aenderungen) plaene.push({ ziel, name, ...plan });
     };
     for (const feldGeb of (projektDaten.gebaeude || [])) {

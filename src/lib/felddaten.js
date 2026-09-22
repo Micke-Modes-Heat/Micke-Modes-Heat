@@ -5,12 +5,22 @@
 // Felder am Objekt (Gebäude, Elektro-Asset, Erzeuger):
 //   feldStatus      'offen' | 'besucht' | 'erledigt'
 //   feldNotizen     Freitext
-//   feldDaten       { baujahr, heizung, verbrauch } – vor Ort abgelesen
+//   feldDaten       { heizung, heizungBaujahr, leistungKw, baujahr, verbrauch,
+//                     zaehlerstand, zaehlerDatum } – vor Ort abgelesen
+//   feldCheckliste  { profil, erfuellt, gesamt, fehlend[] } – Stand laut Feldapp
 //   feldVorgemerkt  im Büro gesetzt: „bei der Begehung ansehen"
-//   feldFotos       [{ name, dataUrl }]
+//   feldFotos       [{ name, dataUrl, kategorie? }]
 
-export const FELD_KEYS = /** @type {const} */ (['feldStatus', 'feldNotizen', 'feldDaten', 'feldVorgemerkt', 'feldFotos']);
-export const FELDDATEN_KEYS = /** @type {const} */ (['baujahr', 'heizung', 'verbrauch']);
+export const FELD_KEYS = /** @type {const} */ (['feldStatus', 'feldNotizen', 'feldDaten', 'feldVorgemerkt', 'feldFotos', 'feldCheckliste']);
+export const FELDDATEN_KEYS = /** @type {const} */ (['heizung', 'heizungBaujahr', 'leistungKw', 'baujahr', 'verbrauch', 'zaehlerstand', 'zaehlerDatum']);
+/** Beschriftungen für die Anzeige in der Büro-App (gleiche Reihenfolge wie in der Feldapp) */
+export const FELDDATEN_LABELS = {
+  heizung: 'Heizung heute', heizungBaujahr: 'Baujahr Heizung', leistungKw: 'Leistung (Typenschild) kW',
+  baujahr: 'Baujahr Gebäude (vor Ort)', verbrauch: 'Jahresverbrauch kWh/a', zaehlerstand: 'Zählerstand', zaehlerDatum: 'Abgelesen am',
+};
+export const FOTO_KATEGORIEN = /** @type {Record<string, string>} */ ({
+  fassade: 'Fassade', heizraum: 'Heizraum', typenschild: 'Typenschild', zaehler: 'Zähler', mangel: 'Mangel', sonstiges: 'Sonstiges',
+});
 export const FELD_STATUS = /** @type {const} */ (['offen', 'besucht', 'erledigt']);
 const MAX_FELDWERT = 200;
 
@@ -29,12 +39,29 @@ export function sauberFeldDaten(roh) {
   return out;
 }
 
-/** @param {unknown} fotos @returns {{name: string, dataUrl: string}[]} */
+/** @param {unknown} fotos @returns {{name: string, dataUrl: string, kategorie?: string}[]} */
 function sauberFotos(fotos) {
   if (!Array.isArray(fotos)) return [];
   return fotos
     .filter(f => isObject(f) && typeof f.dataUrl === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(f.dataUrl))
-    .map(f => ({ name: String(f.name || 'foto.jpg').slice(0, 120), dataUrl: f.dataUrl }));
+    .map(f => ({
+      name: String(f.name || 'foto.jpg').slice(0, 120),
+      dataUrl: f.dataUrl,
+      ...(FOTO_KATEGORIEN[f.kategorie] ? { kategorie: f.kategorie } : {}),
+    }));
+}
+
+/** @param {unknown} roh */
+export function sauberCheckliste(roh) {
+  if (!isObject(roh)) return null;
+  const gesamt = Math.trunc(Number(roh.gesamt));
+  const erfuellt = Math.trunc(Number(roh.erfuellt));
+  if (!Number.isFinite(gesamt) || !Number.isFinite(erfuellt) || gesamt <= 0 || gesamt > 50 || erfuellt < 0 || erfuellt > gesamt) return null;
+  return {
+    profil: String(roh.profil || '').slice(0, 40),
+    erfuellt, gesamt,
+    fehlend: Array.isArray(roh.fehlend) ? roh.fehlend.slice(0, 50).map(x => String(x).slice(0, 80)) : [],
+  };
 }
 
 /** Nur die gesetzten Feldwerte eines Objekts (leer → null). @param {Record<string, any>} obj */
@@ -48,6 +75,8 @@ export function pickFeldwerte(obj) {
   if (obj.feldVorgemerkt === true) out.feldVorgemerkt = true;
   const fotos = sauberFotos(obj.feldFotos);
   if (fotos.length) out.feldFotos = fotos;
+  const cl = sauberCheckliste(obj.feldCheckliste);
+  if (cl) out.feldCheckliste = cl;
   return Object.keys(out).length ? out : null;
 }
 
@@ -123,7 +152,7 @@ export function applyFelddaten(abschnitt, { gebaeude = [], assets = [], erzeuger
  *
  * @param {Record<string, any>} ziel
  * @param {Record<string, any>} quelle
- * @param {{name: string, dataUrl: string}[]} [fotos]
+ * @param {{name: string, dataUrl: string, kategorie?: string}[]} [fotos]
  * @param {{label?: string}} [opt]
  */
 export function planFeldMerge(ziel, quelle, fotos = [], opt = {}) {
@@ -158,7 +187,7 @@ export function planFeldMerge(ziel, quelle, fotos = [], opt = {}) {
   let datenGeaendert = false;
   for (const [k, v] of Object.entries(datenNeu)) {
     if (datenAlt[k] === v) continue;
-    if (datenAlt[k]) konflikte.push(`${k}: „${datenAlt[k]}" → „${v}"`);
+    if (datenAlt[k]) konflikte.push(`${FELDDATEN_LABELS[/** @type {keyof typeof FELDDATEN_LABELS} */ (k)] || k}: „${datenAlt[k]}" → „${v}"`);
     datenMerge[k] = v;
     datenGeaendert = true;
   }
@@ -168,6 +197,13 @@ export function planFeldMerge(ziel, quelle, fotos = [], opt = {}) {
   const neueFotos = sauberFotos(fotos).filter(f => !vorhanden.has(f.dataUrl) && (vorhanden.add(f.dataUrl), true));
   if (neueFotos.length) {
     patch.feldFotos = [...sauberFotos(ziel.feldFotos), ...neueFotos];
+    aenderungen++;
+  }
+
+  // Checkliste: immer der Stand der jüngsten Begehung
+  const clNeu = sauberCheckliste(quelle.feldCheckliste);
+  if (clNeu && JSON.stringify(clNeu) !== JSON.stringify(sauberCheckliste(ziel.feldCheckliste))) {
+    patch.feldCheckliste = clNeu;
     aenderungen++;
   }
 

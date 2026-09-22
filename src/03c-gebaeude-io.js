@@ -31,7 +31,7 @@ import { bhkw, edgeWaypoints, fernwaerme, fernwaermeEmF, ffCounter, fliessgewaes
 import { kostenSzenario, setKostenSzenario } from './02a-netz-physik.js';
 import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
-import { captureFelddaten, applyFelddaten } from './lib/felddaten.js';
+import { captureFelddaten, applyFelddaten, FELDDATEN_LABELS, FOTO_KATEGORIEN } from './lib/felddaten.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
@@ -2183,9 +2183,11 @@ export function _renderExpandedPanel(g, stats) {
 
 function _renderFelddatenBlock(g) {
   const feldDaten = g.feldDaten && typeof g.feldDaten === 'object' ? g.feldDaten : {};
-  const feldDatenZeilen = [['baujahr', 'Baujahr (vor Ort)'], ['heizung', 'Heizung heute'], ['verbrauch', 'Verbrauch / Zählerstand']]
+  const feldDatenZeilen = Object.entries(FELDDATEN_LABELS)
     .filter(([k]) => feldDaten[k])
     .map(([k, label]) => `<div><span style="color:var(--muted);">${label}:</span> ${escHtml(feldDaten[k])}</div>`);
+  const cl = g.feldCheckliste;
+  if (cl && cl.gesamt) feldDatenZeilen.push(`<div><span style="color:var(--muted);">Checkliste:</span> ${cl.erfuellt}/${cl.gesamt}${cl.fehlend?.length ? ' – fehlt: ' + escHtml(cl.fehlend.join(', ')) : ' – vollständig'}</div>`);
   if (!g.feldNotizen && !g.feldStatus && !g.feldFotos?.length && !feldDatenZeilen.length) return '';
 
   const statusLabel = { offen:'📋 Offen', besucht:'👁 Besucht', erledigt:'✅ Erledigt' }[g.feldStatus] || '';
@@ -2193,7 +2195,7 @@ function _renderFelddatenBlock(g) {
     ? `<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
     : '';
   const fotoHtml = (g.feldFotos || []).map(foto =>
-    `<img src="${foto.dataUrl}" title="${escHtml(foto.name)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="openImageLightbox(this.src,this.title)">`
+    `<img src="${foto.dataUrl}" title="${escHtml([FOTO_KATEGORIEN[foto.kategorie], foto.name].filter(Boolean).join(' · '))}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="openImageLightbox(this.src,this.title)">`
   ).join('');
 
   return `

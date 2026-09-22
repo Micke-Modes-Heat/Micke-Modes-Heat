@@ -71,13 +71,27 @@ describe('Felddaten zusammenführen', () => {
   it('Vor-Ort-Werte werden ergänzt, abweichende gemeldet', () => {
     const plan = planFeldMerge({ feldDaten: { baujahr: '1970' } }, { feldDaten: { baujahr: '1971', heizung: 'Gas' } });
     expect(plan.patch.feldDaten).toEqual({ baujahr: '1971', heizung: 'Gas' });
-    expect(plan.konflikte).toEqual(['baujahr: „1970" → „1971"']);
+    expect(plan.konflikte).toEqual(['Baujahr Gebäude (vor Ort): „1970" → „1971"']);
   });
 
   it('Fotos werden ergänzt, nicht ersetzt und nicht verdoppelt', () => {
     const plan = planFeldMerge({ feldFotos: [FOTO_A] }, {}, [FOTO_A, FOTO_B, FOTO_B]);
     expect(plan.neueFotos).toBe(1);
     expect(plan.patch.feldFotos.map(f => f.name)).toEqual(['foto_01.jpg', 'foto_02.jpg']);
+  });
+
+  it('Foto-Kategorien und Checkliste kommen mit, unbekannte Kategorien nicht', () => {
+    const plan = planFeldMerge({}, { feldCheckliste: { profil: 'wohnen', erfuellt: 4, gesamt: 6, fehlend: ['Foto Typenschild', 'Baujahr Heizung'] } },
+      [{ ...FOTO_A, kategorie: 'typenschild' }, { ...FOTO_B, kategorie: '<script>' }]);
+    expect(plan.patch.feldFotos.map(f => f.kategorie)).toEqual(['typenschild', undefined]);
+    expect(plan.patch.feldCheckliste).toEqual({ profil: 'wohnen', erfuellt: 4, gesamt: 6, fehlend: ['Foto Typenschild', 'Baujahr Heizung'] });
+    expect(planFeldMerge({}, { feldCheckliste: { erfuellt: 9, gesamt: 6 } }).aenderungen).toBe(0);
+  });
+
+  it('neue Vor-Ort-Felder werden übernommen und gesichert', () => {
+    const g = { id: 1, feldDaten: { heizung: 'Pelletkessel', leistungKw: '45', zaehlerstand: '12345.6', zaehlerDatum: '2026-09-22', fremd: 'x' } };
+    const gesichert = captureFelddaten({ gebaeude: [g] });
+    expect(gesichert.gebaeude['1'].feldDaten).toEqual({ heizung: 'Pelletkessel', leistungKw: '45', zaehlerstand: '12345.6', zaehlerDatum: '2026-09-22' });
   });
 
   it('die Vormerkung gehört dem Büro', () => {

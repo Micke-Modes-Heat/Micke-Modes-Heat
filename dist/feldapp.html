@@ -956,6 +956,29 @@ svg.leaflet-image-layer.leaflet-interactive path {
     .seg button.on[data-status="besucht"] { background: var(--gelb-bg); border-color: var(--gelb); color: var(--gelb-text); }
     .seg button.on[data-status="erledigt"] { background: var(--gruen-bg); border-color: var(--gruen); color: var(--gruen-text); }
     .photo-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+    .kat-row { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+    .kat-row::-webkit-scrollbar { display: none; }
+    .kat-row button { flex-shrink: 0; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); background: var(--card); font-size: 13px; white-space: nowrap; }
+    .kat-row button.on { background: var(--gruen-dunkel); border-color: var(--gruen-dunkel); color: #fff; font-weight: 700; }
+    .kat-row button.fehlt:not(.on) { border-color: var(--gelb); background: var(--gelb-bg); color: var(--gelb-text); }
+    .photo-kat { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 5px; background: rgba(27,31,28,.72); color: #fff; font-size: 11px; pointer-events: none; }
+    .check-list { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); }
+    .check-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px; border: none; border-top: 1px solid var(--line); background: var(--card); text-align: left; font-size: 14px; width: 100%; }
+    .check-item:first-child { border-top: none; }
+    .check-item .box { width: 20px; height: 20px; flex-shrink: 0; border: 1.5px solid var(--rule); display: flex; align-items: center; justify-content: center; }
+    .check-item.ok { color: var(--muted); }
+    .check-item.ok .box { background: var(--gruen); border-color: var(--gruen); color: #fff; }
+    .check-item .go { margin-left: auto; font-size: 12px; color: var(--gruen-dunkel); font-weight: 700; }
+    .check-head { display: flex; justify-content: space-between; align-items: baseline; }
+    .check-head b { font-family: var(--mono); font-size: 13px; color: var(--gruen-dunkel); }
+    .field select { min-height: 44px; padding: 10px; border: 1px solid var(--rule); background: var(--card); font-size: 16px; color: var(--text); width: 100%; }
+    .field .einheit { font-size: 12px; color: var(--muted); }
+    .field.fehler input { border-color: var(--danger); box-shadow: inset 0 -2px 0 var(--danger); }
+    .field .fehlertext { font-size: 12px; color: var(--danger); display: none; }
+    .field.fehler .fehlertext { display: block; }
+    #lightbox-kat { position: absolute; left: 12px; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); }
+    #lightbox-kat button { border-color: rgba(255,255,255,.4); background: rgba(0,0,0,.5); color: #fff; }
+    #lightbox-kat button.on { background: var(--gruen-dunkel); border-color: var(--gruen-dunkel); }
     .photo-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
     .photo-actions button {
       min-height: 64px; border: 1px solid var(--gruen-dunkel); background: var(--tint); color: var(--gruen-dunkel);
@@ -1092,6 +1115,7 @@ if (typeof L !== 'undefined') {
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
   <symbol id="i-burst" viewBox="0 0 24 24"><path d="M7 7h3l1.5-2h5L18 7h3v11H7z"/><circle cx="14" cy="12.5" r="3"/><path d="M4 10v11h13"/></symbol>
   <symbol id="i-gallery" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
 </svg>
 
@@ -1231,6 +1255,7 @@ if (typeof L !== 'undefined') {
 <div id="lightbox">
   <button id="lightbox-close" aria-label="Foto schließen"><svg class="ic"><use href="#i-close"/></svg></button>
   <img id="lightbox-img" src="" alt="Foto">
+  <div class="kat-row" id="lightbox-kat" aria-label="Foto-Kategorie"></div>
 </div>
 
 <div id="toast" role="status"></div>
@@ -1320,15 +1345,24 @@ const DB = (() => {
     async saveNote(aid, text)  { await open(); return p(store('notes', 'readwrite').put({ assetId: String(aid), text, ts: Date.now() })); },
     async getAllNotes()        { await open(); return p(store('notes').getAll()); },
     async deleteNote(aid)      { await open(); return p(store('notes', 'readwrite').delete(String(aid))); },
-    async addPhoto(aid, blob, fn) {
+    async addPhoto(aid, blob, fn, kategorie = 'sonstiges') {
       await open();
       const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      const rec = { id, assetId: String(aid), blob, filename: fn, ts: Date.now() };
+      const rec = { id, assetId: String(aid), blob, filename: fn, kategorie, ts: Date.now() };
       await p(store('photos', 'readwrite').put(rec));
       return rec;
     },
     async getPhotos(aid)       { await open(); return p(store('photos').index('by_asset').getAll(String(aid))); },
     async deletePhoto(id)      { await open(); return p(store('photos', 'readwrite').delete(id)); },
+    async getPhoto(id)         { await open(); return p(store('photos').get(id)); },
+    async updatePhoto(id, patch) {
+      await open();
+      const cur = await p(store('photos').get(id));
+      if (!cur) return null;
+      const rec = { ...cur, ...patch, ts: Date.now() };
+      await p(store('photos', 'readwrite').put(rec));
+      return rec;
+    },
     async getAllPhotos()       { await open(); return p(store('photos').getAll()); },
     async saveMeta(aid, patch) {
       await open();
@@ -1432,7 +1466,13 @@ const NUTZUNG = {
   EFH: 'Einfamilienhaus', RH: 'Reihenhaus', MFH: 'Mehrfamilienhaus', GHD: 'Gewerbe / Handel',
   NWGB: 'Nichtwohngebäude', IND: 'Industrie', KMU: 'Kleinbetrieb', OEB: 'Öffentlich', SCHULE: 'Schule', KIRCHE: 'Kirche',
 };
-function nutzungLabel(key) { return NUTZUNG[key] || NUTZUNG[String(key || '').toUpperCase()] || key || 'Gebäude'; }
+// Die Büro-App schreibt ihre eigenen Beschriftungen mit (nutzungLabels, Schlüssel
+// klein geschrieben: efh, oeffentlich, …). Ältere Exporte: Tabelle oben.
+function nutzungLabel(key) {
+  const k = String(key || '');
+  return _project?.nutzungLabels?.[k] || _project?.nutzungLabels?.[k.toLowerCase()]
+    || NUTZUNG[k] || NUTZUNG[k.toUpperCase()] || k || 'Gebäude';
+}
 
 const ERZEUGER = {
   lwWp:              { short: 'WP',  label: 'Luft-Wasser-Wärmepumpe' },
@@ -1460,11 +1500,96 @@ const FILTERS = [
   { key: 'besucht',    label: 'Besucht',    dot: STATUS.besucht.dot },
   { key: 'erledigt',   label: 'Erledigt',   dot: STATUS.erledigt.dot },
 ];
-const FELD_FELDER = [
-  { key: 'baujahr',   label: 'Baujahr (vor Ort)',       placeholder: 'z. B. 1978', inputmode: 'numeric' },
-  { key: 'heizung',   label: 'Heizung heute',           placeholder: 'z. B. Gas-Kessel' },
-  { key: 'verbrauch', label: 'Verbrauch / Zählerstand', placeholder: 'kWh/a oder Zählerstand', full: true },
+// Vor Ort erfasste Werte. Auswahllisten und geprüfte Zahlen statt Freitext,
+// damit sich die Angaben mehrerer Kollegen auswerten lassen.
+const HEIZUNG_OPTIONEN = [
+  ['Gas',         ['Gas-Brennwertkessel', 'Gas-Niedertemperatur-/Konstanttemperaturkessel', 'Gas-Etagentherme']],
+  ['Öl',          ['Öl-Brennwertkessel', 'Öl-Niedertemperatur-/Konstanttemperaturkessel']],
+  ['Biomasse',    ['Pelletkessel', 'Hackschnitzelkessel', 'Scheitholzkessel / Kaminofen']],
+  ['Strom',       ['Wärmepumpe Luft', 'Wärmepumpe Erdreich / Wasser', 'Nachtspeicher / Direktheizung']],
+  ['Netz / KWK',  ['Fernwärme / Nahwärme', 'BHKW']],
+  ['Sonstiges',   ['Flüssiggas', 'Sonstige Heizung', 'Unbekannt / nicht zugänglich']],
 ];
+const FELD_FELDER = [
+  { key: 'heizung',        label: 'Heizung heute',             typ: 'auswahl', full: true },
+  { key: 'heizungBaujahr', label: 'Baujahr Heizung',           typ: 'jahr',  placeholder: 'z. B. 1998' },
+  { key: 'leistungKw',     label: 'Leistung (Typenschild)',    typ: 'zahl',  einheit: 'kW', placeholder: 'z. B. 45' },
+  { key: 'baujahr',        label: 'Baujahr Gebäude',           typ: 'jahr',  placeholder: 'z. B. 1978' },
+  { key: 'verbrauch',      label: 'Jahresverbrauch',           typ: 'zahl',  einheit: 'kWh/a', placeholder: 'z. B. 148000' },
+  { key: 'zaehlerstand',   label: 'Zählerstand',               typ: 'zahl',  placeholder: 'Anzeige ablesen' },
+  { key: 'zaehlerDatum',   label: 'Abgelesen am',              typ: 'datum' },
+];
+// "148.000" / "148 000" / "45,5" → Zahl; null = keine gültige Zahl
+function parseZahl(roh) {
+  let t = String(roh ?? '').trim().replace(/\s/g, '');
+  if (!t) return null;
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) t = t.replace(/\./g, '');
+  t = t.replace(',', '.');
+  return /^\d+(\.\d+)?$/.test(t) ? Number(t) : null;
+}
+function feldFehler(f, wert) {
+  const v = String(wert ?? '').trim();
+  if (!v) return '';
+  if (f.typ === 'jahr') {
+    const j = Number(v);
+    return /^\d{4}$/.test(v) && j >= 1800 && j <= new Date().getFullYear() + 1 ? '' : 'Vierstellige Jahreszahl eingeben';
+  }
+  if (f.typ === 'zahl') return parseZahl(v) == null ? 'Nur eine Zahl eingeben (ohne Einheit)' : '';
+  if (f.typ === 'datum') return /^\d{4}-\d{2}-\d{2}$/.test(v) ? '' : 'Datum wählen';
+  return '';
+}
+
+const FOTO_KATEGORIEN = {
+  fassade:     'Fassade',
+  heizraum:    'Heizraum',
+  typenschild: 'Typenschild',
+  zaehler:     'Zähler',
+  mangel:      'Mangel',
+  sonstiges:   'Sonstiges',
+};
+let _fotoKat = 'sonstiges';        // Kategorie für die nächsten Aufnahmen
+
+// Checkliste je Gebäudetyp: was eine Begehung mindestens liefern soll.
+// Sie ist ein Hinweis, keine Sperre – „Erledigt" geht mit Rückfrage auch so.
+const WOHNNUTZUNG = new Set(['efh', 'rh', 'mfh', 'wohnheim', 'unterkunft']);
+const CHECK_PROFILE = {
+  wohnen: {
+    label: 'Wohngebäude',
+    fotos: ['fassade', 'heizraum', 'typenschild'],
+    felder: ['heizung', 'heizungBaujahr'],
+    einesVon: [['verbrauch', 'zaehlerstand', 'Verbrauch oder Zählerstand']],
+  },
+  nichtwohnen: {
+    label: 'Nichtwohngebäude',
+    fotos: ['fassade', 'heizraum', 'typenschild', 'zaehler'],
+    felder: ['heizung', 'heizungBaujahr', 'leistungKw'],
+    einesVon: [['verbrauch', 'zaehlerstand', 'Verbrauch oder Zählerstand']],
+  },
+};
+function checkProfil(asset) {
+  if (asset.type !== 'gebaeude') return null;
+  return WOHNNUTZUNG.has(String(asset.data.nutzung || '').toLowerCase()) ? 'wohnen' : 'nichtwohnen';
+}
+function checkliste(asset) {
+  const profilKey = checkProfil(asset);
+  if (!profilKey) return null;
+  const profil = CHECK_PROFILE[profilKey];
+  const aid = assetId(asset);
+  const kats = _photoInfo.get(aid)?.kats || {};
+  const daten = feldDatenOf(aid);
+  const hat = k => !!String(daten[k] || '').trim();
+  const punkte = [
+    ...profil.fotos.map(k => ({ art: 'foto', key: k, label: `Foto ${FOTO_KATEGORIEN[k]}`, ok: (kats[k] || 0) > 0 })),
+    ...profil.felder.map(k => ({ art: 'feld', key: k, label: FELD_FELDER.find(f => f.key === k).label, ok: hat(k) })),
+    ...profil.einesVon.map(([a, b, label]) => ({ art: 'feld', key: a, label, ok: hat(a) || hat(b) })),
+  ];
+  const erfuellt = punkte.filter(p => p.ok).length;
+  return { profil: profilKey, profilLabel: profil.label, punkte, erfuellt, gesamt: punkte.length, fehlend: punkte.filter(p => !p.ok).map(p => p.label) };
+}
+function naechsteFehlendeKategorie(asset) {
+  const cl = checkliste(asset);
+  return cl?.punkte.find(p => p.art === 'foto' && !p.ok)?.key || 'sonstiges';
+}
 
 // ─────────────────────────────────────────────────────────
 //  UI-HELFER
@@ -1518,9 +1643,11 @@ async function loadFieldState() {
   await migrateLegacyStatus();
 }
 function addPhotoInfo(ph, sign = 1) {
-  const cur = _photoInfo.get(ph.assetId) || { count: 0, bytes: 0, ts: 0 };
+  const cur = _photoInfo.get(ph.assetId) || { count: 0, bytes: 0, ts: 0, kats: {} };
   cur.count += sign;
   cur.bytes += sign * (ph.blob?.size || 0);
+  const kat = ph.kategorie || 'sonstiges';
+  cur.kats[kat] = Math.max(0, (cur.kats[kat] || 0) + sign);
   if (sign > 0) cur.ts = Math.max(cur.ts, ph.ts || 0);
   if (cur.count <= 0) _photoInfo.delete(ph.assetId); else _photoInfo.set(ph.assetId, cur);
 }
@@ -1880,7 +2007,7 @@ function renderList() {
     return `<button class="list-item" data-idx="${i}">
       <span class="dot" style="background:${st.dot}"></span>
       <span class="main"><span class="name">${esc(assetName(a))}${a.data.feldVorgemerkt ? ' <span style="color:var(--gruen-dunkel)">★</span>' : ''}</span><span class="sub">${sub}</span></span>
-      <span class="side"><b>${leistung}</b>${pc ? `${pc} Foto${pc === 1 ? '' : 's'}` : st.label}</span>
+      <span class="side"><b>${leistung}</b>${(() => { const cl = checkliste(a); return cl && (pc || hasFeldDaten(aid) || statusOf(aid) !== 'offen') ? `Checkliste ${cl.erfuellt}/${cl.gesamt}` : (pc ? `${pc} Foto${pc === 1 ? '' : 's'}` : st.label); })()}</span>
     </button>`;
   }).join('');
   el.querySelectorAll('.list-item').forEach(btn => btn.addEventListener('click', () => openSheet(items[+btn.dataset.idx])));
@@ -2115,6 +2242,8 @@ async function renderSheet(asset) {
     ${d.feldVorgemerkt ? `<span class="vm-tag">★ Im Büro für die Begehung vorgemerkt</span>` : ''}
     <div class="info-grid">${cells.map(([k, v]) => `<div class="info-cell"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>
 
+    ${asset.type === 'gebaeude' ? `<div class="sheet-block" id="check-block"></div>` : ''}
+
     <div class="sheet-block">
       <span class="lbl">Status</span>
       <div class="seg" id="status-seg">${Object.entries(STATUS).map(([k, s]) =>
@@ -2123,6 +2252,7 @@ async function renderSheet(asset) {
 
     <div class="sheet-block">
       <span class="lbl" id="photo-count">Fotos (${photos.length})</span>
+      <div class="kat-row" id="kat-row" aria-label="Kategorie für die nächsten Fotos"></div>
       <div class="photo-actions" id="photo-actions">
         <button id="btn-add-photo">${icon('camera')}Foto</button>
         <button id="btn-serie">${icon('burst')}Serie</button>
@@ -2134,10 +2264,7 @@ async function renderSheet(asset) {
     ${asset.type === 'gebaeude' ? `
     <div class="sheet-block">
       <span class="lbl">Vor Ort erfasst</span>
-      <div class="field-grid">${FELD_FELDER.map(f => `
-        <label class="field"${f.full ? ' style="grid-column:1 / -1"' : ''}>${f.label}
-          <input data-feld="${f.key}" value="${esc(feld[f.key] || '')}" placeholder="${esc(f.placeholder)}"${f.inputmode ? ` inputmode="${f.inputmode}"` : ''} autocomplete="off">
-        </label>`).join('')}</div>
+      <div class="field-grid">${FELD_FELDER.map(f => feldHtml(f, feld[f.key])).join('')}</div>
     </div>` : ''}
 
     <div class="sheet-block">
@@ -2149,7 +2276,10 @@ async function renderSheet(asset) {
     </div>
     <div class="save-hint" id="save-hint">Wird sofort auf dem Gerät gespeichert.</div>
   `;
+  _fotoKat = naechsteFehlendeKategorie(asset);
   renderPhotoGrid(photos);
+  renderKatRow();
+  renderCheckliste();
 
   document.getElementById('btn-add-photo').addEventListener('click', () => document.getElementById('photo-input').click());
   document.getElementById('btn-serie').addEventListener('click', openCamera);
@@ -2159,10 +2289,18 @@ async function renderSheet(asset) {
     clearTimeout(_notesTimer);
     _notesTimer = setTimeout(flushNotes, 1000);
   });
-  document.querySelectorAll('[data-feld]').forEach(inp => inp.addEventListener('input', () => {
-    clearTimeout(_feldTimer);
-    _feldTimer = setTimeout(flushFeldDaten, 800);
-  }));
+  document.querySelectorAll('[data-feld]').forEach(inp => {
+    const ev = inp.tagName === 'SELECT' || inp.type === 'date' ? 'change' : 'input';
+    inp.addEventListener(ev, () => {
+      pruefeFeld(inp);
+      if (inp.dataset.feld === 'zaehlerstand') {
+        const datum = document.querySelector('[data-feld="zaehlerDatum"]');
+        if (datum && !datum.value && inp.value.trim()) datum.value = new Date().toISOString().slice(0, 10);
+      }
+      clearTimeout(_feldTimer);
+      _feldTimer = setTimeout(flushFeldDaten, ev === 'change' ? 0 : 800);
+    });
+  });
   document.getElementById('btn-mic').addEventListener('click', toggleMic);
 }
 
@@ -2173,12 +2311,81 @@ function renderPhotoGrid(photos) {
   grid.innerHTML = photos.map(ph => {
     const url = URL.createObjectURL(ph.blob);
     _blobUrls.set(ph.id, url);
-    return `<div class="photo-cell"><button class="photo-open" data-open="${esc(ph.id)}" aria-label="Foto ansehen"><img src="${url}" alt=""></button>
+    const kat = FOTO_KATEGORIEN[ph.kategorie] || FOTO_KATEGORIEN.sonstiges;
+    return `<div class="photo-cell"><button class="photo-open" data-open="${esc(ph.id)}" aria-label="Foto ${esc(kat)} ansehen"><img src="${url}" alt=""></button>
+      <span class="photo-kat">${esc(kat)}</span>
       <button class="photo-del" data-del="${esc(ph.id)}" aria-label="Foto löschen">${icon('close', 'width:16px;height:16px')}</button></div>`;
   }).join('');
   document.getElementById('photo-count').textContent = `Fotos (${photos.length})`;
-  grid.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openLightbox(b.dataset.open)));
+  grid.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openLightbox(b.dataset.open, photos.find(p => p.id === b.dataset.open)?.kategorie)));
   grid.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => delPhoto(b.dataset.del)));
+}
+
+function feldHtml(f, wert) {
+  const v = wert || '';
+  let input;
+  if (f.typ === 'auswahl') {
+    const bekannt = HEIZUNG_OPTIONEN.some(([, opts]) => opts.includes(v));
+    input = `<select data-feld="${f.key}">
+      <option value="">– bitte wählen –</option>
+      ${HEIZUNG_OPTIONEN.map(([gruppe, opts]) => `<optgroup label="${esc(gruppe)}">${opts.map(o => `<option${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}</optgroup>`).join('')}
+      ${v && !bekannt ? `<option selected value="${esc(v)}">${esc(v)} (bisheriger Eintrag)</option>` : ''}
+    </select>`;
+  } else {
+    const attr = f.typ === 'datum' ? 'type="date"' : `type="text" inputmode="${f.typ === 'jahr' ? 'numeric' : 'decimal'}"`;
+    input = `<input ${attr} data-feld="${f.key}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" autocomplete="off">`;
+  }
+  const fehler = feldFehler(f, v);
+  return `<label class="field${fehler ? ' fehler' : ''}"${f.full ? ' style="grid-column:1 / -1"' : ''}>
+    <span>${esc(f.label)}${f.einheit ? ` <span class="einheit">(${esc(f.einheit)})</span>` : ''}</span>
+    ${input}
+    <span class="fehlertext">${esc(fehler || ' ')}</span>
+  </label>`;
+}
+function pruefeFeld(inp) {
+  const f = FELD_FELDER.find(x => x.key === inp.dataset.feld);
+  const label = inp.closest('.field');
+  if (!f || !label) return;
+  const fehler = feldFehler(f, inp.value);
+  label.classList.toggle('fehler', !!fehler);
+  label.querySelector('.fehlertext').textContent = fehler || ' ';
+}
+
+function renderKatRow() {
+  const row = document.getElementById('kat-row');
+  if (!row || !_currentAsset) return;
+  const fehlend = new Set((checkliste(_currentAsset)?.punkte || []).filter(p => p.art === 'foto' && !p.ok).map(p => p.key));
+  row.innerHTML = `<span class="sr-only">Nächste Fotos als:</span>` + Object.entries(FOTO_KATEGORIEN).map(([k, label]) =>
+    `<button data-kat="${k}" class="${k === _fotoKat ? 'on' : ''}${fehlend.has(k) ? ' fehlt' : ''}" aria-pressed="${k === _fotoKat}">${esc(label)}</button>`).join('');
+  row.querySelectorAll('[data-kat]').forEach(b => b.addEventListener('click', () => { _fotoKat = b.dataset.kat; renderKatRow(); }));
+}
+
+function renderCheckliste() {
+  const block = document.getElementById('check-block');
+  if (!block || !_currentAsset) return;
+  const cl = checkliste(_currentAsset);
+  if (!cl) { block.innerHTML = ''; return; }
+  block.innerHTML = `
+    <div class="check-head"><span class="lbl">Checkliste · ${esc(cl.profilLabel)}</span><b>${cl.erfuellt}/${cl.gesamt}</b></div>
+    <div class="check-list">${cl.punkte.map((p, i) => `
+      <button class="check-item${p.ok ? ' ok' : ''}" data-check="${i}">
+        <span class="box">${p.ok ? icon('check', 'width:14px;height:14px;stroke-width:3') : ''}</span>
+        <span>${esc(p.label)}</span>
+        ${p.ok ? '' : `<span class="go">${p.art === 'foto' ? 'Aufnehmen' : 'Eintragen'}</span>`}
+      </button>`).join('')}</div>`;
+  block.querySelectorAll('[data-check]').forEach(b => b.addEventListener('click', () => {
+    const p = cl.punkte[+b.dataset.check];
+    if (p.ok) return;
+    if (p.art === 'foto') {
+      _fotoKat = p.key;
+      renderKatRow();
+      document.getElementById('photo-input').click();
+    } else {
+      const inp = document.querySelector(`[data-feld="${p.key}"]`);
+      inp?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setTimeout(() => inp?.focus(), 300);
+    }
+  }));
 }
 
 function flashSaved() {
@@ -2192,6 +2399,12 @@ function flashSaved() {
 async function setFeldStatus(status) {
   if (!_currentAsset || !STATUS[status]) return;
   const aid = assetId(_currentAsset);
+  if (status === 'erledigt' && !_tourActive) {
+    await flushFeldDaten();
+    const cl = checkliste(_currentAsset);
+    if (cl && cl.fehlend.length &&
+        !confirm(`Checkliste unvollständig (${cl.erfuellt}/${cl.gesamt}). Es fehlt:\n• ${cl.fehlend.join('\n• ')}\n\nTrotzdem als erledigt markieren?`)) return;
+  }
   document.querySelectorAll('#status-seg button').forEach(b => {
     const on = b.dataset.status === status;
     b.classList.toggle('on', on);
@@ -2223,11 +2436,19 @@ async function flushFeldDaten() {
   if (!inputs.length) return;
   const aid = assetId(_currentAsset);
   const alt = feldDatenOf(aid);
-  const neu = {};
-  inputs.forEach(inp => { neu[inp.dataset.feld] = inp.value.trim(); });
+  const neu = { ...alt };
+  inputs.forEach(inp => {
+    const f = FELD_FELDER.find(x => x.key === inp.dataset.feld);
+    const v = inp.value.trim();
+    if (f && feldFehler(f, v)) return;           // ungültig: alten Wert behalten, Feld ist rot markiert
+    if (v) neu[inp.dataset.feld] = f?.typ === 'zahl' ? String(parseZahl(v)) : v;
+    else delete neu[inp.dataset.feld];
+  });
   if (FELD_FELDER.every(f => (alt[f.key] || '') === (neu[f.key] || ''))) return;
   _meta.set(aid, await DB.saveMeta(aid, { feldDaten: neu }));
   flashSaved();
+  renderCheckliste();
+  renderKatRow();
   updateExportBadge();
 }
 async function flushPending() { await flushNotes(); await flushFeldDaten(); }
@@ -2241,7 +2462,7 @@ function cleanBlobUrls() {
 async function savePhoto(source) {
   const aid = assetId(_currentAsset);
   const blob = await compressImage(source);
-  const rec = await DB.addPhoto(aid, blob, `${aid}_${Date.now()}.jpg`);
+  const rec = await DB.addPhoto(aid, blob, `${aid}_${Date.now()}.jpg`, _fotoKat);
   addPhotoInfo(rec);
   return rec;
 }
@@ -2288,7 +2509,7 @@ async function openCamera() {
   }
   await flushPending();
   _cam = { stream: null, track: null, capture: null, count: 0, urls: [], queue: Promise.resolve() };
-  document.getElementById('cam-title').textContent = assetName(_currentAsset);
+  document.getElementById('cam-title').textContent = `${assetName(_currentAsset)} · ${FOTO_KATEGORIEN[_fotoKat]}`;
   document.getElementById('cam-count').textContent = '0';
   document.getElementById('cam-strip').innerHTML = '';
   document.getElementById('cam-hint').textContent = 'Kamera wird gestartet…';
@@ -2385,6 +2606,11 @@ async function refreshPhotos() {
   const photos = await DB.getPhotos(assetId(_currentAsset));
   if (!document.getElementById('photo-grid')) { await renderSheet(_currentAsset); return; }
   renderPhotoGrid(photos);
+  renderCheckliste();
+  // Nach einem Pflichtfoto gleich zur nächsten fehlenden Kategorie springen
+  const cl = checkliste(_currentAsset);
+  if (cl && cl.punkte.some(p => p.art === 'foto' && p.key === _fotoKat && p.ok)) _fotoKat = naechsteFehlendeKategorie(_currentAsset);
+  renderKatRow();
   updateExportBadge();
 }
 async function delPhoto(id) {
@@ -2395,10 +2621,24 @@ async function delPhoto(id) {
   if (rec) addPhotoInfo(rec, -1);
   await refreshPhotos();
 }
-function openLightbox(photoId) {
+function openLightbox(photoId, kategorie = 'sonstiges') {
   const url = _blobUrls.get(photoId);
   if (!url) return;
   document.getElementById('lightbox-img').src = url;
+  const row = document.getElementById('lightbox-kat');
+  row.innerHTML = Object.entries(FOTO_KATEGORIEN).map(([k, label]) =>
+    `<button data-lkat="${k}" class="${k === kategorie ? 'on' : ''}" aria-pressed="${k === kategorie}">${esc(label)}</button>`).join('');
+  row.querySelectorAll('[data-lkat]').forEach(b => b.addEventListener('click', async ev => {
+    ev.stopPropagation();
+    if (_tourActive) return;
+    const alt = await DB.getPhoto(photoId);
+    if (!alt || alt.kategorie === b.dataset.lkat) return;
+    addPhotoInfo(alt, -1);
+    const rec = await DB.updatePhoto(photoId, { kategorie: b.dataset.lkat });
+    addPhotoInfo(rec);
+    row.querySelectorAll('[data-lkat]').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+    await refreshPhotos();
+  }));
   document.getElementById('lightbox').classList.add('on');
 }
 function closeLightbox() {
@@ -2536,28 +2776,41 @@ async function exportZip(forceDownload) {
       ...(_meta.get(aid)?.feldStatus ? { feldStatus: statusOf(aid) } : {}),
       ...(hasFeldDaten(aid) ? { feldDaten: feldDatenOf(aid) } : {}),
     });
-    const packFotos = (aid, ordner) => (photosByAsset[aid] || []).map((ph, i) => {
+    const fotoInfos = {};
+    const packFotos = (aid, ordner) => (photosByAsset[aid] || []).sort((a, b) => a.ts - b.ts).map((ph, i) => {
       const ext = ph.filename.split('.').pop() || 'jpg';
-      const fn = `foto_${String(i + 1).padStart(2, '0')}.${ext}`;
+      const kat = FOTO_KATEGORIEN[ph.kategorie] ? ph.kategorie : 'sonstiges';
+      const fn = `foto_${String(i + 1).padStart(2, '0')}_${kat}.${ext}`;
       zip.folder(ordner).file(fn, ph.blob);
+      (fotoInfos[aid] ||= []).push({ datei: fn, kategorie: kat });
       return fn;
     });
+    const mitCheckliste = (asset, obj) => {
+      const cl = checkliste(asset);
+      const aid = assetId(asset);
+      const erfasst = changeSummary(aid).length > 0;
+      return {
+        ...obj,
+        ...(fotoInfos[aid] ? { feldFotoInfos: fotoInfos[aid] } : {}),
+        ...(cl && erfasst ? { feldCheckliste: { profil: cl.profil, erfuellt: cl.erfuellt, gesamt: cl.gesamt, fehlend: cl.fehlend } } : {}),
+      };
+    };
 
     const gebaeudeMitFeld = (_project.gebaeude || []).map(g => {
       const aid = String(g.id);
       const ordner = `gebaeude/${safeName(g.name || aid)}_${safeName(aid)}`;
-      return { ...g, ...feldFelder(aid), feldFotos: packFotos(aid, ordner), feldFotoOrdner: ordner };
+      return mitCheckliste({ type: 'gebaeude', data: g }, { ...g, ...feldFelder(aid), feldFotos: packFotos(aid, ordner), feldFotoOrdner: ordner });
     });
     const erzeugerFeld = {};
     for (const key of Object.keys(ERZEUGER)) {
       if (!_project[key]) continue;
       const ordner = `erzeuger/${key}`;
-      erzeugerFeld[key] = { ..._project[key], ...feldFelder(key), feldFotos: packFotos(key, ordner), feldFotoOrdner: ordner };
+      erzeugerFeld[key] = mitCheckliste({ type: 'erzeuger', key, data: _project[key] }, { ..._project[key], ...feldFelder(key), feldFotos: packFotos(key, ordner), feldFotoOrdner: ordner });
     }
     const elItems = (_project.elektroAssets?.items || []).map(a => {
       const aid = `el_${a.id}`;
       const ordner = `elektro/${safeName(a.name || a.type || a.id)}_${safeName(a.id)}`;
-      return { ...a, ...feldFelder(aid), feldFotos: packFotos(aid, ordner), feldFotoOrdner: ordner };
+      return mitCheckliste({ type: 'elektro', data: a }, { ...a, ...feldFelder(aid), feldFotos: packFotos(aid, ordner), feldFotoOrdner: ordner });
     });
 
     const exportData = {
@@ -2623,7 +2876,9 @@ function buildBericht(gebaeudeMitFeld) {
   th { background: #EEF3EC; color: #266426; font-weight: 400; letter-spacing: .06em; width: 34%; }
   .notiz { background: #FFF3CD; border-left: 5px solid #E0A126; padding: 10px 14px; margin: 8px 0 12px; white-space: pre-wrap; }
   .fotos { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 20px; }
-  .fotos img { width: 200px; height: 150px; object-fit: cover; border: 1px solid #E2E4DF; }
+  .fotos figure { margin: 0; }
+  .fotos img { width: 200px; height: 150px; object-fit: cover; border: 1px solid #E2E4DF; display: block; }
+  .fotos figcaption { font-size: 12px; color: #5A5F5A; margin-top: 3px; }
 </style></head><body><div class="band"></div>
 <div class="eyebrow">Feldbericht</div><h1>${esc(projectName())}</h1>
 <div class="meta">Erstellt: ${esc(datum)}</div>`;
@@ -2637,14 +2892,16 @@ function buildBericht(gebaeudeMitFeld) {
         <tr><th>Status</th><td>${esc(STATUS[g.feldStatus]?.label || '—')}</td></tr>
         <tr><th>Nutzung</th><td>${esc(nutzungLabel(g.nutzung))}</td></tr>
         <tr><th>Wärmebedarf (Plan)</th><td>${esc(fmtMwh(g.waerme))}</td></tr>
-        ${FELD_FELDER.filter(ff => f[ff.key]).map(ff => `<tr><th>${esc(ff.label)}</th><td>${esc(f[ff.key])}</td></tr>`).join('')}
+        ${FELD_FELDER.filter(ff => f[ff.key]).map(ff => `<tr><th>${esc(ff.label)}</th><td>${esc(f[ff.key])}${ff.einheit ? ' ' + esc(ff.einheit) : ''}</td></tr>`).join('')}
+        ${g.feldCheckliste ? `<tr><th>Checkliste</th><td>${g.feldCheckliste.erfuellt}/${g.feldCheckliste.gesamt}${g.feldCheckliste.fehlend.length ? ' – fehlt: ' + esc(g.feldCheckliste.fehlend.join(', ')) : ' – vollständig'}</td></tr>` : ''}
       </table>`;
       if (g.feldNotizen) html += `<div class="notiz">${esc(g.feldNotizen)}</div>`;
       // Relative Pfade: der Bericht zeigt die Fotos, sobald das ZIP entpackt ist,
       // ohne sie ein zweites Mal (als Base64) mitzuschleppen.
       if (g.feldFotos?.length) {
+        const katVon = fn => FOTO_KATEGORIEN[(g.feldFotoInfos || []).find(i => i.datei === fn)?.kategorie] || '';
         html += `<div class="fotos">${g.feldFotos.map(fn =>
-          `<a href="${esc(g.feldFotoOrdner + '/' + fn)}"><img src="${esc(g.feldFotoOrdner + '/' + fn)}" alt="Foto"></a>`).join('')}</div>`;
+          `<figure><a href="${esc(g.feldFotoOrdner + '/' + fn)}"><img src="${esc(g.feldFotoOrdner + '/' + fn)}" alt="Foto ${esc(katVon(fn))}"></a><figcaption>${esc(katVon(fn))}</figcaption></figure>`).join('')}</div>`;
       }
     }
   } else {
@@ -2694,8 +2951,10 @@ function tourSteps() {
     { sel: '#btn-cache-tiles', title: 'Karte offline speichern', text: 'Vor der Abfahrt (solange du Netz hast!): speichert den sichtbaren Kartenausschnitt fürs Funkloch.' },
     { before: async () => { await openSheet({ type: 'gebaeude', data: DEMO_PROJECT.gebaeude[2] }); }, wait: 420, sel: '#sheet', title: 'Detail-Karte', text: 'Antippen eines Gebäudes öffnet diese Karte mit den Planungsdaten.' },
     { sel: '#status-seg', title: 'Status setzen', text: 'Offen, besucht oder erledigt – die Büro-App übernimmt den Status beim Einlesen.' },
+    { sel: '#kat-row', title: 'Foto-Kategorie', text: 'Vor dem Fotografieren wählen, was aufgenommen wird: Fassade, Heizraum, Typenschild … Gelb markiert heißt: fehlt noch laut Checkliste.' },
     { sel: '#photo-actions', title: 'Fotos', text: '„Foto" öffnet die Kamera-App, „Serie" nimmt beliebig viele Fotos hintereinander auf, „Galerie" übernimmt mehrere vorhandene Bilder. Gespeichert wird ohne GPS-Metadaten.' },
-    { before: async () => { document.querySelector('[data-feld]')?.scrollIntoView({ block: 'center' }); }, wait: 250, sel: '[data-feld="baujahr"]', title: 'Vor Ort erfasst', text: 'Baujahr, heutige Heizung und Verbrauch oder Zählerstand direkt eintragen.' },
+    { before: async () => { document.querySelector('#check-block')?.scrollIntoView({ block: 'start' }); }, wait: 250, sel: '#check-block', title: 'Checkliste', text: 'Zeigt, was bei diesem Gebäudetyp noch fehlt. Antippen springt direkt zum Foto oder Feld.' },
+    { before: async () => { document.querySelector('[data-feld="heizung"]')?.scrollIntoView({ block: 'center' }); }, wait: 250, sel: '[data-feld="heizung"]', title: 'Vor Ort erfasst', text: 'Heizung aus der Liste wählen, Baujahr, Leistung, Verbrauch oder Zählerstand eintragen. Unplausible Werte werden rot markiert.' },
     { before: tab('gebaeude'), wait: 250, sel: '#tab-gebaeude', title: 'Gebäudeliste', text: 'Alle Objekte mit Suche, Filter und Fortschritt.' },
     { before: tab('projekt'), wait: 250, sel: '#tab-projekt', title: 'Projekt', text: 'Kennzahlen, Erzeugermix und Varianten aus der Büro-App – nur zur Ansicht.' },
     { before: tab('export'), wait: 250, sel: '#btn-export', title: 'Export am Tagesende', text: 'Alles als ZIP zusammenpacken und über dienstliche Wege ans Büro schicken.' },
@@ -2876,7 +3135,7 @@ async function init() {
   on('cam-shutter', 'click', shoot);
   on('cam-done', 'click', closeCamera);
   on('cam-close', 'click', closeCamera);
-  on('lightbox', 'click', e => { if (e.target === e.currentTarget || e.target.closest('#lightbox-close')) closeLightbox(); });
+  on('lightbox', 'click', e => { if (e.target.closest('#lightbox-kat')) return; if (e.target === e.currentTarget || e.target.closest('#lightbox-close')) closeLightbox(); });
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', async () => { if (_currentAsset) await closeSheet(); setTab(t.dataset.tab); }));
   document.getElementById('map-chips').addEventListener('click', e => { const b = e.target.closest('[data-filter]'); if (b) setFilter(b.dataset.filter); });
   document.getElementById('list-chips').addEventListener('click', e => { const b = e.target.closest('[data-filter]'); if (b) setFilter(b.dataset.filter); });
