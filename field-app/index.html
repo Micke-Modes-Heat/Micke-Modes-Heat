@@ -136,6 +136,7 @@
     .view.active { display: block; }
     .view-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 14px 24px; display: none; flex-direction: column; gap: 12px; }
     .view-scroll.active { display: flex; }
+    .view-scroll > * { flex-shrink: 0; }
 
     #tabbar {
       flex-shrink: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -294,6 +295,48 @@
     .seg button.on[data-status="besucht"] { background: var(--gelb-bg); border-color: var(--gelb); color: var(--gelb-text); }
     .seg button.on[data-status="erledigt"] { background: var(--gruen-bg); border-color: var(--gruen); color: var(--gruen-text); }
     .photo-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+    .photo-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+    .photo-actions button {
+      min-height: 64px; border: 1px solid var(--gruen-dunkel); background: var(--tint); color: var(--gruen-dunkel);
+      font-size: 12px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    }
+    .photo-actions button:active { background: #DDE9DA; }
+    .quali-seg button { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+    .quali-seg button small { font-family: var(--mono); font-size: 11px; font-weight: 400; }
+    .quali-seg button.on { background: var(--tint); border-color: var(--gruen-dunkel); color: var(--gruen-dunkel); font-weight: 700; }
+
+    /* ─── SERIENKAMERA ────────────────────────────────── */
+    #cam { position: fixed; inset: 0; z-index: 3000; background: #000; color: #fff; display: none; flex-direction: column; }
+    #cam.on { display: flex; }
+    #cam-video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; }
+    .cam-top {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: 10px;
+      padding: calc(10px + env(safe-area-inset-top)) 12px 10px 16px; background: linear-gradient(rgba(0,0,0,.6), transparent);
+    }
+    .cam-top .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .cam-top .t b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cam-top .t span { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; color: #BFE5BF; }
+    .cam-count { font-family: var(--mono); font-size: 13px; font-weight: 600; padding: 4px 8px; background: var(--gruen-dunkel); }
+    .cam-bottom {
+      flex-shrink: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+      padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: #000;
+    }
+    #cam-strip { display: flex; gap: 4px; overflow: hidden; min-width: 0; }
+    #cam-strip img { width: 44px; height: 44px; object-fit: cover; flex-shrink: 0; border: 1px solid rgba(255,255,255,.5); }
+    #cam-shutter {
+      width: 76px; height: 76px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,.25);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #cam-shutter::after { content: ''; width: 56px; height: 56px; border-radius: 50%; background: #fff; transition: transform .08s; }
+    #cam-shutter:active::after { transform: scale(.88); }
+    #cam-shutter[disabled] { opacity: .5; }
+    #cam-done { justify-self: end; min-height: 48px; padding: 0 18px; border: none; background: var(--gruen-dunkel); color: #fff; font-size: 15px; font-weight: 700; }
+    #cam-close { width: 44px; height: 44px; border: 1px solid rgba(255,255,255,.5); background: transparent; color: #fff; display: flex; align-items: center; justify-content: center; }
+    #cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 1; }
+    #cam-flash.on { opacity: .7; transition: none; }
+    #cam.on ~ #toast { bottom: calc(130px + env(safe-area-inset-bottom)); }
+    #cam-hint { position: absolute; left: 16px; right: 16px; top: 45%; text-align: center; font-size: 15px; z-index: 1; }
+
     .add-photo-btn {
       aspect-ratio: 1; border: 1px solid var(--gruen-dunkel); background: var(--tint); color: var(--gruen-dunkel);
       font-size: 12px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
@@ -378,6 +421,8 @@
   <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
   <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-burst" viewBox="0 0 24 24"><path d="M7 7h3l1.5-2h5L18 7h3v11H7z"/><circle cx="14" cy="12.5" r="3"/><path d="M4 10v11h13"/></symbol>
+  <symbol id="i-gallery" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
 </svg>
 
@@ -494,6 +539,24 @@
 </div>
 
 <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
+<input type="file" id="gallery-input" accept="image/*" multiple hidden>
+
+<!-- Serienkamera: beliebig viele Fotos hintereinander, jedes wird sofort gespeichert -->
+<div id="cam" role="dialog" aria-modal="true" aria-label="Serienaufnahme">
+  <div class="cam-top">
+    <div class="t"><span>SERIENAUFNAHME</span><b id="cam-title"></b></div>
+    <span class="cam-count" id="cam-count">0</span>
+    <button id="cam-close" aria-label="Kamera schließen"><svg class="ic"><use href="#i-close"/></svg></button>
+  </div>
+  <video id="cam-video" playsinline muted autoplay></video>
+  <div id="cam-hint">Kamera wird gestartet…</div>
+  <div id="cam-flash"></div>
+  <div class="cam-bottom">
+    <div id="cam-strip"></div>
+    <button id="cam-shutter" aria-label="Foto aufnehmen"></button>
+    <button id="cam-done">Fertig</button>
+  </div>
+</div>
 
 <div id="lightbox">
   <button id="lightbox-close" aria-label="Foto schließen"><svg class="ic"><use href="#i-close"/></svg></button>
@@ -613,7 +676,22 @@ async function migrateLegacyStatus() {
 // ─────────────────────────────────────────────────────────
 // Das Neuzeichnen über ein Canvas entfernt dabei auch die EXIF-Daten
 // (u. a. GPS-Position und Gerätedaten) aus dem Foto.
-function compressImage(file, maxPx = 1200, quality = 0.75) {
+// Qualitätsstufe: Geräteeinstellung (localStorage), keine Projektdaten.
+const FOTO_QUALI = {
+  standard: { label: 'Standard', maxPx: 1600, q: 0.82 },
+  hoch:     { label: 'Hoch',     maxPx: 2560, q: 0.88 },
+  maximal:  { label: 'Maximal',  maxPx: 4096, q: 0.92 },
+};
+const FOTO_QUALI_KEY = 'feldapp-fotoqualitaet';
+function fotoQualiKey() {
+  try { const k = localStorage.getItem(FOTO_QUALI_KEY); if (FOTO_QUALI[k]) return k; } catch { /* kein Speicher */ }
+  return 'hoch';
+}
+function setFotoQuali(k) {
+  if (!FOTO_QUALI[k]) return;
+  try { localStorage.setItem(FOTO_QUALI_KEY, k); } catch { /* nur für diese Sitzung */ }
+}
+function compressImage(file, maxPx = FOTO_QUALI[fotoQualiKey()].maxPx, quality = FOTO_QUALI[fotoQualiKey()].q) {
   return new Promise(res => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -1234,7 +1312,12 @@ async function renderExport() {
       <div class="r"><span>Fotos auf dem Gerät</span><b>${photos} · ${fmtNum(bytes / 1048576, 1)} MB</b></div>
       <div class="r"><span>Offline-Karte</span><b id="tile-info">…</b></div>
       <div class="r"><span>Speicher geschützt</span><b id="persist-info">…</b></div>
+      <div class="r"><span>Freier Speicher (Browser)</span><b id="quota-info">…</b></div>
     </div>
+    <div class="group-head">Fotoqualität</div>
+    <div class="seg quali-seg" id="quali-seg">${Object.entries(FOTO_QUALI).map(([k, v]) =>
+      `<button data-quali="${k}" class="${k === fotoQualiKey() ? 'on' : ''}" aria-pressed="${k === fotoQualiKey()}">${v.label}<small>${v.maxPx} px</small></button>`).join('')}</div>
+    <p style="font-size:12px;color:var(--muted);line-height:1.5">Gilt für neue Fotos auf diesem Gerät. Höhere Stufen zeigen mehr Details (z. B. Typenschilder), brauchen aber mehr Speicher und machen das ZIP größer.</p>
     <div class="group-head">Datenschutz</div>
     <p style="font-size:13px;color:var(--muted);line-height:1.5">Alle Daten liegen nur in diesem Browser und werden nicht automatisch übertragen oder verschlüsselt. Nach erfolgreicher Übergabe ans Büro können sie hier gelöscht werden.</p>
     <button class="btn btn-danger" id="btn-privacy-clear-app">Alle lokalen Feldapp-Daten löschen</button>
@@ -1244,6 +1327,11 @@ async function renderExport() {
   document.getElementById('btn-export').addEventListener('click', () => exportZip(false));
   document.getElementById('btn-export-save').addEventListener('click', () => exportZip(true));
   document.getElementById('btn-privacy-clear-app').addEventListener('click', clearAllPrivateData);
+  el.querySelectorAll('[data-quali]').forEach(b => b.addEventListener('click', () => {
+    setFotoQuali(b.dataset.quali);
+    el.querySelectorAll('[data-quali]').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+    toast(`Fotoqualität: ${FOTO_QUALI[b.dataset.quali].label}`);
+  }));
   document.getElementById('btn-back').addEventListener('click', () => { refreshImportButtons(); showScreen('screen-import'); });
 
   // Speicherangaben nachladen (asynchron, nicht kritisch)
@@ -1255,6 +1343,11 @@ async function renderExport() {
     const persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : false;
     const pEl = document.getElementById('persist-info');
     if (pEl) { pEl.textContent = persisted ? 'Ja' : 'Nein – App installieren'; pEl.style.color = persisted ? 'var(--gruen-dunkel)' : 'var(--gelb-text)'; }
+  } catch { /* nicht unterstützt */ }
+  try {
+    const est = navigator.storage?.estimate ? await navigator.storage.estimate() : null;
+    const qEl = document.getElementById('quota-info');
+    if (qEl) qEl.textContent = est?.quota ? `${fmtNum((est.quota - (est.usage || 0)) / 1073741824, 1)} GB` : '—';
   } catch { /* nicht unterstützt */ }
 }
 
@@ -1338,6 +1431,11 @@ async function renderSheet(asset) {
 
     <div class="sheet-block">
       <span class="lbl" id="photo-count">Fotos (${photos.length})</span>
+      <div class="photo-actions" id="photo-actions">
+        <button id="btn-add-photo">${icon('camera')}Foto</button>
+        <button id="btn-serie">${icon('burst')}Serie</button>
+        <button id="btn-galerie">${icon('gallery')}Galerie</button>
+      </div>
       <div class="photo-row" id="photo-grid"></div>
     </div>
 
@@ -1361,6 +1459,9 @@ async function renderSheet(asset) {
   `;
   renderPhotoGrid(photos);
 
+  document.getElementById('btn-add-photo').addEventListener('click', () => document.getElementById('photo-input').click());
+  document.getElementById('btn-serie').addEventListener('click', openCamera);
+  document.getElementById('btn-galerie').addEventListener('click', () => document.getElementById('gallery-input').click());
   document.querySelectorAll('#status-seg button').forEach(b => b.addEventListener('click', () => setFeldStatus(b.dataset.status)));
   document.getElementById('notes-ta').addEventListener('input', () => {
     clearTimeout(_notesTimer);
@@ -1377,14 +1478,13 @@ function renderPhotoGrid(photos) {
   cleanBlobUrls();
   const grid = document.getElementById('photo-grid');
   if (!grid) return;
-  grid.innerHTML = `<button class="add-photo-btn" id="btn-add-photo">${icon('camera')}Foto</button>` + photos.map(ph => {
+  grid.innerHTML = photos.map(ph => {
     const url = URL.createObjectURL(ph.blob);
     _blobUrls.set(ph.id, url);
     return `<div class="photo-cell"><button class="photo-open" data-open="${esc(ph.id)}" aria-label="Foto ansehen"><img src="${url}" alt=""></button>
       <button class="photo-del" data-del="${esc(ph.id)}" aria-label="Foto löschen">${icon('close', 'width:16px;height:16px')}</button></div>`;
   }).join('');
   document.getElementById('photo-count').textContent = `Fotos (${photos.length})`;
-  document.getElementById('btn-add-photo').addEventListener('click', () => document.getElementById('photo-input').click());
   grid.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openLightbox(b.dataset.open)));
   grid.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => delPhoto(b.dataset.del)));
 }
@@ -1446,25 +1546,148 @@ function cleanBlobUrls() {
 }
 
 // ── Fotos ────────────────────────────────────────────────
+async function savePhoto(source) {
+  const aid = assetId(_currentAsset);
+  const blob = await compressImage(source);
+  const rec = await DB.addPhoto(aid, blob, `${aid}_${Date.now()}.jpg`);
+  addPhotoInfo(rec);
+  return rec;
+}
+function photoReminder() {
+  const total = [..._photoInfo.values()].reduce((s, p) => s + p.count, 0);
+  if (total > 0 && total % 10 === 0) setTimeout(() => toast(`${total} Fotos gespeichert – ans Exportieren denken`, 4000), 3000);
+}
 async function onPhotoFile(e) {
-  const file = e.target.files[0];
+  const files = [...(e.target.files || [])];
   e.target.value = '';
-  if (!file || !_currentAsset) return;
+  if (!files.length || !_currentAsset) return;
   if (_tourActive) { toast('Im Rundgang werden keine Fotos gespeichert'); return; }
-  toast('Foto wird verkleinert…');
+  let ok = 0, bytes = 0;
   try {
-    const aid = assetId(_currentAsset);
-    const blob = await compressImage(file);
-    const rec = await DB.addPhoto(aid, blob, `${aid}_${Date.now()}.jpg`);
-    addPhotoInfo(rec);
+    for (const [i, file] of files.entries()) {
+      toast(files.length > 1 ? `Foto ${i + 1} von ${files.length} wird gespeichert…` : 'Foto wird gespeichert…', 60000);
+      const rec = await savePhoto(file);
+      ok++; bytes += rec.blob.size;
+    }
     await refreshPhotos();
-    toast(`Foto gespeichert (${(blob.size / 1024).toFixed(0)} KB)`);
-    const total = [..._photoInfo.values()].reduce((s, p) => s + p.count, 0);
-    if (total > 0 && total % 5 === 0) setTimeout(() => toast(`${total} Fotos gespeichert – ans Exportieren denken`, 4000), 3000);
+    toast(ok > 1 ? `${ok} Fotos gespeichert (${fmtNum(bytes / 1048576, 1)} MB)` : `Foto gespeichert (${fmtNum(bytes / 1024)} KB)`);
+    photoReminder();
   } catch (err) {
-    toast('Fehler: ' + err.message);
+    if (ok) await refreshPhotos();
+    toast('Fehler beim Speichern: ' + err.message, 5000);
   }
 }
+
+// ── Serienkamera ─────────────────────────────────────────
+// Die Kamera-App des Handys liefert pro Aufruf nur ein Foto, und der Browser
+// darf sie nicht selbst erneut öffnen. Für Serien nutzt die Feldapp deshalb
+// das Kamerabild direkt (getUserMedia). Wo der Browser ImageCapture kennt
+// (Chrome/Android), kommt das Foto in voller Sensorauflösung; sonst wird ein
+// Einzelbild aus dem Video in höchster verfügbarer Auflösung genommen.
+let _cam = null;   // { stream, track, capture, count, urls, queue }
+
+async function openCamera() {
+  if (!_currentAsset) return;
+  if (_tourActive) { toast('Im Rundgang werden keine Fotos gespeichert'); return; }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    toast('Serienaufnahme wird hier nicht unterstützt – Einzelfoto wird geöffnet', 4000);
+    document.getElementById('photo-input').click();
+    return;
+  }
+  await flushPending();
+  _cam = { stream: null, track: null, capture: null, count: 0, urls: [], queue: Promise.resolve() };
+  document.getElementById('cam-title').textContent = assetName(_currentAsset);
+  document.getElementById('cam-count').textContent = '0';
+  document.getElementById('cam-strip').innerHTML = '';
+  document.getElementById('cam-hint').textContent = 'Kamera wird gestartet…';
+  document.getElementById('cam-hint').style.display = '';
+  document.getElementById('cam').classList.add('on');
+  await startCameraStream();
+}
+
+async function startCameraStream() {
+  if (!_cam) return;
+  const video = document.getElementById('cam-video');
+  const shutter = document.getElementById('cam-shutter');
+  shutter.disabled = true;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 3072 } },
+    });
+    if (!_cam) { stream.getTracks().forEach(t => t.stop()); return; }
+    _cam.stream = stream;
+    _cam.track = stream.getVideoTracks()[0];
+    _cam.capture = ('ImageCapture' in window) ? new window.ImageCapture(_cam.track) : null;
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+    document.getElementById('cam-hint').style.display = 'none';
+    shutter.disabled = false;
+  } catch (err) {
+    const msg = err && err.name === 'NotAllowedError'
+      ? 'Kamera-Zugriff verweigert. In den Browser-Einstellungen erlauben oder „Foto" nutzen.'
+      : 'Kamera nicht verfügbar: ' + (err?.message || err);
+    document.getElementById('cam-hint').textContent = msg;
+  }
+}
+
+async function grabFrame() {
+  if (_cam.capture) {
+    try { return await _cam.capture.takePhoto(); } catch { /* auf Videobild zurückfallen */ }
+  }
+  const video = document.getElementById('cam-video');
+  const c = document.createElement('canvas');
+  c.width = video.videoWidth; c.height = video.videoHeight;
+  if (!c.width || !c.height) throw new Error('Kein Kamerabild');
+  c.getContext('2d').drawImage(video, 0, 0);
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('Bild konnte nicht erzeugt werden')), 'image/jpeg', 0.95));
+}
+
+async function shoot() {
+  if (!_cam || !_cam.track) return;
+  const shutter = document.getElementById('cam-shutter');
+  const flash = document.getElementById('cam-flash');
+  shutter.disabled = true;
+  flash.classList.add('on');
+  requestAnimationFrame(() => requestAnimationFrame(() => flash.classList.remove('on')));
+  navigator.vibrate?.(30);
+  let raw;
+  try { raw = await grabFrame(); } catch (err) { toast('Aufnahme fehlgeschlagen: ' + err.message); shutter.disabled = false; return; }
+  shutter.disabled = false;
+  // Verkleinern und Speichern laufen im Hintergrund nacheinander weiter,
+  // damit sofort das nächste Foto möglich ist.
+  const cam = _cam;
+  cam.queue = cam.queue.then(async () => {
+    const rec = await savePhoto(raw);
+    cam.count++;
+    const url = URL.createObjectURL(rec.blob);
+    cam.urls.push(url);
+    if (_cam === cam) {
+      document.getElementById('cam-count').textContent = String(cam.count);
+      const strip = document.getElementById('cam-strip');
+      const img = document.createElement('img');
+      img.src = url; img.alt = '';
+      strip.prepend(img);
+      while (strip.children.length > 3) strip.lastChild.remove();
+    }
+  }).catch(err => toast('Foto nicht gespeichert: ' + err.message, 5000));
+}
+
+async function closeCamera() {
+  const cam = _cam;
+  if (!cam) return;
+  _cam = null;
+  cam.stream?.getTracks().forEach(t => t.stop());
+  const video = document.getElementById('cam-video');
+  video.srcObject = null;
+  document.getElementById('cam').classList.remove('on');
+  await cam.queue;
+  cam.urls.forEach(u => URL.revokeObjectURL(u));
+  if (_currentAsset) await refreshPhotos();
+  refreshAll();
+  if (cam.count) { toast(`${cam.count} ${cam.count === 1 ? 'Foto' : 'Fotos'} gespeichert`); photoReminder(); }
+}
+
 async function refreshPhotos() {
   if (!_currentAsset) return;
   const photos = await DB.getPhotos(assetId(_currentAsset));
@@ -1493,7 +1716,9 @@ function closeLightbox() {
 
 // Nach der Kamera-App die Fotos neu laden
 document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible' && _currentAsset) await refreshPhotos();
+  if (document.visibilityState !== 'visible') return;
+  if (_cam && (!_cam.track || _cam.track.readyState === 'ended')) await startCameraStream();
+  else if (_currentAsset && !_cam) await refreshPhotos();
 });
 
 // ── Sheet nach unten wegziehen ───────────────────────────
@@ -1621,7 +1846,7 @@ async function exportZip(forceDownload) {
       feldExport: { exportiertAm: new Date().toISOString(), gesamtFotos: allPhotos.length, feldappVersion: 2 },
     };
     zip.file('projekt_felddaten.json', JSON.stringify(exportData, null, 2));
-    zip.file('bericht.html', await buildBericht(gebaeudeMitFeld, photosByAsset));
+    zip.file('bericht.html', buildBericht(gebaeudeMitFeld));
 
     showProgress(`ZIP wird erstellt (${allPhotos.length} Fotos)…`);
     const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
@@ -1659,9 +1884,8 @@ async function exportZip(forceDownload) {
   }
 }
 
-// Feldbericht als eigenständige HTML-Datei (Fotos als Base64 eingebettet)
-async function buildBericht(gebaeudeMitFeld, photosByAsset) {
-  const toDataUrl = blob => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob); });
+// Feldbericht als HTML-Datei im ZIP; die Fotos verweisen auf die Ordner daneben
+function buildBericht(gebaeudeMitFeld) {
   const datum = new Date().toLocaleString('de-DE');
   let html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Feldbericht ${esc(projectName())}</title>
 <style>
@@ -1694,11 +1918,11 @@ async function buildBericht(gebaeudeMitFeld, photosByAsset) {
         ${FELD_FELDER.filter(ff => f[ff.key]).map(ff => `<tr><th>${esc(ff.label)}</th><td>${esc(f[ff.key])}</td></tr>`).join('')}
       </table>`;
       if (g.feldNotizen) html += `<div class="notiz">${esc(g.feldNotizen)}</div>`;
-      const fotos = photosByAsset[String(g.id)] || [];
-      if (fotos.length) {
-        html += `<div class="fotos">`;
-        for (const ph of fotos) html += `<img src="${await toDataUrl(ph.blob)}" alt="Foto">`;
-        html += `</div>`;
+      // Relative Pfade: der Bericht zeigt die Fotos, sobald das ZIP entpackt ist,
+      // ohne sie ein zweites Mal (als Base64) mitzuschleppen.
+      if (g.feldFotos?.length) {
+        html += `<div class="fotos">${g.feldFotos.map(fn =>
+          `<a href="${esc(g.feldFotoOrdner + '/' + fn)}"><img src="${esc(g.feldFotoOrdner + '/' + fn)}" alt="Foto"></a>`).join('')}</div>`;
       }
     }
   } else {
@@ -1748,7 +1972,7 @@ function tourSteps() {
     { sel: '#btn-cache-tiles', title: 'Karte offline speichern', text: 'Vor der Abfahrt (solange du Netz hast!): speichert den sichtbaren Kartenausschnitt fürs Funkloch.' },
     { before: async () => { await openSheet({ type: 'gebaeude', data: DEMO_PROJECT.gebaeude[2] }); }, wait: 420, sel: '#sheet', title: 'Detail-Karte', text: 'Antippen eines Gebäudes öffnet diese Karte mit den Planungsdaten.' },
     { sel: '#status-seg', title: 'Status setzen', text: 'Offen, besucht oder erledigt – die Büro-App übernimmt den Status beim Einlesen.' },
-    { sel: '#btn-add-photo', title: 'Fotos', text: 'Foto aufnehmen oder aus der Galerie wählen. Es wird verkleinert und ohne GPS-Metadaten gespeichert.' },
+    { sel: '#photo-actions', title: 'Fotos', text: '„Foto" öffnet die Kamera-App, „Serie" nimmt beliebig viele Fotos hintereinander auf, „Galerie" übernimmt mehrere vorhandene Bilder. Gespeichert wird ohne GPS-Metadaten.' },
     { before: async () => { document.querySelector('[data-feld]')?.scrollIntoView({ block: 'center' }); }, wait: 250, sel: '[data-feld="baujahr"]', title: 'Vor Ort erfasst', text: 'Baujahr, heutige Heizung und Verbrauch oder Zählerstand direkt eintragen.' },
     { before: tab('gebaeude'), wait: 250, sel: '#tab-gebaeude', title: 'Gebäudeliste', text: 'Alle Objekte mit Suche, Filter und Fortschritt.' },
     { before: tab('projekt'), wait: 250, sel: '#tab-projekt', title: 'Projekt', text: 'Kennzahlen, Erzeugermix und Varianten aus der Büro-App – nur zur Ansicht.' },
@@ -1925,6 +2149,10 @@ async function init() {
   on('search-input', 'input', e => { _query = e.target.value; renderList(); });
   on('backdrop', 'click', closeSheet);
   on('photo-input', 'change', onPhotoFile);
+  on('gallery-input', 'change', onPhotoFile);
+  on('cam-shutter', 'click', shoot);
+  on('cam-done', 'click', closeCamera);
+  on('cam-close', 'click', closeCamera);
   on('lightbox', 'click', e => { if (e.target === e.currentTarget || e.target.closest('#lightbox-close')) closeLightbox(); });
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', async () => { if (_currentAsset) await closeSheet(); setTab(t.dataset.tab); }));
   document.getElementById('map-chips').addEventListener('click', e => { const b = e.target.closest('[data-filter]'); if (b) setFilter(b.dataset.filter); });

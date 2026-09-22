@@ -58,7 +58,12 @@ Unten gibt es vier Reiter: **Karte · Gebäude · Projekt · Export**.
   Ein dunkelgrüner Rahmen bzw. ★ heißt: im Büro für die Begehung vorgemerkt.
 - **Gebäude antippen** → unten öffnet sich die Detail-Karte:
   - **Status** setzen (Offen / Besucht / Erledigt),
-  - **Foto** aufnehmen (wird verkleinert, GPS-Daten im Foto werden entfernt),
+  - **Fotos:** „Foto" öffnet die Kamera-App für ein Bild, **„Serie"** nimmt
+    beliebig viele Bilder hintereinander auf (Auslöser drücken, am Ende
+    „Fertig"), „Galerie" übernimmt mehrere vorhandene Bilder auf einmal.
+    GPS-Daten im Foto werden entfernt. Die Fotoqualität (Standard / Hoch /
+    Maximal) stellst du im Reiter **Export** ein – „Hoch" ist voreingestellt,
+    „Maximal" lohnt sich für Typenschilder und Zählerstände,
   - **Vor Ort erfasst:** Baujahr, heutige Heizung, Verbrauch oder Zählerstand,
   - **Notiz** schreiben (Mikrofon-Knopf für Spracheingabe).
 - Alles wird sofort lokal gespeichert. Du kannst offline arbeiten.
