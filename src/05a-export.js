@@ -1907,9 +1907,10 @@ export function exportFeldapp() {
   });
 
   const payload = {
-    _feldappVersion: 1,
+    _feldappVersion: 2,
     exportedAt: new Date().toISOString(),
     projektName: getProjektName() || 'Energieplanung',
+    ergebnisse: _feldappErgebnisse(),
     gebaeude: (gebaeude || []).map(g => ({
       ...g,
       polygon: (g.polygon || []).map(p =>
@@ -1945,6 +1946,63 @@ export function exportFeldapp() {
   }
 }
 
+// Kennzahlen für den Projekt-Reiter der Feldapp. Nur zur Ansicht — die Feldapp
+// rechnet nichts nach. Fehlt ein Wert (z. B. noch kein Dispatch gelaufen), bleibt
+// er leer und die Feldapp zeigt „—".
+// Farben = Energieträger-Codes des LKEBw-Design-Systems (GG_THEME.energy).
+const _FELDAPP_MIX_FARBE = {
+  lwwp: '#0000FF', fg: '#0000FF', geo: '#0000FF', stromkessel: '#0000FF',
+  pellets: '#7AB000', hhs: '#7AB000',
+  gaskessel: '#FA9500', bhkw: '#FA9500',
+  heizoel: '#777777', fernwaerme: '#FF0000',
+};
+function _feldappErgebnisse() {
+  const zahl = v => (typeof v === 'number' && isFinite(v) ? v : null);
+  let waerme = 0, heizlast = 0;
+  (gebaeude || []).forEach(g => {
+    const st = getComputedStats(g, globalYear);
+    waerme += st.waerme || 0;
+    heizlast += st.heizlast || 0;
+  });
+  const trasseM = (Array.isArray(netzEdges) ? netzEdges : []).filter(e => !e.pruned).reduce((s, e) => s + (zahl(e.length) || 0), 0);
+
+  const disp = window._dispatchResultsByErzeuger || {};
+  const mixRoh = Object.entries(disp)
+    .map(([key, r]) => ({ key, mwh: zahl(r?.waermeMwh) || 0 }))
+    .filter(m => m.mwh > 0.1);
+  const mixSumme = mixRoh.reduce((s, m) => s + m.mwh, 0);
+  const erzeugermix = mixSumme > 0 ? mixRoh
+    .sort((a, b) => b.mwh - a.mwh)
+    .map(m => ({
+      label: ERZEUGER_CFG[m.key]?.label || m.key,
+      anteilPct: Math.round(m.mwh / mixSumme * 100),
+      farbe: _FELDAPP_MIX_FARBE[m.key] || '#8A8F8A',
+    })) : [];
+
+  const variantenListe = ['base', ...(varianten || []).map(v => v.id)]
+    .filter(id => variantResults[id])
+    .map(id => {
+      const r = variantResults[id];
+      return {
+        name: r.label || (id === 'base' ? 'Basisdaten' : id),
+        basis: id === 'base',
+        aktiv: (activeVariantId || 'base') === id,
+        wgkCtKwh: zahl(r.wgkNum),
+        co2T: zahl(r.co2GesH),
+      };
+    });
+
+  return {
+    stand: new Date().toISOString(),
+    waermebedarfMwh: waerme > 0 ? Math.round(waerme) : null,
+    heizlastKw: heizlast > 0 ? Math.round(heizlast) : null,
+    trassenlaengeM: trasseM > 0 ? Math.round(trasseM) : null,
+    wgkCtKwh: zahl(window._lastWgk) || null,
+    erzeugermix,
+    varianten: variantenListe,
+  };
+}
+
 // ── Import: Felddaten aus Feldapp-ZIP ─────────────────────────────────────────
 export function importFelddaten() {
   let inp = document.getElementById('_felddatenInput');
@@ -1959,6 +2017,17 @@ export function importFelddaten() {
   }
   inp.value = '';
   inp.click();
+}
+
+// Vor Ort abgelesene Werte aus der Feldapp: nur bekannte Schlüssel, nur Text.
+const _FELDDATEN_KEYS = ['baujahr', 'heizung', 'verbrauch'];
+function _feldDatenSauber(roh) {
+  const out = {};
+  for (const k of _FELDDATEN_KEYS) {
+    const v = roh[k];
+    if (v != null && String(v).trim()) out[k] = String(v).trim().slice(0, 200);
+  }
+  return out;
 }
 
 async function _handleFelddatenImport(e) {
@@ -2015,6 +2084,7 @@ async function _handleFelddatenImport(e) {
       if (feldGeb.feldNotizen !== undefined) g.feldNotizen = feldGeb.feldNotizen;
       if (feldGeb.feldStatus  !== undefined) g.feldStatus  = feldGeb.feldStatus;
       if (feldGeb.feldVorgemerkt !== undefined) g.feldVorgemerkt = feldGeb.feldVorgemerkt;
+      if (feldGeb.feldDaten && typeof feldGeb.feldDaten === 'object') g.feldDaten = _feldDatenSauber(feldGeb.feldDaten);
 
       // Fotos zuordnen — normalisiert und mit Fallback
       if (Object.keys(photoMap).length) {
@@ -2039,6 +2109,7 @@ async function _handleFelddatenImport(e) {
       if (feldAsset.feldNotizen    !== undefined) a.feldNotizen    = feldAsset.feldNotizen;
       if (feldAsset.feldStatus     !== undefined) a.feldStatus     = feldAsset.feldStatus;
       if (feldAsset.feldVorgemerkt !== undefined) a.feldVorgemerkt = feldAsset.feldVorgemerkt;
+      if (feldAsset.feldDaten && typeof feldAsset.feldDaten === 'object') a.feldDaten = _feldDatenSauber(feldAsset.feldDaten);
       // Fotos zuordnen
       if (Object.keys(photoMap).length) {
         const fotoOrdner = (feldAsset.feldFotoOrdner || '').split('\\').join('/').split('/').filter(Boolean).join('/');

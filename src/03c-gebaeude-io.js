@@ -2181,7 +2181,11 @@ export function _renderExpandedPanel(g, stats) {
 }
 
 function _renderFelddatenBlock(g) {
-  if (!g.feldNotizen && !g.feldStatus && !g.feldFotos?.length) return '';
+  const feldDaten = g.feldDaten && typeof g.feldDaten === 'object' ? g.feldDaten : {};
+  const feldDatenZeilen = [['baujahr', 'Baujahr (vor Ort)'], ['heizung', 'Heizung heute'], ['verbrauch', 'Verbrauch / Zählerstand']]
+    .filter(([k]) => feldDaten[k])
+    .map(([k, label]) => `<div><span style="color:var(--muted);">${label}:</span> ${escHtml(feldDaten[k])}</div>`);
+  if (!g.feldNotizen && !g.feldStatus && !g.feldFotos?.length && !feldDatenZeilen.length) return '';
 
   const statusLabel = { offen:'📋 Offen', besucht:'👁 Besucht', erledigt:'✅ Erledigt' }[g.feldStatus] || '';
   const notizHtml = g.feldNotizen
@@ -2196,6 +2200,7 @@ function _renderFelddatenBlock(g) {
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:10px;font-weight:700;color:var(--muted);">
       📱 FELDDATEN ${statusLabel ? '· ' + statusLabel : ''}
     </div>
+    ${feldDatenZeilen.length ? `<div style="font-size:11px;line-height:1.5;margin-bottom:6px;">${feldDatenZeilen.join('')}</div>` : ''}
     ${notizHtml}
     ${fotoHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${fotoHtml}</div>` : ''}
   </div>`;

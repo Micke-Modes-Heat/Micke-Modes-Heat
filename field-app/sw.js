@@ -1,4 +1,4 @@
-const CACHE_APP   = 'feldapp-v6';
+const CACHE_APP   = 'feldapp-v7';
 const CACHE_TILES = 'feldapp-tiles-v1';
 
 const PRECACHE = [
@@ -6,6 +6,7 @@ const PRECACHE = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './lkebw-logo.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',

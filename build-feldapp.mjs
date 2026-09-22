@@ -73,6 +73,10 @@ if (typeof L !== 'undefined') {
     html = html.replace(dep.tag, dep.wrap(cleaned));
   }
 
+  // LKEBw-Wortmarke als Data-URI einbetten (die Einzeldatei hat keine Nachbardateien)
+  const logo = readFileSync(resolve('field-app/lkebw-logo.png')).toString('base64');
+  html = html.split('src="lkebw-logo.png"').join(`src="data:image/png;base64,${logo}"`);
+
   // manifest.json-Link entfernen (funktioniert nicht aus einer Einzeldatei heraus)
   html = html.replace(/<link rel="manifest"[^>]*>/g, '');
   // Service-Worker-Registrierung entfernen (SW braucht eigene Origin)
