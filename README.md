@@ -30,7 +30,9 @@ Wirtschaftlichkeit nach VDI 2067, Stromnetz, Optimierer und Variantenvergleich.
 ├── field-app/                  ← PWA für Vor-Ort-Datenaufnahme
 └── dist/
     ├── index.html              ← Gebaute Einzeldatei (per Doppelklick nutzbar)
-    └── feldapp.html            ← Gebaute Feldapp
+    ├── feldapp.html            ← Gebaute Feldapp (auch einzeln per Datei nutzbar)
+    └── feldapp.webmanifest,    ← nur über https wirksam: macht die Feldapp installierbar
+        feldapp-sw.js, …          und offline startfähig (Service Worker, Scope /feldapp)
 ```
 
 ## Entwicklung

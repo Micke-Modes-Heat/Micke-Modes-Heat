@@ -5,7 +5,7 @@ import { join, extname, resolve } from 'path';
 
 const ROOT = resolve('dist');
 const PORT = process.env.PORT || 4173;
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.csv': 'text/csv' };
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.csv': 'text/csv', '.webmanifest': 'application/manifest+json' };
 
 http.createServer(async (req, res) => {
   const urlPath = decodeURIComponent(req.url.split('?')[0]);

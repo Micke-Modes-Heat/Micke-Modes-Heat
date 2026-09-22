@@ -9,16 +9,12 @@
 // Der Service Worker wird mit scope './feldapp' registriert und fasst die
 // Hauptapp (index.html) im selben Ordner deshalb nicht an.
 
-const VERSION = 'dev';
+const VERSION = 'd44aac213a09';
 const SHELL = [
-  './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
-  './lkebw-logo.png',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+  "./feldapp.html",
+  "./feldapp.webmanifest",
+  "./feldapp-icon-192.png",
+  "./feldapp-icon-512.png"
 ];
 
 const CACHE_APP   = 'feldapp-app-' + VERSION;

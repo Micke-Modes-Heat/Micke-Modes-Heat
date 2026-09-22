@@ -3,10 +3,16 @@
 // und direkt in die HTML eingebettet – danach braucht die App kein Internet mehr.
 //
 // Aufruf: node build-feldapp.mjs
-// Ausgabe: dist/feldapp.html
+// Ausgabe: dist/feldapp.html            – die App (auch einzeln per Datei nutzbar)
+//          dist/feldapp.webmanifest     – macht sie auf dem Handy installierbar
+//          dist/feldapp-sw.js           – Service Worker für den Offline-Betrieb
+//          dist/feldapp-icon-*.png      – App-Icons
+// Die Zusatzdateien wirken nur, wenn dist/ über https ausgeliefert wird
+// (Netlify / GitHub Pages). Als einzelne Datei läuft feldapp.html wie bisher.
 
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
 import { resolve } from 'path';
+import { createHash } from 'crypto';
 
 const SRC  = resolve('field-app/index.html');
 const OUT  = resolve('dist/feldapp.html');
@@ -77,21 +83,45 @@ if (typeof L !== 'undefined') {
   const logo = readFileSync(resolve('field-app/lkebw-logo.png')).toString('base64');
   html = html.split('src="lkebw-logo.png"').join(`src="data:image/png;base64,${logo}"`);
 
-  // manifest.json-Link entfernen (funktioniert nicht aus einer Einzeldatei heraus)
-  html = html.replace(/<link rel="manifest"[^>]*>/g, '');
-  // Service-Worker-Registrierung entfernen (SW braucht eigene Origin)
-  // Exakt den if-Block matchen: bis zum ersten ';' gefolgt von schließender '}'.
-  // (Früheres Muster }\s*} griff zu weit und fraß den nächsten Block an → stray ');'.)
-  html = html.replace(
-    /if\s*\('serviceWorker' in navigator\)\s*\{[\s\S]*?;\s*\}/,
-    '/* Service Worker nicht verfügbar in Einzeldatei-Modus */'
-  );
+  // Installierbare App: dist/ enthält auch die Hauptapp (index.html). Deshalb
+  // bekommen Manifest, Service Worker und Icons eigene Namen, und der Service
+  // Worker gilt nur für Adressen, die mit /feldapp beginnen.
+  html = mustReplace(html, '<link rel="manifest" href="manifest.json">', '<link rel="manifest" href="feldapp.webmanifest">');
+  html = mustReplace(html, "const SW_URL = './sw.js', SW_SCOPE = './';", "const SW_URL = './feldapp-sw.js', SW_SCOPE = './feldapp';");
+  html = html.replace('</head>', '  <link rel="apple-touch-icon" href="feldapp-icon-192.png">\n</head>');
 
   writeFileSync(OUT, html);
   const kb = (Buffer.byteLength(html) / 1024).toFixed(0);
-  console.log(`\n✓ dist/feldapp.html (${kb} KB) – fertig.`);
-  console.log('  Diese Datei per Mail / WhatsApp / USB ans Handy schicken');
-  console.log('  und im Browser öffnen. Kein Server nötig.');
+
+  // Version = Inhalt der App → jede geänderte App bekommt einen frischen Cache.
+  const version = createHash('sha256').update(html).digest('hex').slice(0, 12);
+  const shell = ['./feldapp.html', './feldapp.webmanifest', './feldapp-icon-192.png', './feldapp-icon-512.png'];
+  let sw = readFileSync(resolve('field-app/sw.js'), 'utf8');
+  sw = mustReplace(sw, "const VERSION = 'dev';", `const VERSION = '${version}';`);
+  sw = sw.replace(/const SHELL = \[[\s\S]*?\];/, `const SHELL = ${JSON.stringify(shell, null, 2)};`);
+  if (!sw.includes('./feldapp.webmanifest')) throw new Error('SHELL-Liste in field-app/sw.js nicht gefunden');
+  writeFileSync(resolve('dist/feldapp-sw.js'), sw);
+
+  const manifest = JSON.parse(readFileSync(resolve('field-app/manifest.json'), 'utf8'));
+  Object.assign(manifest, {
+    id: './feldapp.html',
+    start_url: './feldapp.html',
+    scope: './feldapp',
+    icons: manifest.icons.map(i => ({ ...i, src: 'feldapp-' + i.src })),
+  });
+  writeFileSync(resolve('dist/feldapp.webmanifest'), JSON.stringify(manifest, null, 2) + '\n');
+  for (const size of [192, 512]) {
+    copyFileSync(resolve(`field-app/icon-${size}.png`), resolve(`dist/feldapp-icon-${size}.png`));
+  }
+
+  console.log(`\n✓ dist/feldapp.html (${kb} KB) + Manifest, Service Worker (Version ${version}), Icons – fertig.`);
+  console.log('  Über https (Netlify / GitHub Pages) als App installierbar und offline nutzbar.');
+  console.log('  Als einzelne Datei weiterhin ohne Server im Browser zu öffnen.');
+}
+
+function mustReplace(text, search, replacement) {
+  if (!text.includes(search)) throw new Error(`Build-Feldapp: Stelle nicht gefunden: ${search}`);
+  return text.split(search).join(replacement);
 }
 
 build().catch(err => { console.error(err); process.exit(1); });

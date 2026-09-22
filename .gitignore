@@ -2,6 +2,10 @@ node_modules/
 dist/*
 !dist/index.html
 !dist/feldapp.html
+!dist/feldapp.webmanifest
+!dist/feldapp-sw.js
+!dist/feldapp-icon-192.png
+!dist/feldapp-icon-512.png
 dist-vite/
 .DS_Store
 *.log

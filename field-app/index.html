@@ -1843,7 +1843,9 @@ async function clearAllPrivateData() {
   if (_currentAsset) { _currentAsset = null; document.getElementById('sheet').classList.remove('open'); document.getElementById('backdrop').classList.remove('on'); }
   await DB.clearAll();
   if (typeof caches !== 'undefined') {
-    for (const name of await caches.keys()) if (name.startsWith('feldapp-')) await caches.delete(name);
+    // Nur Kartenkacheln — der App-Cache des Service Workers enthält keine Nutzerdaten
+    // und wird gebraucht, damit die App auch danach offline startet.
+    for (const name of await caches.keys()) if (name.startsWith('feldapp-tiles')) await caches.delete(name);
   }
   _project = null;
   _meta.clear(); _notes.clear(); _photoInfo.clear(); _lastExportTs = 0;
@@ -1931,8 +1933,12 @@ async function init() {
   window.addEventListener('offline', updateNetTag);
   setupSheetDrag();
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  // Service Worker = Offline-Betrieb der installierten App. Unter file:// (Einzeldatei
+  // aus Downloads) gibt es ihn nicht; dort hält der Browser die Seite selbst.
+  // build-feldapp.mjs setzt für dist/ die Namen feldapp-sw.js und den Scope './feldapp'.
+  const SW_URL = './sw.js', SW_SCOPE = './';
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE }).catch(err => console.warn('Service Worker:', err));
   }
 
   // Warnung beim Schließen, wenn Änderungen noch nicht exportiert sind
