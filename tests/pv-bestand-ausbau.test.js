@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   bestandsGrenzen, auslastung, ertuechtigung, ausbauStand, kwpBeiRueck, ausbauTreppe, AUSLASTUNG_ENG,
-  ausbauReihenfolge, trafoBelastung,
+  ausbauReihenfolge, trafoBelastung, beschlussReife, neubauAuslegung, naechsteTrafoStufe, annuitaet,
 } from '../src/lib/pv-bestand-ausbau.js';
 import { SCHWELLEN_KOSTEN, TRAFO_RUECK_FAKTOR } from '../src/lib/netz-schwellen.js';
 
@@ -130,5 +130,100 @@ describe('Kartenansicht: Reihenfolge und Trafobelastung', () => {
     expect(m.get('t2').geschaetztKw).toBeCloseTo(50);
     expect(m.get('t1').rueckKw + m.get('t2').rueckKw).toBeCloseTo(400);
     expect(m.get('t1').stufe).toBe('eng');                  // 350 von 360 kW
+  });
+});
+
+describe('beschlussReife', () => {
+  // 1 kW Rückspeisung je kWp; Trafo t1 250 kVA (225 kW), t2 630 kVA (567 kW)
+  const trafos = [{ id: 't1', name: 'T1', kva: 250 }, { id: 't2', name: 'T2', kva: 630 }];
+  const basis = {
+    trafos, rueckBeiKwp: k => k, napKw: null, duKw: null,
+    nutzenJeKwp: () => 60,           // 60 €/a je kWp, konstant
+  };
+
+  it('Bestand, Pflicht, dann A in die Reserve', () => {
+    const r = beschlussReife({ ...basis, anlagen: [
+      { id: 'b', kwp: 50,  trafoId: 't1', schicht: 'bestand' },
+      { id: 'p', kwp: 100, trafoId: 't1', pflicht: true },
+      { id: 'x', kwp: 60,  trafoId: 't1' },
+      { id: 'y', kwp: 300, trafoId: 't2' },
+    ] });
+    expect(r.liste.map(l => [l.anlage.id, l.klasse])).toEqual([
+      ['b', 'bestand'], ['p', 'pflicht'], ['y', 'A'], ['x', 'A'],
+    ]);
+    expect(r.massnahmen).toEqual([]);
+  });
+
+  it('B, wenn sich die Ertüchtigung über die Anlagen trägt, die sie nutzen', () => {
+    const r = beschlussReife({ ...basis, anlagen: [
+      { id: 'gross', kwp: 200, trafoId: 't1' },
+      { id: 'mehr',  kwp: 100, trafoId: 't1' },
+      { id: 'noch',  kwp: 60,  trafoId: 't1' },
+    ] });
+    const k = Object.fromEntries(r.liste.map(l => [l.anlage.id, l.klasse]));
+    expect(k.gross).toBe('A');
+    expect(k.mehr).toBe('B');
+    expect(k.noch).toBe('B');                         // teilt sich die Ertüchtigung
+    expect(r.massnahmen[0].neu).toBe(400);            // 300/0,9 = 333 → 400 kVA
+    expect(r.summe.investEUR).toBe((400 - 250) * SCHWELLEN_KOSTEN.trafoEurProKVA);
+  });
+
+  it('C, wenn die Ertüchtigung den Nutzen übersteigt oder PV sich nicht rechnet', () => {
+    const teuer = beschlussReife({ ...basis, nutzenJeKwp: () => 1, anlagen: [
+      { id: 'a', kwp: 200, trafoId: 't1' }, { id: 'b', kwp: 100, trafoId: 't1' },
+    ] });
+    expect(teuer.liste.find(l => l.anlage.id === 'b').klasse).toBe('C');
+    const nichts = beschlussReife({ ...basis, nutzenJeKwp: () => -5, anlagen: [{ id: 'a', kwp: 10, trafoId: 't2' }] });
+    expect(nichts.liste[0].klasse).toBe('C');
+    expect(nichts.liste[0].grund).toContain('rechnet sich nicht');
+  });
+
+  it('Pflicht erzwingt die Maßnahme auch am NAP', () => {
+    const r = beschlussReife({ ...basis, napKw: 100, anlagen: [{ id: 'p', kwp: 150, trafoId: 't2', pflicht: true }] });
+    expect(r.liste[0].klasse).toBe('pflicht');
+    expect(r.massnahmen.map(m => m.art)).toEqual(['nap']);
+  });
+});
+
+describe('neubauAuslegung', () => {
+  const preis = kva => 10000 + 60 * kva;
+  const basis = { heute: 2026, zins: 0.03, rueckBeiKwp: k => k, trafoPreis: preis };
+
+  it('rechnet das Jahr der Überlastung aus dem Ausbaupfad und vergleicht mit dem Barwert', () => {
+    const [t] = neubauAuslegung({ ...basis,
+      trafos: [{ id: 'n', name: 'Neubau', kva: 250, neubau: true }],
+      anlagen: [{ kwp: 150, trafoId: 'n', jahr: 2027 }, { kwp: 250, trafoId: 'n', jahr: 2031 }],
+    });
+    expect(t.jahrUeber).toBe(2031);                      // 400 kW > 225 kW
+    expect(t.empfKva).toBe(630);                         // 400/0,9 = 444 → 630
+    expect(t.mehrJetztEUR).toBe(preis(630) - preis(250));
+    expect(t.barwertEUR).toBe(Math.round(preis(630) * 1.3 / Math.pow(1.03, 5)));
+    expect(t.urteil).toBe('jetzt-groesser');
+  });
+
+  it('Bezug kann maßgeblich sein; ohne Größe gibt es eine Empfehlung', () => {
+    const [t] = neubauAuslegung({ ...basis, gzf: 1,
+      trafos: [{ id: 'n', kva: 0, neubau: true }],
+      anlagen: [{ kwp: 50, trafoId: 'n', jahr: 2027 }],
+      lasten: [{ kw: 500, trafoId: 'n', jahr: 2030 }],
+    });
+    expect(t.richtung).toBe('bezug');
+    expect(t.urteil).toBe('dimensionieren');
+    expect(t.empfKva).toBe(630);
+  });
+
+  it('Bestandstrafos werden nicht ausgelegt, passende Neubau-Trafos bleiben', () => {
+    const r = neubauAuslegung({ ...basis,
+      trafos: [{ id: 'b', kva: 400, neubau: false }, { id: 'n', kva: 630, neubau: true }],
+      anlagen: [{ kwp: 100, trafoId: 'n', jahr: 2028 }],
+    });
+    expect(r.map(x => x.id)).toEqual(['n']);
+    expect(r[0].urteil).toBe('passt');
+  });
+
+  it('Normstufe und Annuität', () => {
+    expect(naechsteTrafoStufe(333)).toBe(400);
+    expect(naechsteTrafoStufe(3100)).toBe(3500);
+    expect(annuitaet(0, 20)).toBeCloseTo(0.05);
   });
 });

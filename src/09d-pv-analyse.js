@@ -4122,6 +4122,17 @@ export function pvAusbauKontext() {
     napKw: r0.anschlussKw ?? null, skKva: r0.skKVA || 0, uBudgetPct: r0.uBudgetPct || 3,
     trafoKvaOverride: s.bestandTrafoKva || 0,
     batVorschlagKwh: s.ergebnisse.find(v => v.id === 'wirt-opt')?.batKwh || 0,
+    // Jahresüberschuss (€/a) einer Gesamtleistung — ohne Einspeiselimit, weil die
+    // Beschlussreife die Netzkosten selbst gegenrechnet
+    ueberschuss: (kwp, bat = 0) => {
+      if (!(kwp > 0) || !s.lastParams) return 0;
+      const strat = bat > 0 ? 'ev' : 'none';
+      const sim = pvNapSim(kwp, bat, args.demandH, args.pvProfile, { maxEinspeisKw: null, maxBezugKw: null }, strat, null);
+      return -pvWirtschaft(kwp, bat, sim, kwp * pvGetSpez() / 1000, s.lastParams, strat).nettoJk;
+    },
+    zins: s.lastParams?.zins ?? 0.035,
+    endausbauJahr: s.endausbauJahr,
+    pflichtGebIds: new Set((_pvPflicht().faelle || []).map(f => f.id)),
   };
 }
 

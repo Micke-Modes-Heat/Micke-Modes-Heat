@@ -13,8 +13,8 @@ test('dist: Kartenschieber schaltet PV zu und färbt die Bestandstrafos', async 
   await page.waitForFunction(() => typeof window.pvAusbauKarteOeffnen === 'function');
 
   await page.evaluate(() => {
-    const mk = (type, lat, lng, props, schicht, name) =>
-      window.createAsset(type, lat, lng, { props, schicht, name });
+    const mk = (type, lat, lng, props, schicht, name, baujahr) =>
+      window.createAsset(type, lat, lng, { props, schicht, name, baujahr });
     const nap = mk('NAP', 52.0000, 8.0000, {}, 'bestand', 'NAP');
     const t1  = mk('Trafo', 52.0010, 8.0010, { leistungKVA: 250 }, 'bestand', 'Trafo Nord');
     const t2  = mk('Trafo', 51.9990, 8.0010, { leistungKVA: 630 }, 'bestand', 'Trafo Süd');
@@ -24,9 +24,14 @@ test('dist: Kartenschieber schaltet PV zu und färbt die Bestandstrafos', async 
       mk('PV', 51.9985, 8.0020, { leistungKWp: 120 }, 'entscheidung', 'PV Schule'),
       mk('PV', 51.9982, 8.0030, { leistungKWp: 80 },  'entwicklung',  'PV Neubau'),
     ];
+    // Neubaugebiet: eigener Trafo (zu klein geplant), PV ab 2030, Wärmepumpen
+    const tn  = mk('Trafo', 51.9975, 8.0000, { leistungKVA: 160 }, 'entwicklung', 'Trafo Neubaugebiet', 2028);
+    const pvn = mk('PV', 51.9970, 7.9990, { leistungKWp: 300 }, 'entwicklung', 'PV Neubaugebiet', 2030);
+    const wp  = mk('WP', 51.9972, 8.0005, { leistungKW: 90 }, 'entwicklung', 'WP Neubaugebiet', 2029);
     const kanten = [
       [nap, t1], [nap, t2],
       [t1, pv[0]], [t1, pv[1]], [t2, pv[2]], [t2, pv[3]],
+      [nap, tn], [tn, pvn], [tn, wp],
     ].map(([u, v], i) => ({ id: 'e' + i, u: u.id, v: v.id, msLevel: u.type === 'NAP' }));
     window.stromEdges.push(...kanten);
 
@@ -49,13 +54,23 @@ test('dist: Kartenschieber schaltet PV zu und färbt die Bestandstrafos', async 
   // Start = heutiger Stand: nur die Bestandsanlage
   const start = await page.evaluate(() => window.pvAusbauKarteStand());
   expect(start.idx).toBe(1);
-  expect(start.n).toBe(4);
+  expect(start.n).toBe(5);
   expect(start.kwp).toBe(40);
+  // Beschlussreife: Bestand, dann A in die Reserve; die große Halle (Trafo Nord zu klein) nicht
+  expect(start.klassen['PV Bestand']).toBe('bestand');
+  expect(start.klassen['PV Schule']).toBe('A');
+  expect(['B', 'C']).toContain(start.klassen['PV Halle']);
+  // Neubau: 160 kVA reichen für 300 kWp nicht — Überlastung 2030, Empfehlung größer
+  const neu = start.auslegung.find(x => x.name === 'Trafo Neubaugebiet');
+  expect(neu.jahrUeber).toBe(2030);
+  expect(neu.empfKva).toBeGreaterThan(160);
+  expect(['jetzt-groesser', 'spaeter']).toContain(neu.urteil);
 
   // Voll ausgebaut: Trafo Nord (250 kVA, 540 kWp) ist überlastet
-  await bar.locator('[data-pak="idx"]').fill('4');
+  await bar.locator('[data-pak="modus"]').selectOption('schicht');
+  await bar.locator('[data-pak="idx"]').fill('5');
   const voll = await page.evaluate(() => window.pvAusbauKarteStand());
-  expect(voll.kwp).toBe(740);
+  expect(voll.kwp).toBe(1040);
   const nord = voll.trafos.find(t => t.name === 'Trafo Nord');
   const sued = voll.trafos.find(t => t.name === 'Trafo Süd');
   expect(nord.stufe).toBe('ueber');
@@ -65,6 +80,15 @@ test('dist: Kartenschieber schaltet PV zu und färbt die Bestandstrafos', async 
   await expect(page.locator('.leaflet-marker-icon span', { hasText: '%' }).first()).toBeVisible();
 
   await page.screenshot({ path: 'test-results/pv-ausbau-karte.png' });
+
+  // Auswertung: Beschlussreife und Neubau-Auslegung
+  await bar.locator('[data-pak="modus"]').selectOption('beschluss');
+  await bar.locator('[data-pak="auswertung"]').click();
+  await expect(bar).toContainText('Beschlussreife');
+  await expect(bar).toContainText('Auslegung Neubau-Trafos');
+  await expect(bar).toContainText('Trafo Neubaugebiet');
+  await expect(bar).toContainText('Barwert');
+  await page.screenshot({ path: 'test-results/pv-ausbau-karte-auswertung.png' });
 
   await bar.locator('[data-pak="zu"]').click();
   await expect(bar).toHaveCount(0);
