@@ -13,7 +13,7 @@ import { makePvProfile8760 } from './09a-pv-profile.js';
 import { getElSlpProfiles } from './13k-elslp-registry.js';
 import { windProfileForAsset, getWindSiteData } from './13q-wind-ertrag.js';
 import { escHtml } from './03c-gebaeude-io.js';
-import { BP_LEISTUNGS_TYPEN, bpAssetLeistung, bpMassnahmen, bpLastJahr, bpNormGzf, bpLadeLeistung, bpZieljahr } from './lib/bedarfsprognose.js';
+import { BP_LEISTUNGS_TYPEN, bpAssetLeistung, bpMassnahmen, bpLastJahr, bpNormGzf, bpLadeLeistung, bpZieljahr, bpGzfFuer } from './lib/bedarfsprognose.js';
 
 // ── Modulzustand ─────────────────────────────────────────────────────────────
 const _N = {
@@ -99,8 +99,9 @@ function _tsToHoy(tsMs) {
  * mode='slp'     → { mode, slp, scale }               P_h = slp[hoy] * scale
  * mode='pv'      → { mode, pvProf, scale }            P_h = pvProf[hoy] * scale (Einspeisung)
  */
-function _napBuildProfileDescriptor(asset, gzf) {
+function _napBuildProfileDescriptor(asset, gzfGlobal) {
   const p = asset.props || {};
+  const gzf = bpGzfFuer(asset.type, gzfGlobal);   // globaler GZF nur für Gebäudeverbraucher (lib/bedarfsprognose.js)
 
   // 1. Importiertes Zeitreihen-Profil (höchste Priorität)
   if (asset.profil?.werte?.length > 0) {
@@ -559,7 +560,7 @@ export function napComputeSynthetic(napId, forceBFS = false) {
     for (const { m, desc } of entries) {
       if (!desc) {
         const sign = m.isAbbruch ? -1 : 1;
-        staticBezug += (m.loadKW || 0) * gzf * sign;
+        staticBezug += (m.loadKW || 0) * bpGzfFuer(m.type, gzf) * sign;
         staticEinsp += (m.genKW  || 0) * sign;   // Einspeisung ohne GZF
       }
     }
@@ -736,7 +737,7 @@ export function napGetEndausbauLastgang(bisJahr, { nurAngehakt = false } = {}) {
   for (const e of entries) {
     if (e.desc) continue;
     const sign = e.isAbbruch ? -1 : 1;
-    staticBezug += (e.loadKW || 0) * gzf * sign;
+    staticBezug += (e.loadKW || 0) * bpGzfFuer(e.asset.type, gzf) * sign;
     staticEinsp += (e.genKW  || 0) * sign;   // Einspeisung ohne GZF
   }
   const dynEntries = entries.filter(e => !!e.desc);
@@ -872,7 +873,7 @@ function _napRenderSidebar() {
   const list      = _N.massnahmen || [];
   const chk       = list.filter(m => m.checked);
   // Abriss-Einträge zählen negativ (reduzieren Last/Einspeisung)
-  const totalAddLoad = chk.reduce((a,m) => a + (m.isAbbruch ? -m.loadKW : m.loadKW), 0) * gzf;
+  const totalAddLoad = chk.reduce((a,m) => a + (m.isAbbruch ? -1 : 1) * m.loadKW * bpGzfFuer(m.type, gzf), 0);
   const totalAddGen  = chk.reduce((a,m) => a + (m.isAbbruch ? -m.genKW  : m.genKW),  0);   // ohne GZF
   // Erzeugung mindert den Bezug nicht (lib/bedarfsprognose.js) — keine Netto-Verrechnung
 
@@ -1005,7 +1006,7 @@ function _napRenderSidebar() {
       : `<span style="color:#444">–</span>`;
     // Last-/Einspeise-Zellen: Neubau = positiv, Abriss = negativ (Farben invertiert)
     const loadCell = m.loadKW > 0
-      ? `<span style="color:${isAbr?'#a5d6a7':'#ef9a9a'};font-weight:600;">${isAbr?'−':'+'}${(m.loadKW*gzf).toFixed(0)}</span>`
+      ? `<span style="color:${isAbr?'#a5d6a7':'#ef9a9a'};font-weight:600;">${isAbr?'−':'+'}${(m.loadKW*bpGzfFuer(m.type, gzf)).toFixed(0)}</span>`
       : `<span style="color:#333">–</span>`;
     const genCell  = m.genKW  > 0
       ? `<span style="color:${isAbr?'#ef9a9a':'#a5d6a7'};font-weight:600;">${isAbr?'−':'−'}${m.genKW.toFixed(0)}</span>`
@@ -1048,7 +1049,7 @@ function _napRenderSidebar() {
     </table></div>
     <div style="margin-top:5px;background:#1e1e30;border-radius:4px;padding:5px 7px;font-size:10px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
-        <span style="color:#aaa;font-weight:600;">⬆ Bezug Zubau (GZF ${gzf.toFixed(2)}, ${chk.length} aktiv)</span>
+        <span style="color:#aaa;font-weight:600;">⬆ Bezug Zubau (GZF ${gzf.toFixed(2)} auf Gebäude, ${chk.length} aktiv)</span>
         <span style="color:${totalAddLoad>0?'#ef5350':'#66bb6a'};font-weight:700;">${totalAddLoad>0?'+':''}${totalAddLoad.toFixed(0)} kW</span>
       </div>
       <div style="display:flex;justify-content:space-between;">
@@ -1569,7 +1570,7 @@ function _napBindDevHover(canvas) {
     const row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0;"><span style="color:#666">${l}</span><span style="font-weight:600;color:${c}">${v}</span></div>`;
     let html=`<div style="font-size:12px;font-weight:700;color:#80cbc4;margin-bottom:6px;border-bottom:1px solid #2a3a5a;padding-bottom:4px;">${r.year}</div>`;
     html+=row('Bezug Bestand',fmt(r.basePeak),'#7ab2d4');
-    if (r.addLoad>0) html+=row(`+ Zubau (GZF ${gzf.toFixed(2)})`,fmt(r.addLoad),'#ff8a3c');
+    if (r.addLoad>0) html+=row(`+ Zubau (GZF ${gzf.toFixed(2)} auf Gebäude)`,fmt(r.addLoad),'#ff8a3c');
     html+=`<div style="display:flex;justify-content:space-between;gap:16px;margin:3px 0;border-top:1px solid #2a2a40;padding-top:3px;"><span style="color:#aaa;font-weight:600;">Bezug gesamt</span><span style="font-weight:700;color:${overCap?'#ef5350':'rgba(130,200,255,.95)'};">${fmt(bezugGes)}${overCap?' ⚠':''}</span></div>`;
     if (r.addGen>0) html+=row('Einspeisung Zubau',fmt(r.addGen),'rgba(100,230,140,.95)');
     if (cap) { html+=row('Max. Bezug (NAP)',`${Math.round(cap).toLocaleString('de-DE')} kVA`,'#ef5350'); if (overCap) html+=`<div style="margin-top:4px;color:#ef5350;font-size:10px;">⚠ Überschreitung um ${fmt(bezugGes-cap)}</div>`; }
@@ -1608,7 +1609,7 @@ export function napExportPDF() {
   </tr></thead><tbody>
   ${chk.map((m,i)=>`<tr style="background:${i%2?'#f9f9f9':'#fff'};">
     <td style="padding:3px 6px;border:1px solid #ddd;">${m.name}</td>
-    <td style="padding:3px 6px;text-align:right;border:1px solid #ddd;">${m.loadKW>0?(m.loadKW*gzf).toFixed(0):'–'}</td>
+    <td style="padding:3px 6px;text-align:right;border:1px solid #ddd;">${m.loadKW>0?(m.loadKW*bpGzfFuer(m.type, gzf)).toFixed(0):'–'}</td>
     <td style="padding:3px 6px;text-align:right;border:1px solid #ddd;">${m.genKW>0?m.genKW.toFixed(0):'–'}</td>
     <td style="padding:3px 6px;text-align:center;border:1px solid #ddd;">${m.baujahr||'–'}</td>
   </tr>`).join('')}

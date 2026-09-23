@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   BP_STUFEN, bpStufeVonTyp, bpAssetLeistung, bpMassnahmen, bpWirkungImJahr,
-  bpLastJahr, bpZieljahr, bpStufen, bpNormGzf, bpLadeLeistung, bpJahresreihe,
+  bpLastJahr, bpZieljahr, bpStufen, bpNormGzf, bpLadeLeistung, bpJahresreihe, bpGzfFuer,
 } from '../src/lib/bedarfsprognose.js';
 
 describe('bpLadeLeistung', () => {
@@ -92,8 +92,8 @@ describe('bpMassnahmen', () => {
 });
 
 describe('bpWirkungImJahr / bpLastJahr / bpZieljahr', () => {
-  const neu = { loadKW: 100, genKW: 0, baujahr: 2030, abrissjahr: null, isAbbruch: false, checked: true };
-  const weg = { loadKW: 40, genKW: 0, baujahr: 1980, abrissjahr: 2028, isAbbruch: true, checked: true };
+  const neu = { type: 'Verbraucher', loadKW: 100, genKW: 0, baujahr: 2030, abrissjahr: null, isAbbruch: false, checked: true };
+  const weg = { type: 'Verbraucher', loadKW: 40, genKW: 0, baujahr: 1980, abrissjahr: 2028, isAbbruch: true, checked: true };
 
   it('bestimmt die Wirkung je Jahr', () => {
     expect(bpWirkungImJahr(neu, 2029)).toBe(0);
@@ -110,6 +110,15 @@ describe('bpWirkungImJahr / bpLastJahr / bpZieljahr', () => {
   it('nimmt die Einspeisung mit voller Nennleistung, ohne Gleichzeitigkeitsfaktor', () => {
     const pv = { loadKW: 0, genKW: 200, baujahr: 2030, abrissjahr: null, isAbbruch: false, checked: true };
     expect(bpLastJahr([neu, pv], 2035, 0.5)).toEqual({ addLoad: 50, addGen: 200 });
+  });
+
+  it('setzt den globalen Gleichzeitigkeitsfaktor nur auf Gebäudeverbraucher', () => {
+    expect(bpGzfFuer('Verbraucher', 0.6)).toBe(0.6);
+    for (const t of ['WP', 'Geo', 'FG', 'Stromkessel', 'TWW', 'Lade', 'Batterie']) expect(bpGzfFuer(t, 0.6)).toBe(1);
+    const wp   = { type: 'WP',   loadKW: 80, genKW: 0, baujahr: 2030, abrissjahr: null, isAbbruch: false, checked: true };
+    const lade = { type: 'Lade', loadKW: 26.4, genKW: 0, baujahr: 2030, abrissjahr: null, isAbbruch: false, checked: true };
+    // Gebäude 100 × 0,5 + WP voll + Ladepark voll (sein GZF steckt schon in loadKW)
+    expect(bpLastJahr([neu, wp, lade], 2035, 0.5).addLoad).toBeCloseTo(50 + 80 + 26.4, 9);
   });
 
   it('nimmt das späteste angehakte Jahr als Zieljahr', () => {
@@ -163,6 +172,10 @@ describe('bpStufen', () => {
     expect(r.endKw).toBeCloseTo(1000 + addLoad, 9);
     expect(r.einspeisung.kw).toBeCloseTo(addGen, 9);
     expect(r.einspeisung.kw).toBe(150);   // PV voll, obwohl GZF 0,8
+    // GZF nur auf Gebäude: (−160 + 300) × 0,8, WP und Ladepark voll
+    expect(r.stufen[0].endKw).toBeCloseTo(1000 + 140 * 0.8, 9);
+    expect(r.stufen[1].zubauKw).toBe(180);
+    expect(r.stufen[2].zubauKw).toBe(220);
   });
 
   it('liefert die Jahresreihe bis zum Zieljahr mit derselben Endleistung', () => {

@@ -3208,8 +3208,8 @@ function ggRenderBedarfWaermeText(cfg, T = GG_THEME) {
     absaetze.push(saetze.join(' '));
 
     const d = s.endKw - s.startKw;
-    absaetze.push(`Unter Berücksichtigung des Gleichzeitigkeitsfaktors von ${ggBedarfFeld(st?.gzf, 'Gleichzeitigkeitsfaktor', 2)} `
-      + `${d >= 0 ? 'steigt' : 'sinkt'} der Leistungsbedarf dadurch ${ggBedarfDelta(s)}, von `
+    absaetze.push('Die Wärmeerzeuger gehen ohne Gleichzeitigkeitsfaktor ein, da sie bei Normaußentemperatur gemeinsam mit '
+      + `voller Leistung laufen. Der Leistungsbedarf ${d >= 0 ? 'steigt' : 'sinkt'} dadurch ${ggBedarfDelta(s)}, von `
       + `${ggBedarfFeld(s.startKw, 'Übertrag aus 3.3.1')} kW auf ${ggBedarfFeld(s.endKw, 'Leistung inkl. Wärmekonzept')} kW. `
       + 'Die folgende Abbildung zeigt die Leistungsbilanz, die anschließende Tabelle die einzelnen Anlagen.');
   }
@@ -3263,8 +3263,8 @@ function ggRenderBedarfLadeText(cfg, T = GG_THEME) {
     absaetze.push(saetze.join(' '));
 
     const d = s.endKw - s.startKw;
-    absaetze.push(`Zusammen mit dem Gleichzeitigkeitsfaktor der Liegenschaft von `
-      + `${ggBedarfFeld(st?.gzf, 'Gleichzeitigkeitsfaktor', 2)} ${d >= 0 ? 'steigt' : 'sinkt'} der Leistungsbedarf `
+    absaetze.push('Ein weiterer Gleichzeitigkeitsfaktor wird auf die Ladeinfrastruktur nicht angesetzt, da die Gleichzeitigkeit '
+      + `der Ladevorgänge bereits im Faktor des Ladeparks enthalten ist. Der Leistungsbedarf ${d >= 0 ? 'steigt' : 'sinkt'} damit `
       + `${ggBedarfDelta(s)}, von ${ggBedarfFeld(s.startKw, 'Übertrag aus 3.3.2')} kW auf `
       + `${ggBedarfFeld(s.endKw, 'Leistung inkl. Ladeinfrastruktur')} kW. Ein gesteuertes Laden kann die gleichzeitig `
       + 'abgerufene Leistung weiter begrenzen; es wird bei der Variantenbildung betrachtet. Die folgende Abbildung zeigt '
@@ -3291,7 +3291,7 @@ function ggBedarfStandHtml(key) {
   let html = zeile('Bestand (Höchstlast)', st.basisKw > 0
       ? `${ggNum(st.basisKw)} kW · ${st.gemessen ? 'Messung' : 'synthetisch'} ${st.dataYear}`
       : '<span style="color:#e0a126;">keine Strommessung — ⚡ Strom-Grundlagen</span>')
-    + zeile('Gleichzeitigkeitsfaktor', ggNum(st.gzf, 2))
+    + zeile('Gleichzeitigkeitsfaktor', `${ggNum(st.gzf, 2)} · nur Gebäude (Wärme voll, Lade mit eigenem GZF)`)
     + zeile('Zieljahr', r.zieljahr ?? '—')
     + zeile(gesamt ? 'Maßnahmen gesamt' : 'Maßnahmen dieser Stufe',
       `${gesamt ? r.stufen.reduce((n, s) => n + s.eintraege.length, 0) + r.sonstige.eintraege.length : stufe.eintraege.length}`
@@ -3406,7 +3406,9 @@ function ggBedarfFiguren() {
               wert: ggKwDelta(delta), label: zj ? `Veränderung bis ${zj}` : 'Veränderung' },
           ];
           cfg.kpiRechts = [
-            { wert: ggNum(st.gzf, 2), label: 'Gleichzeitigkeitsfaktor' },
+            key === 'gebaeude'
+              ? { wert: ggNum(st.gzf, 2), label: 'Gleichzeitigkeitsfaktor' }
+              : { wert: key === 'lade' ? 'je Ladepark' : ggNum(1, 2), label: 'Gleichzeitigkeitsfaktor' },
             { wert: ggNum(stufe.endKw) + ' kW', label: `${K.summe}${zj ? ' ' + zj : ''}`, highlight: true },
           ];
 
@@ -3414,7 +3416,8 @@ function ggBedarfFiguren() {
             return '⚠ Keine Strommessung geladen (⚡ Strom-Grundlagen) — der Bestand steht auf 0 kW.';
           }
           return stufe.eintraege.length
-            ? `✓ ${stufe.eintraege.length} Maßnahmen bis ${zj} aus der NAP-Analyse übernommen (GZF ${ggNum(st.gzf, 2)}).`
+            ? `✓ ${stufe.eintraege.length} Maßnahmen bis ${zj} aus der NAP-Analyse übernommen`
+              + (key === 'gebaeude' ? ` (GZF ${ggNum(st.gzf, 2)}).` : ' (ohne globalen GZF).')
             : '✓ In dieser Stufe sind keine Maßnahmen erfasst.';
         },
       },
@@ -3482,8 +3485,11 @@ function ggBedarfFiguren() {
           }
           cfg.zeilen.push(summenZeile(`Veränderung bis ${r.zieljahr}`, stufe.rueckbauKw + stufe.zubauKw));
 
-          cfg.fussnote = (key === 'lade' ? 'Leistung = Ladeleistung inkl. GZF des Ladeparks' : 'Leistung = Anschlussleistung')
-                       + ` × Gleichzeitigkeitsfaktor ${ggNum(st.gzf, 2)} · Maßnahmenauswahl wie in der NAP-Analyse`
+          // Globaler GZF nur auf Gebäude (bpGzfFuer): Wärmeerzeuger laufen gemeinsam, Ladeparks haben ihren eigenen
+          cfg.fussnote = (key === 'lade' ? 'Leistung = Ladeleistung inkl. GZF des Ladeparks'
+            : key === 'waerme' ? 'Leistung = elektrische Leistungsaufnahme, ohne Gleichzeitigkeitsfaktor'
+              : `Leistung = Anschlussleistung × Gleichzeitigkeitsfaktor ${ggNum(st.gzf, 2)}`)
+                       + ' · Maßnahmenauswahl wie in der NAP-Analyse'
                        + (r.abgewaehlt ? ` · dort ${r.abgewaehlt} Maßnahmen abgewählt` : '');
           return `✓ ${zeilen.length} Einträge bis ${r.zieljahr} aus der NAP-Analyse übernommen.`;
         },
@@ -3533,7 +3539,9 @@ function ggRenderBedarfResultierendText(cfg, T = GG_THEME) {
     if (sonstige) teile.push(`durch sonstige Verbraucher wie Batteriespeicher im Ladebetrieb um ${ggKwDelta(sonstige.kw)}`);
     const d = r.endKw - (st?.basisKw || 0);
     absaetze.push(`Bis zum Jahr ${ggTextFeld(zj, 'Zieljahr')} ändert sich der Leistungsbedarf ${ggAufzaehlung(teile)}. `
-      + `Alle Veränderungen sind mit dem Gleichzeitigkeitsfaktor von ${ggBedarfFeld(st?.gzf, 'Gleichzeitigkeitsfaktor', 2)} bewertet. `
+      + `Die bauliche Entwicklung ist mit dem Gleichzeitigkeitsfaktor von ${ggBedarfFeld(st?.gzf, 'Gleichzeitigkeitsfaktor', 2)} bewertet, `
+      + 'die Ladeinfrastruktur mit dem Gleichzeitigkeitsfaktor der Ladeparks; Wärmeerzeuger und sonstige Verbraucher gehen mit '
+      + 'voller Leistung ein. '
       + `Daraus ergibt sich eine resultierende Anschlussleistung von ${ggBedarfFeld(r.endKw, 'Resultierende Anschlussleistung')} kW`
       + (basis ? ` (${d >= 0 ? '+' : '−'}${ggNum(Math.abs(d) / basis * 100)} % gegenüber dem Bestand)` : '')
       + '. Die folgende Abbildung zeigt ihre Zusammensetzung.');

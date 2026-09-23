@@ -11,6 +11,11 @@
 // Rückbau später anteilig an der Messung ausgerichtet wird, ist noch offen —
 // eine Änderung gehört dann hierher und gilt für beide Stellen zugleich.
 //
+// Gleichzeitigkeit (09/2026): Der globale GZF gilt nur für die Gebäudeverbraucher. Wärmeerzeuger
+// laufen bei Normaußentemperatur gemeinsam (GZF 1,0), ein Ladepark bringt seinen eigenen GZF schon
+// in bpLadeLeistung mit — ein zweiter GZF darauf hätte die Ladeleistung doppelt gemindert. Übrige
+// Verbraucher (Batterie im Ladebetrieb) gehen dimensionierungssicher voll ein.
+//
 // Erzeugung (Entscheidung 09/2026, dimensionierungssicher): PV, KWK, Wind und Batterien im
 // Einspeisebetrieb mindern die Bezugsleistung NICHT — zum Zeitpunkt der Höchstlast ist ihre
 // Leistung nicht gesichert. Ihre Einspeiseleistung wird getrennt ausgewiesen (Gutachten 3.3.4) —
@@ -38,6 +43,14 @@ export const BP_STUFEN = [
 
 export function bpStufeVonTyp(type) {
   return BP_STUFEN.find(s => s.typen.includes(type))?.key || 'sonstige';
+}
+
+/** Asset-Typen, auf deren Bezugsleistung der globale Gleichzeitigkeitsfaktor wirkt. */
+export const BP_GZF_TYPEN = ['Verbraucher'];
+
+/** Wirksamer Gleichzeitigkeitsfaktor für die Bezugsleistung eines Asset-Typs. */
+export function bpGzfFuer(type, gzf) {
+  return BP_GZF_TYPEN.includes(type) ? gzf : 1;
 }
 
 const zahl = v => parseFloat(v) || 0;
@@ -155,13 +168,13 @@ export function bpWirkungImJahr(m, jahr) {
   return (jahr < bj || jahr >= aj) ? 0 : 1;
 }
 
-/** Zusätzliche Bezugsleistung (mal GZF) und Einspeiseleistung (volle Nennleistung) aller übergebenen Maßnahmen in einem Jahr. */
+/** Zusätzliche Bezugsleistung (mal GZF je Typ, bpGzfFuer) und Einspeiseleistung (volle Nennleistung) aller übergebenen Maßnahmen in einem Jahr. */
 export function bpLastJahr(massnahmen, jahr, gzf) {
   let addLoad = 0, addGen = 0;
   for (const m of massnahmen || []) {
     const s = bpWirkungImJahr(m, jahr);
     if (!s) continue;
-    addLoad += s * m.loadKW * gzf;
+    addLoad += s * m.loadKW * bpGzfFuer(m.type, gzf);
     addGen  += s * m.genKW;
   }
   return { addLoad, addGen };
@@ -194,7 +207,7 @@ export function bpJahresreihe({ basisKw = 0, gzf = 1, massnahmen = [], von, bis 
 /**
  * Leistungsstufen bis zum Zieljahr: Bestand → Gebäude → Wärmekonzept →
  * Ladeinfrastruktur (→ sonstige). Nur angehakte Maßnahmen zählen.
- * Jeder Eintrag trägt seine vorzeichenbehaftete Bezugswirkung `kw` (mal GZF); Erzeugung
+ * Jeder Eintrag trägt seine vorzeichenbehaftete Bezugswirkung `kw` (mal GZF je Typ); Erzeugung
  * mindert den Bezug nicht und steht getrennt unter `einspeisung`.
  * endKw entspricht exakt Basis + bpLastJahr(...).addLoad im Zieljahr, einspeisung.kw dessen addGen.
  */
@@ -208,7 +221,7 @@ export function bpStufen({ basisKw = 0, gzf = 1, massnahmen = [], zieljahr = nul
     for (const m of aktiv) {
       const s = bpWirkungImJahr(m, zj);
       if (!s) continue;
-      if (m.loadKW > 0) eintraege.push({ m, kw: s * m.loadKW * gzf });
+      if (m.loadKW > 0) eintraege.push({ m, kw: s * m.loadKW * bpGzfFuer(m.type, gzf) });
       if (m.genKW > 0)  einspeiseEintraege.push({ m, kw: s * m.genKW });   // Einspeisung ohne GZF
     }
   }
