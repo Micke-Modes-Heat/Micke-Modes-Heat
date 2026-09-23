@@ -31,6 +31,7 @@ import { bhkw, edgeWaypoints, fernwaerme, fernwaermeEmF, ffCounter, fliessgewaes
 import { kostenSzenario, setKostenSzenario } from './02a-netz-physik.js';
 import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
+import { captureFelddaten, applyFelddaten, FELDDATEN_LABELS, FOTO_KATEGORIEN } from './lib/felddaten.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
@@ -2181,14 +2182,20 @@ export function _renderExpandedPanel(g, stats) {
 }
 
 function _renderFelddatenBlock(g) {
-  if (!g.feldNotizen && !g.feldStatus && !g.feldFotos?.length) return '';
+  const feldDaten = g.feldDaten && typeof g.feldDaten === 'object' ? g.feldDaten : {};
+  const feldDatenZeilen = Object.entries(FELDDATEN_LABELS)
+    .filter(([k]) => feldDaten[k])
+    .map(([k, label]) => `<div><span style="color:var(--muted);">${label}:</span> ${escHtml(feldDaten[k])}</div>`);
+  const cl = g.feldCheckliste;
+  if (cl && cl.gesamt) feldDatenZeilen.push(`<div><span style="color:var(--muted);">Checkliste:</span> ${cl.erfuellt}/${cl.gesamt}${cl.fehlend?.length ? ' – fehlt: ' + escHtml(cl.fehlend.join(', ')) : ' – vollständig'}</div>`);
+  if (!g.feldNotizen && !g.feldStatus && !g.feldFotos?.length && !feldDatenZeilen.length) return '';
 
   const statusLabel = { offen:'📋 Offen', besucht:'👁 Besucht', erledigt:'✅ Erledigt' }[g.feldStatus] || '';
   const notizHtml = g.feldNotizen
     ? `<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 10px;border-radius:0 6px 6px 0;font-size:11px;white-space:pre-wrap;margin-bottom:6px;">${escHtml(g.feldNotizen)}</div>`
     : '';
   const fotoHtml = (g.feldFotos || []).map(foto =>
-    `<img src="${foto.dataUrl}" title="${escHtml(foto.name)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="openImageLightbox(this.src,this.title)">`
+    `<img src="${foto.dataUrl}" title="${escHtml([FOTO_KATEGORIEN[foto.kategorie], foto.name].filter(Boolean).join(' · '))}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;" onclick="openImageLightbox(this.src,this.title)">`
   ).join('');
 
   return `
@@ -2196,6 +2203,7 @@ function _renderFelddatenBlock(g) {
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:10px;font-weight:700;color:var(--muted);">
       📱 FELDDATEN ${statusLabel ? '· ' + statusLabel : ''}
     </div>
+    ${feldDatenZeilen.length ? `<div style="font-size:11px;line-height:1.5;margin-bottom:6px;">${feldDatenZeilen.join('')}</div>` : ''}
     ${notizHtml}
     ${fotoHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${fotoHtml}</div>` : ''}
   </div>`;
@@ -2643,6 +2651,15 @@ function _restoreProjektStammdaten(daten) {
   syncProjektname();
 }
 
+// Erzeuger, die in der Feldapp als eigene Objekte auftauchen (vgl. exportFeldapp)
+function _feldErzeuger() {
+  const out = {};
+  for (const key of ['lwWp', 'geoThermie', 'pelletsKessel', 'heizhackschnitzel', 'fernwaerme']) {
+    if (window[key]) out[key] = window[key];
+  }
+  return out;
+}
+
 export function _buildProjectData() {
   const economicScenario = _captureEconomicScenario();
   return {
@@ -2767,6 +2784,10 @@ export function _buildProjectData() {
       })(),
       kabelTyp: document.getElementById('strom-kabel-typ')?.value || 'NAYY'
     },
+    // Befunde aus der Feldapp (Status, Notizen, Vor-Ort-Werte, Fotos, Vormerkung).
+    // Eigener Abschnitt statt Einzelfelder in den Gebäude-/Asset-Listen, damit
+    // sie beim Speichern nicht still wegfallen.
+    felddaten: captureFelddaten({ gebaeude: window.gebaeude, assets: ASSETS.items, erzeuger: _feldErzeuger() }),
     elektroAssets: (() => {
       const assetIdSet = new Set(ASSETS.items.map(a => a.id));
       return {
@@ -3807,6 +3828,7 @@ function _applyProjectData(project) {
       if (typeof window.clusterRenderLayers === 'function') window.clusterRenderLayers();
 
       redrawErzeugerIcons();
+      applyFelddaten(project.felddaten, { gebaeude: window.gebaeude, assets: ASSETS.items, erzeuger: _feldErzeuger() });
       _initYearSliderFromBaujahr();
       _invalidateStats();
       renderList();

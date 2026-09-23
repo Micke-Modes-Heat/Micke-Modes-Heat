@@ -39,30 +39,59 @@ alles offline auf dem Handy. Am Ende schickst du ein ZIP zurück ins Büro.
 ---
 
 ## 3. VOR der Abfahrt (solange du noch WLAN/Netz hast!)
-1. **Karte** öffnen, ins Einsatzgebiet zoomen.
-2. Oben auf das **🗺-Symbol** tippen → die Kartenkacheln werden für offline
-   gespeichert („✓ … Kacheln offline gespeichert").
-3. Bei mehreren Gebieten: jeweils hinzoomen und erneut 🗺.
+1. Reiter **Karte** öffnen, ins Einsatzgebiet zoomen.
+2. Oben rechts auf das **Wolken-Symbol** tippen → der sichtbare Kartenausschnitt
+   wird für offline gespeichert („Ausschnitt offline gespeichert").
+3. Bei mehreren Gebieten: jeweils hinzoomen und erneut tippen.
 
 > Ohne diesen Schritt bleibt die Karte im Funkloch leer.
 
 ---
 
 ## 4. Vor Ort arbeiten
-- **Gebäude finden:** auf der Karte (Name steht im Umriss) oder über die
-  **🔍 Suche**.
-- **Gebäude antippen** → unten öffnet sich die Detail-Karte.
-- **📷 Foto** aufnehmen, **Notiz** schreiben, **Status** setzen (z. B. erledigt).
+Unten gibt es vier Reiter: **Karte · Gebäude · Projekt · Export**.
+
+- **Gebäude finden:** auf der **Karte** (Name steht im Umriss) oder im Reiter
+  **Gebäude** über die Suche. Die Filter (Vorgemerkt, Offen, Besucht, Erledigt)
+  gibt es in beiden Ansichten.
+- **Farben auf der Karte:** grau = offen, gelb = besucht, grün = erledigt.
+  Ein dunkelgrüner Rahmen bzw. ★ heißt: im Büro für die Begehung vorgemerkt.
+- **Gebäude antippen** → unten öffnet sich die Detail-Karte:
+  - **Checkliste:** zeigt, was für diesen Gebäudetyp noch fehlt (z. B. Foto
+    Typenschild, Baujahr Heizung). Einen offenen Punkt antippen → die App
+    springt direkt zur Kamera bzw. zum Feld. „Erledigt" geht auch mit
+    offenen Punkten, die App fragt dann nach.
+  - **Status** setzen (Offen / Besucht / Erledigt),
+  - **Foto-Kategorie** vor dem Fotografieren wählen (Fassade, Heizraum,
+    Typenschild, Zähler, Mangel, Sonstiges). Gelb = fehlt noch laut
+    Checkliste. Nachträglich ändern: Foto antippen, unten Kategorie wählen.
+  - **Fotos:** „Foto" öffnet die Kamera-App für ein Bild, **„Serie"** nimmt
+    beliebig viele Bilder hintereinander auf (Auslöser drücken, am Ende
+    „Fertig"), „Galerie" übernimmt mehrere vorhandene Bilder auf einmal.
+    GPS-Daten im Foto werden entfernt. Die Fotoqualität (Standard / Hoch /
+    Maximal) stellst du im Reiter **Export** ein – „Hoch" ist voreingestellt,
+    „Maximal" lohnt sich für Typenschilder und Zählerstände,
+  - **Vor Ort erfasst:** Heizung aus der Liste wählen, Baujahr und Leistung
+    vom Typenschild, Jahresverbrauch oder Zählerstand (Datum wird automatisch
+    gesetzt). Nur Zahlen eintragen, ohne Einheit – rot markierte Felder
+    werden nicht gespeichert,
+  - **Notiz** schreiben (Mikrofon-Knopf für Spracheingabe).
 - Alles wird sofort lokal gespeichert. Du kannst offline arbeiten.
+- Reiter **Projekt:** Kennzahlen, Erzeugermix und Varianten aus dem Büro – nur
+  zum Nachschauen, gerechnet wird im Büro.
 
 ---
 
 ## 5. AM ENDE DES TAGES – Daten zurückschicken (wichtig!)
-1. Oben auf das **⬇️-Symbol** (Export) tippen.
-2. Es wird ein **ZIP** mit allen Fotos, Notizen und einem Bericht erstellt.
-3. **Teilen-Dialog** → an **WhatsApp/Mail an Andre** schicken.
-   *(Falls kein Teilen-Dialog kommt, liegt das ZIP in **Downloads** – von dort
-   verschicken.)*
+1. Reiter **Export** öffnen. Oben siehst du, wie viele Fotos, Notizen, Status
+   und Daten erfasst sind; die Zahl am Reiter zeigt, wie viele Objekte noch
+   nicht verschickt wurden.
+2. **„ZIP teilen"** tippen → es entsteht ein ZIP mit allen Fotos, Notizen,
+   Werten und einem Bericht.
+3. Im Teilen-Dialog **Dienst-Mail** (oder eure Dateiablage) wählen und an das
+   Büro schicken. Kein privater Messenger.
+   *(Kein Teilen-Dialog? „Als Datei speichern" – das ZIP liegt dann in
+   **Downloads**.)*
 
 > Mach den Export **am besten täglich**. Solange unexportierte Daten da sind,
 > warnt die App beim Schließen.
@@ -71,7 +100,7 @@ alles offline auf dem Handy. Am Ende schickst du ein ZIP zurück ins Büro.
 
 ## Goldene Regeln
 - ✅ Immer über das **App-Icon** (oder die gespeicherte Datei) öffnen – nie
-  direkt aus WhatsApp.
+  direkt aus einem Messenger.
 - ✅ **Vor** der Fahrt Karte cachen (Schritt 3).
 - ✅ **Täglich exportieren** und ans Büro schicken.
 - ❌ App-Daten **nicht** über „Projekt löschen" oder Browserdaten-Löschen

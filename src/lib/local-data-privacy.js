@@ -1,6 +1,6 @@
 // @ts-check
 const DATABASES=['micke-heat-autosave','feldapp-db'];
-const STORAGE_KEYS=['energiekarte_autosave','live-flow-mode','live-flow-mode-v2','slp_vorlagen','windGwaUrl'];
+const STORAGE_KEYS=['energiekarte_autosave','live-flow-mode','live-flow-mode-v2','slp_vorlagen','windGwaUrl','feldapp-fotoqualitaet','feldapp-sprache-cloud'];
 const CACHE_PREFIXES=['micke-heat','energieplanung','feldapp-'];
 
 /** @param {string} name */
