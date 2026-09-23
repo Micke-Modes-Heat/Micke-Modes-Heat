@@ -14994,9 +14994,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-09-22';
+  var d = '2026-09-23';
   if (d.indexOf('__') === 0) d = '';
-  var c = '83da6c9';
+  var c = '9685656';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -100282,6 +100282,14 @@ ${massTbl}
       herleitung:'Die Dachflächen werden — ertragsstärkste zuerst — belegt, bis im bestehenden Netz das erste Kabel oder der erste Trafo an seine Belastbarkeit stößt oder die Spannungsanhebung 3 % erreicht. Erlaubt sind nur EZA-Regler und Einspeisemanagement, keine Ertüchtigung.',
       bewertung: 'Schnell umsetzbar, ohne Tiefbau und Netzplanung. Lässt das Potenzial hinter den Engpässen ungenutzt; welche Ertüchtigung den Rest zu welchen Kosten erschließt, zeigt die Ansicht „Netzaufnahme (Bestand)".',
     },
+    // Nur vorhanden, wenn im Einlinienschema eine Belegung übernommen wurde (state.eigeneBelegung)
+    'netz-eigen': {
+      label: 'Bestandsnetz, eigene Belegung', farbe: '#80cbc4', icon: '✎',
+      frage:     'Was bringt die im Einlinienschema gewählte Verteilung?',
+      ziel:      'Selbst gewählte Belegung der Dächer im bestehenden Netz',
+      herleitung:'Belegung Dach für Dach von Hand im Einlinienschema festgelegt (Schieber je Dach bzw. Gesamtschieber). Beim Berechnen wird sie gegen das aktuelle Netzmodell geprüft: Kabel- und Trafo-Belastbarkeit sowie die Spannungsanhebung.',
+      bewertung: 'Zeigt eine planerisch gewünschte Verteilung — etwa gleichmäßig über alle Gebäude statt ertragsstärkste Dächer zuerst. Hält sie das Netz ein, entfallen wie bei „Bestandsnetz" die Netzbau-Positionen; sonst steht ein Warnhinweis an der Variante und Ertüchtigungskosten sind nicht enthalten.',
+    },
     'ev-opt': {
       label: 'Eigenverbrauchs-optimiert', farbe: '#42a5f5', icon: '⊙',
       frage:     'Welche Größe verbraucht das Quartier selbst?',
@@ -100312,6 +100320,19 @@ ${massTbl}
     },
   };
 
+  // Stufen des Ausbaufahrplans (Einlinienschema, 29) als eigene Varianten 'fahrplan-<k>'.
+  // Bewusst OHNE frage: sie stehen im Varianten-Vergleich, zählen aber nicht zu den
+  // kanonischen Varianten von Lesehilfe, Abbildungen und Gutachten (sonst 17 Varianten dort).
+  const PV_FAHRPLAN_INFO = {
+    label: 'Fahrplan Stufe', farbe: '#4fc3f7', icon: '▲',
+    ziel:      'Bestandsnetz plus die Netzertüchtigungen der Fahrplanstufen 1 bis k',
+    herleitung:'Ausbautreppe der Netzaufnahme: Ertüchtigungen nach Zuwachs je Euro, danach Befüllung der Dächer (ertragsstärkste zuerst) bis zur neuen Netzgrenze. Invest = kumulierte Ertüchtigung aller Stufen bis k.',
+    bewertung: 'Zeigt, wie sich Ertrag und Wirtschaftlichkeit Stufe für Stufe entwickeln — der Punkt, ab dem weitere Ertüchtigung sich nicht mehr trägt, ist das sinnvolle Ende des Fahrplans.',
+  };
+  const _pvVarInfo = id => PV_VARIANTEN_INFO[id] || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : null);
+  /** Farbe je Fahrplanstufe: von Türkis (Stufe 1) nach Dunkelblau (letzte Stufe). */
+  const _pvFahrplanFarbe = (k, n) => `hsl(${190 + Math.round(40 * (n > 1 ? (k - 1) / (n - 1) : 0))}, 70%, ${62 - Math.round(22 * (n > 1 ? (k - 1) / (n - 1) : 0))}%)`;
+
   // ══════════════════════════════════════════════════════════════════════════════
   // MODUL-STATE
   // ══════════════════════════════════════════════════════════════════════════════
@@ -100326,6 +100347,10 @@ ${massTbl}
       uBudgetPct: 3,       // zulässige Spannungsanhebung durch Einspeisung (VDE-AR-N 4105: 3 % NS, 4110: 2 % MS)
       uBudgetManuell: false, // false = uBudgetPct aus der Spannungsebene des Netzanschlusses (_pvUBudget)
       pvMaxKwpOverride: 0,        // 0 = aus Assets berechnen
+      eigeneBelegung: null,       // im Einlinienschema übernommene Belegung → Variante „netz-eigen"
+                                  //   { belegung: {dachId: kWp}, summeKwp, stand,
+                                  //     massnahmen: [{ elementId, label, investEUR }] }
+      fahrplanVarianten: null,    // Fahrplanstufen als Varianten 'fahrplan-<k>': { alle: bool, stufen: [k, …] }
       pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
       pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
       deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
@@ -100615,6 +100640,13 @@ ${massTbl}
       const kabelKosten = (en.laengeM || 0) * (en.preisPrM || 250);
       investEUR += kabelKosten + (en.schutzEUR || 5000);
       detail.push(`Erzeugungsnetz ${en.laengeM} m`);
+    }
+
+    // Gezielte Netzertüchtigung (Variante „Bestandsnetz, eigene Belegung" mit Maßnahmen
+    // aus dem Ausbaufahrplan des Einlinienschemas) — ersetzt dort den pauschalen Netzbau
+    if (opts.netzausbauEUR > 0) {
+      investEUR += opts.netzausbauEUR;
+      detail.push(opts.netzausbauLabel || 'Netzertüchtigung');
     }
 
     // Mehrkostenprinzip (anteilige Kosten geteilter Infrastruktur)
@@ -101056,7 +101088,8 @@ ${massTbl}
 
     const pvInvest  = pvKwp  * pvInvestPerKwp;
     const batInvest = batKwh * batInvestPerKwh;
-    const infra     = pvInfraKosten(pvKwp, pvErtragMwh, { ohneNetzbau: !!params.ohneNetzbau });
+    const infra     = pvInfraKosten(pvKwp, pvErtragMwh, { ohneNetzbau: !!params.ohneNetzbau,
+      netzausbauEUR: params.netzausbauEUR || 0, netzausbauLabel: params.netzausbauLabel || '' });
 
     const annPv  = annF(zins, pvLife  || 20);
     const annBat = annF(zins, batLife || 15);
@@ -101294,7 +101327,7 @@ ${massTbl}
     // ── Hilfsfunktion: eine kanonische Variante berechnen und pushen ──
     function berechne(id, pvKwp, batKwh, strategie, labelSuffix, paramsExtra) {
       if (pvKwp <= 0) return;
-      const info = PV_VARIANTEN_INFO[id];
+      const info = _pvVarInfo(id);
       const ertragMwh = pvKwp * spez / 1000;
       const sim  = pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, strategie, spotH);
       const wirt = pvWirtschaft(pvKwp, batKwh, sim, ertragMwh,
@@ -101350,6 +101383,77 @@ ${massTbl}
             + `Alternativ ohne Ertüchtigung: ${Math.round(ab.vollKwp)} kWp bauen und die Einspeisung auf die Netzgrenze abregeln — `
             + `${ab.vollVerlustPct.toFixed(1).replace('.', ',')} % Abregelung, ${Math.round(ab.vollNutzbarMwh - ab.wenigerMwh)} MWh/a Mehrertrag.`;
         }
+      }
+    }
+
+    // ═══ 1c) BESTANDSNETZ, EIGENE BELEGUNG — im Einlinienschema übernommen ═══════
+    //     Die Belegung wird gegen das aktuelle Netzmodell geprüft (Dächer können
+    //     inzwischen fehlen oder das Netz sich geändert haben). Netzbau-Positionen
+    //     entfallen nur, wenn sie das Netz tatsächlich einhält.
+    const eigen = state.eigeneBelegung;
+    if (eigen?.belegung) {
+      let pr = null;
+      try { pr = window.pvnaBelegungPruefen?.(eigen.belegung, eigen.massnahmen || []) || null; }
+      catch (err) { console.warn('[PV-Analyse] Prüfung der eigenen Belegung fehlgeschlagen:', err); }
+      const kwpRoh = pr ? pr.summeKwp : (eigen.summeKwp || 0);
+      const kwpE = maxKwp > 0 ? Math.min(kwpRoh, maxKwp) : kwpRoh;
+      // Maßnahmen aus dem Ausbaufahrplan: Invest nach dem aktuellen Modell (pr), sonst wie übernommen
+      const mass = pr?.massnahmen || eigen.massnahmen || [];
+      const netzausbauEUR = mass.reduce((t, m) => t + (+m.investEUR || 0), 0);
+      berechne('netz-eigen', kwpE, 0, 'none',
+        mass.length ? ` + ${mass.length === 1 ? '1 Ertüchtigung' : mass.length + ' Ertüchtigungen'}` : '',
+        { ohneNetzbau: !!pr?.zulaessig, netzausbauEUR,
+          netzausbauLabel: mass.length ? `Netzertüchtigung (${mass.length} Maßnahme${mass.length > 1 ? 'n' : ''})` : '' });
+      const eE = ergebnisse[ergebnisse.length - 1];
+      if (eE?.id === 'netz-eigen') {
+        eE.eigeneBelegung = pr;
+        eE.netzausbau = mass.length ? { investEUR: netzausbauEUR, massnahmen: mass } : null;
+        const h = [];
+        if (!pr) h.push('Netz nicht prüfbar (kein Trafo im Netzmodell) — Netzbau-Positionen sind enthalten.');
+        else if (!pr.zulaessig) {
+          h.push(`Die Belegung überlastet das Bestandsnetz (${[
+          pr.ueberlastet ? `${pr.ueberlastet} Kabel/Trafo über Belastbarkeit` : '',
+          pr.spannung ? `${pr.spannung} Knoten über ${String(pr.duGrenzePct).replace('.', ',')} % ΔU` : '',
+        ].filter(Boolean).join(', ')}) — Ertüchtigungskosten sind nicht eingerechnet.`);
+        }
+        if (mass.length) {
+          h.push(`Mit Netzertüchtigung für ${Math.round(netzausbauEUR / 1000)} T€: ${mass.map(m => m.label).join('; ')}.`);
+        }
+        if (pr?.massnahmenFehlend) h.push(`${pr.massnahmenFehlend} übernommene Maßnahme(n) sind im aktuellen Netzmodell nicht mehr nötig oder möglich und entfallen.`);
+        if (pr?.fehlend) h.push(`${pr.fehlend} Dach/Dächer der übernommenen Belegung gibt es im Netzmodell nicht mehr.`);
+        if (kwpE < kwpRoh - 0.5) h.push(`Auf das Anlagenpotenzial von ${Math.round(maxKwp)} kWp begrenzt.`);
+        if (h.length) eE.hinweis = h.join(' ');
+      }
+    }
+
+    // ═══ 1d) FAHRPLANSTUFEN — Bestandsnetz + Ertüchtigungen der Stufen 1…k ═══════
+    //     Stufen aus der aktuellen Ausbautreppe (pvnaFuerVariante hat eben neu gerechnet).
+    //     Invest = kumulierte Ertüchtigung; die pauschalen Netzbau-Positionen entfallen.
+    const fv = state.fahrplanVarianten;
+    if (fv && (fv.alle || fv.stufen?.length)) {
+      let stufen = null;
+      try { stufen = window.pvnaFahrplanStufen?.() || null; }
+      catch (err) { console.warn('[PV-Analyse] Fahrplanstufen nicht verfügbar:', err); }
+      const n = stufen?.length || 0;
+      for (const st of stufen || []) {
+        if (!fv.alle && !fv.stufen.includes(st.stufe)) continue;
+        const kwpS = maxKwp > 0 ? Math.min(st.summeKwp, maxKwp) : st.summeKwp;
+        berechne(`fahrplan-${st.stufe}`, kwpS, 0, 'none', ` ${st.stufe}`, {
+          ohneNetzbau: true, netzausbauEUR: st.kumInvestEUR,
+          netzausbauLabel: `Netzertüchtigung Fahrplan Stufe${st.stufe > 1 ? 'n 1–' : ' '}${st.stufe}`,
+        });
+        const eF = ergebnisse[ergebnisse.length - 1];
+        if (eF?.id !== `fahrplan-${st.stufe}`) continue;
+        eF.farbe = _pvFahrplanFarbe(st.stufe, n);
+        eF.fahrplan = st;
+        eF.hinweis = `Stufe ${st.stufe}${st.sammel ? ' (Sammelstufe)' : ''}: ${st.massnahmen.map(m => m.label).join('; ')} — `
+          + `+${Math.round(st.zuwachsKwp)} kWp für ${Math.round(st.investEUR / 1000)} T€ (${Math.round(st.eurProKwp || 0)} €/kWp); `
+          + `kumuliert ${st.anzahlKum} Maßnahme${st.anzahlKum > 1 ? 'n' : ''}, ${Math.round(st.kumInvestEUR / 1000)} T€.`
+          + (kwpS < st.summeKwp - 0.5 ? ` Auf das Anlagenpotenzial von ${Math.round(maxKwp)} kWp begrenzt.` : '');
+      }
+      if (!fv.alle) {
+        const fehlt = fv.stufen.filter(k => k > n);
+        if (fehlt.length) console.warn(`[PV-Analyse] Fahrplanstufe(n) ${fehlt.join(', ')} gibt es nicht mehr (Fahrplan hat ${n} Stufen).`);
       }
     }
 
@@ -101635,6 +101739,9 @@ ${massTbl}
     // window angesprochen, weil ein Import einen Zyklus 28 → 14b → 14a → 09d schlösse.
     { id:'netzaufnahme', gruppe:'ergebnis', label:'Netzaufnahme (Bestand)', el:'pva-netzaufnahme',
       ohneBerechnung:true, render:() => window.pvnaRender?.() },
+    // Einlinienschema der Variante „Bestandsnetz" mit Schiebern (29-pvna-schema.js, per window wie oben)
+    { id:'pvnaschema', gruppe:'ergebnis', label:'Einlinienschema (Bestandsnetz)', el:'pva-pvna-schema',
+      ohneBerechnung:true, render:() => window.pvnaSchemaRender?.() },
 
     { id:'abb1',  gruppe:'abb', nr:1,  label:'Optimierungsfläche',   el:'pva-chart-heatmap',
       render:(v, a) => renderOptSurface3D(a.demandH, a.pvProfile, a.napParams, a.params, v) },
@@ -101701,6 +101808,13 @@ ${massTbl}
     // zur Ansicht "Ausbau-Grenznutzen".
     const windEl = document.getElementById('pva-chart-wind-grenz');
     if (windEl) windEl.style.display = _pvaView === 'abb2' ? 'block' : 'none';
+    // Das Einlinienschema (29) kann die Navigation ausklappen — jede andere Ansicht
+    // bekommt das normale Raster zurück (das Schema setzt es beim Zeichnen selbst).
+    const raster = document.getElementById('pva-ergebnisse');
+    if (raster && _pvaView !== 'pvnaschema') {
+      raster.style.gridTemplateColumns = '224px minmax(0,1fr)';
+      if (raster.firstElementChild) raster.firstElementChild.style.display = 'flex';
+    }
     // Aktive Ansicht zeichnen, wenn nötig
     const view = PVA_VIEWS.find(v => v.id === _pvaView);
     const leer = document.getElementById('pva-leer-hinweis');
@@ -102325,6 +102439,7 @@ ${massTbl}
       <div id="pva-herleitung"              style="display:none;"></div>
       <div id="pva-rechenweg"               style="display:none;"></div>
       <div id="pva-netzaufnahme"            style="display:none;"></div>
+      <div id="pva-pvna-schema"             style="display:none;"></div>
       <div id="pva-chart-heatmap"           style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-grenznutzen"       style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-wind-grenz"        style="overflow:hidden;"></div>
@@ -102672,7 +102787,8 @@ ${massTbl}
         (grund ? ` Begrenzt durch: ${grund}.` : '') +
         (d.schritte?.length
           ? ` Die Stufen zeigen, was Ertüchtigungen zusätzlich erschließen — bis ${num(d.mitErtuechtigungKwp)} kWp für ${num(d.investEUR / 1000)} T€.`
-          : ' Keine Ertüchtigung nötig oder möglich.')));
+          : ' Keine Ertüchtigung nötig oder möglich.')
+        + ` <a data-click="pvaSetView('pvnaschema')" style="color:var(--accent);cursor:pointer;">Im Einlinienschema ansehen →</a>`));
     }
 
     el.innerHTML = `
@@ -106351,7 +106467,7 @@ ${massTbl}
     for (const k of _PV_SPEICHER_FELDER) daten[k] = s[k];
     daten.ergebnisse = (s.ergebnisse || []).map(e => {
       const kopie = { ...e };
-      delete kopie.info;   // Variantenbeschreibung kommt beim Laden aus PV_VARIANTEN_INFO
+      delete kopie.info;   // Variantenbeschreibung kommt beim Laden aus PV_VARIANTEN_INFO (_pvVarInfo)
       return kopie;
     });
     daten.resilienz = {
@@ -106376,8 +106492,8 @@ ${massTbl}
     Object.assign(s, _pvStandardZustand());
     for (const k of _PV_SPEICHER_FELDER) if (d[k] != null) s[k] = d[k];
     s.ergebnisse = (d.ergebnisse || [])
-      .filter(e => PV_VARIANTEN_INFO[e.id])
-      .map(e => ({ ...e, info: PV_VARIANTEN_INFO[e.id] }));
+      .filter(e => _pvVarInfo(e.id))
+      .map(e => ({ ...e, info: _pvVarInfo(e.id) }));
     if (!s.ergebnisse.length) { s.berechnet = false; s.stale = false; }
     s.napMaxEinspKw = window.elNapMaxEinspKw ?? 0;
     s.napMaxBezugKw = window.elNapMaxBezugKw ?? 0;
@@ -111346,6 +111462,82 @@ ${massTbl}
   }
 
   /* ══════════════════════════════════════════════════════════════════════════
+   * 3g2) RENDERER — „Einlinienschema Bestandsnetz"
+   *
+   * Für Kapitel 3.4.2: das Einlinienschema der Netzaufnahme (Trafo → Kabel →
+   * Knoten → Dächer) mit Auslastung, Spannungsanhebung und Engpässen. Die
+   * Geometrie kommt fertig als Zeichenliste aus src/29-pvna-schema.js
+   * (window.pvnaSchemaDruck); hier werden nur die Farbrollen im Gutachten-Stil
+   * aufgelöst und das Blatt (Kopf, Legende, Kennzahlen) drumherum gebaut.
+   * cfg.schema = { breite, hoehe, zeichnung:[{t:'l'|'c'|'r'|'t', …}] }
+   * ═══════════════════════════════════════════════════════════════════════ */
+  function ggRenderEinlinienschema(cfg, T = GG_THEME) {
+    const sch = cfg.schema;
+    const S0 = T.sheet;
+    const verfuegbar = T.width - 2 * S0.padX;
+    // Maßstab: Schema-Einheiten sind Bildschirm-Pixel (Schrift ~9 px) → für Word etwas größer,
+    // bei breiten Netzen so weit verkleinert, dass alles auf die Textbreite passt.
+    const s = sch ? Math.min(1.3, verfuegbar / sch.breite) : 1;
+    const legendeH = 40;
+    const plotH = sch ? Math.max(160, sch.hoehe * s + legendeH + 16) : 200;
+    const T2 = { ...T, sheet: { ...S0, plotH } };
+    const G = ggSheetGeometry(T2, cfg);
+    const S = G.S, W = G.W;
+    const txt = (x, y, t, o) => ggTxt(T2, S, x, y, t, o);
+    let out = ggSheetHeader(cfg, T2, G);
+
+    if (!sch) {
+      out += `<rect x="${S.padX}" y="${G.plotY}" width="${W - 2 * S.padX}" height="${G.plotH}" fill="${T.neutral.cardBg}"/>`;
+      out += txt(W / 2, G.plotY + G.plotH / 2, cfg.leer || 'Keine Daten vorhanden', { anchor: 'middle', size: 13, fill: T.text.faint });
+      out += ggSheetKpiFooter(cfg, T2, G);
+      return ggFinishSvg(out, W, G.height);
+    }
+
+    const farbe = {
+      ok: T.accents.gruen, warn: T.energy.gas, over: T.energy.waerme, text: T.text.strong,
+      muted: T.text.muted, faint: T.text.faint, akzent: T.energy.strom, papier: T.neutral.cardBg, none: 'none',
+    };
+    const f = k => farbe[k] || k || 'none';
+    out += `<rect x="${S.padX}" y="${G.plotY}" width="${W - 2 * S.padX}" height="${G.plotH}" fill="${T.neutral.cardBg}" stroke="${T.line}"/>`;
+    const x0 = S.padX + (verfuegbar - sch.breite * s) / 2;
+    let g = '';
+    for (const e of sch.zeichnung || []) {
+      if (e.t === 'l') {
+        g += `<line x1="${gR(e.x1)}" y1="${gR(e.y1)}" x2="${gR(e.x2)}" y2="${gR(e.y2)}" stroke="${f(e.f)}" stroke-width="${e.w}"`
+          + `${e.dash ? ` stroke-dasharray="${e.dash}"` : ''}${e.o != null ? ` opacity="${e.o}"` : ''}${e.cap ? ` stroke-linecap="${e.cap}"` : ''}/>`;
+      } else if (e.t === 'c') {
+        g += `<circle cx="${gR(e.cx)}" cy="${gR(e.cy)}" r="${e.r}" fill="${f(e.fill)}"${e.fo != null ? ` fill-opacity="${e.fo}"` : ''}`
+          + `${e.stroke ? ` stroke="${f(e.stroke)}" stroke-width="${e.sw || 1}"` : ''}/>`;
+      } else if (e.t === 'r') {
+        g += `<rect x="${gR(e.x)}" y="${gR(e.y)}" width="${gR(e.w)}" height="${gR(e.h)}"${e.rx ? ` rx="${e.rx}"` : ''} fill="${f(e.fill)}"`
+          + `${e.fo != null ? ` fill-opacity="${e.fo}"` : ''}${e.stroke ? ` stroke="${f(e.stroke)}" stroke-width="${e.sw || 1}"` : ''}/>`;
+      } else if (e.t === 't') {
+        g += ggTxt(T2, S, e.x, e.y, e.s, { size: e.size || 9, anchor: e.anchor, mono: e.mono, weight: e.weight, fill: f(e.f || 'text') });
+      }
+    }
+    out += `<g transform="translate(${gR(x0)} ${gR(G.plotY + 10)}) scale(${gR(s * 1000) / 1000})">${g}</g>`;
+
+    // Legende
+    const ly = G.plotY + G.plotH - legendeH + 14;
+    let lx = S.padX + 14;
+    const eintrag = (sym, label) => {
+      out += sym(lx, ly);
+      out += txt(lx + 20, ly + 4, label, { size: S.fsLeg, fill: T.text.muted });
+      lx += 26 + ggEstW(label, S.fsLeg) + 14;
+    };
+    out += `<line x1="${S.padX}" y1="${gR(ly - 14)}" x2="${W - S.padX}" y2="${gR(ly - 14)}" stroke="${T.line}"/>`;
+    eintrag((x, y) => `<line x1="${x}" y1="${y}" x2="${x + 14}" y2="${y}" stroke="${farbe.ok}" stroke-width="3"/>`, '< 70 %');
+    eintrag((x, y) => `<line x1="${x}" y1="${y}" x2="${x + 14}" y2="${y}" stroke="${farbe.warn}" stroke-width="3"/>`, '70–100 %');
+    eintrag((x, y) => `<line x1="${x}" y1="${y}" x2="${x + 14}" y2="${y}" stroke="${farbe.over}" stroke-width="3"/>`, '> 100 % Auslastung bzw. ΔU-Grenze');
+    eintrag((x, y) => `<circle cx="${x + 7}" cy="${y}" r="6" fill="${farbe.over}" fill-opacity="0.15" stroke="${farbe.over}"/>`, 'Engpass');
+    eintrag((x, y) => `<line x1="${x}" y1="${y}" x2="${x + 14}" y2="${y}" stroke="${farbe.faint}" stroke-width="2" stroke-dasharray="4 3"/>`, 'Querschnitt nicht erfasst');
+    out += txt(S.padX + 14, ly + 20, cfg.fussnote || '', { size: S.fsLeg - 1, fill: T.text.faint });
+
+    out += ggSheetKpiFooter(cfg, T2, G);
+    return ggFinishSvg(out, W, G.height);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
    * 3h) RENDERER — „Rückspeise-Ampel": Säule je Variante gegen Grenzlinien
    *
    * Für Kapitel 3.4.2: die gleichzeitige Rückspeiseleistung am Netzanschluss-
@@ -111444,7 +111636,7 @@ ${massTbl}
     return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage);
   }
   /** Kurzform der Variantenlabel für Achsen/Kategorien (voller Name steht in Tabellen). */
-  const GG_PV_KURZ = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
+  const GG_PV_KURZ = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz (eigen)', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
                         'autarkie': 'Autarkie', 'max-pv': 'Max. PV-Ausbau' };
   const GG_RES_MODE_LBL = { 'gen': 'Nur Notstrom', 'bat-gen': 'Speicher + Notstrom',
                              'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'Nur PV + Speicher' };
@@ -111467,7 +111659,7 @@ ${massTbl}
    * window._pvAnalyse), nie aus den aktuellen Eingabefeldern — sonst zeigten Text
    * und Abbildungen verschiedene Stände. Wie die Abbildungen bewusst ohne Euro-Werte
    * und ohne „beste" Variante: bewertet wird in 3.5. */
-  const GG_PV_LANG = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'ev-opt': 'Eigenverbrauchs-optimiert', 'wirt-opt': 'Wirtschaftlich optimiert',
+  const GG_PV_LANG = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz, eigene Belegung', 'ev-opt': 'Eigenverbrauchs-optimiert', 'wirt-opt': 'Wirtschaftlich optimiert',
                        'autarkie': 'Autarkie-optimiert', 'max-pv': 'Maximaler PV-Ausbau' };
   const GG_PV_KAPITEL = '3.4.2 PV-Anlage und Batteriespeicher';
   const GG_ZAHLWORT = ['keine', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht'];
@@ -111555,9 +111747,25 @@ ${massTbl}
         + `zulässige Spannungsanhebung von ${ggPvFeld(na?.eingaben?.duGrenzePct, 'ΔU-Grenze', 1)} %; belegt werden die `
         + `ertragsstärksten Dachflächen zuerst. Vorausgesetzt sind lediglich Regelungstechnik (EZA-Regler) und `
         + `Einspeisemanagement.`
+        + (na?.eingaben?.ersatzQs > 0
+          ? ` Für Kabel ohne erfassten Querschnitt ist vorsichtig ein Querschnitt von ${ggNum(na.eingaben.ersatzQs)} mm² (NAYY) angenommen.`
+          : '')
         + (mehr > 0.5
           ? ` Weitere ${ggPvFeld(mehr, 'kWp nach Ertüchtigung')} kWp ließen sich erst nach einer Ertüchtigung des Netzes anschließen.`
           : ''));
+    }
+    if (b && zeige('netz-eigen')) {             // nur wenn übernommen — nicht in der Vorlage ohne Rechenlauf
+      const ne = ggPvVariante('netz-eigen');
+      const pr = ne?.eigeneBelegung;
+      const mass = ne?.netzausbau?.massnahmen || [];
+      absaetze.push(`${label('netz-eigen')}: ${kwp('netz-eigen', 'kWp eigene Belegung')} kWp ohne Speicher, verteilt nach einer `
+        + `planerisch festgelegten Belegung der einzelnen Dachflächen statt nach dem Ertrag.`
+        + (mass.length ? ` Vorausgesetzt ${mass.length === 1 ? 'ist folgende Ertüchtigung' : 'sind folgende Ertüchtigungen'} des Netzes: `
+          + `${gEsc(mass.map(m => m.label).join('; '))}.` : '')
+        + (pr ? (pr.zulaessig
+          ? (mass.length ? ` Mit diesen Maßnahmen nimmt das Netz die Verteilung auf.` : ` Auch diese Verteilung nimmt das bestehende Netz ohne Ertüchtigung auf.`)
+          : ` Diese Verteilung überschreitet im bestehenden Netz die Belastbarkeit einzelner Betriebsmittel oder die zulässige `
+            + `Spannungsanhebung; sie setzt eine Ertüchtigung voraus, deren Kosten hier nicht enthalten sind.`) : ''));
     }
     if (zeige('ev-opt')) {
       const ev = ggPvVariante('ev-opt');
@@ -111749,6 +111957,52 @@ ${massTbl}
         + `abgebildet, die Rückspeiseleistungen sind deshalb eher zu hoch als zu niedrig angesetzt. Alle `
         + `Berechnungsannahmen stehen in Anlage ${ggTextFeld('', 'Nr. Anlage Berechnungsannahmen')}.`,
     ], T);
+  }
+
+  /** Figur „Einlinienschema Bestandsnetz" — quelle 'variante' oder 'eigene' (übernommene Belegung). */
+  function ggEinlinienFigur(id, reihe, quelle, titel, hinweis) {
+    return {
+      id, autoSync: true, reihe, kapitel: GG_PV_KAPITEL, titel, datei: id, hinweis,
+      render: cfg => ggRenderEinlinienschema(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten', titel, ort: '',
+        meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+        leer: 'Kein Netzmodell mit Trafo und PV-Flächen — in ☀ PV-Analyse „Netzaufnahme (Bestand)" berechnen.',
+        schema: null, fussnote: '', kpiLinks: [], kpiRechts: [],
+      },
+      ausProjekt(cfg) {
+        cfg.ort = cfg.ort || ggLiegenschaft();
+        cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+        ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+        if (quelle === 'eigene' && !window._pvAnalyse?.eigeneBelegung?.belegung) {
+          cfg.schema = null; cfg.kpiLinks = []; cfg.kpiRechts = []; cfg.fussnote = '';
+          cfg.leer = 'Keine eigene Belegung übernommen — im Einlinienschema „Als Variante übernehmen".';
+          return '⚠ Keine eigene Belegung übernommen.';
+        }
+        const d = window.pvnaSchemaDruck?.({ quelle });
+        if (!d) {
+          cfg.schema = null; cfg.kpiLinks = []; cfg.kpiRechts = []; cfg.fussnote = '';
+          return '⚠ Kein Netzmodell mit Trafo und PV-Flächen.';
+        }
+        const k = d.kennzahlen;
+        cfg.schema = { breite: d.breite, hoehe: d.hoehe, zeichnung: d.zeichnung };
+        cfg.kpiLinks = [
+          { wert: ggNum(k.summeKwp) + ' kWp', label: quelle === 'eigene' ? 'Belegung (eigene)' : 'Aufnahme ohne Ertüchtigung' },
+          { wert: ggNum(k.anteilPct) + ' %', label: `des Flächenpotenzials von ${ggNum(k.potenzialKwp)} kWp` },
+        ];
+        cfg.kpiRechts = [
+          { wert: ggNum(k.maxTrafoPct) + ' %', label: 'höchste Trafo-Auslastung' },
+          { wert: ggNum(k.maxDuPct, 2) + ' %', label: `höchste Spannungsanhebung (Grenze ${ggNum(k.duGrenzePct, 1)} %)`,
+            highlight: !k.zulaessig },
+        ];
+        cfg.fussnote = `${d.belegungLabel} · Lastfall: volle Einspeisung ${ggNum(k.einspFaktor, 2)} kW/kWp ohne gleichzeitige Last, `
+          + `Rechenjahr ${k.jahr}`
+          + (k.unbekannteQs ? ` · ${k.unbekannteQs} Kabel ohne erfassten Querschnitt${k.ersatzQs ? ` (angenommen ${k.ersatzQs} mm² NAYY)` : ' (ohne Grenze gerechnet)'}` : '')
+          + (k.massnahmen ? ` · ${k.massnahmen} Ertüchtigung${k.massnahmen > 1 ? 'en' : ''} umgesetzt` : '');
+        return `✓ Einlinienschema übernommen: ${ggNum(k.summeKwp)} kWp, ${k.engpaesse} Engpass${k.engpaesse === 1 ? '' : 'stellen'}`
+          + (k.zulaessig ? '.' : ' — Netz hält bei dieser Belegung nicht.');
+      },
+    };
   }
 
   function ggPvFiguren() {
@@ -112040,6 +112294,15 @@ ${massTbl}
           return `✓ ${panels.length} Herleitungen aus der PV-Analyse übernommen.`;
         },
       },
+
+      // ── Einlinienschema Bestandsnetz (Kapitel 3.4.2) ──────────────────────
+      ggEinlinienFigur('pv-einlinienschema', 25, 'variante', 'Einlinienschema Bestandsnetz',
+        'Wie viel PV das bestehende Netz ohne Ertüchtigung aufnimmt und wo es begrenzt: Auslastung der Kabel und '
+        + 'Transformatoren, Spannungsanhebung an den Knoten, Engpässe markiert. Belegung der Variante „Bestandsnetz". '
+        + 'Grundlage: ☀ PV-Analyse › Netzaufnahme (Bestand) / Einlinienschema.'),
+      ggEinlinienFigur('pv-einlinienschema-eigen', 26, 'eigene', 'Einlinienschema Bestandsnetz — eigene Belegung',
+        'Wie oben, aber mit der im Einlinienschema übernommenen eigenen Belegung (samt gewählter Ertüchtigungen). '
+        + 'Nur sinnvoll, wenn dort „Als Variante übernehmen" genutzt wurde.'),
 
       // ── Rückspeisung & Netzverträglichkeit (Kapitel 3.4.2) ────────────────
       {
@@ -114313,6 +114576,7 @@ ${massTbl}
     ggLastgangKennzahlen: ggLastgangKennzahlen,
     ggMountEinzelansicht: ggMountEinzelansicht,
     ggRenderBalken: ggRenderBalken,
+    ggRenderEinlinienschema: ggRenderEinlinienschema,
     ggRenderFigurFuerDokument: ggRenderFigurFuerDokument,
     ggRenderGanglinie: ggRenderGanglinie,
     ggRenderHeatmap: ggRenderHeatmap,
@@ -192726,7 +192990,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     ${_reserveKurve()}
     ${_zeitstrahl(res, gezeigt)}
     ${_bestandsmaengel(bestand)}
-    ${_massnahmenListe()}
+    ${_massnahmenListe$1()}
     ${_aufloesung(res)}`;
   }
 
@@ -192875,7 +193139,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   }
 
   // Abgeleitete Maßnahmen mit Jahr und Kosten
-  function _massnahmenListe() {
+  function _massnahmenListe$1() {
     if (!_massnahmen || (!_massnahmen.items.length && !_massnahmen.ungeloest?.length)) {
       return `<div style="font-size:10px;color:var(--muted);padding:8px;background:var(--surface2);border-radius:6px;">
       Noch keine Maßnahmen abgeleitet — „⚙ Maßnahmen vorschlagen" wählt je Engpass die
@@ -199596,7 +199860,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
 
   // ── Übersicht ────────────────────────────────────────────────────────────────
 
-  const _kachel$2 = (label, wert, einheit, stufe = null, tip = '') => `
+  const _kachel$3 = (label, wert, einheit, stufe = null, tip = '') => `
   <div class="eb-kachel${stufe != null ? ' is-' + AMPEL[stufe] : ''}"${tip ? ` title="${_esc$1(tip)}"` : ''}>
     <div class="eb-kachel-label">${label}</div>
     <div class="eb-kachel-wert">${wert}<span class="eb-kachel-einheit">${einheit}</span></div>
@@ -199605,21 +199869,21 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
   function _viewUebersicht() {
     const k = _modell.kpi;
     const kacheln = [
-      _kachel$2('Anschlussleistung Verbrauch', _num$1(k.verbrauchKw, 0), ' kW', null,
+      _kachel$3('Anschlussleistung Verbrauch', _num$1(k.verbrauchKw, 0), ' kW', null,
         'Summe der Anschlussleistungen aller gerechneten Verbraucher — ohne Gleichzeitigkeit.'),
-      _kachel$2('Einspeiseleistung', _num$1(k.erzeugungKw, 0), ' kW', null,
+      _kachel$3('Einspeiseleistung', _num$1(k.erzeugungKw, 0), ' kW', null,
         'Summe der Erzeugerleistungen (PV mit 0,8 × kWp, Wind und KWK mit Nennleistung).'),
-      _kachel$2('Maßgebende Netzlast', _num$1(k.massgebendKw, 0), ' kW', null,
+      _kachel$3('Maßgebende Netzlast', _num$1(k.massgebendKw, 0), ' kW', null,
         'Worst Case aus Bezug und Rückspeisung — die Richtung, die das Netz stärker belastet.'),
-      _kachel$2('Trafo-Auslastung max', _num$1(k.maxTrafo, 0), ' %', _stufe(k.maxTrafo, 80, 100)),
-      _kachel$2('Kabel-Auslastung max', _num$1(k.maxKabel, 0), ' %', _stufe(k.maxKabel, 80, 100)),
-      _kachel$2('Spannungsfall max', _num$1(k.maxDu, 2), ' %', _stufe(k.maxDu, MAX_DELTA_U_PCT * 2 / 3, MAX_DELTA_U_PCT),
+      _kachel$3('Trafo-Auslastung max', _num$1(k.maxTrafo, 0), ' %', _stufe(k.maxTrafo, 80, 100)),
+      _kachel$3('Kabel-Auslastung max', _num$1(k.maxKabel, 0), ' %', _stufe(k.maxKabel, 80, 100)),
+      _kachel$3('Spannungsfall max', _num$1(k.maxDu, 2), ' %', _stufe(k.maxDu, MAX_DELTA_U_PCT * 2 / 3, MAX_DELTA_U_PCT),
         'Größter Betrag über alle Pfade. Ein negativer Einzelwert in den Tabellen ist eine Spannungsanhebung durch Rückspeisung — sie zählt genauso gegen das Limit.'),
-      _kachel$2('Trassenlänge',
+      _kachel$3('Trassenlänge',
         k.laengeGesamt >= 1000 ? _num$1(k.laengeGesamt / 1000, 2) : _num$1(k.laengeGesamt, 0),
         k.laengeGesamt >= 1000 ? ' km' : ' m', null,
         `Davon MS: ${_laenge(k.laengeMs)} · NS: ${_laenge(k.laengeNs)}`),
-      _kachel$2('Betriebsmittel', k.nAssets, ` Stk · ${k.nKabel} Kabel`),
+      _kachel$3('Betriebsmittel', k.nAssets, ` Stk · ${k.nKabel} Kabel`),
     ].join('');
 
     return `
@@ -199885,9 +200149,9 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       <tfoot><tr><td>Investition gesamt</td><td class="eb-num">${_eur(k.investGesamt || 0)}</td><td></td></tr></tfoot>
     </table>
     <div class="eb-kacheln" style="margin-top:8px;">
-      ${_kachel$2('Annuität', _eur(k.annuitaet || 0), '', null, 'Kapitaldienst + 1 % Instandhaltung nach VDI 2067')}
-      ${_kachel$2('Spezifisch je kW', spezKw != null ? _eur(spezKw) : '—', '', null, 'Investition je kW maßgebender Netzlast')}
-      ${_kachel$2('Spezifisch je Trassenmeter', spezM != null ? _eur(spezM) : '—', '')}
+      ${_kachel$3('Annuität', _eur(k.annuitaet || 0), '', null, 'Kapitaldienst + 1 % Instandhaltung nach VDI 2067')}
+      ${_kachel$3('Spezifisch je kW', spezKw != null ? _eur(spezKw) : '—', '', null, 'Investition je kW maßgebender Netzlast')}
+      ${_kachel$3('Spezifisch je Trassenmeter', spezM != null ? _eur(spezM) : '—', '')}
     </div>`;
     })();
 
@@ -206034,7 +206298,7 @@ ${teile.join('\n')}
 
   // ── Darstellung ─────────────────────────────────────────────────────────────
 
-  const _kachel$1 = (label, wert, farbe, titel = '') =>
+  const _kachel$2 = (label, wert, farbe, titel = '') =>
     `<div title="${escHtml(titel)}" style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);
         border-radius:5px;padding:5px 7px;">
      <div style="font-size:8.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(label)}</div>
@@ -206098,10 +206362,10 @@ ${teile.join('\n')}
     const h = k.herkunft;
     return `
     <div style="display:flex;gap:5px;margin-bottom:8px;">
-      ${_kachel$1('Funktionen', k.funktionen, GRUEN)}
-      ${_kachel$1('Offene Punkte', k.offeneAnzahl, k.offeneAnzahl ? '#ffa726' : GRUEN, 'Punkte für die Rückfrage an den Empfänger')}
-      ${_kachel$1('Szenarien offen', k.szenarienOffen || '—', k.szenarienOffen ? '#ffa726' : GRUEN, 'Szenarien ohne Angabe zur Relevanz')}
-      ${_kachel$1('Anteil vorgegeben', k.anteilVorgegebenPct == null ? '—' : k.anteilVorgegebenPct + ' %', '#42a5f5',
+      ${_kachel$2('Funktionen', k.funktionen, GRUEN)}
+      ${_kachel$2('Offene Punkte', k.offeneAnzahl, k.offeneAnzahl ? '#ffa726' : GRUEN, 'Punkte für die Rückfrage an den Empfänger')}
+      ${_kachel$2('Szenarien offen', k.szenarienOffen || '—', k.szenarienOffen ? '#ffa726' : GRUEN, 'Szenarien ohne Angabe zur Relevanz')}
+      ${_kachel$2('Anteil vorgegeben', k.anteilVorgegebenPct == null ? '—' : k.anteilVorgegebenPct + ' %', '#42a5f5',
     `${h.vorgegeben}× vorgegeben, ${h['Einschätzung Nutzer']}× Einschätzung Nutzer, ${h.unbekannt}× unbekannt, ${h.offen}× ohne Angabe`)}
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:10px;">
@@ -206572,21 +206836,47 @@ ${teile.join('\n')}
       if (!offen.length) break;
       let best = null;
       for (const kand of offen) {
-        // Bündel: Kandidat + offene Maßnahmen auf dem Weg zum Trafo
+        // Zwei Kandidaten je Maßnahme: allein, und als Bündel mit den offenen Maßnahmen
+        // auf dem Weg zum Trafo (ein neues Hausanschlusskabel nützt nichts, solange der
+        // Trafo davor voll ist). Das Bündel allein würde vorgelagerte Maßnahmen auch
+        // dann mitkaufen, wenn sie für den Zuwachs gar nicht nötig sind.
         const buendel = new Set();
         for (const pid of _pfadVon(kand.id, elById)) {
           const pe = elById.get(pid);
           if (pe?.massnahme && !umgesetzt.has(pid)) buendel.add(pid);
         }
-        const ids = new Set([...umgesetzt, ...buendel]);
-        const res = pvnaFuellen({ ...eingabe, elemente: anwenden(basisEl, ids) });
-        const zuwachs = res.summeKwp - aktuell.summeKwp;
-        if (zuwachs <= 1e-6) continue;
-        const invest = [...buendel].reduce((s, id) => s + (+elById.get(id).massnahme.investEUR || 0), 0);
-        const guete = invest > 0 ? zuwachs / invest : Infinity;
-        if (!best || guete > best.guete + EPS
-            || (Math.abs(guete - best.guete) <= EPS && zuwachs > best.zuwachs)) {
-          best = { buendel, res, zuwachs, invest, guete };
+        const varianten = buendel.size > 1 ? [new Set([kand.id]), buendel] : [buendel];
+        for (const b of varianten) {
+          const ids = new Set([...umgesetzt, ...b]);
+          const res = pvnaFuellen({ ...eingabe, elemente: anwenden(basisEl, ids) });
+          const zuwachs = res.summeKwp - aktuell.summeKwp;
+          if (zuwachs <= 1e-6) continue;
+          const invest = [...b].reduce((s, id) => s + (+elById.get(id).massnahme.investEUR || 0), 0);
+          const guete = invest > 0 ? zuwachs / invest : Infinity;
+          if (!best || guete > best.guete + EPS
+              || (Math.abs(guete - best.guete) <= EPS && zuwachs > best.zuwachs)) {
+            best = { buendel: b, res, zuwachs, invest, guete };
+          }
+        }
+      }
+      // Sammelstufe: Bringt keine Maßnahme (bzw. kein Pfad-Bündel) allein etwas, wirken
+      // mehrere Engpässe vielleicht erst gemeinsam — z. B. Trafo und Abgangskabel auf
+      // verschiedenen Pfaden, oder Strom- und Spannungsgrenze zugleich. Dann alle offenen
+      // Maßnahmen zusammen umsetzen und anschließend jede wieder herausnehmen, die für
+      // den Zuwachs nicht gebraucht wird (teuerste zuerst).
+      if (!best && offen.length > 1) {
+        const invest = id => +elById.get(id).massnahme.investEUR || 0;
+        const fuellen = b => pvnaFuellen({ ...eingabe, elemente: anwenden(basisEl, new Set([...umgesetzt, ...b])) });
+        let b = new Set(offen.map(e => e.id));
+        let res = fuellen(b);
+        if (res.summeKwp - aktuell.summeKwp > 1e-6) {
+          for (const id of [...b].sort((x, y) => invest(y) - invest(x))) {
+            const ohne = new Set([...b].filter(x => x !== id));
+            const r2 = fuellen(ohne);
+            if (r2.summeKwp >= res.summeKwp - 1e-6) { b = ohne; res = r2; }
+          }
+          const inv = [...b].reduce((t, id) => t + invest(id), 0);
+          best = { buendel: b, res, zuwachs: res.summeKwp - aktuell.summeKwp, invest: inv, sammel: true };
         }
       }
       if (!best) break;
@@ -206603,6 +206893,7 @@ ${teile.join('\n')}
         summeKwp: aktuell.summeKwp,
         kumInvestEUR: kumInvest,
         eurProKwp: best.zuwachs > 0 ? best.invest / best.zuwachs : null,
+        sammel: !!best.sammel,
       });
     }
 
@@ -206650,6 +206941,111 @@ ${teile.join('\n')}
     };
   }
 
+  /**
+   * Lastfluss bei frei gewählter Belegung — für das interaktive Einlinienschema.
+   *
+   * belegung: Map<dachId, kWp> (fehlende Dächer = 0). Keine Grenzen, keine
+   * Befüllung: gerechnet wird genau die vorgegebene Belegung.
+   *
+   * Rückgabe: {
+   *   flussKw:       Map<elementId, kW>       (inkl. Vorlast)
+   *   auslastungPct: Map<elementId, %>        (0 bei unbegrenzten Elementen)
+   *   duPct:         Map<elementId, %>        Spannungsanhebung am Knoten hinter dem Element
+   *   ueberlastet:   [elementId]              Fluss > Kapazität
+   *   spannungsverletzt: [elementId]          ΔU > Grenze
+   *   summeKwp, maxAuslastungPct, maxDuPct, zulaessig
+   * }
+   */
+  function pvnaLastfluss(eingabe, belegung) {
+    const { daecher = [], duGrenzePct = 3 } = eingabe || {};
+    const el = _elementMap(eingabe?.elemente);
+    const bel = belegung instanceof Map ? belegung : new Map(Object.entries(belegung || {}));
+    const fluss = new Map([...el.keys()].map(id => [id, 0]));
+    const add = (startId, kw) => {
+      for (const pid of _pfadVon(startId, el)) fluss.set(pid, fluss.get(pid) + kw);
+    };
+    for (const [id, e] of el) if (+e.vorlastKw > 0) add(id, +e.vorlastKw);
+    let summeKwp = 0;
+    for (const d of daecher) {
+      const kwp = Math.max(0, +bel.get(d.id) || 0);
+      summeKwp += kwp;
+      if (kwp > 0 && el.has(d.elementId)) add(d.elementId, (d.einspFaktor > 0 ? d.einspFaktor : 0.8) * kwp);
+    }
+    // ΔU je Knoten: Summe über den Pfad — von oben nach unten mit Merkliste
+    const duPct = new Map();
+    const du = id => {
+      if (duPct.has(id)) return duPct.get(id);
+      const e = el.get(id);
+      duPct.set(id, 0);                                     // Zyklusschutz
+      const eigen = (+e.duProKwPct || 0) * fluss.get(id);
+      const v = eigen + (e.parentId != null && el.has(e.parentId) ? du(e.parentId) : 0);
+      duPct.set(id, v);
+      return v;
+    };
+    const auslastungPct = new Map();
+    const ueberlastet = [], spannungsverletzt = [];
+    let maxAusl = 0, maxDu = 0;
+    for (const [id, e] of el) {
+      const kap = e.kapKw == null ? Infinity : +e.kapKw;
+      const a = Number.isFinite(kap) && kap > 0 ? fluss.get(id) / kap * 100 : 0;
+      auslastungPct.set(id, a);
+      if (Number.isFinite(kap) && fluss.get(id) > kap + EPS) ueberlastet.push(id);
+      const u = du(id);
+      if (u > duGrenzePct + EPS) spannungsverletzt.push(id);
+      maxAusl = Math.max(maxAusl, a);
+      maxDu = Math.max(maxDu, u);
+    }
+    return { flussKw: fluss, auslastungPct, duPct, ueberlastet, spannungsverletzt, summeKwp,
+      maxAuslastungPct: maxAusl, maxDuPct: maxDu,
+      zulaessig: !ueberlastet.length && !spannungsverletzt.length };
+  }
+
+  /**
+   * Spielraum eines Dachs: größte Belegung (kWp) dieses Dachs, bei der mit der
+   * übrigen Belegung keine Strom- oder Spannungsgrenze gerissen wird.
+   * Ist das Netz schon durch die anderen Dächer überlastet, ist der Spielraum 0.
+   * Rückgabe: { kwp, begrenzer:{ elementId, art }|null }  (kwp ≤ kwpMax)
+   */
+  function pvnaSpielraum(eingabe, belegung, dachId) {
+    const d = (eingabe?.daecher || []).find(x => x.id === dachId);
+    if (!d) return { kwp: 0, begrenzer: null };
+    const el = _elementMap(eingabe.elemente);
+    if (!el.has(d.elementId)) return { kwp: 0, begrenzer: { elementId: null, art: 'nicht-angebunden' } };
+    const ohne = new Map(belegung instanceof Map ? belegung : Object.entries(belegung || {}));
+    ohne.set(dachId, 0);
+    const lf = pvnaLastfluss(eingabe, ohne);
+    const f = d.einspFaktor > 0 ? d.einspFaktor : 0.8;
+    const grenze = eingabe.duGrenzePct ?? 3;
+    const pfad = _pfadVon(d.elementId, el);
+    const pSet = new Set(pfad);
+    let x = Math.max(0, +d.kwpMax || 0), begrenzer = null;
+
+    for (const eid of pfad) {
+      const e = el.get(eid);
+      const kap = e.kapKw == null ? Infinity : +e.kapKw;
+      if (!Number.isFinite(kap)) continue;
+      const xe = Math.max(0, (kap - lf.flussKw.get(eid)) / f);
+      if (xe < x - EPS) { x = xe; begrenzer = { elementId: eid, art: e.typ === 'trafo' ? 'trafo' : 'strom' }; }
+    }
+    // Spannung: nur Strangenden prüfen (monoton, s. _endPruefpunkte)
+    const eltern = new Set();
+    for (const e of el.values()) if (e.parentId != null) eltern.add(e.parentId);
+    for (const [qid] of el) {
+      if (eltern.has(qid)) continue;
+      let koeff = 0, knapp = null, knappK = -1;
+      for (const eid of _pfadVon(qid, el)) {
+        if (!pSet.has(eid)) continue;
+        const k = +el.get(eid).duProKwPct || 0;
+        koeff += k;
+        if (k > knappK) { knappK = k; knapp = eid; }
+      }
+      if (koeff <= EPS) continue;
+      const xq = Math.max(0, (grenze - lf.duPct.get(qid)) / (f * koeff));
+      if (xq < x - EPS) { x = xq; begrenzer = { elementId: knapp, art: 'spannung' }; }
+    }
+    return { kwp: x, begrenzer };
+  }
+
   // ── 28-pv-netzaufnahme.js — PV-Aufnahmefähigkeit des Bestandsnetzes (App-Seite) ──
   //
   // Ansicht „Netzaufnahme (Bestand)" in der PV-Analyse. Beantwortet:
@@ -206678,10 +207074,13 @@ ${teile.join('\n')}
   // bestandAlsVorlast: PV-Anlagen der Schicht „Bestand" gelten als schon angeschlossen.
   // Standard aus — Assets ohne Schicht zählen als Bestand, das würde geplante
   // Anlagen still zur Vorbelastung machen.
-  const _einStandard = () => ({ quelle: 'aktiv', einspFaktor: EINSP_DEFAULT, duGrenzePct: MAX_DELTA_U_PCT, bestandAlsVorlast: false });
+  // ersatzQs: Annahme (mm² NAYY) für Kabel ohne erfassten Querschnitt; 0 = keine Grenze (optimistisch).
+  const _einStandard = () => ({ quelle: 'aktiv', einspFaktor: EINSP_DEFAULT, duGrenzePct: MAX_DELTA_U_PCT, bestandAlsVorlast: false, ersatzQs: 0 });
+  /** Wählbare Ersatzquerschnitte für Kabel ohne Angabe. */
+  const PVNA_ERSATZ_QS = [0, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240];
   const _ein = _einStandard();
 
-  const _fmt = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
+  const _fmt$1 = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
     : x.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -206698,6 +207097,7 @@ ${teile.join('\n')}
     const quelle = opts.quelle || 'aktiv';
     const einspFaktor = opts.einspFaktor > 0 ? opts.einspFaktor : EINSP_DEFAULT;
     const duGrenzePct = opts.duGrenzePct > 0 ? opts.duGrenzePct : MAX_DELTA_U_PCT;
+    const ersatzQs = opts.ersatzQs > 0 ? +opts.ersatzQs : 0;
     const istBestandPv = a => !!opts.bestandAlsVorlast && a.type === 'PV' && normSchicht(a.schicht) === SCHICHT.BESTAND;
     const gebArr = (typeof gebaeude !== 'undefined' ? gebaeude : window.gebaeude) || [];
     const gebById = new Map(gebArr.map(g => [g.id, g]));
@@ -206749,12 +207149,13 @@ ${teile.join('\n')}
         besucht.add(id);
         const eid = 'E:' + edge.id;
         if (!elInfo.has(eid)) {
-          const kab = _kabelElement(edge, yr, { cosPhi, kIz, tLeiter, I_je_kW });
+          const kab = _kabelElement(edge, yr, { cosPhi, kIz, tLeiter, I_je_kW, ersatzQs });
           elemente.push({ id: eid, typ: 'kabel', parentId: knotenEl.get(von),
             kapKw: kab.kapKw, duProKwPct: kab.duProKwPct, vorlastKw: 0 });
           elInfo.set(eid, { label: `Kabel ${name(von)} → ${name(id)}`, kabelText: kab.text,
-            trafoId: t.id, kante: edge, kab });
-          if (kab.unbekannt) unbekannteQs.push(eid);
+            trafoId: t.id, kante: edge, kab,
+            knotenName: name(id), knotenTyp: assetMap.get(id)?.type || (gebById.has(id) ? 'Gebäude' : '') });
+          if (kab.unbekannt || kab.ersatz) unbekannteQs.push(eid);
         }
         knotenEl.set(id, eid);
         knotenTrafo.set(id, t.id);
@@ -206785,7 +207186,7 @@ ${teile.join('\n')}
       if (kw <= 0) continue;
       const el = elById.get(knotenEl.get(a.id));
       if (el) el.vorlastKw += kw;
-      else hinweise.push(`${escHtml(a.name || a.type)} (${_fmt(kw)} kW) ist an keinen Trafo angebunden und bleibt unberücksichtigt.`);
+      else hinweise.push(`${escHtml(a.name || a.type)} (${_fmt$1(kw)} kW) ist an keinen Trafo angebunden und bleibt unberücksichtigt.`);
     }
 
     // Dächer: geplante PV-Assets + Gebäude-PV (ohne eigenes PV-Asset)
@@ -206826,7 +207227,7 @@ ${teile.join('\n')}
     const eingabe = { elemente, daecher, pruefpunkte, duGrenzePct };
     _massnahmenAnhaengen(eingabe, elInfo, { kIz, cosPhi, tLeiter, I_je_kW });
 
-    return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, bestandPvKwp, jahr: yr, cosPhi, kIz } };
+    return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, ersatzQs, bestandPvKwp, jahr: yr, cosPhi, kIz } };
   }
 
   /** Kapazität, ΔU-Koeffizient und Beschreibung eines Bestandskabels. */
@@ -206837,16 +207238,23 @@ ${teile.join('\n')}
       return { kapKw: Infinity, duProKwPct: 0, text: 'stationsintern', stationsintern: true,
         ist: { crossSection: ep.crossSection, nParallel: ep.nParallel || 1, cableType: ep.cableType || 'NAYY', lengthM } };
     }
+    if (!ep.crossSection && k.ersatzQs > 0) {
+      // Vorsichtige Annahme statt „keine Grenze": Ersatzquerschnitt NAYY, einfach
+      const r = _kabelKennwerte(KABEL_TYPEN.NAYY, k.ersatzQs, 1, lengthM, k);
+      return { kapKw: r.kapKw, duProKwPct: r.duProKwPct, ersatz: true,
+        text: `Querschnitt nicht erfasst — Annahme ${k.ersatzQs} mm² NAYY, ${_fmt$1(lengthM)} m`,
+        ist: { crossSection: k.ersatzQs, nParallel: 1, cableType: 'NAYY', lengthM } };
+    }
     if (!ep.crossSection) {
       return { kapKw: Infinity, duProKwPct: 0, unbekannt: true,
-        text: `Querschnitt nicht erfasst, ${_fmt(lengthM)} m`, ist: { lengthM } };
+        text: `Querschnitt nicht erfasst, ${_fmt$1(lengthM)} m`, ist: { lengthM } };
     }
     const kt = KABEL_TYPEN[ep.cableType] || KABEL_TYPEN.NAYY;
     const r = _kabelKennwerte(kt, ep.crossSection, ep.nParallel || 1, lengthM, k);
     const n = Math.max(1, ep.nParallel || 1);
     return {
       kapKw: r.kapKw, duProKwPct: r.duProKwPct,
-      text: `${n > 1 ? n + ' × ' : ''}${ep.crossSection} mm² ${ep.cableType || 'NAYY'}, ${_fmt(lengthM)} m`
+      text: `${n > 1 ? n + ' × ' : ''}${ep.crossSection} mm² ${ep.cableType || 'NAYY'}, ${_fmt$1(lengthM)} m`
         + (edge.autoSized ? ' (Querschnitt geschätzt)' : ''),
       ist: { crossSection: ep.crossSection, nParallel: n, cableType: ep.cableType || 'NAYY', lengthM },
     };
@@ -206929,10 +207337,33 @@ ${teile.join('\n')}
         if (duNeu <= eingabe.duGrenzePct + 1e-6) break;
         zielDu *= duNeu / eingabe.duGrenzePct * 1.01;
       }
-      if (!wahl) { info.ungeloest = true; continue; }
+      // Reicht keine Standardlösung für den VOLLAUSBAU (mehr als 8 Stränge des größten
+      // Querschnitts), die größte Standardlösung als Teil-Ertüchtigung anbieten. Ohne sie
+      // hätte das Element gar keine Maßnahme — dann brächte auch ein größerer Trafo davor
+      // nichts, und der Ausbaufahrplan bräche an dieser Stelle ab.
+      let teil = false, teilText = '';
+      if (!wahl) {
+        const kt = KABEL_TYPEN[kab.ist.cableType] || KABEL_TYPEN.NAYY;
+        const izMax = Math.max(...kt.sections.map(s => s.Iz)) * 8;
+        const bedarfA = fluss * k.I_je_kW / (k.kIz || 1);
+        // Strom übersteigt 8 Stränge → größte Standardlösung; sonst scheitert nur die
+        // Spannung → nach Strom auslegen, die Spannung begrenzt dann weiter.
+        teilText = bedarfA > izMax * 0.999 ? 'größte Standardlösung' : 'Spannung damit nicht voll gelöst';
+        wahl = engpassWaehleAlternative(engpassKabelAlternativen(kab.ist,
+          { benoetigtA: Math.min(bedarfA, izMax * 0.999), maxDuPct: 0 },
+          { typen: { [kab.ist.cableType || 'NAYY']: kt }, tiefbauEurM, grenzDuPct: eingabe.duGrenzePct }));
+        if (wahl) {
+          teil = true;
+          neu = _kabelKennwerte(kt, wahl.newProps.crossSection, wahl.newProps.nParallel || 1, kab.ist.lengthM, k);
+          if (!(neu.kapKw > e.kapKw + 1e-6 || neu.duProKwPct < e.duProKwPct - 1e-9)) wahl = null;   // keine Verbesserung
+        }
+      }
+      // Grund merken: bei reiner Spannungsverletzung helfen oft vorgelagerte Maßnahmen, bei Strom nicht
+      if (!wahl || teil) { info.ungeloest = true; info.ungeloestGrund = ueber ? 'strom' : 'spannung'; info.teil = teil; info.teilText = teilText; }
+      if (!wahl) continue;
       e.massnahme = {
-        label: `${info.label}: ${wahl.label}`,
-        investEUR: wahl.investEUR, kapKw: neu.kapKw, duProKwPct: neu.duProKwPct,
+        label: `${info.label}: ${wahl.label}${teil ? ` (${teilText})` : ''}`,
+        investEUR: wahl.investEUR, kapKw: neu.kapKw, duProKwPct: neu.duProKwPct, teil,
       };
     }
   }
@@ -206951,6 +207382,8 @@ ${teile.join('\n')}
     if (u > 0) _ein.duGrenzePct = u;
     const bv = document.getElementById('pvna-bestand');
     if (bv) _ein.bestandAlsVorlast = !!bv.checked;
+    const eq = document.getElementById('pvna-ersatzqs');
+    if (eq) _ein.ersatzQs = Math.max(0, parseFloat(eq.value) || 0);
   }
 
   /** Rechnet mit den aktuellen Eingaben und legt das Ergebnis ab. */
@@ -206962,6 +207395,8 @@ ${teile.join('\n')}
     _letztes = { modell, treppe, optionen, eingaben: { ..._ein }, jahr: modell.info.jahr };
     window._pvNetzaufnahme = _kompakt(_letztes);
     if (window.pvnaKarteAktiv) { pvnaMarkiereKarte(); _legendeZeigen(); }
+    // Einlinienschema (29) per window — es importiert dieses Modul
+    if (document.getElementById('pva-pvna-schema')?.style.display === 'block') window.pvnaSchemaRender?.();
     return _letztes;
   }
 
@@ -206988,6 +207423,22 @@ ${teile.join('\n')}
     }
     return makePvProfile8760(ostwest ? 'ostwest' : 'sued');
   }
+
+  /**
+   * Abregelung eines Dachs bei frei gewählter Leistung und Einspeisegrenze (Einlinienschema):
+   * gleiche Profilquelle und gleicher spezifischer Ertrag wie die Wege A/B.
+   * null, wenn das Dach im letzten Ergebnis nicht vorkommt.
+   */
+  function pvnaAbregelungDach(dachId, kwp, pZulKw) {
+    const o = _letztes?.optionen?.get(dachId);
+    if (!o) return null;
+    const ow = !!_letztes.modell.info.dachInfo.get(dachId)?.ostwest;
+    const up = window.elPvH || null;
+    if (_formCache.up !== up) { _formCache.up = up; _formCache.f = {}; }
+    const form = _formCache.f[ow] || (_formCache.f[ow] = _profilForm(ow));
+    return pvnaAbregelung(form, o.spez, kwp, pZulKw);
+  }
+  const _formCache = { up: undefined, f: {} };
 
   /** Map<dachId, { pZulKw, a, b, mehrKwhProKwp }> — a/b wie pvnaAbregelung plus kwp. */
   function _optionen(modell, treppe) {
@@ -207030,7 +207481,7 @@ ${teile.join('\n')}
     const begrenzer = {};
     for (const d of treppe.basis.daecher) {
       if (!d.begrenzer) continue;
-      const art = _ART[d.begrenzer.art] || d.begrenzer.art;
+      const art = _ART$1[d.begrenzer.art] || d.begrenzer.art;
       begrenzer[art] = (begrenzer[art] || 0) + 1;
     }
     return {
@@ -207071,6 +207522,66 @@ ${teile.join('\n')}
 
   function pvnaLetztesErgebnis() { return _letztes; }
 
+  /**
+   * Für die PV-Analyse (Varianten „Fahrplan Stufe k"): Stufen der aktuellen Ausbautreppe
+   * mit kumulierten Werten. Leer, wenn keine Treppe oder keine Stufen.
+   */
+  function pvnaFahrplanStufen() {
+    const r = _letztes || _berechnen();
+    let anzahl = 0;
+    return r.treppe.schritte.map((st, i) => {
+      anzahl += st.massnahmen.length;
+      return {
+        stufe: i + 1, sammel: !!st.sammel,
+        massnahmen: st.massnahmen.map(m => ({ elementId: m.elementId, label: m.label, investEUR: m.investEUR })),
+        zuwachsKwp: st.zuwachsKwp, investEUR: st.investEUR, eurProKwp: st.eurProKwp,
+        summeKwp: st.summeKwp, kumInvestEUR: st.kumInvestEUR, anzahlKum: anzahl,
+      };
+    });
+  }
+
+  /** Eingabe mit umgesetzten Ertüchtigungen: Kapazität/ΔU der gewählten Elemente nach der Maßnahme. */
+  function pvnaMassnahmenAnwenden(eingabe, ids) {
+    if (!ids?.size) return eingabe;
+    return { ...eingabe, elemente: eingabe.elemente.map(e => (!ids.has(e.id) || !e.massnahme) ? e : {
+      ...e, kapKw: e.massnahme.kapKw ?? e.kapKw, duProKwPct: e.massnahme.duProKwPct ?? e.duProKwPct,
+    }) };
+  }
+
+  /**
+   * Für die Variante „Bestandsnetz, eigene Belegung": prüft eine im Einlinienschema
+   * übernommene Belegung ({ dachId: kWp }) gegen das aktuelle Netzmodell. Dächer,
+   * die es nicht mehr gibt, fallen weg; Werte über der Fläche werden gekappt.
+   * null, wenn das Modell keinen Trafo hat (dann ist nichts prüfbar).
+   */
+  function pvnaBelegungPruefen(belegung, massnahmen = []) {
+    const r = _letztes || _berechnen();
+    const { eingabe: roh } = r.modell;
+    if (!roh.elemente.some(e => e.typ === 'trafo')) return null;
+    // Maßnahmen (Element-IDs aus dem Ausbaufahrplan) anwenden, soweit das Modell sie noch anbietet
+    const ids = new Set(massnahmen.map(m => m.elementId));
+    const eingabe = pvnaMassnahmenAnwenden(roh, ids);
+    const aktiv = roh.elemente.filter(e => ids.has(e.id) && e.massnahme)
+      .map(e => ({ elementId: e.id, label: e.massnahme.label, investEUR: +e.massnahme.investEUR || 0 }));
+    const byId = new Map(eingabe.daecher.map(d => [d.id, d]));
+    const bel = new Map();
+    let fehlend = 0;
+    for (const [id, kwp] of Object.entries(belegung || {})) {
+      const d = byId.get(id);
+      if (!d) { if (kwp > 0) fehlend++; continue; }
+      bel.set(id, Math.min(Math.max(0, +kwp || 0), d.kwpMax));
+    }
+    const lf = pvnaLastfluss(eingabe, bel);
+    return {
+      summeKwp: lf.summeKwp, zulaessig: lf.zulaessig,
+      ueberlastet: lf.ueberlastet.length, spannung: lf.spannungsverletzt.length,
+      maxAuslastungPct: lf.maxAuslastungPct, maxDuPct: lf.maxDuPct, duGrenzePct: eingabe.duGrenzePct,
+      daecherBelegt: [...bel.values()].filter(k => k > 0).length, daecherGesamt: eingabe.daecher.length,
+      fehlend, jahr: r.jahr,
+      massnahmen: aktiv, massnahmenFehlend: ids.size - aktiv.length,
+    };
+  }
+
   function pvnaRender() {
     const el = document.getElementById('pva-netzaufnahme');
     if (!el) return;
@@ -207101,6 +207612,10 @@ ${teile.join('\n')}
       <span style="${lbl}" title="Zulässige Spannungsanhebung ab Trafo-Sammelschiene (VDE-AR-N 4105: 3 %).">ΔU-Grenze %</span>
       <input id="pvna-du" type="number" min="0.5" max="10" step="0.5" value="${_ein.duGrenzePct}" style="${inp}">
     </div>
+    <div style="flex:0 1 190px;">
+      <span style="${lbl}" title="Kabel ohne erfassten Querschnitt: ohne Annahme gilt für sie keine Grenze — die Aufnahme ist dort überschätzt.">Kabel ohne Querschnitt</span>
+      <select id="pvna-ersatzqs" style="${inp}">${pvnaErsatzOptionen(_ein.ersatzQs)}</select>
+    </div>
     <label style="flex:1 1 100%;font-size:10.5px;color:var(--muted);display:flex;gap:6px;align-items:center;order:9;">
       <input id="pvna-bestand" type="checkbox" ${_ein.bestandAlsVorlast ? 'checked' : ''}>
       PV-Anlagen der Schicht „Bestand" als bereits angeschlossen ansetzen (Vorbelastung statt Kandidat)</label>
@@ -207108,7 +207623,12 @@ ${teile.join('\n')}
   </div>`;
   }
 
-  function _kachel(wert, einheit, label, farbe) {
+  /** <option>-Liste der Ersatzquerschnitte (0 = keine Grenze). */
+  function pvnaErsatzOptionen(wert) {
+    return PVNA_ERSATZ_QS.map(q => `<option value="${q}" ${+wert === q ? 'selected' : ''}>${q ? `Annahme ${q} mm² NAYY` : 'keine Grenze (optimistisch)'}</option>`).join('');
+  }
+
+  function _kachel$1(wert, einheit, label, farbe) {
     return `<div style="flex:1 1 150px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:10px 12px;">
     <div style="font-size:19px;font-family:'DM Mono',monospace;color:${farbe || 'var(--text)'};">${wert}<span style="font-size:11px;color:var(--muted);margin-left:4px;">${einheit}</span></div>
     <div style="font-size:10px;color:var(--muted);margin-top:2px;">${label}</div></div>`;
@@ -207118,7 +207638,7 @@ ${teile.join('\n')}
     const { info } = modell;
     const b = treppe.basis, e = treppe.ende;
     const pot = b.potenzialKwp;
-    const pct = x => pot > 0 ? ' (' + _fmt(x / pot * 100) + ' %)' : '';
+    const pct = x => pot > 0 ? ' (' + _fmt$1(x / pot * 100) + ' %)' : '';
     const invest = treppe.schritte.at(-1)?.kumInvestEUR || 0;
 
     if (!modell.eingabe.daecher.length) {
@@ -207128,27 +207648,27 @@ ${teile.join('\n')}
 
     const os = _optionenSumme(_letztes.optionen);
     const kacheln = `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-    ${_kachel(_fmt(pot), 'kWp', 'Flächenpotenzial')}
-    ${_kachel(_fmt(b.summeKwp), 'kWp', 'ohne Ertüchtigung' + pct(b.summeKwp), '#66bb6a')}
-    ${_kachel(_fmt(e.summeKwp), 'kWp', 'mit Ertüchtigung' + pct(e.summeKwp), '#4fc3f7')}
-    ${_kachel(_fmt(invest / 1000), 'T€', 'Invest Ertüchtigung', '#ffb74d')}
-    ${treppe.restKwp > 0.5 ? _kachel(_fmt(treppe.restKwp), 'kWp', 'nicht erschließbar', '#ef5350') : ''}
+    ${_kachel$1(_fmt$1(pot), 'kWp', 'Flächenpotenzial')}
+    ${_kachel$1(_fmt$1(b.summeKwp), 'kWp', 'ohne Ertüchtigung' + pct(b.summeKwp), '#66bb6a')}
+    ${_kachel$1(_fmt$1(e.summeKwp), 'kWp', 'mit Ertüchtigung' + pct(e.summeKwp), '#4fc3f7')}
+    ${_kachel$1(_fmt$1(invest / 1000), 'T€', 'Invest Ertüchtigung', '#ffb74d')}
+    ${treppe.restKwp > 0.5 ? _kachel$1(_fmt$1(treppe.restKwp), 'kWp', 'nicht erschließbar', '#ef5350') : ''}
   </div>
   <div style="font-size:11px;font-weight:600;margin:2px 0 6px;">Ohne Ertüchtigung: weniger ausbauen oder abregeln?</div>
   <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;">
-    ${_kachel(_fmt(os.aKwp), 'kWp', `A · weniger ausbauen → ${_fmt(os.aMwh)} MWh/a`, '#66bb6a')}
-    ${_kachel(_fmt(os.bKwp), 'kWp', `B · voll ausbauen + abregeln → ${_fmt(os.bMwh)} MWh/a nutzbar`, '#ffb300')}
-    ${_kachel(_fmt(os.bVerlustPct, 1), '%', `Abregelungsverlust bei B (${_fmt(os.bAbgMwh)} MWh/a)`, '#ff7043')}
-    ${_kachel('+' + _fmt(os.bMwh - os.aMwh), 'MWh/a', `Mehrertrag B gegenüber A für +${_fmt(os.bKwp - os.aKwp)} kWp`, '#4fc3f7')}
+    ${_kachel$1(_fmt$1(os.aKwp), 'kWp', `A · weniger ausbauen → ${_fmt$1(os.aMwh)} MWh/a`, '#66bb6a')}
+    ${_kachel$1(_fmt$1(os.bKwp), 'kWp', `B · voll ausbauen + abregeln → ${_fmt$1(os.bMwh)} MWh/a nutzbar`, '#ffb300')}
+    ${_kachel$1(_fmt$1(os.bVerlustPct, 1), '%', `Abregelungsverlust bei B (${_fmt$1(os.bAbgMwh)} MWh/a)`, '#ff7043')}
+    ${_kachel$1('+' + _fmt$1(os.bMwh - os.aMwh), 'MWh/a', `Mehrertrag B gegenüber A für +${_fmt$1(os.bKwp - os.aKwp)} kWp`, '#4fc3f7')}
   </div>
   <div style="font-size:10.5px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
     Beide Wege halten die Netzgrenze ein: Bei B wird die Einspeisung am EZA-Regler bzw. Wechselrichter
     auf dieselbe Leistung gekappt wie bei A. Stündlich gerechnet mit dem PV-Profil, ohne Eigenverbrauch
     (der die Abregelung zusätzlich senken würde). Dächer ohne jede Netzkapazität sind in B nicht enthalten.</div>
   <div style="font-size:10.5px;color:var(--muted);margin-bottom:14px;">
-    Rechenjahr ${jahr} · volle Einspeisung ${_fmt(modell.eingabe.daecher[0]?.einspFaktor, 2)} kW/kWp ohne gleichzeitige Last ·
-    ΔU ≤ ${_fmt(modell.eingabe.duGrenzePct, 1)} % · Kabel mit Bestandsquerschnitt · Belegung: ertragsstärkste Dächer zuerst
-    ${info.bestandPvKwp > 0 ? ` · ${_fmt(info.bestandPvKwp)} kWp Bestands-PV als Vorbelastung` : ''}</div>`;
+    Rechenjahr ${jahr} · volle Einspeisung ${_fmt$1(modell.eingabe.daecher[0]?.einspFaktor, 2)} kW/kWp ohne gleichzeitige Last ·
+    ΔU ≤ ${_fmt$1(modell.eingabe.duGrenzePct, 1)} % · Kabel mit Bestandsquerschnitt · Belegung: ertragsstärkste Dächer zuerst
+    ${info.bestandPvKwp > 0 ? ` · ${_fmt$1(info.bestandPvKwp)} kWp Bestands-PV als Vorbelastung` : ''}</div>`;
 
     return kacheln + _karteKnopf() + pvnaTreppeSvg(_kompakt(_letztes)) + _massnahmenHtml(treppe) + _trafoHtml(modell, treppe)
       + _gebaeudeHtml(modell, treppe) + _hinweiseHtml(info);
@@ -207172,13 +207692,13 @@ ${teile.join('\n')}
     for (const s of schritte) d += ` H${x(s.kumInvestEUR)} V${y(s.summeKwp)}`;
     d += ` H${x(maxX)}`;
     const punkte = schritte.map((s, i) =>
-      `<circle cx="${x(s.kumInvestEUR)}" cy="${y(s.summeKwp)}" r="3.5" fill="#4fc3f7"><title>Schritt ${i + 1}: +${_fmt(s.zuwachsKwp)} kWp für ${_fmt(s.investEUR)} €</title></circle>
+      `<circle cx="${x(s.kumInvestEUR)}" cy="${y(s.summeKwp)}" r="3.5" fill="#4fc3f7"><title>Schritt ${i + 1}: +${_fmt$1(s.zuwachsKwp)} kWp für ${_fmt$1(s.investEUR)} €</title></circle>
      <text x="${x(s.kumInvestEUR) + 5}" y="${y(s.summeKwp) - 5}" font-size="9" fill="var(--muted)">${i + 1}</text>`).join('');
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => `
     <line x1="${PL}" x2="${W - PR}" y1="${y(pot * f)}" y2="${y(pot * f)}" stroke="var(--border)" stroke-width="0.5"/>
-    <text x="${PL - 6}" y="${y(pot * f) + 3}" font-size="9" fill="var(--muted)" text-anchor="end">${_fmt(pot * f)}</text>`).join('');
+    <text x="${PL - 6}" y="${y(pot * f) + 3}" font-size="9" fill="var(--muted)" text-anchor="end">${_fmt$1(pot * f)}</text>`).join('');
     const xTicks = [0, 0.5, 1].map(f => `
-    <text x="${x(maxX * f)}" y="${H - PB + 14}" font-size="9" fill="var(--muted)" text-anchor="middle">${_fmt(maxX * f / 1000)} T€</text>`).join('');
+    <text x="${x(maxX * f)}" y="${H - PB + 14}" font-size="9" fill="var(--muted)" text-anchor="middle">${_fmt$1(maxX * f / 1000)} T€</text>`).join('');
     return `
   <div style="font-size:11px;font-weight:600;margin:4px 0 6px;">Ausbautreppe — angeschlossene PV über Ertüchtigungskosten</div>
   <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block;margin-bottom:14px;">
@@ -207186,7 +207706,7 @@ ${teile.join('\n')}
     <line x1="${PL}" x2="${W - PR}" y1="${y(pot)}" y2="${y(pot)}" stroke="#ef5350" stroke-dasharray="4,3" stroke-width="1"/>
     <text x="${W - PR}" y="${y(pot) - 4}" font-size="9" fill="#ef5350" text-anchor="end">Flächenpotenzial</text>
     <path d="${d}" fill="none" stroke="#4fc3f7" stroke-width="2"/>
-    <circle cx="${x(0)}" cy="${y(basisKwp)}" r="4" fill="#66bb6a"><title>Bestand: ${_fmt(basisKwp)} kWp</title></circle>
+    <circle cx="${x(0)}" cy="${y(basisKwp)}" r="4" fill="#66bb6a"><title>Bestand: ${_fmt$1(basisKwp)} kWp</title></circle>
     ${punkte}
     <text x="12" y="${(PT + H - PB) / 2}" font-size="9" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 12 ${(PT + H - PB) / 2})">angeschlossen kWp</text>
   </svg>`;
@@ -207204,9 +207724,9 @@ ${teile.join('\n')}
       ? 'Keine Standard-Ertüchtigung erschließt weitere Flächen (siehe Hinweise).'
       : 'Alle Flächen lassen sich ohne Ertüchtigung anschließen.'}</div>`;
     }
-    const zeilen = [`<tr>${_td('0')}${_td('Bestand — keine Ertüchtigung')}${_td('—', 1)}${_td(_fmt(t.basis.summeKwp), 1)}${_td('—', 1)}${_td(_fmt(t.basis.summeKwp), 1)}</tr>`,
+    const zeilen = [`<tr>${_td('0')}${_td('Bestand — keine Ertüchtigung')}${_td('—', 1)}${_td(_fmt$1(t.basis.summeKwp), 1)}${_td('—', 1)}${_td(_fmt$1(t.basis.summeKwp), 1)}</tr>`,
       ...t.schritte.map((s, i) => `<tr>${_td(i + 1)}${_td(s.massnahmen.map(m => escHtml(m.label)).join('<br>'))}
-      ${_td(_fmt(s.investEUR), 1)}${_td('+' + _fmt(s.zuwachsKwp), 1)}${_td(_fmt(s.eurProKwp), 1)}${_td(_fmt(s.summeKwp), 1)}</tr>`)].join('');
+      ${_td(_fmt$1(s.investEUR), 1)}${_td('+' + _fmt$1(s.zuwachsKwp), 1)}${_td(_fmt$1(s.eurProKwp), 1)}${_td(_fmt$1(s.summeKwp), 1)}</tr>`)].join('');
     return `<div style="font-size:11px;font-weight:600;margin-bottom:6px;">Ertüchtigungen in Reihenfolge der Wirksamkeit (€ je zusätzlichem kWp)</div>`
       + _tabelle(_th('#') + _th('Maßnahme') + _thR('Invest €') + _thR('Zuwachs kWp') + _thR('€/kWp') + _thR('angeschlossen kWp'), zeilen);
   }
@@ -207227,15 +207747,15 @@ ${teile.join('\n')}
     const zeilen = [...proTrafo.entries()].map(([tid, v]) => {
       const el = tid != null ? auslBasis.get('T:' + tid) : null;
       const name = tid != null ? escHtml(info.elInfo.get('T:' + tid)?.label || tid) : '<i>nicht angebunden</i>';
-      return `<tr>${_td(name)}${_td(_fmt(v.pot), 1)}${_td(_fmt(v.a), 1)}${_td(v.pot > 0 ? _fmt(v.a / v.pot * 100) + ' %' : '—', 1)}
-      ${_td(el ? _fmt(el.auslastungPct) + ' %' : '—', 1)}${_td(_fmt(v.b), 1)}</tr>`;
+      return `<tr>${_td(name)}${_td(_fmt$1(v.pot), 1)}${_td(_fmt$1(v.a), 1)}${_td(v.pot > 0 ? _fmt$1(v.a / v.pot * 100) + ' %' : '—', 1)}
+      ${_td(el ? _fmt$1(el.auslastungPct) + ' %' : '—', 1)}${_td(_fmt$1(v.b), 1)}</tr>`;
     }).join('');
     return `<div style="font-size:11px;font-weight:600;margin-bottom:6px;">Je Trafo</div>`
       + _tabelle(_th('Trafo') + _thR('Potenzial kWp') + _thR('ohne Ertücht. kWp') + _thR('Anteil')
         + _thR('Trafo-Auslastung') + _thR('mit Ertücht. kWp'), zeilen);
   }
 
-  const _ART = { strom: 'Kabel-Strombelastbarkeit', trafo: 'Trafo-Nennleistung', spannung: 'Spannungsanhebung',
+  const _ART$1 = { strom: 'Kabel-Strombelastbarkeit', trafo: 'Trafo-Nennleistung', spannung: 'Spannungsanhebung',
     vorbelastet: 'durch vorhandene Einspeisung ausgelastet', 'nicht-angebunden': 'nicht am Netz angebunden' };
 
   /** Stufen der Anschlussquote — Tabelle und Karte nutzen dieselbe Skala. */
@@ -207261,19 +207781,19 @@ ${teile.join('\n')}
         const o = opt.get(d.id);
         const elBeg = d.begrenzer?.elementId ? info.elInfo.get(d.begrenzer.elementId) : null;
         const grund = d.begrenzer
-          ? `${_ART[d.begrenzer.art] || d.begrenzer.art}${elBeg ? ' — ' + escHtml(elBeg.label) : ''}`
+          ? `${_ART$1[d.begrenzer.art] || d.begrenzer.art}${elBeg ? ' — ' + escHtml(elBeg.label) : ''}`
             + (elBeg?.kabelText ? ` <span style="color:var(--muted);">(${escHtml(elBeg.kabelText)})</span>` : '')
           : '—';
         const ohneNetz = !o || o.pZulKw <= 0;
         const voll = d.anteil >= 0.999;
         return `<tr>${_td(`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${_anteilFarbe(d.anteil)};margin-right:6px;"></span>${escHtml(di.name || d.id)}`
           + `<div style="color:var(--muted);font-size:10px;margin-left:14px;">${escHtml(di.art || '')}</div>`)}
-        ${_td(_fmt(d.kwpMax), 1)}${_td(_fmt(o?.pZulKw), 1)}
-        ${_td(_fmt(d.kwp), 1)}${_td(_fmt(d.anteil * 100) + ' %', 1)}${_td(_fmt(o?.a.nutzbarMwh, 1), 1)}
-        ${_td(ohneNetz ? '—' : voll ? '<span style="color:var(--muted);">= A</span>' : _fmt(o.b.nutzbarMwh, 1), 1)}
-        ${_td(ohneNetz || voll ? '—' : _fmt(o.b.verlustPct, 1) + ' %', 1)}
-        ${_td(ohneNetz || voll || o.mehrKwhProKwp == null ? '—' : _fmt(o.mehrKwhProKwp), 1)}
-        ${_td(_fmt(endeById.get(d.id)?.kwp), 1)}${_td(grund)}</tr>`;
+        ${_td(_fmt$1(d.kwpMax), 1)}${_td(_fmt$1(o?.pZulKw), 1)}
+        ${_td(_fmt$1(d.kwp), 1)}${_td(_fmt$1(d.anteil * 100) + ' %', 1)}${_td(_fmt$1(o?.a.nutzbarMwh, 1), 1)}
+        ${_td(ohneNetz ? '—' : voll ? '<span style="color:var(--muted);">= A</span>' : _fmt$1(o.b.nutzbarMwh, 1), 1)}
+        ${_td(ohneNetz || voll ? '—' : _fmt$1(o.b.verlustPct, 1) + ' %', 1)}
+        ${_td(ohneNetz || voll || o.mehrKwhProKwp == null ? '—' : _fmt$1(o.mehrKwhProKwp), 1)}
+        ${_td(_fmt$1(endeById.get(d.id)?.kwp), 1)}${_td(grund)}</tr>`;
       }).join('');
     const kopf1 = `<tr>${thG('', 3, 'var(--muted)')}${thG('A · weniger ausbauen', 3, '#66bb6a')}`
       + `${thG('B · voll ausbauen + abregeln', 3, '#ffb300')}${thG('', 2, 'var(--muted)')}</tr>`;
@@ -207293,12 +207813,16 @@ ${teile.join('\n')}
   function _hinweiseHtml(info) {
     const h = [...info.hinweise];
     if (info.unbekannteQs.length) {
-      h.push(`${info.unbekannteQs.length} Kabel ohne erfassten Querschnitt — für sie gilt keine Grenze, die Aufnahme ist dort überschätzt: `
+      h.push(`${info.unbekannteQs.length} Kabel ohne erfassten Querschnitt — ${info.ersatzQs > 0
+      ? `gerechnet mit der Annahme ${info.ersatzQs} mm² NAYY: `
+      : 'für sie gilt keine Grenze, die Aufnahme ist dort überschätzt (Annahme unter „Kabel ohne Querschnitt" wählbar): '}`
         + info.unbekannteQs.slice(0, 8).map(id => escHtml(info.elInfo.get(id)?.label || id)).join(', ')
         + (info.unbekannteQs.length > 8 ? ' …' : ''));
     }
-    const ungeloest = [...info.elInfo.values()].filter(i => i.ungeloest).map(i => escHtml(i.label));
+    const ungeloest = [...info.elInfo.values()].filter(i => i.ungeloest && !i.teil).map(i => escHtml(i.label));
     if (ungeloest.length) h.push(`Kein Standardkabel reicht für: ${ungeloest.join(', ')} — hier hilft nur eine Strukturänderung (weiterer Abgang, eigene Anbindung).`);
+    const teil = [...info.elInfo.values()].filter(i => i.teil).map(i => escHtml(i.label));
+    if (teil.length) h.push(`Für den Vollausbau reicht keine Standardlösung ganz (Strom über 8 Parallelstränge oder Spannung): ${teil.join(', ')} — sie ist als Teil-Ertüchtigung eingeplant, den Rest erschließt nur eine Strukturänderung.`);
     h.push('Modellgrenzen: Hausanschlusskabel ohne Querschnitt, Mittelspannung und Netzanschlusspunkt werden hier nicht begrenzt '
       + '(NAP-Einspeisegrenze: Abb. 6). Keine gleichzeitige Last angesetzt — konservativ. Blindleistungsregelung Q(U) und '
       + 'Einspeisebegrenzung am EZA-Regler lassen sich über „Einspeisung kW/kWp" abbilden (z. B. 0,6 bei 60-%-Begrenzung).');
@@ -207319,6 +207843,8 @@ ${teile.join('\n')}
   function _karteKnopf() {
     const an = !!window.pvnaKarteAktiv;
     return `<div style="margin:-4px 0 14px;">
+    <button class="btn-confirm" style="padding:6px 14px;font-size:11px;margin-right:6px;"
+      data-click="pvaSetView('pvnaschema')">⚡ Einlinienschema mit Schiebern</button>
     <button class="btn-confirm" style="padding:6px 14px;font-size:11px;"
       data-click="${an ? 'pvnaKarteAus()' : 'pvnaKarteZeigen()'}">${an ? 'Kartenfärbung aus' : '🗺 Dächer auf der Karte zeigen'}</button>
     <span style="font-size:10px;color:var(--muted);margin-left:8px;">Anteil der Dachfläche, der ohne Ertüchtigung ans Netz kann:
@@ -207371,7 +207897,7 @@ ${teile.join('\n')}
           className: '', iconSize: null,
           html: `<div style="transform:translate(-50%,-50%);white-space:nowrap;font:600 10.5px/1.2 'DM Mono',monospace;
           color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;text-align:center;pointer-events:none;">
-          ${_fmt(a * 100)} %<br><span style="font-weight:400;font-size:9.5px;">${_fmt(e.kwp)}/${_fmt(e.kwpMax)} kWp</span></div>`,
+          ${_fmt$1(a * 100)} %<br><span style="font-weight:400;font-size:9.5px;">${_fmt$1(e.kwp)}/${_fmt$1(e.kwpMax)} kWp</span></div>`,
         }),
       }));
     }
@@ -207404,16 +207930,16 @@ ${teile.join('\n')}
       const farbe = _anteilFarbe(anteil);
       L.setStyle({ color: farbe, weight: 2.2, dashArray: '', fillColor: farbe, fillOpacity: 0.42 });
       const grund = e.begrenzer
-        ? `<br>begrenzt durch: ${_ART[e.begrenzer.art] || e.begrenzer.art}`
+        ? `<br>begrenzt durch: ${_ART$1[e.begrenzer.art] || e.begrenzer.art}`
           + (e.begrenzer.elementId ? ` — ${escHtml(info.elInfo.get(e.begrenzer.elementId)?.label || '')}` : '')
         : '';
       const teil = anteil < 0.999 && e.pZulKw > 0;
       const verlust = e.bErzMwh > 0 ? (e.bErzMwh - e.bMwh) / e.bErzMwh * 100 : 0;
       L.bindTooltip?.(`<b>${escHtml(g.name || 'Gebäude ' + g.id)}</b><br>`
-        + `Netzgrenze: ${_fmt(e.pZulKw)} kW Einspeisung<br>`
-        + `<span style="color:#66bb6a;">A · weniger ausbauen:</span> ${_fmt(e.kwp)} von ${_fmt(e.kwpMax)} kWp (${_fmt(anteil * 100)} %) → ${_fmt(e.aMwh, 1)} MWh/a`
-        + (teil ? `<br><span style="color:#ffb300;">B · voll + abregeln:</span> ${_fmt(e.kwpMax)} kWp → ${_fmt(e.bMwh, 1)} MWh/a nutzbar, ${_fmt(verlust, 1)} % abgeregelt` : '')
-        + (e.kwpMit > e.kwp + 0.5 ? `<br>mit Ertüchtigung: ${_fmt(e.kwpMit)} kWp` : '') + grund,
+        + `Netzgrenze: ${_fmt$1(e.pZulKw)} kW Einspeisung<br>`
+        + `<span style="color:#66bb6a;">A · weniger ausbauen:</span> ${_fmt$1(e.kwp)} von ${_fmt$1(e.kwpMax)} kWp (${_fmt$1(anteil * 100)} %) → ${_fmt$1(e.aMwh, 1)} MWh/a`
+        + (teil ? `<br><span style="color:#ffb300;">B · voll + abregeln:</span> ${_fmt$1(e.kwpMax)} kWp → ${_fmt$1(e.bMwh, 1)} MWh/a nutzbar, ${_fmt$1(verlust, 1)} % abgeregelt` : '')
+        + (e.kwpMit > e.kwp + 0.5 ? `<br>mit Ertüchtigung: ${_fmt$1(e.kwpMit)} kWp` : '') + grund,
       { sticky: true });
     }
     _labelsZeichnen(je);
@@ -207434,7 +207960,7 @@ ${teile.join('\n')}
     const stufe = e => ANTEIL_STUFEN.find(st => e.kwp / e.kwpMax >= st.ab);
     el.innerHTML = `<b>PV-Netzaufnahme (Bestand)</b>
     ${ANTEIL_STUFEN.map(st => `<span title="Anteil der Dachfläche ohne Ertüchtigung"><span style="color:${st.farbe};">■</span> ${st.label}: ${je.filter(e => stufe(e) === st).length}</span>`).join('')}
-    <span style="color:var(--muted);">${_fmt(k.ohneErtuechtigungKwp)} von ${_fmt(k.potenzialKwp)} kWp</span>
+    <span style="color:var(--muted);">${_fmt$1(k.ohneErtuechtigungKwp)} von ${_fmt$1(k.potenzialKwp)} kWp</span>
     <label style="display:flex;gap:4px;align-items:center;color:var(--muted);cursor:pointer;">
       <input type="checkbox" ${_labelsAn ? 'checked' : ''} data-change="pvnaLabelsUmschalten()"> Werte</label>
     <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;" data-click="pvnaKarteAus()" title="Kartenfärbung beenden">✕</button>`;
@@ -207483,6 +208009,7 @@ ${teile.join('\n')}
       einspFaktor: f > 0 ? f : std.einspFaktor,
       duGrenzePct: u > 0 ? u : std.duGrenzePct,
       bestandAlsVorlast: !!d?.bestandAlsVorlast,
+      ersatzQs: parseFloat(d?.ersatzQs) > 0 ? parseFloat(d.ersatzQs) : 0,
     });
     _letztes = null;
     window._pvNetzaufnahme = null;
@@ -207495,29 +208022,1808 @@ ${teile.join('\n')}
     pvnaRender();
   }
 
+  /**
+   * Ersatzquerschnitt setzen (Einlinienschema) und neu rechnen. Das Feld der
+   * Ansicht „Netzaufnahme" wird mitgezogen, sonst läse _eingabenLesen den alten Wert.
+   */
+  function pvnaErsatzQsSetzen(qs) {
+    _ein.ersatzQs = Math.max(0, +qs || 0);
+    const eq = document.getElementById('pvna-ersatzqs');
+    if (eq) eq.value = String(_ein.ersatzQs);
+    _berechnen();
+    if (document.getElementById('pva-netzaufnahme')?.style.display === 'block') pvnaRender();
+  }
+
   window.pvnaRender = pvnaRender;
   window.pvnaEinstellungen = pvnaEinstellungen;
   window.pvnaEinstellungenSetzen = pvnaEinstellungenSetzen;
   window.pvnaRechnen = pvnaRechnen;
   window.pvnaFuerVariante = pvnaFuerVariante;
+  window.pvnaBelegungPruefen = pvnaBelegungPruefen;
+  window.pvnaFahrplanStufen = pvnaFahrplanStufen;
   window.pvnaTreppeSvg = pvnaTreppeSvg;
   window.pvnaMarkiereKarte = pvnaMarkiereKarte;
   window.pvnaLabelsUmschalten = pvnaLabelsUmschalten;
+  window.pvnaErsatzQsSetzen = pvnaErsatzQsSetzen;
 
   var pvNetzaufnahme = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    PVNA_ERSATZ_QS: PVNA_ERSATZ_QS,
+    pvnaAbregelungDach: pvnaAbregelungDach,
+    pvnaBelegungPruefen: pvnaBelegungPruefen,
     pvnaEinstellungen: pvnaEinstellungen,
     pvnaEinstellungenSetzen: pvnaEinstellungenSetzen,
+    pvnaErsatzOptionen: pvnaErsatzOptionen,
+    pvnaErsatzQsSetzen: pvnaErsatzQsSetzen,
+    pvnaFahrplanStufen: pvnaFahrplanStufen,
     pvnaFuerVariante: pvnaFuerVariante,
     pvnaKarteAus: pvnaKarteAus,
     pvnaKarteZeigen: pvnaKarteZeigen,
     pvnaLabelsUmschalten: pvnaLabelsUmschalten,
     pvnaLetztesErgebnis: pvnaLetztesErgebnis,
     pvnaMarkiereKarte: pvnaMarkiereKarte,
+    pvnaMassnahmenAnwenden: pvnaMassnahmenAnwenden,
     pvnaModell: pvnaModell,
     pvnaRechnen: pvnaRechnen,
     pvnaRender: pvnaRender,
     pvnaTreppeSvg: pvnaTreppeSvg
+  });
+
+  // ── 29-pvna-schema.js — Einlinienschema der Variante „Bestandsnetz" ──────────
+  //
+  // Ansicht „Einlinienschema (Bestandsnetz)" in der PV-Analyse: das radiale Modell
+  // aus 28-pv-netzaufnahme.js als abstraktes Einlinienschema (Trafo → Sammelschiene
+  // → Kabel → Knoten → Dächer), rechts neben jedem Dach ein Schieber.
+  //
+  // Startbelegung = berechnete Variante (Befüllung ohne Ertüchtigung). Mit dem
+  // Gesamtschieber (gleicher Anteil am Flächenpotenzial für alle Dächer) und den
+  // Einzelschiebern lässt sich die Belegung frei verändern; Kabel-/Trafo-Auslastung
+  // und Spannungsanhebung werden sofort mit pvnaLastfluss nachgerechnet.
+  // Auf jedem Schieber: ▼ = Wert der Variante, grünes Band = Spielraum des Dachs
+  // bei der aktuellen Belegung der übrigen Dächer (pvnaSpielraum).
+  //
+  // Die Variante „Bestandsnetz" bleibt unverändert. „Als Variante übernehmen" legt
+  // die Belegung in window._pvAnalyse.eigeneBelegung ab (→ Projektdatei) und rechnet
+  // die Varianten neu; daraus entsteht die Variante „Bestandsnetz, eigene Belegung"
+  // (09d, id 'netz-eigen'), geprüft über window.pvnaBelegungPruefen (28).
+  //
+  // Ausbaufahrplan: die Ertüchtigungen der Ausbautreppe (größerer Trafo, stärkeres
+  // Kabel) sind anklickbar — einzeln (⚒ im Schema bzw. Chip in der Liste) oder als
+  // Stufe „bis hier". Aktive Maßnahmen ändern Kapazität/ΔU der Elemente für alle
+  // Rechnungen des Schemas; „Bis zur Netzgrenze füllen" belegt danach neu. Beim
+  // Übernehmen gehen die aktiven Maßnahmen samt Invest mit in die Variante.
+  //
+  // Aussage: über dem Schema steht die Kernaussage in Worten (aufgenommene kWp,
+  // was begrenzt und wie viel Fläche dahinter frei bleibt, Trafo-Reserve, Einfluss
+  // der Verteilung, Datenlücken, Lastfall) — kopierbar fürs Gutachten. Elemente an
+  // ihrer Grenze sind im Schema rot umrandet (_engpaesse), das Element, das das
+  // gewählte Dach begrenzt, ist hervorgehoben. Der Fahrplan ist standardmäßig zu
+  // einer Zeile eingeklappt, damit das Schema oben bleibt; ⚒-Marken erscheinen nur
+  // bei aufgeklapptem Fahrplan. kWp lassen sich per Klick auf den Wert eintippen;
+  // liegt ein Dach über seinem Spielraum, nennt _abregelText die Alternative
+  // „am EZA-Regler begrenzen" (pvnaAbregelungDach, 28). Kabel ohne Querschnitt
+  // lassen sich mit einer Annahme rechnen (pvnaErsatzQsSetzen, 28).
+  // Gutachten: pvnaSchemaDruck liefert eine Zeichenliste, 17 zeichnet daraus die
+  // Abbildungen „Einlinienschema Bestandsnetz" (3.4.2).
+
+
+  const ROW = 26;                  // Zeilenhöhe — SVG und Schieberliste teilen sie
+  const COL = 92;                  // Spaltenabstand je Netzebene
+  const X_TRAFO = 22, X_SCHIENE = 46;
+  const LIVE_MAX_DAECHER = 150;    // darüber Spielraum erst beim Loslassen rechnen
+
+  let _quelle = null;              // Ergebnisobjekt, zu dem die Belegung gehört
+  let _bel = new Map();            // dachId → kWp
+  let _spiel = new Map();          // dachId → { kwp, begrenzer }
+  let _auswahl = null;             // dachId
+  let _layout = null;
+  let _raf = 0;
+  let _meldung = '';               // Rückmeldung nach Übernehmen/Entfernen
+  let _nurPv = true;               // Abgänge ohne PV und ohne Einspeisung einklappen
+  let _leerAuf = new Set();        // Knoten, deren Abgänge ohne PV trotzdem aufgeklappt sind
+  let _vollbild = false;           // Ganzseitenansicht (fixiert über der App)
+  let _einpassen = true;           // in der Ganzseitenansicht alles auf den Bildschirm skalieren
+  let _zu = new Set();             // eingeklappte Knoten (Element-IDs: Trafo oder Verteiler)
+  let _mass = new Set();           // aktive Ertüchtigungen (Element-IDs mit massnahme)
+  let _eingCache = null;           // { erg, key, eingabe, grenzeKwp } — Eingabe mit aktiven Maßnahmen
+  let _ausgeklappt = false;        // in der PV-Analyse: volle Breite (Navigation weg) und volle Höhe
+  let _fahrplanAuf = false;        // Ausbaufahrplan aufgeklappt (sonst eine Zusammenfassungszeile)
+  let _beschr = 'auslastung';      // Kabelbeschriftung: 'auslastung' | 'du' | 'kabel'
+
+  // Ab diesem Anteil der Grenze gilt ein Element als Engpass der aktuellen Belegung
+  const ENGPASS_ANTEIL = 0.995;
+
+  const _fmt = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
+    : x.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  const _auslFarbe = a => a > 100 + 1e-6 ? '#e53935' : a >= 70 ? '#ffb300' : '#66bb6a';
+  const _duFarbe = (u, g) => u > g + 1e-6 ? '#e53935' : u >= 0.7 * g ? '#ffb300' : '#66bb6a';
+  const _ART = { strom: 'Kabel-Strombelastbarkeit', trafo: 'Trafo-Nennleistung', spannung: 'Spannungsanhebung',
+    'nicht-angebunden': 'nicht am Netz angebunden' };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // LAYOUT — ein Baum je Trafo, jede Zeile trägt entweder einen Knoten ohne Dach
+  // oder genau ein Dach. Erstes Kind liegt auf der Zeile des Elternknotens (der
+  // Hauptstrang bleibt gerade), Dächer eines Knotens folgen nach seinen Abgängen.
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  function _layoutBilden(modell, nurPv, zuSet = _zu, leerAufSet = _leerAuf) {
+    const { elemente, daecher } = modell.eingabe;
+    const { elInfo, dachInfo } = modell.info;
+    // Relevant sind Elemente, über die PV oder vorhandene Einspeisung fließt. Ein
+    // Abgang ohne beides trägt keinen Fluss; sein ΔU gleicht dem des Elternknotens.
+    const byId = new Map(elemente.map(e => [e.id, e]));
+    const relevant = new Set();
+    const hoch = id => { while (id != null && byId.has(id) && !relevant.has(id)) { relevant.add(id); id = byId.get(id).parentId; } };
+    for (const d of daecher) hoch(d.elementId);
+    for (const e of elemente) if (+e.vorlastKw > 0) hoch(e.id);
+    // Abgänge ohne PV werden je Elternknoten zu einer Zeile „⊕ n Abgänge ohne PV"
+    // eingeklappt, bis man sie dort aufklappt (_leerAuf).
+    const alleKinder = new Map();
+    for (const e of elemente) {
+      if (e.parentId == null) continue;
+      if (!alleKinder.has(e.parentId)) alleKinder.set(e.parentId, []);
+      alleKinder.get(e.parentId).push(e.id);
+    }
+    const groesse = id => 1 + (alleKinder.get(id) || []).reduce((t, k) => t + groesse(k), 0);
+    // Eingeklappt wird nur am Übergang vom PV-Strang (oder Trafo) in einen Zweig ohne PV;
+    // innerhalb eines aufgeklappten Zweigs bleibt alles offen.
+    const ursprung = id => relevant.has(id) || byId.get(id)?.typ === 'trafo';
+    const kinder = new Map(), leer = new Map();
+    let ausgeblendet = 0;
+    for (const [pid, ks] of alleKinder) {
+      for (const id of ks) {
+        const zu = nurPv && !relevant.has(id) && ursprung(pid) && !leerAufSet.has(pid);
+        if (zu) ausgeblendet += groesse(id);
+        const m = zu ? leer : kinder;
+        if (!m.has(pid)) m.set(pid, []);
+        m.get(pid).push(id);
+      }
+    }
+    // Knoten, an denen es überhaupt Abgänge ohne PV gibt (für „⊖ einklappen")
+    const mitLeer = new Set([...alleKinder].filter(([pid, ks]) => ursprung(pid) && ks.some(id => !relevant.has(id))).map(([pid]) => pid));
+    const dachAn = new Map();
+    const frei = [];
+    for (const d of daecher) {
+      if (d.elementId == null || !elInfo.has(d.elementId)) { frei.push(d.id); continue; }
+      if (!dachAn.has(d.elementId)) dachAn.set(d.elementId, []);
+      dachAn.get(d.elementId).push(d.id);
+    }
+    const dname = id => dachInfo.get(id)?.name || id;
+    for (const l of dachAn.values()) l.sort((a, b) => dname(a).localeCompare(dname(b), 'de'));
+    // Tiefster Abgang zuerst → Hauptstrang gerade
+    const tiefe = new Map();
+    const tiefeVon = id => {
+      if (tiefe.has(id)) return tiefe.get(id);
+      tiefe.set(id, 0);
+      const t = 1 + Math.max(0, ...(kinder.get(id) || []).map(tiefeVon));
+      tiefe.set(id, t);
+      return t;
+    };
+    for (const l of kinder.values()) l.sort((a, b) => tiefeVon(b) - tiefeVon(a));
+    // Alle Dächer unterhalb eines Knotens (für eingeklappte Knoten: Summe + Gruppenschieber)
+    const unter = new Map();
+    const unterVon = id => {
+      if (unter.has(id)) return unter.get(id);
+      unter.set(id, []);
+      const l = [...(dachAn.get(id) || []), ...(kinder.get(id) || []).flatMap(unterVon)];
+      unter.set(id, l);
+      return l;
+    };
+
+    const rows = [];
+    const pos = new Map();            // elementId → { depth, row, lastRow }
+    let maxDepth = 1;
+    const place = (eid, depth) => {
+      const start = rows.length;
+      maxDepth = Math.max(maxDepth, depth);
+      const ks = kinder.get(eid) || [];
+      const ds = dachAn.get(eid) || [];
+      if (zuSet.has(eid) && (ks.length || ds.length)) {
+        rows.push({ typ: 'zu', eid, daecher: unterVon(eid) });
+        pos.set(eid, { depth, row: start, lastRow: start, zu: true });
+        return;
+      }
+      const lz = leer.get(eid) || [];
+      if (!ks.length && !ds.length && !lz.length) rows.push({ typ: 'knoten', eid });
+      for (const k of ks) place(k, depth + 1);
+      for (const id of ds) rows.push({ typ: 'dach', dachId: id, eid });
+      if (lz.length) rows.push({ typ: 'leer', eid, anzahl: lz.length, elemente: lz.reduce((t, k) => t + groesse(k), 0) });
+      else if (nurPv && leerAufSet.has(eid) && mitLeer.has(eid)) rows.push({ typ: 'leerAuf', eid });
+      pos.set(eid, { depth, row: start, lastRow: rows.length - 1 });
+    };
+    for (const t of elemente.filter(e => e.typ === 'trafo')) {
+      if (rows.length) rows.push({ typ: 'luecke' });
+      rows.push({ typ: 'trafo', eid: t.id });
+      place(t.id, 0);
+    }
+    if (frei.length) {
+      rows.push({ typ: 'luecke' });
+      rows.push({ typ: 'frei' });
+      for (const id of frei) rows.push({ typ: 'dach', dachId: id, eid: null });
+    }
+    const xRoof = X_SCHIENE + maxDepth * COL + 34;
+    // Einklappbar = Knoten mit Abgängen oder mehreren Dächern
+    const klappbar = new Set([...byId.keys()].filter(id => byId.get(id).typ === 'trafo'
+      || (kinder.get(id) || []).length || (dachAn.get(id) || []).length > 1));
+    return { rows, pos, kinder, xRoof, breite: xRoof + 16, hoehe: rows.length * ROW, ausgeblendet, klappbar, mitLeer };
+  }
+
+  /** Eingabe mit den aktiven Maßnahmen (gecacht je Ergebnis und Auswahl) + Netzgrenze der Befüllung. */
+  function _eing(erg = _quelle) {
+    const key = [..._mass].sort().join('|');
+    if (_eingCache?.erg !== erg || _eingCache.key !== key) {
+      const eingabe = pvnaMassnahmenAnwenden(erg.modell.eingabe, _mass);
+      _eingCache = { erg, key, eingabe, fuellung: pvnaFuellen(eingabe) };
+    }
+    return _eingCache.eingabe;
+  }
+  const _fuellung = (erg = _quelle) => { _eing(erg); return _eingCache.fuellung; };
+
+  /** Alle Elemente mit angebotener Ertüchtigung, Reihenfolge wie in der Ausbautreppe. */
+  function _massnahmenListe(erg) {
+    const els = erg.modell.eingabe.elemente.filter(e => e.massnahme);
+    const stufe = new Map();
+    erg.treppe.schritte.forEach((st, i) => st.massnahmen.forEach(m => stufe.set(m.elementId, i + 1)));
+    return els.map(e => ({ id: e.id, label: e.massnahme.label, investEUR: +e.massnahme.investEUR || 0,
+      kapAlt: e.kapKw, kapNeu: e.massnahme.kapKw, typ: e.typ, stufe: stufe.get(e.id) || null }));
+  }
+
+  /**
+   * Engpässe der aktuellen Belegung: Elemente an (oder über) ihrer Stromgrenze und
+   * Knoten an der Spannungsgrenze. Die Spannung steigt zum Strangende hin monoton —
+   * von einer Kette gleich hoher Knoten zählt nur der oberste (dahinter fließt nichts zu).
+   */
+  function _engpaesse(eingabe, lf) {
+    const grenze = eingabe.duGrenzePct;
+    const byId = new Map(eingabe.elemente.map(e => [e.id, e]));
+    const strom = eingabe.elemente
+      .filter(e => Number.isFinite(e.kapKw) && e.kapKw > 0 && (lf.auslastungPct.get(e.id) || 0) >= 100 * ENGPASS_ANTEIL)
+      .map(e => e.id);
+    const anGrenze = new Set(eingabe.elemente
+      .filter(e => e.typ !== 'trafo' && (lf.duPct.get(e.id) || 0) >= grenze * ENGPASS_ANTEIL).map(e => e.id));
+    const spannung = [...anGrenze].filter(id => !anGrenze.has(byId.get(id)?.parentId));
+    return { strom, spannung, alle: new Set([...strom, ...spannung]) };
+  }
+
+  /** Kabel mit dem größten Beitrag zur Spannungsanhebung auf dem Weg vom Knoten zum Trafo. */
+  function _hauptanteil(eingabe, lf, knotenId) {
+    const byId = new Map(eingabe.elemente.map(e => [e.id, e]));
+    let cur = knotenId, best = null, bestDu = -1;
+    const ges = new Set();
+    while (cur != null && byId.has(cur) && !ges.has(cur)) {
+      ges.add(cur);
+      const e = byId.get(cur);
+      const du = (+e.duProKwPct || 0) * (lf.flussKw.get(cur) || 0);
+      if (du > bestDu) { bestDu = du; best = cur; }
+      cur = e.parentId;
+    }
+    return best;
+  }
+
+  /** Zusatz an der Knotenbeschriftung für vorhandene Einspeisung (Wind, KWK, Bestands-PV). */
+  const _vorlastText = e => +e?.vorlastKw > 0 ? ` · speist ${_fmt(e.vorlastKw)} kW (Bestand)` : '';
+
+  /** Dächer, deren Weg zum Trafo über das Element führt. */
+  function _daecherHinter(eingabe, elementId) {
+    const byId = new Map(eingabe.elemente.map(e => [e.id, e]));
+    return eingabe.daecher.filter(d => {
+      let cur = d.elementId;
+      const ges = new Set();
+      while (cur != null && byId.has(cur) && !ges.has(cur)) { if (cur === elementId) return true; ges.add(cur); cur = byId.get(cur).parentId; }
+      return false;
+    });
+  }
+
+  const _nodeX = depth => depth === 0 ? X_SCHIENE : X_SCHIENE + depth * COL;
+  const _y = row => row * ROW + ROW / 2;
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SVG
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  function _pfadSet(eingabe, dachId) {
+    const d = eingabe.daecher.find(x => x.id === dachId);
+    const byId = new Map(eingabe.elemente.map(e => [e.id, e]));
+    const s = new Set();
+    let cur = d?.elementId;
+    while (cur != null && byId.has(cur) && !s.has(cur)) { s.add(cur); cur = byId.get(cur).parentId; }
+    return s;
+  }
+
+  /** ⚒-Marken nur bei aufgeklapptem Fahrplan — sonst nur die umgesetzten (die Bestandsansicht bleibt ruhig). */
+  const _massZeigen = id => _fahrplanAuf || _mass.has(id);
+
+  /** ⚒-Marke einer Ertüchtigung — Klick schaltet sie um. */
+  function _massMarke(e, x, y) {
+    const an = _mass.has(e.id);
+    const m = e.massnahme;
+    const tip = `${m.label}\nInvest ${_fmt(m.investEUR)} €`
+      + (Number.isFinite(m.kapKw) ? ` · danach ${_fmt(m.kapKw)} kW` : '')
+      + `\nKlicken: ${an ? 'zurücknehmen' : 'umsetzen'}`;
+    return `<g data-pvna-mass="${escHtml(e.id)}" style="cursor:pointer;"><title>${escHtml(tip)}</title>
+    <circle cx="${x}" cy="${y}" r="6.5" fill="${an ? '#4fc3f7' : 'var(--surface2,#222)'}" stroke="#4fc3f7" stroke-width="1.2"/>
+    <text x="${x}" y="${y + 3}" font-size="8" text-anchor="middle" fill="${an ? '#0b1a24' : '#4fc3f7'}" pointer-events="none">⚒</text></g>`;
+  }
+
+  function _svg(erg, lf) {
+    const { modell } = erg;
+    const { info } = modell;
+    const eingabe = _eing(erg);
+    const { rows, pos, kinder, xRoof, breite, hoehe } = _layout;
+    const grenze = eingabe.duGrenzePct;
+    const byId = new Map(eingabe.elemente.map(e => [e.id, e]));
+    const dachById = new Map(eingabe.daecher.map(d => [d.id, d]));
+    const markiert = _auswahl ? _pfadSet(eingabe, _auswahl) : new Set();
+    const eng = _engpaesse(eingabe, lf);
+    // Gewähltes Dach: das Element, das seinen Spielraum begrenzt
+    const begrenzt = _auswahl ? _spiel.get(_auswahl)?.begrenzer?.elementId : null;
+    const out = [];
+
+    // 1 · Stränge (Sammelschiene bzw. Knoten-Spine), neutral
+    for (const [eid, p] of pos) {
+      const ks = kinder.get(eid) || [];
+      const istTrafo = byId.get(eid).typ === 'trafo';
+      if ((p.lastRow <= p.row || p.zu) && !istTrafo) continue;
+      const x = _nodeX(p.depth);
+      const bis = p.zu ? p.row : Math.max(p.lastRow, ...ks.map(k => pos.get(k).row));
+      out.push(istTrafo
+        ? `<line x1="${x}" x2="${x}" y1="${_y(p.row) - 8}" y2="${_y(bis) + 8}" stroke="var(--text)" stroke-width="4" stroke-linecap="round"/>`
+        : `<line x1="${x}" x2="${x}" y1="${_y(p.row)}" y2="${_y(bis)}" stroke="var(--muted)" stroke-width="1.2"/>`);
+    }
+
+    // 2 · Kabel (waagrecht vom Strang des Elternknotens zum Knoten)
+    for (const e of eingabe.elemente) {
+      if (e.typ === 'trafo') continue;
+      const p = pos.get(e.id), pp = pos.get(e.parentId);
+      if (!p || !pp) continue;
+      const i = info.elInfo.get(e.id) || {};
+      const x1 = _nodeX(pp.depth), x2 = _nodeX(p.depth), y = _y(p.row);
+      const a = lf.auslastungPct.get(e.id) || 0;
+      const fl = lf.flussKw.get(e.id) || 0;
+      const du = lf.duPct.get(e.id) || 0;
+      const mk = markiert.has(e.id);
+      const unbekannt = i.kab?.unbekannt, intern = i.kab?.stationsintern, ersatz = i.kab?.ersatz;
+      const mMarke = !!e.massnahme && _massZeigen(e.id);
+      const farbe = unbekannt || intern ? 'var(--muted)' : _auslFarbe(a);
+      const tip = `${i.label || e.id}\n${i.kabelText || ''}\nFluss ${_fmt(fl)} kW`
+        + (Number.isFinite(e.kapKw) ? ` von ${_fmt(e.kapKw)} kW (${_fmt(a)} %)` : ' — keine Stromgrenze')
+        + `\nΔU am Knoten ${_fmt(du, 2)} %`;
+      const ert = _mass.has(e.id) && e.massnahme;
+      const engpass = eng.strom.includes(e.id);
+      // Beschriftung je nach Modus: Auslastung, Spannungsanhebung am Knoten oder Kabeldaten
+      let lbl = unbekannt ? '? mm²' : _fmt(a) + ' %', lblFarbe = farbe;
+      if (_beschr === 'du') { lbl = _fmt(du, 2) + ' %'; lblFarbe = _duFarbe(du, grenze); }
+      else if (_beschr === 'kabel' && !unbekannt) {
+        const ist = i.kab?.ist || {};
+        lbl = `${ersatz ? '~' : ''}${ist.nParallel > 1 ? ist.nParallel + '×' : ''}${ist.crossSection ?? '?'}² ${_fmt(ist.lengthM)}m`;
+        lblFarbe = 'var(--muted)';
+      }
+      out.push(`<g><title>${escHtml(tip + (ert ? `\nErtüchtigt: ${e.massnahme.label}` : '')
+      + (engpass ? '\nEngpass: Stromgrenze erreicht' : '') + (begrenzt === e.id ? '\nBegrenzt das gewählte Dach' : ''))}</title>
+      ${engpass ? `<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="#e53935" stroke-width="11" opacity="0.28" stroke-linecap="round"/>` : ''}
+      ${begrenzt === e.id ? `<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="var(--accent)" stroke-width="9" opacity="0.5" stroke-linecap="round"/>` : ''}
+      ${ert ? `<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="#4fc3f7" stroke-width="${mk ? 10 : 8}" opacity="0.35"/>` : ''}
+      <line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="${farbe}" stroke-width="${intern ? 1.5 : mk ? 5 : 3}"
+        ${unbekannt || ersatz ? 'stroke-dasharray="4,3"' : ''}/>
+      <line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="transparent" stroke-width="12"/>
+      ${intern ? '' : `<text x="${(x1 + x2) / 2 - (mMarke ? 6 : 0)}" y="${y - 5}" font-size="${_beschr === 'kabel' ? 8 : 9}" text-anchor="middle"
+        fill="${lblFarbe}" font-family="DM Mono,monospace" font-weight="${engpass ? 700 : 400}">${escHtml(lbl)}</text>`}</g>`);
+      if (mMarke) out.push(_massMarke(e, x2 - 14, y));
+    }
+
+    // 3 · Knoten (Farbe = Spannungsanhebung)
+    for (const e of eingabe.elemente) {
+      if (e.typ === 'trafo') continue;
+      const p = pos.get(e.id);
+      if (!p) continue;
+      const i = info.elInfo.get(e.id) || {};
+      const du = lf.duPct.get(e.id) || 0;
+      const klappbar = _layout.klappbar.has(e.id);
+      if (eng.spannung.includes(e.id)) {
+        out.push(`<circle cx="${_nodeX(p.depth)}" cy="${_y(p.row)}" r="9.5" fill="#e53935" fill-opacity="0.18" stroke="#e53935" stroke-width="1.3">
+        <title>${escHtml(`Engpass: Spannungsgrenze erreicht (${_fmt(du, 2)} % von ${_fmt(grenze, 1)} %)`)}</title></circle>`);
+      }
+      out.push(`<circle cx="${_nodeX(p.depth)}" cy="${_y(p.row)}" r="${p.zu ? 6 : klappbar ? 5 : 4}" fill="${_duFarbe(du, grenze)}"
+      stroke="${p.zu ? 'var(--text)' : 'var(--bg, #111)'}" stroke-width="${p.zu ? 1.5 : 1}"
+      ${klappbar ? `data-pvna-klapp="${escHtml(e.id)}" style="cursor:pointer;"` : ''}>
+      <title>${escHtml(`${i.knotenName || ''}${i.knotenTyp ? ' (' + i.knotenTyp + ')' : ''}\nΔU ${_fmt(du, 2)} % (Grenze ${_fmt(grenze, 1)} %)`
+        + (klappbar ? `\nKlicken: ${p.zu ? 'ausklappen' : 'einklappen'}` : ''))}</title></circle>`);
+      if (p.zu) out.push(`<text x="${_nodeX(p.depth)}" y="${_y(p.row) + 3}" font-size="9" font-weight="700" text-anchor="middle"
+      fill="var(--bg,#111)" pointer-events="none">+</text>`);
+      // Verteiler mit Abgängen beschriften (Blattknoten stehen als eigene Zeile bzw. rechts in der Liste)
+      if (((kinder.get(e.id) || []).length || p.zu) && i.knotenName) {
+        out.push(`<text x="${_nodeX(p.depth) + 5}" y="${_y(p.row) + 12}" font-size="8.5" fill="var(--muted)">${escHtml(i.knotenName + _vorlastText(e))}</text>`);
+      }
+    }
+
+    // 4 · Trafos
+    for (const e of eingabe.elemente.filter(x => x.typ === 'trafo')) {
+      const p = pos.get(e.id);
+      if (!p) continue;                                    // ausgeblendeter Trafo ohne PV
+      const i = info.elInfo.get(e.id) || {};
+      const a = lf.auslastungPct.get(e.id) || 0;
+      const y = _y(p.row), f = _auslFarbe(a), mk = markiert.has(e.id);
+      if (eng.strom.includes(e.id) || begrenzt === e.id) {
+        const c = begrenzt === e.id ? 'var(--accent)' : '#e53935';
+        out.push(`<rect x="${X_TRAFO - 16}" y="${y - 11}" width="32" height="22" rx="11" fill="${c}" fill-opacity="0.2" stroke="${c}" stroke-width="1.2"/>`);
+      }
+      out.push(`<g data-pvna-klapp="${escHtml(e.id)}" style="cursor:pointer;"><title>${escHtml(`${i.label}\nEinspeisung ${_fmt(lf.flussKw.get(e.id))} kW von ${_fmt(e.kapKw)} kW (${_fmt(a)} %)\nKlicken: ${p.zu ? 'ausklappen' : 'einklappen'}`)}</title>
+      <line x1="${X_TRAFO + 12}" x2="${X_SCHIENE}" y1="${y}" y2="${y}" stroke="var(--text)" stroke-width="2"/>
+      <circle cx="${X_TRAFO - 5}" cy="${y}" r="8" fill="none" stroke="${f}" stroke-width="${mk ? 3 : 2}"/>
+      <circle cx="${X_TRAFO + 5}" cy="${y}" r="8" fill="none" stroke="${f}" stroke-width="${mk ? 3 : 2}"/></g>`);
+      if (e.massnahme && _massZeigen(e.id)) out.push(_massMarke(e, X_TRAFO, y + 16));
+      // Kopfzeile: Name über dem Symbol
+      out.push(`<text x="6" y="${_y(p.row - 1) + 4}" font-size="10.5" font-weight="600" fill="var(--text)">${escHtml(i.label || e.id)}</text>`);
+    }
+
+    // 5 · Dächer: Anbindung + PV-Symbol mit Füllstand
+    rows.forEach((r, row) => {
+      if (r.typ === 'frei') {
+        out.push(`<text x="6" y="${_y(row) + 4}" font-size="10.5" font-weight="600" fill="#e53935">nicht an einen Trafo angebunden</text>`);
+        return;
+      }
+      if (r.typ === 'leer' || r.typ === 'leerAuf') {
+        // Eingeklappte Abgänge ohne PV bzw. Knopf zum Wiedereinklappen
+        const p = pos.get(r.eid);
+        const x = _nodeX(p.depth), y = _y(row);
+        const zu = r.typ === 'leer';
+        const txt = zu ? `⊕ ${r.anzahl} Abg${r.anzahl === 1 ? 'ang' : 'änge'} ohne PV${r.elemente > r.anzahl ? ` (${r.elemente} Elemente)` : ''}`
+          : '⊖ Abgänge ohne PV einklappen';
+        out.push(`<g data-pvna-leer="${escHtml(r.eid)}" style="cursor:pointer;">
+        <title>${zu ? 'Klicken: aufklappen — über diese Abgänge fließt keine PV-Einspeisung' : 'Klicken: wieder einklappen'}</title>
+        <line x1="${x}" x2="${x + 18}" y1="${y}" y2="${y}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2,2"/>
+        <rect x="${x + 18}" y="${y - 8}" width="${txt.length * 5.2 + 10}" height="16" rx="8" fill="var(--surface2,#222)" stroke="var(--border)"/>
+        <text x="${x + 23}" y="${y + 3.5}" font-size="9" fill="var(--muted)">${escHtml(txt)}</text></g>`);
+        return;
+      }
+      if (r.typ === 'knoten') {
+        const i = info.elInfo.get(r.eid) || {};
+        const p = pos.get(r.eid);
+        if (i.knotenName) out.push(`<text x="${_nodeX(p.depth) + 8}" y="${_y(row) + 3}" font-size="9" fill="var(--muted)">${escHtml(i.knotenName + _vorlastText(byId.get(r.eid)))}</text>`);
+        return;
+      }
+      if (r.typ === 'zu') {
+        // Eingeklappt: gestapeltes PV-Symbol mit Füllstand der ganzen Gruppe
+        const p = pos.get(r.eid);
+        const y = _y(row);
+        const kwp = r.daecher.reduce((t, id) => t + (_bel.get(id) || 0), 0);
+        const max = r.daecher.reduce((t, id) => t + (dachById.get(id)?.kwpMax || 0), 0);
+        const ueber = r.daecher.some(id => (_bel.get(id) || 0) > (_spiel.get(id)?.kwp ?? Infinity) + 0.05);
+        const w = 18, h = 12, x0 = xRoof - 9;
+        out.push(`<line x1="${_nodeX(p.depth) + 6}" x2="${x0}" y1="${y}" y2="${y}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2,3"/>
+        <g data-pvna-klapp="${escHtml(r.eid)}" style="cursor:pointer;"><title>${escHtml(`${r.daecher.length} Dächer · ${_fmt(kwp, 1)} von ${_fmt(max, 1)} kWp\nKlicken: ausklappen`)}</title>
+        <rect x="${x0 + 3}" y="${y - h / 2 - 3}" width="${w}" height="${h}" fill="none" stroke="var(--muted)" stroke-width="0.8"/>
+        <rect x="${x0}" y="${y - h / 2}" width="${w}" height="${h}" fill="var(--bg,#111)" stroke="var(--muted)" stroke-width="1"/>
+        <rect x="${x0}" y="${y - h / 2}" width="${w * (max > 0 ? Math.min(1, kwp / max) : 0)}" height="${h}" fill="${ueber ? '#e53935' : '#66bb6a'}" opacity="0.75"/></g>`);
+        return;
+      }
+      if (r.typ !== 'dach') return;
+      const d = dachById.get(r.dachId);
+      const y = _y(row);
+      const kwp = _bel.get(r.dachId) || 0;
+      const anteil = d.kwpMax > 0 ? Math.min(1, kwp / d.kwpMax) : 0;
+      const p = r.eid ? pos.get(r.eid) : null;
+      const ueber = kwp > (_spiel.get(r.dachId)?.kwp ?? Infinity) + 0.05;
+      const farbe = ueber ? '#e53935' : '#66bb6a';
+      const mk = _auswahl === r.dachId;
+      if (p) {
+        const xs = _nodeX(p.depth);
+        out.push(`<line x1="${xs}" x2="${xRoof - 9}" y1="${y}" y2="${y}" stroke="var(--muted)" stroke-width="${mk ? 2 : 1}" stroke-dasharray="${mk ? '' : '2,3'}"/>`);
+      }
+      const w = 18, h = 12, x0 = xRoof - 9;
+      out.push(`<g data-pvna-dach="${escHtml(r.dachId)}" style="cursor:pointer;">
+      <title>${escHtml(`${modell.info.dachInfo.get(r.dachId)?.name || r.dachId}\n${_fmt(kwp, 1)} von ${_fmt(d.kwpMax, 1)} kWp`)}</title>
+      <rect x="${x0}" y="${y - h / 2}" width="${w}" height="${h}" fill="none" stroke="${mk ? 'var(--accent)' : 'var(--muted)'}" stroke-width="${mk ? 2 : 1}"/>
+      <rect x="${x0}" y="${y - h / 2}" width="${w * anteil}" height="${h}" fill="${farbe}" opacity="0.75"/>
+      <line x1="${x0}" x2="${x0 + w}" y1="${y + h / 2}" y2="${y - h / 2}" stroke="var(--muted)" stroke-width="0.6"/></g>`);
+    });
+
+    return `<svg width="${breite}" height="${hoehe}" viewBox="0 0 ${breite} ${hoehe}" style="display:block;flex:none;">${out.join('')}</svg>`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // HTML
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  const CSS_ID = 'pvna-schema-css';
+  function _cssEinmal() {
+    if (document.getElementById(CSS_ID)) return;
+    const st = document.createElement('style');
+    st.id = CSS_ID;
+    st.textContent = `
+  .pvna-sl{-webkit-appearance:none;appearance:none;width:100%;height:18px;margin:0;background:transparent;display:block;cursor:pointer;}
+  .pvna-sl::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:rgba(140,140,140,.28);}
+  .pvna-sl::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:50%;border:none;background:var(--th,var(--accent));}
+  .pvna-sl::-moz-range-track{height:4px;border-radius:2px;background:rgba(140,140,140,.28);}
+  .pvna-sl::-moz-range-thumb{width:12px;height:12px;border-radius:50%;border:none;background:var(--th,var(--accent));}
+  .pvna-zeile{display:flex;align-items:center;gap:8px;height:${ROW}px;padding:0 6px;font-size:10.5px;box-sizing:border-box;}
+  .pvna-zeile.an{background:rgba(212,168,85,.12);}
+  .pvna-knopf{font-size:10px;padding:1px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;}`;
+    document.head.appendChild(st);
+  }
+
+  /** Schieber mit Spielraum-Band und Varianten-Marke; der Daumen ist 12 px breit → 6 px Einzug. */
+  function _schieber(id, max, wert, varWert) {
+    const vp = max > 0 ? varWert / max * 100 : 0;
+    return `<div style="position:relative;flex:1 1 140px;min-width:110px;">
+    <input type="range" class="pvna-sl" data-pvna-sl="${escHtml(id)}" min="0" max="${max}" step="${max > 200 ? 1 : 0.1}" value="${wert}">
+    <div style="position:absolute;left:6px;right:6px;top:0;bottom:0;pointer-events:none;">
+      <div data-pvna-band="${escHtml(id)}" style="position:absolute;left:0;top:7px;height:4px;width:0;background:rgba(102,187,106,.75);border-radius:2px;"></div>
+      <div title="Variante" style="position:absolute;left:${vp}%;top:-1px;width:0;height:0;transform:translateX(-4px);
+        border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid #4fc3f7;"></div>
+    </div></div>`;
+  }
+
+  function _zeilenHtml(erg) {
+    const { modell } = erg;
+    const { eingabe, info } = modell;
+    const basis = new Map(erg.treppe.basis.daecher.map(d => [d.id, d.kwp]));
+    const dachById = new Map(eingabe.daecher.map(d => [d.id, d]));
+    return _layout.rows.map(r => {
+      if (r.typ === 'dach') {
+        const d = dachById.get(r.dachId);
+        const di = info.dachInfo.get(r.dachId) || {};
+        return `<div class="pvna-zeile" data-pvna-zeile="${escHtml(r.dachId)}">
+        <span data-pvna-wahl="${escHtml(r.dachId)}" title="${escHtml((di.name || r.dachId) + ' · ' + (di.art || ''))}"
+          style="flex:0 0 130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;">${escHtml(di.name || r.dachId)}</span>
+        ${_schieber(r.dachId, +d.kwpMax.toFixed(1), +(_bel.get(r.dachId) || 0).toFixed(1), basis.get(r.dachId) || 0)}
+        <span data-pvna-wert="${escHtml(r.dachId)}" title="Klicken: kWp eingeben" style="flex:0 0 92px;text-align:right;font-family:'DM Mono',monospace;cursor:text;"></span>
+        <span data-pvna-du="${escHtml(r.dachId)}" style="flex:0 0 58px;text-align:right;font-family:'DM Mono',monospace;"></span>
+        <button class="pvna-knopf" data-pvna-max="${escHtml(r.dachId)}" title="Auf den Spielraum setzen: so viel, wie das Netz bei der übrigen Belegung noch aufnimmt">⤒</button>
+      </div>`;
+      }
+      if (r.typ === 'zu') {
+        const i = info.elInfo.get(r.eid) || {};
+        const name = i.knotenName || i.label || r.eid;
+        return `<div class="pvna-zeile" data-pvna-gruppe-zeile="${escHtml(r.eid)}" style="background:rgba(128,128,128,.07);">
+        <span data-pvna-klapp="${escHtml(r.eid)}" title="Ausklappen" style="flex:0 0 130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;">
+          ▸ ${escHtml(name)} <span style="color:var(--muted);">(${r.daecher.length})</span></span>
+        <div style="position:relative;flex:1 1 140px;min-width:110px;">
+          <input type="range" class="pvna-sl" data-pvna-gruppe="${escHtml(r.eid)}" min="0" max="100" step="0.5" value="0"
+            title="Alle ${r.daecher.length} Dächer dahinter auf denselben Anteil ihrer Fläche setzen"></div>
+        <span data-pvna-gruppe-wert style="flex:0 0 92px;text-align:right;font-family:'DM Mono',monospace;"></span>
+        <span data-pvna-gruppe-du style="flex:0 0 58px;text-align:right;font-family:'DM Mono',monospace;"></span>
+        <span style="flex:0 0 22px;color:var(--muted);text-align:center;" title="Summe der Gruppe · höchstes ΔU">Σ</span>
+      </div>`;
+      }
+      if (r.typ === 'trafo') {
+        const zu = _zu.has(r.eid);
+        return `<div class="pvna-zeile" style="color:var(--muted);">
+        <button class="pvna-knopf" data-pvna-klapp="${escHtml(r.eid)}" title="${zu ? 'Trafo ausklappen' : 'Trafo einklappen'}">${zu ? '▸' : '▾'}</button>
+        <span style="flex:1;"></span><span data-pvna-trafo="${escHtml(r.eid)}" style="font-family:'DM Mono',monospace;"></span></div>`;
+      }
+      return `<div class="pvna-zeile"></div>`;
+    }).join('');
+  }
+
+  function _kachel(id, label) {
+    return `<div style="flex:1 1 100px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 10px;">
+    <div data-pvna-k="${id}" style="font-size:16px;font-family:'DM Mono',monospace;">—</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:2px;">${label}</div></div>`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ZUSTAND + AKTUALISIERUNG
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  function _potenzial(erg) { return erg.modell.eingabe.daecher.reduce((s, d) => s + d.kwpMax, 0); }
+
+  function _gleicheDaecher(a, b) {
+    const da = a.modell.eingabe.daecher, db = b.modell.eingabe.daecher;
+    if (da.length !== db.length) return false;
+    const ids = new Set(da.map(d => d.id));
+    return db.every(d => ids.has(d.id));
+  }
+
+  function _setzeVariante(erg) {
+    _bel = new Map(erg.treppe.basis.daecher.map(d => [d.id, d.kwp]));
+  }
+
+  function _spielraumRechnen(erg) {
+    const eingabe = _eing(erg);
+    _spiel = new Map(eingabe.daecher.map(d => [d.id, pvnaSpielraum(eingabe, _bel, d.id)]));
+  }
+
+  function _ertragMwh(erg) {
+    let s = 0;
+    for (const d of erg.modell.eingabe.daecher) {
+      const spez = erg.optionen?.get(d.id)?.spez ?? 950 * (d.ertragFaktor || 1);
+      s += (_bel.get(d.id) || 0) * spez / 1000;
+    }
+    return s;
+  }
+
+  /** Größter gemeinsamer Anteil aller Dächer (gecacht je Maßnahmen-Auswahl). */
+  function _gleichAnteil(erg) {
+    _eing(erg);
+    if (_eingCache.gleich == null) _eingCache.gleich = _gleichmaessigMax(erg);
+    return _eingCache.gleich;
+  }
+
+  /** Steht die Belegung (noch) auf der berechneten Variante? */
+  function _istVariante(erg) {
+    if (_mass.size) return false;
+    return erg.treppe.basis.daecher.every(d => Math.abs((_bel.get(d.id) || 0) - d.kwp) < 0.05);
+  }
+
+  /**
+   * Kernaussage in Worten: was das Netz aufnimmt, was begrenzt, wie belastbar die
+   * Zahl ist. Wird bei jeder Änderung der Belegung neu formuliert.
+   */
+  function _aussageAktualisieren(root, erg, eingabe, lf) {
+    const box = root.querySelector('[data-pvna-aussage]');
+    if (!box) return;
+    const { info } = erg.modell;
+    const grenze = eingabe.duGrenzePct;
+    const pot = _potenzial(erg);
+    const pct = pot > 0 ? lf.summeKwp / pot * 100 : 0;
+    const variante = _istVariante(erg);
+    const b = t => `<b style="color:var(--text);">${t}</b>`;
+    const rot = t => `<span style="color:#e57373;">${t}</span>`;
+    const lbl = id => escHtml(info.elInfo.get(id)?.label || id);
+
+    // 1 · Kopfsatz
+    let kopf;
+    if (variante) {
+      kopf = `Ohne Ertüchtigung von Kabeln oder Trafos nimmt das Bestandsnetz ${b(_fmt(lf.summeKwp) + ' kWp')} PV auf — `
+        + `${b(_fmt(pct) + ' %')} des Flächenpotenzials von ${_fmt(pot)} kWp (≈ ${_fmt(_ertragMwh(erg))} MWh/a).`;
+    } else {
+      const aktiv = _massnahmenListe(erg).filter(m => _mass.has(m.id));
+      const inv = aktiv.reduce((t, m) => t + m.investEUR, 0);
+      const nU = lf.ueberlastet.length, nS = lf.spannungsverletzt.length;
+      kopf = `${b('Eigene Belegung')}${aktiv.length ? ` mit ${aktiv.length} Ertüchtigung${aktiv.length > 1 ? 'en' : ''} (${_fmt(inv / 1000, 1)} T€)` : ''}: `
+        + `${b(_fmt(lf.summeKwp) + ' kWp')} (${_fmt(pct)} % des Flächenpotenzials) — `
+        + (lf.zulaessig ? '<span style="color:#66bb6a;">das Netz hält.</span>'
+          : rot(`das Netz hält nicht: ${[nU ? `${nU} Element${nU > 1 ? 'e' : ''} überlastet` : '', nS ? `${nS} Knoten über der ΔU-Grenze` : ''].filter(Boolean).join(', ')}.`))
+        + ` <span style="color:var(--muted);">Variante „Bestandsnetz": ${_fmt(erg.treppe.basis.summeKwp)} kWp.</span>`;
+    }
+
+    const punkte = [];
+    // 2 · Engpässe und was dahinter noch frei wäre
+    const eng = _engpaesse(eingabe, lf);
+    const restHinter = elId => _daecherHinter(eingabe, elId)
+      .reduce((t, d) => t + Math.max(0, d.kwpMax - (_bel.get(d.id) || 0)), 0);
+    const posten = [
+      ...eng.strom.map(id => {
+        const e = eingabe.elemente.find(x => x.id === id);
+        const a = lf.auslastungPct.get(id) || 0;
+        const kt = info.elInfo.get(id)?.kabelText;
+        const was = e.typ === 'trafo' ? 'der Nennleistung' : 'der Strombelastbarkeit';
+        return { rest: restHinter(id), schwere: a / 100, html: `${b(lbl(id))}${kt ? ` (${escHtml(kt)})` : ''} — ${a > 100.05 ? rot(_fmt(a) + ' %') : _fmt(a) + ' %'} ${was}` };
+      }),
+      ...eng.spannung.map(id => {
+        const du = lf.duPct.get(id) || 0;
+        const haupt = _hauptanteil(eingabe, lf, id);
+        const knoten = info.elInfo.get(id)?.knotenName || id;
+        return { rest: restHinter(haupt ?? id), schwere: du / grenze, html: `Spannung am Knoten ${b(escHtml(knoten))} — ${du > grenze + 0.005 ? rot(_fmt(du, 2) + ' %') : _fmt(du, 2) + ' %'} von ${_fmt(grenze, 1)} %`
+          + (haupt ? `, größter Anteil ${escHtml(info.elInfo.get(haupt)?.label || haupt)}` : '') };
+      }),
+    // Hält das Netz: wichtigster Engpass = der mit der meisten freien Fläche dahinter.
+    // Hält es nicht: die schwersten Überschreitungen zuerst.
+    ].sort((x, y) => lf.zulaessig ? y.rest - x.rest : y.schwere - x.schwere);
+    const alleVoll = eingabe.daecher.every(d => (_bel.get(d.id) || 0) >= d.kwpMax - 0.05);
+    if (posten.length) {
+      const zeig = posten.length <= 5 ? posten : posten.slice(0, 4);
+      punkte.push(`${b(lf.zulaessig ? 'Begrenzt durch' : 'Grenzen erreicht oder überschritten')}${posten.length > 1 ? ` (${posten.length} Stellen)` : ''}:<ul style="margin:2px 0 0 16px;padding:0;">`
+        + zeig.map(p => `<li>${p.html}${p.rest > 0.5 ? ` <span style="color:var(--muted);">· dahinter noch ${_fmt(p.rest)} kWp Fläche frei</span>` : ''}</li>`).join('')
+        + (posten.length > zeig.length ? `<li style="color:var(--muted);">und ${posten.length - zeig.length} weitere (im Schema rot umrandet)</li>` : '') + '</ul>');
+    } else {
+      punkte.push(alleVoll ? 'Alle Flächen sind voll belegt, ohne dass eine Netzgrenze erreicht wird.'
+        : 'Kein Element steht an seiner Grenze — die Belegung lässt noch Reserve (grünes Band an den Schiebern).');
+    }
+
+    // 3 · Trafos
+    const trafos = eingabe.elemente.filter(e => e.typ === 'trafo');
+    if (trafos.length) {
+      const tl = trafos.map(t => ({ id: t.id, a: lf.auslastungPct.get(t.id) || 0 })).sort((x, y) => y.a - x.a);
+      const trafoEng = trafos.some(t => eng.strom.includes(t.id));
+      punkte.push(`Trafos: ${tl.slice(0, 5).map(t => `${lbl(t.id)} <span style="color:${_auslFarbe(t.a)};">${_fmt(t.a)} %</span>`).join(' · ')}`
+        + (tl.length > 5 ? ` · ${tl.length - 5} weitere` : '')
+        + (!trafoEng && posten.length ? ' — die Trafos sind nicht der Engpass, es begrenzen Kabel bzw. die Spannung in den Strängen.' : ''));
+    }
+
+    // 4 · Verteilung: die Summe hängt davon ab, WO gebaut wird
+    if (!alleVoll) {
+      const f = _gleichAnteil(erg);
+      const gleichKwp = pot * f;
+      const belegt = eingabe.daecher.filter(d => (_bel.get(d.id) || 0) > 0.05).length;
+      punkte.push(`Verteilung: ${belegt} von ${eingabe.daecher.length} Dächern belegt${variante ? ', ertragsstärkste zuerst' : ''}. `
+        + `Gleichmäßig auf alle Dächer verteilt trägt das Netz ${b(_fmt(f * 100) + ' %')} je Dach (${_fmt(gleichKwp)} kWp)`
+        + (Math.abs(gleichKwp - lf.summeKwp) > Math.max(5, 0.05 * lf.summeKwp)
+          ? ` — die aufnehmbare Leistung hängt also deutlich davon ab, ${gleichKwp < lf.summeKwp ? 'wo gebaut wird' : 'wie verteilt wird'}.` : '.'));
+    }
+
+    // 4b · Weniger bauen oder abregeln (Weg B aus der Netzaufnahme, gilt für die Variante)
+    const ab = variante ? window._pvNetzaufnahme?.abregelung : null;
+    if (ab && ab.vollKwp > lf.summeKwp + 0.5) {
+      punkte.push(`Alternative zum Weniger-Bauen: alle Dächer mit Netzanschluss voll belegen (${b(_fmt(ab.vollKwp) + ' kWp')}) und die Einspeisung `
+        + `je Dach am EZA-Regler auf die Netzgrenze begrenzen — ${_fmt(ab.vollNutzbarMwh)} statt ${_fmt(ab.wenigerMwh)} MWh/a nutzbar, `
+        + `${_fmt(ab.vollVerlustPct, 1)} % der Erzeugung werden abgeregelt (ohne Eigenverbrauch gerechnet, obere Abschätzung).`);
+    }
+
+    // 5 · Datenlage
+    const warn = [];
+    const unbek = eingabe.elemente.filter(e => { const k = info.elInfo.get(e.id)?.kab; return k?.unbekannt || k?.ersatz; });
+    if (unbek.length) {
+      const hinter = new Set(unbek.flatMap(e => _daecherHinter(eingabe, e.id).map(d => d.id)));
+      const kwp = [...hinter].reduce((t, id) => t + (_bel.get(id) || 0), 0);
+      const qs = +info.ersatzQs || 0;
+      const wahl = `<select data-pvna-ersatz style="font-size:10.5px;padding:1px 4px;margin-left:4px;" title="Annahme für Kabel ohne erfassten Querschnitt — rechnet die Netzaufnahme neu">${pvnaErsatzOptionen(qs)}</select>`;
+      // Steht die Variante im Vergleich noch auf einer anderen Annahme?
+      const bn = (window._pvAnalyse?.ergebnisse || []).find(v => v.id === 'bestandsnetz')?.netzaufnahme;
+      const veraltet = bn && (+bn.eingaben?.ersatzQs || 0) !== qs
+        ? ' <span style="color:#ffb74d;">Die Variante im Varianten-Vergleich steht noch auf der vorigen Annahme — „Varianten berechnen".</span>' : '';
+      const wo = `${unbek.length} Kabel ohne erfassten Querschnitt (${unbek.slice(0, 3).map(e => escHtml(info.elInfo.get(e.id)?.knotenName || e.id)).join(', ')}${unbek.length > 3 ? ' …' : ''})`;
+      if (qs > 0) punkte.push(`${wo} — gerechnet mit ${wahl}.${veraltet}`);
+      else {
+        warn.push(`${wo} — dort ist keine Stromgrenze gerechnet${kwp > 0.5 ? `; ${_fmt(kwp)} kWp der Belegung hängen dahinter, die Aussage ist dort optimistisch` : ''}. `
+          + `Vorsichtiger rechnen mit ${wahl}${veraltet}`);
+      }
+    }
+    const geschaetzt = eingabe.elemente.filter(e => info.elInfo.get(e.id)?.kante?.autoSized && !info.elInfo.get(e.id)?.kab?.unbekannt).length;
+    if (geschaetzt) warn.push(`${geschaetzt} Querschnitt${geschaetzt > 1 ? 'e' : ''} nur geschätzt (automatisch ausgelegt) — vor Ort prüfen.`);
+    const frei = eingabe.daecher.filter(d => d.elementId == null || !info.elInfo.has(d.elementId));
+    if (frei.length) warn.push(`${frei.length} Dach/Dächer (${_fmt(frei.reduce((t, d) => t + d.kwpMax, 0))} kWp) an keinen Trafo angebunden — nicht belegbar.`);
+    const vorlast = eingabe.elemente.filter(e => +e.vorlastKw > 0);
+    if (vorlast.length) {
+      punkte.push(`Vorhandene Einspeisung ${b(_fmt(vorlast.reduce((t, e) => t + +e.vorlastKw, 0)) + ' kW')} `
+        + `(${vorlast.slice(0, 4).map(e => escHtml(info.elInfo.get(e.id)?.knotenName || info.elInfo.get(e.id)?.label || e.id)).join(', ')}) ist vorab eingerechnet.`);
+    }
+
+    const einsp = eingabe.daecher[0]?.einspFaktor;
+    box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+      <div data-pvna-aussage-text style="font-size:12px;line-height:1.55;color:var(--text);">${kopf}</div>
+      <button class="pvna-knopf" data-pvna-aktion="kopieren" style="flex:none;" title="Aussage als Text in die Zwischenablage (z. B. für das Gutachten)">📋 Text kopieren</button>
+    </div>
+    <div data-pvna-aussage-punkte style="margin-top:5px;font-size:11px;line-height:1.55;color:var(--muted);">
+      ${punkte.map(p => `<div style="margin-top:3px;">${p}</div>`).join('')}
+      ${warn.map(w => `<div style="margin-top:3px;color:#ffb74d;">⚠ ${w}</div>`).join('')}
+      <div style="margin-top:5px;font-size:10px;">Lastfall: volle Einspeisung ${_fmt(einsp, 2)} kW/kWp ohne gleichzeitige Last, Spannungsanhebung ≤ ${_fmt(grenze, 1)} %, Rechenjahr ${erg.jahr}
+        — konservativ: Eigenverbrauch hinter dem Zähler würde die Aufnahme erhöhen.</div>
+    </div>`;
+  }
+
+  function _aussageKopieren(root, knopf) {
+    // Auswahllisten stehen im Text sonst mit allen Optionen — nur die gewählte übernehmen
+    const text = sel => {
+      const el = root.querySelector(sel);
+      if (!el) return '';
+      const kopie = el.cloneNode(true);
+      kopie.querySelectorAll('select').forEach((s, i) => {
+        const orig = el.querySelectorAll('select')[i];
+        s.replaceWith(document.createTextNode(orig?.selectedOptions?.[0]?.textContent || ''));
+      });
+      // innerText braucht ein gerendertes Element — kurz unsichtbar einhängen
+      kopie.style.cssText = 'position:fixed;left:-9999px;top:0;';
+      document.body.appendChild(kopie);
+      const t = kopie.innerText;
+      kopie.remove();
+      return t;
+    };
+    const kopf = text('[data-pvna-aussage-text]');
+    const punkte = text('[data-pvna-aussage-punkte]');
+    const txt = (kopf + '\n' + punkte).replace(/\n{3,}/g, '\n\n').trim();
+    const zurueck = ok => { knopf.textContent = ok ? '✓ kopiert' : 'Kopieren nicht möglich'; setTimeout(() => { knopf.textContent = '📋 Text kopieren'; }, 1800); };
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).then(() => zurueck(true), () => zurueck(false));
+    else zurueck(false);
+  }
+
+  function _aktualisieren({ spielraum = true } = {}) {
+    const erg = _quelle;
+    const root = document.getElementById('pva-pvna-schema');
+    if (!erg || !root) return;
+    const { info } = erg.modell;
+    const eingabe = _eing(erg);
+    if (spielraum) _spielraumRechnen(erg);
+    const lf = pvnaLastfluss(eingabe, _bel);
+    const grenze = eingabe.duGrenzePct;
+
+    const svgBox = root.querySelector('[data-pvna-svg]');
+    if (svgBox) svgBox.innerHTML = _svg(erg, lf);
+
+    const dachById = new Map(eingabe.daecher.map(d => [d.id, d]));
+    root.querySelectorAll('[data-pvna-zeile]').forEach(z => {
+      const id = z.dataset.pvnaZeile;
+      const d = dachById.get(id);
+      const kwp = _bel.get(id) || 0;
+      const sp = _spiel.get(id);
+      const ueber = sp && kwp > sp.kwp + 0.05;
+      const du = d.elementId ? lf.duPct.get(d.elementId) || 0 : 0;
+      z.classList.toggle('an', _auswahl === id);
+      const sl = z.querySelector('[data-pvna-sl]');
+      if (sl && Math.abs(+sl.value - kwp) > 1e-6 && document.activeElement !== sl) sl.value = kwp;
+      sl?.style.setProperty('--th', ueber ? '#e53935' : 'var(--accent)');
+      const band = z.querySelector('[data-pvna-band]');
+      if (band) band.style.width = (d.kwpMax > 0 && sp ? Math.min(1, sp.kwp / d.kwpMax) * 100 : 0) + '%';
+      const wertEl = z.querySelector('[data-pvna-wert]');
+      if (!wertEl.contains(document.activeElement)) {        // nicht während der Zahleneingabe überschreiben
+        wertEl.innerHTML = `<span style="color:${ueber ? '#e53935' : 'var(--text)'};">${_fmt(kwp, 1)}</span><span style="color:var(--muted);"> / ${_fmt(d.kwpMax)}</span>`;
+        wertEl.title = ueber ? _abregelText(id, d, kwp, sp, false) + ' · Klicken: kWp eingeben' : 'Klicken: kWp eingeben';
+      }
+      const duEl = z.querySelector('[data-pvna-du]');
+      duEl.textContent = d.elementId ? _fmt(du, 2) + ' %' : '—';
+      duEl.style.color = _duFarbe(du, grenze);
+    });
+    const zuRows = new Map(_layout.rows.filter(r => r.typ === 'zu').map(r => [r.eid, r.daecher]));
+    root.querySelectorAll('[data-pvna-gruppe-zeile]').forEach(z => {
+      const ids = zuRows.get(z.dataset.pvnaGruppeZeile) || [];
+      const kwp = ids.reduce((t, id) => t + (_bel.get(id) || 0), 0);
+      const max = ids.reduce((t, id) => t + (dachById.get(id)?.kwpMax || 0), 0);
+      const ueber = ids.some(id => (_bel.get(id) || 0) > (_spiel.get(id)?.kwp ?? Infinity) + 0.05);
+      const duMax = ids.reduce((m, id) => {
+        const el = dachById.get(id)?.elementId;
+        return Math.max(m, el ? lf.duPct.get(el) || 0 : 0);
+      }, 0);
+      const sl = z.querySelector('[data-pvna-gruppe]');
+      if (sl && document.activeElement !== sl) sl.value = max > 0 ? kwp / max * 100 : 0;
+      sl?.style.setProperty('--th', ueber ? '#e53935' : 'var(--accent)');
+      z.querySelector('[data-pvna-gruppe-wert]').innerHTML =
+        `<span style="color:${ueber ? '#e53935' : 'var(--text)'};">${_fmt(kwp, 1)}</span><span style="color:var(--muted);"> / ${_fmt(max)}</span>`;
+      const duEl = z.querySelector('[data-pvna-gruppe-du]');
+      duEl.textContent = _fmt(duMax, 2) + ' %';
+      duEl.style.color = _duFarbe(duMax, grenze);
+    });
+    root.querySelectorAll('[data-pvna-trafo]').forEach(s => {
+      const id = s.dataset.pvnaTrafo;
+      const a = lf.auslastungPct.get(id) || 0;
+      s.innerHTML = `Einspeisung ${_fmt(lf.flussKw.get(id))} kW · <span style="color:${_auslFarbe(a)};">${_fmt(a)} %</span> der Trafoleistung`;
+    });
+
+    // Kennzahlen
+    const pot = _potenzial(erg);
+    const kabel = eingabe.elemente.filter(e => e.typ === 'kabel' && Number.isFinite(e.kapKw));
+    const trafos = eingabe.elemente.filter(e => e.typ === 'trafo');
+    const maxA = l => l.reduce((m, e) => Math.max(m, lf.auslastungPct.get(e.id) || 0), 0);
+    const setK = (k, html, farbe) => {
+      const el = root.querySelector(`[data-pvna-k="${k}"]`);
+      if (el) { el.innerHTML = html; el.style.color = farbe || 'var(--text)'; }
+    };
+    const einh = t => `<span style="font-size:10.5px;color:var(--muted);margin-left:3px;">${t}</span>`;
+    setK('summe', _fmt(lf.summeKwp) + einh(`kWp · ${_fmt(pot > 0 ? lf.summeKwp / pot * 100 : 0)} %`));
+    setK('ertrag', _fmt(_ertragMwh(erg)) + einh('MWh/a'));
+    setK('trafo', _fmt(maxA(trafos)) + einh('%'), _auslFarbe(maxA(trafos)));
+    setK('kabel', _fmt(maxA(kabel)) + einh('%'), _auslFarbe(maxA(kabel)));
+    setK('du', _fmt(lf.maxDuPct, 2) + einh('%'), _duFarbe(lf.maxDuPct, grenze));
+    const nU = lf.ueberlastet.length, nS = lf.spannungsverletzt.length;
+    const aktiv = _massnahmenListe(erg).filter(m => _mass.has(m.id));
+    const inv = aktiv.reduce((t, m) => t + m.investEUR, 0);
+    setK('invest', aktiv.length ? _fmt(inv / 1000) + einh(`T€ · ${aktiv.length} Maßn.`) : '—' + einh('Bestand'),
+      aktiv.length ? '#4fc3f7' : 'var(--muted)');
+    _fahrplanAktualisieren(root, erg);
+    setK('status', lf.zulaessig ? '✓ hält' : `✗ ${nU ? nU + ' überlastet' : ''}${nU && nS ? ' · ' : ''}${nS ? nS + ' ΔU' : ''}`,
+      lf.zulaessig ? '#66bb6a' : '#e53935');
+
+    const gs = root.querySelector('[data-pvna-gesamt]');
+    const gv = root.querySelector('[data-pvna-gesamt-wert]');
+    const gpct = pot > 0 ? lf.summeKwp / pot * 100 : 0;
+    if (gs && document.activeElement !== gs) gs.value = gpct;
+    if (gv) gv.textContent = _fmt(gpct) + ' %';
+
+    _varianteZeile(root, lf);
+    _aussageAktualisieren(root, erg, eingabe, lf);
+
+    // Auswahl-Zeile: warum ist hier Schluss?
+    const aw = root.querySelector('[data-pvna-auswahl]');
+    if (aw) {
+      if (!_auswahl || !dachById.has(_auswahl)) {
+        aw.innerHTML = 'Dach im Schema oder in der Liste anklicken, um seinen Weg zum Trafo und die begrenzende Stelle zu sehen.';
+      } else {
+        const d = dachById.get(_auswahl);
+        const sp = _spiel.get(_auswahl);
+        const beg = sp?.begrenzer;
+        const begEl = beg?.elementId ? info.elInfo.get(beg.elementId) : null;
+        aw.innerHTML = `<b style="color:var(--text);">${escHtml(info.dachInfo.get(_auswahl)?.name || _auswahl)}</b>:
+        ${_fmt(_bel.get(_auswahl) || 0, 1)} von ${_fmt(d.kwpMax, 1)} kWp belegt · Spielraum bei der übrigen Belegung
+        <b style="color:#66bb6a;">${_fmt(sp?.kwp, 1)} kWp</b>`
+          + (beg && sp.kwp < d.kwpMax - 0.05
+            ? ` — begrenzt durch ${_ART[beg.art] || beg.art}${begEl ? ': ' + escHtml(begEl.label) + (begEl.kabelText ? ` (${escHtml(begEl.kabelText)})` : '') : ''}`
+            : ' — volle Fläche möglich')
+          + (sp && d.kwpMax > sp.kwp + 0.5 ? `<br>${_abregelText(_auswahl, d, _bel.get(_auswahl) || 0, sp, true)}` : '');
+      }
+    }
+  }
+
+  /**
+   * Weniger bauen oder abregeln — für EIN Dach bei der übrigen Belegung: die Netzgrenze
+   * dieses Dachs ist sein Spielraum × Einspeisefaktor. Liegt die Belegung darüber, wird
+   * die Abregelung dieser Belegung genannt, sonst die des Vollausbaus.
+   */
+  function _abregelText(id, d, kwp, sp, html) {
+    const f = d.einspFaktor > 0 ? d.einspFaktor : 0.8;
+    const pZul = sp.kwp * f;
+    if (sp.kwp < 0.05) return 'Bei der übrigen Belegung nimmt das Netz hier nichts mehr auf — Abregeln hilft nicht, nur Umverteilen oder Ertüchtigen.';
+    const ueber = kwp > sp.kwp + 0.05;
+    const ziel = ueber ? kwp : d.kwpMax;
+    const r = pvnaAbregelungDach(id, ziel, pZul);
+    const basis = pvnaAbregelungDach(id, sp.kwp, pZul);
+    if (!r || !basis) return '';
+    const b = t => html ? `<b style="color:var(--text);">${t}</b>` : t;
+    const kopf = ueber ? `${_fmt(kwp - sp.kwp, 1)} kWp über dem Spielraum: statt das Netz zu ertüchtigen,`
+      : `Voll belegen (${_fmt(d.kwpMax, 1)} kWp) und`;
+    return `${html ? '<span style="color:#ffb74d;">⚡</span> ' : ''}${kopf} die Einspeisung am EZA-Regler auf ${b(_fmt(pZul) + ' kW')} begrenzen → `
+      + `${b(_fmt(r.verlustPct, 1) + ' %')} der Erzeugung abgeregelt, ${_fmt(r.nutzbarMwh, 1)} statt ${_fmt(basis.nutzbarMwh, 1)} MWh/a nutzbar `
+      + `(${_fmt(ziel > sp.kwp + 0.05 ? (r.nutzbarMwh - basis.nutzbarMwh) * 1000 / (ziel - sp.kwp) : 0)} kWh je zusätzlichem kWp; ohne Eigenverbrauch).`;
+  }
+
+  /** Nächsten Frame aktualisieren; der Timer fängt ab, dass rAF in verdeckten Fenstern pausiert. */
+  let _timer = 0;
+  function _planen(opts) {
+    cancelAnimationFrame(_raf);
+    clearTimeout(_timer);
+    const los = () => { cancelAnimationFrame(_raf); clearTimeout(_timer); _aktualisieren(opts); };
+    _raf = requestAnimationFrame(los);
+    _timer = setTimeout(los, 60);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // RENDER + EREIGNISSE
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  function pvnaSchemaRender() {
+    const root = document.getElementById('pva-pvna-schema');
+    if (!root) return;
+    const erg = pvnaLetztesErgebnis();
+    // Ohne Ergebnis (z. B. nach dem Laden eines Projekts) gibt es keine Ganzseitenansicht
+    if (!erg || !erg.modell.eingabe.daecher.length) _vollbild = false;
+    document.body.style.overflow = _vollbild ? 'hidden' : '';
+    // Sichtbarkeit gehört der Ansichtsumschaltung (09d) — beim Umstellen erhalten
+    const anzeige = root.style.display;
+    root.style.cssText = _vollbild
+      ? 'position:fixed;inset:0;z-index:9000;background:var(--bg,#101216);overflow:auto;padding:10px 16px;box-sizing:border-box;'
+      : '';
+    root.style.display = anzeige;
+    if (!erg || !erg.modell.eingabe.daecher.length) {
+      root.innerHTML = `<div style="color:var(--muted);font-size:11px;text-align:center;padding:40px 0;line-height:1.6;">
+      ${erg ? 'Keine PV-Flächen im Netzmodell — Gebäuden PV zuweisen oder in „Netzaufnahme (Bestand)" auf „Alle Dächer" stellen.'
+        : 'Das Einlinienschema zeigt die Variante „Bestandsnetz" — dafür muss die Netzaufnahme einmal gerechnet sein.'}<br>
+      <button class="btn-confirm" style="margin-top:10px;padding:7px 16px;font-size:11.5px;" data-click="pvnaSchemaBerechnen()">Aufnahme berechnen</button></div>`;
+      return;
+    }
+    _cssEinmal();
+    if (_quelle !== erg) {
+      // Neu gerechnet (z. B. durch „Varianten berechnen"): bei gleichem Dachbestand
+      // die eingestellte Belegung behalten, sonst mit der Variante beginnen.
+      // Stand die Belegung auf der Variante, folgt sie der neuen Variante (z. B. nach
+      // geänderter Querschnitt-Annahme) statt als „eigene Belegung" stehen zu bleiben.
+      const gleich = _quelle && _gleicheDaecher(_quelle, erg);
+      const alt = gleich && !_istVariante(_quelle) ? _bel : null;
+      _quelle = erg;
+      _setzeVariante(erg);
+      if (alt) for (const d of erg.modell.eingabe.daecher) _bel.set(d.id, Math.min(alt.get(d.id) || 0, d.kwpMax));
+      if (!gleich) { _auswahl = null; _meldung = ''; }
+      const angeboten = new Set(erg.modell.eingabe.elemente.filter(e => e.massnahme).map(e => e.id));
+      _mass = alt ? new Set([..._mass].filter(id => angeboten.has(id))) : new Set();
+    }
+    _layout = _layoutBilden(erg.modell, _nurPv);
+    const knopf = (akt, txt, tip) => `<button class="pvna-knopf" style="padding:4px 10px;font-size:10.5px;" data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
+
+    root.innerHTML = `
+  <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+    <div style="font-size:12px;font-weight:600;">Einlinienschema — Variante „Bestandsnetz"</div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+      <label style="font-size:10.5px;color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer;"
+        title="Abgänge, über die weder PV noch vorhandene Einspeisung fließt (reine Verbraucher), je Knoten zu einer Zeile einklappen — dort einzeln aufklappbar">
+        <input type="checkbox" data-pvna-nurpv ${_nurPv ? 'checked' : ''}> Stränge ohne PV einklappen${_layout.ausgeblendet ? ` (${_layout.ausgeblendet} Elemente)` : ''}</label>
+      ${_vollbild ? `<label style="font-size:10.5px;color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer;"
+        title="Schema und Schieber so verkleinern, dass alles ohne Scrollen sichtbar ist">
+        <input type="checkbox" data-pvna-einpassen ${_einpassen ? 'checked' : ''}> auf Bildschirm einpassen</label>` : ''}
+      ${knopf('allezu', '⊟ Alles einklappen', 'Jeden Trafo auf eine Summenzeile mit Gruppenschieber einklappen')}
+      ${knopf('alleauf', '⊞ Alles ausklappen', 'Die ganze Netzstruktur wieder zeigen')}
+      ${_vollbild ? '' : knopf('ausklappen', _ausgeklappt ? '⤡ Einklappen' : '⤢ Ausklappen',
+        _ausgeklappt ? 'Ergebnis-Navigation wieder einblenden, Schema im Scrollbereich'
+          : 'Schema über die ganze Seitenbreite und in voller Höhe — die Seite scrollt')}
+      ${knopf('vollbild', _vollbild ? '✕ Ganze Seite schließen (Esc)' : '⛶ Ganze Seite', _vollbild ? 'Zurück zur Ansicht in der PV-Analyse' : 'Schema bildschirmfüllend, alles auf einen Blick')}
+    </div>
+  </div>
+  <div data-pvna-aussage style="margin-bottom:8px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);
+    border-left:3px solid var(--accent);border-radius:7px;"></div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+    ${_kachel('summe', 'PV belegt')}${_kachel('ertrag', 'Erzeugung (ohne Abregelung)')}
+    ${_kachel('trafo', 'höchste Trafo-Auslastung')}${_kachel('kabel', 'höchste Kabel-Auslastung')}
+    ${_kachel('du', 'höchste Spannungsanhebung')}${_kachel('status', 'Netz')}${_kachel('invest', 'Netzertüchtigung')}
+  </div>
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:6px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:7px;">
+    <span style="font-size:11px;font-weight:600;">Ausbau gesamt</span>
+    <input type="range" class="pvna-sl" data-pvna-gesamt min="0" max="100" step="0.5" value="0" style="flex:1 1 200px;width:auto;"
+      title="Setzt jedes Dach auf denselben Anteil seiner Fläche">
+    <span data-pvna-gesamt-wert style="font-family:'DM Mono',monospace;font-size:11px;width:44px;text-align:right;"></span>
+    <span style="font-size:10px;color:var(--muted);">des Flächenpotenzials</span>
+    <span style="flex-basis:100%;height:0;"></span>
+    ${knopf('fuellen', '▲ Bis zur Netzgrenze füllen', 'Ertragsstärkste Dächer zuerst belegen, bis mit den aktiven Maßnahmen die erste Grenze erreicht ist')}
+    ${knopf('variante', '▼ Variante Bestandsnetz', 'Belegung der berechneten Variante (ertragsstärkste Dächer zuerst, bis zum ersten Engpass)')}
+    ${knopf('gleich', '⇥ Gleichmäßig bis zur Netzgrenze', 'Größter gemeinsamer Anteil aller Dächer, bei dem das Netz noch hält')}
+    ${knopf('voll', 'Vollausbau', 'Alle Dächer voll belegt')}
+    ${knopf('null', 'Alle auf 0', 'Alle Dächer leer')}
+  </div>
+  <div data-pvna-variante style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px;padding:7px 10px;
+    background:var(--surface);border:1px solid var(--border);border-left:3px solid #80cbc4;border-radius:7px;font-size:10.5px;"></div>
+  <div data-pvna-fahrplan style="margin-bottom:6px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);
+    border-left:3px solid #4fc3f7;border-radius:7px;font-size:10.5px;"></div>
+  <div data-pvna-auswahl style="font-size:10.5px;color:var(--muted);margin:6px 0 8px;min-height:15px;line-height:1.5;"></div>
+  <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 14px;margin-bottom:6px;">
+    <div style="font-size:10px;color:var(--muted);line-height:1.6;flex:1 1 420px;">
+      Kabel: <span style="color:#66bb6a;">■</span> &lt; 70 % · <span style="color:#ffb300;">■</span> 70–100 % · <span style="color:#e53935;">■</span> überlastet ·
+      <span style="color:var(--muted);">- -</span> Querschnitt nicht erfasst bzw. angenommen · <span style="color:#4fc3f7;">⚒</span> Ertüchtigung (bei aufgeklapptem Fahrplan) ·
+      Knoten: Spannungsanhebung · <span style="color:#e53935;">◉</span> Engpass (Grenze erreicht) ·
+      <span style="color:var(--accent);">▬</span> begrenzt das gewählte Dach · Schieber: <span style="color:#4fc3f7;">▼</span> Variante,
+      <span style="color:#66bb6a;">▬</span> Spielraum bei der übrigen Belegung, roter Knopf = mehr als der Spielraum.
+      Rechts: kWp belegt / Fläche (anklicken zum Eintippen) · ΔU am Anschlussknoten.</div>
+    <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);" title="Was an den Kabeln steht">
+      Beschriftung:
+      ${[['auslastung', 'Auslastung'], ['du', 'ΔU am Knoten'], ['kabel', 'Kabel']].map(([k, t]) =>
+        `<button class="pvna-knopf" data-pvna-beschr="${k}" style="${_beschr === k ? 'background:var(--accent);color:#111;border-color:var(--accent);' : ''}">${t}</button>`).join('')}
+    </div>
+  </div>
+  <div data-pvna-rahmen style="${_vollbild || _ausgeklappt ? '' : 'max-height:72vh;'}overflow:auto;border:1px solid var(--border);border-radius:7px;">
+    <div data-pvna-inhalt style="display:flex;align-items:flex-start;min-width:max-content;">
+      <div data-pvna-svg style="flex:none;"></div>
+      <div style="flex:1 1 auto;min-width:430px;border-left:1px solid var(--border);">${_zeilenHtml(erg)}</div>
+    </div>
+  </div>`;
+
+    if (!root.dataset.pvnaEreignisse) { root.dataset.pvnaEreignisse = '1'; _ereignisse(root); }
+    _aktualisieren();
+    _groesseAnpassen();
+    _navigationAnpassen();
+  }
+
+  /** Ausgeklappt: die Ergebnis-Navigation der PV-Analyse (erste Spalte von #pva-ergebnisse) ausblenden.
+   *  Beim Wechsel in eine andere Ansicht setzt 09d (_pvaRenderView) das Raster zurück. */
+  function _navigationAnpassen() {
+    const raster = document.getElementById('pva-ergebnisse');
+    const nav = raster?.firstElementChild;
+    if (!raster || !nav) return;
+    const breit = _ausgeklappt && !_vollbild;
+    raster.style.gridTemplateColumns = breit ? 'minmax(0,1fr)' : '224px minmax(0,1fr)';
+    nav.style.display = breit ? 'none' : 'flex';
+  }
+
+  /**
+   * Ganzseitenansicht: Rahmen bis zum unteren Bildrand strecken und — wenn
+   * „einpassen" an ist — Schema + Schieber per CSS-zoom so verkleinern, dass sie
+   * ganz hineinpassen. zoom statt transform, damit Zeilenausrichtung, Scrollmaß
+   * und Schieber-Mausposition stimmen.
+   */
+  function _groesseAnpassen() {
+    const root = document.getElementById('pva-pvna-schema');
+    const rahmen = root?.querySelector('[data-pvna-rahmen]');
+    const inhalt = root?.querySelector('[data-pvna-inhalt]');
+    if (!rahmen || !inhalt) return;
+    inhalt.style.zoom = '';
+    if (!_vollbild) { rahmen.style.height = ''; return; }
+    // Mindestens 60 % der Bildhöhe — sonst quetscht ein aufgeklappter Fahrplan das
+    // Schema auf einen Streifen (die Ganzseitenansicht scrollt dann als Ganzes).
+    const oben = rahmen.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;
+    const hoehe = Math.max(200, 0.6 * window.innerHeight, window.innerHeight - oben - 12);
+    rahmen.style.height = hoehe + 'px';
+    if (!_einpassen) return;
+    const f = Math.min(1, (hoehe - 4) / inhalt.scrollHeight, (rahmen.clientWidth - 4) / inhalt.scrollWidth);
+    if (f < 1) inhalt.style.zoom = String(Math.max(0.3, f));
+  }
+
+  function _vollbildUmschalten(an) {
+    _vollbild = an;
+    pvnaSchemaRender();
+  }
+
+  window.addEventListener('resize', () => { if (_vollbild) _groesseAnpassen(); });
+  document.addEventListener('keydown', ev => { if (_vollbild && ev.key === 'Escape') _vollbildUmschalten(false); });
+
+  /** Einmal je Container — die Handler lesen das aktuelle Ergebnis aus _quelle. */
+  function _ereignisse(root) {
+    const live = () => _quelle.modell.eingabe.daecher.length <= LIVE_MAX_DAECHER;
+    const daecher = () => _quelle.modell.eingabe.daecher;
+
+    root.addEventListener('input', ev => {
+      if (!_quelle) return;
+      const t = ev.target;
+      if (t.dataset.pvnaSl != null) {
+        _bel.set(t.dataset.pvnaSl, +t.value);
+        _auswahl = t.dataset.pvnaSl;
+        _planen({ spielraum: live() });
+      } else if (t.dataset.pvnaGruppe != null) {
+        const f = +t.value / 100;
+        const ids = _layout.rows.find(r => r.typ === 'zu' && r.eid === t.dataset.pvnaGruppe)?.daecher || [];
+        const byId = new Map(daecher().map(d => [d.id, d]));
+        for (const id of ids) _bel.set(id, (byId.get(id)?.kwpMax || 0) * f);
+        _planen({ spielraum: live() });
+      } else if (t.dataset.pvnaGesamt != null) {
+        const f = +t.value / 100;
+        for (const d of daecher()) _bel.set(d.id, d.kwpMax * f);
+        root.querySelector('[data-pvna-gesamt-wert]').textContent = _fmt(+t.value) + ' %';
+        _planen({ spielraum: live() });
+      }
+    });
+    root.addEventListener('change', ev => {
+      if (ev.target.dataset.pvnaNurpv != null) { _nurPv = ev.target.checked; pvnaSchemaRender(); return; }
+      if (ev.target.dataset.pvnaFvar != null) {
+        _fahrplanWahl(+ev.target.dataset.pvnaFvar, ev.target.checked);
+        _aktualisieren({ spielraum: false });
+        return;
+      }
+      if (ev.target.dataset.pvnaEinpassen != null) { _einpassen = ev.target.checked; _groesseAnpassen(); return; }
+      if (ev.target.dataset.pvnaErsatz != null) {
+        // Neue Annahme → Netzaufnahme neu rechnen; die eingestellte Belegung bleibt (gleicher Dachbestand)
+        pvnaErsatzQsSetzen(+ev.target.value);
+        pvnaSchemaRender();
+        return;
+      }
+      if (ev.target.dataset.pvnaEingabe != null) return;       // Zahleneingabe: Übernahme beim Verlassen
+      if (_quelle && ev.target.matches('.pvna-sl')) _planen({ spielraum: true });
+    });
+    // Zahleneingabe je Dach: Enter/Verlassen übernimmt, Esc verwirft
+    root.addEventListener('keydown', ev => {
+      const t = ev.target;
+      if (t.dataset?.pvnaEingabe == null) return;
+      if (ev.key === 'Enter') t.blur();
+      else if (ev.key === 'Escape') { ev.stopPropagation(); t.dataset.abbruch = '1'; t.blur(); }
+    });
+    root.addEventListener('focusout', ev => {
+      const t = ev.target;
+      if (t.dataset?.pvnaEingabe == null || !_quelle) return;
+      const id = t.dataset.pvnaEingabe;
+      const d = daecher().find(x => x.id === id);
+      if (d && !t.dataset.abbruch) {
+        const v = parseFloat(String(t.value).replace(',', '.'));
+        if (Number.isFinite(v)) _bel.set(id, Math.min(Math.max(0, v), d.kwpMax));
+      }
+      _auswahl = id;
+      t.remove();
+      _planen({ spielraum: true });
+    });
+
+    root.addEventListener('click', ev => {
+      const t = ev.target.closest('[data-pvna-aktion],[data-pvna-max],[data-pvna-wahl],[data-pvna-dach],[data-pvna-klapp],[data-pvna-mass],[data-pvna-stufe],[data-pvna-leer],[data-pvna-beschr],[data-pvna-wert]');
+      if (!t || !_quelle) return;
+      const erg = _quelle;
+      if (t.dataset.pvnaWert != null) {
+        if (t.querySelector('input')) return;
+        const id = t.dataset.pvnaWert;
+        const d = daecher().find(x => x.id === id);
+        if (!d) return;
+        t.innerHTML = `<input type="number" data-pvna-eingabe="${escHtml(id)}" min="0" max="${d.kwpMax}" step="0.1"
+        value="${(_bel.get(id) || 0).toFixed(1)}" style="width:66px;font-size:10.5px;padding:0 3px;text-align:right;">`;
+        const inp = t.querySelector('input');
+        inp.focus();
+        inp.select();
+        return;
+      }
+      if (t.dataset.pvnaBeschr) {
+        _beschr = t.dataset.pvnaBeschr;
+        pvnaSchemaRender();
+        return;
+      }
+      if (t.dataset.pvnaAktion === 'kopieren') { _aussageKopieren(root, t); return; }
+      if (t.dataset.pvnaAktion === 'fahrplan') {
+        _fahrplanAuf = !_fahrplanAuf;
+        _aktualisieren({ spielraum: false });
+        _groesseAnpassen();
+        return;
+      }
+      if (t.dataset.pvnaMass) {
+        const id = t.dataset.pvnaMass;
+        if (_mass.has(id)) _mass.delete(id); else _mass.add(id);
+        _aktualisieren();
+        return;
+      }
+      if (t.dataset.pvnaStufe != null) {
+        // Fahrplan „bis hier": Stufen 1…k umsetzen und bis zur neuen Netzgrenze füllen
+        const k = +t.dataset.pvnaStufe;
+        _mass = new Set(erg.treppe.schritte.slice(0, k).flatMap(st => st.massnahmen.map(m => m.elementId)));
+        _fuellen(erg);
+        _aktualisieren();
+        return;
+      }
+      if (t.dataset.pvnaLeer) {
+        const id = t.dataset.pvnaLeer;
+        if (_leerAuf.has(id)) _leerAuf.delete(id); else _leerAuf.add(id);
+        pvnaSchemaRender();
+        return;
+      }
+      if (t.dataset.pvnaKlapp) {
+        const id = t.dataset.pvnaKlapp;
+        if (_zu.has(id)) _zu.delete(id); else _zu.add(id);
+        pvnaSchemaRender();
+        return;
+      }
+      if (t.dataset.pvnaAktion) {
+        const a = t.dataset.pvnaAktion;
+        if (a === 'vollbild') { _vollbildUmschalten(!_vollbild); return; }
+        if (a === 'allezu' || a === 'alleauf') {
+          // Alles einklappen = jeder Trafo wird zu einer Summenzeile. Unterknoten bleiben
+          // offen, damit ein wieder aufgeklappter Trafo den ganzen Strang zeigt.
+          _zu = a === 'allezu' ? new Set(erg.modell.eingabe.elemente.filter(e => e.typ === 'trafo').map(e => e.id)) : new Set();
+          // „Alles ausklappen" zeigt auch die Abgänge ohne PV, „Alles einklappen" faltet sie wieder
+          _leerAuf = a === 'alleauf' ? new Set(_layout?.mitLeer || []) : new Set();
+          pvnaSchemaRender();
+          return;
+        }
+        if (a === 'ausklappen') {
+          _ausgeklappt = !_ausgeklappt;
+          pvnaSchemaRender();
+          document.getElementById('pva-pvna-schema')?.scrollIntoView({ block: 'start' });
+          return;
+        }
+        if (a === 'uebernehmen' || a === 'entfernen') { _varianteAendern(a); return; }
+        if (a === 'fvar-alle' || a === 'fvar-keine') {
+          window._pvAnalyse.fahrplanVarianten = a === 'fvar-alle' ? { alle: true, stufen: [] } : null;
+          _aktualisieren({ spielraum: false });
+          return;
+        }
+        if (a === 'fvar-rechnen') {
+          const n = _fahrplanGewaehlt(erg.treppe.schritte.length).length;
+          _neuRechnen(n ? `${n} Fahrplanstufe${n > 1 ? 'n' : ''} als Varianten übernommen` : 'Fahrplan-Varianten entfernt',
+            n ? ' — sie stehen im Varianten-Vergleich als „Fahrplan Stufe k".' : '.');
+          return;
+        }
+        if (a === 'laden') _eigeneLaden(erg);
+        else if (a === 'fuellen') _fuellen(erg);
+        else if (a === 'variante') { _mass = new Set(); _setzeVariante(erg); }
+        else if (a === 'voll') for (const d of daecher()) _bel.set(d.id, d.kwpMax);
+        else if (a === 'null') for (const d of daecher()) _bel.set(d.id, 0);
+        else if (a === 'gleich') {
+          const f = _gleichmaessigMax(erg);
+          for (const d of daecher()) _bel.set(d.id, d.kwpMax * f);
+        }
+      } else if (t.dataset.pvnaMax) {
+        const id = t.dataset.pvnaMax;
+        const sp = pvnaSpielraum(_eing(erg), _bel, id);
+        _bel.set(id, Math.floor(sp.kwp * 10) / 10);
+        _auswahl = id;
+      } else {
+        const id = t.dataset.pvnaWahl ?? t.dataset.pvnaDach;
+        _auswahl = _auswahl === id ? null : id;
+        if (t.dataset.pvnaDach) root.querySelector(`[data-pvna-zeile="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
+      }
+      _aktualisieren();
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // AUSBAUFAHRPLAN
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /** Belegung = Befüllung mit den aktiven Maßnahmen (ertragsstärkste Dächer zuerst). */
+  function _fuellen(erg) {
+    _bel = new Map(_fuellung(erg).daecher.map(d => [d.id, d.kwp]));
+  }
+
+  /** Restlücke bis zum Flächenpotenzial nach Ursache (Begrenzer nach allen Stufen). */
+  function _restGruppen(erg) {
+    const { info } = erg.modell;
+    const g = new Map();
+    for (const d of erg.treppe.ende.daecher) {
+      const rest = d.kwpMax - d.kwp;
+      if (rest < 0.05) continue;
+      const b = d.begrenzer;
+      const key = (b?.elementId || '—') + '|' + (b?.art || '?');
+      if (!g.has(key)) {
+        const el = b?.elementId ? info.elInfo.get(b.elementId) : null;
+        const art = { strom: 'Belastbarkeit', trafo: 'Trafoleistung', spannung: 'Spannung', vorbelastet: 'vorbelastet',
+          'nicht-angebunden': 'nicht angebunden' }[b?.art] || 'ohne Angabe';
+        const wer = el ? (el.knotenName ? `Kabel → ${el.knotenName}` : el.label) : '';   // Trafos haben keinen knotenName
+        g.set(key, {
+          kwp: 0, art,
+          label: wer ? `${wer} (${art})` : art,
+          voll: el ? `${el.label}${el.kabelText ? ' · ' + el.kabelText : ''} — ${art}` : art,
+          sackgasse: !!el?.ungeloest && !el.teil, ausgeschoepft: !!el?.teil,
+        });
+      }
+      g.get(key).kwp += rest;
+    }
+    const liste = [...g.values()].sort((a, b) => b.kwp - a.kwp);
+    if (liste.length <= 5) return liste;
+    const rest = liste.slice(4);
+    return [...liste.slice(0, 4), { kwp: rest.reduce((t, x) => t + x.kwp, 0), label: `übrige (${rest.length} Engpässe)`,
+      voll: rest.map(x => `${x.voll}: ${_fmt(x.kwp)} kWp`).join('\n'), sackgasse: false }];
+  }
+
+  /**
+   * Wasserfall: Bestand → je Fahrplanstufe der Zuwachs → mit Ertüchtigung → Restlücke
+   * nach Ursache → Flächenpotenzial. Stufenbalken sind anklickbar („bis Stufe k"),
+   * die gestrichelte Linie ist die aktuelle Belegung.
+   */
+  function _wasserfallSvg(erg) {
+    const t = erg.treppe;
+    const pot = t.basis.potenzialKwp || 1;
+    const rest = _restGruppen(erg);
+    const aktuell = [..._bel.values()].reduce((a, b) => a + b, 0);
+    const alleAn = st => st.massnahmen.every(m => _mass.has(m.elementId));
+    const balken = [
+      { typ: 'basis', von: 0, bis: t.basis.summeKwp, label: 'Bestand', unter: 'ohne Ertüchtigung', stufe: 0, an: !_mass.size },
+      ...t.schritte.map((st, i) => ({
+        typ: 'stufe', von: st.summeKwp - st.zuwachsKwp, bis: st.summeKwp, stufe: i + 1, an: alleAn(st),
+        label: `${st.sammel ? 'Sammelstufe' : 'Stufe'} ${i + 1}`,
+        unter: `${_fmt(st.investEUR / 1000)} T€ · ${_fmt(st.eurProKwp)} €/kWp`,
+        tip: `${st.sammel ? 'Sammelstufe — diese Maßnahmen wirken nur gemeinsam\n' : ''}${st.massnahmen.map(m => m.label).join('\n')}\n`
+          + `+${_fmt(st.zuwachsKwp)} kWp für ${_fmt(st.investEUR)} € (${_fmt(st.eurProKwp)} €/kWp)\nKlicken: bis hier umsetzen`,
+      })),
+    ];
+    if (t.schritte.length) balken.push({ typ: 'summe', von: 0, bis: t.ende.summeKwp, label: 'mit Ertüchtigung',
+      unter: `${_fmt((t.schritte.at(-1)?.kumInvestEUR || 0) / 1000)} T€ gesamt` });
+    let h = t.ende.summeKwp;
+    for (const r of rest) {
+      balken.push({ typ: 'rest', von: h, bis: h + r.kwp, label: r.label, unter: r.sackgasse ? 'keine Standardmaßnahme' : r.ausgeschoepft ? 'Standard ausgeschöpft' : 'nicht erschlossen',
+        tip: `${r.voll}\n${_fmt(r.kwp)} kWp bleiben offen`, sackgasse: r.sackgasse });
+      h += r.kwp;
+    }
+    balken.push({ typ: 'pot', von: 0, bis: pot, label: 'Flächenpotenzial', unter: '' });
+
+    const n = balken.length;
+    const PL = 54, PR = 12, PT = 18, PB = 50;
+    const W = Math.max(640, n * 96 + PL + PR), H = 250;
+    const bw = (W - PL - PR) / n;
+    const y = v => PT + (1 - v / pot) * (H - PT - PB);
+    const kurz = (txt, max) => txt.length > max ? txt.slice(0, max - 1) + '…' : txt;
+    const farbe = { basis: '#66bb6a', stufe: '#4fc3f7', summe: '#29b6f6', rest: '#ef9a9a', pot: 'none' };
+    const out = [];
+    for (const f of [0, 0.25, 0.5, 0.75, 1]) {
+      out.push(`<line x1="${PL}" x2="${W - PR}" y1="${y(pot * f)}" y2="${y(pot * f)}" stroke="var(--border)" stroke-width="0.5"/>
+      <text x="${PL - 6}" y="${y(pot * f) + 3}" font-size="9" fill="var(--muted)" text-anchor="end">${_fmt(pot * f)}</text>`);
+    }
+    balken.forEach((b, i) => {
+      const x = PL + i * bw + bw * 0.14, w = bw * 0.72;
+      const y1 = y(b.bis), y0 = y(b.von);
+      const klick = b.stufe != null ? `data-pvna-stufe="${b.stufe}" style="cursor:pointer;"` : '';
+      // Verbindungslinie zum nächsten Balken (Wasserfall-Treppe)
+      if (i < n - 1 && b.typ !== 'pot') {
+        const naechst = balken[i + 1];
+        const yl = y(b.bis);
+        if (naechst.typ !== 'summe' && naechst.typ !== 'pot') {
+          out.push(`<line x1="${x + w}" x2="${PL + (i + 1) * bw + bw * 0.14}" y1="${yl}" y2="${yl}" stroke="var(--muted)" stroke-width="0.8" stroke-dasharray="2,2"/>`);
+        }
+      }
+      const hoehe = Math.max(1.5, y0 - y1);
+      out.push(`<g ${klick}><title>${escHtml(b.tip || `${b.label}: ${_fmt(b.bis)} kWp`)}</title>
+      <rect x="${x}" y="${y1}" width="${w}" height="${hoehe}" rx="2"
+        fill="${farbe[b.typ]}" ${b.typ === 'pot' ? 'stroke="var(--text)" stroke-dasharray="4,3" stroke-width="1.2"' : ''}
+        ${b.typ === 'rest' ? `opacity="${b.sackgasse ? 0.9 : 0.55}"` : ''}
+        ${b.an ? 'stroke="var(--accent)" stroke-width="2.5"' : ''}/>
+      <text x="${x + w / 2}" y="${y1 - 4}" font-size="9.5" text-anchor="middle" font-family="DM Mono,monospace"
+        fill="${b.typ === 'rest' ? '#e57373' : 'var(--text)'}">${b.typ === 'stufe' || b.typ === 'rest' ? '+' : ''}${_fmt(b.bis - b.von)}</text>
+      <text x="${x + w / 2}" y="${H - PB + 13}" font-size="9" text-anchor="middle" fill="var(--text)">${escHtml(kurz(b.label, 18))}</text>
+      <text x="${x + w / 2}" y="${H - PB + 25}" font-size="8.5" text-anchor="middle" fill="var(--muted)">${escHtml(kurz(b.unter, 22))}</text></g>`);
+    });
+    // aktuelle Belegung
+    out.push(`<line x1="${PL}" x2="${W - PR}" y1="${y(aktuell)}" y2="${y(aktuell)}" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="5,3"/>
+    <text x="${W - PR}" y="${y(aktuell) - 4}" font-size="9" text-anchor="end" fill="var(--accent)">aktuelle Belegung ${_fmt(aktuell)} kWp</text>`);
+    out.push(`<text x="12" y="${(PT + H - PB) / 2}" font-size="9" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 12 ${(PT + H - PB) / 2})">kWp</text>`);
+    return `<div style="overflow-x:auto;margin:4px 0 8px;"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${Math.min(W, 640)}px;max-width:${W}px;display:block;">${out.join('')}</svg></div>`;
+  }
+
+  function _fahrplanAktualisieren(root, erg) {
+    const box = root.querySelector('[data-pvna-fahrplan]');
+    if (!box) return;
+    const liste = _massnahmenListe(erg);
+    const t = erg.treppe;
+    const umschalter = `<span data-pvna-aktion="fahrplan" style="cursor:pointer;" title="${_fahrplanAuf ? 'Fahrplan einklappen' : 'Wasserfall, Stufen und Maßnahmen zeigen'}">`
+      + `${_fahrplanAuf ? '▾' : '▸'} <b>Ausbaufahrplan</b></span>`;
+    if (!_fahrplanAuf) {
+      // Eingeklappt: eine Zeile mit dem Wesentlichen — das Schema bleibt oben
+      const aktiv = liste.filter(m => _mass.has(m.id));
+      const n = t.schritte.length;
+      const minEur = n ? Math.min(...t.schritte.map(st => st.eurProKwp)) : 0;
+      const inhalt = !n
+        ? (t.restKwp > 0.5 ? 'keine Standard-Ertüchtigung erschließt weitere Flächen.' : 'alle Flächen passen ohne Ertüchtigung ins Netz.')
+        : `${n} Stufe${n > 1 ? 'n' : ''} erschließen <b style="color:var(--text);">+${_fmt(t.ende.summeKwp - t.basis.summeKwp)} kWp</b>
+        (bis ${_fmt(t.ende.summeKwp)} kWp) für ${_fmt((t.schritte.at(-1)?.kumInvestEUR || 0) / 1000)} T€ · ab ${_fmt(minEur)} €/kWp`
+          + (t.restKwp > 0.5 ? ` · ${_fmt(t.restKwp)} kWp ohne Standardlösung` : '');
+      box.innerHTML = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;">
+      ${umschalter}<span style="color:var(--muted);">— ${inhalt}</span>
+      ${aktiv.length ? `<span style="color:#4fc3f7;">· aktiv: ${aktiv.length} Maßnahme${aktiv.length > 1 ? 'n' : ''} (${_fmt(aktiv.reduce((s2, m) => s2 + m.investEUR, 0) / 1000, 1)} T€)</span>` : ''}
+      ${n || t.restKwp > 0.5 ? `<button class="pvna-knopf" data-pvna-aktion="fahrplan" style="margin-left:auto;">Fahrplan zeigen</button>` : ''}</div>`;
+      return;
+    }
+    if (!liste.length) {
+      box.innerHTML = `${umschalter} <span style="color:var(--muted);">— ${t.restKwp > 0.5
+      ? 'keine Standard-Ertüchtigung erschließt weitere Flächen (Hinweise in „Netzaufnahme (Bestand)").'
+      : 'alle Flächen passen ohne Ertüchtigung ins Netz.'}</span>${t.restKwp > 0.5 ? _wasserfallSvg(erg) : ''}`;
+      return;
+    }
+    const chip = (m, warum = '') => {
+      const an = _mass.has(m.id);
+      return `<span data-pvna-mass="${escHtml(m.id)}" title="${escHtml(`${m.label} · ${_fmt(m.investEUR)} € · Klicken: ${an ? 'zurücknehmen' : 'umsetzen'}${warum ? '\n\n' + warum : ''}`)}"
+      style="display:inline-flex;gap:4px;align-items:center;padding:1px 7px;margin:1px 4px 1px 0;border-radius:10px;cursor:pointer;
+      border:1px solid #4fc3f7;${an ? 'background:#4fc3f7;color:#0b1a24;' : 'color:#4fc3f7;'}">${an ? '✓' : '⚒'} ${escHtml(m.label)}</span>`;
+    };
+    const alleAn = ids => ids.length && ids.every(id => _mass.has(id));
+    const fv = window._pvAnalyse?.fahrplanVarianten;
+    const gewaehlt = k => !!fv && (fv.alle || fv.stufen?.includes(k));
+    const zeile = (k, inhalt, zuwachs, invest, eurKwp, summe, kum, an) => `
+    <tr style="${an ? 'background:rgba(79,195,247,.10);' : ''}">
+      <td style="padding:3px 6px;text-align:center;">${k ? `<input type="checkbox" data-pvna-fvar="${k}" ${gewaehlt(k) ? 'checked' : ''}
+        title="Stufe ${k} als Variante „Fahrplan Stufe ${k}" in die PV-Analyse übernehmen">` : ''}</td>
+      <td style="padding:3px 6px;white-space:nowrap;"><button class="pvna-knopf" data-pvna-stufe="${k}"
+        title="${k ? `Stufen 1–${k} umsetzen und bis zur neuen Netzgrenze füllen` : 'Alle Maßnahmen zurücknehmen, Bestandsnetz füllen'}">▶ ${k ? 'bis Stufe ' + k : 'Bestand'}</button></td>
+      <td style="padding:3px 6px;">${inhalt}</td>
+      <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;white-space:nowrap;">${zuwachs}</td>
+      <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;white-space:nowrap;">${invest}</td>
+      <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;white-space:nowrap;">${eurKwp}</td>
+      <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;white-space:nowrap;">${summe}</td>
+      <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;white-space:nowrap;">${kum}</td></tr>`;
+    const byId = new Map(liste.map(m => [m.id, m]));
+    const zeilen = [zeile(0, '<span style="color:var(--muted);">Bestandsnetz ohne Ertüchtigung</span>', '—', '—', '—',
+      _fmt(t.basis.summeKwp), '0', !_mass.size)];
+    t.schritte.forEach((st, i) => {
+      const ids = st.massnahmen.map(m => m.elementId);
+      zeilen.push(zeile(i + 1, (st.sammel ? '<span style="color:var(--muted);" title="Diese Maßnahmen wirken nur gemeinsam">Sammelstufe: </span>' : '')
+        + ids.map(id => chip(byId.get(id))).join(''), '+' + _fmt(st.zuwachsKwp), _fmt(st.investEUR / 1000, 1),
+        _fmt(st.eurProKwp), _fmt(st.summeKwp), _fmt(st.kumInvestEUR / 1000, 1), alleAn(ids)));
+    });
+    const ohneStufe = liste.filter(m => !m.stufe);
+    const ungeloest = [...erg.modell.info.elInfo.values()].filter(i => i.ungeloest && !i.teil && i.ungeloestGrund === 'strom').map(i => i.label);
+    // Nur echte Stromgrenzen der Standardlösung nennen (Spannungsfälle löst oft ein vorgelagertes Kabel)
+    const teilweise = [...erg.modell.info.elInfo.values()].filter(i => i.teil && i.teilText === 'größte Standardlösung').map(i => i.label);
+    const f = _fuellung(erg);
+    const aktivInv = liste.filter(m => _mass.has(m.id)).reduce((s2, m) => s2 + m.investEUR, 0);
+    const th = (x, r) => `<th style="padding:3px 6px;font-weight:500;color:var(--muted);text-align:${r ? 'right' : 'left'};border-bottom:1px solid var(--border);">${x}</th>`;
+    box.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px;margin-bottom:4px;">
+      <span>${umschalter} <b>— Netzertüchtigungen in Reihenfolge der Wirksamkeit (€ je zusätzlichem kWp)</b></span>
+      <span style="color:var(--muted);">Aktiv: ${_mass.size ? `<b style="color:#4fc3f7;">${_mass.size} Maßnahme${_mass.size > 1 ? 'n' : ''} · ${_fmt(aktivInv / 1000, 1)} T€</b>` : 'keine'}
+        · Netzgrenze damit <b style="color:var(--text);">${_fmt(f.summeKwp)} kWp</b> von ${_fmt(f.potenzialKwp)} kWp</span>
+    </div>
+    ${_wasserfallSvg(erg)}
+    ${_fahrplanVariantenLeiste(t.schritte.length)}
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+      <thead><tr>${th('als Variante')}${th('')}${th('Maßnahmen — anklicken zum Umsetzen/Zurücknehmen')}${th('Zuwachs kWp', 1)}${th('Invest T€', 1)}${th('€/kWp', 1)}${th('Σ kWp', 1)}${th('Σ T€', 1)}</tr></thead>
+      <tbody>${zeilen.join('')}</tbody></table></div>
+    ${ohneStufe.length ? `<div style="margin-top:5px;color:var(--muted);">Weitere Maßnahmen ohne Zuwachs im Fahrplan (vorher begrenzt ein anderes Element — frei schaltbar zum Ausprobieren):
+      ${ohneStufe.map(m => chip(m, _warumOhneZuwachs(erg, m.id))).join('')}
+      <span style="color:var(--muted);">(Maus darüber: was dahinter begrenzt)</span></div>` : ''}
+    <div style="margin-top:4px;color:var(--muted);line-height:1.5;">„▶ bis Stufe k" setzt die Stufen 1…k um und füllt die Dächer bis zur neuen Netzgrenze.
+      Einzelne Maßnahmen lassen sich auch über ⚒ im Schema schalten; danach „▲ Bis zur Netzgrenze füllen" oder die Schieber nutzen.
+      ${t.restKwp > 0.5 ? `Auch nach allen Stufen bleiben ${_fmt(t.restKwp)} kWp ohne Anschluss.` : ''}</div>
+    ${ungeloest.length ? `<div style="margin-top:4px;color:#ffb74d;line-height:1.5;">Kein Standardkabel reicht für:
+      ${ungeloest.map(escHtml).join(', ')} — hier endet der Fahrplan; weiter geht es nur mit einer Strukturänderung
+      (zusätzlicher Abgang, eigene Anbindung).</div>` : ''}
+    ${teilweise.length ? `<div style="margin-top:4px;color:#ffb74d;line-height:1.5;">Größte Standardlösung (8 Parallelstränge) reicht nicht für alle Flächen:
+      ${teilweise.slice(0, 6).map(escHtml).join(', ')}${teilweise.length > 6 ? ` und ${teilweise.length - 6} weitere` : ''} — als Teil-Ertüchtigung im Fahrplan; der Rest dahinter braucht eine Strukturänderung
+      (zusätzlicher Abgang, eigene Anbindung, weiterer Trafo).</div>` : ''}`;
+  }
+
+  /** Stufen, die gerade als Variante im Ergebnis stehen (Stand der letzten Variantenrechnung). */
+  function _fahrplanImErgebnis() {
+    return new Set((window._pvAnalyse?.ergebnisse || [])
+      .map(e => /^fahrplan-(\d+)$/.exec(e.id)?.[1]).filter(Boolean).map(Number));
+  }
+
+  /** Gewählte Stufen als Liste (aus { alle } oder { stufen }). */
+  function _fahrplanGewaehlt(n) {
+    const fv = window._pvAnalyse?.fahrplanVarianten;
+    if (!fv) return [];
+    return fv.alle ? Array.from({ length: n }, (_, i) => i + 1) : (fv.stufen || []).filter(k => k <= n);
+  }
+
+  function _fahrplanVariantenLeiste(n) {
+    if (!n) return '';
+    const gew = _fahrplanGewaehlt(n);
+    const ist = _fahrplanImErgebnis();
+    const aktuell = gew.length === ist.size && gew.every(k => ist.has(k));
+    const knopf = (akt, txt, tip, betont) => `<button class="${betont ? 'btn-confirm' : 'pvna-knopf'}" style="padding:3px 9px;font-size:10.5px;"
+    data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
+    return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 6px;">
+    <span style="font-weight:600;">Stufen als Varianten:</span>
+    ${knopf('fvar-alle', '☑ alle Stufen', `Alle ${n} Stufen als Varianten „Fahrplan Stufe 1…${n}" übernehmen`)}
+    ${knopf('fvar-keine', '☐ keine', 'Keine Fahrplanstufe als Variante')}
+    ${knopf('fvar-rechnen', '↻ Varianten neu rechnen', 'Die Auswahl in die PV-Analyse übernehmen und alle Varianten neu rechnen', !aktuell)}
+    <span style="color:var(--muted);">${gew.length ? `${gew.length} von ${n} gewählt` : 'keine gewählt'}
+      ${aktuell ? (ist.size ? ' · stehen im Varianten-Vergleich' : '') : ' · <span style="color:#ffb74d;">Auswahl geändert — neu rechnen</span>'}
+      · erscheinen im Varianten-Vergleich, nicht in Abbildungen und Gutachten</span>
+  </div>`;
+  }
+
+  /** Auswahl der Fahrplan-Varianten ändern (ohne zu rechnen). */
+  function _fahrplanWahl(stufe, an) {
+    const s = window._pvAnalyse;
+    if (!s || !_quelle) return;
+    const n = _quelle.treppe.schritte.length;
+    const set = new Set(_fahrplanGewaehlt(n));
+    if (an) set.add(stufe); else set.delete(stufe);
+    s.fahrplanVarianten = set.size ? (set.size === n ? { alle: true, stufen: [] } : { alle: false, stufen: [...set].sort((a, b) => a - b) }) : null;
+  }
+
+  /**
+   * Warum bringt eine Maßnahme im Fahrplan keinen Zuwachs? Mit allen Fahrplanstufen
+   * plus dieser Maßnahme befüllen und für die Dächer HINTER dem Element sammeln,
+   * was sie begrenzt (oder dass sie schon voll sind).
+   */
+  function _warumOhneZuwachs(erg, elementId) {
+    const { info } = erg.modell;
+    const ids = new Set([...erg.treppe.schritte.flatMap(st => st.massnahmen.map(m => m.elementId)), elementId]);
+    const eingabe = pvnaMassnahmenAnwenden(erg.modell.eingabe, ids);
+    const byId = new Map(eingabe.elemente.map(e => [e.id, e]));
+    const hinter = d => {
+      let cur = d.elementId;
+      const ges = new Set();
+      while (cur != null && byId.has(cur) && !ges.has(cur)) { if (cur === elementId) return true; ges.add(cur); cur = byId.get(cur).parentId; }
+      return false;
+    };
+    const betroffen = eingabe.daecher.filter(hinter);
+    if (!betroffen.length) return 'Hinter diesem Element hängen keine Dächer.';
+    const f = pvnaFuellen(eingabe);
+    const res = new Map(f.daecher.map(d => [d.id, d]));
+    const gruende = new Map();
+    let voll = 0;
+    for (const d of betroffen) {
+      const r = res.get(d.id);
+      if (!r || r.kwp >= r.kwpMax - 0.05) { voll++; continue; }
+      const b = r.begrenzer;
+      const el = b?.elementId ? info.elInfo.get(b.elementId) : null;
+      const art = { strom: 'Belastbarkeit', trafo: 'Trafoleistung', spannung: 'Spannung', vorbelastet: 'vorbelastet' }[b?.art] || b?.art || '?';
+      const txt = `${el?.label || 'unbekannt'} (${art}${el?.ungeloest && !el.teil ? ', keine Standardmaßnahme' : el?.teil ? ', ' + el.teilText : ''})`;
+      gruende.set(txt, (gruende.get(txt) || 0) + (r.kwpMax - r.kwp));
+    }
+    if (!gruende.size) return `Alle ${betroffen.length} Dächer dahinter sind schon voll angeschlossen.`;
+    return `${betroffen.length === 1 ? 'Das Dach' : `Die ${betroffen.length} Dächer`} dahinter begrenzt vorher:\n`
+      + [...gruende].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([t, k]) => `• ${t}: ${_fmt(k)} kWp offen`).join('\n')
+      + (voll ? `\n(${voll} Dächer sind schon voll)` : '');
+  }
+
+  /** Größter gemeinsamer Anteil (0…1) aller Dächer, bei dem das Netz noch hält — Bisektion. */
+  function _gleichmaessigMax(erg) {
+    const eingabe = _eing(erg);
+    const bel = f => new Map(eingabe.daecher.map(d => [d.id, d.kwpMax * f]));
+    if (pvnaLastfluss(eingabe, bel(1)).zulaessig) return 1;
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 30; i++) {
+      const m = (lo + hi) / 2;
+      if (pvnaLastfluss(eingabe, bel(m)).zulaessig) lo = m; else hi = m;
+    }
+    return lo;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ALS VARIANTE ÜBERNEHMEN
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // GUTACHTEN-ABBILDUNG — Zeichenliste für 17-gutachten-grafik.js
+  // ══════════════════════════════════════════════════════════════════════════════
+  // 17 importiert dieses Modul nicht (App-Kern-Zyklen) und holt die Daten über
+  // window.pvnaSchemaDruck. Die Liste ist serialisierbar (steht in der Figuren-
+  // Konfiguration) und nennt Farben nur als Rolle — 17 löst sie im Gutachten-Stil
+  // auf: ok | warn | over | text | muted | faint | akzent | papier.
+
+  const DRUCK = { kwpX: 196, duX: 256, rest: 270, nameMax: 26 };
+
+  /**
+   * Einlinienschema als Zeichenliste. quelle: 'variante' (Belegung der Variante
+   * „Bestandsnetz", ohne Ertüchtigung) oder 'eigene' (übernommene eigene Belegung
+   * samt Ertüchtigungen). null, wenn es kein Netz mit Trafo oder keine Flächen gibt.
+   */
+  function pvnaSchemaDruck({ quelle = 'variante' } = {}) {
+    let erg = pvnaLetztesErgebnis();
+    if (!erg) {
+      try { pvnaFuerVariante(); } catch (err) { console.warn('[Einlinienschema] Netzaufnahme nicht berechenbar:', err); }
+      erg = pvnaLetztesErgebnis();
+    }
+    if (!erg || !erg.modell.eingabe.daecher.length || !erg.modell.eingabe.elemente.some(e => e.typ === 'trafo')) return null;
+    const { info } = erg.modell;
+    const roh = erg.modell.eingabe;
+    let bel, mass = new Set(), belegungLabel = 'Variante „Bestandsnetz" (ohne Ertüchtigung)';
+    const eig = window._pvAnalyse?.eigeneBelegung;
+    if (quelle === 'eigene' && eig?.belegung) {
+      bel = new Map(roh.daecher.map(d => [d.id, Math.min(+eig.belegung[d.id] || 0, d.kwpMax)]));
+      const angeboten = new Set(roh.elemente.filter(e => e.massnahme).map(e => e.id));
+      mass = new Set((eig.massnahmen || []).map(m => m.elementId).filter(id => angeboten.has(id)));
+      belegungLabel = `Bestandsnetz, eigene Belegung${mass.size ? ` mit ${mass.size} Ertüchtigung${mass.size > 1 ? 'en' : ''}` : ''}`;
+    } else {
+      bel = new Map(erg.treppe.basis.daecher.map(d => [d.id, d.kwp]));
+    }
+    const eingabe = pvnaMassnahmenAnwenden(roh, mass);
+    const lf = pvnaLastfluss(eingabe, bel);
+    const eng = _engpaesse(eingabe, lf);
+    const grenze = eingabe.duGrenzePct;
+    const { rows, pos, kinder, xRoof } = _layoutBilden(erg.modell, true, new Set(), new Set());
+    const byId = new Map(eingabe.elemente.map(e => [e.id, e]));
+    const dachById = new Map(eingabe.daecher.map(d => [d.id, d]));
+
+    const KOPF = ROW;                                   // Zeile für die Spaltenköpfe
+    const y = row => KOPF + _y(row);
+    const xT = xRoof + 16;
+    const out = [];
+    const ausl = a => a > 100 + 1e-6 ? 'over' : a >= 70 ? 'warn' : 'ok';
+    const duR = u => u > grenze + 1e-6 ? 'over' : u >= 0.7 * grenze ? 'warn' : 'ok';
+    const lin = (x1, y1, x2, y2, f, w, o = {}) => out.push({ t: 'l', x1, y1, x2, y2, f, w, ...o });
+    const txt = (x, yy, s, o = {}) => out.push({ t: 't', x, y: yy, s: String(s), ...o });
+    const kurz = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+
+    txt(xT, KOPF - 8, 'Dachfläche', { f: 'muted', size: 8.5, weight: 600 });
+    txt(xT + DRUCK.kwpX, KOPF - 8, 'kWp belegt / Fläche', { f: 'muted', size: 8.5, weight: 600, anchor: 'end' });
+    txt(xT + DRUCK.duX, KOPF - 8, 'ΔU', { f: 'muted', size: 8.5, weight: 600, anchor: 'end' });
+    lin(0, KOPF - 3, xT + DRUCK.rest, KOPF - 3, 'faint', 0.6);
+
+    // Stränge
+    for (const [eid, p] of pos) {
+      const ks = kinder.get(eid) || [];
+      const istTrafo = byId.get(eid).typ === 'trafo';
+      if (p.lastRow <= p.row && !istTrafo) continue;
+      const x = _nodeX(p.depth);
+      const bis = Math.max(p.lastRow, ...ks.map(k => pos.get(k).row));
+      if (istTrafo) lin(x, y(p.row) - 8, x, y(bis) + 8, 'text', 4);
+      else lin(x, y(p.row), x, y(bis), 'muted', 1.2);
+    }
+    // Kabel
+    for (const e of eingabe.elemente) {
+      if (e.typ === 'trafo') continue;
+      const p = pos.get(e.id), pp = pos.get(e.parentId);
+      if (!p || !pp) continue;
+      const i = info.elInfo.get(e.id) || {};
+      const x1 = _nodeX(pp.depth), x2 = _nodeX(p.depth), yy = y(p.row);
+      const a = lf.auslastungPct.get(e.id) || 0;
+      const unbekannt = i.kab?.unbekannt, intern = i.kab?.stationsintern, ersatz = i.kab?.ersatz;
+      const f = unbekannt || intern ? 'faint' : ausl(a);
+      if (eng.strom.includes(e.id)) lin(x1, yy, x2, yy, 'over', 11, { o: 0.22, cap: 'round' });
+      if (mass.has(e.id)) lin(x1, yy, x2, yy, 'akzent', 8, { o: 0.3 });
+      lin(x1, yy, x2, yy, f, intern ? 1.5 : 3, unbekannt || ersatz ? { dash: '4 3' } : {});
+      if (!intern) txt((x1 + x2) / 2, yy - 5, unbekannt ? '? mm²' : _fmt(a) + ' %', { f, size: 8.5, mono: true, anchor: 'middle',
+        weight: eng.strom.includes(e.id) ? 700 : 500 });
+    }
+    // Knoten
+    for (const e of eingabe.elemente) {
+      if (e.typ === 'trafo') continue;
+      const p = pos.get(e.id);
+      if (!p) continue;
+      const i = info.elInfo.get(e.id) || {};
+      const du = lf.duPct.get(e.id) || 0;
+      const x = _nodeX(p.depth), yy = y(p.row);
+      if (eng.spannung.includes(e.id)) out.push({ t: 'c', cx: x, cy: yy, r: 8.5, fill: 'over', fo: 0.15, stroke: 'over', sw: 1.2 });
+      out.push({ t: 'c', cx: x, cy: yy, r: 4, fill: duR(du), stroke: 'papier', sw: 1 });
+      if ((kinder.get(e.id) || []).length && i.knotenName) txt(x + 5, yy + 12, kurz(i.knotenName + _vorlastText(e), 34), { f: 'muted', size: 8 });
+    }
+    // Trafos
+    for (const e of eingabe.elemente.filter(x => x.typ === 'trafo')) {
+      const p = pos.get(e.id);
+      if (!p) continue;
+      const i = info.elInfo.get(e.id) || {};
+      const a = lf.auslastungPct.get(e.id) || 0;
+      const yy = y(p.row), f = ausl(a);
+      if (eng.strom.includes(e.id)) out.push({ t: 'r', x: X_TRAFO - 16, y: yy - 11, w: 32, h: 22, rx: 11, fill: 'over', fo: 0.18, stroke: 'over', sw: 1.2 });
+      lin(X_TRAFO + 12, yy, X_SCHIENE, yy, 'text', 2);
+      out.push({ t: 'c', cx: X_TRAFO - 5, cy: yy, r: 8, fill: 'none', stroke: f, sw: 2 });
+      out.push({ t: 'c', cx: X_TRAFO + 5, cy: yy, r: 8, fill: 'none', stroke: f, sw: 2 });
+      txt(4, y(p.row - 1) + 4, `${i.label || e.id} — Einspeisung ${_fmt(lf.flussKw.get(e.id))} kW (${_fmt(a)} % der Trafoleistung)`,
+        { size: 10, weight: 700 });
+    }
+    // Zeilen
+    rows.forEach((r, row) => {
+      const yy = y(row);
+      if (r.typ === 'frei') { txt(4, yy + 4, 'nicht an einen Trafo angebunden', { f: 'over', size: 10, weight: 700 }); return; }
+      if (r.typ === 'leer') {
+        const x = _nodeX(pos.get(r.eid).depth);
+        lin(x, yy, x + 14, yy, 'faint', 1, { dash: '2 2' });
+        txt(x + 18, yy + 3.5, `${r.anzahl} Abg${r.anzahl === 1 ? 'ang' : 'änge'} ohne PV (nicht dargestellt)`, { f: 'faint', size: 8.5 });
+        return;
+      }
+      if (r.typ === 'knoten') {
+        const i = info.elInfo.get(r.eid) || {};
+        if (i.knotenName) txt(_nodeX(pos.get(r.eid).depth) + 8, yy + 3, kurz(i.knotenName + _vorlastText(byId.get(r.eid)), 34), { f: 'muted', size: 8.5 });
+        return;
+      }
+      if (r.typ !== 'dach') return;
+      const d = dachById.get(r.dachId);
+      const kwp = bel.get(r.dachId) || 0;
+      const p = r.eid ? pos.get(r.eid) : null;
+      if (p) lin(_nodeX(p.depth), yy, xRoof - 9, yy, 'faint', 1, { dash: '2 3' });
+      out.push({ t: 'r', x: xRoof - 9, y: yy - 6, w: 18, h: 12, fill: 'papier', stroke: 'muted', sw: 1 });
+      if (kwp > 0 && d.kwpMax > 0) out.push({ t: 'r', x: xRoof - 9, y: yy - 6, w: 18 * Math.min(1, kwp / d.kwpMax), h: 12, fill: 'ok', fo: 0.8 });
+      const du = d.elementId ? lf.duPct.get(d.elementId) || 0 : 0;
+      txt(xT, yy + 3.5, kurz(info.dachInfo.get(r.dachId)?.name || r.dachId, DRUCK.nameMax), { size: 9.5 });
+      txt(xT + DRUCK.kwpX, yy + 3.5, `${_fmt(kwp, 1)} / ${_fmt(d.kwpMax)}`, { size: 9.5, mono: true, anchor: 'end', f: kwp > 0.05 ? 'text' : 'faint' });
+      txt(xT + DRUCK.duX, yy + 3.5, d.elementId ? _fmt(du, 2) + ' %' : '—', { size: 9.5, mono: true, anchor: 'end', f: duR(du) });
+    });
+
+    const pot = eingabe.daecher.reduce((t, d) => t + d.kwpMax, 0);
+    const kabel = eingabe.elemente.filter(e => e.typ === 'kabel' && Number.isFinite(e.kapKw));
+    const trafos = eingabe.elemente.filter(e => e.typ === 'trafo');
+    const maxA = l => l.reduce((m, e) => Math.max(m, lf.auslastungPct.get(e.id) || 0), 0);
+    const unbek = eingabe.elemente.filter(e => { const k = info.elInfo.get(e.id)?.kab; return k?.unbekannt || k?.ersatz; }).length;
+    return {
+      breite: xT + DRUCK.rest, hoehe: KOPF + rows.length * ROW + 4, zeichnung: out, belegungLabel, quelle,
+      kennzahlen: {
+        summeKwp: lf.summeKwp, potenzialKwp: pot, anteilPct: pot > 0 ? lf.summeKwp / pot * 100 : 0,
+        maxTrafoPct: maxA(trafos), maxKabelPct: maxA(kabel), maxDuPct: lf.maxDuPct, duGrenzePct: grenze,
+        zulaessig: lf.zulaessig, engpaesse: eng.strom.length + eng.spannung.length,
+        einspFaktor: eingabe.daecher[0]?.einspFaktor, jahr: erg.jahr, unbekannteQs: unbek, ersatzQs: +info.ersatzQs || 0,
+        massnahmen: mass.size,
+        investEUR: roh.elemente.filter(e => mass.has(e.id)).reduce((t, e) => t + (+e.massnahme?.investEUR || 0), 0),
+      },
+    };
+  }
+
+  function _varianteZeile(root, lf) {
+    const box = root.querySelector('[data-pvna-variante]');
+    if (!box) return;
+    const eig = window._pvAnalyse?.eigeneBelegung;
+    const knopf = (akt, txt, tip, betont) => `<button class="${betont ? 'btn-confirm' : 'pvna-knopf'}"
+    style="padding:4px 10px;font-size:10.5px;" data-pvna-aktion="${akt}" title="${tip}">${txt}</button>`;
+    box.innerHTML = `
+    ${knopf('uebernehmen', eig ? '✚ Aktuelle Belegung übernehmen (ersetzt)' : '✚ Als Variante übernehmen',
+      'Legt diese Belegung als Variante „Bestandsnetz, eigene Belegung" an und rechnet die Varianten neu', true)}
+    <span style="color:var(--muted);">${_fmt(lf.summeKwp)} kWp${_mass.size ? ` + ${_mass.size} Ertüchtigung${_mass.size > 1 ? 'en' : ''}` : ''}${lf.zulaessig ? '' : ' · <span style="color:#e53935;">Netz hält nicht — wird mit Warnhinweis übernommen</span>'}</span>
+    ${eig ? `<span style="flex-basis:100%;height:0;"></span>
+      <span>Übernommen: <b>${_fmt(eig.summeKwp)} kWp</b>${eig.massnahmen?.length
+        ? ` + ${eig.massnahmen.length} Ertüchtigung${eig.massnahmen.length > 1 ? 'en' : ''} (${_fmt(eig.massnahmen.reduce((t, m) => t + m.investEUR, 0) / 1000)} T€)` : ''} <span style="color:var(--muted);">(Stand ${escHtml(eig.stand || '—')})</span></span>
+      ${knopf('laden', '↺ Übernommene Belegung laden', 'Die gespeicherte Belegung in die Schieber laden')}
+      ${knopf('entfernen', '✕ Variante entfernen', 'Variante „Bestandsnetz, eigene Belegung" löschen und neu rechnen')}` : ''}
+    ${_meldung ? `<span style="flex-basis:100%;color:#80cbc4;">${_meldung}</span>` : ''}`;
+  }
+
+  function _eigeneLaden(erg) {
+    const eig = window._pvAnalyse?.eigeneBelegung;
+    if (!eig?.belegung) return;
+    for (const d of erg.modell.eingabe.daecher) _bel.set(d.id, Math.min(+eig.belegung[d.id] || 0, d.kwpMax));
+    const angeboten = new Set(erg.modell.eingabe.elemente.filter(e => e.massnahme).map(e => e.id));
+    _mass = new Set((eig.massnahmen || []).map(m => m.elementId).filter(id => angeboten.has(id)));
+    const fehlend = Object.keys(eig.belegung).filter(id => !erg.modell.eingabe.daecher.some(d => d.id === id)).length;
+    _meldung = 'Übernommene Belegung geladen.' + (fehlend ? ` ${fehlend} Dach/Dächer daraus gibt es nicht mehr.` : '');
+  }
+
+  /** Übernehmen oder Entfernen, danach die Varianten neu rechnen (sofern ein Lastgang vorliegt). */
+  function _varianteAendern(aktion) {
+    const s = window._pvAnalyse;
+    if (!s || !_quelle) return;
+    if (aktion === 'uebernehmen') {
+      const belegung = {};
+      let summe = 0;
+      for (const [id, kwp] of _bel) {
+        if (!(kwp > 0)) continue;
+        belegung[id] = Math.round(kwp * 10) / 10;
+        summe += belegung[id];
+      }
+      s.eigeneBelegung = {
+        belegung, summeKwp: summe,
+        massnahmen: _massnahmenListe(_quelle).filter(m => _mass.has(m.id))
+          .map(m => ({ elementId: m.id, label: m.label, investEUR: m.investEUR })),
+        stand: new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      };
+    } else {
+      s.eigeneBelegung = null;
+    }
+    _neuRechnen(aktion === 'uebernehmen' ? 'Übernommen' : 'Variante entfernt',
+      aktion === 'uebernehmen' ? ' — die Variante „Bestandsnetz, eigene Belegung" steht im Varianten-Vergleich.' : '.');
+  }
+
+  /** Varianten neu rechnen (sofern ein Lastgang vorliegt) und das Ergebnis melden. */
+  function _neuRechnen(was, zusatz) {
+    const lastgang = !!(window.elQuartierH15 || window.elQuartierH);
+    if (!lastgang) {
+      _meldung = `${was}. Ohne Stromlastgang lässt sich noch nicht rechnen — die Varianten entstehen beim nächsten „Varianten berechnen".`;
+      _aktualisieren({ spielraum: false });
+      return;
+    }
+    _meldung = 'Berechne Varianten …';
+    _aktualisieren({ spielraum: false });
+    // Einen Frame warten, damit die Meldung sichtbar ist — die Variantenrechnung blockiert.
+    setTimeout(() => {
+      try {
+        window.pvBerechneAlle?.();
+        _meldung = `${was} und Varianten neu berechnet${zusatz}`;
+      } catch (err) {
+        console.warn('[Einlinienschema] Variantenrechnung fehlgeschlagen:', err);
+        _meldung = `${was}, aber die Variantenrechnung ist fehlgeschlagen — bitte „Varianten berechnen" von Hand starten.`;
+      }
+      pvnaSchemaRender();
+    }, 30);
+  }
+
+  function pvnaSchemaBerechnen() {
+    pvnaRechnen();
+    pvnaSchemaRender();
+  }
+
+  window.pvnaSchemaRender = pvnaSchemaRender;
+  window.pvnaSchemaBerechnen = pvnaSchemaBerechnen;
+  window.pvnaSchemaDruck = pvnaSchemaDruck;
+
+  var pvnaSchema = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    pvnaSchemaBerechnen: pvnaSchemaBerechnen,
+    pvnaSchemaDruck: pvnaSchemaDruck,
+    pvnaSchemaRender: pvnaSchemaRender
   });
 
   // ── main.js — ES Module entry point ────────────────────────────────────────
@@ -207540,7 +209846,7 @@ ${teile.join('\n')}
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,
-    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme,
+    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema,
   ];
   window.pdfjsLib = pdfjsLib;
   appLifecycle.listen(window,'pagehide',()=>appLifecycle.dispose(),{once:true});

@@ -84,6 +84,14 @@ const PV_VARIANTEN_INFO = {
     herleitung:'Die Dachflächen werden — ertragsstärkste zuerst — belegt, bis im bestehenden Netz das erste Kabel oder der erste Trafo an seine Belastbarkeit stößt oder die Spannungsanhebung 3 % erreicht. Erlaubt sind nur EZA-Regler und Einspeisemanagement, keine Ertüchtigung.',
     bewertung: 'Schnell umsetzbar, ohne Tiefbau und Netzplanung. Lässt das Potenzial hinter den Engpässen ungenutzt; welche Ertüchtigung den Rest zu welchen Kosten erschließt, zeigt die Ansicht „Netzaufnahme (Bestand)".',
   },
+  // Nur vorhanden, wenn im Einlinienschema eine Belegung übernommen wurde (state.eigeneBelegung)
+  'netz-eigen': {
+    label: 'Bestandsnetz, eigene Belegung', farbe: '#80cbc4', icon: '✎',
+    frage:     'Was bringt die im Einlinienschema gewählte Verteilung?',
+    ziel:      'Selbst gewählte Belegung der Dächer im bestehenden Netz',
+    herleitung:'Belegung Dach für Dach von Hand im Einlinienschema festgelegt (Schieber je Dach bzw. Gesamtschieber). Beim Berechnen wird sie gegen das aktuelle Netzmodell geprüft: Kabel- und Trafo-Belastbarkeit sowie die Spannungsanhebung.',
+    bewertung: 'Zeigt eine planerisch gewünschte Verteilung — etwa gleichmäßig über alle Gebäude statt ertragsstärkste Dächer zuerst. Hält sie das Netz ein, entfallen wie bei „Bestandsnetz" die Netzbau-Positionen; sonst steht ein Warnhinweis an der Variante und Ertüchtigungskosten sind nicht enthalten.',
+  },
   'ev-opt': {
     label: 'Eigenverbrauchs-optimiert', farbe: '#42a5f5', icon: '⊙',
     frage:     'Welche Größe verbraucht das Quartier selbst?',
@@ -114,6 +122,19 @@ const PV_VARIANTEN_INFO = {
   },
 };
 
+// Stufen des Ausbaufahrplans (Einlinienschema, 29) als eigene Varianten 'fahrplan-<k>'.
+// Bewusst OHNE frage: sie stehen im Varianten-Vergleich, zählen aber nicht zu den
+// kanonischen Varianten von Lesehilfe, Abbildungen und Gutachten (sonst 17 Varianten dort).
+const PV_FAHRPLAN_INFO = {
+  label: 'Fahrplan Stufe', farbe: '#4fc3f7', icon: '▲',
+  ziel:      'Bestandsnetz plus die Netzertüchtigungen der Fahrplanstufen 1 bis k',
+  herleitung:'Ausbautreppe der Netzaufnahme: Ertüchtigungen nach Zuwachs je Euro, danach Befüllung der Dächer (ertragsstärkste zuerst) bis zur neuen Netzgrenze. Invest = kumulierte Ertüchtigung aller Stufen bis k.',
+  bewertung: 'Zeigt, wie sich Ertrag und Wirtschaftlichkeit Stufe für Stufe entwickeln — der Punkt, ab dem weitere Ertüchtigung sich nicht mehr trägt, ist das sinnvolle Ende des Fahrplans.',
+};
+const _pvVarInfo = id => PV_VARIANTEN_INFO[id] || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : null);
+/** Farbe je Fahrplanstufe: von Türkis (Stufe 1) nach Dunkelblau (letzte Stufe). */
+const _pvFahrplanFarbe = (k, n) => `hsl(${190 + Math.round(40 * (n > 1 ? (k - 1) / (n - 1) : 0))}, 70%, ${62 - Math.round(22 * (n > 1 ? (k - 1) / (n - 1) : 0))}%)`;
+
 // ══════════════════════════════════════════════════════════════════════════════
 // MODUL-STATE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -128,6 +149,10 @@ function _pvStandardZustand() {
     uBudgetPct: 3,       // zulässige Spannungsanhebung durch Einspeisung (VDE-AR-N 4105: 3 % NS, 4110: 2 % MS)
     uBudgetManuell: false, // false = uBudgetPct aus der Spannungsebene des Netzanschlusses (_pvUBudget)
     pvMaxKwpOverride: 0,        // 0 = aus Assets berechnen
+    eigeneBelegung: null,       // im Einlinienschema übernommene Belegung → Variante „netz-eigen"
+                                //   { belegung: {dachId: kWp}, summeKwp, stand,
+                                //     massnahmen: [{ elementId, label, investEUR }] }
+    fahrplanVarianten: null,    // Fahrplanstufen als Varianten 'fahrplan-<k>': { alle: bool, stufen: [k, …] }
     pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
     pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
     deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
@@ -426,6 +451,13 @@ function pvInfraKosten(pvKwp, pvErtragMwh, opts = {}) {
     const kabelKosten = (en.laengeM || 0) * (en.preisPrM || 250);
     investEUR += kabelKosten + (en.schutzEUR || 5000);
     detail.push(`Erzeugungsnetz ${en.laengeM} m`);
+  }
+
+  // Gezielte Netzertüchtigung (Variante „Bestandsnetz, eigene Belegung" mit Maßnahmen
+  // aus dem Ausbaufahrplan des Einlinienschemas) — ersetzt dort den pauschalen Netzbau
+  if (opts.netzausbauEUR > 0) {
+    investEUR += opts.netzausbauEUR;
+    detail.push(opts.netzausbauLabel || 'Netzertüchtigung');
   }
 
   // Mehrkostenprinzip (anteilige Kosten geteilter Infrastruktur)
@@ -902,7 +934,8 @@ function pvWirtschaft(pvKwp, batKwh, simResult, pvErtragMwh, params, strategie, 
 
   const pvInvest  = pvKwp  * pvInvestPerKwp;
   const batInvest = batKwh * batInvestPerKwh;
-  const infra     = pvInfraKosten(pvKwp, pvErtragMwh, { ohneNetzbau: !!params.ohneNetzbau });
+  const infra     = pvInfraKosten(pvKwp, pvErtragMwh, { ohneNetzbau: !!params.ohneNetzbau,
+    netzausbauEUR: params.netzausbauEUR || 0, netzausbauLabel: params.netzausbauLabel || '' });
 
   const annPv  = annF(zins, pvLife  || 20);
   const annBat = annF(zins, batLife || 15);
@@ -1140,7 +1173,7 @@ export function pvBerechneAlle() {
   // ── Hilfsfunktion: eine kanonische Variante berechnen und pushen ──
   function berechne(id, pvKwp, batKwh, strategie, labelSuffix, paramsExtra) {
     if (pvKwp <= 0) return;
-    const info = PV_VARIANTEN_INFO[id];
+    const info = _pvVarInfo(id);
     const ertragMwh = pvKwp * spez / 1000;
     const sim  = pvNapSim(pvKwp, batKwh, demandH, pvProfile, napParams, strategie, spotH);
     const wirt = pvWirtschaft(pvKwp, batKwh, sim, ertragMwh,
@@ -1196,6 +1229,77 @@ export function pvBerechneAlle() {
           + `Alternativ ohne Ertüchtigung: ${Math.round(ab.vollKwp)} kWp bauen und die Einspeisung auf die Netzgrenze abregeln — `
           + `${ab.vollVerlustPct.toFixed(1).replace('.', ',')} % Abregelung, ${Math.round(ab.vollNutzbarMwh - ab.wenigerMwh)} MWh/a Mehrertrag.`;
       }
+    }
+  }
+
+  // ═══ 1c) BESTANDSNETZ, EIGENE BELEGUNG — im Einlinienschema übernommen ═══════
+  //     Die Belegung wird gegen das aktuelle Netzmodell geprüft (Dächer können
+  //     inzwischen fehlen oder das Netz sich geändert haben). Netzbau-Positionen
+  //     entfallen nur, wenn sie das Netz tatsächlich einhält.
+  const eigen = state.eigeneBelegung;
+  if (eigen?.belegung) {
+    let pr = null;
+    try { pr = window.pvnaBelegungPruefen?.(eigen.belegung, eigen.massnahmen || []) || null; }
+    catch (err) { console.warn('[PV-Analyse] Prüfung der eigenen Belegung fehlgeschlagen:', err); }
+    const kwpRoh = pr ? pr.summeKwp : (eigen.summeKwp || 0);
+    const kwpE = maxKwp > 0 ? Math.min(kwpRoh, maxKwp) : kwpRoh;
+    // Maßnahmen aus dem Ausbaufahrplan: Invest nach dem aktuellen Modell (pr), sonst wie übernommen
+    const mass = pr?.massnahmen || eigen.massnahmen || [];
+    const netzausbauEUR = mass.reduce((t, m) => t + (+m.investEUR || 0), 0);
+    berechne('netz-eigen', kwpE, 0, 'none',
+      mass.length ? ` + ${mass.length === 1 ? '1 Ertüchtigung' : mass.length + ' Ertüchtigungen'}` : '',
+      { ohneNetzbau: !!pr?.zulaessig, netzausbauEUR,
+        netzausbauLabel: mass.length ? `Netzertüchtigung (${mass.length} Maßnahme${mass.length > 1 ? 'n' : ''})` : '' });
+    const eE = ergebnisse[ergebnisse.length - 1];
+    if (eE?.id === 'netz-eigen') {
+      eE.eigeneBelegung = pr;
+      eE.netzausbau = mass.length ? { investEUR: netzausbauEUR, massnahmen: mass } : null;
+      const h = [];
+      if (!pr) h.push('Netz nicht prüfbar (kein Trafo im Netzmodell) — Netzbau-Positionen sind enthalten.');
+      else if (!pr.zulaessig) {
+        h.push(`Die Belegung überlastet das Bestandsnetz (${[
+          pr.ueberlastet ? `${pr.ueberlastet} Kabel/Trafo über Belastbarkeit` : '',
+          pr.spannung ? `${pr.spannung} Knoten über ${String(pr.duGrenzePct).replace('.', ',')} % ΔU` : '',
+        ].filter(Boolean).join(', ')}) — Ertüchtigungskosten sind nicht eingerechnet.`);
+      }
+      if (mass.length) {
+        h.push(`Mit Netzertüchtigung für ${Math.round(netzausbauEUR / 1000)} T€: ${mass.map(m => m.label).join('; ')}.`);
+      }
+      if (pr?.massnahmenFehlend) h.push(`${pr.massnahmenFehlend} übernommene Maßnahme(n) sind im aktuellen Netzmodell nicht mehr nötig oder möglich und entfallen.`);
+      if (pr?.fehlend) h.push(`${pr.fehlend} Dach/Dächer der übernommenen Belegung gibt es im Netzmodell nicht mehr.`);
+      if (kwpE < kwpRoh - 0.5) h.push(`Auf das Anlagenpotenzial von ${Math.round(maxKwp)} kWp begrenzt.`);
+      if (h.length) eE.hinweis = h.join(' ');
+    }
+  }
+
+  // ═══ 1d) FAHRPLANSTUFEN — Bestandsnetz + Ertüchtigungen der Stufen 1…k ═══════
+  //     Stufen aus der aktuellen Ausbautreppe (pvnaFuerVariante hat eben neu gerechnet).
+  //     Invest = kumulierte Ertüchtigung; die pauschalen Netzbau-Positionen entfallen.
+  const fv = state.fahrplanVarianten;
+  if (fv && (fv.alle || fv.stufen?.length)) {
+    let stufen = null;
+    try { stufen = window.pvnaFahrplanStufen?.() || null; }
+    catch (err) { console.warn('[PV-Analyse] Fahrplanstufen nicht verfügbar:', err); }
+    const n = stufen?.length || 0;
+    for (const st of stufen || []) {
+      if (!fv.alle && !fv.stufen.includes(st.stufe)) continue;
+      const kwpS = maxKwp > 0 ? Math.min(st.summeKwp, maxKwp) : st.summeKwp;
+      berechne(`fahrplan-${st.stufe}`, kwpS, 0, 'none', ` ${st.stufe}`, {
+        ohneNetzbau: true, netzausbauEUR: st.kumInvestEUR,
+        netzausbauLabel: `Netzertüchtigung Fahrplan Stufe${st.stufe > 1 ? 'n 1–' : ' '}${st.stufe}`,
+      });
+      const eF = ergebnisse[ergebnisse.length - 1];
+      if (eF?.id !== `fahrplan-${st.stufe}`) continue;
+      eF.farbe = _pvFahrplanFarbe(st.stufe, n);
+      eF.fahrplan = st;
+      eF.hinweis = `Stufe ${st.stufe}${st.sammel ? ' (Sammelstufe)' : ''}: ${st.massnahmen.map(m => m.label).join('; ')} — `
+        + `+${Math.round(st.zuwachsKwp)} kWp für ${Math.round(st.investEUR / 1000)} T€ (${Math.round(st.eurProKwp || 0)} €/kWp); `
+        + `kumuliert ${st.anzahlKum} Maßnahme${st.anzahlKum > 1 ? 'n' : ''}, ${Math.round(st.kumInvestEUR / 1000)} T€.`
+        + (kwpS < st.summeKwp - 0.5 ? ` Auf das Anlagenpotenzial von ${Math.round(maxKwp)} kWp begrenzt.` : '');
+    }
+    if (!fv.alle) {
+      const fehlt = fv.stufen.filter(k => k > n);
+      if (fehlt.length) console.warn(`[PV-Analyse] Fahrplanstufe(n) ${fehlt.join(', ')} gibt es nicht mehr (Fahrplan hat ${n} Stufen).`);
     }
   }
 
@@ -1481,6 +1585,9 @@ const PVA_VIEWS = [
   // window angesprochen, weil ein Import einen Zyklus 28 → 14b → 14a → 09d schlösse.
   { id:'netzaufnahme', gruppe:'ergebnis', label:'Netzaufnahme (Bestand)', el:'pva-netzaufnahme',
     ohneBerechnung:true, render:() => window.pvnaRender?.() },
+  // Einlinienschema der Variante „Bestandsnetz" mit Schiebern (29-pvna-schema.js, per window wie oben)
+  { id:'pvnaschema', gruppe:'ergebnis', label:'Einlinienschema (Bestandsnetz)', el:'pva-pvna-schema',
+    ohneBerechnung:true, render:() => window.pvnaSchemaRender?.() },
 
   { id:'abb1',  gruppe:'abb', nr:1,  label:'Optimierungsfläche',   el:'pva-chart-heatmap',
     render:(v, a) => renderOptSurface3D(a.demandH, a.pvProfile, a.napParams, a.params, v) },
@@ -1547,6 +1654,13 @@ function _pvaRenderView() {
   // zur Ansicht "Ausbau-Grenznutzen".
   const windEl = document.getElementById('pva-chart-wind-grenz');
   if (windEl) windEl.style.display = _pvaView === 'abb2' ? 'block' : 'none';
+  // Das Einlinienschema (29) kann die Navigation ausklappen — jede andere Ansicht
+  // bekommt das normale Raster zurück (das Schema setzt es beim Zeichnen selbst).
+  const raster = document.getElementById('pva-ergebnisse');
+  if (raster && _pvaView !== 'pvnaschema') {
+    raster.style.gridTemplateColumns = '224px minmax(0,1fr)';
+    if (raster.firstElementChild) raster.firstElementChild.style.display = 'flex';
+  }
   // Aktive Ansicht zeichnen, wenn nötig
   const view = PVA_VIEWS.find(v => v.id === _pvaView);
   const leer = document.getElementById('pva-leer-hinweis');
@@ -2171,6 +2285,7 @@ function _pvBuildPanelHtml() {
       <div id="pva-herleitung"              style="display:none;"></div>
       <div id="pva-rechenweg"               style="display:none;"></div>
       <div id="pva-netzaufnahme"            style="display:none;"></div>
+      <div id="pva-pvna-schema"             style="display:none;"></div>
       <div id="pva-chart-heatmap"           style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-grenznutzen"       style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-wind-grenz"        style="overflow:hidden;"></div>
@@ -2518,7 +2633,8 @@ function renderHerleitung(varianten) {
       (grund ? ` Begrenzt durch: ${grund}.` : '') +
       (d.schritte?.length
         ? ` Die Stufen zeigen, was Ertüchtigungen zusätzlich erschließen — bis ${num(d.mitErtuechtigungKwp)} kWp für ${num(d.investEUR / 1000)} T€.`
-        : ' Keine Ertüchtigung nötig oder möglich.')));
+        : ' Keine Ertüchtigung nötig oder möglich.')
+      + ` <a data-click="pvaSetView('pvnaschema')" style="color:var(--accent);cursor:pointer;">Im Einlinienschema ansehen →</a>`));
   }
 
   el.innerHTML = `
@@ -6325,7 +6441,7 @@ export function pvCaptureState() {
   for (const k of _PV_SPEICHER_FELDER) daten[k] = s[k];
   daten.ergebnisse = (s.ergebnisse || []).map(e => {
     const kopie = { ...e };
-    delete kopie.info;   // Variantenbeschreibung kommt beim Laden aus PV_VARIANTEN_INFO
+    delete kopie.info;   // Variantenbeschreibung kommt beim Laden aus PV_VARIANTEN_INFO (_pvVarInfo)
     return kopie;
   });
   daten.resilienz = {
@@ -6350,8 +6466,8 @@ export function pvRestoreState(daten) {
   Object.assign(s, _pvStandardZustand());
   for (const k of _PV_SPEICHER_FELDER) if (d[k] != null) s[k] = d[k];
   s.ergebnisse = (d.ergebnisse || [])
-    .filter(e => PV_VARIANTEN_INFO[e.id])
-    .map(e => ({ ...e, info: PV_VARIANTEN_INFO[e.id] }));
+    .filter(e => _pvVarInfo(e.id))
+    .map(e => ({ ...e, info: _pvVarInfo(e.id) }));
   if (!s.ergebnisse.length) { s.berechnet = false; s.stale = false; }
   s.napMaxEinspKw = window.elNapMaxEinspKw ?? 0;
   s.napMaxBezugKw = window.elNapMaxBezugKw ?? 0;

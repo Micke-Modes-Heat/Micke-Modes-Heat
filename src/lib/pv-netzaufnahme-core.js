@@ -275,21 +275,47 @@ export function pvnaTreppe(eingabe, opts = {}) {
     if (!offen.length) break;
     let best = null;
     for (const kand of offen) {
-      // Bündel: Kandidat + offene Maßnahmen auf dem Weg zum Trafo
+      // Zwei Kandidaten je Maßnahme: allein, und als Bündel mit den offenen Maßnahmen
+      // auf dem Weg zum Trafo (ein neues Hausanschlusskabel nützt nichts, solange der
+      // Trafo davor voll ist). Das Bündel allein würde vorgelagerte Maßnahmen auch
+      // dann mitkaufen, wenn sie für den Zuwachs gar nicht nötig sind.
       const buendel = new Set();
       for (const pid of _pfadVon(kand.id, elById)) {
         const pe = elById.get(pid);
         if (pe?.massnahme && !umgesetzt.has(pid)) buendel.add(pid);
       }
-      const ids = new Set([...umgesetzt, ...buendel]);
-      const res = pvnaFuellen({ ...eingabe, elemente: anwenden(basisEl, ids) });
-      const zuwachs = res.summeKwp - aktuell.summeKwp;
-      if (zuwachs <= 1e-6) continue;
-      const invest = [...buendel].reduce((s, id) => s + (+elById.get(id).massnahme.investEUR || 0), 0);
-      const guete = invest > 0 ? zuwachs / invest : Infinity;
-      if (!best || guete > best.guete + EPS
-          || (Math.abs(guete - best.guete) <= EPS && zuwachs > best.zuwachs)) {
-        best = { buendel, res, zuwachs, invest, guete };
+      const varianten = buendel.size > 1 ? [new Set([kand.id]), buendel] : [buendel];
+      for (const b of varianten) {
+        const ids = new Set([...umgesetzt, ...b]);
+        const res = pvnaFuellen({ ...eingabe, elemente: anwenden(basisEl, ids) });
+        const zuwachs = res.summeKwp - aktuell.summeKwp;
+        if (zuwachs <= 1e-6) continue;
+        const invest = [...b].reduce((s, id) => s + (+elById.get(id).massnahme.investEUR || 0), 0);
+        const guete = invest > 0 ? zuwachs / invest : Infinity;
+        if (!best || guete > best.guete + EPS
+            || (Math.abs(guete - best.guete) <= EPS && zuwachs > best.zuwachs)) {
+          best = { buendel: b, res, zuwachs, invest, guete };
+        }
+      }
+    }
+    // Sammelstufe: Bringt keine Maßnahme (bzw. kein Pfad-Bündel) allein etwas, wirken
+    // mehrere Engpässe vielleicht erst gemeinsam — z. B. Trafo und Abgangskabel auf
+    // verschiedenen Pfaden, oder Strom- und Spannungsgrenze zugleich. Dann alle offenen
+    // Maßnahmen zusammen umsetzen und anschließend jede wieder herausnehmen, die für
+    // den Zuwachs nicht gebraucht wird (teuerste zuerst).
+    if (!best && offen.length > 1) {
+      const invest = id => +elById.get(id).massnahme.investEUR || 0;
+      const fuellen = b => pvnaFuellen({ ...eingabe, elemente: anwenden(basisEl, new Set([...umgesetzt, ...b])) });
+      let b = new Set(offen.map(e => e.id));
+      let res = fuellen(b);
+      if (res.summeKwp - aktuell.summeKwp > 1e-6) {
+        for (const id of [...b].sort((x, y) => invest(y) - invest(x))) {
+          const ohne = new Set([...b].filter(x => x !== id));
+          const r2 = fuellen(ohne);
+          if (r2.summeKwp >= res.summeKwp - 1e-6) { b = ohne; res = r2; }
+        }
+        const inv = [...b].reduce((t, id) => t + invest(id), 0);
+        best = { buendel: b, res, zuwachs: res.summeKwp - aktuell.summeKwp, invest: inv, sammel: true };
       }
     }
     if (!best) break;
@@ -306,6 +332,7 @@ export function pvnaTreppe(eingabe, opts = {}) {
       summeKwp: aktuell.summeKwp,
       kumInvestEUR: kumInvest,
       eurProKwp: best.zuwachs > 0 ? best.invest / best.zuwachs : null,
+      sammel: !!best.sammel,
     });
   }
 
@@ -351,4 +378,109 @@ export function pvnaAbregelung(profil, spezKwhKwp, kwp, pZulKw) {
     stundenAbgeregelt: stunden,
     spitzeKw: spitze,
   };
+}
+
+/**
+ * Lastfluss bei frei gewählter Belegung — für das interaktive Einlinienschema.
+ *
+ * belegung: Map<dachId, kWp> (fehlende Dächer = 0). Keine Grenzen, keine
+ * Befüllung: gerechnet wird genau die vorgegebene Belegung.
+ *
+ * Rückgabe: {
+ *   flussKw:       Map<elementId, kW>       (inkl. Vorlast)
+ *   auslastungPct: Map<elementId, %>        (0 bei unbegrenzten Elementen)
+ *   duPct:         Map<elementId, %>        Spannungsanhebung am Knoten hinter dem Element
+ *   ueberlastet:   [elementId]              Fluss > Kapazität
+ *   spannungsverletzt: [elementId]          ΔU > Grenze
+ *   summeKwp, maxAuslastungPct, maxDuPct, zulaessig
+ * }
+ */
+export function pvnaLastfluss(eingabe, belegung) {
+  const { daecher = [], duGrenzePct = 3 } = eingabe || {};
+  const el = _elementMap(eingabe?.elemente);
+  const bel = belegung instanceof Map ? belegung : new Map(Object.entries(belegung || {}));
+  const fluss = new Map([...el.keys()].map(id => [id, 0]));
+  const add = (startId, kw) => {
+    for (const pid of _pfadVon(startId, el)) fluss.set(pid, fluss.get(pid) + kw);
+  };
+  for (const [id, e] of el) if (+e.vorlastKw > 0) add(id, +e.vorlastKw);
+  let summeKwp = 0;
+  for (const d of daecher) {
+    const kwp = Math.max(0, +bel.get(d.id) || 0);
+    summeKwp += kwp;
+    if (kwp > 0 && el.has(d.elementId)) add(d.elementId, (d.einspFaktor > 0 ? d.einspFaktor : 0.8) * kwp);
+  }
+  // ΔU je Knoten: Summe über den Pfad — von oben nach unten mit Merkliste
+  const duPct = new Map();
+  const du = id => {
+    if (duPct.has(id)) return duPct.get(id);
+    const e = el.get(id);
+    duPct.set(id, 0);                                     // Zyklusschutz
+    const eigen = (+e.duProKwPct || 0) * fluss.get(id);
+    const v = eigen + (e.parentId != null && el.has(e.parentId) ? du(e.parentId) : 0);
+    duPct.set(id, v);
+    return v;
+  };
+  const auslastungPct = new Map();
+  const ueberlastet = [], spannungsverletzt = [];
+  let maxAusl = 0, maxDu = 0;
+  for (const [id, e] of el) {
+    const kap = e.kapKw == null ? Infinity : +e.kapKw;
+    const a = Number.isFinite(kap) && kap > 0 ? fluss.get(id) / kap * 100 : 0;
+    auslastungPct.set(id, a);
+    if (Number.isFinite(kap) && fluss.get(id) > kap + EPS) ueberlastet.push(id);
+    const u = du(id);
+    if (u > duGrenzePct + EPS) spannungsverletzt.push(id);
+    maxAusl = Math.max(maxAusl, a);
+    maxDu = Math.max(maxDu, u);
+  }
+  return { flussKw: fluss, auslastungPct, duPct, ueberlastet, spannungsverletzt, summeKwp,
+    maxAuslastungPct: maxAusl, maxDuPct: maxDu,
+    zulaessig: !ueberlastet.length && !spannungsverletzt.length };
+}
+
+/**
+ * Spielraum eines Dachs: größte Belegung (kWp) dieses Dachs, bei der mit der
+ * übrigen Belegung keine Strom- oder Spannungsgrenze gerissen wird.
+ * Ist das Netz schon durch die anderen Dächer überlastet, ist der Spielraum 0.
+ * Rückgabe: { kwp, begrenzer:{ elementId, art }|null }  (kwp ≤ kwpMax)
+ */
+export function pvnaSpielraum(eingabe, belegung, dachId) {
+  const d = (eingabe?.daecher || []).find(x => x.id === dachId);
+  if (!d) return { kwp: 0, begrenzer: null };
+  const el = _elementMap(eingabe.elemente);
+  if (!el.has(d.elementId)) return { kwp: 0, begrenzer: { elementId: null, art: 'nicht-angebunden' } };
+  const ohne = new Map(belegung instanceof Map ? belegung : Object.entries(belegung || {}));
+  ohne.set(dachId, 0);
+  const lf = pvnaLastfluss(eingabe, ohne);
+  const f = d.einspFaktor > 0 ? d.einspFaktor : 0.8;
+  const grenze = eingabe.duGrenzePct ?? 3;
+  const pfad = _pfadVon(d.elementId, el);
+  const pSet = new Set(pfad);
+  let x = Math.max(0, +d.kwpMax || 0), begrenzer = null;
+
+  for (const eid of pfad) {
+    const e = el.get(eid);
+    const kap = e.kapKw == null ? Infinity : +e.kapKw;
+    if (!Number.isFinite(kap)) continue;
+    const xe = Math.max(0, (kap - lf.flussKw.get(eid)) / f);
+    if (xe < x - EPS) { x = xe; begrenzer = { elementId: eid, art: e.typ === 'trafo' ? 'trafo' : 'strom' }; }
+  }
+  // Spannung: nur Strangenden prüfen (monoton, s. _endPruefpunkte)
+  const eltern = new Set();
+  for (const e of el.values()) if (e.parentId != null) eltern.add(e.parentId);
+  for (const [qid] of el) {
+    if (eltern.has(qid)) continue;
+    let koeff = 0, knapp = null, knappK = -1;
+    for (const eid of _pfadVon(qid, el)) {
+      if (!pSet.has(eid)) continue;
+      const k = +el.get(eid).duProKwPct || 0;
+      koeff += k;
+      if (k > knappK) { knappK = k; knapp = eid; }
+    }
+    if (koeff <= EPS) continue;
+    const xq = Math.max(0, (grenze - lf.duPct.get(qid)) / (f * koeff));
+    if (xq < x - EPS) { x = xq; begrenzer = { elementId: knapp, art: 'spannung' }; }
+  }
+  return { kwp: x, begrenzer };
 }

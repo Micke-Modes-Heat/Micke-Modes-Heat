@@ -4085,6 +4085,82 @@ export function ggRenderHerleitung(cfg, T = GG_THEME) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * 3g2) RENDERER — „Einlinienschema Bestandsnetz"
+ *
+ * Für Kapitel 3.4.2: das Einlinienschema der Netzaufnahme (Trafo → Kabel →
+ * Knoten → Dächer) mit Auslastung, Spannungsanhebung und Engpässen. Die
+ * Geometrie kommt fertig als Zeichenliste aus src/29-pvna-schema.js
+ * (window.pvnaSchemaDruck); hier werden nur die Farbrollen im Gutachten-Stil
+ * aufgelöst und das Blatt (Kopf, Legende, Kennzahlen) drumherum gebaut.
+ * cfg.schema = { breite, hoehe, zeichnung:[{t:'l'|'c'|'r'|'t', …}] }
+ * ═══════════════════════════════════════════════════════════════════════ */
+export function ggRenderEinlinienschema(cfg, T = GG_THEME) {
+  const sch = cfg.schema;
+  const S0 = T.sheet;
+  const verfuegbar = T.width - 2 * S0.padX;
+  // Maßstab: Schema-Einheiten sind Bildschirm-Pixel (Schrift ~9 px) → für Word etwas größer,
+  // bei breiten Netzen so weit verkleinert, dass alles auf die Textbreite passt.
+  const s = sch ? Math.min(1.3, verfuegbar / sch.breite) : 1;
+  const legendeH = 40;
+  const plotH = sch ? Math.max(160, sch.hoehe * s + legendeH + 16) : 200;
+  const T2 = { ...T, sheet: { ...S0, plotH } };
+  const G = ggSheetGeometry(T2, cfg);
+  const S = G.S, W = G.W;
+  const txt = (x, y, t, o) => ggTxt(T2, S, x, y, t, o);
+  let out = ggSheetHeader(cfg, T2, G);
+
+  if (!sch) {
+    out += `<rect x="${S.padX}" y="${G.plotY}" width="${W - 2 * S.padX}" height="${G.plotH}" fill="${T.neutral.cardBg}"/>`;
+    out += txt(W / 2, G.plotY + G.plotH / 2, cfg.leer || 'Keine Daten vorhanden', { anchor: 'middle', size: 13, fill: T.text.faint });
+    out += ggSheetKpiFooter(cfg, T2, G);
+    return ggFinishSvg(out, W, G.height);
+  }
+
+  const farbe = {
+    ok: T.accents.gruen, warn: T.energy.gas, over: T.energy.waerme, text: T.text.strong,
+    muted: T.text.muted, faint: T.text.faint, akzent: T.energy.strom, papier: T.neutral.cardBg, none: 'none',
+  };
+  const f = k => farbe[k] || k || 'none';
+  out += `<rect x="${S.padX}" y="${G.plotY}" width="${W - 2 * S.padX}" height="${G.plotH}" fill="${T.neutral.cardBg}" stroke="${T.line}"/>`;
+  const x0 = S.padX + (verfuegbar - sch.breite * s) / 2;
+  let g = '';
+  for (const e of sch.zeichnung || []) {
+    if (e.t === 'l') {
+      g += `<line x1="${gR(e.x1)}" y1="${gR(e.y1)}" x2="${gR(e.x2)}" y2="${gR(e.y2)}" stroke="${f(e.f)}" stroke-width="${e.w}"`
+        + `${e.dash ? ` stroke-dasharray="${e.dash}"` : ''}${e.o != null ? ` opacity="${e.o}"` : ''}${e.cap ? ` stroke-linecap="${e.cap}"` : ''}/>`;
+    } else if (e.t === 'c') {
+      g += `<circle cx="${gR(e.cx)}" cy="${gR(e.cy)}" r="${e.r}" fill="${f(e.fill)}"${e.fo != null ? ` fill-opacity="${e.fo}"` : ''}`
+        + `${e.stroke ? ` stroke="${f(e.stroke)}" stroke-width="${e.sw || 1}"` : ''}/>`;
+    } else if (e.t === 'r') {
+      g += `<rect x="${gR(e.x)}" y="${gR(e.y)}" width="${gR(e.w)}" height="${gR(e.h)}"${e.rx ? ` rx="${e.rx}"` : ''} fill="${f(e.fill)}"`
+        + `${e.fo != null ? ` fill-opacity="${e.fo}"` : ''}${e.stroke ? ` stroke="${f(e.stroke)}" stroke-width="${e.sw || 1}"` : ''}/>`;
+    } else if (e.t === 't') {
+      g += ggTxt(T2, S, e.x, e.y, e.s, { size: e.size || 9, anchor: e.anchor, mono: e.mono, weight: e.weight, fill: f(e.f || 'text') });
+    }
+  }
+  out += `<g transform="translate(${gR(x0)} ${gR(G.plotY + 10)}) scale(${gR(s * 1000) / 1000})">${g}</g>`;
+
+  // Legende
+  const ly = G.plotY + G.plotH - legendeH + 14;
+  let lx = S.padX + 14;
+  const eintrag = (sym, label) => {
+    out += sym(lx, ly);
+    out += txt(lx + 20, ly + 4, label, { size: S.fsLeg, fill: T.text.muted });
+    lx += 26 + ggEstW(label, S.fsLeg) + 14;
+  };
+  out += `<line x1="${S.padX}" y1="${gR(ly - 14)}" x2="${W - S.padX}" y2="${gR(ly - 14)}" stroke="${T.line}"/>`;
+  eintrag((x, y) => `<line x1="${x}" y1="${y}" x2="${x + 14}" y2="${y}" stroke="${farbe.ok}" stroke-width="3"/>`, '< 70 %');
+  eintrag((x, y) => `<line x1="${x}" y1="${y}" x2="${x + 14}" y2="${y}" stroke="${farbe.warn}" stroke-width="3"/>`, '70–100 %');
+  eintrag((x, y) => `<line x1="${x}" y1="${y}" x2="${x + 14}" y2="${y}" stroke="${farbe.over}" stroke-width="3"/>`, '> 100 % Auslastung bzw. ΔU-Grenze');
+  eintrag((x, y) => `<circle cx="${x + 7}" cy="${y}" r="6" fill="${farbe.over}" fill-opacity="0.15" stroke="${farbe.over}"/>`, 'Engpass');
+  eintrag((x, y) => `<line x1="${x}" y1="${y}" x2="${x + 14}" y2="${y}" stroke="${farbe.faint}" stroke-width="2" stroke-dasharray="4 3"/>`, 'Querschnitt nicht erfasst');
+  out += txt(S.padX + 14, ly + 20, cfg.fussnote || '', { size: S.fsLeg - 1, fill: T.text.faint });
+
+  out += ggSheetKpiFooter(cfg, T2, G);
+  return ggFinishSvg(out, W, G.height);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * 3h) RENDERER — „Rückspeise-Ampel": Säule je Variante gegen Grenzlinien
  *
  * Für Kapitel 3.4.2: die gleichzeitige Rückspeiseleistung am Netzanschluss-
@@ -4183,7 +4259,7 @@ function ggPvKanon() {
   return (window._pvAnalyse?.ergebnisse || []).filter(v => v.info && v.info.frage);
 }
 /** Kurzform der Variantenlabel für Achsen/Kategorien (voller Name steht in Tabellen). */
-const GG_PV_KURZ = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
+const GG_PV_KURZ = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz (eigen)', 'ev-opt': 'EV-optimiert', 'wirt-opt': 'Wirt.-optimiert',
                       'autarkie': 'Autarkie', 'max-pv': 'Max. PV-Ausbau' };
 const GG_RES_MODE_LBL = { 'gen': 'Nur Notstrom', 'bat-gen': 'Speicher + Notstrom',
                            'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'Nur PV + Speicher' };
@@ -4206,7 +4282,7 @@ function ggPvTagLabel(stundenIdx) {
  * window._pvAnalyse), nie aus den aktuellen Eingabefeldern — sonst zeigten Text
  * und Abbildungen verschiedene Stände. Wie die Abbildungen bewusst ohne Euro-Werte
  * und ohne „beste" Variante: bewertet wird in 3.5. */
-const GG_PV_LANG = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'ev-opt': 'Eigenverbrauchs-optimiert', 'wirt-opt': 'Wirtschaftlich optimiert',
+const GG_PV_LANG = { 'minimal': 'Minimal', 'bestandsnetz': 'Bestandsnetz', 'netz-eigen': 'Bestandsnetz, eigene Belegung', 'ev-opt': 'Eigenverbrauchs-optimiert', 'wirt-opt': 'Wirtschaftlich optimiert',
                      'autarkie': 'Autarkie-optimiert', 'max-pv': 'Maximaler PV-Ausbau' };
 const GG_PV_KAPITEL = '3.4.2 PV-Anlage und Batteriespeicher';
 const GG_ZAHLWORT = ['keine', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht'];
@@ -4295,9 +4371,25 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
       + `zulässige Spannungsanhebung von ${ggPvFeld(na?.eingaben?.duGrenzePct, 'ΔU-Grenze', 1)} %; belegt werden die `
       + `ertragsstärksten Dachflächen zuerst. Vorausgesetzt sind lediglich Regelungstechnik (EZA-Regler) und `
       + `Einspeisemanagement.`
+      + (na?.eingaben?.ersatzQs > 0
+        ? ` Für Kabel ohne erfassten Querschnitt ist vorsichtig ein Querschnitt von ${ggNum(na.eingaben.ersatzQs)} mm² (NAYY) angenommen.`
+        : '')
       + (mehr > 0.5
         ? ` Weitere ${ggPvFeld(mehr, 'kWp nach Ertüchtigung')} kWp ließen sich erst nach einer Ertüchtigung des Netzes anschließen.`
         : ''));
+  }
+  if (b && zeige('netz-eigen')) {             // nur wenn übernommen — nicht in der Vorlage ohne Rechenlauf
+    const ne = ggPvVariante('netz-eigen');
+    const pr = ne?.eigeneBelegung;
+    const mass = ne?.netzausbau?.massnahmen || [];
+    absaetze.push(`${label('netz-eigen')}: ${kwp('netz-eigen', 'kWp eigene Belegung')} kWp ohne Speicher, verteilt nach einer `
+      + `planerisch festgelegten Belegung der einzelnen Dachflächen statt nach dem Ertrag.`
+      + (mass.length ? ` Vorausgesetzt ${mass.length === 1 ? 'ist folgende Ertüchtigung' : 'sind folgende Ertüchtigungen'} des Netzes: `
+        + `${gEsc(mass.map(m => m.label).join('; '))}.` : '')
+      + (pr ? (pr.zulaessig
+        ? (mass.length ? ` Mit diesen Maßnahmen nimmt das Netz die Verteilung auf.` : ` Auch diese Verteilung nimmt das bestehende Netz ohne Ertüchtigung auf.`)
+        : ` Diese Verteilung überschreitet im bestehenden Netz die Belastbarkeit einzelner Betriebsmittel oder die zulässige `
+          + `Spannungsanhebung; sie setzt eine Ertüchtigung voraus, deren Kosten hier nicht enthalten sind.`) : ''));
   }
   if (zeige('ev-opt')) {
     const ev = ggPvVariante('ev-opt');
@@ -4493,6 +4585,52 @@ function ggRenderPvAbgrenzungText(cfg, T = GG_THEME) {
       + `abgebildet, die Rückspeiseleistungen sind deshalb eher zu hoch als zu niedrig angesetzt. Alle `
       + `Berechnungsannahmen stehen in Anlage ${ggTextFeld('', 'Nr. Anlage Berechnungsannahmen')}.`,
   ], T);
+}
+
+/** Figur „Einlinienschema Bestandsnetz" — quelle 'variante' oder 'eigene' (übernommene Belegung). */
+function ggEinlinienFigur(id, reihe, quelle, titel, hinweis) {
+  return {
+    id, autoSync: true, reihe, kapitel: GG_PV_KAPITEL, titel, datei: id, hinweis,
+    render: cfg => ggRenderEinlinienschema(cfg),
+    config: {
+      eyebrow: 'Elektrotechnisches Gutachten', titel, ort: '',
+      meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+      leer: 'Kein Netzmodell mit Trafo und PV-Flächen — in ☀ PV-Analyse „Netzaufnahme (Bestand)" berechnen.',
+      schema: null, fussnote: '', kpiLinks: [], kpiRechts: [],
+    },
+    ausProjekt(cfg) {
+      cfg.ort = cfg.ort || ggLiegenschaft();
+      cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+      ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+      if (quelle === 'eigene' && !window._pvAnalyse?.eigeneBelegung?.belegung) {
+        cfg.schema = null; cfg.kpiLinks = []; cfg.kpiRechts = []; cfg.fussnote = '';
+        cfg.leer = 'Keine eigene Belegung übernommen — im Einlinienschema „Als Variante übernehmen".';
+        return '⚠ Keine eigene Belegung übernommen.';
+      }
+      const d = window.pvnaSchemaDruck?.({ quelle });
+      if (!d) {
+        cfg.schema = null; cfg.kpiLinks = []; cfg.kpiRechts = []; cfg.fussnote = '';
+        return '⚠ Kein Netzmodell mit Trafo und PV-Flächen.';
+      }
+      const k = d.kennzahlen;
+      cfg.schema = { breite: d.breite, hoehe: d.hoehe, zeichnung: d.zeichnung };
+      cfg.kpiLinks = [
+        { wert: ggNum(k.summeKwp) + ' kWp', label: quelle === 'eigene' ? 'Belegung (eigene)' : 'Aufnahme ohne Ertüchtigung' },
+        { wert: ggNum(k.anteilPct) + ' %', label: `des Flächenpotenzials von ${ggNum(k.potenzialKwp)} kWp` },
+      ];
+      cfg.kpiRechts = [
+        { wert: ggNum(k.maxTrafoPct) + ' %', label: 'höchste Trafo-Auslastung' },
+        { wert: ggNum(k.maxDuPct, 2) + ' %', label: `höchste Spannungsanhebung (Grenze ${ggNum(k.duGrenzePct, 1)} %)`,
+          highlight: !k.zulaessig },
+      ];
+      cfg.fussnote = `${d.belegungLabel} · Lastfall: volle Einspeisung ${ggNum(k.einspFaktor, 2)} kW/kWp ohne gleichzeitige Last, `
+        + `Rechenjahr ${k.jahr}`
+        + (k.unbekannteQs ? ` · ${k.unbekannteQs} Kabel ohne erfassten Querschnitt${k.ersatzQs ? ` (angenommen ${k.ersatzQs} mm² NAYY)` : ' (ohne Grenze gerechnet)'}` : '')
+        + (k.massnahmen ? ` · ${k.massnahmen} Ertüchtigung${k.massnahmen > 1 ? 'en' : ''} umgesetzt` : '');
+      return `✓ Einlinienschema übernommen: ${ggNum(k.summeKwp)} kWp, ${k.engpaesse} Engpass${k.engpaesse === 1 ? '' : 'stellen'}`
+        + (k.zulaessig ? '.' : ' — Netz hält bei dieser Belegung nicht.');
+    },
+  };
 }
 
 function ggPvFiguren() {
@@ -4784,6 +4922,15 @@ function ggPvFiguren() {
         return `✓ ${panels.length} Herleitungen aus der PV-Analyse übernommen.`;
       },
     },
+
+    // ── Einlinienschema Bestandsnetz (Kapitel 3.4.2) ──────────────────────
+    ggEinlinienFigur('pv-einlinienschema', 25, 'variante', 'Einlinienschema Bestandsnetz',
+      'Wie viel PV das bestehende Netz ohne Ertüchtigung aufnimmt und wo es begrenzt: Auslastung der Kabel und '
+      + 'Transformatoren, Spannungsanhebung an den Knoten, Engpässe markiert. Belegung der Variante „Bestandsnetz". '
+      + 'Grundlage: ☀ PV-Analyse › Netzaufnahme (Bestand) / Einlinienschema.'),
+    ggEinlinienFigur('pv-einlinienschema-eigen', 26, 'eigene', 'Einlinienschema Bestandsnetz — eigene Belegung',
+      'Wie oben, aber mit der im Einlinienschema übernommenen eigenen Belegung (samt gewählter Ertüchtigungen). '
+      + 'Nur sinnvoll, wenn dort „Als Variante übernehmen" genutzt wurde.'),
 
     // ── Rückspeisung & Netzverträglichkeit (Kapitel 3.4.2) ────────────────
     {

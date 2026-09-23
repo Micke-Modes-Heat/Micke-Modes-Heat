@@ -24,7 +24,7 @@ import { nsKabelAuslegen } from './lib/ns-auslegung.js';
 import { ERT_TRAFO_STUFEN, ertNaechsteTrafoStufe } from './14b-ertuechtigung.js';
 import { engpassKabelAlternativen, engpassWaehleAlternative } from './lib/engpass-core.js';
 import { normSchicht, SCHICHT } from './lib/schichten.js';
-import { pvnaAbregelung, pvnaFuellen, pvnaTreppe, pvnaVollausbau } from './lib/pv-netzaufnahme-core.js';
+import { pvnaAbregelung, pvnaFuellen, pvnaLastfluss, pvnaTreppe, pvnaVollausbau } from './lib/pv-netzaufnahme-core.js';
 import { makePvProfile8760, pvOrientationMix } from './09a-pv-profile.js';
 
 const U_NS = 400;
@@ -37,7 +37,10 @@ let _letztes = null;             // { modell, treppe, eingaben, jahr }
 // bestandAlsVorlast: PV-Anlagen der Schicht „Bestand" gelten als schon angeschlossen.
 // Standard aus — Assets ohne Schicht zählen als Bestand, das würde geplante
 // Anlagen still zur Vorbelastung machen.
-const _einStandard = () => ({ quelle: 'aktiv', einspFaktor: EINSP_DEFAULT, duGrenzePct: MAX_DELTA_U_PCT, bestandAlsVorlast: false });
+// ersatzQs: Annahme (mm² NAYY) für Kabel ohne erfassten Querschnitt; 0 = keine Grenze (optimistisch).
+const _einStandard = () => ({ quelle: 'aktiv', einspFaktor: EINSP_DEFAULT, duGrenzePct: MAX_DELTA_U_PCT, bestandAlsVorlast: false, ersatzQs: 0 });
+/** Wählbare Ersatzquerschnitte für Kabel ohne Angabe. */
+export const PVNA_ERSATZ_QS = [0, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240];
 const _ein = _einStandard();
 
 const _fmt = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
@@ -57,6 +60,7 @@ export function pvnaModell(opts = {}) {
   const quelle = opts.quelle || 'aktiv';
   const einspFaktor = opts.einspFaktor > 0 ? opts.einspFaktor : EINSP_DEFAULT;
   const duGrenzePct = opts.duGrenzePct > 0 ? opts.duGrenzePct : MAX_DELTA_U_PCT;
+  const ersatzQs = opts.ersatzQs > 0 ? +opts.ersatzQs : 0;
   const istBestandPv = a => !!opts.bestandAlsVorlast && a.type === 'PV' && normSchicht(a.schicht) === SCHICHT.BESTAND;
   const gebArr = (typeof gebaeude !== 'undefined' ? gebaeude : window.gebaeude) || [];
   const gebById = new Map(gebArr.map(g => [g.id, g]));
@@ -108,12 +112,13 @@ export function pvnaModell(opts = {}) {
       besucht.add(id);
       const eid = 'E:' + edge.id;
       if (!elInfo.has(eid)) {
-        const kab = _kabelElement(edge, yr, { cosPhi, kIz, tLeiter, I_je_kW });
+        const kab = _kabelElement(edge, yr, { cosPhi, kIz, tLeiter, I_je_kW, ersatzQs });
         elemente.push({ id: eid, typ: 'kabel', parentId: knotenEl.get(von),
           kapKw: kab.kapKw, duProKwPct: kab.duProKwPct, vorlastKw: 0 });
         elInfo.set(eid, { label: `Kabel ${name(von)} → ${name(id)}`, kabelText: kab.text,
-          trafoId: t.id, kante: edge, kab });
-        if (kab.unbekannt) unbekannteQs.push(eid);
+          trafoId: t.id, kante: edge, kab,
+          knotenName: name(id), knotenTyp: assetMap.get(id)?.type || (gebById.has(id) ? 'Gebäude' : '') });
+        if (kab.unbekannt || kab.ersatz) unbekannteQs.push(eid);
       }
       knotenEl.set(id, eid);
       knotenTrafo.set(id, t.id);
@@ -185,7 +190,7 @@ export function pvnaModell(opts = {}) {
   const eingabe = { elemente, daecher, pruefpunkte, duGrenzePct };
   _massnahmenAnhaengen(eingabe, elInfo, { kIz, cosPhi, tLeiter, I_je_kW });
 
-  return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, bestandPvKwp, jahr: yr, cosPhi, kIz } };
+  return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, ersatzQs, bestandPvKwp, jahr: yr, cosPhi, kIz } };
 }
 
 /** Kapazität, ΔU-Koeffizient und Beschreibung eines Bestandskabels. */
@@ -195,6 +200,13 @@ function _kabelElement(edge, yr, k) {
   if (edge.stationsintern) {
     return { kapKw: Infinity, duProKwPct: 0, text: 'stationsintern', stationsintern: true,
       ist: { crossSection: ep.crossSection, nParallel: ep.nParallel || 1, cableType: ep.cableType || 'NAYY', lengthM } };
+  }
+  if (!ep.crossSection && k.ersatzQs > 0) {
+    // Vorsichtige Annahme statt „keine Grenze": Ersatzquerschnitt NAYY, einfach
+    const r = _kabelKennwerte(KABEL_TYPEN.NAYY, k.ersatzQs, 1, lengthM, k);
+    return { kapKw: r.kapKw, duProKwPct: r.duProKwPct, ersatz: true,
+      text: `Querschnitt nicht erfasst — Annahme ${k.ersatzQs} mm² NAYY, ${_fmt(lengthM)} m`,
+      ist: { crossSection: k.ersatzQs, nParallel: 1, cableType: 'NAYY', lengthM } };
   }
   if (!ep.crossSection) {
     return { kapKw: Infinity, duProKwPct: 0, unbekannt: true,
@@ -288,10 +300,33 @@ function _massnahmenAnhaengen(eingabe, elInfo, k) {
       if (duNeu <= eingabe.duGrenzePct + 1e-6) break;
       zielDu *= duNeu / eingabe.duGrenzePct * 1.01;
     }
-    if (!wahl) { info.ungeloest = true; continue; }
+    // Reicht keine Standardlösung für den VOLLAUSBAU (mehr als 8 Stränge des größten
+    // Querschnitts), die größte Standardlösung als Teil-Ertüchtigung anbieten. Ohne sie
+    // hätte das Element gar keine Maßnahme — dann brächte auch ein größerer Trafo davor
+    // nichts, und der Ausbaufahrplan bräche an dieser Stelle ab.
+    let teil = false, teilText = '';
+    if (!wahl) {
+      const kt = KABEL_TYPEN[kab.ist.cableType] || KABEL_TYPEN.NAYY;
+      const izMax = Math.max(...kt.sections.map(s => s.Iz)) * 8;
+      const bedarfA = fluss * k.I_je_kW / (k.kIz || 1);
+      // Strom übersteigt 8 Stränge → größte Standardlösung; sonst scheitert nur die
+      // Spannung → nach Strom auslegen, die Spannung begrenzt dann weiter.
+      teilText = bedarfA > izMax * 0.999 ? 'größte Standardlösung' : 'Spannung damit nicht voll gelöst';
+      wahl = engpassWaehleAlternative(engpassKabelAlternativen(kab.ist,
+        { benoetigtA: Math.min(bedarfA, izMax * 0.999), maxDuPct: 0 },
+        { typen: { [kab.ist.cableType || 'NAYY']: kt }, tiefbauEurM, grenzDuPct: eingabe.duGrenzePct }));
+      if (wahl) {
+        teil = true;
+        neu = _kabelKennwerte(kt, wahl.newProps.crossSection, wahl.newProps.nParallel || 1, kab.ist.lengthM, k);
+        if (!(neu.kapKw > e.kapKw + 1e-6 || neu.duProKwPct < e.duProKwPct - 1e-9)) wahl = null;   // keine Verbesserung
+      }
+    }
+    // Grund merken: bei reiner Spannungsverletzung helfen oft vorgelagerte Maßnahmen, bei Strom nicht
+    if (!wahl || teil) { info.ungeloest = true; info.ungeloestGrund = ueber ? 'strom' : 'spannung'; info.teil = teil; info.teilText = teilText; }
+    if (!wahl) continue;
     e.massnahme = {
-      label: `${info.label}: ${wahl.label}`,
-      investEUR: wahl.investEUR, kapKw: neu.kapKw, duProKwPct: neu.duProKwPct,
+      label: `${info.label}: ${wahl.label}${teil ? ` (${teilText})` : ''}`,
+      investEUR: wahl.investEUR, kapKw: neu.kapKw, duProKwPct: neu.duProKwPct, teil,
     };
   }
 }
@@ -310,6 +345,8 @@ function _eingabenLesen() {
   if (u > 0) _ein.duGrenzePct = u;
   const bv = document.getElementById('pvna-bestand');
   if (bv) _ein.bestandAlsVorlast = !!bv.checked;
+  const eq = document.getElementById('pvna-ersatzqs');
+  if (eq) _ein.ersatzQs = Math.max(0, parseFloat(eq.value) || 0);
 }
 
 /** Rechnet mit den aktuellen Eingaben und legt das Ergebnis ab. */
@@ -321,6 +358,8 @@ function _berechnen() {
   _letztes = { modell, treppe, optionen, eingaben: { ..._ein }, jahr: modell.info.jahr };
   window._pvNetzaufnahme = _kompakt(_letztes);
   if (window.pvnaKarteAktiv) { pvnaMarkiereKarte(); _legendeZeigen(); }
+  // Einlinienschema (29) per window — es importiert dieses Modul
+  if (document.getElementById('pva-pvna-schema')?.style.display === 'block') window.pvnaSchemaRender?.();
   return _letztes;
 }
 
@@ -347,6 +386,22 @@ function _profilForm(ostwest) {
   }
   return makePvProfile8760(ostwest ? 'ostwest' : 'sued');
 }
+
+/**
+ * Abregelung eines Dachs bei frei gewählter Leistung und Einspeisegrenze (Einlinienschema):
+ * gleiche Profilquelle und gleicher spezifischer Ertrag wie die Wege A/B.
+ * null, wenn das Dach im letzten Ergebnis nicht vorkommt.
+ */
+export function pvnaAbregelungDach(dachId, kwp, pZulKw) {
+  const o = _letztes?.optionen?.get(dachId);
+  if (!o) return null;
+  const ow = !!_letztes.modell.info.dachInfo.get(dachId)?.ostwest;
+  const up = window.elPvH || null;
+  if (_formCache.up !== up) { _formCache.up = up; _formCache.f = {}; }
+  const form = _formCache.f[ow] || (_formCache.f[ow] = _profilForm(ow));
+  return pvnaAbregelung(form, o.spez, kwp, pZulKw);
+}
+const _formCache = { up: undefined, f: {} };
 
 /** Map<dachId, { pZulKw, a, b, mehrKwhProKwp }> — a/b wie pvnaAbregelung plus kwp. */
 function _optionen(modell, treppe) {
@@ -430,6 +485,66 @@ export function pvnaFuerVariante() {
 
 export function pvnaLetztesErgebnis() { return _letztes; }
 
+/**
+ * Für die PV-Analyse (Varianten „Fahrplan Stufe k"): Stufen der aktuellen Ausbautreppe
+ * mit kumulierten Werten. Leer, wenn keine Treppe oder keine Stufen.
+ */
+export function pvnaFahrplanStufen() {
+  const r = _letztes || _berechnen();
+  let anzahl = 0;
+  return r.treppe.schritte.map((st, i) => {
+    anzahl += st.massnahmen.length;
+    return {
+      stufe: i + 1, sammel: !!st.sammel,
+      massnahmen: st.massnahmen.map(m => ({ elementId: m.elementId, label: m.label, investEUR: m.investEUR })),
+      zuwachsKwp: st.zuwachsKwp, investEUR: st.investEUR, eurProKwp: st.eurProKwp,
+      summeKwp: st.summeKwp, kumInvestEUR: st.kumInvestEUR, anzahlKum: anzahl,
+    };
+  });
+}
+
+/** Eingabe mit umgesetzten Ertüchtigungen: Kapazität/ΔU der gewählten Elemente nach der Maßnahme. */
+export function pvnaMassnahmenAnwenden(eingabe, ids) {
+  if (!ids?.size) return eingabe;
+  return { ...eingabe, elemente: eingabe.elemente.map(e => (!ids.has(e.id) || !e.massnahme) ? e : {
+    ...e, kapKw: e.massnahme.kapKw ?? e.kapKw, duProKwPct: e.massnahme.duProKwPct ?? e.duProKwPct,
+  }) };
+}
+
+/**
+ * Für die Variante „Bestandsnetz, eigene Belegung": prüft eine im Einlinienschema
+ * übernommene Belegung ({ dachId: kWp }) gegen das aktuelle Netzmodell. Dächer,
+ * die es nicht mehr gibt, fallen weg; Werte über der Fläche werden gekappt.
+ * null, wenn das Modell keinen Trafo hat (dann ist nichts prüfbar).
+ */
+export function pvnaBelegungPruefen(belegung, massnahmen = []) {
+  const r = _letztes || _berechnen();
+  const { eingabe: roh } = r.modell;
+  if (!roh.elemente.some(e => e.typ === 'trafo')) return null;
+  // Maßnahmen (Element-IDs aus dem Ausbaufahrplan) anwenden, soweit das Modell sie noch anbietet
+  const ids = new Set(massnahmen.map(m => m.elementId));
+  const eingabe = pvnaMassnahmenAnwenden(roh, ids);
+  const aktiv = roh.elemente.filter(e => ids.has(e.id) && e.massnahme)
+    .map(e => ({ elementId: e.id, label: e.massnahme.label, investEUR: +e.massnahme.investEUR || 0 }));
+  const byId = new Map(eingabe.daecher.map(d => [d.id, d]));
+  const bel = new Map();
+  let fehlend = 0;
+  for (const [id, kwp] of Object.entries(belegung || {})) {
+    const d = byId.get(id);
+    if (!d) { if (kwp > 0) fehlend++; continue; }
+    bel.set(id, Math.min(Math.max(0, +kwp || 0), d.kwpMax));
+  }
+  const lf = pvnaLastfluss(eingabe, bel);
+  return {
+    summeKwp: lf.summeKwp, zulaessig: lf.zulaessig,
+    ueberlastet: lf.ueberlastet.length, spannung: lf.spannungsverletzt.length,
+    maxAuslastungPct: lf.maxAuslastungPct, maxDuPct: lf.maxDuPct, duGrenzePct: eingabe.duGrenzePct,
+    daecherBelegt: [...bel.values()].filter(k => k > 0).length, daecherGesamt: eingabe.daecher.length,
+    fehlend, jahr: r.jahr,
+    massnahmen: aktiv, massnahmenFehlend: ids.size - aktiv.length,
+  };
+}
+
 export function pvnaRender() {
   const el = document.getElementById('pva-netzaufnahme');
   if (!el) return;
@@ -460,11 +575,20 @@ function _steuerHtml() {
       <span style="${lbl}" title="Zulässige Spannungsanhebung ab Trafo-Sammelschiene (VDE-AR-N 4105: 3 %).">ΔU-Grenze %</span>
       <input id="pvna-du" type="number" min="0.5" max="10" step="0.5" value="${_ein.duGrenzePct}" style="${inp}">
     </div>
+    <div style="flex:0 1 190px;">
+      <span style="${lbl}" title="Kabel ohne erfassten Querschnitt: ohne Annahme gilt für sie keine Grenze — die Aufnahme ist dort überschätzt.">Kabel ohne Querschnitt</span>
+      <select id="pvna-ersatzqs" style="${inp}">${pvnaErsatzOptionen(_ein.ersatzQs)}</select>
+    </div>
     <label style="flex:1 1 100%;font-size:10.5px;color:var(--muted);display:flex;gap:6px;align-items:center;order:9;">
       <input id="pvna-bestand" type="checkbox" ${_ein.bestandAlsVorlast ? 'checked' : ''}>
       PV-Anlagen der Schicht „Bestand" als bereits angeschlossen ansetzen (Vorbelastung statt Kandidat)</label>
     <button class="btn-confirm" style="padding:7px 16px;font-size:11.5px;" data-click="pvnaRechnen()">Aufnahme berechnen</button>
   </div>`;
+}
+
+/** <option>-Liste der Ersatzquerschnitte (0 = keine Grenze). */
+export function pvnaErsatzOptionen(wert) {
+  return PVNA_ERSATZ_QS.map(q => `<option value="${q}" ${+wert === q ? 'selected' : ''}>${q ? `Annahme ${q} mm² NAYY` : 'keine Grenze (optimistisch)'}</option>`).join('');
 }
 
 function _kachel(wert, einheit, label, farbe) {
@@ -652,12 +776,16 @@ function _gebaeudeHtml(modell, t) {
 function _hinweiseHtml(info) {
   const h = [...info.hinweise];
   if (info.unbekannteQs.length) {
-    h.push(`${info.unbekannteQs.length} Kabel ohne erfassten Querschnitt — für sie gilt keine Grenze, die Aufnahme ist dort überschätzt: `
+    h.push(`${info.unbekannteQs.length} Kabel ohne erfassten Querschnitt — ${info.ersatzQs > 0
+      ? `gerechnet mit der Annahme ${info.ersatzQs} mm² NAYY: `
+      : 'für sie gilt keine Grenze, die Aufnahme ist dort überschätzt (Annahme unter „Kabel ohne Querschnitt" wählbar): '}`
       + info.unbekannteQs.slice(0, 8).map(id => escHtml(info.elInfo.get(id)?.label || id)).join(', ')
       + (info.unbekannteQs.length > 8 ? ' …' : ''));
   }
-  const ungeloest = [...info.elInfo.values()].filter(i => i.ungeloest).map(i => escHtml(i.label));
+  const ungeloest = [...info.elInfo.values()].filter(i => i.ungeloest && !i.teil).map(i => escHtml(i.label));
   if (ungeloest.length) h.push(`Kein Standardkabel reicht für: ${ungeloest.join(', ')} — hier hilft nur eine Strukturänderung (weiterer Abgang, eigene Anbindung).`);
+  const teil = [...info.elInfo.values()].filter(i => i.teil).map(i => escHtml(i.label));
+  if (teil.length) h.push(`Für den Vollausbau reicht keine Standardlösung ganz (Strom über 8 Parallelstränge oder Spannung): ${teil.join(', ')} — sie ist als Teil-Ertüchtigung eingeplant, den Rest erschließt nur eine Strukturänderung.`);
   h.push('Modellgrenzen: Hausanschlusskabel ohne Querschnitt, Mittelspannung und Netzanschlusspunkt werden hier nicht begrenzt '
     + '(NAP-Einspeisegrenze: Abb. 6). Keine gleichzeitige Last angesetzt — konservativ. Blindleistungsregelung Q(U) und '
     + 'Einspeisebegrenzung am EZA-Regler lassen sich über „Einspeisung kW/kWp" abbilden (z. B. 0,6 bei 60-%-Begrenzung).');
@@ -678,6 +806,8 @@ let _labelsAn = true;
 function _karteKnopf() {
   const an = !!window.pvnaKarteAktiv;
   return `<div style="margin:-4px 0 14px;">
+    <button class="btn-confirm" style="padding:6px 14px;font-size:11px;margin-right:6px;"
+      data-click="pvaSetView('pvnaschema')">⚡ Einlinienschema mit Schiebern</button>
     <button class="btn-confirm" style="padding:6px 14px;font-size:11px;"
       data-click="${an ? 'pvnaKarteAus()' : 'pvnaKarteZeigen()'}">${an ? 'Kartenfärbung aus' : '🗺 Dächer auf der Karte zeigen'}</button>
     <span style="font-size:10px;color:var(--muted);margin-left:8px;">Anteil der Dachfläche, der ohne Ertüchtigung ans Netz kann:
@@ -842,6 +972,7 @@ export function pvnaEinstellungenSetzen(d) {
     einspFaktor: f > 0 ? f : std.einspFaktor,
     duGrenzePct: u > 0 ? u : std.duGrenzePct,
     bestandAlsVorlast: !!d?.bestandAlsVorlast,
+    ersatzQs: parseFloat(d?.ersatzQs) > 0 ? parseFloat(d.ersatzQs) : 0,
   });
   _letztes = null;
   window._pvNetzaufnahme = null;
@@ -854,11 +985,26 @@ export function pvnaEinstellungenSetzen(d) {
   pvnaRender();
 }
 
+/**
+ * Ersatzquerschnitt setzen (Einlinienschema) und neu rechnen. Das Feld der
+ * Ansicht „Netzaufnahme" wird mitgezogen, sonst läse _eingabenLesen den alten Wert.
+ */
+export function pvnaErsatzQsSetzen(qs) {
+  _ein.ersatzQs = Math.max(0, +qs || 0);
+  const eq = document.getElementById('pvna-ersatzqs');
+  if (eq) eq.value = String(_ein.ersatzQs);
+  _berechnen();
+  if (document.getElementById('pva-netzaufnahme')?.style.display === 'block') pvnaRender();
+}
+
 window.pvnaRender = pvnaRender;
 window.pvnaEinstellungen = pvnaEinstellungen;
 window.pvnaEinstellungenSetzen = pvnaEinstellungenSetzen;
 window.pvnaRechnen = pvnaRechnen;
 window.pvnaFuerVariante = pvnaFuerVariante;
+window.pvnaBelegungPruefen = pvnaBelegungPruefen;
+window.pvnaFahrplanStufen = pvnaFahrplanStufen;
 window.pvnaTreppeSvg = pvnaTreppeSvg;
 window.pvnaMarkiereKarte = pvnaMarkiereKarte;
 window.pvnaLabelsUmschalten = pvnaLabelsUmschalten;
+window.pvnaErsatzQsSetzen = pvnaErsatzQsSetzen;
