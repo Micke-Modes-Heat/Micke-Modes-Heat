@@ -3712,10 +3712,17 @@ function ggRenderNetzanschlussVarianteText(cfg, T = GG_THEME) {
     const wann = kuenftig
       ? (erstes === endjahr ? `ab dem Jahr ${erstes} ` : `ab dem Jahr ${erstes} und im Jahr ${endjahr} `)
       : erstes != null ? `bereits im Bestand und im Jahr ${endjahr} ` : `im Jahr ${endjahr} `;
+    // Variante B nur, wenn die Ladeinfrastruktur überhaupt zur Überschreitung beiträgt
+    const rv = ggLadeReserve();
+    const mitLade = rv && rv.ladeKw > 0.5;
     absaetze.push(`Die resultierende Anschlussleistung von ${ggNum(r.endKw)} kW übersteigt die vereinbarte Anschlussleistung von `
-      + `${ggNum(cap)} kVA ${wann}um ${ggNum(r.endKw - cap)} kW (vgl. Kapitel 3.3.4). Als Variante wird deshalb die Erhöhung der `
-      + `Anschlussleistung beim Netzbetreiber ${nb} betrachtet.`);
-    absaetze.push(`Bei einem Leistungsfaktor von näherungsweise 1 ist eine Anschlussleistung von mindestens `
+      + `${ggNum(cap)} kVA ${wann}um ${ggNum(r.endKw - cap)} kW (vgl. Kapitel 3.3.4). `
+      + (mitLade
+        ? 'Zur Deckung werden zwei Varianten betrachtet: A) die Erhöhung der Anschlussleistung beim Netzbetreiber '
+          + `${nb} und B) die Begrenzung der Ladeleistung durch ein Lademanagement.`
+        : `Als Variante wird deshalb die Erhöhung der Anschlussleistung beim Netzbetreiber ${nb} betrachtet.`));
+    absaetze.push(`${mitLade ? 'Variante A – Erhöhung der Anschlussleistung: ' : ''}`
+      + `Bei einem Leistungsfaktor von näherungsweise 1 ist eine Anschlussleistung von mindestens `
       + `${ggNum(Math.ceil(r.endKw))} kVA zu beantragen; unter Berücksichtigung einer Reserve für die weitere Entwicklung der `
       + `Liegenschaft wird eine Anschlussleistung von ${ggTextFeld('', 'beantragte Anschlussleistung inkl. Reserve kVA')} kVA empfohlen. `
       + (kuenftig
@@ -3729,6 +3736,26 @@ function ggRenderNetzanschlussVarianteText(cfg, T = GG_THEME) {
         + 'im Rahmen der Antragsprüfung fest.'
       : `Der Anschluss erfolgt auf der Spannungsebene ${ggTextFeld(ebene, 'Spannungsebene Netzanschluss')}. Ob die bestehende `
         + 'Übergabe die erhöhte Leistung aufnehmen kann oder erweitert werden muss, ist mit dem Netzbetreiber abzustimmen.');
+    if (mitLade) {
+      const pct = v => ggNum(v / rv.ladeKw * 100);
+      absaetze.push('Variante B – Lademanagement: Die Ladeinfrastruktur trägt '
+        + `${ggNum(rv.ladeKw)} kW zur resultierenden Anschlussleistung bei (vgl. Kapitel 3.3.3). `
+        + (rv.verfuegbar >= 0
+          ? `Innerhalb der vereinbarten Anschlussleistung stehen für das Laden ${ggNum(rv.verfuegbar)} kW zur Verfügung, das sind `
+            + `${pct(rv.verfuegbar)} % der Auslegungsleistung. Begrenzt ein dynamisches Lademanagement die gesamte Ladeleistung auf `
+            + 'diesen Wert, ist eine Erhöhung der Anschlussleistung nicht erforderlich.'
+            + (rv.verfuegbar / rv.ladeKw < 0.5 ? ' Bei dieser deutlichen Begrenzung ist ein uneingeschränkter Ladebetrieb jedoch nicht gewährleistet.' : '')
+          : `Bereits ohne Ladeinfrastruktur übersteigt der Leistungsbedarf von ${ggNum(rv.ohneLade)} kW die vereinbarte `
+            + 'Anschlussleistung. Ein Lademanagement kann die Erhöhung deshalb nicht vermeiden, verringert aber die zu beantragende '
+            + `Anschlussleistung auf mindestens ${ggNum(Math.ceil(rv.ohneLade))} kVA zuzüglich der für das Laden vorgehaltenen Leistung.`)
+        + ' Betriebsweise und Auswirkungen auf den Ladebetrieb beschreibt Kapitel 3.4.4.');
+      absaetze.push('Variante A lässt den Ladebetrieb uneingeschränkt, erfordert aber den Antrag beim Netzbetreiber mit '
+        + 'Baukostenzuschuss und Vorlaufzeit. Variante B '
+        + (rv.verfuegbar >= 0 ? 'kommt ohne Antrag aus' : 'verringert den Antrag')
+        + ', begrenzt aber die Ladeleistung und braucht eine Steuerung der Ladepunkte. Die Kosten der Erhöhung stehen in '
+        + `Kapitel 3.5; für das Lademanagement sind ${ggTextFeld('', 'Kosten Lademanagement, z. B. laut Herstellerangebot')} anzusetzen. `
+        + 'Die Bewertung beider Varianten folgt in Kapitel 3.6.');
+    }
   } else {
     const reserve = cap - r.endKw;
     absaetze.push(`Die resultierende Anschlussleistung von ${ggNum(r.endKw)} kW bleibt innerhalb der vereinbarten Anschlussleistung `
@@ -3866,8 +3893,9 @@ GG_FIGUREN.push(
     kapitel: GG_KAP_NETZ,
     titel: 'Gutachtentext: Variante Netzanschluss',
     datei: 'netzanschluss-variante-text',
-    hinweis: 'Variante Erhöhung der Anschlussleistung auf Basis der resultierenden Anschlussleistung aus 3.3.4: Überschreitung '
-           + 'und erstes Jahr, Mindestleistung für den Antrag, Hinweis zur Spannungsebene, Einspeisezusage. Reserve-Zuschlag und '
+    hinweis: 'Bei Überschreitung: Variante A Erhöhung der Anschlussleistung (erstes Jahr, Mindestleistung für den Antrag, '
+           + 'Spannungsebene) und — wenn Ladeinfrastruktur zur Überschreitung beiträgt — Variante B Lademanagement mit der für das '
+           + 'Laden verfügbaren Leistung (wie 3.4.4), dazu Einspeisezusage. Reserve-Zuschlag und '
            + 'Vorlaufzeit des Netzbetreibers bleiben Platzhalter.',
     render: cfg => ggRenderNetzanschlussVarianteText(cfg),
     config: {},
@@ -4257,6 +4285,20 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
     absaetze.push(`${label('minimal')}: ${kwp('minimal', 'kWp Minimal')} kWp ohne Speicher. Die Anlage bleibt unter `
       + `100 kWp, ab denen nach EEG die Direktvermarktung und weitergehende technische Anforderungen greifen.`);
   }
+  if (zeige('bestandsnetz')) {
+    const bn = ggPvVariante('bestandsnetz');
+    const na = bn?.netzaufnahme || H.bestandsnetz || null;
+    const mehr = na ? na.mitErtuechtigungKwp - na.ohneErtuechtigungKwp : 0;
+    absaetze.push(`${label('bestandsnetz')}: ${kwp('bestandsnetz', 'kWp Bestandsnetz')} kWp ohne Speicher. So viel nimmt `
+      + `das bestehende Stromnetz der Liegenschaft auf, ohne dass Kabel oder Transformatoren ertüchtigt werden müssen. `
+      + `Grundlage sind die Belastbarkeit der erfassten Kabel und Transformatoren bei voller Einspeisung sowie eine `
+      + `zulässige Spannungsanhebung von ${ggPvFeld(na?.eingaben?.duGrenzePct, 'ΔU-Grenze', 1)} %; belegt werden die `
+      + `ertragsstärksten Dachflächen zuerst. Vorausgesetzt sind lediglich Regelungstechnik (EZA-Regler) und `
+      + `Einspeisemanagement.`
+      + (mehr > 0.5
+        ? ` Weitere ${ggPvFeld(mehr, 'kWp nach Ertüchtigung')} kWp ließen sich erst nach einer Ertüchtigung des Netzes anschließen.`
+        : ''));
+  }
   if (zeige('ev-opt')) {
     const ev = ggPvVariante('ev-opt');
     absaetze.push(`${label('ev-opt')}: die größte Anlage, deren Erzeugung zu mindestens ${ggNum(H.evOpt?.schwelle ?? 90)} % `
@@ -4293,20 +4335,6 @@ function ggRenderPvGrundlagenText(cfg, T = GG_THEME) {
 /** 3.4.2 Teil 2 — Spannweiten der Energiebilanz und Abregelung; steht vor Tabelle und Energiebilanz-Abbildung. */
 function ggRenderPvEnergiebilanzText(cfg, T = GG_THEME) {
   void cfg;
-  if (zeige('bestandsnetz')) {
-    const bn = ggPvVariante('bestandsnetz');
-    const na = bn?.netzaufnahme || H.bestandsnetz || null;
-    const mehr = na ? na.mitErtuechtigungKwp - na.ohneErtuechtigungKwp : 0;
-    absaetze.push(`${label('bestandsnetz')}: ${kwp('bestandsnetz', 'kWp Bestandsnetz')} kWp ohne Speicher. So viel nimmt `
-      + `das bestehende Stromnetz der Liegenschaft auf, ohne dass Kabel oder Transformatoren ertüchtigt werden müssen. `
-      + `Grundlage sind die Belastbarkeit der erfassten Kabel und Transformatoren bei voller Einspeisung sowie eine `
-      + `zulässige Spannungsanhebung von ${ggPvFeld(na?.eingaben?.duGrenzePct, 'ΔU-Grenze', 1)} %; belegt werden die `
-      + `ertragsstärksten Dachflächen zuerst. Vorausgesetzt sind lediglich Regelungstechnik (EZA-Regler) und `
-      + `Einspeisemanagement.`
-      + (mehr > 0.5
-        ? ` Weitere ${ggPvFeld(mehr, 'kWp nach Ertüchtigung')} kWp ließen sich erst nach einer Ertüchtigung des Netzes anschließen.`
-        : ''));
-  }
   const b = ggPvBasis();
   const kanon = b ? ggPvKanon() : [];
   const [ertLo, ertHi] = ggPvSpanne(kanon, v => v.ertragMwh);
@@ -5823,8 +5851,8 @@ function ggRenderLadeVariantenText(cfg, T = GG_THEME) {
     p += 'Es begrenzt die gleichzeitige Last der vorhandenen Ladepunkte und sichert so die Reserve der Anschlussleistung.';
   } else if (rv.verfuegbar <= 0) {
     p += `Bereits ohne Ladeinfrastruktur übersteigt der Leistungsbedarf von ${ggNum(rv.ohneLade)} kW die vereinbarte `
-      + `Anschlussleistung von ${ggNum(rv.cap)} kVA. Ein Lademanagement kann die Erhöhung der Anschlussleistung (Kapitel 3.4.1) `
-      + 'daher nicht vermeiden, begrenzt aber den zusätzlichen Bedarf der Ladeparks.';
+      + `Anschlussleistung von ${ggNum(rv.cap)} kVA. Ein Lademanagement kann die Erhöhung der Anschlussleistung daher nicht `
+      + 'vermeiden, begrenzt aber den zusätzlichen Bedarf der Ladeparks (Variante B in Kapitel 3.4.1).';
   } else if (rv.verfuegbar >= rv.ladeKw) {
     p += `Innerhalb der vereinbarten Anschlussleistung von ${ggNum(rv.cap)} kVA stehen für das Laden ${ggNum(rv.verfuegbar)} kW `
       + 'zur Verfügung und damit mehr als die Auslegungsleistung. Ein Lademanagement ist aus Sicht des Netzanschlusses nicht '
@@ -5833,8 +5861,8 @@ function ggRenderLadeVariantenText(cfg, T = GG_THEME) {
     const anteil = rv.verfuegbar / rv.ladeKw;
     p += `Innerhalb der vereinbarten Anschlussleistung von ${ggNum(rv.cap)} kVA stehen für das Laden noch ${ggNum(rv.verfuegbar)} kW `
       + `zur Verfügung, das sind ${ggNum(anteil * 100)} % der Auslegungsleistung. Wird die Ladeleistung per Lademanagement auf `
-      + 'diesen Wert begrenzt, bleibt die Liegenschaft innerhalb der vereinbarten Anschlussleistung; die in Kapitel 3.4.1 '
-      + 'betrachtete Erhöhung wäre dann nicht erforderlich.'
+      + 'diesen Wert begrenzt, bleibt die Liegenschaft innerhalb der vereinbarten Anschlussleistung und kommt ohne Erhöhung '
+      + 'aus (Variante B in Kapitel 3.4.1).'
       + (anteil < 0.5 ? ' Bei dieser deutlichen Begrenzung ist ein uneingeschränkter Ladebetrieb jedoch nicht mehr gewährleistet.' : '');
   }
   p += ` Ob die Begrenzung für den Betrieb vertretbar ist, ist zu bewerten: ${ggTextFeld('', 'Bewertung, z. B. anhand von Standzeiten und Fahrleistung der Fahrzeuge')}.`;
