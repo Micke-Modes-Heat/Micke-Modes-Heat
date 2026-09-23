@@ -14994,9 +14994,9 @@ Turnhalle;Öffentlich;1982;A;850</div>
 (function () {
   var v = '0.1.0';
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
-  var d = '2026-09-20';
+  var d = '2026-09-22';
   if (d.indexOf('__') === 0) d = '';
-  var c = '149ff11';
+  var c = '83da6c9';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -122772,7 +122772,7 @@ ${massTbl}
     offen:     Object.freeze({ label: 'Daten fehlen', farbe: '#90a4ae' }),
   });
 
-  const _zahl = (v, def, min, max) => {
+  const _zahl$1 = (v, def, min, max) => {
     const n = parseFloat(v);
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
   };
@@ -122789,8 +122789,8 @@ ${massTbl}
         id,
         name: String(z.name ?? '').trim() || `Schutzziel ${i + 1}`,
         strom: ZIEL_STROM_STUFEN[z.strom] ? z.strom : 'A',
-        anteilPct: _zahl(z.anteilPct, 100, 5, 100),
-        dauerH: _zahl(z.dauerH, 72, 1, 720),
+        anteilPct: _zahl$1(z.anteilPct, 100, 5, 100),
+        dauerH: _zahl$1(z.dauerH, 72, 1, 720),
         waerme: z.waerme !== false,
       };
     });
@@ -176337,6 +176337,219 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     toggleVormerkenAsset: toggleVormerkenAsset
   });
 
+  // @ts-check
+  // ── lib/station-steckbrief.js — Liegenschaftssteckbrief Trafostation ─────────
+  //
+  // Gemeinsamer Kern für Feldapp und Planungstool: Eine Station ist EIN Gebäude
+  // (Polygon) mit seinen Elektro-Assets (NAP, Schaltanlage, Trafo, NSHV …), die
+  // über asset.buildingId verknüpft sind. Die Begehung erfasst die Station als
+  // Ganzes (Stationsakte), gespeichert wird aber weiterhin pro Asset — damit
+  // Netzberechnung, Nutzungsdauer und Bestandsprüfung unverändert weiterlaufen.
+  //
+  // Bewusst import- und DOM-frei (Blatt im Importgraph): build-feldapp.mjs bündelt
+  // dieses Modul per Rollup in die Feldapp-Einzeldatei (window.StationSteckbrief).
+  //
+  // Datenablage im Projekt-JSON (Rückimport aus der Feldapp):
+  //   gebaeude[i].feldSteckbrief            = { version, werte, zustand, notiz, maengel[], erfasstAm }
+  //   elektroAssets.items[j].feldSteckbrief = { version, werte, zustand, notiz, erfasstAm }
+  //   … .feldFotoSlots                      = { [slotKey]: ['typenschild_01.jpg', …] }
+
+
+  // ── Schema ───────────────────────────────────────────────────────────────────
+  // Feldtypen: 'wahl' (Chips, eine Auswahl), 'zahl', 'jahr', 'text', 'textlang'.
+  // pflicht:  zählt in den Erfassungsfortschritt.
+  // prop:     Asset-Eigenschaft im Tool (asset.props[prop]); 'baujahr' → asset.baujahr.
+  // wenn:     Feld nur sichtbar/relevant, wenn anderes Feld diesen Wert hat.
+  // gruppe:   Zwischenüberschrift im Formular.
+
+  const JA_NEIN = ['ja', 'nein'];
+  const IO_MAENGEL = ['i. O.', 'Mängel', 'nicht geprüft'];
+
+  /** @type {Record<string, StAbschnitt>} */
+  const STECKBRIEF_ABSCHNITTE = {
+    station: {
+      titel: 'Gebäude & Station', icon: '🏢',
+      felder: [
+        { key: 'bezeichnung', label: 'Bezeichnung Liegenschaft', typ: 'text', pflicht: true, gruppe: 'Liegenschaft' },
+        { key: 'adresse', label: 'Straße, PLZ Ort', typ: 'text', pflicht: true, gruppe: 'Liegenschaft' },
+        { key: 'gebaeudeNr', label: 'Gebäude-Nr.', typ: 'text', gruppe: 'Liegenschaft' },
+        { key: 'funktion', label: 'Stationsart', typ: 'wahl', optionen: ['Übergabestation', 'Verteilstation', 'Trafostation (Kunde)'], pflicht: true, gruppe: 'Station' },
+        { key: 'bauform', label: 'Bauform', typ: 'wahl', optionen: ['begehbar', 'Kompaktstation'], pflicht: true, gruppe: 'Station' },
+        { key: 'lage', label: 'Lage', typ: 'wahl', optionen: ['eigenständig', 'gebäudeintegriert'], pflicht: true, gruppe: 'Station' },
+        { key: 'bauart', label: 'Bauart', typ: 'wahl', optionen: ['Beton', 'Mauerwerk', 'Metall', 'sonstige'], wenn: { feld: 'bauform', wert: 'begehbar' }, gruppe: 'Station' },
+        { key: 'baujahr', label: 'Baujahr', typ: 'jahr', pflicht: true, gruppe: 'Station' },
+        { key: 'umbauJahr', label: 'Umbau / Sanierung', typ: 'jahr', gruppe: 'Station' },
+        { key: 'msEbene', label: 'MS-Ebene', typ: 'wahl', optionen: ['10 kV', '20 kV', '30 kV', 'sonstige'], pflicht: true, gruppe: 'Netz' },
+        { key: 'zaehlung', label: 'Zählung VNB', typ: 'wahl', optionen: ['MS-seitig', 'NS-seitig'], pflicht: true, gruppe: 'Netz' },
+        { key: 'einspeisung', label: 'Einspeisung', typ: 'wahl', optionen: ['Ring', 'Stich', 'sonstige'], pflicht: true, gruppe: 'Netz' },
+        { key: 'anbindung', label: 'Anbindung an', typ: 'wahl', optionen: ['Netz (VNB)', 'andere Station'], gruppe: 'Netz' },
+        { key: 'anbindungStation', label: 'Angebundene Station(en), Geb.-Nr.', typ: 'text', wenn: { feld: 'anbindung', wert: 'andere Station' }, gruppe: 'Netz' },
+        { key: 'zugang', label: 'Zugang / Schließung', typ: 'wahl', optionen: ['eigene Schließung', 'VNB-Schließung', 'gemeinsam'], gruppe: 'Betrieb & Sicherheit' },
+        { key: 'anlagenverantwortlicher', label: 'Anlagenverantwortlicher', typ: 'text', gruppe: 'Betrieb & Sicherheit' },
+        { key: 'pruefungJahr', label: 'Letzte Prüfung (DGUV V3)', typ: 'jahr', pflicht: true, gruppe: 'Betrieb & Sicherheit' },
+        { key: 'thermografieJahr', label: 'Letzte Thermografie', typ: 'jahr', gruppe: 'Betrieb & Sicherheit' },
+        { key: 'brandschutz', label: 'Brandschutz', typ: 'wahl', optionen: IO_MAENGEL, gruppe: 'Betrieb & Sicherheit' },
+        { key: 'erdung', label: 'Erdungsanlage', typ: 'wahl', optionen: IO_MAENGEL, gruppe: 'Betrieb & Sicherheit' },
+        { key: 'lueftung', label: 'Lüftung', typ: 'wahl', optionen: ['natürlich', 'mechanisch', 'Klimatisierung'], gruppe: 'Betrieb & Sicherheit' },
+        { key: 'hochwasser', label: 'Hochwassergefährdung', typ: 'wahl', optionen: ['nein', 'möglich', 'gefährdet'], gruppe: 'Betrieb & Sicherheit' },
+        { key: 'plaeneVorOrt', label: 'Pläne vor Ort', typ: 'wahl', optionen: JA_NEIN, gruppe: 'Betrieb & Sicherheit' },
+        { key: 'sicherheitsaushang', label: 'Sicherheitsaushänge / 5 Regeln', typ: 'wahl', optionen: JA_NEIN, gruppe: 'Betrieb & Sicherheit' },
+        { key: 'neaEinspeisung', label: 'Einspeisemöglichkeit NEA', typ: 'wahl', optionen: ['vorhanden', 'vorbereitet', 'nicht vorhanden'], gruppe: 'Zukunft & Resilienz' },
+        { key: 'reserve', label: 'Reserve für PV / Ladepunkte / WP', typ: 'textlang', gruppe: 'Zukunft & Resilienz' },
+      ],
+      fotos: [
+        { key: 'uebersicht', label: 'Übersicht Station', pflicht: true },
+        { key: 'tueren', label: 'Stationstüren / Zugang' },
+        { key: 'innen', label: 'Innenraum / Raumaufteilung' },
+      ],
+    },
+    NAP: {
+      titel: 'Netzanschluss (NAP)', icon: '⚡',
+      felder: [
+        { key: 'spannungKV', label: 'Nennspannung', typ: 'zahl', einheit: 'kV', prop: 'spannungKV' },
+        { key: 'netzbetreiber', label: 'Netzbetreiber', typ: 'text' },
+        { key: 'eigentumsgrenze', label: 'Eigentumsgrenze', typ: 'text' },
+      ],
+      fotos: [{ key: 'uebergabe', label: 'Übergabe / Eigentumsgrenze' }],
+    },
+    Schaltanlage: {
+      titel: 'MS-Schaltanlage', icon: '⊞', nutzungsdauer: true,
+      felder: [
+        { key: 'hersteller', label: 'Hersteller', typ: 'text', gruppe: 'Typ' },
+        { key: 'typ', label: 'Typ', typ: 'text', gruppe: 'Typ' },
+        { key: 'baujahr', label: 'Baujahr', typ: 'jahr', pflicht: true, prop: 'baujahr', gruppe: 'Typ' },
+        { key: 'ausfuehrung', label: 'Ausführung', typ: 'wahl', optionen: ['offen', 'gekapselt', 'gasisoliert'], pflicht: true, gruppe: 'Aufbau' },
+        { key: 'isolation', label: 'Isolationsmedium', typ: 'wahl', optionen: ['Luft', 'SF6', 'Vakuum', 'Feststoff'], pflicht: true, gruppe: 'Aufbau' },
+        { key: 'sf6MengeKg', label: 'SF6-Füllmenge', typ: 'zahl', einheit: 'kg', wenn: { feld: 'isolation', wert: 'SF6' }, gruppe: 'Aufbau' },
+        { key: 'felder', label: 'Anzahl Schaltfelder', typ: 'zahl', pflicht: true, prop: 'felder', gruppe: 'Aufbau' },
+        { key: 'feldbezeichnungen', label: 'Felder (z. B. Feld 1 – Einspeisung EVU 1)', typ: 'textlang', gruppe: 'Aufbau' },
+        { key: 'nennstromA', label: 'Bemessungsstrom', typ: 'zahl', einheit: 'A', prop: 'nennstromA', gruppe: 'Aufbau' },
+        { key: 'schutz', label: 'Schutz Trafoabgang', typ: 'wahl', optionen: ['HH-Sicherung', 'Leistungsschalter + Schutzrelais', 'gemischt'], gruppe: 'Schutz & Leittechnik' },
+        { key: 'fernwirk', label: 'Fernwirktechnik', typ: 'wahl', optionen: JA_NEIN, gruppe: 'Schutz & Leittechnik' },
+        { key: 'kurzschlussanzeiger', label: 'Kurzschlussanzeiger', typ: 'wahl', optionen: JA_NEIN, gruppe: 'Schutz & Leittechnik' },
+      ],
+      fotos: [
+        { key: 'gesamt', label: 'Schaltanlage gesamt', pflicht: true },
+        { key: 'typenschild', label: 'Typenschild', pflicht: true },
+        { key: 'plan', label: 'Übersichtsplan' },
+      ],
+    },
+    Trafo: {
+      titel: 'Transformator', icon: '🔁', nutzungsdauer: true,
+      felder: [
+        { key: 'hersteller', label: 'Hersteller', typ: 'text', gruppe: 'Typenschild' },
+        { key: 'typ', label: 'Typ', typ: 'text', gruppe: 'Typenschild' },
+        { key: 'seriennummer', label: 'Seriennummer', typ: 'text', gruppe: 'Typenschild' },
+        { key: 'baujahr', label: 'Baujahr', typ: 'jahr', pflicht: true, prop: 'baujahr', gruppe: 'Typenschild' },
+        { key: 'leistungKVA', label: 'Bemessungsleistung', typ: 'zahl', einheit: 'kVA', pflicht: true, prop: 'leistungKVA', gruppe: 'Typenschild' },
+        { key: 'ukProzent', label: 'Kurzschlussspannung uₖ', typ: 'zahl', einheit: '%', prop: 'ukProzent', gruppe: 'Typenschild' },
+        { key: 'schaltgruppe', label: 'Schaltgruppe', typ: 'text', platzhalter: 'z. B. Dyn5', gruppe: 'Typenschild' },
+        { key: 'ausfuehrung', label: 'Ausführung', typ: 'wahl', optionen: ['Öl', 'Trocken / Gießharz'], pflicht: true, gruppe: 'Bauart' },
+        { key: 'kuehlung', label: 'Kühlart', typ: 'wahl', optionen: ['ONAN', 'ONAF', 'AN', 'AF'], gruppe: 'Bauart' },
+        { key: 'oelmengeKg', label: 'Ölmenge', typ: 'zahl', einheit: 'kg', wenn: { feld: 'ausfuehrung', wert: 'Öl' }, gruppe: 'Bauart' },
+        { key: 'auffangwanne', label: 'Ölauffangwanne', typ: 'wahl', optionen: ['vorhanden', 'nicht vorhanden'], wenn: { feld: 'ausfuehrung', wert: 'Öl' }, gruppe: 'Bauart' },
+        { key: 'temperaturueberwachung', label: 'Temperaturüberwachung', typ: 'wahl', optionen: JA_NEIN, gruppe: 'Bauart' },
+        { key: 'verlustklasse', label: 'Verluste', typ: 'wahl', optionen: ['Ökodesign Stufe 2', 'Ökodesign Stufe 1', 'älter / unbekannt'], gruppe: 'Bauart' },
+      ],
+      fotos: [
+        { key: 'gesamt', label: 'Trafo gesamt', pflicht: true },
+        { key: 'typenschild', label: 'Typenschild', pflicht: true },
+      ],
+    },
+    NSHV: {
+      titel: 'Niederspannungs-Hauptverteilung', icon: '🗄', nutzungsdauer: true,
+      felder: [
+        { key: 'hersteller', label: 'Hersteller', typ: 'text' },
+        { key: 'baujahr', label: 'Baujahr', typ: 'jahr', pflicht: true, prop: 'baujahr' },
+        { key: 'netzform', label: 'Netzform', typ: 'wahl', optionen: ['TN-C', 'TN-S', 'TN-C-S', 'TT'], pflicht: true },
+        { key: 'nennstromA', label: 'Bemessungsstrom Sammelschiene', typ: 'zahl', einheit: 'A', prop: 'nennstromA' },
+        { key: 'abgaenge', label: 'Anzahl Abgänge', typ: 'zahl', pflicht: true, prop: 'abgaenge' },
+        { key: 'freieAbgaenge', label: 'davon frei', typ: 'zahl' },
+        { key: 'kompensation', label: 'Blindleistungskompensation', typ: 'wahl', optionen: ['vorhanden', 'nicht vorhanden'] },
+        { key: 'messung', label: 'Messung', typ: 'wahl', optionen: ['Zähler (RLM)', 'Multimessgerät', 'keine'] },
+        { key: 'ueberspannungsschutz', label: 'Überspannungsschutz', typ: 'wahl', optionen: JA_NEIN },
+      ],
+      fotos: [
+        { key: 'gesamt', label: 'NSHV gesamt', pflicht: true },
+        { key: 'messgeraete', label: 'Messgeräte' },
+        { key: 'abgaenge', label: 'Abgänge' },
+      ],
+    },
+  };
+
+  /**
+   * Schema für einen Asset-Typ; unbekannte Typen (UV, KVS …) erhalten nur Notiz/Fotos.
+   * @param {string} typ
+   * @returns {StAbschnitt}
+   */
+  function abschnittFuer(typ) {
+    return STECKBRIEF_ABSCHNITTE[typ] || { titel: typ || 'Asset', icon: '●', felder: [], fotos: [{ key: 'gesamt', label: 'Übersicht' }] };
+  }
+
+  /** @param {any} v */
+  function _jahr(v) {
+    const n = parseInt(v, 10);
+    return n >= 1850 && n <= 2200 ? String(n) : '';
+  }
+
+  // ── Rückübernahme ins Planungstool ───────────────────────────────────────────
+
+  /** @param {any} v */
+  function _zahl(v) {
+    const n = parseFloat(String(v).replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /**
+   * Welche Asset-Eigenschaften ändern sich durch den Steckbrief?
+   * Nur Felder mit „prop“, nur echte Abweichungen, nur plausible Zahlen.
+   * @param {StAsset} asset
+   * @param {StEintrag|null|undefined} eintrag
+   * @returns {{prop:string, feld:string, alt:any, neu:string}[]}
+   */
+  function assetAenderungen(asset, eintrag) {
+    const aenderungen = [];
+    for (const f of abschnittFuer(asset.type).felder) {
+      if (!f.prop) continue;
+      const roh = eintrag?.werte?.[f.key];
+      if (roh === undefined || roh === null || String(roh).trim() === '') continue;
+      if (f.prop === 'baujahr') {
+        const neu = _jahr(roh);
+        if (neu && String(asset.baujahr ?? '') !== neu) aenderungen.push({ prop: 'baujahr', feld: f.label, alt: asset.baujahr ?? null, neu });
+        continue;
+      }
+      const n = _zahl(roh);
+      if (n === null || n < 0) continue;
+      const alt = asset.props?.[f.prop];
+      if (_zahl(alt) === n) continue;
+      aenderungen.push({ prop: f.prop, feld: f.label, alt: alt ?? null, neu: String(n) });
+    }
+    return aenderungen;
+  }
+
+  /**
+   * Änderungen auf das Asset anwenden (mutiert).
+   * @param {StAsset} asset
+   * @param {{prop:string, neu:string}[]} aenderungen
+   */
+  function assetAenderungenAnwenden(asset, aenderungen) {
+    for (const c of aenderungen) {
+      if (c.prop === 'baujahr') asset.baujahr = parseInt(c.neu, 10);
+      else asset.props = { ...(asset.props || {}), [c.prop]: c.neu };
+    }
+  }
+
+  /**
+   * Gebäude-Baujahr aus dem Stations-Steckbrief (oder null, wenn unverändert).
+   * @param {StGebaeude} gebaeude
+   * @param {StEintrag|null|undefined} stbStation
+   */
+  function gebaeudeBaujahrAenderung(gebaeude, stbStation) {
+    const neu = _jahr(stbStation?.werte?.baujahr);
+    if (!neu || String(gebaeude?.baujahr ?? '') === neu) return null;
+    return { alt: gebaeude?.baujahr ?? null, neu: parseInt(neu, 10) };
+  }
+
   // ── 05a-export.js — CSV-Export, PDF-Report, Druckansicht ──
   // ── Export: Dispatch CSV ──────────────────────────────────────────────────
 
@@ -177690,6 +177903,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
 
       // Felddaten in bestehende Gebäude übernehmen
       let updGeb = 0, updAssets = 0;
+      // Stations-Steckbrief: vor Ort erfasste Werte (kVA, uk, Baujahr, Felder …) gehen in
+      // die Asset-Eigenschaften über, damit Netzberechnung/Nutzungsdauer damit rechnen.
+      const steckbriefAenderungen = [];
 
       for (const feldGeb of (projektDaten.gebaeude || [])) {
         const g = gebaeude.find(x => x.id === feldGeb.id);
@@ -177697,6 +177913,15 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (feldGeb.feldNotizen !== undefined) g.feldNotizen = feldGeb.feldNotizen;
         if (feldGeb.feldStatus  !== undefined) g.feldStatus  = feldGeb.feldStatus;
         if (feldGeb.feldVorgemerkt !== undefined) g.feldVorgemerkt = feldGeb.feldVorgemerkt;
+        if (feldGeb.feldSteckbrief) {
+          g.feldSteckbrief = feldGeb.feldSteckbrief;
+          const bj = gebaeudeBaujahrAenderung(g, feldGeb.feldSteckbrief);
+          if (bj) {
+            steckbriefAenderungen.push(`${g.name}: Baujahr ${bj.alt ?? '–'} → ${bj.neu}`);
+            g.baujahr = bj.neu;
+          }
+        }
+        if (feldGeb.feldFotoSlots) g.feldFotoSlots = feldGeb.feldFotoSlots;
 
         // Fotos zuordnen — normalisiert und mit Fallback
         if (Object.keys(photoMap).length) {
@@ -177721,6 +177946,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (feldAsset.feldNotizen    !== undefined) a.feldNotizen    = feldAsset.feldNotizen;
         if (feldAsset.feldStatus     !== undefined) a.feldStatus     = feldAsset.feldStatus;
         if (feldAsset.feldVorgemerkt !== undefined) a.feldVorgemerkt = feldAsset.feldVorgemerkt;
+        if (feldAsset.feldSteckbrief) {
+          a.feldSteckbrief = feldAsset.feldSteckbrief;
+          const aenderungen = assetAenderungen(a, feldAsset.feldSteckbrief);
+          assetAenderungenAnwenden(a, aenderungen);
+          for (const c of aenderungen) steckbriefAenderungen.push(`${a.name}: ${c.feld} ${c.alt ?? '–'} → ${c.neu}`);
+        }
+        if (feldAsset.feldFotoSlots) a.feldFotoSlots = feldAsset.feldFotoSlots;
         // Fotos zuordnen
         if (Object.keys(photoMap).length) {
           const fotoOrdner = (feldAsset.feldFotoOrdner || '').split('\\').join('/').split('/').filter(Boolean).join('/');
@@ -177747,13 +177979,20 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       }
 
       // UI aktualisieren
+      if (steckbriefAenderungen.length) recalcStromNetz();
       if (typeof renderList === 'function') renderList();
       if (typeof renderSidebarAssetList === 'function') renderSidebarAssetList();
 
       const fotoCount = Object.values(photoMap).length;
       const gebMitFotos = (window.gebaeude || []).filter(g => g.feldFotos?.length > 0).length;
       console.log('Foto-Import Debug:', { fotoCount, gebMitFotos, photoMapKeys: Object.keys(photoMap).slice(0,3) });
-      alert(`✓ Felddaten importiert:\n${updGeb} Gebäude aktualisiert\n${updAssets} Assets aktualisiert\n${fotoCount} Fotos geladen (${gebMitFotos} Gebäude mit Fotos)`);
+      const MAX_ZEILEN = 12;
+      const aenderungsText = steckbriefAenderungen.length
+        ? `\n\nAus Stations-Steckbriefen übernommen (${steckbriefAenderungen.length}):\n• ` +
+          steckbriefAenderungen.slice(0, MAX_ZEILEN).join('\n• ') +
+          (steckbriefAenderungen.length > MAX_ZEILEN ? `\n… und ${steckbriefAenderungen.length - MAX_ZEILEN} weitere` : '')
+        : '';
+      alert(`✓ Felddaten importiert:\n${updGeb} Gebäude aktualisiert\n${updAssets} Assets aktualisiert\n${fotoCount} Fotos geladen (${gebMitFotos} Gebäude mit Fotos)${aenderungsText}`);
 
     } catch (err) {
       alert('Fehler beim Import: ' + err.message);
@@ -189325,6 +189564,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
       strom: '0', skipAutoCreate: true,
     });
     g.fromKompakt = true;
+    g.stationPreset = preset;   // Bauform-Vorbelegung im Stations-Steckbrief (Feldapp)
 
     if (g.polygonLayer) {
       g.polygonLayer.setStyle({

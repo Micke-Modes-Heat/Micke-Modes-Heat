@@ -5,7 +5,7 @@ alles offline auf dem Handy. Am Ende schickst du ein ZIP zurück ins Büro.
 
 > 💡 **Tipp zum Einstieg:** Tippe auf dem Startbildschirm auf
 > **„🎬 Kurzer Rundgang (Demo)"** – die App zeigt dir an Beispiel-Gebäuden in
-> 12 Schritten, wo welcher Knopf ist. Dein echtes Projekt bleibt dabei unberührt.
+> 14 Schritten, wo welcher Knopf ist. Dein echtes Projekt bleibt dabei unberührt.
 
 ---
 
@@ -54,6 +54,25 @@ alles offline auf dem Handy. Am Ende schickst du ein ZIP zurück ins Büro.
 - **Gebäude antippen** → unten öffnet sich die Detail-Karte.
 - **📷 Foto** aufnehmen, **Notiz** schreiben, **Status** setzen (z. B. erledigt).
 - Alles wird sofort lokal gespeichert. Du kannst offline arbeiten.
+
+### Trafostationen (⚡ auf der Karte)
+Stationen öffnen sich als **Stationsakte** – die Station als Ganzes, nicht jedes
+Bauteil einzeln:
+1. **⚡ Station antippen** → oben der Erfassungsstand, darunter der Aufbau:
+   **Gebäude & Station → Schaltanlage → Trafo(s) → NSHV**.
+2. **Kachel antippen** → Steckbrief-Abschnitt: Auswahlfelder antippen, Zahlen
+   eintragen, **Zustand** (gut / mittel / schlecht) wählen.
+   - **Gestrichelte Werte** kommen aus der Planung – bitte prüfen, bei Abweichung
+     einfach überschreiben.
+   - **Foto-Plätze** (z. B. *Typenschild*): über **+ Foto** direkt zuordnen.
+     Rot umrandete Plätze sind Pflicht.
+   - Die **Nutzungsdauer** rechnet die App aus dem Baujahr selbst aus.
+3. Unten **„Weiter: …“** führt in der Reihenfolge durch die ganze Station.
+4. In der Übersicht **Mängel** mit Priorität (sofort … Hinweis) und Bezug
+   (z. B. *Trafo 1a*) erfassen.
+
+Der Export nimmt alles mit; im Büro übernimmt das Planungstool geänderte Werte
+(z. B. Trafoleistung, Baujahr) automatisch.
 
 ---
 

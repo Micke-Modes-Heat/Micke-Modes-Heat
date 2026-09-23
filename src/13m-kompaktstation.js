@@ -301,6 +301,7 @@ function _place(latlng, config) {
     skipAutoCreate: true,
   });
   g.fromKompakt = true;
+  g.stationPreset = preset;   // Bauform-Vorbelegung im Stations-Steckbrief (Feldapp)
 
   if (g.polygonLayer) {
     g.polygonLayer.setStyle({

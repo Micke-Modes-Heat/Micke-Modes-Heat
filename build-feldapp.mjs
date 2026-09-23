@@ -7,6 +7,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
+import { rollup } from 'rollup';
 
 const SRC  = resolve('field-app/index.html');
 const OUT  = resolve('dist/feldapp.html');
@@ -63,6 +64,17 @@ if (typeof L !== 'undefined') {
 }
 </script>\n</head>`
   );
+
+  // Gemeinsamer Steckbrief-Kern (src/lib/station-steckbrief.js) — dieselbe Quelle wie
+  // im Planungstool, per Rollup als IIFE gebündelt (kein Regex-Umbau der Module).
+  const LIB_BLOCK = /<script type="module" data-feldapp-lib="station-steckbrief">[\s\S]*?<\/script>/;
+  if (!LIB_BLOCK.test(html)) throw new Error('Platzhalter für station-steckbrief fehlt in field-app/index.html');
+  const libBundle = await rollup({ input: resolve('src/lib/station-steckbrief.js') });
+  const libGenerated = await libBundle.generate({ format: 'iife', name: 'StationSteckbrief' });
+  await libBundle.close();
+  const libCode = libGenerated.output[0].code.replace(/<\/script/gi, '<\\/script');
+  html = html.replace(LIB_BLOCK, () => `<script>${libCode}</script>`);
+  console.log(`  Steckbrief-Kern eingebettet (${(libCode.length / 1024).toFixed(0)} KB)`);
 
   for (const dep of DEPS) {
     const content = loadDependency(dep.url);

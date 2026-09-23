@@ -456,6 +456,71 @@
     }
     #tour-next { border-color: var(--primary) !important; background: var(--primary) !important; color: #fff !important; }
     #tour-prev:disabled { opacity: .4; }
+
+    /* ─── STATIONSAKTE (Trafostation als Ganzes) ───────── */
+    :root { --station: #C2185B; }
+    .building-label-inner.station { font-weight: 800; }
+    .st-badge { font-size: .8em; font-weight: 700; margin-left: .3em; opacity: .75; }
+    .st-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .st-progress-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+    .st-progress-bar > div { height: 100%; background: var(--success); transition: width .3s; }
+    .st-progress-label { font-size: 12px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+
+    .st-flow { display: flex; flex-direction: column; align-items: stretch; }
+    .st-row { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+    .st-link { width: 2px; height: 14px; background: var(--border); margin: 0 auto; }
+    .st-tile {
+      text-align: left; border: 1.5px solid var(--border); background: var(--card);
+      border-radius: 12px; padding: 10px 12px; cursor: pointer; font: inherit; color: inherit;
+      display: flex; flex-direction: column; gap: 4px; position: relative; min-height: 64px;
+    }
+    .st-tile:active { background: var(--bg); }
+    .st-tile.st-geb { background: #FDF2F8; border-color: #F9A8D4; }
+    .st-tile-head { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+    .st-tile-head .ic { font-size: 16px; }
+    .st-tile-sub { font-size: 12px; color: var(--text-muted); }
+    .st-tile-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); }
+    .st-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: 1.5px solid var(--border); flex-shrink: 0; }
+    .st-pill { border-radius: 10px; padding: 1px 7px; font-weight: 700; font-size: 11px; background: var(--bg); }
+    .st-pill.ok { color: var(--success); background: #F0FDF4; }
+    .st-pill.warn { color: #B45309; background: #FFFBEB; }
+    .st-pill.bad { color: var(--danger); background: #FEF2F2; }
+
+    .st-back { background: var(--bg); border: none; border-radius: 10px; padding: 8px 12px; font-size: 14px; font-weight: 700; color: var(--primary); cursor: pointer; margin-bottom: 10px; }
+    .st-gruppe { font-size: 12px; font-weight: 700; color: var(--station); text-transform: uppercase; letter-spacing: .5px; margin: 18px 0 6px; }
+    .st-feld { margin-bottom: 12px; }
+    .st-feld-label { font-size: 13px; font-weight: 600; margin-bottom: 5px; display: flex; gap: 6px; align-items: baseline; }
+    .st-feld-label .pf { color: var(--danger); }
+    .st-feld-label .vb { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+    .st-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .st-chip {
+      border: 1.5px solid var(--border); background: var(--bg); color: var(--text);
+      border-radius: 20px; padding: 8px 13px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .st-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .st-chip.vorschlag { border-style: dashed; border-color: var(--primary); color: var(--primary); background: #EFF6FF; }
+    .st-input-wrap { display: flex; align-items: center; gap: 6px; }
+    .st-input, .st-textarea {
+      width: 100%; border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 11px;
+      font-size: 16px; font-family: inherit; color: var(--text); background: var(--card);
+    }
+    .st-input:focus, .st-textarea:focus { outline: none; border-color: var(--primary); }
+    .st-input.vorschlag { border-style: dashed; border-color: var(--primary); }
+    .st-textarea { min-height: 70px; resize: vertical; }
+    .st-einheit { font-size: 14px; color: var(--text-muted); font-weight: 600; min-width: 28px; }
+    .st-nd { border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px; }
+    .st-slot { border: 1.5px solid var(--border); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
+    .st-slot.fehlt { border-color: #FCA5A5; background: #FEF2F2; }
+    .st-slot-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 700; }
+    .st-slot-add { border: none; background: var(--primary); color: #fff; border-radius: 9px; padding: 7px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .st-slot .photo-grid { margin-top: 8px; }
+    .st-maengel-item { display: flex; gap: 8px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--border); }
+    .st-maengel-item:last-child { border-bottom: none; }
+    .st-maengel-text { flex: 1; font-size: 14px; white-space: pre-wrap; }
+    .st-maengel-bezug { font-size: 11px; color: var(--text-muted); }
+    .st-maengel-del { background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 2px 6px; }
+    .st-select { width: 100%; border: 1.5px solid var(--border); border-radius: 10px; padding: 9px; font-size: 15px; background: var(--card); margin: 6px 0; }
+    .st-add-btn { width: 100%; border: none; background: var(--station); color: #fff; border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -590,6 +655,12 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- Steckbrief-Kern (gemeinsam mit dem Planungstool). build-feldapp.mjs ersetzt diesen Block
+     durch das per Rollup gebündelte Modul; im Dev-Server wird es direkt als ESM geladen. -->
+<script type="module" data-feldapp-lib="station-steckbrief">
+  import * as StationSteckbrief from '../src/lib/station-steckbrief.js';
+  window.StationSteckbrief = StationSteckbrief;
+</script>
 <script>
 'use strict';
 
@@ -635,11 +706,16 @@ const DB = (() => {
     async saveNote(aid, text)     { await open(); return p(store('notes','readwrite').put({ assetId: String(aid), text, ts: Date.now() })); },
     async getNote(aid)            { await open(); const r = await p(store('notes').get(String(aid))); return r?.text ?? ''; },
     async getAllNotes()            { await open(); return p(store('notes').getAll()); },
-    async addPhoto(aid, blob, fn) {
+    // slot: Foto-Platz aus dem Stations-Steckbrief (z. B. 'typenschild'), sonst null
+    async addPhoto(aid, blob, fn, slot = null) {
       await open();
       const id = `${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-      return p(store('photos','readwrite').put({ id, assetId: String(aid), blob, filename: fn, ts: Date.now() }));
+      return p(store('photos','readwrite').put({ id, assetId: String(aid), blob, filename: fn, slot, ts: Date.now() }));
     },
+    // Stations-Steckbrief: ein Datensatz pro Station im notes-Store (kein neuer Store,
+    // damit die DB-Version gleich bleibt). text bleibt leer → zählt nicht als Notiz.
+    async getSteckbrief(gebId)    { await open(); const r = await p(store('notes').get(STB_PREFIX + gebId)); return r?.steckbrief ?? null; },
+    async saveSteckbrief(gebId, steckbrief) { await open(); return p(store('notes','readwrite').put({ assetId: STB_PREFIX + gebId, text: '', steckbrief, ts: Date.now() })); },
     async getPhotos(aid)          { await open(); return p(store('photos').index('by_asset').getAll(String(aid))); },
     async deletePhoto(id)         { await open(); return p(store('photos','readwrite').delete(id)); },
     async getAllPhotos()           { await open(); return p(store('photos').getAll()); },
@@ -647,10 +723,11 @@ const DB = (() => {
       await open();
       const notes = await p(store('notes').getAll());
       const photos = await p(store('photos').getAll());
-      return notes.some(n => n.text) || photos.length > 0;
+      return notes.some(n => n.text || n.steckbrief) || photos.length > 0;
     },
   };
 })();
+const STB_PREFIX = 'stb__';
 
 // ─────────────────────────────────────────────────────────
 //  IMAGE COMPRESSION
@@ -818,6 +895,9 @@ function applyLabelSize(entry) {
   const el = entry.marker.getElement()?.querySelector('.building-label-inner');
   if (!el) return;
   const { w, h } = buildingPixelSize(entry.g);
+  // Stationen sind oft nur wenige Meter groß — ihr Label bleibt immer lesbar und
+  // antippbar (es ist der einzige Zugang zur Stationsakte).
+  if (entry.station) { el.style.display = ''; el.style.fontSize = '12px'; el.style.maxWidth = ''; return; }
   const fs = fitFontSize(entry.name, w, h);
   if (fs < LABEL_MIN_PX) { el.style.display = 'none'; return; }
   el.style.display = '';
@@ -1036,15 +1116,17 @@ function renderSearchResults(query) {
   const results = [];
 
   // Gebäude
+  const stationIds = stationIdSet();
   for (const g of (_project.gebaeude || [])) {
     if (!q || g.name?.toLowerCase().includes(q) || String(g.id).includes(q)) {
       const ctr = centroid(g.polygon);
+      const isStation = stationIds.has(String(g.id));
       results.push({
-        icon: '🏠', color: nutzung(g.nutzung).color,
+        icon: isStation ? '⚡' : '🏠', color: isStation ? STATION_FARBE : nutzung(g.nutzung).color,
         name: g.name || 'Gebäude ' + g.id,
-        sub: nutzung(g.nutzung).label,
+        sub: isStation ? 'Station · ' + SB().stationKurzinfo(stationAufbauVon(g)) : nutzung(g.nutzung).label,
         vorgemerkt: g.feldVorgemerkt,
-        action: () => { closeSearch(); if (ctr && _map) _map.setView(ctr, 18); openSheet({ type: 'gebaeude', data: g }); }
+        action: () => { closeSearch(); if (ctr && _map) _map.setView(ctr, 18); openGebaeude(g); }
       });
     }
   }
@@ -1193,6 +1275,7 @@ function openFilterPanel() {
     <div class="filter-section">
       <div class="filter-section-title">🏠 Gebäudetypen</div>
       <div class="filter-chips">
+        ${chip(STATION_FILTER_KEY, 'Stationen', STATION_FARBE, '⚡')}
         ${allNutzungen.map(([k,v]) => chip(k, v.label, v.color, '')).join('')}
       </div>
     </div>
@@ -1234,6 +1317,7 @@ window.toggleFilterChip = toggleFilterChip;
 
 function setAllFilters(visible) {
   const keys = [
+    STATION_FILTER_KEY,
     ...Object.keys(NUTZUNG),
     ...Object.keys(ERZEUGER),
     ...Object.keys(ASSET_CFG),
@@ -1270,7 +1354,18 @@ const DEMO_PROJECT = {
       polygon: [[48.1369,11.5762],[48.1371,11.5762],[48.1371,11.5766],[48.1369,11.5766]] },
     { id: 'demo-3', name: 'Grundschule', nutzung: 'SCHULE', waerme: 240, flaeche: 2100, baujahr: 1975, zustand: 'teilsaniert', stockwerke: 2, heizlast: 130,
       polygon: [[48.1379,11.5765],[48.1382,11.5765],[48.1382,11.5772],[48.1379,11.5772]] },
+    { id: 'demo-st', name: 'Trafostation 1', nutzung: '', baujahr: 1994, stationPreset: 'begehbarDoppel',
+      polygon: [[48.13718,11.57685],[48.13730,11.57685],[48.13730,11.57700],[48.13718,11.57700]] },
   ],
+  elektroAssets: {
+    items: [
+      { id: 'demo-sa', type: 'Schaltanlage', buildingId: 'demo-st', name: 'Schaltanlage 1', baujahr: 1994, props: { felder: '3' } },
+      { id: 'demo-t1', type: 'Trafo', buildingId: 'demo-st', name: 'Trafo 1a', baujahr: 1994, props: { leistungKVA: '630', ukProzent: '4' } },
+      { id: 'demo-t2', type: 'Trafo', buildingId: 'demo-st', name: 'Trafo 1b', baujahr: 2011, props: { leistungKVA: '630', ukProzent: '4' } },
+      { id: 'demo-nshv', type: 'NSHV', buildingId: 'demo-st', name: 'NSHV 1', baujahr: 1994, props: { nennstromA: '1818', abgaenge: '10' } },
+    ],
+    edges: [],
+  },
 };
 
 let _tourActive = false;
@@ -1290,6 +1385,8 @@ function tourSteps() {
     { before: async () => { await openSheet({ type: 'gebaeude', data: DEMO_PROJECT.gebaeude[0] }); }, wait: 480, sel: '#sheet', title: 'Detail-Karte', text: 'Beim Antippen eines Gebäudes öffnet sich diese Karte mit allen Infos.' },
     { sel: '#notes-ta', title: 'Notiz', text: 'Beobachtungen, Mängel oder Besonderheiten eintragen – wird automatisch gespeichert.' },
     { sel: '.add-photo-btn', title: 'Foto', text: 'Ein Foto aufnehmen oder aus der Galerie hinzufügen.' },
+    { before: async () => { await closeSheet(); await openSheet({ type: 'station', data: DEMO_PROJECT.gebaeude[3] }); }, wait: 480, sel: '.st-flow', title: 'Stationsakte ⚡', text: 'Trafostationen (⚡ auf der Karte) öffnen als Ganzes: Gebäude → Schaltanlage → Trafos → NSHV. Jede Kachel führt zum Steckbrief-Abschnitt mit Auswahlfeldern, Foto-Plätzen (z. B. Typenschild) und Zustand. Werte aus der Planung sind gestrichelt vorbelegt – nur prüfen.' },
+    { before: async () => { document.getElementById('st-mangel-text')?.scrollIntoView({ block: 'center' }); }, wait: 350, sel: '#st-mangel-text', title: 'Mängel', text: 'Mängel mit Priorität und Bezug (z. B. Trafo 1a) erfassen – sie landen sortiert im Bericht.' },
     { before: async () => { await closeSheet(); }, wait: 380, sel: '#btn-export', title: 'Export am Tagesende', text: 'Alles als ZIP zusammenpacken und direkt per WhatsApp/Mail ans Büro teilen.' },
     { title: 'Fertig ✓', text: 'Das war der Rundgang. Du kannst ihn jederzeit über „🎬 Kurzer Rundgang" neu starten.' },
   ];
@@ -1433,6 +1530,8 @@ async function init() {
   document.getElementById('btn-export').addEventListener('click', exportZip);
   document.getElementById('backdrop').addEventListener('click', closeSheet);
   document.getElementById('photo-input').addEventListener('change', onPhotoFile);
+  document.getElementById('sheet-body').addEventListener('click', onStationClick);
+  document.getElementById('sheet-body').addEventListener('input', onStationInput);
   document.getElementById('lightbox').addEventListener('click', e => { if (e.target === e.currentTarget || e.target.id === 'lightbox-close') closeLightbox(); });
 
   setupSheetDrag();
@@ -1561,36 +1660,39 @@ function renderMap() {
     (_project.elektroAssets?.items || []).some(a => a.feldVorgemerkt)
   );
 
+  const stationIds = stationIdSet();
+
   gebaeude.forEach(g => {
     const ctr = centroid(g.polygon);
     if (!ctr) return;
 
     const isV = !!g.feldVorgemerkt;
+    const isStation = stationIds.has(String(g.id));
     if (_filterVorgemerkt && !isV) return;
-    if (_hiddenTypes[g.nutzung]) return;
+    if (isStation ? _hiddenTypes[STATION_FILTER_KEY] : _hiddenTypes[g.nutzung]) return;
 
     const op = _anyVorgemerkt && !isV ? 0.25 : 1;
     bounds.push(ctr);
-    const ni = nutzung(g.nutzung);
+    const ni = isStation ? { color: STATION_FARBE } : nutzung(g.nutzung);
 
     if (g.polygon && g.polygon.length >= 3) {
       const poly = L.polygon(normalizePolygon(g.polygon), {
         color: ni.color, fillColor: ni.color,
-        fillOpacity: 0.15 * op, weight: 1.5, opacity: 0.5 * op,
+        fillOpacity: (isStation ? 0.25 : 0.15) * op, weight: isStation ? 2.5 : 1.5, opacity: (isStation ? 0.85 : 0.5) * op,
       }).addTo(_map);
-      poly.on('click', () => openSheet({ type: 'gebaeude', data: g }));
+      poly.on('click', () => openGebaeude(g));
     }
 
     const name = g.name || 'Gebäude ' + g.id;
     const labelIcon = L.divIcon({
       className: 'building-label',
-      html: `<div class="building-label-inner${isV ? ' vorgemerkt' : ''}" style="border-color:${ni.color};opacity:${op};">${esc(name)}</div>`,
+      html: `<div class="building-label-inner${isV ? ' vorgemerkt' : ''}${isStation ? ' station' : ''}" data-geb-id="${esc(g.id)}" style="border-color:${ni.color};opacity:${op};">${isStation ? '⚡ ' : ''}${esc(name)}${isStation ? '<span class="st-badge"></span>' : ''}</div>`,
       iconSize: [0, 0], iconAnchor: [0, 0],
     });
     const marker = L.marker(ctr, { icon: labelIcon }).addTo(_map);
-    marker.on('click', () => openSheet({ type: 'gebaeude', data: g }));
+    marker.on('click', () => openGebaeude(g));
 
-    const entry = { marker, g, name, hasPolygon: !!(g.polygon && g.polygon.length >= 3) };
+    const entry = { marker, g, name, station: isStation, hasPolygon: !!(g.polygon && g.polygon.length >= 3) };
     _buildingLabels.push(entry);
     applyLabelSize(entry);
   });
@@ -1621,14 +1723,16 @@ function renderMap() {
   if (bounds.length) _map.fitBounds(L.latLngBounds(bounds), { padding: [60, 60] });
 
   document.getElementById('proj-name').textContent = 'Energieplanung';
-  document.getElementById('proj-stats').textContent = `${gebaeude.length} Gebäude`;
+  document.getElementById('proj-stats').textContent = `${gebaeude.length} Gebäude` +
+    (stationIds.size ? ` · ${stationIds.size} Station${stationIds.size > 1 ? 'en' : ''}` : '');
 
   updateExportBadge();
+  updateStationBadges();
 }
 
 async function updateExportBadge() {
   const [notes, photos] = await Promise.all([DB.getAllNotes(), DB.getAllPhotos()]);
-  const notesCount = notes.filter(n => n.text && !n.assetId.endsWith('__meta__')).length;
+  const notesCount = notes.filter(n => (n.text || n.steckbrief) && !n.assetId.endsWith('__meta__')).length;
   const badge = document.getElementById('export-badge');
   const total = photos.length + notesCount;
   if (total > 0) {
@@ -1641,12 +1745,432 @@ async function updateExportBadge() {
   }
 }
 
+// ─────────────────────────────────────────────────────────
+//  STATIONSAKTE — Trafostation als Ganzes begehen
+// ─────────────────────────────────────────────────────────
+// Station = Gebäude + Elektro-Assets mit buildingId. Auf der Karte ist nur das
+// Gebäude antippbar; die Akte zeigt den Aufbau (MS → Schaltanlage → Trafos → NSHV)
+// als Kacheln, jede Kachel führt zu ihrem Steckbrief-Abschnitt. Gespeichert wird
+// pro Asset. Schema, Vorbelegung, Fortschritt und Nutzungsdauer kommen aus dem
+// gemeinsamen Kern src/lib/station-steckbrief.js, den auch das Planungstool nutzt.
+const STATION_FARBE = '#C2185B';
+const STATION_FILTER_KEY = '__station__';
+const SB = () => window.StationSteckbrief;
+
+function projektAssets() { return _project?.elektroAssets?.items || []; }
+function stationIdSet() {
+  if (!SB() || !_project) return new Set();
+  return new Set(SB().findeStationen(_project.gebaeude || [], projektAssets()).map(s => String(s.gebaeude.id)));
+}
+function stationAufbauVon(g) { return SB().stationAufbau(g.id, projektAssets()); }
+function openGebaeude(g) {
+  if (SB() && SB().istStation(g.id, projektAssets())) return openSheet({ type: 'station', data: g });
+  return openSheet({ type: 'gebaeude', data: g });
+}
+const elAid = id => 'el_' + id;
+
+let _stb = null;              // Steckbrief der offenen Station: { station, assets: {id: Eintrag} }
+let _stbGebId = null;         // String(g.id) der Station, zu der _stb gehört
+let _stbTimer = null;
+let _stationView = { kind: 'uebersicht' };   // | { kind: 'station' } | { kind: 'asset', id }
+let _photoTarget = null;      // { aid, slot } für die nächste Aufnahme
+let _mangelPrio = 'kurzfristig';
+
+async function ladeStb(gebId) {
+  const stb = (await DB.getSteckbrief(gebId)) || {};
+  return {
+    station: { ...SB().leererStationsSteckbrief(), ...(stb.station || {}) },
+    assets: stb.assets || {},
+  };
+}
+function stbEintrag(view) {
+  if (view.kind === 'station') return _stb.station;
+  if (!_stb.assets[view.id]) _stb.assets[view.id] = SB().leererEintrag();
+  return _stb.assets[view.id];
+}
+function stbGeaendert(eintrag) {
+  eintrag.erfasstAm = new Date().toISOString();
+  clearTimeout(_stbTimer);
+  _stbTimer = setTimeout(flushStb, 500);
+}
+async function flushStb() {
+  clearTimeout(_stbTimer);
+  if (_tourActive || !_stb || _stbGebId == null) return;   // Demo-Rundgang schreibt nichts
+  await DB.saveSteckbrief(_stbGebId, _stb);
+}
+
+async function stationFotoMap(g, aufbau) {
+  const map = { station: await DB.getPhotos(String(g.id)) };
+  for (const a of aufbau.alle) map[a.id] = await DB.getPhotos(elAid(a.id));
+  return map;
+}
+function slotZaehler(photos) {
+  const z = {};
+  for (const ph of photos || []) if (ph.slot) z[ph.slot] = (z[ph.slot] || 0) + 1;
+  return z;
+}
+function zaehlerMap(fotos, aufbau) {
+  const z = { station: slotZaehler(fotos.station) };
+  for (const a of aufbau.alle) z[a.id] = slotZaehler(fotos[a.id]);
+  return z;
+}
+
+// Fortschritt als Badge im Kartenlabel („⚡ Trafostation 1 · 40 %“)
+async function updateStationBadges() {
+  if (!SB() || !_project) return;
+  const byId = new Map((_project.gebaeude || []).map(g => [String(g.id), g]));
+  for (const el of document.querySelectorAll('.building-label-inner.station')) {
+    const g = byId.get(el.dataset.gebId);
+    const badge = el.querySelector('.st-badge');
+    if (!g || !badge) continue;
+    const aufbau = stationAufbauVon(g);
+    const stb = _stb && _stbGebId === String(g.id) ? _stb : await ladeStb(g.id);
+    const fotos = await stationFotoMap(g, aufbau);
+    const f = SB().stationFortschritt(g, aufbau, stb.station, stb.assets, zaehlerMap(fotos, aufbau));
+    badge.textContent = `${f.prozent} %`;
+  }
+}
+
+async function renderStationSheet(asset) {
+  const g = asset.data;
+  if (_stbGebId !== String(g.id)) { _stb = await ladeStb(g.id); _stbGebId = String(g.id); }
+  const aufbau = stationAufbauVon(g);
+  document.getElementById('sheet-head').innerHTML = `
+    <div class="sheet-icon-wrap" style="background:${STATION_FARBE}22">⚡</div>
+    <div class="sheet-title-wrap">
+      <h2>${esc(g.name || 'Station ' + g.id)}</h2>
+      <span class="tag" style="background:${STATION_FARBE}18;color:${STATION_FARBE}">Station · ${esc(SB().stationKurzinfo(aufbau))}</span>
+    </div>
+    <button class="close-btn" onclick="closeSheet()">✕</button>
+  `;
+  await renderStationBody();
+}
+
+async function renderStationBody({ keepScroll = false } = {}) {
+  if (_currentAsset?.type !== 'station' || !_stb) return;
+  await flushNotes();                       // Stationsnotiz sichern, bevor das Textfeld ersetzt wird
+  const body = document.getElementById('sheet-body');
+  const scroll = body.scrollTop;
+  const g = _currentAsset.data;
+  const aufbau = stationAufbauVon(g);
+  if (_stationView.kind === 'asset' && !aufbau.alle.some(a => a.id === _stationView.id)) _stationView = { kind: 'uebersicht' };
+  const fotos = await stationFotoMap(g, aufbau);
+  cleanBlobUrls();
+  body.innerHTML = _stationView.kind === 'uebersicht'
+    ? await stationUebersichtHtml(g, aufbau, fotos)
+    : stationAbschnittHtml(g, aufbau, fotos);
+  body.scrollTop = keepScroll ? scroll : 0;
+  const ta = document.getElementById('notes-ta');
+  if (ta) ta.addEventListener('input', () => { clearTimeout(_notesTimer); _notesTimer = setTimeout(flushNotes, 1400); });
+  document.getElementById('btn-mic')?.addEventListener('click', toggleMic);
+}
+
+function ndHtml(nd) {
+  if (!nd) return '<div class="st-nd" data-st-nd style="background:var(--bg);color:var(--text-muted);">Nutzungsdauer (VDI 2067): Baujahr eintragen</div>';
+  const stil = nd.status === 'innerhalb' ? 'background:#F0FDF4;color:#166534;'
+    : nd.status === 'erreicht' ? 'background:#FFFBEB;color:#92400E;' : 'background:#FEF2F2;color:#991B1B;';
+  return `<div class="st-nd" data-st-nd style="${stil}"><b>Nutzungsdauer (VDI 2067, ${nd.nd} J.):</b> ${esc(nd.label)} · Alter ${nd.alter} J.</div>`;
+}
+function ndPill(nd) {
+  if (!nd) return '';
+  const cls = nd.status === 'innerhalb' ? 'ok' : nd.status === 'erreicht' ? 'warn' : 'bad';
+  const txt = nd.status === 'innerhalb' ? `ND ok · ${nd.rest} J.` : nd.status === 'erreicht' ? 'ND erreicht' : `ND +${-nd.rest} J.`;
+  return `<span class="st-pill ${cls}">${txt}</span>`;
+}
+function zustandDot(z) {
+  const s = SB().ZUSTAND_STUFEN.find(x => x.key === z);
+  return `<span class="st-dot" title="Zustand: ${s ? s.label : 'nicht bewertet'}" style="${s ? `background:${s.farbe};border-color:${s.farbe};` : ''}"></span>`;
+}
+
+function kachelSub(a, eintrag, vb) {
+  const w = k => SB().feldWert(eintrag, vb, k);
+  const teile = [];
+  if (a.type === 'Trafo' && w('leistungKVA')) teile.push(`${w('leistungKVA')} kVA`);
+  if (a.type === 'Trafo' && w('ausfuehrung')) teile.push(w('ausfuehrung'));
+  if (a.type === 'Schaltanlage' && w('felder')) teile.push(`${w('felder')} Felder`);
+  if (a.type === 'Schaltanlage' && w('isolation')) teile.push(w('isolation'));
+  if (a.type === 'NSHV' && w('abgaenge')) teile.push(`${w('abgaenge')} Abgänge`);
+  if (a.type === 'NAP' && w('spannungKV')) teile.push(`${w('spannungKV')} kV`);
+  if (w('baujahr')) teile.push(`Bj. ${w('baujahr')}`);
+  return teile.join(' · ') || SB().abschnittFuer(a.type).titel;
+}
+
+function kachelHtml({ view, icon, titel, sub, fort, zustand, nd, fotoAnzahl, klasse = '' }) {
+  const fertig = fort.erledigt >= fort.gesamt;
+  return `<button type="button" class="st-tile ${klasse}" data-st-action="oeffnen" data-kind="${view.kind}" data-id="${esc(view.id ?? '')}">
+    <div class="st-tile-head"><span class="ic">${icon}</span><span>${esc(titel)}</span></div>
+    <div class="st-tile-sub">${esc(sub)}</div>
+    <div class="st-tile-foot">
+      ${zustandDot(zustand)}
+      <span class="st-pill ${fertig ? 'ok' : ''}">${fertig ? '✓' : `${fort.erledigt}/${fort.gesamt}`}</span>
+      ${ndPill(nd)}
+      ${fotoAnzahl ? `<span>📷 ${fotoAnzahl}</span>` : ''}
+    </div>
+  </button>`;
+}
+
+async function stationUebersichtHtml(g, aufbau, fotos) {
+  const vb = SB().vorbelegung(g, aufbau);
+  const zaehler = zaehlerMap(fotos, aufbau);
+  const gesamt = SB().stationFortschritt(g, aufbau, _stb.station, _stb.assets, zaehler);
+  const w = k => SB().feldWert(_stb.station, vb.station, k);
+
+  const stationKachel = kachelHtml({
+    view: { kind: 'station' }, icon: '🏢', titel: 'Gebäude & Station', klasse: 'st-geb',
+    sub: [w('funktion'), w('bauform'), w('baujahr') && `Bj. ${w('baujahr')}`].filter(Boolean).join(' · ') || 'Liegenschaft, Netz, Betrieb',
+    fort: SB().abschnittFortschritt('station', _stb.station, vb.station, zaehler.station),
+    zustand: _stb.station.zustand, nd: null,
+    fotoAnzahl: fotos.station.filter(p => p.slot).length,
+  });
+  const assetKachel = a => {
+    const eintrag = _stb.assets[a.id];
+    const schema = SB().abschnittFuer(a.type);
+    return kachelHtml({
+      view: { kind: 'asset', id: a.id }, icon: schema.icon, titel: a.name || schema.titel,
+      sub: kachelSub(a, eintrag, vb.assets[a.id]),
+      fort: SB().abschnittFortschritt(a.type, eintrag, vb.assets[a.id], zaehler[a.id]),
+      zustand: eintrag?.zustand, fotoAnzahl: (fotos[a.id] || []).filter(p => p.slot).length,
+      nd: schema.nutzungsdauer ? SB().nutzungsdauerStatus(a.type, SB().feldWert(eintrag, vb.assets[a.id], 'baujahr')) : null,
+    });
+  };
+  const reihen = [[stationKachel], aufbau.nap.map(assetKachel), aufbau.schaltanlagen.map(assetKachel),
+    aufbau.trafos.map(assetKachel), aufbau.nshv.map(assetKachel), aufbau.weitere.map(assetKachel)]
+    .filter(r => r.length)
+    .map(r => `<div class="st-row">${r.join('')}</div>`)
+    .join('<div class="st-link"></div>');
+
+  const prio = new Map(SB().MANGEL_PRIORITAETEN.map((p, i) => [p.key, { ...p, i }]));
+  const maengel = [..._stb.station.maengel || []].sort((a, b) => (prio.get(a.prio)?.i ?? 9) - (prio.get(b.prio)?.i ?? 9));
+  const maengelHtml = maengel.map(m => {
+    const p = prio.get(m.prio) || { label: m.prio, farbe: '#64748b' };
+    return `<div class="st-maengel-item">
+      <span class="st-pill" style="color:#fff;background:${p.farbe}">${esc(p.label)}</span>
+      <div class="st-maengel-text">${esc(m.text)}<div class="st-maengel-bezug">${esc(m.bezugName || '')}</div></div>
+      <button type="button" class="st-maengel-del" data-st-action="mangel-del" data-id="${esc(m.id)}" title="Löschen">✕</button>
+    </div>`;
+  }).join('');
+  const bezugOptionen = [`<option value="station">Gebäude & Station</option>`,
+    ...aufbau.alle.map(a => `<option value="${esc(a.id)}">${esc(a.name || SB().abschnittFuer(a.type).titel)}</option>`)].join('');
+  const prioChips = SB().MANGEL_PRIORITAETEN.map(p =>
+    `<button type="button" class="st-chip${p.key === _mangelPrio ? ' on' : ''}" data-st-action="mangel-prio" data-wert="${p.key}">${esc(p.label)}</button>`).join('');
+
+  const aid = String(g.id);
+  const [notiz, allePhotos] = [await DB.getNote(aid), fotos.station.filter(p => !p.slot)];
+  const photoHtml = allePhotos.map(ph => {
+    const url = URL.createObjectURL(ph.blob);
+    _blobUrls.set(ph.id, url);
+    return `<div class="photo-cell" onclick="openLightbox('${ph.id}')"><img src="${url}" alt=""><button class="photo-del" onclick="event.stopPropagation();delPhoto('${ph.id}')">✕</button></div>`;
+  }).join('');
+
+  return `
+    <div class="st-progress">
+      <div class="st-progress-bar"><div style="width:${gesamt.prozent}%"></div></div>
+      <div class="st-progress-label">Erfasst ${gesamt.erledigt}/${gesamt.gesamt}</div>
+    </div>
+    <div class="st-flow">${reihen}</div>
+
+    <div class="sec">Mängel &amp; Feststellungen (${maengel.length})</div>
+    ${maengelHtml || '<div class="st-tile-sub" style="margin-bottom:8px;">Noch keine Mängel erfasst.</div>'}
+    <textarea class="st-textarea" id="st-mangel-text" placeholder="Mangel oder Feststellung …"></textarea>
+    <select class="st-select" id="st-mangel-bezug">${bezugOptionen}</select>
+    <div class="st-chips">${prioChips}</div>
+    <button type="button" class="st-add-btn" data-st-action="mangel-add">+ Mangel erfassen</button>
+
+    <div class="sec" style="display:flex;align-items:center;justify-content:space-between;">
+      Notizen zur Station
+      <button class="mic-btn" id="btn-mic" title="Spracheingabe">🎤</button>
+    </div>
+    <textarea class="notes" id="notes-ta" placeholder="Allgemeine Beobachtungen zur Station…">${esc(notiz)}</textarea>
+    <div class="save-hint" id="save-hint">✓ Automatisch gespeichert</div>
+    <div class="sec">Weitere Fotos (${allePhotos.length})</div>
+    <div class="photo-grid" id="photo-grid">${photoHtml}</div>
+    <button class="add-photo-btn" onclick="pickPhoto()">📷 Foto aufnehmen / aus Galerie</button>
+  `;
+}
+
+function feldHtml(f, eintrag, vb) {
+  const erfasst = eintrag.werte?.[f.key];
+  const hatErfasst = erfasst !== undefined && erfasst !== null && String(erfasst) !== '';
+  const wert = SB().feldWert(eintrag, vb, f.key);
+  const vorschlag = !hatErfasst && wert !== '';
+  const label = `<div class="st-feld-label">${esc(f.label)}${f.pflicht ? '<span class="pf">*</span>' : ''}${vorschlag ? '<span class="vb">aus Planung – bitte prüfen</span>' : ''}</div>`;
+  if (f.typ === 'wahl') {
+    const chips = f.optionen.map(o => {
+      const cls = o === wert ? (vorschlag ? ' vorschlag' : ' on') : '';
+      return `<button type="button" class="st-chip${cls}" data-st-action="wahl" data-feld="${esc(f.key)}" data-wert="${esc(o)}">${esc(o)}</button>`;
+    }).join('');
+    return `<div class="st-feld">${label}<div class="st-chips">${chips}</div></div>`;
+  }
+  if (f.typ === 'textlang') {
+    return `<div class="st-feld">${label}<textarea class="st-textarea${vorschlag ? ' vorschlag' : ''}" data-st-feld="${esc(f.key)}">${esc(wert)}</textarea></div>`;
+  }
+  const inputmode = f.typ === 'zahl' ? 'decimal' : f.typ === 'jahr' ? 'numeric' : 'text';
+  const extra = f.typ === 'jahr' ? ' maxlength="4"' : '';
+  return `<div class="st-feld">${label}<div class="st-input-wrap">
+    <input class="st-input${vorschlag ? ' vorschlag' : ''}" type="text" inputmode="${inputmode}"${extra} data-st-feld="${esc(f.key)}" value="${esc(wert)}" placeholder="${esc(f.platzhalter || '')}">
+    ${f.einheit ? `<span class="st-einheit">${esc(f.einheit)}</span>` : ''}
+  </div></div>`;
+}
+
+function slotHtml(s, photos, aid) {
+  const thumbs = photos.map(ph => {
+    const url = URL.createObjectURL(ph.blob);
+    _blobUrls.set(ph.id, url);
+    return `<div class="photo-cell" onclick="openLightbox('${ph.id}')"><img src="${url}" alt=""><button class="photo-del" onclick="event.stopPropagation();delPhoto('${ph.id}')">✕</button></div>`;
+  }).join('');
+  const fehlt = s.pflicht && !photos.length;
+  return `<div class="st-slot${fehlt ? ' fehlt' : ''}">
+    <div class="st-slot-head">
+      <span>📷 ${esc(s.label)}${s.pflicht ? ' <span style="color:var(--danger)">*</span>' : ''}${photos.length ? ` · ${photos.length}` : ''}</span>
+      <button type="button" class="st-slot-add" data-st-action="foto" data-aid="${esc(aid)}" data-slot="${esc(s.key)}">+ Foto</button>
+    </div>
+    ${thumbs ? `<div class="photo-grid">${thumbs}</div>` : ''}
+  </div>`;
+}
+
+function stationAbschnittHtml(g, aufbau, fotos) {
+  const view = _stationView;
+  const isStation = view.kind === 'station';
+  const a = isStation ? null : aufbau.alle.find(x => x.id === view.id);
+  const typ = isStation ? 'station' : a.type;
+  const schema = SB().abschnittFuer(typ);
+  const vbAlle = SB().vorbelegung(g, aufbau);
+  const vb = isStation ? vbAlle.station : vbAlle.assets[a.id];
+  const eintrag = stbEintrag(view);
+  const photoAid = isStation ? String(g.id) : elAid(a.id);
+  const photos = isStation ? fotos.station : (fotos[a.id] || []);
+  const fort = SB().abschnittFortschritt(typ, eintrag, vb, slotZaehler(photos));
+
+  let html = `<button type="button" class="st-back" data-st-action="zurueck">← Stationsübersicht</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <span style="font-size:24px">${schema.icon}</span>
+      <div><div style="font-weight:800;font-size:17px">${esc(isStation ? schema.titel : (a.name || schema.titel))}</div>
+      <div class="st-tile-sub">${esc(isStation ? (g.name || '') : schema.titel)} · ${fort.erledigt}/${fort.gesamt} Pflichtangaben</div></div>
+    </div>`;
+  if (schema.nutzungsdauer) html += ndHtml(SB().nutzungsdauerStatus(typ, SB().feldWert(eintrag, vb, 'baujahr')));
+
+  html += `<div class="st-gruppe">Zustand</div><div class="st-chips">${SB().ZUSTAND_STUFEN.map(z =>
+    `<button type="button" class="st-chip${eintrag.zustand === z.key ? ' on' : ''}" data-st-action="zustand" data-wert="${z.key}" style="${eintrag.zustand === z.key ? `background:${z.farbe};border-color:${z.farbe};` : ''}">${esc(z.label)}</button>`).join('')}</div>`;
+
+  let gruppe = null;
+  for (const f of schema.felder) {
+    if (!SB().feldAktiv(f, eintrag, vb)) continue;
+    if (f.gruppe && f.gruppe !== gruppe) { gruppe = f.gruppe; html += `<div class="st-gruppe">${esc(gruppe)}</div>`; }
+    html += feldHtml(f, eintrag, vb);
+  }
+
+  html += '<div class="st-gruppe">Fotos</div>';
+  for (const s of schema.fotos) html += slotHtml(s, photos.filter(p => p.slot === s.key), photoAid);
+
+  html += `<div class="st-gruppe">Anmerkungen</div>
+    <textarea class="st-textarea" data-st-notiz placeholder="Feststellungen zu diesem Abschnitt…">${esc(eintrag.notiz || '')}</textarea>`;
+
+  // Rundgang: direkt zum nächsten Abschnitt
+  const reihenfolge = [{ kind: 'station' }, ...aufbau.alle.map(x => ({ kind: 'asset', id: x.id }))];
+  const idx = reihenfolge.findIndex(r => r.kind === view.kind && r.id === view.id);
+  const next = reihenfolge[idx + 1];
+  if (next) {
+    const nextName = aufbau.alle.find(x => x.id === next.id)?.name || SB().abschnittFuer(aufbau.alle.find(x => x.id === next.id)?.type).titel;
+    html += `<button type="button" class="st-add-btn" style="background:var(--primary);margin-bottom:24px;" data-st-action="oeffnen" data-kind="asset" data-id="${esc(next.id)}">Weiter: ${esc(nextName)} →</button>`;
+  } else {
+    html += `<button type="button" class="st-add-btn" style="background:var(--primary);margin-bottom:24px;" data-st-action="zurueck">✓ Zurück zur Übersicht</button>`;
+  }
+  return html;
+}
+
+function updateNdBox() {
+  const box = document.querySelector('[data-st-nd]');
+  if (!box || _stationView.kind === 'uebersicht') return;
+  const g = _currentAsset.data;
+  const aufbau = stationAufbauVon(g);
+  const isStation = _stationView.kind === 'station';
+  const a = isStation ? null : aufbau.alle.find(x => x.id === _stationView.id);
+  if (!a) return;
+  const vb = SB().vorbelegung(g, aufbau).assets[a.id];
+  box.outerHTML = ndHtml(SB().nutzungsdauerStatus(a.type, SB().feldWert(stbEintrag(_stationView), vb, 'baujahr')));
+}
+
+async function onStationClick(e) {
+  if (_currentAsset?.type !== 'station' || !_stb) return;
+  const btn = e.target.closest('[data-st-action]');
+  if (!btn) return;
+  const act = btn.dataset.stAction;
+  if (act === 'oeffnen') {
+    _stationView = btn.dataset.kind === 'station' ? { kind: 'station' } : { kind: 'asset', id: btn.dataset.id };
+    await renderStationBody();
+  } else if (act === 'zurueck') {
+    _stationView = { kind: 'uebersicht' };
+    await renderStationBody();
+  } else if (act === 'wahl') {
+    const eintrag = stbEintrag(_stationView);
+    eintrag.werte = eintrag.werte || {};
+    const key = btn.dataset.feld, wert = btn.dataset.wert;
+    if (eintrag.werte[key] === wert) delete eintrag.werte[key];   // erneutes Tippen hebt auf
+    else eintrag.werte[key] = wert;
+    stbGeaendert(eintrag);
+    await renderStationBody({ keepScroll: true });
+  } else if (act === 'zustand') {
+    const eintrag = stbEintrag(_stationView);
+    eintrag.zustand = eintrag.zustand === btn.dataset.wert ? '' : btn.dataset.wert;
+    stbGeaendert(eintrag);
+    await renderStationBody({ keepScroll: true });
+  } else if (act === 'foto') {
+    _photoTarget = { aid: btn.dataset.aid, slot: btn.dataset.slot };
+    document.getElementById('photo-input').click();
+  } else if (act === 'mangel-prio') {
+    _mangelPrio = btn.dataset.wert;
+    btn.parentElement.querySelectorAll('.st-chip').forEach(c => c.classList.toggle('on', c === btn));
+  } else if (act === 'mangel-add') {
+    const text = document.getElementById('st-mangel-text')?.value.trim();
+    if (!text) { toast('Bitte zuerst den Mangel beschreiben'); return; }
+    const sel = document.getElementById('st-mangel-bezug');
+    _stb.station.maengel = _stb.station.maengel || [];
+    _stb.station.maengel.push({
+      id: `m_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      text, prio: _mangelPrio, bezug: sel?.value || 'station',
+      bezugName: sel?.selectedOptions?.[0]?.textContent || '',
+      erfasstAm: new Date().toISOString(),
+    });
+    stbGeaendert(_stb.station);
+    toast('✓ Mangel erfasst');
+    await renderStationBody({ keepScroll: true });
+  } else if (act === 'mangel-del') {
+    if (!confirm('Mangel löschen?')) return;
+    _stb.station.maengel = (_stb.station.maengel || []).filter(m => m.id !== btn.dataset.id);
+    stbGeaendert(_stb.station);
+    await renderStationBody({ keepScroll: true });
+  }
+}
+
+function onStationInput(e) {
+  if (_currentAsset?.type !== 'station' || !_stb || _stationView.kind === 'uebersicht') return;
+  const t = e.target;
+  const eintrag = stbEintrag(_stationView);
+  if (t.matches('[data-st-feld]')) {
+    eintrag.werte = eintrag.werte || {};
+    eintrag.werte[t.dataset.stFeld] = t.value.trim() ? t.value : '';
+    t.classList.remove('vorschlag');
+    stbGeaendert(eintrag);
+    if (t.dataset.stFeld === 'baujahr') updateNdBox();
+  } else if (t.matches('[data-st-notiz]')) {
+    eintrag.notiz = t.value;
+    stbGeaendert(eintrag);
+  }
+}
+
+function pickPhoto() {
+  _photoTarget = null;
+  document.getElementById('photo-input').click();
+}
+window.pickPhoto = pickPhoto;
+
 // ── Bottom Sheet ──────────────────────────────────────────
 async function openSheet(asset) {
   // Save previous notes if switching assets
-  if (_currentAsset) await flushNotes();
+  if (_currentAsset) { await flushNotes(); await flushStb(); }
   cleanBlobUrls();
 
+  if (asset.type === 'station' && _currentAsset?.data !== asset.data) _stationView = { kind: 'uebersicht' };
   _currentAsset = asset;
 
   await renderSheet(asset);
@@ -1657,16 +2181,21 @@ async function openSheet(asset) {
 
 async function closeSheet() {
   await flushNotes();
+  await flushStb();
   cleanBlobUrls();
   _currentAsset = null;
+  _photoTarget = null;
   document.getElementById('sheet').classList.remove('open');
   document.getElementById('backdrop').classList.remove('on');
   updateExportBadge();
+  updateStationBadges();
 }
 
 async function renderSheet(asset) {
+  if (asset.type === 'station') return renderStationSheet(asset);
   const aid = assetId(asset);
-  const [notes, photos] = await Promise.all([DB.getNote(aid), DB.getPhotos(aid)]);
+  const [notes, allPhotos] = await Promise.all([DB.getNote(aid), DB.getPhotos(aid)]);
+  const photos = allPhotos.filter(ph => !ph.slot);   // Steckbrief-Fotos gehören in die Stationsakte
 
   // Header
   let headHtml;
@@ -1770,7 +2299,7 @@ async function renderSheet(asset) {
 
     <div class="sec">Fotos (${photos.length})</div>
     <div class="photo-grid" id="photo-grid">${photoHtml}</div>
-    <button class="add-photo-btn" onclick="document.getElementById('photo-input').click()">
+    <button class="add-photo-btn" onclick="pickPhoto()">
       📷 Foto aufnehmen / aus Galerie
     </button>
   `;
@@ -1795,7 +2324,7 @@ async function flushNotes() {
 }
 
 function assetId(asset) {
-  if (asset.type === 'gebaeude') return String(asset.data.id);
+  if (asset.type === 'gebaeude' || asset.type === 'station') return String(asset.data.id);
   if (asset.type === 'elektro')  return `el_${asset.data.id}`;
   return asset.key;
 }
@@ -1810,11 +2339,14 @@ async function onPhotoFile(e) {
   const file = e.target.files[0];
   if (!file || !_currentAsset) return;
   e.target.value = '';
+  // Ziel: Foto-Platz aus der Stationsakte oder allgemeine Fotos des offenen Objekts
+  const target = _photoTarget || { aid: assetId(_currentAsset), slot: null };
+  _photoTarget = null;
   toast('Foto wird komprimiert…');
   try {
     const blob = await compressImage(file);
-    const fn   = `${assetId(_currentAsset)}_${Date.now()}.jpg`;
-    await DB.addPhoto(assetId(_currentAsset), blob, fn);
+    const fn   = `${target.aid}_${target.slot ? target.slot + '_' : ''}${Date.now()}.jpg`;
+    await DB.addPhoto(target.aid, blob, fn, target.slot);
     await refreshPhotos();
     const photoCount = (await DB.getAllPhotos()).length;
     toast(`Foto gespeichert (${(blob.size/1024).toFixed(0)} KB)`);
@@ -1828,7 +2360,8 @@ async function onPhotoFile(e) {
 
 async function refreshPhotos() {
   if (!_currentAsset) return;
-  const photos = await DB.getPhotos(assetId(_currentAsset));
+  if (_currentAsset.type === 'station') { await renderStationBody({ keepScroll: true }); updateExportBadge(); return; }
+  const photos = (await DB.getPhotos(assetId(_currentAsset))).filter(ph => !ph.slot);
 
   // Revoke old blob URLs for photos and recreate
   cleanBlobUrls();
@@ -1908,10 +2441,74 @@ function setupSheetDrag() {
   });
 }
 
+// ── Bericht: Stationsakte (Aufbau wie der Liegenschaftssteckbrief) ──────────
+const relSrc = pfad => esc(pfad.split('/').map(encodeURIComponent).join('/'));
+
+function stationenBerichtHtml(stbByGeb, photosByAsset, fotoPfad, noteMap) {
+  if (!SB() || !_project) return '';
+  const stationen = SB().findeStationen(_project.gebaeude || [], projektAssets())
+    .filter(({ gebaeude: g, aufbau }) => stbByGeb[String(g.id)] || noteMap[String(g.id)] ||
+      [String(g.id), ...aufbau.alle.map(a => elAid(a.id))].some(aid => (photosByAsset[aid] || []).length));
+  if (!stationen.length) return '';
+
+  const zustandLabel = z => SB().ZUSTAND_STUFEN.find(x => x.key === z)?.label || '–';
+  const fotosHtml = (photos, schema) => {
+    const slotLabel = k => schema.fotos.find(f => f.key === k)?.label || 'Foto';
+    const items = photos.map(ph => fotoPfad.get(ph.id)
+      ? `<figure><img src="${relSrc(fotoPfad.get(ph.id))}" alt=""><figcaption>${esc(ph.slot ? slotLabel(ph.slot) : 'Foto')}</figcaption></figure>` : '').join('');
+    return items ? `<div class="fotos">${items}</div>` : '';
+  };
+  const abschnitt = (titel, typ, eintrag, vb, photos) => {
+    const schema = SB().abschnittFuer(typ);
+    const e = eintrag || SB().leererEintrag();
+    let rows = '';
+    if (schema.nutzungsdauer) {
+      const nd = SB().nutzungsdauerStatus(typ, SB().feldWert(e, vb, 'baujahr'));
+      rows += `<tr><td>Rechn. Nutzungsdauer (VDI 2067)</td><td>${nd ? esc(nd.label) : '<span class="leer">–</span>'}</td></tr>`;
+    }
+    for (const f of schema.felder) {
+      if (!SB().feldAktiv(f, e, vb)) continue;
+      const erfasst = e.werte?.[f.key];
+      const wert = SB().feldWert(e, vb, f.key);
+      const ausPlanung = wert && (erfasst === undefined || erfasst === null || erfasst === '');
+      const anzeige = wert ? `${esc(wert)}${f.einheit ? ' ' + esc(f.einheit) : ''}${ausPlanung ? ' <span class="vb">(Planung, nicht geprüft)</span>' : ''}` : '<span class="leer">–</span>';
+      rows += `<tr><td>${esc(f.label)}</td><td>${anzeige}</td></tr>`;
+    }
+    return `<table class="stb"><tr><th colspan="2">${schema.icon} ${esc(titel)} · Zustand: ${esc(zustandLabel(e.zustand))}</th></tr>${rows}</table>
+      ${e.notiz ? `<div class="notiz">${esc(e.notiz)}</div>` : ''}
+      ${fotosHtml(photos.filter(p => p.slot), schema)}`;
+  };
+
+  let html = '<h2>⚡ Stationen – Liegenschaftssteckbrief</h2>';
+  for (const { gebaeude: g, aufbau } of stationen) {
+    const stb = stbByGeb[String(g.id)] || { station: SB().leererStationsSteckbrief(), assets: {} };
+    const vb = SB().vorbelegung(g, aufbau);
+    const fotos = { station: photosByAsset[String(g.id)] || [] };
+    for (const a of aufbau.alle) fotos[a.id] = photosByAsset[elAid(a.id)] || [];
+    const f = SB().stationFortschritt(g, aufbau, stb.station, stb.assets || {}, zaehlerMap(fotos, aufbau));
+    html += `<h3>${esc(g.name || 'Station ' + g.id)}</h3>
+      <div class="meta">${esc(SB().stationKurzinfo(aufbau))} · Erfassung ${f.erledigt}/${f.gesamt} Pflichtangaben (${f.prozent} %)</div>`;
+    html += abschnitt('Gebäude & Station', 'station', stb.station, vb.station, fotos.station);
+    for (const a of aufbau.alle) html += abschnitt(a.name || SB().abschnittFuer(a.type).titel, a.type, stb.assets?.[a.id], vb.assets[a.id], fotos[a.id]);
+
+    const prio = new Map(SB().MANGEL_PRIORITAETEN.map((p, i) => [p.key, { ...p, i }]));
+    const maengel = [...(stb.station.maengel || [])].sort((x, y) => (prio.get(x.prio)?.i ?? 9) - (prio.get(y.prio)?.i ?? 9));
+    html += `<table class="stb"><tr><th>Mängel &amp; Feststellungen</th><th>Priorität · Bereich</th></tr>${
+      maengel.length ? maengel.map(m => `<tr><td style="color:#1a1a2e;white-space:pre-wrap;">${esc(m.text)}</td><td><b style="color:${prio.get(m.prio)?.farbe || '#64748b'}">${esc(prio.get(m.prio)?.label || m.prio)}</b> · ${esc(m.bezugName || '')}</td></tr>`).join('')
+        : '<tr><td colspan="2" class="leer">keine erfasst</td></tr>'}</table>`;
+    const notiz = noteMap[String(g.id)];
+    if (notiz) html += `<div class="notiz">${esc(notiz)}</div>`;
+    const weitere = fotos.station.filter(p => !p.slot);
+    if (weitere.length) html += fotosHtml(weitere, SB().abschnittFuer('station'));
+  }
+  return html;
+}
+
 // ── ZIP Export ────────────────────────────────────────────
 async function exportZip() {
   if (!_project) { toast('Kein Projekt geladen'); return; }
   await flushNotes();
+  await flushStb();
   showProgress('Exportiere Daten…');
 
   try {
@@ -1921,6 +2518,15 @@ async function exportZip() {
     const [allNotes, allPhotos] = await Promise.all([DB.getAllNotes(), DB.getAllPhotos()]);
 
     const noteMap  = Object.fromEntries(allNotes.map(n => [n.assetId, n.text]));
+    // Stations-Steckbriefe: Station → Gebäude, Abschnitte → jeweiliges Asset
+    const stbByGeb = {}, stbByAsset = {};
+    for (const n of allNotes) {
+      if (!n.steckbrief || !n.assetId.startsWith(STB_PREFIX)) continue;
+      const gebId = n.assetId.slice(STB_PREFIX.length);
+      stbByGeb[gebId] = n.steckbrief;
+      // nur tatsächlich bearbeitete Abschnitte (bloßes Ansehen legt einen leeren Eintrag an)
+      for (const [id, e] of Object.entries(n.steckbrief.assets || {})) if (e?.erfasstAm) stbByAsset[id] = e;
+    }
     const photosByAsset = {};
     for (const ph of allPhotos) {
       if (!photosByAsset[ph.assetId]) photosByAsset[ph.assetId] = [];
@@ -1932,55 +2538,55 @@ async function exportZip() {
       return String(s || 'unbekannt').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
     }
 
+    // Fotos in einen Ordner schreiben. Dateiname = Foto-Platz (z. B. typenschild_01.jpg)
+    // oder foto_NN.jpg. fotoPfad merkt sich den ZIP-Pfad je Foto für den Bericht.
+    const fotoPfad = new Map();
+    function fotosInOrdner(ordner, fotos) {
+      const namen = [], slots = {}, zaehler = {};
+      for (const ph of fotos) {
+        const ext = ph.filename.split('.').pop() || 'jpg';
+        const basis = ph.slot || 'foto';
+        zaehler[basis] = (zaehler[basis] || 0) + 1;
+        const fn = `${basis}_${String(zaehler[basis]).padStart(2, '0')}.${ext}`;
+        zip.folder(ordner).file(fn, ph.blob);
+        namen.push(fn);
+        fotoPfad.set(ph.id, `${ordner}/${fn}`);
+        if (ph.slot) (slots[ph.slot] ||= []).push(fn);
+      }
+      return { namen, slots };
+    }
+    const mitSteckbrief = (obj, stb, slots) => ({
+      ...obj,
+      ...(stb ? { feldSteckbrief: stb } : {}),
+      ...(Object.keys(slots).length ? { feldFotoSlots: slots } : {}),
+    });
+
     // ── Gebäude: je ein Unterordner mit Fotos ──────────────────────
     const gebaeudeMitFeld = [];
     for (const g of (_project.gebaeude || [])) {
       const aid = String(g.id);
       const notiz = noteMap[aid] || '';
-      const fotos = photosByAsset[aid] || [];
       const ordner = `gebaeude/${safeName(g.name || aid)}`;
-      const fotoNamen = [];
-
-      for (const ph of fotos) {
-        // Dateinamen: laufende Nummer + original Extension
-        const ext = ph.filename.split('.').pop() || 'jpg';
-        const fn = `foto_${String(fotoNamen.length + 1).padStart(2, '0')}.${ext}`;
-        zip.folder(ordner).file(fn, ph.blob);
-        fotoNamen.push(fn);
-      }
-
-      gebaeudeMitFeld.push({ ...g, feldNotizen: notiz, feldFotos: fotoNamen, feldFotoOrdner: ordner });
+      const { namen, slots } = fotosInOrdner(ordner, photosByAsset[aid] || []);
+      const stb = stbByGeb[aid] ? { ...stbByGeb[aid].station, version: SB()?.STECKBRIEF_VERSION ?? 1 } : null;
+      gebaeudeMitFeld.push(mitSteckbrief({ ...g, feldNotizen: notiz, feldFotos: namen, feldFotoOrdner: ordner }, stb, slots));
     }
 
     // ── Erzeuger ───────────────────────────────────────────────────
     const erzeugerFeld = {};
     for (const key of Object.keys(ERZEUGER)) {
       if (!_project[key]) continue;
-      const fotos = photosByAsset[key] || [];
-      const ordner = `erzeuger/${key}`;
-      const fotoNamen = [];
-      for (const ph of fotos) {
-        const ext = ph.filename.split('.').pop() || 'jpg';
-        const fn = `foto_${String(fotoNamen.length + 1).padStart(2, '0')}.${ext}`;
-        zip.folder(ordner).file(fn, ph.blob);
-        fotoNamen.push(fn);
-      }
-      erzeugerFeld[key] = { ..._project[key], feldNotizen: noteMap[key] || '', feldFotos: fotoNamen };
+      const { namen } = fotosInOrdner(`erzeuger/${key}`, photosByAsset[key] || []);
+      erzeugerFeld[key] = { ..._project[key], feldNotizen: noteMap[key] || '', feldFotos: namen };
     }
 
     // ── Elektro-Assets ─────────────────────────────────────────────
     const elItems = (_project.elektroAssets?.items || []).map(a => {
       const aid = `el_${a.id}`;
-      const fotos = photosByAsset[aid] || [];
       const ordner = `elektro/${safeName(a.name || a.type || a.id)}`;
-      const fotoNamen = [];
-      for (const ph of fotos) {
-        const ext = ph.filename.split('.').pop() || 'jpg';
-        const fn = `foto_${String(fotoNamen.length + 1).padStart(2, '0')}.${ext}`;
-        zip.folder(ordner).file(fn, ph.blob);
-        fotoNamen.push(fn);
-      }
-      return { ...a, feldNotizen: noteMap[aid] || '', feldFotos: fotoNamen, feldFotoOrdner: ordner };
+      const { namen, slots } = fotosInOrdner(ordner, photosByAsset[aid] || []);
+      const stb = stbByAsset[a.id] ? { ...stbByAsset[a.id], version: SB()?.STECKBRIEF_VERSION ?? 1 } : null;
+      return mitSteckbrief({ ...a, feldNotizen: noteMap[aid] || '', feldFotos: namen, feldFotoOrdner: ordner }, stb, slots);
     });
 
     // ── JSON für Rückimport ins Hauptprogramm ─────────────────────
@@ -1996,10 +2602,7 @@ async function exportZip() {
     zip.file('projekt_felddaten.json', JSON.stringify(exportData, null, 2));
 
     // ── HTML-Bericht ───────────────────────────────────────────────
-    const blobUrls = new Map();
-    for (const ph of allPhotos) {
-      blobUrls.set(ph.id, URL.createObjectURL(ph.blob));
-    }
+    // Bilder als relative Pfade ins ZIP — der Bericht funktioniert nach dem Entpacken.
 
     let berichtHtml = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
 <title>Feldbericht ${datum}</title>
@@ -2017,13 +2620,24 @@ async function exportZip() {
   .fotos { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 20px; }
   .fotos img { width: 200px; height: 150px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
   .no-data { color: #9ca3af; font-style: italic; }
-  @media print { .fotos img { width: 160px; height: 120px; } }
+  table.stb { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 13px; }
+  table.stb th { background: #FDF2F8; color: #9D174D; text-align: left; padding: 7px 10px; font-size: 13px; }
+  table.stb td { border-bottom: 1px solid #e5e7eb; padding: 5px 10px; vertical-align: top; }
+  table.stb td:first-child { width: 42%; color: #4b5563; }
+  .vb { color: #9ca3af; font-size: 11px; }
+  .leer { color: #d1d5db; }
+  .fotos figure { margin: 0; }
+  .fotos figcaption { font-size: 11px; color: #6b7280; }
+  @media print { .fotos img { width: 160px; height: 120px; } h3 { break-before: auto; } }
 </style></head><body>
 <h1>📋 Feldbericht Energieplanung</h1>
 <div class="meta">Erstellt: ${new Date().toLocaleString('de-DE')} &nbsp;·&nbsp; ${allPhotos.length} Fotos &nbsp;·&nbsp; ${gebaeudeMitFeld.length} Gebäude</div>`;
 
-    // Gebäude-Abschnitte
-    const gebMitDaten = gebaeudeMitFeld.filter(g => g.feldNotizen || (g.feldFotos && g.feldFotos.length));
+    berichtHtml += stationenBerichtHtml(stbByGeb, photosByAsset, fotoPfad, noteMap);
+
+    // Gebäude-Abschnitte (Stationen stehen oben in der Stationsakte)
+    const stationIds = stationIdSet();
+    const gebMitDaten = gebaeudeMitFeld.filter(g => !stationIds.has(String(g.id)) && (g.feldNotizen || (g.feldFotos && g.feldFotos.length)));
     if (gebMitDaten.length) {
       berichtHtml += `<h2>🏠 Gebäude</h2>`;
       for (const g of gebMitDaten) {
@@ -2034,13 +2648,12 @@ async function exportZip() {
   <div class="prop"><div class="prop-label">Fläche</div><div class="prop-value">${fmtM2(g.flaeche)}</div></div>
 </div>`;
         if (g.feldNotizen) berichtHtml += `<div class="notiz">${esc(g.feldNotizen)}</div>`;
-        // Fotos inline als Base64 für Druckbarkeit
         const fotos = photosByAsset[String(g.id)] || [];
         if (fotos.length) {
           berichtHtml += `<div class="fotos">`;
           for (const ph of fotos) {
-            const url = blobUrls.get(ph.id);
-            if (url) berichtHtml += `<img src="${url}" alt="Foto">`;
+            const pfad = fotoPfad.get(ph.id);
+            if (pfad) berichtHtml += `<img src="${relSrc(pfad)}" alt="Foto">`;
           }
           berichtHtml += `</div>`;
         }
@@ -2052,8 +2665,6 @@ async function exportZip() {
 
     showProgress(`ZIP wird erstellt (${allPhotos.length} Fotos)…`);
     const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-
-    blobUrls.forEach(u => URL.revokeObjectURL(u));
 
     const sizeMb = (blob.size / 1024 / 1024).toFixed(1);
     const fname = `feldapp_${datum}.zip`;

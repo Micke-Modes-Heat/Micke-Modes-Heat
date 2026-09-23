@@ -20,6 +20,7 @@ Wirtschaftlichkeit nach VDI 2067, Stromnetz, Optimierer und Variantenvergleich.
 │   ├── config/                 ← Kostentabellen, Erzeuger-Defaults, Hilfetexte
 │   ├── lib/                    ← Shared: util.js, physik-konstanten.js, elektro-formeln.js,
 │   │                              resilienz-core.js, resilienz-abfrage.js,
+│   │                              station-steckbrief.js (Stationsakte, auch in der Feldapp),
 │   │                              xlsx-schreiber.js / xlsx-leser.js (OOXML ohne SheetJS)
 │   ├── 01–12 …                 ← Karte, Netz, Erzeuger, Dispatch, Analyse, PV, Optimizer
 │   ├── 13a–13r …               ← Elektro-Assets, SLD, Netzanalyse, NAP, Knotenpunkte
@@ -27,7 +28,8 @@ Wirtschaftlichkeit nach VDI 2067, Stromnetz, Optimierer und Variantenvergleich.
 │   ├── 27-resilienz-abfrage.js ← Abfragedatei (.xlsx) für Resilienzanforderungen
 │   └── main.js                 ← ES-Module-Entry (nur Vite-Dev; exponiert Exporte auf window)
 ├── tests/                      ← Vitest (CalcEngine, Dispatch, Netz, WGK, Optimizer …)
-├── field-app/                  ← PWA für Vor-Ort-Datenaufnahme
+├── field-app/                  ← PWA für Vor-Ort-Datenaufnahme (inkl. Stationsakte für
+│                                  Trafostationen; build-feldapp.mjs bündelt lib/station-steckbrief.js ein)
 └── dist/
     ├── index.html              ← Gebaute Einzeldatei (per Doppelklick nutzbar)
     └── feldapp.html            ← Gebaute Feldapp

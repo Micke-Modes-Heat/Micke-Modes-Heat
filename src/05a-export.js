@@ -3,7 +3,7 @@
 import { activeVariantId, baseStromNetzSnapshot, gebaeude, globalYear, netzEdges, varianten } from './01-globals-varianten.js';
 import { getComputedStats } from './02b-gebaeude.js';
 import { updateLpMeritOrder, updateLpNetzSummary } from './04a-ui-panels.js';
-import { updateLpStromSummary } from './05b-stromnetz.js';
+import { updateLpStromSummary, recalcStromNetz } from './05b-stromnetz.js';
 import { DA_LABELS } from './07a-analysis-charts.js';
 import { ASSETS, getAssetStatus, ASSET_PROPS_SCHEMA } from './13a-assets-core.js';
 import { stromEdges, stromNodes, variantResults } from './01-globals-varianten.js';
@@ -18,6 +18,7 @@ import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
 import { syntheticPvProfileMeta } from './lib/pv-profile-import.js';
 import { glTimeSeriesMeta } from './06a-gbi-lastgang.js';
 import { appLifecycle } from './lib/lifecycle.js';
+import { assetAenderungen, assetAenderungenAnwenden, gebaeudeBaujahrAenderung } from './lib/station-steckbrief.js';
 
 const ASSET_LABELS = {
   NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
@@ -2008,6 +2009,9 @@ async function _handleFelddatenImport(e) {
 
     // Felddaten in bestehende Gebäude übernehmen
     let updGeb = 0, updAssets = 0;
+    // Stations-Steckbrief: vor Ort erfasste Werte (kVA, uk, Baujahr, Felder …) gehen in
+    // die Asset-Eigenschaften über, damit Netzberechnung/Nutzungsdauer damit rechnen.
+    const steckbriefAenderungen = [];
 
     for (const feldGeb of (projektDaten.gebaeude || [])) {
       const g = gebaeude.find(x => x.id === feldGeb.id);
@@ -2015,6 +2019,15 @@ async function _handleFelddatenImport(e) {
       if (feldGeb.feldNotizen !== undefined) g.feldNotizen = feldGeb.feldNotizen;
       if (feldGeb.feldStatus  !== undefined) g.feldStatus  = feldGeb.feldStatus;
       if (feldGeb.feldVorgemerkt !== undefined) g.feldVorgemerkt = feldGeb.feldVorgemerkt;
+      if (feldGeb.feldSteckbrief) {
+        g.feldSteckbrief = feldGeb.feldSteckbrief;
+        const bj = gebaeudeBaujahrAenderung(g, feldGeb.feldSteckbrief);
+        if (bj) {
+          steckbriefAenderungen.push(`${g.name}: Baujahr ${bj.alt ?? '–'} → ${bj.neu}`);
+          g.baujahr = bj.neu;
+        }
+      }
+      if (feldGeb.feldFotoSlots) g.feldFotoSlots = feldGeb.feldFotoSlots;
 
       // Fotos zuordnen — normalisiert und mit Fallback
       if (Object.keys(photoMap).length) {
@@ -2039,6 +2052,13 @@ async function _handleFelddatenImport(e) {
       if (feldAsset.feldNotizen    !== undefined) a.feldNotizen    = feldAsset.feldNotizen;
       if (feldAsset.feldStatus     !== undefined) a.feldStatus     = feldAsset.feldStatus;
       if (feldAsset.feldVorgemerkt !== undefined) a.feldVorgemerkt = feldAsset.feldVorgemerkt;
+      if (feldAsset.feldSteckbrief) {
+        a.feldSteckbrief = feldAsset.feldSteckbrief;
+        const aenderungen = assetAenderungen(a, feldAsset.feldSteckbrief);
+        assetAenderungenAnwenden(a, aenderungen);
+        for (const c of aenderungen) steckbriefAenderungen.push(`${a.name}: ${c.feld} ${c.alt ?? '–'} → ${c.neu}`);
+      }
+      if (feldAsset.feldFotoSlots) a.feldFotoSlots = feldAsset.feldFotoSlots;
       // Fotos zuordnen
       if (Object.keys(photoMap).length) {
         const fotoOrdner = (feldAsset.feldFotoOrdner || '').split('\\').join('/').split('/').filter(Boolean).join('/');
@@ -2065,13 +2085,20 @@ async function _handleFelddatenImport(e) {
     }
 
     // UI aktualisieren
+    if (steckbriefAenderungen.length) recalcStromNetz();
     if (typeof renderList === 'function') renderList();
     if (typeof renderSidebarAssetList === 'function') renderSidebarAssetList();
 
     const fotoCount = Object.values(photoMap).length;
     const gebMitFotos = (window.gebaeude || []).filter(g => g.feldFotos?.length > 0).length;
     console.log('Foto-Import Debug:', { fotoCount, gebMitFotos, photoMapKeys: Object.keys(photoMap).slice(0,3) });
-    alert(`✓ Felddaten importiert:\n${updGeb} Gebäude aktualisiert\n${updAssets} Assets aktualisiert\n${fotoCount} Fotos geladen (${gebMitFotos} Gebäude mit Fotos)`);
+    const MAX_ZEILEN = 12;
+    const aenderungsText = steckbriefAenderungen.length
+      ? `\n\nAus Stations-Steckbriefen übernommen (${steckbriefAenderungen.length}):\n• ` +
+        steckbriefAenderungen.slice(0, MAX_ZEILEN).join('\n• ') +
+        (steckbriefAenderungen.length > MAX_ZEILEN ? `\n… und ${steckbriefAenderungen.length - MAX_ZEILEN} weitere` : '')
+      : '';
+    alert(`✓ Felddaten importiert:\n${updGeb} Gebäude aktualisiert\n${updAssets} Assets aktualisiert\n${fotoCount} Fotos geladen (${gebMitFotos} Gebäude mit Fotos)${aenderungsText}`);
 
   } catch (err) {
     alert('Fehler beim Import: ' + err.message);
