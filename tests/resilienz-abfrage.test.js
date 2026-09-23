@@ -2,7 +2,7 @@
 // Klassenregel und Vollständigkeitsprüfung.
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
-import { xlsxDateien } from '../src/lib/xlsx-schreiber.js';
+import { xlsxDateien, XS } from '../src/lib/xlsx-schreiber.js';
 import { xlsxAusBlob } from '../src/lib/xlsx-leser.js';
 import * as RA from '../src/lib/resilienz-abfrage.js';
 
@@ -60,8 +60,8 @@ describe('Abfragedatei', () => {
 
   it('legt alle geforderten Blätter an', () => {
     expect(m.blaetter.map(b => b.name)).toEqual([
-      '0 Anleitung', '1 Allgemeines', '2 Szenarien', '3 Funktionen',
-      '4 Bestand und Organisation', '5 Rückmeldung', 'Listen',
+      '0 Anleitung', 'Beispiel (ausgefüllt)', '1 Allgemeines', '2 Szenarien', '3 Kategorien',
+      '4 Funktionen', '5 Bestand und Organisation', '6 Rückmeldung', 'Listen',
     ]);
     expect(blattVon(m, RA.RA_BLATT.listen).versteckt).toBe(true);
   });
@@ -82,7 +82,9 @@ describe('Abfragedatei', () => {
     const blatt = blattVon(m, RA.RA_BLATT.funktionen);
     const mitListe = RA.RA_FUNKTION_SPALTEN.filter(s => s.liste);
     expect(blatt.pruefungen).toHaveLength(mitListe.length);
-    for (const p of blatt.pruefungen) expect(RA.RA_LISTEN[p.liste]).toBeDefined();
+    // L_Kategorie ist keine feste Liste, sondern ein Name auf Spalte A von „3 Kategorien"
+    for (const p of blatt.pruefungen) expect(RA.RA_LISTEN[p.liste] || m.namen[p.liste], p.liste).toBeDefined();
+    expect(m.namen.L_Kategorie).toMatch(/^'3 Kategorien'!\$A\$5:\$A\$\d+$/);
     // 9 Vorlagen + 3 Leerzeilen, Kopf in Zeile 4 → Daten ab Zeile 5 bis 16
     expect(blatt.pruefungen[0].bereich).toMatch(/^[A-Z]+5:[A-Z]+16$/);
   });
@@ -117,9 +119,9 @@ describe('Abfragedatei', () => {
       { id: 3, name: 'Geb 99', nutzung: 'nicht-im-register' },
     ]);
     expect(v.slice(0, 3)).toEqual([
-      { id: 'F01', name: 'Unterkunft', geb: 'Geb 12', betrieb: '24/7' },
-      { id: 'F02', name: 'Küche / Verpflegung', geb: 'Geb 30', betrieb: 'Dienstzeit' },
-      { id: 'F03', name: 'Nutzung noch festzulegen', geb: 'Geb 99', betrieb: '' },
+      { id: 'F01', name: 'Unterkunft', geb: 'Geb 12', kategorie: 'Unterkunft', betrieb: '' },
+      { id: 'F02', name: 'Küche / Verpflegung', geb: 'Geb 30', kategorie: 'Küche / Verpflegung', betrieb: '' },
+      { id: 'F03', name: 'Nutzung noch festzulegen', geb: 'Geb 99', kategorie: '', betrieb: '' },
     ]);
     // bereits abgedeckte Vorlagen werden nicht doppelt angehängt
     const namen = v.map(x => x.name);
@@ -191,17 +193,19 @@ describe('Round-Trip erzeugen → ausfüllen → einlesen', () => {
   it('erkennt eine fremde Datei an der fehlenden Versionskennung', async () => {
     const d = RA.raLesen({ Tabelle1: [['irgendwas']] });
     expect(d.fehler.join(' ')).toMatch(/Blatt „0 Anleitung" fehlt/);
-    expect(d.fehler.join(' ')).toMatch(/Blatt „3 Funktionen" fehlt/);
+    expect(d.fehler.join(' ')).toMatch(/Blatt „4 Funktionen" fehlt/);
     expect(d.funktionen).toEqual([]);
   });
 
   it('meldet eine umbenannte Spalte, liest den Rest aber weiter', async () => {
     const m = mappe({ leerzeilen: 0 });
     const blatt = blattVon(m, RA.RA_BLATT.funktionen);
-    blatt.zeilen[RA.RA_KOPFZEILE][3].w = 'Betriebzeit';   // Tippfehler des Empfängers
-    setzeFunktion(m, 0, { ausw_s: 'Auftrag gefährdet' });
+    const c = RA.RA_FUNKTION_SPALTEN.findIndex(s => s.feld === 'betrieb');
+    blatt.zeilen[RA.RA_KOPFZEILE][c].w = 'Betriebzeit';   // Tippfehler des Empfängers
+    setzeFunktion(m, 0, { ausw_s: 'Auftrag gefährdet', betrieb: 'Dienstzeit' });
     const d = await durchReichen(m);
-    expect(d.fehler.join(' ')).toMatch(/Spalte D .* heißt „Betriebzeit"/);
+    expect(d.fehler.join(' ')).toMatch(/Spalte E .* heißt „Betriebzeit"/);
+    expect(d.funktionen[0].betrieb).toBe('Dienstzeit');   // über die Sollposition trotzdem gelesen
     expect(d.funktionen[0].klasse_vorschlag).toBe('A');
   });
 
@@ -212,7 +216,7 @@ describe('Round-Trip erzeugen → ausfüllen → einlesen', () => {
     const blaetter = Object.fromEntries(m.blaetter.map(b =>
       [b.name, b.zeilen.map(z => (z || []).map(c => (c && typeof c === 'object' ? c.w : c)))]));
     const d = RA.raLesen(blaetter);
-    expect(d.fehler.join(' ')).toMatch(/Version 0, erwartet wird Version 1/);
+    expect(d.fehler.join(' ')).toMatch(/Version 0, erwartet wird Version 2/);
     expect(d.funktionen.length).toBeGreaterThan(0);
   });
 });
@@ -492,8 +496,9 @@ describe('raExportJson', () => {
   }]);
   const json = RA.raExportJson(d);
 
-  it('hält sich an das Schema Version 1', () => {
-    expect(json.version).toBe(1);
+  it('hält sich an das Schema Version 2', () => {
+    expect(json.version).toBe(2);
+    expect(json.kategorien).toEqual([]);
     expect(Object.keys(json.meta).sort()).toEqual(['bearb', 'lieg', 'quelle_abfrage', 'stand', 'zustaendig']);
     expect(json.szenarien).toHaveLength(7);
     expect(Object.keys(json.szenarien[0]).sort()).toEqual(['dauer', 'herkunft', 'id', 'name', 'relevant']);
@@ -535,5 +540,175 @@ describe('raRueckfragenText und raRueckfragenMappe', () => {
     expect(blatt.zeilen[RA.RA_KOPFZEILE].map(z => z.w))
       .toEqual(['Nr.', 'Bezug', 'Offener Punkt', 'Antwort', 'Herkunft der Antwort']);
     expect(() => xlsxDateien(m)).not.toThrow();
+  });
+});
+
+// ── Kategorien ──────────────────────────────────────────────────────────────
+
+function setzeKategorie(m, r, werte) {
+  const blatt = blattVon(m, RA.RA_BLATT.kategorien);
+  const zeile = blatt.zeilen[RA.RA_KOPFZEILE + 1 + r];
+  for (const [feld, wert] of Object.entries(werte)) {
+    const c = RA.RA_KATEGORIE_SPALTEN.findIndex(s => s.feld === feld);
+    expect(c, `Spalte ${feld} gibt es auf den Kategorien nicht`).toBeGreaterThan(-1);
+    zeile[c].w = wert;
+  }
+}
+
+describe('Kategorien', () => {
+  it('bietet auf dem Kategorienblatt nur übertragbare Angaben an — keine Krisenlast, keine Ersatzversorgung', () => {
+    const felder = RA.RA_KATEGORIE_SPALTEN.map(s => s.feld);
+    expect(felder[0]).toBe('kategorie');
+    expect(felder).toContain('ausw_s');
+    expect(felder).toContain('sz_S2');
+    for (const f of ['id', 'name', 'geb', 'pk', 'pk_art', 'ersatz', 'ersatz_info']) expect(felder).not.toContain(f);
+  });
+
+  it('schlägt je Nutzung eine Kategorie vor und schreibt die Betriebszeit dorthin, nicht in die Zeile', () => {
+    const geb = [
+      { name: 'Geb 1', nutzung: 'kaserne' }, { name: 'Geb 2', nutzung: 'kaserne' },
+      { name: 'Geb 3', nutzung: 'verwaltung' }, { name: 'Geb 4', nutzung: 'unbekannt' },
+    ];
+    expect(RA.raKategorieVorbelegung(geb)).toEqual([
+      { kategorie: 'Unterkunft', betrieb: '24/7' },
+      { kategorie: 'Verwaltung', betrieb: 'Dienstzeit' },
+    ]);
+    const v = RA.raVorbelegung(geb);
+    expect(v.filter(z => z.kategorie === 'Unterkunft').every(z => z.betrieb === '')).toBe(true);
+  });
+
+  it('übernimmt leere Angaben aus der Kategorie, eingetragene gehen vor', async () => {
+    const m = mappe({ funktionen: [], leerzeilen: 4 });
+    setzeKategorie(m, 0, {
+      kategorie: 'Unterkunft', betrieb: '24/7', ausw_s: 'keine', ausw_4h: 'eingeschränkt',
+      ausw_3d: 'Auftrag gefährdet', autarkie: '3 Tage', sz_S2: 'x', sz_S3: 'x',
+      reduziert: 'ja', abh: 'Wärme', herkunft: 'Einschätzung Nutzer', bem: 'nur für die Kategorie',
+    });
+    setzeFunktion(m, 0, { geb: 'Geb 10', kategorie: 'Unterkunft' });
+    setzeFunktion(m, 1, { name: 'Unterkunft mit San', geb: 'Geb 12', kategorie: 'unterkunft',
+      ausw_4h: 'Auftrag gefährdet', autarkie: '7 Tage', sz_S1: 'x', pk: 45 });
+
+    const d = await durchReichen(m);
+    expect(d.fehler).toEqual([]);
+    expect(d.kategorien).toHaveLength(1);
+    const [a, b] = d.funktionen;
+
+    expect(a).toMatchObject({
+      name: 'Unterkunft', geb: 'Geb 10', kategorie: 'Unterkunft', betrieb: '24/7',
+      ausw_s: 'keine', ausw_4h: 'eingeschränkt', ausw_3d: 'Auftrag gefährdet',
+      autarkie_text: '3 Tage', autarkie_h: 72, reduziert: 'ja', abh: 'Wärme', herkunft: 'Einschätzung Nutzer',
+      bem: '', klasse_vorschlag: 'C',
+    });
+    expect(a.sz).toMatchObject({ S2: 1, S3: 1, S1: 0 });
+    expect(a.geerbt).toEqual(expect.arrayContaining(['ausw_s', 'autarkie_text', 'sz', 'name']));
+
+    // Abweichungen der Zeile gelten; Kategorie-Name wird unabhängig von Groß-/Kleinschreibung gefunden
+    expect(b).toMatchObject({ kategorie: 'Unterkunft', ausw_4h: 'Auftrag gefährdet', autarkie_h: 168,
+      ausw_s: 'keine', pk: 45, klasse_vorschlag: 'B' });
+    // Szenario-Kreuze als Ganzes: die Zeile hat ein Kreuz → die der Kategorie zählen nicht
+    expect(b.sz).toMatchObject({ S1: 1, S2: 0, S3: 0 });
+    expect(b.geerbt).not.toContain('sz');
+    expect(b.geerbt).not.toContain('ausw_4h');
+  });
+
+  it('meldet eine Kategorie, die es auf dem Kategorienblatt nicht gibt', async () => {
+    const m = mappe({ funktionen: [], leerzeilen: 1 });
+    setzeFunktion(m, 0, { name: 'Halle', kategorie: 'Sporthalle' });
+    const d = await durchReichen(m);
+    expect(d.funktionen[0].kategorie_unbekannt).toBe(true);
+    expect(texte(RA.raPruefung(d))).toMatch(/Kategorie „Sporthalle" steht nicht auf Blatt „3 Kategorien"/);
+  });
+
+  it('meldet eine Lücke der Kategorie einmal, nicht je Gebäude', async () => {
+    const m = mappe({ funktionen: [], leerzeilen: 3 });
+    setzeKategorie(m, 0, { kategorie: 'Unterkunft', ausw_s: 'keine', ausw_4h: 'keine',
+      ausw_3d: 'Auftrag gefährdet', sz_S2: 'x', herkunft: 'Einschätzung Nutzer' });   // Autarkie fehlt
+    for (let i = 0; i < 3; i++) setzeFunktion(m, i, { geb: `Geb ${i}`, kategorie: 'Unterkunft' });
+    const p = RA.raPruefung(await durchReichen(m));
+    const aut = p.offene_punkte.filter(x => /ohne Netz weiterlaufen/.test(x.text));
+    expect(aut).toHaveLength(1);
+    expect(aut[0].ref).toBe('Kategorie Unterkunft');
+    expect(aut[0].text).toMatch(/betrifft 3 Funktionen: F01, F02, F03/);
+  });
+
+  it('exportiert Kategorien und die Herkunft übernommener Werte', async () => {
+    const m = mappe({ funktionen: [], leerzeilen: 1 });
+    setzeKategorie(m, 0, { kategorie: 'Verwaltung', ausw_3d: 'eingeschränkt', autarkie: 'keine' });
+    setzeFunktion(m, 0, { geb: 'Geb 20', kategorie: 'Verwaltung' });
+    const j = RA.raExportJson(await durchReichen(m));
+    expect(j.kategorien[0]).toMatchObject({ kategorie: 'Verwaltung', ausw_3d: 'eingeschränkt', autarkie_h: 0 });
+    expect(j.funktionen[0]).toMatchObject({ kategorie: 'Verwaltung', ausw_3d: 'eingeschränkt' });
+    expect(j.funktionen[0].geerbt).toContain('ausw_3d');
+  });
+});
+
+// ── Dateien der Version 1 ───────────────────────────────────────────────────
+
+describe('Abwärtsverträglichkeit', () => {
+  it('liest eine Datei der Version 1 (ohne Kategorien) ohne Strukturhinweise', () => {
+    const m = mappe({ leerzeilen: 0 });
+    setzeFunktion(m, 0, { ausw_s: 'Auftrag gefährdet', betrieb: '24/7', autarkie: '14 Tage' });
+    const c = RA.RA_FUNKTION_SPALTEN.findIndex(s => s.feld === 'kategorie');
+    const alt = {
+      '0 Anleitung': null, '1 Allgemeines': null, '2 Szenarien': null,
+      '3 Funktionen': null, '4 Bestand und Organisation': null, '5 Rückmeldung': null,
+    };
+    const neuZuAlt = {
+      [RA.RA_BLATT.anleitung]: '0 Anleitung', [RA.RA_BLATT.allgemeines]: '1 Allgemeines',
+      [RA.RA_BLATT.szenarien]: '2 Szenarien', [RA.RA_BLATT.funktionen]: '3 Funktionen',
+      [RA.RA_BLATT.bestand]: '4 Bestand und Organisation', [RA.RA_BLATT.rueckmeldung]: '5 Rückmeldung',
+    };
+    for (const b of m.blaetter) {
+      const name = neuZuAlt[b.name];
+      if (!name) continue;
+      let zeilen = b.zeilen.map(z => (z || []).map(x => (x && typeof x === 'object' ? x.w : x)));
+      if (b.name === RA.RA_BLATT.funktionen) zeilen = zeilen.map(z => z.filter((_, i) => i !== c));
+      alt[name] = zeilen;
+    }
+    alt['0 Anleitung'][0][2] = 'MMH-RESILIENZ-ABFRAGE v1';
+    const d = RA.raLesen(alt);
+    expect(d.fehler).toEqual([]);
+    expect(d.version).toBe(1);
+    expect(d.kategorien).toEqual([]);
+    expect(d.funktionen[0]).toMatchObject({ betrieb: '24/7', autarkie_h: 336, klasse_vorschlag: 'A', kategorie: '' });
+  });
+});
+
+// ── Beispiel ────────────────────────────────────────────────────────────────
+
+describe('Beispiel', () => {
+  it('liegt jeder Abfragedatei als gesperrtes Blatt ohne Eingabezellen bei', () => {
+    const b = blattVon(mappe(), RA.RA_BLATT.beispiel);
+    expect(b).toBeDefined();
+    expect(b.schutz).not.toBe(false);
+    const stile = b.zeilen.flat().filter(z => z && typeof z === 'object').map(z => z.s);
+    expect(stile).not.toContain(XS.eingabe);
+    expect(stile).not.toContain(XS.eingabeZahl);
+    const werte = b.zeilen.flat().map(z => z?.w).filter(Boolean);
+    for (const f of RA.RA_BEISPIEL.funktionen) expect(werte).toContain(f.id);
+    for (const k of RA.RA_BEISPIEL.kategorien) expect(werte).toContain(k.kategorie);
+  });
+
+  it('wird beim Einlesen einer Abfrage nicht mitgelesen', async () => {
+    const d = await durchReichen(mappe({ funktionen: [], leerzeilen: 2 }));
+    expect(d.funktionen).toEqual([]);
+    expect(d.kategorien).toEqual([]);
+  });
+
+  it('gibt es als vollständig ausgefüllte Datei, die sich fehlerfrei einlesen lässt', async () => {
+    const d = await durchReichen(RA.raBeispielMappe());
+    expect(d.fehler).toEqual([]);
+    expect(d.allgemein.lieg).toMatch(/BEISPIEL/);
+    expect(d.kategorien.map(k => k.kategorie)).toEqual(RA.RA_BEISPIEL.kategorien.map(k => k.kategorie));
+    expect(d.funktionen).toHaveLength(RA.RA_BEISPIEL.funktionen.length);
+    const f = id => d.funktionen.find(x => x.id === id);
+    expect(f('F03')).toMatchObject({ kategorie: 'Unterkunft', autarkie_h: 72, klasse_vorschlag: 'C' });
+    expect(f('F05')).toMatchObject({ autarkie_h: 168, klasse_vorschlag: 'B' });
+    expect(f('F01').klasse_vorschlag).toBe('A');
+    expect(d.szenarien.find(s => s.id === 'S2')).toMatchObject({ relevant: 'ja', dauer: '3 Tage' });
+    expect(d.bestand.nea_anzahl).toBe(2);
+    // Das Beispiel zeigt bewusst eine offene Krisenlast
+    expect(texte(RA.raPruefung(d))).toMatch(/Werkstatt.*Krisenlast aber unbekannt/);
+    expect(() => xlsxDateien(RA.raBeispielMappe())).not.toThrow();
   });
 });

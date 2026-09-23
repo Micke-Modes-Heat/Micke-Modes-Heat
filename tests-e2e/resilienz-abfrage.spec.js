@@ -14,7 +14,7 @@ test('Resilienz-Abfrage: erzeugen, einlesen, auswerten', async ({ page }, testIn
   await page.evaluate(() => window.raPanelToggle());
   const panel = page.locator('#resilienz-abfrage-panel');
   await expect(panel).toBeVisible();
-  await expect(panel).toContainText('MMH-RESILIENZ-ABFRAGE v1');
+  await expect(panel).toContainText('MMH-RESILIENZ-ABFRAGE v2');
 
   await panel.locator('input[type="text"]').first().fill('E2E-Liegenschaft');
 

@@ -2,9 +2,10 @@
 //
 // Oberfläche zu lib/resilienz-abfrage.js. Zwei Bausteine in einem Panel:
 //
-//   1. Abfragedatei erzeugen  — .xlsx mit Ausfüllanleitung, Auswahllisten und
-//      Blattschutz, vorbelegt mit den Gebäuden des Projekts. Sie geht an die
-//      zuständige Stelle bzw. an Bedarfsträger und Nutzer.
+//   1. Abfragedatei erzeugen  — .xlsx mit Ausfüllanleitung, Beispielblatt,
+//      Auswahllisten und Blattschutz, vorbelegt mit den Gebäuden des Projekts
+//      (je Nutzung eine Kategorie). Sie geht an die zuständige Stelle bzw. an
+//      Bedarfsträger und Nutzer. Dazu eine vollständig ausgefüllte Beispieldatei.
 //   2. Ausgefüllte Datei einlesen — Vollständigkeit prüfen, Klassen vorschlagen,
 //      Anforderungstexte und Rückfrageliste erzeugen, als JSON exportieren.
 //
@@ -20,7 +21,8 @@ import { xlsxDateien } from './lib/xlsx-schreiber.js';
 import { xlsxAusBlob } from './lib/xlsx-leser.js';
 import {
   RA_VERSION, RA_KENNUNG, RA_KLASSEN, RA_KLASSEN_KEYS, RA_SZENARIO_IDS,
-  raMappe, raVorbelegung, raDateiname, raLesen, raPruefung, raAnforderungen,
+  raMappe, raVorbelegung, raKategorieVorbelegung, raBeispielMappe, RA_BEISPIEL_DATEINAME,
+  raDateiname, raLesen, raPruefung, raAnforderungen,
   raExportJson, raRueckfragenText, raRueckfragenMappe, raDauerText, raText,
 } from './lib/resilienz-abfrage.js';
 import { escHtml, showHint } from './03c-gebaeude-io.js';
@@ -128,16 +130,31 @@ export async function raDateiErzeugen() {
   const meta = { ...z.meta };
   if (!meta.stand) meta.stand = _heutigesDatum();
   const mitGebaeuden = z.meta.ohneVorbelegung !== 'ja';
-  const funktionen = raVorbelegung(mitGebaeuden ? _gebaeude() : []);
+  const geb = mitGebaeuden ? _gebaeude() : [];
+  const funktionen = raVorbelegung(geb);
+  const kategorien = raKategorieVorbelegung(geb);
   try {
-    const ok = await _herunterladen(raMappe({ meta, funktionen, leerzeilen: 40 }), raDateiname(meta));
+    const ok = await _herunterladen(raMappe({ meta, funktionen, kategorien, leerzeilen: 40 }), raDateiname(meta));
     if (!ok) return;
     z.meta.stand = meta.stand;
-    showHint(`✓ Abfragedatei erzeugt — ${funktionen.length} Funktionszeilen vorbelegt, 40 Zeilen frei.`, 7000);
+    showHint(`✓ Abfragedatei erzeugt — ${funktionen.length} Funktionszeilen und ${kategorien.length} Kategorien `
+      + 'vorbelegt, 40 Zeilen frei.', 7000);
     raPanelRender();
   } catch (e) {
     console.error('Resilienz-Abfrage: Erzeugen fehlgeschlagen', e);
     showHint('⚠ Abfragedatei konnte nicht erzeugt werden: ' + e.message, 8000);
+  }
+}
+
+/** Vollständig ausgefüllte Beispieldatei — zum Mitschicken oder zum Ausprobieren des Einlesens. */
+export async function raBeispielErzeugen() {
+  try {
+    if (await _herunterladen(raBeispielMappe(), RA_BEISPIEL_DATEINAME)) {
+      showHint('✓ Beispieldatei erzeugt — erfundene Liegenschaft, lässt sich auch einlesen.', 6000);
+    }
+  } catch (e) {
+    console.error('Resilienz-Abfrage: Beispieldatei fehlgeschlagen', e);
+    showHint('⚠ Beispieldatei konnte nicht erzeugt werden: ' + e.message, 8000);
   }
 }
 
@@ -322,11 +339,15 @@ function _erzeugenAnsicht(z) {
   const geb = _gebaeude();
   const mit = z.meta.ohneVorbelegung !== 'ja';
   const anzahl = raVorbelegung(mit ? geb : []).length;
+  const katAnzahl = raKategorieVorbelegung(mit ? geb : []).length;
   return _abschnitt('1 · Abfragedatei erzeugen', `
     <div style="font-size:9.5px;color:var(--muted);line-height:1.6;margin-bottom:9px;">
       Erzeugt eine Excel-Datei mit Ausfüllanleitung, Auswahllisten und Blattschutz für die zuständige
       Stelle bzw. für Bedarfsträger und Nutzer. Gefragt wird nach den Auswirkungen eines Ausfalls,
       nicht nach Resilienzklassen — die Einordnung macht dieses Werkzeug beim Einlesen.
+      Jede Datei enthält ein ausgefülltes Beispielblatt. Gleichartige Gebäude beschreibt der Empfänger
+      einmal auf dem Blatt <b style="color:var(--text);">„3 Kategorien"</b> und wählt die Kategorie dann
+      nur noch je Gebäude aus — leere Zellen werden beim Einlesen aus der Kategorie übernommen.
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 10px;">
       <div>${_feld('lieg', 'Liegenschaft', z.meta.lieg, 'Bezeichnung, Ort')}</div>
@@ -339,10 +360,13 @@ function _erzeugenAnsicht(z) {
     <label style="display:flex;align-items:center;gap:6px;margin-top:9px;font-size:9.5px;color:var(--muted);cursor:pointer;">
       <input type="checkbox" ${mit ? 'checked' : ''} data-change="raVorbelegungUmschalten(this.checked)">
       Gebäude des Projekts als Vorbelegung übernehmen
-      <span style="color:var(--text);">(${geb.length} Gebäude → ${anzahl} Funktionszeilen)</span>
+      <span style="color:var(--text);">(${geb.length} Gebäude → ${anzahl} Funktionszeilen, ${katAnzahl} Kategorien)</span>
     </label>
     <div style="margin-top:10px;display:flex;gap:7px;align-items:center;">
       <button data-click="raDateiErzeugen()" style="${_btn(GRUEN, true)}">📋 Abfragedatei erzeugen (.xlsx)</button>
+      <button data-click="raBeispielErzeugen()" style="${_btn(GRUEN)}"
+        title="Erfundene, vollständig ausgefüllte Abfrage — zum Mitschicken oder um das Einlesen auszuprobieren">
+        📄 Beispieldatei (ausgefüllt)</button>
       <span style="font-size:8.5px;color:var(--muted);">${escHtml(RA_KENNUNG)}</span>
     </div>`);
 }
@@ -385,6 +409,18 @@ function _uebersicht(daten, p) {
     </div>`;
 }
 
+/** Kategorie-Hinweis in der Funktionstabelle: woher die Werte stammen. */
+function _kategorieMarke(f) {
+  if (!f.kategorie) return '';
+  if (f.kategorie_unbekannt) {
+    return `<span style="font-size:8px;color:#ffa726;" title="Kategorie steht nicht auf dem Kategorienblatt">`
+      + ` ⚠ ${escHtml(f.kategorie)}</span>`;
+  }
+  const n = (f.geerbt || []).filter(x => x !== 'name').length;
+  return `<span style="font-size:8px;color:#42a5f5;" title="${n} Angabe(n) aus der Kategorie übernommen: `
+    + `${escHtml((f.geerbt || []).join(', '))}"> ▸ ${escHtml(f.kategorie)}${n ? ` (${n} übernommen)` : ''}</span>`;
+}
+
 function _funktionsTabelle(daten) {
   const zeilen = daten.funktionen.map(f => {
     const kl = RA_KLASSEN[f.klasse] || RA_KLASSEN.D;
@@ -395,7 +431,8 @@ function _funktionsTabelle(daten) {
     return `<tr style="border-top:1px solid var(--border);">
       <td style="padding:3px 4px;color:var(--muted);white-space:nowrap;">${escHtml(f.id)}</td>
       <td style="padding:3px 4px;">${escHtml(f.name || '—')}
-        ${f.geb ? `<span style="color:var(--muted);"> · ${escHtml(f.geb)}</span>` : ''}</td>
+        ${f.geb ? `<span style="color:var(--muted);"> · ${escHtml(f.geb)}</span>` : ''}
+        ${_kategorieMarke(f)}</td>
       <td style="padding:3px 4px;white-space:nowrap;">
         <select data-change="raKlasseSetzen('${escHtml(f.id)}', this.value)"
           title="${escHtml(f.klasse_grund || '')}"
@@ -449,7 +486,10 @@ function _ergebnisAnsicht(z) {
       zuständige Stelle: ${daten.allgemein?.zustaendig
     ? escHtml(daten.allgemein.zustaendig)
     : '<span style="color:#ffa726;">nicht benannt</span>'} ·
-      relevante Szenarien: ${szOffen.length ? escHtml(szOffen.map(s => s.id).join(', ')) : '<span style="color:#ffa726;">keine benannt</span>'}
+      relevante Szenarien: ${szOffen.length ? escHtml(szOffen.map(s => s.id).join(', ')) : '<span style="color:#ffa726;">keine benannt</span>'} ·
+      Kategorien: ${(daten.kategorien || []).length
+    ? escHtml(daten.kategorien.map(k => k.kategorie).join(', '))
+    : '—'}
       <button data-click="raErgebnisVerwerfen()" style="${_btn('#90a4ae')}margin-left:8px;padding:1px 7px;font-size:9px;">verwerfen</button>
     </div>
     ${_uebersicht(daten, p)}

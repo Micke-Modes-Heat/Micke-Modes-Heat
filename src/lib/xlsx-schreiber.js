@@ -43,6 +43,7 @@ export const XS = Object.freeze({
   fett:        7,
   fliess:      8,   // umbrechender Fließtext ohne Rahmen
   abschnitt:   9,   // Abschnittsüberschrift: grün auf hellgrün
+  beispiel:   10,   // gesperrte Beispielzelle: hellblau, umbrechend
 });
 
 const F_DUNKEL = 'FF266426';   // LKEBw dunkel
@@ -51,6 +52,7 @@ const F_GELB   = 'FFFFF2A8';   // Eingabezellen
 const F_TINT   = 'FFEEF5EC';   // Abschnittsband
 const F_GRAU   = 'FF5A5F5A';
 const F_LINIE  = 'FFD0D4CE';
+const F_BLAU   = 'FFDCEBF7';   // Beispielwerte
 
 const KOPF = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
@@ -69,7 +71,7 @@ function _stylesXml() {
   const fills = [
     '<fill><patternFill patternType="none"/></fill>',
     '<fill><patternFill patternType="gray125"/></fill>',
-    solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL),
+    solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU),
   ];
   const kante = s => `<${s} style="thin"><color rgb="${F_LINIE}"/></${s}>`;
   const borders = [
@@ -95,6 +97,8 @@ function _stylesXml() {
       + '<alignment vertical="top" wrapText="1"/></xf>',
     '<xf numFmtId="0" fontId="5" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1">'
       + '<alignment vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1">'
+      + '<alignment vertical="top" wrapText="1"/></xf>',
   ];
   return KOPF + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
     + '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.0"/></numFmts>'
