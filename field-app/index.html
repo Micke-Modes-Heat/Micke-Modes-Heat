@@ -1495,10 +1495,20 @@ window.dismissOriginWarning = () => {
 
 // ── Startup ───────────────────────────────────────────────
 async function init() {
+  // Knöpfe zuerst verdrahten: Ohne lokalen Speicher (z. B. in einer Datei-Vorschau
+  // von Chat-/Mail-Apps) brach der Start sonst ab und „Projekt laden“ reagierte nicht.
+  wireListeners();
+  initServiceWorkerAndGuards();
   await requestPersistence();   // Browser bitten, Daten nicht zu löschen
   checkStorageSafety();         // Warnen, wenn aus instabiler Quelle geöffnet
-  await DB.init();
-  _project = await DB.getProject();
+  try {
+    await DB.init();
+    _project = await DB.getProject();
+  } catch (err) {
+    _storageError = err;
+    showStorageError();
+    return;
+  }
 
   if (_project) {
     const cnt = (_project.gebaeude || []).length;
@@ -1506,8 +1516,23 @@ async function init() {
   }
 
   refreshImportButtons();
+}
 
-  // Wire listeners
+// Kein Zugriff auf IndexedDB → die App kann nichts speichern. Klar sagen, was zu tun ist.
+let _storageError = null;
+function showStorageError() {
+  const el = document.getElementById('origin-warning');
+  if (el) {
+    el.style.display = 'block';
+    el.innerHTML = `<button class="origin-warning-x" onclick="dismissOriginWarning()" aria-label="Schließen">✕</button>
+      <b>⚠️ Speichern ist hier nicht möglich</b><br>
+      Die Feldapp läuft in einer Vorschau (z. B. im Chat, in WhatsApp oder im Mail-Programm), die keinen lokalen Speicher erlaubt.<br>
+      <b>So geht's:</b> Datei in „Downloads" speichern und über „Eigene Dateien → Downloads" mit <b>Chrome</b> öffnen.`;
+  }
+  setStatus('⚠ Kein lokaler Speicher – bitte die Datei direkt in Chrome öffnen.');
+}
+
+function wireListeners() {
   document.getElementById('btn-load').addEventListener('click', () => document.getElementById('json-input').click());
   document.getElementById('json-input').addEventListener('change', onJsonFile);
   document.getElementById('btn-continue').addEventListener('click', openMap);
@@ -1535,6 +1560,9 @@ async function init() {
   document.getElementById('lightbox').addEventListener('click', e => { if (e.target === e.currentTarget || e.target.id === 'lightbox-close') closeLightbox(); });
 
   setupSheetDrag();
+}
+
+function initServiceWorkerAndGuards() {
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -1593,7 +1621,8 @@ async function onJsonFile(e) {
     toast(`Projekt geladen`);
     setTimeout(openMap, 500);
   } catch (err) {
-    setStatus('⚠ ' + err.message);
+    if (_storageError) showStorageError();
+    else setStatus('⚠ ' + err.message);
   }
   e.target.value = '';
 }
