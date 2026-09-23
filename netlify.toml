@@ -4,6 +4,8 @@
 # den dist/-Ordner:
 #   Hauptapp:  https://<deine-site>.netlify.app/            (index.html)
 #   Feldapp:   https://<deine-site>.netlify.app/feldapp.html
+#              (installierbar: Chrome-Menü → „App installieren"; startet danach
+#               auch ohne Netz — Manifest + Service Worker liegen mit in dist/)
 #
 # Netlify Forms: Das versteckte <form name="feedback"> in index.html wird beim
 # Deploy automatisch erkannt und registriert. Einsendungen erscheinen unter

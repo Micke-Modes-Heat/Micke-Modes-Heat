@@ -11,14 +11,15 @@ import { getGebStromMwh } from './02b-gebaeude.js';
 import { recalcNetz } from './03b-netz.js';
 import { escHtml, renderList, projektExportFilename, getProjektName } from './03c-gebaeude-io.js';
 import { renderSidebarAssetList } from './13e-assets-inspector.js';
-import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
+import { ERZEUGER_CFG, NUTZUNG_DEFAULTS } from './config/erzeuger-cfg.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
+import { planFeldMerge } from './lib/felddaten.js';
+import { assetAenderungen, assetAenderungenAnwenden, gebaeudeBaujahrAenderung } from './lib/station-steckbrief.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
 import { syntheticPvProfileMeta } from './lib/pv-profile-import.js';
 import { glTimeSeriesMeta } from './06a-gbi-lastgang.js';
 import { appLifecycle } from './lib/lifecycle.js';
-import { assetAenderungen, assetAenderungenAnwenden, gebaeudeBaujahrAenderung } from './lib/station-steckbrief.js';
 
 const ASSET_LABELS = {
   NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
@@ -1908,9 +1909,12 @@ export function exportFeldapp() {
   });
 
   const payload = {
-    _feldappVersion: 1,
+    _feldappVersion: 2,
     exportedAt: new Date().toISOString(),
     projektName: getProjektName() || 'Energieplanung',
+    ergebnisse: _feldappErgebnisse(),
+    // Beschriftungen der Nutzungsarten (Schlüssel wie in den Gebäudedaten: efh, oeffentlich, …)
+    nutzungLabels: Object.fromEntries(Object.entries(NUTZUNG_DEFAULTS).map(([k, v]) => [k, v.label])),
     gebaeude: (gebaeude || []).map(g => ({
       ...g,
       polygon: (g.polygon || []).map(p =>
@@ -1944,6 +1948,63 @@ export function exportFeldapp() {
     alert('Export-Fehler: ' + err.message);
     console.error(err);
   }
+}
+
+// Kennzahlen für den Projekt-Reiter der Feldapp. Nur zur Ansicht — die Feldapp
+// rechnet nichts nach. Fehlt ein Wert (z. B. noch kein Dispatch gelaufen), bleibt
+// er leer und die Feldapp zeigt „—".
+// Farben = Energieträger-Codes des LKEBw-Design-Systems (GG_THEME.energy).
+const _FELDAPP_MIX_FARBE = {
+  lwwp: '#0000FF', fg: '#0000FF', geo: '#0000FF', stromkessel: '#0000FF',
+  pellets: '#7AB000', hhs: '#7AB000',
+  gaskessel: '#FA9500', bhkw: '#FA9500',
+  heizoel: '#777777', fernwaerme: '#FF0000',
+};
+function _feldappErgebnisse() {
+  const zahl = v => (typeof v === 'number' && isFinite(v) ? v : null);
+  let waerme = 0, heizlast = 0;
+  (gebaeude || []).forEach(g => {
+    const st = getComputedStats(g, globalYear);
+    waerme += st.waerme || 0;
+    heizlast += st.heizlast || 0;
+  });
+  const trasseM = (Array.isArray(netzEdges) ? netzEdges : []).filter(e => !e.pruned).reduce((s, e) => s + (zahl(e.length) || 0), 0);
+
+  const disp = window._dispatchResultsByErzeuger || {};
+  const mixRoh = Object.entries(disp)
+    .map(([key, r]) => ({ key, mwh: zahl(r?.waermeMwh) || 0 }))
+    .filter(m => m.mwh > 0.1);
+  const mixSumme = mixRoh.reduce((s, m) => s + m.mwh, 0);
+  const erzeugermix = mixSumme > 0 ? mixRoh
+    .sort((a, b) => b.mwh - a.mwh)
+    .map(m => ({
+      label: ERZEUGER_CFG[m.key]?.label || m.key,
+      anteilPct: Math.round(m.mwh / mixSumme * 100),
+      farbe: _FELDAPP_MIX_FARBE[m.key] || '#8A8F8A',
+    })) : [];
+
+  const variantenListe = ['base', ...(varianten || []).map(v => v.id)]
+    .filter(id => variantResults[id])
+    .map(id => {
+      const r = variantResults[id];
+      return {
+        name: r.label || (id === 'base' ? 'Basisdaten' : id),
+        basis: id === 'base',
+        aktiv: (activeVariantId || 'base') === id,
+        wgkCtKwh: zahl(r.wgkNum),
+        co2T: zahl(r.co2GesH),
+      };
+    });
+
+  return {
+    stand: new Date().toISOString(),
+    waermebedarfMwh: waerme > 0 ? Math.round(waerme) : null,
+    heizlastKw: heizlast > 0 ? Math.round(heizlast) : null,
+    trassenlaengeM: trasseM > 0 ? Math.round(trasseM) : null,
+    wgkCtKwh: zahl(window._lastWgk) || null,
+    erzeugermix,
+    varianten: variantenListe,
+  };
 }
 
 // ── Import: Felddaten aus Feldapp-ZIP ─────────────────────────────────────────
@@ -1989,7 +2050,8 @@ async function _handleFelddatenImport(e) {
         /\.(jpg|jpeg|png)$/i.test(n) && !zip.files[n].dir
       );
       for (const path of photoFiles) {
-        const blob = await zip.files[path].async('blob');
+        const mime = /\.png$/i.test(path) ? 'image/png' : 'image/jpeg';
+        const blob = new Blob([await zip.files[path].async('arraybuffer')], { type: mime });
         const dataUrl = await new Promise(res => {
           const reader = new FileReader();
           reader.onload = () => res(reader.result);
@@ -2007,98 +2069,80 @@ async function _handleFelddatenImport(e) {
       projektDaten = JSON.parse(await file.text());
     }
 
-    // Felddaten in bestehende Gebäude übernehmen
-    let updGeb = 0, updAssets = 0;
-    // Stations-Steckbrief: vor Ort erfasste Werte (kVA, uk, Baujahr, Felder …) gehen in
-    // die Asset-Eigenschaften über, damit Netzberechnung/Nutzungsdauer damit rechnen.
-    const steckbriefAenderungen = [];
-
+    // Felddaten zusammenführen statt überschreiben (Regeln: lib/felddaten.js).
+    // Erst planen, dann mit Vorschau bestätigen lassen, dann anwenden.
+    const fotosFuer = (ordnerRoh, infos) => {
+      if (!ordnerRoh || !Object.keys(photoMap).length) return [];
+      const katVon = name => (Array.isArray(infos) ? infos.find(i => i && i.datei === name)?.kategorie : undefined);
+      const norm = s => String(s || '').split('\\').join('/').split('/').filter(Boolean).join('/');
+      const ordner = norm(ordnerRoh);
+      const letzter = ordner.split('/').pop();
+      return Object.values(photoMap)
+        .filter(p => { const f = norm(p.folder); return f === ordner || f.endsWith('/' + letzter); })
+        .sort((a, b) => a.fileName.localeCompare(b.fileName))
+        .map(p => ({ name: p.fileName, dataUrl: p.dataUrl, kategorie: katVon(p.fileName) }));
+    };
+    const datum = projektDaten.feldExport?.exportiertAm ? new Date(projektDaten.feldExport.exportiertAm) : new Date();
+    const label = 'Feldapp ' + (isNaN(datum) ? '' : datum.toLocaleDateString('de-DE'));
+    const plaene = [];
+    // Stations-Steckbrief: vor Ort erfasste Werte (kVA, uk, Baujahr, Felder …) gehen nach
+    // der Bestätigung in die Asset-Eigenschaften über, damit Netzberechnung und
+    // Nutzungsdauer damit rechnen. werteAenderung(ziel, steckbrief) → [{ text, anwenden }]
+    const planen = (ziel, quelle, name, werteAenderung) => {
+      if (!ziel || !quelle) return;
+      const plan = planFeldMerge(ziel, quelle, fotosFuer(quelle.feldFotoOrdner, quelle.feldFotoInfos), { label });
+      const werte = plan.patch.feldSteckbrief && werteAenderung ? werteAenderung(ziel, plan.patch.feldSteckbrief) : [];
+      if (plan.aenderungen) plaene.push({ ziel, name, werte, ...plan });
+    };
+    const gebaeudeWerte = (g, stb) => {
+      const bj = gebaeudeBaujahrAenderung(g, stb);
+      return bj ? [{ text: `${g.name}: Baujahr ${bj.alt ?? '–'} → ${bj.neu}`, anwenden: () => { g.baujahr = bj.neu; } }] : [];
+    };
+    const assetWerte = (a, stb) => assetAenderungen(a, stb).map(c => ({
+      text: `${a.name}: ${c.feld} ${c.alt ?? '–'} → ${c.neu}`,
+      anwenden: () => assetAenderungenAnwenden(a, [c]),
+      strom: true,
+    }));
     for (const feldGeb of (projektDaten.gebaeude || [])) {
       const g = gebaeude.find(x => x.id === feldGeb.id);
-      if (!g) continue;
-      if (feldGeb.feldNotizen !== undefined) g.feldNotizen = feldGeb.feldNotizen;
-      if (feldGeb.feldStatus  !== undefined) g.feldStatus  = feldGeb.feldStatus;
-      if (feldGeb.feldVorgemerkt !== undefined) g.feldVorgemerkt = feldGeb.feldVorgemerkt;
-      if (feldGeb.feldSteckbrief) {
-        g.feldSteckbrief = feldGeb.feldSteckbrief;
-        const bj = gebaeudeBaujahrAenderung(g, feldGeb.feldSteckbrief);
-        if (bj) {
-          steckbriefAenderungen.push(`${g.name}: Baujahr ${bj.alt ?? '–'} → ${bj.neu}`);
-          g.baujahr = bj.neu;
-        }
-      }
-      if (feldGeb.feldFotoSlots) g.feldFotoSlots = feldGeb.feldFotoSlots;
-
-      // Fotos zuordnen — normalisiert und mit Fallback
-      if (Object.keys(photoMap).length) {
-        const fotoOrdner = (feldGeb.feldFotoOrdner || '').split('\\').join('/').replace(/\/+$/, '');
-        const fotos = Object.values(photoMap).filter(p => {
-          const pFolder = p.folder.split('\\').join('/').replace(/\/+$/, '');
-          // Exakter Match ODER Ordner endet auf den gleichen Namen
-          return pFolder === fotoOrdner ||
-                 pFolder.endsWith('/' + fotoOrdner.split('/').pop());
-        });
-        if (fotos.length > 0) {
-          g.feldFotos = fotos.map(p => ({ name: p.fileName, dataUrl: p.dataUrl }));
-        }
-      }
-      updGeb++;
+      planen(g, feldGeb, g?.name || `Gebäude ${feldGeb.id}`, gebaeudeWerte);
     }
-
-    // Felddaten in Elektro-Assets übernehmen
     for (const feldAsset of (projektDaten.elektroAssets?.items || [])) {
       const a = ASSETS.items.find(x => x.id === feldAsset.id);
-      if (!a) continue;
-      if (feldAsset.feldNotizen    !== undefined) a.feldNotizen    = feldAsset.feldNotizen;
-      if (feldAsset.feldStatus     !== undefined) a.feldStatus     = feldAsset.feldStatus;
-      if (feldAsset.feldVorgemerkt !== undefined) a.feldVorgemerkt = feldAsset.feldVorgemerkt;
-      if (feldAsset.feldSteckbrief) {
-        a.feldSteckbrief = feldAsset.feldSteckbrief;
-        const aenderungen = assetAenderungen(a, feldAsset.feldSteckbrief);
-        assetAenderungenAnwenden(a, aenderungen);
-        for (const c of aenderungen) steckbriefAenderungen.push(`${a.name}: ${c.feld} ${c.alt ?? '–'} → ${c.neu}`);
-      }
-      if (feldAsset.feldFotoSlots) a.feldFotoSlots = feldAsset.feldFotoSlots;
-      // Fotos zuordnen
-      if (Object.keys(photoMap).length) {
-        const fotoOrdner = (feldAsset.feldFotoOrdner || '').split('\\').join('/').split('/').filter(Boolean).join('/');
-        const fotos = Object.values(photoMap).filter(p => {
-          const pFolder = p.folder.split('\\').join('/').split('/').filter(Boolean).join('/');
-          return pFolder === fotoOrdner ||
-                 pFolder.endsWith('/' + fotoOrdner.split('/').pop());
-        });
-        if (fotos.length > 0) {
-          a.feldFotos = fotos.map(p => ({ name: p.fileName, dataUrl: p.dataUrl }));
-        }
-      }
-      updAssets++;
+      planen(a, feldAsset, a?.name || a?.type || 'Anlage', assetWerte);
+    }
+    for (const key of ['lwWp','geoThermie','pelletsKessel','heizhackschnitzel','fernwaerme']) {
+      planen(window[key], projektDaten[key], key);
     }
 
-    // Erzeuger
-    const erzKeys = ['lwWp','geoThermie','pelletsKessel','heizhackschnitzel','fernwaerme'];
-    for (const key of erzKeys) {
-      if (projektDaten[key] && window[key]) {
-        if (projektDaten[key].feldNotizen !== undefined) window[key].feldNotizen = projektDaten[key].feldNotizen;
-        if (projektDaten[key].feldStatus  !== undefined) window[key].feldStatus  = projektDaten[key].feldStatus;
-        if (projektDaten[key].feldVorgemerkt !== undefined) window[key].feldVorgemerkt = projektDaten[key].feldVorgemerkt;
-      }
+    if (!plaene.length) {
+      alert('Keine neuen Felddaten in dieser Datei – alles ist bereits übernommen.');
+      return;
     }
+    const neueFotos = plaene.reduce((s, p) => s + p.neueFotos, 0);
+    const konflikte = plaene.flatMap(p => p.konflikte.map(k => `• ${p.name}: ${k}`));
+    const werte = plaene.flatMap(p => p.werte);
+    const text = [
+      `Felddaten übernehmen?`,
+      ``,
+      `${plaene.length} ${plaene.length === 1 ? 'Objekt' : 'Objekte'} mit neuen Daten, ${neueFotos === 1 ? '1 neues Foto' : `${neueFotos} neue Fotos`}.`,
+      konflikte.length ? `\nAbweichungen (${konflikte.length}):\n${konflikte.slice(0, 12).join('\n')}${konflikte.length > 12 ? `\n… und ${konflikte.length - 12} weitere` : ''}` : 'Keine Abweichungen zu vorhandenen Daten.',
+      werte.length ? `\nWerte aus Stations-Steckbriefen für die Planung (${werte.length}):\n${werte.slice(0, 12).map(w => '• ' + w.text).join('\n')}${werte.length > 12 ? `\n… und ${werte.length - 12} weitere` : ''}` : '',
+      ``,
+      `Vorhandene Notizen und Fotos bleiben erhalten.`,
+    ].join('\n');
+    if (!confirm(text)) return;
+
+    for (const p of plaene) Object.assign(p.ziel, p.patch);
+    for (const w of werte) w.anwenden();
+    if (werte.some(w => w.strom)) recalcStromNetz();
 
     // UI aktualisieren
-    if (steckbriefAenderungen.length) recalcStromNetz();
     if (typeof renderList === 'function') renderList();
     if (typeof renderSidebarAssetList === 'function') renderSidebarAssetList();
+    if (typeof window.autosave === 'function') window.autosave();
 
-    const fotoCount = Object.values(photoMap).length;
-    const gebMitFotos = (window.gebaeude || []).filter(g => g.feldFotos?.length > 0).length;
-    console.log('Foto-Import Debug:', { fotoCount, gebMitFotos, photoMapKeys: Object.keys(photoMap).slice(0,3) });
-    const MAX_ZEILEN = 12;
-    const aenderungsText = steckbriefAenderungen.length
-      ? `\n\nAus Stations-Steckbriefen übernommen (${steckbriefAenderungen.length}):\n• ` +
-        steckbriefAenderungen.slice(0, MAX_ZEILEN).join('\n• ') +
-        (steckbriefAenderungen.length > MAX_ZEILEN ? `\n… und ${steckbriefAenderungen.length - MAX_ZEILEN} weitere` : '')
-      : '';
-    alert(`✓ Felddaten importiert:\n${updGeb} Gebäude aktualisiert\n${updAssets} Assets aktualisiert\n${fotoCount} Fotos geladen (${gebMitFotos} Gebäude mit Fotos)${aenderungsText}`);
+    alert(`✓ Felddaten übernommen:\n${plaene.length} ${plaene.length === 1 ? 'Objekt' : 'Objekte'} aktualisiert, ${neueFotos} ${neueFotos === 1 ? 'Foto' : 'Fotos'} ergänzt${konflikte.length ? `, ${konflikte.length} Abweichungen` : ''}${werte.length ? `, ${werte.length} Planungswerte aus Steckbriefen übernommen` : ''}.\nSie werden jetzt mit dem Projekt gespeichert.`);
 
   } catch (err) {
     alert('Fehler beim Import: ' + err.message);

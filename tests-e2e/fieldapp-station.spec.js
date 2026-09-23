@@ -29,13 +29,14 @@ const PROJEKT = {
 test('Feld-App: Stationsakte erfassen und mit Steckbrief exportieren', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.stack || String(error)));
+  page.on('dialog', dialog => dialog.accept());
   await page.setViewportSize({ width: 412, height: 860 });
   await page.route(/tile\.openstreetmap\.org/, route => route.abort());
   await page.goto(pathToFileURL(resolve('dist/feldapp.html')).href);
 
   await page.locator('#json-input').setInputFiles({ name: 'projekt.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(PROJEKT)) });
   await expect(page.locator('#screen-map')).toHaveClass(/active/);
-  await expect(page.locator('#proj-stats')).toContainText('1 Station');
+  await expect(page.locator('#map-chips')).toContainText('Stationen');
 
   // Station ist als Ganzes antippbar, nicht die einzelnen Assets
   const label = page.locator('.building-label-inner.station');
@@ -44,7 +45,7 @@ test('Feld-App: Stationsakte erfassen und mit Steckbrief exportieren', async ({ 
   await label.click({ force: true });
   await expect(page.locator('#sheet')).toHaveClass(/open/);
   await expect(page.locator('#sheet-head')).toContainText('2 Trafos · 2× 630 kVA');
-  await expect(page.locator('.st-flow .st-tile')).toHaveCount(5);   // Gebäude, SA, 2 Trafos, NSHV
+  await expect(page.locator('#st-flow .st-tile')).toHaveCount(5);   // Gebäude, SA, 2 Trafos, NSHV
 
   // Trafo 1a: Vorbelegung aus der Planung, Nutzungsdauer, bedingte Felder
   await page.locator('.st-tile', { hasText: 'Trafo 1a' }).click();
@@ -53,52 +54,53 @@ test('Feld-App: Stationsakte erfassen und mit Steckbrief exportieren', async ({ 
   await expect(kva).toHaveClass(/vorschlag/);
   await expect(page.locator('[data-st-nd]')).toContainText('überschritten');
   await expect(page.locator('[data-st-feld="oelmengeKg"]')).toHaveCount(0);
-  await page.locator('.st-chip', { hasText: 'Öl' }).first().click();
+  await page.locator('[data-st="wahl"][data-wert="Öl"]').click();
   await expect(page.locator('[data-st-feld="oelmengeKg"]')).toHaveCount(1);
   await kva.fill('800');
   await page.locator('[data-st-feld="baujahr"]').fill('2001');
   await expect(page.locator('[data-st-nd]')).toContainText('innerhalb');
-  await page.locator('.st-chip[data-st-action="zustand"][data-wert="mittel"]').click();
+  await page.locator('[data-st="zustand"][data-zustand="mittel"]').click();
 
   // Foto in den Platz „Typenschild“
   const chooser = page.waitForEvent('filechooser');
-  await page.locator('.st-slot', { hasText: 'Typenschild' }).locator('.st-slot-add').click();
+  await page.locator('[data-st="foto"][data-kat="typenschild"]').click();
   await (await chooser).setFiles({ name: 'ts.png', mimeType: 'image/png', buffer: PNG });
-  await expect(page.locator('.st-slot', { hasText: 'Typenschild' }).locator('.photo-cell')).toHaveCount(1);
+  await expect(page.locator('.slot', { hasText: 'Typenschild' }).locator('.photo-cell')).toHaveCount(1);
 
-  // Zurück zur Übersicht: Kachel zeigt Fortschritt/Zustand, Mangel erfassen
-  await page.locator('[data-st-action="zurueck"]').first().click();
+  // Zurück zur Übersicht: Kachel zeigt neue Werte, Mangel erfassen
+  await page.locator('[data-st="zurueck"]').first().click();
   await expect(page.locator('.st-tile', { hasText: 'Trafo 1a' })).toContainText('800 kVA');
   await page.locator('#st-mangel-text').fill('Ölwanne fehlt');
   await page.locator('#st-mangel-bezug').selectOption('t1');
-  await page.locator('.st-chip[data-st-action="mangel-prio"][data-wert="sofort"]').click();
-  await page.locator('[data-st-action="mangel-add"]').click();
-  await expect(page.locator('.st-maengel-item')).toContainText('Ölwanne fehlt');
+  await page.locator('[data-st="mangel-prio"][data-wert="sofort"]').click();
+  await page.locator('[data-st="mangel-add"]').click();
+  await expect(page.locator('.mangel')).toContainText('Ölwanne fehlt');
 
   // Nach Schließen/Neuöffnen ist alles gespeichert
-  await page.locator('#sheet-head .close-btn').click();
+  await page.locator('#btn-sheet-close').click();
   await expect(page.locator('#backdrop')).not.toHaveClass(/on/);
-  await page.evaluate(() => { document.getElementById('sheet-body').innerHTML = ''; });
+  await expect(page.locator('#sheet')).not.toBeInViewport();       // Schließ-Animation abwarten
   await label.click({ force: true });
   await expect(page.locator('#sheet')).toHaveClass(/open/);
-  await expect(page.locator('.st-maengel-item')).toHaveCount(1);
+  await expect(page.locator('.mangel')).toHaveCount(1);
   await page.locator('.st-tile', { hasText: 'Trafo 1a' }).click();
   await expect(page.locator('[data-st-feld="leistungKVA"]')).toHaveValue('800');
-
-  // Export: Steckbrief pro Asset, Foto-Platz im Dateinamen, Bericht mit Stationsakte
-  await page.locator('#sheet-head .close-btn').click();
+  await page.locator('#btn-sheet-close').click();
   await expect(page.locator('#backdrop')).not.toHaveClass(/on/);
-  await page.evaluate(() => { navigator.canShare = undefined; });
+
+  // Export: Steckbrief pro Asset, Foto-Kategorie, Bericht mit Stationsakte
+  await expect(page.locator('#export-badge')).toHaveText('1');
+  await page.locator('#tab-export').click();
   const download = page.waitForEvent('download');
-  await page.locator('#btn-export').click();
+  await page.locator('#btn-export-save').click();
   const zip = await JSZip.loadAsync(readFileSync(await (await download).path()));
   const daten = JSON.parse(await zip.file('projekt_felddaten.json').async('string'));
 
   const t1 = daten.elektroAssets.items.find(a => a.id === 't1');
   expect(t1.feldSteckbrief.werte).toMatchObject({ leistungKVA: '800', baujahr: '2001', ausfuehrung: 'Öl' });
   expect(t1.feldSteckbrief.zustand).toBe('mittel');
-  expect(t1.feldFotoSlots).toEqual({ typenschild: ['typenschild_01.jpg'] });
-  expect(zip.file(`${t1.feldFotoOrdner}/typenschild_01.jpg`)).toBeTruthy();
+  expect(t1.feldFotoInfos).toEqual([{ datei: 'foto_01_typenschild.jpg', kategorie: 'typenschild' }]);
+  expect(zip.file(`${t1.feldFotoOrdner}/foto_01_typenschild.jpg`)).toBeTruthy();
   expect(daten.elektroAssets.items.find(a => a.id === 't2').feldSteckbrief).toBeUndefined();
 
   const station = daten.gebaeude.find(g => g.id === 2);
@@ -119,13 +121,24 @@ test('Feld-App: Rundgang zeigt die Stationsakte', async ({ page }) => {
   await page.goto(pathToFileURL(resolve('dist/feldapp.html')).href);
   await page.locator('#btn-demo').click();
   await expect(page.locator('#tour-title')).toContainText('Willkommen');
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 25; i++) {
     if ((await page.locator('#tour-title').textContent()).includes('Stationsakte')) break;
     const schritt = await page.locator('#tour-step').textContent();
     await page.locator('#tour-next').click();
     await expect(page.locator('#tour-step')).not.toHaveText(schritt);   // Schritt ist async
   }
   await expect(page.locator('#tour-title')).toContainText('Stationsakte');
-  await expect(page.locator('.st-flow .st-tile')).toHaveCount(5);   // Gebäude, SA, 2 Trafos, NSHV
+  await expect(page.locator('#st-flow .st-tile')).toHaveCount(5);   // Gebäude, SA, 2 Trafos, NSHV
   expect(errors).toEqual([]);
+});
+
+test('Feld-App: ohne lokalen Speicher reagiert „Projekt laden“ und erklärt das Problem', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'indexedDB', { get() { return { open() { throw new DOMException('denied', 'SecurityError'); } }; } });
+  });
+  await page.goto(pathToFileURL(resolve('dist/feldapp.html')).href);
+  await expect(page.locator('#origin-warning')).toContainText('Speichern ist hier nicht möglich');
+  const chooser = page.waitForEvent('filechooser', { timeout: 3000 });
+  await page.locator('#btn-load').click();
+  await chooser;
 });

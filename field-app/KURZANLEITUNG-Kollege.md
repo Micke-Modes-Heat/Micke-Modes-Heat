@@ -5,7 +5,7 @@ alles offline auf dem Handy. Am Ende schickst du ein ZIP zurück ins Büro.
 
 > 💡 **Tipp zum Einstieg:** Tippe auf dem Startbildschirm auf
 > **„🎬 Kurzer Rundgang (Demo)"** – die App zeigt dir an Beispiel-Gebäuden in
-> 14 Schritten, wo welcher Knopf ist. Dein echtes Projekt bleibt dabei unberührt.
+> 17 Schritten, wo welcher Knopf ist. Dein echtes Projekt bleibt dabei unberührt.
 
 ---
 
@@ -39,49 +39,80 @@ alles offline auf dem Handy. Am Ende schickst du ein ZIP zurück ins Büro.
 ---
 
 ## 3. VOR der Abfahrt (solange du noch WLAN/Netz hast!)
-1. **Karte** öffnen, ins Einsatzgebiet zoomen.
-2. Oben auf das **🗺-Symbol** tippen → die Kartenkacheln werden für offline
-   gespeichert („✓ … Kacheln offline gespeichert").
-3. Bei mehreren Gebieten: jeweils hinzoomen und erneut 🗺.
+1. Reiter **Karte** öffnen, ins Einsatzgebiet zoomen.
+2. Oben rechts auf das **Wolken-Symbol** tippen → der sichtbare Kartenausschnitt
+   wird für offline gespeichert („Ausschnitt offline gespeichert").
+3. Bei mehreren Gebieten: jeweils hinzoomen und erneut tippen.
 
 > Ohne diesen Schritt bleibt die Karte im Funkloch leer.
 
 ---
 
 ## 4. Vor Ort arbeiten
-- **Gebäude finden:** auf der Karte (Name steht im Umriss) oder über die
-  **🔍 Suche**.
-- **Gebäude antippen** → unten öffnet sich die Detail-Karte.
-- **📷 Foto** aufnehmen, **Notiz** schreiben, **Status** setzen (z. B. erledigt).
-- Alles wird sofort lokal gespeichert. Du kannst offline arbeiten.
+Unten gibt es vier Reiter: **Karte · Gebäude · Projekt · Export**.
 
-### Trafostationen (⚡ auf der Karte)
+- **Gebäude finden:** auf der **Karte** (Name steht im Umriss) oder im Reiter
+  **Gebäude** über die Suche. Die Filter (Vorgemerkt, Offen, Besucht, Erledigt)
+  gibt es in beiden Ansichten.
+- **Farben auf der Karte:** grau = offen, gelb = besucht, grün = erledigt.
+  Ein dunkelgrüner Rahmen bzw. ★ heißt: im Büro für die Begehung vorgemerkt.
+- **Gebäude antippen** → unten öffnet sich die Detail-Karte:
+  - **Checkliste:** zeigt, was für diesen Gebäudetyp noch fehlt (z. B. Foto
+    Typenschild, Baujahr Heizung). Einen offenen Punkt antippen → die App
+    springt direkt zur Kamera bzw. zum Feld. „Erledigt" geht auch mit
+    offenen Punkten, die App fragt dann nach.
+  - **Status** setzen (Offen / Besucht / Erledigt),
+  - **Foto-Kategorie** vor dem Fotografieren wählen (Fassade, Heizraum,
+    Typenschild, Zähler, Mangel, Sonstiges). Gelb = fehlt noch laut
+    Checkliste. Nachträglich ändern: Foto antippen, unten Kategorie wählen.
+  - **Fotos:** „Foto" öffnet die Kamera-App für ein Bild, **„Serie"** nimmt
+    beliebig viele Bilder hintereinander auf (Auslöser drücken, am Ende
+    „Fertig"), „Galerie" übernimmt mehrere vorhandene Bilder auf einmal.
+    GPS-Daten im Foto werden entfernt. Die Fotoqualität (Standard / Hoch /
+    Maximal) stellst du im Reiter **Export** ein – „Hoch" ist voreingestellt,
+    „Maximal" lohnt sich für Typenschilder und Zählerstände,
+  - **Vor Ort erfasst:** Heizung aus der Liste wählen, Baujahr und Leistung
+    vom Typenschild, Jahresverbrauch oder Zählerstand (Datum wird automatisch
+    gesetzt). Nur Zahlen eintragen, ohne Einheit – rot markierte Felder
+    werden nicht gespeichert,
+  - **Notiz** schreiben (Mikrofon-Knopf für Spracheingabe).
+- Alles wird sofort lokal gespeichert. Du kannst offline arbeiten.
+- Reiter **Projekt:** Kennzahlen, Erzeugermix und Varianten aus dem Büro – nur
+  zum Nachschauen, gerechnet wird im Büro.
+
+### Trafostationen (Blitz-Symbol auf der Karte)
 Stationen öffnen sich als **Stationsakte** – die Station als Ganzes, nicht jedes
-Bauteil einzeln:
-1. **⚡ Station antippen** → oben der Erfassungsstand, darunter der Aufbau:
-   **Gebäude & Station → Schaltanlage → Trafo(s) → NSHV**.
+Bauteil einzeln. Mit dem Filter **Stationen** siehst du nur sie.
+1. **Station antippen** → Status, Erfassungsstand und der Aufbau als Kacheln:
+   **Gebäude & Station → Schaltanlage → Trafo(s) → NSHV**. Jede Kachel zeigt
+   Zustand, erfasste Pflichtangaben und die Nutzungsdauer (rot = überschritten).
 2. **Kachel antippen** → Steckbrief-Abschnitt: Auswahlfelder antippen, Zahlen
    eintragen, **Zustand** (gut / mittel / schlecht) wählen.
    - **Gestrichelte Werte** kommen aus der Planung – bitte prüfen, bei Abweichung
      einfach überschreiben.
-   - **Foto-Plätze** (z. B. *Typenschild*): über **+ Foto** direkt zuordnen.
-     Rot umrandete Plätze sind Pflicht.
-   - Die **Nutzungsdauer** rechnet die App aus dem Baujahr selbst aus.
-3. Unten **„Weiter: …“** führt in der Reihenfolge durch die ganze Station.
+   - **Foto-Plätze** (z. B. *Typenschild*): Kamera, Serie oder Galerie direkt am
+     Platz. Gelb markierte Plätze sind Pflicht.
+   - Die **Nutzungsdauer** (VDI 2067) rechnet die App aus dem Baujahr selbst aus.
+3. Unten **„Weiter: …"** führt der Reihe nach durch die ganze Station.
 4. In der Übersicht **Mängel** mit Priorität (sofort … Hinweis) und Bezug
    (z. B. *Trafo 1a*) erfassen.
+5. **Erledigt** geht auch mit offenen Pflichtangaben – die App fragt dann nach.
 
-Der Export nimmt alles mit; im Büro übernimmt das Planungstool geänderte Werte
-(z. B. Trafoleistung, Baujahr) automatisch.
+Der Export nimmt alles mit. Beim Einlesen im Büro zeigt das Planungstool vorher,
+welche Werte (z. B. Trafoleistung, Baujahr) es in die Planung übernimmt.
 
 ---
 
 ## 5. AM ENDE DES TAGES – Daten zurückschicken (wichtig!)
-1. Oben auf das **⬇️-Symbol** (Export) tippen.
-2. Es wird ein **ZIP** mit allen Fotos, Notizen und einem Bericht erstellt.
-3. **Teilen-Dialog** → an **WhatsApp/Mail an Andre** schicken.
-   *(Falls kein Teilen-Dialog kommt, liegt das ZIP in **Downloads** – von dort
-   verschicken.)*
+1. Reiter **Export** öffnen. Oben siehst du, wie viele Fotos, Notizen, Status
+   und Daten erfasst sind; die Zahl am Reiter zeigt, wie viele Objekte noch
+   nicht verschickt wurden.
+2. **„ZIP teilen"** tippen → es entsteht ein ZIP mit allen Fotos, Notizen,
+   Werten und einem Bericht.
+3. Im Teilen-Dialog **Dienst-Mail** (oder eure Dateiablage) wählen und an das
+   Büro schicken. Kein privater Messenger.
+   *(Kein Teilen-Dialog? „Als Datei speichern" – das ZIP liegt dann in
+   **Downloads**.)*
 
 > Mach den Export **am besten täglich**. Solange unexportierte Daten da sind,
 > warnt die App beim Schließen.
@@ -90,7 +121,7 @@ Der Export nimmt alles mit; im Büro übernimmt das Planungstool geänderte Wert
 
 ## Goldene Regeln
 - ✅ Immer über das **App-Icon** (oder die gespeicherte Datei) öffnen – nie
-  direkt aus WhatsApp.
+  direkt aus einem Messenger.
 - ✅ **Vor** der Fahrt Karte cachen (Schritt 3).
 - ✅ **Täglich exportieren** und ans Büro schicken.
 - ❌ App-Daten **nicht** über „Projekt löschen" oder Browserdaten-Löschen
