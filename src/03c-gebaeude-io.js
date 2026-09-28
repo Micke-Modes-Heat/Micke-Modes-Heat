@@ -3133,7 +3133,7 @@ export function toggleBuildingSourceOutlines(visible) {
   updateViz();
 }
 
-// Jahres-Slider (Kopfleiste) auf das früheste vorhandene Baujahr setzen.
+// Jahres-Slider (Kopfleiste): Untergrenze = frühestes vorhandenes Baujahr, Wert = heute.
 // Auch importierte bzw. automatisch ermittelte Baujahre zählen: Für die
 // zeitliche Darstellung muss ein geladenes Gebäude unabhängig von der Quelle
 // ab seinem hinterlegten Baujahr sichtbar sein.
@@ -3149,8 +3149,14 @@ export function _initYearSliderFromBaujahr() {
   const spanne = parseInt(slider.max) - parseInt(slider.min) || 24;
   slider.min = minJahr;
   if (minJahr + spanne > parseInt(slider.max)) slider.max = minJahr + spanne;
-  slider.value = minJahr;
-  setGlobalYear(minJahr);
+  // Wert = aktuelles Jahr: das älteste Baujahr ist nur die Untergrenze des Schiebers.
+  // (Früher stand der Schieber danach auf dem ältesten Baujahr — alle jüngeren
+  // Gebäude galten dann als „geplant" und Netzrechnungen liefen im Jahr z. B. 1970.)
+  const heute = new Date().getFullYear();
+  if (heute > parseInt(slider.max)) slider.max = heute;
+  const wert = Math.max(minJahr, heute);
+  slider.value = wert;
+  setGlobalYear(wert);
 }
 
 export function _loadProject(project) {

@@ -17,7 +17,7 @@
 
 import { ASSETS, TYPE_RANK, getAssetStatus, getAssetPropsForYear } from './13a-assets-core.js';
 import { getStromEdgeStatus, getStromEdgePropsForYear, _nsCosPhi, _nsKIz, _nsLeiterTemp, MAX_DELTA_U_PCT } from './05b-stromnetz.js';
-import { gebaeude, globalYear } from './01-globals-varianten.js';
+import { gebaeude } from './01-globals-varianten.js';
 import { calcGebKwp, calcGebKwpKorr, escHtml } from './03c-gebaeude-io.js';
 import { KABEL_TYPEN } from './config/netz-kosten.js';
 import { nsKabelAuslegen } from './lib/ns-auslegung.js';
@@ -38,7 +38,36 @@ let _letztes = null;             // { modell, treppe, eingaben, jahr }
 // Standard aus — Assets ohne Schicht zählen als Bestand, das würde geplante
 // Anlagen still zur Vorbelastung machen.
 // ersatzQs: Annahme (mm² NAYY) für Kabel ohne erfassten Querschnitt; 0 = keine Grenze (optimistisch).
-const _einStandard = () => ({ quelle: 'aktiv', einspFaktor: EINSP_DEFAULT, duGrenzePct: MAX_DELTA_U_PCT, bestandAlsVorlast: false, ersatzQs: 0 });
+// stichjahr: was bis dahin gebaut ist, gilt als Bestand (null = aktuelles Jahr).
+// zieljahr:  Rechenjahr — Netz und Gebäude in diesem Jahr (null = Stichjahr).
+//            Unabhängig vom Jahresschieber (der kann auf einem historischen Jahr stehen).
+// flaechen:  'alle' | 'bestand' (Gebäude bis zum Stichjahr) | 'neu' (danach bis zum Zieljahr gebaut).
+const _einStandard = () => ({ quelle: 'aktiv', einspFaktor: EINSP_DEFAULT, duGrenzePct: MAX_DELTA_U_PCT, bestandAlsVorlast: false, ersatzQs: 0,
+  stichjahr: null, zieljahr: null, flaechen: 'alle' });
+const _heute = () => new Date().getFullYear();
+const _int = v => { const n = parseInt(v); return Number.isFinite(n) ? n : null; };
+/** Stich- und Rechenjahr aus den Eingaben (Rechenjahr nie vor dem Stichjahr). */
+export function pvnaJahre(e = _ein) {
+  const stich = _int(e?.stichjahr) ?? _heute();
+  const ziel = Math.max(stich, _int(e?.zieljahr) ?? stich);
+  return { stich, ziel };
+}
+/** Steht das Gebäude im Jahr yr (gebaut, nicht abgerissen)? Ohne Baujahr: immer schon da. */
+export function pvnaGebaeudeSteht(g, yr) {
+  const bj = _int(g?.baujahr), aj = _int(g?.abrissjahr);
+  return !(bj != null && yr < bj) && !(aj != null && yr >= aj);
+}
+/** Neubau im Sinne der Netzstrategie: nach dem Stichjahr gebaut. */
+export const pvnaIstNeubau = (g, stich) => { const bj = _int(g?.baujahr); return bj != null && bj > stich; };
+/** Spätestes Baujahr nach dem Stichjahr (Vorschlag fürs Zieljahr), sonst null. */
+export function pvnaLetztesNeubaujahr(stich) {
+  const gebArr = (typeof gebaeude !== 'undefined' ? gebaeude : window.gebaeude) || [];
+  // Gebäude und PV-Anlagen ohne Gebäude (eigenes Baujahr)
+  const j = [...gebArr.map(g => _int(g.baujahr)),
+    ...ASSETS.items.filter(a => a.type === 'PV' && a.buildingId == null).map(a => _int(a.baujahr))]
+    .filter(b => b != null && b > stich);
+  return j.length ? Math.max(...j) : null;
+}
 /** Wählbare Ersatzquerschnitte für Kabel ohne Angabe. */
 export const PVNA_ERSATZ_QS = [0, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240];
 const _ein = _einStandard();
@@ -56,7 +85,11 @@ const _fmt = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
  * Zuordnungen und Hinweise für die Darstellung.
  */
 export function pvnaModell(opts = {}) {
-  const yr = opts.jahr ?? globalYear ?? new Date().getFullYear();
+  const { stich, ziel } = pvnaJahre(opts);
+  const yr = opts.jahr ?? ziel;
+  const flaechen = opts.flaechen === 'bestand' || opts.flaechen === 'neu' ? opts.flaechen : 'alle';
+  // Flächenfilter: Dach aufnehmen? (Neubau = Gebäude nach dem Stichjahr gebaut)
+  const flaecheOk = neu => flaechen === 'alle' || (flaechen === 'neu') === neu;
   const quelle = opts.quelle || 'aktiv';
   const einspFaktor = opts.einspFaktor > 0 ? opts.einspFaktor : EINSP_DEFAULT;
   const duGrenzePct = opts.duGrenzePct > 0 ? opts.duGrenzePct : MAX_DELTA_U_PCT;
@@ -80,6 +113,23 @@ export function pvnaModell(opts = {}) {
   const name = id => assetMap.get(id)?.name || gebById.get(id)?.name
     || (gebById.has(id) ? 'Gebäude ' + id : String(id));
 
+  // Lage (lat/lng) je Knoten — für die Netzstrategie (Kabellängen neuer Anschlüsse)
+  const gebMitte = g => {
+    const pg = g?.polygon;
+    if (Array.isArray(pg) && pg.length) {
+      let la = 0, ln = 0;
+      for (const c of pg) { la += +c.lat; ln += +c.lng; }
+      return { lat: la / pg.length, lng: ln / pg.length };
+    }
+    return Number.isFinite(+g?.lat) && Number.isFinite(+g?.lng) ? { lat: +g.lat, lng: +g.lng } : null;
+  };
+  const knotenPos = id => {
+    const a = assetMap.get(id);
+    if (a && Number.isFinite(+a.lat) && Number.isFinite(+a.lng)) return { lat: +a.lat, lng: +a.lng };
+    return gebById.has(id) ? gebMitte(gebById.get(id)) : null;
+  };
+  const elPos = new Map();            // elementId → { lat, lng } des Knotens hinter dem Element
+
   const elemente = [];
   const elInfo = new Map();           // elementId → { label, trafoId, kante?, asset? }
   const knotenEl = new Map();         // Knoten-ID → Element, über das er angebunden ist
@@ -97,6 +147,7 @@ export function pvnaModell(opts = {}) {
     elInfo.set(tid, { label: `${t.name || 'Trafo'} (${kva} kVA)`, trafoId: t.id, asset: t, kva });
     knotenEl.set(t.id, tid);
     knotenTrafo.set(t.id, t.id);
+    elPos.set(tid, knotenPos(t.id));
 
     const trafoRang = TYPE_RANK.Trafo;
     const queue = [];
@@ -122,6 +173,7 @@ export function pvnaModell(opts = {}) {
       }
       knotenEl.set(id, eid);
       knotenTrafo.set(id, t.id);
+      if (!elPos.has(eid)) elPos.set(eid, knotenPos(id));
       const a = assetMap.get(id);
       const rang = TYPE_RANK[a?.type] ?? 6;
       for (const { nb, edge: e2 } of (adj.get(id) || [])) {
@@ -159,6 +211,10 @@ export function pvnaModell(opts = {}) {
   for (const a of aktiveA.filter(a => a.type === 'PV')) {
     if (a.buildingId != null) gebMitAsset.add(a.buildingId);
     if (istBestandPv(a)) continue;                                  // schon Vorlast
+    const g = a.buildingId != null ? gebById.get(a.buildingId) : null;
+    if (g && !pvnaGebaeudeSteht(g, yr)) continue;                   // Gebäude (noch) nicht da bzw. abgerissen
+    const neu = g ? pvnaIstNeubau(g, stich) : (_int(a.baujahr) ?? 0) > stich;
+    if (!flaecheOk(neu)) continue;
     const p = getAssetPropsForYear(a, yr);
     const kwp = parseFloat(p.leistungKWp) || 0;
     if (kwp <= 0) continue;
@@ -166,18 +222,21 @@ export function pvnaModell(opts = {}) {
     const id = 'A:' + a.id;
     daecher.push({ id, elementId: knotenEl.get(a.id) ?? null, kwpMax: kwp, ertragFaktor: ertrag, einspFaktor });
     dachInfo.set(id, { name: a.name || ('PV ' + a.id), gebId: a.buildingId, trafoId: knotenTrafo.get(a.id), art: 'PV-Anlage',
-      ostwest: p.ausrichtung === 'ostwest' });
+      ostwest: p.ausrichtung === 'ostwest', neu, pos: knotenPos(a.id) || (g ? gebMitte(g) : null) });
   }
   for (const g of gebArr) {
     if (gebMitAsset.has(g.id)) continue;
     if (quelle === 'aktiv' && !g.pvAktiv) continue;
+    if (!pvnaGebaeudeSteht(g, yr)) continue;                        // im Rechenjahr nicht vorhanden
+    const neu = pvnaIstNeubau(g, stich);
+    if (!flaecheOk(neu)) continue;
     const kwp = calcGebKwp(g) || 0;
     if (kwp <= 0) continue;
     const id = 'G:' + g.id;
     daecher.push({ id, elementId: knotenEl.get(g.id) ?? null, kwpMax: kwp,
       ertragFaktor: (calcGebKwpKorr(g) || kwp) / kwp, einspFaktor });
     dachInfo.set(id, { name: g.name || ('Gebäude ' + g.id), gebId: g.id, trafoId: knotenTrafo.get(g.id),
-      art: g.pvAktiv ? 'Dachfläche' : 'Dachpotenzial', ostwest: g.pvFlAusrichtung === 'ostwest' });
+      art: g.pvAktiv ? 'Dachfläche' : 'Dachpotenzial', ostwest: g.pvFlAusrichtung === 'ostwest', neu, pos: gebMitte(g) });
   }
 
   // Prüfpunkte für die Spannung: jeder angebundene Knoten
@@ -190,7 +249,32 @@ export function pvnaModell(opts = {}) {
   const eingabe = { elemente, daecher, pruefpunkte, duGrenzePct };
   _massnahmenAnhaengen(eingabe, elInfo, { kIz, cosPhi, tLeiter, I_je_kW });
 
-  return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, ersatzQs, bestandPvKwp, jahr: yr, cosPhi, kIz } };
+  // Mittelspannungs-Punkte: Schaltanlage/NAP (Abgang fürs Erzeugungsnetz) und Trafos (Ring-Einschleifung)
+  const msPunkte = aktiveA.filter(a => ['NAP', 'Schaltanlage', 'Trafo'].includes(a.type))
+    .map(a => ({ id: a.id, typ: a.type, name: a.name || a.type, pos: knotenPos(a.id) })).filter(m => m.pos);
+
+  return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, ersatzQs, bestandPvKwp, jahr: yr, stichjahr: stich, flaechen,
+    cosPhi, kIz, tLeiter, I_je_kW, elPos, msPunkte } };
+}
+
+/**
+ * Neues NS-Kabel (NAYY) auslegen: kleinster Querschnitt bzw. kleinste Zahl
+ * paralleler Stränge (bis 4 × 240 mm²), der die Leistung trägt und für sich
+ * höchstens duZielPct Spannungsanhebung erzeugt. null, wenn nichts reicht.
+ * k: { cosPhi, kIz, tLeiter, I_je_kW } wie im Netzmodell (info).
+ */
+export function pvnaKabelNeu(pKw, lengthM, duZielPct, k) {
+  const kt = KABEL_TYPEN.NAYY;
+  for (let n = 1; n <= 4; n++) {
+    for (const s of kt.sections) {
+      const r = _kabelKennwerte(kt, s.mm2, n, Math.max(1, lengthM), k);
+      if (r.kapKw >= pKw && r.duProKwPct * pKw <= duZielPct) {
+        return { kapKw: r.kapKw, duProKwPct: r.duProKwPct, mm2: s.mm2, n, eurM: s.eurM * n,
+          text: `${n > 1 ? n + ' × ' : ''}${s.mm2} mm² NAYY, ${_fmt(lengthM)} m (neu)` };
+      }
+    }
+  }
+  return null;
 }
 
 /** Kapazität, ΔU-Koeffizient und Beschreibung eines Bestandskabels. */
@@ -347,6 +431,11 @@ function _eingabenLesen() {
   if (bv) _ein.bestandAlsVorlast = !!bv.checked;
   const eq = document.getElementById('pvna-ersatzqs');
   if (eq) _ein.ersatzQs = Math.max(0, parseFloat(eq.value) || 0);
+  const sj = document.getElementById('pvna-stichjahr'), zj = document.getElementById('pvna-zieljahr');
+  if (sj) _ein.stichjahr = _int(sj.value);
+  if (zj) _ein.zieljahr = _int(zj.value);
+  const fl = document.getElementById('pvna-flaechen');
+  if (fl) _ein.flaechen = fl.value;
 }
 
 /** Rechnet mit den aktuellen Eingaben und legt das Ergebnis ab. */
@@ -396,12 +485,16 @@ export function pvnaAbregelungDach(dachId, kwp, pZulKw) {
   const o = _letztes?.optionen?.get(dachId);
   if (!o) return null;
   const ow = !!_letztes.modell.info.dachInfo.get(dachId)?.ostwest;
-  const up = window.elPvH || null;
-  if (_formCache.up !== up) { _formCache.up = up; _formCache.f = {}; }
-  const form = _formCache.f[ow] || (_formCache.f[ow] = _profilForm(ow));
-  return pvnaAbregelung(form, o.spez, kwp, pZulKw);
+  return pvnaAbregelung(pvnaProfilForm(ow), o.spez, kwp, pZulKw);
 }
 const _formCache = { up: undefined, f: {} };
+/** Profilform (8760 h, Summe 1) je Ausrichtung, gecacht bis sich der Profil-Upload ändert. */
+export function pvnaProfilForm(ostwest) {
+  const up = window.elPvH || null;
+  if (_formCache.up !== up) { _formCache.up = up; _formCache.f = {}; }
+  const k = ostwest ? 'ow' : 'sued';
+  return _formCache.f[k] || (_formCache.f[k] = _profilForm(!!ostwest));
+}
 
 /** Map<dachId, { pZulKw, a, b, mehrKwhProKwp }> — a/b wie pvnaAbregelung plus kwp. */
 function _optionen(modell, treppe) {
@@ -574,6 +667,25 @@ function _steuerHtml() {
     <div style="flex:0 1 130px;">
       <span style="${lbl}" title="Zulässige Spannungsanhebung ab Trafo-Sammelschiene (VDE-AR-N 4105: 3 %).">ΔU-Grenze %</span>
       <input id="pvna-du" type="number" min="0.5" max="10" step="0.5" value="${_ein.duGrenzePct}" style="${inp}">
+    </div>
+    <div style="flex:0 1 96px;">
+      <span style="${lbl}" title="Was bis zu diesem Jahr gebaut ist, gilt als Bestand. Leer = aktuelles Jahr.">Stichjahr</span>
+      <input id="pvna-stichjahr" type="number" min="1900" max="2100" step="1" value="${_ein.stichjahr ?? ''}" placeholder="${_heute()}" style="${inp}">
+    </div>
+    <div style="flex:0 1 96px;">
+      <span style="${lbl}" title="Rechenjahr: Netz und Gebäude in diesem Jahr. Leer = Stichjahr. Unabhängig vom Jahresschieber.">Zieljahr</span>
+      <input id="pvna-zieljahr" type="number" min="1900" max="2100" step="1" value="${_ein.zieljahr ?? ''}"
+        placeholder="${pvnaJahre().stich}" style="${inp}">
+    </div>
+    <div style="flex:0 1 190px;">
+      <span style="${lbl}" title="Neubau = Gebäude mit Baujahr nach dem Stichjahr (bis zum Zieljahr)">Dachflächen</span>
+      <select id="pvna-flaechen" style="${inp}">
+        <option value="alle" ${_ein.flaechen === 'alle' ? 'selected' : ''}>alle Gebäude</option>
+        <option value="bestand" ${_ein.flaechen === 'bestand' ? 'selected' : ''}>nur Bestand (bis Stichjahr)</option>
+        <option value="neu" ${_ein.flaechen === 'neu' ? 'selected' : ''}>nur Neubau (nach Stichjahr)</option>
+      </select>
+      ${_ein.flaechen === 'neu' && pvnaJahre().ziel <= pvnaJahre().stich && pvnaLetztesNeubaujahr(pvnaJahre().stich)
+        ? `<span style="font-size:9.5px;color:#ffb74d;">Zieljahr ≥ ${pvnaLetztesNeubaujahr(pvnaJahre().stich)} setzen — sonst steht noch kein Neubau.</span>` : ''}
     </div>
     <div style="flex:0 1 190px;">
       <span style="${lbl}" title="Kabel ohne erfassten Querschnitt: ohne Annahme gilt für sie keine Grenze — die Aufnahme ist dort überschätzt.">Kabel ohne Querschnitt</span>
@@ -973,6 +1085,8 @@ export function pvnaEinstellungenSetzen(d) {
     duGrenzePct: u > 0 ? u : std.duGrenzePct,
     bestandAlsVorlast: !!d?.bestandAlsVorlast,
     ersatzQs: parseFloat(d?.ersatzQs) > 0 ? parseFloat(d.ersatzQs) : 0,
+    stichjahr: _int(d?.stichjahr), zieljahr: _int(d?.zieljahr),
+    flaechen: d?.flaechen === 'bestand' || d?.flaechen === 'neu' ? d.flaechen : 'alle',
   });
   _letztes = null;
   window._pvNetzaufnahme = null;

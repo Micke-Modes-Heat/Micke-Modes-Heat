@@ -14996,7 +14996,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-09-23';
   if (d.indexOf('__') === 0) d = '';
-  var c = '9685656';
+  var c = '43d2447';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -100329,7 +100329,15 @@ ${massTbl}
     herleitung:'Ausbautreppe der Netzaufnahme: Ertüchtigungen nach Zuwachs je Euro, danach Befüllung der Dächer (ertragsstärkste zuerst) bis zur neuen Netzgrenze. Invest = kumulierte Ertüchtigung aller Stufen bis k.',
     bewertung: 'Zeigt, wie sich Ertrag und Wirtschaftlichkeit Stufe für Stufe entwickeln — der Punkt, ab dem weitere Ertüchtigung sich nicht mehr trägt, ist das sinnvolle Ende des Fahrplans.',
   };
-  const _pvVarInfo = id => PV_VARIANTEN_INFO[id] || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : null);
+  // Netzstrategien aus dem Editor (30-netzstrategie.js) als Varianten 'strategie-<k>' — ebenfalls ohne frage.
+  const PV_STRATEGIE_INFO = {
+    label: 'Netzstrategie', farbe: '#ba68c8', icon: '⌬',
+    ziel:      'PV-Ausbau mit festgelegtem Anschlussweg je Flächengruppe (Bestandsnetz, Ertüchtigung, neuer Abgang, neue Station, Erzeugungsnetz)',
+    herleitung:'Netzstrategie-Editor: Dächer im Zieljahr zu Gruppen zusammengefasst, je Gruppe ein Anschlussweg; Befüllung mit derselben Netzphysik wie die Netzaufnahme. Invest = alle neuen Anschlüsse, Stationen, MS-Trassen und Ertüchtigungen der Strategie.',
+    bewertung: 'Zeigt, was eine Strategie über die ganze Liegenschaft wirtschaftlich bedeutet — inklusive der Netzkosten, die in den übrigen Varianten nur pauschal angesetzt sind.',
+  };
+  const _pvVarInfo = id => PV_VARIANTEN_INFO[id]
+    || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : /^strategie-\d+$/.test(id || '') ? PV_STRATEGIE_INFO : null);
   /** Farbe je Fahrplanstufe: von Türkis (Stufe 1) nach Dunkelblau (letzte Stufe). */
   const _pvFahrplanFarbe = (k, n) => `hsl(${190 + Math.round(40 * (n > 1 ? (k - 1) / (n - 1) : 0))}, 70%, ${62 - Math.round(22 * (n > 1 ? (k - 1) / (n - 1) : 0))}%)`;
 
@@ -100351,6 +100359,8 @@ ${massTbl}
                                   //   { belegung: {dachId: kWp}, summeKwp, stand,
                                   //     massnahmen: [{ elementId, label, investEUR }] }
       fahrplanVarianten: null,    // Fahrplanstufen als Varianten 'fahrplan-<k>': { alle: bool, stufen: [k, …] }
+      netzStrategien: null,       // Netzstrategien als Varianten 'strategie-<k>' (30-netzstrategie.js):
+                                  //   [{ key, label, kwp, investEUR, abregelung, detail, stand, jahre }]
       pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
       pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
       deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
@@ -101096,7 +101106,10 @@ ${massTbl}
 
     const pvJk   = pvInvest  * (annPv  + (OPT_IH.pv  || 0.01));
     const batJk  = batInvest * (annBat + (OPT_IH.bat || 0.01));
-    const infJk  = infra.investEUR * annF(zins, 20) + infra.jaehrlichEUR;
+    // Gezielte Netzmaßnahmen (Ertüchtigung, Netzstrategie) über die Nutzungsdauer aus dem
+    // Kostenkatalog der Netzstrategie annuisieren, die übrige Infrastruktur wie bisher über 20 a.
+    const netzA  = Math.min(infra.investEUR, params.netzausbauEUR || 0);
+    const infJk  = (infra.investEUR - netzA) * annF(zins, 20) + netzA * annF(zins, params.netzLife || 20) + infra.jaehrlichEUR;
 
     // Windkraft: Erlöse fließen über simResult ein — dann müssen auch die Kosten rein,
     // sonst ist der Netto-Überschuss systematisch geschönt. windKwOverride erlaubt der
@@ -101315,7 +101328,8 @@ ${massTbl}
     window._pvAnalyse.windInvestPerKw = windInvestPerKw;   // Panel-Re-Render soll den Wert behalten
     const windKwInstalled = windEnabled ? getWindAssetsSummary().kw : 0;
 
-    const params = { pStrom, pEinsp, pvInvestPerKwp, batInvestPerKwh, zins, pvLife, batLife, co2Faktor,
+    const netzLife = window.nsNetzLebensdauer?.() || 20;   // Kostenkatalog der Netzstrategie (30)
+    const params = { pStrom, pEinsp, pvInvestPerKwp, batInvestPerKwh, zins, pvLife, batLife, co2Faktor, netzLife,
                      windTarifModus, pWindEinsp, windInvestPerKw, windKwInstalled };
 
     const ergebnisse = [];
@@ -101456,6 +101470,25 @@ ${massTbl}
         if (fehlt.length) console.warn(`[PV-Analyse] Fahrplanstufe(n) ${fehlt.join(', ')} gibt es nicht mehr (Fahrplan hat ${n} Stufen).`);
       }
     }
+
+    // ═══ 1e) NETZSTRATEGIEN — im Netzstrategie-Editor gewählte Strategien ═══════
+    //     Momentaufnahme aus 30-netzstrategie.js: kWp und Netz-Invest der Strategie.
+    //     Die Variantenrechnung nutzt das gemeinsame Profil der Liegenschaft; eine
+    //     Abregelung je Dach (Weg „voll + Abregelung") bildet sie nicht ab.
+    (state.netzStrategien || []).forEach((st, i) => {
+      if (!(st?.kwp > 0)) return;
+      const id = `strategie-${i + 1}`;
+      berechne(id, st.kwp, 0, 'none', `: ${st.label}`, {
+        ohneNetzbau: true, netzausbauEUR: +st.investEUR || 0, netzausbauLabel: `Netzstrategie: ${st.label}`,
+      });
+      const eS = ergebnisse[ergebnisse.length - 1];
+      if (eS?.id !== id) return;
+      eS.strategieKey = st.key;
+      eS.netzstrategie = st;
+      eS.hinweis = `${st.detail}. Netz-Invest ${Math.round((+st.investEUR || 0) / 1000)} T€`
+        + (st.jahre ? ` (Rechenjahr ${st.jahre.ziel}, Neubau nach ${st.jahre.stich})` : '') + '.'
+        + (st.abregelung ? ' Enthält Gruppen mit Abregelung je Dach — die Variantenrechnung setzt die volle Leistung ohne diese Kappung an, der Ertrag ist hier eher zu hoch.' : '');
+    });
 
     // ═══ 2) EIGENVERBRAUCHS-OPTIMIERT — größte PV mit ≥90 % Eigenverbrauch + EV-Batterie
     const evKwp = pvCalcEvQuoteKwp(demandH, pvProfile, napParams, 90, spurEv);
@@ -101742,6 +101775,9 @@ ${massTbl}
     // Einlinienschema der Variante „Bestandsnetz" mit Schiebern (29-pvna-schema.js, per window wie oben)
     { id:'pvnaschema', gruppe:'ergebnis', label:'Einlinienschema (Bestandsnetz)', el:'pva-pvna-schema',
       ohneBerechnung:true, render:() => window.pvnaSchemaRender?.() },
+    // Netzstrategie-Editor (30-netzstrategie.js, per window wie oben)
+    { id:'netzstrategie', gruppe:'ergebnis', label:'Netzstrategie (Editor)', el:'pva-netzstrategie',
+      ohneBerechnung:true, render:() => window.nsRender?.() },
 
     { id:'abb1',  gruppe:'abb', nr:1,  label:'Optimierungsfläche',   el:'pva-chart-heatmap',
       render:(v, a) => renderOptSurface3D(a.demandH, a.pvProfile, a.napParams, a.params, v) },
@@ -102440,6 +102476,7 @@ ${massTbl}
       <div id="pva-rechenweg"               style="display:none;"></div>
       <div id="pva-netzaufnahme"            style="display:none;"></div>
       <div id="pva-pvna-schema"             style="display:none;"></div>
+      <div id="pva-netzstrategie"           style="display:none;"></div>
       <div id="pva-chart-heatmap"           style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-grenznutzen"       style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-wind-grenz"        style="overflow:hidden;"></div>
@@ -106482,6 +106519,8 @@ ${massTbl}
     // Eingaben der Ansicht „Netzaufnahme (Bestand)" (28-pv-netzaufnahme.js, per window
     // wegen des Importzyklus). Das Ergebnis steckt bereits in der Variante „Bestandsnetz".
     daten.netzaufnahme = window.pvnaEinstellungen?.() || null;
+    // Eingaben des Netzstrategie-Editors (30-netzstrategie.js): Jahre, Gruppierung, Ziel, Kostenkatalog, Editor-Auswahl
+    daten.netzstrategie = window.nsEinstellungen?.() || null;
     return JSON.parse(JSON.stringify(daten, _pvKodiere));
   }
 
@@ -106517,6 +106556,7 @@ ${massTbl}
     window._pvResReco = r.reco || null;
     window._pvResVarianten = r.varianten || null;
     window.pvnaEinstellungenSetzen?.(d.netzaufnahme || null);
+    window.nsEinstellungenSetzen?.(d.netzstrategie || null);
 
     // Offenes Panel nachziehen
     if (document.getElementById('pva-ergebnisse')) _pvSyncFromState();
@@ -106528,6 +106568,7 @@ ${massTbl}
   window.pvMarkStale            = pvMarkStale;
   // pvLadeSpotPreise nicht mehr nötig (Upload über Strom-Grundlagen)
   window.pvGetMaxKwpFromAssets  = pvGetMaxKwpFromAssets;
+  window.pvGetDemandH           = pvGetDemandH;           // Netzstrategie-Editor (30): gleicher Lastgang wie die Varianten
 
   var pvAnalyse = /*#__PURE__*/Object.freeze({
     __proto__: null,
@@ -126435,7 +126476,7 @@ ${massTbl}
     updateViz();
   }
 
-  // Jahres-Slider (Kopfleiste) auf das früheste vorhandene Baujahr setzen.
+  // Jahres-Slider (Kopfleiste): Untergrenze = frühestes vorhandenes Baujahr, Wert = heute.
   // Auch importierte bzw. automatisch ermittelte Baujahre zählen: Für die
   // zeitliche Darstellung muss ein geladenes Gebäude unabhängig von der Quelle
   // ab seinem hinterlegten Baujahr sichtbar sein.
@@ -126451,8 +126492,14 @@ ${massTbl}
     const spanne = parseInt(slider.max) - parseInt(slider.min) || 24;
     slider.min = minJahr;
     if (minJahr + spanne > parseInt(slider.max)) slider.max = minJahr + spanne;
-    slider.value = minJahr;
-    setGlobalYear(minJahr);
+    // Wert = aktuelles Jahr: das älteste Baujahr ist nur die Untergrenze des Schiebers.
+    // (Früher stand der Schieber danach auf dem ältesten Baujahr — alle jüngeren
+    // Gebäude galten dann als „geplant" und Netzrechnungen liefen im Jahr z. B. 1970.)
+    const heute = new Date().getFullYear();
+    if (heute > parseInt(slider.max)) slider.max = heute;
+    const wert = Math.max(minJahr, heute);
+    slider.value = wert;
+    setGlobalYear(wert);
   }
 
   function _loadProject(project) {
@@ -207075,12 +207122,41 @@ ${teile.join('\n')}
   // Standard aus — Assets ohne Schicht zählen als Bestand, das würde geplante
   // Anlagen still zur Vorbelastung machen.
   // ersatzQs: Annahme (mm² NAYY) für Kabel ohne erfassten Querschnitt; 0 = keine Grenze (optimistisch).
-  const _einStandard = () => ({ quelle: 'aktiv', einspFaktor: EINSP_DEFAULT, duGrenzePct: MAX_DELTA_U_PCT, bestandAlsVorlast: false, ersatzQs: 0 });
+  // stichjahr: was bis dahin gebaut ist, gilt als Bestand (null = aktuelles Jahr).
+  // zieljahr:  Rechenjahr — Netz und Gebäude in diesem Jahr (null = Stichjahr).
+  //            Unabhängig vom Jahresschieber (der kann auf einem historischen Jahr stehen).
+  // flaechen:  'alle' | 'bestand' (Gebäude bis zum Stichjahr) | 'neu' (danach bis zum Zieljahr gebaut).
+  const _einStandard = () => ({ quelle: 'aktiv', einspFaktor: EINSP_DEFAULT, duGrenzePct: MAX_DELTA_U_PCT, bestandAlsVorlast: false, ersatzQs: 0,
+    stichjahr: null, zieljahr: null, flaechen: 'alle' });
+  const _heute = () => new Date().getFullYear();
+  const _int = v => { const n = parseInt(v); return Number.isFinite(n) ? n : null; };
+  /** Stich- und Rechenjahr aus den Eingaben (Rechenjahr nie vor dem Stichjahr). */
+  function pvnaJahre(e = _ein) {
+    const stich = _int(e?.stichjahr) ?? _heute();
+    const ziel = Math.max(stich, _int(e?.zieljahr) ?? stich);
+    return { stich, ziel };
+  }
+  /** Steht das Gebäude im Jahr yr (gebaut, nicht abgerissen)? Ohne Baujahr: immer schon da. */
+  function pvnaGebaeudeSteht(g, yr) {
+    const bj = _int(g?.baujahr), aj = _int(g?.abrissjahr);
+    return !(bj != null && yr < bj) && !(aj != null && yr >= aj);
+  }
+  /** Neubau im Sinne der Netzstrategie: nach dem Stichjahr gebaut. */
+  const pvnaIstNeubau = (g, stich) => { const bj = _int(g?.baujahr); return bj != null && bj > stich; };
+  /** Spätestes Baujahr nach dem Stichjahr (Vorschlag fürs Zieljahr), sonst null. */
+  function pvnaLetztesNeubaujahr(stich) {
+    const gebArr = (typeof gebaeude !== 'undefined' ? gebaeude : window.gebaeude) || [];
+    // Gebäude und PV-Anlagen ohne Gebäude (eigenes Baujahr)
+    const j = [...gebArr.map(g => _int(g.baujahr)),
+      ...ASSETS.items.filter(a => a.type === 'PV' && a.buildingId == null).map(a => _int(a.baujahr))]
+      .filter(b => b != null && b > stich);
+    return j.length ? Math.max(...j) : null;
+  }
   /** Wählbare Ersatzquerschnitte für Kabel ohne Angabe. */
   const PVNA_ERSATZ_QS = [0, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240];
   const _ein = _einStandard();
 
-  const _fmt$1 = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
+  const _fmt$2 = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
     : x.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -207093,7 +207169,11 @@ ${teile.join('\n')}
    * Zuordnungen und Hinweise für die Darstellung.
    */
   function pvnaModell(opts = {}) {
-    const yr = opts.jahr ?? globalYear ?? new Date().getFullYear();
+    const { stich, ziel } = pvnaJahre(opts);
+    const yr = opts.jahr ?? ziel;
+    const flaechen = opts.flaechen === 'bestand' || opts.flaechen === 'neu' ? opts.flaechen : 'alle';
+    // Flächenfilter: Dach aufnehmen? (Neubau = Gebäude nach dem Stichjahr gebaut)
+    const flaecheOk = neu => flaechen === 'alle' || (flaechen === 'neu') === neu;
     const quelle = opts.quelle || 'aktiv';
     const einspFaktor = opts.einspFaktor > 0 ? opts.einspFaktor : EINSP_DEFAULT;
     const duGrenzePct = opts.duGrenzePct > 0 ? opts.duGrenzePct : MAX_DELTA_U_PCT;
@@ -207117,6 +207197,23 @@ ${teile.join('\n')}
     const name = id => assetMap.get(id)?.name || gebById.get(id)?.name
       || (gebById.has(id) ? 'Gebäude ' + id : String(id));
 
+    // Lage (lat/lng) je Knoten — für die Netzstrategie (Kabellängen neuer Anschlüsse)
+    const gebMitte = g => {
+      const pg = g?.polygon;
+      if (Array.isArray(pg) && pg.length) {
+        let la = 0, ln = 0;
+        for (const c of pg) { la += +c.lat; ln += +c.lng; }
+        return { lat: la / pg.length, lng: ln / pg.length };
+      }
+      return Number.isFinite(+g?.lat) && Number.isFinite(+g?.lng) ? { lat: +g.lat, lng: +g.lng } : null;
+    };
+    const knotenPos = id => {
+      const a = assetMap.get(id);
+      if (a && Number.isFinite(+a.lat) && Number.isFinite(+a.lng)) return { lat: +a.lat, lng: +a.lng };
+      return gebById.has(id) ? gebMitte(gebById.get(id)) : null;
+    };
+    const elPos = new Map();            // elementId → { lat, lng } des Knotens hinter dem Element
+
     const elemente = [];
     const elInfo = new Map();           // elementId → { label, trafoId, kante?, asset? }
     const knotenEl = new Map();         // Knoten-ID → Element, über das er angebunden ist
@@ -207134,6 +207231,7 @@ ${teile.join('\n')}
       elInfo.set(tid, { label: `${t.name || 'Trafo'} (${kva} kVA)`, trafoId: t.id, asset: t, kva });
       knotenEl.set(t.id, tid);
       knotenTrafo.set(t.id, t.id);
+      elPos.set(tid, knotenPos(t.id));
 
       const trafoRang = TYPE_RANK.Trafo;
       const queue = [];
@@ -207159,6 +207257,7 @@ ${teile.join('\n')}
         }
         knotenEl.set(id, eid);
         knotenTrafo.set(id, t.id);
+        if (!elPos.has(eid)) elPos.set(eid, knotenPos(id));
         const a = assetMap.get(id);
         const rang = TYPE_RANK[a?.type] ?? 6;
         for (const { nb, edge: e2 } of (adj.get(id) || [])) {
@@ -207186,7 +207285,7 @@ ${teile.join('\n')}
       if (kw <= 0) continue;
       const el = elById.get(knotenEl.get(a.id));
       if (el) el.vorlastKw += kw;
-      else hinweise.push(`${escHtml(a.name || a.type)} (${_fmt$1(kw)} kW) ist an keinen Trafo angebunden und bleibt unberücksichtigt.`);
+      else hinweise.push(`${escHtml(a.name || a.type)} (${_fmt$2(kw)} kW) ist an keinen Trafo angebunden und bleibt unberücksichtigt.`);
     }
 
     // Dächer: geplante PV-Assets + Gebäude-PV (ohne eigenes PV-Asset)
@@ -207196,6 +207295,10 @@ ${teile.join('\n')}
     for (const a of aktiveA.filter(a => a.type === 'PV')) {
       if (a.buildingId != null) gebMitAsset.add(a.buildingId);
       if (istBestandPv(a)) continue;                                  // schon Vorlast
+      const g = a.buildingId != null ? gebById.get(a.buildingId) : null;
+      if (g && !pvnaGebaeudeSteht(g, yr)) continue;                   // Gebäude (noch) nicht da bzw. abgerissen
+      const neu = g ? pvnaIstNeubau(g, stich) : (_int(a.baujahr) ?? 0) > stich;
+      if (!flaecheOk(neu)) continue;
       const p = getAssetPropsForYear(a, yr);
       const kwp = parseFloat(p.leistungKWp) || 0;
       if (kwp <= 0) continue;
@@ -207203,18 +207306,21 @@ ${teile.join('\n')}
       const id = 'A:' + a.id;
       daecher.push({ id, elementId: knotenEl.get(a.id) ?? null, kwpMax: kwp, ertragFaktor: ertrag, einspFaktor });
       dachInfo.set(id, { name: a.name || ('PV ' + a.id), gebId: a.buildingId, trafoId: knotenTrafo.get(a.id), art: 'PV-Anlage',
-        ostwest: p.ausrichtung === 'ostwest' });
+        ostwest: p.ausrichtung === 'ostwest', neu, pos: knotenPos(a.id) || (g ? gebMitte(g) : null) });
     }
     for (const g of gebArr) {
       if (gebMitAsset.has(g.id)) continue;
       if (quelle === 'aktiv' && !g.pvAktiv) continue;
+      if (!pvnaGebaeudeSteht(g, yr)) continue;                        // im Rechenjahr nicht vorhanden
+      const neu = pvnaIstNeubau(g, stich);
+      if (!flaecheOk(neu)) continue;
       const kwp = calcGebKwp(g) || 0;
       if (kwp <= 0) continue;
       const id = 'G:' + g.id;
       daecher.push({ id, elementId: knotenEl.get(g.id) ?? null, kwpMax: kwp,
         ertragFaktor: (calcGebKwpKorr(g) || kwp) / kwp, einspFaktor });
       dachInfo.set(id, { name: g.name || ('Gebäude ' + g.id), gebId: g.id, trafoId: knotenTrafo.get(g.id),
-        art: g.pvAktiv ? 'Dachfläche' : 'Dachpotenzial', ostwest: g.pvFlAusrichtung === 'ostwest' });
+        art: g.pvAktiv ? 'Dachfläche' : 'Dachpotenzial', ostwest: g.pvFlAusrichtung === 'ostwest', neu, pos: gebMitte(g) });
     }
 
     // Prüfpunkte für die Spannung: jeder angebundene Knoten
@@ -207227,7 +207333,32 @@ ${teile.join('\n')}
     const eingabe = { elemente, daecher, pruefpunkte, duGrenzePct };
     _massnahmenAnhaengen(eingabe, elInfo, { kIz, cosPhi, tLeiter, I_je_kW });
 
-    return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, ersatzQs, bestandPvKwp, jahr: yr, cosPhi, kIz } };
+    // Mittelspannungs-Punkte: Schaltanlage/NAP (Abgang fürs Erzeugungsnetz) und Trafos (Ring-Einschleifung)
+    const msPunkte = aktiveA.filter(a => ['NAP', 'Schaltanlage', 'Trafo'].includes(a.type))
+      .map(a => ({ id: a.id, typ: a.type, name: a.name || a.type, pos: knotenPos(a.id) })).filter(m => m.pos);
+
+    return { eingabe, info: { elInfo, dachInfo, hinweise, unbekannteQs, ersatzQs, bestandPvKwp, jahr: yr, stichjahr: stich, flaechen,
+      cosPhi, kIz, tLeiter, I_je_kW, elPos, msPunkte } };
+  }
+
+  /**
+   * Neues NS-Kabel (NAYY) auslegen: kleinster Querschnitt bzw. kleinste Zahl
+   * paralleler Stränge (bis 4 × 240 mm²), der die Leistung trägt und für sich
+   * höchstens duZielPct Spannungsanhebung erzeugt. null, wenn nichts reicht.
+   * k: { cosPhi, kIz, tLeiter, I_je_kW } wie im Netzmodell (info).
+   */
+  function pvnaKabelNeu(pKw, lengthM, duZielPct, k) {
+    const kt = KABEL_TYPEN.NAYY;
+    for (let n = 1; n <= 4; n++) {
+      for (const s of kt.sections) {
+        const r = _kabelKennwerte(kt, s.mm2, n, Math.max(1, lengthM), k);
+        if (r.kapKw >= pKw && r.duProKwPct * pKw <= duZielPct) {
+          return { kapKw: r.kapKw, duProKwPct: r.duProKwPct, mm2: s.mm2, n, eurM: s.eurM * n,
+            text: `${n > 1 ? n + ' × ' : ''}${s.mm2} mm² NAYY, ${_fmt$2(lengthM)} m (neu)` };
+        }
+      }
+    }
+    return null;
   }
 
   /** Kapazität, ΔU-Koeffizient und Beschreibung eines Bestandskabels. */
@@ -207242,19 +207373,19 @@ ${teile.join('\n')}
       // Vorsichtige Annahme statt „keine Grenze": Ersatzquerschnitt NAYY, einfach
       const r = _kabelKennwerte(KABEL_TYPEN.NAYY, k.ersatzQs, 1, lengthM, k);
       return { kapKw: r.kapKw, duProKwPct: r.duProKwPct, ersatz: true,
-        text: `Querschnitt nicht erfasst — Annahme ${k.ersatzQs} mm² NAYY, ${_fmt$1(lengthM)} m`,
+        text: `Querschnitt nicht erfasst — Annahme ${k.ersatzQs} mm² NAYY, ${_fmt$2(lengthM)} m`,
         ist: { crossSection: k.ersatzQs, nParallel: 1, cableType: 'NAYY', lengthM } };
     }
     if (!ep.crossSection) {
       return { kapKw: Infinity, duProKwPct: 0, unbekannt: true,
-        text: `Querschnitt nicht erfasst, ${_fmt$1(lengthM)} m`, ist: { lengthM } };
+        text: `Querschnitt nicht erfasst, ${_fmt$2(lengthM)} m`, ist: { lengthM } };
     }
     const kt = KABEL_TYPEN[ep.cableType] || KABEL_TYPEN.NAYY;
     const r = _kabelKennwerte(kt, ep.crossSection, ep.nParallel || 1, lengthM, k);
     const n = Math.max(1, ep.nParallel || 1);
     return {
       kapKw: r.kapKw, duProKwPct: r.duProKwPct,
-      text: `${n > 1 ? n + ' × ' : ''}${ep.crossSection} mm² ${ep.cableType || 'NAYY'}, ${_fmt$1(lengthM)} m`
+      text: `${n > 1 ? n + ' × ' : ''}${ep.crossSection} mm² ${ep.cableType || 'NAYY'}, ${_fmt$2(lengthM)} m`
         + (edge.autoSized ? ' (Querschnitt geschätzt)' : ''),
       ist: { crossSection: ep.crossSection, nParallel: n, cableType: ep.cableType || 'NAYY', lengthM },
     };
@@ -207384,6 +207515,11 @@ ${teile.join('\n')}
     if (bv) _ein.bestandAlsVorlast = !!bv.checked;
     const eq = document.getElementById('pvna-ersatzqs');
     if (eq) _ein.ersatzQs = Math.max(0, parseFloat(eq.value) || 0);
+    const sj = document.getElementById('pvna-stichjahr'), zj = document.getElementById('pvna-zieljahr');
+    if (sj) _ein.stichjahr = _int(sj.value);
+    if (zj) _ein.zieljahr = _int(zj.value);
+    const fl = document.getElementById('pvna-flaechen');
+    if (fl) _ein.flaechen = fl.value;
   }
 
   /** Rechnet mit den aktuellen Eingaben und legt das Ergebnis ab. */
@@ -207433,12 +207569,16 @@ ${teile.join('\n')}
     const o = _letztes?.optionen?.get(dachId);
     if (!o) return null;
     const ow = !!_letztes.modell.info.dachInfo.get(dachId)?.ostwest;
-    const up = window.elPvH || null;
-    if (_formCache.up !== up) { _formCache.up = up; _formCache.f = {}; }
-    const form = _formCache.f[ow] || (_formCache.f[ow] = _profilForm(ow));
-    return pvnaAbregelung(form, o.spez, kwp, pZulKw);
+    return pvnaAbregelung(pvnaProfilForm(ow), o.spez, kwp, pZulKw);
   }
   const _formCache = { up: undefined, f: {} };
+  /** Profilform (8760 h, Summe 1) je Ausrichtung, gecacht bis sich der Profil-Upload ändert. */
+  function pvnaProfilForm(ostwest) {
+    const up = window.elPvH || null;
+    if (_formCache.up !== up) { _formCache.up = up; _formCache.f = {}; }
+    const k = ostwest ? 'ow' : 'sued';
+    return _formCache.f[k] || (_formCache.f[k] = _profilForm(!!ostwest));
+  }
 
   /** Map<dachId, { pZulKw, a, b, mehrKwhProKwp }> — a/b wie pvnaAbregelung plus kwp. */
   function _optionen(modell, treppe) {
@@ -207585,7 +207725,7 @@ ${teile.join('\n')}
   function pvnaRender() {
     const el = document.getElementById('pva-netzaufnahme');
     if (!el) return;
-    el.innerHTML = _steuerHtml() + (_letztes ? _ergebnisHtml(_letztes) : `
+    el.innerHTML = _steuerHtml() + (_letztes ? _ergebnisHtml$1(_letztes) : `
     <div style="color:var(--muted);font-size:11px;text-align:center;padding:40px 0;">
       Rechnet aus Trafos, Kabeln und den Dachflächen der Gebäude, wie viel PV das
       bestehende Netz aufnimmt — unabhängig von Lastgang und Variantenrechnung.<br>
@@ -207612,6 +207752,25 @@ ${teile.join('\n')}
       <span style="${lbl}" title="Zulässige Spannungsanhebung ab Trafo-Sammelschiene (VDE-AR-N 4105: 3 %).">ΔU-Grenze %</span>
       <input id="pvna-du" type="number" min="0.5" max="10" step="0.5" value="${_ein.duGrenzePct}" style="${inp}">
     </div>
+    <div style="flex:0 1 96px;">
+      <span style="${lbl}" title="Was bis zu diesem Jahr gebaut ist, gilt als Bestand. Leer = aktuelles Jahr.">Stichjahr</span>
+      <input id="pvna-stichjahr" type="number" min="1900" max="2100" step="1" value="${_ein.stichjahr ?? ''}" placeholder="${_heute()}" style="${inp}">
+    </div>
+    <div style="flex:0 1 96px;">
+      <span style="${lbl}" title="Rechenjahr: Netz und Gebäude in diesem Jahr. Leer = Stichjahr. Unabhängig vom Jahresschieber.">Zieljahr</span>
+      <input id="pvna-zieljahr" type="number" min="1900" max="2100" step="1" value="${_ein.zieljahr ?? ''}"
+        placeholder="${pvnaJahre().stich}" style="${inp}">
+    </div>
+    <div style="flex:0 1 190px;">
+      <span style="${lbl}" title="Neubau = Gebäude mit Baujahr nach dem Stichjahr (bis zum Zieljahr)">Dachflächen</span>
+      <select id="pvna-flaechen" style="${inp}">
+        <option value="alle" ${_ein.flaechen === 'alle' ? 'selected' : ''}>alle Gebäude</option>
+        <option value="bestand" ${_ein.flaechen === 'bestand' ? 'selected' : ''}>nur Bestand (bis Stichjahr)</option>
+        <option value="neu" ${_ein.flaechen === 'neu' ? 'selected' : ''}>nur Neubau (nach Stichjahr)</option>
+      </select>
+      ${_ein.flaechen === 'neu' && pvnaJahre().ziel <= pvnaJahre().stich && pvnaLetztesNeubaujahr(pvnaJahre().stich)
+        ? `<span style="font-size:9.5px;color:#ffb74d;">Zieljahr ≥ ${pvnaLetztesNeubaujahr(pvnaJahre().stich)} setzen — sonst steht noch kein Neubau.</span>` : ''}
+    </div>
     <div style="flex:0 1 190px;">
       <span style="${lbl}" title="Kabel ohne erfassten Querschnitt: ohne Annahme gilt für sie keine Grenze — die Aufnahme ist dort überschätzt.">Kabel ohne Querschnitt</span>
       <select id="pvna-ersatzqs" style="${inp}">${pvnaErsatzOptionen(_ein.ersatzQs)}</select>
@@ -207634,11 +207793,11 @@ ${teile.join('\n')}
     <div style="font-size:10px;color:var(--muted);margin-top:2px;">${label}</div></div>`;
   }
 
-  function _ergebnisHtml({ modell, treppe, jahr }) {
+  function _ergebnisHtml$1({ modell, treppe, jahr }) {
     const { info } = modell;
     const b = treppe.basis, e = treppe.ende;
     const pot = b.potenzialKwp;
-    const pct = x => pot > 0 ? ' (' + _fmt$1(x / pot * 100) + ' %)' : '';
+    const pct = x => pot > 0 ? ' (' + _fmt$2(x / pot * 100) + ' %)' : '';
     const invest = treppe.schritte.at(-1)?.kumInvestEUR || 0;
 
     if (!modell.eingabe.daecher.length) {
@@ -207648,27 +207807,27 @@ ${teile.join('\n')}
 
     const os = _optionenSumme(_letztes.optionen);
     const kacheln = `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-    ${_kachel$1(_fmt$1(pot), 'kWp', 'Flächenpotenzial')}
-    ${_kachel$1(_fmt$1(b.summeKwp), 'kWp', 'ohne Ertüchtigung' + pct(b.summeKwp), '#66bb6a')}
-    ${_kachel$1(_fmt$1(e.summeKwp), 'kWp', 'mit Ertüchtigung' + pct(e.summeKwp), '#4fc3f7')}
-    ${_kachel$1(_fmt$1(invest / 1000), 'T€', 'Invest Ertüchtigung', '#ffb74d')}
-    ${treppe.restKwp > 0.5 ? _kachel$1(_fmt$1(treppe.restKwp), 'kWp', 'nicht erschließbar', '#ef5350') : ''}
+    ${_kachel$1(_fmt$2(pot), 'kWp', 'Flächenpotenzial')}
+    ${_kachel$1(_fmt$2(b.summeKwp), 'kWp', 'ohne Ertüchtigung' + pct(b.summeKwp), '#66bb6a')}
+    ${_kachel$1(_fmt$2(e.summeKwp), 'kWp', 'mit Ertüchtigung' + pct(e.summeKwp), '#4fc3f7')}
+    ${_kachel$1(_fmt$2(invest / 1000), 'T€', 'Invest Ertüchtigung', '#ffb74d')}
+    ${treppe.restKwp > 0.5 ? _kachel$1(_fmt$2(treppe.restKwp), 'kWp', 'nicht erschließbar', '#ef5350') : ''}
   </div>
   <div style="font-size:11px;font-weight:600;margin:2px 0 6px;">Ohne Ertüchtigung: weniger ausbauen oder abregeln?</div>
   <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;">
-    ${_kachel$1(_fmt$1(os.aKwp), 'kWp', `A · weniger ausbauen → ${_fmt$1(os.aMwh)} MWh/a`, '#66bb6a')}
-    ${_kachel$1(_fmt$1(os.bKwp), 'kWp', `B · voll ausbauen + abregeln → ${_fmt$1(os.bMwh)} MWh/a nutzbar`, '#ffb300')}
-    ${_kachel$1(_fmt$1(os.bVerlustPct, 1), '%', `Abregelungsverlust bei B (${_fmt$1(os.bAbgMwh)} MWh/a)`, '#ff7043')}
-    ${_kachel$1('+' + _fmt$1(os.bMwh - os.aMwh), 'MWh/a', `Mehrertrag B gegenüber A für +${_fmt$1(os.bKwp - os.aKwp)} kWp`, '#4fc3f7')}
+    ${_kachel$1(_fmt$2(os.aKwp), 'kWp', `A · weniger ausbauen → ${_fmt$2(os.aMwh)} MWh/a`, '#66bb6a')}
+    ${_kachel$1(_fmt$2(os.bKwp), 'kWp', `B · voll ausbauen + abregeln → ${_fmt$2(os.bMwh)} MWh/a nutzbar`, '#ffb300')}
+    ${_kachel$1(_fmt$2(os.bVerlustPct, 1), '%', `Abregelungsverlust bei B (${_fmt$2(os.bAbgMwh)} MWh/a)`, '#ff7043')}
+    ${_kachel$1('+' + _fmt$2(os.bMwh - os.aMwh), 'MWh/a', `Mehrertrag B gegenüber A für +${_fmt$2(os.bKwp - os.aKwp)} kWp`, '#4fc3f7')}
   </div>
   <div style="font-size:10.5px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
     Beide Wege halten die Netzgrenze ein: Bei B wird die Einspeisung am EZA-Regler bzw. Wechselrichter
     auf dieselbe Leistung gekappt wie bei A. Stündlich gerechnet mit dem PV-Profil, ohne Eigenverbrauch
     (der die Abregelung zusätzlich senken würde). Dächer ohne jede Netzkapazität sind in B nicht enthalten.</div>
   <div style="font-size:10.5px;color:var(--muted);margin-bottom:14px;">
-    Rechenjahr ${jahr} · volle Einspeisung ${_fmt$1(modell.eingabe.daecher[0]?.einspFaktor, 2)} kW/kWp ohne gleichzeitige Last ·
-    ΔU ≤ ${_fmt$1(modell.eingabe.duGrenzePct, 1)} % · Kabel mit Bestandsquerschnitt · Belegung: ertragsstärkste Dächer zuerst
-    ${info.bestandPvKwp > 0 ? ` · ${_fmt$1(info.bestandPvKwp)} kWp Bestands-PV als Vorbelastung` : ''}</div>`;
+    Rechenjahr ${jahr} · volle Einspeisung ${_fmt$2(modell.eingabe.daecher[0]?.einspFaktor, 2)} kW/kWp ohne gleichzeitige Last ·
+    ΔU ≤ ${_fmt$2(modell.eingabe.duGrenzePct, 1)} % · Kabel mit Bestandsquerschnitt · Belegung: ertragsstärkste Dächer zuerst
+    ${info.bestandPvKwp > 0 ? ` · ${_fmt$2(info.bestandPvKwp)} kWp Bestands-PV als Vorbelastung` : ''}</div>`;
 
     return kacheln + _karteKnopf() + pvnaTreppeSvg(_kompakt(_letztes)) + _massnahmenHtml(treppe) + _trafoHtml(modell, treppe)
       + _gebaeudeHtml(modell, treppe) + _hinweiseHtml(info);
@@ -207692,13 +207851,13 @@ ${teile.join('\n')}
     for (const s of schritte) d += ` H${x(s.kumInvestEUR)} V${y(s.summeKwp)}`;
     d += ` H${x(maxX)}`;
     const punkte = schritte.map((s, i) =>
-      `<circle cx="${x(s.kumInvestEUR)}" cy="${y(s.summeKwp)}" r="3.5" fill="#4fc3f7"><title>Schritt ${i + 1}: +${_fmt$1(s.zuwachsKwp)} kWp für ${_fmt$1(s.investEUR)} €</title></circle>
+      `<circle cx="${x(s.kumInvestEUR)}" cy="${y(s.summeKwp)}" r="3.5" fill="#4fc3f7"><title>Schritt ${i + 1}: +${_fmt$2(s.zuwachsKwp)} kWp für ${_fmt$2(s.investEUR)} €</title></circle>
      <text x="${x(s.kumInvestEUR) + 5}" y="${y(s.summeKwp) - 5}" font-size="9" fill="var(--muted)">${i + 1}</text>`).join('');
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => `
     <line x1="${PL}" x2="${W - PR}" y1="${y(pot * f)}" y2="${y(pot * f)}" stroke="var(--border)" stroke-width="0.5"/>
-    <text x="${PL - 6}" y="${y(pot * f) + 3}" font-size="9" fill="var(--muted)" text-anchor="end">${_fmt$1(pot * f)}</text>`).join('');
+    <text x="${PL - 6}" y="${y(pot * f) + 3}" font-size="9" fill="var(--muted)" text-anchor="end">${_fmt$2(pot * f)}</text>`).join('');
     const xTicks = [0, 0.5, 1].map(f => `
-    <text x="${x(maxX * f)}" y="${H - PB + 14}" font-size="9" fill="var(--muted)" text-anchor="middle">${_fmt$1(maxX * f / 1000)} T€</text>`).join('');
+    <text x="${x(maxX * f)}" y="${H - PB + 14}" font-size="9" fill="var(--muted)" text-anchor="middle">${_fmt$2(maxX * f / 1000)} T€</text>`).join('');
     return `
   <div style="font-size:11px;font-weight:600;margin:4px 0 6px;">Ausbautreppe — angeschlossene PV über Ertüchtigungskosten</div>
   <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block;margin-bottom:14px;">
@@ -207706,7 +207865,7 @@ ${teile.join('\n')}
     <line x1="${PL}" x2="${W - PR}" y1="${y(pot)}" y2="${y(pot)}" stroke="#ef5350" stroke-dasharray="4,3" stroke-width="1"/>
     <text x="${W - PR}" y="${y(pot) - 4}" font-size="9" fill="#ef5350" text-anchor="end">Flächenpotenzial</text>
     <path d="${d}" fill="none" stroke="#4fc3f7" stroke-width="2"/>
-    <circle cx="${x(0)}" cy="${y(basisKwp)}" r="4" fill="#66bb6a"><title>Bestand: ${_fmt$1(basisKwp)} kWp</title></circle>
+    <circle cx="${x(0)}" cy="${y(basisKwp)}" r="4" fill="#66bb6a"><title>Bestand: ${_fmt$2(basisKwp)} kWp</title></circle>
     ${punkte}
     <text x="12" y="${(PT + H - PB) / 2}" font-size="9" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 12 ${(PT + H - PB) / 2})">angeschlossen kWp</text>
   </svg>`;
@@ -207724,9 +207883,9 @@ ${teile.join('\n')}
       ? 'Keine Standard-Ertüchtigung erschließt weitere Flächen (siehe Hinweise).'
       : 'Alle Flächen lassen sich ohne Ertüchtigung anschließen.'}</div>`;
     }
-    const zeilen = [`<tr>${_td('0')}${_td('Bestand — keine Ertüchtigung')}${_td('—', 1)}${_td(_fmt$1(t.basis.summeKwp), 1)}${_td('—', 1)}${_td(_fmt$1(t.basis.summeKwp), 1)}</tr>`,
+    const zeilen = [`<tr>${_td('0')}${_td('Bestand — keine Ertüchtigung')}${_td('—', 1)}${_td(_fmt$2(t.basis.summeKwp), 1)}${_td('—', 1)}${_td(_fmt$2(t.basis.summeKwp), 1)}</tr>`,
       ...t.schritte.map((s, i) => `<tr>${_td(i + 1)}${_td(s.massnahmen.map(m => escHtml(m.label)).join('<br>'))}
-      ${_td(_fmt$1(s.investEUR), 1)}${_td('+' + _fmt$1(s.zuwachsKwp), 1)}${_td(_fmt$1(s.eurProKwp), 1)}${_td(_fmt$1(s.summeKwp), 1)}</tr>`)].join('');
+      ${_td(_fmt$2(s.investEUR), 1)}${_td('+' + _fmt$2(s.zuwachsKwp), 1)}${_td(_fmt$2(s.eurProKwp), 1)}${_td(_fmt$2(s.summeKwp), 1)}</tr>`)].join('');
     return `<div style="font-size:11px;font-weight:600;margin-bottom:6px;">Ertüchtigungen in Reihenfolge der Wirksamkeit (€ je zusätzlichem kWp)</div>`
       + _tabelle(_th('#') + _th('Maßnahme') + _thR('Invest €') + _thR('Zuwachs kWp') + _thR('€/kWp') + _thR('angeschlossen kWp'), zeilen);
   }
@@ -207747,8 +207906,8 @@ ${teile.join('\n')}
     const zeilen = [...proTrafo.entries()].map(([tid, v]) => {
       const el = tid != null ? auslBasis.get('T:' + tid) : null;
       const name = tid != null ? escHtml(info.elInfo.get('T:' + tid)?.label || tid) : '<i>nicht angebunden</i>';
-      return `<tr>${_td(name)}${_td(_fmt$1(v.pot), 1)}${_td(_fmt$1(v.a), 1)}${_td(v.pot > 0 ? _fmt$1(v.a / v.pot * 100) + ' %' : '—', 1)}
-      ${_td(el ? _fmt$1(el.auslastungPct) + ' %' : '—', 1)}${_td(_fmt$1(v.b), 1)}</tr>`;
+      return `<tr>${_td(name)}${_td(_fmt$2(v.pot), 1)}${_td(_fmt$2(v.a), 1)}${_td(v.pot > 0 ? _fmt$2(v.a / v.pot * 100) + ' %' : '—', 1)}
+      ${_td(el ? _fmt$2(el.auslastungPct) + ' %' : '—', 1)}${_td(_fmt$2(v.b), 1)}</tr>`;
     }).join('');
     return `<div style="font-size:11px;font-weight:600;margin-bottom:6px;">Je Trafo</div>`
       + _tabelle(_th('Trafo') + _thR('Potenzial kWp') + _thR('ohne Ertücht. kWp') + _thR('Anteil')
@@ -207788,12 +207947,12 @@ ${teile.join('\n')}
         const voll = d.anteil >= 0.999;
         return `<tr>${_td(`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${_anteilFarbe(d.anteil)};margin-right:6px;"></span>${escHtml(di.name || d.id)}`
           + `<div style="color:var(--muted);font-size:10px;margin-left:14px;">${escHtml(di.art || '')}</div>`)}
-        ${_td(_fmt$1(d.kwpMax), 1)}${_td(_fmt$1(o?.pZulKw), 1)}
-        ${_td(_fmt$1(d.kwp), 1)}${_td(_fmt$1(d.anteil * 100) + ' %', 1)}${_td(_fmt$1(o?.a.nutzbarMwh, 1), 1)}
-        ${_td(ohneNetz ? '—' : voll ? '<span style="color:var(--muted);">= A</span>' : _fmt$1(o.b.nutzbarMwh, 1), 1)}
-        ${_td(ohneNetz || voll ? '—' : _fmt$1(o.b.verlustPct, 1) + ' %', 1)}
-        ${_td(ohneNetz || voll || o.mehrKwhProKwp == null ? '—' : _fmt$1(o.mehrKwhProKwp), 1)}
-        ${_td(_fmt$1(endeById.get(d.id)?.kwp), 1)}${_td(grund)}</tr>`;
+        ${_td(_fmt$2(d.kwpMax), 1)}${_td(_fmt$2(o?.pZulKw), 1)}
+        ${_td(_fmt$2(d.kwp), 1)}${_td(_fmt$2(d.anteil * 100) + ' %', 1)}${_td(_fmt$2(o?.a.nutzbarMwh, 1), 1)}
+        ${_td(ohneNetz ? '—' : voll ? '<span style="color:var(--muted);">= A</span>' : _fmt$2(o.b.nutzbarMwh, 1), 1)}
+        ${_td(ohneNetz || voll ? '—' : _fmt$2(o.b.verlustPct, 1) + ' %', 1)}
+        ${_td(ohneNetz || voll || o.mehrKwhProKwp == null ? '—' : _fmt$2(o.mehrKwhProKwp), 1)}
+        ${_td(_fmt$2(endeById.get(d.id)?.kwp), 1)}${_td(grund)}</tr>`;
       }).join('');
     const kopf1 = `<tr>${thG('', 3, 'var(--muted)')}${thG('A · weniger ausbauen', 3, '#66bb6a')}`
       + `${thG('B · voll ausbauen + abregeln', 3, '#ffb300')}${thG('', 2, 'var(--muted)')}</tr>`;
@@ -207897,7 +208056,7 @@ ${teile.join('\n')}
           className: '', iconSize: null,
           html: `<div style="transform:translate(-50%,-50%);white-space:nowrap;font:600 10.5px/1.2 'DM Mono',monospace;
           color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;text-align:center;pointer-events:none;">
-          ${_fmt$1(a * 100)} %<br><span style="font-weight:400;font-size:9.5px;">${_fmt$1(e.kwp)}/${_fmt$1(e.kwpMax)} kWp</span></div>`,
+          ${_fmt$2(a * 100)} %<br><span style="font-weight:400;font-size:9.5px;">${_fmt$2(e.kwp)}/${_fmt$2(e.kwpMax)} kWp</span></div>`,
         }),
       }));
     }
@@ -207936,10 +208095,10 @@ ${teile.join('\n')}
       const teil = anteil < 0.999 && e.pZulKw > 0;
       const verlust = e.bErzMwh > 0 ? (e.bErzMwh - e.bMwh) / e.bErzMwh * 100 : 0;
       L.bindTooltip?.(`<b>${escHtml(g.name || 'Gebäude ' + g.id)}</b><br>`
-        + `Netzgrenze: ${_fmt$1(e.pZulKw)} kW Einspeisung<br>`
-        + `<span style="color:#66bb6a;">A · weniger ausbauen:</span> ${_fmt$1(e.kwp)} von ${_fmt$1(e.kwpMax)} kWp (${_fmt$1(anteil * 100)} %) → ${_fmt$1(e.aMwh, 1)} MWh/a`
-        + (teil ? `<br><span style="color:#ffb300;">B · voll + abregeln:</span> ${_fmt$1(e.kwpMax)} kWp → ${_fmt$1(e.bMwh, 1)} MWh/a nutzbar, ${_fmt$1(verlust, 1)} % abgeregelt` : '')
-        + (e.kwpMit > e.kwp + 0.5 ? `<br>mit Ertüchtigung: ${_fmt$1(e.kwpMit)} kWp` : '') + grund,
+        + `Netzgrenze: ${_fmt$2(e.pZulKw)} kW Einspeisung<br>`
+        + `<span style="color:#66bb6a;">A · weniger ausbauen:</span> ${_fmt$2(e.kwp)} von ${_fmt$2(e.kwpMax)} kWp (${_fmt$2(anteil * 100)} %) → ${_fmt$2(e.aMwh, 1)} MWh/a`
+        + (teil ? `<br><span style="color:#ffb300;">B · voll + abregeln:</span> ${_fmt$2(e.kwpMax)} kWp → ${_fmt$2(e.bMwh, 1)} MWh/a nutzbar, ${_fmt$2(verlust, 1)} % abgeregelt` : '')
+        + (e.kwpMit > e.kwp + 0.5 ? `<br>mit Ertüchtigung: ${_fmt$2(e.kwpMit)} kWp` : '') + grund,
       { sticky: true });
     }
     _labelsZeichnen(je);
@@ -207960,7 +208119,7 @@ ${teile.join('\n')}
     const stufe = e => ANTEIL_STUFEN.find(st => e.kwp / e.kwpMax >= st.ab);
     el.innerHTML = `<b>PV-Netzaufnahme (Bestand)</b>
     ${ANTEIL_STUFEN.map(st => `<span title="Anteil der Dachfläche ohne Ertüchtigung"><span style="color:${st.farbe};">■</span> ${st.label}: ${je.filter(e => stufe(e) === st).length}</span>`).join('')}
-    <span style="color:var(--muted);">${_fmt$1(k.ohneErtuechtigungKwp)} von ${_fmt$1(k.potenzialKwp)} kWp</span>
+    <span style="color:var(--muted);">${_fmt$2(k.ohneErtuechtigungKwp)} von ${_fmt$2(k.potenzialKwp)} kWp</span>
     <label style="display:flex;gap:4px;align-items:center;color:var(--muted);cursor:pointer;">
       <input type="checkbox" ${_labelsAn ? 'checked' : ''} data-change="pvnaLabelsUmschalten()"> Werte</label>
     <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;" data-click="pvnaKarteAus()" title="Kartenfärbung beenden">✕</button>`;
@@ -208010,6 +208169,8 @@ ${teile.join('\n')}
       duGrenzePct: u > 0 ? u : std.duGrenzePct,
       bestandAlsVorlast: !!d?.bestandAlsVorlast,
       ersatzQs: parseFloat(d?.ersatzQs) > 0 ? parseFloat(d.ersatzQs) : 0,
+      stichjahr: _int(d?.stichjahr), zieljahr: _int(d?.zieljahr),
+      flaechen: d?.flaechen === 'bestand' || d?.flaechen === 'neu' ? d.flaechen : 'alle',
     });
     _letztes = null;
     window._pvNetzaufnahme = null;
@@ -208057,13 +208218,19 @@ ${teile.join('\n')}
     pvnaErsatzQsSetzen: pvnaErsatzQsSetzen,
     pvnaFahrplanStufen: pvnaFahrplanStufen,
     pvnaFuerVariante: pvnaFuerVariante,
+    pvnaGebaeudeSteht: pvnaGebaeudeSteht,
+    pvnaIstNeubau: pvnaIstNeubau,
+    pvnaJahre: pvnaJahre,
+    pvnaKabelNeu: pvnaKabelNeu,
     pvnaKarteAus: pvnaKarteAus,
     pvnaKarteZeigen: pvnaKarteZeigen,
     pvnaLabelsUmschalten: pvnaLabelsUmschalten,
     pvnaLetztesErgebnis: pvnaLetztesErgebnis,
+    pvnaLetztesNeubaujahr: pvnaLetztesNeubaujahr,
     pvnaMarkiereKarte: pvnaMarkiereKarte,
     pvnaMassnahmenAnwenden: pvnaMassnahmenAnwenden,
     pvnaModell: pvnaModell,
+    pvnaProfilForm: pvnaProfilForm,
     pvnaRechnen: pvnaRechnen,
     pvnaRender: pvnaRender,
     pvnaTreppeSvg: pvnaTreppeSvg
@@ -208118,7 +208285,7 @@ ${teile.join('\n')}
   let _auswahl = null;             // dachId
   let _layout = null;
   let _raf = 0;
-  let _meldung = '';               // Rückmeldung nach Übernehmen/Entfernen
+  let _meldung$1 = '';               // Rückmeldung nach Übernehmen/Entfernen
   let _nurPv = true;               // Abgänge ohne PV und ohne Einspeisung einklappen
   let _leerAuf = new Set();        // Knoten, deren Abgänge ohne PV trotzdem aufgeklappt sind
   let _vollbild = false;           // Ganzseitenansicht (fixiert über der App)
@@ -208133,7 +208300,7 @@ ${teile.join('\n')}
   // Ab diesem Anteil der Grenze gilt ein Element als Engpass der aktuellen Belegung
   const ENGPASS_ANTEIL = 0.995;
 
-  const _fmt = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
+  const _fmt$1 = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
     : x.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
 
   const _auslFarbe = a => a > 100 + 1e-6 ? '#e53935' : a >= 70 ? '#ffb300' : '#66bb6a';
@@ -208302,7 +208469,7 @@ ${teile.join('\n')}
   }
 
   /** Zusatz an der Knotenbeschriftung für vorhandene Einspeisung (Wind, KWK, Bestands-PV). */
-  const _vorlastText = e => +e?.vorlastKw > 0 ? ` · speist ${_fmt(e.vorlastKw)} kW (Bestand)` : '';
+  const _vorlastText = e => +e?.vorlastKw > 0 ? ` · speist ${_fmt$1(e.vorlastKw)} kW (Bestand)` : '';
 
   /** Dächer, deren Weg zum Trafo über das Element führt. */
   function _daecherHinter(eingabe, elementId) {
@@ -208338,8 +208505,8 @@ ${teile.join('\n')}
   function _massMarke(e, x, y) {
     const an = _mass.has(e.id);
     const m = e.massnahme;
-    const tip = `${m.label}\nInvest ${_fmt(m.investEUR)} €`
-      + (Number.isFinite(m.kapKw) ? ` · danach ${_fmt(m.kapKw)} kW` : '')
+    const tip = `${m.label}\nInvest ${_fmt$1(m.investEUR)} €`
+      + (Number.isFinite(m.kapKw) ? ` · danach ${_fmt$1(m.kapKw)} kW` : '')
       + `\nKlicken: ${an ? 'zurücknehmen' : 'umsetzen'}`;
     return `<g data-pvna-mass="${escHtml(e.id)}" style="cursor:pointer;"><title>${escHtml(tip)}</title>
     <circle cx="${x}" cy="${y}" r="6.5" fill="${an ? '#4fc3f7' : 'var(--surface2,#222)'}" stroke="#4fc3f7" stroke-width="1.2"/>
@@ -208386,17 +208553,17 @@ ${teile.join('\n')}
       const unbekannt = i.kab?.unbekannt, intern = i.kab?.stationsintern, ersatz = i.kab?.ersatz;
       const mMarke = !!e.massnahme && _massZeigen(e.id);
       const farbe = unbekannt || intern ? 'var(--muted)' : _auslFarbe(a);
-      const tip = `${i.label || e.id}\n${i.kabelText || ''}\nFluss ${_fmt(fl)} kW`
-        + (Number.isFinite(e.kapKw) ? ` von ${_fmt(e.kapKw)} kW (${_fmt(a)} %)` : ' — keine Stromgrenze')
-        + `\nΔU am Knoten ${_fmt(du, 2)} %`;
+      const tip = `${i.label || e.id}\n${i.kabelText || ''}\nFluss ${_fmt$1(fl)} kW`
+        + (Number.isFinite(e.kapKw) ? ` von ${_fmt$1(e.kapKw)} kW (${_fmt$1(a)} %)` : ' — keine Stromgrenze')
+        + `\nΔU am Knoten ${_fmt$1(du, 2)} %`;
       const ert = _mass.has(e.id) && e.massnahme;
       const engpass = eng.strom.includes(e.id);
       // Beschriftung je nach Modus: Auslastung, Spannungsanhebung am Knoten oder Kabeldaten
-      let lbl = unbekannt ? '? mm²' : _fmt(a) + ' %', lblFarbe = farbe;
-      if (_beschr === 'du') { lbl = _fmt(du, 2) + ' %'; lblFarbe = _duFarbe(du, grenze); }
+      let lbl = unbekannt ? '? mm²' : _fmt$1(a) + ' %', lblFarbe = farbe;
+      if (_beschr === 'du') { lbl = _fmt$1(du, 2) + ' %'; lblFarbe = _duFarbe(du, grenze); }
       else if (_beschr === 'kabel' && !unbekannt) {
         const ist = i.kab?.ist || {};
-        lbl = `${ersatz ? '~' : ''}${ist.nParallel > 1 ? ist.nParallel + '×' : ''}${ist.crossSection ?? '?'}² ${_fmt(ist.lengthM)}m`;
+        lbl = `${ersatz ? '~' : ''}${ist.nParallel > 1 ? ist.nParallel + '×' : ''}${ist.crossSection ?? '?'}² ${_fmt$1(ist.lengthM)}m`;
         lblFarbe = 'var(--muted)';
       }
       out.push(`<g><title>${escHtml(tip + (ert ? `\nErtüchtigt: ${e.massnahme.label}` : '')
@@ -208422,12 +208589,12 @@ ${teile.join('\n')}
       const klappbar = _layout.klappbar.has(e.id);
       if (eng.spannung.includes(e.id)) {
         out.push(`<circle cx="${_nodeX(p.depth)}" cy="${_y(p.row)}" r="9.5" fill="#e53935" fill-opacity="0.18" stroke="#e53935" stroke-width="1.3">
-        <title>${escHtml(`Engpass: Spannungsgrenze erreicht (${_fmt(du, 2)} % von ${_fmt(grenze, 1)} %)`)}</title></circle>`);
+        <title>${escHtml(`Engpass: Spannungsgrenze erreicht (${_fmt$1(du, 2)} % von ${_fmt$1(grenze, 1)} %)`)}</title></circle>`);
       }
       out.push(`<circle cx="${_nodeX(p.depth)}" cy="${_y(p.row)}" r="${p.zu ? 6 : klappbar ? 5 : 4}" fill="${_duFarbe(du, grenze)}"
       stroke="${p.zu ? 'var(--text)' : 'var(--bg, #111)'}" stroke-width="${p.zu ? 1.5 : 1}"
       ${klappbar ? `data-pvna-klapp="${escHtml(e.id)}" style="cursor:pointer;"` : ''}>
-      <title>${escHtml(`${i.knotenName || ''}${i.knotenTyp ? ' (' + i.knotenTyp + ')' : ''}\nΔU ${_fmt(du, 2)} % (Grenze ${_fmt(grenze, 1)} %)`
+      <title>${escHtml(`${i.knotenName || ''}${i.knotenTyp ? ' (' + i.knotenTyp + ')' : ''}\nΔU ${_fmt$1(du, 2)} % (Grenze ${_fmt$1(grenze, 1)} %)`
         + (klappbar ? `\nKlicken: ${p.zu ? 'ausklappen' : 'einklappen'}` : ''))}</title></circle>`);
       if (p.zu) out.push(`<text x="${_nodeX(p.depth)}" y="${_y(p.row) + 3}" font-size="9" font-weight="700" text-anchor="middle"
       fill="var(--bg,#111)" pointer-events="none">+</text>`);
@@ -208448,7 +208615,7 @@ ${teile.join('\n')}
         const c = begrenzt === e.id ? 'var(--accent)' : '#e53935';
         out.push(`<rect x="${X_TRAFO - 16}" y="${y - 11}" width="32" height="22" rx="11" fill="${c}" fill-opacity="0.2" stroke="${c}" stroke-width="1.2"/>`);
       }
-      out.push(`<g data-pvna-klapp="${escHtml(e.id)}" style="cursor:pointer;"><title>${escHtml(`${i.label}\nEinspeisung ${_fmt(lf.flussKw.get(e.id))} kW von ${_fmt(e.kapKw)} kW (${_fmt(a)} %)\nKlicken: ${p.zu ? 'ausklappen' : 'einklappen'}`)}</title>
+      out.push(`<g data-pvna-klapp="${escHtml(e.id)}" style="cursor:pointer;"><title>${escHtml(`${i.label}\nEinspeisung ${_fmt$1(lf.flussKw.get(e.id))} kW von ${_fmt$1(e.kapKw)} kW (${_fmt$1(a)} %)\nKlicken: ${p.zu ? 'ausklappen' : 'einklappen'}`)}</title>
       <line x1="${X_TRAFO + 12}" x2="${X_SCHIENE}" y1="${y}" y2="${y}" stroke="var(--text)" stroke-width="2"/>
       <circle cx="${X_TRAFO - 5}" cy="${y}" r="8" fill="none" stroke="${f}" stroke-width="${mk ? 3 : 2}"/>
       <circle cx="${X_TRAFO + 5}" cy="${y}" r="8" fill="none" stroke="${f}" stroke-width="${mk ? 3 : 2}"/></g>`);
@@ -208492,7 +208659,7 @@ ${teile.join('\n')}
         const ueber = r.daecher.some(id => (_bel.get(id) || 0) > (_spiel.get(id)?.kwp ?? Infinity) + 0.05);
         const w = 18, h = 12, x0 = xRoof - 9;
         out.push(`<line x1="${_nodeX(p.depth) + 6}" x2="${x0}" y1="${y}" y2="${y}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2,3"/>
-        <g data-pvna-klapp="${escHtml(r.eid)}" style="cursor:pointer;"><title>${escHtml(`${r.daecher.length} Dächer · ${_fmt(kwp, 1)} von ${_fmt(max, 1)} kWp\nKlicken: ausklappen`)}</title>
+        <g data-pvna-klapp="${escHtml(r.eid)}" style="cursor:pointer;"><title>${escHtml(`${r.daecher.length} Dächer · ${_fmt$1(kwp, 1)} von ${_fmt$1(max, 1)} kWp\nKlicken: ausklappen`)}</title>
         <rect x="${x0 + 3}" y="${y - h / 2 - 3}" width="${w}" height="${h}" fill="none" stroke="var(--muted)" stroke-width="0.8"/>
         <rect x="${x0}" y="${y - h / 2}" width="${w}" height="${h}" fill="var(--bg,#111)" stroke="var(--muted)" stroke-width="1"/>
         <rect x="${x0}" y="${y - h / 2}" width="${w * (max > 0 ? Math.min(1, kwp / max) : 0)}" height="${h}" fill="${ueber ? '#e53935' : '#66bb6a'}" opacity="0.75"/></g>`);
@@ -208513,7 +208680,7 @@ ${teile.join('\n')}
       }
       const w = 18, h = 12, x0 = xRoof - 9;
       out.push(`<g data-pvna-dach="${escHtml(r.dachId)}" style="cursor:pointer;">
-      <title>${escHtml(`${modell.info.dachInfo.get(r.dachId)?.name || r.dachId}\n${_fmt(kwp, 1)} von ${_fmt(d.kwpMax, 1)} kWp`)}</title>
+      <title>${escHtml(`${modell.info.dachInfo.get(r.dachId)?.name || r.dachId}\n${_fmt$1(kwp, 1)} von ${_fmt$1(d.kwpMax, 1)} kWp`)}</title>
       <rect x="${x0}" y="${y - h / 2}" width="${w}" height="${h}" fill="none" stroke="${mk ? 'var(--accent)' : 'var(--muted)'}" stroke-width="${mk ? 2 : 1}"/>
       <rect x="${x0}" y="${y - h / 2}" width="${w * anteil}" height="${h}" fill="${farbe}" opacity="0.75"/>
       <line x1="${x0}" x2="${x0 + w}" y1="${y + h / 2}" y2="${y - h / 2}" stroke="var(--muted)" stroke-width="0.6"/></g>`);
@@ -208527,7 +208694,7 @@ ${teile.join('\n')}
   // ══════════════════════════════════════════════════════════════════════════════
 
   const CSS_ID = 'pvna-schema-css';
-  function _cssEinmal() {
+  function _cssEinmal$1() {
     if (document.getElementById(CSS_ID)) return;
     const st = document.createElement('style');
     st.id = CSS_ID;
@@ -208666,17 +208833,17 @@ ${teile.join('\n')}
     // 1 · Kopfsatz
     let kopf;
     if (variante) {
-      kopf = `Ohne Ertüchtigung von Kabeln oder Trafos nimmt das Bestandsnetz ${b(_fmt(lf.summeKwp) + ' kWp')} PV auf — `
-        + `${b(_fmt(pct) + ' %')} des Flächenpotenzials von ${_fmt(pot)} kWp (≈ ${_fmt(_ertragMwh(erg))} MWh/a).`;
+      kopf = `Ohne Ertüchtigung von Kabeln oder Trafos nimmt das Bestandsnetz ${b(_fmt$1(lf.summeKwp) + ' kWp')} PV auf — `
+        + `${b(_fmt$1(pct) + ' %')} des Flächenpotenzials von ${_fmt$1(pot)} kWp (≈ ${_fmt$1(_ertragMwh(erg))} MWh/a).`;
     } else {
       const aktiv = _massnahmenListe(erg).filter(m => _mass.has(m.id));
       const inv = aktiv.reduce((t, m) => t + m.investEUR, 0);
       const nU = lf.ueberlastet.length, nS = lf.spannungsverletzt.length;
-      kopf = `${b('Eigene Belegung')}${aktiv.length ? ` mit ${aktiv.length} Ertüchtigung${aktiv.length > 1 ? 'en' : ''} (${_fmt(inv / 1000, 1)} T€)` : ''}: `
-        + `${b(_fmt(lf.summeKwp) + ' kWp')} (${_fmt(pct)} % des Flächenpotenzials) — `
+      kopf = `${b('Eigene Belegung')}${aktiv.length ? ` mit ${aktiv.length} Ertüchtigung${aktiv.length > 1 ? 'en' : ''} (${_fmt$1(inv / 1000, 1)} T€)` : ''}: `
+        + `${b(_fmt$1(lf.summeKwp) + ' kWp')} (${_fmt$1(pct)} % des Flächenpotenzials) — `
         + (lf.zulaessig ? '<span style="color:#66bb6a;">das Netz hält.</span>'
           : rot(`das Netz hält nicht: ${[nU ? `${nU} Element${nU > 1 ? 'e' : ''} überlastet` : '', nS ? `${nS} Knoten über der ΔU-Grenze` : ''].filter(Boolean).join(', ')}.`))
-        + ` <span style="color:var(--muted);">Variante „Bestandsnetz": ${_fmt(erg.treppe.basis.summeKwp)} kWp.</span>`;
+        + ` <span style="color:var(--muted);">Variante „Bestandsnetz": ${_fmt$1(erg.treppe.basis.summeKwp)} kWp.</span>`;
     }
 
     const punkte = [];
@@ -208690,13 +208857,13 @@ ${teile.join('\n')}
         const a = lf.auslastungPct.get(id) || 0;
         const kt = info.elInfo.get(id)?.kabelText;
         const was = e.typ === 'trafo' ? 'der Nennleistung' : 'der Strombelastbarkeit';
-        return { rest: restHinter(id), schwere: a / 100, html: `${b(lbl(id))}${kt ? ` (${escHtml(kt)})` : ''} — ${a > 100.05 ? rot(_fmt(a) + ' %') : _fmt(a) + ' %'} ${was}` };
+        return { rest: restHinter(id), schwere: a / 100, html: `${b(lbl(id))}${kt ? ` (${escHtml(kt)})` : ''} — ${a > 100.05 ? rot(_fmt$1(a) + ' %') : _fmt$1(a) + ' %'} ${was}` };
       }),
       ...eng.spannung.map(id => {
         const du = lf.duPct.get(id) || 0;
         const haupt = _hauptanteil(eingabe, lf, id);
         const knoten = info.elInfo.get(id)?.knotenName || id;
-        return { rest: restHinter(haupt ?? id), schwere: du / grenze, html: `Spannung am Knoten ${b(escHtml(knoten))} — ${du > grenze + 0.005 ? rot(_fmt(du, 2) + ' %') : _fmt(du, 2) + ' %'} von ${_fmt(grenze, 1)} %`
+        return { rest: restHinter(haupt ?? id), schwere: du / grenze, html: `Spannung am Knoten ${b(escHtml(knoten))} — ${du > grenze + 0.005 ? rot(_fmt$1(du, 2) + ' %') : _fmt$1(du, 2) + ' %'} von ${_fmt$1(grenze, 1)} %`
           + (haupt ? `, größter Anteil ${escHtml(info.elInfo.get(haupt)?.label || haupt)}` : '') };
       }),
     // Hält das Netz: wichtigster Engpass = der mit der meisten freien Fläche dahinter.
@@ -208706,7 +208873,7 @@ ${teile.join('\n')}
     if (posten.length) {
       const zeig = posten.length <= 5 ? posten : posten.slice(0, 4);
       punkte.push(`${b(lf.zulaessig ? 'Begrenzt durch' : 'Grenzen erreicht oder überschritten')}${posten.length > 1 ? ` (${posten.length} Stellen)` : ''}:<ul style="margin:2px 0 0 16px;padding:0;">`
-        + zeig.map(p => `<li>${p.html}${p.rest > 0.5 ? ` <span style="color:var(--muted);">· dahinter noch ${_fmt(p.rest)} kWp Fläche frei</span>` : ''}</li>`).join('')
+        + zeig.map(p => `<li>${p.html}${p.rest > 0.5 ? ` <span style="color:var(--muted);">· dahinter noch ${_fmt$1(p.rest)} kWp Fläche frei</span>` : ''}</li>`).join('')
         + (posten.length > zeig.length ? `<li style="color:var(--muted);">und ${posten.length - zeig.length} weitere (im Schema rot umrandet)</li>` : '') + '</ul>');
     } else {
       punkte.push(alleVoll ? 'Alle Flächen sind voll belegt, ohne dass eine Netzgrenze erreicht wird.'
@@ -208718,7 +208885,7 @@ ${teile.join('\n')}
     if (trafos.length) {
       const tl = trafos.map(t => ({ id: t.id, a: lf.auslastungPct.get(t.id) || 0 })).sort((x, y) => y.a - x.a);
       const trafoEng = trafos.some(t => eng.strom.includes(t.id));
-      punkte.push(`Trafos: ${tl.slice(0, 5).map(t => `${lbl(t.id)} <span style="color:${_auslFarbe(t.a)};">${_fmt(t.a)} %</span>`).join(' · ')}`
+      punkte.push(`Trafos: ${tl.slice(0, 5).map(t => `${lbl(t.id)} <span style="color:${_auslFarbe(t.a)};">${_fmt$1(t.a)} %</span>`).join(' · ')}`
         + (tl.length > 5 ? ` · ${tl.length - 5} weitere` : '')
         + (!trafoEng && posten.length ? ' — die Trafos sind nicht der Engpass, es begrenzen Kabel bzw. die Spannung in den Strängen.' : ''));
     }
@@ -208729,7 +208896,7 @@ ${teile.join('\n')}
       const gleichKwp = pot * f;
       const belegt = eingabe.daecher.filter(d => (_bel.get(d.id) || 0) > 0.05).length;
       punkte.push(`Verteilung: ${belegt} von ${eingabe.daecher.length} Dächern belegt${variante ? ', ertragsstärkste zuerst' : ''}. `
-        + `Gleichmäßig auf alle Dächer verteilt trägt das Netz ${b(_fmt(f * 100) + ' %')} je Dach (${_fmt(gleichKwp)} kWp)`
+        + `Gleichmäßig auf alle Dächer verteilt trägt das Netz ${b(_fmt$1(f * 100) + ' %')} je Dach (${_fmt$1(gleichKwp)} kWp)`
         + (Math.abs(gleichKwp - lf.summeKwp) > Math.max(5, 0.05 * lf.summeKwp)
           ? ` — die aufnehmbare Leistung hängt also deutlich davon ab, ${gleichKwp < lf.summeKwp ? 'wo gebaut wird' : 'wie verteilt wird'}.` : '.'));
     }
@@ -208737,9 +208904,9 @@ ${teile.join('\n')}
     // 4b · Weniger bauen oder abregeln (Weg B aus der Netzaufnahme, gilt für die Variante)
     const ab = variante ? window._pvNetzaufnahme?.abregelung : null;
     if (ab && ab.vollKwp > lf.summeKwp + 0.5) {
-      punkte.push(`Alternative zum Weniger-Bauen: alle Dächer mit Netzanschluss voll belegen (${b(_fmt(ab.vollKwp) + ' kWp')}) und die Einspeisung `
-        + `je Dach am EZA-Regler auf die Netzgrenze begrenzen — ${_fmt(ab.vollNutzbarMwh)} statt ${_fmt(ab.wenigerMwh)} MWh/a nutzbar, `
-        + `${_fmt(ab.vollVerlustPct, 1)} % der Erzeugung werden abgeregelt (ohne Eigenverbrauch gerechnet, obere Abschätzung).`);
+      punkte.push(`Alternative zum Weniger-Bauen: alle Dächer mit Netzanschluss voll belegen (${b(_fmt$1(ab.vollKwp) + ' kWp')}) und die Einspeisung `
+        + `je Dach am EZA-Regler auf die Netzgrenze begrenzen — ${_fmt$1(ab.vollNutzbarMwh)} statt ${_fmt$1(ab.wenigerMwh)} MWh/a nutzbar, `
+        + `${_fmt$1(ab.vollVerlustPct, 1)} % der Erzeugung werden abgeregelt (ohne Eigenverbrauch gerechnet, obere Abschätzung).`);
     }
 
     // 5 · Datenlage
@@ -208757,17 +208924,17 @@ ${teile.join('\n')}
       const wo = `${unbek.length} Kabel ohne erfassten Querschnitt (${unbek.slice(0, 3).map(e => escHtml(info.elInfo.get(e.id)?.knotenName || e.id)).join(', ')}${unbek.length > 3 ? ' …' : ''})`;
       if (qs > 0) punkte.push(`${wo} — gerechnet mit ${wahl}.${veraltet}`);
       else {
-        warn.push(`${wo} — dort ist keine Stromgrenze gerechnet${kwp > 0.5 ? `; ${_fmt(kwp)} kWp der Belegung hängen dahinter, die Aussage ist dort optimistisch` : ''}. `
+        warn.push(`${wo} — dort ist keine Stromgrenze gerechnet${kwp > 0.5 ? `; ${_fmt$1(kwp)} kWp der Belegung hängen dahinter, die Aussage ist dort optimistisch` : ''}. `
           + `Vorsichtiger rechnen mit ${wahl}${veraltet}`);
       }
     }
     const geschaetzt = eingabe.elemente.filter(e => info.elInfo.get(e.id)?.kante?.autoSized && !info.elInfo.get(e.id)?.kab?.unbekannt).length;
     if (geschaetzt) warn.push(`${geschaetzt} Querschnitt${geschaetzt > 1 ? 'e' : ''} nur geschätzt (automatisch ausgelegt) — vor Ort prüfen.`);
     const frei = eingabe.daecher.filter(d => d.elementId == null || !info.elInfo.has(d.elementId));
-    if (frei.length) warn.push(`${frei.length} Dach/Dächer (${_fmt(frei.reduce((t, d) => t + d.kwpMax, 0))} kWp) an keinen Trafo angebunden — nicht belegbar.`);
+    if (frei.length) warn.push(`${frei.length} Dach/Dächer (${_fmt$1(frei.reduce((t, d) => t + d.kwpMax, 0))} kWp) an keinen Trafo angebunden — nicht belegbar.`);
     const vorlast = eingabe.elemente.filter(e => +e.vorlastKw > 0);
     if (vorlast.length) {
-      punkte.push(`Vorhandene Einspeisung ${b(_fmt(vorlast.reduce((t, e) => t + +e.vorlastKw, 0)) + ' kW')} `
+      punkte.push(`Vorhandene Einspeisung ${b(_fmt$1(vorlast.reduce((t, e) => t + +e.vorlastKw, 0)) + ' kW')} `
         + `(${vorlast.slice(0, 4).map(e => escHtml(info.elInfo.get(e.id)?.knotenName || info.elInfo.get(e.id)?.label || e.id)).join(', ')}) ist vorab eingerechnet.`);
     }
 
@@ -208780,7 +208947,7 @@ ${teile.join('\n')}
     <div data-pvna-aussage-punkte style="margin-top:5px;font-size:11px;line-height:1.55;color:var(--muted);">
       ${punkte.map(p => `<div style="margin-top:3px;">${p}</div>`).join('')}
       ${warn.map(w => `<div style="margin-top:3px;color:#ffb74d;">⚠ ${w}</div>`).join('')}
-      <div style="margin-top:5px;font-size:10px;">Lastfall: volle Einspeisung ${_fmt(einsp, 2)} kW/kWp ohne gleichzeitige Last, Spannungsanhebung ≤ ${_fmt(grenze, 1)} %, Rechenjahr ${erg.jahr}
+      <div style="margin-top:5px;font-size:10px;">Lastfall: volle Einspeisung ${_fmt$1(einsp, 2)} kW/kWp ohne gleichzeitige Last, Spannungsanhebung ≤ ${_fmt$1(grenze, 1)} %, Rechenjahr ${erg.jahr}
         — konservativ: Eigenverbrauch hinter dem Zähler würde die Aufnahme erhöhen.</div>
     </div>`;
   }
@@ -208839,11 +209006,11 @@ ${teile.join('\n')}
       if (band) band.style.width = (d.kwpMax > 0 && sp ? Math.min(1, sp.kwp / d.kwpMax) * 100 : 0) + '%';
       const wertEl = z.querySelector('[data-pvna-wert]');
       if (!wertEl.contains(document.activeElement)) {        // nicht während der Zahleneingabe überschreiben
-        wertEl.innerHTML = `<span style="color:${ueber ? '#e53935' : 'var(--text)'};">${_fmt(kwp, 1)}</span><span style="color:var(--muted);"> / ${_fmt(d.kwpMax)}</span>`;
+        wertEl.innerHTML = `<span style="color:${ueber ? '#e53935' : 'var(--text)'};">${_fmt$1(kwp, 1)}</span><span style="color:var(--muted);"> / ${_fmt$1(d.kwpMax)}</span>`;
         wertEl.title = ueber ? _abregelText(id, d, kwp, sp, false) + ' · Klicken: kWp eingeben' : 'Klicken: kWp eingeben';
       }
       const duEl = z.querySelector('[data-pvna-du]');
-      duEl.textContent = d.elementId ? _fmt(du, 2) + ' %' : '—';
+      duEl.textContent = d.elementId ? _fmt$1(du, 2) + ' %' : '—';
       duEl.style.color = _duFarbe(du, grenze);
     });
     const zuRows = new Map(_layout.rows.filter(r => r.typ === 'zu').map(r => [r.eid, r.daecher]));
@@ -208860,15 +209027,15 @@ ${teile.join('\n')}
       if (sl && document.activeElement !== sl) sl.value = max > 0 ? kwp / max * 100 : 0;
       sl?.style.setProperty('--th', ueber ? '#e53935' : 'var(--accent)');
       z.querySelector('[data-pvna-gruppe-wert]').innerHTML =
-        `<span style="color:${ueber ? '#e53935' : 'var(--text)'};">${_fmt(kwp, 1)}</span><span style="color:var(--muted);"> / ${_fmt(max)}</span>`;
+        `<span style="color:${ueber ? '#e53935' : 'var(--text)'};">${_fmt$1(kwp, 1)}</span><span style="color:var(--muted);"> / ${_fmt$1(max)}</span>`;
       const duEl = z.querySelector('[data-pvna-gruppe-du]');
-      duEl.textContent = _fmt(duMax, 2) + ' %';
+      duEl.textContent = _fmt$1(duMax, 2) + ' %';
       duEl.style.color = _duFarbe(duMax, grenze);
     });
     root.querySelectorAll('[data-pvna-trafo]').forEach(s => {
       const id = s.dataset.pvnaTrafo;
       const a = lf.auslastungPct.get(id) || 0;
-      s.innerHTML = `Einspeisung ${_fmt(lf.flussKw.get(id))} kW · <span style="color:${_auslFarbe(a)};">${_fmt(a)} %</span> der Trafoleistung`;
+      s.innerHTML = `Einspeisung ${_fmt$1(lf.flussKw.get(id))} kW · <span style="color:${_auslFarbe(a)};">${_fmt$1(a)} %</span> der Trafoleistung`;
     });
 
     // Kennzahlen
@@ -208881,15 +209048,15 @@ ${teile.join('\n')}
       if (el) { el.innerHTML = html; el.style.color = farbe || 'var(--text)'; }
     };
     const einh = t => `<span style="font-size:10.5px;color:var(--muted);margin-left:3px;">${t}</span>`;
-    setK('summe', _fmt(lf.summeKwp) + einh(`kWp · ${_fmt(pot > 0 ? lf.summeKwp / pot * 100 : 0)} %`));
-    setK('ertrag', _fmt(_ertragMwh(erg)) + einh('MWh/a'));
-    setK('trafo', _fmt(maxA(trafos)) + einh('%'), _auslFarbe(maxA(trafos)));
-    setK('kabel', _fmt(maxA(kabel)) + einh('%'), _auslFarbe(maxA(kabel)));
-    setK('du', _fmt(lf.maxDuPct, 2) + einh('%'), _duFarbe(lf.maxDuPct, grenze));
+    setK('summe', _fmt$1(lf.summeKwp) + einh(`kWp · ${_fmt$1(pot > 0 ? lf.summeKwp / pot * 100 : 0)} %`));
+    setK('ertrag', _fmt$1(_ertragMwh(erg)) + einh('MWh/a'));
+    setK('trafo', _fmt$1(maxA(trafos)) + einh('%'), _auslFarbe(maxA(trafos)));
+    setK('kabel', _fmt$1(maxA(kabel)) + einh('%'), _auslFarbe(maxA(kabel)));
+    setK('du', _fmt$1(lf.maxDuPct, 2) + einh('%'), _duFarbe(lf.maxDuPct, grenze));
     const nU = lf.ueberlastet.length, nS = lf.spannungsverletzt.length;
     const aktiv = _massnahmenListe(erg).filter(m => _mass.has(m.id));
     const inv = aktiv.reduce((t, m) => t + m.investEUR, 0);
-    setK('invest', aktiv.length ? _fmt(inv / 1000) + einh(`T€ · ${aktiv.length} Maßn.`) : '—' + einh('Bestand'),
+    setK('invest', aktiv.length ? _fmt$1(inv / 1000) + einh(`T€ · ${aktiv.length} Maßn.`) : '—' + einh('Bestand'),
       aktiv.length ? '#4fc3f7' : 'var(--muted)');
     _fahrplanAktualisieren(root, erg);
     setK('status', lf.zulaessig ? '✓ hält' : `✗ ${nU ? nU + ' überlastet' : ''}${nU && nS ? ' · ' : ''}${nS ? nS + ' ΔU' : ''}`,
@@ -208899,7 +209066,7 @@ ${teile.join('\n')}
     const gv = root.querySelector('[data-pvna-gesamt-wert]');
     const gpct = pot > 0 ? lf.summeKwp / pot * 100 : 0;
     if (gs && document.activeElement !== gs) gs.value = gpct;
-    if (gv) gv.textContent = _fmt(gpct) + ' %';
+    if (gv) gv.textContent = _fmt$1(gpct) + ' %';
 
     _varianteZeile(root, lf);
     _aussageAktualisieren(root, erg, eingabe, lf);
@@ -208915,8 +209082,8 @@ ${teile.join('\n')}
         const beg = sp?.begrenzer;
         const begEl = beg?.elementId ? info.elInfo.get(beg.elementId) : null;
         aw.innerHTML = `<b style="color:var(--text);">${escHtml(info.dachInfo.get(_auswahl)?.name || _auswahl)}</b>:
-        ${_fmt(_bel.get(_auswahl) || 0, 1)} von ${_fmt(d.kwpMax, 1)} kWp belegt · Spielraum bei der übrigen Belegung
-        <b style="color:#66bb6a;">${_fmt(sp?.kwp, 1)} kWp</b>`
+        ${_fmt$1(_bel.get(_auswahl) || 0, 1)} von ${_fmt$1(d.kwpMax, 1)} kWp belegt · Spielraum bei der übrigen Belegung
+        <b style="color:#66bb6a;">${_fmt$1(sp?.kwp, 1)} kWp</b>`
           + (beg && sp.kwp < d.kwpMax - 0.05
             ? ` — begrenzt durch ${_ART[beg.art] || beg.art}${begEl ? ': ' + escHtml(begEl.label) + (begEl.kabelText ? ` (${escHtml(begEl.kabelText)})` : '') : ''}`
             : ' — volle Fläche möglich')
@@ -208940,11 +209107,11 @@ ${teile.join('\n')}
     const basis = pvnaAbregelungDach(id, sp.kwp, pZul);
     if (!r || !basis) return '';
     const b = t => html ? `<b style="color:var(--text);">${t}</b>` : t;
-    const kopf = ueber ? `${_fmt(kwp - sp.kwp, 1)} kWp über dem Spielraum: statt das Netz zu ertüchtigen,`
-      : `Voll belegen (${_fmt(d.kwpMax, 1)} kWp) und`;
-    return `${html ? '<span style="color:#ffb74d;">⚡</span> ' : ''}${kopf} die Einspeisung am EZA-Regler auf ${b(_fmt(pZul) + ' kW')} begrenzen → `
-      + `${b(_fmt(r.verlustPct, 1) + ' %')} der Erzeugung abgeregelt, ${_fmt(r.nutzbarMwh, 1)} statt ${_fmt(basis.nutzbarMwh, 1)} MWh/a nutzbar `
-      + `(${_fmt(ziel > sp.kwp + 0.05 ? (r.nutzbarMwh - basis.nutzbarMwh) * 1000 / (ziel - sp.kwp) : 0)} kWh je zusätzlichem kWp; ohne Eigenverbrauch).`;
+    const kopf = ueber ? `${_fmt$1(kwp - sp.kwp, 1)} kWp über dem Spielraum: statt das Netz zu ertüchtigen,`
+      : `Voll belegen (${_fmt$1(d.kwpMax, 1)} kWp) und`;
+    return `${html ? '<span style="color:#ffb74d;">⚡</span> ' : ''}${kopf} die Einspeisung am EZA-Regler auf ${b(_fmt$1(pZul) + ' kW')} begrenzen → `
+      + `${b(_fmt$1(r.verlustPct, 1) + ' %')} der Erzeugung abgeregelt, ${_fmt$1(r.nutzbarMwh, 1)} statt ${_fmt$1(basis.nutzbarMwh, 1)} MWh/a nutzbar `
+      + `(${_fmt$1(ziel > sp.kwp + 0.05 ? (r.nutzbarMwh - basis.nutzbarMwh) * 1000 / (ziel - sp.kwp) : 0)} kWh je zusätzlichem kWp; ohne Eigenverbrauch).`;
   }
 
   /** Nächsten Frame aktualisieren; der Timer fängt ab, dass rAF in verdeckten Fenstern pausiert. */
@@ -208981,7 +209148,7 @@ ${teile.join('\n')}
       <button class="btn-confirm" style="margin-top:10px;padding:7px 16px;font-size:11.5px;" data-click="pvnaSchemaBerechnen()">Aufnahme berechnen</button></div>`;
       return;
     }
-    _cssEinmal();
+    _cssEinmal$1();
     if (_quelle !== erg) {
       // Neu gerechnet (z. B. durch „Varianten berechnen"): bei gleichem Dachbestand
       // die eingestellte Belegung behalten, sonst mit der Variante beginnen.
@@ -208992,7 +209159,7 @@ ${teile.join('\n')}
       _quelle = erg;
       _setzeVariante(erg);
       if (alt) for (const d of erg.modell.eingabe.daecher) _bel.set(d.id, Math.min(alt.get(d.id) || 0, d.kwpMax));
-      if (!gleich) { _auswahl = null; _meldung = ''; }
+      if (!gleich) { _auswahl = null; _meldung$1 = ''; }
       const angeboten = new Set(erg.modell.eingabe.elemente.filter(e => e.massnahme).map(e => e.id));
       _mass = alt ? new Set([..._mass].filter(id => angeboten.has(id))) : new Set();
     }
@@ -209063,7 +209230,7 @@ ${teile.join('\n')}
     </div>
   </div>`;
 
-    if (!root.dataset.pvnaEreignisse) { root.dataset.pvnaEreignisse = '1'; _ereignisse(root); }
+    if (!root.dataset.pvnaEreignisse) { root.dataset.pvnaEreignisse = '1'; _ereignisse$1(root); }
     _aktualisieren();
     _groesseAnpassen();
     _navigationAnpassen();
@@ -209112,7 +209279,7 @@ ${teile.join('\n')}
   document.addEventListener('keydown', ev => { if (_vollbild && ev.key === 'Escape') _vollbildUmschalten(false); });
 
   /** Einmal je Container — die Handler lesen das aktuelle Ergebnis aus _quelle. */
-  function _ereignisse(root) {
+  function _ereignisse$1(root) {
     const live = () => _quelle.modell.eingabe.daecher.length <= LIVE_MAX_DAECHER;
     const daecher = () => _quelle.modell.eingabe.daecher;
 
@@ -209132,7 +209299,7 @@ ${teile.join('\n')}
       } else if (t.dataset.pvnaGesamt != null) {
         const f = +t.value / 100;
         for (const d of daecher()) _bel.set(d.id, d.kwpMax * f);
-        root.querySelector('[data-pvna-gesamt-wert]').textContent = _fmt(+t.value) + ' %';
+        root.querySelector('[data-pvna-gesamt-wert]').textContent = _fmt$1(+t.value) + ' %';
         _planen({ spielraum: live() });
       }
     });
@@ -209317,7 +209484,7 @@ ${teile.join('\n')}
     if (liste.length <= 5) return liste;
     const rest = liste.slice(4);
     return [...liste.slice(0, 4), { kwp: rest.reduce((t, x) => t + x.kwp, 0), label: `übrige (${rest.length} Engpässe)`,
-      voll: rest.map(x => `${x.voll}: ${_fmt(x.kwp)} kWp`).join('\n'), sackgasse: false }];
+      voll: rest.map(x => `${x.voll}: ${_fmt$1(x.kwp)} kWp`).join('\n'), sackgasse: false }];
   }
 
   /**
@@ -209336,17 +209503,17 @@ ${teile.join('\n')}
       ...t.schritte.map((st, i) => ({
         typ: 'stufe', von: st.summeKwp - st.zuwachsKwp, bis: st.summeKwp, stufe: i + 1, an: alleAn(st),
         label: `${st.sammel ? 'Sammelstufe' : 'Stufe'} ${i + 1}`,
-        unter: `${_fmt(st.investEUR / 1000)} T€ · ${_fmt(st.eurProKwp)} €/kWp`,
+        unter: `${_fmt$1(st.investEUR / 1000)} T€ · ${_fmt$1(st.eurProKwp)} €/kWp`,
         tip: `${st.sammel ? 'Sammelstufe — diese Maßnahmen wirken nur gemeinsam\n' : ''}${st.massnahmen.map(m => m.label).join('\n')}\n`
-          + `+${_fmt(st.zuwachsKwp)} kWp für ${_fmt(st.investEUR)} € (${_fmt(st.eurProKwp)} €/kWp)\nKlicken: bis hier umsetzen`,
+          + `+${_fmt$1(st.zuwachsKwp)} kWp für ${_fmt$1(st.investEUR)} € (${_fmt$1(st.eurProKwp)} €/kWp)\nKlicken: bis hier umsetzen`,
       })),
     ];
     if (t.schritte.length) balken.push({ typ: 'summe', von: 0, bis: t.ende.summeKwp, label: 'mit Ertüchtigung',
-      unter: `${_fmt((t.schritte.at(-1)?.kumInvestEUR || 0) / 1000)} T€ gesamt` });
+      unter: `${_fmt$1((t.schritte.at(-1)?.kumInvestEUR || 0) / 1000)} T€ gesamt` });
     let h = t.ende.summeKwp;
     for (const r of rest) {
       balken.push({ typ: 'rest', von: h, bis: h + r.kwp, label: r.label, unter: r.sackgasse ? 'keine Standardmaßnahme' : r.ausgeschoepft ? 'Standard ausgeschöpft' : 'nicht erschlossen',
-        tip: `${r.voll}\n${_fmt(r.kwp)} kWp bleiben offen`, sackgasse: r.sackgasse });
+        tip: `${r.voll}\n${_fmt$1(r.kwp)} kWp bleiben offen`, sackgasse: r.sackgasse });
       h += r.kwp;
     }
     balken.push({ typ: 'pot', von: 0, bis: pot, label: 'Flächenpotenzial', unter: '' });
@@ -209361,7 +209528,7 @@ ${teile.join('\n')}
     const out = [];
     for (const f of [0, 0.25, 0.5, 0.75, 1]) {
       out.push(`<line x1="${PL}" x2="${W - PR}" y1="${y(pot * f)}" y2="${y(pot * f)}" stroke="var(--border)" stroke-width="0.5"/>
-      <text x="${PL - 6}" y="${y(pot * f) + 3}" font-size="9" fill="var(--muted)" text-anchor="end">${_fmt(pot * f)}</text>`);
+      <text x="${PL - 6}" y="${y(pot * f) + 3}" font-size="9" fill="var(--muted)" text-anchor="end">${_fmt$1(pot * f)}</text>`);
     }
     balken.forEach((b, i) => {
       const x = PL + i * bw + bw * 0.14, w = bw * 0.72;
@@ -209376,19 +209543,19 @@ ${teile.join('\n')}
         }
       }
       const hoehe = Math.max(1.5, y0 - y1);
-      out.push(`<g ${klick}><title>${escHtml(b.tip || `${b.label}: ${_fmt(b.bis)} kWp`)}</title>
+      out.push(`<g ${klick}><title>${escHtml(b.tip || `${b.label}: ${_fmt$1(b.bis)} kWp`)}</title>
       <rect x="${x}" y="${y1}" width="${w}" height="${hoehe}" rx="2"
         fill="${farbe[b.typ]}" ${b.typ === 'pot' ? 'stroke="var(--text)" stroke-dasharray="4,3" stroke-width="1.2"' : ''}
         ${b.typ === 'rest' ? `opacity="${b.sackgasse ? 0.9 : 0.55}"` : ''}
         ${b.an ? 'stroke="var(--accent)" stroke-width="2.5"' : ''}/>
       <text x="${x + w / 2}" y="${y1 - 4}" font-size="9.5" text-anchor="middle" font-family="DM Mono,monospace"
-        fill="${b.typ === 'rest' ? '#e57373' : 'var(--text)'}">${b.typ === 'stufe' || b.typ === 'rest' ? '+' : ''}${_fmt(b.bis - b.von)}</text>
+        fill="${b.typ === 'rest' ? '#e57373' : 'var(--text)'}">${b.typ === 'stufe' || b.typ === 'rest' ? '+' : ''}${_fmt$1(b.bis - b.von)}</text>
       <text x="${x + w / 2}" y="${H - PB + 13}" font-size="9" text-anchor="middle" fill="var(--text)">${escHtml(kurz(b.label, 18))}</text>
       <text x="${x + w / 2}" y="${H - PB + 25}" font-size="8.5" text-anchor="middle" fill="var(--muted)">${escHtml(kurz(b.unter, 22))}</text></g>`);
     });
     // aktuelle Belegung
     out.push(`<line x1="${PL}" x2="${W - PR}" y1="${y(aktuell)}" y2="${y(aktuell)}" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="5,3"/>
-    <text x="${W - PR}" y="${y(aktuell) - 4}" font-size="9" text-anchor="end" fill="var(--accent)">aktuelle Belegung ${_fmt(aktuell)} kWp</text>`);
+    <text x="${W - PR}" y="${y(aktuell) - 4}" font-size="9" text-anchor="end" fill="var(--accent)">aktuelle Belegung ${_fmt$1(aktuell)} kWp</text>`);
     out.push(`<text x="12" y="${(PT + H - PB) / 2}" font-size="9" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 12 ${(PT + H - PB) / 2})">kWp</text>`);
     return `<div style="overflow-x:auto;margin:4px 0 8px;"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${Math.min(W, 640)}px;max-width:${W}px;display:block;">${out.join('')}</svg></div>`;
   }
@@ -209407,12 +209574,12 @@ ${teile.join('\n')}
       const minEur = n ? Math.min(...t.schritte.map(st => st.eurProKwp)) : 0;
       const inhalt = !n
         ? (t.restKwp > 0.5 ? 'keine Standard-Ertüchtigung erschließt weitere Flächen.' : 'alle Flächen passen ohne Ertüchtigung ins Netz.')
-        : `${n} Stufe${n > 1 ? 'n' : ''} erschließen <b style="color:var(--text);">+${_fmt(t.ende.summeKwp - t.basis.summeKwp)} kWp</b>
-        (bis ${_fmt(t.ende.summeKwp)} kWp) für ${_fmt((t.schritte.at(-1)?.kumInvestEUR || 0) / 1000)} T€ · ab ${_fmt(minEur)} €/kWp`
-          + (t.restKwp > 0.5 ? ` · ${_fmt(t.restKwp)} kWp ohne Standardlösung` : '');
+        : `${n} Stufe${n > 1 ? 'n' : ''} erschließen <b style="color:var(--text);">+${_fmt$1(t.ende.summeKwp - t.basis.summeKwp)} kWp</b>
+        (bis ${_fmt$1(t.ende.summeKwp)} kWp) für ${_fmt$1((t.schritte.at(-1)?.kumInvestEUR || 0) / 1000)} T€ · ab ${_fmt$1(minEur)} €/kWp`
+          + (t.restKwp > 0.5 ? ` · ${_fmt$1(t.restKwp)} kWp ohne Standardlösung` : '');
       box.innerHTML = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;">
       ${umschalter}<span style="color:var(--muted);">— ${inhalt}</span>
-      ${aktiv.length ? `<span style="color:#4fc3f7;">· aktiv: ${aktiv.length} Maßnahme${aktiv.length > 1 ? 'n' : ''} (${_fmt(aktiv.reduce((s2, m) => s2 + m.investEUR, 0) / 1000, 1)} T€)</span>` : ''}
+      ${aktiv.length ? `<span style="color:#4fc3f7;">· aktiv: ${aktiv.length} Maßnahme${aktiv.length > 1 ? 'n' : ''} (${_fmt$1(aktiv.reduce((s2, m) => s2 + m.investEUR, 0) / 1000, 1)} T€)</span>` : ''}
       ${n || t.restKwp > 0.5 ? `<button class="pvna-knopf" data-pvna-aktion="fahrplan" style="margin-left:auto;">Fahrplan zeigen</button>` : ''}</div>`;
       return;
     }
@@ -209424,7 +209591,7 @@ ${teile.join('\n')}
     }
     const chip = (m, warum = '') => {
       const an = _mass.has(m.id);
-      return `<span data-pvna-mass="${escHtml(m.id)}" title="${escHtml(`${m.label} · ${_fmt(m.investEUR)} € · Klicken: ${an ? 'zurücknehmen' : 'umsetzen'}${warum ? '\n\n' + warum : ''}`)}"
+      return `<span data-pvna-mass="${escHtml(m.id)}" title="${escHtml(`${m.label} · ${_fmt$1(m.investEUR)} € · Klicken: ${an ? 'zurücknehmen' : 'umsetzen'}${warum ? '\n\n' + warum : ''}`)}"
       style="display:inline-flex;gap:4px;align-items:center;padding:1px 7px;margin:1px 4px 1px 0;border-radius:10px;cursor:pointer;
       border:1px solid #4fc3f7;${an ? 'background:#4fc3f7;color:#0b1a24;' : 'color:#4fc3f7;'}">${an ? '✓' : '⚒'} ${escHtml(m.label)}</span>`;
     };
@@ -209445,12 +209612,12 @@ ${teile.join('\n')}
       <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;white-space:nowrap;">${kum}</td></tr>`;
     const byId = new Map(liste.map(m => [m.id, m]));
     const zeilen = [zeile(0, '<span style="color:var(--muted);">Bestandsnetz ohne Ertüchtigung</span>', '—', '—', '—',
-      _fmt(t.basis.summeKwp), '0', !_mass.size)];
+      _fmt$1(t.basis.summeKwp), '0', !_mass.size)];
     t.schritte.forEach((st, i) => {
       const ids = st.massnahmen.map(m => m.elementId);
       zeilen.push(zeile(i + 1, (st.sammel ? '<span style="color:var(--muted);" title="Diese Maßnahmen wirken nur gemeinsam">Sammelstufe: </span>' : '')
-        + ids.map(id => chip(byId.get(id))).join(''), '+' + _fmt(st.zuwachsKwp), _fmt(st.investEUR / 1000, 1),
-        _fmt(st.eurProKwp), _fmt(st.summeKwp), _fmt(st.kumInvestEUR / 1000, 1), alleAn(ids)));
+        + ids.map(id => chip(byId.get(id))).join(''), '+' + _fmt$1(st.zuwachsKwp), _fmt$1(st.investEUR / 1000, 1),
+        _fmt$1(st.eurProKwp), _fmt$1(st.summeKwp), _fmt$1(st.kumInvestEUR / 1000, 1), alleAn(ids)));
     });
     const ohneStufe = liste.filter(m => !m.stufe);
     const ungeloest = [...erg.modell.info.elInfo.values()].filter(i => i.ungeloest && !i.teil && i.ungeloestGrund === 'strom').map(i => i.label);
@@ -209462,8 +209629,8 @@ ${teile.join('\n')}
     box.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px;margin-bottom:4px;">
       <span>${umschalter} <b>— Netzertüchtigungen in Reihenfolge der Wirksamkeit (€ je zusätzlichem kWp)</b></span>
-      <span style="color:var(--muted);">Aktiv: ${_mass.size ? `<b style="color:#4fc3f7;">${_mass.size} Maßnahme${_mass.size > 1 ? 'n' : ''} · ${_fmt(aktivInv / 1000, 1)} T€</b>` : 'keine'}
-        · Netzgrenze damit <b style="color:var(--text);">${_fmt(f.summeKwp)} kWp</b> von ${_fmt(f.potenzialKwp)} kWp</span>
+      <span style="color:var(--muted);">Aktiv: ${_mass.size ? `<b style="color:#4fc3f7;">${_mass.size} Maßnahme${_mass.size > 1 ? 'n' : ''} · ${_fmt$1(aktivInv / 1000, 1)} T€</b>` : 'keine'}
+        · Netzgrenze damit <b style="color:var(--text);">${_fmt$1(f.summeKwp)} kWp</b> von ${_fmt$1(f.potenzialKwp)} kWp</span>
     </div>
     ${_wasserfallSvg(erg)}
     ${_fahrplanVariantenLeiste(t.schritte.length)}
@@ -209475,7 +209642,7 @@ ${teile.join('\n')}
       <span style="color:var(--muted);">(Maus darüber: was dahinter begrenzt)</span></div>` : ''}
     <div style="margin-top:4px;color:var(--muted);line-height:1.5;">„▶ bis Stufe k" setzt die Stufen 1…k um und füllt die Dächer bis zur neuen Netzgrenze.
       Einzelne Maßnahmen lassen sich auch über ⚒ im Schema schalten; danach „▲ Bis zur Netzgrenze füllen" oder die Schieber nutzen.
-      ${t.restKwp > 0.5 ? `Auch nach allen Stufen bleiben ${_fmt(t.restKwp)} kWp ohne Anschluss.` : ''}</div>
+      ${t.restKwp > 0.5 ? `Auch nach allen Stufen bleiben ${_fmt$1(t.restKwp)} kWp ohne Anschluss.` : ''}</div>
     ${ungeloest.length ? `<div style="margin-top:4px;color:#ffb74d;line-height:1.5;">Kein Standardkabel reicht für:
       ${ungeloest.map(escHtml).join(', ')} — hier endet der Fahrplan; weiter geht es nur mit einer Strukturänderung
       (zusätzlicher Abgang, eigene Anbindung).</div>` : ''}
@@ -209558,7 +209725,7 @@ ${teile.join('\n')}
     }
     if (!gruende.size) return `Alle ${betroffen.length} Dächer dahinter sind schon voll angeschlossen.`;
     return `${betroffen.length === 1 ? 'Das Dach' : `Die ${betroffen.length} Dächer`} dahinter begrenzt vorher:\n`
-      + [...gruende].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([t, k]) => `• ${t}: ${_fmt(k)} kWp offen`).join('\n')
+      + [...gruende].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([t, k]) => `• ${t}: ${_fmt$1(k)} kWp offen`).join('\n')
       + (voll ? `\n(${voll} Dächer sind schon voll)` : '');
   }
 
@@ -209659,7 +209826,7 @@ ${teile.join('\n')}
       if (eng.strom.includes(e.id)) lin(x1, yy, x2, yy, 'over', 11, { o: 0.22, cap: 'round' });
       if (mass.has(e.id)) lin(x1, yy, x2, yy, 'akzent', 8, { o: 0.3 });
       lin(x1, yy, x2, yy, f, intern ? 1.5 : 3, unbekannt || ersatz ? { dash: '4 3' } : {});
-      if (!intern) txt((x1 + x2) / 2, yy - 5, unbekannt ? '? mm²' : _fmt(a) + ' %', { f, size: 8.5, mono: true, anchor: 'middle',
+      if (!intern) txt((x1 + x2) / 2, yy - 5, unbekannt ? '? mm²' : _fmt$1(a) + ' %', { f, size: 8.5, mono: true, anchor: 'middle',
         weight: eng.strom.includes(e.id) ? 700 : 500 });
     }
     // Knoten
@@ -209685,7 +209852,7 @@ ${teile.join('\n')}
       lin(X_TRAFO + 12, yy, X_SCHIENE, yy, 'text', 2);
       out.push({ t: 'c', cx: X_TRAFO - 5, cy: yy, r: 8, fill: 'none', stroke: f, sw: 2 });
       out.push({ t: 'c', cx: X_TRAFO + 5, cy: yy, r: 8, fill: 'none', stroke: f, sw: 2 });
-      txt(4, y(p.row - 1) + 4, `${i.label || e.id} — Einspeisung ${_fmt(lf.flussKw.get(e.id))} kW (${_fmt(a)} % der Trafoleistung)`,
+      txt(4, y(p.row - 1) + 4, `${i.label || e.id} — Einspeisung ${_fmt$1(lf.flussKw.get(e.id))} kW (${_fmt$1(a)} % der Trafoleistung)`,
         { size: 10, weight: 700 });
     }
     // Zeilen
@@ -209712,8 +209879,8 @@ ${teile.join('\n')}
       if (kwp > 0 && d.kwpMax > 0) out.push({ t: 'r', x: xRoof - 9, y: yy - 6, w: 18 * Math.min(1, kwp / d.kwpMax), h: 12, fill: 'ok', fo: 0.8 });
       const du = d.elementId ? lf.duPct.get(d.elementId) || 0 : 0;
       txt(xT, yy + 3.5, kurz(info.dachInfo.get(r.dachId)?.name || r.dachId, DRUCK.nameMax), { size: 9.5 });
-      txt(xT + DRUCK.kwpX, yy + 3.5, `${_fmt(kwp, 1)} / ${_fmt(d.kwpMax)}`, { size: 9.5, mono: true, anchor: 'end', f: kwp > 0.05 ? 'text' : 'faint' });
-      txt(xT + DRUCK.duX, yy + 3.5, d.elementId ? _fmt(du, 2) + ' %' : '—', { size: 9.5, mono: true, anchor: 'end', f: duR(du) });
+      txt(xT + DRUCK.kwpX, yy + 3.5, `${_fmt$1(kwp, 1)} / ${_fmt$1(d.kwpMax)}`, { size: 9.5, mono: true, anchor: 'end', f: kwp > 0.05 ? 'text' : 'faint' });
+      txt(xT + DRUCK.duX, yy + 3.5, d.elementId ? _fmt$1(du, 2) + ' %' : '—', { size: 9.5, mono: true, anchor: 'end', f: duR(du) });
     });
 
     const pot = eingabe.daecher.reduce((t, d) => t + d.kwpMax, 0);
@@ -209743,13 +209910,13 @@ ${teile.join('\n')}
     box.innerHTML = `
     ${knopf('uebernehmen', eig ? '✚ Aktuelle Belegung übernehmen (ersetzt)' : '✚ Als Variante übernehmen',
       'Legt diese Belegung als Variante „Bestandsnetz, eigene Belegung" an und rechnet die Varianten neu', true)}
-    <span style="color:var(--muted);">${_fmt(lf.summeKwp)} kWp${_mass.size ? ` + ${_mass.size} Ertüchtigung${_mass.size > 1 ? 'en' : ''}` : ''}${lf.zulaessig ? '' : ' · <span style="color:#e53935;">Netz hält nicht — wird mit Warnhinweis übernommen</span>'}</span>
+    <span style="color:var(--muted);">${_fmt$1(lf.summeKwp)} kWp${_mass.size ? ` + ${_mass.size} Ertüchtigung${_mass.size > 1 ? 'en' : ''}` : ''}${lf.zulaessig ? '' : ' · <span style="color:#e53935;">Netz hält nicht — wird mit Warnhinweis übernommen</span>'}</span>
     ${eig ? `<span style="flex-basis:100%;height:0;"></span>
-      <span>Übernommen: <b>${_fmt(eig.summeKwp)} kWp</b>${eig.massnahmen?.length
-        ? ` + ${eig.massnahmen.length} Ertüchtigung${eig.massnahmen.length > 1 ? 'en' : ''} (${_fmt(eig.massnahmen.reduce((t, m) => t + m.investEUR, 0) / 1000)} T€)` : ''} <span style="color:var(--muted);">(Stand ${escHtml(eig.stand || '—')})</span></span>
+      <span>Übernommen: <b>${_fmt$1(eig.summeKwp)} kWp</b>${eig.massnahmen?.length
+        ? ` + ${eig.massnahmen.length} Ertüchtigung${eig.massnahmen.length > 1 ? 'en' : ''} (${_fmt$1(eig.massnahmen.reduce((t, m) => t + m.investEUR, 0) / 1000)} T€)` : ''} <span style="color:var(--muted);">(Stand ${escHtml(eig.stand || '—')})</span></span>
       ${knopf('laden', '↺ Übernommene Belegung laden', 'Die gespeicherte Belegung in die Schieber laden')}
       ${knopf('entfernen', '✕ Variante entfernen', 'Variante „Bestandsnetz, eigene Belegung" löschen und neu rechnen')}` : ''}
-    ${_meldung ? `<span style="flex-basis:100%;color:#80cbc4;">${_meldung}</span>` : ''}`;
+    ${_meldung$1 ? `<span style="flex-basis:100%;color:#80cbc4;">${_meldung$1}</span>` : ''}`;
   }
 
   function _eigeneLaden(erg) {
@@ -209759,7 +209926,7 @@ ${teile.join('\n')}
     const angeboten = new Set(erg.modell.eingabe.elemente.filter(e => e.massnahme).map(e => e.id));
     _mass = new Set((eig.massnahmen || []).map(m => m.elementId).filter(id => angeboten.has(id)));
     const fehlend = Object.keys(eig.belegung).filter(id => !erg.modell.eingabe.daecher.some(d => d.id === id)).length;
-    _meldung = 'Übernommene Belegung geladen.' + (fehlend ? ` ${fehlend} Dach/Dächer daraus gibt es nicht mehr.` : '');
+    _meldung$1 = 'Übernommene Belegung geladen.' + (fehlend ? ` ${fehlend} Dach/Dächer daraus gibt es nicht mehr.` : '');
   }
 
   /** Übernehmen oder Entfernen, danach die Varianten neu rechnen (sofern ein Lastgang vorliegt). */
@@ -209791,20 +209958,20 @@ ${teile.join('\n')}
   function _neuRechnen(was, zusatz) {
     const lastgang = !!(window.elQuartierH15 || window.elQuartierH);
     if (!lastgang) {
-      _meldung = `${was}. Ohne Stromlastgang lässt sich noch nicht rechnen — die Varianten entstehen beim nächsten „Varianten berechnen".`;
+      _meldung$1 = `${was}. Ohne Stromlastgang lässt sich noch nicht rechnen — die Varianten entstehen beim nächsten „Varianten berechnen".`;
       _aktualisieren({ spielraum: false });
       return;
     }
-    _meldung = 'Berechne Varianten …';
+    _meldung$1 = 'Berechne Varianten …';
     _aktualisieren({ spielraum: false });
     // Einen Frame warten, damit die Meldung sichtbar ist — die Variantenrechnung blockiert.
     setTimeout(() => {
       try {
         window.pvBerechneAlle?.();
-        _meldung = `${was} und Varianten neu berechnet${zusatz}`;
+        _meldung$1 = `${was} und Varianten neu berechnet${zusatz}`;
       } catch (err) {
         console.warn('[Einlinienschema] Variantenrechnung fehlgeschlagen:', err);
-        _meldung = `${was}, aber die Variantenrechnung ist fehlgeschlagen — bitte „Varianten berechnen" von Hand starten.`;
+        _meldung$1 = `${was}, aber die Variantenrechnung ist fehlgeschlagen — bitte „Varianten berechnen" von Hand starten.`;
       }
       pvnaSchemaRender();
     }, 30);
@@ -209824,6 +209991,1297 @@ ${teile.join('\n')}
     pvnaSchemaBerechnen: pvnaSchemaBerechnen,
     pvnaSchemaDruck: pvnaSchemaDruck,
     pvnaSchemaRender: pvnaSchemaRender
+  });
+
+  // ── lib/netzstrategie-core.js — PV-Netzstrategien: Anschlusswege je Flächengruppe ──
+  //
+  // Eine Netzstrategie legt je Flächengruppe (Dächer, die räumlich zusammengehören)
+  // einen Anschlussweg fest:
+  //   0   nicht belegen
+  //   A   Bestandsnetz — angebundene Dächer wie sie sind, nicht angebundene über einen
+  //       neuen Hausanschluss zum nächsten Netzknoten; Befüllung bis zur Netzgrenze
+  //   A~  wie A, aber alle Dächer voll belegt und die Einspeisung je Dach am EZA-Regler
+  //       auf die Netzgrenze begrenzt (Abregelung statt Weniger-Bauen)
+  //   B   wie A plus die Ertüchtigungen (Trafo/Kabel) auf den Wegen der Gruppe
+  //   C   neuer NS-Abgang: Kabel vom nächsten Trafo zu einem neuen Verteiler im
+  //       Schwerpunkt der Gruppe, Dächer sternförmig daran
+  //   D   neue Trafostation im Schwerpunkt, in den MS-Ring eingeschleift
+  //   E   Erzeugungsnetz: neue Station, eigenes MS-Kabel zum zusätzlichen Abgang
+  //       an der MS-Schaltanlage des Netzanschlusspunkts
+  // Alle Wege liegen hinter demselben NAP: dessen Einspeisegrenze bleibt gemeinsame
+  // Nebenbedingung und wird in der Energiebilanz stündlich abgeregelt.
+  //
+  // Bewertung: Die Strategie wird in eine Netz-Eingabe übersetzt (Bestand + neue
+  // Elemente + umgehängte Dächer + Ertüchtigungen) und mit pvnaFuellen befüllt —
+  // dieselbe Physik wie Netzaufnahme und Einlinienschema. Danach stündliche
+  // Energiebilanz (Eigenverbrauch, Einspeisung, Abregelung am Dach und am NAP)
+  // und Jahres-Netto-Überschuss wie in der PV-Analyse (Annuität PV + Netz).
+  //
+  // Optimierung: je Gruppe wenige Optionen → vollständige Aufzählung, bei zu vielen
+  // Kombinationen koordinatenweise lokale Suche von mehreren Startpunkten. Alle
+  // bewerteten Strategien bilden die Pareto-Front Netz-Invest ↔ nutzbare Energie;
+  // die Empfehlung wird über Preis-/Kostenszenarien auf Robustheit geprüft.
+  //
+  // Importfrei bis auf den Netzkern, DOM-frei → direkt in Unit-Tests nutzbar.
+
+
+  const R_ERDE = 6371000;
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // KOSTENKATALOG
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Standard-Kostenkatalog (Richtwerte, netto, Preisstand 2025/26). Im Projekt
+   * editierbar; gespeichert werden nur Abweichungen (nsKostenMischen).
+   */
+  const NS_KOSTEN_STANDARD = {
+    umwegFaktor:        { wert: 1.25,  einheit: '×',    label: 'Umwegfaktor Trasse (Luftlinie → Kabelweg)' },
+    tiefbauNsEurM:      { wert: 100,   einheit: '€/m',  label: 'Tiefbau NS-Kabel (Graben, Oberfläche)' },
+    hausanschlussEur:   { wert: 1500,  einheit: '€',    label: 'Hausanschluss je Dach (Anschlusskasten, Zähler, Montage)' },
+    kvsEur:             { wert: 4500,  einheit: '€',    label: 'Neuer Kabelverteiler (KVS)' },
+    nsAbgangEur:        { wert: 3000,  einheit: '€',    label: 'Neuer NS-Abgang am Trafo (NH-Leiste, Schutz)' },
+    station250Eur:      { wert: 55000, einheit: '€',    label: 'Kompaktstation 250 kVA' },
+    station400Eur:      { wert: 62000, einheit: '€',    label: 'Kompaktstation 400 kVA' },
+    station630Eur:      { wert: 70000, einheit: '€',    label: 'Kompaktstation 630 kVA' },
+    station1000Eur:     { wert: 90000, einheit: '€',    label: 'Kompaktstation 1.000 kVA' },
+    station1600Eur:     { wert: 115000, einheit: '€',   label: 'Kompaktstation 1.600 kVA' },
+    station2500Eur:     { wert: 150000, einheit: '€',   label: 'Kompaktstation 2.500 kVA' },
+    msKabelEurM:        { wert: 90,    einheit: '€/m',  label: 'MS-Kabel 3 × 1 × 150 NA2XS2Y (Material + Einzug)' },
+    msTiefbauEurM:      { wert: 150,   einheit: '€/m',  label: 'Tiefbau MS-Trasse' },
+    msSchaltfeldEur:    { wert: 40000, einheit: '€',    label: 'MS-Abgangsfeld an der Schaltanlage (Erzeugungsnetz)' },
+    ringEinschleifEur:  { wert: 15000, einheit: '€',    label: 'Ring-Einschleifung (Muffen, Ringkabelfelder)' },
+    netzLebensdauer:    { wert: 40,    einheit: 'a',    label: 'Nutzungsdauer Netzbetriebsmittel (Annuität)' },
+  };
+  const NS_TRAFO_GROESSEN = [250, 400, 630, 1000, 1600, 2500];
+
+  /** Katalog als { schluessel: zahl } — Standard, überschrieben durch gültige Projektwerte. */
+  function nsKostenMischen(gespeichert) {
+    const out = {};
+    for (const [k, v] of Object.entries(NS_KOSTEN_STANDARD)) {
+      const g = gespeichert?.[k];
+      out[k] = Number.isFinite(+g) && +g >= 0 && g !== '' && g !== null ? +g : v.wert;
+    }
+    return out;
+  }
+
+  /** Kleinste Standard-Trafogröße (kVA), deren kVA·pf die Leistung trägt — null, wenn keine reicht. */
+  function nsTrafoGroesse(pKw, pf = 0.9) {
+    return NS_TRAFO_GROESSEN.find(kva => kva * pf >= pKw) ?? null;
+  }
+  const nsStationEur = (kosten, kva) => kosten['station' + kva + 'Eur'] ?? kosten.station2500Eur;
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // GEOMETRIE
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /** Luftlinie in m (Haversine). */
+  function nsDistanzM(a, b) {
+    if (!a || !b) return Infinity;
+    const r = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+    return 2 * R_ERDE * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  /** Gewichteter Schwerpunkt [{ pos, w }] → { lat, lng } | null. */
+  function nsSchwerpunkt(punkte) {
+    let la = 0, ln = 0, w = 0;
+    for (const p of punkte) {
+      if (!p.pos) continue;
+      const g = p.w > 0 ? p.w : 1;
+      la += p.pos.lat * g; ln += p.pos.lng * g; w += g;
+    }
+    return w > 0 ? { lat: la / w, lng: ln / w } : null;
+  }
+
+  /** Nächster Kandidat [{ id, pos }] zu pos → { id, distM, pos } | null. */
+  function nsNaechster(pos, kandidaten) {
+    let best = null;
+    for (const k of kandidaten) {
+      const d = nsDistanzM(pos, k.pos);
+      if (Number.isFinite(d) && (!best || d < best.distM)) best = { id: k.id, distM: d, pos: k.pos };
+    }
+    return best;
+  }
+
+  /**
+   * Räumliche Gruppierung (Single-Linkage): Punkte, die über eine Kette von
+   * Nachbarn mit höchstens abstandM verbunden sind, bilden eine Gruppe.
+   * punkte: [{ id, pos }] — ohne pos bildet jeder Punkt eine eigene Gruppe.
+   * Rückgabe: [[id, …]], stabil nach erster ID sortiert.
+   */
+  function nsGruppieren(punkte, abstandM) {
+    const n = punkte.length;
+    const eltern = punkte.map((_, i) => i);
+    const wurzel = i => { while (eltern[i] !== i) { eltern[i] = eltern[eltern[i]]; i = eltern[i]; } return i; };
+    for (let i = 0; i < n; i++) {
+      if (!punkte[i].pos) continue;
+      for (let j = i + 1; j < n; j++) {
+        if (!punkte[j].pos) continue;
+        if (nsDistanzM(punkte[i].pos, punkte[j].pos) <= abstandM) eltern[wurzel(i)] = wurzel(j);
+      }
+    }
+    const m = new Map();
+    punkte.forEach((p, i) => {
+      const w = wurzel(i);
+      if (!m.has(w)) m.set(w, []);
+      m.get(w).push(p.id);
+    });
+    return [...m.values()].map(l => l.sort()).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // OPTIONEN JE GRUPPE
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Anschlusswege einer Gruppe mit Netz-Patch und Kosten.
+   *
+   * gruppe: { id, daecher: [dachId] }
+   * ctx: {
+   *   eingabe:   Netz-Eingabe des Bestands (elemente, daecher, …) — Dächer ohne
+   *              elementId bzw. mit unbekanntem Element gelten als nicht angebunden
+   *   dachPos:   Map<dachId, {lat,lng}>
+   *   elPos:     Map<elementId, {lat,lng}> (Knoten hinter dem Element; Trafo = Sammelschiene)
+   *   msPunkte:  [{ id, typ:'NAP'|'Schaltanlage'|'Trafo', name, pos }]
+   *   kabelNeu:  (pKw, lengthM, duZielPct) → { kapKw, duProKwPct, eurM, text } | null
+   *   kosten:    nsKostenMischen(…)
+   *   duGrenzePct
+   * }
+   * Rückgabe: [{ id, label, kurz, investEUR, posten:[{label,eur}], patch, abregeln?,
+   *   massnahmen?:[elementId], gekoppelt, hinweis?, geo?, machbar }]
+   * patch: { entfernen:[dachId], neu:[element], umhaengen:{ dachId: elementId } }
+   */
+  function nsOptionen(gruppe, ctx) {
+    const { eingabe, dachPos, elPos, msPunkte = [], kabelNeu, kosten } = ctx;
+    const duG = ctx.duGrenzePct ?? eingabe.duGrenzePct ?? 3;
+    const um = kosten.umwegFaktor || 1;
+    const elById = new Map(eingabe.elemente.map(e => [e.id, e]));
+    const dById = new Map(eingabe.daecher.map(d => [d.id, d]));
+    const daecher = gruppe.daecher.map(id => dById.get(id)).filter(Boolean);
+    const f = d => (d.einspFaktor > 0 ? d.einspFaktor : 0.8);
+    const pGrp = daecher.reduce((t, d) => t + d.kwpMax * f(d), 0);
+    const gid = gruppe.id;
+    const opt = [];
+
+    opt.push({ id: '0', label: 'nicht belegen', kurz: '—', investEUR: 0, posten: [], gekoppelt: false, machbar: true,
+      patch: { entfernen: daecher.map(d => d.id), neu: [], umhaengen: {} } });
+
+    // ── A: Bestandsnetz, fehlende Anschlüsse als Hausanschluss zum nächsten Knoten ──
+    const knoten = [...elPos].filter(([, p]) => p).map(([id, pos]) => ({ id, pos }));
+    const patchA = { entfernen: [], neu: [], umhaengen: {} };
+    const postenA = [];
+    const geoA = [];
+    let investA = 0, nichtAnbindbar = 0;
+    for (const d of daecher) {
+      if (d.elementId != null && elById.has(d.elementId)) continue;
+      const pos = dachPos.get(d.id);
+      const n = pos ? nsNaechster(pos, knoten) : null;
+      const L = n ? Math.max(10, n.distM * um) : null;
+      const k = L != null ? kabelNeu(d.kwpMax * f(d), L, Math.min(1.5, duG / 2)) : null;
+      if (!k) { nichtAnbindbar++; continue; }
+      const eid = `N:${gid}:HA:${d.id}`;
+      patchA.neu.push({ id: eid, typ: 'kabel', parentId: n.id, kapKw: k.kapKw, duProKwPct: k.duProKwPct, vorlastKw: 0, neu: true, text: k.text });
+      patchA.umhaengen[d.id] = eid;
+      const eur = kosten.hausanschlussEur + L * (k.eurM + kosten.tiefbauNsEurM);
+      investA += eur;
+      postenA.push({ label: `Hausanschluss ${d.id} (${k.text})`, eur });
+      geoA.push({ von: pos, bis: n.pos, art: 'ns' });
+    }
+    const hinweisA = nichtAnbindbar ? `${nichtAnbindbar} Dach/Dächer ohne Lage oder zu weit vom Bestandsnetz — nicht anbindbar.` : '';
+    // Kann kein einziges Dach der Gruppe ans Bestandsnetz, ist der Weg nicht machbar
+    const angebunden = daecher.filter(d => (d.elementId != null && elById.has(d.elementId)) || patchA.umhaengen[d.id]).length;
+    const machbarA = angebunden > 0;
+    const zusatzA = nichtAnbindbar && machbarA ? ` (${nichtAnbindbar} nicht anbindbar)` : '';
+    opt.push({ id: 'A', label: (patchA.neu.length ? `Bestandsnetz + ${patchA.neu.length} Hausanschl.` : 'Bestandsnetz') + zusatzA,
+      kurz: 'Bestand', investEUR: machbarA ? investA : Infinity, posten: postenA, patch: patchA, gekoppelt: true, machbar: machbarA,
+      hinweis: machbarA ? hinweisA : 'Kein Dach der Gruppe lässt sich mit Standardkabeln ans Bestandsnetz anbinden (zu weit).', geo: geoA });
+    opt.push({ id: 'A~', label: 'Bestandsnetz, voll + Abregelung' + zusatzA, kurz: 'Bestand ~', investEUR: machbarA ? investA : Infinity, posten: postenA,
+      patch: patchA, abregeln: true, gekoppelt: true, machbar: machbarA, hinweis: hinweisA, geo: geoA });
+
+    // ── B: A + Ertüchtigungen auf den Wegen der Gruppe ──
+    const mass = new Set();
+    const elA = new Map([...elById, ...patchA.neu.map(e => [e.id, e])]);
+    for (const d of daecher) {
+      let cur = patchA.umhaengen[d.id] ?? d.elementId;
+      const ges = new Set();
+      while (cur != null && elA.has(cur) && !ges.has(cur)) {
+        ges.add(cur);
+        if (elA.get(cur).massnahme) mass.add(cur);
+        cur = elA.get(cur).parentId;
+      }
+    }
+    if (mass.size && machbarA) {
+      // Die Maßnahmen werden erst auf Strategie-Ebene gezählt (mehrere Gruppen können sie teilen);
+      // massnahmenEUR dient nur der Anzeige.
+      const massnahmenEUR = [...mass].reduce((t, id) => t + (+elA.get(id).massnahme.investEUR || 0), 0);
+      opt.push({ id: 'B', label: `Bestand + ${mass.size} Ertüchtigung${mass.size > 1 ? 'en' : ''}` + zusatzA, kurz: 'Ertüchtigung',
+        investEUR: investA, massnahmenEUR, posten: [...postenA, ...[...mass].map(id => ({ label: elA.get(id).massnahme.label, eur: +elA.get(id).massnahme.investEUR || 0 }))],
+        patch: patchA, massnahmen: [...mass], gekoppelt: true, machbar: true, hinweis: hinweisA, geo: geoA });
+    }
+
+    // Ab hier: neue Anschlüsse im Schwerpunkt der Gruppe
+    const zentrum = nsSchwerpunkt(daecher.map(d => ({ pos: dachPos.get(d.id), w: d.kwpMax })));
+    if (!zentrum || !daecher.length) return opt;
+    const stern = (parentId, duZiel, praefix) => {
+      const neu = [], posten = [], umhaengen = {}, geo = [];
+      let eur = 0;
+      for (const d of daecher) {
+        const pos = dachPos.get(d.id) || zentrum;
+        const L = Math.max(10, nsDistanzM(pos, zentrum) * um);
+        const k = kabelNeu(d.kwpMax * f(d), L, duZiel);
+        if (!k) return null;
+        const eid = `N:${gid}:${praefix}:${d.id}`;
+        neu.push({ id: eid, typ: 'kabel', parentId, kapKw: k.kapKw, duProKwPct: k.duProKwPct, vorlastKw: 0, neu: true, text: k.text });
+        umhaengen[d.id] = eid;
+        const e = kosten.hausanschlussEur + L * (k.eurM + kosten.tiefbauNsEurM);
+        eur += e;
+        posten.push({ label: `Anschluss ${d.id} (${k.text})`, eur: e });
+        geo.push({ von: pos, bis: zentrum, art: 'ns' });
+      }
+      return { neu, posten, umhaengen, eur, geo };
+    };
+
+    // ── C: neuer NS-Abgang vom nächsten Trafo ──
+    const trafos = [...elPos].filter(([id, p]) => p && elById.get(id)?.typ === 'trafo').map(([id, pos]) => ({ id, pos }));
+    const tn = nsNaechster(zentrum, trafos);
+    if (tn) {
+      const Lz = Math.max(10, tn.distM * um);
+      const zul = kabelNeu(pGrp, Lz, Math.min(1.5, duG / 2));
+      const kvsId = `N:${gid}:KVS`;
+      const s = zul ? stern(kvsId, Math.max(0.3, duG - 1.5) / 2, 'C') : null;
+      if (zul && s) {
+        const eurZ = Lz * (zul.eurM + kosten.tiefbauNsEurM);
+        const posten = [{ label: 'NS-Abgang am Trafo', eur: kosten.nsAbgangEur }, { label: 'Kabelverteiler (KVS)', eur: kosten.kvsEur },
+          { label: `Zuleitung Trafo → KVS (${zul.text})`, eur: eurZ }, ...s.posten];
+        opt.push({ id: 'C', label: 'Neuer NS-Abgang', kurz: 'NS-Abgang', gekoppelt: true, machbar: true,
+          investEUR: kosten.nsAbgangEur + kosten.kvsEur + eurZ + s.eur, posten,
+          patch: { entfernen: [], umhaengen: s.umhaengen,
+            neu: [{ id: kvsId, typ: 'kabel', parentId: tn.id, kapKw: zul.kapKw, duProKwPct: zul.duProKwPct, vorlastKw: 0, neu: true, text: zul.text }, ...s.neu] },
+          geo: [...s.geo, { von: zentrum, bis: tn.pos, art: 'ns' }], station: { pos: zentrum, art: 'KVS' } });
+      } else {
+        opt.push({ id: 'C', label: 'Neuer NS-Abgang', kurz: 'NS-Abgang', machbar: false, investEUR: Infinity, posten: [], gekoppelt: true,
+          patch: { entfernen: [], neu: [], umhaengen: {} }, hinweis: 'Kein Standardkabel (bis 4 × 240 mm²) trägt die Gruppe über diese Entfernung.' });
+      }
+    }
+
+    // ── D / E: eigene Trafostation ──
+    const kva = nsTrafoGroesse(pGrp);
+    const stationsOption = (id, label, kurz, msZiel, msEur, msPostenLabel, msKabelFaktor) => {
+      if (!kva) return { id, label, kurz, machbar: false, investEUR: Infinity, posten: [], gekoppelt: false,
+        patch: { entfernen: [], neu: [], umhaengen: {} }, hinweis: 'Gruppe größer als 2.500 kVA — in Teilgruppen aufteilen.' };
+      if (!msZiel) return { id, label, kurz, machbar: false, investEUR: Infinity, posten: [], gekoppelt: false,
+        patch: { entfernen: [], neu: [], umhaengen: {} }, hinweis: 'Kein MS-Anschlusspunkt mit Lage im Netzmodell.' };
+      const tId = `N:${gid}:T${id}`;
+      const s = stern(tId, Math.max(0.5, duG * 0.8), id);
+      if (!s) return { id, label, kurz, machbar: false, investEUR: Infinity, posten: [], gekoppelt: false,
+        patch: { entfernen: [], neu: [], umhaengen: {} }, hinweis: 'Ein Dachanschluss ist mit Standardkabeln nicht auslegbar.' };
+      const Lms = Math.max(10, msZiel.distM * um);
+      const eurMs = Lms * (kosten.msKabelEurM * msKabelFaktor + kosten.msTiefbauEurM);
+      const posten = [{ label: `Kompaktstation ${kva} kVA`, eur: nsStationEur(kosten, kva) },
+        { label: msPostenLabel, eur: msEur }, { label: `MS-Trasse ${Math.round(Lms)} m`, eur: eurMs }, ...s.posten];
+      return { id, label: `${label} (${kva} kVA)`, kurz, machbar: true, gekoppelt: false,
+        investEUR: nsStationEur(kosten, kva) + msEur + eurMs + s.eur, posten,
+        patch: { entfernen: [], umhaengen: s.umhaengen,
+          neu: [{ id: tId, typ: 'trafo', parentId: null, kapKw: kva * 0.9, duProKwPct: 0, vorlastKw: 0, neu: true, text: `neue Station ${kva} kVA` }, ...s.neu] },
+        geo: [...s.geo, { von: zentrum, bis: msZiel.pos, art: 'ms' }], station: { pos: zentrum, art: 'Station', kva }, msZiel };
+    };
+    const ring = nsNaechster(zentrum, msPunkte.filter(m => m.typ === 'Trafo' || m.typ === 'Schaltanlage'));
+    opt.push(stationsOption('D', 'Neue Station am MS-Ring', 'Station Ring', ring && { ...ring, name: msPunkte.find(m => m.id === ring.id)?.name },
+      kosten.ringEinschleifEur, 'Ring-Einschleifung', 2));
+    const schalt = msPunkte.filter(m => m.typ === 'Schaltanlage');
+    const napZiel = nsNaechster(zentrum, schalt.length ? schalt : msPunkte.filter(m => m.typ === 'NAP'));
+    opt.push(stationsOption('E', 'Erzeugungsnetz, eigener MS-Abgang', 'Erzeugungsnetz', napZiel && { ...napZiel, name: msPunkte.find(m => m.id === napZiel.id)?.name },
+      kosten.msSchaltfeldEur, 'MS-Abgangsfeld an der Schaltanlage', 1));
+    return opt;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // STRATEGIE → NETZ-EINGABE → BEFÜLLUNG
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Setzt eine Strategie (wahl[g] = Index in optionen[g]) in eine Netz-Eingabe um.
+   * Rückgabe: { eingabe, investEUR, investNeuEUR, investMassEUR, massnahmen:Set,
+   *   abregeln:Set<dachId>, optionen:[option] }
+   */
+  function nsStrategieEingabe(basis, optionen, wahl) {
+    const gewaehlt = optionen.map((l, g) => l[wahl[g]] || l[0]);
+    const neu = [], entfernen = new Set(), umhaengen = new Map(), massnahmen = new Set(), abregeln = new Set();
+    let investNeu = 0;
+    gewaehlt.forEach((o, g) => {
+      investNeu += Number.isFinite(o.investEUR) ? o.investEUR : 0;
+      for (const id of o.patch.entfernen) entfernen.add(id);
+      for (const [d, e] of Object.entries(o.patch.umhaengen)) umhaengen.set(d, e);
+      neu.push(...o.patch.neu);
+      for (const m of o.massnahmen || []) massnahmen.add(m);
+      if (o.abregeln) for (const id of optionen[g][0].patch.entfernen) abregeln.add(id);   // alle Dächer der Gruppe
+    });
+    let investMass = 0;
+    const elemente = basis.elemente.map(e => {
+      if (!massnahmen.has(e.id) || !e.massnahme) return e;
+      investMass += +e.massnahme.investEUR || 0;
+      return { ...e, kapKw: e.massnahme.kapKw ?? e.kapKw, duProKwPct: e.massnahme.duProKwPct ?? e.duProKwPct };
+    }).concat(neu);
+    const daecher = basis.daecher.filter(d => !entfernen.has(d.id))
+      .map(d => umhaengen.has(d.id) ? { ...d, elementId: umhaengen.get(d.id) } : d);
+    return {
+      eingabe: { ...basis, elemente, daecher },
+      investEUR: investNeu + investMass, investNeuEUR: investNeu, investMassEUR: investMass,
+      massnahmen, abregeln, optionen: gewaehlt,
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ENERGIE + WIRTSCHAFT
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Stündliche Energiebilanz einer befüllten Strategie.
+   * fuell: pvnaFuellen-Ergebnis · eingabe: die Strategie-Eingabe · abregeln: Set<dachId>
+   * ctx: { formen:{ sued, ostwest } (je 8760, Summe 1), spezSued (kWh/kWp),
+   *        ostwest: Map<dachId,bool>, lastH: 8760 kW | null, napKw: Zahl | null }
+   * Abregel-Dächer: gebaut wird die volle Fläche, die Einspeisung ist auf die
+   * Netzgrenze kwp_Befüllung × Einspeisefaktor begrenzt.
+   */
+  function nsEnergie(fuell, eingabe, abregeln, ctx) {
+    const N = 8760;
+    const byId = new Map(eingabe.daecher.map(d => [d.id, d]));
+    const koeff = { sued: 0, ostwest: 0 };
+    const kappen = [];
+    let kwp = 0, kwpNetz = 0;
+    for (const r of fuell.daecher) {
+      const d = byId.get(r.id);
+      if (!d) continue;
+      const spez = ctx.spezSued * (d.ertragFaktor || 1);
+      const form = ctx.ostwest?.get(d.id) ? 'ostwest' : 'sued';
+      const f = d.einspFaktor > 0 ? d.einspFaktor : 0.8;
+      if (abregeln.has(d.id) && r.kwp > 0.05 && d.kwpMax > r.kwp + 0.05) {
+        kappen.push({ a: d.kwpMax * spez, form, cap: r.kwp * f });
+        kwp += d.kwpMax;
+      } else {
+        koeff[form] += r.kwp * spez;
+        kwp += r.kwp;
+      }
+      kwpNetz += r.kwp;
+    }
+    const S = ctx.formen.sued, O = ctx.formen.ostwest;
+    const last = ctx.lastH;
+    const nap = ctx.napKw > 0 ? ctx.napKw : null;
+    let erz = 0, eigen = 0, einsp = 0, abgDach = 0, abgNap = 0, spitze = 0, bedarf = 0;
+    for (let h = 0; h < N; h++) {
+      let p = koeff.sued * S[h] + koeff.ostwest * O[h];
+      for (const k of kappen) {
+        const roh = k.a * (k.form === 'ostwest' ? O[h] : S[h]);
+        erz += roh;
+        const ok = Math.min(roh, k.cap);
+        abgDach += roh - ok;
+        p += ok;
+      }
+      erz += koeff.sued * S[h] + koeff.ostwest * O[h];
+      const l = last ? (last[h] || 0) : 0;
+      bedarf += l;
+      const ev = Math.min(l, p);
+      const ex = p - ev;
+      if (ex > spitze) spitze = ex;
+      const exN = nap != null ? Math.min(ex, nap) : ex;
+      eigen += ev; einsp += exN; abgNap += ex - exN;
+    }
+    const mwh = x => x / 1000;
+    return {
+      kwp, kwpNetz, erzeugungMwh: mwh(erz), eigenMwh: mwh(eigen), einspMwh: mwh(einsp),
+      abgeregeltDachMwh: mwh(abgDach), abgeregeltNapMwh: mwh(abgNap), nutzbarMwh: mwh(eigen + einsp),
+      rueckspeiseSpitzeKw: spitze, evQuotePct: erz > 0 ? eigen / erz * 100 : 0,
+      autarkiePct: bedarf > 0 ? eigen / bedarf * 100 : 0, mitLastgang: !!last,
+    };
+  }
+
+  function nsAnnuitaet(z, n) {
+    if (!z || z <= 0) return n > 0 ? 1 / n : 1;
+    return z * Math.pow(1 + z, n) / (Math.pow(1 + z, n) - 1);
+  }
+
+  /**
+   * Jahres-Netto-Überschuss wie pvWirtschaft (09d), ohne Speicher:
+   * Erlöse (Eigenverbrauch × Bezugspreis + Einspeisung × Vergütung) minus
+   * Jahreskosten (PV-Invest × (Annuität + Instandhaltung) + Netz-Invest × Annuität).
+   * p: { pStrom, pEinsp (ct/kWh), pvInvestPerKwp, zins (0…1), pvLife, ihPv, netzLife }
+   * m: Szenario-Faktoren { strom, einsp, netz, pv } (Standard 1).
+   */
+  function nsWirtschaft(energie, netzInvestEUR, p, m = {}) {
+    const pvInvest = energie.kwp * p.pvInvestPerKwp * (m.pv ?? 1);
+    const netz = netzInvestEUR * (m.netz ?? 1);
+    const jkPv = pvInvest * (nsAnnuitaet(p.zins, p.pvLife) + (p.ihPv ?? 0.01));
+    const jkNetz = netz * nsAnnuitaet(p.zins, p.netzLife);
+    const erloes = energie.eigenMwh * p.pStrom * 10 * (m.strom ?? 1) + energie.einspMwh * p.pEinsp * 10 * (m.einsp ?? 1);
+    const jk = jkPv + jkNetz;
+    return { pvInvestEUR: pvInvest, netzInvestEUR: netz, jkPv, jkNetz, jk, erloes, ueberschuss: erloes - jk,
+      lcoeCt: energie.nutzbarMwh > 0 ? jk / (energie.nutzbarMwh * 10) : null };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // BEWERTUNG, ZIELFUNKTION, OPTIMIERUNG
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /** Eine Strategie vollständig bewerten (Netz → Energie → Wirtschaft). */
+  function nsBewerten(basis, optionen, wahl, ectx, p) {
+    const st = nsStrategieEingabe(basis, optionen, wahl);
+    const fuell = pvnaFuellen(st.eingabe);
+    const energie = nsEnergie(fuell, st.eingabe, st.abregeln, ectx);
+    const wirt = nsWirtschaft(energie, st.investEUR, p);
+    const machbar = st.optionen.every(o => o.machbar !== false);
+    return { wahl: [...wahl], investEUR: st.investEUR, investNeuEUR: st.investNeuEUR, investMassEUR: st.investMassEUR,
+      massnahmen: [...st.massnahmen], energie, wirt, machbar, fuell };
+  }
+
+  /**
+   * Zielwert (größer = besser).
+   * ziel: { art:'wirtschaft' } | { art:'budget', budgetEUR } (max. Energie im Budget)
+   *       | { art:'zielkwp', kwp } (wirtschaftlich beste unter denen, die das Ziel erreichen)
+   */
+  function nsZielwert(r, ziel) {
+    if (!r.machbar) return -1e15;
+    if (ziel?.art === 'budget') {
+      const b = +ziel.budgetEUR || 0;
+      return r.investEUR <= b + 1e-6 ? r.energie.nutzbarMwh : -1e12 - (r.investEUR - b);
+    }
+    if (ziel?.art === 'zielkwp') {
+      const z = +ziel.kwp || 0;
+      // Unter allen Strategien, die das Ziel erreichen, die wirtschaftlich beste
+      return r.energie.kwp >= z - 1e-6 ? r.wirt.ueberschuss : -1e12 - (z - r.energie.kwp) * 1e3;
+    }
+    return r.wirt.ueberschuss;
+  }
+
+  /**
+   * Optimierung über alle Gruppen.
+   * nOpt: [Anzahl Optionen je Gruppe] · bewerte(wahl) → Ergebnis mit zielwert
+   * Vollständige Aufzählung bis maxKombi, sonst lokale Suche (koordinatenweise
+   * Verbesserung) von mehreren Startpunkten; starts: [wahl] zusätzliche Startpunkte.
+   * Rückgabe: { beste, alle:[Ergebnis], methode, bewertungen }
+   */
+  function nsOptimieren({ nOpt, bewerte, maxKombi = 2000, maxBewertungen = 4000, starts = [] }) {
+    const cache = new Map();
+    const eval_ = w => {
+      const k = w.join(',');
+      if (!cache.has(k)) cache.set(k, bewerte(w));
+      return cache.get(k);
+    };
+    const kombi = nOpt.reduce((t, n) => t * Math.max(1, n), 1);
+    let methode;
+    if (kombi <= maxKombi) {
+      methode = 'vollständig';
+      const w = nOpt.map(() => 0);
+      for (let i = 0; i < kombi; i++) {
+        eval_(w);
+        for (let g = 0; g < w.length; g++) { if (++w[g] < nOpt[g]) break; w[g] = 0; }
+      }
+    } else {
+      methode = 'lokale Suche';
+      const startListe = [...starts, nOpt.map(() => 0)];
+      for (const s0 of startListe) {
+        let w = [...s0];
+        let best = eval_(w);
+        let besser = true;
+        while (besser && cache.size < maxBewertungen) {
+          besser = false;
+          for (let g = 0; g < w.length && cache.size < maxBewertungen; g++) {
+            for (let o = 0; o < nOpt[g]; o++) {
+              if (o === w[g]) continue;
+              const v = [...w]; v[g] = o;
+              const r = eval_(v);
+              if (r.zielwert > best.zielwert + 1e-9) { best = r; w = v; besser = true; }
+            }
+          }
+        }
+      }
+    }
+    const alle = [...cache.values()];
+    const beste = alle.reduce((a, b) => (b.zielwert > a.zielwert ? b : a), alle[0]);
+    return { beste, alle, methode, bewertungen: cache.size, kombinationen: kombi };
+  }
+
+  /**
+   * Pareto-Front (x klein = gut, y groß = gut): nicht dominierte Punkte,
+   * nach x aufsteigend. xy: p → [x, y].
+   */
+  function nsPareto(punkte, xy) {
+    const s = punkte.map(p => ({ p, v: xy(p) })).filter(o => Number.isFinite(o.v[0]) && Number.isFinite(o.v[1]))
+      .sort((a, b) => a.v[0] - b.v[0] || b.v[1] - a.v[1]);
+    const out = [];
+    let yMax = -Infinity;
+    for (const o of s) if (o.v[1] > yMax + 1e-9) { out.push(o.p); yMax = o.v[1]; }
+    return out;
+  }
+
+  /** Szenarien für die Robustheitsprüfung (Faktoren auf Preise und Kosten). */
+  const NS_SZENARIEN = [
+    { id: 'basis', label: 'Basis', m: {} },
+    { id: 'strom-', label: 'Strompreis −20 %', m: { strom: 0.8 } },
+    { id: 'strom+', label: 'Strompreis +20 %', m: { strom: 1.2 } },
+    { id: 'einsp-', label: 'Vergütung −30 %', m: { einsp: 0.7 } },
+    { id: 'netz+', label: 'Netzkosten +30 %', m: { netz: 1.3 } },
+    { id: 'netz-', label: 'Netzkosten −30 %', m: { netz: 0.7 } },
+    { id: 'pv+', label: 'PV-Invest +20 %', m: { pv: 1.2 } },
+  ];
+
+  /**
+   * Robustheit: Überschuss jeder Kandidatin je Szenario, Bedauern = Abstand zur
+   * jeweils besten. Empfehlung = geringstes maximales Bedauern (bei Gleichstand
+   * höherer Basis-Überschuss). Rückgabe: { empfehlung, tabelle:[{ kandidat, werte, vorn, maxBedauern }] }
+   */
+  function nsRobustheit(kandidaten, p, szenarien = NS_SZENARIEN) {
+    if (!kandidaten.length) return { empfehlung: null, tabelle: [] };
+    const werte = kandidaten.map(k => szenarien.map(s => nsWirtschaft(k.energie, k.investEUR, p, s.m).ueberschuss));
+    const bestJe = szenarien.map((_, i) => Math.max(...werte.map(w => w[i])));
+    const tabelle = kandidaten.map((k, j) => ({
+      kandidat: k, werte: werte[j],
+      vorn: werte[j].filter((v, i) => v >= bestJe[i] - 1e-6).length,
+      maxBedauern: Math.max(...werte[j].map((v, i) => bestJe[i] - v)),
+    }));
+    const empfehlung = tabelle.reduce((a, b) =>
+      (b.maxBedauern < a.maxBedauern - 1e-6 || (Math.abs(b.maxBedauern - a.maxBedauern) <= 1e-6 && b.werte[0] > a.werte[0]) ? b : a));
+    return { empfehlung, tabelle };
+  }
+
+  /**
+   * Break-even eines Stationswegs (D/E) gegenüber dem Bestandsweg einer Gruppe:
+   * ab welcher PV-Leistung kostet das Erzeugungsnetz je kWp weniger als der
+   * Bestandsweg? kFix = Fixkosten der Station, kVar = variable Kosten je kWp
+   * (Dachanschlüsse), kBestand = Netzkosten je zusätzlichem kWp auf dem Bestandsweg.
+   * Rückgabe: kWp oder null (lohnt nie bzw. nicht berechenbar).
+   */
+  function nsBreakEven(kFix, kVar, kBestand) {
+    if (!(kBestand > kVar) || !(kFix > 0)) return null;
+    return kFix / (kBestand - kVar);
+  }
+
+  // ── 30-netzstrategie.js — Netzstrategie-Editor der PV-Analyse ────────────────
+  //
+  // Ansicht „Netzstrategie (Editor)": Die Dächer im Zieljahr werden zu Flächen-
+  // gruppen zusammengefasst (Bestand und Neubau getrennt; räumlich nach Abstand
+  // oder nach den Liegenschafts-Clustern). Je Gruppe gibt es Anschlusswege —
+  // nicht belegen, Bestandsnetz, Bestandsnetz mit Abregelung, mit Ertüchtigung,
+  // neuer NS-Abgang, neue Station am MS-Ring, Erzeugungsnetz mit eigenem MS-Abgang
+  // (lib/netzstrategie-core.js). Alle Wege liegen hinter demselben NAP.
+  //
+  // „Strategien rechnen" bewertet die Kombinationen (Netz → stündliche Energie-
+  // bilanz → Jahres-Netto-Überschuss), zeigt die Pareto-Front Netz-Invest ↔ nutzbare
+  // Energie, sechs Standardstrategien und eine über Preis-/Kostenszenarien geprüfte
+  // Empfehlung. Im Editor lässt sich je Gruppe der Weg von Hand wählen; jede
+  // Strategie kann als Variante „Netzstrategie: …" in die PV-Analyse übernommen
+  // werden (09d, window._pvAnalyse.netzStrategien).
+  //
+  // Kosten kommen aus einem im Projekt editierbaren Kostenkatalog. Eingaben werden
+  // über pvCaptureState/pvRestoreState (09d) unter pvAnalyse.netzstrategie gespeichert.
+
+
+  const ROOT_ID = 'pva-netzstrategie';
+  const OPT_FARBE = { '0': '#8a8f8a', A: '#66bb6a', 'A~': '#9ccc65', B: '#4fc3f7', C: '#ffb300', D: '#ab47bc', E: '#e040fb' };
+
+  // Eingaben (Projektdatei) — Jahre unabhängig vom Jahresschieber
+  const _standard = () => ({
+    stichjahr: null, zieljahr: null, quelle: 'aktiv', gruppierung: 'auto', abstandM: 120,
+    ziel: { art: 'wirtschaft', budgetEUR: 250000, kwp: 500 },
+    kosten: {},                 // nur Abweichungen vom Standardkatalog
+    wahl: {},                   // Editor: Gruppenschlüssel → Options-ID
+  });
+  let _ns = _standard();
+  let _erg = null;              // letzter Rechenlauf
+  let _editor = null;           // Bewertung der Editor-Auswahl
+  let _editorWahl = null;       // [Optionsindex je Gruppe]
+  let _veraltet = false;        // Eingaben seit dem Rechenlauf geändert
+  let _katalogAuf = false;
+  let _offen = new Set();       // aufgeklappte Gruppen im Editor
+  let _karte = null;            // Leaflet-LayerGroup der Kartendarstellung
+  let _meldung = '';
+
+  const _fmt = (x, d = 0) => (x == null || !Number.isFinite(x)) ? '—'
+    : x.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const _tEur = x => _fmt(x / 1000, x >= 100000 ? 0 : 1) + ' T€';
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // EINGANGSDATEN
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  function _jahre() {
+    const stich = pvnaJahre({ stichjahr: _ns.stichjahr }).stich;
+    const ziel = Math.max(stich, parseInt(_ns.zieljahr) || pvnaLetztesNeubaujahr(stich) || stich);
+    return { stich, ziel };
+  }
+
+  /** Lastgang stündlich (8760) aus dem Lastgang der PV-Analyse; 15-min wird gemittelt. */
+  function _lastStuendlich() {
+    const a = window.pvGetDemandH?.() || window.elQuartierH15 || window.elQuartierH;
+    if (!a || a.length < 8760) return null;
+    const out = new Float32Array(8760);
+    if (a.length >= 35040) {
+      for (let h = 0; h < 8760; h++) out[h] = ((a[4 * h] || 0) + (a[4 * h + 1] || 0) + (a[4 * h + 2] || 0) + (a[4 * h + 3] || 0)) / 4;
+    } else {
+      for (let h = 0; h < 8760; h++) out[h] = a[h] || 0;
+    }
+    return out;
+  }
+
+  /** NAP-Einspeisegrenze wie in der PV-Analyse (Feld zuerst, 0/leer = keine Grenze). */
+  function _napGrenze() {
+    for (const id of ['pva-nap-einsp', 'strom-nap-einsp-kw']) {
+      const el = document.getElementById(id);
+      if (el && el.value !== '') { const v = parseFloat(el.value); return v > 0 ? v : null; }
+    }
+    return window.elNapMaxEinspKw > 0 ? window.elNapMaxEinspKw : null;
+  }
+
+  /** Wirtschaftsparameter aus der PV-Analyse (gleiche Felder und Standardwerte wie 09d). */
+  function _preise(kosten) {
+    const v = (id, d) => { const x = parseFloat(document.getElementById(id)?.value); return Number.isFinite(x) && x > 0 ? x : d; };
+    return {
+      pStrom: v('pva-p-strom', 30), pEinsp: v('pva-p-einsp', 8), pvInvestPerKwp: v('pva-pv-invest', OPT_INVEST_DEFAULT.pv),
+      zins: v('pva-zins', 3.5) / 100, pvLife: v('pva-pv-life', 20), ihPv: OPT_IH.pv ?? 0.01, netzLife: kosten.netzLebensdauer,
+    };
+  }
+
+  /** Flächengruppen: Bestand und Neubau getrennt, räumlich bzw. nach Clustern. */
+  function _gruppenBilden(modell) {
+    const { eingabe, info } = modell;
+    const gebById = new Map((window.gebaeude || []).map(g => [g.id, g]));
+    const gruppen = [];
+    for (const klasse of ['bestand', 'neu']) {
+      const liste = eingabe.daecher.filter(d => !!info.dachInfo.get(d.id)?.neu === (klasse === 'neu'));
+      if (!liste.length) continue;
+      const punkt = d => ({ id: d.id, pos: info.dachInfo.get(d.id)?.pos || null });
+      let buckets = [];
+      if (_ns.gruppierung === 'cluster' && clusters.length) {
+        const m = new Map(), rest = [];
+        for (const d of liste) {
+          const g = gebById.get(info.dachInfo.get(d.id)?.gebId);
+          const c = g ? clusterFuerGebaeude(g) : null;
+          if (!c) { rest.push(d); continue; }
+          if (!m.has(c.id)) m.set(c.id, { name: c.name, ids: [] });
+          m.get(c.id).ids.push(d.id);
+        }
+        buckets = [...m.values()];
+        for (const ids of nsGruppieren(rest.map(punkt), _ns.abstandM)) buckets.push({ ids });
+      } else {
+        buckets = nsGruppieren(liste.map(punkt), _ns.abstandM).map(ids => ({ ids }));
+      }
+      for (const b of buckets) {
+        const ids = [...b.ids].sort();
+        const namen = ids.map(id => info.dachInfo.get(id)?.name || id);
+        const kwpMax = ids.reduce((t, id) => t + (eingabe.daecher.find(d => d.id === id)?.kwpMax || 0), 0);
+        gruppen.push({
+          id: 'g' + gruppen.length, key: `${klasse}:${ids[0]}:${ids.length}`, klasse, daecher: ids, namen, kwpMax,
+          label: b.name || (namen[0] + (namen.length > 1 ? ` + ${namen.length - 1}` : '')),
+        });
+      }
+    }
+    return gruppen;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // RECHNEN
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  const STANDARD = [
+    { key: 'S0', label: 'Bestandsnetz ohne Maßnahmen', kurz: 'Bestand', wege: { bestand: ['A'], neu: ['A'] } },
+    { key: 'S1', label: 'Bestandsnetz mit Ertüchtigung', kurz: 'Ertüchtigung', wege: { bestand: ['B', 'A'], neu: ['B', 'A'] } },
+    { key: 'S2', label: 'Nur Neubau (Bestandsnetz)', kurz: 'Nur Neubau', wege: { bestand: ['0'], neu: ['A'] }, mitNeu: true },
+    { key: 'S3', label: 'Nur Neubau im Erzeugungsnetz', kurz: 'Neubau EN', wege: { bestand: ['0'], neu: ['E', 'D', 'A'] }, mitNeu: true },
+    { key: 'S4', label: 'Hybrid: Bestand + Erzeugungsnetz für Neubau', kurz: 'Hybrid', wege: { bestand: ['A'], neu: ['E', 'D', 'A'] }, mitNeu: true },
+    { key: 'S5', label: 'Alles voll belegen + Abregelung', kurz: 'Voll + Abregelung', wege: { bestand: ['A~', 'A'], neu: ['A~', 'A'] } },
+  ];
+
+  /** Erster machbarer Weg aus der Liste — sonst „nicht belegen" (Option 0). */
+  function _waehle(optionen, g, ids) {
+    for (const id of ids) {
+      const i = optionen[g].findIndex(o => o.id === id && o.machbar !== false);
+      if (i >= 0) return i;
+    }
+    return 0;
+  }
+
+  function nsRechnen() {
+    _meldung = '';
+    const { stich, ziel } = _jahre();
+    const na = pvnaEinstellungen();
+    const modell = pvnaModell({ ...na, flaechen: 'alle', quelle: _ns.quelle, stichjahr: stich, zieljahr: ziel });
+    const { eingabe, info } = modell;
+    if (!eingabe.elemente.some(e => e.typ === 'trafo')) { _erg = { fehler: `Kein aktiver Trafo im Zieljahr ${ziel} — ohne Netz keine Strategie.` }; return _erg; }
+    if (!eingabe.daecher.length) { _erg = { fehler: 'Keine PV-Flächen im Zieljahr — Gebäuden PV zuweisen oder „Dachflächen: alle Dächer" wählen.' }; return _erg; }
+    const t0 = performance.now();
+    const kosten = nsKostenMischen(_ns.kosten);
+    const gruppen = _gruppenBilden(modell);
+    const k = { cosPhi: info.cosPhi, kIz: info.kIz, tLeiter: info.tLeiter, I_je_kW: info.I_je_kW };
+    const octx = {
+      eingabe, dachPos: new Map([...info.dachInfo].map(([id, di]) => [id, di.pos || null])),
+      elPos: info.elPos, msPunkte: info.msPunkte, kosten, duGrenzePct: eingabe.duGrenzePct,
+      kabelNeu: (p, L, du) => pvnaKabelNeu(p, L, du, k),
+    };
+    const optionen = gruppen.map(g => nsOptionen(g, octx));
+    const ectx = {
+      formen: { sued: pvnaProfilForm(false), ostwest: pvnaProfilForm(true) },
+      spezSued: pvOrientationMix().spezSued || 950,
+      ostwest: new Map([...info.dachInfo].map(([id, di]) => [id, !!di.ostwest])),
+      lastH: _lastStuendlich(), napKw: _napGrenze(),
+    };
+    const p = _preise(kosten);
+    const zielDef = { ..._ns.ziel };
+    const bewerte = w => {
+      const r = nsBewerten(eingabe, optionen, w, ectx, p);
+      r.zielwert = nsZielwert(r, zielDef);
+      r.kwpJeDach = new Map(r.fuell.daecher.map(d => [d.id, d.kwp]));
+      r.fuell = null;
+      return r;
+    };
+    const mitNeu = gruppen.some(g => g.klasse === 'neu');
+    const standardWahl = STANDARD.filter(s => !s.mitNeu || mitNeu)
+      .map(s => ({ ...s, wahl: gruppen.map((g, i) => _waehle(optionen, i, s.wege[g.klasse])) }));
+    const opt = nsOptimieren({ nOpt: optionen.map(l => l.length), bewerte, starts: standardWahl.map(s => s.wahl),
+      maxKombi: 3000, maxBewertungen: 5000 });
+    const cache = new Map(opt.alle.map(r => [r.wahl.join(','), r]));
+    const holen = w => cache.get(w.join(',')) || (() => { const r = bewerte(w); cache.set(w.join(','), r); return r; })();
+    const standard = standardWahl.map(s => ({ ...s, r: holen(s.wahl) }));
+    const alle = [...cache.values()];
+    const machbar = alle.filter(r => r.machbar);
+    const pareto = nsPareto(machbar, r => [r.investEUR, r.energie.nutzbarMwh]);
+
+    // Empfehlung: beim wirtschaftlichen Ziel über Szenarien geprüft (geringstes
+    // maximales Bedauern unter den besten Kandidaten), sonst die beste Strategie.
+    let rob = null, empfehlung = opt.beste;
+    if (zielDef.art === 'wirtschaft') {
+      const kand = [];
+      const gesehen = new Set();
+      const dazu = r => { const k2 = r.wahl.join(','); if (r.machbar && !gesehen.has(k2)) { gesehen.add(k2); kand.push(r); } };
+      [...machbar].sort((a, b) => b.zielwert - a.zielwert).slice(0, 8).forEach(dazu);
+      standard.forEach(s => dazu(s.r));
+      rob = nsRobustheit(kand, p);
+      if (rob.empfehlung) empfehlung = rob.empfehlung.kandidat;
+    }
+    _erg = { modell, gruppen, optionen, ectx, p, kosten, opt, standard, pareto, rob, empfehlung, alle, holen, ziel: zielDef,
+      jahre: { stich, ziel }, dauerMs: performance.now() - t0 };
+    _veraltet = false;
+    // Editor: gespeicherte Auswahl je Gruppe, sonst die Empfehlung
+    _editorWahl = gruppen.map((g, i) => {
+      const id = _ns.wahl?.[g.key];
+      const j = id != null ? optionen[i].findIndex(o => o.id === id) : -1;
+      return j >= 0 ? j : empfehlung.wahl[i];
+    });
+    _editor = holen(_editorWahl);
+    return _erg;
+  }
+
+  function _editorSetzen(wahl, merken = true) {
+    _editorWahl = [...wahl];
+    _editor = _erg.holen(_editorWahl);
+    if (merken) {
+      _ns.wahl = {};
+      _erg.gruppen.forEach((g, i) => { _ns.wahl[g.key] = _erg.optionen[i][_editorWahl[i]].id; });
+    }
+    if (_karte) _karteZeichnen();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // DARSTELLUNG
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  const _kn = (akt, txt, tip = '', betont = false, extra = '') =>
+    `<button class="${betont ? 'btn-confirm' : 'ns-knopf'}" data-ns-aktion="${akt}" title="${escHtml(tip)}" ${extra}>${txt}</button>`;
+
+  function _cssEinmal() {
+    if (document.getElementById('ns-css')) return;
+    const st = document.createElement('style');
+    st.id = 'ns-css';
+    st.textContent = `
+  #${ROOT_ID} .ns-knopf{font-size:10.5px;padding:3px 9px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;}
+  #${ROOT_ID} .ns-karte{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;margin-bottom:10px;}
+  #${ROOT_ID} table{border-collapse:collapse;width:100%;font-size:10.5px;}
+  #${ROOT_ID} th{font-weight:500;color:var(--muted);text-align:right;padding:3px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  #${ROOT_ID} th.l,#${ROOT_ID} td.l{text-align:left;}
+  #${ROOT_ID} td{padding:3px 6px;text-align:right;border-bottom:1px solid rgba(128,128,128,.12);white-space:nowrap;}
+  #${ROOT_ID} td.m{font-family:'DM Mono',monospace;}
+  #${ROOT_ID} .ns-in{width:100%;padding:4px 6px;font-size:11px;box-sizing:border-box;}
+  #${ROOT_ID} .ns-lbl{display:block;color:var(--muted);font-size:10px;margin-bottom:3px;}`;
+    document.head.appendChild(st);
+  }
+
+  function nsRender() {
+    const root = document.getElementById(ROOT_ID);
+    if (!root) return;
+    _cssEinmal();
+    const { stich, ziel } = _jahre();
+    const neuJahr = pvnaLetztesNeubaujahr(stich);
+    root.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+    <div style="font-size:12px;font-weight:600;">Netzstrategie — Anschlusswege je Flächengruppe</div>
+    <div style="font-size:10px;color:var(--muted);">Alle Wege hinter demselben Netzanschlusspunkt · Physik wie Netzaufnahme/Einlinienschema</div>
+  </div>
+  <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
+    Die Dächer im Zieljahr werden zu Gruppen zusammengefasst (Bestand und Neubau getrennt). Je Gruppe:
+    <b style="color:${OPT_FARBE.A};">Bestandsnetz</b>, <b style="color:${OPT_FARBE['A~']};">voll + Abregelung</b>,
+    <b style="color:${OPT_FARBE.B};">mit Ertüchtigung</b>, <b style="color:${OPT_FARBE.C};">neuer NS-Abgang</b>,
+    <b style="color:${OPT_FARBE.D};">neue Station am MS-Ring</b>, <b style="color:${OPT_FARBE.E};">Erzeugungsnetz</b> (eigener MS-Abgang an der Schaltanlage)
+    oder nicht belegen. Bewertet wird stündlich mit Lastgang, NAP-Einspeisegrenze und den Preisen der PV-Analyse.</div>
+
+  <div class="ns-karte" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+    <div style="flex:0 1 90px;"><span class="ns-lbl" title="Was bis dahin gebaut ist, gilt als Bestand. Leer = aktuelles Jahr.">Stichjahr</span>
+      <input class="ns-in" data-ns-feld="stichjahr" type="number" step="1" value="${_ns.stichjahr ?? ''}" placeholder="${stich}"></div>
+    <div style="flex:0 1 90px;"><span class="ns-lbl" title="Rechenjahr: Netz und Gebäude in diesem Jahr. Leer = letztes geplantes Baujahr.">Zieljahr</span>
+      <input class="ns-in" data-ns-feld="zieljahr" type="number" step="1" value="${_ns.zieljahr ?? ''}" placeholder="${neuJahr ?? stich}"></div>
+    <div style="flex:0 1 190px;"><span class="ns-lbl">PV-Flächen</span>
+      <select class="ns-in" data-ns-feld="quelle">
+        <option value="aktiv" ${_ns.quelle === 'aktiv' ? 'selected' : ''}>Gebäude mit aktiver PV + PV-Anlagen</option>
+        <option value="alle" ${_ns.quelle === 'alle' ? 'selected' : ''}>alle Dächer (Dachpotenzial)</option></select></div>
+    <div style="flex:0 1 150px;"><span class="ns-lbl">Gruppen</span>
+      <select class="ns-in" data-ns-feld="gruppierung">
+        <option value="auto" ${_ns.gruppierung === 'auto' ? 'selected' : ''}>räumlich (Abstand)</option>
+        <option value="cluster" ${_ns.gruppierung === 'cluster' ? 'selected' : ''} ${clusters.length ? '' : 'disabled'}>Liegenschafts-Cluster${clusters.length ? '' : ' (keine)'}</option></select></div>
+    <div style="flex:0 1 90px;"><span class="ns-lbl" title="Dächer, die über eine Kette von Nachbarn höchstens so weit auseinander liegen, bilden eine Gruppe">Abstand m</span>
+      <input class="ns-in" data-ns-feld="abstandM" type="number" min="10" step="10" value="${_ns.abstandM}"></div>
+    <div style="flex:0 1 230px;"><span class="ns-lbl">Ziel der Empfehlung</span>
+      <select class="ns-in" data-ns-feld="ziel.art">
+        <option value="wirtschaft" ${_ns.ziel.art === 'wirtschaft' ? 'selected' : ''}>höchster Jahres-Netto-Überschuss</option>
+        <option value="budget" ${_ns.ziel.art === 'budget' ? 'selected' : ''}>meiste Energie im Netz-Budget</option>
+        <option value="zielkwp" ${_ns.ziel.art === 'zielkwp' ? 'selected' : ''}>Ziel-kWp wirtschaftlich erreichen</option></select></div>
+    ${_ns.ziel.art === 'budget' ? `<div style="flex:0 1 110px;"><span class="ns-lbl">Netz-Budget €</span>
+      <input class="ns-in" data-ns-feld="ziel.budgetEUR" type="number" min="0" step="10000" value="${_ns.ziel.budgetEUR}"></div>` : ''}
+    ${_ns.ziel.art === 'zielkwp' ? `<div style="flex:0 1 100px;"><span class="ns-lbl">Ziel kWp</span>
+      <input class="ns-in" data-ns-feld="ziel.kwp" type="number" min="0" step="10" value="${_ns.ziel.kwp}"></div>` : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      ${_kn('rechnen', _erg && !_erg.fehler ? '↻ Strategien neu rechnen' : '▶ Strategien rechnen', 'Alle Kombinationen bewerten, Pareto-Front und Empfehlung bilden', true, 'style="padding:6px 14px;font-size:11px;"')}
+      ${_kn('katalog', _katalogAuf ? '▾ Kostenkatalog' : '▸ Kostenkatalog', 'Kostenansätze für neue Anschlüsse, Stationen und MS-Trassen')}
+    </div>
+    ${ziel > stich ? '' : `<div style="flex-basis:100%;font-size:10px;color:#ffb74d;">Zieljahr = Stichjahr: es gibt keine Neubau-Gruppen${neuJahr ? ` — Zieljahr ≥ ${neuJahr} setzen` : ''}.</div>`}
+  </div>
+  ${_katalogAuf ? _katalogHtml() : ''}
+  ${_veraltet ? '<div style="margin:-4px 0 10px;font-size:10.5px;color:#ffb74d;">Eingaben geändert — Strategien neu rechnen.</div>' : ''}
+  ${_meldung ? `<div style="margin:-4px 0 10px;font-size:10.5px;color:#80cbc4;">${_meldung}</div>` : ''}
+  <div data-ns-ergebnis style="${_veraltet ? 'opacity:.55;' : ''}">${_ergebnisHtml()}</div>`;
+    if (!root.dataset.nsEreignisse) { root.dataset.nsEreignisse = '1'; _ereignisse(root); }
+  }
+
+  function _katalogHtml() {
+    const k = nsKostenMischen(_ns.kosten);
+    const zeilen = Object.entries(NS_KOSTEN_STANDARD).map(([key, v]) => {
+      const abw = _ns.kosten[key] != null && +_ns.kosten[key] !== v.wert;
+      return `<tr><td class="l">${escHtml(v.label)}</td>
+      <td><input data-ns-kosten="${key}" type="number" step="any" min="0" value="${k[key]}" style="width:90px;font-size:10.5px;text-align:right;${abw ? 'color:#ffb74d;' : ''}"></td>
+      <td class="l" style="color:var(--muted);">${v.einheit}</td>
+      <td class="l" style="color:var(--muted);">${abw ? `Standard ${_fmt(v.wert, v.wert % 1 ? 2 : 0)}` : ''}</td></tr>`;
+    }).join('');
+    return `<div class="ns-karte">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+      <b style="font-size:11px;">Kostenkatalog (im Projekt gespeichert)</b>
+      ${_kn('katalog-standard', 'Standardwerte', 'Alle Abweichungen zurücksetzen')}</div>
+    <table><thead><tr><th class="l">Position</th><th>Wert</th><th class="l"></th><th class="l"></th></tr></thead><tbody>${zeilen}</tbody></table>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5;">Neue NS-Kabel werden automatisch ausgelegt (NAYY, bis 4 × 240 mm²), ihr Materialpreis kommt aus der Kabeltabelle.
+      Die Nutzungsdauer gilt für alle Netzmaßnahmen der PV-Analyse (Ertüchtigung, Fahrplanstufen, Netzstrategien). Orange = vom Standard abweichend.</div></div>`;
+  }
+
+  function _ergebnisHtml() {
+    if (!_erg) return `<div style="color:var(--muted);font-size:11px;text-align:center;padding:30px 0;">„Strategien rechnen" starten.</div>`;
+    if (_erg.fehler) return `<div style="color:#ffb74d;font-size:11px;padding:10px 0;">${escHtml(_erg.fehler)}</div>`;
+    return `${_empfehlungHtml()}
+  <div class="ns-karte"><b style="font-size:11px;">Pareto-Front: Netz-Invest ↔ nutzbare Energie</b>
+    <span style="font-size:10px;color:var(--muted);"> · jeder Punkt eine bewertete Strategie, obere Kante = effizient · Marke anklicken lädt die Strategie in den Editor</span>
+    ${_paretoSvg()}</div>
+  ${_vergleichHtml()}
+  ${_editorHtml()}`;
+  }
+
+  function _empfehlungHtml() {
+    const e = _erg.empfehlung;
+    const { gruppen, optionen, rob, opt } = _erg;
+    const wege = new Map();
+    e.wahl.forEach((w, i) => {
+      const o = optionen[i][w];
+      if (!wege.has(o.id)) wege.set(o.id, { label: o.id === '0' ? 'nicht belegen' : o.kurz, gruppen: [] });
+      wege.get(o.id).gruppen.push(gruppen[i]);
+    });
+    const wegText = [...wege.entries()].map(([id, x]) => `<span style="color:${OPT_FARBE[id]};">■</span> <b>${escHtml(x.label)}</b>: `
+      + x.gruppen.map(g => `${escHtml(g.label)} <span style="color:var(--muted);">(${g.klasse === 'neu' ? 'Neubau' : 'Bestand'}, ${_fmt(g.kwpMax)} kWp)</span>`).join(', ')).join('<br>');
+    const zielTxt = { wirtschaft: 'höchster Jahres-Netto-Überschuss', budget: `meiste nutzbare Energie bei höchstens ${_tEur(_erg.ziel.budgetEUR)} Netz-Invest`,
+      zielkwp: `wirtschaftlich beste Strategie mit mindestens ${_fmt(_erg.ziel.kwp)} kWp` }[_erg.ziel.art];
+    const robT = rob?.empfehlung ? (() => {
+      const t = rob.empfehlung;
+      const n = NS_SZENARIEN.length;
+      return `Robust geprüft über ${n} Szenarien (Strompreis ±20 %, Vergütung −30 %, Netzkosten ±30 %, PV-Invest +20 %): in <b>${t.vorn} von ${n}</b> vorn, `
+        + `größtes Bedauern ${_fmt(t.maxBedauern)} €/a${e !== opt.beste ? ` — die Basis-Bestwerte hätte „${_strategieName(opt.beste)}" (${_fmt(opt.beste.wirt.ueberschuss)} €/a), ist aber weniger robust` : ''}.`;
+    })() : '';
+    const hinweise = [];
+    if (!_erg.ectx.lastH) hinweise.push('Kein Stromlastgang — ohne Eigenverbrauch gerechnet (nur Einspeisevergütung). Lastgang in der PV-Analyse laden.');
+    if (e.energie.kwp < 0.5 && _erg.ziel.art === 'wirtschaft') {
+      hinweise.push('Unter den aktuellen Preisen trägt sich keine Belegung wirtschaftlich (jeder Ausbau senkt den Überschuss). '
+        + 'Für einen Ausbaupfad das Ziel „meiste Energie im Netz-Budget" oder „Ziel-kWp" wählen — oder Preise/Lastgang prüfen.');
+    }
+    if (_erg.ectx.napKw) hinweise.push(`NAP-Einspeisegrenze ${_fmt(_erg.ectx.napKw)} kW gilt für alle Wege gemeinsam (Erzeugungsnetz liegt hinter demselben NAP).`);
+    const unb = e.wahl.map((w, i) => optionen[i][w]).filter(o => o.hinweis).map(o => o.hinweis);
+    if (unb.length) hinweise.push(...new Set(unb));
+    return `<div class="ns-karte" style="border-left:3px solid var(--accent);">
+    <div style="font-size:12px;line-height:1.55;">
+      <b>Empfehlung:</b> ${escHtml(_strategieName(e))} — ${b(_fmt(e.energie.kwp) + ' kWp')}, ${b(_fmt(e.energie.nutzbarMwh) + ' MWh/a')} nutzbar,
+      Netz-Invest ${b(_tEur(e.investEUR))}, Jahres-Netto-Überschuss ${b(_fmt(e.wirt.ueberschuss) + ' €/a')}.</div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.55;">Kriterium: ${zielTxt}. ${robT}</div>
+    <div style="font-size:10.5px;margin-top:6px;line-height:1.6;">${wegText}</div>
+    ${hinweise.length ? `<div style="font-size:10px;color:#ffb74d;margin-top:5px;line-height:1.5;">${hinweise.map(h => '⚠ ' + escHtml(h)).join('<br>')}</div>` : ''}
+    <div style="font-size:10px;color:var(--muted);margin-top:5px;">${_erg.gruppen.length} Gruppen · ${_fmt(opt.kombinationen)} Kombinationen, ${_fmt(opt.bewertungen)} bewertet (${opt.methode}) · `
+        + `${_fmt(_erg.dauerMs / 1000, 1)} s · Rechenjahr ${_erg.jahre.ziel}, Neubau = gebaut nach ${_erg.jahre.stich}</div>
+    <div style="margin-top:6px;">${_kn('empf-editor', 'In den Editor laden', 'Die Empfehlung im Editor weiterbearbeiten')}</div></div>`;
+  }
+  const b = t => `<b style="color:var(--text);">${t}</b>`;
+
+  /** Name einer Strategie: Standardstrategie, sonst Kurzform der Wege. */
+  function _strategieName(r) {
+    const k = r.wahl.join(',');
+    const s = _erg.standard.find(x => x.wahl.join(',') === k);
+    if (s) return s.label;
+    const z = new Map();
+    r.wahl.forEach((w, i) => { const o = _erg.optionen[i][w]; z.set(o.kurz, (z.get(o.kurz) || 0) + 1); });
+    return [...z].filter(([kurz]) => kurz !== '—').map(([kurz, n]) => `${kurz}${n > 1 ? ' ×' + n : ''}`).join(' + ') || 'nichts belegen';
+  }
+
+  function _paretoSvg() {
+    const { alle, pareto, standard, empfehlung } = _erg;
+    const pts = alle.filter(r => r.machbar);
+    if (!pts.length) return '';
+    const W = 760, H = 290, PL = 58, PR = 16, PT = 14, PB = 38;
+    const xMax = Math.max(1, ...pts.map(r => r.investEUR)) * 1.05;
+    const yMax = Math.max(1, ...pts.map(r => r.energie.nutzbarMwh)) * 1.08;
+    const x = v => PL + v / xMax * (W - PL - PR), y = v => PT + (1 - v / yMax) * (H - PT - PB);
+    const out = [];
+    for (let i = 0; i <= 4; i++) {
+      const vy = yMax * i / 4, vx = xMax * i / 4;
+      out.push(`<line x1="${PL}" x2="${W - PR}" y1="${y(vy)}" y2="${y(vy)}" stroke="var(--border)" stroke-width="0.5"/>
+      <text x="${PL - 6}" y="${y(vy) + 3}" font-size="9" text-anchor="end" fill="var(--muted)">${_fmt(vy)}</text>
+      <text x="${x(vx)}" y="${H - PB + 14}" font-size="9" text-anchor="middle" fill="var(--muted)">${_fmt(vx / 1000)}</text>`);
+    }
+    out.push(`<text x="${(PL + W - PR) / 2}" y="${H - 6}" font-size="9.5" text-anchor="middle" fill="var(--muted)">Netz-Invest in T€</text>
+    <text x="12" y="${(PT + H - PB) / 2}" font-size="9.5" text-anchor="middle" fill="var(--muted)" transform="rotate(-90 12 ${(PT + H - PB) / 2})">nutzbar MWh/a</text>`);
+    // Alle Strategien (bei vielen nur jede n-te, die Front immer)
+    const schritt = Math.max(1, Math.ceil(pts.length / 600));
+    pts.forEach((r, i) => { if (i % schritt === 0) out.push(`<circle cx="${x(r.investEUR)}" cy="${y(r.energie.nutzbarMwh)}" r="2" fill="var(--muted)" opacity="0.35"/>`); });
+    out.push(`<polyline points="${pareto.map(r => `${x(r.investEUR)},${y(r.energie.nutzbarMwh)}`).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="1.5"/>`);
+    for (const r of pareto) {
+      out.push(`<g data-ns-lade="${r.wahl.join(',')}" style="cursor:pointer;"><title>${escHtml(`${_strategieName(r)}\n${_fmt(r.energie.kwp)} kWp · ${_fmt(r.energie.nutzbarMwh)} MWh/a\nNetz ${_tEur(r.investEUR)} · Überschuss ${_fmt(r.wirt.ueberschuss)} €/a\nKlicken: in den Editor`)}</title>
+      <circle cx="${x(r.investEUR)}" cy="${y(r.energie.nutzbarMwh)}" r="3.5" fill="var(--accent)"/></g>`);
+    }
+    for (const s of standard) {
+      const r = s.r;
+      out.push(`<g data-ns-lade="${r.wahl.join(',')}" style="cursor:pointer;"><title>${escHtml(`${s.key} ${s.label}\n${_fmt(r.energie.kwp)} kWp · ${_fmt(r.energie.nutzbarMwh)} MWh/a\nNetz ${_tEur(r.investEUR)} · Überschuss ${_fmt(r.wirt.ueberschuss)} €/a`)}</title>
+      <rect x="${x(r.investEUR) - 4}" y="${y(r.energie.nutzbarMwh) - 4}" width="8" height="8" fill="none" stroke="var(--text)" stroke-width="1.2"/>
+      <text x="${x(r.investEUR) + 6}" y="${y(r.energie.nutzbarMwh) - 5}" font-size="9" fill="var(--text)">${s.key}</text></g>`);
+    }
+    const star = (r, farbe, txt) => `<g data-ns-lade="${r.wahl.join(',')}" style="cursor:pointer;"><title>${escHtml(txt)}</title>
+    <text x="${x(r.investEUR)}" y="${y(r.energie.nutzbarMwh) + 5}" font-size="15" text-anchor="middle" fill="${farbe}">★</text></g>`;
+    out.push(star(empfehlung, '#ffd54f', `Empfehlung: ${_strategieName(empfehlung)}`));
+    if (_editor) out.push(`<circle cx="${x(_editor.investEUR)}" cy="${y(_editor.energie.nutzbarMwh)}" r="7" fill="none" stroke="#4fc3f7" stroke-width="1.8"><title>Editor-Auswahl</title></circle>`);
+    return `<div style="overflow-x:auto;margin-top:6px;"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:560px;max-width:${W}px;display:block;">${out.join('')}</svg></div>
+    <div style="font-size:10px;color:var(--muted);">
+      <span style="color:var(--accent);">●</span> Pareto-Front · □ S0–S5 Standardstrategien · <span style="color:#ffd54f;">★</span> Empfehlung ·
+      <span style="color:#4fc3f7;">○</span> Editor</div>`;
+  }
+
+  function _vergleichHtml() {
+    const liste = [
+      { key: 'empf', label: '★ Empfehlung', r: _erg.empfehlung },
+      ..._erg.standard.map(s => ({ key: s.key, label: `${s.key} ${s.label}`, r: s.r })),
+      { key: 'editor', label: '✎ Editor-Auswahl', r: _editor },
+    ].filter(x => x.r);
+    const ueb = window._pvAnalyse?.netzStrategien || [];
+    const gewaehlt = new Set(ueb.map(v => v.key));
+    const zeile = x => {
+      const r = x.r, e = r.energie;
+      const abg = e.erzeugungMwh > 0 ? (e.abgeregeltDachMwh + e.abgeregeltNapMwh) / e.erzeugungMwh * 100 : 0;
+      const best = r === _erg.empfehlung;
+      return `<tr style="${best ? 'background:rgba(255,213,79,.08);' : ''}">
+      <td style="text-align:center;"><input type="checkbox" data-ns-var="${x.key}" ${gewaehlt.has(x.key) ? 'checked' : ''} title="Als Variante in die PV-Analyse übernehmen"></td>
+      <td class="l"><span data-ns-lade="${r.wahl.join(',')}" style="cursor:pointer;" title="In den Editor laden">${escHtml(x.label)}</span>
+        ${r.machbar ? '' : '<span style="color:#e57373;"> (nicht machbar)</span>'}</td>
+      <td class="m">${_fmt(e.kwp)}</td><td class="m">${_fmt(e.nutzbarMwh)}</td><td class="m">${_fmt(abg, 1)} %</td>
+      <td class="m">${e.mitLastgang ? _fmt(e.evQuotePct) + ' %' : '—'}</td>
+      <td class="m">${_tEur(r.investEUR)}</td><td class="m">${e.kwp > 0.5 ? _fmt(r.investEUR / e.kwp) : '—'}</td>
+      <td class="m">${_fmt(r.wirt.lcoeCt, 1)}</td>
+      <td class="m" style="color:${r.wirt.ueberschuss >= 0 ? '#66bb6a' : '#e57373'};">${_fmt(r.wirt.ueberschuss)}</td></tr>`;
+    };
+    const aktuell = ueb.length && ueb.every(v => (window._pvAnalyse?.ergebnisse || []).some(e => e.strategieKey === v.key));
+    return `<div class="ns-karte"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:4px;">
+    <b style="font-size:11px;">Strategien im Vergleich</b>
+    <span>${_kn('var-rechnen', '↻ Gewählte in die PV-Analyse übernehmen', 'Angehakte Strategien als Varianten „Netzstrategie: …" anlegen und alle Varianten neu rechnen', ueb.length > 0 && !aktuell)}
+      <span style="font-size:10px;color:var(--muted);margin-left:6px;">${ueb.length ? `${ueb.length} gewählt${aktuell ? ' · stehen im Varianten-Vergleich' : ''}` : 'Häkchen = als Variante übernehmen'}</span></span></div>
+    <div style="overflow-x:auto;"><table><thead><tr><th>Var.</th><th class="l">Strategie</th><th>kWp</th><th>MWh/a nutzbar</th><th>abgeregelt</th><th>EV-Quote</th>
+      <th>Netz-Invest</th><th>Netz €/kWp</th><th>ct/kWh</th><th>Überschuss €/a</th></tr></thead>
+      <tbody>${liste.map(zeile).join('')}</tbody></table></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5;">Überschuss = Erlöse (Eigenverbrauch × Bezugspreis + Einspeisung × Vergütung) − Annuität PV (inkl. Instandhaltung) − Annuität Netz, ohne Speicher.
+      ct/kWh = Jahreskosten je nutzbarer kWh. In der PV-Analyse wird jede übernommene Strategie mit dem vollen Modell nachgerechnet (Infrastruktur-Pauschalen, Direktvermarktung).</div></div>`;
+  }
+
+  function _editorHtml() {
+    const { gruppen, optionen } = _erg;
+    const r = _editor;
+    const e = r.energie;
+    const zeilen = gruppen.map((g, i) => {
+      const o = optionen[i][_editorWahl[i]];
+      const kwpBel = g.daecher.reduce((t, id) => t + (r.kwpJeDach.get(id) || 0), 0);
+      const abreg = o.abregeln;
+      const auf = _offen.has(g.key);
+      const sel = `<select data-ns-wahl="${i}" style="font-size:10.5px;max-width:260px;">${optionen[i].map((x, j) =>
+      `<option value="${j}" ${j === _editorWahl[i] ? 'selected' : ''} ${x.machbar === false ? 'disabled' : ''}>${escHtml(x.label)}${x.machbar === false ? ' — nicht machbar'
+        : (x.investEUR + (x.massnahmenEUR || 0)) > 0 ? ` · ${_tEur(x.investEUR + (x.massnahmenEUR || 0))}` : ''}</option>`).join('')}</select>`;
+      return `<tr>
+      <td class="l"><span data-ns-gruppe="${escHtml(g.key)}" style="cursor:pointer;">${auf ? '▾' : '▸'} ${escHtml(g.label)}</span>
+        <span style="font-size:9.5px;padding:0 5px;border-radius:7px;margin-left:4px;background:${g.klasse === 'neu' ? 'rgba(224,64,251,.18)' : 'rgba(128,128,128,.18)'};">${g.klasse === 'neu' ? 'Neubau' : 'Bestand'}</span></td>
+      <td class="m">${g.daecher.length}</td><td class="m">${_fmt(g.kwpMax)}</td>
+      <td class="l"><span style="color:${OPT_FARBE[o.id]};">■</span> ${sel}</td>
+      <td class="m">${abreg ? _fmt(g.kwpMax) + ' <span style="color:var(--muted);">(Netz ' + _fmt(kwpBel) + ')</span>' : _fmt(kwpBel)}</td>
+      <td class="m">${Number.isFinite(o.investEUR) ? _tEur(o.investEUR + (o.massnahmenEUR || 0)) : '—'}</td></tr>
+      ${auf ? `<tr><td colspan="6" class="l" style="background:rgba(128,128,128,.05);white-space:normal;">${_gruppeDetailHtml(i)}</td></tr>` : ''}`;
+    }).join('');
+    const abg = e.erzeugungMwh > 0 ? (e.abgeregeltDachMwh + e.abgeregeltNapMwh) / e.erzeugungMwh * 100 : 0;
+    return `<div class="ns-karte"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+    <b style="font-size:11px;">Editor — Anschlussweg je Gruppe</b>
+    <span>${_kn('karte', _karte ? 'Karte aus' : '🗺 Auf der Karte zeigen', 'Gruppen, neue Trassen und Stationen der Editor-Auswahl auf der Karte')}
+      ${_kn('editor-empf', 'Empfehlung laden', '')} ${_kn('editor-voll', 'alle aufklappen', '')}</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:11px;margin-bottom:6px;">
+      <span>${b(_fmt(e.kwp) + ' kWp')}</span><span>${b(_fmt(e.nutzbarMwh) + ' MWh/a')} nutzbar</span>
+      <span>abgeregelt ${_fmt(abg, 1)} %</span><span>Netz ${b(_tEur(r.investEUR))}${r.massnahmen.length ? ` (davon Ertüchtigung ${_tEur(r.investMassEUR)})` : ''}</span>
+      <span>Rückspeisespitze ${_fmt(e.rueckspeiseSpitzeKw)} kW</span>
+      <span>Überschuss <b style="color:${r.wirt.ueberschuss >= 0 ? '#66bb6a' : '#e57373'};">${_fmt(r.wirt.ueberschuss)} €/a</b></span></div>
+    <div style="overflow-x:auto;"><table><thead><tr><th class="l">Gruppe</th><th>Dächer</th><th>Fläche kWp</th><th class="l">Anschlussweg</th><th>belegt kWp</th><th>Invest Weg</th></tr></thead>
+      <tbody>${zeilen}</tbody></table></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px;">Gruppe aufklappen: alle Wege im Vergleich (bei sonst gleicher Auswahl), Break-even des Erzeugungsnetzes, Kostenposten.</div></div>`;
+  }
+
+  /** Alle Wege einer Gruppe bei sonst gleicher Editor-Auswahl + Break-even + Kostenposten. */
+  function _gruppeDetailHtml(i) {
+    const { optionen, gruppen, holen } = _erg;
+    const g = gruppen[i];
+    const basisR = holen(_editorWahl.map((w, j) => (j === i ? 0 : w)));      // Gruppe nicht belegt
+    const zeilen = optionen[i].map((o, j) => {
+      if (o.machbar === false) return `<tr><td class="l"><span style="color:${OPT_FARBE[o.id]};">■</span> ${escHtml(o.label)}</td><td colspan="5" class="l" style="color:var(--muted);">${escHtml(o.hinweis || 'nicht machbar')}</td></tr>`;
+      const r = holen(_editorWahl.map((w, k) => (k === i ? j : w)));
+      const dK = r.energie.kwp - basisR.energie.kwp, dI = r.investEUR - basisR.investEUR;
+      return `<tr style="${j === _editorWahl[i] ? 'background:rgba(79,195,247,.10);' : ''}">
+      <td class="l"><span style="color:${OPT_FARBE[o.id]};">■</span> <span data-ns-setze="${i}:${j}" style="cursor:pointer;" title="Diesen Weg wählen">${escHtml(o.label)}</span></td>
+      <td class="m">+${_fmt(dK)}</td><td class="m">+${_fmt(r.energie.nutzbarMwh - basisR.energie.nutzbarMwh)}</td>
+      <td class="m">${_tEur(dI)}</td><td class="m">${dK > 0.5 ? _fmt(dI / dK) : '—'}</td>
+      <td class="m" style="color:${r.wirt.ueberschuss - basisR.wirt.ueberschuss >= 0 ? '#66bb6a' : '#e57373'};">${_fmt(r.wirt.ueberschuss - basisR.wirt.ueberschuss)}</td></tr>`;
+    }).join('');
+    // Break-even Erzeugungsnetz gegen den teuersten sinnvollen Bestandsweg (B, sonst C)
+    const oE = optionen[i].find(o => o.id === 'E' && o.machbar !== false);
+    let be = '';
+    if (oE) {
+      const fix = oE.posten.filter(p => !p.label.startsWith('Anschluss')).reduce((t, p) => t + p.eur, 0);
+      const varEur = oE.posten.filter(p => p.label.startsWith('Anschluss')).reduce((t, p) => t + p.eur, 0);
+      const kVar = g.kwpMax > 0 ? varEur / g.kwpMax : 0;
+      const vgl = ['B', 'C'].map(id => optionen[i].findIndex(o => o.id === id && o.machbar !== false)).find(j => j >= 0);
+      if (vgl != null && vgl >= 0) {
+        const r = holen(_editorWahl.map((w, k) => (k === i ? vgl : w)));
+        const dK = r.energie.kwp - basisR.energie.kwp;
+        const kB = dK > 0.5 ? (r.investEUR - basisR.investEUR) / dK : null;
+        const x = kB != null ? nsBreakEven(fix, kVar, kB) : null;
+        be = kB == null ? '' : x == null
+          ? `Break-even Erzeugungsnetz: lohnt über die Netzkosten nicht — „${escHtml(optionen[i][vgl].kurz)}" kostet nur ${_fmt(kB)} €/kWp, das Erzeugungsnetz allein für die Dachanschlüsse schon ${_fmt(kVar)} €/kWp.`
+          : `Break-even Erzeugungsnetz: Fixkosten ${_tEur(fix)} (Station, MS-Trasse, Schaltfeld) gegen ${_fmt(kB)} €/kWp über „${escHtml(optionen[i][vgl].kurz)}" `
+            + `→ lohnt ab <b>${_fmt(x)} kWp</b>; die Gruppe hat ${_fmt(g.kwpMax)} kWp ${g.kwpMax >= x ? '<span style="color:#66bb6a;">(darüber)</span>' : '<span style="color:#ffb74d;">(darunter)</span>'}.`;
+      }
+    }
+    const o = optionen[i][_editorWahl[i]];
+    const posten = o.posten?.length ? `<div style="margin-top:4px;color:var(--muted);">Kostenposten „${escHtml(o.label)}": `
+      + o.posten.slice(0, 8).map(p => `${escHtml(p.label)} ${_tEur(p.eur)}`).join(' · ') + (o.posten.length > 8 ? ` · … (${o.posten.length} Posten)` : '')
+      + (o.msZiel ? ` · MS-Anschluss an ${escHtml(o.msZiel.name || o.msZiel.id)}` : '') + '</div>' : '';
+    return `<div style="font-size:10.5px;margin:3px 0 4px;">Dächer: ${g.namen.map(escHtml).join(', ')}</div>
+    <table><thead><tr><th class="l">Weg (andere Gruppen wie im Editor)</th><th>+kWp</th><th>+MWh/a</th><th>+Netz</th><th>Netz €/kWp</th><th>+Überschuss €/a</th></tr></thead>
+    <tbody>${zeilen}</tbody></table>
+    ${be ? `<div style="margin-top:4px;">${be}</div>` : ''}${posten}${o.hinweis ? `<div style="color:#ffb74d;margin-top:3px;">${escHtml(o.hinweis)}</div>` : ''}`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // KARTE
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  function _karteZeichnen() {
+    const map = window.map, L = window.L;
+    if (!map || !L || !_erg?.optionen) return;
+    if (_karte) _karte.clearLayers(); else _karte = L.layerGroup().addTo(map);
+    _erg.gruppen.forEach((g, i) => {
+      const o = _erg.optionen[i][_editorWahl[i]];
+      const farbe = OPT_FARBE[o.id] || '#999';
+      for (const id of g.daecher) {
+        const pos = _erg.modell.info.dachInfo.get(id)?.pos;
+        if (pos) _karte.addLayer(L.circleMarker([pos.lat, pos.lng], { radius: 6, color: farbe, weight: 2, fillOpacity: 0.5 })
+          .bindTooltip(`${escHtml(g.label)} — ${escHtml(o.label)}`));
+      }
+      for (const l of o.geo || []) {
+        if (!l.von || !l.bis) continue;
+        _karte.addLayer(L.polyline([[l.von.lat, l.von.lng], [l.bis.lat, l.bis.lng]],
+          { color: l.art === 'ms' ? '#ab47bc' : farbe, weight: l.art === 'ms' ? 4 : 2, dashArray: '6 5', opacity: 0.9 }));
+      }
+      if (o.station?.pos) {
+        _karte.addLayer(L.marker([o.station.pos.lat, o.station.pos.lng], { icon: L.divIcon({ className: '', iconSize: null,
+          html: `<div style="transform:translate(-50%,-50%);background:${farbe};color:#111;font:700 10px/1 sans-serif;padding:3px 5px;border-radius:4px;white-space:nowrap;">`
+            + `${o.station.art === 'KVS' ? 'KVS' : '⚡ ' + (o.station.kva || '') + ' kVA'}</div>` }) }).bindTooltip(escHtml(o.label)));
+      }
+    });
+  }
+
+  function _karteAus() {
+    if (_karte) { _karte.remove(); _karte = null; }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // EREIGNISSE
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  function _setzeFeld(pfad, wert) {
+    const zahl = ['stichjahr', 'zieljahr', 'abstandM', 'ziel.budgetEUR', 'ziel.kwp'].includes(pfad);
+    const v = zahl ? (wert === '' ? null : +wert) : wert;
+    if (pfad.startsWith('ziel.')) _ns.ziel[pfad.slice(5)] = v;
+    else _ns[pfad] = pfad === 'abstandM' ? Math.max(10, v || 120) : v;
+    if (_erg) _veraltet = true;
+  }
+
+  function _ereignisse(root) {
+    root.addEventListener('change', ev => {
+      const t = ev.target;
+      if (t.dataset.nsFeld) { _setzeFeld(t.dataset.nsFeld, t.value); nsRender(); return; }
+      if (t.dataset.nsKosten) {
+        const k = t.dataset.nsKosten, v = parseFloat(t.value);
+        if (!Number.isFinite(v) || v < 0 || v === NS_KOSTEN_STANDARD[k].wert) delete _ns.kosten[k]; else _ns.kosten[k] = v;
+        if (_erg) _veraltet = true;
+        nsRender();
+        return;
+      }
+      if (t.dataset.nsWahl != null && _erg?.optionen) {
+        const w = [..._editorWahl];
+        w[+t.dataset.nsWahl] = +t.value;
+        _editorSetzen(w);
+        nsRender();
+        return;
+      }
+      if (t.dataset.nsVar != null) { _varianteWahl(t.dataset.nsVar, t.checked); nsRender(); }
+    });
+    root.addEventListener('click', ev => {
+      const t = ev.target.closest('[data-ns-aktion],[data-ns-lade],[data-ns-gruppe],[data-ns-setze]');
+      if (!t) return;
+      if (t.dataset.nsLade && _erg?.optionen) { _editorSetzen(t.dataset.nsLade.split(',').map(Number)); nsRender(); return; }
+      if (t.dataset.nsGruppe) { if (_offen.has(t.dataset.nsGruppe)) _offen.delete(t.dataset.nsGruppe); else _offen.add(t.dataset.nsGruppe); nsRender(); return; }
+      if (t.dataset.nsSetze) {
+        const [i, j] = t.dataset.nsSetze.split(':').map(Number);
+        const w = [..._editorWahl]; w[i] = j;
+        _editorSetzen(w); nsRender(); return;
+      }
+      const a = t.dataset.nsAktion;
+      if (a === 'rechnen') {
+        _meldung = 'Rechne Strategien …';
+        nsRender();
+        setTimeout(() => {
+          try { nsRechnen(); _meldung = ''; }
+          catch (err) { console.warn('[Netzstrategie] Rechnung fehlgeschlagen:', err); _meldung = 'Rechnung fehlgeschlagen — Details in der Konsole.'; }
+          nsRender();
+        }, 30);
+        return;
+      }
+      if (a === 'katalog') { _katalogAuf = !_katalogAuf; nsRender(); return; }
+      if (a === 'katalog-standard') { _ns.kosten = {}; if (_erg) _veraltet = true; nsRender(); return; }
+      if (a === 'empf-editor' || a === 'editor-empf') { _editorSetzen(_erg.empfehlung.wahl); nsRender(); return; }
+      if (a === 'editor-voll') { _erg.gruppen.forEach(g => _offen.add(g.key)); nsRender(); return; }
+      if (a === 'karte') {
+        if (_karte) _karteAus(); else { _karteZeichnen(); window.setViewMode?.('karte'); }
+        nsRender();
+        return;
+      }
+      if (a === 'var-rechnen') _variantenRechnen();
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ÜBERNAHME IN DIE PV-ANALYSE
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /** Strategie als Variante vormerken bzw. entfernen (Momentaufnahme der Zahlen). */
+  function _varianteWahl(key, an) {
+    const s = window._pvAnalyse;
+    if (!s || !_erg?.optionen) return;
+    const liste = (s.netzStrategien || []).filter(v => v.key !== key);
+    if (an) {
+      const r = key === 'empf' ? _erg.empfehlung : key === 'editor' ? _editor : _erg.standard.find(x => x.key === key)?.r;
+      if (r) {
+        const name = key === 'empf' ? 'Empfehlung' : key === 'editor' ? 'eigene Auswahl' : _erg.standard.find(x => x.key === key).label;
+        const wege = r.wahl.map((w, i) => `${_erg.gruppen[i].label}: ${_erg.optionen[i][w].kurz}`);
+        liste.push({
+          key, label: name, kwp: r.energie.kwp, investEUR: r.investEUR,
+          abregelung: r.wahl.some((w, i) => _erg.optionen[i][w].abregeln),
+          nutzbarMwh: r.energie.nutzbarMwh, ueberschussEUR: r.wirt.ueberschuss,
+          detail: wege.join('; '), stand: new Date().toLocaleDateString('de-DE'),
+          jahre: { ..._erg.jahre },
+        });
+      }
+    }
+    s.netzStrategien = liste.length ? liste : null;
+  }
+
+  function _variantenRechnen() {
+    if (!(window.elQuartierH15 || window.elQuartierH)) {
+      _meldung = 'Vorgemerkt — ohne Stromlastgang entstehen die Varianten beim nächsten „Varianten berechnen".';
+      nsRender();
+      return;
+    }
+    _meldung = 'Berechne Varianten …';
+    nsRender();
+    setTimeout(() => {
+      try { window.pvBerechneAlle?.(); _meldung = 'Varianten neu berechnet — die Strategien stehen im Varianten-Vergleich als „Netzstrategie: …".'; }
+      catch (err) { console.warn('[Netzstrategie] Variantenrechnung fehlgeschlagen:', err); _meldung = 'Variantenrechnung fehlgeschlagen — bitte „Varianten berechnen" von Hand starten.'; }
+      nsRender();
+    }, 30);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // PROJEKTDATEI + SCHNITTSTELLEN
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  function nsEinstellungen() {
+    return JSON.parse(JSON.stringify(_ns));
+  }
+
+  function nsEinstellungenSetzen(d) {
+    const std = _standard();
+    const z = d?.ziel || {};
+    _ns = {
+      ...std,
+      stichjahr: Number.isFinite(parseInt(d?.stichjahr)) ? parseInt(d.stichjahr) : null,
+      zieljahr: Number.isFinite(parseInt(d?.zieljahr)) ? parseInt(d.zieljahr) : null,
+      quelle: d?.quelle === 'alle' ? 'alle' : 'aktiv',
+      gruppierung: d?.gruppierung === 'cluster' ? 'cluster' : 'auto',
+      abstandM: parseFloat(d?.abstandM) > 0 ? parseFloat(d.abstandM) : std.abstandM,
+      ziel: { art: ['wirtschaft', 'budget', 'zielkwp'].includes(z.art) ? z.art : 'wirtschaft',
+        budgetEUR: parseFloat(z.budgetEUR) >= 0 ? parseFloat(z.budgetEUR) : std.ziel.budgetEUR,
+        kwp: parseFloat(z.kwp) >= 0 ? parseFloat(z.kwp) : std.ziel.kwp },
+      kosten: d?.kosten && typeof d.kosten === 'object' ? { ...d.kosten } : {},
+      wahl: d?.wahl && typeof d.wahl === 'object' ? { ...d.wahl } : {},
+    };
+    _erg = null; _editor = null; _editorWahl = null; _veraltet = false; _meldung = '';
+    _karteAus();
+    if (document.getElementById(ROOT_ID)?.style.display === 'block') nsRender();
+  }
+
+  /** Nutzungsdauer der Netzbetriebsmittel aus dem Kostenkatalog (für pvWirtschaft in 09d). */
+  function nsNetzLebensdauer() {
+    return nsKostenMischen(_ns.kosten).netzLebensdauer;
+  }
+
+  window.nsRender = nsRender;
+  window.nsRechnen = nsRechnen;
+  window.nsEinstellungen = nsEinstellungen;
+  window.nsEinstellungenSetzen = nsEinstellungenSetzen;
+  window.nsNetzLebensdauer = nsNetzLebensdauer;
+
+  var netzStrategie = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    nsEinstellungen: nsEinstellungen,
+    nsEinstellungenSetzen: nsEinstellungenSetzen,
+    nsNetzLebensdauer: nsNetzLebensdauer,
+    nsRechnen: nsRechnen,
+    nsRender: nsRender
   });
 
   // ── main.js — ES Module entry point ────────────────────────────────────────
@@ -209846,7 +211304,7 @@ ${teile.join('\n')}
     napAnalyse, knotenAnalyse, windAnalyse,
     kandidaten, ertuechtigung, phasenFahrplan, selektion, ausbauplaner,
     clusterCore, clusterMap, engpassSweep$1, engpassPanel,
-    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema,
+    planDigitalisierer, dualScreen, gutachtenGrafik, liegenschaftsbilder, elErgebnisblatt, kartendrehung, gutachtenEditor, netzanschlussPanel, messjahrePanel, gefuehrterModus, pvModus, blackoutModus, resilienzAbfrage, pvNetzaufnahme, pvnaSchema, netzStrategie,
   ];
   window.pdfjsLib = pdfjsLib;
   appLifecycle.listen(window,'pagehide',()=>appLifecycle.dispose(),{once:true});

@@ -131,7 +131,15 @@ const PV_FAHRPLAN_INFO = {
   herleitung:'Ausbautreppe der Netzaufnahme: Ertüchtigungen nach Zuwachs je Euro, danach Befüllung der Dächer (ertragsstärkste zuerst) bis zur neuen Netzgrenze. Invest = kumulierte Ertüchtigung aller Stufen bis k.',
   bewertung: 'Zeigt, wie sich Ertrag und Wirtschaftlichkeit Stufe für Stufe entwickeln — der Punkt, ab dem weitere Ertüchtigung sich nicht mehr trägt, ist das sinnvolle Ende des Fahrplans.',
 };
-const _pvVarInfo = id => PV_VARIANTEN_INFO[id] || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : null);
+// Netzstrategien aus dem Editor (30-netzstrategie.js) als Varianten 'strategie-<k>' — ebenfalls ohne frage.
+const PV_STRATEGIE_INFO = {
+  label: 'Netzstrategie', farbe: '#ba68c8', icon: '⌬',
+  ziel:      'PV-Ausbau mit festgelegtem Anschlussweg je Flächengruppe (Bestandsnetz, Ertüchtigung, neuer Abgang, neue Station, Erzeugungsnetz)',
+  herleitung:'Netzstrategie-Editor: Dächer im Zieljahr zu Gruppen zusammengefasst, je Gruppe ein Anschlussweg; Befüllung mit derselben Netzphysik wie die Netzaufnahme. Invest = alle neuen Anschlüsse, Stationen, MS-Trassen und Ertüchtigungen der Strategie.',
+  bewertung: 'Zeigt, was eine Strategie über die ganze Liegenschaft wirtschaftlich bedeutet — inklusive der Netzkosten, die in den übrigen Varianten nur pauschal angesetzt sind.',
+};
+const _pvVarInfo = id => PV_VARIANTEN_INFO[id]
+  || (/^fahrplan-\d+$/.test(id || '') ? PV_FAHRPLAN_INFO : /^strategie-\d+$/.test(id || '') ? PV_STRATEGIE_INFO : null);
 /** Farbe je Fahrplanstufe: von Türkis (Stufe 1) nach Dunkelblau (letzte Stufe). */
 const _pvFahrplanFarbe = (k, n) => `hsl(${190 + Math.round(40 * (n > 1 ? (k - 1) / (n - 1) : 0))}, 70%, ${62 - Math.round(22 * (n > 1 ? (k - 1) / (n - 1) : 0))}%)`;
 
@@ -153,6 +161,8 @@ function _pvStandardZustand() {
                                 //   { belegung: {dachId: kWp}, summeKwp, stand,
                                 //     massnahmen: [{ elementId, label, investEUR }] }
     fahrplanVarianten: null,    // Fahrplanstufen als Varianten 'fahrplan-<k>': { alle: bool, stufen: [k, …] }
+    netzStrategien: null,       // Netzstrategien als Varianten 'strategie-<k>' (30-netzstrategie.js):
+                                //   [{ key, label, kwp, investEUR, abregelung, detail, stand, jahre }]
     pflichtLand: '',            // Bundesland für die PV-Pflicht ('' = aus der Karte bestimmen)
     pflichtAnnahme: 'auto',     // 'auto' = nur geplante Neubauten/Dachsanierungen | 'alle' | 'aus'
     deckZu: { infra: true },    // eingeklappte Gruppen des Steuer-Decks (Infra: selten geändert)
@@ -942,7 +952,10 @@ function pvWirtschaft(pvKwp, batKwh, simResult, pvErtragMwh, params, strategie, 
 
   const pvJk   = pvInvest  * (annPv  + (OPT_IH.pv  || 0.01));
   const batJk  = batInvest * (annBat + (OPT_IH.bat || 0.01));
-  const infJk  = infra.investEUR * annF(zins, 20) + infra.jaehrlichEUR;
+  // Gezielte Netzmaßnahmen (Ertüchtigung, Netzstrategie) über die Nutzungsdauer aus dem
+  // Kostenkatalog der Netzstrategie annuisieren, die übrige Infrastruktur wie bisher über 20 a.
+  const netzA  = Math.min(infra.investEUR, params.netzausbauEUR || 0);
+  const infJk  = (infra.investEUR - netzA) * annF(zins, 20) + netzA * annF(zins, params.netzLife || 20) + infra.jaehrlichEUR;
 
   // Windkraft: Erlöse fließen über simResult ein — dann müssen auch die Kosten rein,
   // sonst ist der Netto-Überschuss systematisch geschönt. windKwOverride erlaubt der
@@ -1161,7 +1174,8 @@ export function pvBerechneAlle() {
   window._pvAnalyse.windInvestPerKw = windInvestPerKw;   // Panel-Re-Render soll den Wert behalten
   const windKwInstalled = windEnabled ? getWindAssetsSummary().kw : 0;
 
-  const params = { pStrom, pEinsp, pvInvestPerKwp, batInvestPerKwh, zins, pvLife, batLife, co2Faktor,
+  const netzLife = window.nsNetzLebensdauer?.() || 20;   // Kostenkatalog der Netzstrategie (30)
+  const params = { pStrom, pEinsp, pvInvestPerKwp, batInvestPerKwh, zins, pvLife, batLife, co2Faktor, netzLife,
                    windTarifModus, pWindEinsp, windInvestPerKw, windKwInstalled };
 
   const ergebnisse = [];
@@ -1302,6 +1316,25 @@ export function pvBerechneAlle() {
       if (fehlt.length) console.warn(`[PV-Analyse] Fahrplanstufe(n) ${fehlt.join(', ')} gibt es nicht mehr (Fahrplan hat ${n} Stufen).`);
     }
   }
+
+  // ═══ 1e) NETZSTRATEGIEN — im Netzstrategie-Editor gewählte Strategien ═══════
+  //     Momentaufnahme aus 30-netzstrategie.js: kWp und Netz-Invest der Strategie.
+  //     Die Variantenrechnung nutzt das gemeinsame Profil der Liegenschaft; eine
+  //     Abregelung je Dach (Weg „voll + Abregelung") bildet sie nicht ab.
+  (state.netzStrategien || []).forEach((st, i) => {
+    if (!(st?.kwp > 0)) return;
+    const id = `strategie-${i + 1}`;
+    berechne(id, st.kwp, 0, 'none', `: ${st.label}`, {
+      ohneNetzbau: true, netzausbauEUR: +st.investEUR || 0, netzausbauLabel: `Netzstrategie: ${st.label}`,
+    });
+    const eS = ergebnisse[ergebnisse.length - 1];
+    if (eS?.id !== id) return;
+    eS.strategieKey = st.key;
+    eS.netzstrategie = st;
+    eS.hinweis = `${st.detail}. Netz-Invest ${Math.round((+st.investEUR || 0) / 1000)} T€`
+      + (st.jahre ? ` (Rechenjahr ${st.jahre.ziel}, Neubau nach ${st.jahre.stich})` : '') + '.'
+      + (st.abregelung ? ' Enthält Gruppen mit Abregelung je Dach — die Variantenrechnung setzt die volle Leistung ohne diese Kappung an, der Ertrag ist hier eher zu hoch.' : '');
+  });
 
   // ═══ 2) EIGENVERBRAUCHS-OPTIMIERT — größte PV mit ≥90 % Eigenverbrauch + EV-Batterie
   const evKwp = pvCalcEvQuoteKwp(demandH, pvProfile, napParams, 90, spurEv);
@@ -1588,6 +1621,9 @@ const PVA_VIEWS = [
   // Einlinienschema der Variante „Bestandsnetz" mit Schiebern (29-pvna-schema.js, per window wie oben)
   { id:'pvnaschema', gruppe:'ergebnis', label:'Einlinienschema (Bestandsnetz)', el:'pva-pvna-schema',
     ohneBerechnung:true, render:() => window.pvnaSchemaRender?.() },
+  // Netzstrategie-Editor (30-netzstrategie.js, per window wie oben)
+  { id:'netzstrategie', gruppe:'ergebnis', label:'Netzstrategie (Editor)', el:'pva-netzstrategie',
+    ohneBerechnung:true, render:() => window.nsRender?.() },
 
   { id:'abb1',  gruppe:'abb', nr:1,  label:'Optimierungsfläche',   el:'pva-chart-heatmap',
     render:(v, a) => renderOptSurface3D(a.demandH, a.pvProfile, a.napParams, a.params, v) },
@@ -2286,6 +2322,7 @@ function _pvBuildPanelHtml() {
       <div id="pva-rechenweg"               style="display:none;"></div>
       <div id="pva-netzaufnahme"            style="display:none;"></div>
       <div id="pva-pvna-schema"             style="display:none;"></div>
+      <div id="pva-netzstrategie"           style="display:none;"></div>
       <div id="pva-chart-heatmap"           style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-grenznutzen"       style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-wind-grenz"        style="overflow:hidden;"></div>
@@ -6456,6 +6493,8 @@ export function pvCaptureState() {
   // Eingaben der Ansicht „Netzaufnahme (Bestand)" (28-pv-netzaufnahme.js, per window
   // wegen des Importzyklus). Das Ergebnis steckt bereits in der Variante „Bestandsnetz".
   daten.netzaufnahme = window.pvnaEinstellungen?.() || null;
+  // Eingaben des Netzstrategie-Editors (30-netzstrategie.js): Jahre, Gruppierung, Ziel, Kostenkatalog, Editor-Auswahl
+  daten.netzstrategie = window.nsEinstellungen?.() || null;
   return JSON.parse(JSON.stringify(daten, _pvKodiere));
 }
 
@@ -6491,6 +6530,7 @@ export function pvRestoreState(daten) {
   window._pvResReco = r.reco || null;
   window._pvResVarianten = r.varianten || null;
   window.pvnaEinstellungenSetzen?.(d.netzaufnahme || null);
+  window.nsEinstellungenSetzen?.(d.netzstrategie || null);
 
   // Offenes Panel nachziehen
   if (document.getElementById('pva-ergebnisse')) _pvSyncFromState();
@@ -6502,3 +6542,4 @@ window.pvBerechneAlle         = pvBerechneAlle;
 window.pvMarkStale            = pvMarkStale;
 // pvLadeSpotPreise nicht mehr nötig (Upload über Strom-Grundlagen)
 window.pvGetMaxKwpFromAssets  = pvGetMaxKwpFromAssets;
+window.pvGetDemandH           = pvGetDemandH;           // Netzstrategie-Editor (30): gleicher Lastgang wie die Varianten
