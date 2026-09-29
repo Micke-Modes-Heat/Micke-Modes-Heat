@@ -1624,6 +1624,10 @@ const PVA_VIEWS = [
   // Netzstrategie-Editor (30-netzstrategie.js, per window wie oben)
   { id:'netzstrategie', gruppe:'ergebnis', label:'Netzstrategie (Editor)', el:'pva-netzstrategie',
     ohneBerechnung:true, render:() => window.nsRender?.() },
+  // Autarkieziel mit Batterie + Wasserstoff (31-autarkieziel.js, per window wie oben):
+  // rechnet auf Knopfdruck mit eigenem Optimierer, braucht keinen Variantenlauf.
+  { id:'autarkieziel', gruppe:'ergebnis', label:'Autarkieziel (Batterie + H₂)', el:'pva-autarkieziel',
+    ohneBerechnung:true, render:() => window.ah2Render?.() },
 
   { id:'abb1',  gruppe:'abb', nr:1,  label:'Optimierungsfläche',   el:'pva-chart-heatmap',
     render:(v, a) => renderOptSurface3D(a.demandH, a.pvProfile, a.napParams, a.params, v) },
@@ -2323,6 +2327,7 @@ function _pvBuildPanelHtml() {
       <div id="pva-netzaufnahme"            style="display:none;"></div>
       <div id="pva-pvna-schema"             style="display:none;"></div>
       <div id="pva-netzstrategie"           style="display:none;"></div>
+      <div id="pva-autarkieziel"            style="display:none;"></div>
       <div id="pva-chart-heatmap"           style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-grenznutzen"       style="display:none;overflow:hidden;"></div>
       <div id="pva-chart-wind-grenz"        style="overflow:hidden;"></div>
@@ -6495,6 +6500,8 @@ export function pvCaptureState() {
   daten.netzaufnahme = window.pvnaEinstellungen?.() || null;
   // Eingaben des Netzstrategie-Editors (30-netzstrategie.js): Jahre, Gruppierung, Ziel, Kostenkatalog, Editor-Auswahl
   daten.netzstrategie = window.nsEinstellungen?.() || null;
+  // Eingaben und letzte Auslegung der Ansicht „Autarkieziel" (31-autarkieziel.js)
+  daten.autarkieziel = window.ah2Einstellungen?.() || null;
   return JSON.parse(JSON.stringify(daten, _pvKodiere));
 }
 
@@ -6531,6 +6538,7 @@ export function pvRestoreState(daten) {
   window._pvResVarianten = r.varianten || null;
   window.pvnaEinstellungenSetzen?.(d.netzaufnahme || null);
   window.nsEinstellungenSetzen?.(d.netzstrategie || null);
+  window.ah2EinstellungenSetzen?.(d.autarkieziel || null);
 
   // Offenes Panel nachziehen
   if (document.getElementById('pva-ergebnisse')) _pvSyncFromState();
@@ -6543,3 +6551,48 @@ window.pvMarkStale            = pvMarkStale;
 // pvLadeSpotPreise nicht mehr nötig (Upload über Strom-Grundlagen)
 window.pvGetMaxKwpFromAssets  = pvGetMaxKwpFromAssets;
 window.pvGetDemandH           = pvGetDemandH;           // Netzstrategie-Editor (30): gleicher Lastgang wie die Varianten
+
+/**
+ * Eingangsdaten für die Ansicht „Autarkieziel" (31-autarkieziel.js) — dieselben
+ * Quellen wie pvBerechneAlle: Lastgang, PV-Profil × spez. Ertrag, Wind-Sockel,
+ * Dachpotenzial, NAP-Einspeisegrenze, Wirtschaftsfelder und PV-Infrastrukturstufen.
+ * Alles stündlich (8.760 h); 15-min-Lastgänge werden gemittelt.
+ */
+window.pvAutarkieEingang = function pvAutarkieEingang() {
+  const d = pvGetDemandH();
+  if (!d || d.length < 8760) return null;
+  const last = new Float32Array(8760);
+  if (d.length > 8784) {
+    for (let h = 0; h < 8760; h++) last[h] = ((d[4*h] || 0) + (d[4*h+1] || 0) + (d[4*h+2] || 0) + (d[4*h+3] || 0)) / 4;
+  } else {
+    for (let h = 0; h < 8760; h++) last[h] = d[h] || 0;
+  }
+  const spez = pvGetSpez();
+  const prof = _pvBasisProfil8760();
+  const pvKwProKwp = new Float32Array(8760);
+  for (let h = 0; h < 8760; h++) pvKwProKwp[h] = (prof[h] || 0) * spez;
+  const windAn = document.getElementById('pva-wind-enable')?.checked === true;
+  const windKw = windAn ? (window._windElHourly || computeWindElHourly()) : null;
+  const feld = (id, std) => { const v = parseFloat(document.getElementById(id)?.value); return Number.isFinite(v) && v > 0 ? v : std; };
+  const napEl = document.getElementById('pva-nap-einsp');
+  let napEinspKw = window.elNapMaxEinspKw ?? null;
+  if (napEl && napEl.value !== '') { const v = parseFloat(napEl.value) || 0; napEinspKw = v > 0 ? v : null; }
+  const zins = feld('pva-zins', 3.5) / 100;
+  return {
+    last, pvKwProKwp, windKw: windKw && windKw.length >= 8760 ? windKw : null,
+    windKwInstalliert: windAn ? getWindAssetsSummary().kw : 0,
+    pvMaxKwp: pvGetMaxKwpFromAssets(), spez, napEinspKw,
+    profilQuelle: pvGetProfilQuelle().label,
+    lastModus: window._pvAnalyse?.demandMode || 'basis',
+    wirtschaft: {
+      pStrom: feld('pva-p-strom', 30), pEinsp: feld('pva-p-einsp', 8), zins,
+      pvInvestKwp: feld('pva-pv-invest', OPT_INVEST_DEFAULT.pv), pvLife: feld('pva-pv-life', 20),
+      batInvestKwh: feld('pva-bat-invest', OPT_INVEST_DEFAULT.bat), batLife: feld('pva-bat-life', 15),
+    },
+    // PV-Infrastruktur (Stufen der PV-Analyse) als Jahreskosten, wie in pvWirtschaft
+    infraJk: (kwp) => {
+      const inf = pvInfraKosten(kwp, kwp * spez / 1000);
+      return inf.investEUR * annF(zins, 20) + inf.jaehrlichEUR;
+    },
+  };
+};

@@ -22,7 +22,7 @@ import { appLifecycle } from './lib/lifecycle.js';
 const ASSET_LABELS = {
   NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
   NSHV: 'NSHV', UV: 'Unterverteilung', KVS: 'KVS', Verbraucher: 'Verbraucher',
-  WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
+  WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher', H2: 'Wasserstoffspeicher',
   Lade: 'Ladeinfrastruktur', Nsa: 'Notstromaggregat', KWK: 'KWK-Anlage',
   Wind: 'Windkraftanlage', Reserve: 'Reserve',
 };
@@ -1021,7 +1021,7 @@ export function exportMassnahmenPDF() {
     NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
     NSHV: 'Niederspannungshauptverteilung', UV: 'Unterverteilung',
     Verbraucher: 'Verbraucher', WP: 'Wärmepumpe', PV: 'PV-Anlage',
-    Batterie: 'Batteriespeicher', Lade: 'Ladeinfrastruktur', Nsa: 'Nsa',
+    Batterie: 'Batteriespeicher', H2: 'Wasserstoffspeicher', Lade: 'Ladeinfrastruktur', Nsa: 'Nsa',
     KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
   };
 
@@ -1254,7 +1254,7 @@ export async function exportElektroXLSX() {
   const ASSET_LABELS = {
     NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
     NSHV: 'NSHV', UV: 'Unterverteilung', Verbraucher: 'Verbraucher',
-    WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher',
+    WP: 'Wärmepumpe', PV: 'PV-Anlage', Batterie: 'Batteriespeicher', H2: 'Wasserstoffspeicher',
     Lade: 'Ladeinfrastruktur', Nsa: 'Nsa', KWK: 'KWK-Anlage', Wind: 'Windkraftanlage',
   };
 

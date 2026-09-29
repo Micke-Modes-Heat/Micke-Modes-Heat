@@ -1294,6 +1294,7 @@ function _spec(a) {
     case 'WP':           return `${p.leistungKW||10} kW`;
     case 'PV':           return `${p.leistungKWp||10} kWp`;
     case 'Batterie':     return `${p.kapazitaetKWh||50} kWh`;
+    case 'H2':           return `${p.elektrolyseKW||0}/${p.brennstoffzelleKW||0} kW`;
     case 'Lade':         return `${p.anzahlPunkte||4}×${p.leistungProPunktKW||22} kW`;
     case 'Nsa':          return `${p.leistungKW||100} kW`;
     case 'KWK':          return `${p.leistungElKW||100} kWel`;
@@ -1529,6 +1530,7 @@ function _propRows(asset) {
     case 'WP':           return [['Leistung', `${p.leistungKW||10} kW`]];
     case 'PV':           return [['Leistung', `${p.leistungKWp||10} kWp`]];
     case 'Batterie':     return [['Kapazität', `${p.kapazitaetKWh||50} kWh`], ['Leistung', `${p.leistungKW||25} kW`], ['Modus', p.betriebsmodus||'einspeisung']];
+    case 'H2':           return [['Elektrolyseur', `${p.elektrolyseKW||0} kW`], ['Brennstoffzelle', `${p.brennstoffzelleKW||0} kW`], ['Tank', `${p.tankKg||0} kg H₂`], ['Druck', `${p.druckBar||300} bar`]];
     case 'Lade':         return [['Ladepunkte', p.anzahlPunkte||4], ['kW / Punkt', `${p.leistungProPunktKW||22} kW`], ['Gesamt', `${(p.anzahlPunkte||4)*(p.leistungProPunktKW||22)} kW`]];
     case 'Nsa':          return [['Leistung', `${p.leistungKW||100} kW`], ['Autonomie', `${p.autonomieH||8} h`], ['Kraftstoff', p.kraftstoff||'Diesel']];
     case 'KWK':          return [['El. Leistung', `${p.leistungElKW||100} kW`], ['Th. Leistung', `${p.leistungThKW||160} kW`], ['El. Wirkungsgrad', `${p.wirkungsgradEl||35} %`], ['Brennstoff', p.brennstoff||'Erdgas']];

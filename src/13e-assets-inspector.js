@@ -534,6 +534,21 @@ function buildPropsForm(asset) {
       `;
     }
 
+    case 'H2': {
+      const ely = parseFloat(p.elektrolyseKW) || 0, bz = parseFloat(p.brennstoffzelleKW) || 0, kg = parseFloat(p.tankKg) || 0;
+      const mwh = kg * 33.33 / 1000;
+      return row2(
+        numField(id, 'elektrolyseKW',     'Elektrolyseur (kW el.)',   100, {props:p}),
+        numField(id, 'brennstoffzelleKW', 'Brennstoffzelle (kW el.)',  50, {props:p})
+      ) + row2(
+        numField(id, 'tankKg',            'Tankinhalt (kg H₂)',       500, {props:p, step:10}),
+        numField(id, 'druckBar',          'Speicherdruck (bar)',      300, {props:p, step:10})
+      ) + `<div style="padding:5px 8px;background:rgba(57,135,229,0.10);border-radius:4px;border-left:2px solid #3987e5;margin-top:6px;font-size:9.5px;color:var(--muted);line-height:1.5;">
+          Tank ≈ <b style="color:var(--text);">${mwh.toLocaleString('de-DE', {maximumFractionDigits: 1})} MWh</b> H₂ (Hu) ≈ ${(mwh * 0.5).toLocaleString('de-DE', {maximumFractionDigits: 1})} MWh Strom über die Brennstoffzelle.
+          Im Netz: Elektrolyseur ${ely} kW Bezug, Brennstoffzelle ${bz} kW Einspeisung.
+          ${p.autarkieZiel ? `<br>Ausgelegt über PV-Analyse › Autarkieziel (${parseFloat(p.autarkieZiel) || 0} % je Stunde).` : '<br>Auslegung: PV-Analyse › Autarkieziel.'}</div>`;
+    }
+
     case 'Nsa':
       return row2(
         numField(id, 'leistungKW',  'Leistung (kW)',   100, {props:p}),
@@ -561,7 +576,7 @@ function buildPropsForm(asset) {
         numField(id, 'wirkungsgradEl',   'El. Wirkungsgrad (%)',     35, {props:p}),
         numField(id, 'wirkungsgradGes',  'Gesamtwirkungsgrad (%)',   85, {props:p})
       ) + selectField(id, 'brennstoff', 'Brennstoff',
-          ['Erdgas','Biogas','Wasserstoff','Heizöl'], brennstoff);
+          ['Erdgas','Biogas','Biomethan','HVO','Pflanzenöl','Wasserstoff','Heizöl'], brennstoff);
     }
 
     case 'Wind': {
@@ -1421,7 +1436,7 @@ function renderInspector(asset) {
 }
 
 // ── Asset-Sidebar ─────────────────────────────────────────────────────────────
-const TYPE_ORDER = ['NAP','Schaltanlage','Trafo','NSHV','UV','Verbraucher','Lade','TWW','PV','Wind','Batterie','WP','Geo','FG','KWK','Stromkessel','Nsa'];
+const TYPE_ORDER = ['NAP','Schaltanlage','Trafo','NSHV','UV','Verbraucher','Lade','TWW','PV','Wind','Batterie','H2','WP','Geo','FG','KWK','Stromkessel','Nsa'];
 
 export function renderAssetSidebar(filterText) {
   const container = document.getElementById('asset-sidebar-list');

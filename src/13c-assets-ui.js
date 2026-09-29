@@ -18,7 +18,7 @@ export function buildPalette() {
     { label: 'Netzinfrastruktur', types: ['NAP', 'Schaltanlage', 'Trafo', 'NSHV', 'UV', 'KVS'] },
     { label: 'Verbraucher',       types: ['Verbraucher', 'Lade', 'TWW'] },
     { label: 'Erzeugung',         types: ['PV', 'Wind'] },
-    { label: 'Speicher & Backup', types: ['Batterie', 'Nsa'] },
+    { label: 'Speicher & Backup', types: ['Batterie', 'H2', 'Nsa'] },
     { label: 'Sonstiges',         types: ['Reserve'], fullWidth: true },
   ];
 

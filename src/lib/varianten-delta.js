@@ -175,6 +175,7 @@ function _kennwert(item) {
   switch (item?.type) {
     case 'PV':       return z('leistungKWp')   != null ? { wert: z('leistungKWp'),   einheit: 'kWp' } : null;
     case 'Batterie': return z('kapazitaetKWh') != null ? { wert: z('kapazitaetKWh'), einheit: 'kWh' } : null;
+    case 'H2':       return z('tankKg')        != null ? { wert: z('tankKg'),        einheit: 'kg H₂' } : null;
     case 'Trafo':    return z('leistungKVA')   != null ? { wert: z('leistungKVA'),   einheit: 'kVA' } : null;
     case 'Wind':
     case 'Nsa':      return z('leistungKW')    != null ? { wert: z('leistungKW'),    einheit: 'kW' }  : null;

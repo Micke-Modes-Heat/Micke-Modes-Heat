@@ -120,6 +120,8 @@ export function naGetLoadPoints(year) {
       case 'PV':          genKW  = (parseFloat(props.leistungKWp) || 0) * 0.8; break;
       case 'Wind':        genKW  = parseFloat(props.leistungKW)  || 0; break;
       case 'Batterie':    genKW  = parseFloat(props.leistungKW)  || 0; break;
+      // H₂-Speicher: Elektrolyseur bezieht, Brennstoffzelle speist — beide Richtungen als Grenzfall
+      case 'H2':          loadKW = parseFloat(props.elektrolyseKW) || 0; genKW = parseFloat(props.brennstoffzelleKW) || 0; break;
     }
     const peakKW = Math.max(loadKW, genKW);
     if (peakKW > 0 && isFinite(a.lat) && isFinite(a.lng))

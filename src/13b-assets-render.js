@@ -54,6 +54,8 @@ function _assetKosten(asset) {
     case 'Verbraucher':  return 2000;
     case 'PV':           return (parseFloat(p.leistungKWp) || 10) * g('ak-pv-kwp', 1200);
     case 'Batterie':     return (parseFloat(p.kapazitaetKWh) || 10) * g('ak-bat-kwh', 600);
+    // Richtwerte wie in lib/autarkie-h2-core.js (Elektrolyseur 1.800 €/kW, BZ 2.500 €/kW, Tank 20 €/kWh ≈ 670 €/kg)
+    case 'H2':           return (parseFloat(p.elektrolyseKW) || 0) * 1800 + (parseFloat(p.brennstoffzelleKW) || 0) * 2500 + (parseFloat(p.tankKg) || 0) * 667;
     case 'Lade':         return (parseFloat(p.anzahlPunkte) || 1) * g('ak-lade-pkt', 1500) + (parseFloat(p.leistungProPunktKW) || 22) * 200;
     case 'WP':           return (parseFloat(p.leistungThKW) || parseFloat(p.leistungKW) || 10) * g('ak-wp-kw', 700);
     case 'Nsa':          return (parseFloat(p.leistungKW) || 20) * 300;

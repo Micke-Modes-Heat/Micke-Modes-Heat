@@ -40,6 +40,8 @@ export const ASSET_CFG = {
   // ── Strom-Speicher ──
   Batterie:     { label:'Batterie',          icon:'🔋', color:'#aed581', domain:'strom', kategorie:'speicher', energy_in:['strom'], energy_out:['strom'],
                   beschreibung:'Batteriespeicher: speichert überschüssigen Strom (z. B. PV-Erzeugung) zwischen und entlastet damit Netzanschluss und Trafo bei Lastspitzen.' },
+  H2:           { label:'H₂-Speicher',       icon:'💧', color:'#3987e5', domain:'strom', kategorie:'speicher', energy_in:['strom'], energy_out:['strom','waerme'],
+                  beschreibung:'Wasserstoffspeicher: Elektrolyseur (wandelt Überschussstrom in Wasserstoff), Drucktank und Brennstoffzelle (erzeugt daraus wieder Strom und Abwärme). Saisonaler Speicher für Winter und Dunkelflauten — Auslegung über PV-Analyse › Autarkieziel.' },
   // ── Hybrid (Strom + Wärme) — werden über Erzeuger-Tab gesteuert, nicht manuell platzierbar ──
   WP:           { label:'Luft-WP',           icon:'💨', color:'#66bb6a', domain:'hybrid', kategorie:'erzeuger', energy_in:['strom'], energy_out:['waerme'],
                   beschreibung:'Luft-Wärmepumpe: wandelt Strom in Wärme um — wird über den Erzeuger-Tab verwaltet.' },
@@ -60,7 +62,7 @@ export const ASSET_CFG = {
 export const TYPE_RANK = {
   NAP:0, Schaltanlage:1, Trafo:2, NSHV:3, UV:4, KVS:4,
   Verbraucher:5, WP:5, Geo:5, FG:5, Stromkessel:5, Lade:5, TWW:5, Nsa:5, KWK:5,
-  Wind:6, PV:6, Batterie:6, Reserve:7,
+  Wind:6, PV:6, Batterie:6, H2:6, Reserve:7,
 };
 
 // Simulationsrelevante Props pro Typ (für elCalcAssets)
@@ -89,6 +91,10 @@ export const ASSET_PROPS_SCHEMA = {
   Batterie:     [{ key:'leistungKW',          label:'Leistung (kW)' },
                  { key:'kapazitaetKWh',       label:'Kapazität (kWh)' },
                  { key:'betriebsmodus',       label:'Betriebsmodus' }],
+  H2:           [{ key:'elektrolyseKW',       label:'Elektrolyseur (kW el.)' },
+                 { key:'brennstoffzelleKW',   label:'Brennstoffzelle (kW el.)' },
+                 { key:'tankKg',              label:'Tankinhalt (kg H₂)' },
+                 { key:'druckBar',            label:'Speicherdruck (bar)' }],
   Lade:         [{ key:'anzahlPunkte',        label:'Anz. Standardladepunkte' },
                  { key:'leistungProPunktKW',  label:'Leistung/Punkt (kW)' },
                  { key:'gleichzeitigFaktor',  label:'Gleichzeitigkeitsfaktor (0–1)' },
