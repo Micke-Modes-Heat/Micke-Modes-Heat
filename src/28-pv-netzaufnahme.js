@@ -899,7 +899,7 @@ function _hinweiseHtml(info) {
   const teil = [...info.elInfo.values()].filter(i => i.teil).map(i => escHtml(i.label));
   if (teil.length) h.push(`Für den Vollausbau reicht keine Standardlösung ganz (Strom über 8 Parallelstränge oder Spannung): ${teil.join(', ')} — sie ist als Teil-Ertüchtigung eingeplant, den Rest erschließt nur eine Strukturänderung.`);
   h.push('Modellgrenzen: Hausanschlusskabel ohne Querschnitt, Mittelspannung und Netzanschlusspunkt werden hier nicht begrenzt '
-    + '(NAP-Einspeisegrenze: Abb. 6). Keine gleichzeitige Last angesetzt — konservativ. Blindleistungsregelung Q(U) und '
+    + '(NAP-Einspeisegrenze: Kapitel 4.1). Keine gleichzeitige Last angesetzt — konservativ. Blindleistungsregelung Q(U) und '
     + 'Einspeisebegrenzung am EZA-Regler lassen sich über „Einspeisung kW/kWp" abbilden (z. B. 0,6 bei 60-%-Begrenzung).');
   return `<div style="font-size:10.5px;color:var(--muted);line-height:1.55;border-top:1px solid var(--border);padding-top:10px;">
     ${h.map(x => `<div style="margin-bottom:4px;">• ${x}</div>`).join('')}</div>`;

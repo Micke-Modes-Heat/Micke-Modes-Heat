@@ -3977,7 +3977,7 @@ GG_FIGUREN.push(
 
 // ── PV-Analyse: Varianten, Energiebilanz, Wirtschaftlichkeit, Resilienz ───────
 // Quelle: window._pvAnalyse.ergebnisse (gefüllt in src/09d-pv-analyse.js über
-// „Varianten berechnen") bzw. window._pvResReco (PV-Analyse › Abb. 10). Ohne
+// „Varianten berechnen") bzw. window._pvResReco (PV-Analyse › Kapitel 6.1). Ohne
 // gelaufene Berechnung liefert ausProjekt eine Hinweismeldung statt Zahlen.
 // Als eigene Funktion statt direkt im Array-Literal: die Helfer/Konstanten
 // darunter (GG_PV_KURZ etc.) sind sonst beim Auswerten von GG_FIGUREN noch
@@ -5004,13 +5004,13 @@ function ggPvFiguren() {
       hinweis: 'Für JEDE Stunde des Jahres simuliert: wie viele Stunden des betrachteten Ausfallfensters '
              + 'könnten PV und Speicher allein nicht decken. Zeigt, dass es keine einzelne '
              + 'Überbrückungsdauer gibt, sondern eine Verteilung — und wo der ungünstigste Zeitpunkt liegt. '
-             + 'Grundlage: Abb. 10 „Resilienz" in der ☀ PV-Analyse.',
+             + 'Grundlage: Kapitel 6.1 „Resilienz" in der ☀ PV-Analyse.',
       render: cfg => ggRenderHeatmap(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten', titel: 'Versorgungslücke je Ausfallzeitpunkt', ort: '',
         meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
         achseY: 'Beginn des Ausfalls (Uhrzeit)', achseX: 'Beginn des Ausfalls (Tag im Jahr)',
-        leer: 'Noch keine Resilienz-Berechnung — Abb. 10 „Resilienz" in der PV-Analyse öffnen.',
+        leer: 'Noch keine Resilienz-Berechnung — Kapitel 6.1 „Resilienz" in der PV-Analyse öffnen.',
         grid: null, maxV: 1, einheit: 'h', legendeLabel: 'Stunden ohne Deckung aus PV und Speicher',
         kpiLinks: [], kpiRechts: [],
       },
@@ -5052,13 +5052,13 @@ function ggPvFiguren() {
       datei: 'resilienz-fensterverlauf',
       hinweis: 'Stunde für Stunde durch das betrachtete Ausfallfenster: wer trägt die Last — PV, Speicher '
              + 'oder Notstromaggregat — und bleibt eine Lücke. Der Beleg für die Auslegung in 3.4.3. '
-             + 'Grundlage: Abb. 10 „Resilienz" in der ☀ PV-Analyse.',
+             + 'Grundlage: Kapitel 6.1 „Resilienz" in der ☀ PV-Analyse.',
       render: cfg => ggRenderBalken(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten', titel: 'Lastdeckung im Ausfallfenster', ort: '',
         meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
         achseY: 'Leistung in kW', achseX: 'Stunde des Ausfalls',
-        leer: 'Noch keine Resilienz-Berechnung — Abb. 10 „Resilienz" in der PV-Analyse öffnen.',
+        leer: 'Noch keine Resilienz-Berechnung — Kapitel 6.1 „Resilienz" in der PV-Analyse öffnen.',
         kategorien: [], gruppen: [], kpiLinks: [], kpiRechts: [],
       },
       ausProjekt(cfg) {
@@ -5119,13 +5119,13 @@ function ggPvFiguren() {
              + 'Ausfallfensters sie im Mittel über ALLE Ausfallzeitpunkte des Jahres aus PV und Speicher '
              + 'allein tragen und ab wann das Notstromaggregat einspringen muss. Die Aggregatleistung '
              + 'ist dagegen am ungünstigsten Zeitpunkt der jeweiligen Variante bemessen. '
-             + 'Grundlage: „Varianten vergleichen" in Abb. 10 „Resilienz".',
+             + 'Grundlage: „Varianten vergleichen" in Kapitel 6.1 „Resilienz".',
       render: cfg => ggRenderBalken(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten', titel: 'Resilienz je Ausbauvariante', ort: '',
         meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
         achseY: 'Stunden des Ausfallfensters (Mittel)', achseX: 'Ausbauvariante',
-        leer: 'Noch kein Variantenvergleich — in Abb. 10 „Resilienz" auf „Varianten vergleichen" klicken.',
+        leer: 'Noch kein Variantenvergleich — in Kapitel 6.1 „Resilienz" auf „Varianten vergleichen" klicken.',
         kategorien: [], gruppen: [], kpiLinks: [], kpiRechts: [],
       },
       ausProjekt(cfg) {
@@ -5176,13 +5176,13 @@ function ggPvFiguren() {
       kapitel: '5.2 Bewertung Resilienz',
       titel: 'Resilienz — Autarkie bei Netzausfall',
       datei: 'pv-resilienz-zusammenfassung',
-      hinweis: 'Zusammenfassung der zuletzt in ☀ PV-Analyse › Abb. 10 „Resilienz“ betrachteten Inselbetrieb-Auslegung: '
+      hinweis: 'Zusammenfassung der zuletzt in ☀ PV-Analyse › Kapitel 6.1 „Resilienz“ betrachteten Inselbetrieb-Auslegung: '
              + 'wie lange trägt PV/Batterie/Notstrom einen Blackout zum ungünstigsten Zeitpunkt im Jahr. '
-             + 'Erst Abb. 10 in der PV-Analyse öffnen, dann hierher „Aus Projekt übernehmen“. Gebäude, Netz und Schutzziele: 🛡 Blackout-Modus.',
+             + 'Erst Kapitel 6.1 in der PV-Analyse öffnen, dann hierher „Aus Projekt übernehmen“. Gebäude, Netz und Schutzziele: 🛡 Blackout-Modus.',
       render: cfg => ggRenderTabelle(cfg),
       config: {
         eyebrow: 'Elektrotechnisches Gutachten', titel: 'Resilienz — Autarkie bei Netzausfall',
-        leer: 'Noch keine Resilienz-Berechnung — in der ☀ PV-Analyse Abb. 10 „Resilienz“ öffnen (rechnet automatisch auf den PV-Varianten).',
+        leer: 'Noch keine Resilienz-Berechnung — in der ☀ PV-Analyse Kapitel 6.1 „Resilienz“ öffnen (rechnet automatisch auf den PV-Varianten).',
         spalten: [{ label: 'Kennzahl', weight: 2.2 }, { label: 'Wert', weight: 1.4, mono: true }],
         zeilen: [], fussnote: '',
       },
@@ -5207,8 +5207,8 @@ function ggPvFiguren() {
           zeile('Spritkosten je Ereignis', r.genKw > 0 ? fmtK(r.fuelCost) : '0 €'),
         ];
         cfg.fussnote = 'Inselbetrieb-Simulation zum ungünstigsten Zeitpunkt im Jahr: Batterie startet mit dem realen '
-                      + 'Ladestand aus der Jahressimulation, das Notstromaggregat deckt die Restlast. Stand aus der PV-Analyse, Abb. 10.';
-        return '✓ Resilienz-Kennzahlen aus der PV-Analyse (Abb. 10) übernommen.';
+                      + 'Ladestand aus der Jahressimulation, das Notstromaggregat deckt die Restlast. Stand aus der PV-Analyse, Kapitel 6.1.';
+        return '✓ Resilienz-Kennzahlen aus der PV-Analyse (Kapitel 6.1) übernommen.';
       },
     },
 
@@ -5535,7 +5535,7 @@ function ggRenderResLangText(cfg, T = GG_THEME) {
 }
 
 /* ── 3.4.3 Notstromversorgung und Lastmanagement (Variantenbildung) ────────────
- * Auslegung aus der Inselbetrieb-Simulation der PV-Analyse (window._pvResReco, Abb. 10 „Resilienz“),
+ * Auslegung aus der Inselbetrieb-Simulation der PV-Analyse (window._pvResReco, Kapitel 6.1 „Resilienz“),
  * Anzahl und Standorte aus den geplanten Notstromaggregaten des Elektro-Tabs, Bestand wie in 3.1.4.
  * Lastmanagement heißt hier Lastabwurf auf die Notbetriebslast. Die Resilienzbewertung bleibt in 5.2.
  * _pvResReco wird mit der PV-Analyse im Projekt gespeichert (09d pvCaptureState). */
@@ -5732,7 +5732,7 @@ function ggNotstromStandHtml() {
   let html = zeile('Resilienz-Rechnung', r
       ? gEsc(`${GG_RES_MODE_LBL[r.mode] || r.mode} · ${r.durH} h · Aggregat ${r.genKw > 0 ? ggNum(r.genKw) + ' kW' : 'keines'} · `
         + `Notbetrieb ${ggNum(ggNotbetriebPct(r))} %`)
-      : gelb('fehlt — ☀ PV-Analyse › Abb. 10 „Resilienz“ öffnen'))
+      : gelb('fehlt — ☀ PV-Analyse › Kapitel 6.1 „Resilienz“ öffnen'))
     + zeile('Bestand (3.1.4)', s.bestand.length ? anlagen(s.bestand, s.bestandKw) : 'keine NEA')
     + zeile('Geplant (Elektro-Tab)', s.geplant.length ? anlagen(s.geplant, s.geplantKw) : 'keine geplanten Notstromaggregate');
   const erf = s.erforderlichKw;
@@ -5759,7 +5759,7 @@ GG_FIGUREN.push(
     kapitel: GG_KAP_NOTSTROM,
     titel: 'Gutachtentext: Auslegung Notstromversorgung',
     datei: 'notstrom-auslegung-text',
-    hinweis: 'Auslegung aus der Inselbetrieb-Simulation (☀ PV-Analyse › Abb. 10 „Resilienz“): Ausfalldauer, Betriebsweise, '
+    hinweis: 'Auslegung aus der Inselbetrieb-Simulation (☀ PV-Analyse › Kapitel 6.1 „Resilienz“): Ausfalldauer, Betriebsweise, '
            + 'Aggregatleistung inkl. 20 % Reserve, Kraftstoff und Tank; Abgleich mit dem Bestand (3.1.4) und den geplanten '
            + 'Notstromaggregaten des Elektro-Tabs.',
     render: cfg => ggRenderNotstromAuslegungText(cfg),
@@ -5795,7 +5795,7 @@ GG_FIGUREN.push(
       const r = s.r;
       if (!r && !s.bestand.length && !s.geplant.length) {
         cfg.zeilen = []; cfg.fussnote = '';
-        return '⚠ Keine Resilienz-Rechnung und keine Notstromaggregate — ☀ PV-Analyse › Abb. 10 „Resilienz“ öffnen.';
+        return '⚠ Keine Resilienz-Rechnung und keine Notstromaggregate — ☀ PV-Analyse › Kapitel 6.1 „Resilienz“ öffnen.';
       }
       const erf = s.erforderlichKw;
       const kwZelle = (liste, kw) => (!liste.length ? 'keine' : kw != null ? `${ggNum(kw)} kW` : '—');
@@ -5842,7 +5842,7 @@ GG_FIGUREN.push(
       cfg.fussnote = r
         ? `Erforderlich: Inselbetrieb-Simulation ${r.durH} h ${r.isWorst ? 'zum ungünstigsten Zeitpunkt' : 'zum gewählten Zeitpunkt'}, `
           + `${GG_RES_MODE_LBL[r.mode] || r.mode}, Aggregat inkl. 20 % Reserve · Bestand: Kapitel 3.1.4 · Geplant: Planungsschicht im Elektro-Tab`
-        : 'Erforderliche Werte fehlen — ☀ PV-Analyse › Abb. 10 „Resilienz“ öffnen · Bestand: Kapitel 3.1.4';
+        : 'Erforderliche Werte fehlen — ☀ PV-Analyse › Kapitel 6.1 „Resilienz“ öffnen · Bestand: Kapitel 3.1.4';
       return r ? '✓ Bestand, Resilienz-Auslegung und geplante Aggregate übernommen.'
                : '⚠ Resilienz-Rechnung fehlt — nur Bestand und geplante Aggregate übernommen.';
     },
@@ -7030,7 +7030,7 @@ export function ggRenderPanel() {
       // Nur Anzeige: Ladeparks und Netz werden im Elektro-Tab gepflegt
       html += ggLadeStandHtml();
     } else if (figur.notstromText) {
-      // Nur Anzeige: Auslegung kommt aus Abb. 10 „Resilienz“, Aggregate aus dem Elektro-Tab
+      // Nur Anzeige: Auslegung kommt aus Kapitel 6.1 „Resilienz“, Aggregate aus dem Elektro-Tab
       html += ggNotstromStandHtml();
     } else if (figur.netzInternText) {
       // Nur Anzeige: Netz und Maßnahmen werden im Elektro-Tab gepflegt

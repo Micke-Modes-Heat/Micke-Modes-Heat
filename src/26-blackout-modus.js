@@ -770,14 +770,14 @@ function _inselZeichnen() {
   }
 }
 
-/** Gegenüberstellung mit der Inselbetrieb-Simulation der PV-Analyse (Abb. 10), falls gerechnet. */
+/** Gegenüberstellung mit der Inselbetrieb-Simulation der PV-Analyse (Kapitel 6.1), falls gerechnet. */
 function _pvVergleich(r) {
   const pv = window._pvResReco;
   if (!pv) return '';
   const MODUS = { gen: 'nur Notstrom', 'bat-gen': 'Speicher + Notstrom', 'pv-bat-gen': 'PV + Speicher + Notstrom', 'pv-bat': 'nur PV + Speicher' };
   return `<div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.4;"
       title="Die PV-Analyse rechnet ohne Netztopologie, dafür mit PV und Batteriespeicher im Inselbetrieb">
-      PV-Analyse (Abb. 10, ${escHtml(MODUS[pv.mode] || pv.mode)}): ${pv.genKw > 0 ? `Aggregat ${_fmtKw(pv.genKw)}` : 'kein Aggregat'}
+      PV-Analyse (Kapitel 6.1, ${escHtml(MODUS[pv.mode] || pv.mode)}): ${pv.genKw > 0 ? `Aggregat ${_fmtKw(pv.genKw)}` : 'kein Aggregat'}
       für ${Math.round(pv.loadFracPct ?? 100)} % Last über ${pv.durH} h — hier ${Math.round(r.aggregate.pAggKw).toLocaleString('de-DE')} kW
       Wirkleistung für ${Math.round(r.anteilPct)} %${pv.batKwh > 0 ? `; der Speicher (${Math.round(pv.batKwh).toLocaleString('de-DE')} kWh) kann Lastsprünge abfangen` : ''}.
     </div>`;
@@ -1073,7 +1073,7 @@ function _waermeBlock() {
           title="Setzt die Notstromklasse der Heizzentrale auf A mit eigenem Aggregat">Heizzentrale „${escHtml(hz.name || '')}" als Klasse A mit eigener NEA einstufen</button>`;
 
   const hinweise = [
-    !e.mitNea && 'Ohne Notstrom laufen weder Pumpen noch Brenner — die Gebäude kühlen ab Ausfallbeginn aus (Auskühlzeiten: PV-Analyse › Abb. 10 › Wärme).',
+    !e.mitNea && 'Ohne Notstrom laufen weder Pumpen noch Brenner — die Gebäude kühlen ab Ausfallbeginn aus (Auskühlzeiten: PV-Analyse › Kapitel 6.1 › Wärme).',
     mit.kwJeTraeger.oel > 0 && !e.tankL && 'Heizöllager nicht erfasst — die Reichweite ist unbekannt, die Deckung rechnet mit unbegrenztem Öl.',
     mit.reichweiteH != null && mit.reichweiteH < mit.dauerH && `Das Lager ist nach ${mit.reichweiteH} h leer — für ${mit.dauerH} h fehlen ${fmt(mit.tankFehltL)} l.`,
     mit.awsv && `Heizöllager über ${fmt(WAERME_PARAMETER.awsvSchwelleL)} l: AwSV-Anzeige und Auflagen beachten.`,

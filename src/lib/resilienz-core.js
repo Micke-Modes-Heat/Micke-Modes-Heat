@@ -142,12 +142,12 @@ export function notstromBilanz(gebaeude, kwJeGebaeude, opts = {}) {
 //     Liegenschafts-Insel (Schritt 3).
 //
 // Bemessung: gleichzeitige Spitze der Gebäudelastgänge × Lastanteil, plus
-// Reserve, gerundet — wie die Aggregat-Empfehlung in der PV-Analyse (Abb. 10).
+// Reserve, gerundet — wie die Aggregat-Empfehlung in der PV-Analyse (Kapitel 6.1).
 
 /** Richtwerte für den Kostenvergleich (netto, ohne Tank/Kraftstoff). */
 export const NEA_KOSTEN = Object.freeze({
   fixEur: 15000,                // Aufstellung/Container, Abgasführung, Inbetriebnahme je Aggregat
-  eurProKw: 450,                // Aggregat inkl. Steuerung, €/kW (wie Abb. 10)
+  eurProKw: 450,                // Aggregat inkl. Steuerung, €/kW (wie Kapitel 6.1)
   einspeisungKnotenEur: 10000,  // NEA-Einspeisefeld mit Netz-/NEA-Umschaltung am Knoten
   einspeisungGebaeudeEur: 5000, // Umschalteinrichtung in der Gebäude-Hauptverteilung
   abgangEur: 1500,              // Schaltanweisung/Kennzeichnung je abzuschaltendem Abgang
