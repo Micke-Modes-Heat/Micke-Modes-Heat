@@ -14996,7 +14996,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-09-29';
   if (d.indexOf('__') === 0) d = '';
-  var c = '8208ead';
+  var c = '35f0a30';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -100374,6 +100374,7 @@ ${massTbl}
       stale: false,
       herleitung: null, lastParams: null, lastProfilQuelle: null, basis: null, standText: '',
       pflicht: null,              // Pflicht-Kontext des letzten Laufs (Land, Norm, Sollleistung, Fälle)
+      fokus: 'wirt-opt',          // „Variante im Blick" — steuert alle variantenbezogenen Abschnitte
     };
   }
 
@@ -101794,29 +101795,29 @@ ${massTbl}
       render:(v, a) => { renderGrenznutzenChart(a.demandH, a.pvProfile, a.napParams, a.params, v);
                          renderWindGrenznutzenChart(a.demandH, a.pvProfile, a.napParams, a.params, v); } },
     // 2 — Welche Auslegung?
-    { id:'tabelle',    kap:'2', nr:'2.1', label:'Varianten-Vergleich', el:'pva-result-tabelle', render:(v) => renderVariantenTabelle(v) },
+    { id:'tabelle', fokus:true,    kap:'2', nr:'2.1', label:'Varianten-Vergleich', el:'pva-result-tabelle', render:(v) => renderVariantenTabelle(v) },
     { id:'lesehilfe',  kap:'2', nr:'2.2', label:'Lesehilfe',           el:'pva-methodik',       render:(v) => renderMethodik(v) },
     { id:'herleitung', kap:'2', nr:'2.3', label:'Herleitung der Varianten', el:'pva-herleitung', render:(v) => renderHerleitung(v) },
     { id:'abb1', kap:'2', nr:'2.4', label:'Optimierungsfläche', el:'pva-chart-heatmap', args:true,
       render:(v, a) => renderOptHeatmap(a.demandH, a.pvProfile, a.napParams, a.params, v) },
-    { id:'abb3', kap:'2', nr:'2.5', label:'Eigenverbrauch und Autarkie', el:'pva-ev-kurve', args:true,
+    { id:'abb3', fokus:true, kap:'2', nr:'2.5', label:'Eigenverbrauch und Autarkie', el:'pva-ev-kurve', args:true,
       render:(v, a) => renderEvKurve(a.demandH, a.pvProfile, a.napParams, a.params, v) },
     // 3 — Wohin fließt die Energie?
-    { id:'abb4', kap:'3', nr:'3.1', label:'Energiebilanz', el:'pva-chart-bilanz', render:(v) => renderBilanzChart(v) },
-    { id:'abb7', kap:'3', nr:'3.2', label:'Energiefluss', el:'pva-chart-fluss', args:true,
+    { id:'abb4', fokus:true, kap:'3', nr:'3.1', label:'Energiebilanz', el:'pva-chart-bilanz', render:(v) => renderBilanzChart(v) },
+    { id:'abb7', fokus:true, kap:'3', nr:'3.2', label:'Energiefluss', el:'pva-chart-fluss', args:true,
       render:(v, a) => renderEnergieFluss(a.demandH, a.pvProfile, a.napParams, a.params, v) },
     // Speicherfluss zoomt in den Speicheranteil des Energieflusses hinein.
-    { id:'abb7b', kap:'3', nr:'3.3', label:'Speicherfluss', el:'pva-chart-speicherfluss', args:true,
+    { id:'abb7b', fokus:true, kap:'3', nr:'3.3', label:'Speicherfluss', el:'pva-chart-speicherfluss', args:true,
       render:(v, a) => renderSpeicherFluss(a.demandH, a.pvProfile, a.napParams, a.params, v) },
-    { id:'abb8', kap:'3', nr:'3.4', label:'Autarkie-Jahresgang', el:'pva-chart-autarkie-heatmap', render:(v) => renderAutarkieHeatmap(v) },
+    { id:'abb8', fokus:true, kap:'3', nr:'3.4', label:'Autarkie-Jahresgang', el:'pva-chart-autarkie-heatmap', render:(v) => renderAutarkieHeatmap(v) },
     // 4 — Was hält das Netz aus?
     { id:'abb6', kap:'4', nr:'4.1', label:'Rückspeisung & Netzverträglichkeit', el:'pva-chart-rueck', render:(v) => renderRueckAmpel(v) },
     // 5 — Was kostet es, lohnt es sich?
     { id:'abb5', kap:'5', nr:'5.1', label:'Investition und Jahresüberschuss', el:'pva-chart-scatter', render:(v) => renderScatterChart(v) },
-    { id:'abb9', kap:'5', nr:'5.2', label:'Sensitivität', el:'pva-chart-sensitivitaet', render:(v) => renderSensitivitaet(v) },
-    { id:'rechenweg', kap:'5', nr:'5.3', label:'Rechenweg', el:'pva-rechenweg', render:(v) => renderRechenweg(v) },
+    { id:'abb9', fokus:true, kap:'5', nr:'5.2', label:'Sensitivität', el:'pva-chart-sensitivitaet', render:(v) => renderSensitivitaet(v) },
+    { id:'rechenweg', fokus:true, kap:'5', nr:'5.3', label:'Rechenweg', el:'pva-rechenweg', render:(v) => renderRechenweg(v) },
     // 6 — Was, wenn das Netz ausfällt? Resilienz rechnet auf genau derselben PV/Batterie-Auslegung.
-    { id:'abb10', kap:'6', nr:'6.1', label:'Resilienz / Blackout', el:'pva-chart-resilienz', render:(v) => renderResilienz(v) },
+    { id:'abb10', fokus:true, kap:'6', nr:'6.1', label:'Resilienz / Blackout', el:'pva-chart-resilienz', render:(v) => renderResilienz(v) },
     // 7 — Anhang
     { id:'annahmen', kap:'7', nr:'7', label:'Annahmenblatt', el:'pva-annahmenblatt', render:(v) => renderAnnahmenblatt(v) },
 
@@ -101835,6 +101836,83 @@ ${massTbl}
 
   /** Alle Abschnitte als neu-zu-zeichnen markieren (nach einem Rechenlauf / Panel-Aufbau). */
   function _pvaAlleDirty() { PVA_VIEWS.forEach(v => _pvaDirty.add(v.id)); }
+
+  // ── Variante im Blick ─────────────────────────────────────────────────────────
+  // Eine Auswahl für das ganze Dokument statt je eigener Varianten-Knöpfe in 3.2, 3.3,
+  // 3.4, 5.2, 5.3 und 6.1 (die liefen auseinander: wer in 3.2 „Autarkie" wählte, sah
+  // in 3.3 noch „Wirtschaftlich"). Die Leiste steht mitlaufend über den Kapiteln; ein
+  // Klick auf eine Tabellenzeile oder einen Energiebilanz-Balken setzt sie ebenfalls.
+  // Die Schieber in 3.2–3.4 und 6.1 bleiben zum freien Ausprobieren und starten auf
+  // der Variante im Blick.
+
+  /** Die Variante im Blick — fällt auf „Wirtschaftlich" bzw. die erste Variante zurück. */
+  function pvaFokusVariante(varianten = window._pvAnalyse?.ergebnisse) {
+    const kanon = (varianten || []).filter(v => v.info && v.info.frage);
+    const id = window._pvAnalyse?.fokus;
+    return kanon.find(v => v.id === id) || kanon.find(v => v.id === 'wirt-opt') || kanon[0] || null;
+  }
+
+  window.pvaSetFokus = function pvaSetFokus(id) {
+    const s = window._pvAnalyse;
+    if (!s || s.fokus === id) return;
+    s.fokus = id;
+    PVA_VIEWS.filter(v => v.fokus).forEach(v => _pvaDirty.add(v.id));
+    _pvaFokusleisteZeichnen();
+    _pvaSichtbareZeichnen();
+  };
+
+  function _pvaFokusleisteZeichnen() {
+    const el = document.getElementById('pva-fokusleiste');
+    if (!el) return;
+    const s = window._pvAnalyse;
+    const kanon = (s?.berechnet || s?.stale) ? (s.ergebnisse || []).filter(v => v.info && v.info.frage) : [];
+    if (!kanon.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    const fokus = pvaFokusVariante(kanon);
+    const kurz = t => (t.length > 22 ? t.slice(0, 21) + '…' : t);
+    const chips = kanon.map(v => {
+      const an = v.id === fokus.id;
+      const groesse = `${Math.round(v.pvKwp).toLocaleString('de-DE')} kWp` +
+        (v.batKwh > 0 ? ` · ${(v.batKwh / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MWh` : '');
+      return `<button data-click="pvaSetFokus('${v.id}')" title="${escHtml(v.label)} — ${groesse}"
+      style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid ${v.farbe};border-radius:12px;cursor:pointer;white-space:nowrap;
+             font-size:11px;background:${an ? v.farbe : 'transparent'};color:${an ? '#0a0e16' : v.farbe};font-weight:${an ? 700 : 500};">
+      <span>${v.icon}</span><span>${escHtml(kurz(v.label))}</span></button>`;
+    }).join('');
+    el.style.display = '';
+    el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 0 8px;border-bottom:1px solid var(--border);margin-bottom:4px;"
+      title="Steuert die Hervorhebung in 2.1 und 3.1, die Speicherkurven in 2.5, den Ausgangspunkt der Schieber in 3.2–3.4 und 6.1 sowie 5.2 und 5.3">
+      <span style="font-size:10.5px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;">Variante im Blick</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>
+    </div>`;
+  }
+
+  /** Zeile unter den Schiebern eines Abschnitts: Ausgangspunkt + Rücksprung zur Variante im Blick. */
+  function _pvaFokusZeileHtml(v, hinweis = '') {
+    return `<div data-pva-fokuszeile style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:8px;">
+    <span>Ausgangspunkt: <b style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}</b>${v.id === pvaFokusVariante()?.id ? ' (Variante im Blick)' : ''}</span>
+    ${hinweis ? `<span style="color:#ffb74d;">${hinweis}</span>` : ''}
+    <span data-pva-frei style="display:none;color:#ffb74d;">· Schieber frei verstellt</span>
+    <button data-pva-fokus-reset style="display:none;cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#cfd8dc;font-size:11px;padding:1px 9px;">↺ zurück zur Variante</button>
+  </div>`;
+  }
+
+  /** Schieber an die Fokuszeile binden: „frei verstellt" anzeigen, Rücksprung auf (pv, bat). */
+  function _pvaFokusZeileBinden(el, pvIn, batIn, pv, bat, nachReset) {
+    const zeile = el.querySelector('[data-pva-fokuszeile]');
+    if (!zeile) return () => {};
+    const frei = zeile.querySelector('[data-pva-frei]'), reset = zeile.querySelector('[data-pva-fokus-reset]');
+    const pruefen = () => {
+      const ab = Math.round(parseFloat(pvIn.value)) !== Math.round(pv) || Math.round(parseFloat(batIn.value)) !== Math.round(bat);
+      frei.style.display = ab ? '' : 'none';
+      reset.style.display = ab ? '' : 'none';
+    };
+    reset.addEventListener('click', () => { pvIn.value = Math.round(pv); batIn.value = Math.round(bat); nachReset(); pruefen(); });
+    pvIn.addEventListener('input', pruefen);
+    batIn.addEventListener('input', pruefen);
+    pruefen();
+    return pruefen;
+  }
 
   window.pvaSetView = function pvaSetView(id) {
     const v = PVA_VIEWS.find(x => x.id === id);
@@ -101886,6 +101964,7 @@ ${massTbl}
       raster.style.gridTemplateColumns = '232px minmax(0,1fr)';
       if (raster.firstElementChild) raster.firstElementChild.style.display = 'flex';
     }
+    _pvaFokusleisteZeichnen();
     _pvaSichtbareZeichnen();
     _pvaAktivMarkieren();
   }
@@ -102015,7 +102094,7 @@ ${massTbl}
       <span style="font-size:11px;color:var(--muted);margin-left:auto;">${k.bezug}</span>
     </div>`;
     const abschnitt = (v, mitKopf) => `
-    <section data-pva-sec="${v.id}" style="margin-bottom:26px;scroll-margin-top:8px;">
+    <section data-pva-sec="${v.id}" style="margin-bottom:26px;scroll-margin-top:64px;">
       ${mitKopf ? `<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;">
         <span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--accent);">${v.nr}</span>
         <span style="font-size:13.5px;font-weight:600;color:var(--text);">${v.label}</span></div>` : ''}
@@ -102620,6 +102699,7 @@ ${massTbl}
 
     <!-- Ergebniskapitel 1–7 (werden bei veralteten Eingaben abgeblendet) -->
     <div id="pva-ergebnis-kapitel" style="transition:opacity .15s;">
+      <div id="pva-fokusleiste" style="position:sticky;top:0;z-index:20;background:var(--bg);display:none;"></div>
       <div id="pva-leer-hinweis" style="margin-top:22px;padding:14px;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11.5px;text-align:center;">
         ${(() => {
           const hasBase = !!(window.elQuartierH15 || window.elQuartierH);
@@ -103038,10 +103118,7 @@ ${massTbl}
     const p = window._pvAnalyse.lastParams;
     if (!p) { el.innerHTML = ''; return; }
 
-    // Auswahl-Variante (Default: wirtschaftlich optimiert)
-    const selId = window._pvAnalyse._rechenwegId
-      || varianten.find(v => v.id === 'wirt-opt')?.id || varianten[0].id;
-    const v = varianten.find(x => x.id === selId) || varianten[0];
+    const v = pvaFokusVariante(varianten) || varianten[0];   // Variante im Blick
     const w = v.wirt, s = v.sim;
 
     const aPv  = annF(p.zins, p.pvLife  || 20);
@@ -103072,12 +103149,9 @@ ${massTbl}
       <table style="width:100%;border-collapse:collapse;font-size:11px;">${rows}</table>
     </div>`;
 
-    const options = varianten.map(x =>
-      `<option value="${x.id}" ${x.id === v.id ? 'selected' : ''}>${x.icon} ${x.label}</option>`).join('');
-
     const windAktiv = (s.windEigenMwh || 0) + (s.windEinspMwh || 0) > 0.01;
     const blkEnergie = block('Energie & Kennzahlen (aus Simulation)',
-      row('PV-Ertrag',      `${Math.round(v.pvKwp)} kWp · ${pvGetSpez()} kWh/kWp`, mwh(v.ertragMwh)) +
+      row('PV-Ertrag',      `${Math.round(v.pvKwp)} kWp · ${Math.round(pvGetSpez()).toLocaleString('de-DE')} kWh/kWp`, mwh(v.ertragMwh)) +
       (windAktiv ? row('davon Wind', `${mwh((s.windEigenMwh||0)+(s.windEinspMwh||0))} zusätzlich`, '↳ fester Sockel') : '') +
       row('Eigenverbrauch', '→ deckt Bedarf' + (windAktiv ? ' (PV + Wind)' : ''), mwh(s.eigenMwh)) +
       row('Einspeisung',    '→ ins Netz' + (windAktiv ? ' (PV + Wind)' : ''), mwh(s.einspeiseMwh)) +
@@ -103124,20 +103198,13 @@ ${massTbl}
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Rechenweg — Nachvollziehbarkeit
       <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">jede Zahl mit Formel; entspricht Anhang B der Grundlagen-Doku</span>
     </span>
-    <label style="font-size:11px;color:var(--muted);">Variante:
-      <select id="pva-rw-sel" style="margin-left:4px;padding:2px 6px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;">${options}</select>
-    </label>
+    <span style="font-size:11.5px;color:var(--muted);">für <b style="color:${v.farbe};">${v.icon} ${escHtml(v.label)}</b> (Variante im Blick)</span>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;align-items:start;">
     ${blkEnergie}${blkInvest}${blkJk}${blkErloes}
     <div style="grid-column:1/-1;">${blkErgebnis}</div>
   </div>`;
 
-    const sel = el.querySelector('#pva-rw-sel');
-    if (sel) sel.addEventListener('change', ev => {
-      window._pvAnalyse._rechenwegId = ev.target.value;
-      renderRechenweg(varianten);
-    });
   }
 
   // ── 2D-Optimierungsfläche: Jahres-Netto-Überschuss über (PV × Batterie) ───────
@@ -104148,10 +104215,12 @@ ${massTbl}
     </thead>
     <tbody>`;
 
+    const fokusId = pvaFokusVariante(varianten)?.id;
     for (const v of varianten) {
       const w = v.wirt;
       const isKomp = hasWirtOpt ? v.id === 'wirt-opt' : (w.amort === bestAmort);
-      const rowBg  = isKomp ? 'rgba(102,187,106,0.07)' : 'transparent';
+      const imBlick = v.id === fokusId;
+      const rowBg  = imBlick ? 'rgba(212,168,85,0.10)' : isKomp ? 'rgba(102,187,106,0.07)' : 'transparent';
       const abrCol = v.sim.curtailMwh > 0 && w.curtailQuote > 5 ? '#ef9a9a'
                    : v.sim.curtailMwh > 0 ? '#ffd54f' : 'var(--muted)';
       const ampel  = v.rueck?.ampel;
@@ -104166,8 +104235,9 @@ ${massTbl}
         `<td style="text-align:right;padding:6px;white-space:nowrap;font-family:'DM Mono',monospace;${farbe ? 'color:' + farbe + ';' : ''}${extra || ''}">${inhalt}</td>`;
 
       html += `
-      <tr style="border-bottom:1px solid rgba(255,255,255,0.04);background:${rowBg};">
-        <td style="padding:6px;white-space:nowrap;">
+      <tr data-click="pvaSetFokus('${v.id}')" title="${imBlick ? 'Variante im Blick' : 'Klicken: als Variante im Blick wählen'}"
+          style="border-bottom:1px solid rgba(255,255,255,0.04);background:${rowBg};cursor:pointer;">
+        <td style="padding:6px;white-space:nowrap;border-left:3px solid ${imBlick ? 'var(--accent)' : 'transparent'};">
           <span style="color:${v.farbe};font-size:12px;">${v.icon}</span>
           <span style="margin-left:5px;color:var(--text);${isKomp ? 'font-weight:600;' : ''}">${escHtml(v.label)}</span>
           ${isKomp ? ' <span style="background:#66bb6a;color:#000;border-radius:3px;padding:1px 5px;font-size:11px;font-weight:700;">BEST</span>' : ''}
@@ -104300,7 +104370,7 @@ ${massTbl}
   // Das klassische Kurvenpaar: Mit wachsender PV sinkt der Anteil, den das Quartier
   // selbst nutzt (EV-Quote), während der gedeckte Anteil des Bedarfs (Autarkie) immer
   // flacher steigt. Beide ohne Speicher (durchgezogen) und — gestrichelt — mit dem
-  // Speicher der wirtschaftlich optimierten Variante, damit sichtbar wird, was der
+  // Speicher der Variante im Blick (ohne Speicher: der wirtschaftlichen), damit sichtbar wird, was der
   // Speicher an beiden Kurven verschiebt. Varianten stehen als Marken an der x-Achse
   // (mehrere Varianten gleicher Größe teilen sich eine Marke).
 
@@ -104312,7 +104382,9 @@ ${massTbl}
     const spez   = pvGetSpez();
     const spotH  = window.elSpotPreiseH || window._pvAnalyse.spotPreise || null;
     const kanon  = (varianten || []).filter(v => v.info && v.info.frage);
-    const refBat = kanon.find(v => v.id === 'wirt-opt')?.batKwh || 0;
+    const fokus  = pvaFokusVariante(kanon);
+    const refVar = fokus?.batKwh > 0 ? fokus : kanon.find(v => v.id === 'wirt-opt');
+    const refBat = refVar?.batKwh || 0;
     const batStrat = spotH ? 'spot-dyn' : 'ev';
 
     let bedarfMwh = 0;
@@ -104399,7 +104471,7 @@ ${massTbl}
     el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Eigenverbrauchsquote und Autarkie je PV-Größe
-      <span style="font-size:11px;color:var(--muted);margin-left:6px;">durchgezogen ohne Speicher${refBat > 0 ? ' · gestrichelt mit dem Speicher der wirtschaftlichen Variante' : ''}</span></span>
+      <span style="font-size:11px;color:var(--muted);margin-left:6px;">durchgezogen ohne Speicher${refBat > 0 ? ` · gestrichelt mit dem Speicher von ${refVar.icon} ${escHtml(refVar.label)}` : ''}</span></span>
     ${overrideEl ? '' : '<button data-pva-fs="ev" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
   <svg width="${W}" height="${H}" style="display:block;overflow:hidden;cursor:crosshair;">
@@ -104458,118 +104530,117 @@ ${massTbl}
     );
   }
 
-  // ── Abb. 4 — Energiebilanz: gruppierte Vertikalbalken je Variante ─────────────
-  // Drei Balken pro Variante:
-  //   B (Bedarf)   = gesamter Strombedarf
-  //   D (Deckung)  = Eigenverbrauch + Netzbezug   (deckt den Bedarf, gleiche Höhe)
-  //   P (PV-Verbl.)= Einspeisung + Abregelung      (Verbleib des PV-Überschusses)
+  // ── Kapitel 3.1 — Energiebilanz: zweiseitiger Balken je Variante ──────────────
+  // Eine Zeile je Variante, in der Reihenfolge der Tabelle. Links von der Mittelachse,
+  // woher der Bedarf gedeckt wird (PV direkt · aus dem Speicher · Wind · Netzbezug) —
+  // alle linken Balken sind gleich lang, der grüne Anteil ist die Autarkie. Rechts,
+  // wohin die Erzeugung geht (Eigenverbrauch · Einspeisung · Abregelung · Speicher-
+  // verluste) — die Länge ist die Jahreserzeugung. Früher standen hier drei Säulen je
+  // Variante, davon eine siebenmal identisch (Bedarf).
 
   function renderBilanzChart(varianten, overrideEl) {
     const el = overrideEl || document.getElementById('pva-chart-bilanz');
     if (!el || !varianten?.length) return;
 
-    const elW = el.getBoundingClientRect().width || 700;
-    const W   = Math.max(420, elW - 4);
-    const H   = overrideEl ? 440 : 300;
-    const PL = 50, PT = 28, PR = 16, PB = 48;
-    const cW = W - PL - PR, cH = H - PT - PB;
+    const COL = { pv:'#66bb6a', bat:'#9575cd', wd:'#4dd0e1', nb:'#ef5350', ev:'#81c784', es:'#42a5f5', ct:'#ff9800', vl:'#78909c' };
+    const fokusId = pvaFokusVariante(varianten)?.id;
 
-    const COL = { ev:'#66bb6a', nb:'#ef5350', es:'#42a5f5', ct:'#ff9800', bedarf:'#78909c', wd:'#4dd0e1' };
-
-    // Wind-Anteile (pvNapSim: windEigenMwh/windEinspMwh) als eigene Segmente ausweisen,
-    // damit PV- und Windbeitrag in Deckung und Überschuss unterscheidbar bleiben.
     const rows = varianten.map(v => {
-      const ev = v.sim.eigenMwh, nb = v.sim.netzbezugMwh;
-      const es = v.sim.einspeiseMwh, ct = v.sim.curtailMwh || 0;
-      const wEv = Math.min(ev, v.sim.windEigenMwh || 0);
-      const wEs = Math.min(es, v.sim.windEinspMwh || 0);
-      return { v, ev, nb, es, ct, wEv, wEs, bedarf: ev + nb, pv: es + ct };
+      const s = v.sim;
+      const ev = s.eigenMwh, nb = s.netzbezugMwh;
+      const bat = Math.min(ev, s.batEntlBedarfMwh || 0);                 // aus dem Speicher in die Last
+      const wEv = Math.min(ev - bat, s.windEigenMwh || 0);
+      const pvDirekt = Math.max(0, ev - bat - wEv);
+      const es = s.einspeiseMwh, ct = s.curtailMwh || 0, vl = s.batVerlustMwh || 0;
+      return {
+        v, bedarf: ev + nb, erzeugung: ev + es + ct + vl,
+        links:  [['PV direkt', pvDirekt, COL.pv], ['aus dem Speicher', bat, COL.bat], ['Wind', wEv, COL.wd], ['Netzbezug', nb, COL.nb]],
+        rechts: [['Eigenverbrauch', ev, COL.ev], ['Einspeisung', es, COL.es], ['Abregelung', ct, COL.ct], ['Speicherverluste', vl, COL.vl]],
+      };
     });
-    const windAktiv = rows.some(r => r.wEv + r.wEs > 0.01);
-    const maxVal = Math.max(1, ...rows.map(r => Math.max(r.bedarf, r.pv)));
-    const yS = val => (PT + cH) - (val / maxVal) * cH;
+    const windAktiv = rows.some(r => r.links[2][1] > 0.01);
+    const batAktiv  = rows.some(r => r.links[1][1] > 0.01);
+    const maxL = Math.max(1, ...rows.map(r => r.bedarf));
+    const maxR = Math.max(1, ...rows.map(r => r.erzeugung));
 
-    const n = rows.length;
-    const groupW  = cW / n;
-    const barW    = Math.min(38, groupW * 0.22);
-    const innerGap = barW * 0.30;
-    const trioW   = 3 * barW + 2 * innerGap;
+    const elW = el.getBoundingClientRect().width || 800;
+    const W   = Math.max(560, elW - 4);
+    const PL = 250, PR = 70, PT = 50, rowH = overrideEl ? 40 : 32, barH = overrideEl ? 24 : 20;
+    const H   = PT + rows.length * rowH + 30;
+    const cW  = W - PL - PR;
+    const x0  = PL + 58 + (cW - 58) * maxL / (maxL + maxR);           // links Platz für die Summenzahl
+    const skala = (x0 - PL - 58) / maxL;
+    const fmt = n => Math.round(n).toLocaleString('de-DE');
 
-    const seg = (x, valTop, valBot, color) => {
-      const yTop = yS(valTop), yBot = yS(valBot), h = yBot - yTop;
-      if (h < 0.4) return '';
-      return `<rect x="${x.toFixed(1)}" y="${yTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" opacity="0.92"/>`;
+    const segmente = (teile, summe, richtung, y) => {
+      let pos = x0, out = '';
+      for (const [name, wert, farbe] of teile) {
+        const w = wert * skala;
+        if (w < 0.5) continue;
+        const x = richtung < 0 ? pos - w : pos;
+        out += `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${barH}" fill="${farbe}" opacity="0.9"/>`;
+        if (w > 40) out += `<text x="${(x + w / 2).toFixed(1)}" y="${y + barH / 2 + 4}" text-anchor="middle" fill="#0a0e16" font-size="10.5" font-weight="700">${Math.round(wert / summe * 100)} %</text>`;
+        pos += richtung * w;
+      }
+      return { svg: out, ende: pos };
     };
 
-    let bars = '', labels = '';
+    let zeilen = '';
     rows.forEach((r, i) => {
-      const gx = PL + i * groupW + (groupW - trioW) / 2;
-      const x1 = gx, x2 = gx + barW + innerGap, x3 = gx + 2 * (barW + innerGap);
-      bars += seg(x1, r.bedarf, 0, COL.bedarf);                 // Bedarf
-      // Deckung: PV-Eigenverbrauch · Wind-Eigenverbrauch · Netzbezug
-      bars += seg(x2, r.ev - r.wEv, 0, COL.ev) + seg(x2, r.ev, r.ev - r.wEv, COL.wd)
-            + seg(x2, r.ev + r.nb, r.ev, COL.nb);
-      // Überschuss: PV-Einspeisung · Wind-Einspeisung · Abregelung
-      bars += seg(x3, r.es - r.wEs, 0, COL.es) + seg(x3, r.es, r.es - r.wEs, COL.wd)
-            + seg(x3, r.es + r.ct, r.es, COL.ct);
-      [['B', x1], ['D', x2], ['P', x3]].forEach(([t, xx]) =>
-        labels += `<text x="${(xx + barW / 2).toFixed(1)}" y="${PT + cH + 12}" text-anchor="middle" fill="#607d8b" font-size="10.5">${t}</text>`);
-      const nm = r.v.label.length > 18 ? r.v.label.slice(0, 17) + '…' : r.v.label;
-      labels += `<text x="${(gx + trioW / 2).toFixed(1)}" y="${PT + cH + 28}" text-anchor="middle" fill="${r.v.farbe}" font-size="10.5" font-weight="600">${r.v.icon} ${nm}</text>`;
+      const y = PT + i * rowH + (rowH - barH) / 2;
+      const an = r.v.id === fokusId;
+      const L = segmente(r.links, r.bedarf, -1, y), R = segmente(r.rechts, r.erzeugung, 1, y);
+      const name = r.v.label.length > 30 ? r.v.label.slice(0, 29) + '…' : r.v.label;
+      zeilen += `
+      <g data-pva-bilanz-zeile="${i}" data-click="pvaSetFokus('${r.v.id}')" style="cursor:pointer;">
+        <rect x="0" y="${PT + i * rowH}" width="${W}" height="${rowH}" fill="${an ? 'rgba(212,168,85,0.10)' : 'transparent'}"/>
+        ${an ? `<rect x="0" y="${PT + i * rowH}" width="3" height="${rowH}" fill="var(--accent)"/>` : ''}
+        <text x="10" y="${y + barH / 2 + 4}" fill="${r.v.farbe}" font-size="12.5">${r.v.icon}</text>
+        <text x="28" y="${y + barH / 2 + 4}" fill="${an ? 'var(--text)' : '#cfd8dc'}" font-size="12" font-weight="${an ? 700 : 400}">${escHtml(name)}</text>
+        ${L.svg}${R.svg}
+        <text x="${(L.ende - 6).toFixed(1)}" y="${y + barH / 2 + 4}" text-anchor="end" fill="#90a4ae" font-size="11">${fmt(r.bedarf)}</text>
+        <text x="${(R.ende + 6).toFixed(1)}" y="${y + barH / 2 + 4}" fill="#90a4ae" font-size="11">${fmt(r.erzeugung)}</text>
+      </g>`;
     });
 
-    const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => {
-      const val = f * maxVal, y = yS(val);
-      return `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${PL + cW}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-      <text x="${PL - 5}" y="${(y + 3).toFixed(1)}" text-anchor="end" fill="#607d8b" font-size="10.5">${val.toFixed(0)}</text>`;
-    }).join('');
-
-    const legendItems = [['Eigenverbrauch', COL.ev], ['Netzbezug', COL.nb], ['Einspeisung', COL.es],
-      ...(windAktiv ? [['davon Wind', COL.wd]] : []), ['Abregelung', COL.ct], ['Bedarf', COL.bedarf]];
+    // Legende: nur, was vorkommt
+    const leg = [['PV direkt', COL.pv], ...(batAktiv ? [['aus dem Speicher', COL.bat]] : []), ...(windAktiv ? [['Wind', COL.wd]] : []),
+      ['Netzbezug', COL.nb], null, ['Eigenverbrauch', COL.ev], ['Einspeisung', COL.es], ['Abregelung', COL.ct],
+      ...(batAktiv ? [['Speicherverluste', COL.vl]] : [])];
     let lx = PL;
-    const legendSvg = legendItems.map(([t, c]) => {
-      const s = `<rect x="${lx.toFixed(1)}" y="2" width="8" height="8" fill="${c}" opacity="0.92"/><text x="${(lx + 11).toFixed(1)}" y="10" fill="#90a4ae" font-size="10.5">${t}</text>`;
-      lx += 22 + t.length * 6.4; return s;
+    const legSvg = leg.map(e => {
+      if (!e) { lx += 18; return ''; }
+      const s = `<rect x="${lx}" y="4" width="10" height="10" fill="${e[1]}"/><text x="${lx + 14}" y="13" fill="#b0bec5" font-size="11">${e[0]}</text>`;
+      lx += 26 + e[0].length * 6.2; return s;
     }).join('');
 
     el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-    <span style="font-size:12px;font-weight:400;color:#b0bec5;">Energiebilanz je Variante
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">B = Bedarf · D = Deckung (Eigenverbrauch + Netzbezug) · P = ${windAktiv ? 'PV+Wind' : 'PV'}-Überschuss (Einspeisung + Abregelung)</span>
+    <span style="font-size:12px;font-weight:400;color:#b0bec5;">Woher der Bedarf gedeckt wird und wohin die Erzeugung geht
+      <span style="font-size:11px;color:var(--muted);margin-left:6px;">Prozent je Seite · Zahlen am Rand in MWh/a · Klick auf eine Zeile nimmt die Variante in den Blick</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="bilanz" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
-  <svg width="${W}" height="${H}" style="display:block;overflow:hidden;cursor:default;">
-    ${legendSvg}
-    ${yTicks}
-    ${bars}
-    <line x1="${PL}" y1="${(PT + cH).toFixed(1)}" x2="${PL + cW}" y2="${(PT + cH).toFixed(1)}" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
-    <text x="13" y="${(PT + cH / 2).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="11" transform="rotate(-90,13,${(PT + cH / 2).toFixed(1)})">MWh/a</text>
-    ${labels}
+  <svg width="${W}" height="${H}" style="display:block;overflow:hidden;">
+    ${legSvg}
+    <text x="${(x0 - 8).toFixed(1)}" y="${PT - 10}" text-anchor="end" fill="#cfd8dc" font-size="11.5" font-weight="600">← Deckung des Bedarfs</text>
+    <text x="${(x0 + 8).toFixed(1)}" y="${PT - 10}" fill="#cfd8dc" font-size="11.5" font-weight="600">Verbleib der Erzeugung →</text>
+    ${zeilen}
+    <line x1="${x0.toFixed(1)}" y1="${PT - 4}" x2="${x0.toFixed(1)}" y2="${PT + rows.length * rowH + 2}" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+    <text x="${(W - PR / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" fill="#78909c" font-size="10.5">MWh/a</text>
   </svg>`;
 
     const svg = el.querySelector('svg');
     svg.addEventListener('mousemove', ev => {
-      const r = svg.getBoundingClientRect();
-      const lx2 = ev.clientX - r.left;
-      const i = Math.floor((lx2 - PL) / groupW);
-      if (i < 0 || i >= rows.length || lx2 < PL) { _pvHideTT(); return; }
-      const { v, ev: evM, nb, es, ct, wEv, wEs, bedarf, pv } = rows[i];
-      const fmt = x => x.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' MWh';
-      const aut = bedarf > 0 ? (evM / bedarf * 100).toFixed(0) : '0';
-      const pvGen = evM + es + ct;
+      const g = ev.target.closest?.('[data-pva-bilanz-zeile]');
+      if (!g) { _pvHideTT(); return; }
+      const r = rows[+g.dataset.pvaBilanzZeile];
+      const zeile = ([name, wert, farbe], summe) => wert > 0.05
+        ? `<br><span style="color:${farbe}">■</span> ${name}: <strong>${fmt(wert)} MWh</strong> <span style="color:#90a4ae">(${(wert / summe * 100).toFixed(0)} %)</span>` : '';
       _pvShowTT(ev,
-        `<span style="color:${v.farbe};font-weight:700">${v.icon} ${v.label}</span><br>` +
-        `<u>Bedarf</u>: <strong>${fmt(bedarf)}</strong><br>` +
-        `<span style="color:${COL.ev}">■</span> Eigenverbrauch: <strong>${fmt(evM)}</strong> · Aut. ${aut}&thinsp;%` +
-        (wEv > 0.5 ? ` <span style="color:${COL.wd}">(davon Wind ${fmt(wEv)})</span>` : '') + `<br>` +
-        `<span style="color:${COL.nb}">■</span> Netzbezug: <strong>${fmt(nb)}</strong><br>` +
-        `<u>${wEv + wEs > 0.01 ? 'PV+Wind' : 'PV'}-Überschuss</u>: <strong>${fmt(pv)}</strong>${pvGen > 0 ? ` (von ${fmt(pvGen)} Ertrag)` : ''}<br>` +
-        `<span style="color:${COL.es}">■</span> Einspeisung: <strong>${fmt(es)}</strong>` +
-        (wEs > 0.5 ? ` <span style="color:${COL.wd}">(davon Wind ${fmt(wEs)})</span>` : '') + `<br>` +
-        (ct > 0.5 ? `<span style="color:${COL.ct}">■</span> Abregelung: <strong>${fmt(ct)}</strong>` +
-          (pvGen > 0 ? ` (${(ct / pvGen * 100).toFixed(0)}&thinsp;%)` : '') : `<span style="color:${COL.ct}">■</span> Abregelung: <strong>0 MWh</strong>`)
-      );
+        `<span style="color:${r.v.farbe};font-weight:700">${r.v.icon} ${escHtml(r.v.label)}</span>` +
+        `<br><u>Bedarf ${fmt(r.bedarf)} MWh</u>` + r.links.map(t => zeile(t, r.bedarf)).join('') +
+        `<br><u>Erzeugung ${fmt(r.erzeugung)} MWh</u>` + r.rechts.map(t => zeile(t, r.erzeugung)).join(''));
     });
     svg.addEventListener('mouseleave', _pvHideTT);
 
@@ -104800,8 +104871,8 @@ ${massTbl}
     const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
     const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
 
-    // Startwerte: wirtschaftlich optimierte Variante (oder erste)
-    const start = kanon.find(v => v.id === 'wirt-opt') || kanon[0] || { pvKwp: Math.round(maxKwp/2), batKwh: 0 };
+    // Startwerte: Variante im Blick
+    const start = pvaFokusVariante(kanon) || { pvKwp: Math.round(maxKwp/2), batKwh: 0 };
 
     const COL = { ev:'#66bb6a', es:'#42a5f5', ct:'#ff9800', nb:'#ef5350', vl:'#78909c', pv:'#fdd835', wd:'#4dd0e1' };
     const pvStep  = 1;   // fein, damit Varianten-Sprungmarken exakt getroffen werden
@@ -104811,15 +104882,10 @@ ${massTbl}
     const windKwInst = (window._windElHourly && params.windKwInstalled > 0) ? params.windKwInstalled : 0;
     const windMax    = windKwInst > 0 ? Math.round(windKwInst * 2) : 0;
 
-    const chips = kanon.map(v =>
-      `<button data-fluss-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
-      style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border:1px solid ${v.farbe};border-radius:10px;background:transparent;color:${v.farbe};font-size:11px;cursor:pointer;white-space:nowrap;">
-      ${v.icon} ${Math.round(v.pvKwp)} kWp${v.batKwh>0?` · ${(v.batKwh/1000).toFixed(v.batKwh<1000?2:1)} MWh`:''}</button>`).join('');
-
     el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Energiefluss bei frei wählbarer Auslegung
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Slider ziehen oder Variante wählen — die Flüsse aktualisieren sich live</span>
+      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Schieber ziehen — die Flüsse aktualisieren sich live</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="fluss" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -104841,7 +104907,7 @@ ${massTbl}
       <span id="pva-fluss-wind-val" style="font-size:11px;color:${COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(windKwInst)} kW</span>
     </div>` : ''}
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${chips}</div>
+  ${start.label ? _pvaFokusZeileHtml(start) : ''}
   <div id="pva-fluss-kpi" style="font-size:11px;color:var(--muted);margin-bottom:6px;"></div>
   <div id="pva-fluss-svg" style="overflow:hidden;"></div>`;
 
@@ -104946,12 +105012,10 @@ ${massTbl}
     pvIn.addEventListener('input', sync);
     batIn.addEventListener('input', sync);
     if (windIn) windIn.addEventListener('input', sync);
-    el.querySelectorAll('[data-fluss-var]').forEach(b => b.addEventListener('click', () => {
-      const [p, q] = b.dataset.flussVar.split('|').map(parseFloat);
-      pvIn.value = Math.round(p); batIn.value = Math.round(q);
+    _pvaFokusZeileBinden(el, pvIn, batIn, start.pvKwp, start.batKwh, () => {
       if (windIn) windIn.value = Math.round(windKwInst);  // Varianten rechnen mit Bestand
       sync();
-    }));
+    });
     sync();
 
     const fsBtn = el.querySelector('[data-pva-fs="fluss"]');
@@ -105032,19 +105096,16 @@ ${massTbl}
     const varBat = Math.max(0, ...kanon.map(v => v.batKwh));
     const batMax = Math.min(Math.max(1500, Math.round(varBat * 1.3 / 500) * 500), 12000);
 
-    // Startwert: die größte kanonische Batterie — ohne Speicher hat diese Abbildung
-    // nichts zu zeigen, also startet sie bewusst nicht auf der wirtschaftlichen Variante.
-    const start = kanon.find(v => v.batKwh === varBat && varBat > 0)
-               || kanon.find(v => v.id === 'wirt-opt') || kanon[0]
-               || { pvKwp: Math.round(maxKwp / 2), batKwh: 0 };
+    // Startwert: Variante im Blick. Ohne Speicher hat diese Abbildung nichts zu zeigen —
+    // dann startet sie auf der Variante mit dem größten Speicher und sagt das dazu.
+    const fokus = pvaFokusVariante(kanon);
+    const start = (fokus?.batKwh > 0 ? fokus : null)
+               || kanon.find(v => v.batKwh === varBat && varBat > 0)
+               || fokus || { pvKwp: Math.round(maxKwp / 2), batKwh: 0 };
+    const ersatz = fokus && start !== fokus ? `· ${fokus.icon} ${escHtml(fokus.label)} hat keinen Speicher` : '';
 
     const windKwInst = (window._windElHourly && params.windKwInstalled > 0) ? params.windKwInstalled : 0;
     const windMax    = windKwInst > 0 ? Math.round(windKwInst * 2) : 0;
-
-    const chips = kanon.map(v =>
-      `<button data-sf-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
-      style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border:1px solid ${v.farbe};border-radius:10px;background:transparent;color:${v.farbe};font-size:11px;cursor:pointer;white-space:nowrap;${v.batKwh > 0 ? '' : 'opacity:.45;'}">
-      ${v.icon} ${Math.round(v.pvKwp)} kWp${v.batKwh > 0 ? ` · ${(v.batKwh/1000).toFixed(v.batKwh < 1000 ? 2 : 1)} MWh` : ' · ohne Speicher'}</button>`).join('');
 
     el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
@@ -105071,7 +105132,7 @@ ${massTbl}
       <span id="pva-sf-wind-val" style="font-size:11px;color:${_PVSF_COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(windKwInst)} kW</span>
     </div>` : ''}
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${chips}</div>
+  ${start.label ? _pvaFokusZeileHtml(start, ersatz) : ''}
   <div id="pva-sf-kpi" style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.7;"></div>
   <div id="pva-sf-svg" style="overflow:hidden;"></div>`;
 
@@ -105243,7 +105304,7 @@ ${massTbl}
       <text x="${PL+134}" y="${(HPT+hcH+22).toFixed(1)}" fill="#78909c" font-size="10.5">Ladestand · Tag (x) × Stunde (y)</text>`;
 
       // ── 3. SOC-Dauerlinie und Ø-Tagesgang ────────────────────────────────────
-      const DH = overrideEl ? 196 : 164;
+      const DH = overrideEl ? 240 : 206;   // Platz für 10,5-px-Beschriftung zwischen Ladestand und Leistung
       const panelW = (W - 18) / 2;
       const DPL = 38, DPT = 18, DPR = 10, DPB = 22;
       const dcW = panelW - DPL - DPR, dcH = DH - DPT - DPB;
@@ -105251,8 +105312,8 @@ ${massTbl}
       // Zwei Größen mit verschiedenen Einheiten übereinander statt in einer Doppelachse —
       // die gemeinsame Zeitachse stellt den Zusammenhang her (steigender Ladestand oben =
       // gelbe Ladebalken unten), ohne dass zwei Skalen im selben Feld verwechselt werden.
-      const socH = Math.round(dcH * 0.54);
-      const barH = dcH - socH - 13;
+      const socH = Math.round(dcH * 0.5);
+      const barH = dcH - socH - 19;
 
       // Dauerlinie: Ladestand absteigend sortiert über die Jahresstunden
       const sorted = Array.from(hSoc, v => Math.max(0, Math.min(1, v / bat))).sort((a, b) => b - a);
@@ -105336,7 +105397,7 @@ ${massTbl}
         `${h ? 'L' : 'M'}${hx(h).toFixed(1)},${(DPT + (1-Math.max(0,Math.min(yMax,v))/yMax)*socH).toFixed(1)}`).join('');
 
       // Balken: Laden nach oben, Entladen nach unten, je Stunde Sommer links / Winter rechts
-      const barTop = DPT + socH + 13, baseY = barTop + barH / 2, hh = barH / 2 - 1;
+      const barTop = DPT + socH + 19, baseY = barTop + barH / 2, hh = barH / 2 - 1;
       const bw = slot * 0.3;
       const saeule = (lad, ent, dx, op) => Array.from({ length: 24 }, (_, h) => {
         const x = hx(h) + dx - bw / 2;
@@ -105388,12 +105449,10 @@ ${massTbl}
     pvIn.addEventListener('input', sync);
     batIn.addEventListener('input', sync);
     if (windIn) windIn.addEventListener('input', sync);
-    el.querySelectorAll('[data-sf-var]').forEach(b => b.addEventListener('click', () => {
-      const [p, q] = b.dataset.sfVar.split('|').map(parseFloat);
-      pvIn.value = Math.round(p); batIn.value = Math.round(q);
+    _pvaFokusZeileBinden(el, pvIn, batIn, start.pvKwp, start.batKwh, () => {
       if (windIn) windIn.value = Math.round(windKwInst);
       sync();
-    }));
+    });
     sync();
 
     const fsBtn = el.querySelector('[data-pva-fs="speicherfluss"]');
@@ -105473,12 +105532,13 @@ ${massTbl}
       ? _pvFsArgs.params.windKwInstalled : 0;
     const windMax = windKwInst > 0 ? Math.round(windKwInst * 2) : 0;
 
-    // Startwerte: aktuell gewählte Variante (oder wirtschaftlich optimiert / erste)
-    if (!_pvahVarId || !kanon.some(v => v.id === _pvahVarId)) {
-      const start = kanon.find(v => v.id === 'autarkie') || kanon[0] || varianten[0];
-      _pvahVarId  = start.id;
-      _pvahPvKwp  = start.pvKwp;
-      _pvahBatKwh = start.batKwh;
+    // Startwerte: Variante im Blick. Die Schieberstellung übersteht ein Neuzeichnen,
+    // bis eine andere Variante in den Blick genommen wird.
+    const fokus = pvaFokusVariante(kanon) || varianten[0];
+    if (_pvahVarId !== fokus.id) {
+      _pvahVarId  = fokus.id;
+      _pvahPvKwp  = fokus.pvKwp;
+      _pvahBatKwh = fokus.batKwh;
     }
     if (_pvahPvKwp == null || _pvahBatKwh == null) {
       const v = kanon.find(v => v.id === _pvahVarId) || varianten[0];
@@ -105489,12 +105549,6 @@ ${massTbl}
 
     const dt = demandH.length > 8784 ? 0.25 : 1.0;
 
-    // Tabs zur Varianten-Sprungmarke (setzen beide Slider auf die Variante)
-    const tabs = kanon.map(v =>
-      `<button data-pvah-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
-      style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border:1px solid ${v.farbe};border-radius:10px;background:transparent;color:${v.farbe};font-size:11px;cursor:pointer;white-space:nowrap;">
-      ${v.icon} ${Math.round(v.pvKwp)} kWp${v.batKwh>0?` · ${(v.batKwh/1000).toFixed(v.batKwh<1000?2:1)} MWh`:''}</button>`).join('');
-
     const elW = el.getBoundingClientRect().width || 700;
     const W = Math.max(420, elW - 4);
     const H = overrideEl ? 360 : 220;
@@ -105502,7 +105556,7 @@ ${massTbl}
     el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Autarkie-Heatmap: Bedarfsdeckung durch PV + Speicher im Jahresverlauf
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Slider ziehen oder Variante wählen — die Heatmap aktualisiert sich live</span>
+      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Schieber ziehen — die Heatmap aktualisiert sich live</span>
       <span id="pva-pvah-sub" style="display:block;font-size:10.5px;color:#a5d6a7;margin-top:2px;"></span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="autarkie-heatmap" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
@@ -105525,7 +105579,7 @@ ${massTbl}
       <span id="pva-pvah-wind-val" style="font-size:11px;color:${COL.wd};font-family:'DM Mono',monospace;width:62px;text-align:right;">${Math.round(_pvahWindKw)} kW</span>
     </div>` : ''}
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${tabs}</div>
+  ${fokus.label ? _pvaFokusZeileHtml(fokus) : ''}
   <div id="pva-pvah-svg"></div>`;
 
     const svgWrap = el.querySelector('#pva-pvah-svg');
@@ -105582,8 +105636,10 @@ ${massTbl}
       for (let i = 0; i < hourly.length; i++) if (hourly[i] >= 0.999) fullCount++;
       const fullPct = (fullCount / hourly.length * 100).toFixed(0);
 
-      // Aktuelle Konfiguration einer kanonischen Variante zuordnen (für Label/Farbe)
-      const match = kanon.find(v => v.pvKwp === pv && v.batKwh === bat);
+      // Aktuelle Konfiguration einer kanonischen Variante zuordnen (für Label/Farbe) —
+      // gerundet, weil die Schieber ganzzahlig sind; bei Gleichstand gewinnt die Variante im Blick
+      const passt = v => Math.round(v.pvKwp) === Math.round(pv) && Math.round(v.batKwh) === Math.round(bat);
+      const match = passt(fokus) ? fokus : kanon.find(passt);
       const farbe = match ? match.farbe : COL.pv;
       const label = match ? `${match.icon} ${match.label}` : 'Eigene Auslegung';
       if (subEl) subEl.textContent = `${fullPct} % der Stunden im Jahr vollständig autark (${label})`;
@@ -105626,12 +105682,10 @@ ${massTbl}
     pvIn.addEventListener('input', sync);
     batIn.addEventListener('input', sync);
     if (windIn) windIn.addEventListener('input', sync);
-    el.querySelectorAll('[data-pvah-var]').forEach(b => b.addEventListener('click', () => {
-      const [p, q] = b.dataset.pvahVar.split('|').map(parseFloat);
-      pvIn.value = Math.round(p); batIn.value = Math.round(q);
+    _pvaFokusZeileBinden(el, pvIn, batIn, fokus.pvKwp, fokus.batKwh, () => {
       if (windIn) windIn.value = Math.round(windKwInst);  // Varianten rechnen mit Bestand
       sync();
-    }));
+    });
     sync();
 
     const fsBtn = el.querySelector('[data-pva-fs="autarkie-heatmap"]');
@@ -105797,6 +105851,7 @@ ${massTbl}
   const _PV_RES_KRIT_GRUPPEN = new Set(['Unterkunft und Pflege', 'Gesundheit', 'Bildung und Betreuung']);
 
   let _pvResVarId = null, _pvResPvKwp = null, _pvResBatKwh = null;
+  let _pvResFokusId = null;   // Variante im Blick beim letzten Zeichnen (null = gerade geladen → gespeicherte Auslegung behalten)
   let _pvResDurH = null, _pvResFuel = null, _pvResLoadFrac = null;
   // Betriebsweise (welche Erzeuger im Inselbetrieb verfügbar sind):
   //  'gen'        — nur Notstrom (klassisch, batterieunabhängig auf Spitzenlast)
@@ -105960,10 +106015,16 @@ ${massTbl}
     const nDays   = Math.floor(nHours / 24);
 
     // Startzustand
-    if (!_pvResVarId || !kanon.some(v => v.id === _pvResVarId)) {
-      const start = kanon.find(v => v.id === 'autarkie') || kanon[0];
-      _pvResVarId = start.id; _pvResPvKwp = start.pvKwp; _pvResBatKwh = start.batKwh;
+    // Auslegung: Variante im Blick. Die Schieberstellung bleibt, bis eine andere Variante
+    // in den Blick kommt. Direkt nach dem Laden gilt die gespeicherte Auslegung weiter —
+    // sonst änderten sich beim bloßen Öffnen die Abbildungen für Gutachten 5.2.
+    const fokus = pvaFokusVariante(kanon);
+    if (!kanon.some(v => v.id === _pvResVarId) || (_pvResFokusId != null && _pvResFokusId !== fokus.id)) {
+      _pvResVarId = fokus.id; _pvResPvKwp = fokus.pvKwp; _pvResBatKwh = fokus.batKwh;
+      _pvResSelStart = null;                                     // andere Auslegung → Worst-Case neu
     }
+    _pvResFokusId = fokus.id;
+    const basis = kanon.find(v => v.id === _pvResVarId) || fokus;
     if (_pvResPvKwp  == null) _pvResPvKwp  = (kanon.find(v => v.id === _pvResVarId) || kanon[0]).pvKwp;
     if (_pvResBatKwh == null) _pvResBatKwh = (kanon.find(v => v.id === _pvResVarId) || kanon[0]).batKwh;
     if (_pvResDurH   == null) _pvResDurH = 72;
@@ -105984,11 +106045,6 @@ ${massTbl}
     const COL = { pv: '#fdd835', bat: '#42a5f5', gen: '#ff8f00', unmet: '#ef5350' };
 
     const DURS = [ [6,'6 h'], [12,'12 h'], [24,'24 h'], [48,'2 Tage'], [72,'3 Tage'], [168,'7 Tage'], [336,'14 Tage'] ];
-
-    const tabs = kanon.map(v =>
-      `<button data-pvres-var="${v.pvKwp}|${v.batKwh}" title="${v.label}"
-      style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border:1px solid ${v.farbe};border-radius:10px;background:transparent;color:${v.farbe};font-size:11px;cursor:pointer;white-space:nowrap;">
-      ${v.icon} ${Math.round(v.pvKwp)} kWp${v.batKwh>0?` · ${(v.batKwh/1000).toFixed(v.batKwh<1000?2:1)} MWh`:''}</button>`).join('');
 
     const durBtns = DURS.map(([h,lbl]) =>
       `<button data-pvres-dur="${h}" style="padding:2px 9px;border:1px solid ${h===_pvResDurH?'#ff8f00':'rgba(255,255,255,0.22)'};border-radius:10px;background:${h===_pvResDurH?'#ff8f00':'transparent'};color:${h===_pvResDurH?'#0a0e16':'#cfd8dc'};font-size:11px;cursor:pointer;font-weight:${h===_pvResDurH?'700':'400'};">${lbl}</button>`).join('');
@@ -106042,7 +106098,7 @@ ${massTbl}
       <span id="pva-pvres-usable-val" style="font-size:11px;color:#80cbc4;font-family:'DM Mono',monospace;width:62px;text-align:right;">${_pvResUsable} %</span>
     </div>
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${tabs}</div>
+  ${_pvaFokusZeileHtml(basis)}
 
   <div id="pva-pvres-kpi" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
   <div id="pva-pvres-varianten" style="margin-bottom:10px;"></div>
@@ -106498,11 +106554,10 @@ ${massTbl}
       _pvResDurH = +b.dataset.pvresDur; _pvResSelStart = null;   // Fensterlänge geändert → Worst-Case neu
       renderResilienz(varianten, overrideEl);
     }));
-    el.querySelectorAll('[data-pvres-var]').forEach(b => b.addEventListener('click', () => {
-      const [p, q] = b.dataset.pvresVar.split('|').map(parseFloat);
+    _pvaFokusZeileBinden(el, pvIn, batIn, basis.pvKwp, basis.batKwh, () => {
       _pvResSelStart = null;                                     // andere Auslegung → Worst-Case neu
-      pvIn.value = Math.round(p); batIn.value = Math.round(q); sync();
-    }));
+      sync();
+    });
     draw();
     _pvResWireEnergyHeader(el);
   }
@@ -106782,8 +106837,6 @@ ${massTbl}
   // Wirtschaftsrechnung (nicht die physikalische Simulation) von Preisen/Invest/Zins
   // abhängt, wird die bereits berechnete sim der Variante wiederverwendet — sehr günstig.
 
-  let _pvSensVarId = null;
-
   function renderSensitivitaet(varianten, overrideEl) {
     const el = overrideEl || document.getElementById('pva-chart-sensitivitaet');
     if (!el || !varianten?.length) return;
@@ -106794,10 +106847,7 @@ ${massTbl}
     const kanon = varianten.filter(v => v.info && v.info.frage);
     if (!kanon.length) { el.innerHTML = ''; return; }
 
-    if (!_pvSensVarId || !kanon.some(v => v.id === _pvSensVarId)) {
-      _pvSensVarId = (kanon.find(v => v.id === 'wirt-opt') || kanon[0]).id;
-    }
-    const v = kanon.find(x => x.id === _pvSensVarId) || kanon[0];
+    const v = pvaFokusVariante(kanon);                // Referenz: Variante im Blick
 
     // Überschuss (€/a) für gegebene (überschriebene) Parameter — sim bleibt konstant.
     const surplusFor = (overrides) => {
@@ -106823,13 +106873,6 @@ ${massTbl}
     rows.sort((a, b) => b.span - a.span);          // Tornado: größter Hebel oben
 
     if (!rows.length) { el.innerHTML = ''; return; }
-
-    // Varianten-Sprungmarken (gleiche Optik wie Abb. 7/8)
-    const chips = kanon.map(x =>
-      `<button data-pvsens-var="${x.id}" title="${x.label}"
-      style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border:1px solid ${x.farbe};border-radius:10px;
-      background:${x.id===v.id?x.farbe:'transparent'};color:${x.id===v.id?'#0a0e16':x.farbe};font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap;">
-      ${x.icon} ${x.label}</button>`).join('');
 
     const elW = el.getBoundingClientRect().width || 700;
     const W   = Math.max(440, elW - 4);
@@ -106888,11 +106931,10 @@ ${massTbl}
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Sensitivitätsanalyse: Hebel auf den Jahresüberschuss
       <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">jede Annahme einzeln variiert, übrige auf Basiswert — längster Balken = größter Hebel</span>
-      <span style="display:block;font-size:10.5px;color:#a5d6a7;margin-top:2px;">Referenz: ${v.icon} ${v.label} · Basis-Überschuss <b>${fmtEUR(baseSurplus)} €/a</b></span>
+      <span style="display:block;font-size:10.5px;color:#a5d6a7;margin-top:2px;">Referenz: ${v.icon} ${v.label} (Variante im Blick) · Basis-Überschuss <b>${fmtEUR(baseSurplus)} €/a</b></span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="sensitivitaet" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;flex-shrink:0;">⤢</button>'}
   </div>
-  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">${chips}</div>
   <svg width="${W}" height="${H}" style="display:block;overflow:visible;">
     ${tickSvg}
     <line x1="${xBase.toFixed(1)}" y1="${PT}" x2="${xBase.toFixed(1)}" y2="${(H-PB).toFixed(1)}" stroke="#fdd835" stroke-width="1.2" stroke-dasharray="3,2"/>
@@ -106917,11 +106959,6 @@ ${massTbl}
       );
     });
     svg.addEventListener('mouseleave', _pvHideTT);
-
-    el.querySelectorAll('[data-pvsens-var]').forEach(b => b.addEventListener('click', () => {
-      _pvSensVarId = b.dataset.pvsensVar;
-      renderSensitivitaet(window._pvAnalyse.ergebnisse, overrideEl);
-    }));
 
     const fsBtn = el.querySelector('[data-pva-fs="sensitivitaet"]');
     if (fsBtn) fsBtn.addEventListener('click', () =>
@@ -107007,6 +107044,7 @@ ${massTbl}
     const r = d.resilienz || {};
     const e = r.eingaben || {};
     _pvResVarId     = e.varId ?? null;
+    _pvResFokusId   = null;
     _pvResPvKwp     = e.pvKwp ?? null;
     _pvResBatKwh    = e.batKwh ?? null;
     _pvResDurH      = e.durH ?? null;
