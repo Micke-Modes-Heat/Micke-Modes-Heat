@@ -10,7 +10,7 @@
 // über window gelesen — main.js legt alle Modul-Exporte dort ab.
 
 import { LKEBW_LOGO, LKEBW_LOGO_H, LKEBW_LOGO_W } from './config/lkebw-logo.js';
-import { naKvaText } from './lib/netzanschluss.js';
+import { naKvaText, NA_MESSORTE } from './lib/netzanschluss.js';
 import { BP_STUFEN, bpStufen, bpLadeLeistung, bpJahresreihe } from './lib/bedarfsprognose.js';
 import { sdJahresuebersicht, sdJahresauswertung, sdTrend, sdZeitraumText, sdDauerlinie } from './lib/stromdaten.js';
 import { ENGPASS_GRENZEN, ENGPASS_VORLAUF_J, engpassVersorgung } from './lib/engpass-core.js';
@@ -1231,7 +1231,9 @@ function ggRenderNetzanschlussText(cfg, T = GG_THEME) {
     `Der Übergabepunkt befindet sich im Gebäude ${ggTextFeld(window.naUebergabepunkt, 'Bezeichnung/Lage Übergabepunkt')}.`,
     `Gemäß dem vorliegenden Netzanschlussvertrag beträgt die vereinbarte Anschlussleistung an diesem Übergabepunkt `
       + `${ggTextFeld(naKvaText(window.elNapMaxBezugKw), 'Vereinbarte max. Scheinleistung')} kVA.`,
-    `Die Messung erfolgt als ${ggTextFeld(window.naMessverfahren, 'Messverfahren')}.`,
+    `Die Messung erfolgt als ${ggTextFeld(window.naMessverfahren, 'Messverfahren')}`
+      + (ggMesskonzeptWerte().ns ? '' : `, ${ggTextFeld(NA_MESSORTE.find(o => o.wert === window.naMessort)?.text, 'Messort')}`)
+      + '. Das Übergabe- und Messkonzept zeigt die folgende Abbildung.',
     `Der Netzbetreiber erteilt grundsätzlich keine Auskunft über die physikalisch maximal mögliche Anschlussleistung `
       + `der Liegenschaft. Eine Bewertung der verfügbaren Netzkapazitäten erfolgt ausschließlich auf Basis eines `
       + `konkreten Netzanschlussantrags. Hierzu ist das vom Netzbetreiber bereitgestellte Antragsformular zur Anmeldung `
@@ -2495,6 +2497,346 @@ GG_FIGUREN.push(
   },
 
 );
+
+/* ── 3.1.1 Prinzipskizze Übergabe und Messkonzept ──────────────────────────────
+ * Aus den Netzanschluss-Stammdaten (⚡ Strom-Grundlagen › Netzanschluss), den Messjahren
+ * (BHKW-Lastgang) und den Erzeugern im Bestand. Drei Varianten: MS-Anschluss mit Messung am
+ * Übergabefeld, MS-Anschluss mit Messung hinter dem Transformator, NS-Anschluss am
+ * Hausanschlusskasten. Legende und Nummern wie die EZA-Skizze (3.4.2). */
+
+/** Werte der Skizze aus dem Projekt — alles über window, 17 bleibt Blatt im Importgraph. */
+function ggMesskonzeptWerte() {
+  let napKV = null;
+  try { napKV = Number(window.listAssets?.({ type: 'NAP' })?.[0]?.props?.spannungKV) || null; } catch (e) { void e; }
+  const spText = String(window.naSpannungsebene || '').trim();
+  const ns = /nieder/i.test(spText) || (!/mittel/i.test(spText) && napKV > 0 && napKV <= 1);
+  const kvAusText = ggKvAusText(spText);
+  const uKv = ns ? null : (kvAusText || napKV);
+  const einsp = (window.naEinspeisungen || []).filter(e => String(e?.station || '').trim() || String(e?.kabeltyp || '').trim())
+    .map(e => ({ station: String(e.station || '').trim(), kabeltyp: String(e.kabeltyp || '').trim() }));
+  const { bestand } = ggAnlagenIst(['PV', 'KWK', 'Wind', 'Batterie']);
+  const summe = (typ, feld) => bestand.filter(e => e.a.type === typ).reduce((s, e) => s + (ggPropZahl(e.p[feld]) || 0), 0);
+  const anzahl = typ => bestand.filter(e => e.a.type === typ).length;
+  let mjBhkw = false;
+  try { mjBhkw = !!window.sgMjDaten?.()?.jahre?.some(j => j.bhkw); } catch (e) { void e; }
+  const mv = String(window.naMessverfahren || '');
+  const einspKw = Number(window.elNapMaxEinspKw) > 0 ? Number(window.elNapMaxEinspKw) : null;
+  const erzeuger = anzahl('PV') + anzahl('KWK') + anzahl('Wind') > 0 || mjBhkw;
+  return {
+    nb: String(window.naNetzbetreiberName || '').trim(), spText, uKv, ns,
+    einsp, uebergabe: String(window.naUebergabepunkt || '').trim(),
+    messort: window.naMessort === 'ms' || window.naMessort === 'ns' ? window.naMessort : '',
+    verfahren: /\(RLM\)/.test(mv) ? 'RLM' : /\(SLP\)/.test(mv) ? 'SLP' : '',
+    zweirichtung: einspKw > 0 || erzeuger,
+    anschlussKva: Number(window.elNapMaxBezugKw) > 0 ? Number(window.elNapMaxBezugKw) : null, einspKw,
+    bhkw: anzahl('KWK') || mjBhkw ? { kw: summe('KWK', 'leistungElKW'), lastgang: mjBhkw } : null,
+    pv: anzahl('PV') ? { kwp: summe('PV', 'leistungKWp'), anzahl: anzahl('PV') } : null,
+    wind: anzahl('Wind') ? { kw: summe('Wind', 'leistungKW') } : null,
+  };
+}
+
+/** „Mittelspannung (20 kV)“ → 20; ohne kV-Angabe null. */
+function ggKvAusText(t) {
+  const m = /(\d+(?:[.,]\d+)?)\s*kV/i.exec(String(t || ''));
+  return m ? parseFloat(m[1].replace(',', '.')) : null;
+}
+
+/** Nummerierte Erläuterungen der Skizze — dieselbe Reihenfolge wie die Nummern im Bild. */
+function ggMesskonzeptPunkte(w) {
+  const nbDer = w.nb ? `der ${w.nb}` : 'des Netzbetreibers';
+  const stationen = w.einsp.map(e => e.station).filter(Boolean);
+  const kabel = [...new Set(w.einsp.map(e => e.kabeltyp).filter(Boolean))];
+  // „UW Beelitz“, „Ortsnetzstation Süd“ tragen die Art schon im Namen — sonst „Station …“ davor
+  const stName = s => (/station|^uw\b|umspann/i.test(s) ? s : `Station ${s}`);
+  const herkunft = stationen.length
+    ? ` aus ${stationen.map(stName).join(stationen.length === 2 ? ' und ' : ', ')}` : '';
+  const zaehler = `${w.verfahren === 'RLM' ? 'RLM-Zähler' : w.verfahren === 'SLP' ? 'Zähler (Standardlastprofil)' : 'Zähler'} `
+    + (w.zweirichtung ? 'für Bezug und Lieferung (Zweirichtung)' : 'für den Bezug');
+  const datenweg = w.verfahren === 'RLM'
+    ? 'Fernauslesung durch den Messstellenbetreiber: 15-Minuten-Lastgang für Abrechnung und Netznutzung – Grundlage der Auswertung in Kapitel 3.2'
+    : w.verfahren === 'SLP' ? 'Ablesung durch den Messstellenbetreiber: Jahresarbeit, Abrechnung nach Standardlastprofil'
+      : 'Aus- bzw. Ablesung durch den Messstellenbetreiber (Messverfahren laut Netzanschlussvertrag)';
+  const unter = [
+    w.bhkw ? `Erzeugungszähler BHKW${w.bhkw.lastgang ? ' – sein Lastgang wird in Kapitel 3.2 zum Bezug addiert' : ''}` : '',
+    w.pv ? 'Erzeugungszähler PV' : '', w.wind ? 'Erzeugungszähler Windenergie' : '',
+  ].filter(Boolean);
+  const p = [];
+  if (w.ns) {
+    p.push(`Einspeisung aus dem Niederspannungsnetz ${nbDer}${herkunft}${kabel.length ? ` (${kabel.join(', ')})` : ''}`);
+    p.push('Hausanschlusskasten mit Anschlusssicherungen: Eigentumsgrenze zum Netzbetreiber');
+    p.push(`Abrechnungsmessung: ${zaehler}, bei großen Strömen über Stromwandler`);
+  } else {
+    p.push(`Einspeisung aus dem ${w.uKv ? ggNum(w.uKv, w.uKv % 1 ? 1 : 0) + '-kV-' : ''}Mittelspannungsnetz ${nbDer}: `
+      + `${w.einsp.length > 1 ? `${ggNum(w.einsp.length)} Netzkabel` : 'Netzkabel'}${herkunft}${kabel.length ? ` (${kabel.join(', ')})` : ''}`);
+    p.push('Eigentumsgrenze laut Netzanschlussvertrag, in der Regel an den Kabelendverschlüssen der Netzkabel in der Übergabestation');
+    p.push('Kabelfelder mit Lasttrennschaltern und MS-Sammelschiene der Übergabestation'
+      + (w.einsp.length > 1 ? '; mehrere Einspeisungen erlauben die Umschaltung bei Ausfall eines Netzkabels' : ''));
+    p.push('Übergabeschaltfeld: Leistungsschalter mit Netzschutz (UMZ), trennt das Liegenschaftsnetz bei einem Fehler vom Netz');
+    if (w.messort === 'ns') {
+      p.push(`Transformator der Übergabestation; Abrechnungsmessung niederspannungsseitig mit Stromwandlern und ${zaehler} – `
+        + 'die Transformatorverluste werden rechnerisch zugeschlagen');
+    } else {
+      p.push(`Abrechnungsmessung ${w.messort === 'ms' ? 'mittelspannungsseitig' : '(Messort laut Netzanschlussvertrag)'}: `
+        + `Strom- und Spannungswandler, ${zaehler}`);
+    }
+  }
+  p.push(datenweg);
+  if (unter.length) p.push(`Unterzählung im Liegenschaftsnetz: ${unter.join('; ')}`);
+  return p;
+}
+
+export function ggRenderMesskonzept(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel, hell = T.accents.gruen, rot = T.energy.waerme, blau = T.energy.strom;
+  const strich = T.text.strong, fein = T.text.faint;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const w = cfg.werte || { einsp: [] };
+  const x0 = S.padX, x1 = W - S.padX;
+  const nsAnschluss = !!w.ns, nsMessung = !nsAnschluss && w.messort === 'ns';
+  const einsp = (w.einsp?.length ? w.einsp : [{ station: '', kabeltyp: '' }]).slice(0, nsAnschluss ? 1 : 3);
+  const nE = einsp.length;
+  const abstand = nE === 3 ? 112 : 160;   // bei drei Kabeln enger, damit der Zähler links der rechten Spalte bleibt
+  const exs = einsp.map((_, i) => 118 + i * abstand);
+  const hx = nsAnschluss ? exs[0] : exs[nE - 1] + 142;      // Übergabefeld bzw. Messstrang
+  const top = S.headBand + S.headHSchmal + 26;
+  const rx = 700;                                            // rechte Spalte: Kennwerte, Datenweg
+
+  // ── Geometrie ──
+  const nbH = 44, egY = top + 110, stTop = egY + 16;
+  const busY = stTop + 70;
+  let wY, stBot, trafoY = null, nsY = null;
+  if (nsAnschluss) { wY = stTop + 96; stBot = wY + 40; }
+  else if (nsMessung) { trafoY = busY + 66; nsY = busY + 118; wY = nsY + 40; stBot = wY + 34; }
+  else { wY = busY + 74; stBot = wY + 34; }
+  const lgY = stBot + 30, lgH = 42;
+  const unter = [
+    w.bhkw && { titel: 'Erzeugungszähler BHKW', zeile: w.bhkw.kw > 0 ? `${ggNum(w.bhkw.kw)} kW el.` : (w.bhkw.lastgang ? 'Lastgang → Kapitel 3.2' : '') },
+    w.pv && { titel: 'Erzeugungszähler PV', zeile: w.pv.kwp > 0 ? `${ggNum(w.pv.kwp)} kWp` : `${ggNum(w.pv.anzahl)} Anlage${w.pv.anzahl > 1 ? 'n' : ''}` },
+    w.wind && { titel: 'Erzeugungszähler Wind', zeile: w.wind.kw > 0 ? `${ggNum(w.wind.kw)} kW` : '' },
+  ].filter(Boolean);
+  const uY = lgY + lgH + 34, uH = 44;
+  // rechte Spalte (Datenweg) reicht bis unter den Lastgang-Kasten samt Verweis auf 3.2
+  const datenwegBot = wY - 28 + 50 + 36 + 50 + (w.verfahren === 'RLM' ? 26 : 0);
+  const chainBot = Math.max(unter.length ? uY + uH + 20 : lgY + lgH, datenwegBot);
+
+  const punkte = ggMesskonzeptPunkte({ ...w, einsp: w.einsp || [] });
+  const colW = (W - 2 * S.padX) / 2;
+  const legZeilen = punkte.map(t => ggResUmbruch(t, Math.floor((colW - 40) / (11 * 0.53))).slice(0, 4));
+  const reihenH = [];
+  for (let i = 0; i < legZeilen.length; i += 2) reihenH.push(Math.max(legZeilen[i].length, legZeilen[i + 1]?.length || 0, 1) * 14 + 12);
+  const legTop = chainBot + 30;
+  const legH = reihenH.reduce((s, h) => s + h, 0);
+  const height = legTop + legH + (cfg.fussnote ? 24 : 0) + S.footSpace + 6;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+  out = `<defs><marker id="gg-mk-pf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="${fein}"/></marker></defs>` + out;
+
+  // ── Zeichenhelfer (wie EZA-Skizze) ──
+  const linie = (xa, ya, xb, yb, o = {}) => `<line x1="${gR(xa)}" y1="${gR(ya)}" x2="${gR(xb)}" y2="${gR(yb)}"
+      stroke="${o.farbe || strich}" stroke-width="${o.breite || 2}"${o.strich ? ` stroke-dasharray="${o.strich}"` : ''}${o.pfeil ? ' marker-end="url(#gg-mk-pf)"' : ''}/>`;
+  const kasten = (x, y, bw, bh, o = {}) => `<rect x="${gR(x) + 0.5}" y="${gR(y) + 0.5}" width="${gR(bw)}" height="${gR(bh)}"
+      fill="${o.fill || T.neutral.cardBg}" stroke="${o.rand || T.rule}" stroke-width="${o.breite || 1.4}"${o.strich ? ` stroke-dasharray="${o.strich}"` : ''}/>`;
+  const nr = (x, y, k) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="10" fill="${gruen}"/>`
+    + txt(x, y + 4, String(k), { anchor: 'middle', size: 11, weight: 700, fill: '#FFFFFF' });
+  const schalter = (x, y) => `<path d="M${gR(x - 4)} ${y + 26}l8 8M${gR(x + 4)} ${y + 26}l-8 8" stroke="${strich}" stroke-width="1.6"/>`
+    + linie(x, y, x, y + 30) + `<circle cx="${gR(x)}" cy="${y}" r="2.4" fill="${strich}"/>`;
+  const trenner = (x, y) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="5" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.5"/>`;
+  const wandler = (x, y) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="7" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.6"/>`;
+  const trafo = (x, y, r = 10) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="${r}" fill="none" stroke="${strich}" stroke-width="1.5"/>
+      <circle cx="${gR(x)}" cy="${gR(y + r * 1.4)}" r="${r}" fill="none" stroke="${strich}" stroke-width="1.5"/>`;
+  const zaehlerSym = (x, y) => kasten(x, y, 22, 18, { rand: strich, breite: 1.3 }) + txt(x + 11.5, y + 13.5, 'kWh', { anchor: 'middle', size: 7.5, weight: 700 });
+  let n = 0;
+  const nrNext = (x, y) => nr(x, y, ++n);
+
+  // ── ① Netz des Netzbetreibers und Netzkabel ──
+  const nbW = Math.max(270, exs[nE - 1] + 96 - x0);
+  out += kasten(x0, top, nbW, nbH, { rand: blau, strich: '5 3', breite: 1.2 });
+  out += txt(x0 + 12, top + 18, 'Netz des Netzbetreibers', { size: 11.5, weight: 600 });
+  const nbZeile = [w.nb, nsAnschluss ? 'Niederspannung' : (w.uKv ? `Mittelspannung ${ggNum(w.uKv, w.uKv % 1 ? 1 : 0)} kV` : 'Mittelspannung')]
+    .filter(Boolean).join(' · ');
+  out += txt(x0 + 12, top + 34, ggResKuerzen(nbZeile, Math.floor((nbW - 20) / (11 * 0.55))), { size: 11, fill: T.text.muted });
+  const kevY = egY - 10;
+  einsp.forEach((e, i) => {
+    const ex = exs[i];
+    out += linie(ex, top + nbH, ex, kevY, { breite: 2.2 });
+    const platz = Math.floor((abstand - 18) / (10.5 * 0.55));
+    out += txt(ex + 10, top + nbH + 20, ggResKuerzen(e.station || (nE > 1 ? `Einspeisung ${i + 1}` : 'Netzkabel'), platz),
+               { size: 10.5, weight: 600 });
+    if (e.kabeltyp) out += txt(ex + 10, top + nbH + 34, ggResKuerzen(e.kabeltyp, platz), { size: 10, fill: T.text.muted });
+    // Kabelendverschluss
+    out += `<path d="M${ex - 6} ${kevY - 8}h12l-6 9z" fill="${strich}"/>`;
+  });
+  out += nrNext(exs[0] - 22, top + nbH + 22);
+
+  // ── ② Eigentumsgrenze ──
+  const egX1 = rx - 24;
+  out += linie(x0, egY, egX1, egY, { farbe: T.text.muted, breite: 1.3, strich: '10 5' });
+  out += txt(egX1, egY - 7, 'EIGENTUMSGRENZE', { anchor: 'end', mono: true, size: 10, weight: 600, tracking: 1, fill: T.text.muted });
+  out += txt(egX1, egY + 14, 'Netzbetreiber ↑  ·  Liegenschaft ↓', { anchor: 'end', size: 10, fill: T.text.faint });
+  out += nrNext(x0 + 14, egY);
+
+  // ── Übergabestation bzw. Hausanschlussraum ──
+  const fx1 = hx + 214;
+  out += kasten(x0, stTop, fx1 - x0, stBot - stTop, { fill: T.tint, rand: gruen, breite: 1.4 });
+  // rechts oben im Rahmen — links laufen die Netzkabel durch
+  out += txt(fx1 - 10, stTop + 18, (nsAnschluss ? 'Hausanschlussraum' : 'Übergabestation') + (w.uebergabe ? ` · ${w.uebergabe}` : ''),
+             { anchor: 'end', size: 11, weight: 700, fill: gruen });
+
+  if (nsAnschluss) {
+    // Hausanschlusskasten = Eigentumsgrenze, dann Messung
+    const ex = exs[0], hakY = stTop + 26;
+    out += linie(ex, kevY + 1, ex, hakY);
+    out += kasten(ex - 26, hakY, 52, 30, { rand: strich, breite: 1.4 });
+    out += txt(ex, hakY + 20, 'HAK', { anchor: 'middle', size: 11, weight: 700 });
+    out += linie(ex, hakY + 30, ex, wY - 7);
+  } else {
+    // ③ Kabelfelder und Sammelschiene
+    einsp.forEach((_, i) => {
+      const ex = exs[i];
+      out += linie(ex, kevY + 1, ex, busY);
+      out += trenner(ex, stTop + 40);
+    });
+    out += linie(exs[0] - 30, busY, hx + 30, busY, { breite: 5, farbe: gruen });
+    out += txt(hx + 34, busY + 4, 'MS-Sammelschiene', { size: 10, fill: T.text.muted });
+    out += nrNext(exs[0] - 22, stTop + 40);
+    // ④ Leistungsschalter und Schutz
+    out += schalter(hx, busY + 12);
+    out += linie(hx, busY, hx, busY + 12);
+    const sx = hx - 128, sy = busY + 18;
+    out += kasten(sx, sy, 86, 26, { rand: rot, breite: 1.4 });
+    out += txt(sx + 43, sy + 17, 'Schutz (UMZ)', { anchor: 'middle', size: 10, weight: 700, fill: rot });
+    out += linie(sx + 86, sy + 13, hx - 8, sy + 13, { farbe: rot, breite: 1.2, strich: '4 3' });
+    out += nrNext(sx - 12, sy);
+    if (nsMessung) {
+      out += linie(hx, busY + 42, hx, trafoY - 10);
+      out += trafo(hx, trafoY);
+      out += linie(hx, trafoY + 24, hx, nsY);
+      out += linie(hx - 56, nsY, hx + 56, nsY, { breite: 4 });
+      out += txt(hx + 60, nsY + 4, 'NS-Sammelschiene', { size: 10, fill: T.text.muted });
+      out += linie(hx, nsY, hx, wY - 7);
+    } else {
+      out += linie(hx, busY + 42, hx, wY - 7);
+    }
+  }
+
+  // ⑤ Abrechnungsmessung: Wandler + Zähler
+  out += wandler(hx, wY);
+  if (!nsAnschluss && !nsMessung) {   // Spannungswandler am Abzweig
+    out += linie(hx, wY + 16, hx - 26, wY + 16, { breite: 1.4 }) + wandler(hx - 26, wY + 16);
+  }
+  const zx = hx + 46, zy = wY - 22, zw = 150, zh = 44;
+  out += linie(hx + 7, wY, zx, wY, { farbe: fein, breite: 1.2, strich: '4 3' });
+  out += kasten(zx, zy, zw, zh, { rand: strich, breite: 1.4 });
+  out += zaehlerSym(zx + 8, zy + 13);
+  out += txt(zx + 38, zy + 18, w.verfahren === 'RLM' ? 'Zähler RLM' : w.verfahren === 'SLP' ? 'Zähler SLP' : 'Zähler', { size: 11.5, weight: 700 });
+  out += txt(zx + 38, zy + 33, w.zweirichtung ? 'Bezug ⇄ Lieferung' : 'Bezug', { size: 10.5, fill: T.text.muted });
+  out += nrNext(zx + zw, zy);
+  out += linie(hx, wY + 7, hx, lgY, { pfeil: true });
+
+  // Liegenschaftsnetz
+  const lgW = 250, lgX = Math.max(x0, hx - lgW / 2), lgM = lgX + lgW / 2;
+  out += kasten(lgX, lgY, lgW, lgH, { rand: gruen, breite: 1.4 });
+  out += txt(lgM, lgY + 18, nsAnschluss || nsMessung ? 'NS-Hauptverteilung der Liegenschaft' : 'MS-Netz der Liegenschaft',
+             { anchor: 'middle', size: 11.5, weight: 700 });
+  out += txt(lgM, lgY + 33, nsAnschluss || nsMessung ? 'Verteilung auf die Gebäude' : 'Trafostationen, siehe Kapitel 3.1.2',
+             { anchor: 'middle', size: 10.5, fill: T.text.muted });
+
+  // ⑥ Datenweg: Messstellenbetreiber → Lastgang
+  const mw = x1 - rx, my = zy - 6;
+  out += kasten(rx, my, mw, 50, { rand: blau, breite: 1.2 });
+  out += txt(rx + mw / 2, my + 20, 'Messstellenbetreiber', { anchor: 'middle', size: 11.5, weight: 700 });
+  out += txt(rx + mw / 2, my + 37, w.verfahren === 'RLM' ? 'Fernauslesung' : w.verfahren === 'SLP' ? 'Ablesung' : 'Aus- bzw. Ablesung',
+             { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  out += linie(zx + zw + 1, wY, rx - 2, wY, { farbe: fein, breite: 1.4, strich: '4 3', pfeil: true });
+  const dy = my + 50 + 36;
+  out += linie(rx + mw / 2, my + 50, rx + mw / 2, dy - 2, { farbe: fein, breite: 1.4, strich: '4 3', pfeil: true });
+  out += kasten(rx, dy, mw, 50, { rand: T.rule, breite: 1.2 });
+  out += txt(rx + mw / 2, dy + 20, w.verfahren === 'RLM' ? 'Lastgang 15 min' : w.verfahren === 'SLP' ? 'Jahresarbeit (SLP)' : 'Messwerte',
+             { anchor: 'middle', size: 11.5, weight: 700 });
+  out += txt(rx + mw / 2, dy + 37, 'Abrechnung Netzbetreiber · Lieferant', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  if (w.verfahren === 'RLM') out += txt(rx + mw / 2, dy + 68, '→ Auswertung in Kapitel 3.2', { anchor: 'middle', size: 11, weight: 600, fill: gruen });
+  out += nrNext(rx, my);
+
+  // ⑦ Unterzählung
+  if (unter.length) {
+    const bw = 170, gapU = 16;
+    const ux0 = Math.max(x0, hx - (unter.length * bw + (unter.length - 1) * gapU) / 2);
+    out += txt(ux0, uY + uH + 16, 'Unterzählung im Liegenschaftsnetz', { size: 10.5, weight: 600, fill: T.text.muted });
+    unter.forEach((u, i) => {
+      const ux = ux0 + i * (bw + gapU);
+      out += linie(ux + bw / 2, lgY + lgH, ux + bw / 2, uY, { farbe: fein, breite: 1.2, strich: '4 3' });
+      out += kasten(ux, uY, bw, uH, { rand: T.rule, breite: 1.2 });
+      out += zaehlerSym(ux + 8, uY + 13);
+      out += txt(ux + 38, uY + 18, u.titel.replace('Erzeugungszähler ', 'Zähler '), { size: 11, weight: 700 });
+      if (u.zeile) out += txt(ux + 38, uY + 33, u.zeile, { size: 10.5, fill: hell, weight: 600 });
+    });
+    out += nrNext(ux0 + unter.length * (bw + gapU) - gapU + 12, uY);
+  }
+
+  // ── Kennwerte rechts oben ──
+  const kenn = [
+    ['Anschlussleistung', w.anschlussKva ? `${ggNum(w.anschlussKva)} kVA` : '—'],
+    ['Einspeisezusage', w.einspKw ? `${ggNum(w.einspKw)} kW` : '—'],
+    ['Messverfahren', w.verfahren || '—'],
+    ...(nsAnschluss ? [] : [['Messort', w.messort === 'ms' ? 'MS-seitig' : w.messort === 'ns' ? 'NS-seitig' : '—']]),
+  ];
+  out += txt(rx, top + 12, 'NETZANSCHLUSS', { mono: true, size: 10, weight: 600, tracking: 1, fill: T.text.muted });
+  kenn.forEach(([k, v], i) => {
+    const ky = top + 34 + i * 19;
+    out += txt(rx, ky, k, { mono: true, size: 11, weight: 500, fill: T.text.faint });
+    out += txt(x1, ky, v, { anchor: 'end', mono: true, size: 11.5, weight: 600 });
+  });
+
+  // ── Nummernlegende zweispaltig ──
+  out += `<line x1="${x0}" y1="${legTop - 14}.5" x2="${x1}" y2="${legTop - 14}.5" stroke="${T.line}" stroke-width="1"/>`;
+  let py = legTop;
+  reihenH.forEach((h, r) => {
+    for (let c = 0; c < 2; c++) {
+      const i = r * 2 + c;
+      if (i >= legZeilen.length) break;
+      const px = S.padX + c * colW;
+      out += nr(px + 10, py + 6, i + 1);
+      legZeilen[i].forEach((z, j) => { out += txt(px + 28, py + 10 + j * 14, z, { size: 11 }); });
+    }
+    py += h;
+  });
+  if (cfg.fussnote) out += txt(S.padX, legTop + legH + 10, cfg.fussnote, { size: S.fsTab - 2, fill: T.text.faint });
+  return ggFinishSvg(out, W, height);
+}
+
+GG_FIGUREN.push({
+  id: 'netzanschluss-messkonzept',
+  autoSync: true,
+  reihe: 500,   // nach dem Netzanschlusstext
+  kapitel: '3.1.1 Liegenschaftsstromnetzanschluss',
+  titel: 'Prinzip Übergabe und Messkonzept',
+  datei: 'netzanschluss-messkonzept-prinzip',
+  hinweis: 'Prinzipskizze aus den Netzanschluss-Stammdaten (⚡ Strom-Grundlagen › Netzanschluss: Netzbetreiber, '
+         + 'Spannungsebene, Einspeisepunkte, Übergabepunkt, Messverfahren, Messort), der Anschlussleistung/Einspeisezusage '
+         + '(NAP-Grenzen), den Messjahren (BHKW-Lastgang) und den Erzeugern im Bestand. Zweirichtungszähler, sobald eine '
+         + 'Einspeisezusage oder Erzeugung vorhanden ist. Ohne Messort wird die Messung am Übergabefeld gezeichnet und '
+         + 'als „laut Netzanschlussvertrag“ bezeichnet.',
+  render: cfg => ggRenderMesskonzept(cfg),
+  config: {
+    eyebrow: 'Stromnetz · Ist-Zustand', titel: 'Übergabe und Messkonzept',
+    werte: null, fussnote: '',
+  },
+  ausProjekt(cfg) {
+    const w = ggMesskonzeptWerte();
+    cfg.werte = w;
+    cfg.fussnote = `Prinzipskizze ohne Auslegung; Eigentums- und Messgrenzen laut Netzanschlussvertrag und `
+      + (w.ns ? 'TAR Niederspannung (VDE-AR-N 4100).' : 'TAR Mittelspannung (VDE-AR-N 4110).');
+    const fehlt = [
+      !w.nb && 'Netzbetreiber', !w.spText && !w.uKv && 'Spannungsebene', !w.einsp.length && 'Einspeisepunkte',
+      !w.uebergabe && 'Übergabepunkt', !w.verfahren && 'Messverfahren', !w.ns && !w.messort && 'Messort',
+      !w.anschlussKva && 'Anschlussleistung',
+    ].filter(Boolean);
+    return fehlt.length
+      ? `⚠ Noch nicht erfasst (⚡ Strom-Grundlagen › Netzanschluss): ${fehlt.join(', ')}.`
+      : '✓ Netzanschluss-Stammdaten vollständig übernommen.';
+  },
+});
 
 /* ── 3.1.2 Übersichtsschaltbild des Liegenschaftsnetzes ─────────────────────────
  * Stationsebene statt Einzelbetriebsmittel (lib/netz-uebersicht.js): oben das Netz des

@@ -3,9 +3,9 @@ import { _captureVariantenKernzustand, _expandedIds, _restoreVariantenKernzustan
          pdBearbeiterStrom, pdBearbeiterWaerme, pdKaserneName, pdWeNummer, pdLiegenschaftAdresse,
          setPdBearbeiterStrom, setPdBearbeiterWaerme, setPdKaserneName, setPdWeNummer, setPdLiegenschaftAdresse,
          naNetzbetreiberName, naNetzbetreiberAdresse, naSpannungsebene, naUebergabepunkt,
-         naMessverfahren, naEinspeisungen,
+         naMessverfahren, naMessort, naEinspeisungen,
          setNaNetzbetreiberName, setNaNetzbetreiberAdresse, setNaSpannungsebene, setNaUebergabepunkt,
-         setNaMessverfahren, setNaEinspeisungen } from './01-globals-varianten.js';
+         setNaMessverfahren, setNaMessort, setNaEinspeisungen } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getGebStromMwh, highlightCard, map,
          getNutzungstypen, getNutzungstypById, isBuiltinNutzungstyp, NUTZUNGSTYPEN_CUSTOM } from './02b-gebaeude.js';
 import { hidePanels, populateZentraleSelect } from './03b-netz.js';
@@ -2614,7 +2614,7 @@ export function _captureProjektStammdaten() {
     netzanschluss: {
       netzbetreiberName: naNetzbetreiberName, netzbetreiberAdresse: naNetzbetreiberAdresse,
       spannungsebene: naSpannungsebene, uebergabepunkt: naUebergabepunkt,
-      messverfahren: naMessverfahren,
+      messverfahren: naMessverfahren, messort: naMessort,
       einspeisungen: naEinspeisungen,
     },
   };
@@ -2633,6 +2633,7 @@ function _restoreProjektStammdaten(daten) {
   setNaSpannungsebene(na.spannungsebene || '');
   setNaUebergabepunkt(na.uebergabepunkt || '');
   setNaMessverfahren(na.messverfahren || '');
+  setNaMessort(na.messort || '');
   setNaEinspeisungen(Array.isArray(na.einspeisungen) ? na.einspeisungen : []);
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('pd-bearbeiter-strom', pdBearbeiterStrom);

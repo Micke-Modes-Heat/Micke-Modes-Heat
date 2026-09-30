@@ -1,7 +1,7 @@
 // Vitest-Tests für lib/netzanschluss.js — Zahleneingabe und Vorschlag Messverfahren.
 import { describe, it, expect } from 'vitest';
 import {
-  NA_MESSVERFAHREN, naZahl, naKvaText, naMessverfahrenVorschlag,
+  NA_MESSVERFAHREN, NA_MESSORTE, naZahl, naKvaText, naMessverfahrenVorschlag, naMessortVorschlag,
 } from '../src/lib/netzanschluss.js';
 
 describe('naZahl', () => {
@@ -46,5 +46,18 @@ describe('naMessverfahrenVorschlag', () => {
   it('liefert ohne Daten keinen Vorschlag', () => {
     expect(naMessverfahrenVorschlag()).toBeNull();
     expect(naMessverfahrenVorschlag({ jahresMwh: 0 })).toBeNull();
+  });
+});
+
+describe('naMessortVorschlag', () => {
+  it('mehrere Trafostationen → MS-seitige Messung', () => {
+    const v = naMessortVorschlag({ msAnschluss: true, trafoStationen: 4 });
+    expect(v.wert).toBe('ms');
+    expect(v.grund).toMatch(/4 Trafostationen/);
+    expect(NA_MESSORTE.map(o => o.wert)).toEqual(['ms', 'ns']);
+  });
+  it('eine Station oder NS-Anschluss → kein Vorschlag', () => {
+    expect(naMessortVorschlag({ msAnschluss: true, trafoStationen: 1 })).toBeNull();
+    expect(naMessortVorschlag({ msAnschluss: false, trafoStationen: 5 })).toBeNull();
   });
 });

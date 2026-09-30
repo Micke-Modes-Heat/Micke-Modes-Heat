@@ -1,5 +1,5 @@
 // ── 22-netzanschluss-panel.js — Netzanschluss-Stammdaten unter ⚡ Strom-Grundlagen ──
-// Einzige Eingabestelle für Netzbetreiber, Spannungsebene, Übergabepunkt, Messverfahren
+// Einzige Eingabestelle für Netzbetreiber, Spannungsebene, Übergabepunkt, Messverfahren, Messort
 // und Einspeisepunkte (Gutachtentext Kapitel 3.1.1).
 //
 // Die vereinbarte Anschlussleistung und die Bezugsgrenze am NAP sind ein und derselbe
@@ -10,7 +10,7 @@
 // Liest und schreibt die na*-Globals über window (Live-Accessoren aus main.js) und
 // importiert nur lib/ → Blatt im Importgraph.
 
-import { NA_MESSVERFAHREN, naMessverfahrenVorschlag } from './lib/netzanschluss.js';
+import { NA_MESSVERFAHREN, NA_MESSORTE, naMessverfahrenVorschlag, naMessortVorschlag } from './lib/netzanschluss.js';
 
 const WRAP_ID = 'strom-netzanschluss-wrap';
 const TEXTFELDER = ['naNetzbetreiberName', 'naNetzbetreiberAdresse', 'naSpannungsebene', 'naUebergabepunkt'];
@@ -51,6 +51,42 @@ function messverfahrenFeld() {
     </label>`;
 }
 
+/** Anschluss an die Mittelspannung? Aus der Spannungsebene bzw. dem NAP-Asset; unbekannt zählt als MS. */
+function msAnschluss() {
+  const t = String(window.naSpannungsebene || '').toLowerCase();
+  if (/nieder/.test(t)) return false;
+  if (/mittel|kv/.test(t)) return true;
+  let kv = null;
+  try { kv = Number(window.listAssets?.({ type: 'NAP' })?.[0]?.props?.spannungKV); } catch (e) { void e; }
+  return !(kv > 0 && kv <= 1);
+}
+
+function messortVorschlag() {
+  let trafos = [];
+  try { trafos = window.listAssets?.({ type: 'Trafo' }) || []; } catch (e) { void e; }
+  const heute = new Date().getFullYear();
+  const bestand = trafos.filter(t => t.schicht !== 'entwicklung' && t.schicht !== 'entscheidung'
+    && !(parseInt(t.baujahr) > heute) && !(parseInt(t.abrissjahr) < heute));
+  const stationen = new Set(bestand.map(t => t.buildingId ?? 'einzeln:' + t.id)).size;
+  return naMessortVorschlag({ msAnschluss: msAnschluss(), trafoStationen: stationen });
+}
+
+function messortFeld() {
+  const aktuell = String(window.naMessort || '');
+  const optionen = [['', '— bitte wählen —'], ...NA_MESSORTE.map(o => [o.wert, o.label])];
+  const v = messortVorschlag();
+  const hinweis = !v ? '' : aktuell === v.wert ? `✓ passt (${esc(v.grund)})`
+    : `Vorschlag: <b style="color:var(--text);">MS-seitig</b> – ${esc(v.grund)} `
+      + `<button data-click="sgNaSetMessort('${v.wert}')" style="${STIL_KNOPF}">übernehmen</button>`;
+  return `<label style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+      <span style="font-size:9px;color:var(--muted);">Messort (Abrechnungsmessung)</span>
+      <select class="inp-field" data-change="sgNaSetMessort(this.value)" style="${STIL_EINGABE}">
+        ${optionen.map(([w, l]) => `<option value="${esc(w)}"${w === aktuell ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+      </select>
+      ${hinweis ? `<span style="font-size:9px;color:var(--muted);line-height:1.4;">${hinweis}</span>` : ''}
+    </label>`;
+}
+
 function vorschlagHtml() {
   const v = vorschlag();
   if (!v) return 'Vorschlag Messverfahren: dafür Stromlastgang hochladen oder Jahressumme eintragen.';
@@ -87,6 +123,7 @@ function panelHtml() {
       ${textfeld('Spannungsebene', 'naSpannungsebene', { platzhalter: 'z. B. Mittelspannung (20 kV)' })}
       ${textfeld('Übergabepunkt (Gebäude/Lage)', 'naUebergabepunkt')}
       ${messverfahrenFeld()}
+      ${msAnschluss() ? messortFeld() : ''}
     </div>
     <div id="strom-na-vorschlag" style="font-size:9px;color:var(--muted);margin-bottom:6px;line-height:1.5;">${vorschlagHtml()}</div>
     <div style="font-size:9px;color:var(--muted);margin-top:6px;">Einspeisepunkte (Station des Netzbetreibers · Kabel bis zur Übergabe)</div>
@@ -123,6 +160,12 @@ export function sgNaSetMessverfahren(wert) {
   window.naMessverfahren = String(wert ?? '');
   const el = $('strom-na-vorschlag');
   if (el) el.innerHTML = vorschlagHtml();
+}
+
+/** Messort setzen; der Abschnitt wird neu gezeichnet, damit der Vorschlagshinweis stimmt. */
+export function sgNaSetMessort(wert) {
+  window.naMessort = String(wert ?? '');
+  sgNaRender();
 }
 
 export function sgNaVorschlagUebernehmen() {

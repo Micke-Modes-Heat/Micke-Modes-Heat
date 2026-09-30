@@ -9,6 +9,26 @@ export const NA_MESSVERFAHREN = [
   { kurz: 'SLP', wert: 'Arbeitsmessung nach Standardlastprofil (SLP)' },
 ];
 
+/** Ort der Abrechnungsmessung bei Anschluss an die Mittelspannung — `text` steht so im Gutachtentext. */
+export const NA_MESSORTE = [
+  { wert: 'ms', label: 'mittelspannungsseitig (Wandler am Übergabefeld)',
+    text: 'mittelspannungsseitig über Strom- und Spannungswandler im Übergabefeld' },
+  { wert: 'ns', label: 'niederspannungsseitig (hinter dem Transformator)',
+    text: 'niederspannungsseitig hinter dem Transformator der Übergabestation; die Transformatorverluste werden rechnerisch zugeschlagen' },
+];
+
+/**
+ * Vorschlag für den Messort. Hängen hinter der Übergabe mehrere Trafostationen, geht nur die
+ * mittelspannungsseitige Messung — eine NS-Messung am Übergabetrafo erfasst die übrigen Stationen nicht.
+ *   msAnschluss:  Anschluss an die Mittelspannung (sonst gibt es keinen Messort zu wählen)
+ *   trafoStationen: Anzahl Trafostationen im Bestand
+ * → { wert, label, grund } | null
+ */
+export function naMessortVorschlag({ msAnschluss = true, trafoStationen = 0 } = {}) {
+  if (!msAnschluss || !(trafoStationen > 1)) return null;
+  return { ...NA_MESSORTE[0], grund: `${trafoStationen} Trafostationen hinter der Übergabe – nur die MS-seitige Messung erfasst alle` };
+}
+
 /** Standardlastprofile gelten nach § 12 StromNZV für Entnahmen bis 100.000 kWh/a. */
 export const NA_SLP_GRENZE_MWH = 100;
 

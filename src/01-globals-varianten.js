@@ -45,6 +45,9 @@ export let naUebergabepunkt = '';
 export function setNaUebergabepunkt(v) { naUebergabepunkt = v || ''; }
 export let naMessverfahren = '';
 export function setNaMessverfahren(v) { naMessverfahren = v || ''; }
+/** Ort der Abrechnungsmessung: 'ms' (Wandler am Übergabefeld) | 'ns' (hinter dem Transformator) | '' (nicht erfasst). */
+export let naMessort = '';
+export function setNaMessort(v) { naMessort = v === 'ms' || v === 'ns' ? v : ''; }
 /** Liste der MS-Einspeisepunkte: [{station, kabeltyp}, …] — je Liegenschaft unterschiedlich viele. */
 export let naEinspeisungen = [];
 export function setNaEinspeisungen(v) { naEinspeisungen = Array.isArray(v) ? v : []; }
