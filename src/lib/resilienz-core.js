@@ -395,12 +395,20 @@ export function notstromPlatzierung(p) {
     return max + s.flach;
   };
 
+  // Trafostation, aus der ein Knoten gespeist wird (für Übersichten je Station)
+  const trafoVon = id => {
+    for (let cur = id; cur != null; cur = baum.parent.get(cur)) {
+      if (assetMap.get(cur)?.type === 'Trafo') return { trafoId: cur, trafoName: name(cur) };
+    }
+    return { trafoId: null, trafoName: null };
+  };
+
   const gebAggregat = (gId, extra = {}) => {
     const peakKw = spitzeVon(gebSumme(gId));
     const empfKw = neaEmpfehlungKw(peakKw, k);
     const bestandKw = bestand.get(gId) || 0;
     return {
-      ort: 'gebaeude', id: gId, typ: 'Gebäude', name: name(gId), ...pos(gId),
+      ort: 'gebaeude', id: gId, typ: 'Gebäude', name: name(gId), ...pos(gId), ...trafoVon(anker.get(gId)),
       gebaeude: [gId], peakKw, empfKw, bestandKw, zusatzKw: Math.max(0, empfKw - bestandKw),
       kosten: neaKostenMitBestand(empfKw, 'gebaeude', bestandKw, k), abgaenge: [], ...extra,
     };
@@ -433,7 +441,7 @@ export function notstromPlatzierung(p) {
     const abgaenge = abgaengeUnter(X);
     const bestandKw = bestand.get(X) || 0;
     const agg = {
-      ort: 'knoten', id: X, typ: assetMap.get(X).type, name: name(X), ...pos(X),
+      ort: 'knoten', id: X, typ: assetMap.get(X).type, name: name(X), ...pos(X), ...trafoVon(X),
       gebaeude: gIds, peakKw, empfKw, abgaenge, bestandKw, zusatzKw: Math.max(0, empfKw - bestandKw),
       kosten: neaKostenMitBestand(empfKw, 'knoten', bestandKw, k) + abgaenge.length * k.abgangEur,
     };
@@ -1150,4 +1158,76 @@ export function resilienzZielMatrix(bewertungen) {
     { label: 'Bewertung', werte: spalte(b => ZIEL_STATUS[b.status].label + (b.gruende.length ? ` — ${b.gruende.join('; ')}` : '')) },
   ];
   return { spalten: bewertungen.map(b => b.ziel.name), zeilen };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Allgemeine Empfehlung: Einspeisepunkte für mobile Aggregate an Trafostationen
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Unabhängig vom Schutzziel: jede Trafostation erhält niederspannungsseitig
+// einen Einspeisepunkt (Einspeisekasten + Umschaltung Netz/NEA in der NSHV),
+// an dem ein mobiles Aggregat die Station übernehmen kann. Bemessen wird auf
+// die Spitzenlast der Station mit Reserve, höchstens auf die Trafoleistung
+// (mehr kann die NSHV ohnehin nicht verteilen). Ohne Lastgang zählt die
+// Trafoleistung. Planungsannahmen, keine Auslegung.
+
+export const EINSPEISE_PARAMETER = Object.freeze({
+  reserve: 1.2,
+  cosPhi: 0.8,
+  uNsV: 400,
+  // übliche Größen mobiler Aggregate (kVA)
+  stufenKva: Object.freeze([30, 45, 60, 100, 150, 200, 250, 300, 400, 500, 630, 800, 1000, 1250, 1600]),
+  ceeGrenzenA: Object.freeze([63, 125]),   // CEE-Einspeisesteckdose bis 125 A
+  einpolA: 400,                            // Einpol-Steckverbindersatz je Leiter
+  // Richtkosten netto je Station: Einspeisekasten, Umschalteinrichtung, Kabel, Stellfläche
+  kostenFixEur: 12000,
+  kostenEurProKva: 25,
+});
+
+/**
+ * Einspeisepunkt einer Trafostation bemessen.
+ * @param {{spitzeKw?:number, trafoKva?:number}} p
+ * @returns {{kva:number, stromA:number, anschluss:string, basis:'last'|'trafo'|'keine', kosten:number}}
+ */
+export function einspeisepunktBemessung(p, par = EINSPEISE_PARAMETER) {
+  const spitze = p?.spitzeKw > 0 ? p.spitzeKw : 0;
+  const trafo = p?.trafoKva > 0 ? p.trafoKva : 0;
+  const basis = spitze ? 'last' : trafo ? 'trafo' : 'keine';
+  if (basis === 'keine') return { kva: 0, stromA: 0, anschluss: '', basis, kosten: 0 };
+  let bedarf = spitze ? spitze * par.reserve / par.cosPhi : trafo;
+  if (trafo) bedarf = Math.min(bedarf, trafo);
+  const max = par.stufenKva[par.stufenKva.length - 1];
+  const kva = par.stufenKva.find(s => s >= bedarf - 1e-9) ?? max;
+  const stromA = kva * 1000 / (Math.sqrt(3) * par.uNsV);
+  const cee = par.ceeGrenzenA.find(g => g >= stromA);
+  const anschluss = cee ? `CEE ${cee} A` : `${Math.ceil(stromA / par.einpolA)} × ${par.einpolA} A Einpolstecker`;
+  return { kva, stromA, anschluss, basis, kosten: Math.round(par.kostenFixEur + kva * par.kostenEurProKva) };
+}
+
+/**
+ * Szenario „Versorgung je Trafostation“ mit mobilen Aggregaten: statt einer fest
+ * installierten NEA erhält jeder Standort der Platzierung (Strategie „trafo“) nur
+ * einen Einspeisepunkt, bemessen auf die A/B-Last des Standorts (an einer Station
+ * höchstens die Trafoleistung); die Aggregate kommen per Rahmenvertrag. Die
+ * abzuschaltenden Abgänge bleiben. Standorte, die der Bestand deckt, kosten nur die
+ * Abgänge. Kraftstoff wird nachgeliefert, deshalb kein Lager.
+ * @param {ReturnType<typeof notstromPlatzierung>} v
+ * @param {(trafoId:any)=>number} [kvaVon]  Trafoleistung der Station (kVA)
+ */
+export function stationsVersorgungMobil(v, kvaVon = () => 0, k = NEA_KOSTEN, par = EINSPEISE_PARAMETER) {
+  const standorte = (v?.aggregate || []).filter(a => a.empfKw > 0).map(a => {
+    const abgKosten = a.abgaenge.length * k.abgangEur;
+    const gedeckt = (a.bestandKw || 0) >= a.empfKw;
+    const e = gedeckt ? { kva: 0, anschluss: '', kosten: 0 }
+      : einspeisepunktBemessung({ spitzeKw: a.peakKw, trafoKva: a.ort === 'knoten' ? kvaVon(a.trafoId) : 0 }, par);
+    return { id: a.id, ort: a.ort, trafoId: a.trafoId ?? null, gedeckt, kva: e.kva, anschluss: e.anschluss, kosten: e.kosten + abgKosten };
+  });
+  return {
+    standorte,
+    summe: {
+      anzahl: standorte.filter(s => !s.gedeckt).length,
+      kva: standorte.reduce((s, x) => s + x.kva, 0),
+      kosten: standorte.reduce((s, x) => s + x.kosten, 0),
+    },
+  };
 }

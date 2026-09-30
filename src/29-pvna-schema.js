@@ -60,7 +60,7 @@ let _zu = new Set();             // eingeklappte Knoten (Element-IDs: Trafo oder
 let _mass = new Set();           // aktive Ertüchtigungen (Element-IDs mit massnahme)
 let _eingCache = null;           // { erg, key, eingabe, grenzeKwp } — Eingabe mit aktiven Maßnahmen
 let _ausgeklappt = false;        // in der PV-Analyse: volle Breite (Navigation weg) und volle Höhe
-let _fahrplanAuf = false;        // Ausbaufahrplan aufgeklappt (sonst eine Zusammenfassungszeile)
+let _fahrplanAuf = true;         // Ausbaufahrplan aufgeklappt (sonst eine Zusammenfassungszeile) — startet offen
 let _beschr = 'auslastung';      // Kabelbeschriftung: 'auslastung' | 'du' | 'kabel'
 
 // Ab diesem Anteil der Grenze gilt ein Element als Engpass der aktuellen Belegung

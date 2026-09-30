@@ -25,7 +25,7 @@ export const ASSET_CFG = {
                   beschreibung:'Kabelverteilerschrank: Verzweigungspunkt im Niederspannungsnetz zur Aufteilung auf mehrere Hausanschlüsse.' },
   // ── Strom-Verbraucher ──
   Verbraucher:  { label:'Verbraucher',       icon:'🏠', color:'#81c784', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[],
-                  beschreibung:'Allgemeiner Stromverbraucher (z. B. Gebäude/Anschlussnehmer ohne eigenes Asset). Anschlussleistung in kW bestimmt die Last.' },
+                  beschreibung:'Allgemeiner Stromverbraucher (z. B. Gebäude/Anschlussnehmer ohne eigenes Asset). Die Leistung in kW bestimmt die Last; die Anschlussleistung (z. B. aus dem Bestandsplan) wird zusätzlich dokumentiert.' },
   Lade:         { label:'Ladeinfrastruktur', icon:'🔌', color:'#4dd0e1', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[],
                   beschreibung:'Ladeinfrastruktur (z. B. Wallboxen, Ladesäulen): Last ergibt sich aus Anzahl Ladepunkte × Leistung je Punkt.' },
   TWW:          { label:'E-Trinkwasser',     icon:'🚿', color:'#ba68c8', domain:'strom', kategorie:'verbraucher', energy_in:['strom'], energy_out:[],
@@ -79,7 +79,8 @@ export const ASSET_PROPS_SCHEMA = {
                  { key:'abgaenge',            label:'Abgänge' }],
   KVS:          [{ key:'nennstromA',          label:'Nennstrom (A)' },
                  { key:'abgaenge',            label:'Abgänge' }],
-  Verbraucher:  [{ key:'leistungKW',          label:'Leistung (kW)' }],
+  Verbraucher:  [{ key:'leistungKW',          label:'Leistung (kW)' },
+                 { key:'anschlussleistungKW', label:'Anschlussleistung (kW)' }],
   TWW:          [{ key:'leistungKW',          label:'El. Leistung (kW)' },
                  { key:'eingabeModus',        label:'Eingabe' },
                  { key:'personen',            label:'Personen' },

@@ -426,7 +426,7 @@ function dokumentPanel() {
   const abgleich = gdMitStandardAbgleichen(dok, ggFigurenKatalog());
   const nummernJetzt = gdKapitelNummern(dok.kapitel);
   const nrJetzt = new Map(dok.kapitel.map((k, i) => [k.id, nummernJetzt[i]]));
-  const nFehlendK = abgleich.neueKapitel.length, nFehlendB = abgleich.neueBloecke.length;
+  const nFehlendK = abgleich.neueKapitel.length, nFehlendB = abgleich.neueBloecke.length, nUmbenannt = abgleich.umbenannt.length;
   const kachel = (wert, label) => `<div style="background:rgba(255,255,255,.04);border-radius:5px;padding:7px 9px;">
       <div style="font-size:15px;color:var(--text,#e8eaed);">${wert}</div><div style="font-size:10px;color:var(--muted);">${label}</div></div>`;
   return `<div style="font-size:12px;font-weight:600;color:var(--text,#e8eaed);margin-bottom:8px;">Dokument</div>`
@@ -441,10 +441,12 @@ function dokumentPanel() {
           + hinweis('Einfügen über das jeweilige Kapitel → „Inhalt einfügen“ oder alles auf einmal über „Mit Standardgliederung abgleichen“.')
         : '')
     + ueberschrift('Standardgliederung')
-    + (nFehlendK || nFehlendB
-        ? `<div style="font-size:11px;color:${GUT_WARN};line-height:1.45;margin-bottom:6px;">Gegenüber der aktuellen Vorlage fehlen `
-          + [nFehlendK && `${nFehlendK} Kapitel`, nFehlendB && `${nFehlendB} Abbildungen/Textbausteine`].filter(Boolean).join(' und ')
-          + '.</div>'
+    + (nFehlendK || nFehlendB || nUmbenannt
+        ? `<div style="font-size:11px;color:${GUT_WARN};line-height:1.45;margin-bottom:6px;">`
+          + (nFehlendK || nFehlendB ? 'Gegenüber der aktuellen Vorlage fehlen '
+            + [nFehlendK && `${nFehlendK} Kapitel`, nFehlendB && `${nFehlendB} Abbildungen/Textbausteine`].filter(Boolean).join(' und ') + '. ' : '')
+          + (nUmbenannt ? `${nUmbenannt} Szenario-Kapitel ${nUmbenannt === 1 ? 'bekommt' : 'bekommen'} eine neue Nummer.` : '')
+          + '</div>'
           + knopf('⇄ Mit Standardgliederung abgleichen', 'gutMitStandardAbgleichen()', { primaer: true,
               titel: 'Ergänzt fehlende Kapitel und Bausteine an der passenden Stelle. Vorhandene Kapitel, Texte und Einstellungen bleiben unverändert.' })
         : `<div style="font-size:11px;color:${GUT_AKZENT};">✓ Alle Kapitel und Bausteine der Standardgliederung sind vorhanden.</div>`)
@@ -707,8 +709,8 @@ export function gutStandardAnlegen(ersetzen = false) {
 export function gutMitStandardAbgleichen() {
   if (!_gut.dok) return;
   const erg = gdMitStandardAbgleichen(_gut.dok, ggFigurenKatalog());
-  const nK = erg.neueKapitel.length, nB = erg.neueBloecke.length;
-  if (!nK && !nB) {
+  const nK = erg.neueKapitel.length, nB = erg.neueBloecke.length, nU = erg.umbenannt.length;
+  if (!nK && !nB && !nU) {
     gutSay('✓ Das Dokument enthält bereits alle Kapitel und Bausteine der Standardgliederung.');
     return;
   }
@@ -717,11 +719,13 @@ export function gutMitStandardAbgleichen() {
   if (!window.confirm('Mit der Standardgliederung abgleichen?\n\n'
       + (nK ? `Neue Kapitel (${nK}):\n${liste}\n\n` : '')
       + (nB ? `${nB} Abbildungen und Textbausteine kommen in ihre Kapitel — auch solche, die früher bewusst entfernt wurden.\n\n` : '')
-      + 'Vorhandene Kapitel, Texte und Einstellungen bleiben unverändert.')) return;
+      + (nU ? `Neue Szenario-Nummer:\n${erg.umbenannt.map(u => `  • ${u.von} → ${u.nach}`).join('\n')}\n\n` : '')
+      + 'Vorhandene Kapitel, Texte und Einstellungen bleiben sonst unverändert.')) return;
   _gut.dok = erg.dok;
   _gut.cache.clear();
   gutRender();
   gutSay(`✓ Abgeglichen — ${nK} Kapitel und ${nB} Abbildungen/Textbausteine ergänzt.`
+    + (nU ? ` ${nU} Szenario-Kapitel neu nummeriert.` : '')
     + (erg.nichtZugeordnet.length ? ` ${erg.nichtZugeordnet.length} ohne passendes Kapitel.` : '')
     + (erg.fremdeKapitel.length ? ` ${erg.fremdeKapitel.length} ältere Kapitel ohne Gegenstück — rechts unter „Standardgliederung“ aufgeführt.` : ''));
 }

@@ -1975,6 +1975,7 @@ function _renderForm() {
         ? `<div class="pd-anschluss-liste">${liste}</div>`
         : `<div class="pd-warn">Dieses Gebäude hat noch keine Anlage. Beim Übernehmen wird eine angelegt:</div>
            <select class="pd-in" data-change="pdUpdateNode('assetType', this.value)">${typen}</select>`}
+      ${_anschlussleistungFeld(n)}
       ${_groessenZeile(n)}
       <button class="pd-mini" data-click="pdZeigeAufKarte('${n.id}')">→ auf Karte zeigen</button>
       <button class="pd-mini pd-del" data-click="pdDeleteSelected()">✕ Aus dem Plan entfernen</button>`;
@@ -2002,6 +2003,7 @@ function _renderForm() {
       ${asset ? `<div class="pd-ok">✔ übernommen als „${_esc(asset.name)}"
              <button class="pd-mini" data-click="pdZeigeAufKarte('${n.id}')">→ auf Karte zeigen</button></div>` : ''}
       ${!n.linkKind && !asset ? `<div class="pd-warn">Ohne Verortung wird dieser Eintrag nicht übernommen.</div>` : ''}
+      ${_anschlussleistungFeld(n)}
       ${_groessenZeile(n)}
       <button class="pd-mini pd-del" data-click="pdDeleteSelected()">✕ Aus dem Plan entfernen</button>`;
     return;
@@ -2071,6 +2073,41 @@ function _zielAsset(n) {
   return null;
 }
 
+// Verbraucher, an dem die Anschlussleistung eines Eintrags landet: beim
+// Gebäude-Eintrag der Verbraucher des Gebäudes (der Anschlusspunkt ist oft die
+// UV/NSHV), sonst die Zielanlage selbst.
+function _verbraucherZiel(n) {
+  if (!n) return null;
+  if (_istGebKnoten(n)) {
+    const g = _gebFuer(n);
+    return g ? getAssetsForBuilding(g.id).find(a => a.type === 'Verbraucher') || null : null;
+  }
+  const a = _zielAsset(n);
+  return a?.type === 'Verbraucher' ? a : null;
+}
+
+// Anschlussleistung laut Plan — nur bei Verbrauchern. Der Wert steht am Eintrag
+// und wird an den Verbraucher (props.anschlussleistungKW) weitergegeben:
+// sofort, wenn es ihn schon gibt, sonst beim Übernehmen.
+function _anschlussleistungFeld(n) {
+  const ziel = _verbraucherZiel(n);
+  const gebKnoten = _istGebKnoten(n);
+  const wirdVerbraucher = !ziel && n.assetType === 'Verbraucher' && !(gebKnoten && _anschlussAsset(n));
+  // Beim Gebäude immer anbieten, beim Betriebsmittel nur für Verbraucher
+  if (!gebKnoten && !ziel && !wirdVerbraucher && n.anschlussKW == null) return '';
+  const wert = n.anschlussKW ?? ziel?.props?.anschlussleistungKW ?? '';
+  const hinweis = ziel
+    ? `wird an „${_esc(ziel.name)}" übertragen`
+    : wirdVerbraucher
+      ? 'wird beim Übernehmen an den neuen Verbraucher übertragen'
+      : 'kein Verbraucher an diesem Gebäude — Wert bleibt nur im Plan';
+  return `<label class="pd-lbl">Anschlussleistung laut Plan (kW)</label>
+    <input class="pd-in" type="number" min="0" step="any" value="${_esc(String(wert))}"
+           placeholder="z. B. 35"
+           data-change="pdUpdateNode('anschlussKW', this.value)"/>
+    <div class="pd-parsed">${hinweis}</div>`;
+}
+
 // Größenzeile im Formular — zum genauen Einstellen, wenn der Eckgriff zu grob ist
 function _groessenZeile(n) {
   const p = Math.round(_begrenzeSkala(n.skala ?? 1) * 100);
@@ -2106,6 +2143,11 @@ export function pdUpdateNode(feld, wert) {
     }
   } else if (feld === 'gebNummer') {
     n.gebNummer = String(wert || '').trim();
+  } else if (feld === 'anschlussKW') {
+    const kw = parseFloat(String(wert).replace(',', '.'));
+    n.anschlussKW = Number.isFinite(kw) && kw >= 0 ? kw : null;
+    const ziel = _verbraucherZiel(n);
+    if (ziel) ziel.props = { ...(ziel.props || {}), anschlussleistungKW: n.anschlussKW };
   } else if (feld === 'assetType') {
     n.assetType = wert;
   } else if (feld === 'anschluss') {
@@ -2906,6 +2948,17 @@ export function pdApply() {
       drawAssetMarker(asset);
       n.assetId = asset.id;
       bericht.assetsNeu++;
+    }
+
+    // 1b · Anschlussleistung laut Plan → Verbraucher. Nur in ein leeres Feld,
+    // damit ein erneutes Übernehmen keinen später im Inspektor geänderten Wert
+    // überschreibt (Änderungen im Plan-Formular gehen ohnehin sofort durch).
+    for (const n of fachNodes) {
+      if (n.anschlussKW == null) continue;
+      const ziel = _verbraucherZiel(n);
+      if (ziel && (ziel.props?.anschlussleistungKW == null || ziel.props.anschlussleistungKW === '')) {
+        ziel.props = { ...(ziel.props || {}), anschlussleistungKW: n.anschlussKW };
+      }
     }
 
     // 2 · Kabel → stromEdges (Geometrie kommt aus dem Trassenrouting)

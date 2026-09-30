@@ -52,6 +52,19 @@ describe('Abgleich mit der Standardgliederung', () => {
     expect(JSON.stringify(alt)).toBe(vorher);
   });
 
+  it('ordnet Szenario-Kapitel unabhängig von ihrer Nummer zu und zieht nur die Nummer nach', () => {
+    const vorlage = std([[1, 'R'], [2, 'Szenario 1: Gebäude'], [2, 'Szenario 2: Station'], [2, 'Szenario 3: Liegenschaft']]);
+    const alt = dokAus([[1, 'R'], [2, 'Szenario 1: Gebäude'], [2, 'Szenario 2: Liegenschaft (Entwurf)']]);
+    alt.kapitel[2].bloecke.push(gdNeuerTextBlock('Insel'));
+    const vorher = JSON.stringify(alt);
+    const r = gdMitStandardAbgleichen(alt, [], vorlage);
+    expect(titel(r.dok)).toEqual(['R', 'Szenario 1: Gebäude', 'Szenario 2: Station', 'Szenario 3: Liegenschaft (Entwurf)']);
+    expect(r.neueKapitel.map(k => `${k.nr} ${k.titel}`)).toEqual(['1.2 Szenario 2: Station']);
+    expect(r.umbenannt).toEqual([{ id: 'k2', nr: '1.3', von: 'Szenario 2: Liegenschaft (Entwurf)', nach: 'Szenario 3: Liegenschaft (Entwurf)' }]);
+    expect(r.dok.kapitel[3].bloecke.map(b => b.text)).toEqual(['Insel']);
+    expect(JSON.stringify(alt)).toBe(vorher);
+  });
+
   it('ordnet gleichnamige Kapitel nur unter demselben Oberkapitel zu', () => {
     const vorlage = std([[1, 'Wärme'], [2, 'Wirtschaftlichkeit'], [1, 'Strom'], [2, 'Wirtschaftlichkeit']]);
     const alt = dokAus([[1, 'Wärme'], [2, 'Wirtschaftlichkeit'], [1, 'Strom']]);

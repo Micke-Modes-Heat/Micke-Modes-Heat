@@ -1640,20 +1640,19 @@ const PVA_VIEWS = [
                        renderWindGrenznutzenChart(a.demandH, a.pvProfile, a.napParams, a.params, v); } },
   // 2 — Welche Auslegung?
   { id:'tabelle', fokus:true,    kap:'2', nr:'2.1', label:'Varianten-Vergleich', el:'pva-result-tabelle', render:(v) => renderVariantenTabelle(v) },
-  { id:'lesehilfe',  kap:'2', nr:'2.2', label:'Lesehilfe',           el:'pva-methodik',       render:(v) => renderMethodik(v) },
-  { id:'herleitung', kap:'2', nr:'2.3', label:'Herleitung der Varianten', el:'pva-herleitung', render:(v) => renderHerleitung(v) },
-  { id:'abb1', kap:'2', nr:'2.4', label:'Optimierungsfläche', el:'pva-chart-heatmap', args:true,
+  { id:'steckbrief', fokus:true, kap:'2', nr:'2.2', label:'Variantensteckbrief', el:'pva-steckbrief', render:(v) => renderSteckbrief(v) },
+  { id:'abb1', kap:'2', nr:'2.3', label:'Optimierungsfläche', el:'pva-chart-heatmap', args:true,
     render:(v, a) => renderOptHeatmap(a.demandH, a.pvProfile, a.napParams, a.params, v) },
-  { id:'abb3', fokus:true, kap:'2', nr:'2.5', label:'Eigenverbrauch und Autarkie', el:'pva-ev-kurve', args:true,
+  { id:'abb3', fokus:true, kap:'2', nr:'2.4', label:'Eigenverbrauch und Autarkie', el:'pva-ev-kurve', args:true,
     render:(v, a) => renderEvKurve(a.demandH, a.pvProfile, a.napParams, a.params, v) },
   // 3 — Wohin fließt die Energie?
   { id:'abb4', fokus:true, kap:'3', nr:'3.1', label:'Energiebilanz', el:'pva-chart-bilanz', render:(v) => renderBilanzChart(v) },
   { id:'abb7', fokus:true, kap:'3', nr:'3.2', label:'Energiefluss', el:'pva-chart-fluss', args:true,
     render:(v, a) => renderEnergieFluss(a.demandH, a.pvProfile, a.napParams, a.params, v) },
-  // Speicherfluss zoomt in den Speicheranteil des Energieflusses hinein.
-  { id:'abb7b', fokus:true, kap:'3', nr:'3.3', label:'Speicherfluss', el:'pva-chart-speicherfluss', args:true,
+  // Speicherbetrieb: wie der Speicher aus 3.2 über das Jahr arbeitet (Dauerlinie, Tagesgang).
+  { id:'abb7b', fokus:true, kap:'3', nr:'3.3', label:'Speicherbetrieb', el:'pva-chart-speicherfluss', args:true,
     render:(v, a) => renderSpeicherFluss(a.demandH, a.pvProfile, a.napParams, a.params, v) },
-  { id:'abb8', fokus:true, kap:'3', nr:'3.4', label:'Autarkie-Jahresgang', el:'pva-chart-autarkie-heatmap', render:(v) => renderAutarkieHeatmap(v) },
+  { id:'abb8', fokus:true, kap:'3', nr:'3.4', label:'Jahresgang', el:'pva-chart-autarkie-heatmap', render:(v) => renderAutarkieHeatmap(v) },
   // 4 — Was hält das Netz aus?
   { id:'abb6', kap:'4', nr:'4.1', label:'Rückspeisung & Netzverträglichkeit', el:'pva-chart-rueck', render:(v) => renderRueckAmpel(v) },
   // 5 — Was kostet es, lohnt es sich?
@@ -1725,7 +1724,7 @@ function _pvaFokusleisteZeichnen() {
   el.style.display = '';
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;padding:7px 0 8px;border-bottom:1px solid var(--border);margin-bottom:4px;"
-      title="Steuert die Hervorhebung in 2.1 und 3.1, die Speicherkurven in 2.5, den Ausgangspunkt der Schieber in 3.2–3.4 und 6.1 sowie 5.2 und 5.3">
+      title="Steuert die Hervorhebung in 2.1 und 3.1, den Steckbrief 2.2, die Speicherkurven in 2.4, den Ausgangspunkt der Schieber in 3.2–3.4 und 6.1 sowie 5.2 und 5.3">
       <span style="font-size:10.5px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;">Variante im Blick</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>
     </div>`;
@@ -1740,6 +1739,26 @@ function _pvaFokusZeileHtml(v, hinweis = '') {
     <button data-pva-fokus-reset style="display:none;cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#cfd8dc;font-size:11px;padding:1px 9px;">↺ zurück zur Variante</button>
   </div>`;
 }
+
+// ── Befund-Sätze ──────────────────────────────────────────────────────────────
+// Jede Grafik bekommt darunter den Satz, den sie belegt — berechnet aus denselben
+// Zahlen. Ohne ihn muss man die Aussage selbst herauslesen; mit ihm ist er zugleich
+// ein Baustein für den Gutachtentext.
+const _PVA_BEFUND_STIL  = 'margin-top:8px;padding:7px 11px;border-left:2px solid var(--accent);background:rgba(212,168,85,0.06);border-radius:0 5px 5px 0;font-size:12px;color:#cfd8dc;line-height:1.55;';
+const _PVA_BEFUND_LABEL = 'color:var(--accent);font-weight:600;margin-right:7px;';
+function _pvaBefund(html) {
+  return html ? `<div style="${_PVA_BEFUND_STIL}"><span style="${_PVA_BEFUND_LABEL}">Befund</span>${html}</div>` : '';
+}
+
+/** Zu einem Eingabefeld in Kapitel 0 springen und es kurz hervorheben. */
+window.pvaZuFeld = function pvaZuFeld(id) {
+  const feld = document.getElementById(id);
+  if (!feld) return;
+  feld.scrollIntoView({ block: 'center' });
+  feld.focus();
+  feld.style.outline = '2px solid var(--accent)';
+  setTimeout(() => { feld.style.outline = ''; }, 1800);
+};
 
 /** Schieber an die Fokuszeile binden: „frei verstellt" anzeigen, Rücksprung auf (pv, bat). */
 function _pvaFokusZeileBinden(el, pvIn, batIn, pv, bat, nachReset) {
@@ -2615,42 +2634,27 @@ function _hlAchsen(W, H, PL, PR, PT, PB, xTicks, yTicks, xLabel, yLabel) {
            <line x1="${PL}" y1="${PT}" x2="${PL}" y2="${H - PB}" stroke="var(--border)" stroke-width="1"/>`;
   for (const t of xTicks) {
     g += `<line x1="${t.x.toFixed(1)}" y1="${PT}" x2="${t.x.toFixed(1)}" y2="${H - PB}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-          <text x="${t.x.toFixed(1)}" y="${H - PB + 13}" text-anchor="middle" fill="#78909c" font-size="9">${t.l}</text>`;
+          <text x="${t.x.toFixed(1)}" y="${H - PB + 13}" text-anchor="middle" fill="#78909c" font-size="10.5">${t.l}</text>`;
   }
   for (const t of yTicks) {
     g += `<line x1="${PL}" y1="${t.y.toFixed(1)}" x2="${W - PR}" y2="${t.y.toFixed(1)}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-          <text x="${PL - 6}" y="${(t.y + 3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="9">${t.l}</text>`;
+          <text x="${PL - 6}" y="${(t.y + 3).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="10.5">${t.l}</text>`;
   }
-  g += `<text x="${((PL + W - PR) / 2).toFixed(1)}" y="${H - 3}" text-anchor="middle" fill="#607d8b" font-size="9">${xLabel}</text>`;
-  g += `<text x="10" y="${(PT + 4).toFixed(1)}" fill="#607d8b" font-size="9">${yLabel}</text>`;
+  g += `<text x="${((PL + W - PR) / 2).toFixed(1)}" y="${H - 3}" text-anchor="middle" fill="#607d8b" font-size="10.5">${xLabel}</text>`;
+  g += `<text x="10" y="${(PT + 4).toFixed(1)}" fill="#607d8b" font-size="10.5">${yLabel}</text>`;
   return g;
 }
 
-/** Panel-Rahmen mit Titel, Kriterium und Ergebnissatz. */
+/** Bausteine einer Herleitung: Kriterium, Grafik, Ergebnissatz (Rahmen: renderSteckbrief). */
 function _hlPanel(v, kriterium, svg, fazit) {
-  return `
-  <div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${v.farbe};
-              border-radius:7px;padding:13px 15px;display:flex;flex-direction:column;gap:9px;min-width:0;">
-    <div style="display:flex;align-items:baseline;gap:8px;">
-      <span style="color:${v.farbe};font-size:13px;">${v.icon}</span>
-      <span style="font-size:12px;font-weight:600;color:var(--text);">${escHtml(v.label)}</span>
-    </div>
-    <div style="font-size:10.5px;color:${v.farbe};">Kriterium: ${kriterium}</div>
-    <div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:6px 4px 2px 4px;">${svg}</div>
-    <div style="font-size:10.5px;color:var(--muted);line-height:1.55;">${fazit}</div>
-  </div>`;
+  return { id: v.id, kriterium, svg, fazit };
 }
 
-function renderHerleitung(varianten) {
-  const el = document.getElementById('pva-herleitung');
-  if (!el || !varianten?.length) return;
+/** Herleitungsgrafiken je Variante (Grafikbreite W) → { variantenId: { kriterium, svg, fazit } } */
+function _pvHerleitungTeile(varianten, W) {
   const H = window._pvAnalyse.herleitung;
-  if (!H) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px;">Erst „Varianten berechnen".</div>'; return; }
-
-  const gesamtW = el.getBoundingClientRect().width || 900;
-  const zweiSpaltig = gesamtW > 760;
-  const W = Math.max(300, Math.floor((zweiSpaltig ? (gesamtW - 12) / 2 : gesamtW) - 34));
-  const HH = 190, PL = 46, PR = 14, PT = 12, PB = 26;
+  if (!H || !varianten?.length) return {};
+  const HH = 210, PL = 46, PR = 14, PT = 12, PB = 26;
   const num = (v, d = 0) => Number(v).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const vOf = (id) => varianten.find(x => x.id === id);
 
@@ -2893,62 +2897,93 @@ function renderHerleitung(varianten) {
       + ` <a data-click="pvaSetView('pvnaschema')" style="color:var(--accent);cursor:pointer;">Im Einlinienschema ansehen →</a>`));
   }
 
-  el.innerHTML = `
-  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
-    <div style="font-size:12px;font-weight:600;color:var(--text);">Herleitung der Varianten</div>
-    <div style="font-size:10.5px;color:#78909c;">Je Variante das Kriterium, aus dem sie entsteht — gezeichnet aus der tatsächlichen Suchspur</div>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(${zweiSpaltig ? 2 : 1},minmax(0,1fr));gap:12px;">
-    ${panels.join('')}
-  </div>
-  <div style="margin-top:10px;font-size:10px;color:#78909c;line-height:1.55;">
-    Die Punkte sind die tatsächlich ausgewerteten Stützstellen der jeweiligen Suche, nicht eine nachträglich geglättete Kurve.
-    Wo eine Suche abgebrochen hat, ist der auslösende Punkt rot markiert.
-  </div>`;
+  return Object.fromEntries(panels.map(p => [p.id, p]));
 }
 
-// ── Lesehilfe: So entstehen die Varianten & wie man sie bewertet ──────────────
+// ── Kapitel 2.2 — Variantensteckbrief ───────────────────────────────────────
+// Früher zwei getrennte Blöcke mit derselben Gliederung nach Varianten: sieben
+// Textkarten (Lesehilfe) und darunter sieben Grafikfelder (Herleitung), zusammen
+// rund 1.800 px. Jetzt ein Steckbrief für die Variante im Blick: links, welche Frage
+// sie beantwortet, wie sie entsteht und wie man sie bewertet — rechts der Beleg aus
+// der Suchspur der Optimierung. Auf Knopfdruck stehen alle Steckbriefe untereinander
+// (z. B. zum Durchblättern oder Drucken).
 
-function renderMethodik(varianten) {
-  const el = document.getElementById('pva-methodik');
+let _pvaSteckbriefAlle = false;
+
+window.pvaSteckbriefAlle = function pvaSteckbriefAlle() {
+  _pvaSteckbriefAlle = !_pvaSteckbriefAlle;
+  renderSteckbrief(window._pvAnalyse.ergebnisse);
+};
+
+function renderSteckbrief(varianten) {
+  const el = document.getElementById('pva-steckbrief');
   if (!el || !varianten?.length) return;
-
-  // Nur kanonische Varianten (mit info.frage) in der Lesehilfe zeigen
   const kanon = varianten.filter(v => v.info && v.info.frage);
+  const fokus = pvaFokusVariante(kanon);
+  if (!fokus) { el.innerHTML = ''; return; }
 
-  const cards = kanon.map(v => {
-    const w = v.wirt;
-    const kennIcon = (txt, val, col) =>
-      `<span style="color:var(--muted);">${txt}</span> <b style="color:${col};">${val}</b>`;
-    return `
-    <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${v.farbe};border-radius:7px;padding:10px 12px;">
-      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:5px;">
-        <span style="color:${v.farbe};font-size:13px;">${v.icon}</span>
-        <span style="font-size:11px;font-weight:700;color:var(--text);">${v.label}</span>
-      </div>
-      <div style="font-size:11px;color:${v.farbe};font-weight:600;margin-bottom:6px;">${v.info.frage}</div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.55;margin-bottom:5px;">
-        <b style="color:#90a4ae;">So entsteht sie:</b> ${v.info.herleitung}
-      </div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.55;margin-bottom:7px;">
-        <b style="color:#90a4ae;">So bewerten:</b> ${v.info.bewertung}${v.hinweis ? ` <span style="color:#ffb74d;">${v.hinweis}</span>` : ''}
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;border-top:1px solid var(--border);padding-top:6px;">
-        ${kennIcon('☀', v.pvKwp.toLocaleString('de-DE') + ' kWp', '#fdd835')}
-        ${kennIcon('🔋', v.batKwh > 0 ? v.batKwh.toLocaleString('de-DE') + ' kWh' : '—', '#80deea')}
-        ${kennIcon('EV', w.pvEigenQuote.toFixed(0) + ' %', '#a5d6a7')}
-        ${kennIcon('Aut', w.autarkie.toFixed(0) + ' %', '#4fc3f7')}
-        ${kennIcon('Amort', isFinite(w.amort) ? w.amort.toFixed(1) + ' a' : '> 20 a', '#ce93d8')}
-      </div>
+  const gesamtW = el.getBoundingClientRect().width || 900;
+  const breit = gesamtW > 900;
+  const grafikW = Math.max(320, Math.floor(breit ? (gesamtW - 36) * 7 / 12 - 20 : gesamtW - 40));
+  const teile = _pvHerleitungTeile(varianten, grafikW);
+  const num = (x, d = 0) => Number(x).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  const kennzahl = (titel, wert, farbe) => `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px 9px;min-width:74px;">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">${titel}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:13px;color:${farbe};">${wert}</div>
     </div>`;
-  }).join('');
 
+  const karte = v => {
+    const w = v.wirt, h = teile[v.id];
+    const text = `
+      <div style="display:flex;flex-direction:column;gap:9px;min-width:0;">
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <span style="color:${v.farbe};font-size:16px;">${v.icon}</span>
+          <span style="font-size:14px;font-weight:600;color:var(--text);">${escHtml(v.label)}</span>
+          ${v.id === fokus.id && _pvaSteckbriefAlle ? '<span style="font-size:10.5px;color:var(--accent);">Variante im Blick</span>' : ''}
+        </div>
+        <div style="font-size:12.5px;color:${v.farbe};font-weight:600;line-height:1.45;">${v.info.frage}</div>
+        <div style="font-size:12px;color:#b0bec5;line-height:1.6;"><b style="color:var(--text);">So entsteht sie:</b> ${v.info.herleitung}</div>
+        <div style="font-size:12px;color:#b0bec5;line-height:1.6;"><b style="color:var(--text);">So bewerten:</b> ${v.info.bewertung}${v.hinweis ? ` <span style="color:#ffb74d;">${v.hinweis}</span>` : ''}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;">
+          ${kennzahl('PV', num(v.pvKwp) + ' kWp', '#fdd835')}
+          ${kennzahl('Speicher', v.batKwh > 0 ? num(v.batKwh / 1000, 1) + ' MWh' : '—', '#80deea')}
+          ${kennzahl('EV-Quote', num(w.pvEigenQuote) + ' %', '#a5d6a7')}
+          ${kennzahl('Autarkie', num(w.autarkie) + ' %', '#4fc3f7')}
+          ${kennzahl('Überschuss', num(-w.nettoJk / 1000) + ' k€/a', -w.nettoJk >= 0 ? '#66bb6a' : '#ef5350')}
+          ${kennzahl('Amort.', isFinite(w.amort) ? num(w.amort, 1) + ' a' : '> 20 a', '#ce93d8')}
+        </div>
+      </div>`;
+    const beleg = h ? `
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:0;">
+        <div style="font-size:12px;color:${v.farbe};"><b>Kriterium:</b> ${h.kriterium}</div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:6px 4px 2px 4px;">${h.svg}</div>
+        <div style="font-size:12px;color:#b0bec5;line-height:1.6;">${h.fazit}</div>
+      </div>` : `
+      <div style="display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:6px;
+                  color:var(--muted);font-size:11.5px;padding:24px;text-align:center;line-height:1.6;">
+        Für diese Variante gibt es keine Suchspur — sie ist nicht optimiert, sondern vorgegeben
+        (z. B. aus dem Einlinienschema, dem Fahrplan oder einer Netzstrategie).</div>`;
+    return `
+    <div style="display:grid;grid-template-columns:${breit ? 'minmax(0,5fr) minmax(0,7fr)' : 'minmax(0,1fr)'};gap:18px;
+                background:var(--surface);border:1px solid var(--border);border-left:3px solid ${v.farbe};border-radius:7px;padding:14px 16px;">
+      ${text}${beleg}
+    </div>`;
+  };
+
+  const liste = _pvaSteckbriefAlle ? kanon : [fokus];
   el.innerHTML = `
-  <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:8px;">
-    Lesehilfe — wie die Varianten entstehen und worauf der jeweilige Stakeholder schaut
+  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px;">
+    <span style="font-size:12px;color:#b0bec5;">Welche Frage die Variante beantwortet, wie sie entsteht — und der Beleg aus der Suchspur der Optimierung
+      <span style="font-size:11px;color:var(--muted);margin-left:6px;">${_pvaSteckbriefAlle ? 'alle Varianten' : 'Variante wechseln: Leiste oben oder Tabellenzeile'}</span></span>
+    <button data-click="pvaSteckbriefAlle()" style="flex-shrink:0;cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#cfd8dc;font-size:11px;padding:2px 10px;">
+      ${_pvaSteckbriefAlle ? 'nur Variante im Blick' : `alle ${kanon.length} Varianten untereinander`}</button>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
-    ${cards}
+  <div style="display:flex;flex-direction:column;gap:12px;">${liste.map(karte).join('')}</div>
+  <div style="margin-top:8px;font-size:10.5px;color:#78909c;line-height:1.55;">
+    Die Grafiken zeigen die tatsächlich ausgewerteten Stützstellen der jeweiligen Suche, keine nachträglich geglättete Kurve.
+    Wo eine Suche abgebrochen hat, ist der auslösende Punkt rot markiert.
   </div>`;
 }
 
@@ -3073,7 +3108,7 @@ function _viridis(t) {
   return 'rgb(253,231,37)';
 }
 
-// ── Kapitel 2.4 — Optimierungsfläche als Karte ───────────────────────────────
+// ── Kapitel 2.3 — Optimierungsfläche als Karte ───────────────────────────────
 // Jahres-Netto-Überschuss über PV-Leistung × Batteriekapazität, von oben gesehen.
 // Die 3D-Fläche sah gut aus, ließ sich aber weder ablesen noch drucken — die Karte
 // mit Linien gleichen Überschusses beantwortet dieselbe Frage ablesbar: Wo liegt das
@@ -3269,7 +3304,7 @@ function renderOptHeatmap(demandH, pvProfile, napParams, params, varianten, over
     ${legTicks}
     <text x="${legX.toFixed(1)}" y="${(PT + cH + 18).toFixed(1)}" fill="#78909c" font-size="10.5">k€/a</text>
   </svg>
-  <div style="font-size:11.5px;color:#b0bec5;margin-top:6px;line-height:1.5;">
+  <div style="${_PVA_BEFUND_STIL}"><span style="${_PVA_BEFUND_LABEL}">Befund</span>
     Optimum bei <b style="color:var(--text)">${Math.round(opt.kwp).toLocaleString('de-DE')} kWp</b> und
     <b style="color:var(--text)">${(opt.bat / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MWh</b>
     mit <b style="color:#a5d6a7">${fmtK(opt.val)} k€/a</b>${wirtLabel ? ` (${wirtLabel.icon} ${wirtLabel.label})` : ''}.
@@ -3305,7 +3340,7 @@ function renderOptHeatmap(demandH, pvProfile, napParams, params, varianten, over
   );
 }
 
-// ── Kapitel 2.4, Zusatzansicht — drehbare 3D-Optimierungsfläche (Canvas) ─────────
+// ── Kapitel 2.3, Zusatzansicht — drehbare 3D-Optimierungsfläche (Canvas) ─────────
 // Echte 3D-Oberfläche: X = PV-Leistung, Y = Batteriekapazität, Z = Jahres-Netto-
 // Überschuss. Per Maus drehbar; Varianten und Optimum als Marker auf der Fläche.
 // Nur noch im Vollbild (Knopf „3D ansehen“ an der Karte).
@@ -3555,6 +3590,15 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
   const yZero = yS(0).toFixed(1);
   const pfKwp = _pvPflichtKwpFuerChart(maxKwp);
 
+  const optNetto = data[optIdx]?.netto ?? 0;
+  const k95 = optNetto > 0 ? data.find(d => d.netto >= 0.95 * optNetto)?.kwp : null;
+  const kw = n => Math.round(n).toLocaleString('de-DE');
+  const befund = optNetto > 0
+    ? `Ohne Speicher bringt <b>${kw(optKwp)} kWp</b> den höchsten Jahresüberschuss (<b>${kw(optNetto / 1000)} k€/a</b>)` +
+      (k95 != null && k95 < optKwp * 0.9 ? `; 95 % davon sind schon mit ${kw(k95)} kWp erreicht — darüber wächst der Überschuss kaum noch.`
+        : optKwp >= maxKwp * 0.97 ? ' — bis zur vollen Dachfläche lohnt jeder weitere Ausbauschritt.' : '.')
+    : 'Ohne Speicher erreicht keine Anlagengröße einen positiven Jahresüberschuss.';
+
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Ausbau-Grenznutzen: Jahresüberschuss je PV-Größe <span style="color:var(--muted);font-weight:400;">(ohne Speicher)</span>
@@ -3572,7 +3616,7 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
     <line x1="${PL}" y1="${yZero}" x2="${PL + cW}" y2="${yZero}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
     ${infraGrenzen.map(g => `
       <line x1="${xS(g).toFixed(1)}" y1="${PT}" x2="${xS(g).toFixed(1)}" y2="${PT + cH}" stroke="#ff8a65" stroke-width="1" stroke-dasharray="2,3" opacity="0.5"/>
-      <text x="${xS(g).toFixed(1)}" y="${PT + 9}" text-anchor="middle" fill="#ff8a65" font-size="9.5" opacity="0.8">${g} kWp</text>
+      <text x="${xS(g).toFixed(1)}" y="${PT + 9}" text-anchor="middle" fill="#ff8a65" font-size="10.5" opacity="0.8">${g} kWp</text>
     `).join('')}
     ${[0, Math.round(maxKwp * 0.25), Math.round(maxKwp * 0.5), Math.round(maxKwp * 0.75), maxKwp].map(v => `
       <text x="${xS(v).toFixed(1)}" y="${PT + cH + 14}" text-anchor="middle" fill="#607d8b" font-size="10.5">${v}</text>
@@ -3593,7 +3637,7 @@ function renderGrenznutzenChart(demandH, pvProfile, napParams, params, varianten
         <text x="${x}" y="${(parseFloat(y) - 8).toFixed(1)}" text-anchor="middle" fill="${v.farbe}" font-size="11" font-weight="600">${v.icon}</text>`;
     }).join('')}
     <line id="pva-grenz-xhair" x1="-2" y1="${PT}" x2="-2" y2="${PT + cH}" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="3,2"/>
-  </svg>`;
+  </svg>  ${_pvaBefund(befund)}`;
 
   const svg = el.querySelector('svg');
   svg.addEventListener('mousemove', ev => {
@@ -4210,7 +4254,7 @@ function _pvOpenFs(title, renderCb) {
   requestAnimationFrame(() => renderCb(cnt));
 }
 
-// ── Kapitel 2.5 — Eigenverbrauchsquote und Autarkie je PV-Größe ────────────────
+// ── Kapitel 2.4 — Eigenverbrauchsquote und Autarkie je PV-Größe ────────────────
 // Das klassische Kurvenpaar: Mit wachsender PV sinkt der Anteil, den das Quartier
 // selbst nutzt (EV-Quote), während der gedeckte Anteil des Bedarfs (Autarkie) immer
 // flacher steigt. Beide ohne Speicher (durchgezogen) und — gestrichelt — mit dem
@@ -4312,6 +4356,16 @@ function renderEvKurve(demandH, pvProfile, napParams, params, varianten, overrid
     }
   }
 
+  // Befund an der Variante im Blick. Der Kreuzungspunkt ist die Größe, bei der die
+  // Jahreserzeugung dem Bedarf entspricht (EV-Quote · Erzeugung = Autarkie · Bedarf).
+  const dF = fokus ? data.reduce((b, c) => Math.abs(c.kwp - fokus.pvKwp) < Math.abs(b.kwp - fokus.pvKwp) ? c : b) : null;
+  const pz = n => Math.round(n).toLocaleString('de-DE');
+  const befund = dF
+    ? `Bei ${fokus.icon} ${escHtml(fokus.label)} (${pz(fokus.pvKwp)} kWp) nutzt das Quartier ohne Speicher <b>${pz(dF.ohne.evQ)} %</b> der Erzeugung selbst und deckt <b>${pz(dF.ohne.autQ)} %</b> seines Bedarfs` +
+      (dF.mit ? `; mit ${(refBat / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MWh Speicher sind es ${pz(dF.mit.evQ)} % bzw. ${pz(dF.mit.autQ)} %.` : '.') +
+      (schnitt ? ` Ab etwa ${pz(schnitt.kwp)} kWp erzeugt die Anlage übers Jahr mehr, als das Quartier verbraucht.` : '')
+    : '';
+
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Eigenverbrauchsquote und Autarkie je PV-Größe
@@ -4340,7 +4394,7 @@ function renderEvKurve(demandH, pvProfile, napParams, params, varianten, overrid
       <text x="${(xS(schnitt.kwp) + 7).toFixed(1)}" y="${(yS(schnitt.q) - 7).toFixed(1)}" fill="#e0e0e0" font-size="11"
         style="paint-order:stroke;stroke:rgba(0,0,0,0.7);stroke-width:3px;">EV-Quote = Autarkie bei ${Math.round(schnitt.kwp).toLocaleString('de-DE')} kWp</text>` : ''}
     <line id="pva-ev-xhair" x1="-2" y1="${PT}" x2="-2" y2="${PT + cH}" stroke="rgba(255,255,255,0.3)" stroke-width="1" stroke-dasharray="3,2"/>
-  </svg>`;
+  </svg>  ${_pvaBefund(befund)}`;
 
   const svg = el.querySelector('svg');
   svg.addEventListener('mousemove', ev => {
@@ -4458,6 +4512,17 @@ function renderBilanzChart(varianten, overrideEl) {
     lx += 26 + e[0].length * 6.2; return s;
   }).join('');
 
+  const aut = r => (r.bedarf > 0 ? 1 - r.links[3][1] / r.bedarf : 0);
+  const pct = x => Math.round(x * 100);
+  const rMin = rows.reduce((a, b) => (aut(b) < aut(a) ? b : a)), rMax = rows.reduce((a, b) => (aut(b) > aut(a) ? b : a));
+  const rF = rows.find(r => r.v.id === fokusId);
+  const anteil = (r, i) => (r.erzeugung > 0 ? r.rechts[i][1] / r.erzeugung : 0);
+  const befund = `Die Varianten decken zwischen <b>${pct(aut(rMin))} %</b> (${rMin.v.icon} ${escHtml(rMin.v.label)}) und <b>${pct(aut(rMax))} %</b> (${rMax.v.icon} ${escHtml(rMax.v.label)}) des Bedarfs selbst.` +
+    (rF && rF.erzeugung > 0
+      ? ` Bei ${rF.v.icon} ${escHtml(rF.v.label)} bleiben <b>${pct(anteil(rF, 0))} %</b> der Erzeugung vor Ort, ${pct(anteil(rF, 1))} % gehen ins Netz` +
+        (anteil(rF, 2) > 0.005 ? `, ${pct(anteil(rF, 2))} % werden abgeregelt.` : '.')
+      : '');
+
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:400;color:#b0bec5;">Woher der Bedarf gedeckt wird und wohin die Erzeugung geht
@@ -4472,7 +4537,7 @@ function renderBilanzChart(varianten, overrideEl) {
     ${zeilen}
     <line x1="${x0.toFixed(1)}" y1="${PT - 4}" x2="${x0.toFixed(1)}" y2="${PT + rows.length * rowH + 2}" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
     <text x="${(W - PR / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" fill="#78909c" font-size="10.5">MWh/a</text>
-  </svg>`;
+  </svg>  ${_pvaBefund(befund)}`;
 
   const svg = el.querySelector('svg');
   svg.addEventListener('mousemove', ev => {
@@ -4518,7 +4583,12 @@ function renderScatterChart(varianten, overrideEl) {
   const xS = v => PL + (v / maxInv) * cW;
   const yS = v => PT + cH - ((v - yMin) / (yMax - yMin)) * cH;
   const fmtK = n => Math.round(n / 1000).toLocaleString('de-DE');
-  const bestId = pkte.reduce((b, p) => (p.ues > b.ues ? p : b)).v.id;
+  const bestP = pkte.reduce((b, p) => (p.ues > b.ues ? p : b)), bestId = bestP.v.id;
+  const schnellP = pkte.filter(p => isFinite(p.v.wirt.amort)).reduce((b, p) => (!b || p.v.wirt.amort < b.v.wirt.amort ? p : b), null);
+  const befund = `Den höchsten Jahresüberschuss bringt ${bestP.v.icon} ${escHtml(bestP.v.label)} mit <b>${fmtK(bestP.ues)} k€/a</b> bei ${(bestP.inv / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio € Investition.` +
+    (schnellP && schnellP.v.id !== bestId
+      ? ` Am schnellsten amortisiert sich ${schnellP.v.icon} ${escHtml(schnellP.v.label)} (${schnellP.v.wirt.amort.toLocaleString('de-DE', { maximumFractionDigits: 1 })} a) — sie bringt aber nur ${fmtK(schnellP.ues)} k€/a. Die kürzeste Amortisation ist deshalb kein Auswahlkriterium.`
+      : '');
 
   // Beschriftungen gegen Überlappung: Punkte nach x sortiert, nahe Nachbarn abwechselnd unten
   const sortiert = [...pkte].sort((a, b) => a.inv - b.inv);
@@ -4574,7 +4644,7 @@ function renderScatterChart(varianten, overrideEl) {
     <text x="${PL + cW / 2}" y="${H - 6}" text-anchor="middle" fill="#78909c" font-size="11">Investition gesamt (PV, Speicher, Netzanschluss)</text>
     <text x="14" y="${PT + cH / 2}" text-anchor="middle" fill="#78909c" font-size="11" transform="rotate(-90,14,${PT + cH / 2})">Jahresüberschuss (€/a)</text>
     ${punkte}
-  </svg>`;
+  </svg>  ${_pvaBefund(befund)}`;
 
   const svg = el.querySelector('svg');
   svg.addEventListener('mousemove', ev => {
@@ -4631,7 +4701,14 @@ function renderRueckAmpel(varianten, overrideEl) {
   const barH = Math.min(overrideEl ? 26 : 18, cH / rows.length - 6);
   const rowH = cH / rows.length;
 
-  const maxVal = Math.max(...rows.map(v => v.rueck.maxKw), anschlussKw || 0, sZul || 0, 1) * 1.08;
+  // Ohne S_k″ und Einspeisegrenze gibt es kein hartes Kriterium. Hilfsweise zählt die
+  // bisherige Bezugsspitze: für diese Leistung ist der Anschluss mindestens ausgelegt —
+  // wer mehr zurückspeist, braucht eine Anschlussprüfung beim Netzbetreiber.
+  const na0 = r0.ampel === 'na';
+  const dH = _pvFsArgs?.demandH;
+  let bezugKw = null;
+  if (na0 && dH) { bezugKw = 0; for (let i = 0; i < dH.length; i++) if (dH[i] > bezugKw) bezugKw = dH[i]; }
+  const maxVal = Math.max(...rows.map(v => v.rueck.maxKw), anschlussKw || 0, sZul || 0, bezugKw || 0, 1) * 1.08;
   const xS = v => PL + (v / maxVal) * cW;
 
   // Verdikt-Banner
@@ -4641,8 +4718,9 @@ function renderRueckAmpel(varianten, overrideEl) {
   let banner;
   if (na) {
     banner = `<div style="background:rgba(120,144,156,0.12);border-left:3px solid #78909c;padding:7px 10px;border-radius:5px;font-size:11px;color:var(--muted);">
-      Für die Bewertung <b style="color:var(--text)">S_k″</b> (Netzauskunft des VNB) und/oder die <b style="color:var(--text)">Max. Einspeisung</b> oben eingeben.
-      Beurteilt wird dann die Rückspeisespitze gegen Spannungsband (Δu) und Anschlusskapazität.</div>`;
+      Für die Bewertung <a data-click="pvaZuFeld('pva-sk')" style="color:var(--accent);cursor:pointer;text-decoration:underline;">S_k″ eingeben</a> (Netzauskunft des VNB)
+      und/oder die <a data-click="pvaZuFeld('pva-nap-einsp')" style="color:var(--accent);cursor:pointer;text-decoration:underline;">Max. Einspeisung</a>.
+      Beurteilt wird dann die Rückspeisespitze gegen Spannungsband (Δu) und Anschlusskapazität. Bis dahin dient die bisherige Bezugsspitze als grobe Orientierung.</div>`;
   } else if (rot.length) {
     banner = `<div style="background:rgba(239,83,80,0.12);border-left:3px solid #ef5350;padding:7px 10px;border-radius:5px;font-size:11px;color:#ef9a9a;">
       <b>Netzanschluss-Verstärkung notwendig</b> für: <b style="color:#fff">${rot.map(v=>v.label).join(', ')}</b>.
@@ -4655,6 +4733,17 @@ function renderRueckAmpel(varianten, overrideEl) {
     banner = `<div style="background:rgba(102,187,106,0.12);border-left:3px solid #66bb6a;padding:7px 10px;border-radius:5px;font-size:11px;color:#a5d6a7;">
       <b>Kein Erzeugungsnetz erforderlich</b> — alle Varianten bleiben innerhalb von Spannungsband und Anschlusskapazität.</div>`;
   }
+
+  const kwF = n => Math.round(n).toLocaleString('de-DE');
+  const hoch = rows.reduce((a, b) => (b.rueck.maxKw > a.rueck.maxKw ? b : a));
+  const drueber = bezugKw ? rows.filter(v => v.rueck.maxKw > bezugKw) : [];
+  const befund = na0
+    ? (bezugKw
+        ? (drueber.length
+            ? `Ohne Netzdaten hilfsweise gegen die bisherige Bezugsspitze (<b>${kwF(bezugKw)} kW</b>) geprüft: ${drueber.length} von ${rows.length} Varianten speisen in der Spitze mehr zurück, als heute bezogen wird — dort ist eine Anschlussprüfung beim Netzbetreiber nötig.`
+            : `Alle Varianten bleiben in der Rückspeisespitze unter der bisherigen Bezugsspitze (${kwF(bezugKw)} kW) — ein Hinweis, dass der vorhandene Anschluss reicht, aber kein Nachweis.`)
+        : '')
+    : `Die höchste Rückspeisespitze hat ${hoch.icon} ${escHtml(hoch.label)} mit <b>${kwF(hoch.rueck.maxKw)} kW</b> an ${kwF(hoch.rueck.stunden)} Stunden mit Einspeisung im Jahr.`;
 
   const bars = rows.map((v, i) => {
     const rk = v.rueck;
@@ -4685,6 +4774,7 @@ function renderRueckAmpel(varianten, overrideEl) {
   <svg width="${W}" height="${H}" style="display:block;overflow:visible;">
     ${refLine(anschlussKw, '#ef5350', 'Anschluss')}
     ${refLine(sZul, '#ffb74d', 'Δu-Grenze')}
+    ${refLine(bezugKw, '#b0bec5', 'bisherige Bezugsspitze')}
     ${bars}
     <line x1="${PL}" y1="${(PT+cH).toFixed(1)}" x2="${(PL+cW).toFixed(1)}" y2="${(PT+cH).toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
     ${[0,0.25,0.5,0.75,1].map(f=>`<text x="${(PL+f*cW).toFixed(1)}" y="${(PT+cH+12).toFixed(1)}" text-anchor="middle" fill="#607d8b" font-size="10.5">${Math.round(f*maxVal)}</text>`).join('')}
@@ -4692,17 +4782,17 @@ function renderRueckAmpel(varianten, overrideEl) {
   </svg>
   <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">
     Δu ≈ 100 · P_rück / S_k″ (Screening, cos φ ≈ 1) · Ampel: <span style="color:#66bb6a">grün</span> unkritisch · <span style="color:#ffb74d">gelb</span> Grenzfall · <span style="color:#ef5350">rot</span> Erzeugungsnetz/MS nötig
-  </div>`;
+  </div>  ${_pvaBefund(befund)}`;
 
   const fsBtn = el.querySelector('[data-pva-fs="rueck"]');
   if (fsBtn) fsBtn.addEventListener('click', () =>
     _pvOpenFs('Rückspeise- & Erzeugungsnetz-Bewertung', cnt => renderRueckAmpel(window._pvAnalyse.ergebnisse, cnt)));
 }
 
-// ── Abb. 7 — Interaktives Energieflussdiagramm (Sankey) mit PV/Batterie-Slidern ─
+// ── Kapitel 3.2 — Energiefluss (Sankey) mit PV/Batterie-Schiebern ─────────────
 // Zeigt für eine frei wählbare (PV × Batterie)-Kombination, wohin die Energie
-// fließt. Varianten-Sprungmarken setzen beide Slider auf eine Variante; Ziehen der
-// Slider zeigt live, wie sich Eigenverbrauch, Einspeisung, Abregelung verschieben.
+// fließt — mit dem Speicher als eigenem Knoten. Die Schieber starten auf der
+// Variante im Blick; Ziehen zeigt live, wie sich die Ströme verschieben.
 
 function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, overrideEl) {
   const el = overrideEl || document.getElementById('pva-chart-fluss');
@@ -4772,67 +4862,87 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
     const eigen = sim.eigenMwh, einsp = sim.einspeiseMwh, curt = sim.curtailMwh || 0;
     const verl = sim.batVerlustMwh || 0, netz = sim.netzbezugMwh;
     const bedarf = eigen + netz;
-    const pvSum  = eigen + einsp + curt + verl;       // ≈ Ertrag
 
-    const W = Math.max(440, (svgWrap.getBoundingClientRect().width || 700) - 4);
-    const H = overrideEl ? 360 : 260;
-    const PT = 14, PB = 14;
+    // Der Speicher als eigener Knoten in der Mitte: geladen wird aus PV-Überschuss
+    // (gelb) oder mit Energie, die sonst abgeregelt worden wäre (orange); entladen
+    // in den Bedarf oder ins Netz. So ist Kapitel 3.2 die ganze Bilanz auf einen Blick
+    // und 3.3 kann sich auf das Verhalten des Speichers über das Jahr beschränken.
+    const ladEv = sim.batLadEvMwh || 0, ladCt = sim.batLadCurtMwh || 0, lad = ladEv + ladCt;
+    const entBed = Math.min(eigen, sim.batEntlBedarfMwh || 0), entNet = Math.min(einsp, sim.batEntlNetzMwh || 0);
+    const rest = Math.max(0, lad - entBed - entNet - verl);             // Ladestand am Jahresende
+    const pvDirekt = Math.max(0, eigen - entBed), pvEinsp = Math.max(0, einsp - entNet);
+    const pvSum = pvDirekt + lad + pvEinsp + curt;                      // ≈ Ertrag (PV + ggf. Wind)
+    const mitSpeicher = lad > 0.01;
+
+    const W = Math.max(480, (svgWrap.getBoundingClientRect().width || 700) - 4);
+    const H = overrideEl ? 380 : 290;
+    const PT = 22, PB = 22;
     const cH = H - PT - PB;
-    const xL = 100, barW = 16, xR = W - 160;
-    const total = Math.max(pvSum + netz, 1);
+    const xL = 100, barW = 16, xR = W - 170, xM = Math.round((xL + xR) / 2);
     const gap = 10;
-    const scale = (cH - 5 * gap) / total;             // 5 Lücken zwischen Bändern
+    const scale = (cH - 5 * gap) / Math.max(pvSum + netz, 1);           // höchstens 5 Lücken je Säule
+    const fmt = n => Math.round(n).toLocaleString('de-DE');
 
-    // Quell-Säule: PV (oben) + Netzbezug
-    let yc = PT;
-    const pvY = yc; const pvH = pvSum * scale; yc += pvH + gap;
-    const nbY = yc; const nbH = netz * scale;
-    // PV-Untersegmente (Reihenfolge: eigen, einspeise, curtail, verlust)
-    let pc = pvY;
-    const segEvS  = { y: pc, h: eigen * scale }; pc += segEvS.h;
-    const segEsS  = { y: pc, h: einsp * scale }; pc += segEsS.h;
-    const segCtS  = { y: pc, h: curt  * scale }; pc += segCtS.h;
-    const segVlS  = { y: pc, h: verl  * scale };
+    // Quellen links: PV (Segmente: Bedarf · Speicher-EV · Speicher-statt-Abregelung · Einspeisung · Abregelung), Netz
+    const stapel = (y0, teile) => { let y = y0; return teile.map(v => { const s = { y, h: v * scale }; y += s.h; return s; }); };
+    const pvY = PT, pvH = pvSum * scale;
+    const [sDir, sLadEv, sLadCt, sEsp, sCt] = stapel(pvY, [pvDirekt, ladEv, ladCt, pvEinsp, curt]);
+    const nbY = pvY + pvH + gap, nbH = netz * scale;
 
-    // Senken-Säule: Bedarf, Einspeisung, Abregelung, Verlust
-    let yt = PT;
-    const bedY = yt; const bedH = bedarf * scale; yt += bedH + gap;
-    const esY  = yt; const esH = einsp * scale; yt += esH + (einsp>0?gap:0);
-    const ctY  = yt; const ctH = curt  * scale; yt += ctH + (curt>0?gap:0);
-    const vlY  = yt; const vlH = verl  * scale;
-    // Bedarf-Untersegmente: eigen (oben) + netz
-    const segEvT = { y: bedY, h: eigen * scale };
-    const segNbT = { y: bedY + segEvT.h, h: netz * scale };
+    // Senken rechts: Bedarf (aus PV · Speicher · Netz), Einspeisung (aus PV · Speicher), Abregelung, Verluste, Restladung
+    const senken = [
+      { key: 'bed', v: bedarf, t: 'Bedarf', c: '#90a4ae', tc: '#cfd8dc' },
+      { key: 'esp', v: einsp,  t: 'Einspeisung', c: COL.es },
+      { key: 'ct',  v: curt,   t: 'Abregelung', c: COL.ct },
+      { key: 'vl',  v: verl,   t: 'Speicherverluste', c: COL.vl },
+      { key: 'rest', v: rest > lad * 0.02 ? rest : 0, t: 'Restladung 31.12.', c: '#9575cd' },
+    ];
+    let yR = PT;
+    for (const s of senken) { s.y = yR; s.h = s.v * scale; yR += s.h + (s.v > 0 ? gap : 0); }
+    const S = Object.fromEntries(senken.map(s => [s.key, s]));
+    const [tBedPv, tBedBat, tBedNetz] = stapel(S.bed.y, [pvDirekt, entBed, netz]);
+    const [tEspPv, tEspBat] = stapel(S.esp.y, [pvEinsp, entNet]);
 
-    const ribbon = (y0s, h_s, y0t, h_t, color) => {
-      if (h_s < 0.3 && h_t < 0.3) return '';
-      const x0 = xL + barW, x1 = xR, mx = (x0 + x1) / 2;
-      const a0 = y0s, a1 = y0s + h_s, b0 = y0t, b1 = y0t + h_t;
-      return `<path d="M${x0},${a0.toFixed(1)} C${mx},${a0.toFixed(1)} ${mx},${b0.toFixed(1)} ${x1},${b0.toFixed(1)} L${x1},${b1.toFixed(1)} C${mx},${b1.toFixed(1)} ${mx},${a1.toFixed(1)} ${x0},${a1.toFixed(1)} Z" fill="${color}" opacity="0.42"/>`;
+    // Speicherknoten: auf Höhe seiner Ladebänder, damit sie fast waagerecht einlaufen
+    const batH = lad * scale, batY = sLadEv.y;
+    const [bBed, bEsp, bVl, bRest] = stapel(batY, [entBed, entNet, verl, rest]);
+
+    const ribbon = (x0, y0, h0, x1, y1, h1, color, titel) => {
+      if (h0 < 0.3 && h1 < 0.3) return '';
+      const mx = (x0 + x1) / 2, a1 = y0 + h0, b1 = y1 + h1;
+      return `<path d="M${x0},${y0.toFixed(1)} C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1},${y1.toFixed(1)} L${x1},${b1.toFixed(1)} C${mx},${b1.toFixed(1)} ${mx},${a1.toFixed(1)} ${x0},${a1.toFixed(1)} Z" fill="${color}" opacity="0.42"><title>${titel}</title></path>`;
     };
     const node = (x, y, h, color) => h > 0.3 ? `<rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}" fill="${color}" rx="1.5"/>` : '';
-    const lbl  = (x, y, h, txt, val, color, anchor) => h > 6 ? `<text x="${x}" y="${(y+h/2-2).toFixed(1)}" text-anchor="${anchor}" fill="${color}" font-size="11" font-weight="600">${txt}</text><text x="${x}" y="${(y+h/2+9).toFixed(1)}" text-anchor="${anchor}" fill="#90a4ae" font-size="10.5">${Math.round(val)} MWh</text>` : '';
+    const lbl  = (x, y, h, txt, val, color, anchor) => h > 6 ? `<text x="${x}" y="${(y+h/2-2).toFixed(1)}" text-anchor="${anchor}" fill="${color}" font-size="11" font-weight="600">${txt}</text><text x="${x}" y="${(y+h/2+10).toFixed(1)}" text-anchor="${anchor}" fill="#90a4ae" font-size="10.5">${fmt(val)} MWh</text>` : '';
+    const quelle = (windKwInst > 0 && windKw > 0) ? 'PV + Wind' : 'PV';
+    const L = xL + barW, M0 = xM, M1 = xM + barW;
+    const COL_LAD = '#fdd835', COL_BAT = '#9575cd';
 
-    const fmt = n => Math.round(n).toLocaleString('de-DE');
     svgWrap.innerHTML = `
     <svg width="${W}" height="${H}" style="display:block;overflow:visible;">
-      ${ribbon(segEvS.y, segEvS.h, segEvT.y, segEvT.h, COL.ev)}
-      ${ribbon(segEsS.y, segEsS.h, esY, esH, COL.es)}
-      ${ribbon(segCtS.y, segCtS.h, ctY, ctH, COL.ct)}
-      ${ribbon(segVlS.y, segVlS.h, vlY, vlH, COL.vl)}
-      ${ribbon(nbY, nbH, segNbT.y, segNbT.h, COL.nb)}
+      ${ribbon(L, sDir.y, sDir.h, xR, tBedPv.y, tBedPv.h, COL.ev, `${quelle} → Bedarf: ${fmt(pvDirekt)} MWh`)}
+      ${ribbon(L, sEsp.y, sEsp.h, xR, tEspPv.y, tEspPv.h, COL.es, `${quelle} → Einspeisung: ${fmt(pvEinsp)} MWh`)}
+      ${ribbon(L, sCt.y, sCt.h, xR, S.ct.y, S.ct.h, COL.ct, `Abregelung: ${fmt(curt)} MWh`)}
+      ${ribbon(L, nbY, nbH, xR, tBedNetz.y, tBedNetz.h, COL.nb, `Netzbezug → Bedarf: ${fmt(netz)} MWh`)}
+      ${mitSpeicher ? `
+      ${ribbon(L, sLadEv.y, sLadEv.h, M0, batY, sLadEv.h, COL_LAD, `Ladung aus PV-Überschuss: ${fmt(ladEv)} MWh`)}
+      ${ribbon(L, sLadCt.y, sLadCt.h, M0, batY + sLadEv.h, sLadCt.h, COL.ct, `Ladung statt Abregelung: ${fmt(ladCt)} MWh`)}
+      ${ribbon(M1, bBed.y, bBed.h, xR, tBedBat.y, tBedBat.h, COL.ev, `Speicher → Bedarf: ${fmt(entBed)} MWh`)}
+      ${ribbon(M1, bEsp.y, bEsp.h, xR, tEspBat.y, tEspBat.h, COL.es, `Speicher → Netz: ${fmt(entNet)} MWh`)}
+      ${ribbon(M1, bVl.y, bVl.h, xR, S.vl.y, S.vl.h, COL.vl, `Wandlungsverluste: ${fmt(verl)} MWh`)}
+      ${S.rest.v > 0 ? ribbon(M1, bRest.y, bRest.h, xR, S.rest.y, S.rest.h, COL_BAT, `Restladung am Jahresende: ${fmt(rest)} MWh`) : ''}
+      <rect x="${M0 - 1}" y="${(batY - 1).toFixed(1)}" width="${barW + 2}" height="${(batH + 2).toFixed(1)}" fill="var(--bg)" rx="2"/>
+      ${node(M0, batY, batH, COL_BAT)}
+      <text x="${(M0 + barW / 2).toFixed(1)}" y="${(batY - 7).toFixed(1)}" text-anchor="middle" fill="${COL_BAT}" font-size="11" font-weight="600"
+        style="paint-order:stroke;stroke:var(--bg);stroke-width:3px;">Speicher ${(bat / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MWh</text>
+      <text x="${(M0 + barW / 2).toFixed(1)}" y="${(batY + batH + 13).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="10.5"
+        style="paint-order:stroke;stroke:var(--bg);stroke-width:3px;">${fmt(lad)} MWh geladen · ${(bat > 0 ? (entBed + entNet) / (bat / 1000) : 0).toFixed(0)} Vollzyklen</text>` : ''}
       ${node(xL, pvY, pvH, COL.pv)}
       ${node(xL, nbY, nbH, COL.nb)}
-      ${node(xR, bedY, bedH, '#90a4ae')}
-      ${node(xR, esY, esH, COL.es)}
-      ${node(xR, ctY, ctH, COL.ct)}
-      ${node(xR, vlY, vlH, COL.vl)}
-      ${lbl(xL-6, pvY, pvH, (windKwInst > 0 && windKw > 0) ? 'PV + Wind' : 'PV-Erzeugung', pvSum, COL.pv, 'end')}
-      ${lbl(xL-6, nbY, nbH, 'Netzbezug', netz, COL.nb, 'end')}
-      ${lbl(xR+barW+6, bedY, bedH, 'Bedarf', bedarf, '#cfd8dc', 'start')}
-      ${lbl(xR+barW+6, esY, esH, 'Einspeisung', einsp, COL.es, 'start')}
-      ${lbl(xR+barW+6, ctY, ctH, 'Abregelung', curt, COL.ct, 'start')}
-      ${lbl(xR+barW+6, vlY, vlH, 'Speicherverlust', verl, COL.vl, 'start')}
+      ${senken.map(s => node(xR, s.y, s.h, s.c)).join('')}
+      ${lbl(xL - 6, pvY, pvH, quelle === 'PV' ? 'PV-Erzeugung' : 'PV + Wind', pvSum, COL.pv, 'end')}
+      ${lbl(xL - 6, nbY, nbH, 'Netzbezug', netz, COL.nb, 'end')}
+      ${senken.map(s => lbl(xR + barW + 6, s.y, s.h, s.t, s.v, s.tc || s.c, 'start')).join('')}
     </svg>`;
 
     // KPI-Zeile
@@ -4870,22 +4980,15 @@ function renderEnergieFluss(demandH, pvProfile, napParams, params, varianten, ov
   );
 }
 
-// ── Abb. 7b — Speicherfluss: wofür der Batteriespeicher arbeitet ──────────────
-// Abb. 7 zeigt, wohin die Energie des Quartiers fließt — der Speicher steckt dort
-// unsichtbar im grünen Eigenverbrauchsband. Diese Abbildung dreht die Perspektive
-// um und stellt den Speicher selbst in die Mitte: woher seine Ladung kommt, wohin
-// sie geht, wie viel Wandlung kostet — und wie er sich über das Jahr verhält.
+// ── Kapitel 3.3 — Speicherfluss: wie der Batteriespeicher über das Jahr arbeitet ──
+// Die Jahresbilanz des Speichers (woher die Ladung kommt, wohin sie geht, was die
+// Wandlung kostet) steht seit dem Umbau als eigener Knoten im Energiefluss 3.2, die
+// Ladestand-Heatmap als Umschalter im Jahresgang 3.4. Hier bleiben die Kennzahlen und
+// die Auslegungsfrage: Dauerlinie + Ø-Tagesgang — wie oft ist er voll (zu groß), wie
+// oft leer (zu klein), und wann lädt/entlädt er.
 //
-// Drei Ebenen, bewusst übereinander statt nebeneinander:
-//   1. Speicher-Sankey  — die Jahresbilanz an den AC-Klemmen (Bilanz schließt exakt)
-//   2. SOC-Jahres-Heatmap — Tag × Stunde, Farbe = Ladestand; zeigt sofort, ob der
-//      Speicher im Sommer täglich zyklisiert und im Winter leer steht
-//   3. SOC-Dauerlinie + Ø-Tagesgang — beantwortet die Auslegungsfrage: Wie oft ist
-//      er voll (zu groß), wie oft leer (zu klein), und wann lädt/entlädt er
-//
-// Farben sind absichtlich dieselben wie in Abb. 7: Abregelung orange, PV-Überschuss
-// gelb, Eigenverbrauch grün, Einspeisung blau, Verlust grau — so liest sich Abb. 7b
-// als Vergrößerung des Speicher-Anteils von Abb. 7.
+// Farben wie in 3.2: Abregelung orange, PV-Überschuss gelb, Eigenverbrauch grün,
+// Einspeisung blau, Verlust grau, Speicher violett.
 
 const _PVSF_COL = {
   ladCurt: '#ff9800',   // Ladung, die sonst abgeregelt worden wäre
@@ -4953,8 +5056,8 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
 
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
-    <span style="font-size:12px;font-weight:400;color:#b0bec5;">Speicherfluss: wofür der Batteriespeicher arbeitet
-      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Herkunft und Verwendung jeder gespeicherten kWh · Ladestand über das Jahr</span>
+    <span style="font-size:12px;font-weight:400;color:#b0bec5;">Wie der Speicher über das Jahr arbeitet
+      <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Kennzahlen · Dauerlinie des Ladestands · Ø Tagesgang — seine Jahresbilanz steht in 3.2</span>
     </span>
     ${overrideEl ? '' : '<button data-pva-fs="speicherfluss" title="Vollbild" style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:#90a4ae;font-size:12px;padding:1px 7px;line-height:1.6;">⤢</button>'}
   </div>
@@ -5013,7 +5116,6 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
     const entNet  = sim.batEntlNetzMwh   || 0;
     const verl    = sim.batVerlustMwh    || 0;
     const socArr  = sim.batSocArr;
-    const restMwh = Math.max(0, socArr[socArr.length - 1] / 1000);
     const lad     = ladCurt + ladEv;
     const entl    = entBed + entNet;
 
@@ -5057,95 +5159,9 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
       `<span style="color:${isFinite(ctProKwh) && ctProKwh < (params.pStrom || 30) ? '#66bb6a' : '#ef9a9a'}">` +
       `${isFinite(ctProKwh) ? ctProKwh.toFixed(1) : '—'} ct je zwischengespeicherter kWh</span>`;
 
-    // ── 1. Speicher-Sankey ───────────────────────────────────────────────────
-    const SH = overrideEl ? 240 : 186;
-    const barW = 14, PT = 16;
-    const cH = SH - PT - 14;
-    const xA = 158, xB = Math.round(W * 0.5) - barW / 2, xC = W - 196;
-
-    const sinks = [
-      { v: entBed,  c: _PVSF_COL.entlBed, t: 'Entladung → Bedarf' },
-      { v: entNet,  c: _PVSF_COL.entlNet, t: 'Entladung → Netz' },
-      { v: verl,    c: _PVSF_COL.verlust, t: 'Wandlungsverluste' },
-      { v: restMwh, c: _PVSF_COL.rest,    t: 'Restladung 31.12.' },
-    ].filter(s => s.v > lad * 0.004);
-    const sources = [
-      { v: ladCurt, c: _PVSF_COL.ladCurt, t: 'Ladung statt Abregelung' },
-      { v: ladEv,   c: _PVSF_COL.ladEv,   t: 'Ladung aus PV-Überschuss' },
-    ].filter(s => s.v > lad * 0.004);
-
-    const gap = 9;
-    const gapSum = Math.max((sources.length - 1) * gap, (sinks.length - 1) * gap);
-    const scale = (cH - gapSum) / lad;
-    const bodyH = lad * scale;
-
-    // Quell- und Senkenstapel jeweils vertikal zentriert
-    let y = PT + (cH - (bodyH + (sources.length - 1) * gap)) / 2;
-    for (const s of sources) { s.y = y; s.h = s.v * scale; y += s.h + gap; }
-    y = PT + (cH - (bodyH + (sinks.length - 1) * gap)) / 2;
-    for (const s of sinks) { s.y = y; s.h = s.v * scale; y += s.h + gap; }
-    const batY = PT + (cH - bodyH) / 2;
-
-    // Anschlusspunkte am Speicherknoten: Quellen von oben, Senken von oben
-    let yIn = batY;  for (const s of sources) { s.by = yIn; yIn += s.h; }
-    let yOut = batY; for (const s of sinks)   { s.by = yOut; yOut += s.h; }
-
-    const ribbon = (x0, y0, h0, x1, y1, h1, color) => {
-      if (h0 < 0.3 && h1 < 0.3) return '';
-      const mx = (x0 + x1) / 2;
-      return `<path d="M${x0},${y0.toFixed(1)} C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1},${y1.toFixed(1)}`
-           + ` L${x1},${(y1+h1).toFixed(1)} C${mx},${(y1+h1).toFixed(1)} ${mx},${(y0+h0).toFixed(1)} ${x0},${(y0+h0).toFixed(1)} Z"`
-           + ` fill="${color}" opacity="0.42"/>`;
-    };
-    const lbl = (x, y0, h, txt, val, color, anchor) => h > 9
-      ? `<text x="${x}" y="${(y0+h/2-2).toFixed(1)}" text-anchor="${anchor}" fill="${color}" font-size="11" font-weight="600">${txt}</text>`
-        + `<text x="${x}" y="${(y0+h/2+9).toFixed(1)}" text-anchor="${anchor}" fill="#90a4ae" font-size="10.5">${fmt1(val)} MWh · ${(val/lad*100).toFixed(0)} %</text>`
-      : '';
-
-    const sankey = `
-      ${sources.map(s => ribbon(xA + barW, s.y, s.h, xB, s.by, s.h, s.c)).join('')}
-      ${sinks.map(s => ribbon(xB + barW, s.by, s.h, xC, s.y, s.h, s.c)).join('')}
-      ${sources.map(s => `<rect x="${xA}" y="${s.y.toFixed(1)}" width="${barW}" height="${Math.max(1,s.h).toFixed(1)}" fill="${s.c}" rx="1.5"/>`).join('')}
-      ${sinks.map(s => `<rect x="${xC}" y="${s.y.toFixed(1)}" width="${barW}" height="${Math.max(1,s.h).toFixed(1)}" fill="${s.c}" rx="1.5"/>`).join('')}
-      <rect x="${xB}" y="${batY.toFixed(1)}" width="${barW}" height="${bodyH.toFixed(1)}" fill="${_PVSF_COL.bat}" rx="1.5"/>
-      ${sources.map(s => lbl(xA - 6, s.y, s.h, s.t, s.v, s.c, 'end')).join('')}
-      ${sinks.map(s => lbl(xC + barW + 6, s.y, s.h, s.t, s.v, s.c, 'start')).join('')}
-      <text x="${(xB + barW/2).toFixed(1)}" y="${(batY - 6).toFixed(1)}" text-anchor="middle" fill="${_PVSF_COL.bat}" font-size="11" font-weight="600">Speicher ${capMwh.toFixed(2)} MWh</text>
-      <text x="${(xB + barW/2).toFixed(1)}" y="${(batY + bodyH + 12).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="10.5">${fmt1(lad)} MWh Ladung · ${fmt1(zyklen)} Vollzyklen</text>`;
-
-    // ── 2. SOC-Jahres-Heatmap ────────────────────────────────────────────────
+    // Ladestand stündlich — die Jahres-Heatmap dazu steht jetzt in 3.4 (Umschalter „Ladestand")
     const hSoc  = _pvsfHourlySoc(socArr, dt);
     const nDays = Math.floor(hSoc.length / 24);
-    const HH = overrideEl ? 210 : 148;
-    const PL = 30, HPT = 22, PR = 16, HPB = 30;
-    const hcW = W - PL - PR, hcH = HH - HPT - HPB;
-    const cellW = hcW / nDays, cellH = hcH / 24;
-
-    let cells = '';
-    for (let d = 0; d < nDays; d++) {
-      for (let h = 0; h < 24; h++) {
-        const f = Math.max(0, Math.min(1, hSoc[d * 24 + h] / bat));
-        cells += `<rect x="${(PL + d*cellW).toFixed(2)}" y="${(HPT + h*cellH).toFixed(2)}" width="${(cellW+0.3).toFixed(2)}" height="${(cellH+0.3).toFixed(2)}" fill="${_pvsfSocColor(f)}"/>`;
-      }
-    }
-    let monthMarks = '', cum = 0;
-    for (let m = 0; m < 12; m++) {
-      const x = PL + cum * cellW, wM = _PVAH_MONTH_DAYS[m] * cellW;
-      monthMarks += `<text x="${(x + wM/2).toFixed(1)}" y="${(HPT - 7).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="10.5">${_PVAH_MONTH_NAMES[m]}</text>`;
-      if (m > 0) monthMarks += `<line x1="${x.toFixed(1)}" y1="${HPT}" x2="${x.toFixed(1)}" y2="${(HPT+hcH).toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>`;
-      cum += _PVAH_MONTH_DAYS[m];
-    }
-    const hourMarks = [0, 6, 12, 18].map(h =>
-      `<text x="${(PL-5).toFixed(1)}" y="${(HPT + h*cellH + cellH/2 + 3).toFixed(1)}" text-anchor="end" fill="#90a4ae" font-size="10.5">${h}</text>`).join('');
-    const gradId = 'pvsf-grad-' + (overrideEl ? 'fs' : 'm');
-    const legend = `
-      <defs><linearGradient id="${gradId}" x1="0" x2="1">
-        <stop offset="0%" stop-color="${_pvsfSocColor(0)}"/><stop offset="50%" stop-color="${_pvsfSocColor(0.5)}"/><stop offset="100%" stop-color="${_pvsfSocColor(1)}"/>
-      </linearGradient></defs>
-      <rect x="${PL}" y="${(HPT+hcH+14).toFixed(1)}" width="120" height="8" fill="url(#${gradId})" rx="1"/>
-      <text x="${PL}" y="${(HPT+hcH+31).toFixed(1)}" fill="#78909c" font-size="10.5">leer</text>
-      <text x="${PL+120}" y="${(HPT+hcH+31).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="10.5">voll</text>
-      <text x="${PL+134}" y="${(HPT+hcH+22).toFixed(1)}" fill="#78909c" font-size="10.5">Ladestand · Tag (x) × Stunde (y)</text>`;
 
     // ── 3. SOC-Dauerlinie und Ø-Tagesgang ────────────────────────────────────
     const DH = overrideEl ? 240 : 206;   // Platz für 10,5-px-Beschriftung zwischen Ladestand und Leistung
@@ -5269,8 +5285,6 @@ function renderSpeicherFluss(demandH, pvProfile, napParams, params, varianten, o
       <text x="${(ox+DPL+dcW).toFixed(1)}" y="${(DPT+dcH+13).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="10.5">Uhrzeit</text>`;
 
     svgWrap.innerHTML = `
-      <svg width="${W}" height="${SH}" style="display:block;overflow:visible;">${sankey}</svg>
-      <svg width="${W}" height="${HH}" style="display:block;overflow:visible;margin-top:4px;">${cells}${monthMarks}${hourMarks}${legend}</svg>
       <svg width="${W}" height="${DH}" style="display:block;overflow:visible;margin-top:6px;">${dauer}${tagesgang}</svg>
       <div style="font-size:10.5px;color:var(--muted);margin-top:5px;line-height:1.6;">
         Alle Mengen und Leistungen an den AC-Klemmen des Speichers (η = ${(PV_BAT_ETA*100).toFixed(0)} % je Wandlung,
@@ -5320,17 +5334,19 @@ function _pvahDayToDate(dayIdx) {
   return `${d + 1}. ${_PVAH_MONTH_NAMES[m]}`;
 }
 
-// Deckungsgrad (0..1) → Farbe: rot (0 %) → gelb (50 %) → grün (100 %)
+// Deckungsgrad (0..1) → Farbe: orange (0 %) → sand (50 %) → blaugrün (100 %).
+// Früher rot → gelb → grün; bei Rot-Grün-Schwäche (≈ 8 % der Männer) waren die Enden
+// kaum unterscheidbar. Orange gegen Blaugrün trennt sich auch dann über die Helligkeit.
 function _pvahColor(v) {
   v = Math.max(0, Math.min(1, v));
   const lerp = (a, b, t) => Math.round(a + (b - a) * t);
   let r, g, b;
   if (v < 0.5) {
     const t = v / 0.5;
-    r = lerp(239, 255, t); g = lerp(83, 213, t); b = lerp(80, 79, t);
+    r = lerp(217, 222, t); g = lerp(95, 190, t); b = lerp(2, 110, t);
   } else {
     const t = (v - 0.5) / 0.5;
-    r = lerp(255, 102, t); g = lerp(213, 187, t); b = lerp(79, 106, t);
+    r = lerp(222, 27, t); g = lerp(190, 158, t); b = lerp(110, 119, t);
   }
   return `rgb(${r},${g},${b})`;
 }
@@ -5353,6 +5369,12 @@ let _pvahVarId = null;
 let _pvahPvKwp = null;
 let _pvahBatKwh = null;
 let _pvahWindKw = null;
+let _pvahModus = 'deckung';   // 'deckung' | 'soc' — was die Jahres-Heatmap in 3.4 zeigt
+
+window.pvahSetModus = function pvahSetModus(m) {
+  _pvahModus = m === 'soc' ? 'soc' : 'deckung';
+  renderAutarkieHeatmap(window._pvAnalyse.ergebnisse);
+};
 
 function renderAutarkieHeatmap(varianten, overrideEl) {
   const el = overrideEl || document.getElementById('pva-chart-autarkie-heatmap');
@@ -5395,11 +5417,11 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
 
   const elW = el.getBoundingClientRect().width || 700;
   const W = Math.max(420, elW - 4);
-  const H = overrideEl ? 360 : 220;
+  const H = overrideEl ? 400 : 230;
 
   el.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:10px;flex-wrap:wrap;">
-    <span style="font-size:12px;font-weight:400;color:#b0bec5;">Autarkie-Heatmap: Bedarfsdeckung durch PV + Speicher im Jahresverlauf
+    <span style="font-size:12px;font-weight:400;color:#b0bec5;">Jahresgang Tag × Stunde: Bedarfsdeckung oder Ladestand des Speichers
       <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px;">Schieber ziehen — die Heatmap aktualisiert sich live</span>
       <span id="pva-pvah-sub" style="display:block;font-size:10.5px;color:#a5d6a7;margin-top:2px;"></span>
     </span>
@@ -5424,23 +5446,56 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
     </div>` : ''}
   </div>
   ${fokus.label ? _pvaFokusZeileHtml(fokus) : ''}
-  <div id="pva-pvah-svg"></div>`;
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;color:var(--muted);">Zeigen:
+    ${[['deckung', 'Deckung des Bedarfs'], ['soc', 'Ladestand des Speichers']].map(([m, l]) =>
+      `<button data-pvah-modus="${m}" data-click="pvahSetModus('${m}')" style="cursor:pointer;border:1px solid #4fc3f7;border-radius:10px;padding:1px 9px;font-size:11px;background:transparent;color:#cfd8dc;">${l}</button>`).join('')}
+  </div>
+  <div id="pva-pvah-svg"></div>
+  <div id="pva-pvah-befund"></div>`;
 
   const svgWrap = el.querySelector('#pva-pvah-svg');
   const pvIn   = el.querySelector('#pva-pvah-pv');
   const batIn  = el.querySelector('#pva-pvah-bat');
   const windIn = el.querySelector('#pva-pvah-wind');
   const subEl = el.querySelector('#pva-pvah-sub');
+  const befundEl = el.querySelector('#pva-pvah-befund');
 
   function draw(pv, bat, windKw) {
     const strat = bat > 0 ? (spotH ? 'spot-dyn' : 'ev') : 'none';
     const windScale = windKwInst > 0 ? ((windKw ?? windKwInst) / windKwInst) : 1;
     const sim    = pvNapSim(pv, bat, demandH, pvProfile, napParams, strat, spotH, windScale);
-    const hourly = _pvahHourly(sim.deckungArr, dt);
+    const soc    = _pvahModus === 'soc';
+    el.querySelectorAll('[data-pvah-modus]').forEach(b => {
+      const an = b.dataset.pvahModus === _pvahModus;
+      b.style.background = an ? '#4fc3f7' : 'transparent';
+      b.style.color = an ? '#0a0e16' : '#cfd8dc';
+      b.style.fontWeight = an ? '700' : '400';
+    });
+
+    // Aktuelle Konfiguration einer kanonischen Variante zuordnen (für Label/Farbe) —
+    // gerundet, weil die Schieber ganzzahlig sind; bei Gleichstand gewinnt die Variante im Blick
+    const passt = v => Math.round(v.pvKwp) === Math.round(pv) && Math.round(v.batKwh) === Math.round(bat);
+    const match = passt(fokus) ? fokus : kanon.find(passt);
+    const farbe = match ? match.farbe : COL.pv;
+    const label = match ? `${match.icon} ${match.label}` : 'Eigene Auslegung';
+
+    if (soc && bat <= 0) {
+      if (subEl) subEl.textContent = `Ladestand: diese Auslegung hat keinen Speicher (${label})`;
+      if (befundEl) befundEl.innerHTML = '';
+      svgWrap.innerHTML = `<div style="color:var(--muted);font-size:11.5px;text-align:center;padding:40px 0;">
+        Ohne Speicher gibt es keinen Ladestand — Batterie-Schieber aufziehen oder „Deckung" wählen.</div>`;
+      return;
+    }
+
+    // Zellwerte 0..1: Deckung (Anteil des Bedarfs aus eigener Erzeugung) oder Ladestand
+    const hourly = soc ? Float32Array.from(_pvsfHourlySoc(sim.batSocArr, dt), v => v / bat)
+                       : _pvahHourly(sim.deckungArr, dt);
+    const farbeVon = soc ? _pvsfSocColor : _pvahColor;
     const nDays  = Math.floor(hourly.length / 24);
 
-    const PL = 30, PT = 24, PR = 16, PB = 30;
-    const cW = W - PL - PR, cH = H - PT - PB;
+    const PL = 30, PT = 24, PR = 16;
+    const cW = W - PL - PR, cH = H - PT - 30;
+    const MH = 44, mTop = PT + cH + 10;                      // Monatsstreifen unter der Heatmap
     const cellW = cW / nDays, cellH = cH / 24;
 
     // Zellen
@@ -5449,20 +5504,40 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
       for (let h = 0; h < 24; h++) {
         const v = hourly[d * 24 + h] ?? 1;
         const x = PL + d * cellW, y = PT + h * cellH;
-        cells += `<rect data-pvah-day="${d}" data-pvah-hour="${h}" data-pvah-val="${v.toFixed(4)}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(cellW + 0.3).toFixed(2)}" height="${(cellH + 0.3).toFixed(2)}" fill="${_pvahColor(v)}"/>`;
+        cells += `<rect data-pvah-day="${d}" data-pvah-hour="${h}" data-pvah-val="${v.toFixed(4)}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(cellW + 0.3).toFixed(2)}" height="${(cellH + 0.3).toFixed(2)}" fill="${farbeVon(v)}"/>`;
       }
     }
 
-    // Monatsmarken
-    let monthMarks = '';
-    let cum = 0;
+    // Monatswerte: Autarkie bedarfsgewichtet (nicht Mittel der Stundenanteile) bzw. Ø-Ladestand
+    const spt = Math.round(1 / dt), monat = [];
+    let tag0 = 0;
+    for (let m = 0; m < 12; m++) {
+      const von = tag0 * 24, bis = Math.min(nDays, tag0 + _PVAH_MONTH_DAYS[m]) * 24;
+      let z = 0, n = 0;
+      if (soc) {
+        for (let i = von; i < bis; i++) { z += hourly[i]; n++; }
+      } else {
+        for (let i = von * spt; i < bis * spt && i < demandH.length; i++) {
+          z += Math.min(1, sim.deckungArr[i]) * demandH[i]; n += demandH[i];
+        }
+      }
+      monat.push(n > 0 ? z / n : 0);
+      tag0 += _PVAH_MONTH_DAYS[m];
+    }
+
+    // Monatsmarken + Monatsstreifen
+    let monthMarks = '', streifen = '', cum = 0;
     for (let m = 0; m < 12; m++) {
       const x = PL + cum * cellW;
       const wMonth = _PVAH_MONTH_DAYS[m] * cellW;
       monthMarks += `<text x="${(x + wMonth / 2).toFixed(1)}" y="${(PT - 7).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="10.5">${_PVAH_MONTH_NAMES[m]}</text>`;
-      if (m > 0) monthMarks += `<line x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${(PT + cH).toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+      if (m > 0) monthMarks += `<line x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${(mTop + MH).toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+      const bh = monat[m] * (MH - 14);
+      streifen += `<rect x="${(x + 3).toFixed(1)}" y="${(mTop + MH - bh).toFixed(1)}" width="${Math.max(1, wMonth - 6).toFixed(1)}" height="${bh.toFixed(1)}" fill="${farbeVon(monat[m])}" opacity="0.9"/>
+        <text x="${(x + wMonth / 2).toFixed(1)}" y="${(mTop + MH - bh - 3).toFixed(1)}" text-anchor="middle" fill="#cfd8dc" font-size="10.5">${Math.round(monat[m] * 100)} %</text>`;
       cum += _PVAH_MONTH_DAYS[m];
     }
+    const streifenTitel = soc ? 'Ø Ladestand je Monat' : 'Autarkie je Monat (bedarfsgewichtet)';
 
     // Stundenmarken
     const hourMarks = [0, 6, 12, 18].map(h =>
@@ -5470,34 +5545,40 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
     ).join('');
 
     // Legende: Farbverlauf
-    const legW = 120, legH = 8;
-    const legX = PL, legY = PT + cH + 16;
+    const legW = 190, legH = 8;
+    const legX = PL, legY = mTop + MH + 14;
     const gradId = 'pvah-grad-' + (overrideEl ? 'fs' : 'm');
-    const gradStops = `<stop offset="0%" stop-color="${_pvahColor(0)}"/><stop offset="50%" stop-color="${_pvahColor(0.5)}"/><stop offset="100%" stop-color="${_pvahColor(1)}"/>`;
+    const gradStops = [0, 0.5, 1].map(f => `<stop offset="${f * 100}%" stop-color="${farbeVon(f)}"/>`).join('');
 
-    // Kennzahl: Anteil vollständig autarker Stunden
+    // Kennzahl + Befund
     let fullCount = 0;
-    for (let i = 0; i < hourly.length; i++) if (hourly[i] >= 0.999) fullCount++;
+    for (let i = 0; i < hourly.length; i++) if (soc ? hourly[i] >= 0.95 : hourly[i] >= 0.999) fullCount++;
     const fullPct = (fullCount / hourly.length * 100).toFixed(0);
-
-    // Aktuelle Konfiguration einer kanonischen Variante zuordnen (für Label/Farbe) —
-    // gerundet, weil die Schieber ganzzahlig sind; bei Gleichstand gewinnt die Variante im Blick
-    const passt = v => Math.round(v.pvKwp) === Math.round(pv) && Math.round(v.batKwh) === Math.round(bat);
-    const match = passt(fokus) ? fokus : kanon.find(passt);
-    const farbe = match ? match.farbe : COL.pv;
-    const label = match ? `${match.icon} ${match.label}` : 'Eigene Auslegung';
-    if (subEl) subEl.textContent = `${fullPct} % der Stunden im Jahr vollständig autark (${label})`;
+    if (subEl) subEl.textContent = soc
+      ? `Speicher in ${fullPct} % der Stunden fast voll (> 95 %) · ${label}`
+      : `${fullPct} % der Stunden im Jahr vollständig autark · ${label}`;
+    const iMax = monat.indexOf(Math.max(...monat)), iMin = monat.indexOf(Math.min(...monat));
+    const MON_LANG = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+    if (befundEl) befundEl.innerHTML = _pvaBefund(soc
+      ? `Der Speicher ist im ${MON_LANG[iMax]} im Mittel zu <b>${Math.round(monat[iMax] * 100)} %</b> gefüllt, im ${MON_LANG[iMin]} nur zu <b>${Math.round(monat[iMin] * 100)} %</b> — ` +
+        (monat[iMin] < 0.15 ? 'im Winter steht er weitgehend leer; zusätzliche Kapazität hilft dann nicht.' : 'er wird ganzjährig genutzt.')
+      : `Die Autarkie reicht von <b>${Math.round(monat[iMin] * 100)} %</b> im ${MON_LANG[iMin]} bis <b>${Math.round(monat[iMax] * 100)} %</b> im ${MON_LANG[iMax]}` +
+        (monat[iMax] - monat[iMin] > 0.4 ? ' — die Lücke im Winterhalbjahr schließt kein Tagesspeicher, sie bleibt Netzbezug.' : '.'));
 
     svgWrap.innerHTML = `
-    <svg width="${W}" height="${H + 24}" style="display:block;overflow:hidden;cursor:default;">
+    <svg width="${W}" height="${legY + legH + 16}" style="display:block;overflow:hidden;cursor:default;">
       <defs><linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="0">${gradStops}</linearGradient></defs>
       ${monthMarks}
       ${hourMarks}
       ${cells}
-      <rect x="${PL}" y="${(PT + cH + 1).toFixed(1)}" width="${cW.toFixed(1)}" height="${cH.toFixed(1)}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <rect x="${PL}" y="${PT}" width="${cW.toFixed(1)}" height="${cH.toFixed(1)}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <text x="${(PL - 5).toFixed(1)}" y="${(mTop + 11).toFixed(1)}" text-anchor="end" fill="#78909c" font-size="10">Mon.</text>
+      ${streifen}
+      <line x1="${PL}" y1="${(mTop + MH).toFixed(1)}" x2="${(PL + cW).toFixed(1)}" y2="${(mTop + MH).toFixed(1)}" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
       <rect x="${legX}" y="${legY}" width="${legW}" height="${legH}" fill="url(#${gradId})" rx="2"/>
-      <text x="${legX}" y="${(legY + legH + 10)}" fill="#90a4ae" font-size="10.5">0&thinsp;% gedeckt</text>
-      <text x="${(legX + legW).toFixed(1)}" y="${(legY + legH + 10)}" text-anchor="end" fill="#90a4ae" font-size="10.5">100&thinsp;% gedeckt</text>
+      <text x="${legX}" y="${(legY + legH + 12)}" fill="#90a4ae" font-size="10.5">${soc ? 'leer' : '0 % gedeckt'}</text>
+      <text x="${(legX + legW).toFixed(1)}" y="${(legY + legH + 12)}" text-anchor="end" fill="#90a4ae" font-size="10.5">${soc ? 'voll' : '100 % gedeckt'}</text>
+      <text x="${(legX + legW + 14).toFixed(1)}" y="${(legY + legH)}" fill="#78909c" font-size="10.5">Tag (x) × Stunde (y) · Streifen: ${streifenTitel}</text>
     </svg>`;
 
     const svg = svgWrap.querySelector('svg');
@@ -5508,7 +5589,8 @@ function renderAutarkieHeatmap(varianten, overrideEl) {
       _pvShowTT(ev,
         `<span style="color:${farbe};font-weight:700">${label}</span><br>` +
         `${_pvahDayToDate(day)}, ${hour}:00–${hour + 1}:00 Uhr<br>` +
-        `Deckung: <strong>${(val * 100).toFixed(0)}&thinsp;%</strong> · Netzbezug: <strong>${(100 - val * 100).toFixed(0)}&thinsp;%</strong>`
+        (soc ? `Ladestand: <strong>${(val * 100).toFixed(0)}&thinsp;%</strong> · ${Math.round(val * bat).toLocaleString('de-DE')} kWh`
+             : `Deckung: <strong>${(val * 100).toFixed(0)}&thinsp;%</strong> · Netzbezug: <strong>${(100 - val * 100).toFixed(0)}&thinsp;%</strong>`)
       );
     });
     svg.addEventListener('mouseleave', _pvHideTT);
@@ -6720,6 +6802,16 @@ function renderSensitivitaet(varianten, overrideEl) {
 
   if (!rows.length) { el.innerHTML = ''; return; }
 
+  const wertTxt = (r, x) => (r.isPct ? x * 100 : x).toLocaleString('de-DE', { maximumFractionDigits: r.dez }) + r.unit;
+  const top = rows[0];
+  let schlecht = null;
+  for (const r of rows) for (const [x, s] of [[r.lo, r.sLo], [r.hi, r.sHi]]) if (!schlecht || s < schlecht.s) schlecht = { r, x, s };
+  const kEur = n => Math.round(n / 1000).toLocaleString('de-DE');
+  const befund = `Größter Hebel ist <b>${top.label}</b> — zwischen ${wertTxt(top, top.lo)} und ${wertTxt(top, top.hi)} schwankt der Jahresüberschuss um <b>${kEur(top.span)} k€/a</b>.` +
+    (schlecht.s < 0
+      ? ` Im ungünstigsten Einzelfall (${schlecht.r.label} ${wertTxt(schlecht.r, schlecht.x)}) wird er negativ (${kEur(schlecht.s)} k€/a).`
+      : ` Er bleibt in allen geprüften Einzelfällen positiv (mindestens ${kEur(schlecht.s)} k€/a).`);
+
   const elW = el.getBoundingClientRect().width || 700;
   const W   = Math.max(440, elW - 4);
   const PL = 150, PR = 28, PT = 10, PB = 30;
@@ -6787,7 +6879,7 @@ function renderSensitivitaet(varianten, overrideEl) {
     <text x="${xBase.toFixed(1)}" y="${(PT-1).toFixed(1)}" text-anchor="middle" fill="#fdd835" font-size="10.5">Basis</text>
     ${bars}
     <text x="${(PL+plotW/2).toFixed(1)}" y="${(H-2).toFixed(1)}" text-anchor="middle" fill="#90a4ae" font-size="11">Jahresüberschuss (k€/a) →</text>
-  </svg>`;
+  </svg>  ${_pvaBefund(befund)}`;
 
   // Tooltip je Balken
   const svg = el.querySelector('svg');

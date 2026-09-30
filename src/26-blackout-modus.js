@@ -22,6 +22,7 @@ import {
   INSEL_PARAMETER, INSEL_STATUS, liegenschaftsInsel,
   WAERME_SZENARIEN, WAERME_PARAMETER, WAERME_ENERGIETRAEGER, waermeBlackout,
   ZIEL_STROM_STUFEN, ZIEL_STATUS, ZIEL_PARAMETER, normalisiereZiele, zielGebaeude, bewerteZiel, resilienzZielMatrix,
+  einspeisepunktBemessung, stationsVersorgungMobil,
 } from './lib/resilienz-core.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { globalYear, thermSpeicherAktiv } from './01-globals-varianten.js';
@@ -681,6 +682,8 @@ function _inselErgebnis(anteilPct, dauerH, eingaben = _platzEingaben(globalYear)
       spitzeKw: _profilSpitze(getNodeProfile8760(t)),
       abKw: agg?.peakKw || 0,
       nsAbgaenge: agg?.abgaenge || [],
+      bestandKw: agg?.bestandKw || 0,
+      gebaeude: agg?.gebaeude || [],
     };
   });
   const { profil, quelle } = _liegenschaftsProfil(nap);
@@ -704,7 +707,7 @@ function _inselErgebnis(anteilPct, dauerH, eingaben = _platzEingaben(globalYear)
   return {
     ergebnis, quelle, jahr,
     nap: nap ? { lat: nap.lat, lng: nap.lng, name: nap.name } : null,
-    ohneNap: !nap, ohneTrafo: !trafos.length, msKabelM,
+    ohneNap: !nap, ohneTrafo: !trafos.length, msKabelM, uKv: _num(napProps.spannungKV) || 20,
   };
 }
 
@@ -1171,7 +1174,7 @@ export function blackoutZieleErgebnis() {
 }
 
 /**
- * Stand für die Gutachtentexte 5.2.1–5.2.3 und 3.4.3 (17-gutachten-grafik.js liest ihn über window).
+ * Stand für die Gutachtentexte 5.2.1, 5.2.7, 5.2.8 und 3.4.3 (17-gutachten-grafik.js liest ihn über window).
  * Rechnet die Schutzziele bei Bedarf neu.
  */
 export function blackoutGutachtenStand() {
@@ -1214,6 +1217,123 @@ export function blackoutGutachtenStand() {
     ziele,
     empfehlung: ziele?.empfehlung || null,
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// GUTACHTEN: DREI FESTE SZENARIEN (Kapitel 5.2.2–5.2.6)
+// ══════════════════════════════════════════════════════════════════════════
+// Unabhängig von den frei definierten Schutzzielen stellt jedes Gutachten drei
+// Szenarien gegenüber: (1) nur die kritischen Gebäude (Klasse A) mit Aggregaten
+// am Bestandsnetz, (2) je Trafostation eine NEA an der NSHV für die Gebäude A/B
+// der Station (Platzierung „trafo"), stationär oder mobil über den Einspeisepunkt,
+// und (3) die Liegenschaft als Insel am NAP mit den Einstellungen des Reiters
+// „Liegenschaft" — vom Gebäude über die Station zur Liegenschaft. Die Insel wird
+// zuerst gerechnet, weil Szenario 2 deren Trafoleistungen braucht. Alle über
+// dieselbe Dauer (Reiter „Liegenschaft"), alle mit Wärme. Dazu je Trafostation der
+// Einspeisepunkt für ein mobiles Aggregat (allgemeine Empfehlung).
+
+let _szenarien = null;
+
+/** Stand beider Szenarien für die Gutachten-Grafik (17); rechnet nur bei geänderten Eingaben neu. */
+export function blackoutSzenarienStand() {
+  const e = blackoutEinstellungen();
+  const sig = _zieleSig();
+  if (_szenarien?.sig === sig) return _szenarien;
+  const jahr = globalYear;
+  const dauerH = e.insel.dauerH;
+  const eingaben = _platzEingaben(jahr);
+  const bilanz = blackoutBilanz();
+  const wRoh = blackoutWaermeRechnen(dauerH);
+  const waerme = wRoh?.mit.mitNea ? wRoh.mit : null;
+  const gebName = id => _geb(id)?.name || `Gebäude ${id}`;
+  const klasseVon = id => normalisiereNotstrom(_geb(id)?.notstrom)?.klasse || null;
+  const spitzeSumme = v => v.aggregate.reduce((s, a) => s + a.peakKw, 0);
+
+  // ── Szenario 1: nur Klasse A ──
+  const platzA = notstromPlatzierungVergleich({ ...eingaben, gebaeude: zielGebaeude(eingaben.gebaeude, 'A') });
+  const s1 = bewerteZiel({
+    ziel: { id: 'sz1', name: 'Kritische Gebäude', strom: 'A', anteilPct: 100, dauerH, waerme: true },
+    platz: platzA, waerme,
+  });
+  s1.variante = platzA.varianten[platzA.empfohlen];
+  const aKw = spitzeSumme(s1.variante);
+  // Was die Klasse B zusätzlich kosten würde (nur als Hinweis im Text)
+  let mitB = null, abKw = aKw;
+  if (bilanz.klassen.B.anzahl) {
+    const platzAB = notstromPlatzierungVergleich({ ...eingaben, gebaeude: zielGebaeude(eingaben.gebaeude, 'AB') });
+    const v = platzAB.varianten[platzAB.empfohlen];
+    abKw = spitzeSumme(v);
+    mitB = { kw: v.summe.kw, anzahl: v.summe.anzahl, kosten: v.summe.kosten };
+  }
+
+  // ── Szenario 3: Liegenschaft als Insel am NAP ──
+  const ins = _inselErgebnis(e.insel.anteilPct, dauerH, eingaben);
+  const r = ins.ergebnis;
+  const s3 = bewerteZiel({
+    ziel: { id: 'sz3', name: 'Gesamtliegenschaft', strom: 'insel', anteilPct: e.insel.anteilPct, dauerH, waerme: true },
+    insel: r, waerme,
+  });
+  s3.insel = r;
+
+  // ── Szenario 2: je Trafostation eine NEA für die Gebäude A/B ──
+  const v2 = notstromPlatzierung({ ...eingaben, gebaeude: zielGebaeude(eingaben.gebaeude, 'AB'), strategie: 'trafo' });
+  const s2 = bewerteZiel({
+    ziel: { id: 'sz2', name: 'Je Trafostation', strom: 'AB', anteilPct: 100, dauerH, waerme: true },
+    platz: { varianten: { trafo: v2 }, empfohlen: 'trafo' }, waerme,
+  });
+  s2.variante = v2;
+  const trafoKva = new Map(r.lastabwurf.versorgt.concat(r.lastabwurf.abschalten).map(t => [t.id, t.kva]));
+  const mobil = stationsVersorgungMobil(v2, id => trafoKva.get(id) || 0);
+  const mobilVon = new Map(mobil.standorte.map(m => [`${m.ort}:${m.id}`, m]));
+  const s2Kw = spitzeSumme(v2);
+  if (wRoh && !waerme) {
+    for (const b of [s1, s2, s3]) {
+      b.gruende = b.gruende.filter(g => g !== 'kein Wärme-Lastgang');
+      b.gruende.push('Wärme-Reiter ohne Notstrom an der Heizzentrale — dort einschalten');
+    }
+  }
+
+  // ── Trafostationen: Rolle in beiden Szenarien und Einspeisepunkt ──
+  const heute = new Date().getFullYear();
+  const stufeVon = new Map();
+  r.zuschaltung.stufen.forEach((st, i) => st.trafos.forEach(t => stufeVon.set(t.id, i + 1)));
+  const versorgt = new Set(r.lastabwurf.versorgt.map(t => t.id));
+  const aggInfo = a => ({
+    ort: a.ort, typ: a.typ, name: a.name, kw: a.empfKw, peakKw: a.peakKw, bestandKw: a.bestandKw || 0, zusatzKw: a.zusatzKw || 0,
+    gebaeude: a.gebaeude.map(gebName), abgaenge: a.abgaenge.length,
+    kosten: a.kosten, mobil: mobilVon.get(`${a.ort}:${a.id}`) || null,
+  });
+  const stationen = [...r.lastabwurf.versorgt, ...r.lastabwurf.abschalten].map(t => ({
+    id: t.id, name: t.name || 'Trafostation', kva: t.kva, baujahr: t.baujahr || null,
+    alterJ: t.baujahr ? heute - t.baujahr : null,
+    spitzeKw: t.spitzeKw, abKw: t.abKw, bestandKw: t.bestandKw || 0,
+    gebaeude: (t.gebaeude || []).map(id => ({ name: gebName(id), klasse: klasseVon(id) })),
+    sz1: s1.variante.aggregate.filter(a => a.trafoId === t.id && a.empfKw > 0).map(aggInfo),
+    sz3: { versorgt: versorgt.has(t.id), stufe: stufeVon.get(t.id) || null },
+    sz2: v2.aggregate.filter(a => a.trafoId === t.id && a.empfKw > 0).map(aggInfo),
+    einspeisung: einspeisepunktBemessung({ spitzeKw: t.spitzeKw, trafoKva: t.kva }),
+  })).sort((a, b) => String(a.name).localeCompare(String(b.name), 'de', { numeric: true }));
+  const ohneStationVon = v => v.aggregate
+    .filter(a => a.trafoId == null && a.empfKw > 0).map(a => ({ ...aggInfo(a), fest: !!a.fest, nichtAmNetz: !!a.nichtAmNetz }));
+  const ohneStation = ohneStationVon(s1.variante);
+
+  const namen = k => bilanz.zeilen.filter(z => z.klasse === k).map(z => z.name);
+  const hz = _heizzentrale();
+  _szenarien = {
+    sig, jahr, dauerH, bilanz, namen: { A: namen('A'), B: namen('B'), C: namen('C') },
+    liegenschaftSpitzeKw: r.spitzeKw, lastQuelle: ins.quelle, ohneNap: ins.ohneNap, msKabelM: ins.msKabelM, uKv: ins.uKv,
+    s1: { bewertung: s1, strategie: NEA_STRATEGIEN[s1.variante.strategie].label, aKw, abKw, mitB },
+    s3: { bewertung: s3, anteilPct: e.insel.anteilPct, redundanz: e.insel.redundanz },
+    // stationaer = bewertung (Aggregate + Kraftstofflager + Wärme); mobil = Einspeisepunkte + Abgänge + Wärme
+    s2: { bewertung: s2, kw: s2Kw, ohneStation: ohneStationVon(v2),
+          mobil: { ...mobil.summe, gesamt: mobil.summe.kosten + (s2.waerme?.kosten || 0) } },
+    stationen, ohneStation,
+    heizzentrale: hz ? (hz.name || 'Heizzentrale') : '',
+    waerme: waerme ? { deckungPct: waerme.deckungEnergiePct, neaKw: waerme.neaKw, szenario: WAERME_SZENARIEN[e.waerme.szenario].label }
+      : wRoh ? { deckungPct: wRoh.ohne.deckungEnergiePct, neaKw: 0, ohneNea: true, szenario: WAERME_SZENARIEN[e.waerme.szenario].label }
+      : null,
+  };
+  return _szenarien;
 }
 
 function _zieleNachAenderung() {
@@ -1272,7 +1392,7 @@ function _zieleBlock() {
         ${st ? `<span style="font-size:9px;color:${st.farbe};white-space:nowrap;">${st.label}</span>` : ''}
         <button class="btn-xs" style="padding:0 5px;${e.empfehlung === z.id ? `border-color:#ffd54f;color:#ffd54f;background:#ffd54f26;` : ''}"
           data-click="blackoutZielEmpfehlen('${z.id}')"
-          title="${e.empfehlung === z.id ? 'Empfehlung des Gutachtens (Kapitel 5.2.3) — erneut klicken zum Entfernen' : 'Als Empfehlung des Gutachtens markieren (Kapitel 5.2.3)'}">${e.empfehlung === z.id ? '★' : '☆'}</button>
+          title="${e.empfehlung === z.id ? 'Empfehlung des Gutachtens (Kapitel 5.2.8) — erneut klicken zum Entfernen' : 'Als Empfehlung des Gutachtens markieren (Kapitel 5.2.8)'}">${e.empfehlung === z.id ? '★' : '☆'}</button>
         <button class="btn-xs" style="padding:0 5px;" data-click="blackoutZielWeg('${z.id}')" title="Ziel entfernen">✕</button>
       </div>
       <div style="display:flex;gap:4px;margin-top:4px;align-items:center;font-size:9.5px;">

@@ -15,6 +15,8 @@ import { BP_STUFEN, bpStufen, bpLadeLeistung, bpJahresreihe } from './lib/bedarf
 import { sdJahresuebersicht, sdJahresauswertung, sdTrend, sdZeitraumText, sdDauerlinie } from './lib/stromdaten.js';
 import { ENGPASS_GRENZEN, ENGPASS_VORLAUF_J, engpassVersorgung } from './lib/engpass-core.js';
 import { EK_GRUPPEN, EK_ARTEN, EK_VORGABEN, ekNormKennwerte, ekAuswertung } from './lib/elektro-kosten.js';
+import { resilienzZielMatrix, zielKraftstoffL } from './lib/resilienz-core.js';
+import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1) DESIGN-TOKENS — gelten für ALLE Gutachten-Grafiken
@@ -1255,6 +1257,7 @@ function ggRenderTrafostationenText(cfg, T = GG_THEME) {
   void cfg;
   const name = document.querySelector('.header-projekt-name')?.textContent?.trim() || '';
   return ggTextBlatt([
+    ...ggNetzStrukturAbsaetze(),
     `Die Tabelle Übersicht der Trafostationen zeigt eine Übersicht aller Trafostationen der Liegenschaft `
       + `${ggTextFeld(name, 'Name Liegenschaft')}. Im weiteren Verlauf werden die im Zuge einer Begehung besichtigten `
       + `Trafostationen näher betrachtet um eventuelle Bedarfe und Empfehlungen zur Anpassung oder Erneuerung von `
@@ -2311,11 +2314,11 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
       gebIdx:      g ? gebListe.indexOf(g) : 1e9,
       gebLabel:    String(g?.gebaeudenummer || g?.name || '—').trim(),
       stationKey:  t.buildingId || 'einzeln:' + t.id,
-      // Heißt das Standortgebäude schon „Trafostation 3“, gewinnt dieser
-      // Name — sonst wird unten in Tabellenreihenfolge durchnummeriert. Steht
-      // derselbe Name schon in der Gebäudespalte, wird ebenfalls nummeriert,
-      // damit die Zeile ihn nicht doppelt zeigt.
-      stationName: /station/i.test(g?.name || '') ? String(g.name).trim() : '',
+      // Heißt das Standortgebäude schon „Trafostation 3“ (oder „TST 3“, „Kompaktstation 3“),
+      // gewinnt dieser Name — auch wenn er dann in der Gebäudespalte noch einmal steht; sonst
+      // wird unten in Tabellenreihenfolge durchnummeriert. Tabelle, Übersichtsschaltbild und
+      // Resilienz nennen die Station so gleich.
+      stationName: GG_STATION_NAME.test(g?.name || '') ? String(g.name).trim() : '',
       trafo:       t.name || 'Trafo',
       kva:         Number(t.props?.leistungKVA) || 0,
       bj:          Number.isFinite(bj) ? bj : null,
@@ -2330,9 +2333,27 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
                      || (a.gebIdx - b.gebIdx)
                      || a.trafo.localeCompare(b.trafo, 'de', { numeric: true }));
 
+  // Durchnummeriert werden nur Stationen ohne eigenen Namen, und zwar mit Nummern, die kein
+  // benanntes Standortgebäude schon trägt — sonst hieß „Trafostation 1“ zweimal. Benannte
+  // Stationen behalten ihren Namen; ihr Eintrag in `nr` zählt nur für die Stationsanzahl.
+  const belegt = new Set(zeilen.filter(z => z.stationName).map(z => ggNummerAusName(z.stationName)).filter(n => n != null));
   const nr = new Map();
-  for (const z of zeilen) if (!nr.has(z.stationKey)) nr.set(z.stationKey, nr.size + 1);
+  let n = 0;
+  for (const z of zeilen) {
+    if (nr.has(z.stationKey)) continue;
+    if (z.stationName) { nr.set(z.stationKey, ggNummerAusName(z.stationName)); continue; }
+    do n++; while (belegt.has(n));
+    nr.set(z.stationKey, n);
+  }
+  for (const z of zeilen) z.station = z.stationName || 'Trafostation ' + nr.get(z.stationKey);
   return { zeilen, nr };
+}
+
+const GG_STATION_NAME = /station|^\s*(TST|TS|TrSt)\s*[-.]?\s*\d/i;
+/** Endnummer einer Stationsbezeichnung: „Trafostation 12“ → 12, „TST 4a“ → 4. */
+function ggNummerAusName(s) {
+  const m = /(\d+)\s*[a-z]?\s*$/i.exec(String(s || ''));
+  return m ? parseInt(m[1], 10) : null;
 }
 
 /**
@@ -2343,14 +2364,14 @@ function ggTrafoZeilen(trafos, { nurBestand = false } = {}) {
 export function ggTrafostationenIstListe() {
   let trafos = [];
   try { trafos = window.listAssets?.({ type: 'Trafo' }) || []; } catch (e) { void e; }
-  const { zeilen, nr } = ggTrafoZeilen(trafos, { nurBestand: true });
+  const { zeilen } = ggTrafoZeilen(trafos, { nurBestand: true });
   const gesehen = new Set();
   const out = [];
   for (const z of zeilen) {
     if (gesehen.has(z.stationKey)) continue;
     gesehen.add(z.stationKey);
     out.push({
-      label: (z.stationName && z.stationName !== z.gebLabel) ? z.stationName : 'Trafostation ' + nr.get(z.stationKey),
+      label: z.station,
       gebLabel: z.gebLabel,
     });
   }
@@ -2407,8 +2428,7 @@ GG_FIGUREN.push(
 
       cfg.zeilen = zeilen.map(z => ({
         werte: [z.gebLabel,
-                (z.stationName && z.stationName !== z.gebLabel)
-                  ? z.stationName : 'Trafostation ' + nr.get(z.stationKey),
+                z.station,
                 z.trafo,
                 z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—',
                 z.bj || '—'],
@@ -2457,8 +2477,7 @@ GG_FIGUREN.push(
 
       cfg.zeilen = zeilen.map(z => ({
         werte: [z.gebLabel,
-                (z.stationName && z.stationName !== z.gebLabel)
-                  ? z.stationName : 'Trafostation ' + nr.get(z.stationKey),
+                z.station,
                 z.trafo,
                 z.kva > 0 ? ggNum(z.kva) + ' kVA' : '—',
                 z.geplant ? 'geplant' : (z.bj || '—')],
@@ -2476,6 +2495,522 @@ GG_FIGUREN.push(
   },
 
 );
+
+/* ── 3.1.2 Übersichtsschaltbild des Liegenschaftsnetzes ─────────────────────────
+ * Stationsebene statt Einzelbetriebsmittel (lib/netz-uebersicht.js): oben das Netz des
+ * Netzbetreibers, die Eigentumsgrenze am NAP und die Übergabestation, darunter deren
+ * MS-Sammelschiene senkrecht; rechts je Abgang eine Reihe Stationskarten. Ein Ring ist eine
+ * geschlossene Schleife zurück zur Sammelschiene, Abzweige laufen in Spuren unter den Reihen.
+ * Stationsnamen wie in der Tabelle „Übersicht Trafostationen" (ggTrafoZeilen). */
+
+const GG_NU_ERZ = { PV: ['PV', 'kWp'], KWK: ['BHKW', 'kWel'], Wind: ['Wind', 'kW'], Batterie: ['Batterie', 'kW'], Nsa: ['NEA', 'kW'], H2: ['H₂', 'kW'] };
+const GG_NU_ART = { ring: 'Ring', strahl: 'Strahl', verzweigt: 'Strahl, verzweigt', vermascht: 'vermascht', kette: 'Kette' };
+
+/** Trafos einer Station als Kurztext: „2 × 630 kVA", „2 × 630 + 800 kVA". */
+function ggNuTrafoText(trafos) {
+  if (!trafos.length) return '';
+  const kvas = trafos.map(t => (t.kva > 0 ? t.kva : null));
+  if (kvas.every(k => k == null)) return `${trafos.length > 1 ? trafos.length + ' Trafos' : 'Trafo'} ohne Leistungsangabe`;
+  return ggNuKvaGruppen(kvas) + ' kVA';
+}
+
+/** Leistungen gleicher Größe zusammengefasst, größte zuerst: [630, 800, 630] → „2 × 630 + 800". */
+function ggNuKvaGruppen(kvas) {
+  const n = new Map();
+  for (const k of kvas) n.set(k, (n.get(k) || 0) + 1);
+  return [...n.entries()].sort((a, b) => (b[1] - a[1]) || ((b[0] ?? -1) - (a[0] ?? -1)))
+    .map(([k, c]) => (c > 1 ? `${c} × ` : '') + (k > 0 ? ggNum(k) : '?')).join(' + ');
+}
+
+/** Erzeuger auf der NS-Seite einer Station: „PV 344 kWp · NEA 200 kW". */
+function ggNuErzeugerText(erz) {
+  return Object.entries(GG_NU_ERZ).filter(([t]) => erz?.[t]).map(([t, [lbl, einh]]) => {
+    const e = erz[t];
+    return e.kw > 0 ? `${lbl} ${ggNum(e.kw)} ${einh}` : lbl;
+  }).join(' · ');
+}
+
+/**
+ * Netzmodell → Stationsansicht für ggRenderNetzUebersicht; Rückgabe enthält auch das Rohergebnis der Lib
+ * und `sicht(key)` für Stationsnamen. mitPlanung = Zielnetz (3.4.1): geplante Stationen/Kabel, geplante
+ * Maßnahmen (Trafotausch, Kabelertüchtigung) und Rückbau bis zum Zieljahr.
+ */
+function ggNetzUebersichtDaten({ mitPlanung = false, zieljahr = null } = {}) {
+  let assets = [];
+  try { assets = window.listAssets?.() || []; } catch (e) { void e; }
+  const gebListe = window.gebaeude || [];
+  const r = nuNetzUebersicht({ assets, edges: window.stromEdges || [], gebaeude: gebListe,
+    typeRank: window.TYPE_RANK || undefined, heute: new Date().getFullYear(), mitPlanung, zieljahr,
+    massnahmeJahr: typeof window.massnahmeJahr === 'function' ? m => window.massnahmeJahr(m) : undefined });
+  const { nr } = ggTrafoZeilen(assets.filter(a => a.type === 'Trafo'), { nurBestand: !mitPlanung });
+
+  const sicht = key => {
+    const st = r.stationen[key];
+    const stName = GG_STATION_NAME.test(st.gebName) ? st.gebName.trim() : '';
+    // Heißt das Gebäude schon wie die Station, steht darunter nur noch die Gebäudenummer.
+    const gebLabel = st.gebNummer ? `Gebäude ${st.gebNummer}` : stName ? '' : st.gebName;
+    const tabKey = st.gebId != null ? st.gebId : st.trafos[0] ? 'einzeln:' + st.trafos[0].id : null;
+    const station = stName || (st.trafos.length ? `Trafostation ${nr.get(tabKey) ?? '?'}` : '');
+    const titel = st.hatNap ? 'Übergabestation' : station || 'Schaltstation';
+    const zeile2 = [st.hatNap ? station : '', gebLabel].filter(Boolean).join(' · ');
+    const erzTrafo = st.trafos.some(t => t.erzeugung);
+    // Zielnetz: was sich an einer bestehenden Station ändert (Trafotausch, zusätzlicher Trafo)
+    const tausch = st.trafos.filter(t => t.ertuechtigt), neu = st.trafos.filter(t => t.geplant);
+    const zubau = st.geplant ? '' : [
+      tausch.length ? `Tausch ${ggNuKvaGruppen(tausch.map(t => t.kvaIst))} → ${ggNuKvaGruppen(tausch.map(t => t.kva))} kVA` : '',
+      neu.length ? `+ ${ggNuTrafoText(neu)} neu` : '',
+    ].filter(Boolean).join(' · ');
+    return {
+      titel, zeile2, trafo: ggNuTrafoText(st.trafos), hatTrafo: st.trafos.length > 0, zubau,
+      geb: [st.gebaeudeVersorgt ? `${ggNum(st.gebaeudeVersorgt)} Gebäude versorgt` : '', erzTrafo ? 'Erzeugungsnetz' : '']
+        .filter(Boolean).join(' · '),
+      erz: ggNuErzeugerText(st.erzeuger), ts: st.trennstelle, geplant: st.geplant, uebergabe: st.hatNap,
+    };
+  };
+  const kante = v => ({ ts: v.trennstelle, geplant: v.geplant, ertuechtigt: v.ertuechtigt, anzahl: v.anzahl });
+  const abgang = ab => ({
+    art: ab.art, abzweige: ab.abzweige || 0, stationen: ab.folge.map(sicht),
+    innen: ab.innen.map(x => ({ i: x.i, j: x.j, ...kante(x.kante) })),
+    wurzel: ab.wurzel.map(x => ({ i: x.i, ...kante(x.kante) })),
+  });
+  const netz = {
+    napKV: r.kennzahlen.napKV,
+    bloecke: r.wurzeln.map(w => ({ station: sicht(w.key), napKV: r.stationen[w.key].napKV, abgaenge: w.abgaenge.map(abgang) })),
+    ohneNap: r.ohneNap.map(abgang),
+  };
+  return { netz, r, sicht };
+}
+
+/**
+ * Absätze zur Netzstruktur für den Einleitungstext von 3.1.2 — aus demselben Ergebnis wie das
+ * Übersichtsschaltbild. Ohne Netzmodell leer (der Text beginnt dann mit dem Tabellenabsatz).
+ */
+function ggNetzStrukturAbsaetze() {
+  let r;
+  try { ({ r } = ggNetzUebersichtDaten()); } catch (e) { void e; return []; }
+  const k = r.kennzahlen;
+  if (!Object.keys(r.stationen).length) return [];
+  const eine = (n, einz, mehrz, w = 'eine') => (n === 1 ? `${w} ${einz}` : `${ggNum(n)} ${mehrz}`);
+  const s = [];
+
+  const netzTxt = k.napKV ? `an das ${ggNum(k.napKV, k.napKV % 1 ? 1 : 0)}-kV-Mittelspannungsnetz`
+    : `an das Mittelspannungsnetz (${ggTextFeld('', 'Nennspannung in kV')})`;
+  const nW = r.wurzeln.length;
+  if (nW === 1) {
+    const st = r.stationen[r.wurzeln[0].key];
+    const geb = st.gebNummer ? `Gebäude ${st.gebNummer}` : st.gebName;
+    s.push(`Die Liegenschaft ist über eine Übergabestation${geb ? ` (${geb})` : ''} ${netzTxt} des Netzbetreibers angeschlossen.`);
+  } else if (nW > 1) {
+    s.push(`Die Liegenschaft ist über ${ggNum(nW)} Netzanschlusspunkte mit jeweils eigener Übergabestation ${netzTxt} des Netzbetreibers angeschlossen.`);
+  } else {
+    s.push(`Die Liegenschaft ist über ${ggTextFeld('', 'Übergabestation / Netzanschlusspunkt')} ${netzTxt} des Netzbetreibers angeschlossen.`);
+  }
+
+  const abg = r.wurzeln.flatMap(w => w.abgaenge);
+  const von = nW > 1 ? 'Von den Übergabestationen' : 'Von der Übergabestation';
+  if (abg.length === 1) {
+    const n = abg[0].folge.length;
+    const art = abg[0].art === 'ring' ? 'ein Mittelspannungsring' : 'ein Mittelspannungsstrahl';
+    s.push(`${von} geht ${art} aus, über den ${eine(n, 'Station', 'Stationen')} versorgt ${n === 1 ? 'wird' : 'werden'}.`);
+  } else if (abg.length > 1) {
+    s.push(`${von} gehen ${ggNum(abg.length)} Mittelspannungsabgänge aus`
+      + (k.ringe ? `, davon ${k.ringe === abg.length ? 'alle' : ggNum(k.ringe)} als Ring ausgeführt` : '') + '.');
+  }
+  const ringe = abg.filter(a => a.art === 'ring');
+  if (ringe.length) {
+    const alleMitTs = ringe.every(a => a.trennstelleErfasst);
+    s.push(`Im Normalbetrieb ${ringe.length === 1 ? 'wird der Ring' : 'werden die Ringe'} an einer offenen Trennstelle aufgetrennt `
+      + `und als zwei Strahlen betrieben` + (alleMitTs ? '; die Trennstellen sind in der folgenden Abbildung markiert.'
+        : ` (Lage der Trennstelle: ${ggTextFeld('', 'Station bzw. Kabelabschnitt')}).`));
+  }
+  s.push(`Insgesamt ${k.stationen === 1 ? 'ist' : 'sind'} ${eine(k.stationen, 'Trafostation', 'Trafostationen')} mit ${eine(k.trafos, 'Transformator', 'Transformatoren', 'einem')} `
+    + `und einer installierten Leistung von ${ggNum(k.kva)} kVA vorhanden.`);
+  const ohne = r.ohneNap.reduce((n, a) => n + a.folge.length, 0);
+  if (ohne && nW) {
+    s.push(`${ohne === 1 ? 'Eine Station ist' : `${ggNum(ohne)} Stationen sind`} ohne Mittelspannungsverbindung zur Übergabestation `
+      + `erfasst; ihre Anbindung ist ${ggTextFeld('', 'Anbindung klären')}.`);
+  }
+  s.push('Die folgende Abbildung zeigt die Struktur des Netzes schematisch.');
+  return [s.join(' ')];
+}
+
+/** Kabeltypen der MS-Verbindungen für die Fußnote: „NA2XS2Y 185 mm² (4) · NA2XS2Y 95 mm² (1)". */
+function ggNuKabelText(verbindungen) {
+  const zaehl = new Map();
+  let ohne = 0;
+  for (const v of verbindungen) {
+    for (const k of v.kabel) {
+      if (!k.qs && !k.typ) { ohne++; continue; }
+      const t = [k.typ, k.qs ? `${ggNum(k.qs)} mm²` : ''].filter(Boolean).join(' ') + (k.geschaetzt ? ' (geschätzt)' : '');
+      zaehl.set(t, (zaehl.get(t) || 0) + 1);
+    }
+  }
+  const teile = [...zaehl.entries()].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} (${n})`);
+  if (ohne) teile.push(`ohne Angabe (${ohne})`);
+  return teile.join(' · ');
+}
+
+export function ggRenderNetzUebersicht(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel, hell = T.accents.gruen, rot = T.energy.waerme, blau = T.energy.strom;
+  const strich = T.text.strong;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const x0 = S.padX, x1 = W - S.padX;
+  const netz = cfg.netz || {};
+  const bloecke = netz.bloecke || [];
+  const ohneNap = netz.ohneNap || [];
+  const alleSt = [...bloecke.flatMap(b => [b.station, ...b.abgaenge.flatMap(a => a.stationen)]), ...ohneNap.flatMap(a => a.stationen)];
+  const alleV = [...bloecke.flatMap(b => b.abgaenge), ...ohneNap].flatMap(a => [...a.innen, ...a.wurzel]);
+
+  // ── Raster ──
+  const busX = x0 + 110;            // MS-Sammelschiene der Übergabestation (senkrecht)
+  const xa = busX + 58;             // linke Kante der Stationskarten
+  const mitZubau = alleSt.some(s => s.zubau);   // Zielnetz: eine Zeile mehr für Trafotausch/-zubau
+  const K = 5, gap = 24, ch = mitZubau ? 114 : 100, ANSCHLUSS = 44, labelH = 24;
+  const cw = (x1 - xa - (K - 1) * gap) / K;
+  const uebW = 220, uebH = ch;
+  const cardX = c => xa + c * (cw + gap);
+  const spurY = (unten, s) => unten + 14 + s * 10;
+  const dxVon = s => ((s % 3) - 1) * 14;
+
+  // ── Planung je Abgang: Reihen, Routen, Spuren unter den Reihen ──
+  const plane = ab => {
+    const n = ab.stationen.length;
+    const R = Math.max(1, Math.ceil(n / K));
+    const pos = i => ({ r: Math.floor(i / K), c: i % K });
+    const spuren = Array(R).fill(0);
+    const neu = r => spuren[r]++;
+    let gasse = 0;
+    const routen = [];
+    (ab.wurzel || []).forEach((w, k) => {
+      if (k === 0 && w.i === 0) routen.push({ art: 'bus', w });
+      else routen.push({ art: 'busSpur', w, s: neu(pos(w.i).r) });
+    });
+    (ab.innen || []).forEach(v => {
+      const pi = pos(v.i), pj = pos(v.j);
+      if (v.j === v.i + 1 && pi.r === pj.r) routen.push({ art: 'direkt', v });
+      else if (v.j === v.i + 1) routen.push({ art: 'umbruch', v, s: neu(pi.r) });
+      else if (pi.r === pj.r) routen.push({ art: 'spur', v, s: neu(pi.r) });
+      else if (pj.r === pi.r + 1) routen.push({ art: 'runter', v, s: neu(pi.r) });
+      else routen.push({ art: 'gasse', v, s: neu(pi.r), s2: neu(pj.r - 1), g: gasse++ });
+    });
+    const spurH = spuren.map(k => (k ? 20 + k * 10 : 22));
+    const hoehe = labelH + R * ch + spurH.reduce((a, b) => a + b, 0);
+    return { ab, n, R, pos, routen, spurH, hoehe };
+  };
+
+  const top = S.headBand + S.headHSchmal + 22;
+  let y = top;
+  const bPlan = bloecke.map(b => {
+    const bp = { b, top: y, egY: y + 58, uebTop: y + 80, abg: b.abgaenge.map(plane) };
+    let ay = bp.uebTop + uebH + 22;
+    for (const p of bp.abg) { p.top = ay; ay += p.hoehe + 10; }
+    bp.bottom = ay;
+    y = ay + 14;
+    return bp;
+  });
+  const oPlan = ohneNap.map(plane);
+  const ohneTop = y;
+  if (oPlan.length) {
+    let ay = y + 26;
+    for (const p of oPlan) { p.top = ay; ay += p.hoehe + 10; }
+    y = ay;
+  }
+  const leer = !bPlan.length && !oPlan.length;
+  if (leer) y = top + 120;
+  const mitGeplant = alleSt.some(s => s.geplant) || alleV.some(v => v.geplant);
+  const mitErt = alleV.some(v => v.ertuechtigt);
+  const mitTs = alleSt.some(s => s.ts) || alleV.some(v => v.ts);
+  const legY = y + 22;
+  const fuss = cfg.fussnote ? String(cfg.fussnote).split('\n').filter(Boolean) : [];
+  const height = legY + 14 + fuss.length * 17 + S.footSpace + 8;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+
+  // ── Zeichenhelfer ──
+  // Bestand dunkelgrün, Neubau hellgrün gestrichelt, ertüchtigter Bestand hellgrün kräftig
+  const pfad = (d, geplant, ertuechtigt = false) => `<path d="${d}" fill="none" stroke="${geplant || ertuechtigt ? hell : gruen}"
+      stroke-width="${ertuechtigt && !geplant ? 3.6 : 2.2}" stroke-linejoin="round"${geplant ? ' stroke-dasharray="6 4"' : ''}/>`;
+  const tsMarke = (x, yy) => `<rect x="${gR(x - 7)}" y="${gR(yy - 4)}" width="14" height="8" fill="${T.bg}"/>
+      <line x1="${gR(x - 7)}" y1="${gR(yy)}" x2="${gR(x + 5)}" y2="${gR(yy - 10)}" stroke="${rot}" stroke-width="2"/>
+      <circle cx="${gR(x - 7)}" cy="${gR(yy)}" r="2.4" fill="${rot}"/><circle cx="${gR(x + 7)}" cy="${gR(yy)}" r="2.4" fill="${rot}"/>`;
+  // Parallele Systeme kurz über der Leitung — zwischen zwei Karten ist nur eine Kartenlücke Platz
+  const systeme = (x, yy, v) => (v.anzahl > 1 ? txt(x, yy - 6, `${v.anzahl}×`, { anchor: 'middle', size: 10, weight: 600, fill: T.text.muted }) : '');
+  const trafoSym = (x, yy, r = 7, farbe = strich) => `<circle cx="${gR(x)}" cy="${gR(yy)}" r="${r}" fill="none" stroke="${farbe}" stroke-width="1.4"/>
+      <circle cx="${gR(x)}" cy="${gR(yy + r * 1.35)}" r="${r}" fill="none" stroke="${farbe}" stroke-width="1.4"/>`;
+  const zeichen = size => size * 0.55;
+  // Lange Zeilen erst kleiner setzen (bis 9 pt), erst danach kürzen
+  const passend = (x, yy, t, platz, o) => {
+    let size = o.size;
+    while (size > 9 && t.length * zeichen(size) > platz) size -= 0.5;
+    return txt(x, yy, ggResKuerzen(t, Math.floor(platz / zeichen(size))), { ...o, size });
+  };
+  const karte = (st, kx, ky, breite, o = {}) => {
+    const fill = st.uebergabe ? T.tint : T.neutral.cardBg;
+    const rand = o.ohneNap ? T.text.faint : st.geplant ? hell : st.uebergabe ? gruen : T.rule;
+    let k = `<rect x="${gR(kx) + 0.5}" y="${gR(ky) + 0.5}" width="${gR(breite) - 1}" height="${ch - 1}" fill="${fill}" stroke="${rand}"
+        stroke-width="${st.uebergabe ? 1.6 : 1.2}"${st.geplant || o.ohneNap ? ' stroke-dasharray="5 3"' : ''}/>`;
+    const maxT = Math.floor((breite - (st.ts ? 36 : 16)) / (12 * 0.52));
+    k += txt(kx + 10, ky + 18, ggResKuerzen(st.titel, maxT), { size: 12, weight: 700 });
+    if (st.ts) {
+      k += `<rect x="${gR(kx + breite - 30)}" y="${gR(ky + 7)}" width="22" height="15" fill="${T.neutral.cardBg}" stroke="${rot}" stroke-width="1.2"/>`;
+      k += txt(kx + breite - 19, ky + 18.5, 'TS', { anchor: 'middle', size: 9.5, weight: 700, fill: rot });
+    }
+    if (st.zeile2) k += txt(kx + 10, ky + 33, ggResKuerzen(st.zeile2, Math.floor((breite - 18) / zeichen(10.5))), { size: 10.5, fill: T.text.muted });
+    if (st.hatTrafo) {
+      k += trafoSym(kx + 18, ky + 46);
+      k += passend(kx + 34, ky + 57, st.trafo, breite - 40, { size: 11, weight: 600 });
+    } else if (!st.uebergabe) {
+      k += txt(kx + 10, ky + 57, 'ohne Transformator', { size: 10.5, fill: T.text.faint });
+    }
+    // Folgezeilen: Zubau/Tausch (Zielnetz), versorgte Gebäude, Erzeuger — so viele, wie die Karte fasst
+    const zeilen = [
+      st.zubau && { t: st.zubau, o: { size: 10.5, weight: 700, fill: hell } },
+      st.geb && { t: st.geb, o: { size: 10.5, fill: T.text.muted } },
+      st.erz && { t: st.erz, o: { size: 10.5, weight: 600, fill: hell } },
+    ].filter(Boolean).slice(0, mitZubau ? 3 : 2);
+    zeilen.forEach((z, i) => {
+      k += passend(kx + 10, ky + 78 + i * 14, z.t, breite - 18, z.o);
+    });
+    if (st.geplant) k += txt(kx + breite - 8, ky + ch - 8, 'geplant', { anchor: 'end', size: 9.5, weight: 600, fill: hell });
+    return k;
+  };
+
+  // ── ein Abgang: Routen zuerst, Karten darüber ──
+  const zeichneAbgang = (p, nr, mitBus, busYs) => {
+    const ab = p.ab;
+    const rowTop = r => p.top + labelH + r * ch + p.spurH.slice(0, r).reduce((a, b) => a + b, 0);
+    const geo = i => {
+      const { r, c } = p.pos(i);
+      const kx = cardX(c), ky = rowTop(r);
+      return { r, kx, ky, cx: kx + cw / 2, ya: ky + ANSCHLUSS, unten: ky + ch };
+    };
+    const art = (GG_NU_ART[ab.art] || ab.art) + (ab.abzweige ? ` mit ${ab.abzweige === 1 ? 'Abzweig' : ggNum(ab.abzweige) + ' Abzweigen'}` : '');
+    const kopf = mitBus ? `Abgang ${nr} · ${art} · ${ggNum(p.n)} ${p.n === 1 ? 'Station' : 'Stationen'}`
+      : p.n === 1 ? 'Einzelstation' : `${art} · ${ggNum(p.n)} Stationen`;
+    let o = txt(xa, p.top + 14, kopf, { size: 11, weight: 600, fill: mitBus ? gruen : T.text.muted });
+    for (const rt of p.routen) {
+      const v = rt.v || rt.w;
+      let d = '', tsX = null, tsY = null;
+      if (rt.art === 'bus') {
+        const g = geo(rt.w.i);
+        d = `M${busX} ${g.ya}H${gR(g.kx)}`;
+        tsX = (busX + g.kx) / 2; tsY = g.ya;
+        busYs.push(g.ya);
+        o += systeme(tsX, tsY, v);
+      } else if (rt.art === 'busSpur') {
+        const g = geo(rt.w.i), ys = spurY(g.unten, rt.s), ax = g.cx + dxVon(rt.s);
+        d = `M${gR(ax)} ${g.unten}V${ys}H${busX}`;
+        tsX = (ax + xa) / 2; tsY = ys;
+        busYs.push(ys);
+      } else {
+        const a = geo(v.i), b = geo(v.j);
+        if (rt.art === 'direkt') {
+          d = `M${gR(a.kx + cw)} ${a.ya}H${gR(b.kx)}`;
+          tsX = a.kx + cw + gap / 2; tsY = a.ya;
+          o += systeme(tsX, tsY, v);
+        } else if (rt.art === 'umbruch') {
+          const ys = spurY(a.unten, rt.s), xr = a.kx + cw + 10;
+          d = `M${gR(a.kx + cw)} ${a.ya}H${gR(xr)}V${ys}H${gR(b.cx + dxVon(rt.s))}V${b.ky}`;
+          tsX = (xr + b.cx) / 2; tsY = ys;
+        } else if (rt.art === 'spur' || rt.art === 'runter') {
+          const ys = spurY(a.unten, rt.s), dx = dxVon(rt.s);
+          d = `M${gR(a.cx + dx)} ${a.unten}V${ys}H${gR(b.cx + dx)}V${rt.art === 'spur' ? b.unten : b.ky}`;
+          tsX = (a.cx + b.cx) / 2; tsY = ys;
+        } else {   // gasse: über den Gang zwischen Sammelschiene und Karten in eine tiefere Reihe
+          const ys1 = spurY(a.unten, rt.s), xg = busX + 18 + (rt.g % 4) * 8;
+          const ys2 = spurY(rowTop(b.r - 1) + ch, rt.s2), dx = dxVon(rt.s);
+          d = `M${gR(a.cx + dx)} ${a.unten}V${ys1}H${xg}V${ys2}H${gR(b.cx + dx)}V${b.ky}`;
+          tsX = (a.cx + xg) / 2; tsY = ys1;
+        }
+      }
+      o += pfad(d, v.geplant, v.ertuechtigt);
+      if (v.ts) o += tsMarke(tsX, tsY);
+    }
+    ab.stationen.forEach((st, i) => { const g = geo(i); o += karte(st, g.kx, g.ky, cw, { ohneNap: !mitBus }); });
+    return o;
+  };
+
+  if (leer) {
+    out += txt(W / 2, top + 60, cfg.leer || 'Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.',
+               { anchor: 'middle', size: 13, fill: T.text.faint });
+  }
+
+  bPlan.forEach((bp, bi) => {
+    const b = bp.b;
+    const uKv = b.napKV || netz.napKV;
+    // Netz des Netzbetreibers und Eigentumsgrenze am NAP
+    out += `<rect x="${x0 + 0.5}" y="${bp.top + 0.5}" width="${uebW}" height="38" fill="${T.neutral.cardBg}" stroke="${blau}"
+              stroke-width="1.2" stroke-dasharray="5 3"/>`;
+    out += txt(x0 + uebW / 2, bp.top + 16, 'Netz des Netzbetreibers', { anchor: 'middle', size: 11.5, weight: 600 });
+    out += txt(x0 + uebW / 2, bp.top + 31, uKv ? `Mittelspannung ${ggNum(uKv, uKv % 1 ? 1 : 0)} kV` : 'Mittelspannung',
+               { anchor: 'middle', size: 11, fill: T.text.muted });
+    out += `<line x1="${busX}" y1="${bp.top + 38}" x2="${busX}" y2="${bp.uebTop}" stroke="${strich}" stroke-width="2"/>`;
+    out += `<line x1="${x0}" y1="${bp.egY}" x2="${x1}" y2="${bp.egY}" stroke="${T.text.muted}" stroke-width="1.2" stroke-dasharray="10 5"/>`;
+    out += `<circle cx="${busX}" cy="${bp.egY}" r="4.5" fill="${strich}"/>`;
+    out += txt(busX + 14, bp.egY - 7, bloecke.length > 1 ? `Netzanschlusspunkt ${bi + 1} (NAP)` : 'Netzanschlusspunkt (NAP)', { size: 11.5, weight: 600 });
+    out += txt(x1, bp.egY - 7, 'EIGENTUMSGRENZE', { anchor: 'end', mono: true, size: 10, weight: 600, tracking: 1, fill: T.text.muted });
+    out += txt(x1, bp.egY + 15, 'Netzbetreiber ↑  ·  Liegenschaft ↓', { anchor: 'end', size: 10, fill: T.text.faint });
+
+    // Übergabestation und Kennzahlen daneben
+    out += karte(b.station, x0, bp.uebTop, uebW);
+    if (bi === 0 && (cfg.kenngroessen || []).length) {
+      const kx = x0 + uebW + 70;
+      out += `<line x1="${kx - 22}.5" y1="${bp.uebTop + 6}" x2="${kx - 22}.5" y2="${bp.uebTop + uebH - 6}" stroke="${T.line}" stroke-width="1"/>`;
+      cfg.kenngroessen.slice(0, 5).forEach(([k, v], i) => {
+        const ky = bp.uebTop + 18 + i * 19;
+        out += txt(kx, ky, k, { mono: true, size: 11, weight: 500, fill: T.text.faint });
+        out += txt(kx + 190, ky, v, { mono: true, size: 11.5, weight: 600 });
+      });
+    }
+
+    // Abgänge; danach die Sammelschiene bis zum tiefsten Anschluss
+    const busYs = [];
+    bp.abg.forEach((p, i) => { out += zeichneAbgang(p, i + 1, true, busYs); });
+    const busTop = bp.uebTop + uebH, busBot = Math.max(busTop + 18, ...busYs);
+    out += `<line x1="${busX}" y1="${busTop}" x2="${busX}" y2="${gR(busBot)}" stroke="${gruen}" stroke-width="5"/>`;
+    busYs.forEach(yy => { out += `<circle cx="${busX}" cy="${gR(yy)}" r="4" fill="${gruen}"/>`; });
+    out += txt(busX - 10, busTop + 16, 'MS-Sammelschiene', { anchor: 'end', size: 10, fill: T.text.muted });
+  });
+
+  if (oPlan.length) {
+    out += txt(x0, ohneTop + 14, 'Ohne Mittelspannungsverbindung zum Netzanschlusspunkt (im Netzmodell)',
+               { size: 11.5, weight: 700, fill: T.text.muted });
+    oPlan.forEach(p => { out += zeichneAbgang(p, 0, false, []); });
+  }
+
+  // ── Legende ──
+  let lx = x0;
+  const leg = (sym, text) => { out += sym(lx, legY) + txt(lx + 30, legY + 4, text, { size: 11 }); lx += 30 + ggEstW(text, 11) + 24; };
+  if (!leer) {
+    leg((x, yy) => pfad(`M${x} ${yy}H${x + 22}`, false), mitGeplant || mitErt ? 'MS-Kabel Bestand' : 'MS-Kabel');
+    if (mitGeplant) leg((x, yy) => pfad(`M${x} ${yy}H${x + 22}`, true), 'Neubau (geplant)');
+    if (mitErt) leg((x, yy) => pfad(`M${x} ${yy}H${x + 22}`, false, true), 'ertüchtigt');
+    leg((x, yy) => trafoSym(x + 11, yy - 5, 5.5), 'Transformator MS/NS');
+    if (mitTs) leg((x, yy) => tsMarke(x + 11, yy), 'offene Trennstelle (TS)');
+    leg((x, yy) => `<rect x="${x + 0.5}" y="${yy - 7.5}" width="22" height="14" fill="${T.tint}" stroke="${gruen}" stroke-width="1.4"/>`, 'Übergabestation');
+  }
+  fuss.forEach((z, i) => { out += txt(x0, legY + 30 + i * 17, z, { size: S.fsTab - 2, fill: T.text.faint }); });
+  return ggFinishSvg(out, W, height);
+}
+
+GG_FIGUREN.push({
+  id: 'netz-uebersicht-ist',
+  autoSync: true,
+  reihe: 500,   // nach dem Einleitungstext, vor der Tabelle „Übersicht Trafostationen“
+  kapitel: '3.1.2 Stromnetz intern (MS/NS)',
+  titel: 'Übersichtsschaltbild Stromnetz (Bestand)',
+  datei: 'netz-uebersichtsschaltbild-ist',
+  hinweis: 'Aus dem Netzmodell des Elektro-Tabs verdichtet: je Gebäude eine Station (NAP, Schaltanlagen, Trafos), '
+         + 'dazwischen nur die Mittelspannungskabel. Ringe, Strahlen und offene Trennstellen (Schaltanlage „Trennstelle“ '
+         + 'oder Kabel-Merkmal) werden erkannt; je Station stehen die Trafoleistung, die versorgten Gebäude und die '
+         + 'Erzeuger der NS-Seite. Nur Bestand — Stationsnamen wie in der Tabelle „Übersicht Trafostationen“.',
+  render: cfg => ggRenderNetzUebersicht(cfg),
+  config: {
+    eyebrow: 'Stromnetz · Ist-Zustand', titel: 'Übersichtsschaltbild Mittelspannungsnetz',
+    netz: null, kenngroessen: [], fussnote: '',
+    leer: 'Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.',
+  },
+  ausProjekt(cfg) {
+    const { netz, r } = ggNetzUebersichtDaten();
+    cfg.netz = netz;
+    const k = r.kennzahlen;
+    if (!Object.keys(r.stationen).length) {
+      cfg.kenngroessen = []; cfg.fussnote = '';
+      return '⚠ Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.';
+    }
+    cfg.kenngroessen = [
+      ['Trafostationen', ggNum(k.stationen)],
+      ['Transformatoren', ggNum(k.trafos)],
+      ['installierte Leistung', `${ggNum(k.kva)} kVA`],
+      ['Abgänge / Ringe', `${ggNum(k.abgaenge)} / ${ggNum(k.ringe)}`],
+      ...(k.msLaengeM > 0 ? [['MS-Kabel (Trasse)', `≈ ${ggNum(k.msLaengeM / 1000, 1)} km`]] : []),
+    ];
+    const kabel = ggNuKabelText(r.verbindungen);
+    cfg.fussnote = [
+      `Bestand ${new Date().getFullYear()} · schematische Darstellung, nicht lagerichtig`
+        + (k.schaltstationen ? ` · ${ggNum(k.schaltstationen)} Schaltstation${k.schaltstationen > 1 ? 'en' : ''} ohne Transformator` : ''),
+      kabel ? `MS-Kabel je Verbindung: ${kabel}` : '',
+    ].filter(Boolean).join('\n');
+    const lage = `${ggNum(k.stationen)} Trafostationen, ${ggNum(k.abgaenge)} Abgänge (${ggNum(k.ringe)} Ringe)`;
+    return r.hinweise.length ? `⚠ ${lage} — ${r.hinweise.join(' ')}` : `✓ ${lage} aus dem Netzmodell übernommen.`;
+  },
+});
+
+/* ── 3.4.1 Zielnetz: dasselbe Schaltbild mit allen Planungen des Netzmodells ──
+ * Neue Stationen/Kabel gestrichelt hellgrün, ertüchtigte Kabel kräftig hellgrün, Trafotausch und
+ * zusätzliche Trafos als grüne Zeile auf der Karte, Rückbau in der Fußnote. Gezeigt wird, was im
+ * Modell steht (geplante Assets, Kanten und Maßnahmen) — Engpass-Vorschläge erst, wenn sie als
+ * Maßnahme übernommen sind. Stationsnamen wie in der Tabelle „Übersicht Trafostationen“ in 3.4.1. */
+GG_FIGUREN.push({
+  id: 'netz-uebersicht-ziel',
+  autoSync: true,
+  reihe: 35,   // nach der Engpass-Tabelle, vor der Übersicht Trafostationen (Bestand + geplant)
+  kapitel: '3.4.1 Netzanschluss und internes Stromnetz',
+  titel: 'Übersichtsschaltbild Stromnetz (Zielnetz)',
+  datei: 'netz-uebersichtsschaltbild-ziel',
+  hinweis: 'Wie das Übersichtsschaltbild in 3.1.2, aber mit allen Planungen des Netzmodells: geplante Stationen und '
+         + 'Kabel (Planungsschicht oder Baujahr in der Zukunft), geplante Maßnahmen an Trafos und Kabeln (Trafotausch, '
+         + 'Querschnitt, Parallelsysteme) und Rückbau (Abrissjahr). Engpass-Vorschläge erscheinen erst, wenn sie als '
+         + 'Maßnahme übernommen sind. Kennwerte als Bestand → Ziel.',
+  render: cfg => ggRenderNetzUebersicht(cfg),
+  config: {
+    eyebrow: 'Stromnetz · Zielzustand', titel: 'Übersichtsschaltbild Zielnetz Mittelspannung',
+    netz: null, kenngroessen: [], fussnote: '',
+    leer: 'Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.',
+  },
+  ausProjekt(cfg) {
+    const ist = ggNetzUebersichtDaten();
+    const { netz, r } = ggNetzUebersichtDaten({ mitPlanung: true });
+    cfg.netz = netz;
+    const k = r.kennzahlen, ki = ist.r.kennzahlen;
+    if (!Object.keys(r.stationen).length) {
+      cfg.kenngroessen = []; cfg.fussnote = '';
+      return '⚠ Kein Netzmodell — im Elektro-Tab NAP, Schaltanlagen und Trafos anlegen.';
+    }
+    if (/^Stromnetz · Zielzustand/.test(cfg.eyebrow || '')) {
+      cfg.eyebrow = `Stromnetz · Zielzustand${k.zieljahr ? ' ' + k.zieljahr : ''}`;
+    }
+    const pfeil = (a, b, einh = '') => (a === b ? ggNum(b) : `${ggNum(a)} → ${ggNum(b)}`) + einh;
+    cfg.kenngroessen = [
+      ['Trafostationen', pfeil(ki.stationen, k.stationen)],
+      ['Transformatoren', pfeil(ki.trafos, k.trafos)],
+      ['installierte Leistung', pfeil(ki.kva, k.kva, ' kVA')],
+      ['Abgänge / Ringe', `${pfeil(ki.abgaenge, k.abgaenge)} / ${pfeil(ki.ringe, k.ringe)}`],
+      ...(k.msLaengeM > 0 ? [['MS-Kabel (Trasse)', `≈ ${ggNum(k.msLaengeM / 1000, 1)} km`]] : []),
+    ];
+
+    // Änderungen gegenüber dem Bestand
+    const st = Object.values(r.stationen);
+    const neuSt = st.filter(s => s.geplant).length;
+    const tausch = st.reduce((n, s) => n + s.trafos.filter(t => t.ertuechtigt).length, 0);
+    const zubau = st.filter(s => !s.geplant).reduce((n, s) => n + s.trafos.filter(t => t.geplant).length, 0);
+    const neuV = r.verbindungen.filter(v => v.geplant).length;
+    const ertV = r.verbindungen.filter(v => v.ertuechtigt).length;
+    const rueckbau = Object.keys(ist.r.stationen).filter(key => !r.stationen[key]).map(key => {
+      const s = ist.sicht(key);
+      return s.zeile2 ? `${s.titel} (${s.zeile2})` : s.titel;
+    });
+    const mz = (n, e, m) => `${ggNum(n)} ${n === 1 ? e : m}`;
+    const aend = [
+      neuSt ? `Neubau ${mz(neuSt, 'Station', 'Stationen')}` : '',
+      zubau ? `${mz(zubau, 'zusätzlicher Trafo', 'zusätzliche Trafos')}` : '',
+      tausch ? `Tausch ${mz(tausch, 'Trafo', 'Trafos')}` : '',
+      neuV ? `${mz(neuV, 'neue Kabelverbindung', 'neue Kabelverbindungen')}` : '',
+      ertV ? `${mz(ertV, 'Kabelverbindung', 'Kabelverbindungen')} ertüchtigt` : '',
+      rueckbau.length ? `Rückbau: ${ggResKuerzen(rueckbau.join(', '), 60)}` : '',
+    ].filter(Boolean);
+    const kabel = ggNuKabelText(r.verbindungen);
+    cfg.fussnote = [
+      `Zielzustand${k.zieljahr ? ' ' + k.zieljahr : ''}: alle Planungen des Netzmodells · schematische Darstellung, nicht lagerichtig`,
+      aend.length ? `Änderungen gegenüber Bestand: ${aend.join(' · ')}` : 'Keine Änderungen gegenüber dem Bestand geplant',
+      kabel ? `MS-Kabel je Verbindung (Ziel): ${kabel}` : '',
+    ].filter(Boolean).join('\n');
+    if (!aend.length) return '⚠ Im Netzmodell sind keine Planungen erfasst — das Zielnetz entspricht dem Bestand (3.1.2).';
+    const hinw = r.hinweise;
+    return `${hinw.length ? '⚠' : '✓'} Zielnetz: ${aend.join(', ')}.${hinw.length ? ' ' + hinw.join(' ') : ''}`;
+  },
+});
 
 /* ── 3.1.3 Erzeugungsanlagen und 3.1.4 Notstromversorgung (Ist-Zustand) ─────────
  * Nur Bestand, wie die Trafo-Übersicht: Anlagen einer Planungsschicht oder mit Baujahr in
@@ -4633,6 +5168,303 @@ function ggEinlinienFigur(id, reihe, quelle, titel, hinweis) {
   };
 }
 
+/**
+ * Prinzip der Netzanbindung der Erzeugungsanlagen mit EZA-Regler (3.4.2): Übergabestation am NAP mit Wandlern,
+ * Zähler, übergeordnetem Entkupplungsschutz und Leistungsschalter; dahinter das eigene MS-Netz der Liegenschaft
+ * mit Trafostationen im Ring (offene Trennstelle). PV, Batterie, BHKW und Verbraucher hängen auf der NS-Seite der
+ * Stationen. Der EZA-Regler an der Übergabe führt alle Einheiten über ein eigenes LWL-Steuernetz; zum Leitsystem
+ * der Liegenschaft nur über eine IT-sichere Schnittstelle. Gestrichelt die Liegenschaftsgrenze.
+ * Rein schematisch — keine Auslegung.
+ * cfg.werte = { uKv, stationen, pvKwp, batKw, kwkKw, einspKw } (leer = allgemein)
+ */
+export function ggRenderEzaPrinzip(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel, rot = T.energy.waerme, blau = T.energy.strom;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const strich = T.text.strong, fein = T.text.faint;
+  const w = cfg.werte || {};
+  const uKv = w.uKv || 20;
+  const uTxt = ggNum(uKv, uKv % 1 ? 1 : 0);
+  const top = S.headBand + S.headHSchmal + 26;
+  const ky = top + 216;             // Leistungsschalter der Übergabestation
+  const msY = top + 276;            // MS-Sammelschiene der Übergabestation
+  const ringY = msY + 84;           // Ringkabel durch die Stationen
+  const nsY = ringY + 92;           // NS-Sammelschienen der Stationen
+  const grenzeU = nsY + 164;        // Unterkante Liegenschaftsgrenze
+  const legTop = grenzeU + 22;
+  // Legende zweispaltig, bis zu drei Zeilen je Punkt — Zeilenhöhe je Reihe nach dem längeren Punkt
+  const punkte = cfg.punkte || [];
+  const colW = (W - 2 * S.padX) / 2;
+  const legZeilen = punkte.map(t => ggResUmbruch(t, Math.floor((colW - 40) / (11 * 0.53))).slice(0, 3));
+  const reihenH = [];
+  for (let i = 0; i < legZeilen.length; i += 2) {
+    reihenH.push(Math.max(legZeilen[i].length, legZeilen[i + 1]?.length || 0, 2) * 14 + 10);
+  }
+  const legH = reihenH.reduce((s, h) => s + h, 0);
+  const height = legTop + legH + (cfg.fussnote ? 22 : 0) + S.footSpace + 6;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+  const nr = (x, y, k) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="10" fill="${gruen}"/>`
+    + txt(x, y + 4, String(k), { anchor: 'middle', size: 11, weight: 700, fill: '#FFFFFF' });
+  // Leistungsschalter senkrecht von y bis y + 30 (wie im Inselbetrieb-Prinzip)
+  const schalter = (x, y, farbe = strich) => {
+    const k = y + 30;
+    return `<path d="M${gR(x - 4)} ${k - 4}l8 8M${gR(x + 4)} ${k - 4}l-8 8" stroke="${farbe}" stroke-width="1.6"/>`
+      + `<line x1="${gR(x)}" y1="${y}" x2="${gR(x)}" y2="${k}" stroke="${farbe}" stroke-width="2"/>`
+      + `<circle cx="${gR(x)}" cy="${y}" r="2.4" fill="${farbe}"/>`;
+  };
+  const linie = (x1, y1, x2, y2, o = {}) => `<line x1="${gR(x1)}" y1="${gR(y1)}" x2="${gR(x2)}" y2="${gR(y2)}"
+      stroke="${o.farbe || strich}" stroke-width="${o.breite || 2}"${o.strich ? ` stroke-dasharray="${o.strich}"` : ''}${o.pfeil ? ` marker-end="url(#${o.pfeil})"` : ''}/>`;
+  const pfad = (d, o = {}) => `<path d="${d}" fill="none" stroke="${o.farbe || strich}" stroke-width="${o.breite || 2}"
+      ${o.strich ? `stroke-dasharray="${o.strich}"` : ''}${o.pfeil ? ` marker-end="url(#${o.pfeil})"` : ''}/>`;
+  const kasten = (x, y, bw, bh, o = {}) => `<rect x="${gR(x) + 0.5}" y="${gR(y) + 0.5}" width="${bw}" height="${bh}"
+      fill="${o.fill || T.neutral.cardBg}" stroke="${o.rand || T.rule}" stroke-width="${o.breite || 1.4}"${o.strich ? ` stroke-dasharray="${o.strich}"` : ''}/>`;
+  const wandler = (x, y) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="7" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.6"/>`;
+  const trafo = (x, y, r = 10) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="${r}" fill="none" stroke="${strich}" stroke-width="1.5"/>
+      <circle cx="${gR(x)}" cy="${gR(y + r * 1.4)}" r="${r}" fill="none" stroke="${strich}" stroke-width="1.5"/>`;
+  const naSchutz = (x, y) => kasten(x, y, 20, 16, { rand: rot, breite: 1.2 })
+    + txt(x + 10, y + 11.5, 'NA', { anchor: 'middle', size: 9, weight: 700, fill: rot });
+  out = `<defs>
+      <marker id="gg-eza-pf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${fein}"/></marker>
+      <marker id="gg-eza-pf-rot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${rot}"/></marker>
+    </defs>` + out;
+
+  // ── Liegenschaftsgrenze (zuerst, damit alles darüber liegt) ──
+  const gO = top + 54;
+  out += `<rect x="18.5" y="${gO + 0.5}" width="${W - 37}" height="${grenzeU - gO}" rx="10" fill="none"
+            stroke="${T.text.muted}" stroke-width="1.4" stroke-dasharray="10 5"/>`;
+  out += `<rect x="30" y="${gO - 7}" width="${ggEstW('LIEGENSCHAFTSGRENZE', 10) + 24}" height="14" fill="${T.bg}"/>`;
+  out += txt(40, gO + 4, 'LIEGENSCHAFTSGRENZE', { mono: true, size: 10, weight: 600, tracking: 1, fill: T.text.muted });
+
+  // ── Netz des Netzbetreibers, Übergabe am NAP ──
+  const hx = 300;
+  out += kasten(hx - 100, top, 200, 38, { rand: blau, strich: '5 3', breite: 1.2 });
+  out += txt(hx, top + 16, 'Netz des Netzbetreibers', { anchor: 'middle', size: 11.5, weight: 600 });
+  out += txt(hx, top + 31, `Mittelspannung ${uTxt} kV`, { anchor: 'middle', size: 11, fill: T.text.muted });
+  out += linie(hx, top + 38, hx, ky);
+  out += `<circle cx="${hx}" cy="${top + 72}" r="4" fill="${strich}"/>`;
+  out += txt(hx + 22, top + 70, 'Netzanschlusspunkt (NAP)', { size: 11.5, weight: 600 });
+  out += txt(hx + 22, top + 85, 'Eigentumsgrenze, Übergabestation', { size: 11, fill: T.text.muted });
+  out += nr(hx - 24, top + 72, 1);
+
+  // ── Wandler: oben Abrechnung, darunter Schutz und Regelung ──
+  const w1 = top + 112, w2 = top + 146;
+  out += wandler(hx, w1) + wandler(hx, w2);
+  out += nr(hx - 24, w2 - 16, 2);
+  out += linie(hx + 7, w1, hx + 40, w1, { farbe: fein, breite: 1.2, strich: '4 3' });
+  out += kasten(hx + 40, w1 - 14, 118, 28);
+  out += txt(hx + 99, w1 + 4.5, 'Zähler ⇄ (RLM)', { anchor: 'middle', size: 11, weight: 600 });
+  out += nr(hx + 172, w1, 3);
+
+  // ── Übergeordneter Entkupplungsschutz → Leistungsschalter der Übergabe ──
+  const ex = 40, ew = 196, ey = top + 124, eh = 70;
+  out += kasten(ex, ey, ew, eh, { rand: rot, breite: 1.6 });
+  out += txt(ex + ew / 2, ey + 19, 'Entkupplungsschutz', { anchor: 'middle', size: 12, weight: 700 });
+  out += txt(ex + ew / 2, ey + 35, 'übergeordnet, am NAP', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  out += txt(ex + ew / 2, ey + 52, 'U<  U>  U>>  ·  Q-U-Schutz', { anchor: 'middle', size: 10.5, mono: true, fill: T.text.muted });
+  out += linie(hx - 7, w2, ex + ew + 2, w2, { farbe: fein, breite: 1.2, strich: '4 3', pfeil: 'gg-eza-pf' });
+  out += nr(ex + ew, ey, 4);
+  out += schalter(hx, ky);
+  out += pfad(`M${ex + ew / 2} ${ey + eh}V${ky + 18}H${hx - 10}`, { farbe: rot, breite: 1.4, strich: '5 3', pfeil: 'gg-eza-pf-rot' });
+  out += txt(ex + ew / 2 + 8, ky + 12, 'Auslösung', { size: 10.5, fill: rot });
+  out += txt(hx + 22, ky + 12, 'Leistungsschalter Übergabe', { size: 11.5, weight: 600 });
+  out += txt(hx + 22, ky + 27, 'Kurzschlussschutz, Kuppelschalter', { size: 11, fill: T.text.muted });
+  out += nr(hx + 230, ky + 16, 5);
+  out += linie(hx, ky + 30, hx, msY);
+
+  // ── MS-Sammelschiene der Übergabestation und Ring der Liegenschaft ──
+  const fA = hx - 80, fB = hx + 80, ringL = 110, ringR = 905, fY = msY + 34;
+  out += linie(fA - 20, msY, fB + 20, msY, { breite: 5, farbe: gruen });
+  out += txt(fB + 30, msY - 8, `MS-Netz der Liegenschaft ${uTxt} kV · Ring`, { size: 11, weight: 600, fill: gruen });
+  out += pfad(`M${fA} ${msY}V${fY}H${ringL}V${ringY}H${ringR}V${fY}H${fB}V${msY}`, { farbe: gruen, breite: 2.2 });
+  out += nr(ringL, fY, 11);
+
+  // Stationen im Ring
+  const stN = Math.max(1, w.stationen || 0);
+  const stationen = [
+    { x: 235, titel: 'Station 1', abg: ['pv', 'last'] },
+    { x: 510, titel: 'Station 2', abg: ['pv', 'bat'] },
+    { x: 785, titel: stN > 3 ? `Station ${stN}` : 'Station n', abg: ['pv', 'bhkw'] },
+  ];
+  const trennX = (stationen[1].x + stationen[2].x) / 2;
+  const wrW = 56, wrH = 40, wrY = nsY + 34, busK = nsY + 20;
+  const gy = wrY + wrH + 12;
+  const wrPunkte = [];
+  let bhkwX = null;
+  for (const st of stationen) {
+    const sx = st.x - 88, sw = 176;
+    out += kasten(sx, ringY - 26, sw, 94, { fill: T.tint, rand: T.accents.gruen, breite: 1.2 });
+    out += linie(sx + 10, ringY, sx + sw - 10, ringY, { breite: 4.5, farbe: gruen });
+    out += txt(sx + 8, ringY - 11, st.titel, { size: 11, weight: 700 });
+    // Ringkabelfelder (Lasttrennschalter) links und rechts, Trafofeld in der Mitte
+    for (const dx of [-60, 60]) {
+      out += `<circle cx="${st.x + dx}" cy="${ringY}" r="4.5" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.4"/>`;
+    }
+    out += linie(st.x, ringY, st.x, ringY + 12);
+    out += trafo(st.x, ringY + 22);
+    out += txt(st.x + 16, ringY + 30, `${uTxt}/0,4 kV`, { size: 10, fill: T.text.muted });
+    out += linie(st.x, ringY + 46, st.x, nsY);
+    out += linie(st.x - 96, nsY, st.x + 96, nsY, { breite: 4 });
+    // Abgänge auf der NS-Seite
+    st.abg.forEach((art, i) => {
+      const ax = st.x + (i ? 50 : -50);
+      if (art === 'last') {
+        out += linie(ax, nsY, ax, wrY);
+        out += kasten(ax - 40, wrY, 80, 34, { rand: T.rule });
+        out += txt(ax, wrY + 21, 'Verbraucher', { anchor: 'middle', size: 10.5, weight: 600 });
+        return;
+      }
+      if (art === 'bhkw') {
+        // Synchrongenerator direkt am Netz, angetrieben vom Gasmotor; Einheitenschutz am Generator
+        bhkwX = ax;
+        out += linie(ax, nsY, ax, wrY + 2);
+        out += linie(ax + 14, busK, ax + 14, wrY + 8, { farbe: gruen, breite: 1.3, strich: '4 3' });
+        wrPunkte.push(ax + 14);
+        out += `<circle cx="${ax}" cy="${wrY + 20}" r="18" fill="${T.tint}" stroke="${gruen}" stroke-width="1.6"/>`;
+        out += txt(ax, wrY + 19, 'G', { anchor: 'middle', size: 12, weight: 700, fill: gruen });
+        out += txt(ax, wrY + 31, '3~', { anchor: 'middle', size: 9, fill: gruen });
+        out += naSchutz(ax - 44, wrY + 11);
+        out += linie(ax, wrY + 38, ax, gy, { breite: 3 });
+        out += kasten(ax - 28, gy, 56, 28, { rand: strich, breite: 1.2 });
+        out += txt(ax, gy + 18, 'Motor', { anchor: 'middle', size: 9.5, weight: 600 });
+        out += linie(ax + 29, gy + 14, ax + 50, gy + 14, { farbe: rot, breite: 1.6, pfeil: 'gg-eza-pf-rot' });
+        out += txt(ax + 54, gy + 18, 'Wärme', { size: 9.5, fill: rot });
+        out += txt(ax, gy + 42, 'BHKW (KWK)', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+        return;
+      }
+      out += linie(ax, nsY, ax, wrY);
+      out += linie(ax + 14, busK, ax + 14, wrY - 1, { farbe: gruen, breite: 1.3, strich: '4 3' });
+      wrPunkte.push(ax + 14);
+      const bx = ax - wrW / 2;
+      out += kasten(bx, wrY, wrW, wrH, { fill: T.tint, rand: gruen, breite: 1.4 });
+      out += linie(bx, wrY + wrH, bx + wrW, wrY, { farbe: gruen, breite: 1 });
+      out += txt(bx + 11, wrY + 15, '=', { anchor: 'middle', size: 12, weight: 700 });
+      out += txt(bx + wrW - 11, wrY + wrH - 7, '~', { anchor: 'middle', size: 13, weight: 700 });
+      out += naSchutz(bx - 24, wrY + 11);
+      out += linie(ax, wrY + wrH, ax, gy, { farbe: blau, breite: 1.6 });
+      if (art === 'pv') {
+        out += kasten(ax - 28, gy, 56, 28, { fill: '#FFF8D6', rand: strich, breite: 1.2 });
+        out += `<path d="M${ax - 28} ${gy + 14}h56M${ax - 9} ${gy}v28M${ax + 9} ${gy}v28" stroke="${strich}" stroke-width="0.8"/>`;
+        out += txt(ax, gy + 42, 'PV', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+      } else {
+        out += kasten(ax - 24, gy, 48, 28, { rand: strich, breite: 1.2 });
+        out += `<path d="M${ax - 9} ${gy + 6}v16M${ax + 2} ${gy + 10}v8" stroke="${strich}" stroke-width="2.4"/>`
+          + txt(ax + 14, gy + 18, '+', { anchor: 'middle', size: 10, weight: 700 });
+        out += txt(ax, gy + 42, 'Batterie', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+      }
+    });
+  }
+  // offene Trennstelle im Ring zwischen Station 2 und n
+  out += `<rect x="${trennX - 14}" y="${ringY - 5}" width="28" height="10" fill="${T.bg}"/>`;
+  out += `<circle cx="${trennX - 12}" cy="${ringY}" r="2.4" fill="${gruen}"/>`
+    + linie(trennX - 12, ringY, trennX + 10, ringY - 10, { farbe: gruen, breite: 2 });
+  out += txt(trennX, ringY + 20, 'offene', { anchor: 'middle', size: 10, fill: T.text.muted })
+    + txt(trennX, ringY + 32, 'Trennstelle', { anchor: 'middle', size: 10, fill: T.text.muted });
+  out += nr(trennX, ringY - 22, 12);
+  out += nr(stationen[0].x - 50 - wrW / 2 - 38, wrY + 4, 9);
+  out += nr(stationen[1].x + 50 + wrW / 2 + 14, wrY + 4, 10);
+  if (bhkwX != null) out += nr(bhkwX + 32, wrY + 2, 13);
+
+  // ── EZA-Regler mit Fernwirktechnik, Direktvermarkter und Leitsystem ──
+  const rx = 540, rw = 230, ry = top + 124, rh = 78;
+  out += kasten(rx, ry, rw, rh, { fill: T.tint, rand: gruen, breite: 1.8 });
+  out += txt(rx + rw / 2, ry + 21, 'EZA-Regler', { anchor: 'middle', size: 13, weight: 700 });
+  out += txt(rx + rw / 2, ry + 39, 'Wirk- und Blindleistung am NAP', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  out += txt(rx + rw / 2, ry + 54, 'P-Begrenzung · cos φ · Q(U)', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  if (w.einspKw) out += txt(rx + rw / 2, ry + 69, `Einspeisung ≤ ${ggNum(w.einspKw)} kW`, { anchor: 'middle', size: 10.5, weight: 600, fill: gruen });
+  out += nr(rx - 12, ry + rh - 8, 6);
+  out += linie(hx + 7, w2, rx - 2, w2, { farbe: fein, breite: 1.2, strich: '4 3', pfeil: 'gg-eza-pf' });
+  out += txt(hx + 48, w2 - 6, 'Messung U, I', { size: 10, fill: T.text.faint });
+  // Leitstelle Netzbetreiber
+  const lx = 540, lw = 170;
+  out += kasten(lx, top, lw, 42, { rand: blau, breite: 1.2 });
+  out += txt(lx + lw / 2, top + 17, 'Leitstelle', { anchor: 'middle', size: 11.5, weight: 600 });
+  out += txt(lx + lw / 2, top + 33, 'Netzbetreiber', { anchor: 'middle', size: 11, fill: T.text.muted });
+  out += linie(lx + 60, top + 42, lx + 60, ry - 2, { farbe: fein, breite: 1.4, strich: '4 3', pfeil: 'gg-eza-pf' });
+  out += txt(lx + 68, top + 76, 'Fernwirktechnik', { size: 10.5, fill: T.text.muted });
+  out += txt(lx + 68, top + 90, 'Sollwerte · Rückmeldung', { size: 10, fill: T.text.faint });
+  out += nr(lx + 44, top + 70, 7);
+  // Direktvermarkter — von oben in den Regler, rechts bleibt Platz für die Schnittstelle
+  const dx = 790, dw = 170;
+  out += kasten(dx, top, dw, 42, { rand: T.rule, breite: 1.2 });
+  out += txt(dx + dw / 2, top + 17, 'Direktvermarkter', { anchor: 'middle', size: 11.5, weight: 600 });
+  out += txt(dx + dw / 2, top + 33, 'Fernsteuerung', { anchor: 'middle', size: 11, fill: T.text.muted });
+  out += pfad(`M${dx + dw / 2} ${top + 42}V${ry - 18}H${rx + rw - 40}V${ry - 2}`, { farbe: fein, breite: 1.4, strich: '4 3', pfeil: 'gg-eza-pf' });
+  out += txt(dx + dw / 2 + 8, top + 76, 'Steuerbox', { size: 10.5, fill: T.text.muted });
+  out += nr(dx + dw / 2 - 16, top + 70, 8);
+  // IT-sichere Schnittstelle und Leitsystem der Liegenschaft
+  const ix = 800, iw = 160, iy = ry - 4, ih = 40;
+  out += linie(rx + rw + 1, iy + 20, ix, iy + 20, { farbe: gruen, breite: 1.6 });
+  out += kasten(ix, iy, iw, ih, { fill: T.neutral.cardBg, rand: rot, breite: 1.6 });
+  out += txt(ix + iw / 2, iy + 16, 'IT-sichere Schnittstelle', { anchor: 'middle', size: 10.5, weight: 700 });
+  out += txt(ix + iw / 2, iy + 31, 'Datendiode · Firewall', { anchor: 'middle', size: 9.5, fill: T.text.muted });
+  out += nr(ix + iw, iy, 15);
+  const sy = iy + ih + 18, sh = 34;
+  out += linie(ix + iw / 2, iy + ih, ix + iw / 2, sy, { farbe: fein, breite: 1.6 });
+  out += kasten(ix, sy, iw, sh, { rand: T.rule });
+  out += txt(ix + iw / 2, sy + 14, 'Leitsystem Liegenschaft', { anchor: 'middle', size: 10.5, weight: 700 });
+  out += txt(ix + iw / 2, sy + 27, 'GLT / Energiemanagement', { anchor: 'middle', size: 9.5, fill: T.text.muted });
+  out += nr(ix + iw, sy + sh, 16);
+
+  // Steuernetz EZA-Regler → Wechselrichter/BHKW: eigene LWL-Fasern, rechts am Ring vorbei
+  const kx = 958, kY = ry + 106;
+  out += pfad(`M${rx + rw - 20} ${ry + rh}V${kY}H${kx}V${busK}H${Math.min(...wrPunkte)}`, { farbe: gruen, breite: 1.6, strich: '4 3' });
+  out += txt(rx + rw + 2, kY + 15, 'Sollwerte P, Q an WR und BHKW', { size: 10, fill: gruen });
+  const lwlMitte = (fY + busK) / 2 + 10;
+  // gedreht links neben der Leitung, zwischen Ring und Steuernetz
+  out += txt(kx - 5, lwlMitte, 'Steuernetz · 2 LWL-Fasern BWI-Netz', {
+    anchor: 'middle', size: 10, weight: 600, fill: gruen, transform: `rotate(-90 ${kx - 5} ${gR(lwlMitte)})` });
+  out += nr(kx, fY - 18, 14);
+
+  // Kennwerte der Liegenschaft
+  const kenn = [
+    w.stationen ? `${w.stationen} Trafostation${w.stationen === 1 ? '' : 'en'}` : null,
+    w.pvKwp ? `PV gesamt ${ggNum(w.pvKwp)} kWp` : null,
+    w.batKw ? `Batterie ${ggNum(w.batKw)} kW` : null,
+    w.kwkKw ? `BHKW ${ggNum(w.kwkKw)} kW el.` : null,
+  ].filter(Boolean);
+  if (kenn.length) out += txt(W / 2, nsY + 150, kenn.join('  ·  '), { anchor: 'middle', size: 11, weight: 600, fill: gruen });
+
+  // ── Nummernlegende zweispaltig ──
+  let py = legTop;
+  reihenH.forEach((h, r) => {
+    for (let c = 0; c < 2; c++) {
+      const i = r * 2 + c;
+      if (i >= legZeilen.length) break;
+      const px = S.padX + c * colW;
+      out += nr(px + 10, py + 6, i + 1);
+      legZeilen[i].forEach((z, j) => { out += txt(px + 28, py + 10 + j * 14, z, { size: 11 }); });
+    }
+    py += h;
+  });
+  if (cfg.fussnote) out += txt(S.padX, legTop + legH + 8, cfg.fussnote, { size: S.fsTab - 2, fill: T.text.faint });
+  return ggFinishSvg(out, W, height);
+}
+
+const GG_EZA_PUNKTE = Object.freeze([
+  'Netzanschlusspunkt: Eigentumsgrenze zum Netzbetreiber, Übergabestation der Liegenschaft',
+  'Strom- und Spannungswandler am NAP liefern die Messgrößen für Schutz und Regelung',
+  'Zähler für Bezug und Einspeisung (registrierende Leistungsmessung, Zweirichtung)',
+  'übergeordneter Entkupplungsschutz am NAP: Spannungsschutz und Q-U-Schutz nach VDE-AR-N 4110',
+  'Leistungsschalter der Übergabe mit Kurzschlussschutz, trennt bei Auslösung das Liegenschaftsnetz vom Netz',
+  'EZA-Regler: regelt Wirk- und Blindleistung aller Erzeugungseinheiten am NAP, begrenzt die Einspeisung auf die Anschlusszusage',
+  'Fernwirktechnik zum Netzbetreiber: Sollwerte und Reduzierstufen, Rückmeldung von Messwerten',
+  'Steuerbox des Direktvermarkters: Fernsteuerung der Einspeisung nach Marktsignalen',
+  'Wechselrichter mit Einheitenschutz (integrierter NA-Schutz) und Einheitenzertifikat',
+  'Batteriespeicher über eigenen Wechselrichter, ebenfalls vom EZA-Regler geführt',
+  'eigenes MS-Netz der Liegenschaft: Trafostationen mit Ringkabelfeldern, Erzeugung speist auf der NS-Seite ein',
+  'offene Trennstelle: Ring offen betrieben, bei Kabelfehler Umschaltung auf die zweite Einspeiserichtung',
+  'KWK-Anlage (BHKW) mit Synchrongenerator und eigenem Einheitenschutz; Teil der Erzeugungsanlage am NAP, '
+    + 'ebenfalls vom EZA-Regler geführt (P über die Motorregelung, Q über die Erregung)',
+  'Steuernetz EZA-Regler – Wechselrichter/BHKW über zwei eigene Fasern des BWI-LWL-Netzes: physisch getrenntes Netz '
+    + 'ohne Verbindung zur übrigen IT der Liegenschaft',
+  'IT-sichere Schnittstelle zum Leitsystem, z. B. Datendiode (Messwerte nur lesend ins Leitsystem), Industrie-Firewall '
+    + 'mit Positivliste und DMZ, Protokoll-Gateway (z. B. IEC 60870-5-104 → OPC UA); Zonen nach IEC 62443',
+  'Leitsystem der Liegenschaft (GLT/Energiemanagement): Anzeige und Auswertung, kein direkter Schreibzugriff auf '
+    + 'EZA-Regler, Wechselrichter oder BHKW',
+]);
+const GG_EZA_FUSSNOTE = 'Prinzipskizze ohne Auslegung. Nachweise nach VDE-AR-N 4110: Einheitenzertifikate, Anlagenzertifikat (alle Einheiten am NAP), Konformitätserklärung.';
+
 function ggPvFiguren() {
   const pvText = (id, reihe, titel, hinweis, render) => ({
     id, istText: true, pvText: true, reihe, kapitel: GG_PV_KAPITEL, titel, datei: id, hinweis, render, config: {},
@@ -4659,6 +5491,53 @@ function ggPvFiguren() {
       'Schlussabsatz zu 3.4.2: Verweis auf 3.5 und die Modellgrenzen. Die Anlagennummer der Berechnungsannahmen bleibt '
       + 'offen, bis der Anlagenteil im Editor abgebildet ist.',
       cfg => ggRenderPvAbgrenzungText(cfg)),
+
+    // ── Prinzipskizze Netzanbindung mit EZA-Regler ───────────────────────
+    {
+      id: 'pv-eza-prinzip',
+      autoSync: true,
+      reihe: 85,   // nach „Rückspeisung und Netzverträglichkeit“, vor dem Abgrenzungstext
+      kapitel: GG_PV_KAPITEL,
+      titel: 'Prinzip Netzanbindung mit EZA-Regler und Entkupplungsschutz',
+      datei: 'pv-eza-regler-prinzip',
+      hinweis: 'Prinzipskizze: Übergabestation am NAP mit Wandlern, Zähler, übergeordnetem Entkupplungsschutz und '
+             + 'Leistungsschalter; eigenes MS-Netz mit Trafostationen im Ring (offene Trennstelle), PV, Batterie und BHKW auf '
+             + 'der NS-Seite; EZA-Regler mit Fernwirktechnik und Direktvermarkter führt alle Einheiten über ein eigenes '
+             + 'LWL-Steuernetz (2 Fasern BWI-Netz), zum Leitsystem nur über eine IT-sichere Schnittstelle; gestrichelt die '
+             + 'Liegenschaftsgrenze. Nennspannung aus dem NAP, Zahl der Trafostationen, PV-/Batterie-/BHKW-Leistung und '
+             + 'Einspeisegrenze aus dem Projekt.',
+      render: cfg => ggRenderEzaPrinzip(cfg),
+      config: {
+        eyebrow: 'Elektrotechnisches Gutachten · Netzintegration PV',
+        titel: 'Netzanbindung mit EZA-Regler und Entkupplungsschutz',
+        werte: {},
+        punkte: GG_EZA_PUNKTE,
+        fussnote: GG_EZA_FUSSNOTE,
+      },
+      ausProjekt(cfg) {
+        const items = window.ASSETS?.items || [];
+        const nap = items.find(a => a.type === 'NAP');
+        const uKv = parseFloat(nap?.props?.spannungKV) || 0;
+        const summe = (typ, key) => items.filter(a => a.type === typ)
+          .reduce((s, a) => s + (parseFloat(a.props?.[key]) || 0), 0);
+        const einsp = parseFloat(window.elNapMaxEinspKw) || 0;
+        cfg.werte = {
+          uKv: uKv > 1 ? uKv : 20,
+          stationen: items.filter(a => a.type === 'Trafo').length || null,
+          pvKwp: summe('PV', 'leistungKWp') || null,
+          batKw: summe('Batterie', 'leistungKW') || null,
+          kwkKw: summe('KWK', 'leistungElKW') || null,
+          einspKw: einsp > 0 ? einsp : null,
+        };
+        cfg.punkte = GG_EZA_PUNKTE;
+        cfg.fussnote = GG_EZA_FUSSNOTE;
+        const teile = [`MS ${ggNum(cfg.werte.uKv, cfg.werte.uKv % 1 ? 1 : 0)} kV`];
+        if (cfg.werte.stationen) teile.push(`${cfg.werte.stationen} Trafostationen`);
+        if (cfg.werte.pvKwp) teile.push(`${ggNum(cfg.werte.pvKwp)} kWp PV`);
+        if (cfg.werte.einspKw) teile.push(`Einspeisegrenze ${ggNum(cfg.werte.einspKw)} kW`);
+        return `✓ ${teile.join(', ')}.` + (nap ? '' : ' (kein NAP im Netzmodell — Nennspannung 20 kV angenommen)');
+      },
+    },
 
     // ── Variantenvergleich ───────────────────────────────────────────────
     {
@@ -5248,7 +6127,7 @@ function ggPvFiguren() {
     {
       id: 'res-kurz-text',
       istText: true,
-      kapitel: '5.2.2 Kurzfristige Maßnahmen',
+      kapitel: '5.2.7 Kurzfristige Maßnahmen',
       titel: 'Gutachtentext: Kurzfristige Maßnahmen Resilienz',
       datei: 'resilienz-kurzfristig-text',
       hinweis: 'Organisatorische und kleine Maßnahmen: Einspeisepunkte Klasse C, Schaltanweisungen, Notstrom der Heizzentrale, '
@@ -5259,7 +6138,7 @@ function ggPvFiguren() {
     {
       id: 'res-lang-text',
       istText: true,
-      kapitel: '5.2.3 Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)',
+      kapitel: '5.2.8 Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)',
       titel: 'Gutachtentext: Langfristige Maßnahmen Resilienz',
       datei: 'resilienz-langfristig-text',
       hinweis: 'Umsetzung des empfohlenen Schutzziels — im 🛡 Blackout-Modus unter „Ziele" mit ☆ markieren.',
@@ -5357,13 +6236,13 @@ function ggRenderResZieleText(cfg, T = GG_THEME) {
       + `${ggResEur(sort[sort.length - 1].kosten)} („${gEsc(sort[sort.length - 1].ziel.name)}“). Die Maßnahmen bauen `
       + 'aufeinander auf und lassen sich stufenweise umsetzen. '
       + (erg.empfehlung
-        ? `Empfohlen wird das Schutzziel „${gEsc(erg.empfehlung.ziel.name)}“ (vgl. Kapitel 5.2.3).`
+        ? `Empfohlen wird das Schutzziel „${gEsc(erg.empfehlung.ziel.name)}“ (vgl. Kapitel 5.2.8).`
         : `Welches Schutzziel umgesetzt wird, ist mit dem Nutzer festzulegen: ${ggTextFeld('', 'Empfohlenes Schutzziel')}.`));
   }
   return ggTextBlatt(absaetze, T);
 }
 
-/** Maßnahmen und Bewertung eines Schutzziels als Fließtext (5.2 und 5.2.3). */
+/** Maßnahmen und Bewertung eines Schutzziels als Fließtext (5.2 und 5.2.8). */
 function ggResZielText(b) {
   const z = b.ziel, s = b.strom, w = b.waerme;
   const teile = [];
@@ -5456,7 +6335,7 @@ function ggRenderResIstText(cfg, T = GG_THEME) {
   return ggTextBlatt(absaetze, T);
 }
 
-/** 5.2.2 Kurzfristige Maßnahmen: organisatorisch oder mit geringem Aufwand umsetzbar. */
+/** 5.2.7 Kurzfristige Maßnahmen: organisatorisch oder mit geringem Aufwand umsetzbar. */
 function ggRenderResKurzText(cfg, T = GG_THEME) {
   void cfg;
   const st = ggResStand();
@@ -5470,6 +6349,11 @@ function ggRenderResKurzText(cfg, T = GG_THEME) {
   if (bi.klassen.C.anzahl) {
     punkte.push(`Einspeisepunkte für mobile Netzersatzanlagen an ${bi.klassen.C.anzahl === 1 ? 'dem Gebäude' : `den ${ggNum(bi.klassen.C.anzahl)} Gebäuden`} `
       + `der Klasse C (${ggResNamen(st.namen.C)}) einschließlich einer Rahmenvereinbarung zur Bereitstellung mobiler Aggregate`);
+  }
+  const vorrang = (ggResSz()?.stationen || []).filter(x => x.abKw > 0).map(x => x.name);
+  if (vorrang.length) {
+    punkte.push(`Einspeisepunkte für mobile Netzersatzanlagen vorrangig an ${vorrang.length === 1 ? 'der Transformatorstation' : `den ${ggNum(vorrang.length)} Transformatorstationen`} `
+      + `mit Gebäuden der Klassen A und B (${ggResNamen(vorrang, 6)}; vgl. Kapitel 5.2.6)`);
   }
   const ab = st.empfehlung?.variante?.abgaenge || st.bestandDeckt?.abgaenge || [];
   if (ab.length) {
@@ -5496,7 +6380,7 @@ function ggRenderResKurzText(cfg, T = GG_THEME) {
   ], T);
 }
 
-/** 5.2.3 Langfristige Maßnahmen: Umsetzung des empfohlenen Schutzziels. */
+/** 5.2.8 Langfristige Maßnahmen: Umsetzung des empfohlenen Schutzziels. */
 function ggRenderResLangText(cfg, T = GG_THEME) {
   void cfg;
   const st = ggResStand();
@@ -5528,11 +6412,1896 @@ function ggRenderResLangText(cfg, T = GG_THEME) {
     if (ern.length) absaetze.push(`Zu erneuern sind: ${ggAufzaehlung(ern.map(gEsc))}.`);
     if (pr.length) absaetze.push(`In der weiteren Planung zu prüfen sind: ${ggAufzaehlung(pr.map(gEsc))}.`);
   }
-  absaetze.push('Die Umsetzung kann stufenweise erfolgen: Zuerst werden die kurzfristigen Maßnahmen (Kapitel 5.2.2) umgesetzt, '
+  absaetze.push('Die Umsetzung kann stufenweise erfolgen: Zuerst werden die kurzfristigen Maßnahmen (Kapitel 5.2.7) umgesetzt, '
     + 'anschließend die Netzersatzanlagen der kritischen Gebäude und die Notstromversorgung der Heizzentrale, zuletzt '
     + 'die weiteren Ausbaustufen.');
   return ggTextBlatt(absaetze, T);
 }
+
+/* ── 5.2.2–5.2.6: drei feste Szenarien und allgemeine Empfehlungen (26-blackout-modus.js) ──
+ * Jedes Gutachten stellt drei Szenarien gegenüber — nur die kritischen Gebäude (Klasse A),
+ * die Gesamtliegenschaft als Insel am NAP (Reiter „Liegenschaft“) und je Trafostation eine
+ * NEA an der NSHV für die Gebäude A/B (stationär oder mobil) — und gibt allgemeine
+ * Empfehlungen (Einspeisepunkte an den Trafostationen u. a.). Die Daten kommen über
+ * window.blackoutSzenarienStand(); das rechnet nur bei geänderten Eingaben neu. */
+const ggResSz = () => {
+  if (typeof window.blackoutSzenarienStand !== 'function') return null;
+  try { return window.blackoutSzenarienStand(); } catch (err) { console.warn('Resilienz-Szenarien:', err); return null; }
+};
+const GG_RES_KLASSE_FARBE = { A: '#C62828', B: '#EF8F00', C: '#5A8FC8' };
+const GG_RES_CHECK_STATUS = { neu: 'neu', erneuern: 'erneuern', pruefen: 'prüfen', ok: 'ok' };
+/** „G1, G2, G3 + 2 weitere“ — für Tabellenzellen, die nicht umbrechen. */
+const ggResKurzliste = (namen, max = 3) => (namen.length > max
+  ? `${namen.slice(0, max).join(', ')} + ${namen.length - max} weitere` : namen.join(', '));
+const ggResKuerzen = (s, n) => (String(s).length > n ? String(s).slice(0, Math.max(1, n - 1)) + '…' : String(s));
+const ggResPct = (teil, ganz) => (ganz > 0 ? ggNum(teil / ganz * 100) + ' %' : '—');
+const GG_RES_LASTQUELLE = {
+  'Messdaten (Referenzjahr)': 'aus den Messdaten des Referenzjahres',
+  'Netzmodell am NAP': 'aus dem Netzmodell am Netzanschlusspunkt',
+  'Summe der Trafo-Spitzen': 'als Summe der Spitzenlasten der Transformatorstationen',
+};
+const ggResQuelle = q => GG_RES_LASTQUELLE[q] || `aus ${q}`;
+const ggResKva = kva => (kva > 0 ? `${ggNum(kva)} kVA` : '—');
+const ggResKw = kw => (kw > 0 ? `${ggNum(kw)} kW` : '—');
+/** Zweite Kartenzeile im Schema: Trafoleistung und Spitze, fehlende Werte benannt. */
+const ggResStationZeile = s => `${s.kva > 0 ? `${ggNum(s.kva)} kVA` : 'Leistung unbekannt'} · `
+  + `${s.spitzeKw > 0 ? `Spitze ${ggNum(s.spitzeKw)} kW` : 'ohne Lastgang'}`;
+
+/** Wärme-Absatz für beide Szenarien. */
+function ggResSzWaermeSatz(sz, b, wofuer) {
+  if (b.waerme) {
+    return `${wofuer} benötigt die Heizzentrale${sz.heizzentrale ? ` im Gebäude „${gEsc(sz.heizzentrale)}“` : ''} eine Notstromversorgung `
+      + `für Pumpen, Brenner und Regelung von rund ${ggNum(b.waerme.neaKw)} kW`
+      + (b.waerme.zweistoffKw ? ` sowie Zweistoffbrenner mit zusammen ${ggNum(b.waerme.zweistoffKw)} kW` : '')
+      + `. Damit ist der Wärmebedarf im Ausfallzeitraum zu ${ggNum(b.waerme.deckungPct)} % gedeckt`
+      + ` (Szenario der Wärmeversorgung: ${gEsc(sz.waerme?.szenario || '')}).`;
+  }
+  if (sz.waerme?.ohneNea) {
+    return 'Ohne Notstromversorgung der Heizzentrale fallen Umwälzpumpen, Brenner und Regelung aus; die Wärmeversorgung '
+      + `ist dann unterbrochen. ${ggTextFeld('', 'Notstrom der Heizzentrale im Blackout-Modus › Wärme einschalten')}.`;
+  }
+  return `Wärmeversorgung im Ereignisfall: ${ggTextFeld('', 'Wärme-Lastgang fehlt')}.`;
+}
+
+/** 5.2.2 Szenario 1: nur die Gebäude der Notstromklasse A. */
+function ggRenderResSz1Text(cfg, T = GG_THEME) {
+  void cfg;
+  const sz = ggResSz();
+  if (!sz) return ggTextBlatt([`${ggTextFeld('', 'Szenario 1: Versorgung der kritischen Gebäude')}.`], T);
+  const b = sz.s1.bewertung, v = b.variante, kl = sz.bilanz.klassen;
+  const dauer = ggResDauer(sz.dauerH);
+  const einleitung = 'Im ersten Szenario werden bei einem Ausfall der äußeren Versorgung ausschließlich die als kritisch '
+    + 'eingestuften Gebäude der Notstromklasse A versorgt; die übrige Liegenschaft bleibt ohne Strom. '
+    + `Betrachtet wird ein Ausfall über ${dauer}.`;
+  if (!kl.A.anzahl) {
+    return ggTextBlatt([einleitung,
+      `Kritische Gebäude sind bislang nicht festgelegt: ${ggTextFeld('', 'Gebäude der Klasse A (Blackout-Modus › Klassen)')}.`], T);
+  }
+  const agg = v.aggregate.filter(a => a.empfKw > 0);
+  const absaetze = [
+    einleitung + ` Als kritisch eingestuft ${kl.A.anzahl === 1 ? 'ist das Gebäude' : `sind die ${ggNum(kl.A.anzahl)} Gebäude`} `
+      + `${ggResNamen(sz.namen.A)} mit einer Anschlussleistung von zusammen ${ggNum(kl.A.anschlussKw)} kW`
+      + (kl.A.ohneLast ? `; für ${ggNum(kl.A.ohneLast)} davon liegen noch keine Verbrauchsdaten vor` : '') + '.',
+  ];
+  if (agg.length) {
+    const orte = agg.map(a => `${ggResOrt(a)} (${ggNum(a.empfKw)} kW`
+      + (a.bestandKw > 0 ? (a.zusatzKw > 0 ? `, davon ${ggNum(a.bestandKw)} kW vorhanden` : ', vorhanden') : '') + ')');
+    absaetze.push('Die Netzersatzanlagen werden am Bestandsnetz so angeordnet, dass die Investition am geringsten ist '
+      + `(Aufstellungsvariante „${gEsc(sz.s1.strategie)}“). Erforderlich ${agg.length === 1 ? 'ist eine Anlage' : `sind ${ggNum(agg.length)} Anlagen`} `
+      + `mit zusammen ${ggNum(v.summe.kw)} kW, bemessen auf die gleichzeitige Spitzenlast von ${ggNum(sz.s1.aKw)} kW zuzüglich 20 % Reserve. `
+      + `Standorte: ${ggAufzaehlung(orte)}.`
+      + (v.summe.abgaenge ? ` Da eine Anlage an einem Netzknoten alle nachgelagerten Abgänge speist, ${v.summe.abgaenge === 1
+        ? 'ist ein Abgang' : `sind ${ggNum(v.summe.abgaenge)} Abgänge`} ohne kritische Gebäude im Ereignisfall abzuschalten und zu kennzeichnen.` : '')
+      + (v.nichtAmNetz?.length ? (v.nichtAmNetz.length === 1
+        ? ' Ein Gebäude ist im Netzmodell keiner Station zugeordnet und wird mit einem eigenen Aggregat gerechnet.'
+        : ` ${ggNum(v.nichtAmNetz.length)} Gebäude sind im Netzmodell keiner Station zugeordnet und werden mit einem eigenen Aggregat gerechnet.`) : '')
+      + ' Die folgende Abbildung zeigt die Versorgung je Transformatorstation, die Tabelle die Anlagen im Einzelnen.');
+  }
+  if (b.strom?.liter) {
+    absaetze.push(`Für ${dauer} sind bei mittlerer Auslastung der Aggregate rund ${ggNum(b.strom.liter)} l Dieselkraftstoff `
+      + 'vorzuhalten – in den Tanks der Aggregate oder über eine vertraglich gesicherte Nachbelieferung.');
+  }
+  absaetze.push(ggResSzWaermeSatz(sz, b, 'Damit die kritischen Gebäude auch beheizt bleiben,'));
+  if (sz.s1.mitB) {
+    absaetze.push(`Die ${kl.B.anzahl === 1 ? 'Gebäude' : `${ggNum(kl.B.anzahl)} Gebäude`} der Klasse B (eingeschränkter Betrieb: `
+      + `${ggResNamen(sz.namen.B)}) ${kl.B.anzahl === 1 ? 'ist' : 'sind'} in diesem Szenario nicht versorgt. Ihre Einbindung mit reduzierter Last `
+      + `erhöht die erforderliche Notstromleistung von ${ggNum(v.summe.kw)} kW auf ${ggNum(sz.s1.mitB.kw)} kW.`);
+  }
+  absaetze.push(`Die Investition für dieses Szenario beträgt überschlägig ${ggResEur(b.kosten)} (Aggregate, Einspeisungen, `
+    + `Kraftstofflager${b.waerme ? ' und Notstrom der Heizzentrale' : ''}). Das Szenario ist mit vergleichsweise geringem Aufwand, `
+    + 'ohne Eingriffe in das Mittelspannungsnetz und schrittweise je Standort umsetzbar. Dem steht gegenüber, dass sich der Betrieb '
+    + 'auf die kritischen Funktionen beschränkt und mehrere dezentrale Aggregate Wartung, Probeläufe und Kraftstofflogistik an '
+    + 'jedem Standort erfordern.'
+    + (b.status !== 'erfuellt' && b.gruende.length ? ` Hinweis zur Bewertung: ${gEsc(b.gruende.join('; '))}.` : ''));
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 5.2.3 Szenario 2: je Trafostation eine NEA an der NSHV für die Gebäude A/B, stationär oder mobil. */
+function ggRenderResStationText(cfg, T = GG_THEME) {
+  void cfg;
+  const sz = ggResSz();
+  if (!sz) return ggTextBlatt([`${ggTextFeld('', 'Szenario 2: Versorgung je Trafostation')}.`], T);
+  const b = sz.s2.bewertung, v = b.variante, kl = sz.bilanz.klassen, m = sz.s2.mobil;
+  const dauer = ggResDauer(sz.dauerH);
+  const einleitung = 'Im zweiten Szenario erhält jede Transformatorstation, an der Gebäude der Klassen A oder B angeschlossen sind, '
+    + 'eine Netzersatzanlage auf der Niederspannungsseite. Sie speist über eine Umschalteinrichtung in die '
+    + 'Niederspannungshauptverteilung der Station und versorgt die Abgänge zu den Gebäuden der Klasse A mit voller und der '
+    + 'Klasse B mit reduzierter Last; die übrigen Abgänge werden im Ereignisfall abgeschaltet. Das Mittelspannungsnetz bleibt '
+    + `spannungslos. Betrachtet wird ein Ausfall über ${dauer}.`;
+  if (!kl.A.anzahl && !kl.B.anzahl) {
+    return ggTextBlatt([einleitung,
+      `Gebäude der Klassen A und B sind bislang nicht festgelegt: ${ggTextFeld('', 'Gebäude der Klassen A/B (Blackout-Modus › Klassen)')}.`], T);
+  }
+  const anStation = sz.stationen.filter(st => st.sz2.length);
+  const ohneNea = sz.stationen.length - anStation.length;
+  const agg = v.aggregate.filter(a => a.empfKw > 0);
+  const orte = anStation.map(st => `${gEsc(st.name)} (${ggNum(st.sz2.reduce((s, a) => s + a.kw, 0))} kW)`);
+  const extra = sz.s2.ohneStation;
+  const absaetze = [einleitung];
+  if (agg.length) {
+    absaetze.push(`Versorgt werden ${ggNum(b.strom?.gebaeude || 0)} Gebäude der Klassen A und B. Erforderlich `
+      + `${agg.length === 1 ? 'ist eine Anlage' : `sind ${ggNum(agg.length)} Anlagen`} mit zusammen ${ggNum(v.summe.kw)} kW, bemessen je `
+      + `Station auf die gleichzeitige Spitzenlast ihrer Gebäude A und B (zusammen ${ggNum(sz.s2.kw)} kW) zuzüglich 20 % Reserve`
+      + (orte.length ? `: ${ggAufzaehlung(orte)}` : '') + '.'
+      + (extra.length ? ` ${extra.length === 1 ? 'Ein Gebäude ist' : `${ggNum(extra.length)} Gebäude sind`} keiner Station zugeordnet `
+        + `oder ${extra.length === 1 ? 'hat' : 'haben'} eine eigene Anlage und ${extra.length === 1 ? 'wird' : 'werden'} am Gebäude versorgt `
+        + `(${ggResNamen(extra.map(a => a.name), 4)}).` : '')
+      + (v.summe.abgaenge ? ` In den versorgten Stationen ${v.summe.abgaenge === 1 ? 'ist ein Abgang' : `sind ${ggNum(v.summe.abgaenge)} Abgänge`} `
+        + 'ohne Gebäude der Klassen A und B im Ereignisfall abzuschalten und zu kennzeichnen.' : '')
+      + (ohneNea > 0 ? ` ${ohneNea === 1 ? 'Eine Station ohne Gebäude der Klassen A und B bleibt' : `${ggNum(ohneNea)} Stationen ohne Gebäude der Klassen A und B bleiben`} `
+        + 'ohne Versorgung; über ihre Einspeisepunkte (Kapitel 5.2.6) lassen sie sich bei Bedarf mit mobilen Aggregaten übernehmen.' : ''));
+  }
+  absaetze.push('Jede versorgte Station bildet im Ereignisfall ein eigenes Niederspannungsnetz. Die Umschaltung „Netz – 0 – '
+    + 'Netzersatzanlage“ mit gegenseitiger Verriegelung schließt einen Parallelbetrieb mit dem Netz aus, das Aggregat wird an '
+    + 'die Erdungsanlage der Station angeschlossen. Anders als bei der Inselversorgung der Liegenschaft (Szenario 3) sind weder Eingriffe in das Mittelspannungsnetz '
+    + 'noch ein Maschinentransformator oder eine eigene Sternpunktbehandlung erforderlich. Da das Aggregat einen deutlich '
+    + 'geringeren Kurzschlussstrom liefert als der Transformator, sind die Abschaltbedingungen in den versorgten Abgängen für '
+    + 'diesen Betrieb nachzuweisen. Das Prinzip zeigt die folgende Abbildung, die Versorgung je Station das anschließende Schema.');
+  if (b.strom?.liter) {
+    absaetze.push(`Für ${dauer} sind bei mittlerer Auslastung der Aggregate rund ${ggNum(b.strom.liter)} l Dieselkraftstoff `
+      + 'vorzuhalten bzw. nachzuliefern.');
+  }
+  absaetze.push(ggResSzWaermeSatz(sz, b, 'Damit die versorgten Gebäude auch beheizt bleiben,'));
+  if (agg.length) {
+    absaetze.push('Die Netzersatzanlagen können fest installiert oder im Ereignisfall als mobile Aggregate über die Einspeisepunkte '
+      + `angeschlossen werden. Fest installiert beträgt die Investition überschlägig ${ggResEur(b.kosten)} (Aggregate, Einspeisungen, `
+      + `Kraftstofflager und Kennzeichnung der Abgänge${b.waerme ? ' sowie Notstrom der Heizzentrale' : ''}). Mit mobilen Aggregaten `
+      + `beschränkt sie sich auf ${m.anzahl === 1 ? 'einen Einspeisepunkt' : `${ggNum(m.anzahl)} Einspeisepunkte`} und die Kennzeichnung `
+      + `der Abgänge${b.waerme ? ' sowie den Notstrom der Heizzentrale' : ''}, zusammen rund ${ggResEur(m.gesamt)}; hinzu kommen die `
+      + 'laufenden Kosten eines Rahmenvertrags für die Bereitstellung der Aggregate und die Nachlieferung des Kraftstoffs. '
+      + 'Bei einem großflächigen, länger andauernden Ausfall ist die Verfügbarkeit angemieteter Aggregate jedoch nicht gesichert, '
+      + 'und bis zur Versorgung vergehen je nach Anfahrt mehrere Stunden. Für Stationen mit Gebäuden der Klasse A ist deshalb '
+      + 'eine fest installierte Anlage vorzuziehen; Stationen, die nur Gebäude der Klasse B versorgen, können mobil übernommen '
+      + 'werden. Die Tabelle „Netzersatzanlagen Szenario 2“ stellt beide Ausführungen je Station gegenüber.');
+  }
+  absaetze.push('Vorteil dieses Szenarios ist, dass es ohne Eingriffe in Mittelspannungsnetz und Schutztechnik sowie ohne '
+    + 'Abstimmung eines Inselbetriebs mit dem Netzbetreiber auskommt, sich Station für Station umsetzen lässt und der Ausfall '
+    + 'eines Aggregats nur eine Station betrifft. Gegenüber Szenario 1 werden zusätzlich die Gebäude der Klasse B versorgt, und '
+    + 'die Anlagen stehen einheitlich an den Stationen, wo auch die Einspeisepunkte der allgemeinen Empfehlung liegen. Nachteilig '
+    + 'sind Wartung, Probeläufe und Kraftstofflogistik an mehreren Standorten; die Gebäude der Klasse C bleiben ohne Versorgung, '
+    + 'und freie Leistung einer Station kann nicht auf eine andere übertragen werden.'
+    + (b.status !== 'erfuellt' && b.gruende.length ? ` Hinweis zur Bewertung: ${gEsc(b.gruende.join('; '))}.` : ''));
+  return ggTextBlatt(absaetze, T);
+}
+
+/** Absätze zu Erzeugern und Speichern im Inselbetrieb und zum Ablauf Inselbildung/Rückkehr (Begleittext zur Figur res-insel-ee). */
+function ggResInselEeSatz() {
+  const pvKwp = ggResAssetSumme('PV', 'leistungKWp');
+  const windKw = ggResAssetSumme('Wind', 'leistungKW');
+  const kwkKw = ggResAssetSumme('KWK', 'leistungElKW');
+  const battKwh = ggResAssetSumme('Batterie', 'kapazitaetKWh');
+  const erfasst = [
+    pvKwp > 0 && `${ggNum(pvKwp)} kWp Photovoltaik`,
+    windKw > 0 && `${ggNum(windKw)} kW Windenergie`,
+    kwkKw > 0 && `${ggNum(kwkKw)} kW elektrische KWK-Leistung`,
+    battKwh > 0 && `ein Batteriespeicher mit ${ggNum(battKwh)} kWh`,
+  ].filter(Boolean);
+  const folgend = ['Photovoltaik', windKw > 0 && 'Windenergieanlagen', 'BHKW'].filter(Boolean);
+  let t = 'Erzeugungsanlagen und Speicher auf der Liegenschaft lassen sich in den Inselbetrieb einbinden (Abbildung '
+    + '„Erneuerbare Erzeuger und Speicher im Inselbetrieb“). Führend ist dabei die Netzersatzanlage: Sie gibt Spannung und '
+    + 'Frequenz vor und ist für die volle Last der Insel bemessen, sodass der Inselbetrieb auch ohne Erzeuger und Speicher '
+    + `möglich ist. ${battKwh > 0 ? 'Der Batteriespeicher und ' : ''}${ggAufzaehlung(folgend)} werden erst zugeschaltet, wenn die `
+    + 'Insel stabil läuft, und folgen der Netzersatzanlage netzfolgend. '
+    + (erfasst.length ? `Im Netzmodell ${erfasst.length === 1 && battKwh > 0 ? 'ist' : 'sind'} ${ggAufzaehlung(erfasst)} erfasst. `
+      : 'Im Netzmodell sind bislang keine Erzeugungsanlagen oder Speicher erfasst. ')
+    + 'Bei Überschuss wird die Photovoltaik über die Frequenz abgeregelt (P(f)-Kennlinie), bei Mangel werden zuerst flexible '
+    + 'Lasten wie Heizstäbe, Wärmepumpen und Ladepunkte und danach Abgänge abgeworfen. ';
+  t += battKwh > 0
+    ? 'Der Batteriespeicher nimmt Überschüsse auf und fängt Lastsprünge ab. '
+    : 'Ein Batteriespeicher würde zusätzlich Überschüsse aufnehmen und Lastsprünge abfangen. ';
+  t += 'Die Einspeisung ist so zu begrenzen, dass die Aggregate ihre Mindestlast (ca. 30–40 %) halten und keine Rückleistung '
+    + 'aufnehmen. ';
+  if (kwkKw > 0) {
+    t += 'Das BHKW ist nur mit Synchrongenerator und inselfähiger Regelung einsetzbar; es wird auf die Netzersatzanlage '
+      + 'synchronisiert und im Ereignisfall stromgeführt betrieben, die Wärme geht in den Pufferspeicher, und die '
+      + 'Gasversorgung während eines Blackouts ist zu prüfen. ';
+  }
+  t += 'Die Einbindung spart Kraftstoff und verlängert die Autonomie, ersetzt aber keine gesicherte Leistung, da die '
+    + 'Photovoltaik nachts und im Winter kaum beiträgt; die Bemessung der Netzersatzanlage bleibt deshalb unverändert. '
+    + 'Die Schutzeinstellungen der Wechselrichter (NA-Schutz, Inselnetzerkennung) sind für den Inselbetrieb anzupassen und '
+    + 'mit dem Netzbetreiber abzustimmen.';
+  return [t, 'Die Inbetriebnahme der Insel folgt einer festen Reihenfolge: Nach Erkennen des Netzausfalls wird der '
+    + 'Netzanschlusspunkt geöffnet, die Netzersatzanlage gestartet und die Transformatorstationen in Stufen zugeschaltet. '
+    + 'Erst wenn die Insel stabil läuft, werden der Speicher zugeschaltet und die Erzeuger durch das Energiemanagement '
+    + 'freigegeben. Für die Rückkehr ans Netz wird nach stabiler Netzwiederkehr und Freigabe durch den Netzbetreiber die '
+    + 'Einspeisung der Erzeuger und des Speichers zurückgefahren, die Netzersatzanlage über eine Synchronisiereinrichtung '
+    + '(Synchrocheck) auf Spannung, Frequenz und Phasenlage des Netzes abgeglichen und der Schalter am Netzanschlusspunkt '
+    + 'geschlossen. Nach einem kurzen, mit dem Netzbetreiber abgestimmten Parallelbetrieb übernimmt das Netz die Last und '
+    + 'die Netzersatzanlage fährt ab; die Wechselrichter arbeiten anschließend wieder im Netzparallelbetrieb. Ist keine '
+    + 'Synchronisiereinrichtung vorgesehen, erfolgt die Rückschaltung mit kurzer Unterbrechung: Die Insel wird spannungslos '
+    + 'geschaltet, der Netzanschlusspunkt geschlossen, und die Wechselrichter schalten nach Ablauf ihrer Wartezeit selbsttätig '
+    + 'wieder zu.'];
+}
+
+/** 5.2.4 Szenario 3: Liegenschaft als Insel am NAP (Reiter „Liegenschaft“). */
+function ggRenderResLiegenschaftText(cfg, T = GG_THEME) {
+  void cfg;
+  const sz = ggResSz();
+  if (!sz) return ggTextBlatt([`${ggTextFeld('', 'Szenario 3: Versorgung der Gesamtliegenschaft')}.`], T);
+  const b = sz.s3.bewertung, r = b.insel;
+  const dauer = ggResDauer(sz.dauerH);
+  const einleitung = 'Im dritten Szenario wird die Liegenschaft als Ganzes über eine zentrale Netzersatzanlage am '
+    + 'Netzanschlusspunkt im Inselbetrieb weiterbetrieben.';
+  if (!r || !(r.spitzeKw > 0)) {
+    return ggTextBlatt([einleitung,
+      `Für die Bemessung fehlen ein Lastgang der Liegenschaft oder die Transformatorstationen im Netzmodell: ${ggTextFeld('', 'Spitzenlast der Liegenschaft')}.`], T);
+  }
+  const lab = r.lastabwurf, zs = r.zuschaltung;
+  const absaetze = [
+    einleitung + ` Die Spitzenlast der Liegenschaft beträgt ${ggNum(r.spitzeKw)} kW (ermittelt ${gEsc(ggResQuelle(sz.lastQuelle))}). `
+      + (r.anteilPct >= 100
+        ? `Abgesichert wird die volle Spitzenlast über ${dauer}.`
+        : `Abgesichert werden ${ggNum(r.anteilPct)} % davon, also ${ggNum(r.zielKw)} kW über ${dauer}; die übrige Last wird durch `
+          + 'das Abschalten von Transformatorstationen bzw. Abgängen abgeworfen.')
+      + (r.abReichtNicht ? ` Die gleichzeitige Last der Gebäude der Klassen A und B liegt darüber; bemessen wird deshalb auf `
+        + `${ggNum(r.bemessungKw)} kW.` : ''),
+    (r.aggregate.anzahl === 1
+      ? `Erforderlich ist ein Aggregat mit ${ggNum(r.aggregate.kvaJe)} kVA, das über einen `
+      : `Erforderlich sind ${ggNum(r.aggregate.anzahl)} Aggregate mit je ${ggNum(r.aggregate.kvaJe)} kVA`
+        + `${sz.s3.redundanz ? ' (einschließlich einer Reserveeinheit, N+1)' : ''}, die über einen `)
+      + `Maschinentransformator von ${ggNum(r.maschinentrafoKva)} kVA in die Mittelspannungsanlage am Netzanschlusspunkt `
+      + `${r.aggregate.anzahl === 1 ? 'einspeist' : 'einspeisen'}. `
+      + `Das Kraftstofflager ist für das energiereichste ${ggNum(sz.dauerH)}-Stunden-Fenster mit rund ${ggNum(r.liter)} l Diesel zu bemessen.`,
+    `Im Inselbetrieb werden ${lab.versorgt.length === 1 ? 'eine Transformatorstation' : `${ggNum(lab.versorgt.length)} Transformatorstationen`} `
+      + `in ${zs.stufen.length === 1 ? 'einer Zuschaltstufe' : `${ggNum(zs.stufen.length)} Zuschaltstufen`} nacheinander zugeschaltet, `
+      + 'damit Einschaltströme und Lastsprünge die Aggregate nicht überlasten'
+      + (lab.abschalten.length ? `; ${lab.abschalten.length === 1 ? 'eine Station bleibt' : `${ggNum(lab.abschalten.length)} Stationen bleiben`} `
+        + `abgeschaltet (${ggResNamen(lab.abschalten.map(t => t.name || 'Station'), 5)})` : '')
+      + (lab.nsAbwurf.length ? `; in den versorgten Stationen ${lab.nsAbwurf.length === 1 ? 'wird ein Niederspannungsabgang'
+        : `werden ${ggNum(lab.nsAbwurf.length)} Niederspannungsabgänge`} abgeworfen` : '')
+      + '. Das Prinzip des Inselbetriebs sowie die Stationen mit ihren Zuschaltstufen zeigen die folgenden Abbildungen und die Tabelle.',
+  ];
+  const titel = st => [...new Set(r.checkliste.filter(c => c.status === st).map(c => gEsc(c.titel)))];
+  const neu = titel('neu'), ern = titel('erneuern'), pr = titel('pruefen');
+  absaetze.push('Im Inselbetrieb fehlen die Sternpunkterdung und die Kurzschlussleistung des vorgelagerten Netzes. Erforderlich '
+    + 'sind deshalb eine Netztrennung am Netzanschlusspunkt mit Synchronisierung für die Rückschaltung, eine eigene '
+    + `Sternpunktbehandlung (kapazitiver Erdschlussstrom der Mittelspannungskabel rund ${ggNum(r.ms.icA, 1)} A), ein Einspeisefeld `
+    + 'sowie eine an den geringeren Kurzschlussstrom angepasste Schutztechnik. Der Betrieb ist mit dem Netzbetreiber '
+    + 'abzustimmen (VDE-AR-N 4110).'
+    + (neu.length ? ` Neu zu errichten: ${ggAufzaehlung(neu)}.` : '')
+    + (ern.length ? ` Zu erneuern: ${ggAufzaehlung(ern)}.` : '')
+    + (pr.length ? ` In der weiteren Planung zu prüfen: ${ggAufzaehlung(pr)}.` : '')
+    + ' Die Maßnahmen und Richtkosten im Einzelnen zeigt die Tabelle „Technische Maßnahmen Inselbetrieb“.');
+  absaetze.push(ggResSzWaermeSatz(sz, b, 'Für die Wärmeversorgung der Liegenschaft'));
+  absaetze.push(...ggResInselEeSatz());
+  absaetze.push(`Die Investition beträgt überschlägig ${ggResEur(b.kosten)}. Vorteil dieses Szenarios ist, dass `
+    + `${r.anteilPct >= 100 ? 'die gesamte Liegenschaft' : 'ein großer Teil der Liegenschaft'} betriebsfähig bleibt und Erzeugung, `
+    + 'Kraftstofflager und Überwachung an einem Standort gebündelt sind. Nachteilig sind die deutlich höhere Investition, die '
+    + 'Eingriffe in Mittelspannungsnetz und Schutztechnik, die Abstimmung mit dem Netzbetreiber sowie die Abhängigkeit von einem '
+    + `zentralen Standort${sz.s3.redundanz ? '' : ', die eine redundante Auslegung (N+1) nahelegt'}.`
+    + (b.status !== 'erfuellt' && b.gruende.length ? ` Hinweis zur Bewertung: ${gEsc(b.gruende.join('; '))}.` : ''));
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 5.2.5 Gegenüberstellung der drei Szenarien. */
+function ggRenderResVergleichText(cfg, T = GG_THEME) {
+  void cfg;
+  const sz = ggResSz();
+  if (!sz) return ggTextBlatt([`${ggTextFeld('', 'Gegenüberstellung der Szenarien')}.`], T);
+  const b1 = sz.s1.bewertung, b2 = sz.s2.bewertung, b3 = sz.s3.bewertung;
+  const spitze = sz.liegenschaftSpitzeKw;
+  const kw1 = sz.s1.aKw, kw2 = sz.s2.kw, kw3 = b3.insel?.bemessungKw || 0;
+  const absaetze = ['Die drei Szenarien steigern den Versorgungsumfang schrittweise vom einzelnen Gebäude über die '
+    + 'Transformatorstation bis zur gesamten Liegenschaft. Die folgende Abbildung stellt ihn der Spitzenlast der Liegenschaft '
+    + 'gegenüber, die anschließende Tabelle die erforderlichen Maßnahmen und Richtkosten.'];
+  if (kw1 > 0 && kw2 > 0 && kw3 > 0) {
+    absaetze.push(`Szenario 1 sichert die kritischen Gebäude mit ${ggNum(kw1)} kW (${ggResPct(kw1, spitze)} der Liegenschaftsspitze) `
+      + `für rund ${ggResEur(b1.kosten)} ab, Szenario 2 die Gebäude der Klassen A und B mit ${ggNum(kw2)} kW (${ggResPct(kw2, spitze)}) `
+      + `für rund ${ggResEur(b2.kosten)} mit fest installierten bzw. ${ggResEur(sz.s2.mobil.gesamt)} mit mobilen Aggregaten und `
+      + `Szenario 3 die Liegenschaft mit ${ggNum(kw3)} kW (${ggResPct(kw3, spitze)}) für rund ${ggResEur(b3.kosten)}. Bezogen auf die `
+      + `abgesicherte Leistung sind das ${ggNum(b1.kosten / kw1)} €/kW, ${ggNum(b2.kosten / kw2)} €/kW (Szenario 2 fest installiert) `
+      + `bzw. ${ggNum(b3.kosten / kw3)} €/kW.`);
+  } else {
+    absaetze.push(`Abgesicherte Leistung und Investition je Szenario: ${ggTextFeld('', 'Kennwerte der Szenarien (Blackout-Modus)')}.`);
+  }
+  absaetze.push('Die Szenarien schließen sich nicht aus, sondern bauen aufeinander auf: Die Einspeisepunkte an den '
+    + 'Transformatorstationen (Kapitel 5.2.6) sind die Grundlage von Szenario 2 und in allen Fällen als Rückfallebene nutzbar; '
+    + 'die Aggregate der kritischen Gebäude bleiben auch bei einer späteren zentralen Inselversorgung als zweite, unabhängige '
+    + 'Versorgungsebene sinnvoll. Naheliegend ist deshalb ein stufenweises Vorgehen: zunächst die Einspeisepunkte und die '
+    + 'Versorgung der kritischen Gebäude, danach die Versorgung je Transformatorstation und – abhängig vom Auftrag der '
+    + 'Liegenschaft im Krisenfall – der Ausbau zur Inselversorgung. Welche Stufe umgesetzt wird, ist mit dem Nutzer '
+    + 'abzustimmen (vgl. Kapitel 5.2.8).');
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 5.2.6 Allgemeine Empfehlungen, Teil 1: Einspeisepunkte an den Trafostationen. */
+function ggRenderResEinspeisungText(cfg, T = GG_THEME) {
+  void cfg;
+  const sz = ggResSz();
+  const st = sz?.stationen || [];
+  const absaetze = ['Unabhängig vom gewählten Szenario werden Maßnahmen empfohlen, die die Handlungsfähigkeit bei einem länger '
+    + 'andauernden Ausfall mit geringem Aufwand deutlich verbessern. Wichtigster Baustein sind Einspeisemöglichkeiten für '
+    + 'mobile Netzersatzanlagen an den Transformatorstationen. Sie sind zugleich die Grundlage der mobilen Ausführung von '
+    + 'Szenario 2 (Kapitel 5.2.3).'];
+  absaetze.push(`An ${st.length === 1 ? 'der Transformatorstation' : st.length ? `den ${ggNum(st.length)} Transformatorstationen`
+    : `den ${ggTextFeld('', 'Anzahl')} Transformatorstationen`} der Liegenschaft sollte jeweils niederspannungsseitig eine `
+    + 'Einspeisemöglichkeit vorgesehen werden. Sie besteht aus einem von außen zugänglichen Einspeisekasten mit genormten '
+    + 'Steckverbindern, einer fest verlegten Verbindung zur Niederspannungshauptverteilung und einer Umschalteinrichtung '
+    + '„Netz – 0 – Netzersatzanlage“ mit gegenseitiger Verriegelung, die einen Parallelbetrieb mit dem öffentlichen Netz '
+    + 'ausschließt. Hinzu kommen eine befestigte Stellfläche mit Zufahrt für Aggregat und Tankfahrzeug sowie ein Anschlusspunkt '
+    + 'für Erdung und Potentialausgleich. Die folgende Abbildung zeigt das Prinzip.');
+  if (st.length) {
+    const vorrang = st.filter(s => s.abKw > 0).map(s => s.name);
+    const ohneLast = st.filter(s => s.einspeisung.basis === 'trafo').length;
+    const summe = st.reduce((s, x) => s + x.einspeisung.kosten, 0);
+    absaetze.push('So kann jede Station im Ereignisfall von einem angemieteten oder vorgehaltenen Aggregat übernommen werden – '
+      + 'auch als Rückfallebene bei Ausfall einer fest installierten Anlage und während Wartungs- und Umbauarbeiten. Bemessen '
+      + 'wird die Einspeisung auf die Spitzenlast der Station zuzüglich 20 % Reserve, höchstens auf die Trafoleistung'
+      + (ohneLast ? `; für ${ohneLast === 1 ? 'eine Station' : `${ggNum(ohneLast)} Stationen`} ohne Lastgang ist die Trafoleistung angesetzt` : '')
+      + '. '
+      + (vorrang.length === 1 ? `Vorrang hat die Station mit Gebäuden der Klassen A und B (${ggResNamen(vorrang)}). `
+        : vorrang.length ? `Vorrang haben die Stationen mit Gebäuden der Klassen A und B (${ggResNamen(vorrang, 8)}). ` : '')
+      + `Die Investition für alle Stationen beträgt überschlägig ${ggResEur(summe)}; Bemessung und Anschlussart je Station `
+      + 'zeigt die Tabelle „Einspeisepunkte an den Transformatorstationen“.');
+  }
+  return ggTextBlatt(absaetze, T);
+}
+
+/** 5.2.6 Allgemeine Empfehlungen, Teil 2: weitere Planungsgrundsätze. */
+function ggRenderResEmpfehlungText(cfg, T = GG_THEME) {
+  void cfg;
+  const sz = ggResSz();
+  const alt = (sz?.stationen || []).filter(s => s.alterJ != null && s.alterJ > 30).map(s => `${s.name} (${s.baujahr})`);
+  const punkte = [
+    'Bei Neubau und Erneuerung von Transformatorstationen, Niederspannungshauptverteilungen und Heizzentralen die '
+      + 'Einspeisemöglichkeit und die Umschalteinrichtung standardmäßig mit vorsehen; im Zuge ohnehin anstehender Arbeiten '
+      + 'sind die Mehrkosten gering'
+      + (alt.length ? `. Das betrifft insbesondere ${alt.length === 1 ? 'die Station' : 'die Stationen'} ${ggResNamen(alt, 6)}, `
+        + `${alt.length === 1 ? 'die älter als 30 Jahre ist' : 'die älter als 30 Jahre sind'} und absehbar zur Erneuerung ${alt.length === 1 ? 'ansteht' : 'anstehen'}` : ''),
+    'Informations-, Kommunikations-, Sicherheits- und Leittechnik in den kritischen Gebäuden über eine unterbrechungsfreie '
+      + 'Stromversorgung (USV) puffern, damit die Umschaltzeit der Netzersatzanlagen ohne Ausfall überbrückt wird',
+    'PV-Anlagen trennen sich bei Netzausfall vom Netz und tragen ohne netzbildende Einrichtung nichts zur Versorgung bei. Bei '
+      + 'Neuplanung von PV-Anlagen und Batteriespeichern die Ersatzstrom- bzw. Inselnetzfähigkeit (netzbildender Wechselrichter) '
+      + 'vorsehen; im Betrieb mit Netzersatzanlagen die PV-Einspeisung begrenzen, damit keine Rückleistung auf die Aggregate entsteht',
+    'Im Betrieb über Netzersatzanlagen ist der Kurzschlussstrom deutlich geringer als am Netz. Abschaltbedingungen und '
+      + 'Selektivität für diesen Betrieb nachweisen (DIN VDE 0100-410 und -551)',
+    'Abgänge in den Hauptverteilungen nach ihrer Priorität eindeutig kennzeichnen und, wo wirtschaftlich, fernschaltbar ausführen, '
+      + 'damit Lastabwurf und Zuschaltung ohne Begehung aller Standorte möglich sind',
+    'Rahmenverträge für die Bereitstellung mobiler Aggregate und die priorisierte Nachlieferung von Kraftstoff abschließen, die '
+      + 'Kraftstoffqualität der Lager durch Umwälzung, Filterung bzw. regelmäßigen Verbrauch sichern und eine vorhandene '
+      + 'Betriebstankstelle in die Notstromversorgung einbeziehen',
+    'Trinkwasserversorgung (Druckerhöhung), Abwasserhebeanlagen und Löschwassereinrichtungen in die Notstromplanung einbeziehen',
+    'Netzpläne, Schaltpläne und eine Liste der Einspeisepunkte aktuell halten und in Papierform an den Stationen und in der '
+      + 'Leitstelle vorhalten',
+  ];
+  return ggTextBlatt(['Darüber hinaus werden folgende allgemeine Maßnahmen empfohlen:', ...punkte.map(t => `– ${t}.`)], T);
+}
+
+/**
+ * Übersichtsschema je Szenario: Netzanschlusspunkt, MS-Netz und je Trafostation eine Karte mit
+ * Zustand, Gebäuden und — in Szenario 1 und 2 — den Aggregaten, in Szenario 3 der Zuschaltstufe.
+ * cfg.stationen = [{ name, zeile2, zustand: 'nea'|'versorgt'|'aus'|'ohne', band, nea, gebaeude:[{name, klasse, nea}] }]
+ * cfg.zentral = { zeilen: string[] } (Szenario 3) · cfg.extra = Karten ohne Netzzuordnung (gestrichelt, ohne Stich)
+ */
+export function ggRenderResSchema(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel, hell = T.accents.gruen;
+  const rot = T.energy.waerme;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const x0 = S.padX, x1 = W - S.padX;
+  const karten = [...(cfg.stationen || []).map(k => ({ ...k, stich: true })), ...(cfg.extra || []).map(k => ({ ...k, stich: false }))];
+  const n = karten.length;
+  const cols = n <= 4 ? Math.max(n, 1) : n <= 10 ? 5 : 6;
+  const reihen = Math.max(1, Math.ceil(n / cols));
+  const gap = 14, cw = (x1 - x0 - (cols - 1) * gap) / cols;
+  const ch = 178, stichH = 26, reiheAbstand = 18;
+  const top = S.headBand + S.headHSchmal + 22;
+  const busY = top + 118;
+  const kartenTop = r => busY + stichH + r * (ch + stichH + reiheAbstand);
+  const legY = kartenTop(reihen - 1) + ch + 30;
+  const height = legY + 26 + (cfg.fussnote ? 22 : 0) + S.footSpace;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+
+  const insel = cfg.modus === 'insel';
+  const busFarbe = insel ? gruen : T.text.faint;
+
+  // ── Netz des Netzbetreibers (ausgefallen) und Übergabe am NAP ──
+  const napX = x0 + 90;
+  out += `<rect x="${x0 + 0.5}" y="${top + 0.5}" width="180" height="38" fill="${T.neutral.cardBg}" stroke="${rot}"
+            stroke-width="1.2" stroke-dasharray="5 3"/>`;
+  out += txt(x0 + 90, top + 16, 'Netz des Netzbetreibers', { anchor: 'middle', size: 11.5, weight: 600 });
+  out += txt(x0 + 90, top + 31, 'Ausfall', { anchor: 'middle', size: 11, weight: 600, fill: rot });
+  // Trennschalter geöffnet
+  const sy = top + 52;
+  out += `<line x1="${napX}" y1="${top + 38}" x2="${napX}" y2="${sy}" stroke="${T.text.faint}" stroke-width="1.6" stroke-dasharray="4 3"/>
+          <line x1="${napX}" y1="${sy}" x2="${napX + 13}" y2="${sy + 22}" stroke="${T.text.strong}" stroke-width="2"/>
+          <circle cx="${napX}" cy="${sy}" r="2.6" fill="${T.text.strong}"/>
+          <line x1="${napX}" y1="${sy + 30}" x2="${napX}" y2="${busY}" stroke="${busFarbe}" stroke-width="2"/>`;
+  out += txt(napX + 22, sy + 12, 'Netzanschlusspunkt (NAP)', { size: 11.5, weight: 600 });
+  out += txt(napX + 22, sy + 27, insel ? 'Netztrennung geöffnet, Inselbetrieb' : 'Übergabe spannungslos',
+             { size: 11, fill: T.text.muted });
+
+  // ── zentrale Einspeisung am NAP (Szenario 3) ──
+  if (cfg.zentral) {
+    const zx = x0 + 400, zw = 250;
+    out += `<rect x="${zx + 0.5}" y="${top + 0.5}" width="${zw}" height="64" fill="${T.tint}" stroke="${gruen}" stroke-width="1.4"/>`;
+    out += `<circle cx="${zx + 28}" cy="${top + 32}" r="15" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.8"/>`;
+    out += txt(zx + 28, top + 37, 'G', { anchor: 'middle', size: 14, weight: 700, fill: gruen });
+    (cfg.zentral.zeilen || []).slice(0, 3).forEach((z, i) => {
+      out += txt(zx + 54, top + 19 + i * 16, z, { size: i ? 11 : 12, weight: i ? 400 : 700, fill: i ? T.text.muted : T.text.strong });
+    });
+    // Maschinentrafo zwischen Aggregat und Sammelschiene
+    const mx = zx + zw / 2, my = top + 86;
+    out += `<line x1="${mx}" y1="${top + 64}" x2="${mx}" y2="${my - 16}" stroke="${gruen}" stroke-width="2"/>
+            <circle cx="${mx}" cy="${my - 7}" r="9" fill="none" stroke="${gruen}" stroke-width="1.6"/>
+            <circle cx="${mx}" cy="${my + 5}" r="9" fill="none" stroke="${gruen}" stroke-width="1.6"/>
+            <line x1="${mx}" y1="${my + 14}" x2="${mx}" y2="${busY}" stroke="${gruen}" stroke-width="2"/>`;
+    out += txt(mx + 16, my + 3, cfg.zentral.trafo || 'Maschinentrafo', { size: 11, fill: T.text.muted });
+  }
+
+  // ── MS-Sammelschiene bzw. MS-Netz ──
+  out += `<line x1="${napX}" y1="${busY}" x2="${x1}" y2="${busY}" stroke="${busFarbe}" stroke-width="${insel ? 4 : 3}"
+            ${insel ? '' : 'stroke-dasharray="10 5"'}/>`;
+  out += txt(x1, busY - 8, insel ? 'MS-Netz der Liegenschaft (Inselbetrieb)' : 'MS-Netz der Liegenschaft (spannungslos)',
+             { anchor: 'end', size: 11, weight: 600, fill: insel ? gruen : T.text.muted });
+  // weitere Reihen hängen über eine senkrechte Leitung an der Sammelschiene
+  for (let r = 1; r < reihen; r++) {
+    const y = kartenTop(r) - stichH;
+    out += `<line x1="${napX}" y1="${busY}" x2="${napX}" y2="${y}" stroke="${busFarbe}" stroke-width="2" ${insel ? '' : 'stroke-dasharray="6 4"'}/>
+            <line x1="${napX}" y1="${y}" x2="${x1}" y2="${y}" stroke="${busFarbe}" stroke-width="2" ${insel ? '' : 'stroke-dasharray="6 4"'}/>`;
+  }
+
+  if (!n) {
+    out += txt(W / 2, busY + 70, cfg.leer || 'Keine Transformatorstationen im Netzmodell.', { anchor: 'middle', size: 13, fill: T.text.faint });
+  }
+
+  // ── Karten je Station ──
+  const zust = {
+    nea:      { fill: T.tint,            rand: gruen,          band: gruen,              bandTxt: '#FFFFFF' },
+    versorgt: { fill: T.tint,            rand: hell,           band: hell,               bandTxt: '#FFFFFF' },
+    aus:      { fill: T.neutral.cardBg,  rand: T.text.faint,   band: T.neutral.band,     bandTxt: T.text.muted, strich: true },
+    ohne:     { fill: T.neutral.cardBg,  rand: T.line,         band: T.neutral.band,     bandTxt: T.text.muted },
+  };
+  const zeichenBreite = size => size * 0.56;
+  karten.forEach((k, i) => {
+    const r = Math.floor(i / cols), c = i % cols;
+    const kx = x0 + c * (cw + gap), ky = kartenTop(r);
+    const z = zust[k.zustand] || zust.ohne;
+    const cx = kx + cw / 2;
+    if (k.stich) {
+      out += `<line x1="${gR(cx)}" y1="${ky - stichH}" x2="${gR(cx)}" y2="${ky}" stroke="${insel && k.zustand !== 'aus' ? gruen : T.text.faint}"
+                stroke-width="1.6" ${insel && k.zustand !== 'aus' ? '' : 'stroke-dasharray="4 3"'}/>`;
+      if (k.zustand === 'aus') {   // offener Schalter im Stich
+        out += `<path d="M${gR(cx - 5)} ${ky - 18}l10 10M${gR(cx + 5)} ${ky - 18}l-10 10" stroke="${rot}" stroke-width="1.8"/>`;
+      }
+    }
+    out += `<rect x="${gR(kx) + 0.5}" y="${ky + 0.5}" width="${gR(cw) - 1}" height="${ch - 1}" fill="${z.fill}" stroke="${z.rand}"
+              stroke-width="1.2" ${z.strich || !k.stich ? 'stroke-dasharray="5 3"' : ''}/>`;
+    // Trafosymbol bzw. Gebäudesymbol
+    const sy0 = ky + 12;
+    if (k.stich) {
+      out += `<circle cx="${gR(cx)}" cy="${sy0 + 8}" r="8" fill="none" stroke="${T.text.strong}" stroke-width="1.4"/>
+              <circle cx="${gR(cx)}" cy="${sy0 + 19}" r="8" fill="none" stroke="${T.text.strong}" stroke-width="1.4"/>`;
+    } else {
+      out += `<path d="M${gR(cx - 10)} ${sy0 + 27}v-13l10 -8l10 8v13z" fill="none" stroke="${T.text.strong}" stroke-width="1.4"/>`;
+    }
+    if (k.nea) {   // Aggregat an der Station
+      const gx = cx + 30, gy = sy0 + 14;
+      out += `<line x1="${gR(cx + 8)}" y1="${gy}" x2="${gR(gx - 11)}" y2="${gy}" stroke="${gruen}" stroke-width="1.6"/>
+              <circle cx="${gR(gx)}" cy="${gy}" r="11" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.8"/>`;
+      out += txt(gx, gy + 4.5, 'G', { anchor: 'middle', size: 12, weight: 700, fill: gruen });
+    }
+    const maxZ = Math.floor((cw - 16) / zeichenBreite(12));
+    out += txt(cx, ky + 56, ggResKuerzen(k.name || '', maxZ), { anchor: 'middle', size: 12.5, weight: 700 });
+    if (k.zeile2) out += txt(cx, ky + 72, ggResKuerzen(k.zeile2, Math.floor((cw - 12) / zeichenBreite(11))),
+                             { anchor: 'middle', size: 11, fill: T.text.muted });
+    // Gebäude
+    const geb = k.gebaeude || [];
+    const maxZeilen = 4;
+    const zeigen = geb.length > maxZeilen ? geb.slice(0, maxZeilen - 1) : geb;
+    zeigen.forEach((g, j) => {
+      const gy = ky + 92 + j * 15;
+      out += `<rect x="${gR(kx + 10)}" y="${gy - 8}" width="8" height="8" fill="${GG_RES_KLASSE_FARBE[g.klasse] || T.text.faint}"/>`;
+      out += txt(kx + 23, gy, ggResKuerzen(g.name, Math.floor((cw - (g.nea ? 48 : 30)) / zeichenBreite(10.5))),
+                 { size: 10.5, fill: T.text.strong });
+      if (g.nea) {
+        out += `<circle cx="${gR(kx + cw - 16)}" cy="${gy - 4}" r="7" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.4"/>`
+             + txt(kx + cw - 16, gy - 0.8, 'G', { anchor: 'middle', size: 9, weight: 700, fill: gruen });
+      }
+    });
+    if (geb.length > maxZeilen) {
+      out += txt(kx + 23, ky + 92 + (maxZeilen - 1) * 15, `+ ${geb.length - zeigen.length} weitere`, { size: 10.5, fill: T.text.muted });
+    }
+    if (!geb.length && k.ohneGebText) {
+      out += txt(cx, ky + 100, k.ohneGebText, { anchor: 'middle', size: 10.5, fill: T.text.faint });
+    }
+    // Zustandsband
+    const bh = 26;
+    out += `<rect x="${gR(kx) + 1}" y="${ky + ch - bh}" width="${gR(cw) - 2}" height="${bh - 1}" fill="${z.band}"/>`;
+    out += txt(cx, ky + ch - 8.5, ggResKuerzen(k.band || '', Math.floor((cw - 10) / zeichenBreite(11))),
+               { anchor: 'middle', size: 11, weight: 600, fill: z.bandTxt });
+  });
+
+  // ── Legende ──
+  let lx = x0;
+  for (const e of cfg.legende || []) {
+    if (e.art === 'klasse') {
+      out += `<rect x="${gR(lx)}" y="${legY - 9}" width="10" height="10" fill="${e.farbe}"/>`;
+    } else if (e.art === 'g') {
+      out += `<circle cx="${gR(lx + 6)}" cy="${legY - 4}" r="7" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.6"/>`
+           + txt(lx + 6, legY - 0.5, 'G', { anchor: 'middle', size: 9, weight: 700, fill: gruen });
+    } else {
+      out += `<rect x="${gR(lx)}" y="${legY - 11}" width="16" height="14" fill="${e.farbe}" stroke="${e.rand || e.farbe}"
+                ${e.strich ? 'stroke-dasharray="3 2"' : ''}/>`;
+    }
+    out += txt(lx + 20, legY, e.text, { size: 11 });
+    lx += 20 + ggEstW(e.text, 11) + 22;
+  }
+  if (cfg.fussnote) out += txt(x0, legY + 24, cfg.fussnote, { size: S.fsTab - 2, fill: T.text.faint });
+  return ggFinishSvg(out, W, height);
+}
+
+/** Prinzip des Einspeisepunkts an einer Trafostation (allgemeine Empfehlung 5.2.6 und Szenario 2, 5.2.3). */
+export function ggRenderEinspeisePrinzip(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const top = S.headBand + S.headHSchmal + 26;
+  const legTop = top + 352;
+  const legenden = cfg.punkte || [];
+  const height = legTop + Math.ceil(legenden.length / 2) * 38 + S.footSpace + 6;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+  const strich = T.text.strong;
+  const nr = (x, y, k) => `<circle cx="${x}" cy="${y}" r="10" fill="${gruen}"/>`
+    + txt(x, y + 4, String(k), { anchor: 'middle', size: 11, weight: 700, fill: '#FFFFFF' });
+
+  // Stationsgebäude
+  const sx = 40, sw = 560, sy = top, sh = 200;
+  out += `<rect x="${sx}.5" y="${sy}.5" width="${sw}" height="${sh}" fill="${T.neutral.cardBg}" stroke="${T.rule}" stroke-width="1.4"/>`;
+  out += txt(sx + 12, sy + 20, 'TRANSFORMATORSTATION', { mono: true, size: 10.5, weight: 600, tracking: 1.2, fill: T.text.muted });
+  const werte = cfg.werte || {};
+  if (werte.station) out += txt(sx + sw - 12, sy + 20, ggResKuerzen(werte.station, 40), { anchor: 'end', size: 11, fill: T.text.muted });
+
+  // MS-Einspeisung und Trafo
+  const tx = sx + 80, ty = sy + 88;
+  out += `<line x1="${tx}" y1="${sy - 18}" x2="${tx}" y2="${ty - 22}" stroke="${strich}" stroke-width="2"/>`;
+  out += txt(tx + 10, sy - 6, 'MS-Netz', { size: 11, fill: T.text.muted });
+  out += `<circle cx="${tx}" cy="${ty - 10}" r="13" fill="none" stroke="${strich}" stroke-width="1.6"/>
+          <circle cx="${tx}" cy="${ty + 8}" r="13" fill="none" stroke="${strich}" stroke-width="1.6"/>`;
+  out += txt(tx - 22, ty + 2, 'Trafo', { anchor: 'end', size: 11, fill: T.text.muted });
+  out += `<line x1="${tx}" y1="${ty + 21}" x2="${tx}" y2="${ty + 60}" stroke="${strich}" stroke-width="2"/>
+          <line x1="${tx}" y1="${ty + 60}" x2="${tx + 110}" y2="${ty + 60}" stroke="${strich}" stroke-width="2"/>`;
+
+  // Umschalteinrichtung Netz – 0 – NEA
+  const ux = tx + 110, uy = ty + 40, uw = 120, uh = 40;
+  out += `<rect x="${ux}.5" y="${uy}.5" width="${uw}" height="${uh}" fill="${T.tint}" stroke="${gruen}" stroke-width="1.6"/>`;
+  out += txt(ux + uw / 2, uy + 17, 'Umschaltung', { anchor: 'middle', size: 11.5, weight: 700 });
+  out += txt(ux + uw / 2, uy + 32, 'Netz – 0 – NEA', { anchor: 'middle', size: 11, fill: T.text.muted });
+  out += nr(ux + uw - 2, uy - 2, 1);
+
+  // NSHV-Sammelschiene mit Abgängen
+  const nx = ux + uw + 60, ny0 = sy + 40, ny1 = sy + sh - 22;
+  out += `<line x1="${ux + uw}" y1="${uy + uh / 2}" x2="${nx}" y2="${uy + uh / 2}" stroke="${strich}" stroke-width="2"/>
+          <line x1="${nx}" y1="${ny0}" x2="${nx}" y2="${ny1}" stroke="${strich}" stroke-width="5"/>`;
+  out += txt(nx, ny0 - 8, 'NSHV', { anchor: 'middle', size: 11, weight: 600 });
+  const abg = [
+    { y: ny0 + 18, text: 'Abgang Klasse A', farbe: GG_RES_KLASSE_FARBE.A },
+    { y: ny0 + 58, text: 'Abgang Klasse B', farbe: GG_RES_KLASSE_FARBE.B },
+    { y: ny0 + 98, text: 'Abgang ohne Versorgung', farbe: T.text.faint, aus: true },
+  ];
+  for (const a of abg) {
+    out += `<line x1="${nx}" y1="${a.y}" x2="${nx + 36}" y2="${a.y}" stroke="${strich}" stroke-width="1.6"/>`;
+    if (a.aus) out += `<line x1="${nx + 36}" y1="${a.y}" x2="${nx + 48}" y2="${a.y - 9}" stroke="${strich}" stroke-width="1.6"/>`;
+    out += `<line x1="${nx + (a.aus ? 50 : 36)}" y1="${a.y}" x2="${sx + sw + 70}" y2="${a.y}" stroke="${strich}" stroke-width="1.6"
+              ${a.aus ? 'stroke-dasharray="4 3"' : ''} marker-end="url(#gg-pfeil)"/>`;
+    out += `<rect x="${sx + sw + 78}" y="${a.y - 6}" width="10" height="10" fill="${a.farbe}"/>`;
+    out += txt(sx + sw + 94, a.y + 3.5, a.text, { size: 11 });
+  }
+  out += nr(nx + 22, ny0 + 118, 5);
+  out = `<defs><marker id="gg-pfeil" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+           <path d="M0 0L10 5L0 10z" fill="${strich}"/></marker></defs>` + out;
+
+  // Einspeisekasten an der Außenwand
+  const ex = ux + 20, ey = sy + sh - 6, ew = 80, eh = 32;
+  out += `<line x1="${ux + uw / 2}" y1="${uy + uh}" x2="${ux + uw / 2}" y2="${ey}" stroke="${gruen}" stroke-width="2"/>`;
+  out += `<rect x="${ex}.5" y="${ey}.5" width="${ew}" height="${eh}" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.6"/>`;
+  out += txt(ex + ew / 2, ey + 14, 'Einspeise-', { anchor: 'middle', size: 10.5, weight: 600 });
+  out += txt(ex + ew / 2, ey + 26, 'kasten', { anchor: 'middle', size: 10.5, weight: 600 });
+  out += nr(ex + ew + 12, ey + 6, 2);
+  out += nr(ux + uw / 2 + 16, uy + uh + 13, 3);
+
+  // mobiles Aggregat auf Stellfläche
+  const px = ex - 40, py = ey + eh + 34, pw = 420, ph = 74;
+  out += `<rect x="${px}.5" y="${py}.5" width="${pw}" height="${ph}" fill="none" stroke="${T.text.faint}" stroke-width="1.2" stroke-dasharray="6 4"/>`;
+  out += txt(px + pw - 10, py + ph - 8, 'befestigte Stellfläche, Zufahrt für Tankfahrzeug', { anchor: 'end', size: 10.5, fill: T.text.muted });
+  out += nr(px + pw - 12, py + 12, 4);
+  const ax = px + 34, ay = py + 10;
+  out += `<rect x="${ax}" y="${ay}" width="120" height="36" fill="${T.tint}" stroke="${gruen}" stroke-width="1.6"/>
+          <circle cx="${ax + 24}" cy="${ay + 44}" r="6" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.4"/>
+          <circle cx="${ax + 96}" cy="${ay + 44}" r="6" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.4"/>
+          <circle cx="${ax + 22}" cy="${ay + 18}" r="11" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.6"/>`;
+  out += txt(ax + 22, ay + 22.5, 'G', { anchor: 'middle', size: 12, weight: 700, fill: gruen });
+  if (werte.nea) {
+    out += txt(ax + 40, ay + 15, werte.neaTitel || 'NEA', { size: 11, weight: 600 });
+    out += txt(ax + 40, ay + 29, ggResKuerzen(werte.nea, 12), { size: 10.5, fill: T.text.muted });
+  } else {
+    out += txt(ax + 40, ay + 22, werte.neaTitel || 'mobile NEA', { size: 11, weight: 600 });
+  }
+  // Anschlusskabel
+  out += `<path d="M${ax + 96} ${ay}C${ax + 96} ${ay - 18} ${ex + ew / 2} ${ey + eh + 18} ${ex + ew / 2} ${ey + eh}"
+            fill="none" stroke="${gruen}" stroke-width="2.2"/>`;
+  // Erdung
+  const erx = ax + 60, ery = ay + 36;
+  out += `<line x1="${erx}" y1="${ery}" x2="${erx}" y2="${ery + 14}" stroke="${strich}" stroke-width="1.4"/>
+          <path d="M${erx - 9} ${ery + 14}h18M${erx - 6} ${ery + 18}h12M${erx - 3} ${ery + 22}h6" stroke="${strich}" stroke-width="1.4"/>`;
+  out += nr(erx - 22, ery + 14, 6);
+
+  // Nummernlegende zweispaltig
+  const colW = (W - 2 * S.padX) / 2;
+  legenden.forEach((t, i) => {
+    const lx = S.padX + (i % 2) * colW, ly = legTop + Math.floor(i / 2) * 38;
+    out += nr(lx + 10, ly + 6, i + 1);
+    const zeilen = ggResUmbruch(t, Math.floor((colW - 40) / (11 * 0.53)));
+    zeilen.slice(0, 2).forEach((z, j) => { out += txt(lx + 28, ly + 10 + j * 14, z, { size: 11 }); });
+  });
+  return ggFinishSvg(out, W, height);
+}
+
+/**
+ * Prinzip einer stationären NEA, die ein Gebäude versorgt (Szenario 1, 5.2.2): Netzüberwachung, automatische
+ * Umschaltung Netz – NEA, Aufstellraum mit Kraftstoff, Notstromschiene mit USV, Klasse A, Wärme und Lastabwurf.
+ * cfg.werte = { gebaeude, nea, tank } (Beschriftungen, leer = allgemein)
+ */
+export function ggRenderGebaeudeNeaPrinzip(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel, rot = T.energy.waerme;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const strich = T.text.strong, blass = T.text.faint;
+  const w = cfg.werte || {};
+  const top = S.headBand + S.headHSchmal + 26;
+  const busY = top + 236, stTop = busY + 64, stH = 66;
+  const byTop = top + 64, byBot = stTop + stH + 14;
+  const punkte = cfg.punkte || [];
+  const legTop = byBot + 30;
+  const height = legTop + Math.ceil(punkte.length / 2) * 38 + S.footSpace + 6;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = `<defs><marker id="gg-pfeil-nea" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+               <path d="M0 0L10 5L0 10z" fill="${strich}"/></marker></defs>`;
+  out += ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+  const nr = (x, y, k) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="10" fill="${gruen}"/>`
+    + txt(x, y + 4, String(k), { anchor: 'middle', size: 11, weight: 700, fill: '#FFFFFF' });
+  const schalter = (x, y, offen, farbe = strich) => {
+    const k = y + 30;
+    return `<path d="M${gR(x - 4)} ${k - 4}l8 8M${gR(x + 4)} ${k - 4}l-8 8" stroke="${farbe}" stroke-width="1.6"/>`
+      + `<line x1="${gR(x)}" y1="${y}" x2="${gR(offen ? x + 13 : x)}" y2="${offen ? k - 5 : k}" stroke="${farbe}" stroke-width="2"/>`
+      + `<circle cx="${gR(x)}" cy="${y}" r="2.4" fill="${farbe}"/>`;
+  };
+
+  // ── Netz des Netzbetreibers (ausgefallen) ──
+  const napX = 135;
+  out += `<rect x="40.5" y="${top + 0.5}" width="190" height="38" fill="${T.neutral.cardBg}" stroke="${rot}" stroke-width="1.2" stroke-dasharray="5 3"/>`;
+  out += txt(napX, top + 16, 'Netz (Trafostation)', { anchor: 'middle', size: 11.5, weight: 600 });
+  out += txt(napX, top + 31, 'Ausfall', { anchor: 'middle', size: 11, weight: 600, fill: rot });
+
+  // ── Gebäude ──
+  out += `<rect x="40.5" y="${byTop + 0.5}" width="600" height="${byBot - byTop}" fill="none" stroke="${T.rule}" stroke-width="1.4"/>`;
+  out += txt(240, byTop + 18, 'GEBÄUDE · NOTSTROMKLASSE A', { mono: true, size: 10.5, weight: 600, tracking: 1.2, fill: T.text.muted });
+  if (w.gebaeude) out += txt(628, byTop + 18, ggResKuerzen(w.gebaeude, 32), { anchor: 'end', size: 11, fill: T.text.muted });
+
+  // Hausanschluss, Netzüberwachung
+  out += `<line x1="${napX}" y1="${top + 38}" x2="${napX}" y2="${top + 76}" stroke="${blass}" stroke-width="2" stroke-dasharray="4 3"/>`;
+  out += `<rect x="${napX - 50}.5" y="${top + 76.5}" width="100" height="20" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.2"/>`;
+  out += txt(napX, top + 90, 'HAK · Zähler', { anchor: 'middle', size: 10.5, weight: 600 });
+  out += `<line x1="${napX}" y1="${top + 97}" x2="${napX}" y2="${top + 148}" stroke="${blass}" stroke-width="2" stroke-dasharray="4 3"/>`;
+  out += `<line x1="${napX}" y1="${top + 121}" x2="${napX + 30}" y2="${top + 121}" stroke="${strich}" stroke-width="1.2"/>
+          <rect x="${napX + 30}.5" y="${top + 112.5}" width="30" height="18" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.2"/>`;
+  out += txt(napX + 45, top + 125, 'U<', { anchor: 'middle', size: 10.5, weight: 700 });
+  out += txt(napX + 68, top + 112, 'Netzüberwachung', { size: 10.5, fill: T.text.muted });
+  out += nr(napX - 30, top + 121, 1);
+
+  // Umschaltung Netz – NEA
+  const ux = 60, uw = 150, uy = top + 148, uh = 46;
+  out += `<rect x="${ux}.5" y="${uy}.5" width="${uw}" height="${uh}" fill="${T.tint}" stroke="${gruen}" stroke-width="1.6"/>`;
+  out += txt(ux + uw / 2, uy + 19, 'Netzumschaltung', { anchor: 'middle', size: 11.5, weight: 700 });
+  out += txt(ux + uw / 2, uy + 35, 'Netz – NEA · automatisch', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  out += nr(ux + uw, uy - 2, 2);
+  out += `<line x1="${napX}" y1="${uy + uh}" x2="${napX}" y2="${busY}" stroke="${gruen}" stroke-width="2"/>`;
+
+  // ── Aufstellraum mit NEA und Kraftstoff ──
+  const cx0 = 700, cx1 = 960, cy1 = top + 250;
+  out += `<rect x="${cx0}.5" y="${byTop + 0.5}" width="${cx1 - cx0}" height="${cy1 - byTop}" fill="none" stroke="${blass}" stroke-width="1.2" stroke-dasharray="6 4"/>`;
+  out += txt(cx0 + 12, byTop + 18, 'AUFSTELLRAUM / CONTAINER', { mono: true, size: 10, weight: 600, tracking: 1.1, fill: T.text.muted });
+  const nx = 720, ny = top + 96, nw = 220, nh = 52;
+  out += `<rect x="${nx}.5" y="${ny}.5" width="${nw}" height="${nh}" fill="${T.tint}" stroke="${gruen}" stroke-width="1.6"/>
+          <circle cx="${nx + 24}" cy="${ny + 26}" r="12" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.6"/>`;
+  out += txt(nx + 24, ny + 30.5, 'G', { anchor: 'middle', size: 12, weight: 700, fill: gruen });
+  out += txt(nx + 46, ny + 22, 'Netzersatzanlage', { size: 12, weight: 700 });
+  out += txt(nx + 46, ny + 38, ggResKuerzen(w.nea || 'Diesel, stationär', 24), { size: 11, fill: T.text.muted });
+  out += nr(nx + nw, ny, 3);
+  // Abgas über Dach, Zu- und Abluft
+  out += `<line x1="${nx + 190}" y1="${ny}" x2="${nx + 190}" y2="${top + 24}" stroke="${strich}" stroke-width="1.6" marker-end="url(#gg-pfeil-nea)"/>`;
+  out += txt(nx + 182, top + 34, 'Abgas über Dach', { anchor: 'end', size: 10.5, fill: T.text.muted });
+  out += `<line x1="${cx1 - 40}" y1="${cy1 + 16}" x2="${cx1 - 40}" y2="${cy1 - 12}" stroke="${strich}" stroke-width="1.4" marker-end="url(#gg-pfeil-nea)"/>
+          <line x1="${cx1 - 24}" y1="${cy1 - 12}" x2="${cx1 - 24}" y2="${cy1 + 16}" stroke="${strich}" stroke-width="1.4" marker-end="url(#gg-pfeil-nea)"/>`;
+  out += txt(cx1 - 50, cy1 + 16, 'Zu-/Abluft', { anchor: 'end', size: 10.5, fill: T.text.muted });
+  // Kraftstoff
+  const tx = 720, ty = top + 176, tw = 160, th = 44;
+  out += `<line x1="${tx + 40}" y1="${ty}" x2="${tx + 40}" y2="${ny + nh}" stroke="${blass}" stroke-width="1.6" stroke-dasharray="3 3"/>`;
+  out += `<rect x="${tx}.5" y="${ty}.5" width="${tw}" height="${th}" fill="${T.neutral.cardBg}" stroke="${T.rule}" stroke-width="1.4"/>`;
+  out += txt(tx + tw / 2, ty + 18, 'Kraftstoff', { anchor: 'middle', size: 11.5, weight: 600 });
+  out += txt(tx + tw / 2, ty + 34, ggResKuerzen(w.tank || 'Tages- und Lagertank', 26), { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  out += nr(tx + tw, ty, 4);
+
+  // Einspeisung der NEA und Steuerleitung
+  out += `<path d="M${nx} ${ny + 40}H670V${uy + 23}H${ux + uw}" fill="none" stroke="${gruen}" stroke-width="2.2"/>`;
+  out += txt(420, uy + 16, 'Einspeisung der NEA', { anchor: 'middle', size: 10.5, weight: 600, fill: gruen });
+  out += `<path d="M${napX + 60} ${top + 121}H680V${ny + 12}H${nx}" fill="none" stroke="${blass}" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+  out += txt(420, top + 115, 'Start · Umschaltung · Rückschaltung', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+
+  // ── Notstromschiene und Abgänge ──
+  out += `<line x1="70" y1="${busY}" x2="610" y2="${busY}" stroke="${gruen}" stroke-width="5"/>`;
+  out += txt(napX + 16, busY - 9, 'Hauptverteilung · Notstromschiene', { size: 11, weight: 600, fill: gruen });
+  const abg = [
+    { titel: 'USV', unter: 'IT · Kommunikation', nr: 5 },
+    { titel: 'Klasse A', unter: 'kritische Verbraucher', nr: 6, klasse: GG_RES_KLASSE_FARBE.A },
+    { titel: 'Heizung', unter: 'Pumpen · Regelung', nr: 7 },
+    { titel: 'übrige Verbraucher', unter: 'Lastabwurf', nr: 8, aus: true },
+  ];
+  const bw = 132;
+  abg.forEach((a, i) => {
+    const cx = 120 + i * 140;
+    const farbe = a.aus ? blass : gruen;
+    out += `<line x1="${cx}" y1="${busY}" x2="${cx}" y2="${busY + 14}" stroke="${farbe}" stroke-width="2"/>`;
+    out += schalter(cx, busY + 14, !!a.aus, a.aus ? strich : gruen);
+    out += `<line x1="${cx}" y1="${busY + 44}" x2="${cx}" y2="${stTop}" stroke="${farbe}" stroke-width="2" ${a.aus ? 'stroke-dasharray="4 3"' : ''}/>`;
+    out += nr(cx - 26, busY + 30, a.nr);
+    const bx = cx - bw / 2;
+    out += `<rect x="${bx}.5" y="${stTop + 0.5}" width="${bw}" height="${stH}" fill="${a.aus ? T.neutral.cardBg : T.tint}"
+              stroke="${a.aus ? blass : T.accents.gruen}" stroke-width="1.2" ${a.aus ? 'stroke-dasharray="5 3"' : ''}/>`;
+    // Klassenfarbe als Kästchen vor dem Titel, beides zusammen mittig
+    const tw2 = ggEstW(a.titel, 12);
+    const tx2 = a.klasse ? cx + 8 : cx;
+    if (a.klasse) out += `<rect x="${gR(cx - (16 + tw2) / 2)}" y="${stTop + 20}" width="10" height="10" fill="${a.klasse}"/>`;
+    out += txt(tx2, stTop + 30, a.titel, { anchor: 'middle', size: 12, weight: 700, fill: a.aus ? T.text.muted : T.text.strong });
+    out += txt(cx, stTop + 48, a.unter, { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  });
+
+  // ── Nummernlegende zweispaltig ──
+  const colW = (W - 2 * S.padX) / 2;
+  punkte.forEach((t, i) => {
+    const px = S.padX + (i % 2) * colW, py = legTop + Math.floor(i / 2) * 38;
+    out += nr(px + 10, py + 6, i + 1);
+    ggResUmbruch(t, Math.floor((colW - 40) / (11 * 0.53))).slice(0, 2)
+      .forEach((z, j) => { out += txt(px + 28, py + 10 + j * 14, z, { size: 11 }); });
+  });
+  return ggFinishSvg(out, W, height);
+}
+
+/** Einfacher Zeilenumbruch nach Zeichenzahl (für SVG-Beschriftungen). */
+function ggResUmbruch(text, maxZ) {
+  const zeilen = [];
+  let z = '';
+  for (const w of String(text).split(/\s+/)) {
+    if (z && (z + ' ' + w).length > maxZ) { zeilen.push(z); z = w; } else z = z ? `${z} ${w}` : w;
+  }
+  if (z) zeilen.push(z);
+  return zeilen;
+}
+
+/**
+ * Prinzip des Inselbetriebs der Liegenschaft (Szenario 3, 5.2.4): Netztrennung am NAP, zentrale NEA mit
+ * Maschinentrafo und Sternpunktbildung auf der MS-Sammelschiene, Stationsabgänge in Zuschaltstufen.
+ * cfg.werte = { nea, mt, uKv, tank } (Beschriftungen, leer = allgemein) · cfg.abgaenge = [{ titel, unter, aus }]
+ */
+export function ggRenderInselPrinzip(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel, rot = T.energy.waerme;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const strich = T.text.strong;
+  const w = cfg.werte || {};
+  const top = S.headBand + S.headHSchmal + 26;
+  const busY = top + 158;
+  const stTop = busY + 76, stH = 82;
+  const punkte = cfg.punkte || [];
+  const legTop = stTop + stH + 30;
+  const height = legTop + Math.ceil(punkte.length / 2) * 38 + S.footSpace + 6;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+  const nr = (x, y, k) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="10" fill="${gruen}"/>`
+    + txt(x, y + 4, String(k), { anchor: 'middle', size: 11, weight: 700, fill: '#FFFFFF' });
+  // Leistungsschalter senkrecht von y bis y + 30: Schaltmesser, am Festkontakt ein Kreuz
+  const schalter = (x, y, offen, farbe = strich) => {
+    const k = y + 30;
+    return `<path d="M${gR(x - 4)} ${k - 4}l8 8M${gR(x + 4)} ${k - 4}l-8 8" stroke="${farbe}" stroke-width="1.6"/>`
+      + `<line x1="${gR(x)}" y1="${y}" x2="${gR(offen ? x + 13 : x)}" y2="${offen ? k - 5 : k}" stroke="${farbe}" stroke-width="2"/>`
+      + `<circle cx="${gR(x)}" cy="${y}" r="2.4" fill="${farbe}"/>`;
+  };
+  const erde = (x, y) => `<path d="M${x - 9} ${y}h18M${x - 6} ${y + 4}h12M${x - 3} ${y + 8}h6" stroke="${strich}" stroke-width="1.4"/>`;
+
+  // ── Netz des Netzbetreibers und Netztrennung am NAP ──
+  const napX = 135;
+  out += `<rect x="40.5" y="${top + 0.5}" width="190" height="38" fill="${T.neutral.cardBg}" stroke="${rot}" stroke-width="1.2" stroke-dasharray="5 3"/>`;
+  out += txt(135, top + 16, 'Netz des Netzbetreibers', { anchor: 'middle', size: 11.5, weight: 600 });
+  out += txt(135, top + 31, 'Ausfall', { anchor: 'middle', size: 11, weight: 600, fill: rot });
+  out += `<line x1="${napX}" y1="${top + 38}" x2="${napX}" y2="${top + 62}" stroke="${T.text.faint}" stroke-width="2" stroke-dasharray="4 3"/>`;
+  out += schalter(napX, top + 62, true);
+  out += `<line x1="${napX}" y1="${top + 92}" x2="${napX}" y2="${busY}" stroke="${gruen}" stroke-width="2"/>`;
+  out += txt(napX + 24, top + 104, 'Netzanschlusspunkt (NAP)', { size: 11.5, weight: 600 });
+  out += txt(napX + 24, top + 119, 'Netztrennung geöffnet', { size: 11, fill: T.text.muted });
+  out += nr(napX - 24, top + 78, 1);
+
+  // ── Leittechnik ──
+  const lx = 300, lw = 200;
+  out += `<rect x="${lx}.5" y="${top + 0.5}" width="${lw}" height="52" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.2"/>`;
+  out += txt(lx + lw / 2, top + 20, 'Lastmanagement / Leittechnik', { anchor: 'middle', size: 11.5, weight: 700 });
+  out += txt(lx + lw / 2, top + 37, 'Umschaltung · Zuschaltung · Lastabwurf', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  out += nr(lx + lw, top, 8);
+
+  // ── Netzersatzanlage, Kraftstofflager ──
+  const nx = 560, nw = 220, nh = 56;
+  out += `<rect x="${nx}.5" y="${top + 0.5}" width="${nw}" height="${nh}" fill="${T.tint}" stroke="${gruen}" stroke-width="1.6"/>`;
+  const nG = Math.max(1, Math.min(3, w.neaAnzahl || 2));
+  for (let i = 0; i < nG; i++) {
+    out += `<circle cx="${nx + 24 + i * 26}" cy="${top + 28}" r="11" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.6"/>`
+      + txt(nx + 24 + i * 26, top + 32.5, 'G', { anchor: 'middle', size: 11, weight: 700, fill: gruen });
+  }
+  const tx0 = nx + 24 + nG * 26;
+  out += txt(tx0, top + 24, 'Netzersatzanlage', { size: 12, weight: 700 });
+  out += txt(tx0, top + 40, w.nea || 'Aggregate im Parallelbetrieb', { size: 11, fill: T.text.muted });
+  out += nr(nx + nw, top, 5);
+  const kx = 820;
+  out += `<rect x="${kx}.5" y="${top + 6.5}" width="130" height="44" fill="${T.neutral.cardBg}" stroke="${T.rule}" stroke-width="1.4"/>`;
+  out += txt(kx + 65, top + 24, 'Kraftstofflager', { anchor: 'middle', size: 11.5, weight: 600 });
+  out += txt(kx + 65, top + 40, w.tank || 'für die Autonomiedauer', { anchor: 'middle', size: 11, fill: T.text.muted });
+  out += `<line x1="${nx + nw}" y1="${top + 28}" x2="${kx}" y2="${top + 28}" stroke="${T.text.faint}" stroke-width="1.6" stroke-dasharray="3 3"/>`;
+  // Steuerleitungen der Leittechnik
+  out += `<path d="M${lx} ${top + 46}H${napX + 40}V${top + 77}H${napX + 17}" fill="none" stroke="${T.text.faint}" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <line x1="${lx + lw}" y1="${top + 26}" x2="${nx}" y2="${top + 26}" stroke="${T.text.faint}" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+
+  // ── Maschinentrafo, Sternpunkt, Einspeisefeld ──
+  const mx = nx + 110;
+  out += `<line x1="${mx}" y1="${top + nh}" x2="${mx}" y2="${top + 68}" stroke="${gruen}" stroke-width="2"/>
+          <circle cx="${mx}" cy="${top + 77}" r="9" fill="none" stroke="${gruen}" stroke-width="1.6"/>
+          <circle cx="${mx}" cy="${top + 89}" r="9" fill="none" stroke="${gruen}" stroke-width="1.6"/>
+          <line x1="${mx}" y1="${top + 98}" x2="${mx}" y2="${top + 112}" stroke="${gruen}" stroke-width="2"/>`;
+  out += txt(mx + 20, top + 80, 'Maschinentrafo', { size: 11.5, weight: 600 });
+  out += txt(mx + 20, top + 95, w.mt || `0,4/${w.uKv || 20} kV`, { size: 11, fill: T.text.muted });
+  out += nr(mx + 172, top + 84, 3);
+  // Sternpunktbildung über Widerstand
+  const sx = mx - 60;
+  out += `<path d="M${mx - 9} ${top + 89}H${sx}V${top + 100}" fill="none" stroke="${strich}" stroke-width="1.4"/>
+          <rect x="${sx - 4}" y="${top + 100}" width="8" height="18" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.4"/>
+          <line x1="${sx}" y1="${top + 118}" x2="${sx}" y2="${top + 124}" stroke="${strich}" stroke-width="1.4"/>`;
+  out += erde(sx, top + 124);
+  out += txt(sx - 14, top + 106, 'Sternpunkt', { anchor: 'end', size: 11, fill: T.text.muted });
+  out += nr(sx - 90, top + 102, 4);
+  out += schalter(mx, top + 112, false, gruen);
+  out += `<line x1="${mx}" y1="${top + 142}" x2="${mx}" y2="${busY}" stroke="${gruen}" stroke-width="2"/>`;
+  out += txt(mx + 20, top + 132, 'Einspeisefeld', { size: 11, fill: T.text.muted });
+  out += nr(mx + 106, top + 128, 2);
+
+  // ── MS-Sammelschiene ──
+  out += `<line x1="100" y1="${busY}" x2="900" y2="${busY}" stroke="${gruen}" stroke-width="5"/>`;
+  out += txt(napX + 24, busY - 9, `MS-Netz der Liegenschaft (${w.uKv || 20} kV) im Inselbetrieb`, { size: 11, weight: 600, fill: gruen });
+
+  // ── Stationsabgänge in Zuschaltstufen ──
+  const abg = (cfg.abgaenge || []).slice(0, 4);
+  const n = Math.max(abg.length, 1);
+  const bw = 150, x0 = 110, x1 = 890;
+  const schritt = n > 1 ? (x1 - x0 - bw) / (n - 1) : 0;
+  abg.forEach((a, i) => {
+    const cx = n > 1 ? x0 + bw / 2 + i * schritt : (x0 + x1) / 2;
+    const farbe = a.aus ? T.text.faint : gruen;
+    out += `<line x1="${gR(cx)}" y1="${busY}" x2="${gR(cx)}" y2="${busY + 14}" stroke="${farbe}" stroke-width="2"/>`;
+    out += schalter(cx, busY + 14, !!a.aus, a.aus ? strich : gruen);
+    out += `<line x1="${gR(cx)}" y1="${busY + 44}" x2="${gR(cx)}" y2="${stTop}" stroke="${farbe}" stroke-width="2" ${a.aus ? 'stroke-dasharray="4 3"' : ''}/>`;
+    // Motorantrieb (fernsteuerbar) und Schutzgerät
+    out += `<rect x="${gR(cx + 16)}" y="${busY + 20}" width="16" height="16" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.2"/>`
+      + txt(cx + 24, busY + 32, 'M', { anchor: 'middle', size: 10, weight: 700 });
+    out += `<rect x="${gR(cx - 32)}" y="${busY + 20}" width="16" height="16" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.2"/>`
+      + txt(cx - 24, busY + 32, 'S', { anchor: 'middle', size: 10, weight: 700 });
+    if (i === 0) { out += nr(cx - 48, busY + 28, 7); out += nr(cx + 48, busY + 28, 6); }
+    // Station
+    const bx = cx - bw / 2;
+    out += `<rect x="${gR(bx) + 0.5}" y="${stTop + 0.5}" width="${bw}" height="${stH}" fill="${a.aus ? T.neutral.cardBg : T.tint}"
+              stroke="${a.aus ? T.text.faint : T.accents.gruen}" stroke-width="1.2" ${a.aus ? 'stroke-dasharray="5 3"' : ''}/>`;
+    out += `<circle cx="${gR(cx)}" cy="${stTop + 15}" r="7" fill="none" stroke="${strich}" stroke-width="1.3"/>
+            <circle cx="${gR(cx)}" cy="${stTop + 25}" r="7" fill="none" stroke="${strich}" stroke-width="1.3"/>`;
+    out += txt(cx, stTop + 50, a.titel, { anchor: 'middle', size: 12, weight: 700, fill: a.aus ? T.text.muted : T.text.strong });
+    if (a.unter) out += txt(cx, stTop + 67, ggResKuerzen(a.unter, 26), { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  });
+
+  // ── Nummernlegende zweispaltig ──
+  const colW = (W - 2 * S.padX) / 2;
+  punkte.forEach((t, i) => {
+    const px = S.padX + (i % 2) * colW, py = legTop + Math.floor(i / 2) * 38;
+    out += nr(px + 10, py + 6, i + 1);
+    ggResUmbruch(t, Math.floor((colW - 40) / (11 * 0.53))).slice(0, 2)
+      .forEach((z, j) => { out += txt(px + 28, py + 10 + j * 14, z, { size: 11 }); });
+  });
+  return ggFinishSvg(out, W, height);
+}
+
+/**
+ * Einbindung von Erzeugern und Speichern in den Inselbetrieb (Szenario 3, 5.2.4): netzbildende Quellen (NEA,
+ * Batteriespeicher) über der Sammelschiene, netzfolgende Erzeuger und Lasten darunter, Frequenz-Kennlinie,
+ * Vorteile und nummerierte Betriebshinweise.
+ * cfg.werte = { nea, uKv, speicher, speicherOption } · cfg.anlagen = [{ art, titel, unter, wert, option }]
+ * cfg.vorteile = [Text] · cfg.vorteilHinweis · cfg.punkte = [Text]
+ */
+export function ggRenderInselEe(cfg, T = GG_THEME) {
+  const S = T.sheet, W = T.width;
+  const gruen = T.accents.gruenDunkel, rot = T.energy.waerme;
+  const txt = (x, y, s, o) => ggTxt(T, S, x, y, s, o);
+  const strich = T.text.strong, faint = T.text.faint;
+  const w = cfg.werte || {};
+  const anlagen = (cfg.anlagen || []).slice(0, 5);
+  const vorteile = cfg.vorteile || [];
+  const punkte = cfg.punkte || [];
+  const top = S.headBand + S.headHSchmal + 26;
+  const busY = top + 158;
+  const stTop = busY + 66, stH = 88;
+  const ctrlY = stTop + stH + 14;
+  const bandTop = ctrlY + 30;
+
+  // Vorteile-Kasten vorab umbrechen, damit die Blatthöhe feststeht
+  const vx = 500, vw = W - 40 - vx;
+  const vMax = Math.floor((vw - 44) / (11 * 0.53));
+  const vZeilen = vorteile.map(t => ggResUmbruch(t, vMax).slice(0, 2));
+  const hinweisZ = cfg.vorteilHinweis ? ggResUmbruch(cfg.vorteilHinweis, Math.floor((vw - 28) / (10.5 * 0.53))).slice(0, 2) : [];
+  const vH = 40 + vZeilen.reduce((s, z) => s + z.length * 14 + 8, 0) + (hinweisZ.length ? hinweisZ.length * 13 + 14 : 0);
+  const bandH = Math.max(222, vH);
+  // Ablauf Inbetriebnahme / Rückkehr ans Netz als Schrittkette
+  const ablauf = cfg.ablauf?.zeilen?.length ? cfg.ablauf : null;
+  const abTop = bandTop + bandH + 28, abBoxH = 50, abGap = 10;
+  const abH = ablauf ? 24 + ablauf.zeilen.length * (abBoxH + abGap) + (ablauf.hinweis ? 18 : 0) : 0;
+  const legTop = ablauf ? abTop + abH + 22 : bandTop + bandH + 28;
+  const height = legTop + Math.ceil(punkte.length / 2) * 38 + S.footSpace + 6;
+  const G = { S, W, headH: S.headHSchmal, reduziert: true, height };
+  let out = ggSheetHeader({ eyebrow: cfg.eyebrow, titel: cfg.titel }, T, G);
+
+  const nr = (x, y, k) => `<circle cx="${gR(x)}" cy="${gR(y)}" r="10" fill="${gruen}"/>`
+    + txt(x, y + 4, String(k), { anchor: 'middle', size: 11, weight: 700, fill: '#FFFFFF' });
+  const schalter = (x, y, offen, farbe = strich) => {
+    const k = y + 30;
+    return `<path d="M${gR(x - 4)} ${k - 4}l8 8M${gR(x + 4)} ${k - 4}l-8 8" stroke="${farbe}" stroke-width="1.6"/>`
+      + `<line x1="${gR(x)}" y1="${y}" x2="${gR(offen ? x + 13 : x)}" y2="${offen ? k - 5 : k}" stroke="${farbe}" stroke-width="2"/>`
+      + `<circle cx="${gR(x)}" cy="${y}" r="2.4" fill="${farbe}"/>`;
+  };
+  const trafo = (x, y, farbe = gruen) => `<circle cx="${gR(x)}" cy="${y}" r="9" fill="none" stroke="${farbe}" stroke-width="1.6"/>`
+    + `<circle cx="${gR(x)}" cy="${y + 12}" r="9" fill="none" stroke="${farbe}" stroke-width="1.6"/>`;
+  const kasten = (x, y, k) => `<rect x="${gR(x)}" y="${y}" width="16" height="16" fill="${T.neutral.cardBg}" stroke="${strich}" stroke-width="1.2"/>`
+    + txt(x + 8, y + 12, k, { anchor: 'middle', size: k.length > 1 ? 8.5 : 10, weight: 700 });
+  // Leistungsflussrichtung: Spitze nach oben = Einspeisung, nach unten = Bezug
+  const pfeil = (x, y, hoch, farbe) => (hoch
+    ? `<path d="M${gR(x)} ${y - 5}l-4.5 8h9Z" fill="${farbe}"/>`
+    : `<path d="M${gR(x)} ${y + 5}l-4.5 -8h9Z" fill="${farbe}"/>`);
+  const icon = (key, x, y, farbe) => `<g transform="translate(${gR(x - 12)} ${y})">${GG_ICONS[key](farbe, 1.6)}</g>`;
+  const rolle = (x, y, titel, unter, farbe = gruen) => txt(x, y, titel, { size: 11, weight: 700, fill: farbe })
+    + txt(x, y + 14, unter, { size: 10.5, fill: T.text.muted });
+
+  // ── Energiemanagement (EMS) mit Steuerleitungen ──
+  const ex = 40, ew = 200;
+  out += `<rect x="${ex}.5" y="${top + 0.5}" width="${ew}" height="52" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.2"/>`;
+  out += txt(ex + ew / 2, top + 20, 'Energiemanagement (EMS)', { anchor: 'middle', size: 11.5, weight: 700 });
+  out += txt(ex + ew / 2, top + 37, 'Sollwerte · Ladezustand · Abregelung', { anchor: 'middle', size: 10.5, fill: T.text.muted });
+  out += nr(ex + ew, top, 7);
+  const neaX = 535, spX = 820, yC = top - 12;
+  out += `<path d="M${ex + ew / 2} ${top}V${yC}H${spX}V${top}M${neaX} ${yC}V${top}" fill="none" stroke="${faint}" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+
+  // ── Netz des Netzbetreibers, NAP getrennt ──
+  const napX = 340;
+  out += `<rect x="${napX - 60}.5" y="${top + 0.5}" width="120" height="38" fill="${T.neutral.cardBg}" stroke="${rot}" stroke-width="1.2" stroke-dasharray="5 3"/>`;
+  out += txt(napX, top + 16, 'Netz des NB', { anchor: 'middle', size: 11.5, weight: 600 });
+  out += txt(napX, top + 31, 'Ausfall', { anchor: 'middle', size: 11, weight: 600, fill: rot });
+  out += `<line x1="${napX}" y1="${top + 38}" x2="${napX}" y2="${top + 62}" stroke="${faint}" stroke-width="2" stroke-dasharray="4 3"/>`;
+  out += schalter(napX, top + 62, true);
+  out += `<line x1="${napX}" y1="${top + 92}" x2="${napX}" y2="${busY}" stroke="${gruen}" stroke-width="2"/>`;
+  out += txt(napX + 18, top + 104, 'NAP getrennt', { size: 11, weight: 600 });
+
+  // ── Netzersatzanlage (netzbildend) ──
+  const nx = 440, nw = 190;
+  out += `<rect x="${nx}.5" y="${top + 0.5}" width="${nw}" height="56" fill="${T.tint}" stroke="${gruen}" stroke-width="1.6"/>`;
+  out += `<circle cx="${nx + 24}" cy="${top + 28}" r="11" fill="${T.neutral.cardBg}" stroke="${gruen}" stroke-width="1.6"/>`
+    + txt(nx + 24, top + 32.5, 'G', { anchor: 'middle', size: 11, weight: 700, fill: gruen });
+  out += txt(nx + 46, top + 24, 'Netzersatzanlage', { size: 12, weight: 700 });
+  out += txt(nx + 46, top + 40, ggResKuerzen(w.nea || 'Synchrongenerator', 22), { size: 11, fill: T.text.muted });
+  out += `<line x1="${neaX}" y1="${top + 56}" x2="${neaX}" y2="${top + 68}" stroke="${gruen}" stroke-width="2"/>`
+    + trafo(neaX, top + 77)
+    + `<line x1="${neaX}" y1="${top + 98}" x2="${neaX}" y2="${top + 112}" stroke="${gruen}" stroke-width="2"/>`;
+  out += schalter(neaX, top + 112, false, gruen);
+  out += `<line x1="${neaX}" y1="${top + 142}" x2="${neaX}" y2="${busY}" stroke="${gruen}" stroke-width="2"/>`;
+  out += rolle(neaX + 18, top + 84, 'netzbildend · führend', 'gibt U und f vor, trägt 100 % Last');
+  out += kasten(neaX - 32, top + 118, 'S') + nr(neaX - 50, top + 126, 6);
+  out += nr(neaX - 28, top + 84, 1);
+
+  // ── Batteriespeicher mit netzbildendem Wechselrichter ──
+  const sx = 680, sw = W - 40 - sx, opt = !!w.speicherOption;
+  const spRand = opt ? faint : gruen;
+  out += `<rect x="${sx}.5" y="${top + 0.5}" width="${sw}" height="56" fill="${opt ? T.neutral.cardBg : T.tint}" stroke="${spRand}"
+            stroke-width="1.6" ${opt ? 'stroke-dasharray="5 3"' : ''}/>`;
+  // Batterie und Wechselrichter (DC/AC)
+  out += `<rect x="${sx + 12}" y="${top + 17}" width="24" height="22" fill="${T.neutral.cardBg}" stroke="${spRand}" stroke-width="1.5"/>
+          <rect x="${sx + 20}" y="${top + 13}" width="8" height="4" fill="${spRand}"/>
+          <path d="M${sx + 18} ${top + 28}h5M${sx + 25} ${top + 28}h5M${sx + 27.5} ${top + 25.5}v5" stroke="${spRand}" stroke-width="1.3"/>
+          <line x1="${sx + 36}" y1="${top + 28}" x2="${sx + 44}" y2="${top + 28}" stroke="${spRand}" stroke-width="1.5"/>
+          <rect x="${sx + 44}" y="${top + 16}" width="24" height="24" fill="${T.neutral.cardBg}" stroke="${spRand}" stroke-width="1.5"/>
+          <path d="M${sx + 44} ${top + 40}L${sx + 68} ${top + 16}M${sx + 48} ${top + 22}h7M${sx + 57} ${top + 35}q2.5 -3 5 0t5 0"
+                fill="none" stroke="${spRand}" stroke-width="1.2"/>`;
+  out += txt(sx + 80, top + 24, 'Batteriespeicher', { size: 12, weight: 700, fill: opt ? T.text.muted : T.text.strong });
+  out += txt(sx + 80, top + 40, ggResKuerzen(w.speicher || 'zugeschaltet, folgt der NEA', 30), { size: 10.5, fill: T.text.muted });
+  out += nr(sx + sw, top, 2);
+  out += `<line x1="${spX}" y1="${top + 56}" x2="${spX}" y2="${top + 68}" stroke="${spRand}" stroke-width="2"/>`
+    + trafo(spX, top + 77, spRand)
+    + `<line x1="${spX}" y1="${top + 98}" x2="${spX}" y2="${top + 112}" stroke="${spRand}" stroke-width="2"/>`;
+  out += schalter(spX, top + 112, false, spRand);
+  out += `<line x1="${spX}" y1="${top + 142}" x2="${spX}" y2="${busY}" stroke="${spRand}" stroke-width="2" ${opt ? 'stroke-dasharray="4 3"' : ''}/>`;
+  out += rolle(spX + 18, top + 84, 'netzstützend', 'folgt U und f der NEA', opt ? T.text.muted : gruen);
+
+  // ── MS-Sammelschiene ──
+  out += `<line x1="90" y1="${busY}" x2="${W - 40}" y2="${busY}" stroke="${gruen}" stroke-width="5"/>`;
+  out += txt(96, busY - 9, `MS-Netz (${w.uKv || 20} kV) im Inselbetrieb`, { size: 11, weight: 600, fill: gruen });
+
+  // ── netzfolgende Erzeuger und Lasten ──
+  const ART = {
+    pv:   { icon: 'sun',  quelle: true,  k: 'NA', nr: 3 },
+    wind: { icon: 'wind', quelle: true,  k: 'NA' },
+    kwk:  { g: true,      quelle: true,  k: 'S',  nr: 4 },
+    last: { trafo: true,  quelle: false, k: 'M' },
+    flex: { heiz: true,   quelle: false, k: 'M',  nr: 5 },
+  };
+  const n = Math.max(anlagen.length, 1);
+  const bw = n >= 5 ? 142 : 150, x0 = 110, x1 = W - 40;
+  const schritt = n > 1 ? (x1 - x0 - bw) / (n - 1) : 0;
+  const mitten = [];
+  anlagen.forEach((a, i) => {
+    const d = ART[a.art] || ART.last;
+    const cx = n > 1 ? x0 + bw / 2 + i * schritt : (x0 + x1) / 2;
+    mitten.push(cx);
+    const farbe = a.option ? faint : gruen;
+    const dash = a.option ? 'stroke-dasharray="4 3"' : '';
+    out += `<line x1="${gR(cx)}" y1="${busY}" x2="${gR(cx)}" y2="${busY + 14}" stroke="${farbe}" stroke-width="2"/>`;
+    out += schalter(cx, busY + 14, false, farbe);
+    out += `<line x1="${gR(cx)}" y1="${busY + 44}" x2="${gR(cx)}" y2="${stTop}" stroke="${farbe}" stroke-width="2" ${dash}/>`;
+    out += pfeil(cx, busY + 55, d.quelle, farbe);
+    out += kasten(cx - 32, busY + 20, d.k);
+    if (a.art === 'pv') out += nr(cx - 50, busY + 28, 8);
+    const bx = cx - bw / 2;
+    out += `<rect x="${gR(bx) + 0.5}" y="${stTop + 0.5}" width="${bw}" height="${stH}" fill="${a.option ? T.neutral.cardBg : T.tint}"
+              stroke="${a.option ? faint : T.accents.gruen}" stroke-width="1.2" ${a.option ? 'stroke-dasharray="5 3"' : ''}/>`;
+    const ic = a.option ? faint : strich;
+    if (d.icon) out += icon(d.icon, cx, stTop + 7, ic);
+    else if (d.g) {
+      out += `<circle cx="${gR(cx)}" cy="${stTop + 19}" r="11" fill="${T.neutral.cardBg}" stroke="${ic}" stroke-width="1.5"/>`
+        + txt(cx, stTop + 23.5, 'G', { anchor: 'middle', size: 11, weight: 700, fill: ic });
+    } else if (d.trafo) {
+      out += `<circle cx="${gR(cx)}" cy="${stTop + 14}" r="7" fill="none" stroke="${ic}" stroke-width="1.3"/>
+              <circle cx="${gR(cx)}" cy="${stTop + 24}" r="7" fill="none" stroke="${ic}" stroke-width="1.3"/>`;
+    } else if (d.heiz) {
+      out += `<rect x="${gR(cx - 13)}" y="${stTop + 10}" width="26" height="18" fill="${T.neutral.cardBg}" stroke="${ic}" stroke-width="1.4"/>
+              <path d="M${gR(cx - 9)} ${stTop + 19}l3 -5 3 10 3 -10 3 10 3 -10 3 5" fill="none" stroke="${rot}" stroke-width="1.3"/>`;
+    }
+    out += txt(cx, stTop + 49, a.titel, { anchor: 'middle', size: 12, weight: 700, fill: a.option ? T.text.muted : strich });
+    if (a.unter) out += txt(cx, stTop + 64, ggResKuerzen(a.unter, 25), { anchor: 'middle', size: 10.5, fill: T.text.muted });
+    if (a.wert || a.option) {
+      out += txt(cx, stTop + 79, ggResKuerzen(a.option ? 'Option' : a.wert, 25),
+        { anchor: 'middle', size: 10.5, weight: 600, fill: a.option ? faint : gruen });
+    }
+    if (d.nr) out += nr(bx, stTop, d.nr);
+  });
+  // Sollwerte vom EMS an die Anlagen unter der Schiene
+  if (mitten.length) {
+    const xe = mitten[mitten.length - 1];
+    out += `<path d="M${ex + 16} ${top + 52}V${ctrlY}H${gR(xe)}${mitten.map(m => `M${gR(m)} ${ctrlY}V${stTop + stH}`).join('')}"
+              fill="none" stroke="${faint}" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+    out += txt(ex + 24, ctrlY + 14, 'Sollwerte vom EMS', { size: 10, fill: faint });
+  }
+  if (opt || anlagen.some(a => a.option)) {
+    out += txt(W - 40, ctrlY + 14, 'gestrichelt: im Netzmodell nicht vorhanden (Option)', { anchor: 'end', size: 10, fill: faint });
+  }
+
+  // ── Frequenz-Kennlinie: Überschuss → Abregelung, Mangel → Lastabwurf ──
+  out += txt(40, bandTop + 12, 'Betriebsführung über die Frequenz', { size: 12, weight: 700 });
+  const px0 = 78, px1 = 468, py0 = bandTop + 34, py1 = bandTop + 174;
+  const fMin = 47.5, fMax = 52;
+  const X = f => px0 + (f - fMin) / (fMax - fMin) * (px1 - px0);
+  const Y = p => py1 - p / 100 * (py1 - py0);
+  const zone = (f0, f1, fill, label, lf) => `<rect x="${gR(X(f0))}" y="${py0}" width="${gR(X(f1) - X(f0))}" height="${py1 - py0}" fill="${fill}"/>`
+    + (label ? txt(X((f0 + f1) / 2), py0 + 15, label, { anchor: 'middle', size: 9.5, weight: 600, fill: lf }) : '');
+  out += zone(47.5, 49.0, '#FBEAEA', 'Lastabwurf', rot);
+  out += zone(50.2, 51.5, T.tint, 'Abregelung PV', gruen);
+  out += zone(51.5, 52.0, T.neutral.band, 'aus', T.text.muted);
+  out += `<line x1="${gR(X(50))}" y1="${py0}" x2="${gR(X(50))}" y2="${py1}" stroke="${faint}" stroke-width="1" stroke-dasharray="2 3"/>`;
+  [0, 50, 100].forEach(p => {
+    out += `<line x1="${px0}" y1="${gR(Y(p))}" x2="${px1}" y2="${gR(Y(p))}" stroke="${p ? T.line : T.rule}" stroke-width="1"/>`
+      + txt(px0 - 6, Y(p) + 4, p ? `${p} %` : '0', { anchor: 'end', size: 10, fill: T.text.muted });
+  });
+  for (let f = 47.5; f <= 52.001; f += 0.5) {
+    out += `<line x1="${gR(X(f))}" y1="${py1}" x2="${gR(X(f))}" y2="${py1 + 4}" stroke="${T.rule}" stroke-width="1"/>`
+      + txt(X(f), py1 + 16, ggNum(f, f % 1 ? 1 : 0) + (f >= 52 ? ' Hz' : ''), { anchor: f >= 52 ? 'end' : 'middle', size: 10, fill: T.text.muted });
+  }
+  // zugeschaltete Last: Unterfrequenz-Lastabwurf in Stufen
+  const lastStufen = [[49.0, 100], [49.0, 85], [48.7, 85], [48.7, 70], [48.4, 70], [48.4, 55], [48.1, 55], [48.1, 40], [47.5, 40]];
+  out += `<path d="M${lastStufen.map(([f, p]) => `${gR(X(f))} ${gR(Y(p))}`).join('L')}" fill="none" stroke="${rot}" stroke-width="2"/>`;
+  // PV-Einspeisung nach P(f)-Kennlinie, Abschaltung durch den NA-Schutz
+  out += `<path d="M${gR(X(47.5))} ${gR(Y(100))}L${gR(X(50.2))} ${gR(Y(100))}L${gR(X(51.5))} ${gR(Y(48))}" fill="none" stroke="${gruen}" stroke-width="2.4"/>
+          <path d="M${gR(X(51.5))} ${gR(Y(48))}V${gR(Y(0))}H${gR(X(52))}" fill="none" stroke="${gruen}" stroke-width="2" stroke-dasharray="4 3"/>`;
+  out += txt(X(50.25), Y(27), 'Überschuss:', { size: 10, weight: 600 });
+  out += txt(X(50.25), Y(14), 'f steigt →', { size: 10, fill: T.text.muted });
+  out += txt(X(49.9), Y(27), 'Mangel:', { anchor: 'end', size: 10, weight: 600 });
+  out += txt(X(49.9), Y(14), '← f sinkt', { anchor: 'end', size: 10, fill: T.text.muted });
+  const ly = py1 + 36;
+  out += `<line x1="${px0}" y1="${ly - 4}" x2="${px0 + 22}" y2="${ly - 4}" stroke="${gruen}" stroke-width="2.4"/>`
+    + txt(px0 + 28, ly, 'Einspeisung PV (P(f)-Kennlinie)', { size: 10.5 });
+  out += `<line x1="${px0 + 214}" y1="${ly - 4}" x2="${px0 + 236}" y2="${ly - 4}" stroke="${rot}" stroke-width="2"/>`
+    + txt(px0 + 242, ly, 'zugeschaltete Last', { size: 10.5 });
+
+  // ── Vorteile ──
+  out += `<rect x="${vx}.5" y="${bandTop + 0.5}" width="${vw}" height="${bandH}" fill="${T.neutral.cardBg}" stroke="${T.line}" stroke-width="1.2"/>
+          <rect x="${vx}.5" y="${bandTop + 0.5}" width="${vw}" height="28" fill="${T.tint}"/>`;
+  out += txt(vx + 14, bandTop + 19, 'Vorteile der Einbindung', { size: 12, weight: 700 });
+  let vy = bandTop + 48;
+  vZeilen.forEach(z => {
+    out += `<path d="M${vx + 14} ${vy - 4}l4 4 8 -9" fill="none" stroke="${T.accents.gruen}" stroke-width="2"/>`;
+    z.forEach((s, j) => { out += txt(vx + 34, vy + j * 14, s, { size: 11 }); });
+    vy += z.length * 14 + 8;
+  });
+  if (hinweisZ.length) {
+    vy += 4;
+    out += `<line x1="${vx + 14}" y1="${vy - 12}" x2="${vx + vw - 14}" y2="${vy - 12}" stroke="${T.line}" stroke-width="1"/>`;
+    hinweisZ.forEach((s, j) => { out += txt(vx + 14, vy + 2 + j * 13, s, { size: 10.5, fill: T.text.muted }); });
+  }
+
+  // ── Ablauf: Inselbildung und Rückkehr ans Netz ──
+  if (ablauf) {
+    out += txt(40, abTop + 12, ablauf.titel || 'Inbetriebnahme und Rückkehr ans Netz', { size: 12, weight: 700 });
+    const lw = 128, ax0 = 40 + lw, ax1 = W - 40, pfeilW = 14;
+    ablauf.zeilen.forEach((z, zi) => {
+      const y = abTop + 24 + zi * (abBoxH + abGap);
+      const n = z.schritte.length;
+      const bw = (ax1 - ax0 - (n - 1) * pfeilW) / n;
+      const farbe = z.rueck ? T.text.strong : gruen;
+      out += `<rect x="40.5" y="${y + 0.5}" width="${lw - 10}" height="${abBoxH}" fill="${z.rueck ? T.neutral.band : T.tint}"/>`;
+      ggResUmbruch(z.label, 18).slice(0, 2).forEach((s, j) => {
+        out += txt(50, y + 22 + j * 14, s, { size: 11, weight: 700, fill: farbe });
+      });
+      z.schritte.forEach((s, i) => {
+        const bx = ax0 + i * (bw + pfeilW);
+        out += `<rect x="${gR(bx) + 0.5}" y="${y + 0.5}" width="${gR(bw)}" height="${abBoxH}" fill="${T.neutral.cardBg}"
+                  stroke="${z.rueck ? T.line : T.accents.gruen}" stroke-width="1.2"/>`;
+        out += txt(bx + 8, y + 18, ggResKuerzen(s.t, Math.floor((bw - 16) / (11 * 0.56))), { size: 11, weight: 700, fill: farbe });
+        ggResUmbruch(s.u || '', Math.floor((bw - 16) / (10 * 0.53))).slice(0, 2).forEach((l, j) => {
+          out += txt(bx + 8, y + 33 + j * 12, l, { size: 10, fill: T.text.muted });
+        });
+        if (i < n - 1) {
+          const px = bx + bw + 3, my = y + abBoxH / 2;
+          out += `<path d="M${gR(px)} ${my - 5}l${pfeilW - 6} 5 -${pfeilW - 6} 5Z" fill="${z.rueck ? faint : T.accents.gruen}"/>`;
+        }
+      });
+    });
+    if (ablauf.hinweis) {
+      out += txt(40, abTop + abH - 3, ggResKuerzen(ablauf.hinweis, Math.floor((W - 80) / (10 * 0.53))),
+        { size: 10, fill: T.text.muted });
+    }
+  }
+
+  // ── Nummernlegende zweispaltig ──
+  const colW = (W - 2 * S.padX) / 2;
+  punkte.forEach((t, i) => {
+    const px = S.padX + (i % 2) * colW, py = legTop + Math.floor(i / 2) * 38;
+    out += nr(px + 10, py + 6, i + 1);
+    ggResUmbruch(t, Math.floor((colW - 40) / (11 * 0.53))).slice(0, 2)
+      .forEach((z, j) => { out += txt(px + 28, py + 10 + j * 14, z, { size: 11 }); });
+  });
+  return ggFinishSvg(out, W, height);
+}
+
+/** Ablauf der Inselbildung (NEA führt) und der Rückkehr ans Netz — Schrittkette in res-insel-ee. */
+const GG_RES_EE_ABLAUF = Object.freeze({
+  titel: 'Inbetriebnahme der Insel und Rückkehr ans Netz',
+  zeilen: [
+    { label: 'Inselbildung (Schwarzstart)', schritte: [
+      { t: 'Netzausfall', u: 'Ausfall erkannt, Schalter am NAP öffnet' },
+      { t: 'NEA starten', u: 'baut U und f auf, führt die Insel' },
+      { t: 'Lasten zuschalten', u: 'Stationen in Stufen, NEA trägt 100 % der Last' },
+      { t: 'Speicher zu', u: 'synchron auf die NEA, gleicht Lastsprünge aus' },
+      { t: 'PV/BHKW frei', u: 'EMS gibt frei, NEA hält ihre Mindestlast' },
+    ] },
+    { label: 'Rückkehr ans Netz', rueck: true, schritte: [
+      { t: 'Netz zurück', u: 'stabil über Wartezeit, Freigabe des NB' },
+      { t: 'Einspeisung ab', u: 'PV, BHKW und Speicher zurückfahren, NEA trägt' },
+      { t: 'Synchronisieren', u: 'NEA an U, f und Phase des Netzes angleichen' },
+      { t: 'NAP schließen', u: 'kurzer Parallelbetrieb, Last geht aufs Netz' },
+      { t: 'NEA abfahren', u: 'Nachlauf; PV und Speicher wieder am Netz' },
+    ] },
+  ],
+  hinweis: 'Ohne Synchronisiereinrichtung: Rückschaltung mit kurzer Unterbrechung – Insel spannungslos, NAP schließen, Wechselrichter schalten nach Wartezeit wieder zu.',
+});
+
+const GG_RES_EE_ANLAGEN_ALLGEMEIN = Object.freeze([
+  { art: 'pv', titel: 'Photovoltaik', unter: 'netzfolgend · P(f)' },
+  { art: 'kwk', titel: 'BHKW (KWK)', unter: 'Synchrongenerator' },
+  { art: 'last', titel: 'Verbraucher', unter: 'Stationen in Stufen' },
+  { art: 'flex', titel: 'flexible Lasten', unter: 'Heizstab · WP · Laden' },
+]);
+/** Summe einer Kenngröße über alle Assets eines Typs im Netzmodell. */
+const ggResAssetSumme = (typ, feld) => (window.ASSETS?.items || [])
+  .filter(a => a.type === typ).reduce((s, a) => s + (parseFloat(a.props?.[feld]) || 0), 0);
+
+const GG_RES_INSEL_ABGAENGE_ALLGEMEIN = Object.freeze([
+  { titel: 'Stufe 1', unter: 'Stationen mit Gebäuden A/B' },
+  { titel: 'Stufe 2', unter: 'weitere Stationen' },
+  { titel: 'Stufe n', unter: '…' },
+  { titel: 'abgeschaltet', unter: 'nicht versorgt', aus: true },
+]);
+const GG_RES_LEGENDE_KLASSEN = [
+  { art: 'klasse', farbe: GG_RES_KLASSE_FARBE.A, text: 'Klasse A (kritisch)' },
+  { art: 'klasse', farbe: GG_RES_KLASSE_FARBE.B, text: 'Klasse B (eingeschränkt)' },
+];
+
+const GG_RES_VERGLEICH_SPALTEN = [{ label: 'Merkmal', weight: 1.1 },
+  { label: 'Szenario 1: kritische Gebäude', weight: 1.65, mono: false },
+  { label: 'Szenario 2: je Trafostation', weight: 1.65, mono: false },
+  { label: 'Szenario 3: Liegenschaft', weight: 1.65, mono: false }];
+
+function ggResSzenarienFiguren() {
+  const leerMeta = () => ({ 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' });
+  const kurzKw = kw => `${ggNum(kw)} kW`;
+  const aggBand = liste => {
+    const kw = liste.reduce((s, a) => s + a.kw, 0);
+    const neu = liste.reduce((s, a) => s + a.zusatzKw, 0);
+    const abg = liste.reduce((s, a) => s + a.abgaenge, 0);
+    const amGebaeude = liste.every(a => a.ort === 'gebaeude') ? ' am Gebäude' : '';
+    return `${liste.length === 1 ? 'NEA' : `${liste.length} NEA`}${amGebaeude} ${kurzKw(kw)}`
+      + (neu <= 0 ? ' (vorh.)' : neu < kw ? ` (+${ggNum(neu)} neu)` : '')
+      + (abg ? ` · ${abg} Abg. aus` : '');
+  };
+  return [
+    // ── 5.2.2 Szenario 1 ──
+    {
+      id: 'res-sz1-text', istText: true, reihe: 10,
+      kapitel: '5.2.2 Szenario 1: Versorgung der kritischen Gebäude',
+      titel: 'Gutachtentext: Szenario 1 — kritische Gebäude',
+      datei: 'resilienz-szenario1-text',
+      hinweis: 'Versorgung nur der Gebäude der Notstromklasse A mit Aggregaten am Bestandsnetz — aus dem 🛡 Blackout-Modus '
+             + '(Klassen, Platzierung am Netz, Wärme). Dauer wie im Reiter „Liegenschaft“.',
+      render: cfg => ggRenderResSz1Text(cfg),
+      config: {},
+    },
+    {
+      id: 'res-gebaeude-nea-prinzip', autoSync: true, reihe: 15,
+      kapitel: '5.2.2 Szenario 1: Versorgung der kritischen Gebäude',
+      titel: 'Prinzip NEA zur Versorgung eines Gebäudes',
+      datei: 'resilienz-gebaeude-nea-prinzip',
+      hinweis: 'Prinzipskizze: Netzüberwachung, automatische Umschaltung Netz – NEA, Aufstellraum mit Kraftstoff, Notstromschiene '
+             + 'mit USV, Klasse A, Heizung und Lastabwurf. Beispielwerte von der größten NEA am Gebäude aus Szenario 1, sonst allgemein.',
+      render: cfg => ggRenderGebaeudeNeaPrinzip(cfg),
+      config: {
+        eyebrow: 'Resilienz · Szenario 1', titel: 'Netzersatzanlage zur Versorgung eines Gebäudes', werte: {},
+        punkte: [
+          'Netzüberwachung erkennt den Ausfall, startet die NEA und schaltet nach Netzwiederkehr mit Nachlaufzeit zurück',
+          'Netzumschaltung Netz – NEA, automatisch, 4-polig, gegenseitig verriegelt: kein Parallelbetrieb mit dem Netz',
+          'stationäre NEA im eigenen Aufstellraum oder Container, Zu- und Abluft, Abgasführung über Dach',
+          'Kraftstoffvorrat (Tages- und Lagertank) für die Autonomiedauer, Befüllung von außen',
+          'USV überbrückt die Anlaufzeit der NEA (ca. 15 s) für IT, Kommunikation und Leittechnik',
+          'kritische Verbraucher (Klasse A) mit voller Last an der Notstromschiene',
+          'Heizung: Pumpen, Brenner und Regelung am Notstrom, sonst keine Wärmeversorgung',
+          'nicht benötigte Abgänge per Lastabwurf abschaltbar, die NEA trägt nur den Notstromumfang',
+        ],
+      },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        const agg = (sz?.s1.bewertung.variante.aggregate || []).filter(a => a.ort === 'gebaeude' && a.empfKw > 0);
+        if (!agg.length) {
+          cfg.werte = {};
+          return 'ℹ Allgemeine Darstellung — im Blackout-Modus ist keine NEA am Gebäude vorgesehen.';
+        }
+        const a = agg.reduce((m, x) => (x.empfKw > m.empfKw ? x : m));
+        const liter = zielKraftstoffL(a.peakKw, sz.dauerH);
+        cfg.werte = {
+          gebaeude: `Beispiel: Gebäude ${a.name}`,
+          nea: `${ggNum(a.empfKw)} kW · Diesel`,
+          tank: liter ? `${ggNum(liter)} l für ${ggResDauer(sz.dauerH)}` : '',
+        };
+        return `✓ Beispielwerte von Gebäude ${a.name} (${ggNum(a.empfKw)} kW).`;
+      },
+    },
+    {
+      id: 'res-sz1-schema', autoSync: true, reihe: 20,
+      kapitel: '5.2.2 Szenario 1: Versorgung der kritischen Gebäude',
+      titel: 'Schema Szenario 1 — Versorgung der kritischen Gebäude',
+      datei: 'resilienz-szenario1-schema',
+      hinweis: 'Je Transformatorstation: kritische Gebäude und die Netzersatzanlagen der günstigsten Aufstellungsvariante.',
+      render: cfg => ggRenderResSchema(cfg),
+      config: { eyebrow: 'Resilienz · Szenario 1', titel: 'Versorgung der kritischen Gebäude', modus: 'kritisch',
+                stationen: [], extra: [], legende: [], fussnote: '', leer: 'Keine Transformatorstationen im Netzmodell.' },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        if (!sz) { cfg.stationen = []; cfg.extra = []; return '⚠ Blackout-Modus nicht verfügbar.'; }
+        const nea = new Set(sz.s1.bewertung.variante.aggregate.filter(a => a.ort === 'gebaeude' && a.empfKw > 0).map(a => a.name));
+        cfg.stationen = sz.stationen.map(s => {
+          const geb = s.gebaeude.filter(g => g.klasse === 'A').map(g => ({ ...g, nea: nea.has(g.name) }));
+          return {
+            name: s.name, zeile2: ggResStationZeile(s),
+            zustand: s.sz1.length ? 'nea' : 'ohne',
+            nea: s.sz1.some(a => a.ort === 'knoten'),
+            band: s.sz1.length ? aggBand(s.sz1) : 'keine Versorgung',
+            gebaeude: geb, ohneGebText: 'keine kritischen Gebäude',
+          };
+        });
+        cfg.extra = sz.ohneStation.map(a => ({
+          name: a.name, zeile2: a.fest ? 'eigene NEA am Gebäude' : 'ohne Netzzuordnung', zustand: 'nea', nea: false,
+          band: aggBand([a]), gebaeude: [{ name: a.name, klasse: 'A', nea: true }],
+        }));
+        cfg.titel = `Versorgung der kritischen Gebäude (${ggResDauer(sz.dauerH)})`;
+        cfg.legende = [
+          ...GG_RES_LEGENDE_KLASSEN.slice(0, 1),
+          { art: 'g', text: 'Netzersatzanlage (NEA)' },
+          { farbe: GG_THEME.tint, rand: GG_THEME.accents.gruenDunkel, text: 'Station mit NEA-Versorgung' },
+          { farbe: GG_THEME.neutral.cardBg, rand: GG_THEME.line, text: 'ohne Versorgung' },
+        ];
+        cfg.fussnote = 'Bemessung: gleichzeitige Spitze der Gebäudelastgänge + 20 % Reserve; „Abg. aus“ = im Ereignisfall abzuschaltende Abgänge.';
+        return `✓ ${sz.stationen.length} Stationen, ${sz.s1.bewertung.variante.summe.anzahl} Netzersatzanlagen.`;
+      },
+    },
+    {
+      id: 'res-sz1-anlagen', autoSync: true, reihe: 30,
+      kapitel: '5.2.2 Szenario 1: Versorgung der kritischen Gebäude',
+      titel: 'Netzersatzanlagen Szenario 1',
+      datei: 'resilienz-szenario1-anlagen',
+      hinweis: 'Standorte, versorgte Gebäude und Leistungen der Netzersatzanlagen für die Gebäude der Klasse A.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Resilienz · Szenario 1', titel: 'Netzersatzanlagen Szenario 1', tabelleTitel: 'Netzersatzanlagen Szenario 1',
+        leer: 'Keine Gebäude der Klasse A — im 🛡 Blackout-Modus Klassen zuweisen.',
+        spalten: [{ label: 'Standort', weight: 1.5 }, { label: 'Versorgte Gebäude', weight: 2.2, mono: false, align: 'left' },
+                  { label: 'Spitze', weight: 0.8 }, { label: 'NEA', weight: 0.8 }, { label: 'davon vorh.', weight: 0.9 },
+                  { label: 'Abg. aus', weight: 0.7 }],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        const v = sz?.s1.bewertung.variante;
+        const agg = v ? v.aggregate.filter(a => a.empfKw > 0) : [];
+        if (!agg.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Netzersatzanlagen für Klasse A.'; }
+        const gebName = new Map(sz.bilanz.zeilen.map(z => [z.id, z.name]));
+        cfg.zeilen = agg.map(a => ({ werte: [
+          a.ort === 'knoten' ? (String(a.name).startsWith(a.typ) ? a.name : `${a.typ} ${a.name}`) : `Gebäude ${a.name}`,
+          ggResKurzliste(a.gebaeude.map(id => gebName.get(id) || String(id))),
+          kurzKw(a.peakKw), kurzKw(a.empfKw), a.bestandKw > 0 ? kurzKw(Math.min(a.bestandKw, a.empfKw)) : '—',
+          a.abgaenge.length ? String(a.abgaenge.length) : '—',
+        ] }));
+        cfg.zeilen.push({ highlight: true, werte: ['Summe', `${agg.reduce((s, a) => s + a.gebaeude.length, 0)} Gebäude`,
+          kurzKw(sz.s1.aKw), kurzKw(v.summe.kw), v.bestandGenutztKw > 0 ? kurzKw(v.bestandGenutztKw) : '—',
+          v.summe.abgaenge ? String(v.summe.abgaenge) : '—'] });
+        cfg.fussnote = `Aufstellungsvariante „${sz.s1.strategie}“ (günstigste); Bemessung Spitze + 20 % Reserve, Raster 5 kW.`;
+        return `✓ ${agg.length} Netzersatzanlagen übernommen.`;
+      },
+    },
+
+    // ── 5.2.3 Szenario 2 (Figur-IDs res-sz3-*) ──
+    {
+      id: 'res-sz3-text', istText: true, reihe: 10,
+      kapitel: '5.2.3 Szenario 2: Versorgung je Trafostation',
+      titel: 'Gutachtentext: Szenario 2 — je Trafostation',
+      datei: 'resilienz-szenario3-text',
+      hinweis: 'Je Trafostation eine NEA an der NSHV für die Gebäude der Klassen A/B, übrige Abgänge aus; fest installiert und mobil '
+             + 'über den Einspeisepunkt im Vergleich — aus dem 🛡 Blackout-Modus. Dauer wie im Reiter „Liegenschaft“.',
+      render: cfg => ggRenderResStationText(cfg),
+      config: {},
+    },
+    {
+      id: 'res-sz3-prinzip', autoSync: true, reihe: 15,
+      kapitel: '5.2.3 Szenario 2: Versorgung je Trafostation',
+      titel: 'Prinzip NEA an der Trafostation',
+      datei: 'resilienz-szenario3-prinzip',
+      hinweis: 'Prinzipskizze wie in den allgemeinen Empfehlungen: Umschaltung Netz – 0 – NEA in der NSHV, Einspeisekasten, '
+             + 'Stellfläche, Abgänge A/B versorgt, übrige aus. Beispielwerte von der größten Station aus Szenario 2, sonst allgemein.',
+      render: cfg => ggRenderEinspeisePrinzip(cfg),
+      config: {
+        eyebrow: 'Resilienz · Szenario 2', titel: 'Netzersatzanlage an der Trafostation', werte: {},
+        punkte: [
+          'Umschalteinrichtung Netz – 0 – NEA in der NSHV, gegenseitig verriegelt: kein Parallelbetrieb mit dem Netz',
+          'Einspeisekasten für ein mobiles Aggregat bzw. fester Anschluss der stationären NEA',
+          'fest verlegte Verbindung vom Einspeisepunkt zur Umschalteinrichtung',
+          'Stellfläche bzw. Aufstellraum mit Zufahrt für Aggregat und Tankfahrzeug',
+          'Abgänge der Klassen A und B versorgt, übrige Abgänge im Ereignisfall abgeschaltet und gekennzeichnet',
+          'Erdung des Aggregats an der Erdungsanlage der Station; Abschaltbedingungen für den NEA-Betrieb nachweisen',
+        ],
+      },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        const kandidaten = (sz?.stationen || []).filter(s => s.sz2.length);
+        if (!kandidaten.length) {
+          cfg.werte = {};
+          return 'ℹ Allgemeine Darstellung — im Blackout-Modus ist keine Station mit Gebäuden A/B versorgt.';
+        }
+        const kw = s => s.sz2.reduce((x, a) => x + a.kw, 0);
+        const st = kandidaten.reduce((m, s) => (kw(s) > kw(m) ? s : m));
+        cfg.werte = { station: `Beispiel: ${st.name}`, neaTitel: 'NEA', nea: `${ggNum(kw(st))} kW` };
+        return `✓ Beispielwerte von ${st.name} (${ggNum(kw(st))} kW).`;
+      },
+    },
+    {
+      id: 'res-sz3-schema', autoSync: true, reihe: 20,
+      kapitel: '5.2.3 Szenario 2: Versorgung je Trafostation',
+      titel: 'Schema Szenario 2 — Versorgung je Trafostation',
+      datei: 'resilienz-szenario3-schema',
+      hinweis: 'Je Transformatorstation: Gebäude der Klassen A/B und die NEA an der NSHV; Stationen ohne A/B ohne Versorgung.',
+      render: cfg => ggRenderResSchema(cfg),
+      config: { eyebrow: 'Resilienz · Szenario 2', titel: 'Versorgung je Trafostation', modus: 'station',
+                stationen: [], extra: [], legende: [], fussnote: '', leer: 'Keine Transformatorstationen im Netzmodell.' },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        if (!sz) { cfg.stationen = []; cfg.extra = []; return '⚠ Blackout-Modus nicht verfügbar.'; }
+        cfg.stationen = sz.stationen.map(s => ({
+          name: s.name, zeile2: ggResStationZeile(s),
+          zustand: s.sz2.length ? 'nea' : 'ohne',
+          nea: s.sz2.some(a => a.ort === 'knoten'),
+          band: s.sz2.length ? aggBand(s.sz2) : 'keine Versorgung',
+          gebaeude: s.gebaeude.filter(g => g.klasse === 'A' || g.klasse === 'B'),
+          ohneGebText: 'keine Gebäude A/B',
+        }));
+        const klasseVon = new Map(sz.bilanz.zeilen.map(z => [z.name, z.klasse]));
+        cfg.extra = sz.s2.ohneStation.map(a => ({
+          name: a.name, zeile2: a.fest ? 'eigene NEA am Gebäude' : 'ohne Netzzuordnung', zustand: 'nea', nea: false,
+          band: aggBand([a]), gebaeude: [{ name: a.name, klasse: klasseVon.get(a.name) || null, nea: true }],
+        }));
+        cfg.titel = `Versorgung je Trafostation (${ggResDauer(sz.dauerH)})`;
+        cfg.legende = [
+          ...GG_RES_LEGENDE_KLASSEN,
+          { art: 'g', text: 'Netzersatzanlage (NEA)' },
+          { farbe: GG_THEME.tint, rand: GG_THEME.accents.gruenDunkel, text: 'Station mit NEA' },
+          { farbe: GG_THEME.neutral.cardBg, rand: GG_THEME.line, text: 'ohne Versorgung' },
+        ];
+        cfg.fussnote = 'Bemessung: gleichzeitige Spitze der Gebäude A (voll) und B (reduziert) je Station + 20 % Reserve; „Abg. aus“ = abzuschaltende Abgänge.';
+        return `✓ ${sz.stationen.length} Stationen, ${sz.s2.bewertung.variante.summe.anzahl} Netzersatzanlagen.`;
+      },
+    },
+    {
+      id: 'res-sz3-anlagen', autoSync: true, reihe: 30,
+      kapitel: '5.2.3 Szenario 2: Versorgung je Trafostation',
+      titel: 'Netzersatzanlagen Szenario 2',
+      datei: 'resilienz-szenario3-anlagen',
+      hinweis: 'Je Standort: versorgte Gebäude A/B, Spitze, NEA-Leistung, abzuschaltende Abgänge und Richtkosten fest installiert '
+             + 'gegenüber mobil über den Einspeisepunkt.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Resilienz · Szenario 2', titel: 'Netzersatzanlagen Szenario 2', tabelleTitel: 'Netzersatzanlagen Szenario 2',
+        leer: 'Keine Gebäude der Klassen A/B — im 🛡 Blackout-Modus Klassen zuweisen.',
+        spalten: [{ label: 'Standort', weight: 1.2, mono: false }, { label: 'Versorgte Gebäude', weight: 1.8, mono: false, align: 'left' },
+                  { label: 'Spitze', weight: 0.7 }, { label: 'NEA', weight: 0.7 }, { label: 'Abg. aus', weight: 0.6 },
+                  { label: 'fest inst.', weight: 0.8 }, { label: 'Einspeisepunkt mobil', weight: 1.5, mono: false },
+                  { label: 'mobil', weight: 0.7 }],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        const b = sz?.s2.bewertung;
+        if (!b?.strom) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Netzersatzanlagen für die Klassen A/B.'; }
+        const gebListe = namen => (namen.length <= 2 ? namen.join(', ') : `${namen[0]} + ${namen.length - 1} weitere`);
+        const zeile = (ort, a) => ({ werte: [
+          ort, gebListe(a.gebaeude), kurzKw(a.peakKw), kurzKw(a.kw), a.abgaenge ? String(a.abgaenge) : '—',
+          a.kosten > 0 ? ggResEur(a.kosten) : 'vorh.',
+          a.mobil?.gedeckt ? 'vorh. NEA' : a.mobil?.kva
+            ? `${ggNum(a.mobil.kva)} kVA · ${a.mobil.anschluss.replace(' Einpolstecker', '')}` : '—',
+          a.mobil?.kosten > 0 ? ggResEur(a.mobil.kosten) : '—',
+        ] });
+        cfg.zeilen = [
+          ...sz.stationen.flatMap(s => s.sz2.map(a => zeile(s.name, a))),
+          ...sz.s2.ohneStation.map(a => zeile('am Gebäude', a)),
+        ];
+        const v = b.variante, m = sz.s2.mobil;
+        if (b.strom.liter) {
+          cfg.zeilen.push({ werte: ['Kraftstofflager', '', '', '', '', ggResEur(b.strom.kosten - v.summe.kosten),
+            `${ggNum(b.strom.liter)} l nachliefern`, '—'] });
+        }
+        cfg.zeilen.push({ highlight: true, werte: ['Summe', `${b.strom.gebaeude} Gebäude A/B`, kurzKw(sz.s2.kw), kurzKw(v.summe.kw),
+          v.summe.abgaenge ? String(v.summe.abgaenge) : '—', ggResEur(b.strom.kosten),
+          `${m.anzahl} Einspeisepunkte`, ggResEur(m.kosten)] });
+        cfg.fussnote = 'Richtwerte netto, ohne Wärme; mobil: Einspeisepunkt (Spitze × 1,2 / cos φ 0,8) + Abgänge, ohne Rahmenvertrag.';
+        return `✓ ${cfg.zeilen.length - 1 - (b.strom.liter ? 1 : 0)} Standorte übernommen.`;
+      },
+    },
+
+    // ── 5.2.4 Szenario 3 (Figur-IDs res-sz2-* aus der Zeit, als die Liegenschaft Szenario 2 war) ──
+    {
+      id: 'res-sz2-text', istText: true, reihe: 10,
+      kapitel: '5.2.4 Szenario 3: Versorgung der Gesamtliegenschaft',
+      titel: 'Gutachtentext: Szenario 3 — Gesamtliegenschaft',
+      datei: 'resilienz-szenario2-text',
+      hinweis: 'Inselbetrieb der Liegenschaft am NAP mit Anteil, Dauer und Redundanz aus dem Reiter „Liegenschaft“ des 🛡 Blackout-Modus.',
+      render: cfg => ggRenderResLiegenschaftText(cfg),
+      config: {},
+    },
+    {
+      id: 'res-insel-prinzip', autoSync: true, reihe: 15,
+      kapitel: '5.2.4 Szenario 3: Versorgung der Gesamtliegenschaft',
+      titel: 'Prinzip Inselbetrieb der Liegenschaft',
+      datei: 'resilienz-inselbetrieb-prinzip',
+      hinweis: 'Prinzipskizze: Netztrennung am NAP, zentrale NEA mit Maschinentrafo und Sternpunktbildung, Stationsabgänge in '
+             + 'Zuschaltstufen, Schutz und Leittechnik. Werte aus dem Reiter „Liegenschaft“ des 🛡 Blackout-Modus, sonst allgemein.',
+      render: cfg => ggRenderInselPrinzip(cfg),
+      config: {
+        eyebrow: 'Resilienz · Szenario 3', titel: 'Inselbetrieb der Liegenschaft', werte: {},
+        abgaenge: GG_RES_INSEL_ABGAENGE_ALLGEMEIN,
+        punkte: [
+          'Netztrennung am NAP: Leistungsschalter mit Verriegelung Netz/NEA, Synchronisierung für die Rückschaltung',
+          'MS-Einspeisefeld mit Leistungsschalter und Schutz für die Netzersatzanlage',
+          'Maschinentransformator hebt die Generatorspannung auf die Mittelspannung',
+          'eigene Sternpunktbildung im Inselbetrieb (Sternpunkt über Widerstand bzw. Erdungstrafo)',
+          'Netzersatzanlage(n) im Parallelbetrieb, Kraftstofflager für die Autonomiedauer',
+          'fernsteuerbare Stationsabgänge (M), Zuschaltung in Stufen gegen Einschaltstrom und Lastsprung',
+          'Schutzgeräte (S) mit eigenem Parametersatz „Inselbetrieb“ für den geringeren Kurzschlussstrom',
+          'Leittechnik: Umschaltung, Zuschaltlogik, Lastabwurf bei Überlast, Kraftstoffüberwachung',
+        ],
+      },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        const r = sz?.s3.bewertung.insel;
+        if (!r || !(r.spitzeKw > 0)) {
+          cfg.werte = {};
+          cfg.abgaenge = GG_RES_INSEL_ABGAENGE_ALLGEMEIN;
+          return 'ℹ Allgemeine Darstellung — für Werte im Blackout-Modus Lastgang und Trafostationen erfassen.';
+        }
+        const uKv = ggNum(sz.uKv, sz.uKv % 1 ? 1 : 0);
+        cfg.werte = {
+          neaAnzahl: r.aggregate.anzahl, uKv,
+          nea: `${r.aggregate.anzahl} × ${ggNum(r.aggregate.kvaJe)} kVA${sz.s3.redundanz ? ' (N+1)' : ''}`,
+          mt: `0,4/${uKv} kV · ${ggNum(r.maschinentrafoKva)} kVA`,
+          tank: `${ggNum(r.liter)} l Diesel`,
+        };
+        const stufen = r.zuschaltung.stufen, aus = r.lastabwurf.abschalten;
+        const plaetze = aus.length ? 3 : 4;
+        const namen = liste => liste.map(t => t.name || 'Station').join(', ');
+        const abg = stufen.length <= plaetze
+          ? stufen.map((st, i) => ({ titel: `Stufe ${i + 1}`, unter: namen(st.trafos) }))
+          : [...stufen.slice(0, plaetze - 1).map((st, i) => ({ titel: `Stufe ${i + 1}`, unter: namen(st.trafos) })),
+             { titel: `Stufe ${plaetze}–${stufen.length}`,
+               unter: `${stufen.slice(plaetze - 1).reduce((n, st) => n + st.trafos.length, 0)} Stationen` }];
+        if (aus.length) abg.push({ titel: 'abgeschaltet', unter: namen(aus), aus: true });
+        cfg.abgaenge = abg;
+        cfg.titel = `Inselbetrieb der Liegenschaft (${ggNum(r.anteilPct)} % der Spitze, ${ggResDauer(sz.dauerH)})`;
+        return `✓ ${stufen.length} Zuschaltstufen, ${aus.length} Stationen abgeschaltet.`;
+      },
+    },
+    {
+      id: 'res-insel-ee', autoSync: true, reihe: 17,
+      kapitel: '5.2.4 Szenario 3: Versorgung der Gesamtliegenschaft',
+      titel: 'Erneuerbare Erzeuger und Speicher im Inselbetrieb',
+      datei: 'resilienz-inselbetrieb-erneuerbare',
+      hinweis: 'Prinzipskizze: NEA führt die Insel (netzbildend, 100 % der Last), Batteriespeicher und PV/Wind/BHKW werden '
+             + 'netzfolgend zugeschaltet; flexible Lasten, Frequenz-Kennlinie, Vorteile, Ablauf Inbetriebnahme/Rückkehr ans Netz '
+             + 'und Betriebshinweise. Leistungen der Anlagen aus dem Netzmodell, fehlende als Option.',
+      render: cfg => ggRenderInselEe(cfg),
+      config: {
+        eyebrow: 'Resilienz · Szenario 3', titel: 'Erneuerbare Erzeuger und Speicher im Inselbetrieb', werte: {},
+        anlagen: GG_RES_EE_ANLAGEN_ALLGEMEIN,
+        vorteile: [
+          'weniger Kraftstoff: längere Autonomie mit demselben Tanklager',
+          'klare Führung: fallen PV oder Speicher aus, trägt die NEA die Insel weiter',
+          'Speicher fängt Lastsprünge ab: weniger Zuschaltstufen, stabilere Frequenz',
+          'vorhandene PV- und KWK-Anlagen bleiben im Blackout nutzbar',
+          'Speicher im Normalbetrieb mehrfach nutzbar: Spitzenlast, Eigenverbrauch',
+          'kein netzbildender Wechselrichter nötig: auch Bestandsanlagen einbindbar',
+          'weniger Emissionen, Lärm und Kraftstofflogistik',
+        ],
+        vorteilHinweis: 'Die gesicherte Leistung stellt allein die NEA (100 % der Last) – PV und Speicher sparen Kraftstoff, ersetzen aber keine Leistung.',
+        ablauf: GG_RES_EE_ABLAUF,
+        punkte: [
+          'NEA führt: der Synchrongenerator gibt Spannung und Frequenz vor und ist für 100 % der Last bemessen – die Insel läuft auch ohne PV und Speicher',
+          'Batteriespeicher wird zugeschaltet, sobald die Insel steht; er folgt der NEA (netzstützend), fängt Lastsprünge ab und nimmt Überschuss auf',
+          'PV speist netzfolgend ein; bei Überschuss Abregelung über die P(f)-Kennlinie (Frequenzanhebung) oder per Sollwert vom EMS',
+          'BHKW nur mit Synchrongenerator und inselfähiger Regelung; auf die NEA synchronisiert, stromgeführt, Wärme in den Puffer',
+          'flexible Lasten (Heizstab, Wärmepumpen, Ladepunkte) nehmen Überschuss auf und werden bei Mangel zuerst abgeworfen',
+          'PV- und Speicherleistung so begrenzen, dass die NEA ihre Mindestlast (ca. 30–40 %) hält; Rückleistungsschutz (S) an der NEA',
+          'EMS: Sollwerte, Ladezustand, Abregelung, Lastabwurf; steuert die Zuschaltreihenfolge und die Rückkehr ans Netz (Ablauf oben)',
+          'Wechselrichter liefern kaum Kurzschlussstrom; NA-Schutz und Inselnetzerkennung für den Inselbetrieb parametrieren (VDE-AR-N 4105/4110)',
+        ],
+      },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        const r = sz?.s3.bewertung.insel;
+        const pvKwp = ggResAssetSumme('PV', 'leistungKWp');
+        const windKw = ggResAssetSumme('Wind', 'leistungKW');
+        const kwkKw = ggResAssetSumme('KWK', 'leistungElKW');
+        const battKw = ggResAssetSumme('Batterie', 'leistungKW');
+        const battKwh = ggResAssetSumme('Batterie', 'kapazitaetKWh');
+        const hatInsel = r && r.spitzeKw > 0;
+        const uKv = sz ? ggNum(sz.uKv, sz.uKv % 1 ? 1 : 0) : undefined;
+        cfg.werte = {
+          uKv,
+          nea: hatInsel ? `${r.aggregate.anzahl} × ${ggNum(r.aggregate.kvaJe)} kVA${sz.s3.redundanz ? ' (N+1)' : ''}` : '',
+          speicher: battKwh > 0 ? `${battKw > 0 ? `${ggNum(battKw)} kW / ` : ''}${ggNum(battKwh)} kWh` : '',
+          speicherOption: !(battKwh > 0),
+        };
+        cfg.anlagen = [
+          { art: 'pv', titel: 'Photovoltaik', unter: 'netzfolgend · P(f)', wert: pvKwp > 0 ? `${ggNum(pvKwp)} kWp` : '', option: !(pvKwp > 0) },
+          ...(windKw > 0 ? [{ art: 'wind', titel: 'Wind', unter: 'netzfolgend · P(f)', wert: `${ggNum(windKw)} kW` }] : []),
+          { art: 'kwk', titel: 'BHKW (KWK)', unter: 'Synchrongenerator', wert: kwkKw > 0 ? `${ggNum(kwkKw)} kWel` : '', option: !(kwkKw > 0) },
+          { art: 'last', titel: 'Verbraucher', unter: 'Stationen in Stufen',
+            wert: hatInsel ? `${r.zuschaltung.stufen.length} Zuschaltstufen` : '' },
+          { art: 'flex', titel: 'flexible Lasten', unter: 'Heizstab · WP · Laden' },
+        ];
+        const vorh = [pvKwp > 0 && `${ggNum(pvKwp)} kWp PV`, windKw > 0 && `${ggNum(windKw)} kW Wind`,
+          kwkKw > 0 && `${ggNum(kwkKw)} kWel KWK`, battKwh > 0 && `${ggNum(battKwh)} kWh Speicher`].filter(Boolean);
+        return vorh.length ? `✓ Aus dem Netzmodell: ${vorh.join(', ')}.` : 'ℹ Keine Erzeuger/Speicher im Netzmodell — alle als Option dargestellt.';
+      },
+    },
+    {
+      id: 'res-sz2-schema', autoSync: true, reihe: 20,
+      kapitel: '5.2.4 Szenario 3: Versorgung der Gesamtliegenschaft',
+      titel: 'Schema Szenario 3 — Inselbetrieb der Liegenschaft',
+      datei: 'resilienz-szenario2-schema',
+      hinweis: 'Zentrale Netzersatzanlage mit Maschinentrafo am NAP; je Transformatorstation Zuschaltstufe oder Abschaltung.',
+      render: cfg => ggRenderResSchema(cfg),
+      config: { eyebrow: 'Resilienz · Szenario 3', titel: 'Inselbetrieb der Liegenschaft', modus: 'insel',
+                stationen: [], zentral: null, legende: [], fussnote: '', leer: 'Keine Transformatorstationen im Netzmodell.' },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        const r = sz?.s3.bewertung.insel;
+        if (!r || !(r.spitzeKw > 0)) { cfg.stationen = []; cfg.zentral = null; return '⚠ Keine Liegenschaftslast — Lastgang oder Trafos fehlen.'; }
+        cfg.zentral = {
+          zeilen: ['Netzersatzanlage am NAP',
+            `${r.aggregate.anzahl} × ${ggNum(r.aggregate.kvaJe)} kVA${sz.s3.redundanz ? ' (N+1)' : ''}`,
+            `Kraftstoff ${ggNum(r.liter)} l · ${ggResDauer(sz.dauerH)}`],
+          trafo: `Maschinentrafo ${ggNum(r.maschinentrafoKva)} kVA`,
+        };
+        cfg.stationen = sz.stationen.map(s => ({
+          name: s.name, zeile2: ggResStationZeile(s),
+          zustand: s.sz3.versorgt ? 'versorgt' : 'aus',
+          band: s.sz3.versorgt ? `Zuschaltstufe ${s.sz3.stufe ?? '—'}` : 'abgeschaltet',
+          gebaeude: s.gebaeude.filter(g => g.klasse === 'A' || g.klasse === 'B'),
+          ohneGebText: 'keine Gebäude A/B',
+        }));
+        cfg.titel = `Inselbetrieb der Liegenschaft (${ggNum(r.anteilPct)} % der Spitze, ${ggResDauer(sz.dauerH)})`;
+        cfg.legende = [
+          ...GG_RES_LEGENDE_KLASSEN,
+          { farbe: GG_THEME.tint, rand: GG_THEME.accents.gruen, text: 'im Inselbetrieb versorgt' },
+          { farbe: GG_THEME.neutral.cardBg, rand: GG_THEME.text.faint, strich: true, text: 'abgeschaltet' },
+        ];
+        cfg.fussnote = `Je Zuschaltstufe höchstens ${ggNum(r.zuschaltung.kvaGrenze)} kVA Trafoleistung und ${ggNum(r.zuschaltung.lastGrenze)} kW Lastsprung.`;
+        return `✓ ${sz.stationen.length} Stationen, ${r.zuschaltung.stufen.length} Zuschaltstufen.`;
+      },
+    },
+    {
+      id: 'res-sz2-stationen', autoSync: true, reihe: 30,
+      kapitel: '5.2.4 Szenario 3: Versorgung der Gesamtliegenschaft',
+      titel: 'Transformatorstationen im Inselbetrieb',
+      datei: 'resilienz-szenario2-stationen',
+      hinweis: 'Je Station: Trafoleistung, Spitzenlast, Last der Gebäude A/B und Zuschaltstufe bzw. Abschaltung.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Resilienz · Szenario 3', titel: 'Transformatorstationen im Inselbetrieb', tabelleTitel: 'Transformatorstationen im Inselbetrieb',
+        leer: 'Keine Transformatorstationen im Netzmodell.',
+        spalten: [{ label: 'Station', weight: 1.6 }, { label: 'Trafo', weight: 0.9 }, { label: 'Spitzenlast', weight: 1 },
+                  { label: 'Last A/B', weight: 1 }, { label: 'Inselbetrieb', weight: 1.3 }],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        const r = sz?.s3.bewertung.insel;
+        if (!r || !sz.stationen.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Stationen oder keine Liegenschaftslast.'; }
+        const sortiert = [...sz.stationen].sort((a, b) => (a.sz3.stufe ?? 99) - (b.sz3.stufe ?? 99));
+        cfg.zeilen = sortiert.map(s => ({ werte: [s.name, ggResKva(s.kva), ggResKw(s.spitzeKw), ggResKw(s.abKw),
+          s.sz3.versorgt ? `Stufe ${s.sz3.stufe ?? '—'}` : 'abgeschaltet'], highlight: false }));
+        cfg.zeilen.push({ highlight: true, werte: ['Liegenschaft', '', kurzKw(r.spitzeKw), '', `abgesichert ${kurzKw(r.bemessungKw)}`] });
+        cfg.fussnote = `Spitzenlast je Station aus dem Netzmodell; abgesichert ${ggNum(r.anteilPct)} % der Liegenschaftsspitze, diese ${ggResQuelle(sz.lastQuelle)}.`;
+        return `✓ ${sz.stationen.length} Stationen übernommen.`;
+      },
+    },
+    {
+      id: 'res-sz2-massnahmen', autoSync: true, reihe: 40,
+      kapitel: '5.2.4 Szenario 3: Versorgung der Gesamtliegenschaft',
+      titel: 'Technische Maßnahmen Inselbetrieb',
+      datei: 'resilienz-szenario2-massnahmen',
+      hinweis: 'Checkliste des Reiters „Liegenschaft“ mit Status (neu/erneuern/prüfen/ok) und Richtkosten.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Resilienz · Szenario 3', titel: 'Technische Maßnahmen Inselbetrieb', tabelleTitel: 'Technische Maßnahmen Inselbetrieb',
+        leer: 'Noch keine Inselbetrachtung — Lastgang oder Trafos fehlen.',
+        spalten: [{ label: 'Bereich', weight: 1 }, { label: 'Maßnahme', weight: 2.8, mono: false, align: 'left' },
+                  { label: 'Status', weight: 0.8, mono: false }, { label: 'Richtkosten', weight: 1 }],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const r = ggResSz()?.s2.bewertung.insel;
+        if (!r || !(r.spitzeKw > 0)) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Inselbetrachtung vorhanden.'; }
+        cfg.zeilen = r.checkliste.map(c => ({ werte: [c.gruppe, c.titel, GG_RES_CHECK_STATUS[c.status] || c.status,
+          c.kosten > 0 ? ggResEur(c.kosten) : '—'] }));
+        cfg.zeilen.push({ highlight: true, werte: ['', 'Summe (ohne Wärme)', '', ggResEur(r.kosten)] });
+        cfg.fussnote = 'Richtwerte netto; Status „erneuern“ aus dem Baujahr (> 20 Jahre), von Hand im Blackout-Modus änderbar.';
+        return `✓ ${r.checkliste.length} Maßnahmen übernommen.`;
+      },
+    },
+
+    // ── 5.2.5 Gegenüberstellung ──
+    {
+      id: 'res-sz-vergleich-text', istText: true, reihe: 10,
+      kapitel: '5.2.5 Gegenüberstellung der Szenarien',
+      titel: 'Gutachtentext: Gegenüberstellung der Szenarien',
+      datei: 'resilienz-szenarien-vergleich-text',
+      hinweis: 'Abgesicherte Leistung, Investition und €/kW beider Szenarien, stufenweises Vorgehen.',
+      render: cfg => ggRenderResVergleichText(cfg),
+      config: {},
+    },
+    {
+      id: 'res-sz-umfang', autoSync: true, reihe: 20,
+      kapitel: '5.2.5 Gegenüberstellung der Szenarien',
+      titel: 'Versorgungsumfang je Szenario',
+      datei: 'resilienz-szenarien-umfang',
+      hinweis: 'Abgesicherte Leistung der drei Szenarien, aufgeteilt nach Klasse A, Klasse B und übriger Liegenschaft, gegen die Liegenschaftsspitze.',
+      render: cfg => ggRenderBalken(cfg),
+      config: {
+        eyebrow: 'Resilienz', titel: 'Versorgungsumfang je Szenario', ort: '', meta: leerMeta(),
+        achseY: 'Leistung in kW', achseX: 'Szenario',
+        leer: 'Noch keine Szenarien — im 🛡 Blackout-Modus Klassen zuweisen und Netz erfassen.',
+        kategorien: [], gruppen: [], kpiLinks: [], kpiRechts: [],
+      },
+      ausProjekt(cfg) {
+        cfg.ort = cfg.ort || ggLiegenschaft();
+        cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+        ggMetaDefaults(cfg, 'pdBearbeiterStrom');
+        const sz = ggResSz();
+        const r = sz?.s3.bewertung.insel;
+        const spitze = sz?.liegenschaftSpitzeKw || 0;
+        if (!sz || !(spitze > 0)) { cfg.kategorien = []; cfg.gruppen = []; return '⚠ Keine Liegenschaftslast vorhanden.'; }
+        const a = sz.s1.aKw, bNur = Math.max(0, sz.s1.abKw - a);
+        // Szenario 2: A/B je Station (gleichzeitige Spitze je Station), A-Anteil wie in Szenario 1
+        const kw2 = sz.s2.kw, a2 = Math.min(a, kw2);
+        const abgesichert3 = Math.max(r.bemessungKw, a + bNur);
+        cfg.kategorien = ['Szenario 1 · kritische Gebäude', 'Szenario 2 · je Trafostation', 'Szenario 3 · Liegenschaft'];
+        cfg.gruppen = [{ label: 'Leistung', segmente: [
+          { label: 'Klasse A (kritisch)', farbe: GG_RES_KLASSE_FARBE.A, werte: [a, a2, a] },
+          { label: 'Klasse B (eingeschränkt)', farbe: GG_RES_KLASSE_FARBE.B, werte: [0, Math.max(0, kw2 - a2), bNur] },
+          { label: 'übrige Liegenschaft', farbe: GG_THEME.accents.gruen, werte: [0, 0, Math.max(0, abgesichert3 - a - bNur)] },
+          { label: 'nicht abgesichert', farbe: GG_THEME.neutral.iconLine,
+            werte: [Math.max(0, spitze - a), Math.max(0, spitze - kw2), Math.max(0, spitze - abgesichert3)] },
+        ] }];
+        cfg.kpiLinks = [
+          { wert: ggResEur(sz.s1.bewertung.kosten), label: 'Investition Szenario 1' },
+          { wert: ggResEur(sz.s2.bewertung.kosten), label: 'Investition Szenario 2 fest' },
+        ];
+        cfg.kpiRechts = [
+          { wert: ggResEur(sz.s2.mobil.gesamt), label: 'Investition Szenario 2 mobil' },
+          { wert: ggResEur(sz.s3.bewertung.kosten), label: 'Investition Szenario 3', highlight: true },
+        ];
+        cfg.titel = `Versorgungsumfang je Szenario (Liegenschaftsspitze ${ggNum(spitze)} kW)`;
+        return '✓ Drei Szenarien übernommen.';
+      },
+    },
+    {
+      id: 'res-sz-vergleich', autoSync: true, reihe: 30,
+      kapitel: '5.2.5 Gegenüberstellung der Szenarien',
+      titel: 'Gegenüberstellung der Szenarien',
+      datei: 'resilienz-szenarien-vergleich',
+      hinweis: 'Maßnahmen, Kraftstoff, Wärme und Richtkosten der drei Szenarien nebeneinander.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Resilienz', titel: 'Gegenüberstellung der Szenarien', tabelleTitel: 'Gegenüberstellung der Szenarien',
+        leer: 'Noch keine Szenarien — 🛡 Blackout-Modus.',
+        spalten: GG_RES_VERGLEICH_SPALTEN,
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const sz = ggResSz();
+        if (!sz) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Blackout-Modus nicht verfügbar.'; }
+        // Gespeicherte Einstellungen können noch zwei Szenarien oder die alte Reihenfolge tragen
+        cfg.spalten = GG_RES_VERGLEICH_SPALTEN;
+        const b1 = sz.s1.bewertung, b2 = sz.s2.bewertung, b3 = sz.s3.bewertung;
+        const m = resilienzZielMatrix([b1, b2, b3]);
+        const spitze = sz.liegenschaftSpitzeKw;
+        const kw2 = sz.s2.kw, kw3 = b3.insel?.bemessungKw || 0;
+        // Bewertung nur mit Status — die Gründe stehen im Text des jeweiligen Szenarios
+        const kuerzen = w => ggResKuerzen(String(w).split(' — ')[0], 36);
+        const stationenMitNea = sz.stationen.filter(s => s.sz2.length).length;
+        cfg.zeilen = [
+          { werte: ['Versorgte Gebäude', b1.strom ? `${b1.strom.gebaeude} der Klasse A` : '—',
+            b2.strom ? `${b2.strom.gebaeude} der Klassen A/B` : '—',
+            b3.strom ? `${b3.strom.stationenAn} von ${b3.strom.stationenAn + b3.strom.stationenAus} Stationen` : '—'] },
+          { werte: ['Abgesicherte Leistung', `${ggNum(sz.s1.aKw)} kW (${ggResPct(sz.s1.aKw, spitze)})`,
+            kw2 ? `${ggNum(kw2)} kW (${ggResPct(kw2, spitze)})` : '—',
+            kw3 ? `${ggNum(kw3)} kW (${ggResPct(kw3, spitze)})` : '—'] },
+          ...m.zeilen.filter(z => z.label !== 'Umfang Strom').map(z => {
+            const werte = z.werte.map(kuerzen);
+            if (z.label === 'Notstromaggregate' && b2.strom) {
+              const amGeb = sz.s2.ohneStation.length;
+              werte[1] = `${stationenMitNea} an Stationen${amGeb ? ` + ${amGeb} am Gebäude` : ''}, ${ggNum(b2.strom.kw)} kW`;
+            }
+            return { werte: [z.label, ...werte], highlight: !!z.highlight };
+          }),
+          { werte: ['Investition mobil', '—', b2.strom ? ggResEur(sz.s2.mobil.gesamt) : '—', '—'] },
+        ];
+        cfg.fussnote = `Alle Szenarien über ${ggResDauer(sz.dauerH)}, mit Wärme; Richtwerte netto. Szenario 2 mobil ohne Rahmenvertrag für Aggregate und Kraftstoff.`;
+        return '✓ Drei Szenarien übernommen.';
+      },
+    },
+
+    // ── 5.2.6 Allgemeine Empfehlungen ──
+    {
+      id: 'res-einspeisung-text', istText: true, reihe: 10,
+      kapitel: '5.2.6 Allgemeine Empfehlungen',
+      titel: 'Gutachtentext: Einspeisepunkte an Trafostationen',
+      datei: 'resilienz-einspeisepunkte-text',
+      hinweis: 'Empfehlung unabhängig vom Szenario: Einspeisemöglichkeit für mobile Aggregate an jeder Trafostation.',
+      render: cfg => ggRenderResEinspeisungText(cfg),
+      config: {},
+    },
+    {
+      id: 'res-einspeisung-prinzip', reihe: 20,
+      kapitel: '5.2.6 Allgemeine Empfehlungen',
+      titel: 'Prinzip Einspeisepunkt an der Trafostation',
+      datei: 'resilienz-einspeisepunkt-prinzip',
+      hinweis: 'Prinzipskizze: Umschalteinrichtung, Einspeisekasten, Stellfläche, Kennzeichnung der Abgänge, Erdung.',
+      render: cfg => ggRenderEinspeisePrinzip(cfg),
+      config: {
+        eyebrow: 'Resilienz · Allgemeine Empfehlung', titel: 'Einspeisepunkt für mobile Netzersatzanlagen',
+        punkte: [
+          'Umschalteinrichtung Netz – 0 – NEA mit gegenseitiger Verriegelung, kein Parallelbetrieb mit dem Netz',
+          'Einspeisekasten, von außen zugänglich, genormte Steckverbinder',
+          'fest verlegte Verbindung vom Einspeisekasten zur Umschalteinrichtung',
+          'befestigte Stellfläche mit Zufahrt für Aggregat und Tankfahrzeug',
+          'Abgänge nach Priorität gekennzeichnet, nicht versorgte Abgänge abschaltbar',
+          'Anschlusspunkt für Erdung und Potentialausgleich des Aggregats',
+        ],
+      },
+    },
+    {
+      id: 'res-einspeisepunkte', autoSync: true, reihe: 30,
+      kapitel: '5.2.6 Allgemeine Empfehlungen',
+      titel: 'Einspeisepunkte an den Transformatorstationen',
+      datei: 'resilienz-einspeisepunkte',
+      hinweis: 'Je Trafostation: Bemessung der Einspeisung (Spitze + 20 %, höchstens Trafoleistung), Anschlussart, Vorrang und Richtkosten.',
+      render: cfg => ggRenderTabelle(cfg),
+      config: {
+        eyebrow: 'Resilienz · Allgemeine Empfehlung', titel: 'Einspeisepunkte an den Transformatorstationen',
+        tabelleTitel: 'Einspeisepunkte an den Transformatorstationen',
+        leer: 'Keine Transformatorstationen im Netzmodell.',
+        spalten: [{ label: 'Station', weight: 1.4 }, { label: 'Trafo', weight: 0.8 }, { label: 'Spitze', weight: 0.8 },
+                  { label: 'Einspeisung', weight: 0.9 }, { label: 'Anschluss', weight: 1.5, mono: false },
+                  { label: 'Vorrang', weight: 0.7, mono: false }, { label: 'Richtkosten', weight: 0.9 }],
+        zeilen: [], fussnote: '',
+      },
+      ausProjekt(cfg) {
+        const st = ggResSz()?.stationen || [];
+        if (!st.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Transformatorstationen im Netzmodell.'; }
+        const sortiert = [...st].sort((a, b) => (b.abKw > 0) - (a.abKw > 0));
+        cfg.zeilen = sortiert.map(s => ({
+          akzent: s.abKw > 0 ? GG_RES_KLASSE_FARBE.A : undefined,
+          werte: [s.name, ggResKva(s.kva), ggResKw(s.spitzeKw),
+            s.einspeisung.kva ? `${ggNum(s.einspeisung.kva)} kVA` : '—', s.einspeisung.anschluss || '—',
+            s.abKw > 0 ? 'A/B' : '—', s.einspeisung.kosten ? ggResEur(s.einspeisung.kosten) : '—'],
+        }));
+        cfg.zeilen.push({ highlight: true, werte: ['Summe', '', '', '', '', '',
+          ggResEur(st.reduce((s, x) => s + x.einspeisung.kosten, 0))] });
+        cfg.fussnote = 'Einspeisung = Spitze × 1,2 / cos φ 0,8, gerundet auf übliche Aggregatgrößen, höchstens Trafoleistung; ohne Lastgang Trafoleistung.';
+        return `✓ ${st.length} Stationen übernommen.`;
+      },
+    },
+    {
+      id: 'res-empfehlungen-text', istText: true, reihe: 40,
+      kapitel: '5.2.6 Allgemeine Empfehlungen',
+      titel: 'Gutachtentext: weitere allgemeine Empfehlungen',
+      datei: 'resilienz-allgemeine-empfehlungen-text',
+      hinweis: 'Planungsgrundsätze: Einspeisung bei Erneuerung, USV, PV-Inselfähigkeit, Schutz, Kennzeichnung, Kraftstoff, Wasser, Dokumentation.',
+      render: cfg => ggRenderResEmpfehlungText(cfg),
+      config: {},
+    },
+  ];
+}
+GG_FIGUREN.push(...ggResSzenarienFiguren());
 
 /* ── 3.4.3 Notstromversorgung und Lastmanagement (Variantenbildung) ────────────
  * Auslegung aus der Inselbetrieb-Simulation der PV-Analyse (window._pvResReco, Kapitel 6.1 „Resilienz“),

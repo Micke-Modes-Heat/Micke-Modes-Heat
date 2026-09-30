@@ -423,7 +423,12 @@ function buildPropsForm(asset) {
           <select class="ins-field-input" data-prop="slpTyp" data-id="${id}">${optsHtml}</select>
         </div>`;
       })();
-      return numField(id, 'leistungKW', 'Leistung (kW)', 10, {props:p})
+      // Anschlussleistung: nur dokumentiert (z. B. aus dem Bestandsplan), die
+      // Last rechnet weiter mit der Leistung.
+      return row2(
+          numField(id, 'leistungKW',          'Leistung (kW)',          10, {props:p}),
+          numField(id, 'anschlussleistungKW', 'Anschlussleistung (kW)', '', {props:p, min:0})
+        )
         + slpSelectHtml
         + `<button class="ins-link-btn" data-slp-open="${curSlp}">Profil ansehen →</button>`;
     }

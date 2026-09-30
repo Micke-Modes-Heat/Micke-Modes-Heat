@@ -38,6 +38,12 @@ export const GUTACHTEN_MAX_EBENE = 3;
  * Ein Kapitel „Analyse möglicher Technologien“ wie in der Wärme gibt es bewusst nicht
  * (Entscheidung 09/2026): im Strom sind Netzanschluss, PV, Speicher, NEA und Ladeinfrastruktur
  * Bausteine, keine Alternativen — entschieden wird über ihre Dimensionierung in der Variantenbildung.
+ *
+ * Resilienz (Kapitel 5.2) enthält seit 09/2026 immer drei feste Szenarien vom Gebäude über die Station
+ * zur Liegenschaft — nur die kritischen Gebäude (Notstromklasse A), je Trafostation eine NEA an der NSHV
+ * für die Gebäude A/B und die Gesamtliegenschaft als Insel am NAP (Blackout-Modus, Reiter „Liegenschaft“) —,
+ * ihre Gegenüberstellung und allgemeine Empfehlungen (Einspeisepunkte an den Trafostationen u. a.).
+ * Bis 30.09.2026 war die Gesamtliegenschaft Szenario 2; der Abgleich zieht die Nummer im Titel nach.
  */
 const G = (ebene, titel) => ({ ebene, titel });
 export const GUTACHTEN_STANDARD_GLIEDERUNG = [
@@ -60,7 +66,9 @@ export const GUTACHTEN_STANDARD_GLIEDERUNG = [
   G(2, 'Wirtschaftlichkeit und Investitionskosten'), G(2, 'Bewertungsmatrix'), G(2, 'Empfehlung Elektrotechnik'),
   G(1, 'Gebäudeautomation (GA)'),
   G(1, 'Maßnahmen zur Steigerung der Resilienz'), G(2, 'Erläuterung Bewertungstool Resilienz'), G(2, 'Bewertung Resilienz'),
-  G(3, 'Ist-Zustand'), G(3, 'Kurzfristige Maßnahmen'), G(3, 'Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)'),
+  G(3, 'Ist-Zustand'), G(3, 'Szenario 1: Versorgung der kritischen Gebäude'), G(3, 'Szenario 2: Versorgung je Trafostation'),
+  G(3, 'Szenario 3: Versorgung der Gesamtliegenschaft'), G(3, 'Gegenüberstellung der Szenarien'), G(3, 'Allgemeine Empfehlungen'),
+  G(3, 'Kurzfristige Maßnahmen'), G(3, 'Langfristige Maßnahmen (Umsetzung der Empfehlung im Gutachten)'),
   G(1, 'Fazit, Maßnahmenfahrplan'), G(2, 'Wärmeversorgung'), G(2, 'Elektrotechnik'),
 ];
 
@@ -190,7 +198,13 @@ const katalogRang = f => (Number.isFinite(f.reihe) ? f.reihe : f.istText ? 0 : 1
  * Klammerzusatz zählen nicht — „Zusatzbedarf aus Wärmekonzept (Übernahme aus 3.8)“ in einem
  * älteren Dokument trifft so weiter „Zusatzbedarf aus Wärmekonzept“ der Standardgliederung.
  */
-const titelSchluessel = t => alsText(t).replace(/\s*\([^()]*\)\s*$/, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const titelSchluessel = t => ohneSzenarioNr(alsText(t).replace(/\s*\([^()]*\)\s*$/, '')).toLowerCase().replace(/\s+/g, ' ').trim();
+/**
+ * „Szenario 2: Versorgung …“ → „Versorgung …“. Die Szenarien in 5.2 wurden umsortiert; ein Kapitel
+ * findet sein Gegenstück deshalb unabhängig von der Nummer, und der Abgleich zieht nur die Nummer nach.
+ */
+const SZENARIO_NR = /^\s*Szenario\s+\d+\s*:\s*/i;
+function ohneSzenarioNr(t) { return String(t).replace(SZENARIO_NR, ''); }
 /** Kapitelnummer vorn im Katalog-Kapitel ("3.3.1 Bestandsbedarf …" → "3.3.1"). */
 const katalogNummer = f => (alsText(f.kapitel).match(/^\d+(\.\d+)*/) || [''])[0];
 
@@ -239,8 +253,9 @@ export function gdStandardDokument(katalog = []) {
  * Standard-Kapitelnummer entspricht, vor der ersten Abbildung mit höherem Rang (`reihe`).
  *
  * Ergebnis: { dok, neueKapitel: [{id, nr, titel}], neueBloecke: [{figurId, kapitelId, nr}],
- *   nichtZugeordnet: [figurId], fremdeKapitel: [{id, nr, titel}] } — fremdeKapitel sind die
- * obersten Kapitel ohne Gegenstück in der Standardgliederung (z. B. aus einer älteren Vorlage).
+ *   nichtZugeordnet: [figurId], fremdeKapitel: [{id, nr, titel}], umbenannt: [{id, nr, von, nach}] } —
+ * fremdeKapitel sind die obersten Kapitel ohne Gegenstück in der Standardgliederung (z. B. aus einer
+ * älteren Vorlage); umbenannt sind Szenario-Kapitel, deren Nummer der Standard vorgibt.
  * Die Eingabe bleibt unverändert.
  */
 export function gdMitStandardAbgleichen(dok, katalog = [], standard = GUTACHTEN_STANDARD_GLIEDERUNG) {
@@ -251,6 +266,7 @@ export function gdMitStandardAbgleichen(dok, katalog = [], standard = GUTACHTEN_
   const zuordnung = new Map();   // Standard-Index → Kapitel im Ergebnis
   const getroffen = new Set();   // Kapitel mit Gegenstück (auch die neu angelegten)
   const neuIds = new Set();
+  const umbenannt = [];
 
   const abgleichen = (sKnoten, dKnoten, ebene) => {
     let pos = 0;   // hinter dem zuletzt zugeordneten Geschwister einfügen
@@ -263,6 +279,12 @@ export function gdMitStandardAbgleichen(dok, katalog = [], standard = GUTACHTEN_
       if (idx >= 0) {
         ziel = dKnoten.kinder[idx];
         pos = Math.max(pos, idx + 1);
+        // Einzige Ausnahme vom „nie umbenennen“: die Szenario-Nummer folgt der Standardgliederung
+        const stdNr = sk.k.titel.match(SZENARIO_NR)?.[0];
+        if (stdNr && SZENARIO_NR.test(ziel.k.titel)) {
+          const neu = ziel.k.titel.replace(SZENARIO_NR, stdNr);
+          if (neu !== ziel.k.titel) { umbenannt.push({ id: ziel.k.id, von: ziel.k.titel, nach: neu }); ziel.k.titel = neu; }
+        }
       } else {
         ziel = { k: { id: gdId('k'), ebene, titel: sk.k.titel, bloecke: [] }, kinder: [] };
         dKnoten.kinder.splice(pos++, 0, ziel);
@@ -312,6 +334,7 @@ export function gdMitStandardAbgleichen(dok, katalog = [], standard = GUTACHTEN_
     neueBloecke,
     nichtZugeordnet,
     fremdeKapitel: fremdOben.map(eintrag),
+    umbenannt: umbenannt.map(u => ({ ...u, nr: nrVon.get(u.id) })),
   };
 }
 

@@ -7,7 +7,8 @@ import {
   notstromPlatzierung, notstromPlatzierungVergleich, neaKostenMitBestand,
   inselAggregate, maxFensterEnergie, inselZuschaltstufen, inselMsKennwerte, liegenschaftsInsel,
   maxFensterStart, waermeErzeugerStatus, waermeBlackout,
-  ZIEL_VORGABEN, normalisiereZiele, zielGebaeude, zielKraftstoffL, bewerteZiel, resilienzZielMatrix,
+  ZIEL_VORGABEN, normalisiereZiele, zielGebaeude, zielKraftstoffL, bewerteZiel, resilienzZielMatrix, einspeisepunktBemessung,
+  stationsVersorgungMobil,
 } from '../src/lib/resilienz-core.js';
 
 describe('normalisiereNotstrom', () => {
@@ -564,5 +565,66 @@ describe('bewerteZiel / resilienzZielMatrix', () => {
     expect(zeile('Wärmedeckung')).toEqual(['100 %', '50 %']);
     expect(m.zeilen.find(z => z.label === 'Investition (Richtwert)').highlight).toBe(true);
     expect(zeile('Bewertung')[1]).toMatch(/^teilweise — Wärme nur zu 50 %/);
+  });
+});
+
+// ── Allgemeine Empfehlung: Einspeisepunkte an Trafostationen ────────────────
+describe('einspeisepunktBemessung', () => {
+  it('bemisst auf Spitze × Reserve / cos φ und rundet auf die nächste Aggregatgröße', () => {
+    // 100 kW × 1,2 / 0,8 = 150 kVA → 150 kVA, 217 A → 1 Einpolsatz
+    const r = einspeisepunktBemessung({ spitzeKw: 100, trafoKva: 630 });
+    expect(r).toMatchObject({ kva: 150, basis: 'last', anschluss: '1 × 400 A Einpolstecker' });
+    expect(r.stromA).toBeCloseTo(216.5, 1);
+  });
+
+  it('kappt auf die Trafoleistung', () => {
+    const r = einspeisepunktBemessung({ spitzeKw: 600, trafoKva: 400 });
+    expect(r.kva).toBe(400);
+    expect(r.anschluss).toBe('2 × 400 A Einpolstecker');
+  });
+
+  it('nimmt ohne Lastgang die Trafoleistung, kleine Stationen über CEE', () => {
+    expect(einspeisepunktBemessung({ spitzeKw: 0, trafoKva: 250 })).toMatchObject({ kva: 250, basis: 'trafo' });
+    expect(einspeisepunktBemessung({ spitzeKw: 20 })).toMatchObject({ kva: 30, anschluss: 'CEE 63 A' });
+    expect(einspeisepunktBemessung({ spitzeKw: 40 })).toMatchObject({ kva: 60, anschluss: 'CEE 125 A' });
+  });
+
+  it('ohne Last und Trafoleistung kein Einspeisepunkt', () => {
+    expect(einspeisepunktBemessung({})).toMatchObject({ kva: 0, basis: 'keine', kosten: 0 });
+  });
+});
+
+describe('stationsVersorgungMobil', () => {
+  it('bemisst je Standort einen Einspeisepunkt auf die A/B-Last, an Stationen höchstens die Trafoleistung', () => {
+    const v = notstromPlatzierung({ ...netz(), strategie: 'trafo' });
+    const kva = new Map([['t1', 160], ['t2', 400]]);
+    const m = stationsVersorgungMobil(v, id => kva.get(id) || 0);
+    const t1 = v.aggregate.find(a => a.id === 't1');
+    // 120 kW × 1,2 / 0,8 = 180 kVA → auf den 160-kVA-Trafo gekappt → Stufe 200 kVA
+    expect(m.standorte.find(s => s.id === 't1')).toMatchObject({ trafoId: 't1', kva: 200, gedeckt: false,
+      kosten: 12000 + 200 * 25 + t1.abgaenge.length * NEA_KOSTEN.abgangEur });
+    // Gebäude ohne Station: ohne Trafo-Deckel (10 kW → 15 kVA → 30 kVA)
+    expect(m.standorte.find(s => s.id === 6)).toMatchObject({ kva: 30, anschluss: 'CEE 63 A' });
+    expect(m.summe.kosten).toBe(m.standorte.reduce((s, x) => s + x.kosten, 0));
+    expect(m.summe.anzahl).toBe(v.summe.anzahl);
+  });
+
+  it('Standorte, die der Bestand deckt, brauchen keinen Einspeisepunkt', () => {
+    const n = netz();
+    n.assets.push({ id: 'nea5', type: 'Nsa', name: 'NEA 5', buildingId: 5, neaKw: 100 });
+    n.kanten.push({ id: 'e13', u: 't2', v: 'nea5' });
+    const v = notstromPlatzierung({ ...n, strategie: 'trafo' });
+    const m = stationsVersorgungMobil(v);
+    expect(m.standorte.find(s => s.id === 't2')).toMatchObject({ gedeckt: true, kva: 0, kosten: 0 });
+    expect(m.summe.anzahl).toBe(v.summe.anzahl - 1);
+  });
+});
+
+describe('notstromPlatzierung: Trafo-Zuordnung', () => {
+  it('ordnet Knoten- und Gebäudeaggregate ihrer speisenden Trafostation zu', () => {
+    const r = notstromPlatzierung({ ...netz(), strategie: 'optimal' });
+    expect(r.aggregate.find(a => a.id === 't1')).toMatchObject({ trafoId: 't1' });
+    expect(r.aggregate.find(a => a.id === 5)).toMatchObject({ trafoId: 't2', trafoName: 'Trafo 2' });   // über Verbr. 5
+    expect(r.aggregate.find(a => a.id === 6)).toMatchObject({ trafoId: null });   // nicht am Netz
   });
 });
