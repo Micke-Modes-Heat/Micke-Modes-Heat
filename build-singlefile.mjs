@@ -1,7 +1,7 @@
 // Build: derselbe kanonische ESM-Einstieg wie im Entwicklungsmodus wird durch
 // Rollup geparst und als eine offline-fähige HTML-Datei ausgeliefert.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'fs';
-import { resolve, join } from 'path';
+import { resolve, join, dirname } from 'path';
 import { execFileSync } from 'child_process';
 import { rollup } from 'rollup';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
@@ -59,10 +59,39 @@ if (existsSync(klimaDir)) {
   console.warn('⚠ data/klima/ nicht gefunden — Single-File-Build nutzt TRY-Kassel-Fallback für alle Städte.');
 }
 
+// MapLibre GL für die 3D-Ansicht (src/32-3d-ansicht.js) als TEXT einbetten: wird
+// erst beim Öffnen der Ansicht per Blob-URL ausgeführt, kostet beim Start also
+// nur das Einlesen des Strings statt ~1 MB Skript-Parsen.
+const maplibreJs = resolve('node_modules/maplibre-gl/dist/maplibre-gl.js');
+const maplibreCss = resolve('node_modules/maplibre-gl/dist/maplibre-gl.css');
+if (!existsSync(maplibreJs) || !existsSync(maplibreCss)) throw new Error('Vendor-Datei fehlt: maplibre-gl (npm install)');
+const textAlsJs = text => JSON.stringify(text).replace(/</g, '\\u003c');
+jsAll += `window.__MAPLIBRE_JS__ = ${textAlsJs(readFileSync(maplibreJs, 'utf8'))};\n`;
+jsAll += `window.__MAPLIBRE_CSS__ = ${textAlsJs(readFileSync(maplibreCss, 'utf8'))};\n`;
+
 jsAll += 'window._isSingleFileBuild = true;\n';
+
+// `import x from './datei?raw'` wie in Vite: Dateiinhalt als Text. Genutzt vom
+// Erhebungs-Werkzeug der Resilienz-Abfrage (src/resilienz-app/), das als eigene
+// HTML-Datei weitergegeben wird.
+const rawImport = {
+  name: 'raw-import',
+  resolveId(source, importer) {
+    if (!source.endsWith('?raw') || !importer) return null;
+    return resolve(dirname(importer), source.slice(0, -4)) + '?raw';
+  },
+  load(id) {
+    if (!id.endsWith('?raw')) return null;
+    // „<" maskieren: der Text landet im Inline-<script> dieser Datei, ein „</script>"
+    // oder „<!--" darin würde den HTML-Parser aus dem Skript werfen.
+    const text = JSON.stringify(readFileSync(id.slice(0, -4), 'utf8')).replace(/</g, '\\u003c');
+    return `export default ${text};`;
+  },
+};
+
 const appBundle = await rollup({
   input: join(SRC, 'main.js'),
-  plugins: [nodeResolve({browser: true})],
+  plugins: [rawImport, nodeResolve({browser: true})],
   onwarn(warning, warn) {
     if (warning.code === 'CIRCULAR_DEPENDENCY') return;
     warn(warning);

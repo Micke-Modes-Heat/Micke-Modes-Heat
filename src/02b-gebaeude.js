@@ -434,7 +434,9 @@ export function addGebaeude(opts={}){
            dachform:      opts.dachform      || 'sattel',
            dachAzimut:    opts.dachAzimut    ?? null,
            dachNeigung:   opts.dachNeigung   ?? null,
-           dachAutoAzimut: opts.dachAutoAzimut || false};
+           dachAutoAzimut: opts.dachAutoAzimut || false,
+           // Herkunft der Dachangaben: 'osm' (roof:*-Tags) | 'manuell' | null (Vorgabe)
+           dachQuelle:    opts.dachQuelle    || null};
   window.gebaeude.push(g);
   if(opts.coords){
     g.polygon=opts.coords;
@@ -467,6 +469,11 @@ export function attachPolygonLayer(g){
   g.polygonLayer.on('click',(event)=>{
     if (typeof window.manualWaermeNetzBuildingClick === 'function' &&
         window.manualWaermeNetzBuildingClick(g.id)) {
+      if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
+      return;
+    }
+    // Grundrisse zusammenfügen (03c): Klick wählt das zu vereinigende Gebäude
+    if (typeof window.gebaeudeMergeClick === 'function' && window.gebaeudeMergeClick(g.id)) {
       if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
       return;
     }

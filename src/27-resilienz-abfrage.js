@@ -6,7 +6,10 @@
 //      Auswahllisten und Blattschutz, vorbelegt mit den Gebäuden des Projekts
 //      (je Nutzung eine Kategorie). Sie geht an die zuständige Stelle bzw. an
 //      Bedarfsträger und Nutzer. Dazu eine vollständig ausgefüllte Beispieldatei.
-//   2. Ausgefüllte Datei einlesen — Vollständigkeit prüfen, Klassen vorschlagen,
+//      Alternativ das Erhebungs-Werkzeug (.html, lib/resilienz-app.js): dieselben
+//      Fragen, geführt in sechs Schritten und direkt am Lageplan beantwortet.
+//   2. Ausgefüllte Datei einlesen — .xlsx oder die zurückgesendete Erhebung
+//      (.html/.json). Vollständigkeit prüfen, Klassen vorschlagen,
 //      Anforderungstexte und Rückfrageliste erzeugen, als JSON exportieren.
 //
 // Hier wird nichts gerechnet und nichts simuliert: die Abfrage erhebt die
@@ -24,7 +27,11 @@ import {
   raMappe, raVorbelegung, raKategorieVorbelegung, raBeispielMappe, RA_BEISPIEL_DATEINAME,
   raDateiname, raLesen, raPruefung, raAnforderungen,
   raExportJson, raRueckfragenText, raRueckfragenMappe, raDauerText, raText,
+  raLesenErhebung, RA_ERHEBUNG_KENNUNG_PRAEFIX,
 } from './lib/resilienz-abfrage.js';
+import { raErhebungStart, raErhebungHtml, raErhebungAusHtml, raErhebungDateiname } from './lib/resilienz-app.js';
+import RA_APP_VORLAGE from './resilienz-app/vorlage.html?raw';
+import RA_APP_SKRIPT from './resilienz-app/app.js?raw';
 import { escHtml, showHint } from './03c-gebaeude-io.js';
 
 const PANEL_ID = 'resilienz-abfrage-panel';
@@ -158,6 +165,37 @@ export async function raBeispielErzeugen() {
   }
 }
 
+/**
+ * Erhebungs-Werkzeug: eine HTML-Datei mit Lageplan zum Verschicken. Der
+ * Empfänger braucht nur einen Browser; er speichert die Datei mit seinen
+ * Angaben und schickt sie zurück — sie wird wie die .xlsx eingelesen.
+ */
+export function raErhebungErzeugen() {
+  const z = raZustand();
+  const meta = { ...z.meta };
+  if (!meta.stand) meta.stand = _heutigesDatum();
+  const geb = z.meta.ohneVorbelegung !== 'ja' ? _gebaeude() : [];
+  try {
+    const stand = raErhebungStart({
+      meta,
+      gebaeude: geb.map(g => ({ id: g.id, name: g.name, nutzung: g.nutzung, polygon: g.polygon })),
+    });
+    const html = raErhebungHtml({ vorlage: RA_APP_VORLAGE, app: RA_APP_SKRIPT, stand });
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = raErhebungDateiname(meta); a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    z.meta.stand = meta.stand;
+    const mitUmriss = stand.gebaeude.filter(g => g.umriss).length;
+    showHint(`✓ Erhebungs-Werkzeug erzeugt — ${mitUmriss} Gebäude auf dem Lageplan, ${stand.funktionen.length} Funktionen `
+      + `vorbelegt (${Math.round(html.length / 1024)} KB).`, 8000);
+    raPanelRender();
+  } catch (e) {
+    console.error('Resilienz-Abfrage: Erhebungs-Werkzeug fehlgeschlagen', e);
+    showHint('⚠ Erhebungs-Werkzeug konnte nicht erzeugt werden: ' + e.message, 8000);
+  }
+}
+
 export function raVorbelegungUmschalten(an) {
   raZustand().meta.ohneVorbelegung = an ? '' : 'ja';
   raPanelRender();
@@ -171,7 +209,7 @@ export function raDateiEinlesen() {
     inp = document.createElement('input');
     inp.type = 'file';
     inp.id = '_raImportInput';
-    inp.accept = '.xlsx';
+    inp.accept = '.xlsx,.html,.htm,.json';
     inp.style.display = 'none';
     document.body.appendChild(inp);
     inp.addEventListener('change', _importHandler);
@@ -183,13 +221,27 @@ export function raDateiEinlesen() {
 async function _importHandler(event) {
   const datei = event.target.files?.[0];
   if (!datei) return;
-  if (typeof window.JSZip !== 'function') {
+  const endung = (/\.([a-z]+)$/i.exec(datei.name)?.[1] || '').toLowerCase();
+  const istErhebung = endung === 'html' || endung === 'htm' || endung === 'json';
+  if (!istErhebung && typeof window.JSZip !== 'function') {
     showHint('⚠ JSZip ist nicht geladen — bitte die Seite neu laden.', 6000);
     return;
   }
   try {
-    const { blaetter } = await xlsxAusBlob(await datei.arrayBuffer(), window.JSZip);
-    const daten = raLesen(blaetter);
+    let daten;
+    if (istErhebung) {
+      const text = await datei.text();
+      let stand = null;
+      if (endung === 'json') { try { stand = JSON.parse(text); } catch { stand = null; } } else stand = raErhebungAusHtml(text);
+      if (!stand || !String(stand.kennung || '').startsWith(RA_ERHEBUNG_KENNUNG_PRAEFIX)) {
+        showHint('⚠ In der Datei steckt keine Resilienz-Erhebung aus diesem Werkzeug.', 8000);
+        return;
+      }
+      daten = raLesenErhebung(stand);
+    } else {
+      const { blaetter } = await xlsxAusBlob(await datei.arrayBuffer(), window.JSZip);
+      daten = raLesen(blaetter);
+    }
     const z = raZustand();
     z.daten = daten;
     z.quelle = datei.name;
@@ -282,12 +334,14 @@ export function raUebernahmeVorschau() {
   const z = raZustand();
   const geb = _gebaeude();
   const nachName = new Map(geb.map(g => [String(g.name || '').trim().toLowerCase(), g]));
+  const nachId = new Map(geb.map(g => [String(g.id), g]));
   const ord = { A: 0, B: 1, C: 2 };
   const treffer = new Map();
   const ohne = [];
   for (const f of z.daten?.funktionen || []) {
     const klasse = RA_UEBERNAHME[f.klasse || f.klasse_vorschlag];
-    const g = nachName.get(String(f.geb || '').trim().toLowerCase());
+    // Aus dem Erhebungs-Werkzeug kommt die Gebäudekennung; die Datei kennt nur den Namen.
+    const g = (f.gebId != null && nachId.get(String(f.gebId))) || nachName.get(String(f.geb || '').trim().toLowerCase());
     if (!g) { if (klasse) ohne.push(f); continue; }
     if (!klasse) continue;
     // Mehrere Funktionen je Gebäude: die schärfste Klasse gewinnt.
@@ -345,7 +399,10 @@ function _erzeugenAnsicht(z) {
       Erzeugt eine Excel-Datei mit Ausfüllanleitung, Auswahllisten und Blattschutz für die zuständige
       Stelle bzw. für Bedarfsträger und Nutzer. Gefragt wird nach den Auswirkungen eines Ausfalls,
       nicht nach Resilienzklassen — die Einordnung macht dieses Werkzeug beim Einlesen.
-      Jede Datei enthält ein ausgefülltes Beispielblatt. Gleichartige Gebäude beschreibt der Empfänger
+      Jede Datei enthält ein ausgefülltes Beispielblatt. Die Beispieldatei zeigt zusätzlich auf den
+      Reitern 7–10 den Weg zur Maßnahme: Anforderungen und Abhängigkeiten, Lückenanalyse, Lösungsweg
+      (Optionen abwägen) und Maßnahmen — diese Reiter
+      füllt die erhebende Stelle aus, nicht der Empfänger. Gleichartige Gebäude beschreibt der Empfänger
       einmal auf dem Blatt <b style="color:var(--text);">„3 Kategorien"</b> und wählt die Kategorie dann
       nur noch je Gebäude aus — leere Zellen werden beim Einlesen aus der Kategorie übernommen.
     </div>
@@ -362,8 +419,17 @@ function _erzeugenAnsicht(z) {
       Gebäude des Projekts als Vorbelegung übernehmen
       <span style="color:var(--text);">(${geb.length} Gebäude → ${anzahl} Funktionszeilen, ${katAnzahl} Kategorien)</span>
     </label>
-    <div style="margin-top:10px;display:flex;gap:7px;align-items:center;">
-      <button data-click="raDateiErzeugen()" style="${_btn(GRUEN, true)}">📋 Abfragedatei erzeugen (.xlsx)</button>
+    <div style="margin-top:10px;padding:8px 10px;border:1px solid ${GRUEN};border-radius:6px;background:rgba(63,156,63,.08);">
+      <div style="font-size:9.5px;color:var(--muted);line-height:1.6;margin-bottom:7px;">
+        <b style="color:var(--text);">Erhebungs-Werkzeug (.html) — ohne Excel.</b> Eine einzelne Datei zum Verschicken:
+        Der Empfänger öffnet sie im Browser, wird in sechs Schritten geführt, beschreibt die Gebäude direkt auf dem
+        Lageplan und sieht die Einordnung farbig. Beispielkatalog als Startwert; gleichartige Gebäude werden per Übertragen beschrieben. Gespeichert wird
+        wieder dieselbe Datei — sie kommt zurück und wird unten eingelesen. Dieselben Fragen wie in der .xlsx.
+      </div>
+      <button data-click="raErhebungErzeugen()" style="${_btn(GRUEN, true)}">🧭 Erhebungs-Werkzeug erzeugen (.html)</button>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:7px;align-items:center;">
+      <button data-click="raDateiErzeugen()" style="${_btn(GRUEN)}">📋 Abfragedatei erzeugen (.xlsx)</button>
       <button data-click="raBeispielErzeugen()" style="${_btn(GRUEN)}"
         title="Erfundene, vollständig ausgefüllte Abfrage — zum Mitschicken oder um das Einlesen auszuprobieren">
         📄 Beispieldatei (ausgefüllt)</button>
@@ -526,7 +592,7 @@ function _ergebnisAnsicht(z) {
       <div style="font-size:9.5px;line-height:1.6;color:var(--muted);">
         <b style="color:var(--text);">Übernahme in den Blackout-Modus.</b> Die Klassen A–D dieser Abfrage sind
         nicht die Notstromklassen A/B/C am Gebäude. Die Übernahme ordnet A → A, B → B, C → C zu; D bleibt
-        ohne Einstufung. Zuordnung über den Gebäudenamen:
+        ohne Einstufung. Zuordnung über das Gebäude im Lageplan bzw. den Gebäudenamen:
         <b style="color:var(--text);">${uv.treffer.length} von ${daten.funktionen.length} Funktionen</b>
         treffen ein Gebäude des Projekts${uv.ohneGebaeude.length ? `, ${uv.ohneGebaeude.length} eingestufte Funktion(en) ohne Zuordnung` : ''}.
       </div>
@@ -551,11 +617,11 @@ export function raPanelRender() {
     ${_erzeugenAnsicht(z)}
     ${z.daten ? _ergebnisAnsicht(z) : _abschnitt('2 · Ausgefüllte Datei einlesen', `
       <div style="font-size:9.5px;color:var(--muted);line-height:1.6;margin-bottom:9px;">
-        Die zurückgesendete .xlsx wird auf Blatt- und Spaltenstruktur geprüft, auf Vollständigkeit
+        Die zurückgesendete .xlsx bzw. Erhebungsdatei (.html oder .json) wird auf Struktur geprüft, auf Vollständigkeit
         durchgesehen und in Anforderungen übersetzt. Unvollständige Angaben sind kein Fehler —
         sie werden als offene Punkte aufgelistet.
       </div>
-      <button data-click="raDateiEinlesen()" style="${_btn(GRUEN, true)}">⬆ Ausgefüllte Abfragedatei einlesen</button>`)}
+      <button data-click="raDateiEinlesen()" style="${_btn(GRUEN, true)}">⬆ Ausgefüllte Abfrage einlesen (.xlsx / .html / .json)</button>`)}
     <div style="font-size:8.5px;color:var(--muted);margin-top:12px;line-height:1.5;">
       Klassen sind Vorschläge des Werkzeugs und werden mit der zuständigen Stelle abgestimmt.
       Keine Dimensionierung, keine Simulation, keine Maßnahmenplanung.

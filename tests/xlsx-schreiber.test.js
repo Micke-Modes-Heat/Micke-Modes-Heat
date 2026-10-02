@@ -86,6 +86,26 @@ describe('xlsxDateien', () => {
     expect(folge).toEqual([...folge].sort((a, b) => a - b));
   });
 
+  it('setzt Reiterfarbe, Querformat und fixierte Spalten in Schema-Reihenfolge', () => {
+    const m = beispiel();
+    Object.assign(m.blaetter[0], { tabFarbe: 'FFFFC000', quer: true, fixSpalten: 2, umbrueche: [3, 2, 0, 3] });
+    const xml = xlsxDateien(m)['xl/worksheets/sheet1.xml'];
+    expect(XMLValidator.validate(xml)).toBe(true);
+    expect(xml).toContain('<sheetPr><tabColor rgb="FFFFC000"/><pageSetUpPr fitToPage="1"/></sheetPr>');
+    expect(xml).toContain('<pane xSplit="2" ySplit="3" topLeftCell="C4" activePane="bottomRight" state="frozen"/>');
+    expect(xml).toMatch(/orientation="landscape" fitToWidth="1" fitToHeight="0"/);
+    const pos = t => xml.indexOf('<' + t);
+    expect(xml).toContain('<rowBreaks count="2" manualBreakCount="2"><brk id="2" max="16383" man="1"/><brk id="3" max="16383" man="1"/></rowBreaks>');
+    const folge = ['sheetPr>', 'dimension', 'sheetViews', 'sheetData', 'pageMargins', 'pageSetup', 'rowBreaks'].map(pos);
+    expect(folge.every(x => x > -1)).toBe(true);
+    expect(folge).toEqual([...folge].sort((a, b) => a - b));
+    // ohne die Angaben bleibt das Blatt wie bisher
+    const ohne = xlsxDateien(beispiel())['xl/worksheets/sheet1.xml'];
+    expect(ohne).not.toContain('<sheetPr>');
+    expect(ohne).not.toContain('<pageSetup');
+    expect(ohne).not.toContain('<rowBreaks');
+  });
+
   it('schützt das Blatt ohne Passwort und lässt nur die Eingabezellen frei', () => {
     const xml = dateien['xl/worksheets/sheet1.xml'];
     expect(xml).toContain('<sheetProtection sheet="1"');

@@ -17,7 +17,7 @@ import { ASSETS, ASSET_CFG, getAssetStatus, getAssetsForBuilding, createAsset, d
 import { drawAssetMarker, redrawAllAssets } from './13b-assets-render.js';
 import { ELSLP_CUSTOM, ELSLP_WPM2, getElSlpProfiles, getElSlpGruppen, getElSlpById, getElSlpWpm2, showElSlpModal } from './13k-elslp-registry.js';
 import { activeVariantId, edgeKey, freiflaechen, lwWp, lwWpVisible, networkLocked, netzEdges, renderVariantenBar, stromNetzVisible, stromNodes, updateVariantBanner } from './01-globals-varianten.js';
-import { _invalidateStats, addGebaeude, toggleNetworkLock, ensureSatellite, setGlobalYear, updateField } from './02b-gebaeude.js';
+import { _invalidateStats, addGebaeude, attachPolygonLayer, calcAutoEnergy, removeGebaeude, toggleNetworkLock, ensureSatellite, setGlobalYear, updateField } from './02b-gebaeude.js';
 import { clearFliessgewaesser, clearLwWp, clearTrasse, polygonAreaM2, polygonCenter, redrawFliessgewaesser, redrawLwWp, redrawTrasse, updateFliessgewaesserVisibility, updateLwWpDisplay, updateLwWpVisibility, updateViz } from './02c-karte-werkzeuge.js';
 import { attachFFLayer, clearFernwaerme, clearGasKessel, clearHeizoelKessel, clearHhs, clearPellets, clearStromkessel, redrawErzeugerIcons, redrawFernwaerme, redrawGasKessel, redrawHeizoelKessel, redrawHhs, redrawPellets, renderFFPanel, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
 import { addNetzEdge, applyWaermeNetzGraph, autoGenerateNetz, calcGeoThermie, captureWaermeNetzGraph, clearNetz, recalcNetz, redrawGeo, syncVLTemps } from './03b-netz.js';
@@ -33,6 +33,7 @@ import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
+import { vereinigePolygone } from './lib/gebaeude-geometrie.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
@@ -632,7 +633,7 @@ function _autoCreatePvAssetFromDraw(g) {
 // kWp im PV-Asset mitziehen, solange es mit der zuvor gezeichneten Leistung
 // übereinstimmte (prevKwp). Ein manuell abweichend gesetztes Asset bleibt
 // unangetastet — dafür gibt es weiterhin den Überschreiben-Button.
-function _syncPvAssetIfInSync(g, prevKwp) {
+export function _syncPvAssetIfInSync(g, prevKwp) {
   if (!g || g.pvModus !== 'flaechen' || !_hasBelegung(g)) return;
   const pv = getAssetsForBuilding(g.id).find(a => a.type === 'PV');
   if (!pv) return;
@@ -1020,7 +1021,9 @@ function buildDachSection(g, opts = {}) {
       </div>
       ${g.dachAutoAzimut
         ? `<div style="font-size:8px;color:var(--muted);margin-top:2px;">↳ auto (Polygon)</div>`
-        : ''}
+        : g.dachQuelle === 'osm' && g.dachAzimut != null
+          ? `<div style="font-size:8px;color:var(--muted);margin-top:2px;">↳ aus OSM (roof:direction)</div>`
+          : ''}
     </div>`;
 
   const pvAsset = opts.showPvBtn
@@ -1211,6 +1214,7 @@ function buildDachSection(g, opts = {}) {
               ${Object.entries(DACHFORM_LABELS).map(([v,l]) =>
                 `<option value="${v}"${dachform===v?' selected':''}>${l}</option>`).join('')}
             </select>
+            ${g.dachQuelle === 'osm' ? `<div style="font-size:8px;color:var(--muted);margin-top:2px;" title="Aus den OSM-Tags roof:shape / roof:angle übernommen">↳ aus OSM${g.dachNeigung != null ? ` · ${g.dachNeigung}°` : ''}</div>` : ''}
           </div>
           ${azimutField}
         </div>
@@ -1238,6 +1242,9 @@ window.updateGebDach = function(gId, field, value) {
   const g = window.gebaeude?.find(x => x.id === gId);
   if (!g) return;
   const prevKwp = calcGebKwpKorr(g);
+  // Jede Eingabe am Dach gilt als echte Angabe (PV-Modus-Vorgaben überschreiben
+  // sie dann nicht mehr, die 3D-Ansicht formt das Dach)
+  g.dachQuelle = 'manuell';
   if (field === 'dachform') {
     g.dachform = value;
     g.dachAutoAzimut = false; // Manuelle Änderung löscht Auto-Flag
@@ -1537,9 +1544,15 @@ export function placePvModules(belPolys, sperrPolys, opts = {}) {
       const corners = [{ x, y }, { x: x + cellW, y }, { x: x + cellW, y: y + cellD }, { x, y: y + cellD }];
       const center  = { x: x + cellW / 2, y: y + cellD / 2 };
       // muss komplett in EINEM Belegungspolygon liegen
-      if (!belR.some(poly => _pip(center, poly) && corners.every(c => _pip(c, poly)))) continue;
+      // Das Raster beginnt exakt an der Bbox-Kante des (eingerückten) Polygons: bei
+      // achsparallelen Dächern liegen die Modulecken dann AUF dem Polygonrand, und der
+      // Punkt-im-Polygon-Test entscheidet dort zufällig (Gleitkomma) — teils fielen
+      // dadurch ganze Dachhälften auf 0 Module. Geprüft wird mit ein paar mm nach innen
+      // gezogenen Ecken (0,4 % der Strecke Ecke→Mitte).
+      const inner = corners.map(c => ({ x: c.x + (center.x - c.x) * 0.004, y: c.y + (center.y - c.y) * 0.004 }));
+      if (!belR.some(poly => _pip(center, poly) && inner.every(c => _pip(c, poly)))) continue;
       // darf kein Sperrpolygon berühren
-      if (sperrR.some(poly => _pip(center, poly) || corners.some(c => _pip(c, poly)))) continue;
+      if (sperrR.some(poly => _pip(center, poly) || inner.some(c => _pip(c, poly)))) continue;
       const pts  = corners.map(unrot);          // zurück in metrischen (nicht-rotierten) Frame
       // Shimmer-Kante: Süd = obere Kante; Ost-West = abwechselnd ober/unter (Paare)
       const edge = flipEdge ? [pts[3], pts[2]] : [pts[0], pts[1]];
@@ -2141,6 +2154,11 @@ export function _renderExpandedPanel(g, stats) {
         title="${_grundrissEdit?.gId === g.id ? 'Grundrissbearbeitung beenden' : 'Gebäude formen oder versetzen'}">
         ${_grundrissEdit?.gId === g.id ? '✓ Grundriss' : '↔ Grundriss'}
       </button>` : ''}
+      ${g.polygon ? `<button class="btn-xs ${_mergeModus?.zielId === g.id ? 'blue' : ''}"
+        data-click="startGebaeudeMerge(${g.id})"
+        title="${_mergeModus?.zielId === g.id ? 'Zusammenfügen beenden' : 'Weiteres Gebäude anklicken und mit diesem Grundriss vereinigen'}">
+        ${_mergeModus?.zielId === g.id ? '✓ Fertig' : '⧉ Zusammenfügen'}
+      </button>` : ''}
       <button class="btn-xs" data-click="togglePlanPanel(${g.id})" title="Planung & Sanierung">🔧 Planen</button>
       <button class="btn-xs" data-click="startNetzEdgeFrom(${g.id})" title="Leitung von diesem Gebäude zeichnen" style="border-color:#e53935;color:#e53935;">⛕+</button>
       ${netzEdges.some(e => e.u === g.id || e.v === g.id) ? `<button class="btn-xs red" data-click="abklemmenGebaeude(${g.id})" title="Alle Netzleitungen entfernen">⛕✕</button>` : ''}
@@ -2421,6 +2439,99 @@ export function finishGebaeudeGrundrissEdit() {
   if (gId != null) _rerenderCard(gId);
 }
 
+// ── Grundrisse zusammenfügen ──────────────────────────────────────────────
+// Zielgebäude wählen (Button „Zusammenfügen"), dann beliebig viele Gebäude auf der
+// Karte anklicken: deren Grundriss wird mit dem des Ziels vereinigt, das angeklickte
+// Gebäude entfällt. Ziel behält Name, Nutzung, Baujahr und Anlagen; PV-Flächen des
+// entfallenden Gebäudes wandern mit. Esc/„✓ Fertig" beendet den Modus.
+let _mergeModus = null;
+
+function _mergeEscape(event) {
+  if (event.key === 'Escape') endeGebaeudeMerge();
+}
+
+export function endeGebaeudeMerge() {
+  const zielId = _mergeModus?.zielId;
+  if (!_mergeModus) return;
+  document.removeEventListener('keydown', _mergeEscape);
+  _mergeModus = null;
+  hideHint();
+  if (zielId != null) _rerenderCard(zielId);
+}
+
+export function startGebaeudeMerge(gId) {
+  if (_mergeModus?.zielId === gId) { endeGebaeudeMerge(); return; }
+  const g = window.gebaeude.find(b => b.id === gId);
+  if (!g?.polygon || g.polygon.length < 3) return;
+  const vorher = _mergeModus?.zielId;
+  _mergeModus = { zielId: gId, busy: false };
+  if (vorher != null) _rerenderCard(vorher);
+  document.addEventListener('keydown', _mergeEscape);
+  showHint(`⧉ Gebäude anklicken, das mit „${g.name || 'Gebäude ' + gId}" vereinigt werden soll · Esc = fertig`, 0);
+  _rerenderCard(gId);
+}
+
+// Aus attachPolygonLayer (02b) aufgerufen; true = Klick verbraucht
+export function gebaeudeMergeClick(quelleId) {
+  if (!_mergeModus) return false;
+  if (quelleId === _mergeModus.zielId || _mergeModus.busy) return true;
+  _mergeModus.busy = true;
+  Promise.resolve(_gebaeudeZusammenfuegen(_mergeModus.zielId, quelleId))
+    .catch(err => { console.error(err); showHint('⚠ Zusammenfügen fehlgeschlagen: ' + err.message, 4000); })
+    .finally(() => { if (_mergeModus) _mergeModus.busy = false; });
+  return true;
+}
+window.gebaeudeMergeClick = gebaeudeMergeClick;
+
+async function _gebaeudeZusammenfuegen(zielId, quelleId) {
+  const z = window.gebaeude.find(b => b.id === zielId);
+  const q = window.gebaeude.find(b => b.id === quelleId);
+  if (!z?.polygon || !q?.polygon) return;
+  const v = vereinigePolygone(z.polygon, q.polygon);
+  const nEdges = (window.netzEdges || []).filter(e => e.u === q.id || e.v === q.id).length;
+  const nAssets = getAssetsForBuilding(q.id).length;
+  const zn = escHtml(z.name || 'Gebäude ' + z.id), qn = escHtml(q.name || 'Gebäude ' + q.id);
+  const hinweise = [];
+  if (v.methode === 'huelle') hinweise.push('Die Gebäude berühren sich nicht — der neue Umriss ist die <b>konvexe Hülle</b> beider Grundrisse (Zwischenraum wird mit eingeschlossen).');
+  if (nEdges || nAssets) hinweise.push(`Leitungen (${nEdges}) und Anlagen (${nAssets}) von „${qn}" entfallen mit dem Gebäude.`);
+  const text = `„${qn}" wird in „${zn}" aufgenommen.<br>Neue Grundfläche: <b>${Math.round(v.flaecheM2)} m²</b>.`
+    + (hinweise.length ? '<br><br>' + hinweise.join('<br>') : '');
+  const ok = typeof window.epConfirm === 'function'
+    ? await window.epConfirm('Grundrisse zusammenfügen', text, { okText: 'Zusammenfügen', cancelText: 'Abbrechen' })
+    : window.confirm(text.replace(/<[^>]+>/g, ''));
+  if (!ok) return;
+
+  // Heizzentrale auf das Ziel umhängen, damit das Löschen des Quellgebäudes das Netz nicht abräumt
+  const zentraleSel = document.getElementById('netz-zentrale');
+  if (zentraleSel && Number.parseInt(zentraleSel.value, 10) === q.id) zentraleSel.value = String(z.id);
+  // PV-Flächen des entfallenden Gebäudes mitnehmen
+  if (q.pvFlaechen?.length) {
+    z.pvFlaechen = (z.pvFlaechen || []).concat(q.pvFlaechen);
+    q.pvFlaechen = [];
+  }
+  z.polygon = v.coords.map(p => L.latLng(p.lat, p.lng));
+  z.flaeche = polygonAreaM2(z.polygon);
+  z._pvModSig = null;
+  attachPolygonLayer(z);
+  if (z.polygon.length >= 3) {
+    const az = detectRoofAzimutFromPolygon(z.polygon);
+    if (az != null && z.dachAutoAzimut) z.dachAzimut = az;
+  }
+  await removeGebaeude(q.id);
+  if (typeof calcAutoEnergy === 'function' && (z.fromOsm || z.fromWfs)) calcAutoEnergy(z);
+  updateField(z.id, 'flaeche', z.flaeche);
+  redrawGebPvFlaechen(z);
+  redrawAllAssets();
+  redrawErzeugerIcons();
+  _invalidateStats?.();
+  updateTotals();
+  recalcNetz();
+  updateViz();
+  renderList();
+  if (_grundrissEdit?.gId === z.id) _redrawGrundrissHandles(z);
+  showHint(`✓ Zusammengefügt: ${Math.round(z.flaeche)} m² — weiteres Gebäude anklicken oder Esc`, 0);
+}
+
 export function _rerenderCard(id) {
   const card = document.getElementById('card-' + id);
   if (!card) return;
@@ -2667,6 +2778,7 @@ export function _buildProjectData() {
       strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',
       dachform: g.dachform || 'sattel', dachAzimut: g.dachAzimut ?? null,
       dachNeigung: g.dachNeigung ?? null, dachAutoAzimut: g.dachAutoAzimut || false,
+      dachQuelle: g.dachQuelle || null,
       pvRidgeOverride: g.pvRidgeOverride || null,
       pvModus: g.pvModus || 'flaechen', pvFlGcr: g.pvFlGcr ?? null, pvFlAusrichtung: g.pvFlAusrichtung || 'sued',
       pvFlBelegung: g.pvFlBelegung ?? null, pvBaujahr: g.pvBaujahr ?? null,
@@ -2996,7 +3108,7 @@ function _copyImportedBuildingFields(target,source,nutzungRemap,sourceMeta) {
     'gebaeudenummer','waerme','heizlast','spez','spezHeizlast','flaeche','baujahr','baujährQuelle',
     'abrissjahr','stockwerke','waermeManual','heizlastManual','strom','spezStrom',
     'stromProfil','pvAktiv','pvDachanteil','zustand','dachform','dachAzimut',
-    'dachNeigung','dachAutoAzimut','pvRidgeOverride','pvModus','pvFlGcr',
+    'dachNeigung','dachAutoAzimut','dachQuelle','pvRidgeOverride','pvModus','pvFlGcr',
     'pvFlAusrichtung','pvFlBelegung','pvBaujahr','notstrom',
   ];
   fields.forEach(field => {
@@ -3260,6 +3372,7 @@ function _applyProjectData(project) {
             newG.dachAzimut    = g.dachAzimut    ?? null;
             newG.dachNeigung   = g.dachNeigung   ?? null;
             newG.dachAutoAzimut = g.dachAutoAzimut || false;
+            newG.dachQuelle    = g.dachQuelle    || null;
             newG.pvRidgeOverride = g.pvRidgeOverride || null;
             // PV-Flächenzeichnung (Belegungs-/Sperrflächen) wiederherstellen
             // Default ist „Flächen zeichnen". Alte Projekte, in denen die Pauschale gar

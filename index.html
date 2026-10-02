@@ -156,6 +156,11 @@
   </div>
 
   <div class="ebp-cat">
+    <div class="ebp-cat-label" style="--ebp-c:#4fc3f7;">🏙 3D</div>
+    <button class="mode-btn" data-click="d3dUmschalten()" style="text-align:left;" title="Gebäude als 3D-Körper (Höhe = Geschosse × 3 m) in den Farben der Karte — neigen, drehen, als Bild speichern">3D-Ansicht öffnen / schließen</button>
+  </div>
+
+  <div class="ebp-cat">
     <div class="ebp-cat-label" style="--ebp-c:#ba68c8;">🧭 Kartendrehung <span style="opacity:.55;font-weight:400;">Versuch</span></div>
     <!-- Inhalt wird von src/20-kartendrehung.js gerendert (kdRenderPanel) -->
     <div id="kd-panel"></div>
@@ -286,6 +291,7 @@
         <div class="lp-section-title" style="margin-top:12px;">Gebäude laden</div>
         <div class="lp-tool-grid">
           <button class="lp-tool-btn" id="btn-osm-import" data-click="showOsmPanel()" style="border-color:#66bb6a;color:#66bb6a;grid-column:1/-1;">↓ OSM-Import (OpenStreetMap)</button>
+          <button class="lp-tool-btn" id="btn-osm-dach" data-click="dachformenAusOsmErgaenzen({nachfragen:true})" style="border-color:#a1887f;color:#bcaaa4;grid-column:1/-1;" title="Dachform, Neigung und Richtung (roof:shape, roof:angle, roof:direction) aus OpenStreetMap für alle Gebäude ohne eigene Dachangabe übernehmen — z. B. nach einem Import aus dem amtlichen Kataster, das keine Dachform liefert">🏠 Dachformen aus OSM ergänzen</button>
         </div>
       </div>
 
@@ -1405,6 +1411,11 @@
     <label class="inp-label" title="Wird verwendet wenn OSM kein Baujahr enthält — typisch für Gründerzeit, Nachkrieg, 70er-Jahre-Neubaugebiet etc.">Standard-Baujahr (falls OSM kein Baujahr hat)</label>
     <input class="inp-field" type="number" id="osm-default-baujahr" value="1970" min="1850" max="2024" step="1" style="width:90px;">
   </div>
+  <div class="inp-group" style="margin:4px 0 4px;">
+    <label class="inp-label" title="Kleinere Polygone (Dachaufbauten, Anbauten, Schuppen) werden nicht als eigenes Gebäude geladen: angrenzende werden in den Grundriss des Nachbargebäudes eingerechnet, freistehende verworfen. 0 = alles laden.">Mindest-Grundfläche je Gebäude (m²)</label>
+    <input class="inp-field" type="number" id="osm-min-flaeche" value="30" min="0" max="500" step="5" style="width:90px;"
+      data-input="const a=document.getElementById('osm-min-flaeche-area');if(a)a.value=this.value;">
+  </div>
   <div class="panel-btns">
     <button class="btn-confirm" data-click="loadOsmBuildings()">Jetzt laden</button>
     <button class="btn-secondary" data-click="hidePanels()">Abbrechen</button>
@@ -1419,6 +1430,11 @@
     <label class="inp-label" title="Wird für Gebäude ohne Baujahr in OSM verwendet">Standard-Baujahr (Fallback)</label>
     <input class="inp-field" type="number" id="osm-default-baujahr-area" value="1970" min="1850" max="2024" step="1" style="width:90px;"
       data-input="const a=document.getElementById('osm-default-baujahr');if(a)a.value=this.value;">
+  </div>
+  <div class="inp-group" style="margin:4px 0 4px;">
+    <label class="inp-label" title="Kleinere Polygone (Dachaufbauten, Anbauten, Schuppen) werden nicht als eigenes Gebäude geladen. 0 = alles laden.">Mindest-Grundfläche je Gebäude (m²)</label>
+    <input class="inp-field" type="number" id="osm-min-flaeche-area" value="30" min="0" max="500" step="5" style="width:90px;"
+      data-input="const a=document.getElementById('osm-min-flaeche');if(a)a.value=this.value;">
   </div>
   <div class="panel-btns">
     <button class="btn-confirm amber" data-click="loadOsmBuildings()">Gebäude laden</button>

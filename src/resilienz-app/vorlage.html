@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__RA_TITEL__</title>
+<!-- Erhebungs-Werkzeug Resilienz. Wird vom Hauptwerkzeug befüllt (lib/resilienz-app.js);
+     der Stand steht im Element #ra-stand und wird beim Speichern mitgeschrieben. -->
+<style>
+:root {
+  --bg: #f4f6f3; --flaeche: #ffffff; --flaeche2: #f8faf7; --linie: #dfe5de; --linie2: #c9d2c8;
+  --text: #1c2420; --leise: #5d6a62; --leiser: #8a958e;
+  --gruen: #2e7d32; --gruen-hell: #e8f3e8; --gruen-mittel: #6fae72;
+  --orange: #e8890c; --orange-hell: #fff4e3; --rot: #d32f2f; --blau: #1e88e5; --blau-hell: #e7f1fc;
+  --schatten: 0 1px 2px rgba(20,40,25,.06), 0 4px 14px rgba(20,40,25,.06);
+  --radius: 10px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  display: flex; flex-direction: column; min-height: 100%;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--gruen); }
+
+/* ── Kopf und Schrittleiste ─────────────────────────────────────────── */
+.kopf {
+  display: flex; align-items: center; gap: 14px; padding: 10px 20px;
+  background: #1f3a24; color: #fff;
+}
+.kopf .marke { font-weight: 700; letter-spacing: .2px; white-space: nowrap; }
+.kopf .marke small { display: block; font-weight: 400; opacity: .7; font-size: 11.5px; letter-spacing: 0; }
+.kopf .lieg { flex: 1; min-width: 0; font-size: 13px; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kopf .sichern-info { font-size: 12px; opacity: .75; white-space: nowrap; }
+.kopf .knopf { background: #fff; color: #1f3a24; border-color: #fff; }
+.kopf .knopf:hover { background: #e8f3e8; }
+
+.schritte {
+  display: flex; gap: 4px; padding: 0 20px; background: var(--flaeche);
+  border-bottom: 1px solid var(--linie); overflow-x: auto;
+}
+.schritt {
+  display: flex; align-items: center; gap: 8px; padding: 11px 12px 10px; border: 0; background: none;
+  border-bottom: 3px solid transparent; white-space: nowrap; color: var(--leise);
+}
+.schritt .nr {
+  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; background: var(--linie); color: var(--leise);
+}
+.schritt.aktiv { color: var(--text); border-bottom-color: var(--gruen); font-weight: 600; }
+.schritt.aktiv .nr { background: var(--gruen); color: #fff; }
+.schritt.fertig .nr { background: var(--gruen-hell); color: var(--gruen); }
+.schritt .stand { font-size: 11px; color: var(--leiser); font-weight: 400; }
+
+/* ── Inhalt ─────────────────────────────────────────────────────────── */
+main { flex: 1; min-height: 0; }
+.seite { max-width: 920px; margin: 0 auto; padding: 24px 20px 40px; }
+h1 { font-size: 24px; line-height: 1.25; margin: 0 0 6px; }
+h2 { font-size: 18px; margin: 0 0 4px; }
+h3 { font-size: 15px; margin: 0 0 8px; }
+.unterzeile { color: var(--leise); margin: 0 0 18px; max-width: 70ch; }
+.karte-box {
+  background: var(--flaeche); border: 1px solid var(--linie); border-radius: var(--radius);
+  box-shadow: var(--schatten); padding: 18px 20px; margin-bottom: 14px;
+}
+.hinweis {
+  background: var(--blau-hell); border: 1px solid #cfe2f7; border-radius: 8px; padding: 10px 14px;
+  color: #24456b; font-size: 13px; margin-bottom: 14px;
+}
+.hinweis.warn { background: var(--orange-hell); border-color: #f6d9a8; color: #6b4708; }
+.hinweis b { color: inherit; }
+
+.weg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0 4px; }
+.weg div { background: var(--flaeche2); border: 1px solid var(--linie); border-radius: 8px; padding: 12px 14px; }
+.weg b { display: block; margin-bottom: 2px; }
+.weg span { color: var(--leise); font-size: 13px; }
+
+/* ── Formularbausteine ──────────────────────────────────────────────── */
+.feld { margin-bottom: 14px; }
+.feld > label, .feld > .label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 5px; }
+.feld .erkl { display: block; font-weight: 400; color: var(--leise); font-size: 12.5px; margin-top: -2px; margin-bottom: 6px; }
+input[type=text], input[type=number], textarea, select {
+  width: 100%; padding: 7px 10px; border: 1px solid var(--linie2); border-radius: 7px; background: #fff;
+}
+textarea { min-height: 64px; resize: vertical; }
+input:focus, textarea:focus, select:focus, button:focus-visible { outline: 2px solid var(--gruen-mittel); outline-offset: 1px; }
+.raster2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+
+.seg { display: flex; flex-wrap: wrap; gap: 5px; }
+.seg button {
+  border: 1px solid var(--linie2); background: #fff; border-radius: 999px; padding: 4px 12px; font-size: 13px;
+  color: var(--text);
+}
+.seg button:hover { border-color: var(--gruen-mittel); }
+.seg button.an { background: var(--gruen); border-color: var(--gruen); color: #fff; }
+.seg button.an.w-rot { background: var(--rot); border-color: var(--rot); }
+.seg button.an.w-orange { background: var(--orange); border-color: var(--orange); }
+.seg button.an.w-grau { background: #7d8a83; border-color: #7d8a83; }
+.seg button.geerbt { border: 1.5px dashed var(--gruen); color: var(--gruen); background: var(--gruen-hell); }
+.seg button.geerbt.w-rot { border-color: var(--rot); color: var(--rot); background: #fdecec; }
+.seg button.geerbt.w-orange { border-color: var(--orange); color: #9a5a00; background: var(--orange-hell); }
+.seg button.geerbt.w-grau { border-color: #7d8a83; color: #55615a; background: #eef1ef; }
+.erbe-info { font-size: 11.5px; color: var(--gruen); margin-left: 6px; font-weight: 400; }
+.erbe-info button { border: 0; background: none; color: var(--leise); text-decoration: underline; padding: 0 2px; font-size: 11.5px; }
+
+.zeitstrahl { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; align-items: center; }
+.zeitstrahl .zeit { font-size: 13px; color: var(--leise); }
+.zeitstrahl .zeit b { color: var(--text); }
+
+.knopf {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px;
+  border: 1px solid var(--gruen); background: #fff; color: var(--gruen); font-weight: 600; font-size: 13.5px;
+}
+.knopf:hover { background: var(--gruen-hell); }
+.knopf.voll { background: var(--gruen); color: #fff; }
+.knopf.voll:hover { background: #276b2b; }
+.knopf.klein { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+.knopf.leise { border-color: var(--linie2); color: var(--leise); }
+.knopf.rot { border-color: #e9b4b4; color: var(--rot); }
+.knopf[disabled] { opacity: .45; cursor: default; }
+.knopfreihe { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.fuss {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 20px; background: var(--flaeche); border-top: 1px solid var(--linie);
+}
+.fuss .mitte { color: var(--leise); font-size: 12.5px; text-align: center; flex: 1; }
+
+/* ── Szenarien ──────────────────────────────────────────────────────── */
+.sz-karte { display: grid; grid-template-columns: 46px 1fr; gap: 0 14px; }
+.sz-id {
+  width: 40px; height: 40px; border-radius: 9px; background: var(--gruen-hell); color: var(--gruen);
+  display: grid; place-items: center; font-weight: 700;
+}
+.sz-karte.nein .sz-id { background: #eef1ef; color: var(--leiser); }
+.sz-titel { font-weight: 600; margin-bottom: 8px; }
+
+/* ── Gebäudearten ───────────────────────────────────────────────────── */
+.art-kopf { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.art-farbe { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+.art-kopf input { font-weight: 600; font-size: 15px; }
+.art-zahl { color: var(--leise); font-size: 12.5px; white-space: nowrap; }
+.katalog-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.katalog-raster .karte-box { margin: 0; padding: 14px 16px; }
+.katalog-tab { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.katalog-tab td { padding: 3px 0; border-bottom: 1px solid var(--linie); vertical-align: top; }
+.katalog-tab td:first-child { color: var(--leise); width: 48%; padding-right: 8px; }
+.katalog-tab .w-rot { color: var(--rot); font-weight: 600; }
+.katalog-tab .w-orange { color: #9a5a00; font-weight: 600; }
+.katalog-warum { font-size: 12.5px; color: var(--leise); margin: 8px 0 0; }
+.katalog-vorschlag {
+  border: 1.5px dashed var(--gruen-mittel); background: var(--gruen-hell); border-radius: 9px; padding: 10px 12px;
+  margin-bottom: 14px; font-size: 13px;
+}
+.liste-zeile.verbund { background: var(--flaeche2); font-size: 13px; }
+details.abschnitt { border-top: 1px solid var(--linie); padding-top: 10px; margin-top: 10px; }
+details.abschnitt summary { cursor: pointer; font-weight: 600; color: var(--leise); font-size: 13px; }
+
+/* ── Lageplan ───────────────────────────────────────────────────────── */
+.plan-seite { display: grid; grid-template-columns: minmax(0, 1fr) 440px; height: 100%; min-height: 520px; }
+.plan { position: relative; overflow: hidden; background: #e9eee8; touch-action: none; user-select: none; }
+.plan svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.plan .geb { cursor: pointer; }
+.plan .geb path { vector-effect: non-scaling-stroke; transition: fill-opacity .12s; }
+.plan .geb:hover path { fill-opacity: .95; }
+.plan .geb-name { font-size: 11px; font-weight: 600; fill: #1c2420; paint-order: stroke; stroke: rgba(255,255,255,.9); stroke-width: 3px; pointer-events: none; }
+.plan-werkzeug { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 6px; }
+.plan-werkzeug button, .plan-oben select {
+  background: #fff; border: 1px solid var(--linie2); border-radius: 7px; box-shadow: var(--schatten);
+}
+.plan-werkzeug button { width: 34px; height: 34px; font-size: 17px; line-height: 1; }
+.plan-oben { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.plan-oben select { width: auto; padding: 5px 8px; font-size: 12.5px; }
+.legende {
+  position: absolute; left: 10px; bottom: 22px; background: rgba(255,255,255,.95); border: 1px solid var(--linie);
+  border-radius: 8px; padding: 8px 11px; font-size: 12px; box-shadow: var(--schatten); max-width: 280px;
+}
+.legende div { display: flex; align-items: center; gap: 7px; }
+.legende i { width: 13px; height: 13px; border-radius: 3px; display: inline-block; flex: none; border: 1px solid rgba(0,0,0,.15); }
+.legende .titel { font-weight: 600; margin-bottom: 3px; }
+.zuordnen-band {
+  position: absolute; top: 52px; left: 56px; right: 10px; background: var(--orange); color: #fff; border-radius: 8px;
+  padding: 7px 12px; font-weight: 600; box-shadow: var(--schatten); display: flex; gap: 10px; align-items: center;
+}
+.zuordnen-band button { border: 1px solid #fff; background: none; color: #fff; border-radius: 6px; padding: 2px 9px; }
+.quelle { position: absolute; right: 4px; bottom: 2px; font-size: 10.5px; color: #44514a; background: rgba(255,255,255,.75); padding: 0 4px; border-radius: 3px; }
+
+.panel { background: var(--flaeche); border-left: 1px solid var(--linie); overflow-y: auto; padding: 16px 18px 30px; }
+.panel h2 { display: flex; align-items: center; gap: 8px; }
+.panel .zeitstrahl { grid-template-columns: 1fr; gap: 2px; }
+.panel .zeitstrahl .seg { margin-bottom: 6px; }
+.panel .seg button { padding: 3px 10px; font-size: 12.5px; }
+.legende .titel { cursor: pointer; }
+.legende.zu > div:not(.titel) { display: none; }
+.legende.zu .titel { margin-bottom: 0; }
+.fortschritt { height: 8px; border-radius: 99px; background: var(--linie); overflow: hidden; margin: 8px 0 4px; }
+.fortschritt div { height: 100%; background: var(--gruen); }
+.klassen-karte {
+  display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 9px; margin: 10px 0 14px;
+  border: 1px solid var(--linie); background: var(--flaeche2);
+}
+.klassen-karte .kl { width: 36px; height: 36px; border-radius: 8px; color: #fff; font-weight: 800; font-size: 18px; display: grid; place-items: center; flex: none; }
+.klassen-karte .txt { font-size: 12.5px; color: var(--leise); }
+.klassen-karte .txt b { color: var(--text); font-size: 13.5px; display: block; }
+.reiter { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0 12px; }
+.reiter button { border: 1px solid var(--linie2); background: #fff; border-radius: 7px; padding: 4px 10px; font-size: 12.5px; }
+.reiter button.an { border-color: var(--gruen); background: var(--gruen-hell); color: var(--gruen); font-weight: 600; }
+.block { border-top: 1px solid var(--linie); padding-top: 12px; margin-top: 4px; }
+.block-titel { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--leiser); font-weight: 700; margin-bottom: 10px; }
+.liste-zeile {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--linie);
+  border-radius: 8px; margin-bottom: 6px; background: #fff;
+}
+.liste-zeile .name { flex: 1; min-width: 0; }
+.liste-zeile .name small { display: block; color: var(--leise); }
+.marke { display: inline-block; min-width: 22px; text-align: center; border-radius: 5px; color: #fff; font-weight: 700; font-size: 12px; padding: 1px 5px; }
+.punkt { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ── Abschluss ──────────────────────────────────────────────────────── */
+.offen-liste { list-style: none; padding: 0; margin: 0; }
+.offen-liste li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--linie); }
+.offen-liste li:last-child { border-bottom: 0; }
+.offen-liste .ref { font-weight: 700; color: var(--orange); white-space: nowrap; font-size: 12.5px; }
+.offen-liste .txt { flex: 1; }
+.kacheln { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.kachel { background: var(--flaeche); border: 1px solid var(--linie); border-radius: 9px; padding: 10px 12px; }
+.kachel .z { font-size: 24px; font-weight: 800; line-height: 1.1; }
+.kachel .l { font-size: 12px; color: var(--leise); }
+.mini-plan { width: 100%; height: 300px; border: 1px solid var(--linie); border-radius: 9px; background: #eef2ed; display: block; }
+.banner {
+  background: var(--orange-hell); border-bottom: 1px solid #f6d9a8; padding: 9px 20px; display: flex; gap: 12px;
+  align-items: center; flex-wrap: wrap; font-size: 13.5px;
+}
+.toast {
+  position: fixed; left: 50%; bottom: 70px; transform: translateX(-50%); background: #1f3a24; color: #fff;
+  padding: 9px 16px; border-radius: 8px; box-shadow: var(--schatten); font-size: 13.5px; z-index: 50;
+  opacity: 0; transition: opacity .2s; pointer-events: none;
+}
+.toast.an { opacity: 1; }
+.leer { color: var(--leise); font-style: italic; }
+
+/* ── Druck: nur die Übersicht ───────────────────────────────────────── */
+#druck { display: none; }
+@media print {
+  body > *:not(#druck) { display: none !important; }
+  #druck { display: block; font-size: 11pt; }
+  #druck h1 { font-size: 16pt; }
+  #druck table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  #druck th, #druck td { border: 1px solid #bbb; padding: 3px 5px; text-align: left; vertical-align: top; }
+  #druck .mini-plan { height: 9cm; }
+}
+
+@media (max-width: 900px) {
+  .plan-seite { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }
+  .panel { border-left: 0; border-top: 1px solid var(--linie); }
+  .raster2, .weg { grid-template-columns: 1fr; }
+  .kacheln { grid-template-columns: 1fr 1fr; }
+  .zeitstrahl { grid-template-columns: 1fr; }
+  .kopf .sichern-info, .kopf .lieg { display: none; }
+  .fuss .mitte { display: none; }
+}
+</style>
+</head>
+<body>
+<noscript><p style="padding:20px">Dieses Werkzeug braucht JavaScript. Bitte die Datei in einem aktuellen Browser öffnen (Edge, Chrome, Firefox).</p></noscript>
+<div id="app"></div>
+<div id="druck"></div>
+<div class="toast" id="toast"></div>
+<script type="application/json" id="ra-konfig">__RA_KONFIG__</script>
+<script type="application/json" id="ra-stand">__RA_STAND__</script>
+<script>
+/*__RA_APP__*/
+</script>
+</body>
+</html>

@@ -485,6 +485,8 @@ export function updateViz(){
   if (window.blackoutModusAktiv && typeof window.blackoutModusMarkiereKarte === 'function') window.blackoutModusMarkiereKarte();
   // Ebenso die Netzaufnahme der PV-Analyse: Dächer grün/gelb/rot (28-pv-netzaufnahme.js)
   if (window.pvnaKarteAktiv && typeof window.pvnaMarkiereKarte === 'function') window.pvnaMarkiereKarte();
+  // Offene 3D-Ansicht übernimmt die eben gesetzten Polygonfarben (32-3d-ansicht.js)
+  if (typeof window.d3dNachViz === 'function') window.d3dNachViz();
 }
 
 export function buildMapLabel(g,center, status){

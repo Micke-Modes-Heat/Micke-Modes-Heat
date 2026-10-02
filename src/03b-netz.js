@@ -14,12 +14,14 @@ import { getNetzVBH, updateNetzColorLegend } from './02a-netz-physik.js';
 import { attachPolygonLayer, getComputedStats, map } from './02b-gebaeude.js';
 import { clearArea, polygonAreaM2, setViz, toggleDrawTrasse, togglePlaceLwWp, updateViz } from './02c-karte-werkzeuge.js';
 import { drillSvg, redrawErzeugerIcons, redrawVerbindungslinien } from './03a-erzeuger.js';
-import { _initYearSliderFromBaujahr, drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon } from './03c-gebaeude-io.js';
+import { _initYearSliderFromBaujahr, drawChart, hideHint, renderList, showHint, detectRoofAzimutFromPolygon, _hasBelegung, calcGebKwpKorr, redrawGebPvModules, _syncPvAssetIfInSync } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, autoAssignEdgeCosts } from './04a-ui-panels.js';
 import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { detectBundesland } from './lib/bundeslaender.js';
 import { readNum } from './lib/util.js';
 import { clipBuildingEndpoint, crossesForeignBuilding } from './lib/netz-building-obstacles.js';
+import { bereinigeKleinbauten } from './lib/gebaeude-geometrie.js';
+import { osmDachAusTags, osmQuerAzimut, osmDachGebaeude, osmDachZuordnen } from './lib/osm-dach.js';
 import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
 import { syncErzeugerElektroAsset, removeErzeugerElektroAsset, moveErzeugerElektroAsset, updateErzeugerAssetProps } from './13p-erzeuger-assets.js';
@@ -1463,6 +1465,9 @@ function _parseWfsGml(xml) {
     // Alle Ringe des Gebäudes sammeln (MultiSurface)
     var rings = [];
     posLists.forEach(function(pl) {
+      // Innenringe (Innenhöfe) gehören zum Gebäude und sind kein eigenes Gebäude
+      var ringHolder = pl.parentNode && pl.parentNode.parentNode;
+      if (ringHolder && ringHolder.localName === 'interior') return;
       var text = pl.textContent.trim();
       var nums = text.split(/\s+/).map(Number);
       var ring = [];
@@ -1892,12 +1897,14 @@ export async function loadOsmBuildings(){
   }
 
   let toAdd = [];
+  let ausWfs = false;
 
   try{
     // ── 1. WFS versuchen (amtliches Kataster, schnell & zuverlässig) ──
     const wfsData = await _wfsFetchBuildings(bbox);
     if (wfsData && wfsData.features && wfsData.features.length > 0) {
       toAdd = parseWfsGeoJson(wfsData, snapArea);
+      ausWfs = toAdd.length > 0;
     }
 
     // ── 2. Overpass-Fallback (Bayern, Ausland, oder WFS leer) ──
@@ -1923,6 +1930,17 @@ out body;>;out skel qt;`;
       }
     }
 
+    // ── Kleinbauten (Dachaufbauten, Anbauten, Schuppen) nicht als eigenes Gebäude führen ──
+    let kleinInfo = '';
+    if (toAdd.length > 0) {
+      const minFl = parseFloat(document.getElementById('osm-min-flaeche')?.value);
+      const bereinigt = bereinigeKleinbauten(toAdd, { minFlaecheM2: Number.isFinite(minFl) ? minFl : 30 });
+      toAdd = bereinigt.items;
+      if (bereinigt.verworfen || bereinigt.angefuegt) {
+        kleinInfo = ` (${bereinigt.verworfen} Kleinbauten verworfen, ${bereinigt.angefuegt} an Nachbargebäude angefügt)`;
+      }
+    }
+
     if(toAdd.length === 0){
       showHint('Keine neuen Gebäude gefunden');
       setTimeout(hideHint,3500);
@@ -1942,13 +1960,18 @@ out body;>;out skel qt;`;
 
     // Gebäude in Häppchen einfügen — Polygone erscheinen batch-weise auf der Karte
     const CHUNK = 20;
+    const neue = [];
     set_batchImporting(true);
     for(let i = 0; i < toAdd.length; i += CHUNK){
       toAdd.slice(i, i + CHUNK).forEach(opts => {
         const g = addGebaeude(opts);
-        // Azimut der Südseite automatisch aus Polygon-Längsachse ableiten
-        if (g && g.polygon && g.polygon.length >= 3) {
-          const az = detectRoofAzimutFromPolygon(g.polygon);
+        if (g) neue.push(g);
+        // Azimut der Südseite automatisch aus Polygon-Längsachse ableiten — außer
+        // OSM nennt die Dachrichtung (roof:direction). Bei roof:orientation=across
+        // läuft der First quer zur Längsachse.
+        if (g && g.dachAzimut == null && g.polygon && g.polygon.length >= 3) {
+          let az = detectRoofAzimutFromPolygon(g.polygon);
+          if (az !== null && opts._osmDachQuer) az = osmQuerAzimut(az);
           if (az !== null) { g.dachAzimut = az; g.dachAutoAzimut = true; }
         }
       });
@@ -1958,8 +1981,8 @@ out body;>;out skel qt;`;
     set_batchImporting(false);
 
     // Sofort Erfolgsmeldung + ausblenden
-    showHint(`✓ ${toAdd.length} Gebäude geladen`);
-    setTimeout(hideHint, 2000);
+    showHint(`✓ ${toAdd.length} Gebäude geladen${kleinInfo}`);
+    setTimeout(hideHint, kleinInfo ? 5000 : 2000);
 
     // Einmalig alles aktualisieren
     renderList();
@@ -1973,6 +1996,15 @@ out body;>;out skel qt;`;
     // Plangebiet-Polygon + Eckpunkte ausblenden nach erfolgreichem Import
     if (areaPolygon) { map.removeLayer(areaPolygon); }
     areaEditMarkers.forEach(m => map.removeLayer(m));
+
+    // Amtliche WFS-Grundrisse haben keine Dachform → aus OSM (roof:shape)
+    // nachtragen. Läuft im Hintergrund weiter; ein Fehler ändert am Import nichts.
+    if (ausWfs) {
+      setTimeout(() => {
+        dachformenAusOsmErgaenzen({ gebaeude: neue, still: true })
+          .catch(e => console.warn('Dachformen aus OSM übersprungen:', e?.message || e));
+      }, kleinInfo ? 5200 : 2200);
+    }
   }catch(err){
     set_batchImporting(false);
     showHint('⚠ Fehler: '+err.message);setTimeout(hideHint,4000);console.error(err);
@@ -1980,6 +2012,83 @@ out body;>;out skel qt;`;
   btn.classList.remove('loading');
   // Sicherheit: Hint spätestens nach 3s ausblenden falls er hängenbleibt
   setTimeout(function(){ const h=document.getElementById('hint'); if(h && !h.classList.contains('hidden') && (h.textContent.indexOf('geladen')>-1 || h.textContent.indexOf('Gebäude')>-1)) hideHint(); }, 3000);
+}
+
+/**
+ * Dachangaben aus OpenStreetMap (roof:shape, roof:angle, roof:direction,
+ * roof:orientation) auf vorhandene Gebäude OHNE eigene Dachangabe übertragen
+ * (g.dachQuelle leer) — v. a. für Grundrisse aus den ALKIS-WFS-Diensten, die
+ * keine Dachform liefern. Zuordnung geometrisch (lib/osm-dach.js).
+ *
+ * Bei Gebäuden mit PV-Belegung ändert das Modulraster und kWp; deshalb fragt
+ * der Knopf vorher nach (nachfragen) — beim Import gibt es noch keine Belegung.
+ * @param {{gebaeude?: any[], nachfragen?: boolean, still?: boolean}} [opts]
+ * @returns {Promise<number>} Anzahl übernommener Dachformen
+ */
+export async function dachformenAusOsmErgaenzen(opts = {}) {
+  const kandidaten = (opts.gebaeude || window.gebaeude || [])
+    .filter(g => g && !g.dachQuelle && Array.isArray(g.polygon) && g.polygon.length >= 3);
+  if (!kandidaten.length) {
+    if (!opts.still) { showHint('Alle Gebäude haben bereits Dachangaben (aus OSM oder von Hand).'); setTimeout(hideHint, 3500); }
+    return 0;
+  }
+  let s = 90, w = 180, n = -90, e = -180;
+  for (const g of kandidaten) for (const p of g.polygon) {
+    if (p.lat < s) s = p.lat; if (p.lat > n) n = p.lat;
+    if (p.lng < w) w = p.lng; if (p.lng > e) e = p.lng;
+  }
+  const rand = 0.0005;   // ~50 m, damit Randgebäude vollständig mitkommen
+  const query = `[out:json][timeout:30];way["building"]["roof:shape"](${(s - rand).toFixed(6)},${(w - rand).toFixed(6)},${(n + rand).toFixed(6)},${(e + rand).toFixed(6)});out tags geom;`;
+  showHint('⏳ Dachformen aus OpenStreetMap laden…', 0);
+  let data = null;
+  try { data = await _overpassFetchWithRetry(query); } catch (err) { data = null; }
+  if (!data) {
+    showHint('OpenStreetMap nicht erreichbar — Dachformen nicht ergänzt.'); setTimeout(hideHint, 4000);
+    return 0;
+  }
+  const treffer = osmDachZuordnen(kandidaten, osmDachGebaeude(data));
+  if (!treffer.length) {
+    if (opts.still) hideHint();
+    else { showHint('Keine passenden Dachangaben in OpenStreetMap gefunden.'); setTimeout(hideHint, 4000); }
+    return 0;
+  }
+  const nachId = new Map(kandidaten.map(g => [g.id, g]));
+  const mitPv = treffer.filter(t => _hasBelegung(nachId.get(t.id))).length;
+  if (opts.nachfragen) {
+    hideHint();
+    const zahlen = {};
+    for (const t of treffer) zahlen[t.dach.dachform] = (zahlen[t.dach.dachform] || 0) + 1;
+    const liste = Object.entries(zahlen).map(([f, k]) => `${k}× ${f}`).join(', ');
+    if (!confirm(`OpenStreetMap kennt die Dachform von ${treffer.length} der ${kandidaten.length} Gebäude ohne Dachangabe (${liste}).`
+      + (mitPv ? `\n\n${mitPv} davon haben schon eine PV-Belegung — Modulraster, kWp und Ertrag werden dort neu berechnet.` : '')
+      + '\n\nÜbernehmen?')) return 0;
+  }
+  for (const { id, dach } of treffer) {
+    const g = nachId.get(id);
+    const pv = _hasBelegung(g);
+    const prevKwp = pv ? calcGebKwpKorr(g) : 0;
+    g.dachform = dach.dachform;
+    g.dachNeigung = dach.neigung;
+    if (dach.azimut != null) { g.dachAzimut = dach.azimut; g.dachAutoAzimut = false; }
+    else if (dach.quer || g.dachAzimut == null) {
+      const az = detectRoofAzimutFromPolygon(g.polygon);
+      if (az !== null) { g.dachAzimut = dach.quer ? osmQuerAzimut(az) : az; g.dachAutoAzimut = true; }
+    }
+    if (g.dachform !== 'sattel') delete g.pvRidgeOverride;
+    g.dachQuelle = 'osm';
+    if (pv) {
+      // automatische Nord-Sperrfläche des PV-Modus an die neue Dachform anpassen (25)
+      window.pvmNordNachziehen?.(g);
+      redrawGebPvModules(g);
+      _syncPvAssetIfInSync(g, prevKwp);
+    }
+  }
+  if (mitPv) { window.calcStromPanel?.(); window.recalcStromNetz?.(); }
+  renderList();
+  updateViz();
+  showHint(`✓ Dachform für ${treffer.length} Gebäude aus OpenStreetMap übernommen.`);
+  setTimeout(hideHint, 4000);
+  return treffer.length;
 }
 
 export function parseOsmLevels(tags){
@@ -2042,6 +2151,10 @@ export function parseOsmData(data, snapArea){
     // Baujahr aus OSM-Tags — null wenn unbekannt (wird später per Nachbarschaft gefüllt)
     const osmBj = parseOsmBaujahr(t);
 
+    // Dachform/-neigung/-richtung aus roof:* (lib/osm-dach.js). Ohne roof:shape
+    // bleibt alles offen → Vorgaben des Tools (Satteldach, Azimut aus Grundriss).
+    const dach = osmDachAusTags(t);
+
     // Schwerpunkt für spätere Nachbarschaftssuche
     const sumLat = coords.reduce((s,c) => s + c.lat, 0);
     const sumLng = coords.reduce((s,c) => s + c.lng, 0);
@@ -2049,7 +2162,9 @@ export function parseOsmData(data, snapArea){
     const cLng = sumLng / coords.length;
 
     result.push({coords, name, fromOsm:true, osmId:el.id, stockwerke, _stockwerkeFromData,
-                 baujahr: osmBj, _hasOsmBj: osmBj !== null, _lat: cLat, _lng: cLng, nutzung});
+                 baujahr: osmBj, _hasOsmBj: osmBj !== null, _lat: cLat, _lng: cLng, nutzung,
+                 ...(dach.dachform ? { dachform: dach.dachform, dachNeigung: dach.neigung,
+                   dachAzimut: dach.azimut, dachQuelle: 'osm', _osmDachQuer: dach.quer } : {})});
   });
 
   // ── Nachbarschaftsinferenz für Gebäude ohne Baujahr ─────────────────────────

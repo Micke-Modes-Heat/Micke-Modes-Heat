@@ -573,6 +573,17 @@ function _nordAnwenden(g) {
   return ids;
 }
 
+/**
+ * Nach einer Dachform-/Azimutänderung von außen (z. B. Dachformen aus OSM,
+ * 03b dachformenAusOsmErgaenzen): die automatisch ausgesparte Nordseite so neu
+ * ableiten wie bei einer Eingabe im Modus (pvmDach) — sonst bliebe nach dem
+ * Wechsel auf Flachdach die halbe Fläche gesperrt.
+ */
+export function pvmNordNachziehen(g) {
+  if (!g || !_hasBelegung(g)) return;
+  if (_autoNordFlaechen(g).length > 0 || (_vorgabe().nordSperr && !g._pvNordFrei)) _nordAnwenden(g);
+}
+
 /** Nordseite aussparen bzw. die automatische Sperrfläche wieder freigeben. */
 export function pvmNordAussparen(gId) {
   const g = _geb(gId);
@@ -607,9 +618,10 @@ function _erstbelegung(g) {
   const erste = (g.pvFlaechen || []).filter(f => f.typ !== 'sperr').length <= 1;
   let nordIds = [];
   if (erste) {
-    if (v.dachform && !g._pvDachformManuell) g.dachform = v.dachform;
+    // Echte Dachangaben (aus OSM oder von Hand, g.dachQuelle) haben Vorrang vor den Vorgaben
+    if (v.dachform && !g._pvDachformManuell && !g.dachQuelle) g.dachform = v.dachform;
     if (v.belegung != null) g.pvFlBelegung = v.belegung;
-    if (v.neigung  != null) g.dachNeigung  = v.neigung;
+    if (v.neigung  != null && !(g.dachQuelle && g.dachNeigung != null)) g.dachNeigung = v.neigung;
     if (g.dachAzimut == null && Array.isArray(g.polygon) && g.polygon.length >= 3) {
       const az = detectRoofAzimutFromPolygon(g.polygon);
       if (az !== null) { g.dachAzimut = az; g.dachAutoAzimut = true; }
