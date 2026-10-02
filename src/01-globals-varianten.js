@@ -914,6 +914,8 @@ export function captureErzeugerState() {
       eisVolumen: document.getElementById('eis-volumen')?.value || '',
       eisAbsorber: document.getElementById('eis-absorber')?.value || '',
       eisVereisung: document.getElementById('eis-vereisung')?.value || '85',
+      eisVolumenManuell: document.getElementById('eis-volumen')?.dataset.manuell === '1',
+      eisAbsorberManuell: document.getElementById('eis-absorber')?.dataset.manuell === '1',
     } : null,
     fliessgewaesser: fliessgewaesser ? { ...fliessgewaesser,
       waerme: document.getElementById('fg-waerme').value,
@@ -1020,6 +1022,12 @@ export function applyErzeugerState(state) {
     setzen('eis-volumen', state.geoThermie.eisVolumen);
     setzen('eis-absorber', state.geoThermie.eisAbsorber);
     setzen('eis-vereisung', state.geoThermie.eisVereisung || 85);
+    // Ältere Stände ohne Kennzeichnung: gespeicherte Werte gelten als bewusst gesetzt
+    [['eis-volumen', state.geoThermie.eisVolumenManuell], ['eis-absorber', state.geoThermie.eisAbsorberManuell]].forEach(([id, manuell]) => {
+      const element = document.getElementById(id);
+      if (!element) return;
+      if (manuell ?? element.value !== '') element.dataset.manuell = '1'; else delete element.dataset.manuell;
+    });
     window.geoQuelleAnzeigen?.();
     calcGeoThermie(); redrawGeo();
   }

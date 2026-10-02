@@ -388,6 +388,31 @@ export function openEisspeicherWp() {
   return true;
 }
 
+/** Ein vom Nutzer überschriebenes Feld folgt nicht mehr automatisch der Heizleistung. */
+export function eisFeldManuell(input) {
+  if (input) input.dataset.manuell = '1';
+  _eisStatusAnzeigen();
+}
+
+/** Ein Feld wieder an den Faustwert koppeln. */
+export function eisFeldAutomatisch(id) {
+  const input = document.getElementById(id);
+  if (input) delete input.dataset.manuell;
+  calcGeoThermie(); redrawGeo(); updateAllDeckungen();
+}
+
+function _eisStatusAnzeigen() {
+  [['eis-volumen', 'eis-volumen-status'], ['eis-absorber', 'eis-absorber-status']].forEach(([feld, statusId]) => {
+    const input = document.getElementById(feld), status = document.getElementById(statusId);
+    if (!input || !status) return;
+    const manuell = input.dataset.manuell === '1';
+    status.className = `eis-auto ${manuell ? 'manuell' : 'auto'}`;
+    status.innerHTML = manuell
+      ? `manuell · <button type="button" data-click="eisFeldAutomatisch('${feld}')" title="Wieder automatisch aus der Heizleistung (Faustwert)">Faustwert</button>`
+      : 'auto aus Heizleistung';
+  });
+}
+
 /** Faustwerte: ≈ 1 m³ Speicher und ≈ 2,6 m² Absorber je kW WP-Heizleistung. */
 export function eisNachFaustwertAuslegen(neuRechnen = true) {
   const kw = parseFloat(document.getElementById('geo-heizlast')?.value) ||
@@ -396,6 +421,7 @@ export function eisNachFaustwertAuslegen(neuRechnen = true) {
   const v = eisAuslegungVorschlag(kw);
   document.getElementById('eis-volumen').value = v.volumenM3;
   document.getElementById('eis-absorber').value = v.absorberM2;
+  ['eis-volumen', 'eis-absorber'].forEach(id => { delete document.getElementById(id).dataset.manuell; });
   if (neuRechnen) { calcGeoThermie(); redrawGeo(); updateAllDeckungen(); }
   return true;
 }
@@ -403,6 +429,14 @@ export function eisNachFaustwertAuslegen(neuRechnen = true) {
 function _calcEisQuelle(heizlastKw, waermeJahr, jaz) {
   const effEl = document.getElementById('geo-leistung-eff');
   if (effEl) effEl.value = heizlastKw > 0 ? heizlastKw : 0;
+  // Nicht überschriebene Felder folgen der Heizleistung (Faustwert)
+  if (heizlastKw > 0) {
+    const vorschlag = eisAuslegungVorschlag(heizlastKw);
+    const volEl = document.getElementById('eis-volumen'), absEl = document.getElementById('eis-absorber');
+    if (volEl && volEl.dataset.manuell !== '1') volEl.value = vorschlag.volumenM3;
+    if (absEl && absEl.dataset.manuell !== '1') absEl.value = vorschlag.absorberM2;
+  }
+  _eisStatusAnzeigen();
   const volumen = parseFloat(document.getElementById('eis-volumen')?.value) || 0;
   const absorber = parseFloat(document.getElementById('eis-absorber')?.value) || 0;
   const geo = eisGeometrie(volumen);
@@ -411,6 +445,9 @@ function _calcEisQuelle(heizlastKw, waermeJahr, jaz) {
   set('eis-r-invest', volumen > 0 ? `${Math.round(eisInvest(volumen, absorber) / 1000).toLocaleString('de-DE')} T€ (ohne WP)` : '—');
   const faust = heizlastKw > 0 ? eisAuslegungVorschlag(heizlastKw) : null;
   set('eis-r-faustwert', faust ? `${faust.volumenM3} m³ · ${faust.absorberM2} m² bei ${Math.round(heizlastKw)} kW` : '—');
+  // Umgekehrte Richtung nur als Information: für welche WP-Leistung Speicher und Absorber nach Faustwert reichen
+  const kwSpeicher = volumen / EIS.m3ProKw, kwAbsorber = absorber / EIS.absorberM2ProKw;
+  set('eis-r-reicht', volumen > 0 ? `≈ ${Math.round(Math.min(kwSpeicher, kwAbsorber || kwSpeicher))} kW WP (Speicher ${Math.round(kwSpeicher)} kW · Absorber ${Math.round(kwAbsorber)} kW)` : '—');
   const strom = waermeJahr > 0 ? waermeJahr / jaz : null;
   set('geo-r-strom', strom ? `${strom.toFixed(0)} MWh/a` : '—');
   set('geo-r-erde', strom ? `${(waermeJahr - strom).toFixed(0)} MWh/a` : '—');
@@ -472,6 +509,7 @@ export function clearGeo() {
   window.geoThermie = null;
   const quelleEl = document.getElementById('geo-quelle');
   if (quelleEl) { quelleEl.value = 'sonden'; geoQuelleAnzeigen(); }
+  ['eis-volumen', 'eis-absorber'].forEach(id => { const element = document.getElementById(id); if (element) delete element.dataset.manuell; });
   moBeiDeaktivierung('geo');
   removeErzeugerElektroAsset('geo');
   if (window.geoLayerGroup) window.geoLayerGroup.clearLayers();

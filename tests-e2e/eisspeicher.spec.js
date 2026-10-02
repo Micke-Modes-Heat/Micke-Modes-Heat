@@ -42,6 +42,23 @@ test('dist: Eisspeicher begrenzt die Sole-WP, Luft-WP und Gaskessel übernehmen'
     };
   });
   expect(ui).toEqual({ volumen: '80', absorber: '210', sondenVersteckt: true, titel: 'Eisspeicher-Wärmepumpe', bohrmeter: '—' });
+  // Kopplung: Speicher und Absorber folgen der Heizleistung, bis sie überschrieben werden
+  const kopplung = await page.evaluate(() => {
+    const heiz = document.getElementById('geo-heizlast'), vol = document.getElementById('eis-volumen');
+    heiz.value = 100; calcGeoThermie();
+    const auto = [vol.value, document.getElementById('eis-absorber').value, document.getElementById('eis-volumen-status').textContent];
+    vol.value = 60; eisFeldManuell(vol);
+    heiz.value = 150; calcGeoThermie();
+    const manuell = [vol.value, document.getElementById('eis-absorber').value, document.getElementById('eis-volumen-status').textContent.trim(),
+      document.getElementById('eis-r-reicht').textContent];
+    eisFeldAutomatisch('eis-volumen');
+    return { auto, manuell, zurueck: vol.value };
+  });
+  expect(kopplung.auto).toEqual(['100', '260', 'auto aus Heizleistung']);
+  expect(kopplung.manuell.slice(0, 2)).toEqual(['60', '390']);
+  expect(kopplung.manuell[2]).toContain('manuell');
+  expect(kopplung.manuell[3]).toContain('≈ 60 kW');
+  expect(kopplung.zurueck).toBe('150');
   const zurueck = await page.evaluate(() => { document.getElementById('geo-quelle').value = 'sonden'; geoQuelleWechseln(); return document.getElementById('geo-sonden-block').hidden; });
   expect(zurueck).toBe(false);
 });

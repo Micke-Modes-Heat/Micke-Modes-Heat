@@ -2695,12 +2695,12 @@
     <p class="eis-erklaerung">Ein erdverlegter Wasserspeicher dient der Wärmepumpe als Quelle. Sie entzieht erst fühlbare Wärme, dann beim Gefrieren die Kristallisationswärme (≈ 93 kWh/m³). Solar-Luftabsorber und das umgebende Erdreich regenerieren den Speicher. Ist der zulässige Vereisungsgrad erreicht, übernehmen die nachfolgenden Erzeuger der Einsatzreihenfolge (z. B. Luft-WP oder Gaskessel).</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <div class="inp-group">
-        <label class="inp-label" for="eis-volumen">Speichervolumen (m³)</label>
-        <input class="inp-field" type="number" id="eis-volumen" value="" min="0" step="5" placeholder="Faustwert" data-change="calcGeoThermie(); redrawGeo(); updateAllDeckungen()"/>
+        <label class="inp-label" for="eis-volumen">Speichervolumen (m³) <span class="eis-auto" id="eis-volumen-status"></span></label>
+        <input class="inp-field" type="number" id="eis-volumen" value="" min="0" step="5" placeholder="Faustwert" data-input="eisFeldManuell(this)" data-change="calcGeoThermie(); redrawGeo(); updateAllDeckungen()"/>
       </div>
       <div class="inp-group">
-        <label class="inp-label" for="eis-absorber">Solar-Luftabsorber (m²)</label>
-        <input class="inp-field" type="number" id="eis-absorber" value="" min="0" step="5" placeholder="Faustwert" data-change="calcGeoThermie(); updateAllDeckungen()"/>
+        <label class="inp-label" for="eis-absorber">Solar-Luftabsorber (m²) <span class="eis-auto" id="eis-absorber-status"></span></label>
+        <input class="inp-field" type="number" id="eis-absorber" value="" min="0" step="5" placeholder="Faustwert" data-input="eisFeldManuell(this)" data-change="calcGeoThermie(); updateAllDeckungen()"/>
       </div>
       <div class="inp-group">
         <label class="inp-label" for="eis-vereisung" title="Anteil des Wassers, der höchstens gefrieren darf (Herstellerangabe; konservativ 85 %)">max. Vereisungsgrad (%)</label>
@@ -2714,6 +2714,7 @@
     <div class="eis-kennwerte">
       <span>Latente Kapazität</span><span id="eis-r-kapazitaet">—</span>
       <span>Faustwert</span><span id="eis-r-faustwert">—</span>
+      <span>Speicher reicht für</span><span id="eis-r-reicht">—</span>
       <span>Investition Quelle</span><span id="eis-r-invest">—</span>
     </div>
     <div class="eis-kennwerte" id="eis-ergebnis"></div>
