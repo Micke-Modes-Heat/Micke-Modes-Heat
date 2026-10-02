@@ -47,7 +47,7 @@ export const GUTACHTEN_MAX_EBENE = 3;
  */
 const G = (ebene, titel) => ({ ebene, titel });
 export const GUTACHTEN_STANDARD_GLIEDERUNG = [
-  G(1, 'Einleitung'), G(2, 'Ziele und Grundsätze'), G(2, 'Liegenschaftsinformationen'), G(2, 'Hochbau'),
+  G(1, 'Einleitung'), G(2, 'Ziele und Grundsätze'), G(2, 'Liegenschaftsinformationen'), G(2, 'Hochbau'), G(3, 'Gebäudebestand (Ist)'), G(3, 'Bauliche Veränderungen'), G(3, 'Entwicklung von Wärmebedarf und Heizlast'),
   G(1, 'Wärmeversorgung'),
   G(2, 'Ist-Zustand Wärme'), G(3, 'Erdgasanschluss'), G(3, 'Wärmeversorgungsnetz (WVN)'), G(3, 'Wärmetechnische Hausstation (WH)'),
   G(3, 'Erdgasdaten'), G(3, 'Heizöl-EL-Daten'), G(3, 'Feste Biomasse'), G(3, 'Jahresvergleich der Daten'),

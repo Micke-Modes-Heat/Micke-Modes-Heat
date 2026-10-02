@@ -99,6 +99,9 @@ function absatz(...teile) {
   return out;
 }
 
+/** Hilfen für verwandte Textmodule (Gebäudekapitel): gleiche Zahlenformate, Platzhalter und Absatzbildung. */
+export const wtHilfen = { num, ok, nf, pct, liste, summe, kleinN, absatz };
+
 /** Absätze als Klartext — Platzhalter als „[Feld]“ bzw. mit Wert. Für Tests und die Zwischenablage. */
 export function wtKlartext(absaetze) {
   return absaetze.map(a => a.map(s => (typeof s === 'string' ? s : (s.wert || `[${s.feld}]`))).join('')).join('\n\n');

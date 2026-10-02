@@ -20,6 +20,7 @@ import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
 import {
   wtIstZustand, wtDimensionierungWea, wtWvn, wtHausstation, wtVariantenvergleich, wtWirtschaftlichkeit, wtEmpfehlung, wtFazit,
 } from './lib/gutachten-waerme-texte.js';
+import { gbAuswertung, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1) DESIGN-TOKENS — gelten für ALLE Gutachten-Grafiken
@@ -989,7 +990,9 @@ export function ggRenderBalken(cfg, T = GG_THEME) {
     let max = 0;
     for (const g of gruppen) for (const v of summeJe(g)) if (v > max) max = v;
     if (punkte) max /= 0.58;
-    const yStep = ggNiceStep(max / 8);
+    // Zählwerte (Gebäude): ganzzahlige Schritte statt 2,5 mit gerundeter Beschriftung
+    const yStepRoh = ggNiceStep(max / 8);
+    const yStep = cfg.yGanzzahl ? ([1, 2, 5, 10, 20, 50, 100, 200, 500].find(x => x >= yStepRoh) || Math.ceil(yStepRoh)) : yStepRoh;
     const yMax  = Math.max(yStep, Math.ceil(max / yStep) * yStep);
     const yOf = v => plotB - (v / yMax) * plotH;
 
@@ -1288,42 +1291,21 @@ const ggFeldZahl = id => { const v = parseFloat(document.getElementById(id)?.val
 /** Kurznamen der Variantenübersicht → Erzeugerschlüssel des Dispatch (für ältere Zwischenstände ohne `erzeugerDetail`). */
 const GG_TYP_KEY = { LWWP: 'lwwp', Geothermie: 'geo', 'Fließgewässer-WP': 'fg', Gaskessel: 'gaskessel', 'Gaskessel (Auto)': '_autoGk', 'BHKW/KWK': 'bhkw', Stromkessel: 'stromkessel' };
 
-/** Bauliche Entwicklung der Gebäude: Zahlen, Jahresverlauf des Bedarfs und die Ereignisse (Neubau, Abriss, Sanierung). */
-function ggBauProjekt() {
+/** Gebäudeauswertung des Projekts: Ist-Bestand (Baujahr vor 2026), Jahresverlauf und Ereignisse (Neubau, Abriss, Sanierung). */
+export function ggGebaeudeAuswertung() {
   const w = window;
-  const stats = w.getComputedStats;
-  // Stichjahr für Bestand und Neubau: das laufende Jahr (mindestens 2026). Der Zeitregler taugt nicht, er beginnt beim ältesten Baujahr.
-  const basisJahr = Math.max(2026, new Date().getFullYear());
-  const geb = (w.gebaeude || []).filter(g => !(typeof w.isExcluded === 'function' && w.isExcluded(g.id)));
-  const jahrVon = v => { const j = parseInt(v, 10); return Number.isFinite(j) ? j : null; };
-  const bj = g => jahrVon(g.baujahr), aj = g => jahrVon(g.abrissjahr);
-  const neubauten = geb.filter(g => bj(g) > basisJahr);
-  const projekt = {
-    basisJahr, lastgangJahr: w.globalYear,
-    anzahl: {
-      gesamt: geb.length, neubau: neubauten.length, bestand: geb.length - neubauten.length,
-      abriss: geb.filter(g => aj(g) > basisJahr && aj(g) < 9999).length, saniert: geb.filter(g => (g.sanierungen || []).some(s => s.jahr > basisJahr)).length,
-    },
-    bedarfsverlauf: [], ereignisse: [],
-  };
-  if (typeof stats !== 'function' || !geb.length) return projekt;
+  if (typeof w.getComputedStats !== 'function') return gbAuswertung([], () => ({}));
+  return gbAuswertung(w.gebaeude || [], w.getComputedStats, { ausgeschlossen: id => typeof w.isExcluded === 'function' && w.isExcluded(id) });
+}
 
-  const sum = (jahr, feld) => geb.reduce((s, g) => s + (stats(g, jahr)[feld] || 0), 0);
-  const ereignis = (jahr, art, delta) => {
-    let e = projekt.ereignisse.find(x => x.jahr === jahr && x.art === art);
-    if (!e) projekt.ereignisse.push(e = { jahr, art, anzahl: 0, deltaMwh: 0 });
-    e.anzahl++; e.deltaMwh += delta;
+/** Bauliche Entwicklung im Format der Wärme-Textbausteine (aus ggGebaeudeAuswertung). */
+function ggBauProjekt() {
+  const a = ggGebaeudeAuswertung();
+  return {
+    basisJahr: a.stichjahr, lastgangJahr: window.globalYear, anzahl: a.anzahl,
+    bedarfsverlauf: a.jahre.map(j => ({ jahr: j.jahr, bedarfMwh: j.bedarfMwh, heizlastKw: j.heizlastKw })),
+    ereignisse: a.ereignisseJahr.map(e => ({ jahr: e.jahr, art: e.art, anzahl: e.anzahl, deltaMwh: e.deltaMwh })),
   };
-  for (const g of geb) {
-    if (bj(g) > basisJahr) ereignis(bj(g), 'neubau', stats(g, bj(g)).waerme || 0);
-    if (aj(g) > basisJahr && aj(g) < 9999) ereignis(aj(g), 'abriss', -(stats(g, aj(g) - 1).waerme || 0));
-    for (const s of g.sanierungen || []) {
-      if (s.jahr > basisJahr) ereignis(s.jahr, 'sanierung', (stats(g, s.jahr).waerme || 0) - (stats(g, s.jahr - 1).waerme || 0));
-    }
-  }
-  const letztes = Math.min(2050, Math.max(basisJahr, ...projekt.ereignisse.map(e => e.jahr)));
-  for (let j = basisJahr; j <= letztes; j++) projekt.bedarfsverlauf.push({ jahr: j, bedarfMwh: sum(j, 'waerme'), heizlastKw: sum(j, 'heizlast') });
-  return projekt;
 }
 
 /** Herkunft des Wärmelastgangs und der Gebäudewerte — Messung oder Synthese, Klima, gesetzte oder geschätzte Werte. */
@@ -1413,6 +1395,48 @@ export function ggWaermeDaten() {
   });
 
   return { lastgang, projekt: ggBauProjekt(), herkunft: ggWaermeHerkunft(), netz, gebaeude, wirtschaft, varianten };
+}
+
+/* ── Hochbau (Kapitel 1.3): Gebäudebestand, bauliche Veränderungen, Entwicklung von Bedarf und Heizlast ──
+ * Zahlen und Texte kommen aus lib/gutachten-gebaeude.js; hier entstehen nur die Blätter und Tabellen. */
+const GG_SEG_FARBEN = { unsaniert: '#FF0000', saniert: '#F7A8A8', neubau: '#3F9C3F' };
+const GG_ART_FARBEN = { neubau: '#3F9C3F', abriss: '#8A8F8A', sanierung: '#E0A126' };
+const GG_ART_NAMEN = { neubau: 'Neubau', abriss: 'Abriss', sanierung: 'Sanierung' };
+
+function ggGebKopf(cfg) {
+  cfg.ort = cfg.ort || ggLiegenschaft();
+  cfg.meta['Datum'] = cfg.meta['Datum'] || ggHeute();
+  ggMetaDefaults(cfg, 'pdBearbeiterWaerme');
+}
+const ggGebLeer = cfg => { cfg.kategorien = []; cfg.gruppen = []; cfg.punkte = null; cfg.kpiLinks = []; cfg.kpiRechts = []; };
+
+/** Punktreihe ausdünnen: Anfang, Ende, Maximum und etwa gleichmäßig verteilt höchstens `max` Werte, der Rest 0 (wird nicht gezeichnet). */
+function ggDuenne(werte, max = 9) {
+  const n = werte.length;
+  if (n <= max) return werte.slice();
+  const schritt = Math.ceil((n - 1) / (max - 1));
+  const behalten = new Set([0, n - 1, werte.indexOf(Math.max(...werte))]);
+  for (let i = 0; i < n; i += schritt) behalten.add(i);
+  return werte.map((v, i) => (behalten.has(i) ? v : 0));
+}
+
+const ggGebVorlage = (titel, achseY, achseX, leer, yGanzzahl = false) => ({
+  eyebrow: 'Hochbau', titel, ort: '', meta: { 'Datum': '', 'Bearbeiter': '', 'WE-Nr.': '' },
+  achseY, achseX, leer, yGanzzahl, kategorien: [], gruppen: [], punkte: null, summenLabel: true, kpiLinks: [], kpiRechts: [],
+});
+
+/** Gestapelte Säulen je Jahr (Bestand unsaniert, saniert, Neubau) mit einer Punktreihe auf eigener Skala. */
+function ggGebJahresSaeulen(cfg, wert, punkt, einheitPunkt, dezPunkt = 0, faktor = 1) {
+  const a = ggGebaeudeAuswertung();
+  ggGebKopf(cfg);
+  if (a.jahre.length < 2) { ggGebLeer(cfg); return '⚠ Keine baulichen Veränderungen hinterlegt — keine Entwicklung darzustellen.'; }
+  cfg.kategorien = a.jahre.map(j => String(j.jahr));
+  const seg = (key, label) => ({ label, farbe: GG_SEG_FARBEN[key], werte: a.jahre.map(j => wert(j.segmente[key]) / faktor) });
+  const segmente = [seg('unsaniert', 'Bestand unsaniert'), seg('saniert', 'Bestand saniert'), seg('neubau', 'Neubau')].filter(x => x.werte.some(v => v > 0));
+  cfg.gruppen = [{ label: '', segmente }];
+  cfg.punkte = { label: punkt.label, einheit: einheitPunkt, dez: dezPunkt, farbe: GG_THEME.text.strong, werte: ggDuenne(a.jahre.map(j => (Number.isFinite(punkt.wert(j)) ? punkt.wert(j) : 0))) };
+  cfg.summenLabel = a.jahre.length <= 12;
+  return `✓ ${a.jahre.length} Jahre (${a.jahre[0].jahr} bis ${a.jahre.at(-1).jahr}) aus den Gebäudedaten berechnet.`;
 }
 
 /** Textbaustein-Blatt: Absätze (HTML mit ggTextFeld-Platzhaltern) im Stil der Gutachten-Grafiken. */
@@ -1889,6 +1913,231 @@ const GG_FIGUREN = [
   },
 
   // ── Gutachtentexte Wärme (Logik und Fallunterscheidungen: lib/gutachten-waerme-texte.js) ──
+  // ── Hochbau (1.3): Gebäudebestand, bauliche Veränderungen, Entwicklung (Logik: lib/gutachten-gebaeude.js) ──
+  {
+    id: 'gebaeude-bestand-text', istText: true, reihe: -10, kapitel: '1.3.1 Gebäudebestand (Ist)',
+    titel: 'Gutachtentext: Gebäudebestand', datei: 'gebaeude-bestand-text',
+    hinweis: 'Überblick über den Ist-Bestand (Baujahr vor 2026): Anzahl, Fläche, Nutzung, Baualter, spezifischer Bedarf, Großverbraucher und Auffälligkeiten, Herkunft der Gebäudewerte (gesetzt oder geschätzt) und Datenlücken.',
+    render: () => ggWaermeTextBlatt(gbTextBestand(ggGebaeudeAuswertung())), config: {},
+  },
+  {
+    id: 'gebaeude-baualter', autoSync: true, reihe: 10, kapitel: '1.3.1 Gebäudebestand (Ist)',
+    titel: 'Gebäude nach Baualtersklasse', datei: 'gebaeude-baualter',
+    hinweis: 'Anzahl der Bestandsgebäude je Baualtersklasse (Wärmeschutz-Meilensteine) mit dem Wärmebedarf der Klasse als Punktreihe.',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Gebäude nach Baualtersklasse', 'Anzahl Gebäude', 'Baujahr', 'Kein Gebäudebestand vorhanden — Gebäude mit Baujahr vor 2026 anlegen oder importieren.', true),
+    ausProjekt(cfg) {
+      const a = ggGebaeudeAuswertung();
+      ggGebKopf(cfg);
+      const i = a.ist;
+      if (!i.anzahl) { ggGebLeer(cfg); return '⚠ Kein Gebäudebestand (Baujahr vor 2026).'; }
+      const k = i.baualter.filter(x => x.anzahl > 0 || x.label !== 'ohne Angabe');
+      cfg.kategorien = k.map(x => x.label);
+      cfg.gruppen = [{ label: '', segmente: [{ label: 'Anzahl Gebäude', farbe: GG_SEG_FARBEN.unsaniert, werte: k.map(x => x.anzahl) }] }];
+      cfg.punkte = { label: 'Wärmebedarf', einheit: 'MWh/a', farbe: GG_THEME.text.strong, werte: k.map(x => x.bedarfMwh) };
+      cfg.summenLabel = true;
+      cfg.kpiLinks = [{ wert: ggNum(i.anzahl) + ' Gebäude', label: 'Gebäudebestand' }, { wert: ggNum(i.bedarfMwh) + ' MWh/a', label: 'Wärmebedarf Bestand' }];
+      cfg.kpiRechts = [{ wert: Number.isFinite(i.baujahrMittel) ? ggNum(i.baujahrMittel) : '—', label: 'mittleres Baujahr' },
+                       { wert: ggNum(i.anteilVor1979Pct) + ' %', label: 'Gebäude vor 1979', highlight: true }];
+      return `✓ ${ggNum(i.anzahl)} Bestandsgebäude in ${k.length} Baualtersklassen.`;
+    },
+  },
+  {
+    id: 'gebaeude-nutzung', autoSync: true, reihe: 20, kapitel: '1.3.1 Gebäudebestand (Ist)',
+    titel: 'Wärmebedarf nach Nutzung', datei: 'gebaeude-nutzung',
+    hinweis: 'Wärmebedarf des Bestands je Nutzungsart mit dem spezifischen Bedarf (flächengewichtet) als Punktreihe. Mehr als sieben Nutzungen werden zu „weitere“ zusammengefasst.',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Wärmebedarf nach Nutzung', 'Wärmebedarf in MWh/a', 'Nutzung', 'Kein Gebäudebestand vorhanden.'),
+    ausProjekt(cfg) {
+      const a = ggGebaeudeAuswertung();
+      ggGebKopf(cfg);
+      const i = a.ist;
+      if (!i.anzahl) { ggGebLeer(cfg); return '⚠ Kein Gebäudebestand (Baujahr vor 2026).'; }
+      let n = i.nutzung;
+      if (n.length > 7) {
+        const rest = n.slice(6);
+        n = [...n.slice(0, 6), { label: 'weitere', anzahl: rest.reduce((x, y) => x + y.anzahl, 0), flaecheM2: rest.reduce((x, y) => x + y.flaecheM2, 0), bedarfMwh: rest.reduce((x, y) => x + y.bedarfMwh, 0) }];
+      }
+      cfg.kategorien = n.map(x => x.label);
+      cfg.gruppen = [{ label: '', segmente: [{ label: 'Wärmebedarf', farbe: GG_SEG_FARBEN.unsaniert, werte: n.map(x => x.bedarfMwh) }] }];
+      cfg.punkte = { label: 'spezifischer Bedarf', einheit: 'kWh/m²', farbe: GG_THEME.text.strong, werte: n.map(x => (x.flaecheM2 > 0 ? (x.bedarfMwh * 1000) / x.flaecheM2 : 0)) };
+      cfg.summenLabel = true;
+      cfg.kpiLinks = [{ wert: ggNum(i.bedarfMwh) + ' MWh/a', label: 'Wärmebedarf Bestand' }, { wert: ggNum(i.flaecheM2) + ' m²', label: 'Fläche Bestand' }];
+      cfg.kpiRechts = [{ wert: Number.isFinite(i.spezKwhM2) ? ggNum(i.spezKwhM2) + ' kWh/m²' : '—', label: 'spez. Wärmebedarf Ø', highlight: true }];
+      return `✓ ${n.length} Nutzungsarten ausgewertet.`;
+    },
+  },
+  {
+    id: 'gebaeude-spezifisch', autoSync: true, reihe: 30, kapitel: '1.3.1 Gebäudebestand (Ist)',
+    titel: 'Verteilung des spezifischen Wärmebedarfs', datei: 'gebaeude-spezifisch',
+    hinweis: 'Anzahl der Bestandsgebäude je Klasse des spezifischen Wärmebedarfs in kWh/(m²·a) mit dem Wärmebedarf der Klasse als Punktreihe. Gebäude ohne Flächenangabe sind nicht enthalten.',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Verteilung des spezifischen Wärmebedarfs', 'Anzahl Gebäude', 'spezifischer Wärmebedarf in kWh/(m²·a)', 'Keine Gebäude mit Fläche und Wärmebedarf vorhanden.', true),
+    ausProjekt(cfg) {
+      const a = ggGebaeudeAuswertung();
+      ggGebKopf(cfg);
+      const k = a.ist.spezKlassen;
+      if (!k.some(x => x.anzahl > 0)) { ggGebLeer(cfg); return '⚠ Keine Gebäude mit Fläche und Wärmebedarf.'; }
+      cfg.kategorien = k.map(x => x.label);
+      cfg.gruppen = [{ label: '', segmente: [{ label: 'Anzahl Gebäude', farbe: GG_SEG_FARBEN.unsaniert, werte: k.map(x => x.anzahl) }] }];
+      cfg.punkte = { label: 'Wärmebedarf', einheit: 'MWh/a', farbe: GG_THEME.text.strong, werte: k.map(x => x.bedarfMwh) };
+      cfg.summenLabel = true;
+      const gesamt = k.reduce((x, y) => x + y.anzahl, 0);
+      const haupt = [...k].sort((x, y) => y.anzahl - x.anzahl)[0];
+      cfg.kpiLinks = [{ wert: ggNum(gesamt) + ' Gebäude', label: 'mit Fläche und Bedarf' }];
+      cfg.kpiRechts = [{ wert: haupt.label + ' kWh/m²', label: 'häufigste Klasse', prozent: ggNum((haupt.anzahl / gesamt) * 100) + ' %', highlight: true }];
+      return `✓ ${ggNum(gesamt)} Gebäude in ${k.filter(x => x.anzahl).length} Klassen.`;
+    },
+  },
+  {
+    id: 'gebaeude-uebersicht', autoSync: true, reihe: 40, kapitel: '1.3.1 Gebäudebestand (Ist)',
+    titel: 'Übersicht Gebäudebestand', datei: 'gebaeude-uebersicht',
+    hinweis: 'Die 25 Bestandsgebäude mit dem höchsten Wärmebedarf samt Summe über alle Gebäude. Spezifischer Bedarf = Bedarf ÷ Fläche.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Hochbau', titel: 'Übersicht Gebäudebestand', leer: 'Kein Gebäudebestand vorhanden.',
+      spalten: [{ label: 'Gebäude', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const a = ggGebaeudeAuswertung();
+      cfg.spalten = [
+        { label: 'Gebäude', weight: 2.3, align: 'left', mono: false }, { label: 'Nutzung', weight: 1.2, align: 'left', mono: false },
+        { label: 'Baujahr', weight: 0.8 }, { label: 'Fläche', weight: 1 }, { label: 'Bedarf', weight: 1.1 }, { label: 'spez.', weight: 1.2 }, { label: 'Heizlast', weight: 1 },
+      ];
+      const i = a.ist;
+      if (!i.anzahl) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Kein Gebäudebestand (Baujahr vor 2026).'; }
+      const Z = 25;
+      const z = i.zeilen.slice(0, Z).map(g => ({ werte: [g.name, g.nutzung, g.baujahr ?? '—', g.flaecheM2 > 0 ? ggNum(g.flaecheM2) + ' m²' : '—', ggNum(g.bedarfMwh) + ' MWh', Number.isFinite(g.spezKwhM2) ? ggNum(g.spezKwhM2) + ' kWh/m²' : '—', ggNum(g.heizlastKw) + ' kW'] }));
+      const rest = i.zeilen.slice(Z);
+      if (rest.length) z.push({ werte: [`weitere ${ggNum(rest.length)} Gebäude`, '', '', ggNum(rest.reduce((x, g) => x + g.flaecheM2, 0)) + ' m²', ggNum(rest.reduce((x, g) => x + g.bedarfMwh, 0)) + ' MWh', '', ggNum(rest.reduce((x, g) => x + g.heizlastKw, 0)) + ' kW'] });
+      z.push({ highlight: true, werte: [`Summe ${ggNum(i.anzahl)} Gebäude`, '', '', ggNum(i.flaecheM2) + ' m²', ggNum(i.bedarfMwh) + ' MWh', Number.isFinite(i.spezKwhM2) ? ggNum(i.spezKwhM2) + ' kWh/m²' : '—', ggNum(i.heizlastKw) + ' kW'] });
+      cfg.zeilen = z;
+      cfg.fussnote = `Werte für ${a.istJahr} · sortiert nach Wärmebedarf · spez. = Bedarf ÷ Fläche · Heizlast: Summe der Einzelheizlasten`;
+      return `✓ ${Math.min(Z, i.anzahl)} von ${ggNum(i.anzahl)} Gebäuden aufgeführt.`;
+    },
+  },
+  {
+    id: 'gebaeude-veraenderung-text', istText: true, reihe: -10, kapitel: '1.3.2 Bauliche Veränderungen',
+    titel: 'Gutachtentext: Bauliche Veränderungen', datei: 'gebaeude-veraenderung-text',
+    hinweis: 'Neubau, Abriss und energetische Sanierung ab 2026: Zahl, Zeitraum, Bedarfs- und Heizlastwirkung, Vergleich der Neubauten mit dem Bestand, Sanierungsquote im Vergleich zum üblichen Niveau und Bilanz.',
+    render: () => ggWaermeTextBlatt(gbTextVeraenderung(ggGebaeudeAuswertung())), config: {},
+  },
+  {
+    id: 'gebaeude-veraenderungen', autoSync: true, reihe: 10, kapitel: '1.3.2 Bauliche Veränderungen',
+    titel: 'Bauliche Veränderungen nach Jahr', datei: 'gebaeude-veraenderungen',
+    hinweis: 'Je Jahr und Art (Neubau, Abriss, Sanierung) die betroffenen Gebäude mit Änderung von Wärmebedarf und Heizlast. Bis 40 Zeilen.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Hochbau', titel: 'Bauliche Veränderungen nach Jahr', leer: 'Keine baulichen Veränderungen hinterlegt.',
+      spalten: [{ label: 'Jahr', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const a = ggGebaeudeAuswertung();
+      cfg.spalten = [
+        { label: 'Jahr', weight: 0.7, align: 'left', mono: false }, { label: 'Veränderung', weight: 1.3, align: 'left', mono: false },
+        { label: 'Gebäude', weight: 3, align: 'left', mono: false }, { label: 'Wärmebedarf', weight: 1.3 }, { label: 'Heizlast', weight: 1.1 },
+      ];
+      if (!a.ereignisseJahr.length) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine baulichen Veränderungen hinterlegt.'; }
+      const vz = v => (v > 0.05 ? '+' : v < -0.05 ? '−' : '±');
+      const Z = 40;
+      cfg.zeilen = a.ereignisseJahr.slice(0, Z).map(e => ({
+        akzent: GG_ART_FARBEN[e.art],
+        werte: [String(e.jahr), GG_ART_NAMEN[e.art], e.namen.length <= 3 ? e.namen.join(', ') : `${e.namen.slice(0, 2).join(', ')} und ${ggNum(e.namen.length - 2)} weitere`,
+                `${vz(e.deltaMwh)}${ggNum(Math.abs(e.deltaMwh))} MWh/a`, `${vz(e.deltaKw)}${ggNum(Math.abs(e.deltaKw))} kW`],
+      }));
+      cfg.fussnote = `Änderung gegenüber dem Vorjahr · Heizlast: Summe der Einzelheizlasten` + (a.ereignisseJahr.length > Z ? ` · ${ggNum(a.ereignisseJahr.length - Z)} weitere Zeilen nicht dargestellt` : '');
+      return `✓ ${a.ereignisseJahr.length} Zeilen (Jahr und Art).`;
+    },
+  },
+  {
+    id: 'gebaeude-entwicklung-text', istText: true, reihe: -10, kapitel: '1.3.3 Entwicklung von Wärmebedarf und Heizlast',
+    titel: 'Gutachtentext: Entwicklung von Wärmebedarf und Heizlast', datei: 'gebaeude-entwicklung-text',
+    hinweis: 'Entwicklung von Wärmebedarf, Heizlast und spezifischem Bedarf vom Ist-Zustand bis zum letzten Ereignis; Verlaufsform (steigend, fallend, erst steigend dann fallend) mit Folgerung für die Auslegung. Nennt die Annahmen der Rechnung.',
+    render: () => ggWaermeTextBlatt(gbTextEntwicklung(ggGebaeudeAuswertung(), { lastgangJahr: window.globalYear })), config: {},
+  },
+  {
+    id: 'gebaeude-bedarf-entwicklung', autoSync: true, reihe: 10, kapitel: '1.3.3 Entwicklung von Wärmebedarf und Heizlast',
+    titel: 'Entwicklung des Wärmebedarfs', datei: 'gebaeude-bedarf-entwicklung',
+    hinweis: 'Wärmebedarf je Jahr, gestapelt nach Bestand unsaniert, Bestand saniert und Neubau, mit der Summe der Heizlasten als Punktreihe.',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Entwicklung des Wärmebedarfs', 'Wärmebedarf in MWh/a', 'Jahr', 'Keine baulichen Veränderungen hinterlegt.'),
+    ausProjekt(cfg) {
+      const r = ggGebJahresSaeulen(cfg, s => s.bedarfMwh, { label: 'Summe Heizlast', wert: j => j.heizlastKw }, 'kW');
+      const a = ggGebaeudeAuswertung();
+      if (a.jahre.length >= 2) {
+        const f = a.jahre[0], l = a.jahre.at(-1);
+        cfg.kpiLinks = [{ wert: ggNum(f.bedarfMwh) + ' MWh/a', label: `Wärmebedarf ${f.jahr} (Ist)` }, { wert: ggNum(l.bedarfMwh) + ' MWh/a', label: `Wärmebedarf ${l.jahr}` }];
+        cfg.kpiRechts = [{ wert: ggNum(f.heizlastKw) + ' kW', label: `Heizlast ${f.jahr}` }, { wert: ggNum(l.heizlastKw) + ' kW', label: `Heizlast ${l.jahr}`, highlight: true }];
+      }
+      return r;
+    },
+  },
+  {
+    id: 'gebaeude-heizlast-entwicklung', autoSync: true, reihe: 20, kapitel: '1.3.3 Entwicklung von Wärmebedarf und Heizlast',
+    titel: 'Entwicklung der Heizlast', datei: 'gebaeude-heizlast-entwicklung',
+    hinweis: 'Summe der Gebäudeheizlasten je Jahr, gestapelt nach Bestand unsaniert, Bestand saniert und Neubau, mit der spezifischen Heizlast in W/m² als Punktreihe. Die Summe der Einzelheizlasten ist nicht die Spitzenlast des Netzes (Gleichzeitigkeit).',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Entwicklung der Heizlast', 'Heizlast in kW', 'Jahr', 'Keine baulichen Veränderungen hinterlegt.'),
+    ausProjekt(cfg) {
+      const r = ggGebJahresSaeulen(cfg, s => s.heizlastKw, { label: 'spezifische Heizlast', wert: j => j.spezWM2 }, 'W/m²');
+      const a = ggGebaeudeAuswertung();
+      if (a.jahre.length >= 2) {
+        const f = a.jahre[0], l = a.jahre.at(-1), m = a.jahre.reduce((x, y) => (y.heizlastKw > x.heizlastKw ? y : x));
+        cfg.kpiLinks = [{ wert: ggNum(f.heizlastKw) + ' kW', label: `Heizlast ${f.jahr} (Ist)` }, { wert: ggNum(l.heizlastKw) + ' kW', label: `Heizlast ${l.jahr}` }];
+        cfg.kpiRechts = [{ wert: ggNum(m.heizlastKw) + ' kW', label: `Maximum (${m.jahr})`, highlight: true }];
+      }
+      return r;
+    },
+  },
+  {
+    id: 'gebaeude-spez-entwicklung', autoSync: true, reihe: 30, kapitel: '1.3.3 Entwicklung von Wärmebedarf und Heizlast',
+    titel: 'Entwicklung von Fläche und spezifischem Wärmebedarf', datei: 'gebaeude-spez-entwicklung',
+    hinweis: 'Fläche der versorgten Gebäude je Jahr (gestapelt nach Bestand unsaniert, saniert und Neubau) mit dem flächengewichteten spezifischen Wärmebedarf in kWh/(m²·a) als Punktreihe.',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Entwicklung von Fläche und spezifischem Wärmebedarf', 'Fläche in 1.000 m²', 'Jahr', 'Keine baulichen Veränderungen hinterlegt.'),
+    ausProjekt(cfg) {
+      const r = ggGebJahresSaeulen(cfg, s => s.flaecheM2, { label: 'spezifischer Wärmebedarf', wert: j => j.spezKwhM2 }, 'kWh/m²', 0, 1000);
+      const a = ggGebaeudeAuswertung();
+      if (a.jahre.length >= 2) {
+        const f = a.jahre[0], l = a.jahre.at(-1);
+        cfg.kpiLinks = [{ wert: ggNum(f.flaecheM2) + ' m²', label: `Fläche ${f.jahr} (Ist)` }, { wert: ggNum(l.flaecheM2) + ' m²', label: `Fläche ${l.jahr}` }];
+        cfg.kpiRechts = [{ wert: Number.isFinite(f.spezKwhM2) ? ggNum(f.spezKwhM2) + ' kWh/m²' : '—', label: `spez. Bedarf ${f.jahr}` }, { wert: Number.isFinite(l.spezKwhM2) ? ggNum(l.spezKwhM2) + ' kWh/m²' : '—', label: `spez. Bedarf ${l.jahr}`, highlight: true }];
+      }
+      return r;
+    },
+  },
+  {
+    id: 'gebaeude-kennwerte', autoSync: true, reihe: 40, kapitel: '1.3.3 Entwicklung von Wärmebedarf und Heizlast',
+    titel: 'Kennwerte der Entwicklung', datei: 'gebaeude-kennwerte',
+    hinweis: 'Gebäude, Fläche, Wärmebedarf, Heizlast und spezifische Werte für das Ist-Jahr, die Jahre 2030, 2035, 2040, 2045 und 2050 (soweit im Verlauf), das Jahr der höchsten Heizlast und das Endjahr; mit der Veränderung des Bedarfs gegenüber dem Ist.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: {
+      eyebrow: 'Hochbau', titel: 'Kennwerte der Entwicklung', leer: 'Keine baulichen Veränderungen hinterlegt.',
+      spalten: [{ label: 'Jahr', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '',
+    },
+    ausProjekt(cfg) {
+      const a = ggGebaeudeAuswertung();
+      cfg.spalten = [
+        { label: 'Jahr', weight: 0.8, align: 'left', mono: false }, { label: 'Gebäude', weight: 0.9 }, { label: 'Fläche', weight: 1.1 }, { label: 'Bedarf', weight: 1.2 },
+        { label: 'Heizlast', weight: 1 }, { label: 'spez. Bedarf', weight: 1.3 }, { label: 'spez. Heizlast', weight: 1.3 }, { label: 'Δ Bedarf', weight: 1 },
+      ];
+      if (a.jahre.length < 2) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine baulichen Veränderungen hinterlegt.'; }
+      const f = a.jahre[0], l = a.jahre.at(-1), m = a.jahre.reduce((x, y) => (y.heizlastKw > x.heizlastKw ? y : x));
+      const jahre = new Set([f.jahr, l.jahr, m.jahr, ...[2030, 2035, 2040, 2045, 2050].filter(y => y > f.jahr && y < l.jahr)]);
+      cfg.zeilen = a.jahre.filter(j => jahre.has(j.jahr)).map(j => {
+        const d = f.bedarfMwh > 0 ? ((j.bedarfMwh - f.bedarfMwh) / f.bedarfMwh) * 100 : NaN;
+        return {
+          highlight: j.jahr === f.jahr,
+          werte: [j.jahr === f.jahr ? `${j.jahr} (Ist)` : String(j.jahr), ggNum(j.anzahl), ggNum(j.flaecheM2) + ' m²', ggNum(j.bedarfMwh) + ' MWh', ggNum(j.heizlastKw) + ' kW',
+                  Number.isFinite(j.spezKwhM2) ? ggNum(j.spezKwhM2) + ' kWh/m²' : '—', Number.isFinite(j.spezWM2) ? ggNum(j.spezWM2) + ' W/m²' : '—',
+                  j.jahr === f.jahr || !Number.isFinite(d) ? '—' : `${d > 0.05 ? '+' : d < -0.05 ? '−' : '±'}${ggNum(Math.abs(d), 1)} %`],
+        };
+      });
+      cfg.fussnote = `Heizlast: Summe der Einzelheizlasten · spezifische Werte flächengewichtet · hervorgehoben: Ist-Zustand (${f.jahr}) · Maximum der Heizlast ${m.jahr}`;
+      return `✓ ${cfg.zeilen.length} Jahre ausgewählt.`;
+    },
+  },
+
   {
     id: 'waerme-ist-text',
     istText: true,
