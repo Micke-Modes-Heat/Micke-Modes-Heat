@@ -2142,3 +2142,8 @@ body.gm-fokus #view-tabs{display:none;}
 #geo-panel .geo-nur-sonden[hidden]{display:none!important}
 .eis-auto{font:600 8px 'DM Sans',sans-serif;text-transform:none;letter-spacing:0;margin-left:4px}.eis-auto.auto{color:#81c784}.eis-auto.manuell{color:#ffb74d}
 .eis-auto button{border:0;background:none;padding:0;color:#4fc3f7;font:inherit;cursor:pointer;text-decoration:underline}
+
+/* Live-Ansicht: Speicher-Kennwerte zur gewählten Stunde */
+.live-speicher-info{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:flex-end;font-size:9px;color:rgba(255,255,255,.6)}
+.live-speicher-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.live-speicher-chip i{width:7px;height:7px;border-radius:50%;background:var(--c)}.live-speicher-chip b{font:500 9px 'DM Mono',monospace;color:rgba(255,255,255,.9)}

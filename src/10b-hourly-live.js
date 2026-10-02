@@ -1499,15 +1499,14 @@ export function _updateHourlyOverlay(t) {
   // ── Speicher-SOC-Chart zeichnen ──
   const socCanvas = document.getElementById('live-soc-canvas');
   const socPanel = document.getElementById('live-chart-soc');
-  const tssForSoc = window._thermSpeicherState;
-  if (tssForSoc && tssForSoc.socH && tssForSoc.params?.kapKwh > 0) {
+  // Wärmespeicher, Batterie und Eisspeicher gemeinsam: Füllstände als Linien, Werte der Stunde als Kennwerte
+  const speicherSerien = _liveSpeicherSerien();
+  if (speicherSerien.length) {
     if (socPanel) socPanel.style.display = '';
     if (socCanvas) _drawSpeicherSocChart(socCanvas, t);
     const socInfo = document.getElementById('live-soc-info');
-    if (socInfo) {
-      const pctNow = Math.min(100, Math.max(0, (tssForSoc.socH[t] || 0) / tssForSoc.params.kapKwh * 100));
-      socInfo.textContent = pctNow.toFixed(0) + '% \u00B7 ' + (tssForSoc.socH[t] || 0).toFixed(0) + ' kWh';
-    }
+    if (socInfo) socInfo.innerHTML = speicherSerien.map(serie =>
+      `<span class="live-speicher-chip" style="--c:${serie.farbe}"><i></i>${serie.name} <b>${serie.info(t)}</b></span>`).join('');
   } else {
     if (socPanel) socPanel.style.display = 'none';
   }
@@ -1546,7 +1545,43 @@ export function _checkShowHourlySlider() {
   }
 }
 
-// ── Speicher-SOC-Chart (separate Canvas) ────────────────────────────────
+// ── Speicher in der Live-Ansicht ─────────────────────────────────────────
+const _fmtDe = (v, nk = 0) => Number(v || 0).toLocaleString('de-DE', { minimumFractionDigits: nk, maximumFractionDigits: nk });
+
+/** Verfügbare Speicher als Serien: Füllstand in % je Stunde plus Kennwerttext zur Stunde. */
+export function _liveSpeicherSerien() {
+  const serien = [];
+  const tss = window._thermSpeicherState;
+  if (tss?.socH && tss.params?.kapKwh > 0) {
+    const kap = tss.params.kapKwh;
+    serien.push({
+      key: 'waerme', name: 'Wärmespeicher', farbe: '#26a69a',
+      pct: t => (tss.socH[t] || 0) / kap * 100,
+      info: t => `${_fmtDe((tss.socH[t] || 0) / kap * 100)} % · ${_fmtDe(tss.socH[t])} kWh`,
+    });
+  }
+  const batH = window._stromBatSocH, batKap = window._stromBatKapKwh || parseFloat(document.getElementById('bat-kapazitaet')?.value) || 0;
+  if (batH && batKap > 0) {
+    serien.push({
+      key: 'batterie', name: 'Batterie', farbe: '#b39ddb',
+      pct: t => (batH[t] || 0) / batKap * 100,
+      info: t => `${_fmtDe((batH[t] || 0) / batKap * 100)} % · ${_fmtDe(batH[t])} kWh`,
+    });
+  }
+  const eis = window._eisSpeicherState;
+  if (eis?.reserveH && eis.reserveMaxKwh > 0) {
+    serien.push({
+      key: 'eis', name: '❄ Eisspeicher', farbe: '#4fc3f7',
+      pct: t => (eis.reserveH[t] || 0) / eis.reserveMaxKwh * 100,
+      // zweite Linie: Vereisungsgrad (gestrichelt)
+      pct2: t => (eis.vereisungH[t] || 0) * 100,
+      info: t => `Reserve ${_fmtDe(eis.reserveH[t])} kWh · ${_fmtDe((eis.vereisungH[t] || 0) * 100)} % vereist · ${_fmtDe(eis.tempH[t], 1)} °C`,
+    });
+  }
+  return serien;
+}
+
+// ── Speicher-Chart (separate Canvas) ─────────────────────────────────────
 export function _drawSpeicherSocChart(canvas, currentHour) {
   const parent = canvas.parentElement;
   const W = (parent?.offsetWidth || 400) - 4;
@@ -1559,10 +1594,8 @@ export function _drawSpeicherSocChart(canvas, currentHour) {
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  const tss = window._thermSpeicherState;
-  if (!tss || !tss.socH || !tss.params?.kapKwh) return;
-  const socH = tss.socH;
-  const kapKwh = tss.params.kapKwh;
+  const serien = _liveSpeicherSerien();
+  if (!serien.length) return;
 
   const PAD = { l: 46, r: 12, t: 6, b: 24 };
   const plotW = W - PAD.l - PAD.r;
@@ -1589,7 +1622,7 @@ export function _drawSpeicherSocChart(canvas, currentHour) {
     ctx.strokeStyle = 'rgba(255,255,255,0.05)';
     ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(PAD.l + plotW, yy); ctx.stroke();
-    ctx.fillStyle = 'rgba(38,166,154,0.5)';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.fillText((frac * 100).toFixed(0) + '%', PAD.l - 4, yy);
   }
 
@@ -1597,36 +1630,37 @@ export function _drawSpeicherSocChart(canvas, currentHour) {
   const samplesPerPx = Math.max(1, Math.ceil(rangeLen / plotW));
   const nSamples = Math.ceil(rangeLen / samplesPerPx);
 
-  // SOC area fill
-  ctx.beginPath();
-  for (let s = 0; s < nSamples; s++) {
-    const t0 = range.start + s * samplesPerPx;
-    const soc = socH[Math.min(t0, 8759)] || 0;
-    const x = PAD.l + (s / nSamples) * plotW;
-    const y = PAD.t + plotH * (1 - soc / kapKwh);
-    if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.lineTo(PAD.l + plotW, PAD.t + plotH);
-  ctx.lineTo(PAD.l, PAD.t + plotH);
-  ctx.closePath();
-  const grad = ctx.createLinearGradient(0, PAD.t, 0, PAD.t + plotH);
-  grad.addColorStop(0, 'rgba(38,166,154,0.4)');
-  grad.addColorStop(1, 'rgba(38,166,154,0.05)');
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  // SOC line
-  ctx.beginPath();
-  ctx.strokeStyle = '#26a69a';
-  ctx.lineWidth = 1.5;
-  for (let s = 0; s < nSamples; s++) {
-    const t0 = range.start + s * samplesPerPx;
-    const soc = socH[Math.min(t0, 8759)] || 0;
-    const x = PAD.l + (s / nSamples) * plotW;
-    const y = PAD.t + plotH * (1 - soc / kapKwh);
-    if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
+  const yAus = pct => PAD.t + plotH * (1 - Math.min(100, Math.max(0, pct)) / 100);
+  const pfad = fn => {
+    ctx.beginPath();
+    for (let s = 0; s < nSamples; s++) {
+      const t0 = Math.min(range.start + s * samplesPerPx, 8759);
+      const x = PAD.l + (s / nSamples) * plotW;
+      if (s === 0) ctx.moveTo(x, yAus(fn(t0))); else ctx.lineTo(x, yAus(fn(t0)));
+    }
+  };
+  serien.forEach(serie => {
+    // Fläche (bei mehreren Speichern zurückhaltend), dann Linie
+    pfad(serie.pct);
+    ctx.lineTo(PAD.l + plotW, PAD.t + plotH);
+    ctx.lineTo(PAD.l, PAD.t + plotH);
+    ctx.closePath();
+    ctx.globalAlpha = serien.length > 1 ? 0.12 : 0.3;
+    ctx.fillStyle = serie.farbe;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    pfad(serie.pct);
+    ctx.strokeStyle = serie.farbe;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    if (serie.pct2) {
+      pfad(serie.pct2);
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  });
 
   // Current hour marker
   const curFrac = (currentHour - range.start) / rangeLen;
@@ -1637,14 +1671,13 @@ export function _drawSpeicherSocChart(canvas, currentHour) {
     ctx.lineWidth = 1;
     ctx.globalAlpha = 0.7;
     ctx.beginPath(); ctx.moveTo(curX, PAD.t); ctx.lineTo(curX, PAD.t + plotH); ctx.stroke();
-    // Dot at current value
-    const curSoc = socH[currentHour] || 0;
-    const curY = PAD.t + plotH * (1 - curSoc / kapKwh);
-    ctx.beginPath();
-    ctx.arc(curX, curY, 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#4dd0e1';
     ctx.globalAlpha = 1;
-    ctx.fill();
+    serien.forEach(serie => {
+      ctx.beginPath();
+      ctx.arc(curX, yAus(serie.pct(currentHour)), 3, 0, Math.PI * 2);
+      ctx.fillStyle = serie.farbe;
+      ctx.fill();
+    });
     ctx.restore();
   }
 

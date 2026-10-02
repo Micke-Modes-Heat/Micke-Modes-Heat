@@ -327,6 +327,10 @@ export function _dispatchCore(cfg) {
   } = cfg;
   // Eisspeicher (optional): Zustand der Quelle der Sole-WP ('geo') über das Jahr
   const eis = eisSpeicher && eisSpeicher.volumenM3 > 0 ? erstelleEisZustand(eisSpeicher) : null;
+  // Stundenwerte für die Live-Ansicht: Temperatur, Vereisungsgrad, nutzbare Reserve bis zur Vereisungsgrenze
+  const eisH = eis && cfg.recordHourly
+    ? { tempH: new Float32Array(lastgangKw.length), vereisungH: new Float32Array(lastgangKw.length), reserveH: new Float32Array(lastgangKw.length) }
+    : null;
 
   const n = lastgangKw.length;
   const KESSEL_KEYS = new Set(['gaskessel', 'heizoel', 'pellets', 'hhs']);
@@ -618,7 +622,10 @@ export function _dispatchCore(cfg) {
       if (thermSOC > thermSocMax) thermSocMax = thermSOC;
       if (recordHourly) thermSocH[t] = thermSOC;
     }
-    if (eis) eis.stundeAbschliessen(t);
+    if (eis) {
+      eis.stundeAbschliessen(t);
+      if (eisH) { eisH.tempH[t] = eis.temp(); eisH.vereisungH[t] = eis.vereisung(); eisH.reserveH[t] = eis.verfuegbarKwh(); }
+    }
   }
 
   return {
@@ -637,6 +644,8 @@ export function _dispatchCore(cfg) {
     hatSpeicher, hatST, speicherParams: hatSpeicher ? thSp : null,
     stProfile,
     eisStat: eis ? eis.statistik() : null,
+    eisH,
+    eisParam: eis ? eis.param : null,
   };
 }
 
@@ -693,6 +702,7 @@ export function _deckungen8760(ss) {
     eisSpeicher,
   });
   window._eisSpeicherErgebnis = r.eisStat;
+  window._eisSpeicherState = r.eisH ? { ...r.eisH, reserveMaxKwh: r.eisParam.wMax - r.eisParam.wMin, maxVereisung: r.eisParam.maxVereisung, volumenM3: r.eisParam.volumenM3 } : null;
   eisPanelAnzeigen(r.eisStat);
 
   // Kurzreferenzen

@@ -513,6 +513,7 @@ export function calcStromPanel() {
 
   _stromRenderMonatsChart(monthlyQuartier, monthlyWp, monthlyPv);
   window._stromBatSocH = batSocArr;
+  window._stromBatKapKwh = bat ? bat.kapKwh : 0;
   _stromRenderFlussChart(window._stromFlussWeek || 0);
 
   // Sankey-Daten setzen (für drawSankeyStrom)
