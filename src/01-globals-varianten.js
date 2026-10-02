@@ -353,11 +353,21 @@ export function cacheVariantResults() {
       stromkostenWp = wpElMwh * strompreis * 10;
     }
   }
+  // Alle Dispatch-Erzeuger mit Leistung und Energie — Grundlage der Gutachten-Textbausteine (die Kurzliste oben kennt nur einen Teil der Technik)
+  const _detailLeistung = {
+    lwwp: lwWp?.leistungKw, geo: parseFloat(document.getElementById('geo-heizlast')?.value) || 0, fg: fliessgewaesser?.leistungKw,
+    gaskessel: gasKessel?.leistungKw, _autoGk: autoGkResult?.leistungKw, heizoel: heizoelKessel?.leistungKw, bhkw: bhkw?.leistungThKw,
+    pellets: pelletsKessel?.leistungKw, hhs: heizhackschnitzel?.leistungKw, stromkessel: stromkessel?.leistungKw, fernwaerme: fernwaerme?.leistungKw,
+  };
+  const erzeugerDetail = Object.keys(dispEn).map(k => ({
+    key: k, leistungKw: _detailLeistung[k] || 0, waermeMwh: dispEn[k]?.waermeMwh || 0, elMwh: dispEn[k]?.elMwh || 0,
+    speicherM3: k === '_thermSpeicher' ? (parseFloat(document.getElementById('ts-volumen')?.value) || undefined) : undefined,
+  }));
   variantResults[key] = {
     label: activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '') : 'Basisdaten',
     gebäudebedarf: totalVerbrauch, netzverluste: totalLoss,
     netzverlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
-    erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, ausschlüsse,
+    erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, erzeugerDetail, ausschlüsse,
     investGes, jkGes, co2GesH, co2GesLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
   };
   if (typeof currentViewMode !== 'undefined' && currentViewMode === 'vergleich') renderVergleich();
