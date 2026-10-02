@@ -1262,7 +1262,8 @@ button.netz-create-option:hover{border-color:#66bb6a;background:rgba(76,175,80,.
   box-shadow:0 4px 20px rgba(0,0,0,.55);
   display:flex;flex-direction:column;gap:0;
   font-size:12px;color:var(--text);
-  overflow:hidden;
+  max-height:calc(100vh - 48px);
+  overflow-x:hidden;overflow-y:auto;
 }
 .ebp-head{
   display:flex;align-items:center;justify-content:space-between;
@@ -2149,3 +2150,8 @@ body.gm-fokus #view-tabs{display:none;}
 .live-speicher-chip i{width:7px;height:7px;border-radius:50%;background:var(--c)}.live-speicher-chip b{font:500 9px 'DM Mono',monospace;color:rgba(255,255,255,.9)}
 .netz-workspace-status .nws-grundlagen{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;margin-top:2px;padding-top:5px;border-top:1px dashed var(--border);font-size:9px}
 .netz-workspace-status .nws-grundlagen span{color:var(--muted)}.netz-workspace-status .nws-grundlagen b{font-weight:500}
+
+/* ── 3D-Ansicht (src/32-3d-ansicht.js) ── MapLibre-Popup im App-Farbschema */
+.d3d-popup .maplibregl-popup-content{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:11px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.5);}
+.d3d-popup .maplibregl-popup-tip{display:none;}
+#d3d-view .maplibregl-ctrl-attrib{font-size:10px;}

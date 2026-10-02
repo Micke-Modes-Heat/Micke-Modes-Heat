@@ -17,6 +17,7 @@ function mappe(opt = {}) {
 }
 
 const blattVon = (m, name) => m.blaetter.find(b => b.name === name);
+const textVon = b => b.zeilen.flat().map(z => z?.w).filter(v => v != null).join(' | ');
 
 function setzeFunktion(m, r, werte) {
   const blatt = blattVon(m, RA.RA_BLATT.funktionen);
@@ -358,7 +359,7 @@ describe('raPruefung', () => {
       name: 'IT', ausw_s: 'Auftrag gefährdet', autarkie_text: '7 Tage', pk: null,
       sz: { S2: 1 },
     }]));
-    expect(texte(p)).toMatch(/Autarkie von 7 Tage gefordert, Krisenlast aber unbekannt — Messung bzw. Schätzung erforderlich/);
+    expect(texte(p)).toMatch(/Autarkie über 7 Tage gefordert, Krisenlast aber unbekannt — Messung bzw. Schätzung erforderlich/);
   });
 
   it('schweigt zur Krisenlast, wenn keine Autarkie gefordert ist', () => {
@@ -429,7 +430,7 @@ describe('raPruefung', () => {
     expect(abweichung).toHaveLength(1);
     expect(abweichung[0].ref).toBe('F01');
     expect(abweichung[0].text)
-      .toMatch(/angegebene Autarkie 3 Tage weicht vom Klassen-Richtwert 14 Tage \(Klasse A\) ab/);
+      .toMatch(/angegebene Autarkie \(3 Tage\) weicht vom Klassen-Richtwert \(14 Tage, Klasse A\) ab/);
     expect(abweichung[0].text).toMatch(/Übernommen wird die Angabe aus der Abfrage/);
     // F02 trifft den Richtwert und erzeugt keinen Hinweis; Abweichung ist kein offener Punkt
     expect(texte(p)).not.toMatch(/Richtwert/);
@@ -472,9 +473,26 @@ describe('raAnforderungstext', () => {
   });
 
   it('kennzeichnet die Wiederherstellung als nicht gefordert, wenn S4 ausgeschlossen ist', () => {
-    const d = daten([{ name: 'Lager' }], { szenarien: { S4: { relevant: 'nein' } } });
+    const d = daten([{ name: 'Lager', autarkie_text: '3 Tage' }], { szenarien: { S4: { relevant: 'nein' } } });
     expect(RA.raAnforderungstext(d.funktionen[0], d.szenarien))
       .toMatch(/Wiederherstellung nach Einzelfehler binnen nicht gefordert \(Szenario S4 nicht relevant\)\.$/);
+  });
+
+  it('übernimmt eine abgestimmte Wiederherstellungszeit je Klasse', () => {
+    const d = daten([{ name: 'Wache', ausw_4h: 'Auftrag gefährdet', autarkie_text: '7 Tage', sz: { S4: 1 } }],
+      { szenarien: { S4: { relevant: 'ja' } } });
+    expect(RA.raAnforderungstext(d.funktionen[0], d.szenarien, { wiederherstellung: { B: '8 h' } }))
+      .toMatch(/Wiederherstellung nach Einzelfehler binnen 8 h\.$/);
+  });
+
+  it('sagt bei „keine" Autarkie, dass keine Ersatzversorgung gefordert ist', () => {
+    const d = daten([
+      { name: 'Verwaltung', ausw_3d: 'eingeschränkt', autarkie_text: 'keine' },
+      { name: 'Ladesäulen', ausw_s: 'keine', ausw_4h: 'keine', ausw_3d: 'keine', autarkie_text: 'keine' },
+    ]);
+    expect(RA.raAnforderungstext(d.funktionen[0], d.szenarien))
+      .toBe('Funktion „Verwaltung": keine Ersatzversorgung gefordert — der Betrieb ruht bis zur Wiederkehr der Versorgung.');
+    expect(RA.raAnforderungstext(d.funktionen[1], d.szenarien)).toMatch(/Last darf im Krisenfall abgeworfen werden\.$/);
   });
 
   it('sortiert die Anforderungen nach Klasse', () => {
@@ -701,14 +719,270 @@ describe('Beispiel', () => {
     expect(d.allgemein.lieg).toMatch(/BEISPIEL/);
     expect(d.kategorien.map(k => k.kategorie)).toEqual(RA.RA_BEISPIEL.kategorien.map(k => k.kategorie));
     expect(d.funktionen).toHaveLength(RA.RA_BEISPIEL.funktionen.length);
+    expect(d.funktionen).toHaveLength(10);
     const f = id => d.funktionen.find(x => x.id === id);
-    expect(f('F03')).toMatchObject({ kategorie: 'Unterkunft', autarkie_h: 72, klasse_vorschlag: 'C' });
-    expect(f('F05')).toMatchObject({ autarkie_h: 168, klasse_vorschlag: 'B' });
+    expect(f('F04')).toMatchObject({ kategorie: 'Unterkunft', autarkie_h: 72, klasse_vorschlag: 'C' });
+    // Kategorie mit Abweichungen: Auswirkung nach 4 h und Autarkie stehen in der Zeile
+    expect(f('F03')).toMatchObject({ kategorie: 'Unterkunft', autarkie_h: 168, klasse_vorschlag: 'B' });
     expect(f('F01').klasse_vorschlag).toBe('A');
-    expect(d.szenarien.find(s => s.id === 'S2')).toMatchObject({ relevant: 'ja', dauer: '3 Tage' });
+    expect(f('F09')).toMatchObject({ kategorie: 'Verwaltung / Ausbildung', klasse_vorschlag: 'D', klasse_sicher: true, autarkie_h: 0 });
+    expect(d.szenarien.find(s => s.id === 'S2')).toMatchObject({ relevant: 'ja', dauer: '14 Tage' });
     expect(d.bestand.nea_anzahl).toBe(2);
-    // Das Beispiel zeigt bewusst eine offene Krisenlast
-    expect(texte(RA.raPruefung(d))).toMatch(/Werkstatt.*Krisenlast aber unbekannt/);
+    // Alle vier Klassen kommen vor
+    expect(new Set(d.funktionen.map(x => x.klasse_vorschlag))).toEqual(new Set(['A', 'B', 'C', 'D']));
+    // Das Beispiel zeigt bewusst offene Punkte: eine unbekannte Krisenlast und eine Funktion ganz ohne Angaben
+    const p = RA.raPruefung(d);
+    expect(texte(p)).toMatch(/Küche.*Krisenlast aber unbekannt/);
+    expect(texte(p)).toMatch(/Betreuungseinrichtung: Keine Angabe zur Auswirkung/);
     expect(() => xlsxDateien(RA.raBeispielMappe())).not.toThrow();
+  });
+
+  const AUSWERTUNG = () => [RA.RA_BLATT.anforderungen, RA.RA_BLATT.luecken, RA.RA_BLATT.loesungsweg, RA.RA_BLATT.massnahmen];
+
+  it('hat in der Beispieldatei die Reiter 7 bis 10, in der Abfragedatei nicht', () => {
+    const namen = RA.raBeispielMappe().blaetter.map(b => b.name);
+    expect(namen.slice(-5)).toEqual([...AUSWERTUNG(), RA.RA_BLATT.listen]);
+    const abfrage = mappe().blaetter.map(b => b.name);
+    for (const n of AUSWERTUNG()) expect(abfrage).not.toContain(n);
+    // Die Anleitung erklärt, wer was macht, und verweist auf die Reiter 7 bis 10
+    const anleitung = textVon(blattVon(mappe(), RA.RA_BLATT.anleitung));
+    expect(anleitung).toMatch(/Wer macht was/);
+    expect(anleitung).toMatch(/Reitern 7 bis 10/);
+  });
+
+  it('kennzeichnet die Reiter 7 bis 10 als Sache der erhebenden Stelle und zeigt den Schritt im Weg zur Maßnahme', () => {
+    const m = RA.raBeispielMappe();
+    const schritt = { [RA.RA_BLATT.anforderungen]: '[ ② Abhängigkeiten ]', [RA.RA_BLATT.luecken]: '[ ③ Lücken ]',
+      [RA.RA_BLATT.loesungsweg]: '[ ④ Optionen ]', [RA.RA_BLATT.massnahmen]: '[ ⑤ Maßnahmen ]' };
+    for (const name of AUSWERTUNG()) {
+      const b = blattVon(m, name);
+      expect(b.schutz).not.toBe(false);
+      const stile = b.zeilen.flat().filter(z => z && typeof z === 'object').map(z => z.s);
+      expect(stile).not.toContain(XS.eingabe);
+      const alles = textVon(b);
+      expect(alles, name).toMatch(/Füllt aus: erhebende Stelle/);
+      expect(alles, name).toMatch(/füllt NICHT der Empfänger aus/);
+      expect(alles, name).toContain(schritt[name]);
+    }
+  });
+
+  it('leitet auf Reiter 7 je Funktion eine Anforderung ab und stuft über Abhängigkeiten hoch', () => {
+    const b = blattVon(RA.raBeispielMappe(), RA.RA_BLATT.anforderungen);
+    const werte = b.zeilen.flat().map(z => z?.w).filter(v => v != null);
+    const alles = werte.join(' | ');
+    for (const f of RA.RA_BEISPIEL.funktionen) expect(werte).toContain(f.id);
+    expect(alles).toMatch(/Funktion „Führung \/ IT \/ Serverraum" \(Geb\. 1, Stabsgebäude\) ist in den Szenarien S1, S2, S3, S4, S5 .* binnen 1 h\./);
+    expect(alles).toMatch(/Funktion „Verwaltung".*Last darf im Krisenfall abgeworfen werden/);
+    // offen bleibt die Wiederherstellung nur bei F10, zu der alle Angaben fehlen
+    expect(alles.match(/binnen \[offen\]/g)).toHaveLength(1);
+    expect(alles).toMatch(/Funktion „Betreuungseinrichtung"[^|]*binnen \[offen\]/);
+    // Schritt ②: Betankung (C) wird wie A geplant, Heizzentrale (C) wie B, Pumpenhaus bleibt
+    expect(alles).toMatch(/②  Abhängigkeiten/);
+    expect(alles).toContain('wie Klasse A · 14 Tage · Unterbrechung kleiner 24 h');
+    expect(alles).toContain('wie Klasse B · 7 Tage · Unterbrechung kleiner 12 h');
+    expect(werte).toContain('unverändert');
+  });
+
+  it('formuliert die Anforderung je Szenario aus Funktion und Szenariodauer', () => {
+    const d = RA.raBeispielDaten();
+    const f = id => d.funktionen.find(x => x.id === id);
+    const s = id => d.szenarien.find(x => x.id === id);
+    const wh = { wiederherstellung: RA.RA_BEISPIEL.auswertung.wiederherstellung };
+    expect(RA.raSzenarioAnforderung(f('F01'), s('S1'), wh)).toBe('57 kW über 4 h überbrücken; Unterbrechung 0 s (unterbrechungsfrei)');
+    expect(RA.raSzenarioAnforderung(f('F01'), s('S2'), wh)).toBe('57 kW für 14 Tage autark; Unterbrechung 0 s (unterbrechungsfrei)');
+    // S3 dauert 7 Tage: vor Ort muss Kraftstoff für die kürzere der beiden Dauern liegen
+    expect(RA.raSzenarioAnforderung(f('F01'), s('S3'), wh)).toBe('Kraftstoff für 7 Tage vor Ort, ohne Nachlieferung');
+    expect(RA.raSzenarioAnforderung(f('F04'), s('S3'), wh)).toBe('Kraftstoff für 3 Tage vor Ort, ohne Nachlieferung');
+    expect(RA.raSzenarioAnforderung(f('F01'), s('S4'), wh)).toBe('nach Ausfall eines Betriebsmittels binnen 1 h wieder versorgt');
+    expect(RA.raSzenarioAnforderung(f('F01'), s('S5'), wh)).toMatch(/\(Relevanz offen\)$/);
+    expect(RA.raSzenarioAnforderung(f('F05'), s('S2'), wh)).toMatch(/^Krisenlast \[offen\] für 3 Tage/);
+    expect(RA.raSzenarioAnforderung(f('F09'), s('S2'), wh)).toBe('keine Ersatzversorgung — Abgang abschalten');
+  });
+
+  it('sichert im Beispiel jede angekreuzte Funktion in jedem Szenario ab — vorhanden oder per Maßnahme', () => {
+    const A = RA.RA_BEISPIEL.auswertung;
+    const d = RA.raBeispielDaten();
+    const abs = RA.raAbsicherung(d, A.massnahmen, { wiederherstellung: A.wiederherstellung });
+    const status = abs.zeilen.flatMap(z => Object.values(z.zellen).map(c => c.status));
+    expect(status).not.toContain('offen');
+    expect(status).toContain('vorhanden');
+    expect(status).toContain('massnahme');
+    // Stichproben: Pumpenhaus bei Hochwasser über M03, Wache bei S1 durch NEA 2
+    const z = id => abs.zeilen.find(x => x.f.id === id);
+    expect(z('F07').zellen.S7).toMatchObject({ status: 'massnahme', massnahmen: ['M03'] });
+    expect(z('F02').zellen.S1.status).toBe('vorhanden');
+    expect(z('F01').zellen.S6.status).toBe('nicht');
+    // F09 und F10 haben kein Szenario — ihre Maßnahmen stehen szenarioübergreifend
+    expect(z('F09').uebergreifend).toEqual(['M09']);
+    expect(z('F10').uebergreifend).toEqual(['M10']);
+    // jede Maßnahme mit Funktionen wirkt irgendwo, und jede Maßnahme bezieht sich auf bekannte Funktionen
+    const ids = new Set(RA.RA_BEISPIEL.funktionen.map(f => f.id));
+    for (const m of A.massnahmen) {
+      for (const id of m.fuer) expect(ids.has(id), `${m.id} → ${id}`).toBe(true);
+      if (!m.fuer.length) continue;
+      const wirkt = abs.zeilen.some(x => x.uebergreifend.includes(m.id)
+        || Object.values(x.zellen).some(c => c.massnahmen.includes(m.id)));
+      expect(wirkt, m.id).toBe(true);
+    }
+  });
+
+  it('hält die Kette Prüfung → Bündel → Maßnahme im Beispiel lückenlos', () => {
+    const A = RA.RA_BEISPIEL.auswertung;
+    const ids = new Set(RA.RA_BEISPIEL.funktionen.map(f => f.id));
+    const buendel = new Map(A.buendel.map(b => [b.id, b]));
+    const mx = new Map(A.massnahmen.map(m => [m.id, m]));
+    // jede Funktion ist geprüft und landet in mindestens einem Bündel
+    for (const id of ids) {
+      expect(A.pruefung[id], `Prüfung zu ${id}`).toBeTruthy();
+      expect(A.pruefung[id].buendel.length, id).toBeGreaterThan(0);
+      for (const b of A.pruefung[id].buendel) expect(buendel.has(b), `${id} → ${b}`).toBe(true);
+    }
+    // jedes Bündel wird gebraucht, hat höchstens eine gewählte Option und führt zu bekannten Maßnahmen
+    const benutzt = new Set(Object.values(A.pruefung).flatMap(p => p.buendel));
+    for (const b of A.buendel) {
+      expect(benutzt.has(b.id), b.id).toBe(true);
+      if (b.optionen.length) expect(b.optionen.filter(o => o.gewaehlt), b.id).toHaveLength(1);
+      for (const m of b.massnahmen) expect(mx.get(m)?.aus, `${b.id} → ${m}`).toBe(b.id);
+    }
+    // jede Maßnahme stammt aus genau dem Bündel, das sie nennt
+    for (const m of A.massnahmen) expect(buendel.get(m.aus)?.massnahmen, m.id).toContain(m.id);
+    // Abhängigkeiten verweisen auf bekannte Funktionen
+    for (const a of A.abhaengigkeiten) for (const id of [a.id, ...a.fuer]) expect(ids.has(id), `${a.id} → ${id}`).toBe(true);
+  });
+
+  it('vergleicht auf Reiter 8 Soll und Bestand je Prüfpunkt, farbig nach Ergebnis', () => {
+    const b = blattVon(RA.raBeispielMappe(), RA.RA_BLATT.luecken);
+    const zellen = b.zeilen.flat().filter(z => z && typeof z === 'object');
+    const alles = textVon(b);
+    for (const p of RA.RA_PRUEFPUNKTE) expect(alles).toContain(p.frage);
+    expect(zellen.some(z => z.s === XS.gut && /^✓/.test(z.w))).toBe(true);
+    expect(zellen.some(z => z.s === XS.luecke && /^✗/.test(z.w))).toBe(true);
+    // Hochgestufte Funktion zeigt die Planungswerte aus Schritt ②
+    expect(alles).toContain('wie Klasse A (Schritt ②, aus Klasse C) · 6 kW · 14 Tage');
+    // F04 hat S1 nicht angekreuzt → Prüfpunkt „Unterbrechung" entfällt
+    const f04 = b.zeilen.find(z => z?.[0]?.w === 'F04');
+    const spalte = 4 + RA.RA_PRUEFPUNKTE.findIndex(p => p.feld === 'unterbrechung');
+    expect(f04[spalte].w).toBe('—');
+    expect(f04.at(-1).w).toBe('B5');
+  });
+
+  it('wägt auf Reiter 9 je Bündel die Optionen ab und nennt die gewählte Maßnahme', () => {
+    const b = blattVon(RA.raBeispielMappe(), RA.RA_BLATT.loesungsweg);
+    const zellen = b.zeilen.flat().filter(z => z && typeof z === 'object');
+    const alles = textVon(b);
+    for (const t of RA.RA_LUECKENTYPEN) expect(alles).toContain(t.optionen);
+    for (const bu of RA.RA_BEISPIEL.auswertung.buendel) expect(alles).toContain(`${bu.id}  ${bu.titel}`);
+    expect(zellen.some(z => z.s === XS.gut && z.w === 'c ✓')).toBe(true);
+    expect(alles).toMatch(/M03: NEA für das Pumpenhaus/);
+    expect(alles).toMatch(/Hier wirkt Schritt ②/);
+    for (const v of b.verbunden) expect(v).toMatch(/^[A-G]\d+:[A-G]\d+$/);
+  });
+
+  it('listet auf Reiter 10 jede Maßnahme mit Herkunft und weist die Absicherung nach', () => {
+    const b = blattVon(RA.raBeispielMappe(), RA.RA_BLATT.massnahmen);
+    const zeilen = b.zeilen.filter(z => z?.[0]?.w && /^M\d\d$/.test(z[0].w));
+    expect(zeilen.map(z => z[0].w).sort()).toEqual(RA.RA_BEISPIEL.auswertung.massnahmen.map(m => m.id).sort());
+    const m03 = zeilen.find(z => z[0].w === 'M03');
+    expect(m03[2].w).toBe('B3');
+    expect(m03[3].w).toBe('S1, S2, S4, S7');
+    const zellen = b.zeilen.flat().filter(z => z && typeof z === 'object');
+    expect(zellen.some(z => z.s === XS.gut && z.w === 'vorhanden')).toBe(true);
+    expect(zellen.some(z => z.s === XS.luecke && z.w === 'M03')).toBe(true);
+    const f06 = b.zeilen.find(z => z?.[0]?.w === 'F06');
+    expect(f06[2].w).toBe('C → B');
+    for (const v of b.verbunden) expect(v).toMatch(/^[A-M]\d+:[A-M]\d+$/);
+  });
+
+  it('zeigt auf dem Beispielblatt auch die Frage-Blätter 1, 5 und 6', () => {
+    const b = blattVon(mappe(), RA.RA_BLATT.beispiel);
+    const werte = b.zeilen.flat().map(z => z?.w).filter(Boolean);
+    for (const t of ['Blatt „1 Allgemeines"', 'Blatt „5 Bestand und Organisation"', 'Blatt „6 Rückmeldung"']) {
+      expect(werte).toContain(t);
+    }
+    expect(werte).toContain(RA.RA_BEISPIEL.allgemein.auftrag);
+    expect(werte).toContain(RA.RA_BEISPIEL.bestand.schwach);
+    // Antworten stehen je Frage verbunden über B:F
+    const zeileVon = t => b.zeilen.findIndex(z => z?.[0]?.w === t) + 1;
+    for (const f of [...RA.RA_ALLGEMEIN_FELDER, ...RA.RA_BESTAND_FELDER, ...RA.RA_RUECKMELDUNG_FELDER]) {
+      const r = zeileVon(f.frage);
+      expect(b.verbunden, f.feld).toContain(`B${r}:F${r}`);
+    }
+  });
+
+  it('stellt Kategorien auf dem Beispielblatt genau über die Funktionsspalten, die sie vererben', () => {
+    const b = blattVon(mappe(), RA.RA_BLATT.beispiel);
+    const kat = RA.RA_BEISPIEL.kategorien[0];
+    const fun = RA.RA_BEISPIEL.funktionen.find(f => f.kategorie === kat.kategorie && f.autarkie == null);
+    const zKat = b.zeilen.find(z => z?.[0]?.w === kat.erl);
+    const zFun = b.zeilen.find(z => z?.[0]?.w === fun.erl);
+    // Spalte über die Kopfzeile von Teil 1 der Funktionen finden
+    const kopf = b.zeilen[b.zeilen.indexOf(zFun) - RA.RA_BEISPIEL.funktionen.indexOf(fun) - 1];
+    const c = kopf.findIndex(z => z?.w === RA.RA_FUNKTION_SPALTEN.find(s => s.feld === 'autarkie').titel);
+    expect(c).toBeGreaterThan(0);
+    expect(zKat[c].w).toBe(kat.autarkie);
+    expect(zFun[c].w).toBeNull();            // kommt aus der Kategorie
+    const k = kopf.findIndex(z => z?.w === 'Kategorie');
+    expect(zKat[k].w).toBe(kat.kategorie);
+    expect(zFun[k].w).toBe(kat.kategorie);
+  });
+
+  it('teilt Kategorien und Funktionen auf dem Beispielblatt in zwei Teile, damit das Blatt schmal bleibt', () => {
+    const b = blattVon(mappe(), RA.RA_BLATT.beispiel);
+    expect(b.spalten.length).toBeLessThanOrEqual(18);
+    for (const z of b.zeilen) expect((z || []).length, 'Zeile zu breit').toBeLessThanOrEqual(18);
+    const alles = textVon(b);
+    expect(alles.match(/Teil 1 — Auswirkungen und Szenarien/g)).toHaveLength(2);
+    expect(alles).toMatch(/Teil 2 — Leistung, Ersatzversorgung und Abhängigkeiten/);
+    // Teil 2 trägt Krisenlast und Ersatzversorgung je Funktion — F01 steht in beiden Teilen
+    const f01 = b.zeilen.filter(z => z?.[1]?.w === 'F01');
+    expect(f01).toHaveLength(2);
+    expect(f01[1].map(z => z?.w)).toContain(57);
+    expect(f01[1].map(z => z?.w)).toContain('USV+NEA');
+    // Gedruckt: neue Seite vor Blatt 3, Blatt 4, Teil 2 der Funktionen und Blatt 5
+    expect(b.umbrueche).toHaveLength(4);
+    const vor = b.umbrueche.map(r => b.zeilen[r][0].w);
+    expect(vor[0]).toMatch(/^Blatt „3 Kategorien"/);
+    expect(vor[1]).toMatch(/^Blatt „4 Funktionen"/);
+    expect(vor[2]).toMatch(/^Teil 2 — Leistung/);
+    expect(vor[3]).toMatch(/^Blatt „5 Bestand/);
+  });
+});
+
+describe('Aufbau und Aussehen der Mappe', () => {
+  it('färbt die Reiter nach Rolle und druckt quer', () => {
+    const m = RA.raBeispielMappe();
+    const farbe = n => blattVon(m, n).tabFarbe;
+    expect(farbe(RA.RA_BLATT.funktionen)).toBe(farbe(RA.RA_BLATT.allgemeines));
+    expect(farbe(RA.RA_BLATT.massnahmen)).toBe(farbe(RA.RA_BLATT.anforderungen));
+    expect(farbe(RA.RA_BLATT.funktionen)).not.toBe(farbe(RA.RA_BLATT.massnahmen));
+    expect(farbe(RA.RA_BLATT.beispiel)).not.toBe(farbe(RA.RA_BLATT.funktionen));
+    expect(blattVon(m, RA.RA_BLATT.listen).tabFarbe).toBeUndefined();
+    for (const b of m.blaetter.filter(x => !x.versteckt)) expect(b.quer, b.name).toBe(true);
+  });
+
+  it('verbindet die Hinweiszeile der Eingabeblätter über die Tabelle, statt sie in Spalte A umzubrechen', () => {
+    const m = mappe();
+    for (const n of [RA.RA_BLATT.allgemeines, RA.RA_BLATT.szenarien, RA.RA_BLATT.kategorien,
+      RA.RA_BLATT.funktionen, RA.RA_BLATT.bestand, RA.RA_BLATT.rueckmeldung]) {
+      const b = blattVon(m, n);
+      expect(b.verbunden.some(v => /^A2:[B-Z]2$/.test(v)), n).toBe(true);
+    }
+    expect(blattVon(m, RA.RA_BLATT.funktionen).fixSpalten).toBe(2);
+  });
+
+  it('gliedert die Anleitung mit einer Übersicht über alle Blätter und einer Begriffstabelle', () => {
+    const an = blattVon(mappe(), RA.RA_BLATT.anleitung);
+    const alles = textVon(an);
+    expect(alles).toMatch(/Aufbau der Datei/);
+    for (const n of [RA.RA_BLATT.allgemeines, RA.RA_BLATT.szenarien, RA.RA_BLATT.kategorien,
+      RA.RA_BLATT.funktionen, RA.RA_BLATT.bestand, RA.RA_BLATT.rueckmeldung]) {
+      expect(an.zeilen.some(z => z?.[1]?.w === n), n).toBe(true);
+    }
+    for (const t of ['Funktion', 'Krisenlast', 'Autarkie', 'Unterbrechung', 'Wiederherstellung']) {
+      expect(an.zeilen.some(z => z?.[1]?.w === t), t).toBe(true);
+    }
+    // Die Kennung bleibt in der ausgeblendeten Zelle C1
+    expect(an.zeilen[0][2].w).toBe(RA.RA_KENNUNG);
+    expect(an.verbunden.some(v => v.startsWith('B1:'))).toBe(false);
   });
 });

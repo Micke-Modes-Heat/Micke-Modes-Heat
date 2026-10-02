@@ -216,8 +216,15 @@ function pvGetDemandH() {
   // Endausbau-Modus: gemessener Lastgang + NAP-Maßnahmen (Neubau/Abriss) bis Zieljahr
   if (mode === 'endausbau') {
     const jahr = window._pvAnalyse?.endausbauJahr;
-    const result = window.napGetEndausbauLastgang?.(jahr);
-    if (result?.arr) return result.arr;
+    // Nur Verbrauch überlagern und auf ≥ 0 kappen: Eine negative Last (Rückspeisung
+    // anderer Erzeuger) zählte die Simulation als negativen Eigenverbrauch und als
+    // PV-Einspeisung — Folge waren EV 0 %, negative Autarkie und Verluste kleiner Varianten.
+    const result = window.napGetEndausbauLastgang?.(jahr, { nurLast: true });
+    if (result?.arr) {
+      const arr = result.arr;
+      for (let i = 0; i < arr.length; i++) if (arr[i] < 0) arr[i] = 0;
+      return arr;
+    }
     return b15 || b1h || null; // Fallback auf Basis, falls keine NAP-Messung/Maßnahmen vorhanden
   }
 

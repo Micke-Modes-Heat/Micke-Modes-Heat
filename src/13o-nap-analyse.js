@@ -697,7 +697,10 @@ export function napHasMeasuredData() {
 // Standardmäßig unabhängig vom Checkbox-Status der Maßnahmenliste (PV-Analyse); mit nurAngehakt
 // nur die angehakten Einträge — dieselbe Auswahl wie die Stufenrechnung (Gutachten 3.3.4).
 // Gibt null zurück wenn keine Messung oder keine relevanten Maßnahmen vorhanden.
-export function napGetEndausbauLastgang(bisJahr, { nurAngehakt = false } = {}) {
+// nurLast: nur die Verbrauchsseite überlagern (Erzeugung neuer Anlagen bleibt außen vor) —
+// für die PV-Analyse, die PV selbst auslegt; sonst rechnet sie geplante PV doppelt und
+// Erzeuger ohne Profil (KWK, Batterie) als Dauer-Einspeisung in eine negative „Last".
+export function napGetEndausbauLastgang(bisJahr, { nurAngehakt = false, nurLast = false } = {}) {
   const baseMeasured = _N.baseMeasuredData || _N.data;
   if (!baseMeasured?.raw?.length) return null;
 
@@ -754,7 +757,7 @@ export function napGetEndausbauLastgang(bisJahr, { nurAngehakt = false } = {}) {
         addE += r.einspKW * sign;
       }
     }
-    arr[i] = pt.kw + addB - addE;
+    arr[i] = nurLast ? pt.kw + addB : pt.kw + addB - addE;
   }
 
   return {

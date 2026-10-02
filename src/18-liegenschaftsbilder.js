@@ -97,7 +97,7 @@ async function lbCaptureMap() {
   window.setAssetLayerVisible(_lbCapLayers.assets);
 
   // UI-Chrome nur für den Moment der Aufnahme ausblenden (reine Darstellung, kein State)
-  const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-control-rotate, .leaflet-popup')];
+  const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-control-rotate, .leaflet-control-d3d, .leaflet-popup')];
   const prevDisplay = chrome.map(el => el.style.display);
   chrome.forEach(el => { el.style.display = 'none'; });
 
@@ -1004,7 +1004,7 @@ async function lpCaptureSatellite() {
     versteckt.push(el);
     el.style.display = 'none';
   }
-  const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-control-rotate, .leaflet-popup')];
+  const chrome = [...mapEl.querySelectorAll('.leaflet-control-zoom, .leaflet-control-attribution, .leaflet-control-rotate, .leaflet-control-d3d, .leaflet-popup')];
   const prevChromeDisplay = chrome.map(el => el.style.display);
   chrome.forEach(el => { el.style.display = 'none'; });
 

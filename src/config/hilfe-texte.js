@@ -218,6 +218,8 @@ export const HILFE_TEXTE = {
 
   // OSM Import
   'osm-default-baujahr': 'Standard-Baujahr für importierte Gebäude, falls OpenStreetMap kein Baujahr liefert.',
+  'osm-min-flaeche': 'Beim Laden werden Polygone unter dieser Grundfläche nicht als eigenes Gebäude geführt: angrenzende (Dachaufbauten, Anbauten) werden in den Nachbargrundriss eingerechnet, freistehende verworfen. 0 = alles laden.',
+  'osm-min-flaeche-area': 'Mindest-Grundfläche je Gebäude beim Laden (siehe Gebäude-Import). 0 = alles laden.',
   'osm-default-baujahr-area': 'Standard-Baujahr für Gebäude im gezeichneten Plangebiet.',
 
   // Gebäude-Sidebar

@@ -44,6 +44,8 @@ export const XS = Object.freeze({
   fliess:      8,   // umbrechender Fließtext ohne Rahmen
   abschnitt:   9,   // Abschnittsüberschrift: grün auf hellgrün
   beispiel:   10,   // gesperrte Beispielzelle: hellblau, umbrechend
+  gut:        11,   // gesperrt, hellgrün: Anforderung heute erfüllt
+  luecke:     12,   // gesperrt, hellorange: Lücke, Maßnahme nötig
 });
 
 const F_DUNKEL = 'FF266426';   // LKEBw dunkel
@@ -53,6 +55,8 @@ const F_TINT   = 'FFEEF5EC';   // Abschnittsband
 const F_GRAU   = 'FF5A5F5A';
 const F_LINIE  = 'FFD0D4CE';
 const F_BLAU   = 'FFDCEBF7';   // Beispielwerte
+const F_GUT    = 'FFE2F0D9';   // erfüllt
+const F_LUECKE = 'FFFCE4D6';   // Lücke
 
 const KOPF = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
@@ -71,7 +75,7 @@ function _stylesXml() {
   const fills = [
     '<fill><patternFill patternType="none"/></fill>',
     '<fill><patternFill patternType="gray125"/></fill>',
-    solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU),
+    solid(F_DUNKEL), solid(F_GELB), solid(F_TINT), solid(F_HELL), solid(F_BLAU), solid(F_GUT), solid(F_LUECKE),
   ];
   const kante = s => `<${s} style="thin"><color rgb="${F_LINIE}"/></${s}>`;
   const borders = [
@@ -90,7 +94,7 @@ function _stylesXml() {
       + '<alignment vertical="top" wrapText="1"/></xf>',
     '<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1" applyProtection="1">'
       + '<alignment vertical="top" wrapText="1"/><protection locked="0"/></xf>',
-    '<xf numFmtId="164" fontId="0" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1" applyProtection="1">'
+    '<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1" applyProtection="1">'
       + '<alignment horizontal="right" vertical="top"/><protection locked="0"/></xf>',
     '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>',
     '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">'
@@ -99,9 +103,12 @@ function _stylesXml() {
       + '<alignment vertical="center"/></xf>',
     '<xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1">'
       + '<alignment vertical="top" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="7" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1">'
+      + '<alignment vertical="top" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="8" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1">'
+      + '<alignment vertical="top" wrapText="1"/></xf>',
   ];
   return KOPF + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-    + '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.0"/></numFmts>'
     + `<fonts count="${fonts.length}">${fonts.join('')}</fonts>`
     + `<fills count="${fills.length}">${fills.join('')}</fills>`
     + `<borders count="${borders.length}">${borders.join('')}</borders>`
@@ -150,11 +157,26 @@ function _sheetXml(blatt, sst) {
     ? `<col min="${i + 1}" max="${i + 1}" width="${sp.breite ?? 12}" customWidth="1"${sp.verborgen ? ' hidden="1"' : ''}/>`
     : '').join('');
 
-  // Fixierte Kopfzeilen: ySplit = Anzahl der stehenbleibenden Zeilen
+  // Fixierte Kopfzeilen (ySplit) und Spalten (xSplit): Anzahl der stehenbleibenden Zeilen bzw. Spalten
   const fix = Number(blatt.fixZeilen) || 0;
-  const pane = fix > 0
-    ? `<pane ySplit="${fix}" topLeftCell="A${fix + 1}" activePane="bottomLeft" state="frozen"/>`
-      + `<selection pane="bottomLeft" activeCell="A${fix + 1}" sqref="A${fix + 1}"/>`
+  const fixS = Number(blatt.fixSpalten) || 0;
+  const links = fix + fixS > 0 ? `${spalteZuBuchstabe(fixS)}${fix + 1}` : '';
+  const aktiv = fix && fixS ? 'bottomRight' : fix ? 'bottomLeft' : 'topRight';
+  const pane = links
+    ? `<pane${fixS ? ` xSplit="${fixS}"` : ''}${fix ? ` ySplit="${fix}"` : ''} topLeftCell="${links}" activePane="${aktiv}" state="frozen"/>`
+      + `<selection pane="${aktiv}" activeCell="${links}" sqref="${links}"/>`
+    : '';
+
+  // Reiterfarbe und Druck auf eine Seitenbreite (Querformat)
+  const tab = blatt.tabFarbe ? `<tabColor rgb="${blatt.tabFarbe}"/>` : '';
+  const quer = !!blatt.quer;
+  const sheetPr = tab || quer ? `<sheetPr>${tab}${quer ? '<pageSetUpPr fitToPage="1"/>' : ''}</sheetPr>` : '';
+  const pageSetup = quer ? '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>' : '';
+  // Feste Seitenumbrüche vor den angegebenen (0-basierten) Zeilen; Excel bricht nach Zeile `id` (1-basiert) um
+  const brk = [...new Set((blatt.umbrueche || []).filter(r => Number.isInteger(r) && r > 0))].sort((a, b) => a - b);
+  const rowBreaks = brk.length
+    ? `<rowBreaks count="${brk.length}" manualBreakCount="${brk.length}">`
+      + brk.map(r => `<brk id="${r}" max="16383" man="1"/>`).join('') + '</rowBreaks>'
     : '';
 
   // Blattschutz ohne Passwort: gesperrt sind nur die Zellen ohne <protection locked="0">.
@@ -187,13 +209,14 @@ function _sheetXml(blatt, sst) {
   // Reihenfolge der Elemente ist im Schema festgelegt — Abweichung führt in
   // Excel zur Reparaturmeldung.
   return KOPF + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-    + dim
+    + sheetPr + dim
     + `<sheetViews><sheetView workbookViewId="0" showGridLines="0">${pane}</sheetView></sheetViews>`
     + '<sheetFormatPr defaultRowHeight="15"/>'
     + (cols ? `<cols>${cols}</cols>` : '')
     + `<sheetData>${zeilenXml}</sheetData>`
     + schutz + verbunden + pruefXml
-    + '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
+    + '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>'
+    + pageSetup + rowBreaks
     + '</worksheet>';
 }
 
@@ -213,6 +236,10 @@ export function blattName(name) {
  *   spalten?: Array<{breite:number, verborgen?:boolean}|null>,
  *   zeilenHoehe?: Record<number, number>,
  *   fixZeilen?: number,
+ *   fixSpalten?: number,
+ *   tabFarbe?: string,          // ARGB, z. B. 'FF266426'
+ *   quer?: boolean,             // Druck im Querformat auf eine Seitenbreite
+ *   umbrueche?: number[],       // feste Seitenumbrüche vor diesen Zeilen (0-basiert)
  *   schutz?: boolean,
  *   versteckt?: boolean,
  *   verbunden?: string[],
