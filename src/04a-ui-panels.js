@@ -1517,6 +1517,7 @@ export function setLeftTab(tabId) {
   document.querySelectorAll('#left-panel .lp-content').forEach(c => c.classList.toggle('active', c.id === 'lp-' + tabId));
   const titles = { gebiet: 'Gebiet', netz: 'Netz', erzeuger: 'Erzeuger', elektro: 'Elektro', ergebnis: 'Ergebnis' };
   document.getElementById('lp-title').textContent = titles[tabId] || tabId;
+  if (tabId === 'netz') window.netzTabGeoeffnet?.();
   if (tabId === 'elektro') {
     setNetzVisible(false);
     setStromNetzVisible(true);

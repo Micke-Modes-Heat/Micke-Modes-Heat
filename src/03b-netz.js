@@ -695,19 +695,48 @@ export function toggleNetzPanel(){
   }
 }
 
-export function openNetzWorkspace(mode = 'edit') {
-  const workspace = document.getElementById('netz-workspace');
-  const createArea = document.getElementById('netz-workspace-create');
-  const editArea = document.getElementById('netz-workspace-edit');
-  const centralArea = document.getElementById('netz-workspace-central');
+// ── Wärmenetz-Assistent: ① Zentrale & Netz · ② Trassenführung · ③ Anschlüsse prüfen · ④ Bewertung ──
+
+let _naOffen = null;        // geöffneter Schritt (1–4), 0 = bewusst alle zu, null = Standardschritt wählen
+let _naLetzteArt = null;    // zuletzt berechnete Aufbauart (für die Zusammenfassung)
+let _ohneErsetzenRueckfrage = false;
+const _NA_ART = { street: 'Straßen folgen', quick: 'Kürzeste Wege', trasse: 'Eigene Haupttrasse' };
+
+/** Heizzentrale und Netzeinstellungen einmalig aus dem schwebenden Fenster in Schritt ① holen. */
+function _netzAssistentEinrichten() {
+  if (window._naEingerichtet) return;
   const settingsArea = document.getElementById('netz-workspace-settings');
   const settingsContent = document.getElementById('netz-settings-content');
+  const centralArea = document.getElementById('netz-workspace-central');
   const centralControl = document.getElementById('netz-central-control');
-  const createMenu = document.getElementById('netz-create-menu');
-  if (!workspace || !createArea || !editArea) return false;
+  if (!settingsArea || !settingsContent) return;
+  settingsArea.appendChild(settingsContent);
+  if (centralArea && centralControl) centralArea.appendChild(centralControl);
+  window._naEingerichtet = true;
+}
+
+/** Einen Schritt aufklappen (die anderen zeigen nur ihre Zusammenfassung). */
+export function netzSchrittOeffnen(nummer, { scroll = false } = {}) {
+  _netzAssistentEinrichten();
+  _naOffen = nummer;
+  document.querySelectorAll('#netz-workspace .na-schritt').forEach(schritt => {
+    schritt.classList.toggle('offen', Number(schritt.dataset.schritt) === nummer);
+  });
+  // Kartenmodi gehören zu Schritt ③; die Haupttrasse ist Planungsvorgabe in Schritt ②
+  if (nummer !== 3) { if (netzEditMode) setNetzEditMode(false); if (netzRewireMode) setNetzRewireMode(false); }
+  if (!window.isDrawingTrasse) _haupttrasseSichtbar(nummer === 2 && waermeTrassenInfo().haupttrasse);
+  netzWorkspaceAktualisieren();
+  if (scroll) document.getElementById(`na-schritt-${nummer}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  return nummer;
+}
+
+/** Einstieg von außen (Startfenster, Haupttrasse fertig, nach dem Erstellen): 'create' → ②, 'edit' → ③. */
+export function openNetzWorkspace(mode = 'edit') {
+  const workspace = document.getElementById('netz-workspace');
+  if (!workspace) return false;
+  _netzAssistentEinrichten();
   // Schwebende Kartenfenster (Erzeuger, Speicher, Analysen …) verdecken beim Zeichnen die Karte.
   hidePanels();
-  if (mode === 'create') { setNetzEditMode(false); setNetzRewireMode(false); }
   setLeftTab('netz');
   if (document.getElementById('left-panel')?.classList.contains('collapsed')) {
     if (typeof window.toggleLeftPanel === 'function') window.toggleLeftPanel();
@@ -715,51 +744,146 @@ export function openNetzWorkspace(mode = 'edit') {
   }
   document.getElementById('netz-panel')?.classList.remove('visible');
   document.getElementById('btn-netz-toggle')?.classList.remove('active');
-  const netzOverview = document.getElementById('lp-netz-waerme');
-  if (netzOverview) netzOverview.hidden = true;
-  workspace.hidden = false;
-  createArea.hidden = mode !== 'create';
-  editArea.hidden = mode !== 'edit';
-  document.getElementById('netz-workspace-title').textContent = mode === 'create'
-    ? 'Wärmenetz erstellen' : 'Wärmenetz bearbeiten';
-  document.getElementById('netz-workspace-subtitle').textContent = mode === 'create'
-    ? 'Aufbau und Netzstruktur festlegen' : 'Anschlüsse und Leitungen auf der Karte anpassen';
-  if (settingsArea && settingsContent) settingsArea.appendChild(settingsContent);
-  if (centralArea && centralControl) centralArea.appendChild(centralControl);
-  if (mode === 'create' && createMenu) {
-    createArea.appendChild(createMenu);
-    createMenu.hidden = false;
-  }
-  workspace.dataset.modus = mode;
-  // Die gezeichnete Haupttrasse ist Planungsvorgabe: beim Erstellen sichtbar, beim Bearbeiten ausgeblendet
-  if (!window.isDrawingTrasse) _haupttrasseSichtbar(mode === 'create' && waermeTrassenInfo().haupttrasse);
   window._syncNetworkLockUI?.();
   _netzVerlaufPruefen();
-  netzWorkspaceAktualisieren();
-  workspace.scrollIntoView({behavior:'smooth',block:'start'});
+  netzSchrittOeffnen(mode === 'create' ? 2 : 3, { scroll: true });
   return true;
 }
 
+/** Arbeitsmodi beenden und alle Schritte zuklappen (z. B. vor dem Zeichnen auf der Karte). */
 export function closeNetzWorkspace() {
-  const workspace = document.getElementById('netz-workspace');
-  const createMenu = document.getElementById('netz-create-menu');
-  const settingsContent = document.getElementById('netz-settings-content');
-  const centralControl = document.getElementById('netz-central-control');
-  const netzPanel = document.getElementById('netz-panel');
-  if (centralControl && settingsContent) settingsContent.prepend(centralControl);
-  if (settingsContent && netzPanel) netzPanel.appendChild(settingsContent);
-  const originalShell = settingsContent?.querySelector('.netz-create-shell');
-  if (createMenu && originalShell) {
-    originalShell.appendChild(createMenu);
-    createMenu.hidden = true;
-  }
   setNetzEditMode(false);
   setNetzRewireMode(false);
   if (window.isDrawingEdge) toggleDrawEdge();
   if (!window.isDrawingTrasse) _haupttrasseSichtbar(false);
-  if (workspace) workspace.hidden = true;
-  const netzOverview = document.getElementById('lp-netz-waerme');
-  if (netzOverview) netzOverview.hidden = false;
+  _naOffen = 0;
+  document.querySelectorAll('#netz-workspace .na-schritt').forEach(schritt => schritt.classList.remove('offen'));
+  netzWorkspaceAktualisieren();
+  return true;
+}
+
+/** Netz-Tab geöffnet: ohne offenen Schritt den passenden Standardschritt zeigen. */
+export function netzTabGeoeffnet() {
+  if (_naOffen === 0 && !window.isDrawingTrasse) _naOffen = null;
+  netzWorkspaceAktualisieren();
+}
+
+/** Auswahl der Aufbauart in Schritt ②. */
+export function netzAufbauGewaehlt(art) {
+  const radio = document.querySelector(`input[name="na-aufbau"][value="${art}"]`);
+  if (radio && !radio.checked) radio.checked = true;
+  netzWorkspaceAktualisieren();
+  return art;
+}
+
+/** Hausanschluss-Stufe (gebündelt / ausgewogen / einzeln) setzt den Netzstruktur-Regler. */
+export function netzStrukturWaehlen(wert) {
+  const regler = document.getElementById('netz-trassentreue');
+  if (regler) regler.value = wert;
+  updateTrassentreueLabel(wert);
+  netzWorkspaceAktualisieren();
+  return wert;
+}
+
+function _netzKennzahlen() {
+  const edges = (window.netzEdges || []).filter(edge => !edge.temporallyHidden);
+  const laengeM = edges.reduce((summe, edge) => summe + (edge.length || 0), 0);
+  return {
+    abschnitte: edges.length,
+    laengeM,
+    investEur: edges.reduce((summe, edge) => summe + getKostenProM(edge.dn, edge.kostKlasse) * (edge.length || 0), 0),
+    verlustMwh: edges.reduce((summe, edge) => summe + (edge.lossKW_annual || 0), 0) * 8.76,
+  };
+}
+
+/** Schritt ②: Netz mit der gewählten Aufbauart berechnen; ein vorhandenes Netz wird zum Vergleich vorgemerkt. */
+export async function netzBerechnen() {
+  const art = document.querySelector('input[name="na-aufbau"]:checked')?.value || 'street';
+  if (art === 'trasse' && !waermeTrassenInfo().haupttrasse) {
+    showHint('Für „Eigene Haupttrasse“ zuerst die Haupttrasse zeichnen.', 5000);
+    startGuidedTrasseCreation();
+    return false;
+  }
+  _netzVerlaufPruefen();
+  const vorher = (window.netzEdges || []).length ? _netzKennzahlen() : null;
+  const signaturVorher = _netzStandSignatur;
+  const knopf = document.getElementById('btn-netz-berechnen');
+  if (knopf) { knopf.disabled = true; knopf.textContent = art === 'street' ? 'Straßen werden geladen …' : 'Netz wird berechnet …'; }
+  _ohneErsetzenRueckfrage = true;
+  let erstellt = false;
+  try {
+    if (art === 'street') erstellt = await createStreetOrientedWaermeNetz();
+    else if (art === 'quick') erstellt = await createQuickWaermeNetz();
+    else {
+      erstellt = await confirmAutoGenerateNetz({ strategy: 'trasse', trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 80 });
+      if (erstellt) _nachNetzErstellung();
+    }
+  } finally {
+    _ohneErsetzenRueckfrage = false;
+    if (knopf) knopf.disabled = false;
+  }
+  if (erstellt) {
+    _naLetzteArt = art;
+    _netzVerlaufPruefen();
+    if (vorher && _netzStandSignatur === signaturVorher) showHint('Die Neuberechnung ergibt dasselbe Netz wie bisher.', 4000);
+    else if (vorher) _netzVorschauZeigen(vorher, _netzKennzahlen());
+  }
+  netzWorkspaceAktualisieren();
+  return erstellt;
+}
+
+/** Vergleich neu gegen bisher, mit „Übernehmen“ oder „Bisheriges behalten“ (= Rückgängig). */
+function _netzVorschauZeigen(vorher, nachher) {
+  const box = document.getElementById('netz-vorschau');
+  if (!box) return;
+  const zahl = (v, nk = 0) => Number(v || 0).toLocaleString('de-DE', { maximumFractionDigits: nk, minimumFractionDigits: nk });
+  const diff = (neu, alt, einheit, nk = 0, besserKleiner = true) => {
+    const d = neu - alt;
+    if (Math.abs(d) < 10 ** -nk / 2) return '<i>±0</i>';
+    const gut = besserKleiner ? d < 0 : d > 0;
+    return `<i class="${gut ? 'gut' : 'schlecht'}">${d > 0 ? '+' : '−'}${zahl(Math.abs(d), nk)}${einheit}</i>`;
+  };
+  const zeilen = [
+    ['Trassenlänge', `${zahl(nachher.laengeM)} m`, diff(nachher.laengeM, vorher.laengeM, ' m')],
+    ['Rohrkosten', `${zahl(nachher.investEur / 1000)} T€`, diff(nachher.investEur / 1000, vorher.investEur / 1000, ' T€')],
+    ['Wärmeverluste', `${zahl(nachher.verlustMwh, 1)} MWh/a`, diff(nachher.verlustMwh, vorher.verlustMwh, ' MWh/a', 1)],
+    ['Abschnitte', zahl(nachher.abschnitte), diff(nachher.abschnitte, vorher.abschnitte, '')],
+  ];
+  box.innerHTML = '<div class="nv-kopf"><strong>Neues Netz berechnet</strong><span>Vergleich mit dem bisherigen Netz</span></div>' +
+    `<div class="nv-tabelle">${zeilen.map(([k, v, d]) => `<span>${k}</span><b>${v}</b>${d}`).join('')}</div>` +
+    '<div class="nv-knoepfe"><button type="button" class="primary" data-click="netzVorschauUebernehmen()">✓ Übernehmen</button>' +
+    '<button type="button" data-click="netzVorschauVerwerfen()">Bisheriges Netz behalten</button></div>';
+  box.hidden = false;
+}
+
+export function netzVorschauUebernehmen() {
+  const box = document.getElementById('netz-vorschau');
+  if (box) box.hidden = true;
+  return true;
+}
+
+export function netzVorschauVerwerfen() {
+  netzVorschauUebernehmen();
+  return netzRueckgaengig();
+}
+
+/** Klick auf einen Punkt der Arbeitsliste: hinzoomen und passenden Modus starten. */
+export function netzPunktZeigen(typ, kennung) {
+  if (typ === 'geb') {
+    const building = gebaeude.find(item => item.id === kennung);
+    if (!building?.polygon) return false;
+    map.fitBounds(L.latLngBounds(building.polygon), { maxZoom: 19, padding: [80, 80] });
+    setNetzRewireMode(true);
+    return true;
+  }
+  const edge = (window.netzEdges || []).find(item => `${item.u}-${item.v}` === kennung);
+  if (!edge?.layer) return false;
+  map.fitBounds(edge.layer.getBounds(), { maxZoom: 19, padding: [80, 80] });
+  if (!netzEditMode) setNetzEditMode(true);
+  _selectNetzEditEdge(edge);
+  const original = { color: edge.layer.options.color, weight: edge.layer.options.weight };
+  edge.layer.setStyle({ color: '#ffeb3b', weight: 8 });
+  setTimeout(() => edge.layer?.setStyle(original), 1600);
   return true;
 }
 
@@ -829,8 +953,7 @@ export function netzWiederholen() {
 }
 
 function _netzWorkspaceSichtbar() {
-  const workspace = document.getElementById('netz-workspace');
-  return !!workspace && !workspace.hidden;
+  return !!document.getElementById('lp-netz')?.classList.contains('active') && !!document.getElementById('netz-workspace');
 }
 
 /** Gebäude, die versorgt werden sollen (wie beim Anschließen/Umhängen): ohne Zentrale, mit Heizlast im Jahr. */
@@ -844,15 +967,18 @@ export function netzWorkspaceStatus() {
   const edges = (window.netzEdges || []).filter(edge => !edge.temporallyHidden);
   const verbunden = new Set(edges.flatMap(edge => [edge.u, edge.v]));
   const gebaeudeListe = _netzVersorgungsGebaeude();
-  const angeschlossen = gebaeudeListe.filter(building => verbunden.has(building.id)).length;
+  const offeneGebaeude = gebaeudeListe.filter(building => !verbunden.has(building.id));
   return {
     abschnitte: edges.length,
     laengeM: edges.reduce((summe, edge) => summe + (edge.length || 0), 0),
     gebaeude: gebaeudeListe.length,
-    angeschlossen,
-    offen: gebaeudeListe.length - angeschlossen,
+    angeschlossen: gebaeudeListe.length - offeneGebaeude.length,
+    offen: offeneGebaeude.length,
+    offeneGebaeude,
+    konflikte: edges.filter(edge => edge.buildingConflict),
+    hydraulik: edges.filter(edge => edge.hydraulicBottleneck),
     bestand: !!window.networkLocked,
-    trasse: (trassePoints?.length || 0) > 1,
+    trasse: waermeTrassenInfo().haupttrasse,
   };
 }
 
@@ -869,45 +995,95 @@ const _NETZ_MODUS_TEXT = {
   },
 };
 
-/** Zeichnet Status, Verlauf und Modusanleitung im Netz-Arbeitsbereich neu. */
-export function netzWorkspaceAktualisieren() {
-  if (!_netzWorkspaceSichtbar()) return;
-  const workspace = document.getElementById('netz-workspace');
-  const modus = workspace.dataset.modus || 'edit';
-  const status = netzWorkspaceStatus();
-  const fmt = n => Math.round(n).toLocaleString('de-DE');
-  const statusBox = document.getElementById('netz-workspace-status');
-  if (statusBox) {
-    let html;
-    if (!status.abschnitte) {
-      html = '<div class="nws-zeile"><strong>Noch kein Wärmenetz vorhanden.</strong></div>' +
-        `<div class="nws-klein">${status.gebaeude} Gebäude mit Wärmebedarf warten auf einen Anschluss.</div>` +
-        (modus === 'edit' ? '<button type="button" class="nws-link" data-click="openNetzWorkspace(\'create\')">Wärmenetz erstellen →</button>' : '');
-    } else {
-      html = `<div class="nws-zeile"><strong>${status.abschnitte} Leitungsabschnitte</strong><span>${fmt(status.laengeM)} m</span>` +
-        `<span class="nws-typ ${status.bestand ? 'bestand' : ''}">${status.bestand ? '🏛 Bestandsnetz' : 'Neubaunetz'}</span></div>` +
-        `<div class="nws-klein">${status.angeschlossen} von ${status.gebaeude} Gebäuden angeschlossen` +
-        (status.offen ? ` · <span class="nws-offen">${status.offen} ohne Anschluss</span>` : ' ✓') + '</div>';
-      if (modus === 'create') {
-        html += '<div class="nws-warnung">Ein neu erstelltes Netz ersetzt das vorhandene. Mit „Rückgängig“ lässt es sich zurückholen.</div>' +
-          '<button type="button" class="nws-link" data-click="openNetzWorkspace(\'edit\')">Stattdessen vorhandenes Netz bearbeiten →</button>';
-      } else if (status.offen) {
-        html += `<button type="button" class="nws-link" data-click="setNetzRewireMode(true)">${status.offen === 1 ? 'Fehlendes Gebäude' : `${status.offen} fehlende Gebäude`} anschließen →</button>`;
-      }
-      if (status.bestand && modus === 'edit') {
-        html += '<div class="nws-klein">Im Bestandsnetz bleiben DN und Leitungsverläufe gesperrt; neue Hausanschlüsse sind möglich.</div>';
-      }
-    }
-    if (modus === 'create') {
-      // Planungsgrundlagen, die in die Berechnung eingehen
-      const info = waermeTrassenInfo();
-      html += '<div class="nws-grundlagen">' +
-        `<span>Haupttrasse</span><b>${info.haupttrasse ? `${fmt(info.haupttrasseM)} m gezeichnet – wird immer als Rückgrat verwendet` : 'keine gezeichnet'}</b>` +
-        `<span>Straßendaten</span><b>${info.strassen ? `${info.strassen} Abschnitte (${(info.strassenM / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} km) im Projekt gespeichert` : 'noch nicht geladen – werden beim Straßennetz automatisch geladen'}</b>` +
-        '</div>';
-    }
-    statusBox.innerHTML = html;
+const _esc = text => String(text ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+/** Arbeitsliste für Schritt ③: offene Gebäude, Leitungen durch Gebäude, hydraulische Engpässe. */
+function _netzArbeitslisteHtml(status) {
+  if (!status.abschnitte) {
+    return `<div class="na-leer"><strong>Noch kein Wärmenetz.</strong> ${status.gebaeude} Gebäude mit Wärmebedarf warten auf einen Anschluss.` +
+      '<button type="button" class="nws-link" data-click="netzSchrittOeffnen(2)">Zur Trassenführung →</button></div>';
   }
+  const punkte = [
+    ...status.offeneGebaeude.map(building => ({ typ: 'geb', id: building.id, titel: building.name || `Gebäude ${building.id}`, text: 'ohne Anschluss', aktion: 'anschließen', stufe: 'offen' })),
+    ...status.konflikte.map(edge => ({ typ: 'edge', id: `${edge.u}-${edge.v}`, titel: 'Leitung durch Gebäude', text: `${Math.round(edge.length || 0)} m`, aktion: 'Verlauf ändern', stufe: 'konflikt' })),
+    ...status.hydraulik.map(edge => ({ typ: 'edge', id: `${edge.u}-${edge.v}`, titel: `Hydraulik DN ${edge.dn || '?'}`,
+      text: edge.velocityExceeded ? `${(edge._vActual || 0).toFixed(1)} m/s` : `${Math.round(edge.dpPerM || 0)} Pa/m`, aktion: 'zeigen', stufe: 'hydraulik' })),
+  ];
+  const kopf = `<div class="na-liste-kopf"><b>${status.angeschlossen} von ${status.gebaeude}</b> Gebäuden angeschlossen` +
+    (status.bestand ? ' · <span class="nws-typ bestand">🏛 Bestandsnetz</span>' : '') + '</div>';
+  if (!punkte.length) return `${kopf}<div class="na-ok">✓ Alle Gebäude angeschlossen, keine Konflikte, Hydraulik in den Grenzen.</div>`;
+  const sichtbar = punkte.slice(0, 8);
+  return kopf + '<div class="na-liste">' + sichtbar.map(punkt =>
+    `<button type="button" class="na-punkt ${punkt.stufe}" data-click="netzPunktZeigen('${punkt.typ}', ${punkt.typ === 'geb' ? punkt.id : `'${punkt.id}'`})">` +
+    `<span class="na-punkt-titel">${_esc(punkt.titel)}</span><span class="na-punkt-text">${_esc(punkt.text)}</span><em>${punkt.aktion} →</em></button>`).join('') +
+    (punkte.length > sichtbar.length ? `<div class="na-mehr-punkte">+ ${punkte.length - sichtbar.length} weitere</div>` : '') + '</div>' +
+    (status.bestand ? '<div class="nws-klein">Im Bestandsnetz bleiben DN und Leitungsverläufe gesperrt; neue Hausanschlüsse sind möglich.</div>' : '');
+}
+
+/** Zeichnet Zusammenfassungen, Arbeitsliste, Verlauf und Modusanleitung des Netz-Assistenten neu. */
+export function netzWorkspaceAktualisieren() {
+  const workspace = document.getElementById('netz-workspace');
+  if (!workspace) return;
+  _netzAssistentEinrichten();
+  const status = netzWorkspaceStatus();
+  const info = waermeTrassenInfo();
+  const fmt = n => Math.round(n).toLocaleString('de-DE');
+  const setText = (id, text) => { const element = document.getElementById(id); if (element) element.textContent = text; };
+
+  // Standardschritt, solange keiner gewählt ist
+  if (_naOffen === null && _netzWorkspaceSichtbar()) {
+    const zentrale = document.getElementById('netz-zentrale')?.value;
+    _naOffen = !zentrale ? 1 : status.abschnitte ? 3 : 2;
+    workspace.querySelectorAll('.na-schritt').forEach(schritt => schritt.classList.toggle('offen', Number(schritt.dataset.schritt) === _naOffen));
+  }
+
+  // ① Zusammenfassung
+  const zentraleSel = document.getElementById('netz-zentrale');
+  const zentraleName = zentraleSel?.value ? zentraleSel.options[zentraleSel.selectedIndex]?.text : '';
+  setText('na-sum-1', zentraleName
+    ? `${zentraleName} · ${status.bestand ? 'Bestand' : 'Neubau'} · ${document.getElementById('netz-vl')?.value || '–'}/${document.getElementById('netz-rl')?.value || '–'} °C`
+    : 'Heizzentrale wählen');
+  // ② Trassenführung
+  const art = document.querySelector('input[name="na-aufbau"]:checked')?.value || 'street';
+  setText('na-sum-2', status.abschnitte ? `${_NA_ART[_naLetzteArt] || 'Netz vorhanden'} · ${status.abschnitte} Abschnitte` : 'noch kein Netz');
+  const grundlagen = document.getElementById('na-grundlagen');
+  if (grundlagen) grundlagen.innerHTML =
+    `<span>Haupttrasse</span><b>${info.haupttrasse ? `${fmt(info.haupttrasseM)} m – wird immer als Rückgrat verwendet` : 'keine gezeichnet'}</b>` +
+    `<span>Straßendaten</span><b>${info.strassen ? `${info.strassen} Abschnitte (${(info.strassenM / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} km) gespeichert` : 'werden beim Berechnen aus OpenStreetMap geladen'}</b>`;
+  const werkzeuge = document.getElementById('na-trasse-werkzeuge');
+  if (werkzeuge) werkzeuge.hidden = art !== 'trasse' && !info.haupttrasse;
+  setText('btn-draw-trasse-waerme', info.haupttrasse ? '✎ Haupttrasse bearbeiten' : '✎ Haupttrasse zeichnen');
+  const berechnen = document.getElementById('btn-netz-berechnen');
+  if (berechnen && !berechnen.disabled) berechnen.textContent = status.abschnitte ? 'Netz neu berechnen' : 'Netz berechnen';
+  const treue = Number(document.getElementById('netz-trassentreue')?.value ?? 80);
+  workspace.querySelectorAll('.na-presets button').forEach(knopf => {
+    const wert = Number(knopf.dataset.struktur);
+    knopf.classList.toggle('aktiv', Math.abs(wert - treue) <= 15 && [20, 50, 85].reduce((beste, w) => Math.abs(w - treue) < Math.abs(beste - treue) ? w : beste, 20) === wert);
+  });
+  // ③ Anschlüsse prüfen
+  const probleme = status.offen + status.konflikte.length + status.hydraulik.length;
+  setText('na-sum-3', !status.abschnitte ? '—' : probleme
+    ? [status.offen && `${status.offen} offen`, status.konflikte.length && `${status.konflikte.length} Konflikt${status.konflikte.length === 1 ? '' : 'e'}`,
+      status.hydraulik.length && `${status.hydraulik.length} Hydraulik`].filter(Boolean).join(' · ')
+    : `✓ ${status.angeschlossen}/${status.gebaeude} angeschlossen`);
+  document.getElementById('na-schritt-3')?.classList.toggle('hat-probleme', probleme > 0 && status.abschnitte > 0);
+  const liste = document.getElementById('netz-workspace-status');
+  if (liste) liste.innerHTML = _netzArbeitslisteHtml(status);
+  const rewireInfo = document.querySelector('#btn-netz-rewire-mode span');
+  if (rewireInfo) rewireInfo.textContent = status.offen
+    ? `${status.offen} Gebäude ohne Anschluss · Griff auf einen Netzstrang ziehen`
+    : 'Griff eines Gebäudes auf einen anderen Netzstrang ziehen';
+  // ④ Bewertung
+  // Wärmeliniendichte wie in der Kennwertliste: (Wärme angeschlossener Gebäude + Netzverluste) / Trassenlänge
+  const kenn = _netzKennzahlen();
+  const verbunden = new Set((window.netzEdges || []).flatMap(edge => [edge.u, edge.v]));
+  const waermeMwh = gebaeude.filter(building => verbunden.has(building.id)).reduce((summe, building) => summe + (parseFloat(building.waerme) || 0), 0);
+  const wld = kenn.laengeM > 0 ? (waermeMwh + kenn.verlustMwh) / (kenn.laengeM / 1000) : 0;
+  setText('na-sum-4', status.abschnitte
+    ? `${fmt(status.laengeM)} m · WLD ${fmt(wld)} kWh/(m·a) · Hydraulik ${status.hydraulik.length ? '⚠' : '✓'}`
+    : '—');
+
+  // Verlauf
   const undo = document.getElementById('btn-netz-undo');
   const redo = document.getElementById('btn-netz-redo');
   if (undo) {
@@ -926,10 +1102,6 @@ export function netzWorkspaceAktualisieren() {
   // Optionen, die nur mit vorhandener Trasse bzw. vorhandenem Netz sinnvoll sind
   document.querySelectorAll('[data-netz-braucht="trasse"]').forEach(element => { element.hidden = !status.trasse; });
   document.querySelectorAll('[data-netz-braucht="netz"]').forEach(element => { element.hidden = !status.abschnitte; });
-  const rewireInfo = document.querySelector('#btn-netz-rewire-mode span');
-  if (rewireInfo) rewireInfo.textContent = status.offen
-    ? `${status.offen} Gebäude ohne Anschluss · Griff auf einen Netzstrang ziehen`
-    : 'Griff eines Gebäudes auf einen anderen Netzstrang ziehen';
   _netzModusAnzeigen();
 }
 
@@ -946,7 +1118,7 @@ function _netzModusAnzeigen() {
     `<button type="button" class="btn-secondary nwm-fertig" data-click="${aktiv === 'rewire' ? 'setNetzRewireMode(false)' : 'setNetzEditMode(false)'}">Fertig <kbd>Esc</kbd></button>`;
 }
 
-// Tastatur im Arbeitsbereich: Esc beendet den Modus, Strg+Z / Strg+Y blättern im Netzverlauf.
+// Tastatur im Netz-Tab: Esc beendet den Modus, Strg+Z / Strg+Y blättern im Netzverlauf.
 document.addEventListener('keydown', event => {
   if (!_netzWorkspaceSichtbar() || window.isDrawingTrasse) return;
   const ziel = event.target;
@@ -962,7 +1134,7 @@ document.addEventListener('keydown', event => {
   else if (taste === 'y' || (taste === 'z' && event.shiftKey)) { event.preventDefault(); netzWiederholen(); }
 });
 
-/** Nach dem Erstellen geht es direkt im Bearbeiten-Bereich weiter (Anschlüsse prüfen, Rückgängig). */
+/** Nach dem Erstellen geht es direkt mit Schritt ③ weiter (Anschlüsse prüfen, Rückgängig). */
 function _nachNetzErstellung() {
   openNetzWorkspace('edit');
 }
@@ -3727,7 +3899,8 @@ export function autoGenerateNetz(options = {}){
 
 export async function confirmAutoGenerateNetz(options = {}){
   const existing = window.netzEdges?.length || 0;
-  if (existing > 0) {
+  // Aus dem Netz-Assistenten: kein Dialog, stattdessen Vergleich mit „Übernehmen / Bisheriges behalten“
+  if (existing > 0 && !_ohneErsetzenRueckfrage) {
     const message = `Das vorhandene Wärmenetz mit <strong>${existing} Leitungsabschnitten</strong> wird durch die neue Berechnung ersetzt.` +
       '<br><br><span style="color:var(--muted);font-size:10px">Gebäude, Haupttrasse und Konfiguration bleiben erhalten.</span>';
     const ok = typeof window.epConfirm === 'function'
@@ -5826,13 +5999,13 @@ export function toggleDrawEdge(){
   const btn = document.getElementById('btn-draw-edge');
   if(window.isDrawingEdge){
     beginInteraction({id:'draw-heat-edge',label:'Wärmeleitung verbinden',hint:'Ersten und zweiten Anschluss anklicken.',cancel:()=>{ if (window.isDrawingEdge) toggleDrawEdge(); }});
-    btn.classList.add('active');
+    btn?.classList.add('active');
     showHint('Klicke auf das erste Gebäude für die Leitung.');
     setEdgeStartId(null);
     map.getContainer().style.cursor='crosshair';
   } else {
     cancelInteraction('draw-heat-edge');
-    btn.classList.remove('active');
+    btn?.classList.remove('active');
     hideHint();
     setEdgeStartId(null);
     map.getContainer().style.cursor='';

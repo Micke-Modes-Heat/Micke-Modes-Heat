@@ -1383,6 +1383,7 @@ export function showTrasseFinishBtn() {
       }
       // Wärme-Haupttrasse fertig: zurück in „Wärmenetz erstellen“, dort wird das Netz berechnet
       if (trasseDrawDomain === 'waerme' && !wasManualNetwork && typeof window.openNetzWorkspace === 'function') {
+        if (!wasStreetHelper) window.netzAufbauGewaehlt?.('trasse');
         window.openNetzWorkspace('create');
         if (!wasStreetHelper) showHint('✓ Haupttrasse gespeichert. Jetzt eine Netzaufbau-Art wählen – die Haupttrasse wird dabei immer als Rückgrat verwendet.', 7000);
       }

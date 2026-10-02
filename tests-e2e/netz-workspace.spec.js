@@ -20,18 +20,19 @@ test('dist: Netz-Arbeitsbereich zeigt Status und macht Netzänderungen rückgän
     await createQuickWaermeNetz();
   });
   await expect(page.locator('#therm-speicher-panel')).toBeHidden();
-  await expect(page.locator('#netz-workspace-edit')).toBeVisible();
+  await expect(page.locator('#na-schritt-3')).toHaveClass(/offen/);
   await expect(page.locator('#netz-workspace-status')).toContainText('2 von 2 Gebäuden angeschlossen');
   await expect(page.locator('#btn-netz-undo')).toBeEnabled();
   const n = await page.evaluate(() => window.netzEdges.length);
 
   // Leitung zu einem Gebäude löschen → Status meldet den fehlenden Anschluss
   await page.evaluate(() => window.netzEdges.find(e => e.u === 963 || e.v === 963).hitLayer.fire('contextmenu'));
-  await expect(page.locator('#netz-workspace-status')).toContainText('1 ohne Anschluss');
+  await expect(page.locator('#netz-workspace-status .na-punkt.offen')).toHaveCount(1);
+  await expect(page.locator('#na-sum-3')).toHaveText('1 offen');
   await expect(page.locator('#netz-verlauf-text')).toHaveText('Zuletzt: Gebäudeanschluss entfernt');
 
   // Anschlussmodus: Anleitung in der Sidebar, Esc beendet
-  await page.locator('#netz-workspace-status .nws-link').click();
+  await page.locator('#netz-workspace-status .na-punkt.offen').click();
   await expect(page.locator('#netz-workspace-modus')).toBeVisible();
   await expect(page.locator('.netz-rewire-handle.offen')).toHaveCount(1);
   await page.keyboard.press('Escape');
@@ -47,7 +48,14 @@ test('dist: Netz-Arbeitsbereich zeigt Status und macht Netzänderungen rückgän
   await expect.poll(() => page.evaluate(() => window.netzEdges.length)).toBe(n);
   await expect(page.locator('#netz-workspace-status')).toContainText('2 von 2 Gebäuden angeschlossen');
 
-  // Erstellen-Bereich warnt vor dem Ersetzen des vorhandenen Netzes
-  await page.evaluate(() => openNetzWorkspace('create'));
-  await expect(page.locator('#netz-workspace-status .nws-warnung')).toBeVisible();
+  // Neu berechnen zeigt einen Vergleich; „Bisheriges Netz behalten“ stellt das alte Netz wieder her
+  await page.evaluate(() => window.netzEdges.find(e => e.u === 963 || e.v === 963).hitLayer.fire('contextmenu'));
+  await expect.poll(() => page.evaluate(() => window.netzEdges.length)).toBe(n - 1);
+  await page.evaluate(() => { openNetzWorkspace('create'); netzAufbauGewaehlt('quick'); netzStrukturWaehlen(85); });
+  await page.locator('#btn-netz-berechnen').click();
+  await expect(page.locator('#netz-vorschau')).toBeVisible();
+  await expect(page.locator('#netz-vorschau')).toContainText('Trassenlänge');
+  await page.locator('#netz-vorschau button', { hasText: 'Bisheriges Netz behalten' }).click();
+  await expect(page.locator('#netz-vorschau')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.netzEdges.length)).toBe(n - 1);
 });

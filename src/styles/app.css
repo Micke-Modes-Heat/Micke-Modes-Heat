@@ -2155,3 +2155,69 @@ body.gm-fokus #view-tabs{display:none;}
 .d3d-popup .maplibregl-popup-content{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:11px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.5);}
 .d3d-popup .maplibregl-popup-tip{display:none;}
 #d3d-view .maplibregl-ctrl-attrib{font-size:10px;}
+
+/* ── Wärmenetz-Assistent (Netz-Tab): vier Schritte ── */
+.netz-assistent{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;margin-bottom:12px;min-width:0}
+.na-inhalt{min-width:0}.na-inhalt>*{min-width:0}
+.nv-knoepfe button{min-width:0;white-space:normal}
+.na-fein summary{cursor:pointer;font-size:8.5px;color:var(--muted);margin-top:5px}
+.netz-assistent .netz-workspace-verlauf{margin:0}
+.na-schritt{border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden}
+.na-schritt.offen{border-color:rgba(41,182,246,.55);box-shadow:0 0 0 1px rgba(41,182,246,.15)}
+.na-schritt.hat-probleme:not(.offen){border-color:rgba(255,152,0,.5)}
+.na-schritt-kopf{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:8px;width:100%;padding:8px 10px;border:0;background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.na-schritt-kopf:hover{background:rgba(255,255,255,.03)}
+.na-nr{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--border);color:var(--text);font:600 10px 'DM Sans',sans-serif}
+.na-schritt.offen .na-nr{background:#29b6f6;color:#0b1a24}
+.na-name{font-size:11px;font-weight:600}
+.na-sum{min-width:0;font-size:9px;color:var(--muted);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.na-schritt.hat-probleme .na-sum{color:#ffb74d}
+.na-inhalt{display:none;padding:2px 10px 10px}
+.na-schritt.offen .na-inhalt{display:grid;gap:8px}
+.na-inhalt .netz-workspace-central{margin:0}
+.na-inhalt .netz-workspace-type{margin:0}
+.na-inhalt .netz-workspace-settings{margin:0;padding-top:6px}
+.netz-workspace-settings>summary span{font-weight:400;color:var(--muted);font-size:8px;margin-left:4px}
+.na-aufbau{display:grid;gap:5px}
+.na-option{display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);cursor:pointer}
+.na-option:has(input:checked){border-color:#66bb6a;background:rgba(76,175,80,.08)}
+.na-option input{margin-top:2px;accent-color:#66bb6a}
+.na-option strong{display:block;font-size:10px;color:var(--text)}.na-option strong em{margin-left:5px;padding:0 5px;border-radius:7px;background:rgba(76,175,80,.15);color:#a5d6a7;font:600 7px 'DM Sans',sans-serif;font-style:normal;text-transform:uppercase;letter-spacing:.05em;vertical-align:1px}
+.na-option small{display:block;margin-top:2px;font-size:8.5px;color:var(--muted);line-height:1.35}
+.na-trasse-werkzeuge{display:flex;gap:5px;flex-wrap:wrap}.na-trasse-werkzeuge[hidden]{display:none}.na-trasse-werkzeuge button{flex:1;font-size:10px;padding:6px}
+.na-trasse-werkzeuge .danger{flex:0 0 auto;border-color:#e57373;color:#e57373}
+.na-label{display:block;font-size:9px;color:var(--muted);margin-bottom:4px}
+.na-presets{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.na-presets button{display:grid;justify-items:center;gap:3px;padding:6px 4px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--muted);cursor:pointer;font:9px 'DM Sans',sans-serif}
+.na-presets button b{font-weight:600}
+.na-presets button svg{width:40px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.na-presets button.aktiv{border-color:#29b6f6;color:#81d4fa;background:rgba(41,182,246,.08)}
+.na-regler{margin-top:6px}.na-regler label span{font-size:8px}.na-regler small{display:none}
+.na-grundlagen{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;padding:6px 8px;border:1px dashed var(--border);border-radius:6px;font-size:9px}
+.na-grundlagen span{color:var(--muted)}.na-grundlagen b{font-weight:500}
+.na-haupt{width:100%;padding:9px;border:0;border-radius:7px;background:#43a047;color:#fff;font:600 11px 'DM Sans',sans-serif;cursor:pointer}
+.na-haupt:hover:not(:disabled){background:#4caf50}.na-haupt:disabled{opacity:.6;cursor:progress}
+.na-mehr summary{cursor:pointer;font-size:9px;color:var(--muted);padding:2px 0}
+.na-mehr button{width:100%;margin-top:5px;font-size:10px;padding:6px}
+.na-mehr button[hidden]{display:none}
+.na-arbeitsliste{display:grid;gap:5px;font-size:10px}
+.na-liste-kopf{font-size:10px;color:var(--muted)}.na-liste-kopf b{color:var(--text)}
+.na-liste{display:grid;gap:4px}
+.na-punkt{display:grid;grid-template-columns:1fr auto;grid-template-areas:'titel aktion' 'text aktion';gap:0 8px;padding:6px 8px;border:1px solid var(--border);border-left-width:3px;border-radius:6px;background:var(--bg);color:var(--text);text-align:left;cursor:pointer;font:inherit}
+.na-punkt:hover{background:rgba(255,255,255,.04)}
+.na-punkt.offen{border-left-color:#ff9800}.na-punkt.konflikt{border-left-color:#ef5350}.na-punkt.hydraulik{border-left-color:#ab47bc}
+.na-punkt-titel{grid-area:titel;font-size:10px;font-weight:600}.na-punkt-text{grid-area:text;font-size:9px;color:var(--muted)}
+.na-punkt em{grid-area:aktion;align-self:center;font-style:normal;font-size:9px;color:#4fc3f7;white-space:nowrap}
+.na-mehr-punkte{font-size:9px;color:var(--muted);padding-left:4px}
+.na-ok{padding:7px 8px;border-radius:6px;background:rgba(76,175,80,.1);color:#a5d6a7;font-size:10px}
+.na-leer{font-size:10px;color:var(--muted);line-height:1.5;display:grid;gap:4px}.na-leer strong{color:var(--text)}
+.na-arbeitsliste .nws-link{justify-self:start;padding:0;border:0;background:none;color:#4fc3f7;font:600 9px 'DM Sans',sans-serif;cursor:pointer}
+.na-arbeitsliste .nws-typ{padding:0 5px;border:1px solid #4caf50;border-radius:8px;color:#81c784}
+.na-arbeitsliste .nws-klein{font-size:9px;color:var(--muted);line-height:1.4}
+.netz-vorschau{padding:8px 9px;border:1px solid #66bb6a;border-radius:8px;background:rgba(76,175,80,.08);display:grid;gap:6px}.netz-vorschau[hidden]{display:none}
+.netz-vorschau .nv-kopf strong{display:block;font-size:11px;color:#a5d6a7}.netz-vorschau .nv-kopf span{font-size:9px;color:var(--muted)}
+.nv-tabelle{display:grid;grid-template-columns:auto auto 1fr;gap:2px 10px;font-size:10px;align-items:baseline}
+.nv-tabelle span{color:var(--muted)}.nv-tabelle b{font:500 10px 'DM Mono',monospace;text-align:right}
+.nv-tabelle i{font:normal 9px 'DM Mono',monospace;color:var(--muted)}.nv-tabelle i.gut{color:#81c784}.nv-tabelle i.schlecht{color:#ef9a9a}
+.nv-knoepfe{display:flex;gap:5px}.nv-knoepfe button{flex:1;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font:10px 'DM Sans',sans-serif;cursor:pointer}
+.nv-knoepfe button.primary{border-color:#43a047;background:#43a047;color:#fff;font-weight:600}

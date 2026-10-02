@@ -63,10 +63,8 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
       editorControls: ['trasse-finish-btn','trasse-generate-btn','trasse-branch-btn','trasse-cancel-btn']
         .every(id => !!document.getElementById(id)),
       autoNetzVisible: [...document.querySelectorAll('button')].some(button => button.textContent.includes('Wärmenetz erstellen')),
-      createMenuOptions: [...document.querySelectorAll('#netz-create-menu .netz-create-option strong')]
-        .map(element => element.textContent.trim()),
-      visibleTrasseDelete: [...document.querySelectorAll('#netz-create-menu button')]
-        .some(button => button.textContent.includes('Gezeichnete Haupttrasse löschen')),
+      createMenuOptions: [...document.querySelectorAll('#netz-workspace input[name="na-aufbau"]')].map(input => input.value),
+      visibleTrasseDelete: (netzWorkspaceAktualisieren(), !document.querySelector('#na-trasse-werkzeuge [data-netz-braucht="trasse"]').hidden),
       trassentreue: document.getElementById('netz-trassentreue')?.value,
       markerSurvivedDrag,
       lockedState,
@@ -84,12 +82,7 @@ test('dist: Trasse, Linien-Snap und Abschluss verändern vorhandenes Netz nicht 
   expect(result.controlsHidden).toBe(true);
   expect(result.editorControls).toBe(true);
   expect(result.autoNetzVisible).toBe(true);
-  expect(result.createMenuOptions).toEqual([
-    'Netz an Straßenzügen orientieren',
-    'Auto-Netz direkt',
-    'Haupttrasse zeichnen',
-    'Netz vollständig manuell zeichnen',
-  ]);
+  expect(result.createMenuOptions).toEqual(['street', 'quick', 'trasse']);
   expect(result.visibleTrasseDelete).toBe(true);
   expect(result.trassentreue).toBe('80');
   expect(result.markerSurvivedDrag).toBe(true);
@@ -762,7 +755,7 @@ test('dist: mehrfach angesetzte Haupttrasse bildet am Linien-Snap einen echten A
   expect(result.branchDegree).toBeGreaterThanOrEqual(3);
 });
 
-test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Sidebar', async ({page}) => {
+test('dist: Wärmenetz-Startfenster führt in den Netz-Assistenten mit vier Schritten', async ({page}) => {
   await page.route(/tile\.openstreetmap\.org/, route => route.abort());
   await page.goto('/');
   await page.waitForFunction(() => typeof window.openNetzWorkspace === 'function');
@@ -771,73 +764,57 @@ test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Si
     toggleNetzPanel();
     const launcher = {
       visible: document.getElementById('netz-panel').classList.contains('visible'),
-      choices: [...document.querySelectorAll('#netz-panel .netz-launch-choice strong')]
-        .map(element => element.textContent.trim()),
+      choices: [...document.querySelectorAll('#netz-panel .netz-launch-choice strong')].map(element => element.textContent.trim()),
     };
     openNetzWorkspace('create');
+    const offen = () => [...document.querySelectorAll('#netz-workspace .na-schritt.offen')].map(element => Number(element.dataset.schritt));
     const create = {
       panelClosed: !document.getElementById('netz-panel').classList.contains('visible'),
       sidebarActive: document.getElementById('lp-netz').classList.contains('active'),
-      workspaceVisible: !document.getElementById('netz-workspace').hidden,
-      menuInSidebar: document.getElementById('netz-create-menu').parentElement.id === 'netz-workspace-create',
+      schritte: [...document.querySelectorAll('#netz-workspace .na-schritt .na-name')].map(element => element.textContent.trim()),
+      offen: offen(),
       settingsInSidebar: document.getElementById('netz-settings-content').parentElement.id === 'netz-workspace-settings',
-      centralAvailable: Boolean(document.querySelector('#netz-workspace-central #netz-zentrale')),
-      creationOrder: [
-        document.getElementById('netz-workspace-central'),
-        document.getElementById('netz-workspace-create'),
-        document.querySelector('#netz-workspace > .netz-workspace-settings'),
-      ].map(element => [...element.parentElement.children].indexOf(element)),
-      furtherSettingsCollapsed: !document.querySelector('#netz-workspace > .netz-workspace-settings').open,
-      overviewHidden: document.getElementById('lp-netz-waerme').hidden,
-      typeOptions: [...document.querySelectorAll('.netz-workspace-type button')].map(button=>button.textContent.trim()),
-      bestandActive: document.getElementById('btn-netz-type-bestand').classList.contains('active'),
-      streetHelperInCreate: document.getElementById('netz-create-menu').textContent.includes('Fehlenden Weg ergänzen'),
+      centralInStep1: Boolean(document.querySelector('#na-schritt-1 #netz-zentrale')),
+      typeOptions: [...document.querySelectorAll('#na-schritt-1 .netz-workspace-type button')].map(button => button.textContent.trim()),
+      aufbau: [...document.querySelectorAll('#na-schritt-2 input[name="na-aufbau"]')].map(input => input.value),
+      presets: [...document.querySelectorAll('#na-schritt-2 .na-presets b')].map(element => element.textContent),
+      weitere: document.querySelector('#na-schritt-2 .na-mehr').textContent.includes('Fehlenden Straßenverlauf ergänzen'),
+      settingsCollapsed: !document.querySelector('#na-schritt-1 .netz-workspace-settings').open,
     };
     setWaermeNetzType(false);
-    create.neubauSelectable = !window.networkLocked &&
-      document.getElementById('btn-netz-type-neubau').classList.contains('active');
+    create.neubauSelectable = !window.networkLocked && document.getElementById('btn-netz-type-neubau').classList.contains('active');
     setWaermeNetzType(true);
-    closeNetzWorkspace();
     openNetzWorkspace('edit');
     const edit = {
-      visible: !document.getElementById('netz-workspace-edit').hidden,
-      actions: [...document.querySelectorAll('#netz-workspace-edit .netz-workspace-action strong')]
-        .map(element => element.textContent.trim()),
+      offen: offen(),
+      actions: [...document.querySelectorAll('#na-schritt-3 .netz-workspace-action strong')].map(element => element.textContent.trim()),
       duplicateEditIds: document.querySelectorAll('#btn-netz-edit-mode').length,
       duplicateRewireIds: document.querySelectorAll('#btn-netz-rewire-mode').length,
-      hasPruningAction: document.getElementById('netz-workspace-edit').textContent.includes('Leitungsabschnitte deaktivieren'),
       renovationInEconomics: document.getElementById('netz-sanierung-toggle')?.closest('#wirtschaft-panel') !== null,
-      centralAvailable: Boolean(document.querySelector('#netz-workspace-central #netz-zentrale')),
-      editingOrder: [
-        document.getElementById('netz-workspace-central'),
-        document.getElementById('netz-workspace-edit'),
-        document.querySelector('#netz-workspace > .netz-workspace-settings'),
-      ].map(element => [...element.parentElement.children].indexOf(element)),
     };
+    netzSchrittOeffnen(4);
+    const bewertung = { offen: offen(), kennwerte: Boolean(document.querySelector('#na-schritt-4 #lp-netz-laenge')) };
     closeNetzWorkspace();
-    return {launcher,create,edit};
+    return {launcher, create, edit, bewertung, nachSchliessen: offen()};
   });
 
-  expect(result.launcher).toEqual({
-    visible:true,
-    choices:['Wärmenetz erstellen','Wärmenetz bearbeiten'],
-  });
+  expect(result.launcher).toEqual({ visible:true, choices:['Wärmenetz erstellen','Wärmenetz bearbeiten'] });
   expect(result.create).toEqual({
-    panelClosed:true,sidebarActive:true,workspaceVisible:true,menuInSidebar:true,
-    settingsInSidebar:true,centralAvailable:true,creationOrder:[4,5,7],furtherSettingsCollapsed:true,overviewHidden:true,
-    typeOptions:['🏛 Bestand 2026','Neubaunetz'],bestandActive:true,streetHelperInCreate:false,neubauSelectable:true,
+    panelClosed:true, sidebarActive:true,
+    schritte:['Zentrale & Netz','Trassenführung','Anschlüsse prüfen','Bewertung'], offen:[2],
+    settingsInSidebar:true, centralInStep1:true, typeOptions:['🏛 Bestand 2026','Neubaunetz'],
+    aufbau:['street','quick','trasse'], presets:['Gebündelt','Ausgewogen','Einzeln'], weitere:true, settingsCollapsed:true,
+    neubauSelectable:true,
   });
-  expect(result.edit.visible).toBe(true);
+  expect(result.edit.offen).toEqual([3]);
   expect(result.edit.actions[0]).toBe('Gebäude anschließen / umhängen');
   expect(result.edit.actions).toContain('Leitungsverläufe bearbeiten');
-  expect(result.edit.actions).toContain('Fehlenden Straßenverlauf ergänzen');
   expect(result.edit.actions).toContain('Netz verwerfen');
   expect(result.edit.duplicateEditIds).toBe(1);
   expect(result.edit.duplicateRewireIds).toBe(1);
-  expect(result.edit.hasPruningAction).toBe(false);
   expect(result.edit.renovationInEconomics).toBe(true);
-  expect(result.edit.centralAvailable).toBe(true);
-  expect(result.edit.editingOrder).toEqual([4,6,7]);
+  expect(result.bewertung).toEqual({ offen:[4], kennwerte:true });
+  expect(result.nachSchliessen).toEqual([]);
 });
 
 test('dist: OSM-Routinggrundlage erzeugt keine tausenden Bearbeitungsgriffe', async ({page}) => {
@@ -1638,8 +1615,7 @@ test('dist: Gebäudekreuzung wird nur als Rückfall genutzt und verhindert den N
       created,
       edgeCount:window.netzEdges.length,
       workspaceOpen:!document.getElementById('netz-workspace').hidden,
-      editOpen:!document.getElementById('netz-workspace-edit').hidden,
-      menuOpen:!document.getElementById('netz-create-menu').hidden,
+      editOpen:document.getElementById('na-schritt-3').classList.contains('offen'),
       hint:document.getElementById('hint').textContent,
     };
   });
