@@ -36,10 +36,19 @@ import { loadLatestAutosave, saveAutosaveProject } from './lib/autosave-store.js
 import { appLifecycle } from './lib/lifecycle.js';
 import { beginInteraction, cancelInteraction } from './lib/interaction-state.js';
 import { getBuildingHeatProfileMeta } from './lib/building-heat-profiles.js';
+import { trBereich, trImBereich, trGroesse, trFuellen, trNachUnten, trZwischenablageLesen, trAlsText, trEinfuegen, trZahl, trNutzung } from './lib/tabellen-raster.js';
 
 export function setNutzung(id, nutzung) {
   const g = gebaeude.find(x => x.id === id);
   if (!g) return;
+  _nutzungSetzen(g, nutzung);
+  updateViz(); updateTotals();
+  window.glBerechnenDebounced?.(500);
+}
+
+/** Nutzung setzen und leere Kennwerte aus den Nutzungsvorgaben vorbelegen — ohne Neuberechnung (für Sammeländerungen). */
+function _nutzungSetzen(g, nutzung) {
+  const id = g.id;
   g.nutzung = nutzung;
   _invalidateStats();
   const def = NUTZUNG_DEFAULTS[nutzung];
@@ -66,8 +75,6 @@ export function setNutzung(id, nutzung) {
       }
     }
   }
-  updateViz(); updateTotals();
-  window.glBerechnenDebounced?.(500);
 }
 
 // ── Gebäude-Auswahl & Massenbearbeitung ──────────────────────────────
@@ -188,9 +195,17 @@ export function sortGebaeudeTable(key) {
   renderGebaeudeOverview();
 }
 
-export function toggleGebaeudeTableSelection(id,checked) {
+let _gebLetzterHaken = null;
+export function toggleGebaeudeTableSelection(id,checked,shift = false) {
   const building = gebaeude.find(g => g.id === id);
   if (building) building.selected = !!checked;
+  // Shift+Klick: alle Zeilen zwischen dem zuletzt angeklickten Haken und diesem übernehmen den neuen Zustand
+  if (shift && _gebLetzterHaken !== null) {
+    const ids = _gebZeilen.map(g => g.id);
+    const a = ids.indexOf(_gebLetzterHaken), b = ids.indexOf(id);
+    if (a >= 0 && b >= 0) _gebZeilen.slice(Math.min(a,b),Math.max(a,b) + 1).forEach(g => { g.selected = !!checked; });
+  }
+  _gebLetzterHaken = id;
   updateBulkBar();
   renderGebaeudeOverview();
 }
@@ -201,12 +216,26 @@ export function toggleAllGebaeudeTable(checked) {
   renderGebaeudeOverview();
 }
 
+/**
+ * Änderung einer Zelle. Liegt die Zelle in einem markierten Bereich mit mehreren Zeilen, gilt der Wert für alle
+ * markierten Zellen dieser Spalte; ist die Zeile per Haken ausgewählt und sind mehrere ausgewählt, für alle
+ * ausgewählten Gebäude. Sonst nur für dieses Gebäude.
+ */
 export function updateGebaeudeTableField(id,field,value) {
-  if (field === 'name') window.renameGebaeude?.(id,value);
-  else if (field === 'nutzung') setNutzung(id,value);
-  else window.updateField?.(id,field,value);
-  renderList();
-  renderGebaeudeOverview();
+  const c = GEB_RASTER_SPALTEN.indexOf(field);
+  const r = _gebZeilen.findIndex(g => g.id === id);
+  const b = _gebMarkBereich();
+  let ziele = [id];
+  let wie = '';
+  if (b && c >= 0 && trImBereich(b,r,c) && b.r1 > b.r0) {
+    ziele = _gebZeilen.slice(b.r0,b.r1 + 1).map(g => g.id);
+    wie = 'markierte Zeilen';
+  } else if (gebaeude.find(g => g.id === id)?.selected && gebaeude.filter(g => g.selected).length > 1) {
+    ziele = gebaeude.filter(g => g.selected).map(g => g.id);
+    wie = 'ausgewählte Gebäude';
+  }
+  _gebWerteSetzen(ziele.map(zid => ({id:zid,key:field,wert:value})),
+    ziele.length > 1 ? `${GEB_SPALTEN_NAMEN[field] || field} für ${ziele.length} ${wie} übernommen` : '');
 }
 
 export function applyGebaeudeTableBulk() {
@@ -396,29 +425,42 @@ export function renderGebaeudeOverview() {
     <th data-click="sortGebaeudeTable('quelle')">${sortLabel('quelle','Quelle')}</th>
   </tr>`;
   const usageTypes = getNutzungstypen();
-  body.innerHTML = rows.map(g => {
+  _gebZeilen = rows;
+  const mark = _gebMarkBereich();
+  const zelle = (r,key,inhalt) => {
+    const c = GEB_RASTER_SPALTEN.indexOf(key);
+    const drin = trImBereich(mark,r,c);
+    const ecke = mark && r === mark.r1 && c === mark.c1;
+    return `<td class="geb-zelle${drin ? ' markiert' : ''}" data-gr="${r}" data-gc="${c}">${inhalt}${ecke ? '<span class="geb-fuell" title="Ziehen: Werte nach unten oder oben übertragen (wie in Excel)"></span>' : ''}</td>`;
+  };
+  body.innerHTML = rows.map((g,r) => {
     const netFloorArea = (Number(g.flaeche) || 0) * (Number(g.stockwerke) || 1) * 0.8;
     const options = [
       ...(!usageTypes.some(type => type.id === g.nutzung) && g.nutzung
         ? [{id:g.nutzung,label:_gebUsageLabel(g)}] : []),
       ...usageTypes,
     ].map(type => `<option value="${_gebTableEsc(type.id)}" ${type.id === g.nutzung ? 'selected' : ''}>${_gebTableEsc(type.label)}</option>`).join('');
-    return `<tr class="${g.selected ? 'selected' : ''}">
-      <td><input type="checkbox" ${g.selected ? 'checked' : ''} data-change="toggleGebaeudeTableSelection(${g.id},this.checked)"></td>
-      <td><input class="geb-table-num" style="width:56px" value="${_gebTableEsc(g.gebaeudenummer || '')}" data-change="updateGebaeudeTableField(${g.id},'gebaeudenummer',this.value)"></td>
-      <td><input class="geb-table-name" value="${_gebTableEsc(g.name)}" data-change="updateGebaeudeTableField(${g.id},'name',this.value)"></td>
-      <td><select data-change="updateGebaeudeTableField(${g.id},'nutzung',this.value)"><option value="">—</option>${options}</select></td>
-      <td><input class="geb-table-num" type="number" value="${g.baujahr || ''}" data-change="updateGebaeudeTableField(${g.id},'baujahr',this.value)"></td>
-      <td><input class="geb-table-num" type="number" min="1" max="50" value="${g.stockwerke || 1}" data-change="updateGebaeudeTableField(${g.id},'stockwerke',this.value)"></td>
-      <td><input class="geb-table-num" type="number" min="0" value="${g.flaeche ? Math.round(g.flaeche) : ''}" data-change="updateGebaeudeTableField(${g.id},'flaeche',this.value)"></td>
+    return `<tr class="${g.selected ? 'selected' : ''}" data-geb-id="${g.id}">
+      <td><input type="checkbox" class="geb-haken" ${g.selected ? 'checked' : ''} data-change="toggleGebaeudeTableSelection(${g.id},this.checked,!!this._shift)"></td>
+      ${zelle(r,'gebaeudenummer',`<input class="geb-table-num" style="width:56px" value="${_gebTableEsc(g.gebaeudenummer || '')}" data-change="updateGebaeudeTableField(${g.id},'gebaeudenummer',this.value)">`)}
+      ${zelle(r,'name',`<input class="geb-table-name" value="${_gebTableEsc(g.name)}" data-change="updateGebaeudeTableField(${g.id},'name',this.value)">`)}
+      ${zelle(r,'nutzung',`<select data-change="updateGebaeudeTableField(${g.id},'nutzung',this.value)"><option value="">—</option>${options}</select>`)}
+      ${zelle(r,'baujahr',`<input class="geb-table-num" type="number" value="${g.baujahr || ''}" data-change="updateGebaeudeTableField(${g.id},'baujahr',this.value)">`)}
+      ${zelle(r,'stockwerke',`<input class="geb-table-num" type="number" min="1" max="50" value="${g.stockwerke || 1}" data-change="updateGebaeudeTableField(${g.id},'stockwerke',this.value)">`)}
+      ${zelle(r,'flaeche',`<input class="geb-table-num" type="number" min="0" value="${g.flaeche ? Math.round(g.flaeche) : ''}" data-change="updateGebaeudeTableField(${g.id},'flaeche',this.value)">`)}
       <td class="geb-table-num geb-table-readonly">${Math.round(netFloorArea).toLocaleString('de-DE')}</td>
-      <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.waerme ?? ''}" data-change="updateGebaeudeTableField(${g.id},'waerme',this.value)"></td>
-      <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.spez ?? ''}" data-change="updateGebaeudeTableField(${g.id},'spez',this.value)"></td>
-      <td><input class="geb-table-num" type="number" min="0" step="0.1" value="${g.heizlast ?? ''}" data-change="updateGebaeudeTableField(${g.id},'heizlast',this.value)"></td>
+      ${zelle(r,'waerme',`<input class="geb-table-num" type="number" min="0" step="0.1" value="${g.waerme ?? ''}" data-change="updateGebaeudeTableField(${g.id},'waerme',this.value)">`)}
+      ${zelle(r,'spez',`<input class="geb-table-num" type="number" min="0" step="0.1" value="${g.spez ?? ''}" data-change="updateGebaeudeTableField(${g.id},'spez',this.value)">`)}
+      ${zelle(r,'heizlast',`<input class="geb-table-num" type="number" min="0" step="0.1" value="${g.heizlast ?? ''}" data-change="updateGebaeudeTableField(${g.id},'heizlast',this.value)">`)}
       <td><button class="geb-profile-btn" data-click="showGebaeudeHeatProfile(${g.id})">${_gebTableEsc(getBuildingHeatProfileMeta(g).label)}</button></td>
       <td class="geb-table-readonly" title="${_gebTableEsc(g.importSourceName || '')}">${_gebTableEsc(g.importSourceName || '—')}</td>
     </tr>`;
   }).join('');
+  _gebRasterAnbinden(body);
+  const undoBtn = document.getElementById('geb-table-undo');
+  if (undoBtn) { undoBtn.disabled = !_gebUndo.length; undoBtn.title = _gebUndo.length ? `Rückgängig: ${_gebUndo.at(-1).text} (Strg+Z)` : 'Nichts rückgängig zu machen'; }
+  const markInfo = document.getElementById('geb-table-mark');
+  if (markInfo) markInfo.textContent = mark && trGroesse(mark) > 1 ? `${trGroesse(mark)} Zellen markiert` : '';
   const count = document.getElementById('geb-table-result-count');
   if (count) count.textContent = `${rows.length} von ${gebaeude.length} Gebäuden`;
   const bulk = document.getElementById('geb-table-bulk');
@@ -433,6 +475,296 @@ export function renderGebaeudeOverview() {
       <button class="btn-secondary" data-click="applyGebaeudeTableBulk()">Auf Auswahl anwenden</button>
       <button class="btn-secondary" data-click="clearSelection()">Auswahl aufheben</button>` : '';
   }
+}
+
+// ── Gebäudetabelle wie eine Tabellenkalkulation ───────────────────────────
+// Markieren mit der Maus (ziehen, Shift+Klick), Ausfüllkästchen, Strg+C/V/D, Enter springt nach unten,
+// Rückgängig. Die reine Logik steckt in lib/tabellen-raster.js.
+const GEB_RASTER_SPALTEN = ['gebaeudenummer','name','nutzung','baujahr','stockwerke','flaeche','waerme','spez','heizlast'];
+const GEB_SPALTEN_NAMEN = { gebaeudenummer:'Nr.', name:'Name', nutzung:'Nutzung', baujahr:'Baujahr', stockwerke:'Geschosse', flaeche:'Grundfläche', waerme:'Wärme', spez:'spez. Wärme', heizlast:'Heizlast' };
+const GEB_ZAHL_SPALTEN = new Set(['baujahr','stockwerke','flaeche','waerme','spez','heizlast']);
+const GEB_UNDO_FELDER = ['gebaeudenummer','name','nutzung','baujahr','stockwerke','flaeche','waerme','spez','heizlast','spezHeizlast','waermeManual','heizlastManual'];
+let _gebZeilen = [];          // sichtbare Reihenfolge der letzten Darstellung
+let _gebMark = null;          // { anker:{id,key}, ende:{id,key} }
+let _gebZieh = null;          // { art:'markieren'|'fuellen', bereich, ziel }
+const _gebUndo = [];          // [{ text, stand: [{id, felder}] }]
+
+function _gebPos(p) {
+  if (!p) return null;
+  const r = _gebZeilen.findIndex(g => g.id === p.id), c = GEB_RASTER_SPALTEN.indexOf(p.key);
+  return r >= 0 && c >= 0 ? {r,c} : null;
+}
+function _gebMarkBereich() {
+  const a = _gebPos(_gebMark?.anker), e = _gebPos(_gebMark?.ende);
+  return a && e ? trBereich(a,e) : null;
+}
+const _gebZellPos = td => ({ r: Number(td.dataset.gr), c: Number(td.dataset.gc) });
+const _gebPunkt = (r,c) => ({ id: _gebZeilen[r]?.id, key: GEB_RASTER_SPALTEN[c] });
+
+/** Markierung im Dokument nachziehen, ohne die Tabelle neu aufzubauen (Eingabefokus bleibt erhalten). */
+function _gebMarkZeichnen(vorschau = null) {
+  const body = document.getElementById('geb-table-body');
+  if (!body) return;
+  const b = _gebMarkBereich();
+  body.querySelectorAll('td.geb-zelle').forEach(td => {
+    const {r,c} = _gebZellPos(td);
+    td.classList.toggle('markiert',trImBereich(b,r,c));
+    td.classList.toggle('vorschau',!!vorschau && trImBereich(vorschau,r,c) && !trImBereich(b,r,c));
+    const ecke = !!b && r === b.r1 && c === b.c1;
+    const griff = td.querySelector('.geb-fuell');
+    if (ecke && !griff) td.insertAdjacentHTML('beforeend','<span class="geb-fuell" title="Ziehen: Werte nach unten oder oben übertragen (wie in Excel)"></span>');
+    if (!ecke && griff) griff.remove();
+  });
+  const info = document.getElementById('geb-table-mark');
+  if (info) info.textContent = b && trGroesse(b) > 1 ? `${trGroesse(b)} Zellen markiert` : '';
+}
+
+/** Anzeigewert einer Zelle für die Zwischenablage. */
+function _gebZellText(g,key) {
+  if (key === 'nutzung') return _gebUsageLabel(g);
+  const v = g[key];
+  if (v === null || v === undefined || v === '') return '';
+  return GEB_ZAHL_SPALTEN.has(key) ? String(v).replace('.',',') : String(v);
+}
+
+/** Wert vor dem Setzen prüfen: Zahlen lesen (auch „1.234,5“), Nutzung über Kennung oder Bezeichnung finden. */
+function _gebWertNormieren(key,wert) {
+  if (key === 'nutzung') return wert === '' ? '' : trNutzung(wert,getNutzungstypen());
+  if (GEB_ZAHL_SPALTEN.has(key)) {
+    if (String(wert).trim() === '') return '';
+    const z = trZahl(wert);
+    return Number.isFinite(z) ? String(z) : null;
+  }
+  return String(wert ?? '');
+}
+
+/** Änderungen [{id,key,wert}] gesammelt übernehmen: ein Rückgängig-Schritt, eine Neuberechnung. */
+function _gebWerteSetzen(aenderungen,meldung = '') {
+  const gueltig = [];
+  let verworfen = 0;
+  for (const a of aenderungen) {
+    const g = gebaeude.find(x => x.id === a.id);
+    if (!g || !GEB_RASTER_SPALTEN.includes(a.key)) continue;
+    const w = _gebWertNormieren(a.key,a.wert);
+    if (w === null) { verworfen++; continue; }
+    gueltig.push({g,key:a.key,wert:w});
+  }
+  if (!gueltig.length) {
+    if (verworfen) showHint(`Keine Änderung übernommen: ${verworfen} ${verworfen === 1 ? 'Wert ist' : 'Werte sind'} keine Zahl bzw. keine bekannte Nutzung.`,4000);
+    renderGebaeudeOverview();
+    return;
+  }
+  const betroffen = [...new Set(gueltig.map(x => x.g))];
+  _gebUndo.push({ text: meldung || 'Änderung', stand: betroffen.map(g => ({ id: g.id, felder: Object.fromEntries(GEB_UNDO_FELDER.map(f => [f,g[f]])) })) });
+  if (_gebUndo.length > 30) _gebUndo.shift();
+  let baujahr = false;
+  for (const {g,key,wert} of gueltig) {
+    if (key === 'name') window.renameGebaeude?.(g.id,wert);
+    else if (key === 'gebaeudenummer') window.setGebaeudenummer?.(g.id,wert);
+    else if (key === 'nutzung') _nutzungSetzen(g,wert);
+    else { window.updateField?.(g.id,key,wert,{defer:true}); if (key === 'baujahr') baujahr = true; }
+  }
+  _gebNachAenderung(baujahr);
+  const text = meldung || (betroffen.length > 1 ? `${betroffen.length} Gebäude geändert` : '');
+  if (text || verworfen) showHint(`✓ ${text || 'Übernommen'}${verworfen ? ` · ${verworfen} ungültige ${verworfen === 1 ? 'Wert' : 'Werte'} übersprungen` : ''}`,3000);
+}
+
+function _gebNachAenderung(baujahr = false) {
+  _invalidateStats();
+  if (baujahr) window._initYearSliderFromBaujahr?.();
+  renderList();
+  updateViz();
+  updateTotals();
+  recalcNetz();
+  window.glBerechnenDebounced?.(800);
+  renderGebaeudeOverview();
+}
+
+/** Letzte Tabellenänderung zurücknehmen. */
+export function gebTabelleRueckgaengig() {
+  const schritt = _gebUndo.pop();
+  if (!schritt) return;
+  for (const {id,felder} of schritt.stand) {
+    const g = gebaeude.find(x => x.id === id);
+    if (!g) continue;
+    Object.assign(g,felder);
+    window.renameGebaeude?.(id,g.name);
+    window.setGebaeudenummer?.(id,g.gebaeudenummer || '');
+  }
+  _gebNachAenderung(true);
+  showHint(`↶ Rückgängig: ${schritt.text}`,2500);
+}
+
+/** Bereich markieren (auch für Tests): Ecken über Gebäude-ID und Spaltenschlüssel. */
+export function gebTabelleMarkieren(idA,keyA,idB = idA,keyB = keyA) {
+  _gebMark = { anker: {id:idA,key:keyA}, ende: {id:idB,key:keyB} };
+  _gebMarkZeichnen();
+}
+export function gebTabelleMarkierungAufheben() { _gebMark = null; _gebMarkZeichnen(); }
+
+/** Strg+D: oberste markierte Zeile nach unten übernehmen. */
+export function gebTabelleNachUnten() {
+  const b = _gebMarkBereich();
+  if (!b || b.r1 === b.r0) { showHint('Für „Nach unten ausfüllen“ mehrere Zeilen markieren.',2500); return; }
+  const z = trNachUnten(b);
+  _gebWerteSetzen(z.map(x => ({ id: _gebZeilen[x.r].id, key: GEB_RASTER_SPALTEN[x.c], wert: _gebZellText(_gebZeilen[x.quelleR],GEB_RASTER_SPALTEN[x.c]) })),
+    `${b.r1 - b.r0} ${b.r1 - b.r0 === 1 ? 'Zeile' : 'Zeilen'} nach unten ausgefüllt`);
+}
+
+/** Ausfüllkästchen: markierten Bereich bis Zeile `ziel` übertragen. */
+export function gebTabelleFuellenBis(ziel) {
+  const b = _gebMarkBereich();
+  if (!b) return;
+  const z = trFuellen(b,ziel);
+  if (!z.length) return;
+  const neu = trBereich({ r: Math.min(b.r0,ziel), c: b.c0 },{ r: Math.max(b.r1,ziel), c: b.c1 });
+  _gebMark = { anker: _gebPunkt(neu.r0,neu.c0), ende: _gebPunkt(neu.r1,neu.c1) };
+  const zeilen = new Set(z.map(x => x.r)).size;
+  _gebWerteSetzen(z.map(x => ({ id: _gebZeilen[x.r].id, key: GEB_RASTER_SPALTEN[x.c], wert: _gebZellText(_gebZeilen[x.quelleR],GEB_RASTER_SPALTEN[x.c]) })),
+    `Werte auf ${zeilen} ${zeilen === 1 ? 'weitere Zeile' : 'weitere Zeilen'} übertragen`);
+}
+
+/** Text aus der Zwischenablage ab der Ankerzelle bzw. in den markierten Bereich einfügen. */
+export function gebTabelleEinfuegen(text) {
+  const matrix = trZwischenablageLesen(text);
+  const b = _gebMarkBereich();
+  const anker = _gebPos(_gebMark?.anker);
+  if (!matrix.length || (!b && !anker)) return false;
+  const ziele = trEinfuegen(matrix,anker || {r:b.r0,c:b.c0},b,_gebZeilen.length,GEB_RASTER_SPALTEN.length);
+  if (!ziele.length) return false;
+  const r1 = Math.max(...ziele.map(z => z.r)), c1 = Math.max(...ziele.map(z => z.c));
+  const r0 = Math.min(...ziele.map(z => z.r)), c0 = Math.min(...ziele.map(z => z.c));
+  _gebMark = { anker: _gebPunkt(r0,c0), ende: _gebPunkt(r1,c1) };
+  _gebWerteSetzen(ziele.map(z => ({ id: _gebZeilen[z.r].id, key: GEB_RASTER_SPALTEN[z.c], wert: z.wert })),
+    `${ziele.length} ${ziele.length === 1 ? 'Wert' : 'Werte'} eingefügt`);
+  return true;
+}
+
+/** Markierten Bereich als Text (Tabulator/Zeilenumbruch) für Excel. */
+export function gebTabelleKopierText() {
+  const b = _gebMarkBereich();
+  if (!b) return '';
+  const m = [];
+  for (let r = b.r0; r <= b.r1; r++) {
+    const z = [];
+    for (let c = b.c0; c <= b.c1; c++) z.push(_gebZellText(_gebZeilen[r],GEB_RASTER_SPALTEN[c]));
+    m.push(z);
+  }
+  return trAlsText(m);
+}
+
+function _gebFokus(r,c) {
+  const td = document.querySelector(`#geb-table-body td.geb-zelle[data-gr="${r}"][data-gc="${c}"]`);
+  const feld = td?.querySelector('input,select');
+  if (feld) { feld.focus(); if (feld.select && feld.tagName === 'INPUT') feld.select(); }
+}
+
+/** Ereignisse einmal an den Tabellenkörper hängen (der Inhalt wird bei jeder Darstellung ersetzt). */
+function _gebRasterAnbinden(body) {
+  if (body._gebRaster) return;
+  body._gebRaster = true;
+  const wrap = body.closest('table');
+
+  body.addEventListener('click',e => {
+    const haken = e.target.closest('input.geb-haken');
+    if (haken) haken._shift = e.shiftKey;
+  },true);
+
+  body.addEventListener('mousedown',e => {
+    if (e.button !== 0) return;
+    const td = e.target.closest('td.geb-zelle');
+    if (!td) return;
+    const {r,c} = _gebZellPos(td);
+    if (e.target.classList.contains('geb-fuell')) {
+      e.preventDefault();
+      _gebZieh = { art: 'fuellen', bereich: _gebMarkBereich(), ziel: r };
+      wrap?.classList.add('geb-zieht');
+      return;
+    }
+    if (e.shiftKey && _gebMark) {
+      e.preventDefault();
+      _gebMark.ende = _gebPunkt(r,c);
+      _gebMarkZeichnen();
+      return;
+    }
+    // Klick in einen markierten Bereich behält die Markierung: die folgende Änderung gilt für alle markierten Zellen
+    const b = _gebMarkBereich();
+    if (trGroesse(b) > 1 && trImBereich(b,r,c)) {
+      _gebZieh = { art: 'markieren', start: {r,c}, behalten: true };
+      return;
+    }
+    _gebMark = { anker: _gebPunkt(r,c), ende: _gebPunkt(r,c) };
+    _gebZieh = { art: 'markieren', start: {r,c} };
+    _gebMarkZeichnen();
+  });
+
+  body.addEventListener('mouseover',e => {
+    if (!_gebZieh) return;
+    const td = e.target.closest('td.geb-zelle');
+    if (!td) return;
+    const {r,c} = _gebZellPos(td);
+    if (_gebZieh.art === 'markieren') {
+      if (r === _gebZieh.start.r && c === _gebZieh.start.c) return;
+      // Ab der zweiten Zelle wird markiert statt bearbeitet; Ziehen aus einer Markierung heraus beginnt eine neue
+      if (document.activeElement && body.contains(document.activeElement)) document.activeElement.blur();
+      wrap?.classList.add('geb-zieht');
+      if (_gebZieh.behalten) { _gebZieh.behalten = false; _gebMark = { anker: _gebPunkt(_gebZieh.start.r,_gebZieh.start.c) }; }
+      _gebMark.ende = _gebPunkt(r,c);
+      _gebMarkZeichnen();
+    } else if (_gebZieh.art === 'fuellen' && _gebZieh.bereich) {
+      _gebZieh.ziel = r;
+      const b = _gebZieh.bereich;
+      _gebMarkZeichnen(trBereich({ r: Math.min(b.r0,r), c: b.c0 },{ r: Math.max(b.r1,r), c: b.c1 }));
+    }
+  });
+
+  document.addEventListener('mouseup',() => {
+    if (!_gebZieh) return;
+    const z = _gebZieh;
+    _gebZieh = null;
+    wrap?.classList.remove('geb-zieht');
+    if (z.art === 'fuellen' && z.bereich) gebTabelleFuellenBis(z.ziel);
+  });
+
+  body.addEventListener('keydown',e => {
+    const td = e.target.closest('td.geb-zelle');
+    const strg = e.ctrlKey || e.metaKey;
+    const mehr = trGroesse(_gebMarkBereich()) > 1;
+    if (strg && e.key.toLowerCase() === 'd') { e.preventDefault(); gebTabelleNachUnten(); return; }
+    if (strg && e.key.toLowerCase() === 'z' && !(e.target.tagName === 'INPUT' && e.target.value !== e.target.defaultValue)) {
+      if (_gebUndo.length) { e.preventDefault(); gebTabelleRueckgaengig(); }
+      return;
+    }
+    if (e.key === 'Escape' && _gebMark) { gebTabelleMarkierungAufheben(); return; }
+    if (e.key === 'Enter' && td && e.target.tagName === 'INPUT' && !mehr) {
+      e.preventDefault();
+      const {r,c} = _gebZellPos(td);
+      const naechste = e.shiftKey ? r - 1 : r + 1;
+      e.target.blur();   // löst die Änderung aus, die Tabelle wird neu aufgebaut
+      requestAnimationFrame(() => {
+        if (naechste >= 0 && naechste < _gebZeilen.length) {
+          _gebMark = { anker: _gebPunkt(naechste,c), ende: _gebPunkt(naechste,c) };
+          _gebMarkZeichnen();
+          _gebFokus(naechste,c);
+        }
+      });
+    }
+  });
+
+  body.addEventListener('copy',e => {
+    if (trGroesse(_gebMarkBereich()) <= 1) return;   // einzelne Zelle: normales Kopieren aus dem Feld
+    e.preventDefault();
+    e.clipboardData.setData('text/plain',gebTabelleKopierText());
+    showHint(`${trGroesse(_gebMarkBereich())} Zellen kopiert`,1500);
+  });
+
+  body.addEventListener('paste',e => {
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    // Mehrere Werte oder markierter Bereich: wie in Excel verteilen; sonst normal ins Feld einfügen
+    if (!/[\t\n]/.test(text.trim()) && trGroesse(_gebMarkBereich()) <= 1) return;
+    e.preventDefault();
+    gebTabelleEinfuegen(text);
+  });
 }
 
 // ── Gebäude-Filter ────────────────────────────────────────────────────

@@ -646,6 +646,13 @@
       <input id="geb-table-filter" type="search" placeholder="Gebäude, Nutzung oder Quelle suchen …"
         data-input="setGebaeudeTableFilter(this.value)">
       <span id="geb-table-result-count"></span>
+      <span id="geb-table-mark" class="geb-table-mark"></span>
+      <button id="geb-table-undo" class="btn-secondary geb-table-undo" data-click="gebTabelleRueckgaengig()" disabled title="Nichts rückgängig zu machen">↶ Rückgängig</button>
+    </div>
+    <div class="geb-raster-hilfe">
+      <b>Wie in Excel:</b> Zellen mit gedrückter Maus markieren · <kbd>Shift</kbd>+Klick erweitert · Änderung in einer markierten Zelle gilt für alle markierten ·
+      am Eckpunkt <span class="geb-fuell-muster"></span> ziehen überträgt Werte · <kbd>Strg</kbd>+<kbd>D</kbd> nach unten ausfüllen ·
+      <kbd>Strg</kbd>+<kbd>C</kbd>/<kbd>V</kbd> mit Excel austauschen · <kbd>Enter</kbd> nächste Zeile · <kbd>Shift</kbd>+Klick auf Haken wählt einen Bereich aus
     </div>
     <div id="geb-table-bulk" class="geb-table-bulk"></div>
     <div class="geb-overview-table-wrap">
