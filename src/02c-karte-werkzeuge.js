@@ -67,7 +67,7 @@ function clearSelectedManualTrassePoint() {
   selectedManualTrassePointIndex=null;
 }
 
-function snapManualWaermePoint(latlng) {
+function snapManualWaermePoint(latlng, leise = false) {
   if (!window._manualWaermeNetzDrawing) return latlng;
   const click = map.latLngToContainerPoint(latlng);
   let best = null;
@@ -81,8 +81,42 @@ function snapManualWaermePoint(latlng) {
     }
   });
   if (!best) return latlng;
-  showHint(`An „${best.gebaeude.name || `Gebäude ${best.gebaeude.id}`}“ eingerastet.`, 1800);
-  return L.latLng(best.center.lat, best.center.lng);
+  if (!leise) showHint(`An „${best.gebaeude.name || `Gebäude ${best.gebaeude.id}`}“ eingerastet.`, 1800);
+  const ergebnis = L.latLng(best.center.lat, best.center.lng);
+  ergebnis._gebaeude = best.gebaeude;
+  return ergebnis;
+}
+
+/**
+ * Einrastziel für den Zeichenstift: zuerst ein vorhandener Stützpunkt, dann die nächstgelegene Linie.
+ * Der laufende Strang zählt nicht mit (er liegt noch nicht in trasseSegments).
+ */
+function trasseEinrastziel(latlng) {
+  const px = map.latLngToContainerPoint(latlng);
+  let best = null;
+  window.trasseSegments.forEach(seg => {
+    if (seg.source === 'osm-street') return;
+    if (window._manualWaermeNetzDrawing && seg.manualNetwork !== true) return;
+    for (let index = seg.start; index <= seg.end; index++) {
+      const point = window.trassePoints[index];
+      if (!point) continue;
+      const distancePx = px.distanceTo(map.latLngToContainerPoint(point));
+      if (distancePx < 10 && (!best || distancePx < best.distancePx)) best = { art: 'punkt', index, latlng: point, distancePx };
+    }
+  });
+  if (best) return best;
+  const linie = findTrasseLineSnap(latlng, -1, 14);
+  return linie ? { art: 'linie', ...linie } : null;
+}
+
+/** Einrastziel übernehmen: liegt es mitten auf einer Linie, bekommt diese dort einen echten Abzweigpunkt. */
+function trasseEinrastpunktSetzen(ziel) {
+  if (ziel.art === 'linie' && ziel.t > 0.0001 && ziel.t < 0.9999) {
+    insertTrassePoint(ziel.segIdx, ziel.pointIndex, ziel.latlng, false);
+    return window.trassePoints[ziel.pointIndex + 1];
+  }
+  if (ziel.art === 'linie') return ziel.t <= 0.0001 ? window.trassePoints[ziel.pointIndex] : window.trassePoints[ziel.pointIndex + 1];
+  return ziel.latlng;
 }
 
 function findTrasseLineSnap(latlng,excludePointIndex=-1,maxDistancePx=20) {
@@ -93,6 +127,8 @@ function findTrasseLineSnap(latlng,excludePointIndex=-1,maxDistancePx=20) {
   let best = null;
   window.trasseSegments.forEach((seg,segIdx) => {
     if (window._manualWaermeNetzDrawing && seg.manualNetwork !== true) return;
+    // OSM-Straßen sind unsichtbare Routinggrundlage – daran darf der Zeichenstift nicht einrasten
+    if (seg.source === 'osm-street') return;
     for (let pointIndex=seg.start; pointIndex<seg.end; pointIndex++) {
       if (excludedPointIndices.has(pointIndex) || excludedPointIndices.has(pointIndex+1)) continue;
       const a=map.latLngToContainerPoint(window.trassePoints[pointIndex]);
@@ -1066,46 +1102,31 @@ map.on('click',e=>{
       showHint('Neuer Strang vom markierten Punkt gestartet. Weitere Punkte setzen oder per Rechtsklick beenden.',5000);
       return;
     }
-    if (window.trasseDetached) {
-      // Erst auf vorhandene Knoten, danach auch auf die nächstgelegene Linie
-      // einrasten. So kann ein Abzweig mitten aus einer Trasse beginnen.
-      let snapIdx = -1;
-      let snapDist = Infinity;
-      let snapLatLng = null;
-      let lineSnap = null;
-      const clickPx = map.latLngToContainerPoint(clickedLatLng);
-      for (let i = 0; i < window.trassePoints.length; i++) {
-        const px = map.latLngToContainerPoint(window.trassePoints[i]);
-        const d = clickPx.distanceTo(px);
-        if (d < 6 && d < snapDist) { snapDist = d; snapIdx = i; snapLatLng = window.trassePoints[i]; }
-      }
-      if (snapIdx < 0) {
-        lineSnap=findTrasseLineSnap(clickedLatLng,-1,20);
-        if (lineSnap) {
-          snapDist=lineSnap.distancePx;
-          snapLatLng=lineSnap.latlng;
-        }
-      }
-      if (snapLatLng) {
-        // Liegt der neue Abzweig mitten auf einer vorhandenen Leitung, wird
-        // dort nicht nur optisch eingerastet: Die bestehende Linie erhält
-        // einen echten Stütz- und Abzweigpunkt.
-        if (lineSnap && lineSnap.t > 0.0001 && lineSnap.t < 0.9999) {
-          insertTrassePoint(lineSnap.segIdx,lineSnap.pointIndex,snapLatLng,false);
-          snapLatLng=window.trassePoints[lineSnap.pointIndex+1];
-        }
-        // Neuen Strang ab bestehendem Punkt starten
-        setTrasseCurrentSegStart(window.trassePoints.length);
-        window.trassePoints.push(L.latLng(snapLatLng.lat, snapLatLng.lng));
-        showHint('Neuer Strang ab Abzweigung. Klicke weiter oder "Abschließen".');
-      } else {
-        // Neuen isolierten Strang beginnen
-        setTrasseCurrentSegStart(window.trassePoints.length);
-        window.trassePoints.push(clickedLatLng);
-        showHint('Neuer Strang gestartet. Klicke weiter oder Rechtsklick = loslösen.');
-      }
+    const strangLeer = window.trassePoints.length <= window.trasseCurrentSegStart;
+    if (window.trasseDetached || strangLeer) {
+      // Neuer Strang: an vorhandenem Punkt oder mitten auf einer Linie einrasten = Abzweig
+      const ziel = clickedLatLng._gebaeude ? null : trasseEinrastziel(clickedLatLng);
+      const start = ziel ? trasseEinrastpunktSetzen(ziel) : clickedLatLng;
+      setTrasseCurrentSegStart(window.trassePoints.length);
+      window.trassePoints.push(L.latLng(start.lat, start.lng));
+      showHint(ziel
+        ? 'Abzweig gesetzt. Weitere Punkte klicken · Klick auf eine Leitung verbindet · Enter/Doppelklick beendet den Strang.'
+        : 'Strang begonnen. Weitere Punkte klicken · Klick auf eine Leitung verbindet · Enter/Doppelklick beendet den Strang.', 5000);
       setTrasseDetached(false);
     } else {
+      // Laufender Strang: Klick auf eine vorhandene Leitung verbindet dorthin und beendet den Strang
+      const startPunkt = window.trassePoints[window.trasseCurrentSegStart];
+      const ziel = clickedLatLng._gebaeude ? null : trasseEinrastziel(clickedLatLng);
+      const zuNahAmStart = ziel && startPunkt &&
+        map.latLngToContainerPoint(ziel.latlng).distanceTo(map.latLngToContainerPoint(startPunkt)) < 12;
+      if (ziel && !zuNahAmStart) {
+        const ende = trasseEinrastpunktSetzen(ziel);
+        window.trassePoints.push(L.latLng(ende.lat, ende.lng));
+        startNewTrasseBranch();
+        updateManualWaermeBuildingStyles();
+        showHint('✓ Verbunden – Strang beendet. Nächster Klick beginnt einen neuen Strang (auf einer Leitung = Abzweig).', 5000);
+        return;
+      }
       window.trassePoints.push(clickedLatLng);
     }
     redrawTrasse();
@@ -1160,38 +1181,12 @@ map.on('click',e=>{
   }
 });
 
-function finishCurrentManualTrasseStrand() {
-  if (!window.isDrawingTrasse || !window._manualWaermeNetzDrawing) return false;
-  if (window.trassePoints.length <= window.trasseCurrentSegStart) {
-    setTrasseDetached(true);
-    showHint('Aktueller Strang ist beendet. Linksklick startet den nächsten Strang.',3500);
-    return true;
-  }
-  recordTrasseHistory();
-  startNewTrasseBranch();
-  updateManualWaermeBuildingStyles();
-  showHint('Strang beendet. Linksklick auf ein Gebäude oder eine vorhandene Leitung startet den nächsten Strang.',5000);
-  return true;
-}
-
 map.on('contextmenu', e => {
   if(window.isDrawingRiver && window.riverPoints.length > 0){
     window.riverPoints.pop();
     redrawRiverDuringDraw();
-  } else if (window.isDrawingTrasse && window._manualWaermeNetzDrawing) {
-    // Zwei schnelle Rechtsklicks unterscheiden wir bewusst vom einfachen
-    // Rechtsklick. Einfach = Strang beenden, doppelt = letzte Aktion zurück.
-    if (manualTrasseRightClickTimer) {
-      clearTimeout(manualTrasseRightClickTimer);
-      manualTrasseRightClickTimer = null;
-      undoTrassePoint();
-    } else {
-      manualTrasseRightClickTimer = setTimeout(() => {
-        manualTrasseRightClickTimer = null;
-        finishCurrentManualTrasseStrand();
-      },300);
-    }
-  } else if(window.isDrawingTrasse && window.trassePoints.length > window.trasseCurrentSegStart){
+  } else if (window.isDrawingTrasse) {
+    // Einheitlich für Haupttrasse und manuelles Netz: Rechtsklick nimmt die letzte Zeichenaktion zurück
     undoTrassePoint();
   } else if((window.drawingId ?? drawingId) !== null && (window.drawPoints || drawPoints).length > 0){
     const _drawPts = window.drawPoints || drawPoints;
@@ -1227,7 +1222,15 @@ map.on('dblclick',e=>{
   L.DomEvent.stopPropagation(e);
   L.DomEvent.preventDefault(e);
   if(window.isDrawingRiver && window.riverPoints.length >= 2) { finishDrawRiver(); return; }
-  if(window.isDrawingTrasse) { toggleDrawTrasse(); }
+  if(window.isDrawingTrasse) {
+    // Der Doppelklick hat zuvor zwei Klicks an derselben Stelle gesetzt – den doppelten Punkt entfernen
+    const n = window.trassePoints.length;
+    if (n - window.trasseCurrentSegStart >= 2) {
+      const a = map.latLngToContainerPoint(window.trassePoints[n - 1]), b = map.latLngToContainerPoint(window.trassePoints[n - 2]);
+      if (a.distanceTo(b) < 4) window.trassePoints.pop();
+    }
+    trasseStrangBeenden();
+  }
 });
 
 map.on('zoomend', function() {
@@ -1237,6 +1240,11 @@ map.on('zoomend', function() {
 });
 
 document.addEventListener('keydown',e=>{
+  if (window.isDrawingTrasse && e.key === 'Enter' && !/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target?.tagName || '')) {
+    e.preventDefault();
+    trasseStrangBeenden();
+    return;
+  }
   if (window.isDrawingTrasse && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
     if (e.shiftKey) redoTrassePoint();
@@ -1258,6 +1266,68 @@ document.addEventListener('keydown',e=>{
 });
 }, 0);
 
+// ── Zeichenvorschau: gestrichelte Linie zum Mauszeiger, grün mit Marke, wenn der Klick einrastet ──
+let trasseVorschauLinie = null;
+let trasseVorschauMarke = null;
+function trasseVorschauEntfernen() {
+  if (trasseVorschauLinie) { map.removeLayer(trasseVorschauLinie); trasseVorschauLinie = null; }
+  if (trasseVorschauMarke) { map.removeLayer(trasseVorschauMarke); trasseVorschauMarke = null; }
+}
+function trasseVorschauAktualisieren(e) {
+  if (!window.isDrawingTrasse) { if (trasseVorschauLinie || trasseVorschauMarke) trasseVorschauEntfernen(); return; }
+  const gebaeudeZiel = snapManualWaermePoint(e.latlng, true);
+  const ziel = gebaeudeZiel._gebaeude ? { latlng: gebaeudeZiel, art: 'gebaeude' } : trasseEinrastziel(e.latlng);
+  const punkt = ziel ? ziel.latlng : e.latlng;
+  const strangLaeuft = !window.trasseDetached && window.trassePoints.length > window.trasseCurrentSegStart;
+  const farbe = ziel ? '#66bb6a' : '#ffb74d';
+  if (strangLaeuft) {
+    const letzter = window.trassePoints[window.trassePoints.length - 1];
+    if (!trasseVorschauLinie) trasseVorschauLinie = L.polyline([letzter, punkt], { weight: 2, dashArray: '6,6', interactive: false }).addTo(map);
+    trasseVorschauLinie.setLatLngs([letzter, punkt]);
+    trasseVorschauLinie.setStyle({ color: farbe, opacity: 0.9 });
+  } else if (trasseVorschauLinie) { map.removeLayer(trasseVorschauLinie); trasseVorschauLinie = null; }
+  if (ziel) {
+    if (!trasseVorschauMarke) trasseVorschauMarke = L.circleMarker(punkt, { radius: 7, weight: 2, color: '#66bb6a', fillColor: '#66bb6a', fillOpacity: 0.25, interactive: false }).addTo(map);
+    trasseVorschauMarke.setLatLng(punkt);
+    map.getContainer().title = ziel.art === 'gebaeude' ? 'Klick: Hausanschluss' : strangLaeuft ? 'Klick: hier verbinden und Strang beenden' : 'Klick: Abzweig beginnen';
+  } else {
+    if (trasseVorschauMarke) { map.removeLayer(trasseVorschauMarke); trasseVorschauMarke = null; }
+    map.getContainer().title = '';
+  }
+}
+setTimeout(() => {
+  map.on('mousemove', trasseVorschauAktualisieren);
+  map.on('mouseout', () => trasseVorschauEntfernen());
+}, 0);
+
+/** Laufenden Strang abschließen; der nächste Klick beginnt einen neuen (auf einer Leitung = Abzweig). */
+export function trasseStrangBeenden() {
+  if (!window.isDrawingTrasse) return false;
+  if (window._manualWaermeNetzDrawing) return finishCurrentManualTrasseStrand();
+  const hatteStrang = window.trassePoints.length > window.trasseCurrentSegStart + 1;
+  recordTrasseHistory();
+  startNewTrasseBranch();
+  showHint(hatteStrang
+    ? 'Strang beendet. Klick auf eine Leitung beginnt einen Abzweig, Klick daneben einen freien Strang · „✓ Fertig“ beendet das Zeichnen.'
+    : 'Klick auf eine Leitung beginnt einen Abzweig, Klick daneben einen freien Strang.', 6000);
+  return true;
+}
+
+
+function finishCurrentManualTrasseStrand() {
+  if (!window.isDrawingTrasse || !window._manualWaermeNetzDrawing) return false;
+  if (window.trassePoints.length <= window.trasseCurrentSegStart) {
+    setTrasseDetached(true);
+    showHint('Aktueller Strang ist beendet. Linksklick startet den nächsten Strang.',3500);
+    return true;
+  }
+  recordTrasseHistory();
+  startNewTrasseBranch();
+  updateManualWaermeBuildingStyles();
+  showHint('Strang beendet. Linksklick auf ein Gebäude oder eine vorhandene Leitung startet den nächsten Strang.',5000);
+  return true;
+}
+
 let trasseDrawDomain = 'waerme';
 function cancelTrasseInteraction() {
   if (!window.isDrawingTrasse) return;
@@ -1271,7 +1341,7 @@ export function toggleDrawTrasse(domain) {
   const buttons = document.querySelectorAll('.trasse-draw-btn');
   if (window.isDrawingTrasse) {
     const manualHeat = trasseDrawDomain === 'waerme' && window._manualWaermeNetzDrawing;
-    beginInteraction({id:'draw-trasse',label:trasseDrawDomain === 'strom' ? 'Elektro-Korridor zeichnen' : manualHeat ? 'Wärmenetz vollständig manuell zeichnen' : 'Wärme-Haupttrasse zeichnen',hint:'Punkte setzen; neuer Strang erzeugt einen Abzweig.',cancel:cancelTrasseInteraction});
+    beginInteraction({id:'draw-trasse',label:trasseDrawDomain === 'strom' ? 'Elektro-Korridor zeichnen' : manualHeat ? 'Wärmenetz vollständig manuell zeichnen' : 'Wärme-Haupttrasse zeichnen',hint:'Klick = Punkt · Klick auf Leitung = verbinden/abzweigen · Enter = Strang beenden · Rechtsklick = zurück',cancel:cancelTrasseInteraction});
     trasseUndoHistory = [];
     trasseRedoHistory = [];
     clearSelectedManualTrassePoint();
@@ -1312,6 +1382,8 @@ export function toggleDrawTrasse(domain) {
     if (manualHeat) updateManualWaermeBuildingStyles();
   } else {
     commitInteraction('draw-trasse');
+    trasseVorschauEntfernen();
+    map.getContainer().title = '';
     trasseUndoHistory = [];
     trasseRedoHistory = [];
     clearSelectedManualTrassePoint();
@@ -1358,17 +1430,14 @@ export function showTrasseFinishBtn() {
       <div class="trasse-editor-title"><strong>Wärme-Haupttrasse</strong><span>Stützpunkte ziehen · + zwischen Punkten fügt einen Knick ein</span></div>
       <button type="button" id="trasse-undo-btn" title="Letzten neuen Punkt zurücknehmen (Strg/Cmd+Z)">↶</button>
       <button type="button" id="trasse-redo-btn" title="Punkt wiederherstellen (Strg/Cmd+Umschalt+Z)">↷</button>
-      <button type="button" id="trasse-branch-btn">⑂ Abzweig</button>
+      <button type="button" id="trasse-branch-btn" title="Laufenden Strang beenden (Enter oder Doppelklick)">⏎ Strang beenden</button>
       <button type="button" id="trasse-finish-btn" class="primary">✓ Fertig</button>
       <button type="button" id="trasse-generate-btn" class="generate">⚙ Fertig & Netz erzeugen</button>
       <button type="button" id="trasse-cancel-btn" title="Aktuellen, noch nicht abgeschlossenen Strang verwerfen">Abbrechen</button>`;
     document.body.appendChild(bar);
     bar.querySelector('#trasse-undo-btn').onclick = undoTrassePoint;
     bar.querySelector('#trasse-redo-btn').onclick = redoTrassePoint;
-    bar.querySelector('#trasse-branch-btn').onclick = () => {
-      recordTrasseHistory();
-      startNewTrasseBranch();
-    };
+    bar.querySelector('#trasse-branch-btn').onclick = () => trasseStrangBeenden();
     bar.querySelector('#trasse-finish-btn').onclick = () => {
       const wasStreetHelper = !!window._streetHelperDrawing;
       const wasManualNetwork = !!window._manualWaermeNetzDrawing;
@@ -1399,8 +1468,8 @@ export function showTrasseFinishBtn() {
   const generate = bar.querySelector('#trasse-generate-btn');
   if (title) title.textContent = isStrom ? 'Elektro-Korridor' : manualHeat ? 'Wärmenetz manuell' : 'Wärme-Haupttrasse';
   if (subtitle) subtitle.textContent = manualHeat
-    ? 'Vom Einspeisepunkt bis zu jedem Gebäude zeichnen · Gebäude rasten ein'
-    : 'Stützpunkte ziehen · + zwischen Punkten fügt einen Knick ein';
+    ? 'Klick = Punkt · Klick auf Gebäude = Hausanschluss · Klick auf Leitung = verbinden/abzweigen · Enter = Strang beenden · Rechtsklick = zurück'
+    : 'Klick = Punkt · Klick auf Leitung = verbinden/abzweigen · Enter/Doppelklick = Strang beenden · Rechtsklick = zurück';
   // Elektro-Korridore werden nicht per Klick zum Netz — dafür gibt es im
   // Elektro-Panel „Netz automatisch erzeugen“. Der Generate-Button gehört
   // ausschließlich zum Wärmenetz-Workflow.
@@ -1563,7 +1632,7 @@ export function redrawTrasse() {
   const allSegs = [...trasseSegments];
   // Plus das aktuell laufende Segment (falls im Zeichenmodus)
   if (window.trassePoints.length > window.trasseCurrentSegStart) {
-    allSegs.push({ start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1 });
+    allSegs.push({ start: window.trasseCurrentSegStart, end: window.trassePoints.length - 1, domains: [trasseDrawDomain] });
   }
 
   allSegs.forEach((seg, allSegIdx) => {

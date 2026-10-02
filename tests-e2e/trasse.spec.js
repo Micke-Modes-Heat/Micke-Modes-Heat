@@ -398,7 +398,7 @@ test('dist: manuelles Netz dockt Gebäude per Klick an und blendet alte Straßen
   expect(result.connectedBuildings).toEqual([1251,1252,1253]);
 });
 
-test('dist: Rechtsklick beendet einen manuellen Strang und Doppel-Rechtsklick nimmt den letzten Punkt zurück',async({page})=>{
+test('dist: Zeichnen – Rechtsklick nimmt zurück, Enter und Doppelklick beenden nur den Strang',async({page})=>{
   await page.route(/tile\.openstreetmap\.org/,route=>route.abort());
   await page.goto('/');
   await page.waitForFunction(()=>typeof window.startManualWaermeNetzCreation==='function');
@@ -417,33 +417,29 @@ test('dist: Rechtsklick beendet einen manuellen Strang und Doppel-Rechtsklick ni
     document.getElementById('netz-zentrale').value='1281';
     setTrassePoints([]); setTrasseSegments([]);
     startManualWaermeNetzCreation();
+    const aktiv=()=>window.trassePoints.length-window.trasseCurrentSegStart;
+    const segmente=()=>window.trasseSegments.filter(segment=>segment.manualNetwork).length;
     building.polygonLayer.fire('click');
     map.fire('click',{latlng:L.latLng(52.0802,8.0003)});
     map.fire('contextmenu',{latlng:L.latLng(52.0802,8.0003)});
-    map.fire('contextmenu',{latlng:L.latLng(52.0802,8.0003)});
-    const afterDoubleRight={
-      activePoints:window.trassePoints.length-window.trasseCurrentSegStart,
-      segments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
-    };
+    const nachRechtsklick={activePoints:aktiv(),segments:segmente()};
     map.fire('click',{latlng:L.latLng(52.0802,8.0003)});
-    map.fire('contextmenu',{latlng:L.latLng(52.0802,8.0003)});
-    await new Promise(resolve=>setTimeout(resolve,350));
-    const afterSingleRight={
-      detached:window.trasseDetached,
-      segments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
-      activePoints:window.trassePoints.length-window.trasseCurrentSegStart,
-    };
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+    const nachEnter={detached:window.trasseDetached,segments:segmente(),activePoints:aktiv(),drawing:window.isDrawingTrasse};
     map.fire('click',{latlng:L.latLng(52.0805,8.0005)});
-    const afterNextLeft={
-      detached:window.trasseDetached,
-      segments:window.trasseSegments.filter(segment=>segment.manualNetwork).length,
-      activePoints:window.trassePoints.length-window.trasseCurrentSegStart,
-    };
-    return {afterDoubleRight,afterSingleRight,afterNextLeft};
+    const nachKlick={detached:window.trasseDetached,segments:segmente(),activePoints:aktiv()};
+    // Doppelklick: zwei Klicks an derselben Stelle, dann dblclick → Strang endet, kein doppelter Punkt
+    map.fire('click',{latlng:L.latLng(52.0808,8.0008)});
+    map.fire('click',{latlng:L.latLng(52.0808,8.0008)});
+    map.fire('dblclick',{latlng:L.latLng(52.0808,8.0008)});
+    const letztes=window.trasseSegments.at(-1);
+    const nachDoppelklick={segments:segmente(),punkte:letztes.end-letztes.start+1,drawing:window.isDrawingTrasse};
+    return {nachRechtsklick,nachEnter,nachKlick,nachDoppelklick};
   });
-  expect(result.afterDoubleRight).toEqual({activePoints:1,segments:0});
-  expect(result.afterSingleRight).toEqual({detached:true,segments:1,activePoints:0});
-  expect(result.afterNextLeft).toEqual({detached:false,segments:1,activePoints:1});
+  expect(result.nachRechtsklick).toEqual({activePoints:1,segments:0});
+  expect(result.nachEnter).toEqual({detached:true,segments:1,activePoints:0,drawing:true});
+  expect(result.nachKlick).toEqual({detached:false,segments:1,activePoints:1});
+  expect(result.nachDoppelklick).toEqual({segments:2,punkte:2,drawing:true});
 });
 
 test('dist: verschobener manueller Anschlusspunkt aktualisiert Gebäude und Linien-Snap fügt einen Abzweig ein',async({page})=>{
@@ -1771,4 +1767,39 @@ test('dist: gezeichnete Haupttrasse bleibt im Straßennetz und im direkten Aufba
   expect(result.erzwingtStrasse).toBe(false);
   // Nach der Netzberechnung ist die Haupttrasse ausgeblendet
   expect(result.sichtbar).toBe(false);
+});
+
+test('dist: Klick auf eine vorhandene Haupttrasse verbindet den Stich und beginnt Abzweige ohne Umweg', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.trasseStrangBeenden === 'function');
+  const result = await page.evaluate(() => {
+    clearNetz(); setGebaeude([]);
+    map.setView([52.08, 8.0], 18);
+    setTrassePoints([L.latLng(52.0800, 7.9990), L.latLng(52.0800, 8.0010)]);
+    setTrasseSegments([{start: 0, end: 1, domains: ['waerme']}]);
+    // unsichtbare OSM-Straße daneben: darf nicht einrasten
+    window.trassePoints.push(L.latLng(52.0803, 7.9990), L.latLng(52.0803, 8.0010));
+    window.trasseSegments.push({start: 2, end: 3, domains: ['waerme'], source: 'osm-street'});
+    toggleDrawTrasse('waerme');
+    // Leerer Strang: Klick knapp neben der Haupttrasse → Abzweig mitten auf der Linie
+    const nahe = map.containerPointToLatLng(map.latLngToContainerPoint(L.latLng(52.0800, 8.0000)).add([0, 5]));
+    map.fire('click', {latlng: nahe});
+    const abzweig = {punkte: window.trasseSegments[0].end - window.trasseSegments[0].start + 1, start: window.trassePoints[window.trasseCurrentSegStart]};
+    map.fire('click', {latlng: L.latLng(52.0806, 8.0000)});
+    // Klick nahe der OSM-Straße: kein Einrasten, Strang läuft weiter
+    const nebenStrasse = map.containerPointToLatLng(map.latLngToContainerPoint(L.latLng(52.0803, 8.0005)).add([0, 4]));
+    map.fire('click', {latlng: nebenStrasse});
+    const laeuftNoch = !window.trasseDetached && window.trassePoints.length - window.trasseCurrentSegStart === 3;
+    // Klick zurück auf die Haupttrasse: verbindet und beendet den Strang
+    const ziel = map.containerPointToLatLng(map.latLngToContainerPoint(L.latLng(52.0800, 8.0007)).add([0, -4]));
+    map.fire('click', {latlng: ziel});
+    const verbunden = {detached: window.trasseDetached, segmente: window.trasseSegments.length};
+    toggleDrawTrasse();
+    return {abzweig: {punkte: abzweig.punkte, lat: abzweig.start.lat}, laeuftNoch, verbunden};
+  });
+  expect(result.abzweig.punkte).toBe(3);                  // Haupttrasse hat einen echten Abzweigpunkt erhalten
+  expect(result.abzweig.lat).toBeCloseTo(52.0800, 4);     // Abzweig liegt auf der Linie (Pixelraster)
+  expect(result.laeuftNoch).toBe(true);
+  expect(result.verbunden).toEqual({detached: true, segmente: 3});
 });
