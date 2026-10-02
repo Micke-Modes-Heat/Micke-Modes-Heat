@@ -729,6 +729,8 @@ export function openNetzWorkspace(mode = 'edit') {
     createMenu.hidden = false;
   }
   workspace.dataset.modus = mode;
+  // Die gezeichnete Haupttrasse ist Planungsvorgabe: beim Erstellen sichtbar, beim Bearbeiten ausgeblendet
+  if (!window.isDrawingTrasse) _haupttrasseSichtbar(mode === 'create' && waermeTrassenInfo().haupttrasse);
   window._syncNetworkLockUI?.();
   _netzVerlaufPruefen();
   netzWorkspaceAktualisieren();
@@ -752,6 +754,7 @@ export function closeNetzWorkspace() {
   setNetzEditMode(false);
   setNetzRewireMode(false);
   if (window.isDrawingEdge) toggleDrawEdge();
+  if (!window.isDrawingTrasse) _haupttrasseSichtbar(false);
   if (workspace) workspace.hidden = true;
   const netzOverview = document.getElementById('lp-netz-waerme');
   if (netzOverview) netzOverview.hidden = false;
@@ -892,6 +895,14 @@ export function netzWorkspaceAktualisieren() {
       if (status.bestand && modus === 'edit') {
         html += '<div class="nws-klein">Im Bestandsnetz bleiben DN und Leitungsverläufe gesperrt; neue Hausanschlüsse sind möglich.</div>';
       }
+    }
+    if (modus === 'create') {
+      // Planungsgrundlagen, die in die Berechnung eingehen
+      const info = waermeTrassenInfo();
+      html += '<div class="nws-grundlagen">' +
+        `<span>Haupttrasse</span><b>${info.haupttrasse ? `${fmt(info.haupttrasseM)} m gezeichnet – wird immer als Rückgrat verwendet` : 'keine gezeichnet'}</b>` +
+        `<span>Straßendaten</span><b>${info.strassen ? `${info.strassen} Abschnitte (${(info.strassenM / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} km) im Projekt gespeichert` : 'noch nicht geladen – werden beim Straßennetz automatisch geladen'}</b>` +
+        '</div>';
     }
     statusBox.innerHTML = html;
   }
@@ -2855,12 +2866,17 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
 
   let current = [...treeEdges];
   const before = scoreTree(current);
-  const rootedCandidate = strategy === 'street' ? shortestPathTree() : null;
+  // Eine gezeichnete Haupttrasse ist verbindlich. Die folgenden Varianten bauen den ganzen Baum neu
+  // (kürzeste Wege, Zentralabgänge, Routenvarianten) und würden sie dabei verwerfen; mit Vorgabe
+  // bleiben deshalb nur die lokalen Tausche, die Vorgabekanten nie entfernen.
+  const mitVorgabe = strategy === 'street' && treeEdges.some(edge => edge.forcedTrasse);
+  const streetVarianten = strategy === 'street' && !mitVorgabe;
+  const rootedCandidate = streetVarianten ? shortestPathTree() : null;
   const rootedResult = rootedCandidate ? scoreTree(rootedCandidate) : {score:Infinity};
   if (rootedResult.score < before.score) current = rootedCandidate;
   let outletVariantCount = 0;
   let chosenOutletCount = centralDegree(current);
-  if (strategy === 'street' && outletEdges.length > 1) {
+  if (streetVarianten && outletEdges.length > 1) {
     const variantLimit = 1 << Math.min(6,outletEdges.length);
     for (let mask = 1; mask < variantLimit; mask++) {
       const selected = outletEdges.filter((_,index) => mask & (1 << index));
@@ -2877,7 +2893,7 @@ function _optimizeCentralBranches(treeEdges,possibleEdges,buildingNodes,zId,stra
   let routeVariantCount = 0;
   let selectedRouteVariant = 0;
   const routeVariantSignatures = new Set();
-  if (strategy === 'street') {
+  if (streetVarianten) {
     // Wiederverwendung bereits gewählter Straßen wird schrittweise verteuert.
     // Dadurch entstehen mehrere deutlich verschiedene kürzeste-Wege-Bäume
     // (z. B. links/rechts um einen Kreisverkehr oder über Parallelstraßen),
@@ -3095,8 +3111,11 @@ export function autoGenerateNetz(options = {}){
     return id;
   };
   const useHeatTrasse = strategy !== 'quick';
+  // Automatisch übernommene OSM-Straßen sind nur Routinggrundlage der Straßen-Strategie. Bei einer
+  // gezeichneten Haupttrasse dürfen sie nicht als verbindliche Vorgabe in das Netz gezwungen werden.
   const heatSegments = useHeatTrasse
-    ? trasseSegments.filter(seg => !seg.domains || seg.domains.includes('waerme'))
+    ? trasseSegments.filter(seg => (!seg.domains || seg.domains.includes('waerme')) && seg.manualNetwork !== true &&
+      (strategy === 'street' || seg.source !== 'osm-street'))
     : [];
   const heatPointIndices = new Set();
   if (useHeatTrasse && trasseSegments.length === 0) trassePoints.forEach((_, i) => heatPointIndices.add(i));
@@ -3341,8 +3360,9 @@ export function autoGenerateNetz(options = {}){
             u: sequence[i].id, v: sequence[i + 1].id,
             uNode: sequence[i], vNode: sequence[i + 1],
             dist: sequence[i].pt.distanceTo(sequence[i + 1].pt),
-            forcedTrasse: strategy !== 'street',
-            streetRoad: strategy === 'street',
+            // Vom Nutzer gezeichnete Haupttrasse ist immer verbindlich, auch im Straßennetz
+            forcedTrasse: strategy !== 'street' || seg.source !== 'osm-street',
+            streetRoad: strategy === 'street' && seg.source === 'osm-street',
           });
         }
       }
@@ -3818,9 +3838,40 @@ export function updateTrassentreueLabel(value) {
       : 'Ausgewogen: lokale Gruppen mit gezielten direkten Anschlüssen';
 }
 
+function _haupttrasseSichtbar(sichtbar) {
+  window.trasseVisible = !!sichtbar;
+  const checkbox = document.getElementById('el-trasse-visible');
+  if (checkbox) checkbox.checked = !!sichtbar;
+  redrawTrasse();
+}
+
+/** Vom Nutzer gezeichnete Wärme-Haupttrasse (ohne OSM-Straßen und ohne manuelle Netzzeichnung). */
+function _istNutzerHaupttrasse(seg) {
+  return seg.source !== 'osm-street' && seg.manualNetwork !== true && seg.end > seg.start &&
+    (!seg.domains || seg.domains.includes('waerme'));
+}
+
+/** Stand der Planungsgrundlagen für die Netzerstellung: gezeichnete Haupttrasse und gespeicherte Straßen. */
+export function waermeTrassenInfo() {
+  const laenge = segs => segs.reduce((sum, seg) => {
+    for (let i = seg.start; i < seg.end; i++) {
+      const a = trassePoints[i], b = trassePoints[i + 1];
+      if (a && b) sum += L.latLng(a).distanceTo(L.latLng(b));
+    }
+    return sum;
+  }, 0);
+  const haupt = trasseSegments.filter(_istNutzerHaupttrasse);
+  const strassen = trasseSegments.filter(seg => seg.source === 'osm-street' && (!seg.domains || seg.domains.includes('waerme')));
+  return { haupttrasse: haupt.length > 0, haupttrasseM: laenge(haupt), strassen: strassen.length, strassenM: laenge(strassen) };
+}
+
 export async function createQuickWaermeNetz() {
   try {
-    const created = await confirmAutoGenerateNetz({strategy: 'quick'});
+    // Eine gezeichnete Haupttrasse wird auch beim direkten Aufbau als Rückgrat verwendet
+    const mitHaupttrasse = waermeTrassenInfo().haupttrasse;
+    const created = await confirmAutoGenerateNetz(mitHaupttrasse
+      ? {strategy: 'trasse', trasseTreue: document.getElementById('netz-trassentreue')?.value ?? 80}
+      : {strategy: 'quick'});
     if (created) _nachNetzErstellung();
     return created;
   } catch (error) {
@@ -3925,6 +3976,14 @@ export async function createStreetOrientedWaermeNetz() {
       return false;
     }
     const loadedStreetCount = await window.loadOsmStrassen();
+    const gespeichert = waermeTrassenInfo().strassen;
+    if (!loadedStreetCount && gespeichert > 0) {
+      // OSM gerade nicht erreichbar: die mit dem Projekt gespeicherten Straßen weiterverwenden
+      showHint(`OpenStreetMap ist gerade nicht erreichbar – es werden die ${gespeichert} gespeicherten Straßenabschnitte des Projekts verwendet.`, 7000);
+      const created = await confirmAutoGenerateNetz({strategy: 'street'});
+      if (created) _nachNetzErstellung();
+      return created;
+    }
     if (!loadedStreetCount) {
       showHint(
         '⚠ Straßendaten waren nicht rechtzeitig verfügbar. Das Netz wird deshalb frei erzeugt und kann anschließend bearbeitet werden.',

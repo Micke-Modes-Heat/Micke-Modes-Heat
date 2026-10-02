@@ -1379,6 +1379,11 @@ export function showTrasseFinishBtn() {
         window._streetHelperDrawing = false;
         showHint('Ergänzungsweg gespeichert. Über „Wärmenetz erstellen“ kann das Straßen-Netz neu berechnet werden.', 6000);
       }
+      // Wärme-Haupttrasse fertig: zurück in „Wärmenetz erstellen“, dort wird das Netz berechnet
+      if (trasseDrawDomain === 'waerme' && !wasManualNetwork && typeof window.openNetzWorkspace === 'function') {
+        window.openNetzWorkspace('create');
+        if (!wasStreetHelper) showHint('✓ Haupttrasse gespeichert. Jetzt eine Netzaufbau-Art wählen – die Haupttrasse wird dabei immer als Rückgrat verwendet.', 7000);
+      }
     };
     bar.querySelector('#trasse-generate-btn').onclick = finishTrasseAndGenerateNetz;
     bar.querySelector('#trasse-cancel-btn').onclick = () => cancelInteraction('draw-trasse');
@@ -1559,7 +1564,16 @@ export function redrawTrasse() {
   }
 
   allSegs.forEach((seg, allSegIdx) => {
-    if (window._streetHelperDrawing && seg.source === 'osm-street') return;
+    // OSM-Straßen sind Routinggrundlage, keine Haupttrasse: nie als orange Trasse zeichnen. Beim Ergänzen
+    // fehlender Straßen dienen sie als dünne graue Orientierung, wo bereits Straßen vorhanden sind.
+    if (seg.source === 'osm-street') {
+      if (window._streetHelperDrawing && seg.end > seg.start) {
+        const pts = window.trassePoints.slice(seg.start, seg.end + 1);
+        const ref = L.polyline(pts, { color: '#b0bec5', weight: 2, opacity: 0.55, dashArray: '3,4', interactive: false }).addTo(map);
+        window.trassePolyline.push(ref);
+      }
+      return;
+    }
     if (window._manualWaermeNetzDrawing &&
         allSegIdx < window.trasseSegments.length &&
         seg.manualNetwork !== true) return;

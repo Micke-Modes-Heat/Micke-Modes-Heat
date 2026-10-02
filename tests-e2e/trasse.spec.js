@@ -873,7 +873,8 @@ test('dist: OSM-Routinggrundlage erzeugt keine tausenden Bearbeitungsgriffe', as
 
   expect(result.calmHandles).toBe(0);
   expect(result.editingHandles).toBe(3);
-  expect(result.polylines).toBe(2);
+  // OSM-Straßen sind Routinggrundlage und werden nicht als (orange) Trasse gezeichnet
+  expect(result.polylines).toBe(1);
   expect(result.durationMs).toBeLessThan(1000);
 });
 
@@ -1005,8 +1006,8 @@ test('dist: Straßennetz nutzt versorgungsrelevante Wege und verwirft unbenutzte
       L.latLng(52.0900,8.0200), L.latLng(52.0910,8.0200),
     ]);
     setTrasseSegments([
-      {start:0,end:1,domains:['waerme']},
-      {start:2,end:3,domains:['waerme']},
+      {start:0,end:1,domains:['waerme'],source:'osm-street'},
+      {start:2,end:3,domains:['waerme'],source:'osm-street'},
     ]);
     setNetworkLocked(false);
     autoGenerateNetz({strategy:'street',trasseTreue:85});
@@ -1097,21 +1098,21 @@ test('dist: OSM-Straßen werden parallel geladen und für dasselbe Gebiet wieder
       L.latLng(52.083,8.005), L.latLng(52.083,8.002),
     ]);
     const started = performance.now();
-    await loadOsmStrassen();
-    return {duration:performance.now()-started, text:document.getElementById('btn-osm-strassen')?.textContent};
+    const count = await loadOsmStrassen();
+    return {duration:performance.now()-started, count};
   });
   const afterFirst = osmRequests;
   const second = await page.evaluate(async () => {
     const started = performance.now();
-    await loadOsmStrassen();
-    return {duration:performance.now()-started, text:document.getElementById('btn-osm-strassen')?.textContent};
+    const count = await loadOsmStrassen();
+    return {duration:performance.now()-started, count};
   });
 
   expect(afterFirst).toBeGreaterThan(0);
   expect(osmRequests).toBe(afterFirst);
   expect(osmQueries.some(query=>query.includes('living_street')&&query.includes('track')&&query.includes('path'))).toBe(true);
-  expect(first.text).toContain('1 geladen');
-  expect(second.text).toContain('1 geladen');
+  expect(first.count).toBe(1);
+  expect(second.count).toBe(1);
   expect(second.duration).toBeLessThan(first.duration + 50);
 });
 
@@ -1200,11 +1201,10 @@ test('dist: eine schnelle leere OSM-Antwort verdrängt keine nutzbaren Straßend
       L.latLng(52.083,8.005),L.latLng(52.083,8.002),
     ]);
     const count = await loadOsmStrassen();
-    return {count,text:document.getElementById('btn-osm-strassen')?.textContent};
+    return {count};
   });
 
   expect(result.count).toBe(1);
-  expect(result.text).toContain('1 geladen');
 });
 
 test('dist: Gebäudeanschluss lässt sich vom Nachbargebäude an die Haupttrasse umhängen', async ({page}) => {
@@ -1751,4 +1751,48 @@ test('dist: straßenorientierter Aufbau bleibt bei großer Gebäudemenge verbund
   expect(result.edgeCount).toBeGreaterThan(0);
   expect(result.connectedBuildings).toBe(120);
   expect(result.durationMs).toBeLessThan(15000);
+});
+
+test('dist: gezeichnete Haupttrasse bleibt im Straßennetz und im direkten Aufbau erhalten', async ({page}) => {
+  await page.route(/tile\.openstreetmap\.org/, route => route.abort());
+  await page.goto('/');
+  await page.waitForFunction(() => typeof window.autoGenerateNetz === 'function' && typeof window.waermeTrassenInfo === 'function');
+  const result = await page.evaluate(async () => {
+    clearNetz(); setGebaeude([]);
+    const add = (id, lat, lng) => {
+      const building = addGebaeude({id, name:`Haus ${id}`, baujahr:2000, skipAutoCreate:true, coords:[
+        L.latLng(lat-.00003,lng-.00003), L.latLng(lat-.00003,lng+.00003),
+        L.latLng(lat+.00003,lng+.00003), L.latLng(lat+.00003,lng-.00003),
+      ]});
+      building.heizlast = '50'; building.waerme = '100';
+    };
+    // Zentrale links, zwei Gebäude rechts. Kurze Straße direkt, Haupttrasse als Umweg im Norden.
+    add(301,52.0800,8.0000); add(302,52.0800,8.0040); add(303,52.0802,8.0044);
+    populateZentraleSelect(); document.getElementById('netz-zentrale').value = '301';
+    setNetworkLocked(false);
+    const strasse = [L.latLng(52.07995,8.0000), L.latLng(52.07995,8.0044)];
+    const haupt = [L.latLng(52.0801,8.0000), L.latLng(52.0808,8.0010), L.latLng(52.0808,8.0035), L.latLng(52.0801,8.0042)];
+    setTrassePoints([...strasse, ...haupt]);
+    setTrasseSegments([
+      {start:0,end:1,domains:['waerme'],source:'osm-street'},
+      {start:2,end:5,domains:['waerme']},
+    ]);
+    const info = waermeTrassenInfo();
+    autoGenerateNetz({strategy:'street',trasseTreue:80});
+    const nutztHauptStrasse = window.netzEdges.some(edge => [edge.uNode,edge.vNode].some(node => node.type === 'trasse' && node.pt.lat > 52.0805));
+    // Direkter Aufbau mit Haupttrasse: Haupttrasse wird ebenfalls verwendet, OSM-Straße nicht erzwungen
+    clearNetz();
+    const created = await createQuickWaermeNetz();
+    const nutztHauptQuick = window.netzEdges.some(edge => [edge.uNode,edge.vNode].some(node => node.type === 'trasse' && node.pt.lat > 52.0805));
+    const erzwingtStrasse = window.netzEdges.some(edge => [edge.uNode,edge.vNode].some(node => node.type === 'trasse' && Math.abs(node.pt.lat - 52.07995) < 1e-7));
+    return {info, nutztHauptStrasse, created, nutztHauptQuick, erzwingtStrasse, sichtbar: window.trasseVisible};
+  });
+  expect(result.info.haupttrasse).toBe(true);
+  expect(result.info.strassen).toBe(1);
+  expect(result.nutztHauptStrasse).toBe(true);
+  expect(result.created).toBe(true);
+  expect(result.nutztHauptQuick).toBe(true);
+  expect(result.erzwingtStrasse).toBe(false);
+  // Nach der Netzberechnung ist die Haupttrasse ausgeblendet
+  expect(result.sichtbar).toBe(false);
 });
