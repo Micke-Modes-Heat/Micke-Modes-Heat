@@ -258,12 +258,13 @@ export function togglePlaceGeo() {
   window.isPlacingGeo = !window.isPlacingGeo;
   const btn = document.getElementById('btn-place-geo');
   if (window.isPlacingGeo) {
-    beginInteraction({id:'place-geothermal',label:'Sondenfeld platzieren',hint:'Position auf der Karte anklicken.',cancel:()=>{ if (window.isPlacingGeo) togglePlaceGeo(); }});
+    const was = _geoIstEis() ? 'Eisspeicher' : 'Sondenfeld';
+    beginInteraction({id:'place-geothermal',label:`${was} platzieren`,hint:'Position auf der Karte anklicken.',cancel:()=>{ if (window.isPlacingGeo) togglePlaceGeo(); }});
     btn.textContent = 'Klicke auf Karte…';
     btn.style.borderColor = '#4caf50';
     _hideForDraw();
     map.getContainer().style.cursor = 'crosshair';
-    showHint('Klicke auf die Karte, um das Sondenfeld zu platzieren.');
+    showHint(`Klicke auf die Karte, um den ${was === 'Eisspeicher' ? 'Eisspeicher' : 'Sondenfeld'} zu platzieren.`);
     document.getElementById('geo-panel').classList.remove('visible');
     document.getElementById('btn-geo-toggle')?.classList.remove('active');
   } else {
@@ -375,6 +376,16 @@ export function geoQuelleAnzeigen() {
   const sichtbar = document.querySelector('label[for="geo-visible"]');
   if (sichtbar) sichtbar.textContent = eis ? 'Eisspeicher anzeigen' : 'Sondenfeld anzeigen';
   if (window.geoThermie) window.geoThermie.quelle = eis ? 'eis' : 'sonden';
+}
+
+/** Eigener Einstieg „Eisspeicher-WP“ in der Erzeugerliste: Geothermie-Panel mit Wärmequelle Eisspeicher. */
+export function openEisspeicherWp() {
+  const panel = document.getElementById('geo-panel');
+  if (!panel?.classList.contains('visible')) toggleGeoPanel();
+  const quelle = document.getElementById('geo-quelle');
+  if (quelle && quelle.value !== 'eis') { quelle.value = 'eis'; geoQuelleWechseln(); }
+  if (!window.geoThermie) showHint('Eisspeicher-WP: Speicherstandort über „Auf Karte platzieren“ setzen.', 5000);
+  return true;
 }
 
 /** Faustwerte: ≈ 1 m³ Speicher und ≈ 2,6 m² Absorber je kW WP-Heizleistung. */
