@@ -36,6 +36,7 @@ import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelec
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
 import { netzSignatur, netzAenderungText, erstelleNetzVerlauf } from './lib/netz-verlauf.js';
+import { EIS, eisAuslegungVorschlag, eisBewertung, eisGeometrie, eisInvest } from './lib/eisspeicher.js';
 
 export function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
@@ -139,6 +140,7 @@ export function calcGeoThermie() {
   // Display: nur nach Dispatch einen Wert zeigen (vorher —)
   const jazDisp = document.getElementById('geo-jaz-display');
   if (jazDisp && en && en.elMwh > 0) jazDisp.textContent = jaz.toFixed(2) + ' (stundenscharf)';
+  if (_geoIstEis()) { _calcEisQuelle(heizlastKw, waermeJahr, jaz); return; }
   if (heizlastKw <= 0) {
     ['geo-r-sonden','geo-r-feld','geo-r-flaeche','geo-r-length','geo-r-strom','geo-r-erde'].forEach(id => { document.getElementById(id).textContent = '—'; });
     const hinwEl2 = document.getElementById('geo-r-hinweis'); const hinwLbl2 = document.getElementById('geo-r-hinweis-lbl');
@@ -292,6 +294,7 @@ export function placeGeoAt(latlng) {
 export function redrawGeo() {
   if (!window.geoLayerGroup) return;
   window.geoLayerGroup.clearLayers();
+  if (_geoIstEis()) { _redrawEisSpeicher(); return; }
   if (!window.geoThermie || !window.geoThermie.n_sonden || window.geoThermie.lat == null || window.geoThermie.lng == null) return;
   const center = L.latLng(window.geoThermie.lat, window.geoThermie.lng);
   const { cols, rows, abstand, n_sonden, breite, laenge } = window.geoThermie;
@@ -343,6 +346,111 @@ export function redrawGeo() {
   redrawVerbindungslinien();
 }
 
+// ── Eisspeicher als Wärmequelle der Sole-WP ─────────────────────────────────────
+
+function _geoIstEis() {
+  return document.getElementById('geo-quelle')?.value === 'eis';
+}
+
+/** Umschalten Erdsonden ↔ Eisspeicher: Panel-Bereiche, Titel, Karte und Einsatzplanung. */
+export function geoQuelleWechseln() {
+  geoQuelleAnzeigen();
+  const eis = _geoIstEis();
+  if (eis && !(parseFloat(document.getElementById('eis-volumen')?.value) > 0)) eisNachFaustwertAuslegen(false);
+  calcGeoThermie();
+  redrawGeo();
+  updateAllDeckungen();
+}
+
+/** Nur die Anzeige an die gewählte Wärmequelle anpassen (auch nach dem Laden eines Projekts). */
+export function geoQuelleAnzeigen() {
+  const eis = _geoIstEis();
+  const sondenBlock = document.getElementById('geo-sonden-block');
+  const eisBlock = document.getElementById('eis-block');
+  if (sondenBlock) sondenBlock.hidden = eis;
+  if (eisBlock) eisBlock.hidden = !eis;
+  document.querySelectorAll('#geo-panel .geo-nur-sonden').forEach(element => { element.hidden = eis; });
+  const titel = document.getElementById('geo-panel-titel');
+  if (titel) titel.textContent = eis ? 'Eisspeicher-Wärmepumpe' : 'Erdwärme-Sondenfeld';
+  const sichtbar = document.querySelector('label[for="geo-visible"]');
+  if (sichtbar) sichtbar.textContent = eis ? 'Eisspeicher anzeigen' : 'Sondenfeld anzeigen';
+  if (window.geoThermie) window.geoThermie.quelle = eis ? 'eis' : 'sonden';
+}
+
+/** Faustwerte: ≈ 1 m³ Speicher und ≈ 2,6 m² Absorber je kW WP-Heizleistung. */
+export function eisNachFaustwertAuslegen(neuRechnen = true) {
+  const kw = parseFloat(document.getElementById('geo-heizlast')?.value) ||
+    parseFloat(document.getElementById('geo-leistung-eff')?.value) || 0;
+  if (kw <= 0) { showHint('Bitte zuerst die Heizleistung der Wärmepumpe eintragen oder aus dem Netz übernehmen.', 4500); return false; }
+  const v = eisAuslegungVorschlag(kw);
+  document.getElementById('eis-volumen').value = v.volumenM3;
+  document.getElementById('eis-absorber').value = v.absorberM2;
+  if (neuRechnen) { calcGeoThermie(); redrawGeo(); updateAllDeckungen(); }
+  return true;
+}
+
+function _calcEisQuelle(heizlastKw, waermeJahr, jaz) {
+  const effEl = document.getElementById('geo-leistung-eff');
+  if (effEl) effEl.value = heizlastKw > 0 ? heizlastKw : 0;
+  const volumen = parseFloat(document.getElementById('eis-volumen')?.value) || 0;
+  const absorber = parseFloat(document.getElementById('eis-absorber')?.value) || 0;
+  const geo = eisGeometrie(volumen);
+  const set = (id, text) => { const element = document.getElementById(id); if (element) element.textContent = text; };
+  set('eis-r-kapazitaet', volumen > 0 ? `${Math.round(volumen * EIS.latentKwhProM3 / 100) / 10} MWh latent · Ø ${geo.durchmesserM.toFixed(1)} m` : '—');
+  set('eis-r-invest', volumen > 0 ? `${Math.round(eisInvest(volumen, absorber) / 1000).toLocaleString('de-DE')} T€ (ohne WP)` : '—');
+  const faust = heizlastKw > 0 ? eisAuslegungVorschlag(heizlastKw) : null;
+  set('eis-r-faustwert', faust ? `${faust.volumenM3} m³ · ${faust.absorberM2} m² bei ${Math.round(heizlastKw)} kW` : '—');
+  const strom = waermeJahr > 0 ? waermeJahr / jaz : null;
+  set('geo-r-strom', strom ? `${strom.toFixed(0)} MWh/a` : '—');
+  set('geo-r-erde', strom ? `${(waermeJahr - strom).toFixed(0)} MWh/a` : '—');
+  set('geo-r-co2', strom ? `${(strom * stromEmF / 1000).toFixed(1)} t/a (2026) · ${(strom * stromEmFLZ / 1000).toFixed(1)} t/a (Ø 2030–50)` : '—');
+  // Bohrmeter entfallen (Wirtschaftlichkeit liest sie aus diesem Feld)
+  set('geo-r-length', '—');
+  if (window.geoThermie) {
+    Object.assign(window.geoThermie, { quelle: 'eis', n_sonden: 0, eisVolumen: volumen, eisAbsorber: absorber });
+    redrawGeo();
+    if (!window._wirtRefreshing && !window._geoNoReentry) _geoTriggerDispatch();
+    updateErzeugerAssetProps('geo');
+  }
+}
+
+/** Ergebnisse der Stundensimulation (aus 06c) im Panel anzeigen. */
+export function eisPanelAnzeigen(stat) {
+  const box = document.getElementById('eis-ergebnis');
+  if (!box) return;
+  if (!stat || !_geoIstEis()) { box.innerHTML = '<span style="color:var(--muted)">Ergebnisse nach der stundenscharfen Einsatzplanung</span>'; return; }
+  const b = eisBewertung(stat);
+  const mwh = kwh => `${(kwh / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MWh/a`;
+  const farbe = { unterdimensioniert: '#ef5350', knapp: '#ffb74d', 'gut ausgelastet': '#66bb6a', ausreichend: '#81d4fa' }[b.status];
+  const zeilen = [
+    ['Entzug (Quelle)', mwh(stat.entzugKwh)],
+    ['Regeneration Absorber', `${mwh(stat.absorberKwh)} (${Math.round(b.absorberAnteil * 100)} %)`],
+    ['Regeneration Erdreich', `${mwh(stat.erdreichKwh)} (${Math.round(b.erdreichAnteil * 100)} %)`],
+    ['max. Vereisungsgrad', `${Math.round(stat.maxVereisung * 100)} % von zul. ${Math.round(stat.maxVereisungZulaessig * 100)} %`],
+    ['Stunden mit Eis', `${stat.eisStunden.toLocaleString('de-DE')} h`],
+    ['WP durch Vereisung begrenzt', `${stat.gesperrtH.toLocaleString('de-DE')} h`],
+    ['Speichertemperatur', `${stat.minTemp.toFixed(1)} … ${stat.maxTemp.toFixed(1)} °C`],
+  ];
+  box.innerHTML = zeilen.map(([k, v]) => `<span style="color:var(--muted)">${k}</span><span>${v}</span>`).join('') +
+    `<span style="color:var(--muted)">Bewertung</span><span style="color:${farbe};font-weight:600">${b.status}</span>`;
+}
+
+function _redrawEisSpeicher() {
+  const g = window.geoThermie;
+  if (!g || g.lat == null || g.lng == null) return;
+  const center = L.latLng(g.lat, g.lng);
+  const volumen = parseFloat(document.getElementById('eis-volumen')?.value) || 0;
+  const radius = Math.max(1.5, eisGeometrie(volumen).durchmesserM / 2);
+  L.circle(center, { radius, color: '#4fc3f7', weight: 2, fillColor: '#b3e5fc', fillOpacity: .35, dashArray: '4,3' })
+    .bindTooltip(`Eisspeicher ${Math.round(volumen)} m³ · Ø ${(radius * 2).toFixed(1)} m (erdverlegt)`, { sticky: true })
+    .addTo(window.geoLayerGroup);
+  const icon = L.divIcon({ className: '', html: '<div style="width:26px;height:26px;background:rgba(79,195,247,.3);border:2px solid #4fc3f7;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:grab;color:#e1f5fe;font:bold 14px/1 sans-serif">❄</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+  L.marker(center, { draggable: true, icon, zIndexOffset: 1000 }).addTo(window.geoLayerGroup)
+    .on('dragend', function() { window.geoThermie.lat = this.getLatLng().lat; window.geoThermie.lng = this.getLatLng().lng; redrawGeo(); moveErzeugerElektroAsset('geo'); });
+  if (!map.hasLayer(window.geoLayerGroup)) window.geoLayerGroup.addTo(map);
+  redrawVerbindungslinien();
+}
+
 export function setGeoVisible(visible) {
   if (!window.geoLayerGroup) return;
   if (visible) { if (!map.hasLayer(window.geoLayerGroup)) window.geoLayerGroup.addTo(map); }
@@ -351,6 +459,8 @@ export function setGeoVisible(visible) {
 
 export function clearGeo() {
   window.geoThermie = null;
+  const quelleEl = document.getElementById('geo-quelle');
+  if (quelleEl) { quelleEl.value = 'sonden'; geoQuelleAnzeigen(); }
   moBeiDeaktivierung('geo');
   removeErzeugerElektroAsset('geo');
   if (window.geoLayerGroup) window.geoLayerGroup.clearLayers();

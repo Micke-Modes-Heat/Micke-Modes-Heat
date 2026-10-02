@@ -21,6 +21,7 @@ import {
   wtIstZustand, wtDimensionierungWea, wtWvn, wtHausstation, wtVariantenvergleich, wtWirtschaftlichkeit, wtEmpfehlung, wtFazit,
 } from './lib/gutachten-waerme-texte.js';
 import { gbAuswertung, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
+import { wtEisspeicher } from './lib/gutachten-eisspeicher-text.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1) DESIGN-TOKENS — gelten für ALLE Gutachten-Grafiken
@@ -1288,6 +1289,30 @@ function ggLies(fn, standard) {
 }
 const ggFeldZahl = id => { const v = parseFloat(document.getElementById(id)?.value); return Number.isFinite(v) ? v : undefined; };
 
+/** Eisspeicher-Daten für den Gutachtentext: Eingaben aus dem Geothermie-Panel und Ergebnis der Einsatzplanung. */
+function ggEisDaten() {
+  const w = window;
+  const aktiv = document.getElementById('geo-quelle')?.value === 'eis' && !!w.geoThermie;
+  if (!aktiv) return { aktiv: false };
+  const keys = ggLies(() => w.meritOrderKeys, []) || [];
+  const istAktiv = k => ggLies(() => w.isErzeugerAktiv(k), false);
+  const pos = keys.indexOf('geo');
+  const en = ggLies(() => w._dispatchEnergy?.geo, null);
+  const gesamt = ggLies(() => Object.values(w._dispatchEnergy || {}).reduce((sum, x) => sum + (x?.waermeMwh || 0), 0), 0);
+  return {
+    aktiv,
+    volumenM3: ggFeldZahl('eis-volumen'),
+    absorberM2: ggFeldZahl('eis-absorber'),
+    maxVereisungZulPct: ggFeldZahl('eis-vereisung'),
+    wpKw: ggFeldZahl('geo-leistung-eff'),
+    jaz: en && en.elMwh > 0 ? en.waermeMwh / en.elMwh : undefined,
+    waermeMwh: en?.waermeMwh,
+    deckungPct: en && gesamt > 0 ? en.waermeMwh / gesamt * 100 : undefined,
+    folgeErzeuger: pos >= 0 ? keys.slice(pos + 1).filter(istAktiv) : [],
+    stat: w._eisSpeicherErgebnis || null,
+  };
+}
+
 /** Kurznamen der Variantenübersicht → Erzeugerschlüssel des Dispatch (für ältere Zwischenstände ohne `erzeugerDetail`). */
 const GG_TYP_KEY = { LWWP: 'lwwp', Geothermie: 'geo', 'Fließgewässer-WP': 'fg', Gaskessel: 'gaskessel', 'Gaskessel (Auto)': '_autoGk', 'BHKW/KWK': 'bhkw', Stromkessel: 'stromkessel' };
 
@@ -2180,6 +2205,17 @@ const GG_FIGUREN = [
     datei: 'waerme-hausstation-text',
     hinweis: 'Ergebnisgesteuerter Text zu den Hausstationen: Anzahl und Anschlussleistung, Druckreserve, Heizflächen bei niedriger Vorlauftemperatur, Trinkwassererwärmung (Legionellenschutz) und Rücklauftemperatur.',
     render: () => ggWaermeTextBlatt(wtHausstation(ggWaermeDaten())),
+    config: {},
+  },
+  {
+    id: 'waerme-eisspeicher-text',
+    istText: true,
+    reihe: 10,
+    kapitel: '2.3.1 Technologien',
+    titel: 'Gutachtentext: Eisspeicher-Wärmepumpe',
+    datei: 'waerme-eisspeicher-text',
+    hinweis: 'Funktionsweise von Eisspeicher, Solar-Luftabsorber und Erdreich-Regeneration; ist ein Eisspeicher gewählt (Geothermie-Panel, Wärmequelle = Eisspeicher), zusätzlich Auslegung, Ergebnisse der Stundensimulation (Vereisung, Regeneration, Sperrstunden) und Zusammenspiel mit Luft-WP oder Gaskessel.',
+    render: () => ggWaermeTextBlatt(wtEisspeicher(ggEisDaten())),
     config: {},
   },
   {

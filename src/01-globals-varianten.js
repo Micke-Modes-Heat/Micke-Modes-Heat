@@ -910,6 +910,10 @@ export function captureErzeugerState() {
       dtAbsenkung: parseFloat(document.getElementById('geo-dt-absenkung').value) || 0,
       manLaenge: document.getElementById('geo-man-laenge').value,
       manBreite: document.getElementById('geo-man-breite').value,
+      quelle: document.getElementById('geo-quelle')?.value === 'eis' ? 'eis' : 'sonden',
+      eisVolumen: document.getElementById('eis-volumen')?.value || '',
+      eisAbsorber: document.getElementById('eis-absorber')?.value || '',
+      eisVereisung: document.getElementById('eis-vereisung')?.value || '85',
     } : null,
     fliessgewaesser: fliessgewaesser ? { ...fliessgewaesser,
       waerme: document.getElementById('fg-waerme').value,
@@ -1009,6 +1013,14 @@ export function applyErzeugerState(state) {
     document.getElementById('geo-man-laenge').value = state.geoThermie.manLaenge || '';
     document.getElementById('geo-man-breite').value = state.geoThermie.manBreite || '';
     document.getElementById('btn-place-geo').textContent = 'Position verschieben';
+    // Wärmequelle: Erdsonden (Standard, auch für ältere Projekte) oder Eisspeicher
+    const quelleEl = document.getElementById('geo-quelle');
+    if (quelleEl) quelleEl.value = state.geoThermie.quelle === 'eis' ? 'eis' : 'sonden';
+    const setzen = (id, wert) => { const element = document.getElementById(id); if (element) element.value = wert ?? ''; };
+    setzen('eis-volumen', state.geoThermie.eisVolumen);
+    setzen('eis-absorber', state.geoThermie.eisAbsorber);
+    setzen('eis-vereisung', state.geoThermie.eisVereisung || 85);
+    window.geoQuelleAnzeigen?.();
     calcGeoThermie(); redrawGeo();
   }
   if (state.fliessgewaesser && state.fliessgewaesser.latlngs && state.fliessgewaesser.latlngs.length >= 2) {

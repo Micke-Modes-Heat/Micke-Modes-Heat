@@ -6,7 +6,7 @@
 import { bhkw, cacheVariantResultsDebounced, fernwaerme, fliessgewaesser, gasKessel, gebaeude, geoThermie, globalYear, heizhackschnitzel, heizoelKessel, isExcluded, lwWp, pelletsKessel, solarthermieAktiv, stromEdges, stromEmF, stromEmFLZ, stromNodes, stromkessel, thermSpeicherAktiv } from './01-globals-varianten.js';
 import { getComputedStats } from './02b-gebaeude.js';
 import { _epKey, closeErzeugerPopup, redrawErzeugerIcons, showErzeugerPopup } from './03a-erzeuger.js';
-import { calcGeoThermie } from './03b-netz.js';
+import { calcGeoThermie, eisPanelAnzeigen } from './03b-netz.js';
 import { updateLpMeritOrder } from './04a-ui-panels.js';
 import { recalcStromNetz } from './05b-stromnetz.js';
 import { getThermSpeicherParams, glBerechnenDebounced, glKannBerechnen, makeStProfile8760 } from './06b-gl-berechnen.js';
@@ -19,6 +19,7 @@ import { DAYS_PER_YEAR } from './lib/physik-konstanten.js';
 import { updateFliessgewaesserData, updateLwWpData } from './02c-karte-werkzeuge.js';
 import { updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay } from './03a-erzeuger.js';
 import { _glIsRunning } from './06b-gl-berechnen.js';
+import { erstelleEisZustand, eisQuellTempNaeherung } from './lib/eisspeicher.js';
 
 export let meritOrderKeys = [];
 export let autoGkResult = null; // { leistungKw, deckungPct, waermeMwh } | false | null
@@ -107,6 +108,22 @@ export function _getFallbackJdl() {
   return jdl;
 }
 
+// ── Eisspeicher als Wärmequelle der Sole-WP (Panel „Geothermie“, Wärmequelle = Eisspeicher) ──
+export function geoQuelleIstEis() {
+  return document.getElementById('geo-quelle')?.value === 'eis';
+}
+
+export function getEisSpeicherParams() {
+  if (!geoQuelleIstEis()) return null;
+  const volumenM3 = parseFloat(document.getElementById('eis-volumen')?.value) || 0;
+  if (volumenM3 <= 0) return null;
+  return {
+    volumenM3,
+    absorberM2: parseFloat(document.getElementById('eis-absorber')?.value) || 0,
+    maxVereisungPct: parseFloat(document.getElementById('eis-vereisung')?.value) || 85,
+  };
+}
+
 // ── Quelltemperatur je WP-Typ — identisch mit CalcEngine.quellenTemp() ────
 export function _quelleTemp(key, tAussen, t) {
   if (key === 'lwwp') {
@@ -119,6 +136,8 @@ export function _quelleTemp(key, tAussen, t) {
     const d = Math.floor(t / 24);
     return Math.max(0.5, 10 + 8 * Math.sin(2 * Math.PI * (d - 119) / DAYS_PER_YEAR));
   }
+  // Eisspeicher als Quelle der Sole-WP: ohne Stundensimulation nur eine jahreszeitliche Näherung
+  if (geoQuelleIstEis()) return eisQuellTempNaeherung(t);
   // Geothermie: Erdreichtemperatur — gedämpfte Sinusschwingung
   // Tiefe Sonden (~100m): nahezu konstant 10°C ±2°C
   // Abzug ΔT für Entzugsauskühlung (aus Fachplanung/EED, Default 0)
@@ -304,7 +323,10 @@ export function _dispatchCore(cfg) {
     stProfile, stExcessH,
     bhkwSigma, skEta, lwwpMinCop,
     quelleTemp, recordHourly, backupMode,
+    eisSpeicher = null,
   } = cfg;
+  // Eisspeicher (optional): Zustand der Quelle der Sole-WP ('geo') über das Jahr
+  const eis = eisSpeicher && eisSpeicher.volumenM3 > 0 ? erstelleEisZustand(eisSpeicher) : null;
 
   const n = lastgangKw.length;
   const KESSEL_KEYS = new Set(['gaskessel', 'heizoel', 'pellets', 'hhs']);
@@ -386,6 +408,7 @@ export function _dispatchCore(cfg) {
   for (let t = 0; t < n; t++) {
     if (recordHourly && curMonth < 11 && t >= MONTH_START_H[curMonth + 1]) curMonth++;
     let residual = lastgangKw[t];
+    if (eis) eis.regenerieren(t, tempH[t]);
     gesamtKwh += residual;
     if (backupMode) backupHourKw = 0;
 
@@ -435,9 +458,11 @@ export function _dispatchCore(cfg) {
 
       let erreichbarKw = nennKw;
       let cop = 0;
+      const eisQuelle = eis !== null && erz.key === 'geo';
+      let eisBegrenzt = false;
 
       if (erz.typ === 'wp') {
-        const tQ = quelleTemp(erz.key, tempH[t], t);
+        const tQ = eisQuelle ? eis.quellTemp() : quelleTemp(erz.key, tempH[t], t);
         if (erz.key === 'fg' && tQ < 2) continue;
         const tVLK = vlH[t] + 273.15;
         const tQK  = tQ + 273.15;
@@ -445,6 +470,13 @@ export function _dispatchCore(cfg) {
         cop = Math.min((tVLK / hub) * erz.guetegrad, 8);
         if (erz.key === 'lwwp' && lwwpMinCop > 0 && cop < lwwpMinCop) continue;
         erreichbarKw = nennKw * (cop / copRef[erz.key]);
+        if (eisQuelle) {
+          // Quellenwärme = Wärme × (1 − 1/COP); begrenzt durch den zulässigen Vereisungsgrad
+          const maxTh = cop > 1 ? eis.verfuegbarKwh() / (1 - 1 / cop) : 0;
+          if (maxTh < erreichbarKw) { erreichbarKw = maxTh; eisBegrenzt = true; }
+          if (eisBegrenzt && residual > erreichbarKw + 0.001) eis.meldeGesperrt();
+          if (erreichbarKw < 0.001) continue;
+        }
       }
 
       const isBackup = backupMode && (erz === backupErz);
@@ -478,6 +510,7 @@ export function _dispatchCore(cfg) {
       if (isBackup) backupHourKw += pTh;
       residual -= Math.min(pTh, residual); // nur Bedarfsanteil abziehen (BHKW-Mindestlast)
 
+      if (eisQuelle && cop > 1) eis.entziehen(pTh * (1 - 1 / cop));
       if (erz.typ === 'wp' && cop > 0) {
         const elH = pTh / cop;
         elKwh[erz.key] += elH;
@@ -559,7 +592,13 @@ export function _dispatchCore(cfg) {
         let restLade = Math.min(thSp.kapKwh - thermSOC, thSp.ladeKw ?? thSp.entladeKw);
         for (const wp of wpReservesThisH) {
           if (restLade <= 0.1 || wp.reserveKw <= 0.1 || wp.cop <= 0) break;
-          const ladeKw = Math.min(wp.reserveKw, restLade);
+          let ladeKw = Math.min(wp.reserveKw, restLade);
+          if (eis && wp.key === 'geo') {
+            if (wp.cop <= 1) continue;
+            ladeKw = Math.min(ladeKw, eis.verfuegbarKwh() / (1 - 1 / wp.cop));
+            if (ladeKw <= 0.1) continue;
+            eis.entziehen(ladeKw * (1 - 1 / wp.cop));
+          }
           thermSOC += ladeKw;
           if (recordHourly) thermLadeH[t] += ladeKw;
           thermGeladenGes += ladeKw;
@@ -579,6 +618,7 @@ export function _dispatchCore(cfg) {
       if (thermSOC > thermSocMax) thermSocMax = thermSOC;
       if (recordHourly) thermSocH[t] = thermSOC;
     }
+    if (eis) eis.stundeAbschliessen(t);
   }
 
   return {
@@ -596,6 +636,7 @@ export function _dispatchCore(cfg) {
     // Durchreichung
     hatSpeicher, hatST, speicherParams: hatSpeicher ? thSp : null,
     stProfile,
+    eisStat: eis ? eis.statistik() : null,
   };
 }
 
@@ -627,6 +668,17 @@ export function _deckungen8760(ss) {
   const thSp      = thermSpeicherAktiv ? getThermSpeicherParams() : null;
   const stProfile = solarthermieAktiv ? makeStProfile8760() : null;
 
+  // Eisspeicher: Der Zustand am 1. Januar folgt aus dem Vorjahr. Ein Vorlauf ohne Aufzeichnung
+  // liefert den Jahresendstand; damit startet die eigentliche Rechnung eingeschwungen.
+  let eisSpeicher = activeKeys.includes('geo') ? getEisSpeicherParams() : null;
+  if (eisSpeicher) {
+    const vorlauf = _dispatchCore({
+      lastgangKw, tempH, vlH, erzList, speicherParams: thSp, stProfile, stExcessH: null,
+      bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher,
+    });
+    eisSpeicher = { ...eisSpeicher, startW: vorlauf.eisStat?.endW };
+  }
+
   // ── Kern-Dispatch aufrufen ──
   const r = _dispatchCore({
     lastgangKw, tempH, vlH,
@@ -638,7 +690,10 @@ export function _deckungen8760(ss) {
     quelleTemp: _quelleTemp,
     recordHourly: true,
     backupMode: false,
+    eisSpeicher,
   });
+  window._eisSpeicherErgebnis = r.eisStat;
+  eisPanelAnzeigen(r.eisStat);
 
   // Kurzreferenzen
   const { thKwh, elKwh, gesamtKwh, autoGkKwh, autoGkPeakKw,
@@ -746,7 +801,7 @@ export function _deckungen8760(ss) {
       trial.splice(currentIndex, 0, { ...current, leistKw: capacity });
       const result = _dispatchCore({
         lastgangKw, tempH, vlH, erzList: trial, speicherParams: thSp, stProfile, stExcessH: null,
-        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false,
+        bhkwSigma, skEta, lwwpMinCop, quelleTemp: _quelleTemp, recordHourly: false, backupMode: false, eisSpeicher,
       });
       simulationCache.set(cacheKey, result);
       return result;

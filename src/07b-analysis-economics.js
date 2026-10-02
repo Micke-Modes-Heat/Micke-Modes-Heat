@@ -3,6 +3,7 @@
 // NOTE: _calcKostenShared is also stringified into the Web Worker via .toString(), so it must remain a named global function.
 
 // ── Wirtschaftlichkeit Hilfsfunktionen ────────────────────────────────────
+import { eisInvest } from './lib/eisspeicher.js';
 import { _getEtaMap, bhkwCo2Gutschrift, gasEmF, gebaeude, networkLocked, netzEdges } from './01-globals-varianten.js';
 import { updateFliessgewaesserData, updateLwWpDisplay } from './02c-karte-werkzeuge.js';
 import { calcVerdraengungEmF, updateBhkwDisplay, updateFernwaermeDisplay, updateGasKesselDisplay, updateHeizoelDisplay, updateHhsDisplay, updatePelletsDisplay, updateStromkesselDisplay } from './03a-erzeuger.js';
@@ -21,6 +22,15 @@ import { runSensitivitaet } from './08-calc-engine.js';
 window._wirtBausteineOverrides = window._wirtBausteineOverrides || {};
 window._wirtVdiOverrides       = window._wirtVdiOverrides       || {};
 window._wirtOpenGroups         = window._wirtOpenGroups         || {};
+
+/** Investition der Wärmequelle der Sole-WP: Erdsondenbohrungen oder Eisspeicher mit Solar-Luftabsorber. */
+export function _geoQuellInvest(bohrMeter) {
+  if (document.getElementById('geo-quelle')?.value === 'eis') {
+    return eisInvest(parseFloat(document.getElementById('eis-volumen')?.value) || 0, parseFloat(document.getElementById('eis-absorber')?.value) || 0);
+  }
+  return Math.round((bohrMeter || 0) * 95);
+}
+const _geoIstEis = () => document.getElementById('geo-quelle')?.value === 'eis';
 
 export function _parseGeoBohrMeter() {
   const el = document.getElementById('geo-r-length');
@@ -434,9 +444,9 @@ export function calcWirtschaftPanel() {
     { id:'geo_wp',     label:'Geo-WP (Anlage)',          vdi:{n:20,inst:1.0,wart:1.5,bedien:5},
       aktiv:()=>aktiv('geo'),     auto:()=>iKW('GeoWP', pKw.geo||0),
       get tooltip(){return iKWtip('GeoWP', pKw.geo||0, 'WP-Anlage Geothermie ohne Bohrungen');} },
-    { id:'geo_sonden', label:'Erdsondenbohrungen',       vdi:{n:50,inst:2.0,wart:1.0,bedien:0},
-      aktiv:()=>aktiv('geo'),     auto:()=>Math.round(bohrm * 95),
-      tooltip:'Bohrmeter × 95 €/m (Duplex-Erdsonden inkl. Verfüllung, Marktdurchschnitt 2025)' },
+    { id:'geo_sonden', get label(){ return _geoIstEis() ? 'Eisspeicher + Solar-Luftabsorber' : 'Erdsondenbohrungen'; }, vdi:{n:50,inst:2.0,wart:1.0,bedien:0},
+      aktiv:()=>aktiv('geo'),     auto:()=>_geoQuellInvest(bohrm),
+      get tooltip(){ return _geoIstEis() ? 'Speicher 750 €/m³ inkl. Erdarbeiten + Absorber 350 €/m² inkl. Montage (Annahme, Marktspanne)' : 'Bohrmeter × 95 €/m (Duplex-Erdsonden inkl. Verfüllung, Marktdurchschnitt 2025)'; } },
     { id:'pk',         label:'Pelletkessel',
       get vdi(){ const kw=pKw.pellets||0; return {n:15,inst:3.0,wart:3.0,bedien:kw<50?100:kw<200?200:kw<500?300:408}; },
       aktiv:()=>aktiv('pellets'), auto:()=>iKW('Pellets', pKw.pellets||0),
@@ -1530,7 +1540,7 @@ export function calcJahresscheiben() {
     { id:'lwwp', aktiv:()=>aktiv('lwwp'), auto:()=>iKW('LuftWP', pKw.lwwp||0), vdi:{n:20,inst:1.0,wart:1.5,bedien:5} },
     { id:'fg', aktiv:()=>aktiv('fg'), auto:()=>iKW('FlussWP', pKw.fg||0), vdi:{n:20,inst:2.0,wart:1.0,bedien:5} },
     { id:'geo_wp', aktiv:()=>aktiv('geo'), auto:()=>iKW('GeoWP', pKw.geo||0), vdi:{n:20,inst:1.0,wart:1.5,bedien:5} },
-    { id:'geo_sonden', aktiv:()=>aktiv('geo'), auto:()=>Math.round(bohrm*95), vdi:{n:50,inst:2.0,wart:1.0,bedien:0} },
+    { id:'geo_sonden', aktiv:()=>aktiv('geo'), auto:()=>_geoQuellInvest(bohrm), vdi:{n:50,inst:2.0,wart:1.0,bedien:0} },
     { id:'pk', aktiv:()=>aktiv('pellets'), auto:()=>iKW('Pellets', pKw.pellets||0), get vdi(){const kw=pKw.pellets||0; return {n:15,inst:3.0,wart:3.0,bedien:kw<50?100:kw<200?200:kw<500?300:408};} },
     { id:'pk_lager', aktiv:()=>aktiv('pellets'), auto:()=>Math.round((pKw.pellets||0)*100), get vdi(){const kw=pKw.pellets||0; return {n:20,inst:3.0,wart:2.0,bedien:kw<50?50:kw<200?100:kw<500?150:204};} },
     { id:'hhs', aktiv:()=>aktiv('hhs'), auto:()=>iKW('Hackschnitzel', pKw.hhs||0), get vdi(){const kw=pKw.hhs||0; return {n:15,inst:3.0,wart:3.0,bedien:kw<50?150:kw<200?250:kw<500?350:408};} },
