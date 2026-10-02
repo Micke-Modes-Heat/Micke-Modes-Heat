@@ -248,6 +248,8 @@ export let verbindungsLayerGroup = null;
 
 // ── Vergleich ────────────────────────────────────────────────────────────────
 export let variantResults = {};
+/** Aktueller Stand der Variantenergebnisse — `variantResults` wird beim Variantenwechsel neu zugewiesen, ein window-Wert wäre dann veraltet. */
+export function getVariantResults() { return variantResults; }
 export function toggleVergleich() {
   setViewMode(currentViewMode === 'vergleich' ? 'karte' : 'vergleich');
 }

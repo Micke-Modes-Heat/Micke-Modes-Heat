@@ -17,6 +17,9 @@ import { ENGPASS_GRENZEN, ENGPASS_VORLAUF_J, engpassVersorgung } from './lib/eng
 import { EK_GRUPPEN, EK_ARTEN, EK_VORGABEN, ekNormKennwerte, ekAuswertung } from './lib/elektro-kosten.js';
 import { resilienzZielMatrix, zielKraftstoffL } from './lib/resilienz-core.js';
 import { nuNetzUebersicht } from './lib/netz-uebersicht.js';
+import {
+  wtDimensionierungWea, wtWvn, wtHausstation, wtVariantenvergleich, wtWirtschaftlichkeit, wtEmpfehlung, wtFazit,
+} from './lib/gutachten-waerme-texte.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1) DESIGN-TOKENS — gelten für ALLE Gutachten-Grafiken
@@ -1267,6 +1270,84 @@ function ggRenderTrafostationenText(cfg, T = GG_THEME) {
   ], T);
 }
 
+/* ── Wärme-Textbausteine (Kapitel 2.2.1 bis 2.7, 6.1): Logik in lib/gutachten-waerme-texte.js ──
+ * Die Lib liefert Absätze aus Text und Platzhaltern; hier kommen nur die Projektdaten hinein und das
+ * HTML der Textblätter heraus. */
+
+/** Absätze der Wärme-Lib ({feld, wert}-Platzhalter) als Textblatt. */
+function ggWaermeTextBlatt(absaetze, T = GG_THEME) {
+  return ggTextBlatt(absaetze.map(a => a.map(s => (typeof s === 'string' ? gEsc(s) : ggTextFeld(s.wert, s.feld))).join('')), T);
+}
+
+/** Ein Wert aus window, ohne dass ein Fehler beim Lesen den Baustein stoppt. */
+function ggLies(fn, standard) {
+  try { const v = fn(); return v === undefined || v === null || Number.isNaN(v) ? standard : v; } catch (e) { void e; return standard; }
+}
+const ggFeldZahl = id => { const v = parseFloat(document.getElementById(id)?.value); return Number.isFinite(v) ? v : undefined; };
+
+/** Projektstand für die Wärme-Textbausteine: Lastgang, Erzeuger aus dem Dispatch, Netz, Wirtschaftlichkeit, Varianten. */
+export function ggWaermeDaten() {
+  const w = window;
+  const ss = w.systemState;
+  const en = w._dispatchEnergy || {};
+  const aktivKey = w.activeVariantId || 'base';
+  const vr = ggLies(() => (typeof w.getVariantResults === 'function' ? w.getVariantResults() : w.variantResults), {}) || {};
+
+  const lastgang = ss ? {
+    pMaxKw: ss.pMaxKw, nutzMwh: ss.nutzwaermeMwh, gesamtMwh: ss.gesamtMwhMitNV,
+    netzverlustPct: ss.netzverlustPct, netzverlustMwh: ss.netzverlustMwh, tMinC: ss.tMin,
+  } : {};
+
+  // Leistung je Dispatch-Erzeuger; der Auto-Gaskessel steht nur im Variantenergebnis
+  const autoGk = (vr[aktivKey]?.erzeuger || []).find(e => e.typ === 'Gaskessel (Auto)');
+  const leistung = {
+    lwwp: ggLies(() => w.lwWp?.leistungKw), geo: ggFeldZahl('geo-heizlast'), fg: ggLies(() => w.fliessgewaesser?.leistungKw),
+    gaskessel: ggLies(() => w.gasKessel?.leistungKw), _autoGk: autoGk?.leistungKw, heizoel: ggLies(() => w.heizoelKessel?.leistungKw),
+    bhkw: ggLies(() => w.bhkw?.leistungThKw), pellets: ggLies(() => w.pelletsKessel?.leistungKw), hhs: ggLies(() => w.heizhackschnitzel?.leistungKw),
+    stromkessel: ggLies(() => w.stromkessel?.leistungKw), fernwaerme: ggLies(() => w.fernwaerme?.leistungKw),
+  };
+  const erzeuger = Object.keys(en).map(key => ({
+    key, leistungKw: leistung[key] || 0, waermeMwh: en[key]?.waermeMwh || 0, elMwh: en[key]?.elMwh || 0,
+    speicherM3: key === '_thermSpeicher' ? ggFeldZahl('ts-volumen') : undefined,
+  }));
+
+  // Netz: Länge, angeschlossene Gebäude, Hydraulik
+  const kanten = ggLies(() => (w.netzEdges || []).filter(e => !e.pruned), []);
+  const verbunden = new Set(kanten.flatMap(e => [e.u, e.v]));
+  const angeschlossen = ggLies(() => (w.gebaeude || []).filter(g => verbunden.has(g.id) && !(typeof w.isExcluded === 'function' && w.isExcluded(g.id))), []);
+  const mitDruck = kanten.filter(e => Number.isFinite(e.dpPerM) && Number.isFinite(e.dpLimit));
+  const netz = {
+    laengeM: kanten.length ? kanten.reduce((s, e) => s + (e.length || 0), 0) : undefined,
+    anzahlAnschluesse: angeschlossen.length || undefined,
+    vlC: ggFeldZahl('netz-vl'), rlC: ggFeldZahl('netz-rl'),
+    bestand: kanten.length ? !!w.networkLocked : undefined,
+    ueberschreitungen: mitDruck.length ? mitDruck.filter(e => e.dpPerM > e.dpLimit * 1.0001).length : undefined,
+  };
+  const gebaeude = {
+    anzahl: angeschlossen.length || undefined,
+    heizlastSummeKw: angeschlossen.reduce((s, g) => s + (parseFloat(g.heizlast) || 0), 0) || undefined,
+  };
+
+  const aktiv = vr[aktivKey];
+  const wirtschaft = {
+    investEur: w._lastInvestGes || aktiv?.investGes || undefined, jahreskostenEur: w._lastJkGes || aktiv?.jkGes || undefined,
+    wgkCt: w._lastWgk || aktiv?.wgkNum || undefined,
+    zinsPct: ggFeldZahl('wirt-zins'), co2PreisEurT: ggFeldZahl('wirt-p-co2'), strompreisCt: ggFeldZahl('wirt-p-strom'),
+    gaspreisCt: ggFeldZahl('wirt-p-gas'), fernwaermeCt: ggFeldZahl('wirt-p-fw'),
+  };
+
+  // Kurzbezeichnungen des Variantenvergleichs ausschreiben; das Ausgangsprojekt heißt dort „Basisdaten“
+  const typName = { LWWP: 'Luft-Wasser-Wärmepumpe', 'Gaskessel (Auto)': 'Spitzenlast-Gaskessel', 'BHKW/KWK': 'BHKW', 'Fließgewässer-WP': 'Fließgewässer-Wärmepumpe', Geothermie: 'Erdwärmepumpe' };
+  const varianten = Object.entries(vr).filter(([, r]) => r && Array.isArray(r.erzeuger) && r.erzeuger.length).map(([id, r]) => ({
+    name: id === 'base' ? 'Basisvariante' : (r.label || id), aktiv: id === aktivKey,
+    erzeuger: r.erzeuger.map(e => ({ name: typName[e.typ] || e.typ, leistungKw: e.leistungKw })),
+    investEur: r.investGes || undefined, jahreskostenEur: r.jkGes || undefined, wgkCt: r.wgkNum || undefined,
+    co2T: r.co2GesH, eeAnteilPct: r.eeAnteil ?? undefined, netzverlustPct: r.netzverlustePct,
+  }));
+
+  return { lastgang, erzeuger, netz, gebaeude, wirtschaft, varianten, eeAnteilPct: aktiv?.eeAnteil ?? undefined, co2T: aktiv?.co2GesH };
+}
+
 /** Textbaustein-Blatt: Absätze (HTML mit ggTextFeld-Platzhaltern) im Stil der Gutachten-Grafiken. */
 function ggTextBlatt(absaetze, T = GG_THEME) {
   const wrap = document.createElement('div');
@@ -1738,6 +1819,85 @@ const GG_FIGUREN = [
       ];
       return `✓ ${ggNum(daten.length)} Stundenwerte übernommen (${quelle}).`;
     },
+  },
+
+  // ── Gutachtentexte Wärme (Logik und Fallunterscheidungen: lib/gutachten-waerme-texte.js) ──
+  {
+    id: 'waerme-wea-text',
+    istText: true,
+    reihe: 10,
+    kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Gutachtentext: Dimensionierung WEA',
+    datei: 'waerme-dimensionierung-wea-text',
+    hinweis: 'Ergebnisgesteuerter Text aus Lastgang, Erzeugern und Dispatch: Auslegungsgrundlage, mono-/bivalent, Leistungsreserve und N-1, Anteil erneuerbarer Energien (WPG), Jahresarbeitszahl, BHKW- und Kesselauslastung. Gelbe Platzhalter fehlen im Projekt und werden in Word ergänzt.',
+    render: () => ggWaermeTextBlatt(wtDimensionierungWea(ggWaermeDaten())),
+    config: {},
+  },
+  {
+    id: 'waerme-wvn-text',
+    istText: true,
+    reihe: 10,
+    kapitel: '2.2.2 WVN',
+    titel: 'Gutachtentext: Wärmeversorgungsnetz (Soll)',
+    datei: 'waerme-wvn-text',
+    hinweis: 'Ergebnisgesteuerter Text zum Netz: Trassenlänge, Wärmebelegung, Netzverluste, Temperaturniveau und Spreizung, hydraulische Auslegungsregeln und Überschreitungen (Bestand oder Neubau).',
+    render: () => ggWaermeTextBlatt(wtWvn(ggWaermeDaten())),
+    config: {},
+  },
+  {
+    id: 'waerme-wh-text',
+    istText: true,
+    reihe: 10,
+    kapitel: '2.2.3 WH',
+    titel: 'Gutachtentext: Wärmetechnische Hausstation (Soll)',
+    datei: 'waerme-hausstation-text',
+    hinweis: 'Ergebnisgesteuerter Text zu den Hausstationen: Anzahl und Anschlussleistung, Druckreserve, Heizflächen bei niedriger Vorlauftemperatur, Trinkwassererwärmung (Legionellenschutz) und Rücklauftemperatur.',
+    render: () => ggWaermeTextBlatt(wtHausstation(ggWaermeDaten())),
+    config: {},
+  },
+  {
+    id: 'waerme-varianten-text',
+    istText: true,
+    reihe: 10,
+    kapitel: '2.4 Variantenvergleich',
+    titel: 'Gutachtentext: Variantenvergleich Wärme',
+    datei: 'waerme-variantenvergleich-text',
+    hinweis: 'Ergebnisgesteuerter Vergleich aller Varianten: Emissionen, WPG-Erfüllung, Wärmegestehungskosten, Rangfolge, Zielkonflikt mit CO₂-Vermeidungskosten oder Gleichlauf. Die Varianten kommen aus dem Variantenvergleich der Wärme (dort „Alle aktualisieren“).',
+    render: () => ggWaermeTextBlatt(wtVariantenvergleich(ggWaermeDaten())),
+    config: {},
+  },
+  {
+    id: 'waerme-wirtschaft-text',
+    istText: true,
+    reihe: 10,
+    kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
+    titel: 'Gutachtentext: Wirtschaftlichkeit Wärme',
+    datei: 'waerme-wirtschaftlichkeit-text',
+    hinweis: 'Methodik nach VDI 2067, angesetzte Preise, Investition und Wärmegestehungskosten, Vergleich mit dem Fernwärmepreis, Kostentreiber je Technik. Betrachtungszeitraum, Preissteigerungen und Förderprogramm bleiben Platzhalter.',
+    render: () => ggWaermeTextBlatt(wtWirtschaftlichkeit(ggWaermeDaten())),
+    config: {},
+  },
+  {
+    id: 'waerme-empfehlung-text',
+    istText: true,
+    reihe: 10,
+    kapitel: '2.7 Empfehlung',
+    titel: 'Gutachtentext: Empfehlung Wärme',
+    datei: 'waerme-empfehlung-text',
+    hinweis: 'Fasst den Variantenvergleich zusammen und nennt Folgeschritte passend zur Technik. Die empfohlene Variante setzt der Gutachter selbst, sofern nicht eine Variante in Kosten und Emissionen vorn liegt.',
+    render: () => ggWaermeTextBlatt(wtEmpfehlung(ggWaermeDaten())),
+    config: {},
+  },
+  {
+    id: 'waerme-fazit-text',
+    istText: true,
+    reihe: 10,
+    kapitel: '6.1 Wärmeversorgung',
+    titel: 'Gutachtentext: Fazit Wärme',
+    datei: 'waerme-fazit-text',
+    hinweis: 'Kurzfazit aus Bedarf, Konzept, EE-Anteil, Emissionen, Kosten und offenem Handlungsbedarf.',
+    render: () => ggWaermeTextBlatt(wtFazit(ggWaermeDaten())),
+    config: {},
   },
 
   // ── Jahresdauerlinie Strom ──────────────────────────────────────────────
