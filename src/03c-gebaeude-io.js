@@ -3838,6 +3838,8 @@ function _applyProjectData(project) {
         }
         if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60], maxZoom: 19 });
       } catch (e) { /* Karte bleibt auf aktueller Position */ }
+      // Netzänderungen des vorher geöffneten Projekts lassen sich nicht ins neue zurückholen.
+      window.netzVerlaufZuruecksetzen?.();
 }
 
 export function loadGebaeudeFromParent(gebaeudeArray) {

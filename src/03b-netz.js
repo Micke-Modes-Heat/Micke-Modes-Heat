@@ -35,6 +35,7 @@ import { closeEdgePopup, setLeftTab, showEdgePopup, toggleEdgePruned } from './0
 import { setEdgeStartId, setNetzEdges, setNetworkLocked, setSelectedId, setSelectedStrandId, setTrasseCurrentSegStart, setTrassePoints, setTrasseSegments, set_batchImporting } from './01-globals-varianten.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { selectedStrandId } from './01-globals-varianten.js';
+import { netzSignatur, netzAenderungText, erstelleNetzVerlauf } from './lib/netz-verlauf.js';
 
 export function toggleGeoPanel() {
   const p = document.getElementById('geo-panel');
@@ -543,8 +544,14 @@ export function openNetzWorkspace(mode = 'edit') {
   const centralControl = document.getElementById('netz-central-control');
   const createMenu = document.getElementById('netz-create-menu');
   if (!workspace || !createArea || !editArea) return false;
+  // Schwebende Kartenfenster (Erzeuger, Speicher, Analysen …) verdecken beim Zeichnen die Karte.
+  hidePanels();
+  if (mode === 'create') { setNetzEditMode(false); setNetzRewireMode(false); }
   setLeftTab('netz');
-  document.getElementById('left-panel')?.classList.remove('collapsed');
+  if (document.getElementById('left-panel')?.classList.contains('collapsed')) {
+    if (typeof window.toggleLeftPanel === 'function') window.toggleLeftPanel();
+    else document.getElementById('left-panel').classList.remove('collapsed');
+  }
   document.getElementById('netz-panel')?.classList.remove('visible');
   document.getElementById('btn-netz-toggle')?.classList.remove('active');
   const netzOverview = document.getElementById('lp-netz-waerme');
@@ -562,7 +569,10 @@ export function openNetzWorkspace(mode = 'edit') {
     createArea.appendChild(createMenu);
     createMenu.hidden = false;
   }
+  workspace.dataset.modus = mode;
   window._syncNetworkLockUI?.();
+  _netzVerlaufPruefen();
+  netzWorkspaceAktualisieren();
   workspace.scrollIntoView({behavior:'smooth',block:'start'});
   return true;
 }
@@ -587,6 +597,202 @@ export function closeNetzWorkspace() {
   const netzOverview = document.getElementById('lp-netz-waerme');
   if (netzOverview) netzOverview.hidden = false;
   return true;
+}
+
+// ── Arbeitsbereich: Netzstatus, Rückgängig/Wiederholen und Anleitung zum aktiven Modus ──
+
+const _netzVerlauf = erstelleNetzVerlauf();
+let _netzStandGraph = null;
+let _netzStandSignatur = null;
+let _netzVerlaufTimer = null;
+
+/** Nach jeder Netzberechnung (gebündelt): Hat sich die Netzstruktur geändert, wird ein Schritt gemerkt. */
+function _netzVerlaufBeobachten() {
+  clearTimeout(_netzVerlaufTimer);
+  _netzVerlaufTimer = setTimeout(_netzVerlaufPruefen, 200);
+}
+
+function _netzVerlaufPruefen() {
+  clearTimeout(_netzVerlaufTimer);
+  _netzVerlaufTimer = null;
+  const graph = captureWaermeNetzGraph();
+  const signatur = netzSignatur(graph);
+  if (_netzStandSignatur !== null && signatur !== _netzStandSignatur) {
+    _netzVerlauf.merken(_netzStandGraph, netzAenderungText(_netzStandGraph, graph));
+  }
+  _netzStandGraph = graph;
+  _netzStandSignatur = signatur;
+  netzWorkspaceAktualisieren();
+}
+
+/** Projekt geladen oder Variante gewechselt: der bisherige Verlauf gehört nicht zum neuen Netz. */
+export function netzVerlaufZuruecksetzen() {
+  _netzVerlauf.leeren();
+  _netzStandSignatur = null;
+  _netzStandGraph = null;
+  _netzVerlaufBeobachten();
+}
+
+function _netzVerlaufAnwenden(schritt, verb) {
+  setNetzRewireMode(false);
+  const editAktiv = netzEditMode;
+  closeEdgePopup();
+  applyWaermeNetzGraph(schritt.graph);
+  autoAssignEdgeCosts?.();
+  if (editAktiv) setNetzEditMode(true);
+  _netzStandGraph = captureWaermeNetzGraph();
+  _netzStandSignatur = netzSignatur(_netzStandGraph);
+  clearTimeout(_netzVerlaufTimer);
+  _netzVerlaufTimer = null;
+  netzWorkspaceAktualisieren();
+  showHint(`${verb}: ${schritt.text}`, 3500);
+}
+
+export function netzRueckgaengig() {
+  _netzVerlaufPruefen();
+  const schritt = _netzVerlauf.rueckgaengig(_netzStandGraph);
+  if (!schritt) { showHint('Keine Netzänderung zum Rückgängigmachen.', 2500); return false; }
+  _netzVerlaufAnwenden(schritt, '↶ Rückgängig');
+  return true;
+}
+
+export function netzWiederholen() {
+  _netzVerlaufPruefen();
+  const schritt = _netzVerlauf.wiederholen(_netzStandGraph);
+  if (!schritt) { showHint('Nichts zum Wiederholen.', 2500); return false; }
+  _netzVerlaufAnwenden(schritt, '↷ Wiederholt');
+  return true;
+}
+
+function _netzWorkspaceSichtbar() {
+  const workspace = document.getElementById('netz-workspace');
+  return !!workspace && !workspace.hidden;
+}
+
+/** Gebäude, die versorgt werden sollen (wie beim Anschließen/Umhängen): ohne Zentrale, mit Heizlast im Jahr. */
+function _netzVersorgungsGebaeude() {
+  const centralId = parseInt(document.getElementById('netz-zentrale')?.value, 10);
+  return gebaeude.filter(building => building.id !== centralId && building.polygon && !isExcluded(building.id) &&
+    getComputedStats(building, globalYear).heizlast > 0);
+}
+
+export function netzWorkspaceStatus() {
+  const edges = (window.netzEdges || []).filter(edge => !edge.temporallyHidden);
+  const verbunden = new Set(edges.flatMap(edge => [edge.u, edge.v]));
+  const gebaeudeListe = _netzVersorgungsGebaeude();
+  const angeschlossen = gebaeudeListe.filter(building => verbunden.has(building.id)).length;
+  return {
+    abschnitte: edges.length,
+    laengeM: edges.reduce((summe, edge) => summe + (edge.length || 0), 0),
+    gebaeude: gebaeudeListe.length,
+    angeschlossen,
+    offen: gebaeudeListe.length - angeschlossen,
+    bestand: !!window.networkLocked,
+    trasse: (trassePoints?.length || 0) > 1,
+  };
+}
+
+const _NETZ_MODUS_TEXT = {
+  rewire: {
+    titel: 'Anschlüsse bearbeiten',
+    schritte: ['Blauen Griff eines Gebäudes auf eine Netzleitung ziehen.', 'Orange Griffe = Gebäude noch ohne Anschluss.',
+      'Loslassen auf der Leitung setzt den neuen Abzweig.'],
+  },
+  edit: {
+    titel: 'Leitungsverläufe bearbeiten',
+    schritte: ['Leitung anklicken – es erscheint ein blauer Ziehpunkt.', 'Punkt auf den gewünschten Verlauf ziehen; das Netz folgt der Straße.',
+      'Doppelklick auf einen roten Punkt entfernt ihn. Rechtsklick auf eine Leitung löscht sie.'],
+  },
+};
+
+/** Zeichnet Status, Verlauf und Modusanleitung im Netz-Arbeitsbereich neu. */
+export function netzWorkspaceAktualisieren() {
+  if (!_netzWorkspaceSichtbar()) return;
+  const workspace = document.getElementById('netz-workspace');
+  const modus = workspace.dataset.modus || 'edit';
+  const status = netzWorkspaceStatus();
+  const fmt = n => Math.round(n).toLocaleString('de-DE');
+  const statusBox = document.getElementById('netz-workspace-status');
+  if (statusBox) {
+    let html;
+    if (!status.abschnitte) {
+      html = '<div class="nws-zeile"><strong>Noch kein Wärmenetz vorhanden.</strong></div>' +
+        `<div class="nws-klein">${status.gebaeude} Gebäude mit Wärmebedarf warten auf einen Anschluss.</div>` +
+        (modus === 'edit' ? '<button type="button" class="nws-link" data-click="openNetzWorkspace(\'create\')">Wärmenetz erstellen →</button>' : '');
+    } else {
+      html = `<div class="nws-zeile"><strong>${status.abschnitte} Leitungsabschnitte</strong><span>${fmt(status.laengeM)} m</span>` +
+        `<span class="nws-typ ${status.bestand ? 'bestand' : ''}">${status.bestand ? '🏛 Bestandsnetz' : 'Neubaunetz'}</span></div>` +
+        `<div class="nws-klein">${status.angeschlossen} von ${status.gebaeude} Gebäuden angeschlossen` +
+        (status.offen ? ` · <span class="nws-offen">${status.offen} ohne Anschluss</span>` : ' ✓') + '</div>';
+      if (modus === 'create') {
+        html += '<div class="nws-warnung">Ein neu erstelltes Netz ersetzt das vorhandene. Mit „Rückgängig“ lässt es sich zurückholen.</div>' +
+          '<button type="button" class="nws-link" data-click="openNetzWorkspace(\'edit\')">Stattdessen vorhandenes Netz bearbeiten →</button>';
+      } else if (status.offen) {
+        html += `<button type="button" class="nws-link" data-click="setNetzRewireMode(true)">${status.offen === 1 ? 'Fehlendes Gebäude' : `${status.offen} fehlende Gebäude`} anschließen →</button>`;
+      }
+      if (status.bestand && modus === 'edit') {
+        html += '<div class="nws-klein">Im Bestandsnetz bleiben DN und Leitungsverläufe gesperrt; neue Hausanschlüsse sind möglich.</div>';
+      }
+    }
+    statusBox.innerHTML = html;
+  }
+  const undo = document.getElementById('btn-netz-undo');
+  const redo = document.getElementById('btn-netz-redo');
+  if (undo) {
+    undo.disabled = !_netzVerlauf.kannRueckgaengig;
+    undo.title = _netzVerlauf.kannRueckgaengig ? `Rückgängig: ${_netzVerlauf.textRueckgaengig} (Strg+Z)` : 'Keine Netzänderung zum Rückgängigmachen';
+  }
+  if (redo) {
+    redo.disabled = !_netzVerlauf.kannWiederholen;
+    redo.title = _netzVerlauf.kannWiederholen ? `Wiederholen: ${_netzVerlauf.textWiederholen} (Strg+Y)` : 'Nichts zum Wiederholen';
+  }
+  const letzte = document.getElementById('netz-verlauf-text');
+  if (letzte) {
+    letzte.textContent = _netzVerlauf.kannRueckgaengig ? `Zuletzt: ${_netzVerlauf.textRueckgaengig}` : '';
+    letzte.title = letzte.textContent;
+  }
+  // Optionen, die nur mit vorhandener Trasse bzw. vorhandenem Netz sinnvoll sind
+  document.querySelectorAll('[data-netz-braucht="trasse"]').forEach(element => { element.hidden = !status.trasse; });
+  document.querySelectorAll('[data-netz-braucht="netz"]').forEach(element => { element.hidden = !status.abschnitte; });
+  const rewireInfo = document.querySelector('#btn-netz-rewire-mode span');
+  if (rewireInfo) rewireInfo.textContent = status.offen
+    ? `${status.offen} Gebäude ohne Anschluss · Griff auf einen Netzstrang ziehen`
+    : 'Griff eines Gebäudes auf einen anderen Netzstrang ziehen';
+  _netzModusAnzeigen();
+}
+
+/** Anleitung zum aktiven Kartenmodus in der Sidebar statt eines dauerhaften Hinweisbalkens. */
+function _netzModusAnzeigen() {
+  const box = document.getElementById('netz-workspace-modus');
+  if (!box) return;
+  const aktiv = netzRewireMode ? 'rewire' : netzEditMode ? 'edit' : null;
+  box.hidden = !aktiv || !_netzWorkspaceSichtbar();
+  if (box.hidden) return;
+  const text = _NETZ_MODUS_TEXT[aktiv];
+  box.innerHTML = `<div class="nwm-kopf"><span class="nwm-punkt"></span><strong>${text.titel}</strong><span class="nwm-aktiv">aktiv</span></div>` +
+    `<ol>${text.schritte.map(schritt => `<li>${schritt}</li>`).join('')}</ol>` +
+    `<button type="button" class="btn-secondary nwm-fertig" data-click="${aktiv === 'rewire' ? 'setNetzRewireMode(false)' : 'setNetzEditMode(false)'}">Fertig <kbd>Esc</kbd></button>`;
+}
+
+// Tastatur im Arbeitsbereich: Esc beendet den Modus, Strg+Z / Strg+Y blättern im Netzverlauf.
+document.addEventListener('keydown', event => {
+  if (!_netzWorkspaceSichtbar() || window.isDrawingTrasse) return;
+  const ziel = event.target;
+  if (ziel && (ziel.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ziel.tagName))) return;
+  if (event.key === 'Escape' && (netzRewireMode || netzEditMode)) {
+    setNetzRewireMode(false);
+    setNetzEditMode(false);
+    return;
+  }
+  if (!(event.ctrlKey || event.metaKey)) return;
+  const taste = event.key.toLowerCase();
+  if (taste === 'z' && !event.shiftKey) { event.preventDefault(); netzRueckgaengig(); }
+  else if (taste === 'y' || (taste === 'z' && event.shiftKey)) { event.preventDefault(); netzWiederholen(); }
+});
+
+/** Nach dem Erstellen geht es direkt im Bearbeiten-Bereich weiter (Anschlüsse prüfen, Rückgängig). */
+function _nachNetzErstellung() {
+  openNetzWorkspace('edit');
 }
 
 export function loadOverlay(input) {
@@ -3456,7 +3662,7 @@ export function updateTrassentreueLabel(value) {
 export async function createQuickWaermeNetz() {
   try {
     const created = await confirmAutoGenerateNetz({strategy: 'quick'});
-    if (created) closeNetzWorkspace();
+    if (created) _nachNetzErstellung();
     return created;
   } catch (error) {
     console.error('Freier Wärmenetzaufbau fehlgeschlagen:',error);
@@ -3566,7 +3772,7 @@ export async function createStreetOrientedWaermeNetz() {
         8000,
       );
       const created = await confirmAutoGenerateNetz({strategy:'quick'});
-      if (created) closeNetzWorkspace();
+      if (created) _nachNetzErstellung();
       return created;
     }
     const adopted = window.adoptAllOsmStrassen('waerme');
@@ -3576,7 +3782,7 @@ export async function createStreetOrientedWaermeNetz() {
         8000,
       );
       const created = await confirmAutoGenerateNetz({strategy:'quick'});
-      if (created) closeNetzWorkspace();
+      if (created) _nachNetzErstellung();
       return created;
     }
     // Die OSM-Linien sind nur Berechnungsgrundlage. Der Vorschau-Layer würde
@@ -3584,7 +3790,7 @@ export async function createStreetOrientedWaermeNetz() {
     // entfernt; die übernommene Geometrie bleibt in der Trasse erhalten.
     window.clearOsmStrassen?.();
     const created = await confirmAutoGenerateNetz({strategy: 'street'});
-    if (created) closeNetzWorkspace();
+    if (created) _nachNetzErstellung();
     return created;
   } catch (error) {
     console.error('Straßenorientierter Wärmenetzaufbau fehlgeschlagen:',error);
@@ -4077,8 +4283,10 @@ export function setNetzEditMode(enabled) {
     else button.textContent = netzEditMode ? 'Bearbeitung beenden' : 'Leitungsverläufe bearbeiten';
   }
   recalcNetz();
-  if (netzEditMode) showHint('Bearbeitungsmodus: Leitung anklicken und den blauen Punkt auf den gewünschten Straßenverlauf ziehen. Nur rote Punkte sind feste Vorgaben; Doppelklick entfernt sie.');
+  // Im Arbeitsbereich steht die Anleitung in der Sidebar; sonst als Hinweisbalken.
+  if (netzEditMode && !_netzWorkspaceSichtbar()) showHint('Bearbeitungsmodus: Leitung anklicken und den blauen Punkt auf den gewünschten Straßenverlauf ziehen. Nur rote Punkte sind feste Vorgaben; Doppelklick entfernt sie.');
   else hideHint();
+  _netzModusAnzeigen();
   return netzEditMode;
 }
 
@@ -4236,6 +4444,7 @@ function _renderNetzRewireMarkers() {
   if (!netzRewireMode) return;
   const centralId = parseInt(document.getElementById('netz-zentrale')?.value,10);
   const icon = L.divIcon({className:'netz-rewire-handle',html:'↗',iconSize:[18,18],iconAnchor:[9,9]});
+  const iconOffen = L.divIcon({className:'netz-rewire-handle offen',html:'+',iconSize:[18,18],iconAnchor:[9,9]});
   gebaeude.filter(building => {
     if (building.id === centralId || !building.polygon || isExcluded(building.id)) return false;
     return getComputedStats(building,globalYear).heizlast > 0;
@@ -4243,7 +4452,7 @@ function _renderNetzRewireMarkers() {
     const origin = polygonCenter(building.polygon);
     const connected = Boolean(_parentEdgeForBuilding(building.id));
     const marker = L.marker(origin,{
-      draggable:true,icon,zIndexOffset:2600,
+      draggable:true,icon:connected ? icon : iconOffen,zIndexOffset:2600,
       title:connected ? `Anschluss ${building.name} umhängen` : `${building.name} an das Netz anschließen`
     }).addTo(map);
     marker._netzBuildingId = building.id;
@@ -4277,9 +4486,11 @@ export function setNetzRewireMode(enabled) {
   if (netzRewireMode) {
     setNetzEditMode(false);
     setNetzVisible(true);
-    showHint('Blauen Gebäudepunkt auf eine Netzleitung ziehen – zum Anschließen oder Umhängen.');
+    if (!_netzWorkspaceSichtbar()) showHint('Blauen Gebäudepunkt auf eine Netzleitung ziehen – zum Anschließen oder Umhängen.');
+    else hideHint();
   } else hideHint();
   _renderNetzRewireMarkers();
+  _netzModusAnzeigen();
   const button = document.getElementById('btn-netz-rewire-mode');
   if (button) {
     button.classList.toggle('active',netzRewireMode);
@@ -4305,6 +4516,12 @@ export function syncVLTemps(source) {
 }
 
 export function recalcNetz(){
+  const ergebnis = _recalcNetzIntern();
+  _netzVerlaufBeobachten();
+  return ergebnis;
+}
+
+function _recalcNetzIntern(){
   window._netzAnnualLossMWh = null;
   const gebMap = new Map(gebaeude.map(g => [g.id, g]));
   // Auto-GK neu berechnen wenn Netz entsteht oder sich ändert

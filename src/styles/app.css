@@ -2107,3 +2107,28 @@ body.gm-fokus #view-tabs{display:none;}
 #btn-blackout-modus-toggle.active{background:rgba(239,83,80,.14)!important;border-color:#ef5350!important;color:#ef9a9a!important;font-weight:600;}
 @media(max-width:1100px){#blackout-modus-panel{right:12px;}}
 @media(max-width:760px){#blackout-modus-panel{top:auto;bottom:70px;right:8px;left:8px;width:auto;max-height:46vh;}}
+
+/* Netz-Arbeitsbereich: Status, Verlauf, aktiver Modus */
+.netz-workspace-status{margin-bottom:8px;padding:8px 9px;border:1px solid var(--border);border-radius:7px;background:var(--bg);font-size:10px;color:var(--text);display:grid;gap:4px}
+.netz-workspace-status:empty{display:none}
+.netz-workspace-status .nws-zeile{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.netz-workspace-status .nws-zeile strong{font-size:11px}
+.netz-workspace-status .nws-zeile span{color:var(--muted);font-family:'DM Mono',monospace;font-size:9px}
+.netz-workspace-status .nws-typ{margin-left:auto;padding:1px 6px;border:1px solid var(--border);border-radius:9px;font-family:inherit!important}
+.netz-workspace-status .nws-typ.bestand{border-color:#4caf50;color:#81c784!important}
+.netz-workspace-status .nws-klein{font-size:9px;color:var(--muted);line-height:1.4}.netz-workspace-status .nws-offen{color:#ffb74d}
+.netz-workspace-status .nws-warnung{font-size:9px;line-height:1.4;color:#ffcc80;padding:5px 7px;border-radius:5px;background:rgba(255,152,0,.08);border:1px solid rgba(255,152,0,.3)}
+.netz-workspace-status .nws-link{justify-self:start;padding:0;border:0;background:none;color:#4fc3f7;font:600 9px 'DM Sans',sans-serif;cursor:pointer}.netz-workspace-status .nws-link:hover{text-decoration:underline}
+.netz-workspace-verlauf{display:flex;align-items:center;gap:5px;margin-bottom:8px}
+.netz-workspace-verlauf button{padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font:10px 'DM Sans',sans-serif;cursor:pointer}
+.netz-workspace-verlauf button:hover:not(:disabled){border-color:#4fc3f7}.netz-workspace-verlauf button:disabled{opacity:.4;cursor:default}
+.netz-workspace-verlauf span{flex:1;min-width:0;font-size:8px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+.netz-workspace-modus{margin-bottom:8px;padding:8px 9px;border:1px solid #29b6f6;border-radius:7px;background:rgba(41,182,246,.1);font-size:9px;color:var(--text)}.netz-workspace-modus[hidden]{display:none}
+.netz-workspace-modus .nwm-kopf{display:flex;align-items:center;gap:6px;margin-bottom:4px}.netz-workspace-modus .nwm-kopf strong{font-size:10px;color:#81d4fa}
+.netz-workspace-modus .nwm-punkt{width:7px;height:7px;border-radius:50%;background:#29b6f6;box-shadow:0 0 0 3px rgba(41,182,246,.25);animation:nwm-puls 1.6s ease-in-out infinite}
+.netz-workspace-modus .nwm-aktiv{margin-left:auto;font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#4fc3f7}
+.netz-workspace-modus ol{margin:0 0 6px;padding-left:16px;line-height:1.5;color:var(--muted)}
+.netz-workspace-modus .nwm-fertig{width:100%;padding:5px;font-size:10px}.netz-workspace-modus kbd{font:8px 'DM Mono',monospace;padding:0 4px;border:1px solid var(--border);border-radius:3px;margin-left:4px;color:var(--muted)}
+@keyframes nwm-puls{50%{box-shadow:0 0 0 5px rgba(41,182,246,.05)}}
+.netz-create-option.empfohlen strong::after{content:'empfohlen';margin-left:6px;padding:1px 5px;border-radius:8px;background:rgba(76,175,80,.15);color:#a5d6a7;font:600 8px 'DM Sans',sans-serif;font-style:normal;text-transform:uppercase;letter-spacing:.05em;vertical-align:1px}
+[data-netz-braucht][hidden]{display:none!important}
+.netz-rewire-handle.offen{background:#3a2a10!important;color:#ffcc80!important;border-color:#ff9800!important}

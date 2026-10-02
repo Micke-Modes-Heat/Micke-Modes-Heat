@@ -824,7 +824,7 @@ test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Si
   });
   expect(result.create).toEqual({
     panelClosed:true,sidebarActive:true,workspaceVisible:true,menuInSidebar:true,
-    settingsInSidebar:true,centralAvailable:true,creationOrder:[1,2,4],furtherSettingsCollapsed:true,overviewHidden:true,
+    settingsInSidebar:true,centralAvailable:true,creationOrder:[4,5,7],furtherSettingsCollapsed:true,overviewHidden:true,
     typeOptions:['🏛 Bestand 2026','Neubaunetz'],bestandActive:true,streetHelperInCreate:false,neubauSelectable:true,
   });
   expect(result.edit.visible).toBe(true);
@@ -837,7 +837,7 @@ test('dist: Wärmenetz-Startfenster übergibt Erstellen und Bearbeiten an die Si
   expect(result.edit.hasPruningAction).toBe(false);
   expect(result.edit.renovationInEconomics).toBe(true);
   expect(result.edit.centralAvailable).toBe(true);
-  expect(result.edit.editingOrder).toEqual([1,3,4]);
+  expect(result.edit.editingOrder).toEqual([4,6,7]);
 });
 
 test('dist: OSM-Routinggrundlage erzeugt keine tausenden Bearbeitungsgriffe', async ({page}) => {
@@ -1638,14 +1638,16 @@ test('dist: Gebäudekreuzung wird nur als Rückfall genutzt und verhindert den N
       created,
       edgeCount:window.netzEdges.length,
       workspaceOpen:!document.getElementById('netz-workspace').hidden,
+      editOpen:!document.getElementById('netz-workspace-edit').hidden,
       menuOpen:!document.getElementById('netz-create-menu').hidden,
       hint:document.getElementById('hint').textContent,
     };
   });
   expect(result.created).toBe(true);
   expect(result.edgeCount).toBe(1);
-  expect(result.workspaceOpen).toBe(false);
-  expect(result.menuOpen).toBe(false);
+  // Nach dem Erstellen geht es im Bearbeiten-Bereich weiter.
+  expect(result.workspaceOpen).toBe(true);
+  expect(result.editOpen).toBe(true);
   expect(result.hint).toContain('Gebäudekonflikt');
 });
 

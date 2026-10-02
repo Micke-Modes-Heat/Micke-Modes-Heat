@@ -882,6 +882,8 @@ export function applyNetzState(state) {
     if (typeof window.redrawTrasse === 'function') window.redrawTrasse();
   }
   if (state.graph) applyWaermeNetzGraph(state.graph, {recalculate: false});
+  // Rückgängig gilt nur innerhalb eines Netzstands (Variante), nicht über den Wechsel hinweg.
+  window.netzVerlaufZuruecksetzen?.();
 }
 
 export function captureErzeugerState() {
