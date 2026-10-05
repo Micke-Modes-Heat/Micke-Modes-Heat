@@ -28,6 +28,7 @@ import { vbTextDaten, vbTextBezug, vbTextCo2, vbTextReferenzjahr } from './lib/g
 import { lgTextWitterung, lgTextGrundlast, lgTextSpitzenlast, lgTextDeckung } from './lib/gutachten-lastgang.js';
 import { PT_NICHT, PT_GEO_ASPEKTE, PT_LWWP_VORNACH, PT_TA_LAERM, PT_BIO, PT_BIO_QUALITATIV, ptBioKennwerte, ptTextEinleitung, ptTextNicht, ptTextBeruecksichtigt,
   ptTextGeoGrundlagen, ptTextGeoBerechnung, ptTextTiefengeothermie, ptTextLwwp, ptTextSchall, ptTextBiomasse } from './lib/gutachten-potenzial.js';
+import { vaRahmenZeilen, vaTextRahmen, vaTextResilienz, vaGegenueberstellung, vaTextKlima, vaTextKostenKomponenten, vaTextPv, vaSensitivitaet, vaTextSensitivitaet, VA_SZENARIEN } from './lib/gutachten-varianten.js';
 import { atTextErzeuger, atTextHydraulik, atTextTww, atTextNetz, atLeistung } from './lib/gutachten-anlagentechnik.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1373,6 +1374,20 @@ function ggPotenzialDaten() {
     bestandPelletKw: ggLies(() => ggBestandsanlage().zeilen.filter(z => z.typ === 'pelletkessel').reduce((x, z) => x + (z.thermKw || 0), 0), 0),
   };
 }
+/** Gemeinsame Eingaben der Variantenbausteine: Varianten, Preise, Emissionsfaktoren. */
+function ggVariantenDaten() {
+  const w = window;
+  const d = ggWaermeDaten();
+  const num = v => (Number.isFinite(Number(v)) ? Number(v) : NaN);
+  const stromWp = ggFeldZahl('wirt-p-strom-wp');
+  return {
+    varianten: d.varianten, pMaxKw: d.lastgang.pMaxKw, gesamtMwh: d.lastgang.gesamtMwh,
+    preise: { strom: Number.isFinite(stromWp) ? stromWp : ggFeldZahl('wirt-p-strom'), gas: ggFeldZahl('wirt-p-gas'), oel: ggFeldZahl('wirt-p-hko'), pellets: ggFeldZahl('wirt-p-pk'), hhs: ggFeldZahl('wirt-p-hhs') },
+    ef: { gas: num(ggLies(() => w.gasEmF)), oel: num(ggLies(() => w.heizoelEmF)), pellets: num(ggLies(() => w.pelletsEmF)), strom: num(ggLies(() => w.stromEmF)), stromLz: num(ggLies(() => w.stromEmFLZ)) },
+    co2PreisEurT: ggFeldZahl('wirt-p-co2'),
+    bestandCo2T: ggLies(() => ggVerbrauch().co2MittelT, NaN),
+  };
+}
 function ggTwwBestand() {
   const w = window;
   return baTwwAuswertung((w.gebaeude || []).filter(g => !(typeof w.isExcluded === 'function' && w.isExcluded(g.id)) && !(parseInt(g.baujahr, 10) >= 2026)));
@@ -1471,7 +1486,7 @@ export function ggWaermeDaten() {
     return {
       name: id === 'base' ? 'Basisvariante' : (r.label || id), aktiv, erzeuger: detail,
       investEur: r.investGes || undefined, jahreskostenEur: r.jkGes || undefined, wgkCt: r.wgkNum || undefined,
-      co2T: r.co2GesH, eeAnteilPct: r.eeAnteil ?? undefined, netzverlustPct: r.netzverlustePct,
+      co2T: r.co2GesH, co2LzT: r.co2GesLZ, eeAnteilPct: r.eeAnteil ?? undefined, netzverlustPct: r.netzverlustePct,
     };
   });
 
@@ -2584,6 +2599,90 @@ const GG_FIGUREN = [
         z('Lagerfläche', x => x.lagerFlaecheM2, ' m²'), z('Brennstoffkosten', x => x.kostenEur, ' €/a'), z('Lkw-Anlieferungen pro Jahr', x => x.lkwJahr), z('Lkw pro Tag bei Volllast', x => x.lkwTagVolllast)];
       cfg.fussnote = `Heizwert ${ggNum(PT_BIO.pellets.heizwertKwhKg, 1)} / ${ggNum(PT_BIO.hhs.heizwertKwhKg, 1)} kWh/kg, Schüttdichte ${PT_BIO.pellets.schuettdichte} / ${PT_BIO.hhs.schuettdichte} kg/m³, Kesselwirkungsgrad ${ggNum(PT_BIO.pellets.eta * 100)} / ${ggNum(PT_BIO.hhs.eta * 100)} %, Lkw ${PT_BIO.pellets.lkwT} / ${PT_BIO.hhs.lkwT} t (Pellets / HHS)`;
       return '✓ Kennwerte berechnet.';
+    },
+  },
+  // ── Variantenvergleich: Rahmen, Resilienz, Gegenüberstellung, Klima, Kosten, PV, Sensitivität (Logik: lib/gutachten-varianten.js) ──
+  {
+    id: 'va-rahmen-text', istText: true, reihe: -30, kapitel: '2.4 Variantenvergleich',
+    titel: 'Gutachtentext: Rahmenbedingungen Variantenvergleich', datei: 'va-rahmen-text',
+    hinweis: 'Aufbau des Vergleichs, Strom-Emissionsfaktor heute statt GEG-Pauschalwert, mittlerer Faktor künftig, CO₂-Kostenansatz.',
+    render: () => { const d = ggVariantenDaten(); return ggWaermeTextBlatt(vaTextRahmen({ efStromGeg: 560, efStrom: d.ef.strom, efStromLz: d.ef.stromLz, co2PreisEurT: d.co2PreisEurT })); }, config: {},
+  },
+  {
+    id: 'va-rahmen-tabelle', autoSync: true, reihe: -25, kapitel: '2.4 Variantenvergleich',
+    titel: 'Emissionsfaktoren und Energiepreise', datei: 'va-rahmen-tabelle',
+    hinweis: 'Preise aus der Wirtschaftlichkeit, PEF nach GEG Anlage 4, CO₂-Faktoren heute und Ø künftig.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Variantenvergleich', titel: 'Emissionsfaktoren und Energiepreise', leer: '', spalten: [{ label: 'Energieträger', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const d = ggVariantenDaten();
+      cfg.spalten = [{ label: 'Energieträger', weight: 1.6, align: 'left', mono: false }, { label: 'Preis (brutto)', weight: 1 }, { label: 'PEF', weight: 0.6 },
+        { label: 'CO₂e heute', weight: 1 }, { label: 'Quelle', weight: 1.4, align: 'left', mono: false }, { label: 'CO₂e Ø künftig', weight: 1 }, { label: 'Quelle', weight: 1.2, align: 'left', mono: false }];
+      cfg.zeilen = vaRahmenZeilen(d);
+      if (Number.isFinite(d.co2PreisEurT)) cfg.zeilen.push({ highlight: true, werte: ['CO₂-Kostenansatz', `${ggNum(d.co2PreisEurT)} €/t CO₂e`, '', '', '', '', ''] });
+      cfg.fussnote = 'PEF: nicht erneuerbarer Anteil nach GEG Anlage 4';
+      return `✓ ${cfg.zeilen.length} Zeilen.`;
+    },
+  },
+  {
+    id: 'va-resilienz-text', istText: true, reihe: -20, kapitel: '2.4 Variantenvergleich',
+    titel: 'Gutachtentext: Zweistoffbrenner als Resilienz- und Spitzenlasteinheit', datei: 'va-resilienz-text',
+    hinweis: 'Prüft, ob alle Varianten einen fossilen Kessel auf voller Heizlast enthalten; Vorgabe als Platzhalter.',
+    render: () => ggWaermeTextBlatt(vaTextResilienz(ggVariantenDaten())), config: {},
+  },
+  {
+    id: 'va-gegenueberstellung', autoSync: true, reihe: 20, kapitel: '2.4 Variantenvergleich',
+    titel: 'Gegenüberstellung der Varianten', datei: 'va-gegenueberstellung',
+    hinweis: 'Leistungen je Erzeugertyp, Deckungsanteile, strombasierter Anteil und Resilienz je Variante.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Variantenvergleich', titel: 'Gegenüberstellung der Varianten', leer: 'Keine berechneten Varianten.', spalten: [{ label: 'Kriterium', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const d = ggVariantenDaten();
+      if (!d.varianten.length) { cfg.zeilen = []; return '⚠ Keine berechneten Varianten.'; }
+      const g = vaGegenueberstellung(d.varianten, d.pMaxKw);
+      cfg.spalten = g.kopf.map((k, i) => (i ? { label: k, weight: 1 } : { label: k, weight: 2, align: 'left', mono: false }));
+      cfg.zeilen = g.zeilen;
+      cfg.fussnote = 'Deckungsanteile aus der stundenscharfen Einsatzplanung der Varianten';
+      return `✓ ${d.varianten.length} Varianten.`;
+    },
+  },
+  {
+    id: 'va-klima-text', istText: true, reihe: 40, kapitel: '2.4 Variantenvergleich',
+    titel: 'Gutachtentext: Klimarelevanz heute, künftig und kumuliert', datei: 'va-klima-text',
+    hinweis: 'Emissionen heute und mit mittlerem künftigem Strom-Emissionsfaktor, stärkste Reduktion, Bestwert, Referenz reines Erdgas und Bestand, Summe über 20 Jahre.',
+    render: () => { const d = ggVariantenDaten(); return ggWaermeTextBlatt(vaTextKlima({ varianten: d.varianten, gesamtMwh: d.gesamtMwh, efGas: d.ef.gas, bestandCo2T: d.bestandCo2T })); }, config: {},
+  },
+  {
+    id: 'va-kosten-text', istText: true, reihe: -20, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
+    titel: 'Gutachtentext: Kostenkomponenten', datei: 'va-kosten-text',
+    hinweis: 'Standardaufzählung Energie-, Kapital-, Betriebs- und CO₂-Kosten.',
+    render: () => ggWaermeTextBlatt(vaTextKostenKomponenten(ggVariantenDaten())), config: {},
+  },
+  {
+    id: 'va-pv-text', istText: true, reihe: 30, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
+    titel: 'Gutachtentext: Wirtschaftlichkeit mit PV-Eigenstrom', datei: 'va-pv-text',
+    hinweis: 'Standardtext; die Werte je Variante mit/ohne PV-Eigenstrom sind noch als Platzhalter einzutragen.',
+    render: () => ggWaermeTextBlatt(vaTextPv()), config: {},
+  },
+  {
+    id: 'va-sensitivitaet-text', istText: true, reihe: 40, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
+    titel: 'Gutachtentext: Energiepreissensitivität', datei: 'va-sensitivitaet-text',
+    hinweis: 'Drei Szenarien (heute, moderat, Krise) auf die Energiekosten je Energieträger der Varianten; prozentuale und absolute Mehrkosten, Rangfolge.',
+    render: () => { const d = ggVariantenDaten(); return ggWaermeTextBlatt(vaTextSensitivitaet(d.varianten, d.preise)); }, config: {},
+  },
+  {
+    id: 'va-sensitivitaet-tabelle', autoSync: true, reihe: 41, kapitel: '2.5 Wirtschaftlichkeit und Investitionskosten',
+    titel: 'Jährliche Gesamtkosten in drei Energiepreisszenarien', datei: 'va-sensitivitaet-tabelle',
+    hinweis: 'Gesamtkosten und Anstieg je Variante und Szenario.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Variantenvergleich', titel: 'Jährliche Gesamtkosten in drei Energiepreisszenarien', leer: 'Keine Varianten mit Jahreskosten.', spalten: [{ label: 'Variante', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const d = ggVariantenDaten();
+      const r = vaSensitivitaet(d.varianten, d.preise);
+      cfg.spalten = [{ label: 'Variante', weight: 2, align: 'left', mono: false }, ...VA_SZENARIEN.map(s => ({ label: s.name, weight: 1.2 }))];
+      cfg.zeilen = r.map(x => ({ werte: [x.name, ...x.sz.map((z, i) => `${ggNum(z.gesamt / 1e6, 2)} Mio. €${i ? ` (+${ggNum(z.pct, 1)} %)` : ''}`)] }));
+      cfg.fussnote = VA_SZENARIEN.slice(1).map(s => `${s.name}: Strom +${s.strom} %, Gas/Öl +${s.fossil} %, Biomasse +${s.bio} %`).join(' · ');
+      return r.length ? `✓ ${r.length} Varianten.` : '⚠ Keine Varianten mit Jahreskosten.';
     },
   },
   {
