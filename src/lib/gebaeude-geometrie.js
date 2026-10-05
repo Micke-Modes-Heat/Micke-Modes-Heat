@@ -10,7 +10,7 @@ function projizieren(ringe) {
   const cosLat = Math.cos(ref.lat * Math.PI / 180);
   const f = p => ({ x: (p.lng - ref.lng) * Math.PI / 180 * R * cosLat, y: (p.lat - ref.lat) * Math.PI / 180 * R });
   const zurueck = p => ({ lat: ref.lat + p.y / R * 180 / Math.PI, lng: ref.lng + p.x / (R * cosLat) * 180 / Math.PI });
-  return { ringe: ringe.map(r => r.map(f)), zurueck };
+  return { ringe: ringe.map(r => r.map(f)), zurueck, hin: f };
 }
 
 function ohneSchluss(pts) {
@@ -369,6 +369,33 @@ export function uebertrageForm(zielCoords, quelleCoords) {
     return { x: zc.x + x * c - y * s, y: zc.y + x * s + y * c };
   });
   return { coords: neu.map(zurueck), drehungGrad: -delta * 180 / Math.PI, flaecheM2: Math.abs(vorzeichenFlaeche(neu)) };
+}
+
+/**
+ * Punktabbildung vom alten auf den neuen Grundriss desselben Gebäudes (z. B. nach
+ * uebertrageForm), damit PV-Flächen, First und Anlagen anteilig mitwandern: In den
+ * Gebäudeachsen des alten Grundrisses (Richtung der längsten Kante) wird das
+ * umschließende Rechteck des alten auf das des neuen gestreckt. Ein Punkt in der
+ * Mitte der Ostseite bleibt so in der Mitte der Ostseite.
+ * @returns {((p:{lat:number,lng:number}) => {lat:number,lng:number})|null}
+ */
+export function formAbbildung(altCoords, neuCoords) {
+  if (!altCoords || altCoords.length < 3 || !neuCoords || neuCoords.length < 3) return null;
+  const { ringe, zurueck, hin } = projizieren([altCoords, neuCoords]);
+  const alt = ccw(ohneSchluss(ringe[0])), neu = ohneSchluss(ringe[1]);
+  const th = laengsteKante(alt), c = Math.cos(th), s = Math.sin(th);
+  const lokal = p => ({ u: p.x * c + p.y * s, v: -p.x * s + p.y * c });
+  const box = pts => pts.map(lokal).reduce((b, p) => ({
+    u0: Math.min(b.u0, p.u), u1: Math.max(b.u1, p.u), v0: Math.min(b.v0, p.v), v1: Math.max(b.v1, p.v),
+  }), { u0: Infinity, u1: -Infinity, v0: Infinity, v1: -Infinity });
+  const a = box(alt), n = box(neu);
+  if (a.u1 - a.u0 < 0.1 || a.v1 - a.v0 < 0.1) return null;
+  const su = (n.u1 - n.u0) / (a.u1 - a.u0), sv = (n.v1 - n.v0) / (a.v1 - a.v0);
+  return p => {
+    const l = lokal(hin(p));
+    const u = n.u0 + (l.u - a.u0) * su, v = n.v0 + (l.v - a.v0) * sv;
+    return zurueck({ x: u * c - v * s, y: u * s + v * c });
+  };
 }
 
 /**

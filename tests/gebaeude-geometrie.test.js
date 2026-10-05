@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bereinigeKleinbauten, drehFunktion, flaecheM2, peilungGrad, rechteckAusDreiPunkten, richteRechtwinklig, uebertrageForm, vereinigePolygone } from '../src/lib/gebaeude-geometrie.js';
+import { bereinigeKleinbauten, drehFunktion, flaecheM2, formAbbildung, peilungGrad, rechteckAusDreiPunkten, richteRechtwinklig, uebertrageForm, vereinigePolygone } from '../src/lib/gebaeude-geometrie.js';
 
 // Rechteck in Metern ab (x,y) am Ursprung 53°N/10°E
 const LAT = 53, LNG = 10;
@@ -161,5 +161,26 @@ describe('uebertrageForm', () => {
     const r = uebertrageForm(ziel, quelle);
     expect(r.coords).toHaveLength(6);
     expect(r.flaecheM2).toBeCloseTo(flaecheM2(quelle), 1);
+  });
+});
+
+describe('formAbbildung', () => {
+  it('streckt Punkte anteilig in den Gebäudeachsen des Ziels mit', () => {
+    const ziel = ptsM([[0, 0], [10, 0], [10, 6], [0, 6]], 30);
+    const quelle = ptsM([[100, 50], [120, 50], [120, 58], [100, 58]], 75);
+    const r = uebertrageForm(ziel, quelle);
+    const f = formAbbildung(ziel, r.coords);
+    // PV-Fläche auf der halben Länge, volle Breite → bleibt halbe Länge, volle Breite
+    const pv = ptsM([[0, 0], [5, 0], [5, 6], [0, 6]], 30);
+    const neu = pv.map(f);
+    expect(flaecheM2(neu)).toBeCloseTo(80, 0); // 10 × 8 m
+    // Ecken des alten Grundrisses landen auf Ecken des neuen
+    ziel.map(f).forEach(p => {
+      const d = Math.min(...r.coords.map(q => Math.hypot((p.lat - q.lat) * 111194.9, (p.lng - q.lng) * 111194.9 * Math.cos(LAT * Math.PI / 180))));
+      expect(d).toBeLessThan(0.01);
+    });
+  });
+  it('liefert null bei entartetem Grundriss', () => {
+    expect(formAbbildung(rect(0, 0, 10, 10).slice(0, 2), rect(0, 0, 5, 5))).toBeNull();
   });
 });

@@ -15168,7 +15168,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-05';
   if (d.indexOf('__') === 0) d = '';
-  var c = '87d4443';
+  var c = '42b8ff2';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -130637,7 +130637,7 @@ ${massTbl}
     const cosLat = Math.cos(ref.lat * Math.PI / 180);
     const f = p => ({ x: (p.lng - ref.lng) * Math.PI / 180 * R * cosLat, y: (p.lat - ref.lat) * Math.PI / 180 * R });
     const zurueck = p => ({ lat: ref.lat + p.y / R * 180 / Math.PI, lng: ref.lng + p.x / (R * cosLat) * 180 / Math.PI });
-    return { ringe: ringe.map(r => r.map(f)), zurueck };
+    return { ringe: ringe.map(r => r.map(f)), zurueck, hin: f };
   }
 
   function ohneSchluss(pts) {
@@ -130996,6 +130996,33 @@ ${massTbl}
       return { x: zc.x + x * c - y * s, y: zc.y + x * s + y * c };
     });
     return { coords: neu.map(zurueck), drehungGrad: -delta * 180 / Math.PI, flaecheM2: Math.abs(vorzeichenFlaeche(neu)) };
+  }
+
+  /**
+   * Punktabbildung vom alten auf den neuen Grundriss desselben Gebäudes (z. B. nach
+   * uebertrageForm), damit PV-Flächen, First und Anlagen anteilig mitwandern: In den
+   * Gebäudeachsen des alten Grundrisses (Richtung der längsten Kante) wird das
+   * umschließende Rechteck des alten auf das des neuen gestreckt. Ein Punkt in der
+   * Mitte der Ostseite bleibt so in der Mitte der Ostseite.
+   * @returns {((p:{lat:number,lng:number}) => {lat:number,lng:number})|null}
+   */
+  function formAbbildung(altCoords, neuCoords) {
+    if (!altCoords || altCoords.length < 3 || !neuCoords || neuCoords.length < 3) return null;
+    const { ringe, zurueck, hin } = projizieren([altCoords, neuCoords]);
+    const alt = ccw(ohneSchluss(ringe[0])), neu = ohneSchluss(ringe[1]);
+    const th = laengsteKante(alt), c = Math.cos(th), s = Math.sin(th);
+    const lokal = p => ({ u: p.x * c + p.y * s, v: -p.x * s + p.y * c });
+    const box = pts => pts.map(lokal).reduce((b, p) => ({
+      u0: Math.min(b.u0, p.u), u1: Math.max(b.u1, p.u), v0: Math.min(b.v0, p.v), v1: Math.max(b.v1, p.v),
+    }), { u0: Infinity, u1: -Infinity, v0: Infinity, v1: -Infinity });
+    const a = box(alt), n = box(neu);
+    if (a.u1 - a.u0 < 0.1 || a.v1 - a.v0 < 0.1) return null;
+    const su = (n.u1 - n.u0) / (a.u1 - a.u0), sv = (n.v1 - n.v0) / (a.v1 - a.v0);
+    return p => {
+      const l = lokal(hin(p));
+      const u = n.u0 + (l.u - a.u0) * su, v = n.v0 + (l.v - a.v0) * sv;
+      return zurueck({ x: u * c - v * s, y: u * s + v * c });
+    };
   }
 
   /**
@@ -133592,7 +133619,8 @@ ${massTbl}
   // Zielgebäude wählen (Button „Maße übernehmen"), dann ein Gebäude auf der Karte anklicken:
   // dessen Grundrissform (Länge, Breite, Kontur) ersetzt die des Ziels. Schwerpunkt und
   // Drehung des Ziels bleiben; die lange Seite der Quelle liegt auf der langen Seite des
-  // Ziels. Das angeklickte Gebäude bleibt unverändert. Esc/„✓ Fertig" beendet den Modus.
+  // Ziels. PV-Flächen, First und Anlagen des Ziels werden anteilig in dessen Gebäudeachsen
+  // mitgestreckt (formAbbildung). Das angeklickte Gebäude bleibt unverändert. Esc/„✓ Fertig" beendet den Modus.
   //
   // Klicks werden im Capture-Schritt am Kartencontainer abgefangen und per Punkt-im-
   // Grundriss einem Gebäude zugeordnet. Über dem Dach liegen sonst PV-Flächen, Verbrauchs-
@@ -133751,6 +133779,10 @@ ${massTbl}
     showHint(`⏳ Maße von „${qName}" werden übernommen und neu berechnet …`, 0);
     await _naechsterFrame();
     try {
+      // PV-Flächen, First und Anlagen anteilig mitnehmen, danach den Grundriss exakt setzen
+      const snap = _gebSnapshot(z);
+      const f = formAbbildung(snap.polygon, r.coords);
+      if (f) _gebTransformieren(z, snap, p => { const n = f(p); return L.latLng(n.lat, n.lng); });
       z.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
       z.polygonLayer?.setLatLngs(z.polygon);
       if (z.dachAutoAzimut) {
@@ -133771,7 +133803,7 @@ ${massTbl}
         }, 1200);
       }
       _finishGrundrissChange(z, true);
-      const pvHinweis = z.pvFlaechen?.length ? ' · PV-Flächen bleiben unverändert, ggf. neu zeichnen' : '';
+      const pvHinweis = z.pvFlaechen?.length ? ' · PV-Flächen anteilig mitgeführt, bitte prüfen' : '';
       showHint(`✓ Maße von „${qName}" übernommen: ${vorher} → ${nachher} m²${pvHinweis} · weiteres Gebäude anklicken oder Esc`, 0);
     } catch (err) {
       console.error(err);

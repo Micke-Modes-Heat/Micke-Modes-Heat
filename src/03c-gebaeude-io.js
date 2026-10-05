@@ -33,7 +33,7 @@ import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
-import { drehFunktion, peilungGrad, richteRechtwinklig, uebertrageForm, vereinigePolygone } from './lib/gebaeude-geometrie.js';
+import { drehFunktion, formAbbildung, peilungGrad, richteRechtwinklig, uebertrageForm, vereinigePolygone } from './lib/gebaeude-geometrie.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
@@ -2597,7 +2597,8 @@ export function dupliziereGebaeude(gId) {
 // Zielgebäude wählen (Button „Maße übernehmen"), dann ein Gebäude auf der Karte anklicken:
 // dessen Grundrissform (Länge, Breite, Kontur) ersetzt die des Ziels. Schwerpunkt und
 // Drehung des Ziels bleiben; die lange Seite der Quelle liegt auf der langen Seite des
-// Ziels. Das angeklickte Gebäude bleibt unverändert. Esc/„✓ Fertig" beendet den Modus.
+// Ziels. PV-Flächen, First und Anlagen des Ziels werden anteilig in dessen Gebäudeachsen
+// mitgestreckt (formAbbildung). Das angeklickte Gebäude bleibt unverändert. Esc/„✓ Fertig" beendet den Modus.
 //
 // Klicks werden im Capture-Schritt am Kartencontainer abgefangen und per Punkt-im-
 // Grundriss einem Gebäude zugeordnet. Über dem Dach liegen sonst PV-Flächen, Verbrauchs-
@@ -2756,6 +2757,10 @@ async function _formUebernehmen(z, q, r) {
   showHint(`⏳ Maße von „${qName}" werden übernommen und neu berechnet …`, 0);
   await _naechsterFrame();
   try {
+    // PV-Flächen, First und Anlagen anteilig mitnehmen, danach den Grundriss exakt setzen
+    const snap = _gebSnapshot(z);
+    const f = formAbbildung(snap.polygon, r.coords);
+    if (f) _gebTransformieren(z, snap, p => { const n = f(p); return L.latLng(n.lat, n.lng); });
     z.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
     z.polygonLayer?.setLatLngs(z.polygon);
     if (z.dachAutoAzimut) {
@@ -2776,7 +2781,7 @@ async function _formUebernehmen(z, q, r) {
       }, 1200);
     }
     _finishGrundrissChange(z, true);
-    const pvHinweis = z.pvFlaechen?.length ? ' · PV-Flächen bleiben unverändert, ggf. neu zeichnen' : '';
+    const pvHinweis = z.pvFlaechen?.length ? ' · PV-Flächen anteilig mitgeführt, bitte prüfen' : '';
     showHint(`✓ Maße von „${qName}" übernommen: ${vorher} → ${nachher} m²${pvHinweis} · weiteres Gebäude anklicken oder Esc`, 0);
   } catch (err) {
     console.error(err);
