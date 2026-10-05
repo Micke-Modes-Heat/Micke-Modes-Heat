@@ -15168,7 +15168,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-05';
   if (d.indexOf('__') === 0) d = '';
-  var c = '42b8ff2';
+  var c = '1e5ad62';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -141543,13 +141543,24 @@ ${massTbl}
     };
   }
 
-  // Passendes Verfahren nach Punktzahl wählen und Transformation liefern.
-  function _ovFitFor(pairs) {
+  // Verfahren wählen und Transformation liefern. Standard ist die formtreue
+  // Ähnlichkeit (Helmert, Least-Squares über alle Punkte): Lagepläne sind
+  // maßstäblich, Affin/Projektiv setzen Klickfehler in Scherung bzw. Perspektive
+  // um, die zu den Planecken hin stark anwächst. Höhere Verfahren nur auf Wunsch
+  // und erst ab der jeweiligen Mindestpunktzahl.
+  const _OV_FIT_METHODS = {
+    similarity: { min: 2, label: 'Formtreu (drehen + skalieren)' },
+    affine:     { min: 3, label: 'Affin (Skalierung x/y + Scherung)' },
+    projective: { min: 4, label: 'Projektiv (Perspektive)' },
+  };
+
+  function _ovFitFor(pairs, mode = 'similarity') {
     const src = pairs.map(p => _ovProj(p.src));
     const dst = pairs.map(p => _ovProj(p.dst));
-    if (pairs.length >= 4) return { T: _ovFitHomography(src, dst), method: 'Projektiv (Perspektive)' };
-    if (pairs.length >= 3) return { T: _ovFitAffine(src, dst), method: 'Affin (Skalierung x/y + Scherung)' };
-    return { T: _ovFitSimilarity(src, dst), method: 'Ähnlichkeit (drehen + skalieren)' };
+    const n = pairs.length;
+    if (mode === 'projective' && n >= 4) return { T: _ovFitHomography(src, dst), method: _OV_FIT_METHODS.projective.label };
+    if (mode === 'affine' && n >= 3)     return { T: _ovFitAffine(src, dst), method: _OV_FIT_METHODS.affine.label };
+    return { T: _ovFitSimilarity(src, dst), method: _OV_FIT_METHODS.similarity.label };
   }
 
   // Restfehler je Passpunkt in echten Metern (Ellipsoid-Abstand über map.distance).
@@ -141571,7 +141582,7 @@ ${massTbl}
     const imgEl = window.overlayLayer.getElement && window.overlayLayer.getElement();
     if (imgEl) imgEl.style.pointerEvents = 'none';
 
-    window._ovRef = { pairs: [], expecting: 'plan', tempSrc: null, tempMarker: null, markers: [], lines: [] };
+    window._ovRef = { pairs: [], expecting: 'plan', tempSrc: null, tempMarker: null, markers: [], lines: [], mode: 'similarity' };
     document.getElementById('overlay-panel')?.classList.remove('visible');
     map.on('click', _ovRefClick);
     _ovRefBuildControl();
@@ -141633,7 +141644,7 @@ ${massTbl}
   function _ovRefApply() {
     const ref = window._ovRef;
     if (!ref || ref.pairs.length < 2) { showHint('Mindestens 2 Referenzpunkt-Paare nötig.'); return; }
-    const { T, method } = _ovFitFor(ref.pairs);
+    const { T, method } = _ovFitFor(ref.pairs, ref.mode);
     if (!T) { showHint('Punkte liegen zu dicht beieinander oder auf einer Linie — bitte weiter auseinander oder versetzt wählen.'); return; }
     const newCorners = window.overlayLayer.getCorners().map(c => _ovUnproj(T(_ovProj(c))));
     if (newCorners.some(c => !c || !isFinite(c.lat) || !isFinite(c.lng))) {
@@ -141678,7 +141689,15 @@ ${massTbl}
     box.innerHTML = `
     <div style="font-size:12px;font-weight:700;color:#ce93d8;margin-bottom:6px;">🎯 Plan über Referenzpunkte ausrichten</div>
     <div id="ov-ref-hint" style="font-size:11px;line-height:1.45;color:#b9c0d4;margin-bottom:8px;"></div>
-    <div id="ov-ref-status" style="font-size:11px;margin-bottom:10px;"></div>
+    <div id="ov-ref-status" style="font-size:11px;margin-bottom:8px;"></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#b9c0d4;margin-bottom:10px;">
+      Verfahren
+      <select id="ov-ref-mode" style="flex:1;font-size:11px;">
+        <option value="similarity">${_OV_FIT_METHODS.similarity.label} – empfohlen</option>
+        <option value="affine">${_OV_FIT_METHODS.affine.label} – ab 3 Punkten</option>
+        <option value="projective">${_OV_FIT_METHODS.projective.label} – ab 4 Punkten</option>
+      </select>
+    </label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       <button id="ov-ref-apply" class="btn-secondary" style="flex:1;min-width:120px;">Ausrichten</button>
       <button id="ov-ref-undo"  class="btn-secondary" style="flex:0 0 auto;">↶ Zurück</button>
@@ -141688,6 +141707,14 @@ ${massTbl}
     box.querySelector('#ov-ref-apply').addEventListener('click', _ovRefApply);
     box.querySelector('#ov-ref-undo').addEventListener('click', _ovRefUndo);
     box.querySelector('#ov-ref-cancel').addEventListener('click', _ovRefCancel);
+    const modeSel = box.querySelector('#ov-ref-mode');
+    modeSel.value = window._ovRef?.mode || 'similarity';
+    modeSel.addEventListener('change', () => {
+      if (window._ovRef) window._ovRef.mode = modeSel.value;
+      _ovRefUpdate();
+    });
+    // Klicks auf das Steuerfeld dürfen nicht als Passpunkt auf der Karte landen.
+    L.DomEvent.disableClickPropagation(box);
   }
 
   function _ovRefUpdate() {
@@ -141707,14 +141734,18 @@ ${massTbl}
     if (statEl) {
       let html = `<span style="color:#4dd0e1;">${n}</span> vollständige${n === 1 ? 's' : ''} Punktepaar${n === 1 ? '' : 'e'}`;
       if (n >= 2) {
-        const { T, method } = _ovFitFor(ref.pairs);
+        const { T, method } = _ovFitFor(ref.pairs, ref.mode);
         html += ` · Verfahren: <b>${method}</b>`;
+        const need = _OV_FIT_METHODS[ref.mode]?.min || 2;
+        if (n < need) html += ` <span style="color:#ffcc80;">(gewähltes Verfahren erst ab ${need} Punkten)</span>`;
         if (T) {
           const res = _ovResiduals(ref.pairs, T);
           const maxR = Math.max(...res), meanR = res.reduce((a, b) => a + b, 0) / res.length;
           const worst = res.indexOf(maxR) + 1;
-          // Bei minimaler Punktzahl (exakter Fit) sind Residuen ~0 → als Kontrolle markieren.
-          const exact = (n === 2) || (n === 3) || (n === 4);
+          // Bei minimaler Punktzahl des tatsächlich genutzten Verfahrens (exakter Fit)
+          // sind Residuen ~0 → als Kontrolle markieren.
+          const used = n >= need ? need : 2;
+          const exact = n === used;
           const col = maxR > 3 ? '#ef9a9a' : '#a5d6a7';
           html += `<br><span style="color:#8891a8;">Passgenauigkeit (Vorschau):</span> `
             + `<span style="color:${col};">Ø ${meanR.toFixed(1)} m, max ${maxR.toFixed(1)} m`
