@@ -477,11 +477,6 @@ export function attachPolygonLayer(g){
       if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
       return;
     }
-    // Maße übernehmen (03c): Klick wählt das Gebäude, dessen Form übertragen wird
-    if (typeof window.gebaeudeFormClick === 'function' && window.gebaeudeFormClick(g.id)) {
-      if (event?.originalEvent) L.DomEvent.stopPropagation(event.originalEvent);
-      return;
-    }
     // PV-Modus: der Klick aufs Dach startet die Fläche (25-pv-modus.js) und ist
     // zugleich deren erste Ecke — keine Gebäudeauswahl.
     if (typeof window.pvModusBuildingClick === 'function' &&

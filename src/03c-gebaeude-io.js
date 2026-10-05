@@ -2171,6 +2171,7 @@ export function _renderExpandedPanel(g, stats) {
       ${netzEdges.some(e => e.u === g.id || e.v === g.id) ? `<button class="btn-xs red" data-click="abklemmenGebaeude(${g.id})" title="Alle Netzleitungen entfernen">⛕✕</button>` : ''}
       <button class="btn-xs" data-click="finishGebaeudeGrundrissEdit(); removeGebaeude(${g.id})" title="Löschen" style="margin-left:auto">&#10005;</button>
     </div>
+    ${_formStatusHtml(g)}
     ${activeVariantId !== null ? `<div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border);">
       <button class="btn-xs ${ausgeschlossen ? 'green' : ''}" style="${ausgeschlossen ? '' : 'border-color:#f9a825;color:#f9a825;'}" data-click="toggleAusschluss(${g.id})">
         ${ausgeschlossen ? '↩ Wieder anschließen' : '⊗ In Variante abkoppeln'}
@@ -2597,15 +2598,112 @@ export function dupliziereGebaeude(gId) {
 // dessen Grundrissform (Länge, Breite, Kontur) ersetzt die des Ziels. Schwerpunkt und
 // Drehung des Ziels bleiben; die lange Seite der Quelle liegt auf der langen Seite des
 // Ziels. Das angeklickte Gebäude bleibt unverändert. Esc/„✓ Fertig" beendet den Modus.
+//
+// Klicks werden im Capture-Schritt am Kartencontainer abgefangen und per Punkt-im-
+// Grundriss einem Gebäude zugeordnet. Über dem Dach liegen sonst PV-Flächen, Verbrauchs-
+// kreise und Namensschilder, die den Klick schlucken — dann passierte schlicht nichts.
+// Ziel (cyan) und Vorschau der neuen Form (orange) liegen in einem eigenen, nicht
+// klickbaren Pane, damit updateViz sie nicht überfärbt.
 let _formModus = null;
+const _FORM_PANE = 'gebFormUebernahme';
 
 function _formEscape(event) {
   if (event.key === 'Escape') endeGebaeudeFormUebernahme();
 }
 
+function _gebName(g) { return g.name || 'Gebäude ' + g.id; }
+
+function _punktImRing(lat, lng, ring) {
+  let innen = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if ((a.lat > lat) !== (b.lat > lat) && lng < (b.lng - a.lng) * (lat - a.lat) / (b.lat - a.lat) + a.lng) innen = !innen;
+  }
+  return innen;
+}
+
+// Gebäude unter dem Kartenpunkt; bei Überlappung (z. B. Neubau über Abriss) das kleinste
+function _gebaeudeAnPunkt(latlng) {
+  let best = null, bestA = Infinity;
+  (window.gebaeude || []).forEach(g => {
+    if (!g.polygon || g.polygon.length < 3 || !g.polygonLayer || !map.hasLayer(g.polygonLayer)) return;
+    if (!g.polygonLayer.getBounds().contains(latlng) || !_punktImRing(latlng.lat, latlng.lng, g.polygon)) return;
+    const a = g.flaeche || polygonAreaM2(g.polygon);
+    if (a < bestA) { bestA = a; best = g; }
+  });
+  return best;
+}
+
+function _formEreignisRelevant(event) {
+  // Zoom-/Layer-Knöpfe und Popups normal bedienen lassen
+  return !event.target?.closest?.('.leaflet-control, .leaflet-popup');
+}
+
+function _formLayer(coords, style) {
+  return L.polygon(coords, { pane: _FORM_PANE, interactive: false, ...style }).addTo(map);
+}
+
+function _formZielZeichnen() {
+  const m = _formModus;
+  if (!m) return;
+  const z = window.gebaeude.find(b => b.id === m.zielId);
+  if (m.zielLayer) { map.removeLayer(m.zielLayer); m.zielLayer = null; }
+  if (!z?.polygon) return;
+  m.zielLayer = _formLayer(z.polygon, { color: '#00e5ff', weight: 3.5, dashArray: '8 5', fillColor: '#00e5ff', fillOpacity: 0.12 });
+  m.zielLayer.bindTooltip(`Ziel: ${escHtml(_gebName(z))}`, { permanent: true, direction: 'top', className: 'geb-tooltip' });
+}
+
+function _formVorschauEntfernen() {
+  const m = _formModus;
+  if (!m) return;
+  if (m.quelleLayer) { map.removeLayer(m.quelleLayer); m.quelleLayer = null; }
+  if (m.vorschauLayer) { map.removeLayer(m.vorschauLayer); m.vorschauLayer = null; }
+}
+
+function _formGrundHinweis() {
+  const z = window.gebaeude.find(b => b.id === _formModus?.zielId);
+  if (z) showHint(`⇆ Gebäude anklicken, dessen Maße „${_gebName(z)}" (cyan) übernehmen soll — auch wenn PV darauf liegt · Esc = fertig`, 0);
+}
+
+function _formMausBewegung(event) {
+  const m = _formModus;
+  if (!m || m.busy || !_formEreignisRelevant(event)) return;
+  const g = _gebaeudeAnPunkt(map.mouseEventToLatLng(event));
+  const id = g?.id ?? null;
+  if (id === m.hoverId) return;
+  m.hoverId = id;
+  _formVorschauEntfernen();
+  const z = window.gebaeude.find(b => b.id === m.zielId);
+  if (!g || !z?.polygon) { _formGrundHinweis(); return; }
+  if (g.id === z.id) { showHint('⇆ Das ist das Zielgebäude (cyan) — bitte ein anderes Gebäude anklicken', 0); return; }
+  m.quelleLayer = _formLayer(g.polygon, { color: '#ff9800', weight: 3, fill: false });
+  const r = uebertrageForm(z.polygon, g.polygon);
+  if (!r) { showHint(`⚠ „${_gebName(g)}" lässt sich nicht übertragen (Grundriss zu klein)`, 0); return; }
+  m.vorschauLayer = _formLayer(r.coords, { color: '#ff9800', weight: 2.5, dashArray: '4 4', fillColor: '#ff9800', fillOpacity: 0.18 });
+  showHint(`⇆ Klick übernimmt die Maße von „${_gebName(g)}": ${Math.round(z.flaeche || 0)} → ${Math.round(r.flaecheM2)} m² (orange gestrichelt = neue Form)`, 0);
+}
+
+function _formKartenKlick(event) {
+  if (!_formModus || !_formEreignisRelevant(event)) return;
+  // Kartenverschieben endet ebenfalls mit einem click-Ereignis
+  if (map.dragging?.moved?.()) return;
+  event.stopImmediatePropagation();
+  event.preventDefault();
+  const g = _gebaeudeAnPunkt(map.mouseEventToLatLng(event));
+  if (!g) { showHint('⇆ Dort liegt kein Gebäude — bitte innerhalb eines Grundrisses klicken · Esc = fertig', 3500); return; }
+  gebaeudeFormClick(g.id);
+}
+
 export function endeGebaeudeFormUebernahme() {
   if (!_formModus) return;
   const zielId = _formModus.zielId;
+  _formVorschauEntfernen();
+  if (_formModus.zielLayer) map.removeLayer(_formModus.zielLayer);
+  clearTimeout(_formModus.flashTimer);
+  const container = map.getContainer();
+  container.removeEventListener('click', _formKartenKlick, true);
+  container.removeEventListener('mousemove', _formMausBewegung, true);
+  container.classList.remove('geb-form-aktiv');
   document.removeEventListener('keydown', _formEscape);
   _formModus = null;
   hideHint();
@@ -2617,22 +2715,33 @@ export function startGebaeudeFormUebernahme(gId) {
   const g = window.gebaeude.find(b => b.id === gId);
   if (!g?.polygon || g.polygon.length < 3) return;
   if (typeof endeGebaeudeMerge === 'function') endeGebaeudeMerge();
-  const vorher = _formModus?.zielId;
-  _formModus = { zielId: gId };
-  if (vorher != null) _rerenderCard(vorher);
+  // Griffe der Grundrissbearbeitung würden Klicks auf Nachbargebäude verdecken
+  if (_grundrissEdit) finishGebaeudeGrundrissEdit();
+  endeGebaeudeFormUebernahme();
+  if (!map.getPane(_FORM_PANE)) {
+    const pane = map.createPane(_FORM_PANE);
+    pane.style.zIndex = 620; // über PV-Flächen und Markern, unter Tooltips
+    pane.style.pointerEvents = 'none';
+  }
+  _formModus = { zielId: gId, hoverId: null, busy: false, letzte: null };
+  const container = map.getContainer();
+  container.addEventListener('click', _formKartenKlick, true);
+  container.addEventListener('mousemove', _formMausBewegung, true);
+  container.classList.add('geb-form-aktiv');
   document.addEventListener('keydown', _formEscape);
-  showHint(`⇆ Gebäude anklicken, dessen Maße „${g.name || 'Gebäude ' + gId}" übernehmen soll (Position und Drehung bleiben) · Esc = fertig`, 0);
+  _formZielZeichnen();
+  _formGrundHinweis();
   _rerenderCard(gId);
 }
 
-// Aus attachPolygonLayer (02b) aufgerufen; true = Klick verbraucht
+// true = Klick verbraucht
 export function gebaeudeFormClick(quelleId) {
   if (!_formModus) return false;
   if (_formModus.busy) { showHint('⏳ Die vorige Übernahme läuft noch — einen Moment …', 2500); return true; }
   const z = window.gebaeude.find(b => b.id === _formModus.zielId);
   const q = window.gebaeude.find(b => b.id === quelleId);
   if (!z?.polygon) { endeGebaeudeFormUebernahme(); return false; }
-  if (quelleId === z.id) { showHint('⇆ Das ist das Zielgebäude — bitte das Gebäude anklicken, dessen Maße übernommen werden sollen', 3500); return true; }
+  if (quelleId === z.id) { showHint('⇆ Das ist das Zielgebäude (cyan) — bitte das Gebäude anklicken, dessen Maße übernommen werden sollen', 3500); return true; }
   if (!q?.polygon) { showHint('⚠ Dieses Gebäude hat noch keinen Grundriss', 3000); return true; }
   const r = uebertrageForm(z.polygon, q.polygon);
   if (!r) { showHint('⚠ Maße lassen sich nicht übertragen (Grundriss zu klein)', 3500); return true; }
@@ -2642,7 +2751,7 @@ export function gebaeudeFormClick(quelleId) {
 }
 
 async function _formUebernehmen(z, q, r) {
-  const qName = q.name || 'Gebäude ' + q.id;
+  const qName = _gebName(q);
   const vorher = Math.round(z.flaeche || 0);
   showHint(`⏳ Maße von „${qName}" werden übernommen und neu berechnet …`, 0);
   await _naechsterFrame();
@@ -2653,15 +2762,37 @@ async function _formUebernehmen(z, q, r) {
       const az = detectRoofAzimutFromPolygon(z.polygon);
       if (az != null) z.dachAzimut = az;
     }
+    const nachher = Math.round(r.flaecheM2);
+    if (_formModus) {
+      _formModus.letzte = { qName, vorher, nachher };
+      _formModus.hoverId = null;
+      _formVorschauEntfernen();
+      _formZielZeichnen();
+      // kurz grün aufblitzen lassen: die Übernahme hat stattgefunden
+      const zl = _formModus.zielLayer;
+      zl?.setStyle({ color: '#66bb6a', fillColor: '#66bb6a', fillOpacity: 0.35, dashArray: '' });
+      _formModus.flashTimer = setTimeout(() => {
+        zl?.setStyle({ color: '#00e5ff', fillColor: '#00e5ff', fillOpacity: 0.12, dashArray: '8 5' });
+      }, 1200);
+    }
     _finishGrundrissChange(z, true);
     const pvHinweis = z.pvFlaechen?.length ? ' · PV-Flächen bleiben unverändert, ggf. neu zeichnen' : '';
-    showHint(`✓ Maße von „${qName}" übernommen: ${vorher} → ${Math.round(r.flaecheM2)} m²${pvHinweis} · weiteres Gebäude anklicken oder Esc`, 0);
+    showHint(`✓ Maße von „${qName}" übernommen: ${vorher} → ${nachher} m²${pvHinweis} · weiteres Gebäude anklicken oder Esc`, 0);
   } catch (err) {
     console.error(err);
     showHint('⚠ Maßübernahme fehlgeschlagen: ' + err.message, 6000);
   }
 }
-window.gebaeudeFormClick = gebaeudeFormClick;
+
+// Statuszeile in der Karte des Zielgebäudes
+function _formStatusHtml(g) {
+  if (_formModus?.zielId !== g.id) return '';
+  const l = _formModus.letzte;
+  const text = l
+    ? `✓ Maße von „${escHtml(l.qName)}" übernommen: ${l.vorher} → ${l.nachher} m² — weiteres Gebäude anklicken oder „✓ Fertig"`
+    : 'Maßübernahme aktiv: Quellgebäude auf der Karte anklicken (Ziel = cyan umrandet, Vorschau = orange)';
+  return `<div style="margin-top:5px;padding:5px 7px;border-radius:4px;font-size:10px;line-height:1.4;border:1px solid ${l ? '#66bb6a' : '#00e5ff'};color:${l ? '#66bb6a' : '#00e5ff'};background:var(--bg)">⇆ ${text}</div>`;
+}
 
 // ── Grundrisse zusammenfügen ──────────────────────────────────────────────
 // Zielgebäude wählen (Button „Zusammenfügen"), dann beliebig viele Gebäude auf der
@@ -4259,7 +4390,7 @@ export function showHint(msg, duration){
 export function hideHint(){clearTimeout(_hintTimer);document.getElementById('hint').classList.add('hidden');}
 
 export const sty=document.createElement('style');
-sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}`;
+sty.textContent=`.geb-tooltip{background:#0f1117;border:1px solid #2a3050;color:#e8eaf0;font-family:'DM Sans',sans-serif;font-size:12px;padding:5px 8px;border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-weight:normal;line-height:1.5;}.geb-tooltip .leaflet-tooltip-tip{display:none;}.geb-form-aktiv,.geb-form-aktiv .leaflet-interactive{cursor:crosshair!important;}`;
 document.head.appendChild(sty);
 
 export let dashOffset = 0;
