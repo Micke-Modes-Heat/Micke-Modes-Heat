@@ -15164,7 +15164,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-05';
   if (d.indexOf('__') === 0) d = '';
-  var c = '5623067';
+  var c = '1e92d6e';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -133278,13 +133278,19 @@ ${massTbl}
   function _finishGrundrissChange(g, areaChanged) {
     if (areaChanged) {
       g.flaeche = polygonAreaM2(g.polygon);
-      updateField(g.id, 'flaeche', g.flaeche);
+      // defer: Totals/Netz/Lastgang werden unten einmal gesammelt angestoßen statt mehrfach
+      updateField(g.id, 'flaeche', g.flaeche, { defer: true });
     }
     g._pvModSig = null;
     redrawGebPvFlaechen(g);
     redrawAllAssets();
     redrawErzeugerIcons();
     recalcNetz();
+    if (areaChanged) {
+      updateTotals();
+      if (document.getElementById('chart-panel')?.classList.contains('visible')) drawChart();
+      glBerechnenDebounced(1500);
+    }
     updateViz();
     _redrawGrundrissHandles(g);
     _rerenderCard(g.id);
@@ -133485,6 +133491,11 @@ ${massTbl}
   // Grundriss rechtwinklig ausrichten: alle Ecken werden 90°-Ecken, die Gebäuderichtung
   // bleibt (dominante Kantenrichtung). Bei diagonalen Kanten oder größerer Flächenänderung
   // vorher bestätigen lassen.
+  // Zeichnet die Statusmeldung, bevor die (bei großen Projekten spürbar lange) Neuberechnung startet
+  function _naechsterFrame() {
+    return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+  }
+
   async function richteGebaeudeRechtwinklig(gId) {
     const g = window.gebaeude.find(b => b.id === gId);
     if (!g?.polygon || g.polygon.length < 3) return;
@@ -133500,14 +133511,21 @@ ${massTbl}
         : window.confirm(text.replace(/<[^>]+>/g, ''));
       if (!ok) return;
     }
-    g.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
-    g.polygonLayer?.setLatLngs(g.polygon);
-    if (g.dachAutoAzimut) {
-      const az = detectRoofAzimutFromPolygon(g.polygon);
-      if (az != null) g.dachAzimut = az;
+    showHint('⏳ Grundriss wird rechtwinklig ausgerichtet und neu berechnet …', 0);
+    await _naechsterFrame();
+    try {
+      g.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
+      g.polygonLayer?.setLatLngs(g.polygon);
+      if (g.dachAutoAzimut) {
+        const az = detectRoofAzimutFromPolygon(g.polygon);
+        if (az != null) g.dachAzimut = az;
+      }
+      _finishGrundrissChange(g, true);
+      showHint(`✓ Rechtwinklig ausgerichtet: ${Math.round(r.flaecheNachherM2)} m²`, 3500);
+    } catch (err) {
+      console.error(err);
+      showHint('⚠ Ausrichten fehlgeschlagen: ' + err.message, 6000);
     }
-    _finishGrundrissChange(g, true);
-    showHint(`✓ Rechtwinklig ausgerichtet: ${Math.round(r.flaecheNachherM2)} m²`, 3500);
   }
 
   // Gebäude kopieren: Grundriss (um Gebäudebreite + 3 m nach Osten versetzt), Nutzung,
@@ -133601,22 +133619,36 @@ ${massTbl}
   // Aus attachPolygonLayer (02b) aufgerufen; true = Klick verbraucht
   function gebaeudeFormClick(quelleId) {
     if (!_formModus) return false;
+    if (_formModus.busy) return true;
     const z = window.gebaeude.find(b => b.id === _formModus.zielId);
     const q = window.gebaeude.find(b => b.id === quelleId);
     if (!z?.polygon || !q?.polygon || quelleId === z.id) return true;
     const r = uebertrageForm(z.polygon, q.polygon);
     if (!r) { showHint('⚠ Maße lassen sich nicht übertragen (Grundriss zu klein)', 3500); return true; }
-    const vorher = Math.round(z.flaeche || 0);
-    z.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
-    z.polygonLayer?.setLatLngs(z.polygon);
-    if (z.dachAutoAzimut) {
-      const az = detectRoofAzimutFromPolygon(z.polygon);
-      if (az != null) z.dachAzimut = az;
-    }
-    _finishGrundrissChange(z, true);
-    const pvHinweis = z.pvFlaechen?.length ? ' · PV-Flächen bleiben unverändert, ggf. neu zeichnen' : '';
-    showHint(`✓ Maße von „${q.name || 'Gebäude ' + q.id}" übernommen: ${vorher} → ${Math.round(r.flaecheM2)} m²${pvHinweis} · weiteres Gebäude anklicken oder Esc`, 0);
+    _formModus.busy = true;
+    _formUebernehmen(z, q, r).finally(() => { if (_formModus) _formModus.busy = false; });
     return true;
+  }
+
+  async function _formUebernehmen(z, q, r) {
+    const qName = q.name || 'Gebäude ' + q.id;
+    const vorher = Math.round(z.flaeche || 0);
+    showHint(`⏳ Maße von „${qName}" werden übernommen und neu berechnet …`, 0);
+    await _naechsterFrame();
+    try {
+      z.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
+      z.polygonLayer?.setLatLngs(z.polygon);
+      if (z.dachAutoAzimut) {
+        const az = detectRoofAzimutFromPolygon(z.polygon);
+        if (az != null) z.dachAzimut = az;
+      }
+      _finishGrundrissChange(z, true);
+      const pvHinweis = z.pvFlaechen?.length ? ' · PV-Flächen bleiben unverändert, ggf. neu zeichnen' : '';
+      showHint(`✓ Maße von „${qName}" übernommen: ${vorher} → ${Math.round(r.flaecheM2)} m²${pvHinweis} · weiteres Gebäude anklicken oder Esc`, 0);
+    } catch (err) {
+      console.error(err);
+      showHint('⚠ Maßübernahme fehlgeschlagen: ' + err.message, 6000);
+    }
   }
   window.gebaeudeFormClick = gebaeudeFormClick;
 
