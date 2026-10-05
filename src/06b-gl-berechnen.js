@@ -5,6 +5,7 @@ import { getComputedStats, map } from './02b-gebaeude.js';
 import { polygonAreaM2 } from './02c-karte-werkzeuge.js';
 import { redrawVerbindungslinien } from './03a-erzeuger.js';
 import { hideHint, showHint } from './03c-gebaeude-io.js';
+import { sommerGrundlast, wbKorrigiere } from './lib/witterung.js';
 import { glGetGesamtMwh, glGetMonatswerte, glGetTempH, glLastgangKw, glRenderPreview, glRenderSplit, glUpdateKlimaStatus, glUpdateStatus } from './06a-gbi-lastgang.js';
 import { onSystemStateUpdated, updateAllDeckungen } from './06c-dispatch-core.js';
 import { CalcEngine } from './08-calc-engine.js';
@@ -92,8 +93,20 @@ async function glBerechnen() {
       // Fall 2: Gleitende Monatsskalierung (Verluste bereits enthalten)
       lastgangKw = glSkaliereMitMonaten(glLastgangKw, monatswerte);
       gesamtMwh = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
-
-    } else {
+    }
+    // Witterungsbereinigung des gemessenen Lastgangs (Gradtagzahlen, 34-witterung.js): nur der Anteil über der Sommergrundlast
+    window._wbInfo = null;
+    if (glLastgangKw && lastgangKw) {
+      const f = window.wbAktiverFaktor?.();
+      if (Number.isFinite(f) && f > 0) {
+        const grundlastKw = sommerGrundlast(lastgangKw);
+        const vorMwh = gesamtMwh;
+        lastgangKw = wbKorrigiere(lastgangKw, f, grundlastKw);
+        gesamtMwh = lastgangKw.reduce((a, b) => a + b, 0) / 1000;
+        window._wbInfo = { faktor: f, grundlastKw, vorMwh, nachMwh: gesamtMwh, ...(window.getWitterung?.()?.ergebnis || {}) };
+      }
+    }
+    if (!lastgangKw) {
       // Fälle 3–5: Synthese via CalcEngine
       // Gesamtmenge ermitteln — Gebäude als Fallback wenn kein manueller Gesamt
       if (!hatMonat && !gesamt) {

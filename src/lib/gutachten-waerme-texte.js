@@ -253,7 +253,10 @@ function herkunftLastgangAbsaetze(n) {
   if (art === 'import') {
     out.push(absatz(`Der Wärmelastgang beruht auf einer hochgeladenen Messreihe aus ${abtast}`, zr.quelle ? ` (Quelle: ${zr.quelle})` : '',
       zr.qualitaet === 'synthetic' ? ', die als synthetisch gekennzeichnet ist' : '',
-      '. Die Reihe enthält die Netzverluste bereits. Sie spiegelt die Witterung des Messjahres wider; die Klimabereinigung ist ', F('Klimabereinigung erfolgt / nicht erfolgt'), '.'));
+      '. Die Reihe enthält die Netzverluste bereits. ',
+      h.witterung && ok(num(h.witterung.faktor))
+        ? `Sie wurde über Gradtagzahlen witterungsbereinigt (Faktor ${nf(num(h.witterung.faktor), 3)}, Messjahr ${h.witterung.messjahr}).`
+        : ['Sie spiegelt die Witterung des Messjahres wider; die Klimabereinigung ist ', F('Klimabereinigung erfolgt / nicht erfolgt'), '.']));
   } else if (art === 'importMonate') {
     out.push(absatz(`Der Wärmelastgang beruht auf einer hochgeladenen Reihe aus ${abtast}, die monatsweise auf die vorgegebenen Monatsverbräuche skaliert wurde. Die Netzverluste sind bereits enthalten.`));
   } else if (art === 'monate' || art === 'monateGesamt') {

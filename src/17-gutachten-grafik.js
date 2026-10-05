@@ -23,7 +23,9 @@ import {
 import { gbAuswertung, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
 import { wtEisspeicher } from './lib/gutachten-eisspeicher-text.js';
 import { geTextZiele, geTextLiegenschaft, geTextIstEinstieg } from './lib/gutachten-einleitung.js';
-import { baAuswertung, baTwwAuswertung } from './lib/bestandsanlage.js';
+import { baAuswertung, baTwwAuswertung, baVerbrauchAuswertung } from './lib/bestandsanlage.js';
+import { vbTextDaten, vbTextBezug, vbTextCo2, vbTextReferenzjahr } from './lib/gutachten-verbrauch.js';
+import { lgTextWitterung, lgTextGrundlast, lgTextSpitzenlast, lgTextDeckung } from './lib/gutachten-lastgang.js';
 import { atTextErzeuger, atTextHydraulik, atTextTww, atTextNetz, atLeistung } from './lib/gutachten-anlagentechnik.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1338,6 +1340,14 @@ function ggBestandsanlage() {
     heizlastIstKw: j[0]?.heizlastKw, heizlastSollKw: j.length > 1 ? j[j.length - 1].heizlastKw : undefined,
   });
 }
+/** Mehrjahres-Verbrauchsdaten der Bestandsanlage mit den Emissionsfaktoren des Projekts (Standard GEG Anlage 9). */
+function ggVerbrauch() {
+  const w = window;
+  const f = {};
+  const set = (k, v) => { const x = Number(ggLies(v)); if (Number.isFinite(x)) f[k] = x; };
+  set('Erdgas', () => w.gasEmF); set('Heizöl', () => w.heizoelEmF); set('Holzpellets', () => w.pelletsEmF); set('Fernwärme', () => w.fernwaermeEmF);
+  return baVerbrauchAuswertung(ggLies(() => w.getBestandsanlage?.(), {}) || {}, f);
+}
 function ggTwwBestand() {
   const w = window;
   return baTwwAuswertung((w.gebaeude || []).filter(g => !(typeof w.isExcluded === 'function' && w.isExcluded(g.id)) && !(parseInt(g.baujahr, 10) >= 2026)));
@@ -1376,6 +1386,7 @@ function ggWaermeHerkunft() {
     normAtC: parseFloat(gl?.normAussentemp), gesamtMwh: gesamt, profil1: gl?.profil1 || undefined, profil2: gl?.profil2 || undefined,
     gebaeude: { gesamt: geb.length, gesetzt, geschaetzt: geb.length - gesetzt },
     netzverlustQuelle: ss?.netzverlustQuelle, netzverlustPct: parseFloat(gl?.netzverlustPct),
+    witterung: w._wbInfo || null,
   };
 }
 
@@ -2309,6 +2320,93 @@ const GG_FIGUREN = [
       cfg.fussnote = 'Bestandsgebäude · Angaben laut Unterlagen bzw. Begehung';
       return `✓ ${t.anzahlErfasst} Gebäude mit TWW-Angaben.`;
     },
+  },
+  // ── Ist-Wärmeverbrauch über mehrere Jahre: Datengrundlage, Energiebezug, CO₂ (Logik: lib/gutachten-verbrauch.js) ──
+  {
+    id: 'verbrauch-daten-text', istText: true, reihe: -30, kapitel: '2.1.7 Jahresvergleich der Daten',
+    titel: 'Gutachtentext: Datengrundlage Verbrauch', datei: 'verbrauch-daten-text',
+    hinweis: 'Zeitraum und Auflösung der Verbrauchsdaten je Energieträger aus 🔥 Wärme-Grundlagen → Bestandsanlage → Verbrauchsdaten.',
+    render: () => ggWaermeTextBlatt(vbTextDaten(ggVerbrauch())), config: {},
+  },
+  {
+    id: 'verbrauch-bezug-text', istText: true, reihe: -20, kapitel: '2.1.7 Jahresvergleich der Daten',
+    titel: 'Gutachtentext: Energiebezug über die Jahre', datei: 'verbrauch-bezug-text',
+    hinweis: 'Mittel und Spanne des Energiebezugs, dominanter Bezug, erneuerbarer Anteil, BHKW, Verschiebung des Mix (z. B. Energiekrise 2022) und fossile Abhängigkeit.',
+    render: () => ggWaermeTextBlatt(vbTextBezug(ggVerbrauch())), config: {},
+  },
+  {
+    id: 'verbrauch-bezug-grafik', autoSync: true, reihe: -15, kapitel: '2.1.7 Jahresvergleich der Daten',
+    titel: 'Energiebezug je Jahr', datei: 'verbrauch-bezug-grafik',
+    hinweis: 'Endenergiebezug je Jahr, gestapelt nach Erzeugergruppe (Kessel je Energieträger, BHKW); ohne Witterungsbereinigung.',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Energiebezug je Jahr', 'Energiebezug in MWh/a', 'Jahr', 'Keine Verbrauchsdaten erfasst.'),
+    ausProjekt(cfg) {
+      const v = ggVerbrauch();
+      ggGebKopf(cfg);
+      cfg.eyebrow = 'Wärmeversorgung';
+      if (!v.anzahlJahre) { ggGebLeer(cfg); return '⚠ Keine Verbrauchsdaten (Bestandsanlage → Verbrauchsdaten).'; }
+      const farben = ['#7f8c8d', '#3F9C3F', '#e67e22', '#2980b9', '#8e44ad', '#c0392b'];
+      cfg.kategorien = v.jahre.map(j => String(j.jahr));
+      cfg.gruppen = [{ label: '', segmente: v.gruppen.map((g, i) => ({ label: g.name, farbe: g.ee ? '#3F9C3F' : farben[i % farben.length], werte: v.jahre.map(j => j.werte[g.key]) })) }];
+      cfg.punkte = null;
+      cfg.summenLabel = true;
+      cfg.kpiLinks = [{ wert: ggNum(v.summeMittel) + ' MWh/a', label: `Ø ${v.vonJahr}–${v.bisJahr}` }];
+      cfg.kpiRechts = [{ wert: ggNum(v.fossilPctMittel) + ' %', label: 'fossiler Anteil Ø', highlight: v.fossilPctMittel >= 50 }];
+      return `✓ ${v.anzahlJahre} Jahre, ${v.gruppen.length} Erzeugergruppen.`;
+    },
+  },
+  {
+    id: 'verbrauch-co2-text', istText: true, reihe: -10, kapitel: '2.1.7 Jahresvergleich der Daten',
+    titel: 'Gutachtentext: CO₂-Emissionen (Bestand)', datei: 'verbrauch-co2-text',
+    hinweis: 'CO₂e aus Verbrauchsdaten und den Emissionsfaktoren des Projekts (Standard GEG Anlage 9), Verteilung je Energieträger und Veranschaulichung (Benzin, Pkw-km, Erdumrundungen).',
+    render: () => ggWaermeTextBlatt(vbTextCo2(ggVerbrauch())), config: {},
+  },
+  {
+    id: 'verbrauch-referenzjahr-text', istText: true, reihe: -5, kapitel: '2.1.7 Jahresvergleich der Daten',
+    titel: 'Gutachtentext: Referenzjahr der Lastganganalyse', datei: 'verbrauch-referenzjahr-text',
+    hinweis: 'Jahr, dessen Aufteilung der Energieträger dem Mehrjahresmittel am nächsten kommt; Vergleich mit dem Jahr des hochgeladenen Lastgangs.',
+    render: () => ggWaermeTextBlatt(vbTextReferenzjahr(ggVerbrauch(), ggLies(() => window.getWitterung?.()?.messjahr, null))), config: {},
+  },
+  // ── Lastgang: Witterungsbereinigung, Sommergrundlast, Spitzenlast/Auslegung, EE-Leistung (Logik: lib/gutachten-lastgang.js) ──
+  {
+    id: 'lastgang-witterung-text', istText: true, reihe: 20, kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Gutachtentext: Witterungsbereinigung', datei: 'lastgang-witterung-text',
+    hinweis: 'Gradtagzahlen des Messjahres gegenüber dem langjährigen Mittel, Faktor, bereinigter Anteil und Jahresverbrauch vorher/nachher (🔥 Wärme-Grundlagen → Lastgang).',
+    render: () => ggWaermeTextBlatt(lgTextWitterung(window._wbInfo, {
+      gemessen: String(ggLies(() => ggWaermeHerkunft().lastgang, '')).startsWith('import'), messjahr: ggLies(() => window.getWitterung?.()?.messjahr, ''),
+    })), config: {},
+  },
+  {
+    id: 'lastgang-grundlast-text', istText: true, reihe: 30, kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Gutachtentext: Sommergrundlast (TWW und Netzverluste)', datei: 'lastgang-grundlast-text',
+    hinweis: 'Mittlere Leistung im Juli/August als Grundlast aus Warmwasser und Netzverlusten, aufs Jahr hochgerechnet und aufgeteilt.',
+    render: () => {
+      const ss = window.systemState;
+      return ggWaermeTextBlatt(lgTextGrundlast({ lastgangKw: ss?.lastgangKw, gesamtMwh: ss?.gesamtMwhMitNV, netzverlustMwh: ss?.netzverlustMwh }));
+    },
+    config: {},
+  },
+  {
+    id: 'lastgang-spitzenlast-text', istText: true, reihe: 40, kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Gutachtentext: Spitzenlast und Auslegungsheizlast', datei: 'lastgang-spitzenlast-text',
+    hinweis: 'Nur bei gemessenem Lastgang: Spitzenlast mit Tagesmitteltemperatur des Messjahres, lineare Extrapolation auf die Norm-Außentemperatur, Reservehinweis bei auffälligen Nutzungsarten, Abgleich mit der Bestandsanlage.',
+    render: () => {
+      const w = window, ss = w.systemState;
+      if (!String(ggLies(() => ggWaermeHerkunft().lastgang, '')).startsWith('import')) return ggWaermeTextBlatt([]);
+      const wb = ggLies(() => w.getWitterung?.(), {}) || {};
+      const auff = ggLies(() => ggGebaeudeAuswertung().ist.nutzungFaktor.find(n => n.anzahl >= 2 && n.faktorMittel >= 2)?.nutzung, null);
+      return ggWaermeTextBlatt(lgTextSpitzenlast({
+        lastgangKw: ss?.lastgangKw, tageT: wb.ergebnis?.messjahr === wb.messjahr ? wb.ergebnis?.tageT : null,
+        normAtC: parseFloat(ggLies(() => w.captureWaermeGrundlagen?.()?.normAussentemp, NaN)), auffaelligeNutzung: auff, bestandThermKw: ggBestandsanlage().thermKw,
+      }));
+    },
+    config: {},
+  },
+  {
+    id: 'lastgang-deckung-text', istText: true, reihe: 50, kapitel: '2.2.1 Dimensionierung WEA',
+    titel: 'Gutachtentext: EE-Leistung für GEG-Quote', datei: 'lastgang-deckung-text',
+    hinweis: 'Aus der Jahresdauerlinie: erforderliche EE-Leistung für 65 % (GEG) und 90 % der Jahreswärme, mit Hinweis auf den Leistungsabfall von Wärmepumpen.',
+    render: () => ggWaermeTextBlatt(lgTextDeckung({ jdlKw: window.systemState?.jahresdauerlinie })), config: {},
   },
   {
     id: 'waerme-wea-text',

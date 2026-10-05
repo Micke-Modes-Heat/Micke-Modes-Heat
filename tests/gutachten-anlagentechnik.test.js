@@ -34,7 +34,8 @@ describe('baAuswertung', () => {
   it('Nutzungsdauer', () => {
     expect(a.zeilen[0].abgaengigAb).toBe(2028);
     expect(a.zeilen[3].abgaengigAb).toBe(2023);
-    expect(a.abgaengig.map(z => z.typ)).toEqual(['pelletkessel', 'bhkw_gas']);
+    expect(a.abgaengig.map(z => z.typ)).toEqual(['bhkw_gas']);
+    expect(a.zeilen[2].abgaengigAb).toBe(2028);
   });
   it('Normalisierung', () => {
     expect(baNormalisiere({ erzeuger: [{ typ: 'quatsch' }, null], netzDaten: 'x' })).toMatchObject({ erzeuger: [{ typ: 'sonstiges' }], netzDaten: 'plan' });
@@ -58,9 +59,8 @@ describe('Texte Wärmeerzeuger', () => {
   it('fossil und Alter', () => {
     expect(t).toContain('weitgehend fossil geprägt');
     expect(t).toContain('Sämtliche Wärmeerzeuger wurden im Jahr 2008 zentral in Gebäude 12 installiert');
-    expect(t).toContain('VDI 2067 sind der NT-Gaskessel und der Brennwertkessel (20 Jahre) voraussichtlich ab dem Jahr 2028 als abgängig einzustufen');
-    expect(t).toContain('Der Pelletkessel und das BHKW (15 Jahre) haben die kalkulatorische Nutzungsdauer nach VDI 2067 bereits seit 2023 überschritten');
-    expect(t).toContain('das BHKW (15 Jahre)');
+    expect(t).toContain('VDI 2067 sind der NT-Gaskessel, der Brennwertkessel und der Pelletkessel (20 Jahre) voraussichtlich ab dem Jahr 2028 als abgängig einzustufen');
+    expect(t).toContain('Das BHKW (15 Jahre) hat die kalkulatorische Nutzungsdauer nach VDI 2067 bereits seit 2023 überschritten');
     expect(t).toContain('Ersatz der betroffenen Erzeuger');
   });
   it('Unterdeckung künftig', () => {

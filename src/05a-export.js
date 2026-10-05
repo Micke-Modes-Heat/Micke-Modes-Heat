@@ -18,6 +18,7 @@ import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
 import { syntheticPvProfileMeta } from './lib/pv-profile-import.js';
 import { glTimeSeriesMeta } from './06a-gbi-lastgang.js';
 import { appLifecycle } from './lib/lifecycle.js';
+import { baTwwArtAusText, baZustandAusText } from './lib/bestandsanlage.js';
 
 const ASSET_LABELS = {
   NAP: 'Netzanschlusspunkt', Trafo: 'Transformator', Schaltanlage: 'Schaltanlage',
@@ -1341,7 +1342,7 @@ export async function exportVollstaendigXLSX() {
   // Sheet 1: Gebäude
   const gebRows = [['ID', 'Name', 'Nutzung', 'Fläche (m²)', 'Baujahr', 'Abrissjahr', 'Zustand',
     'Wärmebedarf (MWh/a)', 'Heizlast (kW)', 'Spez. Wärme (kWh/m²a)',
-    'Strom (MWh/a)', 'PV aktiv', 'PV Dachanteil (%)', 'Gebäudenummer']];
+    'Strom (MWh/a)', 'PV aktiv', 'PV Dachanteil (%)', 'Gebäudenummer', 'TWW-Art', 'TWW-Leistung (kW)']];
   for (const g of allGebaeude) {
     gebRows.push([
       g.id, g.name || '', g.nutzung || '',
@@ -1354,6 +1355,7 @@ export async function exportVollstaendigXLSX() {
       g.pvAktiv ? 'ja' : 'nein',
       g.pvDachanteil || 30,
       g.gebaeudenummer || '',
+      g.twwArt || '', g.twwKw || '',
     ]);
   }
 
@@ -1593,7 +1595,7 @@ async function _handleXlsxImport(event) {
           }
           // Zustand
           if (row[6] != null && String(row[6]).trim()) {
-            g.zustand = String(row[6]).trim(); changed = true;
+            g.zustand = baZustandAusText(row[6]) ?? String(row[6]).trim(); changed = true;
           }
           // Wärmebedarf
           if (row[7] != null && !isNaN(parseFloat(row[7]))) {
@@ -1623,6 +1625,14 @@ async function _handleXlsxImport(event) {
             if (typeof window.setGebaeudenummer === 'function') window.setGebaeudenummer(id, nummer);
             else g.gebaeudenummer = nummer;
             changed = true;
+          }
+          // TWW-Art und -Leistung (Bestand), Spalten 15/16
+          if (row[14] != null && String(row[14]).trim() !== '') {
+            const art = baTwwArtAusText(row[14]);
+            if (art !== null && art !== (g.twwArt || '')) { g.twwArt = art; changed = true; }
+          }
+          if (row[15] != null && String(row[15]).trim() !== '' && !isNaN(parseFloat(row[15]))) {
+            g.twwKw = String(parseFloat(row[15])); changed = true;
           }
           if (changed) updGeb++;
         }

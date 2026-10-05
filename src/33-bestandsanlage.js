@@ -2,7 +2,7 @@
 // Erzeugerpark, Pufferspeicher, Heizzentrale, Stand des Hydraulikschemas und Datenlage zum Netz. Gespeichert wird der
 // Stand mit den Wärme-Grundlagen (captureWaermeGrundlagen/restoreWaermeGrundlagen in 06a-gbi-lastgang.js).
 // Auswertung und Texte: lib/bestandsanlage.js, lib/gutachten-anlagentechnik.js.
-import { BA_TYPEN, baLeer, baNormalisiere } from './lib/bestandsanlage.js';
+import { BA_TYPEN, BA_AUFLOESUNG, baLeer, baNormalisiere } from './lib/bestandsanlage.js';
 
 let _ba = baLeer();
 
@@ -12,16 +12,18 @@ export function getBestandsanlage() { return baNormalisiere(_ba); }
 export function setBestandsanlage(daten) { _ba = baNormalisiere(daten); baRender(); }
 
 export function baErzeugerHinzufuegen() {
-  _ba.erzeuger.push({ typ: 'nt_gaskessel', bezeichnung: '', thermKw: '', feuerungKw: '', elKw: '', baujahr: '' });
+  const id = `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  _ba.erzeuger.push({ id, typ: 'nt_gaskessel', aufloesung: 'jahr', bezeichnung: '', thermKw: '', feuerungKw: '', elKw: '', baujahr: '' });
   baRender();
 }
 export function baErzeugerEntfernen(i) {
-  _ba.erzeuger.splice(Number(i), 1);
+  const [weg] = _ba.erzeuger.splice(Number(i), 1);
+  if (weg) for (const v of _ba.verbrauch) delete v.werte[weg.id];
   baRender();
 }
 export function baErzeugerFeld(i, feld, wert) {
   const e = _ba.erzeuger[Number(i)];
-  if (!e || !['typ', 'bezeichnung', 'thermKw', 'feuerungKw', 'elKw', 'baujahr'].includes(feld)) return;
+  if (!e || !['typ', 'bezeichnung', 'thermKw', 'feuerungKw', 'elKw', 'baujahr', 'aufloesung'].includes(feld)) return;
   e[feld] = String(wert ?? '');
   if (feld === 'typ') baRender();
   else baSumme();
@@ -29,6 +31,45 @@ export function baErzeugerFeld(i, feld, wert) {
 export function baFeld(feld, wert) {
   if (!['pufferM3', 'heizzentrale', 'schemaJahr', 'netzDaten'].includes(feld)) return;
   _ba[feld] = String(wert ?? '');
+}
+
+export function baJahrHinzufuegen() {
+  const jahre = _ba.verbrauch.map(v => v.jahr);
+  const jahr = jahre.length ? Math.max(...jahre) + 1 : new Date().getFullYear() - 1;
+  _ba.verbrauch.push({ jahr, werte: {} });
+  _ba.verbrauch.sort((a, b) => a.jahr - b.jahr);
+  baRender();
+}
+export function baJahrEntfernen(jahr) {
+  _ba.verbrauch = _ba.verbrauch.filter(v => v.jahr !== Number(jahr));
+  baRender();
+}
+export function baJahrAendern(alt, neu) {
+  const j = parseInt(neu, 10);
+  const v = _ba.verbrauch.find(x => x.jahr === Number(alt));
+  if (!v || !(j > 1990 && j < 2100) || _ba.verbrauch.some(x => x.jahr === j)) { baRender(); return; }
+  v.jahr = j;
+  _ba.verbrauch.sort((a, b) => a.jahr - b.jahr);
+  baRender();
+}
+export function baVerbrauchFeld(jahr, id, wert) {
+  const v = _ba.verbrauch.find(x => x.jahr === Number(jahr));
+  if (v) v.werte[id] = String(wert ?? '');
+}
+
+function baVerbrauchHtml() {
+  if (!_ba.erzeuger.length) return '';
+  const kurz = e => (e.bezeichnung || BA_TYPEN[e.typ]?.name || '').replace('Brennwertkessel', 'BW-Kessel');
+  const kopf = `<tr><th style="text-align:left;font-weight:400;">Jahr</th>${_ba.erzeuger.map(e => `<th style="font-weight:400;padding:0 2px;" title="${esc(BA_TYPEN[e.typ]?.name)}">${esc(kurz(e))}<br>
+      <select class="inp-field" style="width:62px;padding:1px;font-size:9px;" title="Zeitliche Auflösung der Daten" data-change="baErzeugerFeld(${_ba.erzeuger.indexOf(e)},'aufloesung',this.value)">
+        ${Object.entries(BA_AUFLOESUNG).map(([k, l]) => `<option value="${k}"${e.aufloesung === k ? ' selected' : ''}>${l.replace('werte', '')}</option>`).join('')}</select></th>`).join('')}<th></th></tr>`;
+  const zeilen = _ba.verbrauch.map(v => `<tr>
+      <td><input class="inp-field" style="width:46px;padding:2px;font-size:10px;" value="${v.jahr}" data-change="baJahrAendern(${v.jahr},this.value)"></td>
+      ${_ba.erzeuger.map(e => `<td style="padding:0 2px;"><input class="inp-field" style="width:62px;padding:2px;font-size:10px;text-align:right;" placeholder="MWh" value="${esc(v.werte[e.id] ?? '')}" data-change="baVerbrauchFeld(${v.jahr},'${e.id}',this.value)"></td>`).join('')}
+      <td><button class="btn-secondary" style="padding:0 5px;font-size:10px;" title="Jahr entfernen" data-click="baJahrEntfernen(${v.jahr})">✕</button></td></tr>`).join('');
+  return `<div style="font-size:10px;color:var(--muted);margin:10px 0 3px;" title="Endenergie (Brennstoff bzw. Strom) je Bestandserzeuger und Jahr — Grundlage für Energiebezug, CO₂ und Referenzjahr im Gutachten">Verbrauchsdaten (MWh Endenergie/a)</div>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:9px;color:var(--muted);">${kopf}${zeilen}</table></div>
+    <button class="btn-secondary" style="padding:2px 8px;font-size:10px;margin-top:4px;" data-click="baJahrHinzufuegen()">＋ Jahr</button>`;
 }
 
 function baSumme() {
@@ -67,7 +108,8 @@ export function baRender() {
     <label style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-top:4px;">Netzdaten
       <select class="inp-field" style="width:110px;padding:3px;font-size:10px;" data-change="baFeld('netzDaten',this.value)">
         ${[['keine', 'keine Unterlagen'], ['plan', 'nur Lageplan'], ['vollstaendig', 'vollständig']].map(([k, l]) => `<option value="${k}"${_ba.netzDaten === k ? ' selected' : ''}>${l}</option>`).join('')}
-      </select></label>`;
+      </select></label>
+    ${baVerbrauchHtml()}`;
   baSumme();
 }
 
