@@ -1237,7 +1237,9 @@ export function setupOverlayOnMap(url, w, h, name) {
   const center = map.getCenter();
   const offsetLat = 0.003;
   const ratio = (w && h) ? w / h : 1;
-  const offsetLng = offsetLat * ratio;
+  // Längengrade sind um cos(Breite) kürzer als Breitengrade – ohne Korrektur
+  // läge der Plan in Mitteleuropa um ~1/3 horizontal gestaucht auf der Karte.
+  const offsetLng = offsetLat * ratio / Math.cos(center.lat * Math.PI / 180);
   const corners = [
     { lat: center.lat + offsetLat, lng: center.lng - offsetLng }, // NW
     { lat: center.lat + offsetLat, lng: center.lng + offsetLng }, // NE
@@ -1652,13 +1654,38 @@ const _OV_FIT_METHODS = {
   projective: { min: 4, label: 'Projektiv (Perspektive)' },
 };
 
+// Abbildung „aktuell angezeigte Lage (projiziert) → Bildpixel des Originalplans".
+// Die Lib spannt das Bild projektiv auf die 4 Ecken; die Umkehrung über die 4
+// Eckpaare ist exakt. Pixel-y wird gespiegelt, weil Mercator-y nach Norden wächst
+// (sonst wäre die Abbildung eine Spiegelung, die „formtreu" nicht darstellen kann).
+// So wird immer vom unverzerrten Original aus gerechnet – eine Stauchung aus dem
+// Laden oder von den Kantengriffen wird nicht mitgeschleppt.
+function _ovPixelMapper(layer) {
+  if (!layer || !layer.getCorners) return null;
+  const el = layer.getElement && layer.getElement();
+  const ov = _activeOverlay();
+  const w = (el && el.naturalWidth) || (ov && ov.w);
+  const h = (el && el.naturalHeight) || (ov && ov.h);
+  if (!w || !h) return null;
+  const cur = layer.getCorners().map(_ovProj);                       // TL, TR, BL, BR
+  const px = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: 0, y: -h }, { x: w, y: -h }];
+  return _ovFitHomography(cur, px);
+}
+
 function _ovFitFor(pairs, mode = 'similarity') {
-  const src = pairs.map(p => _ovProj(p.src));
+  const toPx = _ovPixelMapper(window.overlayLayer);
+  const viaPx = toPx ? p => toPx(p) : p => p;                        // Fallback: Bildgröße unbekannt
+  const src = pairs.map(p => viaPx(_ovProj(p.src)));
   const dst = pairs.map(p => _ovProj(p.dst));
   const n = pairs.length;
-  if (mode === 'projective' && n >= 4) return { T: _ovFitHomography(src, dst), method: _OV_FIT_METHODS.projective.label };
-  if (mode === 'affine' && n >= 3)     return { T: _ovFitAffine(src, dst), method: _OV_FIT_METHODS.affine.label };
-  return { T: _ovFitSimilarity(src, dst), method: _OV_FIT_METHODS.similarity.label };
+  let T, method;
+  if (src.some(p => !p)) { T = null; method = _OV_FIT_METHODS[mode]?.label || ''; }
+  else if (mode === 'projective' && n >= 4) { T = _ovFitHomography(src, dst); method = _OV_FIT_METHODS.projective.label; }
+  else if (mode === 'affine' && n >= 3)     { T = _ovFitAffine(src, dst);     method = _OV_FIT_METHODS.affine.label; }
+  else                                       { T = _ovFitSimilarity(src, dst); method = _OV_FIT_METHODS.similarity.label; }
+  // Nach außen bleibt T eine Abbildung „aktuelle Lage → neue Lage".
+  if (!T) return { T: null, method };
+  return { T: p => { const q = viaPx(p); return q ? T(q) : null; }, method };
 }
 
 // Restfehler je Passpunkt in echten Metern (Ellipsoid-Abstand über map.distance).
