@@ -236,6 +236,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .add-section{padding:8px;border-top:1px solid var(--border);}
 .btn-add{width:100%;padding:7px;border-radius:5px;border:1px dashed var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:12px;cursor:pointer;transition:.15s;font-weight:normal;}
 .btn-add:hover{border-color:var(--accent);color:var(--accent);}
+.leaflet-tooltip.draw-mass-tip{background:rgba(12,30,44,.88);border:1px solid #4fc3f7;color:#eaf7ff;font:600 11px 'DM Mono',monospace;padding:2px 6px;box-shadow:none;}
+.leaflet-tooltip.draw-mass-tip:before{display:none;}
 
 .legend{padding:8px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:5px;}
 .legend-row{display:flex;align-items:center;gap:10px;}

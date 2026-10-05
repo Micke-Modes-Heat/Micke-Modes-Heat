@@ -20,7 +20,7 @@ import { glLastgangKw } from './06a-gbi-lastgang.js';
 import { detectBundesland } from './lib/bundeslaender.js';
 import { readNum } from './lib/util.js';
 import { clipBuildingEndpoint, crossesForeignBuilding } from './lib/netz-building-obstacles.js';
-import { bereinigeKleinbauten } from './lib/gebaeude-geometrie.js';
+import { bereinigeKleinbauten, rechteckAusDreiPunkten } from './lib/gebaeude-geometrie.js';
 import { osmDachAusTags, osmQuerAzimut, osmDachGebaeude, osmDachZuordnen } from './lib/osm-dach.js';
 import { validateRadialHeatGraph } from './lib/waerme-graph-validation.js';
 import { moBeiAktivierung, moBeiDeaktivierung, updateAllDeckungen } from './06c-dispatch-core.js';
@@ -522,11 +522,15 @@ export function clearGeo() {
   redrawErzeugerIcons();
 }
 
-export function startDraw(id){
+// form: 'polygon' (Eckpunkte, Startpunkt schließt) | 'rechteck' (Grundlinie 2 Klicks + Breite 1 Klick)
+export function startDraw(id, form = 'polygon'){
   clearArea(); cancelDraw();
-  beginInteraction({id:'draw-generator-area',label:'Gebäudegrundriss zeichnen',hint:'Eckpunkte setzen und Startpunkt zum Abschließen anklicken.',cancel:cancelDraw});
-  window.drawingId=id; window.drawPoints=[];
-  showHint('Eckpunkte anklicken · Am Ende Startpunkt (rot) anklicken · Rechtsklick = Zurück');
+  const rechteck = form === 'rechteck';
+  beginInteraction({id:'draw-generator-area',label:rechteck?'Gebäude als Rechteck zeichnen':'Gebäudegrundriss zeichnen',hint:rechteck?'Zwei Klicks setzen die Grundlinie, der dritte die Breite.':'Eckpunkte setzen und Startpunkt zum Abschließen anklicken.',cancel:cancelDraw});
+  window.drawingId=id; window.drawPoints=[]; window.drawForm=rechteck?'rechteck':'polygon';
+  showHint(rechteck
+    ? 'Rechteck: 1. Klick = Ecke · 2. Klick = Ende der Grundlinie (beliebig gedreht) · 3. Klick = Breite · Rechtsklick = Zurück · Esc = Abbrechen'
+    : 'Eckpunkte anklicken · Am Ende Startpunkt (rot) anklicken · Rechtsklick = Zurück');
   _hideForDraw();
   map.getContainer().style.cursor='crosshair';
   setSelectedId(id); renderList();
@@ -535,10 +539,47 @@ export function startDraw(id){
 export function cancelDraw(){
   if(window.drawPolyline){map.removeLayer(window.drawPolyline);window.drawPolyline=null;}
   if(window.drawStartMarker){map.removeLayer(window.drawStartMarker);window.drawStartMarker=null;}
-  window.drawingId=null;window.drawPoints=[];
+  window.drawingId=null;window.drawPoints=[];window.drawForm=null;
   map.getContainer().style.cursor='';hideHint();
   _restoreAfterDraw();
   cancelInteraction('draw-generator-area');
+}
+
+// Rechteck-Modus: Vorschau (Linie, ab 2 Punkten das Rechteck mit Maßen) zum Mauszeiger
+export function rechteckVorschau(cursor){
+  const pts = window.drawPoints || [];
+  if (window.drawPolyline) { map.removeLayer(window.drawPolyline); window.drawPolyline = null; }
+  if (!pts.length) return;
+  const stil = {color:'#4fc3f7',weight:2,dashArray:'6 4',interactive:false};
+  const ziel = cursor || pts[pts.length - 1];
+  if (pts.length === 1) {
+    window.drawPolyline = L.polyline([pts[0], ziel], stil).addTo(map);
+    if (cursor) window.drawPolyline.bindTooltip(map.distance(pts[0], ziel).toFixed(1).replace('.', ',') + ' m', {permanent:true, direction:'center', className:'draw-mass-tip'});
+    return;
+  }
+  const r = rechteckAusDreiPunkten(pts[0], pts[1], ziel);
+  if (!r) { window.drawPolyline = L.polyline(pts, stil).addTo(map); return; }
+  window.drawPolyline = L.polygon(r.coords, {...stil, fillColor:'#4fc3f7', fillOpacity:.12}).addTo(map);
+  window.drawPolyline.bindTooltip(`${r.laengeM.toFixed(1).replace('.', ',')} × ${r.breiteM.toFixed(1).replace('.', ',')} m`, {permanent:true, direction:'center', className:'draw-mass-tip'});
+}
+
+// Klick im Rechteck-Modus: 3. Punkt schließt das Rechteck ab
+export function rechteckKlick(latlng){
+  const pts = window.drawPoints;
+  if (pts.length === 0) {
+    const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
+    window.drawStartMarker = L.marker(latlng, {icon: startIcon, interactive: false, zIndexOffset: 2000}).addTo(map);
+  }
+  if (pts.length === 1 && map.distance(pts[0], latlng) < 0.3) { showHint('Grundlinie zu kurz — weiter weg klicken', 2500); return; }
+  if (pts.length === 2) {
+    const r = rechteckAusDreiPunkten(pts[0], pts[1], latlng);
+    if (!r) { showHint('Breite zu klein — weiter von der Grundlinie entfernt klicken', 2500); return; }
+    window.drawPoints = r.coords.map(c => L.latLng(c.lat, c.lng));
+    finishDraw();
+    return;
+  }
+  pts.push(latlng);
+  rechteckVorschau(null);
 }
 
 export function finishDraw(){

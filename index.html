@@ -1258,7 +1258,7 @@
       <div class="sidebar-scroll">
         <div class="gebaeude-list" id="geb-list"></div>
         <div class="add-section">
-          <button class="btn-add" data-click="addGebaeude()">+ Manuell hinzufügen</button>
+          <div style="display:flex;gap:6px;"><button class="btn-add" data-click="addGebaeude()" title="Grundriss als Polygon zeichnen (beliebig viele Ecken)">+ Polygon</button><button class="btn-add" data-click="addGebaeude({form:'rechteck'})" title="Grundriss als Rechteck zeichnen: Grundlinie (2 Klicks) + Breite (1 Klick), beliebig gedreht">▭ Rechteck</button></div>
         </div>
         <div class="legend">
           <div class="legend-row">

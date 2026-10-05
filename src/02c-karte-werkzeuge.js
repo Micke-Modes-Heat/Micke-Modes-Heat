@@ -2,7 +2,7 @@
 import { R_MIN, _expandedIds, calculatedLoad, drawPoints, drawingId, fernwaerme, ffDrawId, ffDrawPoints, fliessgewaesserLayerGroup, gebaeude, globalYear, heizhackschnitzel, isDrawingEdge, isDrawingStromEdge, isExcluded, netzEdges, pelletsKessel, selectedId, stromEmF, stromEmFLZ } from './01-globals-varianten.js';
 import { getColor, getColorRange, getColorVal, getComputedStats, getEffectiveRMax, getSizeRange, getSizeVal, highlightCard, map, renameGebaeude } from './02b-gebaeude.js';
 import { cancelDrawFF, finishDrawFF, redrawErzeugerIcons, redrawFernwaerme, redrawHhs, redrawPellets, redrawVerbindungslinien, windSvg } from './03a-erzeuger.js';
-import { _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, confirmAutoGenerateNetz, confirmManualWaermeNetzFromTrasse, createStreetOrientedWaermeNetz, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
+import { rechteckKlick, rechteckVorschau, _setDefault30Pct, addNetzEdge, autoGenerateNetz, cancelDraw, confirmAutoGenerateNetz, confirmManualWaermeNetzFromTrasse, createStreetOrientedWaermeNetz, finishDraw, hidePanels, placeGeoAt, recalcNetz, showAreaEditPanel, toggleDrawEdge, updateNetzStrandVisibility } from './03b-netz.js';
 import { _rerenderCard, hideHint, renderList, showHint, updateTotals } from './03c-gebaeude-io.js';
 import { _hideForDraw, _restoreAfterDraw, updateLpGebietStatus } from './04a-ui-panels.js';
 import { setNetzSubTab, stromNodeClick } from './05b-stromnetz.js';
@@ -1165,6 +1165,7 @@ map.on('click',e=>{
     return;
   }
   if((window.drawingId ?? drawingId) !== null){
+    if (window.drawForm === 'rechteck') { rechteckKlick(e.latlng); return; }
     const _drawPts = window.drawPoints || drawPoints;
     if(_drawPts.length === 0){
       const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
@@ -1193,7 +1194,8 @@ map.on('contextmenu', e => {
     _drawPts.pop();
     if(window.drawPolyline) map.removeLayer(window.drawPolyline);
     if(_drawPts.length > 0) {
-      window.drawPolyline = L.polyline([..._drawPts], {color: '#4fc3f7', weight: 2, dashArray: '6 4'}).addTo(map);
+      if (window.drawForm === 'rechteck') rechteckVorschau(null);
+      else window.drawPolyline = L.polyline([..._drawPts], {color: '#4fc3f7', weight: 2, dashArray: '6 4'}).addTo(map);
     } else {
       if(window.drawStartMarker) { map.removeLayer(window.drawStartMarker); window.drawStartMarker = null; }
     }
@@ -1297,6 +1299,7 @@ function trasseVorschauAktualisieren(e) {
 }
 setTimeout(() => {
   map.on('mousemove', trasseVorschauAktualisieren);
+  map.on('mousemove', e => { if (window.drawingId != null && window.drawForm === 'rechteck') rechteckVorschau(e.latlng); });
   map.on('mouseout', () => trasseVorschauEntfernen());
 }, 0);
 

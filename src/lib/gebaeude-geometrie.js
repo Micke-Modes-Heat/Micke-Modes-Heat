@@ -205,6 +205,132 @@ export function flaecheM2(coords) {
 }
 
 /**
+ * Rechteck aus Grundlinie (p1→p2) und einem dritten Punkt, der die Breite und die
+ * Seite bestimmt (senkrechter Abstand von der Grundlinie). Das Rechteck darf beliebig
+ * gedreht sein. Liefert null bei (nahezu) entarteter Grundlinie oder Breite.
+ * @returns {{coords:{lat:number,lng:number}[], laengeM:number, breiteM:number}|null}
+ */
+export function rechteckAusDreiPunkten(p1, p2, p3, minM = 0.3) {
+  const { ringe, zurueck } = projizieren([[p1, p2, p3]]);
+  const [a, b, c] = ringe[0];
+  const dx = b.x - a.x, dy = b.y - a.y, laenge = Math.hypot(dx, dy);
+  if (laenge < minM) return null;
+  const ux = dx / laenge, uy = dy / laenge;
+  const nx = -uy, ny = ux;
+  const w = (c.x - a.x) * nx + (c.y - a.y) * ny;
+  if (Math.abs(w) < minM) return null;
+  const ring = [a, b, { x: b.x + nx * w, y: b.y + ny * w }, { x: a.x + nx * w, y: a.y + ny * w }];
+  return { coords: ring.map(zurueck), laengeM: laenge, breiteM: Math.abs(w) };
+}
+
+/**
+ * Drehfunktion um ein Zentrum. grad = Uhrzeigersinn (Kompassrichtung, Karte genordet).
+ * Gibt eine Funktion zurück, die {lat,lng} (oder [lat,lng]) auf den gedrehten Punkt abbildet.
+ * Die Drehung läuft im lokalen Meter-System, Formen bleiben also maßstabsgetreu.
+ */
+export function drehFunktion(zentrum, grad) {
+  const cLat = zentrum.lat ?? zentrum[0], cLng = zentrum.lng ?? zentrum[1];
+  const cosLat = Math.cos(cLat * Math.PI / 180);
+  const phi = grad * Math.PI / 180, c = Math.cos(phi), s = Math.sin(phi);
+  return p => {
+    const lat = p.lat ?? p[0], lng = p.lng ?? p[1];
+    const x = (lng - cLng) * Math.PI / 180 * R * cosLat, y = (lat - cLat) * Math.PI / 180 * R;
+    const xr = x * c + y * s, yr = -x * s + y * c;
+    return { lat: cLat + yr / R * 180 / Math.PI, lng: cLng + xr / (R * cosLat) * 180 / Math.PI };
+  };
+}
+
+/** Kompasspeilung (0 = Nord, im Uhrzeigersinn, 0–360°) von einem Zentrum zu einem Punkt. */
+export function peilungGrad(zentrum, p) {
+  const cosLat = Math.cos(zentrum.lat * Math.PI / 180);
+  const x = (p.lng - zentrum.lng) * cosLat, y = p.lat - zentrum.lat;
+  return ((Math.atan2(x, y) * 180 / Math.PI) % 360 + 360) % 360;
+}
+
+/**
+ * Richtet einen Grundriss rechtwinklig aus: Hauptrichtung bestimmen (nach Kantenlänge
+ * gewichtet), jede Kante der nächstliegenden der beiden Achsen zuordnen, aufeinander-
+ * folgende gleichgerichtete Kanten zusammenlegen und die Ecken als Schnittpunkte
+ * neu bilden. Ergebnis hat ausschließlich 90°-Ecken.
+ * @returns {{coords:{lat:number,lng:number}[], winkelGrad:number, flaecheVorherM2:number,
+ *   flaecheNachherM2:number, abweichungProzent:number, diagonaleKanten:number}|null}
+ *   null, wenn sich keine rechtwinklige Kontur bilden lässt (z. B. Dreieck, Kreisbogen).
+ */
+export function richteRechtwinklig(coords, { diagonalGrad = 20, minKanteM = 0.3 } = {}) {
+  if (!coords || coords.length < 3) return null;
+  const { ringe, zurueck } = projizieren([coords]);
+  let pts = ohneSchluss(ringe[0]).map(p => ({ x: p.x, y: p.y }));
+  const flaecheVorher = Math.abs(vorzeichenFlaeche(pts));
+  if (pts.length < 3 || flaecheVorher < 0.5) return null;
+
+  // Kürzeste Kanten (Digitalisierungsrauschen) zu einem Punkt verschmelzen
+  for (let guard = 0; guard < 200 && pts.length > 4; guard++) {
+    let k = -1, kl = minKanteM;
+    for (let i = 0; i < pts.length; i++) {
+      const b = pts[(i + 1) % pts.length], l = Math.hypot(b.x - pts[i].x, b.y - pts[i].y);
+      if (l < kl) { kl = l; k = i; }
+    }
+    if (k < 0) break;
+    const j = (k + 1) % pts.length;
+    const m = { x: (pts[k].x + pts[j].x) / 2, y: (pts[k].y + pts[j].y) / 2 };
+    pts = pts.map((p, i) => (i === k ? m : p)).filter((_, i) => i !== j);
+  }
+
+  const n = pts.length;
+  // Hauptrichtung: Kantenwinkel mod 90° → über 4·Winkel mitteln
+  let sx = 0, sy = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    const l = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
+    sx += l * Math.cos(4 * ang); sy += l * Math.sin(4 * ang);
+  }
+  const theta = Math.atan2(sy, sx) / 4;
+  const ct = Math.cos(theta), st = Math.sin(theta);
+  const q = pts.map(p => ({ x: p.x * ct + p.y * st, y: -p.x * st + p.y * ct }));
+
+  // Kanten klassifizieren: 'h' = waagerecht (y = konst), 'v' = senkrecht (x = konst)
+  const kanten = [];
+  let diagonal = 0;
+  for (let i = 0; i < n; i++) {
+    const a = q[i], b = q[(i + 1) % n], dx = b.x - a.x, dy = b.y - a.y;
+    const l = Math.hypot(dx, dy);
+    const horizontal = Math.abs(dx) >= Math.abs(dy);
+    const abw = Math.atan2(horizontal ? Math.abs(dy) : Math.abs(dx), horizontal ? Math.abs(dx) : Math.abs(dy)) * 180 / Math.PI;
+    if (abw > diagonalGrad) diagonal++;
+    kanten.push({ art: horizontal ? 'h' : 'v', l, wert: horizontal ? (a.y + b.y) / 2 : (a.x + b.x) / 2 });
+  }
+  const start = kanten.findIndex((k, i) => k.art !== kanten[(i + n - 1) % n].art);
+  if (start < 0) return null; // alle Kanten gleichgerichtet → keine Fläche
+
+  // Aufeinanderfolgende gleichartige Kanten zu einer Geraden (längengewichteter Mittelwert)
+  const gruppen = [];
+  for (let s = 0; s < n; s++) {
+    const k = kanten[(start + s) % n], last = gruppen[gruppen.length - 1];
+    if (last && last.art === k.art) { last.summe += k.wert * k.l; last.l += k.l; }
+    else gruppen.push({ art: k.art, summe: k.wert * k.l, l: k.l });
+  }
+  if (gruppen.length < 4 || gruppen.length % 2) return null;
+  gruppen.forEach(g => { g.wert = g.summe / (g.l || 1); });
+
+  // Ecke zwischen Gruppe i und i+1: senkrechte Gerade liefert x, waagerechte y
+  const ecken = gruppen.map((g, i) => {
+    const h = gruppen[(i + 1) % gruppen.length];
+    return g.art === 'h' ? { x: h.wert, y: g.wert } : { x: g.wert, y: h.wert };
+  });
+  const ergebnis = vereinfachen(ecken.map(p => ({ x: p.x * ct - p.y * st, y: p.x * st + p.y * ct })));
+  const flaecheNachher = Math.abs(vorzeichenFlaeche(ergebnis));
+  if (ergebnis.length < 4 || flaecheNachher < 0.5) return null;
+  return {
+    coords: ergebnis.map(zurueck),
+    winkelGrad: ((90 - theta * 180 / Math.PI) % 90 + 90) % 90, // Kompassrichtung einer Gebäudeachse (0–90°)
+    flaecheVorherM2: flaecheVorher,
+    flaecheNachherM2: flaecheNachher,
+    abweichungProzent: Math.abs(flaecheNachher - flaecheVorher) / flaecheVorher * 100,
+    diagonaleKanten: diagonal,
+  };
+}
+
+/**
  * Bereinigt eine Importliste: Gebäude unter der Mindestgrundfläche (Dachaufbauten,
  * Schuppen, Anbauten) werden nicht als eigenes Gebäude geführt. Berührt/überlappt
  * ein solches Teil ein großes Gebäude (Abstand ≤ kontaktM), wird es in dessen

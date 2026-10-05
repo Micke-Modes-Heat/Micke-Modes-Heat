@@ -9564,6 +9564,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:6px
 .add-section{padding:8px;border-top:1px solid var(--border);}
 .btn-add{width:100%;padding:7px;border-radius:5px;border:1px dashed var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:12px;cursor:pointer;transition:.15s;font-weight:normal;}
 .btn-add:hover{border-color:var(--accent);color:var(--accent);}
+.leaflet-tooltip.draw-mass-tip{background:rgba(12,30,44,.88);border:1px solid #4fc3f7;color:#eaf7ff;font:600 11px 'DM Mono',monospace;padding:2px 6px;box-shadow:none;}
+.leaflet-tooltip.draw-mass-tip:before{display:none;}
 
 .legend{padding:8px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:5px;}
 .legend-row{display:flex;align-items:center;gap:10px;}
@@ -12798,7 +12800,7 @@ if (typeof L !== 'undefined') {
       <div class="sidebar-scroll">
         <div class="gebaeude-list" id="geb-list"></div>
         <div class="add-section">
-          <button class="btn-add" data-click="addGebaeude()">+ Manuell hinzufügen</button>
+          <div style="display:flex;gap:6px;"><button class="btn-add" data-click="addGebaeude()" title="Grundriss als Polygon zeichnen (beliebig viele Ecken)">+ Polygon</button><button class="btn-add" data-click="addGebaeude({form:'rechteck'})" title="Grundriss als Rechteck zeichnen: Grundlinie (2 Klicks) + Breite (1 Klick), beliebig gedreht">▭ Rechteck</button></div>
         </div>
         <div class="legend">
           <div class="legend-row">
@@ -15162,7 +15164,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-05';
   if (d.indexOf('__') === 0) d = '';
-  var c = 'c9197c3';
+  var c = 'c087e3e';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -130826,6 +130828,132 @@ ${massTbl}
   }
 
   /**
+   * Rechteck aus Grundlinie (p1→p2) und einem dritten Punkt, der die Breite und die
+   * Seite bestimmt (senkrechter Abstand von der Grundlinie). Das Rechteck darf beliebig
+   * gedreht sein. Liefert null bei (nahezu) entarteter Grundlinie oder Breite.
+   * @returns {{coords:{lat:number,lng:number}[], laengeM:number, breiteM:number}|null}
+   */
+  function rechteckAusDreiPunkten(p1, p2, p3, minM = 0.3) {
+    const { ringe, zurueck } = projizieren([[p1, p2, p3]]);
+    const [a, b, c] = ringe[0];
+    const dx = b.x - a.x, dy = b.y - a.y, laenge = Math.hypot(dx, dy);
+    if (laenge < minM) return null;
+    const ux = dx / laenge, uy = dy / laenge;
+    const nx = -uy, ny = ux;
+    const w = (c.x - a.x) * nx + (c.y - a.y) * ny;
+    if (Math.abs(w) < minM) return null;
+    const ring = [a, b, { x: b.x + nx * w, y: b.y + ny * w }, { x: a.x + nx * w, y: a.y + ny * w }];
+    return { coords: ring.map(zurueck), laengeM: laenge, breiteM: Math.abs(w) };
+  }
+
+  /**
+   * Drehfunktion um ein Zentrum. grad = Uhrzeigersinn (Kompassrichtung, Karte genordet).
+   * Gibt eine Funktion zurück, die {lat,lng} (oder [lat,lng]) auf den gedrehten Punkt abbildet.
+   * Die Drehung läuft im lokalen Meter-System, Formen bleiben also maßstabsgetreu.
+   */
+  function drehFunktion(zentrum, grad) {
+    const cLat = zentrum.lat ?? zentrum[0], cLng = zentrum.lng ?? zentrum[1];
+    const cosLat = Math.cos(cLat * Math.PI / 180);
+    const phi = grad * Math.PI / 180, c = Math.cos(phi), s = Math.sin(phi);
+    return p => {
+      const lat = p.lat ?? p[0], lng = p.lng ?? p[1];
+      const x = (lng - cLng) * Math.PI / 180 * R * cosLat, y = (lat - cLat) * Math.PI / 180 * R;
+      const xr = x * c + y * s, yr = -x * s + y * c;
+      return { lat: cLat + yr / R * 180 / Math.PI, lng: cLng + xr / (R * cosLat) * 180 / Math.PI };
+    };
+  }
+
+  /** Kompasspeilung (0 = Nord, im Uhrzeigersinn, 0–360°) von einem Zentrum zu einem Punkt. */
+  function peilungGrad(zentrum, p) {
+    const cosLat = Math.cos(zentrum.lat * Math.PI / 180);
+    const x = (p.lng - zentrum.lng) * cosLat, y = p.lat - zentrum.lat;
+    return ((Math.atan2(x, y) * 180 / Math.PI) % 360 + 360) % 360;
+  }
+
+  /**
+   * Richtet einen Grundriss rechtwinklig aus: Hauptrichtung bestimmen (nach Kantenlänge
+   * gewichtet), jede Kante der nächstliegenden der beiden Achsen zuordnen, aufeinander-
+   * folgende gleichgerichtete Kanten zusammenlegen und die Ecken als Schnittpunkte
+   * neu bilden. Ergebnis hat ausschließlich 90°-Ecken.
+   * @returns {{coords:{lat:number,lng:number}[], winkelGrad:number, flaecheVorherM2:number,
+   *   flaecheNachherM2:number, abweichungProzent:number, diagonaleKanten:number}|null}
+   *   null, wenn sich keine rechtwinklige Kontur bilden lässt (z. B. Dreieck, Kreisbogen).
+   */
+  function richteRechtwinklig(coords, { diagonalGrad = 20, minKanteM = 0.3 } = {}) {
+    if (!coords || coords.length < 3) return null;
+    const { ringe, zurueck } = projizieren([coords]);
+    let pts = ohneSchluss(ringe[0]).map(p => ({ x: p.x, y: p.y }));
+    const flaecheVorher = Math.abs(vorzeichenFlaeche(pts));
+    if (pts.length < 3 || flaecheVorher < 0.5) return null;
+
+    // Kürzeste Kanten (Digitalisierungsrauschen) zu einem Punkt verschmelzen
+    for (let guard = 0; guard < 200 && pts.length > 4; guard++) {
+      let k = -1, kl = minKanteM;
+      for (let i = 0; i < pts.length; i++) {
+        const b = pts[(i + 1) % pts.length], l = Math.hypot(b.x - pts[i].x, b.y - pts[i].y);
+        if (l < kl) { kl = l; k = i; }
+      }
+      if (k < 0) break;
+      const j = (k + 1) % pts.length;
+      const m = { x: (pts[k].x + pts[j].x) / 2, y: (pts[k].y + pts[j].y) / 2 };
+      pts = pts.map((p, i) => (i === k ? m : p)).filter((_, i) => i !== j);
+    }
+
+    const n = pts.length;
+    // Hauptrichtung: Kantenwinkel mod 90° → über 4·Winkel mitteln
+    let sx = 0, sy = 0;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n];
+      const l = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
+      sx += l * Math.cos(4 * ang); sy += l * Math.sin(4 * ang);
+    }
+    const theta = Math.atan2(sy, sx) / 4;
+    const ct = Math.cos(theta), st = Math.sin(theta);
+    const q = pts.map(p => ({ x: p.x * ct + p.y * st, y: -p.x * st + p.y * ct }));
+
+    // Kanten klassifizieren: 'h' = waagerecht (y = konst), 'v' = senkrecht (x = konst)
+    const kanten = [];
+    let diagonal = 0;
+    for (let i = 0; i < n; i++) {
+      const a = q[i], b = q[(i + 1) % n], dx = b.x - a.x, dy = b.y - a.y;
+      const l = Math.hypot(dx, dy);
+      const horizontal = Math.abs(dx) >= Math.abs(dy);
+      const abw = Math.atan2(horizontal ? Math.abs(dy) : Math.abs(dx), horizontal ? Math.abs(dx) : Math.abs(dy)) * 180 / Math.PI;
+      if (abw > diagonalGrad) diagonal++;
+      kanten.push({ art: horizontal ? 'h' : 'v', l, wert: horizontal ? (a.y + b.y) / 2 : (a.x + b.x) / 2 });
+    }
+    const start = kanten.findIndex((k, i) => k.art !== kanten[(i + n - 1) % n].art);
+    if (start < 0) return null; // alle Kanten gleichgerichtet → keine Fläche
+
+    // Aufeinanderfolgende gleichartige Kanten zu einer Geraden (längengewichteter Mittelwert)
+    const gruppen = [];
+    for (let s = 0; s < n; s++) {
+      const k = kanten[(start + s) % n], last = gruppen[gruppen.length - 1];
+      if (last && last.art === k.art) { last.summe += k.wert * k.l; last.l += k.l; }
+      else gruppen.push({ art: k.art, summe: k.wert * k.l, l: k.l });
+    }
+    if (gruppen.length < 4 || gruppen.length % 2) return null;
+    gruppen.forEach(g => { g.wert = g.summe / (g.l || 1); });
+
+    // Ecke zwischen Gruppe i und i+1: senkrechte Gerade liefert x, waagerechte y
+    const ecken = gruppen.map((g, i) => {
+      const h = gruppen[(i + 1) % gruppen.length];
+      return g.art === 'h' ? { x: h.wert, y: g.wert } : { x: g.wert, y: h.wert };
+    });
+    const ergebnis = vereinfachen(ecken.map(p => ({ x: p.x * ct - p.y * st, y: p.x * st + p.y * ct })));
+    const flaecheNachher = Math.abs(vorzeichenFlaeche(ergebnis));
+    if (ergebnis.length < 4 || flaecheNachher < 0.5) return null;
+    return {
+      coords: ergebnis.map(zurueck),
+      winkelGrad: ((90 - theta * 180 / Math.PI) % 90 + 90) % 90, // Kompassrichtung einer Gebäudeachse (0–90°)
+      flaecheVorherM2: flaecheVorher,
+      flaecheNachherM2: flaecheNachher,
+      abweichungProzent: Math.abs(flaecheNachher - flaecheVorher) / flaecheVorher * 100,
+      diagonaleKanten: diagonal,
+    };
+  }
+
+  /**
    * Bereinigt eine Importliste: Gebäude unter der Mindestgrundfläche (Dachaufbauten,
    * Schuppen, Anbauten) werden nicht als eigenes Gebäude geführt. Berührt/überlappt
    * ein solches Teil ein großes Gebäude (Abstand ≤ kontaktM), wird es in dessen
@@ -132970,13 +133098,18 @@ ${massTbl}
       <span style="color:var(--muted)">Anteil Verbrauch</span><span style="color:${g.netzVerlustRatioPct < 5 ? '#4caf50' : g.netzVerlustRatioPct < 10 ? '#f9a825' : '#e53935'};font-weight:bold">${g.netzVerlustRatioPct.toFixed(1)} %</span>
     </div>` : ''}
     <div class="geb-actions">
-      ${!g.polygon ? `<button class="btn-xs blue" data-click="startDraw(${g.id})">&#9998; Zeichnen</button>` : ''}
+      ${!g.polygon ? `<button class="btn-xs blue" data-click="startDraw(${g.id})" title="Grundriss als Polygon zeichnen">&#9998; Polygon</button>
+      <button class="btn-xs blue" data-click="startDraw(${g.id},'rechteck')" title="Grundriss als Rechteck zeichnen: Grundlinie (2 Klicks) + Breite (1 Klick)">&#9645; Rechteck</button>` : ''}
       ${g.polygon ? '<button class="btn-xs purple" data-click="flyTo(' + g.id + ')">&#8982;</button>' : ''}
       ${g.polygon ? `<button class="btn-xs ${_grundrissEdit?.gId === g.id ? 'blue' : ''}"
         data-click="toggleGebaeudeGrundrissEdit(${g.id})"
         title="${_grundrissEdit?.gId === g.id ? 'Grundrissbearbeitung beenden' : 'Gebäude formen oder versetzen'}">
         ${_grundrissEdit?.gId === g.id ? '✓ Grundriss' : '↔ Grundriss'}
       </button>` : ''}
+      ${g.polygon ? `<button class="btn-xs" data-click="richteGebaeudeRechtwinklig(${g.id})"
+        title="Grundriss rechtwinklig ausrichten: alle Ecken werden zu 90°-Ecken, die Gebäuderichtung bleibt erhalten">&#8735; Rechtwinklig</button>
+      <button class="btn-xs" data-click="dupliziereGebaeude(${g.id})"
+        title="Gebäude kopieren (Grundriss, Nutzung, Dach, PV-Flächen) — die Kopie lässt sich sofort verschieben und drehen">&#10697; Duplizieren</button>` : ''}
       ${g.polygon ? `<button class="btn-xs ${_mergeModus?.zielId === g.id ? 'blue' : ''}"
         data-click="startGebaeudeMerge(${g.id})"
         title="${_mergeModus?.zielId === g.id ? 'Zusammenfügen beenden' : 'Weiteres Gebäude anklicken und mit diesem Grundriss vereinigen'}">
@@ -133046,7 +133179,8 @@ ${massTbl}
   // Die Griffe erscheinen ausschließlich nach expliziter Aktivierung am aktuell
   // bearbeiteten Gebäude. Runde Griffe verschieben eine Außenkante parallel,
   // quadratische Griffe einen einzelnen Eckpunkt. Der Griff in der Mitte versetzt
-  // den vollständigen Grundriss samt zugehöriger Dach- und Anlagengeometrie.
+  // den vollständigen Grundriss samt zugehöriger Dach- und Anlagengeometrie, der
+  // orange Drehgriff (↻) dreht ihn um die Mitte.
   let _grundrissEdit = null;
 
   function _clearGrundrissHandles() {
@@ -133089,11 +133223,13 @@ ${massTbl}
     });
   }
 
-  function _translatePoints(points, dLat, dLng) {
-    return (points || []).map(point => L.latLng(
-      (point.lat ?? point[0]) + dLat,
-      (point.lng ?? point[1]) + dLng,
-    ));
+  function _rotateHandleIcon() {
+    return L.divIcon({
+      className: '',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+      html: '<span style="display:grid;place-items:center;width:18px;height:18px;margin:3px;border-radius:50%;background:#3a2a14;border:1px solid #f4b942;color:#fff4cf;box-shadow:0 1px 5px rgba(0,0,0,.6);font:700 13px/1 sans-serif;opacity:.92;cursor:grab;">↻</span>',
+    });
   }
 
   function _finishGrundrissChange(g, areaChanged) {
@@ -133197,47 +133333,88 @@ ${massTbl}
       title: 'Gebäude versetzen',
     }).addTo(map);
     let moveStart = null;
-    moveMarker.on('dragstart', () => {
-      moveStart = {
-        center: L.latLng(center.lat, center.lng),
-        polygon: g.polygon.map(point => L.latLng(point.lat, point.lng)),
-        pvFlaechen: (g.pvFlaechen || []).map(fl => ({
-          fl,
-          polygon: (fl.polygon || []).map(point =>
-            L.latLng(point.lat ?? point[0], point.lng ?? point[1])),
-        })),
-        pvRidgeOverride: g.pvRidgeOverride
-          ? L.latLng(g.pvRidgeOverride.lat, g.pvRidgeOverride.lng)
-          : null,
-        assets: ASSETS.items
-          .filter(asset => asset.buildingId === g.id)
-          .map(asset => ({ asset, lat: asset.lat, lng: asset.lng })),
-      };
-    });
+    moveMarker.on('dragstart', () => { moveStart = _gebSnapshot(g); });
     moveMarker.on('drag', event => {
       if (!moveStart) return;
       const current = event.target.getLatLng();
-      const dLat = current.lat - moveStart.center.lat;
-      const dLng = current.lng - moveStart.center.lng;
-      g.polygon = _translatePoints(moveStart.polygon, dLat, dLng);
-      g.polygonLayer?.setLatLngs(g.polygon);
-      moveStart.pvFlaechen.forEach(({ fl, polygon }) => {
-        fl.polygon = _translatePoints(polygon, dLat, dLng);
-        fl.layer?.setLatLngs(fl.polygon);
-      });
-      if (moveStart.pvRidgeOverride) {
-        g.pvRidgeOverride = {
-          lat: moveStart.pvRidgeOverride.lat + dLat,
-          lng: moveStart.pvRidgeOverride.lng + dLng,
-        };
-      }
-      moveStart.assets.forEach(({ asset, lat, lng }) => {
-        asset.lat = lat + dLat;
-        asset.lng = lng + dLng;
-      });
+      const dLat = current.lat - center.lat;
+      const dLng = current.lng - center.lng;
+      _gebTransformieren(g, moveStart, p => L.latLng(
+        (p.lat ?? p[0]) + dLat, (p.lng ?? p[1]) + dLng));
     });
     moveMarker.on('dragend', () => _finishGrundrissChange(g, false));
     _grundrissEdit.markers.push(moveMarker);
+
+    // Drehgriff: liegt außerhalb des Grundrisses in Richtung _grundrissEdit.drehWinkel
+    // (Kompassrichtung, zunächst Nord). Ziehen dreht Grundriss samt Dachflächen, Modulen
+    // und Anlagen um die Mitte; Umschalt = Rasterung in 5°-Schritten.
+    const abstandM = Math.max(...g.polygon.map(p => map.distance(center, p))) + 4;
+    const peil = _grundrissEdit.drehWinkel || 0;
+    const griffPos = L.latLng(
+      center.lat + Math.cos(peil * Math.PI / 180) * abstandM / 111194.9,
+      center.lng + Math.sin(peil * Math.PI / 180) * abstandM / (111194.9 * Math.cos(center.lat * Math.PI / 180)),
+    );
+    const rotMarker = L.marker(griffPos, {
+      draggable: true,
+      icon: _rotateHandleIcon(),
+      zIndexOffset: 2950,
+      title: 'Gebäude drehen (Umschalt = 5°-Raster)',
+    }).addTo(map);
+    const zentrum = { lat: center.lat, lng: center.lng };
+    let rotStart = null;
+    rotMarker.on('dragstart', () => { rotStart = _gebSnapshot(g); });
+    rotMarker.on('drag', event => {
+      if (!rotStart) return;
+      let delta = peilungGrad(zentrum, event.target.getLatLng()) - peil;
+      if (event.originalEvent?.shiftKey) delta = Math.round(delta / 5) * 5;
+      delta = ((delta + 540) % 360) - 180; // −180…180
+      const f = drehFunktion(zentrum, delta);
+      _gebTransformieren(g, rotStart, p => { const r = f(p); return L.latLng(r.lat, r.lng); });
+      if (typeof rotStart.dachAzimut === 'number') g.dachAzimut = Math.round((rotStart.dachAzimut + delta + 360) % 360);
+      rotMarker._delta = delta;
+      _grundrissEdit.drehWinkel = (peil + delta + 360) % 360;
+      showHint(`↻ ${Math.round(delta)}°`, 0);
+    });
+    rotMarker.on('dragend', () => { hideHint(); _finishGrundrissChange(g, false); });
+    _grundrissEdit.markers.push(rotMarker);
+  }
+
+  // Momentaufnahme aller am Grundriss hängenden Geometrie (für Verschieben/Drehen)
+  function _gebSnapshot(g) {
+    return {
+      polygon: g.polygon.map(point => L.latLng(point.lat, point.lng)),
+      pvFlaechen: (g.pvFlaechen || []).map(fl => ({
+        fl,
+        polygon: (fl.polygon || []).map(point =>
+          L.latLng(point.lat ?? point[0], point.lng ?? point[1])),
+      })),
+      pvRidgeOverride: g.pvRidgeOverride
+        ? L.latLng(g.pvRidgeOverride.lat, g.pvRidgeOverride.lng)
+        : null,
+      dachAzimut: g.dachAzimut,
+      assets: ASSETS.items
+        .filter(asset => asset.buildingId === g.id)
+        .map(asset => ({ asset, lat: asset.lat, lng: asset.lng })),
+    };
+  }
+
+  // Wendet eine Punktabbildung fn(latlng)→latlng auf die Momentaufnahme an
+  function _gebTransformieren(g, snap, fn) {
+    g.polygon = snap.polygon.map(fn);
+    g.polygonLayer?.setLatLngs(g.polygon);
+    snap.pvFlaechen.forEach(({ fl, polygon }) => {
+      fl.polygon = polygon.map(fn);
+      fl.layer?.setLatLngs(fl.polygon);
+    });
+    if (snap.pvRidgeOverride) {
+      const r = fn(snap.pvRidgeOverride);
+      g.pvRidgeOverride = { lat: r.lat, lng: r.lng };
+    }
+    snap.assets.forEach(({ asset, lat, lng }) => {
+      const r = fn({ lat, lng });
+      asset.lat = r.lat;
+      asset.lng = r.lng;
+    });
   }
 
   function toggleGebaeudeGrundrissEdit(gId) {
@@ -133260,6 +133437,89 @@ ${massTbl}
     const gId = _grundrissEdit?.gId;
     _clearGrundrissHandles();
     if (gId != null) _rerenderCard(gId);
+  }
+
+  // Grundriss rechtwinklig ausrichten: alle Ecken werden 90°-Ecken, die Gebäuderichtung
+  // bleibt (dominante Kantenrichtung). Bei diagonalen Kanten oder größerer Flächenänderung
+  // vorher bestätigen lassen.
+  async function richteGebaeudeRechtwinklig(gId) {
+    const g = window.gebaeude.find(b => b.id === gId);
+    if (!g?.polygon || g.polygon.length < 3) return;
+    const r = richteRechtwinklig(g.polygon);
+    if (!r) { showHint('⚠ Dieser Grundriss lässt sich nicht rechtwinklig ausrichten (zu wenige gerade Kanten).', 4500); return; }
+    if (r.diagonaleKanten > 0 || r.abweichungProzent > 8) {
+      const hinweise = [];
+      if (r.diagonaleKanten) hinweise.push(`${r.diagonaleKanten} Kante(n) liegen deutlich schräg zur Gebäuderichtung (z. B. Abschrägungen) und werden ebenfalls angeglichen.`);
+      const text = `„${escHtml(g.name || 'Gebäude ' + g.id)}" wird rechtwinklig ausgerichtet.<br>Grundfläche: <b>${Math.round(r.flaecheVorherM2)} m²</b> → <b>${Math.round(r.flaecheNachherM2)} m²</b> (${r.abweichungProzent.toFixed(1).replace('.', ',')} % Abweichung).`
+        + (hinweise.length ? '<br><br>' + hinweise.join('<br>') : '');
+      const ok = typeof window.epConfirm === 'function'
+        ? await window.epConfirm('Rechtwinklig ausrichten', text, { okText: 'Ausrichten', cancelText: 'Abbrechen' })
+        : window.confirm(text.replace(/<[^>]+>/g, ''));
+      if (!ok) return;
+    }
+    g.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
+    g.polygonLayer?.setLatLngs(g.polygon);
+    if (g.dachAutoAzimut) {
+      const az = detectRoofAzimutFromPolygon(g.polygon);
+      if (az != null) g.dachAzimut = az;
+    }
+    _finishGrundrissChange(g, true);
+    showHint(`✓ Rechtwinklig ausgerichtet: ${Math.round(r.flaecheNachherM2)} m²`, 3500);
+  }
+
+  // Gebäude kopieren: Grundriss (um Gebäudebreite + 3 m nach Osten versetzt), Nutzung,
+  // Kennwerte, Dach- und PV-Flächen. Netzanschlüsse und Anlagen werden nicht übernommen —
+  // Standard-Anlagen legt wie bei jedem neuen Gebäude autoCreateBuildingAssets an.
+  // Die Kopie öffnet sofort die Grundrissbearbeitung (Verschieben ✥, Drehen ↻).
+  function dupliziereGebaeude(gId) {
+    const q = window.gebaeude.find(b => b.id === gId);
+    if (!q?.polygon || q.polygon.length < 3) return null;
+    finishGebaeudeGrundrissEdit();
+    const lats = q.polygon.map(p => p.lat), lngs = q.polygon.map(p => p.lng);
+    const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+    const breiteM = (Math.max(...lngs) - Math.min(...lngs)) * 111194.9 * Math.cos(midLat * Math.PI / 180);
+    const dLng = (breiteM + 3) / (111194.9 * Math.cos(midLat * Math.PI / 180));
+    const shift = p => L.latLng(p.lat ?? p[0], (p.lng ?? p[1]) + dLng);
+
+    const namen = new Set(window.gebaeude.map(b => b.name));
+    const basis = `${q.name || 'Gebäude ' + q.id} (Kopie)`;
+    let name = basis;
+    for (let i = 2; namen.has(name); i++) name = `${basis} ${i}`;
+
+    const t = addGebaeude({
+      coords: q.polygon.map(shift), name, nutzung: q.nutzung, stockwerke: q.stockwerke,
+      baujahr: q.baujahr, baujährQuelle: q.baujährQuelle, schicht: q.schicht, skipAutoCreate: true,
+    });
+    [
+      'waerme', 'heizlast', 'spez', 'spezHeizlast', 'abrissjahr', 'waermeManual', 'heizlastManual',
+      'strom', 'spezStrom', 'stromProfil', 'pvAktiv', 'pvDachanteil', 'zustand', 'dachform',
+      'dachAzimut', 'dachNeigung', 'dachAutoAzimut', 'dachQuelle', 'pvModus', 'pvFlGcr',
+      'pvFlAusrichtung', 'pvFlBelegung', 'pvBaujahr', 'notstrom',
+    ].forEach(field => { if (q[field] !== undefined) t[field] = structuredClone(q[field]); });
+    t.sanierungen = structuredClone(q.sanierungen || []);
+    t.massnahmen = structuredClone(q.massnahmen || []);
+    if (q.pvRidgeOverride) t.pvRidgeOverride = { lat: q.pvRidgeOverride.lat, lng: q.pvRidgeOverride.lng + dLng };
+    if (!Number.isInteger(window._gebPvFlCounter)) window._gebPvFlCounter = 1;
+    t.pvFlaechen = (q.pvFlaechen || []).map(fl => ({
+      id: window._gebPvFlCounter++,
+      typ: fl.typ,
+      polygon: (fl.polygon || []).map(shift),
+      flaeche: fl.flaeche,
+      ...(fl.auto ? { auto: fl.auto } : {}),
+      layer: null,
+      svgLayer: null,
+    }));
+    t.pvFlaechen.forEach(fl => attachGebPvLayer(t, fl));
+    redrawGebPvModules(t);
+    if (typeof window.autoCreateBuildingAssets === 'function') {
+      try { window.autoCreateBuildingAssets(t); } catch (e) { console.warn('autoCreateBuildingAssets:', e); }
+    }
+    updateTotals();
+    renderList();
+    updateViz();
+    toggleGebaeudeGrundrissEdit(t.id);
+    showHint(`⧉ Kopie „${name}" angelegt — ✥ verschiebt, ↻ dreht (Umschalt = 5°-Raster) · Esc = fertig`, 7000);
+    return t;
   }
 
   // ── Grundrisse zusammenfügen ──────────────────────────────────────────────
@@ -134945,6 +135205,7 @@ ${massTbl}
     get dashOffset () { return dashOffset; },
     detectRoofAzimutFromPolygon: detectRoofAzimutFromPolygon,
     drawChart: drawChart,
+    dupliziereGebaeude: dupliziereGebaeude,
     endeGebaeudeMerge: endeGebaeudeMerge,
     escHtml: escHtml,
     escVal: escVal,
@@ -134974,6 +135235,7 @@ ${massTbl}
     redrawGebPvModules: redrawGebPvModules,
     renderGebPvPanel: renderGebPvPanel,
     renderList: renderList,
+    richteGebaeudeRechtwinklig: richteGebaeudeRechtwinklig,
     saveProject: saveProject,
     saveProjectAs: saveProjectAs,
     sendToLiegenschaftsrechner: sendToLiegenschaftsrechner,
@@ -137655,6 +137917,7 @@ ${massTbl}
       return;
     }
     if((window.drawingId ?? drawingId) !== null){
+      if (window.drawForm === 'rechteck') { rechteckKlick(e.latlng); return; }
       const _drawPts = window.drawPoints || drawPoints;
       if(_drawPts.length === 0){
         const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
@@ -137683,7 +137946,8 @@ ${massTbl}
       _drawPts.pop();
       if(window.drawPolyline) map.removeLayer(window.drawPolyline);
       if(_drawPts.length > 0) {
-        window.drawPolyline = L.polyline([..._drawPts], {color: '#4fc3f7', weight: 2, dashArray: '6 4'}).addTo(map);
+        if (window.drawForm === 'rechteck') rechteckVorschau(null);
+        else window.drawPolyline = L.polyline([..._drawPts], {color: '#4fc3f7', weight: 2, dashArray: '6 4'}).addTo(map);
       } else {
         if(window.drawStartMarker) { map.removeLayer(window.drawStartMarker); window.drawStartMarker = null; }
       }
@@ -137786,6 +138050,7 @@ ${massTbl}
   }
   setTimeout(() => {
     map.on('mousemove', trasseVorschauAktualisieren);
+    map.on('mousemove', e => { if (window.drawingId != null && window.drawForm === 'rechteck') rechteckVorschau(e.latlng); });
     map.on('mouseout', () => trasseVorschauEntfernen());
   }, 0);
 
@@ -139857,11 +140122,15 @@ ${massTbl}
     redrawErzeugerIcons();
   }
 
-  function startDraw(id){
+  // form: 'polygon' (Eckpunkte, Startpunkt schließt) | 'rechteck' (Grundlinie 2 Klicks + Breite 1 Klick)
+  function startDraw(id, form = 'polygon'){
     clearArea(); cancelDraw();
-    beginInteraction({id:'draw-generator-area',label:'Gebäudegrundriss zeichnen',hint:'Eckpunkte setzen und Startpunkt zum Abschließen anklicken.',cancel:cancelDraw});
-    window.drawingId=id; window.drawPoints=[];
-    showHint('Eckpunkte anklicken · Am Ende Startpunkt (rot) anklicken · Rechtsklick = Zurück');
+    const rechteck = form === 'rechteck';
+    beginInteraction({id:'draw-generator-area',label:rechteck?'Gebäude als Rechteck zeichnen':'Gebäudegrundriss zeichnen',hint:rechteck?'Zwei Klicks setzen die Grundlinie, der dritte die Breite.':'Eckpunkte setzen und Startpunkt zum Abschließen anklicken.',cancel:cancelDraw});
+    window.drawingId=id; window.drawPoints=[]; window.drawForm=rechteck?'rechteck':'polygon';
+    showHint(rechteck
+      ? 'Rechteck: 1. Klick = Ecke · 2. Klick = Ende der Grundlinie (beliebig gedreht) · 3. Klick = Breite · Rechtsklick = Zurück · Esc = Abbrechen'
+      : 'Eckpunkte anklicken · Am Ende Startpunkt (rot) anklicken · Rechtsklick = Zurück');
     _hideForDraw();
     map.getContainer().style.cursor='crosshair';
     setSelectedId(id); renderList();
@@ -139870,10 +140139,47 @@ ${massTbl}
   function cancelDraw(){
     if(window.drawPolyline){map.removeLayer(window.drawPolyline);window.drawPolyline=null;}
     if(window.drawStartMarker){map.removeLayer(window.drawStartMarker);window.drawStartMarker=null;}
-    window.drawingId=null;window.drawPoints=[];
+    window.drawingId=null;window.drawPoints=[];window.drawForm=null;
     map.getContainer().style.cursor='';hideHint();
     _restoreAfterDraw();
     cancelInteraction('draw-generator-area');
+  }
+
+  // Rechteck-Modus: Vorschau (Linie, ab 2 Punkten das Rechteck mit Maßen) zum Mauszeiger
+  function rechteckVorschau(cursor){
+    const pts = window.drawPoints || [];
+    if (window.drawPolyline) { map.removeLayer(window.drawPolyline); window.drawPolyline = null; }
+    if (!pts.length) return;
+    const stil = {color:'#4fc3f7',weight:2,dashArray:'6 4',interactive:false};
+    const ziel = cursor || pts[pts.length - 1];
+    if (pts.length === 1) {
+      window.drawPolyline = L.polyline([pts[0], ziel], stil).addTo(map);
+      if (cursor) window.drawPolyline.bindTooltip(map.distance(pts[0], ziel).toFixed(1).replace('.', ',') + ' m', {permanent:true, direction:'center', className:'draw-mass-tip'});
+      return;
+    }
+    const r = rechteckAusDreiPunkten(pts[0], pts[1], ziel);
+    if (!r) { window.drawPolyline = L.polyline(pts, stil).addTo(map); return; }
+    window.drawPolyline = L.polygon(r.coords, {...stil, fillColor:'#4fc3f7', fillOpacity:.12}).addTo(map);
+    window.drawPolyline.bindTooltip(`${r.laengeM.toFixed(1).replace('.', ',')} × ${r.breiteM.toFixed(1).replace('.', ',')} m`, {permanent:true, direction:'center', className:'draw-mass-tip'});
+  }
+
+  // Klick im Rechteck-Modus: 3. Punkt schließt das Rechteck ab
+  function rechteckKlick(latlng){
+    const pts = window.drawPoints;
+    if (pts.length === 0) {
+      const startIcon = L.divIcon({className: 'area-start-handle', html: '', iconSize: [14, 14]});
+      window.drawStartMarker = L.marker(latlng, {icon: startIcon, interactive: false, zIndexOffset: 2000}).addTo(map);
+    }
+    if (pts.length === 1 && map.distance(pts[0], latlng) < 0.3) { showHint('Grundlinie zu kurz — weiter weg klicken', 2500); return; }
+    if (pts.length === 2) {
+      const r = rechteckAusDreiPunkten(pts[0], pts[1], latlng);
+      if (!r) { showHint('Breite zu klein — weiter von der Grundlinie entfernt klicken', 2500); return; }
+      window.drawPoints = r.coords.map(c => L.latLng(c.lat, c.lng));
+      finishDraw();
+      return;
+    }
+    pts.push(latlng);
+    rechteckVorschau(null);
   }
 
   function finishDraw(){
@@ -145425,6 +145731,8 @@ out body;>;out skel qt;`;
     pointInPolygon: pointInPolygon,
     populateZentraleSelect: populateZentraleSelect,
     recalcNetz: recalcNetz,
+    rechteckKlick: rechteckKlick,
+    rechteckVorschau: rechteckVorschau,
     redrawGeo: redrawGeo,
     refreshNetzFlowArrows: refreshNetzFlowArrows,
     removeOverlayItem: removeOverlayItem,
@@ -146913,7 +147221,7 @@ out body;>;out skel qt;`;
       }
     }
     if(!_batchImporting) renderList();
-    if(!opts.coords && !opts.skipDraw) startDraw(id);
+    if(!opts.coords && !opts.skipDraw) startDraw(id, opts.form);
     if(!_batchImporting) updateViz();
     // Unified Asset-System: Auto-Create UV + Verbraucher + PV
     // Nur wenn NICHT beim Projekt-Laden (skipAutoCreate:true) — dann kommen Assets aus dem Speicherzustand

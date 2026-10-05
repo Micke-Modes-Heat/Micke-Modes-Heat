@@ -33,7 +33,7 @@ import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
-import { vereinigePolygone } from './lib/gebaeude-geometrie.js';
+import { drehFunktion, peilungGrad, richteRechtwinklig, vereinigePolygone } from './lib/gebaeude-geometrie.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
@@ -2147,13 +2147,18 @@ export function _renderExpandedPanel(g, stats) {
       <span style="color:var(--muted)">Anteil Verbrauch</span><span style="color:${g.netzVerlustRatioPct < 5 ? '#4caf50' : g.netzVerlustRatioPct < 10 ? '#f9a825' : '#e53935'};font-weight:bold">${g.netzVerlustRatioPct.toFixed(1)} %</span>
     </div>` : ''}
     <div class="geb-actions">
-      ${!g.polygon ? `<button class="btn-xs blue" data-click="startDraw(${g.id})">&#9998; Zeichnen</button>` : ''}
+      ${!g.polygon ? `<button class="btn-xs blue" data-click="startDraw(${g.id})" title="Grundriss als Polygon zeichnen">&#9998; Polygon</button>
+      <button class="btn-xs blue" data-click="startDraw(${g.id},'rechteck')" title="Grundriss als Rechteck zeichnen: Grundlinie (2 Klicks) + Breite (1 Klick)">&#9645; Rechteck</button>` : ''}
       ${g.polygon ? '<button class="btn-xs purple" data-click="flyTo(' + g.id + ')">&#8982;</button>' : ''}
       ${g.polygon ? `<button class="btn-xs ${_grundrissEdit?.gId === g.id ? 'blue' : ''}"
         data-click="toggleGebaeudeGrundrissEdit(${g.id})"
         title="${_grundrissEdit?.gId === g.id ? 'Grundrissbearbeitung beenden' : 'Gebäude formen oder versetzen'}">
         ${_grundrissEdit?.gId === g.id ? '✓ Grundriss' : '↔ Grundriss'}
       </button>` : ''}
+      ${g.polygon ? `<button class="btn-xs" data-click="richteGebaeudeRechtwinklig(${g.id})"
+        title="Grundriss rechtwinklig ausrichten: alle Ecken werden zu 90°-Ecken, die Gebäuderichtung bleibt erhalten">&#8735; Rechtwinklig</button>
+      <button class="btn-xs" data-click="dupliziereGebaeude(${g.id})"
+        title="Gebäude kopieren (Grundriss, Nutzung, Dach, PV-Flächen) — die Kopie lässt sich sofort verschieben und drehen">&#10697; Duplizieren</button>` : ''}
       ${g.polygon ? `<button class="btn-xs ${_mergeModus?.zielId === g.id ? 'blue' : ''}"
         data-click="startGebaeudeMerge(${g.id})"
         title="${_mergeModus?.zielId === g.id ? 'Zusammenfügen beenden' : 'Weiteres Gebäude anklicken und mit diesem Grundriss vereinigen'}">
@@ -2223,7 +2228,8 @@ function _renderFelddatenBlock(g) {
 // Die Griffe erscheinen ausschließlich nach expliziter Aktivierung am aktuell
 // bearbeiteten Gebäude. Runde Griffe verschieben eine Außenkante parallel,
 // quadratische Griffe einen einzelnen Eckpunkt. Der Griff in der Mitte versetzt
-// den vollständigen Grundriss samt zugehöriger Dach- und Anlagengeometrie.
+// den vollständigen Grundriss samt zugehöriger Dach- und Anlagengeometrie, der
+// orange Drehgriff (↻) dreht ihn um die Mitte.
 let _grundrissEdit = null;
 
 function _clearGrundrissHandles() {
@@ -2266,11 +2272,13 @@ function _moveHandleIcon() {
   });
 }
 
-function _translatePoints(points, dLat, dLng) {
-  return (points || []).map(point => L.latLng(
-    (point.lat ?? point[0]) + dLat,
-    (point.lng ?? point[1]) + dLng,
-  ));
+function _rotateHandleIcon() {
+  return L.divIcon({
+    className: '',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    html: '<span style="display:grid;place-items:center;width:18px;height:18px;margin:3px;border-radius:50%;background:#3a2a14;border:1px solid #f4b942;color:#fff4cf;box-shadow:0 1px 5px rgba(0,0,0,.6);font:700 13px/1 sans-serif;opacity:.92;cursor:grab;">↻</span>',
+  });
 }
 
 function _finishGrundrissChange(g, areaChanged) {
@@ -2374,47 +2382,88 @@ function _redrawGrundrissHandles(g) {
     title: 'Gebäude versetzen',
   }).addTo(map);
   let moveStart = null;
-  moveMarker.on('dragstart', () => {
-    moveStart = {
-      center: L.latLng(center.lat, center.lng),
-      polygon: g.polygon.map(point => L.latLng(point.lat, point.lng)),
-      pvFlaechen: (g.pvFlaechen || []).map(fl => ({
-        fl,
-        polygon: (fl.polygon || []).map(point =>
-          L.latLng(point.lat ?? point[0], point.lng ?? point[1])),
-      })),
-      pvRidgeOverride: g.pvRidgeOverride
-        ? L.latLng(g.pvRidgeOverride.lat, g.pvRidgeOverride.lng)
-        : null,
-      assets: ASSETS.items
-        .filter(asset => asset.buildingId === g.id)
-        .map(asset => ({ asset, lat: asset.lat, lng: asset.lng })),
-    };
-  });
+  moveMarker.on('dragstart', () => { moveStart = _gebSnapshot(g); });
   moveMarker.on('drag', event => {
     if (!moveStart) return;
     const current = event.target.getLatLng();
-    const dLat = current.lat - moveStart.center.lat;
-    const dLng = current.lng - moveStart.center.lng;
-    g.polygon = _translatePoints(moveStart.polygon, dLat, dLng);
-    g.polygonLayer?.setLatLngs(g.polygon);
-    moveStart.pvFlaechen.forEach(({ fl, polygon }) => {
-      fl.polygon = _translatePoints(polygon, dLat, dLng);
-      fl.layer?.setLatLngs(fl.polygon);
-    });
-    if (moveStart.pvRidgeOverride) {
-      g.pvRidgeOverride = {
-        lat: moveStart.pvRidgeOverride.lat + dLat,
-        lng: moveStart.pvRidgeOverride.lng + dLng,
-      };
-    }
-    moveStart.assets.forEach(({ asset, lat, lng }) => {
-      asset.lat = lat + dLat;
-      asset.lng = lng + dLng;
-    });
+    const dLat = current.lat - center.lat;
+    const dLng = current.lng - center.lng;
+    _gebTransformieren(g, moveStart, p => L.latLng(
+      (p.lat ?? p[0]) + dLat, (p.lng ?? p[1]) + dLng));
   });
   moveMarker.on('dragend', () => _finishGrundrissChange(g, false));
   _grundrissEdit.markers.push(moveMarker);
+
+  // Drehgriff: liegt außerhalb des Grundrisses in Richtung _grundrissEdit.drehWinkel
+  // (Kompassrichtung, zunächst Nord). Ziehen dreht Grundriss samt Dachflächen, Modulen
+  // und Anlagen um die Mitte; Umschalt = Rasterung in 5°-Schritten.
+  const abstandM = Math.max(...g.polygon.map(p => map.distance(center, p))) + 4;
+  const peil = _grundrissEdit.drehWinkel || 0;
+  const griffPos = L.latLng(
+    center.lat + Math.cos(peil * Math.PI / 180) * abstandM / 111194.9,
+    center.lng + Math.sin(peil * Math.PI / 180) * abstandM / (111194.9 * Math.cos(center.lat * Math.PI / 180)),
+  );
+  const rotMarker = L.marker(griffPos, {
+    draggable: true,
+    icon: _rotateHandleIcon(),
+    zIndexOffset: 2950,
+    title: 'Gebäude drehen (Umschalt = 5°-Raster)',
+  }).addTo(map);
+  const zentrum = { lat: center.lat, lng: center.lng };
+  let rotStart = null;
+  rotMarker.on('dragstart', () => { rotStart = _gebSnapshot(g); });
+  rotMarker.on('drag', event => {
+    if (!rotStart) return;
+    let delta = peilungGrad(zentrum, event.target.getLatLng()) - peil;
+    if (event.originalEvent?.shiftKey) delta = Math.round(delta / 5) * 5;
+    delta = ((delta + 540) % 360) - 180; // −180…180
+    const f = drehFunktion(zentrum, delta);
+    _gebTransformieren(g, rotStart, p => { const r = f(p); return L.latLng(r.lat, r.lng); });
+    if (typeof rotStart.dachAzimut === 'number') g.dachAzimut = Math.round((rotStart.dachAzimut + delta + 360) % 360);
+    rotMarker._delta = delta;
+    _grundrissEdit.drehWinkel = (peil + delta + 360) % 360;
+    showHint(`↻ ${Math.round(delta)}°`, 0);
+  });
+  rotMarker.on('dragend', () => { hideHint(); _finishGrundrissChange(g, false); });
+  _grundrissEdit.markers.push(rotMarker);
+}
+
+// Momentaufnahme aller am Grundriss hängenden Geometrie (für Verschieben/Drehen)
+function _gebSnapshot(g) {
+  return {
+    polygon: g.polygon.map(point => L.latLng(point.lat, point.lng)),
+    pvFlaechen: (g.pvFlaechen || []).map(fl => ({
+      fl,
+      polygon: (fl.polygon || []).map(point =>
+        L.latLng(point.lat ?? point[0], point.lng ?? point[1])),
+    })),
+    pvRidgeOverride: g.pvRidgeOverride
+      ? L.latLng(g.pvRidgeOverride.lat, g.pvRidgeOverride.lng)
+      : null,
+    dachAzimut: g.dachAzimut,
+    assets: ASSETS.items
+      .filter(asset => asset.buildingId === g.id)
+      .map(asset => ({ asset, lat: asset.lat, lng: asset.lng })),
+  };
+}
+
+// Wendet eine Punktabbildung fn(latlng)→latlng auf die Momentaufnahme an
+function _gebTransformieren(g, snap, fn) {
+  g.polygon = snap.polygon.map(fn);
+  g.polygonLayer?.setLatLngs(g.polygon);
+  snap.pvFlaechen.forEach(({ fl, polygon }) => {
+    fl.polygon = polygon.map(fn);
+    fl.layer?.setLatLngs(fl.polygon);
+  });
+  if (snap.pvRidgeOverride) {
+    const r = fn(snap.pvRidgeOverride);
+    g.pvRidgeOverride = { lat: r.lat, lng: r.lng };
+  }
+  snap.assets.forEach(({ asset, lat, lng }) => {
+    const r = fn({ lat, lng });
+    asset.lat = r.lat;
+    asset.lng = r.lng;
+  });
 }
 
 export function toggleGebaeudeGrundrissEdit(gId) {
@@ -2437,6 +2486,90 @@ export function finishGebaeudeGrundrissEdit() {
   const gId = _grundrissEdit?.gId;
   _clearGrundrissHandles();
   if (gId != null) _rerenderCard(gId);
+}
+
+// Grundriss rechtwinklig ausrichten: alle Ecken werden 90°-Ecken, die Gebäuderichtung
+// bleibt (dominante Kantenrichtung). Bei diagonalen Kanten oder größerer Flächenänderung
+// vorher bestätigen lassen.
+export async function richteGebaeudeRechtwinklig(gId) {
+  const g = window.gebaeude.find(b => b.id === gId);
+  if (!g?.polygon || g.polygon.length < 3) return;
+  const r = richteRechtwinklig(g.polygon);
+  if (!r) { showHint('⚠ Dieser Grundriss lässt sich nicht rechtwinklig ausrichten (zu wenige gerade Kanten).', 4500); return; }
+  if (r.diagonaleKanten > 0 || r.abweichungProzent > 8) {
+    const hinweise = [];
+    if (r.diagonaleKanten) hinweise.push(`${r.diagonaleKanten} Kante(n) liegen deutlich schräg zur Gebäuderichtung (z. B. Abschrägungen) und werden ebenfalls angeglichen.`);
+    const text = `„${escHtml(g.name || 'Gebäude ' + g.id)}" wird rechtwinklig ausgerichtet.<br>Grundfläche: <b>${Math.round(r.flaecheVorherM2)} m²</b> → <b>${Math.round(r.flaecheNachherM2)} m²</b> (${r.abweichungProzent.toFixed(1).replace('.', ',')} % Abweichung).`
+      + (hinweise.length ? '<br><br>' + hinweise.join('<br>') : '');
+    const ok = typeof window.epConfirm === 'function'
+      ? await window.epConfirm('Rechtwinklig ausrichten', text, { okText: 'Ausrichten', cancelText: 'Abbrechen' })
+      : window.confirm(text.replace(/<[^>]+>/g, ''));
+    if (!ok) return;
+  }
+  g.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
+  g.polygonLayer?.setLatLngs(g.polygon);
+  if (g.dachAutoAzimut) {
+    const az = detectRoofAzimutFromPolygon(g.polygon);
+    if (az != null) g.dachAzimut = az;
+  }
+  _finishGrundrissChange(g, true);
+  showHint(`✓ Rechtwinklig ausgerichtet: ${Math.round(r.flaecheNachherM2)} m²`, 3500);
+}
+
+// Gebäude kopieren: Grundriss (um Gebäudebreite + 3 m nach Osten versetzt), Nutzung,
+// Kennwerte, Dach- und PV-Flächen. Netzanschlüsse und Anlagen werden nicht übernommen —
+// Standard-Anlagen legt wie bei jedem neuen Gebäude autoCreateBuildingAssets an.
+// Die Kopie öffnet sofort die Grundrissbearbeitung (Verschieben ✥, Drehen ↻).
+export function dupliziereGebaeude(gId) {
+  const q = window.gebaeude.find(b => b.id === gId);
+  if (!q?.polygon || q.polygon.length < 3) return null;
+  finishGebaeudeGrundrissEdit();
+  const lats = q.polygon.map(p => p.lat), lngs = q.polygon.map(p => p.lng);
+  const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const breiteM = (Math.max(...lngs) - Math.min(...lngs)) * 111194.9 * Math.cos(midLat * Math.PI / 180);
+  const dLng = (breiteM + 3) / (111194.9 * Math.cos(midLat * Math.PI / 180));
+  const shift = p => L.latLng(p.lat ?? p[0], (p.lng ?? p[1]) + dLng);
+
+  const namen = new Set(window.gebaeude.map(b => b.name));
+  const basis = `${q.name || 'Gebäude ' + q.id} (Kopie)`;
+  let name = basis;
+  for (let i = 2; namen.has(name); i++) name = `${basis} ${i}`;
+
+  const t = addGebaeude({
+    coords: q.polygon.map(shift), name, nutzung: q.nutzung, stockwerke: q.stockwerke,
+    baujahr: q.baujahr, baujährQuelle: q.baujährQuelle, schicht: q.schicht, skipAutoCreate: true,
+  });
+  [
+    'waerme', 'heizlast', 'spez', 'spezHeizlast', 'abrissjahr', 'waermeManual', 'heizlastManual',
+    'strom', 'spezStrom', 'stromProfil', 'pvAktiv', 'pvDachanteil', 'zustand', 'dachform',
+    'dachAzimut', 'dachNeigung', 'dachAutoAzimut', 'dachQuelle', 'pvModus', 'pvFlGcr',
+    'pvFlAusrichtung', 'pvFlBelegung', 'pvBaujahr', 'notstrom',
+  ].forEach(field => { if (q[field] !== undefined) t[field] = structuredClone(q[field]); });
+  t.sanierungen = structuredClone(q.sanierungen || []);
+  t.massnahmen = structuredClone(q.massnahmen || []);
+  if (q.pvRidgeOverride) t.pvRidgeOverride = { lat: q.pvRidgeOverride.lat, lng: q.pvRidgeOverride.lng + dLng };
+  if (!Number.isInteger(window._gebPvFlCounter)) window._gebPvFlCounter = 1;
+  t.pvFlaechen = (q.pvFlaechen || []).map(fl => ({
+    id: window._gebPvFlCounter++,
+    typ: fl.typ,
+    polygon: (fl.polygon || []).map(shift),
+    flaeche: fl.flaeche,
+    ...(fl.auto ? { auto: fl.auto } : {}),
+    layer: null,
+    svgLayer: null,
+  }));
+  t.pvFlaechen.forEach(fl => attachGebPvLayer(t, fl));
+  redrawGebPvModules(t);
+  if (typeof window.autoCreateBuildingAssets === 'function') {
+    try { window.autoCreateBuildingAssets(t); } catch (e) { console.warn('autoCreateBuildingAssets:', e); }
+  }
+  _invalidateStats?.();
+  updateTotals();
+  renderList();
+  updateViz();
+  toggleGebaeudeGrundrissEdit(t.id);
+  showHint(`⧉ Kopie „${name}" angelegt — ✥ verschiebt, ↻ dreht (Umschalt = 5°-Raster) · Esc = fertig`, 7000);
+  return t;
 }
 
 // ── Grundrisse zusammenfügen ──────────────────────────────────────────────
