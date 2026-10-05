@@ -2628,10 +2628,12 @@ export function startGebaeudeFormUebernahme(gId) {
 // Aus attachPolygonLayer (02b) aufgerufen; true = Klick verbraucht
 export function gebaeudeFormClick(quelleId) {
   if (!_formModus) return false;
-  if (_formModus.busy) return true;
+  if (_formModus.busy) { showHint('⏳ Die vorige Übernahme läuft noch — einen Moment …', 2500); return true; }
   const z = window.gebaeude.find(b => b.id === _formModus.zielId);
   const q = window.gebaeude.find(b => b.id === quelleId);
-  if (!z?.polygon || !q?.polygon || quelleId === z.id) return true;
+  if (!z?.polygon) { endeGebaeudeFormUebernahme(); return false; }
+  if (quelleId === z.id) { showHint('⇆ Das ist das Zielgebäude — bitte das Gebäude anklicken, dessen Maße übernommen werden sollen', 3500); return true; }
+  if (!q?.polygon) { showHint('⚠ Dieses Gebäude hat noch keinen Grundriss', 3000); return true; }
   const r = uebertrageForm(z.polygon, q.polygon);
   if (!r) { showHint('⚠ Maße lassen sich nicht übertragen (Grundriss zu klein)', 3500); return true; }
   _formModus.busy = true;
