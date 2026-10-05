@@ -2,7 +2,7 @@
 // M5: assetSelection-State; Shift+Click + Box-Selektion auf Karte;
 //     Checkboxen in Sidebar; schwebende Bulk-Bar mit Sammelaktionen.
 
-import { ASSETS, ASSET_CFG, TYPE_RANK } from './13a-assets-core.js';
+import { ASSETS, ASSET_CFG, TYPE_RANK, deleteAsset } from './13a-assets-core.js';
 import { phasen, massnahmeJahr, setPhasen } from './01-globals-varianten.js';
 import { MASSN_VORLAGEN, MASSN_VORLAGEN_REIHENFOLGE } from './config/massnahmen-vorlagen.js';
 import { redrawAllAssets } from './13b-assets-render.js';
@@ -379,6 +379,13 @@ export function selRenderBulkBar() {
   _fillFilterDropdowns();
   _renderBoxAreaSection();
 
+  const delBtn = document.getElementById('bulk-delete-btn');
+  if (delBtn) {
+    delBtn.disabled      = count === 0;
+    delBtn.style.opacity = count === 0 ? '.4' : '';
+    delBtn.style.cursor  = count === 0 ? 'default' : 'pointer';
+  }
+
   bar.style.display = 'block';
 }
 
@@ -617,6 +624,41 @@ export function selBulkApplyAll() {
   if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
   _refreshDimming();
   selRenderBulkBar(); // Phase-Dropdown ggf. um neu angelegte Phasen aktualisieren
+}
+
+// ── Sammel-Löschen ────────────────────────────────────────────────────────────
+// Alle ausgewählten Assets in EINER Planungstransaktion löschen (ein Undo-Schritt);
+// deleteAsset entfernt dabei auch die angeschlossenen Kabel und Strom-Knoten.
+export function selBulkDelete() {
+  const assets = selGetAssets();
+  const n = assets.length;
+  if (n === 0) return;
+  const namen = assets.slice(0, 8).map(a => '• ' + (a.name || a.type)).join('\n')
+    + (n > 8 ? `\n… und ${n - 8} weitere` : '');
+  if (!confirm(`${n} ${n === 1 ? 'Anlage' : 'Anlagen'} wirklich löschen?\n\n${namen}\n\nAngeschlossene Kabel werden mit entfernt.`)) return;
+
+  const inspektorBetroffen = assets.some(a => a.id === ASSETS.selectedId);
+  const ids = assets.map(a => a.id);
+  const committed = _selectionChange(`${n} Assets löschen`, () => {
+    for (const id of ids) deleteAsset(id, true);
+  });
+  if (committed === null) return;
+
+  assetSelection.clear();
+  _lastBoxBounds = null;
+  if (inspektorBetroffen && typeof window.closeAssetInspector === 'function') window.closeAssetInspector();
+  else redrawAllAssets();
+  if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+  _afterSelChange();
+
+  const msg = document.getElementById('bulk-confirm-msg');
+  if (msg) {
+    msg.textContent = `✓ ${n} ${n === 1 ? 'Anlage' : 'Anlagen'} gelöscht`;
+    msg.style.display = 'inline';
+    msg.style.color = '#ef5350';
+    clearTimeout(msg._tid);
+    msg._tid = setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  }
 }
 
 // Stellt sicher, dass das Asset eine Maßnahme des Typs hat und setzt ihr Jahr

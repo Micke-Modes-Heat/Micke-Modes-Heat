@@ -12964,6 +12964,10 @@ if (typeof L !== 'undefined') {
             ✓ Übernehmen
           </button>
           <span id="bulk-confirm-msg" style="display:none;font-size:10px;font-weight:600;"></span>
+          <button onclick="selBulkDelete()" id="bulk-delete-btn" title="Alle ausgewählten Anlagen samt angeschlossener Kabel löschen"
+            style="margin-left:auto;font-size:10px;padding:3px 10px;background:transparent;color:#ef5350;border:1px solid #ef5350;border-radius:4px;cursor:pointer;font-weight:600;">
+            🗑 Löschen
+          </button>
         </div>
       </div>
       <!-- Asset-Liste: alle Assets nach Typ gruppiert -->
@@ -15164,7 +15168,7 @@ Turnhalle;Öffentlich;1982;A;850</div>
   if (v.indexOf('__') === 0) v = 'dev';            // ungebaut → Platzhalter steht noch
   var d = '2026-10-05';
   if (d.indexOf('__') === 0) d = '';
-  var c = '72d941e';
+  var c = '87d4443';
   if (c.indexOf('__') === 0) c = '';
   window.APP_VERSION = v;
   window.APP_BUILD_DATE = d;
@@ -204228,6 +204232,13 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     _fillFilterDropdowns();
     _renderBoxAreaSection();
 
+    const delBtn = document.getElementById('bulk-delete-btn');
+    if (delBtn) {
+      delBtn.disabled      = count === 0;
+      delBtn.style.opacity = count === 0 ? '.4' : '';
+      delBtn.style.cursor  = count === 0 ? 'default' : 'pointer';
+    }
+
     bar.style.display = 'block';
   }
 
@@ -204468,6 +204479,41 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     selRenderBulkBar(); // Phase-Dropdown ggf. um neu angelegte Phasen aktualisieren
   }
 
+  // ── Sammel-Löschen ────────────────────────────────────────────────────────────
+  // Alle ausgewählten Assets in EINER Planungstransaktion löschen (ein Undo-Schritt);
+  // deleteAsset entfernt dabei auch die angeschlossenen Kabel und Strom-Knoten.
+  function selBulkDelete() {
+    const assets = selGetAssets();
+    const n = assets.length;
+    if (n === 0) return;
+    const namen = assets.slice(0, 8).map(a => '• ' + (a.name || a.type)).join('\n')
+      + (n > 8 ? `\n… und ${n - 8} weitere` : '');
+    if (!confirm(`${n} ${n === 1 ? 'Anlage' : 'Anlagen'} wirklich löschen?\n\n${namen}\n\nAngeschlossene Kabel werden mit entfernt.`)) return;
+
+    const inspektorBetroffen = assets.some(a => a.id === ASSETS.selectedId);
+    const ids = assets.map(a => a.id);
+    const committed = _selectionChange(`${n} Assets löschen`, () => {
+      for (const id of ids) deleteAsset(id, true);
+    });
+    if (committed === null) return;
+
+    assetSelection.clear();
+    _lastBoxBounds = null;
+    if (inspektorBetroffen && typeof window.closeAssetInspector === 'function') window.closeAssetInspector();
+    else redrawAllAssets();
+    if (typeof window.recalcStromNetz === 'function') window.recalcStromNetz();
+    _afterSelChange();
+
+    const msg = document.getElementById('bulk-confirm-msg');
+    if (msg) {
+      msg.textContent = `✓ ${n} ${n === 1 ? 'Anlage' : 'Anlagen'} gelöscht`;
+      msg.style.display = 'inline';
+      msg.style.color = '#ef5350';
+      clearTimeout(msg._tid);
+      msg._tid = setTimeout(() => { msg.style.display = 'none'; }, 3000);
+    }
+  }
+
   // Stellt sicher, dass das Asset eine Maßnahme des Typs hat und setzt ihr Jahr
   // (vorhandene Maßnahme wird aktualisiert statt dupliziert). Für geplante Zukunfts-
   // Bauten/-Abrisse, damit sie im Ausbauplaner-Fahrplan erscheinen.
@@ -204606,6 +204652,7 @@ ${activeTab === 'trafo' ? tabTrafoHtml : activeTab === 'bat' ? tabBatHtml : acti
     selBoxAreaClear: selBoxAreaClear,
     selBoxAreaFilterChange: selBoxAreaFilterChange,
     selBulkApplyAll: selBulkApplyAll,
+    selBulkDelete: selBulkDelete,
     selBulkFilterApply: selBulkFilterApply,
     selBulkNeuePhase: selBulkNeuePhase,
     selClear: selClear,
