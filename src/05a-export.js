@@ -401,7 +401,7 @@ async function exportPDFReport() {
   const rlTemp = parseFloat(document.getElementById('netz-rl')?.value) || 60;
   const datum = new Date().toLocaleDateString('de-DE', { day:'2-digit', month:'long', year:'numeric' });
   const zeit = new Date().toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
-  const varName = activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || 'Variante') : 'Basisdaten';
+  const varName = activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || 'Variante') : 'Hauptplan';
 
   // ── Canvas-Bilder exportieren ─────────────────────────────────
   let mapImg = '';
@@ -1200,7 +1200,7 @@ function _buildVerbindungenSheets(XLSXLib, allAssets, allEdges, assetMap) {
 // alle anderen in ihrem gespeicherten stromnetz-Snapshot (bzw. baseStromNetzSnapshot
 // für "Basisdaten", wenn diese gerade nicht aktiv ist).
 function _buildVariantMembershipMap() {
-  const BASE_NAME = 'Basisdaten';
+  const BASE_NAME = 'Hauptplan';
   const membership = new Map(); // id -> Set<variantName>
   const add = (id, name) => {
     if (id == null) return;

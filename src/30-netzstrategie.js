@@ -209,7 +209,9 @@ export function nsRechnen() {
     if (rob.empfehlung) empfehlung = rob.empfehlung.kandidat;
   }
   _erg = { modell, gruppen, optionen, ectx, p, kosten, opt, standard, pareto, rob, empfehlung, alle, holen, ziel: zielDef,
-    jahre: { stich, ziel }, dauerMs: performance.now() - t0 };
+    jahre: { stich, ziel }, dauerMs: performance.now() - t0,
+    // Für welche Planungsvariante gerechnet wurde (Hinweis nach Variantenwechsel)
+    stempel: window.ergebnisStempelAktiv?.() || null };
   _veraltet = false;
   // Editor: gespeicherte Auswahl je Gruppe, sonst die Empfehlung
   _editorWahl = gruppen.map((g, i) => {
@@ -301,6 +303,7 @@ export function nsRender() {
       ${_kn('rechnen', _erg && !_erg.fehler ? '↻ Strategien neu rechnen' : '▶ Strategien rechnen', 'Alle Kombinationen bewerten, Pareto-Front und Empfehlung bilden', true, 'style="padding:6px 14px;font-size:11px;"')}
       ${_kn('katalog', _katalogAuf ? '▾ Kostenkatalog' : '▸ Kostenkatalog', 'Kostenansätze für neue Anschlüsse, Stationen und MS-Trassen')}
     </div>
+    ${_erg && !_erg.fehler ? `<div style="flex-basis:100%;">${window.stempelHinweisHtml?.(_erg.stempel, null) || ''}</div>` : ''}
     ${ziel > stich ? '' : `<div style="flex-basis:100%;font-size:10px;color:#ffb74d;">Zieljahr = Stichjahr: es gibt keine Neubau-Gruppen${neuJahr ? ` — Zieljahr ≥ ${neuJahr} setzen` : ''}.</div>`}
   </div>
   ${_katalogAuf ? _katalogHtml() : ''}
@@ -444,7 +447,7 @@ function _vergleichHtml() {
     const abg = e.erzeugungMwh > 0 ? (e.abgeregeltDachMwh + e.abgeregeltNapMwh) / e.erzeugungMwh * 100 : 0;
     const best = r === _erg.empfehlung;
     return `<tr style="${best ? 'background:rgba(255,213,79,.08);' : ''}">
-      <td style="text-align:center;"><input type="checkbox" data-ns-var="${x.key}" ${gewaehlt.has(x.key) ? 'checked' : ''} title="Als Variante in die PV-Analyse übernehmen"></td>
+      <td style="text-align:center;"><input type="checkbox" data-ns-var="${x.key}" ${gewaehlt.has(x.key) ? 'checked' : ''} title="Als Auslegung in die PV-Analyse übernehmen"></td>
       <td class="l"><span data-ns-lade="${r.wahl.join(',')}" style="cursor:pointer;" title="In den Editor laden">${escHtml(x.label)}</span>
         ${r.machbar ? '' : '<span style="color:#e57373;"> (nicht machbar)</span>'}</td>
       <td class="m">${_fmt(e.kwp)}</td><td class="m">${_fmt(e.nutzbarMwh)}</td><td class="m">${_fmt(abg, 1)} %</td>
@@ -456,8 +459,8 @@ function _vergleichHtml() {
   const aktuell = ueb.length && ueb.every(v => (window._pvAnalyse?.ergebnisse || []).some(e => e.strategieKey === v.key));
   return `<div class="ns-karte"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:4px;">
     <b style="font-size:11px;">Strategien im Vergleich</b>
-    <span>${_kn('var-rechnen', '↻ Gewählte in die PV-Analyse übernehmen', 'Angehakte Strategien als Varianten „Netzstrategie: …" anlegen und alle Varianten neu rechnen', ueb.length > 0 && !aktuell)}
-      <span style="font-size:10px;color:var(--muted);margin-left:6px;">${ueb.length ? `${ueb.length} gewählt${aktuell ? ' · stehen im Varianten-Vergleich' : ''}` : 'Häkchen = als Variante übernehmen'}</span></span></div>
+    <span>${_kn('var-rechnen', '↻ Gewählte in die PV-Analyse übernehmen', 'Angehakte Strategien als Auslegungen „Netzstrategie: …" anlegen und alle Auslegungen neu rechnen', ueb.length > 0 && !aktuell)}
+      <span style="font-size:10px;color:var(--muted);margin-left:6px;">${ueb.length ? `${ueb.length} gewählt${aktuell ? ' · stehen im Vergleich der Auslegungen' : ''}` : 'Häkchen = als Auslegung übernehmen'}</span></span></div>
     <div style="overflow-x:auto;"><table><thead><tr><th>Var.</th><th class="l">Strategie</th><th>kWp</th><th>MWh/a nutzbar</th><th>abgeregelt</th><th>EV-Quote</th>
       <th>Netz-Invest</th><th>Netz €/kWp</th><th>ct/kWh</th><th>Überschuss €/a</th></tr></thead>
       <tbody>${liste.map(zeile).join('')}</tbody></table></div>
@@ -672,15 +675,15 @@ function _varianteWahl(key, an) {
 
 function _variantenRechnen() {
   if (!(window.elQuartierH15 || window.elQuartierH)) {
-    _meldung = 'Vorgemerkt — ohne Stromlastgang entstehen die Varianten beim nächsten „Varianten berechnen".';
+    _meldung = 'Vorgemerkt — ohne Stromlastgang entstehen die Auslegungen beim nächsten „Auslegungen berechnen".';
     nsRender();
     return;
   }
-  _meldung = 'Berechne Varianten …';
+  _meldung = 'Berechne Auslegungen …';
   nsRender();
   setTimeout(() => {
-    try { window.pvBerechneAlle?.(); _meldung = 'Varianten neu berechnet — die Strategien stehen im Varianten-Vergleich als „Netzstrategie: …".'; }
-    catch (err) { console.warn('[Netzstrategie] Variantenrechnung fehlgeschlagen:', err); _meldung = 'Variantenrechnung fehlgeschlagen — bitte „Varianten berechnen" von Hand starten.'; }
+    try { window.pvBerechneAlle?.(); _meldung = 'Auslegungen neu berechnet — die Strategien stehen im Vergleich der Auslegungen als „Netzstrategie: …".'; }
+    catch (err) { console.warn('[Netzstrategie] Variantenrechnung fehlgeschlagen:', err); _meldung = 'Auslegungsrechnung fehlgeschlagen — bitte „Auslegungen berechnen" von Hand starten.'; }
     nsRender();
   }, 30);
 }

@@ -1,12 +1,13 @@
 // @ts-check
 import { ASSETS } from '../13a-assets-core.js';
-import { activeVariantId, baseErzeugerSnapshot, baseNetzSnapshot, baseStromNetzSnapshot, gebaeude, phasen, setActiveVariantId, setBaseErzeugerSnapshot, setBaseNetzSnapshot, setBaseStromNetzSnapshot, setPhasen, varianten } from '../01-globals-varianten.js';
+import { activeVariantId, baseErzeugerSnapshot, baseNetzSnapshot, baseStromNetzSnapshot, gebaeude, phasen, setActiveVariantId, setBaseErzeugerSnapshot, setBaseNetzSnapshot, setBaseStromNetzSnapshot, setPhasen, varianten, _captureVariantenZusatz, _restoreVariantenZusatz, _nachPlanungstransaktion } from '../01-globals-varianten.js';
+import { pvBelegungErfassen, pvBelegungAnwenden } from './varianten-regeln.js';
 import { clusters } from '../14f-cluster-core.js';
 import { runStateTransaction } from './state-transaction.js';
 
 const RUNTIME_KEYS = new Set(['_marker','marker','layer','_layer','popup','tooltip']);
 /** @typedef {Record<string, any>} AnyRecord */
-/** @typedef {{assets:AnyRecord[],legacyEdges:AnyRecord[],selectedId:any,buildingMeasures:Array<{id:any,massnahmen:AnyRecord[]}>,clusters:AnyRecord[],phasen:AnyRecord[],varianten:AnyRecord[],activeVariantId:any,baseNetz:any,baseErzeuger:any,baseStrom:any,runtimeVariant:any}} PlanningSnapshot */
+/** @typedef {{assets:AnyRecord[],legacyEdges:AnyRecord[],selectedId:any,buildingMeasures:Array<{id:any,massnahmen:AnyRecord[]}>,clusters:AnyRecord[],phasen:AnyRecord[],varianten:AnyRecord[],activeVariantId:any,baseNetz:any,baseErzeuger:any,baseStrom:any,runtimeVariant:any,variantenZusatz?:any}} PlanningSnapshot */
 /** @type {Array<{label:string,at:string,before:PlanningSnapshot}>} */
 const history = [];
 let transactionDepth = 0;
@@ -32,12 +33,14 @@ function plain(value, seen = new WeakSet()) {
 export function capturePlanningState() {
   const runtimeVariant = typeof window !== 'undefined' ? {
     netz:window.captureNetzState?.(), erzeuger:window.captureErzeugerState?.(), strom:window.captureStromNetzState?.(),
+    pv:pvBelegungErfassen(gebaeude),
   } : null;
   return {
     assets:plain(ASSETS.items), legacyEdges:plain(ASSETS.edges), selectedId:ASSETS.selectedId,
     buildingMeasures:gebaeude.map(g => ({id:g.id,massnahmen:plain(g.massnahmen || [])})),
     clusters:plain(clusters), phasen:plain(phasen), varianten:plain(varianten), activeVariantId,
     baseNetz:plain(baseNetzSnapshot),baseErzeuger:plain(baseErzeugerSnapshot),baseStrom:plain(baseStromNetzSnapshot),runtimeVariant:plain(runtimeVariant),
+    variantenZusatz:plain(_captureVariantenZusatz()),
   };
 }
 
@@ -73,10 +76,19 @@ export function restorePlanningState(snapshot) {
   setBaseErzeugerSnapshot(plain(snapshot.baseErzeuger));
   setBaseStromNetzSnapshot(plain(snapshot.baseStrom));
   setActiveVariantId(snapshot.activeVariantId);
+  if (snapshot.variantenZusatz) _restoreVariantenZusatz(plain(snapshot.variantenZusatz));
   if (snapshot.runtimeVariant && typeof window !== 'undefined') {
     window.applyNetzState?.(snapshot.runtimeVariant.netz);
     window.applyErzeugerState?.(snapshot.runtimeVariant.erzeuger);
     window.applyStromNetzState?.(snapshot.runtimeVariant.strom);
+    if (snapshot.runtimeVariant.pv) {
+      const vorher = new Map();
+      const geaendert = pvBelegungAnwenden(gebaeude, snapshot.runtimeVariant.pv, vorher);
+      if (geaendert.length) window.variantenPvNeuZeichnen?.(geaendert, vorher);
+    }
+    window.renderVariantenBar?.();
+    window.updateVariantBanner?.();
+    window.variantenUiAktualisieren?.();
   }
 }
 
@@ -105,6 +117,8 @@ export function validatePlanningState(state = capturePlanningState()) {
   const measures = [];
   for (const a of state.assets) for (const m of (a.massnahmen || [])) measures.push(m);
   for (const g of state.buildingMeasures) for (const m of (g.massnahmen || [])) measures.push(m);
+  // Maßnahmen gerade nicht aktiver Varianten zählen mit: auf sie darf verwiesen werden.
+  for (const liste of Object.values(state.variantenZusatz?.massnahmenAblage || {})) for (const e of (liste || [])) if (e?.m) measures.push(e.m);
   const measureIds = assertUnique('Maßnahme',measures);
   for (const m of measures) {
     if (m.phaseId != null && !phaseIds.has(String(m.phaseId))) throw new Error(`Maßnahme ${m.id}: unbekannte Phase ${m.phaseId}`);
@@ -140,6 +154,7 @@ export function runPlanningTransaction(label, mutate) {
         history.push({label,at:new Date().toISOString(),before});
         if (history.length > 20) history.shift();
         if (typeof window !== 'undefined') window._lastPlanningTransaction = {label,at:history[history.length-1].at};
+        try { _nachPlanungstransaktion(label); } catch (e) { console.warn('Varianten-Nachlauf:', e); }
       }});
   } catch (error) {
     // Auch Seiteneffekte verschachtelter Wiederherstellungsroutinen dürfen bei

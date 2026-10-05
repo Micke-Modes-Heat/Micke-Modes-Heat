@@ -169,6 +169,11 @@ declare global {
     applyNetzState?: (state:unknown)=>void;
     applyErzeugerState?: (state:unknown)=>void;
     applyStromNetzState?: (state:unknown)=>void;
+    // Varianten-Oberfläche (src/33-varianten-ui.js, 01-globals-varianten.js)
+    variantenPvNeuZeichnen?: (geaendert:unknown[], vorher:Map<unknown, unknown>)=>void;
+    renderVariantenBar?: ()=>void;
+    updateVariantBanner?: ()=>void;
+    variantenUiAktualisieren?: ()=>void;
     withoutPlanningTransactions?: <T>(mutate:()=>T)=>T;
     clearPlanningTransactionHistory?: ()=>void;
 

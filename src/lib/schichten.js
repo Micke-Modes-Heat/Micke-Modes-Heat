@@ -88,19 +88,28 @@ export function schichtBackfill(obj, heute) {
   return (Number.isFinite(bj) && bj > h) ? SCHICHT.ENTWICKLUNG : SCHICHT.BESTAND;
 }
 
-// ── Aktiver Eingabemodus ─────────────────────────────────────────────────────
-// Der Modus ist reine Eingabedisziplin: er bestimmt, welche Schicht neu
-// angelegte Objekte bekommen. Er wird NICHT gespeichert — beim Öffnen eines
-// Projekts startet man immer im Bestandsmodus.
+// ── Eingabemodus ─────────────────────────────────────────────────────────────
+// Standard ist 'auto': die Schicht neuer Objekte ergibt sich aus Jahres-Slider
+// und Objekttyp (lib/varianten-regeln.js → schichtFuerNeu). Eine feste Schicht
+// setzt man nur, um die Regel bewusst zu übersteuern (z. B. Bestand nachtragen,
+// während der Slider in der Zukunft steht). Nicht gespeichert — beim Öffnen
+// eines Projekts gilt wieder 'auto'.
 
-let _aktiv = SCHICHT.BESTAND;
+let _modus = 'auto';
 
-export function getAktiveSchicht() { return _aktiv; }
+/** 'auto' oder die fest eingestellte Schicht. */
+export function getSchichtModus() { return _modus; }
 
-export function setAktiveSchicht(s) {
-  _aktiv = normSchicht(s);
-  return _aktiv;
+export function setSchichtModus(m) {
+  _modus = (m === 'auto' || m == null) ? 'auto' : normSchicht(m);
+  return _modus;
 }
+
+/** Fest eingestellte Schicht oder null bei 'auto' (Altschnittstelle). */
+export function getAktiveSchicht() { return _modus === 'auto' ? null : _modus; }
+
+/** Legt eine Schicht fest (Altschnittstelle, z. B. geführter Modus). */
+export function setAktiveSchicht(s) { return setSchichtModus(s); }
 
 // ── Sichtbarkeit ─────────────────────────────────────────────────────────────
 // Welche Schichten auf der Karte gezeigt werden. Default: alle.

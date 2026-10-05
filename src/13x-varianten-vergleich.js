@@ -15,42 +15,24 @@ import {
   lastgangSchnappschuesse, lastgangSchnappschuesseAlleVarianten, schnappschussUeberlast,
 } from './13y-lastgang-schnappschuss.js';
 
-const PANEL_ID = 'varianten-vergleich-panel';
-
-function _ensurePanel() {
-  let panel = document.getElementById(PANEL_ID);
-  if (panel) return panel;
-  panel = document.createElement('div');
-  panel.id = PANEL_ID;
-  panel.className = 'float-panel amber-border';
-  panel.style.cssText = 'top:70px;min-width:540px;max-width:820px;max-height:84vh;padding:0 18px 14px;overflow:auto;';
-  panel.innerHTML = `
-    <div class="panel-drag-handle" onmousedown="startDrag(event,'${PANEL_ID}')">
-      <span style="color:#ce93d8;font-size:12px;font-weight:600;">🔀 Varianten vergleichen</span>
-      <span class="drag-dots">⠿</span>
-      <span style="font-size:14px;color:var(--muted);cursor:pointer;line-height:1;"
-            data-click="variantenVergleichToggle()">✕</span>
-    </div>
-    <div id="varianten-vergleich-body"></div>`;
-  document.body.appendChild(panel);
-  return panel;
-}
+// Früher ein eigenes schwebendes Panel — jetzt Teil des Reiters „Vergleich“
+// (Abschnitt „Strom · Planungsentscheidungen“). Ein Ort für den Vergleich.
+const ZIEL_ID = 'vergleich-strom-wrap';
 
 export function variantenVergleichToggle() {
-  const panel = _ensurePanel();
-  const sichtbar = panel.style.display === 'block';
-  panel.style.display = sichtbar ? 'none' : 'block';
-  if (!sichtbar) variantenVergleichRender();
+  if (typeof window.setViewMode === 'function') window.setViewMode('vergleich');
+  setTimeout(() => document.getElementById(ZIEL_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
 }
 
 /** Zu einer Variante wechseln und die Ansicht aktualisieren. */
 export function variantenVergleichAktivieren(id) {
   activateVariant(id === '' ? null : id);
   variantenVergleichRender();
+  window.variantenVergleichAnsichtRender?.();
 }
 
 export function variantenVergleichRender() {
-  const el = document.getElementById('varianten-vergleich-body');
+  const el = document.getElementById(ZIEL_ID);
   if (!el) return;
 
   // Das gespeicherte Delta der aktiven Variante wird erst beim Wechsel
@@ -123,7 +105,7 @@ function _spalten(v) {
 
     const aktivBadge = s.aktiv
       ? '<span style="background:#66bb6a22;color:#66bb6a;border-radius:3px;padding:0 5px;font-size:9px;">aktiv</span>'
-      : `<span style="font-size:9px;color:#7c4dff;cursor:pointer;"
+      : `<span style="font-size:9px;color:var(--accent);cursor:pointer;"
               data-click="variantenVergleichAktivieren('${s.id ?? ''}')"
               title="Zu dieser Variante wechseln">→ wechseln</span>`;
 

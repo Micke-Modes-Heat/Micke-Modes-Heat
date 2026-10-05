@@ -4729,7 +4729,7 @@ const GG_BEDARF_TEXT_HINWEIS = {
   gebaeude: 'Einleitung zu 3.3.1: Messbasis, Planungsgrundlage, Rückbau und Neubau mit ihrer Wirkung auf die Leistung. '
           + 'Planungsgrundlage und Herkunft der Neubau-Leistungen erfasst das Tool nicht — sie bleiben als Platzhalter offen.',
   waerme:   'Einleitung zu 3.3.2: elektrische Wärmeerzeuger der aktiven Variante und ihr Zusatzbedarf. Der Variantenname '
-          + 'kommt aus der Kopfleiste; in den Basisdaten bleibt er als Platzhalter offen.',
+          + 'kommt aus der Kopfleiste; im Hauptplan bleibt er als Platzhalter offen.',
   lade:     'Einleitung zu 3.3.3: Standorte, Ladepunkte, installierte Leistung, Gleichzeitigkeit und Zusatzbedarf. '
           + 'Die Grundlage der Bedarfsermittlung erfasst das Tool nicht — sie bleibt als Platzhalter offen.',
 };

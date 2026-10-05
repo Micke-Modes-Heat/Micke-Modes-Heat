@@ -242,9 +242,9 @@ describe('variantenVergleich', () => {
     aktiveVarianteId: 'v2',
   });
 
-  it('stellt die Basisdaten als erste Spalte voran', () => {
+  it('stellt die den Hauptplan als erste Spalte voran', () => {
     const { spalten } = variantenVergleich(eingabe());
-    expect(spalten[0]).toMatchObject({ id: null, name: 'Basisdaten', anzahl: 0 });
+    expect(spalten[0]).toMatchObject({ id: null, name: 'Hauptplan', anzahl: 0 });
   });
 
   it('markiert die aktive Variante', () => {
@@ -252,7 +252,7 @@ describe('variantenVergleich', () => {
     expect(spalten.filter(s => s.aktiv).map(s => s.id)).toEqual(['v2']);
   });
 
-  it('behandelt die Basisdaten als aktiv, wenn keine Variante gewählt ist', () => {
+  it('behandelt den Hauptplan als aktiv, wenn keine Variante gewählt ist', () => {
     const { spalten } = variantenVergleich({ ...eingabe(), aktiveVarianteId: null });
     expect(spalten[0].aktiv).toBe(true);
   });
@@ -304,7 +304,7 @@ describe('variantenVergleich · Live-Delta der aktiven Variante', () => {
     expect(spalten.find(s => s.id === 'v2').anzahl).toBe(0);
   });
 
-  it('nutzt den Live-Zustand auch für die Basisdaten-Spalte', () => {
+  it('nutzt den Live-Zustand auch für die Hauptplan-Spalte', () => {
     const live = { items: [{ id: 'x', type: 'PV', props: {} }], edges: [] };
     const { spalten } = variantenVergleich({ ...basis(), aktiveVarianteId: null, liveDelta: live });
     expect(spalten[0]).toMatchObject({ id: null, aktiv: true, anzahl: 1 });

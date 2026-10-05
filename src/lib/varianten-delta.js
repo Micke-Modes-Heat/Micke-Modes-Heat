@@ -239,7 +239,7 @@ export function variantenVergleich({ basisDelta, varianten, aktiveVarianteId, ge
       edges: (gemeinsam?.edges || []).length,
     },
     spalten: [
-      spalte(null, 'Basisdaten', basisDelta),
+      spalte(null, 'Hauptplan', basisDelta),
       ...(varianten || []).map(v => spalte(v.id, v.name, v.stromnetz)),
     ],
   };

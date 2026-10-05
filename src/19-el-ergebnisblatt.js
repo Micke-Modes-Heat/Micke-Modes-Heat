@@ -254,9 +254,11 @@ function _sammle() {
     trafos.filter(t => t.auslastung > 80 && t.auslastung <= 100).map(t => ({ id: t.id, art: 'asset', label: `${t.name} (${_num(t.auslastung, 0)} %)` })));
 
   // ── Kopfdaten ──
-  const variante = activeVariantId
+  const variante = (activeVariantId
     ? (varianten.find(v => v.id === activeVariantId)?.name || 'Variante')
-    : 'Basisdaten';
+    : 'Hauptplan')
+    // ★ = diese Variante geht ins Gutachten
+    + (window.gutachtenVariante != null && window.gutachtenVariante === (activeVariantId ?? 'base') ? ' ★' : '');
   const cs = elCalcStand?.();
 
   return {

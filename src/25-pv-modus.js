@@ -829,7 +829,8 @@ export function pvModusRender() {
     el.setAttribute('aria-label', 'PV-Modus');
     document.body.appendChild(el);
   }
-  el.innerHTML = _html();
+  // Wo die Belegung gilt: Dachdaten gemeinsam, Belegung nur in der aktiven Variante
+  el.innerHTML = (window.pvBelegungWirkungHtml?.('pvm') || '') + _html();
 }
 
 function _regler({ label, titel, min, max, step, wert, farbe, einheit, handler }) {

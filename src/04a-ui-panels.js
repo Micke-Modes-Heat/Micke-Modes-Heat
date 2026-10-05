@@ -1403,13 +1403,11 @@ export function setViewMode(mode) {
   const optimierungView = document.getElementById('center-optimierung-view');
   const vergleichView  = document.getElementById('center-vergleich-view');
   const liveView       = document.getElementById('center-live-view');
-  const vergleichOld   = document.getElementById('vergleich-panel');
   if (gebaeudeView)    gebaeudeView.style.display    = mode === 'gebaeude'    ? 'block' : 'none';
   if (analyseView)     analyseView.style.display     = mode === 'analyse'     ? 'block' : 'none';
   if (optimierungView) optimierungView.style.display = mode === 'optimierung' ? 'block' : 'none';
   if (vergleichView)   vergleichView.style.display   = mode === 'vergleich'   ? 'block' : 'none';
   if (liveView)        liveView.style.display        = mode === 'live'        ? 'flex'  : 'none';
-  if (vergleichOld) vergleichOld.style.display = 'none';
   // Inline-Panels zurücksetzen bevor Modus wechselt
   if (typeof _restoreInlinePanels === 'function') _restoreInlinePanels();
   // Hide floating panels when switching to analyse/vergleich/live

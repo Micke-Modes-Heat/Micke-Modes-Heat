@@ -197,13 +197,20 @@ function esc(s) { return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '
 // Planungsschicht nachträglich korrigierbar machen — im falschen Eingabemodus
 // angelegte Objekte sollen billig zu berichtigen sein, sonst arbeitet man
 // gegen den Modus statt mit ihm.
+// „Warum ist es da?“ — zugleich die Antwort auf „in welchen Varianten gilt es?“.
 function buildSchichtSelect(asset) {
   const cur = normSchicht(asset.schicht);
+  const variante = window.aktiverVariantenName?.() || 'dieser Variante';
+  const TEXT = {
+    bestand:      '🏛 Ist heute schon da · alle Varianten',
+    entwicklung:  '📈 Kommt ohnehin · alle Varianten',
+    entscheidung: `🎯 Geplant · nur in ${variante}`,
+  };
   const opts = SCHICHT_REIHENFOLGE.map(s =>
-    `<option value="${s}"${s === cur ? ' selected' : ''}>${SCHICHT_META[s].icon} ${SCHICHT_META[s].label}</option>`
+    `<option value="${s}"${s === cur ? ' selected' : ''}>${TEXT[s] || SCHICHT_META[s].label}</option>`
   ).join('');
   return `<div class="ins-field-group">
-    <label class="ins-field-label" title="${SCHICHT_META[cur].hinweis}">Planungsschicht</label>
+    <label class="ins-field-label" title="${SCHICHT_META[cur].hinweis}">Gilt in ${window.wirkungChipFuerSchicht?.(cur) || ''}</label>
     <select class="ins-field-input" data-field="schicht"
       style="border-left:3px solid ${SCHICHT_META[cur].farbe};">${opts}</select>
   </div>`;
@@ -683,7 +690,7 @@ function _massnRowHtml(m) {
     <span class="ins-massn-dot" style="background:${s.color};" title="${s.label}"></span>
     <div class="ins-massn-info">
       <div class="ins-massn-titel">${t.icon} ${esc(m.titel || '—')}</div>
-      <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten} · <span class="ins-massn-typ-tag">${t.label}</span></div>
+      <div class="ins-massn-meta">${m.jahr || '—'} · ${kosten} · <span class="ins-massn-typ-tag">${t.label}</span> · ${window.massnahmeGeltungText?.(m) || ''}</div>
     </div>
     <button class="ins-massn-edit" data-m-id="${m.id}" title="Bearbeiten">✎</button>
     <button class="ins-massn-del"  data-m-id="${m.id}" title="Löschen">×</button>
@@ -711,6 +718,10 @@ function buildMassnahmenSection(asset) {
       <div class="ins-row-2" style="margin-top:4px;">
         <select class="ins-field-input" id="mf-typ-${asset.id}">${typOpts}</select>
         <select class="ins-field-input" id="mf-status-${asset.id}">${statusOpts}</select>
+      </div>
+      <div class="ins-field-group" style="margin-top:4px;">
+        <label class="ins-field-label" title="In welchen Varianten wirkt diese Maßnahme? Ertüchtigungen unterscheiden Varianten typischerweise.">Gilt für</label>
+        <select class="ins-field-input" id="mf-gilt-${asset.id}">${window.massnahmeGeltungOptionen?.() || '<option value="">alle Varianten</option>'}</select>
       </div>
       <div id="mf-newprops-${asset.id}" style="display:none;"></div>
       <div class="ins-massn-form-btns">
@@ -765,6 +776,8 @@ function wireMassnahmen(panel, asset) {
     form.querySelector(`#mf-kosten-${aid}`).value = m?.kosten || '';
     form.querySelector(`#mf-typ-${aid}`).value    = m?.typ    || 'Sanierung';
     form.querySelector(`#mf-status-${aid}`).value = m?.status || 'geplant';
+    const giltSel = form.querySelector(`#mf-gilt-${aid}`);
+    if (giltSel) giltSel.value = window.massnahmeGeltungWert?.(m, asset) ?? '';
     updateNewPropsForm(m?.typ || 'Sanierung');
     // Gespeicherte Ziel-Props befüllen
     if (m?.newProps) {
@@ -790,6 +803,8 @@ function wireMassnahmen(panel, asset) {
     const kosten = parseFloat(panel.querySelector(`#mf-kosten-${aid}`).value) || 0;
     const typ    = panel.querySelector(`#mf-typ-${aid}`).value;
     const status = panel.querySelector(`#mf-status-${aid}`).value;
+    const giltEl = panel.querySelector(`#mf-gilt-${aid}`);
+    const variante = giltEl ? (giltEl.value || null) : undefined;
 
     // Ziel-Parameter einsammeln
     const newProps = {};
@@ -807,12 +822,13 @@ function wireMassnahmen(panel, asset) {
     if (!asset.massnahmen) asset.massnahmen = [];
     if (editingId) {
       const m = asset.massnahmen.find(x => x.id === editingId);
-      if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps });
+      if (m) Object.assign(m, { titel, jahr, kosten, typ, status, newProps }, variante !== undefined ? { variante } : {});
       // dependsOn/phaseId werden durch das Board (M5+) gesetzt, hier nur als Default sichern
       if (!m.dependsOn) m.dependsOn = [];
       if (m.phaseId === undefined) m.phaseId = null;
     } else {
-      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps, dependsOn: [], phaseId: null });
+      asset.massnahmen.push({ id: massnahmeId(), titel, jahr, kosten, typ, status, newProps, dependsOn: [], phaseId: null, ...(variante !== undefined ? { variante } : {}) });
+      window.markiereVarianteGeaendert?.();
     }
     closeForm();
     refreshList();

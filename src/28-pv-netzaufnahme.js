@@ -644,7 +644,7 @@ export function pvnaRender() {
   el.innerHTML = _steuerHtml() + (_letztes ? _ergebnisHtml(_letztes) : `
     <div style="color:var(--muted);font-size:11px;text-align:center;padding:40px 0;">
       Rechnet aus Trafos, Kabeln und den Dachflächen der Gebäude, wie viel PV das
-      bestehende Netz aufnimmt — unabhängig von Lastgang und Variantenrechnung.<br>
+      bestehende Netz aufnimmt — unabhängig von Lastgang und Auslegungsrechnung.<br>
       „Aufnahme berechnen" starten.</div>`);
 }
 

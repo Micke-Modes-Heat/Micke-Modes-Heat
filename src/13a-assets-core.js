@@ -2,9 +2,10 @@
 // Datenstruktur & CRUD für Anlagen. Neutral benannt (ASSETS, nicht EL.assets),
 // damit Wärme-Erzeuger später in dasselbe System einziehen können.
 
-import { globalYear, massnahmeJahr } from './01-globals-varianten.js';
+import { globalYear, massnahmeJahr, schichtFuerNeuesObjekt, baujahrFuerNeuesObjekt, activeVariantId } from './01-globals-varianten.js';
 import { createId } from './lib/util.js';
-import { istSchicht, getAktiveSchicht } from './lib/schichten.js';
+import { istSchicht, SCHICHT } from './lib/schichten.js';
+import { kategorieFuerAsset, massnahmeGiltIn, variantKey } from './lib/varianten-regeln.js';
 
 // ── Asset-Typ-Katalog ──────────────────────────────────────────────────────
 // domain: 'strom' | 'waerme' | 'hybrid' (z.B. WP, BHKW später)
@@ -159,7 +160,9 @@ export function getAssetStatus(item, year) {
 export function getAssetPropsForYear(asset, year, opts = {}) {
   const y = year ?? globalYear ?? new Date().getFullYear();
   const props = { ...(asset.props || {}) };
-  const wirkt = m => m.status === 'umgesetzt' || (opts.inklGeplant && m.status === 'geplant');
+  // Maßnahmen einer anderen Variante wirken hier nicht (Geltungsbereich, s. lib/varianten-regeln.js)
+  const aktiv = variantKey(typeof window !== 'undefined' && 'activeVariantId' in window ? window.activeVariantId : activeVariantId);
+  const wirkt = m => massnahmeGiltIn(m, aktiv) && (m.status === 'umgesetzt' || (opts.inklGeplant && m.status === 'geplant'));
   const measures = (asset.massnahmen || [])
     .filter(m => wirkt(m) && m.newProps && Object.keys(m.newProps).length > 0)
     .filter(m => { const mj = massnahmeJahr(m); return mj === null || mj <= y; })
@@ -193,7 +196,14 @@ export function createAsset(type, lat, lng, opts = {}) {
       if (!schicht    && istSchicht(geb.schicht)) schicht = geb.schicht;
     }
   }
-  if (!schicht) schicht = getAktiveSchicht();
+  // Sonst aus Slider-Jahr und Anlagenart ableiten (Verbraucher = Bedarf, Rest =
+  // Planungsentscheidung); ein in der Zukunft gesetztes Objekt bekommt das
+  // Slider-Jahr als Baujahr.
+  const neuAngelegt = !opts.id && !istSchicht(opts.schicht);
+  if (!schicht) {
+    schicht = schichtFuerNeuesObjekt(kategorieFuerAsset(cfg.kategorie));
+    if (!baujahr && schicht !== SCHICHT.BESTAND) baujahr = baujahrFuerNeuesObjekt();
+  }
 
   const asset = {
     id:         opts.id         || assetUid(),
@@ -211,6 +221,8 @@ export function createAsset(type, lat, lng, opts = {}) {
   };
 
   ASSETS.items.push(asset);
+  // Rückmeldung „wo ist das gelandet?“ — nur für frisch angelegte Objekte.
+  if (neuAngelegt && typeof window !== 'undefined') window.variantenNeuMeldung?.(asset);
   return asset;
 }
 

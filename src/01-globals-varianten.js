@@ -8,6 +8,8 @@ import { _attachSTLayer, clearSolarthermie, clearThermSpeicher, updateSolartherm
 import { autoGkResult, isErzeugerAktiv, meritOrderKeys, setAutoGkResult, setMeritOrderKeys, updateAllDeckungen } from './06c-dispatch-core.js';
 import { ERZEUGER_CFG } from './config/erzeuger-cfg.js';
 import { splitStromNetzState, mergeStromNetzState, istDelta, migriereZuDelta } from './lib/varianten-delta.js';
+import { HAUPTPLAN_NAME, variantKey, massnahmenHerausnehmen, massnahmenEinsetzen, massnahmeStandardVariante, waermeGeometrie, geometrieGleich, netzMitGeometrie, pvBelegungErfassen, pvBelegungAnwenden, schichtFuerNeu, baujahrFuerNeu } from './lib/varianten-regeln.js';
+import { getSchichtModus } from './lib/schichten.js';
 
 export let gebaeude = [];
 export function setGebaeude(v) { gebaeude = v; }
@@ -364,37 +366,72 @@ export function cacheVariantResults() {
     speicherM3: k === '_thermSpeicher' ? (parseFloat(document.getElementById('ts-volumen')?.value) || undefined) : undefined,
   }));
   variantResults[key] = {
-    label: activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '') : 'Basisdaten',
+    label: activeVariantId ? (varianten.find(v => v.id === activeVariantId)?.name || '') : 'Hauptplan',
     gebäudebedarf: totalVerbrauch, netzverluste: totalLoss,
     netzverlustePct: totalErzeugung > 0 ? totalLoss / totalErzeugung * 100 : 0,
     erzeugung: totalErzeugung, lastgangBasis, vlTemp, rlTemp, erzeuger: erzeugerList, erzeugerDetail, ausschlüsse,
     investGes, jkGes, co2GesH, co2GesLZ, wgkText, wgkNum, eeAnteil, stromkostenWp,
+    // Woraus gerechnet wurde — daran erkennt der Vergleich veraltete Spalten
+    sig: stammSignatur(key), zeit: new Date().toISOString(),
   };
+  markiereVarianteBerechnet(key);
   if (typeof currentViewMode !== 'undefined' && currentViewMode === 'vergleich') renderVergleich();
 }
 
-export function refreshVergleich() {
+function _hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return h; }
+
+/**
+ * Fingerabdruck dessen, was eine Variante mit den anderen teilt: Gebäude-
+ * bedarf und — ohne eigenes Wärmenetz — die gemeinsame Trasse. Ändert sich
+ * er, sind die Kennzahlen nicht aktiver Varianten veraltet.
+ */
+export function stammSignatur(key = variantKey(activeVariantId)) {
+  const geb = _hash(JSON.stringify(gebaeude.map(g => [g.id, g.waerme, g.heizlast, g.baujahr, g.abrissjahr, g.nutzung, g.flaeche, g.stockwerke])));
+  const rec = key === 'base' ? null : varianten.find(v => v.id === key);
+  if (rec?.netzEigen) return String(geb);
+  const liveGemeinsam = !aktiveVarianteNetzEigen();
+  const trasse = liveGemeinsam
+    ? [trassePoints.map(p => [p.lat, p.lng]), trasseSegments]
+    : [(waermeNetzGemeinsam?.trasse || []).map(p => [p.lat, p.lng]), waermeNetzGemeinsam?.trasseSegments || []];
+  return `${geb}|${_hash(JSON.stringify(trasse))}`;
+}
+
+/** 'aktuell' | 'veraltet' | 'nie' — Stand der Wärme-Kennzahlen einer Variante. */
+export function variantenKennzahlStatus(key) {
+  const r = variantResults[key];
+  if (!r) return 'nie';
+  if (key === variantKey(activeVariantId)) return 'aktuell';
+  if (r.sig && r.sig !== stammSignatur(key)) return 'veraltet';
+  const g = variantenStand[key]?.geaendert;
+  if (g && r.zeit && g > r.zeit) return 'veraltet';
+  return 'aktuell';
+}
+
+/**
+ * Kennzahlen nachrechnen. Standard: nur Varianten, deren Zahlen fehlen oder
+ * veraltet sind — jede davon muss dafür kurz aktiviert werden.
+ * alle=true rechnet jede Variante neu.
+ */
+export function refreshVergleich(alle = false) {
   const originalId = activeVariantId;
-  // Basis-Snapshot vor dem Durchlaufen retten, damit er nicht korrumpiert wird
-  const savedBase = baseNetzSnapshot ? JSON.parse(JSON.stringify(baseNetzSnapshot)) : null;
-  const savedBaseErz = baseErzeugerSnapshot ? JSON.parse(JSON.stringify(baseErzeugerSnapshot)) : null;
-  ['base', ...varianten.map(v => v.id)].forEach(id => {
-    activateVariant(id === 'base' ? null : id);
+  const ids = [null, ...varianten.map(v => v.id)]
+    .filter(id => alle || id === originalId || variantenKennzahlStatus(variantKey(id)) !== 'aktuell');
+  for (const id of ids) {
+    if (id !== activeVariantId) activateVariant(id);
     cacheVariantResults();
-  });
-  // Basis-Snapshot wiederherstellen
-  if (savedBase) baseNetzSnapshot = savedBase;
-  if (savedBaseErz) baseErzeugerSnapshot = savedBaseErz;
-  activateVariant(originalId);
+  }
+  if (activeVariantId !== originalId) activateVariant(originalId);
+  cacheVariantResults();
   renderVergleich();
+  window.variantenUiAktualisieren?.();
 }
 
 export function renderVergleich() {
-  const wrap = document.getElementById('vergleich-table-wrap');
+  const wrap = document.getElementById('vergleich-view-table-wrap');
   if (!wrap) return;
   const cols = ['base', ...varianten.map(v => v.id)];
-  if (!variantResults['base']) {
-    wrap.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px 0;">Noch keine Daten. Bitte zuerst „Grundlage berechnen" ausführen, dann „↻ Alle aktualisieren" klicken.</div>';
+  if (!cols.some(id => variantResults[id])) {
+    wrap.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:12px 0;">Noch keine Wärme-Kennzahlen. Erst „Grundlage berechnen“ ausführen, dann „↻ Veraltete rechnen“.</div>';
     return;
   }
   const fmt = (v, unit='', digits=0) => (v != null && !isNaN(v) && v !== '') ? Number(v).toLocaleString('de-DE', {maximumFractionDigits:digits}) + (unit ? '\u00a0' + unit : '') : '—';
@@ -484,10 +521,10 @@ export function renderVergleich() {
   const thFg = id => isActive(id) ? '#000' : 'var(--muted)';
   const onClick = id => id === 'base' ? `data-click="activateVariant(null);renderVergleich()"` : `data-click="activateVariant('${id}');renderVergleich()"`;
   let html = `<table class="vergleich-table"><thead><tr><th style="background:var(--surface2);">Kennwert</th>`;
+  const STATUS = { aktuell: '', veraltet: ' <span title="Seit der Berechnung hat sich der gemeinsame Stand geändert" style="font-weight:400;font-size:9px;color:#f9a825;">veraltet</span>', nie: ' <span style="font-weight:400;font-size:9px;">nicht gerechnet</span>' };
   cols.forEach(id => {
-    const r = variantResults[id];
-    const lbl = r ? escHtml(r.label) : (id === 'base' ? 'Basisdaten' : '—');
-    html += `<th class="clickable" data-variant-id="${id}" ${onClick(id)} style="background:${thBg(id)};color:${thFg(id)};" title="Klicken zum Aktivieren">${lbl}</th>`;
+    const lbl = escHtml(variantenName(id)) + (gutachtenVariante === id ? ' ★' : '');
+    html += `<th class="clickable" data-variant-id="${id}" ${onClick(id)} style="background:${thBg(id)};color:${thFg(id)};" title="Klicken zum Aktivieren">${lbl}${STATUS[variantenKennzahlStatus(id)]}</th>`;
   });
   html += `</tr></thead><tbody>`;
   rows.forEach((row, ri) => {
@@ -512,9 +549,6 @@ export function renderVergleich() {
     html += `<div style="color:var(--muted);font-size:9px;padding:4px 2px 0;">* kein Netz/Gebäude gezeichnet — Werte aus Grundlagen-Lastgang (Bedarf = Nutzwärme, Verluste aus Netzverlust-%)</div>`;
   }
   wrap.innerHTML = html;
-  // Also update the new vergleich-view container
-  const newWrap = document.getElementById('vergleich-view-table-wrap');
-  if (newWrap) newWrap.innerHTML = html;
 
   // Pareto-Diagramm rendern
   requestAnimationFrame(() => _renderParetoChart());
@@ -716,9 +750,33 @@ export function _getEtaMap() {
 }
 
 // ── Varianten ────────────────────────────────────────────────────────────────
+// Eine Regel für das ganze Projekt (s. lib/varianten-regeln.js): Was da ist
+// oder ohnehin kommt, liegt im gemeinsamen Stamm; was entschieden wird, im
+// Paket der Variante. activeVariantId === null ist der Hauptplan (früher
+// „Basisdaten“) — eine Variante wie jede andere, nur mit eigenem Speicherort.
 export let varianten = [];
+// Setter macht window.varianten zum Live-Wert (main.js) — _deleteVariante weist neu zu.
+export function setVarianten(v) { varianten = Array.isArray(v) ? v : []; }
 export let activeVariantId = null;
 export function setActiveVariantId(v) { activeVariantId = v; }
+// Variante, die ins Gutachten geht: variantKey ('base' | 'v_…') oder null = keine markiert.
+export let gutachtenVariante = null;
+export function setGutachtenVariante(v) { gutachtenVariante = v ?? null; }
+// Zweck des Hauptplans (die Varianten tragen ihren im eigenen Objekt).
+export let hauptplanZweck = '';
+export function setHauptplanZweck(v) { hauptplanZweck = String(v || ''); }
+// Vom Wärmenetz abgekoppelte Gebäude im Hauptplan (Varianten: v.gebaeudeAusschlüsse).
+export let baseGebaeudeAusschluesse = [];
+// Dach-PV-Belegung des Hauptplans ({gebId: {pvAktiv, pvFlaechen, …}}); null = noch nie erfasst.
+export let baseGebaeudePv = null;
+// Geometrie des Wärmenetzes (Trasse + Graph), die alle Varianten ohne eigenes Netz teilen.
+export let waermeNetzGemeinsam = null;
+// Maßnahmen, die nur in einer Variante gelten und gerade nicht aktiv sind:
+// { [variantKey]: [{ ziel: 'asset'|'kante', id, m }] }
+export let massnahmenAblage = {};
+// Wann sich eine Variante zuletzt geändert hat und wann ihre Kennzahlen
+// gerechnet wurden: { [variantKey]: { geaendert, berechnet } }
+export let variantenStand = {};
 export let baseNetzSnapshot = null;
 export let baseErzeugerSnapshot = null;
 // ACHTUNG — geänderte Bedeutung seit dem Delta-Modell: baseStromNetzSnapshot
@@ -762,11 +820,14 @@ export function massnahmeJahr(m) {
 // Binding) und spätere Reassignments hier sonst dort nicht ankämen (stale).
 // Stattdessen über diese Helfer lesen/schreiben:
 export function _captureVariantenKernzustand() {
-  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, stromNetzGemeinsam, ..._capturePhasenZustand() };
+  // Neue Maßnahmen vor dem Speichern ihrer Variante zuordnen — sonst gälten
+  // sie nach dem Laden (Altdaten-Regel) für alle.
+  _normalisiereNeueMassnahmen(variantKey(activeVariantId));
+  return { varianten, activeVariantId, baseNetzSnapshot, baseErzeugerSnapshot, baseStromNetzSnapshot, stromNetzGemeinsam, ..._capturePhasenZustand(), ..._captureVariantenZusatz() };
 }
-export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, stromNetzGemeinsam: sg, phasen: ps } = {}) {
+export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: aid, baseNetzSnapshot: bn, baseErzeugerSnapshot: be, baseStromNetzSnapshot: bs, stromNetzGemeinsam: sg, phasen: ps, ...zusatz } = {}) {
   varianten = v || [];
-  activeVariantId = (aid === undefined) ? null : aid;
+  activeVariantId = (aid === undefined || aid === null || !varianten.some(x => x.id === aid)) ? null : aid;
   baseNetzSnapshot = bn || null;
   baseErzeugerSnapshot = be || null;
   baseStromNetzSnapshot = bs || null;
@@ -774,6 +835,124 @@ export function _restoreVariantenKernzustand({ varianten: v, activeVariantId: ai
   // migriereVariantenFallsNoetig() zieht das nach, sobald das Netz steht.
   stromNetzGemeinsam = sg || null;
   phasen = ps || [];
+  _restoreVariantenZusatz(zusatz);
+}
+
+/** Zustand des Varianten-Modells jenseits der Snapshots (Projektdatei + Rückgängig). */
+export function _captureVariantenZusatz() {
+  return {
+    gutachtenVariante, hauptplanZweck, baseGebaeudeAusschluesse: [...baseGebaeudeAusschluesse],
+    baseGebaeudePv, waermeNetzGemeinsam, massnahmenAblage, variantenStand,
+  };
+}
+export function _restoreVariantenZusatz(z = {}) {
+  gutachtenVariante = z.gutachtenVariante ?? null;
+  hauptplanZweck = z.hauptplanZweck || '';
+  baseGebaeudeAusschluesse = Array.isArray(z.baseGebaeudeAusschluesse) ? [...z.baseGebaeudeAusschluesse] : [];
+  baseGebaeudePv = z.baseGebaeudePv || null;
+  waermeNetzGemeinsam = z.waermeNetzGemeinsam || null;
+  massnahmenAblage = (z.massnahmenAblage && typeof z.massnahmenAblage === 'object') ? z.massnahmenAblage : {};
+  variantenStand = (z.variantenStand && typeof z.variantenStand === 'object') ? z.variantenStand : {};
+}
+
+// ── Schicht neuer Objekte ────────────────────────────────────────────────────
+/**
+ * „Heute“ = das laufende Kalenderjahr (wie schichtBackfill). Bewusst NICHT das
+ * Minimum des Jahres-Sliders: das setzt _initYearSliderFromBaujahr auf das
+ * älteste Gebäude-Baujahr, und dann gälte jedes Jahr danach als Zukunft.
+ */
+export function basisJahr() {
+  return new Date().getFullYear();
+}
+/**
+ * Schicht für ein neu angelegtes Objekt — abgeleitet aus Slider-Jahr und
+ * Objektart (kategorie 'bedarf' | 'entscheidung'), außer der Nutzer hat in der
+ * Kopfleiste eine Schicht fest eingestellt.
+ */
+export function schichtFuerNeuesObjekt(kategorie = 'entscheidung') {
+  return schichtFuerNeu({ modus: getSchichtModus(), kategorie, jahr: globalYear, basisjahr: basisJahr() });
+}
+/** Baujahr eines neuen Objekts: das Slider-Jahr, wenn es in der Zukunft liegt. */
+export function baujahrFuerNeuesObjekt() {
+  return baujahrFuerNeu({ jahr: globalYear, basisjahr: basisJahr() });
+}
+
+// ── Hilfen rund um die aktive Variante ───────────────────────────────────────
+export function aktiverVariantKey() { return variantKey(activeVariantId); }
+export function variantenName(idOderKey) {
+  if (idOderKey == null || idOderKey === 'base') return HAUPTPLAN_NAME;
+  return varianten.find(v => v.id === idOderKey)?.name || 'Variante';
+}
+export function aktiverVariantenName() { return variantenName(activeVariantId); }
+/** Hat die aktive Variante ein eigenes Wärmenetz (statt des gemeinsamen)? */
+export function aktiveVarianteNetzEigen() {
+  if (activeVariantId === null) return false;
+  return !!varianten.find(v => v.id === activeVariantId)?.netzEigen;
+}
+
+/** Objekte, an denen Maßnahmen hängen können (Elektroassets + Kabel). */
+function _massnahmenTraeger() {
+  const assets = (window.ASSETS?.items || []).map(a => ({ ziel: 'asset', id: a.id, obj: a }));
+  const kanten = (stromEdges || []).map(e => ({ ziel: 'kante', id: e.id ?? `${e.u}|${e.v}`, obj: e }));
+  return [...assets, ...kanten];
+}
+
+function _objektSchicht(ziel, obj) {
+  if (ziel === 'asset') return obj.schicht;
+  // Kabel: die „späteste“ Schicht der Endpunkte (wie schichtAusEndpunkten).
+  const rang = { bestand: 0, entwicklung: 1, entscheidung: 2 };
+  const s = id => (window.ASSETS?.items || []).find(a => a.id === id)?.schicht || 'bestand';
+  const a = s(obj.u), b = s(obj.v);
+  return (rang[a] ?? 0) >= (rang[b] ?? 0) ? a : b;
+}
+
+/**
+ * Maßnahmen, die noch keinen Geltungsbereich haben (gerade angelegt), der
+ * Variante `key` zuordnen — bzw. „alle“, wenn das Objekt selbst nur in einer
+ * Variante existiert oder die Maßnahme ohnehin anfällt.
+ */
+export function _normalisiereNeueMassnahmen(key = variantKey(activeVariantId)) {
+  let n = 0;
+  for (const { ziel, obj } of _massnahmenTraeger()) {
+    for (const m of (obj.massnahmen || [])) {
+      if (!m || ('variante' in m)) continue;
+      m.variante = massnahmeStandardVariante({ objektSchicht: _objektSchicht(ziel, obj), typ: m.typ, aktivKey: key });
+      n++;
+    }
+  }
+  return n;
+}
+
+/** Altdaten: Maßnahmen ohne Geltungsbereich galten bisher überall — dabei bleibt es. */
+function _altMassnahmenAlleVarianten() {
+  const markiere = liste => { for (const m of (liste || [])) if (m && !('variante' in m)) m.variante = null; };
+  for (const { obj } of _massnahmenTraeger()) markiere(obj.massnahmen);
+  const snaps = [stromNetzGemeinsam, baseStromNetzSnapshot, ...varianten.map(v => v.stromnetz)];
+  for (const s of snaps) {
+    for (const i of (s?.items || [])) markiere(i.massnahmen);
+    for (const e of (s?.edges || [])) markiere(e.massnahmen);
+  }
+}
+
+/** Merkt, dass sich die aktive Variante geändert hat (Kennzahlen veralten). */
+export function markiereVarianteGeaendert(key = variantKey(activeVariantId)) {
+  variantenStand[key] = { ...(variantenStand[key] || {}), geaendert: new Date().toISOString() };
+}
+export function markiereVarianteBerechnet(key = variantKey(activeVariantId)) {
+  variantenStand[key] = { ...(variantenStand[key] || {}), berechnet: new Date().toISOString() };
+}
+/** 'aktuell' | 'veraltet' | 'nie' — Stand der Kennzahlen einer Variante. */
+export function variantenErgebnisStatus(key) {
+  const s = variantenStand[key];
+  if (!s?.berechnet) return 'nie';
+  return (s.geaendert && s.geaendert > s.berechnet) ? 'veraltet' : 'aktuell';
+}
+
+/** Aufruf nach jeder abgeschlossenen Planungstransaktion (lib/planning-transaction.js). */
+export function _nachPlanungstransaktion(label) {
+  _normalisiereNeueMassnahmen();
+  if (!/^Variante (wechseln|umbenennen)/.test(String(label || ''))) markiereVarianteGeaendert();
+  window.variantenUiAktualisieren?.();
 }
 
 // ── Stromnetz-Snapshot (Elektroassets/Kabel) — variantenspezifischer "Ast" ──
@@ -818,6 +997,8 @@ function _ladeStromNetzDelta(delta) {
  * Gibt den Migrationsbericht zurück (oder null, wenn nichts zu tun war).
  */
 export function migriereVariantenFallsNoetig() {
+  _altMassnahmenAlleVarianten();
+  _migriereWaermeNetz();
   const schonMigriert = stromNetzGemeinsam
     && varianten.every(v => istDelta(v.stromnetz))
     && istDelta(baseStromNetzSnapshot);
@@ -833,6 +1014,23 @@ export function migriereVariantenFallsNoetig() {
   // — ihr eigenes Delta ist genau dessen Entscheidungsschicht.
   baseStromNetzSnapshot = splitStromNetzState(live).delta;
   return bericht;
+}
+
+/**
+ * Wärmenetz ins Stamm-Modell überführen: Die Geometrie des Hauptplans wird
+ * gemeinsam. Varianten, deren Netz davon abweicht, behalten es als eigenes
+ * Netz — so geht keine vorhandene Variantenarbeit verloren. Idempotent.
+ */
+function _migriereWaermeNetz() {
+  const offen = varianten.some(v => v.netzEigen === undefined);
+  if (waermeNetzGemeinsam && !offen) return;
+  const basis = activeVariantId === null ? captureNetzState() : baseNetzSnapshot;
+  if (!waermeNetzGemeinsam) waermeNetzGemeinsam = waermeGeometrie(basis) || null;
+  for (const v of varianten) {
+    if (v.netzEigen !== undefined) continue;
+    const vNetz = (v.id === activeVariantId) ? captureNetzState() : v.netz;
+    v.netzEigen = !!(vNetz && basis && !geometrieGleich(vNetz, basis));
+  }
 }
 
 export function captureNetzState() {
@@ -1143,78 +1341,185 @@ export function applyErzeugerState(state) {
   window._wirtBausteineOverrides = JSON.parse(JSON.stringify(state?.wirtBausteineOverrides || {}));
 }
 
+// ── Arbeitsstand sichern und laden ───────────────────────────────────────────
+//
+// Sichern zerlegt den Live-Zustand in Stamm und Paket der aktiven Variante:
+//   Stromnetz   Bestand/Entwicklung → stromNetzGemeinsam, Entscheidungen → Delta
+//   Wärmenetz   Geometrie → waermeNetzGemeinsam (außer bei eigenem Netz), Parameter → Variante
+//   Erzeuger    je Variante
+//   Maßnahmen   mit Geltungsbereich dieser Variante → massnahmenAblage
+//   Dach-PV     Belegung je Variante (Dachdaten bleiben am Gebäude)
+// Laden setzt alles wieder zusammen.
+
+/** Sichert den Live-Zustand in die aktive Variante (bzw. den Hauptplan). */
+export function sichereAktivenStand() {
+  _migriereWaermeNetz();
+  const key = variantKey(activeVariantId);
+  const cur = activeVariantId === null ? null : varianten.find(v => v.id === activeVariantId);
+  _normalisiereNeueMassnahmen(key);
+  // Maßnahmen dieser Variante zuerst herausnehmen: Stamm-Snapshots dürfen sie
+  // nicht enthalten, sonst tauchten sie in jeder Variante auf.
+  // Auch Maßnahmen, die von hier aus einer ANDEREN Variante zugeordnet wurden,
+  // wandern in deren Ablage.
+  const traeger = _massnahmenTraeger();
+  const schluessel = new Set([key]);
+  for (const { obj } of traeger) for (const m of (obj.massnahmen || [])) if (m?.variante != null) schluessel.add(m.variante);
+  for (const k of schluessel) {
+    const raus = massnahmenHerausnehmen(traeger, k);
+    massnahmenAblage[k] = [...(massnahmenAblage[k] || []).filter(e => !raus.some(r => r.m?.id === e.m?.id)), ...raus];
+  }
+
+  const netz = captureNetzState();
+  if (!(cur && cur.netzEigen)) waermeNetzGemeinsam = waermeGeometrie(netz);
+  const erzeuger = captureErzeugerState();
+  const strom = _sichereStromNetzDelta();
+  const pv = pvBelegungErfassen(gebaeude);
+  if (cur) { cur.netz = netz; cur.erzeuger = erzeuger; cur.stromnetz = strom; cur.gebaeudePv = pv; }
+  else { baseNetzSnapshot = netz; baseErzeugerSnapshot = erzeuger; baseStromNetzSnapshot = strom; baseGebaeudePv = pv; }
+  return key;
+}
+
+/** Spielt den Stand der Variante `id` (null = Hauptplan) in den Live-Zustand. */
+function _ladeStand(id) {
+  const rec = id === null ? null : varianten.find(v => v.id === id);
+  if (id !== null && !rec) return false;
+  const key = variantKey(id);
+  const netz0 = rec ? rec.netz : baseNetzSnapshot;
+  const eigen = !!rec?.netzEigen;
+  applyNetzState(eigen ? netz0 : netzMitGeometrie(netz0, waermeNetzGemeinsam));
+  applyErzeugerState(rec ? rec.erzeuger : baseErzeugerSnapshot);
+  _ladeStromNetzDelta(rec ? rec.stromnetz : baseStromNetzSnapshot);
+  // Maßnahmen dieser Variante wieder an ihre Objekte hängen. Was kein Objekt
+  // mehr findet (gelöschtes Asset), bleibt abgelegt statt still zu verschwinden.
+  massnahmenAblage[key] = massnahmenEinsetzen(_massnahmenTraeger(), massnahmenAblage[key] || []);
+  const vorher = new Map();
+  const geaendert = pvBelegungAnwenden(gebaeude, rec ? rec.gebaeudePv : baseGebaeudePv, vorher);
+  if (geaendert.length) window.variantenPvNeuZeichnen?.(geaendert, vorher);
+  if (typeof window.redrawAllAssets === 'function') window.redrawAllAssets();
+  return true;
+}
+
+function _nachWechsel() {
+  // Wechsel ist eine synchrone Transaktion: erst alle Teilzustände anwenden,
+  // dann genau einmal den Wärmegraphen und die Ergebnis-Caches erneuern.
+  if (netzEdges.length > 0) recalcNetz();
+  // Nur die Zahlen der jetzt aktiven Variante verwerfen (sie werden gleich neu
+  // gerechnet) — die der anderen bleiben für den Vergleich stehen.
+  delete variantResults[variantKey(activeVariantId)];
+  renderVariantenBar();
+  updateVariantBanner();
+  if (typeof window.schichtBarRender === 'function') window.schichtBarRender();
+  window.variantenUiAktualisieren?.();
+  updateAllDeckungen();
+  // Kennzahlen der jetzt aktiven Variante neu ablegen (nicht jede Konstellation
+  // stößt das über die Erzeuger-Anzeigen an)
+  cacheVariantResultsDebounced();
+}
+
 export function activateVariant(id, _transactionActive = false) {
   if (!_transactionActive && typeof window.runPlanningTransaction === 'function') {
     return window.runPlanningTransaction('Variante wechseln', () => activateVariant(id, true));
   }
-  // Aktuellen Zustand sichern — Bestand/Entwicklung gehen in den gemeinsamen
-  // Pool, nur die Entscheidungsschicht in die Variante.
-  if (activeVariantId === null) {
-    baseNetzSnapshot = captureNetzState();
-    baseErzeugerSnapshot = captureErzeugerState();
-    baseStromNetzSnapshot = _sichereStromNetzDelta();
-  } else {
-    const cur = varianten.find(v => v.id === activeVariantId);
-    if (cur) { cur.netz = captureNetzState(); cur.erzeuger = captureErzeugerState(); cur.stromnetz = _sichereStromNetzDelta(); }
-  }
-  // Neuen Zustand anwenden
+  if (id !== null && !varianten.some(v => v.id === id)) return;
+  sichereAktivenStand();
   activeVariantId = id;
-  if (id === null) {
-    applyNetzState(baseNetzSnapshot);
-    applyErzeugerState(baseErzeugerSnapshot);
-    _ladeStromNetzDelta(baseStromNetzSnapshot);
-  } else {
-    const target = varianten.find(v => v.id === id);
-    if (!target) return;
-    applyNetzState(target.netz);
-    applyErzeugerState(target.erzeuger);
-    _ladeStromNetzDelta(target.stromnetz);
-  }
-  // Variantenwechsel ist eine synchrone Transaktion: erst alle Teilzustände
-  // anwenden, dann genau einmal den Wärmegraphen und die Ergebnis-Caches erneuern.
-  if (netzEdges.length > 0) recalcNetz();
-  variantResults = {};
-  renderVariantenBar();
-  updateVariantBanner();
-  // Der Schicht-Umschalter zeigt im Planungsmodus die aktive Variante an —
-  // nach einem Wechsel muss er nachziehen (defensiv, 13v lädt eigenständig).
-  if (typeof window.schichtBarRender === 'function') window.schichtBarRender();
-  updateAllDeckungen();
+  _ladeStand(id);
+  _nachWechsel();
 }
 
-export function addVariante() {
-  const name = prompt('Name der neuen Variante:', `Variante ${varianten.length + 1}`);
-  if (!name) return;
+/**
+ * Neue Variante anlegen.
+ * opts: { name, zweck, von (Varianten-id oder null = Hauptplan; undefined = aktive),
+ *         leer (true = ohne eigene Entscheidungen: kein Strom-Paket, keine Erzeuger),
+ *         herkunft ('manuell' | 'optimierer'), ohneWechselRender }
+ * Ohne opts fragt ein Dialog (window.variantenDialogNeu) nach Name, Ausgangspunkt und Zweck.
+ */
+export function addVariante(opts) {
+  if (!opts || typeof opts !== 'object') {
+    if (typeof window.variantenDialogNeu === 'function') return window.variantenDialogNeu();
+    const name = prompt('Name der neuen Variante:', `Variante ${varianten.length + 1}`);
+    if (!name) return;
+    opts = { name };
+  }
   if (typeof window.runPlanningTransaction === 'function') {
-    return window.runPlanningTransaction('Variante anlegen', () => _addVarianteWithName(name));
+    return window.runPlanningTransaction('Variante anlegen', () => _neueVariante(opts));
   }
-  return _addVarianteWithName(name);
+  return _neueVariante(opts);
 }
 
-function _addVarianteWithName(name) {
-  if (activeVariantId === null) {
-    baseNetzSnapshot = captureNetzState();
-    baseErzeugerSnapshot = captureErzeugerState();
-    baseStromNetzSnapshot = _sichereStromNetzDelta();
+/** Neue Variante = Ast vom Ausgangspunkt. Bestand und Entwicklung bleiben gemeinsam. */
+export function _neueVariante({ name, zweck = '', von, leer = false, herkunft = 'manuell', schichtKorrektur = null } = {}) {
+  if (!name) return null;
+  // Beim ersten Abzweigen sortiert der Dialog Zukunftsobjekte einmalig in
+  // „kommt ohnehin“ (gemeinsam) und „nur Hauptplan“ — vor dem Sichern anwenden.
+  if (schichtKorrektur) {
+    for (const a of (window.ASSETS?.items || [])) {
+      if (schichtKorrektur[a.id]) a.schicht = schichtKorrektur[a.id];
+    }
   }
-  const id = 'v_' + Date.now();
-  // Neue Variante = Ast vom AKTUELL aktiven Zustand. Kopiert werden dabei nur
-  // die PLANUNGSENTSCHEIDUNGEN — Bestand und Entwicklung bleiben gemeinsam, die
-  // Variante startet also zwangsläufig auf derselben Grundlage. Genau das macht
-  // den späteren Vergleich überhaupt aussagekräftig.
+  // Ausgangspunkt aktivieren (ohne eigene Transaktion — wir laufen schon in einer)
+  if (von !== undefined && von !== activeVariantId) {
+    sichereAktivenStand();
+    activeVariantId = von;
+    _ladeStand(von);
+  }
+  const vonKey = sichereAktivenStand();
+  return _varianteAusLiveAnlegen({ name, zweck, leer, herkunft, vonKey });
+}
+
+/**
+ * Legt aus dem aktuellen Live-Zustand eine neue Variante an und aktiviert sie.
+ * Voraussetzung: Der bisherige Stand wurde mit sichereAktivenStand() gesichert
+ * (Rückgabe = vonKey). Dazwischen darf der Live-Zustand verändert werden — so
+ * übernimmt der Optimierer seinen Erzeugerpark, ohne die Ausgangsvariante zu ändern.
+ */
+export function _varianteAusLiveAnlegen({ name, zweck = '', leer = false, herkunft = 'manuell', vonKey } = {}) {
+  vonKey = vonKey ?? variantKey(activeVariantId);
+  const vonVariante = vonKey === 'base' ? null : varianten.find(v => v.id === vonKey);
+  const id = 'v_' + Date.now() + Math.random().toString(36).slice(2, 5);
+  const key = variantKey(id);
+
+  if (leer) {
+    // Nur Stamm: keine Strom-Entscheidungen, keine Erzeuger, keine eigenen Maßnahmen.
+    _ladeStromNetzDelta({ items: [], nodes: [], edges: [] });
+    applyErzeugerState({});
+    massnahmenAblage[key] = [];
+  } else {
+    // Maßnahmen des Ausgangspunkts mitnehmen — mit neuen IDs, damit jede
+    // Maßnahme projektweit eindeutig bleibt (Abhängigkeiten werden umgehängt).
+    const quelle = massnahmenAblage[vonKey] || [];
+    const neueId = new Map(quelle.map(e => [e.m.id, `${e.m.id}_${id.slice(-5)}`]));
+    massnahmenAblage[key] = quelle.map(e => ({
+      ziel: e.ziel, id: e.id,
+      m: { ...JSON.parse(JSON.stringify(e.m)), id: neueId.get(e.m.id), variante: key,
+           dependsOn: (e.m.dependsOn || []).map(d => neueId.get(d) || d) },
+    }));
+  }
+
   varianten.push({
-    id, name,
+    id, name, zweck,
+    herkunft: { art: herkunft, von: vonKey, datum: new Date().toISOString(), leer: !!leer },
     netz: captureNetzState(),
     erzeuger: captureErzeugerState(),
     stromnetz: _sichereStromNetzDelta(),
-    gebaeudeAusschlüsse: []
+    gebaeudeAusschlüsse: [...(vonVariante ? (vonVariante.gebaeudeAusschlüsse || []) : baseGebaeudeAusschluesse)],
+    gebaeudePv: pvBelegungErfassen(gebaeude),
+    // Neue Varianten teilen das Wärmenetz — außer der Ausgangspunkt hatte ein eigenes.
+    netzEigen: !!vonVariante?.netzEigen,
   });
   activeVariantId = id;
-  renderVariantenBar();
-  updateVariantBanner();
+  massnahmenAblage[key] = massnahmenEinsetzen(_massnahmenTraeger(), massnahmenAblage[key]);
+  markiereVarianteGeaendert(key);
+  _nachWechsel();
+  return id;
 }
 
-export function deleteVariante(id) {
+export function deleteVariante(id, _bestaetigt = false) {
+  if (!_bestaetigt) {
+    const v = varianten.find(x => x.id === id);
+    if (!v) return;
+    if (!confirm(`Variante „${v.name}“ löschen?\n\nIhre eigenen Planungsobjekte, Erzeuger und Maßnahmen gehen verloren. Rückgängig ist über „Rückgängig“ möglich.`)) return;
+  }
   if (typeof window.runPlanningTransaction === 'function') {
     return window.runPlanningTransaction('Variante löschen', () => _deleteVariante(id));
   }
@@ -1222,20 +1527,63 @@ export function deleteVariante(id) {
 }
 
 function _deleteVariante(id) {
-  if (activeVariantId === id) activateVariant(null);
+  if (activeVariantId === id) activateVariant(null, true);
   varianten = varianten.filter(v => v.id !== id);
+  delete massnahmenAblage[id];
+  delete variantenStand[id];
+  if (gutachtenVariante === id) gutachtenVariante = null;
   renderVariantenBar();
+  window.variantenUiAktualisieren?.();
 }
 
-export function renameVariante(id) {
-  const v = varianten.find(x => x.id === id);
-  if (!v) return;
-  const name = prompt('Neuer Name:', v.name);
+export function renameVariante(id, neuerName) {
+  const v = id == null ? null : varianten.find(x => x.id === id);
+  if (id != null && !v) return;
+  const name = neuerName ?? prompt('Neuer Name:', v.name);
   if (name) {
-    const apply = () => { v.name = name; renderVariantenBar(); };
+    const apply = () => { v.name = name; renderVariantenBar(); window.variantenUiAktualisieren?.(); };
     if (typeof window.runPlanningTransaction === 'function') return window.runPlanningTransaction('Variante umbenennen', apply);
     apply();
   }
+}
+
+/** Zweck einer Variante setzen (null = Hauptplan). */
+export function setVariantenZweck(id, zweck) {
+  if (id == null) hauptplanZweck = String(zweck || '');
+  else { const v = varianten.find(x => x.id === id); if (v) v.zweck = String(zweck || ''); }
+  window.variantenUiAktualisieren?.();
+}
+
+/** Markiert eine Variante als Gutachtenvariante (variantKey) — erneuter Aufruf hebt auf. */
+export function markiereGutachtenVariante(key) {
+  gutachtenVariante = (gutachtenVariante === key) ? null : key;
+  renderVariantenBar();
+  window.variantenUiAktualisieren?.();
+}
+
+/**
+ * Eigenes Wärmenetz für die aktive Variante ein-/ausschalten.
+ * an=true:  das aktuelle Netz wird zur Kopie, Änderungen gelten nur noch hier.
+ * an=false: die Variante übernimmt wieder das gemeinsame Netz (eigene Trassen gehen verloren).
+ */
+export function setVarianteNetzEigen(an) {
+  if (activeVariantId === null) return;
+  const v = varianten.find(x => x.id === activeVariantId);
+  if (!v || !!v.netzEigen === !!an) return;
+  const apply = () => {
+    if (an) {
+      // Erst den Stand ins Gemeinsame übernehmen, dann abkoppeln
+      waermeNetzGemeinsam = waermeGeometrie(captureNetzState());
+      v.netzEigen = true;
+    } else {
+      v.netzEigen = false;
+      applyNetzState(netzMitGeometrie(captureNetzState(), waermeNetzGemeinsam));
+      if (netzEdges.length > 0) recalcNetz();
+    }
+    window.variantenUiAktualisieren?.();
+  };
+  if (typeof window.runPlanningTransaction === 'function') return window.runPlanningTransaction('Wärmenetz der Variante', apply);
+  apply();
 }
 
 let _varPillsExpanded = false;
@@ -1244,57 +1592,62 @@ export function toggleVarPills() {
   renderVariantenBar();
 }
 
+/**
+ * Kopfleiste: Variante als Auswahl. Das Menü selbst rendert 33-varianten-ui.js
+ * (window.variantenMenuHtml); ohne das Modul bleibt die einfache Pillenleiste.
+ */
 export function renderVariantenBar() {
   const pills = document.getElementById('var-pills');
   if (!pills) return;
-  const MAX = 3; // bei mehr Varianten einklappen → „…+N"
+  if (typeof window.variantenLeisteHtml === 'function') {
+    pills.innerHTML = window.variantenLeisteHtml();
+    return;
+  }
+  const MAX = 3;
   let shown = varianten;
   let hidden = 0;
   if (varianten.length > MAX && !_varPillsExpanded) {
     shown = varianten.slice(0, MAX);
-    // aktive Variante immer sichtbar halten, auch wenn eingeklappt
     const act = varianten.find(v => v.id === activeVariantId);
     if (act && !shown.includes(act)) shown = shown.concat(act);
     hidden = varianten.length - shown.length;
   }
   const pillHtml = v =>
-    `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" data-click="activateVariant('${v.id}')" ondblclick="renameVariante('${v.id}')" title="Doppelklick zum Umbenennen">${escHtml(v.name)}</span>` +
-    `<span class="var-del-btn" data-click="deleteVariante('${v.id}')" title="Variante löschen">✕</span>`;
+    `<span class="var-pill ${activeVariantId === v.id ? 'active' : ''}" data-click="activateVariant('${v.id}')" title="${escHtml(v.name)}">${escHtml(v.name)}</span>`;
   let html =
-    `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)">Basisdaten</span>` +
+    `<span class="var-pill var-pill-base ${activeVariantId === null ? 'active' : ''}" data-click="activateVariant(null)">${HAUPTPLAN_NAME}</span>` +
     shown.map(pillHtml).join('');
-  if (hidden > 0) {
-    html += `<span class="var-pill var-pill-more" data-click="toggleVarPills()" title="Alle ${varianten.length} Varianten anzeigen">…+${hidden}</span>`;
-  } else if (_varPillsExpanded && varianten.length > MAX) {
-    html += `<span class="var-pill var-pill-more" data-click="toggleVarPills()" title="Weniger anzeigen">‹ weniger</span>`;
-  }
+  if (hidden > 0) html += `<span class="var-pill var-pill-more" data-click="toggleVarPills()">…+${hidden}</span>`;
   pills.innerHTML = html;
 }
 
 export function updateVariantBanner() {
   const banner = document.getElementById('variant-banner');
   if (!banner) return;
-  if (activeVariantId === null) {
-    banner.style.display = 'none';
-  } else {
-    const v = varianten.find(x => x.id === activeVariantId);
-    document.getElementById('variant-banner-name').textContent = v ? v.name : '';
-    banner.style.display = 'block';
-  }
+  // Immer sichtbar, auch im Hauptplan: man soll jederzeit sehen, wo man arbeitet.
+  const nameEl = document.getElementById('variant-banner-name');
+  if (nameEl) nameEl.textContent = aktiverVariantenName();
+  window.variantenBannerAktualisieren?.();
+  banner.style.display = 'block';
 }
-export function isExcluded(id) {
-  if (activeVariantId === null) return false;
+
+function _ausschlussListe() {
+  if (activeVariantId === null) return baseGebaeudeAusschluesse;
   const v = varianten.find(x => x.id === activeVariantId);
-  return v ? (v.gebaeudeAusschlüsse || []).includes(id) : false;
+  if (!v) return [];
+  if (!v.gebaeudeAusschlüsse) v.gebaeudeAusschlüsse = [];
+  return v.gebaeudeAusschlüsse;
+}
+
+export function isExcluded(id) {
+  return _ausschlussListe().includes(id);
 }
 
 export function toggleAusschluss(id) {
-  if (activeVariantId === null) return;
-  const v = varianten.find(x => x.id === activeVariantId);
-  if (!v) return;
-  if (!v.gebaeudeAusschlüsse) v.gebaeudeAusschlüsse = [];
-  const idx = v.gebaeudeAusschlüsse.indexOf(id);
-  if (idx >= 0) v.gebaeudeAusschlüsse.splice(idx, 1);
-  else v.gebaeudeAusschlüsse.push(id);
+  const liste = _ausschlussListe();
+  const idx = liste.indexOf(id);
+  if (idx >= 0) liste.splice(idx, 1);
+  else liste.push(id);
+  markiereVarianteGeaendert();
   renderList(); updateViz(); updateTotals(); recalcNetz();
 }

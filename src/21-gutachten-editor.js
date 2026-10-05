@@ -1109,6 +1109,20 @@ let _gutExportLaeuft = false;
 
 export async function gutWordExport() {
   if (_gutExportLaeuft) return;
+  // Das Gutachten gehört zur ★-Variante. Abbildungen und Zahlen kommen aber aus
+  // dem Live-Zustand — ist gerade eine andere Variante aktiv, vorher fragen.
+  const konflikt = window.gutachtenVarianteKonflikt?.();
+  if (konflikt) {
+    if (confirm(`Gutachtenvariante ist „${konflikt.gutachten}“, aktiv ist „${konflikt.aktiv}“.
+
+Zur Gutachtenvariante wechseln? Die Abbildungen werden danach neu gezeichnet; den Export bitte erneut starten.`)) {
+      window.activateVariant?.(konflikt.id);
+      gutAktualisieren();
+      gutSay(`Zu „${konflikt.gutachten}“ gewechselt. Abbildungen neu gezeichnet — Export bitte erneut starten.`);
+      return;
+    }
+    if (!confirm(`Trotzdem mit der aktiven Variante „${konflikt.aktiv}“ exportieren?`)) return;
+  }
   if (typeof window.JSZip !== 'function') { gutSay('⚠ JSZip ist nicht geladen — Seite neu laden.', true); return; }
   _gutExportLaeuft = true;
   gutSay('Word-Datei wird erstellt …');

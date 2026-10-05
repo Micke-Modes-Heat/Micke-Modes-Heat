@@ -30,7 +30,7 @@ export function lastgangSchnappschuesseLeeren() { _schnappschuesse.clear(); }
 
 /** Name der Variante für die Beschriftung. */
 function _variantenName(id) {
-  if (id == null) return 'Basisdaten';
+  if (id == null) return 'Hauptplan';
   return varianten.find(v => v.id === id)?.name || 'Variante';
 }
 

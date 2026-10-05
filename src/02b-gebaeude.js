@@ -1,6 +1,6 @@
 // ── 02b-gebaeude.js — Karte-Init, Gebäude-CRUD, Energie, OSM, Rendering ──
 
-import { R_MIN, currentMode, isExcluded, setGebaeude, setGlobalYearValue, setNetzEdges, setNetworkLocked, setSelectedId, setStromEdges, setStromNodes, updateVizDebounced } from './01-globals-varianten.js';
+import { R_MIN, currentMode, isExcluded, schichtFuerNeuesObjekt, baujahrFuerNeuesObjekt, setGebaeude, setGlobalYearValue, setNetzEdges, setNetworkLocked, setSelectedId, setStromEdges, setStromNodes, updateVizDebounced } from './01-globals-varianten.js';
 import { lerpColor } from './02a-netz-physik.js';
 import { polygonAreaM2, polygonCenter, selectFromMap, updateViz } from './02c-karte-werkzeuge.js';
 import { clearNetz, hidePanels, populateZentraleSelect, recalcNetz, startDraw } from './03b-netz.js';
@@ -10,7 +10,7 @@ import { updateAllDeckungen } from './06c-dispatch-core.js';
 import { calcWirtschaftPanel } from './07b-analysis-economics.js';
 import { _batchImporting } from './01-globals-varianten.js';
 import { getAssetsForBuilding, deleteAsset } from './13a-assets-core.js';
-import { istSchicht, getAktiveSchicht } from './lib/schichten.js';
+import { istSchicht, SCHICHT } from './lib/schichten.js';
 import { kdMapOptionen } from './20-kartendrehung.js';
 // Auto-ergänzte Imports (ESM-Migration Phase 1, tools/fix-missing-imports.mjs)
 import { R_MAX } from './01-globals-varianten.js';
@@ -93,6 +93,9 @@ document.getElementById('map').addEventListener('contextmenu', e => e.preventDef
 export function setGlobalYear(val) {
   setGlobalYearValue(val);
   document.getElementById('year-display').textContent = window.globalYear;
+  // „Neu → …“ und das Banner hängen am Jahr (Bestand heute, Planung in der Zukunft)
+  window.schichtBarRender?.();
+  window.variantenBannerAktualisieren?.();
   // Lastgang für das Betrachtungsjahr skalieren (Abriss/Neubau/Sanierung)
   if (window._buildingHeatProfileMode) window.glBerechnenDebounced?.(0);
   else if (window._basisLastgangKw) _rescaleLastgangForYear(window.globalYear);
@@ -415,15 +418,23 @@ export function nextGebName(nutzung) {
 
 export function addGebaeude(opts={}){
   const id=opts.id || window.idCounter++;
+  // Planungsschicht: explizit (Projekt-/Variantenladen) > Import (OSM/WFS = vorhandene
+  // Gebäude, also Bestand) > abgeleitet aus Slider-Jahr. Gebäude sind Bedarf: in der
+  // Zukunft gezeichnet kommen sie ohnehin (Entwicklung) und erhalten das Slider-Jahr.
+  const _importiert = !!(opts.fromOsm || opts.fromWfs || opts.importSourceId);
+  const _schicht = istSchicht(opts.schicht) ? opts.schicht
+    : _importiert ? SCHICHT.BESTAND : schichtFuerNeuesObjekt('bedarf');
+  const _baujahr = opts.baujahr != null ? opts.baujahr
+    : (!istSchicht(opts.schicht) && _schicht !== SCHICHT.BESTAND ? baujahrFuerNeuesObjekt() : null);
   const g={id,name:opts.name || nextGebName(opts.nutzung),gebaeudenummer:opts.gebaeudenummer||'',waerme:'',spez:'',heizlast:'',spezHeizlast:'',
            flaeche:null,stockwerke:opts.stockwerke!=null?opts.stockwerke:1,nutzung:opts.nutzung||'',
            polygon:null,polygonLayer:null,circleMarker:null,labelMarker:null,
            fromOsm:opts.fromOsm||false,fromWfs:opts.fromWfs||false,osmId:opts.osmId||null,
-           baujahr: opts.baujahr!=null?opts.baujahr:null, baujährQuelle: opts.baujährQuelle||null,
+           baujahr: _baujahr, baujährQuelle: opts.baujährQuelle||null,
            abrissjahr: null, sanierungen: [], selected: false,
            // Planungsschicht: explizit (Projekt-/Variantenladen) sonst aktueller Eingabemodus.
            // Das Gebäude ist der primäre Träger — Elektroassets erben sie (createAsset/_syncSchichtToAssets).
-           schicht: istSchicht(opts.schicht) ? opts.schicht : getAktiveSchicht(),
+           schicht: _schicht,
            pvAktiv: false, pvDachanteil: opts.pvDachanteil ?? 30,
            // Default ist der Flaechen-Modus: gezeichnete Belegungsflaechen sind der
            // Regelfall, die Dachanteil-Pauschale nur noch der Schnellschaetzer.

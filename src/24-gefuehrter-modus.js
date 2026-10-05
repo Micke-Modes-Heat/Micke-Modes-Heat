@@ -405,7 +405,8 @@ export function guideGoTo(i, sanft = false) {
     if (step.view && typeof window.setViewMode === 'function') window.setViewMode(step.view);
     if (step.analyse && typeof window.setAnalyseSection === 'function') window.setAnalyseSection(step.analyse);
     if (step.tab && typeof window.setLeftTab === 'function') window.setLeftTab(step.tab);
-    if (step.schicht) { setAktiveSchicht(step.schicht); window.schichtBarRender?.(); }
+    // Schritte ohne eigene Vorgabe kehren zur automatischen Schicht-Regel zurück
+    setAktiveSchicht(step.schicht || 'auto'); window.schichtBarRender?.();
   } catch (e) { console.warn('[Geführter Modus] Schrittwechsel:', e); }
 
   guideRender();

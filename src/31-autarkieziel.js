@@ -223,7 +223,7 @@ export function ah2Render() {
   root.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
     <div style="font-size:12px;font-weight:600;">Autarkieziel — Mindestdeckung in jeder Stunde mit Batterie, Wasserstoff oder BHKW</div>
-    <div style="font-size:10px;color:var(--muted);">Stündlich über 8.760 h · Daten wie die PV-Varianten</div>
+    <div style="font-size:10px;color:var(--muted);">Stündlich über 8.760 h · Daten wie die PV-Auslegungen</div>
   </div>
   <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
     In <b>jeder</b> Stunde des Jahres soll mindestens der Zielanteil der elektrischen Last aus eigener Erzeugung oder aus Speichern kommen.

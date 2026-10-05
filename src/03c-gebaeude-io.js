@@ -1991,8 +1991,8 @@ export function renderGebPvPanel() {
     return;
   }
 
-  // Tabellenkopf
-  let html = `<div style="display:grid;grid-template-columns:auto 1fr 64px 50px;gap:4px 8px;align-items:center;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--border);">
+  // Tabellenkopf — darüber, wo die Belegung gilt (Dachdaten gemeinsam, Belegung je Variante)
+  let html = (window.pvBelegungWirkungHtml?.() || '') + `<div style="display:grid;grid-template-columns:auto 1fr 64px 50px;gap:4px 8px;align-items:center;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--border);">
     <span style="color:var(--muted)">PV</span>
     <span style="color:var(--muted)">Gebäude</span>
     <span style="color:var(--muted);text-align:right;">Dach%</span>
@@ -4082,10 +4082,17 @@ function _applyProjectData(project) {
       // Wirtschaftlichkeits-Overrides wiederherstellen
       if (project.wirtBausteineOverrides) window._wirtBausteineOverrides = project.wirtBausteineOverrides;
       if (project.wirtVdiOverrides)       window._wirtVdiOverrides       = project.wirtVdiOverrides;
-      // Varianten wiederherstellen (immer mit Basisdaten starten beim Laden)
+      // Varianten wiederherstellen. Der Live-Zustand in der Datei gehört zu der
+      // Variante, die beim Speichern aktiv war — also genau diese wieder
+      // aktivieren. Früher startete das Laden immer in den Basisdaten: der
+      // Stand einer Alternative wurde dann als Hauptplan gelesen und beim
+      // nächsten Wechsel über den echten Hauptplan geschrieben.
+      // Ausnahme: Altprojekte vor dem Delta-Modell (kein stromNetzGemeinsam) —
+      // deren Migration setzt den Hauptplan als Live-Zustand voraus.
       _restoreVariantenKernzustand({
+        ...project,
         varianten: project.varianten || [],
-        activeVariantId: null,
+        activeVariantId: project.stromNetzGemeinsam ? (project.activeVariantId ?? null) : null,
         baseNetzSnapshot: project.baseNetzSnapshot || null,
         baseErzeugerSnapshot: project.baseErzeugerSnapshot || null,
         baseStromNetzSnapshot: project.baseStromNetzSnapshot || null,
