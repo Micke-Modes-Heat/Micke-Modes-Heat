@@ -456,6 +456,7 @@ function dokumentPanel() {
             + (abgleich.fremdeKapitel.length > 6 ? ' · …' : '')
             + '. Inhalte bei Bedarf in die passenden Kapitel verschieben, leere Kapitel löschen.')
         : '')
+    + standardtextPanel()
     + deckblattPanel()
     + ueberschrift('Zurücksetzen')
     + knopf('↺ Standardgliederung neu anlegen', 'gutStandardAnlegen(true)', { gefahr: true, titel: 'Ersetzt das aktuelle Dokument samt aller Freitexte.' });
@@ -1008,6 +1009,44 @@ function deckblattFuerExport() {
   for (const [k, wert] of Object.entries(d)) if (k !== 'ansprechpersonen') out[k] = wert.trim() || v[k] || '';
   out.ansprechpersonen = d.ansprechpersonen.map((p, i) => ({ name: p.name.trim() || v.personen[i] || '', telefon: p.telefon.trim() }));
   return out;
+}
+
+/* ── Standardtexte: Formulierungsvariante und Vorgaben des Auftraggebers (lib/gutachten-einleitung.js) ── */
+const GUT_VORGABEN_KEY = 'mmh-gutachten-vorgaben';   // nur lokal im Browser: Erlasstexte gehören nicht in Code oder Projektdatei
+function gutVorgabenLesen() {
+  try { return localStorage.getItem(GUT_VORGABEN_KEY) || ''; } catch (e) { void e; return ''; }
+}
+export function gutSetVorgaben(text) {
+  try { localStorage.setItem(GUT_VORGABEN_KEY, String(text ?? '').trim()); } catch (e) { void e; gutSay('⚠ Vorgaben konnten im Browser nicht gespeichert werden.'); }
+  _gut.cache.clear();
+  renderSeite();
+}
+export function gutAndereFormulierung() {
+  if (!_gut.dok) return;
+  _gut.dok.textVariante = ((_gut.dok.textVariante || 0) + 1) % 3;
+  _gut.cache.clear();
+  neuZeichnen();
+  gutSay('✓ Standardtexte in einer anderen Formulierung.');
+}
+/** Eingaben der Standardtexte — Deckblattfelder vor Projekt-Stammdaten. Wird von 17-gutachten-grafik.js gelesen. */
+export function gutStandardtextDaten() {
+  const d = _gut.dok?.deckblatt || {};
+  const v = deckblattVorgaben();
+  return {
+    liegenschaft: String(d.liegenschaft || '').trim() || v.liegenschaft,
+    ort: String(d.ort || '').trim() || v.ort,
+    variante: _gut.dok?.textVariante || 0,
+    vorgaben: gutVorgabenLesen(),
+  };
+}
+
+function standardtextPanel() {
+  return ueberschrift('Standardtexte')
+    + hinweis('Einleitungstexte gibt es in mehreren gleichwertigen Formulierungen; die Wahl bleibt fest, bis Sie umschalten.')
+    + knopf('↻ Andere Formulierung', 'gutAndereFormulierung()', { titel: 'Wechselt die Formulierung der Standardtexte (z. B. 1.1 Ziele und Grundsätze).' })
+    + feldLabel('Vorgaben des Auftraggebers (Erlasse)')
+    + `<textarea rows="5" data-change="gutSetVorgaben(this.value)" placeholder="Kurzfassung der maßgeblichen Erlasse/Vorgaben; Absätze durch Leerzeile trennen" style="${EINGABE_STIL}width:100%;box-sizing:border-box;resize:vertical;">${esc(gutVorgabenLesen())}</textarea>`
+    + hinweis('Wird nur in diesem Browser gespeichert (nicht in der Projektdatei) und gilt für alle Gutachten. Erscheint in Kapitel 1.1.');
 }
 
 function deckblattPanel() {

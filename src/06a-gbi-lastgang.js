@@ -543,6 +543,7 @@ export function captureWaermeGrundlagen() {
     gewicht2:value('gl-gew2'),
     lastgangKw:glLastgangKw ? Array.from(glLastgangKw) : null,
     timeSeriesMeta:glTimeSeriesMeta ? structuredClone(glTimeSeriesMeta) : null,
+    bestandsanlage:window.getBestandsanlage?.() ?? null,
   };
 }
 
@@ -552,6 +553,7 @@ export function restoreWaermeGrundlagen(data) {
     const element=document.getElementById(id);
     if (element) element.value=value ?? fallback;
   };
+  window.setBestandsanlage?.(source.bestandsanlage);
   set('gl-gesamt',source.gesamtMwh,'');
   for (let i=0;i<12;i++) set(`gl-m${i}`,source.monatswerte?.[i],'');
   set('gl-stadt',source.stadt,'Kassel');

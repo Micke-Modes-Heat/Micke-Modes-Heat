@@ -38,16 +38,29 @@ export const GB_SCHWELLEN = {
 
 const jahrVon = v => { const j = parseInt(v, 10); return Number.isFinite(j) ? j : null; };
 const zahlVon = v => { const x = parseFloat(v); return Number.isFinite(x) ? x : 0; };
+/** Bruttogeschossfläche: Grundfläche (g.flaeche, wie im Tool) × Geschosse. Bezugsfläche aller Kennwerte im Gutachten. */
+export const gbBgf = g => zahlVon(g.flaeche) * Math.max(1, parseInt(g.stockwerke, 10) || 1);
+/** Bauzustand als Zahl 1 (gut) bis 3 (schlecht); A/B/C aus älteren Projekten werden übersetzt. */
+export function gbZustandZahl(z) {
+  const t = String(z ?? '').trim().toUpperCase();
+  if (!t) return NaN;
+  if ({ A: 1, B: 2, C: 3 }[t]) return { A: 1, B: 2, C: 3 }[t];
+  const x = parseFloat(t.replace(',', '.'));
+  return Number.isFinite(x) ? x : NaN;
+}
 
 /**
  * Wertet die Gebäude aus.
- * opts: { stichjahr = 2026, bis = 2050, ausgeschlossen = id => false }
+ * opts: { stichjahr = 2026, bis = 2050, ausgeschlossen = id => false,
+ *         nutzungLabel = id => id  (Anzeigename der Nutzung),
+ *         referenzSpez = g => NaN  (spez. Wärmeverbrauch eines Neubaus gleicher Nutzung je m² BGF, Vergleichsmaßstab) }
  * Ergebnis: { stichjahr, istJahr, endJahr, anzahl: { gesamt, bestand, neubau, abriss, saniert }, ist, jahre, ereignisse, ereignisseJahr }
  */
 export function gbAuswertung(gebaeude, statsFn, opts = {}) {
   const stich = opts.stichjahr ?? GB_STICHJAHR;
   const bis = opts.bis ?? 2050;
   const aus = opts.ausgeschlossen || (() => false);
+  const lbl = opts.nutzungLabel || (n => n);
   const geb = (gebaeude || []).filter(g => g && !aus(g.id));
   const ist = stich - 1;
   const bj = g => jahrVon(g.baujahr), aj = g => jahrVon(g.abrissjahr);
@@ -61,18 +74,18 @@ export function gbAuswertung(gebaeude, statsFn, opts = {}) {
     const name = g.name || `Gebäude ${g.id}`;
     if (istNeubau(g)) {
       const st = stats(g, bj(g));
-      ereignisse.push({ jahr: bj(g), art: 'neubau', name, nutzung: g.nutzung || '', deltaMwh: st.waerme || 0, deltaKw: st.heizlast || 0, flaecheM2: zahlVon(g.flaeche) });
+      ereignisse.push({ jahr: bj(g), art: 'neubau', name, nutzung: g.nutzung ? lbl(g.nutzung) : '', deltaMwh: st.waerme || 0, deltaKw: st.heizlast || 0, flaecheM2: gbBgf(g) });
     }
     if (aj(g) !== null && aj(g) >= stich && aj(g) < 9999) {
       const st = stats(g, aj(g) - 1);
-      ereignisse.push({ jahr: aj(g), art: 'abriss', name, nutzung: g.nutzung || '', deltaMwh: -(st.waerme || 0), deltaKw: -(st.heizlast || 0), flaecheM2: -zahlVon(g.flaeche) });
+      ereignisse.push({ jahr: aj(g), art: 'abriss', name, nutzung: g.nutzung ? lbl(g.nutzung) : '', deltaMwh: -(st.waerme || 0), deltaKw: -(st.heizlast || 0), flaecheM2: -gbBgf(g) });
     }
     for (const s of g.sanierungen || []) {
       if (!(s.jahr >= stich)) continue;
       const vor = stats(g, s.jahr - 1), nach = stats(g, s.jahr);
       if (!aktiv(nach)) continue;
       ereignisse.push({
-        jahr: s.jahr, art: 'sanierung', name, nutzung: g.nutzung || '', deltaMwh: (nach.waerme || 0) - (vor.waerme || 0), deltaKw: (nach.heizlast || 0) - (vor.heizlast || 0),
+        jahr: s.jahr, art: 'sanierung', name, nutzung: g.nutzung ? lbl(g.nutzung) : '', deltaMwh: (nach.waerme || 0) - (vor.waerme || 0), deltaKw: (nach.heizlast || 0) - (vor.heizlast || 0),
         flaecheM2: 0, vorSpez: vor.spez, nachSpez: nach.spez,
       });
     }
@@ -97,7 +110,7 @@ export function gbAuswertung(gebaeude, statsFn, opts = {}) {
       const st = stats(g, y);
       if (!aktiv(st)) continue;
       const seg = j.segmente[istNeubau(g) ? 'neubau' : st.status === 'saniert' ? 'saniert' : 'unsaniert'];
-      const fl = zahlVon(g.flaeche);
+      const fl = gbBgf(g);
       j.anzahl++; seg.anzahl++;
       j.bedarfMwh += st.waerme || 0; seg.bedarfMwh += st.waerme || 0;
       j.heizlastKw += st.heizlast || 0; seg.heizlastKw += st.heizlast || 0;
@@ -116,21 +129,24 @@ export function gbAuswertung(gebaeude, statsFn, opts = {}) {
       abriss: geb.filter(g => aj(g) !== null && aj(g) >= stich && aj(g) < 9999).length,
       saniert: geb.filter(g => (g.sanierungen || []).some(s => s.jahr >= stich)).length,
     },
-    ist: gbIst(geb.filter(g => !istNeubau(g)), statsFn, ist, jahre[0]),
+    ist: gbIst(geb.filter(g => !istNeubau(g)), statsFn, ist, jahre[0], opts.referenzSpez, lbl),
     jahre, ereignisse, ereignisseJahr,
   };
 }
 
 /** Auswertung des Ist-Bestands: Nutzung, Baualter, spezifische Verbräuche, Großverbraucher, Datenherkunft. */
-function gbIst(bestand, statsFn, istJahr, jahr0) {
+function gbIst(bestand, statsFn, istJahr, jahr0, referenzSpez, lbl = n => n) {
   const zeilen = bestand.map(g => {
     const st = statsFn(g, istJahr);
-    const fl = zahlVon(g.flaeche);
+    const fl = gbBgf(g);
+    const ref = referenzSpez ? Number(referenzSpez(g)) : NaN;
     const bedarf = st.waerme || 0;
     return {
-      id: g.id, name: g.name || `Gebäude ${g.id}`, nutzung: g.nutzung || 'ohne Angabe', baujahr: jahrVon(g.baujahr), flaecheM2: fl,
+      id: g.id, name: g.name || `Gebäude ${g.id}`, nutzung: g.nutzung ? lbl(g.nutzung) : 'ohne Angabe', baujahr: jahrVon(g.baujahr), flaecheM2: fl,
       bedarfMwh: bedarf, heizlastKw: st.heizlast || 0, spezKwhM2: fl > 0 && bedarf > 0 ? (bedarf * 1000) / fl : NaN,
       aktiv: st.status === 'bestand' || st.status === 'saniert', gesetzt: !!(g.waermeManual || g.heizlastManual),
+      zustand: gbZustandZahl(g.zustand), referenzSpez: Number.isFinite(ref) && ref > 0 ? ref : NaN,
+      abrissjahr: jahrVon(g.abrissjahr) !== null && jahrVon(g.abrissjahr) < 9999 ? jahrVon(g.abrissjahr) : null,
     };
   }).filter(z => z.aktiv);
 
@@ -155,7 +171,25 @@ function gbIst(bestand, statsFn, istJahr, jahr0) {
   const nachSpez = [...mitSpez].sort((a, b) => b.spezKwhM2 - a.spezKwhM2);
   const bedarf = summe(zeilen, z => z.bedarfMwh);
   const vor1979 = zeilen.filter(z => z.baujahr !== null && z.baujahr <= 1978);
+  // flächengewichtete Mittel: Bauzustand, Referenzwert (nur Gebäude mit Fläche und Wert)
+  const gew = (feld, mitBedarf) => {
+    const l = zeilen.filter(z => z.flaecheM2 > 0 && ok(z[feld]) && (!mitBedarf || ok(z.spezKwhM2)));
+    const fl = summe(l, z => z.flaecheM2);
+    return { wert: fl > 0 ? summe(l, z => z[feld] * z.flaecheM2) / fl : NaN, anzahl: l.length };
+  };
+  const zust = gew('zustand'), ref = gew('referenzSpez', true);
+  // Faktor zum Referenzwert je Nutzungsart (nur Gebäude mit beiden Werten)
+  const nutzungFaktor = [...new Set(mitSpez.filter(z => ok(z.referenzSpez)).map(z => z.nutzung))].map(n => {
+    const l = mitSpez.filter(z => z.nutzung === n && ok(z.referenzSpez));
+    const f = l.map(z => z.spezKwhM2 / z.referenzSpez);
+    return { nutzung: n, anzahl: l.length, faktorMin: Math.min(...f), faktorMax: Math.max(...f),
+      spezMin: Math.min(...l.map(z => z.spezKwhM2)), spezMax: Math.max(...l.map(z => z.spezKwhM2)),
+      faktorMittel: summe(l, z => z.spezKwhM2 * z.flaecheM2) / summe(l, z => z.referenzSpez * z.flaecheM2),
+      baujahrMin: Math.min(...l.map(z => z.baujahr ?? Infinity)), baujahrMax: Math.max(...l.map(z => z.baujahr ?? -Infinity)) };
+  }).sort((a, b) => b.faktorMittel - a.faktorMittel);
   return {
+    zustandMittel: zust.wert, zustandAnzahl: zust.anzahl, referenzSpez: ref.wert, referenzAnzahl: ref.anzahl, nutzungFaktor,
+    abrissGeplant: zeilen.filter(z => z.abrissjahr !== null).length,
     anzahl: zeilen.length, flaecheM2: summe(zeilen, z => z.flaecheM2), bedarfMwh: bedarf, heizlastKw: summe(zeilen, z => z.heizlastKw),
     spezKwhM2: jahr0?.spezKwhM2 ?? NaN, spezWM2: jahr0?.spezWM2 ?? NaN,
     nutzung, baualter, spezKlassen, baujahrMittel: jahreMitBj.length ? summe(jahreMitBj, x => x) / jahreMitBj.length : NaN, baujahrMedian: median,
@@ -190,7 +224,7 @@ export function gbTextBestand(a, o = {}) {
     return out;
   }
   out.push(absatz(`Der Gebäudebestand (Baujahr vor ${a.stichjahr}) umfasst ${nf(i.anzahl)} ${kleinN(i.anzahl, 'Gebäude', 'Gebäude')}`
-    + (i.flaecheM2 > 0 ? ` mit zusammen ${nf(i.flaecheM2)} m² Fläche` : '')
+    + (i.flaecheM2 > 0 ? ` mit zusammen ${nf(i.flaecheM2)} m² Bruttogeschossfläche` : '')
     + `. Der Wärmebedarf beträgt ${nf(i.bedarfMwh)} MWh pro Jahr, die Summe der Einzelheizlasten ${nf(i.heizlastKw)} kW.`
     + ' Die Summe der Einzelheizlasten ist nicht die Spitzenlast der Liegenschaft; diese liegt wegen der Gleichzeitigkeit niedriger (Kapitel 2.2).'));
 
@@ -226,6 +260,36 @@ export function gbTextBestand(a, o = {}) {
     }[klasse], haupt ? ` Die meisten Gebäude (${nf(haupt.anzahl)} von ${nf(summe(bereich, k => k.anzahl))}) liegen im Bereich ${haupt.label} kWh/(m²·a).` : ''));
   }
 
+  // Bezugsfläche, Vergleich mit dem Neubauniveau, Bauzustand und Sanierungsbedarf
+  if (ok(i.spezKwhM2)) {
+    out.push(absatz('Bezugsfläche der Kennwerte ist die Bruttogeschossfläche (Grundfläche × Geschosse). ',
+      o.beheizteFlaecheBelastbar ? '' : 'Da keine belastbaren Daten zur tatsächlich beheizten Fläche vorliegen, ist der ermittelte Kennwert als konservative Untergrenze zu bewerten; der spezifische Verbrauch je beheizter Fläche dürfte entsprechend höher liegen.'));
+  }
+  if (ok(i.spezKwhM2) && ok(i.referenzSpez)) {
+    const f = i.spezKwhM2 / i.referenzSpez;
+    out.push(absatz('Zum Vergleich: Ein nach dem Standard ', F('Effizienzstandard Neubau, z. B. EGB xx', o.standard),
+      ` errichtetes Gebäude gleicher Nutzung erreicht im flächengewichteten Mittel einen spezifischen Wärmeverbrauch von rund ${nf(i.referenzSpez)} kWh/(m²·a). `,
+      f >= 1.15 ? `Der Bestand liegt damit beim ${nf(f, 1)}-Fachen dieses Niveaus.` : 'Der Bestand liegt damit etwa auf diesem Niveau.'));
+  }
+  if (i.zustandAnzahl > 0) {
+    const hoch = ok(i.spezKwhM2) && ['hoch', 'sehrHoch'].includes(spezKlasse(i.spezKwhM2));
+    const teile = [hoch ? `der ${spezKlasse(i.spezKwhM2) === 'sehrHoch' ? 'sehr ' : ''}hohe spezifische Verbrauch` : '',
+      ok(i.baujahrMittel) ? `das durchschnittliche Baujahr von ${Math.round(i.baujahrMittel)}` : '',
+      `der flächengewichtete Zustandswert von ${nf(i.zustandMittel, 1)} (auf einer Skala von 1 = gut bis 3 = schlecht)`].filter(Boolean);
+    const bedarf = i.zustandMittel >= 2.3 || (hoch && i.zustandMittel >= 1.7) ? 'auf einen erheblichen Sanierungsbedarf hin'
+      : i.zustandMittel >= 1.7 || hoch ? 'auf einen mittleren Sanierungsbedarf hin' : 'auf einen überwiegend guten baulichen Zustand hin';
+    const satz = liste(teile);
+    out.push(absatz(`${satz[0].toUpperCase()}${satz.slice(1)} ${teile.length > 1 ? 'weisen' : 'weist'} für die Gebäude der Liegenschaft insgesamt ${bedarf}.`
+      + (i.zustandAnzahl < i.anzahl ? ` Ein Bauzustand liegt für ${nf(i.zustandAnzahl)} von ${nf(i.anzahl)} Gebäuden vor.` : '')));
+  }
+  const auff = (i.nutzungFaktor || []).find(n => n.anzahl >= 2 && n.faktorMittel >= 2);
+  if (auff) {
+    out.push(absatz(`Auffällig ist insbesondere die Nutzungsart ${auff.nutzung} mit spezifischen Verbräuchen zwischen ${nf(auff.spezMin)} und ${nf(auff.spezMax)} kWh/(m²·a), im Mittel dem ${nf(auff.faktorMittel, 1)}-Fachen des Neubauniveaus vergleichbarer Nutzung.`,
+      auff.anzahl >= 3 && auff.faktorMin >= 1.5 && Number.isFinite(auff.baujahrMin) && auff.baujahrMax - auff.baujahrMin >= 20
+        ? ' Die Ursachen lassen sich anhand der vorliegenden Daten nicht zweifelsfrei bestimmen. Da dieser Gebäudetyp baujahrübergreifend durchgängig ungünstige Kennwerte aufweist, liegt ein maßgeblicher Einfluss des Nutzerverhaltens nahe, etwa dauerhaftes Heizen bei gekipptem oder geöffnetem Fenster.'
+        : ''));
+  }
+
   // Konzentration und Auffälligkeiten
   if (i.anzahl > 3 && ok(i.top3AnteilPct)) {
     out.push(absatz(i.top3AnteilPct >= GB_SCHWELLEN.konzentrationTop3
@@ -239,6 +303,8 @@ export function gbTextBestand(a, o = {}) {
     if (n && n !== h && n.spezKwhM2 <= i.spezKwhM2 / GB_SCHWELLEN.auffaelligkeit) teile.push(`${n.name} mit ${nf(n.spezKwhM2)} kWh/(m²·a) liegt deutlich unter dem Mittelwert`);
     if (teile.length) out.push(absatz(`Auffällig: ${teile.join('; ')}.`));
   }
+
+  if (i.abrissGeplant > 0) out.push(absatz(`Für ${nf(i.abrissGeplant)} ${kleinN(i.abrissGeplant, 'Gebäude ist', 'Gebäude sind')} ein Abriss geplant; ${kleinN(i.abrissGeplant, 'es ist', 'sie sind')} in der Gebäudeübersicht gekennzeichnet.`));
 
   // Datenherkunft
   const g = i.gesetzt, s = i.geschaetzt;
@@ -257,7 +323,7 @@ export function gbTextBestand(a, o = {}) {
 }
 
 /** 1.3.2 Bauliche Veränderungen (Abriss, Sanierung, Neubau). */
-export function gbTextVeraenderung(a) {
+export function gbTextVeraenderung(a, o = {}) {
   const out = [];
   const ev = a.ereignisse;
   const ist = a.ist;
@@ -266,9 +332,10 @@ export function gbTextVeraenderung(a) {
     out.push(absatz(`Bauliche Veränderungen (Neubau, Abriss, energetische Sanierung) sind ab ${stich} nicht hinterlegt. Der Gebäudebestand bleibt im Betrachtungszeitraum unverändert; der Soll-Bedarf entspricht dem Ist-Bedarf. Geplante Veränderungen sind ergänzt durch `, F('geplante bauliche Veränderungen'), '.'));
     return out;
   }
+  out.push(absatz('Grundlage der nachfolgenden Soll-Betrachtungen ist ', F('Planungsgrundlage, z. B. der Entwurf des Liegenschaftsnutzungs- und Entwicklungsplans einschließlich Raumflächen', o.planungsgrundlage), '.'));
   const von = ev.map(e => e.jahr), j0 = Math.min(...von), j1 = Math.max(...von);
   const nGeb = new Set(ev.map(e => e.name)).size;
-  out.push(absatz(`Ab ${stich} sind ${nf(ev.length)} bauliche ${kleinN(ev.length, 'Veränderung', 'Veränderungen')} an ${nf(nGeb)} ${kleinN(nGeb, 'Gebäude', 'Gebäuden')} vorgesehen, zeitlich verteilt zwischen ${j0} und ${j1}`
+  out.push(absatz(`Ab ${stich} ${ev.length === 1 ? 'ist' : 'sind'} ${nf(ev.length)} bauliche ${kleinN(ev.length, 'Veränderung', 'Veränderungen')} an ${nf(nGeb)} ${kleinN(nGeb, 'Gebäude', 'Gebäuden')} vorgesehen, ${j0 === j1 ? `im Jahr ${j0}` : `zeitlich verteilt zwischen ${j0} und ${j1}`}`
     + (a.anzahl.bestand === 0 ? '. Die Liegenschaft besteht ausschließlich aus Neubauten.' : `: ${liste([a.anzahl.neubau ? `${nf(a.anzahl.neubau)} Neubau${a.anzahl.neubau === 1 ? '' : 'ten'}` : '', a.anzahl.abriss ? `${nf(a.anzahl.abriss)} ${kleinN(a.anzahl.abriss, 'Abriss', 'Abrisse')}` : '', a.anzahl.saniert ? `${nf(a.anzahl.saniert)} ${kleinN(a.anzahl.saniert, 'Sanierung', 'Sanierungen')}` : ''].filter(Boolean))}.`)));
 
   const gruppe = k => ev.filter(e => e.art === k);
@@ -319,6 +386,27 @@ export function gbTextVeraenderung(a) {
     }
     if (sa.length <= 4) p.push(` Betroffen: ${liste(sa.map(e => e.name))}.`);
     out.push(absatz(...p));
+  }
+
+  // Flächenbilanz Abriss / Bestandserhalt / Neubau
+  const flAbriss = -summe(ab, e => e.flaecheM2), flNeu = summe(nb, e => e.flaecheM2);
+  if (ist && ist.flaecheM2 > 0 && (flAbriss > 0 || flNeu > 0)) {
+    const erhalt = Math.max(0, ist.flaecheM2 - flAbriss);
+    const posten = [`ein Bestandserhalt von ${nf(erhalt)} m²`, flNeu > 0 ? `ein Neubau von ${nf(flNeu)} m²` : ''].filter(Boolean);
+    out.push(absatz(flAbriss > 0 ? `In der Flächenbilanz stehen dem Abriss von ${nf(flAbriss)} m² ${liste(posten)} gegenüber. ` : `In der Flächenbilanz kommt zum Bestand von ${nf(ist.flaecheM2)} m² ein Neubau von ${nf(flNeu)} m² hinzu. `,
+      `In Summe ergibt sich eine zukünftige Bruttogeschossfläche von rund ${nf(erhalt + flNeu)} m² (heute ${nf(ist.flaecheM2)} m²).`));
+  }
+  const mitZiel = sa.map(e => num(e.nachSpez)).filter(x => ok(x) && x > 0);
+  if (mitZiel.length) {
+    const lo = Math.min(...mitZiel), hi = Math.max(...mitZiel);
+    out.push(absatz(`Für die sanierten Gebäude wurde angenommen, dass sich ihr spezifischer Wärmebedarf durch die Sanierung auf ${Math.round(lo) === Math.round(hi) ? nf(lo) : `${nf(lo)} bis ${nf(hi)}`} kWh/(m²·a) verringert`,
+      o.sanierungUnklar === false ? '.' : '. Zu Umfang und Ausführung der Sanierungen liegen noch keine näheren Informationen vor; der Wert ist daher als Annahme zu verstehen.'));
+  }
+  const arten = ['neubau', 'abriss', 'sanierung'].map(gruppe).filter(l => l.length);
+  if (ev.length >= 3 && arten.length >= 2 && arten.every(l => new Set(l.map(e => e.jahr)).size === 1)) {
+    const wann = arten.map(l => `${{ neubau: 'alle Neubauten', abriss: 'alle Abrisse', sanierung: 'sämtliche Sanierungen' }[l[0].art]} im Jahr ${l[0].jahr}`);
+    out.push(absatz(`Da die genauen Termine der einzelnen Baumaßnahmen noch nicht vorliegen, wurde vereinfachend angenommen, dass ${liste(wann)} erfolgen. `,
+      'In der Realität werden sich die Maßnahmen zeitlich überschneiden und über einen längeren Zeitraum verteilen. Die dargestellten Werte veranschaulichen daher vor allem die Auswirkungen der einzelnen Maßnahmen und sind nicht als exakte zeitliche Prognose zu verstehen.'));
   }
 
   // Bilanz am Ende des Betrachtungszeitraums

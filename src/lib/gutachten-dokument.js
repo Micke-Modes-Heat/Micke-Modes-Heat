@@ -177,7 +177,9 @@ export function gdNormalisieren(input) {
     };
   });
   glaetteEbenen(kapitel);
-  return { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(input.deckblatt) };
+  const tv = Number(input.textVariante);
+  return { version: GUTACHTEN_DOK_VERSION, kapitel, deckblatt: gdNormDeckblatt(input.deckblatt),
+    ...(Number.isInteger(tv) && tv > 0 ? { textVariante: tv } : {}) };   // Formulierungsvariante der Standardtexte (lib/gutachten-einleitung.js)
 }
 
 /** Automatische Kapitelnummern ("1", "1.2", "3.1.2") in Listenreihenfolge. */

@@ -2123,15 +2123,21 @@ export function _renderExpandedPanel(g, stats) {
           ${SCHICHT_REIHENFOLGE.map(s => `<option value="${s}"${normSchicht(g.schicht) === s ? ' selected' : ''}>${SCHICHT_META[s].icon} ${SCHICHT_META[s].label}</option>`).join('')}
         </select>
       </div>
-      ${g.zustand ? `<div class="inp-group">
-        <div class="inp-label">Zustand</div>
+      <div class="inp-group">
+        <div class="inp-label" title="Bauzustand 1 = gut, 2 = mittel, 3 = schlecht — fließt flächengewichtet ins Gutachten (Kapitel Gebäudebestand)">Bauzustand</div>
         <select class="inp-field" data-change="updateField(${g.id},'zustand',this.value)">
-          <option value="">—</option>
-          <option value="A" ${g.zustand==='A'?'selected':''}>A (gut)</option>
-          <option value="B" ${g.zustand==='B'?'selected':''}>B (mittel)</option>
-          <option value="C" ${g.zustand==='C'?'selected':''}>C (schlecht)</option>
+          ${(() => { const z = ({ A: '1', B: '2', C: '3' })[String(g.zustand || '').toUpperCase()] || String(g.zustand || ''); return ['', '1', '2', '3'].map(v => `<option value="${v}"${z === v ? ' selected' : ''}>${({ '': '—', 1: '1 (gut)', 2: '2 (mittel)', 3: '3 (schlecht)' })[v]}</option>`).join(''); })()}
         </select>
-      </div>` : ''}
+      </div>
+      <div class="inp-group">
+        <div class="inp-label" title="Trinkwarmwasser-Erzeugung im Bestand — für das Gutachtenkapitel Ist-Zustand Anlagentechnik">TWW-Art / kW</div>
+        <div style="display:flex;gap:3px;">
+          <select class="inp-field" style="flex:1;min-width:0;" data-change="updateField(${g.id},'twwArt',this.value)">
+            ${[['', '—'], ['fws', 'FWS'], ['pwt', 'PWT'], ['dle', 'el. DLE'], ['speicher', 'Speicher'], ['klein', 'Kleinsp.'], ['keine', 'keine']].map(([v, l]) => `<option value="${v}"${(g.twwArt || '') === v ? ' selected' : ''}>${l}</option>`).join('')}
+          </select>
+          <input class="inp-field" type="number" style="width:52px;" placeholder="kW" value="${g.twwKw || ''}" data-change="updateField(${g.id},'twwKw',this.value)">
+        </div>
+      </div>
       <div class="inp-group" style="grid-column: 1 / -1;">
         <div class="inp-label">Fläche m² ${g.flaeche ? "(OSM)" : ""}</div>
         <input class="inp-field" type="number" placeholder="—"
@@ -2774,7 +2780,7 @@ export function _buildProjectData() {
       baujahr: g.baujahr, baujährQuelle: g.baujährQuelle || null, abrissjahr: g.abrissjahr, sanierungen: g.sanierungen,
       schicht: g.schicht,
       stockwerke: g.stockwerke ?? 1, waermeManual: g.waermeManual || false, heizlastManual: g.heizlastManual || false,
-      pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil ?? 30, zustand: g.zustand || '',
+      pvAktiv: g.pvAktiv || false, pvDachanteil: g.pvDachanteil ?? 30, zustand: g.zustand || '', twwArt: g.twwArt || '', twwKw: g.twwKw || '',
       strom: g.strom || '', spezStrom: g.spezStrom || '', stromProfil: g.stromProfil || 'auto',
       dachform: g.dachform || 'sattel', dachAzimut: g.dachAzimut ?? null,
       dachNeigung: g.dachNeigung ?? null, dachAutoAzimut: g.dachAutoAzimut || false,
@@ -3368,6 +3374,8 @@ function _applyProjectData(project) {
             newG.pvAktiv = g.pvAktiv || false;
             newG.pvDachanteil = g.pvDachanteil ?? 30;
             newG.zustand = g.zustand || '';
+            newG.twwArt = g.twwArt || '';
+            newG.twwKw = g.twwKw || '';
             newG.dachform      = g.dachform      || 'sattel';
             newG.dachAzimut    = g.dachAzimut    ?? null;
             newG.dachNeigung   = g.dachNeigung   ?? null;

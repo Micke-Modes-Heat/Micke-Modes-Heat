@@ -22,6 +22,9 @@ import {
 } from './lib/gutachten-waerme-texte.js';
 import { gbAuswertung, gbTextBestand, gbTextVeraenderung, gbTextEntwicklung, GB_SPEZ_KLASSEN } from './lib/gutachten-gebaeude.js';
 import { wtEisspeicher } from './lib/gutachten-eisspeicher-text.js';
+import { geTextZiele, geTextLiegenschaft, geTextIstEinstieg } from './lib/gutachten-einleitung.js';
+import { baAuswertung, baTwwAuswertung } from './lib/bestandsanlage.js';
+import { atTextErzeuger, atTextHydraulik, atTextTww, atTextNetz, atLeistung } from './lib/gutachten-anlagentechnik.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1) DESIGN-TOKENS — gelten für ALLE Gutachten-Grafiken
@@ -1320,7 +1323,24 @@ const GG_TYP_KEY = { LWWP: 'lwwp', Geothermie: 'geo', 'Fließgewässer-WP': 'fg'
 export function ggGebaeudeAuswertung() {
   const w = window;
   if (typeof w.getComputedStats !== 'function') return gbAuswertung([], () => ({}));
-  return gbAuswertung(w.gebaeude || [], w.getComputedStats, { ausgeschlossen: id => typeof w.isExcluded === 'function' && w.isExcluded(id) });
+  // Vergleichsmaßstab: Neubau-Kennwert der Nutzung (IWU-Tabelle, jüngste Klasse; je m² Nutzfläche) umgerechnet auf m² BGF (Nutzfläche = 0,8 × BGF)
+  const referenzSpez = g => (typeof w.getSpezNachBaujahr === 'function' ? w.getSpezNachBaujahr(9999, g.nutzung) * 0.8 : NaN);
+  return gbAuswertung(w.gebaeude || [], w.getComputedStats, { ausgeschlossen: id => typeof w.isExcluded === 'function' && w.isExcluded(id), referenzSpez,
+    nutzungLabel: n => (typeof w.getNutzungstypById === 'function' && w.getNutzungstypById(n)?.label) || n });
+}
+
+/** Bestandsanlage (Ist) mit Heizlast heute und am Ende der baulichen Entwicklung (Summe der Einzelheizlasten). */
+function ggBestandsanlage() {
+  const w = window;
+  const g = ggGebaeudeAuswertung();
+  const j = g.jahre;
+  return baAuswertung(ggLies(() => w.getBestandsanlage?.(), {}) || {}, {
+    heizlastIstKw: j[0]?.heizlastKw, heizlastSollKw: j.length > 1 ? j[j.length - 1].heizlastKw : undefined,
+  });
+}
+function ggTwwBestand() {
+  const w = window;
+  return baTwwAuswertung((w.gebaeude || []).filter(g => !(typeof w.isExcluded === 'function' && w.isExcluded(g.id)) && !(parseInt(g.baujahr, 10) >= 2026)));
 }
 
 /** Bauliche Entwicklung im Format der Wärme-Textbausteine (aus ggGebaeudeAuswertung). */
@@ -1938,11 +1958,33 @@ const GG_FIGUREN = [
   },
 
   // ── Gutachtentexte Wärme (Logik und Fallunterscheidungen: lib/gutachten-waerme-texte.js) ──
+  // ── Einleitung (1.1, 1.2) und Einstieg Ist-Zustand (Logik: lib/gutachten-einleitung.js) ──
+  {
+    id: 'einleitung-ziele-text', istText: true, reihe: -10, kapitel: '1.1 Ziele und Grundsätze',
+    titel: 'Gutachtentext: Ziele und Grundsätze', datei: 'einleitung-ziele-text',
+    hinweis: 'Standardtext mit Liegenschaft und Ort aus Deckblatt bzw. Projektdaten. Die Vorgaben des Auftraggebers (Erlasse) kommen aus der lokalen Vorlage im Dokument-Panel; „Andere Formulierung“ wechselt die Wortwahl.',
+    render: () => ggWaermeTextBlatt(geTextZiele(ggLies(() => window.gutStandardtextDaten?.(), {}) || {})), config: {},
+  },
+  {
+    id: 'einleitung-liegenschaft-text', istText: true, reihe: -10, kapitel: '1.2 Liegenschaftsinformationen',
+    titel: 'Gutachtentext: Liegenschaftsinformationen (Platzhalter)', datei: 'einleitung-liegenschaft-text',
+    hinweis: 'Kein Standardtext — die Angaben sind zu liegenschaftsspezifisch. Der gelbe Hinweis erinnert daran, das Kapitel selbst zu schreiben.',
+    render: () => ggWaermeTextBlatt(geTextLiegenschaft()), config: {},
+  },
+  {
+    id: 'ist-einstieg-text', istText: true, reihe: -20, kapitel: '1.3 Hochbau',
+    titel: 'Gutachtentext: Einstieg Ist-Zustand', datei: 'ist-einstieg-text',
+    hinweis: 'Kurzer Einstieg: erst baulicher und anlagentechnischer Zustand, dann Energiebedarf aus Lastgang und Verbrauchsdaten.',
+    render: () => ggWaermeTextBlatt(geTextIstEinstieg({
+      ...(ggLies(() => window.gutStandardtextDaten?.(), {}) || {}),
+      lastgang: String(ggLies(() => ggWaermeHerkunft().lastgang, '')).startsWith('import'),
+    })), config: {},
+  },
   // ── Hochbau (1.3): Gebäudebestand, bauliche Veränderungen, Entwicklung (Logik: lib/gutachten-gebaeude.js) ──
   {
     id: 'gebaeude-bestand-text', istText: true, reihe: -10, kapitel: '1.3.1 Gebäudebestand (Ist)',
     titel: 'Gutachtentext: Gebäudebestand', datei: 'gebaeude-bestand-text',
-    hinweis: 'Überblick über den Ist-Bestand (Baujahr vor 2026): Anzahl, Fläche, Nutzung, Baualter, spezifischer Bedarf, Großverbraucher und Auffälligkeiten, Herkunft der Gebäudewerte (gesetzt oder geschätzt) und Datenlücken.',
+    hinweis: 'Überblick über den Ist-Bestand (Baujahr vor 2026): Anzahl, Bruttogeschossfläche, Nutzung, Baualter, spezifischer Bedarf, Vergleich mit dem Neubauniveau, Bauzustand und Sanierungsbedarf, auffällige Nutzungsarten, Großverbraucher, geplanter Abriss, Herkunft der Gebäudewerte und Datenlücken.',
     render: () => ggWaermeTextBlatt(gbTextBestand(ggGebaeudeAuswertung())), config: {},
   },
   {
@@ -2027,17 +2069,18 @@ const GG_FIGUREN = [
       const a = ggGebaeudeAuswertung();
       cfg.spalten = [
         { label: 'Gebäude', weight: 2.3, align: 'left', mono: false }, { label: 'Nutzung', weight: 1.2, align: 'left', mono: false },
-        { label: 'Baujahr', weight: 0.8 }, { label: 'Fläche', weight: 1 }, { label: 'Bedarf', weight: 1.1 }, { label: 'spez.', weight: 1.2 }, { label: 'Heizlast', weight: 1 },
+        { label: 'Baujahr', weight: 0.8 }, { label: 'Zustand', weight: 0.8 }, { label: 'BGF', weight: 1 }, { label: 'Bedarf', weight: 1.1 }, { label: 'spez.', weight: 1.2 }, { label: 'Heizlast', weight: 1 },
       ];
       const i = a.ist;
       if (!i.anzahl) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Kein Gebäudebestand (Baujahr vor 2026).'; }
       const Z = 25;
-      const z = i.zeilen.slice(0, Z).map(g => ({ werte: [g.name, g.nutzung, g.baujahr ?? '—', g.flaecheM2 > 0 ? ggNum(g.flaecheM2) + ' m²' : '—', ggNum(g.bedarfMwh) + ' MWh', Number.isFinite(g.spezKwhM2) ? ggNum(g.spezKwhM2) + ' kWh/m²' : '—', ggNum(g.heizlastKw) + ' kW'] }));
+      const zust = v => (Number.isFinite(v) ? ggNum(v) : '—');
+      const z = i.zeilen.slice(0, Z).map(g => ({ werte: [g.abrissjahr ? `${g.name} (Abriss ${g.abrissjahr})` : g.name, g.nutzung, g.baujahr ?? '—', zust(g.zustand), g.flaecheM2 > 0 ? ggNum(g.flaecheM2) + ' m²' : '—', ggNum(g.bedarfMwh) + ' MWh', Number.isFinite(g.spezKwhM2) ? ggNum(g.spezKwhM2) + ' kWh/m²' : '—', ggNum(g.heizlastKw) + ' kW'] }));
       const rest = i.zeilen.slice(Z);
-      if (rest.length) z.push({ werte: [`weitere ${ggNum(rest.length)} Gebäude`, '', '', ggNum(rest.reduce((x, g) => x + g.flaecheM2, 0)) + ' m²', ggNum(rest.reduce((x, g) => x + g.bedarfMwh, 0)) + ' MWh', '', ggNum(rest.reduce((x, g) => x + g.heizlastKw, 0)) + ' kW'] });
-      z.push({ highlight: true, werte: [`Summe ${ggNum(i.anzahl)} Gebäude`, '', '', ggNum(i.flaecheM2) + ' m²', ggNum(i.bedarfMwh) + ' MWh', Number.isFinite(i.spezKwhM2) ? ggNum(i.spezKwhM2) + ' kWh/m²' : '—', ggNum(i.heizlastKw) + ' kW'] });
+      if (rest.length) z.push({ werte: [`weitere ${ggNum(rest.length)} Gebäude`, '', '', '', ggNum(rest.reduce((x, g) => x + g.flaecheM2, 0)) + ' m²', ggNum(rest.reduce((x, g) => x + g.bedarfMwh, 0)) + ' MWh', '', ggNum(rest.reduce((x, g) => x + g.heizlastKw, 0)) + ' kW'] });
+      z.push({ highlight: true, werte: [`Summe ${ggNum(i.anzahl)} Gebäude`, '', '', Number.isFinite(i.zustandMittel) ? `Ø ${ggNum(i.zustandMittel, 1)}` : '', ggNum(i.flaecheM2) + ' m²', ggNum(i.bedarfMwh) + ' MWh', Number.isFinite(i.spezKwhM2) ? ggNum(i.spezKwhM2) + ' kWh/m²' : '—', ggNum(i.heizlastKw) + ' kW'] });
       cfg.zeilen = z;
-      cfg.fussnote = `Werte für ${a.istJahr} · sortiert nach Wärmebedarf · spez. = Bedarf ÷ Fläche · Heizlast: Summe der Einzelheizlasten`;
+      cfg.fussnote = `Werte für ${a.istJahr} · sortiert nach Wärmebedarf · BGF = Grundfläche × Geschosse · spez. = Bedarf ÷ BGF · Zustand 1 = gut bis 3 = schlecht (Ø flächengewichtet) · Heizlast: Summe der Einzelheizlasten`;
       return `✓ ${Math.min(Z, i.anzahl)} von ${ggNum(i.anzahl)} Gebäuden aufgeführt.`;
     },
   },
@@ -2171,8 +2214,101 @@ const GG_FIGUREN = [
     titel: 'Gutachtentext: Ist-Zustand Wärme',
     datei: 'waerme-ist-zustand-text',
     hinweis: 'Bestand oder Neubau: Ohne Gebäudebestand entfällt der Ist-Zustand. Sonst Gebäudebestand, Wärmebedarf und Spitzenlast, Netzverlust-Herkunft und die Herkunft des Lastgangs. Die bestehende Wärmeerzeugung bleibt Platzhalter.',
-    render: () => ggWaermeTextBlatt(wtIstZustand(ggWaermeDaten())),
+    render: () => {
+      const abs = wtIstZustand(ggWaermeDaten());
+      // Den Platzhalter „bestehende Wärmeerzeugung“ ersetzt der Baustein Wärmeerzeuger (Bestand), sobald die Bestandsanlage erfasst ist
+      const ohne = ggBestandsanlage().anzahl ? abs.filter(a => !a.some(x => x && x.feld && x.feld.startsWith('Bestehende Wärmeerzeuger'))) : abs;
+      return ggWaermeTextBlatt(ohne);
+    },
     config: {},
+  },
+  // ── Ist-Zustand Anlagentechnik: Erzeuger, Hydraulik, TWW, Netz (Logik: lib/bestandsanlage.js, lib/gutachten-anlagentechnik.js) ──
+  {
+    id: 'ist-erzeuger-text', istText: true, reihe: 10, kapitel: '2.1 Ist-Zustand Wärme',
+    titel: 'Gutachtentext: Wärmeerzeuger (Bestand)', datei: 'ist-erzeuger-text',
+    hinweis: 'Erzeugerpark aus 🔥 Wärme-Grundlagen → Bestandsanlage: Leistung und Feuerungsleistung, Energieträger, Vergleich mit Heizlast heute und künftig, (n−1)-Redundanz, fossile Prägung, Alter nach VDI 2067.',
+    render: () => ggWaermeTextBlatt(atTextErzeuger(ggBestandsanlage())), config: {},
+  },
+  {
+    id: 'ist-erzeuger-tabelle', autoSync: true, reihe: 20, kapitel: '2.1 Ist-Zustand Wärme',
+    titel: 'Übersicht Wärmeerzeuger (Bestand)', datei: 'ist-erzeuger-tabelle',
+    hinweis: 'Bestandserzeuger mit thermischer, Feuerungs- und elektrischer Leistung, Baujahr und Anteil an der thermischen Leistung.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Wärmeversorgung', titel: 'Übersicht Wärmeerzeuger (Bestand)', leer: 'Keine Bestandsanlage erfasst.', spalten: [{ label: 'Erzeuger', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const a = ggBestandsanlage();
+      cfg.spalten = [{ label: 'Erzeuger', weight: 2, align: 'left', mono: false }, { label: 'Thermische Leistung', weight: 1.2 }, { label: 'Feuerungsleistung', weight: 1.2 },
+        { label: 'El. Leistung', weight: 1 }, { label: 'Baujahr', weight: 0.8 }, { label: 'Anteil (therm.)', weight: 1 }];
+      if (!a.anzahl) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine Bestandsanlage erfasst (🔥 Wärme-Grundlagen → Bestandsanlage).'; }
+      const l = v => (Number.isFinite(v) ? atLeistung(v) : '');
+      cfg.zeilen = a.zeilen.map(z => ({ werte: [z.name, l(z.thermKw), l(z.feuerungKw), l(z.elKw), z.baujahr ?? '—', Number.isFinite(z.anteilPct) ? ggNum(z.anteilPct) + ' %' : ''] }));
+      cfg.zeilen.push({ highlight: true, werte: ['Summe', l(a.thermKw), a.feuerungKw ? l(a.feuerungKw) : '', a.elKw ? l(a.elKw) : '', '', '100 %'] });
+      cfg.fussnote = 'Bestandsanlage laut Unterlagen bzw. Begehung';
+      return `✓ ${a.anzahl} Bestandserzeuger.`;
+    },
+  },
+  {
+    id: 'ist-erzeuger-leistung', autoSync: true, reihe: 30, kapitel: '2.1 Ist-Zustand Wärme',
+    titel: 'Installierte Wärmeerzeugungsleistung (Bestand)', datei: 'ist-erzeuger-leistung',
+    hinweis: 'Thermische Leistung je Bestandserzeuger; Kennzahlen: Summe, Heizlast heute und künftig, Leistung ohne den größten Erzeuger.',
+    render: cfg => ggRenderBalken(cfg),
+    config: ggGebVorlage('Installierte Wärmeerzeugungsleistung', 'Thermische Leistung in kW', 'Erzeuger', 'Keine Bestandsanlage erfasst.'),
+    ausProjekt(cfg) {
+      const a = ggBestandsanlage();
+      ggGebKopf(cfg);
+      cfg.eyebrow = 'Wärmeversorgung';
+      if (!a.anzahl) { ggGebLeer(cfg); return '⚠ Keine Bestandsanlage erfasst.'; }
+      cfg.kategorien = a.zeilen.map(z => z.name);
+      cfg.gruppen = [{ label: '', segmente: [{ label: 'Thermische Leistung', farbe: GG_SEG_FARBEN.unsaniert, werte: a.zeilen.map(z => z.thermKw || 0) }] }];
+      cfg.punkte = null;
+      cfg.summenLabel = true;
+      cfg.kpiLinks = [{ wert: atLeistung(a.thermKw), label: 'installiert (thermisch)' }, ...(a.feuerungKw ? [{ wert: atLeistung(a.feuerungKw), label: 'Feuerungsleistung' }] : [])];
+      cfg.kpiRechts = [
+        ...(Number.isFinite(a.heizlastIstKw) ? [{ wert: atLeistung(a.heizlastIstKw), label: 'Heizlast heute' }] : []),
+        ...(Number.isFinite(a.heizlastSollKw) ? [{ wert: atLeistung(a.heizlastSollKw), label: 'Heizlast künftig' }] : []),
+        ...(a.anzahl > 1 && Number.isFinite(a.ohneGroesstenKw) ? [{ wert: atLeistung(a.ohneGroesstenKw), label: 'ohne größten Erzeuger', highlight: a.n1Erfuellt === false }] : []),
+      ];
+      return `✓ ${a.anzahl} Erzeuger, ${atLeistung(a.thermKw)}.`;
+    },
+  },
+  {
+    id: 'ist-hydraulik-text', istText: true, reihe: 40, kapitel: '2.1 Ist-Zustand Wärme',
+    titel: 'Gutachtentext: Wärmeverteilung und Hydraulik (Bestand)', datei: 'ist-hydraulik-text',
+    hinweis: 'Multivalente Anlage, Pufferspeicher (Volumen und l/kW), Platzhalter für die hydraulische Einbindung, Hinweis auf den Stand des Hydraulikschemas.',
+    render: () => ggWaermeTextBlatt(atTextHydraulik(ggBestandsanlage())), config: {},
+  },
+  {
+    id: 'ist-netz-text', istText: true, reihe: -10, kapitel: '2.1.2 Wärmeversorgungsnetz (WVN)',
+    titel: 'Gutachtentext: Wärmenetz (Bestand, Datenlage)', datei: 'ist-netz-text',
+    hinweis: 'Datenlage zum Bestandsnetz (Bestandsanlage → Netzdaten) und Lage der Heizzentrale; ist das Bestandsnetz im Tool gezeichnet, dessen Trassenlänge.',
+    render: () => {
+      const w = window;
+      const laengeM = ggLies(() => (w.networkLocked ? (w.netzEdges || []).reduce((x, e) => x + (Number(e.length) || 0), 0) : 0), 0);
+      return ggWaermeTextBlatt(atTextNetz(ggBestandsanlage(), { imTool: !!w.networkLocked, laengeM }));
+    },
+    config: {},
+  },
+  {
+    id: 'ist-tww-text', istText: true, reihe: -10, kapitel: '2.1.3 Wärmetechnische Hausstation (WH)',
+    titel: 'Gutachtentext: Trinkwarmwasser (Bestand)', datei: 'ist-tww-text',
+    hinweis: 'Aus den Gebäudefeldern „TWW-Art / kW“: summierte Leistung, Anteile je Erzeugungsart, größte Stationen, elektrische und speicherbasierte Lösungen, Warmwassertemperatur als Engpass für Wärmepumpen.',
+    render: () => ggWaermeTextBlatt(atTextTww(ggTwwBestand())), config: {},
+  },
+  {
+    id: 'ist-tww-tabelle', autoSync: true, reihe: 10, kapitel: '2.1.3 Wärmetechnische Hausstation (WH)',
+    titel: 'TWW-Erzeugungsleistung nach Erzeugungsart (Bestand)', datei: 'ist-tww-tabelle',
+    hinweis: 'Aggregierte Trinkwarmwasser-Erzeugungsleistung je Erzeugungsart aus den Gebäudefeldern.',
+    render: cfg => ggRenderTabelle(cfg),
+    config: { eyebrow: 'Wärmeversorgung', titel: 'TWW-Erzeugungsleistung nach Erzeugungsart', leer: 'Keine TWW-Angaben an den Gebäuden.', spalten: [{ label: 'Erzeugungsart', weight: 1, align: 'left', mono: false }], zeilen: [], fussnote: '' },
+    ausProjekt(cfg) {
+      const t = ggTwwBestand();
+      cfg.spalten = [{ label: 'Erzeugungsart', weight: 2.4, align: 'left', mono: false }, { label: 'Gebäude', weight: 0.8 }, { label: 'Leistung', weight: 1 }, { label: 'Anteil', weight: 0.8 }];
+      if (!t.anzahlErfasst) { cfg.zeilen = []; cfg.fussnote = ''; return '⚠ Keine TWW-Angaben (Gebäudefeld „TWW-Art / kW“).'; }
+      cfg.zeilen = t.gruppen.map(g => ({ werte: [g.name, ggNum(g.anzahl), ggNum(g.kw) + ' kW', Number.isFinite(g.anteilPct) ? ggNum(g.anteilPct, 1) + ' %' : '—'] }));
+      cfg.zeilen.push({ highlight: true, werte: ['Gesamt', ggNum(t.anzahlErfasst), ggNum(t.kw) + ' kW', '100 %'] });
+      cfg.fussnote = 'Bestandsgebäude · Angaben laut Unterlagen bzw. Begehung';
+      return `✓ ${t.anzahlErfasst} Gebäude mit TWW-Angaben.`;
+    },
   },
   {
     id: 'waerme-wea-text',
