@@ -330,6 +330,47 @@ export function richteRechtwinklig(coords, { diagonalGrad = 20, minKanteM = 0.3 
   };
 }
 
+function schwerpunkt(pts) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const f = pts[j].x * pts[i].y - pts[i].x * pts[j].y;
+    a += f; cx += (pts[j].x + pts[i].x) * f; cy += (pts[j].y + pts[i].y) * f;
+  }
+  return a ? { x: cx / (3 * a), y: cy / (3 * a) } : { x: pts[0].x, y: pts[0].y };
+}
+
+// Richtung (rad, mathematisch) der längsten Kante eines gegen den Uhrzeigersinn orientierten Rings
+function laengsteKante(ring) {
+  let best = -1, ang = 0;
+  ring.forEach((a, i) => {
+    const b = ring[(i + 1) % ring.length], l = Math.hypot(b.x - a.x, b.y - a.y);
+    if (l > best + 1e-6) { best = l; ang = Math.atan2(b.y - a.y, b.x - a.x); }
+  });
+  return ang;
+}
+
+/**
+ * Überträgt die Maße/Form eines Gebäudes (quelle) auf ein anderes (ziel): Der Flächen-
+ * schwerpunkt und die Ausrichtung des Ziels bleiben erhalten. Als Ausrichtung dient die
+ * Richtung der jeweils längsten Kante, d. h. die lange Seite der Quelle liegt auf der
+ * langen Seite des Ziels. Die Form wird nur gedreht und verschoben, nie verzerrt.
+ * @returns {{coords:{lat:number,lng:number}[], drehungGrad:number, flaecheM2:number}|null}
+ */
+export function uebertrageForm(zielCoords, quelleCoords) {
+  if (!zielCoords || zielCoords.length < 3 || !quelleCoords || quelleCoords.length < 3) return null;
+  const { ringe, zurueck } = projizieren([zielCoords, quelleCoords]);
+  const z = ccw(ohneSchluss(ringe[0])), q = ccw(ohneSchluss(ringe[1]));
+  if (Math.abs(vorzeichenFlaeche(z)) < 0.5 || Math.abs(vorzeichenFlaeche(q)) < 0.5) return null;
+  const delta = laengsteKante(z) - laengsteKante(q);
+  const c = Math.cos(delta), s = Math.sin(delta);
+  const zc = schwerpunkt(z), qc = schwerpunkt(q);
+  const neu = q.map(p => {
+    const x = p.x - qc.x, y = p.y - qc.y;
+    return { x: zc.x + x * c - y * s, y: zc.y + x * s + y * c };
+  });
+  return { coords: neu.map(zurueck), drehungGrad: -delta * 180 / Math.PI, flaecheM2: Math.abs(vorzeichenFlaeche(neu)) };
+}
+
 /**
  * Bereinigt eine Importliste: Gebäude unter der Mindestgrundfläche (Dachaufbauten,
  * Schuppen, Anbauten) werden nicht als eigenes Gebäude geführt. Berührt/überlappt

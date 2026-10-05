@@ -33,7 +33,7 @@ import { setFliessgewaesserVisible } from './02c-karte-werkzeuge.js';
 import { PROJECT_SCHEMA_VERSION, prepareProjectForImport } from './lib/project-schema.js';
 import { schichtBackfill, SCHICHT_META, SCHICHT_REIHENFOLGE, normSchicht } from './lib/schichten.js';
 import { repairPhasen } from './lib/phasen-core.js';
-import { drehFunktion, peilungGrad, richteRechtwinklig, vereinigePolygone } from './lib/gebaeude-geometrie.js';
+import { drehFunktion, peilungGrad, richteRechtwinklig, uebertrageForm, vereinigePolygone } from './lib/gebaeude-geometrie.js';
 import { createCalculationManifest } from './lib/calculation-manifest.js';
 import { getPvTariffProvenance } from './config/tariff-scenarios.js';
 import { getEconomicScenarioProvenance } from './config/economic-scenarios.js';
@@ -2157,6 +2157,8 @@ export function _renderExpandedPanel(g, stats) {
       </button>` : ''}
       ${g.polygon ? `<button class="btn-xs" data-click="richteGebaeudeRechtwinklig(${g.id})"
         title="Grundriss rechtwinklig ausrichten: alle Ecken werden zu 90°-Ecken, die Gebäuderichtung bleibt erhalten">&#8735; Rechtwinklig</button>
+      <button class="btn-xs ${_formModus?.zielId === g.id ? 'blue' : ''}" data-click="startGebaeudeFormUebernahme(${g.id})"
+        title="${_formModus?.zielId === g.id ? 'Maßübernahme beenden' : 'Maße eines anderen Gebäudes übernehmen — Position und Drehung dieses Gebäudes bleiben'}">${_formModus?.zielId === g.id ? '✓ Fertig' : '⇆ Maße übernehmen'}</button>
       <button class="btn-xs" data-click="dupliziereGebaeude(${g.id})"
         title="Gebäude kopieren (Grundriss, Nutzung, Dach, PV-Flächen) — die Kopie lässt sich sofort verschieben und drehen">&#10697; Duplizieren</button>` : ''}
       ${g.polygon ? `<button class="btn-xs ${_mergeModus?.zielId === g.id ? 'blue' : ''}"
@@ -2572,6 +2574,61 @@ export function dupliziereGebaeude(gId) {
   return t;
 }
 
+// ── Maße übernehmen ───────────────────────────────────────────────────────
+// Zielgebäude wählen (Button „Maße übernehmen"), dann ein Gebäude auf der Karte anklicken:
+// dessen Grundrissform (Länge, Breite, Kontur) ersetzt die des Ziels. Schwerpunkt und
+// Drehung des Ziels bleiben; die lange Seite der Quelle liegt auf der langen Seite des
+// Ziels. Das angeklickte Gebäude bleibt unverändert. Esc/„✓ Fertig" beendet den Modus.
+let _formModus = null;
+
+function _formEscape(event) {
+  if (event.key === 'Escape') endeGebaeudeFormUebernahme();
+}
+
+export function endeGebaeudeFormUebernahme() {
+  if (!_formModus) return;
+  const zielId = _formModus.zielId;
+  document.removeEventListener('keydown', _formEscape);
+  _formModus = null;
+  hideHint();
+  _rerenderCard(zielId);
+}
+
+export function startGebaeudeFormUebernahme(gId) {
+  if (_formModus?.zielId === gId) { endeGebaeudeFormUebernahme(); return; }
+  const g = window.gebaeude.find(b => b.id === gId);
+  if (!g?.polygon || g.polygon.length < 3) return;
+  if (typeof endeGebaeudeMerge === 'function') endeGebaeudeMerge();
+  const vorher = _formModus?.zielId;
+  _formModus = { zielId: gId };
+  if (vorher != null) _rerenderCard(vorher);
+  document.addEventListener('keydown', _formEscape);
+  showHint(`⇆ Gebäude anklicken, dessen Maße „${g.name || 'Gebäude ' + gId}" übernehmen soll (Position und Drehung bleiben) · Esc = fertig`, 0);
+  _rerenderCard(gId);
+}
+
+// Aus attachPolygonLayer (02b) aufgerufen; true = Klick verbraucht
+export function gebaeudeFormClick(quelleId) {
+  if (!_formModus) return false;
+  const z = window.gebaeude.find(b => b.id === _formModus.zielId);
+  const q = window.gebaeude.find(b => b.id === quelleId);
+  if (!z?.polygon || !q?.polygon || quelleId === z.id) return true;
+  const r = uebertrageForm(z.polygon, q.polygon);
+  if (!r) { showHint('⚠ Maße lassen sich nicht übertragen (Grundriss zu klein)', 3500); return true; }
+  const vorher = Math.round(z.flaeche || 0);
+  z.polygon = r.coords.map(p => L.latLng(p.lat, p.lng));
+  z.polygonLayer?.setLatLngs(z.polygon);
+  if (z.dachAutoAzimut) {
+    const az = detectRoofAzimutFromPolygon(z.polygon);
+    if (az != null) z.dachAzimut = az;
+  }
+  _finishGrundrissChange(z, true);
+  const pvHinweis = z.pvFlaechen?.length ? ' · PV-Flächen bleiben unverändert, ggf. neu zeichnen' : '';
+  showHint(`✓ Maße von „${q.name || 'Gebäude ' + q.id}" übernommen: ${vorher} → ${Math.round(r.flaecheM2)} m²${pvHinweis} · weiteres Gebäude anklicken oder Esc`, 0);
+  return true;
+}
+window.gebaeudeFormClick = gebaeudeFormClick;
+
 // ── Grundrisse zusammenfügen ──────────────────────────────────────────────
 // Zielgebäude wählen (Button „Zusammenfügen"), dann beliebig viele Gebäude auf der
 // Karte anklicken: deren Grundriss wird mit dem des Ziels vereinigt, das angeklickte
@@ -2596,6 +2653,7 @@ export function startGebaeudeMerge(gId) {
   if (_mergeModus?.zielId === gId) { endeGebaeudeMerge(); return; }
   const g = window.gebaeude.find(b => b.id === gId);
   if (!g?.polygon || g.polygon.length < 3) return;
+  endeGebaeudeFormUebernahme();
   const vorher = _mergeModus?.zielId;
   _mergeModus = { zielId: gId, busy: false };
   if (vorher != null) _rerenderCard(vorher);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bereinigeKleinbauten, drehFunktion, flaecheM2, peilungGrad, rechteckAusDreiPunkten, richteRechtwinklig, vereinigePolygone } from '../src/lib/gebaeude-geometrie.js';
+import { bereinigeKleinbauten, drehFunktion, flaecheM2, peilungGrad, rechteckAusDreiPunkten, richteRechtwinklig, uebertrageForm, vereinigePolygone } from '../src/lib/gebaeude-geometrie.js';
 
 // Rechteck in Metern ab (x,y) am Ursprung 53°N/10°E
 const LAT = 53, LNG = 10;
@@ -138,5 +138,28 @@ describe('richteRechtwinklig', () => {
   });
   it('liefert null für ein Dreieck', () => {
     expect(richteRechtwinklig(ptsM([[0, 0], [10, 0], [5, 8]]))).toBeNull();
+  });
+});
+
+describe('uebertrageForm', () => {
+  const mitte = c => ({ lat: c.reduce((a, p) => a + p.lat, 0) / c.length, lng: c.reduce((a, p) => a + p.lng, 0) / c.length });
+  it('übernimmt Maße, behält Schwerpunkt und Drehung des Ziels', () => {
+    const ziel = ptsM([[0, 0], [10, 0], [10, 6], [0, 6]], 30);
+    const quelle = ptsM([[100, 50], [120, 50], [120, 58], [100, 58]], 75);
+    const r = uebertrageForm(ziel, quelle);
+    expect(r.flaecheM2).toBeCloseTo(160, 0);
+    expect(mitte(r.coords).lat).toBeCloseTo(mitte(ziel).lat, 7);
+    expect(mitte(r.coords).lng).toBeCloseTo(mitte(ziel).lng, 7);
+    // Lange Seite (20 m) liegt in Zielrichtung: erste Kante des Ergebnisses ∥ erster Kante des Ziels
+    const peil = (a, b) => peilungGrad(a, b);
+    const d = Math.abs(((peil(r.coords[0], r.coords[1]) - peil(ziel[0], ziel[1])) % 180 + 180) % 180);
+    expect(Math.min(d, 180 - d)).toBeLessThan(0.1);
+  });
+  it('erhält die Kantenlängen der Quelle (L-Form)', () => {
+    const ziel = ptsM([[0, 0], [30, 0], [30, 12], [0, 12]], 10);
+    const quelle = ptsM([[0, 0], [20, 0], [20, 8], [10, 8], [10, 15], [0, 15]], 200);
+    const r = uebertrageForm(ziel, quelle);
+    expect(r.coords).toHaveLength(6);
+    expect(r.flaecheM2).toBeCloseTo(flaecheM2(quelle), 1);
   });
 });
